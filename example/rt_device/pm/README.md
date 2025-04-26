@@ -494,14 +494,16 @@ Lcpu唤醒流程56系列一样<br>
 按下唤醒PIN从Hibernate唤醒后，可以判断`(PM_HIBERNATE_BOOT == SystemPowerOnModeGet())`是否为`hibernate boot`和按键的时间长短来判断是否需要开机<br>
 Log中打印的`boot from hibernate!!!`可以指示从hibernate开机<br>
 ## 异常诊断
-### 唤醒Log解读<br>
+### 唤醒Log解读
+```
    [pm]S:3,298998<br>
     S表示已进入休眠，3表示休眠为PM_SLEEP_MODE_DEEP模式，4代表PM_SLEEP_MODE_STANDBY，298998为Gtimer时间戳<br>
    [pm]W:462858 <br>
    W表示已唤醒，462858为Gtimer时间戳<br>
    [pm]WSR:0x4 <br>
    WSR为唤醒寄存器，0x04为WSR寄存器值，需要对照规格书查看具体来自哪个唤醒源<br>
-### 没PM[S]打印<br>
+```
+### 没PM[S]打印
 原因1：<br>
 确认下面宏已经打开<br>
 ```
