@@ -37,7 +37,7 @@ if __name__ == '__main__':
 
     os.system('echo connect > tmp.jlink')
     os.system('echo h >> tmp.jlink')
-    os.system(('echo savebin %s %x %x >> tmp.jlink'%(bin_file_name,address,fb_bytes)))
+    os.system(('echo savebin %s %x %x >> tmp.jlink'%(bin_file_name,address,int(fb_bytes))))
     os.system('echo exit >> tmp.jlink')
     #os.system(('call jlink.exe -device %s -if SWD -speed 12000 -autoconnect 1 -CommandFile tmp.jlink'%(jlink_tgt_dev)))
     #os.system(('call jlink.exe -device %s -ip 127.0.0.1:19025 -if SWD -speed 1000 -autoconnect 1 -CommandFile tmp.jlink'%(jlink_tgt_dev)))
