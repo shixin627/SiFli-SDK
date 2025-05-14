@@ -397,7 +397,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDCODEC_Config_Analog_DACPath(AUDCODE_DAC_
     hwp_audcodec->DAC1_CFG |= AUDCODEC_DAC1_CFG_LP_MODE;
     hwp_audcodec->DAC2_CFG |= AUDCODEC_DAC2_CFG_LP_MODE;
 #else
-#if BSP_AVDD_V18_ENABLE
+#if AVDD_V18_ENABLE
     hwp_audcodec->DAC1_CFG |= AUDCODEC_DAC1_CFG_LP_MODE;  //1.8v
 #else
     hwp_audcodec->DAC1_CFG &= ~AUDCODEC_DAC1_CFG_LP_MODE; //3.3v
@@ -473,7 +473,7 @@ void HAL_TURN_ON_PLL()
 // turn on bandgap
     hwp_audcodec->BG_CFG0 = (1 << AUDCODEC_BG_CFG0_EN_Pos) |
                             (0 << AUDCODEC_BG_CFG0_LP_MODE_Pos) |
-#if BSP_AVDD_V18_ENABLE
+#if AVDD_V18_ENABLE
                             (2 << AUDCODEC_BG_CFG0_VREF_SEL_Pos) |   // 0xc: 3.3v  2:AVDD = 1.8V
 #else
                             (0xc << AUDCODEC_BG_CFG0_VREF_SEL_Pos) |   // 0xc: 3.3v  2:AVDD = 1.8V
@@ -560,7 +560,7 @@ __HAL_ROM_USED void HAL_AUCODEC_Refgen_Init(void)
     hwp_audcodec->BG_CFG0 &= ~AUDCODEC_BG_CFG0_EN_SMPL;
     hwp_audcodec->REFGEN_CFG &= ~AUDCODEC_REFGEN_CFG_EN_CHOP;
     hwp_audcodec->REFGEN_CFG |= AUDCODEC_REFGEN_CFG_EN;
-#if BSP_AVDD_V18_ENABLE
+#if AVDD_V18_ENABLE
     hwp_audcodec->REFGEN_CFG |= AUDCODEC_REFGEN_CFG_LV_MODE;
 #else
     hwp_audcodec->REFGEN_CFG &= ~AUDCODEC_REFGEN_CFG_LV_MODE;

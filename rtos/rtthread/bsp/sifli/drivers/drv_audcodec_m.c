@@ -732,7 +732,7 @@ struct bf0_audio_codec
 };
 
 #ifdef SOC_SF32LB52X
-    #if BSP_AVDD_V18_ENABLE
+    #if AVDD_V18_ENABLE
         #define SINC_GAIN   0xa0
     #else
         #define SINC_GAIN   0x14D
@@ -1976,14 +1976,14 @@ uint8_t codec_hp_sin1k_test()
 //-----------------step 5------------------//
 // turn on refgen
     hwp_audcodec->BG_CFG0 &= ~AUDCODEC_BG_CFG0_VREF_SEL;
-#if BSP_AVDD_V18_ENABLE
+#if AVDD_V18_ENABLE
     hwp_audcodec->BG_CFG0 |= (2 << AUDCODEC_BG_CFG0_VREF_SEL_Pos);    // AVDD = 1.8V
 #else
     hwp_audcodec->BG_CFG0 |= (0xc << AUDCODEC_BG_CFG0_VREF_SEL_Pos);  // AVDD = 3.3V
 #endif
     hwp_audcodec->REFGEN_CFG &= ~AUDCODEC_REFGEN_CFG_EN_CHOP;
     hwp_audcodec->REFGEN_CFG |= AUDCODEC_REFGEN_CFG_EN;
-#if BSP_AVDD_V18_ENABLE
+#if AVDD_V18_ENABLE
     hwp_audcodec->REFGEN_CFG |= AUDCODEC_REFGEN_CFG_LV_MODE;
 #else
     hwp_audcodec->REFGEN_CFG &= ~AUDCODEC_REFGEN_CFG_LV_MODE;
@@ -2017,7 +2017,7 @@ uint8_t codec_hp_sin1k_test()
                              (10 << AUDCODEC_PLL_CFG5_DIVA_CLK_DAC2_Pos) |
                              (1  << AUDCODEC_PLL_CFG5_EN_CLK_DAC2_Pos);
     // dac1 and dac2 power
-#if BSP_AVDD_V18_ENABLE
+#if AVDD_V18_ENABLE
     hwp_audcodec->DAC1_CFG |= AUDCODEC_DAC1_CFG_LP_MODE;
 #else
     hwp_audcodec->DAC1_CFG &= ~AUDCODEC_DAC1_CFG_LP_MODE; //3.3v
@@ -2085,7 +2085,7 @@ uint8_t codec_hp_sin1k_test()
                                 (6   << AUDCODEC_DAC_CH0_CFG_ROUGH_VOL_Pos) |
                                 (0   << AUDCODEC_DAC_CH0_CFG_FINE_VOL_Pos) |
                                 (0   << AUDCODEC_DAC_CH0_CFG_DATA_FORMAT_Pos) |
-#if BSP_AVDD_V18_ENABLE
+#if AVDD_V18_ENABLE
                                 (0xa0 << AUDCODEC_DAC_CH0_CFG_SINC_GAIN_Pos) |
 #else
                                 (0x14D << AUDCODEC_DAC_CH0_CFG_SINC_GAIN_Pos) |
