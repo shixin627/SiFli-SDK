@@ -374,7 +374,7 @@ RT_WEAK void regist_sco_para_save_ptr(struct hci_sync_con_cmp_evt *ptr)
 }
 RT_WEAK uint8_t rom_config_get_bt_sco_max_act(void)
 {
-    return 0;
+    return 1;
 }
 void bt_soc_send_data(uint8_t len);
 typedef int (*bt_audiopath_init_handler)(void);
@@ -518,8 +518,11 @@ __ROM_USED uint8_t bt_sco_data_handle_callback(void *p_param)
 
         if (bufsize + p_sco_data->length + 4 <= g_ringbuffer_len)
         {
-            memcpy((p_sco_data->data_ptr - 4), p_sco_data, 4);
-            putnum = rt_ringbuffer_put(pt_tx_rbf, (p_sco_data->data_ptr - 4), (p_sco_data->length + 4));
+            //memcpy((p_sco_data->data_ptr - 4), p_sco_data, 4);
+            //putnum = rt_ringbuffer_put(pt_tx_rbf, (p_sco_data->data_ptr - 4), (p_sco_data->length + 4));
+            memcpy(g_sco_buf, p_sco_data, 4);
+            memcpy(g_sco_buf + 4, p_sco_data->data_ptr, p_sco_data->length);
+            putnum = rt_ringbuffer_put(pt_tx_rbf, (g_sco_buf), (p_sco_data->length + 4));
 
             bt_soc_send_data_fun(p_sco_data->length);
 

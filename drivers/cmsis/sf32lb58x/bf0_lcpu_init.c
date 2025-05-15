@@ -71,10 +71,56 @@ static uint8_t g_lcpu_rf_cal_disable;
 __WEAK void adc_resume(void)
 {
 }
+#ifdef LCPU_CONFIG_V2
+void lcpu_rom_config_default(void)
+{
+    uint8_t rev_id = __HAL_SYSCFG_GET_REVID();
 
+#ifdef LXT_DISABLE
+    uint8_t is_enable_lxt = 0;
+    uint8_t is_lcpu_rccal = 1;
+#else // !LXT_DISABLE
+    uint8_t is_enable_lxt = 1;
+    uint8_t is_lcpu_rccal = 0;
+#endif // LXT_DISABLE
+    uint32_t wdt_staus = 0xFF;
+    uint32_t wdt_time = 10;
+    uint16_t wdt_clk = 32768;
+
+    HAL_LCPU_CONFIG_set(HAL_LCPU_CONFIG_XTAL_ENABLED, &is_enable_lxt, 1);
+    HAL_LCPU_CONFIG_set(HAL_LCPU_CONFIG_WDT_STATUS, &wdt_staus, 4);
+    HAL_LCPU_CONFIG_set(HAL_LCPU_CONFIG_WDT_TIME, &wdt_time, 4);
+    HAL_LCPU_CONFIG_set(HAL_LCPU_CONFIG_WDT_CLK_FEQ, &wdt_clk, 2);
+    HAL_LCPU_CONFIG_set(HAL_LCPU_CONFIG_BT_RC_CAL_IN_L, &is_lcpu_rccal, 1);
+
+    {
+        uint32_t tx_queue = HCPU2LCPU_MB_CH1_BUF_START_ADDR;
+        hal_lcpu_bluetooth_rom_config_t config = {0};
+        config.bit_valid |= 1 << 10 | 1 << 6;
+#ifdef FPGA
+        config.is_fpga = 1;
+#else
+        config.is_fpga = 0;
+#endif
+        config.default_xtal_enabled = is_enable_lxt;
+        //config.sco_cfg = 0;
+        HAL_LCPU_CONFIG_set(HAL_LCPU_CONFIG_HCPU_TX_QUEUE, &tx_queue, 4);
+        HAL_LCPU_CONFIG_set(HAL_LCPU_CONFIG_BT_CONFIG, &config, sizeof(config));
+    }
+
+    {
+        hal_lcpu_bluetooth_actmove_config_t act_cfg;
+        act_cfg.bit_valid = 1;
+        act_cfg.act_mov = 0x10;
+        HAL_LCPU_CONFIG_set(HAL_LCPU_CONFIG_BT_ACTMOVE_CONFIG, &act_cfg, LCPU_CONFIG_BT_ACTMOVE_ROM_LENGTH);
+    }
+}
+#endif // LCPU_CONFIG_V2
 __WEAK void lcpu_rom_config(void)
 {
-
+#ifdef LCPU_CONFIG_V2
+    lcpu_rom_config_default();
+#endif
 }
 
 #if defined(LCPU_RUN_ROM_ONLY)
@@ -88,8 +134,9 @@ __WEAK void lcpu_img_install(void)
 static void lcpu_ble_patch_install()
 {
     memset((void *)0x204F0000, 0, 0x2000);
+#if !defined(LCPU_RUN_SEPERATE_IMG)
     lcpu_patch_install();
-
+#endif
     if (g_lcpu_rf_cal_disable == 0)
         bt_rf_cal();
 

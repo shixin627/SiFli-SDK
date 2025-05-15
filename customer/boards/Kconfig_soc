@@ -147,6 +147,7 @@ if !BSP_USING_PC_SIMULATOR
             
         choice LCPU_CONFIG_VERSION
             prompt "Select hal lcpu config version"
+            default LCPU_CONFIG_V2 if SOC_SF32LB58X
             default LCPU_CONFIG_AUTO
             config LCPU_CONFIG_AUTO
                 bool "Auto adapt lcpu config version via chip ID"

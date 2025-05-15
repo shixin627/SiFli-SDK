@@ -77,7 +77,10 @@ elif GetDepend('BF0_LCPU'):
     SFLIB=['bfhal_lcpu.lib']
     if rtconfig.CROSS_TOOL == 'keil':
         if GetDepend('SOC_SF32LB58X'):
-            rom_src_name = 'sifli_rom_58x.sym'
+            if GetDepend('LCPU_CONFIG_V2'):
+                rom_src_name = 'sifli_rom_58x_a2.sym'
+            else:    
+                rom_src_name = 'sifli_rom_58x.sym'
         elif GetDepend('SOC_SF32LB55X'):
             if GetDepend('LCPU_XIP_CODE'):
                 if GetConfigValue('BSP_LB55X_CHIP_ID') >= 3:
@@ -95,7 +98,10 @@ elif GetDepend('BF0_LCPU'):
             rom_src_name = 'sifli_rom_52x.sym'
     elif rtconfig.CROSS_TOOL == 'gcc': 
         if GetDepend('SOC_SF32LB58X'):
-            rom_src_name = 'sifli_rom_58x_gcc.sym'
+            if GetDepend('LCPU_CONFIG_V2'):
+                rom_src_name = 'sifli_rom_58x_a2_gcc.sym'
+            else:    
+                rom_src_name = 'sifli_rom_58x_gcc.sym'   
         elif GetDepend('SOC_SF32LB55X'):
             if GetDepend('LCPU_XIP_CODE'):
                 if GetConfigValue('BSP_LB55X_CHIP_ID') >= 3:

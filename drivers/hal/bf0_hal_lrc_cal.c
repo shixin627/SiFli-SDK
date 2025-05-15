@@ -673,7 +673,7 @@ static void HAL_RC_unlocked(void)
 }
 
 
-int HAL_RC_CALget_curr_cycle_on_48M(uint8_t lp_cycle, uint32_t *count)
+__HAL_ROM_USED int HAL_RC_CALget_curr_cycle_on_48M(uint8_t lp_cycle, uint32_t *count)
 {
     uint32_t cur = 0, cal_ave;
     uint8_t alpha = 0;
