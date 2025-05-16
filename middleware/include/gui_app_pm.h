@@ -85,6 +85,8 @@ void gui_pm_init(rt_device_t lcd, gui_pm_event_handler_t handler);
  *
  * @return void
  */
+void set_idle_mode(bool idle_mode);
+
 void gui_pm_fsm(gui_pm_action_t action);
 
 /** Suspend GUI if fsm in INACTIVE_PENDING state and change to INACTIVE
