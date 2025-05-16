@@ -1,7 +1,0 @@
-config BSP_USING_BOARD_56_DEVKIT_LCD_NAND
-    bool
-    select SOC_SF32LB56X
-    select BF0_HCPU
-    default y
-
-rsource "../Kconfig.board"

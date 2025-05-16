@@ -31,12 +31,28 @@
         ]
     }, 
     {
-        "mem": "psram2", 
-        "base": "0x60800000", 
+        "mem": "psram1", 
+        "base": "0x60000000", 
         "regions": [
             {
                 "offset": "0x00000000", 
-                "max_size": "0x01000000", 
+                "max_size": "0x00300000", 
+                "tags": [],
+                "ftab": {
+                    "name": "main",
+                    "address": [
+                        "xip"
+                    ]
+               },
+               "custom": {
+                    "PSRAM_BL_MODE": 3, 
+                    "PSRAM_BL_SIZE": 8, 
+                    "PSRAM_BL_MPI": 1
+               }
+            },
+            {
+                "offset": "0x00300000", 
+                "max_size": "0x00500000", 
                 "tags": [
                     "PSRAM_DATA"
                 ]
@@ -44,64 +60,67 @@
         ]
     }, 
     {
-        "mem": "flash3", 
-        "base": "0x14000000", 
+        "mem":    "psram1_cbus", 
+        "base":   "0x10000000",
         "regions": [
             {
                 "offset": "0x00000000", 
-                "max_size": "0x00200000", 
+                "max_size": "0x00300000", 
                 "tags": [
                     "HCPU_FLASH_CODE"
+                ],
+                "exec": "main"
+            }
+        ]
+    },    
+    {
+        "mem": "psram2", 
+        "base": "0x60800000", 
+        "regions": [
+            {
+                "offset": "0x00000000", 
+                "max_size": "0x00400000", 
+                "tags": [
+                    "PSRAM_DATA2"
+                ]
+            }
+        ]
+    }, 
+    {
+        "mem": "flash3", 
+        "base": "0x64000000", 
+        "regions": [
+            {
+                "offset": "0x00000000", 
+                "max_size": "0x00300000", 
+                "tags": [
+                    "HCPU_FLASH_CODE_LOAD_REGION"
                 ], 
                 "img": "main", 
-                "exec": "main",
                 "ftab": {
                     "name": "main", 
                     "address": [
-                        "base", "xip"
+                        "base"
                     ]
                 }
             }, 
             {
-                "offset": "0x00200000",
-                "max_size": "0x00060000",
-                "tags": [
-                    "DFU_FLASH_CODE"
-                ],
-                "img": "dfu",
-                "exec": "dfu",
-                "ftab": {
-                    "name": "dfu",
-                    "address": [
-                        "base",
-                        "xip"
-                    ]
-                }
-            },
-            {
-                "offset": "0x00260000",
-                "max_size": "0x000F0000",
-                "tags": [
-                    "DFU_DOWNLOAD_REGION"
-                ]
-            },
-            {
-                "offset": "0x00350000",
-                "max_size": "0x002B0000",
-                "img": "fs_root",
+                "offset": "0x00300000", 
+                "max_size": "0x00400000", 
+                "img": "fs_root", 
                 "tags": [
                     "FS_REGION"
                 ]
             }, 
             {
-                "offset": "0x00600000", 
+                "offset": "0x00700000", 
                 "max_size": "0x00004000", 
                 "tags": [
                     "KVDB_DFU_REGION"
                 ]
             }, 
             {
-                "offset": "0x00604000", 
+                "offset": "0x00704000", 
                 "max_size": "0x00004000", 
                 "tags": [
                     "KVDB_BLE_REGION"

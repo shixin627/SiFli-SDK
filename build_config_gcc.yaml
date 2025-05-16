@@ -33,8 +33,8 @@ default_boards: &default_boards
   - ec-lb583_hcpu
   - em-lb525 
   # - em-lb52d
-  - em-lb566 
-  - em-lb567 
+  - sf32lb56-devkit-lcd_a128r12n1
+  - sf32lb56-devkit-lcd_n16r12n1
   - em-lb587
 
 bt_boards: &bt_boards
@@ -49,8 +49,8 @@ bt_boards: &bt_boards
   - ec-lb583_hcpu
   - em-lb525 
   # - em-lb52d
-  - em-lb566 
-  - em-lb567 
+  - sf32lb56-devkit-lcd_a128r12n1
+  - sf32lb56-devkit-lcd_n16r12n1
   - em-lb587
 
 multicore_boards: &multicore_boards
@@ -62,8 +62,8 @@ multicore_boards: &multicore_boards
   - ec-lb587_hcpu
   - ec-lb585_hcpu
   - ec-lb583_hcpu
-  - em-lb566 
-  - em-lb567 
+  - sf32lb56-devkit-lcd_a128r12n1
+  - sf32lb56-devkit-lcd_n16r12n1
   - em-lb587
 
 after_55x_boards: &after_55x_boards
@@ -75,8 +75,8 @@ after_55x_boards: &after_55x_boards
   - ec-lb587_hcpu
   - ec-lb583_hcpu
   - em-lb525 
-  - em-lb566 
-  - em-lb567 
+  - sf32lb56-devkit-lcd_a128r12n1
+  - sf32lb56-devkit-lcd_n16r12n1
   - em-lb587
 
 525_devkit_lcd_boards: &525_devkit_lcd_boards
@@ -110,7 +110,7 @@ common_projects:
       # all 52/56 boards using NOR
       - eh-lb561_hcpu
       - eh-lb523_hcpu    
-      - em-lb566_hcpu    
+      - sf32lb56-devkit-lcd_n16r12n1
       - em-lb525_hcpu    
 
   - path: example/ble/throughput/project
@@ -161,8 +161,8 @@ common_projects:
       - ec-lb585_hcpu
       - ec-lb583_hcpu
       - em-lb525 
-      - em-lb566 
-      - em-lb567 
+      - sf32lb56-devkit-lcd_a128r12n1
+      - sf32lb56-devkit-lcd_n16r12n1
       - em-lb587
 
   - path: example/multimedia/lvgl/lvgl_v9_examples/project
@@ -178,8 +178,8 @@ common_projects:
       - ec-lb585_hcpu
       - ec-lb583_hcpu
       - em-lb525 
-      - em-lb566 
-      - em-lb567 
+      - sf32lb56-devkit-lcd_a128r12n1
+      - sf32lb56-devkit-lcd_n16r12n1
       - em-lb587
 
   - path: example/multimedia/audio/local_music/project
@@ -245,8 +245,8 @@ common_projects:
       - ec-lb585_hcpu
       - ec-lb583_hcpu
       - em-lb525 
-      - em-lb566 
-      - em-lb567 
+      - sf32lb56-devkit-lcd_a128r12n1
+      - sf32lb56-devkit-lcd_n16r12n1
       - em-lb587
 
   - path: example/hal/adc/adc_battery/project
@@ -311,7 +311,8 @@ common_projects:
 
   - path: example/rt_device/pm/project/hcpu
     boards:
-      - em-lb566
+      - sf32lb56-devkit-lcd_a128r12n1
+      - sf32lb56-devkit-lcd_n16r12n1
       - eh-lb551
       - em-lb525
       - em-lb587
