@@ -24,6 +24,13 @@
 
 注意：直接在rtconfig.h中修改宏还是会无效，我们需要通过menuconfig如下命令进行打开，在烧录界面下输入以下命令（board=板子型号）
 
+````{note}
+本示例重定向了printf到串口发送，但为了避免Keil编译时激活了不必要的semihosting代码，`proj.conf`中配置使用了microlib
+```kconfig
+CONFIG_USING_MICROLIB=y
+```
+````
+
 
 ```
 menuconfig --board=em-lb525
