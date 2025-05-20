@@ -74,6 +74,7 @@ after_55x_boards: &after_55x_boards
   - eh-lb523_hcpu
   - ec-lb587_hcpu
   - ec-lb583_hcpu
+  - ec-lb585_hcpu
   - sf32lb52-devkit-lcd_525 
   - sf32lb56-devkit-lcd_a128r12n1
   - sf32lb56-devkit-lcd_n16r12n1
@@ -106,12 +107,7 @@ common_projects:
     boards: *default_boards
 
   - path: example/ble/peripheral_with_ota/project
-    boards:
-      # all 52/56 boards using NOR
-      - eh-lb561_hcpu
-      - eh-lb523_hcpu    
-      - sf32lb56-devkit-lcd_n16r12n1
-      - sf32lb52-devkit-lcd_525_hcpu    
+    boards: *after_55x_boards
 
   - path: example/ble/throughput/project
     boards: *default_boards
