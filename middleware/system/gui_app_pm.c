@@ -60,7 +60,7 @@ typedef struct
     struct rt_mutex lock;
     gui_pm_event_handler_t handler;
     bool lcd_opened;
-    bool mode;
+    bool idle_mode;
 #ifdef GUI_PM_METRICS_ENABLED
     gui_stat_t stat;
 #endif /* GUI_PM_METRICS_ENABLED */
@@ -124,41 +124,32 @@ static char *gui_pm_action_to_name(gui_pm_action_t a)
         return "UNKNOW";
     }
 }
-
-void set_idle_mode(bool idle_mode)
+void gui_set_idle_mode(bool idle_mode)
 {
-    s_gui_ctx.mode=idle_mode;
+    s_gui_ctx.idle_mode = idle_mode;
 }
-
 void close_display(void)
 {
     gui_pm_enter_critical();
     if (s_gui_ctx.lcd && s_gui_ctx.lcd_opened)
     {
         //touch_suspend();
-        if (s_gui_ctx.mode)
+        if (s_gui_ctx.idle_mode)
         {
-            
+
             const uint8_t idle_mode_on = 1;
             rt_device_control(s_gui_ctx.lcd, RTGRAPHIC_CTRL_SET_MODE, (void *)&idle_mode_on);
-
+#ifdef GUI_PM_METRICS_ENABLED
+            s_gui_ctx.stat.lcd_idle_start_time = HAL_GTIMER_READ();
+#endif /* GUI_PM_METRICS_ENABLED */
         }
         else
         {
-           
             rt_device_control(s_gui_ctx.lcd, RTGRAPHIC_CTRL_POWEROFF, NULL);
         }
 
-        if (s_gui_ctx.touch)
-        {
-            
-            rt_device_control(s_gui_ctx.touch, RTGRAPHIC_CTRL_POWEROFF, NULL);
-        }
-        else
-        {
-            rt_kprintf("power off touch device not found\n");
-        } 
-        
+        if (s_gui_ctx.touch) rt_device_control(s_gui_ctx.touch, RTGRAPHIC_CTRL_POWEROFF, NULL);
+
         //if(s_gui_ctx.touch)  rt_device_close(s_gui_ctx.touch);
         //if(s_gui_ctx.wheel)  rt_device_close(s_gui_ctx.wheel);
         s_gui_ctx.lcd_opened = false;
@@ -181,33 +172,27 @@ void open_display(void)
     if (s_gui_ctx.lcd && !s_gui_ctx.lcd_opened)
     {
 
-        if (s_gui_ctx.mode)
+        if (s_gui_ctx.idle_mode)
         {
-            
+
             const uint8_t idle_mode_on = 0;
             rt_device_control(s_gui_ctx.lcd, RTGRAPHIC_CTRL_SET_MODE, (void *)&idle_mode_on);
+#ifdef GUI_PM_METRICS_ENABLED
+            s_gui_ctx.stat.lcd_idle_time += (float)(HAL_GTIMER_READ() - s_gui_ctx.stat.lcd_idle_start_time) / HAL_LPTIM_GetFreq();
+#endif /* GUI_PM_METRICS_ENABLED */
         }
         else
         {
-            
+
             rt_device_control(s_gui_ctx.lcd, RTGRAPHIC_CTRL_POWERON, NULL);
         }
 
-        if (s_gui_ctx.touch)
-        {
-           
-            rt_device_control(s_gui_ctx.touch, RTGRAPHIC_CTRL_POWERON, NULL);
-        }
-        else
-        {
-            rt_kprintf("power on touch device not found\n");
-        }       
+        if (s_gui_ctx.touch) rt_device_control(s_gui_ctx.touch, RTGRAPHIC_CTRL_POWERON, NULL);
+
         //if(s_gui_ctx.touch)  rt_device_open(s_gui_ctx.touch, RT_DEVICE_FLAG_RDONLY);
         //if(s_gui_ctx.wheel)  rt_device_open(s_gui_ctx.wheel, RT_DEVICE_FLAG_RDONLY);
-
         //touch_resume();
         s_gui_ctx.lcd_opened = true;
-
 #ifdef GUI_PM_METRICS_ENABLED
         s_gui_ctx.stat.lcd_on_start_time = HAL_GTIMER_READ();
         s_gui_ctx.stat.lcd_brightness = 0;//Default value
@@ -433,11 +418,8 @@ void gui_pm_init(rt_device_t lcd, gui_pm_event_handler_t handler)
     s_gui_ctx.wheel = rt_device_find("wheel");
     s_gui_ctx.handler = handler;
     s_gui_ctx.lcd_opened = true;
-    s_gui_ctx.mode = false;
-
-    pm_scenario_start(PM_SCENARIO_UI); 
+    s_gui_ctx.idle_mode = false;
     s_gui_ctx.state = GUI_STATE_ACTIVE;
-
 
 }
 
