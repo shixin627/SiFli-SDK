@@ -12,7 +12,7 @@
 
 
 
-#if defined(BSP_USING_BOARD_SF32LB52_DEVKIT_LCD_525)
+#if defined(BSP_USING_BOARD_SF32LB52_LCD_N16R8)
     #define UART2_DMA_RX_IRQHandler          DMAC1_CH6_IRQHandler
 #elif defined (BSP_USING_BOARD_EM_LB587XXX)
     #define UART2_DMA_RX_IRQHandler          DMAC1_CH5_IRQHandler
@@ -250,7 +250,7 @@ int main(void)
 
     /* 1, pinmux set to uart mode */
 
-#if defined(BSP_USING_BOARD_SF32LB52_DEVKIT_LCD_525)
+#if defined(BSP_USING_BOARD_SF32LB52_LCD_N16R8)
     HAL_PIN_Set(PAD_PA20, USART2_RXD, PIN_PULLUP, 1);
     HAL_PIN_Set(PAD_PA27, USART2_TXD, PIN_PULLUP, 1);
 #elif defined (BSP_USING_BOARD_EM_LB587XXX)

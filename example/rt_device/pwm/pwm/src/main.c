@@ -20,7 +20,7 @@ void pwm_set(uint8_t percentage, uint32_t period)
     LOG_I("pwm_set:percentage:%d,period:%d,freq:%dhz", percentage, period, 1000000000 / period);
 
     /* 1, pinmux set to pwm2 mode */
-#if defined(BSP_USING_BOARD_SF32LB52_DEVKIT_LCD_525)
+#if defined(BSP_USING_BOARD_SF32LB52_LCD_N16R8)
     HAL_PIN_Set(PAD_PA20, GPTIM1_CH2, PIN_NOPULL, 1);
 #elif defined (BSP_USING_BOARD_EM_LB587XXX)
     HAL_PIN_Set(PAD_PA51, GPTIM1_CH2, PIN_NOPULL, 1);
