@@ -127,7 +127,7 @@ static uint32_t init_mpi3(int nand)
     return (spi_flash_handle[2].base_addr);
 }
 
-static int write_nor(uint32_t addr, const uint8_t *buf, uint32_t size)
+static int write_nor(uint32_t addr, const int8_t *buf, uint32_t size)
 {
     FLASH_HandleTypeDef *hflash = &(spi_flash_handle[4].handle);
     uint32_t taddr, start, remain, fill;
