@@ -379,7 +379,7 @@ static rt_err_t example_pdm_record_start(rt_uint32_t channels, rt_uint32_t sampl
         /* Start recording. */
         int stream = AUDIO_STREAM_RECORD;
         rt_device_control(g_pdm_device, AUDIO_CTL_START, &stream);
-        int vol = 30; /* set volume */
+        int vol = 90; /* set volume */
         rt_device_control(g_pdm_device, AUDIO_CTL_SETVOLUME, (void *)vol);
     }
 
