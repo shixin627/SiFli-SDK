@@ -1,5 +1,10 @@
 # ADC示例
 源码路径：example\rt_device\adc\channel
+
+```{warning}
+未验证
+```
+
 ## 支持的平台
 例程可以运行在以下开发板.
 * em-lb520
