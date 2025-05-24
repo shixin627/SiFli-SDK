@@ -39,7 +39,7 @@
 583-EVB       | SF32LB58X_EVB_CORE(583)   |   ec-lb583    | 
 585-EVB       | SF32LB58X_EVB_CORE(585)   |   ec-lb585    | 
 587-EVB       | SF32LB58X_EVB_CORE(587)   |   ec-lb587    | 
-587-MOD       | SF32LB58-DevKit-LCD       |   em-lb587    | 
+58-LCD_N16R64N4        | SF32LB58-DevKit-LCD_N16R64N4       |   sf32lb58-lcd_n16r64n4    | 
 
 
 ## SF32LB56x系列
@@ -49,8 +49,8 @@
 567-EVB       | EC-LB56XV(567)            |   ec-lb567    | 
 561-HDK       | EH-SF32LB56XU(561)        |   eh-lb561    | 
 563-HDK       | EH-SF32LB56XU(561)        |   eh-lb563    | 
-566-MOD       | SF32-LB5X-LCD(566)        |   em-lb566    | 
-567-MOD       | SF32-LB5X-LCD(567)        |   em-lb567    | 
+56-LCD_NAND   | SF3256-DEVKIT-LCD_A128R12N1        |   sf32lb56-lcd_a128r12n1    | 
+56-LCD_NOR    | SF3256-DEVKIT-LCD_N16R12N1        |   sf32lb56-lcd_n16r12n1    | 
 6700-HDK      | EH-SF32LB56XU(6700)       |   eh-ss6700   | 
 
 
@@ -70,5 +70,5 @@
 520-HDK      | EH-SF32LB52X(520)         |   eh-lb520    | 
 523-HDK      | EH-SF32LB52X(523)         |   eh-lb523    | 
 525-HDK      | EH-SF32LB52X(525)         |   eh-lb525    | 
-525-MOD      | SF32LB52-DevKit-LCD       |   em-lb525    | 
+52-LCD       | SF32LB52-DevKit-LCD       |   sf32lb52-lcd_n16r8    | 
 6500-HDK     | EH-SF32LB52X(6500)        |   eh-lb6500   | 

@@ -4,8 +4,8 @@
 
 ## 支持的开发板
 例程可以运行在以下开发板.<br>
-* em-lb525
-* em-lb587
+* sf32lb52-lcd_n16r8
+* sf32lb58-lcd_n16r64n4
 
 
 **注意：** 一般而言，例程都是运行芯片的HCPU，"eh-lb563_v2" 等效于"eh-lb563_v2_hcpu"，如果想在LCPU运行例程，可以使用"eh-lb563_v2_lcpu"。目前USB功能暂时只支持在HCPU上运行。
@@ -35,7 +35,7 @@ ELM_RW工程包含了1个.c文件(main.c),下面的树状结构展示 了工程�
 ### menuconfig配置
 ```c
 //指令执行
- menuconfig --board=em-lb525
+ menuconfig --board=sf32lb52-lcd_n16r8
 ```
 #### menuconfig配置1
 控制是否编译和启用对 NOR Flash 设备的支持。
@@ -51,9 +51,9 @@ ELM_RW工程包含了1个.c文件(main.c),下面的树状结构展示 了工程�
 ### 编译和烧录
 按照以下步骤，可以完成编译和烧录。
 
-> scons --board=em-lb525 
+> scons --board=sf32lb52-lcd_n16r8 
 
-> .\build_em-lb525\uart_download.bat
+> .\build_sf32lb52-lcd_n16r8\uart_download.bat
 
 ## 例程输出结果展示
 下面结果展示了例程在开发板运行起来后的log。如
