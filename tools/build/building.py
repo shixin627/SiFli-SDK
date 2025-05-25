@@ -2707,6 +2707,10 @@ def SifliEnv(BSP_Root = None):
     if board and (BSP_Root != None): # main project has called InitBuild in PrepareEnv
         logging.debug("Init build {} for output: {}".format(board, rtconfig.OUTPUT_DIR))
         InitBuild(BSP_Root, rtconfig.OUTPUT_DIR, board)
+    elif board is None:
+        if not os.path.exists(rtconfig.OUTPUT_DIR):
+            logging.debug("create output dir {} first for old fashion build".format(rtconfig.OUTPUT_DIR))
+            os.makedirs(rtconfig.OUTPUT_DIR)
 
     #  Clean BuildOptions
     BuildOptions = {}
