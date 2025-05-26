@@ -32,7 +32,7 @@ default_boards: &default_boards
   - ec-lb585_hcpu
   - ec-lb583_hcpu
   - sf32lb52-lcd_n16r8
-  # - em-lb52d
+  - sf32lb52-lcd_52d
   - sf32lb56-lcd_a128r12n1
   - sf32lb56-lcd_n16r12n1
   - sf32lb58-lcd_n16r64n4
@@ -48,7 +48,7 @@ bt_boards: &bt_boards
   - ec-lb585_hcpu
   - ec-lb583_hcpu
   - sf32lb52-lcd_n16r8 
-  # - em-lb52d
+  - sf32lb52-lcd_52d
   - sf32lb56-lcd_a128r12n1
   - sf32lb56-lcd_n16r12n1
   - sf32lb58-lcd_n16r64n4
@@ -76,6 +76,7 @@ after_55x_boards: &after_55x_boards
   - ec-lb583_hcpu
   - ec-lb585_hcpu
   - sf32lb52-lcd_n16r8 
+  - sf32lb52-lcd_52d
   - sf32lb56-lcd_a128r12n1
   - sf32lb56-lcd_n16r12n1
   - sf32lb58-lcd_n16r64n4
