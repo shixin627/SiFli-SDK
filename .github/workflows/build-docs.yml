@@ -78,6 +78,12 @@ jobs:
         run: |
           coscmd config -a ${{ secrets.COS_DOCS_SECRET_ID }} -s ${{ secrets.COS_DOCS_SECRET_KEY }} -b ${{ secrets.COS_DOCS_BUCKET }} -r ${{ secrets.COS_DOCS_REGION }}
 
+      - name: Upload to COS - version.json
+        run: |
+          VERSION=${{ steps.determine-version.outputs.VERSION }}
+          coscmd upload --yes ./docs/version.json projects/sdk/version.json
+          echo "Uploaded version.json to projects/sdk/version.json"
+
       - name: Upload to COS - 52x
         run: |
           VERSION=${{ steps.determine-version.outputs.VERSION }}
@@ -101,3 +107,14 @@ jobs:
           VERSION=${{ steps.determine-version.outputs.VERSION }}
           coscmd upload -rs --delete --yes ./docs/build_55x/html/ projects/sdk/$VERSION/sf32lb55x/
           echo "Uploaded documentation for 55x to $VERSION/55x/"
+
+      - name: Install TCCLI
+        run: |
+          pip install tccli
+      
+      - name: Purge CDN Cache
+        run: |
+          export TENCENTCLOUD_SECRET_ID=${{ secrets.COS_DOCS_SECRET_ID }}
+          export TENCENTCLOUD_SECRET_KEY=${{ secrets.COS_DOCS_SECRET_KEY }}
+          export TENCENTCLOUD_REGION=${{ secrets.COS_DOCS_REGION }}
+          tccli cdn PurgePathCache --cli-unfold-argument --Paths 'https://docs.sifli.com/projects/sdk/' --FlushType flush

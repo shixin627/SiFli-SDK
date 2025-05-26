@@ -21,7 +21,7 @@ def generate_doxygen_xml(board):
     os.makedirs(xml_dir)
     
     if board == '52x':
-        run_command('..\..\\tools\doxygen\\bin\doxygen Doxyfile_52x.sphinx', cwd=doxygen_dir)
+        run_command('doxygen Doxyfile_52x.sphinx', cwd=doxygen_dir)
     elif board == '55x':
         run_command('doxygen Doxyfile_55x.sphinx', cwd=doxygen_dir)
     elif board == '56x':
@@ -72,7 +72,7 @@ def copy_to_output(board):
 
 def main(board):
     # Step 1: Generate Doxygen XML
-    # generate_doxygen_xml(board)
+    generate_doxygen_xml(board)
 
     # Step 2: Copy example documents
     print("Copying example documents...")
