@@ -2649,7 +2649,7 @@ static HAL_StatusTypeDef Call_Hal_Api(HAL_API_TypeDef api, void *p1, void *p2, v
         statistics_hal_start();
         ret = HAL_EPIC_Adv(hw_epic_handle,
                            (EPIC_LayerConfigTypeDef *)p1,
-                           (uint8_t)p2,
+                           (uint8_t)(uint32_t)p2,
                            (EPIC_LayerConfigTypeDef *)p3);
         statistics_hal_end();
         epic_sem_release();
@@ -2715,7 +2715,7 @@ static HAL_StatusTypeDef Call_Hal_Api(HAL_API_TypeDef api, void *p1, void *p2, v
             case HAL_API_BLEND_EX:
                 ret = HAL_EPIC_BlendStartEx_IT(shadow_epic,
                                                (EPIC_LayerConfigTypeDef *)p1,
-                                               (uint8_t) p2,
+                                               (uint8_t)(uint32_t)p2,
                                                (EPIC_LayerConfigTypeDef *)p3);
                 break;
             case HAL_API_COPY:
@@ -2772,7 +2772,7 @@ static HAL_StatusTypeDef Call_Hal_Api(HAL_API_TypeDef api, void *p1, void *p2, v
             case HAL_API_BLEND_EX:
                 ret = HAL_EPIC_BlendStartEx_IT(hw_epic_handle,
                                                (EPIC_LayerConfigTypeDef *)p1,
-                                               (uint8_t) p2,
+                                               (uint8_t)(uint32_t)p2,
                                                (EPIC_LayerConfigTypeDef *)p3);
                 break;
             case HAL_API_COPY:
