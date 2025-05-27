@@ -740,7 +740,7 @@ def BuildOptionUpdate(BuildOptions,BSP_Root):
     PreProcessor = PatchedPreProcessor()
     
     if GetBoardName():
-         f = open(os.path.join(rtconfig.OUTPUT_DIR, 'rtconfig.h'), 'r')
+        f = open(os.path.join(rtconfig.OUTPUT_DIR, 'rtconfig.h'), 'r')
     else:     
         if BSP_Root:
             f = open(os.path.join(BSP_Root, 'rtconfig.h'), 'r')
@@ -1283,7 +1283,8 @@ def PrepareBuilding(env, has_libcpu=False, remove_components=[], buildlib=None):
                     help = 'make menuconfig for RT-Thread BSP')
     if GetOption('menuconfig'):
         board = f"--board={GetOption('board')}"
-        subprocess.run([sys.executable, os.path.join(SIFLI_SDK, 'tools',"kconfig" , 'menuconfig.py'), board], check=True)
+        board_search_path = f"--board_search_path={GetOption('board_search_path')}"
+        subprocess.run([sys.executable, os.path.join(SIFLI_SDK, 'tools',"kconfig" , 'menuconfig.py'), board, board_search_path], check=True)
         exit(0)
 
     if not option_added:
@@ -1414,19 +1415,7 @@ def InitBuild(bsp_root, build_dir, board):
     s = ''
     s += 'source "$SIFLI_SDK/Kconfig.v2"\n'
     s += 'source "$SIFLI_SDK/customer/boards/Kconfig.v2"\n'
-    if '_hcpu' in board:
-        board_path = board.replace('_hcpu', '/hcpu')     
-        board_name = board.replace('_hcpu', '')     
-    elif '_lcpu' in board:
-        board_path = board.replace('_lcpu', '/lcpu')
-        board_name = board.replace('_lcpu', '')     
-    elif '_acpu' in board:
-        board_path = board.replace('_acpu', '/acpu')
-        board_name = board.replace('_acpu', '')
-    else:
-        board_path = board    
-        board_name = board
-    board_path = "$SIFLI_SDK/customer/boards" + '/' + board_path
+    path1, board_path = GetBoardPath(board)
     board_path += "/Kconfig.board"
     s += 'source "{}"\n'.format(board_path)
     if not bsp_root:
@@ -2542,8 +2531,13 @@ def GetBoardPath(board):
         board_path = board.replace('_hcpu', '')
         subfolder = 'hcpu'
 
-    board_path1 = os.path.join(SIFLI_SDK, 'customer/boards/' + board_path)
-    board_path2 = os.path.join(board_path1, subfolder)
+
+    board_root = os.path.join(SIFLI_SDK, 'customer/boards')
+    board_search_path = os.getenv('BOARD_SEARCH_PATH')
+    if (board_search_path is not None) and os.path.exists(os.path.join(board_search_path, board_path)):
+        board_root = board_search_path
+    board_path1 = os.path.join(board_root, board_path).replace('\\', '/')
+    board_path2 = os.path.join(board_path1, subfolder).replace('\\', '/')
 
     return (board_path1, board_path2)
 
@@ -2564,7 +2558,6 @@ def GetBoardName(core=None):
         board = GetOption('board')
     except Exception as e: 
         board = None
-        
 
     if board is not None:
         if not '_lcpu' in board and not '_hcpu' in board and not '_acpu' in board:
@@ -2586,7 +2579,7 @@ def IsInitBuild():
         return False    
 
 
-def PrepareEnv(board=None):
+def PrepareEnv(board=None, board_search_path=None):
     import rtconfig
     global BuildOptions
 
@@ -2596,6 +2589,11 @@ def PrepareEnv(board=None):
                     type = 'string',
                     default=board,
                     help = 'board name')            
+        AddOption('--board_search_path',
+                    dest = 'board_search_path',
+                    type = 'string',
+                    default=board_search_path,
+                    help = 'board search path in addition to sdk board path')            
         AddOption('--bconf',
                     dest = 'bconf',
                     type = 'string',
@@ -2622,6 +2620,11 @@ def PrepareEnv(board=None):
         logging.basicConfig(format='%(message)s',level=logging.INFO)
     board = GetBoardName()
     logging.info("Board: {}".format(board))
+
+    if GetOption('board_search_path'):
+        os.environ["BOARD_SEARCH_PATH"] = os.path.abspath(GetOption('board_search_path'))
+        logging.info("Board search path: {}".format(os.getenv('BOARD_SEARCH_PATH')))
+
     if board:
         LoadRtconfig(board)
         InitBuild(None, rtconfig.OUTPUT_DIR, board)
