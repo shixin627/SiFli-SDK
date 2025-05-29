@@ -115,7 +115,7 @@ jobs:
       - name: Upload to COS - version.json
         run: |
           VERSION=${{ needs.build-docs.outputs.version }}
-          coscmd upload --yes ./docs/version.json projects/sdk
+          coscmd upload --yes ./docs/version.json projects/sdk/version.json
           echo "Uploaded version.json to projects/sdk/version.json"
       
       - name: Purge CDN Cache
