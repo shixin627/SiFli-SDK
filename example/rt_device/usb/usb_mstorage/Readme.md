@@ -59,19 +59,19 @@ menuconfig --board=sf32lb52-lcd_n16r8
 1、配置log打印串口号 "the device name for console"
 
 2、使能log打印打印串口uart4，关闭uart1；"Enable UART4"
-![alt text](assets/1.PNG)
+![alt text](assets/1.png)
 
 3、使能USB的device功能；"Enable USB Device"
-![alt text](assets/2.PNG)
+![alt text](assets/2.png)
 
 4、配置USB的插拔检测引脚；"usb Insertion detetion PIN",将其配置为对应的引脚号
 
 5、使能USB的storage功能;"Enable to usb device as Mass Storage device"
-![alt text](assets/3.PNG)
+![alt text](assets/3.png)
 
 6、配置USB挂载文件系统分区；
 如果没有DHARA功能（用于NAND的管理与优化）如HDK523、HDK561则只需要修改“msc class disk name”为需要加载到USB识别的文件系统分区名。
-![alt text](assets/4.PNG)
+![alt text](assets/4.png)
 
 如果有DHARA功能(如525、563使用外部NAND flash芯片等系列)，因存在DHARA映射存在，“msc class disk name” 为DHARA映射后的dhara名：例如目前563HDK上只有一个分区的DHARA名为dhara0。
 
@@ -98,7 +98,7 @@ msh />usb_thread_entry
 
 插入USB并检测到u盘设备的log
 
-![alt text](assets/log1.PNG)
+![alt text](assets/log1.png)
 
 ## 故障排除
 如果未能出现预期的log，可以从以下方面进行故障排除：
@@ -135,9 +135,9 @@ HAL_PIN_Set(PAD_PA32, GPIO_A32, PIN_NOPULL, 1);//USB VBUS
 以下是一些解决方法：
 * 通过 menuconfig --board=sf32lb52-lcd_52d 命令进入menu页面，开启  Enable USB Device 后通过查看寄存器数据以达到自检效果
 
-![alt text](assets/code4.PNG)
+![alt text](assets/code4.png)
 
-![alt text](assets/code6.PNG)
+![alt text](assets/code6.png)
 
 * 更换一根功能正常的数据线
 
@@ -183,5 +183,5 @@ build_sf32lb58-lcd_n16r64n4_hcpu\download.bat
 
 可见pc设备栏出现u盘设备
 
-![alt text](assets/6_LI.PNG)
+![alt text](assets/6_LI.png)
 
