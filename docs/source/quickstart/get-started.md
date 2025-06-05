@@ -2,14 +2,14 @@
 
 [SDK]: https://github.com/OpenSiFli/SiFli-SDK
 [Trace]: https://webfile.lovemcu.cn/file/sdk/SifliTrace_v2.2.6.7z
-[52DevKit]: https://wiki.sifli.com/board/index.html
+[52DevKit]: https://wiki.sifli.com/board/sf32lb52x/SF32LB52-DevKit-LCD.html
 [52Module]: https://wiki.sifli.com/silicon/%E6%A8%A1%E7%BB%84%E5%9E%8B%E5%8F%B7%E6%8C%87%E5%8D%97.html
 
 ## 准备工作
 
 ### 硬件
 
-- 一款开发板，例如[SF32LB52x-DevKit-LCD开发板][52DevKit]
+- 一款开发板，例如[SF32LB52-DevKit-LCD 开发板][52DevKit]
 - 一条USB Type-C数据线，连接开发板与电脑，注意不能是只有充电功能的Type-C线，插入开发板的USB-to-UART接口（注意不要插入专用USB功能接口）
 - 电脑（Windows、Linux 或 macOS）
 
@@ -26,4 +26,4 @@
 
 #### 手动安装
 
-参考手动安装：[手动安装](install/install.md)
+参考手动安装：[手动安装](install/index.md)

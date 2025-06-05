@@ -11,7 +11,7 @@ on:
 
 jobs:
   build-docs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         variant: [52x, 56x, 58x, 55x]

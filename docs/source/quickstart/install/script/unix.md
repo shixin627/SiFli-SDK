@@ -80,35 +80,54 @@ xcrun: error: invalid active developer path (/Library/Developer/CommandLineTools
 
 在围绕 SF32 构建应用程序之前，请先获取 SiFli 提供的软件库文件 [SiFli-SDK 仓库](https://github.com/OpenSiFli/SiFli-SDK)。
 
-获取 SiFli-SDK 的本地副本：打开终端，切换到要保存 SiFli-SDK 的工作目录，使用 git clone 命令克隆远程仓库
-（由于SiFli-SDK中包含子模块，不能通过下载zip包获取完整的代码）。
+获取 SiFli-SDK 的本地副本：打开终端，切换到要保存 SiFli-SDK 的工作目录，使用 `git clone` 命令克隆远程仓库。一般来说，我们建议使用release分支上的代码以获取最新的稳定版本。
 
-打开终端，运行以下命令：
+```{warning}
 
-```bash
-mkdir -p ~/OpenSiFli
-cd ~/OpenSiFli
-git clone --recursive https://github.com/OpenSiFli/SiFli-SDK
+由于SiFli-SDK中包含子模块，不能通过下载zip包获取完整的代码。
+
+```
+
+打开 PowerShell 终端，运行以下命令：
+
+```powershell
+mkdir -p C:\OpenSiFli
+cd C:\OpenSiFli
+git clone --recursive -b release/v2.4 https://github.com/OpenSiFli/SiFli-SDK
 ```
 
 ````{note}
 上面的SDK路径仅做示例，用户可以根据自己的需要选择路径。
 
-如果在国内访问 GitHub 较慢，可以使用我们的gitee镜像：
-```bash
-git clone --recursive https://gitee.com/SiFli/sifli-sdk
+如果在国内访问 GitHub 较慢，可以使用 `gitee` 镜像来克隆 SiFli-SDK。请使用以下命令：
+```powershell
+git clone --recursive -b release/v2.4 https://gitee.com/SiFli/sifli-sdk
 ```
+
+需要注意，gitee的SiFli-SDK仓库的路径是全小写的，在后续出现`SiFli-SDK`时需要注意大小写。
 ````
 
 ````{note}
-需要注意的是，SiFli-SDK中存在一些子模块，下载的zip包没有包含子模块代码，无法正常编译，因此需要使用 `--recursive` 参数来克隆所有子模块。如果你在克隆时忘记了这个参数，可以在克隆后运行以下命令来初始化子模块：
+如果想要切换到其他分支（例如开发分支），可以使用 `checkout` 命令，例如：
+
+
+```powershell
+git checkout main
+```
+或者
+```powershell
+git checkout release/v2.3
+```
+
+````
+
+````{note}
+需要注意的是，SiFli-SDK中存在一些子模块，因此需要使用 `--recursive` 参数来克隆所有子模块。如果你在克隆时忘记了这个参数，可以在克隆后运行以下命令来初始化子模块：
 
 ```bash
 git submodule update --init --recursive
 ```
-
 ````
-
 
 ## 安装工具
 
