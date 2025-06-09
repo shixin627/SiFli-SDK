@@ -1970,7 +1970,7 @@ def GenCppdefineFiles():
         CPPDEFINES = Env['CPPDEFINES']
     else:
         CPPDEFINES = []
-    CPPDEFINES = [i[0] for i in CPPDEFINES]  
+    CPPDEFINES = [i for i in CPPDEFINES]  
 
     for group in Projects:
         if 'CPPDEFINES' in group and group['CPPDEFINES']:
