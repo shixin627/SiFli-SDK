@@ -116,6 +116,7 @@ menu "Sifli middleware"
                 default 14
             config DATA_SVC_MBOX_THREAD_DISABLED
                 bool "Disable MBOX Thread and Related Queue"
+                default y if SOC_SF32LB52X
                 default n
             config DATA_SVC_PROC_THREAD_DISABLED
                 bool "Disable Proc Thread and Related Queue"
