@@ -29,6 +29,7 @@ default_boards: &default_boards
   - eh-lb551_hcpu
   - eh-lb555_hcpu
   - ec-lb587_hcpu
+  - ec-lb587_a2_hcpu
   - ec-lb585_hcpu
   - ec-lb583_hcpu
   - sf32lb52-lcd_n16r8
@@ -45,6 +46,7 @@ bt_boards: &bt_boards
   - eh-lb523_hcpu
   - eh-lb520_hcpu
   - ec-lb587_hcpu
+  - ec-lb587_a2_hcpu
   - ec-lb585_hcpu
   - ec-lb583_hcpu
   - sf32lb52-lcd_n16r8 
@@ -60,6 +62,7 @@ multicore_boards: &multicore_boards
   - eh-lb551_hcpu
   - eh-lb555_hcpu
   - ec-lb587_hcpu
+  - ec-lb587_a2_hcpu
   - ec-lb585_hcpu
   - ec-lb583_hcpu
   - sf32lb56-lcd_a128r12n1
@@ -73,6 +76,7 @@ after_55x_boards: &after_55x_boards
   - eh-lb525_hcpu
   - eh-lb523_hcpu
   - ec-lb587_hcpu
+  - ec-lb587_a2_hcpu
   - ec-lb583_hcpu
   - ec-lb585_hcpu
   - sf32lb52-lcd_n16r8 
@@ -235,6 +239,7 @@ common_projects:
       - eh-lb551_hcpu
       - eh-lb555_hcpu
       - ec-lb587_hcpu
+      - ec-lb587_a2_hcpu
       - ec-lb585_hcpu
       - ec-lb583_hcpu
       - sf32lb52-lcd_n16r8 
@@ -252,6 +257,7 @@ common_projects:
       - eh-lb551_hcpu
       - eh-lb555_hcpu
       - ec-lb587_hcpu
+      - ec-lb587_a2_hcpu
       - ec-lb585_hcpu
       - ec-lb583_hcpu
       - sf32lb52-lcd_n16r8 
@@ -269,6 +275,7 @@ common_projects:
       - eh-lb525_hcpu
       - eh-lb523_hcpu
       - ec-lb587_hcpu
+      - ec-lb587_a2_hcpu
       - ec-lb585_hcpu
       - ec-lb583_hcpu
       - sf32lb52-lcd_n16r8 
