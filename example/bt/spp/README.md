@@ -38,7 +38,7 @@
 2. 手机往开发板发送数据
 可以在手机app端往开发板发送数据，如下图所示：
 ![e调试发送数据](./assets/7.png)
-在开发板的串口log中会打印出收到的数据大小和速度：
+在开发板的串口log中会打印出收到的数据大小,如果发送的数据量比较大则还会打印出接收速度：
 ![e调试发送数据](./assets/11.png)
 
 3. 开发板往手机端发送数据
@@ -56,7 +56,7 @@
 ![e调试发送数据](./assets/10.png)
 
 5. 开发板往手机发送文件
-如果开发板里有文件则可以通过命令spp send_file + 地址 + service channel + 文件名往手机发送指定文件，其中service channel可以通过在串口打印中获取：
+如果开发板里有文件则可以通过命令spp send_file + 地址 + service channel + 文件名往手机发送指定文件，其中service channel可以通过在串口打印中获取，如果没有文件系统的话则不能使用该功能：
 ![获取连接的service channel](./assets/5.png)
 ![查看开发板端的文件](./assets/12.png)
 ![往手机发送文件](./assets/13.png)
@@ -88,19 +88,16 @@
 
 ### menuconfig配置
 
-1. 本例程需要读写文件，所以需要用到文件系统，配置`FAT`文件系统：
+1. 本例程需要读写文件，所以需要用到文件系统，配置`FAT`文件系统，没有文件系统则不用进行文件读写测试：
 ![RT_USING_DFS_ELMFAT](./assets/mc_fat.png)
 
-     ```{tip}
-     mnt_init 中mount root分区。
-     ```
-2. 使能蓝牙(`BLUETOOTH`)：
+1. 使能蓝牙(`BLUETOOTH`)：
 ![BLUETOOTH](./assets/mc_bluetooth.png)
-3. 使能spp server和spp client：
+1. 使能spp server和spp client：
 ![spp profile](./assets/mc_bt_spp.png)
-4. 使能BT connection manager：
+1. 使能BT connection manager：
 ![BT CM](./assets/mc_bt_cm.png)
-5. 使能NVDS
+1. 使能NVDS
 ![NVDS](./assets/mc_bt_nvds.png)
 
 
@@ -117,7 +114,7 @@ $ ./uart_download.bat
 
 please input the serial port num:5
 ```
-关于编译、下载的详细步骤，请参考[快速入门](/quickstart/get-started.md)的相关介绍。
+关于编译、下载的详细步骤，请参考[快速入门](/quickstart/get-started-gcc.md)的相关介绍。
 
 ## 例程的预期结果
 <!-- 说明例程运行结果，比如哪几个灯会亮，会打印哪些log，以便用户判断例程是否正常运行，运行结果可以结合代码分步骤说明 -->

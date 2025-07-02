@@ -74,6 +74,22 @@ static int bt_app_interface_event_handle(uint16_t type, uint16_t event_id, uint8
     {
         switch (event_id)
         {
+        case BT_NOTIFY_SPP_CONN_REQ_IND:
+        {
+            bt_notify_spp_connect_req_t *conn_req = (bt_notify_spp_connect_req_t *)data;
+            bt_cm_dev_info_t *bonded_dev = bt_cm_get_bonded_dev_by_addr(conn_req->mac.addr);
+            conn_req->is_accept = SPP_NOTIFY_RESULT_ASYNCHRONOUS_HANDLE;
+            if (BT_LINK_EARPHONE == bonded_dev->link_type)
+            {
+                LOG_I(">>earphone connect spp,should reject");
+                bt_interface_spp_conn_req_hdl(FALSE, &conn_req->mac, conn_req->srv_chl);
+            }
+            else
+            {
+                bt_interface_spp_conn_req_hdl(TRUE, &conn_req->mac, conn_req->srv_chl);
+            }
+        }
+        break;
         case BT_NOTIFY_SPP_CONN_IND:
         {
             bt_notify_spp_conn_ind_t *conn_ind = (bt_notify_spp_conn_ind_t *)data;
