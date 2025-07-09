@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
-      - 'release/**'
+      - 'release/*'
     paths:
       - 'docs/**'
+    tags:
+      - '*'
   workflow_dispatch:  # 允许手动触发
 
 jobs:
@@ -26,6 +28,11 @@ jobs:
           elif [[ "${{ github.ref }}" =~ refs/heads/release/(.*) ]]; then
             VERSION=${BASH_REMATCH[1]}
             echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" =~ refs/tags/(.*) ]]; then
+            VERSION=${BASH_REMATCH[1]}
+            echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=unknown" >> $GITHUB_OUTPUT
           fi
 
       - name: Checkout code
@@ -115,8 +122,8 @@ jobs:
           coscmd config -a ${{ secrets.COS_DOCS_SECRET_ID }} -s ${{ secrets.COS_DOCS_SECRET_KEY }} -b ${{ secrets.COS_DOCS_BUCKET }} -r ${{ secrets.COS_DOCS_REGION }}
 
       - name: Upload to COS - version.json
+        if: github.ref == 'refs/heads/main'
         run: |
-          VERSION=${{ needs.build-docs.outputs.version }}
           coscmd upload --yes ./docs/version.json projects/sdk/version.json
           echo "Uploaded version.json to projects/sdk/version.json"
       
