@@ -2409,7 +2409,7 @@ def SifliKeilEnv(cpu, BSP_ROOT=''):
     rtconfig.AFLAGS += ' --cpreproc_opts=-D__UVISION_VERSION="532" '
     rtconfig.AFLAGS += ' --diag_suppress=A1609 '
 
-    rtconfig.CXXFLAGS = rtconfig.CFLAGS + ' -xc++ -std=c++20 -fno-exceptions ' 
+    rtconfig.CXXFLAGS = rtconfig.CFLAGS + ' -xc++ -fno-exceptions ' 
     rtconfig.CXXFLAGS += ' -I' + rtconfig.EXEC_PATH + '/ARM/ARMCLANG/include/libcxx'
     rtconfig.CCFLAGS =  rtconfig.CFLAGS
     rtconfig.CFLAGS = rtconfig.CFLAGS + ' -xc -std=c99 '
