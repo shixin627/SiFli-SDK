@@ -2001,7 +2001,7 @@ __HAL_ROM_USED void HAL_RCC_Reset_and_Halt_LCPU(uint8_t is_init)
         while (!hwp_lpsys_rcc->RSTR1);
 
 #ifndef SF32LB52X
-        hwp_lpsys_rcc->RSTR2 = LPSYS_RCC_RSTR2_MAC;
+        hwp_lpsys_rcc->RSTR2 = LPSYS_RCC_RSTR2_MAC | LPSYS_RCC_RSTR2_GPIO2;
         while (!hwp_lpsys_rcc->RSTR2);
 #endif
         if ((hwp_lpsys_aon->SLP_CTRL & LPSYS_AON_SLP_CTRL_SLEEP_STATUS) != 0)
@@ -2010,7 +2010,7 @@ __HAL_ROM_USED void HAL_RCC_Reset_and_Halt_LCPU(uint8_t is_init)
             while ((hwp_lpsys_aon->SLP_CTRL & LPSYS_AON_SLP_CTRL_SLEEP_STATUS) != 0);
         }
 #ifndef SF32LB52X
-        hwp_lpsys_rcc->RSTR2 &= ~LPSYS_RCC_RSTR2_MAC;
+        hwp_lpsys_rcc->RSTR2 &= ~(LPSYS_RCC_RSTR2_MAC | LPSYS_RCC_RSTR2_GPIO2);
 #endif
         hwp_lpsys_rcc->RSTR1 &= ~rst_flag;
     }
