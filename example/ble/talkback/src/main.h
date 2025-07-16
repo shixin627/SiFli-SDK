@@ -53,6 +53,12 @@
 
 #include "log.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+#undef LOG_TAG
+#define LOG_TAG "ble_app"
+
 #define APP_MIC_ALWAYS_ON
 
 

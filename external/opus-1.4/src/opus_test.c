@@ -266,7 +266,7 @@ static void mic2file()
 #if defined(BSP_USING_ACPU)
 #define OPUS_STACK_SIZE     16000
 #else
-#define OPUS_STACK_SIZE     220000
+#define OPUS_STACK_SIZE     20000
 #endif
 
 static  uint32_t opus_stack[OPUS_STACK_SIZE/sizeof(uint32_t)];
@@ -299,8 +299,7 @@ static void opus_test(void *p)
     opus_encoder_ctl(encoder, OPUS_SET_BITRATE(16000));
     opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
     opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(0));
-    opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(24));
-
+    opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(16));
     opus_encoder_ctl(encoder, OPUS_SET_DTX(0));
     opus_encoder_ctl(encoder, OPUS_SET_INBAND_FEC(0));
     opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(0));
@@ -308,6 +307,7 @@ static void opus_test(void *p)
 
     opus_encoder_ctl(encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
     opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(OPUS_AUTO));
+    opus_encoder_ctl(encoder, OPUS_SET_FORCE_MODE(MODE_SILK_ONLY));
 #endif
     decoder = opus_decoder_create(16000, 1, &err);
     rt_kprintf("decoder create=%d\r\n", err);
@@ -425,5 +425,47 @@ int opus(int argc, char *argv[])
     return 0;
 }
 MSH_CMD_EXPORT(opus, opus test);
+
+#if 0
+#if RT_USING_DFS
+    #include "dfs_file.h"
+    #include "dfs_posix.h"
+#endif
+#include "drv_flash.h"
+
+#ifndef FS_REGION_START_ADDR
+    #error "Need to define file system start address!"
+#endif
+
+#define FS_ROOT "root"
+/**
+ * @brief Mount fs.
+ */
+static int mnt_init(void)
+{
+    register_mtd_device(FS_REGION_START_ADDR, FS_REGION_SIZE, FS_ROOT);
+    if (dfs_mount(FS_ROOT, "/", "elm", 0, 0) == 0) // fs exist
+    {
+        rt_kprintf("mount fs on flash to root success\n");
+    }
+    else
+    {
+        // auto mkfs, remove it if you want to mkfs manual
+        rt_kprintf("mount fs on flash to root fail\n");
+        if (dfs_mkfs("elm", FS_ROOT) == 0)//Format file system
+        {
+            rt_kprintf("make elm fs on flash sucess, mount again\n");
+            if (dfs_mount(FS_ROOT, "/", "elm", 0, 0) == 0)
+                rt_kprintf("mount fs on flash success\n");
+            else
+                rt_kprintf("mount to fs on flash fail\n");
+        }
+        else
+            rt_kprintf("dfs_mkfs elm flash fail\n");
+    }
+    return RT_EOK;
+}
+INIT_ENV_EXPORT(mnt_init);
+#endif
 
 #endif

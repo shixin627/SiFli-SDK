@@ -10,7 +10,9 @@
 
 #if defined(PKG_LIB_OPUS) && defined(RT_USING_FINSH) && defined(AUDIO_USING_MANAGER)
 #include "opus_types.h"
+#include "opus_private.h"
 #include "opus_multistream.h"
+
 #include "os_support.h"
 #include "audio_server.h"
 
@@ -27,7 +29,7 @@
 
 #define OPUS_USING_20MS             1
 #define CODEC_DATA_UNIT_LEN         320
-#define OPUS_STACK_SIZE             220000
+#define OPUS_STACK_SIZE             32000
 
 #define OPUS_PACKET_HEADER          0x88
 #define TALK_THREAD_NAME            "opusble"
@@ -428,7 +430,7 @@ static void opus_thread_entry(void *p)
     opus_encoder_ctl(thiz->encoder, OPUS_SET_BITRATE(OPUS_SAMPLERATE));
     opus_encoder_ctl(thiz->encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
     opus_encoder_ctl(thiz->encoder, OPUS_SET_COMPLEXITY(0));
-    opus_encoder_ctl(thiz->encoder, OPUS_SET_LSB_DEPTH(24));
+    opus_encoder_ctl(thiz->encoder, OPUS_SET_LSB_DEPTH(16));
 
     opus_encoder_ctl(thiz->encoder, OPUS_SET_DTX(0));
     opus_encoder_ctl(thiz->encoder, OPUS_SET_INBAND_FEC(0));
@@ -437,6 +439,7 @@ static void opus_thread_entry(void *p)
 
     opus_encoder_ctl(thiz->encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
     opus_encoder_ctl(thiz->encoder, OPUS_SET_BANDWIDTH(OPUS_AUTO));
+    opus_encoder_ctl(thiz->encoder, OPUS_SET_FORCE_MODE(MODE_SILK_ONLY));
 
     audio_parameter_t pa = {0};
     pa.write_bits_per_sample = 16;
