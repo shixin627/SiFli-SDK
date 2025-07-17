@@ -752,7 +752,7 @@ typedef enum
 
 #define IS_LCPU(id)  ((*id)&1)
 
-#define SF32LB52X_LETTER_SERIES()  (__HAL_SYSCFG_GET_REVID() == HAL_CHIP_REV_ID_A4)
+#define SF32LB52X_LETTER_SERIES()  ((__HAL_SYSCFG_GET_REVID() == HAL_CHIP_REV_ID_A4) || (__HAL_SYSCFG_GET_REVID() == HAL_CHIP_REV_ID_B4))
 
 #if defined (USE_HAL_DRIVER)
 #include "bf0_hal.h"

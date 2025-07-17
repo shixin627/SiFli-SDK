@@ -151,11 +151,19 @@ extern "C" {
 #define __HAL_SYSCFG_GET_SID()            (hwp_hpsys_cfg->IDR>>HPSYS_CFG_IDR_SID_Pos)           /*!< Get serial ID*/
 #define __HAL_SYSCFG_GET_CID()            ((hwp_hpsys_cfg->IDR>>HPSYS_CFG_IDR_CID_Pos)&0xff)    /*!< Get Chip ID*/
 #define __HAL_SYSCFG_GET_PID()            ((hwp_hpsys_cfg->IDR>>HPSYS_CFG_IDR_PID_Pos)&0xff)    /*!< Get Package ID*/
-#ifndef SOC_SF32LB55X
+#ifndef SF32LB55X
 #define __HAL_SYSCFG_GET_REVID()          (hwp_hpsys_cfg->IDR&0xff)                             /*!< Get Revision ID*/
 #else
 #define __HAL_SYSCFG_GET_REVID()          ((hwp_hpsys_cfg->USBCR>>HPSYS_CFG_USBCR_RSVD1_Pos)&0xff) /*!< Get Revision ID*/
-#endif
+#endif /* SF32LB55X */
+
+#ifdef SF32LB52X
+#define __HAL_SYSCFG_CHECK_REVID()      HAL_ASSERT((__HAL_SYSCFG_GET_REVID() == HAL_CHIP_REV_ID_A3) || \
+                                                   (__HAL_SYSCFG_GET_REVID() == HAL_CHIP_REV_ID_A4) || \
+                                                   (__HAL_SYSCFG_GET_REVID() == HAL_CHIP_REV_ID_B4))
+#else
+#define __HAL_SYSCFG_CHECK_REVID()
+#endif /* SF32LB52X */
 
 #define __HAL_SYSCFG_Enable_USB()         (hwp_hpsys_cfg->USBCR|=HPSYS_CFG_USBCR_USB_EN)        /*!< Enable USB module*/
 #define __HAL_SYSCFG_USB_DM_PD()         (hwp_hpsys_cfg->USBCR|=HPSYS_CFG_USBCR_DM_PD)        /*!< Pull Down USB DM pin, host only*/
@@ -244,17 +252,17 @@ extern "C" {
 
 /** @brief  CHIP ID for A3.
   */
-#ifdef SOC_SF32LB55X
+#ifdef SF32LB55X
 #define HAL_CHIP_REV_ID_A3 0x80
+#elif defined(SF32LB52X)
+#define HAL_CHIP_REV_ID_A3 0x03
+/* actually it's the B3 revision id */
+#define HAL_CHIP_REV_ID_A4 0x07
+#define HAL_CHIP_REV_ID_B4 0x0F
 #else
 #define HAL_CHIP_REV_ID_A3 0xFF // Not defined
-#endif
-
-#ifdef SF32LB52X
-#define HAL_CHIP_REV_ID_A4 0x07
-#else
 #define HAL_CHIP_REV_ID_A4 0xFF
-#endif
+#endif /* SF32LB55X */
 
 
 #ifdef SF32LB52X

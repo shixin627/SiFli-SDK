@@ -729,6 +729,7 @@ RT_WEAK void rt_hw_board_init()
 #ifdef SOC_BF0_HCPU
     rt_kprintf("Serial:%x,Chip:%x,Package:%x,Rev:%x  Reason:%08x\r\n",
                __HAL_SYSCFG_GET_SID(), __HAL_SYSCFG_GET_CID(), __HAL_SYSCFG_GET_PID(), __HAL_SYSCFG_GET_REVID(), HAL_PMU_GET_WSR());
+    __HAL_SYSCFG_CHECK_REVID();
 
 #ifdef RT_USING_PM
     rt_kprintf("Serial PowerOnMOde:%d rtc_record:%08x\n", SystemPowerOnModeGet(), HAL_Get_backup(RTC_BACKUP_MODULE_RECORD));
