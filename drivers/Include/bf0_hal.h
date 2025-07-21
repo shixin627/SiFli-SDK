@@ -158,7 +158,7 @@ extern "C" {
 #endif /* SF32LB55X */
 
 #ifdef SF32LB52X
-#define __HAL_SYSCFG_CHECK_REVID()      HAL_ASSERT((__HAL_SYSCFG_GET_REVID() == HAL_CHIP_REV_ID_A3) || \
+#define __HAL_SYSCFG_CHECK_REVID()      HAL_ASSERT((__HAL_SYSCFG_GET_REVID() <= HAL_CHIP_REV_ID_A3) || \
                                                    (__HAL_SYSCFG_GET_REVID() == HAL_CHIP_REV_ID_A4) || \
                                                    (__HAL_SYSCFG_GET_REVID() == HAL_CHIP_REV_ID_B4))
 #else
