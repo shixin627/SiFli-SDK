@@ -314,15 +314,15 @@ static void control_panel_content_init(lv_obj_t *par)
     drop down hidden msg list
 */
 
-extern const unsigned char droid_sans_fallback_font[];
-extern const int droid_sans_fallback_font_size;
+extern const unsigned char DroidSansFallback[];
+extern const int DroidSansFallback_size;
 static lv_font_t *chinese_font = NULL;
 void app_clock_status_bar_init_font(void)
 {
 
     if (!chinese_font)
     {
-        chinese_font = lv_tiny_ttf_create_data(droid_sans_fallback_font, droid_sans_fallback_font_size, 24);
+        chinese_font = lv_tiny_ttf_create_data(DroidSansFallback, DroidSansFallback_size, 24);
     }
 
 
@@ -345,7 +345,7 @@ void app_clock_status_bar_init_font(void)
         {
             title_font_cache[title_font_count].font_size = size;
             title_font_cache[title_font_count].font =
-                lv_tiny_ttf_create_data(droid_sans_fallback_font, droid_sans_fallback_font_size, size);
+                lv_tiny_ttf_create_data(DroidSansFallback, DroidSansFallback_size, size);
             title_font_count++;
         }
     }
@@ -368,7 +368,7 @@ void app_clock_status_bar_init_font(void)
         {
             content_font_cache[content_font_count].font_size = size;
             content_font_cache[content_font_count].font =
-                lv_tiny_ttf_create_data(droid_sans_fallback_font, droid_sans_fallback_font_size, size);
+                lv_tiny_ttf_create_data(DroidSansFallback, DroidSansFallback_size, size);
             content_font_count++;
         }
     }

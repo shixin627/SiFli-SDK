@@ -184,6 +184,78 @@ def ImgFileBuilder(target, source, env):
     else:
         subprocess.run(EZIP_PATH + ' -convert ' + str(source[0]) + ' ' + env['FLAGS'] + ' -outdir {}'.format(tgt_directory), shell=True, check=True)
 
+def FontConvertBuild(target, source, env):
+    """
+    Build action to convert font files to C array using the internal converter
+    """
+    try:
+        source_file = str(source[0])
+        target_file = str(target[0])
+        
+        # Get font name from environment or use default
+        font_name = env['FLAGS']
+
+        # Check if source font file exists
+        if not os.path.exists(source_file):
+            logging.error(f"Source font file not found: {source_file}")
+            return -1
+            
+        # Convert font to C array directly in this function
+        with open(source_file, 'rb') as f:
+            font_data = f.read()
+        
+        font_size = len(font_data)
+        
+        # Generate C content
+        c_content = f"__attribute__((section(\".font_data\"))) const unsigned char {font_name}[{font_size}] = {{\n"
+        
+        # Convert font data to C array format, 12 bytes per line
+        bytes_per_line = 12
+        for i in range(0, font_size, bytes_per_line):
+            line_data = font_data[i:i + bytes_per_line]
+            hex_values = ', '.join(f'0x{b:02X}' for b in line_data)
+            
+            if i + bytes_per_line < font_size:
+                c_content += f"    {hex_values},\n"
+            else:
+                c_content += f"    {hex_values}\n"
+        
+        c_content += "};\n\n\n"
+        c_content += f"const int {font_name}_size = sizeof({font_name});\n"
+
+
+        # Write C file directly to target location
+        with open(target_file, 'w', encoding='utf-8') as f:
+            f.write(c_content)
+    
+
+        logging.info(f"Font conversion completed!")
+        logging.info(f"Input file: {source_file}")
+        logging.info(f"Output file: {target_file}")
+        logging.info(f"Array name: {font_name}")
+        logging.info(f"File size: {font_size} bytes")
+        
+        return 0
+        
+    except Exception as e:
+        logging.error(f"Error during font conversion: {e}")
+        return -1
+
+
+def ModifyFontConvertTargets(target, source, env):
+    """
+    Modify the target file name of the FontConvert builder
+    """
+    target = []
+    
+    # If no font name is specified, use the default name.
+    font_name = env.get('FLAGS', 'font_data')
+
+    target_path = font_name + '.c'
+
+    target.append(target_path)
+    return target, source
+
 def FontFileBuild(target, source, env):
     SIFLI_SDK = os.getenv('SIFLI_SDK')
     FONT2C_PATH = os.path.join(SIFLI_SDK, f"tools/font2c/font2c{env['tool_suffix']}")
@@ -199,6 +271,23 @@ def ModifyFontTargets(target, source, env):
     target.append(target_path)
             
     return target, source
+
+def ConvertFont(env, source, flags):
+    """
+    A helper method to convert font files in a more convenient way
+    Usage: 
+        objs1 = env.ConvertFont('path/to/font.ttf1', 'my_font_name1')
+        objs2 = env.ConvertFont('path/to/font.ttf2', 'my_font_name2')
+    """
+    target = []
+    if isinstance(source, str):
+        source = [source]
+        
+    for s in source:
+        t = env.FontConvert(s,FLAGS = flags)
+        target.extend(t)
+    
+    return target
 
 def ImgResource(env, source, flags):
     target = []
@@ -1161,6 +1250,13 @@ def PrepareBuilding(env, has_libcpu=False, remove_components=[], buildlib=None):
         path = [Env['BSP_ROOT']]
 
     DefineGroup("Kernel", [], [], CPPPATH=path)
+
+
+    # add font converter builder
+    font_convert_action = SCons.Action.Action(FontConvertBuild, 'ConvertFont $TARGET')
+    bld = Builder(action = font_convert_action, suffix = '.c', src_suffix = '.ttf', emitter = ModifyFontConvertTargets)
+    Env.Append(BUILDERS = {"FontConvert": bld})
+    Env.AddMethod(ConvertFont, "ConvertFont")
 
     # add library build action
     act = SCons.Action.Action(BuildLibInstallAction, 'Install compiled library... $TARGET')

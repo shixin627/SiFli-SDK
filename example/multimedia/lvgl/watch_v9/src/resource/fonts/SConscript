@@ -1,15 +1,19 @@
+from building import *
 import os
-from building import * 
+font_objs = []  
 
-# get current dir path
 cwd = GetCurrentDir()
+font_file = os.path.join(cwd, 'DroidSansFallback.ttf')
 
-# init src and inc vars
-src = []
-inc = [cwd]
 
-src += Glob('*.c')
+if not os.path.exists(font_file):
+    print(f"Whether memory allocation is dynamic: Warning: Font file does not exist: {font_file}")
+    font_objs = []  
+else:
+    print(f"Font file path: {font_file}")
+    font_objs = Env.ConvertFont(font_file, 'DroidSansFallback')
+    font_objs = DefineGroup('resource', font_objs, depend = ['PKG_USING_LITTLEVGL2RTT'])  
 
-# add group to IDE project
-objs = DefineGroup('fonts', src, depend = ['PKG_USING_LITTLEVGL2RTT'], CPPPATH = inc)
-Return('objs')
+
+
+Return('font_objs')
