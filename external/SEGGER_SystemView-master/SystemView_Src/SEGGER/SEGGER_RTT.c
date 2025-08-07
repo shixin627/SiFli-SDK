@@ -597,6 +597,71 @@ unsigned SEGGER_RTT_ReadNoLock(unsigned BufferIndex, void* pData, unsigned Buffe
   return NumBytesRead;
 }
 
+
+
+const void* SEGGER_RTT_GetUpBufferLock(unsigned BufferIndex, unsigned *BufferSize)
+{
+  unsigned                RdOff;
+  unsigned                WrOff;
+
+  SEGGER_RTT_BUFFER_UP* pRing;
+  const char*             pSrc;
+
+  SEGGER_RTT_LOCK();
+  //
+  INIT();
+  pRing = &_SEGGER_RTT.aUp[BufferIndex];
+  RdOff = pRing->RdOff;
+  WrOff = pRing->WrOff;
+  pSrc = pRing->pBuffer + RdOff;
+
+  //
+  // Read from current read position to wrap-around of buffer, first
+  //
+  if (RdOff > WrOff) {
+    *BufferSize = pRing->SizeOfBuffer - RdOff;
+  }
+  else {
+    *BufferSize = WrOff - RdOff;
+  }
+  
+  SEGGER_RTT_UNLOCK();
+
+  return pSrc;
+}
+
+void  SEGGER_RTT_DropUpBufferLock(unsigned BufferIndex, unsigned BufferSize)
+{
+
+  unsigned                RdOff;
+  unsigned                WrOff;
+  SEGGER_RTT_BUFFER_UP* pRing;
+  const char*             pSrc;
+
+  SEGGER_RTT_LOCK();
+  //
+  INIT();
+  pRing = &_SEGGER_RTT.aUp[BufferIndex];
+  RdOff = pRing->RdOff + BufferSize;
+
+
+  if(RdOff == pRing->SizeOfBuffer)
+  {
+      RdOff = 0;
+  }
+
+
+    if(RdOff > pRing->SizeOfBuffer)
+    while(1){;
+    }
+
+    
+    
+
+  pRing->RdOff = RdOff;
+
+  SEGGER_RTT_UNLOCK();
+}
 /*********************************************************************
 *
 *       SEGGER_RTT_Read
@@ -943,7 +1008,96 @@ unsigned SEGGER_RTT_WriteNoLock(unsigned BufferIndex, const void* pBuffer, unsig
   //
   return Status;
 }
+/*********************************************************************
+*
+*       SEGGER_RTT_WriteDownNoLock
+*
+*  Function description
+*    Stores a specified number of characters in SEGGER RTT
+*    control block which is then read by the host.
+*    SEGGER_RTT_WriteDownNoLock does not lock the application.
+*
+*  Parameters
+*    BufferIndex  Index of "Up"-buffer to be used (e.g. 0 for "Terminal").
+*    pBuffer      Pointer to character array. Does not need to point to a \0 terminated string.
+*    NumBytes     Number of bytes to be stored in the SEGGER RTT control block.
+*
+*  Return value
+*    Number of bytes which have been stored in the "Up"-buffer.
+*
+*  Notes
+*    (1) Data is stored according to buffer flags.
+*    (2) For performance reasons this function does not call Init()
+*        and may only be called after RTT has been initialized.
+*        Either by calling SEGGER_RTT_Init() or calling another RTT API function first.
+*/
+unsigned SEGGER_RTT_WriteDownNoLock(unsigned BufferIndex, const void* pBuffer, unsigned NumBytes) {
+  unsigned              Status;
+  unsigned              Avail;
+  const char*           pData;
+  SEGGER_RTT_BUFFER_UP* pRing;
 
+  pData = (const char *)pBuffer;
+  //
+  // Get "to-host" ring buffer.
+  //
+  pRing = (SEGGER_RTT_BUFFER_UP*) &_SEGGER_RTT.aDown[BufferIndex];
+  //
+  // How we output depends upon the mode...
+  //
+  switch (pRing->Flags) {
+  case SEGGER_RTT_MODE_NO_BLOCK_SKIP:
+    //
+    // If we are in skip mode and there is no space for the whole
+    // of this output, don't bother.
+    //
+    Avail = _GetAvailWriteSpace(pRing);
+    if (Avail < NumBytes) {
+      Status = 0u;
+    } else {
+      Status = NumBytes;
+      _WriteNoCheck(pRing, pData, NumBytes);
+    }
+    break;
+  case SEGGER_RTT_MODE_NO_BLOCK_TRIM:
+    //
+    // If we are in trim mode, trim to what we can output without blocking.
+    //
+    Avail = _GetAvailWriteSpace(pRing);
+    Status = Avail < NumBytes ? Avail : NumBytes;
+    _WriteNoCheck(pRing, pData, Status);
+    break;
+  case SEGGER_RTT_MODE_BLOCK_IF_FIFO_FULL:
+    //
+    // If we are in blocking mode, output everything.
+    //
+    Status = _WriteBlocking(pRing, pData, NumBytes);
+    break;
+  default:
+    Status = 0u;
+    break;
+  }
+  //
+  // Finish up.
+  //
+  return Status;
+}
+unsigned SEGGER_RTT_WriteDownBuffer(unsigned BufferIndex, const void* pBuffer, unsigned NumBytes) {
+  unsigned Status;
+  //
+  INIT();
+  SEGGER_RTT_LOCK();
+  //
+  // Call the non-locking write function
+  //
+  Status = SEGGER_RTT_WriteDownNoLock(BufferIndex, pBuffer, NumBytes);
+  //
+  // Finish up.
+  //
+  SEGGER_RTT_UNLOCK();
+  //
+  return Status;
+}
 /*********************************************************************
 *
 *       SEGGER_RTT_Write

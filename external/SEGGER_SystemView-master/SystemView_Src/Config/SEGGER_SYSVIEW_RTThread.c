@@ -51,7 +51,7 @@ Revision: $Rev: 3745 $
 #include "rtthread.h"
 #include "SEGGER_SYSVIEW.h"
 #include "SEGGER_RTT.h"
-
+#include <string.h>
 #if !((RTT_VERSION * 100 + RTT_SUBVERSION * 10 + RTT_REVISION) > 310L)
     #error "This version SystemView only supports above 3.1.0 of RT-Thread, please select a lower version SystemView!"
 #endif
@@ -74,6 +74,95 @@ extern rt_thread_t lvgl_host_thread(void);
 static uint8_t func_idx = 0;
 static U32 func_stack[MAX_REFR_OBJ_DEPTH];
 
+#define ENABLE_LVGL_TASK_CACHE 0
+
+#define MAX_CACHED_TASKS 64
+#define MAX_TASK_NAME_LEN 128
+
+static bool task_name_allocated[MAX_CACHED_TASKS]; // Does the marker dynamically allocate memory?
+static char task_name_cache[MAX_CACHED_TASKS][MAX_TASK_NAME_LEN];
+
+static SEGGER_SYSVIEW_TASKINFO task_info_cache[MAX_CACHED_TASKS];
+static U32 task_info_count = 0;
+static bool task_info_sent = false;
+
+// Cache the task information instead of sending it immediately.
+void cache_task_info(U32 id, const char *task_name, U32 param1, U32 param2)
+{
+    // If the cache is full, do not add new tasks.
+    if (task_info_count >= MAX_CACHED_TASKS) {
+        return;
+    }
+    
+    // Check if the task has been cached
+    for (U32 i = 0; i < task_info_count; i++) {
+        if (task_info_cache[i].TaskID == id) {
+            return; // The task already exists and does not need to be added again.
+        }
+    }
+    
+    // Add new tasks to the cache
+    task_info_cache[task_info_count].TaskID = id;
+    task_name_allocated[task_info_count] = false; // Default unallocated memory
+    
+    if (task_name) {
+        size_t name_len = strlen(task_name);
+        if (name_len < MAX_TASK_NAME_LEN) {
+            // The name length is within the range, so use a static buffer.
+            strcpy(task_name_cache[task_info_count], task_name);
+            task_info_cache[task_info_count].sName = task_name_cache[task_info_count];
+        } else {
+            // The name is too long and requires dynamic allocation of memory.
+            char* name_copy = (char*)rt_malloc(name_len + 1);
+            if (name_copy) {
+                strcpy(name_copy, task_name);
+                task_info_cache[task_info_count].sName = name_copy;
+                task_name_allocated[task_info_count] = true;
+            } else {
+                // Dynamic allocation failed. Using truncated static buffer instead.
+                strncpy(task_name_cache[task_info_count], task_name, MAX_TASK_NAME_LEN - 1);
+                task_name_cache[task_info_count][MAX_TASK_NAME_LEN - 1] = '\0';
+                task_info_cache[task_info_count].sName = task_name_cache[task_info_count];
+            }
+        }
+    } else {
+        strcpy(task_name_cache[task_info_count], "Unknown");
+        task_info_cache[task_info_count].sName = task_name_cache[task_info_count];
+    }
+    
+    task_info_cache[task_info_count].Prio = 0;
+    task_info_cache[task_info_count].StackBase = param1;
+    task_info_cache[task_info_count].StackSize = param2;
+    task_info_count++;
+}
+void clear_task_info_cache(void)
+{
+    for (U32 i = 0; i < task_info_count; i++) {
+        // Release the dynamically allocated string memory
+        if (task_name_allocated[i] && task_info_cache[i].sName) {
+            rt_free((void*)task_info_cache[i].sName);
+        }
+        task_info_cache[i].sName = NULL;
+        task_name_allocated[i] = false;
+    }
+    task_info_count = 0;
+    task_info_sent = false;
+}
+// Send all the task information of the cache.
+void send_cached_task_list(void)
+{
+    if (task_info_sent) {
+        return; // If it has already been sent, avoid sending it again.
+    }
+    
+    for (U32 i = 0; i < task_info_count; i++) {
+        SEGGER_SYSVIEW_SendTaskInfo(&task_info_cache[i]);
+    }
+    
+    task_info_sent = true;
+    clear_task_info_cache(); // Clear the cache immediately after the sending is completed.
+
+}
 uint32_t lv_task_get_act(void)
 {
     if(func_idx > 0) 
@@ -95,6 +184,7 @@ void lv_enter_func(U32 id, const char *task_name , U32 param1, U32 param2)
 
     if(task_name)
     {
+#if ENABLE_LVGL_TASK_CACHE
         SEGGER_SYSVIEW_TASKINFO Info;
         Info.TaskID = id;
         Info.sName = task_name;
@@ -102,6 +192,10 @@ void lv_enter_func(U32 id, const char *task_name , U32 param1, U32 param2)
         Info.StackBase = param1;
         Info.StackSize = param2;  /*Show in Stack: StackSize @ StackBase*/
         SEGGER_SYSVIEW_SendTaskInfo(&Info);
+#else
+        // Cache the task information instead of sending it immediately.
+         cache_task_info(id, task_name, param1, param2);
+#endif
     }
     
     func_stack[++func_idx] = id;
@@ -223,6 +317,9 @@ static void _cbSendTaskList(void)
     }
 #if 0//def PKG_USING_LITTLEVGL2RTT
     _cbSendLvTaskList();
+#endif
+#ifdef ENABLE_LVGL_TASK_CACHE
+    send_cached_task_list();
 #endif
     rt_exit_critical();
 }

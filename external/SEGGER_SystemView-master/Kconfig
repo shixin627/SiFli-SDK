@@ -161,7 +161,7 @@ if PKG_USING_SYSTEMVIEW
 menu "SystemView buffer configuration"
 	config PKG_SEGGER_SYSVIEW_RTT_BUFFER_SIZE
 		int "RTT buffer size"
-		default 8096
+		default 32768
 		---help---
 			Number of bytes that SystemView uses for the buffer
 

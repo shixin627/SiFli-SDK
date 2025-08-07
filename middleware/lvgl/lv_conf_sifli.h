@@ -388,4 +388,33 @@
 
 #endif
 
+
+#define LV_USE_PROFILER 0
+#if LV_USE_PROFILER
+    /*Define custom profiler include*/
+    #define LV_PROFILER_INCLUDE "lv_conf_sifli.h"
+
+    /*Profiler definitions*/
+    #ifdef PKG_USING_SEGGER_RTT
+        extern void lv_debug_task_start_exec_v9(const void *func, const char *func_name);
+        extern void lv_debug_task_stop_exec_v9(const void *func);
+        extern void lv_debug_mark_start_v9(uint32_t id, const char *desc);
+        extern void lv_debug_mark_stop_v9(uint32_t id);
+
+        /*Profiler start point function*/
+        #define LV_PROFILER_BEGIN lv_debug_task_start_exec_v9(__func__, __func__)
+
+        /*Profiler end point function*/
+        #define LV_PROFILER_END lv_debug_task_stop_exec_v9(__func__)
+
+        /*Profiler start point function with custom tag*/
+        #define LV_PROFILER_BEGIN_TAG(tag) lv_debug_mark_start_v9((uint32_t)(tag), #tag)
+
+        /*Profiler end point function with custom tag*/
+        #define LV_PROFILER_END_TAG(tag) lv_debug_mark_stop_v9((uint32_t)(tag))
+
+    #endif /* PKG_USING_SEGGER_RTT */
+#endif /* LV_USE_PROFILER */
+
+
 #endif /*LV_CONF_SIFLI_H*/

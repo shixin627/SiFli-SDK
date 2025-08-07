@@ -519,7 +519,39 @@ static void dbguart_to_jlink(int argc, char **argv)
 }
 MSH_CMD_EXPORT_ALIAS(dbguart_to_jlink, dbguart2jlink, Switch debug uart to jlink);
 #endif /* SF32LB52X */
+#if defined(PKG_USING_SYSTEMVIEW)
 
+extern rt_err_t sysview_via_uart(const char *name);
+static void uart_to_systemview(int argc, char **argv)
+{
+    uint8_t is_console_device = 0;
+    if (argc < 1)
+    {
+        rt_kprintf("uart_to_systemview <uart_name>\r\n");
+        return;
+    }
+
+    rt_device_t uart_device = rt_device_find(argv[1]);
+
+    if (uart_device == rt_console_get_device())
+    {
+        rt_kprintf("Change console to segger rt_device \r\n");
+        rt_thread_mdelay(1000);
+        rt_console_set_device("segger");
+        is_console_device = 1;
+    }
+
+
+    if (RT_EOK != sysview_via_uart(argv[1]))
+    {
+        if (is_console_device) rt_console_set_device(argv[1]); // restore console device
+
+        rt_kprintf("Failed to switch uart console to systemview\r\n");
+    }
+
+}
+MSH_CMD_EXPORT_ALIAS(uart_to_systemview, uart2systemview, Switch uart console to systemview);
+#endif /* PKG_USING_SYSTEMVIEW */
 #endif // RT_USING_FINSH
 
 

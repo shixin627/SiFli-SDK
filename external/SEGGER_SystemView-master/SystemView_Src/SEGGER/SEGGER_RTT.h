@@ -162,6 +162,10 @@ void         SEGGER_RTT_WriteWithOverwriteNoLock(unsigned BufferIndex, const voi
 unsigned     SEGGER_RTT_PutChar                 (unsigned BufferIndex, char c);
 unsigned     SEGGER_RTT_PutCharSkip             (unsigned BufferIndex, char c);
 unsigned     SEGGER_RTT_PutCharSkipNoLock       (unsigned BufferIndex, char c);
+void  SEGGER_RTT_DropUpBufferLock(unsigned BufferIndex, unsigned BufferSize);
+unsigned SEGGER_RTT_WriteDownBuffer(unsigned BufferIndex, const void* pBuffer, unsigned NumBytes);
+const void* SEGGER_RTT_GetUpBufferLock(unsigned BufferIndex, unsigned *BufferSize);
+
 //
 // Function macro for performance optimization
 //

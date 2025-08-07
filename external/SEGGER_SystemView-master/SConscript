@@ -15,7 +15,8 @@ if GetDepend('PKG_USING_SEGGER_RTT'):
         src += Glob(src_folder +'/SEGGER/SEGGER_SYSVIEW.c')
         src += Glob(src_folder +'/Config/SEGGER_SYSVIEW_RTThread.c')
         src += Glob(src_folder +'/Config/SEGGER_SYSVIEW_Config_RTThread.c')
-
+        src += Glob(src_folder +'/Config/SEGGER_SYSVIEW_UART.c')
+        
     if GetDepend('PKG_SEGGER_RTT_AS_SERIAL_DEVICE'):
         src += Glob(src_folder +'/Config/SEGGER_RTT_Device.c')
 

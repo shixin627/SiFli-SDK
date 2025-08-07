@@ -324,7 +324,7 @@ void SEGGER_SYSVIEW_DisableEvents                 (U32 DisableMask);
 void SEGGER_SYSVIEW_Conf                          (void);
 U32  SEGGER_SYSVIEW_X_GetTimestamp                (void);
 U32  SEGGER_SYSVIEW_X_GetInterruptId              (void);
-
+int SEGGER_SYSVIEW_IsStarted(void);
 #ifdef __cplusplus
 }
 #endif

@@ -172,6 +172,22 @@ extern "C" {
 #ifndef   SEGGER_SYSVIEW_UNLOCK
   #define SEGGER_SYSVIEW_UNLOCK()           SEGGER_RTT_UNLOCK()
 #endif
+/*********************************************************************
+*
+*       Define: SEGGER_SYSVIEW_ON_EVENT_RECORDED()
+*
+*  Description
+*    Function macro to notify recorder about a new event in buffer.
+*  Default
+*    undefined: Do not notify recorder.
+*  Notes
+*    Used for non-J-Link recorder,
+*    such as to enable transmission via UART or notify IP task.
+*/
+#ifndef   SEGGER_SYSVIEW_ON_EVENT_RECORDED
+  #define SEGGER_SYSVIEW_ON_EVENT_RECORDED(NumBytes)
+#endif
+
 
 #ifdef __cplusplus
 }

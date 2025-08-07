@@ -540,6 +540,7 @@ static int _TrySendOverflowPacket(void) {
   // Try to store packet in RTT buffer and update time stamp when this was successful
   //
   Status = SEGGER_RTT_WriteSkipNoLock(CHANNEL_ID_UP, aPacket, pPayload - aPacket);
+  SEGGER_SYSVIEW_ON_EVENT_RECORDED(CHANNEL_ID_UP, pPayload - aPacket);
   if (Status) {
     _SYSVIEW_Globals.LastTxTimeStamp = TimeStamp;
     _SYSVIEW_Globals.EnableState--; // EnableState has been 2, will be 1. Always.
@@ -573,6 +574,7 @@ static void _SendSyncInfo(void) {
   // Send module information
   //
   SEGGER_RTT_WriteWithOverwriteNoLock(CHANNEL_ID_UP, _abSync, 10);
+  SEGGER_SYSVIEW_ON_EVENT_RECORDED(CHANNEL_ID_UP, 10);
   SEGGER_SYSVIEW_RecordVoid(SYSVIEW_EVTID_TRACE_START);
   {
     U8* pPayload;
@@ -711,7 +713,7 @@ Send:
     _SYSVIEW_Globals.EnableState++; // EnableState has been 1, will be 2. Always.
   }
 #endif
-
+SEGGER_SYSVIEW_ON_EVENT_RECORDED(CHANNEL_ID_UP, pEndPacket - pStartPacket);
 #if (SEGGER_SYSVIEW_POST_MORTEM_MODE == 1)
   //
   // Add sync and system information periodically if we are in post mortem mode
@@ -1665,6 +1667,7 @@ void SEGGER_SYSVIEW_Start(void) {
 #else
     SEGGER_SYSVIEW_LOCK();
     SEGGER_RTT_WriteSkipNoLock(CHANNEL_ID_UP, _abSync, 10);
+    SEGGER_SYSVIEW_ON_EVENT_RECORDED(CHANNEL_ID_UP, 10);
     SEGGER_SYSVIEW_UNLOCK();
     SEGGER_SYSVIEW_RecordVoid(SYSVIEW_EVTID_TRACE_START);
     {
@@ -2836,5 +2839,30 @@ void SEGGER_SYSVIEW_DisableEvents(U32 DisableMask) {
   _SYSVIEW_Globals.DisabledEvents |= DisableMask;
 }
 
-
+/*********************************************************************
+*
+*       SEGGER_SYSVIEW_IsStarted()
+*
+*  Function description
+*    Handle incoming packets if any and check if recording is started.
+*
+*  Return value
+*      0: Recording not started.
+*    > 0: Recording started.
+*/
+int SEGGER_SYSVIEW_IsStarted(void) {
+#if (SEGGER_SYSVIEW_POST_MORTEM_MODE != 1)
+  //
+  // Check if host is sending data which needs to be processed.
+  //
+  if (SEGGER_RTT_HASDATA(CHANNEL_ID_DOWN)) {
+    if (_SYSVIEW_Globals.RecursionCnt == 0) {   // Avoid uncontrolled nesting. This way, this routine can call itself once, but no more often than that.
+      _SYSVIEW_Globals.RecursionCnt = 1;
+      _HandleIncomingPacket();
+      _SYSVIEW_Globals.RecursionCnt = 0;
+    }
+  }
+#endif
+  return _SYSVIEW_Globals.EnableState;
+}
 /*************************** End of file ****************************/

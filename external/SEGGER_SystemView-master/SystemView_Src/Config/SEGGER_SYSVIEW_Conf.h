@@ -185,6 +185,12 @@ Revision: $Rev: 6249 $
   #define SEGGER_SYSVIEW_GET_INTERRUPT_ID()   SEGGER_SYSVIEW_X_GetInterruptId() // Get the currently active interrupt Id from the user-provided function.
 #endif
 
+
+extern int uart_tx_func(U32 ch, size_t tx_size);
+#define SEGGER_SYSVIEW_ON_EVENT_RECORDED(ch, NumBytes)  uart_tx_func(ch, NumBytes)
+
+
+
 #endif  // SEGGER_SYSVIEW_CONF_H
 
 /*************************** End of file ****************************/
