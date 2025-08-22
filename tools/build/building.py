@@ -1231,10 +1231,12 @@ def PrepareBuilding(env, has_libcpu=False, remove_components=[], buildlib=None):
         win32_spawn.env = env
         env['SPAWN'] = win32_spawn.spawn
 
-    # if env['PLATFORM'] == 'win32':
-    #     os.environ['PATH'] = rtconfig.EXEC_PATH + ";" + os.environ['PATH']
-    # else:
-    #     os.environ['PATH'] = rtconfig.EXEC_PATH + ":" + os.environ['PATH']
+    if os.getenv("LEGACY_ENV"):
+        # make Keil toolchain is availabe by subprocess
+        if env['PLATFORM'] == 'win32':
+            os.environ['PATH'] = rtconfig.EXEC_PATH + ";" + os.environ['PATH']
+        else:
+            os.environ['PATH'] = rtconfig.EXEC_PATH + ":" + os.environ['PATH']
     
     # add program path
     env.PrependENVPath('PATH', rtconfig.EXEC_PATH)
