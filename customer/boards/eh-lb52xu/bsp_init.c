@@ -59,6 +59,9 @@
 
 static uint16_t mpi1_div = 1;
 static uint16_t mpi2_div = 1;
+#ifdef BSP_QSPI2_DUAL_MODE
+    static uint16_t mpi2_ext_div = 1;
+#endif /* BSP_QSPI2_DUAL_MODE */
 
 
 static uint32_t otp_flash_addr = AUTO_FLASH_MAC_ADDRESS;
@@ -93,6 +96,18 @@ uint32_t BSP_GetOtpBase(void)
     return otp_flash_addr;
 }
 #endif
+
+#ifdef BSP_QSPI2_DUAL_MODE
+uint16_t BSP_GetFlashExtDiv(void)
+{
+    return mpi2_ext_div;
+}
+
+void BSP_SetFlashExtDiv(uint16_t div)
+{
+    mpi2_ext_div = div;
+}
+#endif /* BSP_QSPI2_DUAL_MODE */
 
 #ifdef SOC_BF0_HCPU
 #define HXT_DELAY_EXP_VAL 1000
@@ -188,6 +203,10 @@ void HAL_PreInit(void)
 
     mpi1_div = 2;   // for OPI Psram driver alway set 1, for QSPI PSRAM depend on this setting, for flash depend on flash request, 2 or 3
     mpi2_div = 5;
+
+#ifdef BSP_QSPI2_DUAL_MODE
+    mpi2_ext_div = 5;
+#endif /* BSP_QSPI2_DUAL_MODE */
 
     /* Init the low level hardware */
     HAL_MspInit();

@@ -818,6 +818,21 @@ menu "On-chip Peripheral RTOS Drivers"
                         config BSP_MPI2_EN_DTR
                             bool "Enable DTR mode"
                             default n
+                        config BSP_QSPI2_DUAL_MODE
+                            bool "MPI2 Connected With Two NOR Flash Memory"
+                            depends on SOC_SF32LB52X
+                            default n
+                        if BSP_QSPI2_DUAL_MODE
+                            config FLASH_1ST_CS_PIN
+                                int "Flash 1st CS pin number which is used by controller"
+                                default 12
+                            config FLASH_2ND_CS_PIN
+                                int "Flash 2nd CS pin number"
+                                default 26
+                            config BSP_2ND_EN_DTR
+                                bool "Enable DTR Mode of the second Flash"
+                                default n
+                        endif
                     endif
                     if BSP_MPI2_MODE_1
                         config BSP_USING_NAND_FLASH2

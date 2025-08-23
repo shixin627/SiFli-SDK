@@ -75,6 +75,17 @@ extern "C" {
 
 #define SPI_FLASH_OTP_BASE          (0X1000U)
 
+/* TODO: confirm whether 100MHz can be used by all chips.
+ *  Actually this value only affects the config when reading ID, after reading ID, MPI_MISCR_RXCLKINV will always be changed to 0.
+ *
+ * on 52x (e.g. 520 or 52B), if 3.3V sip flash using RXCLKINV=1, ID reading will fail
+ */
+#ifndef SF32LB52X
+#define FLASH_CLK_INVERT_THD            (60000000)
+#else
+#define FLASH_CLK_INVERT_THD            (100000000)
+#endif /* SF32LB52X */
+
 /**
   * @brief  SPI_FLASH configure tyep
   */
@@ -303,7 +314,6 @@ typedef struct __FLASH_HandleTypeDef
     uint8_t                         wakeup;          /*!< wake up mode for psram, plane select flag for nand */
     uint32_t                        reserv1;         /*!< used as local clock divider for dual flash  */
     flash_cs_ctrl                   cs_ctrl;         /*!< cs control function pointer  */
-    flash_lock_ctrl                 lock;
 } FLASH_HandleTypeDef;
 /**
   * @}

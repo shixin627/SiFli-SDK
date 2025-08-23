@@ -29,12 +29,10 @@ static int read(long base, long offset, uint8_t *buf, size_t size, int nand_flag
     //rt_kprintf("addr:%p,%d\n", addr, size);
     if (nand_flag)
         size = rt_flash_read(addr, buf, size);
-    else {
-        size_t i;
-        for (i = 0; i < size; i++, addr++, buf++)
-        {
-            *buf = *(uint8_t *) addr;
-        }
+    else
+    {
+        /* always call driver to support dual flash */
+        size = rt_flash_read(addr, buf, size);
     }
     on_ic_read_cnt++;
     return size;

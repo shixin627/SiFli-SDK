@@ -111,6 +111,15 @@ LR_IROM1 CODE_START_ADDR CODE_SIZE  {    ; load region size_region
    *.o                (.text.rt_memset)
    rt_memclr*.o (.text)
    memset*.o    (.text)  
+
+#ifdef BSP_QSPI2_DUAL_MODE
+   bf0_hal_dma.o (+RO)
+   *.o (.text.HAL_GetTick)
+   *.o (.text.HAL_AssertFailed)
+   *.o (.text.HAL_NVIC_DisableIRQ)
+   bf0_hal_cortex.o (+RO)
+#endif /* BSP_QSPI2_DUAL_MODE */
+
 #endif
    
   }

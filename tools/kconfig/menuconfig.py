@@ -737,6 +737,7 @@ def _main():
             # f.write("endmenu\n")
             f.write('source "$SIFLI_SDK/customer/boards/Kconfig.v2"\n')
             f.write('source "$SIFLI_SDK/Kconfig.v2"\n')
+            f.write('orsource "package3/Kconfig.conandeps"\n')
             f.write('rsource "Kconfig.proj"\n')
 
     elif kconfig_file == "board.conf":

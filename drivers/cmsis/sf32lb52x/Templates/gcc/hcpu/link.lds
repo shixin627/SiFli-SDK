@@ -189,6 +189,14 @@ SECTIONS
     *rt_memclr*.o       (.text*)
     *memset*.o          (.text*)      
 
+#ifdef BSP_QSPI2_DUAL_MODE
+    *bf0_hal_dma.o (.text* .rodata*)
+    *.o (.text.HAL_GetTick)
+    *.o (.text.HAL_AssertFailed)
+    *.o (.text.HAL_NVIC_DisableIRQ)
+    *bf0_hal_cortex.o (.text* .rodata*)
+#endif /* BSP_QSPI2_DUAL_MODE */
+
     *.o (.retm_data_*)
 
     . = ALIGN(4);

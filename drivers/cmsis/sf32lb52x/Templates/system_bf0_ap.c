@@ -198,10 +198,21 @@ __WEAK void mpu_config(void)
     rlar = ARM_MPU_RLAR(0x0002ffff, ATTR_RAM_IDX);
     ARM_MPU_SetRegion(rnr++, rbar, rlar);
 
-    //  flash1, region 1
+#ifdef DUAL_FLASH
+    //  flash1 and flash2 region a
+    rbar = ARM_MPU_RBAR(0x10000000, ARM_MPU_SH_NON, 1, 1, 0); //Non-shareable,RO,any privilege,executable
+    rlar = ARM_MPU_RLAR(0x12ffffff, ATTR_CODE_IDX);
+    ARM_MPU_SetRegion(rnr++, rbar, rlar);
+    //  flash2, region b
+    rbar = ARM_MPU_RBAR(0x13000000, ARM_MPU_SH_NON, 1, 1, 0); //Non-shareable,RO,any privilege,executable
+    rlar = ARM_MPU_RLAR(0x13ffffff, ATTR_RAM_IDX);
+    ARM_MPU_SetRegion(rnr++, rbar, rlar);
+#else
+    //  flash1 and flash2
     rbar = ARM_MPU_RBAR(0x10000000, ARM_MPU_SH_NON, 1, 1, 0); //Non-shareable,RO,any privilege,executable
     rlar = ARM_MPU_RLAR(0x1fffffff, ATTR_CODE_IDX);
     ARM_MPU_SetRegion(rnr++, rbar, rlar);
+#endif /* DUAL_FLASH */
 
     // hpsys ram, disable sram cache
     rbar = ARM_MPU_RBAR(0x20000000, ARM_MPU_SH_NON, 0, 1, 0); //Non-shareable,RW,any privilege,executable

@@ -152,6 +152,7 @@ static int rt_nor_dtr_cfg(FLASH_HandleTypeDef *hflash, uint8_t dtr_en)
 static int rt_nor_read_rom(FLASH_HandleTypeDef *hflash, uint32_t addr, uint8_t *buf, int size)
 {
 #define NOR_READ_THD_SIZE       (128)
+    rt_base_t level;
 
     int res = 0;
 
@@ -168,6 +169,8 @@ static int rt_nor_read_rom(FLASH_HandleTypeDef *hflash, uint32_t addr, uint8_t *
         while (remain > 0)
         {
             nor_lock(hflash->base);
+            level = rt_hw_interrupt_disable();
+            hflash->cs_ctrl(1);
             hflash->Instance->TIMR = 0xffff;
             fill = remain > NOR_READ_THD_SIZE ? NOR_READ_THD_SIZE : remain;
 
@@ -193,6 +196,9 @@ static int rt_nor_read_rom(FLASH_HandleTypeDef *hflash, uint32_t addr, uint8_t *
             hflash->Instance->CR &= ~MPI_CR_EN;
             hflash->Instance->TIMR = 0xff;
             hflash->Instance->CR |= MPI_CR_EN;
+
+            hflash->cs_ctrl(0);
+            rt_hw_interrupt_enable(level);
             nor_unlock(hflash->base);
         }
 #endif
@@ -974,6 +980,10 @@ static void register_mtd_nor(uint32_t flash_base, uint32_t offset, uint32_t size
     flash_handle = (FLASH_HandleTypeDef *)rt_flash_get_handle_by_addr(flash_base);
     RT_ASSERT(flash_handle);
 
+    if ((QSPI_NOR_SECT_SIZE == sect_size) && flash_handle->dualFlash)
+    {
+        sect_size <<= 1;
+    }
     blk_size = sect_size;
     sector_size = blk_size;
 

@@ -246,16 +246,24 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_FLASH_SET_CMD(FLASH_HandleTypeDef *hflash, 
     hflash->Instance->AR1 = addr;
     if (hflash->cs_ctrl != NULL)
     {
+#if 0
         hflash->cs_ctrl(0);
         // DELAY
         volatile uint32_t i = 240 / 5; // max 240m?
         while (i-- > 0);
+#endif
         hflash->cs_ctrl(1);
     }
     hflash->Instance->CMDR1 = cmd & 0XFF;
 
     while (!HAL_FLASH_IS_CMD_DONE(hflash));
     HAL_FLASH_CLR_CMD_DONE(hflash);
+
+    if (hflash->cs_ctrl)
+    {
+        /* pull up CS after command is done */
+        hflash->cs_ctrl(0);
+    }
 
     return res;
 }

@@ -82,7 +82,7 @@ int8_t Addr2Id(uint32_t addr)
             break;
         }
     }
-
+#ifdef BSP_QSPI2_DUAL_MODE
     if (i >= FLASH_MAX_INSTANCE)
     {
         if ((addr >= flash_ext_handle.base_addr) && (addr < (flash_ext_handle.base_addr + flash_ext_handle.total_size)))
@@ -92,12 +92,15 @@ int8_t Addr2Id(uint32_t addr)
         else
             id = -1;
     }
-
+#endif /* BSP_QSPI2_DUAL_MODE */
     return id;
 }
 
 __weak int IsExtFlashAddr(uint32_t addr)
 {
+    if ((addr >= flash_ext_handle.base_addr) && (addr < (flash_ext_handle.base_addr + flash_ext_handle.total_size)))
+        return 1;
+
     return 0;
 }
 
@@ -111,23 +114,93 @@ void *flash_memset(void *s, int c, long count)
     return s;
 }
 
+static void BSP_FLASH_PIN_Set(int pin, int val, int is_porta)
+{
+    GPIO_TypeDef *gpio = (is_porta) ? hwp_gpio1 : hwp_gpio2;
+    GPIO_InitTypeDef GPIO_InitStruct;
+
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT;
+    GPIO_InitStruct.Pin = pin;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(gpio, &GPIO_InitStruct);
+
+    HAL_GPIO_WritePin(gpio, pin, (GPIO_PinState)val);
+}
+
 __weak void BSP_FLASH_Switch_Ext_Init()
 {
+#if BSP_QSPI2_DUAL_MODE
+    if (g_ext_flash_id < 0)
+        return;
 
+    // wait idle first
+    HAL_FLASH_NOP_CMD(&spi_flash_handle[g_ext_flash_id].handle); //
+    // close main flash CS first -- set to gpio and force pull up
+    HAL_PIN_Set(PAD_PA00 + FLASH_1ST_CS_PIN, GPIO_A0 + FLASH_1ST_CS_PIN,   PIN_PULLUP,   1);
+
+    // Set ext flash CS to low
+    BSP_FLASH_PIN_Set(FLASH_2ND_CS_PIN, 0, 1);
+#endif /* BSP_QSPI2_DUAL_MODE */
 }
 
 __weak void BSP_FLASH_Switch_Main_Init()
 {
+#ifdef BSP_QSPI2_DUAL_MODE
+    // initial 2 CS pin force pull up at first
+    BSP_FLASH_PIN_Set(FLASH_2ND_CS_PIN, 1, 1);
+    HAL_PIN_Set(PAD_PA00 + FLASH_2ND_CS_PIN, GPIO_A0 + FLASH_2ND_CS_PIN, PIN_PULLUP, 1);
 
+    BSP_FLASH_PIN_Set(FLASH_1ST_CS_PIN, 1, 1);
+    HAL_PIN_Set(PAD_PA00 + FLASH_1ST_CS_PIN, MPI2_CS,   PIN_NOPULL,   1);
+#endif /* BSP_QSPI2_DUAL_MODE */
 }
 __weak void BSP_FLASH_Switch_Ext()
 {
+#ifdef BSP_QSPI2_DUAL_MODE
+    if (g_ext_flash_id < 0)
+        return;
 
+    // wait idle first
+    HAL_FLASH_NOP_CMD(&spi_flash_handle[g_ext_flash_id].handle); // todo, update get handler method
+    // close main flash CS first -- set to gpio and force pull up
+    HAL_PIN_Set(PAD_PA00 + FLASH_1ST_CS_PIN, GPIO_A0 + FLASH_1ST_CS_PIN,   PIN_PULLUP,   1);
+
+    // swtich clock
+    if (flash_ext_handle.handle.freq > FLASH_CLK_INVERT_THD)
+        HAL_QSPI_SET_CLK_INV(&flash_ext_handle.handle, 1, 0);
+    else
+        HAL_QSPI_SET_CLK_INV(&flash_ext_handle.handle, 0, 0);
+    HAL_FLASH_SET_CLK_rom(&flash_ext_handle.handle, flash_ext_handle.handle.reserv1);
+    // switch dtr mode
+    HAL_NOR_CFG_DTR(&flash_ext_handle.handle, flash_ext_handle.handle.buf_mode);
+
+    // no need change CS, it's set to LOW when sending command
+    // BSP_FLASH_PIN_Set(FLASH_2ND_CS_PIN, 0, 1);
+#endif /* BSP_QSPI2_DUAL_MODE */
 }
 
 __weak void BSP_FLASH_Switch_Main()
 {
+#ifdef BSP_QSPI2_DUAL_MODE
+    if (g_ext_flash_id < 0)
+        return;
 
+    // wait idle first
+    HAL_FLASH_NOP_CMD(&flash_ext_handle.handle);
+    // no need to change CS, as it's set to HIGH after sending command
+    // BSP_FLASH_PIN_Set(FLASH_2ND_CS_PIN, 1, 1);
+
+    // swtich clock
+    if (spi_flash_handle[g_ext_flash_id].handle.freq > FLASH_CLK_INVERT_THD)
+        HAL_QSPI_SET_CLK_INV(&spi_flash_handle[g_ext_flash_id].handle, 1, 0);
+    else
+        HAL_QSPI_SET_CLK_INV(&spi_flash_handle[g_ext_flash_id].handle, 0, 0);
+    HAL_FLASH_SET_CLK_rom(&spi_flash_handle[g_ext_flash_id].handle, spi_flash_handle[g_ext_flash_id].handle.reserv1);
+    // switch dtr mode
+    HAL_NOR_CFG_DTR(&spi_flash_handle[g_ext_flash_id].handle, spi_flash_handle[g_ext_flash_id].handle.buf_mode);
+    // Recover main flash CS function
+    HAL_PIN_Set(PAD_PA00 + FLASH_1ST_CS_PIN, MPI2_CS,   PIN_NOPULL,   1);
+#endif /* BSP_QSPI2_DUAL_MODE */
 }
 
 __weak void nor_lock(uint32_t addr)
@@ -159,7 +232,16 @@ void BSP_Flash_var_init(void)
 
 __weak void BSP_FLASH_CS_Ctrl(uint32_t pulldown)
 {
-
+#ifdef BSP_QSPI2_DUAL_MODE
+    if (pulldown == 0)  // CS HIGH
+    {
+        BSP_FLASH_PIN_Set(FLASH_2ND_CS_PIN, 1, 1);
+    }
+    else
+    {
+        BSP_FLASH_PIN_Set(FLASH_2ND_CS_PIN, 0, 1);
+    }
+#endif /* BSP_QSPI2_DUAL_MODE */
 }
 
 void *BSP_Flash_get_handle(uint32_t addr)
@@ -517,13 +599,11 @@ __HAL_ROM_USED int BSP_Flash_Init_WithID(uint8_t fid, qspi_configure_t *pflash_c
     QSPI_FLASH_CTX_T *pflash_ctx = &spi_flash_handle[fid];
 
     pflash_ctx->handle.cs_ctrl = NULL;
-    pflash_ctx->handle.lock = NULL;
 
     if (gis_ext_flash)
     {
         pflash_ctx = &flash_ext_handle;
         pflash_ctx->handle.cs_ctrl = BSP_FLASH_CS_Ctrl;
-        pflash_ctx->handle.lock = flash_lock2;
     }
 
     // check flash size, nor flash max support 32MB
@@ -589,12 +669,12 @@ __HAL_ROM_USED int BSP_Flash_Init_WithID(uint8_t fid, qspi_configure_t *pflash_c
     if (res == HAL_OK)
     {
         // TODO: save local div for dual flash if needed like : pflash_ctx->handle.reserv1 = (uint8_t)div;
-
+        pflash_ctx->handle.reserv1 = (uint8_t)div;
         if (gis_ext_flash)
         {
             pflash_ctx->base_addr += spi_flash_handle[fid].total_size;
             pflash_ctx->handle.base = pflash_ctx->base_addr;
-            g_ext_flash_id = fid;
+            //g_ext_flash_id = fid; // moved set before initial, and reset to -1 if initial fail
         }
 
         return 1;
@@ -609,8 +689,10 @@ __HAL_ROM_USED int BSP_Flash_EXT_Init_WithID(uint8_t fid, qspi_configure_t *pfla
     BSP_FLASH_Switch_Ext_Init();
     gis_ext_flash = 1;
     ret = BSP_Flash_Init_WithID(fid, pflash_cfg, pdma_cfg, dtr);
+    if (ret <= 0)
+        g_ext_flash_id = -1;
     gis_ext_flash = 0;
-    BSP_FLASH_Switch_Main_Init();
+    BSP_FLASH_Switch_Main();
 
     return ret;
 }
@@ -650,6 +732,10 @@ __HAL_ROM_USED int BSP_Flash_hw2_init_with_no_dtr(void)
 
     qspi_configure_t flash_cfg2 = FLASH2_CONFIG;
     struct dma_config flash_dma2 = FLASH2_DMA_CONFIG;
+#ifdef BSP_QSPI2_DUAL_MODE
+    BSP_FLASH_Switch_Main_Init();
+    g_ext_flash_id = 1;
+#endif /* BSP_QSPI2_DUAL_MODE */
 
     int ret = BSP_Flash_Init_WithID(1, &flash_cfg2, &flash_dma2, 0);
 #ifdef BSP_QSPI2_DUAL_MODE
@@ -683,8 +769,24 @@ __weak int BSP_Flash_hw2_init()
 #else
     dtr = 0;
 #endif //BSP_MPI2_EN_DTR
+#ifdef BSP_QSPI2_DUAL_MODE
+    BSP_FLASH_Switch_Main_Init();
+    g_ext_flash_id = 1;
+#endif /* BSP_QSPI2_DUAL_MODE */
+    int ret = BSP_Flash_Init_WithID(1, &flash_cfg2, &flash_dma2, dtr);
+    if (ret <= 0)
+        return ret;
 
-    return BSP_Flash_Init_WithID(1, &flash_cfg2, &flash_dma2, dtr);
+#ifdef BSP_QSPI2_DUAL_MODE
+#ifdef BSP_2ND_EN_DTR
+    dtr = 1;
+#else
+    dtr = 0;
+#endif //BSP_2ND_EN_DTR
+    ret = BSP_Flash_EXT_Init_WithID(1, &flash_cfg2, &flash_dma2, dtr);
+#endif /* BSP_QSPI2_DUAL_MODE */
+
+    return ret;
 
 #endif  // BSP_ENABLE_QSPI2 && (BSP_QSPI2_MODE == 0)
 
