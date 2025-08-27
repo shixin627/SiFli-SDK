@@ -10,7 +10,10 @@
 #include "rtthread.h"
 #include "rthw.h"
 #include "string.h"
-#include <sys/time.h>
+#if defined(__CC_ARM) || defined(__CLANG_ARM) || defined (__IAR_SYSTEMS_ICC__) || defined(__GNUC__)
+    #include <sys/time.h>
+#endif /* __CC_ARM || __CLANG_ARM || __IAR_SYSTEMS_ICC__ || __GNUC__ */
+
 #if defined(__CC_ARM) || defined(__CLANG_ARM) || defined (__IAR_SYSTEMS_ICC__)
 
 /* seconds per day */
