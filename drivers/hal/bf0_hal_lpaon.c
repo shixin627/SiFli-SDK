@@ -472,6 +472,22 @@ __HAL_ROM_USED void HAL_LPAON_DisableXT48(void)
     hwp_lpsys_aon->ACR &= ~LPSYS_AON_ACR_HXT48_REQ;
 }
 
+/**
+ * @brief The lcpu sleep function
+ */
+void HAL_LPAON_Sleep(void)
+{
+    hwp_lpsys_aon->WER |= LPSYS_AON_WER_HP2LP_REQ;
+    // HAL_HPAON_CANCEL_LP_ACTIVE_REQUEST();
+    HAL_LPAON_DISABLE_PAD();
+    HAL_LPAON_DISABLE_AON_PAD();
+#ifndef SF32LB55X
+    HAL_LPAON_DISABLE_VLP();
+#endif
+    /* force lpsys to enter sleep */
+    hwp_lpsys_aon->PMR = (3UL << LPSYS_AON_PMR_MODE_Pos) | (1 << LPSYS_AON_PMR_CPUWAIT_Pos) | (1 << LPSYS_AON_PMR_FORCE_SLEEP_Pos);
+}
+
 #endif /* HAL_AON_MODULE_ENABLED */
 /**
   * @}

@@ -823,7 +823,12 @@ void HAL_LPAON_EnableXT48(void);
 */
 void HAL_LPAON_DisableXT48(void);
 
+/**
+ * @brief The lcpu sleep function
+ * @details Force the low-power core (LCPU) to enter sleep mode when it is not activated.
+ */
 
+void HAL_LPAON_Sleep(void);
 /**
 * @brief  Check GTimer timeout or not
 * @param[in] ctx Context for GTimer, should be start GTimer read
