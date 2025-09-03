@@ -4,6 +4,7 @@
 ## 支持的平台
 例程可以运行在以下开发板.
 * sf32lb52-lcd_n16r8
+* sf32lb56-lcd_n16r12n1
 * sf32lb58-lcd_n16r64n4
 
 ## 示例概述
@@ -19,14 +20,16 @@
 |开发板    |OUT管脚 |OUT管脚名称|IN管脚 |IN管脚名称 |
 |:---     |:---    |:---      |:---   |:---      |
 |sf32lb52-lcd_n16r8 |5       |PA41      |3      |PA42      |
+|sf32lb56-lcd_n16r12n1 |5       |PA20      |3      |PA12        |
 |sf32lb58-lcd_n16r64n4 |5       |PB28      |3      |PB29      |
 
 * 更详细的引脚定义请参考\
 `[sf32lb52-lcd_n16r8]()`\
+`[sf32lb56-lcd_n16r12n1]()`\
 `[sf32lb58-lcd_n16r64n4]()`
 
 ### 编译和烧录
-#### SF525工程代码编译
+#### 以sf32lb52-lcd工程代码为例编译
 切换到例程project目录，运行scons命令执行编译：
 
 > scons --board=sf32lb52-lcd_n16r8 -j8
@@ -38,15 +41,6 @@
 > Uart Download
 
 > please input the serial port num:5
-
-#### SF587工程代码编译
-切换到例程project目录，运行scons命令执行编译：
-
-> scons --board=sf32lb58-lcd_n16r64n4 -j8
-
-切换到例程`project/build_xx`目录，运行`download.bat`，程序通过JLink自动下载：
-
-> build_sf32lb58-lcd_n16r64n4_hcpu\download.bat
 
 
 ### 例程输出结果展示:
@@ -106,6 +100,12 @@ Pin_In 42, value = 0
     #define Pin_Out 124
     #define Pin_In 125
     #define hwp_gpio hwp_gpio2
+#elif defined(SF32LB56X)
+    #define Pin_Out 20
+    #define Pin_In 12
+    #define GPIO_IRQn GPIO1_IRQn
+    #define hwp_gpio hwp_gpio1
+    #define RCC_MOD_GPIO RCC_MOD_GPIO1
 #endif
 ```
 
