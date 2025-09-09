@@ -6,8 +6,7 @@ cwd = GetCurrentDir()
 group = []
 
 CPPPATH = [cwd]
-# only enable POSIX.1b-1993 Real-time extensions
-CPPDEFINES = ['RT_USING_NEWLIB', '_POSIX_C_SOURCE=199309L']
+CPPDEFINES = ['RT_USING_NEWLIB']
 
 # link with libc and libm:
 # libm is a frequently used lib. Newlib is compiled with -ffunction-sections in
