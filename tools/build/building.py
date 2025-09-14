@@ -830,12 +830,12 @@ def BuildOptionUpdate(BuildOptions,BSP_Root):
     PreProcessor = PatchedPreProcessor()
     
     if GetBoardName():
-        f = open(os.path.join(rtconfig.OUTPUT_DIR, 'rtconfig.h'), 'r')
+        f = open(os.path.join(rtconfig.OUTPUT_DIR, 'rtconfig.h'), 'r', encoding='utf-8')
     else:     
         if BSP_Root:
-            f = open(os.path.join(BSP_Root, 'rtconfig.h'), 'r')
+            f = open(os.path.join(BSP_Root, 'rtconfig.h'), 'r', encoding='utf-8')
         else:
-            f = open('rtconfig.h', 'r')
+            f = open('rtconfig.h', 'r', encoding='utf-8')
 
     contents = f.read()
     f.close()
@@ -1609,7 +1609,7 @@ def PrepareModuleBuilding(env, root_directory, bsp_directory):
 
     # parse bsp rtconfig.h to get used component
     PreProcessor = PatchedPreProcessor()
-    f = open(bsp_directory + '/rtconfig.h', 'r')
+    f = open(bsp_directory + '/rtconfig.h', 'r', encoding='utf-8')
     contents = f.read()
     f.close()
     PreProcessor.process_contents(contents)
@@ -1663,7 +1663,7 @@ def LocalOptions(config_filename):
     # parse wiced_config.h to get used component
     PreProcessor = SCons.cpp.PreProcessor()
 
-    f = open(config_filename, 'r')
+    f = open(config_filename, 'r', encoding='utf-8')
     contents = f.read()
     f.close()
 
