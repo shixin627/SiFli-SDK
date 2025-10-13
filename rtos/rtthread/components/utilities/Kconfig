@@ -76,7 +76,7 @@ config RT_USING_ULOG
 
         config ULOG_USING_ISR_LOG
             bool "Enable ISR log."
-            default n
+            default y
             help
                 The log output API can using in ISR (Interrupt Service Routines) also.
 
