@@ -76,11 +76,6 @@ void BSP_LCD_PowerUp(void)
     HAL_PIN_Set(PAD_PA50, GPIO_A50, PIN_NOPULL, 1);  //lcd reset
     HAL_PIN_Set(PAD_PA51, GPIO_A51, PIN_PULLUP, 1);  // tp INT,
 
-
-    HAL_PIN_Set(PAD_PA04, GPIO_A4, PIN_NOPULL, 1); //spi_cs
-    HAL_PIN_Set(PAD_PA17, GPIO_A17, PIN_NOPULL, 1); //spi_clk
-    HAL_PIN_Set(PAD_PA18, GPIO_A18, PIN_NOPULL, 1); //spi_mosi
-
 #endif /* BSP_LCDC_USING_DPI */
 
 

@@ -22,12 +22,4 @@ config LCD_BACKLIGHT_CONTROL_PIN
     int
     default 119
 
-config LCD_EXTRA_SPI_CS_PIN
-        int
-        default 04
-config LCD_EXTRA_SPI_CLK_PIN
-        int
-        default 17
-config LCD_EXTRA_SPI_MOSI_PIN
-        int
-        default 18
+
