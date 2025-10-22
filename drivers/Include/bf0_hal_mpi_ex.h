@@ -91,7 +91,7 @@ extern "C" {
   */
 #ifndef PSRAM_CACHE_WB
 #ifdef SOC_BF0_HCPU
-#define NAND_BUF_CPY_MODE       (NAND_CACHE_USE_EXTDMA)
+#define NAND_BUF_CPY_MODE       (NAND_CACHE_USE_MEMCPY)
 #else
 #define NAND_BUF_CPY_MODE       (NAND_CACHE_USE_MEMCPY)
 #endif
