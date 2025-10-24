@@ -24,6 +24,10 @@
     #include "ulog.h"
 #endif
 
+#ifdef USING_CORE_DUMP
+    #include "core_dump.h"
+#endif /* USING_CORE_DUMP */
+
 #if               /* ARMCC */ (  (defined ( __CC_ARM ) && defined ( __TARGET_FPU_VFP ))    \
                   /* Clang */ || (defined ( __CLANG_ARM ) && defined ( __VFP_FP__ ) && !defined(__SOFTFP__)) \
                   /* IAR */   || (defined ( __ICCARM__ ) && defined ( __ARMVFP__ ))        \
@@ -537,6 +541,10 @@ __ROM_USED void rt_hw_hard_fault_exception(struct exception_info *exception_info
     ulog_flush();
 #endif
 
+#if defined(SOC_BF0_HCPU) && defined(USING_CORE_DUMP)
+    core_dump();
+#endif /* SOC_BF0_HCPU && USING_CORE_DUMP */
+
 #if defined(SOC_BF0_HCPU) && defined(SAVE_ASSERT_CONTEXT_IN_FLASH)
     extern void HAL_LCPU_ASSERT_INFO_clear(void);
     extern rt_err_t save_assert_context_in_flash();
@@ -558,6 +566,10 @@ __ROM_USED void rt_hw_mem_manage_exception(struct exception_info *exception_info
 #if defined(RT_USING_ULOG)
     ulog_flush();
 #endif
+
+#if defined(SOC_BF0_HCPU) && defined(USING_CORE_DUMP)
+    core_dump();
+#endif /* SOC_BF0_HCPU && USING_CORE_DUMP */
 
 #if defined(SOC_BF0_HCPU) && defined(SAVE_ASSERT_CONTEXT_IN_FLASH)
     extern void HAL_LCPU_ASSERT_INFO_clear(void);
@@ -622,6 +634,10 @@ __ROM_USED void rt_hw_do_fatal_error(struct stack_frame *stack_frame)
 #ifdef SOC_BF0_LCPU
     HAL_LPAON_WakeCore(CORE_ID_HCPU);
 #endif /* SOC_BF0_LCPU */
+
+#if defined(SOC_BF0_HCPU) && defined(USING_CORE_DUMP)
+    core_dump();
+#endif /* SOC_BF0_HCPU && USING_CORE_DUMP */
 
 #if defined(SOC_BF0_HCPU) && defined(SAVE_ASSERT_CONTEXT_IN_FLASH)
     extern void HAL_LCPU_ASSERT_INFO_clear(void);

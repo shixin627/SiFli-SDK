@@ -25,6 +25,8 @@ menu "Sifli middleware"
         bool "Cell Transform Algo"
         default n
 
+    source "$SIFLI_SDK/middleware/core_dump/Kconfig"
+
     config USING_GAUSS_BLUR
         bool "Gauss Blurring Library"
         default n    
@@ -472,3 +474,4 @@ menu "Sifli middleware"
         default n
 
 endmenu
+
