@@ -195,7 +195,89 @@ typedef int (*audio_server_callback_func)(audio_server_callback_cmt_t cmd,
 在$(sdk_root)\middleware\audio\audio_local_music\audio_recorder.c
 ** **
 
-**1.5 采集mic数据再播放到喇叭的例子**
+**1.5 播放pcm数据的例子**
+```c
+#include <rtthread.h>
+#include <string.h>
+#include <stdlib.h>
+#include "audio_server.h"
+
+#define DBG_TAG           "audio"
+#define DBG_LVL           LOG_LVL_INFO
+#include "log.h"
+
+static int fd;
+static in is_cache_full;
+#define WRITE_CACHE_SIZE    8192
+
+/*
+   见audio_server.c 里TX_DMA_SIZE宏定义大小，这个WRITE_CACHE_SIZE应至少是TX_DMA_SIZE的2倍
+*/
+
+int16_t pcm_buffer[WRITE_CACHE_SIZE/2/sizeof(int16_t)];
+
+static int speaker_callback(audio_server_callback_cmt_t cmd,
+                    void *callback_userdata,
+                    uint32_t reserved)
+{
+    audio_client_t client = *((audio_client_t *)callback_userdata);
+    if (cmd == as_callback_cmd_cache_half_empty
+           ||cmd == as_callback_cmd_cache_empty)
+    {
+        if (!is_cache_full)
+        {
+            memset(pcm_buffer, 0, sizeof(pcm_buffer));
+            int len = read(fd, pcm_buffer, sizeof(pcm_buffer));
+            if (len < sizeof(pcm_buffer) && len >= 0)
+            {
+                //file end;
+            }
+        }
+        int ret = audio_write(client, (uint8_t *)&pcm_buffer[0], sizeof(pcm_buffer));
+	if (ret == 0)
+        {
+            is_cache_full = 1;
+            LOG_I("cache full");
+        }
+    }
+    return 0;
+}
+static void speaker(uint8_t argc, char **argv)
+{
+    uint32_t record_seconds = 0;
+    is_cache_full = 0;
+    audio_parameter_t pa = {0};
+    pa.write_bits_per_sample = 16;
+    pa.write_channnel_num = 1;
+    pa.write_samplerate = 16000;
+    pa.read_bits_per_sample = 16;
+    pa.read_channnel_num = 1;
+    pa.read_samplerate = 16000;
+    pa.write_cache_size = WRITE_CACHE_SIZE;
+    fd = open("/test.pcm", O_RDONLY | O_BINARY);
+    RT_ASSERT(fd >= 0);
+    audio_client_t client = NULL;
+    audio_server_set_private_volume(AUDIO_TYPE_LOCAL_MUSIC, 15);
+    client = audio_open(AUDIO_TYPE_LOCAL_MUSIC,
+                        AUDIO_TX,
+                        &pa,
+                        speaker_callback,
+                        &client);
+    RT_ASSERT(client);
+
+    while (record_seconds < 10)
+    {
+        rt_thread_mdelay(1000);
+        record_seconds++;
+    }
+    audio_close(client); //这个不可以在mic2speaker_callback里调，会死锁
+    close(fd);
+}
+
+MSH_CMD_EXPORT(speaker, pcm2speaker test);
+```
+
+**1.6 采集mic数据再播放到喇叭的例子**
 ```c
 #include <rtthread.h>
 #include <string.h>
@@ -266,7 +348,7 @@ static void mic2speaker(uint8_t argc, char **argv)
 MSH_CMD_EXPORT(mic2speaker, mic2speaker test);
 ```
 
-**1.6 写入数据**
+**1.7 写入数据**
 
 目前写入的数据长度如果比write cache size大，会一直写不进去，会一直返回0
 ```c
@@ -284,7 +366,7 @@ return:
     0:  write cache is full, should sleep than try again
 */
 ```
-**1.7 控制client**
+**1.8 控制client**
 ```c
 int audio_ioctl(audio_client_t handle, int cmd, void *parameter);
 /*
@@ -305,14 +387,14 @@ cmd的值及对应的parameter：
 */
 
 ```
-**1.8 关闭一个client**
+**1.9 关闭一个client**
 ```c
 int audio_close(audio_client_t handle);
 ```
 上面一个函数除了audio_write(),其他是同步的，最好在一个线程里调，
 特别是audio_close(),这个函数不可以在audio_open()的回调函数里调，会死锁
 
-**1.9 硬件设备**
+**1.10 硬件设备**
 ```c
 //历史遗留，只给系统mp3播放插件用，app不要使用
 bool audio_device_is_a2dp_sink()
@@ -377,7 +459,7 @@ int audio_server_select_private_audio_device(audio_type_t audio_type,
 #endif
 }
 ```
-**1.10 注册一个硬件设备**
+**1.11 注册一个硬件设备**
 这个app不需要关注，系统内部已实现，主要是喇叭和BT等注册一些硬件或虚拟硬件设备，
 供播放时切换选择设备用.如果需要，搜索系统里调用的地方进行参考.
 ```c
@@ -386,9 +468,9 @@ int audio_server_register_audio_device(audio_device_e audio_device,
 audio_device -    [in] 设备类型
 p_audio_device -  [in] 注册设备必须的一些回调函数
 ```
-**1.11 音量相关**
+**1.12 音量相关**
 
-1.11.1 **获得系统最大音量**
+1.12.1 **获得系统最大音量**
 目前音量等级时从0到15，下面这个函数会返回15
 ```c
 //返回最大音量等级，目前是15
@@ -419,7 +501,7 @@ int audio_server_set_public_speaker_mute(uint8_t is_mute);
 //获得speaker是否mute
 uint8_t audio_server_get_public_speaker_mute(void);
 ```
-**1.12 数据长度的更改，目前没提供动态修改录音DMA一帧大小的接口，是宏定义配置的**
+**1.13 数据长度的更改，目前没提供动态修改录音DMA一帧大小的接口，是宏定义配置的**
 
 在audio.h里的这个CFG_AUDIO_RECORD_PIPE_SIZE宏，表示一次录音的dma中断的数据大小，
 如果是320，则对16k单声道的mic，是10ms来一次数据，并调audio_open的callback
