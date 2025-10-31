@@ -115,6 +115,32 @@ menuconfig SENSOR_USING_HUMITURE
                     int "AHT20 reset pin (optional)"
                     default -1
             endif
+                    
+        menuconfig HUMITURE_USING_SHT30
+            bool "SHT30"
+            select RT_USING_SENSOR
+            default n
+            if HUMITURE_USING_SHT30
+                config SHT30_I2C_BUS
+                    string "SHT30 I2C bus name"
+                    default "i2c2"
+                config SHT30_MODEL_NAME
+                    string "SHT30 model name"
+                    default "sht30"
+                config SHT30_I2C_ADDR
+                    hex "SHT30 I2C address (0x44 or 0x45)"
+                    default 0x44
+                    help
+                        SHT30 I2C address depends on ADDR pin level.
+                        Low level (default): 0x44
+                        High level: 0x45
+                config SHT30_POW_PIN
+                    int "SHT30 power control pin (optional)"
+                    default -1
+                config SHT30_RESET_PIN
+                    int "SHT30 reset pin (optional)"
+                    default -1
+            endif
     endif
 
 menuconfig SENSOR_USING_PEDO
