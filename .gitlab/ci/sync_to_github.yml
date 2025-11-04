@@ -37,11 +37,13 @@ sync_to_github:
       
       echo "Starting sync to GitHub..."
       git push github "HEAD:$CURRENT_BRANCH" --force-with-lease
-      
-      # 如果是主分支，同时推送标签
-      if [ "$CURRENT_BRANCH" = "main" ] || [ "$CURRENT_BRANCH" = "master" ]; then
+      echo "Collecting tags reachable from $CURRENT_BRANCH..."
+      branch_tags=$(git for-each-ref --format='%(refname)' --merged HEAD refs/tags)
+      if [ -n "$branch_tags" ]; then
         echo "Pushing tags to GitHub..."
-        git push github --tags
+        git push github $branch_tags
+      else
+        echo "No tags to push for $CURRENT_BRANCH."
       fi
     - |
       # 触发GitHub Action
