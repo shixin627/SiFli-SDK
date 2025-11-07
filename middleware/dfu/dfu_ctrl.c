@@ -808,12 +808,94 @@ uint8_t dfu_package_install_set()
     return ret;
 }
 
+static void clear_interrupt_setting(void)
+{
+    uint32_t i;
+    for (i = 0; i < 16; i++)
+    {
+        NVIC->ICER[i] = 0xFFFFFFFF;
+        __DSB();
+        __ISB();
+    }
+}
+
+void dfu_bootjump(void)
+{
+    uint32_t target_addr;
+    uint32_t target_size;
+#ifdef DFU_OTA_MANAGER
+    target_addr = HCPU_FLASH_CODE_START_ADDR;
+    target_size = HCPU_FLASH_CODE_SIZE;
+#else
+    target_addr = DFU_FLASH_CODE_START_ADDR;
+    target_size = DFU_FLASH_CODE_SIZE;
+#endif
+
+#ifdef RT_USING_WDT
+    // TODO: Deinit watch log should be implmented in user bin
+    extern void rt_hw_watchdog_deinit(void);
+    rt_hw_watchdog_deinit();
+#endif // RT_USING_WDT
+
+    uint32_t i;
+    dfu_ctrl_env_t *env = dfu_ctrl_get_env();
+
+    register rt_base_t ret;
+    ret = rt_hw_interrupt_disable();
+    clear_interrupt_setting();
+    rt_hw_interrupt_enable(ret);
+
+#ifdef DFU_OTA_MANAGER
+    dfu_bootjump_sec_config(env, (uint8_t *)HCPU_FLASH_CODE_START_ADDR);
+#endif
+
+    for (i = 0; i < 8; i++)
+        NVIC->ICER[0] = 0xFFFFFFFF;
+    for (i = 0; i < 8; i++)
+        NVIC->ICPR[0] = 0xFFFFFFFF;
+    SysTick->CTRL = 0;
+    SCB->ICSR |= SCB_ICSR_PENDNMICLR_Msk;
+    SCB->SHCSR &= ~(SCB_SHCSR_USGFAULTACT_Msk | SCB_SHCSR_BUSFAULTACT_Msk | SCB_SHCSR_MEMFAULTACT_Msk);
+
+    if (CONTROL_SPSEL_Msk & __get_CONTROL())
+    {
+        __set_MSP(__get_PSP());
+        __set_CONTROL(__get_CONTROL() & ~CONTROL_SPSEL_Msk);
+    }
+
+    SCB->VTOR = (uint32_t)target_addr;
+#ifdef PSRAM_XIP
+    memcpy((void *)PSRAM_BASE, (void *)target_addr, target_size);
+    run_img((uint8_t *)PSRAM_BASE);
+#else
+    run_img((uint8_t *)target_addr);
+#endif
+
+}
+
+static void dfu_ctrl_boot_to_user_fw(void)
+{
+    if (CONTROL_nPRIV_Msk & __get_CONTROL())
+    {
+        __asm("SVC #0");
+    }
+    else
+    {
+        dfu_bootjump();
+    }
+}
+
+
 static void ble_dfu_install_process()
 {
     dfu_package_install_set();
 
+#ifdef SF32LB55X
+    dfu_bootjump();
+#else
     dfu_set_reboot_after_disconnect();
     dfu_protocol_session_close();
+#endif
 }
 
 static void ble_dfu_start_install_thread()
@@ -1149,11 +1231,15 @@ uint8_t dfu_ctrl_reset_handler(void)
 
     if (is_jump)
     {
+#ifdef SF32LB55X
+        dfu_ctrl_boot_to_user_fw();
+#else
         dfu_install_flag_update(0);
         HAL_Set_backup(RTC_BAKCUP_OTA_FORCE_MODE, DFU_FORCE_MODE_REBOOT_TO_USER);
         env->prog.state = DFU_CTRL_IDLE;
         dfu_ctrl_update_prog_info(env);
         HAL_PMU_Reboot();
+#endif
     }
 
     return 0;
