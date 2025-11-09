@@ -947,6 +947,8 @@ def GenPartitionTableHeaderContentV2(env, mems):
 
             if 'tags' in region:
                 for tag in region['tags']:
+                    if tag.strip() == '':
+                        continue
                     start_addr_name = '{}_START_ADDR'.format(tag)
                     size_name = '{}_SIZE'.format(tag)
                     offset_name = '{}_OFFSET'.format(tag)
