@@ -460,7 +460,7 @@ static int hid_kbd_state_key_set(uint8_t key)
         hid_keyboard_state.ctrl_keys_state |= ctrl_mask;
         return 0;
     }
-    for (size_t i = 0; i < KEY_CTRL_CODE_MAX; ++i)
+    for (size_t i = 0; i < KEY_PRESS_MAX; ++i)
     {
         if (hid_keyboard_state.keys_state[i] == 0)
         {
@@ -481,7 +481,7 @@ static int hid_kbd_state_key_clear(uint8_t key)
         hid_keyboard_state.ctrl_keys_state &= ~ctrl_mask;
         return 0;
     }
-    for (size_t i = 0; i < KEY_CTRL_CODE_MAX; ++i)
+    for (size_t i = 0; i < KEY_PRESS_MAX; ++i)
     {
         if (hid_keyboard_state.keys_state[i] == key)
         {
