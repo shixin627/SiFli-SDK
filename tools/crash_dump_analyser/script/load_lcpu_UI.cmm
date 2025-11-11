@@ -19,9 +19,9 @@ LOCAL &name6
 LOCAL &sel1
 LOCAL &sel2
 LOCAL &sel3
-LOCAL &sel4
 LOCAL &sel5
 LOCAL &sel6
+LOCAL &sel7
 LOCAL &addr1
 LOCAL &addr2
 LOCAL &addr3
@@ -33,6 +33,7 @@ LOCAL &devsel
 &sel4=0
 &sel5=0
 &sel6=0
+&sel7=0
 
 &devsel=0
 IF OS.FILE("cpucfg.txt")==TRUE()
@@ -59,8 +60,11 @@ BOARD.LB55X: CHOOSEBOX "LB55X"
         DIALOG.Set CB2 TRUE()
         DIALOG.Enable CB2
         DIALOG.Enable FEDIT2
+        DIALOG.Enable CB7
+        DIALOG.Enable FEDIT7
         DIALOG.Set TADDR1 "0x20100000"
         DIALOG.Set TADDR2 "0x200fc000"
+        DIALOG.Set TADDR7 "0x12000000"
     )
     POS 16. 0. 10. 1.
 BOARD.LB58X: CHOOSEBOX "LB58X"
@@ -72,6 +76,8 @@ BOARD.LB58X: CHOOSEBOX "LB58X"
         DIALOG.Set CB2 TRUE()
         DIALOG.Enable CB2
         DIALOG.Enable FEDIT2
+        DIALOG.Disable CB7
+        DIALOG.Disable FEDIT7
         DIALOG.Set TADDR1 "0x20400000"
         DIALOG.Set TADDR2 "0x203fc000"
     )
@@ -85,6 +91,8 @@ BOARD.LB56X: CHOOSEBOX "LB56X"
         DIALOG.Set CB2 TRUE()
         DIALOG.Enable CB2
         DIALOG.Enable FEDIT2
+        DIALOG.Disable CB7
+        DIALOG.Disable FEDIT7
         DIALOG.Set TADDR1 "0x20400000"
         DIALOG.Set TADDR2 "0x203fc000"
     )
@@ -98,6 +106,8 @@ BOARD.LB52X: CHOOSEBOX "LB52X"
         DIALOG.Set CB2 FALSE()
         DIALOG.Disable CB2
         DIALOG.Disable FEDIT2
+        DIALOG.Disable CB7
+        DIALOG.Disable FEDIT7
         DIALOG.Set TADDR1 "0x20400000"
         DIALOG.Set TADDR2 "0x203fc000"
     )
@@ -221,6 +231,24 @@ CB6: CHECKBOX "load lcpu rom patch axf"
     POS 32. 17. 15. 1.
 FEDIT6: EDIT "lcpu_rom_patch.axf" ""
 
+POS 5. 19. 26. 1.
+CB7: CHECKBOX "load lcpu_psram.bin"
+    (
+        IF DIALOG.BOOLEAN(CB7)
+        (
+            DIALOG.Enable FEDIT7
+        )
+        ELSE
+        (
+            DIALOG.Disable FEDIT7
+        )
+    )
+    POS 20. 19. 10. 1.	
+TADDR7: EDIT "0x12000000" ""	
+    POS 32. 19. 15. 1.
+FEDIT7: EDIT "lcpu_psram.bin" ""
+
+
     POS 10. 20. 30. 2.
     BUTTON "run next step!" "CONTINUE"
 
@@ -282,6 +310,7 @@ DIALOG.Set FEDIT OS.PresentWorkingDirectory()
 DIALOG.Disable TADDR1
 DIALOG.Disable TADDR2
 DIALOG.Disable TADDR3
+DIALOG.Disable TADDR7
 DIALOG.Set CB1 TRUE()
 DIALOG.Set CB4 TRUE()
 DIALOG.Set CB5 TRUE()
@@ -326,6 +355,12 @@ IF DIALOG.BOOLEAN(CB6)
     &name6=DIALOG.STRing(FEDIT6)
     &lcpu_rom_patch_file = STRing.Replace("&name6",".axf","",0)
     &sel6 = 1
+)
+IF DIALOG.BOOLEAN(CB7)
+(
+    &name7=DIALOG.STRing(FEDIT7)
+    &sel7 = 1
+	&addr7 = DIALOG.STRing(TADDR7)
 )
 
 OPEN #1 "cpucfg.txt" /CREATE
@@ -377,6 +412,13 @@ IF &sel6==1
     D.LOAD.ELF &folder\&name6 /NOCLEAR
 )
 
+; LCPU PSRAM
+IF &sel6==1
+(
+    D.LOAD.B &folder\&name7 &addr7
+)
+
+
 winpos 0% 0% 100% 50%
 w.d.l
 winpos 0% 50% 50% 50%
@@ -384,7 +426,7 @@ w.v.f /l /c
 winpos 50% 50% 50% 50%
 
 
-IF &devsel==3
+IF &sel4==1
 (
     ; 52x
     
@@ -413,6 +455,7 @@ IF &devsel==3
 ELSE
 (
     w.v.w \\&lcpu_rom_file\cpuport\error_reason
+    w.v.w \\&lcpu\cpuport\error_reason
 
     ; set sp 
     r.s r13 var.value(\\&lcpu_rom_file\cpuport\saved_stack_pointer)   ;var.value(saved_stack_pointer)  
