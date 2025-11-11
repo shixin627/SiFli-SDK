@@ -42,4 +42,8 @@ hacodec->Instance_lp->ADC_CH0_CFG = (1   << AUDCODEC_LP_ADC_CH0_CFG_ENABLE_Pos) 
                                          (1   << AUDCODEC_ADC_CH0_CFG_DATA_FORMAT_Pos);
 ```
 
+如果还是饱和，就修改模拟ADC1_CFG1_GC对应的值减小，这个不建议, 一般不该模拟增益，代码中中搜索ADC1_CFG1，把对应的值减小一点
+```c
+ADC1_CFG1 |= (0x1E << AUDCODEC_LP_ADC1_CFG1_GC_Pos);
+```
 ## audio dump工具
