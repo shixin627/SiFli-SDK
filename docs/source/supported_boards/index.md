@@ -93,8 +93,11 @@ NANO-N4      | SF32LB52-NANO_N4          |   sf32lb52-nano_n4 |
 NANO-N16R16  | SF32LB52-NANO_N16R16      |   sf32lb52-nano_n16r16 | 
 黄山派(LCHSPI-ULP)     | SF32LB52-LCHSPI-ULP         |   sf32lb52-lchspi-ulp    |
 52-LCD_N16R8 | SF32LB52-DevKit-LCD_N16R8 |   [sf32lb52-lcd_n16r8](boards/sf32lb52-lcd_n16r8/doc/index.md)    |
+52-LCD_A128R16 | SF32LB52-DevKit-LCD_A128R16 |   [sf32lb52-lcd_a128r16](boards/sf32lb52-lcd_a128r16/doc/index.md)    |
 52-LCD_52D | SF32LB52-DevKit-LCD_52D |   [sf32lb52-lcd_52d](boards/sf32lb52-lcd_52d/doc/index.md)    |
-
+52-NANO_N16R16 | SF32LB52-DevKit-Nano_N16R16 |   [sf32lb52-nano_n16r16](boards/sf32lb52-nano_n16r16/doc/index.md)    |
+52-NANO_A128R16 | SF32LB52-DevKit-Nano_A128R16 |   [sf32lb52-nano_a128r16](boards/sf32lb52-nano_a128r16/doc/index.md)    |
+52-NANO_N4 | SF32LB52-DevKit-Nano_N4 |   [sf32lb52-nano_n4](boards/sf32lb52-nano_n4/doc/index.md)    |
 
 ```{toctree}
 :titlesonly:
