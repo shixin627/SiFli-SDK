@@ -103,6 +103,8 @@ after_55x_boards: &after_55x_boards
 
 525_devkit_lcd_boards: &525_devkit_lcd_boards
   - sf32lb52-lcd_n16r8 
+  - sf32lb52-nano_a128r16
+  - sf32lb52-nano_n16r16
 
 
 common_projects:
@@ -155,6 +157,8 @@ common_projects:
       - eh-lb523_hcpu
       - eh-lb525_hcpu
       - sf32lb52-lcd_n16r8_hcpu
+      - sf32lb52-nano_a128r16_hcpu
+      - sf32lb52-nano_n16r16_hcpu
       - sf32lb52-lcd_52d_hcpu
       - sf32lb58-lcd_n16r64n4
       - sf32lb56-lcd_n16r12n1_hcpu
@@ -259,6 +263,8 @@ common_projects:
       - ec-lb585_hcpu
       - ec-lb583_hcpu
       - sf32lb52-lcd_n16r8 
+      - sf32lb52-nano_a128r16
+      - sf32lb52-nano_n16r16
       - sf32lb56-lcd_a128r12n1
       - sf32lb56-lcd_n16r12n1
       - sf32lb58-lcd_n16r64n4
@@ -279,6 +285,8 @@ common_projects:
       - ec-lb585_hcpu
       - ec-lb583_hcpu
       - sf32lb52-lcd_n16r8 
+      - sf32lb52-nano_a128r16
+      - sf32lb52-nano_n16r16
       - sf32lb56-lcd_a128r12n1
       - sf32lb56-lcd_n16r12n1
       - sf32lb58-lcd_n16r64n4
@@ -295,6 +303,8 @@ common_projects:
       - ec-lb587_a2_hcpu
       - ec-lb583_hcpu
       - sf32lb52-lcd_n16r8 
+      - sf32lb52-nano_a128r16
+      - sf32lb52-nano_n16r16
       - sf32lb56-lcd_a128r12n1
       - sf32lb56-lcd_n16r12n1
       - sf32lb58-lcd_n16r64n4
@@ -314,6 +324,8 @@ common_projects:
       - ec-lb585_hcpu
       - ec-lb583_hcpu
       - sf32lb52-lcd_n16r8 
+      - sf32lb52-nano_a128r16
+      - sf32lb52-nano_n16r16
       - sf32lb56-lcd_a128r12n1
       - sf32lb56-lcd_n16r12n1
       - sf32lb58-lcd_n16r64n4
@@ -333,6 +345,8 @@ common_projects:
       - ec-lb585_hcpu
       - ec-lb583_hcpu
       - sf32lb52-lcd_n16r8 
+      - sf32lb52-nano_a128r16
+      - sf32lb52-nano_n16r16
       - sf32lb56-lcd_a128r12n1
       - sf32lb56-lcd_n16r12n1
       - sf32lb58-lcd_n16r64n4
@@ -352,6 +366,8 @@ common_projects:
       - ec-lb585_hcpu
       - ec-lb583_hcpu
       - sf32lb52-lcd_n16r8 
+      - sf32lb52-nano_a128r16
+      - sf32lb52-nano_n16r16
       - sf32lb56-lcd_a128r12n1
       - sf32lb56-lcd_n16r12n1
       - sf32lb58-lcd_n16r64n4
@@ -457,11 +473,14 @@ common_projects:
   - path: example/storage/flashdb/project/nand
     boards:
       - eh-lb525
+      - sf32lb52-nano_a128r16
 
   - path: example/storage/flashdb/project/nor
     boards:
       - eh-lb523
       - sf32lb52-lcd_n16r8 
+      - sf32lb52-nano_n16r16
+
 
   - path: example/uart/project
     boards: *default_boards
