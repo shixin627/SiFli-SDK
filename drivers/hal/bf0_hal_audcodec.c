@@ -1017,7 +1017,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDCODEC_Config_ADCPath_Volume(AUDCODEC_Han
     {
         return HAL_ERROR;
     }
-
+#ifdef SF32LB58X
     if ((volume < -36) || (volume > 54))
     {
         return HAL_ERROR;
@@ -1025,7 +1025,15 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDCODEC_Config_ADCPath_Volume(AUDCODEC_Han
 
     rough_vol = (volume + 36) / 6;
     fine_vol  = ((volume + 36) % 6) << 1;
+#else
+    if ((volume < -60) || (volume > 30))
+    {
+        return HAL_ERROR;
+    }
 
+    rough_vol = (volume + 60) / 6;
+    fine_vol  = ((volume + 60) % 6) << 1;
+#endif
     if (channel == 0)
     {
         MODIFY_REG(hacodec->Instance_lp->ADC_CH0_CFG, AUDCODEC_LP_ADC_CH0_CFG_ROUGH_VOL_Msk | AUDCODEC_LP_ADC_CH0_CFG_FINE_VOL_Msk, \

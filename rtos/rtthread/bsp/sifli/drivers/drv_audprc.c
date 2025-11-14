@@ -23,7 +23,7 @@ __WEAK uint8_t get_factory_mode_status(void)
 {
     return 0;
 }
-
+#define AUDPRC_ADC_VOLUME       (0)
 #define AUDPRC_MIN_VOLUME       (-18)
 #define AUDCODEC_MIN_VOLUME     (-36)
 #define AUDCODEC_MAX_VOLUME     (54)
@@ -318,6 +318,23 @@ static void set_pll_state(uint8_t state)
 #include "drv_log.h"
 
 extern HAL_StatusTypeDef HAL_AUDPRC_Config_ADCPath_Volume(AUDPRC_HandleTypeDef *haprc, int channel, int volume);
+extern AUDPRC_HandleTypeDef *get_audprc_handle();
+#if BSP_ENABLE_AUD_CODEC
+extern AUDCODEC_HandleTypeDef *get_audcodec_handle();
+extern HAL_StatusTypeDef HAL_AUDCODEC_Config_ADCPath_Volume(AUDCODEC_HandleTypeDef *hacodec, int channel, int volume);
+#else
+AUDCODEC_HandleTypeDef *get_audcodec_handle()
+{
+    RT_ASSERT(0);
+    return NULL;
+}
+HAL_StatusTypeDef HAL_AUDCODEC_Config_ADCPath_Volume(AUDCODEC_HandleTypeDef *hacodec, int channel, int volume)
+{
+    return HAL_ERROR;
+}
+#endif
+
+extern HAL_StatusTypeDef HAL_AUDCODEC_Config_ADCPath_Volume(AUDCODEC_HandleTypeDef *hacodec, int channel, int volume);
 
 #define AUDPRC_DMA_RBF_NUM  16
 struct bf0_audio_prc
@@ -452,7 +469,7 @@ const AUDPRC_CLK_CONFIG_TYPE   audprc_clk_cfg_tb[9] =
     {11025, 1,  4000},
 };
 static uint8_t g_rx_stop;
-static inline int get_audprc_adc_volume();
+
 AUDPRC_HandleTypeDef *get_audprc_handle()
 {
     return &h_aud_prc.audprc;
@@ -598,8 +615,8 @@ static void bf0_adc_dac_path_cfg_init(AUDPRC_HandleTypeDef *haudprc)
     haudprc->Init.adc_cfg.rx2tx_loopback = 0;
     haudprc->Init.adc_cfg.data_swap = 0;
     haudprc->Init.adc_cfg.src_sel = 0;
-    haudprc->Init.adc_cfg.vol_l = get_audprc_adc_volume();
-    haudprc->Init.adc_cfg.vol_r = get_audprc_adc_volume();
+    haudprc->Init.adc_cfg.vol_l = AUDPRC_ADC_VOLUME;
+    haudprc->Init.adc_cfg.vol_r = AUDPRC_ADC_VOLUME;
     haudprc->Init.adc_cfg.src_sinc_en = 0;
     haudprc->Init.adc_cfg.sinc_ratio = 0;
 
@@ -769,16 +786,23 @@ static rt_err_t bf0_audio_configure(struct rt_audio_device *audio, struct rt_aud
                 cfg.mode = caps->udata.config.channels == 1 ? 0 : 1;
             else
                 cfg.mode = 0;
+
+            /* decrease audprc digital gain will decrease the max sample value */
+            HAL_AUDPRC_Config_ADCPath_Volume(haudprc, 0, AUDPRC_ADC_VOLUME);
+            HAL_AUDPRC_Config_ADCPath_Volume(haudprc, 1, AUDPRC_ADC_VOLUME);
+
+            /* only using audcodec digital gain now */
             //rt_kprintf("mic adc gain=%d\r\n", get_mic_volume());
-            HAL_AUDPRC_Config_ADCPath_Volume(haudprc, 0, get_mic_volume());
-            HAL_AUDPRC_Config_ADCPath_Volume(haudprc, 1, get_mic_volume());
+            HAL_AUDCODEC_Config_ADCPath_Volume(get_audcodec_handle(), 0, get_mic_volume());
+            HAL_AUDCODEC_Config_ADCPath_Volume(get_audcodec_handle(), 1, get_mic_volume());
+
             memcpy((void *)&haudprc->cfg, (void *)&cfg, sizeof(AUDPRC_ChnlCfgTypeDef));
             audprc->rx_instanc = HAL_AUDPRC_RX_CH0;
 #endif
         }
         break;
 
-        case 1:              // rx ch0
+        case 1: // rx ch1
         {
 #ifdef BSP_AUDPRC_RX1_DMA
             if (haudprc->buf[HAL_AUDPRC_RX_CH1] == NULL)
@@ -800,8 +824,15 @@ static rt_err_t bf0_audio_configure(struct rt_audio_device *audio, struct rt_aud
             else
                 cfg.mode = 0;
 
-            HAL_AUDPRC_Config_ADCPath_Volume(haudprc, 0, get_mic_volume());
-            HAL_AUDPRC_Config_ADCPath_Volume(haudprc, 1, get_mic_volume());
+            /* decrease audprc digital gain will decrease the max sample value */
+            HAL_AUDPRC_Config_ADCPath_Volume(haudprc, 0, AUDPRC_ADC_VOLUME);
+            HAL_AUDPRC_Config_ADCPath_Volume(haudprc, 1, AUDPRC_ADC_VOLUME);
+
+            /* only using audcodec digital gain now */
+            //rt_kprintf("mic adc gain=%d\r\n", get_mic_volume());
+            HAL_AUDCODEC_Config_ADCPath_Volume(get_audcodec_handle(), 0, get_mic_volume());
+            HAL_AUDCODEC_Config_ADCPath_Volume(get_audcodec_handle(), 1, get_mic_volume());
+
             memcpy((void *)&haudprc->cfg1, (void *)&cfg, sizeof(AUDPRC_ChnlCfgTypeDef));
             audprc->rx_instanc = HAL_AUDPRC_RX_CH1;
 #endif
@@ -1199,48 +1230,7 @@ static rt_err_t bf0_audio_init(struct rt_audio_device *audio)
     rt_ringbuffer_init(audprc->rbf_rx_instanc, audprc->rbf_rx_pool, AUDPRC_DMA_RBF_NUM);
 
     bf0_adc_dac_path_cfg_init(haudprc);
-#if 0
-    // adc path configure
-    haudprc->Init.adc_cfg.src_hbf3_mode = 0;
-    haudprc->Init.adc_cfg.src_hbf3_en = 0;
-    haudprc->Init.adc_cfg.src_hbf2_mode = 0;
-    haudprc->Init.adc_cfg.src_hbf2_en = 0;
-    haudprc->Init.adc_cfg.src_hbf1_mode = 0;
-    haudprc->Init.adc_cfg.src_hbf1_en = 0;
-    haudprc->Init.adc_cfg.src_ch_en = 0;
-    haudprc->Init.adc_cfg.rx2tx_loopback = 0;
-    haudprc->Init.adc_cfg.data_swap = 0;
-    haudprc->Init.adc_cfg.src_sel = 0;
-    haudprc->Init.adc_cfg.vol_l = 36;
-    haudprc->Init.adc_cfg.vol_r = 36;
-    haudprc->Init.adc_cfg.src_sinc_en = 0;
-    haudprc->Init.adc_cfg.sinc_ratio = 0;
 
-    // dac path configure
-    haudprc->Init.dac_cfg.dst_sel = 0;
-    haudprc->Init.dac_cfg.mixrsrc1 = 5;
-    haudprc->Init.dac_cfg.mixrsrc0 = 1;
-    haudprc->Init.dac_cfg.mixlsrc1 = 5;
-    haudprc->Init.dac_cfg.mixlsrc0 = 0;
-    haudprc->Init.dac_cfg.vol_r = 36;
-    haudprc->Init.dac_cfg.vol_l = 36;
-    haudprc->Init.dac_cfg.src_hbf3_mode = 0;
-    haudprc->Init.dac_cfg.src_hbf3_en = 0;
-    haudprc->Init.dac_cfg.src_hbf2_mode = 0;
-    haudprc->Init.dac_cfg.src_hbf2_en = 0;
-    haudprc->Init.dac_cfg.src_hbf1_mode = 0;
-    haudprc->Init.dac_cfg.src_hbf1_en = 0;
-    haudprc->Init.dac_cfg.src_ch_en = 0;
-    haudprc->Init.dac_cfg.eq_clr = 0;
-    haudprc->Init.dac_cfg.eq_stage = 1;
-    haudprc->Init.dac_cfg.eq_ch_en = 0;
-    haudprc->Init.dac_cfg.muxrsrc1 = 5;
-    haudprc->Init.dac_cfg.muxrsrc0 = 1;
-    haudprc->Init.dac_cfg.muxlsrc1 = 5;
-    haudprc->Init.dac_cfg.muxlsrc0 = 0;
-    haudprc->Init.dac_cfg.src_sinc_en = 0;
-    haudprc->Init.dac_cfg.sinc_ratio = 0;
-#endif
     int res = HAL_AUDPRC_Init(haudprc);
 
     LOG_I("init 00 ADC_PATH_CFG0 0x%x\n",  haudprc->Instance->ADC_PATH_CFG0);
@@ -2049,17 +2039,6 @@ void bf0_audprc_dma_restart(uint16_t chann_used)
     //LOG_I("audprc channel %d dma restart!\n", chann_used);
 }
 
-extern AUDPRC_HandleTypeDef *get_audprc_handle();
-#if BSP_ENABLE_AUD_CODEC
-extern AUDCODEC_HandleTypeDef *get_audcodec_handle();
-#else
-AUDCODEC_HandleTypeDef *get_audcodec_handle()
-{
-    RT_ASSERT(0);
-    return NULL;
-}
-#endif
-
 //void HAL_DBG_printf(const char *fmt, ...);
 __WEAK int audio_server_is_speaker_working()
 {
@@ -2177,13 +2156,6 @@ void eq_debug_reconfig_eq()
 #endif
 
 }
-
-
-static inline int get_audprc_adc_volume()
-{
-    return g_adc_volume;
-}
-
 
 void hal_audprc_set_dac_volume(int audprc_volume)
 {
@@ -2317,15 +2289,31 @@ static inline int get_tel_adc()
     return 0;
 }
 
-static inline int set_tel_adc(char *value)
+static inline int set_tel_adc(char *str)
 {
-    g_adc_volume = atoi(value);
+    int value = atoi(str);
+#ifdef SF32LB58X
+    if (value < -36 || value > 54)
+    {
+        rt_kprintf("gain should in [-36, 54]\n");
+        return -1;
+    }
+#else
+    if (value < -60 || value > 30)
+    {
+        rt_kprintf("gain should in [-60, 30]\n");
+        return -1;
+    }
+#endif
+    g_adc_volume = value;
     LOG_I("aprc_debug_vol_w success");
 
-    get_audprc_handle()->Init.adc_cfg.vol_l = g_adc_volume;
-    get_audprc_handle()->Init.adc_cfg.vol_r = g_adc_volume;
-    HAL_AUDPRC_Config_ADCPath_Volume(get_audprc_handle(), 0, g_adc_volume);
-    HAL_AUDPRC_Config_ADCPath_Volume(get_audprc_handle(), 1, g_adc_volume);
+    get_audprc_handle()->Init.adc_cfg.vol_l = AUDPRC_ADC_VOLUME;
+    get_audprc_handle()->Init.adc_cfg.vol_r = AUDPRC_ADC_VOLUME;
+    HAL_AUDPRC_Config_ADCPath_Volume(get_audprc_handle(), 0, AUDPRC_ADC_VOLUME);
+    HAL_AUDPRC_Config_ADCPath_Volume(get_audprc_handle(), 1, AUDPRC_ADC_VOLUME);
+    HAL_AUDCODEC_Config_ADCPath_Volume(get_audcodec_handle(), 0, g_adc_volume);
+    HAL_AUDCODEC_Config_ADCPath_Volume(get_audcodec_handle(), 1, g_adc_volume);
     return 0;
 }
 
@@ -2502,16 +2490,17 @@ int mic_gain(int argc, char **argv)
     if (argc < 2)
     {
         rt_kprintf("mic gain=%ddb\r\n", get_mic_volume());
-        rt_kprintf("mic gain reg=0x%08x\r\n", get_audprc_handle()->Instance->ADC_PATH_CFG0);
+#if defined(SF32LB52X) || defined(SF32LB57X)
+        rt_kprintf("ADC_PATH_CFG0=0x%x\r\n", get_audprc_handle()->Instance->ADC_PATH_CFG0);
+        rt_kprintf("ADC_CH0_CFG=0x%x\r\n", get_audcodec_handle()->Instance->ADC_CH0_CFG);
+#else
+        rt_kprintf("ADC_PATH_CFG0=0x%x\r\n", get_audprc_handle()->Instance->ADC_PATH_CFG0);
+        rt_kprintf("ADC_CH0_CFG=0x%x\r\n", get_audcodec_handle()->Instance_lp->ADC_CH0_CFG);
+#endif
         return 0;
     }
     g_adc_volume = atoi(argv[1]);
-    rt_kprintf("set mic gain to %ddb\r\n", g_adc_volume);
-    get_audprc_handle()->Init.adc_cfg.vol_l = g_adc_volume;
-    get_audprc_handle()->Init.adc_cfg.vol_r = g_adc_volume;
-    HAL_AUDPRC_Config_ADCPath_Volume(get_audprc_handle(), 0, g_adc_volume);
-    HAL_AUDPRC_Config_ADCPath_Volume(get_audprc_handle(), 1, g_adc_volume);
-    rt_kprintf("ADC_PATH_CFG0=0x%x\r\n", get_audprc_handle()->Instance->ADC_PATH_CFG0);
+    Set_mic_gain(g_adc_volume);
     return 0;
 }
 
@@ -2520,13 +2509,34 @@ MSH_CMD_EXPORT_ALIAS(mic_gain, mic_gain, mic_gain);
 
 int Set_mic_gain(int8_t value)
 {
+#ifdef SF32LB58X
+    if (value < -36 || value > 54)
+    {
+        rt_kprintf("gain should in [-36, 54]\n");
+        return -1;
+    }
+#else
+    if (value < -60 || value > 30)
+    {
+        rt_kprintf("gain should in [-60, 30]\n");
+        return -1;
+    }
+#endif
+
     g_adc_volume = value;
     rt_kprintf("set mic gain to %ddb\r\n", g_adc_volume);
-    get_audprc_handle()->Init.adc_cfg.vol_l = g_adc_volume;
-    get_audprc_handle()->Init.adc_cfg.vol_r = g_adc_volume;
-    HAL_AUDPRC_Config_ADCPath_Volume(get_audprc_handle(), 0, g_adc_volume);
-    HAL_AUDPRC_Config_ADCPath_Volume(get_audprc_handle(), 1, g_adc_volume);
+    HAL_AUDPRC_Config_ADCPath_Volume(get_audprc_handle(), 0, AUDPRC_ADC_VOLUME);
+    HAL_AUDPRC_Config_ADCPath_Volume(get_audprc_handle(), 1, AUDPRC_ADC_VOLUME);
+    HAL_AUDCODEC_Config_ADCPath_Volume(get_audcodec_handle(), 0, g_adc_volume);
+    HAL_AUDCODEC_Config_ADCPath_Volume(get_audcodec_handle(), 1, g_adc_volume);
+
+#if defined(SF32LB52X) || defined(SF32LB57X)
     rt_kprintf("ADC_PATH_CFG0=0x%x\r\n", get_audprc_handle()->Instance->ADC_PATH_CFG0);
+    rt_kprintf("ADC_CH0_CFG=0x%x\r\n", get_audcodec_handle()->Instance->ADC_CH0_CFG);
+#else
+    rt_kprintf("ADC_PATH_CFG0=0x%x\r\n", get_audprc_handle()->Instance->ADC_PATH_CFG0);
+    rt_kprintf("ADC_CH0_CFG=0x%x\r\n", get_audcodec_handle()->Instance_lp->ADC_CH0_CFG);
+#endif
     return 0;
 }
 

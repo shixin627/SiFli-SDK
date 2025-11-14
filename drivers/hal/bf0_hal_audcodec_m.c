@@ -1035,13 +1035,13 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDCODEC_Config_ADCPath_Volume(AUDCODEC_Han
         return HAL_ERROR;
     }
 
-    if ((volume < -36) || (volume > 54))
+    if ((volume < -60) || (volume > 30))
     {
         return HAL_ERROR;
     }
 
-    rough_vol = (volume + 36) / 6;
-    fine_vol  = ((volume + 36) % 6) << 1;
+    rough_vol = (volume + 60) / 6;
+    fine_vol  = ((volume + 60) % 6) << 1;
 
     if (channel == 0)
     {

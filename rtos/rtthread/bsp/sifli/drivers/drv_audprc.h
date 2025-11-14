@@ -33,6 +33,7 @@ int eq_get_default_volumex2();
 void bf0_audprc_eq_enable_offline(uint8_t is_enable);
 void bf0_audprc_stop();
 void mic_gain_decrease(int8_t db);
+int Set_mic_gain(int8_t value);
 
 #endif
 
