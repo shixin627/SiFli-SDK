@@ -2,6 +2,7 @@
 源码路径：example/hal/pwm
 ## 支持的平台
 例程可以运行在以下开发板.
+* sf32lb52-nano系列
 * sf32lb52-lcd_n16r8
 * sf32lb58-lcd_n16r64n4
 ## 概述
@@ -44,8 +45,9 @@ msh />
 物理位置指管脚在板子上实际引出的排针位置
 |版型名称  | PWM       | CHX     |   引脚(物理位置)  |
 |--------|------------|--------|---------|
-|525    | GPTIM2     | CH1    |    PA09 （37）     |
-|587  | GPTIM1     | CH2  |      PA51    （CONN2 28）    |
+|sf32lb52-nano_n16r16    | GPTIM2     | CH1    |    PA09 （在板子背面需要手动引出）|
+|sf32lb52-lcd_n16r8  | GPTIM2     | CH1    |    PA09 （37）     |
+|sf32lb58-lcd_n16r64n4  | GPTIM1     | CH2  |      PA51    （CONN2 28）    |
 ```c
     #define PAD_PA_09 PAD_PA09 /* 52系列默认PA09输出(物理位置37) */
     HAL_PIN_Set(PAD_PA_09, cfg->pad_func, PIN_PULLUP, 1);/*PA09配置为GPTIM2_CH1功能*/
@@ -105,8 +107,9 @@ atimer pwm demo end!
 物理位置指管脚对应在板子上的引脚排针位置
 |版型名称  | pwm       | 输出Channel1     | 输出Channel2   |    
 |--------|------------|---------------|-------------------|
-|525    | ATIM1     | PAD_PA00（物理位置32）,PAD_PA02（物理位置36）   | PAD_PA03（物理位置40）,PAD_PA03（物理位置38）    |   
-|587  | ATIM2     | PAD_PA84（conn2 21）,PAD_PA86（conn2 24） |PAD_PA90（conn2 27）,PAD_PA91（conn2 26）  |
+|sf32lb52-nano_n16r16    | ATIM1     | PAD_PA00,PAD_PA02(物理位置在板子背面需要手动飞线引出)   | PAD_PA03,PAD_PA032(物理位置在板子背面需要手动飞线引出)    |  
+|sf32lb52-lcd_n16r8    | ATIM1     | PAD_PA00（物理位置32）,PAD_PA02（物理位置36）   | PAD_PA03（物理位置40）,PAD_PA03（物理位置38）    |   
+|sf32lb58-lcd_n16r64n4  | ATIM2     | PAD_PA84（conn2 21）,PAD_PA86（conn2 24） |PAD_PA90（conn2 27）,PAD_PA91（conn2 26）  |
 * 52系列：PA00,PA02输出Channel1互补PWM波形,PA03,PA04输出Channel2互补PWM波形:
 * 587系列：PA84,PA86输出Channel1互补PWM波形,PA90,PA91输出Channel2互补PWM波形:
 ![alt text](assets/atimer_ch1_ch2_pwm-1.jpg)
