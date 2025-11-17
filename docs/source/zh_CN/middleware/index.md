@@ -22,4 +22,5 @@ security.md
 multimedia.md
 audio_server.md
 partition_table.md
+battery_calculator.md
 ```

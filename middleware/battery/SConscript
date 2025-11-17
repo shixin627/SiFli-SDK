@@ -1,0 +1,14 @@
+import os
+from building import *
+import rtconfig
+
+src = []
+inc = []
+
+cwd = GetCurrentDir()
+inc    += [cwd]
+src  += Glob('./*.c')
+
+group = DefineGroup('battery_calculator', src, depend = ['USING_BATTERY_CALCULATOR'], CPPPATH = inc)
+
+Return('group')

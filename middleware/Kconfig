@@ -392,6 +392,15 @@ menu "Sifli middleware"
         depends on RT_USING_MODULE
         depends on RT_USING_XIP_MODULE
 
+    config USING_BATTERY_CALCULATOR
+        bool "Enable Battery Calculator"
+        default n
+        if USING_BATTERY_CALCULATOR
+            config CHARGE_PIN
+                int "Charge Detect Pin"
+                default 44
+        endif 
+
     menuconfig USING_CPU_USAGE_PROFILER
         bool "Enable CPU Usage Profiler"
         default n   

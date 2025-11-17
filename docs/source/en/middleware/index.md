@@ -21,4 +21,5 @@ gauss.md
 security.md
 multimedia.md
 partition_table.md
+battery_calculator.md
 ```
