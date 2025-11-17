@@ -62,14 +62,16 @@ struct bf0_rgbled
     char *name;                                   /*!< Device name */
     rt_uint16_t max_led_count;                    /*!< Maximum supported LED count */
     uint16_t rgb_buffer[RGB_TOTAL_BUFFER_LEN];    /*!< Static RGB buffer */
+    rt_mutex_t mutex;                             /*!< Mutex for thread-safe operations */
 };
 
 #ifdef RGB_USING_SK6812MINI_HS_DEV_NAME
 static struct bf0_rgbled bf0_rgbled_obj = {
     .name = RGBLED_NAME, 
     .max_led_count = BSP_RGB_LED_COUNT, 
-    .rgb_buffer = {0},                            // Static buffer initialized to 0
-    .pwm_device = RT_NULL
+    .rgb_buffer = {0},
+    .pwm_device = RT_NULL,
+    .mutex = RT_NULL
 };
 #endif
 
@@ -123,60 +125,80 @@ static void create_color_array(struct bf0_rgbled *rgb_obj, rt_uint32_t *colors, 
 }
 
 /**
-* @brief  Send RGB data to LEDs
-* @param[in]  rgb_obj: RGB LED object handle.
-* @param[in]  led_count: Number of LEDs to update.
-* @retval RT_EOK if success, otherwise -RT_ERROR
-*/
+ * @brief Send RGB data to LEDs
+ * @param rgb_obj RGB LED object handle
+ * @param led_count Number of LEDs to update
+ * @retval RT_EOK if success, otherwise error code
+ */
 static rt_err_t drv_rgbled_send_data(struct bf0_rgbled *rgb_obj, rt_uint16_t led_count)
 {
     struct rt_pwm_configuration config;
     rt_err_t result;
     
-    rt_memset((void *)&config, 0, sizeof(config));
-    
-#ifdef BSP_USING_RGBLED_CH
-    config.channel = BSP_USING_RGBLED_CH;
-#else
+#ifndef BSP_USING_RGBLED_CH
     LOG_E("NO CONFIG BSP_USING_RGBLED_CH");
     return -RT_ERROR;
 #endif
 
+    rt_memset((void *)&config, 0, sizeof(config));
+    config.channel = BSP_USING_RGBLED_CH;
+    rt_device_control((struct rt_device *)rgb_obj->pwm_device, PWM_CMD_DISABLE, (void *)&config);
+    rt_thread_mdelay(1);
+
+    rt_memset((void *)&config, 0, sizeof(config));
+    config.channel = BSP_USING_RGBLED_CH;
     config.period = pwm_period;
     config.pulse = pulse_period;
     config.dma_type = 0;
     config.dma_data = (rt_uint16_t *)rgb_obj->rgb_buffer;
     config.data_len = RGB_REST_LEN + (led_count * RGB_COLOR_BITS_PER_LED) + RGB_STOP_LEN;
 
-    // Set PWM configuration with error checking
     result = rt_device_control((struct rt_device *)rgb_obj->pwm_device, PWM_CMD_SET, (void *)&config);
     if (result != RT_EOK)
     {
         LOG_E("PWM_CMD_SET failed with error %d", result);
         return result;
     }
-    
-    // Enable PWM output with error checking
+
     result = rt_device_control((struct rt_device *)rgb_obj->pwm_device, PWM_CMD_ENABLE, (void *)&config);
     if (result != RT_EOK)
     {
         LOG_E("PWM_CMD_ENABLE failed with error %d", result);
         return result;
     }
+
+    uint32_t transfer_time_ms = (config.data_len * 2) / 1000 + 2;
+    rt_thread_mdelay(transfer_time_ms);
+
+    rt_memset((void *)&config, 0, sizeof(config));
+    config.channel = BSP_USING_RGBLED_CH;
+    rt_device_control((struct rt_device *)rgb_obj->pwm_device, PWM_CMD_DISABLE, (void *)&config);
     
     return RT_EOK;
 }
 
 /**
-* @brief  rgbled controls.
-* @param[in]  device: rgb device handle.
-* @param[in]  cmd: control commands.
-* @param[in]  arg: control command arguments.
-* @retval RT_EOK if success, otherwise -RT_ERROR
-*/
+ * @brief RGB LED device control function
+ * @param device RGB device handle
+ * @param cmd Control command
+ * @param arg Command arguments
+ * @retval RT_EOK if success, otherwise error code
+ */
 static rt_err_t drv_rgbled_control(rt_device_t device, int cmd, void *arg)
 {
     struct bf0_rgbled *rgb_obj = (struct bf0_rgbled *) device->user_data;
+    rt_err_t result = RT_EOK;
+
+    // Acquire mutex for thread-safe operations
+    if (rgb_obj->mutex)
+    {
+        result = rt_mutex_take(rgb_obj->mutex, RT_WAITING_FOREVER);
+        if (result != RT_EOK)
+        {
+            LOG_E("Failed to acquire RGB mutex");
+            return result;
+        }
+    }
 
     switch (cmd)
     {
@@ -187,64 +209,91 @@ static rt_err_t drv_rgbled_control(rt_device_t device, int cmd, void *arg)
             if (!single_config)
             {
                 LOG_E("Invalid single color configuration");
-                return -RT_ERROR;
+                result = -RT_ERROR;
+                break;
             }
             
             rt_uint32_t color = single_config->color_rgb;
-            
             create_color_array(rgb_obj, &color, 1);
-            return drv_rgbled_send_data(rgb_obj, 1);
+            result = drv_rgbled_send_data(rgb_obj, 1);
         }
+        break;
+        
     case RGB_CMD_SET_MULTI_COLOR:
         {
             struct rt_rgbled_multi_configuration *multi_config = (struct rt_rgbled_multi_configuration *)arg;
             if (!multi_config || !multi_config->color_array || multi_config->led_count == 0)
             {
                 LOG_E("Invalid multi-color configuration");
-                return -RT_ERROR;
+                result = -RT_ERROR;
+                break;
             }
             
             create_color_array(rgb_obj, multi_config->color_array, multi_config->led_count);
-            return drv_rgbled_send_data(rgb_obj, multi_config->led_count);
+            result = drv_rgbled_send_data(rgb_obj, multi_config->led_count);
         }
+        break;
+        
     case RGB_CMD_GET_CAPABILITY:
         {
             rt_uint32_t *led_count = (rt_uint32_t *)arg;
             if (!led_count)
             {
                 LOG_E("Invalid capability query parameter");
-                return -RT_ERROR;
+                result = -RT_ERROR;
+                break;
             }
             
-            // Return maximum LED count
             *led_count = BSP_RGB_LED_COUNT;
-            return RT_EOK;
+            result = RT_EOK;
         }
+        break;
+        
     default:
         LOG_W("Unknown command: %d", cmd);
-        return -RT_EINVAL;
+        result = -RT_EINVAL;
+        break;
     }
+
+    // Release mutex
+    if (rgb_obj->mutex)
+    {
+        rt_mutex_release(rgb_obj->mutex);
+    }
+
+    return result;
 }
 
 /**
-* @brief RGBLED device driver initialization.
-* This is entry function of RGBLED device driver.
-* @retval RT_EOK if success, otherwise -RT_ERROR
-*/
+ * @brief RGB LED device driver initialization
+ * @retval RT_EOK if success, otherwise error code
+ */
 static int bf0_rgbled_init(void)
 {
     int result = RT_EOK;
+
+    // Create mutex for thread-safe operations
+    bf0_rgbled_obj.mutex = rt_mutex_create("rgb_drv", RT_IPC_FLAG_PRIO);
+    if (!bf0_rgbled_obj.mutex)
+    {
+        LOG_E("Failed to create RGB mutex");
+        return -RT_ENOMEM;
+    }
 
 #ifdef RGB_USING_SK6812MINI_HS_PWM_DEV_NAME
     // Find PWM device
     bf0_rgbled_obj.pwm_device = (struct rt_device_pwm *)rt_device_find(RGB_USING_SK6812MINI_HS_PWM_DEV_NAME);
     if (!bf0_rgbled_obj.pwm_device)
     {
-        LOG_E("find pwm device failed");
+        LOG_E("Find pwm device failed");
+        rt_mutex_delete(bf0_rgbled_obj.mutex);
+        bf0_rgbled_obj.mutex = RT_NULL;
         return -RT_ERROR;
     }
 #else
     LOG_E("NO CONFIG RGB_USING_SK6812MINI_HS_PWM_DEV_NAME");
+    rt_mutex_delete(bf0_rgbled_obj.mutex);
+    bf0_rgbled_obj.mutex = RT_NULL;
     return -RT_ERROR;
 #endif
 
@@ -252,23 +301,41 @@ static int bf0_rgbled_init(void)
     bf0_rgbled_obj.device.control = (rt_err_t (*)(rt_device_t, int, void *))drv_rgbled_control;
     bf0_rgbled_obj.device.user_data = &bf0_rgbled_obj;
 
-    if (rt_device_register(&bf0_rgbled_obj.device, bf0_rgbled_obj.name, RT_DEVICE_FLAG_RDWR))
+    result = rt_device_register(&bf0_rgbled_obj.device, bf0_rgbled_obj.name, RT_DEVICE_FLAG_RDWR);
+    if (result != RT_EOK)
     {
         LOG_E("%s register failed", RGBLED_NAME);
-        result = -RT_ERROR;
-    }
-    else
-    {
-        LOG_I("%s register success, supporting %d LEDs", RGBLED_NAME, BSP_RGB_LED_COUNT);
+        rt_mutex_delete(bf0_rgbled_obj.mutex);
+        bf0_rgbled_obj.mutex = RT_NULL;
+        return -RT_ERROR;
     }
 
-    return result;
+    LOG_I("%s register success, supporting %d LEDs", RGBLED_NAME, BSP_RGB_LED_COUNT);
+    return RT_EOK;
 }
 INIT_COMPONENT_EXPORT(bf0_rgbled_init);
 
-// @} drv_rgbled
-// @} bsp_driver
+/**
+ * @brief RGB LED device driver deinitialization
+ * @retval RT_EOK if success, otherwise error code
+ */
+static int bf0_rgbled_deinit(void)
+{
+    // Unregister device
+    rt_device_unregister(&bf0_rgbled_obj.device);
+    
+    // Delete mutex
+    if (bf0_rgbled_obj.mutex)
+    {
+        rt_mutex_delete(bf0_rgbled_obj.mutex);
+        bf0_rgbled_obj.mutex = RT_NULL;
+    }
+    
+    LOG_I("%s deinitialized", RGBLED_NAME);
+    return RT_EOK;
+}
 
 #endif /* RGB_SK6812MINI_HS_ENABLE */
 
-/// @} file
+/** @} drv_rgbled */
+/** @} bsp_driver */
