@@ -153,10 +153,12 @@ void musb_reset_post(void)
 
 void USBC_IRQHandler(void)
 {
+    rt_interrupt_enter();
 #ifdef PKG_CHERRYUSB_DEVICE
     USBD_IRQHandler(0);
 #endif
 #ifdef PKG_CHERRYUSB_HOST
     USBH_IRQHandler(0);
 #endif
+    rt_interrupt_leave();
 }
