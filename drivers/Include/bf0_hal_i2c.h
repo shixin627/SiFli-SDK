@@ -395,9 +395,10 @@ typedef  void (*pI2C_AddrCallbackTypeDef)(I2C_HandleTypeDef *hi2c, uint8_t Trans
 #define I2C_FLAG_TXE                    I2C_SR_TE           /*!< Transmit data register empty*/
 #define I2C_FLAG_TXIS                   I2C_SR_TE           /*!< Transmit interrupt status */
 #define I2C_FLAG_RXNE                   I2C_SR_RF
-//#define I2C_FLAG_ADDR                   I2C_ISR_ADDR
+#define I2C_FLAG_ADDR                   I2C_SR_SAD
 #define I2C_FLAG_AF                     I2C_SR_BED          /*!< Acknowledge failure received flag */
 #define I2C_FLAG_STOPF                  I2C_SR_MSD          /*!< STOP detection flag */
+#define I2C_FLAG_SLAVE_STOPF            I2C_SR_SSD          /*!< Slave STOP detection flag */
 #define I2C_FLAG_TC                     I2C_SR_TE           /*!< Transfer complete (master mode) */
 #define I2C_FLAG_TCR                    I2C_SR_TE           /*!< Transfer complete reload */
 //#define I2C_FLAG_BERR                   I2C_ISR_BERR
