@@ -15,11 +15,11 @@
 #define ROTATE_IMAGE_HEIGHT 265
 //mask
 #define MASK_ANGLE 10800
-// 分配显存空间
+// 分配显存空间到psram
 L2_NON_RET_BSS_SECT_BEGIN(epic_buffers)
-ALIGN(64) static uint8_t buffer0[BUFFER_SIZE];
-ALIGN(64) static uint8_t buffer1[BUFFER_SIZE];
-ALIGN(64) static uint8_t buffer2[BUFFER_SIZE];
+L2_NON_RET_BSS_SECT(epic_buffers, ALIGN(64) static uint8_t buffer0[BUFFER_SIZE]);
+L2_NON_RET_BSS_SECT(epic_buffers, ALIGN(64) static uint8_t buffer1[BUFFER_SIZE]);
+L2_NON_RET_BSS_SECT(epic_buffers, ALIGN(64) static uint8_t buffer2[BUFFER_SIZE]);
 L2_NON_RET_BSS_SECT_END
 
 
@@ -181,7 +181,6 @@ void scale_down_demo(int multiple, int width, int height)
     // 创建输入图层配置
     EPIC_LayerConfigTypeDef input_layers[1];
     HAL_EPIC_LayerConfigInit(&input_layers[0]);
-
     // 设置EZIP数据源
     input_layers[0].data = ezip_img_data;
     input_layers[0].color_mode = EPIC_INPUT_EZIP;
