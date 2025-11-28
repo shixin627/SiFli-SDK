@@ -16,9 +16,10 @@ extern "C" {
 #define I2C1_CORE   CORE_ID_HCPU
 #define I2C2_CORE   CORE_ID_HCPU
 #define I2C3_CORE   CORE_ID_HCPU
-#define I2C4_CORE   CORE_ID_LCPU
+#define I2C4_CORE   CORE_ID_HCPU
 #define I2C5_CORE   CORE_ID_LCPU
 #define I2C6_CORE   CORE_ID_LCPU
+#define I2C7_CORE   CORE_ID_LCPU
 
 #if defined(BSP_I2C1_USING_DMA)
 #ifndef I2C1_TRX_DMA_CONFIG
@@ -160,6 +161,18 @@ extern "C" {
         .Instance = I2C6,                 \
         .irq_type = I2C6_IRQn,            \
         .core     = I2C6_CORE,            \
+    }
+#endif
+#endif
+
+#if defined(BSP_USING_I2C7)
+#ifndef BF0_I2C7_CFG
+#define BF0_I2C7_CFG                      \
+    {                                     \
+        .device_name = "i2c7",            \
+        .Instance = I2C7,                 \
+        .irq_type = I2C7_IRQn,            \
+        .core     = I2C7_CORE,            \
     }
 #endif
 #endif
