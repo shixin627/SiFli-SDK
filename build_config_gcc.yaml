@@ -100,7 +100,20 @@ after_55x_boards: &after_55x_boards
 525_devkit_lcd_boards: &525_devkit_lcd_boards
   - sf32lb52-lcd_n16r8 
 
+devkit-boards: &devkit-boards
+  - sf32lb52-lcd_n16r8 
+  - sf32lb52-lcd_52d
+  - sf32lb52-lcd_a128r16
+  - sf32lb52-nano_a128r16
+  - sf32lb52-nano_n16r16
+  - sf32lb52-core_n16r16
+  - sf32lb56-lcd_a128r12n1
+  - sf32lb56-lcd_n16r12n1
+  - sf32lb58-lcd_n16r32n1_dsi
+  - sf32lb58-lcd_a128r32n1_dsi
 
+
+# in alphabetical order
 common_projects:
   - path: example/ble/ams/project
     boards: *default_boards
@@ -160,22 +173,22 @@ common_projects:
     boards: *bt_boards
 
   - path: example/cherryusb/device/audio_v1_mic/project
-    boards: *bt_boards
+    boards: *devkit-boards
 
   - path: example/cherryusb/device/audio_v1_mic_speaker/project
-    boards: *bt_boards
+    boards: *devkit-boards
 
   - path: example/cherryusb/device/cdc_acm/project
-    boards: *bt_boards
+    boards: *devkit-boards
 
   - path: example/cherryusb/device/cdc_acm_uart/project
-    boards: *bt_boards
+    boards: *devkit-boards
 
   - path: example/cherryusb/device/cdc_hid_msc/project
-    boards: *bt_boards
+    boards: *devkit-boards
 
   - path: example/cherryusb/device/hid_mouse/project
-    boards: *bt_boards
+    boards: *devkit-boards
 
   - path: example/cherryusb/device/msc/emmc_disk/project
     boards: 
@@ -186,20 +199,20 @@ common_projects:
       - sf32lb56-lcd_n16r12n1
 
   - path: example/cherryusb/device/msc/ram_disk/project
-    boards: *bt_boards
+    boards: *devkit-boards
 
   - path: example/cherryusb/device/msc/ram_disk_dual/project
-    boards: *bt_boards
+    boards: *devkit-boards
 
   - path: example/cherryusb/device/msc/sdcard_disk/project
     boards:
       - sf32lb52-lcd_n16r8
 
   - path: example/cherryusb/host/cdc_acm_host/project
-    boards: *bt_boards
+    boards: *devkit-boards
 
   - path: example/cherryusb/host/hid/project
-    boards: *bt_boards
+    boards: *devkit-boards
 
   - path: example/get-started/blink/rtt/project
     boards: *default_boards
@@ -232,7 +245,7 @@ common_projects:
     boards:
       - sf32lb56-lcd_n16r12n1
 
-  - path: example/hal/fft/project
+  - path: example/hal/fft/simple/project
     boards:
       - sf32lb56-lcd_n16r12n1
 
