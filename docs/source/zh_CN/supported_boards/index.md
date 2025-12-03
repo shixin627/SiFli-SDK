@@ -25,6 +25,8 @@
 :scale: 70%
 ```
 
+如果您使用的板子不在支持列表中，请参考[](../app_development/create_board.md)创建自定义的板子。
+
 <!-- 
 | left | center | right |
 | :--- | :----: | ----: |

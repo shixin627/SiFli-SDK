@@ -26,6 +26,8 @@ Some typical examples:
 :scale: 70%
 ```
 
+Please refer to [](../app_development/create_board.md) to create a custom board if your board is not listed here.
+
 <!-- 
 | left | center | right |
 | :--- | :----: | ----: |
@@ -92,7 +94,7 @@ Abbreviation |  Model                    |    Board Directory   |
 6500-HDK     | EH-SF32LB52X(6500)        |   eh-lb6500         | 
 NANO-N4      | SF32LB52-NANO_N4          |   sf32lb52-nano_n4 | 
 NANO-N16R16  | SF32LB52-NANO_N16R16      |   sf32lb52-nano_n16r16 | 
-»ÆÉ½ÅÉ(LCHSPI-ULP)     | SF32LB52-LCHSPI-ULP         |   sf32lb52-lchspi-ulp    |
+é»„å±±æ´¾(LCHSPI-ULP)     | SF32LB52-LCHSPI-ULP         |   sf32lb52-lchspi-ulp    |
 52-LCD_N16R8 | SF32LB52-DevKit-LCD_N16R8 |   [sf32lb52-lcd_n16r8](boards/sf32lb52-lcd_n16r8/doc/index.md)    |
 52-LCD_52D | SF32LB52-DevKit-LCD_52D |   [sf32lb52-lcd_52d](boards/sf32lb52-lcd_52d/doc/index.md)    |
 

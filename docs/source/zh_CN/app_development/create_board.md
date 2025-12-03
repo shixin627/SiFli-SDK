@@ -1,5 +1,6 @@
 # 创建板子
-创建新板子最快捷的方法是基于一块硬件配置相近的板子修改，下面以板子sf32lb52-lcd_n16r8（即sf32lb52-devkit-lcd）为例，演示如何创建一块板子，新板子与sf32lb52-lcd_n16r8同样使用了SF32LB525芯片，外置了NOR Flash，因此选择sf32lb52-lcd_n16r8会是一个比较好的起点。
+创建新板子最快捷的方法是基于一块硬件配置相近的板子修改（SDK支持的板子请参见[](../supported_boards/index.md)），下面以板子sf32lb52-lcd_n16r8（即sf32lb52-devkit-lcd）为例，演示如何创建一块板子，新板子与sf32lb52-lcd_n16r8同样使用了SF32LB525芯片，外置了NOR Flash，因此选择sf32lb52-lcd_n16r8会是一个比较好的起点。
+）。
 
 操作步骤如下：
 1. 在`boards`目录下创建文件夹`testboard_525`，将`sf32lb52-lcd_n16r8`下的文件拷贝到`testboard_525`下
@@ -153,4 +154,4 @@
     编译时会由ptab.json生成`ptab.h`到build目录下，`ptab.h`中定义了一组以`_START_ADDR`、`_OFFSET`、`_SIZE`为后缀的宏，代码中可以使用这些宏获取分区信息。
     分区表的语法参考[](/middleware/partition_table.md)。
 
-更多信息可参考[](/app_note/common_project.md)
+更详细的板子使用方法请参考[](build_and_configuration.md)

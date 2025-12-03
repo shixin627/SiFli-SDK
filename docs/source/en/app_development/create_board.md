@@ -1,7 +1,7 @@
 
 # Creating a Board
 
-The fastest way to create a new board is to modify an existing board with similar hardware configuration. In this example, we will create a new board based on the `sf32lb52-lcd_n16r8` (i.e., `sf32lb52-devkit-lcd`) board. The new board uses the SF32LB525 chip and has an external NOR Flash, so starting with the `sf32lb52-lcd_n16r8` board is a good choice.
+The fastest way to create a new board is to modify an existing board with similar hardware configuration (refer to [](../supported_boards/index.md) to find supported boards). In this example, we will create a new board based on the `sf32lb52-lcd_n16r8` (i.e., `sf32lb52-devkit-lcd`) board. The new board uses the SF32LB525 chip and has an external NOR Flash, so starting with the `sf32lb52-lcd_n16r8` board is a good choice.
 
 The steps are as follows:
 
@@ -159,4 +159,4 @@ The board configuration includes several aspects:
 
 2. Memory partition table (`ptab.json`): This file describes the memory partitioning information, including NOR Flash, NAND Flash, PSRAM, internal SRAM, SD cards, etc. During compilation, `ptab.json` generates a `ptab.h` file in the build directory, which defines macros like `_START_ADDR`, `_OFFSET`, and `_SIZE` for each partition. These macros can be used in the code to access partition information. For the partition table syntax, please refer to [](/middleware/partition_table.md).
 
-For more information, refer to [](../app_note/common_project.md).
+For more details about how to use board please refer to [](build_and_configuration.md).
