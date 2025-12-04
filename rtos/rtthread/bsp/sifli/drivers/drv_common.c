@@ -672,11 +672,27 @@ RT_WEAK void rt_hw_board_init()
     rt_kprintf("Serial:%x,Chip:%x,Package:%x,Rev:%x  Reason:%08x\r\n",
                __HAL_SYSCFG_GET_SID(), __HAL_SYSCFG_GET_CID(), __HAL_SYSCFG_GET_PID(), __HAL_SYSCFG_GET_REVID(), HAL_PMU_GET_WSR());
     __HAL_SYSCFG_CHECK_REVID();
+#ifdef SF32LB58X
+    /* check whether LCPU config matches chip revision id */
+#ifdef LCPU_CONFIG_V2
+    if (__HAL_SYSCFG_GET_REVID() < 2)
+    {
+        rt_kprintf("Wrong board is used!! It's SF32LB58 A1 chip revision, please use board with A1 chip revision!\n");
+        RT_ASSERT(0);
+    }
+#else
+    if (__HAL_SYSCFG_GET_REVID() >= 2)
+    {
+        rt_kprintf("Wrong board is used!! It's SF32LB58 A2 chip revision, please don't use board with A1 chip revision!\n");
+        RT_ASSERT(0);
+    }
+#endif /* LCPU_CONFIG_V2 */
+#endif /* SF32LB58X */
 
 #ifdef RT_USING_PM
     rt_kprintf("Serial PowerOnMOde:%d rtc_record:%08x\n", SystemPowerOnModeGet(), HAL_Get_backup(RTC_BACKUP_MODULE_RECORD));
 #endif
-#endif
+#endif /* SOC_BF0_HCPU */
 
     /* Initial flash before components init to make sure otp prepared */
 //#ifdef BSP_USING_SPI_FLASH
