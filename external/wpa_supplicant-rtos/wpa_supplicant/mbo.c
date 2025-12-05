@@ -18,8 +18,8 @@
 #include "common/gas.h"
 #include "rsn_supp/wpa.h"
 #include "config.h"
-#include "driver_i.h"
 #include "wpa_supplicant_i.h"
+#include "driver_i.h"
 #include "bss.h"
 #include "scan.h"
 
