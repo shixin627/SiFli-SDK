@@ -2,14 +2,13 @@
 源码路径：example\rt_device\spi
 ## 支持平台
 * sf32lb52-lcd_n16r8
-* sf32lb58-lcd_n16r64n4
 
 ## 概述
 * 在RT-Thread操作系统下，通过SPI接口发送CMD指令，读取TF卡id演示
 
 ## 例程的使用
 ### 编译和烧写
-#### 以sf32lb52-lcd_52d为例
+#### 以sf32lb52-lcd_n16r8为例
 * 此例程中用到了spi1，在采用RT-Thread操作系统时，spi1外设会虚拟成了一个rt_device来进行读写操作，此时需要确认所在路径下`rtconfig.h`文件中是否包含了下面2个宏：
 ```c
 #define BSP_USING_SPI 1
@@ -19,7 +18,7 @@
 
 如果发现上面的宏缺失或者未打开，可通过菜单`menuconfig` 中打开，具体操作如下
 ```
-menuconfig --board=sf32lb52-lcd_52d
+menuconfig --board=sf32lb52-lcd_n16r8
 ```
 如下图操作,选择SPI1使能（需要用到DMA，选择对应的DMA选项），保存并退出menuconfig，查看`rtconfig.h`宏是否生成
 ![alt text](assets/enable.png)
@@ -27,11 +26,11 @@ menuconfig --board=sf32lb52-lcd_52d
 
 * 切换到工程历程project目录运行scons命令进行代码编译：
 ```
-scons --board=sf32lb52-lcd_52d -j8
+scons --board=sf32lb52-lcd_n16r8 -j8
 ```
 * 切换到例程`project/build_xx`目录，运行`uart_download.bat`，按提示选择端口即可进行下载：
 
->`build_sf32lb52-lcd_52d_hcpu\uart_download.bat`//下载代码
+>`build_sf32lb52-lcd_n16r8_hcpu\uart_download.bat`//下载代码
 
 >`Uart Download`
 
@@ -51,14 +50,6 @@ scons --board=sf32lb52-lcd_52d -j8
 |              | PA_28    | clk           | SPI_CLK       | 23                  |
 +              +----------+---------------+---------------+---------------------+
 |              | PA_29    | cs            | SPI_CS        | 24                  |
-+--------------+----------+---------------+---------------+---------------------+
-| sf32lb58-lcd | PA_21    | dio           | SPI_MOSI      | 8                   |
-+              +----------+---------------+---------------+---------------------+
-|              | PA_20    | di            | SPI_MISO      | 10                  |
-+              +----------+---------------+---------------+---------------------+
-|              | PA_28    | clk           | SPI_CLK       | 5                   |
-+              +----------+---------------+---------------+---------------------+
-|              | PA_29    | cs            | SPI_CS        | 3                   |
 +--------------+----------+---------------+---------------+---------------------+
 ```
 * 注意功能引脚跟设备引脚并不是一一对应的关系，设备引脚请参考原理图

@@ -2,14 +2,13 @@
 Source code path: example\rt_device\spi
 ## Supported Platforms
 * sf32lb52-lcd_n16r8
-* sf32lb58-lcd_n16r64n4
 
 ## Overview
 * Under RT-Thread operating system, demonstrate reading TF card ID by sending CMD instructions through SPI interface
 
 ## Example Usage
 ### Compilation and Programming
-#### Using sf32lb52-lcd_52d as Example
+#### Using sf32lb52-lcd_n16r8 as Example
 * This example uses spi1. When using RT-Thread operating system, spi1 peripheral will be virtualized as an rt_device for read and write operations. At this time, you need to confirm whether the `rtconfig.h` file in the path contains the following 2 macros:
 ```c
 #define BSP_USING_SPI 1
@@ -19,7 +18,7 @@ Only when the above two macros are included, the `rt_hw_spi_device_attach` funct
 
 If the above macros are missing or not enabled, they can be enabled through the `menuconfig` menu with the following operations:
 ```
-menuconfig --board=sf32lb52-lcd_52d
+menuconfig --board=sf32lb52-lcd_n16r8
 ```
 As shown in the figure below, select SPI1 enable (DMA is needed, select corresponding DMA option), save and exit menuconfig, check if `rtconfig.h` macro is generated
 ![alt text](assets/enable.png)
@@ -27,11 +26,11 @@ As shown in the figure below, select SPI1 enable (DMA is needed, select correspo
 
 * Switch to project example directory and run scons command for code compilation:
 ```
-scons --board=sf32lb52-lcd_52d -j8
+scons --board=sf32lb52-lcd_n16r8 -j8
 ```
 * Switch to example `project/build_xx` directory and run `uart_download.bat`, select port as prompted to download:
 
->`build_sf32lb52-lcd_52d_hcpu\uart_download.bat`//Download code
+>`build_sf32lb52-lcd_n16r8_hcpu\uart_download.bat`//Download code
 
 >`Uart Download`
 
@@ -51,14 +50,6 @@ For detailed steps on compilation and downloading, please refer to [](/quickstar
 |                   | PA_28        | clk              | SPI_CLK           | 23                   |
 +                   +--------------+------------------+-------------------+----------------------+
 |                   | PA_29        | cs               | SPI_CS            | 24                   |
-+-------------------+--------------+------------------+-------------------+----------------------+
-| sf32lb58-lcd      | PA_21        | dio              | SPI_MOSI          | 8                    |
-+                   +--------------+------------------+-------------------+----------------------+
-|                   | PA_20        | di               | SPI_MISO          | 10                   |
-+                   +--------------+------------------+-------------------+----------------------+
-|                   | PA_28        | clk              | SPI_CLK           | 5                    |
-+                   +--------------+------------------+-------------------+----------------------+
-|                   | PA_29        | cs               | SPI_CS            | 3                    |
 +-------------------+--------------+------------------+-------------------+----------------------+
 
 ```
