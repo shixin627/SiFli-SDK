@@ -1847,6 +1847,8 @@ static int audio_device_speaker_close(void *user_data)
             rt_device_control(my->i2s, AUDIO_CTL_STOP, &stream);
             stream = AUDIO_STREAM_RECORD;
             rt_device_control(my->i2s, AUDIO_CTL_STOP, &stream);
+            rt_device_close(my->i2s);
+            my->i2s = NULL;
         }
 
         if (my->audcodec_dev)
