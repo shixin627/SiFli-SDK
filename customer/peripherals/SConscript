@@ -14,5 +14,11 @@ if GetDepend(['BSP_USING_RTTHREAD']):
                 objs = objs + SConscript(os.path.join(d, 'SConscript'))
 else:
     objs = objs + SConscript(os.path.join('pmic_controller', 'SConscript'))
-    
+
+board_name = GetBoardName()
+if board_name:
+    if BOARD_SEARCH_PATH is not None and os.path.isfile(os.path.join(BOARD_SEARCH_PATH, '../peripherals/SConscript')):
+        # Include external peripherals driver from `peripherals` folder which is in the same folder as `BOARD_SEARCH_PATH`
+        objs = objs + SConscript(os.path.join(BOARD_SEARCH_PATH, '../peripherals/SConscript'), variant_dir='ext_peri', duplicate=0)
+            
 Return('objs')

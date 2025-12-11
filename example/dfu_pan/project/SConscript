@@ -10,11 +10,6 @@ list = os.listdir(cwd)
 objs.extend(SConscript(os.path.join(cwd, '../src/SConscript'), variant_dir="dfu_pan", duplicate=0))
 objs.extend(SConscript(os.path.join(cwd, '../assets/SConscript'), variant_dir="ota_assets", duplicate=0))
 
-# Add external peripheral driver
-# Search path: Search for the peripheral drivers in the "peripherals" folder located at the same level as BOARD_SEARCH_PATH. 
-if BOARD_SEARCH_PATH is not None and os.path.isfile(os.path.join(BOARD_SEARCH_PATH, '../peripherals/SConscript')):
-    objs = objs + SConscript(os.path.join(BOARD_SEARCH_PATH, '../peripherals/SConscript'), variant_dir='ext_peri', duplicate=0)
-
 # Add SDK
 Import('SIFLI_SDK')
 objs.extend(SConscript(os.path.join(SIFLI_SDK, 'SConscript'), variant_dir="sifli_sdk", duplicate=0))
