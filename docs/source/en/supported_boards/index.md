@@ -108,6 +108,8 @@ boards/ec-lb587_a2/doc/index
 boards/sf32lb52-core_e8r16/doc/index
 boards/sf32lb52-core_n16r16/doc/index
 boards/sf32lb52-lcd_52d/doc/index
+boards/sf32lb52-nano_n4/doc/index
+boards/sf32lb52-nano_n16r16/doc/index
 boards/sf32lb52-lcd_n16r8/doc/index.
 boards/sf32lb52-lcd_n16r8_jdi/doc/index
 boards/sf32lb56-lcd_a128r12n1/doc/index
