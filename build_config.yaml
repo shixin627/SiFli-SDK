@@ -499,8 +499,8 @@ common_projects:
       - eh-lb525
       - sf32lb52-lcd_a128r16
       - sf32lb52-nano_a128r16
-      - sf32lb56-lcd_a128r12n1_qspi  
-      - sf32lb58-lcd_a128r32n1
+      - sf32lb56-lcd_a128r12n1  
+      - sf32lb58-lcd_a128r32n1_qspi
 
 
   - path: example/storage/flashdb/project/nor
@@ -508,8 +508,8 @@ common_projects:
       - eh-lb523
       - sf32lb52-lcd_n16r8 
       - sf32lb52-nano_n16r16
-      - sf32lb56-lcd_n16r12n1_qspi  
-      - sf32lb58-lcd_n16r32n1
+      - sf32lb56-lcd_n16r12n1
+      - sf32lb58-lcd_n16r32n1_qspi
 
 
   - path: example/uart/project
