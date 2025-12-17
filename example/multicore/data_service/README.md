@@ -54,6 +54,15 @@ scons --board=<board_name> -j8
 - 在HCPU控制台发送`request`命令发送请求消息
 - 在LCPU控制台发送`trigger`或`trigger2`命令触发通知消息
 
+HCPU和LCPU的log如下：
+![alt text](assets/image1.png)
+HCPU发送request命令
+![alt text](assets/image2.png)
+LCPU发送trigger命令
+![alt text](assets/image3.png)
+LCPU发送trigger2命令
+![alt text](assets/image4.png)
+
 ## 异常诊断
 暂无特定异常诊断信息。如遇问题，请参考SiFli-SDK官方文档或提交issue。
 
