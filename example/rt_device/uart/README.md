@@ -42,12 +42,19 @@ please input the serial port num:5
 ```
 
 ### 硬件连接
+以下是文档链接，其中引脚定义有实际引脚映射关系：
+[SF32LB52-DevKit-LCD](https://wiki.sifli.com/board/sf32lb52x/SF32LB52-DevKit-LCD.html)
+[SF32LB52-DevKit-Nano](https://wiki.sifli.com/board/sf32lb52x/SF32LB52-DevKit-Nano.html)
+[SF32LB56-DevKit-LCD](https://wiki.sifli.com/board/sf32lb56x/SF32LB56-DevKit-LCD.html)
+[SF32LB58-DevKit-LCD](https://wiki.sifli.com/board/sf32lb58x/SF32LB58-DevKit-LCD.html)
 
 |版型名称  | UART       | TX(物理位置)     | RX(物理位置)   |    
 |--------|------------|---------------|-------------------|
-|525    | UART2     | PAD_PA27（8）    | PAD_PA20（10）    |   
+|525 /56   | UART2     | PAD_PA27（8）    | PAD_PA20（10）    |   
 |587  | UART2     | PAD_PA28 (CONN2 5)  |PAD_PA29 (CONN2 3)  |
+|52nano  | UART2     | PAD_PA28   |PAD_PA25  |
 
+以下是525连接示例图：
 * PA27软件配置为UART2的TX，连接到电脑usb转串口的RX
 * PA20软件配置为UART2的RX，连接到电脑usb转串口的TX
 * GND连接到usb转串口的GND，如下图：

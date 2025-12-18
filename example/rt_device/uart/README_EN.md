@@ -42,12 +42,19 @@ please input the serial port num:5
 ```
 
 ### Hardware Connection
+Here is the document link, in which the pin definitions have the actual pin mapping relationships:
+[SF32LB52-DevKit-LCD](https://wiki.sifli.com/board/sf32lb52x/SF32LB52-DevKit-LCD.html)
+[SF32LB52-DevKit-Nano](https://wiki.sifli.com/board/sf32lb52x/SF32LB52-DevKit-Nano.html)
+[SF32LB56-DevKit-LCD](https://wiki.sifli.com/board/sf32lb56x/SF32LB56-DevKit-LCD.html)
+[SF32LB58-DevKit-LCD](https://wiki.sifli.com/board/sf32lb58x/SF32LB58-DevKit-LCD.html)
 
 |Board Name  | UART       | TX(Physical Position)     | RX(Physical Position)   |    
 |--------|------------|---------------|-------------------|
-|525    | UART2     | PAD_PA27(8)    | PAD_PA20(10)    |   
+|525/56    | UART2     | PAD_PA27(8)    | PAD_PA20(10)    |   
 |587  | UART2     | PAD_PA28 (CONN2 5)  |PAD_PA29 (CONN2 3)  |
+|52nano  | UART2     | PAD_PA28   |PAD_PA25  |
 
+Here is an example diagram of the 525 connection:
 * PA27 configured in software as UART2 TX, connected to computer USB-to-serial RX
 * PA20 configured in software as UART2 RX, connected to computer USB-to-serial TX
 * GND connected to USB-to-serial GND, as shown below:
