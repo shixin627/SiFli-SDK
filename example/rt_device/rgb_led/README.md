@@ -4,8 +4,10 @@
 
 ## 支持的平台
 <!-- 支持哪些板子和芯片平台 -->
-+ sf32lb52-lcd_n16r8
-+ sf32lb58-lcd_n16r64n4
++ sf32lb52-nano
++ sf32lb52-lcd
++ sf32lb56-lcd
++ sf32lb58-lcd
 ## 概述
 <!-- 例程简介 -->
 本例程演示基于rt-device（使用rt-thread）的rgbled驱动，包含：
@@ -28,7 +30,7 @@
 ```c
 menuconfig --board=sf32lb52-lcd_n16r8
 ```
-使能要使用的PWM，52x配置使用的PWM3 CHANNLE1, 58x使用的是PWM4 CHANNEL4<br>
+使能要使用的PWM，52x配置使用的PWM3 CHANNLE1, 56x使用的是PWM4 CHANNEL4, 58x使用的是PWM4 CHANNEL4<br>
 ![Enable rgbled:](./assets/menuconfig_pwm_52x.png)<br>
 ![Enable rgbled:](./assets/menuconfig_pwm_58x.png)<br>
 外设使能RGBLED并且配置pwm,Channel配置, 52x 配置为PWM3 CHANNLE1， 52x 配置为PWM4 CHANNEL4<br>
