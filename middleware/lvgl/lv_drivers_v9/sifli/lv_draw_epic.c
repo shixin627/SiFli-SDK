@@ -254,11 +254,11 @@ static int32_t evaluate(lv_draw_unit_t *draw_unit, lv_draw_task_t *t)
                               draw_dsc->scale_y != LV_SCALE_NONE);
 
         if (has_recolor
-                || (!cf_supported(img_dsc->header.cf, img_dsc->header.flags))
+                || (!cf_supported(draw_dsc->header.cf, draw_dsc->header.flags))
            )
             return 0;
 
-        if ((LV_COLOR_FORMAT_RGB565A8 == img_dsc->header.cf) && has_transform)
+        if ((LV_COLOR_FORMAT_RGB565A8 == draw_dsc->header.cf) && has_transform)
             return 0;
 
         if (t->preference_score > 80)

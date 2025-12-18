@@ -71,49 +71,41 @@ static lv_result_t decoder_info(lv_image_decoder_t *decoder, lv_image_decoder_ds
     else if (src_type == LV_IMAGE_SRC_FILE)
     {
         const char *fn = src;
-        const char *ext = lv_fs_get_ext(fn);
-        if ((lv_strcmp(ext, "ezip") == 0) || (lv_strcmp(ext, "ezipa") == 0))
+
+        lv_fs_file_t *f = lv_malloc(sizeof(lv_fs_file_t));
+
+        lv_fs_res_t res;
+        res = lv_fs_open(f, fn, LV_FS_MODE_RD);
+        if (res != LV_FS_RES_OK)
         {
-
-            lv_fs_file_t *f = lv_malloc(sizeof(lv_fs_file_t));
-
-            lv_fs_res_t res;
-            res = lv_fs_open(f, fn, LV_FS_MODE_RD);
-            if (res != LV_FS_RES_OK)
-            {
-                LV_LOG_WARN("Cannot open: %s\n", fn);
-                lv_free(f);
-                return LV_RESULT_INVALID;
-            }
-
-            uint32_t size;
-
-
-            res = lv_fs_read(f, header, sizeof(*header), &size);
-            lv_fs_close(f);
+            LV_LOG_WARN("Cannot open: %s\n", fn);
             lv_free(f);
-
-            if (size < sizeof(*header))
-            {
-                LV_LOG_WARN("Read error: %d\n", size);
-                return LV_RESULT_INVALID;
-            }
-
-            if (LV_IMG_CF_TRUE_COLOR != header->cf
-                    && LV_IMG_CF_TRUE_COLOR_ALPHA != header->cf
-#if defined(HAL_EZIP_MODULE_ENABLED)
-                    && LV_IMG_CF_RAW != header->cf
-                    && LV_IMG_CF_RAW_ALPHA != header->cf
-#endif /* HAL_EZIP_MODULE_ENABLED */
-               )
-            {
-                LV_LOG_WARN("Cf error: %d\n", header->cf);
-                return LV_RESULT_INVALID;
-            }
-
-
-            return LV_RESULT_OK;
+            return LV_RESULT_INVALID;
         }
+
+        uint32_t size;
+
+        res = lv_fs_read(f, header, sizeof(*header), &size);
+        lv_fs_close(f);
+        lv_free(f);
+
+        if (size < sizeof(*header))
+        {
+            LV_LOG_WARN("Read error: %d\n", size);
+            return LV_RESULT_INVALID;
+        }
+
+        if (LV_IMG_CF_TRUE_COLOR != header->cf
+                && LV_IMG_CF_TRUE_COLOR_ALPHA != header->cf
+                && LV_IMG_CF_RAW != header->cf
+                && LV_IMG_CF_RAW_ALPHA != header->cf
+           )
+        {
+            LV_LOG_WARN("Cf error: %d\n", header->cf);
+            return LV_RESULT_INVALID;
+        }
+
+        return LV_RESULT_OK;
     }
     return LV_RESULT_INVALID;
 }
@@ -126,18 +118,18 @@ static lv_result_t decoder_info(lv_image_decoder_t *decoder, lv_image_decoder_ds
  */
 static lv_result_t decoder_open(lv_image_decoder_t *decoder, lv_image_decoder_dsc_t *dsc)
 {
-    lv_result_t ret = LV_RESULT_INVALID;
     LV_UNUSED(decoder);
+    lv_result_t ret = LV_RESULT_INVALID;
+
     if (dsc->src_type == LV_IMAGE_SRC_VARIABLE)
     {
         const lv_image_dsc_t *img_dsc = dsc->src;
         if (img_dsc->header.flags & LV_IMAGE_FLAGS_EZIP)
         {
             LV_ASSERT(!dsc->decoded);
-            lv_draw_buf_t *p_decoded;
-
-            p_decoded = lv_malloc_zeroed(sizeof(lv_draw_buf_t));
+            lv_draw_buf_t *p_decoded = lv_malloc_zeroed(sizeof(lv_draw_buf_t));
             LV_ASSERT(p_decoded != NULL);
+
             memcpy(&p_decoded->header, &dsc->header, sizeof(p_decoded->header));
             p_decoded->data = (uint8_t *)img_dsc->data;
             p_decoded->data_size = img_dsc->data_size;
@@ -148,62 +140,129 @@ static lv_result_t decoder_open(lv_image_decoder_t *decoder, lv_image_decoder_ds
     else if (dsc->src_type == LV_IMAGE_SRC_FILE)
     {
         const char *fn = dsc->src;
-        if ((lv_strcmp(lv_fs_get_ext(fn), "ezip") == 0) || (lv_strcmp(lv_fs_get_ext(fn), "ezipa") == 0))
+
+        lv_fs_file_t *f = lv_malloc(sizeof(lv_fs_file_t));
+        LV_ASSERT(f != NULL);
+
+        lv_fs_res_t res = lv_fs_open(f, fn, LV_FS_MODE_RD);
+        if (LV_FS_RES_OK != res)
         {
-            lv_fs_res_t res;
-            lv_fs_file_t *f = lv_malloc(sizeof(lv_fs_file_t));
-            LV_ASSERT(f != NULL);
-            res = lv_fs_open(f, fn, LV_FS_MODE_RD);
-            if (LV_FS_RES_OK == res)
-            {
-                uint32_t file_size;
-                lv_fs_seek(f, 0, LV_FS_SEEK_END);
-                lv_fs_tell(f, &file_size);
-                lv_fs_seek(f, 0, LV_FS_SEEK_SET);
-                LV_ASSERT(file_size > sizeof(lv_image_header_t));
+            LV_LOG_WARN("Cannot open: %s\n", fn);
+            lv_free(f);
+            return LV_RESULT_INVALID;
+        }
 
-                LV_ASSERT(!dsc->decoded);
-                lv_draw_buf_t *p_decoded;
+        uint32_t file_size;
+        lv_fs_seek(f, 0, LV_FS_SEEK_END);
+        lv_fs_tell(f, &file_size);
+        lv_fs_seek(f, 0, LV_FS_SEEK_SET);
 
-                p_decoded = lv_malloc_zeroed(sizeof(lv_draw_buf_t));
+        if (file_size <= sizeof(lv_image_header_t))
+        {
+            LV_LOG_WARN("File too small: %s\n", fn);
+            lv_fs_close(f);
+            lv_free(f);
+            return LV_RESULT_INVALID;
+        }
 
-                LV_ASSERT(p_decoded != NULL);
-                memcpy(&p_decoded->header, &dsc->header, sizeof(p_decoded->header));
+        LV_ASSERT(!dsc->decoded);
+        lv_draw_buf_t *p_decoded = lv_malloc_zeroed(sizeof(lv_draw_buf_t));
+        LV_ASSERT(p_decoded != NULL);
 
-                if (dsc->src_type == LV_IMAGE_SRC_FILE)
-                {
+        memcpy(&p_decoded->header, &dsc->header, sizeof(p_decoded->header));
+        p_decoded->data_size = file_size - sizeof(lv_image_header_t);
+
 #if defined(RT_USING_MTD_NAND)
-                    p_decoded->data_size = file_size - sizeof(lv_image_header_t);
-                    p_decoded->data = lv_malloc(p_decoded->data_size);
-                    if (p_decoded->data)
-                    {
-                        uint32_t br;
-                        lv_fs_seek(f, sizeof(lv_image_header_t), LV_FS_SEEK_SET);
-                        res = lv_fs_read(f, (void *)p_decoded->data, p_decoded->data_size, &br);
-                        LV_ASSERT(LV_FS_RES_OK == res);
-                        LV_ASSERT(p_decoded->data_size == br);
-                        dsc->user_data = p_decoded->data;
-                        ret = LV_RESULT_OK;
-                    }
+        p_decoded->data = lv_malloc(p_decoded->data_size);
+        if (p_decoded->data == NULL)
+        {
+            LV_LOG_WARN("Memory allocation failed for image data\n");
+            lv_free(p_decoded);
+            lv_fs_close(f);
+            lv_free(f);
+            return LV_RESULT_INVALID;
+        }
+
+        uint32_t br;
+        lv_fs_seek(f, sizeof(lv_image_header_t), LV_FS_SEEK_SET);
+        res = lv_fs_read(f, (void *)p_decoded->data, p_decoded->data_size, &br);
+        if (LV_FS_RES_OK != res || p_decoded->data_size != br)
+        {
+            LV_LOG_WARN("Read bytes mismatch: %u/%u\n", br, p_decoded->data_size);
+            lv_free(p_decoded->data);
+            lv_free(p_decoded);
+            lv_fs_close(f);
+            lv_free(f);
+            return LV_RESULT_INVALID;
+        }
+        dsc->user_data = p_decoded->data; /* Mark as allocated memory */
+        ret = LV_RESULT_OK;
+
 #elif defined(RT_USING_MTD_NOR)
-                    rt_uint32_t addr;
-                    if (0 == ioctl((int)f->file_d, F_GET_PHY_ADDR, &addr))
-                    {
-                        p_decoded->data = (uint8_t *)(addr + sizeof(lv_image_header_t));
-                        ret = LV_RESULT_OK;
-                    }
-#endif
-                }
-                dsc->decoded = p_decoded;
+        /* Check if the file is on NOR flash (MTD device) */
+        /* NOTE: The file descriptor in lv_fs_file_t is offset by 1 */
+        int fd = (int)f->file_d - 1;
+        rt_device_t dev = RT_NULL;
+        struct dfs_fd *dfs_fd = fd_get(fd);
+        if (dfs_fd && dfs_fd->fs && dfs_fd->fs->dev_id)
+        {
+            dev = dfs_fd->fs->dev_id;
+        }
+
+        /* Try to get physical address if device is MTD type */
+        bool use_direct_mapping = false;
+        if (dev && dev->type == RT_Device_Class_MTD)
+        {
+            rt_uint32_t addr;
+            if (ioctl(fd, F_GET_PHY_ADDR, &addr) == 0)
+            {
+                p_decoded->data = (uint8_t *)(addr + sizeof(lv_image_header_t));
+                dsc->user_data = NULL; /* Direct mapping, no need to free */
+                use_direct_mapping = true;
+                ret = LV_RESULT_OK;
+            }
+        }
+
+        /* Release the fd reference obtained from fd_get */
+        if (dfs_fd)
+        {
+            fd_put(dfs_fd);
+        }
+
+        /* Not MTD device (e.g., SD card) or ioctl failed, must read into memory */
+        if (!use_direct_mapping)
+        {
+            p_decoded->data = lv_malloc(p_decoded->data_size);
+            if (p_decoded->data == NULL)
+            {
+                LV_LOG_WARN("Memory allocation failed for image data\n");
+                lv_free(p_decoded);
                 lv_fs_close(f);
+                lv_free(f);
+                return LV_RESULT_INVALID;
             }
 
-
-            lv_free(f);
+            uint32_t br;
+            lv_fs_seek(f, sizeof(lv_image_header_t), LV_FS_SEEK_SET);
+            res = lv_fs_read(f, (void *)p_decoded->data, p_decoded->data_size, &br);
+            if (LV_FS_RES_OK != res || p_decoded->data_size != br)
+            {
+                LV_LOG_WARN("Read bytes mismatch: %u/%u\n", br, p_decoded->data_size);
+                lv_free(p_decoded->data);
+                lv_free(p_decoded);
+                lv_fs_close(f);
+                lv_free(f);
+                return LV_RESULT_INVALID;
+            }
+            dsc->user_data = p_decoded->data; /* Mark as allocated memory */
+            ret = LV_RESULT_OK;
         }
+#endif
+
+        dsc->decoded = p_decoded;
+        lv_fs_close(f);
+        lv_free(f);
     }
-
-
 
     return ret;
 }
@@ -216,13 +275,11 @@ static lv_result_t decoder_open(lv_image_decoder_t *decoder, lv_image_decoder_ds
 static void decoder_close(lv_image_decoder_t *decoder, lv_image_decoder_dsc_t *dsc)
 {
     LV_UNUSED(decoder);
-#if defined(RT_USING_MTD_NAND)
     if (dsc->user_data)
     {
         lv_free(dsc->user_data);
         dsc->user_data = NULL;
     }
-#endif
 
     if (dsc->decoded) lv_free((void *)dsc->decoded);
 }

@@ -164,10 +164,8 @@ static lv_res_t file_decoder_info(lv_img_decoder_t *decoder, const void *src, lv
 
             if (LV_IMG_CF_TRUE_COLOR != header->cf
                     && LV_IMG_CF_TRUE_COLOR_ALPHA != header->cf
-#if defined(HAL_EZIP_MODULE_ENABLED)
                     && LV_IMG_CF_RAW != header->cf
                     && LV_IMG_CF_RAW_ALPHA != header->cf
-#endif /* HAL_EZIP_MODULE_ENABLED */
                )
             {
                 LV_LOG_WARN("Cf error: %d\n", header->cf);
@@ -208,55 +206,109 @@ static lv_res_t file_decoder_open(lv_img_decoder_t *decoder, lv_img_decoder_dsc_
 
     lv_img_cf_t cf = dsc->header.cf;
     /*Process true color formats*/
-    if (cf == LV_IMG_CF_TRUE_COLOR || cf == LV_IMG_CF_TRUE_COLOR_ALPHA
-#if defined(HAL_EZIP_MODULE_ENABLED)
-            || cf == LV_IMG_CF_RAW || cf == LV_IMG_CF_RAW_ALPHA
-#endif  /* HAL_EZIP_MODULE_ENABLED */
-       )
-    {
-        int fd;
-        int res;
-        lv_res_t ret = LV_RES_INV;
-        rt_uint32_t addr;
-        struct stat file_stat;
-
-        res = stat(dsc->src,  &file_stat);
-        if (0 != res)
-        {
-            return LV_RES_INV;
-        }
-
-        fd = open(dsc->src, O_RDONLY);
-        if (fd >= 0)
-        {
-#if defined(RT_USING_MTD_NAND)
-            dsc->img_data_size = file_stat.st_size - sizeof(lv_img_header_t);
-            dsc->img_data = app_cache_alloc(dsc->img_data_size, IMAGE_CACHE_PSRAM);
-            if (dsc->img_data)
-            {
-                ret = LV_RES_OK;
-                lseek(fd, sizeof(lv_img_header_t), SEEK_SET);
-                read(fd, (void *)dsc->img_data, dsc->img_data_size);
-            }
-#elif defined(RT_USING_MTD_NOR)
-            res = ioctl(fd, F_GET_PHY_ADDR, &addr);
-            if (0 == res)
-            {
-                dsc->img_data = (const uint8_t *)(addr + sizeof(lv_img_header_t));
-                dsc->user_data = (void *)(file_stat.st_size - sizeof(lv_img_header_t));
-                ret = LV_RES_OK;
-            }
-#endif
-            close(fd);
-        }
-        return ret;
-    }
-    /*Unknown format. Can't decode it.*/
-    else
+    if (cf != LV_IMG_CF_TRUE_COLOR && cf != LV_IMG_CF_TRUE_COLOR_ALPHA
+            && cf != LV_IMG_CF_RAW && cf != LV_IMG_CF_RAW_ALPHA)
     {
         LV_LOG_WARN("Image decoder open: unknown color format");
         return LV_RES_INV;
     }
+
+    struct stat file_stat;
+    int res = stat(dsc->src, &file_stat);
+    if (0 != res)
+    {
+        LV_LOG_WARN("Cannot stat: %s\n", dsc->src);
+        return LV_RES_INV;
+    }
+
+    int fd = open(dsc->src, O_RDONLY);
+    if (fd < 0)
+    {
+        LV_LOG_WARN("Cannot open: %s\n", dsc->src);
+        return LV_RES_INV;
+    }
+
+    dsc->img_data_size = file_stat.st_size - sizeof(lv_img_header_t);
+    lv_res_t ret = LV_RES_INV;
+
+#if defined(RT_USING_MTD_NAND)
+    dsc->img_data = app_cache_alloc(dsc->img_data_size, IMAGE_CACHE_PSRAM);
+    if (dsc->img_data == NULL)
+    {
+        LV_LOG_WARN("Memory allocation failed for image data\n");
+        close(fd);
+        return LV_RES_INV;
+    }
+
+    lseek(fd, sizeof(lv_img_header_t), SEEK_SET);
+    size_t bytes_read = read(fd, (void *)dsc->img_data, dsc->img_data_size);
+    if (bytes_read != dsc->img_data_size)
+    {
+        LV_LOG_WARN("Read bytes mismatch: %u/%u\n", bytes_read, dsc->img_data_size);
+        app_cache_free((void *)dsc->img_data);
+        dsc->img_data = NULL;
+        close(fd);
+        return LV_RES_INV;
+    }
+    dsc->user_data = (void *)dsc->img_data; /* Mark as allocated memory */
+    ret = LV_RES_OK;
+
+#elif defined(RT_USING_MTD_NOR)
+    /* Check if the file is on NOR flash (MTD device) */
+    rt_device_t dev = RT_NULL;
+    struct dfs_fd *dfs_fd = fd_get(fd);
+    if (dfs_fd && dfs_fd->fs && dfs_fd->fs->dev_id)
+    {
+        dev = dfs_fd->fs->dev_id;
+    }
+
+    /* Try to get physical address if device is MTD type */
+    bool use_direct_mapping = false;
+    if (dev && dev->type == RT_Device_Class_MTD)
+    {
+        rt_uint32_t addr;
+        if (ioctl(fd, F_GET_PHY_ADDR, &addr) == 0)
+        {
+            dsc->img_data = (const uint8_t *)(addr + sizeof(lv_img_header_t));
+            dsc->user_data = NULL; /* Direct mapping, no need to free */
+            use_direct_mapping = true;
+            ret = LV_RES_OK;
+        }
+    }
+
+    /* Release the fd reference obtained from fd_get */
+    if (dfs_fd)
+    {
+        fd_put(dfs_fd);
+    }
+
+    /* Not MTD device (e.g., SD card) or ioctl failed, must read into memory */
+    if (!use_direct_mapping)
+    {
+        dsc->img_data = app_cache_alloc(dsc->img_data_size, IMAGE_CACHE_PSRAM);
+        if (dsc->img_data == NULL)
+        {
+            LV_LOG_WARN("Memory allocation failed for image data\n");
+            close(fd);
+            return LV_RES_INV;
+        }
+
+        lseek(fd, sizeof(lv_img_header_t), SEEK_SET);
+        size_t bytes_read = read(fd, (void *)dsc->img_data, dsc->img_data_size);
+        if (bytes_read != dsc->img_data_size)
+        {
+            LV_LOG_WARN("Read bytes mismatch: %u/%u\n", bytes_read, dsc->img_data_size);
+            app_cache_free((void *)dsc->img_data);
+            dsc->img_data = NULL;
+            close(fd);
+            return LV_RES_INV;
+        }
+        dsc->user_data = (void *)dsc->img_data; /* Mark as allocated memory */
+        ret = LV_RES_OK;
+    }
+#endif
+    close(fd);
+    return ret;
 }
 
 /**
@@ -286,13 +338,13 @@ static void file_decoder_close(lv_img_decoder_t *decoder, lv_img_decoder_dsc_t *
 {
     (void)decoder; /*Unused*/
 
-#if defined(RT_USING_MTD_NAND)
-    if (dsc->img_data)
+    if (dsc->user_data)
     {
         app_cache_free((void *)dsc->img_data);
         dsc->img_data = NULL;
+        dsc->user_data = NULL;
     }
-#endif
+
 }
 #endif /* RT_USING_DFS */
 
