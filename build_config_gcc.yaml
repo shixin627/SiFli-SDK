@@ -109,11 +109,6 @@ after_55x_boards: &after_55x_boards
   - sf32lb52-lcd_n16r8 
   - sf32lb52-nano_a128r16
   - sf32lb52-nano_n16r16
-  - sf32lb56-lcd_a128r12n1
-  - sf32lb56-lcd_n16r12n1
-  - sf32lb58-lcd_a128r32n1_qspi
-  - sf32lb58-lcd_n16r32n1_qspi  
-
 
 devkit_lcd_boards: &devkit_lcd_boards
   - sf32lb52-lcd_n16r8 
