@@ -3,8 +3,11 @@
 Source path: example\rt_device\pwm
 ## Supported Platforms
 The example can run on the following development boards.
-* sf32lb52-lcd_n16r8
-* sf32lb58-lcd_n16r64n4
+* sf32lb52-nano
+* sf32lb52-lcd
+* sf32lb56-lcd
+* sf32lb58-lcd
+
 ## Overview
 * Includes examples of GPtimer outputting PWM via IO ports
 
@@ -51,9 +54,10 @@ Physical position refers to the pin header position corresponding to the pin on 
 
 |Form Factor Name  | PWM      | CHX     | Pin (Physical Position)            |    
 |--------|------------|---------------|-------------------|
-|525    | GPTIM1     | CH1    | PA20 (10)                  |   
-|587  | GPTIM1    | CH2  |PA51 (CONN2 28)                  |
-
+|sf32lb52-nano | GPTIM1 | CH2 | PA20 (Physical pin is on the back of the board, requires manual flying wire to bring out) |
+|sf32lb52-lcd    | GPTIM1     | CH2    | PA20 （10）                  |   
+|sf32lb58-lcd | GPTIM1    | CH2  |PA51 （CONN2 28）                  |
+|sf32lb56-lcd | GPTIM1    | CH2  |PA36  (40)                 |
 
 
 ```c
