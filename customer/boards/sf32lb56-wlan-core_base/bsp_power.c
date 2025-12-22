@@ -1,5 +1,11 @@
 #include "bsp_board.h"
-
+#ifndef WIFI_POWER_PIN
+    #define WIFI_POWER_PIN  (53)
+#endif
+#define LCD_POWER_PIN  (70)
+#ifndef WIFI_WAKEUP_OUT_PIN
+    #define WIFI_WAKEUP_OUT_PIN    2
+#endif
 void BSP_GPIO_Set(int pin, int val, int is_porta)
 {
     GPIO_TypeDef *gpio = (is_porta) ? hwp_gpio1 : hwp_gpio2;
@@ -30,6 +36,8 @@ void BSP_Power_Up(bool is_deep_sleep)
         // Replace with API that is OS-independent.
         //rt_psram_exit_low_power("psram0");
     }
+    BSP_GPIO_Set(WIFI_POWER_PIN, 1, 1);//wifi power
+    BSP_GPIO_Set(WIFI_WAKEUP_OUT_PIN, 1, 1);//wifi wakeup out
 #elif defined(SOC_BF0_LCPU)
     {
         ;

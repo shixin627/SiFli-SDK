@@ -126,8 +126,9 @@ void BSP_PIN_Init(void)
         HAL_PIN_Set(PAD_PA15, SD1_DIO1, PIN_PULLUP, 1);
         HAL_PIN_Set(PAD_PA12, SD1_DIO2, PIN_PULLUP, 1);
         HAL_PIN_Set(PAD_PA20, SD1_DIO3, PIN_PULLUP, 1);
-        HAL_PIN_Set(PAD_PA05, GPIO_A5,  PIN_PULLUP, 1);   // SD1_EN
     }
+    HAL_PIN_Set(PAD_PA02, GPIO_A2, PIN_NOPULL, 1);           /*output mode wake up wifi*/
+    HAL_PIN_Set(PAD_PA05, GPIO_A5, PIN_PULLDOWN, 1);           /*input mode wifi wake up mcu*/
 #endif
 
 
