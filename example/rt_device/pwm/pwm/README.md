@@ -4,8 +4,10 @@
 ## 支持的平台
 例程可以运行在以下开发板.
 * sf32lb52-nano系列
-* sf32lb52-lcd_n16r8
-* sf32lb58-lcd_n16r64n4
+* sf32lb52-lcd
+* sf32lb56-lcd
+* sf32lb58-lcd
+
 ## 概述
 * 包含了GPtimer通过IO口输出PWM的示例
 
@@ -52,9 +54,10 @@ msh />
 
 |版型名称  | PWM      | CHX     | 引脚(物理位置)            |    
 |--------|------------|---------------|-------------------|
-|sf32lb52-nano_n16r16  | GPTIM1     | CH1    | PA20 (物理引脚在板子背面需要自行飞线引出)    | 
-|sf32lb52-lcd_n16r8    | GPTIM1     | CH1    | PA20 （10）                  |   
-|sf32lb58-lcd_n16r64n4 | GPTIM1    | CH2  |PA51 （CONN2 28）                  |
+|sf32lb52-nano  | GPTIM1     | CH2    | PA20 (物理引脚在板子背面需要自行飞线引出)    | 
+|sf32lb52-lcd    | GPTIM1     | CH2    | PA20 （10）                  |   
+|sf32lb58-lcd | GPTIM1    | CH2  |PA51 （CONN2 28）                  |
+|sf32lb56-lcd | GPTIM1    | CH2  |PA36  (40)                 |
 
 
 
