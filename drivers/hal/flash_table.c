@@ -526,6 +526,9 @@ FT_CONST FLASH_RDID_TYPE_T flash_cmd_id_pool_typ1[] =
     {0xc8, 0x40, 0x17, 0, 0x800000},    //MD25Q64C_RDID
     {0x20, 0x40, 0X17, 1, 0x800000},    //XM25QH64D
     {0xcd, 0x60, 0X18, 0, 0x1000000},   //TH25Q128HA_RDID
+    {0xb3, 0x40, 0x17, 1, 0x800000},   //UC25WQ80IB
+    {0xb3, 0x40, 0x16, 1, 0x400000},   //UC25LQ32
+    {0xb3, 0x60, 0x14, 0, 0x100000},   //UC25WQ80IB
     {FLASH_INVALID_ID, 0, 0, 0, 0},      //last one
 };
 
