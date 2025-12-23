@@ -2,6 +2,7 @@
 #include "bf0_hal.h"
 #include "drv_io.h"
 #include "stdio.h"
+#include "stdlib.h"
 #include "string.h"
 /* user start */
 #include "mem_section.h"
@@ -850,6 +851,18 @@ int main(void)
     HAL_PIN_Set(PAD_PA04, I2S1_SDI, PIN_PULLDOWN, 1);
     HAL_PIN_Set(PAD_PA03, I2S1_SDO, PIN_NOPULL, 1);
     HAL_PIN_Set(PAD_PA02, I2S1_MCLK, PIN_NOPULL, 1);
+#elif defined(SOC_SF32LB56X)
+    HAL_PIN_Set(PAD_PA71, I2S1_LRCK, PIN_NOPULL, 1);
+    HAL_PIN_Set(PAD_PA40, I2S1_BCK, PIN_NOPULL, 1);
+    HAL_PIN_Set(PAD_PA38, I2S1_SDI, PIN_PULLDOWN, 1);
+    HAL_PIN_Set(PAD_PA39, I2S1_SDO, PIN_NOPULL, 1);
+    HAL_PIN_Set(PAD_PA37, I2S1_MCLK, PIN_NOPULL, 1);
+#elif defined(SOC_SF32LB58X)
+    HAL_PIN_Set(PAD_PA84, I2S2_LRCK, PIN_NOPULL, 1);
+    HAL_PIN_Set(PAD_PA91, I2S2_BCK, PIN_NOPULL, 1);
+    HAL_PIN_Set(PAD_PA86, I2S2_SDI, PIN_PULLDOWN, 1);
+    HAL_PIN_Set(PAD_PA82, I2S2_SDO, PIN_NOPULL, 1);
+    HAL_PIN_Set(PAD_PA90, I2S2_MCLK, PIN_NOPULL, 1);
 #else
 #error "Need to confirm I2S pin config."
 #endif
