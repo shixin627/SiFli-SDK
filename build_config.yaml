@@ -492,8 +492,18 @@ common_projects:
   - path: example/rt_device/uart/project
     boards: *devkit_lcd_boards
 
-  - path: example/rt_device/usb/usb_mstorage/project
-    boards: *devkit_lcd_boards
+  - path: example/rt_device/usb/usb_mstorage/project/nor
+    boards: 
+      - sf32lb52-lcd_n16r8 
+      - sf32lb52-nano_n16r16
+      - sf32lb56-lcd_n16r12n1
+      - sf32lb58-lcd_n16r32n1_qspi  
+
+  - path: example/rt_device/usb/usb_mstorage/project/nand
+    boards:
+      - sf32lb52-nano_a128r16
+      - sf32lb56-lcd_a128r12n1
+      - sf32lb58-lcd_a128r32n1_qspi
 
   - path: example/rt_device/usb/usb_vcom/project
     boards: *devkit_lcd_boards
