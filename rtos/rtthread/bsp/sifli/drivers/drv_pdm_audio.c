@@ -301,7 +301,16 @@ static rt_err_t bf0_audio_configure(struct rt_audio_device *audio, struct rt_aud
 
              but we except it been invoked before HAL_PDM_Config
         */
-        HAL_RCC_EnableModule(RCC_MOD_PDM1);
+#if defined(BSP_USING_PDM2) && defined(hwp_pdm2)
+        if (hwp_pdm2 == hpdm->Instance)
+        {
+            HAL_RCC_EnableModule(RCC_MOD_PDM2);
+        }
+#endif
+        if (hwp_pdm1 == hpdm->Instance)
+        {
+            HAL_RCC_EnableModule(RCC_MOD_PDM1);
+        }
         HAL_PDM_Init(hpdm);
         switch (caps->sub_type)
         {
@@ -647,11 +656,17 @@ static rt_err_t bf0_audio_control(struct rt_audio_device *audio, int cmd, void *
 
 void set_pdm_gain_to_register(int val)
 {
+    val += 30;
+#ifdef BSP_USING_PDM1
     struct bf0_pdm_audio *hpdm_audio = &h_pdm_audio1;
     PDM_HandleTypeDef *hpdm = (PDM_HandleTypeDef *) & (hpdm_audio->hpdm);
-
-    val += 30;
     HAL_PDM_Set_Gain(hpdm, PDM_CHANNEL_STEREO, (uint8_t)val);
+#endif
+#ifdef BSP_USING_PDM2
+    struct bf0_pdm_audio *hpdm_audio2 = &h_pdm_audio2;
+    PDM_HandleTypeDef *hpdm2 = (PDM_HandleTypeDef *) & (hpdm_audio2->hpdm);
+    HAL_PDM_Set_Gain(hpdm2, PDM_CHANNEL_STEREO, (uint8_t)val);
+#endif
 
 }
 
