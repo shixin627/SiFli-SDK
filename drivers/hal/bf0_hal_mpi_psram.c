@@ -168,7 +168,11 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_OPI_PSRAM_Init(FLASH_HandleTypeDef *hflash,
 #ifdef  SF32LB58X
         dqs_dly = 15;
         sck_dly = 15;
-#endif
+#elif defined(SF32LB52X)
+        /* solve bit flip */
+        dqs_dly = 20;
+        sck_dly = 20;
+#endif /* SF32LB58X */
         hflash->ecc_en = 3;  //rdcyc
         hflash->buf_mode = 3;  //wdcyc
     }
@@ -319,6 +323,11 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_LEGACY_PSRAM_Init(FLASH_HandleTypeDef *hfla
         cs_max = 180; //< 4us
         cshmin = 0; // 1 cycle of 48M > 15ns
         trcmin = 3; // > 60ns
+#if defined(SF32LB52X)
+        /* solve bit flip */
+        dqs_dly = 20;
+        sck_dly = 20;
+#endif /* SF32LB52X */
     }
     else if (freq <= 120000000)         // 120M
     {
@@ -941,7 +950,7 @@ HAL_StatusTypeDef HAL_MPI_PSRAM_Init(FLASH_HandleTypeDef *handle, qspi_configure
 {
     HAL_StatusTypeDef res = HAL_OK;
     uint32_t sys_clk;
-    uint8_t r_lat, w_lat=0;
+    uint8_t r_lat, w_lat = 0;
 
     handle->isNand = (uint8_t)qspi_cfg->SpiMode;
     if (qspi_cfg->SpiMode == SPI_MODE_OPSRAM)  // exla opi psram
