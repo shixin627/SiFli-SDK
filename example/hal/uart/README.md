@@ -5,6 +5,7 @@
 * sf32lb52-nano_a128n16
 * sf32lb52-lcd_n16r8
 * sf32lb58-lcd_n16r64n4
+* sf32lb56-lcd_n16r12n1
 
 ## 概述
 * 操作UART hal函数采用RX DMA方式,操作UART2检验其串口的收发能力
@@ -64,7 +65,8 @@ please input the serial port num:5
 |--------|------------|---------------|-------------------|
 |52_nano  | UART2     | PAD_PA28（11）    | PAD_PA25（12）  |
 |525    | UART2     | PAD_PA27（8）    | PAD_PA20（10）    |   
-|587  | UART2     | PAD_PA28 (CONN2 5)  |PAD_PA29 (CONN2 3)  |
+|58  | UART2     | PAD_PA28 (CONN2 5)  |PAD_PA29 (CONN2 3)  |
+|56  | UART2     | PAD_PA37 (38)   |PAD_PA36 (40)  |
 
 
 * PA27软件配置为UART2的TX，连接到电脑usb转串口的RX
@@ -143,6 +145,10 @@ HAL_PIN_Set(PAD_PA27, USART2_TXD, PIN_PULLUP, 1);
 #elif defined (BSP_USING_BOARD_EM_LB587XXX)
 HAL_PIN_Set(PAD_PA29, USART2_RXD, PIN_PULLUP, 1);
 HAL_PIN_Set(PAD_PA28, USART2_TXD, PIN_PULLUP, 1);
+
+#elif defined (BSP_USING_BOARD_SF32LB56_LCD_N16R12N1)
+    HAL_PIN_Set(PAD_PA36, USART2_RXD, PIN_PULLUP, 1);
+    HAL_PIN_Set(PAD_PA37, USART2_TXD, PIN_PULLUP, 1);
 #endif
 ```
 **注意**: 
