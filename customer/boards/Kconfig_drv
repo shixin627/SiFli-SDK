@@ -478,11 +478,11 @@ menu "On-chip Peripheral RTOS Drivers"
                 default n
             config BSP_PWM3_CC3_USING_DMA
                 bool "PWM3 CC3 use DMA"
-                depends on BSP_USING_PWM3
+                depends on BSP_USING_PWM3 && !SOC_SF32LB55X
                 default n
             config BSP_PWM3_CC4_USING_DMA
                 bool "PWM3 CC4 use DMA"
-                depends on BSP_USING_PWM3
+                depends on BSP_USING_PWM3 && !SOC_SF32LB55X
                 default n
             config BSP_USING_PWM4
                 bool "Using PWM 4(corresponds to HW GPTIM3)"
@@ -534,25 +534,9 @@ menu "On-chip Peripheral RTOS Drivers"
             config BSP_PWM6_UPDATE_USING_DMA
                 bool "PWM6 UPDATE use DMA"
                 depends on BSP_USING_PWM6
-            config BSP_PWM6_CC1_USING_DMA
-                bool "PWM6 CC1 use DMA"
-                depends on BSP_USING_PWM6
-                default n
-            config BSP_PWM6_CC2_USING_DMA
-                bool "PWM6 CC2 use DMA"
-                depends on BSP_USING_PWM6
-                default n
-            config BSP_PWM6_CC3_USING_DMA
-                bool "PWM6 CC3 use DMA"
-                depends on BSP_USING_PWM6
-                default n
-            config BSP_PWM6_CC4_USING_DMA
-                bool "PWM6 CC4 use DMA"
-                depends on BSP_USING_PWM6
-                default n
-                
             config BSP_USING_PWMA1
                 bool "Using PWM A1"
+                depends on !SOC_SF32LB55X
                 default n
             config BSP_PWMA1_UPDATE_USING_DMA
                 bool "PWMA1 UPDATE use DMA"
@@ -576,6 +560,7 @@ menu "On-chip Peripheral RTOS Drivers"
                 
             config BSP_USING_PWMA2
                 bool "Using PWM A2"
+                depends on !SOC_SF32LB55X && !SOC_SF32LB52X && !SOC_SF32LB56X
                 default n
             config BSP_PWMA2_UPDATE_USING_DMA
                 bool "PWMA2 UPDATE use DMA"

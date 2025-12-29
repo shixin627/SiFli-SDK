@@ -18,6 +18,7 @@ extern "C" {
 #define PWM4_CORE CORE_ID_LCPU
 #define PWM5_CORE CORE_ID_LCPU
 #define PWM6_CORE CORE_ID_LCPU
+#define PWMA1_CORE CORE_ID_HCPU
 
 #ifdef BSP_USING_PWM2
 #define PWM2_CONFIG                             \
@@ -388,7 +389,7 @@ extern "C" {
 #define PWMA1_CONFIG                             \
 {                                           \
    .tim_handle.Instance     = (GPT_TypeDef *)ATIM1,         \
-   .tim_handle.core         = ATIM1_CORE,    \
+   .tim_handle.core         = PWMA1_CORE,    \
    .name                    = "pwma1",       \
    .channel                 = 0             \
 }
@@ -399,7 +400,7 @@ extern "C" {
 {                                           \
    .dma_handle.Init.Priority = PWMA1_UPDATE_DMA_IRQ_PRIO,           \
    .dma_handle.Instance = PWMA1_UPDATE_DMA_INSTANCE,               \
-   .dma_handle.Init.Request = ATIM1_UPDATE_DMA_REQUEST,                 \
+   .dma_handle.Init.Request = PWMA1_UPDATE_DMA_REQUEST,                 \
    .dma_irq = PWMA1_UPDATE_DMA_IRQ,                     \
    .dma_handle_index = GPT_DMA_ID_UPDATE,                \
    .dma_handle.Init.PeriphDataAlignment    = PWMA1_UPDATE_DMA_PDATAALIGN,         \
@@ -455,78 +456,6 @@ extern "C" {
    .dma_handle.Init.MemDataAlignment   = PWMA1_CC4_DMA_MDATAALIGN
 }
 #endif /* BSP_PWMA1_CC4_USING_DMA */
-
-#ifdef BSP_USING_PWMA2
-#define PWMA2_CONFIG                             \
-{                                           \
-   .tim_handle.Instance     = (GPT_TypeDef *)ATIM2,         \
-   .tim_handle.core         = ATIM2_CORE,    \
-   .name                    = "pwma2",       \
-   .channel                 = 0             \
-}
-#endif /* BSP_USING_PWM_A2 */
-
-#ifdef BSP_PWMA2_UPDATE_USING_DMA
-#define PWMA2_UPDATE_DMA_CONFIG                             \
-{                                           \
-   .dma_handle.Init.Priority = PWMA2_UPDATE_DMA_IRQ_PRIO,           \
-   .dma_handle.Instance = PWMA2_UPDATE_DMA_INSTANCE,               \
-   .dma_handle.Init.Request = ATIM2_UPDATE_DMA_REQUEST,                 \
-   .dma_irq = PWMA2_UPDATE_DMA_IRQ,                     \
-   .dma_handle_index = GPT_DMA_ID_UPDATE,                \
-   .dma_handle.Init.PeriphDataAlignment    = PWMA2_UPDATE_DMA_PDATAALIGN,         \
-   .dma_handle.Init.MemDataAlignment   = PWMA2_UPDATE_DMA_MDATAALIGN           \
-}
-#endif /* BSP_PWMA2_UPDATE_USING_DMA */
-
-#ifdef BSP_PWMA2_CC1_USING_DMA
-#define PWMA2_CC1_DMA_CONFIG                             \
-{                                           \
-   .dma_handle.Init.Priority = PWMA2_CC1_DMA_IRQ_PRIO,           \
-   .dma_handle.Instance = PWMA2_CC1_DMA_INSTANCE,               \
-   .dma_handle.Init.Request = PWMA2_CC1_DMA_REQUEST,                 \
-   .dma_irq = PWMA2_CC1_DMA_IRQ,                     \
-   .dma_handle_index = GPT_DMA_ID_CC1,                \
-   .dma_handle.Init.PeriphDataAlignment    = PWMA2_CC1_DMA_PDATAALIGN,         \
-   .dma_handle.Init.MemDataAlignment   = PWMA2_CC1_DMA_MDATAALIGN
-}
-#endif /* BSP_PWMA2_CC1_USING_DMA */
-#ifdef BSP_PWMA2_CC2_USING_DMA
-#define PWMA2_CC2_DMA_CONFIG                             \
-{                                           \
-   .dma_handle.Init.Priority = PWMA2_CC2_DMA_IRQ_PRIO,           \
-   .dma_handle.Instance = PWMA2_CC2_DMA_INSTANCE,               \
-   .dma_handle.Init.Request = PWMA2_CC2_DMA_REQUEST,                 \
-   .dma_irq = PWMA2_CC2_DMA_IRQ,                     \
-   .dma_handle_index = GPT_DMA_ID_CC2,                \
-   .dma_handle.Init.PeriphDataAlignment    = PWMA2_CC2_DMA_PDATAALIGN,         \
-   .dma_handle.Init.MemDataAlignment   = PWMA2_CC2_DMA_MDATAALIGN
-}
-#endif /* BSP_PWMA2_CC2_USING_DMA */
-#ifdef BSP_PWMA2_CC3_USING_DMA
-#define PWMA2_CC3_DMA_CONFIG                             \
-{                                           \
-   .dma_handle.Init.Priority = PWMA2_CC3_DMA_IRQ_PRIO,           \
-   .dma_handle.Instance = PWMA2_CC3_DMA_INSTANCE,               \
-   .dma_handle.Init.Request = PWMA2_CC3_DMA_REQUEST,                 \
-   .dma_irq = PWMA2_CC3_DMA_IRQ,                     \
-   .dma_handle_index = GPT_DMA_ID_CC3,                \
-   .dma_handle.Init.PeriphDataAlignment    = PWMA2_CC3_DMA_PDATAALIGN,         \
-   .dma_handle.Init.MemDataAlignment   = PWMA2_CC3_DMA_MDATAALIGN
-}
-#endif /* BSP_PWMA2_CC3_USING_DMA */
-#ifdef BSP_PWMA2_CC4_USING_DMA
-#define PWMA2_CC4_DMA_CONFIG                             \
-{                                           \
-   .dma_handle.Init.Priority = PWMA2_CC4_DMA_IRQ_PRIO,           \
-   .dma_handle.Instance = PWMA2_CC4_DMA_INSTANCE,               \
-   .dma_handle.Init.Request = PWMA2_CC4_DMA_REQUEST,                 \
-   .dma_irq = PWMA2_CC4_DMA_IRQ,                     \
-   .dma_handle_index = GPT_DMA_ID_CC4,                \
-   .dma_handle.Init.PeriphDataAlignment    = PWMA2_CC4_DMA_PDATAALIGN,         \
-   .dma_handle.Init.MemDataAlignment   = PWMA2_CC4_DMA_MDATAALIGN
-}
-#endif /* BSP_PWMA2_CC4_USING_DMA */
 
 #ifdef BSP_USING_PWM_LPTIM1
 #define PWM_LPTIM1_CONFIG                       \
