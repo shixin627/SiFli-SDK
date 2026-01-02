@@ -1,0 +1,8 @@
+from building import *
+
+cwd = GetCurrentDir()
+src	= Glob('*.c') + Glob('common/*.c')
+CPPPATH = [cwd, 'common']  # Include 'common' directory for header files
+group = DefineGroup('Drivers', src, depend = ['MAG_USING_BMM150'], CPPPATH = CPPPATH)
+
+Return('group')

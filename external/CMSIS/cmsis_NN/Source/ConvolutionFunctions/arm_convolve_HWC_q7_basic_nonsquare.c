@@ -29,7 +29,11 @@
  * -------------------------------------------------------------------- */
 #include "arm_math.h"
 #include "arm_nnfunctions.h"
-
+#include <rtthread.h>
+#if defined(BSP_USING_NN_ACC)
+#include "bf0_hal_nn_acc.h"
+#include <drv_nnacc.h>
+#endif
 /**
  *  @ingroup groupNN
  */
@@ -87,7 +91,6 @@ arm_status arm_convolve_HWC_q7_basic_nonsquare(const q7_t * Im_in,
 {
 
 #if defined(BSP_USING_NN_ACC)
-
     NNACC_ConfigTypeDef config;
     rt_err_t err;
 

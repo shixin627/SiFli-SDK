@@ -3,7 +3,7 @@
 #define APP_SCHEDULE_PORT_H
 
 
-
+#include "gui_app_int.h"
 
 
 #ifdef __cplusplus

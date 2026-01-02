@@ -164,23 +164,29 @@ void BSP_PIN_Init(void)
     HAL_PIN_Set(PAD_PB17, USART4_TXD, PIN_PULLUP, 0);
 
     HAL_PIN_Set(PAD_PB18, GPIO_B18, PIN_NOPULL, 0);  // CHARG
-
+    HAL_PIN_Set(PAD_PB19, GPIO_B19, PIN_NOPULL, 0);
     // GPS_UART - UART5
-    HAL_PIN_Set(PAD_PB19, USART5_RXD, PIN_PULLUP, 0);
-    HAL_PIN_Set(PAD_PB20, USART5_TXD, PIN_PULLUP, 0);
-
+    // HAL_PIN_Set(PAD_PB19, USART5_RXD, PIN_PULLUP, 0);
+    // HAL_PIN_Set(PAD_PB20, USART5_TXD, PIN_PULLUP, 0);
+#if defined(PWM_LRA_MOTOR)
+    HAL_PIN_Set(PAD_PB20, GPTIM3_CH4, PIN_NOPULL, 0); // Motor PWM
+#else
+    HAL_PIN_Set(PAD_PB20, GPIO_B20, PIN_PULLDOWN, 0); // Motor Control Pin
+#endif
     HAL_PIN_Set(PAD_PB21, GPIO_B21, PIN_PULLDOWN, 0);  // GS_HR_GPS_EN
 
     HAL_PIN_Set(PAD_PB22, GPIO_B22, PIN_NOPULL, 0);  // TWI_CLK / HR_RESET/HR_VCC_EN
-    HAL_PIN_Set(PAD_PB23, GPIO_B23, PIN_NOPULL, 0);  //TWI_SDA  /GS_HR_SCL
+    // HAL_PIN_Set(PAD_PB23, GPIO_B2ㄗ3, PIN_NOPULL, 0);  //TWI_SDA  /GS_HR_SCL
+    HAL_PIN_Set(PAD_PB23, I2C5_SCL, PIN_PULLUP, 0);
     HAL_PIN_Set(PAD_PB24, I2C5_SDA, PIN_PULLUP, 0);
+    
     HAL_PIN_Set(PAD_PB25, GPIO_B25, PIN_NOPULL, 0);  // CTP_RESET, touch panel reset
 
     // TODO: Check analog pin config.                 // #GPADC_CH4, NTC_GPADC_CH4, Battery temperature
 
     HAL_PIN_Set_Analog(PAD_PB27, 0);                  // #GPADC_CH5, VBAT_GPADC_CH5, Battery voltage
 
-    HAL_PIN_Set(PAD_PB32, GPIO_B32, PIN_NOPULL, 0);  // KEY_LONGPRESS_RESET, Function key + long press reset
+    HAL_PIN_Set(PAD_PB32, GPIO_B32, PIN_PULLDOWN, 0);  // KEY_LONGPRESS_RESET, Function key + long press reset
     HAL_PIN_Set(PAD_PB33, GPIO_B33, PIN_NOPULL, 0);  // GS_WKUP_INT, Acc sensor interrupt
     HAL_PIN_Set(PAD_PB34, GPIO_B34, PIN_NOPULL, 0);  // HR_WKUP_INT, Heartrate sensor interrupt
 

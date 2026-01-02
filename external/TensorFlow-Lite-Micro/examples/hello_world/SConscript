@@ -1,0 +1,9 @@
+from building import *
+
+src = Glob('*.c') + Glob('*.cpp')
+
+group = DefineGroup('RTduino-libraries', src,
+                    CPPPATH = [GetCurrentDir()],
+                    depend = ['PKG_USING_ARDUINO_TENSORFLOW_LITE_MICRO_EXAMPLE_HELLO_WORLD'])
+
+Return('group')

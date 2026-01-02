@@ -59,8 +59,8 @@ typedef enum
     FONT_SUBTITLE   = 24,
     FONT_TITLE      = 28,
     FONT_BIGL       = 36,
-    FONT_HUGE       = 56,
-    FONT_SUPER      = 72,
+    FONT_HUGE       = 40,
+    FONT_SUPER      = 64,
 #else
     FONT_SMALL      = 12,
     FONT_NORMAL     = 16,

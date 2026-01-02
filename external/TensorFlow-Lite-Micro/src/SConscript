@@ -1,0 +1,19 @@
+from building import *
+import os
+
+current_dir = GetCurrentDir()
+src = []
+
+# find the src folder's sub-folders and sub-files recursively
+for root, dirs, files in os.walk(current_dir):
+    for dir in dirs: # add all sub-folders' header files' path
+        _sub_path = os.path.join(root,dir) # sub-folder path
+        # add all .c/cpp file and .h/hpp file
+        src = src + Glob(os.path.join(_sub_path, '*.c'))
+        src = src + Glob(os.path.join(_sub_path, '*.cpp'))
+
+group = DefineGroup('RTduino-libraries', src,
+                    CPPPATH = [current_dir],
+                    depend = ['PKG_USING_ARDUINO_TENSORFLOW_LITE_MICRO'])
+
+Return('group')

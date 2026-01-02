@@ -15,12 +15,14 @@ src2 = []
 
 if GetDepend(['BSP_USING_CMSIS_NN']):
     src1 += Glob('cmsis_NN/Source/ActivationFunctions/*.c')
+    src1 += Glob('cmsis_NN/Source/BasicMathFunctions/*.c')
     src1 += Glob('cmsis_NN/Source/ConvolutionFunctions/*.c')
     src1 += Glob('cmsis_NN/Source/FullyConnectedFunctions/*.c')
     src1 += Glob('cmsis_NN/Source/NNSupportFunctions/*.c')
     src1 += Glob('cmsis_NN/Source/PoolingFunctions/*.c')
     src1 += Glob('cmsis_NN/Source/SoftmaxFunctions/*.c')
-    src1 += Glob('cmsis_NN/Source/NNTest/*.c')      
+    src1 += Glob('cmsis_NN/Source/NNTest/*.c')
+    src1 += Glob('cmsis_NN/Source/SVDFunctions/*.c')
     path += [cwd + '/cmsis_NN/Source/NNTest']
     
 if GetDepend(['BSP_USING_CMSIS_DSP']):

@@ -37,7 +37,7 @@ void rgb_led_init()
 #elif defined SF32LB58X
     HAL_PIN_Set(PAD_PB39, GPTIM3_CH4, PIN_NOPULL, 0);//58x          pwm4_cc4
 #elif defined SF32LB56X
-    HAL_PIN_Set(PAD_PB09, GPTIM3_CH4, PIN_NOPULL, 0);//566   pwm4_cc4
+    HAL_PIN_Set(PAD_PB25, GPTIM3_CH4, PIN_NOPULL, 0);//566   pwm4_cc4
 #endif
     /*rgbled poweron*/
 #ifdef SF32LB52X

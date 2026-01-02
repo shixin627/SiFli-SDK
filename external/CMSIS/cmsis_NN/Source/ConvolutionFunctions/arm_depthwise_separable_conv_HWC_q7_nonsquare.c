@@ -30,7 +30,11 @@
 
 #include "arm_math.h"
 #include "arm_nnfunctions.h"
-
+#include <rtthread.h>
+#if defined(BSP_USING_NN_ACC)
+#include "bf0_hal_nn_acc.h"
+#include <drv_nnacc.h>
+#endif
 /**
  *  @ingroup groupNN
  */

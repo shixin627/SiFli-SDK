@@ -8,6 +8,7 @@
 #include <rtdevice.h>
 #include <board.h>
 #include <string.h>
+#include <stdlib.h>
 #include "drv_lcd_private.h"
 #include "mem_section.h"
 

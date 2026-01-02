@@ -53,6 +53,15 @@ extern rt_err_t rt_touch_irq_pin_attach(rt_uint32_t mode, void (*hdr)(void *args
 extern rt_err_t rt_touch_irq_pin_detach(void);
 extern rt_err_t rt_touch_irq_pin_enable(rt_uint32_t enabled);
 
+/**
+ * @brief Register a callback function to receive touch events
+ * @param callback Callback function (event, x, y), set to NULL to unregister
+ *
+ * This allows application layer to receive touch events without modifying driver code.
+ * The callback will be invoked from the touch driver thread context.
+ */
+extern void rt_touch_set_event_callback(void (*callback)(rt_uint8_t event, rt_uint16_t x, rt_uint16_t y));
+
 
 #ifdef __cplusplus
 }

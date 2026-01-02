@@ -78,7 +78,7 @@ void qjs_msg_handler(gui_app_msg_type_t msg, void *param)
 		rt_kprintf(cbk_func);
 		eval_buf(qjs_ctx, cbk_func, strlen(cbk_func), "<input>", 0);    
 		JS_RunGC(qjs_rt);
-#if 1
+#ifdef RT_USING_FINSH
 		{
 			extern void list_memheap(void);
 			list_memheap();

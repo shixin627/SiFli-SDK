@@ -1307,23 +1307,23 @@ static JSValue  lv_ext_call_func(JSContext *ctx, int magic, JSValueConst param[]
 		}
 		case LVFUNC_lvsfezipa_create:
 		{
-			int r_in = (int)lv_lvsfezipa_create((lv_obj_t*)(int)param[0]);
+			int r_in = (int)lv_ezipa_create((lv_obj_t*)(int)param[0]);
 			r=JS_NewInt32(ctx,r_in);
 			break;
 		}
 		case LVFUNC_lvsfezipa_stop:
 		{
-			lv_lvsfezipa_stop((lv_obj_t*)((int)param[0]));
+			lv_ezipa_pause((lv_obj_t*)((int)param[0]));
 			break;
 		}
 		case LVFUNC_lvsfezipa_play:
 		{
-			lv_lvsfezipa_play((lv_obj_t*)((int)param[0]));
+			lv_ezipa_resume((lv_obj_t*)((int)param[0]));
 			break;
 		}
 		case LVFUNC_lvsfezipa_set_src:
 		{
-			lv_lvsfezipa_set_src((lv_obj_t*)((int)param[0]),(char *)param[1]);
+			lv_ezipa_set_src((lv_obj_t*)((int)param[0]),(char *)param[1]);
 			break;
 		}
 		case LVFUNC_label_create:

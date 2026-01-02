@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2018 Arm Limited or its affiliates. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright 2010-2022 Arm Limited and/or its affiliates <open-source-office@arm.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -21,8 +21,8 @@
  * Title:        arm_nntables.c
  * Description:  Converts the elements of the Q7 vector to Q15 vector without left-shift
  *
- * $Date:        17. January 2018
- * $Revision:    V.1.0.0
+ * $Date:        30 September 2022
+ * $Revision:    V.2.0.0
  *
  * Target Processor:  Cortex-M cores
  *
@@ -64,7 +64,7 @@
  * i.e., 0x0110 0000 - 0x1011 1111
  */
 
-const q7_t sigmoidTable_q7[256] = {
+ const q7_t sigmoidTable_q7[256] = {
     0x40, 0x42, 0x44, 0x46, 0x48, 0x4a, 0x4c, 0x4e,
     0x50, 0x52, 0x53, 0x55, 0x57, 0x59, 0x5a, 0x5c,
     0x5e, 0x5f, 0x61, 0x62, 0x63, 0x65, 0x66, 0x67,

@@ -30,7 +30,8 @@
 #define _ARM_NN_TABLES_H
 
 #include "arm_math.h"
-
+#include "arm_nn_math_types.h"
+#include "arm_nn_types.h"
 /**
 * @brief tables for various activation functions
 *

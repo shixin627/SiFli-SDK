@@ -7,7 +7,6 @@
   ******************************************************************************
 */
 
-
 #include <rtthread.h>
 #include "string.h"
 #include "board.h"
@@ -17,47 +16,14 @@
 #define DBG_LVL               DBG_INFO
 #include <rtdbg.h>
 
-
-
-
-
-#ifdef AM196Q410502LK_196_410x502
-    #define COL_OFFSET (22)
-    #define ROW_OFFSET (0)
-#elif AM178Q368448LK_178_368x448
-    #define COL_OFFSET (16)
-    #define ROW_OFFSET (0)
-#elif AM151Q466466LK_151_466x466_C
-    #define COL_OFFSET (6)
-    #define ROW_OFFSET (0)
-#elif AM200Q460460LK_200_460x460
-    #define COL_OFFSET (10)
-    #define ROW_OFFSET (0)
-#elif H0198S005AMT005_V0_195_410x502
-    #define COL_OFFSET (44)
-    #define ROW_OFFSET (0)
-#else
-    #define ROW_OFFSET  (0x00)
-    #define COL_OFFSET  (0x00)
-#endif
+#define ROW_OFFSET  (0x00)
+#define COL_OFFSET  (0x06)
 
 /**
   * @brief CO5300 chip IDs
   */
-
-#ifdef AM196Q410502LK_196_410x502
-    #define LCD_ID                  0x530001
-#elif defined(AM151Q466466LK_151_466x466_C)
-    #define LCD_ID                  0x530001
-#elif defined(AM200Q460460LK_200_460x460)
-    #define LCD_ID                  0x530001
-#elif defined(H0198S005AMT005_V0_195_410x502)
-    #define LCD_ID                  0x530001
-#elif defined(AM178Q368448LK_178_368x448)
-    #define LCD_ID                  0x530001
-#else
-    #define LCD_ID                  0x331100
-#endif
+#define LCD_ID_DO0143FMST08                0x0
+#define LCD_ID_TT151AMC60C                 0x8000
 
 /**
   * @brief  CO5300 Size
@@ -92,22 +58,29 @@
 #define REG_RASET              0x2B
 #define REG_PART_CASET         0x30
 #define REG_PART_RASET         0x31
-#define REG_TEARING_EFFECT_OFF 0x34
-#define REG_TEARING_EFFECT_ON  0x35
-#define REG_MADCTL             0x36
+#define REG_VSCRDEF            0x33 /* Vertical Scroll Definition */
+#define REG_VSCSAD             0x37 /* Vertical Scroll Start Address of RAM */
+#define REG_TEARING_EFFECT     0x35
+#define REG_NORMAL_DISPLAY     0x36
 #define REG_IDLE_MODE_OFF      0x38
 #define REG_IDLE_MODE_ON       0x39
 #define REG_COLOR_MODE         0x3A
 #define REG_CONTINUE_WRITE_RAM 0x3C
 #define REG_WBRIGHT            0x51 /* Write brightness*/
-#define REG_RBRIGHT            0x52 /* Read brightness*/
-#define REG_WRITE_CTRL_DISPLAY 0x53
-#define REG_WRHBMDISBV         0x63
-#define REG_SET_DISPLAY_MODE   0xC2
-#define REG_SET_SPI_MODE       0xC4
-#define REG_PASSWD1            0xF4
-#define REG_PASSWD2            0xF5
-#define REG_CMD_PAGE_SWITCH    0xFE
+#define REG_RBRIGHT            0x53 /* Read brightness*/
+#define REG_PORCH_CTRL         0xB2
+#define REG_FRAME_CTRL         0xB3
+#define REG_GATE_CTRL          0xB7
+#define REG_VCOM_SET           0xBB
+#define REG_LCM_CTRL           0xC0
+#define REG_SET_TIME_SRC       0xC2
+#define REG_SET_DISP_MODE      0xC4
+#define REG_VCOMH_OFFSET_SET   0xC5
+#define REG_FR_CTRL            0xC6
+#define REG_POWER_CTRL         0xD0
+#define REG_PV_GAMMA_CTRL      0xE0
+#define REG_NV_GAMMA_CTRL      0xE1
+#define REG_SPI2EN             0xE7
 
 #define DEBUG_PRINTF(...)   LOG_I(__VA_ARGS__)
 
@@ -118,12 +91,7 @@
 static LCDC_InitTypeDef lcdc_int_cfg_qadspi =
 {
     .lcd_itf = QAD_SPI_ITF, // LCDC_INTF_SPI_NODCX_1DATA
-#if defined(LCD_MAX_CLK_FREQ)
-    .freq = LCD_MAX_CLK_FREQ,        //CO5300 RGB565 only support 50000000,  RGB888 support 60000000
-#else
-    .freq = 50000000, //CO5300 RGB565 only support 50000000,  RGB888 support 60000000
-#endif
-
+    .freq = 48000000,        //CO5300 RGB565 only support 50000000,  RGB888 support 60000000
     .color_mode = LCDC_PIXEL_FORMAT_RGB565,//LCDC_PIXEL_FORMAT_RGB565,
 
     .cfg = {
@@ -131,19 +99,18 @@ static LCDC_InitTypeDef lcdc_int_cfg_qadspi =
             .dummy_clock = 0,
 #ifdef LCD_CO5300_VSYNC_ENABLE
             .syn_mode = HAL_LCDC_SYNC_VER,
+            .vsyn_polarity = 1,
+            .vsyn_delay_us = 0,
 #else
             .syn_mode = HAL_LCDC_SYNC_DISABLE,
 #endif /* LCD_CO5300_VSYNC_ENABLE */
-            .vsyn_polarity = 1,
             //default_vbp=2, frame rate=82, delay=115us,
             //TODO: use us to define delay instead of cycle, delay_cycle=115*48
-            .vsyn_delay_us = 0,
             .hsyn_num = 0,
         },
     },
 
 };
-
 
 static LCDC_InitTypeDef lcdc_int_cfg;
 
@@ -152,7 +119,6 @@ static void LCD_SetRegion(LCDC_HandleTypeDef *hlcdc, uint16_t Xpos0, uint16_t Yp
 static void     LCD_WriteReg(LCDC_HandleTypeDef *hlcdc, uint16_t LCD_Reg, uint8_t *Parameters, uint32_t NbParameters);
 static uint32_t LCD_ReadData(LCDC_HandleTypeDef *hlcdc, uint16_t RegValue, uint8_t ReadSize);
 static void LCD_ReadMode(LCDC_HandleTypeDef *hlcdc, bool enable);
-
 
 /**
   * @brief  spi read/write mode
@@ -188,10 +154,9 @@ static void LCD_Clear(LCDC_HandleTypeDef *hlcdc)
 
 }
 
-
 static void LCD_Drv_Init(LCDC_HandleTypeDef *hlcdc)
 {
-    uint8_t   parameter[14];
+    uint8_t parameter[14];
     /* Initialize CO5300 low level bus layer ----------------------------------*/
     memcpy(&hlcdc->Init, &lcdc_int_cfg, sizeof(LCDC_InitTypeDef));
     HAL_LCDC_Init(hlcdc);
@@ -201,75 +166,49 @@ static void LCD_Drv_Init(LCDC_HandleTypeDef *hlcdc)
     BSP_LCD_Reset(0);//Reset LCD
     rt_thread_delay(10);
     BSP_LCD_Reset(1);
-    rt_thread_delay(50);
-
-    if (LCD_ReadID(hlcdc) !=  LCD_ID)
+    rt_thread_delay(10);
+    
+    uint32_t module_id = LCD_ReadID(hlcdc);
+    if (module_id != LCD_ID_TT151AMC60C && module_id != LCD_ID_DO0143FMST08)
     {
         return;
     }
-
-#ifdef AM196Q410502LK_196_410x502
+    
     parameter[0] = 0x00;
-#elif defined(AM151Q466466LK_151_466x466_C)
-    parameter[0] = 0x00;
-#elif defined(AM178Q368448LK_178_368x448)
-    parameter[0] = 0x00;
-#elif defined(AM200Q460460LK_200_460x460)
-    parameter[0] = 0x00;
-#elif defined(H0198S005AMT005_V0_195_410x502)
-    parameter[0] = 0x00;
-#else
-    parameter[0] = 0x20;
-#endif
-    LCD_WriteReg(hlcdc, REG_CMD_PAGE_SWITCH, parameter, 1); //Pass word unlock
-    parameter[0] = 0x5A;
-    LCD_WriteReg(hlcdc, REG_PASSWD1, parameter, 1);
-    parameter[0] = 0x59;
-    LCD_WriteReg(hlcdc, REG_PASSWD2, parameter, 1);
-
-    parameter[0] = 0x20;
-    LCD_WriteReg(hlcdc, REG_CMD_PAGE_SWITCH, parameter, 1); //Pass word lock
-    parameter[0] = 0xA5;
-    LCD_WriteReg(hlcdc, REG_PASSWD1, parameter, 1);
-    parameter[0] = 0xA5;
-    LCD_WriteReg(hlcdc, REG_PASSWD2, parameter, 1);
-
-    parameter[0] = 0x00;
-    LCD_WriteReg(hlcdc, REG_CMD_PAGE_SWITCH, parameter, 1);
+    LCD_WriteReg(hlcdc, 0xFE, parameter, 1);
     parameter[0] = 0x80;
-    LCD_WriteReg(hlcdc, REG_SET_SPI_MODE, parameter, 1);
+    LCD_WriteReg(hlcdc, 0xC4, parameter, 1);
     parameter[0] = 0x55;
-    LCD_WriteReg(hlcdc, REG_COLOR_MODE, parameter, 1);
+    LCD_WriteReg(hlcdc, 0x3A, parameter, 1);
+#ifdef LCD_CO5300_VSYNC_ENABLE
     parameter[0] = 0x00;
-    LCD_WriteReg(hlcdc, REG_TEARING_EFFECT_ON, parameter, 1);
+    LCD_WriteReg(hlcdc, 0x35, parameter, 1);
+#endif
     parameter[0] = 0x20;
-    LCD_WriteReg(hlcdc, REG_WRITE_CTRL_DISPLAY, parameter, 1);
-    //parameter[0] = 0x10;
-    //ICNA3310_WriteReg(hlcdc, REG_WBRIGHT, parameter, 1);
+    LCD_WriteReg(hlcdc, 0x53, parameter, 1);
+    // parameter[0] = 0x00;
+    // LCD_WriteReg(hlcdc, 0x51, parameter, 1);
 
     parameter[0] = 0xff;
-    LCD_WriteReg(hlcdc, REG_WRHBMDISBV, parameter, 1);
+    LCD_WriteReg(hlcdc, 0x63, parameter, 1);
 
     parameter[0] = (COL_OFFSET >> 8) & 0xFF;
     parameter[1] = COL_OFFSET & 0xFF;
     parameter[2] = ((LCD_PIXEL_WIDTH + COL_OFFSET - 1) >> 8) & 0xFF;
     parameter[3] = (LCD_PIXEL_WIDTH + COL_OFFSET - 1) & 0xFF;
-    LCD_WriteReg(hlcdc, REG_CASET, parameter, 4);
+    LCD_WriteReg(hlcdc, 0x2A, parameter, 4);
     parameter[0] = (ROW_OFFSET >> 8) & 0xFF;
     parameter[1] = ROW_OFFSET & 0xFF;
     parameter[2] = ((LCD_PIXEL_HEIGHT + ROW_OFFSET - 1) >> 8) & 0xFF;
     parameter[3] = (LCD_PIXEL_HEIGHT + ROW_OFFSET - 1) & 0xFF;
-    LCD_WriteReg(hlcdc, REG_RASET, parameter, 4);
+    LCD_WriteReg(hlcdc, 0x2B, parameter, 4);
 
-    LCD_WriteReg(hlcdc, REG_SLEEP_OUT, (uint8_t *)NULL, 0);
+    LCD_WriteReg(hlcdc, 0x11, (uint8_t *)NULL, 0);
     //sleep out+display on
     rt_thread_delay(120);
-    LCD_WriteReg(hlcdc, REG_DISPLAY_ON, (uint8_t *)NULL, 0);
+    LCD_WriteReg(hlcdc, 0x29, (uint8_t *)NULL, 0);
     rt_thread_delay(70);
 }
-
-
-
 
 /**
   * @brief  Power on the LCD.
@@ -285,7 +224,6 @@ static void LCD_Init(LCDC_HandleTypeDef *hlcdc)
     LCD_Drv_Init(hlcdc);
 }
 
-
 /**
   * @brief  Disables the Display.
   * @param  None
@@ -296,19 +234,8 @@ static uint32_t LCD_ReadID(LCDC_HandleTypeDef *hlcdc)
     uint32_t data;
     data = LCD_ReadData(hlcdc, REG_LCD_ID, 3);
     rt_kprintf("\nCO5300_ReadID 0x%x \n", data);
-    if (data == LCD_ID)
+    if (data == LCD_ID_TT151AMC60C || data == LCD_ID_DO0143FMST08)
         DEBUG_PRINTF("LCD module use CO5300 IC \n");
-#ifdef AM196Q410502LK_196_410x502
-    data = LCD_ID; // force to return CO5300 ID
-#elif defined(AM178Q368448LK_178_368x448)
-    data = LCD_ID;
-#elif defined(AM151Q466466LK_151_466x466_C)
-    data = LCD_ID;
-#elif defined(AM200Q460460LK_200_460x460)
-    data = LCD_ID;
-#elif defined(H0198S005AMT005_V0_195_410x502)
-    data = LCD_ID;
-#endif
     return data;
 }
 
@@ -384,7 +311,6 @@ static void LCD_WriteMultiplePixels(LCDC_HandleTypeDef *hlcdc, const uint8_t *RG
 
 }
 
-
 /**
   * @brief  Writes  to the selected LCD register.
   * @param  LCD_Reg: address of the selected register.
@@ -407,8 +333,6 @@ static void LCD_WriteReg(LCDC_HandleTypeDef *hlcdc, uint16_t LCD_Reg, uint8_t *P
 
 }
 
-
-
 /**
   * @brief  Reads the selected LCD Register.
   * @param  RegValue: Address of the register to read
@@ -423,13 +347,10 @@ static uint32_t LCD_ReadData(LCDC_HandleTypeDef *hlcdc, uint16_t RegValue, uint8
 
     HAL_LCDC_ReadU32Reg(hlcdc, ((0x03 << 24) | (RegValue << 8)), (uint8_t *)&rd_data, ReadSize);
 
-
     LCD_ReadMode(hlcdc, false);
 
     return rd_data;
 }
-
-
 
 static uint32_t LCD_ReadPixel(LCDC_HandleTypeDef *hlcdc, uint16_t Xpos, uint16_t Ypos)
 {
@@ -469,7 +390,6 @@ static uint32_t LCD_ReadPixel(LCDC_HandleTypeDef *hlcdc, uint16_t Xpos, uint16_t
 
     return ret_v;
 }
-
 
 static void LCD_SetColorMode(LCDC_HandleTypeDef *hlcdc, uint16_t color_mode)
 {
@@ -536,7 +456,6 @@ static void LCD_IdleModeOff(LCDC_HandleTypeDef *hlcdc)
 
 }
 
-
 static const LCD_DrvOpsDef CO5300_drv =
 {
     LCD_Init,
@@ -557,8 +476,18 @@ static const LCD_DrvOpsDef CO5300_drv =
 
 };
 
-LCD_DRIVER_EXPORT(co5300, LCD_ID, &lcdc_int_cfg,
+#ifdef LCD_ID_DO0143FMST08
+LCD_DRIVER_EXPORT(co5300_icna3311, LCD_ID_DO0143FMST08, &lcdc_int_cfg,
                   &CO5300_drv,
                   LCD_PIXEL_WIDTH,
                   LCD_PIXEL_HEIGHT,
                   2);
+#endif
+
+#ifdef LCD_ID_TT151AMC60C
+LCD_DRIVER_EXPORT(co5300_ch13613, LCD_ID_TT151AMC60C, &lcdc_int_cfg,
+                  &CO5300_drv,
+                  LCD_PIXEL_WIDTH,
+                  LCD_PIXEL_HEIGHT,
+                  2);
+#endif

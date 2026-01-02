@@ -7,6 +7,7 @@
 #ifndef __NN_ACC_H
 #define __NN_ACC_H
 
+#include "core_cm33.h"
 typedef struct
 {
     __IO uint32_t CFG1;

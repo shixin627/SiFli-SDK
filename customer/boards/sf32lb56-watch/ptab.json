@@ -1,0 +1,73 @@
+[
+    {"version": "2"},
+    {
+        "mem": "psram1", 
+        "base": "0x60000000", 
+        "regions": [
+            {
+                "offset": "0x00000000", 
+                "max_size": "0x00400000", 
+                "name": "main", 
+                "type": ["app_exec"],
+                "custom": {
+                    "PSRAM_BL_MODE": 3, 
+                    "PSRAM_BL_SIZE": 8, 
+                    "PSRAM_BL_MPI": 1
+                }
+            },
+            {
+                "offset": "0x00000000",
+                "max_size": "0x00080000",
+                "name": "dfu", 
+                "type": ["app_exec"]
+            },
+            {
+                "offset": "0x00400000", 
+                "max_size": "0x00400000", 
+                "tags": [
+                    "PSRAM_DATA"
+                ]
+            }
+        ]
+    }, 
+    {
+        "mem": "flash3", 
+        "base": "0x64000000", 
+        "regions": [
+            {
+                "offset": "0x00000000",
+                "max_size": "0x00400000",
+                "tags": [
+                    "HCPU_FLASH_CODE_LOAD_REGION"
+                ],
+                "name": "main",
+                "type": ["app_img"]
+            },
+            {
+                "offset": "0x00400000",
+                "max_size": "0x06BF4000",
+                "tags": ["FS_REGION"]
+            },
+            {
+                "offset": "0x06FF4000",
+                "max_size": "0x00004000",
+                "tags": ["KVDB_DFU_REGION"]
+            },
+            {
+                "offset": "0x06FF8000",
+                "max_size": "0x00004000",
+                "tags": ["KVDB_BLE_REGION"]
+            },
+            {
+                "offset": "0x06FFC000",
+                "max_size": "0x00004000",
+                "tags": ["KVDB_PREFDB_REGION"]
+            },
+            {
+                "offset": "0x07000000",
+                "max_size": "0x01000000",
+                "tags": ["BLE_OTA_REGION"]
+            }
+        ]
+    }
+]

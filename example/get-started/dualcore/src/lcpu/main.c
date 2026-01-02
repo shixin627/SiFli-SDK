@@ -72,7 +72,7 @@ void rc10k_timeout_handler(void *parameter)
 
 int main(void)
 {
-    init_pin();
+    // init_pin();
     if (HAL_LXT_DISABLED())
     {
         rc10k_time_handle  = rt_timer_create("rc10", rc10k_timeout_handler,  NULL,

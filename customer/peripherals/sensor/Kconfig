@@ -23,6 +23,25 @@ menuconfig SENSOR_USING_HR
                 int "Heart rate reset pin"
                 default 78
             endif   
+        menuconfig HR_USING_GH3018
+            bool "Enable HR Sensor GH3018"
+            select RT_USING_SENSOR
+            default n
+            if HR_USING_GH3018
+                config GH3018_I2C_BUS
+                string "GH3018 I2C bus name"
+                default "i2c5"
+                config HR_MODEL_NAME
+                string "GH3018 model name"
+                default "gh3018"
+
+                config GH3018_INT_BIT
+                int "Heart rate ready int pin"
+                default 117
+                config GH3018_RST_PIN
+                int "Heart rate reset pin"
+                default 118
+            endif		
         menuconfig HR_USING_HRS3300
             bool "HRS3300"
             select RT_USING_SENSOR
@@ -42,7 +61,6 @@ menuconfig SENSOR_USING_HR
                 config HRS3300_INT_PIN
                 int "Heart rate int pin"
                 default 1
-				
 		config HR_USR_POLLING_MODE
                 bool "HR use polling mode"
                 default y
@@ -249,6 +267,36 @@ menuconfig SENSOR_USING_6D
                 config GSENSOR_UES_FIFO
                 bool "STK8328C use fifo"
                 default y
+            endif
+    menuconfig ACC_USING_BMI270
+            bool "Enable Accelerator and Gyro BMI270"
+            select RT_USING_SENSOR
+            default y
+            if ACC_USING_BMI270
+                config BMI270_USING_I2C
+                    int "BMI270 BUS type: 1 = I2C, 0 = SPI"
+                    default 1
+                config BMI270_BUS_NAME
+                    string "Sensor BMI270 BUS name"
+                    default "i2c5"
+                config BMI270_INT_GPIO_BIT
+                    int "BMI270 Interrupt 1 PIN"
+                    default 121
+                config BMI270_INT2_GPIO_BIT
+                    int "BMI270 Interrupt 2 PIN"
+                    default 94
+                config BMI270_POW_PIN
+                    int "BMI270 power pin"
+                    default 122
+                config LSM_USING_AWT
+                    bool "Enable AWT fucntion"
+                    default y
+                config LSM_USING_PEDO
+                    bool "Enable Pedometer fucntion"
+                    default y
+                config GSENSOR_UES_FIFO
+                    bool "BMI270 use fifo"
+                    default y
             endif
     config USING_GYRO_SENSOR
            bool "using gyro"

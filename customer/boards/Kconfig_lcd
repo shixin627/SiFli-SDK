@@ -387,7 +387,55 @@ if BSP_USING_BUILTIN_LCD
             select LCD_USING_PWM_AS_BACKLIGHT
 
 
-        
+        config LCD_USING_DO0143FMST05
+            bool "1.43 inch(466 x 466) round QADSPI/MIPI AMOLED(DO0143FMST05)"
+            select LCD_USING_SH8601
+            select TSC_USING_FT3168 if BSP_USING_TOUCHD
+            select BSP_LCDC_USING_QADSPI
+            select BSP_USING_ROUND_TYPE_LCD
+            if LCD_USING_DO0143FMST05
+                config LCD_SH8601_VSYNC_ENABLE
+                    bool "Enable LCD VSYNC (TE signal)"
+                    def_bool y
+            endif
+
+        config LCD_USING_DO0143FMST08
+            bool "1.43 inch(466 x 466) round QADSPI/MIPI AMOLED(DO0143FMST08)"
+            select LCD_USING_CO5300
+            select TSC_USING_FT3168 if BSP_USING_TOUCHD
+            select BSP_LCDC_USING_QADSPI
+            select BSP_USING_ROUND_TYPE_LCD
+            if LCD_USING_DO0143FMST08
+                config LCD_CO5300_VSYNC_ENABLE
+                    bool "Enable LCD VSYNC (TE signal)"
+                    def_bool y
+            endif
+
+        config LCD_USING_TT151AMC60C
+            bool "1.51 inch(466 x 466) round QADSPI/MIPI AMOLED(TT151AMC60C)"
+            select LCD_USING_CO5300
+            select TSC_USING_CST820 if BSP_USING_TOUCHD
+            select BSP_LCDC_USING_QADSPI
+            select BSP_USING_ROUND_TYPE_LCD
+            if LCD_USING_TT151AMC60C
+                config LCD_CO5300_VSYNC_ENABLE
+                    bool "Enable LCD VSYNC (TE signal)"
+                    def_bool y
+            endif
+
+        config LCD_USING_DO0143FMST08_LCD_USING_TT151AMC60C
+            bool "466 x 466 round QADSPI AMOLED(LCD_USING_DO0143FMST08 and LCD_USING_TT151AMC60C)"
+            select LCD_USING_CO5300
+            select TSC_USING_FT3168 if BSP_USING_TOUCHD
+            select TSC_USING_CST820 if BSP_USING_TOUCHD
+            select BSP_LCDC_USING_QADSPI
+            select BSP_USING_ROUND_TYPE_LCD
+            if LCD_USING_DO0143FMST08_LCD_USING_TT151AMC60C
+                config LCD_CO5300_VSYNC_ENABLE
+                    bool "Enable LCD VSYNC (TE signal)"
+                    def_bool y
+            endif
+		
 #       config AM196Q410502LK_196_410x502
 #           bool "YUYING AM196Q410502LK_196_410x502"
 #           select LCD_USING_CO5300
@@ -535,6 +583,10 @@ if BSP_USING_BUILTIN_LCD
         default 460 if AM200Q460460LK_200_460x460
         default 410 if H0198S005AMT005_V0_195_410x502
         default 128 if LCD_USING_GC9107_128x128_SPI
+		default 466 if LCD_USING_DO0143FMST05
+        default 466 if LCD_USING_DO0143FMST08
+        default 466 if LCD_USING_TT151AMC60C
+        default 466 if LCD_USING_DO0143FMST08_LCD_USING_TT151AMC60C
 
 
         
@@ -586,6 +638,10 @@ if BSP_USING_BUILTIN_LCD
         default 460 if AM200Q460460LK_200_460x460
         default 502 if H0198S005AMT005_V0_195_410x502
         default 128 if LCD_USING_GC9107_128x128_SPI
+		default 466 if LCD_USING_DO0143FMST05
+        default 466 if LCD_USING_DO0143FMST08
+        default 466 if LCD_USING_TT151AMC60C
+        default 466 if LCD_USING_DO0143FMST08_LCD_USING_TT151AMC60C
 
 
     config LCD_DPI
@@ -636,6 +692,10 @@ if BSP_USING_BUILTIN_LCD
         default 300 if AM200Q460460LK_200_460x460
         default 300 if H0198S005AMT005_V0_195_410x502
         default 213 if LCD_USING_GC9107_128x128_SPI
+		default 461 if LCD_USING_DO0143FMST05
+        default 461 if LCD_USING_DO0143FMST08
+        default 461 if LCD_USING_TT151AMC60C
+        default 461 if LCD_USING_DO0143FMST08_LCD_USING_TT151AMC60C
 
 endif
 

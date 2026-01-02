@@ -1,0 +1,13 @@
+menu "Tensorflow Lite Micro"  
+
+config PKG_USING_ARDUINO_TENSORFLOW_LITE_MICRO
+    bool "Enable Tensorflow Lite Micro"
+    default n
+
+config PKG_USING_TENSORFLOW_LITE_MICRO_CMSISNN
+    bool "Using Tensorflow Lite CMSIS NN operations"
+    depends on PKG_USING_ARDUINO_TENSORFLOW_LITE_MICRO
+    help
+        Select this option to use the CMSIS NN implementations of the Tensorflow Lite Micro operations.
+
+endmenu

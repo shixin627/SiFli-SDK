@@ -90,7 +90,6 @@ void BSP_PowerUpCustom(bool is_deep_sleep);
 void BSP_LCD_Reset(uint8_t high1_low0);
 void BSP_LCD_PowerUp(void);
 void BSP_LCD_PowerDown(void);
-
 /**
  * @brief Touch power up/down/reset
  */
@@ -98,6 +97,7 @@ void BSP_TP_Reset(uint8_t high1_low0);
 void BSP_TP_PowerUp(void);
 void BSP_TP_PowerDown(void);
 
+void BSP_Motor_PowerSwitch(bool is_power_on);
 /**
  * @brief Flash
  */

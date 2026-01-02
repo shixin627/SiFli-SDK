@@ -1,0 +1,13 @@
+menu "Kraepelin"  
+
+config PKG_USING_KRAEPELIN
+    bool "Enable kraepelin algorithm"
+    default n
+
+config PKG_USING_KRAEPELIN_REFERENCE
+    bool "Using kraepelin reference"
+    depends on PKG_USING_KRAEPELIN
+    help
+        Select this option to use the references of kraepelin algorithm.
+
+endmenu

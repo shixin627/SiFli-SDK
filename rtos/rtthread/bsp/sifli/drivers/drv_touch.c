@@ -43,6 +43,9 @@ static touch_drv_t current_driver = NULL;
 static struct rt_thread touch_thread;
 static rt_thread_t p_touch_thread;
 static rt_sem_t api_lock;
+
+/* Touch event callback for application layer */
+static void (*touch_event_callback)(uint8_t event, uint16_t x, uint16_t y) = NULL;
 ALIGN(RT_ALIGN_SIZE)
 L1_NON_RET_BSS_SECT_BEGIN(touch_thread_stack)
 L1_NON_RET_BSS_SECT(touch_thread_stack, static char touch_thread_stack[1024]);
@@ -419,6 +422,12 @@ static void touch_remote_in_entry(void *parameter)
         case TOUCH_EVENT_DOWN:
         case TOUCH_EVENT_UP:
             touch_write_more(msg.event, msg.x, msg.y);
+
+            /* Notify application layer via callback */
+            if (touch_event_callback)
+            {
+                touch_event_callback(msg.event, msg.x, msg.y);
+            }
             break;
         default:
         {
@@ -573,6 +582,7 @@ static void tp_read_thread_entry(void *parameter)
             touch_api_lock();
             err = current_driver->ops->read_point(&msg);
             touch_api_unlock();
+
             switch (msg.event)
             {
             case TOUCH_EVENT_DOWN:
@@ -585,13 +595,26 @@ static void tp_read_thread_entry(void *parameter)
                 touch_write_more(msg.event, msg.x, msg.y);
 #endif /* REMOTE_TOUCH_OUTPUT_DEVICE */
                 //post_down_event(msg.x, msg.y, emouse_id);
+
+                /* Notify application layer via callback */
+                if (touch_event_callback)
+                {
+                    touch_event_callback(msg.event, msg.x, msg.y);
+                }
                 break;
             case TOUCH_EVENT_MOVE:
                 //post_motion_event(msg.x, msg.y, emouse_id);
+
+                /* Notify application layer via callback */
+                if (touch_event_callback)
+                {
+                    touch_event_callback(msg.event, msg.x, msg.y);
+                }
                 break;
             default:
                 break;
             }
+
             rt_thread_delay(RT_TICK_PER_SECOND / BSP_TOUCH_SAMPLE_HZ); //Let system breath
         }
         while (err == RT_EOK);
@@ -629,13 +652,13 @@ static void tp_poweroff_thread_entry(void *parameter)
 
 
     //In case of cutomer driver forgot to disable irq.
+    #ifndef RT_USING_PM
     rt_touch_irq_pin_enable(0);
+    #endif
     current_driver->ops->deinit();
-
+#ifndef RT_USING_PM
     BSP_TP_PowerDown();
-
-
-
+#endif
 
 #ifdef RT_USING_PM
     rt_pm_release(PM_SLEEP_MODE_IDLE);
@@ -870,6 +893,16 @@ const rt_device_ops dev_ops =
 };
 #endif
 
+/**
+ * @brief Register a callback function to receive touch events
+ * @param callback Callback function (event, x, y), set to NULL to unregister
+ */
+void rt_touch_set_event_callback(void (*callback)(rt_uint8_t event, rt_uint16_t x, rt_uint16_t y))
+{
+    touch_event_callback = callback;
+    LOG_I("Touch event callback %s", callback ? "registered" : "unregistered");
+}
+
 static int rt_touch_driver_init(void)
 {
     rt_err_t err = RT_EOK;
@@ -982,8 +1015,16 @@ static rt_err_t tp_ctrl(int argc, char **argv)
 
         LOG_I("Clicked at %d,%d", x, y);
         touch_write_more(TOUCH_EVENT_DOWN, x, y);
+        if (touch_event_callback)
+        {
+            touch_event_callback(TOUCH_EVENT_DOWN, x, y);
+        }
         rt_thread_delay(rt_tick_from_millisecond(100));
         touch_write_more(TOUCH_EVENT_UP, x, y);
+        if (touch_event_callback)
+        {
+            touch_event_callback(TOUCH_EVENT_UP, x, y);
+        }
     }
     else if (strcmp(argv[1], "slide") == 0)
     {
@@ -1002,10 +1043,22 @@ static rt_err_t tp_ctrl(int argc, char **argv)
 
         LOG_I("Slide frome %d,%d -->  %d,%d", x1, y1, x2, y2);
         touch_write_more(TOUCH_EVENT_DOWN, x1, y1);
+        if (touch_event_callback)
+        {
+            touch_event_callback(TOUCH_EVENT_DOWN, x1, y1);
+        }
         rt_thread_delay(rt_tick_from_millisecond(100));
         touch_write_more(TOUCH_EVENT_DOWN, x2, y2);
+        if (touch_event_callback)
+        {
+            touch_event_callback(TOUCH_EVENT_MOVE, x2, y2);
+        }
         rt_thread_delay(rt_tick_from_millisecond(100));
         touch_write_more(TOUCH_EVENT_UP, x2, y2);
+        if (touch_event_callback)
+        {
+            touch_event_callback(TOUCH_EVENT_UP, x2, y2);
+        }
     }
 
 

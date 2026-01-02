@@ -915,7 +915,7 @@ static void gpio_int_test(void *args)
 #define PAD_PA_00 PAD_PA00
 #define PAD_PB_00 PAD_PB00
 
-static void print_pin_state(int pin)
+void print_pin_state(int pin)
 {
     int pad, hcpu;
 

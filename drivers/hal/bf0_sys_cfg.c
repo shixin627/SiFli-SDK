@@ -613,7 +613,7 @@ static void BSP_CFG_CALIB_PMU(FACTORY_CFG_VBK_LDO_T *cfg)
     MODIFY_REG(hwp_pmuc->VRET_CR, PMUC_VRET_CR_TRIM_Msk, cfg->vret << PMUC_VRET_CR_TRIM_Pos);
     MODIFY_REG(hwp_pmuc->BG2_CR, PMUC_BG2_CR_BG2_VREF12_Msk, cfg->vbuck2 << PMUC_BG2_CR_BG2_VREF12_Pos);
 }
-#elif defined(SF32LB56X)
+#elif defined(SF32LB56X) && defined(SOC_BF0_HCPU)
 static void BSP_CFG_CALIB_PMU(FACTORY_CFG_VBK_LDO_T *cfg)
 {
     if (cfg == NULL)

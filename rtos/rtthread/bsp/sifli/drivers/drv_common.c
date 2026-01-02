@@ -665,7 +665,19 @@ RT_WEAK void rt_hw_board_init()
 
     /* Set the shell console output device */
 #ifdef RT_USING_CONSOLE
+#ifdef BSP_USING_VIRTUAL_CONSOLE
+
+#ifdef SOC_BF0_HCPU
+    rt_console_set_device("vuart1");
+#else
+    rt_console_set_device("vuart4");
+#endif
+
+#else
+
     rt_console_set_device(RT_CONSOLE_DEVICE_NAME);
+
+#endif
 #endif
 
 #ifdef SOC_BF0_HCPU
