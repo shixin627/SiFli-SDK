@@ -13,6 +13,10 @@
 #ifdef PKG_USING_FLASHDB
 #include "flashdb.h"
 
+#ifdef FDB_USING_FILE_MODE
+#include "dfs_posix.h"
+#endif /* FDB_USING_FILE_MODE */
+
 
 typedef struct
 {
@@ -58,6 +62,12 @@ share_prefs_t *share_prefs_open(const char *prefs_name, uint32_t mode)
         fdb_kvdb_control(p_db, FDB_KVDB_CTRL_SET_SEC_SIZE, (void *)&sec_size);
         fdb_kvdb_control(p_db, FDB_KVDB_CTRL_SET_MAX_SIZE, (void *)&max_size);
         fdb_kvdb_control(p_db, FDB_KVDB_CTRL_SET_FILE_MODE, (void *)&file_mode);
+        if (0 != access("prefdb", 0) && 0 != mkdir("prefdb", 0))
+        {
+            rt_kprintf("create db %s fail\n", "prefdb");
+            rt_free(p_flshdb_prefs);
+            return NULL;
+        }
 #endif
         err = fdb_kvdb_init(p_db, "share_pref", "prefdb", &default_kv, NULL);
         if (err != FDB_NO_ERR)
