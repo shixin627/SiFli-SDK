@@ -169,7 +169,7 @@ void BSP_PIN_Init(void)
     // HAL_PIN_Set(PAD_PB19, USART5_RXD, PIN_PULLUP, 0);
     // HAL_PIN_Set(PAD_PB20, USART5_TXD, PIN_PULLUP, 0);
 #if defined(PWM_LRA_MOTOR)
-    HAL_PIN_Set(PAD_PB20, GPTIM3_CH4, PIN_NOPULL, 0); // Motor PWM
+    HAL_PIN_Set(PAD_PB20, GPTIM3_CH3, PIN_NOPULL, 0); // Motor PWM
 #else
     HAL_PIN_Set(PAD_PB20, GPIO_B20, PIN_PULLDOWN, 0); // Motor Control Pin
 #endif
@@ -179,9 +179,12 @@ void BSP_PIN_Init(void)
     // HAL_PIN_Set(PAD_PB23, GPIO_B2ㄗ3, PIN_NOPULL, 0);  //TWI_SDA  /GS_HR_SCL
     HAL_PIN_Set(PAD_PB23, I2C5_SCL, PIN_PULLUP, 0);
     HAL_PIN_Set(PAD_PB24, I2C5_SDA, PIN_PULLUP, 0);
-    
-    HAL_PIN_Set(PAD_PB25, GPIO_B25, PIN_NOPULL, 0);  // CTP_RESET, touch panel reset
 
+#if defined(RGB_SK6812MINI_HS_ENABLE)
+    HAL_PIN_Set(PAD_PB25, GPTIM3_CH4, PIN_NOPULL, 0); // RGB LED PWM
+#else
+    HAL_PIN_Set(PAD_PB25, GPIO_B25, PIN_NOPULL, 0);  // CTP_RESET, touch panel reset
+#endif
     // TODO: Check analog pin config.                 // #GPADC_CH4, NTC_GPADC_CH4, Battery temperature
 
     HAL_PIN_Set_Analog(PAD_PB27, 0);                  // #GPADC_CH5, VBAT_GPADC_CH5, Battery voltage

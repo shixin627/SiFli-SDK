@@ -135,9 +135,10 @@ motor_err_t motor_pwm_open(void *args)
     }
     else
     {
-        rt_uint32_t period = MOTOR_PERIOD * 1000 * 1000;
+        rt_uint32_t period = MOTOR_PERIOD * 1000;  //* 1000
+        rt_uint32_t duty_cycle = (*(uint32_t *)args);
         //rt_kprintf("motor_pwm_open cyc %d %d %d\n",*(uint32_t *)args, period, (period / 100) * (*(uint32_t *)args));
-        rt_pwm_set(motor_device, MOTOR_CHANEL_NUM, period, (period / 100) * (*(uint32_t *)args));
+        rt_pwm_set(motor_device, MOTOR_CHANEL_NUM, period, (period / 100) * duty_cycle);
         ret = rt_pwm_enable(motor_device, MOTOR_CHANEL_NUM);
     }
 #endif

@@ -85,10 +85,10 @@ extern int __bss_end;
 #define BOARD_VER_21 21
 #define BOARD_VER_22 22
 #define BOARD_VER_23 23
-#define BOARD_VER_25 25
 #define BOARD_VER_26 26
+#define BOARD_VER_27 27
 
-#define CUSTOMER_BOARD_VER BOARD_VER_26
+#define CUSTOMER_BOARD_VER BOARD_VER_27
 
 #define ENABLE_TAP_AND_HOLD 0
 #define MAX_RAWDATA_TIME_STEP 35
@@ -175,7 +175,7 @@ extern int __bss_end;
 #define MOTOR_POWER_EN_PIN (5)       // PA05
 #define USING_LINEAR_MOTOR_0619
 #define WATCH_DISPLAY_REVERSE_180
-#elif (CUSTOMER_BOARD_VER == BOARD_VER_25)
+#elif (CUSTOMER_BOARD_VER == BOARD_VER_26)
 #define USING_BATTERY_ADC_HIGH_ACCURACY
 #define USING_BATTERY_300MAH
 #define CHARGE_DETECT_PIN (121)      // PB25 (25+96=121)
@@ -191,12 +191,11 @@ extern int __bss_end;
 #define MOTOR_POWER_EN_PIN (5)       // PA05
 #define USING_LINEAR_MOTOR_0619
 #define WATCH_IMU_REVERSE_180 (1)
-#elif (CUSTOMER_BOARD_VER == BOARD_VER_26)
+#elif (CUSTOMER_BOARD_VER == BOARD_VER_27)
 #define USING_BATTERY_ADC_HIGH_ACCURACY
 #define USING_BATTERY_300MAH
-#define CHARGE_DETECT_PIN (121)    // PB25 (25+96=121)
+#define CHARGE_DETECT_PIN (130)    // PB34 (34+96=130)
 #define AMOLED_DISPLAY_3V3_EN (33) // PB33 (33+96=129)
-#define AMOLED_BATTERY_EN (34)     // PB34 (34+96=130)
 #define AMOLED_1V8_EN (21)         // PB21 (21+96=117)
 #define WATCH_GSENSOR_POWER_EN (22)      // PB22 (22+96=118)
 #define IMU_INT_PIN (122)          // PB26 (26+96=122)
@@ -204,6 +203,8 @@ extern int __bss_end;
 #define PPG_RST_PIN (115)          // PB19 (19+96=115)
 #define PPG_POWER_EN_PIN (161)     // PBR1 (160+1=161)
 #define MOTOR_POWER_EN_PIN (5)     // PA05
+#define RGB_LED_CONTROL_PIN (121)   // PB25 (25+96=121)
+#define WS2812B_TIMING
 #define USING_LINEAR_MOTOR_0619
 #define WATCH_IMU_REVERSE_180 (1)
 #endif

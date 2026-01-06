@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <board.h>
+#include "bsp_board.h"
 #include "bf0_hal_rcc.h"
 #include "drv_rgbled.h"
 
@@ -42,14 +42,22 @@
 #define pwm_period  1600        /*!< PWM period in timer ticks */
 #define pulse_period  800       /*!< PWM pulse width in timer ticks (50% duty cycle base) */
 
-/* SK6812 protocol timing values (PWM compare register values)
- * reg_high: ~0.8μs high time for logic '1' (18/30MHz = 0.6μs + rise time)
- * reg_low:  ~0.4μs high time for logic '0' (7/30MHz = 0.23μs + rise time)  
- * reg_end:  Long high pulse for reset/latch signal (50/30MHz = 1.67μs)
+/* WS2812B/SK6812 protocol timing values (PWM compare register values)
+ * Based on 30MHz counter (1 tick = 0.0333μs)
+ * WS2812B: T0H=0.3μs, T0L=0.9μs, T1H=0.9μs, T1L=0.3μs
+ * SK6812:  T0H=0.3μs, T0L=0.9μs, T1H=0.6μs, T1L=0.6μs
  */
-#define reg_high 18    /*!< PWM compare value for logic '1' */
-#define reg_low  7     /*!< PWM compare value for logic '0' */
-#define reg_end  50    /*!< PWM compare value for end/reset signal */
+#ifdef WS2812B_TIMING
+#define reg_high 29    /*!< PWM compare value for logic '1' (adjusted for WS2812B T1H=0.9μs) */
+#define reg_low  9     /*!< PWM compare value for logic '0' (9/30MHz = 0.3μs) */
+#else
+#define reg_high 18    /*!< PWM compare value for logic '1' (18/30MHz = 0.6μs for SK6812) */
+#define reg_low  7     /*!< PWM compare value for logic '0' (7/30MHz = 0.23μs) */
+#endif
+#define reg_end  50    /*!< PWM compare value for end/reset signal (50/30MHz = 1.67μs) */
+
+// WS2812B requires >50μs reset time for latching
+// This is handled by RGB_STOP_LEN low signals, not just reg_end
 
 #ifdef RGB_USING_SK6812MINI_HS_DEV_NAME
     #define RGBLED_NAME "rgbled"
