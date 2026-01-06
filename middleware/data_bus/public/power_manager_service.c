@@ -9,8 +9,8 @@
 #define LCD_BRIGHTNESS_MIN 3
 #define LCD_BRIGHTNESS_MAX 100
 
-#define LCD_AUTO_OFF_MIN  15
-#define LCD_AUTO_OFF_MAX   300
+#define LCD_AUTO_OFF_MIN  3
+#define LCD_AUTO_OFF_MAX   61
 
 static datas_handle_t this_service = NULL;
 static uint16_t lcd_brightness = LCD_BRIGHTNESS_MAX;
