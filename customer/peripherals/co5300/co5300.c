@@ -1,7 +1,7 @@
 /**
   ******************************************************************************
   * @file   co5300.c
-  * @author Sifli software development team
+  * @author Skaiwalk software development team
   * @brief   This file includes the LCD driver for CO5300 LCD.
   * @attention
   ******************************************************************************
