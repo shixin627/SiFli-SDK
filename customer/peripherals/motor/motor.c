@@ -135,11 +135,45 @@ motor_err_t motor_pwm_open(void *args)
     }
     else
     {
-        rt_uint32_t period = MOTOR_PERIOD * 1000;  //* 1000
+        struct rt_pwm_configuration config;
+        rt_uint32_t period = MOTOR_PERIOD * 1000;
         rt_uint32_t duty_cycle = (*(uint32_t *)args);
-        //rt_kprintf("motor_pwm_open cyc %d %d %d\n",*(uint32_t *)args, period, (period / 100) * (*(uint32_t *)args));
-        rt_pwm_set(motor_device, MOTOR_CHANEL_NUM, period, (period / 100) * duty_cycle);
-        ret = rt_pwm_enable(motor_device, MOTOR_CHANEL_NUM);
+        rt_uint32_t pulse = (period / 100) * duty_cycle;
+
+        // rt_kprintf("motor_pwm_open cyc %d %d %d\n", duty_cycle, period, pulse);
+
+        // Disable PWM first
+        rt_memset((void *)&config, 0, sizeof(config));
+        config.channel = MOTOR_CHANEL_NUM;
+        rt_device_control((struct rt_device *)motor_device, PWM_CMD_DISABLE, (void *)&config);
+        // rt_thread_mdelay(1);
+
+        // Configure PWM with DMA
+        rt_memset((void *)&config, 0, sizeof(config));
+        config.channel = MOTOR_CHANEL_NUM;
+        config.period = period;
+        config.pulse = pulse;
+        config.dma_type = 0;
+
+        // Create DMA data buffer (single pulse value for continuous output)
+        static rt_uint16_t motor_dma_buffer[1];
+        motor_dma_buffer[0] = (rt_uint16_t)pulse;
+        config.dma_data = motor_dma_buffer;
+        config.data_len = 1;
+
+        ret = rt_device_control((struct rt_device *)motor_device, PWM_CMD_SET, (void *)&config);
+        if (ret != RT_EOK)
+        {
+            LOG_E("PWM_CMD_SET failed with error %d", ret);
+            return ret;
+        }
+
+        ret = rt_device_control((struct rt_device *)motor_device, PWM_CMD_ENABLE, (void *)&config);
+        if (ret != RT_EOK)
+        {
+            LOG_E("PWM_CMD_ENABLE failed with error %d", ret);
+            return ret;
+        }
     }
 #endif
     return ret;
@@ -156,8 +190,12 @@ motor_err_t motor_pwm_close(void *args)
     }
     else
     {
-        ret = rt_pwm_disable(motor_device, MOTOR_CHANEL_NUM);
-        //rt_kprintf("motor_pwm_close ret %d\n",ret);
+        struct rt_pwm_configuration config;
+
+        rt_memset((void *)&config, 0, sizeof(config));
+        config.channel = MOTOR_CHANEL_NUM;
+        ret = rt_device_control((struct rt_device *)motor_device, PWM_CMD_DISABLE, (void *)&config);
+        //rt_kprintf("motor_pwm_close ret %d\n", ret);
     }
 #endif
     return ret;
