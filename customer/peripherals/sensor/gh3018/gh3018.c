@@ -172,7 +172,7 @@ void soft_adt_callback(bool status)
     last_wearing_status = status;
 }
 
-    #define DRV_GH3018_TEST
+// #define DRV_GH3018_TEST
 
     #ifdef DRV_GH3018_TEST
         #include <string.h>
@@ -199,7 +199,6 @@ int cmd_hbd(int argc, char *argv[])
         else if (strcmp(argv[1], "-hb") == 0)
         {
             set_gh3018_hr_mode();
-            print_memory_usage();
             LOG_I("start HB\n");
         }
         else if (strcmp(argv[1], "-spo") == 0)
@@ -224,6 +223,10 @@ int cmd_hbd(int argc, char *argv[])
         }
         else if (strcmp(argv[1], "-reset") == 0)
         {
+        }
+        else if (strcmp(argv[1], "-mem") == 0)
+        {
+            print_memory_usage();
         }
         else
         {

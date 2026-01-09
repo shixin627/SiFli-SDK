@@ -34,13 +34,15 @@ menuconfig SENSOR_USING_HR
                 config HR_MODEL_NAME
                 string "GH3018 model name"
                 default "gh3018"
-
+				config GH3018_POW_PIN
+                int "Heart rate power pin"
+                default 0
                 config GH3018_INT_BIT
                 int "Heart rate ready int pin"
-                default 117
+                default 114
                 config GH3018_RST_PIN
                 int "Heart rate reset pin"
-                default 118
+                default 115
             endif		
         menuconfig HR_USING_HRS3300
             bool "HRS3300"

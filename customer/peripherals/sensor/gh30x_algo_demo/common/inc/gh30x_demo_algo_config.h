@@ -45,7 +45,7 @@
 #ifdef GOODIX_DEMO_PLANFORM
 #define __ALGO_LOG_CONFIG__                    (1)
 #elif defined(SKAIWALK_DEMO_PLANFORM)
-#define __ALGO_LOG_CONFIG__                    (1)
+#define __ALGO_LOG_CONFIG__                    (0)
 #else
 #define __ALGO_LOG_CONFIG__                    (0)
 #endif

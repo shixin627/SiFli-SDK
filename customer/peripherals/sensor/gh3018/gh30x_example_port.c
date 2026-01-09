@@ -44,7 +44,6 @@ extern bool goodix_app_start_app_mode;
 extern uint8_t gh30x_mcu_start_mode_get(void);
 #endif
 
-#if PPG_POWER_EN_PIN
 int gh3018_power_onoff(uint8_t on)
 {
     rt_err_t ret = RT_EOK;
@@ -61,12 +60,19 @@ int gh3018_power_onoff(uint8_t on)
     ret = rt_device_open(device, RT_DEVICE_OFLAG_RDWR);
     if (ret != RT_EOK)
         return ret;
-
+#if GH3018_POW_PIN
+    m.pin = GH3018_POW_PIN;
+#else
     m.pin = PPG_POWER_EN_PIN;
+#endif
     m.mode = PIN_MODE_OUTPUT;
     rt_device_control(device, 0, &m);
 
+#if GH3018_POW_PIN
+    st.pin = GH3018_POW_PIN;
+#else
     st.pin = PPG_POWER_EN_PIN;
+#endif
     st.status = on;
     rt_device_write(device, 0, &st, sizeof(struct rt_device_pin_status));
 
@@ -74,7 +80,6 @@ int gh3018_power_onoff(uint8_t on)
     LOG_D("GH3018 power %s", on ? "on" : "off");
     return ret;
 }
-#endif
 
 /// reset pin init for gh30x
 void hal_gh30x_pin_set(uint8_t en)
@@ -92,29 +97,25 @@ void hal_gh30x_pin_set(uint8_t en)
 
     rt_device_open(device, RT_DEVICE_OFLAG_RDWR);
 
-#ifdef PPG_RST_PIN
-    m.pin = PPG_RST_PIN;
-#else
+#ifdef GH3018_RST_PIN
     m.pin = GH3018_RST_PIN;
+#else
+    m.pin = PPG_RST_PIN;
 #endif
     m.mode = PIN_MODE_OUTPUT;
     rt_device_control(device, 0, &m);
 
-#ifdef PPG_RST_PIN
-    st.pin = PPG_RST_PIN;
-#else
-    st.pin = GH3018_RST_PIN;
-#endif
+    st.pin = m.pin;
     st.status = 0;
     rt_device_write(device, 0, &st, sizeof(struct rt_device_pin_status));
     // move to power up
     if (en)
     {
         rt_thread_delay(2);
-#ifdef PPG_RST_PIN
-        st.pin = PPG_RST_PIN;
-#else
+#ifdef GH3018_RST_PIN
         st.pin = GH3018_RST_PIN;
+#else
+        st.pin = PPG_RST_PIN;
 #endif
         st.status = 1;
         rt_device_write(device, 0, &st, sizeof(struct rt_device_pin_status));
@@ -127,9 +128,7 @@ void hal_gh30x_pin_set(uint8_t en)
 /// i2c for gh30x init
 int hal_gh30x_i2c_init(void)
 {
-#if PPG_POWER_EN_PIN
     gh3018_power_onoff(1);
-#endif
 
 #if 1
     hal_gh30x_pin_set(1);
@@ -148,8 +147,8 @@ int hal_gh30x_i2c_init(void)
     }
     LOG_D("Find i2c bus device %s\n", GH3018_I2C_BUS);
     /* open i2c bus device */
-    // ret = rt_device_open((rt_device_t)gh3018_i2cbus, RT_DEVICE_FLAG_RDWR | RT_DEVICE_FLAG_INT_TX | RT_DEVICE_FLAG_INT_RX);
-    // if (ret != RT_EOK)
+    // ret = rt_device_open((rt_device_t)gh3018_i2cbus, RT_DEVICE_FLAG_RDWR |
+    // RT_DEVICE_FLAG_INT_TX | RT_DEVICE_FLAG_INT_RX); if (ret != RT_EOK)
     // {
     //     LOG_E("Can not open i2c bus %s, init fail\n", GH3018_I2C_BUS);
     //     return -1;
@@ -166,15 +165,16 @@ int hal_gh30x_i2c_init(void)
     //     ret = rt_i2c_configure(gh3018_i2cbus, &configuration);
     //     if (ret != RT_EOK)
     //     {
-    //         LOG_E("Can not configure i2c bus %s, init fail\n", GH3018_I2C_BUS);
-    //         return ret;
+    //         LOG_E("Can not configure i2c bus %s, init fail\n",
+    //         GH3018_I2C_BUS); return ret;
     //     }
     // }
     return ret;
 }
 
 /// i2c for gh30x wrtie
-uint8_t hal_gh30x_i2c_write(uint8_t device_id, const uint8_t write_buffer[], uint16_t length)
+uint8_t hal_gh30x_i2c_write(uint8_t device_id, const uint8_t write_buffer[],
+                            uint16_t length)
 {
     uint8_t ret = GH30X_EXAMPLE_OK_VAL;
 
@@ -196,7 +196,8 @@ uint8_t hal_gh30x_i2c_write(uint8_t device_id, const uint8_t write_buffer[], uin
         }
         else
         {
-            LOG_E("hal_gh30x_i2c_write FAIL: 0x%x, %d,  %d", device_id, length, res);
+            LOG_E("hal_gh30x_i2c_write FAIL: 0x%x, %d,  %d", device_id, length,
+                  res);
             ret = GH30X_EXAMPLE_ERR_VAL;
         }
     }
@@ -205,7 +206,9 @@ uint8_t hal_gh30x_i2c_write(uint8_t device_id, const uint8_t write_buffer[], uin
 }
 
 /// i2c for gh30x read
-uint8_t hal_gh30x_i2c_read(uint8_t device_id, const uint8_t write_buffer[], uint16_t write_length, uint8_t read_buffer[], uint16_t read_length)
+uint8_t hal_gh30x_i2c_read(uint8_t device_id, const uint8_t write_buffer[],
+                           uint16_t write_length, uint8_t read_buffer[],
+                           uint16_t read_length)
 {
     uint8_t ret = GH30X_EXAMPLE_OK_VAL;
 
@@ -296,7 +299,8 @@ int8_t gsensor_drv_init(void)
 
     // code implement by user
     /* if enable all func equal 25Hz, should config > 25Hz;
-    but if enable have 100hz, should config to > 100hz. if not, feeback to GOODIX!!!
+    but if enable have 100hz, should config to > 100hz. if not, feeback to
+    GOODIX!!!
     */
     // ret = gs_drv_init();
 
@@ -321,43 +325,54 @@ void gsensor_drv_enter_fifo_mode(void)
 void gsensor_drv_enter_motion_det_mode(void)
 {
     // code implement by user
-    /* if enable motion det mode that call @ref hal_gsensor_drv_int1_handler when motion generate irq
-        e.g. 1. (hardware) use gsensor motion detect module with reg config
-             2. (software) gsensor enter normal mode, then define 30ms timer get gsensor rawdata,
-                if now total acceleration(sqrt(x*x+y*y+z*z)) - last total acceleration >= 30 (0.05g @512Lsb/g) as motion
-                generate that call @ref hal_gsensor_drv_int1_handler
+    /* if enable motion det mode that call @ref hal_gsensor_drv_int1_handler
+       when motion generate irq e.g. 1. (hardware) use gsensor motion detect
+       module with reg config
+             2. (software) gsensor enter normal mode, then define 30ms timer get
+       gsensor rawdata, if now total acceleration(sqrt(x*x+y*y+z*z)) - last
+       total acceleration >= 30 (0.05g @512Lsb/g) as motion generate that call
+       @ref hal_gsensor_drv_int1_handler
     */
     // gs_drv_enter_motion_det_mode();
     gsensor_drv_motion_det_mode = true;
 }
 
 /// gsensor get fifo data
-void gsensor_drv_get_fifo_data(ST_GS_DATA_TYPE gsensor_buffer[], uint16_t *gsensor_buffer_index, uint16_t gsensor_max_len)
+void gsensor_drv_get_fifo_data(ST_GS_DATA_TYPE gsensor_buffer[],
+                               uint16_t *gsensor_buffer_index,
+                               uint16_t gsensor_max_len)
 {
     // code implement by user
     // EXAMPLE_DEBUG_LOG_L1("gsensor_drv_get_fifo_data");
 #ifdef BSP_USING_BLOC_PERIPHERAL
     for (uint16_t i = 0; i < gsensor_max_len; i++)
     {
-        uint16_t origin_buf_index = (gsensor_fifo_buffer_index + i) % gsensor_max_len;
+        uint16_t origin_buf_index =
+            (gsensor_fifo_buffer_index + i) % gsensor_max_len;
         gsensor_buffer[i].sXAxisVal = gsensor_fifo_buffer[origin_buf_index][0];
         gsensor_buffer[i].sYAxisVal = gsensor_fifo_buffer[origin_buf_index][1];
         gsensor_buffer[i].sZAxisVal = gsensor_fifo_buffer[origin_buf_index][2];
     }
     *gsensor_buffer_index = gsensor_max_len;
 #endif
-    /**************************** WARNNING: DO NOT REMOVE OR MODIFY THIS CODE   ---START***************************************************/
+    /**************************** WARNNING: DO NOT REMOVE OR MODIFY THIS CODE
+     * ---START***************************************************/
     if ((*gsensor_buffer_index) > (gsensor_max_len))
     {
-        EXAMPLE_DEBUG_LOG_L1("[%s]: Fatal error! Gsensor buffer is accessed overrun !", __FUNCTION__);
+        EXAMPLE_DEBUG_LOG_L1(
+            "[%s]: Fatal error! Gsensor buffer is accessed overrun !",
+            __FUNCTION__);
         while (1)
             ; // Fatal error !!!
     }
-    /**************************** WARNNING: DO NOT REMOVE OR MODIFY THIS CODE   ---END***************************************************/
+    /**************************** WARNNING: DO NOT REMOVE OR MODIFY THIS CODE
+     * ---END***************************************************/
 }
 
 /// gsensor clear buffer
-void gsensor_drv_clear_buffer(ST_GS_DATA_TYPE gsensor_buffer[], uint16_t *gsensor_buffer_index, uint16_t gsensor_buffer_len)
+void gsensor_drv_clear_buffer(ST_GS_DATA_TYPE gsensor_buffer[],
+                              uint16_t *gsensor_buffer_index,
+                              uint16_t gsensor_buffer_len)
 {
     if ((gsensor_buffer != NULL) && (gsensor_buffer_index != NULL))
     {
@@ -374,9 +389,12 @@ void gsensor_drv_get_data(ST_GS_DATA_TYPE *gsensor_data_ptr)
     */
     // code implement by user
 #ifdef BSP_USING_BLOC_PERIPHERAL
-    gsensor_data_ptr->sXAxisVal = gsensor_fifo_buffer[gsensor_fifo_buffer_index][0];
-    gsensor_data_ptr->sYAxisVal = gsensor_fifo_buffer[gsensor_fifo_buffer_index][1];
-    gsensor_data_ptr->sZAxisVal = gsensor_fifo_buffer[gsensor_fifo_buffer_index][2];
+    gsensor_data_ptr->sXAxisVal =
+        gsensor_fifo_buffer[gsensor_fifo_buffer_index][0];
+    gsensor_data_ptr->sYAxisVal =
+        gsensor_fifo_buffer[gsensor_fifo_buffer_index][1];
+    gsensor_data_ptr->sZAxisVal =
+        gsensor_fifo_buffer[gsensor_fifo_buffer_index][2];
 #endif
 }
 
@@ -400,15 +418,15 @@ void hal_gh30x_int_handler_bottom_half(void)
 static void gh30x_int_handle(void *args)
 {
     // LOG_D("gh30x_int_handle\n");
-#ifdef GH3018_USE_INT
+    #ifdef GH3018_USE_INT
 
-#ifdef PPG_INT_PIN
-    rt_pin_irq_enable(PPG_INT_PIN, 0);
-#else
+        #ifdef GH3018_INT_BIT
     rt_pin_irq_enable(GH3018_INT_BIT, 0);
-#endif
+        #else
+    rt_pin_irq_enable(PPG_INT_PIN, 0);
+        #endif
 
-#endif
+    #endif
     hal_gh30x_int_handler_top_half();
     rt_sem_release(&gh3018_int_sem);
     // LOG_I("GH3018 int\n");
@@ -429,11 +447,11 @@ static void gh30x_sensor_task(void *params)
         hal_gh30x_int_handler_bottom_half();
         gh30x_api_unlock();
 #ifdef GH3018_USE_INT
-#ifdef PPG_INT_PIN
-        rt_pin_irq_enable(PPG_INT_PIN, 1);
-#else
+    #ifdef GH3018_INT_BIT
         rt_pin_irq_enable(GH3018_INT_BIT, 1);
-#endif
+    #else
+        rt_pin_irq_enable(PPG_INT_PIN, 1);
+    #endif
 #endif
     }
 }
@@ -453,17 +471,18 @@ void hal_gh30x_int_init(void)
 
     rt_device_open(device, RT_DEVICE_OFLAG_RDWR);
 #ifdef GH3018_USE_INT
-// int pin cfg
-#ifdef PPG_INT_PIN
+    // int pin cfg
+    #ifdef PPG_INT_PIN
     m.pin = PPG_INT_PIN;
-#else
+    #else
     m.pin = GH3018_INT_BIT;
-#endif
+    #endif
     m.mode = PIN_MODE_INPUT;
     rt_device_control(device, 0, &m);
 
     // enable gh3018 int
-    rt_pin_attach_irq(m.pin, PIN_IRQ_MODE_RISING, gh30x_int_handle, (void *)(rt_uint32_t)m.pin);
+    rt_pin_attach_irq(m.pin, PIN_IRQ_MODE_RISING, gh30x_int_handle,
+                      (void *)(rt_uint32_t)m.pin);
     rt_pin_irq_enable(m.pin, 1);
 
     rt_device_close(device);
@@ -471,7 +490,9 @@ void hal_gh30x_int_init(void)
     rt_sem_init(&gh3018_int_sem, "gh3018_int", 0, RT_IPC_FLAG_FIFO);
 #endif
     // start a thread to check data available
-    gh3018_thread = rt_thread_create("gh3018", gh30x_sensor_task, NULL, THREAD_STACK_SIZE, THREAD_PRIORITY, THREAD_TIMESLICE);
+    gh3018_thread =
+        rt_thread_create("gh3018", gh30x_sensor_task, NULL, THREAD_STACK_SIZE,
+                         THREAD_PRIORITY, THREAD_TIMESLICE);
 
     if (gh3018_thread != RT_NULL)
     {
@@ -495,7 +516,8 @@ void hal_gh30x_int_init(void)
 void hal_gsensor_drv_int1_handler(void)
 {
     // code implement by user
-    // LOG_D("[hal_gsensor_drv_int1_handler] gsensor_drv_motion_det_mode=%d\n", gsensor_drv_motion_det_mode);
+    // LOG_D("[hal_gsensor_drv_int1_handler] gsensor_drv_motion_det_mode=%d\n",
+    // gsensor_drv_motion_det_mode);
     if (gsensor_drv_motion_det_mode)
     {
         gsensor_motion_has_detect();
@@ -518,8 +540,8 @@ void hal_gsensor_int1_init(void)
     /* if using gsensor fifo mode,
     and gsensor fifo depth is not enough to store 1 second data,
     please connect gsensor fifo interrupt to the host,
-    or if using gsensor motion detect mode(e.g  motion interrupt response by 0.5G * 5counts),
-    and implement this function to receive gsensor interrupt.
+    or if using gsensor motion detect mode(e.g  motion interrupt response by
+    0.5G * 5counts), and implement this function to receive gsensor interrupt.
     */
     // hal_gsensor_int1_init2();
 }
@@ -552,10 +574,14 @@ void handle_wear_status_result(uint8_t wearing_state_val, GU8 uchLivingFlag)
 #ifdef GOODIX_DEMO_PLANFORM
     if (WEAR_STATUS_UNWEAR == wearing_state_val)
     {
-        EXAMPLE_DEBUG_LOG_L1("[handle_wear_status_result] wear off! 0x%x\r", g_unGh30xDemoFuncMode);
-        if (g_unGh30xDemoFuncMode & (~GH30X_FUNCTION_ADT)) // if have some function excluding ADT, stop current function and restart adt
+        EXAMPLE_DEBUG_LOG_L1("[handle_wear_status_result] wear off! 0x%x\r",
+                             g_unGh30xDemoFuncMode);
+        if (g_unGh30xDemoFuncMode &
+            (~GH30X_FUNCTION_ADT)) // if have some function excluding ADT, stop
+                                   // current function and restart adt
         {
-            /********************* START: the code is optional, system will force sample without the code**************/
+            /********************* START: the code is optional, system will
+             * force sample without the code**************/
             gh30x_module_stop();
 
             if (false == goodix_app_start_app_mode)
@@ -566,12 +592,14 @@ void handle_wear_status_result(uint8_t wearing_state_val, GU8 uchLivingFlag)
             {
                 gh30x_module_start(GH30X_FUNCTION_HR);
             }
-            /********************* END: the code is optional, system will force sample without the code**************/
+            /********************* END: the code is optional, system will force
+             * sample without the code**************/
         }
     }
     else if (WEAR_STATUS_WEAR == wearing_state_val)
     {
-        EXAMPLE_DEBUG_LOG_L1("[handle_wear_status_result] wear on! 0x%x\r", g_unGh30xDemoFuncMode);
+        EXAMPLE_DEBUG_LOG_L1("[handle_wear_status_result] wear on! 0x%x\r",
+                             g_unGh30xDemoFuncMode);
         if (GH30X_FUNCTION_ADT == g_unGh30xDemoFuncMode)
         {
             if (RUN_MODE_HARDWARE_ADT_DET != gh30x_mcu_start_mode_get())
@@ -583,19 +611,23 @@ void handle_wear_status_result(uint8_t wearing_state_val, GU8 uchLivingFlag)
             {
             case RUN_MODE_ADT_HB_DET:
             {
-                gh30x_module_start(GH30X_FUNCTION_SOFT_ADT | GH30X_FUNCTION_HR | GH30X_FUNCTION_ADT);
+                gh30x_module_start(GH30X_FUNCTION_SOFT_ADT | GH30X_FUNCTION_HR |
+                                   GH30X_FUNCTION_ADT);
             }
             break;
 
             case RUN_MODE_HRV_DET:
             {
-                gh30x_module_start(GH30X_FUNCTION_SOFT_ADT | GH30X_FUNCTION_HRV | GH30X_FUNCTION_HR | GH30X_FUNCTION_ADT);
+                gh30x_module_start(GH30X_FUNCTION_SOFT_ADT |
+                                   GH30X_FUNCTION_HRV | GH30X_FUNCTION_HR |
+                                   GH30X_FUNCTION_ADT);
             }
             break;
 
             case RUN_MODE_SPO2_DET:
             {
-                gh30x_module_start(GH30X_FUNCTION_SPO2 | GH30X_FUNCTION_HRV | GH30X_FUNCTION_ADT);
+                gh30x_module_start(GH30X_FUNCTION_SPO2 | GH30X_FUNCTION_HRV |
+                                   GH30X_FUNCTION_ADT);
             }
             break;
 
@@ -607,14 +639,18 @@ void handle_wear_status_result(uint8_t wearing_state_val, GU8 uchLivingFlag)
 #else
     if (WEAR_STATUS_UNWEAR == wearing_state_val)
     {
-        EXAMPLE_DEBUG_LOG_L1("[handle_wear_status_result] wear off! uchLivingFlag:%d\r", uchLivingFlag);
+        EXAMPLE_DEBUG_LOG_L1(
+            "[handle_wear_status_result] wear off! uchLivingFlag:%d\r",
+            uchLivingFlag);
         soft_adt_callback(false);
         /// TODO: if hcpu suspend, close sensor, enter save power mode.
         /// Otherwise, keep sensor power on, and keep sensor running.
     }
     else if (WEAR_STATUS_WEAR == wearing_state_val)
     {
-        EXAMPLE_DEBUG_LOG_L1("[handle_wear_status_result] wear on! uchLivingFlag:%d\r", uchLivingFlag);
+        EXAMPLE_DEBUG_LOG_L1(
+            "[handle_wear_status_result] wear on! uchLivingFlag:%d\r",
+            uchLivingFlag);
         soft_adt_callback(true);
     }
 #endif
@@ -622,29 +658,37 @@ void handle_wear_status_result(uint8_t wearing_state_val, GU8 uchLivingFlag)
 
 #if (__SYSTEM_TEST_SUPPORT__)
 /// handle wear status result: {0-11}, led_num: {0-2};
-/// test_res: <0=> ok , <1=> init err , <2=> order err , <3=> comm read err,<4=> comm write err,<5=> otp read err,<6=> ctr not pass
-///< 7=> rawdata not pass , <8=> noise not pass , <9=> leak not pass, <10=> leakratio not pass,<11=> resource error
+/// test_res: <0=> ok , <1=> init err , <2=> order err , <3=> comm read err,<4=>
+/// comm write err,<5=> otp read err,<6=> ctr not pass
+///< 7=> rawdata not pass , <8=> noise not pass , <9=> leak not pass, <10=>
+///< leakratio not pass,<11=> resource error
 void handle_system_test_result(uint8_t test_res, uint8_t led_num)
 {
     // code implement by user
-    EXAMPLE_DEBUG_LOG_L1("system test has complete,the result is %d,led is %d\n", test_res, led_num);
+    EXAMPLE_DEBUG_LOG_L1(
+        "system test has complete,the result is %d,led is %d\n", test_res,
+        led_num);
 }
 
 void handle_before_system_os_test(void)
 {
     // code implement by user
     EXAMPLE_DEBUG_LOG_L1("begin new term test");
-#ifdef GOODIX_DEMO_PLANFORM
+    #ifdef GOODIX_DEMO_PLANFORM
     vTaskDelay(4000);
-#endif
+    #endif
 }
 #endif
 
 #if (__FACTORY_DET_SUPPORT__)
 void handle_factory_mode_result(STGh30xFactoryRawdata *pstGh30xFactoryRawdata)
 {
-    EXAMPLE_DEBUG_LOG_L1("current 0x%x 0x%x 0x%x\r\n", pstGh30xFactoryRawdata->gre1_led_curr, pstGh30xFactoryRawdata->ir_led_curr, pstGh30xFactoryRawdata->red_led_curr);
-    EXAMPLE_DEBUG_LOG_L1("green num %d, rawdata = ", pstGh30xFactoryRawdata->gre1_num);
+    EXAMPLE_DEBUG_LOG_L1("current 0x%x 0x%x 0x%x\r\n",
+                         pstGh30xFactoryRawdata->gre1_led_curr,
+                         pstGh30xFactoryRawdata->ir_led_curr,
+                         pstGh30xFactoryRawdata->red_led_curr);
+    EXAMPLE_DEBUG_LOG_L1("green num %d, rawdata = ",
+                         pstGh30xFactoryRawdata->gre1_num);
 
     for (GU8 i = 0; i < pstGh30xFactoryRawdata->gre1_num; i++)
     {
@@ -652,14 +696,16 @@ void handle_factory_mode_result(STGh30xFactoryRawdata *pstGh30xFactoryRawdata)
     }
     EXAMPLE_DEBUG_LOG_L1("\r\n");
 
-    EXAMPLE_DEBUG_LOG_L1("ir num %d, rawdata = ", pstGh30xFactoryRawdata->ir_num);
+    EXAMPLE_DEBUG_LOG_L1("ir num %d, rawdata = ",
+                         pstGh30xFactoryRawdata->ir_num);
     for (GU8 i = 0; i < pstGh30xFactoryRawdata->ir_num; i++)
     {
         printf("%d,", pstGh30xFactoryRawdata->IrBuf[i]);
     }
     EXAMPLE_DEBUG_LOG_L1("\r\n");
 
-    EXAMPLE_DEBUG_LOG_L1("red num %d, rawdata = ", pstGh30xFactoryRawdata->red_num);
+    EXAMPLE_DEBUG_LOG_L1("red num %d, rawdata = ",
+                         pstGh30xFactoryRawdata->red_num);
     for (GU8 i = 0; i < pstGh30xFactoryRawdata->red_num; i++)
     {
         EXAMPLE_DEBUG_LOG_L1("%d,", pstGh30xFactoryRawdata->redBuf[i]);
@@ -677,10 +723,11 @@ uint8_t ble_module_send_data_via_gdcs(uint8_t string[], uint8_t length)
 {
     uint8_t ret = GH30X_EXAMPLE_OK_VAL;
 
-#ifdef GOODIX_DEMO_PLANFORM
+    #ifdef GOODIX_DEMO_PLANFORM
     uint8_t buffer[0xFF] = {0};
     uint8_t *ble_ptr = &buffer[MUTLI_PKG_HEADER_LEN - 1];
-    uint8_t len = length <= __BLE_PKG_SIZE_MAX__ ? length : __BLE_PKG_SIZE_MAX__;
+    uint8_t len =
+        length <= __BLE_PKG_SIZE_MAX__ ? length : __BLE_PKG_SIZE_MAX__;
 
     ble_ptr[0] = 0xAA;
     ble_ptr[1] = 0x11;
@@ -693,7 +740,7 @@ uint8_t ble_module_send_data_via_gdcs(uint8_t string[], uint8_t length)
     buffer[4 + len + MUTLI_PKG_HEADER_LEN - 1] = MUTLI_PKG_MAGIC_2_VAL;
 
     ret = UartDataTransfer(buffer, (len + MUTLI_PKG_HEADER_LEN + 4));
-#endif
+    #endif
 
     return ret;
 }
@@ -708,8 +755,9 @@ void ble_module_recv_data_via_gdcs(uint8_t *data, uint8_t length)
 static bool gdcs_parse_is_reset_cmd(uint8_t *gdcs_rx_data, uint8_t gdcs_rx_len)
 {
     bool cmd_flag = false;
-    if ((gdcs_rx_len == 5) && (gdcs_rx_data[0] == 0xDA) && (gdcs_rx_data[1] == 0xAD) &&
-        (gdcs_rx_data[2] == 0xEF) && (gdcs_rx_data[3] == 0xFE) && (gdcs_rx_data[4] == 0xA5))
+    if ((gdcs_rx_len == 5) && (gdcs_rx_data[0] == 0xDA) &&
+        (gdcs_rx_data[1] == 0xAD) && (gdcs_rx_data[2] == 0xEF) &&
+        (gdcs_rx_data[3] == 0xFE) && (gdcs_rx_data[4] == 0xA5))
     {
         cmd_flag = true;
     }
@@ -720,8 +768,9 @@ static bool gdcs_parse_is_reset_cmd(uint8_t *gdcs_rx_data, uint8_t gdcs_rx_len)
 static bool gdcs_parse_is_custom_cmd(uint8_t *gdcs_rx_data, uint8_t gdcs_rx_len)
 {
     bool cmd_flag = false;
-    if ((gdcs_rx_len == 5) && (gdcs_rx_data[0] == 0xDA) && (gdcs_rx_data[1] == 0xAD) &&
-        (gdcs_rx_data[2] == 0xEF) && (gdcs_rx_data[3] == 0xFE) && (gdcs_rx_data[4] == 0xA6))
+    if ((gdcs_rx_len == 5) && (gdcs_rx_data[0] == 0xDA) &&
+        (gdcs_rx_data[1] == 0xAD) && (gdcs_rx_data[2] == 0xEF) &&
+        (gdcs_rx_data[3] == 0xFE) && (gdcs_rx_data[4] == 0xA6))
     {
         cmd_flag = true;
     }
@@ -731,7 +780,7 @@ static bool gdcs_parse_is_custom_cmd(uint8_t *gdcs_rx_data, uint8_t gdcs_rx_len)
 /// Data processing sent by APP
 static void gdcs_rx_data_msg_handler(uint8_t *p_event_data, uint16_t event_size)
 {
-#ifdef GOODIX_DEMO_PLANFORM
+    #ifdef GOODIX_DEMO_PLANFORM
     if (gdcs_parse_is_reset_cmd(p_event_data, event_size))
     {
         NVIC_SystemReset();
@@ -743,9 +792,9 @@ static void gdcs_rx_data_msg_handler(uint8_t *p_event_data, uint16_t event_size)
     {
         ble_module_recv_data_via_gdcs(p_event_data, event_size);
     }
-#else
+    #else
     ble_module_recv_data_via_gdcs(p_event_data, event_size);
-#endif
+    #endif
 }
 
 /// Analysis of data sent by APP
@@ -764,27 +813,27 @@ void ble_module_repeat_send_timer_init(void)
     // must register func ble_module_repeat_send_timer_handler as callback
     /* should setup 50ms timer and ble connect interval should < 100ms
      */
-#ifdef GOODIX_DEMO_PLANFORM
+    #ifdef GOODIX_DEMO_PLANFORM
     GOODIX_PLANFROM_CREAT_ADT_CONFIRM_ENTITY();
-#endif
+    #endif
 }
 
 /// ble repeat send data timer start
 void ble_module_repeat_send_timer_start(void)
 {
     // code implement by user
-#ifdef GOODIX_DEMO_PLANFORM
+    #ifdef GOODIX_DEMO_PLANFORM
     GOODIX_PLANFROM_START_TIMER_ENTITY();
-#endif
+    #endif
 }
 
 /// ble repeat send data timer stop
 void ble_module_repeat_send_timer_stop(void)
 {
     // code implement by user
-#ifdef GOODIX_DEMO_PLANFORM
+    #ifdef GOODIX_DEMO_PLANFORM
     GOODIX_PLANFROM_STOP_TIMER_ENTITY();
-#endif
+    #endif
 }
 
 /// ble repeat send data timer handler
@@ -831,7 +880,8 @@ void hal_gh30x_fifo_int_timeout_timer_init(void)
 {
     // code implement by user
     // must register func gh30x_fifo_int_timeout_timer_handler as callback
-    /* should setup timer interval with fifo int freq(e.g. 1s fifo int setup 1080ms timer)
+    /* should setup timer interval with fifo int freq(e.g. 1s fifo int setup
+     * 1080ms timer)
      */
 }
 
@@ -853,7 +903,8 @@ uint8_t uart_module_send_data(uint8_t string[], uint8_t length)
 }
 #endif
 
-/* handle cmd with all ctrl cmd @ref EM_COMM_CMD_TYPE, cmd come from goodix APP */
+/* handle cmd with all ctrl cmd @ref EM_COMM_CMD_TYPE, cmd come from goodix APP
+ */
 void handle_goodix_communicate_cmd(EM_COMM_CMD_TYPE cmd_type)
 {
 }
@@ -868,22 +919,22 @@ void example_dbg_log(char *log_string)
 void *hal_gh30x_memory_malloc(GU32 size)
 {
     EXAMPLE_DEBUG_LOG_L1("malloc %d Btyes\n", size);
-#ifdef GOODIX_DEMO_PLANFORM
+    #ifdef GOODIX_DEMO_PLANFORM
     return malloc(size);
-#else
+    #else
     // code implement by user
     return NULL;
-#endif
+    #endif
 }
 
 void hal_gh30x_memory_free(void *pmem)
 {
     EXAMPLE_DEBUG_LOG_L1("free mem\n");
-#ifdef GOODIX_DEMO_PLANFORM
+    #ifdef GOODIX_DEMO_PLANFORM
     free(pmem);
-#else
-    // code implement by user
-#endif
+    #else
+        // code implement by user
+    #endif
 }
 #endif
 
@@ -903,8 +954,9 @@ int gh3018_self_check(void)
 // init_err_flag = HBD_SimpleInit(&gh30x_init_config); // init gh30x
 // if (HBD_RET_OK != init_err_flag)
 //{
-//    EXAMPLE_DEBUG_LOG_L1("gh30x init error[%s]\r\n", dbg_ret_val_string[DEBUG_HBD_RET_VAL_BASE + init_err_flag]);
-//    return GH30X_EXAMPLE_ERR_VAL;
+//    EXAMPLE_DEBUG_LOG_L1("gh30x init error[%s]\r\n",
+//    dbg_ret_val_string[DEBUG_HBD_RET_VAL_BASE + init_err_flag]); return
+//    GH30X_EXAMPLE_ERR_VAL;
 //}
 
 // check gpio
@@ -946,4 +998,5 @@ uint16_t gh3018_get_ppg_len(void)
 {
     return loc_ppg_rawdata_len;
 }
-/********END OF FILE********* Copyright (c) 2003 - 2020, Goodix Co., Ltd. ********/
+/********END OF FILE********* Copyright (c) 2003 - 2020, Goodix Co., Ltd.
+ * ********/

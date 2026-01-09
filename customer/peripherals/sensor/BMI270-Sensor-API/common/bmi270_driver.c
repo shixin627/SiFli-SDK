@@ -646,28 +646,7 @@ static int bmi270_power_onoff(uint8_t on)
 
     rt_err_t ret = RT_EOK;
 
-    #ifdef GSENSOR_VCC_EN_PIN
-    rt_device_t device = rt_device_find("pin");
-    if (!device)
-    {
-        LOG_D("GPIO pin device not found at motor ctrl");
-        return RT_EIO;
-    }
-
-    ret = rt_device_open(device, RT_DEVICE_OFLAG_RDWR);
-    if (ret != RT_EOK)
-        return ret;
-
-    m.pin = GSENSOR_VCC_EN_PIN;
-    m.mode = PIN_MODE_OUTPUT;
-    rt_device_control(device, 0, &m);
-
-    st.pin = GSENSOR_VCC_EN_PIN;
-    st.status = on;
-    rt_device_write(device, 0, &st, sizeof(struct rt_device_pin_status));
-
-    ret = rt_device_close(device);
-    #elif (BMI270_POW_PIN > 0)
+    #if (BMI270_POW_PIN > 0)
     rt_device_t device = rt_device_find("pin");
     if (!device)
     {
@@ -981,10 +960,10 @@ long rt_bmi270_irq_pin_enable(uint32_t enabled)
 {
     rt_uint16_t pin;
         #if BMI270_USE_INT1
-            #ifdef IMU_INT_PIN
-    pin = IMU_INT_PIN;
-            #else
+            #ifdef BMI270_INT_GPIO_BIT
     pin = BMI270_INT_GPIO_BIT;
+            #else
+    pin = IMU_INT_PIN;
             #endif
         #endif
         #if BMI270_USE_INT2
@@ -1046,10 +1025,10 @@ static int bmi270_gpio_int_enable(void)
     rt_device_open(device, RT_DEVICE_OFLAG_RDWR);
         #if BMI270_USE_INT1
             // int pin cfg
-            #ifdef IMU_INT_PIN
-    m.pin = IMU_INT_PIN;
-            #else
+            #ifdef BMI270_INT_GPIO_BIT
     m.pin = BMI270_INT_GPIO_BIT;
+            #else
+    m.pin = IMU_INT_PIN;
             #endif
     m.mode = PIN_MODE_INPUT;
     rt_device_control(device, 0, &m);
