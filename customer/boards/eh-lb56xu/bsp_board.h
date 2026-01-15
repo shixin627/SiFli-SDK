@@ -222,14 +222,7 @@ extern int __bss_end;
 // #define SHOW_BAD_SIGNAL_INDICATOR
 // #define SHOW_OPEN_WATCH_HINT_LIGHT
 
-// Audio encoding configuration
-// 0: No compression (raw PCM)
-// 1: ADPCM compression
-// 2: Opus compression
-#define AUDIO_ENCODING_TYPE 1
-#if (AUDIO_ENCODING_TYPE == 2)
 #define ENABLE_OPUS_ENCODER
-#endif
 
 #endif // CUSTOMER_BOARD
 

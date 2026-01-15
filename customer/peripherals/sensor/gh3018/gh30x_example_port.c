@@ -230,7 +230,7 @@ uint8_t hal_gh30x_i2c_read(uint8_t device_id, const uint8_t write_buffer[],
         res = rt_i2c_transfer(gh3018_i2cbus, msgs, 2);
         if (res == 2)
         {
-            // LOG_D("GH3018_I2C_Read OK: 0x%x\n", device_id);
+            // LOG_D("GH3018_I2C_Read OK: 0x%x\n", msgs[0].addr);
             ret = GH30X_EXAMPLE_OK_VAL;
         }
         else
