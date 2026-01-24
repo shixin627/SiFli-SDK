@@ -1,0 +1,25 @@
+Import('RTT_ROOT')
+Import('rtconfig')
+import os
+import sys
+from building import * 
+
+cwd = GetCurrentDir()
+objs = []
+src = []
+path = [cwd, cwd + '/kraepelin']
+
+# Include .c files in the current directory
+# src += Glob('*.c')
+src += Glob('kraepelin/activity_algorithm_kraepelin.c')
+src += Glob('activity_classifier.c')
+src += Glob('activity.c')
+src += Glob('activity_calculators.c')
+# src += Glob('activity_insights.c')
+src += Glob('activity_metrics.c')
+src += Glob('activity_sessions.c')
+
+# Define the group with the collected source files and include paths
+group = DefineGroup('activity', src, depend = ['BSP_USING_ACTIVITY_ALGO_KRAEPELIN'], CPPPATH = path)
+
+Return('group')

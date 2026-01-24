@@ -1,0 +1,25 @@
+Import('RTT_ROOT')
+Import('rtconfig')
+import os
+import sys
+from building import * 
+
+cwd = GetCurrentDir()
+
+src = []
+
+if GetDepend('BSP_USING_IMU_CLIENT'):   
+    src += Glob('imu_client.c')
+
+if GetDepend('BSP_USING_HR_CLIENT'):
+    src += Glob('hr_client.c')
+
+if GetDepend('BSP_USING_WATCH_SYS_CLIENT'):
+    src += Glob('watch_system_client.c')
+
+if GetDepend('BSP_USING_ALARM_CLIENT'):
+    src += Glob('alarm_client.c')
+
+group = DefineGroup('Client', src, depend = [''])
+
+Return('group')

@@ -1,0 +1,35 @@
+menu "Select algorithm"      
+    config BSP_USING_AIR_MOUSE
+			bool "Enable Air Mouse"
+			default n
+			
+	config BSP_USING_MAHONY_AHRS
+		bool "Enable MahonyAHRS"
+		default n
+		
+	config BSP_USING_HAND_TRACKING
+		bool "Enable Hand Tracking"
+		default n
+
+	config BSP_USING_GESTURE_DETECT
+		bool "Enable gesture detection"
+		default n
+
+	if PKG_USING_ARDUINO_TENSORFLOW_LITE_MICRO
+		config BSP_USING_GESTURE_RECOGNITION
+			bool "Enable Gesture Recognition"
+			default n
+	endif
+
+	config BSP_USING_WEBRTC_VAD
+		bool "Enable WebRTC Voice Activity Detection"
+		default n
+		
+	config BSP_USING_HEALTH_ALGO
+		bool "Enable RTK Health Algorithm"
+		default n
+
+	config BSP_USING_ACTIVITY_ALGO_KRAEPELIN
+			bool "Enable activity algorithm kraepelin"
+			default n
+endmenu

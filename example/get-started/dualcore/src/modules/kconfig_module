@@ -1,0 +1,7 @@
+source "../../src/modules/algorithm/kconfig"
+source "../../src/modules/bloc/kconfig"
+source "../../src/modules/client/kconfig"
+source "../../src/modules/communicate/kconfig"
+source "../../src/modules/model/kconfig"
+source "../../src/modules/service/kconfig"
+source "../../src/modules/tests/kconfig"

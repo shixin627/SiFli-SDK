@@ -1,0 +1,19 @@
+menu "Select data client"      
+    if BSP_USING_DATA_SVC
+		config BSP_USING_IMU_CLIENT
+			bool "Enable IMU Client"
+			default n
+
+		config BSP_USING_HR_CLIENT
+			bool "Enable HR Client"
+			default n
+
+		config BSP_USING_WATCH_SYS_CLIENT
+			bool "Enable Watch System Client"
+			default n
+
+		config BSP_USING_ALARM_CLIENT
+			bool "Enable Alarm Client"
+			default n
+	endif
+endmenu

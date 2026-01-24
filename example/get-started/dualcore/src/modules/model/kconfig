@@ -1,0 +1,25 @@
+menu "Select Model"      
+    config BSP_USING_MODEL_WATCH_GLOBAL_DATA
+		bool "Enable Watch Global Data Model"
+		default n
+
+	config BSP_USING_MODEL_WATCH_SYS_INTERACT
+		bool "Enable Watch System Interaction Model"
+		default n
+
+	config BSP_USING_UI_HANDLER
+		bool "Enable Watch UI Handler"
+		default n
+
+	config BSP_USING_GESTURE_HANDLER
+		bool "Enable Watch Gesture Handler"
+		default n
+	
+	config BSP_USING_VIRTUAL_CONSOLE
+		bool "Enable Virtual Console"
+		default n
+
+	config BSP_USING_TOUCH_STATE_MANAGER
+		bool "Enable Touch state manager"
+		default n
+endmenu

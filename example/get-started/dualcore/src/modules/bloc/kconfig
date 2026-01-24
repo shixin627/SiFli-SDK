@@ -1,0 +1,83 @@
+menu "Select BLoc(Business Logic)"      
+    config BSP_USING_BLOC
+		bool "Enable bloc features"
+		default n
+
+	if BSP_USING_BLOC
+		config BSP_USING_BLOC_CONTROL
+			bool "Enable bloc control"
+			default n
+
+		config BSP_USING_BLOC_FLASH
+			bool "Enable bloc flash"
+			default n
+
+		config BSP_USING_BLOC_NOTE
+			bool "Enable bloc note"
+			default n
+
+		config BSP_USING_BLOC_CALENDAR
+			bool "Enable bloc calendar"
+			default n
+
+		config BSP_USING_BLOC_NOTIFY
+			bool "Enable bloc notification"
+			default n
+
+		config BSP_USING_BLOC_SETTING
+			bool "Enable bloc setting"
+			default n
+
+		config BSP_USING_BLOC_SKAIWALK
+			bool "Enable bloc skaiwalk"
+			default n
+
+		config BSP_USING_BLOC_TASK
+			bool "Enable bloc task"
+			default n
+
+		config BSP_USING_BLOC_V2T
+			bool "Enable bloc voice to text"
+			default n
+
+		config BSP_USING_BLOC_MOTOR
+			bool "Enable bloc motor"
+			default n
+
+		config BSP_USING_BLOC_BATTERY
+			bool "Enable bloc battery"
+			default n
+
+		config BSP_USING_BLOC_BUTTON
+			bool "Enable bloc button"
+			default n
+
+		config BSP_USING_BLOC_PERIPHERAL
+			bool "Enable bloc peripheral"
+			default n
+			
+		config BSP_USING_BLOC_WEATHER
+			bool "Enable bloc weather"
+			default n
+
+		config BSP_USING_BLOC_MOTION_TRACKING
+			bool "Enable bloc motion tracking"
+			default n
+
+		config BSP_USING_BLOC_FILESYSTEM
+			bool "Enable bloc file system"
+			default n
+
+		config BSP_USING_BLOC_SYSTEM_PERCEPTION
+			bool "Enable bloc system perception"
+			default n
+
+		config BSP_USING_BLOC_EXERCISE
+			bool "Enable bloc exercise"
+			default n
+
+		config BSP_USING_BLOC_RGB_LED
+			bool "Enable bloc rgb led"
+			default n
+	endif
+endmenu

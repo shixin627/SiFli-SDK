@@ -1,3 +1,4 @@
+source "../../src/modules/kconfig_module"
 config BF0_LCPU
     bool
     default y

@@ -69,7 +69,7 @@ extern int __bss_end;
 // Conversion factor is 1/0.3 = 3.3333
 // #define INT16_to_UT (3.3333f)
 
-#define SkaiwalkWatchOS 26
+// #define SkaiwalkWatchOS 26
 #define kReleaseMode 0
 
 #define BOARD_VER_11 11
@@ -206,8 +206,8 @@ extern int __bss_end;
 #define RGB_LED_CONTROL_PIN (121)   // PB25 (25+96=121)
 #define WS2812B_TIMING
 #define USING_LINEAR_MOTOR_0619
-#define WATCH_DISPLAY_REVERSE_180
-// #define WATCH_IMU_REVERSE_180 (1)
+// #define WATCH_DISPLAY_REVERSE_180
+#define WATCH_IMU_REVERSE_180 (1)
 #endif
 
 // #define WATCH_DISPLAY_REVERSE_180

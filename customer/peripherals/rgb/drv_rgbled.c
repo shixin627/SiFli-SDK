@@ -28,8 +28,8 @@
 #include <drv_log.h>
 
 #define RGB_COLOR_BITS_PER_LED   24
-#define RGB_REST_LEN   300
-#define RGB_STOP_LEN   50
+#define RGB_REST_LEN   200 //300
+#define RGB_STOP_LEN   0   //50
 
 // Calculate total buffer size based on configured LED count
 #define RGB_TOTAL_COLOR_LEN   (RGB_COLOR_BITS_PER_LED * BSP_RGB_LED_COUNT)
@@ -148,6 +148,10 @@ static rt_err_t drv_rgbled_send_data(struct bf0_rgbled *rgb_obj, rt_uint16_t led
     return -RT_ERROR;
 #endif
 
+    // rt_base_t level;
+    // 關閉中斷
+    // level = rt_hw_interrupt_disable();
+
     rt_memset((void *)&config, 0, sizeof(config));
     config.channel = BSP_USING_RGBLED_CH;
     rt_device_control((struct rt_device *)rgb_obj->pwm_device, PWM_CMD_DISABLE, (void *)&config);
@@ -181,6 +185,9 @@ static rt_err_t drv_rgbled_send_data(struct bf0_rgbled *rgb_obj, rt_uint16_t led
     rt_memset((void *)&config, 0, sizeof(config));
     config.channel = BSP_USING_RGBLED_CH;
     rt_device_control((struct rt_device *)rgb_obj->pwm_device, PWM_CMD_DISABLE, (void *)&config);
+
+    // 恢復中斷
+    // rt_hw_interrupt_enable(level);
     
     return RT_EOK;
 }

@@ -1,0 +1,41 @@
+menu "Select Communicatie"      
+    if BSP_BLE_SIBLES
+		config BSP_USING_COMMUNICATE
+			bool "Enable communication features"
+			default n
+
+		if BSP_USING_COMMUNICATE
+			config BSP_USING_COMM_BOND
+				bool "Enable bond resolver"
+				default n
+
+			config BSP_USING_COMM_CONTROL
+				bool "Enable control resolver"
+				default n
+
+			config BSP_USING_COMM_HEALTH
+				bool "Enable health resolver"
+				default n
+
+			config BSP_USING_COMM_NOTIFY
+				bool "Enable notify resolver"
+				default n
+
+			config BSP_USING_COMM_SETTING
+				bool "Enable setting resolver"
+				default n
+
+			config BSP_USING_COMM_SKAILINK
+				bool "Enable skia-link resolver"
+				default n
+				
+			config BSP_USING_COMM_DFU
+				bool "Enable DFU resolver"
+				default n
+
+			config BSP_USING_BLE_LOG
+				bool "Enable ble log debugger"
+				default n
+		endif
+	endif
+endmenu

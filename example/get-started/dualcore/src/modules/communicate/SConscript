@@ -1,0 +1,36 @@
+Import('RTT_ROOT')
+Import('rtconfig')
+import os
+import sys
+from building import * 
+
+cwd = GetCurrentDir()
+src = []
+path = [cwd]
+
+if GetDepend('BSP_BLE_SIBLES'):
+    if GetDepend('BSP_USING_COMMUNICATE'):
+        src += Glob('communicate_protocol.c')
+        src += Glob('communicate_task.c')
+        src += Glob('communicate_parse.c')
+        if GetDepend('BSP_USING_COMM_BOND'):
+            src += Glob('communicate_parse_bond.c')
+        if GetDepend('BSP_USING_COMM_CONTROL'):
+            src += Glob('communicate_parse_control.c')
+        if GetDepend('BSP_USING_COMM_HEALTH'):
+            src += Glob('communicate_parse_health.c')
+        if GetDepend('BSP_USING_COMM_NOTIFY'):
+            src += Glob('communicate_parse_notify.c')
+        if GetDepend('BSP_USING_COMM_SETTING'):
+            src += Glob('communicate_parse_setting.c')
+        if GetDepend('BSP_USING_COMM_SKAILINK'):
+            src += Glob('communicate_parse_skailink.c')
+        if GetDepend('BSP_USING_COMM_DFU'):
+            src += Glob('communicate_update_image.c')
+        if GetDepend('BSP_USING_BLE_LOG'):
+            src += Glob('wristband_ble_log.c')
+
+    
+group = DefineGroup('Communicate', src, depend = [''], CPPPATH = path)
+
+Return('group')

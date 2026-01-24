@@ -1,0 +1,28 @@
+menu "Unit testing"
+    config BSP_USING_UNIT_TEST
+		bool "Enable Unit Testing"
+		default n
+    
+    if BSP_USING_UNIT_TEST
+        config UNIT_TEST_FS
+            bool "test file system"
+            default n
+
+        config UNIT_TEST_SHARE_PREFS
+            bool "test share prefs"
+            default n
+
+        config UNIT_TEST_ADC
+            bool "test adc"
+            default n
+
+        config UNIT_TEST_MOTOR
+            bool "test motor"
+            default n
+
+        config UNIT_TEST_NNACC
+            bool "test NNACC"
+            default n
+    endif
+
+endmenu

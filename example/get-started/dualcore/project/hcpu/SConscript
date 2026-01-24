@@ -18,5 +18,6 @@ objs.extend(SConscript(os.path.join(SIFLI_SDK, 'SConscript'), variant_dir="sifli
 # workaround: src folder must be created before resource/strings folder is used, otherwise langpack would not be built
 Execute(Mkdir('src'))
 objs.extend(SConscript(os.path.join(cwd, '../../src/hcpu/SConscript'), variant_dir="src", duplicate=0))
+objs.extend(SConscript(os.path.join(cwd, '../../src/modules/SConscript'), variant_dir="modules", duplicate=0))
 
 Return('objs')

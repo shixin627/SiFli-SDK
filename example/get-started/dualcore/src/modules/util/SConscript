@@ -1,0 +1,20 @@
+Import('RTT_ROOT')
+Import('rtconfig')
+import os
+import sys
+from building import * 
+
+
+cwd = GetCurrentDir()
+src = []
+path = [cwd + '/includes']
+
+src += Glob('trig.c')
+src += Glob('list.c')
+src += Glob('math_fixed.c')
+src += Glob('platform.c')
+src += Glob('includes/util/time/time.c')
+
+group = DefineGroup('Utils', src, depend = [''], CPPPATH = path)
+
+Return('group')

@@ -1,0 +1,16 @@
+Import('RTT_ROOT')
+Import('rtconfig')
+import os
+import sys
+from building import * 
+
+cwd = GetCurrentDir()
+
+src = []
+path = [cwd]
+
+src += ['hand_tracking.c']
+    
+group = DefineGroup('Algorithm', src, depend = ['BSP_USING_HAND_TRACKING'], CPPPATH = path)
+
+Return('group')

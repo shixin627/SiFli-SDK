@@ -1,0 +1,16 @@
+Import('RTT_ROOT')
+Import('rtconfig')
+import os
+import sys
+from building import * 
+
+cwd = GetCurrentDir()
+
+src = []
+path = [cwd]
+
+src += ['activity_algorithm_kraepelin.c']
+    
+group = DefineGroup('activity', src, depend = ['BSP_USING_ACTIVITY_ALGO_KRAEPELIN'], CPPPATH = path)
+
+Return('group')

@@ -1,0 +1,16 @@
+Import('RTT_ROOT')
+Import('rtconfig')
+import os
+import sys
+from building import * 
+
+cwd = GetCurrentDir()
+
+src = []
+path = [cwd]
+
+src += ['sensor_fusion.c']
+    
+group = DefineGroup('Algorithm', src, depend = ['BSP_USING_MAHONY_AHRS'], CPPPATH = path)
+
+Return('group')

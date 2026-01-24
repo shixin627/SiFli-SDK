@@ -12,6 +12,8 @@
 #include "app_mem.h"
 #include "log.h"
 #include "lv_freetype.h"
+#include "touch_state_manager.h"
+#include "drv_touch.h"
 
 #ifdef BSP_USING_PM
     #include "bf0_pm.h"
@@ -21,20 +23,19 @@
 
 #include "data_service_subscriber.h"
 
-#define APP_WATCH_GUI_TASK_STACK_SIZE 16*1024
+#define APP_WATCH_GUI_TASK_STACK_SIZE 16 * 1024
 
-#define SLEEP_CTRL_PIN   (BSP_KEY1_PIN)
-#define LCD_DEVICE_NAME  "lcd"
-#define IDLE_TIME_LIMIT  (10000)
+#define SLEEP_CTRL_PIN (BSP_KEY1_PIN)
+#define LCD_DEVICE_NAME "lcd"
+#define IDLE_TIME_LIMIT (10000)
 
 typedef enum
 {
     BTN_EVT_SHUTDOWN = 0x01,
     BTN_EVT_UI_CLOSE = 0x02,
-    BTN_EVT_UI_OPEN  = 0x04,
+    BTN_EVT_UI_OPEN = 0x04,
     BTN_EVT_ALL = BTN_EVT_SHUTDOWN | BTN_EVT_UI_CLOSE | BTN_EVT_UI_OPEN,
 } btn_evt_type_t;
-
 
 static struct rt_thread watch_thread;
 
@@ -54,7 +55,7 @@ static int32_t button_handle;
 extern void ui_datac_init(void);
 
 #ifdef BSP_USING_PM
-    extern bool lv_refreshing_done(void);
+extern bool lv_refreshing_done(void);
 #endif /* BSP_USING_PM */
 /**
  * return to MAIN_APP or CLOCK_APP
@@ -70,7 +71,7 @@ static int32_t default_keypad_handler(lv_key_t key, lv_indev_state_t event)
 {
     static lv_indev_state_t last_event = LV_INDEV_STATE_REL;
 
-    if (last_event != event) //Not execute repeatly.
+    if (last_event != event) // Not execute repeatly.
     {
         last_event = event;
 
@@ -82,7 +83,7 @@ static int32_t default_keypad_handler(lv_key_t key, lv_indev_state_t event)
             else
             {
                 gui_app_run("Main");
-#if defined(GUI_APP_FRAMEWORK)&&(!defined (APP_TRANS_ANIMATION_NONE))
+#if defined(GUI_APP_FRAMEWORK) && (!defined(APP_TRANS_ANIMATION_NONE))
                 lvsf_gesture_bars_realign();
 #endif
             }
@@ -96,17 +97,15 @@ static int32_t default_keypad_handler(lv_key_t key, lv_indev_state_t event)
     return LV_BLOCK_EVENT;
 }
 
-
 #ifdef USING_BUTTON_LIB
 
-#include "button.h"
+    #include "button.h"
 
-#ifdef BSP_KEY1_ACTIVE_HIGH
-    #define BUTTON_ACTIVE_POL BUTTON_ACTIVE_HIGH
-#else
-    #define BUTTON_ACTIVE_POL BUTTON_ACTIVE_LOW
-#endif
-
+    #ifdef BSP_KEY1_ACTIVE_HIGH
+        #define BUTTON_ACTIVE_POL BUTTON_ACTIVE_HIGH
+    #else
+        #define BUTTON_ACTIVE_POL BUTTON_ACTIVE_LOW
+    #endif
 
 typedef enum
 {
@@ -145,7 +144,6 @@ void button_key_read(uint32_t *last_key, lv_indev_state_t *state)
     }
 }
 
-
 static void button_event_handler(int32_t pin, button_action_t action)
 {
     rt_kprintf("pin: %d, action: %d\n", pin, action);
@@ -154,12 +152,13 @@ static void button_event_handler(int32_t pin, button_action_t action)
 /* button event handler in UI inactive state */
 static void handle_button_action(int32_t pin, button_action_t action)
 {
-#ifdef BSP_USING_PM
+    #ifdef BSP_USING_PM
     gui_pm_action_t pm_action;
 
     LOG_I("button:%d,%d", pin, action);
 
-    if ((SLEEP_CTRL_PIN == pin) && (!gui_is_active() || (action == BUTTON_LONG_PRESSED)))
+    if ((SLEEP_CTRL_PIN == pin) &&
+        (!gui_is_active() || (action == BUTTON_LONG_PRESSED)))
     {
         pm_action = GUI_PM_ACTION_INVALID;
         switch (action)
@@ -195,7 +194,7 @@ static void handle_button_action(int32_t pin, button_action_t action)
         }
     }
     else
-#endif  /* BSP_USING_PM */
+    #endif /* BSP_USING_PM */
     {
         lv_disp_trig_activity(NULL);
         switch (action)
@@ -233,13 +232,13 @@ static int button_service_callback(data_callback_arg_t *arg)
 
 static void init_pin(void)
 {
-#if (SLEEP_CTRL_PIN < GPIO1_PIN_NUM)
+    #if (SLEEP_CTRL_PIN < GPIO1_PIN_NUM)
     button_cfg_t cfg;
-#if defined(BSP_USING_PM) && !defined(SF32LB52X)
+        #if defined(BSP_USING_PM) && !defined(SF32LB52X)
     int8_t wakeup_pin;
     uint16_t gpio_pin;
     GPIO_TypeDef *gpio;
-#endif /* BSP_USING_PM && !SF32LB52X */
+        #endif /* BSP_USING_PM && !SF32LB52X */
 
     cfg.pin = SLEEP_CTRL_PIN;
     cfg.active_state = BUTTON_ACTIVE_POL;
@@ -250,7 +249,7 @@ static void init_pin(void)
     RT_ASSERT(SF_EOK == button_enable(id));
     key1_button_handle = id;
 
-#if defined(BSP_USING_PM) && !defined(SF32LB52X)
+        #if defined(BSP_USING_PM) && !defined(SF32LB52X)
     gpio = GET_GPIO_INSTANCE(SLEEP_CTRL_PIN);
     gpio_pin = GET_GPIOx_PIN(SLEEP_CTRL_PIN);
 
@@ -258,18 +257,19 @@ static void init_pin(void)
     RT_ASSERT(wakeup_pin >= 0);
 
     pm_enable_pin_wakeup(wakeup_pin, AON_PIN_MODE_DOUBLE_EDGE);
-#endif /* BSP_USING_PM && !SF32LB52X */
+        #endif /* BSP_USING_PM && !SF32LB52X */
 
-#endif /* SLEEP_CTRL_PIN < GPIO1_PIN_NUM */
+    #endif /* SLEEP_CTRL_PIN < GPIO1_PIN_NUM */
 
     button_handle = datac_open();
     RT_ASSERT(DATA_CLIENT_INVALID_HANDLE != button_handle);
     /* subscribe btn0 service to get button event */
-    datac_subscribe(button_handle, "btn0", button_service_callback, SLEEP_CTRL_PIN);
+    datac_subscribe(button_handle, "btn0", button_service_callback,
+                    SLEEP_CTRL_PIN);
 }
 
 #else
-#define init_pin()
+    #define init_pin()
 #endif /* USING_BUTTON_LIB */
 
 #ifdef BSP_USING_PM
@@ -293,7 +293,7 @@ static void mbox_event_cb(lv_event_t *event)
     {
         /* Delete the parent modal background */
         lv_obj_del_async(lv_obj_get_parent(mbox));
-        //Restore HOME key
+        // Restore HOME key
         keypad_default_handler_register(default_keypad_handler);
     }
 }
@@ -302,15 +302,16 @@ static void show_shutdown_msgbox(void)
 {
     /* Create a base object for the modal background */
     lv_obj_t *obj = lv_obj_create(lv_scr_act());
-    lv_obj_set_style_bg_color(obj, LV_COLOR_BLACK, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(obj, LV_COLOR_BLACK,
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_pos(obj, 0, 0);
     lv_obj_set_size(obj, LV_HOR_RES, LV_VER_RES);
 
     static const char *btns2[] = {"Ok", "Cancel", ""};
 
     /* Create the message box as a child of the modal background */
-    lv_obj_t *mbox = lv_msgbox_create(obj, "Shutdown",
-                                      "Are you sure to shutdown?", btns2, false);
+    lv_obj_t *mbox = lv_msgbox_create(
+        obj, "Shutdown", "Are you sure to shutdown?", btns2, false);
     lv_obj_align(mbox, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_event_cb(mbox, mbox_event_cb, LV_EVENT_VALUE_CHANGED, mbox);
 
@@ -323,10 +324,10 @@ static void show_shutdown_msgbox(void)
     lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)opa_anim);
     lv_anim_start(&a);
 
-    //Disable HOME key
+    // Disable HOME key
     keypad_default_handler_register(NULL);
-    //lv_label_set_text(info, in_msg_info);
-    //lv_obj_align(info, NULL, LV_ALIGN_IN_BOTTOM_LEFT, 5, -5);
+    // lv_label_set_text(info, in_msg_info);
+    // lv_obj_align(info, NULL, LV_ALIGN_IN_BOTTOM_LEFT, 5, -5);
 }
 
 static void button_event_task_entry(struct _lv_timer_t *task)
@@ -339,7 +340,9 @@ static void button_event_task_entry(struct _lv_timer_t *task)
         gui_pm_fsm(GUI_PM_ACTION_SLEEP);
     }
 
-    err = rt_event_recv(&btn_event, BTN_EVT_ALL, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_NO, &evt);
+    err = rt_event_recv(&btn_event, BTN_EVT_ALL,
+                        RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_NO,
+                        &evt);
 
     if (RT_EOK != err)
     {
@@ -369,7 +372,7 @@ static void pm_event_handler(gui_pm_event_type_t event)
     }
     case GUI_PM_EVT_SHUTDOWN:
     {
-        //TODO: start power down procedure
+        // TODO: start power down procedure
         RT_ASSERT(RT_EOK == rt_event_send(&btn_event, BTN_EVT_SHUTDOWN));
         break;
     }
@@ -380,10 +383,39 @@ static void pm_event_handler(gui_pm_event_type_t event)
     }
 }
 #else
-#define rt_pm_request(mode)
-#define rt_pm_release(mode)
+    #define rt_pm_request(mode)
+    #define rt_pm_release(mode)
 #endif /* BSP_USING_PM */
 
+
+/* Touch event callback - directly called from driver */
+static void on_touch_event(uint8_t event, uint16_t x, uint16_t y)
+{
+    /* Update global touch state */
+    touch_state_update(event, x, y);
+}
+
+/* Touch gesture callback - called after gesture detection */
+static void on_touch_gesture(touch_gesture_t gesture, uint16_t x, uint16_t y)
+{
+    switch (gesture)
+    {
+    case TOUCH_GESTURE_PRESSED:
+        LOG_D("Touch pressed at (%d, %d)", x, y);
+        // Handle initial touch moment if needed
+        handle_button_action(BSP_KEY1_PIN, BUTTON_PRESSED);
+        break;
+    case TOUCH_GESTURE_QUICK_CLICK:
+        LOG_D("Quick click at (%d, %d)", x, y);
+        handle_button_action(BSP_KEY1_PIN, BUTTON_CLICKED);
+        break;
+    case TOUCH_GESTURE_LONG_PRESS:
+        LOG_D("Long press at (%d, %d)", x, y);
+        break;
+    default:
+        break;
+    }
+}
 
 void app_watch_entry(void *parameter)
 {
@@ -405,7 +437,25 @@ void app_watch_entry(void *parameter)
 
 #ifdef BSP_USING_PM
     rt_event_init(&btn_event, "btn", RT_IPC_FLAG_FIFO);
+    #if defined(TOUCH_IRQ_PIN)
+    int8_t wakeup_pin;
+    uint16_t gpio_pin;
+    GPIO_TypeDef *gpio;
+    gpio = GET_GPIO_INSTANCE(TOUCH_IRQ_PIN);
+    gpio_pin = GET_GPIOx_PIN(TOUCH_IRQ_PIN);
 
+    wakeup_pin = HAL_HPAON_QueryWakeupPin(gpio, gpio_pin);
+    RT_ASSERT(wakeup_pin >= 0);
+
+    pm_enable_pin_wakeup(wakeup_pin, AON_PIN_MODE_POS_EDGE);
+
+    /* Initialize touch state manager */
+    touch_state_manager_init();
+
+    /* Register callbacks with touch driver */
+    rt_touch_set_event_callback(on_touch_event);
+    touch_gesture_register_callback(on_touch_gesture);
+    #endif
     gui_ctx_init();
     gui_pm_init(lcd_device, pm_event_handler);
 #endif /* BSP_USING_PM */
@@ -419,7 +469,7 @@ void app_watch_entry(void *parameter)
     lv_ex_data_pool_init();
     resource_init();
 #if LV_USING_FREETYPE_ENGINE
-    lv_freetype_open_font(true);                                /* open freetype */
+    lv_freetype_open_font(true); /* open freetype */
 #endif
     gui_app_init();
 
@@ -430,7 +480,7 @@ void app_watch_entry(void *parameter)
 
     gui_app_run("Main");
     lv_disp_trig_activity(NULL);
-#if defined(GUI_APP_FRAMEWORK)&&(!defined (APP_TRANS_ANIMATION_NONE))
+#if defined(GUI_APP_FRAMEWORK) && (!defined(APP_TRANS_ANIMATION_NONE))
     lvsf_gesture_init(lv_layer_top());
 #endif /* defined(GUI_APP_FRAMEWORK)&&(!defined (APP_TRANS_ANIMATION_NONE)) */
 
@@ -457,29 +507,29 @@ void app_watch_entry(void *parameter)
             }
             else if (ms > 0)
             {
-                rt_thread_mdelay(ms);       /* Just to let the system breathe */
+                rt_thread_mdelay(ms); /* Just to let the system breathe */
             }
         }
         else
-#endif  /* BSP_USING_PM */
+#endif /* BSP_USING_PM */
         {
-            //EventStartB(0);
+            // EventStartB(0);
             if (ms > 0)
-                rt_thread_mdelay(ms);       /* Just to let the system breathe */
-            //EventStopB(0);
+                rt_thread_mdelay(ms); /* Just to let the system breathe */
+            // EventStopB(0);
         }
 
         if (first_loop)
         {
 #ifndef WIN32
-            //Turn on lcd backlight after power on
+            // Turn on lcd backlight after power on
             uint8_t brightness = 100;
-            rt_device_control(lcd_device, RTGRAPHIC_CTRL_SET_BRIGHTNESS, &brightness);
+            rt_device_control(lcd_device, RTGRAPHIC_CTRL_SET_BRIGHTNESS,
+                              &brightness);
 #endif /* WIN32 */
             first_loop = 0;
         }
     }
-
 }
 
 void app_register(void)
@@ -491,8 +541,8 @@ int app_watch_init(void)
     rt_err_t ret = RT_EOK;
     rt_thread_t thread = RT_NULL;
 
-
-    ret = rt_thread_init(&watch_thread, "app_watch", app_watch_entry, RT_NULL, watch_thread_stack, APP_WATCH_GUI_TASK_STACK_SIZE,
+    ret = rt_thread_init(&watch_thread, "app_watch", app_watch_entry, RT_NULL,
+                         watch_thread_stack, APP_WATCH_GUI_TASK_STACK_SIZE,
                          RT_THREAD_PRIORITY_MIDDLE, RT_THREAD_TICK_DEFAULT);
 
     if (RT_EOK != ret)
@@ -503,8 +553,8 @@ int app_watch_init(void)
     return RT_EOK;
 }
 
-#if !defined (_MSC_VER)
-#define APP_MEM_THRESHOLD 16384
+#if !defined(_MSC_VER)
+    #define APP_MEM_THRESHOLD 16384
 void *cxx_mem_allocate(size_t size)
 {
     if (size > APP_MEM_THRESHOLD)

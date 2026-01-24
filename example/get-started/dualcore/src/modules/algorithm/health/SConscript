@@ -1,0 +1,9 @@
+from building import *
+
+cwd = GetCurrentDir()
+src = Glob('*.c')
+path = [cwd]
+lib = ['health_algorithm_3.8.14']
+group = DefineGroup('Health', src, depend = ['BSP_USING_HEALTH_ALGO'], LIBS = lib, CPPPATH = path, LIBPATH = path)
+
+Return('group')

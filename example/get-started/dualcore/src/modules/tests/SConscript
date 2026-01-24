@@ -1,0 +1,22 @@
+Import('RTT_ROOT')
+Import('rtconfig')
+from building import *
+
+cwd = GetCurrentDir()
+src = []
+path = [cwd]
+
+if GetDepend('UNIT_TEST_FS'):
+    src+=['test_fs.c']
+if GetDepend('UNIT_TEST_SHARE_PREFS'):
+    src+=['test_share_prefs.c']
+if GetDepend('UNIT_TEST_ADC'):
+    src+=['test_adc.c']
+if GetDepend('UNIT_TEST_MOTOR'):
+    src+=['test_motor.c']
+if GetDepend('UNIT_TEST_NNACC'):
+    src+=['nn_test.c']
+
+group = DefineGroup('Unit_tests', src, depend = [''], CPPPATH = path)
+
+Return('group')

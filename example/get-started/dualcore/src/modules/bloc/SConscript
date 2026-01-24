@@ -1,0 +1,52 @@
+Import('RTT_ROOT')
+Import('rtconfig')
+import os
+import sys
+from building import * 
+
+cwd = GetCurrentDir()
+src = []
+path = [cwd]
+
+if GetDepend('BSP_USING_BLOC_CONTROL'):
+    src += Glob('bloc_control.c')
+if GetDepend('BSP_USING_BLOC_FLASH'):
+    src += Glob('bloc_flash.c')
+if GetDepend('BSP_USING_BLOC_NOTE'):
+    src += Glob('bloc_note.c')
+if GetDepend('BSP_USING_BLOC_CALENDAR'):
+    src += Glob('bloc_calendar.c')
+if GetDepend('BSP_USING_BLOC_NOTIFY'):
+    src += Glob('bloc_notification.c')
+if GetDepend('BSP_USING_BLOC_SETTING'):
+    src += Glob('bloc_setting.c')
+if GetDepend('BSP_USING_BLOC_SKAIWALK'):
+    src += Glob('bloc_skaiwalk.c')
+if GetDepend('BSP_USING_BLOC_TASK'):
+    src += Glob('bloc_task.c')
+if GetDepend('BSP_USING_BLOC_V2T'):
+    src += Glob('bloc_v2t.c')
+if GetDepend('BSP_USING_BLOC_BATTERY'):
+    src += Glob('bloc_battery.c')
+if GetDepend('BSP_USING_BLOC_MOTOR'):
+    src += Glob('bloc_motor.c')
+if GetDepend('BSP_USING_BLOC_BUTTON'):
+    src += Glob('bloc_button.c')
+if GetDepend('BSP_USING_BLOC_PERIPHERAL'):
+    src += Glob('bloc_peripheral.c')
+if GetDepend('BSP_USING_BLOC_WEATHER'):
+    src += Glob('bloc_weather.c')
+if GetDepend('BSP_USING_BLOC_MOTION_TRACKING'):
+    src += Glob('bloc_motion_tracking.c')
+if GetDepend('BSP_USING_BLOC_FILESYSTEM'):
+    src += Glob('bloc_filesystem.c')
+if GetDepend('BSP_USING_BLOC_SYSTEM_PERCEPTION'):
+    src += Glob('bloc_system_perception.c')
+if GetDepend('BSP_USING_BLOC_EXERCISE'):
+    src += Glob('bloc_exercise.c')
+if GetDepend('BSP_USING_BLOC_RGB_LED'):
+    src += Glob('bloc_rgb_led.c')
+
+group = DefineGroup('Bloc', src, depend = [''], CPPPATH = path)
+
+Return('group')
