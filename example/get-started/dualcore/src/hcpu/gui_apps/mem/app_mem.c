@@ -334,45 +334,6 @@ void app_message_free(void *p)
 #endif
 }
 
-
-#ifdef DISABLE_LVGL_V8
-/**
- * Get the memory consumption of a raw bitmap, given color format and dimensions.
- * @param w width
- * @param h height
- * @param cf color format
- * @return size in bytes
- */
-uint32_t lv_img_buf_get_img_size(lv_coord_t w, lv_coord_t h, lv_img_cf_t cf)
-{
-    switch (cf)
-    {
-    case LV_IMG_CF_TRUE_COLOR:
-        return LV_IMAGE_BUF_SIZE_TRUE_COLOR(w, h);
-    case LV_IMG_CF_TRUE_COLOR_ALPHA:
-        return LV_IMAGE_BUF_SIZE_TRUE_COLOR_ALPHA(w, h);
-    case LV_COLOR_FORMAT_A1:
-        return LV_IMAGE_BUF_SIZE_ALPHA_1BIT(w, h);
-    case LV_COLOR_FORMAT_A2:
-        return LV_IMAGE_BUF_SIZE_ALPHA_2BIT(w, h);
-    case LV_COLOR_FORMAT_A4:
-        return LV_IMAGE_BUF_SIZE_ALPHA_4BIT(w, h);
-    case LV_IMG_CF_ALPHA_8BIT:
-        return LV_IMAGE_BUF_SIZE_ALPHA_8BIT(w, h);
-    case LV_COLOR_FORMAT_I1:
-        return LV_IMAGE_BUF_SIZE_INDEXED_1BIT(w, h);
-    case LV_COLOR_FORMAT_I2:
-        return LV_IMAGE_BUF_SIZE_INDEXED_2BIT(w, h);
-    case LV_COLOR_FORMAT_I4:
-        return LV_IMAGE_BUF_SIZE_INDEXED_4BIT(w, h);
-    case LV_COLOR_FORMAT_I8:
-        return LV_IMAGE_BUF_SIZE_INDEXED_8BIT(w, h);
-    default:
-        return 0;
-    }
-}
-#endif
-
 lv_img_dsc_t *app_cache_img_alloc(lv_coord_t w, lv_coord_t h, lv_img_cf_t cf, uint32_t data_size, image_cache_t cache_type)
 {
     /* Allocate image descriptor */
@@ -509,8 +470,9 @@ void *app_anim_mem_alloc(rt_size_t size, bool anim_data)
 #endif
         }
     }
-
+#ifdef RT_USING_FINSH
     if (mem_log) rt_kprintf("app_anim_mem_alloc: %p %d. \n", p, size);
+#endif
 
     if (!p)
     {
@@ -568,16 +530,9 @@ void *app_anim_mem_realloc(void *p, size_t new_size)
             ret = rt_realloc(temp_p, new_size);
             if (ret)((uint32_t *) ret)[0] = SYS_HEAP;
         }
-
-
-    if (mem_log) rt_kprintf("app_anim_mem_realloc: old:%p->new:%p, new_size:%d. \n", temp_p, ret, new_size);
-
-    if (!p)
-    {
-        rt_kprintf("app_anim_mem_realloc: size %d failed!", new_size);
-        return 0;
-    }
-
+#ifdef RT_USING_FINSH
+    if (mem_log) rt_kprintf("app_anim_mem_realloc: %p. \n", p);
+#endif
     if (ret)
         ret += 4;
     return ret;
@@ -590,7 +545,6 @@ void app_anim_mem_free(void *p)
     if (!p)
         return;
     temp_p -= 4;
-    if (mem_log) rt_kprintf("app_anim_mem_free: %p. \n", temp_p);
     if (PSRAM_HEAP == ((uint32_t *) temp_p)[0] || SRAM_HEAP == ((uint32_t *) temp_p)[0])
     {
         rt_memheap_free(temp_p);
@@ -599,8 +553,9 @@ void app_anim_mem_free(void *p)
     {
         rt_free(temp_p);
     }
-
-
+#ifdef RT_USING_FINSH
+    if (mem_log) rt_kprintf("app_anim_mem_free: %p. \n", p);
+#endif
 }
 
 
@@ -625,7 +580,7 @@ void *app_anim_buf_alloc(size_t nbytes, uint8_t index)
 
 void *app_anim_buf_free(void *ptr)
 {
-    rt_kprintf("app_anim_buf_free: %p\n", ptr);
+    rt_kprintf("app_anim_buf_free000: %p\n", ptr);
 
     return NULL;
 }
@@ -698,80 +653,24 @@ uint32_t app_mem_get_ft_cache_size(void)
 
 
 #if PKG_USING_FFMPEG
-typedef struct _ffmpeg_mem_header
-{
-    uint32_t magic;
-    uint32_t offset;//Offset between 'ffmpeg_alloc' returned value and 'app_anim_mem_(re)alloc' returned value
-    uint32_t size;
-} ffmpeg_mem_header;
-//Assumed that > 64K memory area used by EPIC
-#define ALIGN64_SIZE_THRESHOLD 65536
-#define FFMPEG_MEM_HEADER sizeof(ffmpeg_mem_header)
-#define FFMPEG_MEM_MAGIC  0xFF3E63E3
-#ifndef MIN
-    #define MIN(x,y) (((x)<(y))?(x):(y))
-#endif
-
 void *ffmpeg_alloc(size_t nbytes)
 {
-    uint8_t *p;
-    ffmpeg_mem_header *header_p;
-
-    if (nbytes > ALIGN64_SIZE_THRESHOLD)
-    {
-        size_t header_size = 63 + FFMPEG_MEM_HEADER;
-        p = app_anim_mem_alloc(nbytes + header_size, 1);
-        if (!p) return NULL;
-
-        header_p = (ffmpeg_mem_header *)(RT_ALIGN_DOWN((uint32_t)(p + header_size), 64) - FFMPEG_MEM_HEADER);
-
-        RT_ASSERT(((uint32_t)header_p) >= ((uint32_t)p));
-    }
-    else
-    {
-        p = app_anim_mem_alloc(nbytes + FFMPEG_MEM_HEADER, 1);
-        if (!p) return NULL;
-
-        header_p = (ffmpeg_mem_header *) p;
-    }
-
-
-    header_p->magic = FFMPEG_MEM_MAGIC;
-    header_p->offset = ((uint32_t)header_p) + sizeof(ffmpeg_mem_header) - ((uint32_t)p);
-    header_p->size = nbytes;
-
-    return (uint8_t *)(header_p + 1);
+    return app_anim_mem_alloc(nbytes, 1);
 }
-
-void ffmpeg_free(void *p)
-{
-    if (!p) return;
-
-    ffmpeg_mem_header *header_p = ((ffmpeg_mem_header *)p) - 1;
-
-    RT_ASSERT(FFMPEG_MEM_MAGIC == header_p->magic);
-    app_anim_mem_free(((uint8_t *)p) - header_p->offset);
-}
-
 void *ffmpeg_realloc(void *p, size_t new_size)
 {
-    if (!p) return ffmpeg_alloc(new_size);
+    if (!p)
+        return app_anim_mem_alloc(new_size, 1);
     if (!new_size)
     {
-        ffmpeg_free(p);
+        app_anim_mem_free(p);
         return NULL;
     }
-
-    uint8_t *new_p = ffmpeg_alloc(new_size);
-    if (new_p)
-    {
-        ffmpeg_mem_header *header_p = ((ffmpeg_mem_header *)p) - 1;
-        RT_ASSERT(FFMPEG_MEM_MAGIC == header_p->magic);
-        memcpy(new_p, p, MIN(new_size, header_p->size));
-        ffmpeg_free(p);
-    }
-
-    return new_p;
+    return app_anim_mem_realloc(p, new_size);
+}
+void ffmpeg_free(void *p)
+{
+    app_anim_mem_free(p);
 }
 #endif
 

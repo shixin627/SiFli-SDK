@@ -251,6 +251,10 @@ static void read_oled_display_time(share_prefs_t *pref)
   {
     SkaiWatchSys.oled_display_time = oled_display_time;
   }
+  else
+  {
+    SkaiWatchSys.oled_display_time = 5;
+  }
 }
 
 static void write_oled_display_time(share_prefs_t *pref)

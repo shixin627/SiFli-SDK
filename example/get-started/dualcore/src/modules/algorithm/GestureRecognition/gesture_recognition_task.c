@@ -647,7 +647,9 @@ static void gesture_recognition_thread_entry(void *parameter)
 {
     init_gesture_recognition_model();
     init_gesture_recognition_release_model();
-
+    
+    watch_sensor.gesture_sem =
+        rt_sem_create("gesture_sem", 0, RT_IPC_FLAG_FIFO);
 #if USE_FFT_FILTER
     init_fft();
 #endif

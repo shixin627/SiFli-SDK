@@ -1154,6 +1154,7 @@ static uint8_t accelSamplesBuffer[384] = {0}; // 64 * 6 = 384
  */
 static void motion_tracking_thread_entry(void *parameter)
 {
+	watch_sensor.imu_sem = rt_sem_create("imu_sem", 0, RT_IPC_FLAG_FIFO);
 	while (1)
 	{
 		rt_sem_take(watch_sensor.imu_sem, RT_WAITING_FOREVER);

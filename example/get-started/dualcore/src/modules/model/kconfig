@@ -22,4 +22,16 @@ menu "Select Model"
 	config BSP_USING_TOUCH_STATE_MANAGER
 		bool "Enable Touch state manager"
 		default n
+
+	config BSP_USING_AUDIO_PROCESSOR
+		bool "Enable Audio Processor"
+		default n
+
+	config BSP_USING_BLE_DEVICE_MANAGER
+		bool "Enable BLE Device Manager"
+		default n
+
+	config BSP_USING_BLE_HID
+		bool "Enable BLE HID"
+		default n
 endmenu

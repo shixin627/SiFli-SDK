@@ -69,7 +69,7 @@ extern int __bss_end;
 // Conversion factor is 1/0.3 = 3.3333
 // #define INT16_to_UT (3.3333f)
 
-// #define SkaiwalkWatchOS 26
+#define SkaiwalkWatchOS 26
 #define kReleaseMode 0
 
 #define BOARD_VER_11 11

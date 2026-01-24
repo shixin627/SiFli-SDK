@@ -14,7 +14,25 @@
 #include "lv_freetype.h"
 #include "touch_state_manager.h"
 #include "drv_touch.h"
-
+#include "app_message.h"
+#include "app_speech.h"
+#include "app_mainmenu.h"
+#include "ui_handler.h"
+#include "ui_helper.h"
+#ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
+    #include "watch_system_interact.h"
+    #include "watch_system_core_task.h"
+#endif
+#ifdef BSP_USING_BLOC
+    #include "bloc_control.h"
+    #include "bloc_v2t.h"
+    #include "bloc_setting.h"
+    #include "bloc_peripheral.h"
+    #include "bloc_skaiwalk.h"
+    #include "bloc_motion_tracking.h"
+    #include "bloc_flash.h"
+    #include "bloc_system_perception.h"
+#endif
 #ifdef BSP_USING_PM
     #include "bf0_pm.h"
     #include "gui_app_pm.h"
@@ -57,6 +75,138 @@ extern void ui_datac_init(void);
 #ifdef BSP_USING_PM
 extern bool lv_refreshing_done(void);
 #endif /* BSP_USING_PM */
+
+static void handle_back_in_mainmenu(bool is_button)
+{
+    if (is_at_app_list())
+    {
+        LOG_D("handle_back_in_mainmenu: is_at_app_list");
+        clock_on_resume();
+        animate_to_home_from_app_list();
+        screen_rotate_back_to_original_direction();
+    }
+    else if (is_at_home())
+    {
+        if (is_button)
+        {
+            LOG_D("handle_back_in_mainmenu: is_at_home");
+            watch_system_interact(WATCH_SLEEP, NULL);
+        }
+    }
+    else
+    {
+        LOG_D("is_at_other");
+    }
+}
+
+extern void note_list_handle_back(void);
+static void handle_back_event(bool is_button)
+{
+    if (get_idle_state() && get_sys_power_status() == SYS_POWER_STATUS_ON)
+    {
+        watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
+    }
+    // else if (gui_app_is_actived(APP_ID_BATTERY) ||
+    // gui_app_is_actived(APP_ID_MESSAGE) ||
+    // gui_app_is_actived(APP_ID_APP_LIST))
+    // {
+    //     gui_app_goback();
+    // }
+    else if (is_ble_dfu_thread_running())
+    {
+        LOG_I("ESC in ble dfu => return");
+        return;
+    }
+    else if (gui_app_is_actived(APP_ID_SPEECH))
+    {
+        LOG_D("ESC => trigger_back_event in speech app");
+        control_provider.trigger_back_event();
+    }
+    else if (!gui_app_is_actived(APP_ID_MAIN))
+    {
+        if (gui_app_is_actived(APP_ID_MOUSE))
+        {
+            gui_app_goback();
+        }
+        else if (gui_app_is_actived(APP_ID_EXERCISE))
+        {
+            LOG_D("ESC => trigger_back_event in exercise app");
+            control_provider.trigger_back_event();
+        }
+        else
+        {
+            LOG_D("ESC in other app => gui_app_goback");
+            gui_app_goback();
+            if (is_at_home())
+            {
+                screen_rotate_back_to_original_direction();
+            }
+        }
+    }
+    else if (is_at_ai_interface())
+    {
+        extern void back_tap_cb(void);
+        back_tap_cb();
+        LOG_D("ESC in AI interface => quick_ai_hint_hidden");
+    }
+    else if (is_at_control_center())
+    {
+        animate_to_home_from_notification_center();
+    }
+    else if (is_at_note_list())
+    {
+        LOG_D("ESC in note list => note_list_handle_back");
+        note_list_handle_back();
+    }
+    // else if (is_at_app_list())
+    // {
+    //     extern void back_on_skai_widget(void);
+    //     back_on_skai_widget();
+    //     LOG_D("ESC in AI widget => close_skai_widget_ai");
+    // }
+    else if (is_at_mouse_mode() || is_at_message() || is_at_app_list())
+    {
+        clock_on_resume();
+        animate_to_home_from_notification_center();
+        screen_rotate_back_to_original_direction();
+    }
+    else if (gui_app_is_actived(APP_ID_MAIN))
+    {
+        LOG_D("ESC in main menu => handle_back_in_mainmenu");
+        handle_back_in_mainmenu(is_button);
+    }
+}
+
+
+void ui_layer_top_builder(void)
+{
+#ifdef SHOW_UNKNOWN_GESTURE_INDICATOR
+    unknown_indicator_builder(lv_layer_top(), gui_app_get_gesture_indicator());
+#endif
+
+#ifdef SHOW_UNGRAB_ENABLE_INDICATOR
+    gesture_release_indicator_builder(lv_layer_top(),
+                                      gui_app_get_gesture_indicator());
+#endif
+
+#ifdef SHOW_OPEN_WATCH_HINT_LIGHT
+    open_watch_hint_builder(lv_layer_top(), gui_app_get_gesture_indicator());
+#endif
+
+#ifdef SHOW_BAD_SIGNAL_INDICATOR
+    bad_signal_indicator_builder(lv_layer_top());
+#endif
+}
+
+void ui_layer_system_builder(void)
+{
+    lv_obj_clear_flag(lv_layer_sys(), LV_OBJ_FLAG_CLICKABLE);
+    ai_icon_hint_builder(lv_layer_sys(), gui_app_get_gesture_indicator());
+    tap_indicator_builder(lv_layer_sys(), gui_app_get_gesture_indicator());
+    ungrab_indicator_builder(lv_layer_sys(), gui_app_get_gesture_indicator());
+    // create_message_toast(lv_layer_sys());
+}
+
 /**
  * return to MAIN_APP or CLOCK_APP
  * \n
@@ -74,23 +224,104 @@ static int32_t default_keypad_handler(lv_key_t key, lv_indev_state_t event)
     if (last_event != event) // Not execute repeatly.
     {
         last_event = event;
-
+        LOG_I("[%s]key:%d, event:%d", __func__, key, event);
         if ((LV_INDEV_STATE_PR == event) && (LV_KEY_HOME == key))
         {
-            LOG_I("default_keypad_handler %d,%d", key, event);
-            if (gui_app_is_actived("Main"))
-                gui_app_run("clock");
-            else
-            {
-                gui_app_run("Main");
-#if defined(GUI_APP_FRAMEWORK) && (!defined(APP_TRANS_ANIMATION_NONE))
-                lvsf_gesture_bars_realign();
-#endif
-            }
+            handle_back_event(true);
         }
         else if ((LV_INDEV_STATE_PR == event) && (LV_KEY_ESC == key))
         {
-            gui_app_goback();
+            handle_back_event(true);
+        }
+        else if ((LV_INDEV_STATE_PR == event) && (LV_KEY_NEXT == key))
+        {
+            handle_back_event(true);
+        }
+        else if ((LV_INDEV_STATE_PR == event) && (LV_KEY_ENTER == key))
+        {
+            LOG_I("ENTER key event was %d", event);
+            if (is_at_ai_interface())
+            {
+                extern bool get_enable_tap_and_hold(void);
+                if (!get_enable_tap_and_hold())
+                {
+                    if (peripheral_provider.get_tap_status())
+                    {
+                        extern void ai_tap_cb(void);
+                        ai_tap_cb();
+                    }
+                }
+                else
+                {
+                    if (!peripheral_provider.get_tap_status())
+                    {
+                        extern void ai_tap_cb(void);
+                        ai_tap_cb();
+                    }
+                }
+            }
+            else if (is_at_message() && !gui_app_is_actived(APP_ID_SPEECH))
+            {
+                extern bool get_enable_tap_and_hold(void);
+                if (!get_enable_tap_and_hold())
+                {
+                    if (peripheral_provider.get_tap_status())
+                    {
+                        if (myLancher[app_index_message].on_tap)
+                            myLancher[app_index_message].on_tap();
+                    }
+                }
+                else
+                {
+                    if (!peripheral_provider.get_tap_status())
+                    {
+                        if (myLancher[app_index_message].on_tap)
+                            myLancher[app_index_message].on_tap();
+                    }
+                }
+            }
+            else if (is_at_app_list())
+            {
+                extern bool get_enable_tap_and_hold(void);
+                if (!get_enable_tap_and_hold())
+                {
+                    if (peripheral_provider.get_tap_status())
+                    {
+                        if (myLancher[app_index_app_list].on_tap)
+                            myLancher[app_index_app_list].on_tap();
+                    }
+                }
+                else
+                {
+                    if (!peripheral_provider.get_tap_status())
+                    {
+                        if (myLancher[app_index_app_list].on_tap)
+                            myLancher[app_index_app_list].on_tap();
+                    }
+                }
+            }
+            else if ((app_control_get_mouse_mode() || is_at_mouse_mode()))
+            {
+                if (peripheral_provider.get_tap_status())
+                {
+                    control_provider.ble_hid_mouse_left_press();
+                }
+                else
+                {
+                    control_provider.ble_hid_mouse_left_release();
+                }
+            }
+            else if (lvgl_msg_handler.handle_tap_indicator)
+            {
+                if (peripheral_provider.get_tap_status())
+                {
+                    lvgl_msg_handler.handle_tap_indicator(1);
+                }
+                else
+                {
+                    lvgl_msg_handler.handle_tap_indicator(0);
+                }
+            }
         }
     }
 
@@ -209,6 +440,18 @@ static void handle_button_action(int32_t pin, button_action_t action)
             break;
         }
     }
+}
+
+void lvgl_set_global_keypad_enter_cmd(void)
+{
+    keypad_status.last_key = 1;
+    keypad_status.last_key_state = KEYPAD_KEY_STATE_PRESSED;
+}
+
+void lvgl_set_global_keypad_esc_cmd(void)
+{
+    keypad_status.last_key = 3;
+    keypad_status.last_key_state = KEYPAD_KEY_STATE_PRESSED;
 }
 
 static int button_service_callback(data_callback_arg_t *arg)
@@ -334,8 +577,30 @@ static void button_event_task_entry(struct _lv_timer_t *task)
 {
     rt_uint32_t evt;
     rt_err_t err;
+    rt_uint32_t limit_time = IDLE_TIME_LIMIT;
+    if (SkaiWatchSys.oled_display_time > 60)
+    {
+        // never sleep
+        limit_time = 0xFFFFFFFF;
+    }
+    else
+    {
+        limit_time = SkaiWatchSys.oled_display_time * 1000;
+    }
 
-    if (lv_disp_get_inactive_time(NULL) > IDLE_TIME_LIMIT)
+    // #if !kReleaseMode
+    // extern bool pause_sleep_cause_of_dev_reson(void);
+    // if (!pause_sleep_cause_of_dev_reson())
+    // #endif
+    // {
+    //     if (is_timeout && setting_provider.get_power_save_mode() &&
+    //         !never_sleep)
+    //     {
+    //         send_sys_interact_event(SYS_EVENT_HCPU_SUSPEND);
+    //     }
+    // }
+
+    if (lv_disp_get_inactive_time(NULL) > limit_time)
     {
         gui_pm_fsm(GUI_PM_ACTION_SLEEP);
     }
@@ -403,11 +668,34 @@ static void on_touch_gesture(touch_gesture_t gesture, uint16_t x, uint16_t y)
     case TOUCH_GESTURE_PRESSED:
         LOG_D("Touch pressed at (%d, %d)", x, y);
         // Handle initial touch moment if needed
-        handle_button_action(BSP_KEY1_PIN, BUTTON_PRESSED);
+        // if (get_idle_state() && get_sys_power_status() == SYS_POWER_STATUS_ON)
+        // {
+        //     watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
+        // }
         break;
     case TOUCH_GESTURE_QUICK_CLICK:
         LOG_D("Quick click at (%d, %d)", x, y);
-        handle_button_action(BSP_KEY1_PIN, BUTTON_CLICKED);
+#ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
+        // Handle quick click wakeup if needed
+        if (!gui_is_active())
+        {
+            gui_pm_fsm(GUI_PM_ACTION_BUTTON_CLICKED);
+        }
+        // if (get_sys_power_status() == SYS_POWER_STATUS_SLEEP)
+        // {
+        //     LOG_D("Wakeup from sleep due to quick click");
+        //     // watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
+        // }
+        // else if (get_sys_power_status() == SYS_POWER_STATUS_OFF)
+        // {
+        //     LOG_D("Wakeup from off due to quick click");
+        //     // watch_system_interact(STANDBY_WAKEUP, NULL);
+        // }
+        else
+        {
+            LOG_D("System is already ON, no action taken");
+        }
+#endif
         break;
     case TOUCH_GESTURE_LONG_PRESS:
         LOG_D("Long press at (%d, %d)", x, y);
@@ -472,14 +760,34 @@ void app_watch_entry(void *parameter)
     lv_freetype_open_font(true); /* open freetype */
 #endif
     gui_app_init();
+//     ui_datac_init();
+//     app_message_data_init();
+//     app_speech_data_init();
+// #ifndef BSP_USING_PC_SIMULATOR
+//     watch_config_struct_flash_read();
+//     rt_thread_mdelay(30);
+//     save_device_address_to_fs();
+// #else
+//     extern void get_notification_list_from_template(void);
+//     get_notification_list_from_template();
+//     extern void get_messages_list_from_template(void);
+//     get_messages_list_from_template();
+// #endif
+//     bloc_setting_load_watch_system();
+//     // bloc_system_schedule_init();
+//     load_note_list_from_file();
 
 #ifdef BSP_USING_PM
+    SkaiWatchSys.oled_display_time = 5;
     button_event_task = lv_timer_create(button_event_task_entry, 30, 0);
 #endif /* BSP_USING_PM */
     keypad_default_handler_register(default_keypad_handler);
 
     gui_app_run("Main");
     lv_disp_trig_activity(NULL);
+
+    // ui_layer_system_builder();
+    // ui_layer_top_builder();
 #if defined(GUI_APP_FRAMEWORK) && (!defined(APP_TRANS_ANIMATION_NONE))
     lvsf_gesture_init(lv_layer_top());
 #endif /* defined(GUI_APP_FRAMEWORK)&&(!defined (APP_TRANS_ANIMATION_NONE)) */

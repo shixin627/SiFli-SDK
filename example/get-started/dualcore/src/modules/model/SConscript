@@ -21,7 +21,13 @@ if GetDepend('BSP_USING_VIRTUAL_CONSOLE'):
     src += Glob('virtual_console.c')
 if GetDepend('BSP_USING_TOUCH_STATE_MANAGER'):
     src += Glob('touch_state_manager.c')
-    
+if GetDepend('BSP_USING_AUDIO_PROCESSOR'):
+    src += Glob('audio_code_i2s.c')
+if GetDepend('BSP_USING_BLE_DEVICE_MANAGER'):
+    src += Glob('ble_device_manager.c')
+if GetDepend('BSP_USING_BLE_HID'):
+    src += Glob('ble_hid.c')
+
 group = DefineGroup('Model', src, depend = [''], CPPPATH = path)
 
 Return('group')

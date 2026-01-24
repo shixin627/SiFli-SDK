@@ -721,22 +721,6 @@ void process_motion_sensor_data(motion_sensor_data_t *data)
     }
 }
 
-static int watch_sensor_init_hcpu(void)
-{
-    #if ENABLE_IMU_SEM_FIFO
-    watch_sensor.imu_sem = rt_sem_create("imu_sem", 0, RT_IPC_FLAG_FIFO);
-    #endif
-
-    #if ENABLE_PPG_SEM_FIFO
-    watch_sensor.ppg_sem = rt_sem_create("ppg_sem", 0, RT_IPC_FLAG_FIFO);
-    #endif
-
-    watch_sensor.gesture_sem =
-        rt_sem_create("gesture_sem", 0, RT_IPC_FLAG_FIFO);
-    return 0;
-}
-
-INIT_APP_EXPORT(watch_sensor_init_hcpu);
 #elif defined(SOC_BF0_LCPU)
 int16_t gsensor_fifo_buffer[GSENSOR_FIFO_BUFFER_SIZE][3];
 uint16_t gsensor_fifo_buffer_index = 0;
@@ -871,6 +855,7 @@ extern bool ppg_data_collection;
 static float ble_ppg_data[4];
 static void gesture_ppg_thread_entry(void *parameter)
 {
+    watch_sensor.ppg_sem = rt_sem_create("ppg_sem", 0, RT_IPC_FLAG_FIFO);
     while (1)
     {
         rt_sem_take(watch_sensor.ppg_sem, RT_WAITING_FOREVER);

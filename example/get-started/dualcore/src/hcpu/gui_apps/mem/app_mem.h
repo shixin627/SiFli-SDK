@@ -267,7 +267,7 @@ uint8_t app_get_mem_type(void *data);
 
 #define FREETYPE_ACT_CACHE_SIZE (FT_CACHE_SIZE) // * 75 / 100)
 
-#if defined(USING_EZIPA_DEC) && defined(EZIPA_CUSTOM_INCLUDE_FILE)
+#if defined(USING_EZIPA_DEC)
 #if IMAGE_CACHE_IN_PSRAM_SIZE > 0
 #define EZIPA_LARGE_BUF_MALLOC(size) app_cache_alloc(size, IMAGE_CACHE_PSRAM)
 #define EZIPA_LARGE_BUF_FREE(p) app_cache_free(p)

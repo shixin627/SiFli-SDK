@@ -271,7 +271,7 @@ static void watch_hcpu_wakeup(void)
     SkaiWatchSys.pre_hcpu_wakeup_tick = rt_tick_get();
     set_sys_power_status(SYS_POWER_STATUS_ON);
     open_gui();
-    set_idle_state(false);
+    // set_idle_state(false);
     rt_thread_mdelay(50);
     LOG_D("[%s]subscribe imu sensor", __func__);
     sensor_subscription_t sensor_subscription = (sensor_subscription_t){
@@ -297,13 +297,13 @@ static void watch_hcpu_wakeup(void)
   else
 #endif
   {
-    if (get_idle_state())
-    {
-      lv_disp_trig_activity(NULL);
-      stop_watch_sleep_timer();
-      close_standby_page();
-      set_idle_state(false);
-    }
+    // if (get_idle_state())
+    // {
+    //   lv_disp_trig_activity(NULL);
+    //   stop_watch_sleep_timer();
+    //   close_standby_page();
+    //   set_idle_state(false);
+    // }
     watchdata_update();
     open_gui();
   }
@@ -379,7 +379,7 @@ void handle_wakeup_event(void)
   rt_thread_mdelay(100);
 
   gui_app_exit("Loader");
-  set_idle_state(false);
+  // set_idle_state(false);
   extern void ble_dev_mgr_start_main_phone_check_timer(uint32_t interval_ms);
   ble_dev_mgr_start_main_phone_check_timer(5000);
   // LOG_D("wakeup end");
@@ -455,7 +455,7 @@ static void handle_hcpu_suspend_event(void)
     }
 
     watch_hcpu_sleep();
-    set_idle_state(true);
+    // set_idle_state(true);
     set_sys_power_status(SYS_POWER_STATUS_SLEEP);
   }
   else
