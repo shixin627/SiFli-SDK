@@ -996,7 +996,7 @@ uint8_t sibles_advertising_disc_mode_get()
 
 #define USING_ADV_MANUFACTURER_DATA 0
 
-#define DEFAULT_LOCAL_NAME "SKAIWATCH"
+#define DEFAULT_LOCAL_NAME "SkaiWatch"
 #define GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE 192
 #define GAP_GATT_APPEARANCE_MOUSE 962
 #define ENABLE_ADV_SERVICE_UUID 1
@@ -1023,7 +1023,7 @@ void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
     bd_addr_t addr;
     ret = ble_get_public_address(&addr);
     if (ret == HL_ERR_NO_ERROR)
-        rt_snprintf(local_name, 16, "SKAIWATCH %x %x", addr.addr[1],
+        rt_snprintf(local_name, 16, "SkaiWatch %x %x", addr.addr[1],
                     addr.addr[0]);
     else
         memcpy(local_name, DEFAULT_LOCAL_NAME, sizeof(DEFAULT_LOCAL_NAME));
@@ -1036,10 +1036,8 @@ void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
     ble_gap_set_dev_name(dev_name);
     free(dev_name);
 
-    // Set adveritsing address as static
+    // Set advertising address as static
     para.own_addr_type = GAPM_STATIC_ADDR;
-    // para.own_addr_type = GAPM_GEN_RSLV_ADDR;
-
     // Check if we have a bonded device for targeted advertising
     ble_gap_addr_t bonded_addr;
     bool has_bonded_device =
@@ -1047,70 +1045,10 @@ void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
 
     if (has_bonded_device)
     {
-        // Apply connection strategy based on compile-time configuration
-#if (CONNECT_STRATEGY == CONNECT_STRATEGY_DIRECTED)
-        // Strategy 1: Directed advertising (fastest, most selective)
-        // Note: Low duty cycle directed advertising has compatibility issues
-        // with some devices Pixel 6 works, but other phones/PCs may fail due to
-        // stricter scanning requirements
-        para.config.adv_mode = SIBLES_ADV_DIRECTED_CONNECT_MODE;
-        para.config.mode_config.directed_config.high_duty_cycle_enabled =
-            0; // Use low duty cycle
-        para.config.mode_config.directed_config.duration =
-            0xFFFF; // Max duration (~655s in units of 10ms)
-        para.config.mode_config.directed_config.interval =
-            0x500; // 100ms (160 * 625us) for better compatibility
-        memcpy(&para.peer_addr, &bonded_addr, sizeof(ble_gap_addr_t));
-        LOG_I(
-            "Strategy: DIRECTED - Advertising to %02X:%02X:%02X:%02X:%02X:%02X",
-            bonded_addr.addr.addr[5], bonded_addr.addr.addr[4],
-            bonded_addr.addr.addr[3], bonded_addr.addr.addr[2],
-            bonded_addr.addr.addr[1], bonded_addr.addr.addr[0]);
-
-#elif CONNECT_STRATEGY == CONNECT_STRATEGY_WHITELIST
-        // Strategy 2: Whitelist advertising (stable, more compatible)
         para.config.adv_mode = SIBLES_ADV_CONNECT_MODE;
         para.config.mode_config.conn_config.duration = 0x0;
-        para.config.mode_config.conn_config.interval = 0x30;
-
-        para.config.white_list_enable = 1; // Enable whitelist filtering
-
-        // Configure whitelist with target device
-        ble_gap_white_list_t *whitelist = (ble_gap_white_list_t *)rt_malloc(
-            sizeof(uint8_t) + sizeof(ble_gap_addr_t));
-        if (whitelist)
-        {
-            whitelist->size = 1;
-            memcpy(whitelist->addr[0].addr.addr, bonded_addr.addr.addr, 6);
-            whitelist->addr[0].addr_type = bonded_addr.addr_type;
-
-            int ret = ble_gap_set_white_list(whitelist);
-            LOG_I("Strategy: WHITELIST - Set whitelist result: %d, addr: "
-                  "%02X:%02X:%02X:%02X:%02X:%02X",
-                  ret, bonded_addr.addr.addr[5], bonded_addr.addr.addr[4],
-                  bonded_addr.addr.addr[3], bonded_addr.addr.addr[2],
-                  bonded_addr.addr.addr[1], bonded_addr.addr.addr[0]);
-
-            rt_thread_mdelay(100); // Delay to ensure whitelist is set before
-                                   // advertising starts
-
-            // Always free whitelist memory immediately after setting
-            rt_free(whitelist);
-            whitelist = NULL;
-        }
-        else
-        {
-            LOG_E("Failed to allocate whitelist memory");
-        }
-
-#elif CONNECT_STRATEGY == CONNECT_STRATEGY_GENERAL
-        // Strategy 3: General advertising (slowest but most compatible)
-        para.config.adv_mode = SIBLES_ADV_CONNECT_MODE;
-        para.config.mode_config.conn_config.duration = 0x0;
-        para.config.mode_config.conn_config.interval = 0x30;
-        LOG_I(
-            "Strategy: GENERAL - Advertising to all devices (most compatible)");
-#endif
+        para.config.mode_config.conn_config.interval = 0x140;
+        para.config.max_tx_pwr = 0x7F;
     }
     else
     {
@@ -1118,16 +1056,13 @@ void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
         // background mode
         para.config.adv_mode = SIBLES_ADV_CONNECT_MODE;
         para.config.mode_config.conn_config.duration = 0x0;
-        para.config.mode_config.conn_config.interval = 0x30;
-        LOG_I("No bonded device or pairing mode - using general advertising "
-              "with background mode");
+        para.config.mode_config.conn_config.interval = 0x140;
+        para.config.max_tx_pwr = 0x7F;
     }
-    // Max TX Power set 0x7F which let ble stack control it
-    para.config.max_tx_pwr = 0x7F;
     // Enable restart after disconnected
     para.config.is_auto_restart = 1;
     // adv data and rsp data use same data
-    para.config.is_rsp_data_duplicate = 1;
+    // para.config.is_rsp_data_duplicate = 1;
 
     /* Prepare name filed. Due to name is too long to put adv data, put it to
      * rsp data.*/
@@ -1190,12 +1125,11 @@ void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
 
     uint8_t curr_conn_idx = g_app_advertising_context->conn_idx;
 
-    // Always stop advertising first
-    sibles_advertising_stop(g_app_advertising_context);
-    rt_thread_mdelay(100); // Increased delay for proper cleanup
-
-    if (env->is_power_on)
+    if (restart_adv)
     {
+        // stop advertising first
+        sibles_advertising_stop(g_app_advertising_context);
+        rt_thread_mdelay(100); // Increased delay for proper cleanup
         // Delete existing advertising configuration before reinit
         // This is required to allow switching between advertising modes or
         // reinit with same mode
@@ -1204,25 +1138,13 @@ void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
     }
 
     ret = sibles_advertising_init(g_app_advertising_context, &para);
-    if (env->is_power_on)
+    if (restart_adv)
     {
         sibles_advertising_reconfig(g_app_advertising_context, &para.config);
     }
     if (ret == SIBLES_ADV_NO_ERR)
     {
-        LOG_D("sibles_advertising_init %d, restart_adv %d\r", !env->is_power_on,
-              restart_adv);
-        if (restart_adv)
-        {
-            sibles_advertising_start(g_app_advertising_context);
-        }
-        else
-        {
-            if (!env->is_power_on)
-            {
-                sibles_advertising_start(g_app_advertising_context);
-            }
-        }
+        sibles_advertising_start(g_app_advertising_context);
     }
 
     g_app_advertising_context->conn_idx = curr_conn_idx;
@@ -1328,10 +1250,10 @@ void ble_app_entry(void *param)
 #endif
             ble_bass_init(bass_app_callback, g_bass_app_bas_lvl);
 
-            ble_app_advertising_start(false, false, false);
-
             env->is_power_on = 1;
             env->conn_para.mtu = 23; /* Default value. */
+
+            ble_app_advertising_start(false, false, false);
             LOG_I("receive BLE power on!\r");
         }
 #ifdef USING_BLE_SERIAL
