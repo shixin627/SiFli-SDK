@@ -63,7 +63,7 @@
 #include "bsp_board.h"
 
 #define DBG_TAG "drv.bmi"
-#define DBG_LVL DBG_INFO
+#define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 /******************************************************************************/
 /*!                Macro definition                                           */
@@ -122,18 +122,24 @@ struct coines_intf_config accel_gyro_dev_info;
 struct bmi2_sens_axes_data local_watch_accel;
 struct bmi2_sens_axes_data local_watch_gyro;
 
-static rt_mutex_t api_lock;
+static rt_mutex_t api_lock = RT_NULL;
 
 /******************************************************************************/
 /*!          Function Declaration                                     */
 static void bmi270_api_lock(void)
 {
-    rt_mutex_take(api_lock, RT_WAITING_FOREVER);
+    if (api_lock)
+    {
+        rt_mutex_take(api_lock, RT_WAITING_FOREVER);
+    }
 }
 
 static void bmi270_api_unlock(void)
 {
-    rt_mutex_release(api_lock);
+    if (api_lock)
+    {
+        rt_mutex_release(api_lock);
+    }
 }
 
 void bmi2_error_codes_print_result(int8_t rslt);
@@ -1085,6 +1091,8 @@ static int bmi270_gpio_int_disable(void)
 void bmi270_sensor_task(void *params) // 20ms
 {
     int32_t ret;
+    api_lock = rt_mutex_create("bmi270_lock", RT_IPC_FLAG_FIFO);
+    RT_ASSERT(api_lock != NULL);
     while (1)
     {
     #ifdef BMI270_USE_INT
@@ -1102,11 +1110,9 @@ void bmi270_sensor_task(void *params) // 20ms
     #endif
     }
 }
+
 int bmi270_initialized(void)
 {
-    api_lock = rt_mutex_create("bmi270_lock", RT_IPC_FLAG_FIFO);
-    RT_ASSERT(api_lock != NULL);
-
     memset(&accel_gyro_dev_info, 0x00, sizeof(struct coines_intf_config));
 
     bmi270_power_onoff(1);
@@ -1118,17 +1124,15 @@ int bmi270_initialized(void)
     #endif
 
     /* Assign device address and bus instance to interface pointer */
-    int res = BMI2_OK;
-    res = bmi270_i2c_init();
+    int res = bmi270_i2c_init();
     if (res != 0)
     {
         LOG_E("bmi270_i2c_init fail\n");
-        bmi270_i2c_deinit();
-        return res;
+        goto err_deinit;
     }
 
     bmi2_dev.intf_ptr = ((void *)&accel_gyro_dev_info);
-    // bmi2_set_spi3_interface_mode(BMI2_ENABLE, &bmi2_dev);
+    LOG_D("bmi2_dev.intf_ptr = %p\n", bmi2_dev.intf_ptr);
     res = bmi270_init(&bmi2_dev);
     LOG_D("bmi270 init rslt = %d", res);
     if (res != BMI2_OK)
@@ -1142,20 +1146,17 @@ int bmi270_initialized(void)
         {
             LOG_E("BMI2_E_COM_FAIL");
         }
-        return res;
+        goto err_deinit;
     }
 
     res = configure_sensor_interrupt(&bmi2_dev);
     if (res != BMI2_OK)
-    {
-        return res;
-    }
+        goto err_deinit;
+
     res = configure_sensor_performance_mode(&bmi2_dev);
     LOG_D("configure sensor rslt = %d", res);
     if (res != BMI2_OK)
-    {
-        return res;
-    }
+        goto err_deinit;
 
     #if defined(GSENSOR_UES_FIFO)
     // set fifo
@@ -1177,6 +1178,10 @@ int bmi270_initialized(void)
 
     accel_gyro_dev_info.open_flag = 1;
     LOG_D("BMI270 init done\n");
+    return res;
+
+err_deinit:
+    bmi270_i2c_deinit();
     return res;
 }
 

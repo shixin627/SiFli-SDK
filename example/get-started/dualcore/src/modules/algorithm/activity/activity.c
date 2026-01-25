@@ -481,7 +481,7 @@ static void prv_handle_activity_enabled_change(void)
 bool activity_init(void)
 {
   s_activity_state = (ActivityState){};
-  s_activity_state.mutex = rt_mutex_create("activity", RT_IPC_FLAG_FIFO);
+  s_activity_state.mutex = rt_mutex_create("s_activity_state", RT_IPC_FLAG_FIFO);
   if (s_activity_state.mutex == RT_NULL)
   {
     ACTIVITY_LOG_DEBUG("Failed to create mutex");
