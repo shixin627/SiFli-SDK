@@ -334,6 +334,8 @@ static void watch_hcpu_sleep(void)
     };
     watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
     rt_thread_mdelay(50);
+    // set_idle_state(true);
+    set_sys_power_status(SYS_POWER_STATUS_SLEEP);
     gui_pm_fsm(GUI_PM_ACTION_SLEEP);
   }
 #endif
@@ -455,8 +457,6 @@ static void handle_hcpu_suspend_event(void)
     }
 
     watch_hcpu_sleep();
-    // set_idle_state(true);
-    set_sys_power_status(SYS_POWER_STATUS_SLEEP);
   }
   else
   {

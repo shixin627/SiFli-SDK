@@ -602,6 +602,22 @@ static void button_event_task_entry(struct _lv_timer_t *task)
 
     if (lv_disp_get_inactive_time(NULL) > limit_time)
     {
+        peripheral_provider.hcpu_suspend();
+#if (CUSTOMER_BOARD_VER > BOARD_VER_13)
+        if (SkaiWatchSys.hrs_start_up_mode == 0)
+        {
+        peripheral_provider.hr_set_power(0);
+        }
+#endif
+        rt_thread_mdelay(60);
+        sensor_subscription_t sensor_subscription = (sensor_subscription_t){
+            .type = SENSOR_TYPE_ACCELEROMETER,
+            .status = false,
+            .thread_safe = true,
+        };
+        watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
+        rt_thread_mdelay(50);
+        SkaiWatchSys.sys_power_status = SYS_POWER_STATUS_SLEEP;
         gui_pm_fsm(GUI_PM_ACTION_SLEEP);
     }
 
@@ -680,6 +696,27 @@ static void on_touch_gesture(touch_gesture_t gesture, uint16_t x, uint16_t y)
         if (!gui_is_active())
         {
             gui_pm_fsm(GUI_PM_ACTION_BUTTON_CLICKED);
+            SkaiWatchSys.pre_hcpu_wakeup_tick = rt_tick_get();
+            SkaiWatchSys.sys_power_status = SYS_POWER_STATUS_ON;
+            if (gui_app_is_all_closed())
+            {
+            gui_app_run("Main");
+            }
+            else
+            {
+            watch_sys_sync.sync_api_lock(SkaiWatchSys.motion_control_lock);
+            }
+            rt_thread_mdelay(50);
+            LOG_D("[%s]subscribe imu sensor", __func__);
+            sensor_subscription_t sensor_subscription = (sensor_subscription_t){
+                .type = SENSOR_TYPE_ACCELEROMETER,
+                .status = true,
+                .thread_safe = true,
+            };
+            watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
+            rt_thread_mdelay(60);
+            LOG_D("[%s]notify lcpu resume, hcpu resume", __func__);
+            peripheral_provider.hcpu_resume();
         }
         // if (get_sys_power_status() == SYS_POWER_STATUS_SLEEP)
         // {
@@ -760,22 +797,22 @@ void app_watch_entry(void *parameter)
     lv_freetype_open_font(true); /* open freetype */
 #endif
     gui_app_init();
-//     ui_datac_init();
-//     app_message_data_init();
-//     app_speech_data_init();
+    ui_datac_init();
+    app_message_data_init();
+    app_speech_data_init();
 // #ifndef BSP_USING_PC_SIMULATOR
-//     watch_config_struct_flash_read();
-//     rt_thread_mdelay(30);
-//     save_device_address_to_fs();
+    watch_config_struct_flash_read();
+    rt_thread_mdelay(30);
+    save_device_address_to_fs();
 // #else
 //     extern void get_notification_list_from_template(void);
 //     get_notification_list_from_template();
 //     extern void get_messages_list_from_template(void);
 //     get_messages_list_from_template();
 // #endif
-//     bloc_setting_load_watch_system();
-//     // bloc_system_schedule_init();
-//     load_note_list_from_file();
+    bloc_setting_load_watch_system();
+    // bloc_system_schedule_init();
+    load_note_list_from_file();
 
 #ifdef BSP_USING_PM
     SkaiWatchSys.oled_display_time = 5;
@@ -786,7 +823,20 @@ void app_watch_entry(void *parameter)
     gui_app_run("Main");
     lv_disp_trig_activity(NULL);
 
-    // ui_layer_system_builder();
+    SkaiWatchSys.motion_control_lock = true;
+    setting_provider.set_power_save_mode(1);
+
+    SubscribeDualCoreSyncService();
+    rt_thread_mdelay(3000);
+    peripheral_provider.hcpu_resume();
+    peripheral_provider.subscribe_accelerometer_sensor(true);
+
+    rt_thread_mdelay(100);
+
+    extern void ble_dev_mgr_start_main_phone_check_timer(uint32_t interval_ms);
+    ble_dev_mgr_start_main_phone_check_timer(5000);
+
+    ui_layer_system_builder();
     // ui_layer_top_builder();
 #if defined(GUI_APP_FRAMEWORK) && (!defined(APP_TRANS_ANIMATION_NONE))
     lvsf_gesture_init(lv_layer_top());
