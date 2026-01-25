@@ -18,7 +18,7 @@
 #include "drivers/rt_drv_pwm.h"
 #include "drv_rgbled.h"
 #include "bloc_rgb_led.h"
-
+#include "bloc_battery.h"
 #ifdef BSP_KEY1_ACTIVE_HIGH
     #define BUTTON_ACTIVE_POL BUTTON_ACTIVE_HIGH
 #else
@@ -27,46 +27,55 @@
 
 static rt_timer_t rc10k_time_handle;
 static int32_t key1_button_handle;
+static rt_event_t main_event;
 
+#define MAIN_EVENT_BATTERY_CHARGING (1 << 0)
+#define MAIN_EVENT_BATTERY_VOLTAGE (1 << 1)
+#define MAIN_EVENT_RGB_START (1 << 2)
+#define MAIN_EVENT_RGB_STOP (1 << 3)
+#define MAIN_EVENT_HAND_LIFT (1 << 4)
+#define MAIN_EVENT_ALL                                                         \
+    (MAIN_EVENT_BATTERY_CHARGING | MAIN_EVENT_BATTERY_VOLTAGE |                \
+     MAIN_EVENT_RGB_START | MAIN_EVENT_RGB_STOP | MAIN_EVENT_HAND_LIFT)
 
 void main_send_read_charge_status_event(void)
 {
-    // if (main_event)
-    // {
-    //     rt_event_send(main_event, MAIN_EVENT_BATTERY_CHARGING);
-    // }
+    if (main_event)
+    {
+        rt_event_send(main_event, MAIN_EVENT_BATTERY_CHARGING);
+    }
 }
 
 void main_send_read_voltage_event(void)
 {
-    // if (main_event)
-    // {
-    //     rt_event_send(main_event, MAIN_EVENT_BATTERY_VOLTAGE);
-    // }
+    if (main_event)
+    {
+        rt_event_send(main_event, MAIN_EVENT_BATTERY_VOLTAGE);
+    }
 }
 
 void main_send_rgb_start_event(void)
 {
-    // if (main_event)
-    // {
-    //     rt_event_send(main_event, MAIN_EVENT_RGB_START);
-    // }
+    if (main_event)
+    {
+        rt_event_send(main_event, MAIN_EVENT_RGB_START);
+    }
 }
 
 void main_send_rgb_stop_event(void)
 {
-    // if (main_event)
-    // {
-    //     rt_event_send(main_event, MAIN_EVENT_RGB_STOP);
-    // }
+    if (main_event)
+    {
+        rt_event_send(main_event, MAIN_EVENT_RGB_STOP);
+    }
 }
 
 void main_send_hand_lift_event(void)
 {
-    // if (main_event)
-    // {
-    //     rt_event_send(main_event, MAIN_EVENT_HAND_LIFT);
-    // }
+    if (main_event)
+    {
+        rt_event_send(main_event, MAIN_EVENT_HAND_LIFT);
+    }
 }
 
 void button_event_handler(int32_t pin, button_action_t button_action)
@@ -118,52 +127,6 @@ void rc10k_timeout_handler(void *parameter)
     }
 }
 
-#define STRESS_STACK_SIZE       1024
-#define MATH_THREAD_COUNT       3
-#define MATH_THREAD_PRIO_BASE   21
-
-static float simple_sin(int degrees)
-{
-    float radians = degrees * 3.14159f / 180.0f;
-    float x = radians;
-    float x2 = x * x;
-    float x3 = x2 * x;
-    float x5 = x3 * x2;
-    return x - (x3 / 6.0f) + (x5 / 120.0f);
-}
-
-/*
- * Math load thread: continuous floating-point and integer operations
- * to stress CPU while LED animation runs independently.
- */
-static void math_load_entry(void *param)
-{
-    uint32_t id = (uint32_t)(rt_uint32_t)param;
-    volatile float result = 0.0f;
-    volatile uint32_t count = 0;
-
-    rt_kprintf("[MATH] Thread%u started\n", id);
-
-    while (1) {
-        /* Floating-point workload */
-        for (int i = 1; i < 500; i++) {
-            result += simple_sin(i % 360);
-            result *= 1.0001f;
-        }
-        /* Integer workload */
-        volatile uint32_t val = 0x12345678;
-        for (int i = 0; i < 1000; i++) {
-            val = val * 1103515245 + 12345;
-            val ^= (val >> 16);
-        }
-        count++;
-        if ((count % 1000) == 0) {
-            rt_kprintf("[MATH] Thread%u: loops=%u result=%.2f\n", id, count, result);
-        }
-        rt_thread_mdelay(1);
-    }
-}
-
 int main(void)
 {
     // init_pin();
@@ -175,41 +138,76 @@ int main(void)
         rt_timer_start(rc10k_time_handle);
     }
 
-    rt_thread_t tid;
+#ifdef RT_USING_WDT
+    /* Diable WDT. */
+    watchdog_set_status(0);
+    rt_kprintf("LCPH WDT off.\n");
+    /* Enable WDT. */
+    watchdog_set_status(1);
+    rt_kprintf("LCPH WDT on.(timeout: %d seconds)\n", WDT_TIMEOUT);
+#endif /* RT_USING_WDT */
 
-    rt_kprintf("\n========================================\n");
-    rt_kprintf("  RGB LED Stress Test (CPU Load)\n");
-    rt_kprintf("  1 LED task + %d math tasks\n", MATH_THREAD_COUNT);
-    rt_kprintf("========================================\n\n");
-
+#if defined(RGB_SK6812MINI_HS_ENABLE)
+    // 初始化 RGB LED
     rgb_led_init();
+#endif
 
-    /* Create math load threads (priority 21~30) */
-    // for (int i = 0; i < MATH_THREAD_COUNT; i++) {
-    //     char name[8];
-    //     rt_snprintf(name, sizeof(name), "math%d", i);
-    //     tid = rt_thread_create(name, math_load_entry, (void *)(rt_uint32_t)i,
-    //                            STRESS_STACK_SIZE, MATH_THREAD_PRIO_BASE + i, 10);
-    //     if (tid) rt_thread_startup(tid);
-    //     else rt_kprintf("[STRESS] Failed to create %s\n", name);
-    // }
+    // 創建事件對象
+    main_event = rt_event_create("main_evt", RT_IPC_FLAG_FIFO);
+    RT_ASSERT(main_event != RT_NULL);
+    battery_get_charge_state()->charge_percent = 100;
 
-    /* LED fade animation runs in main thread context */
-    rgb_led_params_t params;
-    params.red = 0x00;
-    params.green = 0xff;
-    params.blue = 0x00;
-    params.brightness = 100;
-    params.mode = RGB_ANIM_FADE;
-    params.period = 1000;
-    params.repeat_times = 0; /* infinite */
-
-    rt_kprintf("[LED] Green fade started\n");
-    rgb_led_animate(&params);
-
+    rt_uint32_t recv_set = 0;
     while (1)
     {
-        rt_thread_mdelay(3000);
+        // rt_err_t result = rt_event_recv(main_event, MAIN_EVENT_ALL,
+        //                                 RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
+        //                                 RT_WAITING_FOREVER, &recv_set);
+        rt_err_t result = rt_event_recv(main_event, MAIN_EVENT_ALL,
+                                       RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
+                                       rt_tick_from_millisecond(30), &recv_set);
+
+        if (result == RT_EOK)
+        {
+#ifdef CHARGE_DETECT_PIN
+            if (recv_set & MAIN_EVENT_BATTERY_CHARGING)
+            {
+                bloc_battery_handle_charging_event();
+            }
+#endif
+
+            if (recv_set & MAIN_EVENT_BATTERY_VOLTAGE)
+            {
+                bloc_battery_handle_voltage_event();
+            }
+
+#if defined(RGB_SK6812MINI_HS_ENABLE)
+            if (recv_set & MAIN_EVENT_RGB_START)
+            {
+                bloc_rgb_led_handle_start_event();
+            }
+
+            if (recv_set & MAIN_EVENT_RGB_STOP)
+            {
+                bloc_rgb_led_handle_stop_event();
+            }
+#endif
+
+            if (recv_set & MAIN_EVENT_HAND_LIFT)
+            {
+                extern void hand_tracking_lift_callback(uint8_t lift);
+                hand_tracking_lift_callback(0);
+            }
+        }
+        else
+        {
+            // rgb_color_cycle();
+            // if (battery_get_charge_state()->is_plugged)
+            {
+                // rgb_fade_cycle();
+                rgb_fade_cycle_base_on_battery_level(battery_get_charge_state()->charge_percent);
+            }
+        }
     }
     return RT_EOK;
 }
