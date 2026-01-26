@@ -22,8 +22,24 @@ extern "C"
 
 #define FEATURE_NUM 7
 
+#define BYTES_PER_SAMPLE                                                       \
+    (6 * 2 + 6 + 2 +                                                           \
+     1) // 6軸，每軸2字節 + timestamp 6字節(UINT32 + UINT16 ) + ppg_data 2字節
+
+/* Feature and buffer size definitions */
+#define BLE_G_SENSOR_SAMPLE_AMOUNT (SAMPLE_SIZE) /* sample count */
+#if USE_FFT_FILTER
+    #define BYTES_PER_FEATURE (2)
+    #define BLE_G_SENSOR_BUF_SIZE                                              \
+        ((FEATURE_NUM + 1) * BYTES_PER_FEATURE * SAMPLE_SIZE) /* total bytes   \
+                                                               */
+#else
+    #define BLE_G_SENSOR_BUF_SIZE (BYTES_PER_SAMPLE * MAX_RAWDATA_TIME_STEP)
+    extern uint8_t gsensorSamplesBuffer[BLE_G_SENSOR_BUF_SIZE];
+#endif
+
 #define USER_ID_LENGTH (28)
-    
+
     enum sys_power_status
     {
         SYS_POWER_STATUS_ON = 0,
@@ -243,25 +259,40 @@ extern "C"
         uint16_t deep_sleep_time;  /**< @brief Duration of deep sleep */
         uint16_t wake_up_time;     /**< @brief Wake up time */
 
-        uint16_t light_sleep_time_18_1; /**< @brief Duration of light sleep from 18:00 to 01:00 */
-        uint16_t deep_sleep_time_18_1;  /**< @brief Duration of deep sleep from 18:00 to 01:00 */
-        uint16_t wake_up_time_18_1;     /**< @brief Wake up time from 18:00 to 01:00 */
+        uint16_t light_sleep_time_18_1; /**< @brief Duration of light sleep from
+                                           18:00 to 01:00 */
+        uint16_t deep_sleep_time_18_1;  /**< @brief Duration of deep sleep from
+                                           18:00 to 01:00 */
+        uint16_t
+            wake_up_time_18_1; /**< @brief Wake up time from 18:00 to 01:00 */
 
-        uint16_t light_sleep_time_1_5; /**< @brief Duration of light sleep from 01:00 to 05:00 */
-        uint16_t deep_sleep_time_1_5;  /**< @brief Duration of deep sleep from 01:00 to 05:00 */
-        uint16_t wake_up_time_1_5;     /**< @brief Wake up time from 01:00 to 05:00 */
+        uint16_t light_sleep_time_1_5; /**< @brief Duration of light sleep from
+                                          01:00 to 05:00 */
+        uint16_t deep_sleep_time_1_5;  /**< @brief Duration of deep sleep from
+                                          01:00 to 05:00 */
+        uint16_t
+            wake_up_time_1_5; /**< @brief Wake up time from 01:00 to 05:00 */
 
-        uint16_t light_sleep_time_5_10; /**< @brief Duration of light sleep from 05:00 to 10:00 */
-        uint16_t deep_sleep_time_5_10;  /**< @brief Duration of deep sleep from 05:00 to 10:00 */
-        uint16_t wake_up_time_5_10;     /**< @brief Wake up time from 05:00 to 10:00 */
+        uint16_t light_sleep_time_5_10; /**< @brief Duration of light sleep from
+                                           05:00 to 10:00 */
+        uint16_t deep_sleep_time_5_10;  /**< @brief Duration of deep sleep from
+                                           05:00 to 10:00 */
+        uint16_t
+            wake_up_time_5_10; /**< @brief Wake up time from 05:00 to 10:00 */
 
-        uint16_t light_sleep_time_wake_to_10; /**< @brief Duration of light sleep from wake up time to 10:00 */
-        uint16_t deep_sleep_time_wake_to_10;  /**< @brief Duration of deep sleep from wake up time to 10:00 */
-        uint16_t wake_up_time_wake_to_10;     /**< @brief Wake up time from wake up time to 10:00 */
+        uint16_t
+            light_sleep_time_wake_to_10;     /**< @brief Duration of light sleep
+                                                from wake up time to 10:00 */
+        uint16_t deep_sleep_time_wake_to_10; /**< @brief Duration of deep sleep
+                                                from wake up time to 10:00 */
+        uint16_t wake_up_time_wake_to_10; /**< @brief Wake up time from wake up
+                                             time to 10:00 */
 
-        uint8_t invalid_sleep_data; /**< @brief Flag to disable data change after this point */
+        uint8_t invalid_sleep_data; /**< @brief Flag to disable data change
+                                       after this point */
 
-        uint8_t first_wake_up_after_5; /**< @brief Flag to indicate the first wake up after 05:00 */
+        uint8_t first_wake_up_after_5; /**< @brief Flag to indicate the first
+                                          wake up after 05:00 */
     } T_SLEEP_DATA;
 
     /** @brief BBPRO HCI LINK connection states*/
@@ -436,7 +467,8 @@ extern "C"
         CLOCK_MAX_MENU,
     } T_CLOCK_MENU_TYPE;
 
-    /// @brief watch system type, the symbol "o" mark the data need to be stored in flash
+    /// @brief watch system type, the symbol "o" mark the data need to be stored
+    /// in flash
     /// @param
     typedef struct
     {
@@ -573,12 +605,14 @@ __attribute__((packed)) SkaiWatchSysType_t;
         WATCH_PREFS_KEY_SLEEP_DATA_SHOW,
         WATCH_PREFS_KEY_CLOCK_STATUS,
         WATCH_PREFS_KEY_GESTURE_THRESHOLD,
-        WATCH_PREFS_NUM_KEYS, // This is used to get the number of fields in the enum
+        WATCH_PREFS_NUM_KEYS, // This is used to get the number of fields in the
+                              // enum
     } watch_prefs_key;
 
     extern void store_watch_prefs(watch_prefs_key key);
 
-    /// @brief watch preferences type based on the data in SkaiWatchSysType_t which need to be stored in flash
+    /// @brief watch preferences type based on the data in SkaiWatchSysType_t
+    /// which need to be stored in flash
     typedef struct
     {
         share_prefs_t *pref;

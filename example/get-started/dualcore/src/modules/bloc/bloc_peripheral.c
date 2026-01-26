@@ -371,28 +371,6 @@ static void control_rgb_led(bool enable, rgb_led_params_t *params)
 
     #else
 
-// static void send_lift_status_to_client(uint8_t status)
-// {
-// 	PeripheralMessageData data;
-// 	data.event = LIFT_STATUS_CALLBACK;
-// 	data.arg.value = status;
-// 	send_peripheral_data(data);
-// }
-// static void send_soft_adt_status_to_client(bool status)
-// {
-// 	PeripheralMessageData data;
-// 	data.event = SOFT_ADT_STATUS_CALLBACK;
-// 	data.arg.subscribe_status = status;
-// 	send_peripheral_data(data);
-// }
-// static void send_gesture_status_to_client(uint32_t event)
-// {
-// 	PeripheralMessageData data;
-// 	data.event = GESTURE_CALLBACK;
-// 	data.arg.data = event;
-// 	send_peripheral_data(data);
-// }
-
 static void sensor_power_manage(uint8_t type, uint32_t data)
 {
     if (type == SENSOR_IMU)
@@ -665,15 +643,21 @@ static void peripheral_task_entry(void *parameter)
                     params.red = color.red;
                     params.green = color.green;
                     params.blue = color.blue;
-                    params.brightness = data.arg.rgb_led_control.params.brightness;
-                    params.animation_mode = data.arg.rgb_led_control.params.animation_mode;
-                    params.period_ms = data.arg.rgb_led_control.params.period_ms;  // Default period
-                    params.repeat_times = data.arg.rgb_led_control.params.repeat_times;  // Infinite by default
+                    params.brightness =
+                        data.arg.rgb_led_control.params.brightness;
+                    params.animation_mode =
+                        data.arg.rgb_led_control.params.animation_mode;
+                    params.period_ms = data.arg.rgb_led_control.params
+                                           .period_ms; // Default period
+                    params.repeat_times =
+                        data.arg.rgb_led_control.params
+                            .repeat_times; // Infinite by default
 
                     LOG_D("RGB LED control sent to LCPU: R=%d G=%d B=%d "
                           "Brightness=%d Mode=%d Period=%d Repeat=%d",
-                          params.red, params.green, params.blue, params.brightness,
-                          params.animation_mode, params.period_ms, params.repeat_times);
+                          params.red, params.green, params.blue,
+                          params.brightness, params.animation_mode,
+                          params.period_ms, params.repeat_times);
                 }
                 else
                 {

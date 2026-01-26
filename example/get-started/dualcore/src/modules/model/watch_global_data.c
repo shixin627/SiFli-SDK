@@ -60,6 +60,8 @@ SkaiWatchSysType_t SkaiWatchSys;
 SkaiWatchSysType_t SkaiWatchSys __attribute__((aligned(4)));
 #endif
 
+uint8_t gsensorSamplesBuffer[BLE_G_SENSOR_BUF_SIZE] = {0};
+
 #ifdef BSP_SHARE_PREFS
 
 WatchPrefs_t WatchPrefs;

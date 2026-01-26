@@ -84,35 +84,10 @@
 /* External function from app_gesture.c for data collection */
 extern void app_gesture_receive_imu_data(int16_t (*dataset)[6], int sample_num);
 
-/* Sample size definitions */
-// #define SAMPLE_SIZE_BEFORE_PEAK 12
-// #define SAMPLE_SIZE_ADDTION 48
-// #define SAMPLE_SIZE_AFTER_PEAK (SAMPLE_SIZE_ADDTION)
-
-// #define SAMPLE_SIZE (SAMPLE_SIZE_BEFORE_PEAK + SAMPLE_SIZE_AFTER_PEAK)
-// #define SLIDING_WINDOW_SIZE (SAMPLE_SIZE_AFTER_PEAK)
-#define BYTES_PER_SAMPLE                                                       \
-    (6 * 2 + 6 + 2 +                                                           \
-     1) // 6軸，每軸2字節 + timestamp 6字節(UINT32 + UINT16 ) + ppg_data 2字節
-
-/* Feature and buffer size definitions */
-#define BLE_G_SENSOR_SAMPLE_AMOUNT (SAMPLE_SIZE) /* sample count */
-#if USE_FFT_FILTER
-    #define BYTES_PER_FEATURE (2)
-    #define BLE_G_SENSOR_BUF_SIZE                                              \
-        ((FEATURE_NUM + 1) * BYTES_PER_FEATURE * SAMPLE_SIZE) /* total bytes   \
-                                                               */
-#else
-    #define BLE_G_SENSOR_BUF_SIZE                                              \
-        (BYTES_PER_SAMPLE * MAX_RAWDATA_TIME_STEP) /* total bytes SAMPLE_SIZE  \
-                                                    */
-#endif
-
 static rt_thread_t gesture_recognition_thread = RT_NULL;
 static rt_thread_t send_gesture_data_thread = RT_NULL;
 
 /* Buffers for sensor data processing */
-static uint8_t gsensorSamplesBuffer[BLE_G_SENSOR_BUF_SIZE] = {0};
 static float identifyWindow[TAP_TARGET_SAMPLE_NUM][3];
 static float release_identifyWindow[RELEASE_TARGET_SAMPLE_NUM][3];
 static float ppgidentifyWindow[16][kChannelReleaseNumber];
@@ -228,88 +203,6 @@ static void handle_gesture(int label)
     if (label >= 0 && label < kGestureCount)
     {
         setGestureIndex(label);
-    }
-}
-
-/**
- * @brief Packs accelerometer matrix data into a byte buffer
- *
- * @param targetArray The target buffer to store packed data
- * @param matrix The source accelerometer data matrix
- * @param sample_len The number of samples to pack
- */
-static void packMatrixToBuffer(uint8_t *targetArray,
-                               watch_sys_linear_acce_t *dataset,
-                               int32_t *fft_buffer, int sample_len)
-{
-    for (uint8_t i = 0; i < sample_len; i++)
-    {
-        if (fft_buffer == NULL)
-        {
-            // timestamp_s(uint32_t -> 4 bytes)
-            // LOG_D("Pack sample %d: ts_s=%u, ts_ms=%u, x=%d, y=%d, z=%d,
-            // gx=%d, gy=%d, gz=%d",
-            //       i,
-            //       dataset[i].timestamp_s,
-            //       dataset[i].timestamp_ms,
-            //       dataset[i].x,
-            //       dataset[i].y,
-            //       dataset[i].z,
-            //       dataset[i].gravity_x,
-            //       dataset[i].gravity_y,
-            //       dataset[i].gravity_z);
-            targetArray[i * BYTES_PER_SAMPLE + 0] =
-                (uint8_t)(dataset[i].timestamp_s & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 1] =
-                (uint8_t)((dataset[i].timestamp_s >> 8) & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 2] =
-                (uint8_t)((dataset[i].timestamp_s >> 16) & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 3] =
-                (uint8_t)((dataset[i].timestamp_s >> 24) & 0xFF);
-            // timestamp_ms(uint16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 4] =
-                (uint8_t)(dataset[i].timestamp_ms & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 5] =
-                (uint8_t)((dataset[i].timestamp_ms >> 8) & 0xFF);
-            // x(int16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 6] =
-                (uint8_t)(dataset[i].x & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 7] =
-                (uint8_t)((dataset[i].x >> 8) & 0xFF);
-            // y(int16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 8] =
-                (uint8_t)(dataset[i].y & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 9] =
-                (uint8_t)((dataset[i].y >> 8) & 0xFF);
-            // z(int16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 10] =
-                (uint8_t)(dataset[i].z & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 11] =
-                (uint8_t)((dataset[i].z >> 8) & 0xFF);
-            // gravity_x, gravity_y, gravity_z
-            // x(int16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 12] =
-                (uint8_t)(dataset[i].gravity_x & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 13] =
-                (uint8_t)((dataset[i].gravity_x >> 8) & 0xFF);
-            // y(int16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 14] =
-                (uint8_t)(dataset[i].gravity_y & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 15] =
-                (uint8_t)((dataset[i].gravity_y >> 8) & 0xFF);
-            // z(int16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 16] =
-                (uint8_t)(dataset[i].gravity_z & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 17] =
-                (uint8_t)((dataset[i].gravity_z >> 8) & 0xFF);
-            // ppg_data(uint16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 18] =
-                (uint8_t)(dataset[i].ppg_data & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 19] =
-                (uint8_t)((dataset[i].ppg_data >> 8) & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 20] =
-                (uint8_t)(dataset[i].on_pressed ? 1 : 0);
-        }
     }
 }
 
@@ -452,7 +345,6 @@ static void trigger_gesture_unlock_timer(void)
 
 extern bool imu_data_collection;
 extern bool imu_data_collection_error;
-extern bool imu_raw_data_collection;
 extern bool gesture_tap_collection;
 
 int tap_recognition_score;
@@ -472,20 +364,21 @@ int get_gesture_recognition_threshold(void)
 
 static void gesture_recognition_algorithm(gesture_data_t *gesture)
 {
-    LOG_I("gesture_recognition_algorithm sample_num:%d", gesture->sample_num);
+    LOG_D("gesture_recognition_algorithm sample_num:%d", gesture->sample_num);
     uint8_t sample_num = gesture->sample_num;
     // convert int16_t data to float in g unit to identifyWindow
-    if (imu_raw_data_collection)
-    {
-        packMatrixToBuffer(gsensorSamplesBuffer, gesture->dataset, NULL,
-                           sample_num);
-        sensor_buf_t buffer_info = {.data = gsensorSamplesBuffer,
-                                    .length = sample_num * BYTES_PER_SAMPLE};
-        L1SendData data = {.event = L1SEND_LINEAR_ACCE_BUFFER,
-                           .res.imu_data = buffer_info};
-        L1_send_event(data);
-    }
-    else if (imu_data_collection)
+    // if (imu_raw_data_collection)
+    // {
+    //     packMatrixToBuffer(gsensorSamplesBuffer, gesture->dataset, NULL,
+    //                        sample_num);
+    //     sensor_buf_t buffer_info = {.data = gsensorSamplesBuffer,
+    //                                 .length = sample_num * BYTES_PER_SAMPLE};
+    //     L1SendData data = {.event = L1SEND_LINEAR_ACCE_BUFFER,
+    //                        .res.imu_data = buffer_info};
+    //     L1_send_event(data);
+    // }
+    // else 
+    if (imu_data_collection)
     {
         if (imu_data_collection_error)
         {
@@ -659,12 +552,10 @@ static void gesture_recognition_thread_entry(void *parameter)
     {
         rt_sem_take(watch_sensor.gesture_sem, RT_WAITING_FOREVER);
 
-#if (CUSTOMER_BOARD_VER > BOARD_VER_16)
         if (SkaiWatchSys.charger_status != NoCharge)
         {
             continue;
         }
-#endif
         if (is_user_touching_screen())
         {
             continue;

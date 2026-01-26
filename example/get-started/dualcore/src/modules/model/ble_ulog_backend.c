@@ -59,7 +59,7 @@ __ROM_USED int ble_ulog_backend_register(void)
     return 0;
 }
 
-// INIT_APP_EXPORT(ble_ulog_backend_register);
+INIT_APP_EXPORT(ble_ulog_backend_register);
 
 // BLE backend 解除註冊
 void ble_ulog_backend_unregister(void)
