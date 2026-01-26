@@ -931,6 +931,18 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
 
     if (hz == IMU_NOARMAL_SAMPLE_RATE && !is_sleep_mode())
     {
+        static bool ppg_get = false;
+        float ppg_rawdata = 0.0f;
+        if (ppg_get)
+        {
+            ppg_rawdata = ppg_buffer[PPG_FILTER_SAMPLE_NUM - 1];
+        }
+        else
+        {
+            ppg_rawdata = ppg_buffer[PPG_FILTER_SAMPLE_NUM - 2];
+        }
+        ppg_get = !ppg_get;
+
         sensor_q = sensor_fusion_algorithm(&subjective_sensor_fusion_param,
                                            &fakeAccData, gyroData);
         Vector3 linear_acce =
@@ -943,18 +955,6 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
             .sensor_q = sensor_q,
         };
         motion_data_fetch(&motion_data);
-
-        static bool ppg_get = false;
-        float ppg_rawdata = 0.0f;
-        if (ppg_get)
-        {
-            ppg_rawdata = ppg_buffer[PPG_FILTER_SAMPLE_NUM - 1];
-        }
-        else
-        {
-            ppg_rawdata = ppg_buffer[PPG_FILTER_SAMPLE_NUM - 2];
-        }
-        ppg_get = !ppg_get;
 
         static float prev_linear_accel = 0.0f;
         float linear_accel_resultant =

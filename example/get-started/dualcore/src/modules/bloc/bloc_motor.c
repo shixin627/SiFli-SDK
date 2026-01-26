@@ -119,9 +119,9 @@ static void auto_stop_motor(void)
     if (!auto_off_timer)
     {
         // 啟動一個1秒的timer自動關閉馬達
-        auto_off_timer =
-            rt_timer_create("motor_off", (void (*)(void *))send_motor_stop_event,
-                            NULL, RT_TICK_PER_SECOND, RT_TIMER_FLAG_ONE_SHOT);
+        auto_off_timer = rt_timer_create(
+            "motor_off", (void (*)(void *))send_motor_stop_event, NULL,
+            RT_TICK_PER_SECOND, RT_TIMER_FLAG_ONE_SHOT);
     }
     if (auto_off_timer)
     {
@@ -318,11 +318,9 @@ static void motor_task_entry(void *parameter)
     while (1)
     {
         // 等待事件
-        if (rt_event_recv(motor_event,
-                          MOTOR_EVENT_START | MOTOR_EVENT_STOP,
+        if (rt_event_recv(motor_event, MOTOR_EVENT_START | MOTOR_EVENT_STOP,
                           RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
-                          RT_WAITING_FOREVER,
-                          &event) == RT_EOK)
+                          RT_WAITING_FOREVER, &event) == RT_EOK)
         {
             if (event & MOTOR_EVENT_START)
             {
@@ -354,11 +352,8 @@ static int motor_task_init(void)
     }
 
     // 創建馬達任務
-    motor_task = rt_thread_create("motor_task",
-                                  motor_task_entry,
-                                  RT_NULL,
-                                  MOTOR_TASK_STACK_SIZE,
-                                  MOTOR_TASK_PRIORITY,
+    motor_task = rt_thread_create("motor_task", motor_task_entry, RT_NULL,
+                                  MOTOR_TASK_STACK_SIZE, MOTOR_TASK_PRIORITY,
                                   MOTOR_TASK_TIMESLICE);
     if (!motor_task)
     {
@@ -375,7 +370,7 @@ static int motor_task_init(void)
     return RT_EOK;
 }
     #ifndef BSP_USING_PC_SIMULATOR
-// INIT_APP_EXPORT(motor_task_init);
+INIT_APP_EXPORT(motor_task_init);
     #endif
 
     #ifdef BSP_USING_PC_SIMULATOR
@@ -453,43 +448,6 @@ static int utest_motor_vibrate(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(utest_motor_vibrate, control motor vibrate);
 
-        #ifdef MOTOR_USE_PWM
-static int utest_motor_pwm(int argc, char *argv[])
-{
-    if (argc != 2)
-    {
-        LOG_D("Usage: utest_motor_pwm <channel>");
-        return -RT_ERROR;
-    }
-    bool is_comp = false;
-    int channel = atoi(argv[1]);
-    LOG_D("utest_motor_pwm channel:%d", channel);
-    struct rt_device_pwm *device = RT_NULL;
-
-    device = (struct rt_device_pwm *)rt_device_find("pwm4");
-    if (!device)
-    {
-        return -RT_ERROR;
-    }
-
-    rt_pwm_set(device, channel, 500000000, 250000000);
-    if (is_comp) // is pwm complementary
-    {
-        struct rt_pwm_break_dead bkd = {0}; // TODO: set the BKD.
-        rt_pwm_set_brk_dead(device, (rt_uint32_t *)&bkd, 100);
-        rt_pwm_enable2(device, channel, 1);
-    }
-    else
-    {
-        rt_pwm_enable(device, channel);
-    }
-    rt_thread_mdelay(1000);
-    rt_pwm_disable(device, channel);
-    return 0;
-}
-MSH_CMD_EXPORT(utest_motor_pwm, "utest_motor_pwm [OPTION] ...");
-        #endif // #ifdef MOTOR_USE_PWM
-
     #endif //  #ifndef BSP_USING_PC_SIMULATOR
 
 #endif /* MOTOR_ENABLED */
@@ -551,6 +509,43 @@ static int bloc_motor_register(void)
 }
 
 INIT_APP_EXPORT(bloc_motor_register);
+
+#if 0
+static int utest_motor_pwm(int argc, char *argv[])
+{
+    if (argc != 2)
+    {
+        LOG_D("Usage: utest_motor_pwm <channel>");
+        return -RT_ERROR;
+    }
+    bool is_comp = false;
+    int channel = atoi(argv[1]);
+    LOG_D("utest_motor_pwm channel:%d", channel);
+    struct rt_device_pwm *device = RT_NULL;
+
+    device = (struct rt_device_pwm *)rt_device_find("pwm4");
+    if (!device)
+    {
+        return -RT_ERROR;
+    }
+
+    rt_pwm_set(device, channel, 500000000, 250000000);
+    if (is_comp) // is pwm complementary
+    {
+        struct rt_pwm_break_dead bkd = {0}; // TODO: set the BKD.
+        rt_pwm_set_brk_dead(device, (rt_uint32_t *)&bkd, 100);
+        rt_pwm_enable2(device, channel, 1);
+    }
+    else
+    {
+        rt_pwm_enable(device, channel);
+    }
+    rt_thread_mdelay(1000);
+    rt_pwm_disable(device, channel);
+    return 0;
+}
+MSH_CMD_EXPORT(utest_motor_pwm, "utest_motor_pwm [OPTION] ...");
+#endif
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/
