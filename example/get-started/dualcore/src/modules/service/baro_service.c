@@ -55,15 +55,22 @@
 
 #include "data_service_provider.h"
 #include "sensor.h"
+#ifdef SENSOR_USING_SPL06
+#include "sensor_grt_spl06.h"
+#else
 #include "sensor_bst_bmp280.h"
+#endif
 #include "baro_service.h"
 
 #define DBG_TAG           "DS.BARO"
 #define DBG_LVL           DBG_INFO
 #include "rtdbg.h"
 
-
+#ifdef SENSOR_USING_SPL06
+#define BARO_MODEL_NAME   "spl06"
+#else
 #define BARO_MODEL_NAME   "bmp280"
+#endif
 #define BARO_DEV_NAME "baro_"BARO_MODEL_NAME
 
 enum
@@ -395,10 +402,14 @@ int baro_service_register(void)
     rt_err_t err;
     int res = 0;
 
-    //TODO: no use
-    cfg.intf.dev_name = "i2c2";
+    memset(&cfg, 0, sizeof(cfg));
+#ifdef SENSOR_USING_SPL06
+    cfg.intf.dev_name = SPL06_I2C_BUS;
+    res = rt_hw_spl06_init(BARO_MODEL_NAME, &cfg);
+#else
+    cfg.intf.dev_name = BMP280_I2C_BUS;
     res = rt_hw_bmp280_init(BARO_MODEL_NAME, &cfg);
-    //RT_ASSERT(res == 0);
+#endif
     if (res != 0)
     {
         LOG_W("DataS init %s fail\n", BARO_MODEL_NAME);

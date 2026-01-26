@@ -39,6 +39,7 @@ extern "C"
 // #define APP_ID_GESTURE_TUTORIAL "tutorial"
 #define APP_ID_MESSAGE_LIST "message_list"
 #define APP_ID_IOT_GATE "iot_gate"
+#define APP_ID_BAROMETER "barometer"
 
 #define APP_ID_SKAI "skai_ai"
 #define APP_ID_PHOTO "photo"

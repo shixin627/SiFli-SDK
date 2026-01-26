@@ -333,9 +333,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>-Wno-builtin-macro-redefined </MiscControls>
-              <Define>_ARM_LIBCPP_EXTERNAL_THREADS, RT_USING_ARM_LIBC, HAL_USE_NAND, DISABLE_FLOAT_API, SIFLI_BUILD="d73cdf5f", HAVE_ALLOCA_H, USE_ALLOCA, SIFLI_VERSION=33816576, FT2_BUILD_LIBRARY, LV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;, SF32LB56X, HAVE_LRINTF, ARM_MATH_LOOPUNROLL, FIXED_POINT, OPUS_CELT_SUPPORT, SOC_BF0_HCPU, LCPU_CONFIG_V1, FREETYPE_FONT_NAME=tiny55_full, __FILE__=__FILE_NAME__, HAL_TICK_PER_SECOND=1000, OPUS_BUILD, USING_MINI_RLOTTIE, USE_FULL_ASSERT, USE_HAL_DRIVER</Define>
+              <Define>FT2_BUILD_LIBRARY, _ARM_LIBCPP_EXTERNAL_THREADS, USE_FULL_ASSERT, FREETYPE_FONT_NAME=tiny55_full, SOC_BF0_HCPU, RT_USING_ARM_LIBC, USING_MINI_RLOTTIE, ARM_MATH_LOOPUNROLL, OPUS_BUILD, USE_HAL_DRIVER, HAVE_LRINTF, __FILE__=__FILE_NAME__, DISABLE_FLOAT_API, USE_ALLOCA, SIFLI_BUILD="89062426", HAL_USE_NAND, SIFLI_VERSION=33816576, OPUS_CELT_SUPPORT, LV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;, FIXED_POINT, SF32LB56X, HAVE_ALLOCA_H, HAL_TICK_PER_SECOND=1000, LCPU_CONFIG_V1</Define>
               <Undefine />
-              <IncludePath>build_sf32lb56-watch_hcpu;..\..\..\..\..\rtos\rtthread\include;..\..\..\..\..\customer\boards\common;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\..\..\..\customer\boards\eh-lb563;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\common;..\..\..\..\..\customer\peripherals\co5300;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\cst820;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\ft3168;..\..\..\..\..\rtos\rtthread\bsp\sifli\drivers;..\..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\..\drivers\cmsis\Include;..\..\..\..\..\external\CMSIS\Include;..\..\..\..\..\drivers\Include;..\..\..\..\..\drivers\hal_epic_ex;..\..\..\..\..\external\cJSON-1.7.17;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\FlashDB\inc;..\..\..\..\..\external\FlashDB\port\fal\inc;..\..\..\..\..\external\freetype\include;..\..\..\..\..\external\libhelix-mp3;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\external\libhelix-mp3\real;..\..\..\..\..\external\lvgl_v8;..\..\..\..\..\external\lvgl_v8\lvgl;..\..\..\..\..\external\lvgl_v8\src;..\..\..\..\..\external\lvgl_v8\src\core;..\..\..\..\..\external\lvgl_v8\src\draw;..\..\..\..\..\external\lvgl_v8\src\extra;..\..\..\..\..\external\lvgl_v8\src\font;..\..\..\..\..\external\lvgl_v8\src\hal;..\..\..\..\..\external\lvgl_v8\src\misc;..\..\..\..\..\external\lvgl_v8\src\widgets;..\..\..\..\..\external\lvgl_v8\src\draw\arm2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp;..\..\..\..\..\external\lvgl_v8\src\draw\sdl;..\..\..\..\..\external\lvgl_v8\src\draw\sifli_epic;..\..\..\..\..\external\lvgl_v8\src\draw\stm32_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\sw;..\..\..\..\..\external\lvgl_v8\src\draw\swm341_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\pxp;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\vglite;..\..\..\..\..\external\lvgl_v8\src\extra\layouts;..\..\..\..\..\external\lvgl_v8\src\extra\libs;..\..\..\..\..\external\lvgl_v8\src\extra\others;..\..\..\..\..\external\lvgl_v8\src\extra\themes;..\..\..\..\..\external\lvgl_v8\src\extra\widgets;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\flex;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\grid;..\..\..\..\..\external\lvgl_v8\src\extra\libs\bmp;..\..\..\..\..\external\lvgl_v8\src\extra\libs\ffmpeg;..\..\..\..\..\external\lvgl_v8\src\extra\libs\freetype;..\..\..\..\..\external\lvgl_v8\src\extra\libs\fsdrv;..\..\..\..\..\external\lvgl_v8\src\extra\libs\gif;..\..\..\..\..\external\lvgl_v8\src\extra\libs\png;..\..\..\..\..\external\lvgl_v8\src\extra\libs\qrcode;..\..\..\..\..\external\lvgl_v8\src\extra\libs\rlottie;..\..\..\..\..\external\lvgl_v8\src\extra\libs\sjpg;..\..\..\..\..\external\lvgl_v8\src\extra\others\fragment;..\..\..\..\..\external\lvgl_v8\src\extra\others\gridnav;..\..\..\..\..\external\lvgl_v8\src\extra\others\ime;..\..\..\..\..\external\lvgl_v8\src\extra\others\imgfont;..\..\..\..\..\external\lvgl_v8\src\extra\others\monkey;..\..\..\..\..\external\lvgl_v8\src\extra\others\msg;..\..\..\..\..\external\lvgl_v8\src\extra\others\snapshot;..\..\..\..\..\external\lvgl_v8\src\extra\themes\basic;..\..\..\..\..\external\lvgl_v8\src\extra\themes\default;..\..\..\..\..\external\lvgl_v8\src\extra\themes\mono;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\animimg;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\calendar;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\chart;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\colorwheel;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\imgbtn;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\keyboard;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\led;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\list;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\menu;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\meter;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\msgbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\span;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinner;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tabview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tileview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\win;..\..\..\..\..\external\lz4;..\..\..\..\..\external\opus-1.4;..\..\..\..\..\external\opus-1.4\include;..\..\..\..\..\external\opus-1.4\src;..\..\..\..\..\external\opus-1.4\silk;..\..\..\..\..\external\opus-1.4\celt;..\..\..\..\..\external\opus-1.4\silk\fixed;..\..\..\..\..\external\quickjs;..\..\..\..\..\external\rlottie\inc;..\..\..\..\..\external\rlottie\src\vector;..\..\..\..\..\external\rlottie\src\vector\freetype;..\..\..\..\..\external\rlottie\src\vector\stb;..\..\..\..\..\external\state_machine-latest\inc;..\..\..\..\..\external\TensorFlow-Lite-Micro\src;..\..\..\..\..\external\WebRTC_audio_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\vad\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\system_wrappers\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\agc\legacy;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\logging;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\utility;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\dc_correction;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_in;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_out;..\..\..\..\..\middleware\include;..\..\..\..\..\middleware\button;..\..\..\..\..\middleware\context_backup;..\..\..\..\..\middleware\cpu_usage_profiler;..\..\..\..\..\middleware\ezipa_dec;..\..\..\..\..\middleware\ipc_queue\common;..\..\..\..\..\middleware\ipc_queue\include;..\..\..\..\..\middleware\ipc_queue\porting\os;..\..\..\..\..\middleware\ipc_queue\porting\os\rtthread;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x\hcpu;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio;..\..\..\..\..\middleware\audio\include;..\..\..\..\..\middleware\audio;.;..\..\..\..\..\middleware\btdm_internal\plf;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio\anyka;..\..\..\..\..\middleware\audio\vbe_drc;..\..\..\..\..\middleware\audio\audio_bt_voice;..\..\..\..\..\middleware\audio\audio_local_music;..\..\..\..\..\middleware\audio\audio_manager;..\..\..\..\..\middleware\audio\audio_port;..\..\..\..\..\middleware\audio\audio_speaker_mic;..\..\..\..\..\middleware\audio\audio_voice_proc;..\..\..\..\..\middleware\barcode128;..\..\..\..\..\middleware\bluetooth\service;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\ble\gatt_service;..\..\..\..\..\middleware\bluetooth\service\bt\bt_audio;..\..\..\..\..\middleware\bluetooth\service\bt\bt_cm;..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh;..\..\..\..\..\middleware\bluetooth\service\common;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\internal;..\..\..\..\..\middleware\bluetooth\include;..\..\..\..\..\middleware\cell_transform;..\..\..\..\..\middleware\data_bus\public;..\..\..\..\..\middleware\data_bus\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lvsf;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lv_drivers;..\..\..\..\..\middleware\lvgl\lvgl_extensions;..\..\..\..\..\middleware\lvgl\gif_dec;..\..\..\..\..\middleware\share_prefs;..\..\..\..\..\middleware\sifli_lib\lib;..\..\..\..\..\middleware\include;..\..\..\..\..\rtos\os_adaptor\src;..\..\..\..\..\rtos\os_adaptor\inc;build_sf32lb56-watch_hcpu\src\resource\strings;build_sf32lb56-watch_hcpu\src\gui_apps;..\..\src\hcpu\gui_apps\app_layout;..\..\src\hcpu\gui_apps\battery;..\..\src\hcpu\gui_apps\clock;..\..\src\hcpu\gui_apps\common;..\..\src\hcpu\gui_apps\game;..\..\src\hcpu\gui_apps\gesture;..\..\src\hcpu\gui_apps\interact;..\..\src\hcpu\gui_apps\iot_gate;..\..\src\hcpu\gui_apps\main;..\..\src\hcpu\gui_apps\message;..\..\src\hcpu\gui_apps\note;..\..\src\hcpu\gui_apps\speech;..\..\src\hcpu\gui_apps\test;..\..\src\hcpu\gui_apps\utils;..\..\src\hcpu\gui_apps\mem;..\..\src\hcpu;..\..\src\modules\algorithm\AirMouse;..\..\src\modules\algorithm\GestureRecognition;..\..\src\modules\bloc;..\..\src\modules\communicate;..\..\src\modules\model;..\..\src\modules\service;..\..\src\modules\tests;..\..\src\modules\util\includes;..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33;..\..\..\..\..\rtos\rtthread\libcpu\arm\common;..\..\..\..\..\rtos\rtthread\components\cplusplus;..\..\..\..\..\rtos\rtthread\components\dfs\include;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\devfs;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\elmfat;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\dhara\dhara;..\..\..\..\..\rtos\rtthread\components\drivers\audio;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\spi;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\finsh;..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc;..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\include;..\..\..\..\..\rtos\rtthread\components\utilities\llt_mem;..\..\..\..\..\rtos\rtthread\components\utilities\ulog;..\..\..\..\..\rtos\rtthread\components\utilities\ulog\backend;..\..\..\..\..\rtos\rtthread\components\utilities\ymodem</IncludePath>
+              <IncludePath>build_sf32lb56w-watch_hcpu;..\..\..\..\..\rtos\rtthread\include;..\..\..\..\..\customer\boards\common;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\..\..\..\customer\boards\eh-lb563;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56w-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\common;..\..\..\..\..\customer\peripherals\co5300;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\cst820;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\ft3168;..\..\..\..\..\rtos\rtthread\bsp\sifli\drivers;..\..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\..\drivers\cmsis\Include;..\..\..\..\..\external\CMSIS\Include;..\..\..\..\..\drivers\Include;..\..\..\..\..\drivers\hal_epic_ex;..\..\..\..\..\external\cJSON-1.7.17;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\FlashDB\inc;..\..\..\..\..\external\FlashDB\port\fal\inc;..\..\..\..\..\external\freetype\include;..\..\..\..\..\external\libhelix-mp3;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\external\libhelix-mp3\real;..\..\..\..\..\external\lvgl_v8;..\..\..\..\..\external\lvgl_v8\lvgl;..\..\..\..\..\external\lvgl_v8\src;..\..\..\..\..\external\lvgl_v8\src\core;..\..\..\..\..\external\lvgl_v8\src\draw;..\..\..\..\..\external\lvgl_v8\src\extra;..\..\..\..\..\external\lvgl_v8\src\font;..\..\..\..\..\external\lvgl_v8\src\hal;..\..\..\..\..\external\lvgl_v8\src\misc;..\..\..\..\..\external\lvgl_v8\src\widgets;..\..\..\..\..\external\lvgl_v8\src\draw\arm2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp;..\..\..\..\..\external\lvgl_v8\src\draw\sdl;..\..\..\..\..\external\lvgl_v8\src\draw\sifli_epic;..\..\..\..\..\external\lvgl_v8\src\draw\stm32_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\sw;..\..\..\..\..\external\lvgl_v8\src\draw\swm341_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\pxp;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\vglite;..\..\..\..\..\external\lvgl_v8\src\extra\layouts;..\..\..\..\..\external\lvgl_v8\src\extra\libs;..\..\..\..\..\external\lvgl_v8\src\extra\others;..\..\..\..\..\external\lvgl_v8\src\extra\themes;..\..\..\..\..\external\lvgl_v8\src\extra\widgets;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\flex;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\grid;..\..\..\..\..\external\lvgl_v8\src\extra\libs\bmp;..\..\..\..\..\external\lvgl_v8\src\extra\libs\ffmpeg;..\..\..\..\..\external\lvgl_v8\src\extra\libs\freetype;..\..\..\..\..\external\lvgl_v8\src\extra\libs\fsdrv;..\..\..\..\..\external\lvgl_v8\src\extra\libs\gif;..\..\..\..\..\external\lvgl_v8\src\extra\libs\png;..\..\..\..\..\external\lvgl_v8\src\extra\libs\qrcode;..\..\..\..\..\external\lvgl_v8\src\extra\libs\rlottie;..\..\..\..\..\external\lvgl_v8\src\extra\libs\sjpg;..\..\..\..\..\external\lvgl_v8\src\extra\others\fragment;..\..\..\..\..\external\lvgl_v8\src\extra\others\gridnav;..\..\..\..\..\external\lvgl_v8\src\extra\others\ime;..\..\..\..\..\external\lvgl_v8\src\extra\others\imgfont;..\..\..\..\..\external\lvgl_v8\src\extra\others\monkey;..\..\..\..\..\external\lvgl_v8\src\extra\others\msg;..\..\..\..\..\external\lvgl_v8\src\extra\others\snapshot;..\..\..\..\..\external\lvgl_v8\src\extra\themes\basic;..\..\..\..\..\external\lvgl_v8\src\extra\themes\default;..\..\..\..\..\external\lvgl_v8\src\extra\themes\mono;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\animimg;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\calendar;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\chart;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\colorwheel;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\imgbtn;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\keyboard;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\led;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\list;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\menu;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\meter;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\msgbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\span;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinner;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tabview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tileview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\win;..\..\..\..\..\external\lz4;..\..\..\..\..\external\opus-1.4;..\..\..\..\..\external\opus-1.4\include;..\..\..\..\..\external\opus-1.4\src;..\..\..\..\..\external\opus-1.4\silk;..\..\..\..\..\external\opus-1.4\celt;..\..\..\..\..\external\opus-1.4\silk\fixed;..\..\..\..\..\external\quickjs;..\..\..\..\..\external\rlottie\inc;..\..\..\..\..\external\rlottie\src\vector;..\..\..\..\..\external\rlottie\src\vector\freetype;..\..\..\..\..\external\rlottie\src\vector\stb;..\..\..\..\..\external\state_machine-latest\inc;..\..\..\..\..\external\TensorFlow-Lite-Micro\src;..\..\..\..\..\external\WebRTC_audio_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\vad\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\system_wrappers\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\agc\legacy;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\logging;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\utility;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\dc_correction;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_in;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_out;..\..\..\..\..\middleware\include;..\..\..\..\..\middleware\button;..\..\..\..\..\middleware\context_backup;..\..\..\..\..\middleware\cpu_usage_profiler;..\..\..\..\..\middleware\ezipa_dec;..\..\..\..\..\middleware\ipc_queue\common;..\..\..\..\..\middleware\ipc_queue\include;..\..\..\..\..\middleware\ipc_queue\porting\os;..\..\..\..\..\middleware\ipc_queue\porting\os\rtthread;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x\hcpu;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio;..\..\..\..\..\middleware\audio\include;..\..\..\..\..\middleware\audio;.;..\..\..\..\..\middleware\btdm_internal\plf;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio\anyka;..\..\..\..\..\middleware\audio\vbe_drc;..\..\..\..\..\middleware\audio\audio_bt_voice;..\..\..\..\..\middleware\audio\audio_local_music;..\..\..\..\..\middleware\audio\audio_manager;..\..\..\..\..\middleware\audio\audio_port;..\..\..\..\..\middleware\audio\audio_speaker_mic;..\..\..\..\..\middleware\audio\audio_voice_proc;..\..\..\..\..\middleware\barcode128;..\..\..\..\..\middleware\bluetooth\service;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\ble\gatt_service;..\..\..\..\..\middleware\bluetooth\service\bt\bt_audio;..\..\..\..\..\middleware\bluetooth\service\bt\bt_cm;..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh;..\..\..\..\..\middleware\bluetooth\service\common;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\internal;..\..\..\..\..\middleware\bluetooth\include;..\..\..\..\..\middleware\cell_transform;..\..\..\..\..\middleware\data_bus\public;..\..\..\..\..\middleware\data_bus\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lvsf;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lv_drivers;..\..\..\..\..\middleware\lvgl\lvgl_extensions;..\..\..\..\..\middleware\lvgl\gif_dec;..\..\..\..\..\middleware\share_prefs;..\..\..\..\..\middleware\sifli_lib\lib;..\..\..\..\..\middleware\include;..\..\..\..\..\rtos\os_adaptor\src;..\..\..\..\..\rtos\os_adaptor\inc;build_sf32lb56w-watch_hcpu\src\resource\strings;build_sf32lb56w-watch_hcpu\src\gui_apps;..\..\src\hcpu\gui_apps\app_layout;..\..\src\hcpu\gui_apps\battery;..\..\src\hcpu\gui_apps\clock;..\..\src\hcpu\gui_apps\common;..\..\src\hcpu\gui_apps\game;..\..\src\hcpu\gui_apps\gesture;..\..\src\hcpu\gui_apps\interact;..\..\src\hcpu\gui_apps\iot_gate;..\..\src\hcpu\gui_apps\main;..\..\src\hcpu\gui_apps\message;..\..\src\hcpu\gui_apps\note;..\..\src\hcpu\gui_apps\speech;..\..\src\hcpu\gui_apps\test;..\..\src\hcpu\gui_apps\utils;..\..\src\hcpu\gui_apps\mem;..\..\src\hcpu;..\..\src\modules\algorithm\AirMouse;..\..\src\modules\algorithm\GestureRecognition;..\..\src\modules\bloc;..\..\src\modules\communicate;..\..\src\modules\model;..\..\src\modules\service;..\..\src\modules\tests;..\..\src\modules\util\includes;..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33;..\..\..\..\..\rtos\rtthread\libcpu\arm\common;..\..\..\..\..\rtos\rtthread\components\cplusplus;..\..\..\..\..\rtos\rtthread\components\dfs\include;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\devfs;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\elmfat;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\dhara\dhara;..\..\..\..\..\rtos\rtthread\components\drivers\audio;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\spi;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\finsh;..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc;..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\include;..\..\..\..\..\rtos\rtthread\components\utilities\llt_mem;..\..\..\..\..\rtos\rtthread\components\utilities\ulog;..\..\..\..\..\rtos\rtthread\components\utilities\ulog\backend;..\..\..\..\..\rtos\rtthread\components\utilities\ymodem</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -366,10 +366,10 @@
             <TextAddressRange>0x00000000</TextAddressRange>
             <DataAddressRange>0x20000000</DataAddressRange>
             <pXoBase />
-            <ScatterFile>build_sf32lb56-watch_hcpu/link.sct</ScatterFile>
+            <ScatterFile>build_sf32lb56w-watch_hcpu/link.sct</ScatterFile>
             <IncludeLibs />
             <IncludeLibsPath />
-            <Misc>  --cpu=cortex-m33 --strict --scatter build_sf32lb56-watch_hcpu/link.sct --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols --info sizes --info totals --info unused --info veneers --any_contingency  --list build_sf32lb56-watch_hcpu/main.map  --libpath=C:\Keil_v5/ARM/ARMCLANG/lib --diag_suppress=L6314 --diag_suppress=L6329 --predefine="-DSF32LB56X" --predefine="-DSF32LB56X" --predefine="-DSIFLI_BUILD="d73cdf5f"" --predefine="-DSOC_BF0_HCPU" --predefine="-DLCPU_CONFIG_V1" --predefine="-DHAL_USE_NAND" --predefine="-DSIFLI_VERSION=33816576" --predefine="-DHAL_TICK_PER_SECOND=1000" --predefine="-DARM_MATH_LOOPUNROLL" --predefine="-DUSE_FULL_ASSERT" --predefine="-DUSE_HAL_DRIVER" --predefine="-DFT2_BUILD_LIBRARY" --predefine="-DLV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;" --predefine="-DFIXED_POINT" --predefine="-DOPUS_CELT_SUPPORT" --predefine="-DHAVE_LRINTF" --predefine="-DHAVE_ALLOCA_H" --predefine="-DUSE_ALLOCA" --predefine="-DOPUS_BUILD" --predefine="-DDISABLE_FLOAT_API" --predefine="-D_ARM_LIBCPP_EXTERNAL_THREADS" --predefine="-DUSING_MINI_RLOTTIE" --predefine="-DFREETYPE_FONT_NAME=tiny55_full" --predefine="-DRT_USING_ARM_LIBC"</Misc>
+            <Misc>  --cpu=cortex-m33 --strict --scatter build_sf32lb56w-watch_hcpu/link.sct --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols --info sizes --info totals --info unused --info veneers --any_contingency  --list build_sf32lb56w-watch_hcpu/main.map  --libpath=C:\Keil_v5/ARM/ARMCLANG/lib --diag_suppress=L6314 --diag_suppress=L6329 --predefine="-DSF32LB56X" --predefine="-DUSE_FULL_ASSERT" --predefine="-DSIFLI_BUILD="89062426"" --predefine="-DARM_MATH_LOOPUNROLL" --predefine="-DUSE_HAL_DRIVER" --predefine="-DSOC_BF0_HCPU" --predefine="-DSF32LB56X" --predefine="-DHAL_TICK_PER_SECOND=1000" --predefine="-DHAL_USE_NAND" --predefine="-DLCPU_CONFIG_V1" --predefine="-DSIFLI_VERSION=33816576" --predefine="-DFT2_BUILD_LIBRARY" --predefine="-DLV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;" --predefine="-DOPUS_CELT_SUPPORT" --predefine="-DFIXED_POINT" --predefine="-DOPUS_BUILD" --predefine="-DHAVE_LRINTF" --predefine="-DHAVE_ALLOCA_H" --predefine="-DDISABLE_FLOAT_API" --predefine="-DUSE_ALLOCA" --predefine="-DUSING_MINI_RLOTTIE" --predefine="-D_ARM_LIBCPP_EXTERNAL_THREADS" --predefine="-DFREETYPE_FONT_NAME=tiny55_full" --predefine="-DRT_USING_ARM_LIBC"</Misc>
             <LinkerInputFile />
             <DisabledWarnings />
           </LDads>
@@ -531,6 +531,34 @@
           <Files>
             <File>
               <FileName>bsp_power.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_power.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>eh-lb56xu_bsp_init.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_init.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>eh-lb56xu_bsp_lcd_tp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_lcd_tp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>eh-lb56xu_bsp_pinmux.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_pinmux.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>eh-lb56xu_bsp_power.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_power.c</FilePath>
             </File>
@@ -7433,1113 +7461,1120 @@
             <File>
               <FileName>baro_arrow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\baro_arrow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\baro_arrow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_dial_point_h.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_dial_point_h.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_dial_point_h.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_dial_point_m.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_dial_point_m.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_dial_point_m.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_dial_point_s.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_dial_point_s.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_dial_point_s.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_hand_hour.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_hour.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_hour.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_hand_minute.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_minute.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_minute.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_rotate_bg_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_rotate_bg_bg_small.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_small.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_small.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_rotate_bg_bg_tiny.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_tiny.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_tiny.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_rotate_bg_hour_hand.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_hour_hand.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_hour_hand.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_rotate_bg_minute_hand.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_minute_hand.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_minute_hand.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_simple_hour_hand.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_simple_hour_hand.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_simple_hour_hand.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_simple_minute_hand.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_simple_minute_hand.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_simple_minute_hand.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_simple_second_hand.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_simple_second_hand.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_simple_second_hand.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>compass_arrow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\compass_arrow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\compass_arrow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>d3d_rotate.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\d3d_rotate.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\d3d_rotate.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>fashion_hr.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\fashion_hr.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\fashion_hr.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>fashion_min.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\fashion_min.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\fashion_min.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>fashion_sec.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\fashion_sec.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\fashion_sec.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>hour_hand2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\hour_hand2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\hour_hand2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>kaleidoscope.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\kaleidoscope.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\kaleidoscope.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>minute_hand2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\minute_hand2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\minute_hand2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>second_hand2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\second_hand2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\second_hand2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>airplane.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\airplane.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\airplane.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>backspace_icon.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\backspace_icon.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\backspace_icon.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>bluetooth.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\bluetooth.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\bluetooth.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>capital_icon.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\capital_icon.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\capital_icon.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_40.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_40.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_40.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_80.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_80.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_80.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_eyes01.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_eyes01.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_eyes01.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_eyes02.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_eyes02.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_eyes02.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_eyes03.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_eyes03.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_eyes03.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_shoe01.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe01.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe01.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_shoe02.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe02.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe02.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_shoe03.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe03.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe03.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_shoe04.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe04.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe04.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_shoe05.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe05.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe05.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>close_garage.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\close_garage.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\close_garage.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>compass_arrow_shadow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\compass_arrow_shadow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\compass_arrow_shadow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>control_background_img.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\control_background_img.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\control_background_img.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>control_cursor_img.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\control_cursor_img.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\control_cursor_img.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>control_selection_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\control_selection_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\control_selection_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>dn.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\dn.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\dn.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>down_arrow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\down_arrow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\down_arrow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>eco.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\eco.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\eco.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>enter_icon.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\enter_icon.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\enter_icon.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>erth.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\erth.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\erth.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>gra_corner_clock1.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\gra_corner_clock1.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\gra_corner_clock1.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>gra_corner_clock2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\gra_corner_clock2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\gra_corner_clock2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>house.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\house.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\house.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>human1.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\human1.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\human1.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>human2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\human2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\human2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>icon_dnd_mode.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_dnd_mode.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_dnd_mode.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>icon_history.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_history.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_history.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>icon_mic.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_mic.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_mic.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>icon_qrcode.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_qrcode.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_qrcode.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>icon_record.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_record.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_record.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>icon_release.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_release.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_release.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>icon_send.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_send.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_send.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>icon_stop.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_stop.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_stop.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_activity.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_activity.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_activity.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_alarm.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_alarm.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_alarm.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_alarm_2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_alarm_2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_alarm_2.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_barometer.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_barometer.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_calendar.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_calendar.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_calendar.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_calories.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_calories.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_calories.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_camera.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_camera.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_camera.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_clock.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_clock.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_clock.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_compass.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_compass.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_compass.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_dinosaur.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_dinosaur.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_dinosaur.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_ecg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_ecg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_ecg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_enemy.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_enemy.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_enemy.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_group.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_group.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_group.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_itunes.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_itunes.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_itunes.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_left_arrow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_left_arrow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_left_arrow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_mail.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_mail.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_mail.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_maps.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_maps.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_maps.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_media_next.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_media_next.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_media_next.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_media_pause.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_media_pause.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_media_pause.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_media_play.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_media_play.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_media_play.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_media_previous.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_media_previous.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_media_previous.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_messages.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_messages.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_messages.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_mountion.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_mountion.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_mountion.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_mouse.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_mouse.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_mouse.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_passbook.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_passbook.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_passbook.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_phone.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_phone.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_phone.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_photos.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_photos.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_photos.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_red_heart.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_red_heart.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_red_heart.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_remote.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_remote.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_remote.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_settings.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_settings.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_settings.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_stocks.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_stocks.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_stocks.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_stopwatch.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_stopwatch.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_stopwatch.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_workout.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_workout_cycling.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_cycling.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_cycling.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_workout_gym.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_gym.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_gym.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_workout_hiking.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_hiking.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_hiking.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_workout_running.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_running.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_running.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_workout_swimming.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_swimming.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_swimming.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_workout_walking.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_walking.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_walking.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_workout_yoga.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_yoga.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_yoga.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_world_clock.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_world_clock.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_world_clock.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>language.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\language.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\language.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>micro_icon.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\micro_icon.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\micro_icon.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>mouse_mode_icon.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\mouse_mode_icon.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\mouse_mode_icon.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ms_earth.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\ms_earth.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\ms_earth.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ms_water.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\ms_water.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\ms_water.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>open_garage.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\open_garage.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\open_garage.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>plus_button.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\plus_button.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\plus_button.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>small_img_logo.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\small_img_logo.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\small_img_logo.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>space.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\space.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\space.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>sun.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\sun.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\sun.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>tap_bg_left.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\tap_bg_left.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\tap_bg_left.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>tap_bg_right.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\tap_bg_right.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\tap_bg_right.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>unknown_bg_left.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\unknown_bg_left.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\unknown_bg_left.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>unknown_bg_right.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\unknown_bg_right.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\unknown_bg_right.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>up_arrow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\up_arrow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\up_arrow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>volume_down.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\volume_down.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\volume_down.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>volume_up.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\volume_up.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\volume_up.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>weather.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>weather_clear.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather_clear.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather_clear.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>weather_cloudy.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather_cloudy.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather_cloudy.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>weather_rain.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather_rain.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather_rain.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>weather_sun.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather_sun.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather_sun.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>weather_thunder.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather_thunder.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather_thunder.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>weather_widget_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather_widget_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather_widget_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>wt_circle.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_circle.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_circle.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>wt_clock.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_clock.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_clock.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>wt_cloudy.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_cloudy.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_cloudy.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>wt_compass.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_compass.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_compass.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>wt_earth.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_earth.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_earth.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>wt_rain.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_rain.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_rain.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>wt_snow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_snow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_snow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>wt_sunny.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_sunny.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_sunny.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>wt_weather.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_weather.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_weather.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>wt_wind.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_wind.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_wind.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>barometer.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\barometer.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\barometer.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_dashes.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\clock_dashes.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\clock_dashes.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_digital_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\clock_digital_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\clock_digital_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\clock_mickey_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\clock_mickey_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_body.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\clock_mickey_body.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\clock_mickey_body.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_mickey_head.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\clock_mickey_head.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\clock_mickey_head.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>clock_simple_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\clock_simple_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\clock_simple_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>compass_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\compass_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\compass_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>digital_b_time_0.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_0.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_0.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>digital_b_time_1.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_1.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_1.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>digital_b_time_2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>digital_b_time_3.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_3.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_3.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>digital_b_time_4.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_4.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_4.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>digital_b_time_5.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_5.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_5.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>digital_b_time_6.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_6.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_6.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>digital_b_time_7.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_7.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_7.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>digital_b_time_8.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_8.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_8.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>digital_b_time_9.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_9.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_9.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>elevation.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\elevation.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\elevation.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>hr_region.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\hr_region.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\hr_region.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>img_dial_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\img_dial_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\img_dial_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>lvsf_tiny_font_tiny55_full.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\fonts\freetype\lvsf_tiny_font_tiny55_full.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\fonts\freetype\lvsf_tiny_font_tiny55_full.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>en_us.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\strings\en_us.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\strings\en_us.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>zh_cn.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\strings\zh_cn.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\strings\zh_cn.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>lang_pack.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\strings\lang_pack.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\strings\lang_pack.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -8627,6 +8662,13 @@
               <FileName>lv_todo_list.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\src\hcpu\gui_apps\app_layout\lv_todo_list.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>barometer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\src\hcpu\gui_apps\barometer\barometer.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -9006,1113 +9048,1120 @@
             <File>
               <FileName>no_ezip_baro_arrow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\baro_arrow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\baro_arrow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_dial_point_h.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_dial_point_h.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_dial_point_h.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_dial_point_m.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_dial_point_m.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_dial_point_m.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_dial_point_s.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_dial_point_s.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_dial_point_s.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_mickey_hand_hour.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_hour.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_hour.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_mickey_hand_minute.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_minute.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_minute.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_rotate_bg_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_rotate_bg_bg_small.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_small.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_small.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_rotate_bg_bg_tiny.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_tiny.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_tiny.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_rotate_bg_hour_hand.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_hour_hand.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_hour_hand.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_rotate_bg_minute_hand.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_minute_hand.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_minute_hand.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_simple_hour_hand.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_simple_hour_hand.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_simple_hour_hand.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_simple_minute_hand.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_simple_minute_hand.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_simple_minute_hand.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_clock_simple_second_hand.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\clock_simple_second_hand.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\clock_simple_second_hand.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_compass_arrow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\compass_arrow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\compass_arrow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_d3d_rotate.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\d3d_rotate.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\d3d_rotate.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_fashion_hr.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\fashion_hr.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\fashion_hr.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_fashion_min.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\fashion_min.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\fashion_min.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_fashion_sec.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\fashion_sec.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\fashion_sec.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_hour_hand2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\hour_hand2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\hour_hand2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_kaleidoscope.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\kaleidoscope.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\kaleidoscope.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_minute_hand2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\minute_hand2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\minute_hand2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>no_ezip_second_hand2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\no_ezip\second_hand2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\no_ezip\second_hand2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_airplane.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\airplane.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\airplane.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_backspace_icon.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\backspace_icon.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\backspace_icon.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_bluetooth.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\bluetooth.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\bluetooth.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_capital_icon.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\capital_icon.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\capital_icon.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_clock_40.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_40.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_40.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_clock_80.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_80.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_80.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_clock_mickey_eyes01.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_eyes01.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_eyes01.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_clock_mickey_eyes02.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_eyes02.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_eyes02.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_clock_mickey_eyes03.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_eyes03.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_eyes03.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_clock_mickey_shoe01.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe01.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe01.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_clock_mickey_shoe02.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe02.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe02.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_clock_mickey_shoe03.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe03.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe03.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_clock_mickey_shoe04.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe04.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe04.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_clock_mickey_shoe05.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe05.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\clock_mickey_shoe05.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_close_garage.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\close_garage.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\close_garage.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_compass_arrow_shadow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\compass_arrow_shadow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\compass_arrow_shadow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_control_background_img.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\control_background_img.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\control_background_img.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_control_cursor_img.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\control_cursor_img.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\control_cursor_img.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_control_selection_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\control_selection_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\control_selection_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_dn.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\dn.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\dn.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_down_arrow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\down_arrow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\down_arrow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_eco.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\eco.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\eco.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_enter_icon.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\enter_icon.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\enter_icon.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_erth.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\erth.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\erth.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_gra_corner_clock1.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\gra_corner_clock1.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\gra_corner_clock1.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_gra_corner_clock2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\gra_corner_clock2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\gra_corner_clock2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_house.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\house.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\house.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_human1.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\human1.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\human1.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_human2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\human2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\human2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_icon_dnd_mode.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_dnd_mode.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_dnd_mode.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_icon_history.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_history.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_history.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_icon_mic.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_mic.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_mic.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_icon_qrcode.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_qrcode.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_qrcode.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_icon_record.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_record.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_record.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_icon_release.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_release.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_release.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_icon_send.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_send.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_send.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_icon_stop.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\icon_stop.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_stop.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_activity.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_activity.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_activity.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_alarm.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_alarm.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_alarm.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_alarm_2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_alarm_2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_alarm_2.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_barometer.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_barometer.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_calendar.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_calendar.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_calendar.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_calories.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_calories.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_calories.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_camera.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_camera.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_camera.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_clock.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_clock.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_clock.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_compass.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_compass.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_compass.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_dinosaur.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_dinosaur.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_dinosaur.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_ecg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_ecg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_ecg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_enemy.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_enemy.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_enemy.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_group.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_group.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_group.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_itunes.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_itunes.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_itunes.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_left_arrow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_left_arrow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_left_arrow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_mail.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_mail.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_mail.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_maps.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_maps.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_maps.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_media_next.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_media_next.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_media_next.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_media_pause.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_media_pause.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_media_pause.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_media_play.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_media_play.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_media_play.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_media_previous.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_media_previous.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_media_previous.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_messages.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_messages.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_messages.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_mountion.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_mountion.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_mountion.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_mouse.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_mouse.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_mouse.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_passbook.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_passbook.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_passbook.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_phone.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_phone.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_phone.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_photos.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_photos.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_photos.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_red_heart.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_red_heart.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_red_heart.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_remote.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_remote.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_remote.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_settings.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_settings.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_settings.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_stocks.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_stocks.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_stocks.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_stopwatch.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_stopwatch.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_stopwatch.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_workout.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_workout_cycling.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_cycling.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_cycling.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_workout_gym.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_gym.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_gym.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_workout_hiking.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_hiking.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_hiking.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_workout_running.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_running.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_running.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_workout_swimming.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_swimming.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_swimming.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_workout_walking.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_walking.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_walking.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_workout_yoga.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_workout_yoga.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_workout_yoga.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_img_world_clock.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\img_world_clock.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_world_clock.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_language.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\language.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\language.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_micro_icon.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\micro_icon.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\micro_icon.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_mouse_mode_icon.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\mouse_mode_icon.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\mouse_mode_icon.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_ms_earth.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\ms_earth.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\ms_earth.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_ms_water.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\ms_water.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\ms_water.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_open_garage.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\open_garage.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\open_garage.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_plus_button.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\plus_button.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\plus_button.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_small_img_logo.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\small_img_logo.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\small_img_logo.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_space.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\space.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\space.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_sun.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\sun.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\sun.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_tap_bg_left.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\tap_bg_left.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\tap_bg_left.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_tap_bg_right.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\tap_bg_right.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\tap_bg_right.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_unknown_bg_left.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\unknown_bg_left.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\unknown_bg_left.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_unknown_bg_right.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\unknown_bg_right.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\unknown_bg_right.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_up_arrow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\up_arrow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\up_arrow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_volume_down.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\volume_down.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\volume_down.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_volume_up.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\volume_up.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\volume_up.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_weather.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_weather_clear.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather_clear.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather_clear.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_weather_cloudy.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather_cloudy.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather_cloudy.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_weather_rain.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather_rain.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather_rain.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_weather_sun.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather_sun.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather_sun.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_weather_thunder.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather_thunder.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather_thunder.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_weather_widget_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\weather_widget_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\weather_widget_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_wt_circle.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_circle.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_circle.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_wt_clock.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_clock.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_clock.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_wt_cloudy.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_cloudy.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_cloudy.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_wt_compass.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_compass.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_compass.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_wt_earth.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_earth.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_earth.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_wt_rain.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_rain.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_rain.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_wt_snow.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_snow.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_snow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_wt_sunny.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_sunny.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_sunny.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_wt_weather.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_weather.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_weather.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>ezip_wt_wind.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\ezip\wt_wind.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\wt_wind.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_barometer.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\barometer.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\barometer.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_clock_dashes.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\clock_dashes.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\clock_dashes.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_clock_digital_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\clock_digital_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\clock_digital_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_clock_mickey_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\clock_mickey_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\clock_mickey_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_clock_mickey_body.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\clock_mickey_body.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\clock_mickey_body.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_clock_mickey_head.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\clock_mickey_head.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\clock_mickey_head.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_clock_simple_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\clock_simple_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\clock_simple_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_compass_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\compass_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\compass_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_digital_b_time_0.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_0.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_0.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_digital_b_time_1.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_1.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_1.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_digital_b_time_2.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_2.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_digital_b_time_3.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_3.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_3.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_digital_b_time_4.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_4.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_4.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_digital_b_time_5.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_5.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_5.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_digital_b_time_6.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_6.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_6.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_digital_b_time_7.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_7.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_7.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_digital_b_time_8.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_8.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_8.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_digital_b_time_9.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_9.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\digital_b_time_9.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_elevation.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\elevation.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\elevation.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_hr_region.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\hr_region.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\hr_region.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>large_ezip_img_dial_bg.tmp.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\images\common\large_ezip\img_dial_bg.tmp.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\large_ezip\img_dial_bg.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>freetype_lvsf_tiny_font_tiny55_full.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\fonts\freetype\lvsf_tiny_font_tiny55_full.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\fonts\freetype\lvsf_tiny_font_tiny55_full.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>strings_en_us.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\strings\en_us.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\strings\en_us.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>strings_zh_cn.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\strings\zh_cn.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\strings\zh_cn.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>strings_lang_pack.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\src\resource\strings\lang_pack.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\strings\lang_pack.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -10197,6 +10246,13 @@
               <FileName>app_layout_lv_todo_list.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\src\hcpu\gui_apps\app_layout\lv_todo_list.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>barometer_barometer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\src\hcpu\gui_apps\barometer\barometer.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -10882,6 +10938,13 @@
               <FilePath>..\..\src\modules\model\ble_hid.c</FilePath>
             </File>
           </Files>
+          <Files>
+            <File>
+              <FileName>ble_ulog_backend.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\src\modules\model\ble_ulog_backend.c</FilePath>
+            </File>
+          </Files>
         </Group>
         <Group>
           <GroupName>Service</GroupName>
@@ -10937,7 +11000,7 @@
             <File>
               <FileName>lcpu.c</FileName>
               <FileType>1</FileType>
-              <FilePath>build_sf32lb56-watch_hcpu\lcpu\lcpu.c</FilePath>
+              <FilePath>build_sf32lb56w-watch_hcpu\lcpu\lcpu.c</FilePath>
             </File>
           </Files>
         </Group>
