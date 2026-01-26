@@ -53,13 +53,6 @@ extern "C"
 #include "watch_global_data.h"
 #include "watch_system_core_task.h"
 
-    enum sys_power_status
-    {
-        SYS_POWER_STATUS_ON = 0,
-        SYS_POWER_STATUS_SLEEP = 1,
-        SYS_POWER_STATUS_OFF = 2,
-    };
-
     // wake up reson: 0: lift wrist, 1: charger, 2: other
     enum wakeup_reason
     {

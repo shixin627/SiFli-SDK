@@ -23,6 +23,13 @@ extern "C"
 #define FEATURE_NUM 7
 
 #define USER_ID_LENGTH (28)
+    
+    enum sys_power_status
+    {
+        SYS_POWER_STATUS_ON = 0,
+        SYS_POWER_STATUS_SLEEP = 1,
+        SYS_POWER_STATUS_OFF = 2,
+    };
 
     typedef struct
     {

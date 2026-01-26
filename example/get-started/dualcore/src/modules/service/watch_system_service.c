@@ -48,8 +48,8 @@
 #include <board.h>
 #include <string.h>
 #include <sensor.h>
-// #include "acce_service.h"
-// #include "hr_service.h"
+#include "acce_service.h"
+#include "hr_service.h"
 #include "data_service_provider.h"
 #include "watch_sys_service.h"
 // #include "bloc_peripheral.h"
@@ -507,14 +507,7 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
 
         case PpgSensorPowerManage:
         {
-            if (msg->body[1] == 1)
-            {
-                hr_set_power(25);
-            }
-            else
-            {
-                hr_set_power(RT_FALSE);
-            }
+            hr_set_power(msg->body[1]);
             break;
         }
 

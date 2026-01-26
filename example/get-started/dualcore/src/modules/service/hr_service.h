@@ -93,7 +93,7 @@ typedef struct
 } custom_hr_data_table_t;
 
 extern rt_bool_t is_ppg_service_ready(void);
-extern void hr_set_power(uint8_t status);
+extern void hr_set_power(uint8_t arg);
 
 /// @} file
 

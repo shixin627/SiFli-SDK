@@ -63,7 +63,7 @@
 #include "bsp_board.h"
 
 #define DBG_TAG "drv.bmi"
-#define DBG_LVL DBG_LOG
+#define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 /******************************************************************************/
 /*!                Macro definition                                           */
@@ -1114,7 +1114,8 @@ void bmi270_sensor_task(void *params) // 20ms
 int bmi270_initialized(void)
 {
     memset(&accel_gyro_dev_info, 0x00, sizeof(struct coines_intf_config));
-
+    extern int gh3018_power_onoff(uint8_t on);
+    gh3018_power_onoff(1);
     bmi270_power_onoff(1);
     rt_thread_mdelay(10);
     #if (BMI270_USING_I2C == 1)

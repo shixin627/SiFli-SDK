@@ -165,7 +165,7 @@ static hr_service_env_t hr_service_env;
 static uint8_t hr_update_flag = 0;
 static uint8_t last_hr_value = 0;
 
-void hr_set_power(uint8_t status)
+void hr_set_power(uint8_t arg)
 {
     if (hr_service_env.is_ready == RT_FALSE)
     {
@@ -176,8 +176,7 @@ void hr_set_power(uint8_t status)
     rt_pm_request(PM_SLEEP_MODE_IDLE);
 #endif /* RT_USING_PM */
 
-    rt_uint32_t power_mode = (status > 0) ? RT_SENSOR_POWER_NORMAL : RT_SENSOR_POWER_DOWN;
-    // rt_uint32_t power_mode = (status > 0) ? RT_SENSOR_POWER_HIGH : RT_SENSOR_POWER_DOWN;
+    rt_uint32_t power_mode = (arg > 0) ? RT_SENSOR_POWER_NORMAL : RT_SENSOR_POWER_DOWN;
     rt_err_t ret = rt_device_control(hr_service_env.device, RT_SENSOR_CTRL_SET_POWER, (void *)power_mode);
     if (ret != RT_EOK)
     {

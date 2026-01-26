@@ -563,14 +563,33 @@ static void peripheral_task_entry(void *parameter)
             break;
             case HCPU_RESUME:
             {
+                watch_sys_sync.sync_api_lock(SkaiWatchSys.motion_control_lock);
+                // rt_thread_mdelay(50);
+                accelerometer_subscribe();
+                // rt_thread_mdelay(60);
+                // 防止正在測量時被打斷
+                if (SkaiWatchSys.hrs_start_up_mode == 0)
+                {
+                    peripheral_provider.hr_set_power(1);
+                }
                 watch_sys_sync.notify_system_wakeup();
+                SkaiWatchSys.pre_hcpu_wakeup_tick = rt_tick_get();
+                SkaiWatchSys.sys_power_status = SYS_POWER_STATUS_ON;
                 set_sleep_mode(false);
             }
             break;
             case HCPU_SUSPEND:
             {
-                set_sleep_mode(true);
                 watch_sys_sync.notify_system_standby();
+                if (SkaiWatchSys.hrs_start_up_mode == 0)
+                {
+                    watch_sys_sync.hr_power_manage(0);
+                }
+                // rt_thread_mdelay(60);
+                accelerometer_unsubscribe();
+                // rt_thread_mdelay(50);
+                SkaiWatchSys.sys_power_status = SYS_POWER_STATUS_SLEEP;
+                set_sleep_mode(true);
             }
             break;
         #endif // BSP_USING_PC_SIMULATOR

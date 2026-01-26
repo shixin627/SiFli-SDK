@@ -589,7 +589,7 @@ static void button_event_task_entry(struct _lv_timer_t *task)
     }
 
     // #if !kReleaseMode
-    // extern bool pause_sleep_cause_of_dev_reson(void);
+    extern bool pause_sleep_cause_of_dev_reson(void);
     // if (!pause_sleep_cause_of_dev_reson())
     // #endif
     // {
@@ -600,24 +600,9 @@ static void button_event_task_entry(struct _lv_timer_t *task)
     //     }
     // }
 
-    if (lv_disp_get_inactive_time(NULL) > limit_time)
+    if (lv_disp_get_inactive_time(NULL) > limit_time && setting_provider.get_power_save_mode() && !pause_sleep_cause_of_dev_reson())
     {
         peripheral_provider.hcpu_suspend();
-#if (CUSTOMER_BOARD_VER > BOARD_VER_13)
-        if (SkaiWatchSys.hrs_start_up_mode == 0)
-        {
-        peripheral_provider.hr_set_power(0);
-        }
-#endif
-        rt_thread_mdelay(60);
-        sensor_subscription_t sensor_subscription = (sensor_subscription_t){
-            .type = SENSOR_TYPE_ACCELEROMETER,
-            .status = false,
-            .thread_safe = true,
-        };
-        watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
-        rt_thread_mdelay(50);
-        SkaiWatchSys.sys_power_status = SYS_POWER_STATUS_SLEEP;
         gui_pm_fsm(GUI_PM_ACTION_SLEEP);
     }
 
@@ -696,26 +681,6 @@ static void on_touch_gesture(touch_gesture_t gesture, uint16_t x, uint16_t y)
         if (!gui_is_active())
         {
             gui_pm_fsm(GUI_PM_ACTION_BUTTON_CLICKED);
-            SkaiWatchSys.pre_hcpu_wakeup_tick = rt_tick_get();
-            SkaiWatchSys.sys_power_status = SYS_POWER_STATUS_ON;
-            if (gui_app_is_all_closed())
-            {
-            gui_app_run("Main");
-            }
-            else
-            {
-            watch_sys_sync.sync_api_lock(SkaiWatchSys.motion_control_lock);
-            }
-            rt_thread_mdelay(50);
-            LOG_D("[%s]subscribe imu sensor", __func__);
-            sensor_subscription_t sensor_subscription = (sensor_subscription_t){
-                .type = SENSOR_TYPE_ACCELEROMETER,
-                .status = true,
-                .thread_safe = true,
-            };
-            watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
-            rt_thread_mdelay(60);
-            LOG_D("[%s]notify lcpu resume, hcpu resume", __func__);
             peripheral_provider.hcpu_resume();
         }
         // if (get_sys_power_status() == SYS_POWER_STATUS_SLEEP)
@@ -829,7 +794,6 @@ void app_watch_entry(void *parameter)
     SubscribeDualCoreSyncService();
     rt_thread_mdelay(3000);
     peripheral_provider.hcpu_resume();
-    peripheral_provider.subscribe_accelerometer_sensor(true);
 
     rt_thread_mdelay(100);
 

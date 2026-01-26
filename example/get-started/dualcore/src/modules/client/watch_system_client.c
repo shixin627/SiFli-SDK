@@ -311,10 +311,6 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
                 }
             }
         }
-        // else if (status == 1)
-        // {
-        //     watch_hcpu_resume_with_reason(WAKEUP_REASON_LIFT_WRIST);
-        // }
         else if (status == 2) // 正常抬腕
         {
             watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);

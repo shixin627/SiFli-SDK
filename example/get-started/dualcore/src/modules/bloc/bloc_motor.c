@@ -375,7 +375,7 @@ static int motor_task_init(void)
     return RT_EOK;
 }
     #ifndef BSP_USING_PC_SIMULATOR
-INIT_APP_EXPORT(motor_task_init);
+// INIT_APP_EXPORT(motor_task_init);
     #endif
 
     #ifdef BSP_USING_PC_SIMULATOR

@@ -567,9 +567,9 @@ void sys_core_task_handler(void *parameter)
     {
       switch (recv_set)
       {
-      case SYS_EVENT_POWER_ON:
-        handle_wakeup_event();
-        break;
+      // case SYS_EVENT_POWER_ON:
+      //   handle_wakeup_event();
+      //   break;
 
       case SYS_EVENT_REBOOT_SYS:
         handle_reboot_event();
@@ -579,9 +579,9 @@ void sys_core_task_handler(void *parameter)
         handle_power_off_event();
         break;
 
-      case SYS_EVENT_REBOOT_LCPU:
-        handle_reboot_lcpu_event();
-        break;
+      // case SYS_EVENT_REBOOT_LCPU:
+      //   handle_reboot_lcpu_event();
+      //   break;
 
       case SYS_EVENT_SAVE_SHARE_PREFS:
         handle_save_share_prefs_event();
@@ -602,9 +602,9 @@ void sys_core_task_handler(void *parameter)
 #endif
         break;
 
-      case SYS_EVENT_PREPARE_SLEEP:
-        handle_hcpu_prepare_sleep_event();
-        break;
+      // case SYS_EVENT_PREPARE_SLEEP:
+      //   handle_hcpu_prepare_sleep_event();
+      //   break;
 
       case SYS_EVENT_HCPU_RESUME:
         handle_hcpu_resume_event();
@@ -618,9 +618,9 @@ void sys_core_task_handler(void *parameter)
         watch_sys_sync.sync_api_lock(SkaiWatchSys.motion_control_lock);
         break;
 
-      case SYS_EVENT_RELOAD_GESTURE_MODEL:
-        received_file_handler(get_file_receive_state()->file_path);
-        break;
+      // case SYS_EVENT_RELOAD_GESTURE_MODEL:
+      //   received_file_handler(get_file_receive_state()->file_path);
+      //   break;
       default:
         break;
       }
