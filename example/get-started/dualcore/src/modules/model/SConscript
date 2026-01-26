@@ -27,6 +27,8 @@ if GetDepend('BSP_USING_BLE_DEVICE_MANAGER'):
     src += Glob('ble_device_manager.c')
 if GetDepend('BSP_USING_BLE_HID'):
     src += Glob('ble_hid.c')
+if GetDepend('BSP_USING_BLE_LOG'):
+    src += Glob('ble_ulog_backend.c')
 
 group = DefineGroup('Model', src, depend = [''], CPPPATH = path)
 

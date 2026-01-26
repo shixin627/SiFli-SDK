@@ -901,12 +901,12 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
 #endif
         health_algo_counter = 0;
     }
-#if (CUSTOMER_BOARD_VER != BOARD_VER_13)
-    if (battery_charge_state.is_charging)
-    {
-        return (rt_tick_get_millisecond() - now);
-    }
-#endif
+// #if (CUSTOMER_BOARD_VER != BOARD_VER_13)
+//     if (battery_charge_state.is_charging)
+//     {
+//         return (rt_tick_get_millisecond() - now);
+//     }
+// #endif
 
     // Pin debounce logic (10ms)
     // static uint32_t last_pin_read_time = 0;
@@ -956,74 +956,9 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
         };
         motion_data_fetch(&motion_data);
 
-        static float prev_linear_accel = 0.0f;
-        float linear_accel_resultant =
-            total_acceleration(linear_acce.x, linear_acce.y, linear_acce.z);
-        my_gesture_state.difference_accel =
-            fabsf(linear_accel_resultant - prev_linear_accel);
-        difference_accel_sliding_window[difference_accel_count] =
-            my_gesture_state.difference_accel;
-        if (difference_accel_count < MAX_GESTURE_SAMPLES - 1)
-        {
-            difference_accel_count++;
-        }
-        else
-        {
-            difference_accel_count = 0;
-        }
-        prev_linear_accel = linear_accel_resultant;
-#ifdef REAL_TIME_IMU_DATA_COLLECTION
-        if (is_imu_rawdata_collection())
-        {
-            store_gesture_sample(&release_dataset, ts, &linear_acce, gyroData,
-                                 ppg_rawdata, my_gesture_state.on_pressed);
-            if (release_dataset.gesture_sample_count >= MAX_RAWDATA_TIME_STEP)
-            {
-                getTargetWaveformFromSlidingWindow(
-                    &release_dataset, targetWave_algo, MAX_RAWDATA_TIME_STEP);
-                if (watch_sys_sync.notify_gesture_dataset)
-                    watch_sys_sync.notify_gesture_dataset(
-                        rt_tick_get(), MAX_RAWDATA_TIME_STEP,
-                        (void *)targetWave_algo); //
-                release_dataset.gesture_sample_count = 0;
-            }
-            return (rt_tick_get_millisecond() - now);
-        }
-#endif
-
-        fill_realtime_accel_sliding_window(&linear_acce, &watch_gravity,
-                                           &my_gesture_state);
-
-        check_gyro_threshold(gyroData, &my_gesture_state);
-
-        if (is_multi_gesture_mode())
-        {
-            gesture_event_capture(IMU_NOARMAL_SAMPLE_RATE, ts, &linear_acce,
-                                  gyroData, &watch_gravity, ppg_rawdata,
-                                  &my_gesture_state, GESTURE_TAP, &tap_dataset);
-            gesture_event_capture(IMU_NOARMAL_SAMPLE_RATE, ts, &linear_acce,
-                                  gyroData, &watch_gravity, ppg_rawdata,
-                                  &my_gesture_state, GESTURE_RELEASE,
-                                  &release_dataset);
-            return (rt_tick_get_millisecond() - now);
-        }
-        else
-        {
-            if (!get_locked_status())
-            {
-                gesture_event_capture(IMU_NOARMAL_SAMPLE_RATE, ts, &linear_acce,
-                                      gyroData, &watch_gravity, ppg_rawdata,
-                                      &my_gesture_state, GESTURE_TAP,
-                                      &tap_dataset);
-            }
-            else
-            {
-                gesture_event_capture(IMU_NOARMAL_SAMPLE_RATE, ts, &linear_acce,
-                                      gyroData, &watch_gravity, ppg_rawdata,
-                                      &my_gesture_state, GESTURE_RELEASE,
-                                      &release_dataset);
-            }
-        }
+        // Note: Waveform capture algorithm has been moved to HCPU (bloc_motion_tracking.c)
+        // The HCPU will receive motion_data via motion_data_fetch() and process
+        // gesture waveform capture directly, then notify gesture_sem when ready.
     }
     return (rt_tick_get_millisecond() - now);
 }

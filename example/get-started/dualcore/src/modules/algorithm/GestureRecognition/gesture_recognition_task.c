@@ -472,7 +472,7 @@ int get_gesture_recognition_threshold(void)
 
 static void gesture_recognition_algorithm(gesture_data_t *gesture)
 {
-    LOG_D("gesture_recognition_algorithm sample_num:%d", gesture->sample_num);
+    LOG_I("gesture_recognition_algorithm sample_num:%d", gesture->sample_num);
     uint8_t sample_num = gesture->sample_num;
     // convert int16_t data to float in g unit to identifyWindow
     if (imu_raw_data_collection)

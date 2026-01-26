@@ -42,7 +42,9 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
+#include <time.h>
 #include "app_mainmenu.h"
 #ifdef BSP_USING_AIR_MOUSE
 #include "air_mouse.h"
@@ -65,6 +67,68 @@
 #define DBG_TAG "bloc.motion_tracking"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
+
+// ============================================================================
+// Waveform Capture Configuration (migrated from LCPU gesture_detect.c)
+// ============================================================================
+#define ENABLE_WAVEFORM_CAPTURE 1
+
+#if ENABLE_WAVEFORM_CAPTURE
+// Sliding window and threshold constants
+#define ACCEL_WINDOW_SIZE 15
+#define GYRO_WINDOW_SIZE 10
+#define GYRO_LOCK_THRESHOLD 2000.0f
+#define GESTURE_RELEASE_COOLDOWN_PERIOD_MS 100
+#define GESTURE_COLLECTION_COOLDOWN_PERIOD_MS 500
+#define GESTURE_TAP_COOLDOWN_PERIOD_MS 100
+#define MAX_GESTURE_DURATION_MS 160
+#define MIN_GESTURE_SAMPLES 10
+#define MIN_DIFFERENCE_ACCEL_MAX 1.0f
+
+#define FEEDBACK_ACCEL_SAMPLES_FOR_TAP 9
+#define FEEDBACK_ACCEL_SAMPLES_FOR_RELEASE 10
+#define RELEASE_START_THRESHOLD 1.0f
+#define TAP_START_THRESHOLD 0.3f
+
+// Gesture types
+typedef enum
+{
+	GESTURE_TYPE_TAP,
+	GESTURE_TYPE_RELEASE,
+} gesture_type_t;
+
+// Gesture state structure for waveform capture
+typedef struct
+{
+	Vector3 sliding_window_accel[ACCEL_WINDOW_SIZE];
+	Vector3 sliding_window_gravity[ACCEL_WINDOW_SIZE];
+	float gyro_sliding_window[GYRO_WINDOW_SIZE];
+	uint8_t gyro_count;
+	bool if_watchface_visible;
+	bool gyro_lock_status;
+	float difference_accel;
+	bool on_pressed;
+} waveform_gesture_state_t;
+
+// Static variables for waveform capture
+static gesture_dataset_t tap_dataset = {0};
+static gesture_dataset_t release_dataset = {0};
+static waveform_gesture_state_t waveform_gesture_state = {0};
+static watch_sys_linear_acce_t targetWave_algo[MAX_RAWDATA_TIME_STEP];
+
+static float difference_accel_sliding_window[MAX_GESTURE_SAMPLES] = {0.0f};
+static int difference_accel_count = 0;
+static float prev_linear_accel_resultant = 0.0f;
+static bool user_hand_horizontal = false;
+
+// Forward declarations for waveform capture functions
+static void waveform_capture_process(rt_tick_t ts, motion_data_t *motion_data, Vector3 *gyro);
+static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
+									   Vector3 *linear_acce, Vector3 *gyro,
+									   Vector3 *gravity, float ppg,
+									   waveform_gesture_state_t *state, gesture_type_t type,
+									   gesture_dataset_t *dataset);
+#endif // ENABLE_WAVEFORM_CAPTURE
 
 #define ENABLE_SEND_GRAVITY_TO_BLE_CLIENT 0
 
@@ -321,6 +385,350 @@ void set_scroll_segment_count(uint8_t count)
 
 static Quaternion prev_sensor_quat = {.w = 1, .x = 0, .y = 0, .z = 0};
 static motion_data_t *watch_sensor_motion_data = {0};
+
+// ============================================================================
+// Waveform Capture Helper Functions (migrated from LCPU gesture_detect.c)
+// ============================================================================
+#if ENABLE_WAVEFORM_CAPTURE
+
+static double total_acceleration_magnitude(double x, double y, double z)
+{
+	return sqrt(x * x + y * y + z * z);
+}
+
+/**
+ * @brief Converts sliding window acceleration data to target waveform
+ */
+static void getTargetWaveformFromSlidingWindow(gesture_dataset_t *dataset,
+											   watch_sys_linear_acce_t *targetWave,
+											   int sample_len)
+{
+	for (uint8_t i = 0; i < sample_len; i++)
+	{
+		targetWave[i].timestamp_s = dataset->timestamp_s[i];
+		targetWave[i].timestamp_ms = dataset->timestamp_ms[i];
+		targetWave[i].x = (float)(*(dataset->waveform[i] + 0)) * INT16_to_G / GRAVITY;
+		targetWave[i].y = (float)(*(dataset->waveform[i] + 1)) * INT16_to_G / GRAVITY;
+		targetWave[i].z = (float)(*(dataset->waveform[i] + 2)) * INT16_to_G / GRAVITY;
+		targetWave[i].gravity_x = (float)(*(dataset->waveform[i] + 3)) * INT16_to_DPS;
+		targetWave[i].gravity_y = (float)(*(dataset->waveform[i] + 4)) * INT16_to_DPS;
+		targetWave[i].gravity_z = (float)(*(dataset->waveform[i] + 5)) * INT16_to_DPS;
+		targetWave[i].ppg_data = dataset->ppg_data[i];
+		targetWave[i].on_pressed = dataset->on_pressed[i];
+	}
+}
+
+static inline void reset_gesture_state(gesture_dataset_t *dataset,
+									   uint32_t current_time, uint8_t code)
+{
+	if (dataset->gesture_sample_count == 0)
+	{
+		return;
+	}
+	dataset->gesture_started = false;
+	dataset->gesture_ended = false;
+	dataset->gesture_sample_count = 0;
+	dataset->wait_start_time = current_time;
+}
+
+static uint16_t waveform_rtc_millisecond = 0;
+static inline void store_gesture_sample(gesture_dataset_t *dataset, time_t ts,
+										Vector3 *linear_accel, Vector3 *gravity,
+										uint16_t ppg_data, bool on_pressed)
+{
+	if (dataset->gesture_sample_count < MAX_RAWDATA_TIME_STEP)
+	{
+		dataset->waveform[dataset->gesture_sample_count][0] = linear_accel->x;
+		dataset->waveform[dataset->gesture_sample_count][1] = linear_accel->y;
+		dataset->waveform[dataset->gesture_sample_count][2] = linear_accel->z;
+		dataset->waveform[dataset->gesture_sample_count][3] = gravity->x;
+		dataset->waveform[dataset->gesture_sample_count][4] = gravity->y;
+		dataset->waveform[dataset->gesture_sample_count][5] = gravity->z;
+		dataset->timestamp_s[dataset->gesture_sample_count] = ts;
+		dataset->timestamp_ms[dataset->gesture_sample_count] = waveform_rtc_millisecond;
+		dataset->ppg_data[dataset->gesture_sample_count] = ppg_data;
+		dataset->on_pressed[dataset->gesture_sample_count] = on_pressed;
+		dataset->gesture_sample_count++;
+	}
+}
+
+static inline void fill_realtime_accel_sliding_window(Vector3 *accel,
+													  Vector3 *gravity,
+													  waveform_gesture_state_t *state)
+{
+	for (int i = 0; i < ACCEL_WINDOW_SIZE - 1; i++)
+	{
+		state->sliding_window_accel[i] = state->sliding_window_accel[i + 1];
+		state->sliding_window_gravity[i] = state->sliding_window_gravity[i + 1];
+	}
+	state->sliding_window_accel[ACCEL_WINDOW_SIZE - 1] = *accel;
+	state->sliding_window_gravity[ACCEL_WINDOW_SIZE - 1] = *gravity;
+}
+
+static inline bool check_gyro_threshold(Vector3 *gyro, waveform_gesture_state_t *state)
+{
+	float gyro_magnitude = sqrtf(gyro->x * gyro->x + gyro->y * gyro->y + gyro->z * gyro->z);
+	state->gyro_sliding_window[state->gyro_count] = gyro_magnitude;
+	state->gyro_count = (state->gyro_count + 1) % GYRO_WINDOW_SIZE;
+	float total_gyro = 0.0f;
+	for (int i = 0; i < GYRO_WINDOW_SIZE - 1; i++)
+	{
+		total_gyro += state->gyro_sliding_window[i];
+	}
+	bool gyro_threshold_exceeded = total_gyro > GYRO_LOCK_THRESHOLD;
+	state->gyro_lock_status = gyro_threshold_exceeded;
+	return gyro_threshold_exceeded;
+}
+
+// Calculate median of difference_accel_sliding_window
+static float calculate_median_difference_accel(uint8_t check_samples)
+{
+	float temp_array[MAX_GESTURE_SAMPLES];
+	int loop_limit = check_samples;
+
+	for (int i = 0; i < loop_limit; i++)
+	{
+		int index;
+		if (i < difference_accel_count)
+		{
+			index = difference_accel_count - 1 - i;
+		}
+		else
+		{
+			int wrap_around_offset = i - difference_accel_count;
+			index = MAX_GESTURE_SAMPLES - 1 - wrap_around_offset;
+		}
+		temp_array[i] = difference_accel_sliding_window[index];
+	}
+
+	// Simple bubble sort
+	for (int i = 0; i < loop_limit - 1; i++)
+	{
+		for (int j = 0; j < loop_limit - i - 1; j++)
+		{
+			if (temp_array[j] > temp_array[j + 1])
+			{
+				float temp = temp_array[j];
+				temp_array[j] = temp_array[j + 1];
+				temp_array[j + 1] = temp;
+			}
+		}
+	}
+
+	float median;
+	if (loop_limit % 2 == 0)
+	{
+		median = (temp_array[loop_limit / 2 - 1] + temp_array[loop_limit / 2]) / 2.0f;
+	}
+	else
+	{
+		median = temp_array[loop_limit / 2];
+	}
+
+	return median;
+}
+
+/**
+ * @brief Notify gesture recognition task with dataset
+ * Directly fills watch_sensor.gesture_data and releases gesture_sem
+ */
+static void notify_gesture_dataset_hcpu(uint32_t timestamp, int count,
+										watch_sys_linear_acce_t *data)
+{
+	watch_sensor.gesture_data.timestamp = timestamp;
+	watch_sensor.gesture_data.sample_num = count;
+	memcpy(watch_sensor.gesture_data.dataset, data,
+		   count * sizeof(watch_sys_linear_acce_t));
+
+	if (watch_sensor.gesture_sem)
+	{
+		rt_sem_release(watch_sensor.gesture_sem);
+		LOG_D("Gesture dataset ready, samples: %d", count);
+	}
+}
+
+/**
+ * @brief Main gesture event capture function for HCPU
+ */
+static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
+									   Vector3 *linear_acce, Vector3 *gyro,
+									   Vector3 *gravity, float ppg,
+									   waveform_gesture_state_t *state, gesture_type_t type,
+									   gesture_dataset_t *dataset)
+{
+	rt_tick_t current_time = rt_tick_get_millisecond();
+
+	int cooldown_period = 0;
+	if (type == GESTURE_TYPE_RELEASE)
+	{
+		cooldown_period = GESTURE_COLLECTION_COOLDOWN_PERIOD_MS;
+	}
+	else
+	{
+		cooldown_period = GESTURE_TAP_COOLDOWN_PERIOD_MS;
+	}
+	if ((current_time - dataset->wait_start_time) < cooldown_period)
+	{
+		return;
+	}
+
+	// Check lock conditions
+	// if (motor_provider.get_motor_status())
+	// {
+	// 	reset_gesture_state(dataset, current_time, 1);
+	// 	return;
+	// }
+	else if (state->if_watchface_visible == false)
+	{
+		reset_gesture_state(dataset, current_time, 2);
+		return;
+	}
+	else if (state->gyro_lock_status)
+	{
+		reset_gesture_state(dataset, current_time, 3);
+		return;
+	}
+
+	int target_samples = 0;
+	float start_threshold = 0.0f;
+	if (type == GESTURE_TYPE_TAP)
+	{
+		target_samples = GESTURE_TAP_TIME_STEP;
+		start_threshold = TAP_START_THRESHOLD;
+	}
+	else if (type == GESTURE_TYPE_RELEASE)
+	{
+		target_samples = GESTURE_RELEASE_TIME_STEP;
+		start_threshold = RELEASE_START_THRESHOLD;
+	}
+
+	if (!dataset->gesture_started && !dataset->gesture_ended)
+	{
+		if (waveform_gesture_state.difference_accel > start_threshold)
+		{
+			dataset->gesture_started = true;
+			int feedback_samples = 0;
+			if (type == GESTURE_TYPE_TAP)
+			{
+				feedback_samples = FEEDBACK_ACCEL_SAMPLES_FOR_TAP;
+			}
+			else if (type == GESTURE_TYPE_RELEASE)
+			{
+				feedback_samples = FEEDBACK_ACCEL_SAMPLES_FOR_RELEASE;
+			}
+			for (int i = 0; i < feedback_samples; i++)
+			{
+				int accel_index = ACCEL_WINDOW_SIZE - 1 - feedback_samples + i;
+				store_gesture_sample(
+					dataset, ts, &state->sliding_window_accel[accel_index],
+					&state->sliding_window_gravity[accel_index],
+					0, state->on_pressed);
+			}
+		}
+	}
+
+	if (dataset->gesture_started)
+	{
+		store_gesture_sample(dataset, ts, linear_acce, gravity, ppg, state->on_pressed);
+		if (dataset->gesture_sample_count >= target_samples)
+		{
+			dataset->gesture_ended = true;
+			float median_difference_accel = calculate_median_difference_accel(75);
+			bool is_gesture = true;
+			if (median_difference_accel > 0.25f)
+			{
+				is_gesture = false;
+			}
+			if (is_gesture && (user_hand_horizontal || type == GESTURE_TYPE_TAP))
+			{
+				getTargetWaveformFromSlidingWindow(dataset, targetWave_algo, target_samples);
+				// Directly notify gesture recognition task on HCPU
+				notify_gesture_dataset_hcpu(rt_tick_get(), target_samples, targetWave_algo);
+			}
+			reset_gesture_state(dataset, current_time - cooldown_period, 7);
+		}
+	}
+}
+
+/**
+ * @brief Process waveform capture - called from motion_tracking_in_hcpu
+ */
+static void waveform_capture_process(rt_tick_t ts, motion_data_t *motion_data, Vector3 *gyro)
+{
+	time_t current_ts = time(NULL);
+	Vector3 *linear_acce = &motion_data->linear_acce;
+	Vector3 *gravity = &motion_data->gravity;
+	float ppg_rawdata = 0.0f; // PPG not available on HCPU, use 0
+
+	// Update hand position detection
+	uint8_t gesture_threshold_factor = bloc_setting_get_gesture_detect_threshold();
+	float horizontal_threshold = gesture_threshold_factor * 0.01f;
+	user_hand_horizontal = (gravity->x < 0.9 && gravity->x > -horizontal_threshold);
+
+	// Update watchface visibility
+	if (gravity->y > -0.7 && gravity->z > -0.6)
+	{
+		if (!waveform_gesture_state.if_watchface_visible)
+		{
+			waveform_gesture_state.if_watchface_visible = true;
+		}
+	}
+	else
+	{
+		if (waveform_gesture_state.if_watchface_visible)
+		{
+			waveform_gesture_state.if_watchface_visible = false;
+		}
+	}
+
+	// Calculate linear acceleration difference
+	float linear_accel_resultant = total_acceleration_magnitude(linear_acce->x, linear_acce->y, linear_acce->z);
+	waveform_gesture_state.difference_accel = fabsf(linear_accel_resultant - prev_linear_accel_resultant);
+	difference_accel_sliding_window[difference_accel_count] = waveform_gesture_state.difference_accel;
+	if (difference_accel_count < MAX_GESTURE_SAMPLES - 1)
+	{
+		difference_accel_count++;
+	}
+	else
+	{
+		difference_accel_count = 0;
+	}
+	prev_linear_accel_resultant = linear_accel_resultant;
+
+	// Update sliding windows
+	fill_realtime_accel_sliding_window(linear_acce, gravity, &waveform_gesture_state);
+	check_gyro_threshold(gyro, &waveform_gesture_state);
+
+	if (app_control_get_game_mode())
+	{
+		gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts, linear_acce,
+								   gyro, gravity, ppg_rawdata,
+								   &waveform_gesture_state, GESTURE_TYPE_TAP, &tap_dataset);
+		gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts, linear_acce,
+								   gyro, gravity, ppg_rawdata,
+								   &waveform_gesture_state, GESTURE_TYPE_RELEASE,
+								   &release_dataset);
+	}
+	else
+	{
+		if (SkaiWatchSys.motion_control_lock)
+		{
+			gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts, linear_acce,
+									   gyro, gravity, ppg_rawdata,
+									   &waveform_gesture_state, GESTURE_TYPE_RELEASE,
+									   &release_dataset);
+		}
+		else
+		{
+			gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts, linear_acce,
+									   gyro, gravity, ppg_rawdata,
+									   &waveform_gesture_state, GESTURE_TYPE_TAP,
+									   &tap_dataset);
+		}
+	}
+}
+
+#endif // ENABLE_WAVEFORM_CAPTURE
 void set_prev_sensor_quat(uint16_t target_value)
 {
 	float middle_delta_yaw = (float)(target_value * control_angle) / total_moving_distance; // 將 total_yaw_energy_uint 轉換為浮點數
@@ -1013,6 +1421,16 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
 	{
 		return;
 	}
+
+#if ENABLE_WAVEFORM_CAPTURE
+	// Process waveform capture for gesture recognition (migrated from LCPU)
+	// This runs regardless of UI state to capture gestures consistently
+	if (!is_sleep_mode())
+	{
+		waveform_capture_process(motion_data->timestamp, motion_data, &watch_sensor.imu_data.gyro);
+	}
+#endif
+
 	calculate_gravity_position(&motion_data->gravity);
 	if (is_at_home() && !is_at_speech_interface() && !is_at_control_center())
 	{

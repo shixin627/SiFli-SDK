@@ -1088,5 +1088,5 @@ int close_hr_service(void)
     return 0;
 }
 
-INIT_COMPONENT_EXPORT(hr_service_register);
+// INIT_COMPONENT_EXPORT(hr_service_register);
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

@@ -335,7 +335,16 @@ menuconfig SENSOR_USING_BAROMETER
             if SENSOR_USING_BMP280
                 config BMP280_I2C_BUS
                 string "Sensor BMP280 I2C"
-                default "i2c4"    
+                default "i2c4"
+            endif
+        menuconfig SENSOR_USING_SPL06
+            bool "SPL06-001 (Goertek)"
+            select RT_USING_SENSOR
+            default n
+            if SENSOR_USING_SPL06
+                config SPL06_I2C_BUS
+                string "Sensor SPL06 I2C"
+                default "i2c5"
             endif
     endif    
 
