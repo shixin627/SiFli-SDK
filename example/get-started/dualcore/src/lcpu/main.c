@@ -194,8 +194,7 @@ int main(void)
     // 創建事件對象
     main_event = rt_event_create("main_evt", RT_IPC_FLAG_FIFO);
     RT_ASSERT(main_event != RT_NULL);
-    battery_get_charge_state()->charge_percent = 100;
-
+    // battery_get_charge_state()->charge_percent = 100;
     rt_uint32_t recv_set = 0;
     while (1)
     {

@@ -1535,6 +1535,9 @@ int main(void)
     /* Enable WDT. */
     watchdog_set_status(1);
     rt_kprintf("HCPU WDT on.(timeout: %d seconds)\n", WDT_TIMEOUT);
+    /* Cancel feeding the dog in idle thread. */
+    // rt_hw_watchdog_hook(0);
+    // rt_kprintf("Unregister idle hook.\n");
 #endif /* RT_USING_WDT */
 
     return RT_EOK;

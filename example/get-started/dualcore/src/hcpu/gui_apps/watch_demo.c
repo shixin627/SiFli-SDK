@@ -102,14 +102,14 @@ static void handle_back_in_mainmenu(bool is_button)
 extern void note_list_handle_back(void);
 static void handle_back_event(bool is_button)
 {
+    if (SkaiWatchSys.sys_power_status == SYS_POWER_STATUS_ON)
+    {
+        lv_disp_trig_activity(NULL);
+    }
     if (is_ble_dfu_thread_running())
     {
         LOG_I("ESC in ble dfu => return");
         return;
-    }
-    else if (SkaiWatchSys.sys_power_status == SYS_POWER_STATUS_ON)
-    {
-        lv_disp_trig_activity(NULL);
     }
     else if (gui_app_is_actived(APP_ID_SPEECH))
     {
@@ -152,12 +152,6 @@ static void handle_back_event(bool is_button)
         LOG_D("ESC in note list => note_list_handle_back");
         note_list_handle_back();
     }
-    // else if (is_at_app_list())
-    // {
-    //     extern void back_on_skai_widget(void);
-    //     back_on_skai_widget();
-    //     LOG_D("ESC in AI widget => close_skai_widget_ai");
-    // }
     else if (is_at_mouse_mode() || is_at_message() || is_at_app_list())
     {
         clock_on_resume();
@@ -771,7 +765,7 @@ void app_watch_entry(void *parameter)
     //     get_messages_list_from_template();
     // #endif
     bloc_setting_load_watch_system();
-    // bloc_system_schedule_init();
+    bloc_system_schedule_init();
     load_note_list_from_file();
 
 #ifdef BSP_USING_PM
