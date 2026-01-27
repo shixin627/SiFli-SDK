@@ -782,6 +782,7 @@ void app_launcher_ui_init(void *param)
 static void on_start(void)
 {
     LOG_D("[mainmenu_on_start]");
+    gui_set_brightness(SkaiWatchSys.brightness, false);
     row_app_index = app_index_clock;
 
     app_launcher_ui_init(NULL);

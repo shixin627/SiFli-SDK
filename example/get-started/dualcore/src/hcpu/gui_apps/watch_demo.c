@@ -747,6 +747,9 @@ void app_watch_entry(void *parameter)
 
     lv_ex_data_pool_init();
     resource_init();
+    watch_config_struct_flash_read();
+    rt_thread_mdelay(30);
+    save_device_address_to_fs();
 #if LV_USING_FREETYPE_ENGINE
     lv_freetype_open_font(true); /* open freetype */
 #endif
@@ -754,11 +757,7 @@ void app_watch_entry(void *parameter)
     ui_datac_init();
     app_message_data_init();
     app_speech_data_init();
-    // #ifndef BSP_USING_PC_SIMULATOR
-    watch_config_struct_flash_read();
-    rt_thread_mdelay(30);
-    save_device_address_to_fs();
-    // #else
+    // #ifdef BSP_USING_PC_SIMULATOR
     //     extern void get_notification_list_from_template(void);
     //     get_notification_list_from_template();
     //     extern void get_messages_list_from_template(void);
@@ -769,7 +768,6 @@ void app_watch_entry(void *parameter)
     load_note_list_from_file();
 
 #ifdef BSP_USING_PM
-    SkaiWatchSys.oled_display_time = 5;
     button_event_task = lv_timer_create(button_event_task_entry, 30, 0);
 #endif /* BSP_USING_PM */
     keypad_default_handler_register(default_keypad_handler);

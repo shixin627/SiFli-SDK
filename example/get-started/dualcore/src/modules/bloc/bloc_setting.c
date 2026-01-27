@@ -596,7 +596,22 @@ void bloc_setting_load_watch_system(void)
 {
     lv_ext_set_locale(NULL, bloc_setting_get_language());
     set_watch_time(SkaiWatchSys.Global_Time);
-    SkaiWatchSys.font_size = LVSF_FONT_BIG;
+    LOG_I("bloc_setting_load_watch_system oled_display_time: %d, brightness: %d, font_size: %d",
+          SkaiWatchSys.oled_display_time,
+          SkaiWatchSys.brightness,
+          SkaiWatchSys.font_size);
+    if (SkaiWatchSys.oled_display_time == 0)
+    {
+        SkaiWatchSys.oled_display_time = 10; /* Default to 10 seconds if unset */
+    }
+    if (SkaiWatchSys.brightness == 0)
+    {
+        SkaiWatchSys.brightness = 100; /* Default to 100% brightness if unset */
+    }
+    if (SkaiWatchSys.font_size == 0)
+    {
+        SkaiWatchSys.font_size = LVSF_FONT_TITLE;
+    }
     SkaiWatchSys.flag_field.is_wearing = 1; /* Default wearing status */
 }
 

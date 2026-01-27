@@ -341,6 +341,7 @@ static void reset_watch_restart_num(share_prefs_t *pref)
 static void read_brightness_percent(share_prefs_t *pref)
 {
   int32_t brightness_percent = share_prefs_get_int(pref, "brightness", -1);
+  LOG_D("Loaded brightness percent: %d", brightness_percent);
   if (brightness_percent >= 10 && brightness_percent <= 100)
   {
     SkaiWatchSys.brightness = brightness_percent;
