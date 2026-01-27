@@ -1009,7 +1009,7 @@ extern void get_main_phonepeer_addr(uint8_t *addr);
  * @brief Check if main phone counterpart device is connected
  * @return device index if connected, -1 if not found or not connected
  */
-static int check_main_phone_counterpart_connection(void)
+int check_main_phone_counterpart_connection(void)
 {
     get_main_phonepeer_addr(main_addr);
 
@@ -1051,51 +1051,4 @@ static int check_main_phone_counterpart_connection(void)
     dev_mgr_unlock();
 
     return -1;
-}
-
-extern bool ble_app_get_advertising_start_result(void);
-extern void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
-                                      bool pairing_mode);
-
-static lv_timer_t *main_phone_check_timer = NULL;
-
-static void
-check_main_phone_counterpart_connection_timer_callback(lv_timer_t *timer)
-{
-    if (ble_app_get_advertising_start_result())
-    {
-        // Advertising not started yet, skip check
-        return;
-    }
-    int device_idx = check_main_phone_counterpart_connection();
-    if (device_idx == -1)
-    {
-        LOG_I("Main phone counterpart not connected, restarting advertising...");
-        ble_app_advertising_start(true, false, false);
-    }
-}
-
-void ble_dev_mgr_start_main_phone_check_timer(uint32_t interval_ms)
-{
-    // Stop existing timer if any
-    if (main_phone_check_timer)
-    {
-        lv_timer_del(main_phone_check_timer);
-        main_phone_check_timer = NULL;
-    }
-
-    main_phone_check_timer = lv_timer_create(
-        check_main_phone_counterpart_connection_timer_callback,
-        interval_ms,
-        NULL);
-
-}
-
-void ble_dev_mgr_stop_main_phone_check_timer(void)
-{
-    if (main_phone_check_timer)
-    {
-        lv_timer_del(main_phone_check_timer);
-        main_phone_check_timer = NULL;
-    }
 }

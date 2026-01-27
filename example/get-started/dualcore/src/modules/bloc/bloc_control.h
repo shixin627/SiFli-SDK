@@ -210,7 +210,6 @@ extern "C"
     /* gui status */
     extern bool bloc_control_get_gui_interactive_mode(void);
     extern void bloc_control_set_gui_interactive_mode(bool flag);
-    extern bool get_bluetooth_broadcasting_status(void);
     extern void notify_pageview_action(uint8_t action);
     extern void refresh_ble_mode_btn(void);
 

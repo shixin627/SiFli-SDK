@@ -786,9 +786,6 @@ void app_watch_entry(void *parameter)
 
     rt_thread_mdelay(100);
 
-    extern void ble_dev_mgr_start_main_phone_check_timer(uint32_t interval_ms);
-    ble_dev_mgr_start_main_phone_check_timer(5000);
-
     ui_layer_system_builder();
     // ui_layer_top_builder();
 #if defined(GUI_APP_FRAMEWORK) && (!defined(APP_TRANS_ANIMATION_NONE))

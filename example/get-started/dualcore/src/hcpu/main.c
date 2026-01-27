@@ -121,55 +121,16 @@ void stop_ble_rssi_checker(void)
 }
 #endif
 
-// BLE advertising start timeout detection
-#define BLE_ADV_START_TIMEOUT_MS (5000) // 5 seconds timeout
-static rt_timer_t ble_adv_start_timer = NULL;
-static void ble_adv_start_timeout_callback(void *parameter)
-{
-    LOG_E("BLE advertising failed to start within %d ms, rebooting...",
-          BLE_ADV_START_TIMEOUT_MS);
-    drv_reboot();
-}
-
-static void start_ble_adv_start_timer(void)
-{
-    if (!ble_adv_start_timer)
-    {
-        LOG_I("Creating BLE advertising start timeout timer");
-        ble_adv_start_timer = rt_timer_create(
-            "ble_adv_timeout", ble_adv_start_timeout_callback, NULL,
-            rt_tick_from_millisecond(BLE_ADV_START_TIMEOUT_MS),
-            RT_TIMER_FLAG_ONE_SHOT);
-    }
-    if (ble_adv_start_timer)
-    {
-        rt_timer_start(ble_adv_start_timer);
-        LOG_I("BLE advertising start timeout timer started (%d ms)",
-              BLE_ADV_START_TIMEOUT_MS);
-    }
-}
-
-static void stop_ble_adv_start_timer(void)
-{
-    if (ble_adv_start_timer)
-    {
-        rt_timer_stop(ble_adv_start_timer);
-        LOG_I("BLE advertising start timeout timer stopped");
-        rt_timer_delete(ble_adv_start_timer);
-        ble_adv_start_timer = NULL;
-    }
-}
-
-void notify_signal_bad(bool bad)
-{
-#ifdef SHOW_BAD_SIGNAL_INDICATOR
-    #ifdef BSP_USING_UI_HANDLER
-    lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_BAD_SIGNAL_INDICATOR,
-                      .data.action = bad};
-    lvgl_send_msg(msg);
-    #endif
-#endif
-}
+// void notify_signal_bad(bool bad)
+// {
+// #ifdef SHOW_BAD_SIGNAL_INDICATOR
+//     #ifdef BSP_USING_UI_HANDLER
+//     lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_BAD_SIGNAL_INDICATOR,
+//                       .data.action = bad};
+//     lvgl_send_msg(msg);
+//     #endif
+// #endif
+// }
 
 static bool _rssi_signal_bad = false;
 bool is_signal_bad(void)
@@ -181,7 +142,7 @@ void set_signal_bad(bool bad)
     if (bad != _rssi_signal_bad)
     {
         _rssi_signal_bad = bad;
-        notify_signal_bad(bad);
+        // notify_signal_bad(bad);
     }
 }
 
@@ -935,12 +896,64 @@ void bt_stack_update_flash(void)
     }
 }
 
-static bool is_start_resutl = false;
-bool ble_app_get_advertising_start_result(void)
-{
-    return is_start_resutl;
-}
 static bool bluetooth_broadcasting_status = false;
+bool get_bluetooth_broadcasting_status(void)
+{
+    return bluetooth_broadcasting_status;
+}
+extern int check_main_phone_counterpart_connection(void);
+void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
+                               bool pairing_mode);
+
+static lv_timer_t *main_phone_check_timer = NULL;
+
+void ble_dev_mgr_stop_main_phone_check_timer(void);
+static void check_main_phone_counterpart_connection_timer_callback(lv_timer_t *timer)
+{
+    if (bluetooth_broadcasting_status)
+    {
+        // Advertising not started yet, skip check
+        // LOG_I("Advertising in progress, skipping main phone check");
+        return;
+    }
+    int device_idx = check_main_phone_counterpart_connection();
+    if (device_idx == -1)
+    {
+        // LOG_I(
+        //     "Main phone counterpart not connected, restarting advertising...");
+        ble_app_advertising_start(true, false, false);
+    }
+    else
+    {
+        // LOG_I("Main phone counterpart is connected, no action needed");
+        ble_dev_mgr_stop_main_phone_check_timer();
+    }
+}
+
+void ble_dev_mgr_start_main_phone_check_timer(uint32_t interval_ms)
+{
+    // Stop existing timer if any
+    if (main_phone_check_timer)
+    {
+        lv_timer_del(main_phone_check_timer);
+        main_phone_check_timer = NULL;
+    }
+    // LOG_D("Starting main phone counterpart check timer, interval: %d ms",
+    //       interval_ms);
+    main_phone_check_timer =
+        lv_timer_create(check_main_phone_counterpart_connection_timer_callback,
+                        interval_ms, NULL);
+}
+
+void ble_dev_mgr_stop_main_phone_check_timer(void)
+{
+    if (main_phone_check_timer)
+    {
+        lv_timer_del(main_phone_check_timer);
+        main_phone_check_timer = NULL;
+    }
+}
+
 static uint8_t ble_app_advertising_event(uint8_t event, void *context,
                                          void *data)
 {
@@ -951,10 +964,6 @@ static uint8_t ble_app_advertising_event(uint8_t event, void *context,
     case SIBLES_ADV_EVT_ADV_STARTED:
     {
         sibles_adv_evt_startted_t *evt = (sibles_adv_evt_startted_t *)data;
-
-        // Stop the advertising start timeout timer
-        stop_ble_adv_start_timer();
-
 #if ENABLE_BG_ADV
         if (!env->is_bg_adv_on)
         {
@@ -967,7 +976,6 @@ static uint8_t ble_app_advertising_event(uint8_t event, void *context,
         {
             refresh_ble_mode_btn();
         }
-        is_start_resutl = true;
         LOG_I("ADV start resutl %d, mode %d\r", evt->status, evt->adv_mode);
         break;
     }
@@ -979,7 +987,6 @@ static uint8_t ble_app_advertising_event(uint8_t event, void *context,
         {
             refresh_ble_mode_btn();
         }
-        is_start_resutl = false;
         LOG_I("ADV stopped reason %d, mode %d\r", evt->reason, evt->adv_mode);
         break;
     }
@@ -1161,11 +1168,6 @@ void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
 #ifdef GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE
     rt_free(para.adv_data.appearance);
 #endif
-}
-
-bool get_bluetooth_broadcasting_status(void)
-{
-    return bluetooth_broadcasting_status;
 }
 
 static uint8_t g_bass_app_bas_lvl = 100;

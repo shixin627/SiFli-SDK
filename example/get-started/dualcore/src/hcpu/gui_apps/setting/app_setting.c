@@ -232,20 +232,20 @@ static void font_size_switch_event_handler(lv_event_t *e)
 
             // Get the button text and convert to index
             const char *font_size_text = lv_list_get_btn_text(NULL, obj);
-            LVSF_FONT_SIZES font_size_index = LVSF_FONT_TITLE; // default to Title (小)
+            LVSF_FONT_SIZES font_size_index = LVSF_FONT_TITLE; // default to Title
 
             // Convert text to enum value using language pack keys
             if (strcmp(font_size_text, LV_EXT_STR_GET_BY_KEY(font_size_small, "Small")) == 0)
             {
-                font_size_index = LVSF_FONT_TITLE;
+                font_size_index = LVSF_FONT_SUBTITLE;
             }
             else if (strcmp(font_size_text, LV_EXT_STR_GET_BY_KEY(font_size_medium, "Medium")) == 0)
             {
-                font_size_index = LVSF_FONT_BIG;
+                font_size_index = LVSF_FONT_TITLE;
             }
             else if (strcmp(font_size_text, LV_EXT_STR_GET_BY_KEY(font_size_large, "Large")) == 0)
             {
-                font_size_index = LVSF_FONT_HUGE;
+                font_size_index = LVSF_FONT_BIG;
             }
 
             // update font size
@@ -444,13 +444,13 @@ static void create_font_size_setting_win(void)
         LV_EXT_STR_GET_BY_KEY(font_size_medium, "Medium"),
         LV_EXT_STR_GET_BY_KEY(font_size_large, "Large")};
 
-    // Map current font size to option index (0=Title, 1=Big, 2=Huge)
+    // Map current font size to option index (0=Subtitle, 1=Title, 2=Big)
     int selected_index = 0;
-    if (SkaiWatchSys.font_size == LVSF_FONT_TITLE)
+    if (SkaiWatchSys.font_size == LVSF_FONT_SUBTITLE)
         selected_index = 0;
-    else if (SkaiWatchSys.font_size == LVSF_FONT_BIG)
+    else if (SkaiWatchSys.font_size == LVSF_FONT_TITLE)
         selected_index = 1;
-    else if (SkaiWatchSys.font_size == LVSF_FONT_HUGE)
+    else if (SkaiWatchSys.font_size == LVSF_FONT_BIG)
         selected_index = 2;
 
     p_app_setting->selected_font_size = create_setting_template_win(

@@ -699,7 +699,7 @@ static lv_obj_t *create_history_list(lv_obj_t *parent)
     // 添加标题
     lv_obj_t *title = lv_label_create(container);
     lv_label_set_text(title, "Workout History");
-    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(-1)),
+    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(0)),
                                0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
 
@@ -755,7 +755,7 @@ static lv_obj_t *create_history_list(lv_obj_t *parent)
         lv_label_set_text(type_label, workout_list[record->type].name);
         lv_obj_set_style_text_color(type_label, lv_color_hex(0x9EFE00), 0);
         lv_obj_set_style_text_font(
-            type_label, LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
+            type_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
         lv_obj_align_to(type_label, icon, LV_ALIGN_OUT_RIGHT_TOP, 10, -10);
 
         // 日期
@@ -771,7 +771,7 @@ static lv_obj_t *create_history_list(lv_obj_t *parent)
                               record->duration % 60);
         lv_obj_set_style_text_color(duration, lv_color_hex(0x40A6FF), 0);
         lv_obj_set_style_text_font(duration,
-                                   LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+                                   LV_EXT_FONT_GET(get_system_font_size(1)), 0);
         lv_obj_align(duration, LV_ALIGN_LEFT_MID, 25, 10);
 
         // 卡路里
@@ -779,7 +779,7 @@ static lv_obj_t *create_history_list(lv_obj_t *parent)
         lv_label_set_text_fmt(calories, "%d KCAL", record->calories);
         lv_obj_set_style_text_color(calories, lv_color_hex(0xFF4089), 0);
         lv_obj_set_style_text_font(calories,
-                                   LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+                                   LV_EXT_FONT_GET(get_system_font_size(1)), 0);
         lv_obj_align(calories, LV_ALIGN_RIGHT_MID, -25, 10);
 
         // 點擊事件
@@ -832,7 +832,7 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_set_size(title, 466, 40);
     lv_label_set_text(title, "Workout");
     lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(0)),
+    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(1)),
                                0);
     lv_obj_set_style_text_color(title, lv_color_hex(0x9EFE00), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
@@ -845,14 +845,14 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_set_style_border_width(list, 0, 0);
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_pad_row(list, 10, 0); // 縮小 widget 間的間隔
+    lv_obj_set_style_pad_row(list, 50, 0); // 增加 widget 間的間隔
 
     // 添加運動項目到列表
     for (int i = 0; i < WORKOUT_COUNT; i++)
     {
         // 創建運動項目 widget
         lv_obj_t *workout_widget = lv_obj_create(list);
-        lv_obj_set_size(workout_widget, LV_PCT(100), 250);
+        lv_obj_set_size(workout_widget, LV_PCT(100), 200);
         lv_obj_set_style_radius(workout_widget, 40, 0);
         lv_obj_set_style_bg_color(workout_widget, lv_color_hex(0x1E1E1E), 0);
         lv_obj_set_style_bg_opa(workout_widget, LV_OPA_COVER, 0);
@@ -863,22 +863,33 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
         // 添加圖標
         lv_obj_t *icon = lv_img_create(workout_widget);
         lv_img_set_src(icon, workout_list[i].icon);
-        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 20, -70);
+        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 20, -30);
 
         // 添加運動名稱
         lv_obj_t *label = lv_label_create(workout_widget);
         lv_label_set_text(label, workout_list[i].name);
         lv_obj_set_style_text_color(label, lv_color_white(), 0);
         lv_obj_set_style_text_font(label,
-                                   LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+                                   LV_EXT_FONT_GET(get_system_font_size(1)), 0);
         lv_obj_align_to(label, icon, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 0);
 
-        lv_obj_t *start_label = lv_label_create(workout_widget);
-        lv_label_set_text(start_label, "Start Workout");
-        lv_obj_set_style_text_color(start_label, lv_color_hex(0x9EFE00), 0);
-        lv_obj_set_style_text_font(start_label,
-                                   LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-        lv_obj_align_to(start_label, label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 15);
+        lv_obj_t *start_btn = lv_btn_create(workout_widget);
+        lv_obj_set_size(start_btn, 85, 85);
+        lv_obj_align(start_btn, LV_ALIGN_RIGHT_MID, -10, 0);
+        lv_obj_set_style_radius(start_btn, 45, 0);
+        lv_obj_set_style_bg_color(start_btn, lv_color_hex(0x9EFE00), 0);
+
+        lv_obj_t *start_icon = lv_img_create(start_btn);
+        lv_img_set_src(start_icon, &img_media_play);
+        lv_img_set_zoom(start_icon, 200);
+        lv_obj_align(start_icon, LV_ALIGN_CENTER, 5, 0);
+
+        // lv_obj_t *start_label = lv_label_create(workout_widget);
+        // lv_label_set_text(start_label, "Start Workout");
+        // lv_obj_set_style_text_color(start_label, lv_color_hex(0x9EFE00), 0);
+        // lv_obj_set_style_text_font(start_label,
+        //                            LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+        // lv_obj_align_to(start_label, label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 15);
 
         // 添加點擊事件
         lv_obj_add_event_cb(workout_widget, workout_list_event_cb,
@@ -903,22 +914,24 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_label_set_text(log_label, "本周 0 次運動");
     lv_obj_set_style_text_color(log_label, lv_color_white(), 0);
     lv_obj_set_style_text_font(log_label,
-                               LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_align(log_label, LV_ALIGN_TOP_MID, 0, 50);
 
     total_time = lv_label_create(workout_log_widget);
     lv_label_set_text(total_time, "0:00:00");
     lv_obj_set_style_text_color(total_time, lv_color_hex(0x40A6FF), 0);
     lv_obj_set_style_text_font(total_time,
-                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
     lv_obj_align_to(total_time, log_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
 
     total_calories = lv_label_create(workout_log_widget);
     lv_label_set_text(total_calories, "0 KCAL");
     lv_obj_set_style_text_color(total_calories, lv_color_hex(0xFF4089), 0);
     lv_obj_set_style_text_font(total_calories,
-                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
     lv_obj_align_to(total_calories, total_time, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
+
+    lv_obj_scroll_to_view(workout_log_widget, LV_ANIM_OFF);
 
     statistics_exercise_data();
 
@@ -973,7 +986,7 @@ static lv_obj_t *create_workout_screen(lv_obj_t *parent)
     // 创建计时标签
     ui.timer_label = lv_label_create(workout_screen);
     lv_obj_set_style_text_font(ui.timer_label,
-                               LV_EXT_FONT_GET(get_system_font_size(2)), 0);
+                               LV_EXT_FONT_GET(get_system_font_size(3)), 0);
     lv_obj_align(ui.timer_label, LV_ALIGN_TOP_MID, 0, 70);
     lv_label_set_text(ui.timer_label, "00:00:00");
 
@@ -985,7 +998,7 @@ static lv_obj_t *create_workout_screen(lv_obj_t *parent)
 
     ui.calories_label = lv_label_create(workout_screen);
     lv_obj_set_style_text_font(ui.calories_label,
-                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+                               LV_EXT_FONT_GET(get_system_font_size(2)), 0);
     lv_label_set_text(ui.calories_label, "0");
     lv_obj_align_to(ui.calories_label, cal_label, LV_ALIGN_OUT_BOTTOM_MID, 0,
                     0);
@@ -1000,7 +1013,7 @@ static lv_obj_t *create_workout_screen(lv_obj_t *parent)
 
     ui.heart_rate_label = lv_label_create(workout_screen);
     lv_obj_set_style_text_font(ui.heart_rate_label,
-                               LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_align_to(ui.heart_rate_label, hr_icon, LV_ALIGN_OUT_RIGHT_MID, -7, 0);
     lv_label_set_text(ui.heart_rate_label, "--");
 

@@ -480,7 +480,7 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
             LOG_I("System Wake up");
             last_hcpu_wakeup_time = rt_tick_get_millisecond();
             set_sleep_mode(false);
-            // bloc_battery_read_voltage();
+            bloc_battery_read_voltage();
             // bloc_battery_read_charge_status();
             acce_set_power(RT_SENSOR_POWER_HIGH);
         }
