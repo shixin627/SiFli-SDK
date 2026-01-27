@@ -282,32 +282,32 @@ static void notify_gesture_event(uint32_t gesture)
     // LOG_D("Gesture event %d sent.", gesture);
 }
 
-static void notify_gesture_dataset(uint32_t timestamp, int count, void *data)
-{
-    if (watch_sys_service_env.service == NULL)
-        return;
-    if (is_sleep_mode())
-    {
-        return;
-    }
-#ifdef MSG_SEND_INTERVAL_MS
-    if (!can_send_message())
-        return;
-#endif
+// static void notify_gesture_dataset(uint32_t timestamp, int count, void *data)
+// {
+//     if (watch_sys_service_env.service == NULL)
+//         return;
+//     if (is_sleep_mode())
+//     {
+//         return;
+//     }
+// #ifdef MSG_SEND_INTERVAL_MS
+//     if (!can_send_message())
+//         return;
+// #endif
 
-    LOG_I("notify_gesture_dataset called with count: %d", count);
-    watch_sys_linear_acce_t *acce = (watch_sys_linear_acce_t *)data;
-    int32_t result = 0;
-    static watch_sys_gesture_dataset_rsp_t data_ind;
-    data_ind.timestamp = timestamp;
-    data_ind.count = count;
-    memcpy(data_ind.acce, acce, sizeof(watch_sys_linear_acce_t) * count);
-    result = datas_push_msg_to_client(watch_sys_service_env.service,
-                                      MSG_SERVICE_GESTURE_DATASET_IND,
-                                      sizeof(data_ind), (uint8_t *)&data_ind);
-    RT_ASSERT(0 == result);
-    LOG_D("Gesture dataset %d sent.", count);
-}
+//     LOG_I("notify_gesture_dataset called with count: %d", count);
+//     watch_sys_linear_acce_t *acce = (watch_sys_linear_acce_t *)data;
+//     int32_t result = 0;
+//     static watch_sys_gesture_dataset_rsp_t data_ind;
+//     data_ind.timestamp = timestamp;
+//     data_ind.count = count;
+//     memcpy(data_ind.acce, acce, sizeof(watch_sys_linear_acce_t) * count);
+//     result = datas_push_msg_to_client(watch_sys_service_env.service,
+//                                       MSG_SERVICE_GESTURE_DATASET_IND,
+//                                       sizeof(data_ind), (uint8_t *)&data_ind);
+//     RT_ASSERT(0 == result);
+//     LOG_D("Gesture dataset %d sent.", count);
+// }
 
 // static void notify_gesture_ppg_dataset(uint32_t timestamp, uint16_t count,
 // int16_t (*acce)[3], uint16_t *ppg)
@@ -689,7 +689,7 @@ static void register_watch_sys_service_funs(void)
     watch_sys_sync.lift_status_callback = lift_status_callback;
     // watch_sys_sync.soft_adt_status_callback = notify_soft_adt_status;
     watch_sys_sync.notify_gesture_event = notify_gesture_event;
-    watch_sys_sync.notify_gesture_dataset = notify_gesture_dataset;
+    // watch_sys_sync.notify_gesture_dataset = notify_gesture_dataset;
     // watch_sys_sync.notify_gesture_ppg_dataset = notify_gesture_ppg_dataset;
     watch_sys_sync.notify_health_info = notify_health_info;
     // watch_sys_sync.notify_sleep_state = notify_sleep_state;
