@@ -240,10 +240,8 @@ int main(void)
         }
         else
         {
-            // rgb_color_cycle();
-            // if (battery_get_charge_state()->is_plugged)
+            if (battery_get_charge_state()->is_plugged)
             {
-                // rgb_fade_cycle();
                 rgb_fade_cycle_base_on_battery_level(battery_get_charge_state()->charge_percent);
             }
         }

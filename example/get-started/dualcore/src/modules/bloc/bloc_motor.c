@@ -69,7 +69,7 @@ static const bool enable_motor = true;
     #define SMOOTH_VIBRATION
 
 // 馬達任務相關定義
-    #define MOTOR_TASK_PRIORITY 11
+    #define MOTOR_TASK_PRIORITY 10
     #define MOTOR_TASK_STACK_SIZE 1024
     #define MOTOR_TASK_TIMESLICE 5
 

@@ -140,6 +140,8 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
 #ifdef APP_ID_CALCULATOR
 // app_id_calculator,
 #endif
+    app_id_exercise,      
+    app_id_heart_rate, 
     app_id_recorder,
 #ifdef APP_ID_ACTIVITY
     app_id_activity,

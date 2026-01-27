@@ -182,6 +182,15 @@ int store_exercise_data(workout_session_t *session)
 
     // 取得目前時間
     time(&now);
+    // // 測試用：設定固定時間 2026-01-26 12:00:00
+    // struct tm fixed_tm = {0};
+    // fixed_tm.tm_year = 2025 - 1900;
+    // fixed_tm.tm_mon = 0; // 1月
+    // fixed_tm.tm_mday = 26;
+    // fixed_tm.tm_hour = 12;
+    // fixed_tm.tm_min = 0;
+    // fixed_tm.tm_sec = 0;
+    // now = mktime(&fixed_tm);
     tm_info = localtime(&now);
 
     mkdir("/exercise", 0x777);
