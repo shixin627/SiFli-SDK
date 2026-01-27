@@ -127,6 +127,45 @@ void rc10k_timeout_handler(void *parameter)
     }
 }
 
+#ifdef RT_USING_WDT
+/**
+ * @brief This function is invoked in WDT_IRQHandler.
+ *        It can be overidden to do some work when WDT1 timeout occured.
+ *        Ex. to store exception context and reboot immediately.
+ */
+void wdt_store_exception_information(void)
+{
+    rt_kprintf("LCPH WDT1 timeout occurs.\n");
+    extern void drv_reboot(void);
+    drv_reboot();
+    return;
+}
+
+/**
+ * @brief WDT ON/OFF
+ * @param en 0: OFF 1: ON
+ */
+static void watchdog_set_status(uint8_t en)
+{
+    #ifdef RT_USING_WDT
+    /* Set wdt status 0. */
+    rt_hw_watchdog_set_status(en);
+    /* Avoid repeat set hook. */
+    rt_hw_watchdog_hook(0);
+    if (!en)
+    {
+        /* Stop wdt. */
+        rt_hw_watchdog_deinit();
+    }
+    else
+    {
+        /* Set hook for watchdog petting. */
+        rt_hw_watchdog_hook(1);
+    }
+    #endif
+}
+#endif
+
 int main(void)
 {
     // init_pin();

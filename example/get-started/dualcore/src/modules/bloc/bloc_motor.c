@@ -69,7 +69,7 @@ static const bool enable_motor = true;
     #define SMOOTH_VIBRATION
 
 // 馬達任務相關定義
-    #define MOTOR_TASK_PRIORITY 10
+    #define MOTOR_TASK_PRIORITY 11
     #define MOTOR_TASK_STACK_SIZE 1024
     #define MOTOR_TASK_TIMESLICE 5
 
@@ -325,11 +325,7 @@ static void motor_task_entry(void *parameter)
             if (event & MOTOR_EVENT_START)
             {
                 LOG_D("Motor task received START event");
-    #if (CUSTOMER_BOARD_VER == BOARD_VER_13)
-                LOG_W("Motor is disabled on BOARD_VER_13");
-    #else
                 bloc_motor_vibrate(&g_motor_params);
-    #endif
             }
 
             if (event & MOTOR_EVENT_STOP)
@@ -410,44 +406,6 @@ void motor_vibrate_stop(void)
     }
 }
 
-/// @brief
-/// @param argc
-/// @param argv start [duty cycle] [period(us)] [repeat times]
-/// @return
-
-static int utest_motor_vibrate(int argc, char *argv[])
-{
-    if (strcmp(argv[1], "-start") ==
-        0) // utest_motor_vibrate -start 75 500000 5
-    {
-        int duty_cycle = atoi(argv[2]);
-        if (duty_cycle > 100)
-        {
-            duty_cycle = 100;
-        }
-        else if (duty_cycle < 0)
-        {
-            duty_cycle = 0;
-        }
-        int period = atoi(argv[3]);
-        int repeat_times = atoi(argv[4]);
-        LOG_D("duty_cycle: %d, period: %d, repeat_times: %d", duty_cycle,
-              period, repeat_times);
-        static motor_params_t params;
-        params.duty_cycle = duty_cycle;
-        params.period = period;
-        params.repeat_times = repeat_times;
-        motor_provider.start_motor(&params);
-    }
-    else if (strcmp(argv[1], "-stop") == 0) // utest_motor_vibrate -stop
-    {
-        LOG_D("stop motor");
-        motor_provider.stop_motor();
-    }
-    return RT_EOK;
-}
-MSH_CMD_EXPORT(utest_motor_vibrate, control motor vibrate);
-
     #endif //  #ifndef BSP_USING_PC_SIMULATOR
 
 #endif /* MOTOR_ENABLED */
@@ -511,6 +469,45 @@ static int bloc_motor_register(void)
 INIT_APP_EXPORT(bloc_motor_register);
 
 #if 0
+
+/// @brief
+/// @param argc
+/// @param argv start [duty cycle] [period(us)] [repeat times]
+/// @return
+
+static int utest_motor_vibrate(int argc, char *argv[])
+{
+    if (strcmp(argv[1], "-start") ==
+        0) // utest_motor_vibrate -start 75 500000 5
+    {
+        int duty_cycle = atoi(argv[2]);
+        if (duty_cycle > 100)
+        {
+            duty_cycle = 100;
+        }
+        else if (duty_cycle < 0)
+        {
+            duty_cycle = 0;
+        }
+        int period = atoi(argv[3]);
+        int repeat_times = atoi(argv[4]);
+        LOG_D("duty_cycle: %d, period: %d, repeat_times: %d", duty_cycle,
+              period, repeat_times);
+        static motor_params_t params;
+        params.duty_cycle = duty_cycle;
+        params.period = period;
+        params.repeat_times = repeat_times;
+        motor_provider.start_motor(&params);
+    }
+    else if (strcmp(argv[1], "-stop") == 0) // utest_motor_vibrate -stop
+    {
+        LOG_D("stop motor");
+        motor_provider.stop_motor();
+    }
+    return RT_EOK;
+}
+MSH_CMD_EXPORT(utest_motor_vibrate, control motor vibrate);
+
 static int utest_motor_pwm(int argc, char *argv[])
 {
     if (argc != 2)

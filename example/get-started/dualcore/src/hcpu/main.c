@@ -1483,6 +1483,43 @@ void rc10k_timeout_handler(void *parameter)
 }
 #endif
 
+#ifdef RT_USING_WDT
+/**
+ * @brief This function is invoked in WDT_IRQHandler.
+ *        It can be overidden to do some work when WDT1 timeout occured.
+ *        Ex. to store exception context and reboot immediately.
+ */
+void wdt_store_exception_information(void)
+{
+    rt_kprintf("HCPU WDT1 timeout occurs.\n");
+    return;
+}
+
+/**
+ * @brief WDT ON/OFF
+ * @param en 0: OFF 1: ON
+ */
+static void watchdog_set_status(uint8_t en)
+{
+#ifdef RT_USING_WDT
+    /* Set wdt status 0. */
+    rt_hw_watchdog_set_status(en);
+    /* Avoid repeat set hook. */
+    rt_hw_watchdog_hook(0);
+    if (!en)
+    {
+        /* Stop wdt. */
+        rt_hw_watchdog_deinit();
+    }
+    else
+    {
+        /* Set hook for watchdog petting. */
+        rt_hw_watchdog_hook(1);
+    }
+#endif
+}
+#endif
+
 int main(void)
 {
 #ifdef SF32LB52X
@@ -1490,5 +1527,15 @@ int main(void)
                             rt_tick_from_millisecond(15 * 1000), RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
     rt_timer_start(rc10k_time_handle);
 #endif
+
+#ifdef RT_USING_WDT
+    /* Diable WDT. */
+    watchdog_set_status(0);
+    rt_kprintf("HCPU WDT off.\n");
+    /* Enable WDT. */
+    watchdog_set_status(1);
+    rt_kprintf("HCPU WDT on.(timeout: %d seconds)\n", WDT_TIMEOUT);
+#endif /* RT_USING_WDT */
+
     return RT_EOK;
 }
