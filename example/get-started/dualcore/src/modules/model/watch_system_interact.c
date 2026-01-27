@@ -1077,12 +1077,7 @@ static void handle_power_management(INTERACT_Type type, void *pValue)
     }
     case WATCH_REBOOT:
     {
-        watch_config_struct_flash_write();
-        rt_thread_mdelay(50);
-#ifndef BSP_USING_PC_SIMULATOR
-        extern void drv_reboot(void);
-        drv_reboot();
-#endif
+        peripheral_provider.hcpu_reboot();
         break;
     }
     case STANDBY_WAKEUP:

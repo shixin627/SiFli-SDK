@@ -212,6 +212,12 @@ void audio_stop_playing(void)
 }
         #endif //  #ifndef BSP_USING_PC_SIMULATOR
 
+static void hcpu_reboot(void)
+{
+    PeripheralMessageData data;
+    data.event = HCPU_REBOOT;
+    send_peripheral_data(data);
+}
 static void hcpu_resume(void)
 {
     PeripheralMessageData data;
@@ -425,6 +431,7 @@ static int bloc_peripheral_register(void)
     peripheral_provider.get_tap_status = get_tap_status;
     peripheral_provider.set_tap_status = set_tap_status;
     #ifndef SOC_BF0_LCPU
+    peripheral_provider.hcpu_reboot = hcpu_reboot;
     peripheral_provider.hcpu_resume = hcpu_resume;
     peripheral_provider.hcpu_suspend = hcpu_suspend;
     peripheral_provider.hr_set_power = ppg_sensor_power_control;
@@ -572,6 +579,14 @@ static void peripheral_task_entry(void *parameter)
                 }
             }
             break;
+            case HCPU_REBOOT:
+            {
+                watch_config_struct_flash_write();
+                rt_thread_mdelay(50);
+                extern void drv_reboot(void);
+                drv_reboot();
+                break;
+            }
             case HCPU_RESUME:
             {
                 watch_sys_sync.sync_api_lock(SkaiWatchSys.motion_control_lock);
@@ -586,8 +601,9 @@ static void peripheral_task_entry(void *parameter)
                 watch_sys_sync.notify_system_wakeup();
                 SkaiWatchSys.pre_hcpu_wakeup_tick = rt_tick_get();
                 SkaiWatchSys.sys_power_status = SYS_POWER_STATUS_ON;
+                break;
             }
-            break;
+
             case HCPU_SUSPEND:
             {
                 watch_sys_sync.notify_system_standby();
@@ -599,8 +615,8 @@ static void peripheral_task_entry(void *parameter)
                 accelerometer_unsubscribe();
                 // rt_thread_mdelay(50);
                 SkaiWatchSys.sys_power_status = SYS_POWER_STATUS_SLEEP;
+                break;
             }
-            break;
         #endif // BSP_USING_PC_SIMULATOR
             case POWER_MANAGE_HR:
             {

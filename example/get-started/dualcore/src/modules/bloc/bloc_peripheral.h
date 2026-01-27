@@ -167,6 +167,7 @@ extern "C"
         bool (*get_tap_status)(void);
         void (*set_tap_status)(bool status);
 #ifndef SOC_BF0_LCPU
+        void (*hcpu_reboot)(void);
         void (*hcpu_resume)(void);
         void (*hcpu_suspend)(void);
         void (*subscribe_system_service)(bool status);
@@ -227,6 +228,7 @@ extern "C"
         SET_SCREEN_BRIGHTNESS,
         SET_SCREEN_TIMEOUT,
         REVERSE_WATCH_SCREEN,
+        HCPU_REBOOT,
         HCPU_RESUME,
         HCPU_SUSPEND,
         LIFT_STATUS_CALLBACK,
