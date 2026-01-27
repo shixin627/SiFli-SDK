@@ -20,8 +20,8 @@
 #include "bloc_v2t.h"
 #include "string.h"
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-#include "watch_system_interact.h"
-#include "watch_system_core_task.h"
+    #include "watch_system_interact.h"
+    #include "watch_system_core_task.h"
 #endif
 
 #define DBG_TAG "commu.parse.control"
@@ -34,7 +34,8 @@
  * @param   length: value length
  * @retval  error code
  */
-void resolve_Control_command(uint8_t key, const uint8_t *pValue, uint16_t length)
+void resolve_Control_command(uint8_t key, const uint8_t *pValue,
+                             uint16_t length)
 {
     switch (key)
     {
@@ -134,7 +135,7 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue, uint16_t length
         break;
 
     case KEY_SHUTDOWN:
-        send_sys_interact_event(SYS_EVENT_POWER_OFF);
+        // send_sys_interact_event(SYS_EVENT_POWER_OFF);
         break;
 
     case KEY_SLEEP:
@@ -142,7 +143,7 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue, uint16_t length
         break;
 
     case KEY_WAKEUP:
-        watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
+        watch_system_interact(HCPU_WAKEUP, NULL);
         break;
 
     case KEY_MIC_LISTEN:
@@ -156,7 +157,8 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue, uint16_t length
     break;
     case KEY_APP_RUN:
     {
-        extern void parse_open_app_command(const uint8_t *pValue, uint16_t length);
+        extern void parse_open_app_command(const uint8_t *pValue,
+                                           uint16_t length);
         parse_open_app_command(pValue, length);
     }
     break;

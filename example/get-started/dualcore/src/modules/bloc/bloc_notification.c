@@ -475,16 +475,8 @@ void interact_with_notification(notification_t *notification)
         return;
     }
 
-    if (notification->calling)
-    {
-        motor_pattern_calling();
-    }
-    else
-    {
-        motor_pattern_notification();
-    }
+    watch_system_interact(HCPU_WAKEUP, NULL);
 
-    watch_hcpu_resume_with_reason(0);
     notify_provider.notification_refresh();
     while (is_hcpu_suspend())
     {
@@ -499,6 +491,14 @@ void interact_with_notification(notification_t *notification)
     else if (need_wakeup)
     {
         navigate_notification_info(notification);
+    }
+    if (notification->calling)
+    {
+        motor_pattern_calling();
+    }
+    else
+    {
+        motor_pattern_notification();
     }
     need_wakeup = false;
 }
@@ -834,10 +834,6 @@ static void bloc_notify_charge_status(uint8_t status)
             !is_user_touching_screen()) //
     #endif
         {
-            // if (status != ChargingComplete)
-            // {
-            //     watch_hcpu_resume_with_reason(WAKEUP_REASON_CHARGER);
-            // }
 			if (status == InCharging)
 			{
 				watch_system_interact(INTERACT_RGB_LED_BREATHING_GREEN, NULL);

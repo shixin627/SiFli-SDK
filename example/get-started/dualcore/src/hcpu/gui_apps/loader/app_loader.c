@@ -103,7 +103,6 @@ static void on_resume(void)
     peripheral_provider.subscribe_power_manager(false);
 #endif
 #endif
-    send_sys_interact_event(SYS_EVENT_POWER_ON);
 }
 
 static void on_pause(void)

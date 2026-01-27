@@ -54,6 +54,7 @@
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
 #include "watch_system_core_task.h"
+#include "bloc_peripheral.h"
 #ifdef BSP_USING_UI_HANDLER
 #include "ui_handler.h"
 #endif
@@ -109,7 +110,6 @@ static void notify_sit_alert(void);
 static uint8_t convert_string_to_language_code(char *str);
 
 /* Private function implementations -----------------------------------------*/
-
 /**
  * @brief  Timer callback for delayed preferences storage
  * @param  param: Timer parameter
@@ -117,7 +117,7 @@ static uint8_t convert_string_to_language_code(char *str);
  */
 static void shared_prefs_storage_timer_callback(void *param)
 {
-    store_watch_shared_prefs(key_to_store);
+    peripheral_provider.save_watch_shared_prefs(key_to_store);
 }
 
 /**
@@ -204,7 +204,7 @@ static void set_hour_format(uint8_t format)
     data.event = L1SEND_RETURN_HOUR_FORMAT_SETTING;
     L1_send_event(data);
 
-    store_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
 }
 
 /**
@@ -225,7 +225,7 @@ static void set_watch_time(T_UTC_TIME datetime)
     extern void app_clock_reset_time(void);
     app_clock_reset_time();
 
-    store_watch_shared_prefs(WATCH_PREFS_KEY_GLOBAL_TIME);
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_GLOBAL_TIME);
 }
 
 /* Display functions --------------------------------------------------------*/
@@ -241,7 +241,7 @@ static void notify_brightness(void)
     data.res.lcd_brightness = SkaiWatchSys.brightness;
     L1_send_event(data);
 
-    store_watch_shared_prefs(WATCH_PREFS_KEY_BACKLIGHT_PERCENT);
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_BACKLIGHT_PERCENT);
 }
 
 /**
@@ -278,7 +278,7 @@ static void notify_screen_time(void)
     data.res.lcd_display_time = SkaiWatchSys.oled_display_time;
     L1_send_event(data);
 
-    store_watch_shared_prefs(WATCH_PREFS_KEY_OLED_DISPLAY_TIME);
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_OLED_DISPLAY_TIME);
 }
 
 /**
@@ -344,7 +344,7 @@ static void notify_lift_switch_status(void)
     L1SendData data;
     data.event = L1SEND_RETURN_LIFT_SWITCH_EVENT;
     L1_send_event(data);
-    store_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
 }
 
 /**
@@ -419,7 +419,7 @@ static void notify_language(void)
     L1_send_event(data);
 
     lv_ext_set_locale(NULL, bloc_setting_get_language());
-    store_watch_shared_prefs(WATCH_PREFS_KEY_LANGUAGE);
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_LANGUAGE);
 }
 
 /**
@@ -460,7 +460,7 @@ static void set_dnd_status(uint8_t status)
     data.event = L1SEND_RETURN_DNDM_SETTING;
     L1_send_event(data);
 
-    // store_watch_shared_prefs(WATCH_PREFS_KEY_DNDMODE);
+    // peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_DNDMODE);
 }
 
 /* User profile functions ---------------------------------------------------*/
@@ -471,7 +471,7 @@ static void set_dnd_status(uint8_t status)
  */
 static void notify_user_profile(void)
 {
-    store_watch_shared_prefs(WATCH_PREFS_KEY_USER_DATA);
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_USER_DATA);
     watch_sys_sync.notify_user_profile();
     LOG_D("[UI]User profile updated and synchronized");
 }
@@ -506,7 +506,7 @@ static void set_user_profile(userprofile_union_t profile)
  */
 static void notify_sit_alert(void)
 {
-    store_watch_shared_prefs(WATCH_PREFS_KEY_SIT_ALERT_DATA);
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_SIT_ALERT_DATA);
 }
 
 /**

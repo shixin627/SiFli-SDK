@@ -365,11 +365,11 @@ static void operational_thread_entry(void *parameter)
     {
         watch_system_interact(WATCH_SLEEP, NULL);
         rt_thread_mdelay(1000);
-        watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
+        watch_system_interact(HCPU_WAKEUP, NULL);
         rt_thread_mdelay(1000);
         // send_virtual_gesture_event(GESTURE_EVENT_HAND_RELEASE);
         // animate_to_app_list();
-        gesture_unlock_screen_handler();
+        watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
         rt_thread_mdelay(1000);
         // extern void app_list_scroll_to_app(int8_t action);
         // int app_index = atoi(argv[2]);

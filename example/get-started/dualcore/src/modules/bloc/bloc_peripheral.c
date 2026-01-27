@@ -49,6 +49,8 @@
 #include <math.h>
 #include "bloc_peripheral.h"
 #include "watch_global_data.h"
+#include "watch_system_interact.h"
+#include "bf0_ble_bass.h"
 #ifdef BSP_USING_BLOC_NOTIFY
     #include "bloc_notification.h"
 #endif
@@ -69,11 +71,6 @@
 
 static bool _sleep_mode = false;
 
-bool is_hcpu_suspend(void)
-{
-    return _sleep_mode;
-}
-
 bool is_sleep_mode(void)
 {
 #ifndef SOC_BF0_LCPU
@@ -83,6 +80,8 @@ bool is_sleep_mode(void)
     return _sleep_mode;
 #endif
 }
+
+#ifdef SOC_BF0_LCPU
 void set_sleep_mode(bool mode)
 {
     if (_sleep_mode == mode)
@@ -90,8 +89,14 @@ void set_sleep_mode(bool mode)
         return;
     }
     _sleep_mode = mode;
-    LOG_D("set sleep mode %d\n", mode);
 }
+#else
+
+bool is_hcpu_suspend(void)
+{
+    return SkaiWatchSys.sys_power_status == SYS_POWER_STATUS_OFF;
+}
+#endif
 
 /* tap and hold mode variables */
 static bool enable_tap_and_hold = ENABLE_TAP_AND_HOLD;
@@ -112,7 +117,7 @@ void set_enable_tap_and_hold(bool enable)
 #ifdef SOC_BF0_LCPU
     #define THREAD_STACK_SIZE 2 * 1024
 #else
-    #define THREAD_STACK_SIZE 1 * 1024
+    #define THREAD_STACK_SIZE 4 * 1024
 #endif
 
 #ifndef SOC_BF0_LCPU
@@ -369,6 +374,31 @@ static void control_rgb_led(bool enable, rgb_led_params_t *params)
     send_peripheral_data(data);
 }
 
+static void save_watch_shared_prefs(watch_prefs_key key)
+{
+    PeripheralMessageData data;
+    data.event = SAVE_SHARE_PREFS;
+    data.arg.value = key;
+    send_peripheral_data(data);
+}
+
+static void notify_battery_voltage(uint16_t voltage)
+{
+    PeripheralMessageData data;
+    data.event = NOTIFY_BATTERY_VOLTAGE;
+    data.arg.data = voltage;
+    send_peripheral_data(data);
+}
+
+static bool low_power_warning = false;
+static void charge_status_callback(uint8_t status)
+{
+    PeripheralMessageData data;
+    data.event = CHARGE_STATUS_CALLBACK;
+    data.arg.value = status;
+    send_peripheral_data(data);
+}
+
     #else
 
 static void sensor_power_manage(uint8_t type, uint32_t data)
@@ -417,6 +447,9 @@ static int bloc_peripheral_register(void)
     peripheral_provider.audio_sync = audio_sync;
     peripheral_provider.audio_playback = audio_playback;
     peripheral_provider.control_rgb_led = control_rgb_led;
+    peripheral_provider.save_watch_shared_prefs = save_watch_shared_prefs;
+    peripheral_provider.notify_battery_voltage = notify_battery_voltage;
+    peripheral_provider.charge_status_callback = charge_status_callback;
     #else
     // peripheral_provider.lift_status_callback = send_lift_status_to_client;
     // peripheral_provider.soft_adt_callback = send_soft_adt_status_to_client;
@@ -553,7 +586,6 @@ static void peripheral_task_entry(void *parameter)
                 watch_sys_sync.notify_system_wakeup();
                 SkaiWatchSys.pre_hcpu_wakeup_tick = rt_tick_get();
                 SkaiWatchSys.sys_power_status = SYS_POWER_STATUS_ON;
-                set_sleep_mode(false);
             }
             break;
             case HCPU_SUSPEND:
@@ -567,7 +599,6 @@ static void peripheral_task_entry(void *parameter)
                 accelerometer_unsubscribe();
                 // rt_thread_mdelay(50);
                 SkaiWatchSys.sys_power_status = SYS_POWER_STATUS_SLEEP;
-                set_sleep_mode(true);
             }
             break;
         #endif // BSP_USING_PC_SIMULATOR
@@ -675,6 +706,69 @@ static void peripheral_task_entry(void *parameter)
     #endif
             }
             break;
+
+            case SAVE_SHARE_PREFS:
+            {
+    #ifndef BSP_USING_PC_SIMULATOR
+                watch_prefs_key local_key = (watch_prefs_key)data.arg.value;
+                store_watch_prefs(local_key);
+    #endif
+                break;
+            }
+
+            case NOTIFY_BATTERY_VOLTAGE:
+            {
+    #ifndef BSP_USING_PC_SIMULATOR
+                    // Notify system components about battery status
+        #ifdef BSP_USING_BLOC_NOTIFY
+                notify_provider.battery_voltage(SkaiWatchSys.battery_vol_value);
+                notify_provider.battery_level(SkaiWatchSys.battery_level_value);
+        #endif
+                ble_bass_notify_battery_lvl(SkaiWatchSys.watch_conn_id,
+                                            SkaiWatchSys.battery_level_value);
+
+                // Handle low battery warnings and shutdown
+                if (SkaiWatchSys.battery_level_value <= 1)
+                {
+                    if (!low_power_warning)
+                    {
+                        low_power_warning = true;
+                        LOG_W("Battery level is very low, please charge it.");
+                        watch_system_interact(INTERACT_BAT_LOW_LEVEL,
+                                              &low_power_warning);
+                    }
+                    else if (SkaiWatchSys.battery_level_value == 0)
+                    {
+                        if (SkaiWatchSys.charger_status == InCharging)
+                        {
+                            LOG_W("Battery level is 0, but charging in "
+                                  "progress.");
+                        }
+                        else
+                        {
+                            LOG_W("Battery level is 0, power off.");
+                            // watch_system_interact(INTERACT_POWEROFF, NULL);
+                        }
+                    }
+                }
+                else if (low_power_warning)
+                {
+                    // Clear warning once battery is above critical level
+                    low_power_warning = false;
+                    LOG_I("Battery level is normal.");
+                    watch_system_interact(INTERACT_BAT_LOW_LEVEL,
+                                          &low_power_warning);
+                }
+    #endif
+                break;
+            }
+
+            case CHARGE_STATUS_CALLBACK:
+    #ifdef BSP_USING_BLOC_NOTIFY
+                notify_provider.charge_status(SkaiWatchSys.charger_status);
+    #endif
+                break;
+
             default:
             {
                 LOG_W("unknown peripheral event: %d", data.event);

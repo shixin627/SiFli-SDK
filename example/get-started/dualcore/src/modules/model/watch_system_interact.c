@@ -103,6 +103,64 @@ void set_idle_state(bool state)
     SkaiWatchSys.idle_state = state;
 }
 
+void switch_watch_motion_control_mode(bool enable, bool animation)
+{
+    if (SkaiWatchSys.motion_control_lock == !enable)
+    {
+        return;
+    }
+    SkaiWatchSys.motion_control_lock = !enable;
+    LOG_D("%s %d", __func__, SkaiWatchSys.motion_control_lock);
+    if (animation)
+    {
+        if (enable)
+        {
+            lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_UNGRAB_INDICATOR,
+                              .data.gesture = 1};
+            lvgl_send_msg(msg);
+        }
+        else
+        {
+            lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_UNGRAB_INDICATOR,
+                              .data.gesture = 0};
+            lvgl_send_msg(msg);
+        }
+    }
+    // send_sys_interact_event(SYS_EVENT_WATCH_LOCK);
+    watch_sys_sync.sync_api_lock(SkaiWatchSys.motion_control_lock);
+}
+
+void handle_gesture_unlock(void)
+{
+    if (SkaiWatchSys.sys_power_status == SYS_POWER_STATUS_ON)
+    {
+        lv_disp_trig_activity(NULL);
+    }
+
+    lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_UNGRAB_EVENT};
+    lvgl_send_msg(msg);
+
+    if (gui_app_is_actived(APP_ID_GAME_DINOSAUR))
+    {
+        return;
+    }
+
+    if (is_at_home())
+    {
+        switch_watch_motion_control_mode(true, true);
+        extern void set_open_scrolling_app_flag(bool flag);
+        set_open_scrolling_app_flag(true);
+        extern void set_q_vertical_movement_magnification(float mag);
+        set_q_vertical_movement_magnification(5.0f);
+        watch_system_interact(INTERACT_MOTOR_VIBRATE_UNLOCKED, NULL);
+        animate_to_app_list();
+    }
+    else
+    {
+        switch_watch_motion_control_mode(true, true);
+    }
+}
+
 void motor_pattern_calling(void)
 {
     if (get_motor_switch_state())
@@ -509,8 +567,13 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
 
     case INTERACT_TIMER_REMINDER:
     {
-        watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
-        rt_thread_mdelay(500);
+        // watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
+        if (!gui_is_active())
+        {
+            gui_pm_fsm(GUI_PM_ACTION_BUTTON_CLICKED);
+            peripheral_provider.hcpu_resume();
+            rt_thread_mdelay(500);
+        }
         gui_app_run(APP_ID_TIMER);
         break;
     }
@@ -605,8 +668,8 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
     {
         LOG_D("login success");
         SkaiWatchSys.flag_field.device_had_logged = true;
-        send_sys_interact_event(SYS_EVENT_BATT_VOLTAGE);
-        send_sys_interact_event(SYS_EVENT_BATT_CHARGE);
+        // send_sys_interact_event(SYS_EVENT_BATT_VOLTAGE);
+        // send_sys_interact_event(SYS_EVENT_BATT_CHARGE);
     }
     break;
 
@@ -629,9 +692,9 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
         // reset phone os version
         SkaiWatchSys.phone_os_version = NONE;
         SkaiWatchSys.flag_field.auto_sync_enable = false;
-        store_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
+        peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
         rt_thread_mdelay(300);
-        store_watch_shared_prefs(WATCH_PREFS_KEY_USER_DATA);
+        peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_USER_DATA);
     }
     break;
 
@@ -647,9 +710,11 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
             /*set current user state*/
             SkaiWatchSys.user_data.user_profile.data = 0;
             SkaiWatchSys.gPedoData.daily_step_target = 10000;
-            store_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
+            peripheral_provider.save_watch_shared_prefs(
+                WATCH_PREFS_KEY_FLAG_FIELD);
             rt_thread_mdelay(300);
-            store_watch_shared_prefs(WATCH_PREFS_KEY_USER_DATA);
+            peripheral_provider.save_watch_shared_prefs(
+                WATCH_PREFS_KEY_USER_DATA);
         }
         else
         {
@@ -979,24 +1044,47 @@ static void handle_power_management(INTERACT_Type type, void *pValue)
     switch (type)
     {
     case WATCH_OPEN_DISPLAY:
-        set_watch_ready_to_open_display(true);
+        // set_watch_ready_to_open_display(true);
         break;
     case WATCH_OPEN_DISPLAY_TO_APP_LIST:
-        set_watch_ready_to_open_display(true);
+        // set_watch_ready_to_open_display(true);
         set_user_want_to_open_display_to_app_list(true);
         break;
     case WATCH_PREPARE_SLEEP:
-        send_sys_interact_event(SYS_EVENT_PREPARE_SLEEP);
+        // send_sys_interact_event(SYS_EVENT_PREPARE_SLEEP);
         break;
     case HCPU_WAKEUP:
-        watch_hcpu_resume_with_reason(*(uint8_t *)pValue);
+    {
+        // watch_hcpu_resume_with_reason(*(uint8_t *)pValue);
+        if (!gui_is_active())
+        {
+            gui_pm_fsm(GUI_PM_ACTION_BUTTON_CLICKED);
+            peripheral_provider.hcpu_resume();
+        }
         break;
+    }
     case WATCH_SLEEP:
-        send_sys_interact_event(SYS_EVENT_HCPU_SUSPEND);
+    {
+        // send_sys_interact_event(SYS_EVENT_HCPU_SUSPEND);
+        peripheral_provider.hcpu_suspend();
+        gui_pm_fsm(GUI_PM_ACTION_SLEEP);
         break;
+    }
+    case WATCH_GESTURE_UNLOCK:
+    {
+        handle_gesture_unlock();
+        break;
+    }
     case WATCH_REBOOT:
-        send_sys_interact_event(SYS_EVENT_REBOOT_SYS);
+    {
+        watch_config_struct_flash_write();
+        rt_thread_mdelay(50);
+#ifndef BSP_USING_PC_SIMULATOR
+        extern void drv_reboot(void);
+        drv_reboot();
+#endif
         break;
+    }
     case STANDBY_WAKEUP:
     {
         SkaiWatchSys.sys_power_status = 0;
@@ -1206,7 +1294,7 @@ static int set_watch_system(int argc, char *argv[])
         }
         else if (strcmp(argv[1], "-shutdown") == 0)
         {
-            send_sys_interact_event(SYS_EVENT_POWER_OFF);
+            LOG_D("TODO:Shutting down the watch...");
         }
         else if (strcmp(argv[1], "-reboot_hcpu") == 0)
         {
@@ -1214,18 +1302,12 @@ static int set_watch_system(int argc, char *argv[])
         }
         else if (strcmp(argv[1], "-reboot_lcpu") == 0)
         {
-            send_sys_interact_event(SYS_EVENT_REBOOT_LCPU);
+            LOG_D("TODO:Rebooting the LCPU...");
         }
         else if (strcmp(argv[1], "-sleep") == 0)
         {
             watch_system_interact(WATCH_SLEEP, NULL);
         }
-        // else if (strcmp(argv[1], "-clean_img") == 0)
-        // {
-        //   LOG_D("Invalidate image cache for src: %s", argv[2]);
-        //   lv_img_cache_invalidate_src(argv[2]);
-        // }
-
         // ----- Bluetooth
         else if (strcmp(argv[1], "-set_ble_rf") == 0)
         {

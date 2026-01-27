@@ -517,7 +517,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
             rt_tick_t cost_tick = tick_time_end - tick_time_start;
             if (release_recognition_score > gesture_recognition_threshold)
             {
-                gesture_unlock_screen_handler();
+                watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
                 LOG_D("recognize release gesture cost_tick:%d, score:%d",
                       cost_tick, release_recognition_score);
             }
@@ -620,7 +620,7 @@ static int utest_gesture(int argc, char *argv[])
     {
         if (strcmp(argv[1], "release") == 0)
         {
-            gesture_unlock_screen_handler();
+            watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
         }
         else if (strcmp(argv[1], "tap") == 0)
         {

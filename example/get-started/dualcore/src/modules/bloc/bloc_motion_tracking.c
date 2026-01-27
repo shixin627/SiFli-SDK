@@ -814,7 +814,7 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     if (imu_raw_data_collection)
     {
         store_gesture_sample(&release_dataset, rt_tick_get_millisecond(),
-                             &linear_acce, ppg_rawdata,
+                             linear_acce, gravity, ppg_rawdata,
                              waveform_gesture_state.on_pressed);
         if (release_dataset.gesture_sample_count >= MAX_RAWDATA_TIME_STEP)
         {

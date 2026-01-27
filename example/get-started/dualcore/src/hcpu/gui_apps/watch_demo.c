@@ -102,20 +102,14 @@ static void handle_back_in_mainmenu(bool is_button)
 extern void note_list_handle_back(void);
 static void handle_back_event(bool is_button)
 {
-    if (get_idle_state() && get_sys_power_status() == SYS_POWER_STATUS_ON)
-    {
-        watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
-    }
-    // else if (gui_app_is_actived(APP_ID_BATTERY) ||
-    // gui_app_is_actived(APP_ID_MESSAGE) ||
-    // gui_app_is_actived(APP_ID_APP_LIST))
-    // {
-    //     gui_app_goback();
-    // }
-    else if (is_ble_dfu_thread_running())
+    if (is_ble_dfu_thread_running())
     {
         LOG_I("ESC in ble dfu => return");
         return;
+    }
+    else if (SkaiWatchSys.sys_power_status == SYS_POWER_STATUS_ON)
+    {
+        lv_disp_trig_activity(NULL);
     }
     else if (gui_app_is_actived(APP_ID_SPEECH))
     {
@@ -176,7 +170,6 @@ static void handle_back_event(bool is_button)
         handle_back_in_mainmenu(is_button);
     }
 }
-
 
 void ui_layer_top_builder(void)
 {
@@ -600,7 +593,9 @@ static void button_event_task_entry(struct _lv_timer_t *task)
     //     }
     // }
 
-    if (lv_disp_get_inactive_time(NULL) > limit_time && setting_provider.get_power_save_mode() && !pause_sleep_cause_of_dev_reson())
+    if (lv_disp_get_inactive_time(NULL) > limit_time &&
+        setting_provider.get_power_save_mode() &&
+        !pause_sleep_cause_of_dev_reson())
     {
         peripheral_provider.hcpu_suspend();
         gui_pm_fsm(GUI_PM_ACTION_SLEEP);
@@ -653,7 +648,6 @@ static void pm_event_handler(gui_pm_event_type_t event)
     #define rt_pm_release(mode)
 #endif /* BSP_USING_PM */
 
-
 /* Touch event callback - directly called from driver */
 static void on_touch_event(uint8_t event, uint16_t x, uint16_t y)
 {
@@ -669,7 +663,8 @@ static void on_touch_gesture(touch_gesture_t gesture, uint16_t x, uint16_t y)
     case TOUCH_GESTURE_PRESSED:
         LOG_D("Touch pressed at (%d, %d)", x, y);
         // Handle initial touch moment if needed
-        // if (get_idle_state() && get_sys_power_status() == SYS_POWER_STATUS_ON)
+        // if (get_idle_state() && get_sys_power_status() ==
+        // SYS_POWER_STATUS_ON)
         // {
         //     watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
         // }
@@ -765,16 +760,16 @@ void app_watch_entry(void *parameter)
     ui_datac_init();
     app_message_data_init();
     app_speech_data_init();
-// #ifndef BSP_USING_PC_SIMULATOR
+    // #ifndef BSP_USING_PC_SIMULATOR
     watch_config_struct_flash_read();
     rt_thread_mdelay(30);
     save_device_address_to_fs();
-// #else
-//     extern void get_notification_list_from_template(void);
-//     get_notification_list_from_template();
-//     extern void get_messages_list_from_template(void);
-//     get_messages_list_from_template();
-// #endif
+    // #else
+    //     extern void get_notification_list_from_template(void);
+    //     get_notification_list_from_template();
+    //     extern void get_messages_list_from_template(void);
+    //     get_messages_list_from_template();
+    // #endif
     bloc_setting_load_watch_system();
     // bloc_system_schedule_init();
     load_note_list_from_file();

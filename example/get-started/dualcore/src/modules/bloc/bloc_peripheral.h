@@ -193,6 +193,10 @@ extern "C"
         void (*rgb_led_set_color)(rgb_color_t color, uint8_t brightness);
         void (*rgb_led_set_animation)(rgb_animation_mode_t mode);
         void (*rgb_led_off)(void);
+        // save shared prefs
+        void (*save_watch_shared_prefs)(watch_prefs_key key);
+        void (*notify_battery_voltage)(uint16_t voltage_mv);
+        void (*charge_status_callback)(uint8_t status);
 #else
 
     void (*lift_status_callback)(uint8_t status);
@@ -219,7 +223,6 @@ extern "C"
         RECORD_AUDIO_MIC,
         SYNC_RECORD_AUDIO,
         PLAY_AUDIO_SPEAKER,
-        REQUEST_BATTERY_VOLTAGE,
         SUBSCRIBE_POWERMANAGER,
         SET_SCREEN_BRIGHTNESS,
         SET_SCREEN_TIMEOUT,
@@ -233,6 +236,10 @@ extern "C"
         POWER_MANAGE_HR,
         CONTROL_MOTOR,
         CONTROL_RGB_LED,
+        SAVE_SHARE_PREFS,
+        NOTIFY_BATTERY_VOLTAGE,
+        CHARGE_STATUS_CALLBACK,
+
     } PeripheralEvent;
 
     /// @brief peripheral message arg

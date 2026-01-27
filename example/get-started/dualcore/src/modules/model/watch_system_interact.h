@@ -213,6 +213,7 @@ extern void BLE_LOG_E(const char *format, ...);
         HCPU_WAKEUP,
         WATCH_OPEN_DISPLAY,
         WATCH_OPEN_DISPLAY_TO_APP_LIST,
+        WATCH_GESTURE_UNLOCK,
         WATCH_REBOOT,
         STANDBY_WAKEUP,
         WATCH_POWER_MANAGE,

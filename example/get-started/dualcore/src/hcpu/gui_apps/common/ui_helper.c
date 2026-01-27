@@ -58,8 +58,9 @@
 #include "common_widget.h"
 #include "app_mainmenu.h"
 #include "ui_handler.h"
-#include "watch_system_core_task.h"
+#include "watch_system_interact.h"
 #include "app_schedule_port.h"
+
 /* Debug configuration */
 #define DBG_TAG "app.ui_helper"
 #define DBG_LVL DBG_LOG
@@ -309,7 +310,7 @@ uint8_t get_system_font_size(int adjust)
 void watch_run_app_by_intent(AppIntent *appIntent)
 {
     LOG_I("Running app: ID=%s, Param=%s", appIntent->app_id, appIntent->intent);
-    watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
+    watch_system_interact(HCPU_WAKEUP, NULL);
     rt_thread_mdelay(200);
     if (appIntent == NULL)
     {
@@ -699,6 +700,18 @@ void handle_download_progress_update(int progress)
 			gui_app_exit(APP_ID_INTERACT);
 		}
 	}
+}
+
+
+static bool open_display_to_app_list = false;
+bool is_user_want_to_open_display_to_app_list(void)
+{
+  return open_display_to_app_list;
+}
+
+void set_user_want_to_open_display_to_app_list(bool state)
+{
+  open_display_to_app_list = state;
 }
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF

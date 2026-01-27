@@ -739,14 +739,6 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         }
         break;
 
-    case LVGL_MSG_TYPE_OPEN_STANDBY_PAGE:
-        gui_set_brightness(10, false);
-        break;
-
-    case LVGL_MSG_TYPE_CLOSE_STANDBY_PAGE:
-        gui_set_brightness(SkaiWatchSys.brightness, false);
-        break;
-
     case LVGL_MSG_TYPE_CLEAR_NOTIFICATION_BAR_INDICATOR:
         if (lvgl_msg_handler.handle_clear_notification_bar_indicator)
         {

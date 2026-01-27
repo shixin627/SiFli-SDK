@@ -164,6 +164,8 @@ extern "C"
     extern void show_speech_indicator(bool show);
     extern void show_ai_processing_indicator(bool show);
     extern void handle_download_progress_update(int progress);
+    extern bool is_user_want_to_open_display_to_app_list(void);
+    extern void set_user_want_to_open_display_to_app_list(bool state);
 
 #ifdef __cplusplus
 } /*extern "C"*/

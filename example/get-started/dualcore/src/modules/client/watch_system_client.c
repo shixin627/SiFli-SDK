@@ -65,7 +65,6 @@
 #include "watch_system_interact.h"
 #include "watch_system_core_task.h"
 #endif
-#include "bf0_ble_bass.h"
 #include "bsp_board.h"
 #include "math.h"
 #ifdef BSP_USING_GESTURE_HANDLER
@@ -84,13 +83,7 @@
 #define ENABLE_IMU_SENSOR 1
 #define ENABLE_MAG_SENSOR 0
 #define ENABLE_PPG_SENSOR 1
-#define ENABLE_BATTERY_MONITOR 1
 #define ENABLE_CHARGE_MONITOR 1
-
-#if ENABLE_BATTERY_MONITOR
-
-#define LOW_POWER_WARNING_SWITCH 1
-#endif
 
 //////////////////// Watch System Client ////////////////////
 watch_sys_sync_t watch_sys_sync;
@@ -138,16 +131,10 @@ bool is_ppg_enabled(void)
 }
 #endif
 
-#if ENABLE_BATTERY_MONITOR
-
-static bool low_power_warning = false;
-static uint16_t last_battery_vol_value = 0;
-
 static void set_battery_voltage(uint16_t voltage, uint16_t percentage)
 {
     if (voltage != SkaiWatchSys.battery_vol_value)
     {
-        last_battery_vol_value = SkaiWatchSys.battery_vol_value;
         SkaiWatchSys.battery_vol_value = voltage;
     }
     if (percentage != SkaiWatchSys.battery_level_value)
@@ -155,58 +142,6 @@ static void set_battery_voltage(uint16_t voltage, uint16_t percentage)
         SkaiWatchSys.battery_level_value = percentage;
     }
 }
-
-/**
- * @brief Process battery voltage and update system state
- *
- * This function:
- * 1. Calculates battery level from voltage
- * 2. Updates system state variables
- * 3. Sends notifications to BLE and system modules
- * 4. Handles low battery warnings and shutdown if needed
- */
-void notify_battery_voltage(void)
-{
-    // Notify system components about battery status
-#ifdef BSP_USING_BLOC_NOTIFY
-    notify_provider.battery_voltage(SkaiWatchSys.battery_vol_value);
-    notify_provider.battery_level(SkaiWatchSys.battery_level_value);
-#endif
-    ble_bass_notify_battery_lvl(SkaiWatchSys.watch_conn_id, SkaiWatchSys.battery_level_value);
-
-#if LOW_POWER_WARNING_SWITCH
-    // Handle low battery warnings and shutdown
-    if (SkaiWatchSys.battery_level_value <= 1)
-    {
-        if (!low_power_warning)
-        {
-            low_power_warning = true;
-            LOG_W("Battery level is very low, please charge it.");
-            watch_system_interact(INTERACT_BAT_LOW_LEVEL, &low_power_warning);
-        }
-        else if (SkaiWatchSys.battery_level_value == 0)
-        {
-            if (SkaiWatchSys.charger_status == InCharging)
-            {
-                LOG_W("Battery level is 0, but charging in progress.");
-            }
-            else
-            {
-                LOG_W("Battery level is 0, power off.");
-                // watch_system_interact(INTERACT_POWEROFF, NULL);
-            }
-        }
-    }
-    else if (low_power_warning)
-    {
-        // Clear warning once battery is above critical level
-        low_power_warning = false;
-        LOG_I("Battery level is normal.");
-        watch_system_interact(INTERACT_BAT_LOW_LEVEL, &low_power_warning);
-    }
-#endif
-}
-#endif
 
 extern int get_gravity_position(void);
 
@@ -224,7 +159,8 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         uint16_t percentage = data_ntf_ind->data & 0xFFFF;
         uint32_t vol = data_ntf_ind->data >> 16;
         set_battery_voltage(vol, percentage);
-        send_sys_interact_event(SYS_EVENT_BATT_VOLTAGE);
+        // send_sys_interact_event(SYS_EVENT_BATT_VOLTAGE);
+        peripheral_provider.notify_battery_voltage(vol);
         break;
     }
     case MSG_SERVICE_BATTERY_DATA_RSP:
@@ -236,7 +172,8 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         uint16_t percentage = data_rsp->data & 0xFFFF;
         uint16_t vol = data_rsp->data >> 16;
         set_battery_voltage(vol, percentage);
-        send_sys_interact_event(SYS_EVENT_BATT_VOLTAGE);
+        // send_sys_interact_event(SYS_EVENT_BATT_VOLTAGE);
+        peripheral_provider.notify_battery_voltage(vol);
         break;
     }
     case MSG_SERVICE_BATTERY_DATA_IND:
@@ -248,7 +185,8 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         uint16_t percentage = data_ind->data & 0xFFFF;
         uint16_t vol = data_ind->data >> 16;
         set_battery_voltage(vol, percentage);
-        send_sys_interact_event(SYS_EVENT_BATT_VOLTAGE);
+        // send_sys_interact_event(SYS_EVENT_BATT_VOLTAGE);
+        peripheral_provider.notify_battery_voltage(vol);
         break;
     }
     case MSG_SERVICE_CHARGE_STATE_IND:
@@ -259,7 +197,8 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         RT_ASSERT(data_ind);
         uint8_t status = data_ind->data;
         SkaiWatchSys.charger_status = status;
-        send_sys_interact_event(SYS_EVENT_BATT_CHARGE);
+        // send_sys_interact_event(SYS_EVENT_BATT_CHARGE);
+        peripheral_provider.charge_status_callback(status);
         break;
     }
     case MSG_SERVICE_IMU_STATE_IND:
@@ -307,19 +246,23 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
             {
                 if (!is_sleep_mode())
                 {
-                    watch_system_interact(WATCH_PREPARE_SLEEP, NULL);
+                    // watch_system_interact(WATCH_PREPARE_SLEEP, NULL);
+                    watch_system_interact(WATCH_SLEEP, NULL);
                 }
             }
         }
         else if (status == 2) // 正常抬腕
         {
-            watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
+            // watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
+            SkaiWatchSys.flag_field.is_wearing = true;
+            watch_system_interact(HCPU_WAKEUP, NULL);
         }
         else if (status == 3) // 往內旋解鎖
         {
             if (!is_ble_dfu_thread_running())
             {
-                watch_hcpu_resume_with_reason(WAKEUP_REASON_ROTATE_INWARD);
+                // watch_hcpu_resume_with_reason(WAKEUP_REASON_ROTATE_INWARD);
+                send_virtual_gesture_event(GESTURE_EVENT_WRIST_PRONATION);
             }
         }
         break;

@@ -309,7 +309,7 @@ static void handle_double_tap(rt_tick_t ts)
   set_gesture(ts, gesture_double_tap);
   control_provider.trigger_finger_event(0);
   peripheral_provider.set_tap_status(false);
-  gesture_unlock_screen_handler();
+  watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
 }
 #endif
 
@@ -335,10 +335,6 @@ static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
     if ((gesture_detect_state == gesture_wrist_pronation || gesture_detect_state == gesture_hand_release || gesture_detect_state == gesture_back) && current_time - last_gesture_time < 600)
     {
       return;
-    }
-    if (get_idle_state())
-    {
-      watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
     }
     handle_finger_pressed(current_time);
   }
@@ -418,14 +414,17 @@ static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
     }
 
     set_gesture(current_time, gesture_wrist_pronation);
-    if ((lv_disp_get_rotation(NULL) == LV_DISP_ROT_NONE || lv_disp_get_rotation(NULL) == LV_DISP_ROT_180) && !is_at_speech_interface() && !is_at_ai_interface() && !is_at_control_center())
+    if (!gui_app_is_actived(APP_ID_MAIN))
     {
-#ifndef BSP_USING_PC_SIMULATOR
-      // force_release_finger();
-#endif
-      // animate_to_app_list();
-      LOG_D("open app LIST");
-      animate_to_message_list();
+      gui_app_run("Main");
+    }
+    else
+    {
+      if (is_at_home())
+      {
+        switch_watch_motion_control_mode(true, true);
+        animate_to_message_list();
+      }
     }
     break;
   }
@@ -440,7 +439,7 @@ static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
     }
 
     set_gesture(current_time, gesture_hand_release);
-    gesture_unlock_screen_handler();
+    watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
     break;
   }
 
@@ -601,7 +600,7 @@ static int utest_gesture(int argc, char *argv[])
   }
   else if (strcmp(argv[1], "-release") == 0)
   {
-    gesture_unlock_screen_handler();
+    watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
     return 0;
   }
   else if (strcmp(argv[1], "-send") == 0)
