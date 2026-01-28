@@ -137,22 +137,6 @@ static void display_time_changed_timer_start(uint16_t display_time)
 	rt_timer_start(smooth_display_changed_timer);
 }
 
-static void rotate_screen(void)
-{
-	peripheral_provider.reverse_watch_screen(true);
-}
-
-static void control_screen_brightness(uint16_t brightness)
-{
-	if (cur_brightness == brightness || brightness > 100 || brightness < 10)
-	{
-		return;
-	}
-	cur_brightness = brightness;
-	peripheral_provider.set_screen_brightness(SkaiWatchSys.brightness);
-	LOG_D("control_screen_brightness %d", cur_brightness);
-}
-
 static void set_screen_brightness_smoothly(uint16_t brightness)
 {
 	if (cur_brightness == brightness || brightness > 100 || brightness < 3)
@@ -178,7 +162,7 @@ static void control_screen_time(uint16_t time)
 	{
 		cur_screen_time = time;
 		LOG_D("control_screen_time %d", cur_screen_time);
-		peripheral_provider.set_screen_timeout(cur_screen_time);
+		gui_set_screen_timeout(cur_screen_time);
 	}
 }
 
@@ -1020,10 +1004,7 @@ static int bloc_control_provider_register(void)
 	control_provider.get_media_title = get_media_title;
 	control_provider.take_photo = take_photo;
 	control_provider.find_phone = find_phone;
-	control_provider.rotate_screen = rotate_screen;
-	control_provider.screen_brightness = control_screen_brightness;
 	control_provider.screen_brightness_smoothly = set_screen_brightness_smoothly;
-	control_provider.screen_time = control_screen_time;
 	control_provider.screen_time_smoothly = set_screen_time_smoothly;
 	return 0;
 }

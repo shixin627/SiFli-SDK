@@ -160,11 +160,6 @@ extern void ppg_subscribe(void);
 extern void ppg_unsubscribe(void);
 extern void audio_subscribe(void);
 extern void audio_unsubscribe(void);
-extern void powermgr_subscribe(int todo_count);
-extern void powermgr_unsubscribe(void);
-extern void powermgr_set_screen_brightness(uint16_t brightness);
-extern void powermgr_set_screen_timeout(uint16_t timeout);
-extern void powermgr_reverse_watch_screen(void);
 
         #ifdef BSP_USING_PC_SIMULATOR
 void heart_rate_subscribe(void)
@@ -252,38 +247,6 @@ static void subscribe_magnetometer_sensor(bool status)
 {
     PeripheralMessageData data;
     data.event = SUBSCRIBE_MAGNETOMETER;
-    data.arg.subscribe_status = status;
-    send_peripheral_data(data);
-}
-
-static void subscribe_power_manager(uint16_t todo_count)
-{
-    PeripheralMessageData data;
-    data.event = SUBSCRIBE_POWERMANAGER;
-    data.arg.value = todo_count;
-    send_peripheral_data(data);
-}
-
-static void set_screen_brightness(uint16_t brightness)
-{
-    PeripheralMessageData data;
-    data.event = SET_SCREEN_BRIGHTNESS;
-    data.arg.value = brightness;
-    send_peripheral_data(data);
-}
-
-static void set_screen_timeout(uint16_t timeout)
-{
-    PeripheralMessageData data;
-    data.event = SET_SCREEN_TIMEOUT;
-    data.arg.value = timeout;
-    send_peripheral_data(data);
-}
-
-static void reverse_watch_screen(bool status)
-{
-    PeripheralMessageData data;
-    data.event = REVERSE_WATCH_SCREEN;
     data.arg.subscribe_status = status;
     send_peripheral_data(data);
 }
@@ -389,10 +352,6 @@ static int bloc_peripheral_register(void)
     peripheral_provider.subscribe_gyroscope_sensor = subscribe_gyroscope_sensor;
     peripheral_provider.subscribe_magnetometer_sensor =
         subscribe_magnetometer_sensor;
-    peripheral_provider.subscribe_power_manager = subscribe_power_manager;
-    peripheral_provider.set_screen_brightness = set_screen_brightness;
-    peripheral_provider.set_screen_timeout = set_screen_timeout;
-    peripheral_provider.reverse_watch_screen = reverse_watch_screen;
     peripheral_provider.subscribe_hr_sensor = subscribe_hr_sensor;
     peripheral_provider.subscribe_ppg_signal = subscribe_ppg_signal;
     peripheral_provider.control_motor = control_motor_vibration;
@@ -486,36 +445,6 @@ static void peripheral_task_entry(void *parameter)
             }
             break;
         #ifndef BSP_USING_PC_SIMULATOR
-            case SUBSCRIBE_POWERMANAGER:
-            {
-                if (data.arg.value)
-                {
-                    powermgr_subscribe(data.arg.value);
-                }
-                else
-                {
-                    powermgr_unsubscribe();
-                }
-            }
-            break;
-            case SET_SCREEN_BRIGHTNESS:
-            {
-                powermgr_set_screen_brightness(data.arg.value);
-            }
-            break;
-            case SET_SCREEN_TIMEOUT:
-            {
-                powermgr_set_screen_timeout(data.arg.value);
-            }
-            break;
-            case REVERSE_WATCH_SCREEN:
-            {
-                if (data.arg.subscribe_status)
-                {
-                    powermgr_reverse_watch_screen();
-                }
-            }
-            break;
             case HCPU_REBOOT:
             {
                 watch_config_struct_flash_write();

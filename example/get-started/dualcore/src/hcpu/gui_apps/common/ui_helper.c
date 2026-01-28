@@ -511,6 +511,16 @@ void animate_to_next_col_page(lv_obj_t *tv, uint8_t *current_page,
     }
 }
 
+void datac_send_data(datac_handle_t handle, uint16_t msg_id, uint8_t *data, uint16_t data_len)
+{
+    data_msg_t msg;
+    uint8_t *msg_payload;
+
+    msg_payload = data_service_init_msg(&msg, msg_id, data_len);
+    memcpy(msg_payload, data, data_len);
+    datac_send_msg(handle, &msg);
+}
+
 /**
  * @brief Rotate screen to 90 degrees
  *

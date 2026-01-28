@@ -83,26 +83,6 @@ static void on_start(lv_obj_t *scr)
 extern void handle_wakeup_event(void);
 static void on_resume(void)
 {
-#ifndef BSP_USING_PC_SIMULATOR
-#ifdef CUSTOMER_BOARD
-#ifdef WATCH_DISPLAY_REVERSE_180
-    peripheral_provider.subscribe_power_manager(3);
-    control_provider.screen_brightness(SkaiWatchSys.brightness);
-    control_provider.screen_time(SkaiWatchSys.oled_display_time);
-    control_provider.rotate_screen();
-#else
-    peripheral_provider.subscribe_power_manager(2);
-    control_provider.screen_brightness(SkaiWatchSys.brightness);
-    control_provider.screen_time(SkaiWatchSys.oled_display_time);
-#endif
-    peripheral_provider.subscribe_power_manager(false);
-#else
-    peripheral_provider.subscribe_power_manager(2);
-    control_provider.screen_brightness(SkaiWatchSys.brightness);
-    control_provider.screen_time(SkaiWatchSys.oled_display_time);
-    peripheral_provider.subscribe_power_manager(false);
-#endif
-#endif
 }
 
 static void on_pause(void)

@@ -1006,7 +1006,7 @@ static void handle_system_settings(INTERACT_Type type, void *pValue)
     {
         uint8_t brightness = *(uint8_t *)pValue;
         LOG_D("[WATCH_BRIGHTNESS_SET] Brightness:%d", brightness);
-        control_provider.screen_brightness(brightness);
+        gui_set_brightness(brightness, true);
         break;
     }
     case TIME_FORMAT_SET:

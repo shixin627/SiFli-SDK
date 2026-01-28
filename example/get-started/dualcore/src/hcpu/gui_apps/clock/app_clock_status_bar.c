@@ -754,6 +754,7 @@ static void handle_media_title(void *param)
 
 static datac_handle_t pwr_srv_hdl = DATA_CLIENT_INVALID_HANDLE;
 static lv_obj_t *brightness_bar;
+
 static int powermgr_srv_callback(data_callback_arg_t *arg)
 {
     if (!lv_obj_is_valid(brightness_bar) &&
@@ -847,6 +848,13 @@ void gui_set_brightness(uint16_t brightness, bool user_action)
         control_provider.screen_brightness_smoothly(brightness);
 #endif
     }
+}
+
+void gui_set_screen_timeout(uint16_t timeout_sec)
+{
+    subscribe_pwr_service();
+    datac_send_data(pwr_srv_hdl, PWRMGR_MSG_LCD_AUTO_OFF_TIME_SET_REQ,
+                    (uint8_t *)&timeout_sec, sizeof(uint16_t));
 }
 
 void gui_set_screen_rotation(uint8_t rotation)

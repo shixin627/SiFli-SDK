@@ -173,11 +173,6 @@ extern "C"
         void (*subscribe_accelerometer_sensor)(bool status);
         void (*subscribe_gyroscope_sensor)(bool status);
         void (*subscribe_magnetometer_sensor)(bool status);
-        void (*subscribe_power_manager)(uint16_t todo_count);
-        void (*set_screen_brightness)(uint16_t brightness);
-        void (*set_screen_brightness_smoothly)(uint16_t brightness);
-        void (*set_screen_timeout)(uint16_t timeout);
-        void (*reverse_watch_screen)(bool status);
         void (*subscribe_hr_sensor)(bool status);
         void (*subscribe_ppg_signal)(bool status);
         void (*control_motor)(bool enable, motor_params_t *params);

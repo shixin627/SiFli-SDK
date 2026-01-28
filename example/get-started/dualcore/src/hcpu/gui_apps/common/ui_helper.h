@@ -110,6 +110,7 @@ extern "C"
     void animate_to_prev_col_page(lv_obj_t *tv, uint8_t *current_page);
     void animate_to_next_col_page(lv_obj_t *tv, uint8_t *current_page, uint8_t max_page);
 
+    extern void datac_send_data(datac_handle_t handle, uint16_t msg_id, uint8_t *data, uint16_t data_len);
     extern void screen_rotate_to_90_degree(void);
     extern void screen_rotate_back_to_original_direction(void);
 

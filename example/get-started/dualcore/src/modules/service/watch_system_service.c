@@ -55,8 +55,6 @@
 // #include "bloc_peripheral.h"
 // #include "bloc_motor.h"
 #include "bloc_rgb_led.h"
-// #include "gesture_detect.h"
-// #include "gesture_handler.h"
 #ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
     #include "activity.h"
     #include "activity_private.h"

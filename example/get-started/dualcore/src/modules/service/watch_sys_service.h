@@ -193,13 +193,11 @@ extern "C"
     void (*lift_status_callback)(uint8_t status);
     void (*soft_adt_status_callback)(bool status);
     void (*notify_gesture_event)(uint32_t gesture);
-    void (*notify_gesture_dataset)(uint32_t timestamp, int count, void *data);
-    void (*notify_gesture_ppg_dataset)(uint32_t timestamp, uint16_t count,
-                                       int16_t (*acce)[3], uint16_t *ppg);
+    // void (*notify_gesture_dataset)(uint32_t timestamp, int count, void *data);
+    // void (*notify_gesture_ppg_dataset)(uint32_t timestamp, uint16_t count,
+    //                                    int16_t (*acce)[3], uint16_t *ppg);
     void (*notify_health_info)(void); // units: steps, (m), (cal)
-    // void (*notify_sleep_state)(uint8_t mode, uint32_t timestamp);
-    void (*notify_sleep_state)(uint32_t total_seconds,
-                               uint32_t total_restful_seconds);
+    void (*notify_sleep_state)(uint8_t mode, uint32_t timestamp);
     void (*notify_minute_of_activity)(time_t utc_now, uint8_t steps,
                                       uint8_t orientation, uint16_t vmc);
     void (*notify_debug_log)(char *log);
@@ -213,8 +211,6 @@ extern "C"
     extern watch_sys_sync_t watch_sys_sync;
     int SubscribeDualCoreSyncService(void);
     int UnsubscribeDualCoreSyncService(void);
-    extern void datac_send_data(datac_handle_t handle, uint16_t msg_id,
-                                uint8_t *data, uint16_t data_len);
 
 #ifdef __cplusplus
 }

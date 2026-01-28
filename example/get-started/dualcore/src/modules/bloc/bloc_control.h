@@ -150,10 +150,7 @@ extern "C"
         void (*take_photo)(void);
         void (*find_phone)(void);
         // screen
-        void (*rotate_screen)(void);
-        void (*screen_brightness)(uint16_t brightness);
         void (*screen_brightness_smoothly)(uint16_t brightness);
-        void (*screen_time)(uint16_t time);
         void (*screen_time_smoothly)(uint16_t time);
     } ControlProvider;
     extern ControlProvider control_provider;

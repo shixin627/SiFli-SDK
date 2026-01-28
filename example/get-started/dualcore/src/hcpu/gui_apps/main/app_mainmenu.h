@@ -70,6 +70,7 @@ bool is_at_speech_interface(void);
 bool get_need_open_gesture_control(void);
 void set_need_open_gesture_control(bool need);
 extern void gui_set_brightness(uint16_t brightness, bool user_action);
+extern void gui_set_screen_timeout(uint16_t timeout_sec);
 extern void gui_set_screen_rotation(uint8_t rotation);
 extern void unsubscribe_pwr_service(void);
 extern void dial_widget_event(lv_event_t *e);
