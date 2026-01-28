@@ -173,6 +173,8 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
 
 uint8_t return_app_count(void)
 {
+    LOG_D("APP_LIST_ITEMS_DEFINITION size:%d",
+          ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION));
     return ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION);
 }
 
