@@ -53,6 +53,7 @@
 #include "bf0_ble_bass.h"
 #ifdef BSP_USING_BLOC_NOTIFY
     #include "bloc_notification.h"
+    #include "bloc_v2t.h"
 #endif
 #ifdef BSP_USING_COMMUNICATE
     #include "communicate_protocol.h"
@@ -159,10 +160,6 @@ extern void ppg_subscribe(void);
 extern void ppg_unsubscribe(void);
 extern void audio_subscribe(void);
 extern void audio_unsubscribe(void);
-extern void audio_start_recording(char *file_name);
-extern void audio_stop_recording(void);
-extern void audio_start_playing(void *parameter);
-extern void audio_stop_playing(void);
 extern void powermgr_subscribe(int todo_count);
 extern void powermgr_unsubscribe(void);
 extern void powermgr_set_screen_brightness(uint16_t brightness);
@@ -194,22 +191,6 @@ void audio_unsubscribe(void)
 {
     LOG_D("audio unsubscribe");
 }
-void audio_start_recording(char *file_name)
-{
-    LOG_D("audio start recording");
-}
-void audio_stop_recording(void)
-{
-    LOG_D("audio stop recording");
-}
-void audio_start_playing(void *parameter)
-{
-    LOG_D("audio start playing");
-}
-void audio_stop_playing(void)
-{
-    LOG_D("audio stop playing");
-}
         #endif //  #ifndef BSP_USING_PC_SIMULATOR
 
 static void hcpu_reboot(void)
@@ -228,6 +209,18 @@ static void hcpu_suspend(void)
 {
     PeripheralMessageData data;
     data.event = HCPU_SUSPEND;
+    send_peripheral_data(data);
+}
+
+static void subscribe_audio_mic_sensor(bool status)
+{
+    if (voice_provider.audio_subscribed == status)
+    {
+        return;
+    }
+    PeripheralMessageData data;
+    data.event = SUBSCRIBE_AUDIO_MIC;
+    data.arg.subscribe_status = status;
     send_peripheral_data(data);
 }
 
@@ -324,50 +317,6 @@ static void control_motor_vibration(bool enable, motor_params_t *params)
     send_peripheral_data(data);
 }
 
-static bool audio_subscribed = false;
-static bool get_audio_subscribed(void)
-{
-    return audio_subscribed;
-}
-static void set_audio_subscribed(bool status)
-{
-    audio_subscribed = status;
-}
-static void subscribe_audio_mic_sensor(bool status)
-{
-    if (get_audio_subscribed() == status)
-    {
-        return;
-    }
-    PeripheralMessageData data;
-    data.event = SUBSCRIBE_AUDIO_MIC;
-    data.arg.subscribe_status = status;
-    send_peripheral_data(data);
-}
-
-static void audio_recording(bool toggle)
-{
-    PeripheralMessageData data;
-    data.event = RECORD_AUDIO_MIC;
-    data.arg.audio_record_toggle = toggle;
-    send_peripheral_data(data);
-}
-
-static void audio_sync(void)
-{
-    PeripheralMessageData data;
-    data.event = SYNC_RECORD_AUDIO;
-    send_peripheral_data(data);
-}
-
-static void audio_playback(bool toggle)
-{
-    PeripheralMessageData data;
-    data.event = PLAY_AUDIO_SPEAKER;
-    data.arg.audio_play_toggle = toggle;
-    send_peripheral_data(data);
-}
-
 static void control_rgb_led(bool enable, rgb_led_params_t *params)
 {
     PeripheralMessageData data;
@@ -447,20 +396,12 @@ static int bloc_peripheral_register(void)
     peripheral_provider.subscribe_hr_sensor = subscribe_hr_sensor;
     peripheral_provider.subscribe_ppg_signal = subscribe_ppg_signal;
     peripheral_provider.control_motor = control_motor_vibration;
-    peripheral_provider.set_audio_code_status = set_audio_subscribed;
-    peripheral_provider.get_audio_code_status = get_audio_subscribed;
     peripheral_provider.subscribe_audio_mic_sensor = subscribe_audio_mic_sensor;
-    peripheral_provider.audio_recording = audio_recording;
-    peripheral_provider.audio_sync = audio_sync;
-    peripheral_provider.audio_playback = audio_playback;
     peripheral_provider.control_rgb_led = control_rgb_led;
     peripheral_provider.save_watch_shared_prefs = save_watch_shared_prefs;
     peripheral_provider.notify_battery_voltage = notify_battery_voltage;
     peripheral_provider.charge_status_callback = charge_status_callback;
     #else
-    // peripheral_provider.lift_status_callback = send_lift_status_to_client;
-    // peripheral_provider.soft_adt_callback = send_soft_adt_status_to_client;
-    // peripheral_provider.gesture_callback = send_gesture_status_to_client;
     peripheral_provider.sensor_power_manage = sensor_power_manage;
     #endif
     return 0;
@@ -531,16 +472,12 @@ static void peripheral_task_entry(void *parameter)
                 {
                     audio_unsubscribe();
                 }
+                voice_provider.audio_subscribed = data.arg.subscribe_status;
             }
             break;
             case RECORD_AUDIO_MIC:
             {
                 // TODO: start or stop audio recording
-            }
-            break;
-            case SYNC_RECORD_AUDIO:
-            {
-                // TODO: implement audio sync
             }
             break;
             case PLAY_AUDIO_SPEAKER:
@@ -625,21 +562,6 @@ static void peripheral_task_entry(void *parameter)
             }
     #else
 
-            // case LIFT_STATUS_CALLBACK:
-            // {
-            // 	watch_sys_sync.lift_status_callback(data.arg.value);
-            // }
-            // break;
-            // case SOFT_ADT_STATUS_CALLBACK:
-            // {
-            // 	watch_sys_sync.soft_adt_status_callback(data.arg.subscribe_status);
-            // }
-            // break;
-            // case GESTURE_CALLBACK:
-            // {
-            // 	watch_sys_sync.notify_gesture_event(data.arg.data);
-            // }
-            // break;
             case POWER_MANAGE_HR:
             {
                 if (peripheral_provider.hr_set_power)
@@ -1067,74 +989,6 @@ static int utest_peripheral_task(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(utest_peripheral_task, "utest_peripheral_task [OPTION] ...");
     #endif // #ifdef ENABLE_PPG_SEM_FIFO
-    /////////////////////////
-    // #define UTEST_PBR_PIN
-    #ifdef UTEST_PBR_PIN
-        #define TEST_INT_PIN 162 // 162=2+160
-
-static void module_int_handle(void *args)
-{
-    LOG_D("test module int %d", rt_tick_get());
-}
-int hal_module_int_init(void)
-{
-    struct rt_device_pin_mode m;
-    struct rt_device_pin_status st;
-
-    // get pin device
-    rt_device_t device = rt_device_find("pin");
-    if (!device)
-    {
-        LOG_E("GPIO pin device not found at module\n");
-        return -1;
-    }
-
-    rt_device_open(device, RT_DEVICE_OFLAG_RDWR);
-
-    // int pin cfg
-    m.pin = TEST_INT_PIN;
-    m.mode = PIN_MODE_INPUT;
-    rt_device_control(device, 0, &m);
-
-    // enable charging int
-    rt_pin_mode(TEST_INT_PIN, PIN_MODE_INPUT);
-    rt_pin_attach_irq(m.pin, PIN_IRQ_MODE_RISING_FALLING, module_int_handle,
-                      (void *)(rt_uint32_t)m.pin);
-    rt_pin_irq_enable(m.pin, 1);
-
-    rt_device_close(device);
-    return 0;
-}
-INIT_APP_EXPORT(hal_module_int_init);
-
-        #define THREAD_STACK_SIZE 1 * 1024
-        #define THREAD_PRIORITY 25
-        #define THREAD_TIMESLICE 10
-rt_thread_t module_task_tid = RT_NULL;
-static void module_task_entry(void *parameter)
-{
-    while (1)
-    {
-        int pin_status = rt_pin_read(TEST_INT_PIN);
-        LOG_D("[t:%d]module pin status: %d", rt_tick_get(), pin_status);
-        rt_thread_mdelay(1);
-    }
-}
-static int module_task_init(void)
-{
-    module_task_tid =
-        rt_thread_create("module_task", module_task_entry, RT_NULL,
-                         THREAD_STACK_SIZE, THREAD_PRIORITY, THREAD_TIMESLICE);
-    if (module_task_tid != RT_NULL)
-    {
-        rt_thread_startup(module_task_tid);
-    }
-    return 0;
-}
-INIT_APP_EXPORT(module_task_init);
-
-    #endif // #ifdef UTEST_PBR_PIN
-/////////////////////////
 #else
 static bool imu_data_collection_mode = false;
 static bool imu_rawdata_collection = false;

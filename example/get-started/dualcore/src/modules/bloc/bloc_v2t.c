@@ -99,6 +99,8 @@
 /* Global variables */
 VoiceProvider voice_provider;
 
+static bool audio_subscribed = false;
+
 /* Static variables */
 static bool _vad_status = false;
 static folder_t _recorder_folder = {0, NULL};
@@ -1118,7 +1120,7 @@ static void send_voice_recognition_event(uint8_t event)
 
 static void send_start_listen_event(void)
 {
-    if (!peripheral_provider.get_audio_code_status())
+    if (!voice_provider.audio_subscribed)
     {
         send_voice_recognition_event(VOICE_RECOGNITION_START);
     }

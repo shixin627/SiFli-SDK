@@ -112,7 +112,7 @@ extern "C"
 		void (*start_v2t)(void);
 		void (*auto_stop_listening)(void);
 		void (*stop_v2t)(void);
-
+		bool audio_subscribed;
 	} VoiceProvider;
 	extern VoiceProvider voice_provider;
 #ifdef __cplusplus

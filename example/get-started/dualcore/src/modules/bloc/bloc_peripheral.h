@@ -21,7 +21,6 @@ extern "C"
 #include <stdbool.h>
 #include "stdint.h"
 #include <rtthread.h>
-#include <rtthread.h>
 #include <sensor.h>
 #include "bloc_motor.h"
 #include "bsp_board.h"
@@ -183,12 +182,7 @@ extern "C"
         void (*subscribe_ppg_signal)(bool status);
         void (*control_motor)(bool enable, motor_params_t *params);
         // audio
-        void (*set_audio_code_status)(bool status);
-        bool (*get_audio_code_status)(void);
         void (*subscribe_audio_mic_sensor)(bool status);
-        void (*audio_recording)(bool toggle);
-        void (*audio_sync)(void);
-        void (*audio_playback)(bool toggle);
         // RGB LED control
         void (*control_rgb_led)(bool enable, rgb_led_params_t *params);
         void (*rgb_led_set_color)(rgb_color_t color, uint8_t brightness);
@@ -222,7 +216,6 @@ extern "C"
         SUBSCRIBE_PPG,
         SUBSCRIBE_AUDIO_MIC,
         RECORD_AUDIO_MIC,
-        SYNC_RECORD_AUDIO,
         PLAY_AUDIO_SPEAKER,
         SUBSCRIBE_POWERMANAGER,
         SET_SCREEN_BRIGHTNESS,
@@ -231,9 +224,6 @@ extern "C"
         HCPU_REBOOT,
         HCPU_RESUME,
         HCPU_SUSPEND,
-        LIFT_STATUS_CALLBACK,
-        SOFT_ADT_STATUS_CALLBACK,
-        GESTURE_CALLBACK,
         POWER_MANAGE_IMU,
         POWER_MANAGE_HR,
         CONTROL_MOTOR,
@@ -316,10 +306,6 @@ extern void ppg_subscribe(void);
 extern void ppg_unsubscribe(void);
 extern void audio_subscribe(void);
 extern void audio_unsubscribe(void);
-extern void audio_start_recording(char *file_name);
-extern void audio_stop_recording(void);
-extern void audio_start_playing(void *parameter);
-extern void audio_stop_playing(void);
 extern void powermgr_subscribe(int todo_count);
 extern void powermgr_unsubscribe(void);
 extern void powermgr_set_screen_brightness(uint16_t brightness);

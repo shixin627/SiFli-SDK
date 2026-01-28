@@ -780,12 +780,12 @@ void audio_transfer_entry(void *parameter)
     }
 }
 
+
 void audio_subscribe(void)
 {
     audio_codec_open();
     audio_prc_open();
     // i2s_device_open();
-    peripheral_provider.set_audio_code_status(true);
 }
 
 static void audio_open_demo(uint8_t argc, char **argv)
@@ -793,7 +793,6 @@ static void audio_open_demo(uint8_t argc, char **argv)
     audio_codec_open();
     audio_prc_open();
     // i2s_device_open();
-    peripheral_provider.set_audio_code_status(true);
 }
 
 MSH_CMD_EXPORT(audio_open_demo, audio_open_demo test);
@@ -803,7 +802,6 @@ void audio_unsubscribe(void)
     // i2s_device_close();
     audio_codec_close();
     audio_prc_close();
-    peripheral_provider.set_audio_code_status(false);
 }
 
 static void audio_close_demo(uint8_t argc, char **argv)
@@ -811,31 +809,24 @@ static void audio_close_demo(uint8_t argc, char **argv)
     // i2s_device_close();
     audio_codec_close();
     audio_prc_close();
-    peripheral_provider.set_audio_code_status(false);
 }
 
 MSH_CMD_EXPORT(audio_close_demo, audio_close_demo test);
 
-
 #ifndef BSP_USING_PC_SIMULATOR
-// Audio Station
-#ifdef ENABLE_OPUS_ENCODER
 // Increased stack size for Opus encoder
-// Stack usage: opus_encode() ~6-8KB + local variables + RT-Thread overhead ~2KB
-// Total: ~10-12KB required for safe operation
-#define AUDIO_STATION_STACK_SIZE (20 * 1024)
-#else
-#define AUDIO_STATION_STACK_SIZE (20 * 1024)
-#endif
-
-#define AUDIO_STATION_PRIORITY 16
-#define AUDIO_STATION_TICK 10
+// Stack usage: opus_encode() ~6-8KB + local variables + RT-Thread
+// overhead ~2KB Total: ~10-12KB required for safe operation
+    #define AUDIO_STATION_STACK_SIZE (20 * 1024)
+    #define AUDIO_STATION_PRIORITY 16
+    #define AUDIO_STATION_TICK 10
 static rt_thread_t tid_audio_station;
 
 static int module_init(void)
 {
-    tid_audio_station = rt_thread_create("audio_station", audio_transfer_entry, NULL, AUDIO_STATION_STACK_SIZE,
-                                         AUDIO_STATION_PRIORITY, AUDIO_STATION_TICK);
+    tid_audio_station = rt_thread_create(
+        "audio_station", audio_transfer_entry, NULL, AUDIO_STATION_STACK_SIZE,
+        AUDIO_STATION_PRIORITY, AUDIO_STATION_TICK);
     rt_thread_startup(tid_audio_station);
     return 0;
 }

@@ -112,21 +112,13 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
 
     case KEY_AUDIO_RECORD:
     {
-        if (length == 1)
-        {
-            bool status = pValue[0] ? true : false;
-            peripheral_provider.audio_recording(status);
-        }
+        // Not implemented yet
         break;
     }
 
     case KEY_AUDIO_PLAY:
     {
-        if (length == 1)
-        {
-            bool status = pValue[0] ? true : false;
-            peripheral_provider.audio_playback(status);
-        }
+        // Not implemented yet
         break;
     }
 
@@ -135,7 +127,7 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
         break;
 
     case KEY_SHUTDOWN:
-        // send_sys_interact_event(SYS_EVENT_POWER_OFF);
+        // Not implemented yet
         break;
 
     case KEY_SLEEP:
