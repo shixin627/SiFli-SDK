@@ -76,6 +76,7 @@
 #define FLISHLIGHT_ICON "/assets/icons/flashlight_icon.bin"
 #define IMG_MAIL "/assets/icons/img_mail.bin"
 
+#define GAUS_DEFAULT_PICTURE "/assets/gaus_images/gaus_default_picture.bin"
 
 #define MEDIA_MASK "/assets/images/media_mask.bin"
 extern char MEDIA_IMG[40];

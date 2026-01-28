@@ -63,6 +63,10 @@ LV_IMG_DECLARE(icon_release);
 LV_IMG_DECLARE(mouse_mode_icon);
 LV_IMG_DECLARE(icon_tap);
 LV_IMG_DECLARE(micro_icon);
+LV_IMG_DECLARE(flashlight_icon);
+LV_IMG_DECLARE(img_settings);
+LV_IMG_DECLARE(find_phone);
+LV_IMG_DECLARE(img_logo);
 
 #define NOTIFICATION_ITEM_WIDTH 360
 #define NOTIFICATION_ITEM_HEIGHT 90
@@ -210,10 +214,10 @@ static void button_selection(gesture_position_t gesture_position);
 static void reset_tools_selection(void);
 static void press_event(uint8_t press);
 static uint8_t shady_transparency = 0;
-static uint16_t bg_opa = LV_OPA_80;
+static uint16_t bg_opa = LV_OPA_COVER;
 static uint16_t bg_opa_2 = LV_OPA_80;
 static uint16_t bg_opa_3 = LV_OPA_50;
-
+static void set_clock_main_status_opa(uint8_t opa);
 static uint8_t middle_layer_tileview_index = 255;
 static uint8_t ai_interface_tileview_index = 0;
 
@@ -241,16 +245,18 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             if (scroll_y == 0)
             {
                 shady_transparency = abs(scroll_x);
-                lv_obj_set_style_bg_opa(
-                    myLancher[app_index_message].pagetileview,
-                    shady_transparency, 0);
+                // lv_obj_set_style_bg_opa(
+                //     myLancher[app_index_message].pagetileview,
+                //     shady_transparency, 0);
+                set_clock_main_status_opa(shady_transparency);
             }
             else
             {
                 shady_transparency = abs(scroll_y);
-                lv_obj_set_style_bg_opa(
-                    myLancher[app_index_message].pagetileview,
-                    shady_transparency, 0);
+                // lv_obj_set_style_bg_opa(
+                //     myLancher[app_index_message].pagetileview,
+                //     shady_transparency, 0);
+                set_clock_main_status_opa(shady_transparency);
             }
         }
         if (scroll_second_y == 0)
@@ -262,14 +268,14 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                     shady_transparency > 0)
                 {
                     set_app_list_time_opa(shady_transparency);
-                    set_app_list_time_bg_opa(shady_transparency);
+                    // set_app_list_time_bg_opa(shady_transparency);
                 }
             }
             else
             {
                 shady_transparency = -scroll_second_x;
                 set_app_list_battery_opa(shady_transparency);
-                set_app_list_battery_bg_opa(shady_transparency);
+                // set_app_list_battery_bg_opa(shady_transparency);
             }
         }
         else
@@ -295,12 +301,12 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                     shady_transparency > 0)
                 {
                     set_app_list_battery_opa(shady_transparency);
-                    set_app_list_battery_bg_opa(shady_transparency);
+                    // set_app_list_battery_bg_opa(shady_transparency);
                 }
                 else if (shady_transparency >= bg_opa_2)
                 {
                     set_app_list_battery_opa(bg_opa_2);
-                    set_app_list_battery_bg_opa(bg_opa_2);
+                    // set_app_list_battery_bg_opa(bg_opa_2);
                 }
             }
         }
@@ -362,21 +368,22 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         if (1 == active_pos)
         {
             shady_transparency = 0;
-            lv_obj_set_style_bg_opa(myLancher[app_index_message].pagetileview,
-                                    shady_transparency, 0);
+            // lv_obj_set_style_bg_opa(myLancher[app_index_message].pagetileview,
+            //                         shady_transparency, 0);
+            set_clock_main_status_opa(shady_transparency);
             lv_obj_add_flag(myLancher[app_index_message].pagetileview,
                             LV_OBJ_FLAG_HIDDEN);
             set_app_list_time_opa(LV_OPA_0);
-            if (lv_obj_is_valid(get_app_list_time_bg()))
-                lv_obj_set_style_bg_opa(get_app_list_time_bg(), LV_OPA_0, 0);
+            // if (lv_obj_is_valid(get_app_list_time_bg()))
+            //     lv_obj_set_style_bg_opa(get_app_list_time_bg(), LV_OPA_0, 0);
 
 #ifdef APP_ID_WIDGETS
             widget_page_flip(false);
 #endif
 
             set_app_list_battery_opa(LV_OPA_TRANSP);
-            lv_obj_set_style_bg_opa(get_app_list_battery_bg(), LV_OPA_TRANSP,
-                                    0);
+            // lv_obj_set_style_bg_opa(get_app_list_battery_bg(), LV_OPA_TRANSP,
+            //                         0);
         }
         else
         {
@@ -389,20 +396,21 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             if (active_pos ==
                 MAIN_PAGE_TYPE_LEFT) // || active_pos == MAIN_PAGE_TYPE_UP
             {
-                if (lv_obj_is_valid(get_app_list_time_bg()))
-                    lv_obj_set_style_bg_opa(get_app_list_time_bg(), LV_OPA_80,
-                                            0);
+                // if (lv_obj_is_valid(get_app_list_time_bg()))
+                //     lv_obj_set_style_bg_opa(get_app_list_time_bg(), LV_OPA_80,
+                //                             0);
                 set_app_list_time_opa(LV_OPA_100);
             }
             else
             {
-                if (lv_obj_is_valid(get_app_list_time_bg()))
-                    lv_obj_set_style_bg_opa(get_app_list_time_bg(), LV_OPA_0,
-                                            0);
+                // if (lv_obj_is_valid(get_app_list_time_bg()))
+                //     lv_obj_set_style_bg_opa(get_app_list_time_bg(), LV_OPA_0,
+                //                             0);
                 set_app_list_time_opa(LV_OPA_0);
             }
-            lv_obj_set_style_bg_opa(myLancher[app_index_message].pagetileview,
-                                    LV_OPA_80, 0);
+            // lv_obj_set_style_bg_opa(myLancher[app_index_message].pagetileview,
+            //                         LV_OPA_80, 0);
+            set_clock_main_status_opa(LV_OPA_100);
             if (active_pos == 0)
             {
                 set_app_list_battery_opa(LV_OPA_100);
@@ -949,7 +957,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     // setting icon
     // --- Mouse mode button
     lv_obj_t *calculator_btn =
-        common_image_button(control_center_bottom, CALCULATOR_ICON, 100, 100,
+        common_image_button(control_center_bottom, &micro_icon, 100, 100,
                             calculator_btn_event_cb);
     lv_obj_set_style_border_width(calculator_btn, 2, 0);
     lv_obj_set_style_border_color(calculator_btn, lv_color_hex(0xFFFFFF), 0);
@@ -967,7 +975,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     tools[2] = recorder_btn;
 
     lv_obj_t *flishlight_btn =
-        common_image_button(control_center_bottom, FLISHLIGHT_ICON, 100, 100,
+        common_image_button(control_center_bottom, &micro_icon, 100, 100,
                             flishlight_icon_event_cb);
     lv_obj_set_style_border_width(flishlight_btn, 2, 0);
     lv_obj_set_style_border_color(flishlight_btn, lv_color_hex(0xFFFFFF), 0);
@@ -977,7 +985,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 
     // setting icon (bottom left)
     lv_obj_t *setting_icon = common_image_button(
-        control_center_bottom, IMG_SETTINGS, 100, 100, setting_icon_event_cb);
+        control_center_bottom, &micro_icon, 100, 100, setting_icon_event_cb);
     lv_obj_set_style_border_width(setting_icon, 2, 0);
     lv_obj_set_style_border_color(setting_icon, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(setting_icon, LV_OPA_0, 0);
@@ -989,7 +997,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 
     // --- QRcode button
     lv_obj_t *qrcode_btn = common_image_button(
-        control_center_bottom, &icon_qrcode, 100, 100, qrcode_btn_event_cb);
+        control_center_bottom, &micro_icon, 100, 100, qrcode_btn_event_cb);
     lv_obj_set_style_border_width(qrcode_btn, 2, 0);
     lv_obj_set_style_border_color(qrcode_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(qrcode_btn, LV_OPA_0, 0);
@@ -998,7 +1006,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 
     // --- Dont disturb mode button
     dndmode_enabled = SkaiWatchSys.DNDMode.config.status;
-    dnd_mode_btn = common_image_button(control_center_bottom, &icon_dnd_mode,
+    dnd_mode_btn = common_image_button(control_center_bottom, &micro_icon,
                                        100, 100, dnd_mode_btn_event_cb);
     lv_obj_set_style_border_width(dnd_mode_btn, 2, 0);
     lv_obj_set_style_border_color(dnd_mode_btn, lv_color_hex(0xFFFFFF), 0);
@@ -1017,7 +1025,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     tools[5] = dnd_mode_btn;
 
     lv_obj_t *mouse_btn =
-        common_image_button(control_center_bottom, &mouse_mode_icon, 100, 100,
+        common_image_button(control_center_bottom, &micro_icon, 100, 100,
                             mouse_mode_icon_event_cb);
     lv_obj_set_style_border_width(mouse_btn, 2, 0);
     lv_obj_set_style_border_color(mouse_btn, lv_color_hex(0xFFFFFF), 0);
@@ -1029,7 +1037,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 
     // -------------- find phone button
     lv_obj_t *find_phone_btn = common_image_button(
-        control_center_bottom, FIND_PHONE, 100, 100, find_phone_btn_event_cb);
+        control_center_bottom, &micro_icon, 100, 100, find_phone_btn_event_cb);
     lv_obj_set_style_border_width(find_phone_btn, 2, 0);
     lv_obj_set_style_border_color(find_phone_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(find_phone_btn, LV_OPA_0, 0);
@@ -1039,7 +1047,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 #if !kReleaseMode
     // Gesture test app
     lv_obj_t *gesture_test_btn = common_image_button(
-        control_center_bottom, IMG_LOGO, 100, 100, gesture_test_btn_event_cb);
+        control_center_bottom, &micro_icon, 100, 100, gesture_test_btn_event_cb);
     lv_obj_set_style_border_width(gesture_test_btn, 2, 0);
     lv_obj_set_style_border_color(gesture_test_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(gesture_test_btn, LV_OPA_0, 0);
@@ -1282,9 +1290,23 @@ bool is_test_mode(void)
     return test_mode;
 }
 
+static lv_obj_t *gaus_dial_bg = NULL;
+static void set_clock_main_status_opa(uint8_t opa)
+{
+    // if (lv_obj_is_valid(myLancher[app_index_message].pagetileview))
+    // {
+    //     lv_obj_set_style_bg_opa(myLancher[app_index_message].pagetileview, opa,
+    //                             LV_PART_MAIN | LV_STATE_DEFAULT);
+    // }
+    if (lv_obj_is_valid(gaus_dial_bg))
+    {
+        lv_obj_set_style_img_opa(gaus_dial_bg, opa,
+                                 LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
+}
+
 static lv_obj_t *status_bar_bg_main = NULL;
 static lv_obj_t *status_bar_bg_ai = NULL;
-
 uint8_t bar_opa = LV_OPA_TRANSP; // LV_OPA_TRANSP LV_OPA_COVER
 void app_clock_main_status_bar_init(lv_obj_t *par)
 {
@@ -1296,6 +1318,13 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     {
         bar_opa = LV_OPA_TRANSP;
     }
+    
+    gaus_dial_bg = lv_img_create(par);
+    lv_img_set_src(gaus_dial_bg, GAUS_DEFAULT_PICTURE);
+    lv_obj_set_style_img_opa(gaus_dial_bg, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_size(gaus_dial_bg, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_center(gaus_dial_bg);
+
     status_bar_bg_main = lv_obj_create(par);
     lv_obj_set_size(status_bar_bg_main, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     lv_obj_set_style_bg_opa(status_bar_bg_main, LV_OPA_0,
