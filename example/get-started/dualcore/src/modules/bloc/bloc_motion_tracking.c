@@ -377,8 +377,8 @@ static void navigation_bar_control_with_gyro(Vector3 *gyro)
 
 static float total_yaw_energy = 0;
 static uint8_t scroll_segment_count = 1;
-static uint16_t page_range = 200; // 每個頁面的範圍
-static float total_moving_distance = 1250.0f;
+static uint16_t page_range = 125; // 每個頁面的範圍
+static float total_moving_distance = 1375.0f;
 static uint8_t control_angle = 80; // 預設控制角度為30度
 float get_total_moving_distance(void)
 {
@@ -386,12 +386,13 @@ float get_total_moving_distance(void)
 }
 void set_scroll_segment_count(uint8_t count)
 {
-    if (count > 0 && count <= 10)
+    if (count > 0 && count <= 11)
     {
         scroll_segment_count = count;
         // page_range = total_moving_distance / scroll_segment_count; //
+        total_moving_distance = scroll_segment_count * page_range;
         // 每個頁面的範圍
-        page_range = 125;
+        // page_range = 125;
     }
     LOG_D("set_scroll_segment_count:%d,%d", scroll_segment_count, page_range);
 }
