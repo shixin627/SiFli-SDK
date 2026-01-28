@@ -663,6 +663,29 @@ static void swich_dial_widget_deinit(uint8_t app_id)
     }
 }
 
+extern void set_clock_main_status_img(const void *img_src);
+static void clock_change_page(char *clk_id)
+{
+    LOG_D("clock_change_page: %s", clk_id);
+    if (strcmp(clk_id, "JW_wf1") == 0)
+    {
+        set_clock_main_status_img(GAUS_CLOCK1_BG);
+    }
+    else if (strcmp(clk_id, "JW_wf2") == 0)
+    {
+        set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
+    }
+    else if (strcmp(clk_id, "JW_wf3") == 0)
+    {
+        set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
+    }
+    else if (strcmp(clk_id, "JW_wf4") == 0)
+    {
+        set_clock_main_status_img(GAUS_CLOCK4_BG);
+    }
+
+}
+
 static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
 {
     if (p_clock->state == new_state)
@@ -677,6 +700,7 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
     {
         if (STATE_ACTIVE == p_clock->state)
         {
+            LOG_D("Deiniting active clock id=%s", p_clock->id);
             if (p_clock->ops->pause)
             {
                 p_clock->ops->pause();
@@ -686,7 +710,7 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
                     swich_dial_widget_deinit(dial_widget_app_id);
             }
         }
-
+        LOG_D("Deiniting clock id=%s", p_clock->id);
         if (p_clock->ops->deinit)
         {
             p_clock->ops->deinit();
@@ -745,7 +769,8 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
                 }
             }
         }
-
+        LOG_D("Resuming clock id11=%s", p_clock->id);
+        clock_change_page(p_clock->id);
         if (p_clock->ops->resume)
         {
             p_clock->ops->resume();

@@ -61,36 +61,52 @@ typedef struct
 static app_photo_t *p_app_photo = NULL;
 
 // 動態管理選取清單
-static void add_selected_img(lv_obj_t *img_container) {
-    if (!p_app_photo) return;
-    if (!p_app_photo->selected_imgs) {
+static void add_selected_img(lv_obj_t *img_container)
+{
+    if (!p_app_photo)
+        return;
+    if (!p_app_photo->selected_imgs)
+    {
         p_app_photo->selected_capacity = 8;
-        p_app_photo->selected_imgs = lv_mem_alloc(sizeof(lv_obj_t*) * p_app_photo->selected_capacity);
+        p_app_photo->selected_imgs =
+            lv_mem_alloc(sizeof(lv_obj_t *) * p_app_photo->selected_capacity);
         p_app_photo->selected_count = 0;
     }
     // 檢查是否已存在
-    for (int i = 0; i < p_app_photo->selected_count; ++i) {
-        if (p_app_photo->selected_imgs[i] == img_container) return;
+    for (int i = 0; i < p_app_photo->selected_count; ++i)
+    {
+        if (p_app_photo->selected_imgs[i] == img_container)
+            return;
     }
-    if (p_app_photo->selected_count >= p_app_photo->selected_capacity) {
+    if (p_app_photo->selected_count >= p_app_photo->selected_capacity)
+    {
         p_app_photo->selected_capacity *= 2;
-        p_app_photo->selected_imgs = lv_mem_realloc(p_app_photo->selected_imgs, sizeof(lv_obj_t*) * p_app_photo->selected_capacity);
+        p_app_photo->selected_imgs =
+            lv_mem_realloc(p_app_photo->selected_imgs,
+                           sizeof(lv_obj_t *) * p_app_photo->selected_capacity);
     }
     p_app_photo->selected_imgs[p_app_photo->selected_count++] = img_container;
 }
-static void remove_selected_img(lv_obj_t *img_container) {
-    if (!p_app_photo || !p_app_photo->selected_imgs) return;
-    for (int i = 0; i < p_app_photo->selected_count; ++i) {
-        if (p_app_photo->selected_imgs[i] == img_container) {
+static void remove_selected_img(lv_obj_t *img_container)
+{
+    if (!p_app_photo || !p_app_photo->selected_imgs)
+        return;
+    for (int i = 0; i < p_app_photo->selected_count; ++i)
+    {
+        if (p_app_photo->selected_imgs[i] == img_container)
+        {
             for (int j = i; j < p_app_photo->selected_count - 1; ++j)
-                p_app_photo->selected_imgs[j] = p_app_photo->selected_imgs[j+1];
+                p_app_photo->selected_imgs[j] =
+                    p_app_photo->selected_imgs[j + 1];
             p_app_photo->selected_count--;
             break;
         }
     }
 }
-static void clear_selected_imgs() {
-    if (p_app_photo && p_app_photo->selected_imgs) {
+static void clear_selected_imgs()
+{
+    if (p_app_photo && p_app_photo->selected_imgs)
+    {
         lv_mem_free(p_app_photo->selected_imgs);
         p_app_photo->selected_imgs = NULL;
         p_app_photo->selected_count = 0;
@@ -164,20 +180,28 @@ static void btn_del_event_cb(lv_event_t *e)
     lv_obj_t *sheet = lv_obj_get_parent(btn);
     // lv_obj_t *mask = lv_obj_get_parent(sheet);
     // 多選模式下刪除所有選取
-    if (p_app_photo && p_app_photo->multi_select_mode && p_app_photo->selected_imgs) {
-        for (int i = 0; i < p_app_photo->selected_count; ++i) {
+    if (p_app_photo && p_app_photo->multi_select_mode &&
+        p_app_photo->selected_imgs)
+    {
+        for (int i = 0; i < p_app_photo->selected_count; ++i)
+        {
             lv_obj_t *img_container = p_app_photo->selected_imgs[i];
-            const char *file_path = (const char *)lv_obj_get_user_data(img_container);
+            const char *file_path =
+                (const char *)lv_obj_get_user_data(img_container);
             LOG_I("Photo deleteds: %s", file_path);
-            if (file_path) delete_photo(file_path);
+            if (file_path)
+                delete_photo(file_path);
         }
         clear_selected_imgs();
         p_app_photo->multi_select_mode = false;
-    } else {
+    }
+    else
+    {
         // 單選模式
         const char *file_path = (const char *)lv_event_get_user_data(e);
         LOG_I("Photo deleted: %s", file_path);
-        if (file_path) delete_photo(file_path);
+        if (file_path)
+            delete_photo(file_path);
     }
     lv_obj_del(sheet); // 關閉彈窗
     // 刷新照片列表
@@ -193,7 +217,8 @@ static void btn_cancel_event_cb(lv_event_t *e)
     lv_obj_t *btn = lv_event_get_target(e);
     lv_obj_t *sheet = lv_obj_get_parent(btn);
     // 離開多選模式
-    if (p_app_photo && p_app_photo->multi_select_mode) {
+    if (p_app_photo && p_app_photo->multi_select_mode)
+    {
         p_app_photo->multi_select_mode = false;
         clear_selected_imgs();
     }
@@ -216,7 +241,8 @@ static void show_photo_action_sheet(lv_obj_t *img_container,
                                     const char *file_path)
 {
     // 進入多選模式
-    if (p_app_photo) {
+    if (p_app_photo)
+    {
         p_app_photo->multi_select_mode = true;
         clear_selected_imgs();
         add_selected_img(img_container);
@@ -259,7 +285,8 @@ static void show_photo_action_sheet(lv_obj_t *img_container,
     // // 刪除事件，無需傳 file_path
     lv_obj_add_event_cb(btn_del, btn_del_event_cb, LV_EVENT_CLICKED, NULL);
     // // 取消事件
-    lv_obj_add_event_cb(btn_cancel, btn_cancel_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(btn_cancel, btn_cancel_event_cb, LV_EVENT_CLICKED,
+                        NULL);
 }
 
 // 圖片容器長按事件
@@ -270,11 +297,12 @@ static bool event_cb_registered = false;
 // 列表滾動時重置 event_cb_registered，防止誤觸發點擊/長按
 static void photo_list_scroll_event_cb(lv_event_t *e)
 {
-    if (lv_event_get_code(e) == LV_EVENT_SCROLL) {
+    if (lv_event_get_code(e) == LV_EVENT_SCROLL)
+    {
         event_cb_registered = false;
     }
 }
-#define LONG_PRESS_TIME_MS 600
+    #define LONG_PRESS_TIME_MS 600
 static void photo_container_event_cb(lv_event_t *e)
 {
     static uint32_t press_time = 0;
@@ -289,25 +317,37 @@ static void photo_container_event_cb(lv_event_t *e)
     else if (code == LV_EVENT_RELEASED)
     {
         uint32_t release_time = lv_tick_get();
-        if (release_time - press_time < LONG_PRESS_TIME_MS && event_cb_registered)
+        if (release_time - press_time < LONG_PRESS_TIME_MS &&
+            event_cb_registered)
         {
             // 多選模式下切換選取狀態
-            if (p_app_photo && p_app_photo->multi_select_mode) {
+            if (p_app_photo && p_app_photo->multi_select_mode)
+            {
                 // 反選
                 bool already = false;
-                if (p_app_photo->selected_imgs) {
-                    for (int i = 0; i < p_app_photo->selected_count; ++i) {
-                        if (p_app_photo->selected_imgs[i] == container) already = true;
+                if (p_app_photo->selected_imgs)
+                {
+                    for (int i = 0; i < p_app_photo->selected_count; ++i)
+                    {
+                        if (p_app_photo->selected_imgs[i] == container)
+                            already = true;
                     }
                 }
-                if (already) {
+                if (already)
+                {
                     remove_selected_img(container);
-                    lv_obj_set_style_border_color(container, lv_color_black(), 0);
-                } else {
-                    add_selected_img(container);
-                    lv_obj_set_style_border_color(container, lv_palette_main(LV_PALETTE_BLUE), 0);
+                    lv_obj_set_style_border_color(container, lv_color_black(),
+                                                  0);
                 }
-            } else {
+                else
+                {
+                    add_selected_img(container);
+                    lv_obj_set_style_border_color(
+                        container, lv_palette_main(LV_PALETTE_BLUE), 0);
+                }
+            }
+            else
+            {
                 // 點擊小於1.5秒顯示大圖
                 event_cb_registered = false;
                 lv_obj_t *photo_container = lv_obj_create(lv_scr_act());
@@ -321,10 +361,12 @@ static void photo_container_event_cb(lv_event_t *e)
                 lv_obj_t *photo_container_btn = lv_obj_create(photo_container);
                 lv_obj_set_size(photo_container_btn, LV_HOR_RES, LV_VER_RES);
                 lv_obj_set_style_bg_opa(photo_container_btn, LV_OPA_0, 0);
-                lv_obj_set_style_bg_color(photo_container_btn, lv_color_black(), 0);
+                lv_obj_set_style_bg_color(photo_container_btn, lv_color_black(),
+                                          0);
                 lv_obj_clear_flag(photo_container_btn, LV_OBJ_FLAG_SCROLLABLE);
                 // 點擊遮罩關閉大圖
-                lv_obj_add_event_cb(photo_container_btn, btn_close_photo_container_cb,
+                lv_obj_add_event_cb(photo_container_btn,
+                                    btn_close_photo_container_cb,
                                     LV_EVENT_CLICKED, NULL);
             }
         }
@@ -361,7 +403,8 @@ static void load_photo_list(lv_obj_t *parent)
 
     uint8_t photo_count = 0;
     /* 綁定滾動事件，防止滑動時觸發點擊/長按 */
-    lv_obj_add_event_cb(parent, photo_list_scroll_event_cb, LV_EVENT_SCROLL, NULL);
+    lv_obj_add_event_cb(parent, photo_list_scroll_event_cb, LV_EVENT_SCROLL,
+                        NULL);
     /* Add top spacer */
     uint16_t top_spacer_height = PHOTO_LIST_PAD * 3;
     lv_obj_t *top_spacer = lv_obj_create(parent);
@@ -516,41 +559,75 @@ lv_obj_t *create_photo_screen(lv_obj_t *scr)
 static lv_obj_t *photo_list_obj = NULL;
 static uint16_t choose_photo_page_ptr = 0;
 // 複製檔案工具
-static int copy_file(const char *src, const char *dst) {
+static int copy_file(const char *src, const char *dst)
+{
     FILE *fsrc = fopen(src, "rb");
-    if (!fsrc) return -1;
+    if (!fsrc)
+        return -1;
     FILE *fdst = fopen(dst, "wb");
-    if (!fdst) { fclose(fsrc); return -2; }
+    if (!fdst)
+    {
+        fclose(fsrc);
+        return -2;
+    }
     char buf[1024];
     size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), fsrc)) > 0) {
-        if (fwrite(buf, 1, n, fdst) != n) { fclose(fsrc); fclose(fdst); return -3; }
+    while ((n = fread(buf, 1, sizeof(buf), fsrc)) > 0)
+    {
+        if (fwrite(buf, 1, n, fdst) != n)
+        {
+            fclose(fsrc);
+            fclose(fdst);
+            return -3;
+        }
     }
     fclose(fsrc);
     fclose(fdst);
     return 0;
 }
 // choose_photo_list callback
-static void photo_select_cb(lv_event_t *e) {
+char *GAUS_DEFAULT_PICTURE = "/assets/gaus_images/gaus_default_picture.bin";
+static void photo_select_cb(lv_event_t *e)
+{
     const char *selected_path = (const char *)lv_event_get_user_data(e);
     LOG_D("Photo selected: %s", selected_path);
-    if (choose_photo_page_ptr && selected_path) {
+    if (choose_photo_page_ptr && selected_path)
+    {
         char dst_path[64];
-        snprintf(dst_path, sizeof(dst_path), "/JW_wf%u/picture.bin", (unsigned)choose_photo_page_ptr);
+        snprintf(dst_path, sizeof(dst_path), "/JW_wf%u/picture.bin",
+                 (unsigned)choose_photo_page_ptr);
         lv_img_cache_invalidate_src(dst_path);
         int ret = copy_file(selected_path, dst_path);
-        if (ret == 0) {
+        if (ret == 0)
+        {
             LOG_I("Copied %s to %s", selected_path, dst_path);
-        } else {
+        }
+        else
+        {
             LOG_E("Copy failed: %d", ret);
         }
+        const char *filename = strrchr(selected_path, '/');
+        if (filename)
+            filename++; // 跳過 '/' 字元
+        else
+            filename = selected_path; // 沒有 '/'，直接用原字串
+        snprintf(dst_path, sizeof(dst_path), "/assets/gaus_images/gaus_%s",
+                 filename);
+        if (GAUS_DEFAULT_PICTURE)
+        {
+            LOG_I("Free previous GAUS_DEFAULT_PICTURE: %s",
+                  GAUS_DEFAULT_PICTURE);
+            GAUS_DEFAULT_PICTURE = strdup(dst_path);
+        }
+        LOG_I("Set GAUS_DEFAULT_PICTURE to %s", GAUS_DEFAULT_PICTURE);
     }
     // 關閉視窗
     lv_obj_del(photo_list_obj);
     choose_photo_page_ptr = NULL;
 }
 
-static void close_photo_list_cb(lv_event_t *e) {
+static void close_photo_list_cb(lv_event_t *e)
+{
     lv_obj_del(photo_list_obj);
     choose_photo_page_ptr = NULL;
 }
@@ -584,7 +661,8 @@ void choose_photo_list(uint16_t page)
     uint16_t top_spacer_height = PHOTO_LIST_PAD * 3;
     // 上方間距
     lv_obj_t *top_spacer = lv_obj_create(photo_list_obj);
-    lv_obj_set_size(top_spacer, PHOTO_THUMB_SIZE * 2 + PHOTO_LIST_PAD * 3, top_spacer_height);
+    lv_obj_set_size(top_spacer, PHOTO_THUMB_SIZE * 2 + PHOTO_LIST_PAD * 3,
+                    top_spacer_height);
     lv_obj_set_pos(top_spacer, 0, 0);
     lv_obj_set_style_bg_opa(top_spacer, LV_OPA_0, 0);
     lv_obj_set_style_border_width(top_spacer, 0, 0);
@@ -608,8 +686,12 @@ void choose_photo_list(uint16_t page)
             else if (header.h <= header.w && header.h > PHOTO_THUMB_SIZE)
                 zoom = (256 * PHOTO_THUMB_SIZE) / header.h;
 
-            uint16_t x = PHOTO_LIST_PAD + (photo_count % 2) * (PHOTO_THUMB_SIZE + PHOTO_LIST_PAD);
-            uint16_t y = top_spacer_height + PHOTO_LIST_PAD + (photo_count / 2) * (PHOTO_THUMB_SIZE + PHOTO_LIST_PAD);
+            uint16_t x =
+                PHOTO_LIST_PAD +
+                (photo_count % 2) * (PHOTO_THUMB_SIZE + PHOTO_LIST_PAD);
+            uint16_t y =
+                top_spacer_height + PHOTO_LIST_PAD +
+                (photo_count / 2) * (PHOTO_THUMB_SIZE + PHOTO_LIST_PAD);
             lv_obj_t *img_container = lv_obj_create(photo_list_obj);
             lv_obj_set_size(img_container, PHOTO_THUMB_SIZE, PHOTO_THUMB_SIZE);
             lv_obj_set_pos(img_container, x, y);
@@ -622,7 +704,8 @@ void choose_photo_list(uint16_t page)
             lv_obj_clear_flag(img_container, LV_OBJ_FLAG_SCROLLABLE);
 
             // 綁定點擊事件
-            lv_obj_add_event_cb(img_container, photo_select_cb, LV_EVENT_CLICKED, strdup(file_path));
+            lv_obj_add_event_cb(img_container, photo_select_cb,
+                                LV_EVENT_CLICKED, strdup(file_path));
 
             lv_obj_t *img = lv_img_create(img_container);
             lv_img_set_src(img, file_path);
@@ -635,8 +718,12 @@ void choose_photo_list(uint16_t page)
 
     // 下方間距
     lv_obj_t *bottom_spacer = lv_obj_create(photo_list_obj);
-    lv_obj_set_size(bottom_spacer, PHOTO_THUMB_SIZE * 2 + PHOTO_LIST_PAD * 3, PHOTO_LIST_PAD * 3);
-    lv_obj_set_pos(bottom_spacer, 0, top_spacer_height + PHOTO_LIST_PAD + ((photo_count + 1) / 2) * (PHOTO_THUMB_SIZE + PHOTO_LIST_PAD));
+    lv_obj_set_size(bottom_spacer, PHOTO_THUMB_SIZE * 2 + PHOTO_LIST_PAD * 3,
+                    PHOTO_LIST_PAD * 3);
+    lv_obj_set_pos(bottom_spacer, 0,
+                   top_spacer_height + PHOTO_LIST_PAD +
+                       ((photo_count + 1) / 2) *
+                           (PHOTO_THUMB_SIZE + PHOTO_LIST_PAD));
     lv_obj_set_style_bg_opa(bottom_spacer, LV_OPA_0, 0);
     lv_obj_set_style_border_width(bottom_spacer, 0, 0);
     lv_obj_set_style_pad_all(bottom_spacer, 0, 0);
@@ -650,7 +737,8 @@ void choose_photo_list(uint16_t page)
         lv_label_set_text(label, "No photos found");
         lv_obj_set_style_text_color(label, lv_color_white(), 0);
         lv_obj_center(label);
-        lv_obj_add_event_cb(photo_list_obj, close_photo_list_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_add_event_cb(photo_list_obj, close_photo_list_cb,
+                            LV_EVENT_CLICKED, NULL);
     }
 }
 
@@ -745,8 +833,7 @@ static int app_main(intent_t i)
     return 0;
 }
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(photo), IMG_PHOTO,
-                   APP_ID_PHOTO, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(photo), IMG_PHOTO, APP_ID_PHOTO, app_main);
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/

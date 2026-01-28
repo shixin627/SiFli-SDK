@@ -117,6 +117,8 @@ void display_status_bar_area(uint32_t idx, bool display)
     }
 }
 
+static lv_obj_t *gaus_dial_bg = NULL;
+static lv_obj_t *gaus_dial_img = NULL;
 static void notification_status_bar_cb(lv_event_t *event)
 {
     if (lv_disp_get_rotation(NULL) != LV_DISP_ROT_90 &&
@@ -173,6 +175,7 @@ static void notification_status_bar_cb(lv_event_t *event)
             }
             lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
             lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
         }
     }
 }
@@ -373,6 +376,7 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             set_clock_main_status_opa(shady_transparency);
             lv_obj_add_flag(myLancher[app_index_message].pagetileview,
                             LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
             set_app_list_time_opa(LV_OPA_0);
             // if (lv_obj_is_valid(get_app_list_time_bg()))
             //     lv_obj_set_style_bg_opa(get_app_list_time_bg(), LV_OPA_0, 0);
@@ -393,11 +397,13 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
 
             lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
                               LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
             if (active_pos ==
                 MAIN_PAGE_TYPE_LEFT) // || active_pos == MAIN_PAGE_TYPE_UP
             {
                 // if (lv_obj_is_valid(get_app_list_time_bg()))
-                //     lv_obj_set_style_bg_opa(get_app_list_time_bg(), LV_OPA_80,
+                //     lv_obj_set_style_bg_opa(get_app_list_time_bg(),
+                //     LV_OPA_80,
                 //                             0);
                 set_app_list_time_opa(LV_OPA_100);
             }
@@ -531,6 +537,7 @@ void animate_to_notification_center(void)
 {
     // set_scroll_anim_time(true);
     reset_tools_selection();
+    lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
                       LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_tile_id(myLancher[app_index_message].pagetileview, 0, 1,
@@ -551,6 +558,7 @@ void animate_to_app_list(void)
     if (lv_obj_is_valid(myLancher[app_index_message].pagetileview))
     {
         set_need_open_gesture_control(true);
+        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
                           LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_tile_id(myLancher[app_index_message].pagetileview, 0, 1,
@@ -565,6 +573,7 @@ void animate_to_message_list(void)
     if (lv_obj_is_valid(myLancher[app_index_message].pagetileview))
     {
         set_need_open_gesture_control(true);
+        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
                           LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_tile_id(myLancher[app_index_message].pagetileview, 1, 0,
@@ -956,9 +965,8 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     // - | -
     // setting icon
     // --- Mouse mode button
-    lv_obj_t *calculator_btn =
-        common_image_button(control_center_bottom, &micro_icon, 100, 100,
-                            calculator_btn_event_cb);
+    lv_obj_t *calculator_btn = common_image_button(
+        control_center_bottom, &micro_icon, 100, 100, calculator_btn_event_cb);
     lv_obj_set_style_border_width(calculator_btn, 2, 0);
     lv_obj_set_style_border_color(calculator_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(calculator_btn, LV_OPA_0, 0);
@@ -974,9 +982,8 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     lv_obj_align(recorder_btn, LV_ALIGN_TOP_RIGHT, -70, 0);
     tools[2] = recorder_btn;
 
-    lv_obj_t *flishlight_btn =
-        common_image_button(control_center_bottom, &micro_icon, 100, 100,
-                            flishlight_icon_event_cb);
+    lv_obj_t *flishlight_btn = common_image_button(
+        control_center_bottom, &micro_icon, 100, 100, flishlight_icon_event_cb);
     lv_obj_set_style_border_width(flishlight_btn, 2, 0);
     lv_obj_set_style_border_color(flishlight_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(flishlight_btn, LV_OPA_0, 0);
@@ -1006,8 +1013,8 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 
     // --- Dont disturb mode button
     dndmode_enabled = SkaiWatchSys.DNDMode.config.status;
-    dnd_mode_btn = common_image_button(control_center_bottom, &micro_icon,
-                                       100, 100, dnd_mode_btn_event_cb);
+    dnd_mode_btn = common_image_button(control_center_bottom, &micro_icon, 100,
+                                       100, dnd_mode_btn_event_cb);
     lv_obj_set_style_border_width(dnd_mode_btn, 2, 0);
     lv_obj_set_style_border_color(dnd_mode_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(dnd_mode_btn, LV_OPA_0, 0);
@@ -1024,9 +1031,8 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     }
     tools[5] = dnd_mode_btn;
 
-    lv_obj_t *mouse_btn =
-        common_image_button(control_center_bottom, &micro_icon, 100, 100,
-                            mouse_mode_icon_event_cb);
+    lv_obj_t *mouse_btn = common_image_button(
+        control_center_bottom, &micro_icon, 100, 100, mouse_mode_icon_event_cb);
     lv_obj_set_style_border_width(mouse_btn, 2, 0);
     lv_obj_set_style_border_color(mouse_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(mouse_btn, LV_OPA_0, 0);
@@ -1046,8 +1052,9 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     tools[7] = find_phone_btn;
 #if !kReleaseMode
     // Gesture test app
-    lv_obj_t *gesture_test_btn = common_image_button(
-        control_center_bottom, &micro_icon, 100, 100, gesture_test_btn_event_cb);
+    lv_obj_t *gesture_test_btn =
+        common_image_button(control_center_bottom, &micro_icon, 100, 100,
+                            gesture_test_btn_event_cb);
     lv_obj_set_style_border_width(gesture_test_btn, 2, 0);
     lv_obj_set_style_border_color(gesture_test_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(gesture_test_btn, LV_OPA_0, 0);
@@ -1290,18 +1297,35 @@ bool is_test_mode(void)
     return test_mode;
 }
 
-static lv_obj_t *gaus_dial_bg = NULL;
+
 static void set_clock_main_status_opa(uint8_t opa)
 {
     // if (lv_obj_is_valid(myLancher[app_index_message].pagetileview))
     // {
-    //     lv_obj_set_style_bg_opa(myLancher[app_index_message].pagetileview, opa,
+    //     lv_obj_set_style_bg_opa(myLancher[app_index_message].pagetileview,
+    //     opa,
     //                             LV_PART_MAIN | LV_STATE_DEFAULT);
     // }
     if (lv_obj_is_valid(gaus_dial_bg))
     {
-        lv_obj_set_style_img_opa(gaus_dial_bg, opa,
+        lv_obj_set_style_bg_opa(gaus_dial_bg, opa,
+                                LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
+    if (lv_obj_is_valid(gaus_dial_img))
+    {
+        uint8_t mask_opa = (opa * LV_OPA_70) / LV_OPA_COVER;
+        lv_obj_set_style_img_opa(gaus_dial_img, mask_opa,
                                  LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
+}
+
+static void *save_clock_main_status_img_path = GAUS_CLOCK4_BG;
+void set_clock_main_status_img(const void *img_src)
+{
+    save_clock_main_status_img_path = (void *)img_src;
+    if (lv_obj_is_valid(gaus_dial_img))
+    {
+        lv_img_set_src(gaus_dial_img, img_src);
     }
 }
 
@@ -1318,12 +1342,22 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     {
         bar_opa = LV_OPA_TRANSP;
     }
-    
-    gaus_dial_bg = lv_img_create(par);
-    lv_img_set_src(gaus_dial_bg, GAUS_DEFAULT_PICTURE);
-    lv_obj_set_style_img_opa(gaus_dial_bg, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    gaus_dial_bg = lv_obj_create(par);
     lv_obj_set_size(gaus_dial_bg, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_set_style_bg_color(gaus_dial_bg, LV_COLOR_BLACK,
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(gaus_dial_bg, LV_OPA_COVER,
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_center(gaus_dial_bg);
+    lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+
+    gaus_dial_img = lv_img_create(gaus_dial_bg);
+    lv_img_set_src(gaus_dial_img, save_clock_main_status_img_path);
+    lv_obj_set_style_img_opa(gaus_dial_img, LV_OPA_70,
+                             LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_size(gaus_dial_img, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_center(gaus_dial_img);
 
     status_bar_bg_main = lv_obj_create(par);
     lv_obj_set_size(status_bar_bg_main, LV_HOR_RES_MAX, LV_VER_RES_MAX);
