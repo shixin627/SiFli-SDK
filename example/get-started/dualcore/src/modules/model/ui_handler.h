@@ -36,7 +36,6 @@ extern "C"
 #define APP_ID_WEATHER "weather"
 #define APP_ID_ALARM "alarm"
 #define APP_ID_GESTURE "gesture"
-// #define APP_ID_GESTURE_TUTORIAL "tutorial"
 #define APP_ID_MESSAGE_LIST "message_list"
 #define APP_ID_IOT_GATE "iot_gate"
 #define APP_ID_BAROMETER "barometer"
@@ -47,10 +46,7 @@ extern "C"
 #define APP_ID_GAME_DINOSAUR "game_dinosaur"
 // #define APP_ID_TOUCHSCREEN "touchscreen"
 // #define APP_ID_TOUCHPAD "touchpad"
-// #define APP_ID_NOTE "note"
 #define APP_ID_NOTE_CHATROOM "note_chatroom"
-    // #define APP_ID_TODOLIST "tasks"
-    // #define APP_ID_PAGEVIEW "pageview"
 
     typedef enum
     {

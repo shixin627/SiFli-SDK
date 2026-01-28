@@ -43,7 +43,6 @@
 #include <stdint.h>
 #include "lvgl.h"
 #include "lv_simplified_obj.h"
-#include "lv_arc_scrollbar.h"
 #include "lv_ext_resource_manager.h"
 #include "watch_global_data.h"
 #include "watch_system_core_task.h"
@@ -61,12 +60,13 @@
 #include <math.h>
 #include "ui_handler.h"
 #include "ui_img_helper.h"
+
+#ifdef APP_ID_CALENDAR
+
 #define DBG_TAG "app_calendar_straight"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-#ifdef APP_ID_CALENDAR
-// Image declarations
 LV_IMG_DECLARE(img_clock);
 LV_IMG_DECLARE(img_settings);
 // LV_IMG_DECLARE(img_activity);
@@ -75,8 +75,6 @@ LV_IMG_DECLARE(img_messages);
 LV_IMG_DECLARE(weather);
 LV_IMG_DECLARE(football_card);
 
-
-// Layout constants
 #define LIST_ITEM_WIDTH (88)
 #define LIST_ITEM_HEIGHT (88)
 #define LIST_ITEM_SPACING (60)
@@ -225,7 +223,7 @@ static lv_obj_t *calendar_tileview_builder(lv_obj_t *parent)
 	for (rt_uint16_t i = 0; i < 7; i++)
 	{
 		pages[i] = lv_tileview_add_tile(tileview, i, 0, LV_DIR_HOR);
-		common_watch_bg(pages[i]);
+		common_black_bg(pages[i]);
 
 		// Set up page styling
 		lv_obj_set_style_bg_opa(pages[i], LV_OPA_0, LV_PART_MAIN | LV_STATE_DEFAULT);

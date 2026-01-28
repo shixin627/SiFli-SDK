@@ -42,7 +42,6 @@
 
 #include "lvgl.h"
 #include "lv_simplified_obj.h"
-#include "lv_arc_scrollbar.h"
 #include "lv_ext_resource_manager.h"
 #include "app_mainmenu.h"
 #include "common_widget.h"
@@ -67,6 +66,8 @@
 #include "bloc_motion_tracking.h"
 #define Disc_Control
 #endif
+
+#ifdef APP_ID_WIDGETS
 
 #define DBG_TAG "app.list.layout"
 #define DBG_LVL DBG_LOG
@@ -1419,7 +1420,6 @@ rt_int32_t control_app_list_deinit(void)
 #endif
 }
 
-#if 1
 static void msg_handler(gui_app_msg_type_t msg, void *param)
 {
 	switch (msg)
@@ -1453,7 +1453,7 @@ static int app_main(intent_t i)
 
 	return 0;
 }
-// LV_IMG_DECLARE(skaiwalkicon);
+
 BUILTIN_APP_EXPORT(LV_EXT_STR_ID(widgets), SKAIWALKICON, APP_ID_CONTROL_APP, app_main);
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

@@ -41,7 +41,6 @@
  */
 
 #include "lvgl.h"
-#include "lv_arc_scrollbar.h"
 #include "lv_ext_resource_manager.h"
 #include "drv_touch.h"
 #include "app_mainmenu.h"

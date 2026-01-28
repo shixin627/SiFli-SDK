@@ -3169,7 +3169,7 @@ static void text_input_bar_cb(lv_event_t *e)
  */
 void lv_create_mouse_screen(lv_obj_t *scr)
 {
-    lv_obj_t *bg = common_watch_bg(scr);
+    lv_obj_t *bg = common_black_bg(scr);
     lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
 
     // Touch background

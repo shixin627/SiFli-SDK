@@ -63,20 +63,6 @@ lv_obj_t *common_black_bg(lv_obj_t *par)
 }
 
 /**
- * @brief Create a watch background (transparent black)
- *
- * @param par Parent object
- * @return lv_obj_t* Background object
- */
-lv_obj_t *common_watch_bg(lv_obj_t *par)
-{
-    lv_obj_t *bg = common_black_bg(par);
-    lv_obj_set_style_bg_opa(bg, LV_OPA_0, 0);
-
-    return bg;
-}
-
-/**
  * @brief Create a common container with specified size, event callback and color
  *
  * @param parent Parent object

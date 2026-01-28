@@ -48,14 +48,8 @@ extern "C"
     extern lv_obj_t *create_animate_points(app_speech_ripple_t *point, lv_obj_t *par);
     extern void wait_for_message(app_speech_ripple_t *point, bool start);
     extern void gesture_event_handler_close_app(lv_event_t *e);
-    extern void refresh_mouse_mode_btn(void);
 
     extern lv_obj_t *common_black_bg(lv_obj_t *par);
-    extern lv_obj_t *common_watch_bg(lv_obj_t *par);
-    extern lv_obj_t *common_circle_watch_bg(lv_obj_t *par);
-    extern lv_obj_t *common_bg_green(lv_obj_t *par);
-    extern lv_obj_t *common_opa0_bg_green(lv_obj_t *par);
-    extern lv_obj_t *common_screen_title(lv_obj_t *par, const char *title);
     extern lv_obj_t *common_flex_button(lv_obj_t *par, bool custom_style, lv_coord_t radius);
     extern lv_obj_t *common_text_button(lv_obj_t *par, const char *text, uint8_t font_size, lv_coord_t w, lv_coord_t h, lv_event_cb_t event_cb);
     extern lv_obj_t *common_icon_button(lv_obj_t *par, const void *img_src, lv_event_cb_t event_cb);

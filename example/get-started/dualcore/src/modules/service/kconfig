@@ -24,7 +24,6 @@ menu "Select data service"
         config BSP_USING_BARO_SVC
             bool "Enable Barometer Service"
             select SENSOR_USING_BAROMETER
-            select SENSOR_USING_BMP280
             default n 				
 
         config BSP_USING_ACCE_SVC

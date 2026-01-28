@@ -457,7 +457,7 @@ static int watch_prefs_register(void)
 {
   WatchPrefs.pref = NULL;
 #if USING_STORAGE_API_LOCK
-  storage_api_lock = rt_mutex_create("watch_storage_lock", RT_IPC_FLAG_FIFO);
+  storage_api_lock = rt_mutex_create("storage_api_lock", RT_IPC_FLAG_FIFO);
   RT_ASSERT(storage_api_lock != NULL);
 #endif
   WatchPrefs.read_flag_field = read_flag_field;

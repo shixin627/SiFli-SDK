@@ -45,7 +45,6 @@
 
 #include "lvgl.h"
 #include "lv_simplified_obj.h"
-#include "lv_arc_scrollbar.h"
 #include "lv_ext_resource_manager.h"
 #include "app_mainmenu.h"
 #include "common_widget.h"

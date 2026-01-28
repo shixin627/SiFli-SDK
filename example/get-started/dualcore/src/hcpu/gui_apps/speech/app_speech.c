@@ -224,7 +224,7 @@ static void on_pause(void);
 lv_obj_t *app_speech_main_init(lv_obj_t *parent)
 {
     lv_obj_t *p_window;
-    p_window = common_watch_bg(parent);
+    p_window = common_black_bg(parent);
     lv_obj_t *cont = common_container(p_window, 420, 240, cont_event_callback, lv_color_hex(0x000000));
     lv_obj_set_style_border_width(cont, 2, 0);
     lv_obj_set_style_border_color(cont, lv_color_hex(0xFFFFFF), 0);
