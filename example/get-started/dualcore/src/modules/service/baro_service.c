@@ -432,7 +432,7 @@ int baro_service_register(void)
     }
 
     baro_service_env.service = datas_register("BARO", &baro_service_cb);
-    baro_service_env.timer = rt_timer_create("BARO", timeout_ind, 0, rt_tick_from_millisecond(500), RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+    baro_service_env.timer = rt_timer_create("BARO", timeout_ind, 0, rt_tick_from_millisecond(100), RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
     RT_ASSERT(baro_service_env.timer);
     RT_ASSERT(baro_service_env.service);
 
