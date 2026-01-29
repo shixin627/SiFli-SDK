@@ -79,13 +79,13 @@
     #include "ui_handler.h"
 #endif
 
+
+#ifdef APP_ID_EXERCISE
+
 #define DBG_TAG "app.exercise"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-#ifdef APP_ID_EXERCISE
-
-// 运动UI控件集合
 typedef struct
 {
     lv_obj_t *bg;           // 背景
@@ -1143,7 +1143,6 @@ static int app_main(intent_t i)
     return 0;
 }
 
-// 注册应用
 BUILTIN_APP_EXPORT(LV_EXT_STR_ID(exercise), LV_EXT_IMG_GET(img_workout),
                    APP_ID_EXERCISE, app_main);
 

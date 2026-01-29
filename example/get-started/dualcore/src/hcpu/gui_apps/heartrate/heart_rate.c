@@ -63,11 +63,11 @@
 #include "ui_handler.h"
 #include "ui_img_helper.h"
 
+#ifdef APP_ID_HEART_RATE
+
 #define DBG_TAG "app.heart_rate"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
-
-#ifdef APP_ID_HEART_RATE
 
 /* Forward declarations */
 static void subscribe_hr_sensor(bool subscribe);

@@ -81,11 +81,11 @@
 #include "ble_device_manager.h"
 #include "ble_hid.h"
 
+#ifdef APP_ID_MOUSE
+
 #define DBG_TAG "hid.mouse"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
-
-#ifdef APP_ID_MOUSE
 
     /*********************
      *      DEFINES

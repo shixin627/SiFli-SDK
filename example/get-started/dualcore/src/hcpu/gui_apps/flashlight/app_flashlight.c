@@ -368,18 +368,10 @@ static lv_obj_t *on_start(lv_obj_t *scr)
  */
 static void on_resume(void)
 {
-    // switch_watch_motion_control_mode(true, false);
     set_open_control_options(false);
     set_free_control_with_arm(false);
     reset_lvgl_msg_handler();
     setting_provider.set_power_save_mode(0);
-
-#ifdef BSP_USING_UI_HANDLER
-    // lvgl_msg_handler.handle_tap_event = handle_tap_event;
-    LOG_D("on_resume: handle_tap_event set");
-    // lvgl_msg_handler.handle_tap_indicator = handle_gesture_event;
-    LOG_D("on_resume: handle_tap_indicator set");
-#endif
 }
 
 /**
@@ -394,11 +386,6 @@ static void on_pause(void)
     {
         close_rgb_control_panel();
     }
-
-#ifdef BSP_USING_UI_HANDLER
-    // lvgl_msg_handler.handle_tap_event = NULL;
-    // lvgl_msg_handler.handle_tap_indicator = NULL;
-#endif
 }
 
 /**

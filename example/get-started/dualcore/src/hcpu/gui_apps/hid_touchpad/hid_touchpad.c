@@ -64,11 +64,14 @@
 #include "ui_handler.h"
 #endif
 #include "ui_helper.h"
+
+
+#ifdef APP_ID_TOUCHPAD
+
 #define DBG_TAG "hid.touchpad"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-#ifdef APP_ID_TOUCHPAD
 LV_IMG_DECLARE(img_touchpad);
 
 #define TOUCHPAD_AREA_WIDTH 128

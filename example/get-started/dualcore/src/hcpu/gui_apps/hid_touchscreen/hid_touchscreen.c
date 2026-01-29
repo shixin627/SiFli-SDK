@@ -62,11 +62,13 @@
 #include "communicate_protocol.h"
 #include "ui_handler.h"
 #include "ui_helper.h"
+
+#ifdef APP_ID_TOUCHSCREEN
+
 #define DBG_TAG "hid.touchscreen"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-#ifdef APP_ID_TOUCHSCREEN
 LV_IMG_DECLARE(img_touchscreen);
 
 #define TOUCH_AREA_WIDTH 128
