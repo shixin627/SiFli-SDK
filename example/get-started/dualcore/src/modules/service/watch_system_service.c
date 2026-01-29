@@ -53,7 +53,7 @@
 #include "data_service_provider.h"
 #include "watch_sys_service.h"
 // #include "bloc_peripheral.h"
-// #include "bloc_motor.h"
+#include "bloc_battery.h"
 #include "bloc_rgb_led.h"
 #ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
     #include "activity.h"
@@ -470,6 +470,10 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
             LOG_I("System Stand by");
             set_sleep_mode(true);
             acce_set_power(RT_SENSOR_POWER_LOW);
+            if (!battery_get_charge_state()->is_plugged)
+            {
+                main_send_rgb_stop_event();
+            }
         }
         break;
 

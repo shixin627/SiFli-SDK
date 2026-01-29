@@ -57,7 +57,7 @@ static uint32_t last_activity_time = 0;
 /* RT-Thread thread handle and stack definition */
 #define PERIODIC_TASK_STACK_SIZE 1024
 #define PERIODIC_TASK_PRIORITY 27                   // Adjust priority as needed
-#define PERIODIC_TASK_TICK (5 * RT_TICK_PER_SECOND) // Run every minute
+#define PERIODIC_TASK_TICK (300 * RT_TICK_PER_SECOND) // Run every 5 minutes
 
 static rt_thread_t periodic_task_thread = RT_NULL;
 static uint8_t periodic_task_stack[PERIODIC_TASK_STACK_SIZE];

@@ -577,15 +577,7 @@ static void button_event_task_entry(struct _lv_timer_t *task)
 
     // #if !kReleaseMode
     extern bool pause_sleep_cause_of_dev_reson(void);
-    // if (!pause_sleep_cause_of_dev_reson())
     // #endif
-    // {
-    //     if (is_timeout && setting_provider.get_power_save_mode() &&
-    //         !never_sleep)
-    //     {
-    //         send_sys_interact_event(SYS_EVENT_HCPU_SUSPEND);
-    //     }
-    // }
 
     if (lv_disp_get_inactive_time(NULL) > limit_time &&
         setting_provider.get_power_save_mode() &&
@@ -656,12 +648,6 @@ static void on_touch_gesture(touch_gesture_t gesture, uint16_t x, uint16_t y)
     {
     case TOUCH_GESTURE_PRESSED:
         LOG_D("Touch pressed at (%d, %d)", x, y);
-        // Handle initial touch moment if needed
-        // if (get_idle_state() && get_sys_power_status() ==
-        // SYS_POWER_STATUS_ON)
-        // {
-        //     watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
-        // }
         break;
     case TOUCH_GESTURE_QUICK_CLICK:
         LOG_D("Quick click at (%d, %d)", x, y);
@@ -672,16 +658,6 @@ static void on_touch_gesture(touch_gesture_t gesture, uint16_t x, uint16_t y)
             gui_pm_fsm(GUI_PM_ACTION_BUTTON_CLICKED);
             peripheral_provider.hcpu_resume();
         }
-        // if (get_sys_power_status() == SYS_POWER_STATUS_SLEEP)
-        // {
-        //     LOG_D("Wakeup from sleep due to quick click");
-        //     // watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
-        // }
-        // else if (get_sys_power_status() == SYS_POWER_STATUS_OFF)
-        // {
-        //     LOG_D("Wakeup from off due to quick click");
-        //     // watch_system_interact(STANDBY_WAKEUP, NULL);
-        // }
         else
         {
             LOG_D("System is already ON, no action taken");
