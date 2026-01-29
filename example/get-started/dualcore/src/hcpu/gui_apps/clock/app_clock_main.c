@@ -724,6 +724,10 @@ static void clock_change_page(char *clk_id)
     {
         set_clock_main_status_img(GAUS_CLOCK4_BG);
     }
+    else if (strcmp(clk_id, "JW_wf5") == 0)
+    {
+        set_clock_main_status_img(GAUS_CLOCK5_BG);
+    }
 
 }
 

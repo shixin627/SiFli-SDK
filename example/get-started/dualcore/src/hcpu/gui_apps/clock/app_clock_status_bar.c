@@ -1397,12 +1397,15 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     }
     else if (get_last_active_clock() == 1)
     {
-        snprintf(dst_path, sizeof(dst_path),
-                 "/assets/gaus_images/gaus_clock1_bg.bin");
+        snprintf(dst_path, sizeof(dst_path),GAUS_CLOCK1_BG);
     }
-    else //if (get_last_active_clock() == 4)
+    else if (get_last_active_clock() == 4)
     {
-        snprintf(dst_path, sizeof(dst_path), "/assets/gaus_images/gaus_clock4_bg.bin");
+        snprintf(dst_path, sizeof(dst_path), GAUS_CLOCK4_BG);
+    }
+    else if (get_last_active_clock() == 5)
+    {
+        snprintf(dst_path, sizeof(dst_path), GAUS_CLOCK5_BG);
     }
     gaus_dial_img = lv_img_create(gaus_dial_bg);
     lv_img_set_src(gaus_dial_img, dst_path);

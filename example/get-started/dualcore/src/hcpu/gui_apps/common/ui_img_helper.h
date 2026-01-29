@@ -78,6 +78,7 @@
 
 // #define GAUS_DEFAULT_PICTURE "/assets/gaus_images/gaus_default_picture.bin"
 extern char *GAUS_DEFAULT_PICTURE;
+#define GAUS_CLOCK5_BG "/assets/gaus_images/gaus_clock5_bg.bin"
 #define GAUS_CLOCK4_BG "/assets/gaus_images/gaus_clock4_bg.bin"
 #define GAUS_CLOCK1_BG "/assets/gaus_images/gaus_clock1_bg.bin"
 
