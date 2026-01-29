@@ -342,10 +342,6 @@ static void navigation_bar_control_with_gyro(Vector3 *gyro)
             last_scroll_time = rt_tick_get_millisecond();
             if (navigation_gyro_z_count > 0)
             {
-                // lvgl_msg_t msg;
-                // msg.type = LVGL_MSG_TYPE_GYRO_SCROLL_LIST;
-                // msg.data.scroll_up = false;
-                // lvgl_send_msg(msg);
                 if (is_at_message())
                 {
                     mesage_list_scroll_to_app(false);
@@ -357,10 +353,6 @@ static void navigation_bar_control_with_gyro(Vector3 *gyro)
             }
             else
             {
-                // lvgl_msg_t msg;
-                // msg.type = LVGL_MSG_TYPE_GYRO_SCROLL_LIST;
-                // msg.data.scroll_up = true;
-                // lvgl_send_msg(msg);
                 if (is_at_message())
                 {
                     mesage_list_scroll_to_app(true);

@@ -208,6 +208,7 @@ typedef struct
     PacketHandler handle_gsensor_ppg_buffer;
     PacketHandler handle_gsensor_gravity_data;
     PacketHandler handle_imu_buffer;
+    PacketHandler handle_baro_buffer;
 
     // File Sync handlers
     PacketHandler handle_start_sync_file;
@@ -682,6 +683,18 @@ static uint16_t handle_imu_buffer(PacketBuilder *builder, L1SendData *data)
     memcpy(buf + 5, data->res.imu_data.data, len);
 
     builder->length = len + 5;
+    return builder->length;
+}
+
+static uint16_t handle_baro_buffer(PacketBuilder *builder, L1SendData *data)
+{
+    uint8_t *buf = builder->buf;
+
+    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_BARO_BUFFER);
+    SET_PACKET_LENGTH(buf, 4);
+    // copy float data (4 bytes)
+    memcpy(buf + 5, &data->res.baro_data, 4);
+    builder->length = 9;
     return builder->length;
 }
 
@@ -1393,6 +1406,9 @@ static uint16_t dispatch_packet_handler(L1SendData *data)
         break;
     case L1SEND_IMU_BUFFER:
         handler = commu_handler_provider.handle_imu_buffer;
+        break;
+    case L1SEND_BARO_BUFFER:
+        handler = commu_handler_provider.handle_baro_buffer;
         break;
 
     // File Sync

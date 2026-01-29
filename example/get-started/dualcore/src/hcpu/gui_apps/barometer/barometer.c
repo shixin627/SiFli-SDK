@@ -148,6 +148,10 @@ static int baro_data_callback(data_callback_arg_t *arg)
                 lv_label_set_text(cur_pressure_label, (const char *)s);
             }
 
+            L1SendData l1event = {.event = L1SEND_BARO_BUFFER,
+                               .res.baro_data = (float)data->data.baro / 100};
+            L1_send_event(l1event);
+
             LOG_D("Current Pressure: %s", s);
             lv_mem_free(s);
         }

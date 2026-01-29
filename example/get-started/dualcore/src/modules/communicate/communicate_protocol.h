@@ -173,6 +173,7 @@ extern "C"
         L1SEND_RETURN_SOFT_ADT_STATUS,
         L1SEND_LINEAR_ACCE_BUFFER,
         L1SEND_IMU_BUFFER,
+        L1SEND_BARO_BUFFER,
         L1SEND_GSENSOR_FFT_BUFFER,
         L1SEND_GSENSOR_PPG_BUFFER,
         L1SEND_GSENSOR_GRAVITY_DATA,
@@ -270,7 +271,7 @@ extern "C"
     typedef union
     {
         int hr;
-        float temperature;
+        float baro_data;
         uint8_t bt_speaker_volume;
         uint8_t lcd_brightness;
         uint8_t lcd_display_time;
