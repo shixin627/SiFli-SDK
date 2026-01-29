@@ -764,7 +764,7 @@ void app_watch_entry(void *parameter)
     //     get_messages_list_from_template();
     // #endif
     bloc_setting_load_watch_system();
-    bloc_system_schedule_init();
+    // bloc_system_schedule_init();
     load_note_list_from_file();
 
 #ifdef BSP_USING_PM

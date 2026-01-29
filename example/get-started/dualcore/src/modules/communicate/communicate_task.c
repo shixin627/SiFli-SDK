@@ -1184,6 +1184,7 @@ static int commu_handler_provider_register(void)
     commu_handler_provider.handle_gsensor_ppg_buffer = handle_gsensor_ppg_buffer;
     commu_handler_provider.handle_gsensor_gravity_data = handle_gsensor_gravity_data;
     commu_handler_provider.handle_imu_buffer = handle_imu_buffer;
+    commu_handler_provider.handle_baro_buffer = handle_baro_buffer;
 
     // File Sync
     commu_handler_provider.handle_start_sync_file = handle_start_sync_file;
