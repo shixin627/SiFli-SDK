@@ -1305,7 +1305,6 @@ bool is_test_mode(void)
     return test_mode;
 }
 
-
 static void set_clock_main_status_opa(uint8_t opa)
 {
     // if (lv_obj_is_valid(myLancher[app_index_message].pagetileview))
@@ -1327,14 +1326,36 @@ static void set_clock_main_status_opa(uint8_t opa)
     }
 }
 
-static void *save_clock_main_status_img_path = GAUS_CLOCK4_BG;
 void set_clock_main_status_img(const void *img_src)
 {
-    save_clock_main_status_img_path = (void *)img_src;
     if (lv_obj_is_valid(gaus_dial_img))
     {
         lv_img_set_src(gaus_dial_img, img_src);
     }
+}
+
+extern uint8_t get_last_active_clock(void);
+static char *get_picture_name(void)
+{
+    static char name[64];
+    char folder[64];
+    snprintf(folder, sizeof(folder), "/JW_wf%u", get_last_active_clock());
+    DIR *dir = opendir(folder);
+    if (!dir)
+        return NULL;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (strncmp(entry->d_name, "picture_", 8) == 0)
+        {
+            strncpy(name, entry->d_name + 8, sizeof(name) - 1);
+            name[sizeof(name) - 1] = '\0';
+            closedir(dir);
+            return name;
+        }
+    }
+    closedir(dir);
+    return NULL;
 }
 
 static lv_obj_t *status_bar_bg_main = NULL;
@@ -1359,9 +1380,32 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
                             LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_center(gaus_dial_bg);
     lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-
+    char dst_path[64];
+    if (get_last_active_clock() == 2 || get_last_active_clock() == 3)
+    {
+        char *filename = get_picture_name();
+        if (filename != NULL)
+        {
+            snprintf(dst_path, sizeof(dst_path), "/assets/gaus_images/gaus_%s",
+                     filename);
+        }
+        else
+        {
+            snprintf(dst_path, sizeof(dst_path),
+                     "/assets/gaus_images/gaus_default_picture.bin");
+        }
+    }
+    else if (get_last_active_clock() == 1)
+    {
+        snprintf(dst_path, sizeof(dst_path),
+                 "/assets/gaus_images/gaus_clock1_bg.bin");
+    }
+    else //if (get_last_active_clock() == 4)
+    {
+        snprintf(dst_path, sizeof(dst_path), "/assets/gaus_images/gaus_clock4_bg.bin");
+    }
     gaus_dial_img = lv_img_create(gaus_dial_bg);
-    lv_img_set_src(gaus_dial_img, save_clock_main_status_img_path);
+    lv_img_set_src(gaus_dial_img, dst_path);
     lv_obj_set_style_img_opa(gaus_dial_img, LV_OPA_70,
                              LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_size(gaus_dial_img, LV_HOR_RES_MAX, LV_VER_RES_MAX);

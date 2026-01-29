@@ -27,16 +27,17 @@ class wf3 extends app {
             var day = cur_time.getDate();
             var weekday = weekdays[cur_time.getDay()];
             this.date.set_text(weekday + " " + ((month <= 9) ? "0" : "") + month + "/" + ((day <= 9) ? "0" : "") + day);
-            // 檢查 /JW_wf2/picture.bin 是否存在及是否有變化
+            // 檢查 /JW_wf3/ 下是否有 picture_ 開頭的 bin 檔
             var files = os.readdir("/JW_wf3");
-            var hasPicture = false;
+            var pictureFile = null;
             var pictureSize = 0;
             if (files && files[0]) {
                 for (var i = 0; i < files[0].length; i++) {
-                    if (files[0][i] == "picture.bin") {
-                        hasPicture = true;
+                    var fname = files[0][i];
+                    if (fname.startsWith("picture_") && fname.endsWith(".bin")) {
+                        pictureFile = fname;
                         // 取得檔案大小來判斷是否有變化
-                        var stat = os.stat("/JW_wf3/picture.bin");
+                        var stat = os.stat("/JW_wf3/" + fname);
                         if (stat && stat[0]) {
                             pictureSize = stat[0].size;
                         }
@@ -44,14 +45,15 @@ class wf3 extends app {
                     }
                 }
             }
+            var hasPicture = !!pictureFile;
             // 只有在狀態變化時才刷新圖片：
-            // 1. 從沒有 picture.bin 變成有 picture.bin
-            // 2. 從有 picture.bin 變成沒有 picture.bin
-            // 3. picture.bin 大小改變（表示檔案被更新）
+            // 1. 從沒有 picture_*.bin 變成有 picture_*.bin
+            // 2. 從有 picture_*.bin 變成沒有 picture_*.bin
+            // 3. picture_*.bin 大小改變（表示檔案被更新）
             if (hasPicture != this.lastHasPicture || pictureSize != this.lastPictureSize) {
                 print("Picture state changed for wf3: hasPicture=" + hasPicture + ", size=" + pictureSize);
                 if (hasPicture) {
-                    this.bg4.set_src("/JW_wf3/picture.bin");
+                    this.bg4.set_src("/JW_wf3/" + pictureFile);
                 } else {
                     this.bg4.set_src("/JW_wf3/default_picture.bin");
                 }
