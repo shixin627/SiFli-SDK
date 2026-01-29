@@ -26,6 +26,7 @@
 #include "bloc_filesystem.h"
 #include "ui_datasrv_subscriber.h"
 #include "ui_img_helper.h"
+#include "ui_handler.h"
 #include "data_service.h"
 #include "power_manager_service.h"
 #include "data_service_subscriber.h"
@@ -586,6 +587,7 @@ static int copy_file(const char *src, const char *dst)
     return 0;
 }
 // choose_photo_list callback
+extern void set_clock_main_status_img(const void *img_src);
 char *GAUS_DEFAULT_PICTURE = "/assets/gaus_images/gaus_default_picture.bin";
 static void photo_select_cb(lv_event_t *e)
 {
@@ -594,8 +596,34 @@ static void photo_select_cb(lv_event_t *e)
     if (choose_photo_page_ptr && selected_path)
     {
         char dst_path[64];
-        snprintf(dst_path, sizeof(dst_path), "/JW_wf%u/picture.bin",
-                 (unsigned)choose_photo_page_ptr);
+        char folder[64];
+        snprintf(folder, sizeof(folder), "/JW_wf%u", (unsigned)choose_photo_page_ptr);
+        // 先刪除 picture_ 開頭的檔案（只會有一個）
+        DIR *dir = opendir(folder);
+        if (dir)
+        {
+            struct dirent *entry;
+            while ((entry = readdir(dir)) != NULL)
+            {
+                if (strncmp(entry->d_name, "picture_", 8) == 0)
+                {
+                    char pic_path[128];
+                    snprintf(pic_path, sizeof(pic_path), "%s/%s", folder, entry->d_name);
+                    remove(pic_path);
+                    lv_img_cache_invalidate_src(pic_path);
+                    break; // 只會有一個
+                }
+            }
+            closedir(dir);
+        }
+
+        const char *filename = strrchr(selected_path, '/');
+        if (filename)
+            filename++; // 跳過 '/' 字元
+        else
+            filename = selected_path; // 沒有 '/'，直接用原字串
+        snprintf(dst_path, sizeof(dst_path), "/JW_wf%u/picture_%s",
+                 (unsigned)choose_photo_page_ptr, filename);
         lv_img_cache_invalidate_src(dst_path);
         int ret = copy_file(selected_path, dst_path);
         if (ret == 0)
@@ -606,21 +634,15 @@ static void photo_select_cb(lv_event_t *e)
         {
             LOG_E("Copy failed: %d", ret);
         }
-        const char *filename = strrchr(selected_path, '/');
-        if (filename)
-            filename++; // 跳過 '/' 字元
-        else
-            filename = selected_path; // 沒有 '/'，直接用原字串
+
         snprintf(dst_path, sizeof(dst_path), "/assets/gaus_images/gaus_%s",
                  filename);
         if (GAUS_DEFAULT_PICTURE)
         {
-            LOG_I("Free previous GAUS_DEFAULT_PICTURE: %s",
-                  GAUS_DEFAULT_PICTURE);
             GAUS_DEFAULT_PICTURE = strdup(dst_path);
         }
-        LOG_I("Set GAUS_DEFAULT_PICTURE to %s", GAUS_DEFAULT_PICTURE);
     }
+    set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
     // 關閉視窗
     lv_obj_del(photo_list_obj);
     choose_photo_page_ptr = NULL;

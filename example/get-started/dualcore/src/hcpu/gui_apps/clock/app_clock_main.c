@@ -383,6 +383,10 @@ static void set_battery_image(lv_obj_t *img, uint8_t battery_level)
 static rt_uint32_t total_milliseconds = 0;
 static clock_t latched_clock;
 static uint16_t last_active_clock = 0;
+uint8_t get_last_active_clock(void)
+{
+    return last_active_clock+1;
+}
 
 void app_clock_main_get_current_time(app_clock_time_t *t)
 {
@@ -662,10 +666,47 @@ static void swich_dial_widget_deinit(uint8_t app_id)
         dial_weather_widget_deinit();
     }
 }
+static void get_clock_main_status_img_path(char *clk_id)
+{
+    char folder[64];
+    snprintf(folder, sizeof(folder), "/%s", clk_id);
+    DIR *dir = opendir(folder);
+    int found = 0;
+    extern char *GAUS_DEFAULT_PICTURE;
+    if (dir)
+    {
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL)
+        {
+            if (strncmp(entry->d_name, "picture_", 8) == 0)
+            {
+                // 取 picture_ 後面的檔名
+                const char *filename = entry->d_name + 8;
+                static char gaus_path[128];
+                snprintf(gaus_path, sizeof(gaus_path), "/assets/gaus_images/gaus_%s", filename);
+                if (GAUS_DEFAULT_PICTURE)
+                {
+                    GAUS_DEFAULT_PICTURE = strdup(gaus_path);
+                }
+                found = 1;
+                break;
+            }
+        }
+        closedir(dir);
+    }
+    if (!found)
+    {
+        if (GAUS_DEFAULT_PICTURE)
+        {
+            GAUS_DEFAULT_PICTURE = strdup("/assets/gaus_images/gaus_default_picture.bin");
+        }
+    }
+}
 
 extern void set_clock_main_status_img(const void *img_src);
 static void clock_change_page(char *clk_id)
 {
+    get_clock_main_status_img_path(clk_id);
     LOG_D("clock_change_page: %s", clk_id);
     if (strcmp(clk_id, "JW_wf1") == 0)
     {
@@ -682,6 +723,10 @@ static void clock_change_page(char *clk_id)
     else if (strcmp(clk_id, "JW_wf4") == 0)
     {
         set_clock_main_status_img(GAUS_CLOCK4_BG);
+    }
+    else if (strcmp(clk_id, "JW_wf5") == 0)
+    {
+        set_clock_main_status_img(GAUS_CLOCK5_BG);
     }
 
 }
