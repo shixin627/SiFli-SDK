@@ -106,7 +106,7 @@ static void oled_brightness_changed_timer_start(uint16_t brightness)
 {
 	if (!smooth_brightness_changed_timer)
 	{
-		smooth_brightness_changed_timer = rt_timer_create("oled_brightness_timer", oled_brightness_changed_callback, RT_NULL, 200, RT_TIMER_FLAG_ONE_SHOT);
+		smooth_brightness_changed_timer = rt_timer_create("oled_brightness_timer", oled_brightness_changed_callback, RT_NULL, 2000, RT_TIMER_FLAG_ONE_SHOT);
 	}
 	else
 	{
@@ -128,7 +128,7 @@ static void display_time_changed_timer_start(uint16_t display_time)
 {
 	if (!smooth_display_changed_timer)
 	{
-		smooth_display_changed_timer = rt_timer_create("display_time_timer", oled_display_time_changed_cb, RT_NULL, 200, RT_TIMER_FLAG_ONE_SHOT);
+		smooth_display_changed_timer = rt_timer_create("display_time_timer", oled_display_time_changed_cb, RT_NULL, 2000, RT_TIMER_FLAG_ONE_SHOT);
 	}
 	else
 	{

@@ -169,9 +169,6 @@ static void bar_event_cb(lv_event_t *e)
                             PWRMGR_MSG_LCD_AUTO_OFF_TIME_SET_REQ,
                             (uint8_t *)&result, sizeof(uint16_t));
 
-#ifdef BSP_USING_BLOC_SETTING
-            setting_provider.set_screen_time(result);
-#endif
         }
     }
 }

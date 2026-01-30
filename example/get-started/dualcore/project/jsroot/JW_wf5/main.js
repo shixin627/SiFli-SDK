@@ -26,22 +26,22 @@ class wf5 extends app {
     start() {
         // Upper left
         this.time_ul = new idximg(this.root());
-        this.time_ul.set_pos(95, 63);
+        this.time_ul.set_pos(90, 58);
         this.time_ul.prefix("/JW_wf5/dig_1_");
 
         // Upper right
         this.time_ur = new idximg(this.root());
-        this.time_ur.set_pos(225, 63);
+        this.time_ur.set_pos(225, 58);
         this.time_ur.prefix("/JW_wf5/dig_1_");
 
         // Bottom left
         this.time_bl = new idximg(this.root());
-        this.time_bl.set_pos(95, 225);
+        this.time_bl.set_pos(90, 220);
         this.time_bl.prefix("/JW_wf5/dig_2_");
 
         // Bottom right
         this.time_br = new idximg(this.root());
-        this.time_br.set_pos(225, 225);
+        this.time_br.set_pos(225, 220);
         this.time_br.prefix("/JW_wf5/dig_2_");
 
         this.date_label = new label(this.root());
