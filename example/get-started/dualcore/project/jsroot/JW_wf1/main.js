@@ -57,7 +57,7 @@ class wf1 extends app {
 
         this.date_label = new label(this.root());
         this.date_label.align(lv_enums.ALIGN_IN_TOP_MID, 0, 30);
-        this.date_label.set_local_font(lv_enums.FONT_TITLE, lv_enums.LV_COLOR_WHITE);
+        this.date_label.set_local_font(lv_enums.FONT_SUBTITLE, lv_enums.LV_COLOR_WHITE);
         this.refresh();
     }
 

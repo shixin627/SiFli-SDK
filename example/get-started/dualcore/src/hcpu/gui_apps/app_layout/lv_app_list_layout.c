@@ -1543,6 +1543,11 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
             extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
             widget = lv_skai_widget_builder(item);
         }
+        else if (APP_LIST_ITEMS_DEFINITION[i] == app_id_ai)
+        {
+            extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
+            widget = lv_skai_widget_builder(item);
+        }
         else
         {
             widget = NULL;

@@ -385,7 +385,7 @@ static clock_t latched_clock;
 static uint16_t last_active_clock = 0;
 uint8_t get_last_active_clock(void)
 {
-    return last_active_clock+1;
+    return last_active_clock + 1;
 }
 
 void app_clock_main_get_current_time(app_clock_time_t *t)
@@ -554,6 +554,7 @@ void dial_widget_event(lv_event_t *e)
 
 extern void write_clock_widget_number(void);
 static lv_obj_t *dial_widget = NULL;
+static lv_obj_t *dial_widget_img_bg = NULL;
 static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent);
 // 生成一個列表用於切換 dial_widget_app_id，選擇後自動刪除
 static lv_obj_t *dial_widget_select_list = NULL;
@@ -625,29 +626,46 @@ static void show_dial_widget_select_list(lv_obj_t *parent)
 extern void dial_calendar_widget_deinit(void);
 extern void dial_media_widget_deinit(void);
 extern void dial_weather_widget_deinit(void);
-extern lv_obj_t *lv_dial_calendar_widget_builder(lv_obj_t *parent);
-extern lv_obj_t *lv_dial_media_widget_builder(lv_obj_t *parent);
-extern lv_obj_t *lv_dial_weather_widget_builder(lv_obj_t *parent);
+extern void lv_dial_calendar_widget_builder(lv_obj_t *parent);
+extern void lv_dial_media_widget_builder(lv_obj_t *parent);
+extern void lv_dial_weather_widget_builder(lv_obj_t *parent);
 static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
 {
     LOG_I("swich_dial_widget_builder to app_id=%d", app_id);
     dial_media_widget_deinit();
     dial_calendar_widget_deinit();
     dial_weather_widget_deinit();
+    dial_widget = lv_obj_create(parent);
+    lv_obj_set_style_radius(dial_widget, 50, LV_PART_MAIN);
+    lv_obj_align(dial_widget, LV_ALIGN_CENTER, 0, 115);
+    lv_obj_set_size(dial_widget, 330, 150);
+    lv_obj_set_style_bg_color(dial_widget, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(dial_widget, LV_OPA_80, 0);
+    lv_obj_set_style_border_width(dial_widget, 2, 0);
+    lv_obj_set_style_border_color(dial_widget, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_opa(dial_widget, LV_OPA_10, 0);
+    lv_obj_set_style_clip_corner(dial_widget, true, 0);     // 啟用裁切
+    lv_obj_clear_flag(dial_widget, LV_OBJ_FLAG_SCROLLABLE); // 禁用滾動
+
+    dial_widget_img_bg = lv_img_create(dial_widget);
+    lv_obj_set_style_radius(dial_widget_img_bg, 50, LV_PART_MAIN);
+    lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
+    lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+    lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
     if (app_id == app_id_calendar)
     {
         request_calendar_on_mobile(false);
-        dial_widget = lv_dial_calendar_widget_builder(parent);
+        lv_dial_calendar_widget_builder(dial_widget);
     }
     else if (app_id == app_id_media)
     {
 
-        dial_widget = lv_dial_media_widget_builder(parent);
+        lv_dial_media_widget_builder(dial_widget);
     }
     else if (app_id == app_id_weather)
     {
         request_weather_within_six_hours(false);
-        dial_widget = lv_dial_weather_widget_builder(parent);
+        lv_dial_weather_widget_builder(dial_widget);
     }
 }
 
@@ -683,7 +701,8 @@ static void get_clock_main_status_img_path(char *clk_id)
                 // 取 picture_ 後面的檔名
                 const char *filename = entry->d_name + 8;
                 static char gaus_path[128];
-                snprintf(gaus_path, sizeof(gaus_path), "/assets/gaus_images/gaus_%s", filename);
+                snprintf(gaus_path, sizeof(gaus_path),
+                         "/assets/gaus_images/gaus_%s", filename);
                 if (GAUS_DEFAULT_PICTURE)
                 {
                     GAUS_DEFAULT_PICTURE = strdup(gaus_path);
@@ -698,7 +717,8 @@ static void get_clock_main_status_img_path(char *clk_id)
     {
         if (GAUS_DEFAULT_PICTURE)
         {
-            GAUS_DEFAULT_PICTURE = strdup("/assets/gaus_images/gaus_default_picture.bin");
+            GAUS_DEFAULT_PICTURE =
+                strdup("/assets/gaus_images/gaus_default_picture.bin");
         }
     }
 }
@@ -710,25 +730,39 @@ static void clock_change_page(char *clk_id)
     LOG_D("clock_change_page: %s", clk_id);
     if (strcmp(clk_id, "JW_wf1") == 0)
     {
+        lv_img_set_src(dial_widget_img_bg, GAUS_CLOCK1_BG);
+        lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+        lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
         set_clock_main_status_img(GAUS_CLOCK1_BG);
     }
     else if (strcmp(clk_id, "JW_wf2") == 0)
     {
+        lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
+        lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+        lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
         set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
     }
     else if (strcmp(clk_id, "JW_wf3") == 0)
     {
+        lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
+        lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+        lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
         set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
     }
     else if (strcmp(clk_id, "JW_wf4") == 0)
     {
+        lv_img_set_src(dial_widget_img_bg, GAUS_CLOCK4_BG);
+        lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+        lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
         set_clock_main_status_img(GAUS_CLOCK4_BG);
     }
     else if (strcmp(clk_id, "JW_wf5") == 0)
     {
+        lv_img_set_src(dial_widget_img_bg, GAUS_CLOCK5_BG);
+        lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+        lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
         set_clock_main_status_img(GAUS_CLOCK5_BG);
     }
-
 }
 
 static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)

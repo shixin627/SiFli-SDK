@@ -1320,7 +1320,7 @@ static void set_clock_main_status_opa(uint8_t opa)
     }
     if (lv_obj_is_valid(gaus_dial_img))
     {
-        uint8_t mask_opa = (opa * LV_OPA_70) / LV_OPA_COVER;
+        uint8_t mask_opa = (opa * LV_OPA_50) / LV_OPA_COVER;
         lv_obj_set_style_img_opa(gaus_dial_img, mask_opa,
                                  LV_PART_MAIN | LV_STATE_DEFAULT);
     }
@@ -1331,6 +1331,8 @@ void set_clock_main_status_img(const void *img_src)
     if (lv_obj_is_valid(gaus_dial_img))
     {
         lv_img_set_src(gaus_dial_img, img_src);
+        lv_img_set_zoom(gaus_dial_img, 256 * 2);
+        lv_obj_center(gaus_dial_img);
     }
 }
 
@@ -1397,7 +1399,7 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     }
     else if (get_last_active_clock() == 1)
     {
-        snprintf(dst_path, sizeof(dst_path),GAUS_CLOCK1_BG);
+        snprintf(dst_path, sizeof(dst_path), GAUS_CLOCK1_BG);
     }
     else if (get_last_active_clock() == 4)
     {
@@ -1411,7 +1413,8 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     lv_img_set_src(gaus_dial_img, dst_path);
     lv_obj_set_style_img_opa(gaus_dial_img, LV_OPA_70,
                              LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_size(gaus_dial_img, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    // lv_obj_set_size(gaus_dial_img, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_img_set_zoom(gaus_dial_img, 256 * 2);
     lv_obj_center(gaus_dial_img);
 
     status_bar_bg_main = lv_obj_create(par);

@@ -736,25 +736,13 @@ lv_obj_t *lv_weather_object_builder(lv_obj_t *parent, void *data)
 }
 
 static void dial_weather_widget_layout_update(void);
-lv_obj_t *lv_dial_weather_widget_builder(lv_obj_t *parent)
+void lv_dial_weather_widget_builder(lv_obj_t *parent)
 {
     if (!parent)
     {
         LOG_E("Invalid parent in lv_weather_widget_builder");
-        return NULL;
+        return;
     }
-    lv_obj_t *widget = lv_obj_create(parent);
-    lv_obj_set_style_radius(widget, 50, LV_PART_MAIN);
-    lv_obj_align(widget, LV_ALIGN_BOTTOM_MID, 0, -42);
-    lv_obj_set_size(widget, 330, 150);
-    lv_obj_set_style_bg_color(widget, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(widget, LV_OPA_50, 0);
-    lv_obj_set_style_border_width(widget, 2, 0);
-    lv_obj_set_style_border_color(widget, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(widget, LV_OPA_10, 0);
-    lv_obj_clear_flag(widget, LV_OBJ_FLAG_SCROLLABLE);
-    if (!widget)
-        return NULL;
     for (int i = 0; i < 3; i++)
     {
         weather_t *get_weather_data =
@@ -764,7 +752,7 @@ lv_obj_t *lv_dial_weather_widget_builder(lv_obj_t *parent)
             continue;
         }
         lv_obj_t *weather_widget = create_dial_weather_obj(
-            widget, &daily_weather_data[i], get_weather_data);
+            parent, &daily_weather_data[i], get_weather_data);
         if (i == 0 && lv_obj_is_valid(daily_weather_data[i].time))
         {
             lv_label_set_text(daily_weather_data[i].time, "Now");
@@ -776,7 +764,7 @@ lv_obj_t *lv_dial_weather_widget_builder(lv_obj_t *parent)
         // Add separator line between weather items
         if (i < 2)
         {
-            lv_obj_t *line = lv_obj_create(widget);
+            lv_obj_t *line = lv_obj_create(parent);
             lv_obj_set_size(line, 1, 130);
             lv_obj_align_to(line, weather_widget, LV_ALIGN_OUT_RIGHT_TOP, 7, 0);
             lv_obj_set_style_bg_color(line, LV_COLOR_WHITE, 0);
@@ -786,13 +774,12 @@ lv_obj_t *lv_dial_weather_widget_builder(lv_obj_t *parent)
     lvgl_msg_handler.handle_refresh_dial_weather_widget =
         dial_weather_widget_layout_update;
     dial_weather_widget_layout_update();
-    lv_obj_t *widget_touch_area = lv_obj_create(widget);
+    lv_obj_t *widget_touch_area = lv_obj_create(parent);
     lv_obj_set_size(widget_touch_area, 330, 150);
     lv_obj_align(widget_touch_area, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_event_cb(widget_touch_area, dial_widget_event, LV_EVENT_ALL,
                         NULL);
     lv_obj_set_style_bg_opa(widget_touch_area, LV_OPA_0, 0);
-    return widget;
 }
 
 lv_obj_t *lv_weather_widget_builder(lv_obj_t *parent)

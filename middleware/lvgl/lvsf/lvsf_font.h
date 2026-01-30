@@ -54,13 +54,13 @@ lv_ext_set_local_font_bitmap(obj, color, &font);
 typedef enum
 {
 #if LV_HOR_RES_MAX > 350
-    FONT_SMALL      = 16,
-    FONT_NORMAL     = 20,
-    FONT_SUBTITLE   = 24,
-    FONT_TITLE      = 28,
-    FONT_BIGL       = 36,
-    FONT_HUGE       = 40,
-    FONT_SUPER      = 64,
+    FONT_SMALL      = 20,
+    FONT_NORMAL     = 24,
+    FONT_SUBTITLE   = 28,
+    FONT_TITLE      = 36,
+    FONT_BIGL       = 40,
+    FONT_HUGE       = 64,
+    FONT_SUPER      = 90,
 #else
     FONT_SMALL      = 12,
     FONT_NORMAL     = 16,

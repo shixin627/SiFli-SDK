@@ -26,27 +26,27 @@ class wf5 extends app {
     start() {
         // Upper left
         this.time_ul = new idximg(this.root());
-        this.time_ul.set_pos(90, 58);
+        this.time_ul.set_pos(70, 58);
         this.time_ul.prefix("/JW_wf5/dig_1_");
 
         // Upper right
         this.time_ur = new idximg(this.root());
-        this.time_ur.set_pos(225, 58);
+        this.time_ur.set_pos(205, 58);
         this.time_ur.prefix("/JW_wf5/dig_1_");
 
         // Bottom left
         this.time_bl = new idximg(this.root());
-        this.time_bl.set_pos(90, 220);
+        this.time_bl.set_pos(70, 220);
         this.time_bl.prefix("/JW_wf5/dig_2_");
 
         // Bottom right
         this.time_br = new idximg(this.root());
-        this.time_br.set_pos(225, 220);
+        this.time_br.set_pos(205, 220);
         this.time_br.prefix("/JW_wf5/dig_2_");
 
         this.date_label = new label(this.root());
         this.date_label.align(lv_enums.ALIGN_IN_BOTTOM_MID, 0, -15);
-        this.date_label.set_local_font(lv_enums.FONT_TITLE, lv_enums.LV_COLOR_WHITE);
+        this.date_label.set_local_font(lv_enums.FONT_SUBTITLE, lv_enums.LV_COLOR_WHITE);
         this.refresh();
     }
 

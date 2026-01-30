@@ -637,20 +637,8 @@ lv_obj_t *lv_dial_calendar_object_builder(lv_obj_t *parent)
 	if (instance == NULL) {
 		return NULL;
 	}
-	
-	lv_obj_t *widget = lv_obj_create(parent);
-	instance->widget = widget;
-    lv_obj_set_style_radius(widget, 50, LV_PART_MAIN);
-	lv_obj_align(widget, LV_ALIGN_BOTTOM_MID, 0, -42);
-	lv_obj_set_size(widget, 330, 150);
-	lv_obj_set_style_bg_color(widget, lv_color_hex(0x000000), 0);
-	lv_obj_set_style_bg_opa(widget, LV_OPA_50, 0);
-	lv_obj_set_style_border_width(widget, 2, 0);
-	lv_obj_set_style_border_color(widget, lv_color_hex(0xFFFFFF), 0);
-	lv_obj_set_style_border_opa(widget, LV_OPA_10, 0);
-	lv_obj_add_event_cb(widget, dial_widget_event, LV_EVENT_ALL, NULL);
 
-	lv_obj_t *event_category = lv_obj_create(widget);
+	lv_obj_t *event_category = lv_obj_create(parent);
 	lv_obj_set_size(event_category, 10, 35);
 	lv_obj_align(event_category, LV_ALIGN_TOP_LEFT, 30, 28);
 	lv_obj_set_style_bg_color(event_category, lv_color_hex(0x369EB2), 0);
@@ -659,7 +647,7 @@ lv_obj_t *lv_dial_calendar_object_builder(lv_obj_t *parent)
 	instance->event_category = event_category;
 	lv_obj_add_flag(event_category, LV_OBJ_FLAG_HIDDEN);
 	// Calendar time display
-	lv_obj_t *calendar_time = lv_label_create(widget);
+	lv_obj_t *calendar_time = lv_label_create(parent);
 	lv_label_set_text(calendar_time, "");
 	lv_obj_set_style_text_font(calendar_time, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
 	lv_obj_set_style_text_color(calendar_time, lv_color_hex(0xFFFFFF), 0);
@@ -668,7 +656,7 @@ lv_obj_t *lv_dial_calendar_object_builder(lv_obj_t *parent)
 	instance->time = calendar_time;
 
 	// Calendar content
-	lv_obj_t *content = lv_label_create(widget);
+	lv_obj_t *content = lv_label_create(parent);
 	lv_label_set_long_mode(content, LV_LABEL_LONG_DOT);
 	lv_obj_set_height(content, 150 - 90);
 	lv_obj_set_width(content, 330 - 60);
@@ -678,7 +666,7 @@ lv_obj_t *lv_dial_calendar_object_builder(lv_obj_t *parent)
 	lv_label_set_text(content, "No Calendar");
 	lv_obj_align(content, LV_ALIGN_CENTER, 0, 0);
 	instance->summary = content;
-	return widget;
+	return parent;
 }
 
 // 更新單個 widget 實例的顯示
@@ -792,17 +780,16 @@ void dial_calendar_widget_deinit(void)
 	}
 }
 
-lv_obj_t *lv_dial_calendar_widget_builder(lv_obj_t *parent)
+void lv_dial_calendar_widget_builder(lv_obj_t *parent)
 {
 	if (!parent)
 	{
 		LOG_E("Invalid parent in lv_dial_calendar_widget_builder");
-		return NULL;
+		return;
 	}
 	lv_obj_t *widget = lv_dial_calendar_object_builder(parent);
 	dial_calendar_today_refresh();
 	dial_calendar_widget_start();
-	return widget;
 }
 
 /**

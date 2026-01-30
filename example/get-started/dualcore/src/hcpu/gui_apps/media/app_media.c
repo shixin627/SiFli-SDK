@@ -869,28 +869,18 @@ static lv_obj_t *dial_widget_btn_play_pause_icon = NULL;
 static lv_obj_t *dial_media_title = NULL;
 static lv_obj_t *dial_media_img_bg = NULL;
 static void dial_media_widget_init(void);
-lv_obj_t *lv_dial_media_widget_builder(lv_obj_t *parent)
+void lv_dial_media_widget_builder(lv_obj_t *parent)
 {
     uint16_t widget_zoom = 256 * WIDGET_ICON_ZOOM_SIZE;
-    lv_obj_t *widget = lv_obj_create(parent);
-    lv_obj_set_style_radius(widget, 50, LV_PART_MAIN);
-    lv_obj_align(widget, LV_ALIGN_BOTTOM_MID, 0, -42);
-    lv_obj_set_size(widget, 330, 150);
-    lv_obj_set_style_bg_color(widget, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(widget, LV_OPA_80, 0);
-    lv_obj_set_style_border_width(widget, 2, 0);
-    lv_obj_set_style_border_color(widget, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(widget, LV_OPA_10, 0);
-    lv_obj_set_style_clip_corner(widget, true, 0); // 啟用裁切
-    lv_obj_clear_flag(widget, LV_OBJ_FLAG_SCROLLABLE); // 禁用滾動
-    dial_media_img_bg = lv_img_create(widget);
+    
+    dial_media_img_bg = lv_img_create(parent);
     lv_obj_align(dial_media_img_bg, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_flag(dial_media_img_bg, LV_OBJ_FLAG_HIDDEN);
     // lv_obj_clear_state(dial_media_img_bg, LV_STATE_PRESSED);
     lv_obj_clear_flag(dial_media_img_bg, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_img_opa(dial_media_img_bg, LV_OPA_40, 0);
     
-    dial_media_title = lv_label_create(widget);
+    dial_media_title = lv_label_create(parent);
     lv_obj_set_size(dial_media_title, 300, 50);
     lv_label_set_long_mode(dial_media_title, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(dial_media_title, LV_TEXT_ALIGN_CENTER,
@@ -901,7 +891,7 @@ lv_obj_t *lv_dial_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_text_opa(dial_media_title, LV_OPA_70, 0);
     lv_obj_align(dial_media_title, LV_ALIGN_TOP_MID, 0, 5);
 
-    lv_obj_t *title_btn = lv_obj_create(widget);
+    lv_obj_t *title_btn = lv_obj_create(parent);
     lv_obj_set_size(title_btn, 300, 50);
     lv_obj_add_event_cb(title_btn, dial_widget_event, LV_EVENT_ALL, NULL);
 
@@ -922,7 +912,7 @@ lv_obj_t *lv_dial_media_widget_builder(lv_obj_t *parent)
     }
     LOG_D("DIAL_MEDIA IMG CREATE:%s, %s", title,MEDIA_IMG);
 
-    dial_widget_btn_prev_bg = lv_btn_create(widget);
+    dial_widget_btn_prev_bg = lv_btn_create(parent);
     lv_obj_set_size(dial_widget_btn_prev_bg, 100, 100);
     lv_obj_set_style_radius(dial_widget_btn_prev_bg, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(dial_widget_btn_prev_bg, lv_color_hex(0xFFFFFF),
@@ -939,7 +929,7 @@ lv_obj_t *lv_dial_media_widget_builder(lv_obj_t *parent)
     lv_obj_align(btn_prev, LV_ALIGN_CENTER, 0, 0);
     lv_img_set_zoom(lv_obj_get_child(btn_prev, 0), widget_zoom);
     // lv_obj_set_style_img_opa(lv_obj_get_child(btn_prev, 0), LV_OPA_50, 0);
-    dial_widget_btn_next_bg = lv_btn_create(widget);
+    dial_widget_btn_next_bg = lv_btn_create(parent);
     lv_obj_set_size(dial_widget_btn_next_bg, 100, 100);
     lv_obj_set_style_radius(dial_widget_btn_next_bg, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(dial_widget_btn_next_bg, lv_color_hex(0xFFFFFF),
@@ -955,7 +945,7 @@ lv_obj_t *lv_dial_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_img_opa(lv_obj_get_child(btn_next, 0), LV_OPA_70, 0);
     lv_obj_align(btn_next, LV_ALIGN_CENTER, 0, 0);
     lv_img_set_zoom(lv_obj_get_child(btn_next, 0), widget_zoom);
-    dial_widget_btn_play_pause = lv_btn_create(widget);
+    dial_widget_btn_play_pause = lv_btn_create(parent);
     lv_obj_set_size(dial_widget_btn_play_pause, 100, 100);
     lv_obj_set_style_radius(dial_widget_btn_play_pause, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(dial_widget_btn_play_pause,
@@ -977,7 +967,6 @@ lv_obj_t *lv_dial_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_img_opa(
         lv_obj_get_child(dial_widget_btn_play_pause_icon, 0), LV_OPA_70, 0);
     dial_media_widget_init();
-    return widget;
 }
 
 static void handle_dial_media_widget_play_state(void *param)
