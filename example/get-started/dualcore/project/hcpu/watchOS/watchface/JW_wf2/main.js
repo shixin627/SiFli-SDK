@@ -70,22 +70,22 @@ class wf2 extends app {
         this.dot = new label(this.root());
         this.dot.align(lv_enums.ALIGN_IN_BOTTOM_MID, 0, -60);
         this.dot.set_text(":");
-        this.dot.set_local_font(lv_enums.FONT_SUPER, lv_enums.LV_COLOR_WHITE);
+        this.dot.set_local_font(lv_enums.FONT_HUGE, lv_enums.LV_COLOR_WHITE);
 
         // Hour 
         this.hour = new label(this.root());
         this.hour.align_to(this.dot.nativeobj, lv_enums.ALIGN_OUT_LEFT_TOP, -75, 5);
-        this.hour.set_local_font(lv_enums.FONT_SUPER, lv_enums.LV_COLOR_WHITE);
+        this.hour.set_local_font(lv_enums.FONT_HUGE, lv_enums.LV_COLOR_WHITE);
 
         // Minute
         this.min = new label(this.root());
         this.min.align_to(this.dot.nativeobj, lv_enums.ALIGN_OUT_RIGHT_TOP, 23, 5);
-        this.min.set_local_font(lv_enums.FONT_SUPER, lv_enums.LV_COLOR_WHITE);
+        this.min.set_local_font(lv_enums.FONT_HUGE, lv_enums.LV_COLOR_WHITE);
 
         // Date
         this.date = new label(this.root());
         this.date.align(lv_enums.ALIGN_IN_BOTTOM_MID, 0, -30);
-        this.date.set_local_font(lv_enums.FONT_TITLE, lv_enums.LV_COLOR_WHITE);
+        this.date.set_local_font(lv_enums.FONT_SUBTITLE, lv_enums.LV_COLOR_WHITE);
 
         this.last_min = -1;
         this.lastHasPicture = null;  // 記錄上次是否有 picture.bin

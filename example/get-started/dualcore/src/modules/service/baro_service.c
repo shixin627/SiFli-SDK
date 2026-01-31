@@ -446,6 +446,6 @@ int baro_service_register(void)
     return 0;
 }
 
-INIT_COMPONENT_EXPORT(baro_service_register);
+// INIT_COMPONENT_EXPORT(baro_service_register);
 
 

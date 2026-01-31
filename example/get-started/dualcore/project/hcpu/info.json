@@ -1,5 +1,5 @@
 {
-    "version": "1.0.217",
+    "version": "1.0.218",
     "watchfaceFileList": [
         "/JA_app1/code.txt",
         "/JA_app1/main.js",
@@ -76,6 +76,8 @@
         "/analogclk.js",
         "/assets/Lottie/Lego.json",
         "/assets/Lottie/cheney.json",
+        "/assets/gaus_images/gaus_clock1_bg.bin",
+        "/assets/gaus_images/gaus_clock4_bg.bin",
         "/assets/gaus_images/gaus_default_picture.bin",
         "/assets/icons/app_elc_100.bin",
         "/assets/icons/app_elc_20.bin",

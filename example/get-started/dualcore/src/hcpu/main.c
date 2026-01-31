@@ -1494,6 +1494,8 @@ void rc10k_timeout_handler(void *parameter)
 void wdt_store_exception_information(void)
 {
     rt_kprintf("HCPU WDT1 timeout occurs.\n");
+    extern void drv_reboot(void);
+    drv_reboot();
     return;
 }
 
