@@ -755,7 +755,7 @@ void app_watch_entry(void *parameter)
     setting_provider.set_power_save_mode(1);
 
     SubscribeDualCoreSyncService();
-    rt_thread_mdelay(3000);
+    // rt_thread_mdelay(3000);
     peripheral_provider.hcpu_resume();
 
     rt_thread_mdelay(100);

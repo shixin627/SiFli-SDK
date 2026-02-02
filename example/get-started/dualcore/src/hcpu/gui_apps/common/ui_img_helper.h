@@ -8,6 +8,7 @@
 #ifndef UI_IMG_HELPER_H
 #define UI_IMG_HELPER_H
 
+#ifdef FLASH_IMG
 #define BTN_FLASHLIGHT "/assets/icons/btn_flashlight.bin"
 #define BG_LODING "/assets/icons/bg_loading.bin"
 #define IMG_FLASHLIGHT "/assets/icons/img_flashlight.bin"
@@ -58,6 +59,9 @@
 #define ICON_PROHIBIT "/assets/icons/icon_prohibit.bin"
 #define ICON_SAND "/assets/icons/icon_send.bin"
 #define ICON_TRASH "/assets/icons/icon_trash.bin"
+#define ICON_DND_MODE "/assets/icons/icon_dnd_mode.bin"
+#define ICON_QRCODE "/assets/icons/icon_qrcode.bin"
+#define MOUSE_MODE_ICON "/assets/icons/mouse_mode_icon.bin"
 #define SKAIWALKICON "/assets/icons/skaiwalkicon.bin"
 #define IMG_CHARGING "/assets/icons/img_charging.bin"
 #define ICON_DELETE "/assets/icons/icon_delete.bin"
@@ -77,11 +81,162 @@
 #define IMG_MAIL "/assets/icons/img_mail.bin"
 
 // #define GAUS_DEFAULT_PICTURE "/assets/gaus_images/gaus_default_picture.bin"
-extern char *GAUS_DEFAULT_PICTURE;
 #define GAUS_CLOCK5_BG "/assets/gaus_images/gaus_clock5_bg.bin"
 #define GAUS_CLOCK4_BG "/assets/gaus_images/gaus_clock4_bg.bin"
 #define GAUS_CLOCK1_BG "/assets/gaus_images/gaus_clock1_bg.bin"
+#else
 
+LV_IMG_DECLARE(btn_flashlight);
+LV_IMG_DECLARE(bg_loading);
+LV_IMG_DECLARE(img_flashlight);
+LV_IMG_DECLARE(img_activity);
+LV_IMG_DECLARE(img_alarm_2);
+LV_IMG_DECLARE(img_calendar);
+LV_IMG_DECLARE(img_game);
+LV_IMG_DECLARE(img_group);
+LV_IMG_DECLARE(img_photo);
+LV_IMG_DECLARE(img_recorder);
+LV_IMG_DECLARE(img_logo);
+LV_IMG_DECLARE(img_note);
+LV_IMG_DECLARE(img_workout);
+LV_IMG_DECLARE(img_itunes);
+LV_IMG_DECLARE(img_heart_rate);
+LV_IMG_DECLARE(img_calculator);
+LV_IMG_DECLARE(img_alarm);
+LV_IMG_DECLARE(img_settings);
+LV_IMG_DECLARE(img_messages);
+LV_IMG_DECLARE(img_mouse);
+LV_IMG_DECLARE(small_img_logo_matting);
+LV_IMG_DECLARE(up_arrow);
+LV_IMG_DECLARE(down_arrow);
+LV_IMG_DECLARE(previous_arrow);
+LV_IMG_DECLARE(next_arrow);
+LV_IMG_DECLARE(icon_apple_facetime);
+LV_IMG_DECLARE(icon_google_calendar);
+LV_IMG_DECLARE(icon_facebook);
+LV_IMG_DECLARE(icon_instagram);
+LV_IMG_DECLARE(icon_kakaotalk);
+LV_IMG_DECLARE(icon_line);
+LV_IMG_DECLARE(icon_linkedin);
+LV_IMG_DECLARE(icon_apple_mail);
+LV_IMG_DECLARE(icon_messenger);
+LV_IMG_DECLARE(icon_other);
+LV_IMG_DECLARE(icon_qq);
+LV_IMG_DECLARE(icon_skype);
+LV_IMG_DECLARE(icon_sms);
+LV_IMG_DECLARE(icon_snap);
+LV_IMG_DECLARE(icon_twitter);
+LV_IMG_DECLARE(icon_wechat);
+LV_IMG_DECLARE(icon_whatsapp);
+LV_IMG_DECLARE(icon_gmail);
+LV_IMG_DECLARE(icon_dingtalk);
+LV_IMG_DECLARE(icon_google_chat);
+LV_IMG_DECLARE(icon_discord);
+LV_IMG_DECLARE(icon_youtube);
+LV_IMG_DECLARE(icon_prohibit);
+LV_IMG_DECLARE(icon_send);
+LV_IMG_DECLARE(icon_trash);
+LV_IMG_DECLARE(icon_qrcode);
+LV_IMG_DECLARE(icon_dnd_mode);
+LV_IMG_DECLARE(mouse_mode_icon);
+LV_IMG_DECLARE(skaiwalkicon);
+LV_IMG_DECLARE(img_charging);
+LV_IMG_DECLARE(icon_delete);
+LV_IMG_DECLARE(app_elc_5);
+LV_IMG_DECLARE(app_elc_20);
+LV_IMG_DECLARE(app_elc_40);
+LV_IMG_DECLARE(app_elc_60);
+LV_IMG_DECLARE(app_elc_80);
+LV_IMG_DECLARE(app_elc_100);
+LV_IMG_DECLARE(img_low_power);
+LV_IMG_DECLARE(icon_bluetooth_disconnection);
+LV_IMG_DECLARE(charge_icon);
+LV_IMG_DECLARE(icon_x);
+LV_IMG_DECLARE(calculator_icon);
+LV_IMG_DECLARE(find_phone);
+LV_IMG_DECLARE(flashlight_icon);
+LV_IMG_DECLARE(img_mail);
+// LV_IMG_DECLARE(gaus_clock5_bg);
+LV_IMG_DECLARE(gaus_clock4_bg);
+LV_IMG_DECLARE(gaus_clock1_bg);
+
+#define BTN_FLASHLIGHT btn_flashlight
+#define BG_LODING ((const void *)&bg_loading)
+#define IMG_FLASHLIGHT ((const void *)&img_flashlight)
+#define IMG_ACTIVITY ((const void *)&img_activity)
+#define IMG_ALARM_2 ((const void *)&img_alarm_2)
+#define IMG_CALENDAR ((const void *)&img_calendar)
+#define IMG_GAME ((const void *)&img_game)
+#define IMG_GROUP ((const void *)&img_group)
+#define IMG_PHOTO ((const void *)&img_photo)
+#define IMG_RECORDER ((const void *)&img_recorder)
+#define IMG_LOGO ((const void *)&img_logo)
+#define IMG_NOTE ((const void *)&img_note)
+#define IMG_WORKOUT ((const void *)&img_workout)
+#define IMG_ITUNES ((const void *)&img_itunes)
+#define IMG_HEART_RATE ((const void *)&img_heart_rate)
+#define IMG_CALCULATOR ((const void *)&img_calculator)
+#define IMG_ALARM ((const void *)&img_alarm)
+#define IMG_SETTINGS ((const void *)&img_settings)
+#define IMG_MESSAGES ((const void *)&img_messages)
+#define IMG_MOUSE ((const void *)&img_mouse)
+#define SMALL_IMG_LOGO_MATTING ((const void *)&small_img_logo_matting)
+#define UP_ARROW ((const void *)&up_arrow)
+#define DOWN_ARROW ((const void *)&down_arrow)
+#define PREVIOUS_ARROW ((const void *)&previous_arrow)
+#define NEXT_ARROW ((const void *)&next_arrow)
+#define ICON_APPLE_FACETIME ((const void *)&icon_apple_facetime)
+#define ICON_GOOGLE_CALENDAR ((const void *)&icon_google_calendar)
+#define ICON_FACEBOOK ((const void *)&icon_facebook)
+#define ICON_INSTAGRAM ((const void *)&icon_instagram)
+#define ICON_KAKAOTALK ((const void *)&icon_kakaotalk)
+#define ICON_LINE ((const void *)&icon_line)
+#define ICON_LINKEDIN ((const void *)&icon_linkedin)
+#define ICON_APPLE_MAIL ((const void *)&icon_apple_mail)
+#define ICON_MESSENGER ((const void *)&icon_messenger)
+#define ICON_OTHER ((const void *)&icon_other)
+#define ICON_QQ ((const void *)&icon_qq)
+#define ICON_SKYPE ((const void *)&icon_skype)
+#define ICON_SMS ((const void *)&icon_sms)
+#define ICON_SNAP ((const void *)&icon_snap)
+#define ICON_TWITTER ((const void *)&icon_twitter)
+#define ICON_WECHAT ((const void *)&icon_wechat)
+#define ICON_WHATSAPP ((const void *)&icon_whatsapp)
+#define ICON_GMAIL ((const void *)&icon_gmail)
+#define ICON_DINGTALK ((const void *)&icon_dingtalk)
+#define ICON_GOOGLE_CHAT ((const void *)&icon_google_chat)
+#define ICON_DISCORD ((const void *)&icon_discord)
+#define ICON_YOUTUBE ((const void *)&icon_youtube)
+#define ICON_PROHIBIT ((const void *)&icon_prohibit)
+#define ICON_SAND ((const void *)&icon_send)
+#define ICON_TRASH ((const void *)&icon_trash)
+#define ICON_QRCODE ((const void *)&icon_qrcode)
+#define ICON_DND_MODE ((const void *)&icon_dnd_mode)
+#define MOUSE_MODE_ICON ((const void *)&mouse_mode_icon)
+#define SKAIWALKICON ((const void *)&skaiwalkicon)
+#define IMG_CHARGING ((const void *)&img_charging)
+#define ICON_DELETE ((const void *)&icon_delete)
+#define APP_ELC_5 ((const void *)&app_elc_5)
+#define APP_ELC_20 ((const void *)&app_elc_20)
+#define APP_ELC_40 ((const void *)&app_elc_40)
+#define APP_ELC_60 ((const void *)&app_elc_60)
+#define APP_ELC_80 ((const void *)&app_elc_80)
+#define APP_ELC_100 ((const void *)&app_elc_100)
+#define IMG_LOW_POWER ((const void *)&img_low_power)
+#define ICON_BLUETOOTH_DISCONNECTION ((const void *)&icon_bluetooth_disconnection)
+#define CHARGE_ICON ((const void *)&charge_icon)
+#define ICON_X ((const void *)&icon_x)
+#define CALCULATOR_ICON ((const void *)&calculator_icon)
+#define FIND_PHONE ((const void *)&find_phone)
+#define FLISHLIGHT_ICON ((const void *)&flashlight_icon)
+#define IMG_MAIL ((const void *)&img_mail)
+// #define GAUS_CLOCK5_BG (&gaus_clock5_bg)
+#define GAUS_CLOCK5_BG "/assets/gaus_images/gaus_clock5_bg.bin"
+#define GAUS_CLOCK4_BG (&gaus_clock4_bg)
+#define GAUS_CLOCK1_BG (&gaus_clock1_bg)
+
+#endif
+extern char *GAUS_DEFAULT_PICTURE;
 #define MEDIA_MASK "/assets/images/media_mask.bin"
 extern char MEDIA_IMG[40];
 #endif

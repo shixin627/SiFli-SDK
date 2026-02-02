@@ -70,6 +70,7 @@ lv_obj_t *create_loading_screen(lv_obj_t *scr)
 {
     /* Create a logo */
     lv_obj_t *logo = lv_img_create(scr);
+    LOG_D("create_loading_screen");
     lv_img_set_src(logo, BG_LODING);
     lv_obj_center(logo);
     return logo;

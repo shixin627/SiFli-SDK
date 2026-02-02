@@ -974,7 +974,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     // setting icon
     // --- Mouse mode button
     lv_obj_t *calculator_btn = common_image_button(
-        control_center_bottom, &micro_icon, 100, 100, calculator_btn_event_cb);
+        control_center_bottom, CALCULATOR_ICON, 100, 100, calculator_btn_event_cb);
     lv_obj_set_style_border_width(calculator_btn, 2, 0);
     lv_obj_set_style_border_color(calculator_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(calculator_btn, LV_OPA_0, 0);
@@ -991,7 +991,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     tools[2] = recorder_btn;
 
     lv_obj_t *flishlight_btn = common_image_button(
-        control_center_bottom, &micro_icon, 100, 100, flishlight_icon_event_cb);
+        control_center_bottom, FLISHLIGHT_ICON, 100, 100, flishlight_icon_event_cb);
     lv_obj_set_style_border_width(flishlight_btn, 2, 0);
     lv_obj_set_style_border_color(flishlight_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(flishlight_btn, LV_OPA_0, 0);
@@ -1000,7 +1000,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 
     // setting icon (bottom left)
     lv_obj_t *setting_icon = common_image_button(
-        control_center_bottom, &micro_icon, 100, 100, setting_icon_event_cb);
+        control_center_bottom, IMG_SETTINGS, 100, 100, setting_icon_event_cb);
     lv_obj_set_style_border_width(setting_icon, 2, 0);
     lv_obj_set_style_border_color(setting_icon, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(setting_icon, LV_OPA_0, 0);
@@ -1012,7 +1012,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 
     // --- QRcode button
     lv_obj_t *qrcode_btn = common_image_button(
-        control_center_bottom, &micro_icon, 100, 100, qrcode_btn_event_cb);
+        control_center_bottom, ICON_QRCODE, 100, 100, qrcode_btn_event_cb);
     lv_obj_set_style_border_width(qrcode_btn, 2, 0);
     lv_obj_set_style_border_color(qrcode_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(qrcode_btn, LV_OPA_0, 0);
@@ -1021,7 +1021,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 
     // --- Dont disturb mode button
     dndmode_enabled = SkaiWatchSys.DNDMode.config.status;
-    dnd_mode_btn = common_image_button(control_center_bottom, &micro_icon, 100,
+    dnd_mode_btn = common_image_button(control_center_bottom, ICON_DND_MODE, 100,
                                        100, dnd_mode_btn_event_cb);
     lv_obj_set_style_border_width(dnd_mode_btn, 2, 0);
     lv_obj_set_style_border_color(dnd_mode_btn, lv_color_hex(0xFFFFFF), 0);
@@ -1040,7 +1040,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     tools[5] = dnd_mode_btn;
 
     lv_obj_t *mouse_btn = common_image_button(
-        control_center_bottom, &micro_icon, 100, 100, mouse_mode_icon_event_cb);
+        control_center_bottom, MOUSE_MODE_ICON, 100, 100, mouse_mode_icon_event_cb);
     lv_obj_set_style_border_width(mouse_btn, 2, 0);
     lv_obj_set_style_border_color(mouse_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(mouse_btn, LV_OPA_0, 0);
@@ -1051,7 +1051,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 
     // -------------- find phone button
     lv_obj_t *find_phone_btn = common_image_button(
-        control_center_bottom, &micro_icon, 100, 100, find_phone_btn_event_cb);
+        control_center_bottom, FIND_PHONE, 100, 100, find_phone_btn_event_cb);
     lv_obj_set_style_border_width(find_phone_btn, 2, 0);
     lv_obj_set_style_border_color(find_phone_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(find_phone_btn, LV_OPA_0, 0);
@@ -1061,7 +1061,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 #if !kReleaseMode
     // Gesture test app
     lv_obj_t *gesture_test_btn =
-        common_image_button(control_center_bottom, &micro_icon, 100, 100,
+        common_image_button(control_center_bottom, IMG_LOGO, 100, 100,
                             gesture_test_btn_event_cb);
     lv_obj_set_style_border_width(gesture_test_btn, 2, 0);
     lv_obj_set_style_border_color(gesture_test_btn, lv_color_hex(0xFFFFFF), 0);
@@ -1399,15 +1399,18 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     }
     else if (get_last_active_clock() == 1)
     {
-        snprintf(dst_path, sizeof(dst_path), GAUS_CLOCK1_BG);
+        strncpy(dst_path, "/assets/gaus_images/gaus_clock1_bg.bin", sizeof(dst_path));
+        dst_path[sizeof(dst_path) - 1] = '\0';
     }
     else if (get_last_active_clock() == 4)
     {
-        snprintf(dst_path, sizeof(dst_path), GAUS_CLOCK4_BG);
+        strncpy(dst_path, "/assets/gaus_images/gaus_clock4_bg.bin", sizeof(dst_path));
+        dst_path[sizeof(dst_path) - 1] = '\0';
     }
     else if (get_last_active_clock() == 5)
     {
-        snprintf(dst_path, sizeof(dst_path), GAUS_CLOCK5_BG);
+        strncpy(dst_path, "/assets/gaus_images/gaus_clock5_bg.bin", sizeof(dst_path));
+        dst_path[sizeof(dst_path) - 1] = '\0';
     }
     gaus_dial_img = lv_img_create(gaus_dial_bg);
     lv_img_set_src(gaus_dial_img, dst_path);

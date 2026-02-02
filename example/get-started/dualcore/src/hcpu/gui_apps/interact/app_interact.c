@@ -286,6 +286,8 @@ static void create_hint_label(lv_obj_t *parent, interact_state_t state)
     set_text_hint(state);
 }
 
+LV_IMG_DECLARE(img_low_power);
+
 /**
  * @brief Create UI components based on current interaction state
  * @param state Current interaction state
@@ -344,7 +346,7 @@ static void builder(interact_state_t state, lv_obj_t *parent)
         /* Create image based on state */
         lv_obj_t *img = lv_img_create(parent);
         ui_components.status_image = img;
-        lv_img_set_src(img, (state == LOW_POWER_WARNING) ? LV_EXT_IMG_GET(IMG_LOW_POWER) : &mobile);
+        lv_img_set_src(img, (state == LOW_POWER_WARNING) ? LV_EXT_IMG_GET(img_low_power) : &mobile);
         lv_obj_center(img);
 
         /* Create and position label */
