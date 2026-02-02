@@ -333,7 +333,7 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>-Wno-builtin-macro-redefined </MiscControls>
-              <Define>SOC_BF0_HCPU, HAVE_ALLOCA_H, DISABLE_FLOAT_API, USE_FULL_ASSERT, _ARM_LIBCPP_EXTERNAL_THREADS, ARM_MATH_LOOPUNROLL, LCPU_CONFIG_V1, OPUS_BUILD, USE_HAL_DRIVER, SIFLI_VERSION=33816576, USING_MINI_RLOTTIE, SIFLI_BUILD="b7369a4f", FREETYPE_FONT_NAME=tiny55_full, LV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;, FIXED_POINT, HAVE_LRINTF, HAL_TICK_PER_SECOND=1000, FT2_BUILD_LIBRARY, SF32LB56X, __FILE__=__FILE_NAME__, RT_USING_ARM_LIBC, USE_ALLOCA, HAL_USE_NAND, OPUS_CELT_SUPPORT</Define>
+              <Define>RT_USING_ARM_LIBC, HAVE_ALLOCA_H, OPUS_BUILD, SOC_BF0_HCPU, DISABLE_FLOAT_API, SIFLI_VERSION=33816576, USE_FULL_ASSERT, FREETYPE_FONT_NAME=tiny55_full, _ARM_LIBCPP_EXTERNAL_THREADS, ARM_MATH_LOOPUNROLL, USE_HAL_DRIVER, HAVE_LRINTF, LCPU_CONFIG_V1, FIXED_POINT, SIFLI_BUILD="1e27e0ad", FT2_BUILD_LIBRARY, OPUS_CELT_SUPPORT, __FILE__=__FILE_NAME__, USE_ALLOCA, SF32LB56X, HAL_USE_NAND, LV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;, HAL_TICK_PER_SECOND=1000, USING_MINI_RLOTTIE</Define>
               <Undefine />
               <IncludePath>build_sf32lb56w-watch_hcpu;..\..\..\..\..\rtos\rtthread\include;..\..\..\..\..\customer\boards\common;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\..\..\..\customer\boards\eh-lb563;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56w-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\common;..\..\..\..\..\customer\peripherals\co5300;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\cst820;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\ft3168;..\..\..\..\..\rtos\rtthread\bsp\sifli\drivers;..\..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\..\drivers\cmsis\Include;..\..\..\..\..\external\CMSIS\Include;..\..\..\..\..\drivers\Include;..\..\..\..\..\drivers\hal_epic_ex;..\..\..\..\..\external\cJSON-1.7.17;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\FlashDB\inc;..\..\..\..\..\external\FlashDB\port\fal\inc;..\..\..\..\..\external\freetype\include;..\..\..\..\..\external\libhelix-mp3;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\external\libhelix-mp3\real;..\..\..\..\..\external\lvgl_v8;..\..\..\..\..\external\lvgl_v8\lvgl;..\..\..\..\..\external\lvgl_v8\src;..\..\..\..\..\external\lvgl_v8\src\core;..\..\..\..\..\external\lvgl_v8\src\draw;..\..\..\..\..\external\lvgl_v8\src\extra;..\..\..\..\..\external\lvgl_v8\src\font;..\..\..\..\..\external\lvgl_v8\src\hal;..\..\..\..\..\external\lvgl_v8\src\misc;..\..\..\..\..\external\lvgl_v8\src\widgets;..\..\..\..\..\external\lvgl_v8\src\draw\arm2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp;..\..\..\..\..\external\lvgl_v8\src\draw\sdl;..\..\..\..\..\external\lvgl_v8\src\draw\sifli_epic;..\..\..\..\..\external\lvgl_v8\src\draw\stm32_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\sw;..\..\..\..\..\external\lvgl_v8\src\draw\swm341_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\pxp;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\vglite;..\..\..\..\..\external\lvgl_v8\src\extra\layouts;..\..\..\..\..\external\lvgl_v8\src\extra\libs;..\..\..\..\..\external\lvgl_v8\src\extra\others;..\..\..\..\..\external\lvgl_v8\src\extra\themes;..\..\..\..\..\external\lvgl_v8\src\extra\widgets;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\flex;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\grid;..\..\..\..\..\external\lvgl_v8\src\extra\libs\bmp;..\..\..\..\..\external\lvgl_v8\src\extra\libs\ffmpeg;..\..\..\..\..\external\lvgl_v8\src\extra\libs\freetype;..\..\..\..\..\external\lvgl_v8\src\extra\libs\fsdrv;..\..\..\..\..\external\lvgl_v8\src\extra\libs\gif;..\..\..\..\..\external\lvgl_v8\src\extra\libs\png;..\..\..\..\..\external\lvgl_v8\src\extra\libs\qrcode;..\..\..\..\..\external\lvgl_v8\src\extra\libs\rlottie;..\..\..\..\..\external\lvgl_v8\src\extra\libs\sjpg;..\..\..\..\..\external\lvgl_v8\src\extra\others\fragment;..\..\..\..\..\external\lvgl_v8\src\extra\others\gridnav;..\..\..\..\..\external\lvgl_v8\src\extra\others\ime;..\..\..\..\..\external\lvgl_v8\src\extra\others\imgfont;..\..\..\..\..\external\lvgl_v8\src\extra\others\monkey;..\..\..\..\..\external\lvgl_v8\src\extra\others\msg;..\..\..\..\..\external\lvgl_v8\src\extra\others\snapshot;..\..\..\..\..\external\lvgl_v8\src\extra\themes\basic;..\..\..\..\..\external\lvgl_v8\src\extra\themes\default;..\..\..\..\..\external\lvgl_v8\src\extra\themes\mono;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\animimg;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\calendar;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\chart;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\colorwheel;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\imgbtn;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\keyboard;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\led;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\list;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\menu;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\meter;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\msgbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\span;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinner;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tabview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tileview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\win;..\..\..\..\..\external\lz4;..\..\..\..\..\external\opus-1.4;..\..\..\..\..\external\opus-1.4\include;..\..\..\..\..\external\opus-1.4\src;..\..\..\..\..\external\opus-1.4\silk;..\..\..\..\..\external\opus-1.4\celt;..\..\..\..\..\external\opus-1.4\silk\fixed;..\..\..\..\..\external\quickjs;..\..\..\..\..\external\rlottie\inc;..\..\..\..\..\external\rlottie\src\vector;..\..\..\..\..\external\rlottie\src\vector\freetype;..\..\..\..\..\external\rlottie\src\vector\stb;..\..\..\..\..\external\state_machine-latest\inc;..\..\..\..\..\external\TensorFlow-Lite-Micro\src;..\..\..\..\..\external\WebRTC_audio_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\vad\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\system_wrappers\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\agc\legacy;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\logging;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\utility;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\dc_correction;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_in;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_out;..\..\..\..\..\middleware\include;..\..\..\..\..\middleware\button;..\..\..\..\..\middleware\context_backup;..\..\..\..\..\middleware\cpu_usage_profiler;..\..\..\..\..\middleware\ezipa_dec;..\..\..\..\..\middleware\ipc_queue\common;..\..\..\..\..\middleware\ipc_queue\include;..\..\..\..\..\middleware\ipc_queue\porting\os;..\..\..\..\..\middleware\ipc_queue\porting\os\rtthread;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x\hcpu;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio;..\..\..\..\..\middleware\audio\include;..\..\..\..\..\middleware\audio;.;..\..\..\..\..\middleware\btdm_internal\plf;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio\anyka;..\..\..\..\..\middleware\audio\vbe_drc;..\..\..\..\..\middleware\audio\audio_bt_voice;..\..\..\..\..\middleware\audio\audio_local_music;..\..\..\..\..\middleware\audio\audio_manager;..\..\..\..\..\middleware\audio\audio_port;..\..\..\..\..\middleware\audio\audio_speaker_mic;..\..\..\..\..\middleware\audio\audio_voice_proc;..\..\..\..\..\middleware\barcode128;..\..\..\..\..\middleware\bluetooth\service;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\ble\gatt_service;..\..\..\..\..\middleware\bluetooth\service\bt\bt_audio;..\..\..\..\..\middleware\bluetooth\service\bt\bt_cm;..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh;..\..\..\..\..\middleware\bluetooth\service\common;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\internal;..\..\..\..\..\middleware\bluetooth\include;..\..\..\..\..\middleware\cell_transform;..\..\..\..\..\middleware\data_bus\public;..\..\..\..\..\middleware\data_bus\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lvsf;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lv_drivers;..\..\..\..\..\middleware\lvgl\lvgl_extensions;..\..\..\..\..\middleware\lvgl\gif_dec;..\..\..\..\..\middleware\share_prefs;..\..\..\..\..\middleware\sifli_lib\lib;..\..\..\..\..\middleware\include;..\..\..\..\..\rtos\os_adaptor\src;..\..\..\..\..\rtos\os_adaptor\inc;build_sf32lb56w-watch_hcpu\src\resource\strings;build_sf32lb56w-watch_hcpu\src\gui_apps;..\..\src\hcpu\gui_apps\app_layout;..\..\src\hcpu\gui_apps\battery;..\..\src\hcpu\gui_apps\clock;..\..\src\hcpu\gui_apps\common;..\..\src\hcpu\gui_apps\game;..\..\src\hcpu\gui_apps\gesture;..\..\src\hcpu\gui_apps\interact;..\..\src\hcpu\gui_apps\iot_gate;..\..\src\hcpu\gui_apps\main;..\..\src\hcpu\gui_apps\message;..\..\src\hcpu\gui_apps\note;..\..\src\hcpu\gui_apps\speech;..\..\src\hcpu\gui_apps\test;..\..\src\hcpu\gui_apps\utils;..\..\src\hcpu\gui_apps\mem;..\..\src\hcpu;..\..\src\modules\algorithm\AirMouse;..\..\src\modules\algorithm\GestureRecognition;..\..\src\modules\bloc;..\..\src\modules\communicate;..\..\src\modules\model;..\..\src\modules\service;..\..\src\modules\tests;..\..\src\modules\util\includes;..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33;..\..\..\..\..\rtos\rtthread\libcpu\arm\common;..\..\..\..\..\rtos\rtthread\components\cplusplus;..\..\..\..\..\rtos\rtthread\components\dfs\include;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\devfs;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\elmfat;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\dhara\dhara;..\..\..\..\..\rtos\rtthread\components\drivers\audio;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\spi;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\finsh;..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc;..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\include;..\..\..\..\..\rtos\rtthread\components\utilities\llt_mem;..\..\..\..\..\rtos\rtthread\components\utilities\ulog;..\..\..\..\..\rtos\rtthread\components\utilities\ulog\backend;..\..\..\..\..\rtos\rtthread\components\utilities\ymodem</IncludePath>
             </VariousControls>
@@ -369,7 +369,7 @@
             <ScatterFile>build_sf32lb56w-watch_hcpu/link.sct</ScatterFile>
             <IncludeLibs />
             <IncludeLibsPath />
-            <Misc>  --cpu=cortex-m33 --strict --scatter build_sf32lb56w-watch_hcpu/link.sct --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols --info sizes --info totals --info unused --info veneers --any_contingency  --list build_sf32lb56w-watch_hcpu/main.map  --libpath=C:\Keil_v5/ARM/ARMCLANG/lib --diag_suppress=L6314 --diag_suppress=L6329 --predefine="-DSF32LB56X" --predefine="-DARM_MATH_LOOPUNROLL" --predefine="-DLCPU_CONFIG_V1" --predefine="-DSIFLI_BUILD="b7369a4f"" --predefine="-DHAL_TICK_PER_SECOND=1000" --predefine="-DSOC_BF0_HCPU" --predefine="-DSF32LB56X" --predefine="-DUSE_HAL_DRIVER" --predefine="-DSIFLI_VERSION=33816576" --predefine="-DUSE_FULL_ASSERT" --predefine="-DHAL_USE_NAND" --predefine="-DFT2_BUILD_LIBRARY" --predefine="-DLV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;" --predefine="-DHAVE_ALLOCA_H" --predefine="-DOPUS_BUILD" --predefine="-DFIXED_POINT" --predefine="-DDISABLE_FLOAT_API" --predefine="-DHAVE_LRINTF" --predefine="-DUSE_ALLOCA" --predefine="-DOPUS_CELT_SUPPORT" --predefine="-D_ARM_LIBCPP_EXTERNAL_THREADS" --predefine="-DUSING_MINI_RLOTTIE" --predefine="-DFREETYPE_FONT_NAME=tiny55_full" --predefine="-DRT_USING_ARM_LIBC"</Misc>
+            <Misc>  --cpu=cortex-m33 --strict --scatter build_sf32lb56w-watch_hcpu/link.sct --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols --info sizes --info totals --info unused --info veneers --any_contingency  --list build_sf32lb56w-watch_hcpu/main.map  --libpath=C:\Keil_v5/ARM/ARMCLANG/lib --diag_suppress=L6314 --diag_suppress=L6329 --predefine="-DSF32LB56X" --predefine="-DUSE_FULL_ASSERT" --predefine="-DUSE_HAL_DRIVER" --predefine="-DLCPU_CONFIG_V1" --predefine="-DSF32LB56X" --predefine="-DHAL_USE_NAND" --predefine="-DSIFLI_BUILD="1e27e0ad"" --predefine="-DSOC_BF0_HCPU" --predefine="-DARM_MATH_LOOPUNROLL" --predefine="-DHAL_TICK_PER_SECOND=1000" --predefine="-DSIFLI_VERSION=33816576" --predefine="-DFT2_BUILD_LIBRARY" --predefine="-DLV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;" --predefine="-DUSE_ALLOCA" --predefine="-DHAVE_LRINTF" --predefine="-DHAVE_ALLOCA_H" --predefine="-DFIXED_POINT" --predefine="-DOPUS_BUILD" --predefine="-DDISABLE_FLOAT_API" --predefine="-DOPUS_CELT_SUPPORT" --predefine="-D_ARM_LIBCPP_EXTERNAL_THREADS" --predefine="-DUSING_MINI_RLOTTIE" --predefine="-DFREETYPE_FONT_NAME=tiny55_full" --predefine="-DRT_USING_ARM_LIBC"</Misc>
             <LinkerInputFile />
             <DisabledWarnings />
           </LDads>
@@ -7634,6 +7634,48 @@
           </Files>
           <Files>
             <File>
+              <FileName>app_elc_100.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\app_elc_100.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>app_elc_20.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\app_elc_20.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>app_elc_40.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\app_elc_40.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>app_elc_5.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\app_elc_5.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>app_elc_60.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\app_elc_60.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>app_elc_80.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\app_elc_80.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>backspace_icon.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\backspace_icon.tmp.c</FilePath>
@@ -7641,9 +7683,37 @@
           </Files>
           <Files>
             <File>
+              <FileName>bg_loading.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\bg_loading.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>btn_flashlight.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\btn_flashlight.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>calculator_icon.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\calculator_icon.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>capital_icon.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\capital_icon.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>charge_icon.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\charge_icon.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -7690,6 +7760,13 @@
           </Files>
           <Files>
             <File>
+              <FileName>down_arrow.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\down_arrow.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>enter_icon.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\enter_icon.tmp.c</FilePath>
@@ -7718,9 +7795,100 @@
           </Files>
           <Files>
             <File>
+              <FileName>gaus_clock1_bg.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\gaus_clock1_bg.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>gaus_clock4_bg.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\gaus_clock4_bg.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>gaus_default_picture.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\gaus_default_picture.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_apple_facetime.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_apple_facetime.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_apple_mail.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_apple_mail.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_bluetooth_disconnection.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_bluetooth_disconnection.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_delete.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_delete.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_dingtalk.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_dingtalk.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_discord.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_discord.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>icon_dnd_mode.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_dnd_mode.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_facebook.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_facebook.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_gmail.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_gmail.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_google_calendar.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_google_calendar.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_google_chat.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_google_chat.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -7732,9 +7900,65 @@
           </Files>
           <Files>
             <File>
+              <FileName>icon_instagram.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_instagram.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_kakaotalk.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_kakaotalk.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_line.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_line.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_linkedin.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_linkedin.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_messenger.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_messenger.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>icon_mic.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_mic.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_other.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_other.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_prohibit.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_prohibit.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_qq.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_qq.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -7767,9 +7991,93 @@
           </Files>
           <Files>
             <File>
+              <FileName>icon_skype.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_skype.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_sms.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_sms.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_snap.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_snap.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>icon_stop.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_stop.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_trash.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_trash.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_twitter.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_twitter.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_wechat.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_wechat.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_whatsapp.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_whatsapp.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_x.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_x.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>icon_youtube.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_youtube.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_activity.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_activity.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_alarm.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_alarm.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_alarm_2.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_alarm_2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -7781,9 +8089,30 @@
           </Files>
           <Files>
             <File>
+              <FileName>img_calculator.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_calculator.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_calendar.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_calendar.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>img_calories.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_calories.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_charging.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_charging.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -7802,6 +8131,41 @@
           </Files>
           <Files>
             <File>
+              <FileName>img_flashlight.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_flashlight.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_game.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_game.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_group.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_group.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_heart_rate.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_heart_rate.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_itunes.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_itunes.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>img_left_arrow.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_left_arrow.tmp.c</FilePath>
@@ -7812,6 +8176,20 @@
               <FileName>img_logo.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_logo.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_low_power.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_low_power.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_mail.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_mail.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -7844,9 +8222,37 @@
           </Files>
           <Files>
             <File>
+              <FileName>img_messages.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_messages.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>img_mouse.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_mouse.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_note.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_note.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_photo.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_photo.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>img_recorder.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_recorder.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -7942,6 +8348,13 @@
           </Files>
           <Files>
             <File>
+              <FileName>next_arrow.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\next_arrow.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>open_garage.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\open_garage.tmp.c</FilePath>
@@ -7956,9 +8369,30 @@
           </Files>
           <Files>
             <File>
+              <FileName>previous_arrow.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\previous_arrow.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>skaiwalkicon.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\skaiwalkicon.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>small_img_logo.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\small_img_logo.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>small_img_logo_matting.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\small_img_logo_matting.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -8001,6 +8435,13 @@
               <FileName>unknown_bg_right.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\unknown_bg_right.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>up_arrow.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\up_arrow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -8526,6 +8967,13 @@
           </Files>
           <Files>
             <File>
+              <FileName>app_qrcode.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\src\hcpu\gui_apps\qrcode\app_qrcode.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>app_recorder.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\src\hcpu\gui_apps\recorder\app_recorder.c</FilePath>
@@ -8836,6 +9284,48 @@
           </Files>
           <Files>
             <File>
+              <FileName>ezip_app_elc_100.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\app_elc_100.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_app_elc_20.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\app_elc_20.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_app_elc_40.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\app_elc_40.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_app_elc_5.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\app_elc_5.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_app_elc_60.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\app_elc_60.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_app_elc_80.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\app_elc_80.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>ezip_backspace_icon.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\backspace_icon.tmp.c</FilePath>
@@ -8843,9 +9333,37 @@
           </Files>
           <Files>
             <File>
+              <FileName>ezip_bg_loading.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\bg_loading.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_btn_flashlight.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\btn_flashlight.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_calculator_icon.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\calculator_icon.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>ezip_capital_icon.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\capital_icon.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_charge_icon.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\charge_icon.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -8892,6 +9410,13 @@
           </Files>
           <Files>
             <File>
+              <FileName>ezip_down_arrow.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\down_arrow.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>ezip_enter_icon.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\enter_icon.tmp.c</FilePath>
@@ -8920,9 +9445,100 @@
           </Files>
           <Files>
             <File>
+              <FileName>ezip_gaus_clock1_bg.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\gaus_clock1_bg.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_gaus_clock4_bg.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\gaus_clock4_bg.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_gaus_default_picture.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\gaus_default_picture.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_apple_facetime.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_apple_facetime.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_apple_mail.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_apple_mail.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_bluetooth_disconnection.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_bluetooth_disconnection.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_delete.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_delete.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_dingtalk.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_dingtalk.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_discord.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_discord.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>ezip_icon_dnd_mode.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_dnd_mode.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_facebook.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_facebook.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_gmail.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_gmail.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_google_calendar.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_google_calendar.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_google_chat.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_google_chat.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -8934,9 +9550,65 @@
           </Files>
           <Files>
             <File>
+              <FileName>ezip_icon_instagram.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_instagram.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_kakaotalk.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_kakaotalk.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_line.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_line.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_linkedin.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_linkedin.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_messenger.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_messenger.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>ezip_icon_mic.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_mic.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_other.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_other.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_prohibit.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_prohibit.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_qq.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_qq.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -8969,9 +9641,93 @@
           </Files>
           <Files>
             <File>
+              <FileName>ezip_icon_skype.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_skype.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_sms.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_sms.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_snap.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_snap.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>ezip_icon_stop.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_stop.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_trash.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_trash.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_twitter.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_twitter.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_wechat.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_wechat.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_whatsapp.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_whatsapp.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_x.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_x.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_icon_youtube.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_youtube.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_activity.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_activity.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_alarm.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_alarm.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_alarm_2.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_alarm_2.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -8983,9 +9739,30 @@
           </Files>
           <Files>
             <File>
+              <FileName>ezip_img_calculator.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_calculator.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_calendar.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_calendar.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>ezip_img_calories.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_calories.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_charging.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_charging.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -9004,6 +9781,41 @@
           </Files>
           <Files>
             <File>
+              <FileName>ezip_img_flashlight.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_flashlight.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_game.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_game.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_group.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_group.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_heart_rate.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_heart_rate.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_itunes.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_itunes.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>ezip_img_left_arrow.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_left_arrow.tmp.c</FilePath>
@@ -9014,6 +9826,20 @@
               <FileName>ezip_img_logo.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_logo.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_low_power.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_low_power.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_mail.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_mail.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -9046,9 +9872,37 @@
           </Files>
           <Files>
             <File>
+              <FileName>ezip_img_messages.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_messages.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>ezip_img_mouse.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_mouse.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_note.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_note.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_photo.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_photo.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_img_recorder.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\img_recorder.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -9144,6 +9998,13 @@
           </Files>
           <Files>
             <File>
+              <FileName>ezip_next_arrow.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\next_arrow.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>ezip_open_garage.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\open_garage.tmp.c</FilePath>
@@ -9158,9 +10019,30 @@
           </Files>
           <Files>
             <File>
+              <FileName>ezip_previous_arrow.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\previous_arrow.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_skaiwalkicon.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\skaiwalkicon.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>ezip_small_img_logo.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\small_img_logo.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_small_img_logo_matting.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\small_img_logo_matting.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -9203,6 +10085,13 @@
               <FileName>ezip_unknown_bg_right.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\unknown_bg_right.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_up_arrow.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\up_arrow.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -9728,6 +10617,13 @@
               <FileName>photo_app_photo.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\src\hcpu\gui_apps\photo\app_photo.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>qrcode_app_qrcode.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\src\hcpu\gui_apps\qrcode\app_qrcode.c</FilePath>
             </File>
           </Files>
           <Files>

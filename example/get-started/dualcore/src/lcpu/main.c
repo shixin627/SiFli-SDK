@@ -239,7 +239,7 @@ int main(void)
         }
         else
         {
-            if (battery_get_charge_state()->is_plugged)
+            if (battery_get_charge_state()->is_plugged && battery_get_charge_state()->charge_percent > 10)
             {
                 rgb_fade_cycle_base_on_battery_level(battery_get_charge_state()->charge_percent);
             }

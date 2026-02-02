@@ -492,11 +492,11 @@ void interact_with_notification(notification_t *notification)
     {
         navigate_notification_info(notification);
     }
-    if (notification->calling)
-    {
-        motor_pattern_calling();
-    }
-    else
+    // if (notification->calling)
+    // {
+    //     motor_pattern_calling();
+    // }
+    // else
     {
         motor_pattern_notification();
     }
