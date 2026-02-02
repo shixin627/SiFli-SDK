@@ -642,6 +642,11 @@ static int utest_gesture(int argc, char *argv[])
             // gesture_recognition_lock = true;
             // trigger_gesture_unlock_timer();
         }
+        else if (strcmp(argv[1], "wrist_pronation") == 0)
+        {
+            send_virtual_gesture_event(GESTURE_EVENT_WRIST_PRONATION);
+        }
+
     }
     return 0;
 }

@@ -677,9 +677,10 @@ static void gesture_collect_btn_event_cb(lv_event_t *e)
 
 static void qrcode_btn_event_cb(lv_event_t *e)
 {
-    AppIntent intent = {0};
-    strcpy(intent.app_id, "JA_app1");
-    watch_run_app_by_intent(&intent);
+    // AppIntent intent = {0};
+    // strcpy(intent.app_id, "JA_app1");
+    // watch_run_app_by_intent(&intent);
+    gui_app_run(APP_ID_QRCODE);
     animate_to_home_from_notification_center();
 }
 

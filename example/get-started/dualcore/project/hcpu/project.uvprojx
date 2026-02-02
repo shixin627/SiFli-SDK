@@ -8967,6 +8967,13 @@
           </Files>
           <Files>
             <File>
+              <FileName>app_qrcode.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\src\hcpu\gui_apps\qrcode\app_qrcode.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>app_recorder.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\src\hcpu\gui_apps\recorder\app_recorder.c</FilePath>
@@ -10610,6 +10617,13 @@
               <FileName>photo_app_photo.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\src\hcpu\gui_apps\photo\app_photo.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>qrcode_app_qrcode.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\src\hcpu\gui_apps\qrcode\app_qrcode.c</FilePath>
             </File>
           </Files>
           <Files>

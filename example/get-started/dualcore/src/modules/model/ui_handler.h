@@ -15,6 +15,7 @@ extern "C"
 #include "ui_helper.h"
 
 #define JS_APP_QRCODE "JA_app1"
+#define APP_ID_QRCODE "qrcode"
 #define APP_ID_MAIN "Main"
 #define APP_ID_BATTERY "battery"
 #define APP_ID_CALCULATOR "calculator"

@@ -184,7 +184,7 @@ void motor_pattern_notification(void)
     {
         motor_params_t params = {
             .duty_cycle = 51,
-            .period = 100000, // 175ms
+            .period = 50000, // 175ms
             .repeat_times = 2,
         };
         peripheral_provider.control_motor(true, &params);

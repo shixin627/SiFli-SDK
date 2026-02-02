@@ -302,7 +302,8 @@ static void notify_gesture_event(uint32_t gesture)
 //     memcpy(data_ind.acce, acce, sizeof(watch_sys_linear_acce_t) * count);
 //     result = datas_push_msg_to_client(watch_sys_service_env.service,
 //                                       MSG_SERVICE_GESTURE_DATASET_IND,
-//                                       sizeof(data_ind), (uint8_t *)&data_ind);
+//                                       sizeof(data_ind), (uint8_t
+//                                       *)&data_ind);
 //     RT_ASSERT(0 == result);
 //     LOG_D("Gesture dataset %d sent.", count);
 // }
@@ -509,7 +510,10 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
 
         case PpgSensorPowerManage:
         {
-            hr_set_power(msg->body[1]);
+            if (battery_get_charge_state()->is_plugged)
+            {
+                hr_set_power(msg->body[1]);
+            }
             break;
         }
 
