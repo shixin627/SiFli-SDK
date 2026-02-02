@@ -14,7 +14,7 @@
 #define DBG_TAG "app.setting.display"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
-// #define OPEN_ROTATE_DISPLAY
+#define OPEN_ROTATE_DISPLAY
 
 #ifdef APP_ID_SETTING
 LV_IMG_DECLARE(sun);

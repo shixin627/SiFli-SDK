@@ -367,11 +367,6 @@ static void prv_activity_update_states(time_t utc_sec, AlgMinuteRecord *record_o
 
   prv_reset_state_minute_handler(m_rec);
 
-  ACTIVITY_LOG_DEBUG("minute handler: steps: %d, orientation: 0x%d, vmc: %d, "
-                     "light: %d, plugged_in: %d",
-                     m_rec->base.steps, m_rec->base.orientation, m_rec->base.vmc,
-                     m_rec->base.light, (int)m_rec->base.plugged_in);
-
   // Pass the minute data onto the activity detection logic
   kalg_activities_update(s_alg_state->k_state, utc_sec, m_rec->base.steps, m_rec->base.vmc,
                          m_rec->base.orientation, m_rec->base.plugged_in, m_rec->resting_calories,
@@ -665,6 +660,10 @@ extern void send_list_to_hcpu(time_t utc_now, uint8_t steps, uint8_t orientation
 // Handle storage and logging of the minute data
 static void prv_log_minute_data(time_t utc_now, AlgMinuteRecord *minute_rec)
 {
+  ACTIVITY_LOG_DEBUG("minute handler: steps: %d, orientation: 0x%d, vmc: %d, "
+                     "light: %d, plugged_in: %d",
+                     minute_rec->base.steps, minute_rec->base.orientation, minute_rec->base.vmc,
+                     minute_rec->base.light, (int)minute_rec->base.plugged_in);
   // #if USE_CIRCULAR_BUFFER
   //   // Store the minute data into our circular buffer. The only place we ever read from this buffer
   //   // is below in this same method (during prv_send_minute_data) only from the KernelBG task, so no
