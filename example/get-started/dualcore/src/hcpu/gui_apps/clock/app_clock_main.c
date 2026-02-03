@@ -1016,7 +1016,7 @@ static void tileview_event_cb(lv_event_t *event)
     static bool press_valid = false;
     static bool longpress_fired = false;
     static uint32_t press_time = 0;
-    const int MOVE_THRESHOLD = 20;     // px
+    const int MOVE_THRESHOLD = 40;     // px
     const uint32_t LONGPRESS_MS = 600; // 可自訂長按毫秒
     lv_indev_t *indev;
     lv_point_t cur;
