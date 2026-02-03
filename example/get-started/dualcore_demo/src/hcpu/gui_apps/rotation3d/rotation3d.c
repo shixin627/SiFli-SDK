@@ -279,95 +279,106 @@ static void img_event_handler(lv_event_t *e)
 
 static void on_start(void)
 {
-    uint8_t last_dir = rotation3d.rotation_dir;
+    // uint8_t last_dir = rotation3d.rotation_dir;
 
-    memset(&rotation3d, 0, sizeof(rotation3d));
+    // memset(&rotation3d, 0, sizeof(rotation3d));
 
-    rotation3d.rotation_dir = (last_dir + 1) & 1;
-    rotation3d.last_degree = 0;
-    rotation3d.image_rotate_degree = 900;
+    // rotation3d.rotation_dir = (last_dir + 1) & 1;
+    // rotation3d.last_degree = 0;
+    // rotation3d.image_rotate_degree = 900;
 
-    rotation3d.src_image[0] = (lv_img_dsc_t *) LV_EXT_IMG_GET(d3d_rotate);
-    rotation3d.src_image[1] = (lv_img_dsc_t *) LV_EXT_IMG_GET(d3d_rotate);
+    // rotation3d.src_image[0] = (lv_img_dsc_t *) LV_EXT_IMG_GET(d3d_rotate);
+    // rotation3d.src_image[1] = (lv_img_dsc_t *) LV_EXT_IMG_GET(d3d_rotate);
 
-    if (0 == rotation3d.rotation_dir)
-    {
-        src_img_z =  0 - (rotation3d.src_image[0]->header.h * 5 / 4);
-        pivot_z =  0 - (rotation3d.src_image[0]->header.h * 7 / 4);
-    }
-    else
-    {
-        src_img_z =  0 - (rotation3d.src_image[0]->header.w * 5 / 4);
-        pivot_z =  0 - (rotation3d.src_image[0]->header.w * 7 / 4);
-    }
-    src_zoom = LV_MIN((LV_IMG_ZOOM_NONE * LV_HOR_RES_MAX) / rotation3d.src_image[0]->header.w,
-                      (LV_IMG_ZOOM_NONE * LV_VER_RES_MAX) / rotation3d.src_image[0]->header.h);
+    // if (0 == rotation3d.rotation_dir)
+    // {
+    //     src_img_z =  0 - (rotation3d.src_image[0]->header.h * 5 / 4);
+    //     pivot_z =  0 - (rotation3d.src_image[0]->header.h * 7 / 4);
+    // }
+    // else
+    // {
+    //     src_img_z =  0 - (rotation3d.src_image[0]->header.w * 5 / 4);
+    //     pivot_z =  0 - (rotation3d.src_image[0]->header.w * 7 / 4);
+    // }
+    // src_zoom = LV_MIN((LV_IMG_ZOOM_NONE * LV_HOR_RES_MAX) / rotation3d.src_image[0]->header.w,
+    //                   (LV_IMG_ZOOM_NONE * LV_VER_RES_MAX) / rotation3d.src_image[0]->header.h);
 
-    rt_kprintf("last_dir=%d cur=%d %d,%d,%d\n", last_dir, rotation3d.rotation_dir, src_img_z, pivot_z, src_zoom);
-
-
-
-    rotation3d.image[0] = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(rotation3d.image[0], LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_align(rotation3d.image[0], LV_ALIGN_CENTER, 0, 0);
+    // rt_kprintf("last_dir=%d cur=%d %d,%d,%d\n", last_dir, rotation3d.rotation_dir, src_img_z, pivot_z, src_zoom);
 
 
-    lv_obj_add_flag(rotation3d.image[0], LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(rotation3d.image[0], img_event_handler, LV_EVENT_ALL | LV_EVENT_PREPROCESS, NULL);
 
-    lv_img_cache_invalidate_src(NULL);
+    // rotation3d.image[0] = lv_obj_create(lv_scr_act());
+    // lv_obj_set_size(rotation3d.image[0], LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    // lv_obj_align(rotation3d.image[0], LV_ALIGN_CENTER, 0, 0);
+
+
+    // lv_obj_add_flag(rotation3d.image[0], LV_OBJ_FLAG_CLICKABLE);
+    // lv_obj_add_event_cb(rotation3d.image[0], img_event_handler, LV_EVENT_ALL | LV_EVENT_PREPROCESS, NULL);
+
+    // lv_img_cache_invalidate_src(NULL);
+    char qrcode_data[256] = "https://www.test.com";
+    lv_color_t light_color = lv_palette_lighten(LV_PALETTE_LIGHT_BLUE, 5);
+    lv_color_t dark_color = lv_palette_darken(LV_PALETTE_BLUE, 4);
+
+    lv_obj_t *qr = lv_qrcode_create(lv_scr_act());
+    lv_qrcode_setparam(qr, 200, dark_color, light_color);
+    lv_qrcode_update(qr, qrcode_data, strlen(qrcode_data));
+    lv_obj_center(qr);
+
+    lv_obj_set_style_border_color(qr, light_color, 0);
+    lv_obj_set_style_border_width(qr, 5, 0);
 }
 
 static void on_pause(void)
 {
-#ifdef ROTATION_3D_CACHE_SRC
-    if (rotation3d.src_image_sram)
-    {
-        rotation3d.src_image[0] = (lv_img_dsc_t *) LV_EXT_IMG_GET(d3d_rotate);
-        rotation3d.src_image[1] = (lv_img_dsc_t *) LV_EXT_IMG_GET(d3d_rotate);
+// #ifdef ROTATION_3D_CACHE_SRC
+//     if (rotation3d.src_image_sram)
+//     {
+//         rotation3d.src_image[0] = (lv_img_dsc_t *) LV_EXT_IMG_GET(d3d_rotate);
+//         rotation3d.src_image[1] = (lv_img_dsc_t *) LV_EXT_IMG_GET(d3d_rotate);
 
 
-        app_cache_copy_free(rotation3d.src_image_sram);
-        rotation3d.src_image_sram = NULL;
-    }
-#endif /* ROTATION_3D_CACHE_SRC */
+//         app_cache_copy_free(rotation3d.src_image_sram);
+//         rotation3d.src_image_sram = NULL;
+//     }
+// #endif /* ROTATION_3D_CACHE_SRC */
 
-    if (rotation3d.redraw_task)
-    {
-        lv_timer_del(rotation3d.redraw_task);
-        rotation3d.redraw_task = NULL;
-    }
+//     if (rotation3d.redraw_task)
+//     {
+//         lv_timer_del(rotation3d.redraw_task);
+//         rotation3d.redraw_task = NULL;
+//     }
 
-    if (rotation3d.auto_rotate_task)
-    {
-        lv_timer_del(rotation3d.auto_rotate_task);
-        rotation3d.auto_rotate_task = NULL;
-    }
+//     if (rotation3d.auto_rotate_task)
+//     {
+//         lv_timer_del(rotation3d.auto_rotate_task);
+//         rotation3d.auto_rotate_task = NULL;
+//     }
 }
 
 static void on_resume(void)
 {
-#ifdef ROTATION_3D_CACHE_SRC
-    if (!rotation3d.src_image_sram)
-    {
-        rotation3d.src_image_sram = app_cache_copy_alloc(rotation3d.src_image[0], ROTATE_MEM);
-        RT_ASSERT(rotation3d.src_image_sram);
+// #ifdef ROTATION_3D_CACHE_SRC
+//     if (!rotation3d.src_image_sram)
+//     {
+//         rotation3d.src_image_sram = app_cache_copy_alloc(rotation3d.src_image[0], ROTATE_MEM);
+//         RT_ASSERT(rotation3d.src_image_sram);
 
-        rotation3d.src_image[0] = rotation3d.src_image_sram;
-        rotation3d.src_image[1] = rotation3d.src_image_sram;
-    }
-#endif
+//         rotation3d.src_image[0] = rotation3d.src_image_sram;
+//         rotation3d.src_image[1] = rotation3d.src_image_sram;
+//     }
+// #endif
 
-    if (!rotation3d.redraw_task)
-    {
-        rotation3d.redraw_task = lv_timer_create(redraw_task_handler, 16, (void *)0);
-    }
+//     if (!rotation3d.redraw_task)
+//     {
+//         rotation3d.redraw_task = lv_timer_create(redraw_task_handler, 16, (void *)0);
+//     }
 
 
-    if (!rotation3d.auto_rotate_task)
-    {
-        rotation3d.auto_rotate_task = lv_timer_create(auto_rotate_task_handler, 16, (void *)0);
-    }
+//     if (!rotation3d.auto_rotate_task)
+//     {
+//         rotation3d.auto_rotate_task = lv_timer_create(auto_rotate_task_handler, 16, (void *)0);
+//     }
 }
 
 static void on_stop(void)
