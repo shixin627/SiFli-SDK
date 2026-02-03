@@ -1071,7 +1071,7 @@ static void button_selection(gesture_position_t gesture_position)
         return;
     }
     button_selection_index = category;
-    watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+    motor_pattern_scrolling_app();
     switch (category)
     {
     case 0:

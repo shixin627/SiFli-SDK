@@ -159,14 +159,14 @@ static void gesture_event_cb(lv_event_t *e)
 		{
 			if (start_point.x < 30)
 			{
-				watch_system_interact(INTERACT_MOTOR_VIBRATE_SLIDING, NULL);
+				motor_pattern_touchpad_slide();
 			}
 		}
 		else if (g == LV_DIR_LEFT)
 		{
 			if (start_point.x > LV_HOR_RES - 30)
 			{
-				watch_system_interact(INTERACT_MOTOR_VIBRATE_SLIDING, NULL);
+				motor_pattern_touchpad_slide();
 			}
 		}
 	}

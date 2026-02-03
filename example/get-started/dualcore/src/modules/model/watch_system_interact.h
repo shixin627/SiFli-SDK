@@ -153,19 +153,6 @@ extern void BLE_LOG_E(const char *format, ...);
 
         INTERACT_FIND_PHONE,
         /***** Motor ******/
-        INTERACT_MOTOR_VIBRATE_ALARM,
-        INTERACT_MOTOR_VIBRATE_NOTIFICATION,
-        INTERACT_MOTOR_VIBRATE_SCROLLING,
-        INTERACT_MOTOR_VIBRATE_SCROLLING_APP,
-        INTERACT_MOTOR_VIBRATE_SLIDING,
-        INTERACT_MOTOR_VIBRATE_LONG_PRESSED,
-        INTERACT_MOTOR_VIBRATE_BUTTON_PRESSED,
-        INTERACT_MOTOR_VIBRATE_BUTTON_RELEASED,
-        INTERACT_MOTOR_VIBRATE_BLE_CONNECTED,
-        INTERACT_MOTOR_VIBRATE_TIMER_REMINDER,
-        INTERACT_MOTOR_VIBRATE_UNLOCKED,
-        INTERACT_MOTOR_VIBRATE_TEST,
-        INTERACT_STOP_MOTOR_ONLY,
         INTERACT_STOP_OLED_ONLY,
         INTERACT_STOP_MOTOR_AND_OLED,
         /*****  LED *******/
@@ -244,8 +231,18 @@ extern void BLE_LOG_E(const char *format, ...);
     extern bool get_idle_state(void);
     extern void set_idle_state(bool state);
     extern bool is_user_touching_screen(void);
+
+    /// Motor control for watch system interact
     extern bool get_motor_switch_state(void);
     extern void set_motor_switch_state(uint8_t state);
+    extern void motor_pattern_scrolling_app(void);
+    extern void motor_pattern_wheel_scrolling(void);
+    extern void motor_pattern_screen_on_longpress(void);
+    extern void motor_pattern_timer_reminder(void);
+    extern void motor_pattern_normal(void);
+    extern void motor_pattern_unlocked(void);
+    extern void motor_pattern_touchpad_slide(void);
+
 
 #ifdef __cplusplus
 }

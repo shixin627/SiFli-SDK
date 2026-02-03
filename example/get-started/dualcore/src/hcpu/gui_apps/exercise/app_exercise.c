@@ -494,7 +494,7 @@ static void workout_list_event_cb(lv_event_t *e)
         {
             if (strcmp(name, workout_list[i].name) == 0)
             {
-                watch_system_interact(INTERACT_MOTOR_VIBRATE_SLIDING, NULL);
+                motor_pattern_touchpad_slide();
                 start_workout_session((workout_type_t)i);
                 break;
             }

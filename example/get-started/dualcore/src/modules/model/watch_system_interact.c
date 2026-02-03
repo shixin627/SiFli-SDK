@@ -152,7 +152,7 @@ void handle_gesture_unlock(void)
         set_open_scrolling_app_flag(true);
         extern void set_q_vertical_movement_magnification(float mag);
         set_q_vertical_movement_magnification(5.0f);
-        watch_system_interact(INTERACT_MOTOR_VIBRATE_UNLOCKED, NULL);
+        motor_pattern_unlocked();
         animate_to_app_list();
     }
     else
@@ -184,7 +184,7 @@ void motor_pattern_notification(void)
     {
         motor_params_t params = {
             .duty_cycle = 51,
-            .period = 50000, // 175ms
+            .period = 50000, // 50ms
             .repeat_times = 2,
         };
         peripheral_provider.control_motor(true, &params);
@@ -320,7 +320,7 @@ void set_motor_switch_state(uint8_t state)
 }
 
 // Motor pattern functions - each pattern wrapped in a separate function
-static void motor_pattern_wheel_scrolling(void)
+    void motor_pattern_wheel_scrolling(void)
 {
     if (get_motor_switch_state())
     {
@@ -346,7 +346,7 @@ void motor_pattern_scrolling_app(void)
     }
 }
 
-static void motor_pattern_touchpad_slide(void)
+void motor_pattern_touchpad_slide(void)
 {
     if (get_motor_switch_state())
     {
@@ -359,7 +359,7 @@ static void motor_pattern_touchpad_slide(void)
     }
 }
 
-static void motor_pattern_screen_on_longpress(void)
+void motor_pattern_screen_on_longpress(void)
 {
     if (get_motor_switch_state())
     {
@@ -372,7 +372,7 @@ static void motor_pattern_screen_on_longpress(void)
     }
 }
 
-static void motor_pattern_alarm(void)
+void motor_pattern_alarm(void)
 {
     if (get_motor_switch_state())
     {
@@ -385,7 +385,7 @@ static void motor_pattern_alarm(void)
     }
 }
 
-static void motor_pattern_ble_connected(void)
+void motor_pattern_normal(void)
 {
     if (get_motor_switch_state())
     {
@@ -398,7 +398,7 @@ static void motor_pattern_ble_connected(void)
     }
 }
 
-static void motor_pattern_timer_reminder(void)
+void motor_pattern_timer_reminder(void)
 {
     if (get_motor_switch_state())
     {
@@ -411,26 +411,13 @@ static void motor_pattern_timer_reminder(void)
     }
 }
 
-static void motor_pattern_unlocked(void)
+void motor_pattern_unlocked(void)
 {
     if (get_motor_switch_state())
     {
         motor_params_t params = {
             .duty_cycle = 100,
             .period = 30000, // 30ms
-            .repeat_times = 1,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
-}
-
-static void motor_pattern_test(void)
-{
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 70,
-            .period = 90000, // 90ms
             .repeat_times = 1,
         };
         peripheral_provider.control_motor(true, &params);
@@ -834,71 +821,6 @@ static void handle_system_control(INTERACT_Type type, void *pValue)
     case INTERACT_FIND_PHONE:
     {
         bool enable = *(bool *)pValue;
-        break;
-    }
-    case INTERACT_MOTOR_VIBRATE_ALARM:
-    {
-        motor_pattern_alarm();
-        break;
-    }
-    case INTERACT_MOTOR_VIBRATE_NOTIFICATION:
-    {
-        motor_pattern_notification();
-        break;
-    }
-    case INTERACT_MOTOR_VIBRATE_SCROLLING:
-    {
-        motor_pattern_wheel_scrolling();
-        break;
-    }
-    case INTERACT_MOTOR_VIBRATE_SCROLLING_APP:
-    {
-        motor_pattern_scrolling_app();
-        break;
-    }
-    case INTERACT_MOTOR_VIBRATE_SLIDING:
-    {
-        motor_pattern_touchpad_slide();
-        break;
-    }
-    case INTERACT_MOTOR_VIBRATE_LONG_PRESSED:
-    {
-        motor_pattern_screen_on_longpress();
-        break;
-    }
-    case INTERACT_MOTOR_VIBRATE_BUTTON_PRESSED:
-    {
-        motor_pattern_ble_connected();
-        break;
-    }
-    case INTERACT_MOTOR_VIBRATE_BUTTON_RELEASED:
-    {
-        motor_pattern_ble_connected();
-        break;
-    }
-    case INTERACT_MOTOR_VIBRATE_BLE_CONNECTED:
-    {
-        motor_pattern_ble_connected();
-        break;
-    }
-    case INTERACT_MOTOR_VIBRATE_TIMER_REMINDER:
-    {
-        motor_pattern_timer_reminder();
-        break;
-    }
-    case INTERACT_MOTOR_VIBRATE_UNLOCKED:
-    {
-        motor_pattern_unlocked();
-        break;
-    }
-    case INTERACT_MOTOR_VIBRATE_TEST:
-    {
-        motor_pattern_test();
-        break;
-    }
-    case INTERACT_STOP_MOTOR_ONLY:
-    {
-        peripheral_provider.control_motor(false, NULL);
         break;
     }
     case INTERACT_STOP_OLED_ONLY:
@@ -1330,11 +1252,11 @@ static int control_motor(int argc, char *argv[])
         // 停止馬達
         if (strcmp(argv[1], "-stop") == 0)
         {
-            watch_system_interact(INTERACT_STOP_MOTOR_ONLY, NULL);
+            peripheral_provider.control_motor(false, NULL);
         }
         else if (strcmp(argv[1], "-alarm") == 0)
         {
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_ALARM, NULL);
+            motor_pattern_alarm();
         }
         else if (strcmp(argv[1], "-find_watch") == 0)
         {
@@ -1342,15 +1264,15 @@ static int control_motor(int argc, char *argv[])
         }
         else if (strcmp(argv[1], "-scrolling_app") == 0)
         {
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
         }
         else if (strcmp(argv[1], "-sliding") == 0)
         {
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SLIDING, NULL);
+            motor_pattern_touchpad_slide();
         }
         else if (strcmp(argv[1], "-long_pressed") == 0)
         {
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_LONG_PRESSED, NULL);
+            motor_pattern_screen_on_longpress();
         }
     }
     return 0;

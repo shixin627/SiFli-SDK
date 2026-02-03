@@ -202,7 +202,7 @@ static void send_gate_command(gate_state_t state)
 
     // 觸發震動反饋
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-    watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+    motor_pattern_scrolling_app();
 #endif
 }
 
@@ -499,7 +499,7 @@ void set_iot_widget_selection_bg_pos(uint8_t selection_index, lv_coord_t offset)
         {
             animate_iot_widget_selection_bg(move_offset, prev_move_offset);
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
 #endif
         }
         else
@@ -511,7 +511,7 @@ void set_iot_widget_selection_bg_pos(uint8_t selection_index, lv_coord_t offset)
         {
             animate_iot_widget_selection_bg(move_offset, prev_move_offset);
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
 #endif
         }
         else
@@ -523,7 +523,7 @@ void set_iot_widget_selection_bg_pos(uint8_t selection_index, lv_coord_t offset)
         {
             animate_iot_widget_selection_bg(move_offset, prev_move_offset);
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
 #endif
         }
         else
@@ -702,7 +702,7 @@ static void set_app_selection_bg_pos(uint8_t selection_index, lv_coord_t offset)
         {
             animate_app_selection_bg(move_offset, app_prev_move_offset);
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
 #endif
         }
         else
@@ -714,7 +714,7 @@ static void set_app_selection_bg_pos(uint8_t selection_index, lv_coord_t offset)
         {
             animate_app_selection_bg(move_offset, app_prev_move_offset);
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
 #endif
         }
         else
@@ -726,7 +726,7 @@ static void set_app_selection_bg_pos(uint8_t selection_index, lv_coord_t offset)
         {
             animate_app_selection_bg(move_offset, app_prev_move_offset);
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
 #endif
         }
         else

@@ -57,6 +57,7 @@
     #include "communicate_protocol.h"
 #endif
 #include "ui_handler.h"
+#include "watch_system_interact.h"
 #ifdef BSP_USING_BLOC
     #include "bloc_peripheral.h"
     #include "bloc_control.h"
@@ -936,7 +937,7 @@ static void navigation_bar_control_with_euler_angle(euler_angle_t *delta,
         if ((page == 0 || page >= scroll_segment_count - 1) && on_boundary &&
             scroll_segment_count > 2)
         {
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_UNLOCKED, NULL);
+            motor_pattern_unlocked();
             on_boundary = false;
         }
         else if (page != 0 && page < scroll_segment_count - 1)

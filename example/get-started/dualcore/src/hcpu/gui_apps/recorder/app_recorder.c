@@ -924,7 +924,7 @@ static void button_selection(gesture_position_t gesture_position)
         int category = (gesture_position.gesture_position_x > 400 && folder->file_num > 0) ? 1 : 0;
         if (category != button_selection_index)
         {
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
         }
         if (category != button_selection_index)
             button_selection_index = category;
@@ -953,7 +953,7 @@ static void button_selection(gesture_position_t gesture_position)
         int category = (gesture_position.gesture_position_x > 350) ? 2 : ((gesture_position.gesture_position_x > 116) ? 3 : 4);
         if (category != button_selection_index)
         {
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
         }
         if (category != button_selection_index)
             button_selection_index = category;

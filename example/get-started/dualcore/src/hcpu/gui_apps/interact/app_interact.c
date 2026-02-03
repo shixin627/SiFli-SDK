@@ -475,7 +475,7 @@ static void on_stop(void)
     switch (interact_state)
     {
     case INTERACT_STATE_FIND_ME:
-        watch_system_interact(INTERACT_STOP_MOTOR_ONLY, NULL);
+        peripheral_provider.control_motor(false, NULL);
         break;
 
     case INTERACT_STATE_LONG_SIT_ALERT:

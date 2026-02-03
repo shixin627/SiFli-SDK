@@ -843,7 +843,7 @@ void media_control_event_handler(uint32_t event)
 	case SYS_EVENT_MULTIPLE_PAGES:
 	{
 		LOG_D("SYS_EVENT_MULTIPLE_PAGES");
-		watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+		motor_pattern_scrolling_app();
 		if (control_provider.ble_hid_keyboard_multitask != NULL)
 			control_provider.ble_hid_keyboard_multitask(true);
 		break;

@@ -1178,7 +1178,7 @@ static void button_selection(gesture_position_t gesture_position)
         return;
     }
     button_selection_index = category;
-    watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+    motor_pattern_scrolling_app();
     LOG_D("button_selection_index: %d", button_selection_index);
     clean_tools_selection();
     if (category > 2)

@@ -346,7 +346,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 		LOG_D("selected_message_index: %d", selected_message_index);
 		if (!is_user_touching_screen() && open_shock)
 		{
-			watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+			motor_pattern_scrolling_app();
 		}
 		old_selected_message_index = selected_message_index;
 
@@ -741,7 +741,7 @@ static void drag_timer_cb(lv_timer_t *timer)
 	{
 		// 執行回覆動作
 		new_touching_obj = false;
-		watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+		motor_pattern_scrolling_app();
 		notification_t *notification = get_notification_in_reversed_ui(selected_message_index);
 		if (is_reply)
 		{
@@ -815,7 +815,7 @@ static void animate_to_original_position(lv_obj_t *obj, lv_coord_t target_x)
 
 static void set_pos_ready_cb(lv_anim_t *a)
 {
-	watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+	motor_pattern_scrolling_app();
 }
 static void set_pos_ready_cb_on_original(lv_anim_t *a)
 {
@@ -1509,7 +1509,7 @@ static void button_selection(gesture_position_t gesture_position)
 		return; // 如果已經在第一頁，則不允許向上滾動
 	}
 	button_selection_index = category;
-	watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+	motor_pattern_scrolling_app();
 	// LOG_D("button_selection_index: %d", button_selection_index);
 	reset_button_selection();
 	if (category == 0)

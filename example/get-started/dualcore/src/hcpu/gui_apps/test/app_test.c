@@ -559,7 +559,7 @@ static void screen_event_handler(lv_event_t *e)
             char buf[32];
             rt_sprintf(buf, "Touch %d more times", remaining_clicks);
             lv_label_set_text(test_label, buf);
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_BUTTON_PRESSED, NULL);
+            motor_pattern_normal();
         }
     }
 }

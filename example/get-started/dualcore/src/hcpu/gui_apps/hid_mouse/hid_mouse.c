@@ -1972,7 +1972,7 @@ static bool handle_edge_scrolling(const lv_point_t *current_point,
         {
             LOG_D("SCROLLING LEFT");
             go_back = true;
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
             // control_provider.ble_hid_consumer_back();
             control_provider.trigger_finger_event(2);
         }
@@ -3083,8 +3083,7 @@ static void text_input_bar_cb(lv_event_t *e)
             if (!text_input_bar_pressed)
             {
                 text_input_bar_pressed = true;
-                watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP,
-                                      NULL);
+                motor_pattern_wheel_scrolling();
                 extern void set_voice_recognition_notified_from_mouse(
                     bool status);
                 set_voice_recognition_notified_from_mouse(true);

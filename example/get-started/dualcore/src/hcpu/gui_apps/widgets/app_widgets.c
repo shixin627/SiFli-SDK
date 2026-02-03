@@ -382,7 +382,7 @@ static void scroll_list(lv_obj_t *obj)
 				lv_obj_add_flag(p_control_app_list_layout->p_control_app_indicator_select_prompt[i], LV_OBJ_FLAG_HIDDEN);
 			}
 		}
-		watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+		motor_pattern_scrolling_app();
 	}
 }
 
@@ -985,7 +985,7 @@ static void button_selection(gesture_position_t gesture_position)
 		button_selection_index = closest_tool_index;
 		if (closest_tool_index >= 0)
 		{
-			watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+			motor_pattern_scrolling_app();
 			// lv_obj_set_style_border_width(control_tool[closest_tool_index], 2, 0); // 設置選中按鈕的邊框寬度
 			lv_obj_set_style_img_opa(control_tool[closest_tool_index], LV_OPA_100, 0); // 設置選中按鈕的背景透明度
 			// set_control_icon_size(closest_tool_index, 1.5f); // 設置選中按鈕的圖標大小

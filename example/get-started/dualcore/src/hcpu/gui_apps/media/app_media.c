@@ -601,7 +601,7 @@ static void set_media_widget_selection_bg_pos(uint8_t selection_index,
         {
             animate_media_widget_selection_bg(move_offset,
                                               prev_widget_move_offset);
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
         }
         else
             lv_obj_align(widget_selection_bg, LV_ALIGN_BOTTOM_MID, move_offset,
@@ -613,7 +613,7 @@ static void set_media_widget_selection_bg_pos(uint8_t selection_index,
         {
             animate_media_widget_selection_bg(move_offset,
                                               prev_widget_move_offset);
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
         }
         else
             lv_obj_align(widget_selection_bg, LV_ALIGN_BOTTOM_MID, move_offset,
@@ -625,7 +625,7 @@ static void set_media_widget_selection_bg_pos(uint8_t selection_index,
         {
             animate_media_widget_selection_bg(move_offset,
                                               prev_widget_move_offset);
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
         }
         else
             lv_obj_align(widget_selection_bg, LV_ALIGN_BOTTOM_MID, move_offset,
@@ -656,7 +656,7 @@ static void set_media_app_selection_bg_pos(uint8_t selection_index,
         if (prev_selection_index != 0)
         {
             animate_media_selection_bg(move_offset, prev_move_offset);
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
         }
         else
             lv_obj_align(music_app_obj.btn_select_background, LV_ALIGN_CENTER,
@@ -667,7 +667,7 @@ static void set_media_app_selection_bg_pos(uint8_t selection_index,
         if (prev_selection_index != 1)
         {
             animate_media_selection_bg(move_offset, prev_move_offset);
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
         }
         else
             lv_obj_align(music_app_obj.btn_select_background, LV_ALIGN_CENTER,
@@ -678,7 +678,7 @@ static void set_media_app_selection_bg_pos(uint8_t selection_index,
         if (prev_selection_index != 2)
         {
             animate_media_selection_bg(move_offset, prev_move_offset);
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
         }
         else
             lv_obj_align(music_app_obj.btn_select_background, LV_ALIGN_CENTER,

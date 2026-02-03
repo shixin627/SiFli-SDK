@@ -330,7 +330,7 @@ static void refresh_ui(lv_obj_t *_, void *para)
         show_counter_listview();
         // remove_countdown_timer();
         show_timeout_notification();
-        watch_system_interact(INTERACT_MOTOR_VIBRATE_TIMER_REMINDER, NULL);
+        motor_pattern_timer_reminder();
     }
     else
     {
@@ -1175,7 +1175,7 @@ static void on_start(void)
         {
             LOG_D("Show timeout notification");
             show_timeout_notification();
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_TIMER_REMINDER, NULL);
+            motor_pattern_timer_reminder();
         }
         else
         {

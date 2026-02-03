@@ -505,7 +505,7 @@ void set_ai_hint_x(uint8_t x)
                                  LV_OPA_COVER, 0);
         if (!is_open_ai_gesture)
         {
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_UNLOCKED, NULL);
+            motor_pattern_unlocked();
             is_open_ai_gesture = true;
             tap_on_ai_hint();
         }
@@ -903,7 +903,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         }
         if (get_scrolling_motor_vibrate_status())
         {
-            watch_system_interact(INTERACT_MOTOR_VIBRATE_SCROLLING_APP, NULL);
+            motor_pattern_scrolling_app();
         }
     }
     // if (selected_item_index == child_cnt - 1)

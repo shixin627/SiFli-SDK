@@ -165,7 +165,7 @@
 
 //             if (is_at_home())
 //             {
-//                 // watch_system_interact(INTERACT_MOTOR_VIBRATE_UNLOCKED, NULL);
+//                 // motor_pattern_unlocked();
 //                 LOG_D("Rotate inward, open app list");
 //                 // animate_to_app_list();
 //                 switch_watch_motion_control_mode(true, true);

@@ -510,7 +510,7 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
 
         case PpgSensorPowerManage:
         {
-            if (battery_get_charge_state()->is_plugged)
+            if (!battery_get_charge_state()->is_plugged)
             {
                 hr_set_power(msg->body[1]);
             }
