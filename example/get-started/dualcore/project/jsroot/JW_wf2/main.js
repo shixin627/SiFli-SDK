@@ -79,7 +79,7 @@ class wf2 extends app {
 
         // Minute
         this.min = new label(this.root());
-        this.min.align_to(this.dot.nativeobj, lv_enums.ALIGN_OUT_RIGHT_TOP, 23, 5);
+        this.min.align_to(this.dot.nativeobj, lv_enums.ALIGN_OUT_RIGHT_TOP, 17, 5);
         this.min.set_local_font(lv_enums.FONT_HUGE, lv_enums.LV_COLOR_WHITE);
 
         // Date

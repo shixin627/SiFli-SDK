@@ -652,6 +652,7 @@ static void close_photo_list_cb(lv_event_t *e)
 {
     lv_obj_del(photo_list_obj);
     choose_photo_page_ptr = NULL;
+    LOG_D("Photo list closed");
 }
 void choose_photo_list(uint16_t page)
 {
@@ -675,6 +676,8 @@ void choose_photo_list(uint16_t page)
         lv_label_set_text(label, "No photos found");
         lv_obj_set_style_text_color(label, lv_color_white(), 0);
         lv_obj_center(label);
+        lv_obj_add_event_cb(photo_list_obj, close_photo_list_cb,
+                            LV_EVENT_CLICKED, NULL);
         choose_photo_page_ptr = NULL;
         return;
     }

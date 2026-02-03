@@ -731,37 +731,52 @@ static void clock_change_page(char *clk_id)
     LOG_D("clock_change_page: %s", clk_id);
     if (strcmp(clk_id, "JW_wf1") == 0)
     {
-        lv_img_set_src(dial_widget_img_bg, &gaus_clock1_bg);
-        lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-        lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        if (lv_obj_is_valid(dial_widget_img_bg))
+        {
+            lv_img_set_src(dial_widget_img_bg, &gaus_clock1_bg);
+            lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+            lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        }
         set_clock_main_status_img(&gaus_clock1_bg);
     }
     else if (strcmp(clk_id, "JW_wf2") == 0)
     {
-        lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
-        lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-        lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        if (lv_obj_is_valid(dial_widget_img_bg))
+        {
+            lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
+            lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+            lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        }
         set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
     }
     else if (strcmp(clk_id, "JW_wf3") == 0)
     {
-        lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
-        lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-        lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        if (lv_obj_is_valid(dial_widget_img_bg))
+        {
+            lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
+            lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+            lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        }
         set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
     }
     else if (strcmp(clk_id, "JW_wf4") == 0)
     {
-        lv_img_set_src(dial_widget_img_bg, &gaus_clock4_bg);
-        lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-        lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        if (lv_obj_is_valid(dial_widget_img_bg))
+        {
+            lv_img_set_src(dial_widget_img_bg, &gaus_clock4_bg);
+            lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+            lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        }
         set_clock_main_status_img(&gaus_clock4_bg);
     }
     else if (strcmp(clk_id, "JW_wf5") == 0)
     {
-        lv_img_set_src(dial_widget_img_bg, GAUS_CLOCK5_BG);
-        lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-        lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        if (lv_obj_is_valid(dial_widget_img_bg))
+        {
+            lv_img_set_src(dial_widget_img_bg, GAUS_CLOCK5_BG);
+            lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+            lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        }
         set_clock_main_status_img(GAUS_CLOCK5_BG);
     }
 }
