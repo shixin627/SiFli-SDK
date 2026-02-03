@@ -644,6 +644,7 @@ static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
     lv_obj_set_style_border_width(dial_widget, 2, 0);
     lv_obj_set_style_border_color(dial_widget, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(dial_widget, LV_OPA_10, 0);
+    lv_obj_set_style_clip_corner(dial_widget, true, 0); // 啟用裁切
     lv_obj_clear_flag(dial_widget, LV_OBJ_FLAG_SCROLLABLE); // 禁用滾動
 
     dial_widget_img_bg = lv_img_create(dial_widget);
@@ -666,7 +667,6 @@ static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
         request_weather_within_six_hours(false);
         lv_dial_weather_widget_builder(dial_widget);
     }
-    lv_obj_set_style_clip_corner(dial_widget, true, 0); // 啟用裁切
 }
 
 static void swich_dial_widget_deinit(uint8_t app_id)

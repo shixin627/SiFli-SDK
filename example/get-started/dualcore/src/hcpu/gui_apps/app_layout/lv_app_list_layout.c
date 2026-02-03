@@ -133,15 +133,15 @@ typedef struct
 
 uint16_t APP_LIST_ITEMS_DEFINITION[] = {
 #ifdef APP_ID_TIMER
-    app_id_timer,
+app_id_timer,
 #endif
 // app_id_flashlight,
 #ifdef APP_ID_CALCULATOR
 // app_id_calculator,
 #endif
-    app_id_exercise,      
-    app_id_heart_rate, 
-    app_id_recorder,
+app_id_exercise,
+app_id_heart_rate,
+app_id_recorder,
 #ifdef APP_ID_ACTIVITY
     app_id_activity,
 #endif
@@ -166,7 +166,7 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
     app_id_media,
 #endif
 #ifdef APP_ID_NOTE_CHATROOM
-    app_id_note,
+    // app_id_note,
 #endif
 };
 
@@ -391,8 +391,20 @@ static void update_indicator_dots_position(int input_value)
 
         float angle_rad = current_angle * M_PI / 180.0f;
 
+
         int dot_x = center_x + (int)(circle_radius * cos(angle_rad));
         int dot_y = center_y + (int)(circle_radius * sin(angle_rad));
+
+        // 限制 dot_y 超過 450 或小於 16 時，dot_x 不再變動
+        static int last_valid_dot_x[32] = {0};
+        if (dot_y > 450 || dot_y < 16) {
+            if (p_app_list_layout->indicator_dots_bg[i] != NULL) {
+                // dot_x 不變，使用上一次合法的 dot_x
+                dot_x = last_valid_dot_x[i];
+            }
+        } else {
+            last_valid_dot_x[i] = dot_x;
+        }
 
         float angle_from_horizontal = current_angle;
 
@@ -419,10 +431,10 @@ static void update_indicator_dots_position(int input_value)
             ratio = 0.0f;
         }
 
-        int dot_size = 80;
-        int opacity = (int)(0 + (LV_OPA_COVER - 0) * ratio);
-        if (opacity < 0)
-            opacity = 0;
+        int dot_size = 110;
+        int opacity = (int)(LV_OPA_30 + (LV_OPA_COVER - LV_OPA_30) * ratio);
+        if (opacity < LV_OPA_30)
+            opacity = LV_OPA_30;
         if (opacity > LV_OPA_COVER)
             opacity = LV_OPA_COVER;
 
@@ -446,13 +458,14 @@ static void create_indicator_dots(lv_obj_t *parent)
     for (int i = 0; i < total_dots; i++)
     {
         lv_obj_t *dot_bg = lv_obj_create(parent);
-        lv_obj_set_size(dot_bg, 80, 80);
+        lv_obj_set_size(dot_bg, 110, 110);
         lv_obj_set_style_bg_opa(dot_bg, LV_OPA_0, 0);
         lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
 
         lv_obj_t *dot = lv_img_create(dot_bg);
-        lv_obj_set_size(dot, 80, 80);
+        // lv_obj_set_size(dot, 100, 100);
+        lv_obj_center(dot);
         lv_img_set_src(dot, app_list_items[i].icon);
         if (APP_LIST_ITEMS_DEFINITION[i] == app_id_ai ||
             APP_LIST_ITEMS_DEFINITION[i] == app_id_note)
@@ -817,6 +830,40 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         }
         lv_obj_set_style_translate_x(child, x_trans, LV_STATE_DEFAULT);
         lv_obj_mark_layout_as_dirty(child);
+        static lv_coord_t last_y_diff[32] = {0}; // 假設最大32個app
+        static uint8_t last_opa[32] = {0};
+        static uint8_t last_zoom[32] = {0};
+        const lv_coord_t DIFF_THRESHOLD = 15; // 變化超過5才更新
+
+        if (abs((int)y_diff - (int)last_y_diff[i]) > DIFF_THRESHOLD) {
+            last_y_diff[i] = y_diff;
+            uint8_t opa = 0;
+            if (y_diff >= 200)
+            {
+                opa = 0;
+            }
+            else
+            {
+                opa = 255 - (y_diff * 255 / 200);
+            }
+            uint8_t zoom;
+            // 讓 zoom 隨 y_diff 線性變化，y_diff 越大 zoom 越小
+            if (y_diff >= 200) {
+                zoom = 255 * 0.7;
+            } else {
+                // zoom 從 255 (y_diff=0) 線性降到 255*0.7 (y_diff=200)
+                zoom = 255*1.2 - (y_diff * (255*1.2 - (uint8_t)(255 * 0.7)) / 200);
+            }
+            if (opa != last_opa[i]) {
+                lv_obj_set_style_text_opa(app_label[i], opa, 0);
+                last_opa[i] = opa;
+            }
+            if (zoom != last_zoom[i]) {
+                lv_img_set_zoom(p_app_list_layout->indicator_dots[i], zoom);
+                last_zoom[i] = zoom;
+            }
+            lv_obj_center(p_app_list_layout->indicator_dots[i]);
+        }
     }
     if (touching_screen)
     {
@@ -861,29 +908,31 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             last_y_diff_on_selected = last_y_diff;
         }
         old_selected_item_index = selected_item_index;
-        LOG_D("selected_app_index: %d", selected_item_index);
+        // LOG_D("selected_app_index: %d", selected_item_index);
 
         for (uint8_t i = 0; i < child_cnt; i++)
         {
             lv_obj_t *child = obj->spec_attr->children[i];
             if (i == selected_item_index)
             {
-                LOG_D("Selected item index: %d", i);
-                lv_img_set_zoom(p_app_list_layout->indicator_dots[i], 256);
-                selected_label = lv_obj_get_child(child, 0);
+                // LOG_D("Selected item index: %d", i);
+                // lv_img_set_zoom(p_app_list_layout->indicator_dots[i], 256);
+                // selected_label = lv_obj_get_child(child, 0);
                 lv_obj_clear_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
                 // 將選中項的文本標籤放大一個字號
-                lv_obj_set_style_text_font(
-                    app_label[i], LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+                // lv_obj_set_style_text_font(
+                //     app_label[i], LV_EXT_FONT_GET(get_system_font_size(1)),
+                //     0);
             }
             else
             {
-                lv_img_set_zoom(p_app_list_layout->indicator_dots[i],
-                                256 * 0.75);
+                // lv_img_set_zoom(p_app_list_layout->indicator_dots[i],
+                //                 256 * 0.75);
                 lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
                 // 將非選中項的文本標籤恢復為正常字號
-                lv_obj_set_style_text_font(
-                    app_label[i], LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+                // lv_obj_set_style_text_font(
+                //     app_label[i], LV_EXT_FONT_GET(get_system_font_size(0)),
+                //     0);
             }
             {
                 int distance_from_the_center = i - selected_item_index;
@@ -1053,7 +1102,7 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         }
         // 當開始滾動時停止所有動畫並復原狀態
         stop_all_animations_and_reset();
-        LOG_D("APP LIST Scroll begin");
+        // LOG_D("APP LIST Scroll begin");
         break;
     }
     case LV_EVENT_SCROLL:
@@ -1079,7 +1128,7 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
             // 延遲 0.5 秒後才設置 touching_screen 為 false
             start_touching_screen_timer();
         }
-        LOG_D("APP LIST Scroll ended :%d", touching_screen);
+        // LOG_D("APP LIST Scroll ended :%d", touching_screen);
         break;
     }
     default:

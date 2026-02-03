@@ -1485,15 +1485,15 @@ static void calculate_gravity_position(Vector3 *gravity)
 {
     if (gravity->x > 0.1 && gravity->x < 0.5 && is_at_app_list())
     {
-        uint8_t ai_hint_bg_pos =
-            (uint8_t)(((gravity->x - 0.1f) / 0.4f) * 100.0f);
-        if (ai_hint_bg_pos != pevr_ai_hint_bg_pos)
-        {
-            pevr_ai_hint_bg_pos = ai_hint_bg_pos;
-            if (ai_hint_bg_pos > 100)
-                ai_hint_bg_pos = 100;
-            set_ai_hint_x(ai_hint_bg_pos);
-        }
+        // uint8_t ai_hint_bg_pos =
+        //     (uint8_t)(((gravity->x - 0.1f) / 0.4f) * 100.0f);
+        // if (ai_hint_bg_pos != pevr_ai_hint_bg_pos)
+        // {
+        //     pevr_ai_hint_bg_pos = ai_hint_bg_pos;
+        //     if (ai_hint_bg_pos > 100)
+        //         ai_hint_bg_pos = 100;
+        //     set_ai_hint_x(ai_hint_bg_pos);
+        // }
     }
     if (gravity->y < -0.7 && gravity->z < 0.3)
     {
