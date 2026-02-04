@@ -348,7 +348,9 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         {
             lvgl_msg_handler.handle_input_message(msg->data.message);
             trigger_activity();
+            LOG_D("LVGL_MSG_TYPE_INPUT_MESSAGE: %s", msg->data.message);
         }
+        LOG_D("FREE msg->data.message: %p", msg->data.message);
         break;
 
     case LVGL_MSG_TYPE_WATCHFACE:

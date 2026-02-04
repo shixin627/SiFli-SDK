@@ -410,7 +410,7 @@ void open_skai_widget_ai(bool open)
             lv_obj_set_style_border_width(skai_widget_input_text_bg, 2, LV_STATE_DEFAULT);
             lv_obj_set_style_border_opa(skai_widget_input_text_bg, LV_OPA_50, LV_STATE_DEFAULT);
             // voice_provider.auto_stop_listening();
-            voice_provider.stop_v2t();
+            // voice_provider.stop_v2t();
             // reset_skai_widget_input_text();
             set_is_open_app_list_ai(false);
             set_skai_widget_input_text("");

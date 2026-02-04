@@ -212,6 +212,8 @@ bool is_at_ai_interface(void)
     return _at_ai_interface;
 }
 
+extern bool get_app_list_ai_tapped(void);
+extern void set_app_list_ai_tapped(void);
 void check_is_at_ai_interface(void)
 {
     bool yes = !lv_obj_has_flag(myLancher[app_index_ai_interface].pagetileview,
@@ -226,9 +228,17 @@ void check_is_at_ai_interface(void)
             show_app_list_time(false);
             extern void reset_ai_coding(void);
             reset_ai_coding();
-            set_ai_open_mic(true);
-            show_speech_indicator(true);
-            voice_provider.start_v2t();
+            if (!get_app_list_ai_tapped())
+            {
+                set_ai_open_mic(true);
+                show_speech_indicator(true);
+                voice_provider.start_v2t();
+            }
+            else
+            {
+                set_app_list_ai_tapped();
+            }
+            
             set_free_control_with_arm(false);
         }
         else
@@ -241,7 +251,6 @@ void check_is_at_ai_interface(void)
 }
 
 static bool _at_app_list = false;
-
 bool is_at_app_list(void)
 {
     // LOG_D("is_at_app_list? %d", _at_app_list);
@@ -272,10 +281,10 @@ void set_need_open_gesture_control(bool need)
 {
     need_open_gesture_control = need;
 }
-extern void open_skai_widget_ai(bool open);
 extern void reset_skai_widget_input_text(void);
 extern uint8_t get_middle_layer_tileview_index(void);
 extern bool get_is_open_app_list_ai(void);
+extern void open_skai_widget_ai(bool open);
 void check_is_at_app_list(void)
 {
     bool yes = gui_app_is_actived(APP_ID_MAIN) &&
@@ -305,6 +314,7 @@ void check_is_at_app_list(void)
         {
             myLancher[app_index_app_list].reset_list();
             app_list_pause();
+            open_skai_widget_ai(false);
         }
         LOG_I("is_at_app_list: %d", _at_app_list);
     }

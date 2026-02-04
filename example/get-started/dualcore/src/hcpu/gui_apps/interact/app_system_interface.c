@@ -1122,6 +1122,7 @@ void refresh_ai_chat_input_message(char *text)
         in_spire_AI(&gesture_indicator);
     }
     delete_ai_reply_widget(&gesture_indicator);
+    LOG_D("Input message refreshed%d",get_is_open_app_list_ai());
 }
 
 static void update_ai_process_indicator(app_gesture_indicator_t *indicator, char *message, bool is_active)

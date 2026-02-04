@@ -100,6 +100,8 @@ static void handle_back_in_mainmenu(bool is_button)
 }
 
 extern void note_list_handle_back(void);
+extern void back_on_skai_widget(void);
+extern bool get_is_open_app_list_ai(void);
 static void handle_back_event(bool is_button)
 {
     if (SkaiWatchSys.sys_power_status == SYS_POWER_STATUS_ON)
@@ -152,7 +154,22 @@ static void handle_back_event(bool is_button)
         LOG_D("ESC in note list => note_list_handle_back");
         note_list_handle_back();
     }
-    else if (is_at_mouse_mode() || is_at_message() || is_at_app_list())
+    else if (is_at_app_list())
+    {
+        if (get_is_open_app_list_ai())
+        {
+            back_on_skai_widget();
+            LOG_D("ESC in app list with AI open => back_on_skai_widget");
+        }
+        else
+        {
+            clock_on_resume();
+            animate_to_home_from_app_list();
+            screen_rotate_back_to_original_direction();
+            LOG_D("ESC in app list => animate_to_home_from_app_list");
+        }
+    }
+    else if (is_at_mouse_mode() || is_at_message())
     {
         clock_on_resume();
         animate_to_home_from_notification_center();
