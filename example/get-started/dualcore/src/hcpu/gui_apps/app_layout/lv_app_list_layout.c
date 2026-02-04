@@ -102,7 +102,7 @@
 
 #define DOT_SMOLL_PROPORTION (0.6)
 #define DOT_BIG_PROPORTION (1.2)
-#define DOT_BG_SIZE (80*DOT_BIG_PROPORTION) + 2
+#define DOT_BG_SIZE (80 * DOT_BIG_PROPORTION) + 2
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -137,15 +137,15 @@ typedef struct
 
 uint16_t APP_LIST_ITEMS_DEFINITION[] = {
 #ifdef APP_ID_TIMER
-app_id_timer,
+    app_id_timer,
 #endif
 // app_id_flashlight,
 #ifdef APP_ID_CALCULATOR
 // app_id_calculator,
 #endif
-app_id_exercise,
-app_id_heart_rate,
-app_id_recorder,
+    app_id_exercise,
+    app_id_heart_rate,
+    app_id_recorder,
 #ifdef APP_ID_ACTIVITY
     app_id_activity,
 #endif
@@ -170,8 +170,9 @@ app_id_recorder,
     app_id_media,
 #endif
 #ifdef APP_ID_NOTE_CHATROOM
-    // app_id_note,
+// app_id_note,
 #endif
+    app_id_ai,
 };
 
 uint8_t return_app_count(void)
@@ -395,18 +396,21 @@ static void update_indicator_dots_position(int input_value)
 
         float angle_rad = current_angle * M_PI / 180.0f;
 
-
         int dot_x = center_x + (int)(circle_radius * cos(angle_rad));
         int dot_y = center_y + (int)(circle_radius * sin(angle_rad));
 
         // 限制 dot_y 超過 450 或小於 16 時，dot_x 不再變動
         static int last_valid_dot_x[32] = {0};
-        if (dot_y > 450 || dot_y < 16) {
-            if (p_app_list_layout->indicator_dots_bg[i] != NULL) {
+        if (dot_y > 450 || dot_y < 16)
+        {
+            if (p_app_list_layout->indicator_dots_bg[i] != NULL)
+            {
                 // dot_x 不變，使用上一次合法的 dot_x
                 dot_x = last_valid_dot_x[i];
             }
-        } else {
+        }
+        else
+        {
             last_valid_dot_x[i] = dot_x;
         }
 
@@ -442,10 +446,15 @@ static void update_indicator_dots_position(int input_value)
         if (opacity > LV_OPA_COVER)
             opacity = LV_OPA_COVER;
 
-        lv_obj_set_style_img_opa(p_app_list_layout->indicator_dots[i], opacity, 0);
+        lv_obj_set_style_img_opa(p_app_list_layout->indicator_dots[i], opacity,
+                                 0);
 
-        uint16_t zoom = (uint16_t)(255 * (DOT_SMOLL_PROPORTION + (DOT_BIG_PROPORTION-DOT_SMOLL_PROPORTION) * ratio));
-        if (abs((int)zoom - (int)last_zoom[i]) > 5) {
+        uint16_t zoom =
+            (uint16_t)(255 *
+                       (DOT_SMOLL_PROPORTION +
+                        (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * ratio));
+        if (abs((int)zoom - (int)last_zoom[i]) > 5)
+        {
             lv_img_set_zoom(p_app_list_layout->indicator_dots[i], zoom);
             last_zoom[i] = zoom;
         }
@@ -722,10 +731,9 @@ bool get_is_open_app_list_ai(void)
 {
     return is_open_app_list_ai;
 }
-bool set_is_open_app_list_ai(bool open)
+void set_is_open_app_list_ai(bool open)
 {
     is_open_app_list_ai = open;
-    return is_open_app_list_ai;
 }
 static bool is_at_ai_widget = false;
 static bool scroll_initialized = false;
@@ -844,7 +852,8 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         static uint8_t last_zoom[32] = {0};
         const lv_coord_t DIFF_THRESHOLD = 15; // 變化超過5才更新
 
-        if (abs((int)y_diff - (int)last_y_diff[i]) > DIFF_THRESHOLD) {
+        if (abs((int)y_diff - (int)last_y_diff[i]) > DIFF_THRESHOLD)
+        {
             last_y_diff[i] = y_diff;
             uint8_t opa = 0;
             if (y_diff >= 200)
@@ -861,18 +870,21 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             //     zoom = 255 * 0.7;
             // } else {
             //     // zoom 從 255 (y_diff=0) 線性降到 255*0.7 (y_diff=200)
-            //     zoom = 255*1.2 - (y_diff * (255*1.2 - (uint8_t)(255 * 0.7)) / 200);
+            //     zoom = 255*1.2 - (y_diff * (255*1.2 - (uint8_t)(255 * 0.7)) /
+            //     200);
             // }
-            if (opa != last_opa[i]) {
+            if (opa != last_opa[i])
+            {
                 lv_obj_set_style_text_opa(app_label[i], opa, 0);
                 last_opa[i] = opa;
             }
             // if (zoom != last_zoom[i]) {
-            //     // lv_img_set_zoom(p_app_list_layout->indicator_dots[i], zoom);
-            //     last_zoom[i] = zoom;
+            //     // lv_img_set_zoom(p_app_list_layout->indicator_dots[i],
+            //     zoom); last_zoom[i] = zoom;
             // }
             // if (i == 9)
-            //     LOG_D("App %d: y_diff=%d, opa=%d, zoom=%d", i, y_diff, opa, zoom);
+            //     LOG_D("App %d: y_diff=%d, opa=%d, zoom=%d", i, y_diff, opa,
+            //     zoom);
             // lv_obj_center(p_app_list_layout->indicator_dots[i]);
         }
     }
@@ -1160,15 +1172,15 @@ void tap_on_ai_widget(void)
         LOG_D("Bluetooth is connected, ignoring voice recognition event");
         return;
     }
-    if (is_open_app_list_ai)
-    {
-        extern void send_to_ai(void);
-        send_to_ai();
-        return;
-    }
+    // if (is_open_app_list_ai)
+    // {
+    //     extern void send_to_ai(void);
+    //     send_to_ai();
+    //     return;
+    // }
     is_open_app_list_ai = true;
     open_skai_widget_ai(true);
-    animate_to_ai_page();
+    // animate_to_ai_page();
     set_skai_widget_input_text("");
     set_ai_open_mic(true);
     show_speech_indicator(true);
@@ -1176,6 +1188,15 @@ void tap_on_ai_widget(void)
     set_free_control_with_arm(false);
 }
 
+static bool app_list_ai_tapped = false;
+bool get_app_list_ai_tapped(void)
+{
+    return app_list_ai_tapped;
+}
+void set_app_list_ai_tapped(void)
+{
+    app_list_ai_tapped = false;
+}
 void tap_on_ai_hint(void)
 {
     if (!get_bluetooth_connection_status())
@@ -1184,6 +1205,9 @@ void tap_on_ai_hint(void)
         LOG_D("Bluetooth is connected, ignoring voice recognition event");
         return;
     }
+    app_list_ai_tapped = true;
+    extern void send_to_ai(void);
+    send_to_ai();
     animate_to_home_from_app_list();
     animate_to_ai_page();
 }
@@ -1197,12 +1221,12 @@ static void on_item_tap(app_list_item_t *item)
     // {
     // 	tap_on_ai_hint();
     // }
-    // else if (strcmp(item->app_id, APP_ID_SKAI) == 0)
-    // {
-    // 	tap_on_ai_hint();
-    // }
     // else
-    if (!is_open_app_list_ai)
+    if (strcmp(item->app_id, APP_ID_SKAI) == 0)
+    {
+        tap_on_ai_hint();
+    }
+    else if (!is_open_app_list_ai)
     {
         animate_to_home_from_app_list();
         gui_app_run(item->app_id);
@@ -1213,7 +1237,14 @@ static void list_item_click_event_cb(lv_event_t *evt)
     app_list_item_t *item = (app_list_item_t *)evt->user_data;
     lv_obj_t *obj = evt->target;
     LOG_D("ID: %s,obj:%p", item->app_id, obj);
-    on_item_tap(item);
+    if (strcmp(item->app_id, APP_ID_SKAI) == 0)
+    {
+        tap_on_ai_hint();
+    }
+    else
+    {
+        on_item_tap(item);
+    }
 }
 
 static bool tap_to_open_control = false;
@@ -1251,21 +1282,22 @@ static void reset_list(void)
     uint8_t scroll_to_index;
     uint16_t page_range =
         1250 / ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION); // 保持原值
-    const char *media_title = get_media_title();
-    if (media_title[0] != '\0')
+    // const char *media_title = get_media_title();
+    // if (media_title[0] != '\0')
+    // {
+    //     scroll_to_index = find_app_index_by_id(app_id_media);
+    //     app_scroll_target_item = find_app_index_by_id(app_id_media);
+    // }
+    // else 
+    // if (is_have_message_now())
+    // {
+    //     scroll_to_index = find_app_index_by_id(app_id_message_list);
+    //     app_scroll_target_item = find_app_index_by_id(app_id_message_list);
+    // }
+    // else
     {
-        scroll_to_index = find_app_index_by_id(app_id_media);
-        app_scroll_target_item = find_app_index_by_id(app_id_media);
-    }
-    else if (is_have_message_now())
-    {
-        scroll_to_index = find_app_index_by_id(app_id_message_list);
-        app_scroll_target_item = find_app_index_by_id(app_id_message_list);
-    }
-    else
-    {
-        scroll_to_index = find_app_index_by_id(app_id_media);
-        app_scroll_target_item = find_app_index_by_id(app_id_media);
+        scroll_to_index = find_app_index_by_id(app_id_ai);
+        app_scroll_target_item = find_app_index_by_id(app_id_ai);
     }
     gesture_starting_value =
         (125 * (ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - scroll_to_index - 1)) +

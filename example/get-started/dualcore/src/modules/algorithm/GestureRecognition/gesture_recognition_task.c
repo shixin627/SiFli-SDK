@@ -614,6 +614,7 @@ INIT_APP_EXPORT(gesture_recognition_thread_init);
 #endif
 
 #ifdef BSP_USING_PM
+extern void set_gravity_position(int position);
 static int utest_gesture(int argc, char *argv[])
 {
     if (argc >= 2)
@@ -649,6 +650,10 @@ static int utest_gesture(int argc, char *argv[])
         else if (strcmp(argv[1], "back") == 0)
         {
             send_virtual_gesture_event(GESTURE_EVENT_BACK);
+        }
+        else if (strcmp(argv[1], "raise_hand") == 0)
+        {
+            set_gravity_position(GRAVITY_POSITION_AI);
         }
 
     }
