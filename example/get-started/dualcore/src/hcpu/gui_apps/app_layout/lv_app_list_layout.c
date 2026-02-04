@@ -100,6 +100,10 @@
 #define LIST_ITEM_RADIUS (240)
 #define LIST_ITEM_BORDER_SIDE LV_BORDER_SIDE_RIGHT
 
+#define DOT_SMOLL_PROPORTION (0.6)
+#define DOT_BIG_PROPORTION (1.2)
+#define DOT_BG_SIZE (80*DOT_BIG_PROPORTION) + 2
+
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 // LV_IMG_DECLARE(img_flashlight);
@@ -348,7 +352,7 @@ static void animate_label_vertical(lv_obj_t *obj, bool move_up)
 
 static bool is_indicator_dots_visible = true;
 static uint16_t selected_item_index = ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - 1;
-
+static uint16_t last_zoom[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)] = {0};
 static void update_indicator_dots_position(int input_value)
 {
     if (p_app_list_layout == NULL || !is_indicator_dots_visible)
@@ -431,16 +435,21 @@ static void update_indicator_dots_position(int input_value)
             ratio = 0.0f;
         }
 
-        int dot_size = 110;
+        int dot_size = DOT_BG_SIZE;
         int opacity = (int)(LV_OPA_30 + (LV_OPA_COVER - LV_OPA_30) * ratio);
         if (opacity < LV_OPA_30)
             opacity = LV_OPA_30;
         if (opacity > LV_OPA_COVER)
             opacity = LV_OPA_COVER;
 
-        lv_obj_set_style_img_opa(p_app_list_layout->indicator_dots[i], opacity,
-                                 0);
+        lv_obj_set_style_img_opa(p_app_list_layout->indicator_dots[i], opacity, 0);
 
+        uint16_t zoom = (uint16_t)(255 * (DOT_SMOLL_PROPORTION + (DOT_BIG_PROPORTION-DOT_SMOLL_PROPORTION) * ratio));
+        if (abs((int)zoom - (int)last_zoom[i]) > 5) {
+            lv_img_set_zoom(p_app_list_layout->indicator_dots[i], zoom);
+            last_zoom[i] = zoom;
+        }
+        lv_obj_center(p_app_list_layout->indicator_dots[i]);
         dot_x -= dot_size / 2;
         dot_y -= dot_size / 2;
 
@@ -458,7 +467,7 @@ static void create_indicator_dots(lv_obj_t *parent)
     for (int i = 0; i < total_dots; i++)
     {
         lv_obj_t *dot_bg = lv_obj_create(parent);
-        lv_obj_set_size(dot_bg, 110, 110);
+        lv_obj_set_size(dot_bg, DOT_BG_SIZE, DOT_BG_SIZE);
         lv_obj_set_style_bg_opa(dot_bg, LV_OPA_0, 0);
         lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
@@ -637,7 +646,7 @@ static void animate_open_selected_widget_cb(lv_anim_t *a)
 
 static void set_widget_img_opa(lv_obj_t *obj, lv_opa_t opa)
 {
-    lv_obj_set_style_img_opa(obj, opa, LV_STATE_DEFAULT);
+    // lv_obj_set_style_img_opa(obj, opa, LV_STATE_DEFAULT);
 }
 
 static void animate_widget_img_opa(lv_obj_t *obj)
@@ -846,23 +855,25 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             {
                 opa = 255 - (y_diff * 255 / 200);
             }
-            uint8_t zoom;
-            // 讓 zoom 隨 y_diff 線性變化，y_diff 越大 zoom 越小
-            if (y_diff >= 200) {
-                zoom = 255 * 0.7;
-            } else {
-                // zoom 從 255 (y_diff=0) 線性降到 255*0.7 (y_diff=200)
-                zoom = 255*1.2 - (y_diff * (255*1.2 - (uint8_t)(255 * 0.7)) / 200);
-            }
+            // uint8_t zoom;
+            // // 讓 zoom 隨 y_diff 線性變化，y_diff 越大 zoom 越小
+            // if (y_diff >= 200) {
+            //     zoom = 255 * 0.7;
+            // } else {
+            //     // zoom 從 255 (y_diff=0) 線性降到 255*0.7 (y_diff=200)
+            //     zoom = 255*1.2 - (y_diff * (255*1.2 - (uint8_t)(255 * 0.7)) / 200);
+            // }
             if (opa != last_opa[i]) {
                 lv_obj_set_style_text_opa(app_label[i], opa, 0);
                 last_opa[i] = opa;
             }
-            if (zoom != last_zoom[i]) {
-                lv_img_set_zoom(p_app_list_layout->indicator_dots[i], zoom);
-                last_zoom[i] = zoom;
-            }
-            lv_obj_center(p_app_list_layout->indicator_dots[i]);
+            // if (zoom != last_zoom[i]) {
+            //     // lv_img_set_zoom(p_app_list_layout->indicator_dots[i], zoom);
+            //     last_zoom[i] = zoom;
+            // }
+            // if (i == 9)
+            //     LOG_D("App %d: y_diff=%d, opa=%d, zoom=%d", i, y_diff, opa, zoom);
+            // lv_obj_center(p_app_list_layout->indicator_dots[i]);
         }
     }
     if (touching_screen)
@@ -1676,7 +1687,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
 }
 
 // static rt_uint32_t last_scroll_time = 0;
-void scroll_list_to_index(uint16_t page)
+static void scroll_list_to_index(uint16_t page)
 {
     if (p_app_list_layout->list == NULL ||
         !lv_obj_is_valid(p_app_list_layout->list))
@@ -1702,7 +1713,7 @@ void scroll_list_to_index(uint16_t page)
     scroll_list(p_app_list_layout->list, 0);
 }
 
-void app_list_scroll_to_app(int8_t action)
+static void app_list_scroll_to_app(int8_t action)
 {
     if (pause_app_list)
     {

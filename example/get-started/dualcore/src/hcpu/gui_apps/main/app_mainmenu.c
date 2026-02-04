@@ -586,7 +586,7 @@ void open_control_app_list(lv_anim_t *a)
     clock_on_pause();
 }
 
-extern void app_list_scroll_to_app(bool up);
+// extern void app_list_scroll_to_app(bool up);
 static uint16_t bg_opa = LV_OPA_COVER;
 static uint8_t bg_opa2 = LV_OPA_80;
 void *app_tap_indicate_function = NULL;
@@ -645,8 +645,8 @@ static void app_main_Clock_view_event_cb(lv_event_t *event)
                     lvgl_msg_handler.handle_gyro_scroll_list;
                 lvgl_msg_handler.handle_tap_indicator = on_tap_wrapper;
                 LOG_D("handle_tap_indicator =%p", on_tap_wrapper);
-                lvgl_msg_handler.handle_gyro_scroll_list =
-                    app_list_scroll_to_app;
+                // lvgl_msg_handler.handle_gyro_scroll_list =
+                //     app_list_scroll_to_app;
     #ifdef APP_ID_WIDGETS
                 widget_page_flip(true);
     #endif

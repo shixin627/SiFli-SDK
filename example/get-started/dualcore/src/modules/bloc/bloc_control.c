@@ -663,7 +663,8 @@ static void trigger_finger_event(uint8_t finger_event)
 	// lvgl_send_msg(msg);
 	if (is_tap)
 	{
-		watch_system_interact(INTERACT_RGB_LED_OPEN_WRITE, NULL);
+		uint8_t led_brightness = 20;
+		watch_system_interact(INTERACT_RGB_LED_OPEN_WRITE, &led_brightness);
 	}
 	else
 	{

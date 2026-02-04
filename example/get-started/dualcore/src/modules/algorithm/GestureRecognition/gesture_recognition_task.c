@@ -646,6 +646,10 @@ static int utest_gesture(int argc, char *argv[])
         {
             send_virtual_gesture_event(GESTURE_EVENT_WRIST_PRONATION);
         }
+        else if (strcmp(argv[1], "back") == 0)
+        {
+            send_virtual_gesture_event(GESTURE_EVENT_BACK);
+        }
 
     }
     return 0;

@@ -836,11 +836,11 @@ static void bloc_notify_charge_status(uint8_t status)
         {
 			if (status == InCharging)
 			{
-				watch_system_interact(INTERACT_RGB_LED_BREATHING_GREEN, NULL);
+				watch_system_interact(INTERACT_RGB_LED_BREATHING_GREEN, 20);
 			}
 			else if (status == ChargingComplete)
 			{
-				watch_system_interact(INTERACT_RGB_LED_OPEN_GREEN, NULL);
+				watch_system_interact(INTERACT_RGB_LED_OPEN_GREEN, 20);
 			}
         }
     }

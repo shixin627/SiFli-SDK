@@ -315,7 +315,6 @@ void widget_page_flip(bool is_gravity_x_positive)
 static uint8_t move_count = 0;
 static int16_t old_position = 0;
 static int16_t last_scroll_time = 0;
-extern void scroll_list_to_index(uint16_t new_position);
 static void navigation_bar_control_with_quaternion(float delta_angle)
 {
     /// **** Simulate air mouse pointer device **** ///
@@ -329,44 +328,44 @@ static void navigation_bar_control_with_quaternion(float delta_angle)
     }
 }
 
-extern void app_list_scroll_to_app(bool up);
-extern void mesage_list_scroll_to_app(bool up);
-extern void control_app_list_scroll_to_app(bool up);
-static void navigation_bar_control_with_gyro(Vector3 *gyro)
-{
-    static float navigation_gyro_z_count = 0;
-    if (gyro->z > 5 || gyro->z < -5)
-    {
-        navigation_gyro_z_count += gyro->z;
-        if (fabs(navigation_gyro_z_count) > SCROLL_APP_THRESHOLD)
-        {
-            last_scroll_time = rt_tick_get_millisecond();
-            if (navigation_gyro_z_count > 0)
-            {
-                if (is_at_message())
-                {
-                    mesage_list_scroll_to_app(false);
-                }
-                else if (is_at_app_list())
-                {
-                    app_list_scroll_to_app(false);
-                }
-            }
-            else
-            {
-                if (is_at_message())
-                {
-                    mesage_list_scroll_to_app(true);
-                }
-                else if (is_at_app_list())
-                {
-                    app_list_scroll_to_app(true);
-                }
-            }
-            navigation_gyro_z_count = 0;
-        }
-    }
-}
+// extern void app_list_scroll_to_app(bool up);
+// extern void mesage_list_scroll_to_app(bool up);
+// extern void control_app_list_scroll_to_app(bool up);
+// static void navigation_bar_control_with_gyro(Vector3 *gyro)
+// {
+//     static float navigation_gyro_z_count = 0;
+//     if (gyro->z > 5 || gyro->z < -5)
+//     {
+//         navigation_gyro_z_count += gyro->z;
+//         if (fabs(navigation_gyro_z_count) > SCROLL_APP_THRESHOLD)
+//         {
+//             last_scroll_time = rt_tick_get_millisecond();
+//             if (navigation_gyro_z_count > 0)
+//             {
+//                 if (is_at_message())
+//                 {
+//                     mesage_list_scroll_to_app(false);
+//                 }
+//                 else if (is_at_app_list())
+//                 {
+//                     app_list_scroll_to_app(false);
+//                 }
+//             }
+//             else
+//             {
+//                 if (is_at_message())
+//                 {
+//                     mesage_list_scroll_to_app(true);
+//                 }
+//                 else if (is_at_app_list())
+//                 {
+//                     app_list_scroll_to_app(true);
+//                 }
+//             }
+//             navigation_gyro_z_count = 0;
+//         }
+//     }
+// }
 
 static float total_yaw_energy = 0;
 static uint8_t scroll_segment_count = 1;

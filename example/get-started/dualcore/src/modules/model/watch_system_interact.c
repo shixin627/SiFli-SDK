@@ -438,13 +438,13 @@ static void led_pattern_rgb_led_colse(void)
     peripheral_provider.control_rgb_led(true, &params);
 }
 
-static void led_pattern_rgb_led_open_write(void)
+static void led_pattern_rgb_led_open_write(uint8_t brightness)
 {
     peripheral_provider.control_rgb_led(false, NULL);
     LOG_D("led_pattern_rgb_led_open_write");
     rgb_led_params_t params = {
         .color = {.red = 255, .green = 255, .blue = 255},
-        .brightness = 50,
+        .brightness = brightness,
         .animation_mode = RGB_ANIM_STATIC,
         .period_ms = 500,
         .repeat_times = 0, // infinite
@@ -452,12 +452,12 @@ static void led_pattern_rgb_led_open_write(void)
     peripheral_provider.control_rgb_led(true, &params);
 }
 
-static void led_pattern_rgb_led_open_green(void)
+static void led_pattern_rgb_led_open_green(uint8_t brightness)
 {
     peripheral_provider.control_rgb_led(false, NULL);
     rgb_led_params_t params = {
         .color = {.red = 0, .green = 255, .blue = 0},
-        .brightness = 30,
+        .brightness = brightness,
         .animation_mode = RGB_ANIM_STATIC,
         .period_ms = 500,
         .repeat_times = 0, // infinite
@@ -465,11 +465,11 @@ static void led_pattern_rgb_led_open_green(void)
     peripheral_provider.control_rgb_led(true, &params);
 }
 
-static void led_pattern_rgb_led_breathing_green(void)
+static void led_pattern_rgb_led_breathing_green(uint8_t brightness)
 {
     rgb_led_params_t params = {
         .color = {.red = 0, .green = 255, .blue = 0},
-        .brightness = 30,
+        .brightness = brightness,
         .animation_mode = RGB_ANIM_FADE,
         .period_ms = 2000,
         .repeat_times = 0, // infinite
@@ -477,11 +477,11 @@ static void led_pattern_rgb_led_breathing_green(void)
     peripheral_provider.control_rgb_led(true, &params);
 }
 
-static void led_pattern_rgb_led_fad_wight(void)
+static void led_pattern_rgb_led_fad_wight(uint8_t brightness)
 {
     rgb_led_params_t params = {
         .color = {.red = 255, .green = 255, .blue = 255},
-        .brightness = 30,
+        .brightness = brightness,
         .animation_mode = RGB_ANIM_FADE,
         .period_ms = 1000,
         .repeat_times = 1, // infinite
@@ -830,12 +830,12 @@ static void handle_system_control(INTERACT_Type type, void *pValue)
 
     case INTERACT_RGB_LED_OPEN_WRITE:
     {
-        led_pattern_rgb_led_open_write();
+        led_pattern_rgb_led_open_write(*(uint8_t *)pValue);
         break;
     }
     case INTERACT_RGB_LED_OPEN_GREEN:
     {
-        led_pattern_rgb_led_open_green();
+        led_pattern_rgb_led_open_green(*(uint8_t *)pValue);
         break;
     }
     case INTERACT_RGB_LED_CLOSE:
@@ -845,12 +845,12 @@ static void handle_system_control(INTERACT_Type type, void *pValue)
     }
     case INTERACT_RGB_LED_BREATHING_GREEN:
     {
-        led_pattern_rgb_led_breathing_green();
+        led_pattern_rgb_led_breathing_green(*(uint8_t *)pValue);
         break;
     }
     case INTERACT_RGB_LED_FADE_WIGHT:
     {
-        led_pattern_rgb_led_fad_wight();
+        led_pattern_rgb_led_fad_wight(*(uint8_t *)pValue);
         break;
     }
 #ifdef BSP_USING_BLOC_CONTROL
@@ -1289,19 +1289,23 @@ static int control_led(int argc, char *argv[])
         }
         else if (strcmp(argv[1], "-open_write") == 0)
         {
-            watch_system_interact(INTERACT_RGB_LED_OPEN_WRITE, NULL);
+            uint8_t led_brightness = 20;
+            watch_system_interact(INTERACT_RGB_LED_OPEN_WRITE, &led_brightness);
         }
         else if (strcmp(argv[1], "-open_green") == 0)
         {
-            watch_system_interact(INTERACT_RGB_LED_OPEN_GREEN, NULL);
+            uint8_t led_brightness = 20;
+            watch_system_interact(INTERACT_RGB_LED_OPEN_GREEN, &led_brightness);
         }
         else if (strcmp(argv[1], "-breathing_green") == 0)
         {
-            watch_system_interact(INTERACT_RGB_LED_BREATHING_GREEN, NULL);
+            uint8_t led_brightness = 20;
+            watch_system_interact(INTERACT_RGB_LED_BREATHING_GREEN, &led_brightness);
         }
         else if (strcmp(argv[1], "-fade_wight") == 0)
         {
-            watch_system_interact(INTERACT_RGB_LED_FADE_WIGHT, NULL);
+            uint8_t led_brightness = 20;
+            watch_system_interact(INTERACT_RGB_LED_FADE_WIGHT, &led_brightness);
         }
     }
     return 0;
