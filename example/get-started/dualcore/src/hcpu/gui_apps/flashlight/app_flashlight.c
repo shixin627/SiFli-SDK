@@ -27,11 +27,12 @@
 #include "power_manager_service.h"
 #include "data_service_subscriber.h"
 #include "watch_system_core_task.h"
+#include "watch_system_interact.h"
 #include "rgb_control_panel.h"
 #include "bloc_peripheral.h"
 #ifdef BSP_USING_UI_HANDLER
-#include "ui_handler.h"
-#include "ui_img_helper.h"
+    #include "ui_handler.h"
+    #include "ui_img_helper.h"
 #endif
 #define DBG_TAG "app.flashlight"
 #define DBG_LVL DBG_LOG
@@ -41,7 +42,6 @@
 /*********************
  *      DEFINES
  *********************/
-
 
 typedef struct
 {
@@ -85,7 +85,8 @@ lv_obj_t *create_flashlight_screen(lv_obj_t *scr)
     /* Create the toggle flashlight image button */
     lv_obj_t *button_flashlight = lv_obj_create(bg);
     lv_obj_set_size(button_flashlight, 200, 200);
-    lv_obj_add_event_cb(button_flashlight, toggle_flashlight_btn_event_cb, LV_EVENT_ALL, 0);
+    lv_obj_add_event_cb(button_flashlight, toggle_flashlight_btn_event_cb,
+                        LV_EVENT_ALL, 0);
     lv_obj_center(button_flashlight);
 
     /* Set the button's background to transparent */
@@ -243,7 +244,8 @@ lv_obj_t *lv_flashlight_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(widget, LV_OPA_0, 0);
     flashlight_switch = lv_switch_create(widget);
     lv_obj_align(flashlight_switch, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_event_cb(flashlight_switch, flashlight_switch_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(flashlight_switch, flashlight_switch_cb,
+                        LV_EVENT_VALUE_CHANGED, NULL);
     lvgl_msg_handler.handle_switch_flashlight = tap_change_flashlight_state;
 
     return widget;
@@ -264,15 +266,15 @@ static int powermgr_srv_callback(data_callback_arg_t *arg)
     case PWRMGR_MSG_LCD_BRIGHTNESS_GET_RSP:
     {
         range_msg_t *p_range = (range_msg_t *)arg->data;
-        LOG_D("PWRMGR_MSG_LCD_BRIGHTNESS_GET_RSP cur=%d[%d,%d]",
-              p_range->cur, p_range->min, p_range->max);
+        LOG_D("PWRMGR_MSG_LCD_BRIGHTNESS_GET_RSP cur=%d[%d,%d]", p_range->cur,
+              p_range->min, p_range->max);
         break;
     }
     case PWRMGR_MSG_LCD_BRIGHTNESS_SET_RSP:
     {
         range_msg_t *p_range = (range_msg_t *)arg->data;
-        LOG_D("PWRMGR_MSG_LCD_BRIGHTNESS_SET_RSP cur=%d[%d,%d]",
-              p_range->cur, p_range->min, p_range->max);
+        LOG_D("PWRMGR_MSG_LCD_BRIGHTNESS_SET_RSP cur=%d[%d,%d]", p_range->cur,
+              p_range->min, p_range->max);
         break;
     }
     default:
@@ -284,7 +286,8 @@ static int powermgr_srv_callback(data_callback_arg_t *arg)
 /**
  * @brief Send data to the data service
  */
-static void flashlight_datac_send_data(datac_handle_t handle, uint16_t msg_id, uint8_t *data, uint16_t data_len)
+static void flashlight_datac_send_data(datac_handle_t handle, uint16_t msg_id,
+                                       uint8_t *data, uint16_t data_len)
 {
     data_msg_t msg;
     uint8_t *msg_payload;
@@ -303,7 +306,8 @@ static void set_amoled_brightness(uint8_t brightness)
 {
     LOG_D("set_amoled_brightness :%d", brightness);
 
-    if (p_app_flashlight && p_app_flashlight->pwr_srv_hdl != DATA_CLIENT_INVALID_HANDLE)
+    if (p_app_flashlight &&
+        p_app_flashlight->pwr_srv_hdl != DATA_CLIENT_INVALID_HANDLE)
     {
         flashlight_datac_send_data(p_app_flashlight->pwr_srv_hdl,
                                    PWRMGR_MSG_LCD_BRIGHTNESS_SET_REQ,
@@ -333,7 +337,8 @@ static void rgb_btn_event_cb(lv_event_t *e)
 static lv_obj_t *on_start(lv_obj_t *scr)
 {
     RT_ASSERT(NULL == p_app_flashlight);
-    p_app_flashlight = (app_flashlight_t *)lv_mem_alloc(sizeof(app_flashlight_t));
+    p_app_flashlight =
+        (app_flashlight_t *)lv_mem_alloc(sizeof(app_flashlight_t));
     if (!p_app_flashlight)
     {
         LOG_E("Failed to allocate memory for flashlight app");
@@ -345,10 +350,12 @@ static lv_obj_t *on_start(lv_obj_t *scr)
 
     p_app_flashlight->pwr_srv_hdl = datac_open();
     RT_ASSERT(DATA_CLIENT_INVALID_HANDLE != p_app_flashlight->pwr_srv_hdl);
-    ui_datac_subscribe(p_app_flashlight->pwr_srv_hdl, "powermgr", powermgr_srv_callback, 0);
+    ui_datac_subscribe(p_app_flashlight->pwr_srv_hdl, "powermgr",
+                       powermgr_srv_callback, 0);
 
     /* Initialize RGB LED state */
-    p_app_flashlight->rgb_state = (rgb_led_state_t *)lv_mem_alloc(sizeof(rgb_led_state_t));
+    p_app_flashlight->rgb_state =
+        (rgb_led_state_t *)lv_mem_alloc(sizeof(rgb_led_state_t));
     if (p_app_flashlight->rgb_state != NULL)
     {
         rgb_led_state_init(p_app_flashlight->rgb_state);
@@ -368,6 +375,8 @@ static lv_obj_t *on_start(lv_obj_t *scr)
  */
 static void on_resume(void)
 {
+    uint8_t led_brightness = 100;
+    watch_system_interact(INTERACT_RGB_LED_OPEN_WRITE, &led_brightness);
     set_open_control_options(false);
     set_free_control_with_arm(false);
     reset_lvgl_msg_handler();
@@ -380,7 +389,7 @@ static void on_resume(void)
 static void on_pause(void)
 {
     setting_provider.set_power_save_mode(1);
-
+    watch_system_interact(INTERACT_RGB_LED_CLOSE, NULL);
     /* Close RGB control panel if open */
     if (is_rgb_panel_open())
     {
@@ -447,7 +456,8 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
 
     case GUI_APP_MSG_ONPAUSE:
         on_pause();
-        set_amoled_brightness(SkaiWatchSys.brightness); // Restore system brightness
+        set_amoled_brightness(
+            SkaiWatchSys.brightness); // Restore system brightness
         break;
 
     case GUI_APP_MSG_ONSTOP:
@@ -468,6 +478,8 @@ static int app_main(intent_t i)
     return 0;
 }
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(flashlight), IMG_FLASHLIGHT, APP_ID_FLASHLIGHT, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(flashlight), IMG_FLASHLIGHT, APP_ID_FLASHLIGHT,
+                   app_main);
 #endif
-/************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/
+/************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
+ * FILE****/
