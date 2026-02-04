@@ -423,7 +423,7 @@ void bloc_battery_read_voltage(void)
 
 BatteryChargeState battery_charge_state = {0};
 
-BatteryChargeState* battery_get_charge_state(void)
+BatteryChargeState *battery_get_charge_state(void)
 {
     return &battery_charge_state;
 }
@@ -570,5 +570,22 @@ static int charing_detect_register(void)
 }
 INIT_COMPONENT_EXPORT(charing_detect_register);
 #endif
+static int utest_battery_pwm(int argc, char *argv[])
+{
+    if (argc != 2)
+    {
+        LOG_D("Usage: utest_battery_pwm <channel>");
+        return -RT_ERROR;
+    }
+    if (strcmp(argv[1], "set_battery") == 0)
+    {
+        int channel = atoi(argv[2]);
+        battery_charge_state.charge_percent = channel;
+        LOG_D("Set battery percentage to %d%%", channel);
+    }
+
+    return 0;
+}
+MSH_CMD_EXPORT(utest_battery_pwm, "utest_battery_pwm [OPTION] ...");
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF *
  * FILE****/

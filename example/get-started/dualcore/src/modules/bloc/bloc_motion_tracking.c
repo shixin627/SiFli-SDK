@@ -1582,7 +1582,7 @@ void set_paused_control_with_arm(bool paused)
     {
         LOG_I("set_paused_control_with_arm:%d", paused);
         paused_control_with_arm = paused;
-        set_indicator_dots_visible(!paused);
+        // set_indicator_dots_visible(!paused);
     }
 }
 
