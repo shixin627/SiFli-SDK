@@ -88,7 +88,7 @@
 #define LIST_ITEM_WIDGET_WIDTH (430)
 
 #define LIST_RADIUS (466)
-#define LIST_ADJUST_X_POSITION (-448)
+#define LIST_ADJUST_X_POSITION (-466)
 
 #define MOVABLE_ARC_RADIUS (233)
 #define MOVABLE_ARC_CENTER_X (233)
@@ -101,7 +101,7 @@
 #define LIST_ITEM_BORDER_SIDE LV_BORDER_SIDE_RIGHT
 
 #define DOT_SMOLL_PROPORTION (0.6)
-#define DOT_BIG_PROPORTION (1.2)
+#define DOT_BIG_PROPORTION (1.3)
 #define DOT_BG_SIZE (80 * DOT_BIG_PROPORTION) + 2
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
@@ -1288,7 +1288,7 @@ static void reset_list(void)
     //     scroll_to_index = find_app_index_by_id(app_id_media);
     //     app_scroll_target_item = find_app_index_by_id(app_id_media);
     // }
-    // else 
+    // else
     // if (is_have_message_now())
     // {
     //     scroll_to_index = find_app_index_by_id(app_id_message_list);
@@ -1607,7 +1607,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     {
         lv_obj_t *widget = NULL;
         lv_obj_t *item = lv_simplified_obj_create(p_app_list);
-        lv_obj_set_size(item, LIST_ITEM_WIDGET_WIDTH, LIST_ITEM_WIDGET_HEIGHT);
+        lv_obj_set_size(item, 466, LIST_ITEM_WIDGET_HEIGHT);
         if (i == 0)
         {
             lv_obj_set_pos(item, 0, (100 + LIST_ITEM_SPACING));
@@ -1648,9 +1648,17 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
 
         if (has_widget && widget != NULL)
         {
+
             lv_obj_set_size(widget, LIST_ITEM_WIDGET_WIDTH,
                             LIST_ITEM_WIDGET_HEIGHT);
-            lv_obj_set_style_clip_corner(widget, true, 0);
+            if (APP_LIST_ITEMS_DEFINITION[i] != app_id_ai)
+            {
+                lv_obj_set_style_clip_corner(widget, true, 0);
+            }
+            else
+            {
+                lv_obj_add_flag(widget, LV_OBJ_FLAG_SCROLLABLE);
+            }
             if (APP_LIST_ITEMS_DEFINITION[i] != app_id_ai)
             {
                 lv_obj_set_style_border_color(widget, lv_color_hex(0xFFFFFF),
