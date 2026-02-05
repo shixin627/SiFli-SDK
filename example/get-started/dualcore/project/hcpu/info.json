@@ -1,5 +1,6 @@
 {
-    "version": "1.0.222",
+    "version": "1.0.223",
+    "description": "抬手AI",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
