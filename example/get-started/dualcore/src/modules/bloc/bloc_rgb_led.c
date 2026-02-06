@@ -121,6 +121,13 @@ void rgb_fade_cycle(void)
     rgb_led_set_all_color(color);
 }
 
+static void rgb_parse_hex_color(uint32_t hex_color, uint8_t *r, uint8_t *g,
+                                uint8_t *b)
+{
+    *r = (hex_color >> 16) & 0xFF;
+    *g = (hex_color >> 8) & 0xFF;
+    *b = hex_color & 0xFF;
+}
 void rgb_fade_cycle_base_on_battery_level(uint8_t level)
 {
     LOG_D("Fading RGB based on battery level: %d%%", level);
@@ -134,6 +141,27 @@ void rgb_fade_cycle_base_on_battery_level(uint8_t level)
     if (fade == 0 || fade == 255)
     {
         fade_step = -fade_step;
+    }
+    uint8_t r, g, b;
+    if (level < 20)
+    {
+        rgb_parse_hex_color(0xFFFFFF, &r, &g, &b);
+    }
+    else if (level < 40)
+    {
+        rgb_parse_hex_color(0xFF6A00, &r, &g, &b);
+    }
+    else if (level < 60)
+    {
+        rgb_parse_hex_color(0xFFBB00, &r, &g, &b);
+    }
+    else if (level < 80)
+    {
+        rgb_parse_hex_color(0xFFFF00, &r, &g, &b);
+    }
+    else
+    {
+        rgb_parse_hex_color(0x00FF00, &r, &g, &b);
     }
 
     for (int i = 0; i < BSP_RGB_LED_COUNT; i++)
@@ -157,7 +185,7 @@ void rgb_fade_cycle_base_on_battery_level(uint8_t level)
 
         // Apply fade modulation: scale base_brightness by fade (0-255)
         uint8_t brightness = (uint8_t)((uint16_t)base_brightness * fade / 255);
-        led_color_buffer[i] = apply_brightness(0, 255, 0, brightness);
+        led_color_buffer[i] = apply_brightness(r, g, b, brightness);
     }
 
     rgb_led_send_buffer();

@@ -442,6 +442,7 @@ static void reset_gesture_state(gesture_dataset_t *dataset,
     dataset->gesture_ended = false;
     dataset->gesture_sample_count = 0;
     dataset->wait_start_time = current_time;
+    LOG_D("Reset gesture state, code: %d", code);
 }
 
 static uint16_t waveform_rtc_millisecond = 0;
@@ -767,7 +768,7 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
         bloc_setting_get_gesture_detect_threshold();
     float horizontal_threshold = gesture_threshold_factor * 0.01f;
     user_hand_horizontal =
-        (gravity->x < 0.9 && gravity->x > -horizontal_threshold);
+        (gravity->x < 0.9 && gravity->x > -0.4);
 
     // Update watchface visibility
     if (gravity->y > -0.7 && gravity->z > -0.6)

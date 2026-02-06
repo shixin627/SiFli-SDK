@@ -158,6 +158,7 @@ extern void BLE_LOG_E(const char *format, ...);
         /*****  LED *******/
         INTERACT_RGB_LED_OPEN_WRITE,
         INTERACT_RGB_LED_OPEN_GREEN,
+        INTERACT_RGB_LED_OPEN_BLUE,
         INTERACT_RGB_LED_CLOSE,
         INTERACT_RGB_LED_BREATHING_GREEN,
         INTERACT_RGB_LED_FADE_WIGHT,

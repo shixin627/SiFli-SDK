@@ -638,7 +638,7 @@ static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
     dial_calendar_widget_deinit();
     dial_weather_widget_deinit();
     dial_widget = lv_obj_create(parent);
-    lv_obj_set_style_radius(dial_widget, 50, 0);
+    lv_obj_set_style_radius(dial_widget, 25, 0);
     lv_obj_align(dial_widget, LV_ALIGN_CENTER, 0, 115);
     lv_obj_set_size(dial_widget, 330, 150);
     lv_obj_set_style_bg_color(dial_widget, lv_color_hex(0x000000), 0);

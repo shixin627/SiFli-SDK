@@ -452,6 +452,18 @@ static void led_pattern_rgb_led_open_write(uint8_t brightness)
     peripheral_provider.control_rgb_led(true, &params);
 }
 
+static void led_pattern_rgb_led_breathing_blue(uint8_t brightness)
+{
+    rgb_led_params_t params = {
+        .color = {.red = 9, .green = 0, .blue = 255},
+        .brightness = brightness,
+        .animation_mode = RGB_ANIM_FADE,
+        .period_ms = 500,
+        .repeat_times = 1, // infinite
+    };
+    peripheral_provider.control_rgb_led(true, &params);
+}
+
 static void led_pattern_rgb_led_open_green(uint8_t brightness)
 {
     peripheral_provider.control_rgb_led(false, NULL);
@@ -836,6 +848,11 @@ static void handle_system_control(INTERACT_Type type, void *pValue)
     case INTERACT_RGB_LED_OPEN_GREEN:
     {
         led_pattern_rgb_led_open_green(*(uint8_t *)pValue);
+        break;
+    }
+    case INTERACT_RGB_LED_OPEN_BLUE:
+    {
+        led_pattern_rgb_led_breathing_blue(*(uint8_t *)pValue);
         break;
     }
     case INTERACT_RGB_LED_CLOSE:
@@ -1306,6 +1323,11 @@ static int control_led(int argc, char *argv[])
         {
             uint8_t led_brightness = 20;
             watch_system_interact(INTERACT_RGB_LED_FADE_WIGHT, &led_brightness);
+        }
+        else if (strcmp(argv[1], "-breathing_blue") == 0)
+        {
+            uint8_t led_brightness = 20;
+            watch_system_interact(INTERACT_RGB_LED_OPEN_BLUE, &led_brightness);
         }
     }
     return 0;

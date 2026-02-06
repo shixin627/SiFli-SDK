@@ -377,7 +377,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
     //                        .res.imu_data = buffer_info};
     //     L1_send_event(data);
     // }
-    // else 
+    // else
     if (imu_data_collection)
     {
         if (imu_data_collection_error)
@@ -518,6 +518,9 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
             if (release_recognition_score > gesture_recognition_threshold)
             {
                 watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
+                uint8_t led_brightness = 20;
+                watch_system_interact(INTERACT_RGB_LED_OPEN_BLUE,
+                                      &led_brightness);
                 LOG_D("recognize release gesture cost_tick:%d, score:%d",
                       cost_tick, release_recognition_score);
             }
@@ -540,7 +543,7 @@ static void gesture_recognition_thread_entry(void *parameter)
 {
     init_gesture_recognition_model();
     init_gesture_recognition_release_model();
-    
+
     watch_sensor.gesture_sem =
         rt_sem_create("gesture_sem", 0, RT_IPC_FLAG_FIFO);
 #if USE_FFT_FILTER
@@ -655,7 +658,6 @@ static int utest_gesture(int argc, char *argv[])
         {
             set_gravity_position(GRAVITY_POSITION_AI);
         }
-
     }
     return 0;
 }

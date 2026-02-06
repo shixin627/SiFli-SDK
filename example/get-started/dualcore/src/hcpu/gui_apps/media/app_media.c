@@ -974,7 +974,7 @@ void lv_dial_media_widget_builder(lv_obj_t *parent)
         lv_obj_get_child(dial_widget_btn_play_pause_icon, 0), LV_OPA_70, 0);
     lv_obj_t *bar = lv_bar_create(parent); // Create a progress bar
     lv_bar_set_range(bar, 0, 100);         // Set the range of the progress bar
-    lv_obj_set_width(bar, LV_PCT(85));
+    lv_obj_set_width(bar, 316);
     lv_obj_set_height(bar, 32);
     lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 5);
     lv_obj_set_style_bg_color(bar, lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);
