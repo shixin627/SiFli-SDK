@@ -1,6 +1,6 @@
 {
-    "version": "1.0.223",
-    "description": "抬手AI",
+    "version": "1.0.224",
+    "description": "優化AI widget",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
