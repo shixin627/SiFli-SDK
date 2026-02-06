@@ -64,6 +64,7 @@
 #include "bloc_motion_tracking.h"
 #include "bloc_motor.h"
 #include "lv_simplified_obj.h"
+#include "bloc_setting.h"
 #ifdef BSP_USING_MODEL_WATCH_GLOBAL_DATA
 #include "watch_global_data.h"
 #include "watch_system_core_task.h"
@@ -81,31 +82,27 @@
 
 #ifdef APP_ID_TIMER
 
+// Exercise app style constants
+#define LIST_TIMER_HEIGHT (200)
+#define LIST_TIMER_WIDGET_RADIUS (40)
+#define LIST_TIMER_BG_COLOR (0x1E1E1E)
+#define LIST_TIMER_ACCENT_COLOR (0x80A0FF)
+#define LIST_TIMER_ROW_SPACING (50)
+
 /**
  * @brief Structure to hold all UI components of the timer app
- *
- * This helps organize the UI elements and makes it easier to
- * initialize, access, and clean them up
  */
 typedef struct
 {
-    lv_obj_t *timer_list; // List of timer duration options
-    lv_obj_t *timer_title;
-    lv_obj_t *timer_label; // Label showing countdown time
-    lv_obj_t *timer_view;
-    lv_obj_t *pause_button;       // Button to pause/resume timer
-    lv_obj_t *delete_button;      // Button to delete current timer
-    lv_obj_t *current_button;     // Currently selected button in list
-    lv_obj_t *center_btn_in_list; // Current center button in list
-
-    // 水平三按鈕控制
-    lv_obj_t *btn_select_background;
-    lv_obj_t *btn_restart_bg;
-    lv_obj_t *btn_pause_bg;
-    lv_obj_t *btn_delete_bg;
-
-    // timer列表選擇框
-    lv_obj_t *list_select_background;
+    lv_obj_t *bg;                  // 背景容器
+    lv_obj_t *list_container;      // 列表外層容器
+    lv_obj_t *timer_list;          // List of timer duration options
+    lv_obj_t *timer_title;         // 標題
+    lv_obj_t *timer_label;         // Label showing countdown time
+    lv_obj_t *countdown_screen;    // 倒計時界面
+    lv_obj_t *pause_button;        // Button to pause/resume timer
+    lv_obj_t *stop_button;         // Button to stop timer
+    lv_obj_t *current_button;      // Currently selected button in list
 } timer_ui_t;
 
 typedef struct
@@ -145,18 +142,12 @@ static void show_counter_listview(void);
 static lv_obj_t *create_timer_list(lv_obj_t *parent);
 static void refresh_ui(lv_obj_t *_, void *para);
 static void show_timeout_notification(void);
-static void create_control_buttons(lv_obj_t *parent);
-static void hide_control_buttons(void);
-static void show_control_buttons(void);
-static void timer_gesture_control(gesture_position_t gesture_position);
 static void timer_list_nav_control(int8_t action);
-static void update_list_selection_background(lv_obj_t *list);
+static void refresh_pause_button_icon(void);
 
-// Control button selection state
-static uint8_t button_selection_index = 1; // 0=restart, 1=pause, 2=delete
-static uint8_t app_prev_selection_index = 1;
-static lv_coord_t app_prev_offset = 0;
-static lv_coord_t app_prev_move_offset = 0;
+// 追蹤當前選中的timer選項索引
+static int16_t old_selected_timer_index = -1;
+static int16_t selected_timer_index = 0;
 
 // Create data bindings
 static void create_timer_data_bindings(void)
@@ -227,19 +218,6 @@ static void countdown_timer_cb(void *parameter)
 }
 
 /**
- * @brief Select a button in the timer list
- */
-static void select_button(lv_obj_t *button)
-{
-    // if (ui.current_button)
-    // {
-    //     lv_obj_set_style_shadow_opa(ui.current_button, LV_OPA_0, 0);
-    // }
-    ui.current_button = button;
-    // lv_obj_set_style_shadow_opa(ui.current_button, LV_OPA_100, 0);
-}
-
-/**
  * @brief Update the timer display label
  */
 static void update_timer_label(void)
@@ -262,38 +240,24 @@ static void update_timer_label(void)
  */
 static void show_new_timer_view(const char *text)
 {
-    // 隱藏timer列表
-    if (lv_obj_is_valid(ui.timer_list))
+    // 隱藏列表容器
+    if (lv_obj_is_valid(ui.list_container))
     {
-        lv_obj_add_flag(ui.timer_list, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(ui.list_container, LV_OBJ_FLAG_HIDDEN);
     }
 
-    // 隱藏列表選擇框
-    if (lv_obj_is_valid(ui.list_select_background))
+    // 顯示倒計時界面
+    if (lv_obj_is_valid(ui.countdown_screen))
     {
-        lv_obj_add_flag(ui.list_select_background, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(ui.countdown_screen, LV_OBJ_FLAG_HIDDEN);
     }
 
-    // 顯示計時器顯示標籤
-    if (lv_obj_is_valid(ui.timer_label))
-    {
-        lv_obj_clear_flag(ui.timer_label, LV_OBJ_FLAG_HIDDEN);
-    }
-
-    // 顯示控制按鈕
-    show_control_buttons();
-
-    // 更新標題
-    if (lv_obj_is_valid(ui.timer_title))
-    {
-        lv_label_set_text(ui.timer_title, text);
-    }
-
-    // 切換到三按鈕體感控制模式
-    set_open_control_options(true);
+    // 切換控制模式
+    set_open_control_options(false);
 #ifdef BSP_USING_UI_HANDLER
-    lvgl_msg_handler.handle_widgets_control = timer_gesture_control;
+    lvgl_msg_handler.handle_widgets_control = NULL;
     lvgl_msg_handler.handle_nav_bar_control = NULL;
+    lvgl_msg_handler.handle_tap_indicator = NULL;
 #endif
 }
 
@@ -382,95 +346,18 @@ static void tap_button(lv_obj_t *btn)
     create_countdown_timer();
 }
 
-/* ...continue with rest of functions, updated to use ui... */
-
-#define USE_ARC_LIST 0
-static void check_center_button(lv_event_t *e)
-{
-    lv_obj_t *list = lv_event_get_target(e);
-    lv_area_t list_area;
-    lv_obj_get_coords(list, &list_area);
-    lv_coord_t list_center_y = (list_area.y1 + list_area.y2) / 2;
-
-    lv_obj_t *btn;
-    lv_obj_t *center_btn = NULL;
-    lv_coord_t min_diff = LV_COORD_MAX;
-
-    uint8_t child_cnt = list->spec_attr->child_cnt;
-    for (uint8_t i = 0; i < child_cnt; i++)
-    {
-        btn = list->spec_attr->children[i];
-        lv_area_t btn_area;
-        lv_obj_get_coords(btn, &btn_area);
-        lv_coord_t btn_center_y = (btn_area.y1 + btn_area.y2) / 2;
-        lv_coord_t diff = LV_ABS(btn_center_y - list_center_y);
-
-#if USE_ARC_LIST
-        // 計算相對位置（-1到1的範圍）
-        float relative_pos = (float)diff / (list_area.y2 - list_area.y1);
-        if (relative_pos > 1.0f)
-            relative_pos = 1.0f;
-
-        // 計算縮放和偏移
-        float scale = 1.0f - (0.2f * relative_pos); // 中心最大，邊緣縮小20%
-        float x_offset = sinf(relative_pos * (20.0f * 3.14159f / 180.0f)) * 30;
-
-        lv_obj_set_style_translate_x(btn, (int16_t)x_offset, 0);
-#endif
-
-        if (diff < min_diff)
-        {
-            min_diff = diff;
-            center_btn = btn;
-        }
-    }
-
-    if (center_btn && center_btn != ui.center_btn_in_list)
-    {
-        ui.center_btn_in_list = center_btn;
-        select_button(center_btn);
-    }
-}
-
-static void scroll_end_event_cb(lv_event_t *e)
-{
-    if (ui.current_button)
-    {
-        lv_obj_scroll_to_view(ui.current_button, LV_ANIM_ON);
-    }
-}
-
 static void show_counter_listview(void)
 {
-    // 隱藏計時器顯示標籤
-    if (lv_obj_is_valid(ui.timer_label))
+    // 隱藏倒計時界面
+    if (lv_obj_is_valid(ui.countdown_screen))
     {
-        lv_obj_add_flag(ui.timer_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(ui.countdown_screen, LV_OBJ_FLAG_HIDDEN);
     }
 
-    // 隱藏控制按鈕
-    hide_control_buttons();
-
-    // 顯示或創建timer列表
-    if (lv_obj_is_valid(ui.timer_list))
+    // 顯示列表容器
+    if (lv_obj_is_valid(ui.list_container))
     {
-        lv_obj_clear_flag(ui.timer_list, LV_OBJ_FLAG_HIDDEN);
-    }
-    else if (lv_obj_is_valid(ui.timer_view))
-    {
-        // 在timer_view容器中創建列表
-        ui.timer_list = create_timer_list(ui.timer_view);
-    }
-
-    // 顯示列表選擇框
-    if (lv_obj_is_valid(ui.list_select_background))
-    {
-        lv_obj_clear_flag(ui.list_select_background, LV_OBJ_FLAG_HIDDEN);
-        // 更新選擇框位置
-        if (lv_obj_is_valid(ui.timer_list))
-        {
-            update_list_selection_background(ui.timer_list);
-        }
+        lv_obj_clear_flag(ui.list_container, LV_OBJ_FLAG_HIDDEN);
     }
 
     // 重置標題
@@ -502,31 +389,8 @@ static void refresh_timer_status(void)
     }
 }
 
-static void restart_button_event_cb(lv_event_t *e)
+static void refresh_pause_button_icon(void)
 {
-    if (app_timer_data_ctx.countdown_timer)
-    {
-        // 重啟計時器：重置剩餘時間，重新開始倒數
-        app_timer_data_ctx.is_paused = false;
-        refresh_timer_status();
-
-        // 如果中間按鈕顯示暫停圖標，改為播放圖標
-        if (lv_obj_is_valid(ui.btn_pause_bg))
-        {
-            lv_obj_t *img = lv_obj_get_child(ui.btn_pause_bg, 0);
-            if (lv_obj_is_valid(img))
-            {
-                lv_img_set_src(img, &img_media_pause);
-            }
-        }
-    }
-}
-
-static void pause_button_event_cb_old(lv_event_t *e)
-{
-    app_timer_data_ctx.is_paused = !app_timer_data_ctx.is_paused;
-    refresh_timer_status();
-
     if (lv_obj_is_valid(ui.pause_button))
     {
         lv_obj_t *img = lv_obj_get_child(ui.pause_button, 0);
@@ -537,23 +401,16 @@ static void pause_button_event_cb_old(lv_event_t *e)
     }
 }
 
-// 新的暫停按鈕事件處理 - 使用新的按鈕結構
+// 暫停按鈕事件處理
 static void pause_button_event_cb(lv_event_t *e)
 {
     app_timer_data_ctx.is_paused = !app_timer_data_ctx.is_paused;
     refresh_timer_status();
-
-    if (lv_obj_is_valid(ui.btn_pause_bg))
-    {
-        lv_obj_t *img = lv_obj_get_child(ui.btn_pause_bg, 0);
-        if (lv_obj_is_valid(img))
-        {
-            lv_img_set_src(img, app_timer_data_ctx.is_paused ? &img_media_play : &img_media_pause);
-        }
-    }
+    refresh_pause_button_icon();
 }
 
-static void delete_countdown_timer_cb(lv_event_t *e)
+// 停止按鈕事件處理
+static void stop_button_event_cb(lv_event_t *e)
 {
     remove_countdown_timer();
     show_counter_listview();
@@ -565,6 +422,16 @@ static void timer_list_event_cb(lv_event_t *e)
     if (LV_EVENT_CLICKED == lv_event_get_code(e))
     {
         tap_button(lv_event_get_target(e));
+    }
+}
+
+static void press_cb(uint8_t press)
+{
+    LOG_D("Timer press event: %d", press);
+    if (press && !app_timer_data_ctx.countdown_timer && ui.current_button && lv_obj_is_valid(ui.current_button))
+    {
+        motor_pattern_touchpad_slide();
+        tap_button(ui.current_button);
     }
 }
 
@@ -581,151 +448,58 @@ static void handle_tap_event(void)
     }
 }
 
-static uint8_t old_page_index = 0;
-static void tile_change_event_cb(lv_event_t *e)
+// 列表滾動處理 - 與exercise app相同的邏輯
+static void scroll_timer_list(lv_obj_t *list)
 {
-    lv_obj_t *tv = lv_event_get_target(e);
-    switch (e->code)
-    {
-    case LV_EVENT_VALUE_CHANGED:
-    {
-        rt_uint16_t active_pos = (rt_uint16_t)lv_event_get_param(e);
-        if (old_page_index != active_pos)
-        {
-            old_page_index = active_pos;
-            LOG_D("tileview_active_pos: %d", active_pos);
-            lv_obj_t *indicator = lv_obj_get_child(tv->parent, -1); // 假設指示器是最後一個子元素
-            if (lv_obj_is_valid(indicator))
-            {
-                uint32_t dot_cnt = lv_obj_get_child_cnt(indicator);
-                uint32_t i;
-                for (i = 0; i < dot_cnt; i++)
-                {
-                    lv_obj_t *dot = lv_obj_get_child(indicator, i);
-                    if (i == active_pos)
-                    {
-                        // 當前頁面的指示點 - 高亮
-                        lv_obj_set_style_bg_opa(dot, LV_OPA_100, 0);
-                        // 設置為稍大尺寸
-                        lv_obj_set_size(dot, 12, 12);
-                    }
-                    else
-                    {
-                        // 非當前頁面的指示點
-                        lv_obj_set_style_bg_opa(dot, LV_OPA_30, 0);
-                        // 恢復原始尺寸
-                        lv_obj_set_size(dot, 10, 10);
-                    }
-                }
-            }
-        }
-    }
-    break;
-
-    default:
-        break;
-    }
-}
-
-// 追蹤當前選中的timer選項索引
-static int8_t selected_timer_index = 0;
-
-// 更新列表選擇框位置
-static void update_list_selection_background(lv_obj_t *list)
-{
-    if (!lv_obj_is_valid(ui.list_select_background) || !lv_obj_is_valid(list))
-        return;
-
-    // 計算當前居中的項目
+    uint16_t min_offset = LV_VER_RES;
     uint8_t child_cnt = list->spec_attr->child_cnt;
-    if (child_cnt == 0)
-        return;
-
-    lv_area_t list_area;
-    lv_obj_get_coords(list, &list_area);
-    lv_coord_t list_center_y = (list_area.y1 + list_area.y2) / 2;
-
-    lv_coord_t min_diff = LV_COORD_MAX;
-    lv_obj_t *center_item = NULL;
+    lv_coord_t y_diff = 0;
 
     for (uint8_t i = 0; i < child_cnt; i++)
     {
-        lv_obj_t *item = lv_obj_get_child(list, i);
-        lv_area_t item_area;
-        lv_obj_get_coords(item, &item_area);
-        lv_coord_t item_center_y = (item_area.y1 + item_area.y2) / 2;
-        lv_coord_t diff = LV_ABS(item_center_y - list_center_y);
-
-        if (diff < min_diff)
+        lv_obj_t *child = list->spec_attr->children[i];
+        lv_coord_t y_center = child->coords.y1 + LIST_TIMER_HEIGHT / 2;
+        y_diff = y_center - LV_VER_RES / 2;
+        y_diff = LV_ABS(y_diff);
+        if (y_diff < min_offset)
         {
-            min_diff = diff;
-            center_item = item;
+            min_offset = y_diff;
+            selected_timer_index = i;
         }
     }
 
-    if (center_item)
+    // 使用邊框指示選中狀態 - 與exercise app相同
+    if (old_selected_timer_index != selected_timer_index)
     {
-        // 獲取center_item的絕對位置
-        lv_area_t item_area;
-        lv_obj_get_coords(center_item, &item_area);
-        lv_coord_t item_center_y = (item_area.y1 + item_area.y2) / 2;
-
-        // 計算選擇框應該在屏幕上的Y位置
-        lv_coord_t screen_center_y = LV_VER_RES / 2;
-        lv_coord_t offset_y = item_center_y - screen_center_y;
-
-        // 更新選擇框位置，讓它對齊到當前居中的項目
-        lv_obj_align(ui.list_select_background, LV_ALIGN_CENTER, 0, offset_y);
+        old_selected_timer_index = selected_timer_index;
+        for (uint8_t i = 0; i < child_cnt; i++)
+        {
+            lv_obj_t *item = list->spec_attr->children[i];
+            if (i == selected_timer_index)
+            {
+                lv_obj_set_style_border_width(item, 1, 0);
+                ui.current_button = item;
+            }
+            else
+            {
+                lv_obj_set_style_border_width(item, 0, 0);
+            }
+        }
     }
 }
 
-// timer列表滾動事件處理 - 類似app list
+// timer列表滾動事件處理
 static void timer_list_scroll_event_cb(lv_event_t *e)
 {
     lv_obj_t *list = lv_event_get_target(e);
-    lv_event_code_t code = lv_event_get_code(e);
+    if (list == NULL)
+        return;
 
-    switch (code)
+    switch (e->code)
     {
     case LV_EVENT_SCROLL:
-    case LV_EVENT_SCROLL_END:
-    {
-        // 計算當前居中的項目
-        uint8_t child_cnt = list->spec_attr->child_cnt;
-        lv_area_t list_area;
-        lv_obj_get_coords(list, &list_area);
-        lv_coord_t list_center_y = (list_area.y1 + list_area.y2) / 2;
-
-        lv_coord_t min_diff = LV_COORD_MAX;
-        int8_t center_index = 0;
-
-        for (uint8_t i = 0; i < child_cnt; i++)
-        {
-            lv_obj_t *item = lv_obj_get_child(list, i);
-            lv_area_t item_area;
-            lv_obj_get_coords(item, &item_area);
-            lv_coord_t item_center_y = (item_area.y1 + item_area.y2) / 2;
-            lv_coord_t diff = LV_ABS(item_center_y - list_center_y);
-
-            if (diff < min_diff)
-            {
-                min_diff = diff;
-                center_index = i;
-            }
-        }
-
-        selected_timer_index = center_index;
-        ui.current_button = lv_obj_get_child(list, center_index);
-
-        // 更新選擇框位置
-        update_list_selection_background(list);
-
-        if (code == LV_EVENT_SCROLL_END)
-        {
-            LOG_D("Timer list scrolled to index: %d", selected_timer_index);
-        }
+        scroll_timer_list(list);
         break;
-    }
     default:
         break;
     }
@@ -751,287 +525,177 @@ static void scroll_timer_list_to_index(int8_t index)
         return;
     }
 
-    selected_timer_index = index;
+    LOG_D("Scrolling to timer list index: %d", index);
     lv_obj_t *target_item = lv_obj_get_child(ui.timer_list, index);
     if (target_item && lv_obj_is_valid(target_item))
     {
         lv_obj_scroll_to_view(target_item, LV_ANIM_ON);
-        ui.current_button = target_item;
     }
 }
 
 // 體感控制用於滾動timer列表
 static void timer_list_nav_control(int8_t action)
 {
-    if (action >= 0)
-    {
-        scroll_timer_list_to_index(action);
-    }
-    else
-    {
-        // 相對滾動
-        int8_t new_index = selected_timer_index + action;
-
-        // 計算選項數量
-        int option_count = 0;
-        while (timer_options[option_count][0] != '\0')
-            option_count++;
-
-        if (new_index < 0)
-            new_index = 0;
-        if (new_index >= option_count)
-            new_index = option_count - 1;
-
-        scroll_timer_list_to_index(new_index);
-    }
+    scroll_timer_list_to_index(action);
 }
 
-// App list style constants
-#define LIST_ITEM_WIDGET_WIDTH (430)
-#define LIST_ITEM_WIDGET_HEIGHT (250)
-#define LIST_ITEM_SPACING (-100)
-
+// 創建timer列表 - 與exercise app相同的樣式
 static lv_obj_t *create_timer_list(lv_obj_t *parent)
 {
     ui.current_button = NULL;
-    ui.center_btn_in_list = NULL;
 
     // 計算選項數量
     int option_count = 0;
     while (timer_options[option_count][0] != '\0')
         option_count++;
 
-    // 創建選擇框背景 (略大於label，無背景色，僅邊框)
-    ui.list_select_background = lv_obj_create(parent);
-    lv_obj_set_size(ui.list_select_background, 180, 60);  // 更小巧的尺寸，略大於label
-    lv_obj_set_style_bg_opa(ui.list_select_background, LV_OPA_0, 0);  // 無背景色
-    lv_obj_set_style_border_width(ui.list_select_background, 2, 0);
-    lv_obj_set_style_border_color(ui.list_select_background, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(ui.list_select_background, LV_OPA_60, 0);  // 邊框稍微透明
-    lv_obj_set_style_radius(ui.list_select_background, 10, 0);  // 較小的圓角
-    lv_obj_align(ui.list_select_background, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_clear_flag(ui.list_select_background, LV_OBJ_FLAG_SCROLLABLE);
-
-    // 創建垂直滾動列表容器 - 完全使用app list的樣式
+    // 創建列表外層容器
     lv_obj_t *list_container = lv_obj_create(parent);
-    lv_obj_set_size(list_container, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_style_bg_opa(list_container, LV_OPA_0, 0);
+    lv_obj_set_size(list_container, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_set_style_bg_opa(list_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(list_container, 0, 0);
-    lv_obj_add_flag(list_container, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_scroll_dir(list_container, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(list_container, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_scroll_snap_y(list_container, LV_SCROLL_SNAP_CENTER);
-    lv_obj_set_style_pad_ver(list_container, LV_VER_RES / 2, 0); // 上下padding讓第一項和最後一項能居中
-    lv_obj_align(list_container, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_pad_all(list_container, 0, 0);
+    lv_obj_align(list_container, LV_ALIGN_TOP_MID, 0, 0);
 
-    // 添加滾動事件處理
-    lv_obj_add_event_cb(list_container, timer_list_scroll_event_cb, LV_EVENT_ALL, NULL);
+    // 創建垂直列表 - 與exercise app相同
+    lv_obj_t *list = lv_obj_create(list_container);
+    lv_obj_set_size(list, LV_PCT(90), 466);
+    lv_obj_align(list, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_opa(list, LV_OPA_0, 0);
+    lv_obj_set_style_border_width(list, 0, 0);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scroll_snap_y(list, LV_SCROLL_SNAP_CENTER);
+    lv_obj_set_scroll_dir(list, LV_DIR_VER);
+    lv_obj_set_style_pad_row(list, LIST_TIMER_ROW_SPACING, 0);
+    lv_obj_set_style_pad_ver(list, LV_VER_RES / 2, 0);
+    lv_obj_add_event_cb(list, timer_list_scroll_event_cb, LV_EVENT_ALL, NULL);
+    ui.timer_list = list;
 
-    // 創建垂直列表中的計時器選項 - 完全使用app list的樣式
+    // 添加標題背景 - 與exercise app相同
+    lv_obj_t *title_bg = lv_obj_create(list_container);
+    lv_obj_set_size(title_bg, 466, 80);
+    lv_obj_set_style_bg_color(title_bg, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(title_bg, LV_OPA_80, 0);
+    lv_obj_set_style_border_width(title_bg, 0, 0);
+    lv_obj_align(title_bg, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_clear_flag(title_bg, LV_OBJ_FLAG_SCROLLABLE);
+
+    ui.timer_title = lv_label_create(title_bg);
+    lv_obj_set_size(ui.timer_title, 466, 40);
+    lv_label_set_text(ui.timer_title, "Timer");
+    lv_obj_set_style_text_align(ui.timer_title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(ui.timer_title, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_color(ui.timer_title, lv_color_hex(LIST_TIMER_ACCENT_COLOR), 0);
+    lv_obj_align(ui.timer_title, LV_ALIGN_CENTER, 0, 0);
+
+    // 添加計時器選項到列表 - 與exercise app workout widget相同的樣式
     for (int i = 0; i < option_count; i++)
     {
-        // 使用 lv_simplified_obj_create 創建項目 (與app list相同)
-        lv_obj_t *item = lv_simplified_obj_create(list_container);
-        lv_obj_set_size(item, LIST_ITEM_WIDGET_WIDTH, LIST_ITEM_WIDGET_HEIGHT);
+        // 創建timer選項widget
+        lv_obj_t *timer_widget = lv_obj_create(list);
+        lv_obj_set_size(timer_widget, LV_PCT(100), LIST_TIMER_HEIGHT);
+        lv_obj_set_style_radius(timer_widget, LIST_TIMER_WIDGET_RADIUS, 0);
+        lv_obj_set_style_bg_color(timer_widget, lv_color_hex(LIST_TIMER_BG_COLOR), 0);
+        lv_obj_set_style_bg_opa(timer_widget, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(timer_widget, 0, 0);
+        lv_obj_set_style_border_color(timer_widget, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_border_opa(timer_widget, LV_OPA_50, 0);
+        lv_obj_clear_flag(timer_widget, LV_OBJ_FLAG_SCROLLABLE);
 
-        // 使用與app list相同的位置計算方式
-        if (i == 0)
-        {
-            lv_obj_set_pos(item, 0, (100 + LIST_ITEM_SPACING));
-        }
-        else
-        {
-            lv_obj_set_pos(item, 0, (LIST_ITEM_WIDGET_HEIGHT + LIST_ITEM_SPACING) * i + (100 + LIST_ITEM_SPACING));
-        }
-        lv_obj_add_flag(item, LV_OBJ_FLAG_CLICKABLE);
+        // 添加鬧鐘圖標
+        lv_obj_t *icon = lv_img_create(timer_widget);
+        lv_img_set_src(icon, IMG_ALARM_2);
+        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 20, -30);
+
+        // 添加時間標籤
+        lv_obj_t *label = lv_label_create(timer_widget);
+        lv_label_set_text(label, timer_options[i]);
+        lv_obj_set_style_text_color(label, lv_color_white(), 0);
+        lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+        lv_obj_align_to(label, icon, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 0);
+
+        // 添加開始按鈕 - 與exercise app相同
+        lv_obj_t *start_btn = lv_obj_create(timer_widget);
+        lv_obj_set_size(start_btn, 85, 85);
+        lv_obj_align(start_btn, LV_ALIGN_RIGHT_MID, -10, 0);
+        lv_obj_set_style_radius(start_btn, 45, 0);
+        lv_obj_set_style_bg_color(start_btn, lv_color_hex(LIST_TIMER_ACCENT_COLOR), 0);
+        lv_obj_set_style_border_width(start_btn, 0, 0);
+        lv_obj_clear_flag(start_btn, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t *start_icon = lv_img_create(start_btn);
+        lv_img_set_src(start_icon, &img_media_play);
+        lv_img_set_zoom(start_icon, 200);
+        lv_obj_align(start_icon, LV_ALIGN_CENTER, 5, 0);
 
         // 添加點擊事件
-        lv_obj_add_event_cb(item, timer_list_event_cb, LV_EVENT_CLICKED, NULL);
-
-        // 保存timer選項文本，用於後續識別
-        lv_obj_set_user_data(item, (void *)timer_options[i]);
-
-        // 創建timer時長標籤 (替換app list中的app name)
-        lv_obj_t *label = lv_label_create(item);
-        lv_label_set_text(label, timer_options[i]);
-        lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-        lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_add_event_cb(timer_widget, timer_list_event_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_set_user_data(timer_widget, (void *)timer_options[i]);
     }
 
-    // 滾動到中間位置(例如3 mins)
+    // 滾動到預設位置
     selected_timer_index = 3;
+    old_selected_timer_index = -1;
     if (option_count > selected_timer_index)
     {
-        lv_obj_scroll_to_view(lv_obj_get_child(list_container, selected_timer_index), LV_ANIM_OFF);
-        ui.current_button = lv_obj_get_child(list_container, selected_timer_index);
+        lv_obj_t *default_item = lv_obj_get_child(list, selected_timer_index);
+        lv_obj_scroll_to_view(default_item, LV_ANIM_OFF);
+        ui.current_button = default_item;
+        // 設置初始選中狀態
+        lv_obj_set_style_border_width(default_item, 1, 0);
+        old_selected_timer_index = selected_timer_index;
     }
 
     return list_container;
 }
 
-// 創建水平三按鈕控制 - 重啟/暫停/刪除
-static void create_control_buttons(lv_obj_t *parent)
+// 創建倒計時界面 - 與exercise workout screen相同的樣式
+static lv_obj_t *create_countdown_screen(lv_obj_t *parent)
 {
-    // 為圓形表盤優化按鈕位置
-    // 三個按鈕均勻分布在圓形表盤的中央區域
+    lv_obj_t *countdown_screen = lv_obj_create(parent);
+    lv_obj_set_size(countdown_screen, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_bg_color(countdown_screen, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(countdown_screen, LV_OPA_100, 0);
+    lv_obj_set_style_border_width(countdown_screen, 0, 0);
+    lv_obj_clear_flag(countdown_screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    // 創建選擇背景 - 位於中央
-    ui.btn_select_background = lv_obj_create(parent);
-    lv_obj_set_size(ui.btn_select_background, 120, 90);
-    lv_obj_set_style_bg_color(ui.btn_select_background, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_bg_opa(ui.btn_select_background, LV_OPA_20, 0);
-    lv_obj_set_style_border_width(ui.btn_select_background, 2, 0);
-    lv_obj_set_style_border_color(ui.btn_select_background, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(ui.btn_select_background, LV_OPA_50, 0);
-    lv_obj_set_style_radius(ui.btn_select_background, 15, 0);
-    lv_obj_align(ui.btn_select_background, LV_ALIGN_CENTER, 0, 40);
+    // 創建計時標籤 - 大字體顯示時間
+    ui.timer_label = lv_label_create(countdown_screen);
+    lv_obj_set_style_text_font(ui.timer_label, LV_EXT_FONT_GET(get_system_font_size(3)), 0);
+    lv_obj_set_style_text_color(ui.timer_label, lv_color_white(), 0);
+    lv_obj_align(ui.timer_label, LV_ALIGN_TOP_MID, 0, 120);
+    lv_label_set_text(ui.timer_label, "00:00:00");
 
-    // 左側按鈕 - 重啟計時器
-    ui.btn_restart_bg = lv_obj_create(parent);
-    lv_obj_set_size(ui.btn_restart_bg, 110, 85);
-    lv_obj_set_style_bg_opa(ui.btn_restart_bg, LV_OPA_0, 0);
-    lv_obj_set_style_border_width(ui.btn_restart_bg, 0, 0);
-    // 圓形表盤優化位置：左側位置
-    lv_obj_align(ui.btn_restart_bg, LV_ALIGN_LEFT_MID, 15, 40);
-    lv_obj_add_flag(ui.btn_restart_bg, LV_OBJ_FLAG_CLICKABLE);
+    // 暫停按鈕 - 與exercise app相同樣式
+    ui.pause_button = lv_btn_create(countdown_screen);
+    lv_obj_set_size(ui.pause_button, 120, 80);
+    lv_obj_set_style_radius(ui.pause_button, 50, 0);
+    lv_obj_set_style_bg_color(ui.pause_button, lv_color_hex(0x333333), 0);
+    lv_obj_align(ui.pause_button, LV_ALIGN_TOP_RIGHT, -40, 280);
 
-    lv_obj_t *img_restart = lv_img_create(ui.btn_restart_bg);
-    lv_img_set_src(img_restart, &img_media_previous);
-    lv_obj_center(img_restart);
+    lv_obj_t *pause_img = lv_img_create(ui.pause_button);
+    lv_img_set_src(pause_img, &img_media_pause);
+    lv_img_set_zoom(pause_img, 128);
+    lv_obj_center(pause_img);
 
-    // 添加左側按鈕的點擊事件
-    lv_obj_add_event_cb(ui.btn_restart_bg, restart_button_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(ui.pause_button, pause_button_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // 中間按鈕 - 暫停/繼續
-    ui.btn_pause_bg = lv_obj_create(parent);
-    lv_obj_set_size(ui.btn_pause_bg, 110, 85);
-    lv_obj_set_style_bg_opa(ui.btn_pause_bg, LV_OPA_0, 0);
-    lv_obj_set_style_border_width(ui.btn_pause_bg, 0, 0);
-    // 圓形表盤優化位置：中央
-    lv_obj_align(ui.btn_pause_bg, LV_ALIGN_CENTER, 0, 40);
-    lv_obj_add_flag(ui.btn_pause_bg, LV_OBJ_FLAG_CLICKABLE);
+    // 停止按鈕 - 與exercise app相同樣式
+    ui.stop_button = lv_btn_create(countdown_screen);
+    lv_obj_set_size(ui.stop_button, 120, 80);
+    lv_obj_set_style_radius(ui.stop_button, 50, 0);
+    lv_obj_set_style_bg_color(ui.stop_button, lv_color_hex(0x333333), 0);
+    lv_obj_align(ui.stop_button, LV_ALIGN_TOP_LEFT, 40, 280);
 
-    lv_obj_t *img_pause = lv_img_create(ui.btn_pause_bg);
-    lv_img_set_src(img_pause, &img_media_pause);
-    lv_obj_center(img_pause);
+    lv_obj_t *stop_label = lv_label_create(ui.stop_button);
+    lv_label_set_text(stop_label, "STOP");
+    lv_obj_set_style_text_color(stop_label, lv_color_white(), 0);
+    lv_obj_center(stop_label);
 
-    // 添加中間按鈕的點擊事件
-    lv_obj_add_event_cb(ui.btn_pause_bg, pause_button_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(ui.stop_button, stop_button_event_cb, LV_EVENT_CLICKED, NULL);
 
-    // 右側按鈕 - 刪除/取消
-    ui.btn_delete_bg = lv_obj_create(parent);
-    lv_obj_set_size(ui.btn_delete_bg, 110, 85);
-    lv_obj_set_style_bg_opa(ui.btn_delete_bg, LV_OPA_0, 0);
-    lv_obj_set_style_border_width(ui.btn_delete_bg, 0, 0);
-    // 圓形表盤優化位置：右側位置
-    lv_obj_align(ui.btn_delete_bg, LV_ALIGN_RIGHT_MID, -15, 40);
-    lv_obj_add_flag(ui.btn_delete_bg, LV_OBJ_FLAG_CLICKABLE);
-
-    lv_obj_t *img_delete_icon = lv_img_create(ui.btn_delete_bg);
-    lv_img_set_src(img_delete_icon, ICON_TRASH);
-    lv_obj_center(img_delete_icon);
-
-    // 添加右側按鈕的點擊事件
-    lv_obj_add_event_cb(ui.btn_delete_bg, delete_countdown_timer_cb, LV_EVENT_CLICKED, NULL);
-}
-
-// 隱藏控制按鈕
-static void hide_control_buttons(void)
-{
-    if (ui.btn_select_background && lv_obj_is_valid(ui.btn_select_background))
-        lv_obj_add_flag(ui.btn_select_background, LV_OBJ_FLAG_HIDDEN);
-    if (ui.btn_restart_bg && lv_obj_is_valid(ui.btn_restart_bg))
-        lv_obj_add_flag(ui.btn_restart_bg, LV_OBJ_FLAG_HIDDEN);
-    if (ui.btn_pause_bg && lv_obj_is_valid(ui.btn_pause_bg))
-        lv_obj_add_flag(ui.btn_pause_bg, LV_OBJ_FLAG_HIDDEN);
-    if (ui.btn_delete_bg && lv_obj_is_valid(ui.btn_delete_bg))
-        lv_obj_add_flag(ui.btn_delete_bg, LV_OBJ_FLAG_HIDDEN);
-}
-
-// 顯示控制按鈕
-static void show_control_buttons(void)
-{
-    if (ui.btn_select_background && lv_obj_is_valid(ui.btn_select_background))
-        lv_obj_clear_flag(ui.btn_select_background, LV_OBJ_FLAG_HIDDEN);
-    if (ui.btn_restart_bg && lv_obj_is_valid(ui.btn_restart_bg))
-        lv_obj_clear_flag(ui.btn_restart_bg, LV_OBJ_FLAG_HIDDEN);
-    if (ui.btn_pause_bg && lv_obj_is_valid(ui.btn_pause_bg))
-        lv_obj_clear_flag(ui.btn_pause_bg, LV_OBJ_FLAG_HIDDEN);
-    if (ui.btn_delete_bg && lv_obj_is_valid(ui.btn_delete_bg))
-        lv_obj_clear_flag(ui.btn_delete_bg, LV_OBJ_FLAG_HIDDEN);
-}
-
-// 設置選擇背景位置（與iot_gate相同的邏輯）
-static void set_app_selection_bg_pos(uint8_t selection_index, lv_coord_t offset)
-{
-    if (ui.btn_select_background == NULL || (app_prev_selection_index == selection_index && app_prev_offset == offset))
-        return;
-
-    int move_offset = 0;
-    switch (selection_index)
-    {
-    case 0: // 重啟按鈕 (左側)
-        move_offset = -150 + offset;
-        break;
-    case 1: // 暫停按鈕 (中間)
-        move_offset = offset;
-        break;
-    case 2: // 刪除按鈕 (右側)
-        move_offset = 150 + offset;
-        break;
-    default:
-        break;
-    }
-
-    lv_obj_align(ui.btn_select_background, LV_ALIGN_CENTER, move_offset, 40);
-    app_prev_move_offset = move_offset;
-    app_prev_selection_index = selection_index;
-    app_prev_offset = offset;
-}
-
-// 體感控制邏輯 - 與iot_gate相同的實現方式
-// Y軸位置範圍 (0~466):
-//     0~155: 選擇右側按鈕 (刪除/category 2)
-//     155~311: 選擇中間按鈕 (暫停/category 1)
-//     311~466: 選擇左側按鈕 (重啟/category 0)
-static void timer_gesture_control(gesture_position_t gesture_position)
-{
-    // 只在計時器運行時才處理體感控制
-    if (!app_timer_data_ctx.countdown_timer || !lv_obj_is_valid(ui.btn_select_background))
-    {
-        return;
-    }
-
-    int p_y = gesture_position.gesture_position_y;
-    lv_coord_t diff = 0;
-    uint8_t category;
-
-    // 根據Y軸位置判斷選擇哪個按鈕（與iot_gate相同的邏輯）
-    if (p_y >= 0 && p_y < 155)
-    {
-        // 將 0~155 映射到 0~-12 (向右拖拽，選擇刪除按鈕 - 右側)
-        diff = -(12 * p_y) / 155;
-        category = 2; // 刪除按鈕 (右側)
-    }
-    else if (p_y > 311 && p_y <= 466)
-    {
-        // 將 311~466 映射到 12~0 (向左拖拽，選擇重啟按鈕 - 左側)
-        diff = 12 - (12 * (p_y - 311)) / (466 - 311);
-        category = 0; // 重啟按鈕 (左側)
-    }
-    else if (p_y >= 155 && p_y <= 311)
-    {
-        // 將 155~311 映射到 12~-12 (中間區域，選擇暫停按鈕)
-        diff = 12 - (24 * (p_y - 155)) / (311 - 155);
-        category = 1; // 暫停按鈕 (中間)
-    }
-    else
-    {
-        category = 1; // 默認選擇暫停按鈕
-    }
-
-    button_selection_index = category;
-    set_app_selection_bg_pos(category, diff);
+    return countdown_screen;
 }
 
 static lv_obj_t *timeout_msg_box = NULL;
@@ -1055,13 +719,15 @@ static void close_timeout_notification_cb(lv_event_t *e)
     set_timeout(false);
     remove_countdown_timer();
     show_counter_listview();
+    setting_provider.set_power_save_mode(1);
 }
 
 static void show_timeout_notification(void)
 {
     if (timeout_msg_box && lv_obj_is_valid(timeout_msg_box))
         return;
-
+    
+    setting_provider.set_power_save_mode(0);
     // 創建一個全屏遮罩層
     lv_obj_t *mask = lv_obj_create(lv_scr_act());
     lv_obj_set_size(mask, LV_HOR_RES_MAX, LV_VER_RES_MAX);
@@ -1128,46 +794,25 @@ static void show_timeout_notification(void)
     lv_obj_set_user_data(timeout_msg_box, mask);
 }
 
-static lv_obj_t *create_timer_screen(lv_obj_t *parent)
+static void create_timer_app_ui(lv_obj_t *parent)
 {
     // 創建主背景容器
-    lv_obj_t *bg_container = lv_obj_create(parent);
-    lv_obj_set_size(bg_container, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_set_style_bg_color(bg_container, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(bg_container, LV_OPA_100, 0);
-    lv_obj_set_style_border_width(bg_container, 0, 0);
-    lv_obj_set_style_pad_all(bg_container, 0, 0);
-    lv_obj_set_style_radius(bg_container, LV_RADIUS_CIRCLE, 0);
-    lv_obj_align(bg_container, LV_ALIGN_CENTER, 0, 0);
+    ui.bg = common_black_bg(parent);
 
-    // 添加標題（頂部）
-    ui.timer_title = lv_label_create(bg_container);
-    lv_label_set_text(ui.timer_title, "Timer");
-    lv_obj_set_style_text_font(ui.timer_title, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_style_text_color(ui.timer_title, lv_color_hex(0x80A0FF), 0);
-    lv_obj_align(ui.timer_title, LV_ALIGN_TOP_MID, 0, 15);
+    // 創建列表容器
+    ui.list_container = create_timer_list(ui.bg);
 
-    // 創建計時器顯示標籤（頂部區域，初始隱藏）
-    ui.timer_label = lv_label_create(bg_container);
-    lv_obj_set_style_text_font(ui.timer_label, LV_EXT_FONT_GET(get_system_font_size(2)), 0);
-    lv_obj_set_style_text_color(ui.timer_label, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align(ui.timer_label, LV_ALIGN_TOP_MID, 0, 50);
-    lv_obj_add_flag(ui.timer_label, LV_OBJ_FLAG_HIDDEN);
-
-    // 創建水平三按鈕控制（底部中央，適合圓形表盤）
-    create_control_buttons(bg_container);
-
-    // 初始時隱藏控制按鈕
-    hide_control_buttons();
-
-    return bg_container;
+    // 創建倒計時界面
+    ui.countdown_screen = create_countdown_screen(ui.bg);
+    // 默認隱藏倒計時界面
+    lv_obj_add_flag(ui.countdown_screen, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void on_start(void)
 {
     // Initialize UI context
     memset(&ui, 0, sizeof(timer_ui_t));
-    ui.timer_view = create_timer_screen(lv_scr_act());
+    create_timer_app_ui(lv_scr_act());
 
     if (app_timer_data_ctx.countdown_timer)
     {
@@ -1182,10 +827,16 @@ static void on_start(void)
             LOG_D("Resume countdown timer");
             create_timer_data_bindings();
             update_timer_label();
-            // 顯示計時器標籤和控制按鈕
-            if (lv_obj_is_valid(ui.timer_label))
-                lv_obj_clear_flag(ui.timer_label, LV_OBJ_FLAG_HIDDEN);
-            show_control_buttons();
+            // 顯示倒計時界面
+            if (lv_obj_is_valid(ui.countdown_screen))
+            {
+                lv_obj_clear_flag(ui.countdown_screen, LV_OBJ_FLAG_HIDDEN);
+            }
+            if (lv_obj_is_valid(ui.list_container))
+            {
+                lv_obj_add_flag(ui.list_container, LV_OBJ_FLAG_HIDDEN);
+            }
+            refresh_pause_button_icon();
         }
     }
     else
@@ -1198,34 +849,54 @@ static void on_start(void)
 static void on_pause(void)
 {
     refresh_timer_status();
+
+#ifdef BSP_USING_UI_HANDLER
+    if (lvgl_msg_handler.handle_nav_bar_control == timer_list_nav_control)
+    {
+        lvgl_msg_handler.handle_nav_bar_control = NULL;
+    }
+    if (lvgl_msg_handler.handle_tap_indicator == press_cb)
+    {
+        lvgl_msg_handler.handle_tap_indicator = NULL;
+    }
+#endif
+    LOG_D("Timer app paused");
 }
 
 static void on_resume(void)
 {
-    // switch_watch_motion_control_mode(true, false);
     refresh_timer_status();
+
+    // 計算選項數量用於設置segment count
+    int option_count = 0;
+    while (timer_options[option_count][0] != '\0')
+        option_count++;
 
     // 根據當前狀態設置不同的handler
     if (app_timer_data_ctx.countdown_timer)
     {
-        // 計時器運行中 - 啟用三按鈕體感控制
-        set_open_control_options(true);
+        // 計時器運行中
+        set_open_control_options(false);
         set_free_control_with_arm(false);
 #ifdef BSP_USING_UI_HANDLER
         lvgl_msg_handler.handle_tap_event = handle_tap_event;
-        lvgl_msg_handler.handle_widgets_control = timer_gesture_control;
+        lvgl_msg_handler.handle_widgets_control = NULL;
         lvgl_msg_handler.handle_nav_bar_control = NULL;
+        lvgl_msg_handler.handle_tap_indicator = NULL;
 #endif
     }
     else
     {
         // timer列表模式 - 啟用列表滾動控制
+        set_scroll_segment_count(option_count);
+        set_prev_sensor_quat(0);
         set_open_control_options(false);
         set_free_control_with_arm(true);
 #ifdef BSP_USING_UI_HANDLER
         lvgl_msg_handler.handle_tap_event = handle_tap_event;
         lvgl_msg_handler.handle_widgets_control = NULL;
-        lvgl_msg_handler.handle_nav_bar_control = timer_list_nav_control; // 用於體感滾動列表
+        lvgl_msg_handler.handle_nav_bar_control = timer_list_nav_control;
+        lvgl_msg_handler.handle_tap_indicator = press_cb;
 #endif
     }
 }
@@ -1243,11 +914,21 @@ static void on_stop(void)
     lvgl_msg_handler.handle_tap_event = NULL;
     lvgl_msg_handler.handle_widgets_control = NULL;
     lvgl_msg_handler.handle_nav_bar_control = NULL;
+    lvgl_msg_handler.handle_tap_indicator = NULL;
 #endif
+
+    // 清理UI
+    if (lv_obj_is_valid(ui.bg))
+    {
+        lv_obj_del(ui.bg);
+    }
 
     // Reset app context
     memset(&ui, 0, sizeof(timer_ui_t));
+    old_selected_timer_index = -1;
+    selected_timer_index = 0;
     _timeout = false;
+    setting_provider.set_power_save_mode(1);
 }
 
 static void msg_handler(gui_app_msg_type_t msg, void *param)
