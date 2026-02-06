@@ -183,6 +183,11 @@ static void process_lvgl_message(lvgl_msg_t *msg)
             lvgl_msg_handler.handle_dial_media_title(
                 msg->data.media_data.title);
         }
+        if (lvgl_msg_handler.handle_dial_media_header_title)
+        {
+            lvgl_msg_handler.handle_dial_media_header_title(
+                msg->data.media_data.title);
+        }
         // if (lvgl_msg_handler.handle_app_media_img)
         // {
         //     lvgl_msg_handler.handle_app_media_img(msg->data.media_data.title);
@@ -200,6 +205,11 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         if (lvgl_msg_handler.handle_dial_media_img)
         {
             lvgl_msg_handler.handle_dial_media_img(msg->data.media_data.title);
+        }
+        if (lvgl_msg_handler.handle_dial_media_header_img)
+        {
+            lvgl_msg_handler.handle_dial_media_header_img(
+                msg->data.media_data.title);
         }
         LOG_D("REMOVE PREV MEDIA IMG: %s", msg->data.media_data.img_path);
         // lv_img_cache_invalidate_src(msg->data.media_data.img_path);

@@ -239,6 +239,7 @@ LV_IMG_DECLARE(gaus_clock1_bg);
 extern char *GAUS_DEFAULT_PICTURE;
 #define MEDIA_MASK "/assets/images/media_mask.bin"
 extern char MEDIA_IMG[40];
+extern char MEDIA_HEADER_IMG[40];
 #endif
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

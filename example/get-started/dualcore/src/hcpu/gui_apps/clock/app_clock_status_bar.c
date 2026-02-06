@@ -1484,7 +1484,7 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
         else if (STATUS_BAR_AREA_DOWN == i)
         {
             lv_obj_set_size(status_bar_area, LV_HOR_RES_MAX,
-                            (LV_VER_RES_MAX >> 3));
+                            (LV_VER_RES_MAX >> 4));
             lv_obj_set_user_data(status_bar_area, (void *)STATUS_BAR_AREA_DOWN);
             lv_obj_add_event_cb(status_bar_area, notification_status_bar_cb,
                                 LV_EVENT_ALL, NULL);

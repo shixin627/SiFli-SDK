@@ -71,7 +71,8 @@
 #include "ui_img_helper.h"
 
 // 動態媒體圖片路徑定義
-char MEDIA_IMG[40] = "/assets/images/media_img2.jpg";
+char MEDIA_IMG[40] = "/assets/images/media_img.bin";
+char MEDIA_HEADER_IMG[40] = "/assets/images/media_header_img.bin";
 #include "gesture_model_loader.h"
 
 #define DBG_TAG "bloc.filesystem"
@@ -333,6 +334,24 @@ void received_file_handler(const char *path)
 		rt_thread_mdelay(200);
         notify_media_img(prev_media_img_path);
         LOG_I("Received media image file: %s,rm:%s", MEDIA_IMG,
+              prev_media_img_path);
+        // rt_thread_mdelay(1000);
+		// remove(prev_media_img_path);
+    }
+    else if (strstr(path, "media_header_img") != NULL)
+    {
+        // lv_img_cache_invalidate_src(path);
+        strncpy(prev_media_img_path, MEDIA_HEADER_IMG,
+                sizeof(prev_media_img_path) - 1);
+        prev_media_img_path[sizeof(prev_media_img_path) - 1] = '\0';
+        strncpy(MEDIA_HEADER_IMG, path, sizeof(MEDIA_HEADER_IMG) - 1);
+        MEDIA_HEADER_IMG[sizeof(MEDIA_HEADER_IMG) - 1] = '\0';
+		LOG_I("Invalidate image cache for src: %s", MEDIA_HEADER_IMG);
+        lv_img_cache_invalidate_src(prev_media_img_path);
+		lv_img_cache_invalidate_src(MEDIA_HEADER_IMG);
+		rt_thread_mdelay(200);
+        notify_media_img(prev_media_img_path);
+        LOG_I("Received media image file: %s,rm:%s", MEDIA_HEADER_IMG,
               prev_media_img_path);
         // rt_thread_mdelay(1000);
 		// remove(prev_media_img_path);

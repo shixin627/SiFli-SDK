@@ -304,6 +304,8 @@ extern "C"
         void (*handle_app_media_img)(void *param);
         void (*handle_dial_media_title)(void *param);
         void (*handle_dial_media_img)(void *param);
+        void (*handle_dial_media_header_title)(void *param);
+        void (*handle_dial_media_header_img)(void *param);
         void (*handle_media_volume)(void *param);
         void (*handle_media_control)(gesture_position_t control);
         void (*handle_volume_control)(uint8_t control);

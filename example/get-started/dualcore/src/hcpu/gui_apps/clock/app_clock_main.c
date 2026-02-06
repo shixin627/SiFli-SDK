@@ -522,6 +522,8 @@ void dial_widget_event(lv_event_t *e)
     }
     case LV_EVENT_RELEASED:
     {
+        LOG_D("dial_widget_event LV_EVENT_RELEASED:%d,%d",
+              dial_widget_press_valid,edit_mode);
         if (dial_widget_press_valid)
         {
             dial_widget_press_valid = false;
@@ -656,6 +658,8 @@ static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
     {
         request_calendar_on_mobile(false);
         lv_dial_calendar_widget_builder(dial_widget);
+        lv_obj_add_event_cb(dial_widget, dial_widget_event, LV_EVENT_ALL, NULL);
+        
     }
     else if (app_id == app_id_media)
     {
@@ -800,7 +804,9 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
             {
                 p_clock->ops->pause();
                 if (strcmp(p_clock->id, "JW_wf1") == 0)
+                {
                     swich_dial_widget_deinit(dial_widget_app_id);
+                }
                 else if (strcmp(p_clock->id, "JW_wf3") == 0)
                     swich_dial_widget_deinit(dial_widget_app_id);
             }
@@ -838,7 +844,9 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
         {
             p_clock->ops->init(p_clock->parent);
             if (strcmp(p_clock->id, "JW_wf1") == 0)
+            {
                 swich_dial_widget_builder(dial_widget_app_id, p_clock->parent);
+            }
             else if (strcmp(p_clock->id, "JW_wf3") == 0)
                 swich_dial_widget_builder(dial_widget_app_id, p_clock->parent);
         }
@@ -1712,6 +1720,8 @@ static void app_clock_main_init(lv_obj_t *scr)
 
     // 創建上方黑條
     clock_main_top_bar_builder(scr);
+    extern void lv_dial_media_header_builder(lv_obj_t *parent);
+    lv_dial_media_header_builder(scr);
 
     // 創建下方黑條
     clock_main_bottom_bar_builder(scr);
@@ -1874,6 +1884,7 @@ static void on_start(lv_obj_t *scr)
 
 static bool pause_clock = true;
 
+extern void dial_media_header_init(void);
 rt_int32_t clock_on_resume(void)
 {
     notify_provider.bluetooth_connection();
@@ -1887,13 +1898,14 @@ rt_int32_t clock_on_resume(void)
         lv_obj_set_tile_id(p_app_clock_main->tileview, last_active_clock, 0,
                            false);
     }
-
+    dial_media_header_init();
     app_clock_main_select(last_active_clock);
     LOG_D("clock_on_resume");
     clock_initiated = true;
     return 1;
 }
 
+extern void dial_media_header_deinit(void);
 rt_int32_t clock_on_pause(void)
 {
     if (pause_clock == true)
@@ -1903,7 +1915,7 @@ rt_int32_t clock_on_pause(void)
     rt_list_t *pos;
     uint16_t i = 0;
     pause_clock = true;
-
+    dial_media_header_deinit();
     rt_list_for_each(pos, (&p_app_clock_main->list))
     {
         app_clock_desc_t *clk_desc;
@@ -1913,6 +1925,7 @@ rt_int32_t clock_on_pause(void)
     LOG_D("clock_on_pause");
     return RT_EOK;
 }
+
 
 void clock_on_stop(void)
 {
@@ -1925,7 +1938,7 @@ void clock_on_stop(void)
         clk_desc = rt_list_entry(pos, app_clock_desc_t, node);
         app_clock_change_state(clk_desc, STATE_DEINIT);
     }
-
+    dial_media_header_deinit();
     gui_state_update_timer_stop();
     LOG_D("clock_on_stop");
 #ifdef BSP_USING_UI_HANDLER

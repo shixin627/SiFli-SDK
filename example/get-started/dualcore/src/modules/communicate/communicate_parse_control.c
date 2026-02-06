@@ -105,7 +105,8 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
         if (length == 1)
         {
             uint8_t percent = pValue[0];
-            control_provider.bt_speaker_set_volume(percent, false);
+            // control_provider.bt_speaker_set_volume(percent, false);
+            LOG_D("Received volume percentage from phone: %d", percent);
         }
         break;
     }
