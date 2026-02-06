@@ -1592,6 +1592,7 @@ void set_stop_mouse_move(bool stop)
     stop_mouse_move = stop;
 }
 
+extern bool get_is_open_app_list_ai(void);
 extern uint8_t get_message_page_count(void);
 static euler_angle_t pevr_befor_switch_widget_delta_angle;
 static float prev_delta_roll = 0.0f;
@@ -1672,7 +1673,7 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
         }
 
         // if (!peripheral_provider.get_tap_status())
-        if (!is_at_message())
+        if (!is_at_message() && !get_is_open_app_list_ai())
         {
             if (motion_data->gravity.x < 0.3 && motion_data->gravity.x > -0.3)
             {

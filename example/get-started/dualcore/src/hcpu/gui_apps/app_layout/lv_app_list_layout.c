@@ -1185,7 +1185,8 @@ void tap_on_ai_widget(void)
     set_ai_open_mic(true);
     show_speech_indicator(true);
     voice_provider.start_v2t();
-    set_free_control_with_arm(false);
+    // set_free_control_with_arm(false);
+    set_paused_control_with_arm(true);
 }
 
 static bool app_list_ai_tapped = false;
@@ -1224,7 +1225,17 @@ static void on_item_tap(app_list_item_t *item)
     // else
     if (strcmp(item->app_id, APP_ID_SKAI) == 0)
     {
-        tap_on_ai_hint();
+        if (is_open_app_list_ai)
+        {
+            if (!isTextEmpty())
+                tap_on_ai_hint();
+            else
+                LOG_D("AI input is empty, ignoring tap");
+        }
+        else
+        {
+            tap_on_ai_widget();
+        }
     }
     else if (!is_open_app_list_ai)
     {

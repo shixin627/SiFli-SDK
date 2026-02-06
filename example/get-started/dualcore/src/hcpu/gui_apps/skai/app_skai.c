@@ -274,16 +274,19 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
     // lv_obj_clear_flag(widget, LV_OBJ_FLAG_SCROLLABLE);
 
     skai_widget_input_text_bg = lv_obj_create(parent);
-    lv_obj_set_size(skai_widget_input_text_bg, 320, 200);
+    lv_obj_set_size(skai_widget_input_text_bg, 320, 150);
     lv_obj_align(skai_widget_input_text_bg, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(skai_widget_input_text_bg, lv_color_hex(0x000000),
+    lv_obj_set_style_bg_color(skai_widget_input_text_bg, lv_color_hex(0xFFFFFF),
                               0);
-    lv_obj_set_style_bg_opa(skai_widget_input_text_bg, LV_OPA_100, 0);
-    lv_obj_set_style_radius(skai_widget_input_text_bg, 50, 0);
-    lv_obj_set_style_border_width(skai_widget_input_text_bg, 2, 0);
-    lv_obj_set_style_border_color(skai_widget_input_text_bg,
-                                  lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(skai_widget_input_text_bg, LV_OPA_50, 0);
+    lv_obj_set_style_bg_opa(skai_widget_input_text_bg, 5, 0);
+    lv_obj_set_style_radius(skai_widget_input_text_bg, 75, 0);
+    lv_obj_set_style_outline_width(skai_widget_input_text_bg, 5,
+                                      LV_STATE_DEFAULT);
+    lv_obj_set_style_outline_opa(skai_widget_input_text_bg, LV_OPA_30,
+                                      LV_STATE_DEFAULT);
+    lv_obj_set_style_outline_color(skai_widget_input_text_bg,
+                                      lv_color_hex(0xFFFFFF),
+                                      LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_width(skai_widget_input_text_bg, 0, 0);
     lv_obj_set_style_shadow_color(skai_widget_input_text_bg,
                                   lv_color_hex(0xFFFFFF), 0);
@@ -291,6 +294,7 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
 
     skai_widget_input_text = lv_label_create(skai_widget_input_text_bg);
     lv_label_set_text(skai_widget_input_text, "");
+    lv_obj_set_style_text_opa(skai_widget_input_text, LV_OPA_50, 0);
     lv_obj_set_style_text_font(skai_widget_input_text,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_label_set_long_mode(skai_widget_input_text, LV_LABEL_LONG_WRAP);
@@ -303,7 +307,7 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_text_font(skai_widget_input_prompt,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_label_set_long_mode(skai_widget_input_prompt, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_100, 0);
+    lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_50, 0);
     lv_obj_set_width(skai_widget_input_prompt, 380);
     lv_obj_set_style_text_color(skai_widget_input_prompt, lv_color_white(), 0);
     lv_obj_align(skai_widget_input_prompt, LV_ALIGN_CENTER, 10, 0);
@@ -422,7 +426,7 @@ static void indicator_test_anim_exec_cb(void *var,int32_t value)
     // uint8_t shadow_width = 50 + (uint8_t)((value * 20) / 100);
     // lv_obj_set_style_shadow_width(skai_widget_input_text_bg, shadow_width, 0);
 
-    uint8_t shadow_opa = (uint8_t)(LV_OPA_30 + ((value * (LV_OPA_60 - LV_OPA_30)) / 100));
+    uint8_t shadow_opa = (uint8_t)(LV_OPA_40 + ((value * (LV_OPA_80 - LV_OPA_40)) / 100));
     lv_obj_set_style_shadow_opa(skai_widget_input_text_bg, shadow_opa, 0);
     // lv_obj_set_style_border_opa(skai_widget_input_text_bg, shadow_opa, LV_STATE_DEFAULT);
 }
@@ -431,7 +435,7 @@ static void listening_shadow_animation(bool start)
     LOG_D("listening_shadow_animation start=%d", start);
     if (start)
     {
-        lv_obj_set_style_shadow_width(skai_widget_input_text_bg, 40, 0);
+        lv_obj_set_style_shadow_width(skai_widget_input_text_bg, 50, 0);
         lv_anim_init(&listening_shadow_anim);
         lv_anim_set_var(&listening_shadow_anim, NULL);
         lv_anim_set_values(&listening_shadow_anim, 0, 100);
@@ -460,31 +464,29 @@ void open_skai_widget_ai(bool open)
         {
             lv_label_set_text(skai_widget_input_text, "");
             // lv_label_set_text(skai_widget_input_prompt, "聽取中");
-            lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_60, 0);
+            lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_100, 0);
             start_listening_animation();
             listening_shadow_animation(true);
-            lv_obj_set_style_border_width(skai_widget_input_text_bg, 2,
-                                          LV_STATE_DEFAULT);
-            lv_obj_set_style_border_opa(skai_widget_input_text_bg, LV_OPA_70,
-                                        LV_STATE_DEFAULT);
+            lv_obj_set_style_outline_width(skai_widget_input_text_bg, 0,
+                                      LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_opa(skai_widget_input_text_bg, 20, 0);
         }
         else
         {
             stop_listening_animation();
             listening_shadow_animation(false);
             lv_label_set_text(skai_widget_input_prompt, "ask Skai");
-            lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_100, 0);
-            lv_obj_set_style_border_width(skai_widget_input_text_bg, 2,
-                                          LV_STATE_DEFAULT);
-            lv_obj_set_style_border_opa(skai_widget_input_text_bg, LV_OPA_50,
-                                        LV_STATE_DEFAULT);
+            lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_50, 0);
+            lv_obj_set_style_outline_width(skai_widget_input_text_bg, 5,
+                                      LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_opa(skai_widget_input_text_bg, 5, 0);
             // voice_provider.auto_stop_listening();
             // voice_provider.stop_v2t();
             // reset_skai_widget_input_text();
             set_is_open_app_list_ai(false);
             set_skai_widget_input_text("");
             lv_obj_update_layout(skai_widget_input_text);
-            lv_obj_set_height(skai_widget_input_text_bg, 200);
+            lv_obj_set_height(skai_widget_input_text_bg, 150);
         }
     }
 }
@@ -511,6 +513,7 @@ void back_on_skai_widget(void)
             stop_voice_recognition(V2T_INTENT_NOTHING);
             set_is_open_app_list_ai(false);
             open_skai_widget_ai(false);
+            set_paused_control_with_arm(false);
         }
         else
         {
@@ -558,7 +561,7 @@ void set_skai_widget_input_text(const char *text)
     if (strcmp(text, "") == 0)
     {
         lv_obj_clear_flag(skai_widget_input_prompt, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_100, 0);
+        lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_50, 0);
         lv_label_set_text(skai_widget_input_text, "");
         input_text_is_null = true;
         return;
@@ -572,7 +575,7 @@ void set_skai_widget_input_text(const char *text)
         lv_obj_update_layout(skai_widget_input_text);
         // 取得文字高度，並根據內容調整背景高度
         lv_coord_t label_height = lv_obj_get_height(skai_widget_input_text);
-        lv_coord_t min_height = 200; // 最小高度
+        lv_coord_t min_height = 150; // 最小高度
         lv_coord_t padding = 20;     // 上下留白
         lv_coord_t new_height = label_height + padding;
         if (new_height < min_height)
@@ -605,7 +608,7 @@ void reset_skai_widget_input_text(void)
         clearVoice2Text();
         set_skai_widget_input_text("");
         lv_obj_update_layout(skai_widget_input_text);
-        lv_obj_set_height(skai_widget_input_text_bg, 200);
+        lv_obj_set_height(skai_widget_input_text_bg, 150);
 
         // 重新對齊按鈕位置
         // if (skai_widget_note_button != NULL &&
