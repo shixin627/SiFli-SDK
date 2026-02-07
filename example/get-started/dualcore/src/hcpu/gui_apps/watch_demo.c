@@ -600,6 +600,11 @@ static void button_event_task_entry(struct _lv_timer_t *task)
         setting_provider.get_power_save_mode() &&
         !pause_sleep_cause_of_dev_reson())
     {
+        // close onscreen message
+        if (gui_app_is_actived(APP_ID_MESSAGE))
+        {
+            gui_app_goback();
+        }
         peripheral_provider.hcpu_suspend();
         gui_pm_fsm(GUI_PM_ACTION_SLEEP);
     }
@@ -741,8 +746,6 @@ void app_watch_entry(void *parameter)
     lv_ex_data_pool_init();
     resource_init();
     watch_config_struct_flash_read();
-    rt_thread_mdelay(30);
-    save_device_address_to_fs();
 #if LV_USING_FREETYPE_ENGINE
     lv_freetype_open_font(true); /* open freetype */
 #endif

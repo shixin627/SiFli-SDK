@@ -1,6 +1,6 @@
 {
-    "version": "1.0.224",
-    "description": "優化AI widget",
+    "version": "1.0.225",
+    "description": "AI動畫,優化使用體驗",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
