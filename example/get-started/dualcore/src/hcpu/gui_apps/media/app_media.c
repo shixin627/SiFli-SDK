@@ -1082,9 +1082,14 @@ static void handle_dial_media_header_title(void *param)
         return;
     }
     char *media_title_text = (char *)param;
-    if (media_title_text)
+    if (media_title_text && media_title_text[0] != '\0')
     {
+        lv_obj_clear_flag(dial_media_header_bg,LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(dial_media_header_title, media_title_text);
+    }
+    else
+    {
+        lv_obj_add_flag(dial_media_header_bg,LV_OBJ_FLAG_HIDDEN);
     }
 }
 
