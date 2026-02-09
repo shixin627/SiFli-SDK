@@ -1077,7 +1077,7 @@ void lv_dial_media_header_builder(lv_obj_t *parent)
 static void handle_dial_media_header_title(void *param)
 {
     LOG_D("handle_dial_media_header_title");
-    if (lv_obj_is_valid(dial_media_header_title) == false)
+    if (lv_obj_is_valid(dial_media_header_title) == false || lv_obj_is_valid(dial_media_header_bg) == false)
     {
         return;
     }

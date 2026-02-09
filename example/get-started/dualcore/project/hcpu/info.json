@@ -1,6 +1,6 @@
 {
-    "version": "1.0.225",
-    "description": "AI動畫,優化使用體驗",
+    "version": "1.0.226",
+    "description": "音樂提示顯示問題",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
