@@ -250,7 +250,7 @@ static void ui_heart_rate_callback(int hr)
         {
             lv_label_set_text(ui.heart_rate_label, bpm_str);
         }
-
+        snprintf(bpm_str, sizeof(bpm_str), "%d", hr);
         // Update title heart rate label
         if (lv_obj_is_valid(ui.title_heart_rate_label))
         {
@@ -1147,7 +1147,7 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_set_style_text_color(total_time, lv_color_hex(0x40A6FF), 0);
     lv_obj_set_style_text_font(total_time,
                                LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_align(total_time, LV_ALIGN_TOP_MID, -85, 68);
+    lv_obj_align(total_time, LV_ALIGN_TOP_MID, -85, 65);
 
     total_calories_hint = lv_label_create(workout_log_widget);
     lv_label_set_text(total_calories_hint, "kcal");
@@ -1155,7 +1155,7 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_set_style_text_font(total_calories_hint,
                                LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
     // lv_obj_align_to(total_calories_hint, total_calories, LV_ALIGN_OUT_RIGHT_MID, 5, 5);
-    lv_obj_align(total_calories_hint, LV_ALIGN_TOP_MID, 115, 85);
+    lv_obj_align(total_calories_hint, LV_ALIGN_TOP_MID, 115, 82);
 
     total_calories = lv_label_create(workout_log_widget);
     lv_label_set_text(total_calories, "0");
@@ -1168,6 +1168,20 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_set_size(activity_bg, 384, 180);
     lv_obj_align(activity_bg, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_set_style_bg_opa(activity_bg, LV_OPA_0, 0);
+
+    // 在 activity_bg 上方加一條分隔線
+    lv_obj_t *divider = lv_obj_create(activity_bg);
+    lv_obj_set_size(divider, 384, 2);
+    lv_obj_set_style_bg_color(divider, lv_color_hex(0x444444), 0);
+    lv_obj_set_style_bg_opa(divider, LV_OPA_80, 0);
+    lv_obj_align(divider, LV_ALIGN_TOP_MID, 0, 0);
+
+    lv_obj_t *container_title = lv_label_create(activity_bg);
+    lv_label_set_text(container_title, "步數");
+    lv_obj_set_style_text_color(container_title, lv_color_white(), 0);
+    lv_obj_set_style_text_font(container_title,
+                               LV_EXT_FONT_GET(get_system_font_size(-2)), 0);
+    lv_obj_align(container_title, LV_ALIGN_TOP_MID, 0, 0);
 
     // 創建活動圓環 - 在 widget 底部創建圓環容器
     lv_obj_t *rings_container = lv_obj_create(activity_bg);
