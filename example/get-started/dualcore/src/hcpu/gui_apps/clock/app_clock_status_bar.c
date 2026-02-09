@@ -28,7 +28,7 @@
 #include "bloc_v2t.h"
 
 #define DBG_TAG "app.clock.status_bar"
-#define DBG_LVL DBG_LOG
+#define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
 #define APP_ID "Main"

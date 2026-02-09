@@ -1,6 +1,6 @@
 {
-    "version": "1.0.226",
-    "description": "音樂提示顯示問題",
+    "version": "1.0.227",
+    "description": "翻轉螢幕方向(解決撕裂問題),app list文字使用顏色變化取代透明度變化,使用新的EPIC API(提升刷新效率)",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
