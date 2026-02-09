@@ -80,6 +80,7 @@
     #include "ui_handler.h"
 #endif
 #define LIST_EXERCISE_HEIGHT (200)
+#define RING_WIDTH 15
 
 #ifdef APP_ID_EXERCISE
 
@@ -98,7 +99,8 @@ typedef struct
     lv_obj_t *workout_screen;
     lv_obj_t *timer_label; // 计时标签
     lv_obj_t *metrics_container;
-    lv_obj_t *heart_rate_label; // 心率标签
+    lv_obj_t *heart_rate_label; // 心率标签(运动界面)
+    lv_obj_t *title_heart_rate_label; // 心率标签(标题栏)
     lv_obj_t *calories_label;   // 卡路里标签
     lv_obj_t *pause_button;     // 暂停按钮
     lv_obj_t *stop_button;      // 停止按钮
@@ -240,13 +242,19 @@ static void ui_heart_rate_callback(int hr)
     // if (hr != current_session.heart_rate)
     {
         LOG_D("[UI]Heart rate changed: %d", hr);
+        char bpm_str[16];
+        snprintf(bpm_str, sizeof(bpm_str), "%d", current_session.heart_rate);
+
+        // Update workout screen heart rate label
         if (lv_obj_is_valid(ui.heart_rate_label))
         {
-            // Update UI display
-            char bpm_str[16];
-            snprintf(bpm_str, sizeof(bpm_str), "%d",
-                     current_session.heart_rate);
             lv_label_set_text(ui.heart_rate_label, bpm_str);
+        }
+        snprintf(bpm_str, sizeof(bpm_str), "%d", hr);
+        // Update title heart rate label
+        if (lv_obj_is_valid(ui.title_heart_rate_label))
+        {
+            lv_label_set_text(ui.title_heart_rate_label, bpm_str);
         }
         // refresh_heartrate_widget(hr);
     }
@@ -308,14 +316,14 @@ static void start_workout_session(workout_type_t type)
     // Start the timer
     rt_timer_start(current_session.workout_timer);
 
-    // Set up heart rate monitoring
-    sensor_subscription_t sensor_subscription = (sensor_subscription_t){
-        .type = SENSOR_TYPE_HEART_RATE,
-        .status = true,
-    };
-    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
+    // // Set up heart rate monitoring
+    // sensor_subscription_t sensor_subscription = (sensor_subscription_t){
+    //     .type = SENSOR_TYPE_HEART_RATE,
+    //     .status = true,
+    // };
+    // watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
     app_exercise_data_ctx.active = true;
-    lvgl_msg_handler.handle_hr = ui_heart_rate_callback;
+    // lvgl_msg_handler.handle_hr = ui_heart_rate_callback;
 
     // Switch to workout view
     show_workout_view();
@@ -436,11 +444,11 @@ int stop_exercise(void)
 
     // Disable heart rate monitoring mode
     app_exercise_data_ctx.active = false;
-    sensor_subscription_t sensor_subscription = (sensor_subscription_t){
-        .type = SENSOR_TYPE_HEART_RATE,
-        .status = false,
-    };
-    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
+    // sensor_subscription_t sensor_subscription = (sensor_subscription_t){
+    //     .type = SENSOR_TYPE_HEART_RATE,
+    //     .status = false,
+    // };
+    // watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
 
     return ret;
 }
@@ -605,9 +613,75 @@ static void history_list_event_cb(lv_event_t *e)
     }
 }
 
+static lv_obj_t *log_icon = NULL;
 static lv_obj_t *log_label = NULL;
 static lv_obj_t *total_time = NULL;
 static lv_obj_t *total_calories = NULL;
+static lv_obj_t *total_calories_hint = NULL;
+
+// Activity rings
+static lv_obj_t *calories_ring = NULL;
+static lv_obj_t *calories_ring_label_hint = NULL;
+static lv_obj_t *calories_ring_label = NULL;
+static lv_obj_t *steps_ring = NULL;
+static lv_obj_t *steps_ring_label_hint = NULL;
+static lv_obj_t *steps_ring_label = NULL;
+static lv_obj_t *distance_ring = NULL;
+static lv_obj_t *distance_ring_label_hint = NULL;
+static lv_obj_t *distance_ring_label = NULL;
+
+// Helper function to get today's steps
+static uint32_t get_steps_today(void)
+{
+    return SkaiWatchSys.health_info_today.steps;
+}
+
+// Helper function to get today's distance
+static float get_distance_today(void)
+{
+    return SkaiWatchSys.health_info_today.distance;
+}
+
+// Helper function to get today's calories
+static float get_calories_today(void)
+{
+    return SkaiWatchSys.health_info_today.calories;
+}
+
+// Create a single activity ring
+static lv_obj_t *create_ring(lv_obj_t *parent, lv_coord_t size, lv_color_t color, lv_obj_t *align_to, lv_align_t align, lv_coord_t x_ofs, lv_coord_t y_ofs)
+{
+    lv_obj_t *ring = lv_arc_create(parent);
+    lv_obj_set_size(ring, size, size);
+    lv_arc_set_range(ring, 0, 100);
+    lv_arc_set_value(ring, 0);
+
+    // 設置圓環顏色
+    lv_obj_set_style_arc_color(ring, color, LV_PART_INDICATOR);
+
+    lv_arc_set_rotation(ring, 270);
+    lv_arc_set_bg_angles(ring, 0, 360);
+    // 設置圓環的寬度
+    lv_obj_set_style_arc_width(ring, RING_WIDTH, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(ring, RING_WIDTH, LV_PART_INDICATOR);
+
+    // 背景圓環的顏色設置為半透明
+    lv_obj_set_style_arc_color(ring, lv_color_hex(0xE0E0E0), LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(ring, 77, LV_PART_MAIN);
+
+    lv_obj_remove_style(ring, NULL, LV_PART_KNOB);
+    lv_obj_clear_flag(ring, LV_OBJ_FLAG_CLICKABLE);
+    if (align_to)
+    {
+        lv_obj_align_to(ring, align_to, align, x_ofs, y_ofs);
+    }
+    else
+    {
+        lv_obj_align(ring, align, x_ofs, y_ofs);
+    }
+    return ring;
+}
+
 static void statistics_exercise_data(void)
 {
     workout_history_t *history = get_workout_history();
@@ -663,7 +737,8 @@ static void statistics_exercise_data(void)
         snprintf(log_label_str, sizeof(log_label_str), "本周 %d 次運動",
                  week_count);
         lv_label_set_text(log_label, log_label_str);
-        lv_obj_align(log_label, LV_ALIGN_TOP_MID, 0, 50);
+        // lv_obj_align(log_label, LV_ALIGN_TOP_MID, 0, 50);
+        lv_obj_align_to(log_label, log_icon, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
     }
 
     if (lv_obj_is_valid(total_time))
@@ -673,19 +748,65 @@ static void statistics_exercise_data(void)
                  week_total_duration / 3600, (week_total_duration % 3600) / 60,
                  week_total_duration % 60);
         lv_label_set_text(total_time, time_str);
-        lv_obj_align_to(total_time, log_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
+        lv_obj_align(total_time, LV_ALIGN_TOP_MID, -85, 68);
     }
 
-    if (!lv_obj_is_valid(total_calories))
+    if (lv_obj_is_valid(total_calories))
     {
         char cal_str[16];
-        snprintf(cal_str, sizeof(cal_str), "%d KCAL", week_total_calories);
+        snprintf(cal_str, sizeof(cal_str), "%d", week_total_calories);
         lv_label_set_text(total_calories, cal_str);
-        lv_obj_align_to(total_calories, total_time, LV_ALIGN_OUT_BOTTOM_MID, 0,
-                        20);
+        // lv_obj_align(total_calories, LV_ALIGN_TOP_MID, 85, 68);
+        lv_obj_align_to(total_calories,total_calories_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
         LOG_D("This week workout count: %d, total duration: %d seconds, total "
               "calories: %d",
               week_count, week_total_duration, week_total_calories);
+    }
+
+    // 更新圓環數據
+    uint32_t steps = get_steps_today();
+    float distance = get_distance_today() / 1000000; // km
+    float calories = get_calories_today() / 1000;    // k-calories
+
+    // 計算圓環進度百分比
+    int32_t calories_percent = (int32_t)(calories * 100 / 300); // 300 k-calories
+    int32_t steps_percent = (int32_t)(steps * 100 / 10000);     // 10000 steps
+    int32_t distance_percent = (int32_t)(distance * 100 / 7.5); // 7.5km
+
+    // 限制百分比在0-100之間
+    calories_percent = calories_percent > 100 ? 100 : (calories_percent < 0 ? 0 : calories_percent);
+    steps_percent = steps_percent > 100 ? 100 : (steps_percent < 0 ? 0 : steps_percent);
+    distance_percent = distance_percent > 100 ? 100 : (distance_percent < 0 ? 0 : distance_percent);
+
+    // 更新圓環進度
+    if (lv_obj_is_valid(calories_ring))
+    {
+        lv_arc_set_value(calories_ring, calories_percent);
+        // 顯示今日卡路里數值
+        char calories_str[16];
+        snprintf(calories_str, sizeof(calories_str), "%.0f", calories);
+        lv_label_set_text(calories_ring_label, calories_str);
+        lv_obj_align_to(steps_ring_label, steps_ring_label_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
+    }
+
+    if (lv_obj_is_valid(steps_ring))
+    {
+        lv_arc_set_value(steps_ring, steps_percent);
+        // 顯示今日步數
+        char steps_str[16];
+        snprintf(steps_str, sizeof(steps_str), "%d", steps);
+        lv_label_set_text(steps_ring_label, steps_str);
+        lv_obj_align_to(steps_ring_label, steps_ring_label_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
+    }
+
+    if (lv_obj_is_valid(distance_ring))
+    {
+        lv_arc_set_value(distance_ring, distance_percent);
+        // 顯示今日距離
+        char distance_str[16];
+        snprintf(distance_str, sizeof(distance_str), "%.2f", distance);
+        lv_label_set_text(distance_ring_label, distance_str);
+        lv_obj_align_to(distance_ring_label, distance_ring_label_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
     }
 
     // 釋放歷史記憶體
@@ -896,9 +1017,10 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_t *list = lv_obj_create(list_container);
     lv_obj_set_size(list, LV_PCT(90), 466);
     lv_obj_align(list, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_opa(list, LV_OPA_0, 0);
+    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(list, 0, 0);
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
     lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_scroll_snap_y(list, LV_SCROLL_SNAP_CENTER);
     lv_obj_set_scroll_dir(list, LV_DIR_VER);
@@ -914,14 +1036,36 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(title_bg, LV_OPA_80, 0);
     lv_obj_align(title_bg, LV_ALIGN_TOP_MID, 0, 0);
 
-    lv_obj_t *title = lv_label_create(title_bg);
-    lv_obj_set_size(title, 466, 40);
-    lv_label_set_text(title, "Workout");
-    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(1)),
-                               0);
-    lv_obj_set_style_text_color(title, lv_color_hex(0x9EFE00), 0);
-    lv_obj_align(title, LV_ALIGN_CENTER, 0, 0);
+    // 創建標題容器用來放置愛心和心率
+    lv_obj_t *title_container = lv_obj_create(title_bg);
+    lv_obj_set_size(title_container, 466, 40);
+    lv_obj_set_style_bg_opa(title_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(title_container, 0, 0);
+    lv_obj_set_style_pad_all(title_container, 0, 0);
+    lv_obj_align(title_container, LV_ALIGN_CENTER, 0, 0);
+
+    // 創建愛心圖示
+    lv_obj_t *heart_icon = lv_img_create(title_container);
+    lv_img_set_src(heart_icon, &img_red_heart);
+    lv_obj_align(heart_icon, LV_ALIGN_CENTER, -30, 0);
+
+    // 設置愛心放大縮小動畫
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, heart_icon);
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_img_set_zoom);
+    lv_anim_set_values(&a, 75, 100);                      // 0.8 to 1.0 (204 to 256)
+    lv_anim_set_time(&a, 2000);                           // 1000 milliseconds
+    lv_anim_set_playback_time(&a, 2000);                   // 1000 milliseconds for playback
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE); // Infinite repeat
+    lv_anim_start(&a);
+
+    // 創建心率標籤並保存到全局UI結構體
+    ui.title_heart_rate_label = lv_label_create(title_container);
+    lv_label_set_text(ui.title_heart_rate_label, "--");
+    lv_obj_set_style_text_font(ui.title_heart_rate_label, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_color(ui.title_heart_rate_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_align_to(ui.title_heart_rate_label, heart_icon, LV_ALIGN_OUT_RIGHT_MID, -5, 0);
 
     // 添加運動項目到列表
     for (int i = 0; i < WORKOUT_COUNT; i++)
@@ -976,7 +1120,7 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     }
 
     lv_obj_t *workout_log_widget = lv_obj_create(list);
-    lv_obj_set_size(workout_log_widget, LV_PCT(100), 250);
+    lv_obj_set_size(workout_log_widget, 386, 300);
     lv_obj_set_style_radius(workout_log_widget, 40, 0);
     lv_obj_set_style_bg_color(workout_log_widget, lv_color_hex(0x1E1E1E), 0);
     lv_obj_set_style_bg_opa(workout_log_widget, LV_OPA_COVER, 0);
@@ -986,31 +1130,114 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_set_style_border_color(workout_log_widget, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(workout_log_widget, LV_OPA_50, 0);
 
-    lv_obj_t *log_icon = lv_img_create(workout_log_widget);
+    log_icon = lv_img_create(workout_log_widget);
     lv_img_set_src(log_icon, &img_workout_running);
     lv_img_set_zoom(log_icon, 128);
-    lv_obj_align(log_icon, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(log_icon, LV_ALIGN_TOP_LEFT, 35, 10);
 
     log_label = lv_label_create(workout_log_widget);
     lv_label_set_text(log_label, "本周 0 次運動");
     lv_obj_set_style_text_color(log_label, lv_color_white(), 0);
     lv_obj_set_style_text_font(log_label,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_align(log_label, LV_ALIGN_TOP_MID, 0, 50);
+    lv_obj_align_to(log_label, log_icon, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
 
     total_time = lv_label_create(workout_log_widget);
     lv_label_set_text(total_time, "0:00:00");
     lv_obj_set_style_text_color(total_time, lv_color_hex(0x40A6FF), 0);
     lv_obj_set_style_text_font(total_time,
                                LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_align_to(total_time, log_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
+    lv_obj_align(total_time, LV_ALIGN_TOP_MID, -85, 65);
+
+    total_calories_hint = lv_label_create(workout_log_widget);
+    lv_label_set_text(total_calories_hint, "kcal");
+    lv_obj_set_style_text_color(total_calories_hint, lv_color_hex(0xFF4089), 0);
+    lv_obj_set_style_text_font(total_calories_hint,
+                               LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
+    // lv_obj_align_to(total_calories_hint, total_calories, LV_ALIGN_OUT_RIGHT_MID, 5, 5);
+    lv_obj_align(total_calories_hint, LV_ALIGN_TOP_MID, 115, 82);
 
     total_calories = lv_label_create(workout_log_widget);
-    lv_label_set_text(total_calories, "0 KCAL");
+    lv_label_set_text(total_calories, "0");
     lv_obj_set_style_text_color(total_calories, lv_color_hex(0xFF4089), 0);
     lv_obj_set_style_text_font(total_calories,
                                LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_align_to(total_calories, total_time, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
+    lv_obj_align_to(total_calories,total_calories_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
+
+    lv_obj_t *activity_bg = lv_obj_create(workout_log_widget);
+    lv_obj_set_size(activity_bg, 384, 180);
+    lv_obj_align(activity_bg, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_opa(activity_bg, LV_OPA_0, 0);
+
+    // 在 activity_bg 上方加一條分隔線
+    lv_obj_t *divider = lv_obj_create(activity_bg);
+    lv_obj_set_size(divider, 384, 2);
+    lv_obj_set_style_bg_color(divider, lv_color_hex(0x444444), 0);
+    lv_obj_set_style_bg_opa(divider, LV_OPA_80, 0);
+    lv_obj_align(divider, LV_ALIGN_TOP_MID, 0, 0);
+
+    lv_obj_t *container_title = lv_label_create(activity_bg);
+    lv_label_set_text(container_title, "步數");
+    lv_obj_set_style_text_color(container_title, lv_color_white(), 0);
+    lv_obj_set_style_text_font(container_title,
+                               LV_EXT_FONT_GET(get_system_font_size(-2)), 0);
+    lv_obj_align(container_title, LV_ALIGN_TOP_MID, 0, 0);
+
+    // 創建活動圓環 - 在 widget 底部創建圓環容器
+    lv_obj_t *rings_container = lv_obj_create(activity_bg);
+    lv_obj_set_size(rings_container, 180, 180);
+    lv_obj_set_style_bg_opa(rings_container, LV_OPA_0, 0);
+    lv_obj_set_style_border_width(rings_container, 0, 0);
+    lv_obj_set_style_pad_all(rings_container, 0, 0);
+    lv_obj_clear_flag(rings_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(rings_container, LV_ALIGN_LEFT_MID, 10, 0);
+
+    // 創建三個圓環
+    calories_ring = create_ring(rings_container, 150, lv_palette_main(LV_PALETTE_RED), NULL, LV_ALIGN_CENTER, 0, 0);
+    steps_ring = create_ring(rings_container, 115, lv_palette_main(LV_PALETTE_GREEN), calories_ring, LV_ALIGN_CENTER, 0, 0);
+    distance_ring = create_ring(rings_container, 80, lv_palette_main(LV_PALETTE_BLUE), calories_ring, LV_ALIGN_CENTER, 0, 0);
+
+    calories_ring_label_hint = lv_label_create(activity_bg);
+    lv_label_set_text(calories_ring_label_hint, "kcal");
+    lv_obj_set_style_text_color(calories_ring_label_hint, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_set_style_text_font(calories_ring_label_hint,
+                               LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
+    lv_obj_align(calories_ring_label_hint, LV_ALIGN_RIGHT_MID, -23, -40);
+
+    calories_ring_label = lv_label_create(activity_bg);
+    lv_label_set_text(calories_ring_label, "0");
+    lv_obj_set_style_text_color(calories_ring_label, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_set_style_text_font(calories_ring_label,
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_align_to(calories_ring_label, calories_ring_label_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
+
+    steps_ring_label_hint = lv_label_create(activity_bg);
+    lv_label_set_text(steps_ring_label_hint, "steps");
+    lv_obj_set_style_text_color(steps_ring_label_hint, lv_palette_main(LV_PALETTE_GREEN), 0);
+    lv_obj_set_style_text_font(steps_ring_label_hint,
+                               LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
+    lv_obj_align(steps_ring_label_hint, LV_ALIGN_RIGHT_MID, -10, 0);
+
+    steps_ring_label = lv_label_create(activity_bg);
+    lv_label_set_text(steps_ring_label, "0");
+    lv_obj_set_style_text_color(steps_ring_label, lv_palette_main(LV_PALETTE_GREEN), 0);
+    lv_obj_set_style_text_font(steps_ring_label,
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_align_to(steps_ring_label, steps_ring_label_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
+
+    distance_ring_label_hint = lv_label_create(activity_bg);
+    lv_label_set_text(distance_ring_label_hint, "km");
+    lv_obj_set_style_text_color(distance_ring_label_hint, lv_palette_main(LV_PALETTE_BLUE), 0);
+    lv_obj_set_style_text_font(distance_ring_label_hint,
+                               LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
+    lv_obj_align(distance_ring_label_hint, LV_ALIGN_RIGHT_MID, -32, 40);
+
+    distance_ring_label = lv_label_create(activity_bg);
+    lv_label_set_text(distance_ring_label, "0");
+    lv_obj_set_style_text_color(distance_ring_label, lv_palette_main(LV_PALETTE_BLUE), 0);
+    lv_obj_set_style_text_font(distance_ring_label,
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_align_to(distance_ring_label, distance_ring_label_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
 
     lv_obj_scroll_to_view(workout_log_widget, LV_ANIM_OFF);
     
@@ -1193,6 +1420,13 @@ static void on_start(void)
 
 static void on_resume(void)
 {
+    // Set up heart rate monitoring
+    sensor_subscription_t sensor_subscription = (sensor_subscription_t){
+        .type = SENSOR_TYPE_HEART_RATE,
+        .status = true,
+    };
+    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
+    lvgl_msg_handler.handle_hr = ui_heart_rate_callback;
     set_scroll_segment_count(WORKOUT_COUNT +
                              1); // +2 for history and exercise screen
     set_prev_sensor_quat(0);
@@ -1216,6 +1450,11 @@ static void on_pause(void)
     {
         lvgl_msg_handler.handle_tap_indicator = NULL;
     }
+    sensor_subscription_t sensor_subscription = (sensor_subscription_t){
+        .type = SENSOR_TYPE_HEART_RATE,
+        .status = false,
+    };
+    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
     LOG_D("Exercise app paused");
 }
 

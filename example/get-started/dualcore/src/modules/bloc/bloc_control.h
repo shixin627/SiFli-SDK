@@ -112,6 +112,7 @@ extern "C"
         void (*bt_speaker_set_status)(bool status);
         void (*notify_bt_speaker_media_status)(bool status);
         void (*bt_speaker_set_volume)(uint8_t volume, bool notify);
+        void (*bt_phone_set_volume)(uint8_t volume);
         uint8_t (*bt_speaker_get_volume)(void);
         void (*bt_speaker_media_volume_up)(void);
         void (*bt_speaker_media_volume_down)(void);
