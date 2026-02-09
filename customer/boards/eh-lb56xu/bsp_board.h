@@ -219,8 +219,8 @@ extern int __bss_end;
 #define RGB_LED_CONTROL_PIN (121)   // PB25 (25+96=121)
 #define WS2812B_TIMING
 #define USING_LINEAR_MOTOR_0619
-#define WATCH_DISPLAY_REVERSE_180
-// #define WATCH_IMU_REVERSE_180 (1)
+// #define WATCH_DISPLAY_REVERSE_180
+#define WATCH_IMU_REVERSE_180 (1)
 // #define FRAME_BUFFER_IN_PSRAM
 #endif
 

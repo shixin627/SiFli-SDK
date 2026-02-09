@@ -147,7 +147,7 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
     // app_id_heart_rate,
     app_id_recorder,
 #ifdef APP_ID_ACTIVITY
-    app_id_activity,
+    // app_id_activity,
 #endif
     app_id_calendar,
 #ifdef APP_ID_TOUCHSCREEN
@@ -848,21 +848,23 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         lv_obj_set_style_translate_x(child, x_trans, LV_STATE_DEFAULT);
         lv_obj_mark_layout_as_dirty(child);
         static lv_coord_t last_y_diff[32] = {0}; // 假設最大32個app
-        static uint8_t last_opa[32] = {0};
+        static uint8_t last_brightness[32] = {255}; // 儲存上次的亮度值
         static uint8_t last_zoom[32] = {0};
         const lv_coord_t DIFF_THRESHOLD = 15; // 變化超過5才更新
 
         if (abs((int)y_diff - (int)last_y_diff[i]) > DIFF_THRESHOLD)
         {
             last_y_diff[i] = y_diff;
-            uint8_t opa = 0;
+            // 計算亮度值：選中時全白(255)，遠離時變暗(最暗到80)
+            uint8_t brightness = 0;
             if (y_diff >= 200)
             {
-                opa = 0;
+                brightness = 80; // 最暗的灰色
             }
             else
             {
-                opa = 255 - (y_diff * 255 / 200);
+                // 從白色(255)漸變到暗灰(80)
+                brightness = 255 - (y_diff * (255 - 80) / 200);
             }
             // uint8_t zoom;
             // // 讓 zoom 隨 y_diff 線性變化，y_diff 越大 zoom 越小
@@ -873,10 +875,12 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             //     zoom = 255*1.2 - (y_diff * (255*1.2 - (uint8_t)(255 * 0.7)) /
             //     200);
             // }
-            if (opa != last_opa[i])
+            if (brightness != last_brightness[i])
             {
-                lv_obj_set_style_text_opa(app_label[i], opa, 0);
-                last_opa[i] = opa;
+                // 使用顏色深淺代替透明度，創建從白色到灰色的漸變
+                lv_color_t text_color = lv_color_make(brightness, brightness, brightness);
+                lv_obj_set_style_text_color(app_label[i], text_color, 0);
+                last_brightness[i] = brightness;
             }
             // if (zoom != last_zoom[i]) {
             //     // lv_img_set_zoom(p_app_list_layout->indicator_dots[i],
