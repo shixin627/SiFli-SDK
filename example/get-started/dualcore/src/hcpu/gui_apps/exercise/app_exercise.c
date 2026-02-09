@@ -99,7 +99,8 @@ typedef struct
     lv_obj_t *workout_screen;
     lv_obj_t *timer_label; // 计时标签
     lv_obj_t *metrics_container;
-    lv_obj_t *heart_rate_label; // 心率标签
+    lv_obj_t *heart_rate_label; // 心率标签(运动界面)
+    lv_obj_t *title_heart_rate_label; // 心率标签(标题栏)
     lv_obj_t *calories_label;   // 卡路里标签
     lv_obj_t *pause_button;     // 暂停按钮
     lv_obj_t *stop_button;      // 停止按钮
@@ -241,13 +242,19 @@ static void ui_heart_rate_callback(int hr)
     // if (hr != current_session.heart_rate)
     {
         LOG_D("[UI]Heart rate changed: %d", hr);
+        char bpm_str[16];
+        snprintf(bpm_str, sizeof(bpm_str), "%d", current_session.heart_rate);
+
+        // Update workout screen heart rate label
         if (lv_obj_is_valid(ui.heart_rate_label))
         {
-            // Update UI display
-            char bpm_str[16];
-            snprintf(bpm_str, sizeof(bpm_str), "%d",
-                     current_session.heart_rate);
             lv_label_set_text(ui.heart_rate_label, bpm_str);
+        }
+
+        // Update title heart rate label
+        if (lv_obj_is_valid(ui.title_heart_rate_label))
+        {
+            lv_label_set_text(ui.title_heart_rate_label, bpm_str);
         }
         // refresh_heartrate_widget(hr);
     }
@@ -309,14 +316,14 @@ static void start_workout_session(workout_type_t type)
     // Start the timer
     rt_timer_start(current_session.workout_timer);
 
-    // Set up heart rate monitoring
-    sensor_subscription_t sensor_subscription = (sensor_subscription_t){
-        .type = SENSOR_TYPE_HEART_RATE,
-        .status = true,
-    };
-    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
+    // // Set up heart rate monitoring
+    // sensor_subscription_t sensor_subscription = (sensor_subscription_t){
+    //     .type = SENSOR_TYPE_HEART_RATE,
+    //     .status = true,
+    // };
+    // watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
     app_exercise_data_ctx.active = true;
-    lvgl_msg_handler.handle_hr = ui_heart_rate_callback;
+    // lvgl_msg_handler.handle_hr = ui_heart_rate_callback;
 
     // Switch to workout view
     show_workout_view();
@@ -437,11 +444,11 @@ int stop_exercise(void)
 
     // Disable heart rate monitoring mode
     app_exercise_data_ctx.active = false;
-    sensor_subscription_t sensor_subscription = (sensor_subscription_t){
-        .type = SENSOR_TYPE_HEART_RATE,
-        .status = false,
-    };
-    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
+    // sensor_subscription_t sensor_subscription = (sensor_subscription_t){
+    //     .type = SENSOR_TYPE_HEART_RATE,
+    //     .status = false,
+    // };
+    // watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
 
     return ret;
 }
@@ -1029,14 +1036,36 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(title_bg, LV_OPA_80, 0);
     lv_obj_align(title_bg, LV_ALIGN_TOP_MID, 0, 0);
 
-    lv_obj_t *title = lv_label_create(title_bg);
-    lv_obj_set_size(title, 466, 40);
-    lv_label_set_text(title, "Workout");
-    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(1)),
-                               0);
-    lv_obj_set_style_text_color(title, lv_color_hex(0x9EFE00), 0);
-    lv_obj_align(title, LV_ALIGN_CENTER, 0, 0);
+    // 創建標題容器用來放置愛心和心率
+    lv_obj_t *title_container = lv_obj_create(title_bg);
+    lv_obj_set_size(title_container, 466, 40);
+    lv_obj_set_style_bg_opa(title_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(title_container, 0, 0);
+    lv_obj_set_style_pad_all(title_container, 0, 0);
+    lv_obj_align(title_container, LV_ALIGN_CENTER, 0, 0);
+
+    // 創建愛心圖示
+    lv_obj_t *heart_icon = lv_img_create(title_container);
+    lv_img_set_src(heart_icon, &img_red_heart);
+    lv_obj_align(heart_icon, LV_ALIGN_CENTER, -30, 0);
+
+    // 設置愛心放大縮小動畫
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, heart_icon);
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_img_set_zoom);
+    lv_anim_set_values(&a, 75, 100);                      // 0.8 to 1.0 (204 to 256)
+    lv_anim_set_time(&a, 2000);                           // 1000 milliseconds
+    lv_anim_set_playback_time(&a, 2000);                   // 1000 milliseconds for playback
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE); // Infinite repeat
+    lv_anim_start(&a);
+
+    // 創建心率標籤並保存到全局UI結構體
+    ui.title_heart_rate_label = lv_label_create(title_container);
+    lv_label_set_text(ui.title_heart_rate_label, "--");
+    lv_obj_set_style_text_font(ui.title_heart_rate_label, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_color(ui.title_heart_rate_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_align_to(ui.title_heart_rate_label, heart_icon, LV_ALIGN_OUT_RIGHT_MID, -5, 0);
 
     // 添加運動項目到列表
     for (int i = 0; i < WORKOUT_COUNT; i++)
@@ -1377,6 +1406,13 @@ static void on_start(void)
 
 static void on_resume(void)
 {
+    // Set up heart rate monitoring
+    sensor_subscription_t sensor_subscription = (sensor_subscription_t){
+        .type = SENSOR_TYPE_HEART_RATE,
+        .status = true,
+    };
+    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
+    lvgl_msg_handler.handle_hr = ui_heart_rate_callback;
     set_scroll_segment_count(WORKOUT_COUNT +
                              1); // +2 for history and exercise screen
     set_prev_sensor_quat(0);
@@ -1400,6 +1436,11 @@ static void on_pause(void)
     {
         lvgl_msg_handler.handle_tap_indicator = NULL;
     }
+    sensor_subscription_t sensor_subscription = (sensor_subscription_t){
+        .type = SENSOR_TYPE_HEART_RATE,
+        .status = false,
+    };
+    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
     LOG_D("Exercise app paused");
 }
 
