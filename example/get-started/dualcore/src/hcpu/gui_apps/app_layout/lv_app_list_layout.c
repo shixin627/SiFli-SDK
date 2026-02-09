@@ -147,7 +147,7 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
     // app_id_heart_rate,
     app_id_recorder,
 #ifdef APP_ID_ACTIVITY
-    // app_id_activity,
+    app_id_activity,
 #endif
     app_id_calendar,
 #ifdef APP_ID_TOUCHSCREEN
