@@ -144,10 +144,10 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
 // app_id_calculator,
 #endif
     app_id_exercise,
-    app_id_heart_rate,
+    // app_id_heart_rate,
     app_id_recorder,
 #ifdef APP_ID_ACTIVITY
-    app_id_activity,
+    // app_id_activity,
 #endif
     app_id_calendar,
 #ifdef APP_ID_TOUCHSCREEN
@@ -164,7 +164,7 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
 // app_id_iot_gate,
 #endif
 #ifdef APP_ID_GAME_DINOSAUR
-    app_id_game_dinosaur,
+    // app_id_game_dinosaur,
 #endif
 #ifdef APP_ID_MEDIA
     app_id_media,

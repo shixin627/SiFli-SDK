@@ -993,6 +993,7 @@ static int bloc_control_provider_register(void)
 	control_provider.notify_bt_speaker_media_status = notify_bt_speaker_media_status;
 	control_provider.bt_speaker_set_volume = bt_speaker_set_volumn_smoothly;
 	control_provider.bt_speaker_get_volume = bt_speaker_get_volume_percent;
+	control_provider.bt_phone_set_volume = bt_speaker_set_volume_percent;
 	control_provider.bt_speaker_media_volume_up = bt_speaker_media_volume_up;
 	control_provider.bt_speaker_media_volume_down = bt_speaker_media_volume_down;
 	control_provider.ble_hid_play_pause = ble_hid_play_pause;

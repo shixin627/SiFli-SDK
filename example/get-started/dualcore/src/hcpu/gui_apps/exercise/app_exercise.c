@@ -605,9 +605,11 @@ static void history_list_event_cb(lv_event_t *e)
     }
 }
 
+static lv_obj_t *log_icon = NULL;
 static lv_obj_t *log_label = NULL;
 static lv_obj_t *total_time = NULL;
 static lv_obj_t *total_calories = NULL;
+static lv_obj_t *total_calories_hint = NULL;
 static void statistics_exercise_data(void)
 {
     workout_history_t *history = get_workout_history();
@@ -663,7 +665,8 @@ static void statistics_exercise_data(void)
         snprintf(log_label_str, sizeof(log_label_str), "本周 %d 次運動",
                  week_count);
         lv_label_set_text(log_label, log_label_str);
-        lv_obj_align(log_label, LV_ALIGN_TOP_MID, 0, 50);
+        // lv_obj_align(log_label, LV_ALIGN_TOP_MID, 0, 50);
+        lv_obj_align_to(log_label, log_icon, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
     }
 
     if (lv_obj_is_valid(total_time))
@@ -673,16 +676,16 @@ static void statistics_exercise_data(void)
                  week_total_duration / 3600, (week_total_duration % 3600) / 60,
                  week_total_duration % 60);
         lv_label_set_text(total_time, time_str);
-        lv_obj_align_to(total_time, log_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
+        lv_obj_align(total_time, LV_ALIGN_TOP_MID, -85, 68);
     }
 
     if (!lv_obj_is_valid(total_calories))
     {
         char cal_str[16];
-        snprintf(cal_str, sizeof(cal_str), "%d KCAL", week_total_calories);
+        snprintf(cal_str, sizeof(cal_str), "%d", week_total_calories);
         lv_label_set_text(total_calories, cal_str);
-        lv_obj_align_to(total_calories, total_time, LV_ALIGN_OUT_BOTTOM_MID, 0,
-                        20);
+        // lv_obj_align(total_calories, LV_ALIGN_TOP_MID, 85, 68);
+        lv_obj_align_to(total_calories,total_calories_hint, LV_ALIGN_OUT_LEFT_MID, 10, -10);
         LOG_D("This week workout count: %d, total duration: %d seconds, total "
               "calories: %d",
               week_count, week_total_duration, week_total_calories);
@@ -896,9 +899,10 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_t *list = lv_obj_create(list_container);
     lv_obj_set_size(list, LV_PCT(90), 466);
     lv_obj_align(list, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_opa(list, LV_OPA_0, 0);
+    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(list, 0, 0);
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
     lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_scroll_snap_y(list, LV_SCROLL_SNAP_CENTER);
     lv_obj_set_scroll_dir(list, LV_DIR_VER);
@@ -976,7 +980,7 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     }
 
     lv_obj_t *workout_log_widget = lv_obj_create(list);
-    lv_obj_set_size(workout_log_widget, LV_PCT(100), 250);
+    lv_obj_set_size(workout_log_widget, 386, 300);
     lv_obj_set_style_radius(workout_log_widget, 40, 0);
     lv_obj_set_style_bg_color(workout_log_widget, lv_color_hex(0x1E1E1E), 0);
     lv_obj_set_style_bg_opa(workout_log_widget, LV_OPA_COVER, 0);
@@ -986,31 +990,41 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_set_style_border_color(workout_log_widget, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(workout_log_widget, LV_OPA_50, 0);
 
-    lv_obj_t *log_icon = lv_img_create(workout_log_widget);
+    log_icon = lv_img_create(workout_log_widget);
     lv_img_set_src(log_icon, &img_workout_running);
     lv_img_set_zoom(log_icon, 128);
-    lv_obj_align(log_icon, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(log_icon, LV_ALIGN_TOP_LEFT, 35, 10);
 
     log_label = lv_label_create(workout_log_widget);
     lv_label_set_text(log_label, "本周 0 次運動");
     lv_obj_set_style_text_color(log_label, lv_color_white(), 0);
     lv_obj_set_style_text_font(log_label,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_align(log_label, LV_ALIGN_TOP_MID, 0, 50);
+    lv_obj_align_to(log_label, log_icon, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
 
     total_time = lv_label_create(workout_log_widget);
     lv_label_set_text(total_time, "0:00:00");
     lv_obj_set_style_text_color(total_time, lv_color_hex(0x40A6FF), 0);
     lv_obj_set_style_text_font(total_time,
                                LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_align_to(total_time, log_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
+    lv_obj_align(total_time, LV_ALIGN_TOP_MID, -85, 68);
+
+    total_calories_hint = lv_label_create(workout_log_widget);
+    lv_label_set_text(total_calories_hint, "KCAL");
+    lv_obj_set_style_text_color(total_calories_hint, lv_color_hex(0xFF4089), 0);
+    lv_obj_set_style_text_font(total_calories_hint,
+                               LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
+    // lv_obj_align_to(total_calories_hint, total_calories, LV_ALIGN_OUT_RIGHT_MID, 5, 5);
+    lv_obj_align(total_calories_hint, LV_ALIGN_TOP_MID, 115, 85);
 
     total_calories = lv_label_create(workout_log_widget);
-    lv_label_set_text(total_calories, "0 KCAL");
+    lv_label_set_text(total_calories, "0");
     lv_obj_set_style_text_color(total_calories, lv_color_hex(0xFF4089), 0);
     lv_obj_set_style_text_font(total_calories,
                                LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_align_to(total_calories, total_time, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
+    lv_obj_align_to(total_calories,total_calories_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
+
+
 
     lv_obj_scroll_to_view(workout_log_widget, LV_ANIM_OFF);
     

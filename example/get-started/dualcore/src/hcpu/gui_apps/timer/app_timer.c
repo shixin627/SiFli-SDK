@@ -635,7 +635,7 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
     }
 
     // 滾動到預設位置
-    selected_timer_index = 3;
+    selected_timer_index = option_count-1;//3
     old_selected_timer_index = -1;
     if (option_count > selected_timer_index)
     {

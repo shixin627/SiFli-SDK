@@ -183,8 +183,8 @@ static void bar_event_cb(lv_event_t *e)
             rel_x = w;
 
         lv_coord_t value = (rel_x * (max - min)) / w + min;
-        if (value < 5)
-            value = 5;
+        if (value < 0)
+            value = 0;
         lv_bar_set_value(bar, value, LV_ANIM_OFF);
         uint16_t brightness = lv_bar_get_value(bar);
         control_provider.bt_speaker_set_volume(brightness, true);
@@ -871,6 +871,16 @@ static lv_obj_t *dial_widget_btn_prev_bg = NULL;
 static lv_obj_t *dial_widget_btn_next_bg = NULL;
 static lv_obj_t *dial_widget_btn_play_pause = NULL;
 static lv_obj_t *dial_widget_btn_play_pause_icon = NULL;
+static lv_obj_t *dial_widget_vol_bar = NULL;
+
+static void set_vol_bar_value(void *param)
+{
+    if (lv_obj_is_valid(dial_widget_vol_bar))
+    {
+        uint8_t volume = *(uint8_t *)param;
+        lv_bar_set_value(dial_widget_vol_bar, volume, LV_ANIM_ON);
+    }
+}
 
 static lv_obj_t *dial_media_title = NULL;
 static lv_obj_t *dial_media_img_bg = NULL;
@@ -972,22 +982,23 @@ void lv_dial_media_widget_builder(lv_obj_t *parent)
                     widget_zoom);
     lv_obj_set_style_img_opa(
         lv_obj_get_child(dial_widget_btn_play_pause_icon, 0), LV_OPA_70, 0);
-    lv_obj_t *bar = lv_bar_create(parent); // Create a progress bar
-    lv_bar_set_range(bar, 0, 100);         // Set the range of the progress bar
-    lv_obj_set_width(bar, 316);
-    lv_obj_set_height(bar, 32);
-    lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 5);
-    lv_obj_set_style_bg_color(bar, lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(bar, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(bar, LV_OPA_20, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(bar, 12, LV_PART_MAIN);
-    lv_bar_set_value(bar, SkaiWatchSys.brightness, LV_ANIM_ON);
-    lv_obj_add_event_cb(bar, bar_event_cb, LV_EVENT_ALL, NULL);
-    lv_obj_t *icon = lv_img_create(bar);
+    dial_widget_vol_bar = lv_bar_create(parent); // Create a progress bar
+    lv_bar_set_range(dial_widget_vol_bar, 0, 100);         // Set the range of the progress bar
+    lv_obj_set_width(dial_widget_vol_bar, 316);
+    lv_obj_set_height(dial_widget_vol_bar, 32);
+    lv_obj_align(dial_widget_vol_bar, LV_ALIGN_TOP_MID, 0, 5);
+    lv_obj_set_style_bg_color(dial_widget_vol_bar, lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(dial_widget_vol_bar, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(dial_widget_vol_bar, LV_OPA_20, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(dial_widget_vol_bar, 12, LV_PART_MAIN);
+    lv_bar_set_value(dial_widget_vol_bar, SkaiWatchSys.brightness, LV_ANIM_ON);
+    lv_obj_add_event_cb(dial_widget_vol_bar, bar_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_t *icon = lv_img_create(dial_widget_vol_bar);
     lv_img_set_src(icon, &volume_up);
     lv_img_set_zoom(icon, 255 * 30 / 85);
     lv_obj_align(icon, LV_ALIGN_CENTER, 0, 0);
     dial_media_widget_init();
+    lvgl_msg_handler.handle_media_volume = set_vol_bar_value;
 }
 
 static void handle_dial_media_widget_play_state(void *param)
@@ -1049,6 +1060,7 @@ void lv_dial_media_header_builder(lv_obj_t *parent)
                                    0);
     lv_obj_set_style_outline_opa(dial_media_header_bg, LV_OPA_20, 0);
     lv_obj_align(dial_media_header_bg, LV_ALIGN_TOP_MID, 0, 27);
+    lv_obj_add_flag(dial_media_header_bg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_t *dial_media_header_bg_mask = lv_obj_create(dial_media_header_bg);
     lv_obj_set_size(dial_media_header_bg_mask, 252, 60);
     lv_obj_set_style_bg_color(dial_media_header_bg_mask, lv_color_hex(0xFFFFFF),
