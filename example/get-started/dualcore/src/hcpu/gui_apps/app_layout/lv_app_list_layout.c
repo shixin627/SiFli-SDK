@@ -427,7 +427,7 @@ static void update_indicator_dots_position(int input_value)
             distance_angle = 180.0f - distance_angle;
         }
 
-        float max_distance_angle = 30.0f;
+        float max_distance_angle = 25.0f;
         float ratio = 0.0f;
 
         if (distance_angle <= max_distance_angle)
@@ -875,7 +875,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             //     zoom = 255*1.2 - (y_diff * (255*1.2 - (uint8_t)(255 * 0.7)) /
             //     200);
             // }
-            if (brightness != last_brightness[i])
+            if (brightness != last_brightness[i] )
             {
                 // 使用顏色深淺代替透明度，創建從白色到灰色的漸變
                 lv_color_t text_color = lv_color_make(brightness, brightness, brightness);
