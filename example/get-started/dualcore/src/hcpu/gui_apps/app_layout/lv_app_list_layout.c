@@ -875,7 +875,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             //     zoom = 255*1.2 - (y_diff * (255*1.2 - (uint8_t)(255 * 0.7)) /
             //     200);
             // }
-            if (brightness != last_brightness[i])
+            if (brightness != last_brightness[i] )
             {
                 // 使用顏色深淺代替透明度，創建從白色到灰色的漸變
                 lv_color_t text_color = lv_color_make(brightness, brightness, brightness);
@@ -956,6 +956,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 // lv_img_set_zoom(p_app_list_layout->indicator_dots[i],
                 //                 256 * 0.75);
                 lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
+                lv_obj_set_style_text_color(app_label[i], lv_color_hex(0x000000), 0);
                 // 將非選中項的文本標籤恢復為正常字號
                 // lv_obj_set_style_text_font(
                 //     app_label[i], LV_EXT_FONT_GET(get_system_font_size(0)),

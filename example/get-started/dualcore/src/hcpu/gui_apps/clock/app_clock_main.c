@@ -562,21 +562,22 @@ static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
     dial_weather_widget_deinit();
     dial_widget = lv_obj_create(parent);
     lv_obj_set_style_radius(dial_widget, 25, 0);
-    lv_obj_align(dial_widget, LV_ALIGN_CENTER, 0, 115);
+    lv_obj_align(dial_widget, LV_ALIGN_CENTER, 0, 99);
     lv_obj_set_size(dial_widget, 330, 150);
     lv_obj_set_style_bg_color(dial_widget, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(dial_widget, LV_OPA_80, 0);
+    lv_obj_set_style_bg_opa(dial_widget, LV_OPA_0, 0);
     lv_obj_set_style_border_width(dial_widget, 2, 0);
     lv_obj_set_style_border_color(dial_widget, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(dial_widget, LV_OPA_10, 0);
+    lv_obj_set_style_border_opa(dial_widget, LV_OPA_0, 0);
     lv_obj_set_style_clip_corner(dial_widget, true, 0);     // 啟用裁切
     lv_obj_clear_flag(dial_widget, LV_OBJ_FLAG_SCROLLABLE); // 禁用滾動
 
     dial_widget_img_bg = lv_img_create(dial_widget);
     lv_obj_set_style_radius(dial_widget_img_bg, 50, LV_PART_MAIN);
-    lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
+    lv_obj_set_style_bg_opa(dial_widget_img_bg, LV_OPA_0, 0);
+    // lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
     lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-    lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+    lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -99);
     if (app_id == app_id_calendar)
     {
         request_calendar_on_mobile(false);
@@ -662,7 +663,7 @@ static void clock_change_page(char *clk_id)
     {
         if (lv_obj_is_valid(dial_widget_img_bg))
         {
-            lv_img_set_src(dial_widget_img_bg, &gaus_clock1_bg);
+            // lv_img_set_src(dial_widget_img_bg, &gaus_clock1_bg);
             lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
             lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
         }
@@ -672,7 +673,7 @@ static void clock_change_page(char *clk_id)
     {
         if (lv_obj_is_valid(dial_widget_img_bg))
         {
-            lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
+            // lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
             lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
             lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
         }
@@ -682,7 +683,7 @@ static void clock_change_page(char *clk_id)
     {
         if (lv_obj_is_valid(dial_widget_img_bg))
         {
-            lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
+            // lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
             lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
             lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
         }
@@ -692,7 +693,7 @@ static void clock_change_page(char *clk_id)
     {
         if (lv_obj_is_valid(dial_widget_img_bg))
         {
-            lv_img_set_src(dial_widget_img_bg, &gaus_clock4_bg);
+            // lv_img_set_src(dial_widget_img_bg, &gaus_clock4_bg);
             lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
             lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
         }
@@ -702,7 +703,7 @@ static void clock_change_page(char *clk_id)
     {
         if (lv_obj_is_valid(dial_widget_img_bg))
         {
-            lv_img_set_src(dial_widget_img_bg, GAUS_CLOCK5_BG);
+            // lv_img_set_src(dial_widget_img_bg, GAUS_CLOCK5_BG);
             lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
             lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
         }
@@ -1466,8 +1467,10 @@ lv_obj_t *lv_home_listview_layout_create(lv_obj_t *parent)
     rt_list_init(&p_app_clock_main->list);
 
 #if 1
-    extern void app_clock_digital_elegant_register(void);
-    app_clock_digital_elegant_register();
+    // extern void app_clock_digital_elegant_register(void);
+    // app_clock_digital_elegant_register();
+    extern void app_clock_earth_digital_register(void);
+    app_clock_earth_digital_register();
 #endif
 #ifdef PKG_USING_FFMPEG
     app_clock_video_audio_register();
