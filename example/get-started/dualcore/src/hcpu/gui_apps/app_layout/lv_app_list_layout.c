@@ -859,12 +859,12 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             uint8_t brightness = 0;
             if (y_diff >= 200)
             {
-                brightness = 80; // 最暗的灰色
+                brightness = 0; // 最暗的灰色
             }
             else
             {
                 // 從白色(255)漸變到暗灰(80)
-                brightness = 255 - (y_diff * (255 - 80) / 200);
+                brightness = 255 - (y_diff * (255 - 0) / 200);
             }
             // uint8_t zoom;
             // // 讓 zoom 隨 y_diff 線性變化，y_diff 越大 zoom 越小
