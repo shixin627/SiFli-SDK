@@ -1453,14 +1453,14 @@ lv_obj_t *lv_home_listview_layout_create(lv_obj_t *parent)
     memset(p_app_clock_main, 0, sizeof(app_clock_main_t));
     rt_list_init(&p_app_clock_main->list);
 
-#if 0
+#if 1
     extern void app_clock_digital_elegant_register(void);
     app_clock_digital_elegant_register();
 #endif
 #ifdef PKG_USING_FFMPEG
     app_clock_video_audio_register();
 #endif /* PKG_USING_FFMPEG */
-    gui_script_watch_face_register();
+    // gui_script_watch_face_register();
 
 #ifdef RT_USING_XIP_MODULE
     app_clock_load_dyn_wf();
