@@ -1855,6 +1855,7 @@ rt_int32_t notification_on_deinit(void)
 	return RT_EOK;
 }
 
+#ifdef APP_ID_MESSAGE_LIST
 static void msg_handler(gui_app_msg_type_t msg, void *param)
 {
 	switch (msg)
@@ -1886,4 +1887,5 @@ static int app_main(intent_t i)
 	return 0;
 }
 BUILTIN_APP_EXPORT(LV_EXT_STR_ID(notification), SKAIWALKICON, APP_ID_MESSAGE_LIST, app_main);
+#endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

@@ -114,9 +114,9 @@ typedef struct
  */
 typedef struct
 {
-    lv_obj_t *clock_container; //!< container for current clock
-    rt_uint32_t app_clock_list_len;   //!< clock list length
-    rt_list_t list;                   //!< head of all clocks list
+    lv_obj_t *clock_container;      //!< container for current clock
+    rt_uint32_t app_clock_list_len; //!< clock list length
+    rt_list_t list;                 //!< head of all clocks list
 
     rt_timer_t soft_timer; //!<  template vaiable for simulator
     lv_obj_t *app_list_time_h;
@@ -152,7 +152,6 @@ void set_app_list_time_opa(uint8_t opa)
 }
 
 static lv_obj_t *charge_icon_obj = NULL;
-
 
 void set_app_list_battery_opa(uint8_t opa)
 {
@@ -389,7 +388,11 @@ lv_obj_t *gui_app_get_clock_parent(void)
 }
 
 static void show_dial_widget_select_list(lv_obj_t *parent);
+#ifdef APP_ID_MEDIA
 static uint8_t dial_widget_app_id = app_id_media;
+#else
+static uint8_t dial_widget_app_id = app_id_calendar;
+#endif
 static bool edit_mode = false;
 
 void dial_widget_event(lv_event_t *e)
@@ -439,7 +442,7 @@ void dial_widget_event(lv_event_t *e)
     case LV_EVENT_RELEASED:
     {
         LOG_D("dial_widget_event LV_EVENT_RELEASED:%d,%d",
-              dial_widget_press_valid,edit_mode);
+              dial_widget_press_valid, edit_mode);
         if (dial_widget_press_valid)
         {
             dial_widget_press_valid = false;
@@ -452,9 +455,11 @@ void dial_widget_event(lv_event_t *e)
                 case app_id_calendar:
                     gui_app_run(APP_ID_CALENDAR);
                     break;
+#ifdef APP_ID_MEDIA
                 case app_id_media:
                     gui_app_run(APP_ID_MEDIA);
                     break;
+#endif
                 case app_id_weather:
                     gui_app_run(APP_ID_WEATHER);
                     break;
@@ -530,10 +535,12 @@ static void show_dial_widget_select_list(lv_obj_t *parent)
     lv_obj_add_event_cb(btn_calendar, dial_widget_select_event_cb,
                         LV_EVENT_CLICKED, (void *)app_id_calendar);
 
+#ifdef APP_ID_MEDIA
     lv_obj_t *btn_media =
         lv_list_add_btn(dial_widget_select_list, NULL, "Media");
     lv_obj_add_event_cb(btn_media, dial_widget_select_event_cb,
                         LV_EVENT_CLICKED, (void *)app_id_media);
+#endif
 
     lv_obj_t *btn_weather =
         lv_list_add_btn(dial_widget_select_list, NULL, "Weather");
@@ -562,7 +569,7 @@ static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
     lv_obj_set_style_border_width(dial_widget, 2, 0);
     lv_obj_set_style_border_color(dial_widget, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(dial_widget, LV_OPA_10, 0);
-    lv_obj_set_style_clip_corner(dial_widget, true, 0); // 啟用裁切
+    lv_obj_set_style_clip_corner(dial_widget, true, 0);     // 啟用裁切
     lv_obj_clear_flag(dial_widget, LV_OBJ_FLAG_SCROLLABLE); // 禁用滾動
 
     dial_widget_img_bg = lv_img_create(dial_widget);
@@ -575,13 +582,13 @@ static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
         request_calendar_on_mobile(false);
         lv_dial_calendar_widget_builder(dial_widget);
         lv_obj_add_event_cb(dial_widget, dial_widget_event, LV_EVENT_ALL, NULL);
-        
     }
+#ifdef APP_ID_MEDIA
     else if (app_id == app_id_media)
     {
-
         lv_dial_media_widget_builder(dial_widget);
     }
+#endif
     else if (app_id == app_id_weather)
     {
         request_weather_within_six_hours(false);
@@ -595,10 +602,12 @@ static void swich_dial_widget_deinit(uint8_t app_id)
     {
         dial_calendar_widget_deinit();
     }
+#ifdef APP_ID_MEDIA
     else if (app_id == app_id_media)
     {
         dial_media_widget_deinit();
     }
+#endif
     else if (app_id == app_id_weather)
     {
         dial_weather_widget_deinit();
@@ -1300,7 +1309,6 @@ static void battery_status_indicator_builder(lv_obj_t *parent)
     lvgl_msg_handler.handle_charge_status = refresh_charge_icon;
 }
 
-
 static void app_clock_main_init(lv_obj_t *scr)
 {
     lv_coord_t scr_hor_res, scr_ver_res;
@@ -1311,12 +1319,16 @@ static void app_clock_main_init(lv_obj_t *scr)
 
     // Create single container for clock
     p_app_clock_main->clock_container = lv_obj_create(scr);
-    lv_obj_set_size(p_app_clock_main->clock_container, scr_hor_res, scr_ver_res);
+    lv_obj_set_size(p_app_clock_main->clock_container, scr_hor_res,
+                    scr_ver_res);
     lv_obj_set_style_bg_opa(p_app_clock_main->clock_container, LV_OPA_TRANSP,
                             LV_PART_MAIN);
-    lv_obj_set_style_border_width(p_app_clock_main->clock_container, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(p_app_clock_main->clock_container, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(p_app_clock_main->clock_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_border_width(p_app_clock_main->clock_container, 0,
+                                  LV_PART_MAIN);
+    lv_obj_set_style_pad_all(p_app_clock_main->clock_container, 0,
+                             LV_PART_MAIN);
+    lv_obj_clear_flag(p_app_clock_main->clock_container,
+                      LV_OBJ_FLAG_SCROLLABLE);
 
     // Set all clocks to use the same parent
     rt_list_t *pos;
@@ -1327,7 +1339,7 @@ static void app_clock_main_init(lv_obj_t *scr)
     }
 
     // Initialize media header
-    extern void lv_dial_media_header_builder(lv_obj_t *parent);
+    extern void lv_dial_media_header_builder(lv_obj_t * parent);
     lv_dial_media_header_builder(scr);
 
 #ifdef BSP_USING_UI_HANDLER
@@ -1517,7 +1529,6 @@ rt_int32_t clock_on_pause(void)
     LOG_D("clock_on_pause");
     return RT_EOK;
 }
-
 
 void clock_on_stop(void)
 {

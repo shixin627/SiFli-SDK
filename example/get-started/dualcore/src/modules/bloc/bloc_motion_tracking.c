@@ -1467,13 +1467,13 @@ static bool can_open_ai_interface(void)
     // Check if the AI interface can be opened
     if (is_at_home() || is_at_control_center() || is_at_mouse_mode() ||
         ai_interface_lock_flag || gui_app_is_actived(APP_ID_FLASHLIGHT) ||
-        gui_app_is_actived(APP_ID_CONTROL_APP) ||
-        gui_app_is_actived(APP_ID_MEDIA) || gui_app_is_actived(APP_ID_TIMER) ||
+        gui_app_is_actived(APP_ID_TIMER) ||
         gui_app_is_actived(APP_ID_MOUSE) ||
         gui_app_is_actived(APP_ID_EXERCISE) ||
         gui_app_is_actived(APP_ID_GESTURE) ||
         gui_app_is_actived(APP_ID_RECORDER) ||
-        gui_app_is_actived(APP_ID_BATTERY) ||
+        // gui_app_is_actived(APP_ID_BATTERY) ||
+        // gui_app_is_actived(APP_ID_MEDIA) || 
         (!is_ai_open_mic && app_voice_get_listening_status()))
     {
         return false;

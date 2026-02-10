@@ -74,8 +74,6 @@
     #include "ui_handler.h"
 #endif
 
-#ifdef APP_ID_MEDIA
-
 LV_IMG_DECLARE(img_media_ellipse);
 LV_IMG_DECLARE(img_media_play);
 LV_IMG_DECLARE(img_media_pause);
@@ -1587,6 +1585,8 @@ void media_on_stop(void)
     lvgl_msg_handler.handle_media_control = NULL;
     lvgl_msg_handler.handle_app_media_img = NULL;
 }
+
+#ifdef APP_ID_MEDIA
 
 static void msg_handler(gui_app_msg_type_t msg, void *param)
 {
