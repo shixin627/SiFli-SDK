@@ -72,7 +72,7 @@
 #endif
 
 #define DBG_TAG "app.list.layout"
-#define DBG_LVL DBG_LOG
+#define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
 #define APP_ID "app_list"
@@ -167,7 +167,7 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
     // app_id_game_dinosaur,
 #endif
 #ifdef APP_ID_MEDIA
-    app_id_media,
+    // app_id_media,
 #endif
 #ifdef APP_ID_NOTE_CHATROOM
 // app_id_note,
@@ -942,11 +942,15 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             lv_obj_t *child = obj->spec_attr->children[i];
             if (i == selected_item_index)
             {
-                // LOG_D("Selected item index: %d", i);
+                LOG_D("Selected item index: %d", i);
                 // lv_img_set_zoom(p_app_list_layout->indicator_dots[i], 256);
                 // selected_label = lv_obj_get_child(child, 0);
                 lv_obj_clear_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
-                lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
+                if (APP_LIST_ITEMS_DEFINITION[i] != app_id_note &&
+                    APP_LIST_ITEMS_DEFINITION[i] != app_id_ai)
+                {
+                    lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
+                }
                 // 將選中項的文本標籤放大一個字號
                 // lv_obj_set_style_text_font(
                 //     app_label[i], LV_EXT_FONT_GET(get_system_font_size(1)),
@@ -970,11 +974,11 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                     lv_obj_align(app_icon[i], LV_ALIGN_RIGHT_MID, -25, 0);
                     lv_obj_align(app_label[i], LV_ALIGN_CENTER, 0, 0);
                 }
-                if (APP_LIST_ITEMS_DEFINITION[i] != app_id_note &&
-                    APP_LIST_ITEMS_DEFINITION[i] != app_id_ai)
-                {
-                    lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
-                }
+                // if (APP_LIST_ITEMS_DEFINITION[i] != app_id_note &&
+                //     APP_LIST_ITEMS_DEFINITION[i] != app_id_ai)
+                // {
+                //     lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
+                // }
                 lv_obj_set_style_border_opa(lv_obj_get_child(child, 0),
                                             LV_OPA_10, LV_STATE_DEFAULT);
             }

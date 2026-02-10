@@ -1,6 +1,6 @@
 {
-    "version": "1.0.228",
-    "description": "增加程式碼最大空間",
+    "version": "1.0.229",
+    "description": "建構初始錶盤",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",

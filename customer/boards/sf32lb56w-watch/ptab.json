@@ -45,26 +45,26 @@
             },
             {
                 "offset": "0x00600000",
-                "max_size": "0x3A9F4000",
+                "max_size": "0x05400000",
                 "tags": ["FS_REGION"]
             },
             {
-                "offset": "0x3AFF4000",
+                "offset": "0x05A00000",
                 "max_size": "0x00004000",
                 "tags": ["KVDB_DFU_REGION"]
             },
             {
-                "offset": "0x3AFF8000",
+                "offset": "0x05A04000",
                 "max_size": "0x00004000",
                 "tags": ["KVDB_BLE_REGION"]
             },
             {
-                "offset": "0x3AFFC000",
+                "offset": "0x05A08000",
                 "max_size": "0x00004000",
                 "tags": ["KVDB_PREFDB_REGION"]
             },
             {
-                "offset": "0x3B000000",
+                "offset": "0x05A20000",
                 "max_size": "0x01000000",
                 "tags": ["BLE_OTA_REGION"]
             }
