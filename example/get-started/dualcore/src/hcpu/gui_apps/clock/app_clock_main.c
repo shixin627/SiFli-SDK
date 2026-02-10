@@ -114,9 +114,7 @@ typedef struct
  */
 typedef struct
 {
-    lv_obj_t *tileview;     //!< tileview object for clock framework
-    lv_obj_t *tileview_btn; //!< tileview overlay button to capture events
-    lv_point_t *p_tileview_valid_pos; //!< tileview valid positions
+    lv_obj_t *clock_container; //!< container for current clock
     rt_uint32_t app_clock_list_len;   //!< clock list length
     rt_list_t list;                   //!< head of all clocks list
 
@@ -130,8 +128,6 @@ typedef struct
     lv_obj_t *app_list_battery_bg;
     lv_obj_t *app_list_battery;
     lv_obj_t *app_list_battery_label;
-    lv_obj_t *top_bar;    // 畫面上方黑條
-    lv_obj_t *bottom_bar; // 畫面下方黑條
 } app_clock_main_t;
 
 #ifndef BSP_USING_LVGL_INPUT_AGENT
@@ -157,86 +153,6 @@ void set_app_list_time_opa(uint8_t opa)
 
 static lv_obj_t *charge_icon_obj = NULL;
 
-/**
- * @brief 對單一物件進行縮放，根據物件類型自動選擇縮放方法
- * @param obj 要縮放的物件
- * @param zoom_factor 縮放比例 (256 = 100%, 128 = 50%, 384 = 150%)
- * @note 文字物件 (label) 不會進行縮放
- */
-static void scale_single_obj(lv_obj_t *obj, uint16_t zoom_factor)
-{
-    if (!lv_obj_is_valid(obj))
-    {
-        return;
-    }
-
-    // 文字物件不進行縮放
-    if (lv_obj_check_type(obj, &lv_label_class))
-    {
-        return;
-    }
-
-    // 檢查是否為圖片物件
-    if (lv_obj_check_type(obj, &lv_img_class))
-    {
-        // 圖片物件使用 lv_img_set_zoom
-        lv_img_set_zoom(obj, zoom_factor);
-    }
-    else
-    {
-        // 一般物件使用 style transform zoom
-        lv_obj_set_size(obj, (lv_obj_get_width(obj) * zoom_factor) / 250,
-                        (lv_obj_get_height(obj) * zoom_factor) / 250);
-    }
-}
-
-/**
- * @brief 縮放指定物件及其在父容器中位於上方的所有兄弟物件
- * @param obj 目標物件，函式會縮放此物件及其上方所有物件
- * @param zoom_factor 縮放比例 (256 = 100%, 128 = 50%, 384 = 150%)
- * @note LV_IMG_ZOOM_NONE = 256 表示 100%
- *       使用比例: zoom_factor = 256 * percentage / 100
- *       例如: 80% = 256 * 80 / 100 = 204
- *             50% = 256 * 50 / 100 = 128
- */
-void scale_obj_and_above(lv_obj_t *parent, uint16_t zoom_factor)
-{
-    if (!lv_obj_is_valid(parent))
-    {
-        LOG_W("scale_obj_and_above: object is not valid");
-        return;
-    }
-
-    // 取得目標物件在父容器中的索引
-    int32_t target_index = lv_obj_get_index(parent);
-    int32_t child_cnt = lv_obj_get_child_cnt(parent);
-
-    // 縮放目標物件及其上方所有物件 (索引 0 到 target_index)
-    for (int32_t i = 0; i <= target_index && i < child_cnt; i++)
-    {
-        lv_obj_t *child = lv_obj_get_child(parent, i);
-        LOG_D("Scaling child index %d", i);
-        if (lv_obj_is_valid(child))
-        {
-            scale_single_obj(child, zoom_factor);
-        }
-    }
-}
-
-/**
- * @brief 按百分比縮放指定物件及其在父容器中位於上方的所有兄弟物件
- * @param obj 目標物件，函式會縮放此物件及其上方所有物件
- * @param percentage 縮放百分比 (100 = 原始大小, 50 = 縮小一半)
- */
-void scale_obj_and_above_percent(lv_obj_t *obj, uint8_t percentage)
-{
-    if (percentage > 200)
-    {
-        percentage = 200; // 限制最大放大到 200%
-    }
-    uint16_t zoom_factor = (uint16_t)(256 * percentage / 100);
-    scale_obj_and_above(obj, zoom_factor);
-}
 
 void set_app_list_battery_opa(uint8_t opa)
 {
@@ -907,52 +823,28 @@ static void app_clock_change_state_by_id(uint16_t idx, uint8_t new_state)
 
 static void app_clock_main_select(uint16_t clock_idx)
 {
-    rt_uint16_t left_clock_idx, right_clock_idx, i;
+    rt_uint16_t i;
     rt_list_t *pos;
     app_clock_desc_t *clk_desc;
 
+    // Validate clock index
     if (clock_idx >= p_app_clock_main->app_clock_list_len)
         clock_idx = p_app_clock_main->app_clock_list_len - 1;
 
-    if (clock_idx > 0)
-        left_clock_idx = clock_idx - 1;
-    else
-        left_clock_idx =
-            p_app_clock_main->app_clock_list_len; // invalid left clock
-
-    right_clock_idx = clock_idx + 1;
-
-    if (right_clock_idx > p_app_clock_main->app_clock_list_len)
-        right_clock_idx =
-            p_app_clock_main->app_clock_list_len; // invalid right clock
-
-    /*deinit all other clock , to free memory*/
+    // Deinit all other clocks
     i = 0;
     rt_list_for_each(pos, (&p_app_clock_main->list))
     {
         clk_desc = rt_list_entry(pos, app_clock_desc_t, node);
 
-        if ((i != clock_idx) && (i != left_clock_idx) && (i != right_clock_idx))
+        if (i != clock_idx)
         {
             app_clock_change_state(clk_desc, STATE_DEINIT);
         }
         i++;
     }
 
-    /*pause left&right clock , to free memory*/
-    i = 0;
-    rt_list_for_each(pos, (&p_app_clock_main->list))
-    {
-        clk_desc = rt_list_entry(pos, app_clock_desc_t, node);
-
-        if ((i == left_clock_idx) || (i == right_clock_idx))
-        {
-            app_clock_change_state(clk_desc, STATE_PAUSED);
-        }
-        i++;
-    }
-
-    /* active selected clock */
+    // Activate selected clock
     i = 0;
     rt_list_for_each(pos, (&p_app_clock_main->list))
     {
@@ -972,243 +864,14 @@ static void app_clock_main_select(uint16_t clock_idx)
 #endif
 }
 
-static void app_clock_main_drag_begin(uint16_t clock_idx)
+/**
+ * @brief Switch to a specific clock by index
+ * @param clock_idx Index of the clock to switch to (0-based)
+ * @note This is a public API for external watch face selection pages
+ */
+void app_clock_switch_to(uint16_t clock_idx)
 {
-    rt_uint16_t left_clock_idx, right_clock_idx, i;
-    rt_list_t *pos;
-    app_clock_desc_t *clk_desc;
-
-    if (clock_idx >= p_app_clock_main->app_clock_list_len)
-        clock_idx = p_app_clock_main->app_clock_list_len - 1;
-
-    if (clock_idx > 0)
-        left_clock_idx = clock_idx - 1;
-    else
-        left_clock_idx =
-            p_app_clock_main->app_clock_list_len; // invalid left clock
-
-    right_clock_idx = clock_idx + 1;
-
-    if (right_clock_idx > p_app_clock_main->app_clock_list_len)
-        right_clock_idx =
-            p_app_clock_main->app_clock_list_len; // invalid right clock
-
-    /* active the left&right clock*/
-    i = 0;
-    rt_list_for_each(pos, (&p_app_clock_main->list))
-    {
-        clk_desc = rt_list_entry(pos, app_clock_desc_t, node);
-
-        if ((i == left_clock_idx) || (i == right_clock_idx))
-        {
-            app_clock_change_state(clk_desc, STATE_ACTIVE);
-        }
-
-        i++;
-    }
-}
-
-static void tileview_bar_anim(void *bg, int32_t v)
-{
-    lv_obj_set_y(bg, v);
-}
-
-extern void choose_photo_list(uint16_t page);
-extern void set_status_bar_area_up_state(bool state);
-extern void set_status_bar_area_down_state(bool state);
-extern void set_status_bar_area_left_state(bool state);
-extern void set_status_bar_area_right_state(bool state);
-static void tileview_event_cb(lv_event_t *event)
-{
-    static lv_point_t press_point = {0, 0};
-    static bool press_valid = false;
-    static bool longpress_fired = false;
-    static uint32_t press_time = 0;
-    const int MOVE_THRESHOLD = 40;     // px
-    const uint32_t LONGPRESS_MS = 600; // 可自訂長按毫秒
-    lv_indev_t *indev;
-    lv_point_t cur;
-    int dx, dy;
-    uint32_t now;
-    switch (event->code)
-    {
-        break;
-    case LV_EVENT_VALUE_CHANGED:
-    {
-        rt_uint16_t active_pos = (rt_uint16_t)lv_event_get_param(event);
-
-        if (gui_app_is_actived("Main"))
-            app_clock_main_select(active_pos);
-        else
-            last_active_clock = active_pos;
-    }
-    break;
-#if (LV_HOR_RES_MAX == 240) &&                                                 \
-    (LV_HOR_RES_MAX == 240) // Active neighbor clock may cause malloc mem
-                            // failure in high resolution
-    case LV_EVENT_SCROLL_BEGIN:
-    {
-        app_clock_main_drag_begin(last_active_clock);
-    }
-    break;
-#endif
-    case LV_EVENT_PRESSED:
-        // 記錄按下時座標與時間
-        indev = lv_indev_get_act();
-        if (indev)
-        {
-            lv_indev_get_point(indev, &press_point);
-            press_valid = true;
-            longpress_fired = false;
-            press_time = lv_tick_get();
-        }
-        break;
-    case LV_EVENT_PRESSING:
-        if (!press_valid || longpress_fired)
-            break;
-        indev = lv_indev_get_act();
-        if (indev)
-        {
-            lv_indev_get_point(indev, &cur);
-            dx = cur.x - press_point.x;
-            dy = cur.y - press_point.y;
-            if (dx < 0)
-                dx = -dx;
-            if (dy < 0)
-                dy = -dy;
-            if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD)
-            {
-                press_valid = false; // 超過閾值，失效
-                break;
-            }
-            now = lv_tick_get();
-            if (now - press_time >= LONGPRESS_MS)
-            {
-                // 觸發自訂長按
-                longpress_fired = true;
-                press_valid = false;
-                if (p_app_clock_main &&
-                    lv_obj_is_valid(p_app_clock_main->tileview))
-                {
-                    lv_obj_add_flag(p_app_clock_main->tileview,
-                                    LV_OBJ_FLAG_SCROLLABLE);
-                    edit_mode = true;
-                    LOG_D("Long press tileview btn hidden");
-                    set_status_bar_area_up_state(false);
-                    set_status_bar_area_down_state(false);
-                    set_status_bar_area_left_state(false);
-                    set_status_bar_area_right_state(false);
-                    // 顯示上下黑條動畫
-                    if (lv_obj_is_valid(p_app_clock_main->top_bar))
-                    {
-                        lv_obj_clear_flag(p_app_clock_main->top_bar,
-                                          LV_OBJ_FLAG_HIDDEN);
-                        lv_obj_set_y(
-                            p_app_clock_main->top_bar,
-                            -lv_obj_get_height(p_app_clock_main->top_bar));
-                        lv_anim_t a;
-                        lv_anim_init(&a);
-                        lv_anim_set_var(&a, p_app_clock_main->top_bar);
-                        lv_anim_set_values(
-                            &a, -lv_obj_get_height(p_app_clock_main->top_bar),
-                            0);
-                        lv_anim_set_time(&a, 200);
-                        lv_anim_set_exec_cb(
-                            &a, (lv_anim_exec_xcb_t)tileview_bar_anim);
-                        lv_anim_start(&a);
-                    }
-                    if (lv_obj_is_valid(p_app_clock_main->bottom_bar))
-                    {
-                        lv_obj_clear_flag(p_app_clock_main->bottom_bar,
-                                          LV_OBJ_FLAG_HIDDEN);
-                        lv_coord_t scr_h = lv_disp_get_ver_res(NULL);
-                        lv_coord_t bar_h =
-                            lv_obj_get_height(p_app_clock_main->bottom_bar);
-                        lv_obj_set_y(p_app_clock_main->bottom_bar, scr_h);
-                        lv_anim_t a;
-                        lv_anim_init(&a);
-                        lv_anim_set_var(&a, p_app_clock_main->bottom_bar);
-                        lv_anim_set_values(&a, bar_h, 0);
-                        lv_anim_set_time(&a, 200);
-                        lv_anim_set_exec_cb(
-                            &a, (lv_anim_exec_xcb_t)tileview_bar_anim);
-                        lv_anim_start(&a);
-                    }
-                    LOG_D("Long press");
-                }
-            }
-        }
-        break;
-    case LV_EVENT_RELEASED:
-        if (edit_mode && (lv_tick_get() - press_time < LONGPRESS_MS) &&
-            press_valid)
-        {
-            uint16_t active_pos = last_active_clock + 1;
-            if (active_pos == 2 || active_pos == 3)
-                choose_photo_list(active_pos);
-        }
-        press_valid = false;
-        longpress_fired = false;
-        break;
-    default:
-        break;
-    }
-}
-
-static void tileview_bar_hide_anim_ready_cb(lv_anim_t *a)
-{
-    lv_obj_t *obj = (lv_obj_t *)a->var;
-    lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-}
-
-static void dial_editing_exit_event_cb(lv_event_t *event)
-{
-    // 長按 tileview 時縮小
-    if (p_app_clock_main && lv_obj_is_valid(p_app_clock_main->tileview))
-    {
-        // scale_obj_and_above_percent(p_app_clock_main->tileview, 50); //
-        lv_obj_clear_flag(p_app_clock_main->tileview, LV_OBJ_FLAG_SCROLLABLE);
-        edit_mode = false;
-        LOG_D("Long press tileview btn shown");
-
-        set_status_bar_area_up_state(true);
-        set_status_bar_area_down_state(true);
-        set_status_bar_area_left_state(true);
-        set_status_bar_area_right_state(true);
-        // // 顯示上下黑條動畫
-        if (lv_obj_is_valid(p_app_clock_main->top_bar))
-        {
-            // 先將 top_bar 移到畫面外
-            lv_obj_set_y(p_app_clock_main->top_bar,
-                         -lv_obj_get_height(p_app_clock_main->top_bar));
-            // 動畫移動進入
-            lv_anim_t a;
-            lv_anim_init(&a);
-            lv_anim_set_var(&a, p_app_clock_main->top_bar);
-            lv_anim_set_values(&a, 0,
-                               -lv_obj_get_height(p_app_clock_main->top_bar));
-            lv_anim_set_time(&a, 200);
-            lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)tileview_bar_anim);
-            lv_anim_set_ready_cb(&a, tileview_bar_hide_anim_ready_cb);
-            lv_anim_start(&a);
-        }
-        if (lv_obj_is_valid(p_app_clock_main->bottom_bar))
-        {
-            lv_coord_t scr_h = lv_disp_get_ver_res(NULL);
-            lv_coord_t bar_h = lv_obj_get_height(p_app_clock_main->bottom_bar);
-            lv_obj_set_y(p_app_clock_main->bottom_bar, scr_h);
-            lv_anim_t a;
-            lv_anim_init(&a);
-            lv_anim_set_var(&a, p_app_clock_main->bottom_bar);
-            lv_anim_set_values(&a, 0, bar_h);
-            lv_anim_set_time(&a, 200);
-            lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)tileview_bar_anim);
-            lv_anim_set_ready_cb(&a, tileview_bar_hide_anim_ready_cb);
-            lv_anim_start(&a);
-        }
-        LOG_D("Long press");
-    }
-    LOG_D("dial_editing_exit_event_cb");
+    app_clock_main_select(clock_idx);
 }
 
 extern const lv_img_dsc_t *weather_icon_get(char *weather);
@@ -1501,8 +1164,8 @@ static void open_widget_list_timer_start(void)
 static void handle_watchface_changed_cb(void *param)
 {
     uint8_t index = *(uint8_t *)param;
-    if (p_app_clock_main && p_app_clock_main->tileview)
-        lv_obj_set_tile_id(p_app_clock_main->tileview, index, 0, true);
+    if (p_app_clock_main)
+        app_clock_switch_to(index);
 }
 static void on_tap(void)
 {
@@ -1637,100 +1300,35 @@ static void battery_status_indicator_builder(lv_obj_t *parent)
     lvgl_msg_handler.handle_charge_status = refresh_charge_icon;
 }
 
-static void clock_main_top_bar_builder(lv_obj_t *parent)
-{
-    p_app_clock_main->top_bar = lv_obj_create(parent);
-    lv_obj_set_size(p_app_clock_main->top_bar,
-                    lv_disp_get_hor_res(lv_disp_get_default()), 30);
-    lv_obj_align(p_app_clock_main->top_bar, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_color(p_app_clock_main->top_bar, lv_color_black(),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(p_app_clock_main->top_bar, LV_OPA_80, LV_PART_MAIN);
-    lv_obj_add_flag(p_app_clock_main->top_bar, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(p_app_clock_main->top_bar, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(p_app_clock_main->top_bar, dial_editing_exit_event_cb,
-                        LV_EVENT_CLICKED, NULL);
-
-    // 在按鈕上放置 icon_x
-    lv_obj_t *icon = lv_img_create(p_app_clock_main->top_bar);
-    lv_img_set_src(icon, ICON_X);
-    lv_img_set_zoom(icon, 69); // 100%
-    lv_obj_align(icon, LV_ALIGN_BOTTOM_MID, 0, 15);
-}
-
-static void clock_main_bottom_bar_builder(lv_obj_t *parent)
-{
-    p_app_clock_main->bottom_bar = lv_obj_create(parent);
-    lv_obj_set_size(p_app_clock_main->bottom_bar,
-                    lv_disp_get_hor_res(lv_disp_get_default()), 30);
-    lv_obj_align(p_app_clock_main->bottom_bar, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_color(p_app_clock_main->bottom_bar, lv_color_black(),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(p_app_clock_main->bottom_bar, LV_OPA_80,
-                            LV_PART_MAIN);
-    lv_obj_add_flag(p_app_clock_main->bottom_bar, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(p_app_clock_main->bottom_bar, LV_OBJ_FLAG_SCROLLABLE);
-}
 
 static void app_clock_main_init(lv_obj_t *scr)
 {
-    rt_uint16_t i;
     lv_coord_t scr_hor_res, scr_ver_res;
-    rt_uint16_t last_active_clock_bak; /*when tileview created,
-                                          LV_EVENT_VALUE_CHANGED (idx is 0)
-                                          will be send */
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     dial_widget_app_id = SkaiWatchSys.clock_widget_num;
     scr_hor_res = lv_disp_get_hor_res(lv_disp_get_default());
     scr_ver_res = lv_disp_get_ver_res(lv_disp_get_default());
-    last_active_clock_bak = last_active_clock;
 
-    p_app_clock_main->tileview = lv_tileview_create(scr);
-    lv_obj_set_style_bg_opa(p_app_clock_main->tileview, LV_OPA_TRANSP,
+    // Create single container for clock
+    p_app_clock_main->clock_container = lv_obj_create(scr);
+    lv_obj_set_size(p_app_clock_main->clock_container, scr_hor_res, scr_ver_res);
+    lv_obj_set_style_bg_opa(p_app_clock_main->clock_container, LV_OPA_TRANSP,
                             LV_PART_MAIN);
-    lv_obj_set_scrollbar_mode(p_app_clock_main->tileview,
-                              LV_SCROLLBAR_MODE_OFF);
-    lv_obj_clear_flag(p_app_clock_main->tileview, LV_OBJ_FLAG_SCROLL_ELASTIC);
-    lv_obj_clear_flag(p_app_clock_main->tileview, LV_OBJ_FLAG_SCROLLABLE);
-    p_app_clock_main->p_tileview_valid_pos = (lv_point_t *)lv_mem_alloc(
-        sizeof(lv_point_t) * p_app_clock_main->app_clock_list_len);
-    for (i = 0; i < p_app_clock_main->app_clock_list_len; i++)
-    {
-        p_app_clock_main->p_tileview_valid_pos[i].x = i;
-        p_app_clock_main->p_tileview_valid_pos[i].y = 0;
-    }
+    lv_obj_set_style_border_width(p_app_clock_main->clock_container, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(p_app_clock_main->clock_container, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(p_app_clock_main->clock_container, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Set all clocks to use the same parent
     rt_list_t *pos;
-    i = 0;
     rt_list_for_each(pos, (&p_app_clock_main->list))
     {
         app_clock_desc_t *clk_desc = rt_list_entry(pos, app_clock_desc_t, node);
-        lv_obj_t *page;
-
-        page =
-            lv_tileview_add_tile(p_app_clock_main->tileview, i, 0, LV_DIR_HOR);
-        lv_obj_set_size(page, scr_hor_res / 2, scr_ver_res / 2);
-        lv_obj_set_pos(page, scr_hor_res * i, 0);
-        lv_obj_add_event_cb(page, tileview_event_cb, LV_EVENT_ALL, NULL);
-        clk_desc->parent = page;
-        i++;
+        clk_desc->parent = p_app_clock_main->clock_container;
     }
 
-    lv_obj_add_event_cb(p_app_clock_main->tileview, tileview_event_cb,
-                        LV_EVENT_ALL, NULL);
-
-    // 創建上方黑條
-    clock_main_top_bar_builder(scr);
+    // Initialize media header
     extern void lv_dial_media_header_builder(lv_obj_t *parent);
     lv_dial_media_header_builder(scr);
-
-    // 創建下方黑條
-    clock_main_bottom_bar_builder(scr);
-
-    if (last_active_clock_bak < p_app_clock_main->app_clock_list_len)
-        lv_obj_set_tile_id(p_app_clock_main->tileview, last_active_clock_bak, 0,
-                           false);
-    else
-        last_active_clock_bak = 0;
 
 #ifdef BSP_USING_UI_HANDLER
     lvgl_msg_handler.handle_watchface = handle_watchface_changed_cb;
@@ -1892,12 +1490,6 @@ rt_int32_t clock_on_resume(void)
         return -RT_EOK;
     pause_clock = false;
 
-    // 確保 tileview 位置正確對齊到當前錶盤
-    if (p_app_clock_main && lv_obj_is_valid(p_app_clock_main->tileview))
-    {
-        lv_obj_set_tile_id(p_app_clock_main->tileview, last_active_clock, 0,
-                           false);
-    }
     dial_media_header_init();
     app_clock_main_select(last_active_clock);
     LOG_D("clock_on_resume");
@@ -1977,7 +1569,6 @@ void clock_on_stop(void)
         lv_obj_del(p_app_clock_main->app_list_battery_label);
         lv_obj_del(p_app_clock_main->app_list_time_bg);
 
-        lv_mem_free(p_app_clock_main->p_tileview_valid_pos);
         if (colon_blink_timer != NULL)
         {
             lv_timer_del(colon_blink_timer);

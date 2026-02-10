@@ -86,6 +86,17 @@ char *app_clock_change_context(void);
 int32_t app_clock_register(const char *id, const app_clock_ops_t *operations);
 
 /**
+ * Switch to a specific clock by index
+ * \n
+ *
+ * @param clock_idx Index of the clock to switch to (0-based)
+ * \n
+ * @note This is a public API for external watch face selection pages
+ * @see
+ */
+void app_clock_switch_to(uint16_t clock_idx);
+
+/**
  * Create connection tips window showing disconnection status
  * Window will automatically close after 4 seconds
  */
