@@ -946,6 +946,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 // lv_img_set_zoom(p_app_list_layout->indicator_dots[i], 256);
                 // selected_label = lv_obj_get_child(child, 0);
                 lv_obj_clear_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
                 // 將選中項的文本標籤放大一個字號
                 // lv_obj_set_style_text_font(
                 //     app_label[i], LV_EXT_FONT_GET(get_system_font_size(1)),
@@ -956,6 +957,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 // lv_img_set_zoom(p_app_list_layout->indicator_dots[i],
                 //                 256 * 0.75);
                 lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
                 // 將非選中項的文本標籤恢復為正常字號
                 // lv_obj_set_style_text_font(
                 //     app_label[i], LV_EXT_FONT_GET(get_system_font_size(0)),
