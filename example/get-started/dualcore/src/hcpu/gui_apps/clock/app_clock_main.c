@@ -652,8 +652,7 @@ static void get_clock_main_status_img_path(char *clk_id)
         }
     }
 }
-LV_IMG_DECLARE(gaus_clock4_bg);
-LV_IMG_DECLARE(gaus_clock1_bg);
+
 extern void set_clock_main_status_img(const void *img_src);
 static void clock_change_page(char *clk_id)
 {

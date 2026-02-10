@@ -1394,41 +1394,41 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
                             LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_center(gaus_dial_bg);
     lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-    char dst_path[64];
-    if (get_last_active_clock() == 2 || get_last_active_clock() == 3)
-    {
-        char *filename = get_picture_name();
-        if (filename != NULL)
-        {
-            snprintf(dst_path, sizeof(dst_path), "/assets/gaus_images/gaus_%s",
-                     filename);
-        }
-        else
-        {
-            snprintf(dst_path, sizeof(dst_path),
-                     "/assets/gaus_images/gaus_default_picture.bin");
-        }
-    }
-    else if (get_last_active_clock() == 1)
-    {
-        strncpy(dst_path, "/assets/gaus_images/gaus_clock1_bg.bin",
-                sizeof(dst_path));
-        dst_path[sizeof(dst_path) - 1] = '\0';
-    }
-    else if (get_last_active_clock() == 4)
-    {
-        strncpy(dst_path, "/assets/gaus_images/gaus_clock4_bg.bin",
-                sizeof(dst_path));
-        dst_path[sizeof(dst_path) - 1] = '\0';
-    }
-    else if (get_last_active_clock() == 5)
-    {
-        strncpy(dst_path, "/assets/gaus_images/gaus_clock5_bg.bin",
-                sizeof(dst_path));
-        dst_path[sizeof(dst_path) - 1] = '\0';
-    }
+    // char dst_path[64];
+    // if (get_last_active_clock() == 2 || get_last_active_clock() == 3)
+    // {
+    //     char *filename = get_picture_name();
+    //     if (filename != NULL)
+    //     {
+    //         snprintf(dst_path, sizeof(dst_path), "/assets/gaus_images/gaus_%s",
+    //                  filename);
+    //     }
+    //     else
+    //     {
+    //         snprintf(dst_path, sizeof(dst_path),
+    //                  "/assets/gaus_images/gaus_default_picture.bin");
+    //     }
+    // }
+    // else if (get_last_active_clock() == 1)
+    // {
+    //     strncpy(dst_path, "/assets/gaus_images/gaus_clock1_bg.bin",
+    //             sizeof(dst_path));
+    //     dst_path[sizeof(dst_path) - 1] = '\0';
+    // }
+    // else if (get_last_active_clock() == 4)
+    // {
+    //     strncpy(dst_path, "/assets/gaus_images/gaus_clock4_bg.bin",
+    //             sizeof(dst_path));
+    //     dst_path[sizeof(dst_path) - 1] = '\0';
+    // }
+    // else if (get_last_active_clock() == 5)
+    // {
+    //     strncpy(dst_path, "/assets/gaus_images/gaus_clock5_bg.bin",
+    //             sizeof(dst_path));
+    //     dst_path[sizeof(dst_path) - 1] = '\0';
+    // }
     gaus_dial_img = lv_img_create(gaus_dial_bg);
-    lv_img_set_src(gaus_dial_img, dst_path);
+    lv_img_set_src(gaus_dial_img, GAUS_CLOCK1_BG);
     lv_obj_set_style_img_opa(gaus_dial_img, LV_OPA_70,
                              LV_PART_MAIN | LV_STATE_DEFAULT);
     // lv_obj_set_size(gaus_dial_img, LV_HOR_RES_MAX, LV_VER_RES_MAX);

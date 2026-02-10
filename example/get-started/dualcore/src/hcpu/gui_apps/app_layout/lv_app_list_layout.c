@@ -427,7 +427,7 @@ static void update_indicator_dots_position(int input_value)
             distance_angle = 180.0f - distance_angle;
         }
 
-        float max_distance_angle = 30.0f;
+        float max_distance_angle = 25.0f;
         float ratio = 0.0f;
 
         if (distance_angle <= max_distance_angle)
@@ -956,7 +956,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 // lv_img_set_zoom(p_app_list_layout->indicator_dots[i],
                 //                 256 * 0.75);
                 lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
-                lv_obj_set_style_text_color(app_label[i], lv_color_hex(0x000000), 0);
+                // lv_obj_set_style_text_color(app_label[i], lv_color_hex(0x000000), 0);
                 // 將非選中項的文本標籤恢復為正常字號
                 // lv_obj_set_style_text_font(
                 //     app_label[i], LV_EXT_FONT_GET(get_system_font_size(0)),
