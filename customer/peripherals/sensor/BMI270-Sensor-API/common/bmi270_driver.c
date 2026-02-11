@@ -647,12 +647,11 @@ extern rt_err_t rt_hw_spi_device_attach(const char *bus_name,
 
 static int bmi270_power_onoff(uint8_t on)
 {
+    rt_err_t ret = RT_EOK;
+#if BMI270_POW_PIN
     struct rt_device_pin_mode m;
     struct rt_device_pin_status st;
 
-    rt_err_t ret = RT_EOK;
-
-    #if (BMI270_POW_PIN > 0)
     rt_device_t device = rt_device_find("pin");
     if (!device)
     {
@@ -673,9 +672,8 @@ static int bmi270_power_onoff(uint8_t on)
     rt_device_write(device, 0, &st, sizeof(struct rt_device_pin_status));
 
     ret = rt_device_close(device);
-    #endif
-
     LOG_D("BMI270 power %s", on ? "on" : "off");
+#endif
     return ret;
 }
 

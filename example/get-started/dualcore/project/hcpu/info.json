@@ -1,6 +1,6 @@
 {
-    "version": "1.0.229",
-    "description": "建構初始錶盤",
+    "version": "1.0.230",
+    "description": "更新版子v29",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",

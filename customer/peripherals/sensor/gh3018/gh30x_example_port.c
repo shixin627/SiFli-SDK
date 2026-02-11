@@ -47,6 +47,7 @@ extern uint8_t gh30x_mcu_start_mode_get(void);
 int gh3018_power_onoff(uint8_t on)
 {
     rt_err_t ret = RT_EOK;
+#if GH3018_POW_PIN
     struct rt_device_pin_mode m;
     struct rt_device_pin_status st;
 
@@ -60,24 +61,18 @@ int gh3018_power_onoff(uint8_t on)
     ret = rt_device_open(device, RT_DEVICE_OFLAG_RDWR);
     if (ret != RT_EOK)
         return ret;
-#if GH3018_POW_PIN
+
     m.pin = GH3018_POW_PIN;
-#else
-    m.pin = PPG_POWER_EN_PIN;
-#endif
     m.mode = PIN_MODE_OUTPUT;
     rt_device_control(device, 0, &m);
 
-#if GH3018_POW_PIN
     st.pin = GH3018_POW_PIN;
-#else
-    st.pin = PPG_POWER_EN_PIN;
-#endif
     st.status = on;
     rt_device_write(device, 0, &st, sizeof(struct rt_device_pin_status));
 
     ret = rt_device_close(device);
     LOG_D("GH3018 power %s", on ? "on" : "off");
+#endif
     return ret;
 }
 

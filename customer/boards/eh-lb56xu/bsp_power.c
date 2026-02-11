@@ -1,8 +1,6 @@
 #include "bsp_board.h"
 
-#ifdef CUSTOMER_BOARD
-    #define GSENSOR_POWER_EN WATCH_GSENSOR_POWER_EN // GPIOB
-#else
+#ifndef CUSTOMER_BOARD
     #define GSENSOR_POWER_EN (21) // GPIOB_21
 #endif
 
@@ -43,7 +41,9 @@ void BSP_Power_Up(bool is_deep_sleep)
         Power on g-sensor to prevent it pull down PB23 which using for TWI_DAT
        for Europa.
     */
+#if defined(GSENSOR_POWER_EN)
     BSP_GPIO_Set(GSENSOR_POWER_EN, 1, 0);
+#endif
     if (is_deep_sleep)
     {
 
