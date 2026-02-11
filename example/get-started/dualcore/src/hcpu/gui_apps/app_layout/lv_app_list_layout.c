@@ -147,7 +147,7 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
     // app_id_heart_rate,
     app_id_recorder,
 #ifdef APP_ID_ACTIVITY
-    // app_id_activity,
+// app_id_activity,
 #endif
     app_id_calendar,
 #ifdef APP_ID_TOUCHSCREEN
@@ -164,15 +164,15 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
 // app_id_iot_gate,
 #endif
 #ifdef APP_ID_GAME_DINOSAUR
-    // app_id_game_dinosaur,
+// app_id_game_dinosaur,
 #endif
 #ifdef APP_ID_MEDIA
-    // app_id_media,
+// app_id_media,
 #endif
 #ifdef APP_ID_NOTE_CHATROOM
 // app_id_note,
 #endif
-    app_id_ai,
+    // app_id_ai,
 };
 
 uint8_t return_app_count(void)
@@ -498,62 +498,62 @@ static void create_indicator_dots(lv_obj_t *parent)
     update_indicator_dots_position(187);
 }
 
-static void create_ai_hint_icon(lv_obj_t *parent)
-{
-    if (p_app_list_layout == NULL)
-        return;
+// static void create_ai_hint_icon(lv_obj_t *parent)
+// {
+//     if (p_app_list_layout == NULL)
+//         return;
 
-    lv_obj_t *ai_hint_bg = lv_obj_create(parent);
-    lv_obj_set_size(ai_hint_bg, 80, 80);
-    lv_obj_set_style_radius(ai_hint_bg, 80, 0);
-    lv_obj_set_style_bg_color(ai_hint_bg, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(ai_hint_bg, LV_OPA_100, 0);
-    lv_obj_align(ai_hint_bg, LV_ALIGN_RIGHT_MID, 93, 0);
-    lv_obj_set_style_border_width(ai_hint_bg, 2, 0);
-    lv_obj_set_style_border_color(ai_hint_bg, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(ai_hint_bg, LV_OPA_0, 0);
-    p_app_list_layout->p_app_list_ai_bg = ai_hint_bg;
-    lv_obj_t *ai_hint_icon = lv_img_create(ai_hint_bg);
-    lv_img_set_src(ai_hint_icon, SMALL_IMG_LOGO_MATTING);
-    lv_obj_align(ai_hint_icon, LV_ALIGN_CENTER, 0, 0);
-    p_app_list_layout->p_app_list_ai_icon = ai_hint_icon;
+//     lv_obj_t *ai_hint_bg = lv_obj_create(parent);
+//     lv_obj_set_size(ai_hint_bg, 80, 80);
+//     lv_obj_set_style_radius(ai_hint_bg, 80, 0);
+//     lv_obj_set_style_bg_color(ai_hint_bg, lv_color_hex(0x000000), 0);
+//     lv_obj_set_style_bg_opa(ai_hint_bg, LV_OPA_100, 0);
+//     lv_obj_align(ai_hint_bg, LV_ALIGN_RIGHT_MID, 93, 0);
+//     lv_obj_set_style_border_width(ai_hint_bg, 2, 0);
+//     lv_obj_set_style_border_color(ai_hint_bg, lv_color_hex(0xFFFFFF), 0);
+//     lv_obj_set_style_border_opa(ai_hint_bg, LV_OPA_0, 0);
+//     p_app_list_layout->p_app_list_ai_bg = ai_hint_bg;
+//     lv_obj_t *ai_hint_icon = lv_img_create(ai_hint_bg);
+//     lv_img_set_src(ai_hint_icon, SMALL_IMG_LOGO_MATTING);
+//     lv_obj_align(ai_hint_icon, LV_ALIGN_CENTER, 0, 0);
+//     p_app_list_layout->p_app_list_ai_icon = ai_hint_icon;
 
-    LOG_D("AI hint icon created");
-}
+//     LOG_D("AI hint icon created");
+// }
 
 extern void tap_on_ai_hint(void);
 static bool is_open_ai_gesture = false;
-void set_ai_hint_x(uint8_t x)
-{
-    lv_obj_align(p_app_list_layout->p_app_list_ai_bg, LV_ALIGN_RIGHT_MID,
-                 -x + 93, 0);
-    if (x > 85)
-    {
-        set_paused_control_with_arm(true);
-        lv_obj_set_style_border_opa(p_app_list_layout->p_app_list_ai_bg,
-                                    LV_OPA_COVER, 0);
-        lv_obj_set_style_img_opa(p_app_list_layout->p_app_list_ai_icon,
-                                 LV_OPA_COVER, 0);
-        if (!is_open_ai_gesture)
-        {
-            motor_pattern_unlocked();
-            is_open_ai_gesture = true;
-            tap_on_ai_hint();
-        }
-    }
-    else
-    {
-        set_paused_control_with_arm(false);
-        lv_obj_set_style_border_opa(p_app_list_layout->p_app_list_ai_bg,
-                                    LV_OPA_0, 0);
-        lv_obj_set_style_img_opa(p_app_list_layout->p_app_list_ai_icon,
-                                 LV_OPA_50, 0);
-        if (is_open_ai_gesture)
-        {
-            is_open_ai_gesture = false;
-        }
-    }
-}
+// void set_ai_hint_x(uint8_t x)
+// {
+//     lv_obj_align(p_app_list_layout->p_app_list_ai_bg, LV_ALIGN_RIGHT_MID,
+//                  -x + 93, 0);
+//     if (x > 85)
+//     {
+//         set_paused_control_with_arm(true);
+//         lv_obj_set_style_border_opa(p_app_list_layout->p_app_list_ai_bg,
+//                                     LV_OPA_COVER, 0);
+//         lv_obj_set_style_img_opa(p_app_list_layout->p_app_list_ai_icon,
+//                                  LV_OPA_COVER, 0);
+//         if (!is_open_ai_gesture)
+//         {
+//             motor_pattern_unlocked();
+//             is_open_ai_gesture = true;
+//             tap_on_ai_hint();
+//         }
+//     }
+//     else
+//     {
+//         set_paused_control_with_arm(false);
+//         lv_obj_set_style_border_opa(p_app_list_layout->p_app_list_ai_bg,
+//                                     LV_OPA_0, 0);
+//         lv_obj_set_style_img_opa(p_app_list_layout->p_app_list_ai_icon,
+//                                  LV_OPA_50, 0);
+//         if (is_open_ai_gesture)
+//         {
+//             is_open_ai_gesture = false;
+//         }
+//     }
+// }
 
 void set_indicator_dots_visible(bool visible)
 {
@@ -847,7 +847,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         }
         lv_obj_set_style_translate_x(child, x_trans, LV_STATE_DEFAULT);
         lv_obj_mark_layout_as_dirty(child);
-        static lv_coord_t last_y_diff[32] = {0}; // 假設最大32個app
+        static lv_coord_t last_y_diff[32] = {0};    // 假設最大32個app
         static uint8_t last_brightness[32] = {255}; // 儲存上次的亮度值
         static uint8_t last_zoom[32] = {0};
         const lv_coord_t DIFF_THRESHOLD = 15; // 變化超過5才更新
@@ -875,10 +875,11 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             //     zoom = 255*1.2 - (y_diff * (255*1.2 - (uint8_t)(255 * 0.7)) /
             //     200);
             // }
-            if (brightness != last_brightness[i] )
+            if (brightness != last_brightness[i])
             {
                 // 使用顏色深淺代替透明度，創建從白色到灰色的漸變
-                lv_color_t text_color = lv_color_make(brightness, brightness, brightness);
+                lv_color_t text_color =
+                    lv_color_make(brightness, brightness, brightness);
                 lv_obj_set_style_text_color(app_label[i], text_color, 0);
                 last_brightness[i] = brightness;
             }
@@ -1188,6 +1189,7 @@ void tap_on_ai_widget(void)
     //     send_to_ai();
     //     return;
     // }
+    lv_obj_clear_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
     is_open_app_list_ai = true;
     open_skai_widget_ai(true);
     // animate_to_ai_page();
@@ -1197,6 +1199,11 @@ void tap_on_ai_widget(void)
     voice_provider.start_v2t();
     // set_free_control_with_arm(false);
     set_paused_control_with_arm(true);
+}
+
+void close_ai_widget(void)
+{
+    lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
 }
 
 static bool app_list_ai_tapped = false;
@@ -1221,6 +1228,7 @@ void tap_on_ai_hint(void)
     send_to_ai();
     animate_to_home_from_app_list();
     animate_to_ai_page();
+    close_ai_widget();
 }
 
 extern void iot_gate_widget_tap_event_cb(void);
@@ -1233,19 +1241,26 @@ static void on_item_tap(app_list_item_t *item)
     // 	tap_on_ai_hint();
     // }
     // else
-    if (strcmp(item->app_id, APP_ID_SKAI) == 0)
+    // if (strcmp(item->app_id, APP_ID_SKAI) == 0)
+    // {
+    //     if (is_open_app_list_ai)
+    //     {
+    //         if (!isTextEmpty())
+    //             tap_on_ai_hint();
+    //         else
+    //             LOG_D("AI input is empty, ignoring tap");
+    //     }
+    //     else
+    //     {
+    //         tap_on_ai_widget();
+    //     }
+    // }
+    if (is_open_app_list_ai)
     {
-        if (is_open_app_list_ai)
-        {
-            if (!isTextEmpty())
-                tap_on_ai_hint();
-            else
-                LOG_D("AI input is empty, ignoring tap");
-        }
+        if (!isTextEmpty())
+            tap_on_ai_hint();
         else
-        {
-            tap_on_ai_widget();
-        }
+            LOG_D("AI input is empty, ignoring tap");
     }
     else if (!is_open_app_list_ai)
     {
@@ -1285,7 +1300,7 @@ static int16_t find_app_index_by_id(uint16_t app_id)
             return i;
         }
     }
-    return -1; // 未找到
+    return ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - 1; // 未找到
 }
 
 extern char *get_media_title(void);
@@ -1567,6 +1582,14 @@ void stop_indicator_dots_animation_test(void)
 }
 #endif
 
+extern void set_ai_open_mic(bool is_open);
+static void logo_click_event_cb(lv_event_t *evt)
+{
+    set_ai_open_mic(true);
+    extern void tap_on_ai_widget(void);
+    tap_on_ai_widget();
+}
+
 lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
 {
     // 檢查是否已經分配，如果是則先釋放
@@ -1656,11 +1679,6 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
             extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
             widget = lv_skai_widget_builder(item);
         }
-        else if (APP_LIST_ITEMS_DEFINITION[i] == app_id_ai)
-        {
-            extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
-            widget = lv_skai_widget_builder(item);
-        }
         else
         {
             widget = NULL;
@@ -1726,7 +1744,28 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
 
     // 創建指示點
     create_indicator_dots(p_app_list_bg);
-    create_ai_hint_icon(p_app_list_bg);
+    lv_obj_t *ai_hint = lv_img_create(p_app_list_bg);
+    lv_obj_set_size(ai_hint, 80, 80);
+    lv_img_set_src(ai_hint, IMG_LOGO);
+    lv_obj_align(ai_hint, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_t *ai_hint_btn = lv_obj_create(ai_hint);
+    lv_obj_set_size(ai_hint_btn, 80, 80);
+    lv_obj_set_style_bg_opa(ai_hint_btn, LV_OPA_TRANSP, 0);
+    lv_obj_add_event_cb(ai_hint_btn, logo_click_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_align(ai_hint_btn, LV_ALIGN_CENTER, 0, 0);
+    
+    // create_ai_hint_icon(p_app_list_bg);
+    p_app_list_layout->p_app_list_ai_bg = lv_obj_create(p_app_list_bg);
+    lv_obj_set_size(p_app_list_layout->p_app_list_ai_bg, 466, 466);
+    lv_obj_align(p_app_list_layout->p_app_list_ai_bg, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(p_app_list_layout->p_app_list_ai_bg,
+                              lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(p_app_list_layout->p_app_list_ai_bg, 240, 0);
+    extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
+    lv_obj_t *skai_widget =
+        lv_skai_widget_builder(p_app_list_layout->p_app_list_ai_bg);
+    lv_obj_align(skai_widget, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
 
     // 創建可移動範圍圓弧線
     // create_movable_range_arc(p_app_list_bg);
@@ -2079,7 +2118,7 @@ rt_int32_t app_list_pause(void)
         lvgl_msg_handler.handle_tap_indicator = NULL;
         lvgl_msg_handler.handle_nav_bar_control = NULL;
     }
-    set_ai_hint_x(0);
+    // set_ai_hint_x(0);
     // if (lvgl_msg_handler.handle_widgets_control == button_selection)
     // {
     // 	lvgl_msg_handler.handle_widgets_control = NULL;
