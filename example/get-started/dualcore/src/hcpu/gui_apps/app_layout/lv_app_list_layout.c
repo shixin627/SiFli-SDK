@@ -1764,16 +1764,6 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
 
     // 創建指示點
     create_indicator_dots(p_app_list_bg);
-    lv_obj_t *ai_hint = lv_img_create(p_app_list_bg);
-    lv_obj_set_size(ai_hint, 80, 80);
-    lv_img_set_src(ai_hint, IMG_LOGO);
-    lv_obj_align(ai_hint, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_t *ai_hint_btn = lv_obj_create(ai_hint);
-    lv_obj_set_size(ai_hint_btn, 80, 80);
-    lv_obj_set_style_bg_opa(ai_hint_btn, LV_OPA_TRANSP, 0);
-    lv_obj_add_event_cb(ai_hint_btn, logo_click_event_cb, LV_EVENT_CLICKED,
-                        NULL);
-    lv_obj_align(ai_hint_btn, LV_ALIGN_CENTER, 0, 0);
 
     // create_ai_hint_icon(p_app_list_bg);
     p_app_list_layout->p_app_list_ai_bg = lv_obj_create(p_app_list_bg);
@@ -1787,6 +1777,17 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
         lv_skai_widget_builder(p_app_list_layout->p_app_list_ai_bg);
     lv_obj_align(skai_widget, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t *ai_hint = lv_img_create(p_app_list_bg);
+    lv_obj_set_size(ai_hint, 80, 80);
+    lv_img_set_src(ai_hint, IMG_LOGO);
+    lv_obj_align(ai_hint, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_t *ai_hint_btn = lv_obj_create(ai_hint);
+    lv_obj_set_size(ai_hint_btn, 80, 80);
+    lv_obj_set_style_bg_opa(ai_hint_btn, LV_OPA_TRANSP, 0);
+    lv_obj_add_event_cb(ai_hint_btn, logo_click_event_cb, LV_EVENT_CLICKED,
+                        NULL);
+    lv_obj_align(ai_hint_btn, LV_ALIGN_CENTER, 0, 0);
 
     // 創建可移動範圍圓弧線
     // create_movable_range_arc(p_app_list_bg);
