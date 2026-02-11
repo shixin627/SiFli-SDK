@@ -274,23 +274,27 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
     // lv_obj_clear_flag(widget, LV_OBJ_FLAG_SCROLLABLE);
 
     skai_widget_input_text_bg = lv_obj_create(parent);
-    lv_obj_set_size(skai_widget_input_text_bg, 320, 150);
+    lv_obj_set_size(skai_widget_input_text_bg, 430, 250);
     lv_obj_align(skai_widget_input_text_bg, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(skai_widget_input_text_bg, lv_color_hex(0xFFFFFF),
                               0);
     lv_obj_set_style_bg_opa(skai_widget_input_text_bg, 5, 0);
     lv_obj_set_style_radius(skai_widget_input_text_bg, 75, 0);
-    lv_obj_set_style_outline_width(skai_widget_input_text_bg, 5,
-                                      LV_STATE_DEFAULT);
-    lv_obj_set_style_outline_opa(skai_widget_input_text_bg, LV_OPA_30,
-                                      LV_STATE_DEFAULT);
-    lv_obj_set_style_outline_color(skai_widget_input_text_bg,
-                                      lv_color_hex(0xFFFFFF),
-                                      LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(skai_widget_input_text_bg, 0, 0);
-    lv_obj_set_style_shadow_color(skai_widget_input_text_bg,
+    lv_obj_set_style_border_width(skai_widget_input_text_bg, 5, 0);
+    lv_obj_set_style_border_color(skai_widget_input_text_bg,
                                   lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_shadow_opa(skai_widget_input_text_bg, LV_OPA_0, 0);
+    lv_obj_set_style_border_opa(skai_widget_input_text_bg, LV_OPA_50, 0);
+    // lv_obj_set_style_outline_width(skai_widget_input_text_bg, 5,
+    //                                   LV_STATE_DEFAULT);
+    // lv_obj_set_style_outline_opa(skai_widget_input_text_bg, LV_OPA_30,
+    //                                   LV_STATE_DEFAULT);
+    // lv_obj_set_style_outline_color(skai_widget_input_text_bg,
+    //                                   lv_color_hex(0xFFFFFF),
+    //                                   LV_STATE_DEFAULT);
+    // lv_obj_set_style_shadow_width(skai_widget_input_text_bg, 5, 0);
+    // lv_obj_set_style_shadow_color(skai_widget_input_text_bg,
+    //                               lv_color_hex(0xFFFFFF), 0);
+    // lv_obj_set_style_shadow_opa(skai_widget_input_text_bg, LV_OPA_COVER, 0);
 
     skai_widget_input_text = lv_label_create(skai_widget_input_text_bg);
     lv_label_set_text(skai_widget_input_text, "");
@@ -303,11 +307,11 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
     lv_obj_align(skai_widget_input_text, LV_ALIGN_CENTER, 0, 0);
 
     skai_widget_input_prompt = lv_label_create(skai_widget_input_text_bg);
-    lv_label_set_text(skai_widget_input_prompt, "ask Skai");
+    lv_label_set_text(skai_widget_input_prompt, "聽取中");
     lv_obj_set_style_text_font(skai_widget_input_prompt,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_label_set_long_mode(skai_widget_input_prompt, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_50, 0);
+    lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_0, 0);
     lv_obj_set_width(skai_widget_input_prompt, 380);
     lv_obj_set_style_text_color(skai_widget_input_prompt, lv_color_white(), 0);
     lv_obj_align(skai_widget_input_prompt, LV_ALIGN_CENTER, 10, 0);
@@ -360,6 +364,27 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
     return skai_widget_input_text_bg;
 }
 
+static bool skai_widget_open = false;
+void set_skai_widget_opa(uint8_t opa)
+{
+
+    uint8_t bg_opa = 20 * opa / LV_OPA_COVER;
+    lv_obj_set_style_bg_opa(skai_widget_input_text_bg, bg_opa, 0);
+
+    uint8_t border_opa = LV_OPA_50 * opa / LV_OPA_COVER;
+    lv_obj_set_style_border_opa(skai_widget_input_text_bg, border_opa, 0);
+    uint8_t text_opa = LV_OPA_COVER * opa / LV_OPA_COVER;
+    lv_obj_set_style_text_opa(skai_widget_input_text, text_opa, 0);
+    uint8_t prompt_opa = LV_OPA_60 * opa / LV_OPA_COVER;
+    lv_obj_set_style_text_opa(skai_widget_input_prompt, prompt_opa, 0);
+    // LOG_D("set_skai_widget_opa opa=%d,%d,%d,%d", opa, bg_opa, border_opa,
+    //       text_opa);
+    if (opa == 0)
+        skai_widget_open = false;
+    else if (opa == LV_OPA_COVER)
+        skai_widget_open = true;
+}
+
 extern void add_to_self_note(char *text);
 static bool selected_function = true;
 bool get_selected_function(void)
@@ -391,7 +416,8 @@ static void listening_anim_cb(lv_timer_t *timer)
         char buf[24] = "聽取中";
         for (uint8_t i = 0; i < listening_anim_dot; i++)
             strcat(buf, ".");
-        lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_60, 0);
+        if (skai_widget_open)
+            lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_60, 0);
         lv_label_set_text(skai_widget_input_prompt, buf);
         lv_obj_update_layout(skai_widget_input_prompt);
     }
@@ -421,35 +447,40 @@ static void stop_listening_animation(void)
 }
 
 static lv_anim_t listening_shadow_anim;
-static void indicator_test_anim_exec_cb(void *var,int32_t value)
+static void indicator_test_anim_exec_cb(void *var, int32_t value)
 {
     // uint8_t shadow_width = 50 + (uint8_t)((value * 20) / 100);
-    // lv_obj_set_style_shadow_width(skai_widget_input_text_bg, shadow_width, 0);
+    // lv_obj_set_style_shadow_width(skai_widget_input_text_bg, shadow_width,
+    // 0);
 
-    uint8_t shadow_opa = (uint8_t)(LV_OPA_40 + ((value * (LV_OPA_80 - LV_OPA_40)) / 100));
+    uint8_t shadow_opa =
+        (uint8_t)(LV_OPA_40 + ((value * (LV_OPA_80 - LV_OPA_40)) / 100));
     lv_obj_set_style_shadow_opa(skai_widget_input_text_bg, shadow_opa, 0);
-    // lv_obj_set_style_border_opa(skai_widget_input_text_bg, shadow_opa, LV_STATE_DEFAULT);
+    // lv_obj_set_style_border_opa(skai_widget_input_text_bg, shadow_opa,
+    // LV_STATE_DEFAULT);
 }
 static void listening_shadow_animation(bool start)
 {
     LOG_D("listening_shadow_animation start=%d", start);
     if (start)
     {
-        lv_obj_set_style_shadow_width(skai_widget_input_text_bg, 50, 0);
+        // lv_obj_set_style_shadow_width(skai_widget_input_text_bg, 50, 0);
         lv_anim_init(&listening_shadow_anim);
         lv_anim_set_var(&listening_shadow_anim, NULL);
         lv_anim_set_values(&listening_shadow_anim, 0, 100);
         lv_anim_set_time(&listening_shadow_anim, 1000);
-        lv_anim_set_repeat_count(&listening_shadow_anim, LV_ANIM_REPEAT_INFINITE);
+        lv_anim_set_repeat_count(&listening_shadow_anim,
+                                 LV_ANIM_REPEAT_INFINITE);
         lv_anim_set_playback_time(&listening_shadow_anim, 1000);
         lv_anim_set_path_cb(&listening_shadow_anim, lv_anim_path_ease_in_out);
-        lv_anim_set_exec_cb(&listening_shadow_anim,indicator_test_anim_exec_cb);
+        lv_anim_set_exec_cb(&listening_shadow_anim,
+                            indicator_test_anim_exec_cb);
         lv_anim_start(&listening_shadow_anim);
     }
     else
     {
-        lv_anim_del(&listening_shadow_anim,indicator_test_anim_exec_cb);
-        lv_obj_set_style_shadow_width(skai_widget_input_text_bg, 0, 0);
+        lv_anim_del(&listening_shadow_anim, indicator_test_anim_exec_cb);
+        // lv_obj_set_style_shadow_width(skai_widget_input_text_bg, 0, 0);
         lv_obj_set_style_shadow_opa(skai_widget_input_text_bg, LV_OPA_0, 0);
     }
 }
@@ -464,22 +495,23 @@ void open_skai_widget_ai(bool open)
         {
             lv_label_set_text(skai_widget_input_text, "");
             // lv_label_set_text(skai_widget_input_prompt, "聽取中");
-            lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_100, 0);
+            // lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_100,
+            // 0);
             start_listening_animation();
-            listening_shadow_animation(true);
-            lv_obj_set_style_outline_width(skai_widget_input_text_bg, 0,
-                                      LV_STATE_DEFAULT);
-            lv_obj_set_style_bg_opa(skai_widget_input_text_bg, 20, 0);
+            // listening_shadow_animation(true);
+            // lv_obj_set_style_outline_width(skai_widget_input_text_bg, 0,
+            //                           LV_STATE_DEFAULT);
+            // lv_obj_set_style_bg_opa(skai_widget_input_text_bg, 20, 0);
         }
         else
         {
             stop_listening_animation();
-            listening_shadow_animation(false);
-            lv_label_set_text(skai_widget_input_prompt, "ask Skai");
-            lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_50, 0);
-            lv_obj_set_style_outline_width(skai_widget_input_text_bg, 5,
-                                      LV_STATE_DEFAULT);
-            lv_obj_set_style_bg_opa(skai_widget_input_text_bg, 5, 0);
+            // listening_shadow_animation(false);
+            lv_label_set_text(skai_widget_input_prompt, "聽取中");
+            // lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_50,
+            // 0); lv_obj_set_style_outline_width(skai_widget_input_text_bg, 5,
+            //                           LV_STATE_DEFAULT);
+            // lv_obj_set_style_bg_opa(skai_widget_input_text_bg, 5, 0);
             // voice_provider.auto_stop_listening();
             // voice_provider.stop_v2t();
             // reset_skai_widget_input_text();
@@ -510,6 +542,9 @@ void back_on_skai_widget(void)
         else if (get_is_open_app_list_ai())
         {
             // animate_to_home_from_notification_center();
+            voice_provider.stop_v2t();
+            extern void close_ai_widget(void);
+            close_ai_widget();
             stop_voice_recognition(V2T_INTENT_NOTHING);
             set_is_open_app_list_ai(false);
             open_skai_widget_ai(false);
@@ -561,7 +596,7 @@ void set_skai_widget_input_text(const char *text)
     if (strcmp(text, "") == 0)
     {
         lv_obj_clear_flag(skai_widget_input_prompt, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_50, 0);
+        // lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_50, 0);
         lv_label_set_text(skai_widget_input_text, "");
         input_text_is_null = true;
         return;

@@ -2975,15 +2975,11 @@ static void menu_dev_mgr_event_cb(dev_mgr_event_t event, uint8_t device_idx,
 static lv_obj_t *menu_window(lv_obj_t *par)
 {
     menu_bg = lv_obj_create(par);
-    lv_obj_set_size(menu_bg, LV_HOR_RES_MAX / 2 + 55, LV_VER_RES_MAX);
+    lv_obj_set_size(menu_bg, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     lv_obj_set_style_bg_color(menu_bg, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(menu_bg, LV_OPA_80, 0);
-    lv_obj_set_style_radius(menu_bg, 10, 0);
-    lv_obj_align(menu_bg, LV_ALIGN_RIGHT_MID, 0, 0);
-    lv_obj_set_style_border_width(menu_bg, 3, 0);
-    lv_obj_set_style_border_color(menu_bg, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(menu_bg, LV_OPA_80, 0);
-    lv_obj_set_style_border_side(menu_bg, LV_BORDER_SIDE_LEFT, 0);
+    lv_obj_set_style_radius(menu_bg, 233, 0);
+    lv_obj_align(menu_bg, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_flag(menu_bg, LV_OBJ_FLAG_HIDDEN);
 
     // Enable scrolling for menu_bg

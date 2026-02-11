@@ -1481,7 +1481,7 @@ static bool can_open_ai_interface(void)
     return true;
 }
 
-extern void set_ai_hint_x(uint8_t x);
+// extern void set_ai_hint_x(uint8_t x);
 static uint8_t pevr_ai_hint_bg_pos = 0;
 static void calculate_gravity_position(Vector3 *gravity)
 {
