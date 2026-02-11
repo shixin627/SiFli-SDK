@@ -1174,7 +1174,15 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
     }
 }
 
+extern void set_skai_widget_opa(uint8_t opa);
 extern void set_skai_widget_input_text(const char *text);
+static void set_ai_bg_opa(void *obj, int32_t opa)
+{
+    uint8_t bg_opa = 240 * opa / 255;
+    lv_obj_set_style_bg_opa(p_app_list_layout->p_app_list_ai_bg, bg_opa, 0);
+    set_skai_widget_opa(opa);
+}
+
 void tap_on_ai_widget(void)
 {
     if (!get_bluetooth_connection_status())
@@ -1190,6 +1198,15 @@ void tap_on_ai_widget(void)
     //     return;
     // }
     lv_obj_clear_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, p_app_list_layout->p_app_list_ai_bg);
+    lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
+    lv_anim_set_time(&a, 300);
+    lv_anim_set_exec_cb(&a, set_ai_bg_opa);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    lv_anim_start(&a);
+
     is_open_app_list_ai = true;
     open_skai_widget_ai(true);
     // animate_to_ai_page();
@@ -1203,7 +1220,10 @@ void tap_on_ai_widget(void)
 
 void close_ai_widget(void)
 {
+    lv_anim_del(p_app_list_layout->p_app_list_ai_bg, set_ai_bg_opa);
     lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
+    set_skai_widget_opa(0);
+    // LOG_I("AI widget closed");
 }
 
 static bool app_list_ai_tapped = false;
@@ -1751,9 +1771,10 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     lv_obj_t *ai_hint_btn = lv_obj_create(ai_hint);
     lv_obj_set_size(ai_hint_btn, 80, 80);
     lv_obj_set_style_bg_opa(ai_hint_btn, LV_OPA_TRANSP, 0);
-    lv_obj_add_event_cb(ai_hint_btn, logo_click_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(ai_hint_btn, logo_click_event_cb, LV_EVENT_CLICKED,
+                        NULL);
     lv_obj_align(ai_hint_btn, LV_ALIGN_CENTER, 0, 0);
-    
+
     // create_ai_hint_icon(p_app_list_bg);
     p_app_list_layout->p_app_list_ai_bg = lv_obj_create(p_app_list_bg);
     lv_obj_set_size(p_app_list_layout->p_app_list_ai_bg, 466, 466);
