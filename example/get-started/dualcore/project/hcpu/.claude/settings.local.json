@@ -2,6 +2,9 @@
   "permissions": {
     "allow": [
       "Read(//c/SiFli-SDK/example/get-started/dualcore/src/hcpu/gui_apps/hid_mouse/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\SiFli-SDK\\example\\get-started\\dualcore\\src\\hcpu\\gui_apps\\media"
     ]
   }
 }

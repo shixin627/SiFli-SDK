@@ -497,6 +497,7 @@ void open_skai_widget_ai(bool open)
             // lv_label_set_text(skai_widget_input_prompt, "聽取中");
             // lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_100,
             // 0);
+            setting_provider.set_power_save_mode(0);
             start_listening_animation();
             // listening_shadow_animation(true);
             // lv_obj_set_style_outline_width(skai_widget_input_text_bg, 0,
@@ -505,6 +506,7 @@ void open_skai_widget_ai(bool open)
         }
         else
         {
+            setting_provider.set_power_save_mode(1);
             stop_listening_animation();
             // listening_shadow_animation(false);
             lv_label_set_text(skai_widget_input_prompt, "聽取中");

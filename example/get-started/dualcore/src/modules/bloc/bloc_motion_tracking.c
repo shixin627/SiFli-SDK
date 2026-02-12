@@ -1062,14 +1062,18 @@ extern void set_air_mouse_moving_state(bool state);
 static void report_air_mouse_data(air_plane_delta_movement_t *movement,
                                   rt_uint32_t ts)
 {
+    // if (abs(movement->x >= 3) || abs(movement->y) >= 3)
+    // {
+    //     set_air_mouse_moving_state(true);
+    // }
+    // else
+    // {
+    //     set_air_mouse_moving_state(false);
+    // }
     if (movement->x == 0 && movement->y == 0)
     {
-        LOG_D("Air mouse no movement");
-        set_air_mouse_moving_state(false);
         return;
     }
-    LOG_D("Air mouse move x:%d,y:%d", movement->x, movement->y);
-    set_air_mouse_moving_state(true);
     control_provider.ble_hid_mouse_move(movement->x, movement->y);
     movement->last_report_ts = ts;
     movement->x = 0;
@@ -1109,11 +1113,20 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     delta_movement = air_mouse_algorithm(&accumulated_dx, &accumulated_dy, yaw,
                                          pitch, threshold);
 
+    if (abs(delta_movement.x >= 3) || abs(delta_movement.y) >= 3)
+    {
+        set_air_mouse_moving_state(true);
+    }
+    else
+    {
+        set_air_mouse_moving_state(false);
+    }
     // 按住面板才可體感移動
     if (!stop_mouse_move && is_skai_touch_enabled())
     {
         report_air_mouse_data(&delta_movement, ts);
     }
+
 }
 #endif
 

@@ -28,7 +28,7 @@
 #include "bloc_v2t.h"
 
 #define DBG_TAG "app.clock.status_bar"
-#define DBG_LVL DBG_INFO
+#define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
 #define APP_ID "Main"
@@ -130,7 +130,7 @@ static void notification_status_bar_cb(lv_event_t *event)
 
         if (LV_EVENT_RELEASED == event->code)
         {
-            LOG_D("LV_EVENT_RELEASED_Clock from area: %d", area_id);
+            LOG_I("LV_EVENT_RELEASED_Clock from area: %d", area_id);
             // 根據不同區域執行不同操作
             switch (area_id)
             {

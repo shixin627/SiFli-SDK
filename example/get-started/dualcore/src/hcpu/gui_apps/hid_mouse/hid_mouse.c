@@ -83,9 +83,9 @@
 
 #ifdef APP_ID_MOUSE
 
-#define DBG_TAG "hid.mouse"
-#define DBG_LVL DBG_LOG
-#include <rtdbg.h>
+    #define DBG_TAG "hid.mouse"
+    #define DBG_LVL DBG_LOG
+    #include <rtdbg.h>
 
     /*********************
      *      DEFINES
@@ -98,14 +98,14 @@
     #define GESTURE_TIMER_MS 200
     #define INERTIA_TIMER_MS 20
     #define INERTIA_DECAY_FACTOR 0.95f
-    #define MIN_SCROLL_SPEED 0.1f
+    #define MIN_SCROLL_SPEED 1.0f
     #define SCROLL_SPEED_MULTIPLIER 2.0f
 
-    #define SIMULATE_MOUSE_RIGHT_BUTTON 1
+    #define SIMULATE_MOUSE_RIGHT_BUTTON 0
     #define USING_MOUSE_WHEEL_SCROLLING 1
     #define USING_TOUCHSCREEN_SCROLLING 0
     #define USING_EDGE_BOTTOM_DETECTION 0
-    #define USING_EDGE_LEFT_DETECTION 1
+    #define USING_EDGE_LEFT_DETECTION 0
     #define USING_EDGE_RIGHT_DETECTION 0
 
     #define ENABLE_MENU_FEATURE 1
@@ -145,6 +145,7 @@ static bool pressing = false;
 static bool scrolling = false;
 static bool scrolling_confirmed = false;
 static bool moving = false;
+static bool has_moved_during_touch = false;
 
 static bool go_back = false;
 static bool handfree = false;
@@ -158,6 +159,12 @@ static bool gesture_detected = false;
 static bool scroll_direction_locked = false;
 static bool is_horizontal_scroll = false;
 
+// 慣性滾動
+static float inertia_velocity = 0.0f;
+static float inertia_accumulator = 0.0f;
+static lv_timer_t *inertia_timer = NULL;
+static uint32_t last_scroll_tick = 0;
+
     #if SIMULATE_MOUSE_RIGHT_BUTTON
 static bool pressed_left_half = false;
     #endif
@@ -168,6 +175,10 @@ static lv_indev_t *indev_global = NULL;
 static lv_obj_t *device_sw = NULL;
 static uint8_t zoom_count = 0;
 static lv_obj_t *menu_bg = NULL;
+static lv_obj_t *menu_tileview = NULL;
+static lv_obj_t *menu_home_tile = NULL;
+static lv_obj_t *menu_content_tile = NULL;
+static lv_obj_t *menu_swipe_area = NULL;
 static lv_obj_t *control_page = NULL;
 static lv_obj_t *status_bar_area = NULL;
 static lv_obj_t *crosshair_line1 = NULL;
@@ -2105,6 +2116,38 @@ static void start_multiple_pages_timer(void)
 }
     #endif
 /**
+ * @brief Inertia scroll timer callback
+ */
+static void inertia_scroll_timer_cb(lv_timer_t *timer)
+{
+    inertia_velocity *= INERTIA_DECAY_FACTOR;
+
+    if (fabsf(inertia_velocity) < MIN_SCROLL_SPEED)
+    {
+        lv_timer_del(timer);
+        inertia_timer = NULL;
+        inertia_accumulator = 0.0f;
+        return;
+    }
+
+    inertia_accumulator += inertia_velocity * (INERTIA_TIMER_MS / 1000.0f);
+    int8_t scroll_val = (int8_t)inertia_accumulator;
+    inertia_accumulator -= (float)scroll_val;
+
+    if (scroll_val != 0)
+    {
+        if (is_horizontal_scroll)
+        {
+            control_provider.ble_hid_mouse_pan_scroll(scroll_val);
+        }
+        else
+        {
+            control_provider.ble_hid_mouse_wheel_scroll(scroll_val);
+        }
+    }
+}
+
+/**
  * @brief Handles the pressed event
  * @param indev Input device
  */
@@ -2116,13 +2159,25 @@ static void handle_pressed_event(lv_indev_t *indev)
 
     lv_indev_get_point(indev, &start_point);
     lv_indev_get_point(indev, &last_point);
-
     pressing = false;
     scrolling = false;
+    moving = false;
 
     // 重置滚动方向锁定
     scroll_direction_locked = false;
     is_horizontal_scroll = false;
+
+    has_moved_during_touch = false;
+
+    // 停止慣性滾動
+    if (inertia_timer)
+    {
+        lv_timer_del(inertia_timer);
+        inertia_timer = NULL;
+    }
+    inertia_velocity = 0.0f;
+    inertia_accumulator = 0.0f;
+    last_scroll_tick = lv_tick_get();
 
     #if SIMULATE_MOUSE_RIGHT_BUTTON
     pressed_left_half = start_point.x < (LV_HOR_RES_MAX / 2);
@@ -2188,32 +2243,59 @@ static void handle_pressing_event(lv_indev_t *indev,
             delta_y = -delta_y;
         }
         handle_mouse_wheel_scrolling(delta_x, delta_y);
+
+        // 追蹤慣性滾動速度
+        if (lv_tick_get() - last_scroll_tick > 0 &&
+            lv_tick_get() - last_scroll_tick < 500)
+        {
+            int scroll_units = is_horizontal_scroll
+                                   ? (delta_x / SCROLLING_THRESHOLD)
+                                   : (delta_y / SCROLLING_THRESHOLD);
+            float current_speed =
+                (float)scroll_units /
+                ((float)(lv_tick_get() - last_scroll_tick) / 1000.0f);
+            inertia_velocity = 0.7f * inertia_velocity + 0.3f * current_speed;
+        }
+        last_scroll_tick = lv_tick_get();
+
     #if USING_TOUCHSCREEN_SCROLLING
         handle_touchscreen_scrolling(current_point);
     #endif
         return;
     }
 
-    // Check if should start scrolling
-    if (lv_tick_get() - press_time > PRESSED_TIME_MS)
+    // 記錄這次觸碰期間是否有移動過
+    if (moving)
+    {
+        has_moved_during_touch = true;
+    }
+
+    // 長按觸發：超過閾值且這次觸碰期間從未移動過
+    if (!has_moved_during_touch && (lv_tick_get() - press_time > PRESSED_TIME_MS))
     {
         pressing = true;
     #if SIMULATE_MOUSE_RIGHT_BUTTON
-        if (pressed_left_half)
+        if (lv_tick_get() - press_time > PRESSED_TIME_MS)
+        {
+            if (pressed_left_half)
+            {
     #endif
-        {
-            control_provider.ble_hid_mouse_left_press();
-            LOG_D("Air mouse - left press");
-        }
+                    control_provider.ble_hid_mouse_left_press();
+                    motor_pattern_touchpad_slide();
+                    LOG_D("Air mouse - left press");
+            
     #if SIMULATE_MOUSE_RIGHT_BUTTON
-        else
-        {
-            control_provider.ble_hid_mouse_right_press();
-            LOG_D("Air mouse - right press");
+            }
+            else
+            {
+                control_provider.ble_hid_mouse_right_press();
+                LOG_D("Air mouse - right press");
+            }
         }
     #endif
     }
 }
+
 
 /**
  * @brief Handles the released event
@@ -2256,6 +2338,24 @@ static void handle_released_event(lv_indev_t *indev)
     {
         scrolling = false;
         LOG_D("Gesture detected: scrolling released");
+
+        // 啟動慣性滾動
+        if ((lv_tick_get() - last_scroll_tick) < 100 &&
+            fabsf(inertia_velocity) > MIN_SCROLL_SPEED)
+        {
+            inertia_accumulator = 0.0f;
+            if (inertia_timer)
+            {
+                lv_timer_del(inertia_timer);
+            }
+            inertia_timer = lv_timer_create(inertia_scroll_timer_cb,
+                                            INERTIA_TIMER_MS, NULL);
+        }
+        else
+        {
+            inertia_velocity = 0.0f;
+        }
+
     #if USING_TOUCHSCREEN_SCROLLING
         if (control_provider.ble_hid_touch_screen_release != NULL)
         {
@@ -2378,20 +2478,57 @@ static void plain_event_cb(lv_event_t *e)
 }
 
     #if ENABLE_MENU_FEATURE
-static lv_obj_t *menu_btn = NULL;
-static void menu_btn_event_cb(lv_event_t *e)
+/**
+ * @brief Tileview event callback for menu swipe
+ */
+static void menu_tileview_event_cb(lv_event_t *e)
 {
-    if (lv_obj_has_flag(menu_bg, LV_OBJ_FLAG_HIDDEN))
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *obj = lv_event_get_target(e);
+
+    if (code == LV_EVENT_VALUE_CHANGED)
     {
-        set_stop_mouse_move(true);
-        lv_obj_clear_flag(menu_bg, LV_OBJ_FLAG_HIDDEN);
-        lv_img_set_src(lv_obj_get_child(menu_btn, 0), ICON_X);
+        lv_obj_t *active_tile = lv_tileview_get_tile_act(obj);
+        if (active_tile == menu_home_tile)
+        {
+            /* 滑回首頁，隱藏 tileview 並恢復滑鼠控制 */
+            lv_obj_add_flag(menu_tileview, LV_OBJ_FLAG_HIDDEN);
+            set_stop_mouse_move(false);
+        }
+        else if (active_tile == menu_content_tile)
+        {
+            /* 進入 menu 頁面，停止滑鼠移動 */
+            set_stop_mouse_move(true);
+        }
     }
-    else
+}
+
+/**
+ * @brief Top swipe area callback - show menu tileview on press
+ */
+static void menu_swipe_area_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_PRESSED)
     {
-        set_stop_mouse_move(false);
-        lv_obj_add_flag(menu_bg, LV_OBJ_FLAG_HIDDEN);
-        lv_img_set_src(lv_obj_get_child(menu_btn, 0), &plus_button);
+        if (menu_tileview != NULL)
+        {
+            LOG_D("menu_swipe_area_event_cb: show menu tileview");
+            /* 設定到首頁 tile，讓使用者從頂部往下滑到 menu */
+            lv_obj_set_tile(menu_tileview, menu_home_tile, LV_ANIM_OFF);
+            lv_obj_clear_flag(menu_tileview, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    else if (code == LV_EVENT_RELEASED)
+    {
+        if (lv_obj_get_scroll_x(menu_tileview) == 0 &&
+            lv_obj_get_scroll_y(menu_tileview) == 466)
+        {
+            /* 滑回首頁，隱藏 tileview 並恢復滑鼠控制 */
+            lv_obj_add_flag(menu_tileview, LV_OBJ_FLAG_HIDDEN);
+            set_stop_mouse_move(false);
+        }
     }
 }
     #endif
@@ -2561,7 +2698,8 @@ static void menu_delete_confirm_cb(lv_event_t *e)
             // User confirmed deletion
             if (menu_pending_delete_idx != 0xFF)
             {
-                LOG_I("User confirmed: disconnecting and deleting device [%d]",
+                LOG_I("User confirmed: disconnecting and deleting device "
+                      "[%d]",
                       menu_pending_delete_idx);
                 // First disconnect the device if connected
                 ble_dev_mgr_disconnect_device(menu_pending_delete_idx);
@@ -2887,11 +3025,10 @@ static void menu_refresh_device_list(void)
             lv_obj_add_flag(menu_dev_list_ui.empty_label, LV_OBJ_FLAG_HIDDEN);
         }
     }
-    
+
     for (int i = 0; i < MAX_BONDED_DEVICES; i++)
     {
-        if (db->devices[i].is_valid &&
-            menu_dev_list_ui.device_list &&
+        if (db->devices[i].is_valid && menu_dev_list_ui.device_list &&
             lv_obj_is_valid(menu_dev_list_ui.device_list))
         {
             lv_obj_t *item = menu_create_device_item(
@@ -2958,13 +3095,29 @@ static void menu_dev_mgr_event_cb(dev_mgr_event_t event, uint8_t device_idx,
  */
 static lv_obj_t *menu_window(lv_obj_t *par)
 {
-    menu_bg = lv_obj_create(par);
+    /* 建立 tileview: 上方是首頁（透明），下方是 menu 內容 */
+    menu_tileview = lv_tileview_create(par);
+    lv_obj_set_size(menu_tileview, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_set_scrollbar_mode(menu_tileview, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_bg_opa(menu_tileview, LV_OPA_TRANSP, LV_PART_MAIN);
+
+    /* Tile 0 (col=0, row=0): Menu 內容頁（上方）- 可以往下滑回首頁 */
+    menu_content_tile =
+        lv_tileview_add_tile(menu_tileview, 0, 0, LV_DIR_BOTTOM);
+    lv_obj_set_size(menu_content_tile, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+
+    /* Tile 1 (col=0, row=1): 首頁（下方）- 透明，可以往上滑開啟 menu */
+    menu_home_tile = lv_tileview_add_tile(menu_tileview, 0, 1, LV_DIR_TOP);
+    lv_obj_set_style_bg_opa(menu_home_tile, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_size(menu_home_tile, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+
+    /* Menu 背景 */
+    menu_bg = lv_obj_create(menu_content_tile);
     lv_obj_set_size(menu_bg, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     lv_obj_set_style_bg_color(menu_bg, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(menu_bg, LV_OPA_80, 0);
     lv_obj_set_style_radius(menu_bg, 233, 0);
     lv_obj_align(menu_bg, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_flag(menu_bg, LV_OBJ_FLAG_HIDDEN);
 
     // Enable scrolling for menu_bg
     lv_obj_set_style_pad_all(menu_bg, 10, 0);
@@ -2985,8 +3138,8 @@ static lv_obj_t *menu_window(lv_obj_t *par)
     lv_obj_set_style_border_width(device_list, 0, 0);
     lv_obj_set_style_pad_all(device_list, 0, 0);
     lv_obj_set_flex_flow(device_list, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(device_list, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(device_list, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(device_list, 6, 0);
     lv_obj_set_style_pad_column(device_list, 6, 0);
     menu_dev_list_ui.device_list = device_list;
@@ -3001,6 +3154,14 @@ static lv_obj_t *menu_window(lv_obj_t *par)
     // Register device manager callback and refresh list
     ble_dev_mgr_register_callback(menu_dev_mgr_event_cb, NULL);
     menu_refresh_device_list();
+
+    /* 預設顯示首頁 tile 並隱藏整個 tileview */
+    lv_obj_set_tile(menu_tileview, menu_home_tile, LV_ANIM_OFF);
+    lv_obj_add_flag(menu_tileview, LV_OBJ_FLAG_HIDDEN);
+
+    /* 註冊 tileview 事件 */
+    lv_obj_add_event_cb(menu_tileview, menu_tileview_event_cb,
+                        LV_EVENT_VALUE_CHANGED, NULL);
 
     return par;
 }
@@ -3076,11 +3237,13 @@ static void text_input_bar_cb(lv_event_t *e)
             }
         }
 
-        // Map (rt_tick_get() - text_input_bar_press_time) from 0~500 to 1~1.2
+        // Map (rt_tick_get() - text_input_bar_press_time) from 0~500 to
+        // 1~1.2
         float elapsed = (float)(rt_tick_get() - text_input_bar_press_time);
         if (fabs(elapsed - prev_elapsed) > 30 && elapsed < 500.0f)
         {
-            // LOG_D("elapsed: %f, prev_elapsed: %f", elapsed, prev_elapsed);
+            // LOG_D("elapsed: %f, prev_elapsed: %f", elapsed,
+            // prev_elapsed);
             prev_elapsed = elapsed;
             float scale = 1.0f + (elapsed / 500.0f) * 0.2f;
             if (scale > 1.2f)
@@ -3175,19 +3338,20 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_align(crosshair_line2, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0x666666), 0);
 
-    // SKAI logo area with background (blocks mouse events)
-    lv_obj_t *skai_logo_area = lv_obj_create(bg);
-    lv_obj_set_size(skai_logo_area, LV_HOR_RES_MAX, 100);
-    lv_obj_align(skai_logo_area, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_color(skai_logo_area, lv_color_hex(0x1a1a1a),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(skai_logo_area, LV_OPA_80, LV_PART_MAIN);
-    lv_obj_set_style_border_width(skai_logo_area, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(skai_logo_area, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(skai_logo_area, LV_OBJ_FLAG_SCROLLABLE);
-    // Block touch events from propagating to touch_bg
-    lv_obj_add_flag(skai_logo_area, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(skai_logo_area, top_logo_event_cb, LV_EVENT_ALL, NULL);
+    // // SKAI logo area with background (blocks mouse events)
+    // lv_obj_t *skai_logo_area = lv_obj_create(bg);
+    // lv_obj_set_size(skai_logo_area, LV_HOR_RES_MAX, 100);
+    // lv_obj_align(skai_logo_area, LV_ALIGN_TOP_MID, 0, 0);
+    // lv_obj_set_style_bg_color(skai_logo_area, lv_color_hex(0x1a1a1a),
+    //                           LV_PART_MAIN);
+    // lv_obj_set_style_bg_opa(skai_logo_area, LV_OPA_80, LV_PART_MAIN);
+    // lv_obj_set_style_border_width(skai_logo_area, 0, LV_PART_MAIN);
+    // lv_obj_set_style_radius(skai_logo_area, 0, LV_PART_MAIN);
+    // lv_obj_clear_flag(skai_logo_area, LV_OBJ_FLAG_SCROLLABLE);
+    // // Block touch events from propagating to touch_bg
+    // lv_obj_add_flag(skai_logo_area, LV_OBJ_FLAG_CLICKABLE);
+    // lv_obj_add_event_cb(skai_logo_area, top_logo_event_cb, LV_EVENT_ALL,
+    // NULL);
 
     // SKAI logo at top center
     // lv_obj_t *skai_logo = lv_img_create(skai_logo_area);
@@ -3213,9 +3377,17 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     #if ENABLE_MENU_FEATURE
     menu_window(bg);
 
-    menu_btn = common_image_button(bg, &plus_button, 70, 70, menu_btn_event_cb);
-    lv_img_set_zoom(lv_obj_get_child(menu_btn, 0), 255 * 0.7);
-    lv_obj_align(menu_btn, LV_ALIGN_CENTER, 120, 120);
+    /* 螢幕頂部透明觸控區域，按下後顯示 tileview 讓使用者往下滑開啟 menu */
+    menu_swipe_area = lv_obj_create(bg);
+    lv_obj_set_size(menu_swipe_area, LV_HOR_RES_MAX, LV_VER_RES_MAX / 8);
+    lv_obj_align(menu_swipe_area, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_opa(menu_swipe_area, LV_OPA_0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(menu_swipe_area, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(menu_swipe_area, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(menu_swipe_area, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(menu_swipe_area, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_add_event_cb(menu_swipe_area, menu_swipe_area_event_cb, LV_EVENT_ALL,
+                        NULL);
     #endif
 
     // Create custom circular keyboard
@@ -3306,9 +3478,24 @@ static void on_stop(void)
 {
     app_control_set_mouse_mode(false);
 
+    // Clean up menu tileview
+    menu_tileview = NULL;
+    menu_home_tile = NULL;
+    menu_content_tile = NULL;
+    menu_bg = NULL;
+    menu_swipe_area = NULL;
+
     // Clean up file list
     file_list = NULL;
     file_items_count = 0;
+
+    // Clean up inertia timer
+    if (inertia_timer != NULL)
+    {
+        lv_timer_del(inertia_timer);
+        inertia_timer = NULL;
+    }
+    inertia_velocity = 0.0f;
 
     // Clean up keyboard resources
     if (keyboard != NULL)
@@ -3386,8 +3573,8 @@ void hid_mouse_clear_files(void)
     // Clear visual list if it exists
     if (file_list)
     {
-        // Remove all file item children (keep handheld and calibrate which are
-        // the first two)
+        // Remove all file item children (keep handheld and calibrate which
+        // are the first two)
         lv_obj_t *child =
             lv_obj_get_child(file_list, 2); // Start from third child
         while (child)
