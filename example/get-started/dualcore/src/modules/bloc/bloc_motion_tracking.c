@@ -767,8 +767,7 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     uint8_t gesture_threshold_factor =
         bloc_setting_get_gesture_detect_threshold();
     float horizontal_threshold = gesture_threshold_factor * 0.01f;
-    user_hand_horizontal =
-        (gravity->x < 0.9 && gravity->x > -0.4);
+    user_hand_horizontal = (gravity->x < 0.9 && gravity->x > -0.4);
 
     // Update watchface visibility
     if (gravity->y > -0.7 && gravity->z > -0.6)
@@ -907,7 +906,6 @@ void list_auto_positioning(void)
 
 static bool on_boundary = false;
 static int prev_total_yaw_energy_uint = 0;
-static uint8_t log_count = 0;
 static void navigation_bar_control_with_euler_angle(euler_angle_t *delta,
                                                     motion_data_t *motion_data)
 {
@@ -1066,10 +1064,11 @@ static void report_air_mouse_data(air_plane_delta_movement_t *movement,
 {
     if (movement->x == 0 && movement->y == 0)
     {
+        LOG_D("Air mouse no movement");
         set_air_mouse_moving_state(false);
         return;
     }
-    // LOG_D("Air mouse move x:%d,y:%d", movement->x, movement->y);
+    LOG_D("Air mouse move x:%d,y:%d", movement->x, movement->y);
     set_air_mouse_moving_state(true);
     control_provider.ble_hid_mouse_move(movement->x, movement->y);
     movement->last_report_ts = ts;
@@ -1079,7 +1078,7 @@ static void report_air_mouse_data(air_plane_delta_movement_t *movement,
 
 extern bool get_hid_mouse_handfree_mode(void);
 extern bool app_hid_mouse_movement_lock(void);
-
+static uint8_t log_count = 0;
 static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                               Quaternion *prev_quat)
 {
@@ -1467,13 +1466,12 @@ static bool can_open_ai_interface(void)
     // Check if the AI interface can be opened
     if (is_at_home() || is_at_control_center() || is_at_mouse_mode() ||
         ai_interface_lock_flag || gui_app_is_actived(APP_ID_FLASHLIGHT) ||
-        gui_app_is_actived(APP_ID_TIMER) ||
-        gui_app_is_actived(APP_ID_MOUSE) ||
+        gui_app_is_actived(APP_ID_TIMER) || gui_app_is_actived(APP_ID_MOUSE) ||
         gui_app_is_actived(APP_ID_EXERCISE) ||
         gui_app_is_actived(APP_ID_GESTURE) ||
         gui_app_is_actived(APP_ID_RECORDER) ||
         // gui_app_is_actived(APP_ID_BATTERY) ||
-        // gui_app_is_actived(APP_ID_MEDIA) || 
+        // gui_app_is_actived(APP_ID_MEDIA) ||
         (!is_ai_open_mic && app_voice_get_listening_status()))
     {
         return false;

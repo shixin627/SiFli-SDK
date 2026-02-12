@@ -926,7 +926,13 @@ static void key_report_send(uint8_t *key_val, uint16_t key_val_len)
 static void mouse_report_send(uint8_t *key_val, uint16_t key_val_len)
 {
     if (!g_hid_data || !g_hid_data->is_mouse_config_on)
+    {
+        // if (!g_hid_data)
+        //     LOG_E("g_hid_data is NULL");
+        // if (!g_hid_data->is_mouse_config_on)
+        //     LOG_I("g_hid_data->is_mouse_config_on is 0");
         return;
+    }
 
     sibles_value_t value;
     value.hdl = g_hid_data->srv_handle;
@@ -1018,6 +1024,11 @@ ble_hid_data_t *ble_hid_get_data(void)
 void ble_hid_set_conn_idx(uint8_t conn_idx)
 {
     g_conn_idx = conn_idx;
+}
+
+uint8_t ble_hid_get_conn_idx(void)
+{
+    return g_conn_idx;
 }
 
 void ble_hid_reset_on_disconnect(void)

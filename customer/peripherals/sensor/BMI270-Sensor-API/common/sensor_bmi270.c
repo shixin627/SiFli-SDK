@@ -196,7 +196,6 @@ static rt_err_t _bmi270_set_power(rt_sensor_t sensor, rt_uint8_t power)
         break;
     case RT_SENSOR_POWER_NORMAL:
         bmi270_open();
-        bmi270_sensor_power_low_mode();
         break;
     case RT_SENSOR_POWER_LOW:
         bmi270_sensor_power_low_mode();

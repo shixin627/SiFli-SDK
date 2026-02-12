@@ -678,7 +678,6 @@ void process_motion_sensor_data(motion_sensor_data_t *data)
     watch_sensor.motion_data.gravity = data->motion.gravity;
     watch_sensor.motion_data.global_q = data->motion.global_q;
     watch_sensor.motion_data.sensor_q = data->motion.sensor_q;
-
     if (watch_sensor.imu_sem)
     {
         rt_sem_release(watch_sensor.imu_sem);
