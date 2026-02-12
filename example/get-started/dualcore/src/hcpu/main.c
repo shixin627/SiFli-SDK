@@ -1087,8 +1087,8 @@ void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
         }
         else
         {
-            appearance = GAP_GATT_APPEARANCE_MOUSE;
-            // appearance = GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE;
+            // appearance = GAP_GATT_APPEARANCE_MOUSE;
+            appearance = GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE;
         }
         LOG_D("Appearance: %d", appearance);
         para.adv_data.appearance = rt_malloc(sizeof(uint16_t));
@@ -1253,10 +1253,8 @@ void ble_app_entry(void *param)
 
             env->is_power_on = 1;
             env->conn_para.mtu = 23; /* Default value. */
-            LOG_I("BLE stack is powered on, start advertising\r");
             // ble_app_advertising_start(false, false, false);
             ble_dev_mgr_start_main_phone_check_timer(5000);
-            LOG_I("receive BLE power on!\r");
         }
 #ifdef USING_BLE_SERIAL
         else if (value == 0xFF1F)

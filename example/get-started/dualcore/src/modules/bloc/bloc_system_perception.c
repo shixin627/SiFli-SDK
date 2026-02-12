@@ -229,7 +229,7 @@ void app_periodic_task(void)
 
     // extern void app_exercise_background_hr_cb(int hr);
     // app_exercise_background_hr_cb(1800);
-    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_GLOBAL_TIME);
+    // peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_GLOBAL_TIME);
 }
 
 /**

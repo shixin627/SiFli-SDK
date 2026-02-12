@@ -731,10 +731,6 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
         // The HCPU will receive motion_data via motion_data_fetch() and process
         // gesture waveform capture directly, then notify gesture_sem when ready.
     }
-    else
-    {
-        LOG_D("IMU sample rate: %.2f Hz", hz);
-    }
     return (rt_tick_get_millisecond() - now);
 }
 
