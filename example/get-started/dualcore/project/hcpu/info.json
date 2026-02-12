@@ -1,6 +1,6 @@
 {
-    "version": "1.0.230",
-    "description": "更新版子v29",
+    "version": "1.0.231",
+    "description": "優化AI使用體驗",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
