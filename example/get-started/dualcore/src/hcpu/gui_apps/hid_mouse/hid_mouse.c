@@ -2752,7 +2752,7 @@ static lv_obj_t *menu_create_device_item(lv_obj_t *parent,
     bool is_active = (active_idx == device_idx);
 
     lv_obj_t *btn = lv_btn_create(parent);
-    lv_obj_set_size(btn, LV_PCT(100), 70);
+    lv_obj_set_size(btn, LV_PCT(48), 70);
     lv_obj_set_style_radius(btn, 8, 0);
     lv_obj_set_style_bg_color(btn, lv_color_hex(0x2A2A2A), 0);
     lv_obj_set_style_bg_color(btn, lv_color_hex(0x3A3A3A), LV_STATE_PRESSED);
@@ -2797,13 +2797,13 @@ static lv_obj_t *menu_create_device_item(lv_obj_t *parent,
 
     // Text container - positioned after LED
     lv_obj_t *text_cont = lv_obj_create(btn);
-    lv_obj_set_size(text_cont, LV_PCT(90), LV_SIZE_CONTENT);
-    lv_obj_align(text_cont, LV_ALIGN_LEFT_MID, 20, 0);
+    lv_obj_set_size(text_cont, LV_PCT(85), LV_SIZE_CONTENT);
+    lv_obj_align(text_cont, LV_ALIGN_LEFT_MID, 18, 0);
     lv_obj_set_style_bg_opa(text_cont, LV_OPA_0, 0);
     lv_obj_set_style_border_width(text_cont, 0, 0);
     lv_obj_set_style_pad_all(text_cont, 0, 0);
-    lv_obj_set_flex_flow(text_cont, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(text_cont, 8, 0);  // Gap between type and name
+    lv_obj_set_flex_flow(text_cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(text_cont, 2, 0);
     lv_obj_clear_flag(text_cont, LV_OBJ_FLAG_CLICKABLE);
 
     // Convert device type to string
@@ -2835,7 +2835,7 @@ static lv_obj_t *menu_create_device_item(lv_obj_t *parent,
     lv_label_set_text(name_label, device->device_name);
     lv_obj_set_style_text_color(name_label, lv_color_hex(0xFFFFFF), 0);
     lv_label_set_long_mode(name_label, LV_LABEL_LONG_DOT);
-    lv_obj_set_flex_grow(name_label, 1);  // Take remaining space
+    lv_obj_set_width(name_label, LV_PCT(100));
     lv_obj_clear_flag(name_label, LV_OBJ_FLAG_CLICKABLE);
 
     return btn;
@@ -2853,6 +2853,17 @@ static void menu_refresh_device_list(void)
     if (!db)
     {
         return;
+    }
+
+    // Sync control_device_idx with the device matching g_conn_idx
+    uint8_t hid_conn_idx = ble_hid_get_conn_idx();
+    for (int i = 0; i < MAX_BONDED_DEVICES; i++)
+    {
+        if (db->devices[i].is_valid && db->devices[i].conn_idx == hid_conn_idx)
+        {
+            control_device_idx = (uint8_t)i;
+            break;
+        }
     }
     if (menu_dev_list_ui.device_list &&
         lv_obj_is_valid(menu_dev_list_ui.device_list))
@@ -2877,36 +2888,9 @@ static void menu_refresh_device_list(void)
         }
     }
     
-    // Get main phone conn_idx to prioritize it in the list
-    extern uint8_t get_main_phonepeer_conn_idx(void);
-    uint8_t main_phone_conn_idx = get_main_phonepeer_conn_idx();
-    // First pass: add main phone device at the top
     for (int i = 0; i < MAX_BONDED_DEVICES; i++)
     {
-        if (db->devices[i].is_valid && 
-            db->devices[i].conn_idx == main_phone_conn_idx &&
-            menu_dev_list_ui.device_list &&
-            lv_obj_is_valid(menu_dev_list_ui.device_list))
-        {
-            LOG_D("menu_refresh: adding main phone device first - i=%d", i);
-            lv_obj_t *item = menu_create_device_item(
-                menu_dev_list_ui.device_list, &db->devices[i], i);
-            lv_obj_add_event_cb(item, menu_device_item_click_cb,
-                                LV_EVENT_SHORT_CLICKED, NULL);
-            lv_obj_add_event_cb(item, menu_device_item_click_cb,
-                                LV_EVENT_PRESSED, NULL);
-            lv_obj_add_event_cb(item, menu_device_item_click_cb,
-                                LV_EVENT_RELEASED, NULL);
-            lv_obj_add_event_cb(item, menu_device_item_click_cb,
-                                LV_EVENT_PRESS_LOST, NULL);
-        }
-    }
-    
-    // Second pass: add other devices
-    for (int i = 0; i < MAX_BONDED_DEVICES; i++)
-    {
-        if (db->devices[i].is_valid && 
-            db->devices[i].conn_idx != main_phone_conn_idx &&
+        if (db->devices[i].is_valid &&
             menu_dev_list_ui.device_list &&
             lv_obj_is_valid(menu_dev_list_ui.device_list))
         {
@@ -2936,7 +2920,7 @@ static void menu_refresh_device_list(void)
                             LV_EVENT_SHORT_CLICKED, NULL);
 
         lv_obj_t *reset_label = lv_label_create(reset_btn);
-        lv_label_set_text(reset_label, LV_SYMBOL_BLUETOOTH "Add Device");
+        lv_label_set_text(reset_label, "Add Device");
         lv_obj_set_style_text_color(reset_label, lv_color_hex(0xFFFFFF), 0);
         lv_obj_center(reset_label);
         menu_dev_list_ui.reset_btn = reset_btn;
@@ -3000,8 +2984,11 @@ static lv_obj_t *menu_window(lv_obj_t *par)
     lv_obj_set_style_bg_opa(device_list, LV_OPA_0, 0);
     lv_obj_set_style_border_width(device_list, 0, 0);
     lv_obj_set_style_pad_all(device_list, 0, 0);
-    lv_obj_set_flex_flow(device_list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_flow(device_list, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(device_list, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(device_list, 6, 0);
+    lv_obj_set_style_pad_column(device_list, 6, 0);
     menu_dev_list_ui.device_list = device_list;
 
     // Empty state label

@@ -322,15 +322,15 @@ void ble_app_clear_bonded_device(void)
 
 /********************** Start of Skaiwalk BLE Application
  * *********************************/
-#define ble_app_service_uuid                                            \
+#define ble_app_service_uuid                                                   \
     {0x53, 0x49, 0x46, 0x4C, 0x49, 0x42, 0x4C, 0x45,                           \
      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
-#define ble_app_tx_uuid                                                 \
+#define ble_app_tx_uuid                                                        \
     {0x53, 0x49, 0x46, 0x4C, 0x49, 0x42, 0x4C, 0x45,                           \
      0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
-#define ble_app_rx_uuid                                                 \
+#define ble_app_rx_uuid                                                        \
     {0x53, 0x49, 0x46, 0x4C, 0x49, 0x42, 0x4C, 0x45,                           \
      0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
@@ -348,29 +348,26 @@ enum ble_app_att_list
 #define SERIAL_UUID_16(x) {((uint8_t)(x & 0xff)), ((uint8_t)(x >> 8))}
 
 struct attm_desc_128 ble_app_att_db[] = {
-    [BLE_APP_SVC] = {SERIAL_UUID_16(ATT_DECL_PRIMARY_SERVICE),
-                            PERM(RD, ENABLE), 0, 0},
+    [BLE_APP_SVC] = {SERIAL_UUID_16(ATT_DECL_PRIMARY_SERVICE), PERM(RD, ENABLE),
+                     0, 0},
     [BLE_APP_TX_CHAR] = {SERIAL_UUID_16(ATT_DECL_CHARACTERISTIC),
-                                PERM(RD, ENABLE), 0, 0},
+                         PERM(RD, ENABLE), 0, 0},
     [BLE_APP_TX_VALUE] = {ble_app_tx_uuid,
-                                 PERM(RD, ENABLE) | PERM(WRITE_REQ, ENABLE) |
-                                     PERM(WRITE_COMMAND, ENABLE),
-                                 PERM(UUID_LEN, UUID_128) | PERM(RI, ENABLE),
-                                 256},
+                          PERM(RD, ENABLE) | PERM(WRITE_REQ, ENABLE) |
+                              PERM(WRITE_COMMAND, ENABLE),
+                          PERM(UUID_LEN, UUID_128) | PERM(RI, ENABLE), 256},
     [BLE_APP_RX_CHAR] = {SERIAL_UUID_16(ATT_DECL_CHARACTERISTIC),
-                                PERM(RD, ENABLE), 0, 0},
+                         PERM(RD, ENABLE), 0, 0},
     [BLE_APP_RX_VALUE] = {ble_app_rx_uuid,
-                                 PERM(RD, ENABLE) | PERM(NTF, ENABLE) |
-                                     PERM(IND, ENABLE),
-                                 PERM(UUID_LEN, UUID_128) | PERM(RI, ENABLE),
-                                 256},
+                          PERM(RD, ENABLE) | PERM(NTF, ENABLE) |
+                              PERM(IND, ENABLE),
+                          PERM(UUID_LEN, UUID_128) | PERM(RI, ENABLE), 256},
     [BLE_APP_RX_CCCD] = {SERIAL_UUID_16(ATT_DESC_CLIENT_CHAR_CFG),
-                                PERM(RD, ENABLE) | PERM(WRITE_REQ, ENABLE),
-                                PERM(RI, ENABLE), 2},
+                         PERM(RD, ENABLE) | PERM(WRITE_REQ, ENABLE),
+                         PERM(RI, ENABLE), 2},
 };
 
-static uint8_t g_ble_app_svc[ATT_UUID_128_LEN] =
-    ble_app_service_uuid;
+static uint8_t g_ble_app_svc[ATT_UUID_128_LEN] = ble_app_service_uuid;
 static sibles_hdl g_sifli_test_ble_test_hdl;
 
 #define ENABLE_BLE_MUTEX 0
@@ -398,8 +395,7 @@ void ble_api_unlock(void)
 }
 
 // sifli ble test
-static uint8_t *ble_app_get_cbk(uint8_t conn_idx, uint8_t idx,
-                                       uint16_t *len)
+static uint8_t *ble_app_get_cbk(uint8_t conn_idx, uint8_t idx, uint16_t *len)
 {
     ble_api_lock();
     LOG_D("ble_app_get_cbk %d", idx);
@@ -487,7 +483,8 @@ void skaiwalk_ble_app_update_conn_param(uint8_t conn_idx, uint16_t inv_max,
     conn_para.latency = 0;
     conn_para.time_out = timeout;
 
-    LOG_D("Request conn param update: intv_min=%d (%.2f ms), intv_max=%d (%.2f ms), timeout=%d",
+    LOG_D("Request conn param update: intv_min=%d (%.2f ms), intv_max=%d (%.2f "
+          "ms), timeout=%d",
           inv_min, inv_min * 1.25f, inv_max, inv_max * 1.25f, timeout);
 
     uint8_t ret = ble_gap_update_conn_param(&conn_para);
@@ -507,7 +504,6 @@ void skaiwalk_ble_gap_connected_ind(ble_gap_connect_ind_t *ind)
               ind->con_interval);
 
         notify_provider.bluetooth_connection();
-
     }
     SkaiWatchSys.gap_conn_state = GAP_CONN_STATE_CONNECTED;
 }
@@ -516,7 +512,8 @@ void skaiwalk_ble_gap_update_conn_param_ind(
     ble_gap_update_conn_param_ind_t *ind)
 {
     LOG_I("Updated connection interval: %d (%.2f ms), latency: %d, timeout: %d",
-          ind->con_interval, ind->con_interval * 1.25f, ind->con_latency, ind->sup_to);
+          ind->con_interval, ind->con_interval * 1.25f, ind->con_latency,
+          ind->sup_to);
     SkaiWatchSys.conn_interval = ind->con_interval;
     SkaiWatchSys.conn_latency = ind->con_latency;
     SkaiWatchSys.conn_superv_tout = ind->sup_to;
@@ -908,7 +905,8 @@ void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
 static lv_timer_t *main_phone_check_timer = NULL;
 
 void ble_dev_mgr_stop_main_phone_check_timer(void);
-static void check_main_phone_counterpart_connection_timer_callback(lv_timer_t *timer)
+static void
+check_main_phone_counterpart_connection_timer_callback(lv_timer_t *timer)
 {
     if (bluetooth_broadcasting_status)
     {
@@ -919,8 +917,8 @@ static void check_main_phone_counterpart_connection_timer_callback(lv_timer_t *t
     int device_idx = check_main_phone_counterpart_connection();
     if (device_idx == -1)
     {
-        // LOG_I(
-        //     "Main phone counterpart not connected, restarting advertising...");
+        LOG_I(
+            "Main phone counterpart not connected, restarting advertising...");
         ble_app_advertising_start(true, false, false);
     }
     else
@@ -1084,12 +1082,13 @@ void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
         uint16_t appearance;
         if (mouse_mode)
         {
-            // appearance = GAP_GATT_APPEARANCE_MOUSE;
-            appearance = GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE;
+            appearance = GAP_GATT_APPEARANCE_MOUSE;
+            // appearance = GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE;
         }
         else
         {
-            appearance = GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE;
+            appearance = GAP_GATT_APPEARANCE_MOUSE;
+            // appearance = GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE;
         }
         LOG_D("Appearance: %d", appearance);
         para.adv_data.appearance = rt_malloc(sizeof(uint16_t));
@@ -1254,8 +1253,9 @@ void ble_app_entry(void *param)
 
             env->is_power_on = 1;
             env->conn_para.mtu = 23; /* Default value. */
-
-            ble_app_advertising_start(false, false, false);
+            LOG_I("BLE stack is powered on, start advertising\r");
+            // ble_app_advertising_start(false, false, false);
+            ble_dev_mgr_start_main_phone_check_timer(5000);
             LOG_I("receive BLE power on!\r");
         }
 #ifdef USING_BLE_SERIAL
@@ -1288,13 +1288,16 @@ void ble_app_entry(void *param)
 }
 
 #if defined(BSP_USING_SPI_NAND) && defined(RT_USING_DFS)
-#include "dfs_file.h"
-#include "dfs_posix.h"
-#include "drv_flash.h"
-#define NAND_MTD_NAME    "root"
+    #include "dfs_file.h"
+    #include "dfs_posix.h"
+    #include "drv_flash.h"
+    #define NAND_MTD_NAME "root"
 int mnt_init(void)
 {
-    register_nand_device(FS_REGION_START_ADDR & (0xFC000000), FS_REGION_START_ADDR - (FS_REGION_START_ADDR & (0xFC000000)), FS_REGION_SIZE, NAND_MTD_NAME);
+    register_nand_device(FS_REGION_START_ADDR & (0xFC000000),
+                         FS_REGION_START_ADDR -
+                             (FS_REGION_START_ADDR & (0xFC000000)),
+                         FS_REGION_SIZE, NAND_MTD_NAME);
     if (dfs_mount(NAND_MTD_NAME, "/", "elm", 0, 0) == 0) // fs exist
     {
         rt_kprintf("mount fs on flash to root success\n");
@@ -1505,7 +1508,7 @@ void wdt_store_exception_information(void)
  */
 static void watchdog_set_status(uint8_t en)
 {
-#ifdef RT_USING_WDT
+    #ifdef RT_USING_WDT
     /* Set wdt status 0. */
     rt_hw_watchdog_set_status(en);
     /* Avoid repeat set hook. */
@@ -1520,15 +1523,17 @@ static void watchdog_set_status(uint8_t en)
         /* Set hook for watchdog petting. */
         rt_hw_watchdog_hook(1);
     }
-#endif
+    #endif
 }
 #endif
 
 int main(void)
 {
 #ifdef SF32LB52X
-    rc10k_time_handle = rt_timer_create("rc10", rc10k_timeout_handler, NULL,
-                            rt_tick_from_millisecond(15 * 1000), RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+    rc10k_time_handle =
+        rt_timer_create("rc10", rc10k_timeout_handler, NULL,
+                        rt_tick_from_millisecond(15 * 1000),
+                        RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
     rt_timer_start(rc10k_time_handle);
 #endif
 

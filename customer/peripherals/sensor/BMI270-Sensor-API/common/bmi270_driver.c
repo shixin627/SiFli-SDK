@@ -453,8 +453,10 @@ static int8_t configure_sensor_performance_mode(struct bmi2_dev *dev)
 {
     if (accel_gyro_dev_info.power_mode == BMI2_PERF_OPT_MODE)
     {
+        LOG_I("Sensor is already in performance mode");
         return BMI2_OK;
     }
+    LOG_I("Configuring sensor to performance mode");
     int8_t rslt = BMI2_OK;
     /* Structure to define accelerometer and gyro configuration. */
     struct bmi2_sens_config sens_cfg[2];
@@ -542,8 +544,10 @@ static int8_t configure_sensor_power_mode(struct bmi2_dev *dev)
 {
     if (accel_gyro_dev_info.power_mode == BMI2_POWER_OPT_MODE)
     {
+        LOG_I("Sensor is already in power optimized mode");
         return BMI2_OK;
     }
+    LOG_I("Configuring sensor to power optimized mode");
 
     int8_t rslt = BMI2_OK;
     /* Structure to define accelerometer and gyro configuration. */

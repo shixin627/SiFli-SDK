@@ -926,7 +926,13 @@ static void key_report_send(uint8_t *key_val, uint16_t key_val_len)
 static void mouse_report_send(uint8_t *key_val, uint16_t key_val_len)
 {
     if (!g_hid_data || !g_hid_data->is_mouse_config_on)
+    {
+        if (!g_hid_data)
+            LOG_E("g_hid_data is NULL");
+        if (!g_hid_data->is_mouse_config_on)
+            LOG_I("g_hid_data->is_mouse_config_on is 0");
         return;
+    }
 
     sibles_value_t value;
     value.hdl = g_hid_data->srv_handle;
@@ -1020,6 +1026,11 @@ void ble_hid_set_conn_idx(uint8_t conn_idx)
     g_conn_idx = conn_idx;
 }
 
+uint8_t ble_hid_get_conn_idx(void)
+{
+    return g_conn_idx;
+}
+
 void ble_hid_reset_on_disconnect(void)
 {
     if (!g_hid_data)
@@ -1048,6 +1059,7 @@ void ble_hid_reset_on_disconnect(void)
 #ifdef HID_MOUSE
 void BLE_HID_Mouse_Move(int8_t dx, int8_t dy)
 {
+    LOG_D("Mouse Move: dx=%d, dy=%d", dx, dy);
     hid_mouse_state_set(hid_mouse_state.buttons, dx, dy, 0, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
 }

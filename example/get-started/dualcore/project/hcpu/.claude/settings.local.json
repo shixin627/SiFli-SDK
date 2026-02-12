@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/SiFli-SDK/example/get-started/dualcore/src/hcpu/gui_apps/hid_mouse/**)"
+    ]
+  }
+}

@@ -218,6 +218,12 @@ ble_hid_data_t* ble_hid_get_data(void);
 void ble_hid_set_conn_idx(uint8_t conn_idx);
 
 /**
+ * @brief Get current connection index for HID service
+ * @return Current connection index
+ */
+uint8_t ble_hid_get_conn_idx(void);
+
+/**
  * @brief Reset HID configuration on disconnect
  */
 void ble_hid_reset_on_disconnect(void);
