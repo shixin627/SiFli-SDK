@@ -2995,14 +2995,15 @@ static void menu_refresh_device_list(void)
         return;
     }
 
-    // Sync control_device_idx with the device matching g_conn_idx
-    uint8_t hid_conn_idx = ble_hid_get_conn_idx();
-    for (int i = 0; i < MAX_BONDED_DEVICES; i++)
+    // Sync control_device_idx and g_conn_idx from active_device_idx (source of truth)
+    int active_idx = ble_dev_mgr_get_active_device();
+    if (active_idx >= 0 && active_idx < MAX_BONDED_DEVICES &&
+        db->devices[active_idx].is_valid)
     {
-        if (db->devices[i].is_valid && db->devices[i].conn_idx == hid_conn_idx)
+        control_device_idx = (uint8_t)active_idx;
+        if (db->devices[active_idx].conn_idx != 0xFF)
         {
-            control_device_idx = (uint8_t)i;
-            break;
+            ble_hid_set_conn_idx(db->devices[active_idx].conn_idx);
         }
     }
     if (menu_dev_list_ui.device_list &&
