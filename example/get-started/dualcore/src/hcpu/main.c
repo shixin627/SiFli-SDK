@@ -1253,7 +1253,7 @@ void ble_app_entry(void *param)
 
             env->is_power_on = 1;
             env->conn_para.mtu = 23; /* Default value. */
-            // ble_app_advertising_start(false, false, false);
+            ble_app_advertising_start(false, false, false);
             ble_dev_mgr_start_main_phone_check_timer(5000);
         }
 #ifdef USING_BLE_SERIAL

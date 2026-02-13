@@ -233,9 +233,9 @@ extern int __bss_end;
 #define WS2812B_TIMING
 #define USING_LINEAR_MOTOR_0619
 #define WATCH_IMU_REVERSE_180 (1)
-// #define FRAME_BUFFER_IN_PSRAM
 #endif
 
+// #define FRAME_BUFFER_IN_PSRAM
 // #define WATCH_DISPLAY_REVERSE_180
 // #define RELEASE_WATCH
 #define PWM_LRA_MOTOR // Linear Resonant Actuator (LRA) Driver IC
