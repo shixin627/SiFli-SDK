@@ -596,8 +596,9 @@ void toggle_keyboard_visibility(void)
                                   LV_PART_MAIN);
         lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_90, LV_PART_MAIN);
         lv_obj_set_style_border_color(text_input_bar_bg,
-                                      lv_color_hex(0x4a90e2), LV_PART_MAIN);
+                                      lv_color_hex(0xFFFFFF), LV_PART_MAIN);
         lv_obj_set_style_border_width(text_input_bar_bg, 2, LV_PART_MAIN);
+        lv_obj_set_style_border_opa(text_input_bar_bg, LV_OPA_50, LV_PART_MAIN);
 
         // Hide indicator, show input content
         lv_obj_add_flag(text_input_bar, LV_OBJ_FLAG_HIDDEN);
@@ -1511,9 +1512,10 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
     lv_obj_set_style_bg_color(keyboard_container, lv_color_hex(0x0f0f0f),
                               LV_PART_MAIN);
     lv_obj_set_style_bg_opa(keyboard_container, LV_OPA_90, LV_PART_MAIN);
-    lv_obj_set_style_border_color(keyboard_container, lv_color_hex(0x4a90e2),
+    lv_obj_set_style_border_color(keyboard_container, lv_color_hex(0xFFFFFF),
                                   LV_PART_MAIN);
     lv_obj_set_style_border_width(keyboard_container, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(keyboard_container, LV_OPA_30, LV_PART_MAIN);
     lv_obj_set_style_border_side(keyboard_container, LV_BORDER_SIDE_TOP,
                                  LV_PART_MAIN);
     lv_obj_set_style_radius(keyboard_container, 25, LV_PART_MAIN);
@@ -3476,15 +3478,16 @@ void lv_create_mouse_screen(lv_obj_t *scr)
 
     // Indicator line (visible in closed state)
     text_input_bar = lv_obj_create(text_input_bar_bg);
-    lv_obj_set_size(text_input_bar, 130, 20);
+    lv_obj_set_size(text_input_bar, 130, 25);
     lv_obj_set_style_bg_color(text_input_bar, lv_color_hex(0x1a1a1a),
                               LV_PART_MAIN);
     lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
     lv_obj_set_style_radius(text_input_bar, 50, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(text_input_bar, LV_OPA_90, LV_PART_MAIN);
         lv_obj_set_style_border_color(text_input_bar,
-                                      lv_color_hex(0x4a90e2), LV_PART_MAIN);
+                                      lv_color_hex(0xFFFFFF), LV_PART_MAIN);
         lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
+        lv_obj_set_style_border_opa(text_input_bar, LV_OPA_50, LV_PART_MAIN);
     lv_obj_align(text_input_bar, LV_ALIGN_BOTTOM_MID, 0, -5);
     lv_obj_clear_flag(text_input_bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(text_input_bar, text_input_bar_cb, LV_EVENT_ALL, NULL);
