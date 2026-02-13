@@ -79,6 +79,7 @@
 #include "ui_img_helper.h"
 #include "lvsf_gesture.h"
 #include "ble_device_manager.h"
+#include "bloc_motion_tracking.h"
 #include "ble_hid.h"
 
 #ifdef APP_ID_MOUSE
@@ -2156,6 +2157,7 @@ static void handle_pressed_event(lv_indev_t *indev)
     user_touching = true;
     update_crosshair_brightness();
     press_time = lv_tick_get();
+    air_mouse_movement_lock_reset();
 
     lv_indev_get_point(indev, &start_point);
     lv_indev_get_point(indev, &last_point);

@@ -1080,40 +1080,44 @@ static void report_air_mouse_data(air_plane_delta_movement_t *movement,
     movement->y = 0;
 }
 
-extern bool get_hid_mouse_handfree_mode(void);
 extern bool app_hid_mouse_movement_lock(void);
 static uint8_t log_count = 0;
+
+// DPS to rad/s conversion factor (PI / 180)
+#define DPS_TO_RADS 0.01745329f
+// Default mouse sensitivity (matching GyroService)
+#define AIR_MOUSE_SENSITIVITY 20.0f
+// 移動鎖：觸碰面板後累積移動量超過此閾值才解鎖
+#define GYRO_MOVE_CANCEL_THRESHOLD 30.0f
+
+static bool mouse_movement_lock = false;
+static float gyro_movement_distance = 0.0f;
+
+void air_mouse_movement_lock_reset(void)
+{
+    mouse_movement_lock = true;
+    gyro_movement_distance = 0.0f;
+}
+
 static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                               Quaternion *prev_quat)
 {
     static air_plane_delta_movement_t delta_movement;
-    static air_plane_delta_movement_t temp_delta_movement = {0, 0};
-    static float accumulated_dx = 0.0f;
-    static float accumulated_dy = 0.0f;
-    euler_angle_t delta_angle =
-        motion_tracking_algorithm(quaternion, prev_quat);
 
-    if (app_hid_mouse_movement_lock())
-    {
-        return;
-    }
+    // if (app_hid_mouse_movement_lock())
+    // {
+    //     LOG_D("air_mouse_process: mouse movement locked");
+    //     return;
+    // }
 
-    float yaw, pitch;
-    if (get_hid_mouse_handfree_mode())
-    {
-        yaw = delta_angle.yaw;
-        pitch = -delta_angle.pitch;
-    }
-    else
-    {
-        yaw = delta_angle.yaw;
-        pitch = -delta_angle.roll;
-    }
-    uint8_t threshold = bloc_setting_get_gesture_detect_threshold();
-    delta_movement = air_mouse_algorithm(&accumulated_dx, &accumulated_dy, yaw,
-                                         pitch, threshold);
+    // Use raw gyroscope data directly (GyroService approach)
+    // Convert from dps to rad/s to match GyroService units
+    float gyro_x = watch_sensor.imu_data.gyro.x * DPS_TO_RADS;
+    float gyro_z = watch_sensor.imu_data.gyro.z * DPS_TO_RADS;
 
-    if (abs(delta_movement.x >= 3) || abs(delta_movement.y) >= 3)
+    delta_movement = air_mouse_algorithm(gyro_x, gyro_z, AIR_MOUSE_SENSITIVITY);
+
+    if (abs(delta_movement.x) >= 3 || abs(delta_movement.y) >= 3)
     {
         set_air_mouse_moving_state(true);
     }
@@ -1121,12 +1125,20 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     {
         set_air_mouse_moving_state(false);
     }
-    // 按住面板才可體感移動
-    if (!stop_mouse_move && is_skai_touch_enabled())
+
+    // 累積移動量，超過閾值才解鎖
+    gyro_movement_distance += abs(delta_movement.x) + abs(delta_movement.y);
+    if (mouse_movement_lock &&
+        gyro_movement_distance > GYRO_MOVE_CANCEL_THRESHOLD)
+    {
+        mouse_movement_lock = false;
+    }
+
+    // 按住面板才可體感移動，且移動鎖已解除
+    if (!stop_mouse_move && is_skai_touch_enabled() && !mouse_movement_lock)
     {
         report_air_mouse_data(&delta_movement, ts);
     }
-
 }
 #endif
 
