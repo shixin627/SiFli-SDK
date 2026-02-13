@@ -184,6 +184,7 @@ static lv_obj_t *menu_content_tile = NULL;
 static lv_obj_t *menu_swipe_area = NULL;
 static lv_obj_t *control_page = NULL;
 static lv_obj_t *status_bar_area = NULL;
+static lv_obj_t *connected_device_label = NULL;
 static lv_obj_t *crosshair_line1 = NULL;
 static lv_obj_t *crosshair_line2 = NULL;
 static lv_obj_t *status_bar_time_h = NULL;
@@ -307,28 +308,28 @@ static void dummy_file3_callback(void);
 static void start_multiple_pages_timer(void);
     #endif
 
-static void update_crosshair_brightness(void)
-{
-    if (crosshair_line1 != NULL && crosshair_line2 != NULL)
-    {
-        if (user_touching)
-        {
-            // Bright color when touching
-            lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0xCCCCCC),
-                                      0);
-            lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0xCCCCCC),
-                                      0);
-        }
-        else
-        {
-            // Dim color when not touching
-            lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0x666666),
-                                      0);
-            lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0x666666),
-                                      0);
-        }
-    }
-}
+// static void update_crosshair_brightness(void)
+// {
+//     if (crosshair_line1 != NULL && crosshair_line2 != NULL)
+//     {
+//         if (user_touching)
+//         {
+//             // Bright color when touching
+//             lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0xCCCCCC),
+//                                       0);
+//             lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0xCCCCCC),
+//                                       0);
+//         }
+//         else
+//         {
+//             // Dim color when not touching
+//             lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0x666666),
+//                                       0);
+//             lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0x666666),
+//                                       0);
+//         }
+//     }
+// }
 
 /**
  * @brief Update cursor position to follow the text
@@ -2157,7 +2158,7 @@ static void inertia_scroll_timer_cb(lv_timer_t *timer)
 static void handle_pressed_event(lv_indev_t *indev)
 {
     user_touching = true;
-    update_crosshair_brightness();
+    // update_crosshair_brightness();
     press_time = lv_tick_get();
     air_mouse_movement_lock_reset();
 
@@ -2318,7 +2319,7 @@ static void handle_pressing_event(lv_indev_t *indev,
 static void handle_released_event(lv_indev_t *indev)
 {
     user_touching = false;
-    update_crosshair_brightness();
+    // update_crosshair_brightness();
     if (is_gesture_active)
     {
         is_gesture_active = false;
@@ -2435,7 +2436,7 @@ static void top_logo_event_cb(lv_event_t *e)
     {
     case LV_EVENT_PRESSED:
         user_touching = true;
-        update_crosshair_brightness();
+        // update_crosshair_brightness();
         break;
 
     case LV_EVENT_PRESSING:
@@ -2443,7 +2444,7 @@ static void top_logo_event_cb(lv_event_t *e)
 
     case LV_EVENT_RELEASED:
         user_touching = false;
-        update_crosshair_brightness();
+        // update_crosshair_brightness();
         break;
 
     case LV_EVENT_CLICKED:
@@ -2959,8 +2960,8 @@ static lv_obj_t *menu_create_device_item(lv_obj_t *parent,
     lv_obj_set_flex_align(text_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(text_cont, 2, 0);
     lv_obj_clear_flag(text_cont, LV_OBJ_FLAG_CLICKABLE);
-    LOG_D("device type: %d,name: %s,conn_idx: %d", device->device_type, device->device_name,
-          device->conn_idx);
+    // LOG_D("device type: %d,name: %s,conn_idx: %d", device->device_type, device->device_name,
+    //       device->conn_idx);
 
     // Device name
     lv_obj_t *name_label = lv_label_create(text_cont);
@@ -3076,12 +3077,35 @@ static void menu_reset_ble_btn_cb(lv_event_t *e)
 /**
  * @brief Device manager event callback for menu
  */
+static void refresh_connected_device_label(void)
+{
+    if (!lv_obj_is_valid(connected_device_label))
+        return;
+
+    const bonded_devices_db_t *db = ble_dev_mgr_get_database();
+    int active_idx = ble_dev_mgr_get_active_device();
+    if (db && active_idx >= 0 && active_idx < MAX_BONDED_DEVICES &&
+        db->devices[active_idx].is_valid &&
+        db->devices[active_idx].conn_idx != 0xFF)
+    {
+        lv_label_set_text(connected_device_label,
+                          db->devices[active_idx].device_name);
+    }
+    else
+    {
+        lv_label_set_text(connected_device_label, "");
+    }
+}
+
 static void menu_dev_mgr_event_cb(dev_mgr_event_t event, uint8_t device_idx,
                                   void *user_data)
 {
     LOG_I("Menu dev mgr event: %d, idx: %d", event, device_idx);
     if (gui_app_is_actived(APP_ID_MOUSE))
+    {
         menu_refresh_device_list();
+        refresh_connected_device_label();
+    }
 }
 
 /**
@@ -3106,6 +3130,12 @@ static lv_obj_t *menu_window(lv_obj_t *par)
     menu_home_tile = lv_tileview_add_tile(menu_tileview, 0, 1, LV_DIR_TOP);
     lv_obj_set_style_bg_opa(menu_home_tile, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_size(menu_home_tile, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+
+    lv_obj_t *device_page_bar = lv_obj_create(menu_home_tile);
+    lv_obj_set_size(device_page_bar, 100, 10);
+    lv_obj_set_style_bg_color(device_page_bar, lv_color_hex(0x5B5B5B),
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(device_page_bar, LV_ALIGN_TOP_MID, 0, 50);
 
     /* Menu 背景 */
     menu_bg = lv_obj_create(menu_content_tile);
@@ -3324,15 +3354,15 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     // Crosshair lines (dimmed by default, brighten when touching logo)
     lv_coord_t line_width = 3;
     lv_coord_t line_length = LV_HOR_RES_MAX - 6;
-    crosshair_line1 = lv_obj_create(bg);
-    lv_obj_set_size(crosshair_line1, line_length, line_width);
-    lv_obj_align(crosshair_line1, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0x666666), 0);
+    // crosshair_line1 = lv_obj_create(bg);
+    // lv_obj_set_size(crosshair_line1, line_length, line_width);
+    // lv_obj_align(crosshair_line1, LV_ALIGN_CENTER, 0, 0);
+    // lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0x666666), 0);
 
-    crosshair_line2 = lv_obj_create(bg);
-    lv_obj_set_size(crosshair_line2, line_width, line_length);
-    lv_obj_align(crosshair_line2, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0x666666), 0);
+    // crosshair_line2 = lv_obj_create(bg);
+    // lv_obj_set_size(crosshair_line2, line_width, line_length);
+    // lv_obj_align(crosshair_line2, LV_ALIGN_CENTER, 0, 0);
+    // lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0x666666), 0);
 
     // // SKAI logo area with background (blocks mouse events)
     // lv_obj_t *skai_logo_area = lv_obj_create(bg);
@@ -3354,6 +3384,27 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     // lv_img_set_src(skai_logo, &img_skai);
     // lv_img_set_zoom(skai_logo, 256 * 0.2); // Scale from 160x160 to 60x60
     // lv_obj_align(skai_logo, LV_ALIGN_CENTER, 0, 0);
+
+    // Connected device name label at top
+    connected_device_label = lv_label_create(bg);
+    lv_label_set_text(connected_device_label, "");
+    lv_obj_set_size(connected_device_label, 150,44);
+    lv_obj_set_style_text_color(connected_device_label, lv_color_hex(0xAAAAAA), 0);
+    lv_obj_set_style_text_align(connected_device_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(connected_device_label, LV_LABEL_LONG_DOT);
+    lv_obj_align(connected_device_label, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_clear_flag(connected_device_label, LV_OBJ_FLAG_CLICKABLE);
+    // Initialize with current active device name
+    {
+        const bonded_devices_db_t *db = ble_dev_mgr_get_database();
+        int active_idx = ble_dev_mgr_get_active_device();
+        if (db && active_idx >= 0 && active_idx < MAX_BONDED_DEVICES &&
+            db->devices[active_idx].is_valid)
+        {
+            lv_label_set_text(connected_device_label,
+                              db->devices[active_idx].device_name);
+        }
+    }
 
     text_input_bar_bg = lv_obj_create(bg);
     lv_obj_set_size(text_input_bar_bg, 200, 50);
