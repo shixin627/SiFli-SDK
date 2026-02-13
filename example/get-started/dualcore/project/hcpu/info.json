@@ -1,6 +1,6 @@
 {
-    "version": "1.0.232",
-    "description": "修復有時剛開機不能體感的問題\n開啟檢查是否連線手機的功能",
+    "version": "1.0.233",
+    "description": "更新飛鼠功能",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
