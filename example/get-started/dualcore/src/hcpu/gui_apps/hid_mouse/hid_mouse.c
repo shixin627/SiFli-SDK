@@ -111,6 +111,7 @@
     #define USING_EDGE_RIGHT_DETECTION 0
 
     #define ENABLE_MENU_FEATURE 1
+    #define KB_ANIM_TIME_MS 300
 
 /*********************
  *      TYPEDEFS
@@ -231,8 +232,8 @@ static lv_point_t press_start_point = {0, 0};
 static lv_obj_t *closest_btn = NULL;
 static lv_obj_t *currently_pressed_btn = NULL;
 
-// Input display variables
-static lv_obj_t *input_display = NULL;
+// Input display variables (now children of text_input_bar_bg)
+static lv_obj_t *input_content_container = NULL;
 static lv_obj_t *input_display_label = NULL;
 static lv_obj_t *input_cursor = NULL;
 static lv_obj_t *input_enter_btn = NULL;
@@ -478,47 +479,188 @@ static void remove_from_input_buffer(void)
 }
 
 /**
- * @brief Toggle keyboard visibility
+ * @brief Helper: set translate_y style (used as lv_anim exec callback)
  */
 extern void set_stop_mouse_move(bool stop);
-void toggle_keyboard_visibility(void)
+static void anim_set_translate_y(void *obj, int32_t v)
 {
+    lv_obj_set_style_translate_y((lv_obj_t *)obj, v, 0);
+}
+
+/**
+ * @brief Animation ready callback when keyboard close animation finishes
+ */
+static void keyboard_close_anim_ready_cb(lv_anim_t *a)
+{
+    // Restore bar to closed style
+    lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(text_input_bar_bg, 0, LV_PART_MAIN);
+
+    // Show indicator, hide input content
+    lv_obj_clear_flag(text_input_bar, LV_OBJ_FLAG_HIDDEN);
+    if (input_content_container != NULL)
+        lv_obj_add_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
+    if (input_cursor != NULL)
+        lv_obj_add_flag(input_cursor, LV_OBJ_FLAG_HIDDEN);
+
+    // Hide keyboard and reset its translate_y
     if (keyboard_container != NULL)
     {
-        if (keyboard_visible)
-        {
-            lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
-            if (input_display != NULL)
-            {
-                lv_obj_add_flag(input_display, LV_OBJ_FLAG_HIDDEN);
-            }
-            if (input_enter_btn != NULL)
-            {
-                lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
-            }
-            lv_obj_clear_flag(text_input_bar_bg, LV_OBJ_FLAG_HIDDEN);
-            keyboard_visible = false;
-            set_stop_mouse_move(false);
-            hide_key_popup();      // 隱藏鍵盤時也隱藏彈出框
-            clear_input_display(); // 清除輸入內容
-            stop_cursor_blink();   // 停止游標閃爍
-        }
-        else
-        {
-            set_stop_mouse_move(true);
-            lv_obj_clear_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
-            if (input_display != NULL)
-            {
-                lv_obj_clear_flag(input_display, LV_OBJ_FLAG_HIDDEN);
-            }
-            if (input_enter_btn != NULL)
-            {
-                lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
-            }
-            lv_obj_add_flag(text_input_bar_bg, LV_OBJ_FLAG_HIDDEN);
-            keyboard_visible = true;
-            start_cursor_blink(); // 開始游標閃爍
-        }
+        lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_translate_y(keyboard_container, 0, 0);
+    }
+}
+
+/**
+ * @brief Toggle keyboard visibility with animation
+ */
+void toggle_keyboard_visibility(void)
+{
+    if (keyboard_container == NULL)
+        return;
+
+    lv_anim_t a;
+
+    // Cancel any ongoing animations on bar and keyboard
+    lv_anim_del(text_input_bar_bg, NULL);
+    lv_anim_del(keyboard_container, NULL);
+
+    if (keyboard_visible)
+    {
+        // === CLOSE KEYBOARD ===
+        keyboard_visible = false;
+        set_stop_mouse_move(false);
+        hide_key_popup();
+        clear_input_display();
+        stop_cursor_blink();
+
+        // Hide enter button immediately
+        if (input_enter_btn != NULL)
+            lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
+
+        // Animate bar x: open -> closed
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_x(text_input_bar_bg),
+                           (LV_HOR_RES_MAX - 200) / 2);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_x);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+
+        // Animate bar y: open -> closed
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_y(text_input_bar_bg),
+                           LV_VER_RES_MAX - 50);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+
+        // Animate bar width: open -> closed
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_width(text_input_bar_bg), 200);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_width);
+        lv_anim_start(&a);
+
+        // Animate bar height: open -> closed (with ready callback)
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_height(text_input_bar_bg), 50);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_height);
+        lv_anim_set_ready_cb(&a, keyboard_close_anim_ready_cb);
+        lv_anim_start(&a);
+
+        // Animate keyboard sliding down using translate_y
+        // (preserves the original BOTTOM_MID alignment)
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, keyboard_container);
+        lv_anim_set_values(&a, 0, 300);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)anim_set_translate_y);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+    }
+    else
+    {
+        // === OPEN KEYBOARD ===
+        set_stop_mouse_move(true);
+        keyboard_visible = true;
+
+        // Set open style on bar
+        lv_obj_set_style_bg_color(text_input_bar_bg, lv_color_hex(0x1a1a1a),
+                                  LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_90, LV_PART_MAIN);
+        lv_obj_set_style_border_color(text_input_bar_bg,
+                                      lv_color_hex(0x4a90e2), LV_PART_MAIN);
+        lv_obj_set_style_border_width(text_input_bar_bg, 2, LV_PART_MAIN);
+
+        // Hide indicator, show input content
+        lv_obj_add_flag(text_input_bar, LV_OBJ_FLAG_HIDDEN);
+        if (input_content_container != NULL)
+            lv_obj_clear_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
+
+        // Show enter button
+        if (input_enter_btn != NULL)
+            lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
+
+        // Show keyboard off-screen (translate_y pushes it below visible area)
+        lv_obj_clear_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_translate_y(keyboard_container, 300, 0);
+
+        // Target positions for open state
+        int32_t open_x = (LV_HOR_RES_MAX - 310) / 2 - 35;
+        int32_t open_y = LV_VER_RES_MAX - 305 - 45;
+
+        // Animate bar x: closed -> open
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_x(text_input_bar_bg), open_x);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_x);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+
+        // Animate bar y: closed -> open
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_y(text_input_bar_bg), open_y);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+
+        // Animate bar width: closed -> open
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_width(text_input_bar_bg), 310);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_width);
+        lv_anim_start(&a);
+
+        // Animate bar height: closed -> open
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_height(text_input_bar_bg), 45);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_height);
+        lv_anim_start(&a);
+
+        // Animate keyboard sliding up using translate_y (300 -> 0)
+        // Keyboard is aligned at BOTTOM_MID, translate_y offsets from there
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, keyboard_container);
+        lv_anim_set_values(&a, 300, 0);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)anim_set_translate_y);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+
+        start_cursor_blink();
     }
 }
 
@@ -1176,38 +1318,13 @@ static void handle_proximity_input(lv_event_t *e)
                         bool was_visible = !lv_obj_has_flag(keyboard_container,
                                                             LV_OBJ_FLAG_HIDDEN);
 
-                        // 先刪除輸入框和 Enter 按鍵（它們是在 parent 上創建的）
-                        if (input_display != NULL)
-                        {
-                            lv_obj_del(input_display);
-                            input_display = NULL;
-                            input_display_label = NULL;
-                            input_cursor = NULL;
-                        }
-                        if (input_enter_btn != NULL)
-                        {
-                            lv_obj_del(input_enter_btn);
-                            input_enter_btn = NULL;
-                        }
-
                         lv_obj_del(keyboard_container);
                         create_circular_keyboard_layout(parent);
                         if (was_visible)
                         {
                             lv_obj_clear_flag(keyboard_container,
                                               LV_OBJ_FLAG_HIDDEN);
-                            if (input_display != NULL)
-                            {
-                                lv_obj_clear_flag(input_display,
-                                                  LV_OBJ_FLAG_HIDDEN);
-                            }
-                            if (input_enter_btn != NULL)
-                            {
-                                lv_obj_clear_flag(input_enter_btn,
-                                                  LV_OBJ_FLAG_HIDDEN);
-                            }
                             keyboard_visible = true;
-                            // 恢復輸入內容和游標
                             update_input_display();
                             start_cursor_blink();
                         }
@@ -1228,38 +1345,13 @@ static void handle_proximity_input(lv_event_t *e)
                         bool was_visible = !lv_obj_has_flag(keyboard_container,
                                                             LV_OBJ_FLAG_HIDDEN);
 
-                        // 先刪除輸入框和 Enter 按鍵（它們是在 parent 上創建的）
-                        if (input_display != NULL)
-                        {
-                            lv_obj_del(input_display);
-                            input_display = NULL;
-                            input_display_label = NULL;
-                            input_cursor = NULL;
-                        }
-                        if (input_enter_btn != NULL)
-                        {
-                            lv_obj_del(input_enter_btn);
-                            input_enter_btn = NULL;
-                        }
-
                         lv_obj_del(keyboard_container);
                         create_circular_keyboard_layout(parent);
                         if (was_visible)
                         {
                             lv_obj_clear_flag(keyboard_container,
                                               LV_OBJ_FLAG_HIDDEN);
-                            if (input_display != NULL)
-                            {
-                                lv_obj_clear_flag(input_display,
-                                                  LV_OBJ_FLAG_HIDDEN);
-                            }
-                            if (input_enter_btn != NULL)
-                            {
-                                lv_obj_clear_flag(input_enter_btn,
-                                                  LV_OBJ_FLAG_HIDDEN);
-                            }
                             keyboard_visible = true;
-                            // 恢復輸入內容和游標
                             update_input_display();
                             start_cursor_blink();
                         }
@@ -1429,69 +1521,6 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
 
     // 重置按鍵數組
     all_keys_count = 0;
-
-    // 創建輸入顯示框（在鍵盤上方）
-    input_display = lv_obj_create(parent);
-    lv_obj_set_size(input_display, 310, 45);
-    lv_obj_align(input_display, LV_ALIGN_BOTTOM_MID, -35, -305);
-    lv_obj_set_style_bg_color(input_display, lv_color_hex(0x1a1a1a),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(input_display, LV_OPA_90, LV_PART_MAIN);
-    lv_obj_set_style_border_color(input_display, lv_color_hex(0x4a90e2),
-                                  LV_PART_MAIN);
-    lv_obj_set_style_border_width(input_display, 2, LV_PART_MAIN);
-    lv_obj_set_style_radius(input_display, 22, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(input_display, 5, LV_PART_MAIN);
-    lv_obj_clear_flag(input_display, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(input_display, LV_OBJ_FLAG_HIDDEN); // 初始隱藏
-
-    // 創建輸入框右邊的 Enter 按鍵
-    input_enter_btn = lv_obj_create(parent);
-    lv_obj_set_size(input_enter_btn, 50, 45);
-    lv_obj_align(input_enter_btn, LV_ALIGN_BOTTOM_MID, 165, -305);
-    lv_obj_set_style_bg_color(input_enter_btn, lv_color_hex(0x4a90e2),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(input_enter_btn, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(input_enter_btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(input_enter_btn, 22, LV_PART_MAIN);
-    lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);    // 初始隱藏
-    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_CLICKABLE); // 讓它可以點擊
-    lv_obj_add_event_cb(input_enter_btn, input_enter_btn_event_cb,
-                        LV_EVENT_CLICKED, NULL);
-    lv_obj_t *input_enter_img = lv_img_create(input_enter_btn);
-    lv_img_set_src(input_enter_img, &enter_icon);
-    lv_obj_center(input_enter_img);
-
-    lv_obj_t *input_display_bg = lv_obj_create(input_display);
-    lv_obj_set_size(input_display_bg, 290, 45);
-    lv_obj_center(input_display_bg);
-    lv_obj_set_style_bg_opa(input_display_bg, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_clear_flag(input_display_bg, LV_OBJ_FLAG_SCROLLABLE);
-
-    // 創建輸入顯示的文字標籤
-    input_display_label = lv_label_create(input_display_bg);
-    lv_label_set_text(input_display_label, "");
-    lv_obj_set_style_text_color(input_display_label, lv_color_hex(0xFFFFFF),
-                                LV_PART_MAIN);
-    lv_obj_set_style_text_font(input_display_label,
-                               LV_EXT_FONT_GET(get_system_font_size(0)),
-                               LV_PART_MAIN);
-    lv_obj_set_width(input_display_label, LV_SIZE_CONTENT);
-    lv_label_set_long_mode(input_display_label, LV_LABEL_LONG_CLIP);
-    lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
-
-    // 創建藍色閃爍游標
-    input_cursor = lv_obj_create(input_display);
-    lv_obj_set_size(input_cursor, 2, 25);
-    lv_obj_set_style_bg_color(input_cursor, lv_color_hex(0x4a90e2),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(input_cursor, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(input_cursor, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(input_cursor, 1, LV_PART_MAIN);
-    lv_obj_align_to(input_cursor, input_display_label, LV_ALIGN_OUT_RIGHT_MID,
-                    2, 0);
-    lv_obj_add_flag(input_cursor, LV_OBJ_FLAG_HIDDEN); // 初始隱藏
 
     // 添加接近度檢測事件到鍵盤容器
     lv_obj_add_event_cb(keyboard_container, handle_proximity_input,
@@ -2977,6 +3006,7 @@ static lv_obj_t *menu_create_device_item(lv_obj_t *parent,
 
 // Forward declaration
 static void menu_reset_ble_btn_cb(lv_event_t *e);
+static void menu_close_btn_event_cb(lv_event_t *e);
 
 /**
  * @brief Refresh menu device list
@@ -3058,6 +3088,19 @@ static void menu_refresh_device_list(void)
         lv_obj_set_style_text_color(reset_label, lv_color_hex(0xFFFFFF), 0);
         lv_obj_center(reset_label);
         menu_dev_list_ui.reset_btn = reset_btn;
+
+        lv_obj_t *close_app_btn = lv_btn_create(menu_dev_list_ui.device_list);
+        lv_obj_set_size(close_app_btn, LV_PCT(100), 50);
+        lv_obj_set_style_radius(close_app_btn, 8, 0);
+        lv_obj_set_style_bg_color(close_app_btn, lv_color_hex(0xCC0000), 0);
+        lv_obj_set_style_bg_color(close_app_btn, lv_color_hex(0xAA0000),
+                                  LV_STATE_PRESSED);
+        lv_obj_add_event_cb(close_app_btn, menu_close_btn_event_cb,
+                            LV_EVENT_SHORT_CLICKED, NULL);
+        lv_obj_t *close_label = lv_label_create(close_app_btn);
+        lv_label_set_text(close_label, "Exit Mouse App");
+        lv_obj_set_style_text_color(close_label, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_center(close_label);
     }
 }
 
@@ -3071,6 +3114,15 @@ static void menu_reset_ble_btn_cb(lv_event_t *e)
     {
         LOG_I("Menu: Reset BLE advertising");
         ble_app_advertising_start(true, true, false);
+    }
+}
+
+static void menu_close_btn_event_cb(lv_event_t *e)
+{
+    lv_event_code_t event = lv_event_get_code(e);
+    if (LV_EVENT_SHORT_CLICKED == event)
+    {
+        gui_app_goback();
     }
 }
 
@@ -3203,11 +3255,12 @@ static uint8_t test_count = 0;
 static float prev_elapsed = 0.0f;
 static void text_input_bar_cb(lv_event_t *e)
 {
+    // Don't handle gestures when keyboard is visible (bar is now input display)
+    if (keyboard_visible)
+        return;
+
     lv_event_code_t code = lv_event_get_code(e);
     lv_indev_t *indev = lv_indev_get_act();
-    // indev_global = indev;
-
-    // LOG_D("plain_event_cb: %d", code);
 
     switch (code)
     {
@@ -3341,6 +3394,7 @@ static void text_input_bar_cb(lv_event_t *e)
 void lv_create_mouse_screen(lv_obj_t *scr)
 {
     lv_obj_t *bg = common_black_bg(scr);
+    lv_obj_set_scrollbar_mode(bg, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
 
     // Touch background
@@ -3406,20 +3460,89 @@ void lv_create_mouse_screen(lv_obj_t *scr)
         }
     }
 
+    // Unified input bar: starts as small indicator at bottom, animates to
+    // input display above keyboard
     text_input_bar_bg = lv_obj_create(bg);
     lv_obj_set_size(text_input_bar_bg, 200, 50);
-    lv_obj_align(text_input_bar_bg, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_pos(text_input_bar_bg, (LV_HOR_RES_MAX - 200) / 2,
+                   LV_VER_RES_MAX - 50);
+    lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(text_input_bar_bg, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(text_input_bar_bg, 22, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(text_input_bar_bg, 5, LV_PART_MAIN);
+    lv_obj_clear_flag(text_input_bar_bg, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(text_input_bar_bg, text_input_bar_cb, LV_EVENT_ALL,
                         NULL);
-    lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_0,
-                            LV_PART_MAIN | LV_STATE_DEFAULT);
-    text_input_bar = lv_obj_create(text_input_bar_bg);
-    lv_obj_set_size(text_input_bar, 100, 10);
-    lv_obj_set_style_bg_color(text_input_bar, lv_color_hex(0x5B5B5B),
-                              LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(text_input_bar, LV_ALIGN_BOTTOM_MID, 0, -10);
 
+    // Indicator line (visible in closed state)
+    text_input_bar = lv_obj_create(text_input_bar_bg);
+    lv_obj_set_size(text_input_bar, 130, 20);
+    lv_obj_set_style_bg_color(text_input_bar, lv_color_hex(0x1a1a1a),
+                              LV_PART_MAIN);
+    lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(text_input_bar, 50, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(text_input_bar, LV_OPA_90, LV_PART_MAIN);
+        lv_obj_set_style_border_color(text_input_bar,
+                                      lv_color_hex(0x4a90e2), LV_PART_MAIN);
+        lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
+    lv_obj_align(text_input_bar, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_obj_clear_flag(text_input_bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(text_input_bar, text_input_bar_cb, LV_EVENT_ALL, NULL);
+
+    // Input content container (hidden in closed state)
+    input_content_container = lv_obj_create(text_input_bar_bg);
+    lv_obj_set_size(input_content_container, 290, 40);
+    lv_obj_center(input_content_container);
+    lv_obj_set_style_bg_opa(input_content_container, LV_OPA_TRANSP,
+                            LV_PART_MAIN);
+    lv_obj_set_style_border_width(input_content_container, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(input_content_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
+    
+
+    // Input text label
+    input_display_label = lv_label_create(input_content_container);
+    lv_label_set_text(input_display_label, "");
+    lv_obj_set_style_text_color(input_display_label, lv_color_hex(0xFFFFFF),
+                                LV_PART_MAIN);
+    lv_obj_set_style_text_font(input_display_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)),
+                               LV_PART_MAIN);
+    lv_obj_set_width(input_display_label, LV_SIZE_CONTENT);
+    lv_label_set_long_mode(input_display_label, LV_LABEL_LONG_CLIP);
+    lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
+
+    // Blinking cursor
+    input_cursor = lv_obj_create(text_input_bar_bg);
+    lv_obj_set_size(input_cursor, 2, 25);
+    lv_obj_set_style_bg_color(input_cursor, lv_color_hex(0x4a90e2),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(input_cursor, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(input_cursor, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(input_cursor, 1, LV_PART_MAIN);
+    lv_obj_align_to(input_cursor, input_display_label, LV_ALIGN_OUT_RIGHT_MID,
+                    2, 0);
+    lv_obj_add_flag(input_cursor, LV_OBJ_FLAG_HIDDEN);
+
+    // Enter button (hidden initially, shows next to bar when keyboard opens)
+    input_enter_btn = lv_obj_create(bg);
+    lv_obj_set_size(input_enter_btn, 50, 45);
+    lv_obj_set_pos(input_enter_btn,
+                   (LV_HOR_RES_MAX - 50) / 2 + 165,
+                   LV_VER_RES_MAX - 305 - 45);
+    lv_obj_set_style_bg_color(input_enter_btn, lv_color_hex(0x4a90e2),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(input_enter_btn, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(input_enter_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(input_enter_btn, 22, LV_PART_MAIN);
+    lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(input_enter_btn, input_enter_btn_event_cb,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_t *enter_img = lv_img_create(input_enter_btn);
+    lv_img_set_src(enter_img, &enter_icon);
+    lv_obj_center(enter_img);
 
     #if ENABLE_MENU_FEATURE
     menu_window(bg);
@@ -3544,6 +3667,12 @@ static void on_stop(void)
     }
     inertia_velocity = 0.0f;
 
+    // Cancel animations before cleanup
+    if (text_input_bar_bg != NULL)
+        lv_anim_del(text_input_bar_bg, NULL);
+    if (keyboard_container != NULL)
+        lv_anim_del(keyboard_container, NULL);
+
     // Clean up keyboard resources
     if (keyboard != NULL)
     {
@@ -3559,8 +3688,8 @@ static void on_stop(void)
     }
     keyboard_visible = false;
 
-    // Clean up input display
-    input_display = NULL;
+    // Clean up input display (now part of text_input_bar_bg)
+    input_content_container = NULL;
     input_display_label = NULL;
     input_cursor = NULL;
     input_enter_btn = NULL;
