@@ -309,12 +309,14 @@ void check_is_at_app_list(void)
             extern void refersh_weather_icon(void);
             refersh_weather_icon();
             app_list_resume();
+            display_status_bar_area(3, false);
         }
         else
         {
             myLancher[app_index_app_list].reset_list();
             app_list_pause();
             open_skai_widget_ai(false);
+            display_status_bar_area(3, true);
         }
         LOG_I("is_at_app_list: %d", _at_app_list);
     }

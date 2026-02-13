@@ -230,6 +230,14 @@ extern "C"
     int ble_dev_mgr_update_device_name(uint8_t device_idx, const char *device_name);
 
     /**
+     * @brief Update device type
+     * @param device_idx Device index
+     * @param device_type New device type
+     * @return 0 on success, negative on error
+     */
+    int ble_dev_mgr_update_device_type(uint8_t device_idx, ble_device_type_t device_type);
+
+    /**
      * @brief Switch to next connected device (cycle through connected devices)
      * Useful for quick switching between multiple connected devices
      * @return New active device index on success, negative on error

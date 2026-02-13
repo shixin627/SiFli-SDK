@@ -43,63 +43,88 @@
 #include <rtthread.h>
 #include "air_mouse.h"
 
-#define SCALE_FACTOR 1.0f // 縮放因子
-#define OFFSET_Y 1.0f       // 偏移量
-#define OFFSET_X 5.0f       // 偏移量
+// Gyro-based air mouse parameters (ported from GyroService)
+#define GYRO_SMOOTHING_FACTOR   0.8f
+#define GYRO_DEAD_ZONE          0.05f
+#define GYRO_ACCEL_THRESHOLD    0.3f
+#define GYRO_ACCEL_EXPONENT     1.2f
+#define GYRO_ACCEL_MULTIPLIER   1.5f
 
-#define FINAL_SCALE_FACTOR 2.0f // 縮放因子
+// Exponential smoothing state
+static float last_smoothed_x = 0.0f;
+static float last_smoothed_z = 0.0f;
 
-//-------------------------------------------------------------------------------------------
-// Definition of functions
-
-float sigmoid(float x)
+/**
+ * @brief Apply non-linear acceleration curve.
+ *
+ * Below the threshold the value passes through linearly for precise control.
+ * Above the threshold an exponential curve is applied so fast hand movements
+ * produce larger cursor jumps.
+ */
+static float apply_acceleration(float value)
 {
-    return 1.0f / (1.0f + expf(-x));
+    float abs_val = fabsf(value);
+    if (abs_val < GYRO_ACCEL_THRESHOLD)
+    {
+        return value;
+    }
+    float excess = abs_val - GYRO_ACCEL_THRESHOLD;
+    float accelerated = GYRO_ACCEL_THRESHOLD +
+                        powf(excess, GYRO_ACCEL_EXPONENT) * GYRO_ACCEL_MULTIPLIER;
+    return (value > 0.0f ? 1.0f : -1.0f) * accelerated;
 }
 
-air_plane_delta_movement_t air_mouse_algorithm(float *x, float *y, float dx, float dy, float multi_factor)
+void air_mouse_reset(void)
 {
-    static uint8_t count_of_below_bound = 0;
-    air_plane_delta_movement_t movement = {0, 0};
+    last_smoothed_x = 0.0f;
+    last_smoothed_z = 0.0f;
+}
 
-    float dx_in_pixel = dx * multi_factor;
-    float dy_in_pixel = dy * multi_factor;
+/**
+ * @brief Gyro-based air mouse algorithm (ported from GyroService).
+ *
+ * Reads gyroscope rotation rates and converts them to relative mouse
+ * movement deltas using exponential smoothing, dead-zone filtering,
+ * and a non-linear acceleration curve.
+ *
+ * @param gyro_x  Gyroscope X-axis rotation rate (rad/s)
+ * @param gyro_z  Gyroscope Z-axis rotation rate (rad/s)
+ * @param sensitivity  Mouse sensitivity multiplier
+ * @return Delta movement for BLE HID report
+ */
+air_plane_delta_movement_t air_mouse_algorithm(float gyro_x, float gyro_z, float sensitivity)
+{
+    air_plane_delta_movement_t movement = {0, 0, 0};
 
-    *x = dx_in_pixel;
-    *y = dy_in_pixel;
+    // Exponential smoothing to reduce jitter
+    float x = GYRO_SMOOTHING_FACTOR * gyro_x + (1.0f - GYRO_SMOOTHING_FACTOR) * last_smoothed_x;
+    float z = GYRO_SMOOTHING_FACTOR * gyro_z + (1.0f - GYRO_SMOOTHING_FACTOR) * last_smoothed_z;
+    last_smoothed_x = x;
+    last_smoothed_z = z;
 
-    // rt_kprintf("[mouse]dx:%f, dy:%f\n", dx_in_pixel, dy_in_pixel);
+    // Dead-zone filter to ignore micro-jitter
+    if (fabsf(x) < GYRO_DEAD_ZONE) x = 0.0f;
+    if (fabsf(z) < GYRO_DEAD_ZONE) z = 0.0f;
 
-    float abs_total_x = OFFSET_Y + 0.7f + sigmoid(SCALE_FACTOR * (fabs(*x) - OFFSET_X));
-    float abs_total_y = OFFSET_Y + 0.5f + sigmoid(SCALE_FACTOR * (fabs(*y) - OFFSET_X));
+    // Apply non-linear acceleration curve
+    x = apply_acceleration(x);
+    z = apply_acceleration(z);
 
-    float scaled_x = *x * abs_total_x;
-    float scaled_y = *y * abs_total_y;
-    // rt_kprintf("[mouse]scaled_x:%f, scaled_y:%f\n", scaled_x, scaled_y);
-    // 限制範圍在 int8_t 的範圍內
-    if (scaled_x > 127.0f)
-    {
-        scaled_x = 127.0f;
-    }
-    else if (scaled_x < -128.0f)
-    {
-        scaled_x = -128.0f;
-    }
-    if (scaled_y > 127.0f)
-    {
-        scaled_y = 127.0f;
-    }
-    else if (scaled_y < -128.0f)
-    {
-        scaled_y = -128.0f;
-    }
+    // Map gyro axes to mouse axes:
+    //   gyro Z rotation -> horizontal cursor movement (deltaX)
+    //   gyro X rotation -> vertical cursor movement (deltaY)
+    float deltaX = -z * sensitivity;
+    float deltaY = -x * sensitivity;
 
-    movement.x = (int8_t)scaled_x;
-    movement.y = (int8_t)scaled_y;
-    *x = 0.0f;
-    *y = 0.0f;
+    // Clamp to int8_t range
+    if (deltaX > 127.0f) deltaX = 127.0f;
+    else if (deltaX < -128.0f) deltaX = -128.0f;
+    if (deltaY > 127.0f) deltaY = 127.0f;
+    else if (deltaY < -128.0f) deltaY = -128.0f;
 
-    // rt_kprintf("movement x:%d, y:%d\n", movement.x, movement.y);
+    movement.x = (int8_t)deltaX;
+    movement.y = (int8_t)deltaY;
+
     return movement;
 }
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

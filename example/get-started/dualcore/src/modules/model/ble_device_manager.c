@@ -916,6 +916,35 @@ int ble_dev_mgr_update_device_name(uint8_t device_idx, const char *device_name)
     return 0;
 }
 
+int ble_dev_mgr_update_device_type(uint8_t device_idx, ble_device_type_t device_type)
+{
+    if (!g_dev_mgr.initialized || device_idx >= MAX_BONDED_DEVICES)
+    {
+        return -1;
+    }
+
+    dev_mgr_lock();
+
+    bonded_device_t *dev = &g_dev_mgr.database.devices[device_idx];
+
+    if (!dev->is_valid)
+    {
+        dev_mgr_unlock();
+        return -2;
+    }
+
+    dev->device_type = device_type;
+
+    LOG_I("Updated device [%d] type to: %d", device_idx, device_type);
+
+    dev_mgr_unlock();
+
+    // Save to Flash
+    ble_dev_mgr_save_to_flash();
+
+    return 0;
+}
+
 int ble_dev_mgr_switch_to_next_device(void)
 {
     if (!g_dev_mgr.initialized)

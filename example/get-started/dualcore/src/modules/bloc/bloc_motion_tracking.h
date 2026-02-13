@@ -81,6 +81,7 @@ extern "C"
     extern void packMatrixToBuffer(uint8_t *targetArray,
                                    watch_sys_linear_acce_t *dataset,
                                    int32_t *fft_buffer, int sample_len);
+    extern void air_mouse_movement_lock_reset(void);
 
     typedef struct
     {

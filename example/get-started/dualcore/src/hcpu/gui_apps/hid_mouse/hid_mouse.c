@@ -79,13 +79,14 @@
 #include "ui_img_helper.h"
 #include "lvsf_gesture.h"
 #include "ble_device_manager.h"
+#include "bloc_motion_tracking.h"
 #include "ble_hid.h"
 
 #ifdef APP_ID_MOUSE
 
-#define DBG_TAG "hid.mouse"
-#define DBG_LVL DBG_LOG
-#include <rtdbg.h>
+    #define DBG_TAG "hid.mouse"
+    #define DBG_LVL DBG_LOG
+    #include <rtdbg.h>
 
     /*********************
      *      DEFINES
@@ -98,17 +99,19 @@
     #define GESTURE_TIMER_MS 200
     #define INERTIA_TIMER_MS 20
     #define INERTIA_DECAY_FACTOR 0.95f
-    #define MIN_SCROLL_SPEED 0.1f
+    #define MIN_SCROLL_SPEED 1.0f
     #define SCROLL_SPEED_MULTIPLIER 2.0f
+    #define DOUBLE_TAP_MS 300
 
-    #define SIMULATE_MOUSE_RIGHT_BUTTON 1
+    #define SIMULATE_MOUSE_RIGHT_BUTTON 0
     #define USING_MOUSE_WHEEL_SCROLLING 1
     #define USING_TOUCHSCREEN_SCROLLING 0
     #define USING_EDGE_BOTTOM_DETECTION 0
-    #define USING_EDGE_LEFT_DETECTION 1
+    #define USING_EDGE_LEFT_DETECTION 0
     #define USING_EDGE_RIGHT_DETECTION 0
 
     #define ENABLE_MENU_FEATURE 1
+    #define KB_ANIM_TIME_MS 300
 
 /*********************
  *      TYPEDEFS
@@ -145,6 +148,7 @@ static bool pressing = false;
 static bool scrolling = false;
 static bool scrolling_confirmed = false;
 static bool moving = false;
+static bool has_moved_during_touch = false;
 
 static bool go_back = false;
 static bool handfree = false;
@@ -158,6 +162,13 @@ static bool gesture_detected = false;
 static bool scroll_direction_locked = false;
 static bool is_horizontal_scroll = false;
 
+// 慣性滾動
+static float inertia_velocity = 0.0f;
+static float inertia_accumulator = 0.0f;
+static lv_timer_t *inertia_timer = NULL;
+static uint32_t last_scroll_tick = 0;
+static uint32_t last_click_time = 0;
+
     #if SIMULATE_MOUSE_RIGHT_BUTTON
 static bool pressed_left_half = false;
     #endif
@@ -168,8 +179,13 @@ static lv_indev_t *indev_global = NULL;
 static lv_obj_t *device_sw = NULL;
 static uint8_t zoom_count = 0;
 static lv_obj_t *menu_bg = NULL;
+static lv_obj_t *menu_tileview = NULL;
+static lv_obj_t *menu_home_tile = NULL;
+static lv_obj_t *menu_content_tile = NULL;
+static lv_obj_t *menu_swipe_area = NULL;
 static lv_obj_t *control_page = NULL;
 static lv_obj_t *status_bar_area = NULL;
+static lv_obj_t *connected_device_label = NULL;
 static lv_obj_t *crosshair_line1 = NULL;
 static lv_obj_t *crosshair_line2 = NULL;
 static lv_obj_t *status_bar_time_h = NULL;
@@ -216,8 +232,8 @@ static lv_point_t press_start_point = {0, 0};
 static lv_obj_t *closest_btn = NULL;
 static lv_obj_t *currently_pressed_btn = NULL;
 
-// Input display variables
-static lv_obj_t *input_display = NULL;
+// Input display variables (now children of text_input_bar_bg)
+static lv_obj_t *input_content_container = NULL;
 static lv_obj_t *input_display_label = NULL;
 static lv_obj_t *input_cursor = NULL;
 static lv_obj_t *input_enter_btn = NULL;
@@ -293,28 +309,28 @@ static void dummy_file3_callback(void);
 static void start_multiple_pages_timer(void);
     #endif
 
-static void update_crosshair_brightness(void)
-{
-    if (crosshair_line1 != NULL && crosshair_line2 != NULL)
-    {
-        if (user_touching)
-        {
-            // Bright color when touching
-            lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0xCCCCCC),
-                                      0);
-            lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0xCCCCCC),
-                                      0);
-        }
-        else
-        {
-            // Dim color when not touching
-            lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0x666666),
-                                      0);
-            lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0x666666),
-                                      0);
-        }
-    }
-}
+// static void update_crosshair_brightness(void)
+// {
+//     if (crosshair_line1 != NULL && crosshair_line2 != NULL)
+//     {
+//         if (user_touching)
+//         {
+//             // Bright color when touching
+//             lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0xCCCCCC),
+//                                       0);
+//             lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0xCCCCCC),
+//                                       0);
+//         }
+//         else
+//         {
+//             // Dim color when not touching
+//             lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0x666666),
+//                                       0);
+//             lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0x666666),
+//                                       0);
+//         }
+//     }
+// }
 
 /**
  * @brief Update cursor position to follow the text
@@ -463,47 +479,189 @@ static void remove_from_input_buffer(void)
 }
 
 /**
- * @brief Toggle keyboard visibility
+ * @brief Helper: set translate_y style (used as lv_anim exec callback)
  */
 extern void set_stop_mouse_move(bool stop);
-void toggle_keyboard_visibility(void)
+static void anim_set_translate_y(void *obj, int32_t v)
 {
+    lv_obj_set_style_translate_y((lv_obj_t *)obj, v, 0);
+}
+
+/**
+ * @brief Animation ready callback when keyboard close animation finishes
+ */
+static void keyboard_close_anim_ready_cb(lv_anim_t *a)
+{
+    // Restore bar to closed style
+    lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(text_input_bar_bg, 0, LV_PART_MAIN);
+
+    // Show indicator, hide input content
+    lv_obj_clear_flag(text_input_bar, LV_OBJ_FLAG_HIDDEN);
+    if (input_content_container != NULL)
+        lv_obj_add_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
+    if (input_cursor != NULL)
+        lv_obj_add_flag(input_cursor, LV_OBJ_FLAG_HIDDEN);
+
+    // Hide keyboard and reset its translate_y
     if (keyboard_container != NULL)
     {
-        if (keyboard_visible)
-        {
-            lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
-            if (input_display != NULL)
-            {
-                lv_obj_add_flag(input_display, LV_OBJ_FLAG_HIDDEN);
-            }
-            if (input_enter_btn != NULL)
-            {
-                lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
-            }
-            lv_obj_clear_flag(text_input_bar_bg, LV_OBJ_FLAG_HIDDEN);
-            keyboard_visible = false;
-            set_stop_mouse_move(false);
-            hide_key_popup();      // 隱藏鍵盤時也隱藏彈出框
-            clear_input_display(); // 清除輸入內容
-            stop_cursor_blink();   // 停止游標閃爍
-        }
-        else
-        {
-            set_stop_mouse_move(true);
-            lv_obj_clear_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
-            if (input_display != NULL)
-            {
-                lv_obj_clear_flag(input_display, LV_OBJ_FLAG_HIDDEN);
-            }
-            if (input_enter_btn != NULL)
-            {
-                lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
-            }
-            lv_obj_add_flag(text_input_bar_bg, LV_OBJ_FLAG_HIDDEN);
-            keyboard_visible = true;
-            start_cursor_blink(); // 開始游標閃爍
-        }
+        lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_translate_y(keyboard_container, 0, 0);
+    }
+}
+
+/**
+ * @brief Toggle keyboard visibility with animation
+ */
+void toggle_keyboard_visibility(void)
+{
+    if (keyboard_container == NULL)
+        return;
+
+    lv_anim_t a;
+
+    // Cancel any ongoing animations on bar and keyboard
+    lv_anim_del(text_input_bar_bg, NULL);
+    lv_anim_del(keyboard_container, NULL);
+
+    if (keyboard_visible)
+    {
+        // === CLOSE KEYBOARD ===
+        keyboard_visible = false;
+        set_stop_mouse_move(false);
+        hide_key_popup();
+        clear_input_display();
+        stop_cursor_blink();
+
+        // Hide enter button immediately
+        if (input_enter_btn != NULL)
+            lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
+
+        // Animate bar x: open -> closed
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_x(text_input_bar_bg),
+                           (LV_HOR_RES_MAX - 200) / 2);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_x);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+
+        // Animate bar y: open -> closed
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_y(text_input_bar_bg),
+                           LV_VER_RES_MAX - 50);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+
+        // Animate bar width: open -> closed
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_width(text_input_bar_bg), 200);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_width);
+        lv_anim_start(&a);
+
+        // Animate bar height: open -> closed (with ready callback)
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_height(text_input_bar_bg), 50);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_height);
+        lv_anim_set_ready_cb(&a, keyboard_close_anim_ready_cb);
+        lv_anim_start(&a);
+
+        // Animate keyboard sliding down using translate_y
+        // (preserves the original BOTTOM_MID alignment)
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, keyboard_container);
+        lv_anim_set_values(&a, 0, 300);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)anim_set_translate_y);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+    }
+    else
+    {
+        // === OPEN KEYBOARD ===
+        set_stop_mouse_move(true);
+        keyboard_visible = true;
+
+        // Set open style on bar
+        lv_obj_set_style_bg_color(text_input_bar_bg, lv_color_hex(0x1a1a1a),
+                                  LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_90, LV_PART_MAIN);
+        lv_obj_set_style_border_color(text_input_bar_bg,
+                                      lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        lv_obj_set_style_border_width(text_input_bar_bg, 2, LV_PART_MAIN);
+        lv_obj_set_style_border_opa(text_input_bar_bg, LV_OPA_50, LV_PART_MAIN);
+
+        // Hide indicator, show input content
+        lv_obj_add_flag(text_input_bar, LV_OBJ_FLAG_HIDDEN);
+        if (input_content_container != NULL)
+            lv_obj_clear_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
+
+        // Show enter button
+        if (input_enter_btn != NULL)
+            lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
+
+        // Show keyboard off-screen (translate_y pushes it below visible area)
+        lv_obj_clear_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_translate_y(keyboard_container, 300, 0);
+
+        // Target positions for open state
+        int32_t open_x = (LV_HOR_RES_MAX - 310) / 2 - 35;
+        int32_t open_y = LV_VER_RES_MAX - 305 - 45;
+
+        // Animate bar x: closed -> open
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_x(text_input_bar_bg), open_x);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_x);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+
+        // Animate bar y: closed -> open
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_y(text_input_bar_bg), open_y);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+
+        // Animate bar width: closed -> open
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_width(text_input_bar_bg), 310);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_width);
+        lv_anim_start(&a);
+
+        // Animate bar height: closed -> open
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, text_input_bar_bg);
+        lv_anim_set_values(&a, lv_obj_get_height(text_input_bar_bg), 45);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_height);
+        lv_anim_start(&a);
+
+        // Animate keyboard sliding up using translate_y (300 -> 0)
+        // Keyboard is aligned at BOTTOM_MID, translate_y offsets from there
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, keyboard_container);
+        lv_anim_set_values(&a, 300, 0);
+        lv_anim_set_time(&a, KB_ANIM_TIME_MS);
+        lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)anim_set_translate_y);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_start(&a);
+
+        start_cursor_blink();
     }
 }
 
@@ -1161,38 +1319,13 @@ static void handle_proximity_input(lv_event_t *e)
                         bool was_visible = !lv_obj_has_flag(keyboard_container,
                                                             LV_OBJ_FLAG_HIDDEN);
 
-                        // 先刪除輸入框和 Enter 按鍵（它們是在 parent 上創建的）
-                        if (input_display != NULL)
-                        {
-                            lv_obj_del(input_display);
-                            input_display = NULL;
-                            input_display_label = NULL;
-                            input_cursor = NULL;
-                        }
-                        if (input_enter_btn != NULL)
-                        {
-                            lv_obj_del(input_enter_btn);
-                            input_enter_btn = NULL;
-                        }
-
                         lv_obj_del(keyboard_container);
                         create_circular_keyboard_layout(parent);
                         if (was_visible)
                         {
                             lv_obj_clear_flag(keyboard_container,
                                               LV_OBJ_FLAG_HIDDEN);
-                            if (input_display != NULL)
-                            {
-                                lv_obj_clear_flag(input_display,
-                                                  LV_OBJ_FLAG_HIDDEN);
-                            }
-                            if (input_enter_btn != NULL)
-                            {
-                                lv_obj_clear_flag(input_enter_btn,
-                                                  LV_OBJ_FLAG_HIDDEN);
-                            }
                             keyboard_visible = true;
-                            // 恢復輸入內容和游標
                             update_input_display();
                             start_cursor_blink();
                         }
@@ -1213,38 +1346,13 @@ static void handle_proximity_input(lv_event_t *e)
                         bool was_visible = !lv_obj_has_flag(keyboard_container,
                                                             LV_OBJ_FLAG_HIDDEN);
 
-                        // 先刪除輸入框和 Enter 按鍵（它們是在 parent 上創建的）
-                        if (input_display != NULL)
-                        {
-                            lv_obj_del(input_display);
-                            input_display = NULL;
-                            input_display_label = NULL;
-                            input_cursor = NULL;
-                        }
-                        if (input_enter_btn != NULL)
-                        {
-                            lv_obj_del(input_enter_btn);
-                            input_enter_btn = NULL;
-                        }
-
                         lv_obj_del(keyboard_container);
                         create_circular_keyboard_layout(parent);
                         if (was_visible)
                         {
                             lv_obj_clear_flag(keyboard_container,
                                               LV_OBJ_FLAG_HIDDEN);
-                            if (input_display != NULL)
-                            {
-                                lv_obj_clear_flag(input_display,
-                                                  LV_OBJ_FLAG_HIDDEN);
-                            }
-                            if (input_enter_btn != NULL)
-                            {
-                                lv_obj_clear_flag(input_enter_btn,
-                                                  LV_OBJ_FLAG_HIDDEN);
-                            }
                             keyboard_visible = true;
-                            // 恢復輸入內容和游標
                             update_input_display();
                             start_cursor_blink();
                         }
@@ -1404,9 +1512,10 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
     lv_obj_set_style_bg_color(keyboard_container, lv_color_hex(0x0f0f0f),
                               LV_PART_MAIN);
     lv_obj_set_style_bg_opa(keyboard_container, LV_OPA_90, LV_PART_MAIN);
-    lv_obj_set_style_border_color(keyboard_container, lv_color_hex(0x4a90e2),
+    lv_obj_set_style_border_color(keyboard_container, lv_color_hex(0xFFFFFF),
                                   LV_PART_MAIN);
     lv_obj_set_style_border_width(keyboard_container, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(keyboard_container, LV_OPA_30, LV_PART_MAIN);
     lv_obj_set_style_border_side(keyboard_container, LV_BORDER_SIDE_TOP,
                                  LV_PART_MAIN);
     lv_obj_set_style_radius(keyboard_container, 25, LV_PART_MAIN);
@@ -1414,69 +1523,6 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
 
     // 重置按鍵數組
     all_keys_count = 0;
-
-    // 創建輸入顯示框（在鍵盤上方）
-    input_display = lv_obj_create(parent);
-    lv_obj_set_size(input_display, 310, 45);
-    lv_obj_align(input_display, LV_ALIGN_BOTTOM_MID, -35, -305);
-    lv_obj_set_style_bg_color(input_display, lv_color_hex(0x1a1a1a),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(input_display, LV_OPA_90, LV_PART_MAIN);
-    lv_obj_set_style_border_color(input_display, lv_color_hex(0x4a90e2),
-                                  LV_PART_MAIN);
-    lv_obj_set_style_border_width(input_display, 2, LV_PART_MAIN);
-    lv_obj_set_style_radius(input_display, 22, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(input_display, 5, LV_PART_MAIN);
-    lv_obj_clear_flag(input_display, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(input_display, LV_OBJ_FLAG_HIDDEN); // 初始隱藏
-
-    // 創建輸入框右邊的 Enter 按鍵
-    input_enter_btn = lv_obj_create(parent);
-    lv_obj_set_size(input_enter_btn, 50, 45);
-    lv_obj_align(input_enter_btn, LV_ALIGN_BOTTOM_MID, 165, -305);
-    lv_obj_set_style_bg_color(input_enter_btn, lv_color_hex(0x4a90e2),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(input_enter_btn, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(input_enter_btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(input_enter_btn, 22, LV_PART_MAIN);
-    lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);    // 初始隱藏
-    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_CLICKABLE); // 讓它可以點擊
-    lv_obj_add_event_cb(input_enter_btn, input_enter_btn_event_cb,
-                        LV_EVENT_CLICKED, NULL);
-    lv_obj_t *input_enter_img = lv_img_create(input_enter_btn);
-    lv_img_set_src(input_enter_img, &enter_icon);
-    lv_obj_center(input_enter_img);
-
-    lv_obj_t *input_display_bg = lv_obj_create(input_display);
-    lv_obj_set_size(input_display_bg, 290, 45);
-    lv_obj_center(input_display_bg);
-    lv_obj_set_style_bg_opa(input_display_bg, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_clear_flag(input_display_bg, LV_OBJ_FLAG_SCROLLABLE);
-
-    // 創建輸入顯示的文字標籤
-    input_display_label = lv_label_create(input_display_bg);
-    lv_label_set_text(input_display_label, "");
-    lv_obj_set_style_text_color(input_display_label, lv_color_hex(0xFFFFFF),
-                                LV_PART_MAIN);
-    lv_obj_set_style_text_font(input_display_label,
-                               LV_EXT_FONT_GET(get_system_font_size(0)),
-                               LV_PART_MAIN);
-    lv_obj_set_width(input_display_label, LV_SIZE_CONTENT);
-    lv_label_set_long_mode(input_display_label, LV_LABEL_LONG_CLIP);
-    lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
-
-    // 創建藍色閃爍游標
-    input_cursor = lv_obj_create(input_display);
-    lv_obj_set_size(input_cursor, 2, 25);
-    lv_obj_set_style_bg_color(input_cursor, lv_color_hex(0x4a90e2),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(input_cursor, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(input_cursor, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(input_cursor, 1, LV_PART_MAIN);
-    lv_obj_align_to(input_cursor, input_display_label, LV_ALIGN_OUT_RIGHT_MID,
-                    2, 0);
-    lv_obj_add_flag(input_cursor, LV_OBJ_FLAG_HIDDEN); // 初始隱藏
 
     // 添加接近度檢測事件到鍵盤容器
     lv_obj_add_event_cb(keyboard_container, handle_proximity_input,
@@ -2105,24 +2151,69 @@ static void start_multiple_pages_timer(void)
 }
     #endif
 /**
+ * @brief Inertia scroll timer callback
+ */
+static void inertia_scroll_timer_cb(lv_timer_t *timer)
+{
+    inertia_velocity *= INERTIA_DECAY_FACTOR;
+
+    if (fabsf(inertia_velocity) < MIN_SCROLL_SPEED)
+    {
+        lv_timer_del(timer);
+        inertia_timer = NULL;
+        inertia_accumulator = 0.0f;
+        return;
+    }
+
+    inertia_accumulator += inertia_velocity * (INERTIA_TIMER_MS / 1000.0f);
+    int8_t scroll_val = (int8_t)inertia_accumulator;
+    inertia_accumulator -= (float)scroll_val;
+
+    if (scroll_val != 0)
+    {
+        if (is_horizontal_scroll)
+        {
+            control_provider.ble_hid_mouse_pan_scroll(scroll_val);
+        }
+        else
+        {
+            control_provider.ble_hid_mouse_wheel_scroll(scroll_val);
+        }
+    }
+}
+
+/**
  * @brief Handles the pressed event
  * @param indev Input device
  */
 static void handle_pressed_event(lv_indev_t *indev)
 {
     user_touching = true;
-    update_crosshair_brightness();
+    // update_crosshair_brightness();
     press_time = lv_tick_get();
+    air_mouse_movement_lock_reset();
 
     lv_indev_get_point(indev, &start_point);
     lv_indev_get_point(indev, &last_point);
-
     pressing = false;
     scrolling = false;
+    moving = false;
 
     // 重置滚动方向锁定
     scroll_direction_locked = false;
     is_horizontal_scroll = false;
+
+    has_moved_during_touch = false;
+
+    // 停止慣性滾動
+    if (inertia_timer)
+    {
+        lv_timer_del(inertia_timer);
+        inertia_timer = NULL;
+    }
+    inertia_velocity = 0.0f;
+    inertia_accumulator = 0.0f;
+    last_scroll_tick = lv_tick_get();
 
     #if SIMULATE_MOUSE_RIGHT_BUTTON
     pressed_left_half = start_point.x < (LV_HOR_RES_MAX / 2);
@@ -2131,6 +2222,16 @@ static void handle_pressed_event(lv_indev_t *indev)
     LOG_D("pressed x: %d, y: %d", start_point.x, start_point.y);
     update_edge_detection(&start_point);
     gesture_detected = false;
+
+    // 雙擊拖曳：第二下按下去直接觸發長按效果
+    if (last_click_time > 0 && (lv_tick_get() - last_click_time) < DOUBLE_TAP_MS)
+    {
+        pressing = true;
+        control_provider.ble_hid_mouse_left_press();
+        motor_pattern_touchpad_slide();
+        LOG_D("Air mouse - double tap hold (left press)");
+        last_click_time = 0;
+    }
 }
 
 /**
@@ -2188,32 +2289,59 @@ static void handle_pressing_event(lv_indev_t *indev,
             delta_y = -delta_y;
         }
         handle_mouse_wheel_scrolling(delta_x, delta_y);
+
+        // 追蹤慣性滾動速度
+        if (lv_tick_get() - last_scroll_tick > 0 &&
+            lv_tick_get() - last_scroll_tick < 500)
+        {
+            int scroll_units = is_horizontal_scroll
+                                   ? (delta_x / SCROLLING_THRESHOLD)
+                                   : (delta_y / SCROLLING_THRESHOLD);
+            float current_speed =
+                (float)scroll_units /
+                ((float)(lv_tick_get() - last_scroll_tick) / 1000.0f);
+            inertia_velocity = 0.7f * inertia_velocity + 0.3f * current_speed;
+        }
+        last_scroll_tick = lv_tick_get();
+
     #if USING_TOUCHSCREEN_SCROLLING
         handle_touchscreen_scrolling(current_point);
     #endif
         return;
     }
 
-    // Check if should start scrolling
-    if (lv_tick_get() - press_time > PRESSED_TIME_MS)
+    // 記錄這次觸碰期間是否有移動過
+    if (moving)
+    {
+        has_moved_during_touch = true;
+    }
+
+    // 長按觸發：超過閾值且這次觸碰期間從未移動過
+    if (!has_moved_during_touch && (lv_tick_get() - press_time > PRESSED_TIME_MS))
     {
         pressing = true;
     #if SIMULATE_MOUSE_RIGHT_BUTTON
-        if (pressed_left_half)
+        if (lv_tick_get() - press_time > PRESSED_TIME_MS)
+        {
+            if (pressed_left_half)
+            {
     #endif
-        {
-            control_provider.ble_hid_mouse_left_press();
-            LOG_D("Air mouse - left press");
-        }
+                    control_provider.ble_hid_mouse_left_press();
+                    motor_pattern_touchpad_slide();
+                    LOG_D("Air mouse - left press");
+            
     #if SIMULATE_MOUSE_RIGHT_BUTTON
-        else
-        {
-            control_provider.ble_hid_mouse_right_press();
-            LOG_D("Air mouse - right press");
+            }
+            else
+            {
+                control_provider.ble_hid_mouse_right_press();
+                LOG_D("Air mouse - right press");
+            }
         }
     #endif
     }
 }
+
 
 /**
  * @brief Handles the released event
@@ -2222,7 +2350,7 @@ static void handle_pressing_event(lv_indev_t *indev,
 static void handle_released_event(lv_indev_t *indev)
 {
     user_touching = false;
-    update_crosshair_brightness();
+    // update_crosshair_brightness();
     if (is_gesture_active)
     {
         is_gesture_active = false;
@@ -2256,6 +2384,24 @@ static void handle_released_event(lv_indev_t *indev)
     {
         scrolling = false;
         LOG_D("Gesture detected: scrolling released");
+
+        // 啟動慣性滾動
+        if ((lv_tick_get() - last_scroll_tick) < 100 &&
+            fabsf(inertia_velocity) > MIN_SCROLL_SPEED)
+        {
+            inertia_accumulator = 0.0f;
+            if (inertia_timer)
+            {
+                lv_timer_del(inertia_timer);
+            }
+            inertia_timer = lv_timer_create(inertia_scroll_timer_cb,
+                                            INERTIA_TIMER_MS, NULL);
+        }
+        else
+        {
+            inertia_velocity = 0.0f;
+        }
+
     #if USING_TOUCHSCREEN_SCROLLING
         if (control_provider.ble_hid_touch_screen_release != NULL)
         {
@@ -2282,6 +2428,7 @@ static void handle_released_event(lv_indev_t *indev)
                 {
                     LOG_D("Air mouse - click_left");
                     control_provider.ble_hid_mouse_left_click();
+                    last_click_time = lv_tick_get();
                 }
             }
         }
@@ -2320,7 +2467,7 @@ static void top_logo_event_cb(lv_event_t *e)
     {
     case LV_EVENT_PRESSED:
         user_touching = true;
-        update_crosshair_brightness();
+        // update_crosshair_brightness();
         break;
 
     case LV_EVENT_PRESSING:
@@ -2328,7 +2475,7 @@ static void top_logo_event_cb(lv_event_t *e)
 
     case LV_EVENT_RELEASED:
         user_touching = false;
-        update_crosshair_brightness();
+        // update_crosshair_brightness();
         break;
 
     case LV_EVENT_CLICKED:
@@ -2378,20 +2525,57 @@ static void plain_event_cb(lv_event_t *e)
 }
 
     #if ENABLE_MENU_FEATURE
-static lv_obj_t *menu_btn = NULL;
-static void menu_btn_event_cb(lv_event_t *e)
+/**
+ * @brief Tileview event callback for menu swipe
+ */
+static void menu_tileview_event_cb(lv_event_t *e)
 {
-    if (lv_obj_has_flag(menu_bg, LV_OBJ_FLAG_HIDDEN))
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *obj = lv_event_get_target(e);
+
+    if (code == LV_EVENT_VALUE_CHANGED)
     {
-        set_stop_mouse_move(true);
-        lv_obj_clear_flag(menu_bg, LV_OBJ_FLAG_HIDDEN);
-        lv_img_set_src(lv_obj_get_child(menu_btn, 0), ICON_X);
+        lv_obj_t *active_tile = lv_tileview_get_tile_act(obj);
+        if (active_tile == menu_home_tile)
+        {
+            /* 滑回首頁，隱藏 tileview 並恢復滑鼠控制 */
+            lv_obj_add_flag(menu_tileview, LV_OBJ_FLAG_HIDDEN);
+            set_stop_mouse_move(false);
+        }
+        else if (active_tile == menu_content_tile)
+        {
+            /* 進入 menu 頁面，停止滑鼠移動 */
+            set_stop_mouse_move(true);
+        }
     }
-    else
+}
+
+/**
+ * @brief Top swipe area callback - show menu tileview on press
+ */
+static void menu_swipe_area_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_PRESSED)
     {
-        set_stop_mouse_move(false);
-        lv_obj_add_flag(menu_bg, LV_OBJ_FLAG_HIDDEN);
-        lv_img_set_src(lv_obj_get_child(menu_btn, 0), &plus_button);
+        if (menu_tileview != NULL)
+        {
+            LOG_D("menu_swipe_area_event_cb: show menu tileview");
+            /* 設定到首頁 tile，讓使用者從頂部往下滑到 menu */
+            lv_obj_set_tile(menu_tileview, menu_home_tile, LV_ANIM_OFF);
+            lv_obj_clear_flag(menu_tileview, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    else if (code == LV_EVENT_RELEASED)
+    {
+        if (lv_obj_get_scroll_x(menu_tileview) == 0 &&
+            lv_obj_get_scroll_y(menu_tileview) == 466)
+        {
+            /* 滑回首頁，隱藏 tileview 並恢復滑鼠控制 */
+            lv_obj_add_flag(menu_tileview, LV_OBJ_FLAG_HIDDEN);
+            set_stop_mouse_move(false);
+        }
     }
 }
     #endif
@@ -2561,7 +2745,8 @@ static void menu_delete_confirm_cb(lv_event_t *e)
             // User confirmed deletion
             if (menu_pending_delete_idx != 0xFF)
             {
-                LOG_I("User confirmed: disconnecting and deleting device [%d]",
+                LOG_I("User confirmed: disconnecting and deleting device "
+                      "[%d]",
                       menu_pending_delete_idx);
                 // First disconnect the device if connected
                 ble_dev_mgr_disconnect_device(menu_pending_delete_idx);
@@ -2803,39 +2988,19 @@ static lv_obj_t *menu_create_device_item(lv_obj_t *parent,
     lv_obj_set_style_border_width(text_cont, 0, 0);
     lv_obj_set_style_pad_all(text_cont, 0, 0);
     lv_obj_set_flex_flow(text_cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(text_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(text_cont, 2, 0);
     lv_obj_clear_flag(text_cont, LV_OBJ_FLAG_CLICKABLE);
+    // LOG_D("device type: %d,name: %s,conn_idx: %d", device->device_type, device->device_name,
+    //       device->conn_idx);
 
-    // Convert device type to string
-    const char *type_str;
-    switch (device->device_type)
-    {
-    case DEVICE_TYPE_PHONE:
-        type_str = "Phone";
-        break;
-    case DEVICE_TYPE_COMPUTER:
-        type_str = "Computer";
-        break;
-    case DEVICE_TYPE_TABLET:
-        type_str = "Tablet";
-        break;
-    default:
-        type_str = "Other";
-        break;
-    }
-
-    // Device type (first)
-    lv_obj_t *type_label = lv_label_create(text_cont);
-    lv_label_set_text(type_label, type_str);
-    lv_obj_set_style_text_color(type_label, lv_color_hex(0xAAAAAA), 0);
-    lv_obj_clear_flag(type_label, LV_OBJ_FLAG_CLICKABLE);
-
-    // Device name (second)
+    // Device name
     lv_obj_t *name_label = lv_label_create(text_cont);
     lv_label_set_text(name_label, device->device_name);
     lv_obj_set_style_text_color(name_label, lv_color_hex(0xFFFFFF), 0);
     lv_label_set_long_mode(name_label, LV_LABEL_LONG_DOT);
     lv_obj_set_width(name_label, LV_PCT(100));
+    lv_obj_set_style_text_align(name_label, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_clear_flag(name_label, LV_OBJ_FLAG_CLICKABLE);
 
     return btn;
@@ -2843,6 +3008,7 @@ static lv_obj_t *menu_create_device_item(lv_obj_t *parent,
 
 // Forward declaration
 static void menu_reset_ble_btn_cb(lv_event_t *e);
+static void menu_close_btn_event_cb(lv_event_t *e);
 
 /**
  * @brief Refresh menu device list
@@ -2855,14 +3021,15 @@ static void menu_refresh_device_list(void)
         return;
     }
 
-    // Sync control_device_idx with the device matching g_conn_idx
-    uint8_t hid_conn_idx = ble_hid_get_conn_idx();
-    for (int i = 0; i < MAX_BONDED_DEVICES; i++)
+    // Sync control_device_idx and g_conn_idx from active_device_idx (source of truth)
+    int active_idx = ble_dev_mgr_get_active_device();
+    if (active_idx >= 0 && active_idx < MAX_BONDED_DEVICES &&
+        db->devices[active_idx].is_valid)
     {
-        if (db->devices[i].is_valid && db->devices[i].conn_idx == hid_conn_idx)
+        control_device_idx = (uint8_t)active_idx;
+        if (db->devices[active_idx].conn_idx != 0xFF)
         {
-            control_device_idx = (uint8_t)i;
-            break;
+            ble_hid_set_conn_idx(db->devices[active_idx].conn_idx);
         }
     }
     if (menu_dev_list_ui.device_list &&
@@ -2887,11 +3054,10 @@ static void menu_refresh_device_list(void)
             lv_obj_add_flag(menu_dev_list_ui.empty_label, LV_OBJ_FLAG_HIDDEN);
         }
     }
-    
+
     for (int i = 0; i < MAX_BONDED_DEVICES; i++)
     {
-        if (db->devices[i].is_valid &&
-            menu_dev_list_ui.device_list &&
+        if (db->devices[i].is_valid && menu_dev_list_ui.device_list &&
             lv_obj_is_valid(menu_dev_list_ui.device_list))
         {
             lv_obj_t *item = menu_create_device_item(
@@ -2924,6 +3090,19 @@ static void menu_refresh_device_list(void)
         lv_obj_set_style_text_color(reset_label, lv_color_hex(0xFFFFFF), 0);
         lv_obj_center(reset_label);
         menu_dev_list_ui.reset_btn = reset_btn;
+
+        lv_obj_t *close_app_btn = lv_btn_create(menu_dev_list_ui.device_list);
+        lv_obj_set_size(close_app_btn, LV_PCT(100), 50);
+        lv_obj_set_style_radius(close_app_btn, 8, 0);
+        lv_obj_set_style_bg_color(close_app_btn, lv_color_hex(0xCC0000), 0);
+        lv_obj_set_style_bg_color(close_app_btn, lv_color_hex(0xAA0000),
+                                  LV_STATE_PRESSED);
+        lv_obj_add_event_cb(close_app_btn, menu_close_btn_event_cb,
+                            LV_EVENT_SHORT_CLICKED, NULL);
+        lv_obj_t *close_label = lv_label_create(close_app_btn);
+        lv_label_set_text(close_label, "Exit Mouse App");
+        lv_obj_set_style_text_color(close_label, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_center(close_label);
     }
 }
 
@@ -2940,15 +3119,47 @@ static void menu_reset_ble_btn_cb(lv_event_t *e)
     }
 }
 
+static void menu_close_btn_event_cb(lv_event_t *e)
+{
+    lv_event_code_t event = lv_event_get_code(e);
+    if (LV_EVENT_SHORT_CLICKED == event)
+    {
+        gui_app_goback();
+    }
+}
+
 /**
  * @brief Device manager event callback for menu
  */
+static void refresh_connected_device_label(void)
+{
+    if (!lv_obj_is_valid(connected_device_label))
+        return;
+
+    const bonded_devices_db_t *db = ble_dev_mgr_get_database();
+    int active_idx = ble_dev_mgr_get_active_device();
+    if (db && active_idx >= 0 && active_idx < MAX_BONDED_DEVICES &&
+        db->devices[active_idx].is_valid &&
+        db->devices[active_idx].conn_idx != 0xFF)
+    {
+        lv_label_set_text(connected_device_label,
+                          db->devices[active_idx].device_name);
+    }
+    else
+    {
+        lv_label_set_text(connected_device_label, "");
+    }
+}
+
 static void menu_dev_mgr_event_cb(dev_mgr_event_t event, uint8_t device_idx,
                                   void *user_data)
 {
     LOG_I("Menu dev mgr event: %d, idx: %d", event, device_idx);
     if (gui_app_is_actived(APP_ID_MOUSE))
+    {
         menu_refresh_device_list();
+        refresh_connected_device_label();
+    }
 }
 
 /**
@@ -2958,13 +3169,35 @@ static void menu_dev_mgr_event_cb(dev_mgr_event_t event, uint8_t device_idx,
  */
 static lv_obj_t *menu_window(lv_obj_t *par)
 {
-    menu_bg = lv_obj_create(par);
+    /* 建立 tileview: 上方是首頁（透明），下方是 menu 內容 */
+    menu_tileview = lv_tileview_create(par);
+    lv_obj_set_size(menu_tileview, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_set_scrollbar_mode(menu_tileview, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_bg_opa(menu_tileview, LV_OPA_TRANSP, LV_PART_MAIN);
+
+    /* Tile 0 (col=0, row=0): Menu 內容頁（上方）- 可以往下滑回首頁 */
+    menu_content_tile =
+        lv_tileview_add_tile(menu_tileview, 0, 0, LV_DIR_BOTTOM);
+    lv_obj_set_size(menu_content_tile, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+
+    /* Tile 1 (col=0, row=1): 首頁（下方）- 透明，可以往上滑開啟 menu */
+    menu_home_tile = lv_tileview_add_tile(menu_tileview, 0, 1, LV_DIR_TOP);
+    lv_obj_set_style_bg_opa(menu_home_tile, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_size(menu_home_tile, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+
+    lv_obj_t *device_page_bar = lv_obj_create(menu_home_tile);
+    lv_obj_set_size(device_page_bar, 100, 10);
+    lv_obj_set_style_bg_color(device_page_bar, lv_color_hex(0x5B5B5B),
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(device_page_bar, LV_ALIGN_TOP_MID, 0, 50);
+
+    /* Menu 背景 */
+    menu_bg = lv_obj_create(menu_content_tile);
     lv_obj_set_size(menu_bg, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     lv_obj_set_style_bg_color(menu_bg, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(menu_bg, LV_OPA_80, 0);
     lv_obj_set_style_radius(menu_bg, 233, 0);
     lv_obj_align(menu_bg, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_flag(menu_bg, LV_OBJ_FLAG_HIDDEN);
 
     // Enable scrolling for menu_bg
     lv_obj_set_style_pad_all(menu_bg, 10, 0);
@@ -2985,8 +3218,8 @@ static lv_obj_t *menu_window(lv_obj_t *par)
     lv_obj_set_style_border_width(device_list, 0, 0);
     lv_obj_set_style_pad_all(device_list, 0, 0);
     lv_obj_set_flex_flow(device_list, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(device_list, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(device_list, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(device_list, 6, 0);
     lv_obj_set_style_pad_column(device_list, 6, 0);
     menu_dev_list_ui.device_list = device_list;
@@ -3002,6 +3235,14 @@ static lv_obj_t *menu_window(lv_obj_t *par)
     ble_dev_mgr_register_callback(menu_dev_mgr_event_cb, NULL);
     menu_refresh_device_list();
 
+    /* 預設顯示首頁 tile 並隱藏整個 tileview */
+    lv_obj_set_tile(menu_tileview, menu_home_tile, LV_ANIM_OFF);
+    lv_obj_add_flag(menu_tileview, LV_OBJ_FLAG_HIDDEN);
+
+    /* 註冊 tileview 事件 */
+    lv_obj_add_event_cb(menu_tileview, menu_tileview_event_cb,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+
     return par;
 }
     #endif
@@ -3016,11 +3257,12 @@ static uint8_t test_count = 0;
 static float prev_elapsed = 0.0f;
 static void text_input_bar_cb(lv_event_t *e)
 {
+    // Don't handle gestures when keyboard is visible (bar is now input display)
+    if (keyboard_visible)
+        return;
+
     lv_event_code_t code = lv_event_get_code(e);
     lv_indev_t *indev = lv_indev_get_act();
-    // indev_global = indev;
-
-    // LOG_D("plain_event_cb: %d", code);
 
     switch (code)
     {
@@ -3076,11 +3318,13 @@ static void text_input_bar_cb(lv_event_t *e)
             }
         }
 
-        // Map (rt_tick_get() - text_input_bar_press_time) from 0~500 to 1~1.2
+        // Map (rt_tick_get() - text_input_bar_press_time) from 0~500 to
+        // 1~1.2
         float elapsed = (float)(rt_tick_get() - text_input_bar_press_time);
         if (fabs(elapsed - prev_elapsed) > 30 && elapsed < 500.0f)
         {
-            // LOG_D("elapsed: %f, prev_elapsed: %f", elapsed, prev_elapsed);
+            // LOG_D("elapsed: %f, prev_elapsed: %f", elapsed,
+            // prev_elapsed);
             prev_elapsed = elapsed;
             float scale = 1.0f + (elapsed / 500.0f) * 0.2f;
             if (scale > 1.2f)
@@ -3152,6 +3396,7 @@ static void text_input_bar_cb(lv_event_t *e)
 void lv_create_mouse_screen(lv_obj_t *scr)
 {
     lv_obj_t *bg = common_black_bg(scr);
+    lv_obj_set_scrollbar_mode(bg, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
 
     // Touch background
@@ -3165,29 +3410,30 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     // Crosshair lines (dimmed by default, brighten when touching logo)
     lv_coord_t line_width = 3;
     lv_coord_t line_length = LV_HOR_RES_MAX - 6;
-    crosshair_line1 = lv_obj_create(bg);
-    lv_obj_set_size(crosshair_line1, line_length, line_width);
-    lv_obj_align(crosshair_line1, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0x666666), 0);
+    // crosshair_line1 = lv_obj_create(bg);
+    // lv_obj_set_size(crosshair_line1, line_length, line_width);
+    // lv_obj_align(crosshair_line1, LV_ALIGN_CENTER, 0, 0);
+    // lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0x666666), 0);
 
-    crosshair_line2 = lv_obj_create(bg);
-    lv_obj_set_size(crosshair_line2, line_width, line_length);
-    lv_obj_align(crosshair_line2, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0x666666), 0);
+    // crosshair_line2 = lv_obj_create(bg);
+    // lv_obj_set_size(crosshair_line2, line_width, line_length);
+    // lv_obj_align(crosshair_line2, LV_ALIGN_CENTER, 0, 0);
+    // lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0x666666), 0);
 
-    // SKAI logo area with background (blocks mouse events)
-    lv_obj_t *skai_logo_area = lv_obj_create(bg);
-    lv_obj_set_size(skai_logo_area, LV_HOR_RES_MAX, 100);
-    lv_obj_align(skai_logo_area, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_color(skai_logo_area, lv_color_hex(0x1a1a1a),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(skai_logo_area, LV_OPA_80, LV_PART_MAIN);
-    lv_obj_set_style_border_width(skai_logo_area, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(skai_logo_area, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(skai_logo_area, LV_OBJ_FLAG_SCROLLABLE);
-    // Block touch events from propagating to touch_bg
-    lv_obj_add_flag(skai_logo_area, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(skai_logo_area, top_logo_event_cb, LV_EVENT_ALL, NULL);
+    // // SKAI logo area with background (blocks mouse events)
+    // lv_obj_t *skai_logo_area = lv_obj_create(bg);
+    // lv_obj_set_size(skai_logo_area, LV_HOR_RES_MAX, 100);
+    // lv_obj_align(skai_logo_area, LV_ALIGN_TOP_MID, 0, 0);
+    // lv_obj_set_style_bg_color(skai_logo_area, lv_color_hex(0x1a1a1a),
+    //                           LV_PART_MAIN);
+    // lv_obj_set_style_bg_opa(skai_logo_area, LV_OPA_80, LV_PART_MAIN);
+    // lv_obj_set_style_border_width(skai_logo_area, 0, LV_PART_MAIN);
+    // lv_obj_set_style_radius(skai_logo_area, 0, LV_PART_MAIN);
+    // lv_obj_clear_flag(skai_logo_area, LV_OBJ_FLAG_SCROLLABLE);
+    // // Block touch events from propagating to touch_bg
+    // lv_obj_add_flag(skai_logo_area, LV_OBJ_FLAG_CLICKABLE);
+    // lv_obj_add_event_cb(skai_logo_area, top_logo_event_cb, LV_EVENT_ALL,
+    // NULL);
 
     // SKAI logo at top center
     // lv_obj_t *skai_logo = lv_img_create(skai_logo_area);
@@ -3195,27 +3441,126 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     // lv_img_set_zoom(skai_logo, 256 * 0.2); // Scale from 160x160 to 60x60
     // lv_obj_align(skai_logo, LV_ALIGN_CENTER, 0, 0);
 
+    // Connected device name label at top
+    connected_device_label = lv_label_create(bg);
+    lv_label_set_text(connected_device_label, "");
+    lv_obj_set_size(connected_device_label, 150,44);
+    lv_obj_set_style_text_color(connected_device_label, lv_color_hex(0xAAAAAA), 0);
+    lv_obj_set_style_text_align(connected_device_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(connected_device_label, LV_LABEL_LONG_DOT);
+    lv_obj_align(connected_device_label, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_clear_flag(connected_device_label, LV_OBJ_FLAG_CLICKABLE);
+    // Initialize with current active device name
+    {
+        const bonded_devices_db_t *db = ble_dev_mgr_get_database();
+        int active_idx = ble_dev_mgr_get_active_device();
+        if (db && active_idx >= 0 && active_idx < MAX_BONDED_DEVICES &&
+            db->devices[active_idx].is_valid)
+        {
+            lv_label_set_text(connected_device_label,
+                              db->devices[active_idx].device_name);
+        }
+    }
+
+    // Unified input bar: starts as small indicator at bottom, animates to
+    // input display above keyboard
     text_input_bar_bg = lv_obj_create(bg);
     lv_obj_set_size(text_input_bar_bg, 200, 50);
-    lv_obj_align(text_input_bar_bg, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_pos(text_input_bar_bg, (LV_HOR_RES_MAX - 200) / 2,
+                   LV_VER_RES_MAX - 50);
+    lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(text_input_bar_bg, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(text_input_bar_bg, 22, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(text_input_bar_bg, 5, LV_PART_MAIN);
+    lv_obj_clear_flag(text_input_bar_bg, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(text_input_bar_bg, text_input_bar_cb, LV_EVENT_ALL,
                         NULL);
-    lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_0,
-                            LV_PART_MAIN | LV_STATE_DEFAULT);
-    text_input_bar = lv_obj_create(text_input_bar_bg);
-    lv_obj_set_size(text_input_bar, 100, 10);
-    lv_obj_set_style_bg_color(text_input_bar, lv_color_hex(0x5B5B5B),
-                              LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(text_input_bar, LV_ALIGN_BOTTOM_MID, 0, -10);
 
+    // Indicator line (visible in closed state)
+    text_input_bar = lv_obj_create(text_input_bar_bg);
+    lv_obj_set_size(text_input_bar, 130, 25);
+    lv_obj_set_style_bg_color(text_input_bar, lv_color_hex(0x1a1a1a),
+                              LV_PART_MAIN);
+    lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(text_input_bar, 50, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(text_input_bar, LV_OPA_90, LV_PART_MAIN);
+        lv_obj_set_style_border_color(text_input_bar,
+                                      lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
+        lv_obj_set_style_border_opa(text_input_bar, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_align(text_input_bar, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_obj_clear_flag(text_input_bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(text_input_bar, text_input_bar_cb, LV_EVENT_ALL, NULL);
+
+    // Input content container (hidden in closed state)
+    input_content_container = lv_obj_create(text_input_bar_bg);
+    lv_obj_set_size(input_content_container, 290, 40);
+    lv_obj_center(input_content_container);
+    lv_obj_set_style_bg_opa(input_content_container, LV_OPA_TRANSP,
+                            LV_PART_MAIN);
+    lv_obj_set_style_border_width(input_content_container, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(input_content_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
+    
+
+    // Input text label
+    input_display_label = lv_label_create(input_content_container);
+    lv_label_set_text(input_display_label, "");
+    lv_obj_set_style_text_color(input_display_label, lv_color_hex(0xFFFFFF),
+                                LV_PART_MAIN);
+    lv_obj_set_style_text_font(input_display_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)),
+                               LV_PART_MAIN);
+    lv_obj_set_width(input_display_label, LV_SIZE_CONTENT);
+    lv_label_set_long_mode(input_display_label, LV_LABEL_LONG_CLIP);
+    lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
+
+    // Blinking cursor
+    input_cursor = lv_obj_create(text_input_bar_bg);
+    lv_obj_set_size(input_cursor, 2, 25);
+    lv_obj_set_style_bg_color(input_cursor, lv_color_hex(0x4a90e2),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(input_cursor, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(input_cursor, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(input_cursor, 1, LV_PART_MAIN);
+    lv_obj_align_to(input_cursor, input_display_label, LV_ALIGN_OUT_RIGHT_MID,
+                    2, 0);
+    lv_obj_add_flag(input_cursor, LV_OBJ_FLAG_HIDDEN);
+
+    // Enter button (hidden initially, shows next to bar when keyboard opens)
+    input_enter_btn = lv_obj_create(bg);
+    lv_obj_set_size(input_enter_btn, 50, 45);
+    lv_obj_set_pos(input_enter_btn,
+                   (LV_HOR_RES_MAX - 50) / 2 + 165,
+                   LV_VER_RES_MAX - 305 - 45);
+    lv_obj_set_style_bg_color(input_enter_btn, lv_color_hex(0x4a90e2),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(input_enter_btn, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(input_enter_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(input_enter_btn, 22, LV_PART_MAIN);
+    lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(input_enter_btn, input_enter_btn_event_cb,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_t *enter_img = lv_img_create(input_enter_btn);
+    lv_img_set_src(enter_img, &enter_icon);
+    lv_obj_center(enter_img);
 
     #if ENABLE_MENU_FEATURE
     menu_window(bg);
 
-    menu_btn = common_image_button(bg, &plus_button, 70, 70, menu_btn_event_cb);
-    lv_img_set_zoom(lv_obj_get_child(menu_btn, 0), 255 * 0.7);
-    lv_obj_align(menu_btn, LV_ALIGN_CENTER, 120, 120);
+    /* 螢幕頂部透明觸控區域，按下後顯示 tileview 讓使用者往下滑開啟 menu */
+    menu_swipe_area = lv_obj_create(bg);
+    lv_obj_set_size(menu_swipe_area, LV_HOR_RES_MAX, LV_VER_RES_MAX / 8);
+    lv_obj_align(menu_swipe_area, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_opa(menu_swipe_area, LV_OPA_0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(menu_swipe_area, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(menu_swipe_area, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(menu_swipe_area, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(menu_swipe_area, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_add_event_cb(menu_swipe_area, menu_swipe_area_event_cb, LV_EVENT_ALL,
+                        NULL);
     #endif
 
     // Create custom circular keyboard
@@ -3306,9 +3651,30 @@ static void on_stop(void)
 {
     app_control_set_mouse_mode(false);
 
+    // Clean up menu tileview
+    menu_tileview = NULL;
+    menu_home_tile = NULL;
+    menu_content_tile = NULL;
+    menu_bg = NULL;
+    menu_swipe_area = NULL;
+
     // Clean up file list
     file_list = NULL;
     file_items_count = 0;
+
+    // Clean up inertia timer
+    if (inertia_timer != NULL)
+    {
+        lv_timer_del(inertia_timer);
+        inertia_timer = NULL;
+    }
+    inertia_velocity = 0.0f;
+
+    // Cancel animations before cleanup
+    if (text_input_bar_bg != NULL)
+        lv_anim_del(text_input_bar_bg, NULL);
+    if (keyboard_container != NULL)
+        lv_anim_del(keyboard_container, NULL);
 
     // Clean up keyboard resources
     if (keyboard != NULL)
@@ -3325,8 +3691,8 @@ static void on_stop(void)
     }
     keyboard_visible = false;
 
-    // Clean up input display
-    input_display = NULL;
+    // Clean up input display (now part of text_input_bar_bg)
+    input_content_container = NULL;
     input_display_label = NULL;
     input_cursor = NULL;
     input_enter_btn = NULL;
@@ -3386,8 +3752,8 @@ void hid_mouse_clear_files(void)
     // Clear visual list if it exists
     if (file_list)
     {
-        // Remove all file item children (keep handheld and calibrate which are
-        // the first two)
+        // Remove all file item children (keep handheld and calibrate which
+        // are the first two)
         lv_obj_t *child =
             lv_obj_get_child(file_list, 2); // Start from third child
         while (child)

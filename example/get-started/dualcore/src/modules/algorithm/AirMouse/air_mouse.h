@@ -50,6 +50,7 @@ typedef struct air_plane_delta_movement
 } air_plane_delta_movement_t;
 //-------------------------------------------------------------------------------------------
 // Function declarations
-air_plane_delta_movement_t air_mouse_algorithm(float *x, float *y, float dx, float dy, float multi_factor);
+air_plane_delta_movement_t air_mouse_algorithm(float gyro_x, float gyro_z, float sensitivity);
+void air_mouse_reset(void);
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/
