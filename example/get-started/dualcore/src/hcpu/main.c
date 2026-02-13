@@ -132,6 +132,108 @@ void stop_ble_rssi_checker(void)
 // #endif
 // }
 
+// --------- Device Name Reader (read remote GAP Device Name after connection) ---------
+typedef struct
+{
+    uint8_t conn_idx;
+    int8_t dev_idx;        // index in device manager
+    uint16_t remote_handle;
+    uint16_t name_value_hdl;
+    uint16_t svc_start_hdl;
+    uint16_t svc_end_hdl;
+    uint8_t busy;
+} dev_name_reader_t;
+
+static dev_name_reader_t g_name_reader = {0};
+
+static int dev_name_gattc_callback(uint16_t event_id, uint8_t *data, uint16_t len)
+{
+    switch (event_id)
+    {
+    case SIBLES_REGISTER_REMOTE_SVC_RSP:
+    {
+        sibles_register_remote_svc_rsp_t *rsp = (sibles_register_remote_svc_rsp_t *)data;
+        if (rsp->status != 0)
+        {
+            LOG_W("GAP service register failed, status=%d", rsp->status);
+            g_name_reader.busy = 0;
+            break;
+        }
+        LOG_I("GAP service registered, reading Device Name...");
+
+        sibles_read_remote_value_req_t req;
+        req.read_type = SIBLES_READ;
+        req.handle = g_name_reader.name_value_hdl;
+        req.offset = 0;
+        req.length = 0;
+        int8_t ret = sibles_read_remote_value(g_name_reader.remote_handle,
+                                               g_name_reader.conn_idx, &req);
+        if (ret != 0)
+        {
+            LOG_W("Failed to read Device Name, ret=%d", ret);
+            g_name_reader.busy = 0;
+        }
+        break;
+    }
+    case SIBLES_READ_REMOTE_VALUE_RSP:
+    {
+        sibles_read_remote_value_rsp_t *rsp = (sibles_read_remote_value_rsp_t *)data;
+        if (rsp->length > 0 && rsp->value)
+        {
+            char name_buf[DEVICE_NAME_MAX_LEN];
+            uint16_t copy_len = rsp->length < (DEVICE_NAME_MAX_LEN - 1)
+                                    ? rsp->length
+                                    : (DEVICE_NAME_MAX_LEN - 1);
+            memcpy(name_buf, rsp->value, copy_len);
+            name_buf[copy_len] = '\0';
+
+            LOG_I("Remote Device Name: \"%s\" (len=%d)", name_buf, rsp->length);
+
+            if (g_name_reader.dev_idx >= 0)
+            {
+                ble_dev_mgr_update_device_name(g_name_reader.dev_idx, name_buf);
+            }
+        }
+        else
+        {
+            LOG_W("Device Name read returned empty");
+        }
+
+        // Cleanup: unregister GATT client
+        sibles_unregister_remote_svc(g_name_reader.conn_idx,
+                                     g_name_reader.svc_start_hdl,
+                                     g_name_reader.svc_end_hdl,
+                                     dev_name_gattc_callback);
+        g_name_reader.busy = 0;
+        break;
+    }
+    default:
+        break;
+    }
+    return 0;
+}
+
+static void dev_name_start_search(uint8_t conn_idx, int8_t dev_idx)
+{
+    if (g_name_reader.busy)
+    {
+        LOG_W("Device name reader busy, skip");
+        return;
+    }
+    g_name_reader.conn_idx = conn_idx;
+    g_name_reader.dev_idx = dev_idx;
+    g_name_reader.busy = 1;
+
+    uint16_t gap_svc_uuid = ATT_UUID_16(0x1800); // Generic Access Service
+    int8_t ret = sibles_search_service(conn_idx, ATT_UUID_16_LEN,
+                                        (uint8_t *)&gap_svc_uuid);
+    if (ret != 0)
+    {
+        LOG_W("Failed to search GAP service, ret=%d", ret);
+        g_name_reader.busy = 0;
+    }
+}
+
 static bool _rssi_signal_bad = false;
 bool is_signal_bad(void)
 {
@@ -1400,6 +1502,9 @@ int ble_app_event_handler(uint16_t event_id, uint8_t *data, uint16_t len,
             {
                 ble_dev_mgr_set_active_device(dev_idx);
             }
+
+            // Read remote device name via GATT
+            dev_name_start_search(ind->conn_idx, dev_idx);
         }
 
         break;
@@ -1461,6 +1566,66 @@ int ble_app_event_handler(uint16_t event_id, uint8_t *data, uint16_t len,
         ble_gap_remote_rssi_ind_t *ind = (ble_gap_remote_rssi_ind_t *)data;
         LOG_D("BLE_GAP_REMOTE_RSSI_IND %d", ind->rssi);
         set_signal_bad(ind->rssi < -80);
+        break;
+    }
+    case SIBLES_SEARCH_SVC_RSP:
+    {
+        sibles_svc_search_rsp_t *rsp = (sibles_svc_search_rsp_t *)data;
+
+        // Only handle if we initiated the search for GAP service
+        if (!g_name_reader.busy)
+            break;
+
+        uint16_t gap_svc_uuid = ATT_UUID_16(0x1800);
+        if (rsp->search_svc_len != ATT_UUID_16_LEN ||
+            memcmp(rsp->search_uuid, &gap_svc_uuid, ATT_UUID_16_LEN) != 0)
+            break;
+
+        if (rsp->result != 0 || !rsp->svc)
+        {
+            LOG_W("GAP service search failed, result=%d", rsp->result);
+            g_name_reader.busy = 0;
+            break;
+        }
+
+        // Find Device Name characteristic (0x2A00)
+        uint16_t dev_name_uuid = ATT_UUID_16(0x2A00);
+        sibles_svc_search_char_t *chara =
+            (sibles_svc_search_char_t *)rsp->svc->att_db;
+        bool found = false;
+
+        for (uint8_t i = 0; i < rsp->svc->char_count; i++)
+        {
+            if (chara->uuid_len == ATT_UUID_16_LEN &&
+                memcmp(chara->uuid, &dev_name_uuid, ATT_UUID_16_LEN) == 0)
+            {
+                g_name_reader.name_value_hdl = chara->pointer_hdl;
+                g_name_reader.svc_start_hdl = rsp->svc->hdl_start;
+                g_name_reader.svc_end_hdl = rsp->svc->hdl_end;
+                found = true;
+                LOG_I("Found Device Name char, value_hdl=0x%x",
+                      chara->pointer_hdl);
+                break;
+            }
+            uint16_t offset = sizeof(sibles_svc_search_char_t) +
+                              chara->desc_count *
+                                  sizeof(struct sibles_disc_char_desc_ind);
+            chara = (sibles_svc_search_char_t *)((uint8_t *)chara + offset);
+        }
+
+        if (found)
+        {
+            g_name_reader.remote_handle = sibles_register_remote_svc(
+                rsp->conn_idx, rsp->svc->hdl_start, rsp->svc->hdl_end,
+                dev_name_gattc_callback);
+            LOG_I("Registered GAP service client, remote_handle=%d",
+                  g_name_reader.remote_handle);
+        }
+        else
+        {
+            LOG_W("Device Name characteristic not found");
+            g_name_reader.busy = 0;
+        }
         break;
     }
     default:

@@ -2956,39 +2956,17 @@ static lv_obj_t *menu_create_device_item(lv_obj_t *parent,
     lv_obj_set_style_border_width(text_cont, 0, 0);
     lv_obj_set_style_pad_all(text_cont, 0, 0);
     lv_obj_set_flex_flow(text_cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(text_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(text_cont, 2, 0);
     lv_obj_clear_flag(text_cont, LV_OBJ_FLAG_CLICKABLE);
 
-    // Convert device type to string
-    const char *type_str;
-    switch (device->device_type)
-    {
-    case DEVICE_TYPE_PHONE:
-        type_str = "Phone";
-        break;
-    case DEVICE_TYPE_COMPUTER:
-        type_str = "Computer";
-        break;
-    case DEVICE_TYPE_TABLET:
-        type_str = "Tablet";
-        break;
-    default:
-        type_str = "Other";
-        break;
-    }
-
-    // Device type (first)
-    lv_obj_t *type_label = lv_label_create(text_cont);
-    lv_label_set_text(type_label, type_str);
-    lv_obj_set_style_text_color(type_label, lv_color_hex(0xAAAAAA), 0);
-    lv_obj_clear_flag(type_label, LV_OBJ_FLAG_CLICKABLE);
-
-    // Device name (second)
+    // Device name
     lv_obj_t *name_label = lv_label_create(text_cont);
     lv_label_set_text(name_label, device->device_name);
     lv_obj_set_style_text_color(name_label, lv_color_hex(0xFFFFFF), 0);
     lv_label_set_long_mode(name_label, LV_LABEL_LONG_DOT);
     lv_obj_set_width(name_label, LV_PCT(100));
+    lv_obj_set_style_text_align(name_label, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_clear_flag(name_label, LV_OBJ_FLAG_CLICKABLE);
 
     return btn;
