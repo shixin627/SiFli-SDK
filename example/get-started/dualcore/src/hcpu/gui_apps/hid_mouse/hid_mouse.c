@@ -2959,6 +2959,8 @@ static lv_obj_t *menu_create_device_item(lv_obj_t *parent,
     lv_obj_set_flex_align(text_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(text_cont, 2, 0);
     lv_obj_clear_flag(text_cont, LV_OBJ_FLAG_CLICKABLE);
+    LOG_D("device type: %d,name: %s,conn_idx: %d", device->device_type, device->device_name,
+          device->conn_idx);
 
     // Device name
     lv_obj_t *name_label = lv_label_create(text_cont);

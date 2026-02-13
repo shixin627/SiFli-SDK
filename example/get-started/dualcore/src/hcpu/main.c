@@ -132,19 +132,47 @@ void stop_ble_rssi_checker(void)
 // #endif
 // }
 
-// --------- Device Name Reader (read remote GAP Device Name after connection) ---------
+// --------- GAP Info Reader (read remote Device Name & Appearance after connection) ---------
 typedef struct
 {
     uint8_t conn_idx;
-    int8_t dev_idx;        // index in device manager
+    int8_t dev_idx;           // index in device manager
     uint16_t remote_handle;
     uint16_t name_value_hdl;
+    uint16_t appearance_hdl;  // Appearance characteristic (0x2A01)
     uint16_t svc_start_hdl;
     uint16_t svc_end_hdl;
     uint8_t busy;
 } dev_name_reader_t;
 
 static dev_name_reader_t g_name_reader = {0};
+static int dev_name_gattc_callback(uint16_t event_id, uint8_t *data, uint16_t len);
+
+static ble_device_type_t appearance_to_device_type(uint16_t appearance)
+{
+    // BLE Appearance categories (high 10 bits = category)
+    uint16_t category = appearance >> 6;
+    switch (category)
+    {
+    case 1:  // Phone (0x0040-0x007F)
+        return DEVICE_TYPE_PHONE;
+    case 2:  // Computer (0x0080-0x00BF)
+        return DEVICE_TYPE_COMPUTER;
+    case 15: // HID (0x03C0-0x03FF) - tablets often report as HID
+        return DEVICE_TYPE_TABLET;
+    default:
+        return DEVICE_TYPE_OTHER;
+    }
+}
+
+static void gap_reader_cleanup(void)
+{
+    sibles_unregister_remote_svc(g_name_reader.conn_idx,
+                                 g_name_reader.svc_start_hdl,
+                                 g_name_reader.svc_end_hdl,
+                                 dev_name_gattc_callback);
+    g_name_reader.busy = 0;
+}
 
 static int dev_name_gattc_callback(uint16_t event_id, uint8_t *data, uint16_t len)
 {
@@ -159,8 +187,10 @@ static int dev_name_gattc_callback(uint16_t event_id, uint8_t *data, uint16_t le
             g_name_reader.busy = 0;
             break;
         }
-        LOG_I("GAP service registered, reading Device Name...");
+        LOG_I("GAP service registered, reading Device Name (hdl=0x%x)...",
+              g_name_reader.name_value_hdl);
 
+        // Read Device Name first
         sibles_read_remote_value_req_t req;
         req.read_type = SIBLES_READ;
         req.handle = g_name_reader.name_value_hdl;
@@ -178,33 +208,81 @@ static int dev_name_gattc_callback(uint16_t event_id, uint8_t *data, uint16_t le
     case SIBLES_READ_REMOTE_VALUE_RSP:
     {
         sibles_read_remote_value_rsp_t *rsp = (sibles_read_remote_value_rsp_t *)data;
-        if (rsp->length > 0 && rsp->value)
+
+        LOG_I("GATT read rsp: handle=0x%x, length=%d", rsp->handle, rsp->length);
+
+        if (rsp->handle == g_name_reader.name_value_hdl)
         {
-            char name_buf[DEVICE_NAME_MAX_LEN];
-            uint16_t copy_len = rsp->length < (DEVICE_NAME_MAX_LEN - 1)
-                                    ? rsp->length
-                                    : (DEVICE_NAME_MAX_LEN - 1);
-            memcpy(name_buf, rsp->value, copy_len);
-            name_buf[copy_len] = '\0';
-
-            LOG_I("Remote Device Name: \"%s\" (len=%d)", name_buf, rsp->length);
-
-            if (g_name_reader.dev_idx >= 0)
+            // Device Name response
+            if (rsp->length > 0 && rsp->value)
             {
-                ble_dev_mgr_update_device_name(g_name_reader.dev_idx, name_buf);
+                char name_buf[DEVICE_NAME_MAX_LEN];
+                uint16_t copy_len = rsp->length < (DEVICE_NAME_MAX_LEN - 1)
+                                        ? rsp->length
+                                        : (DEVICE_NAME_MAX_LEN - 1);
+                memcpy(name_buf, rsp->value, copy_len);
+                name_buf[copy_len] = '\0';
+
+                LOG_I("Remote Device Name: \"%s\" (len=%d)", name_buf, rsp->length);
+
+                if (g_name_reader.dev_idx >= 0)
+                {
+                    ble_dev_mgr_update_device_name(g_name_reader.dev_idx, name_buf);
+                }
             }
+            else
+            {
+                LOG_W("Device Name read returned empty");
+            }
+
+            // Now read Appearance if available
+            if (g_name_reader.appearance_hdl != 0)
+            {
+                LOG_I("Reading Appearance (hdl=0x%x)...", g_name_reader.appearance_hdl);
+                sibles_read_remote_value_req_t req;
+                req.read_type = SIBLES_READ;
+                req.handle = g_name_reader.appearance_hdl;
+                req.offset = 0;
+                req.length = 0;
+                int8_t ret = sibles_read_remote_value(g_name_reader.remote_handle,
+                                                       g_name_reader.conn_idx, &req);
+                if (ret != 0)
+                {
+                    LOG_W("Failed to read Appearance, ret=%d", ret);
+                    gap_reader_cleanup();
+                }
+            }
+            else
+            {
+                gap_reader_cleanup();
+            }
+        }
+        else if (rsp->handle == g_name_reader.appearance_hdl)
+        {
+            // Appearance response
+            if (rsp->length >= 2 && rsp->value)
+            {
+                uint16_t appearance = rsp->value[0] | (rsp->value[1] << 8);
+                ble_device_type_t dev_type = appearance_to_device_type(appearance);
+
+                LOG_I("Remote Appearance: 0x%04X -> type=%d", appearance, dev_type);
+
+                if (g_name_reader.dev_idx >= 0)
+                {
+                    ble_dev_mgr_update_device_type(g_name_reader.dev_idx, dev_type);
+                }
+            }
+            else
+            {
+                LOG_W("Appearance read returned empty (len=%d)", rsp->length);
+            }
+
+            gap_reader_cleanup();
         }
         else
         {
-            LOG_W("Device Name read returned empty");
+            LOG_W("Unexpected read rsp handle=0x%x", rsp->handle);
         }
-
-        // Cleanup: unregister GATT client
-        sibles_unregister_remote_svc(g_name_reader.conn_idx,
-                                     g_name_reader.svc_start_hdl,
-                                     g_name_reader.svc_end_hdl,
-                                     dev_name_gattc_callback);
-        g_name_reader.busy = 0;
         break;
     }
     default:
@@ -1588,24 +1666,33 @@ int ble_app_event_handler(uint16_t event_id, uint8_t *data, uint16_t len,
             break;
         }
 
-        // Find Device Name characteristic (0x2A00)
+        // Find Device Name (0x2A00) and Appearance (0x2A01) characteristics
         uint16_t dev_name_uuid = ATT_UUID_16(0x2A00);
+        uint16_t appearance_uuid = ATT_UUID_16(0x2A01);
         sibles_svc_search_char_t *chara =
             (sibles_svc_search_char_t *)rsp->svc->att_db;
         bool found = false;
+        g_name_reader.appearance_hdl = 0;
 
         for (uint8_t i = 0; i < rsp->svc->char_count; i++)
         {
-            if (chara->uuid_len == ATT_UUID_16_LEN &&
-                memcmp(chara->uuid, &dev_name_uuid, ATT_UUID_16_LEN) == 0)
+            if (chara->uuid_len == ATT_UUID_16_LEN)
             {
-                g_name_reader.name_value_hdl = chara->pointer_hdl;
-                g_name_reader.svc_start_hdl = rsp->svc->hdl_start;
-                g_name_reader.svc_end_hdl = rsp->svc->hdl_end;
-                found = true;
-                LOG_I("Found Device Name char, value_hdl=0x%x",
-                      chara->pointer_hdl);
-                break;
+                if (memcmp(chara->uuid, &dev_name_uuid, ATT_UUID_16_LEN) == 0)
+                {
+                    g_name_reader.name_value_hdl = chara->pointer_hdl;
+                    g_name_reader.svc_start_hdl = rsp->svc->hdl_start;
+                    g_name_reader.svc_end_hdl = rsp->svc->hdl_end;
+                    found = true;
+                    LOG_I("Found Device Name char, value_hdl=0x%x",
+                          chara->pointer_hdl);
+                }
+                else if (memcmp(chara->uuid, &appearance_uuid, ATT_UUID_16_LEN) == 0)
+                {
+                    g_name_reader.appearance_hdl = chara->pointer_hdl;
+                    LOG_I("Found Appearance char, value_hdl=0x%x",
+                          chara->pointer_hdl);
+                }
             }
             uint16_t offset = sizeof(sibles_svc_search_char_t) +
                               chara->desc_count *
