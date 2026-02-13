@@ -101,6 +101,7 @@
     #define INERTIA_DECAY_FACTOR 0.95f
     #define MIN_SCROLL_SPEED 1.0f
     #define SCROLL_SPEED_MULTIPLIER 2.0f
+    #define DOUBLE_TAP_MS 300
 
     #define SIMULATE_MOUSE_RIGHT_BUTTON 0
     #define USING_MOUSE_WHEEL_SCROLLING 1
@@ -165,6 +166,7 @@ static float inertia_velocity = 0.0f;
 static float inertia_accumulator = 0.0f;
 static lv_timer_t *inertia_timer = NULL;
 static uint32_t last_scroll_tick = 0;
+static uint32_t last_click_time = 0;
 
     #if SIMULATE_MOUSE_RIGHT_BUTTON
 static bool pressed_left_half = false;
@@ -2188,6 +2190,16 @@ static void handle_pressed_event(lv_indev_t *indev)
     LOG_D("pressed x: %d, y: %d", start_point.x, start_point.y);
     update_edge_detection(&start_point);
     gesture_detected = false;
+
+    // 雙擊拖曳：第二下按下去直接觸發長按效果
+    if (last_click_time > 0 && (lv_tick_get() - last_click_time) < DOUBLE_TAP_MS)
+    {
+        pressing = true;
+        control_provider.ble_hid_mouse_left_press();
+        motor_pattern_touchpad_slide();
+        LOG_D("Air mouse - double tap hold (left press)");
+        last_click_time = 0;
+    }
 }
 
 /**
@@ -2384,6 +2396,7 @@ static void handle_released_event(lv_indev_t *indev)
                 {
                     LOG_D("Air mouse - click_left");
                     control_provider.ble_hid_mouse_left_click();
+                    last_click_time = lv_tick_get();
                 }
             }
         }
