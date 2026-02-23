@@ -825,9 +825,9 @@ void app_watch_entry(void *parameter)
         {
 #ifndef WIN32
             // Turn on lcd backlight after power on
-            uint8_t brightness = 100;
-            rt_device_control(lcd_device, RTGRAPHIC_CTRL_SET_BRIGHTNESS,
-                              &brightness);
+            // uint8_t brightness = 100;
+            // rt_device_control(lcd_device, RTGRAPHIC_CTRL_SET_BRIGHTNESS,
+            //                   &brightness);
 #endif /* WIN32 */
             first_loop = 0;
         }

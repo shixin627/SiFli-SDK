@@ -9,7 +9,8 @@
 * @version   v1.0
 **************************************************************************************
 * @attention
-* <h2><center>&copy; COPYRIGHT 2017 Realtek Semiconductor Corporation</center></h2>
+* <h2><center>&copy; COPYRIGHT 2017 Realtek Semiconductor
+* Corporation</center></h2>
 **************************************************************************************
 */
 
@@ -28,16 +29,16 @@
 #include "watch_system_interact.h"
 
 #ifdef BSP_USING_BLOC
-#include "bloc_control.h"
-#include "bloc_v2t.h"
-#include "bloc_notification.h"
-#include "bloc_skaiwalk.h"
-#include "bloc_filesystem.h"
-#include "bloc_peripheral.h"
+    #include "bloc_control.h"
+    #include "bloc_v2t.h"
+    #include "bloc_notification.h"
+    #include "bloc_skaiwalk.h"
+    #include "bloc_filesystem.h"
+    #include "bloc_peripheral.h"
 #endif
 
 #ifndef BSP_USING_PC_SIMULATOR
-#include "audio_codec_i2s.h"
+    #include "audio_codec_i2s.h"
 #endif
 
 #define DBG_TAG "communicate.task"
@@ -49,7 +50,8 @@
  */
 
 /** @defgroup  PERIPH_APP_TASK Peripheral App Task
- * @brief This file handles the implementation of application task related functions.
+ * @brief This file handles the implementation of application task related
+ * functions.
  *
  * Create App task and handle events & messages
  * @{
@@ -60,22 +62,22 @@
 #define USING_L1_MESSAGE_QUEUE 0
 
 #if USING_L1_MESSAGE_QUEUE
-#define L1SEND_TASK_PRIORITY 6
-#define L1SEND_TASK_STACK_SIZE 512 * 4
-#define L1SEND_TASK_TICK 20
-#define MAX_L1SEND_MSG_SIZE 0x10
+    #define L1SEND_TASK_PRIORITY 6
+    #define L1SEND_TASK_STACK_SIZE 512 * 4
+    #define L1SEND_TASK_TICK 20
+    #define MAX_L1SEND_MSG_SIZE 0x10
 #endif
 
 // #define USING_BLE_RINGBUFFER_STATION
 
 #ifdef USING_BLE_RINGBUFFER_STATION
-#define BLE_TRANSMIT_INTERVAL_DEFAULT 60
-#define BLE_NOTIFY_EVENT (1 << 0)
-#define MAX_BLE_RINGBUFFER_SIZE 16384
+    #define BLE_TRANSMIT_INTERVAL_DEFAULT 60
+    #define BLE_NOTIFY_EVENT (1 << 0)
+    #define MAX_BLE_RINGBUFFER_SIZE 16384
 
-#define BLE_STATION_STACK_SIZE 2048
-#define BLE_STATION_PRIORITY 21
-#define BLE_STATION_TICK 10
+    #define BLE_STATION_STACK_SIZE 2048
+    #define BLE_STATION_PRIORITY 21
+    #define BLE_STATION_TICK 10
 
 #endif
 
@@ -83,26 +85,26 @@
  *                              Packet Builder Macros
  *============================================================================*/
 // Helper macros to build packet headers
-#define BUILD_PACKET_HEADER(buf, cmd_id, key) \
-    do                                        \
-    {                                         \
-        (buf)[0] = (cmd_id);                  \
-        (buf)[1] = L2_HEADER_VERSION;         \
-        (buf)[2] = (key);                     \
+#define BUILD_PACKET_HEADER(buf, cmd_id, key)                                  \
+    do                                                                         \
+    {                                                                          \
+        (buf)[0] = (cmd_id);                                                   \
+        (buf)[1] = L2_HEADER_VERSION;                                          \
+        (buf)[2] = (key);                                                      \
     } while (0)
 
-#define SET_PACKET_LENGTH(buf, len)     \
-    do                                  \
-    {                                   \
-        (buf)[3] = ((len) >> 8) & 0xFF; \
-        (buf)[4] = (len) & 0xFF;        \
+#define SET_PACKET_LENGTH(buf, len)                                            \
+    do                                                                         \
+    {                                                                          \
+        (buf)[3] = ((len) >> 8) & 0xFF;                                        \
+        (buf)[4] = (len) & 0xFF;                                               \
     } while (0)
 
-#define BUILD_SIMPLE_PACKET(buf, cmd_id, key, len) \
-    do                                             \
-    {                                              \
-        BUILD_PACKET_HEADER(buf, cmd_id, key);     \
-        SET_PACKET_LENGTH(buf, len);               \
+#define BUILD_SIMPLE_PACKET(buf, cmd_id, key, len)                             \
+    do                                                                         \
+    {                                                                          \
+        BUILD_PACKET_HEADER(buf, cmd_id, key);                                 \
+        SET_PACKET_LENGTH(buf, len);                                           \
     } while (0)
 
 // Standard header size (cmd_id + version + key + length_h + length_l)
@@ -280,7 +282,8 @@ static uint16_t dispatch_packet_handler(L1SendData *data);
 static bool communicate_send_api(PacketBuilder *builder);
 
 // Helper: Build simple status packet (1 byte payload)
-static inline uint16_t build_status_packet(uint8_t *buf, uint8_t cmd_id, uint8_t key, uint8_t status)
+static inline uint16_t build_status_packet(uint8_t *buf, uint8_t cmd_id,
+                                           uint8_t key, uint8_t status)
 {
     BUILD_SIMPLE_PACKET(buf, cmd_id, key, 1);
     buf[5] = status;
@@ -290,28 +293,32 @@ static inline uint16_t build_status_packet(uint8_t *buf, uint8_t cmd_id, uint8_t
 // Handler for bond fail event
 static uint16_t handle_bond_fail(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, BOND_COMMAND_ID, KEY_BOND_RESPOSE, BOND_FAIL);
+    builder->length = build_status_packet(builder->buf, BOND_COMMAND_ID,
+                                          KEY_BOND_RESPOSE, BOND_FAIL);
     return builder->length;
 }
 
 // Handler for bond success event
 static uint16_t handle_bond_success(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, BOND_COMMAND_ID, KEY_BOND_RESPOSE, BOND_SUCCESS);
+    builder->length = build_status_packet(builder->buf, BOND_COMMAND_ID,
+                                          KEY_BOND_RESPOSE, BOND_SUCCESS);
     return builder->length;
 }
 
 // Handler for login fail event
 static uint16_t handle_login_fail(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, BOND_COMMAND_ID, KEY_LOGIN_RESPONSE, LOGIN_FAIL);
+    builder->length = build_status_packet(builder->buf, BOND_COMMAND_ID,
+                                          KEY_LOGIN_RESPONSE, LOGIN_FAIL);
     return builder->length;
 }
 
 // Handler for login success event
 static uint16_t handle_login_success(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, BOND_COMMAND_ID, KEY_LOGIN_RESPONSE, LOGIN_SUCCESS);
+    builder->length = build_status_packet(builder->buf, BOND_COMMAND_ID,
+                                          KEY_LOGIN_RESPONSE, LOGIN_SUCCESS);
     return builder->length;
 }
 
@@ -347,7 +354,8 @@ static uint16_t handle_return_alarm(PacketBuilder *builder, L1SendData *data)
 }
 
 // Handler for phone control command
-static uint16_t handle_phone_control_cmd(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_phone_control_cmd(PacketBuilder *builder,
+                                         L1SendData *data)
 {
     BUILD_SIMPLE_PACKET(builder->buf, CONTROL_COMMAND_ID, KEY_TAKE_PHOTO, 0);
     builder->length = 5;
@@ -357,7 +365,8 @@ static uint16_t handle_phone_control_cmd(PacketBuilder *builder, L1SendData *dat
 // Handler for data sync start
 static uint16_t handle_data_sync_start(PacketBuilder *builder, L1SendData *data)
 {
-    BUILD_SIMPLE_PACKET(builder->buf, HEALTH_DATA_COMMAND_ID, KEY_DATA_SYNC_START, 0);
+    BUILD_SIMPLE_PACKET(builder->buf, HEALTH_DATA_COMMAND_ID,
+                        KEY_DATA_SYNC_START, 0);
     builder->length = 5;
     return builder->length;
 }
@@ -365,7 +374,8 @@ static uint16_t handle_data_sync_start(PacketBuilder *builder, L1SendData *data)
 // Handler for data sync end
 static uint16_t handle_data_sync_end(PacketBuilder *builder, L1SendData *data)
 {
-    BUILD_SIMPLE_PACKET(builder->buf, HEALTH_DATA_COMMAND_ID, KEY_DATA_SYNC_END, 0);
+    BUILD_SIMPLE_PACKET(builder->buf, HEALTH_DATA_COMMAND_ID, KEY_DATA_SYNC_END,
+                        0);
     builder->length = 5;
     return builder->length;
 }
@@ -387,8 +397,9 @@ static uint16_t handle_sport_data(PacketBuilder *builder, L1SendData *data)
 // Handler for sleep data
 static uint16_t handle_sleep_data(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, HEALTH_DATA_COMMAND_ID,
-                                          KEY_RETURN_SLEEP_DATA, data->res.status);
+    builder->length =
+        build_status_packet(builder->buf, HEALTH_DATA_COMMAND_ID,
+                            KEY_RETURN_SLEEP_DATA, data->res.status);
     return builder->length;
 }
 
@@ -401,18 +412,22 @@ static uint16_t handle_heart_data(PacketBuilder *builder, L1SendData *data)
 }
 
 // Handler for cancel heart sample
-static uint16_t handle_cancel_heart_sample(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_cancel_heart_sample(PacketBuilder *builder,
+                                           L1SendData *data)
 {
-    BUILD_SIMPLE_PACKET(builder->buf, HEALTH_DATA_COMMAND_ID, KEY_CANCEL_HEART_SAMPLE, 0);
+    BUILD_SIMPLE_PACKET(builder->buf, HEALTH_DATA_COMMAND_ID,
+                        KEY_CANCEL_HEART_SAMPLE, 0);
     builder->length = 5;
     return builder->length;
 }
 
 // Handler for heart rate setting return
-static uint16_t handle_return_heart_setting(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_return_heart_setting(PacketBuilder *builder,
+                                            L1SendData *data)
 {
     uint8_t *buf = builder->buf;
-    BUILD_SIMPLE_PACKET(buf, HEALTH_DATA_COMMAND_ID, KEY_RETURN_HEART_SAMPLE_SETTING, 2);
+    BUILD_SIMPLE_PACKET(buf, HEALTH_DATA_COMMAND_ID,
+                        KEY_RETURN_HEART_SAMPLE_SETTING, 2);
     buf[5] = SkaiWatchSys.hrs_detect_period ? 0x01 : 0x00;
     buf[6] = SkaiWatchSys.hrs_detect_period;
     builder->length = 7;
@@ -430,23 +445,24 @@ static uint16_t handle_find_mobile(PacketBuilder *builder, L1SendData *data)
 // Handler for lift switch return
 static uint16_t handle_lift_switch(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
-                                          KEY_LIFT_SWITCH_RETURN,
-                                          SkaiWatchSys.flag_field.lift_switch_status);
+    builder->length = build_status_packet(
+        builder->buf, SET_CONFIG_COMMAND_ID, KEY_LIFT_SWITCH_RETURN,
+        SkaiWatchSys.flag_field.lift_switch_status);
     return builder->length;
 }
 
 // Handler for twist switch return
 static uint16_t handle_twist_switch(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
-                                          KEY_TWIST_SWITCH_RETURN,
-                                          SkaiWatchSys.flag_field.twist_switch_status);
+    builder->length = build_status_packet(
+        builder->buf, SET_CONFIG_COMMAND_ID, KEY_TWIST_SWITCH_RETURN,
+        SkaiWatchSys.flag_field.twist_switch_status);
     return builder->length;
 }
 
 // Handler for incoming message settings
-static uint16_t handle_incoming_message_settings(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_incoming_message_settings(PacketBuilder *builder,
+                                                 L1SendData *data)
 {
     builder->length = build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
                                           KEY_INCOMMING_MESSAGE_SETTINGS_RETURN,
@@ -457,16 +473,19 @@ static uint16_t handle_incoming_message_settings(PacketBuilder *builder, L1SendD
 // Handler for sit setting return
 static uint16_t handle_sit_setting(PacketBuilder *builder, L1SendData *data)
 {
-    uint8_t status = (SkaiWatchSys.sit_alert_data.sit_alert.on_off == 0x01) ? 0x01 : 0x00;
-    builder->length = build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
-                                          KEY_LONG_TIME_SIT_SETTING_RETURN, status);
+    uint8_t status =
+        (SkaiWatchSys.sit_alert_data.sit_alert.on_off == 0x01) ? 0x01 : 0x00;
+    builder->length =
+        build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
+                            KEY_LONG_TIME_SIT_SETTING_RETURN, status);
     return builder->length;
 }
 
 // Handler for call reject command
 static uint16_t handle_call_reject(PacketBuilder *builder, L1SendData *data)
 {
-    BUILD_SIMPLE_PACKET(builder->buf, NOTIFY_COMMAND_ID, KEY_INCOMMING_CALL_REJECT, 0);
+    BUILD_SIMPLE_PACKET(builder->buf, NOTIFY_COMMAND_ID,
+                        KEY_INCOMMING_CALL_REJECT, 0);
     builder->length = 5;
     return builder->length;
 }
@@ -483,9 +502,9 @@ static uint16_t handle_hour_format(PacketBuilder *builder, L1SendData *data)
 // Handler for distance unit setting
 static uint16_t handle_distance_unit(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
-                                          KEY_DISTANCE_UNIT_RETURN,
-                                          SkaiWatchSys.flag_field.distance_unit);
+    builder->length = build_status_packet(
+        builder->buf, SET_CONFIG_COMMAND_ID, KEY_DISTANCE_UNIT_RETURN,
+        SkaiWatchSys.flag_field.distance_unit);
     return builder->length;
 }
 
@@ -502,7 +521,8 @@ static uint16_t handle_dndm_setting(PacketBuilder *builder, L1SendData *data)
 }
 
 // Handler for OLED display time
-static uint16_t handle_oled_display_time(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_oled_display_time(PacketBuilder *builder,
+                                         L1SendData *data)
 {
     builder->length = build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
                                           KEY_OLED_DISPLAY_TIME_RETURN,
@@ -513,9 +533,9 @@ static uint16_t handle_oled_display_time(PacketBuilder *builder, L1SendData *dat
 // Handler for language return
 static uint16_t handle_language(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
-                                          KEY_LANGUAGE_RETURN,
-                                          SkaiWatchSys.language);
+    builder->length =
+        build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
+                            KEY_LANGUAGE_RETURN, SkaiWatchSys.language);
     return builder->length;
 }
 
@@ -531,15 +551,18 @@ static uint16_t handle_charge_status(PacketBuilder *builder, L1SendData *data)
 // Handler for weather data request
 static uint16_t handle_weather_request(PacketBuilder *builder, L1SendData *data)
 {
-    BUILD_SIMPLE_PACKET(builder->buf, NOTIFY_COMMAND_ID, KEY_REQUEST_WEATHER, 0);
+    BUILD_SIMPLE_PACKET(builder->buf, NOTIFY_COMMAND_ID, KEY_REQUEST_WEATHER,
+                        0);
     builder->length = 5;
     return builder->length;
 }
 
 // Handler for calendar data request
-static uint16_t handle_calendar_request(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_calendar_request(PacketBuilder *builder,
+                                        L1SendData *data)
 {
-    BUILD_SIMPLE_PACKET(builder->buf, NOTIFY_COMMAND_ID, KEY_REQUEST_CALENDAR, 0);
+    BUILD_SIMPLE_PACKET(builder->buf, NOTIFY_COMMAND_ID, KEY_REQUEST_CALENDAR,
+                        0);
     builder->length = 5;
     return builder->length;
 }
@@ -564,32 +587,32 @@ static uint16_t handle_device_info(PacketBuilder *builder, L1SendData *data)
 // Handler for dial change
 static uint16_t handle_dial_change(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
-                                          KEY_DIAL_RETURN,
-                                          SkaiWatchSys.clock_status);
+    builder->length =
+        build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
+                            KEY_DIAL_RETURN, SkaiWatchSys.clock_status);
     return builder->length;
 }
 
 // Handler for backlight event
 static uint16_t handle_backlight(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
-                                          KEY_BACKLIGHT_RETURN,
-                                          data->res.lcd_brightness);
+    builder->length =
+        build_status_packet(builder->buf, SET_CONFIG_COMMAND_ID,
+                            KEY_BACKLIGHT_RETURN, data->res.lcd_brightness);
     return builder->length;
 }
 
 // Handler for soft ADT status
 static uint16_t handle_soft_adt_status(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, NOTIFY_COMMAND_ID,
-                                          KEY_SOFT_ADT_STATUS,
-                                          data->res.status);
+    builder->length = build_status_packet(
+        builder->buf, NOTIFY_COMMAND_ID, KEY_SOFT_ADT_STATUS, data->res.status);
     return builder->length;
 }
 
 // Handler for linear acceleration buffer (with segmentation support)
-static uint16_t handle_linear_acce_buffer(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_linear_acce_buffer(PacketBuilder *builder,
+                                          L1SendData *data)
 {
     uint8_t *buf = builder->buf;
     uint16_t len = data->res.imu_data.length;
@@ -631,7 +654,8 @@ static uint16_t handle_linear_acce_buffer(PacketBuilder *builder, L1SendData *da
 }
 
 // Handler for GSensor FFT buffer
-static uint16_t handle_gsensor_fft_buffer(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_gsensor_fft_buffer(PacketBuilder *builder,
+                                          L1SendData *data)
 {
     uint8_t *buf = builder->buf;
     uint16_t len = data->res.imu_data.length;
@@ -645,7 +669,8 @@ static uint16_t handle_gsensor_fft_buffer(PacketBuilder *builder, L1SendData *da
 }
 
 // Handler for GSensor PPG buffer
-static uint16_t handle_gsensor_ppg_buffer(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_gsensor_ppg_buffer(PacketBuilder *builder,
+                                          L1SendData *data)
 {
     uint8_t *buf = builder->buf;
     uint16_t len = data->res.imu_data.length;
@@ -659,7 +684,8 @@ static uint16_t handle_gsensor_ppg_buffer(PacketBuilder *builder, L1SendData *da
 }
 
 // Handler for GSensor gravity data
-static uint16_t handle_gsensor_gravity_data(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_gsensor_gravity_data(PacketBuilder *builder,
+                                            L1SendData *data)
 {
     uint8_t *buf = builder->buf;
     uint8_t len = sizeof(watch_sensor.motion_data.gravity);
@@ -713,7 +739,8 @@ static uint16_t handle_bluetooth_log(PacketBuilder *builder, L1SendData *data)
 }
 
 // Handler for voice2text intent
-static uint16_t handle_voice2text_intent(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_voice2text_intent(PacketBuilder *builder,
+                                         L1SendData *data)
 {
     builder->length = build_status_packet(builder->buf, CONTROL_COMMAND_ID,
                                           KEY_RETURN_VOICE2TEXT_INTENT,
@@ -722,7 +749,8 @@ static uint16_t handle_voice2text_intent(PacketBuilder *builder, L1SendData *dat
 }
 
 // Handler for voice record intent
-static uint16_t handle_voice_record_intent(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_voice_record_intent(PacketBuilder *builder,
+                                           L1SendData *data)
 {
     uint8_t *buf;
     uint32_t millisecondsFromEpoch;
@@ -730,7 +758,8 @@ static uint16_t handle_voice_record_intent(PacketBuilder *builder, L1SendData *d
     buf = builder->buf;
     millisecondsFromEpoch = data->res.id;
 
-    BUILD_SIMPLE_PACKET(buf, CONTROL_COMMAND_ID, KEY_RETURN_VOICE_RECORD_INTENT, 5);
+    BUILD_SIMPLE_PACKET(buf, CONTROL_COMMAND_ID, KEY_RETURN_VOICE_RECORD_INTENT,
+                        5);
 
     buf[5] = app_voice_get_recording_intent();
     buf[6] = millisecondsFromEpoch >> 24;
@@ -745,14 +774,15 @@ static uint16_t handle_voice_record_intent(PacketBuilder *builder, L1SendData *d
 // Handler for coordinate
 static uint16_t handle_coordinate(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, NOTIFY_COMMAND_ID,
-                                          KEY_WRIST_COORDINATE,
-                                          data->res.coordinate);
+    builder->length =
+        build_status_packet(builder->buf, NOTIFY_COMMAND_ID,
+                            KEY_WRIST_COORDINATE, data->res.coordinate);
     return builder->length;
 }
 
 // Handler for gesture mode state
-static uint16_t handle_gesture_mode_state(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_gesture_mode_state(PacketBuilder *builder,
+                                          L1SendData *data)
 {
     builder->length = build_status_packet(builder->buf, CONTROL_COMMAND_ID,
                                           KEY_GESTURE_MODE_STATUS,
@@ -763,9 +793,9 @@ static uint16_t handle_gesture_mode_state(PacketBuilder *builder, L1SendData *da
 // Handler for gesture detect
 static uint16_t handle_gesture_detect(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, NOTIFY_COMMAND_ID,
-                                          KEY_GESTURE_DETECT,
-                                          data->res.gesture_label);
+    builder->length =
+        build_status_packet(builder->buf, NOTIFY_COMMAND_ID, KEY_GESTURE_DETECT,
+                            data->res.gesture_label);
     return builder->length;
 }
 
@@ -815,7 +845,8 @@ static uint16_t handle_create_calendar(PacketBuilder *builder, L1SendData *data)
 }
 
 // Handler for heart rate series
-static uint16_t handle_heart_rate_series(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_heart_rate_series(PacketBuilder *builder,
+                                         L1SendData *data)
 {
     uint8_t *buf = builder->buf;
     uint16_t len = data->res.ppg_data.length * sizeof(float);
@@ -829,7 +860,8 @@ static uint16_t handle_heart_rate_series(PacketBuilder *builder, L1SendData *dat
 }
 
 // Handler for watch system sync
-static uint16_t handle_watch_system_sync(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_watch_system_sync(PacketBuilder *builder,
+                                         L1SendData *data)
 {
     uint8_t *buf = builder->buf;
     size_t total_size = sizeof(SkaiWatchSys);
@@ -857,17 +889,17 @@ static uint16_t handle_media_control(PacketBuilder *builder, L1SendData *data)
 static uint16_t handle_mqtt_control(PacketBuilder *builder, L1SendData *data)
 {
     builder->length = build_status_packet(builder->buf, CONTROL_COMMAND_ID,
-                                          KEY_MQTT_CONTROL,
-                                          data->res.status);
+                                          KEY_MQTT_CONTROL, data->res.status);
     return builder->length;
 }
 
 // Handler for volume percentage
-static uint16_t handle_volume_percentage(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_volume_percentage(PacketBuilder *builder,
+                                         L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, CONTROL_COMMAND_ID,
-                                          KEY_RETURN_VOLUMN,
-                                          data->res.bt_speaker_volume);
+    builder->length =
+        build_status_packet(builder->buf, CONTROL_COMMAND_ID, KEY_RETURN_VOLUMN,
+                            data->res.bt_speaker_volume);
     return builder->length;
 }
 
@@ -888,11 +920,12 @@ static uint16_t handle_tp_gesture(PacketBuilder *builder, L1SendData *data)
 }
 
 // Handler for user speaking state
-static uint16_t handle_user_speaking_state(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_user_speaking_state(PacketBuilder *builder,
+                                           L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, NOTIFY_COMMAND_ID,
-                                          KEY_USER_SPEAKING_STATE,
-                                          data->res.status);
+    builder->length =
+        build_status_packet(builder->buf, NOTIFY_COMMAND_ID,
+                            KEY_USER_SPEAKING_STATE, data->res.status);
     return builder->length;
 }
 
@@ -935,9 +968,9 @@ static uint16_t handle_battery_voltage(PacketBuilder *builder, L1SendData *data)
 // Handler for battery level
 static uint16_t handle_battery_level(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, NOTIFY_COMMAND_ID,
-                                          KEY_BATTERY_LEVEL,
-                                          data->res.battery_level);
+    builder->length =
+        build_status_packet(builder->buf, NOTIFY_COMMAND_ID, KEY_BATTERY_LEVEL,
+                            data->res.battery_level);
     return builder->length;
 }
 
@@ -975,13 +1008,13 @@ static uint16_t handle_start_sync_file(PacketBuilder *builder, L1SendData *data)
     uint8_t *buf = builder->buf;
     char *file_path = get_sync_in_file_path();
     uint8_t path_len = strlen(file_path);
-    uint32_t total_size = data->res.id;  /* Get file size from data */
+    uint32_t total_size = data->res.id; /* Get file size from data */
 
     BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_START_SYNC_FILE);
 
     /* Protocol: [total_size(4)][file_path] */
     buf[3] = 0;
-    buf[4] = path_len + 4;  /* payload length = 4 bytes for size + path_len */
+    buf[4] = path_len + 4; /* payload length = 4 bytes for size + path_len */
 
     /* Write total file size (big endian) */
     buf[5] = (total_size >> 24) & 0xFF;
@@ -1018,9 +1051,11 @@ static uint16_t handle_end_sync_file(PacketBuilder *builder, L1SendData *data)
     return builder->length;
 }
 
-static uint16_t send_file_compare_result(PacketBuilder *builder, L1SendData *data)
+static uint16_t send_file_compare_result(PacketBuilder *builder,
+                                         L1SendData *data)
 {
-    BUILD_SIMPLE_PACKET(builder->buf, NOTIFY_COMMAND_ID, KEY_FILE_COMPARE_RESULT, 1);
+    BUILD_SIMPLE_PACKET(builder->buf, NOTIFY_COMMAND_ID,
+                        KEY_FILE_COMPARE_RESULT, 1);
     builder->buf[5] = data->res.status;
     builder->length = 6;
     return builder->length;
@@ -1029,18 +1064,18 @@ static uint16_t send_file_compare_result(PacketBuilder *builder, L1SendData *dat
 // Handler for virtual gesture
 static uint16_t handle_virtual_gesture(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, CONTROL_COMMAND_ID,
-                                          KEY_VIRTUAL_GESTURE,
-                                          data->res.gesture_label);
+    builder->length =
+        build_status_packet(builder->buf, CONTROL_COMMAND_ID,
+                            KEY_VIRTUAL_GESTURE, data->res.gesture_label);
     return builder->length;
 }
 
 // Handler for finger tap
 static uint16_t handle_finger_tap(PacketBuilder *builder, L1SendData *data)
 {
-    builder->length = build_status_packet(builder->buf, CONTROL_COMMAND_ID,
-                                          KEY_TP_GESTURE,
-                                          data->res.gesture_label);
+    builder->length =
+        build_status_packet(builder->buf, CONTROL_COMMAND_ID, KEY_TP_GESTURE,
+                            data->res.gesture_label);
     return builder->length;
 }
 
@@ -1053,7 +1088,8 @@ static uint16_t handle_cursor_movement(PacketBuilder *builder, L1SendData *data)
 }
 
 // Handler for virtual movement
-static uint16_t handle_virtual_movement(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_virtual_movement(PacketBuilder *builder,
+                                        L1SendData *data)
 {
     uint8_t *buf = builder->buf;
     BUILD_SIMPLE_PACKET(buf, CONTROL_COMMAND_ID, KEY_TP_COORDINATE, 3);
@@ -1068,8 +1104,7 @@ static uint16_t handle_virtual_movement(PacketBuilder *builder, L1SendData *data
 static uint16_t handle_ota_status(PacketBuilder *builder, L1SendData *data)
 {
     builder->length = build_status_packet(builder->buf, NOTIFY_COMMAND_ID,
-                                          KEY_OTA_STATUS,
-                                          data->res.status);
+                                          KEY_OTA_STATUS, data->res.status);
     return builder->length;
 }
 
@@ -1077,8 +1112,7 @@ static uint16_t handle_ota_status(PacketBuilder *builder, L1SendData *data)
 static uint16_t handle_utest_state(PacketBuilder *builder, L1SendData *data)
 {
     builder->length = build_status_packet(builder->buf, SKAI_LINK_COMMAND_ID,
-                                          KEY_UNIT_TEST_SYNC,
-                                          data->res.status);
+                                          KEY_UNIT_TEST_SYNC, data->res.status);
     return builder->length;
 }
 
@@ -1098,19 +1132,23 @@ static uint16_t handle_minute_activity(PacketBuilder *builder, L1SendData *data)
 }
 
 // Handler for holding displacement
-static uint16_t handle_holding_displacement(PacketBuilder *builder, L1SendData *data)
+static uint16_t handle_holding_displacement(PacketBuilder *builder,
+                                            L1SendData *data)
 {
     uint8_t *buf = builder->buf;
     BUILD_SIMPLE_PACKET(buf, NOTIFY_COMMAND_ID, KEY_HOLDING_DISPLACEMENT, 9);
     buf[5] = data->res.holding_displacement.event;
-    memcpy(buf + 6, &data->res.holding_displacement.x, sizeof(data->res.holding_displacement.x));
-    memcpy(buf + 10, &data->res.holding_displacement.y, sizeof(data->res.holding_displacement.y));
+    memcpy(buf + 6, &data->res.holding_displacement.x,
+           sizeof(data->res.holding_displacement.x));
+    memcpy(buf + 10, &data->res.holding_displacement.y,
+           sizeof(data->res.holding_displacement.y));
     builder->length = 14;
     return builder->length;
 }
 
 /*============================================================================*
- *                              Provider Registration (類似 bloc_control_provider_register)
+ *                              Provider Registration (類似
+ * bloc_control_provider_register)
  *============================================================================*/
 static int commu_handler_provider_register(void)
 {
@@ -1124,7 +1162,8 @@ static int commu_handler_provider_register(void)
     commu_handler_provider.handle_return_alarm = handle_return_alarm;
     commu_handler_provider.handle_lift_switch = handle_lift_switch;
     commu_handler_provider.handle_twist_switch = handle_twist_switch;
-    commu_handler_provider.handle_incoming_message_settings = handle_incoming_message_settings;
+    commu_handler_provider.handle_incoming_message_settings =
+        handle_incoming_message_settings;
     commu_handler_provider.handle_sit_setting = handle_sit_setting;
     commu_handler_provider.handle_hour_format = handle_hour_format;
     commu_handler_provider.handle_distance_unit = handle_distance_unit;
@@ -1141,8 +1180,10 @@ static int commu_handler_provider_register(void)
     commu_handler_provider.handle_sport_data = handle_sport_data;
     commu_handler_provider.handle_sleep_data = handle_sleep_data;
     commu_handler_provider.handle_heart_data = handle_heart_data;
-    commu_handler_provider.handle_cancel_heart_sample = handle_cancel_heart_sample;
-    commu_handler_provider.handle_return_heart_setting = handle_return_heart_setting;
+    commu_handler_provider.handle_cancel_heart_sample =
+        handle_cancel_heart_sample;
+    commu_handler_provider.handle_return_heart_setting =
+        handle_return_heart_setting;
     commu_handler_provider.handle_heart_rate_series = handle_heart_rate_series;
 
     // Control
@@ -1153,8 +1194,10 @@ static int commu_handler_provider_register(void)
     commu_handler_provider.handle_mqtt_control = handle_mqtt_control;
     commu_handler_provider.handle_volume_percentage = handle_volume_percentage;
     commu_handler_provider.handle_voice2text_intent = handle_voice2text_intent;
-    commu_handler_provider.handle_voice_record_intent = handle_voice_record_intent;
-    commu_handler_provider.handle_gesture_mode_state = handle_gesture_mode_state;
+    commu_handler_provider.handle_voice_record_intent =
+        handle_voice_record_intent;
+    commu_handler_provider.handle_gesture_mode_state =
+        handle_gesture_mode_state;
     commu_handler_provider.handle_virtual_gesture = handle_virtual_gesture;
     commu_handler_provider.handle_finger_tap = handle_finger_tap;
     commu_handler_provider.handle_cursor_movement = handle_cursor_movement;
@@ -1171,7 +1214,8 @@ static int commu_handler_provider_register(void)
     commu_handler_provider.handle_create_calendar = handle_create_calendar;
     commu_handler_provider.handle_tp_coordinate = handle_tp_coordinate;
     commu_handler_provider.handle_tp_gesture = handle_tp_gesture;
-    commu_handler_provider.handle_user_speaking_state = handle_user_speaking_state;
+    commu_handler_provider.handle_user_speaking_state =
+        handle_user_speaking_state;
     commu_handler_provider.handle_chat_with_ai = handle_chat_with_ai;
     commu_handler_provider.handle_quaternion_data = handle_quaternion_data;
     commu_handler_provider.handle_battery_voltage = handle_battery_voltage;
@@ -1179,10 +1223,14 @@ static int commu_handler_provider_register(void)
 
     // Sensor Data
     commu_handler_provider.handle_soft_adt_status = handle_soft_adt_status;
-    commu_handler_provider.handle_linear_acce_buffer = handle_linear_acce_buffer;
-    commu_handler_provider.handle_gsensor_fft_buffer = handle_gsensor_fft_buffer;
-    commu_handler_provider.handle_gsensor_ppg_buffer = handle_gsensor_ppg_buffer;
-    commu_handler_provider.handle_gsensor_gravity_data = handle_gsensor_gravity_data;
+    commu_handler_provider.handle_linear_acce_buffer =
+        handle_linear_acce_buffer;
+    commu_handler_provider.handle_gsensor_fft_buffer =
+        handle_gsensor_fft_buffer;
+    commu_handler_provider.handle_gsensor_ppg_buffer =
+        handle_gsensor_ppg_buffer;
+    commu_handler_provider.handle_gsensor_gravity_data =
+        handle_gsensor_gravity_data;
     commu_handler_provider.handle_imu_buffer = handle_imu_buffer;
     commu_handler_provider.handle_baro_buffer = handle_baro_buffer;
 
@@ -1190,7 +1238,8 @@ static int commu_handler_provider_register(void)
     commu_handler_provider.handle_start_sync_file = handle_start_sync_file;
     commu_handler_provider.handle_sync_file = handle_sync_file;
     commu_handler_provider.handle_end_sync_file = handle_end_sync_file;
-    commu_handler_provider.handle_file_compare_result = send_file_compare_result;
+    commu_handler_provider.handle_file_compare_result =
+        send_file_compare_result;
     // Other
     commu_handler_provider.handle_bluetooth_log = handle_bluetooth_log;
     commu_handler_provider.handle_watch_system_sync = handle_watch_system_sync;
@@ -1199,7 +1248,8 @@ static int commu_handler_provider_register(void)
     commu_handler_provider.handle_ota_status = handle_ota_status;
     commu_handler_provider.handle_utest_state = handle_utest_state;
     commu_handler_provider.handle_minute_activity = handle_minute_activity;
-    commu_handler_provider.handle_holding_displacement = handle_holding_displacement;
+    commu_handler_provider.handle_holding_displacement =
+        handle_holding_displacement;
 
     LOG_I("Communication handler provider registered");
     return 0;
@@ -1272,8 +1322,11 @@ static uint16_t dispatch_packet_handler(L1SendData *data)
         handler = commu_handler_provider.handle_dial_change;
         break;
     case L1SEND_RETURN_BACKLIGHT_EVENT:
+    {
+        LOG_D("Dispatching backlight event");
         handler = commu_handler_provider.handle_backlight;
         break;
+    }
 
     // Health Data
     case L1SEND_HISTORY_DATA_SYNC_START:
@@ -1463,7 +1516,8 @@ static uint16_t dispatch_packet_handler(L1SendData *data)
     {
         uint16_t len = handler(&builder, data);
 
-        // Send the packet if length > 0 (zero-copy: write directly to ringbuffer)
+        // Send the packet if length > 0 (zero-copy: write directly to
+        // ringbuffer)
         if (len > 0)
         {
             if (communicate_send_api(&builder))
@@ -1472,13 +1526,15 @@ static uint16_t dispatch_packet_handler(L1SendData *data)
             }
             else
             {
-                LOG_E("communicate_send_api failed for event type: %d", data->event);
+                LOG_E("communicate_send_api failed for event type: %d",
+                      data->event);
                 return 0;
             }
         }
         else
         {
-            LOG_W("Handler for event type %d returned zero length", data->event);
+            LOG_W("Handler for event type %d returned zero length",
+                  data->event);
         }
         return len;
     }
@@ -1521,7 +1577,7 @@ void commu_reset_stats(void)
 }
 
 #ifdef RT_USING_FINSH
-#include <finsh.h>
+    #include <finsh.h>
 MSH_CMD_EXPORT(commu_print_stats, Print communication statistics);
 MSH_CMD_EXPORT(commu_reset_stats, Reset communication statistics);
 #endif
@@ -1585,7 +1641,8 @@ static bool communicate_send_api(PacketBuilder *builder)
 #endif
 }
 
-extern int audio_profile_send_voice_data(uint8_t *voice_data, uint16_t voice_data_len);
+extern int audio_profile_send_voice_data(uint8_t *voice_data,
+                                         uint16_t voice_data_len);
 bool skaiwatch_ble_audio_send(uint8_t *buf, uint16_t length)
 {
     int res = audio_profile_send_voice_data(buf, length);
@@ -1594,7 +1651,8 @@ bool skaiwatch_ble_audio_send(uint8_t *buf, uint16_t length)
 
 #ifdef USING_BLE_RINGBUFFER_STATION
 
-static void ble_send_commu_station_buffer(rt_uint8_t *temp_buf, bool *has_more_data)
+static void ble_send_commu_station_buffer(rt_uint8_t *temp_buf,
+                                          bool *has_more_data)
 {
     if (commu_rb == RT_NULL)
     {
@@ -1621,7 +1679,9 @@ static void ble_send_commu_station_buffer(rt_uint8_t *temp_buf, bool *has_more_d
 
         if (res != buf_len)
         {
-            LOG_E("[ble_send_commu_station_buffer]: read data from ringbuffer failed, res:%d, buf_len:%d", res, buf_len);
+            LOG_E("[ble_send_commu_station_buffer]: read data from ringbuffer "
+                  "failed, res:%d, buf_len:%d",
+                  res, buf_len);
             return;
         }
 
@@ -1678,7 +1738,8 @@ void commu_station_entry(void *parameter)
     while (1)
     {
         // Wait for notification events
-        if (rt_event_recv(&commu_event, (BLE_NOTIFY_EVENT), RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
+        if (rt_event_recv(&commu_event, (BLE_NOTIFY_EVENT),
+                          RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
                           RT_WAITING_FOREVER, &recv_set) == RT_EOK)
         {
             switch (recv_set)
@@ -1709,8 +1770,9 @@ static rt_thread_t tid_commu_station;
 
 static int commu_station_init(void)
 {
-    tid_commu_station = rt_thread_create("commu_station", commu_station_entry, NULL, BLE_STATION_STACK_SIZE,
-                                         BLE_STATION_PRIORITY, BLE_STATION_TICK);
+    tid_commu_station = rt_thread_create(
+        "commu_station", commu_station_entry, NULL, BLE_STATION_STACK_SIZE,
+        BLE_STATION_PRIORITY, BLE_STATION_TICK);
     rt_thread_startup(tid_commu_station);
     return 0;
 }
@@ -1758,7 +1820,6 @@ void L1_send_ota_event(L1SendData data)
     }
 }
 
-
 #if USING_L1_MESSAGE_QUEUE
 /**
  * @brief        L1send task
@@ -1769,20 +1830,24 @@ void l1send_task(void *pvParameters)
 {
     L1SendData data;
 
-    l1send_queue_handle = rt_mq_create("l1send_queue", sizeof(L1SendData), MAX_L1SEND_MSG_SIZE, RT_IPC_FLAG_FIFO);
+    l1send_queue_handle = rt_mq_create("l1send_queue", sizeof(L1SendData),
+                                       MAX_L1SEND_MSG_SIZE, RT_IPC_FLAG_FIFO);
     if (l1send_queue_handle == RT_NULL)
     {
         LOG_E("l1send_queue_handle create failed");
         return;
     }
 
-    LOG_I("l1send_task started with %d registered handlers", COMMU_HANDLER_COUNT);
+    LOG_I("l1send_task started with %d registered handlers",
+          COMMU_HANDLER_COUNT);
 
     while (true)
     {
-        if (rt_mq_recv(l1send_queue_handle, &data, sizeof(data), RT_WAITING_FOREVER) == RT_EOK)
+        if (rt_mq_recv(l1send_queue_handle, &data, sizeof(data),
+                       RT_WAITING_FOREVER) == RT_EOK)
         {
-            if (SkaiWatchSys.gap_conn_state == GAP_CONN_STATE_CONNECTED && SkaiWatchSys.connected_to_phone)
+            if (SkaiWatchSys.gap_conn_state == GAP_CONN_STATE_CONNECTED &&
+                SkaiWatchSys.connected_to_phone)
             {
                 // Use new dispatcher instead of switch-case
                 dispatch_packet_handler(&data);
@@ -1800,7 +1865,9 @@ int communicate_task_init(void)
 {
     commu_handler_provider_register();
 #if USING_L1_MESSAGE_QUEUE
-    l1send_task_handle = rt_thread_create("l1send", l1send_task, RT_NULL, L1SEND_TASK_STACK_SIZE, L1SEND_TASK_PRIORITY, L1SEND_TASK_TICK);
+    l1send_task_handle =
+        rt_thread_create("l1send", l1send_task, RT_NULL, L1SEND_TASK_STACK_SIZE,
+                         L1SEND_TASK_PRIORITY, L1SEND_TASK_TICK);
     if (l1send_task_handle != RT_NULL)
     {
         rt_thread_startup(l1send_task_handle);
