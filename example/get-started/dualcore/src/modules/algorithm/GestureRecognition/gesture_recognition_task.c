@@ -457,6 +457,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
     }
     else if (gesture_recognition_lock)
     {
+        LOG_D("gesture_recognition_algorithm is locked, ignore gesture");
         return;
     }
     else if (sample_num == TAP_TARGET_SAMPLE_NUM)
