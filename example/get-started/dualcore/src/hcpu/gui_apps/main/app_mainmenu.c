@@ -456,7 +456,7 @@ void check_is_at_message(void)
             setting_provider.set_power_save_mode(1);
             // switch_watch_motion_control_mode(true, true);
             set_open_control_options(true);
-            // set_free_control_with_arm(true);
+            set_free_control_with_arm(true);
             request_weather_within_six_hours(false);
 
             set_media_control_threshold(2000);

@@ -1020,7 +1020,7 @@ void lv_dial_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_bg_color(dial_widget_vol_bar, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(dial_widget_vol_bar, 25, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(dial_widget_vol_bar, 12, LV_PART_MAIN);
-    lv_bar_set_value(dial_widget_vol_bar, SkaiWatchSys.brightness, LV_ANIM_ON);
+    lv_bar_set_value(dial_widget_vol_bar, 0, LV_ANIM_ON);
     lv_obj_add_event_cb(dial_widget_vol_bar, bar_event_cb, LV_EVENT_ALL, NULL);
     lv_obj_t *icon = lv_img_create(dial_widget_vol_bar);
     lv_img_set_src(icon, &volume_up);

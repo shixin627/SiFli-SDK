@@ -277,7 +277,7 @@ static void notify_gesture_event(uint32_t gesture)
                                       MSG_SERVICE_GESTURE_IND, sizeof(data_ind),
                                       (uint8_t *)&data_ind);
     RT_ASSERT(0 == result);
-    // LOG_D("Gesture event %d sent.", gesture);
+    // LOG_I("Gesture event %d sent.", gesture);
 }
 
 // static void notify_gesture_dataset(uint32_t timestamp, int count, void *data)

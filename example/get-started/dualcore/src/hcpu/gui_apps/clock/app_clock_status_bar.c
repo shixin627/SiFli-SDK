@@ -204,7 +204,7 @@ static void ai_status_bar_cb(lv_event_t *event)
                 return;
             }
             lv_obj_set_tile_id(app_clock_ai_status_bar, 0, 0, false);
-            lv_obj_clear_flag(app_clock_ai_status_bar, LV_OBJ_FLAG_HIDDEN);
+            // lv_obj_clear_flag(app_clock_ai_status_bar, LV_OBJ_FLAG_HIDDEN);
         }
     }
 }

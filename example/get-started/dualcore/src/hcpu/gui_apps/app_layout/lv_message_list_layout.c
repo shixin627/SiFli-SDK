@@ -350,21 +350,21 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 		}
 		old_selected_message_index = selected_message_index;
 
-		if (selected_message_index == 0)
-		{
-			lv_obj_set_style_img_opa(page_up, LV_OPA_10, 0);
-			button_selection_index = 1;
-		}
-		else if (selected_message_index == notification_count - 1 && !have_media_widget)
-		{
-			lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
-			button_selection_index = 1;
-		}
-		else if (selected_message_index == notification_count && have_media_widget)
-		{
-			lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
-			button_selection_index = 1;
-		}
+		// if (selected_message_index == 0)
+		// {
+		// 	lv_obj_set_style_img_opa(page_up, LV_OPA_10, 0);
+		// 	button_selection_index = 1;
+		// }
+		// else if (selected_message_index == notification_count - 1 && !have_media_widget)
+		// {
+		// 	lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
+		// 	button_selection_index = 1;
+		// }
+		// else if (selected_message_index == notification_count && have_media_widget)
+		// {
+		// 	lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
+		// 	button_selection_index = 1;
+		// }
 	}
 #ifdef MESSAGE_NEED_MEDIA_WIDGET
 	if (p_app_notification->media_widget != NULL)
@@ -380,7 +380,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 		if (!is_at_media_widget && no_notif_y_diff == 0)
 		{
 			is_at_media_widget = true;
-			lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
+			// lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
 			button_selection_index = 1;
 		}
 		else if (is_at_media_widget && no_notif_y_diff != 0)
@@ -1386,17 +1386,17 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
 	// lv_obj_add_flag(down_grip, LV_OBJ_FLAG_SCROLLABLE);
 	// lv_obj_add_event_cb(down_grip, event_forwarder, LV_OBJ_FLAG_SCROLLABLE, p_window);
 	// lv_obj_set_style_opa(down_grip, LV_OPA_0, 0);
-	page_up = lv_img_create(notification_center);
-	lv_obj_set_size(page_up, 40, 40);
-	lv_obj_align(page_up, LV_ALIGN_TOP_MID, 0, 60);
-	lv_img_set_src(page_up, UP_ARROW);
-	lv_obj_set_style_img_opa(page_up, LV_OPA_10, 0);
+	// page_up = lv_img_create(notification_center);
+	// lv_obj_set_size(page_up, 40, 40);
+	// lv_obj_align(page_up, LV_ALIGN_TOP_MID, 0, 60);
+	// lv_img_set_src(page_up, UP_ARROW);
+	// lv_obj_set_style_img_opa(page_up, LV_OPA_10, 0);
 
-	page_down = lv_img_create(notification_center);
-	lv_obj_set_size(page_down, 40, 40);
-	lv_obj_align(page_down, LV_ALIGN_BOTTOM_MID, 0, -60);
-	lv_img_set_src(page_down, DOWN_ARROW);
-	lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
+	// page_down = lv_img_create(notification_center);
+	// lv_obj_set_size(page_down, 40, 40);
+	// lv_obj_align(page_down, LV_ALIGN_BOTTOM_MID, 0, -60);
+	// lv_img_set_src(page_down, DOWN_ARROW);
+	// lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
 
 	// 創建應用列表按鈕 (添加到可滾動的列表容器中)
 	// p_app_notification->app_list_btn = lv_btn_create(p_window);
@@ -1469,63 +1469,63 @@ static void button_selection(gesture_position_t gesture_position)
 	// 	LOG_D("msg_list_btn_sele:%d,%d,%d,%d", is_at_media_widget, lv_obj_is_valid(selected_message), notification_center_get_info_count() <= 0, is_at_media_widget);
 	// }
 
-	if (page_count <= 0)
-	{
-		return;
-	}
-	const int p_x = gesture_position.gesture_position_x;
+	// if (page_count <= 0)
+	// {
+	// 	return;
+	// }
+	// const int p_x = gesture_position.gesture_position_x;
 
-	int category = 1;
-	if (get_gesture_control_state() != 1 || get_media_widget_selection_index() != 1)
-	{
-		category = 1;
-	}
-	else if (p_x > 300)
-	{
-		category = 2;
-	}
-	else if (p_x < 166)
-	{
-		category = 0;
-	}
-	else
-	{
-		category = 1;
-	}
-	// LOG_D("btn_selec:%d,%d,%d,%d,%d,%d,%d,", button_selection_index, category, selected_message_index, notification_count, is_at_media_widget, p_x, p_y);
-	if (button_selection_index == category)
-	{
-		return;
-	}
-	if (((category == 0 && selected_message_index == 0) ||
-		 (category == 2 && selected_message_index == notification_count - 1)) &&
-		!have_media_widget)
-	{
-		return; // 如果已經在第一頁，則不允許向上滾動
-	}
-	else if (((category == 0 && selected_message_index == 0) ||
-			 (category == 2 && is_at_media_widget)) && have_media_widget)
-	{
-		return; // 如果已經在第一頁，則不允許向上滾動
-	}
-	button_selection_index = category;
-	motor_pattern_scrolling_app();
-	// LOG_D("button_selection_index: %d", button_selection_index);
-	reset_button_selection();
-	if (category == 0)
-	{
-		lv_obj_set_style_img_opa(page_up, LV_OPA_80, 0);
-	}
-	else if (category == 2)
-	{
-		lv_obj_set_style_img_opa(page_down, LV_OPA_80, 0);
-	}
-	else if (category == 1 && lv_obj_is_valid(selected_message))
-	{
-		// lv_obj_set_style_bg_opa(selected_message, LV_OPA_80, LV_PART_MAIN);
-		lv_obj_set_style_border_width(selected_message, 2, LV_PART_MAIN);
-		lv_obj_set_style_border_color(selected_message, lv_color_hex(0x4F4F4F), LV_PART_MAIN);
-	}
+	// int category = 1;
+	// if (get_gesture_control_state() != 1 || get_media_widget_selection_index() != 1)
+	// {
+	// 	category = 1;
+	// }
+	// else if (p_x > 300)
+	// {
+	// 	category = 2;
+	// }
+	// else if (p_x < 166)
+	// {
+	// 	category = 0;
+	// }
+	// else
+	// {
+	// 	category = 1;
+	// }
+	// // LOG_D("btn_selec:%d,%d,%d,%d,%d,%d,%d,", button_selection_index, category, selected_message_index, notification_count, is_at_media_widget, p_x, p_y);
+	// if (button_selection_index == category)
+	// {
+	// 	return;
+	// }
+	// if (((category == 0 && selected_message_index == 0) ||
+	// 	 (category == 2 && selected_message_index == notification_count - 1)) &&
+	// 	!have_media_widget)
+	// {
+	// 	return; // 如果已經在第一頁，則不允許向上滾動
+	// }
+	// else if (((category == 0 && selected_message_index == 0) ||
+	// 		 (category == 2 && is_at_media_widget)) && have_media_widget)
+	// {
+	// 	return; // 如果已經在第一頁，則不允許向上滾動
+	// }
+	// button_selection_index = category;
+	// motor_pattern_scrolling_app();
+	// // LOG_D("button_selection_index: %d", button_selection_index);
+	// reset_button_selection();
+	// if (category == 0)
+	// {
+	// 	lv_obj_set_style_img_opa(page_up, LV_OPA_80, 0);
+	// }
+	// else if (category == 2)
+	// {
+	// 	lv_obj_set_style_img_opa(page_down, LV_OPA_80, 0);
+	// }
+	// else if (category == 1 && lv_obj_is_valid(selected_message))
+	// {
+	// 	// lv_obj_set_style_bg_opa(selected_message, LV_OPA_80, LV_PART_MAIN);
+	// 	lv_obj_set_style_border_width(selected_message, 2, LV_PART_MAIN);
+	// 	lv_obj_set_style_border_color(selected_message, lv_color_hex(0x4F4F4F), LV_PART_MAIN);
+	// }
 }
 
 int scroll_message_list(int argc, char **argv)
@@ -1600,7 +1600,7 @@ extern void media_widget_tap_event_cb(void);
 extern void media_widget_btn_press_cb(void);
 static void on_tap(void)
 {
-	// LOG_D("on_tap, button_selection_index: %d,%d,%d,%d", button_selection_index, is_at_media_widget, gesture_control, notification_center_get_info_count());
+	LOG_D("on_tap, button_selection_index: %d,%d,%d,%d", button_selection_index, is_at_media_widget, gesture_control, notification_center_get_info_count());
 
 	if (button_selection_index == 0)
 	{

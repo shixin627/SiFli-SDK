@@ -84,7 +84,7 @@
 #define LIST_ITEM_SPACING (-100)
 #define LIST_ITEM_BTN_WIDTH (150)
 #define LIST_ITEM_BTN_HEIGHT (150)
-#define LIST_ITEM_WIDGET_HEIGHT (250)
+#define LIST_ITEM_WIDGET_HEIGHT (200)
 #define LIST_ITEM_WIDGET_WIDTH (430)
 
 #define LIST_RADIUS (466)
@@ -139,7 +139,7 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
 #ifdef APP_ID_TIMER
     app_id_timer,
 #endif
-// app_id_flashlight,
+app_id_flashlight,
 #ifdef APP_ID_CALCULATOR
 // app_id_calculator,
 #endif
@@ -1778,16 +1778,16 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     lv_obj_align(skai_widget, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
 
-    lv_obj_t *ai_hint = lv_img_create(p_app_list_bg);
-    lv_obj_set_size(ai_hint, 80, 80);
-    lv_img_set_src(ai_hint, IMG_LOGO);
-    lv_obj_align(ai_hint, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_t *ai_hint_btn = lv_obj_create(ai_hint);
-    lv_obj_set_size(ai_hint_btn, 80, 80);
-    lv_obj_set_style_bg_opa(ai_hint_btn, LV_OPA_TRANSP, 0);
-    lv_obj_add_event_cb(ai_hint_btn, logo_click_event_cb, LV_EVENT_CLICKED,
-                        NULL);
-    lv_obj_align(ai_hint_btn, LV_ALIGN_CENTER, 0, 0);
+    // lv_obj_t *ai_hint = lv_img_create(p_app_list_bg);
+    // lv_obj_set_size(ai_hint, 80, 80);
+    // lv_img_set_src(ai_hint, IMG_LOGO);
+    // lv_obj_align(ai_hint, LV_ALIGN_BOTTOM_MID, 0, 0);
+    // lv_obj_t *ai_hint_btn = lv_obj_create(ai_hint);
+    // lv_obj_set_size(ai_hint_btn, 80, 80);
+    // lv_obj_set_style_bg_opa(ai_hint_btn, LV_OPA_TRANSP, 0);
+    // lv_obj_add_event_cb(ai_hint_btn, logo_click_event_cb, LV_EVENT_CLICKED,
+    //                     NULL);
+    // lv_obj_align(ai_hint_btn, LV_ALIGN_CENTER, 0, 0);
 
     // 創建可移動範圍圓弧線
     // create_movable_range_arc(p_app_list_bg);

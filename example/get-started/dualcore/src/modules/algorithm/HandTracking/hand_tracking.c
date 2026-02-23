@@ -362,9 +362,7 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
                             max_supination_gyro_x_abs > 400 &&
                             sum_gyro_put_down_x > threshold * 1.3)
                         {
-                            // LOG_I("Trigger back event max_supination:%f,
-                            // sum_gyro:%f", max_supination_gyro_x_abs,
-                            // sum_gyro_put_down_x);
+                            // LOG_I("Trigger back event max_supination:%f,sum_gyro:%f", max_supination_gyro_x_abs, sum_gyro_put_down_x);
                             trigger_back_event();
 #if USING_PUT_DOWN_TIMER
                             stop_put_down_confirm_timer();
