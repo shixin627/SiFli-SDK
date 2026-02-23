@@ -350,21 +350,21 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 		}
 		old_selected_message_index = selected_message_index;
 
-		if (selected_message_index == 0)
-		{
-			// lv_obj_set_style_img_opa(page_up, LV_OPA_10, 0);
-			button_selection_index = 1;
-		}
-		else if (selected_message_index == notification_count - 1 && !have_media_widget)
-		{
-			// lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
-			button_selection_index = 1;
-		}
-		else if (selected_message_index == notification_count && have_media_widget)
-		{
-			// lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
-			button_selection_index = 1;
-		}
+		// if (selected_message_index == 0)
+		// {
+		// 	lv_obj_set_style_img_opa(page_up, LV_OPA_10, 0);
+		// 	button_selection_index = 1;
+		// }
+		// else if (selected_message_index == notification_count - 1 && !have_media_widget)
+		// {
+		// 	lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
+		// 	button_selection_index = 1;
+		// }
+		// else if (selected_message_index == notification_count && have_media_widget)
+		// {
+		// 	lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
+		// 	button_selection_index = 1;
+		// }
 	}
 #ifdef MESSAGE_NEED_MEDIA_WIDGET
 	if (p_app_notification->media_widget != NULL)
@@ -380,7 +380,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 		if (!is_at_media_widget && no_notif_y_diff == 0)
 		{
 			is_at_media_widget = true;
-			lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
+			// lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
 			button_selection_index = 1;
 		}
 		else if (is_at_media_widget && no_notif_y_diff != 0)
