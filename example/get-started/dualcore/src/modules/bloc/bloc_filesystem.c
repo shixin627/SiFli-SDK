@@ -499,13 +499,23 @@ static void file_system_entry(void *parameter)
                                 file_path);
                 }
 
-                /* Extract directory path and create if needed */
+                /* Extract directory path and create all parent dirs if needed */
                 char dir_path[FILE_PATH_MAX_LEN];
                 rt_strncpy(dir_path, temp_file_path, FILE_PATH_MAX_LEN);
                 char *last_slash = strrchr(dir_path, '/');
                 if (last_slash)
                 {
                     *last_slash = '\0';
+                    /* Recursively create parent directories */
+                    for (char *p = dir_path + 1; *p; p++)
+                    {
+                        if (*p == '/')
+                        {
+                            *p = '\0';
+                            mkdir(dir_path, 0777);
+                            *p = '/';
+                        }
+                    }
                     mkdir(dir_path, 0777);
                 }
 
