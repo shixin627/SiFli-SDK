@@ -600,11 +600,6 @@ static void button_event_task_entry(struct _lv_timer_t *task)
         setting_provider.get_power_save_mode() &&
         !pause_sleep_cause_of_dev_reson())
     {
-        // close onscreen message
-        if (gui_app_is_actived(APP_ID_MESSAGE))
-        {
-            gui_app_goback();
-        }
         peripheral_provider.hcpu_suspend();
         gui_pm_fsm(GUI_PM_ACTION_SLEEP);
     }
