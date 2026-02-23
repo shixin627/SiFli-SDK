@@ -12,36 +12,39 @@
  *
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice, this
- *    list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer.
  *
- * 2. Redistributions in binary form, except as embedded into a Sifli integrated circuit
- *    in a product or a software update for such product, must reproduce the above
- *    copyright notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
+ * 2. Redistributions in binary form, except as embedded into a Sifli integrated
+ * circuit in a product or a software update for such product, must reproduce
+ * the above copyright notice, this list of conditions and the following
+ * disclaimer in the documentation and/or other materials provided with the
+ * distribution.
  *
- * 3. Neither the name of Sifli nor the names of its contributors may be used to endorse
- *    or promote products derived from this software without specific prior written permission.
+ * 3. Neither the name of Sifli nor the names of its contributors may be used to
+ * endorse or promote products derived from this software without specific prior
+ * written permission.
  *
  * 4. This software, with or without modification, must only be used with a
  *    Sifli integrated circuit.
  *
- * 5. Any software provided in binary form under this license must not be reverse
- *    engineered, decompiled, modified and/or disassembled.
+ * 5. Any software provided in binary form under this license must not be
+ * reverse engineered, decompiled, modified and/or disassembled.
  *
  * THIS SOFTWARE IS PROVIDED BY SIFLI TECHNOLOGY "AS IS" AND ANY EXPRESS
  * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
  * OF MERCHANTABILITY, NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE ARE
  * DISCLAIMED. IN NO EVENT SHALL SIFLI TECHNOLOGY OR CONTRIBUTORS BE
  * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
- * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  *
  */
 #include <rtthread.h>
@@ -50,7 +53,7 @@
 #include <stdlib.h>
 #include "data_service_subscriber.h"
 #ifdef BSP_USING_WATCH_SYS_CLIENT
-#include "watch_sys_service.h"
+    #include "watch_sys_service.h"
 #endif
 #include "ui_datasrv_subscriber.h"
 #include "bloc_setting.h"
@@ -59,21 +62,21 @@
 #include "littlevgl2rtt.h"
 #include "bloc_peripheral.h"
 #ifdef BSP_USING_BLOC_NOTIFY
-#include "bloc_notification.h"
+    #include "bloc_notification.h"
 #endif
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-#include "watch_system_interact.h"
-#include "watch_system_core_task.h"
+    #include "watch_system_interact.h"
+    #include "watch_system_core_task.h"
 #endif
 #include "bsp_board.h"
 #include "math.h"
 #ifdef BSP_USING_GESTURE_HANDLER
-#include "gesture_handler.h"
+    #include "gesture_handler.h"
 #endif
 #include "ui_handler.h"
 #include "app_mainmenu.h"
 #ifdef BSP_USING_COMMUNICATE
-#include "communicate_protocol.h"
+    #include "communicate_protocol.h"
 #endif
 
 #define DBG_LVL DBG_LOG
@@ -298,7 +301,8 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         RT_ASSERT(data_ind);
         watch_sensor.gesture_data.timestamp = data_ind->timestamp;
         watch_sensor.gesture_data.sample_num = data_ind->count;
-        memcpy(watch_sensor.gesture_data.dataset, data_ind->acce, data_ind->count * sizeof(watch_sys_linear_acce_t));
+        memcpy(watch_sensor.gesture_data.dataset, data_ind->acce,
+               data_ind->count * sizeof(watch_sys_linear_acce_t));
         if (watch_sensor.gesture_sem)
         {
             rt_sem_release(watch_sensor.gesture_sem);
@@ -313,7 +317,8 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         RT_ASSERT(data_ind);
         watch_sensor.gesture_data.timestamp = data_ind->timestamp;
         watch_sensor.gesture_data.sample_num = data_ind->count;
-        memcpy(watch_sensor.gesture_data.dataset_ppg, data_ind->acce, data_ind->count * sizeof(watch_sys_linear_acce_ppg_t));
+        memcpy(watch_sensor.gesture_data.dataset_ppg, data_ind->acce,
+               data_ind->count * sizeof(watch_sys_linear_acce_ppg_t));
         if (watch_sensor.gesture_sem)
         {
             rt_sem_release(watch_sensor.gesture_sem);
@@ -409,7 +414,8 @@ static rt_err_t send_watch_sys_msg_with_retry(data_msg_t *msg,
     // Retry logic
     while (err != RT_EOK && retry_count < max_retries)
     {
-        LOG_E("send code [%d]failed, retrying (%d/%d)", operation_code, retry_count + 1, max_retries);
+        LOG_E("send code [%d]failed, retrying (%d/%d)", operation_code,
+              retry_count + 1, max_retries);
         rt_thread_mdelay(retry_delay_ms);
         err = datac_send_msg(watch_sys_client_handle, msg);
         retry_count++;
@@ -418,11 +424,13 @@ static rt_err_t send_watch_sys_msg_with_retry(data_msg_t *msg,
     // Log the final result
     if (err != RT_EOK)
     {
-        LOG_E("send code [%d] failed after %d retries", operation_code, retry_count);
+        LOG_E("send code [%d] failed after %d retries", operation_code,
+              retry_count);
     }
     else if (retry_count > 0)
     {
-        LOG_D("send code [%d] succeeded after %d retries", operation_code, retry_count);
+        LOG_D("send code [%d] succeeded after %d retries", operation_code,
+              retry_count);
     }
     else
     {
@@ -469,6 +477,10 @@ static int request_pedometer_data(void)
 
 static int notify_system_standby(void)
 {
+    if (gui_app_is_actived(APP_ID_MESSAGE))
+    {
+        gui_app_exit(APP_ID_MESSAGE);
+    }
     data_msg_t msg;
     uint8_t *body;
     rt_err_t err = RT_EOK;
@@ -598,7 +610,8 @@ static int notify_debug_param_update(uint8_t value)
 
 static int control_motor(bool enable, motor_params_t *param)
 {
-    LOG_D("MOTOR control duty_cycle: %d, period: %d, repeat_times: %d", param->duty_cycle, param->period, param->repeat_times);
+    LOG_D("MOTOR control duty_cycle: %d, period: %d, repeat_times: %d",
+          param->duty_cycle, param->period, param->repeat_times);
     data_msg_t msg;
     uint8_t *body;
     rt_err_t err = RT_EOK;
@@ -678,9 +691,11 @@ static int control_rgb_led(watch_sys_rgb_led_params_t *params)
         return -RT_ERROR;
     }
 
-    LOG_D("RGB LED control: enable=%d, R=%d, G=%d, B=%d, brightness=%d, mode=%d, period=%d, repeat=%d",
+    LOG_D("RGB LED control: enable=%d, R=%d, G=%d, B=%d, brightness=%d, "
+          "mode=%d, period=%d, repeat=%d",
           params->enable, params->red, params->green, params->blue,
-          params->brightness, params->animation_mode, params->period_ms, params->repeat_times);
+          params->brightness, params->animation_mode, params->period_ms,
+          params->repeat_times);
 
     data_msg_t msg;
     uint8_t *body;
@@ -725,8 +740,10 @@ static void register_watch_sys_sync_funs(void)
     watch_sys_sync.hr_power_manage = hr_power_manage;
     watch_sys_sync.notify_tap_detected = notify_tap_detected;
     watch_sys_sync.notify_imu_data_collection = notify_imu_data_collection;
-    watch_sys_sync.notify_imu_rawdata_collection = notify_imu_rawdata_collection;
-    watch_sys_sync.notify_calibration_global_attitude = notify_calibration_global_attitude;
+    watch_sys_sync.notify_imu_rawdata_collection =
+        notify_imu_rawdata_collection;
+    watch_sys_sync.notify_calibration_global_attitude =
+        notify_calibration_global_attitude;
     watch_sys_sync.notify_user_profile = notify_user_profile;
     watch_sys_sync.notify_debug_param_update = notify_debug_param_update;
     watch_sys_sync.control_motor = control_motor;
@@ -750,7 +767,8 @@ int SubscribeDualCoreSyncService(void)
 
     if (watch_sys_client_handle != DATA_CLIENT_INVALID_HANDLE)
     {
-        datac_subscribe(watch_sys_client_handle, WATCHSYS_SERVICE_NAME, watch_sys_service_callback, 0);
+        datac_subscribe(watch_sys_client_handle, WATCHSYS_SERVICE_NAME,
+                        watch_sys_service_callback, 0);
         LOG_D("Subscribe DualCoreSyncService\n");
         return 0;
     }
@@ -786,13 +804,15 @@ int UnsubscribeDualCoreSyncService(void)
         }
         else
         {
-            LOG_E("Failed to close DualCoreSyncService handle, error code: %d", result);
+            LOG_E("Failed to close DualCoreSyncService handle, error code: %d",
+                  result);
             return -3;
         }
     }
     else
     {
-        LOG_E("Failed to unsubscribe from DualCoreSyncService, error code: %d", result);
+        LOG_E("Failed to unsubscribe from DualCoreSyncService, error code: %d",
+              result);
         return -2;
     }
 }
