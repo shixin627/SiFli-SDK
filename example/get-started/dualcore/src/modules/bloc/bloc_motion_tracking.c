@@ -106,6 +106,7 @@ typedef struct
 {
     Vector3 sliding_window_accel[ACCEL_WINDOW_SIZE];
     Vector3 sliding_window_gravity[ACCEL_WINDOW_SIZE];
+    uint32_t sliding_window_ppg[ACCEL_WINDOW_SIZE];
     float gyro_sliding_window[GYRO_WINDOW_SIZE];
     uint8_t gyro_count;
     bool if_watchface_visible;
@@ -429,6 +430,11 @@ getTargetWaveformFromSlidingWindow(gesture_dataset_t *dataset,
         targetWave[i].ppg_data = dataset->ppg_data[i];
         targetWave[i].on_pressed = dataset->on_pressed[i];
     }
+    // LOG_D("acc: [%d, %d, %d], gravity: [%d, %d, %d], ppg: %d, on_pressed: %d",
+    //           targetWave[0].x, targetWave[0].y, targetWave[0].z,
+    //           targetWave[0].gravity_x, targetWave[0].gravity_y,
+    //           targetWave[0].gravity_z, targetWave[0].ppg_data,
+    //           targetWave[0].on_pressed);
 }
 
 static void reset_gesture_state(gesture_dataset_t *dataset,
@@ -448,7 +454,7 @@ static void reset_gesture_state(gesture_dataset_t *dataset,
 static uint16_t waveform_rtc_millisecond = 0;
 static void store_gesture_sample(gesture_dataset_t *dataset, time_t ts,
                                  Vector3 *linear_accel, Vector3 *gravity,
-                                 uint16_t ppg_data, bool on_pressed)
+                                 uint32_t ppg_data, bool on_pressed)
 {
     if (dataset->gesture_sample_count < MAX_RAWDATA_TIME_STEP)
     {
@@ -465,18 +471,26 @@ static void store_gesture_sample(gesture_dataset_t *dataset, time_t ts,
         dataset->on_pressed[dataset->gesture_sample_count] = on_pressed;
         dataset->gesture_sample_count++;
     }
+    // LOG_D("acc[%d]: [%0.3f, %0.3f, %0.3f], gravity: [%0.3f, %0.3f, %0.3f], ppg: %d, on_pressed: %d",
+    //           dataset->gesture_sample_count, linear_accel->x, linear_accel->y,
+    //           linear_accel->z, gravity->x, gravity->y, gravity->z, ppg_data,
+    //           on_pressed);
 }
 
 static void fill_realtime_accel_sliding_window(Vector3 *accel, Vector3 *gravity,
+                                               uint32_t ppg,
                                                waveform_gesture_state_t *state)
 {
     for (int i = 0; i < ACCEL_WINDOW_SIZE - 1; i++)
     {
         state->sliding_window_accel[i] = state->sliding_window_accel[i + 1];
         state->sliding_window_gravity[i] = state->sliding_window_gravity[i + 1];
+        state->sliding_window_ppg[i] = state->sliding_window_ppg[i + 1];
     }
     state->sliding_window_accel[ACCEL_WINDOW_SIZE - 1] = *accel;
     state->sliding_window_gravity[ACCEL_WINDOW_SIZE - 1] = *gravity;
+    state->sliding_window_ppg[ACCEL_WINDOW_SIZE - 1] = ppg;
+    // LOG_D("Updated sliding window with ppg: %d",ppg);
 }
 
 static bool check_gyro_threshold(Vector3 *gyro, waveform_gesture_state_t *state)
@@ -719,7 +733,8 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                 int accel_index = ACCEL_WINDOW_SIZE - 1 - feedback_samples + i;
                 store_gesture_sample(
                     dataset, ts, &state->sliding_window_accel[accel_index],
-                    &state->sliding_window_gravity[accel_index], 0,
+                    &state->sliding_window_gravity[accel_index],
+                    state->sliding_window_ppg[accel_index],
                     state->on_pressed);
             }
         }
@@ -756,12 +771,21 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
 /**
  * @brief Process waveform capture - called from motion_tracking_in_hcpu
  */
+static uint8_t get_ppg_count = 0;
 static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
 {
     time_t current_ts = rt_tick_get(); // time(NULL);
     Vector3 *linear_acce = &motion_data->linear_acce;
     Vector3 *gravity = &motion_data->gravity;
-    float ppg_rawdata = 0.0f; // PPG not available on HCPU, use 0
+    if (get_ppg_count == 0)
+    {
+        get_ppg_count = 1;
+    }
+    else
+    {
+        get_ppg_count = 0;
+    }
+    uint32_t ppg_rawdata = motion_data->ppg_raw_data.raw_data[get_ppg_count];
 
     // Update hand position detection
     uint8_t gesture_threshold_factor =
@@ -829,7 +853,7 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     #endif
 
     // Update sliding windows
-    fill_realtime_accel_sliding_window(linear_acce, gravity,
+    fill_realtime_accel_sliding_window(linear_acce, gravity, ppg_rawdata,
                                        &waveform_gesture_state);
     check_gyro_threshold(gyro, &waveform_gesture_state);
 
