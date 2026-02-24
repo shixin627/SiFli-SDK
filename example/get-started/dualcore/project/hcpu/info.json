@@ -1,11 +1,11 @@
 {
-    "version": "1.0.233",
-    "description": "更新飛鼠功能",
+    "version": "1.0.234",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
         "hcpu.bin",
         "lcpu.bin",
         "lcpu_patch.bin"
-    ]
+    ],
+    "description": "修復已知bug"
 }

@@ -7,6 +7,7 @@ Script to automatically update info.json with version and file lists
 import json
 import os
 import re
+import sys
 
 # Get the directory where this script is located
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -109,16 +110,24 @@ def update_info_json():
         print(f"Found {len(watchface_file_list)} files in watchface directory")
 
         # Read existing info.json
+        info_data = {}
         if os.path.exists(INFO_JSON):
-            with open(INFO_JSON, 'r', encoding='utf-8') as f:
-                info_data = json.load(f)
+            try:
+                with open(INFO_JSON, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                    if content:
+                        info_data = json.loads(content)
+            except json.JSONDecodeError:
+                print("Warning: info.json is invalid, creating new one")
         else:
             print("info.json not found, creating new one")
-            info_data = {}
 
         # Update fields
         if version is not None:
             info_data['version'] = version
+
+        if 'description' not in info_data:
+            info_data['description'] = ""
 
         if file_list:
             info_data['fileList'] = file_list
@@ -156,3 +165,5 @@ if __name__ == "__main__":
     else:
         print("Update failed!")
     print("=" * 60)
+
+    sys.exit(0 if success else 1)

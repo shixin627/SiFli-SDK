@@ -96,8 +96,8 @@ def copy_watchface_files():
 
     # Check if jsroot directory exists
     if not os.path.exists(JSROOT_DIR):
-        print_color(f"Error: jsroot directory not found at: {JSROOT_DIR}", "red")
-        return False
+        print_color(f"Warning: jsroot directory not found at: {JSROOT_DIR}, skipping watchface copy.", "yellow")
+        return True
 
     # Create watchface directory if not exists
     print_color("Checking output directory...", "yellow")
