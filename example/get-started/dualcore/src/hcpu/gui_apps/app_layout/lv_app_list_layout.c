@@ -371,7 +371,7 @@ static void update_indicator_dots_position(int input_value)
 
     float base_input = 63.0f;
     float degrees_per_200_input = angle_per_dot;
-    float totlal_input_range = 125 * total_dots;
+    float totlal_input_range = 100 * total_dots;
 
     float offset_angle =
         ((totlal_input_range - (float)input_value) - base_input) /
@@ -495,7 +495,7 @@ static void create_indicator_dots(lv_obj_t *parent)
         p_app_list_layout->indicator_dots[i] = dot;
     }
 
-    update_indicator_dots_position(187);
+    update_indicator_dots_position(150);
 }
 
 // static void create_ai_hint_icon(lv_obj_t *parent)
@@ -857,14 +857,14 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             last_y_diff[i] = y_diff;
             // 計算亮度值：選中時全白(255)，遠離時變暗(最暗到80)
             uint8_t brightness = 0;
-            if (y_diff >= 200)
+            if (y_diff >= 75)
             {
                 brightness = 0; // 最暗的灰色
             }
             else
             {
                 // 從白色(255)漸變到暗灰(80)
-                brightness = 255 - (y_diff * (255 - 0) / 200);
+                brightness = 255 - (y_diff * (255 - 0) / 75);
             }
             // uint8_t zoom;
             // // 讓 zoom 隨 y_diff 線性變化，y_diff 越大 zoom 越小
@@ -897,7 +897,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
     {
         // int target_value = (child_cnt - selected_item_index) * 125 - 63;//+
         // selected_item_y_diff - 63
-        int target_value = child_cnt * 125 + (first_y_diff * 125 / 150) - 63;
+        int target_value = child_cnt * 100 + first_y_diff - 63;
         if (target_value < 0)
         {
             target_value = 0;
@@ -1356,8 +1356,8 @@ static void reset_list(void)
         app_scroll_target_item = find_app_index_by_id(app_id_ai);
     }
     gesture_starting_value =
-        (125 * (ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - scroll_to_index - 1)) +
-        125 / 2; // 保持原值125
+        (100 * (ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - scroll_to_index - 1)) +
+        100 / 2;
 
     selected_item_index = app_scroll_target_item;
     prev_app_scroll_target_item = app_scroll_target_item;

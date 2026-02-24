@@ -198,6 +198,8 @@ static void imu_data_fetch(motion_sensor_data_t *data)
     data->motion.gravity = watch_sensor.motion_data.gravity;
     data->motion.global_q = watch_sensor.motion_data.global_q;
     data->motion.sensor_q = watch_sensor.motion_data.sensor_q;
+    data->motion.ppg_raw_data = watch_sensor.ppg_data;
+    // LOG_D("Fetched PPG data: %d", watch_sensor.ppg_data.raw_data[0]);
 }
 
 /**

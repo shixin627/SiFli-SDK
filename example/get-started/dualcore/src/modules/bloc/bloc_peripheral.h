@@ -37,19 +37,20 @@ extern "C"
 
     typedef struct
     {
+        uint32_t timestamp;
+        uint32_t raw_data[2];
+        uint8_t sample_num;
+    } ppg_sensor_data_t;
+    
+    typedef struct
+    {
         rt_uint32_t timestamp;
         Vector3 linear_acce;
         Vector3 gravity;
         Quaternion global_q;
         Quaternion sensor_q;
+        ppg_sensor_data_t ppg_raw_data;
     } motion_data_t;
-
-    typedef struct
-    {
-        uint32_t timestamp;
-        uint32_t raw_data[2];
-        uint8_t sample_num;
-    } ppg_sensor_data_t;
 
     typedef struct hr_sensor_data
     {
