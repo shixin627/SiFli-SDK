@@ -1535,7 +1535,7 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
             else if (i == MAIN_PAGE_TYPE_LEFT)
             {
                 pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 0, 1,
-                                                LV_DIR_HOR);
+                                                LV_DIR_RIGHT);
             }
             else if (i == MAIN_PAGE_TYPE_UP)
             {

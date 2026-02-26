@@ -517,7 +517,7 @@ void open_skai_widget_ai(bool open)
             // voice_provider.auto_stop_listening();
             // voice_provider.stop_v2t();
             // reset_skai_widget_input_text();
-            set_is_open_app_list_ai(false);
+            // set_is_open_app_list_ai(false);
             set_skai_widget_input_text("");
             lv_obj_update_layout(skai_widget_input_text);
             lv_obj_set_height(skai_widget_input_text_bg, 150);
