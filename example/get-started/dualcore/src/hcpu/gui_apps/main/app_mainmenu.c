@@ -310,11 +310,13 @@ void check_is_at_app_list(void)
             refersh_weather_icon();
             app_list_resume();
             display_status_bar_area(3, false);
+            display_gesture_detect_objs(0, false);
         }
         else
         {
             myLancher[app_index_app_list].reset_list();
             app_list_pause();
+            display_gesture_detect_objs(0, true);
             open_skai_widget_ai(false);
             display_status_bar_area(3, true);
         }
@@ -423,7 +425,7 @@ void check_is_at_mouse_mode(void)
             ble_app_advertising_start(SkaiWatchSys.gap_conn_state ==
                                           GAP_CONN_STATE_DISCONNECTED,
                                       false, false);
-            display_gesture_detect_objs(0, true);
+            // display_gesture_detect_objs(0, true);
             display_status_bar_area(3, true);
             extern void watch_system_mouse_pause(void);
             watch_system_mouse_pause();
@@ -550,7 +552,7 @@ void check_is_at_home(void)
         }
         else
         {
-            if (!_at_mouse_mode)
+            if (!_at_mouse_mode && !_at_app_list)
             {
                 display_gesture_detect_objs(0, true);
             }

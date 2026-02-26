@@ -1814,6 +1814,7 @@ rt_int32_t notification_on_resume(void)
 		// switch_watch_motion_control_mode(true, false);
 		set_open_control_options(true);
 		// set_free_control_with_arm(true);
+		set_paused_control_with_arm(false);
 	}
 	LOG_D("notification_on_resume");
 	lvgl_msg_handler.handle_tap_indicator = press_cb;
