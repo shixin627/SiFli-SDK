@@ -486,10 +486,11 @@ static void listening_shadow_animation(bool start)
 }
 extern bool set_is_open_app_list_ai(bool open);
 void reset_skai_widget_input_text(void);
+static bool prev_open_state = false;
 void open_skai_widget_ai(bool open)
 {
     if (skai_widget_input_text != NULL && skai_widget_input_text_bg != NULL &&
-        lv_obj_is_valid(skai_widget_input_text_bg))
+        lv_obj_is_valid(skai_widget_input_text_bg) && prev_open_state != open)
     {
         if (open)
         {
@@ -522,6 +523,7 @@ void open_skai_widget_ai(bool open)
             lv_obj_update_layout(skai_widget_input_text);
             lv_obj_set_height(skai_widget_input_text_bg, 150);
         }
+        prev_open_state = open;
     }
 }
 
