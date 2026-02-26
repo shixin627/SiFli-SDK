@@ -1459,12 +1459,12 @@ void set_gravity_position(int position)
     {
         // watch_system_interact(INTERACT_MOTOR_VIBRATE_TEST, NULL);
         // animate_to_ai_page();
-        is_ai_open_mic = true;
+        // is_ai_open_mic = true;
         // show_speech_indicator(true);
         // voice_provider.start_v2t();
         // set_is_open_app_list_ai(true);
-        extern void tap_on_ai_widget(void);
-        tap_on_ai_widget();
+        extern void animate_open_ai_widget(void);
+        animate_open_ai_widget();
     }
 #ifdef SHOW_UNGRAB_ENABLE_INDICATOR
     uint8_t app_id = app_id_mainmenu;

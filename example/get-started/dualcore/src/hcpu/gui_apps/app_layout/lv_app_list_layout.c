@@ -139,7 +139,7 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
 #ifdef APP_ID_TIMER
     app_id_timer,
 #endif
-app_id_flashlight,
+    app_id_flashlight,
 #ifdef APP_ID_CALCULATOR
 // app_id_calculator,
 #endif
@@ -1183,6 +1183,19 @@ static void set_ai_bg_opa(void *obj, int32_t opa)
     set_skai_widget_opa(opa);
 }
 
+void animate_open_ai_widget(void)
+{
+    if (!get_bluetooth_connection_status())
+    {
+        create_connection_tips();
+        LOG_D("Bluetooth is connected, ignoring voice recognition event");
+        return;
+    }
+    // animate_to_page(p_app_list_layout->p_app_list_ai_bg, 300);
+    lv_obj_clear_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_tile_id(p_app_list_layout->p_app_list_ai_bg, 0, 0, LV_ANIM_ON);
+}
+
 void tap_on_ai_widget(void)
 {
     if (!get_bluetooth_connection_status())
@@ -1197,16 +1210,15 @@ void tap_on_ai_widget(void)
     //     send_to_ai();
     //     return;
     // }
-    lv_obj_clear_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, p_app_list_layout->p_app_list_ai_bg);
-    lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
-    lv_anim_set_time(&a, 300);
-    lv_anim_set_exec_cb(&a, set_ai_bg_opa);
-    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
-    lv_anim_start(&a);
-
+    // lv_obj_clear_flag(p_app_list_layout->p_app_list_ai_bg,
+    // LV_OBJ_FLAG_HIDDEN); lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a,
+    // p_app_list_layout->p_app_list_ai_bg); lv_anim_set_values(&a,
+    // LV_OPA_TRANSP, LV_OPA_COVER); lv_anim_set_time(&a, 300);
+    // lv_anim_set_exec_cb(&a, set_ai_bg_opa);
+    // lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    // lv_anim_start(&a);
+    set_ai_bg_opa(NULL, LV_OPA_COVER);
+    LOG_D("AI widget opened");
     is_open_app_list_ai = true;
     open_skai_widget_ai(true);
     // animate_to_ai_page();
@@ -1220,9 +1232,10 @@ void tap_on_ai_widget(void)
 
 void close_ai_widget(void)
 {
-    lv_anim_del(p_app_list_layout->p_app_list_ai_bg, set_ai_bg_opa);
-    lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
-    set_skai_widget_opa(0);
+    // lv_anim_del(p_app_list_layout->p_app_list_ai_bg, set_ai_bg_opa);
+    // lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_tile_id(p_app_list_layout->p_app_list_ai_bg, 1, 0, LV_ANIM_ON);
+    // set_skai_widget_opa(0);
     // LOG_I("AI widget closed");
 }
 
@@ -1605,11 +1618,77 @@ void stop_indicator_dots_animation_test(void)
 extern void set_ai_open_mic(bool is_open);
 static void logo_click_event_cb(lv_event_t *evt)
 {
-    set_ai_open_mic(true);
-    extern void tap_on_ai_widget(void);
-    tap_on_ai_widget();
+    // set_ai_open_mic(true);
+    // extern void tap_on_ai_widget(void);
+    // tap_on_ai_widget();
+    if (!isTextEmpty())
+        tap_on_ai_hint();
+}
+static void ai_bar_event_cb(lv_event_t *evt)
+{
+    if (evt->code == LV_EVENT_PRESSED)
+    {
+        if (!get_bluetooth_connection_status())
+        {
+            create_connection_tips();
+            LOG_D("Bluetooth is connected, ignoring voice recognition event");
+            return;
+        }
+        lv_obj_clear_flag(p_app_list_layout->p_app_list_ai_bg,
+                          LV_OBJ_FLAG_HIDDEN);
+    }
+}
+static uint16_t ai_bg_opa = 240;
+static void ai_tileview_event_cb(lv_event_t *evt)
+{
+    lv_obj_t *obj = lv_event_get_target(evt);
+    switch (evt->code)
+    {
+    case LV_EVENT_SCROLL:
+    {
+        uint16_t ai_scroll_x =
+            (466 - lv_obj_get_scroll_x(obj)) * ai_bg_opa / 350;
+        uint8_t calculated_opa =
+            (ai_scroll_x > ai_bg_opa) ? ai_bg_opa : ai_scroll_x;
+        lv_obj_set_style_bg_opa(p_app_list_layout->p_app_list_ai_bg,
+                                calculated_opa, 0);
+        break;
+    }
+    case LV_EVENT_VALUE_CHANGED:
+    {
+        lv_coord_t scroll_x = lv_obj_get_scroll_x(obj);
+        if (abs(scroll_x) % 466 != 0)
+        {
+            break;
+        }
+        rt_uint32_t active_pos = (rt_uint32_t)lv_event_get_param(evt);
+        if (active_pos == 0)
+        {
+            // is_open_app_list_ai = false;
+            set_ai_open_mic(false);
+            // show_speech_indicator(false);
+            // voice_provider.stop_v2t();
+            // close_ai_widget();
+            lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg,
+                            LV_OBJ_FLAG_HIDDEN);
+        }
+        else if (active_pos == 1)
+        {
+            set_ai_open_mic(true);
+            tap_on_ai_widget();
+        }
+        else
+        {
+            LOG_W("Unknown tileview position: %d", active_pos);
+        }
+        break;
+    }
+    default:
+        break;
+    }
 }
 
+static lv_obj_t *ai_tileview = NULL;
 lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
 {
     // 檢查是否已經分配，如果是則先釋放
@@ -1765,29 +1844,56 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     // 創建指示點
     create_indicator_dots(p_app_list_bg);
 
-    // create_ai_hint_icon(p_app_list_bg);
-    p_app_list_layout->p_app_list_ai_bg = lv_obj_create(p_app_list_bg);
-    lv_obj_set_size(p_app_list_layout->p_app_list_ai_bg, 466, 466);
+    lv_obj_t *ai_bar = lv_obj_create(p_app_list_bg);
+    lv_obj_set_size(ai_bar, 80, LV_VER_RES);
+    lv_obj_align(ai_bar, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_bg_color(ai_bar, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(ai_bar, 0, 0);
+    lv_obj_add_event_cb(ai_bar, ai_bar_event_cb, LV_EVENT_ALL, NULL);
+    // lv_obj_add_flag(ai_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_clear_flag(ai_bar, LV_OBJ_FLAG_PRESS_LOCK);
+
+    p_app_list_layout->p_app_list_ai_bg = lv_tileview_create(p_app_list_bg);
+    lv_obj_set_scrollbar_mode(p_app_list_layout->p_app_list_ai_bg,
+                              LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_size(p_app_list_layout->p_app_list_ai_bg, LV_HOR_RES,
+                    LV_VER_RES);
+    lv_obj_set_style_bg_opa(p_app_list_layout->p_app_list_ai_bg, LV_OPA_0, 0);
     lv_obj_align(p_app_list_layout->p_app_list_ai_bg, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(p_app_list_layout->p_app_list_ai_bg,
-                              lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(p_app_list_layout->p_app_list_ai_bg, 240, 0);
-    extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
-    lv_obj_t *skai_widget =
-        lv_skai_widget_builder(p_app_list_layout->p_app_list_ai_bg);
-    lv_obj_align(skai_widget, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_t *home_page = lv_tileview_add_tile(
+        p_app_list_layout->p_app_list_ai_bg, 1, 0, LV_DIR_HOR);
+    lv_obj_set_size(home_page, LV_HOR_RES, LV_VER_RES);
+    // lv_obj_set_style_bg_color(home_page, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_opa(home_page, LV_OPA_0, 0);
+    lv_obj_t *ai_page = lv_tileview_add_tile(
+        p_app_list_layout->p_app_list_ai_bg, 0, 0, LV_DIR_HOR);
+    lv_obj_set_size(ai_page, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_bg_opa(ai_page, LV_OPA_0, 0);
+    lv_obj_set_tile_id(p_app_list_layout->p_app_list_ai_bg, 1, 0, LV_ANIM_OFF);
+    lv_obj_add_event_cb(p_app_list_layout->p_app_list_ai_bg,
+                        ai_tileview_event_cb, LV_EVENT_ALL, NULL);
     lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
 
-    // lv_obj_t *ai_hint = lv_img_create(p_app_list_bg);
-    // lv_obj_set_size(ai_hint, 80, 80);
-    // lv_img_set_src(ai_hint, IMG_LOGO);
-    // lv_obj_align(ai_hint, LV_ALIGN_BOTTOM_MID, 0, 0);
-    // lv_obj_t *ai_hint_btn = lv_obj_create(ai_hint);
-    // lv_obj_set_size(ai_hint_btn, 80, 80);
-    // lv_obj_set_style_bg_opa(ai_hint_btn, LV_OPA_TRANSP, 0);
-    // lv_obj_add_event_cb(ai_hint_btn, logo_click_event_cb, LV_EVENT_CLICKED,
-    //                     NULL);
-    // lv_obj_align(ai_hint_btn, LV_ALIGN_CENTER, 0, 0);
+    // create_ai_hint_icon(p_app_list_bg);
+    // p_app_list_layout->p_app_list_ai_bg = lv_obj_create(ai_page);
+    // lv_obj_set_size(p_app_list_layout->p_app_list_ai_bg, 466, 466);
+    // lv_obj_align(p_app_list_layout->p_app_list_ai_bg, LV_ALIGN_CENTER, 0, 0);
+    // lv_obj_set_style_bg_color(p_app_list_layout->p_app_list_ai_bg,
+    //                           lv_color_hex(0x000000), 0);
+    // lv_obj_set_style_bg_opa(p_app_list_layout->p_app_list_ai_bg, 240, 0);
+    extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
+    lv_obj_t *skai_widget = lv_skai_widget_builder(ai_page);
+    lv_obj_align(skai_widget, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_t *ai_hint = lv_img_create(ai_page);
+    lv_obj_set_size(ai_hint, 80, 80);
+    lv_img_set_src(ai_hint, IMG_LOGO);
+    lv_obj_align(ai_hint, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_t *ai_hint_btn = lv_obj_create(ai_hint);
+    lv_obj_set_size(ai_hint_btn, 80, 80);
+    lv_obj_set_style_bg_opa(ai_hint_btn, LV_OPA_TRANSP, 0);
+    lv_obj_add_event_cb(ai_hint_btn, logo_click_event_cb, LV_EVENT_CLICKED,
+                        NULL);
+    lv_obj_align(ai_hint_btn, LV_ALIGN_CENTER, 0, 0);
 
     // 創建可移動範圍圓弧線
     // create_movable_range_arc(p_app_list_bg);
