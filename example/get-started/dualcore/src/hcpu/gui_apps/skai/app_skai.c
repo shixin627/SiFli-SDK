@@ -544,13 +544,10 @@ void back_on_skai_widget(void)
         else if (get_is_open_app_list_ai())
         {
             // animate_to_home_from_notification_center();
-            voice_provider.stop_v2t();
+            
             extern void close_ai_widget(void);
             close_ai_widget();
-            stop_voice_recognition(V2T_INTENT_NOTHING);
-            set_is_open_app_list_ai(false);
-            open_skai_widget_ai(false);
-            set_paused_control_with_arm(false);
+            
         }
         else
         {

@@ -1665,6 +1665,11 @@ static void ai_tileview_event_cb(lv_event_t *evt)
         if (active_pos == 0)
         {
             // is_open_app_list_ai = false;
+            voice_provider.stop_v2t();
+            stop_voice_recognition(V2T_INTENT_NOTHING);
+            set_is_open_app_list_ai(false);
+            open_skai_widget_ai(false);
+            set_paused_control_with_arm(false);
             set_ai_open_mic(false);
             // show_speech_indicator(false);
             // voice_provider.stop_v2t();
