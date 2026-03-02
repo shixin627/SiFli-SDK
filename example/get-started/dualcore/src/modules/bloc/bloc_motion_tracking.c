@@ -430,7 +430,8 @@ getTargetWaveformFromSlidingWindow(gesture_dataset_t *dataset,
         targetWave[i].ppg_data = dataset->ppg_data[i];
         targetWave[i].on_pressed = dataset->on_pressed[i];
     }
-    // LOG_D("acc: [%d, %d, %d], gravity: [%d, %d, %d], ppg: %d, on_pressed: %d",
+    // LOG_D("acc: [%d, %d, %d], gravity: [%d, %d, %d], ppg: %d, on_pressed:
+    // %d",
     //           targetWave[0].x, targetWave[0].y, targetWave[0].z,
     //           targetWave[0].gravity_x, targetWave[0].gravity_y,
     //           targetWave[0].gravity_z, targetWave[0].ppg_data,
@@ -471,10 +472,11 @@ static void store_gesture_sample(gesture_dataset_t *dataset, time_t ts,
         dataset->on_pressed[dataset->gesture_sample_count] = on_pressed;
         dataset->gesture_sample_count++;
     }
-    // LOG_D("acc[%d]: [%0.3f, %0.3f, %0.3f], gravity: [%0.3f, %0.3f, %0.3f], ppg: %d, on_pressed: %d",
-    //           dataset->gesture_sample_count, linear_accel->x, linear_accel->y,
-    //           linear_accel->z, gravity->x, gravity->y, gravity->z, ppg_data,
-    //           on_pressed);
+    // LOG_D("acc[%d]: [%0.3f, %0.3f, %0.3f], gravity: [%0.3f, %0.3f, %0.3f],
+    // ppg: %d, on_pressed: %d",
+    //           dataset->gesture_sample_count, linear_accel->x,
+    //           linear_accel->y, linear_accel->z, gravity->x, gravity->y,
+    //           gravity->z, ppg_data, on_pressed);
 }
 
 static void fill_realtime_accel_sliding_window(Vector3 *accel, Vector3 *gravity,
@@ -734,8 +736,7 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                 store_gesture_sample(
                     dataset, ts, &state->sliding_window_accel[accel_index],
                     &state->sliding_window_gravity[accel_index],
-                    state->sliding_window_ppg[accel_index],
-                    state->on_pressed);
+                    state->sliding_window_ppg[accel_index], state->on_pressed);
             }
         }
     }
@@ -1107,12 +1108,12 @@ static void report_air_mouse_data(air_plane_delta_movement_t *movement,
 extern bool app_hid_mouse_movement_lock(void);
 static uint8_t log_count = 0;
 
-// DPS to rad/s conversion factor (PI / 180)
-#define DPS_TO_RADS 0.01745329f
-// Default mouse sensitivity (matching GyroService)
-#define AIR_MOUSE_SENSITIVITY 20.0f
-// 移動鎖：觸碰面板後累積移動量超過此閾值才解鎖
-#define GYRO_MOVE_CANCEL_THRESHOLD 30.0f
+    // DPS to rad/s conversion factor (PI / 180)
+    #define DPS_TO_RADS 0.01745329f
+    // Default mouse sensitivity (matching GyroService)
+    #define AIR_MOUSE_SENSITIVITY 20.0f
+    // 移動鎖：觸碰面板後累積移動量超過此閾值才解鎖
+    #define GYRO_MOVE_CANCEL_THRESHOLD 30.0f
 
 static bool mouse_movement_lock = false;
 static float gyro_movement_distance = 0.0f;
@@ -1738,15 +1739,16 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                 if (free_control_with_arm() &&
                     !is_at_ai_interface()) //&& !is_user_touching_screen()
                 {
+                    //上下
                     float diff_delta_roll =
                         fabs(delta_senor_angle.roll - prev_delta_roll);
+                    //左右
                     float diff_delta_yaw =
                         fabs(delta_senor_angle.yaw - prev_delta_yaw);
                     // navigation_bar_control_with_gyro(&watch_sensor.imu_data.gyro);
                     // LOG_D("watch_sensor.imu_data.gyro
-                    // x:%0.5f,y:%0.5f,z:%0.5f", watch_sensor.imu_data.gyro.x,
-                    // watch_sensor.imu_data.gyro.y,
-                    // watch_sensor.imu_data.gyro.z);
+                    // x:%0.5f,y:%0.5f,z:%0.5f",
+                    // watch_sensor.imu_data.gyro.x,watch_sensor.imu_data.gyro.y,watch_sensor.imu_data.gyro.z);
                     if (!paused_control_with_arm) //&&
                                                   // fabs(watch_sensor.imu_data.gyro.x)
                                                   //< 20
@@ -1755,11 +1757,17 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                         if (!get_enable_tap_and_hold() ||
                             peripheral_provider.get_tap_status())
                         {
-                            if (diff_delta_roll < diff_delta_yaw * 0.8)
+                            if (diff_delta_roll < diff_delta_yaw * 0.8 && diff_delta_roll < 0.1f)
                             {
                                 navigation_bar_control_with_euler_angle(
                                     &delta_senor_angle, motion_data);
                             }
+                            else
+                            {
+                                set_prev_sensor_quat(total_yaw_energy_uint);
+                            }
+
+                            
                         }
                     }
                     else
