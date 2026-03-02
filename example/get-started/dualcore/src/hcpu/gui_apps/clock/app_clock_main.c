@@ -915,7 +915,7 @@ void refersh_weather_icon(void)
                    weather_icon_get(get_weather_data->description));
 }
 
-static void refersh_battery(uint8_t battery_level)
+void refersh_battery(uint8_t battery_level)
 {
     char battery_str[5];
     rt_snprintf(battery_str, 5, "%d%%", battery_level);
