@@ -73,7 +73,6 @@
 #include <rtdbg.h>
 
 /* Configuration */
-#define USE_LV_TIMER
 
 /* External image declarations */
 LV_IMG_DECLARE(icon_mic);
@@ -860,82 +859,52 @@ void reset_lvgl_msg_handler(void)
     lvgl_msg_handler.handle_tap_indicator = NULL;
 }
 
-/* ============== Task Entry Functions ============== */
-
-#ifndef USE_LV_TIMER
-/**
- * @brief LVGL task entry function for thread-based message processing
- *
- * Creates a message queue and continuously processes LVGL messages
- * in a dedicated thread.
- *
- * @param param Thread parameter (unused)
- */
-static void lvgl_task(void *param)
-{
-    lvgl_msg_t msg;
-    lvgl_mq = rt_mq_create("lvgl_mq", sizeof(lvgl_msg_t), 10, RT_IPC_FLAG_FIFO);
-
-    while (1)
-    {
-        if (rt_mq_recv(lvgl_mq, &msg, sizeof(lvgl_msg_t), RT_WAITING_FOREVER) ==
-            RT_EOK)
-        {
-            process_lvgl_message(&msg);
-        }
-    }
-}
-#else
-/**
- * @brief UI refresh task entry function for timer-based message processing
- *
- * Processes LVGL messages from the queue using LVGL timer system.
- * This function is called periodically by the LVGL timer.
- *
- * @param task LVGL timer task pointer
- */
-static void ui_refresh_task_entry(struct _lv_timer_t *task)
-{
-    lvgl_msg_t msg;
-    while (rt_mq_recv(lvgl_mq, &msg, sizeof(lvgl_msg_t), RT_WAITING_NO) ==
-           RT_EOK)
-    {
-        process_lvgl_message(&msg);
-    }
-}
-#endif
-
 /* ============== Initialization and Public Functions ============== */
 
-/* Thread configuration */
-#define THREAD_STACK_SIZE 14 * 256
-#define THREAD_PRIORITY 9
-#define THREAD_TIMESLICE 20
-
 /**
- * @brief Initialize the LVGL task and message queue
- *
- * Sets up the message queue and either creates a dedicated thread
- * or LVGL timer for message processing based on configuration.
+ * @brief Initialize the LVGL message queue
  *
  * @return int RT_EOK on success
  */
 int lvgl_task_init(void)
 {
-#ifdef USE_LV_TIMER
     lvgl_mq = rt_mq_create("lvgl_mq", sizeof(lvgl_msg_t), 10, RT_IPC_FLAG_FIFO);
-    lv_timer_create(ui_refresh_task_entry, 16, 0);
-#else
-    rt_thread_t tid =
-        rt_thread_create("lvgl_task", lvgl_task, RT_NULL, THREAD_STACK_SIZE,
-                         THREAD_PRIORITY, THREAD_TIMESLICE);
-    if (tid != RT_NULL)
-    {
-        rt_thread_startup(tid);
-    }
-#endif
     return RT_EOK;
 }
+INIT_APP_EXPORT(lvgl_task_init);
+
+/**
+ * @brief Drain and process all pending messages from the LVGL message queue
+ *
+ * Should be called from the main LVGL thread loop (app_watch_entry)
+ * to ensure all UI operations execute on the LVGL thread.
+ */
+// static void ui_refresh_task_entry(struct _lv_timer_t *task)
+void lvgl_drain_messages(void)
+{
+    lvgl_msg_t msg;
+    while (rt_mq_recv(lvgl_mq, &msg, sizeof(lvgl_msg_t), RT_WAITING_NO) == RT_EOK)
+    {
+        process_lvgl_message(&msg);
+    }
+}
+
+// int lvgl_task_init(void)
+// {
+// #ifdef USE_LV_TIMER
+//     lvgl_mq = rt_mq_create("lvgl_mq", sizeof(lvgl_msg_t), 10, RT_IPC_FLAG_FIFO);
+//     lv_timer_create(ui_refresh_task_entry, 16, 0);
+// #else
+//     rt_thread_t tid =
+//         rt_thread_create("lvgl_task", lvgl_task, RT_NULL, THREAD_STACK_SIZE,
+//                          THREAD_PRIORITY, THREAD_TIMESLICE);
+//     if (tid != RT_NULL)
+//     {
+//         rt_thread_startup(tid);
+//     }
+// #endif
+//     return RT_EOK;
+// }
 // INIT_APP_EXPORT(lvgl_task_init);
 
 /**
@@ -948,8 +917,8 @@ int lvgl_task_init(void)
  */
 void lvgl_send_msg(lvgl_msg_t msg)
 {
-    // rt_mq_send(lvgl_mq, &msg, sizeof(lvgl_msg_t));
-    process_lvgl_message(&msg);
+    rt_mq_send(lvgl_mq, &msg, sizeof(lvgl_msg_t));
+    // process_lvgl_message(&msg);
 }
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF

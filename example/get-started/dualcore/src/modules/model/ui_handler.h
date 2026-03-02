@@ -361,6 +361,7 @@ extern "C"
 
     extern lvgl_msg_handler_t lvgl_msg_handler;
     extern void lvgl_send_msg(lvgl_msg_t msg);
+    extern void lvgl_drain_messages(void);
     extern rt_tick_t get_last_refresh_tick(void);
 
     extern app_gesture_indicator_t *gui_app_get_gesture_indicator(void);
