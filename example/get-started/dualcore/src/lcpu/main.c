@@ -16,7 +16,9 @@
 #include "stdio.h"
 #include "string.h"
 #include "drivers/rt_drv_pwm.h"
+#if defined(RGB_SK6812MINI_HS_ENABLE)
 #include "drv_rgbled.h"
+#endif
 #include "bloc_rgb_led.h"
 #include "bloc_battery.h"
 #ifdef BSP_KEY1_ACTIVE_HIGH
@@ -87,11 +89,11 @@ static void init_pin(void)
 {
 #if (BSP_KEY1_PIN >= GPIO1_PIN_NUM)
     button_cfg_t cfg;
-#if defined(BSP_USING_PM)
+    #if defined(BSP_USING_PM)
     int8_t wakeup_pin;
     uint16_t gpio_pin;
     GPIO_TypeDef *gpio;
-#endif /* BSP_USING_PM */
+    #endif /* BSP_USING_PM */
 
     cfg.pin = BSP_KEY1_PIN;
     cfg.active_state = BUTTON_ACTIVE_POL;
@@ -102,7 +104,7 @@ static void init_pin(void)
     RT_ASSERT(SF_EOK == button_enable(id));
     key1_button_handle = id;
 
-#if defined(BSP_USING_PM)
+    #if defined(BSP_USING_PM)
     gpio = GET_GPIO_INSTANCE(BSP_KEY1_PIN);
     gpio_pin = GET_GPIOx_PIN(BSP_KEY1_PIN);
 
@@ -110,7 +112,7 @@ static void init_pin(void)
     RT_ASSERT(wakeup_pin >= 0);
 
     pm_enable_pin_wakeup(wakeup_pin, AON_PIN_MODE_DOUBLE_EDGE);
-#endif /* BSP_USING_PM */
+    #endif /* BSP_USING_PM */
 
 #endif /* BSP_KEY1_PIN < GPIO1_PIN_NUM */
 }
@@ -171,8 +173,10 @@ int main(void)
     // init_pin();
     if (HAL_LXT_DISABLED())
     {
-        rc10k_time_handle  = rt_timer_create("rc10", rc10k_timeout_handler,  NULL,
-                                             rt_tick_from_millisecond(15 * 1000), RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER); // 15s
+        rc10k_time_handle = rt_timer_create(
+            "rc10", rc10k_timeout_handler, NULL,
+            rt_tick_from_millisecond(15 * 1000),
+            RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER); // 15s
         RT_ASSERT(rc10k_time_handle);
         rt_timer_start(rc10k_time_handle);
     }
@@ -199,11 +203,12 @@ int main(void)
     while (1)
     {
         // rt_err_t result = rt_event_recv(main_event, MAIN_EVENT_ALL,
-        //                                 RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
+        //                                 RT_EVENT_FLAG_OR |
+        //                                 RT_EVENT_FLAG_CLEAR,
         //                                 RT_WAITING_FOREVER, &recv_set);
-        rt_err_t result = rt_event_recv(main_event, MAIN_EVENT_ALL,
-                                       RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
-                                       rt_tick_from_millisecond(30), &recv_set);
+        rt_err_t result = rt_event_recv(
+            main_event, MAIN_EVENT_ALL, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
+            rt_tick_from_millisecond(30), &recv_set);
 
         if (result == RT_EOK)
         {
@@ -239,12 +244,16 @@ int main(void)
         }
         else
         {
-            if (battery_get_charge_state()->is_plugged) // && battery_get_charge_state()->charge_percent > 10
+#if defined(RGB_SK6812MINI_HS_ENABLE)
+            if (battery_get_charge_state()->is_plugged) // &&
+                                                        // battery_get_charge_state()->charge_percent
+                                                        // > 10
             {
-                rgb_fade_cycle_base_on_battery_level(battery_get_charge_state()->charge_percent);
+                rgb_fade_cycle_base_on_battery_level(
+                    battery_get_charge_state()->charge_percent);
             }
+#endif
         }
     }
     return RT_EOK;
 }
-

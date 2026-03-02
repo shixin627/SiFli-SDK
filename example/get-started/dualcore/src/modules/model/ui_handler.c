@@ -936,7 +936,7 @@ int lvgl_task_init(void)
 #endif
     return RT_EOK;
 }
-INIT_APP_EXPORT(lvgl_task_init);
+// INIT_APP_EXPORT(lvgl_task_init);
 
 /**
  * @brief Send a message to the LVGL message queue
@@ -948,7 +948,8 @@ INIT_APP_EXPORT(lvgl_task_init);
  */
 void lvgl_send_msg(lvgl_msg_t msg)
 {
-    rt_mq_send(lvgl_mq, &msg, sizeof(lvgl_msg_t));
+    // rt_mq_send(lvgl_mq, &msg, sizeof(lvgl_msg_t));
+    process_lvgl_message(&msg);
 }
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF

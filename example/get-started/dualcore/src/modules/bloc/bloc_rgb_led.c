@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-
+#if defined(RGB_SK6812MINI_HS_ENABLE)
 #include "rtthread.h"
 #include "bf0_hal.h"
 #include "drv_io.h"
@@ -18,7 +18,7 @@
 #define DBG_LVL DBG_WARNING
 #include "rtdbg.h"
 
-#if defined(RGB_SK6812MINI_HS_ENABLE)
+
     #define RGB_COLOR (0x00ff00)
     #define RGBLED_NAME "rgbled"
 

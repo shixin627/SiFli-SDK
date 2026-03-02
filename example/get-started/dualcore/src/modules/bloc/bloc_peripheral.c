@@ -758,8 +758,7 @@ void process_ppg_sensor_data(uint8_t sample_num, uint32_t *data,
         memcpy(watch_sensor.ppg_data2.raw_data, data2,
                sample_num * sizeof(uint32_t));
     }
-    // LOG_I("[T:%d]ppg_data_fetch: %d, %d", watch_sensor.ppg_data.timestamp,
-    // watch_sensor.ppg_data.raw_data[0], watch_sensor.ppg_data2.raw_data[0]);
+
     // Only trigger the semaphore if not in sleep mode
     if (!is_sleep_mode())
     {

@@ -645,11 +645,12 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
                   params.enable, params.red, params.green, params.blue,
                   params.brightness, params.animation_mode, params.period_ms,
                   params.repeat_times);
-
+#if defined(RGB_SK6812MINI_HS_ENABLE)
             bloc_peripheral_control_rgb_led(
                 params.enable, params.red, params.green, params.blue,
                 params.brightness, params.animation_mode, params.period_ms,
                 params.repeat_times);
+#endif
             break;
         }
 
