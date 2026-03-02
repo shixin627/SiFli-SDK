@@ -790,7 +790,7 @@ static void bloc_notify_hr(int hr)
 
 static void bloc_notify_battery_voltage(uint16_t voltage)
 {
-    LOG_D("bloc_notify_battery_voltage:%d", voltage);
+    LOG_I("bloc_notify_battery_voltage:%d", voltage);
     lvgl_msg_t msg;
     msg.type = LVGL_MSG_TYPE_BATTERY_VOLTAGE;
     msg.data.battery_voltage = voltage;
@@ -804,11 +804,13 @@ static void bloc_notify_battery_voltage(uint16_t voltage)
 
 static void bloc_notify_battery_level(uint8_t level)
 {
-    LOG_D("bloc_notify_battery_level:%d", level);
-    lvgl_msg_t msg;
-    msg.type = LVGL_MSG_TYPE_BATTERY_LEVEL;
-    msg.data.battery_level = level;
-    lvgl_send_msg(msg);
+    LOG_I("bloc_notify_battery_level:%d", level);
+    // lvgl_msg_t msg;
+    // msg.type = LVGL_MSG_TYPE_BATTERY_LEVEL;
+    // msg.data.battery_level = level;
+    // lvgl_send_msg(msg);
+    extern void refersh_battery(uint8_t battery_level);
+    refersh_battery(level);
 
     L1SendData data;
     data.event = L1SEND_RETURN_BATTERY_LEVEL;
