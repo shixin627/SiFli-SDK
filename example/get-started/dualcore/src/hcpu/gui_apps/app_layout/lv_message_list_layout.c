@@ -1449,6 +1449,14 @@ extern void media_widget_trigger_drag_by_py(int p_y);
 static void button_selection(gesture_position_t gesture_position)
 {
 	const int p_y = gesture_position.gesture_position_y;
+	if (abs(p_y - 233) < 50)
+	{
+		set_paused_control_with_arm(false);
+	}
+	else
+	{
+		set_paused_control_with_arm(true);
+	}
 	prev_y = p_y;
 // 首先處理 p_y 觸發的拖拽動作
 // LOG_D("button_selection p_y: %d,%d", p_y, is_at_media_widget);

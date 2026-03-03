@@ -1757,16 +1757,11 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                         if (!get_enable_tap_and_hold() ||
                             peripheral_provider.get_tap_status())
                         {
-                            if (diff_delta_roll < diff_delta_yaw * 0.8 && diff_delta_roll < 0.1f)
+                            // if (diff_delta_roll < diff_delta_yaw)// diff_delta_roll < diff_delta_yaw * 0.8 && diff_delta_roll < 0.3f
                             {
                                 navigation_bar_control_with_euler_angle(
                                     &delta_senor_angle, motion_data);
                             }
-                            else
-                            {
-                                set_prev_sensor_quat(total_yaw_energy_uint);
-                            }
-
                             
                         }
                     }
