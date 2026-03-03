@@ -406,6 +406,7 @@ static double total_acceleration_magnitude(double x, double y, double z)
 /**
  * @brief Converts sliding window acceleration data to target waveform
  */
+static bool check_ppg_error = false;
 static void
 getTargetWaveformFromSlidingWindow(gesture_dataset_t *dataset,
                                    watch_sys_linear_acce_t *targetWave,
@@ -430,12 +431,42 @@ getTargetWaveformFromSlidingWindow(gesture_dataset_t *dataset,
         targetWave[i].ppg_data = dataset->ppg_data[i];
         targetWave[i].on_pressed = dataset->on_pressed[i];
     }
-    // LOG_D("acc: [%d, %d, %d], gravity: [%d, %d, %d], ppg: %d, on_pressed:
-    // %d",
-    //           targetWave[0].x, targetWave[0].y, targetWave[0].z,
-    //           targetWave[0].gravity_x, targetWave[0].gravity_y,
-    //           targetWave[0].gravity_z, targetWave[0].ppg_data,
-    //           targetWave[0].on_pressed);
+
+    // Check if PPG data is stuck alternating between only two values
+    if (sample_len >= 4)
+    {
+        uint16_t val_a = dataset->ppg_data[0];
+        uint16_t val_b = val_a;
+        bool found_second = false;
+        bool is_stuck = true;
+
+        for (uint8_t i = 1; i < sample_len; i++)
+        {
+            uint16_t v = dataset->ppg_data[i];
+            if (!found_second && v != val_a)
+            {
+                val_b = v;
+                found_second = true;
+            }
+            else if (v != val_a && v != val_b)
+            {
+                is_stuck = false;
+                break;
+            }
+        }
+
+        if (is_stuck && found_second)
+        {
+            // LOG_D("PPG stuck: alternating between %d and %d (%d samples)",
+            //       val_a, val_b, sample_len);
+            check_ppg_error = true;
+        }
+        else
+        {
+            // LOG_D("PPG data looks good");
+            check_ppg_error = false;
+        }
+    }
 }
 
 static void reset_gesture_state(gesture_dataset_t *dataset,
@@ -761,8 +792,11 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                 getTargetWaveformFromSlidingWindow(dataset, targetWave_algo,
                                                    target_samples);
                 // Directly notify gesture recognition task on HCPU
-                notify_gesture_dataset_hcpu(rt_tick_get(), target_samples,
-                                            targetWave_algo);
+                if (!check_ppg_error)
+                {
+                    notify_gesture_dataset_hcpu(rt_tick_get(), target_samples,
+                                                targetWave_algo);
+                }
             }
             reset_gesture_state(dataset, current_time - cooldown_period, 7);
         }
@@ -838,15 +872,18 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
         {
             getTargetWaveformFromSlidingWindow(
                 &release_dataset, targetWave_algo, MAX_RAWDATA_TIME_STEP);
-            packMatrixToBuffer(gsensorSamplesBuffer, targetWave_algo, NULL,
-                               release_dataset.gesture_sample_count);
-            sensor_buf_t buffer_info = {
-                .data = gsensorSamplesBuffer,
-                .length =
-                    release_dataset.gesture_sample_count * BYTES_PER_SAMPLE};
-            L1SendData data = {.event = L1SEND_LINEAR_ACCE_BUFFER,
-                               .res.imu_data = buffer_info};
-            L1_send_event(data);
+            if (!check_ppg_error)
+            {
+                packMatrixToBuffer(gsensorSamplesBuffer, targetWave_algo, NULL,
+                                   release_dataset.gesture_sample_count);
+                sensor_buf_t buffer_info = {
+                    .data = gsensorSamplesBuffer,
+                    .length = release_dataset.gesture_sample_count *
+                              BYTES_PER_SAMPLE};
+                L1SendData data = {.event = L1SEND_LINEAR_ACCE_BUFFER,
+                                   .res.imu_data = buffer_info};
+                L1_send_event(data);
+            }
             release_dataset.gesture_sample_count = 0;
         }
         return;
@@ -1739,10 +1776,10 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                 if (free_control_with_arm() &&
                     !is_at_ai_interface()) //&& !is_user_touching_screen()
                 {
-                    //上下
+                    // 上下
                     float diff_delta_roll =
                         fabs(delta_senor_angle.roll - prev_delta_roll);
-                    //左右
+                    // 左右
                     float diff_delta_yaw =
                         fabs(delta_senor_angle.yaw - prev_delta_yaw);
                     // navigation_bar_control_with_gyro(&watch_sensor.imu_data.gyro);
@@ -1757,12 +1794,13 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                         if (!get_enable_tap_and_hold() ||
                             peripheral_provider.get_tap_status())
                         {
-                            // if (diff_delta_roll < diff_delta_yaw)// diff_delta_roll < diff_delta_yaw * 0.8 && diff_delta_roll < 0.3f
+                            // if (diff_delta_roll < diff_delta_yaw)//
+                            // diff_delta_roll < diff_delta_yaw * 0.8 &&
+                            // diff_delta_roll < 0.3f
                             {
                                 navigation_bar_control_with_euler_angle(
                                     &delta_senor_angle, motion_data);
                             }
-                            
                         }
                     }
                     else
