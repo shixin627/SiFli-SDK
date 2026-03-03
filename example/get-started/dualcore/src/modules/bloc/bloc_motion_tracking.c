@@ -792,7 +792,7 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                 getTargetWaveformFromSlidingWindow(dataset, targetWave_algo,
                                                    target_samples);
                 // Directly notify gesture recognition task on HCPU
-                if (!check_ppg_error)
+                // if (!check_ppg_error)
                 {
                     notify_gesture_dataset_hcpu(rt_tick_get(), target_samples,
                                                 targetWave_algo);

@@ -24,7 +24,7 @@ limitations under the License.
 #define kTargetHz 100.0f
 
 // What gestures are supported.
-#define kGestureCount 2
+#define kGestureCount 3
 
 #define kReleaseGesture 1
 #define kGrabGesture 4
