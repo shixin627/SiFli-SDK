@@ -1,5 +1,5 @@
 {
-    "version": "1.0.234",
+    "version": "1.0.243",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
@@ -7,5 +7,5 @@
         "lcpu.bin",
         "lcpu_patch.bin"
     ],
-    "description": "修復已知bug"
+    "description": "共用手勢模型"
 }
