@@ -473,7 +473,7 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
             acce_set_power(RT_SENSOR_POWER_LOW);
             if (!battery_get_charge_state()->is_plugged)
             {
-                main_send_rgb_stop_event();
+                // main_send_rgb_stop_event();
             }
         }
         break;

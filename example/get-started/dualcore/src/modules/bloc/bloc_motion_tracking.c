@@ -872,7 +872,7 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
         {
             getTargetWaveformFromSlidingWindow(
                 &release_dataset, targetWave_algo, MAX_RAWDATA_TIME_STEP);
-            if (!check_ppg_error)
+            // if (!check_ppg_error)
             {
                 packMatrixToBuffer(gsensorSamplesBuffer, targetWave_algo, NULL,
                                    release_dataset.gesture_sample_count);
