@@ -183,7 +183,8 @@ void BSP_PIN_Init(void)
 #if defined(RGB_SK6812MINI_HS_ENABLE)
     HAL_PIN_Set(PAD_PB25, GPTIM3_CH4, PIN_NOPULL, 0); // RGB LED PWM
 #else
-    HAL_PIN_Set(PAD_PB25, GPIO_B25, PIN_NOPULL, 0);  // CTP_RESET, touch panel reset
+    // HAL_PIN_Set(PAD_PB25, GPIO_B25, PIN_NOPULL, 0);  // CTP_RESET, touch panel reset
+    HAL_PIN_Set_Analog(PAD_PB25, 0);                  // #GPADC_CH3, pressure sensor voltage
 #endif
     // TODO: Check analog pin config.                 // #GPADC_CH4, NTC_GPADC_CH4, Battery temperature
 

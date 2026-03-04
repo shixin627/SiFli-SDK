@@ -81,6 +81,8 @@
 #include "ble_device_manager.h"
 #include "bloc_motion_tracking.h"
 #include "ble_hid.h"
+#include "bf0_hal.h"
+#include "bf0_sys_cfg.h"
 
 #ifdef APP_ID_MOUSE
 
@@ -112,6 +114,11 @@
 
     #define ENABLE_MENU_FEATURE 1
     #define KB_ANIM_TIME_MS 300
+
+    // FSR-402 pressure sensor ADC config
+    #define FSR_ADC_DEV_NAME    "bat1"
+    #define FSR_ADC_CHANNEL     3
+    #define FSR_ADC_READ_MS     100
 
 /*********************
  *      TYPEDEFS
@@ -168,6 +175,12 @@ static float inertia_accumulator = 0.0f;
 static lv_timer_t *inertia_timer = NULL;
 static uint32_t last_scroll_tick = 0;
 static uint32_t last_click_time = 0;
+
+// FSR-402 ADC pressure sensor
+static rt_device_t fsr_adc_dev = NULL;
+static lv_timer_t *fsr_adc_timer = NULL;
+static lv_obj_t *fsr_adc_label = NULL;
+static rt_uint32_t fsr_adc_value = 0;
 
     #if SIMULATE_MOUSE_RIGHT_BUTTON
 static bool pressed_left_half = false;
@@ -3390,6 +3403,62 @@ static void text_input_bar_cb(lv_event_t *e)
 }
 
 /**
+ * @brief Initialize FSR-402 ADC device
+ */
+static void fsr_adc_init(void)
+{
+    HAL_PIN_Set_Analog(PAD_PB25, 1);
+    fsr_adc_dev = rt_device_find(FSR_ADC_DEV_NAME);
+    if (fsr_adc_dev != NULL)
+    {
+        rt_adc_enable((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
+        LOG_I("FSR-402 ADC initialized on channel %d", FSR_ADC_CHANNEL);
+    }
+    else
+    {
+        LOG_E("FSR-402 ADC device not found!");
+    }
+}
+
+/**
+ * @brief Deinitialize FSR-402 ADC device
+ */
+static void fsr_adc_deinit(void)
+{
+    if (fsr_adc_dev != NULL)
+    {
+        rt_adc_disable((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
+        fsr_adc_dev = NULL;
+    }
+}
+
+/**
+ * @brief Read FSR-402 ADC value
+ * @return ADC value in 0.1mV units
+ */
+static rt_uint32_t fsr_adc_read_value(void)
+{
+    if (fsr_adc_dev == NULL)
+        return 0;
+    return rt_adc_read((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
+}
+
+/**
+ * @brief LVGL timer callback for periodic FSR ADC reading and display update
+ */
+static void fsr_adc_timer_cb(lv_timer_t *timer)
+{
+    fsr_adc_value = fsr_adc_read_value();
+
+    if (fsr_adc_label != NULL && lv_obj_is_valid(fsr_adc_label))
+    {
+        char buf[48];
+        rt_snprintf(buf, sizeof(buf), "FSR: %d.%dmV", fsr_adc_value / 10, fsr_adc_value % 10);
+        lv_label_set_text(fsr_adc_label, buf);
+    }
+}
+
+/**
  * @brief Creates the mouse screen
  * @param scr Screen object
  */
@@ -3461,6 +3530,19 @@ void lv_create_mouse_screen(lv_obj_t *scr)
                               db->devices[active_idx].device_name);
         }
     }
+
+    // FSR-402 ADC real-time display label
+    fsr_adc_label = lv_label_create(bg);
+    lv_label_set_text(fsr_adc_label, "FSR: --");
+    lv_obj_set_style_text_color(fsr_adc_label, lv_color_hex(0x00FF88), 0);
+    lv_obj_set_style_text_font(fsr_adc_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align(fsr_adc_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(fsr_adc_label, LV_OBJ_FLAG_CLICKABLE);
+
+    // Init ADC and start periodic reading
+    fsr_adc_init();
+    fsr_adc_timer = lv_timer_create(fsr_adc_timer_cb, FSR_ADC_READ_MS, NULL);
 
     // Unified input bar: starts as small indicator at bottom, animates to
     // input display above keyboard
@@ -3702,6 +3784,15 @@ static void on_stop(void)
         cursor_blink_timer = NULL;
     }
     clear_input_display();
+
+    // Clean up FSR ADC
+    if (fsr_adc_timer != NULL)
+    {
+        lv_timer_del(fsr_adc_timer);
+        fsr_adc_timer = NULL;
+    }
+    fsr_adc_deinit();
+    fsr_adc_label = NULL;
 
     // Clean up crosshair lines
     crosshair_line1 = NULL;
