@@ -118,7 +118,7 @@
     // FSR-402 pressure sensor ADC config
     #define FSR_ADC_DEV_NAME    "bat1"
     #define FSR_ADC_CHANNEL     3
-    #define FSR_ADC_READ_MS     100
+    #define FSR_ADC_READ_MS     300
 
 /*********************
  *      TYPEDEFS
@@ -3537,7 +3537,7 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_set_style_text_color(fsr_adc_label, lv_color_hex(0x00FF88), 0);
     lv_obj_set_style_text_font(fsr_adc_label,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_align(fsr_adc_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_align(fsr_adc_label, LV_ALIGN_TOP_MID, 0, 50);
     lv_obj_clear_flag(fsr_adc_label, LV_OBJ_FLAG_CLICKABLE);
 
     // Init ADC and start periodic reading
