@@ -33,12 +33,12 @@ static rt_event_t main_event;
 
 #define MAIN_EVENT_BATTERY_CHARGING (1 << 0)
 #define MAIN_EVENT_BATTERY_VOLTAGE (1 << 1)
-#define MAIN_EVENT_RGB_START (1 << 2)
-#define MAIN_EVENT_RGB_STOP (1 << 3)
+#define MAIN_EVENT_MOTOR_START (1 << 2)
+#define MAIN_EVENT_MOTOR_STOP (1 << 3)
 #define MAIN_EVENT_HAND_LIFT (1 << 4)
 #define MAIN_EVENT_ALL                                                         \
     (MAIN_EVENT_BATTERY_CHARGING | MAIN_EVENT_BATTERY_VOLTAGE |                \
-     MAIN_EVENT_RGB_START | MAIN_EVENT_RGB_STOP | MAIN_EVENT_HAND_LIFT)
+     MAIN_EVENT_MOTOR_START | MAIN_EVENT_MOTOR_STOP | MAIN_EVENT_HAND_LIFT)
 
 void main_send_read_charge_status_event(void)
 {
@@ -56,19 +56,19 @@ void main_send_read_voltage_event(void)
     }
 }
 
-void main_send_rgb_start_event(void)
+void main_send_motor_start_event(void)
 {
     if (main_event)
     {
-        rt_event_send(main_event, MAIN_EVENT_RGB_START);
+        rt_event_send(main_event, MAIN_EVENT_MOTOR_START);
     }
 }
 
-void main_send_rgb_stop_event(void)
+void main_send_motor_stop_event(void)
 {
     if (main_event)
     {
-        rt_event_send(main_event, MAIN_EVENT_RGB_STOP);
+        rt_event_send(main_event, MAIN_EVENT_MOTOR_STOP);
     }
 }
 
@@ -168,6 +168,8 @@ static void watchdog_set_status(uint8_t en)
 }
 #endif
 
+extern void main_motor_vibrate_start(void);
+extern void main_motor_vibrate_stop(void);
 int main(void)
 {
     // init_pin();
@@ -224,17 +226,15 @@ int main(void)
                 bloc_battery_handle_voltage_event();
             }
 
-#if defined(RGB_SK6812MINI_HS_ENABLE)
-            if (recv_set & MAIN_EVENT_RGB_START)
+            if (recv_set & MAIN_EVENT_MOTOR_START)
             {
-                bloc_rgb_led_handle_start_event();
+                main_motor_vibrate_start();
             }
 
-            if (recv_set & MAIN_EVENT_RGB_STOP)
+            if (recv_set & MAIN_EVENT_MOTOR_STOP)
             {
-                bloc_rgb_led_handle_stop_event();
+                main_motor_vibrate_stop();
             }
-#endif
 
             if (recv_set & MAIN_EVENT_HAND_LIFT)
             {
