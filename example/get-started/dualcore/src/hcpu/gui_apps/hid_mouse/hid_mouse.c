@@ -183,7 +183,7 @@ static uint32_t last_click_time = 0;
 // FSR-402 ADC pressure sensor
 static rt_device_t fsr_adc_dev = NULL;
 static rt_timer_t fsr_adc_timer = NULL;
-static lv_obj_t *fsr_adc_label = NULL;
+// static lv_obj_t *fsr_adc_label = NULL;
 static rt_uint32_t fsr_adc_value = 0;
 
     #if SIMULATE_MOUSE_RIGHT_BUTTON
@@ -291,7 +291,11 @@ bool is_skai_touch_enabled(void)
 static unsigned int fsr_change_time = 0;
 bool is_fsr_change_detected(void)
 {
-    return (rt_tick_get() - fsr_change_time) < 200; // FSR變化持續500ms內視為有效
+    if ((rt_tick_get() - fsr_change_time) < 200)
+    {
+        return true;
+    }
+    return false; // FSR變化持續500ms內視為有效
 }
 
 void set_air_mouse_moving_state(bool state)
@@ -3478,9 +3482,12 @@ static bool fsr_press_timer_active = false;
 static bool mouse_pressed = false;
 static void fsr_press_timer_cb(void *parameter)
 {
-    lvgl_msg_t msg;
-    msg.type = LVGL_MSG_TYPE_MOUSE_LONG_PRESS;
-    lvgl_send_msg(msg);
+    if (user_touching)
+    {
+        lvgl_msg_t msg;
+        msg.type = LVGL_MSG_TYPE_MOUSE_LONG_PRESS;
+        lvgl_send_msg(msg);
+    }
 }
 
 void fsr_long_press(void)
@@ -3502,7 +3509,7 @@ static void start_fsr_press_timer(void)
     if (fsr_press_timer == NULL)
     {
         fsr_press_timer = rt_timer_create("fsr_press", fsr_press_timer_cb, NULL,
-                                          200, RT_TIMER_FLAG_PERIODIC);
+                                          30, RT_TIMER_FLAG_PERIODIC);
     }
     if (fsr_press_timer)
     {
@@ -3522,16 +3529,19 @@ static void stop_fsr_press_timer(void)
 static float prev_fsr_adc = 0.0f;
 void fsr_adc_read(void)
 {
+    // int duration = rt_tick_get();
     #ifdef USE_FSR_ADC
     fsr_adc_value = fsr_adc_read_value();
-    if (fsr_adc_label != NULL && lv_obj_is_valid(fsr_adc_label))
-    {
-        char buf[48];
-        rt_snprintf(buf, sizeof(buf), "FSR: %d.%dmV", fsr_adc_value / 10,
-                    fsr_adc_value % 10);
-        LOG_D("FSR ADC value: %s", buf);
-        lv_label_set_text(fsr_adc_label, buf);
-    }
+    // duration = rt_tick_get() - duration;
+    // LOG_D("FSR ADC read and process duration: %d ms", duration);
+    // if (fsr_adc_label != NULL && lv_obj_is_valid(fsr_adc_label))
+    // {
+    //     char buf[48];
+    //     rt_snprintf(buf, sizeof(buf), "FSR: %d.%dmV", fsr_adc_value / 10,
+    //                 fsr_adc_value % 10);
+    //     // LOG_D("FSR ADC value: %s", buf);
+    //     lv_label_set_text(fsr_adc_label, buf);
+    // }
 
     // LOG_D("fsr_adc_diff from prev: %.2fmV",
     //       (fsr_adc_value / 10.0f) - prev_fsr_adc);
@@ -3562,13 +3572,15 @@ void fsr_adc_read(void)
             stop_fsr_press_timer();
         }
     }
-    if (fabs((fsr_adc_value / 10.0f) - prev_fsr_adc) > FRC_THRESHOLD_MOVE_LOCK && !mouse_pressed)
+    if (fabs((fsr_adc_value / 10.0f) - prev_fsr_adc) >
+            FRC_THRESHOLD_MOVE_LOCK &&
+        !mouse_pressed)
     {
         fsr_change_time = rt_tick_get();
     }
 
     prev_fsr_adc = fsr_adc_value / 10.0f;
-    
+
     #endif
 }
 
@@ -3648,13 +3660,13 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     }
 
     // FSR-402 ADC real-time display label
-    fsr_adc_label = lv_label_create(bg);
-    lv_label_set_text(fsr_adc_label, "FSR: --");
-    lv_obj_set_style_text_color(fsr_adc_label, lv_color_hex(0x00FF88), 0);
-    lv_obj_set_style_text_font(fsr_adc_label,
-                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_align(fsr_adc_label, LV_ALIGN_TOP_MID, 0, 50);
-    lv_obj_clear_flag(fsr_adc_label, LV_OBJ_FLAG_CLICKABLE);
+    // fsr_adc_label = lv_label_create(bg);
+    // lv_label_set_text(fsr_adc_label, "FSR: --");
+    // lv_obj_set_style_text_color(fsr_adc_label, lv_color_hex(0x00FF88), 0);
+    // lv_obj_set_style_text_font(fsr_adc_label,
+    //                            LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    // lv_obj_align(fsr_adc_label, LV_ALIGN_TOP_MID, 0, 50);
+    // lv_obj_clear_flag(fsr_adc_label, LV_OBJ_FLAG_CLICKABLE);
 
     // Init ADC and start periodic reading
     fsr_adc_init();
@@ -3916,7 +3928,7 @@ static void on_stop(void)
         fsr_adc_timer = NULL;
     }
     fsr_adc_deinit();
-    fsr_adc_label = NULL;
+    // fsr_adc_label = NULL;
 
     // Clean up crosshair lines
     crosshair_line1 = NULL;

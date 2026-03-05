@@ -1162,6 +1162,7 @@ void air_mouse_movement_lock_reset(void)
     gyro_movement_distance = 0.0f;
 }
 
+
 static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                               Quaternion *prev_quat)
 {
@@ -1196,6 +1197,11 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     {
         mouse_movement_lock = false;
     }
+
+    // if (is_fsr_change_detected())
+    // {
+    //     LOG_D("FSR change detected, locking mouse movement");
+    // }
 
     // 按住面板才可體感移動，且移動鎖已解除
     if (!stop_mouse_move && is_skai_touch_enabled() && !mouse_movement_lock && !is_fsr_change_detected())

@@ -60,7 +60,7 @@ struct sifli_adc
 #define ADC_MAX_VOLTAGE_MV_3300     (3300)
 
 
-#define ADC_SW_AVRA_CNT         (22)
+#define ADC_SW_AVRA_CNT         (3)
 
 // Standard voltage from ATE , it should not changed !!!
 #define ADC_BIG_RANGE_VOL1           (1000)
