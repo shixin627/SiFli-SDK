@@ -384,11 +384,13 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
         {
             // incorrect tap gesture
             if (sample_num == TAP_TARGET_SAMPLE_NUM &&
-                (!SkaiWatchSys.motion_control_lock && gui_app_is_actived(APP_ID_GESTURE)))
+                (!SkaiWatchSys.motion_control_lock &&
+                 gui_app_is_actived(APP_ID_GESTURE)))
             {
                 get_gesture_data(gesture, TAP_TARGET_SAMPLE_NUM, 1);
                 rt_tick_t tick_time_start = rt_tick_get();
-                tap_recognition_score = recognize_gesture_release(identifyWindow);
+                tap_recognition_score =
+                    recognize_gesture_release(identifyWindow);
                 rt_tick_t tick_time_end = rt_tick_get();
                 rt_tick_t cost_tick = tick_time_end - tick_time_start;
                 LOG_D("recognize tap gesture cost_tick:%d, score:%d", cost_tick,
@@ -543,7 +545,7 @@ extern bool get_hid_mouse_handfree_mode(void);
 #define IMU_THREAD_STACK_SIZE 4 * 1024
 #define IMU_THREAD_PRIORITY RT_THREAD_PRIORITY_MIDDLE - 1
 #define IMU_THREAD_TIMESLICE 10
-
+extern bool get_motor_status(void);
 static void gesture_recognition_thread_entry(void *parameter)
 {
     // init_gesture_recognition_model();
@@ -593,7 +595,10 @@ static void gesture_recognition_thread_entry(void *parameter)
             continue;
         }
 
-        gesture_recognition_algorithm(&watch_sensor.gesture_data);
+        if (!is_user_touching_screen() && !get_motor_status())
+        {
+            gesture_recognition_algorithm(&watch_sensor.gesture_data);
+        }
     }
 }
 

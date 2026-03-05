@@ -188,6 +188,8 @@ extern "C"
         void (*save_watch_shared_prefs)(watch_prefs_key key);
         void (*notify_battery_voltage)(uint16_t voltage_mv);
         void (*charge_status_callback)(uint8_t status);
+        // For FSR ADC reading
+        void (*read_fsr_adc)(void);
 #else
 
     void (*lift_status_callback)(uint8_t status);
@@ -222,6 +224,7 @@ extern "C"
         HCPU_SUSPEND,
         POWER_MANAGE_IMU,
         POWER_MANAGE_HR,
+        FSR_ADC_READ,
         CONTROL_MOTOR,
         CONTROL_RGB_LED,
         SAVE_SHARE_PREFS,

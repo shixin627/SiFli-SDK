@@ -268,6 +268,32 @@ static void subscribe_ppg_signal(bool status)
     send_peripheral_data(data);
 }
 
+static bool motor_on = false;
+static rt_timer_t motor_on_timer = NULL;
+static void set_motor_off(void *param)
+{
+    motor_on = false;
+}
+bool get_motor_status(void)
+{
+    return motor_on;
+}
+static void start_motor_on_timer(uint32_t duration_ms)
+{
+    if (motor_on_timer)
+    {
+        rt_timer_stop(motor_on_timer);
+    }
+
+    motor_on_timer = rt_timer_create("motor_off_timer", set_motor_off, NULL,
+                                     duration_ms, RT_TIMER_FLAG_ONE_SHOT);
+
+    if (motor_on_timer)
+    {
+        rt_timer_start(motor_on_timer);
+    }
+}
+
 static void control_motor_vibration(bool enable, motor_params_t *params)
 {
     PeripheralMessageData data;
@@ -278,6 +304,8 @@ static void control_motor_vibration(bool enable, motor_params_t *params)
         data.arg.motor_control.params = *params;
     }
     send_peripheral_data(data);
+    motor_on = true;
+    start_motor_on_timer(params->period/1000);
 }
 
 static void control_rgb_led(bool enable, rgb_led_params_t *params)
@@ -314,6 +342,13 @@ static void charge_status_callback(uint8_t status)
     PeripheralMessageData data;
     data.event = CHARGE_STATUS_CALLBACK;
     data.arg.value = status;
+    send_peripheral_data(data);
+}
+
+static void read_fsr_adc(void)
+{
+    PeripheralMessageData data;
+    data.event = FSR_ADC_READ;
     send_peripheral_data(data);
 }
 
@@ -360,6 +395,7 @@ static int bloc_peripheral_register(void)
     peripheral_provider.save_watch_shared_prefs = save_watch_shared_prefs;
     peripheral_provider.notify_battery_voltage = notify_battery_voltage;
     peripheral_provider.charge_status_callback = charge_status_callback;
+    peripheral_provider.read_fsr_adc = read_fsr_adc;
     #else
     peripheral_provider.sensor_power_manage = sensor_power_manage;
     #endif
@@ -367,6 +403,7 @@ static int bloc_peripheral_register(void)
 }
 INIT_APP_EXPORT(bloc_peripheral_register);
 
+extern void fsr_adc_read(void);
 static void peripheral_task_entry(void *parameter)
 {
     static PeripheralMessageData data;
@@ -509,6 +546,11 @@ static void peripheral_task_entry(void *parameter)
             }
             break;
     #endif // #ifndef SOC_BF0_LCPU
+            case FSR_ADC_READ:
+            {
+                fsr_adc_read();
+            }
+            break;
             case CONTROL_MOTOR:
             {
     #ifdef BSP_USING_WATCH_SYS_CLIENT
