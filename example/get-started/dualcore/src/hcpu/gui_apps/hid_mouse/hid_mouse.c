@@ -120,7 +120,9 @@
     #define FSR_ADC_CHANNEL 3
     #define FSR_ADC_READ_MS 100
 
-    #define FRC_THRESHOLD_BTN 300
+    #define FRC_THRESHOLD_BTN 100
+    #define FRC_THRESHOLD_MOVE_LOCK 10
+    #define USE_FSR_ADC 1
 
 /*********************
  *      TYPEDEFS
@@ -284,6 +286,12 @@ static rt_timer_t multiple_pages_timer;
 bool is_skai_touch_enabled(void)
 {
     return user_touching;
+}
+
+static unsigned int fsr_change_time = 0;
+bool is_fsr_change_detected(void)
+{
+    return (rt_tick_get() - fsr_change_time) < 200; // FSR變化持續500ms內視為有效
 }
 
 void set_air_mouse_moving_state(bool state)
@@ -2243,6 +2251,7 @@ static void handle_pressed_event(lv_indev_t *indev)
     gesture_detected = false;
 
     // 雙擊拖曳：第二下按下去直接觸發長按效果
+    #ifndef USE_FSR_ADC
     if (last_click_time > 0 &&
         (lv_tick_get() - last_click_time) < DOUBLE_TAP_MS)
     {
@@ -2252,6 +2261,7 @@ static void handle_pressed_event(lv_indev_t *indev)
         LOG_D("Air mouse - double tap hold (left press)");
         last_click_time = 0;
     }
+    #endif
 }
 
 /**
@@ -2337,21 +2347,22 @@ static void handle_pressing_event(lv_indev_t *indev,
     }
 
     // 長按觸發：超過閾值且這次觸碰期間從未移動過
+    #ifndef USE_FSR_ADC
     if (!has_moved_during_touch &&
-        (lv_tick_get() - press_time > PRESSED_TIME_MS) && false)
+        (lv_tick_get() - press_time > PRESSED_TIME_MS))
     {
         pressing = true;
-    #if SIMULATE_MOUSE_RIGHT_BUTTON
+        #if SIMULATE_MOUSE_RIGHT_BUTTON
         if (lv_tick_get() - press_time > PRESSED_TIME_MS)
         {
             if (pressed_left_half)
             {
-    #endif
+        #endif
                 control_provider.ble_hid_mouse_left_press();
                 motor_pattern_touchpad_slide();
                 LOG_D("Air mouse - left press");
 
-    #if SIMULATE_MOUSE_RIGHT_BUTTON
+        #if SIMULATE_MOUSE_RIGHT_BUTTON
             }
             else
             {
@@ -2359,8 +2370,9 @@ static void handle_pressing_event(lv_indev_t *indev,
                 LOG_D("Air mouse - right press");
             }
         }
-    #endif
+        #endif
     }
+    #endif
 }
 
 /**
@@ -3461,36 +3473,103 @@ static void fsr_adc_timer_cb(void *parameter)
     peripheral_provider.read_fsr_adc();
 }
 
-static float prev_fsr_adc = 0.0f;
+static rt_timer_t fsr_press_timer = NULL;
+static bool fsr_press_timer_active = false;
 static bool mouse_pressed = false;
+static void fsr_press_timer_cb(void *parameter)
+{
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_MOUSE_LONG_PRESS;
+    lvgl_send_msg(msg);
+}
+
+void fsr_long_press(void)
+{
+    // This function can be called from LVGL context when a long press is
+    // detected
+    if (mouse_pressed)
+    {
+        LOG_D("FSR long press detected: sending left click");
+        control_provider.ble_hid_mouse_left_press();
+        motor_pattern_touchpad_slide();
+        fsr_press_timer_active = false;
+    }
+}
+
+static void start_fsr_press_timer(void)
+{
+    fsr_press_timer_active = true;
+    if (fsr_press_timer == NULL)
+    {
+        fsr_press_timer = rt_timer_create("fsr_press", fsr_press_timer_cb, NULL,
+                                          200, RT_TIMER_FLAG_PERIODIC);
+    }
+    if (fsr_press_timer)
+    {
+        rt_timer_start(fsr_press_timer);
+    }
+}
+
+static void stop_fsr_press_timer(void)
+{
+    fsr_press_timer_active = false;
+    if (fsr_press_timer)
+    {
+        rt_timer_stop(fsr_press_timer);
+    }
+}
+
+static float prev_fsr_adc = 0.0f;
 void fsr_adc_read(void)
 {
+    #ifdef USE_FSR_ADC
     fsr_adc_value = fsr_adc_read_value();
     if (fsr_adc_label != NULL && lv_obj_is_valid(fsr_adc_label))
     {
         char buf[48];
         rt_snprintf(buf, sizeof(buf), "FSR: %d.%dmV", fsr_adc_value / 10,
                     fsr_adc_value % 10);
+        LOG_D("FSR ADC value: %s", buf);
         lv_label_set_text(fsr_adc_label, buf);
     }
 
-    LOG_D("fsr_adc_diff from prev: %.2fmV",
-          (fsr_adc_value / 10.0f) - prev_fsr_adc);
+    // LOG_D("fsr_adc_diff from prev: %.2fmV",
+    //       (fsr_adc_value / 10.0f) - prev_fsr_adc);
+
     if (fabs((fsr_adc_value / 10.0f) - prev_fsr_adc) > FRC_THRESHOLD_BTN)
     {
         if ((fsr_adc_value / 10.0f) < prev_fsr_adc && !mouse_pressed)
         {
+            LOG_D("FSR pressed");
             mouse_pressed = true;
-            control_provider.ble_hid_mouse_left_press();
-            motor_pattern_touchpad_slide();
+            start_fsr_press_timer();
         }
-        else if (mouse_pressed)
+        else if ((fsr_adc_value / 10.0f) > prev_fsr_adc && mouse_pressed)
         {
+
             mouse_pressed = false;
-            control_provider.ble_hid_mouse_left_release();
+            if (fsr_press_timer_active)
+            {
+                control_provider.ble_hid_mouse_left_click();
+                motor_pattern_touchpad_slide();
+                LOG_D("FSR click");
+            }
+            else
+            {
+                control_provider.ble_hid_mouse_left_release();
+                LOG_D("FSR released");
+            }
+            stop_fsr_press_timer();
         }
     }
+    if (fabs((fsr_adc_value / 10.0f) - prev_fsr_adc) > FRC_THRESHOLD_MOVE_LOCK && !mouse_pressed)
+    {
+        fsr_change_time = rt_tick_get();
+    }
+
     prev_fsr_adc = fsr_adc_value / 10.0f;
+    
+    #endif
 }
 
 /**

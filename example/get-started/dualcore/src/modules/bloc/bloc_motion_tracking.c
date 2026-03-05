@@ -1120,6 +1120,7 @@ static euler_angle_t motion_tracking_algorithm(Quaternion *quaternion,
 
 #ifdef BSP_USING_AIR_MOUSE
 extern bool is_skai_touch_enabled(void);
+extern bool is_fsr_change_detected(void);
 extern void set_air_mouse_moving_state(bool state);
 static void report_air_mouse_data(air_plane_delta_movement_t *movement,
                                   rt_uint32_t ts)
@@ -1197,7 +1198,7 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     }
 
     // 按住面板才可體感移動，且移動鎖已解除
-    if (!stop_mouse_move && is_skai_touch_enabled() && !mouse_movement_lock)
+    if (!stop_mouse_move && is_skai_touch_enabled() && !mouse_movement_lock && !is_fsr_change_detected())
     {
         report_air_mouse_data(&delta_movement, ts);
     }

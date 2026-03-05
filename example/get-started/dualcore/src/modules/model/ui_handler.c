@@ -629,6 +629,14 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         extern void toggle_keyboard_visibility(void);
         toggle_keyboard_visibility();
     }
+    break;
+
+    case LVGL_MSG_TYPE_MOUSE_LONG_PRESS:
+    {
+        extern void fsr_long_press(void);
+        fsr_long_press();
+    }
+    break;
 
     case LVGL_MSG_TYPE_LOADING:
         if (lvgl_msg_handler.handle_loading)
@@ -936,7 +944,7 @@ int lvgl_task_init(void)
 #endif
     return RT_EOK;
 }
-// INIT_APP_EXPORT(lvgl_task_init);
+INIT_APP_EXPORT(lvgl_task_init);
 
 /**
  * @brief Send a message to the LVGL message queue
@@ -948,8 +956,8 @@ int lvgl_task_init(void)
  */
 void lvgl_send_msg(lvgl_msg_t msg)
 {
-    // rt_mq_send(lvgl_mq, &msg, sizeof(lvgl_msg_t));
-    process_lvgl_message(&msg);
+    rt_mq_send(lvgl_mq, &msg, sizeof(lvgl_msg_t));
+    // process_lvgl_message(&msg);
 }
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF

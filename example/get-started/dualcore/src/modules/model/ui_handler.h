@@ -142,6 +142,7 @@ extern "C"
         /***** Mouse mode ******/
         LVGL_MSG_TYPE_MOUSE_OPEN_V2T,
         LVGL_MSG_TYPE_MOUSE_OPEN_KEYBOARD,
+        LVGL_MSG_TYPE_MOUSE_LONG_PRESS,
         /***** Loading ******/
         LVGL_MSG_TYPE_LOADING,
         /***** Time text ******/
