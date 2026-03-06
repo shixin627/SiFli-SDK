@@ -333,9 +333,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>-Wno-builtin-macro-redefined </MiscControls>
-              <Define>HAL_USE_NAND, SOC_BF0_HCPU, __FILE__=__FILE_NAME__, USE_ALLOCA, USING_MINI_RLOTTIE, SF32LB56X, LV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;, SIFLI_VERSION=33816576, OPUS_CELT_SUPPORT, FIXED_POINT, HAVE_ALLOCA_H, OPUS_BUILD, _ARM_LIBCPP_EXTERNAL_THREADS, ARM_MATH_LOOPUNROLL, FT2_BUILD_LIBRARY, LCPU_CONFIG_V1, HAL_TICK_PER_SECOND=1000, RT_USING_ARM_LIBC, FREETYPE_FONT_NAME=tiny55_full, USE_FULL_ASSERT, DISABLE_FLOAT_API, USE_HAL_DRIVER, HAVE_LRINTF, SIFLI_BUILD="357a8334"</Define>
+              <Define>LV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;, SIFLI_BUILD="ea841c85", SIFLI_VERSION=33816576, ARM_MATH_LOOPUNROLL, USE_HAL_DRIVER, OPUS_CELT_SUPPORT, __FILE__=__FILE_NAME__, RT_USING_ARM_LIBC, FREETYPE_FONT_NAME=tiny55_full, USING_MINI_RLOTTIE, HAL_TICK_PER_SECOND=1000, FT2_BUILD_LIBRARY, HAVE_LRINTF, SOC_BF0_HCPU, FIXED_POINT, LCPU_CONFIG_V1, OPUS_BUILD, DISABLE_FLOAT_API, _ARM_LIBCPP_EXTERNAL_THREADS, USE_FULL_ASSERT, HAL_USE_NAND, SF32LB56X, USE_ALLOCA, HAVE_ALLOCA_H</Define>
               <Undefine />
-              <IncludePath>build_sf32lb56w-watch_hcpu;..\..\..\..\..\rtos\rtthread\include;..\..\..\..\..\customer\boards\common;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\..\..\..\customer\boards\eh-lb563;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56w-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\common;..\..\..\..\..\customer\peripherals\co5300;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\cst820;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\ft3168;..\..\..\..\..\rtos\rtthread\bsp\sifli\drivers;..\..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\..\drivers\cmsis\Include;..\..\..\..\..\external\CMSIS\Include;..\..\..\..\..\drivers\Include;..\..\..\..\..\drivers\hal_epic_ex;..\..\..\..\..\external\cJSON-1.7.17;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\FlashDB\inc;..\..\..\..\..\external\FlashDB\port\fal\inc;..\..\..\..\..\external\freetype\include;..\..\..\..\..\external\libhelix-mp3;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\external\libhelix-mp3\real;..\..\..\..\..\external\lvgl_v8;..\..\..\..\..\external\lvgl_v8\lvgl;..\..\..\..\..\external\lvgl_v8\src;..\..\..\..\..\external\lvgl_v8\src\core;..\..\..\..\..\external\lvgl_v8\src\draw;..\..\..\..\..\external\lvgl_v8\src\extra;..\..\..\..\..\external\lvgl_v8\src\font;..\..\..\..\..\external\lvgl_v8\src\hal;..\..\..\..\..\external\lvgl_v8\src\misc;..\..\..\..\..\external\lvgl_v8\src\widgets;..\..\..\..\..\external\lvgl_v8\src\draw\arm2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp;..\..\..\..\..\external\lvgl_v8\src\draw\sdl;..\..\..\..\..\external\lvgl_v8\src\draw\sifli_epic;..\..\..\..\..\external\lvgl_v8\src\draw\stm32_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\sw;..\..\..\..\..\external\lvgl_v8\src\draw\swm341_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\pxp;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\vglite;..\..\..\..\..\external\lvgl_v8\src\extra\layouts;..\..\..\..\..\external\lvgl_v8\src\extra\libs;..\..\..\..\..\external\lvgl_v8\src\extra\others;..\..\..\..\..\external\lvgl_v8\src\extra\themes;..\..\..\..\..\external\lvgl_v8\src\extra\widgets;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\flex;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\grid;..\..\..\..\..\external\lvgl_v8\src\extra\libs\bmp;..\..\..\..\..\external\lvgl_v8\src\extra\libs\ffmpeg;..\..\..\..\..\external\lvgl_v8\src\extra\libs\freetype;..\..\..\..\..\external\lvgl_v8\src\extra\libs\fsdrv;..\..\..\..\..\external\lvgl_v8\src\extra\libs\gif;..\..\..\..\..\external\lvgl_v8\src\extra\libs\png;..\..\..\..\..\external\lvgl_v8\src\extra\libs\qrcode;..\..\..\..\..\external\lvgl_v8\src\extra\libs\rlottie;..\..\..\..\..\external\lvgl_v8\src\extra\libs\sjpg;..\..\..\..\..\external\lvgl_v8\src\extra\others\fragment;..\..\..\..\..\external\lvgl_v8\src\extra\others\gridnav;..\..\..\..\..\external\lvgl_v8\src\extra\others\ime;..\..\..\..\..\external\lvgl_v8\src\extra\others\imgfont;..\..\..\..\..\external\lvgl_v8\src\extra\others\monkey;..\..\..\..\..\external\lvgl_v8\src\extra\others\msg;..\..\..\..\..\external\lvgl_v8\src\extra\others\snapshot;..\..\..\..\..\external\lvgl_v8\src\extra\themes\basic;..\..\..\..\..\external\lvgl_v8\src\extra\themes\default;..\..\..\..\..\external\lvgl_v8\src\extra\themes\mono;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\animimg;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\calendar;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\chart;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\colorwheel;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\imgbtn;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\keyboard;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\led;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\list;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\menu;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\meter;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\msgbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\span;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinner;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tabview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tileview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\win;..\..\..\..\..\external\lz4;..\..\..\..\..\external\opus-1.4;..\..\..\..\..\external\opus-1.4\include;..\..\..\..\..\external\opus-1.4\src;..\..\..\..\..\external\opus-1.4\silk;..\..\..\..\..\external\opus-1.4\celt;..\..\..\..\..\external\opus-1.4\silk\fixed;..\..\..\..\..\external\quickjs;..\..\..\..\..\external\rlottie\inc;..\..\..\..\..\external\rlottie\src\vector;..\..\..\..\..\external\rlottie\src\vector\freetype;..\..\..\..\..\external\rlottie\src\vector\stb;..\..\..\..\..\external\state_machine-latest\inc;..\..\..\..\..\external\TensorFlow-Lite-Micro\src;..\..\..\..\..\external\WebRTC_audio_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\vad\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\system_wrappers\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\agc\legacy;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\logging;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\utility;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\dc_correction;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_in;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_out;..\..\..\..\..\middleware\include;..\..\..\..\..\middleware\button;..\..\..\..\..\middleware\context_backup;..\..\..\..\..\middleware\cpu_usage_profiler;..\..\..\..\..\middleware\ezipa_dec;..\..\..\..\..\middleware\ipc_queue\common;..\..\..\..\..\middleware\ipc_queue\include;..\..\..\..\..\middleware\ipc_queue\porting\os;..\..\..\..\..\middleware\ipc_queue\porting\os\rtthread;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x\hcpu;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio;..\..\..\..\..\middleware\audio\include;..\..\..\..\..\middleware\audio;.;..\..\..\..\..\middleware\btdm_internal\plf;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio\anyka;..\..\..\..\..\middleware\audio\vbe_drc;..\..\..\..\..\middleware\audio\audio_bt_voice;..\..\..\..\..\middleware\audio\audio_local_music;..\..\..\..\..\middleware\audio\audio_manager;..\..\..\..\..\middleware\audio\audio_port;..\..\..\..\..\middleware\audio\audio_speaker_mic;..\..\..\..\..\middleware\audio\audio_voice_proc;..\..\..\..\..\middleware\barcode128;..\..\..\..\..\middleware\bluetooth\service;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\ble\gatt_service;..\..\..\..\..\middleware\bluetooth\service\bt\bt_audio;..\..\..\..\..\middleware\bluetooth\service\bt\bt_cm;..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh;..\..\..\..\..\middleware\bluetooth\service\common;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\internal;..\..\..\..\..\middleware\bluetooth\include;..\..\..\..\..\middleware\cell_transform;..\..\..\..\..\middleware\data_bus\public;..\..\..\..\..\middleware\data_bus\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lvsf;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lv_drivers;..\..\..\..\..\middleware\lvgl\lvgl_extensions;..\..\..\..\..\middleware\lvgl\gif_dec;..\..\..\..\..\middleware\share_prefs;..\..\..\..\..\middleware\sifli_lib\lib;..\..\..\..\..\middleware\include;..\..\..\..\..\rtos\os_adaptor\src;..\..\..\..\..\rtos\os_adaptor\inc;build_sf32lb56w-watch_hcpu\src\resource\strings;build_sf32lb56w-watch_hcpu\src\gui_apps;..\..\src\hcpu\gui_apps\app_layout;..\..\src\hcpu\gui_apps\battery;..\..\src\hcpu\gui_apps\clock;..\..\src\hcpu\gui_apps\common;..\..\src\hcpu\gui_apps\game;..\..\src\hcpu\gui_apps\gesture;..\..\src\hcpu\gui_apps\interact;..\..\src\hcpu\gui_apps\iot_gate;..\..\src\hcpu\gui_apps\main;..\..\src\hcpu\gui_apps\message;..\..\src\hcpu\gui_apps\note;..\..\src\hcpu\gui_apps\speech;..\..\src\hcpu\gui_apps\test;..\..\src\hcpu\gui_apps\utils;..\..\src\hcpu\gui_apps\mem;..\..\src\hcpu;..\..\src\modules\algorithm\AirMouse;..\..\src\modules\algorithm\GestureRecognition;..\..\src\modules\bloc;..\..\src\modules\communicate;..\..\src\modules\model;..\..\src\modules\service;..\..\src\modules\tests;..\..\src\modules\util\includes;..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33;..\..\..\..\..\rtos\rtthread\libcpu\arm\common;..\..\..\..\..\rtos\rtthread\components\cplusplus;..\..\..\..\..\rtos\rtthread\components\dfs\include;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\devfs;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\elmfat;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\dhara\dhara;..\..\..\..\..\rtos\rtthread\components\drivers\audio;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\spi;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\finsh;..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc;..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\include;..\..\..\..\..\rtos\rtthread\components\utilities\llt_mem;..\..\..\..\..\rtos\rtthread\components\utilities\ulog;..\..\..\..\..\rtos\rtthread\components\utilities\ulog\backend;..\..\..\..\..\rtos\rtthread\components\utilities\ymodem</IncludePath>
+              <IncludePath>build_sf32lb56w-watch_hcpu;..\..\..\..\..\rtos\rtthread\include;..\..\..\..\..\customer\boards\common;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\..\..\..\customer\boards\eh-lb563;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56w-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\common;..\..\..\..\..\customer\peripherals\co5300;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\cst820;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\ft3168;..\..\..\..\..\rtos\rtthread\bsp\sifli\drivers;..\..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\..\drivers\cmsis\Include;..\..\..\..\..\external\CMSIS\Include;..\..\..\..\..\drivers\Include;..\..\..\..\..\drivers\hal_epic_ex;..\..\..\..\..\external\cJSON-1.7.17;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\FlashDB\inc;..\..\..\..\..\external\FlashDB\port\fal\inc;..\..\..\..\..\external\freetype\include;..\..\..\..\..\external\libhelix-mp3;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\external\libhelix-mp3\real;..\..\..\..\..\external\lvgl_v8;..\..\..\..\..\external\lvgl_v8\lvgl;..\..\..\..\..\external\lvgl_v8\src;..\..\..\..\..\external\lvgl_v8\src\core;..\..\..\..\..\external\lvgl_v8\src\draw;..\..\..\..\..\external\lvgl_v8\src\extra;..\..\..\..\..\external\lvgl_v8\src\font;..\..\..\..\..\external\lvgl_v8\src\hal;..\..\..\..\..\external\lvgl_v8\src\misc;..\..\..\..\..\external\lvgl_v8\src\widgets;..\..\..\..\..\external\lvgl_v8\src\draw\arm2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp;..\..\..\..\..\external\lvgl_v8\src\draw\sdl;..\..\..\..\..\external\lvgl_v8\src\draw\sifli_epic;..\..\..\..\..\external\lvgl_v8\src\draw\stm32_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\sw;..\..\..\..\..\external\lvgl_v8\src\draw\swm341_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\pxp;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\vglite;..\..\..\..\..\external\lvgl_v8\src\extra\layouts;..\..\..\..\..\external\lvgl_v8\src\extra\libs;..\..\..\..\..\external\lvgl_v8\src\extra\others;..\..\..\..\..\external\lvgl_v8\src\extra\themes;..\..\..\..\..\external\lvgl_v8\src\extra\widgets;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\flex;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\grid;..\..\..\..\..\external\lvgl_v8\src\extra\libs\bmp;..\..\..\..\..\external\lvgl_v8\src\extra\libs\ffmpeg;..\..\..\..\..\external\lvgl_v8\src\extra\libs\freetype;..\..\..\..\..\external\lvgl_v8\src\extra\libs\fsdrv;..\..\..\..\..\external\lvgl_v8\src\extra\libs\gif;..\..\..\..\..\external\lvgl_v8\src\extra\libs\png;..\..\..\..\..\external\lvgl_v8\src\extra\libs\qrcode;..\..\..\..\..\external\lvgl_v8\src\extra\libs\rlottie;..\..\..\..\..\external\lvgl_v8\src\extra\libs\sjpg;..\..\..\..\..\external\lvgl_v8\src\extra\others\fragment;..\..\..\..\..\external\lvgl_v8\src\extra\others\gridnav;..\..\..\..\..\external\lvgl_v8\src\extra\others\ime;..\..\..\..\..\external\lvgl_v8\src\extra\others\imgfont;..\..\..\..\..\external\lvgl_v8\src\extra\others\monkey;..\..\..\..\..\external\lvgl_v8\src\extra\others\msg;..\..\..\..\..\external\lvgl_v8\src\extra\others\snapshot;..\..\..\..\..\external\lvgl_v8\src\extra\themes\basic;..\..\..\..\..\external\lvgl_v8\src\extra\themes\default;..\..\..\..\..\external\lvgl_v8\src\extra\themes\mono;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\animimg;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\calendar;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\chart;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\colorwheel;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\imgbtn;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\keyboard;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\led;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\list;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\menu;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\meter;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\msgbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\span;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinner;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tabview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tileview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\win;..\..\..\..\..\external\lz4;..\..\..\..\..\external\opus-1.4;..\..\..\..\..\external\opus-1.4\include;..\..\..\..\..\external\opus-1.4\src;..\..\..\..\..\external\opus-1.4\silk;..\..\..\..\..\external\opus-1.4\celt;..\..\..\..\..\external\opus-1.4\silk\fixed;..\..\..\..\..\external\quickjs;..\..\..\..\..\external\rlottie\inc;..\..\..\..\..\external\rlottie\src\vector;..\..\..\..\..\external\rlottie\src\vector\freetype;..\..\..\..\..\external\rlottie\src\vector\stb;..\..\..\..\..\external\TensorFlow-Lite-Micro\src;..\..\..\..\..\external\WebRTC_audio_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\vad\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\system_wrappers\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\agc\legacy;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\logging;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\utility;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\dc_correction;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_in;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_out;..\..\..\..\..\middleware\include;..\..\..\..\..\middleware\button;..\..\..\..\..\middleware\context_backup;..\..\..\..\..\middleware\cpu_usage_profiler;..\..\..\..\..\middleware\ezipa_dec;..\..\..\..\..\middleware\ipc_queue\common;..\..\..\..\..\middleware\ipc_queue\include;..\..\..\..\..\middleware\ipc_queue\porting\os;..\..\..\..\..\middleware\ipc_queue\porting\os\rtthread;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x\hcpu;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio;..\..\..\..\..\middleware\audio\include;..\..\..\..\..\middleware\audio;.;..\..\..\..\..\middleware\btdm_internal\plf;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio\anyka;..\..\..\..\..\middleware\audio\vbe_drc;..\..\..\..\..\middleware\audio\audio_bt_voice;..\..\..\..\..\middleware\audio\audio_local_music;..\..\..\..\..\middleware\audio\audio_manager;..\..\..\..\..\middleware\audio\audio_port;..\..\..\..\..\middleware\audio\audio_speaker_mic;..\..\..\..\..\middleware\audio\audio_voice_proc;..\..\..\..\..\middleware\barcode128;..\..\..\..\..\middleware\bluetooth\service;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\ble\gatt_service;..\..\..\..\..\middleware\bluetooth\service\common;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\internal;..\..\..\..\..\middleware\bluetooth\include;..\..\..\..\..\middleware\cell_transform;..\..\..\..\..\middleware\data_bus\public;..\..\..\..\..\middleware\data_bus\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lvsf;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lv_drivers;..\..\..\..\..\middleware\lvgl\lvgl_extensions;..\..\..\..\..\middleware\lvgl\gif_dec;..\..\..\..\..\middleware\share_prefs;..\..\..\..\..\middleware\sifli_lib\lib;..\..\..\..\..\middleware\include;..\..\..\..\..\rtos\os_adaptor\src;..\..\..\..\..\rtos\os_adaptor\inc;build_sf32lb56w-watch_hcpu\src\resource\strings;build_sf32lb56w-watch_hcpu\src\gui_apps;..\..\src\hcpu\gui_apps\app_layout;..\..\src\hcpu\gui_apps\battery;..\..\src\hcpu\gui_apps\clock;..\..\src\hcpu\gui_apps\common;..\..\src\hcpu\gui_apps\game;..\..\src\hcpu\gui_apps\gesture;..\..\src\hcpu\gui_apps\interact;..\..\src\hcpu\gui_apps\iot_gate;..\..\src\hcpu\gui_apps\main;..\..\src\hcpu\gui_apps\message;..\..\src\hcpu\gui_apps\note;..\..\src\hcpu\gui_apps\speech;..\..\src\hcpu\gui_apps\test;..\..\src\hcpu\gui_apps\utils;..\..\src\hcpu\gui_apps\mem;..\..\src\hcpu;..\..\src\modules\algorithm\AirMouse;..\..\src\modules\algorithm\GestureRecognition;..\..\src\modules\bloc;..\..\src\modules\communicate;..\..\src\modules\model;..\..\src\modules\service;..\..\src\modules\tests;..\..\src\modules\util\includes;..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33;..\..\..\..\..\rtos\rtthread\libcpu\arm\common;..\..\..\..\..\rtos\rtthread\components\cplusplus;..\..\..\..\..\rtos\rtthread\components\dfs\include;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\devfs;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\elmfat;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\dhara\dhara;..\..\..\..\..\rtos\rtthread\components\drivers\audio;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\spi;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\finsh;..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc;..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\include;..\..\..\..\..\rtos\rtthread\components\utilities\llt_mem;..\..\..\..\..\rtos\rtthread\components\utilities\ulog;..\..\..\..\..\rtos\rtthread\components\utilities\ulog\backend;..\..\..\..\..\rtos\rtthread\components\utilities\ymodem</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -369,7 +369,7 @@
             <ScatterFile>build_sf32lb56w-watch_hcpu/link.sct</ScatterFile>
             <IncludeLibs />
             <IncludeLibsPath />
-            <Misc>  --cpu=cortex-m33 --strict --scatter build_sf32lb56w-watch_hcpu/link.sct --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols --info sizes --info totals --info unused --info veneers --any_contingency  --list build_sf32lb56w-watch_hcpu/main.map  --libpath=C:\Keil_v5/ARM/ARMCLANG/lib --diag_suppress=L6314 --diag_suppress=L6329 --predefine="-DSF32LB56X" --predefine="-DSF32LB56X" --predefine="-DSIFLI_VERSION=33816576" --predefine="-DUSE_FULL_ASSERT" --predefine="-DARM_MATH_LOOPUNROLL" --predefine="-DHAL_USE_NAND" --predefine="-DLCPU_CONFIG_V1" --predefine="-DHAL_TICK_PER_SECOND=1000" --predefine="-DSOC_BF0_HCPU" --predefine="-DUSE_HAL_DRIVER" --predefine="-DSIFLI_BUILD="357a8334"" --predefine="-DFT2_BUILD_LIBRARY" --predefine="-DLV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;" --predefine="-DOPUS_CELT_SUPPORT" --predefine="-DDISABLE_FLOAT_API" --predefine="-DFIXED_POINT" --predefine="-DHAVE_ALLOCA_H" --predefine="-DOPUS_BUILD" --predefine="-DHAVE_LRINTF" --predefine="-DUSE_ALLOCA" --predefine="-DUSING_MINI_RLOTTIE" --predefine="-D_ARM_LIBCPP_EXTERNAL_THREADS" --predefine="-DFREETYPE_FONT_NAME=tiny55_full" --predefine="-DRT_USING_ARM_LIBC"</Misc>
+            <Misc>  --cpu=cortex-m33 --strict --scatter build_sf32lb56w-watch_hcpu/link.sct --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols --info sizes --info totals --info unused --info veneers --any_contingency  --list build_sf32lb56w-watch_hcpu/main.map  --libpath=C:\Keil_v5/ARM/ARMCLANG/lib --diag_suppress=L6314 --diag_suppress=L6329 --predefine="-DSF32LB56X" --predefine="-DSOC_BF0_HCPU" --predefine="-DSIFLI_BUILD="ea841c85"" --predefine="-DHAL_USE_NAND" --predefine="-DSIFLI_VERSION=33816576" --predefine="-DUSE_FULL_ASSERT" --predefine="-DARM_MATH_LOOPUNROLL" --predefine="-DSF32LB56X" --predefine="-DLCPU_CONFIG_V1" --predefine="-DUSE_HAL_DRIVER" --predefine="-DHAL_TICK_PER_SECOND=1000" --predefine="-DFT2_BUILD_LIBRARY" --predefine="-DLV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;" --predefine="-DFIXED_POINT" --predefine="-DOPUS_BUILD" --predefine="-DDISABLE_FLOAT_API" --predefine="-DUSE_ALLOCA" --predefine="-DOPUS_CELT_SUPPORT" --predefine="-DHAVE_ALLOCA_H" --predefine="-DHAVE_LRINTF" --predefine="-D_ARM_LIBCPP_EXTERNAL_THREADS" --predefine="-DUSING_MINI_RLOTTIE" --predefine="-DFREETYPE_FONT_NAME=tiny55_full" --predefine="-DRT_USING_ARM_LIBC"</Misc>
             <LinkerInputFile />
             <DisabledWarnings />
           </LDads>
@@ -4835,16 +4835,6 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>state_machine</GroupName>
-          <Files>
-            <File>
-              <FileName>state_machine.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\external\state_machine-latest\src\state_machine.c</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
           <GroupName>RTduino-libraries</GroupName>
           <Files>
             <File>
@@ -6503,41 +6493,6 @@
           <GroupName>audio</GroupName>
           <Files>
             <File>
-              <FileName>audio_bt_voice.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\audio\audio_bt_voice\audio_bt_voice.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>audio_cvsd.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\audio\audio_bt_voice\audio_cvsd.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>audio_filter.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\audio\audio_bt_voice\audio_filter.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>audio_msbc_plc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\audio\audio_bt_voice\audio_msbc_plc.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bt_audiopath.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\audio\audio_bt_voice\bt_audiopath.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
               <FileName>audio_loopback_demo.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\middleware\audio\audio_local_music\audio_loopback_demo.c</FilePath>
@@ -6822,181 +6777,6 @@
               <FileName>bf0_sibles_watchface.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\middleware\bluetooth\service\ble\gatt_service\bf0_sibles_watchface.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>a2dp_relay_sink_service.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_audio\a2dp_relay_sink_service.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>a2dp_relay_src_service.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_audio\a2dp_relay_src_service.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>hfp_audio_api.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_audio\hfp_audio_api.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bt_connection_manager.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_cm\bt_connection_manager.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bt_connection_service.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_cm\bt_connection_service.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_av.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_av.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_av_snk.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_av_snk.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_av_src.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_av_src.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_avrcp.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_avrcp.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_bt_dis.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_bt_dis.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_bt_gatt.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_bt_gatt.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_bt_l2cap_profile.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_bt_l2cap_profile.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_cardparser.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_cardparser.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_demo.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_demo.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_generic.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_generic.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_hfp_ag.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_hfp_ag.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_hfp_hf.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_hfp_hf.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_hid.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_hid.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_interface.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_interface.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_main.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_main.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_menu.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_menu.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_pan.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_pan.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_pbap_c.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_pbap_c.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_spp.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_spp.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>bts2_app_sys.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh\bts2_app_sys.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -8400,13 +8180,6 @@
               <FileName>tap_bg_right.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\tap_bg_right.tmp.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>test_media_widget.tmp.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\test_media_widget.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -9994,13 +9767,6 @@
               <FileName>ezip_tap_bg_right.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\tap_bg_right.tmp.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>ezip_test_media_widget.tmp.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\test_media_widget.tmp.c</FilePath>
             </File>
           </Files>
           <Files>

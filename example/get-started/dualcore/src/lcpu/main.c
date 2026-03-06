@@ -204,13 +204,16 @@ int main(void)
     rt_uint32_t recv_set = 0;
     while (1)
     {
-        // rt_err_t result = rt_event_recv(main_event, MAIN_EVENT_ALL,
-        //                                 RT_EVENT_FLAG_OR |
-        //                                 RT_EVENT_FLAG_CLEAR,
-        //                                 RT_WAITING_FOREVER, &recv_set);
+#if defined(RGB_SK6812MINI_HS_ENABLE)
         rt_err_t result = rt_event_recv(
             main_event, MAIN_EVENT_ALL, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
             rt_tick_from_millisecond(30), &recv_set);
+#else
+        rt_err_t result = rt_event_recv(main_event, MAIN_EVENT_ALL,
+                                        RT_EVENT_FLAG_OR |
+                                        RT_EVENT_FLAG_CLEAR,
+                                        RT_WAITING_FOREVER, &recv_set);
+#endif
 
         if (result == RT_EOK)
         {

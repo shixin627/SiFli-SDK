@@ -1,5 +1,5 @@
 {
-    "version": "1.0.244",
+    "version": "1.0.245",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
@@ -7,5 +7,5 @@
         "lcpu.bin",
         "lcpu_patch.bin"
     ],
-    "description": "修復讀取PPG RAWDATA的問題"
+    "description": "馬達震動期間不辨識手勢"
 }

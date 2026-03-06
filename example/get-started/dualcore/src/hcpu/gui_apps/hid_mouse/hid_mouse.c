@@ -122,7 +122,7 @@
 
     #define FRC_THRESHOLD_BTN 100
     #define FRC_THRESHOLD_MOVE_LOCK 10
-    #define USE_FSR_ADC 1
+    // #define USE_FSR_ADC 1
 
 /*********************
  *      TYPEDEFS
