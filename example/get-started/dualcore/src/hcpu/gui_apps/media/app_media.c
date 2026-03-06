@@ -157,6 +157,102 @@ void music_ui_build(app_media_t *p_app_media, lv_obj_t *parent, float size)
     lv_obj_align(btn_vol_up, LV_ALIGN_BOTTOM_RIGHT, -70, -40);
 }
 
+static lv_obj_t *dial_widget_vol_bar = NULL;
+static lv_obj_t *dial_widget_vol_icon_btn = NULL;
+static bool vol_bar_expanded = false;
+static lv_timer_t *vol_bar_collapse_timer = NULL;
+#define VOL_BAR_COLLAPSE_TIMEOUT 3000
+#define VOL_BAR_EXPANDED_WIDTH 270
+
+static void vol_bar_anim_width_cb(void *var, int32_t v)
+{
+    lv_obj_set_width((lv_obj_t *)var, v);
+}
+
+static void vol_bar_collapse_anim_ready_cb(lv_anim_t *a)
+{
+    if (lv_obj_is_valid(dial_widget_vol_bar))
+    {
+        lv_obj_add_flag(dial_widget_vol_bar, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void vol_bar_collapse(void)
+{
+    if (!vol_bar_expanded)
+        return;
+    vol_bar_expanded = false;
+
+    if (!lv_obj_is_valid(dial_widget_vol_bar))
+        return;
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, dial_widget_vol_bar);
+    lv_anim_set_values(&a, lv_obj_get_width(dial_widget_vol_bar), 0);
+    lv_anim_set_time(&a, 300);
+    lv_anim_set_exec_cb(&a, vol_bar_anim_width_cb);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
+    lv_anim_set_ready_cb(&a, vol_bar_collapse_anim_ready_cb);
+    lv_anim_start(&a);
+}
+
+static void vol_bar_collapse_timer_cb(lv_timer_t *timer)
+{
+    vol_bar_collapse_timer = NULL;
+    vol_bar_collapse();
+}
+
+static void vol_bar_reset_collapse_timer(void)
+{
+    if (vol_bar_collapse_timer)
+    {
+        lv_timer_del(vol_bar_collapse_timer);
+        vol_bar_collapse_timer = NULL;
+    }
+    vol_bar_collapse_timer =
+        lv_timer_create(vol_bar_collapse_timer_cb, VOL_BAR_COLLAPSE_TIMEOUT, NULL);
+    lv_timer_set_repeat_count(vol_bar_collapse_timer, 1);
+}
+
+static void vol_bar_expand(void)
+{
+    if (vol_bar_expanded)
+    {
+        vol_bar_reset_collapse_timer();
+        return;
+    }
+    vol_bar_expanded = true;
+
+    if (!lv_obj_is_valid(dial_widget_vol_bar))
+        return;
+
+    lv_obj_clear_flag(dial_widget_vol_bar, LV_OBJ_FLAG_HIDDEN);
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, dial_widget_vol_bar);
+    lv_anim_set_values(&a, 0, VOL_BAR_EXPANDED_WIDTH);
+    lv_anim_set_time(&a, 300);
+    lv_anim_set_exec_cb(&a, vol_bar_anim_width_cb);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+
+    vol_bar_reset_collapse_timer();
+}
+
+static void vol_icon_click_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CLICKED)
+    {
+        if (!vol_bar_expanded)
+            vol_bar_expand();
+        else
+            vol_bar_collapse();
+    }
+}
+
 static lv_timer_t *vol_bar_fade_timer = NULL;
 
 static void vol_bar_fade_timer_cb(lv_timer_t *timer)
@@ -181,6 +277,7 @@ static void bar_event_cb(lv_event_t *e)
             vol_bar_fade_timer = NULL;
         }
         lv_obj_set_style_bg_opa(bar, 40, LV_PART_INDICATOR);
+        vol_bar_reset_collapse_timer();
     }
     else if (code == LV_EVENT_RELEASED)
     {
@@ -190,6 +287,7 @@ static void bar_event_cb(lv_event_t *e)
         }
         vol_bar_fade_timer = lv_timer_create(vol_bar_fade_timer_cb, 500, bar);
         lv_timer_set_repeat_count(vol_bar_fade_timer, 1);
+        vol_bar_reset_collapse_timer();
     }
     else if (code == LV_EVENT_PRESSING)
     {
@@ -900,7 +998,6 @@ static lv_obj_t *dial_widget_btn_prev_bg = NULL;
 static lv_obj_t *dial_widget_btn_next_bg = NULL;
 static lv_obj_t *dial_widget_btn_play_pause = NULL;
 static lv_obj_t *dial_widget_btn_play_pause_icon = NULL;
-static lv_obj_t *dial_widget_vol_bar = NULL;
 
 static void set_vol_bar_value(void *param)
 {
@@ -908,6 +1005,10 @@ static void set_vol_bar_value(void *param)
     {
         uint8_t volume = *(uint8_t *)param;
         lv_bar_set_value(dial_widget_vol_bar, volume, LV_ANIM_ON);
+        if (!vol_bar_expanded)
+            vol_bar_expand();
+        else
+            vol_bar_reset_collapse_timer();
     }
 }
 
@@ -1011,12 +1112,29 @@ void lv_dial_media_widget_builder(lv_obj_t *parent)
                     widget_zoom);
     lv_obj_set_style_img_opa(
         lv_obj_get_child(dial_widget_btn_play_pause_icon, 0), LV_OPA_70, 0);
-    dial_widget_vol_bar = lv_bar_create(parent); // Create a progress bar
-    lv_bar_set_range(dial_widget_vol_bar, 0,
-                     100); // Set the range of the progress bar
-    lv_obj_set_width(dial_widget_vol_bar, 316);
+    /* Volume icon button (always visible, left side) */
+    dial_widget_vol_icon_btn = lv_btn_create(parent);
+    lv_obj_set_size(dial_widget_vol_icon_btn, 40, 32);
+    lv_obj_set_style_radius(dial_widget_vol_icon_btn, 16, 0);
+    lv_obj_set_style_bg_color(dial_widget_vol_icon_btn, lv_color_hex(0xFFFFFF),
+                              0);
+    lv_obj_set_style_bg_opa(dial_widget_vol_icon_btn, 20, 0);
+    lv_obj_set_style_shadow_width(dial_widget_vol_icon_btn, 0, 0);
+    lv_obj_align(dial_widget_vol_icon_btn, LV_ALIGN_TOP_MID, -138, 5);
+    lv_obj_add_event_cb(dial_widget_vol_icon_btn, vol_icon_click_cb,
+                        LV_EVENT_ALL, NULL);
+    lv_obj_t *vol_icon = lv_img_create(dial_widget_vol_icon_btn);
+    lv_img_set_src(vol_icon, &volume_up);
+    lv_img_set_zoom(vol_icon, 255 * 30 / 85);
+    lv_obj_align(vol_icon, LV_ALIGN_CENTER, 0, 0);
+
+    /* Volume bar (initially hidden, expands right from icon) */
+    dial_widget_vol_bar = lv_bar_create(parent);
+    lv_bar_set_range(dial_widget_vol_bar, 0, 100);
+    lv_obj_set_width(dial_widget_vol_bar, VOL_BAR_EXPANDED_WIDTH);
     lv_obj_set_height(dial_widget_vol_bar, 32);
-    lv_obj_align(dial_widget_vol_bar, LV_ALIGN_TOP_MID, 0, 5);
+    lv_obj_align_to(dial_widget_vol_bar, dial_widget_vol_icon_btn,
+                    LV_ALIGN_OUT_RIGHT_MID, 4, 0);
     lv_obj_set_style_bg_color(dial_widget_vol_bar, lv_color_hex(0xFFFFFF),
                               LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(dial_widget_vol_bar, lv_color_hex(0xFFFFFF),
@@ -1025,10 +1143,8 @@ void lv_dial_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(dial_widget_vol_bar, 12, LV_PART_MAIN);
     lv_bar_set_value(dial_widget_vol_bar, 0, LV_ANIM_ON);
     lv_obj_add_event_cb(dial_widget_vol_bar, bar_event_cb, LV_EVENT_ALL, NULL);
-    lv_obj_t *icon = lv_img_create(dial_widget_vol_bar);
-    lv_img_set_src(icon, &volume_up);
-    lv_img_set_zoom(icon, 255 * 30 / 85);
-    lv_obj_align(icon, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_flag(dial_widget_vol_bar, LV_OBJ_FLAG_HIDDEN);
+    vol_bar_expanded = false;
     dial_media_widget_init();
     lvgl_msg_handler.handle_media_volume = set_vol_bar_value;
 }

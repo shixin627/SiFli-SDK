@@ -276,6 +276,7 @@ static void set_motor_off(void *param)
 }
 bool get_motor_status(void)
 {
+    // LOG_I("Motor status: %s", motor_on ? "ON" : "OFF");
     return motor_on;
 }
 static void start_motor_on_timer(uint32_t duration_ms)
@@ -305,7 +306,7 @@ static void control_motor_vibration(bool enable, motor_params_t *params)
     }
     send_peripheral_data(data);
     motor_on = true;
-    start_motor_on_timer(params->period/1000);
+    start_motor_on_timer(((params->period/1000)*params->repeat_times)+400);
 }
 
 static void control_rgb_led(bool enable, rgb_led_params_t *params)
