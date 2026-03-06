@@ -268,6 +268,12 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         {
             lvgl_msg_handler.refresh_battery_level(msg->data.battery_level);
         }
+        if (lvgl_msg_handler.handle_battery_percentage)
+        {
+            lvgl_msg_handler.handle_battery_percentage(
+                msg->data.battery_level);
+        }
+        trigger_activity();
         break;
 
     case LVGL_MSG_TYPE_CHARGE_STATUS:

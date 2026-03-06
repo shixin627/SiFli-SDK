@@ -315,6 +315,7 @@ extern "C"
         void (*handle_imu_attitude)(void *param);
         void (*handle_hr)(int hr);
         void (*handle_battery_voltage)(void *param);
+        void (*handle_battery_percentage)(uint8_t level);
         void (*refresh_battery_level)(uint8_t level);
         void (*handle_charge_status)(void *param);
         void (*handle_notification)(void *param);
