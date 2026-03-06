@@ -459,7 +459,7 @@ static void update_indicator_dots_position(int input_value)
             last_zoom[i] = zoom;
         }
         lv_obj_center(p_app_list_layout->indicator_dots[i]);
-        dot_x -= dot_size / 2;
+        dot_x -= (dot_size+14) / 2;
         dot_y -= dot_size / 2;
 
         lv_obj_set_pos(p_app_list_layout->indicator_dots_bg[i], dot_x, dot_y);
