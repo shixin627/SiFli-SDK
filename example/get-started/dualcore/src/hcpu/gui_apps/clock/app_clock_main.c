@@ -1076,6 +1076,7 @@ void create_connection_tips(void)
     lv_timer_set_repeat_count(connection_tips_timer, 1);
 }
 
+extern void ble_dev_mgr_start_main_phone_check_timer(uint32_t interval_ms);
 static void refresh_bluetooth_disconnection(bool connected)
 {
     is_bluetooth_connected = connected;
@@ -1090,6 +1091,7 @@ static void refresh_bluetooth_disconnection(bool connected)
         }
         else
         {
+            ble_dev_mgr_start_main_phone_check_timer(5000);
             lv_obj_clear_flag(
                 p_app_clock_main->app_list_bluetooth_disconnection,
                 LV_OBJ_FLAG_HIDDEN);

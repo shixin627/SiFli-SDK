@@ -562,10 +562,10 @@ static void gesture_recognition_thread_entry(void *parameter)
     {
         rt_sem_take(watch_sensor.gesture_sem, RT_WAITING_FOREVER);
 
-        if (SkaiWatchSys.charger_status != NoCharge)
-        {
-            continue;
-        }
+        // if (SkaiWatchSys.charger_status != NoCharge)
+        // {
+        //     continue;
+        // }
         if (is_user_touching_screen())
         {
             continue;
