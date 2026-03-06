@@ -290,15 +290,6 @@ static void bloc_motor_vibrate(motor_params_t *params)
     #endif
 }
 
-void main_motor_vibrate_start(void)
-{
-    bloc_motor_vibrate(&g_motor_params);
-}
-
-void main_motor_vibrate_stop(void)
-{
-    bloc_motor_stop();
-}
 
 static void bloc_motor_stop(void)
 {
@@ -332,16 +323,15 @@ static void motor_task_entry(void *parameter)
                           RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
                           RT_WAITING_FOREVER, &event) == RT_EOK)
         {
-            if (event & MOTOR_EVENT_START)
-            {
-                LOG_D("Motor task received START event");
-                bloc_motor_vibrate(&g_motor_params);
-            }
-
             if (event & MOTOR_EVENT_STOP)
             {
                 LOG_D("Motor task received STOP event");
                 bloc_motor_stop();
+            }
+            else if (event & MOTOR_EVENT_START)
+            {
+                LOG_D("Motor task received START event");
+                bloc_motor_vibrate(&g_motor_params);
             }
         }
     }
@@ -376,7 +366,7 @@ static int motor_task_init(void)
     return RT_EOK;
 }
     #ifndef BSP_USING_PC_SIMULATOR
-// INIT_APP_EXPORT(motor_task_init);
+INIT_APP_EXPORT(motor_task_init);
     #endif
 
     #ifdef BSP_USING_PC_SIMULATOR
@@ -389,21 +379,19 @@ void motor_vibrate_stop(void)
     LOG_D("vibration task stop");
 }
     #else
-extern void main_send_motor_start_event(void);
-extern void main_send_motor_stop_event(void);
 void motor_vibrate_start(motor_params_t *params)
 {
-    // if (!motor_event)
-    // {
-    //     LOG_E("Motor event not initialized");
-    //     return;
-    // }
+    if (!motor_event)
+    {
+        LOG_E("Motor event not initialized");
+        return;
+    }
 
     // 保存參數到全局變量
     g_motor_params = *params;
 
     // 發送啟動事件到馬達任務
-    main_send_motor_start_event();
+    rt_event_send(motor_event, MOTOR_EVENT_START);
 }
 
 void motor_vibrate_stop(void)
@@ -412,9 +400,9 @@ void motor_vibrate_stop(void)
     motor_stop_flag = true;
 
     // 發送停止事件到馬達任務
-    // if (motor_event)
+    if (motor_event)
     {
-        main_send_motor_stop_event();
+        rt_event_send(motor_event, MOTOR_EVENT_STOP);
     }
 }
 

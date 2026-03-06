@@ -1,5 +1,5 @@
 {
-    "version": "1.0.245",
+    "version": "1.0.246",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
@@ -7,5 +7,5 @@
         "lcpu.bin",
         "lcpu_patch.bin"
     ],
-    "description": "馬達震動期間不辨識手勢"
+    "description": "修復重複tap到的問題\n修復馬達震動不停止的問題"
 }

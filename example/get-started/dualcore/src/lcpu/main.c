@@ -33,12 +33,10 @@ static rt_event_t main_event;
 
 #define MAIN_EVENT_BATTERY_CHARGING (1 << 0)
 #define MAIN_EVENT_BATTERY_VOLTAGE (1 << 1)
-#define MAIN_EVENT_MOTOR_START (1 << 2)
-#define MAIN_EVENT_MOTOR_STOP (1 << 3)
-#define MAIN_EVENT_HAND_LIFT (1 << 4)
+#define MAIN_EVENT_HAND_LIFT (1 << 2)
 #define MAIN_EVENT_ALL                                                         \
     (MAIN_EVENT_BATTERY_CHARGING | MAIN_EVENT_BATTERY_VOLTAGE |                \
-     MAIN_EVENT_MOTOR_START | MAIN_EVENT_MOTOR_STOP | MAIN_EVENT_HAND_LIFT)
+     MAIN_EVENT_HAND_LIFT)
 
 void main_send_read_charge_status_event(void)
 {
@@ -56,21 +54,6 @@ void main_send_read_voltage_event(void)
     }
 }
 
-void main_send_motor_start_event(void)
-{
-    if (main_event)
-    {
-        rt_event_send(main_event, MAIN_EVENT_MOTOR_START);
-    }
-}
-
-void main_send_motor_stop_event(void)
-{
-    if (main_event)
-    {
-        rt_event_send(main_event, MAIN_EVENT_MOTOR_STOP);
-    }
-}
 
 void main_send_hand_lift_event(void)
 {
@@ -168,8 +151,6 @@ static void watchdog_set_status(uint8_t en)
 }
 #endif
 
-extern void main_motor_vibrate_start(void);
-extern void main_motor_vibrate_stop(void);
 int main(void)
 {
     // init_pin();
@@ -229,15 +210,6 @@ int main(void)
                 bloc_battery_handle_voltage_event();
             }
 
-            if (recv_set & MAIN_EVENT_MOTOR_START)
-            {
-                main_motor_vibrate_start();
-            }
-
-            if (recv_set & MAIN_EVENT_MOTOR_STOP)
-            {
-                main_motor_vibrate_stop();
-            }
 
             if (recv_set & MAIN_EVENT_HAND_LIFT)
             {
