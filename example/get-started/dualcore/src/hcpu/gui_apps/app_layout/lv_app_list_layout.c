@@ -356,6 +356,7 @@ static uint16_t selected_item_index = ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - 1;
 static uint16_t last_zoom[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)] = {0};
 static void update_indicator_dots_position(int input_value)
 {
+    // LOG_I("Updating indicator dots position, input value: %d", input_value);
     if (p_app_list_layout == NULL || !is_indicator_dots_visible)
         return;
 
@@ -495,7 +496,7 @@ static void create_indicator_dots(lv_obj_t *parent)
         p_app_list_layout->indicator_dots[i] = dot;
     }
 
-    update_indicator_dots_position(150);
+    update_indicator_dots_position(37);
 }
 
 // static void create_ai_hint_icon(lv_obj_t *parent)
@@ -1370,7 +1371,7 @@ static void reset_list(void)
     }
     gesture_starting_value =
         (100 * (ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - scroll_to_index - 1)) +
-        100 / 2;
+        37;
 
     selected_item_index = app_scroll_target_item;
     prev_app_scroll_target_item = app_scroll_target_item;
