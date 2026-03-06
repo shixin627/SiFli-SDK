@@ -333,9 +333,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>-Wno-builtin-macro-redefined </MiscControls>
-              <Define>SIFLI_VERSION=33816576, ROM_ENABLED, SIFLI_BUILD="4ad18e6e", SOC_BF0_LCPU, HAL_TICK_PER_SECOND=1000, USE_HAL_DRIVER, RT_USING_ARM_LIBC, __FILE__=__FILE_NAME__, ARM_MATH_LOOPUNROLL, SF32LB56X, LCPU_CONFIG_V1</Define>
+              <Define>ARM_MATH_LOOPUNROLL, SF32LB56X, LCPU_CONFIG_V1, __FILE__=__FILE_NAME__, SIFLI_VERSION=33816576, SOC_BF0_LCPU, RT_USING_ARM_LIBC, HAL_TICK_PER_SECOND=1000, ROM_ENABLED, USE_HAL_DRIVER, SIFLI_BUILD="d760e2e2"</Define>
               <Undefine />
-              <IncludePath>build_sf32lb56w-watch_lcpu;..\..\..\..\..\rtos\rtthread\include;..\..\src\lcpu;..\..\src\modules\algorithm\activity;..\..\src\modules\algorithm\activity\kraepelin;..\..\src\modules\algorithm\GestureDetect;..\..\src\modules\algorithm\HandTracking;..\..\src\modules\algorithm\MahonyAHRS;..\..\src\modules\bloc;..\..\src\modules\communicate;..\..\src\modules\model;..\..\src\modules\service;..\..\src\modules\tests;..\..\src\modules\util\includes;..\..\..\..\..\customer\boards\common;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\..\..\..\customer\boards\eh-lb563;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56w-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\peripherals\motor;..\..\..\..\..\customer\peripherals\sensor\BMI270-Sensor-API;..\..\..\..\..\customer\peripherals\sensor\BMI270-Sensor-API\common;..\..\..\..\..\customer\peripherals\sensor\gh3018;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo\Basic\inc;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo\Basic\lib;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo\Basic\src;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\call\inc;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\call\src;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\common\inc;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\common\src;..\..\..\..\..\rtos\rtthread\bsp\sifli\drivers;..\..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\..\drivers\cmsis\Include;..\..\..\..\..\external\CMSIS\Include;..\..\..\..\..\drivers\Include;..\..\..\..\..\drivers\hal_epic_ex;..\..\..\..\..\external\helper_worker;..\..\..\..\..\external\Kraepelin\kraepelin_algorithm;..\..\..\..\..\external\Kraepelin\kraepelin_reference;..\..\..\..\..\middleware\include;..\..\..\..\..\middleware\button;..\..\..\..\..\middleware\ipc_queue\common;..\..\..\..\..\middleware\ipc_queue\include;..\..\..\..\..\middleware\ipc_queue\porting\os;..\..\..\..\..\middleware\ipc_queue\porting\os\rtthread;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x\lcpu;..\..\..\..\..\middleware\audio;..\..\..\..\..\middleware\audio\include;..\..\..\..\..\middleware\audio\audio_bt_voice;..\..\..\..\..\middleware\audio\audio_port;..\..\..\..\..\middleware\audio\audio_speaker_mic;..\..\..\..\..\middleware\audio\audio_voice_proc;..\..\..\..\..\middleware\bluetooth\service;..\..\..\..\..\middleware\bluetooth\service\internal;..\..\..\..\..\middleware\bluetooth\include;..\..\..\..\..\middleware\data_bus\public;..\..\..\..\..\middleware\data_bus\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\middleware\sifli_lib\lib;..\..\..\..\..\middleware\include;..\..\..\..\..\rtos\os_adaptor\src;..\..\..\..\..\rtos\os_adaptor\inc;..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33;..\..\..\..\..\rtos\rtthread\libcpu\arm\common;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\motor;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\finsh;..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc;..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\include;..\..\..\..\..\rtos\rtthread\components\utilities\llt_mem;..\..\..\..\..\rtos\rtthread\components\utilities\ulog;..\..\..\..\..\rtos\rtthread\components\utilities\ulog\backend</IncludePath>
+              <IncludePath>build_sf32lb56w-watch_lcpu;..\..\..\..\..\rtos\rtthread\include;..\..\src\lcpu;..\..\src\modules\algorithm\activity;..\..\src\modules\algorithm\activity\kraepelin;..\..\src\modules\algorithm\GestureDetect;..\..\src\modules\algorithm\HandTracking;..\..\src\modules\algorithm\MahonyAHRS;..\..\src\modules\bloc;..\..\src\modules\communicate;..\..\src\modules\model;..\..\src\modules\service;..\..\src\modules\tests;..\..\src\modules\util\includes;..\..\..\..\..\customer\boards\common;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\..\..\..\customer\boards\eh-lb563;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56w-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\peripherals\charger;..\..\..\..\..\customer\peripherals\charger\simple_charge;..\..\..\..\..\customer\peripherals\motor;..\..\..\..\..\customer\peripherals\sensor\BMI270-Sensor-API;..\..\..\..\..\customer\peripherals\sensor\BMI270-Sensor-API\common;..\..\..\..\..\customer\peripherals\sensor\gh3018;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo\Basic\inc;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo\Basic\lib;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo\Basic\src;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\call\inc;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\call\src;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\common\inc;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\common\src;..\..\..\..\..\rtos\rtthread\bsp\sifli\drivers;..\..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\..\drivers\cmsis\Include;..\..\..\..\..\external\CMSIS\Include;..\..\..\..\..\drivers\Include;..\..\..\..\..\drivers\hal_epic_ex;..\..\..\..\..\external\helper_worker;..\..\..\..\..\external\Kraepelin\kraepelin_algorithm;..\..\..\..\..\external\Kraepelin\kraepelin_reference;..\..\..\..\..\middleware\include;..\..\..\..\..\middleware\button;..\..\..\..\..\middleware\ipc_queue\common;..\..\..\..\..\middleware\ipc_queue\include;..\..\..\..\..\middleware\ipc_queue\porting\os;..\..\..\..\..\middleware\ipc_queue\porting\os\rtthread;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x\lcpu;..\..\..\..\..\middleware\audio;..\..\..\..\..\middleware\audio\include;..\..\..\..\..\middleware\audio\audio_bt_voice;..\..\..\..\..\middleware\audio\audio_port;..\..\..\..\..\middleware\audio\audio_speaker_mic;..\..\..\..\..\middleware\audio\audio_voice_proc;..\..\..\..\..\middleware\battery;..\..\..\..\..\middleware\bluetooth\service;..\..\..\..\..\middleware\bluetooth\service\internal;..\..\..\..\..\middleware\bluetooth\include;..\..\..\..\..\middleware\data_bus\public;..\..\..\..\..\middleware\data_bus\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\middleware\sifli_lib\lib;..\..\..\..\..\middleware\include;..\..\..\..\..\rtos\os_adaptor\src;..\..\..\..\..\rtos\os_adaptor\inc;..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33;..\..\..\..\..\rtos\rtthread\libcpu\arm\common;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\motor;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\finsh;..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc;..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\include;..\..\..\..\..\rtos\rtthread\components\utilities\llt_mem;..\..\..\..\..\rtos\rtthread\components\utilities\ulog;..\..\..\..\..\rtos\rtthread\components\utilities\ulog\backend</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -369,7 +369,7 @@
             <ScatterFile>build_sf32lb56w-watch_lcpu/link.sct</ScatterFile>
             <IncludeLibs />
             <IncludeLibsPath />
-            <Misc>  --cpu=cortex-m33 --strict --scatter build_sf32lb56w-watch_lcpu/link.sct --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols --info sizes --info totals --info unused --info veneers --any_contingency  --list build_sf32lb56w-watch_lcpu/main.map  --symdefs=build_sf32lb56w-watch_lcpu/main.symdefs  --libpath=C:\Keil_v5/ARM/ARMCLANG/lib --diag_suppress=L6314 --diag_suppress=L6329 --predefine="-DSF32LB56X" --predefine="-DSIFLI_VERSION=33816576" --predefine="-DROM_ENABLED" --predefine="-DSIFLI_BUILD="4ad18e6e"" --predefine="-DSF32LB56X" --predefine="-DSOC_BF0_LCPU" --predefine="-DHAL_TICK_PER_SECOND=1000" --predefine="-DUSE_HAL_DRIVER" --predefine="-DARM_MATH_LOOPUNROLL" --predefine="-DLCPU_CONFIG_V1" --predefine="-DRT_USING_ARM_LIBC"</Misc>
+            <Misc>  --cpu=cortex-m33 --strict --scatter build_sf32lb56w-watch_lcpu/link.sct --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols --info sizes --info totals --info unused --info veneers --any_contingency  --list build_sf32lb56w-watch_lcpu/main.map  --symdefs=build_sf32lb56w-watch_lcpu/main.symdefs  --libpath=C:\Keil_v5/ARM/ARMCLANG/lib --diag_suppress=L6314 --diag_suppress=L6329 --predefine="-DSF32LB56X" --predefine="-DARM_MATH_LOOPUNROLL" --predefine="-DSF32LB56X" --predefine="-DLCPU_CONFIG_V1" --predefine="-DSOC_BF0_LCPU" --predefine="-DSIFLI_VERSION=33816576" --predefine="-DHAL_TICK_PER_SECOND=1000" --predefine="-DROM_ENABLED" --predefine="-DUSE_HAL_DRIVER" --predefine="-DSIFLI_BUILD="d760e2e2"" --predefine="-DRT_USING_ARM_LIBC"</Misc>
             <LinkerInputFile />
             <DisabledWarnings />
           </LDads>
@@ -684,6 +684,13 @@
           </Files>
           <Files>
             <File>
+              <FileName>battery_table.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\battery_table.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>bsp_init.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_init.c</FilePath>
@@ -712,30 +719,9 @@
           </Files>
           <Files>
             <File>
-              <FileName>eh-lb56xu_bsp_init.c</FileName>
+              <FileName>eh-lb56xu_battery_table.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_init.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_bsp_lcd_tp.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_lcd_tp.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_bsp_pinmux.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_pinmux.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_bsp_power.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_power.c</FilePath>
+              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\battery_table.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -764,6 +750,55 @@
               <FileName>eh-lb56xu_bsp_power.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_power.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>eh-lb56xu_battery_table.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\battery_table.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>eh-lb56xu_bsp_init.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_init.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>eh-lb56xu_bsp_lcd_tp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_lcd_tp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>eh-lb56xu_bsp_pinmux.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_pinmux.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>eh-lb56xu_bsp_power.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_power.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>charge.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\customer\peripherals\charger\charge.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>simple_charge.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\customer\peripherals\charger\simple_charge\simple_charge.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -1814,6 +1849,16 @@
               <FileName>audio_3a_dummy.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\middleware\audio\audio_voice_proc\audio_3a_dummy.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>battery_calculator</GroupName>
+          <Files>
+            <File>
+              <FileName>battery_calculator.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\middleware\battery\battery_calculator.c</FilePath>
             </File>
           </Files>
         </Group>

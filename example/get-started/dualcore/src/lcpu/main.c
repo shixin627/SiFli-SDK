@@ -21,6 +21,7 @@
 #endif
 #include "bloc_rgb_led.h"
 #include "bloc_battery.h"
+#include "charge.h"
 #ifdef BSP_KEY1_ACTIVE_HIGH
     #define BUTTON_ACTIVE_POL BUTTON_ACTIVE_HIGH
 #else
@@ -61,6 +62,13 @@ void main_send_hand_lift_event(void)
     {
         rt_event_send(main_event, MAIN_EVENT_HAND_LIFT);
     }
+}
+
+static rt_err_t charge_event_rx_ind(rt_device_t dev, rt_size_t size)
+{
+    // SDK charge driver triggers this on charging state change
+    main_send_read_charge_status_event();
+    return RT_EOK;
 }
 
 void button_event_handler(int32_t pin, button_action_t button_action)
@@ -181,7 +189,13 @@ int main(void)
     // 創建事件對象
     main_event = rt_event_create("main_evt", RT_IPC_FLAG_FIFO);
     RT_ASSERT(main_event != RT_NULL);
-    // battery_get_charge_state()->charge_percent = 100;
+
+    // 初始化電池管理系統 (SDK battery_calculator)
+    bloc_battery_init();
+
+    // 註冊 SDK 充電事件回調，當充電狀態改變時通知主循環
+    rt_charge_set_rx_ind(charge_event_rx_ind);
+
     rt_uint32_t recv_set = 0;
     while (1)
     {
@@ -198,12 +212,10 @@ int main(void)
 
         if (result == RT_EOK)
         {
-#ifdef CHARGE_DETECT_PIN
             if (recv_set & MAIN_EVENT_BATTERY_CHARGING)
             {
                 bloc_battery_handle_charging_event();
             }
-#endif
 
             if (recv_set & MAIN_EVENT_BATTERY_VOLTAGE)
             {

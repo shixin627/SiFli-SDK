@@ -124,7 +124,6 @@ void hal_gh30x_pin_set(uint8_t en)
 int hal_gh30x_i2c_init(void)
 {
     gh3018_power_onoff(1);
-
 #if 1
     hal_gh30x_pin_set(1);
 #endif

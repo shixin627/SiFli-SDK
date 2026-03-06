@@ -1,7 +1,7 @@
 #include "bsp_board.h"
 
-#ifndef CUSTOMER_BOARD
-    #define GSENSOR_POWER_EN (21) // GPIOB_21
+#if CUSTOMER_BOARD_VER < BOARD_VER_29
+    #define GSENSOR_POWER_EN WATCH_GSENSOR_POWER_EN // GPIOB_21
 #endif
 
 // NO SD
