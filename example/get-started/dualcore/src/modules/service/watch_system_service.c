@@ -1,46 +1,11 @@
 /**
  ******************************************************************************
- * @file   watch_sys_service.c
+ * @file   watch_system_service.c
  * @author Skaiwalk software development team
+ * @brief  LCPU 系統服務層。透過 data_service 框架向 HCPU 推送電池電壓、
+ *         充電狀態、抬手/手勢事件、健康資訊、活動記錄等通知，並處理來自
+ *         HCPU 的系統指令（休眠/喚醒、感測器電源、IMU 校準、馬達控制等）。
  ******************************************************************************
- */
-/**
- * Copyright (c) 2018 - 2024, Skaiwalk Technology
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form, except as embedded into a Skaiwalk
- * integrated circuit in a product or a software update for such product, must
- * reproduce the above copyright notice, this list of conditions and the
- * following disclaimer in the documentation and/or other materials provided
- * with the distribution.
- *
- * 3. The names of Skaiwalk or its contributors may not be used to endorse
- *    or promote products derived from this software without specific prior
- * written permission.
- *
- * 4. This software, with or without modification, must only be used with a
- *    Skaiwalk integrated circuit.
- *
- * 5. Any binary form of this software must not be reverse engineered,
- * decompiled, modified, or disassembled.
- *
- * THIS SOFTWARE IS PROVIDED BY SKAIWALK TECHNOLOGY "AS IS" AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY, NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL SKAIWALK TECHNOLOGY OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <rtthread.h>
@@ -52,7 +17,6 @@
 #include "hr_service.h"
 #include "data_service_provider.h"
 #include "watch_sys_service.h"
-// #include "bloc_peripheral.h"
 #include "bloc_battery.h"
 #include "bloc_rgb_led.h"
 #ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
@@ -64,9 +28,7 @@
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
-// #define MSG_SEND_INTERVAL_MS 60
 #ifdef MSG_SEND_INTERVAL_MS
-// 添加60ms间隔保护相关变量和函数
 static rt_tick_t last_msg_send_time = 0;
 
 static bool can_send_message(void)
@@ -123,12 +85,9 @@ static void notify_battery_voltage(uint32_t data)
     if (watch_sys_service_env.service == NULL)
         return;
     rt_err_t err;
-    // err = datas_data_ready(watch_sys_service_env.service,
-    // sizeof(data_ntf_ind), (uint8_t *)&data_ntf_ind);
     err = datas_data_ready(watch_sys_service_env.service, sizeof(data),
                            (uint8_t *)data);
     RT_ASSERT(RT_EOK == err);
-    // LOG_D("[%s]%d", __func__, data);
 }
 
 static void indicate_battery_voltage(uint32_t data)
@@ -137,7 +96,7 @@ static void indicate_battery_voltage(uint32_t data)
         return;
 #ifdef MSG_SEND_INTERVAL_MS
     if (!can_send_message())
-        return; // 忽略消息,不符合60ms间隔要求
+        return;
 #endif
     int32_t result = 0;
     watch_sys_service_data_ind_t data_ind;
@@ -146,7 +105,6 @@ static void indicate_battery_voltage(uint32_t data)
                                       MSG_SERVICE_BATTERY_DATA_IND,
                                       sizeof(data_ind), (uint8_t *)&data_ind);
     RT_ASSERT(0 == result);
-    // LOG_D("[%s]%d", __func__, data);
 }
 
 static void charge_status_callback(int status)
@@ -155,7 +113,7 @@ static void charge_status_callback(int status)
         return;
 #ifdef MSG_SEND_INTERVAL_MS
     if (!can_send_message())
-        return; // 忽略消息,不符合60ms间隔要求
+        return;
 #endif
     int32_t result = 0;
     watch_sys_service_data_ind_t data_ind;
@@ -164,59 +122,7 @@ static void charge_status_callback(int status)
                                       MSG_SERVICE_CHARGE_STATE_IND,
                                       sizeof(data_ind), (uint8_t *)&data_ind);
     RT_ASSERT(0 == result);
-    // LOG_D("[%s]%d", __func__, status);
 }
-
-// static void imu_status_callback(bool status)
-// {
-//     if (watch_sys_service_env.service == NULL)
-//         return;
-// #ifdef MSG_SEND_INTERVAL_MS
-//     if (!can_send_message())
-//         return; // 忽略消息,不符合60ms间隔要求
-// #endif
-//     int32_t result = 0;
-//     watch_sys_service_data_ind_t data_ind;
-//     data_ind.data = status;
-//     result = datas_push_msg_to_client(watch_sys_service_env.service,
-//     MSG_SERVICE_IMU_STATE_IND, sizeof(data_ind), (uint8_t *)&data_ind);
-//     RT_ASSERT(0 == result);
-//     // LOG_D("[%s]%d", __func__, status);
-// }
-
-// static void mag_status_callback(bool status)
-// {
-//     if (watch_sys_service_env.service == NULL)
-//         return;
-// #ifdef MSG_SEND_INTERVAL_MS
-//     if (!can_send_message())
-//         return; // 忽略消息,不符合60ms间隔要求
-// #endif
-//     int32_t result = 0;
-//     watch_sys_service_data_ind_t data_ind;
-//     data_ind.data = status;
-//     result = datas_push_msg_to_client(watch_sys_service_env.service,
-//     MSG_SERVICE_MAG_STATE_IND, sizeof(data_ind), (uint8_t *)&data_ind);
-//     RT_ASSERT(0 == result);
-//     // LOG_D("[%s]%d", __func__, status);
-// }
-
-// static void ppg_status_callback(bool status)
-// {
-//     if (watch_sys_service_env.service == NULL)
-//         return;
-// #ifdef MSG_SEND_INTERVAL_MS
-//     if (!can_send_message())
-//         return; // 忽略消息,不符合60ms间隔要求
-// #endif
-//     int32_t result = 0;
-//     watch_sys_service_data_ind_t data_ind;
-//     data_ind.data = status;
-//     result = datas_push_msg_to_client(watch_sys_service_env.service,
-//     MSG_SERVICE_PPG_STATE_IND, sizeof(data_ind), (uint8_t *)&data_ind);
-//     RT_ASSERT(0 == result);
-//     // LOG_D("[%s]%d", __func__, status);
-// }
 
 static void lift_status_callback(uint8_t status)
 {
@@ -234,29 +140,7 @@ static void lift_status_callback(uint8_t status)
                                       MSG_SERVICE_LIFT_IND, sizeof(data_ind),
                                       (uint8_t *)&data_ind);
     RT_ASSERT(0 == result);
-    // LOG_I("[%s]%d", __func__, status);
 }
-
-// static void notify_soft_adt_status(bool status)
-// {
-//     if (watch_sys_service_env.service == NULL)
-//         return;
-//     if (is_sleep_mode())
-//     {
-//         return;
-//     }
-// #ifdef MSG_SEND_INTERVAL_MS
-//     if (!can_send_message())
-//         return;
-// #endif
-//     int32_t result = 0;
-//     watch_sys_service_data_ind_t data_ind;
-//     data_ind.data = status;
-//     result = datas_push_msg_to_client(watch_sys_service_env.service,
-//     MSG_SERVICE_SOFT_ADT_IND, sizeof(data_ind), (uint8_t *)&data_ind);
-//     RT_ASSERT(0 == result);
-//     // LOG_I("[%s]%d", __func__, status);
-// }
 
 static void notify_gesture_event(uint32_t gesture)
 {
@@ -277,66 +161,7 @@ static void notify_gesture_event(uint32_t gesture)
                                       MSG_SERVICE_GESTURE_IND, sizeof(data_ind),
                                       (uint8_t *)&data_ind);
     RT_ASSERT(0 == result);
-    // LOG_I("Gesture event %d sent.", gesture);
 }
-
-// static void notify_gesture_dataset(uint32_t timestamp, int count, void *data)
-// {
-//     if (watch_sys_service_env.service == NULL)
-//         return;
-//     if (is_sleep_mode())
-//     {
-//         return;
-//     }
-// #ifdef MSG_SEND_INTERVAL_MS
-//     if (!can_send_message())
-//         return;
-// #endif
-
-//     LOG_I("notify_gesture_dataset called with count: %d", count);
-//     watch_sys_linear_acce_t *acce = (watch_sys_linear_acce_t *)data;
-//     int32_t result = 0;
-//     static watch_sys_gesture_dataset_rsp_t data_ind;
-//     data_ind.timestamp = timestamp;
-//     data_ind.count = count;
-//     memcpy(data_ind.acce, acce, sizeof(watch_sys_linear_acce_t) * count);
-//     result = datas_push_msg_to_client(watch_sys_service_env.service,
-//                                       MSG_SERVICE_GESTURE_DATASET_IND,
-//                                       sizeof(data_ind), (uint8_t
-//                                       *)&data_ind);
-//     RT_ASSERT(0 == result);
-//     LOG_D("Gesture dataset %d sent.", count);
-// }
-
-// static void notify_gesture_ppg_dataset(uint32_t timestamp, uint16_t count,
-// int16_t (*acce)[3], uint16_t *ppg)
-// {
-//     if (watch_sys_service_env.service == NULL)
-//         return;
-//     if (is_sleep_mode() && !is_imu_data_collection())
-//     {
-//         return;
-//     }
-// #ifdef MSG_SEND_INTERVAL_MS
-//     if (!can_send_message())
-//         return;
-// #endif
-//     int32_t result = 0;
-//     watch_sys_gesture_ppg_dataset_rsp_t data_ind;
-//     data_ind.timestamp = timestamp;
-//     data_ind.count = count;
-//     for (int i = 0; i < data_ind.count; i++)
-//     {
-//         data_ind.acce[i].acce.x = acce[i][0];
-//         data_ind.acce[i].acce.y = acce[i][1];
-//         data_ind.acce[i].acce.z = acce[i][2];
-//         data_ind.acce[i].ppg = ppg[i];
-//     }
-//     result = datas_push_msg_to_client(watch_sys_service_env.service,
-//     MSG_SERVICE_GESTURE_PPG_DATASET_IND, sizeof(data_ind), (uint8_t
-//     *)&data_ind); RT_ASSERT(0 == result);
-//     // LOG_D("Gesture dataset %d sent.", count);
-// }
 
 static void notify_health_info(void)
 {
@@ -471,10 +296,6 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
             LOG_I("System Stand by");
             set_sleep_mode(true);
             acce_set_power(RT_SENSOR_POWER_LOW);
-            if (!battery_get_charge_state()->is_plugged)
-            {
-                // main_send_rgb_stop_event();
-            }
         }
         break;
 
@@ -484,7 +305,6 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
             last_hcpu_wakeup_time = rt_tick_get_millisecond();
             set_sleep_mode(false);
             bloc_battery_read_voltage();
-            // bloc_battery_read_charge_status();
             acce_set_power(RT_SENSOR_POWER_HIGH);
         }
         break;
@@ -527,28 +347,14 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
         case ImuDataCollection:
         {
             LOG_I("IMU Data Collection");
-            if (msg->body[1] == 1)
-            {
-                set_imu_data_collection(true);
-            }
-            else
-            {
-                set_imu_data_collection(false);
-            }
+            set_imu_data_collection(msg->body[1] == 1);
         }
         break;
 
         case ImuRawdataCollection:
         {
             LOG_I("IMU Raw Data Collection");
-            if (msg->body[1] == 1)
-            {
-                set_imu_rawdata_collection(true);
-            }
-            else
-            {
-                set_imu_rawdata_collection(false);
-            }
+            set_imu_rawdata_collection(msg->body[1] == 1);
         }
         break;
 
@@ -668,7 +474,6 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
 
         RT_ASSERT(data_rdy_ind);
 
-        // LOG_I("push DATA_NTF_IND to all clients");
         data_ntf_ind.data = (uint32_t)data_rdy_ind->data;
         result = datas_push_data_to_client(service, sizeof(data_ntf_ind),
                                            (uint8_t *)&data_ntf_ind);
@@ -677,7 +482,6 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
     }
     default:
     {
-        // RT_ASSERT(0);
         LOG_E("watch_sys_service_msg_handler: unknown msg_id %d", msg->msg_id);
         break;
     }
@@ -690,16 +494,9 @@ static void register_watch_sys_service_funs(void)
 {
     watch_sys_sync.notify_battery_voltage = indicate_battery_voltage;
     watch_sys_sync.charge_status_callback = charge_status_callback;
-    // watch_sys_sync.imu_status_callback = imu_status_callback;
-    // watch_sys_sync.mag_status_callback = mag_status_callback;
-    // watch_sys_sync.ppg_status_callback = ppg_status_callback;
     watch_sys_sync.lift_status_callback = lift_status_callback;
-    // watch_sys_sync.soft_adt_status_callback = notify_soft_adt_status;
     watch_sys_sync.notify_gesture_event = notify_gesture_event;
-    // watch_sys_sync.notify_gesture_dataset = notify_gesture_dataset;
-    // watch_sys_sync.notify_gesture_ppg_dataset = notify_gesture_ppg_dataset;
     watch_sys_sync.notify_health_info = notify_health_info;
-    // watch_sys_sync.notify_sleep_state = notify_sleep_state;
     watch_sys_sync.notify_minute_of_activity = notify_minute_of_activity;
     watch_sys_sync.notify_debug_log = notify_debug_log;
 }
@@ -742,8 +539,6 @@ test_watch_sys_service(int argc,
     }
     else if (strcmp(argv[1], "ble_bool") == 0)
     {
-        // extern void main_send_ble_boot_event(void);
-        // main_send_ble_boot_event();
         LOG_D("ble_bool command received.");
         extern int close_acce_service(void);
         close_acce_service();

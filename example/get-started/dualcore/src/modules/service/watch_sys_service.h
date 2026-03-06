@@ -187,16 +187,9 @@ extern "C"
     // lcpu->hcpu notify functions
     void (*notify_battery_voltage)(uint32_t data);
     void (*charge_status_callback)(int status);
-    void (*imu_status_callback)(bool status);
-    void (*mag_status_callback)(bool status);
-    void (*ppg_status_callback)(bool status);
     void (*lift_status_callback)(uint8_t status);
-    void (*soft_adt_status_callback)(bool status);
     void (*notify_gesture_event)(uint32_t gesture);
-    // void (*notify_gesture_dataset)(uint32_t timestamp, int count, void *data);
-    // void (*notify_gesture_ppg_dataset)(uint32_t timestamp, uint16_t count,
-    //                                    int16_t (*acce)[3], uint16_t *ppg);
-    void (*notify_health_info)(void); // units: steps, (m), (cal)
+    void (*notify_health_info)(void);
     void (*notify_sleep_state)(uint8_t mode, uint32_t timestamp);
     void (*notify_minute_of_activity)(time_t utc_now, uint8_t steps,
                                       uint8_t orientation, uint16_t vmc);
