@@ -169,6 +169,11 @@ static void vol_bar_anim_width_cb(void *var, int32_t v)
     lv_obj_set_width((lv_obj_t *)var, v);
     lv_obj_align_to((lv_obj_t *)var, dial_widget_vol_icon_btn,
                     LV_ALIGN_OUT_TOP_MID, 0, -20);
+    uint8_t opacity = (v * 255) / VOL_BAR_EXPANDED_WIDTH;
+    if (opacity > 255)
+        opacity = 255;
+    lv_obj_set_style_bg_opa(dial_widget_vol_bar, opacity, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(dial_widget_vol_bar, opacity, LV_PART_INDICATOR);
 }
 
 static void vol_bar_collapse_anim_ready_cb(lv_anim_t *a)
