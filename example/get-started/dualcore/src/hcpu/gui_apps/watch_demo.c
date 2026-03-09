@@ -785,8 +785,6 @@ void app_watch_entry(void *parameter)
     {
         int ms;
 
-        lvgl_drain_messages();
-
         rt_pm_request(PM_SLEEP_MODE_IDLE);
         ms = lv_timer_handler();
         rt_pm_release(PM_SLEEP_MODE_IDLE);

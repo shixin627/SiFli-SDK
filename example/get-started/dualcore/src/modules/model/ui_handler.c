@@ -73,6 +73,7 @@
 #include <rtdbg.h>
 
 /* Configuration */
+#define USE_LV_TIMER
 
 /* External image declarations */
 LV_IMG_DECLARE(icon_mic);
@@ -873,31 +874,45 @@ void reset_lvgl_msg_handler(void)
     lvgl_msg_handler.handle_tap_indicator = NULL;
 }
 
-/* ============== Initialization and Public Functions ============== */
+/* ============== Task Entry Functions ============== */
 
+#ifndef USE_LV_TIMER
 /**
- * @brief Initialize the LVGL message queue
+ * @brief LVGL task entry function for thread-based message processing
  *
- * @return int RT_EOK on success
- */
-int lvgl_task_init(void)
-{
-    lvgl_mq = rt_mq_create("lvgl_mq", sizeof(lvgl_msg_t), 10, RT_IPC_FLAG_FIFO);
-    return RT_EOK;
-}
-INIT_APP_EXPORT(lvgl_task_init);
-
-/**
- * @brief Drain and process all pending messages from the LVGL message queue
+ * Creates a message queue and continuously processes LVGL messages
+ * in a dedicated thread.
  *
- * Should be called from the main LVGL thread loop (app_watch_entry)
- * to ensure all UI operations execute on the LVGL thread.
+ * @param param Thread parameter (unused)
  */
-// static void ui_refresh_task_entry(struct _lv_timer_t *task)
-void lvgl_drain_messages(void)
+static void lvgl_task(void *param)
 {
     lvgl_msg_t msg;
-    while (rt_mq_recv(lvgl_mq, &msg, sizeof(lvgl_msg_t), RT_WAITING_NO) == RT_EOK)
+    lvgl_mq = rt_mq_create("lvgl_mq", sizeof(lvgl_msg_t), 10, RT_IPC_FLAG_FIFO);
+
+    while (1)
+    {
+        if (rt_mq_recv(lvgl_mq, &msg, sizeof(lvgl_msg_t), RT_WAITING_FOREVER) ==
+            RT_EOK)
+        {
+            process_lvgl_message(&msg);
+        }
+    }
+}
+#else
+/**
+ * @brief UI refresh task entry function for timer-based message processing
+ *
+ * Processes LVGL messages from the queue using LVGL timer system.
+ * This function is called periodically by the LVGL timer.
+ *
+ * @param task LVGL timer task pointer
+ */
+static void ui_refresh_task_entry(struct _lv_timer_t *task)
+{
+    lvgl_msg_t msg;
+    while (rt_mq_recv(lvgl_mq, &msg, sizeof(lvgl_msg_t), RT_WAITING_NO) ==
+           RT_EOK)
     {
         process_lvgl_message(&msg);
     }
