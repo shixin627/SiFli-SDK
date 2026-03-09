@@ -1756,6 +1756,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     {
         lv_obj_t *widget = NULL;
         lv_obj_t *item = lv_simplified_obj_create(p_app_list);
+        lv_obj_clear_flag(item, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_size(item, 466, LIST_ITEM_WIDGET_HEIGHT);
         if (i == 0)
         {
@@ -1767,7 +1768,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
                            (LIST_ITEM_WIDGET_HEIGHT + LIST_ITEM_SPACING) * i +
                                (100 + LIST_ITEM_SPACING));
         }
-        lv_obj_add_flag(item, LV_OBJ_FLAG_CLICKABLE);
+
 
         bool has_widget = true;
 
@@ -1818,7 +1819,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
         touch_obj[i] = lv_obj_create(item);
         lv_obj_set_size(touch_obj[i], LIST_ITEM_WIDGET_WIDTH,
                         LIST_ITEM_WIDGET_HEIGHT);
-        lv_obj_set_style_bg_opa(touch_obj[i], LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_opa(touch_obj[i], LV_OPA_50, 0);
         lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_CLICKABLE);
         lv_obj_align(touch_obj[i], LV_ALIGN_CENTER, 0, 0);
         lv_obj_add_event_cb(touch_obj[i], list_item_click_event_cb,
