@@ -1271,46 +1271,46 @@ static lv_obj_t *pages[5];
 static bool test_mode = false;
 void open_test_mode(bool open)
 {
-    test_mode = open;
-    for (int i = 0; i < 5; i++)
-    {
-        if (open)
-        {
-            if (lv_obj_is_valid(pages[i]))
-                lv_obj_set_style_bg_opa(pages[i], LV_OPA_50,
-                                        LV_PART_MAIN | LV_STATE_DEFAULT);
-        }
-        else
-        {
-            if (lv_obj_is_valid(pages[i]))
-                lv_obj_set_style_bg_opa(pages[i], LV_OPA_TRANSP,
-                                        LV_PART_MAIN | LV_STATE_DEFAULT);
-        }
-    }
-    // for (int i = 0; i < 4; i++)
+    // test_mode = open;
+    // for (int i = 0; i < 5; i++)
     // {
-    if (open)
-    {
-        if (lv_obj_is_valid(status_bar_area_left))
-            lv_obj_set_style_bg_opa(status_bar_area_left, LV_OPA_50, 0);
-        if (lv_obj_is_valid(status_bar_area_right))
-            lv_obj_set_style_bg_opa(status_bar_area_right, LV_OPA_50, 0);
-        if (lv_obj_is_valid(status_bar_area_up))
-            lv_obj_set_style_bg_opa(status_bar_area_up, LV_OPA_50, 0);
-        if (lv_obj_is_valid(status_bar_area_down))
-            lv_obj_set_style_bg_opa(status_bar_area_down, LV_OPA_50, 0);
-    }
-    else
-    {
-        if (lv_obj_is_valid(status_bar_area_left))
-            lv_obj_set_style_bg_opa(status_bar_area_left, LV_OPA_TRANSP, 0);
-        if (lv_obj_is_valid(status_bar_area_right))
-            lv_obj_set_style_bg_opa(status_bar_area_right, LV_OPA_TRANSP, 0);
-        if (lv_obj_is_valid(status_bar_area_up))
-            lv_obj_set_style_bg_opa(status_bar_area_up, LV_OPA_TRANSP, 0);
-        if (lv_obj_is_valid(status_bar_area_down))
-            lv_obj_set_style_bg_opa(status_bar_area_down, LV_OPA_TRANSP, 0);
-    }
+    //     if (open)
+    //     {
+    //         if (lv_obj_is_valid(pages[i]))
+    //             lv_obj_set_style_bg_opa(pages[i], LV_OPA_50,
+    //                                     LV_PART_MAIN | LV_STATE_DEFAULT);
+    //     }
+    //     else
+    //     {
+    //         if (lv_obj_is_valid(pages[i]))
+    //             lv_obj_set_style_bg_opa(pages[i], LV_OPA_TRANSP,
+    //                                     LV_PART_MAIN | LV_STATE_DEFAULT);
+    //     }
+    // }
+    // // for (int i = 0; i < 4; i++)
+    // // {
+    // if (open)
+    // {
+    //     if (lv_obj_is_valid(status_bar_area_left))
+    //         lv_obj_set_style_bg_opa(status_bar_area_left, LV_OPA_50, 0);
+    //     if (lv_obj_is_valid(status_bar_area_right))
+    //         lv_obj_set_style_bg_opa(status_bar_area_right, LV_OPA_50, 0);
+    //     if (lv_obj_is_valid(status_bar_area_up))
+    //         lv_obj_set_style_bg_opa(status_bar_area_up, LV_OPA_50, 0);
+    //     if (lv_obj_is_valid(status_bar_area_down))
+    //         lv_obj_set_style_bg_opa(status_bar_area_down, LV_OPA_50, 0);
+    // }
+    // else
+    // {
+    //     if (lv_obj_is_valid(status_bar_area_left))
+    //         lv_obj_set_style_bg_opa(status_bar_area_left, LV_OPA_TRANSP, 0);
+    //     if (lv_obj_is_valid(status_bar_area_right))
+    //         lv_obj_set_style_bg_opa(status_bar_area_right, LV_OPA_TRANSP, 0);
+    //     if (lv_obj_is_valid(status_bar_area_up))
+    //         lv_obj_set_style_bg_opa(status_bar_area_up, LV_OPA_TRANSP, 0);
+    //     if (lv_obj_is_valid(status_bar_area_down))
+    //         lv_obj_set_style_bg_opa(status_bar_area_down, LV_OPA_TRANSP, 0);
+    // }
     // }
     watch_sys_sync.set_debug_mode(open);
 }
