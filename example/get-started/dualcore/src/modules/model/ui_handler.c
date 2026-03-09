@@ -267,6 +267,12 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         {
             lvgl_msg_handler.refresh_battery_level(msg->data.battery_level);
         }
+        if (lvgl_msg_handler.handle_battery_percentage)
+        {
+            lvgl_msg_handler.handle_battery_percentage(
+                msg->data.battery_level);
+        }
+        trigger_activity();
         break;
 
     case LVGL_MSG_TYPE_CHARGE_STATUS:
@@ -628,6 +634,14 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         extern void toggle_keyboard_visibility(void);
         toggle_keyboard_visibility();
     }
+    break;
+
+    case LVGL_MSG_TYPE_MOUSE_LONG_PRESS:
+    {
+        extern void fsr_long_press(void);
+        fsr_long_press();
+    }
+    break;
 
     case LVGL_MSG_TYPE_LOADING:
         if (lvgl_msg_handler.handle_loading)
@@ -888,24 +902,40 @@ void lvgl_drain_messages(void)
         process_lvgl_message(&msg);
     }
 }
+#endif
 
-// int lvgl_task_init(void)
-// {
-// #ifdef USE_LV_TIMER
-//     lvgl_mq = rt_mq_create("lvgl_mq", sizeof(lvgl_msg_t), 10, RT_IPC_FLAG_FIFO);
-//     lv_timer_create(ui_refresh_task_entry, 16, 0);
-// #else
-//     rt_thread_t tid =
-//         rt_thread_create("lvgl_task", lvgl_task, RT_NULL, THREAD_STACK_SIZE,
-//                          THREAD_PRIORITY, THREAD_TIMESLICE);
-//     if (tid != RT_NULL)
-//     {
-//         rt_thread_startup(tid);
-//     }
-// #endif
-//     return RT_EOK;
-// }
-// INIT_APP_EXPORT(lvgl_task_init);
+/* ============== Initialization and Public Functions ============== */
+
+/* Thread configuration */
+#define THREAD_STACK_SIZE 14 * 256
+#define THREAD_PRIORITY 9
+#define THREAD_TIMESLICE 20
+
+/**
+ * @brief Initialize the LVGL task and message queue
+ *
+ * Sets up the message queue and either creates a dedicated thread
+ * or LVGL timer for message processing based on configuration.
+ *
+ * @return int RT_EOK on success
+ */
+int lvgl_task_init(void)
+{
+#ifdef USE_LV_TIMER
+    lvgl_mq = rt_mq_create("lvgl_mq", sizeof(lvgl_msg_t), 10, RT_IPC_FLAG_FIFO);
+    lv_timer_create(ui_refresh_task_entry, 16, 0);
+#else
+    rt_thread_t tid =
+        rt_thread_create("lvgl_task", lvgl_task, RT_NULL, THREAD_STACK_SIZE,
+                         THREAD_PRIORITY, THREAD_TIMESLICE);
+    if (tid != RT_NULL)
+    {
+        rt_thread_startup(tid);
+    }
+#endif
+    return RT_EOK;
+}
+INIT_APP_EXPORT(lvgl_task_init);
 
 /**
  * @brief Send a message to the LVGL message queue

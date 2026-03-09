@@ -895,7 +895,7 @@ lv_obj_t *recorder_on_start(lv_obj_t *scr)
 
     // Configure system settings
     setting_provider.set_power_save_mode(0);
-    // start_to_record_voice();
+    start_to_record_voice();
     return p_app_recorder->tileview;
 }
 
@@ -1004,7 +1004,7 @@ void recorder_on_resume(void)
     lvgl_msg_handler.handle_tap_indicator = handle_tap_event;
     lvgl_msg_handler.handle_file_sync = handle_file_sync;
     lvgl_msg_handler.handle_sync_progress = handle_sync_progress;
-    lvgl_msg_handler.handle_widgets_control = button_selection;
+    // lvgl_msg_handler.handle_widgets_control = button_selection;
 #endif
 }
 

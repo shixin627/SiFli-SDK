@@ -287,5 +287,6 @@ int recognize_gesture_release(float (*matrix)[kChannelReleaseNumber])
     // #endif
 
     // return gesture_index;
-    return release_interpreter->output(0)->data.f[1] * 100;
+    int gesture_index = PredictGesture(release_interpreter->output(0)->data.f);
+    return gesture_index;
 }

@@ -2,45 +2,10 @@
  ******************************************************************************
  * @file   hand_tracking.c
  * @author Skaiwalk software development team
+ * @brief  手腕動作追蹤模組。透過陀螺儀 X/Y 軸資料偵測抬手(lift)、
+ *         放手(put down)、翻腕(wrist rotation) 及返回手勢(back gesture)，
+ *         並以狀態機與零速度檢測決定是否觸發對應事件回呼。
  ******************************************************************************
- */
-/**
- * Copyright (c) 2018 - 2024, Skaiwalk Technology
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form, except as embedded into a Skaiwalk
- * integrated circuit in a product or a software update for such product, must
- * reproduce the above copyright notice, this list of conditions and the
- * following disclaimer in the documentation and/or other materials provided
- * with the distribution.
- *
- * 3. The names of Skaiwalk or its contributors may not be used to endorse
- *    or promote products derived from this software without specific prior
- * written permission.
- *
- * 4. This software, with or without modification, must only be used with a
- *    Skaiwalk integrated circuit.
- *
- * 5. Any binary form of this software must not be reverse engineered,
- * decompiled, modified, or disassembled.
- *
- * THIS SOFTWARE IS PROVIDED BY SKAIWALK TECHNOLOGY "AS IS" AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY, NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL SKAIWALK TECHNOLOGY OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "hand_tracking.h"
@@ -62,17 +27,14 @@
         rt_tick_from_millisecond(PUT_DOWN_CONFIRM_TIME)
 #endif
 
-#define LIFT_DETECT_GYRO_ON_WAKEUP_x 500
 #define LIFT_DETECT_GYRO_ON_SLEEP_x 180
 
 #define THRESHOLD_PARAM_ON_SLEEP 450
-#define THRESHOLD_PARAM_ON_WAKEUP 2400
-#define WRIST_PRONATION_THRESHOLD 700 // 800
-#define GESTURE_BACK_DURATION 500     // 500ms
+#define WRIST_PRONATION_THRESHOLD 700
+#define GESTURE_BACK_DURATION 500
 
 static float max_pronation_gyro_x = 0;
 static float max_supination_gyro_x = 0;
-static float last_max_pronation_gyro_x = 0;
 static float last_max_supination_gyro_x = 0;
 static float threshold = 0;
 static uint8_t count = 0;
@@ -100,8 +62,6 @@ bool check_zero_velocity_event(void)
     return false;
 }
 
-extern bool is_multi_gesture_mode(void);
-
 static HandTrackingProvider hand_tracking;
 void hand_tracking_init(void (*lift_callback)(uint8_t lift),
                         void (*back_callback)(void))
@@ -120,28 +80,12 @@ static bool is_hand_put_down(float gyro_x)
     return gyro_x < -LIFT_DETECT_GYRO_ON_SLEEP_x;
 }
 
-static bool is_hand_wrist_pronation(float gyro_x)
-{
-    return gyro_x > 200;
-}
-
-static bool is_hand_unlock_wrist_rotation(float gyro_x)
-{
-    return gyro_x < 100 && gyro_x > -100;
-}
-
-static bool is_hand_wrist_supination(float gyro_x)
-{
-    return gyro_x < -200;
-}
-
 static float sum_gyro_put_down_x = 0;
 static float sum_gyro_hand_lifting_x = 0;
 static float sum_gyro_hand_lifting_y = 0;
 
 #if USING_PUT_DOWN_TIMER
 static rt_timer_t timer_put_down_confirm;
-static rt_tick_t last_wrist_pronation_time = 0;
 static rt_tick_t last_lift2_time = 0;
 static rt_tick_t last_gesture_event_time = 0;
 static bool put_down_started = false;
@@ -153,7 +97,6 @@ static void timer_put_down_confirm_callback(void *param)
         return;
     if (last_gesture_event_time + GESTURE_COOLDOWN_TIME < rt_tick_get())
         main_send_hand_lift_event();
-    // hand_tracking.lift_callback(0);
 }
 
 void hand_tracking_lift_callback(uint8_t lift)
@@ -162,18 +105,6 @@ void hand_tracking_lift_callback(uint8_t lift)
         return;
     hand_tracking.lift_callback(lift);
     LOG_I("Hand lift callback triggered with lift: %d", lift);
-}
-
-static void trigger_lift_event(void)
-{
-    if (!hand_tracking.lift_callback)
-        return;
-    static rt_tick_t last_time = 0;
-    if (last_time + GESTURE_COOLDOWN_TIME < rt_tick_get())
-    {
-        last_time = rt_tick_get();
-        hand_tracking.lift_callback(1);
-    }
 }
 
 static void trigger_lift2_event(void)
@@ -197,11 +128,6 @@ static void trigger_lift3_event(void)
         {
             last_gesture_event_time = rt_tick_get();
             hand_tracking.lift_callback(3);
-        }
-        else
-        {
-            // LOG_W("Zero velocity event not detected, lift3 event not
-            // triggered");
         }
     }
 }
@@ -233,13 +159,11 @@ static void timer_check_watch_callback(void *param)
     sum_gyro_put_down_x = 0;
     gyro_y_check_watch = true;
     gesture_threshold_achieved = false;
-    // LOG_I("Check watch timer triggered, state reset to 0");
 }
 
 static rt_timer_t timer_check_watch;
 static void start_check_watch_timer(void)
 {
-
     if (!timer_check_watch)
     {
         timer_check_watch =
@@ -285,7 +209,6 @@ static void stop_put_down_confirm_timer(void)
         rt_timer_stop(timer_put_down_confirm);
         put_down_started = false;
     }
-    // LOG_D("sum_gyro_x: %d", sum_gyro_x);
     sum_gyro_put_down_x = 0;
     sum_gyro_hand_lifting_x = 0;
 }
@@ -297,7 +220,7 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
 {
     static rt_tick_t state_enter_time = 0;
     rt_tick_t current_time = rt_tick_get();
-    threshold = THRESHOLD_PARAM_ON_SLEEP * (freq / 25);
+    threshold = THRESHOLD_PARAM_ON_SLEEP * (freq / 25.0f);
     zero_velocity_buffer[zero_velocity_buffer_index] = zero_velocity;
     zero_velocity_buffer_index++;
     if (zero_velocity_buffer_index >= 25)
@@ -322,11 +245,6 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
                 max_supination_gyro_x = 0;
             }
 
-            // if (sum_gyro_put_down_x > (threshold * 0.7))
-            // {
-            //     trigger_lift_event();
-            // }
-
             if (gesture_threshold_achieved)
             {
                 if (current_time - gesture_threshold_achieved_time < 50)
@@ -334,11 +252,8 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
                     max_pronation_gyro_x_abs = fabsf(max_pronation_gyro_x);
                     wrist_rotate_ratio =
                         max_pronation_gyro_x_abs / max_supination_gyro_x_abs;
-                    // LOG_I("max_supination_gx:%f, max_pronation_gx:%f,
-                    // ratio:%f(threshold:%f)", last_max_supination_gyro_x,
-                    // max_pronation_gyro_x, ratio, ratio_threshold);
                     if (max_pronation_gyro_x_abs > WRIST_PRONATION_THRESHOLD &&
-                        wrist_rotate_ratio > 1.5)
+                        wrist_rotate_ratio > 1.5f)
                     {
                         trigger_lift3_event();
 #if USING_PUT_DOWN_TIMER
@@ -349,20 +264,14 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
                         max_pronation_gyro_x = 0;
                         gesture_threshold_achieved = false;
                         sum_gyro_put_down_x = 0;
-                        // LOG_I("Trigger lift3 event,
-                        // max_pronation_gyro_x:%0.3f, ratio:%0.3f",
-                        // max_pronation_gyro_x, ratio);
                     }
                     else
                     {
-                        // LOG_I("max_pronation_gyro_x:%0.3f, ratio:%0.3f",
-                        // max_pronation_gyro_x, ratio);
                         if (put_down_time + GESTURE_BACK_DURATION >
                                 current_time &&
-                            max_supination_gyro_x_abs > 400 &&
-                            sum_gyro_put_down_x > threshold * 1.3)
+                            max_supination_gyro_x_abs > 400.0f &&
+                            sum_gyro_put_down_x > threshold * 1.3f)
                         {
-                            // LOG_I("Trigger back event max_supination:%f,sum_gyro:%f", max_supination_gyro_x_abs, sum_gyro_put_down_x);
                             trigger_back_event();
 #if USING_PUT_DOWN_TIMER
                             stop_put_down_confirm_timer();
@@ -388,7 +297,6 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
                 if (sum_gyro_put_down_x > threshold)
                 {
                     start_check_watch_timer();
-                    // state = 1;
                     gesture_threshold_achieved = true;
                     gesture_threshold_achieved_time = current_time;
                     max_supination_gyro_x_abs =
@@ -396,8 +304,6 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
                     max_pronation_gyro_x_abs = fabsf(max_pronation_gyro_x);
                     wrist_rotate_ratio =
                         max_pronation_gyro_x_abs / max_supination_gyro_x_abs;
-                    // LOG_I("Hand lifting detected, state changed to 1:%0.3f",
-                    // max_pronation_gyro_x);
                 }
             }
         }
@@ -435,7 +341,6 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
 #endif
         if (if_watchface_visible)
         {
-            // LOG_I("Hand lifting detected, lift2");
             stop_check_watch_timer();
             if (!hand_status ||
                 (current_time - last_hand_lift_time) > RT_TICK_PER_SECOND)
@@ -444,11 +349,6 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
                 trigger_lift2_event();
                 last_hand_lift_time = current_time;
             }
-            // else
-            // {
-            //     LOG_I("Hand lifting detected, hand_status: %d,time:%d",
-            //     hand_status,current_time - last_hand_lift_time);
-            // }
             sum_gyro_put_down_x = 0;
             state = 0;
         }
@@ -456,10 +356,7 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
     }
     case 2:
     {
-        if (hand_status)
-        {
-            hand_status = false;
-        }
+        hand_status = false;
         sum_gyro_hand_lifting_x = 0;
         state = 0;
 #if USING_PUT_DOWN_TIMER
@@ -484,16 +381,10 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
 
     if (gyro_y_check_watch)
     {
-        rt_tick_t gyro_y_current_time = rt_tick_get();
-        if (gyro_y < -30)
+        if (gyro_y < -30.0f)
         {
             sum_gyro_hand_lifting_y += gyro_y;
-            // LOG_D("Lifting y... sum_gyro_y: %0.3f", sum_gyro_hand_lifting_y);
-            // if (sum_gyro_hand_lifting_y < -500)
-            // {
-            //     trigger_lift_event();
-            // }
-            if (sum_gyro_hand_lifting_y < -600)
+            if (sum_gyro_hand_lifting_y < -600.0f)
             {
                 if (hand_tracking.lift_callback)
                 {
@@ -502,13 +393,13 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
                 }
                 sum_gyro_hand_lifting_y = 0;
             }
-            last_hand_lift_y_time = gyro_y_current_time;
+            last_hand_lift_y_time = current_time;
         }
-        else if (gyro_y > 30)
+        else if (gyro_y > 30.0f)
         {
             sum_gyro_hand_lifting_y += gyro_y;
         }
-        if (gyro_y_current_time - last_hand_lift_y_time > 500)
+        if (current_time - last_hand_lift_y_time > 500)
         {
             sum_gyro_hand_lifting_y = 0;
         }

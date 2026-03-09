@@ -290,6 +290,7 @@ static void bloc_motor_vibrate(motor_params_t *params)
     #endif
 }
 
+
 static void bloc_motor_stop(void)
 {
     if (motor_device)
@@ -322,16 +323,15 @@ static void motor_task_entry(void *parameter)
                           RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
                           RT_WAITING_FOREVER, &event) == RT_EOK)
         {
-            if (event & MOTOR_EVENT_START)
-            {
-                LOG_D("Motor task received START event");
-                bloc_motor_vibrate(&g_motor_params);
-            }
-
             if (event & MOTOR_EVENT_STOP)
             {
                 LOG_D("Motor task received STOP event");
                 bloc_motor_stop();
+            }
+            else if (event & MOTOR_EVENT_START)
+            {
+                LOG_D("Motor task received START event");
+                bloc_motor_vibrate(&g_motor_params);
             }
         }
     }

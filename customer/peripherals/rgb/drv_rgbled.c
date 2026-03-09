@@ -328,7 +328,7 @@ static int bf0_rgbled_init(void)
     LOG_I("%s register success, supporting %d LEDs", RGBLED_NAME, BSP_RGB_LED_COUNT);
     return RT_EOK;
 }
-INIT_COMPONENT_EXPORT(bf0_rgbled_init);
+// INIT_COMPONENT_EXPORT(bf0_rgbled_init);
 
 /**
  * @brief RGB LED device driver deinitialization

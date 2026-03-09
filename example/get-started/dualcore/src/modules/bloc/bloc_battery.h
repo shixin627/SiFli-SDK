@@ -67,8 +67,11 @@ extern "C"
     extern BatteryChargeState* battery_get_charge_state(void);
     extern BatteryChargeState battery_charge_state;
 
+    extern void bloc_battery_init(void);
     extern void bloc_battery_read_voltage(void);
     extern void bloc_battery_read_charge_status(void);
+    extern void bloc_battery_handle_charging_event(void);
+    extern void bloc_battery_handle_voltage_event(void);
     #ifdef __cplusplus
 }
     #endif

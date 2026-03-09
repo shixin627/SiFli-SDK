@@ -81,6 +81,8 @@
 #include "ble_device_manager.h"
 #include "bloc_motion_tracking.h"
 #include "ble_hid.h"
+#include "bf0_hal.h"
+#include "bf0_sys_cfg.h"
 
 #ifdef APP_ID_MOUSE
 
@@ -112,6 +114,15 @@
 
     #define ENABLE_MENU_FEATURE 1
     #define KB_ANIM_TIME_MS 300
+
+    // FSR-402 pressure sensor ADC config
+    #define FSR_ADC_DEV_NAME "bat1"
+    #define FSR_ADC_CHANNEL 3
+    #define FSR_ADC_READ_MS 100
+
+    #define FRC_THRESHOLD_BTN 100
+    #define FRC_THRESHOLD_MOVE_LOCK 10
+    // #define USE_FSR_ADC 1
 
 /*********************
  *      TYPEDEFS
@@ -168,6 +179,12 @@ static float inertia_accumulator = 0.0f;
 static lv_timer_t *inertia_timer = NULL;
 static uint32_t last_scroll_tick = 0;
 static uint32_t last_click_time = 0;
+
+// FSR-402 ADC pressure sensor
+static rt_device_t fsr_adc_dev = NULL;
+static rt_timer_t fsr_adc_timer = NULL;
+// static lv_obj_t *fsr_adc_label = NULL;
+static rt_uint32_t fsr_adc_value = 0;
 
     #if SIMULATE_MOUSE_RIGHT_BUTTON
 static bool pressed_left_half = false;
@@ -271,6 +288,16 @@ bool is_skai_touch_enabled(void)
     return user_touching;
 }
 
+static unsigned int fsr_change_time = 0;
+bool is_fsr_change_detected(void)
+{
+    if ((rt_tick_get() - fsr_change_time) < 200)
+    {
+        return true;
+    }
+    return false; // FSR變化持續500ms內視為有效
+}
+
 void set_air_mouse_moving_state(bool state)
 {
     if (state != moving)
@@ -316,17 +343,21 @@ static void start_multiple_pages_timer(void);
 //         if (user_touching)
 //         {
 //             // Bright color when touching
-//             lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0xCCCCCC),
+//             lv_obj_set_style_bg_color(crosshair_line1,
+//             lv_color_hex(0xCCCCCC),
 //                                       0);
-//             lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0xCCCCCC),
+//             lv_obj_set_style_bg_color(crosshair_line2,
+//             lv_color_hex(0xCCCCCC),
 //                                       0);
 //         }
 //         else
 //         {
 //             // Dim color when not touching
-//             lv_obj_set_style_bg_color(crosshair_line1, lv_color_hex(0x666666),
+//             lv_obj_set_style_bg_color(crosshair_line1,
+//             lv_color_hex(0x666666),
 //                                       0);
-//             lv_obj_set_style_bg_color(crosshair_line2, lv_color_hex(0x666666),
+//             lv_obj_set_style_bg_color(crosshair_line2,
+//             lv_color_hex(0x666666),
 //                                       0);
 //         }
 //     }
@@ -595,8 +626,8 @@ void toggle_keyboard_visibility(void)
         lv_obj_set_style_bg_color(text_input_bar_bg, lv_color_hex(0x1a1a1a),
                                   LV_PART_MAIN);
         lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_90, LV_PART_MAIN);
-        lv_obj_set_style_border_color(text_input_bar_bg,
-                                      lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        lv_obj_set_style_border_color(text_input_bar_bg, lv_color_hex(0xFFFFFF),
+                                      LV_PART_MAIN);
         lv_obj_set_style_border_width(text_input_bar_bg, 2, LV_PART_MAIN);
         lv_obj_set_style_border_opa(text_input_bar_bg, LV_OPA_50, LV_PART_MAIN);
 
@@ -2224,7 +2255,9 @@ static void handle_pressed_event(lv_indev_t *indev)
     gesture_detected = false;
 
     // 雙擊拖曳：第二下按下去直接觸發長按效果
-    if (last_click_time > 0 && (lv_tick_get() - last_click_time) < DOUBLE_TAP_MS)
+    #ifndef USE_FSR_ADC
+    if (last_click_time > 0 &&
+        (lv_tick_get() - last_click_time) < DOUBLE_TAP_MS)
     {
         pressing = true;
         control_provider.ble_hid_mouse_left_press();
@@ -2232,6 +2265,7 @@ static void handle_pressed_event(lv_indev_t *indev)
         LOG_D("Air mouse - double tap hold (left press)");
         last_click_time = 0;
     }
+    #endif
 }
 
 /**
@@ -2317,20 +2351,22 @@ static void handle_pressing_event(lv_indev_t *indev,
     }
 
     // 長按觸發：超過閾值且這次觸碰期間從未移動過
-    if (!has_moved_during_touch && (lv_tick_get() - press_time > PRESSED_TIME_MS))
+    #ifndef USE_FSR_ADC
+    if (!has_moved_during_touch &&
+        (lv_tick_get() - press_time > PRESSED_TIME_MS))
     {
         pressing = true;
-    #if SIMULATE_MOUSE_RIGHT_BUTTON
+        #if SIMULATE_MOUSE_RIGHT_BUTTON
         if (lv_tick_get() - press_time > PRESSED_TIME_MS)
         {
             if (pressed_left_half)
             {
-    #endif
-                    control_provider.ble_hid_mouse_left_press();
-                    motor_pattern_touchpad_slide();
-                    LOG_D("Air mouse - left press");
-            
-    #if SIMULATE_MOUSE_RIGHT_BUTTON
+        #endif
+                control_provider.ble_hid_mouse_left_press();
+                motor_pattern_touchpad_slide();
+                LOG_D("Air mouse - left press");
+
+        #if SIMULATE_MOUSE_RIGHT_BUTTON
             }
             else
             {
@@ -2338,10 +2374,10 @@ static void handle_pressing_event(lv_indev_t *indev,
                 LOG_D("Air mouse - right press");
             }
         }
-    #endif
+        #endif
     }
+    #endif
 }
-
 
 /**
  * @brief Handles the released event
@@ -2988,10 +3024,12 @@ static lv_obj_t *menu_create_device_item(lv_obj_t *parent,
     lv_obj_set_style_border_width(text_cont, 0, 0);
     lv_obj_set_style_pad_all(text_cont, 0, 0);
     lv_obj_set_flex_flow(text_cont, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(text_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(text_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(text_cont, 2, 0);
     lv_obj_clear_flag(text_cont, LV_OBJ_FLAG_CLICKABLE);
-    // LOG_D("device type: %d,name: %s,conn_idx: %d", device->device_type, device->device_name,
+    // LOG_D("device type: %d,name: %s,conn_idx: %d", device->device_type,
+    // device->device_name,
     //       device->conn_idx);
 
     // Device name
@@ -3021,7 +3059,8 @@ static void menu_refresh_device_list(void)
         return;
     }
 
-    // Sync control_device_idx and g_conn_idx from active_device_idx (source of truth)
+    // Sync control_device_idx and g_conn_idx from active_device_idx (source of
+    // truth)
     int active_idx = ble_dev_mgr_get_active_device();
     if (active_idx >= 0 && active_idx < MAX_BONDED_DEVICES &&
         db->devices[active_idx].is_valid)
@@ -3390,6 +3429,162 @@ static void text_input_bar_cb(lv_event_t *e)
 }
 
 /**
+ * @brief Initialize FSR-402 ADC device
+ */
+static void fsr_adc_init(void)
+{
+    HAL_PIN_Set_Analog(PAD_PB25, 1);
+    fsr_adc_dev = rt_device_find(FSR_ADC_DEV_NAME);
+    if (fsr_adc_dev != NULL)
+    {
+        rt_adc_enable((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
+        LOG_I("FSR-402 ADC initialized on channel %d", FSR_ADC_CHANNEL);
+    }
+    else
+    {
+        LOG_E("FSR-402 ADC device not found!");
+    }
+}
+
+/**
+ * @brief Deinitialize FSR-402 ADC device
+ */
+static void fsr_adc_deinit(void)
+{
+    if (fsr_adc_dev != NULL)
+    {
+        rt_adc_disable((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
+        fsr_adc_dev = NULL;
+    }
+}
+
+/**
+ * @brief Read FSR-402 ADC value
+ * @return ADC value in 0.1mV units
+ */
+static rt_uint32_t fsr_adc_read_value(void)
+{
+    if (fsr_adc_dev == NULL)
+        return 0;
+    return rt_adc_read((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
+}
+
+/**
+ * @brief LVGL timer callback for periodic FSR ADC reading and display update
+ */
+static void fsr_adc_timer_cb(void *parameter)
+{
+    peripheral_provider.read_fsr_adc();
+}
+
+static rt_timer_t fsr_press_timer = NULL;
+static bool fsr_press_timer_active = false;
+static bool mouse_pressed = false;
+static void fsr_press_timer_cb(void *parameter)
+{
+    if (user_touching)
+    {
+        lvgl_msg_t msg;
+        msg.type = LVGL_MSG_TYPE_MOUSE_LONG_PRESS;
+        lvgl_send_msg(msg);
+    }
+}
+
+void fsr_long_press(void)
+{
+    // This function can be called from LVGL context when a long press is
+    // detected
+    if (mouse_pressed)
+    {
+        LOG_D("FSR long press detected: sending left click");
+        control_provider.ble_hid_mouse_left_press();
+        motor_pattern_touchpad_slide();
+        fsr_press_timer_active = false;
+    }
+}
+
+static void start_fsr_press_timer(void)
+{
+    fsr_press_timer_active = true;
+    if (fsr_press_timer == NULL)
+    {
+        fsr_press_timer = rt_timer_create("fsr_press", fsr_press_timer_cb, NULL,
+                                          30, RT_TIMER_FLAG_PERIODIC);
+    }
+    if (fsr_press_timer)
+    {
+        rt_timer_start(fsr_press_timer);
+    }
+}
+
+static void stop_fsr_press_timer(void)
+{
+    fsr_press_timer_active = false;
+    if (fsr_press_timer)
+    {
+        rt_timer_stop(fsr_press_timer);
+    }
+}
+
+static float prev_fsr_adc = 0.0f;
+void fsr_adc_read(void)
+{
+    // int duration = rt_tick_get();
+    #ifdef USE_FSR_ADC
+    fsr_adc_value = fsr_adc_read_value();
+    // duration = rt_tick_get() - duration;
+    // LOG_D("FSR ADC read and process duration: %d ms", duration);
+    // if (fsr_adc_label != NULL && lv_obj_is_valid(fsr_adc_label))
+    // {
+    //     char buf[48];
+    //     rt_snprintf(buf, sizeof(buf), "FSR: %d.%dmV", fsr_adc_value / 10,
+    //                 fsr_adc_value % 10);
+    //     // LOG_D("FSR ADC value: %s", buf);
+    //     lv_label_set_text(fsr_adc_label, buf);
+    // }
+
+    // LOG_D("fsr_adc_diff from prev: %.2fmV",
+    //       (fsr_adc_value / 10.0f) - prev_fsr_adc);
+
+    if (fabs((fsr_adc_value / 10.0f) - prev_fsr_adc) > FRC_THRESHOLD_BTN)
+    {
+        if ((fsr_adc_value / 10.0f) < prev_fsr_adc && !mouse_pressed)
+        {
+            LOG_D("FSR pressed");
+            mouse_pressed = true;
+            start_fsr_press_timer();
+        }
+        else if ((fsr_adc_value / 10.0f) > prev_fsr_adc && mouse_pressed)
+        {
+
+            mouse_pressed = false;
+            if (fsr_press_timer_active)
+            {
+                control_provider.ble_hid_mouse_left_click();
+                motor_pattern_touchpad_slide();
+                LOG_D("FSR click");
+            }
+            else
+            {
+                control_provider.ble_hid_mouse_left_release();
+                LOG_D("FSR released");
+            }
+            stop_fsr_press_timer();
+        }
+    }
+    if (fabs((fsr_adc_value / 10.0f) - prev_fsr_adc) >
+            FRC_THRESHOLD_MOVE_LOCK &&
+        !mouse_pressed)
+    {
+        fsr_change_time = rt_tick_get();
+    }
+
+    prev_fsr_adc = fsr_adc_value / 10.0f;
+
+    #endif
+}
+
+/**
  * @brief Creates the mouse screen
  * @param scr Screen object
  */
@@ -3444,9 +3639,11 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     // Connected device name label at top
     connected_device_label = lv_label_create(bg);
     lv_label_set_text(connected_device_label, "");
-    lv_obj_set_size(connected_device_label, 150,44);
-    lv_obj_set_style_text_color(connected_device_label, lv_color_hex(0xAAAAAA), 0);
-    lv_obj_set_style_text_align(connected_device_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_size(connected_device_label, 150, 44);
+    lv_obj_set_style_text_color(connected_device_label, lv_color_hex(0xAAAAAA),
+                                0);
+    lv_obj_set_style_text_align(connected_device_label, LV_TEXT_ALIGN_CENTER,
+                                0);
     lv_label_set_long_mode(connected_device_label, LV_LABEL_LONG_DOT);
     lv_obj_align(connected_device_label, LV_ALIGN_TOP_MID, 0, 8);
     lv_obj_clear_flag(connected_device_label, LV_OBJ_FLAG_CLICKABLE);
@@ -3461,6 +3658,29 @@ void lv_create_mouse_screen(lv_obj_t *scr)
                               db->devices[active_idx].device_name);
         }
     }
+
+    // FSR-402 ADC real-time display label
+    // fsr_adc_label = lv_label_create(bg);
+    // lv_label_set_text(fsr_adc_label, "FSR: --");
+    // lv_obj_set_style_text_color(fsr_adc_label, lv_color_hex(0x00FF88), 0);
+    // lv_obj_set_style_text_font(fsr_adc_label,
+    //                            LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    // lv_obj_align(fsr_adc_label, LV_ALIGN_TOP_MID, 0, 50);
+    // lv_obj_clear_flag(fsr_adc_label, LV_OBJ_FLAG_CLICKABLE);
+
+    // Init ADC and start periodic reading
+    fsr_adc_init();
+    if (!fsr_adc_timer)
+    {
+        fsr_adc_timer =
+            rt_timer_create("fsr_adc", fsr_adc_timer_cb, NULL, FSR_ADC_READ_MS,
+                            RT_TIMER_FLAG_PERIODIC);
+    }
+    else
+    {
+        rt_timer_stop(fsr_adc_timer);
+    }
+    rt_timer_start(fsr_adc_timer);
 
     // Unified input bar: starts as small indicator at bottom, animates to
     // input display above keyboard
@@ -3484,10 +3704,10 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
     lv_obj_set_style_radius(text_input_bar, 50, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(text_input_bar, LV_OPA_90, LV_PART_MAIN);
-        lv_obj_set_style_border_color(text_input_bar,
-                                      lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-        lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
-        lv_obj_set_style_border_opa(text_input_bar, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_set_style_border_color(text_input_bar, lv_color_hex(0xFFFFFF),
+                                  LV_PART_MAIN);
+    lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(text_input_bar, LV_OPA_50, LV_PART_MAIN);
     lv_obj_align(text_input_bar, LV_ALIGN_BOTTOM_MID, 0, -5);
     lv_obj_clear_flag(text_input_bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(text_input_bar, text_input_bar_cb, LV_EVENT_ALL, NULL);
@@ -3501,7 +3721,6 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_set_style_border_width(input_content_container, 0, LV_PART_MAIN);
     lv_obj_clear_flag(input_content_container, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
-    
 
     // Input text label
     input_display_label = lv_label_create(input_content_container);
@@ -3530,8 +3749,7 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     // Enter button (hidden initially, shows next to bar when keyboard opens)
     input_enter_btn = lv_obj_create(bg);
     lv_obj_set_size(input_enter_btn, 50, 45);
-    lv_obj_set_pos(input_enter_btn,
-                   (LV_HOR_RES_MAX - 50) / 2 + 165,
+    lv_obj_set_pos(input_enter_btn, (LV_HOR_RES_MAX - 50) / 2 + 165,
                    LV_VER_RES_MAX - 305 - 45);
     lv_obj_set_style_bg_color(input_enter_btn, lv_color_hex(0x4a90e2),
                               LV_PART_MAIN);
@@ -3702,6 +3920,15 @@ static void on_stop(void)
         cursor_blink_timer = NULL;
     }
     clear_input_display();
+
+    // Clean up FSR ADC
+    if (fsr_adc_timer != NULL)
+    {
+        rt_timer_stop(fsr_adc_timer);
+        fsr_adc_timer = NULL;
+    }
+    fsr_adc_deinit();
+    // fsr_adc_label = NULL;
 
     // Clean up crosshair lines
     crosshair_line1 = NULL;

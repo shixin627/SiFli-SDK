@@ -10,7 +10,7 @@
 /* adc example for RT-Thread based platform -----------------------------------------------*/
 #include "bf0_sys_cfg.h"
 #define ADC_DEV_NAME        "bat1"      /* ADC name */
-#define ADC_DEV_CHANNEL     0           /* ADC channe0 */
+#define ADC_DEV_CHANNEL     3           /* ADC channe0 */
 //#define REFER_VOLTAGE       330         /* referencen voltage 3.3V*/
 static rt_device_t s_adc_dev;
 static rt_adc_cmd_read_arg_t read_arg;
@@ -18,7 +18,7 @@ void adc_example(void)
 {
     rt_err_t r;
     /* set pinmux of channel 0 to analog input */
-    HAL_PIN_Set_Analog(PAD_PA28, 1);
+    HAL_PIN_Set_Analog(PAD_PB25, 1);
     /* find device */
     s_adc_dev = rt_device_find(ADC_DEV_NAME);
     /* set channel 0*/
@@ -42,14 +42,12 @@ int main(void)
 {
     rt_kprintf("Start adc demo!\n");
     //HAL_Delay(250);
-    adc_example();
+    // adc_example();
 
-    rt_kprintf("spi adc end!\n");
     while (1)
     {
-        // adc_example();
-        rt_thread_mdelay(5000);
-        //rt_kprintf("__main loop__\r\n");
+        adc_example();
+        rt_thread_mdelay(100);
     }
     return RT_EOK;
 }

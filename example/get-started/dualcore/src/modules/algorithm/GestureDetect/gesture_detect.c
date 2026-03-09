@@ -2,6 +2,9 @@
  ******************************************************************************
  * @file   gesture_detect.c
  * @author Skaiwalk software development team
+ * @brief  手勢偵測核心模組。負責 IMU 感測融合(Mahony AHRS)、重力/線性加速度
+ *         分離、PPG 訊號梯度分析，以實現觸碰(tap)、長按(hold)、放開(release)
+ *         等手勢事件偵測，並將運動資料透過 motion_data_fetch() 傳送至 HCPU。
  ******************************************************************************
  */
 #include <rtthread.h>
@@ -9,7 +12,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <math.h>
-#include <time.h>
+#include <string.h>
 #include "acce_service.h"
 #include "gesture_detect.h"
 #include "hand_tracking.h"
@@ -37,51 +40,18 @@
 // Configuration constants
 #define USE_PPG_VARIANCE 0
 #define TAP_DETECT_TIME 500
-#define PIN_DEBOUNCE_TIME_MS 10
-// 專屬於本函式的狀態與 buffer，與原有算法完全隔離
-#define ACCEL_WINDOW_SIZE 15
-#define GYRO_WINDOW_SIZE 10
-#define GYRO_LOCK_THRESHOLD 2000.0f
-#define GESTURE_RELEASE_COOLDOWN_PERIOD_MS 100
-#define GESTURE_COLLECTION_COOLDOWN_PERIOD_MS 500
-#define GESTURE_TAP_COOLDOWN_PERIOD_MS 100
-#define MAX_GESTURE_DURATION_MS 160
-#define MIN_GESTURE_SAMPLES 10
-#define MIN_DIFFERENCE_ACCEL_MAX 1.0f
 #define PPG_ANOMALY_DISABLE_DURATION_MS 1000
 #define PPG_FILTER_SAMPLE_NUM 10
-static float ppg_buffer[PPG_FILTER_SAMPLE_NUM + 1];
+static float ppg_buffer[PPG_FILTER_SAMPLE_NUM];
 
 #define GESTURE_EVENT_TAP (1 << 1)
 #define GESTURE_EVENT_HOLD (1 << 2)
 #define GESTURE_EVENT_FINGER_RELEASE (1 << 3)
 #define GESTURE_EVENT_FORCE_RELEASE (1 << 4)
 #define GESTURE_EVENT_BACK (1 << 6)
-// Gesture types
-typedef enum
-{
-    GESTURE_TAP,
-    GESTURE_RELEASE,
-} gesture_type_t;
-
-// Gesture state structure
-typedef struct
-{
-    Vector3 sliding_window_accel[ACCEL_WINDOW_SIZE];
-    Vector3 sliding_window_gravity[ACCEL_WINDOW_SIZE];
-    float gyro_sliding_window[GYRO_WINDOW_SIZE];
-    uint8_t gyro_count;
-    bool if_watchface_visible;
-    bool gyro_lock_status;
-    float difference_accel;
-    bool on_pressed;
-} gesture_state_t;
 
 static bool user_hand_horizontal = false;
-static gesture_dataset_t tap_dataset = {0};
-static gesture_dataset_t release_dataset = {0};
-static gesture_state_t my_gesture_state = {0};
-static watch_sys_linear_acce_t targetWave_algo[MAX_RAWDATA_TIME_STEP];
+static bool watchface_visible = false;
 
 // State variables
 
@@ -99,11 +69,9 @@ static bool release_detecting_flag = false;
 
 static bool is_finger_holding = false;
 static bool open_wrist_rotation = false;
-static bool open_gesture_release_model = false;
 
 // Thread handles
 static rt_thread_t gesture_imu_thread = RT_NULL;
-static rt_thread_t gesture_ppg_thread = RT_NULL;
 
 // IMU data storage
 static Vector3 accData, gyroData;
@@ -117,49 +85,12 @@ static sensor_fusion_param_t subjective_sensor_fusion_param;
 // Timing variables
 static uint32_t tap_detect_time = 0;
 static uint32_t last_time_start_to_move = 0;
-static rt_tick_t linear_acce_not_move_time = 0;
 
 // For motion detection
 #define MOTION_THRESHOLD 30 // 0.05g @ 512 LSB/g
 
 static volatile bool need_to_handle_gsensor_int = false;
 
-/**
- * @brief Converts sliding window acceleration data to target waveform
- * @param slidingWinAcc Sliding window acceleration data
- * @param targetWave Target waveform buffer
- * @param sample_len Number of samples to convert
- */
-static void
-getTargetWaveformFromSlidingWindow(gesture_dataset_t *dataset,
-                                   watch_sys_linear_acce_t *targetWave,
-                                   int sample_len)
-{
-    for (uint8_t i = 0; i < sample_len; i++)
-    {
-        targetWave[i].timestamp_s = dataset->timestamp_s[i];
-        targetWave[i].timestamp_ms = dataset->timestamp_ms[i];
-        targetWave[i].x =
-            (float)(*(dataset->waveform[i] + 0)) * INT16_to_G / GRAVITY;
-        targetWave[i].y =
-            (float)(*(dataset->waveform[i] + 1)) * INT16_to_G / GRAVITY;
-        targetWave[i].z =
-            (float)(*(dataset->waveform[i] + 2)) * INT16_to_G / GRAVITY;
-        targetWave[i].gravity_x =
-            (float)(*(dataset->waveform[i] + 3)) * INT16_to_DPS;
-        targetWave[i].gravity_y =
-            (float)(*(dataset->waveform[i] + 4)) * INT16_to_DPS;
-        targetWave[i].gravity_z =
-            (float)(*(dataset->waveform[i] + 5)) * INT16_to_DPS;
-        targetWave[i].ppg_data = dataset->ppg_data[i];
-        targetWave[i].on_pressed = dataset->on_pressed[i];
-    }
-}
-
-static double total_acceleration(double x, double y, double z)
-{
-    return sqrt(x * x + y * y + z * z);
-}
 #ifdef BSP_USING_MAHONY_AHRS
 void calibrate_global_attitude(void)
 {
@@ -325,77 +256,6 @@ void tap_detected_callback(uint8_t tap_mode)
     tap_detect_time = rt_tick_get_millisecond();
 }
 
-static inline void reset_gesture_state(gesture_dataset_t *dataset,
-                                       uint32_t current_time, uint8_t code)
-{
-    if (dataset->gesture_sample_count == 0)
-    {
-        return;
-    }
-    // WATCH_LCPU_LOG_DEBUG("Reset gesture state at %d", code);
-    dataset->gesture_started = false;
-    dataset->gesture_ended = false;
-    dataset->gesture_sample_count = 0;
-    dataset->wait_start_time = current_time;
-}
-
-static uint16_t rtc_millisecond = 0;
-static inline void store_gesture_sample(gesture_dataset_t *dataset, time_t ts,
-                                        Vector3 *linear_accel, Vector3 *gravity,
-                                        uint16_t ppg_data, bool on_pressed)
-{
-    if (dataset->gesture_sample_count < MAX_RAWDATA_TIME_STEP)
-    {
-        dataset->waveform[dataset->gesture_sample_count][0] = linear_accel->x;
-        dataset->waveform[dataset->gesture_sample_count][1] = linear_accel->y;
-        dataset->waveform[dataset->gesture_sample_count][2] = linear_accel->z;
-        dataset->waveform[dataset->gesture_sample_count][3] = gravity->x;
-        dataset->waveform[dataset->gesture_sample_count][4] = gravity->y;
-        dataset->waveform[dataset->gesture_sample_count][5] = gravity->z;
-        dataset->timestamp_s[dataset->gesture_sample_count] = ts;
-        dataset->timestamp_ms[dataset->gesture_sample_count] = rtc_millisecond;
-        dataset->ppg_data[dataset->gesture_sample_count] = ppg_data;
-        dataset->on_pressed[dataset->gesture_sample_count] = on_pressed;
-        dataset->gesture_sample_count++;
-    }
-}
-
-static rt_timer_t timer_time_correction = NULL;
-static time_t time_correction_timer_start_sec = 0;
-static void timer_time_correction_callback(void *param)
-{
-    if (time_correction_timer_start_sec != time(NULL))
-    {
-        time_correction_timer_start_sec = time(NULL);
-        rtc_millisecond = 0;
-    }
-    else
-    {
-        rtc_millisecond += 1;
-        if (rtc_millisecond >= 1000)
-        {
-            rtc_millisecond = 0;
-        }
-    }
-}
-
-static void start_time_correction_timer(void)
-{
-    if (!timer_time_correction)
-    {
-        time_correction_timer_start_sec = time(NULL);
-        timer_time_correction = rt_timer_create(
-            "timer_time_correction", timer_time_correction_callback, RT_NULL,
-            rt_tick_from_millisecond(1), RT_TIMER_FLAG_PERIODIC);
-        if (timer_time_correction == RT_NULL)
-        {
-            LOG_E("create timer_time_correction failed");
-        }
-    }
-
-    rt_timer_start(timer_time_correction);
-}
-
 extern uint8_t gesture_threshold_factor;
 #if USE_PPG_VARIANCE
 static uint16_t gesture_release_ppg_rawdata_diff_buf[GESTURE_RELEASE_TIME_STEP];
@@ -456,25 +316,9 @@ Vector3 calculate_linear_acceleration(Vector3 *acceleration, Vector3 *gravity)
     return linear_acceleration;
 }
 
-/**
- * @brief Check if device is moving based on gyroscope data (threshold °/s)
- * @param gyro_y Y-axis rotation rate
- * @return true if moving, false otherwise
- */
 static bool judge_if_moving_by_gyro(float gyro_y)
 {
-    return fabs(gyro_y) >= 20;
-}
-
-/**
- * @brief Check if device is moving based on gyroscope data (threshold 5°/s)
- * @param gyro_y Y-axis rotation rate
- * @param gyro_z Z-axis rotation rate
- * @return true if moving, false otherwise
- */
-static bool judge_if_moving5_by_gyro(float gyro_y, float gyro_z)
-{
-    return fabs(gyro_z) >= 5;
+    return fabsf(gyro_y) >= 20.0f;
 }
 
 // Constants for algorithm ratio conversion
@@ -547,8 +391,8 @@ static void motion_detection_process(signed short *accRawData)
     float x = accRawData[0];
     float y = accRawData[1];
     float z = accRawData[2];
-    float total_acceleration = sqrt(x * x + y * y + z * z);
-    float diff = fabs(total_acceleration - last_total_acceleration);
+    float total_acceleration = sqrtf(x * x + y * y + z * z);
+    float diff = fabsf(total_acceleration - last_total_acceleration);
 
     if (diff >= MOTION_THRESHOLD)
     {
@@ -598,7 +442,6 @@ void handle_motion_data_in_25hz(rt_tick_t now, Vector3 *accData)
 
 int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
 {
-    time_t ts = time(NULL);
     static float pre_freq = 0;
     rt_tick_t now = rt_tick_get_millisecond();
 
@@ -610,37 +453,13 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
         gesture_threshold_factor * 0.01f; // Default 0.3
     // Hand position detection
     user_hand_horizontal =
-        (watch_gravity.x < 0.9 && watch_gravity.x > -horizontal_threshold);
-    if (watch_gravity.y > -0.7 && watch_gravity.z > -0.6)
-    {
-        if (!my_gesture_state.if_watchface_visible)
-        {
-            my_gesture_state.if_watchface_visible = true;
-        }
-    }
-    else
-    {
-        if (my_gesture_state.if_watchface_visible)
-        {
-            my_gesture_state.if_watchface_visible = false;
-        }
-    }
+        (watch_gravity.x < 0.9f && watch_gravity.x > -horizontal_threshold);
+    watchface_visible =
+        (watch_gravity.y > -0.7f && watch_gravity.z > -0.6f);
 
-    if (user_hand_horizontal && fabs(gyroData->x) > fabs(gyroData->y) &&
-        fabs(gyroData->x) > fabs(gyroData->z))
-    {
-        if (!open_wrist_rotation)
-        {
-            open_wrist_rotation = true;
-        }
-    }
-    else
-    {
-        if (open_wrist_rotation)
-        {
-            open_wrist_rotation = false;
-        }
-    }
+    float abs_gx = fabsf(gyroData->x);
+    open_wrist_rotation = user_hand_horizontal &&
+        abs_gx > fabsf(gyroData->y) && abs_gx > fabsf(gyroData->z);
     // Zero velocity detection
     if (judge_if_moving_by_gyro(gyroData->y))
     {
@@ -668,31 +487,10 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
 #ifdef BSP_USING_HAND_TRACKING
         hand_tracking_data_update(
             25, gyroData->x, gyroData->y, open_wrist_rotation,
-            my_gesture_state.if_watchface_visible, zero_velocity);
+            watchface_visible, zero_velocity);
 #endif
         health_algo_counter = 0;
     }
-// #if (CUSTOMER_BOARD_VER != BOARD_VER_13)
-//     if (battery_charge_state.is_charging)
-//     {
-//         return (rt_tick_get_millisecond() - now);
-//     }
-// #endif
-
-    // Pin debounce logic (10ms)
-    // static uint32_t last_pin_read_time = 0;
-    // static uint8_t last_pin_state = 0;
-    // uint8_t current_pin_state = rt_pin_read(128);
-    // if (current_pin_state != last_pin_state)
-    // {
-    //     last_pin_read_time = now;
-    //     last_pin_state = current_pin_state;
-    // }
-    // else if ((now - last_pin_read_time) >= PIN_DEBOUNCE_TIME_MS)
-    // {
-    //     my_gesture_state.on_pressed = current_pin_state;
-    // }
-
     // Process G-sensor interrupt if needed
     if (need_to_handle_gsensor_int)
     {
@@ -819,7 +617,6 @@ static int gesture_imu_thread_init(void)
 #ifdef BSP_USING_HAND_TRACKING
     hand_tracking_init(lift_cb, back_cb);
 #endif
-    // start_time_correction_timer();
 #if ENABLE_IMU_SEM_FIFO
     gesture_imu_thread = rt_thread_create(
         "imu", gesture_imu_thread_entry, RT_NULL, IMU_THREAD_STACK_SIZE,
@@ -840,9 +637,8 @@ INIT_APP_EXPORT(gesture_imu_thread_init);
 /////////////////////////////////////////////
 // Constants for PPG processing
 #define PPG_BUFFER_LENGTH 7
-#define PPG_END_THRESHOLD_RATIIO 0.4
-#define PPG_END_THRESTAP_RATIIO 0.3
-#define STANDARD_FIRST_THRESHOLD -400
+#define PPG_END_THRESHOLD_RATIIO 0.4f
+#define PPG_END_THRESTAP_RATIIO 0.3f
 
 /**
  * @brief Process gradient for gesture detection
@@ -898,14 +694,14 @@ void process_ppg_rawdata(uint32_t rawdata)
 
     uint32_t current_time = rt_tick_get_millisecond();
 
-    // Update filter buffer
-    ppg_buffer[PPG_FILTER_SAMPLE_NUM] = (float)rawdata;
-    float ppg_average_value = 0;
+    // Shift filter buffer and insert new sample
+    memmove(&ppg_buffer[0], &ppg_buffer[1], (PPG_FILTER_SAMPLE_NUM - 1) * sizeof(float));
+    ppg_buffer[PPG_FILTER_SAMPLE_NUM - 1] = (float)rawdata;
 
     // Calculate moving average
+    float ppg_average_value = 0;
     for (int i = 0; i < PPG_FILTER_SAMPLE_NUM; i++)
     {
-        ppg_buffer[i] = ppg_buffer[i + 1];
         ppg_average_value += ppg_buffer[i];
     }
     ppg_average_value /= PPG_FILTER_SAMPLE_NUM;
@@ -926,20 +722,15 @@ void process_ppg_rawdata(uint32_t rawdata)
 #endif
 
     // Update previous values buffer
-    for (int i = 0; i < 5; i++)
-    {
-        prev_ppg_value[i] = prev_ppg_value[i + 1];
-    }
+    memmove(&prev_ppg_value[0], &prev_ppg_value[1], 5 * sizeof(float));
     prev_ppg_value[5] = ppg_average_value;
 
     // Calculate gradient
     float gradient = ppg_average_value - prev_ppg_value[0];
 
-    // Update gradient arrays
-    for (int i = 0; i < PPG_BUFFER_LENGTH; i++)
-    {
-        ppg_gradient_array[i] = ppg_gradient_array[i + 1];
-    }
+    // Update gradient array
+    memmove(&ppg_gradient_array[0], &ppg_gradient_array[1],
+            PPG_BUFFER_LENGTH * sizeof(float));
     ppg_gradient_array[PPG_BUFFER_LENGTH] = gradient;
 
     float ppg_gradient_average = 0;
@@ -976,8 +767,8 @@ void process_ppg_rawdata(uint32_t rawdata)
     {
         // Check for hold release condition
         bool open_hold_delta =
-            fabs(gradient) > fabs(ppg_gradient_average) * 1.5 &&
-            fabs(ppg_gradient_average) > 5;
+            fabsf(gradient) > fabsf(ppg_gradient_average) * 1.5f &&
+            fabsf(ppg_gradient_average) > 5.0f;
         if (open_hold_delta && is_finger_holding) // && zero_velocity
         {
             if (gesture_mode == 0 || (current_time - tap_detect_time) > 500)
@@ -1026,7 +817,7 @@ void process_ppg_rawdata(uint32_t rawdata)
                         max_gradient = ppg_gradient_array[i];
                     }
                 }
-                if (fabs(max_gradient) < fabs(ppg_gradient_array[i]))
+                if (fabsf(max_gradient) < fabsf(ppg_gradient_array[i]))
                 {
                     max_gradient = ppg_gradient_array[i];
                 }

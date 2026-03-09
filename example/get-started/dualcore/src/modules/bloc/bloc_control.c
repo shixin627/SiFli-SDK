@@ -671,14 +671,14 @@ static void trigger_finger_event(uint8_t finger_event)
 		watch_system_interact(INTERACT_RGB_LED_CLOSE, NULL);
 	}
 #endif
-	if (finger_event < 2)
+	if (finger_event == 1)
 	{
 		if (!get_enable_tap_and_hold())
 		{
 			lvgl_set_global_keypad_enter_cmd();
 		}
 	}
-	else
+	else if (finger_event >= 2)
 	{
 		send_remote_control_event(finger_event);
 	}

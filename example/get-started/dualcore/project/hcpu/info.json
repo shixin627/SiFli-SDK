@@ -1,5 +1,5 @@
 {
-    "version": "1.0.240",
+    "version": "1.0.248",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
@@ -7,5 +7,5 @@
         "lcpu.bin",
         "lcpu_patch.bin"
     ],
-    "description": "改由在app_watch thread 上執行UI刷新"
+    "description": "1.[UI/UX]錶盤音量調防誤觸\n2.[電池]使用思澈電量管理方案\n3.[手勢]馬達振動時禁止手勢辨識"
 }

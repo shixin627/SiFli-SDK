@@ -165,10 +165,6 @@ void soft_adt_callback(bool status)
     if (last_wearing_status == status)
         return;
 
-    if (watch_sys_sync.soft_adt_status_callback)
-    {
-        watch_sys_sync.soft_adt_status_callback(status);
-    }
     last_wearing_status = status;
 }
 

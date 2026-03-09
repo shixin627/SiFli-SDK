@@ -384,16 +384,18 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
         {
             // incorrect tap gesture
             if (sample_num == TAP_TARGET_SAMPLE_NUM &&
-                (gesture_tap_collection || gui_app_is_actived(APP_ID_GESTURE)))
+                (!SkaiWatchSys.motion_control_lock &&
+                 gui_app_is_actived(APP_ID_GESTURE)))
             {
                 get_gesture_data(gesture, TAP_TARGET_SAMPLE_NUM, 1);
                 rt_tick_t tick_time_start = rt_tick_get();
-                tap_recognition_score = recognize_gesture_tap(identifyWindow);
+                tap_recognition_score =
+                    recognize_gesture_release(identifyWindow);
                 rt_tick_t tick_time_end = rt_tick_get();
                 rt_tick_t cost_tick = tick_time_end - tick_time_start;
                 LOG_D("recognize tap gesture cost_tick:%d, score:%d", cost_tick,
                       tap_recognition_score);
-                if (tap_recognition_score > gesture_recognition_threshold)
+                if (tap_recognition_score == 0)
                 {
                     packMatrixToBuffer(gsensorSamplesBuffer, gesture->dataset,
                                        NULL, TAP_TARGET_SAMPLE_NUM);
@@ -407,18 +409,18 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
             }
             // incorrect release gesture
             else if (sample_num == RELEASE_TARGET_SAMPLE_NUM &&
-                     (!gesture_tap_collection ||
+                     (SkaiWatchSys.motion_control_lock &&
                       gui_app_is_actived(APP_ID_GESTURE)))
             {
                 get_gesture_data(gesture, sample_num, 1);
                 rt_tick_t tick_time_start = rt_tick_get();
                 release_recognition_score =
-                    recognize_gesture_release(release_identifyWindow);
+                    recognize_gesture_release(identifyWindow);
                 rt_tick_t tick_time_end = rt_tick_get();
                 rt_tick_t cost_tick = tick_time_end - tick_time_start;
                 LOG_D("recognize release gesture cost_tick:%d, score:%d",
                       cost_tick, release_recognition_score);
-                if (release_recognition_score > gesture_recognition_threshold)
+                if (release_recognition_score == 1)
                 {
                     packMatrixToBuffer(gsensorSamplesBuffer, gesture->dataset,
                                        NULL, sample_num);
@@ -469,12 +471,12 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
         {
             int label = kNoGesture;
             rt_tick_t tick_time_start = rt_tick_get();
-            tap_recognition_score = recognize_gesture_tap(identifyWindow);
+            tap_recognition_score = recognize_gesture_release(identifyWindow);
             last_gesture_recognition_time = rt_tick_get();
             LOG_I("recognize tap gesture cost_tick:%d, score:%d",
                   last_gesture_recognition_time - tick_time_start,
                   tap_recognition_score);
-            if (tap_recognition_score > gesture_recognition_threshold)
+            if (tap_recognition_score == 0)
             {
                 label = kTapGesture;
                 send_virtual_gesture_event(GESTURE_EVENT_PRESS);
@@ -489,6 +491,10 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                     rt_thread_mdelay(100);
                     send_virtual_gesture_event(GESTURE_EVENT_TAP);
                 }
+            }
+            else if (tap_recognition_score == 1)
+            {
+                watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
             }
             else
             {
@@ -539,10 +545,10 @@ extern bool get_hid_mouse_handfree_mode(void);
 #define IMU_THREAD_STACK_SIZE 4 * 1024
 #define IMU_THREAD_PRIORITY RT_THREAD_PRIORITY_MIDDLE - 1
 #define IMU_THREAD_TIMESLICE 10
-
+extern bool get_motor_status(void);
 static void gesture_recognition_thread_entry(void *parameter)
 {
-    init_gesture_recognition_model();
+    // init_gesture_recognition_model();
     init_gesture_recognition_release_model();
 
     watch_sensor.gesture_sem =
@@ -556,10 +562,10 @@ static void gesture_recognition_thread_entry(void *parameter)
     {
         rt_sem_take(watch_sensor.gesture_sem, RT_WAITING_FOREVER);
 
-        if (SkaiWatchSys.charger_status != NoCharge)
-        {
-            continue;
-        }
+        // if (SkaiWatchSys.charger_status != NoCharge)
+        // {
+        //     continue;
+        // }
         if (is_user_touching_screen())
         {
             continue;
@@ -589,7 +595,10 @@ static void gesture_recognition_thread_entry(void *parameter)
             continue;
         }
 
-        gesture_recognition_algorithm(&watch_sensor.gesture_data);
+        if (!is_user_touching_screen() && !get_motor_status())
+        {
+            gesture_recognition_algorithm(&watch_sensor.gesture_data);
+        }
     }
 }
 

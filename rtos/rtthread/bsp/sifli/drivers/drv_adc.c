@@ -60,7 +60,7 @@ struct sifli_adc
 #define ADC_MAX_VOLTAGE_MV_3300     (3300)
 
 
-#define ADC_SW_AVRA_CNT         (22)
+#define ADC_SW_AVRA_CNT         (3)
 
 // Standard voltage from ATE , it should not changed !!!
 #define ADC_BIG_RANGE_VOL1           (1000)
@@ -648,7 +648,7 @@ static rt_err_t sifli_get_adc_value(struct rt_adc_device *device, rt_uint32_t ch
 #ifdef BSP_GPADC_SUPPORT_MULTI_CH_SAMPLING
     rt_kprintf("ch[%d]origin:%d, voltage:%d;\n", channel, adc_origin, *value);
 #else
-    rt_kprintf("ch[%d]voltage=%d;\n", channel, *value);
+    //rt_kprintf("ch[%d]voltage=%d;\n", channel, *value);
 #endif
     r = rt_sem_release(&gpadc_lock);
     RT_ASSERT(RT_EOK == r);

@@ -147,6 +147,7 @@ static lv_obj_t *gyro_data_label;
 static lv_obj_t *attitude_data_label;
 static lv_obj_t *hr_data_label;
 static lv_obj_t *battery_voltage_label;
+static lv_obj_t *battery_percentage_label;
 static lv_obj_t *slider;
 static lv_timer_t *battery_request_timer = NULL;
 static bool battery_request_enabled = false;
@@ -452,6 +453,11 @@ static void lv_create_dev_screen(void)
     lv_obj_set_style_text_font(battery_voltage_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_align_to(battery_voltage_label, get_battery_voltage_btn, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
 
+    battery_percentage_label = lv_label_create(cont);
+    lv_label_set_text(battery_percentage_label, " - %%");
+    lv_obj_set_style_text_font(battery_percentage_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align_to(battery_percentage_label, battery_voltage_label, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
+
     /* [Battery Request Switch] Create a switch to auto request battery every second */
     lv_obj_t *battery_request_switch_label = lv_label_create(cont);
     lv_label_set_text(battery_request_switch_label, "Auto Request Battery");
@@ -580,6 +586,13 @@ static void handle_battery_voltage(void *param)
     snprintf(buf, sizeof(buf), " %d mV", voltage);
     lv_label_set_text(battery_voltage_label, buf);
 }
+
+static void handle_battery_percentage(uint8_t percentage)
+{
+    char buf[32];
+    snprintf(buf, sizeof(buf), " %d%%", percentage);
+    lv_label_set_text(battery_percentage_label, buf);
+}
 #endif
 
 static int32_t wheel_handler(int16_t diff, lv_indev_state_t event, void *user_data)
@@ -601,6 +614,7 @@ static void on_start(void)
     lvgl_msg_handler.handle_imu_attitude = handle_imu_attitude;
     lvgl_msg_handler.handle_hr = handle_heart_rate;
     lvgl_msg_handler.handle_battery_voltage = handle_battery_voltage;
+    lvgl_msg_handler.handle_battery_percentage = handle_battery_percentage;
 #endif
 
     // Start FS info update timer
@@ -626,6 +640,7 @@ static void on_stop(void)
     lvgl_msg_handler.handle_imu_attitude = NULL;
     lvgl_msg_handler.handle_hr = NULL;
     lvgl_msg_handler.handle_battery_voltage = NULL;
+    lvgl_msg_handler.handle_battery_percentage = NULL;
 #endif
 
     // Stop FS test and timer

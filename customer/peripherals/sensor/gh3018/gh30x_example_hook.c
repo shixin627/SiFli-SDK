@@ -62,13 +62,11 @@ void Gh30xGetRawdataHookFunc(GU32 *read_buffer_ptr, GU16 length)
     uint16_t sample_num = length / 2;
     if (sample_num > GH30X_RAWDATA_FIFO_BUF_SAMPLE_POINT_NUM_MAX)
     {
-        rt_kprintf("LCPU PPG DEBUG 1\n");
         EXAMPLE_DEBUG_LOG_L1_HOOK("[%s] one_light_data_len is too large, %d\n\r", __FUNCTION__, sample_num);
         return;
     }
     else if (sample_num < 1)
     {
-        rt_kprintf("LCPU PPG DEBUG 2\n");
         EXAMPLE_DEBUG_LOG_L1_HOOK("[%s] one_light_data_len is too small, %d\n\r", __FUNCTION__, sample_num);
         return;
     }

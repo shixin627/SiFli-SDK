@@ -222,7 +222,6 @@ static void handle_finger_pressed(rt_tick_t ts)
   control_provider.trigger_finger_event(1);
   set_gesture(ts, gesture_press);
   peripheral_provider.set_tap_status(true);
-  lvgl_set_global_keypad_enter_cmd();
 #if ENABLE_VIRTUAL_TOUCH
   gesture_touch_event_handler();
 #endif
@@ -266,7 +265,6 @@ static void handle_finger_tap(rt_tick_t ts)
   set_gesture(ts, gesture_tap);
   control_provider.trigger_finger_event(0);
   peripheral_provider.set_tap_status(false);
-  lvgl_set_global_keypad_enter_cmd();
 }
 
 static void handle_finger_release(rt_tick_t ts)

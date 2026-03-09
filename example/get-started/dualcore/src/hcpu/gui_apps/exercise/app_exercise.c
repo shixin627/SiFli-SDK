@@ -371,6 +371,7 @@ static void show_workout_view()
     refresh_session_pause_button();
 }
 
+static void refresh_activity_rings(void);
 static void statistics_exercise_data(void);
 int stop_exercise(void)
 {
@@ -682,11 +683,57 @@ static lv_obj_t *create_ring(lv_obj_t *parent, lv_coord_t size, lv_color_t color
     return ring;
 }
 
+static void refresh_activity_rings(void)
+{
+    uint32_t steps = get_steps_today();
+    float distance = get_distance_today() / 1000000; // km
+    float calories = get_calories_today() / 1000;    // k-calories
+
+    // 計算圓環進度百分比
+    int32_t calories_percent = (int32_t)(calories * 100 / 300); // 300 k-calories
+    int32_t steps_percent = (int32_t)(steps * 100 / 10000);     // 10000 steps
+    int32_t distance_percent = (int32_t)(distance * 100 / 7.5); // 7.5km
+
+    // 限制百分比在0-100之間
+    calories_percent = calories_percent > 100 ? 100 : (calories_percent < 0 ? 0 : calories_percent);
+    steps_percent = steps_percent > 100 ? 100 : (steps_percent < 0 ? 0 : steps_percent);
+    distance_percent = distance_percent > 100 ? 100 : (distance_percent < 0 ? 0 : distance_percent);
+
+    // 更新圓環進度
+    if (lv_obj_is_valid(calories_ring))
+    {
+        lv_arc_set_value(calories_ring, calories_percent);
+        char calories_str[16];
+        snprintf(calories_str, sizeof(calories_str), "%.0f", calories);
+        lv_label_set_text(calories_ring_label, calories_str);
+        lv_obj_align_to(calories_ring_label, calories_ring_label_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
+    }
+
+    if (lv_obj_is_valid(steps_ring))
+    {
+        lv_arc_set_value(steps_ring, steps_percent);
+        char steps_str[16];
+        snprintf(steps_str, sizeof(steps_str), "%d", steps);
+        lv_label_set_text(steps_ring_label, steps_str);
+        lv_obj_align_to(steps_ring_label, steps_ring_label_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
+    }
+
+    if (lv_obj_is_valid(distance_ring))
+    {
+        lv_arc_set_value(distance_ring, distance_percent);
+        char distance_str[16];
+        snprintf(distance_str, sizeof(distance_str), "%.2f", distance);
+        lv_label_set_text(distance_ring_label, distance_str);
+        lv_obj_align_to(distance_ring_label, distance_ring_label_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
+    }
+}
+
 static void statistics_exercise_data(void)
 {
     workout_history_t *history = get_workout_history();
     if (!history || history->count == 0)
     {
+        refresh_activity_rings();
         return;
     }
 
@@ -764,50 +811,7 @@ static void statistics_exercise_data(void)
     }
 
     // 更新圓環數據
-    uint32_t steps = get_steps_today();
-    float distance = get_distance_today() / 1000000; // km
-    float calories = get_calories_today() / 1000;    // k-calories
-
-    // 計算圓環進度百分比
-    int32_t calories_percent = (int32_t)(calories * 100 / 300); // 300 k-calories
-    int32_t steps_percent = (int32_t)(steps * 100 / 10000);     // 10000 steps
-    int32_t distance_percent = (int32_t)(distance * 100 / 7.5); // 7.5km
-
-    // 限制百分比在0-100之間
-    calories_percent = calories_percent > 100 ? 100 : (calories_percent < 0 ? 0 : calories_percent);
-    steps_percent = steps_percent > 100 ? 100 : (steps_percent < 0 ? 0 : steps_percent);
-    distance_percent = distance_percent > 100 ? 100 : (distance_percent < 0 ? 0 : distance_percent);
-
-    // 更新圓環進度
-    if (lv_obj_is_valid(calories_ring))
-    {
-        lv_arc_set_value(calories_ring, calories_percent);
-        // 顯示今日卡路里數值
-        char calories_str[16];
-        snprintf(calories_str, sizeof(calories_str), "%.0f", calories);
-        lv_label_set_text(calories_ring_label, calories_str);
-        lv_obj_align_to(steps_ring_label, steps_ring_label_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
-    }
-
-    if (lv_obj_is_valid(steps_ring))
-    {
-        lv_arc_set_value(steps_ring, steps_percent);
-        // 顯示今日步數
-        char steps_str[16];
-        snprintf(steps_str, sizeof(steps_str), "%d", steps);
-        lv_label_set_text(steps_ring_label, steps_str);
-        lv_obj_align_to(steps_ring_label, steps_ring_label_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
-    }
-
-    if (lv_obj_is_valid(distance_ring))
-    {
-        lv_arc_set_value(distance_ring, distance_percent);
-        // 顯示今日距離
-        char distance_str[16];
-        snprintf(distance_str, sizeof(distance_str), "%.2f", distance);
-        lv_label_set_text(distance_ring_label, distance_str);
-        lv_obj_align_to(distance_ring_label, distance_ring_label_hint, LV_ALIGN_OUT_LEFT_MID, -4, -5);
-    }
+    refresh_activity_rings();
 
     // 釋放歷史記憶體
     free_workout_history(history);
@@ -1435,6 +1439,7 @@ static void on_resume(void)
     #endif
     lvgl_msg_handler.handle_nav_bar_control = scroll_list_to_index;
     lvgl_msg_handler.handle_tap_indicator = press_cb;
+    refresh_activity_rings();
 }
 
 static void on_pause(void)
