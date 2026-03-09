@@ -455,8 +455,7 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
     user_hand_horizontal =
         (watch_gravity.x < 0.9f && watch_gravity.x > -horizontal_threshold);
     watchface_visible =
-        (watch_gravity.y > -0.7f && watch_gravity.z > -0.6f);
-
+        (fabs(watch_gravity.x) < 0.4f && watch_gravity.y > -0.7f && watch_gravity.z > -0.6f);
     float abs_gx = fabsf(gyroData->x);
     open_wrist_rotation = user_hand_horizontal &&
         abs_gx > fabsf(gyroData->y) && abs_gx > fabsf(gyroData->z);
