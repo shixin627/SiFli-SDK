@@ -42,6 +42,7 @@ static uint32_t put_down_time = 0;
 static bool hand_status = false; // true: lifting, false: putdown
 static rt_tick_t last_hand_lift_time = 0;
 static rt_tick_t last_hand_lift_y_time = 0;
+static rt_tick_t check_watch_start_time = 0;
 static bool gesture_threshold_achieved = false;
 static rt_tick_t gesture_threshold_achieved_time = 0;
 static float max_supination_gyro_x_abs = 0;
@@ -151,6 +152,7 @@ void back_event(void)
     hand_tracking.back_callback();
 }
 
+static bool watchface_visible = false;
 static uint8_t state = 0;
 static bool gyro_y_check_watch = false;
 static void timer_check_watch_callback(void *param)
@@ -159,6 +161,12 @@ static void timer_check_watch_callback(void *param)
     sum_gyro_put_down_x = 0;
     gyro_y_check_watch = true;
     gesture_threshold_achieved = false;
+    // if (watchface_visible)
+    // {
+    //     LOG_I("Watchface visible, trigger lift2 event");
+    //     last_hand_lift_time = rt_tick_get();
+    //     trigger_lift2_event();
+    // }
 }
 
 static rt_timer_t timer_check_watch;
@@ -214,6 +222,7 @@ static void stop_put_down_confirm_timer(void)
 }
 #endif
 
+static bool check_watch = false;
 void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
                                bool open_wrist_rotation,
                                bool if_watchface_visible, bool zero_velocity)
@@ -226,6 +235,20 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
     if (zero_velocity_buffer_index >= 25)
     {
         zero_velocity_buffer_index = 0;
+    }
+
+    if (check_watch)
+    {
+        if (current_time - check_watch_start_time > 200)
+        {
+            check_watch = false;
+            if (if_watchface_visible)
+            {
+                LOG_I("Watchface visible, trigger lift2 event");
+                last_hand_lift_time = current_time;
+                trigger_lift2_event();
+            }
+        }
     }
 
     switch (state)
@@ -339,15 +362,17 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
 #if USING_PUT_DOWN_TIMER
         stop_put_down_confirm_timer();
 #endif
-        if (if_watchface_visible)
+        // if (if_watchface_visible)
         {
-            stop_check_watch_timer();
+            // stop_check_watch_timer();
             if (!hand_status ||
                 (current_time - last_hand_lift_time) > RT_TICK_PER_SECOND)
             {
                 hand_status = true;
-                trigger_lift2_event();
-                last_hand_lift_time = current_time;
+                // trigger_lift2_event();
+                // last_hand_lift_time = current_time;
+                check_watch = true;
+                check_watch_start_time = current_time;
             }
             sum_gyro_put_down_x = 0;
             state = 0;
@@ -388,7 +413,10 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
             {
                 if (hand_tracking.lift_callback)
                 {
-                    start_check_watch_timer();
+                    // start_check_watch_timer();
+                    stop_put_down_confirm_timer();
+                    check_watch = true;
+                    check_watch_start_time = current_time;
                     gyro_y_check_watch = false;
                 }
                 sum_gyro_hand_lifting_y = 0;
@@ -398,6 +426,16 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
         else if (gyro_y > 30.0f)
         {
             sum_gyro_hand_lifting_y += gyro_y;
+            if (sum_gyro_hand_lifting_y > 600.0f)
+            {
+                if (hand_tracking.lift_callback && !if_watchface_visible)
+                {
+                    // start_check_watch_timer();
+                    main_send_hand_lift_event();
+                }
+                sum_gyro_hand_lifting_y = 0;
+            }
+            last_hand_lift_y_time = current_time;
         }
         if (current_time - last_hand_lift_y_time > 500)
         {
@@ -406,11 +444,11 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
     }
     else
     {
-        if (if_watchface_visible)
+        // if (if_watchface_visible)
         {
-            stop_check_watch_timer();
-            trigger_lift2_event();
-            last_hand_lift_time = current_time;
+            // stop_check_watch_timer();
+            // trigger_lift2_event();
+            // last_hand_lift_time = current_time;
             gyro_y_check_watch = true;
         }
     }
