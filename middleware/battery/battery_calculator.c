@@ -234,15 +234,21 @@ uint8_t battery_calculator_get_percent(battery_calculator_t *calculator, uint32_
     /* Get the charging status */
     status = battery_get_charging_status();
     LOG_D("Current status: %s", (status == BATTERY_CHARGER_STATUS_CHARGING) ? "Charging" : "Discharging");
-    if (status == BATTERY_CHARGER_STATUS_CHARGING)
-        watch_sys_sync.notify_debug_log("Current status: Charging");
-    else
-        watch_sys_sync.notify_debug_log("Current status: Discharging");
+
     /* Primary filter: state-based filtering */
     filtered_voltage = _battery_voltage_filter(calculator, voltage, status);
 
     /* Secondary filter: weighted average filtering */
     secondary_filtered_voltage = _battery_secondary_filter(calculator, filtered_voltage);
+    
+    char debug_msg[64];
+    if (status == BATTERY_CHARGER_STATUS_CHARGING) {
+        snprintf(debug_msg, sizeof(debug_msg), "Current status: Charging, voltage: %u", secondary_filtered_voltage);
+        watch_sys_sync.notify_debug_log(debug_msg);
+    } else {
+        snprintf(debug_msg, sizeof(debug_msg), "Current status: Discharging, voltage: %u", secondary_filtered_voltage);
+        watch_sys_sync.notify_debug_log(debug_msg);
+    }
 
     if (BATTERY_CHARGER_STATUS_CHARGING == status)
     {
