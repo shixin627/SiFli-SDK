@@ -541,7 +541,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
 }
 
 extern bool get_hid_mouse_handfree_mode(void);
-
+extern bool level_bar_is_flat(void);
 #define IMU_THREAD_STACK_SIZE 4 * 1024
 #define IMU_THREAD_PRIORITY RT_THREAD_PRIORITY_MIDDLE - 1
 #define IMU_THREAD_TIMESLICE 10
@@ -595,7 +595,7 @@ static void gesture_recognition_thread_entry(void *parameter)
             continue;
         }
 
-        if (!is_user_touching_screen() && !get_motor_status())
+        if (!is_user_touching_screen() && !get_motor_status() && level_bar_is_flat())
         {
             gesture_recognition_algorithm(&watch_sensor.gesture_data);
         }

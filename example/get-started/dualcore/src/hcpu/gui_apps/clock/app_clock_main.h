@@ -123,4 +123,16 @@ void destroy_connection_tips(void);
     void app_clock_img_cache_free(lv_img_dsc_t *p_img);
 #endif
 
+/**
+ * Update level bar position to indicate watch tilt
+ * @param value -100 (left) to +100 (right), 0 = flat/center
+ */
+void level_bar_update(int16_t value);
+
+/**
+ * Check if the watch is currently in flat position
+ * @return true if the dot is within the center arc brackets
+ */
+bool level_bar_is_flat(void);
+
 #endif /*__APP_CLOCK_MAIN_H_*/
