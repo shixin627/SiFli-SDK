@@ -362,6 +362,7 @@ int get_gesture_recognition_threshold(void)
     return gesture_recognition_threshold;
 }
 
+extern bool level_bar_is_flat(void);
 static void gesture_recognition_algorithm(gesture_data_t *gesture)
 {
     LOG_D("gesture_recognition_algorithm sample_num:%d", gesture->sample_num);
@@ -494,7 +495,10 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
             }
             else if (tap_recognition_score == 0)
             {
-                watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
+                if (level_bar_is_flat())
+                {
+                    watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
+                }
             }
             else
             {
@@ -541,7 +545,6 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
 }
 
 extern bool get_hid_mouse_handfree_mode(void);
-extern bool level_bar_is_flat(void);
 #define IMU_THREAD_STACK_SIZE 4 * 1024
 #define IMU_THREAD_PRIORITY RT_THREAD_PRIORITY_MIDDLE - 1
 #define IMU_THREAD_TIMESLICE 10
@@ -595,7 +598,7 @@ static void gesture_recognition_thread_entry(void *parameter)
             continue;
         }
 
-        if (!is_user_touching_screen() && !get_motor_status() && level_bar_is_flat())
+        if (!is_user_touching_screen() && !get_motor_status())
         {
             gesture_recognition_algorithm(&watch_sensor.gesture_data);
         }
