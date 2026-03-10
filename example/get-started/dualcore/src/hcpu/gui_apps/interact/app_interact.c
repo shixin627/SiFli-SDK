@@ -308,8 +308,8 @@ static void builder(interact_state_t state, lv_obj_t *parent)
         if (get_motor_switch_state())
         {
             motor_params_t param = {
-                .duty_cycle = 91,
-                .period = 100000, // 100ms
+                .duty_cycle = 70,
+                .period = 1000000, // 100ms
                 .repeat_times = 30,
             };
             peripheral_provider.control_motor(true, &param);

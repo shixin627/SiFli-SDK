@@ -362,6 +362,7 @@ int get_gesture_recognition_threshold(void)
     return gesture_recognition_threshold;
 }
 
+extern bool level_bar_is_flat(void);
 static void gesture_recognition_algorithm(gesture_data_t *gesture)
 {
     LOG_D("gesture_recognition_algorithm sample_num:%d", gesture->sample_num);
@@ -395,7 +396,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                 rt_tick_t cost_tick = tick_time_end - tick_time_start;
                 LOG_D("recognize tap gesture cost_tick:%d, score:%d", cost_tick,
                       tap_recognition_score);
-                if (tap_recognition_score == 0)
+                if (tap_recognition_score == 1)
                 {
                     packMatrixToBuffer(gsensorSamplesBuffer, gesture->dataset,
                                        NULL, TAP_TARGET_SAMPLE_NUM);
@@ -420,7 +421,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                 rt_tick_t cost_tick = tick_time_end - tick_time_start;
                 LOG_D("recognize release gesture cost_tick:%d, score:%d",
                       cost_tick, release_recognition_score);
-                if (release_recognition_score == 1)
+                if (release_recognition_score == 0)
                 {
                     packMatrixToBuffer(gsensorSamplesBuffer, gesture->dataset,
                                        NULL, sample_num);
@@ -476,7 +477,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
             LOG_I("recognize tap gesture cost_tick:%d, score:%d",
                   last_gesture_recognition_time - tick_time_start,
                   tap_recognition_score);
-            if (tap_recognition_score == 0)
+            if (tap_recognition_score == 1)
             {
                 label = kTapGesture;
                 send_virtual_gesture_event(GESTURE_EVENT_PRESS);
@@ -492,9 +493,12 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                     send_virtual_gesture_event(GESTURE_EVENT_TAP);
                 }
             }
-            else if (tap_recognition_score == 1)
+            else if (tap_recognition_score == 0)
             {
-                watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
+                if (level_bar_is_flat())
+                {
+                    watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
+                }
             }
             else
             {
@@ -541,7 +545,6 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
 }
 
 extern bool get_hid_mouse_handfree_mode(void);
-
 #define IMU_THREAD_STACK_SIZE 4 * 1024
 #define IMU_THREAD_PRIORITY RT_THREAD_PRIORITY_MIDDLE - 1
 #define IMU_THREAD_TIMESLICE 10

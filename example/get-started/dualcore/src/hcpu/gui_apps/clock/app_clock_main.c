@@ -478,6 +478,123 @@ void dial_widget_event(lv_event_t *e)
 extern void write_clock_widget_number(void);
 static lv_obj_t *dial_widget = NULL;
 static lv_obj_t *dial_widget_img_bg = NULL;
+
+// Level bar for flat detection
+#define LEVEL_BAR_WIDTH     200
+#define LEVEL_BAR_HEIGHT    20
+#define LEVEL_DOT_SIZE      14
+#define LEVEL_CENTER_BOX_W  40
+#define LEVEL_CENTER_BOX_H  20
+#define LEVEL_BAR_Y_OFFSET  195
+
+static lv_obj_t *level_bar_container = NULL;
+static lv_obj_t *level_bar_line = NULL;
+static lv_obj_t *level_bar_dot = NULL;
+static lv_obj_t *level_bar_arc_left = NULL;
+static lv_obj_t *level_bar_arc_right = NULL;
+
+static void level_bar_builder(lv_obj_t *parent)
+{
+    // Container
+    level_bar_container = lv_obj_create(parent);
+    lv_obj_set_size(level_bar_container, LEVEL_BAR_WIDTH + LEVEL_DOT_SIZE, LEVEL_CENTER_BOX_H + 4);
+    lv_obj_align(level_bar_container, LV_ALIGN_CENTER, 0, LEVEL_BAR_Y_OFFSET);
+    lv_obj_set_style_bg_opa(level_bar_container, LV_OPA_0, 0);
+    lv_obj_set_style_border_opa(level_bar_container, LV_OPA_0, 0);
+    lv_obj_set_style_pad_all(level_bar_container, 0, 0);
+    lv_obj_clear_flag(level_bar_container, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Horizontal bar line
+    level_bar_line = lv_obj_create(level_bar_container);
+    lv_obj_set_size(level_bar_line, LEVEL_BAR_WIDTH, LEVEL_BAR_HEIGHT);
+    lv_obj_align(level_bar_line, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(level_bar_line, lv_color_hex(0x666666), 0);
+    lv_obj_set_style_bg_opa(level_bar_line, LV_OPA_30, 0);
+    lv_obj_set_style_radius(level_bar_line, LEVEL_BAR_HEIGHT / 2, 0);
+
+    // Left arc (flat zone left boundary)
+    level_bar_arc_left = lv_arc_create(level_bar_container);
+    lv_obj_set_size(level_bar_arc_left, 24, 24);
+    lv_arc_set_rotation(level_bar_arc_left, 120);
+    lv_arc_set_bg_angles(level_bar_arc_left, 0, 120);
+    lv_arc_set_angles(level_bar_arc_left, 0, 0);
+    lv_obj_set_style_arc_width(level_bar_arc_left, 2, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(level_bar_arc_left, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(level_bar_arc_left, LV_OPA_60, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(level_bar_arc_left, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(level_bar_arc_left, LV_OPA_0, LV_PART_KNOB);
+    lv_obj_clear_flag(level_bar_arc_left, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(level_bar_arc_left, LV_ALIGN_CENTER, -(LEVEL_CENTER_BOX_W / 2), 0);
+
+    // Right arc (flat zone right boundary)
+    level_bar_arc_right = lv_arc_create(level_bar_container);
+    lv_obj_set_size(level_bar_arc_right, 24, 24);
+    lv_arc_set_rotation(level_bar_arc_right, 300);
+    lv_arc_set_bg_angles(level_bar_arc_right, 0, 120);
+    lv_arc_set_angles(level_bar_arc_right, 0, 0);
+    lv_obj_set_style_arc_width(level_bar_arc_right, 2, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(level_bar_arc_right, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(level_bar_arc_right, LV_OPA_60, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(level_bar_arc_right, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(level_bar_arc_right, LV_OPA_0, LV_PART_KNOB);
+    lv_obj_clear_flag(level_bar_arc_right, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(level_bar_arc_right, LV_ALIGN_CENTER, (LEVEL_CENTER_BOX_W / 2), 0);
+
+    // Moving dot
+    level_bar_dot = lv_obj_create(level_bar_container);
+    lv_obj_set_size(level_bar_dot, LEVEL_DOT_SIZE, LEVEL_DOT_SIZE);
+    lv_obj_align(level_bar_dot, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(level_bar_dot, lv_color_hex(0x9D9D9D), 0);
+    lv_obj_set_style_bg_opa(level_bar_dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(level_bar_dot, LEVEL_DOT_SIZE / 2, 0);
+    lv_obj_set_style_border_opa(level_bar_dot, LV_OPA_0, 0);
+}
+
+static void level_bar_deinit(void)
+{
+    level_bar_container = NULL;
+    level_bar_line = NULL;
+    level_bar_dot = NULL;
+    level_bar_arc_left = NULL;
+    level_bar_arc_right = NULL;
+}
+
+// Flat zone threshold: dot pixel range vs arc position
+// Arc centers at ±(LEVEL_CENTER_BOX_W/2) = ±20px
+// Dot x_offset = value * ((LEVEL_BAR_WIDTH-20)/2) / 100
+// Flat when |x_offset| <= LEVEL_CENTER_BOX_W/2
+// => |value| <= LEVEL_CENTER_BOX_W/2 * 100 / ((LEVEL_BAR_WIDTH-20)/2)
+#define LEVEL_FLAT_THRESHOLD  ((LEVEL_CENTER_BOX_W / 2) * 100 / ((LEVEL_BAR_WIDTH - 20) / 2)) - 5
+
+static bool level_is_flat = false;
+
+bool level_bar_is_flat(void)
+{
+    return level_is_flat;
+}
+
+// value: -100 ~ +100, 0 = flat (center)
+void level_bar_update(int16_t value)
+{
+    if (!level_bar_dot || !lv_obj_is_valid(level_bar_dot))
+        return;
+    if (value < -100) value = -100;
+    if (value > 100) value = 100;
+    int16_t x_offset = (int16_t)((int32_t)value * ((LEVEL_BAR_WIDTH - 20) / 2) / 100);
+    lv_obj_align(level_bar_dot, LV_ALIGN_CENTER, x_offset, 0);
+
+    bool was_flat = level_is_flat;
+    level_is_flat = (value >= -LEVEL_FLAT_THRESHOLD && value <= LEVEL_FLAT_THRESHOLD);
+
+    if (level_is_flat != was_flat)
+    {
+        lv_color_t arc_color = level_is_flat ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x777777);
+        if (level_bar_arc_left && lv_obj_is_valid(level_bar_arc_left))
+            lv_obj_set_style_arc_color(level_bar_arc_left, arc_color, LV_PART_MAIN);
+        if (level_bar_arc_right && lv_obj_is_valid(level_bar_arc_right))
+            lv_obj_set_style_arc_color(level_bar_arc_right, arc_color, LV_PART_MAIN);
+    }
+}
 static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent);
 // 生成一個列表用於切換 dial_widget_app_id，選擇後自動刪除
 static lv_obj_t *dial_widget_select_list = NULL;
@@ -595,6 +712,9 @@ static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
         request_weather_within_six_hours(false);
         lv_dial_weather_widget_builder(dial_widget);
     }
+
+    // Build level bar below the widget
+    level_bar_builder(parent);
 }
 
 static void swich_dial_widget_deinit(uint8_t app_id)
@@ -613,6 +733,7 @@ static void swich_dial_widget_deinit(uint8_t app_id)
     {
         dial_weather_widget_deinit();
     }
+    level_bar_deinit();
 }
 static void get_clock_main_status_img_path(char *clk_id)
 {

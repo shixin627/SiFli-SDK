@@ -1574,20 +1574,14 @@ static bool can_open_ai_interface(void)
 }
 
 // extern void set_ai_hint_x(uint8_t x);
+extern void level_bar_update(int16_t value);
 static uint8_t pevr_ai_hint_bg_pos = 0;
 static void calculate_gravity_position(Vector3 *gravity)
 {
-    if (gravity->x > 0.1 && gravity->x < 0.5 && is_at_app_list())
+    // LOG_D("gravity x:%f,y:%f,z:%f", gravity->x, gravity->y, gravity->z);
+    if (gravity->x > -1 && gravity->x < 1 && is_at_home())
     {
-        // uint8_t ai_hint_bg_pos =
-        //     (uint8_t)(((gravity->x - 0.1f) / 0.4f) * 100.0f);
-        // if (ai_hint_bg_pos != pevr_ai_hint_bg_pos)
-        // {
-        //     pevr_ai_hint_bg_pos = ai_hint_bg_pos;
-        //     if (ai_hint_bg_pos > 100)
-        //         ai_hint_bg_pos = 100;
-        //     set_ai_hint_x(ai_hint_bg_pos);
-        // }
+        level_bar_update((int16_t)(gravity->x * -100)); // Update level bar based on gravity x-axis
     }
     if (gravity->y < -0.7 && gravity->z < 0.3)
     {
