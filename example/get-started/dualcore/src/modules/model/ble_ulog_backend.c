@@ -14,17 +14,25 @@
 // BLE backend 實例
 static struct ulog_backend ble_ulog_backend;
 
+// Re-entrancy guard to prevent recursive logging within ulog lock
+static volatile rt_bool_t ble_ulog_outputting = RT_FALSE;
+
 // BLE backend 輸出函數
 static void ble_ulog_backend_output(struct ulog_backend *backend, rt_uint32_t level, const char *tag, rt_bool_t is_raw, const char *log, size_t len)
 {
     // Don't output binary in console.
     if (is_raw == RAW_BIN)
         return;
+    // Prevent re-entrant calls that cause ulog output_lock assertion failure
+    if (ble_ulog_outputting)
+        return;
+    ble_ulog_outputting = RT_TRUE;
     // level of rt_kprintf and LOG_D is 7
     // level of LOG_I is 6
     // level of LOG_W is 5
     // level of LOG_E is 4
     ble_log_output(level, log, len);
+    ble_ulog_outputting = RT_FALSE;
 }
 
 // BLE backend 初始化

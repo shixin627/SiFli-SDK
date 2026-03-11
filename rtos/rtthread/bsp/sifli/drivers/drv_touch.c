@@ -48,7 +48,7 @@ static rt_sem_t api_lock;
 static void (*touch_event_callback)(uint8_t event, uint16_t x, uint16_t y) = NULL;
 ALIGN(RT_ALIGN_SIZE)
 L1_NON_RET_BSS_SECT_BEGIN(touch_thread_stack)
-L1_NON_RET_BSS_SECT(touch_thread_stack, static char touch_thread_stack[1024]);
+L1_NON_RET_BSS_SECT(touch_thread_stack, static char touch_thread_stack[1536]);
 L1_NON_RET_BSS_SECT_END
 
 
