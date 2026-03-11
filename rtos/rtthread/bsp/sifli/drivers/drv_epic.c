@@ -28,7 +28,7 @@
 #endif
 
 
-#define  DBG_LEVEL            DBG_INFO  //DBG_LOG //
+#define  DBG_LEVEL            DBG_WARNING  //DBG_LOG //
 
 #define LOG_TAG                "drv.epic"
 #include "log.h"
