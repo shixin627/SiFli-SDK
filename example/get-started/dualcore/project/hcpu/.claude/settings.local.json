@@ -3,7 +3,8 @@
     "allow": [
       "Read(//c/SiFli-SDK/example/get-started/dualcore/src/hcpu/gui_apps/hid_mouse/**)",
       "Read(//c/SiFli-SDK/**)",
-      "Bash(grep -v \".o$\")"
+      "Bash(grep -v \".o$\")",
+      "Bash(grep -r \"DFS_FD_MAX\\\\|RT_DFS_FD_MAX\" /c/work/SiFli-SDK/example/get-started/dualcore/project --include=*.h)"
     ],
     "additionalDirectories": [
       "c:\\SiFli-SDK\\example\\get-started\\dualcore\\src\\hcpu\\gui_apps\\media",

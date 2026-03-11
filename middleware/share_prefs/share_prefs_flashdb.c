@@ -85,7 +85,10 @@ rt_err_t share_prefs_close(share_prefs_t *prfs)
     flshdb_share_prefs_t *p_flshdb_prefs = (flshdb_share_prefs_t *) prfs;
 
     if (p_flshdb_prefs != NULL)
+    {
+        fdb_kvdb_deinit(&p_flshdb_prefs->db);
         rt_free(p_flshdb_prefs);
+    }
 
     return RT_EOK;
 }

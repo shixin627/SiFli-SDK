@@ -46,7 +46,9 @@
 #include "communicate_protocol.h"
 #include "communicate_update_image.h"
 #include "gui_app_fwk.h"
+#include "watch_system_interact.h"
 #include "ui_helper.h"
+#include "bloc_setting.h"
 #include "bloc_flash.h"
 #include "bloc_peripheral.h"
 #include "bloc_notification.h"
@@ -116,6 +118,8 @@ void mark_ota_started(void)
 {
 	LOG_I("[OTA]mark OTA start");
 	dfu_started_mark = true;
+	watch_system_interact(HCPU_WAKEUP, NULL);
+	setting_provider.set_power_save_mode(0);
 }
 
 uint32_t get_cur_watch_image_size(void)
@@ -584,6 +588,7 @@ static void ble_dfu_flash_write()
 
 	skaiwatch_ble_set_performance(false);
 	peripheral_provider.subscribe_accelerometer_sensor(true);
+	setting_provider.set_power_save_mode(1);
 }
 static rt_thread_t ble_dfu_flash_write_thread_start()
 {
