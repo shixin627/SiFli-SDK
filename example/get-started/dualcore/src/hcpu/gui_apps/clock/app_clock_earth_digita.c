@@ -120,7 +120,7 @@ lv_obj_t *lv_earth_digital_layout_create(lv_obj_t *parent)
     // Create hour label
     p_clk_earth_digital->hour_0_img = lv_img_create(h_0);
     lv_img_set_src(p_clk_earth_digital->hour_0_img, &dig_1_00);
-    lv_img_set_zoom(p_clk_earth_digital->hour_0_img, 256 * 0.8); // 100%
+    lv_img_set_zoom(p_clk_earth_digital->hour_0_img, 256 * 0.9); // 100%
     lv_obj_center(p_clk_earth_digital->hour_0_img);
 
     lv_obj_t *h_1 = lv_obj_create(p_clk_earth_digital->bg);
@@ -131,7 +131,7 @@ lv_obj_t *lv_earth_digital_layout_create(lv_obj_t *parent)
 
     p_clk_earth_digital->hour_1_img = lv_img_create(h_1);
     lv_img_set_src(p_clk_earth_digital->hour_1_img, &dig_1_00);
-    lv_img_set_zoom(p_clk_earth_digital->hour_1_img, 256 * 0.8); // 100%
+    lv_img_set_zoom(p_clk_earth_digital->hour_1_img, 256 * 0.9); // 100%
     lv_obj_center(p_clk_earth_digital->hour_1_img);
 
     lv_obj_t *m_0 = lv_obj_create(p_clk_earth_digital->bg);
@@ -143,7 +143,7 @@ lv_obj_t *lv_earth_digital_layout_create(lv_obj_t *parent)
     p_clk_earth_digital->minute_0_img = lv_img_create(m_0);
     lv_img_set_src(p_clk_earth_digital->minute_0_img, &dig_1_00);
     lv_obj_set_style_img_opa(p_clk_earth_digital->minute_0_img, LV_OPA_70, 0);
-    lv_img_set_zoom(p_clk_earth_digital->minute_0_img, 256 * 0.8); // 100%
+    lv_img_set_zoom(p_clk_earth_digital->minute_0_img, 256 * 0.9); // 100%
     lv_obj_center(p_clk_earth_digital->minute_0_img);
 
     lv_obj_t *m_1 = lv_obj_create(p_clk_earth_digital->bg);
@@ -155,7 +155,7 @@ lv_obj_t *lv_earth_digital_layout_create(lv_obj_t *parent)
     p_clk_earth_digital->minute_1_img = lv_img_create(m_1);
     lv_img_set_src(p_clk_earth_digital->minute_1_img, &dig_1_00);
     lv_obj_set_style_img_opa(p_clk_earth_digital->minute_1_img, LV_OPA_70, 0);
-    lv_img_set_zoom(p_clk_earth_digital->minute_1_img, 256 * 0.8); // 100%
+    lv_img_set_zoom(p_clk_earth_digital->minute_1_img, 256 * 0.9); // 100%
     lv_obj_center(p_clk_earth_digital->minute_1_img);
 
 #ifdef CHECK_CLOCK
@@ -184,7 +184,7 @@ lv_obj_t *lv_earth_digital_layout_create(lv_obj_t *parent)
 }
 
 #define EXPAND_ANIM_DURATION 300
-#define EXPAND_CONT_Y_OFFSET 25   // 容器下移量 (-65 -> -40)
+#define EXPAND_CONT_Y_OFFSET 35   // 容器下移量 (-65 -> -40)
 #define EXPAND_EARTH_Y_OFFSET 90  // earth 下移量 (-5 -> 40)
 
 static void _anim_zoom_cb(void *var, int32_t v)
@@ -222,7 +222,7 @@ void app_clock_earth_digital_set_expanded(bool expanded)
     for (int i = 0; i < 4; i++)
     {
         int32_t cur_zoom = lv_img_get_zoom(digits[i]);
-        int32_t tgt_zoom = expanded ? 256 : (int32_t)(256 * 0.8);
+        int32_t tgt_zoom = expanded ? 256 : (int32_t)(256 * 0.9);
 
         lv_anim_t a;
         lv_anim_init(&a);

@@ -694,6 +694,7 @@ static void notify_gesture_dataset_hcpu(uint32_t timestamp, int count,
 /**
  * @brief Main gesture event capture function for HCPU
  */
+extern bool imu_data_collection;
 static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                        Vector3 *linear_acce, Vector3 *gyro,
                                        Vector3 *gravity, float ppg,
@@ -710,7 +711,10 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     }
     else
     {
-        cooldown_period = GESTURE_TAP_COOLDOWN_PERIOD_MS;
+        if (imu_data_collection)
+            cooldown_period = GESTURE_COLLECTION_COOLDOWN_PERIOD_MS;
+        else
+            cooldown_period = GESTURE_TAP_COOLDOWN_PERIOD_MS;
     }
     if ((current_time - dataset->wait_start_time) < cooldown_period)
     {
@@ -723,12 +727,12 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     // 	reset_gesture_state(dataset, current_time, 1);
     // 	return;
     // }
-    else if (state->if_watchface_visible == false)
+    else if (state->if_watchface_visible == false && !imu_data_collection)
     {
         reset_gesture_state(dataset, current_time, 2);
         return;
     }
-    else if (state->gyro_lock_status)
+    else if (state->gyro_lock_status && !imu_data_collection)
     {
         reset_gesture_state(dataset, current_time, 3);
         return;
