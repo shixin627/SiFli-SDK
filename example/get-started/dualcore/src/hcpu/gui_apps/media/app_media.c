@@ -83,6 +83,7 @@ LV_IMG_DECLARE(volume_up);
 LV_IMG_DECLARE(volume_down);
 LV_IMG_DECLARE(mouse_mode_icon);
 LV_IMG_DECLARE(micro_icon);
+LV_IMG_DECLARE(media_gaus_bg);
 LV_IMG_DECLARE(control_selection_bg);
 
 static app_media_t *p_app_media = NULL;
@@ -1132,6 +1133,28 @@ void lv_dial_media_widget_builder(lv_obj_t *parent)
     vol_bar_expanded = false;
     dial_media_widget_init();
     lvgl_msg_handler.handle_media_volume = set_vol_bar_value;
+}
+
+void set_dial_media_widget_opa(uint8_t opa)
+{
+    if (lv_obj_is_valid(dial_widget_btn_prev_bg))
+    {
+        lv_obj_set_style_img_opa(lv_obj_get_child(lv_obj_get_child(dial_widget_btn_prev_bg, 0),0), opa, 0);
+    }
+    if (lv_obj_is_valid(dial_widget_btn_play_pause))
+    {
+        lv_obj_set_style_img_opa(lv_obj_get_child(dial_widget_btn_play_pause_icon, 0), opa, 0);
+    }
+    if (lv_obj_is_valid(dial_widget_btn_next_bg))
+    {
+        lv_obj_set_style_img_opa(lv_obj_get_child(lv_obj_get_child(dial_widget_btn_next_bg, 0),0), opa, 0);
+    }
+    if (lv_obj_is_valid(dial_widget_vol_icon_btn))
+    {
+        lv_obj_set_style_img_opa(lv_obj_get_child(dial_widget_vol_icon_btn, 0), opa, 0);
+        uint8_t btn_opa = opa*20/LV_OPA_COVER;
+        lv_obj_set_style_bg_opa(dial_widget_vol_icon_btn, btn_opa, 0);
+    }
 }
 
 static void handle_dial_media_widget_play_state(void *param)

@@ -78,6 +78,7 @@
 LV_IMG_DECLARE(img_clock);
 LV_IMG_DECLARE(common_background_vague);
 LV_IMG_DECLARE(weather_sun);
+LV_IMG_DECLARE(media_gaus_bg);
 
 static const char *battery_level_img_dsc[] = {
     APP_ELC_5, APP_ELC_20, APP_ELC_40, APP_ELC_60, APP_ELC_80, APP_ELC_100,
@@ -479,13 +480,18 @@ extern void write_clock_widget_number(void);
 static lv_obj_t *dial_widget = NULL;
 static lv_obj_t *dial_widget_img_bg = NULL;
 
+lv_obj_t *app_clock_main_get_dial_widget(void)
+{
+    return dial_widget;
+}
+
 // Level bar for flat detection
-#define LEVEL_BAR_WIDTH     200
-#define LEVEL_BAR_HEIGHT    20
-#define LEVEL_DOT_SIZE      14
-#define LEVEL_CENTER_BOX_W  40
-#define LEVEL_CENTER_BOX_H  20
-#define LEVEL_BAR_Y_OFFSET  195
+#define LEVEL_BAR_WIDTH 200
+#define LEVEL_BAR_HEIGHT 20
+#define LEVEL_DOT_SIZE 14
+#define LEVEL_CENTER_BOX_W 40
+#define LEVEL_CENTER_BOX_H 20
+#define LEVEL_BAR_Y_OFFSET 195
 
 static lv_obj_t *level_bar_container = NULL;
 static lv_obj_t *level_bar_line = NULL;
@@ -497,7 +503,8 @@ static void level_bar_builder(lv_obj_t *parent)
 {
     // Container
     level_bar_container = lv_obj_create(parent);
-    lv_obj_set_size(level_bar_container, LEVEL_BAR_WIDTH + LEVEL_DOT_SIZE, LEVEL_CENTER_BOX_H + 4);
+    lv_obj_set_size(level_bar_container, LEVEL_BAR_WIDTH + LEVEL_DOT_SIZE,
+                    LEVEL_CENTER_BOX_H + 4);
     lv_obj_align(level_bar_container, LV_ALIGN_CENTER, 0, LEVEL_BAR_Y_OFFSET);
     lv_obj_set_style_bg_opa(level_bar_container, LV_OPA_0, 0);
     lv_obj_set_style_border_opa(level_bar_container, LV_OPA_0, 0);
@@ -519,12 +526,14 @@ static void level_bar_builder(lv_obj_t *parent)
     lv_arc_set_bg_angles(level_bar_arc_left, 0, 120);
     lv_arc_set_angles(level_bar_arc_left, 0, 0);
     lv_obj_set_style_arc_width(level_bar_arc_left, 2, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(level_bar_arc_left, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(level_bar_arc_left, lv_color_hex(0xFFFFFF),
+                               LV_PART_MAIN);
     lv_obj_set_style_arc_opa(level_bar_arc_left, LV_OPA_60, LV_PART_MAIN);
     lv_obj_set_style_arc_width(level_bar_arc_left, 0, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(level_bar_arc_left, LV_OPA_0, LV_PART_KNOB);
     lv_obj_clear_flag(level_bar_arc_left, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_align(level_bar_arc_left, LV_ALIGN_CENTER, -(LEVEL_CENTER_BOX_W / 2), 0);
+    lv_obj_align(level_bar_arc_left, LV_ALIGN_CENTER, -(LEVEL_CENTER_BOX_W / 2),
+                 0);
 
     // Right arc (flat zone right boundary)
     level_bar_arc_right = lv_arc_create(level_bar_container);
@@ -533,12 +542,14 @@ static void level_bar_builder(lv_obj_t *parent)
     lv_arc_set_bg_angles(level_bar_arc_right, 0, 120);
     lv_arc_set_angles(level_bar_arc_right, 0, 0);
     lv_obj_set_style_arc_width(level_bar_arc_right, 2, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(level_bar_arc_right, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(level_bar_arc_right, lv_color_hex(0xFFFFFF),
+                               LV_PART_MAIN);
     lv_obj_set_style_arc_opa(level_bar_arc_right, LV_OPA_60, LV_PART_MAIN);
     lv_obj_set_style_arc_width(level_bar_arc_right, 0, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(level_bar_arc_right, LV_OPA_0, LV_PART_KNOB);
     lv_obj_clear_flag(level_bar_arc_right, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_align(level_bar_arc_right, LV_ALIGN_CENTER, (LEVEL_CENTER_BOX_W / 2), 0);
+    lv_obj_align(level_bar_arc_right, LV_ALIGN_CENTER, (LEVEL_CENTER_BOX_W / 2),
+                 0);
 
     // Moving dot
     level_bar_dot = lv_obj_create(level_bar_container);
@@ -564,7 +575,8 @@ static void level_bar_deinit(void)
 // Dot x_offset = value * ((LEVEL_BAR_WIDTH-20)/2) / 100
 // Flat when |x_offset| <= LEVEL_CENTER_BOX_W/2
 // => |value| <= LEVEL_CENTER_BOX_W/2 * 100 / ((LEVEL_BAR_WIDTH-20)/2)
-#define LEVEL_FLAT_THRESHOLD  ((LEVEL_CENTER_BOX_W / 2) * 100 / ((LEVEL_BAR_WIDTH - 20) / 2)) - 5
+#define LEVEL_FLAT_THRESHOLD                                                   \
+    ((LEVEL_CENTER_BOX_W / 2) * 100 / ((LEVEL_BAR_WIDTH - 20) / 2)) - 5
 
 static bool level_is_flat = false;
 
@@ -574,25 +586,36 @@ bool level_bar_is_flat(void)
 }
 
 // value: -100 ~ +100, 0 = flat (center)
+extern void app_clock_earth_digital_set_expanded(bool expanded);
 void level_bar_update(int16_t value)
 {
-    if (!level_bar_dot || !lv_obj_is_valid(level_bar_dot))
-        return;
-    if (value < -100) value = -100;
-    if (value > 100) value = 100;
-    int16_t x_offset = (int16_t)((int32_t)value * ((LEVEL_BAR_WIDTH - 20) / 2) / 100);
-    lv_obj_align(level_bar_dot, LV_ALIGN_CENTER, x_offset, 0);
+    // if (!level_bar_dot || !lv_obj_is_valid(level_bar_dot))
+    //     return;
+    if (value < -100)
+        value = -100;
+    if (value > 100)
+        value = 100;
+    int16_t x_offset =
+        (int16_t)((int32_t)value * ((LEVEL_BAR_WIDTH - 20) / 2) / 100);
+    // lv_obj_align(level_bar_dot, LV_ALIGN_CENTER, x_offset, 0);
 
     bool was_flat = level_is_flat;
-    level_is_flat = (value >= -LEVEL_FLAT_THRESHOLD && value <= LEVEL_FLAT_THRESHOLD);
+    level_is_flat =
+        (value >= -LEVEL_FLAT_THRESHOLD && value <= LEVEL_FLAT_THRESHOLD);
 
     if (level_is_flat != was_flat)
     {
-        lv_color_t arc_color = level_is_flat ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x777777);
-        if (level_bar_arc_left && lv_obj_is_valid(level_bar_arc_left))
-            lv_obj_set_style_arc_color(level_bar_arc_left, arc_color, LV_PART_MAIN);
-        if (level_bar_arc_right && lv_obj_is_valid(level_bar_arc_right))
-            lv_obj_set_style_arc_color(level_bar_arc_right, arc_color, LV_PART_MAIN);
+    //     lv_color_t arc_color =
+    //         level_is_flat ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x777777);
+    //     if (level_bar_arc_left && lv_obj_is_valid(level_bar_arc_left))
+    //         lv_obj_set_style_arc_color(level_bar_arc_left, arc_color,
+    //                                    LV_PART_MAIN);
+    //     if (level_bar_arc_right && lv_obj_is_valid(level_bar_arc_right))
+    //         lv_obj_set_style_arc_color(level_bar_arc_right, arc_color,
+    //                                    LV_PART_MAIN);
+
+        app_clock_earth_digital_set_expanded(!level_is_flat);
+        
     }
 }
 static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent);
@@ -665,6 +688,19 @@ static void show_dial_widget_select_list(lv_obj_t *parent)
                         LV_EVENT_CLICKED, (void *)app_id_weather);
 }
 
+extern void set_dial_media_widget_opa(uint8_t opa);
+void set_dial_widget_opa(uint8_t opa)
+{
+    if (lv_obj_is_valid(dial_widget))
+    {
+        if (lv_obj_is_valid(dial_widget_img_bg))
+        {
+            lv_obj_set_style_img_opa(dial_widget_img_bg, opa, 0);
+        }
+    }
+    set_dial_media_widget_opa(opa);
+}
+
 extern void dial_calendar_widget_deinit(void);
 extern void dial_media_widget_deinit(void);
 extern void dial_weather_widget_deinit(void);
@@ -680,7 +716,7 @@ static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
     dial_widget = lv_obj_create(parent);
     lv_obj_set_style_radius(dial_widget, 25, 0);
     lv_obj_align(dial_widget, LV_ALIGN_CENTER, 0, 99);
-    lv_obj_set_size(dial_widget, 330, 150);
+    lv_obj_set_size(dial_widget, 340, 160);
     lv_obj_set_style_bg_color(dial_widget, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(dial_widget, LV_OPA_0, 0);
     lv_obj_set_style_border_width(dial_widget, 2, 0);
@@ -690,11 +726,11 @@ static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
     lv_obj_clear_flag(dial_widget, LV_OBJ_FLAG_SCROLLABLE); // 禁用滾動
 
     dial_widget_img_bg = lv_img_create(dial_widget);
-    lv_obj_set_style_radius(dial_widget_img_bg, 50, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(dial_widget_img_bg, LV_OPA_0, 0);
-    // lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
-    lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-    lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -99);
+    // lv_obj_set_style_radius(dial_widget_img_bg, 50, LV_PART_MAIN);
+    // lv_obj_set_style_bg_opa(dial_widget_img_bg, LV_OPA_100, 0);
+    lv_img_set_src(dial_widget_img_bg, &media_gaus_bg);
+    // lv_img_set_zoom(dial_widget_img_bg, 256 ); // 100%
+    lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, 0);
     if (app_id == app_id_calendar)
     {
         request_calendar_on_mobile(false);
@@ -714,7 +750,7 @@ static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
     }
 
     // Build level bar below the widget
-    level_bar_builder(parent);
+    // level_bar_builder(parent);
 }
 
 static void swich_dial_widget_deinit(uint8_t app_id)
@@ -781,52 +817,52 @@ static void clock_change_page(char *clk_id)
     LOG_D("clock_change_page: %s", clk_id);
     if (strcmp(clk_id, "JW_wf1") == 0)
     {
-        if (lv_obj_is_valid(dial_widget_img_bg))
-        {
-            // lv_img_set_src(dial_widget_img_bg, &gaus_clock1_bg);
-            lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-            lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
-        }
+        // if (lv_obj_is_valid(dial_widget_img_bg))
+        // {
+        //     // lv_img_set_src(dial_widget_img_bg, &gaus_clock1_bg);
+        //     lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+        //     lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        // }
         set_clock_main_status_img(&gaus_clock1_bg);
     }
     else if (strcmp(clk_id, "JW_wf2") == 0)
     {
-        if (lv_obj_is_valid(dial_widget_img_bg))
-        {
-            // lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
-            lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-            lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
-        }
+        // if (lv_obj_is_valid(dial_widget_img_bg))
+        // {
+        //     // lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
+        //     lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+        //     lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        // }
         set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
     }
     else if (strcmp(clk_id, "JW_wf3") == 0)
     {
-        if (lv_obj_is_valid(dial_widget_img_bg))
-        {
-            // lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
-            lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-            lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
-        }
+        // if (lv_obj_is_valid(dial_widget_img_bg))
+        // {
+        //     // lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
+        //     lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+        //     lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        // }
         set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
     }
     else if (strcmp(clk_id, "JW_wf4") == 0)
     {
-        if (lv_obj_is_valid(dial_widget_img_bg))
-        {
-            // lv_img_set_src(dial_widget_img_bg, &gaus_clock4_bg);
-            lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-            lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
-        }
+        // if (lv_obj_is_valid(dial_widget_img_bg))
+        // {
+        //     // lv_img_set_src(dial_widget_img_bg, &gaus_clock4_bg);
+        //     lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+        //     lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        // }
         set_clock_main_status_img(&gaus_clock4_bg);
     }
     else if (strcmp(clk_id, "JW_wf5") == 0)
     {
-        if (lv_obj_is_valid(dial_widget_img_bg))
-        {
-            // lv_img_set_src(dial_widget_img_bg, GAUS_CLOCK5_BG);
-            lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-            lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
-        }
+        // if (lv_obj_is_valid(dial_widget_img_bg))
+        // {
+        //     // lv_img_set_src(dial_widget_img_bg, GAUS_CLOCK5_BG);
+        //     lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
+        //     lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
+        // }
         set_clock_main_status_img(GAUS_CLOCK5_BG);
     }
 }
