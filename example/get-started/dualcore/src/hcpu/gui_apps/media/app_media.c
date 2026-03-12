@@ -821,7 +821,7 @@ void media_widget_trigger_drag_by_py(int p_y)
         // 將 0~155 映射到 0~-12
         diff = -(12 * p_y) / 155;
         media_widget_selection_index = 2; // 向右拖拽
-        set_paused_control_with_arm(false);
+        set_paused_control_with_arm(true);
     }
     else if (p_y > 311 && p_y <= 466)
     {
@@ -834,7 +834,7 @@ void media_widget_trigger_drag_by_py(int p_y)
     {
         diff = 12 - (24 * (p_y - 155)) / (311 - 155);
         media_widget_selection_index = 1; // 無動作
-        set_paused_control_with_arm(true);
+        set_paused_control_with_arm(false);
     }
     // LOG_D("p_y: %d, diff: %d, media_widget_selection_index: %d", p_y, diff,
     // media_widget_selection_index);
