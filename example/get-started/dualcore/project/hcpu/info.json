@@ -1,5 +1,5 @@
 {
-    "version": "1.0.251",
+    "version": "1.0.252",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
@@ -7,5 +7,5 @@
         "lcpu.bin",
         "lcpu_patch.bin"
     ],
-    "description": "更新開始時不休眠"
+    "description": "錶盤動畫"
 }
