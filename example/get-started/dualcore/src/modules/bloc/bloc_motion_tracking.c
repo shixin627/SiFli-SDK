@@ -128,12 +128,12 @@ static bool user_hand_horizontal = false;
 
 // Forward declarations for waveform capture functions
 static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro);
-static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
-                                       Vector3 *linear_acce, Vector3 *gyro,
-                                       Vector3 *gravity, float ppg,
-                                       waveform_gesture_state_t *state,
-                                       gesture_type_t type,
-                                       gesture_dataset_t *dataset);
+// static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
+//                                        Vector3 *linear_acce, Vector3 *gyro,
+//                                        Vector3 *gravity, float ppg,
+//                                        waveform_gesture_state_t *state,
+//                                        gesture_type_t type,
+//                                        gesture_dataset_t *dataset);
 #endif // ENABLE_WAVEFORM_CAPTURE
 
 #define ENABLE_SEND_GRAVITY_TO_BLE_CLIENT 0
@@ -695,9 +695,19 @@ static void notify_gesture_dataset_hcpu(uint32_t timestamp, int count,
  * @brief Main gesture event capture function for HCPU
  */
 extern bool imu_data_collection;
+static uint32_t prev_ppg_rawdata[3] = {0};
+static bool open_ppg_chacked = false;
+void set_open_ppg_chacked(bool checked)
+{
+    open_ppg_chacked = checked;
+}
+bool get_open_ppg_chacked(void)
+{
+    return open_ppg_chacked;
+}
 static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                        Vector3 *linear_acce, Vector3 *gyro,
-                                       Vector3 *gravity, float ppg,
+                                       Vector3 *gravity, uint32_t ppg,
                                        waveform_gesture_state_t *state,
                                        gesture_type_t type,
                                        gesture_dataset_t *dataset)
@@ -705,17 +715,29 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     rt_tick_t current_time = rt_tick_get_millisecond();
 
     int cooldown_period = 0;
-    if (type == GESTURE_TYPE_RELEASE)
+    if (imu_data_collection)
     {
-        cooldown_period = GESTURE_COLLECTION_COOLDOWN_PERIOD_MS;
+        cooldown_period = 800;
     }
     else
     {
-        if (imu_data_collection)
+        if (type == GESTURE_TYPE_RELEASE)
+        {
             cooldown_period = GESTURE_COLLECTION_COOLDOWN_PERIOD_MS;
+        }
         else
+        {
             cooldown_period = GESTURE_TAP_COOLDOWN_PERIOD_MS;
+        }
     }
+    uint32_t ppg_diff_rawdata =
+        abs((int32_t)ppg - (int32_t)prev_ppg_rawdata[2]);
+
+    for (int i = 0; i < 2; i++)
+    {
+        prev_ppg_rawdata[i] = prev_ppg_rawdata[i + 1];
+    }
+    prev_ppg_rawdata[2] = ppg;
     if ((current_time - dataset->wait_start_time) < cooldown_period)
     {
         return;
@@ -753,8 +775,11 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
 
     if (!dataset->gesture_started && !dataset->gesture_ended)
     {
-        if (waveform_gesture_state.difference_accel > start_threshold)
+        if ((waveform_gesture_state.difference_accel > start_threshold && !open_ppg_chacked) ||
+            (ppg_diff_rawdata > 20 && open_ppg_chacked))
         {
+            if (ppg_diff_rawdata > 20 && open_ppg_chacked)
+                LOG_D("PPG DIFF");
             dataset->gesture_started = true;
             int feedback_samples = 0;
             if (type == GESTURE_TYPE_TAP)
@@ -790,8 +815,8 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
             {
                 is_gesture = false;
             }
-            if (is_gesture &&
-                (user_hand_horizontal || type == GESTURE_TYPE_TAP))
+            if (is_gesture && (user_hand_horizontal ||
+                               type == GESTURE_TYPE_TAP || imu_data_collection))
             {
                 getTargetWaveformFromSlidingWindow(dataset, targetWave_algo,
                                                    target_samples);
@@ -1166,7 +1191,6 @@ void air_mouse_movement_lock_reset(void)
     gyro_movement_distance = 0.0f;
 }
 
-
 static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                               Quaternion *prev_quat)
 {
@@ -1208,7 +1232,8 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     // }
 
     // 按住面板才可體感移動，且移動鎖已解除
-    if (!stop_mouse_move && is_skai_touch_enabled() && !mouse_movement_lock && !is_fsr_change_detected())
+    if (!stop_mouse_move && is_skai_touch_enabled() && !mouse_movement_lock &&
+        !is_fsr_change_detected())
     {
         report_air_mouse_data(&delta_movement, ts);
     }
@@ -1585,7 +1610,9 @@ static void calculate_gravity_position(Vector3 *gravity)
     // LOG_D("gravity x:%f,y:%f,z:%f", gravity->x, gravity->y, gravity->z);
     if (gravity->x > -1 && gravity->x < 1 && is_at_home())
     {
-        level_bar_update((int16_t)(gravity->x * -100)); // Update level bar based on gravity x-axis
+        level_bar_update(
+            (int16_t)(gravity->x *
+                      -100)); // Update level bar based on gravity x-axis
     }
     if (gravity->y < -0.7 && gravity->z < 0.3)
     {
