@@ -29,7 +29,7 @@ limitations under the License.
 
 const int numSamples = TAP_TARGET_SAMPLE_NUM;
 #if kChannelReleaseNumber == 4
-const int release_numSamples = 15;
+const int release_numSamples = RELEASE_TARGET_SAMPLE_NUM;
 #else
 const int release_numSamples = RELEASE_TARGET_SAMPLE_NUM;
 #endif

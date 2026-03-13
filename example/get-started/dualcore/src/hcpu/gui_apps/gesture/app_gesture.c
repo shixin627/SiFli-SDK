@@ -64,10 +64,10 @@ typedef struct
     lv_obj_t *reset_button;   // Button to reset counter
     lv_obj_t *main_container; // Main container
     lv_obj_t *combo_label;    // Label showing current selection combo
-    lv_obj_t *height_dd;      // Height dropdown
-    lv_obj_t *weight_dd;      // Weight dropdown
-    lv_obj_t *age_dd;         // Age dropdown
-    lv_obj_t *gender_dd;      // Gender dropdown
+    lv_obj_t *height_label;   // Height value label
+    lv_obj_t *weight_label;   // Weight value label
+    lv_obj_t *age_label;      // Age value label
+    lv_obj_t *gender_label;   // Gender value label
     lv_obj_t *collect_button; // Button to start/stop gesture data collection
     lv_obj_t *gesture_count_label; // Label showing collected gesture count
     lv_obj_t *confirm_msgbox; // Message box for save confirmation
@@ -141,7 +141,7 @@ static void update_gesture_display(void);
 static void update_count_display(void);
 static void reset_counter(void);
 static void update_combo_string(void);
-static void dropdown_event_cb(lv_event_t *e);
+static void spinner_btn_event_cb(lv_event_t *e);
 static lv_obj_t *create_gesture_screen(lv_obj_t *parent);
 static int open_csv_file(const char *gesture_type);
 static void write_gesture_to_csv(uint8_t gesture);
@@ -237,31 +237,151 @@ static void update_combo_string(void)
 }
 
 /**
- * @brief Dropdown event callback
+ * @brief Spinner button user data: identifies which field and direction
  */
-static void dropdown_event_cb(lv_event_t *e)
+typedef struct
 {
-    lv_obj_t *dropdown = lv_event_get_target(e);
-    uint16_t selected = lv_dropdown_get_selected(dropdown);
-    
-    if (dropdown == ui.height_dd)
+    int field; // 0=height, 1=weight, 2=age, 3=gender
+    int delta; // +1 or -1
+} spinner_data_t;
+
+static spinner_data_t spinner_data[8]; // 4 fields x 2 directions
+
+static void spinner_update_label(int field)
+{
+    char buf[16];
+    switch (field)
     {
-        app_gesture_data_ctx.height = 100 + selected;
+    case 0:
+        snprintf(buf, sizeof(buf), "%d", app_gesture_data_ctx.height);
+        lv_label_set_text(ui.height_label, buf);
+        break;
+    case 1:
+        snprintf(buf, sizeof(buf), "%d", app_gesture_data_ctx.weight);
+        lv_label_set_text(ui.weight_label, buf);
+        break;
+    case 2:
+        snprintf(buf, sizeof(buf), "%d", app_gesture_data_ctx.age);
+        lv_label_set_text(ui.age_label, buf);
+        break;
+    case 3:
+        snprintf(buf, sizeof(buf), "%s", app_gesture_data_ctx.gender == 0 ? "male" : "female");
+        lv_label_set_text(ui.gender_label, buf);
+        break;
     }
-    else if (dropdown == ui.weight_dd)
+}
+
+static void spinner_adjust(int field, int delta)
+{
+    switch (field)
     {
-        app_gesture_data_ctx.weight = 30 + selected;
+    case 0: // height 100~200
+        app_gesture_data_ctx.height += delta;
+        if (app_gesture_data_ctx.height < 100) app_gesture_data_ctx.height = 100;
+        if (app_gesture_data_ctx.height > 200) app_gesture_data_ctx.height = 200;
+        break;
+    case 1: // weight 30~200
+        app_gesture_data_ctx.weight += delta;
+        if (app_gesture_data_ctx.weight < 30) app_gesture_data_ctx.weight = 30;
+        if (app_gesture_data_ctx.weight > 200) app_gesture_data_ctx.weight = 200;
+        break;
+    case 2: // age 5~110
+        app_gesture_data_ctx.age += delta;
+        if (app_gesture_data_ctx.age < 5) app_gesture_data_ctx.age = 5;
+        if (app_gesture_data_ctx.age > 110) app_gesture_data_ctx.age = 110;
+        break;
+    case 3: // gender 0 or 1
+        app_gesture_data_ctx.gender = app_gesture_data_ctx.gender == 0 ? 1 : 0;
+        break;
     }
-    else if (dropdown == ui.age_dd)
-    {
-        app_gesture_data_ctx.age = 5 + selected;
-    }
-    else if (dropdown == ui.gender_dd)
-    {
-        app_gesture_data_ctx.gender = selected;
-    }
-    
+    spinner_update_label(field);
     update_combo_string();
+}
+
+static void spinner_repeat_timer_cb(lv_timer_t *timer)
+{
+    spinner_data_t *sd = (spinner_data_t *)timer->user_data;
+    spinner_adjust(sd->field, sd->delta);
+}
+
+static lv_timer_t *spinner_repeat_timer = NULL;
+
+static void spinner_btn_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    spinner_data_t *sd = (spinner_data_t *)lv_event_get_user_data(e);
+
+    if (code == LV_EVENT_CLICKED)
+    {
+        spinner_adjust(sd->field, sd->delta);
+    }
+    else if (code == LV_EVENT_LONG_PRESSED)
+    {
+        spinner_adjust(sd->field, sd->delta);
+        if (spinner_repeat_timer == NULL)
+        {
+            spinner_repeat_timer = lv_timer_create(spinner_repeat_timer_cb, 100, sd);
+        }
+    }
+    else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+    {
+        if (spinner_repeat_timer)
+        {
+            lv_timer_del(spinner_repeat_timer);
+            spinner_repeat_timer = NULL;
+        }
+    }
+}
+
+/**
+ * @brief Helper to create a spinner widget: [v] label [^]
+ * Returns the value label object.
+ */
+static lv_obj_t *create_spinner(lv_obj_t *parent, const char *title, int field,
+                                  int spinner_idx)
+{
+    /* Title label */
+    lv_obj_t *title_lbl = lv_label_create(parent);
+    lv_label_set_text(title_lbl, title);
+    lv_obj_set_style_text_color(title_lbl, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(title_lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+
+    /* Down button (-) */
+    spinner_data[spinner_idx * 2].field = field;
+    spinner_data[spinner_idx * 2].delta = -1;
+
+    lv_obj_t *btn_down = lv_btn_create(parent);
+    lv_obj_set_size(btn_down, 30, 26);
+    lv_obj_set_style_bg_color(btn_down, lv_color_make(80, 80, 80), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(btn_down, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_add_event_cb(btn_down, spinner_btn_event_cb, LV_EVENT_ALL, &spinner_data[spinner_idx * 2]);
+
+    lv_obj_t *btn_down_lbl = lv_label_create(btn_down);
+    lv_label_set_text(btn_down_lbl, LV_SYMBOL_MINUS);
+    lv_obj_center(btn_down_lbl);
+
+    /* Value label */
+    lv_obj_t *val_label = lv_label_create(parent);
+    lv_obj_set_style_text_color(val_label, lv_color_make(100, 255, 100), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(val_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_min_width(val_label, 45, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(val_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    /* Up button (+) */
+    spinner_data[spinner_idx * 2 + 1].field = field;
+    spinner_data[spinner_idx * 2 + 1].delta = 1;
+
+    lv_obj_t *btn_up = lv_btn_create(parent);
+    lv_obj_set_size(btn_up, 30, 26);
+    lv_obj_set_style_bg_color(btn_up, lv_color_make(80, 80, 80), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(btn_up, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_add_event_cb(btn_up, spinner_btn_event_cb, LV_EVENT_ALL, &spinner_data[spinner_idx * 2 + 1]);
+
+    lv_obj_t *btn_up_lbl = lv_label_create(btn_up);
+    lv_label_set_text(btn_up_lbl, LV_SYMBOL_PLUS);
+    lv_obj_center(btn_up_lbl);
+
+    return val_label;
 }
 
 /**
@@ -922,7 +1042,7 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
     lv_obj_set_style_border_width(info_row1, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_radius(info_row1, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    /* 身高 */
+    /* 身高 spinner */
     lv_obj_t *height_container = lv_obj_create(info_row1);
     lv_obj_set_size(height_container, LV_PCT(48), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(height_container, LV_FLEX_FLOW_ROW);
@@ -931,24 +1051,9 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
     lv_obj_set_style_border_width(height_container, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(height_container, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    lv_obj_t *height_label = lv_label_create(height_container);
-    lv_label_set_text(height_label, "身高:");
-    lv_obj_set_style_text_color(height_label, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(height_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    ui.height_label = create_spinner(height_container, "身高:", 0, 0);
 
-    static char height_opts[1200];
-    char *p = height_opts;
-    for (int i = 100; i <= 200; i++) {
-        p += snprintf(p, height_opts + sizeof(height_opts) - p, "%d%s", i, i < 200 ? "\n" : "");
-    }
-    ui.height_dd = lv_dropdown_create(height_container);
-    lv_dropdown_set_options_static(ui.height_dd, height_opts);
-    lv_dropdown_set_selected(ui.height_dd, 70); // 默認170
-    lv_dropdown_set_symbol(ui.height_dd, NULL); // 移除向下箭頭
-    lv_obj_set_width(ui.height_dd, 80);
-    lv_obj_add_event_cb(ui.height_dd, dropdown_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-
-    /* 體重 */
+    /* 體重 spinner */
     lv_obj_t *weight_container = lv_obj_create(info_row1);
     lv_obj_set_size(weight_container, LV_PCT(48), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(weight_container, LV_FLEX_FLOW_ROW);
@@ -957,22 +1062,7 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
     lv_obj_set_style_border_width(weight_container, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(weight_container, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    lv_obj_t *weight_label = lv_label_create(weight_container);
-    lv_label_set_text(weight_label, "體重:");
-    lv_obj_set_style_text_color(weight_label, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(weight_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-
-    static char weight_opts[2000];
-    p = weight_opts;
-    for (int i = 30; i <= 200; i++) {
-        p += snprintf(p, weight_opts + sizeof(weight_opts) - p, "%d%s", i, i < 200 ? "\n" : "");
-    }
-    ui.weight_dd = lv_dropdown_create(weight_container);
-    lv_dropdown_set_options_static(ui.weight_dd, weight_opts);
-    lv_dropdown_set_selected(ui.weight_dd, 40); // 默認70
-    lv_dropdown_set_symbol(ui.weight_dd, NULL); // 移除向下箭頭
-    lv_obj_set_width(ui.weight_dd, 80);
-    lv_obj_add_event_cb(ui.weight_dd, dropdown_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    ui.weight_label = create_spinner(weight_container, "體重:", 1, 1);
 
     /* Row: 年齡 + 性別 */
     lv_obj_t *info_row2 = lv_obj_create(ui.main_container);
@@ -984,7 +1074,7 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
     lv_obj_set_style_border_width(info_row2, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_radius(info_row2, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    /* 年齡 */
+    /* 年齡 spinner */
     lv_obj_t *age_container = lv_obj_create(info_row2);
     lv_obj_set_size(age_container, LV_PCT(48), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(age_container, LV_FLEX_FLOW_ROW);
@@ -993,24 +1083,9 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
     lv_obj_set_style_border_width(age_container, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(age_container, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    lv_obj_t *age_label = lv_label_create(age_container);
-    lv_label_set_text(age_label, "年齡:");
-    lv_obj_set_style_text_color(age_label, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(age_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    ui.age_label = create_spinner(age_container, "年齡:", 2, 2);
 
-    static char age_opts[1200];
-    p = age_opts;
-    for (int i = 5; i <= 110; i++) {
-        p += snprintf(p, age_opts + sizeof(age_opts) - p, "%d%s", i, i < 110 ? "\n" : "");
-    }
-    ui.age_dd = lv_dropdown_create(age_container);
-    lv_dropdown_set_options_static(ui.age_dd, age_opts);
-    lv_dropdown_set_selected(ui.age_dd, 25); // 默認30
-    lv_dropdown_set_symbol(ui.age_dd, NULL); // 移除向下箭頭
-    lv_obj_set_width(ui.age_dd, 80);
-    lv_obj_add_event_cb(ui.age_dd, dropdown_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-
-    /* 性別 */
+    /* 性別 spinner */
     lv_obj_t *gender_container = lv_obj_create(info_row2);
     lv_obj_set_size(gender_container, LV_PCT(48), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(gender_container, LV_FLEX_FLOW_ROW);
@@ -1019,17 +1094,13 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
     lv_obj_set_style_border_width(gender_container, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(gender_container, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    lv_obj_t *gender_label = lv_label_create(gender_container);
-    lv_label_set_text(gender_label, "性別:");
-    lv_obj_set_style_text_color(gender_label, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(gender_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    ui.gender_label = create_spinner(gender_container, "性別:", 3, 3);
 
-    static const char *gender_opts = "male\nfemale";
-    ui.gender_dd = lv_dropdown_create(gender_container);
-    lv_dropdown_set_options_static(ui.gender_dd, gender_opts);
-    lv_dropdown_set_symbol(ui.gender_dd, NULL); // 移除向下箭頭
-    lv_obj_set_width(ui.gender_dd, 80);
-    lv_obj_add_event_cb(ui.gender_dd, dropdown_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    /* Initialize all spinner labels with default values */
+    spinner_update_label(0);
+    spinner_update_label(1);
+    spinner_update_label(2);
+    spinner_update_label(3);
 
     
 
@@ -1287,6 +1358,13 @@ static void on_stop(void)
     if (app_gesture_data_ctx.is_recording)
     {
         stop_gesture_collection(false);
+    }
+
+    // Clean up spinner repeat timer
+    if (spinner_repeat_timer)
+    {
+        lv_timer_del(spinner_repeat_timer);
+        spinner_repeat_timer = NULL;
     }
 
     // Reset UI handler

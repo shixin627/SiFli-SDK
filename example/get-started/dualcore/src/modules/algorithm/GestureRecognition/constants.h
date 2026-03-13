@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_MICRO_EXAMPLES_MAGIC_WAND_CONSTANTS_H_
 
 #define kChannelNumber 3
-#define kChannelReleaseNumber 3
+#define kChannelReleaseNumber 4
 #define kModelDataType kTfLiteFloat32
 
 // The expected accelerometer data sample frequency

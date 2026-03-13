@@ -88,8 +88,8 @@ static rt_thread_t gesture_recognition_thread = RT_NULL;
 static rt_thread_t send_gesture_data_thread = RT_NULL;
 
 /* Buffers for sensor data processing */
-static float identifyWindow[TAP_TARGET_SAMPLE_NUM][3];
-static float release_identifyWindow[RELEASE_TARGET_SAMPLE_NUM][3];
+static float identifyWindow[TAP_TARGET_SAMPLE_NUM][4];
+static float release_identifyWindow[RELEASE_TARGET_SAMPLE_NUM][4];
 static float ppgidentifyWindow[16][kChannelReleaseNumber];
 
 #if USE_FFT_FILTER
@@ -223,6 +223,7 @@ static void get_gesture_data(gesture_data_t *gesture, int sample_num,
             release_identifyWindow[i][0] = acceleration_x;
             release_identifyWindow[i][1] = acceleration_y;
             release_identifyWindow[i][2] = acceleration_z;
+            release_identifyWindow[i][3] = gesture->dataset[index].ppg_data;
 
 #if USE_FFT_FILTER
             // int16_t total_acc = sqrt(dataset->dataset[i][0] *
@@ -253,6 +254,7 @@ static void get_gesture_data(gesture_data_t *gesture, int sample_num,
             identifyWindow[i][0] = acceleration_x;
             identifyWindow[i][1] = acceleration_y;
             identifyWindow[i][2] = acceleration_z;
+            identifyWindow[i][3] = gesture->dataset[index].ppg_data;
 #if USE_FFT_FILTER
             // int16_t total_acc = sqrt(gesture->dataset[i][0] *
             // gesture->dataset[i][0] +
@@ -266,6 +268,30 @@ static void get_gesture_data(gesture_data_t *gesture, int sample_num,
                 fft_in_buffer[i] = gesture->dataset[i][2];
             }
 #endif
+
+        }
+        // PPG min-max normalization to [-1, 1]
+        float ppg_min = identifyWindow[0][3];
+        float ppg_max = identifyWindow[0][3];
+        for (int i = 1; i < sample_num; i++)
+        {
+            if (identifyWindow[i][3] < ppg_min) ppg_min = identifyWindow[i][3];
+            if (identifyWindow[i][3] > ppg_max) ppg_max = identifyWindow[i][3];
+        }
+        float ppg_range = ppg_max - ppg_min;
+        if (ppg_range > 0.0f)
+        {
+            for (int i = 0; i < sample_num; i++)
+            {
+                identifyWindow[i][3] = 2.0f * (identifyWindow[i][3] - ppg_min) / ppg_range - 1.0f;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < sample_num; i++)
+            {
+                identifyWindow[i][3] = 0.0f;
+            }
         }
     }
 }
