@@ -705,6 +705,7 @@ bool get_open_ppg_chacked(void)
 {
     return open_ppg_chacked;
 }
+extern int get_gesture_recognition_threshold(void);
 static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                        Vector3 *linear_acce, Vector3 *gyro,
                                        Vector3 *gravity, uint32_t ppg,
@@ -717,7 +718,7 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     int cooldown_period = 0;
     if (imu_data_collection)
     {
-        cooldown_period = 800;
+        cooldown_period = 600;
     }
     else
     {
@@ -776,9 +777,9 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     if (!dataset->gesture_started && !dataset->gesture_ended)
     {
         if ((waveform_gesture_state.difference_accel > start_threshold && !open_ppg_chacked) ||
-            (ppg_diff_rawdata > 20 && open_ppg_chacked))
+            (ppg_diff_rawdata > get_gesture_recognition_threshold() && open_ppg_chacked))
         {
-            if (ppg_diff_rawdata > 20 && open_ppg_chacked)
+            if (ppg_diff_rawdata > get_gesture_recognition_threshold() && open_ppg_chacked)
                 LOG_D("PPG DIFF");
             dataset->gesture_started = true;
             int feedback_samples = 0;
@@ -827,7 +828,7 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                                 targetWave_algo);
                 }
             }
-            reset_gesture_state(dataset, current_time - cooldown_period, 7);
+            reset_gesture_state(dataset, current_time , 7);
         }
     }
 }

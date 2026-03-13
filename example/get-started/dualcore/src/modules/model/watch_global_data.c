@@ -435,7 +435,7 @@ static void write_clock_status(share_prefs_t *pref)
 static void read_gesture_threshold(share_prefs_t *pref)
 {
   int32_t threshold = share_prefs_get_int(pref, "gesture_threshold", -1);
-  if (threshold >= 50 && threshold <= 100)
+  if (threshold >= 1 && threshold <= 100)
   {
     set_gesture_recognition_threshold(threshold);
     LOG_I("Loaded gesture threshold: %d", threshold);
