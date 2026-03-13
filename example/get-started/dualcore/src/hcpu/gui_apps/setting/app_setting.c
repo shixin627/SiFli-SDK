@@ -621,14 +621,14 @@ static void create_gesture_threshold_window(void)
     lv_obj_set_style_text_color(threshold_value_label, lv_color_hex(0x00FF00), 0);
     lv_obj_align(threshold_value_label, LV_ALIGN_CENTER, 0, -30);
     threshold_slider = lv_slider_create(threshold_window);
-    lv_slider_set_range(threshold_slider, 50, 100);
+    lv_slider_set_range(threshold_slider, 1, 100);
     lv_slider_set_value(threshold_slider, current_threshold, LV_ANIM_OFF);
     lv_obj_set_size(threshold_slider, 300, 20);
     lv_obj_align(threshold_slider, LV_ALIGN_CENTER, 0, 30);
     lv_obj_add_event_cb(threshold_slider, threshold_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_add_event_cb(threshold_slider, threshold_slider_event_cb, LV_EVENT_RELEASED, NULL);
     lv_obj_t *min_label = lv_label_create(threshold_window);
-    lv_label_set_text(min_label, "50");
+    lv_label_set_text(min_label, "1");
     lv_obj_set_style_text_color(min_label, lv_color_hex(0x888888), 0);
     lv_obj_align_to(min_label, threshold_slider, LV_ALIGN_OUT_LEFT_MID, -10, 0);
     lv_obj_t *max_label = lv_label_create(threshold_window);

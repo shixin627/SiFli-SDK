@@ -349,10 +349,10 @@ extern bool gesture_tap_collection;
 
 int tap_recognition_score;
 int release_recognition_score;
-int gesture_recognition_threshold = DEFAULT_GESTURE_THRESHOLD;
+int gesture_recognition_threshold = 17;
 void set_gesture_recognition_threshold(int threshold)
 {
-    if (threshold >= 50 && threshold <= 100)
+    // if (threshold >= 50 && threshold <= 100)
     {
         gesture_recognition_threshold = threshold;
     }
