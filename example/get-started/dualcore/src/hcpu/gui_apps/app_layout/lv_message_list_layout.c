@@ -1559,16 +1559,15 @@ void scroll_message_list_to_index(int8_t page)
 		return;
 	}
 	message_scoll_target_item = page;
-	extern void set_scroll_anim_time(bool init);
 	rt_tick_t now = rt_tick_get();
 	if (now - last_scroll_time < 100)
 	{
-		set_scroll_anim_time(false);
+		set_scroll_anim_time(false,NULL);
 	}
 	LOG_D("scroll_message_list_to_index: %d,%d,%d", page, notification_count, have_media_widget);
 	last_scroll_time = now;
 	lv_obj_scroll_to_view(lv_obj_get_child(p_app_notification->list, page), LV_ANIM_ON);
-	set_scroll_anim_time(false);
+	set_scroll_anim_time(false,NULL);
 	scroll_list(p_app_notification->list, 0);
 	lv_obj_update_layout(p_app_notification->list);
 }

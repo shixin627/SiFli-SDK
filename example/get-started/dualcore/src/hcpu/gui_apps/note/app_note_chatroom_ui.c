@@ -1043,16 +1043,15 @@ static void scroll_note_list_to_index(int8_t page)
     {
         return;
     }
-    extern void set_scroll_anim_time(bool init);
     rt_tick_t now = rt_tick_get();
     if (now - last_scroll_time < 100)
     {
-        set_scroll_anim_time(false);
+        set_scroll_anim_time(false,NULL);
     }
     // LOG_D("scroll_note_list_to_index: %d,%d", page, page_count);
     last_scroll_time = now;
     lv_obj_scroll_to_view(lv_obj_get_child(p_app_note_chatroom_ui->main_window, page), LV_ANIM_ON);
-    set_scroll_anim_time(false);
+    set_scroll_anim_time(false,NULL);
     lv_obj_update_layout(p_app_note_chatroom_ui->main_window);
 }
 

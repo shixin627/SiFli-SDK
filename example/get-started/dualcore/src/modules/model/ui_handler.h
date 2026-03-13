@@ -384,7 +384,6 @@ extern "C"
     extern void close_message_app(void);
     extern void close_note_chatroom_ui_app(void);
     extern void change_flashlight_switch(bool state);
-    extern void set_scroll_anim_time(bool init);
 
     extern bool get_scrolling_motor_vibrate_status(void);
     extern void enable_scrolling_motor_vibrate(void);

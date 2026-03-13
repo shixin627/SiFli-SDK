@@ -147,12 +147,12 @@ void handle_gesture_unlock(void)
 
     if (is_at_home())
     {
-        switch_watch_motion_control_mode(true, true);
+        switch_watch_motion_control_mode(true, false);
         extern void set_open_scrolling_app_flag(bool flag);
         set_open_scrolling_app_flag(true);
         extern void set_q_vertical_movement_magnification(float mag);
         set_q_vertical_movement_magnification(5.0f);
-        motor_pattern_unlocked();
+        // motor_pattern_unlocked();
         animate_to_app_list();
     }
     else
@@ -417,7 +417,7 @@ void motor_pattern_unlocked(void)
     {
         motor_params_t params = {
             .duty_cycle = 100,
-            .period = 30000, // 30ms
+            .period = 25000, // 30ms
             .repeat_times = 1,
         };
         peripheral_provider.control_motor(true, &params);
