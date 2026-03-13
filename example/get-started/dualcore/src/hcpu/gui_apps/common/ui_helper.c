@@ -73,13 +73,26 @@
 static void add_mask_event_cb(lv_event_t *e);
 
 static bool anim_time_init;
-void set_scroll_anim_time(bool init)
+static uint16_t anim_time_time = 300;
+void set_scroll_anim_time(bool init, uint16_t time)
 {
     anim_time_init = init;
+    if (time == NULL)
+    {
+        anim_time_time = 300;
+    }
+    else
+    {
+        anim_time_time = time;
+    }
 }
 bool is_scroll_anim_time_init(void)
 {
     return anim_time_init;
+}
+uint16_t get_scroll_anim_time(void)
+{
+    return anim_time_time;
 }
 
 extern void *app_anim_buf_alloc(size_t nbytes, uint8_t index);

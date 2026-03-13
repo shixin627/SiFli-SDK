@@ -50,7 +50,7 @@ extern "C"
 {
 #endif
 
-    extern void set_scroll_anim_time(bool init);
+    extern void set_scroll_anim_time(bool init, uint16_t time);
     extern uint8_t get_system_font_size(int adjust);
     extern void calibrate_reverse_rotation(int16_t *x, int16_t *y);
 

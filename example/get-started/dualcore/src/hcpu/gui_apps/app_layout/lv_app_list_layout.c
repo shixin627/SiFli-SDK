@@ -1932,7 +1932,6 @@ static void scroll_list_to_index(uint16_t page)
 
     app_scroll_target_item = page;
     LOG_D("scroll_list_to_index: %d", page);
-    extern void set_scroll_anim_time(bool init);
     lv_obj_t *child = lv_obj_get_child(p_app_list_layout->list, page);
     if (!lv_obj_is_valid(child))
     {

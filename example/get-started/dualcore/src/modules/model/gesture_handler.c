@@ -420,7 +420,7 @@ static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
     {
       if (is_at_home())
       {
-        switch_watch_motion_control_mode(true, true);
+        switch_watch_motion_control_mode(true, false);
         animate_to_message_list();
       }
     }

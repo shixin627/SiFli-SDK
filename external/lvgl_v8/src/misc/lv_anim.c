@@ -266,11 +266,41 @@ int32_t lv_anim_path_ease_in_out(const lv_anim_t * a)
     return new_value;
 }
 
+extern void motor_pattern_unlocked(void);
+static bool anim_open_motor = true;
 int32_t lv_anim_path_overshoot(const lv_anim_t * a)
 {
     /*Calculate the current step*/
     uint32_t t = lv_map(a->act_time, 0, a->time, 0, LV_BEZIER_VAL_MAX);
-    int32_t step = lv_bezier3(t, 0, 1000, 1300, LV_BEZIER_VAL_MAX);
+    int32_t step;
+
+    /*
+     * 3-phase damped spring animation:
+     * Phase 1 (0~35%):   fast approach to target
+     * Phase 2 (35~45%):  overshoot with deceleration (越遠越慢)
+     * Phase 3 (45~100%): damped return to target (越近越慢)
+     */
+    if(t < 400) {
+        /* Phase 1: fast ramp to target value */
+        anim_open_motor = true;
+        uint32_t t1 = lv_map(t, 0, 400, 0, LV_BEZIER_VAL_MAX);
+        step = lv_bezier3(t1, 0, 100, 900, LV_BEZIER_VAL_MAX);
+    }
+    else if(t < 506) {
+        /* Phase 2: overshoot, decelerating as it goes further */
+        uint32_t t2 = lv_map(t, 400, 506, 0, LV_BEZIER_VAL_MAX);
+        step = lv_bezier3(t2, LV_BEZIER_VAL_MAX, 1060, 1100, 1100);
+    }
+    else {
+        /* Phase 3: damped return, decelerating as approaching target */
+        if (anim_open_motor)
+        {
+            motor_pattern_unlocked();
+            anim_open_motor = false;
+        }
+        uint32_t t3 = lv_map(t, 506, LV_BEZIER_VAL_MAX, 0, LV_BEZIER_VAL_MAX);
+        step = lv_bezier3(t3, 1100, 1100, LV_BEZIER_VAL_MAX, LV_BEZIER_VAL_MAX);
+    }
 
     int32_t new_value;
     new_value = step * (a->end_value - a->start_value);

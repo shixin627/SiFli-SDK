@@ -566,7 +566,7 @@ void animate_to_home_from_notification_center(void)
 
 void animate_to_app_list(void)
 {
-    // set_scroll_anim_time(true);
+    set_scroll_anim_time(true, 300);
     if (lv_obj_is_valid(myLancher[app_index_message].pagetileview))
     {
         set_need_open_gesture_control(true);
@@ -576,12 +576,12 @@ void animate_to_app_list(void)
         lv_obj_set_tile_id(myLancher[app_index_message].pagetileview, 0, 1,
                            LV_ANIM_ON);
     }
-    // set_scroll_anim_time(false);
+    set_scroll_anim_time(false,NULL);
 }
 
 void animate_to_message_list(void)
 {
-    // set_scroll_anim_time(true);
+    set_scroll_anim_time(true, 300);
     if (lv_obj_is_valid(myLancher[app_index_message].pagetileview))
     {
         set_need_open_gesture_control(true);
@@ -591,7 +591,7 @@ void animate_to_message_list(void)
         lv_obj_set_tile_id(myLancher[app_index_message].pagetileview, 1, 0,
                            LV_ANIM_ON);
     }
-    // set_scroll_anim_time(false);
+    set_scroll_anim_time(false,NULL);
 }
 
 void animate_to_ai_page(void)

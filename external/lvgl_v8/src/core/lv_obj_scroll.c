@@ -301,7 +301,8 @@ void lv_obj_scroll_by_bounded(lv_obj_t * obj, lv_coord_t dx, lv_coord_t dy, lv_a
     }
 }
 
-
+extern bool is_scroll_anim_time_init(void);
+extern uint8_t get_scroll_anim_time(void);
 void lv_obj_scroll_by(lv_obj_t * obj, lv_coord_t dx, lv_coord_t dy, lv_anim_enable_t anim_en)
 {
     if(dx == 0 && dy == 0) return;
@@ -315,10 +316,9 @@ void lv_obj_scroll_by(lv_obj_t * obj, lv_coord_t dx, lv_coord_t dy, lv_anim_enab
         if(dx) {
             uint32_t t = lv_anim_speed_to_time((lv_disp_get_hor_res(d) * 2) >> 2, 0, dx);
         #ifdef SkaiwalkWatchOS
-            extern bool is_scroll_anim_time_init(void);
             if (is_scroll_anim_time_init())
             {
-                t = SCROLL_ANIM_SLOW_TIME;
+                t = get_scroll_anim_time();
             }
             else
             {
@@ -333,7 +333,10 @@ void lv_obj_scroll_by(lv_obj_t * obj, lv_coord_t dx, lv_coord_t dy, lv_anim_enab
             lv_coord_t sx = lv_obj_get_scroll_x(obj);
             lv_anim_set_values(&a, -sx, -sx + dx);
             lv_anim_set_exec_cb(&a, scroll_x_anim);
-            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+            if (is_scroll_anim_time_init())
+                lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
+            else
+                lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
 
             lv_res_t res;
             res = lv_event_send(obj, LV_EVENT_SCROLL_BEGIN, &a);
@@ -343,13 +346,27 @@ void lv_obj_scroll_by(lv_obj_t * obj, lv_coord_t dx, lv_coord_t dy, lv_anim_enab
 
         if(dy) {
             uint32_t t = lv_anim_speed_to_time((lv_disp_get_ver_res(d) * 2) >> 2, 0, dy);
+            #ifdef SkaiwalkWatchOS
+            if (is_scroll_anim_time_init())
+            {
+                t = get_scroll_anim_time();
+            }
+            else
+            {
+                t = SCROLL_ANIM_TIME_MIN;
+            }
+            #else
             if(t < SCROLL_ANIM_TIME_MIN) t = SCROLL_ANIM_TIME_MIN;
             if(t > SCROLL_ANIM_TIME_MAX) t = SCROLL_ANIM_SLOW_TIME;
+            #endif
             lv_anim_set_time(&a, t);
             lv_coord_t sy = lv_obj_get_scroll_y(obj);
             lv_anim_set_values(&a, -sy, -sy + dy);
             lv_anim_set_exec_cb(&a,  scroll_y_anim);
-            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+            if (is_scroll_anim_time_init())
+                lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
+            else
+                lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
 
             lv_res_t res;
             res = lv_event_send(obj, LV_EVENT_SCROLL_BEGIN, &a);
