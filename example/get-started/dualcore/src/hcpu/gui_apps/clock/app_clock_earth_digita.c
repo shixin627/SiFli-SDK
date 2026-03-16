@@ -113,49 +113,45 @@ lv_obj_t *lv_earth_digital_layout_create(lv_obj_t *parent)
 
     lv_obj_t *h_0 = lv_obj_create(p_clk_earth_digital->bg);
     lv_obj_set_size(h_0, 100, 136);
-    lv_obj_align(h_0, LV_ALIGN_CENTER, -153, -65);
+    lv_obj_align(h_0, LV_ALIGN_CENTER, -153, -30);
     lv_obj_set_style_bg_color(h_0, lv_color_hex(0x000000), 0);
     lv_obj_set_style_radius(h_0, 0, 0);
 
     // Create hour label
     p_clk_earth_digital->hour_0_img = lv_img_create(h_0);
     lv_img_set_src(p_clk_earth_digital->hour_0_img, &dig_1_00);
-    lv_img_set_zoom(p_clk_earth_digital->hour_0_img, 256 * 0.9); // 100%
     lv_obj_center(p_clk_earth_digital->hour_0_img);
 
     lv_obj_t *h_1 = lv_obj_create(p_clk_earth_digital->bg);
     lv_obj_set_size(h_1, 100, 136);
-    lv_obj_align(h_1, LV_ALIGN_CENTER, -52, -65);
+    lv_obj_align(h_1, LV_ALIGN_CENTER, -52, -30);
     lv_obj_set_style_bg_color(h_1, lv_color_hex(0x000000), 0);
     lv_obj_set_style_radius(h_1, 0, 0);
 
     p_clk_earth_digital->hour_1_img = lv_img_create(h_1);
     lv_img_set_src(p_clk_earth_digital->hour_1_img, &dig_1_00);
-    lv_img_set_zoom(p_clk_earth_digital->hour_1_img, 256 * 0.9); // 100%
     lv_obj_center(p_clk_earth_digital->hour_1_img);
 
     lv_obj_t *m_0 = lv_obj_create(p_clk_earth_digital->bg);
     lv_obj_set_size(m_0, 100, 136);
-    lv_obj_align(m_0, LV_ALIGN_CENTER, 52, -65);
+    lv_obj_align(m_0, LV_ALIGN_CENTER, 52, -30);
     lv_obj_set_style_bg_color(m_0, lv_color_hex(0x000000), 0);
     lv_obj_set_style_radius(m_0, 0, 0);
 
     p_clk_earth_digital->minute_0_img = lv_img_create(m_0);
     lv_img_set_src(p_clk_earth_digital->minute_0_img, &dig_1_00);
     lv_obj_set_style_img_opa(p_clk_earth_digital->minute_0_img, LV_OPA_70, 0);
-    lv_img_set_zoom(p_clk_earth_digital->minute_0_img, 256 * 0.9); // 100%
     lv_obj_center(p_clk_earth_digital->minute_0_img);
 
     lv_obj_t *m_1 = lv_obj_create(p_clk_earth_digital->bg);
     lv_obj_set_size(m_1, 100, 136);
-    lv_obj_align(m_1, LV_ALIGN_CENTER, 153, -65);
+    lv_obj_align(m_1, LV_ALIGN_CENTER, 153, -30);
     lv_obj_set_style_bg_color(m_1, lv_color_hex(0x000000), 0);
     lv_obj_set_style_radius(m_1, 0, 0);
 
     p_clk_earth_digital->minute_1_img = lv_img_create(m_1);
     lv_img_set_src(p_clk_earth_digital->minute_1_img, &dig_1_00);
     lv_obj_set_style_img_opa(p_clk_earth_digital->minute_1_img, LV_OPA_70, 0);
-    lv_img_set_zoom(p_clk_earth_digital->minute_1_img, 256 * 0.9); // 100%
     lv_obj_center(p_clk_earth_digital->minute_1_img);
 
 #ifdef CHECK_CLOCK
@@ -176,115 +172,11 @@ lv_obj_t *lv_earth_digital_layout_create(lv_obj_t *parent)
 
     p_clk_earth_digital->earth_img = lv_img_create(p_clk_earth_digital->bg);
     lv_img_set_src(p_clk_earth_digital->earth_img, &img_earth_digital_bg);
-    lv_obj_align(p_clk_earth_digital->earth_img, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_obj_align(p_clk_earth_digital->earth_img, LV_ALIGN_BOTTOM_MID, 0, -50);
 
     p_clk_earth_digital->redraw_task = NULL;
 
     return p_clk_earth_digital->bg;
-}
-
-#define EXPAND_ANIM_DURATION 300
-#define EXPAND_CONT_Y_OFFSET 35   // 容器下移量 (-65 -> -40)
-#define EXPAND_EARTH_Y_OFFSET 90  // earth 下移量 (-5 -> 40)
-
-static void _anim_zoom_cb(void *var, int32_t v)
-{
-    lv_img_set_zoom((lv_obj_t *)var, (uint16_t)v);
-}
-
-static void _anim_translate_y_cb(void *var, int32_t v)
-{
-    lv_obj_set_style_translate_y((lv_obj_t *)var, v, 0);
-}
-
-extern void set_dial_widget_opa(uint8_t opa);
-static void _anim_dial_widget_cb(void *var, int32_t v)
-{
-    // 同時處理 translate_y 和透明度
-    lv_obj_set_style_translate_y((lv_obj_t *)var, v, 0);
-    // v 從 0 到 EXPAND_EARTH_Y_OFFSET，映射 opa 從 255 到 0
-    uint8_t opa = (uint8_t)(255 - (255 * v / EXPAND_EARTH_Y_OFFSET));
-    set_dial_widget_opa(opa);
-}
-
-void app_clock_earth_digital_set_expanded(bool expanded)
-{
-    if (!p_clk_earth_digital) return;
-
-    lv_obj_t *digits[4] = {
-        p_clk_earth_digital->hour_0_img,
-        p_clk_earth_digital->hour_1_img,
-        p_clk_earth_digital->minute_0_img,
-        p_clk_earth_digital->minute_1_img,
-    };
-
-    // 數字圖片縮放動畫
-    for (int i = 0; i < 4; i++)
-    {
-        int32_t cur_zoom = lv_img_get_zoom(digits[i]);
-        int32_t tgt_zoom = expanded ? 256 : (int32_t)(256 * 0.9);
-
-        lv_anim_t a;
-        lv_anim_init(&a);
-        lv_anim_set_var(&a, digits[i]);
-        lv_anim_set_values(&a, cur_zoom, tgt_zoom);
-        lv_anim_set_time(&a, EXPAND_ANIM_DURATION);
-        lv_anim_set_exec_cb(&a, _anim_zoom_cb);
-        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
-        lv_anim_start(&a);
-    }
-
-    // 數字容器 translate_y 動畫 (不影響原始 alignment)
-    for (int i = 0; i < 4; i++)
-    {
-        lv_obj_t *cont = lv_obj_get_parent(digits[i]);
-        int32_t cur_ty = lv_obj_get_style_translate_y(cont, 0);
-        int32_t tgt_ty = expanded ? EXPAND_CONT_Y_OFFSET : 0;
-
-        lv_anim_t a;
-        lv_anim_init(&a);
-        lv_anim_set_var(&a, cont);
-        lv_anim_set_values(&a, cur_ty, tgt_ty);
-        lv_anim_set_time(&a, EXPAND_ANIM_DURATION);
-        lv_anim_set_exec_cb(&a, _anim_translate_y_cb);
-        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
-        lv_anim_start(&a);
-    }
-
-    // earth_img translate_y 動畫
-    {
-        int32_t cur_ty = lv_obj_get_style_translate_y(p_clk_earth_digital->earth_img, 0);
-        int32_t tgt_ty = expanded ? EXPAND_EARTH_Y_OFFSET : 0;
-
-        lv_anim_t a;
-        lv_anim_init(&a);
-        lv_anim_set_var(&a, p_clk_earth_digital->earth_img);
-        lv_anim_set_values(&a, cur_ty, tgt_ty);
-        lv_anim_set_time(&a, EXPAND_ANIM_DURATION);
-        lv_anim_set_exec_cb(&a, _anim_translate_y_cb);
-        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
-        lv_anim_start(&a);
-    }
-
-    // dial_widget 跟著 earth_img 同步移動 + 透明度變化
-    {
-        extern lv_obj_t *app_clock_main_get_dial_widget(void);
-        lv_obj_t *dw = app_clock_main_get_dial_widget();
-        if (dw && lv_obj_is_valid(dw))
-        {
-            int32_t cur_ty = lv_obj_get_style_translate_y(dw, 0);
-            int32_t tgt_ty = expanded ? EXPAND_EARTH_Y_OFFSET : 0;
-
-            lv_anim_t a;
-            lv_anim_init(&a);
-            lv_anim_set_var(&a, dw);
-            lv_anim_set_values(&a, cur_ty, tgt_ty);
-            lv_anim_set_time(&a, EXPAND_ANIM_DURATION);
-            lv_anim_set_exec_cb(&a, _anim_dial_widget_cb);
-            lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
-            lv_anim_start(&a);
-        }
-    }
 }
 
 static rt_int32_t init(lv_obj_t *parent)

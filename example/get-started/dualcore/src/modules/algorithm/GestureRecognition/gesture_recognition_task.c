@@ -697,20 +697,6 @@ static int utest_gesture(int argc, char *argv[])
         {
             set_gravity_position(GRAVITY_POSITION_AI);
         }
-        else if (strcmp(argv[1], "test_cb") == 0)
-        {
-            extern void app_clock_earth_digital_set_expanded(bool expanded);
-            if (strcmp(argv[2], "1") == 0)
-            {
-                LOG_D("set expanded");
-                app_clock_earth_digital_set_expanded(true);
-            }
-            else
-            {
-                LOG_D("set collapsed");
-                app_clock_earth_digital_set_expanded(false);
-            }
-        }
     }
     return 0;
 }

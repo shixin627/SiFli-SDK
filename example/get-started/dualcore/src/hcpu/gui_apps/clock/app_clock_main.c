@@ -586,37 +586,16 @@ bool level_bar_is_flat(void)
 }
 
 // value: -100 ~ +100, 0 = flat (center)
-extern void app_clock_earth_digital_set_expanded(bool expanded);
 void level_bar_update(int16_t value)
 {
-    // if (!level_bar_dot || !lv_obj_is_valid(level_bar_dot))
-    //     return;
     if (value < -100)
         value = -100;
     if (value > 100)
         value = 100;
-    int16_t x_offset =
-        (int16_t)((int32_t)value * ((LEVEL_BAR_WIDTH - 20) / 2) / 100);
-    // lv_obj_align(level_bar_dot, LV_ALIGN_CENTER, x_offset, 0);
 
     bool was_flat = level_is_flat;
     level_is_flat =
         (value >= -LEVEL_FLAT_THRESHOLD && value <= LEVEL_FLAT_THRESHOLD);
-
-    if (level_is_flat != was_flat)
-    {
-    //     lv_color_t arc_color =
-    //         level_is_flat ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x777777);
-    //     if (level_bar_arc_left && lv_obj_is_valid(level_bar_arc_left))
-    //         lv_obj_set_style_arc_color(level_bar_arc_left, arc_color,
-    //                                    LV_PART_MAIN);
-    //     if (level_bar_arc_right && lv_obj_is_valid(level_bar_arc_right))
-    //         lv_obj_set_style_arc_color(level_bar_arc_right, arc_color,
-    //                                    LV_PART_MAIN);
-
-        app_clock_earth_digital_set_expanded(!level_is_flat);
-        
-    }
 }
 static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent);
 // 生成一個列表用於切換 dial_widget_app_id，選擇後自動刪除
@@ -650,8 +629,8 @@ static void dial_widget_select_event_cb(lv_event_t *e)
                 {
 
                     lv_obj_del(dial_widget);
-                    swich_dial_widget_builder(dial_widget_app_id,
-                                              clk_desc->parent);
+                    // swich_dial_widget_builder(dial_widget_app_id,
+                    //                           clk_desc->parent);
                     break;
                 }
             }
@@ -885,12 +864,12 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
             if (p_clock->ops->pause)
             {
                 p_clock->ops->pause();
-                if (strcmp(p_clock->id, "JW_wf1") == 0)
-                {
-                    swich_dial_widget_deinit(dial_widget_app_id);
-                }
-                else if (strcmp(p_clock->id, "JW_wf3") == 0)
-                    swich_dial_widget_deinit(dial_widget_app_id);
+                // if (strcmp(p_clock->id, "JW_wf1") == 0)
+                // {
+                //     swich_dial_widget_deinit(dial_widget_app_id);
+                // }
+                // else if (strcmp(p_clock->id, "JW_wf3") == 0)
+                //     swich_dial_widget_deinit(dial_widget_app_id);
             }
         }
         LOG_D("Deiniting clock id=%s", p_clock->id);
@@ -916,21 +895,21 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
             if (p_clock->ops->pause)
             {
                 p_clock->ops->pause();
-                if (strcmp(p_clock->id, "JW_wf1") == 0)
-                    swich_dial_widget_deinit(dial_widget_app_id);
-                else if (strcmp(p_clock->id, "JW_wf3") == 0)
-                    swich_dial_widget_deinit(dial_widget_app_id);
+                // if (strcmp(p_clock->id, "JW_wf1") == 0)
+                //     swich_dial_widget_deinit(dial_widget_app_id);
+                // else if (strcmp(p_clock->id, "JW_wf3") == 0)
+                //     swich_dial_widget_deinit(dial_widget_app_id);
             }
         }
         else if (p_clock->ops->init)
         {
             p_clock->ops->init(p_clock->parent);
-            if (strcmp(p_clock->id, "JW_wf1") == 0)
-            {
-                swich_dial_widget_builder(dial_widget_app_id, p_clock->parent);
-            }
-            else if (strcmp(p_clock->id, "JW_wf3") == 0)
-                swich_dial_widget_builder(dial_widget_app_id, p_clock->parent);
+            // if (strcmp(p_clock->id, "JW_wf1") == 0)
+            // {
+            //     swich_dial_widget_builder(dial_widget_app_id, p_clock->parent);
+            // }
+            // else if (strcmp(p_clock->id, "JW_wf3") == 0)
+            //     swich_dial_widget_builder(dial_widget_app_id, p_clock->parent);
         }
     }
     break;
@@ -942,16 +921,16 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
             if (p_clock->ops->init)
             {
                 p_clock->ops->init(p_clock->parent);
-                if (strcmp(p_clock->id, "JW_wf1") == 0)
-                {
-                    swich_dial_widget_builder(dial_widget_app_id,
-                                              p_clock->parent);
-                }
-                else if (strcmp(p_clock->id, "JW_wf3") == 0)
-                {
-                    swich_dial_widget_builder(dial_widget_app_id,
-                                              p_clock->parent);
-                }
+                // if (strcmp(p_clock->id, "JW_wf1") == 0)
+                // {
+                //     swich_dial_widget_builder(dial_widget_app_id,
+                //                               p_clock->parent);
+                // }
+                // else if (strcmp(p_clock->id, "JW_wf3") == 0)
+                // {
+                //     swich_dial_widget_builder(dial_widget_app_id,
+                //                               p_clock->parent);
+                // }
             }
         }
         LOG_D("Resuming clock id11=%s", p_clock->id);
@@ -1467,6 +1446,8 @@ static void battery_status_indicator_builder(lv_obj_t *parent)
 
     lvgl_msg_handler.handle_charge_status = refresh_charge_icon;
 }
+
+
 
 static void app_clock_main_init(lv_obj_t *scr)
 {
