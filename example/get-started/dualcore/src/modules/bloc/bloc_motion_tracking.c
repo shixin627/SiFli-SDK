@@ -828,6 +828,11 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                                 targetWave_algo);
                 }
             }
+            else
+            {
+                LOG_D("median_difference_accel=%0.3f, user_hand_horizontal=%d, type=%d",
+                      median_difference_accel, user_hand_horizontal, type);
+            }
             reset_gesture_state(dataset, current_time , 7);
         }
     }
