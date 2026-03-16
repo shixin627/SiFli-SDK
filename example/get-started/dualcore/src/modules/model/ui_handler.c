@@ -295,6 +295,10 @@ static void process_lvgl_message(lvgl_msg_t *msg)
             lvgl_msg_handler.handle_new_notification();
             trigger_activity();
         }
+        if (lvgl_msg_handler.handle_dial_header_new_notification)
+        {
+            lvgl_msg_handler.handle_dial_header_new_notification();
+        }
         break;
     case LVGL_MSG_TYPE_NOTE_LIST:
         if (lvgl_msg_handler.handle_note_list)

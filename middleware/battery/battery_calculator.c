@@ -235,6 +235,9 @@ uint8_t battery_calculator_get_percent(battery_calculator_t *calculator, uint32_
     status = battery_get_charging_status();
     LOG_D("Current status: %s", (status == BATTERY_CHARGER_STATUS_CHARGING) ? "Charging" : "Discharging");
 
+    /* Save last_status before filter updates it */
+    int8_t prev_status = calculator->last_status;
+
     /* Primary filter: state-based filtering */
     filtered_voltage = _battery_voltage_filter(calculator, voltage, status);
 
@@ -269,7 +272,7 @@ uint8_t battery_calculator_get_percent(battery_calculator_t *calculator, uint32_
     if (calculator->last_percent != 0)
     {
         int percent_diff = abs((int)percent - (int)calculator->last_percent);
-        bool status_changed = (calculator->last_status != (int8_t)status && calculator->last_status != -1);
+        bool status_changed = (prev_status != (int8_t)status && prev_status != -1);
 
         /* Handle status change */
         if (status_changed)

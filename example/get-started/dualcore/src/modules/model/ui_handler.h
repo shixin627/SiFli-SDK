@@ -320,6 +320,7 @@ extern "C"
         void (*handle_charge_status)(void *param);
         void (*handle_notification)(void *param);
         void (*handle_new_notification)(void);
+        void (*handle_dial_header_new_notification)(void);
         void (*handle_note_list)(void);
         void (*handle_new_note)(void);
         void (*refresh_calendar)(void);
