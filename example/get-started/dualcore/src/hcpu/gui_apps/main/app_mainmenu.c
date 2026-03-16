@@ -724,52 +724,52 @@ static void app_main_Clock_view_event_cb(lv_event_t *event)
     }
 }
 
-lv_obj_t *create_notification_bar_indicator(lv_obj_t *parent)
-{
-    // 4.create status bar at top to show user that there are notifications
-    // above the bar
-    lv_obj_t *message_indicator = lv_obj_create(parent);
-    lv_obj_set_size(message_indicator, 20, 20);
-    lv_obj_set_style_bg_color(message_indicator, lv_color_hex(0xCC5252),
-                              LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(message_indicator, 100,
-                            LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(message_indicator, LV_ALIGN_TOP_MID, 0, 5);
-    lv_obj_add_flag(message_indicator, LV_OBJ_FLAG_HIDDEN);
-    return message_indicator;
-}
+// lv_obj_t *create_notification_bar_indicator(lv_obj_t *parent)
+// {
+//     // 4.create status bar at top to show user that there are notifications
+//     // above the bar
+//     lv_obj_t *message_indicator = lv_obj_create(parent);
+//     lv_obj_set_size(message_indicator, 20, 20);
+//     lv_obj_set_style_bg_color(message_indicator, lv_color_hex(0xCC5252),
+//                               LV_PART_MAIN | LV_STATE_DEFAULT);
+//     lv_obj_set_style_radius(message_indicator, 100,
+//                             LV_PART_MAIN | LV_STATE_DEFAULT);
+//     lv_obj_align(message_indicator, LV_ALIGN_TOP_MID, 0, 5);
+//     lv_obj_add_flag(message_indicator, LV_OBJ_FLAG_HIDDEN);
+//     return message_indicator;
+// }
 
 bool message_has_read = false;
-void clear_notification_bar_indicator(void)
-{
-    if (lv_obj_is_valid(app_mainmenu_ctx.message_indicator) == false)
-    {
-        return;
-    }
-    lv_obj_add_flag(app_mainmenu_ctx.message_indicator, LV_OBJ_FLAG_HIDDEN);
-    message_has_read = true;
-}
+// void clear_notification_bar_indicator(void)
+// {
+//     if (lv_obj_is_valid(app_mainmenu_ctx.message_indicator) == false)
+//     {
+//         return;
+//     }
+//     lv_obj_add_flag(app_mainmenu_ctx.message_indicator, LV_OBJ_FLAG_HIDDEN);
+//     message_has_read = true;
+// }
 
 void refreh_notification_bar_indicator(uint16_t count)
 {
-    if (lv_obj_is_valid(app_mainmenu_ctx.message_indicator) == false)
-    {
-        return;
-    }
-    if (count > 0)
-    {
-        if (lv_obj_has_flag(app_mainmenu_ctx.message_indicator,
-                            LV_OBJ_FLAG_HIDDEN) &&
-            !message_has_read)
-        {
-            lv_obj_clear_flag(app_mainmenu_ctx.message_indicator,
-                              LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-    else
-    {
-        lv_obj_add_flag(app_mainmenu_ctx.message_indicator, LV_OBJ_FLAG_HIDDEN);
-    }
+    // if (lv_obj_is_valid(app_mainmenu_ctx.message_indicator) == false)
+    // {
+    //     return;
+    // }
+    // if (count > 0)
+    // {
+    //     if (lv_obj_has_flag(app_mainmenu_ctx.message_indicator,
+    //                         LV_OBJ_FLAG_HIDDEN) &&
+    //         !message_has_read)
+    //     {
+    //         lv_obj_clear_flag(app_mainmenu_ctx.message_indicator,
+    //                           LV_OBJ_FLAG_HIDDEN);
+    //     }
+    // }
+    // else
+    // {
+    //     lv_obj_add_flag(app_mainmenu_ctx.message_indicator, LV_OBJ_FLAG_HIDDEN);
+    // }
 }
 
 void app_launcher_ui_init(void *param)
@@ -777,10 +777,10 @@ void app_launcher_ui_init(void *param)
     extern lv_obj_t *build_home_view(lv_obj_t * parent);
     extern lv_obj_t *lv_app_list_layout_create(lv_obj_t * parent);
     lv_obj_t *app_list = build_home_view(lv_scr_act());
-    #ifdef ENABLE_NOTIFICATION_CENTER
-    app_mainmenu_ctx.message_indicator =
-        create_notification_bar_indicator(app_list);
-    #endif
+    // #ifdef ENABLE_NOTIFICATION_CENTER
+    // app_mainmenu_ctx.message_indicator =
+    //     create_notification_bar_indicator(app_list);
+    // #endif
 
     gui_app_trans_anim_t enter_anim_cfg, exit_anim_cfg;
 
@@ -802,8 +802,8 @@ static void on_start(void)
     app_launcher_ui_init(NULL);
 
     #ifdef BSP_USING_UI_HANDLER
-    lvgl_msg_handler.handle_clear_notification_bar_indicator =
-        clear_notification_bar_indicator;
+    // lvgl_msg_handler.handle_clear_notification_bar_indicator =
+    //     clear_notification_bar_indicator;
     lvgl_msg_handler.handle_set_app_list_opa = handle_set_app_list_opa;
     #endif
 }
@@ -827,9 +827,9 @@ static void on_resume(void)
         screen_rotate_back_to_original_direction();
         clock_on_resume();
     }
-    #ifdef ENABLE_NOTIFICATION_CENTER
-    refreh_notification_bar_indicator(notification_center_get_info_count());
-    #endif
+    // #ifdef ENABLE_NOTIFICATION_CENTER
+    // refreh_notification_bar_indicator(notification_center_get_info_count());
+    // #endif
 
     lvgl_msg_t msg;
     msg.type = LVGL_MSG_TYPE_TRIGGER_ACTIVITY;
@@ -840,10 +840,10 @@ static void on_pause(void)
 {
     LOG_D("[mainmenu_on_pause]");
     // clear_check_flags();
-    #ifdef ENABLE_NOTIFICATION_CENTER
-    if (lv_obj_is_valid(app_mainmenu_ctx.message_indicator))
-        lv_obj_add_flag(app_mainmenu_ctx.message_indicator, LV_OBJ_FLAG_HIDDEN);
-    #endif
+    // #ifdef ENABLE_NOTIFICATION_CENTER
+    // if (lv_obj_is_valid(app_mainmenu_ctx.message_indicator))
+    //     lv_obj_add_flag(app_mainmenu_ctx.message_indicator, LV_OBJ_FLAG_HIDDEN);
+    // #endif
     app_list_pause();
     clock_on_pause();
     extern void reset_gravity_position(void);
@@ -854,11 +854,11 @@ static void on_stop(void)
 {
     LOG_D("[mainmenu_on_stop]");
     #ifdef ENABLE_NOTIFICATION_CENTER
-    if (lv_obj_is_valid(app_mainmenu_ctx.message_indicator))
-    {
-        lv_obj_del(app_mainmenu_ctx.message_indicator);
-        app_mainmenu_ctx.message_indicator = NULL;
-    }
+    // if (lv_obj_is_valid(app_mainmenu_ctx.message_indicator))
+    // {
+    //     lv_obj_del(app_mainmenu_ctx.message_indicator);
+    //     app_mainmenu_ctx.message_indicator = NULL;
+    // }
     notification_on_deinit();
     #endif
     app_list_deinit();

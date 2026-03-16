@@ -1209,7 +1209,7 @@ void refresh_notification_list(void *param)
 	// 	open_notification_select = true;
 	// }
 
-	refreh_notification_bar_indicator(notification_count);
+	// refreh_notification_bar_indicator(notification_count);
 	if (notification_count > 0 || have_media_widget)
 	{
 		if (lv_obj_is_valid(p_app_notification->no_notifications_widget))
@@ -1673,6 +1673,7 @@ bool is_have_message_now(void)
 {
 	return have_message_now;
 }
+static void handle_dial_header_new_notification(void);
 static notification_widget_t new_notification_widgets;
 static void refresh_new_message_widget(void)
 {
@@ -1697,6 +1698,7 @@ static void refresh_new_message_widget(void)
 		lv_obj_clear_flag(new_notification_widgets.icon, LV_OBJ_FLAG_HIDDEN);
 		have_message_now = true;
 	}
+	handle_dial_header_new_notification();
 }
 
 lv_obj_t *lv_message_widget_builder(lv_obj_t *parent)
@@ -1767,6 +1769,172 @@ lv_obj_t *lv_message_widget_builder(lv_obj_t *parent)
 	lv_obj_clear_flag(widget, LV_OBJ_FLAG_SCROLLABLE);
 
 	return widget;
+}
+
+/*******************************************************************************
+ * Dial Header: shows music or notification on clock face
+ ******************************************************************************/
+static lv_obj_t *dial_header_bg = NULL;
+static lv_obj_t *dial_header_title = NULL;
+static lv_obj_t *dial_header_img = NULL;
+static bool dial_header_music_active = false;
+
+static void dial_header_show_notification(void)
+{
+	if (!lv_obj_is_valid(dial_header_bg))
+		return;
+	uint32_t count = notification_center_get_info_count();
+	if (count > 0)
+	{
+		notification_t *notification = get_notification(0);
+		LOG_D("Dial header show notification: %s", notification->title);
+		if (notification)
+		{
+			lv_obj_clear_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
+			lv_label_set_text(dial_header_title, notification->title);
+			lv_img_set_src(dial_header_img, icon_list[notification->type]);
+			lv_obj_set_size(dial_header_img, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+			lv_img_set_zoom(dial_header_img, 128);
+			lv_obj_clear_flag(dial_header_img, LV_OBJ_FLAG_HIDDEN);
+			lv_obj_align(dial_header_img, LV_ALIGN_CENTER, 0, 0);
+			return;
+		}
+	}
+	lv_obj_add_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void handle_dial_header_media_title(void *param)
+{
+	if (!lv_obj_is_valid(dial_header_title) || !lv_obj_is_valid(dial_header_bg))
+		return;
+	char *media_title_text = (char *)param;
+	if (media_title_text && media_title_text[0] != '\0')
+	{
+		dial_header_music_active = true;
+		lv_obj_clear_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
+		lv_label_set_text(dial_header_title, media_title_text);
+	}
+	else
+	{
+		dial_header_music_active = false;
+		dial_header_show_notification();
+	}
+}
+
+static void handle_dial_header_media_img(void *param)
+{
+	if (!lv_obj_is_valid(dial_header_img))
+		return;
+	if (!dial_header_music_active)
+		return;
+	char *img_data = (char *)param;
+	if (img_data && img_data[0] != '\0')
+	{
+		lv_obj_clear_flag(dial_header_img, LV_OBJ_FLAG_HIDDEN);
+		lv_img_set_src(dial_header_img, MEDIA_HEADER_IMG);
+		lv_obj_set_size(dial_header_img, 50, 50);
+		lv_img_set_zoom(dial_header_img, 256);
+		lv_obj_align(dial_header_img, LV_ALIGN_CENTER, 0, 0);
+	}
+	else
+	{
+		lv_obj_add_flag(dial_header_img, LV_OBJ_FLAG_HIDDEN);
+	}
+}
+
+static void handle_dial_header_new_notification(void)
+{
+	if (!lv_obj_is_valid(dial_header_bg))
+		return;
+	if (dial_header_music_active)
+		return;
+	dial_header_show_notification();
+}
+
+void lv_dial_header_builder(lv_obj_t *parent)
+{
+	dial_header_bg = lv_obj_create(parent);
+	lv_obj_set_size(dial_header_bg, 252, 100);
+	lv_obj_set_style_bg_color(dial_header_bg, lv_color_hex(0x000000), 0);
+	lv_obj_set_style_bg_opa(dial_header_bg, LV_OPA_COVER, 0);
+	lv_obj_set_style_radius(dial_header_bg, 30, 0);
+	// lv_obj_set_style_outline_width(dial_header_bg, 2, 0);
+	// lv_obj_set_style_outline_color(dial_header_bg, lv_color_hex(0xFFFFFF), 0);
+	// lv_obj_set_style_outline_opa(dial_header_bg, LV_OPA_20, 0);
+	// lv_obj_set_style_border_width(dial_header_bg, 1, 0);
+	// lv_obj_set_style_border_color(dial_header_bg, lv_color_hex(0xFFFFFF), 0);
+	lv_obj_align(dial_header_bg, LV_ALIGN_TOP_MID, 0, 2);
+	lv_obj_add_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
+
+	lv_obj_t *dial_header_bg_mask = lv_obj_create(dial_header_bg);
+	lv_obj_set_size(dial_header_bg_mask, 252, 60);
+	lv_obj_set_style_bg_color(dial_header_bg_mask, lv_color_hex(0xFFFFFF), 0);
+	lv_obj_set_style_bg_opa(dial_header_bg_mask, 10, 0);
+	lv_obj_align(dial_header_bg_mask, LV_ALIGN_CENTER, 0, 0);
+	lv_obj_set_style_radius(dial_header_bg_mask, 30, 0);
+
+	lv_obj_t *dial_header_img_bg = lv_obj_create(dial_header_bg);
+	lv_obj_set_size(dial_header_img_bg, 50, 50);
+	lv_obj_set_style_bg_opa(dial_header_img_bg, LV_OPA_TRANSP, 0);
+	lv_obj_align(dial_header_img_bg, LV_ALIGN_TOP_MID, 0, 0);
+	lv_obj_clear_flag(dial_header_img_bg, LV_OBJ_FLAG_SCROLLABLE);
+
+	dial_header_img = lv_img_create(dial_header_img_bg);
+	lv_img_set_src(dial_header_img, MEDIA_MASK);
+	lv_obj_set_size(dial_header_img, 50, 50);
+	lv_obj_set_style_radius(dial_header_img, 25, 0);
+	lv_obj_align(dial_header_img, LV_ALIGN_CENTER, 0, 0);
+
+	dial_header_title = lv_label_create(dial_header_bg);
+	lv_obj_set_size(dial_header_title, 180, 40);
+	lv_label_set_long_mode(dial_header_title, LV_LABEL_LONG_DOT);
+	lv_obj_set_style_text_align(dial_header_title, LV_TEXT_ALIGN_CENTER,
+	                            LV_PART_MAIN);
+	lv_obj_set_style_text_font(dial_header_title,
+	                           LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
+	lv_obj_set_style_text_color(dial_header_title, lv_color_white(), 0);
+	lv_obj_set_style_text_opa(dial_header_title, LV_OPA_70, 0);
+	lv_obj_align_to(dial_header_title, dial_header_img_bg,
+	                LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
+
+	/* Show initial state based on current music / notification status */
+	dial_header_music_active = false;
+	char *media_title = get_media_title();
+	if (media_title && media_title[0] != '\0')
+	{
+		dial_header_music_active = true;
+		lv_obj_clear_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
+		lv_label_set_text(dial_header_title, media_title);
+		lv_img_set_src(dial_header_img, MEDIA_HEADER_IMG);
+		lv_obj_clear_flag(dial_header_img, LV_OBJ_FLAG_HIDDEN);
+	}
+	else
+	{
+		dial_header_show_notification();
+	}
+}
+
+void dial_media_header_init(void)
+{
+	lvgl_msg_handler.handle_dial_media_header_title =
+	    handle_dial_header_media_title;
+	lvgl_msg_handler.handle_dial_media_header_img =
+	    handle_dial_header_media_img;
+	lvgl_msg_handler.handle_dial_header_new_notification =
+	    handle_dial_header_new_notification;
+}
+
+void dial_media_header_deinit(void)
+{
+	if (lvgl_msg_handler.handle_dial_media_header_title ==
+	    handle_dial_header_media_title)
+		lvgl_msg_handler.handle_dial_media_header_title = NULL;
+	if (lvgl_msg_handler.handle_dial_media_header_img ==
+	    handle_dial_header_media_img)
+		lvgl_msg_handler.handle_dial_media_header_img = NULL;
+	if (lvgl_msg_handler.handle_dial_header_new_notification ==
+	    handle_dial_header_new_notification)
+		lvgl_msg_handler.handle_dial_header_new_notification = NULL;
 }
 
 void message_widget_start(void)

@@ -111,6 +111,18 @@ lv_obj_t *lv_latest_notification_widget_create(lv_obj_t *parent);
  */
 lv_obj_t *lv_notification_count_widget_create(lv_obj_t *parent);
 
+/**
+ * @brief Build the dial header widget on the clock face.
+ *
+ * Priority rules:
+ * - Music playing: show music title + album art image
+ * - No music, notifications exist: show latest notification icon + title
+ * - Neither: hidden
+ */
+void lv_dial_media_header_builder(lv_obj_t *parent);
+void dial_media_header_init(void);
+void dial_media_header_deinit(void);
+
 /**********************
  *      MACROS
  **********************/

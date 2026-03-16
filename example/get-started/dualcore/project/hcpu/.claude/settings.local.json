@@ -4,7 +4,11 @@
       "Read(//c/SiFli-SDK/example/get-started/dualcore/src/hcpu/gui_apps/hid_mouse/**)",
       "Read(//c/SiFli-SDK/**)",
       "Bash(grep -v \".o$\")",
-      "Bash(grep -r \"DFS_FD_MAX\\\\|RT_DFS_FD_MAX\" /c/work/SiFli-SDK/example/get-started/dualcore/project --include=*.h)"
+      "Bash(grep -r \"DFS_FD_MAX\\\\|RT_DFS_FD_MAX\" /c/work/SiFli-SDK/example/get-started/dualcore/project --include=*.h)",
+      "Bash(find /c/SiFli-SDK/example/get-started/dualcore -name *bloc_notification* -o -name *notification*.h)",
+      "Bash(grep -E \"\\\\.\\(h|c\\)$\")",
+      "Bash(grep -r \"lv_notification_count_widget_create\\\\|lv_latest_notification_widget_create\" /c/SiFli-SDK/example/get-started/dualcore/src/hcpu/gui_apps --include=*.c)",
+      "Bash(find c:SiFli-SDK -name ui_img_helper* -o -name *MEDIA*)"
     ],
     "additionalDirectories": [
       "c:\\SiFli-SDK\\example\\get-started\\dualcore\\src\\hcpu\\gui_apps\\media",

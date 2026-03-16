@@ -401,8 +401,8 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         else
         {
             lvgl_msg_t msg;
-            msg.type = LVGL_MSG_TYPE_CLEAR_NOTIFICATION_BAR_INDICATOR;
-            lvgl_send_msg(msg);
+            // msg.type = LVGL_MSG_TYPE_CLEAR_NOTIFICATION_BAR_INDICATOR;
+            // lvgl_send_msg(msg);
 
             lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
                               LV_OBJ_FLAG_HIDDEN);

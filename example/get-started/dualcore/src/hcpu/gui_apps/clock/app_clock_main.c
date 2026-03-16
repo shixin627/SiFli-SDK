@@ -1479,8 +1479,8 @@ static void app_clock_main_init(lv_obj_t *scr)
     }
 
     // Initialize media header
-    extern void lv_dial_media_header_builder(lv_obj_t * parent);
-    lv_dial_media_header_builder(scr);
+    extern void lv_dial_header_builder(lv_obj_t * parent);
+    lv_dial_header_builder(scr);
 
 #ifdef BSP_USING_UI_HANDLER
     lvgl_msg_handler.handle_watchface = handle_watchface_changed_cb;

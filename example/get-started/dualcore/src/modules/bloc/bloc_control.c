@@ -1038,6 +1038,10 @@ static int bloc_control_cmd(int argc, char *argv[])
 				lv_disp_set_rotation(NULL, LV_DISP_ROT_270);
 			}
 		}
+		else if (strcmp(argv[1], "-media_title") == 0)
+		{
+			   control_provider.set_media_title(argc > 2 ? argv[2] : "");
+		}
 	}
 	return 0;
 }

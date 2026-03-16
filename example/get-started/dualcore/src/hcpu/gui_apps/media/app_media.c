@@ -1590,86 +1590,7 @@ static void handle_dial_media_widget_img(void *param)
     }
 }
 
-static lv_obj_t *dial_media_header_bg = NULL;
-static lv_obj_t *dial_media_header_title = NULL;
-static lv_obj_t *dial_media_header_img = NULL;
-void lv_dial_media_header_builder(lv_obj_t *parent)
-{
-    dial_media_header_bg = lv_obj_create(parent);
-    lv_obj_set_size(dial_media_header_bg, 252, 60);
-    lv_obj_set_style_bg_color(dial_media_header_bg, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(dial_media_header_bg, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(dial_media_header_bg, 30, 0);
-    lv_obj_set_style_outline_width(dial_media_header_bg, 2, 0);
-    lv_obj_set_style_outline_color(dial_media_header_bg, lv_color_hex(0xFFFFFF),
-                                   0);
-    lv_obj_set_style_outline_opa(dial_media_header_bg, LV_OPA_20, 0);
-    lv_obj_align(dial_media_header_bg, LV_ALIGN_TOP_MID, 0, 27);
-    lv_obj_add_flag(dial_media_header_bg, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_t *dial_media_header_bg_mask = lv_obj_create(dial_media_header_bg);
-    lv_obj_set_size(dial_media_header_bg_mask, 252, 60);
-    lv_obj_set_style_bg_color(dial_media_header_bg_mask, lv_color_hex(0xFFFFFF),
-                              0);
-    lv_obj_set_style_bg_opa(dial_media_header_bg_mask, 10, 0);
-    lv_obj_align(dial_media_header_bg_mask, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_radius(dial_media_header_bg_mask, 30, 0);
-    dial_media_header_img = lv_img_create(dial_media_header_bg);
-    lv_img_set_src(dial_media_header_img, MEDIA_MASK);
-    lv_obj_set_size(dial_media_header_img, 50, 50);
-    lv_obj_set_style_radius(dial_media_header_img, 25, 0);
-    lv_obj_align(dial_media_header_img, LV_ALIGN_LEFT_MID, 2, 0);
-    dial_media_header_title = lv_label_create(dial_media_header_bg);
-    lv_obj_set_size(dial_media_header_title, 180, 40);
-    lv_label_set_long_mode(dial_media_header_title, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_text_align(dial_media_header_title, LV_TEXT_ALIGN_LEFT,
-                                LV_PART_MAIN);
-    lv_obj_set_style_text_font(dial_media_header_title,
-                               LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
-    lv_obj_set_style_text_color(dial_media_header_title, lv_color_white(), 0);
-    lv_obj_set_style_text_opa(dial_media_header_title, LV_OPA_70, 0);
-    lv_obj_align_to(dial_media_header_title, dial_media_header_img,
-                    LV_ALIGN_OUT_RIGHT_MID, 5, 0);
-}
-
-static void handle_dial_media_header_title(void *param)
-{
-    LOG_D("handle_dial_media_header_title");
-    if (lv_obj_is_valid(dial_media_header_title) == false ||
-        lv_obj_is_valid(dial_media_header_bg) == false)
-    {
-        return;
-    }
-    char *media_title_text = (char *)param;
-    if (media_title_text && media_title_text[0] != '\0')
-    {
-        lv_obj_clear_flag(dial_media_header_bg, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(dial_media_header_title, media_title_text);
-    }
-    else
-    {
-        lv_obj_add_flag(dial_media_header_bg, LV_OBJ_FLAG_HIDDEN);
-    }
-}
-
-static void handle_dial_media_header_img(void *param)
-{
-    if (lv_obj_is_valid(dial_media_header_img) == false)
-    {
-        return;
-    }
-    char *media_title_text = (char *)param;
-    if (media_title_text && media_title_text[0] != '\0')
-    {
-        LOG_D("DIAL_MEDIA HEADER IMG SET :%s", MEDIA_HEADER_IMG);
-        lv_obj_clear_flag(dial_media_header_img, LV_OBJ_FLAG_HIDDEN);
-        lv_img_set_src(dial_media_header_img, MEDIA_HEADER_IMG);
-    }
-    else
-    {
-        LOG_D("DIAL_MEDIA HEADER IMG HIDE");
-        lv_obj_add_flag(dial_media_header_img, LV_OBJ_FLAG_HIDDEN);
-    }
-}
+/* dial_media_header moved to lv_message_list_layout.c */
 
 static void dial_media_widget_init(void)
 {
@@ -1691,23 +1612,7 @@ void dial_media_widget_deinit(void)
         lvgl_msg_handler.handle_dial_media_img = NULL;
 }
 
-void dial_media_header_init(void)
-{
-    lvgl_msg_handler.handle_dial_media_header_title =
-        handle_dial_media_header_title;
-    lvgl_msg_handler.handle_dial_media_header_img =
-        handle_dial_media_header_img;
-}
-
-void dial_media_header_deinit(void)
-{
-    if (lvgl_msg_handler.handle_dial_media_header_title ==
-        handle_dial_media_header_title)
-        lvgl_msg_handler.handle_dial_media_header_title = NULL;
-    if (lvgl_msg_handler.handle_dial_media_header_img ==
-        handle_dial_media_header_img)
-        lvgl_msg_handler.handle_dial_media_header_img = NULL;
-}
+/* dial_media_header_init/deinit moved to lv_message_list_layout.c */
 
 static lv_obj_t *lv_create_media_screen(lv_obj_t *scr)
 {
