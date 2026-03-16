@@ -81,7 +81,6 @@ int PredictGesture(float *output) // 1*3 [probability of 3 gestures]
 	for (uint8_t i = 0; i < kGestureCount; i++)
 	{
 		rt_kprintf("Got output index = %d, score = %0.4f\n", i, output[i]);
-		LOG_I("Got output index = %d, score = %0.4f", i, output[i]);
 		if (output[i] > max_gesture_score)
 		{
 			// if (i == 1 && output[i] < 0.7f)
