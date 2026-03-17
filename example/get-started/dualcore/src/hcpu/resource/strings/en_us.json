@@ -81,5 +81,6 @@
   "gesture": "Gesture",
   "log": "Log",
   "battery": "Battery",
-  "gesture_tutorial": "Gesture Tutorial"
+  "gesture_tutorial": "Gesture Tutorial",
+  "file_browser": "File Browser"
 }

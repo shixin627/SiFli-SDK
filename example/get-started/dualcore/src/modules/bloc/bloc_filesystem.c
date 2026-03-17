@@ -71,7 +71,7 @@
 #include "ui_img_helper.h"
 
 // 動態媒體圖片路徑定義
-char MEDIA_IMG[40] = "/assets/images/media_img.bin";
+char MEDIA_IMG[40] = "/assets/images/media_img.jpg";
 char MEDIA_HEADER_IMG[40] = "/assets/images/media_header_img.bin";
 #include "gesture_model_loader.h"
 
@@ -287,6 +287,15 @@ static void notify_media_img(char *path)
     lvgl_send_msg(msg);
 }
 
+static void notify_media_header_img(char *path)
+{
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_MEDIA_HEADER_IMG;
+    msg.data.media_data.img_path = path;
+    msg.data.media_data.title = get_media_title();
+    lvgl_send_msg(msg);
+}
+
 static char prev_media_img_path[40];
 void received_file_handler(const char *path)
 {
@@ -350,8 +359,8 @@ void received_file_handler(const char *path)
         lv_img_cache_invalidate_src(prev_media_img_path);
 		lv_img_cache_invalidate_src(MEDIA_HEADER_IMG);
 		rt_thread_mdelay(200);
-        notify_media_img(prev_media_img_path);
-        LOG_I("Received media image file: %s,rm:%s", MEDIA_HEADER_IMG,
+        notify_media_header_img(prev_media_img_path);
+        LOG_I("Received media header image file: %s,rm:%s", MEDIA_HEADER_IMG,
               prev_media_img_path);
         // rt_thread_mdelay(1000);
 		// remove(prev_media_img_path);
@@ -540,8 +549,8 @@ static void file_system_entry(void *parameter)
 
                 LOG_I("Started receiving file: %s (%d bytes)", temp_file_path,
                       total_size);
-                skaiwatch_ble_set_performance(
-                    true); // Enable performance mode for BLE
+                // skaiwatch_ble_set_performance(
+                //     true); // Enable performance mode for BLE
                 break;
             }
 

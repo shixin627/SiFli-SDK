@@ -37,6 +37,7 @@ extern "C"
 #define APP_ID_GAME_DINOSAUR "game_dinosaur"
 #define APP_ID_NOTE_CHATROOM "note_chatroom"
 #define APP_ID_ACTIVITY "activity"
+#define APP_ID_FILE_BROWSER "file_browser"
 // #define JS_APP_QRCODE "JA_app1"
 // #define APP_ID_BATTERY "battery"
 // #define APP_ID_HEART_RATE "heart_rate"
@@ -86,6 +87,7 @@ extern "C"
         LVGL_MSG_TYPE_MEDIA_PLAY_STATE,
         LVGL_MSG_TYPE_MEDIA_TITLE,
         LVGL_MSG_TYPE_MEDIA_IMG,
+        LVGL_MSG_TYPE_MEDIA_HEADER_IMG,
         LVGL_MSG_TYPE_MEDIA_VOLUME,
         /***** IMU event ******/
         LVGL_MSG_TYPE_IMU_ACC,
