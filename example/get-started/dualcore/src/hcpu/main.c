@@ -1099,7 +1099,7 @@ check_main_phone_counterpart_connection_timer_callback(lv_timer_t *timer)
     {
         LOG_I(
             "Main phone counterpart not connected, restarting advertising...");
-        ble_app_advertising_start(true, false, false);
+        ble_app_advertising_start(false, false, false);
     }
     else
     {

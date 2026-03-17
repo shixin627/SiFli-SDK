@@ -743,6 +743,10 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     {
         return;
     }
+    if (current_time - SkaiWatchSys.pre_hcpu_wakeup_tick < 300)
+    {
+        return;
+    }
 
     // Check lock conditions
     // if (motor_provider.get_motor_status())
