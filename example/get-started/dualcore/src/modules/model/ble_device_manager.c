@@ -14,10 +14,6 @@
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-#ifdef BSP_SHARE_PREFS
-    #include "share_prefs.h"
-#endif
-
 // Forward declarations for BLE app functions
 extern void ble_app_set_bonded_device_addr(ble_gap_addr_t *addr);
 extern void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
@@ -673,55 +669,10 @@ int ble_dev_mgr_save_to_flash(void)
     }
 
 #ifdef BSP_SHARE_PREFS
-    share_prefs_t *pref = share_prefs_open("ble_dev", SHAREPREFS_MODE_PRIVATE);
-    if (!pref)
-    {
-        LOG_E("Failed to open share_prefs for BLE devices");
-        return -2;
-    }
-
     dev_mgr_lock();
-
-    // Save device count
-    int ret =
-        share_prefs_set_int(pref, "device_count", g_dev_mgr.database.count);
-    if (ret < 0)
-    {
-        LOG_E("Failed to save device count");
-        dev_mgr_unlock();
-        share_prefs_close(pref);
-        return -3;
-    }
-
-    // Save active device index
-    ret = share_prefs_set_int(pref, "active_idx",
-                              g_dev_mgr.database.active_device_idx);
-    if (ret < 0)
-    {
-        LOG_E("Failed to save active device index");
-        dev_mgr_unlock();
-        share_prefs_close(pref);
-        return -4;
-    }
-
-    // Save device database
-    ret = share_prefs_set_block(pref, "devices",
-                                (void *)&g_dev_mgr.database.devices,
-                                sizeof(g_dev_mgr.database.devices));
-    if (ret < 0)
-    {
-        LOG_E("Failed to save device database");
-        dev_mgr_unlock();
-        share_prefs_close(pref);
-        return -5;
-    }
-
+    int ret = ble_dev_prefs_save(&g_dev_mgr.database);
     dev_mgr_unlock();
-    share_prefs_close(pref);
-
-    LOG_I("Successfully saved %d bonded devices to Flash",
-          g_dev_mgr.database.count);
-    return 0;
+    return ret;
 #else
     LOG_W("BSP_SHARE_PREFS not defined, Flash storage not available");
     return -1;
@@ -737,114 +688,76 @@ int ble_dev_mgr_load_from_flash(void)
     }
 
 #ifdef BSP_SHARE_PREFS
-    share_prefs_t *pref = share_prefs_open("ble_dev", SHAREPREFS_MODE_PRIVATE);
-    if (!pref)
-    {
-        LOG_W("No saved BLE device data found");
-        return 0; // Not an error, just no saved data
-    }
-
     dev_mgr_lock();
-
-    // Load device count
-    int32_t count = share_prefs_get_int(pref, "device_count", -1);
-    if (count < 0 || count > MAX_BONDED_DEVICES)
+    int ret = ble_dev_prefs_load(&g_dev_mgr.database);
+    if (ret < 0)
     {
-        LOG_W("Invalid device count in Flash: %d", count);
         dev_mgr_unlock();
-        share_prefs_close(pref);
-        return 0;
+        return ret;
     }
 
-    // Load active device index
-    int32_t active_idx = share_prefs_get_int(pref, "active_idx", -1);
-    if (active_idx >= MAX_BONDED_DEVICES)
+    // Clear connection indices (devices are not connected at startup)
+    for (int i = 0; i < MAX_BONDED_DEVICES; i++)
     {
-        active_idx = 0xFF; // Invalid, reset to no active device
+        g_dev_mgr.database.devices[i].conn_idx = 0xFF;
     }
 
-    // Load device database
-    bonded_device_t temp_devices[MAX_BONDED_DEVICES];
-    int ret = share_prefs_get_block(pref, "devices", (void *)temp_devices,
-                                    sizeof(temp_devices));
-
+    int32_t active_idx = g_dev_mgr.database.active_device_idx;
     bool need_save_default = false;
 
-    if (ret >= 0)
+    // Log loaded devices
+    for (int i = 0; i < MAX_BONDED_DEVICES; i++)
     {
-        // Copy loaded data to database
-        memcpy(g_dev_mgr.database.devices, temp_devices, sizeof(temp_devices));
-        g_dev_mgr.database.count = count;
-        g_dev_mgr.database.active_device_idx = active_idx;
-
-        // Clear connection indices (devices are not connected at startup)
-        for (int i = 0; i < MAX_BONDED_DEVICES; i++)
+        if (g_dev_mgr.database.devices[i].is_valid)
         {
-            g_dev_mgr.database.devices[i].conn_idx = 0xFF;
+            LOG_I("  [%d] %s (%02X:%02X:%02X:%02X:%02X:%02X)%s", i,
+                  g_dev_mgr.database.devices[i].device_name,
+                  g_dev_mgr.database.devices[i].mac_addr[5],
+                  g_dev_mgr.database.devices[i].mac_addr[4],
+                  g_dev_mgr.database.devices[i].mac_addr[3],
+                  g_dev_mgr.database.devices[i].mac_addr[2],
+                  g_dev_mgr.database.devices[i].mac_addr[1],
+                  g_dev_mgr.database.devices[i].mac_addr[0],
+                  (i == active_idx) ? " [ACTIVE]" : "");
         }
+    }
 
-        LOG_I("Successfully loaded %d bonded devices from Flash", count);
-        LOG_I("Active device index: %d", active_idx);
-
-        // Log loaded devices
+    // Set active device as target device for directed advertising
+    // If no active device found in Flash, default to first valid device
+    if (active_idx == 0xFF || active_idx >= MAX_BONDED_DEVICES ||
+        !g_dev_mgr.database.devices[active_idx].is_valid)
+    {
+        // Find first valid device
         for (int i = 0; i < MAX_BONDED_DEVICES; i++)
         {
             if (g_dev_mgr.database.devices[i].is_valid)
             {
-                LOG_I("  [%d] %s (%02X:%02X:%02X:%02X:%02X:%02X)%s", i,
-                      g_dev_mgr.database.devices[i].device_name,
-                      g_dev_mgr.database.devices[i].mac_addr[5],
-                      g_dev_mgr.database.devices[i].mac_addr[4],
-                      g_dev_mgr.database.devices[i].mac_addr[3],
-                      g_dev_mgr.database.devices[i].mac_addr[2],
-                      g_dev_mgr.database.devices[i].mac_addr[1],
-                      g_dev_mgr.database.devices[i].mac_addr[0],
-                      (i == active_idx) ? " [ACTIVE]" : "");
+                active_idx = i;
+                g_dev_mgr.database.active_device_idx = i;
+                need_save_default = true;
+                LOG_I("No active device in Flash, defaulting to first "
+                      "device: [%d]",
+                      i);
+                break;
             }
-        }
-
-        // Set active device as target device for directed advertising
-        // If no active device found in Flash, default to first valid device
-        if (active_idx == 0xFF || active_idx >= MAX_BONDED_DEVICES ||
-            !g_dev_mgr.database.devices[active_idx].is_valid)
-        {
-            // Find first valid device
-            for (int i = 0; i < MAX_BONDED_DEVICES; i++)
-            {
-                if (g_dev_mgr.database.devices[i].is_valid)
-                {
-                    active_idx = i;
-                    g_dev_mgr.database.active_device_idx = i;
-                    need_save_default = true;
-                    LOG_I("No active device in Flash, defaulting to first "
-                          "device: [%d]",
-                          i);
-                    break;
-                }
-            }
-        }
-
-        // Set the active device as target device
-        if (active_idx != 0xFF && active_idx < MAX_BONDED_DEVICES &&
-            g_dev_mgr.database.devices[active_idx].is_valid)
-        {
-            const bonded_device_t *dev =
-                &g_dev_mgr.database.devices[active_idx];
-            ble_gap_addr_t target_addr;
-            memcpy(target_addr.addr.addr, dev->mac_addr, 6);
-            target_addr.addr_type = dev->addr_type;
-
-            ble_app_set_bonded_device_addr(&target_addr);
-            LOG_I("Set target device: [%d] %s", active_idx, dev->device_name);
         }
     }
-    else
+
+    // Set the active device as target device
+    if (active_idx != 0xFF && active_idx < MAX_BONDED_DEVICES &&
+        g_dev_mgr.database.devices[active_idx].is_valid)
     {
-        LOG_W("Failed to load device database from Flash");
+        const bonded_device_t *dev =
+            &g_dev_mgr.database.devices[active_idx];
+        ble_gap_addr_t target_addr;
+        memcpy(target_addr.addr.addr, dev->mac_addr, 6);
+        target_addr.addr_type = dev->addr_type;
+
+        ble_app_set_bonded_device_addr(&target_addr);
+        LOG_I("Set target device: [%d] %s", active_idx, dev->device_name);
     }
 
     dev_mgr_unlock();
-    share_prefs_close(pref);
 
     // Save default active device selection to Flash if needed
     if (need_save_default)
