@@ -12,8 +12,8 @@ extern "C"
 #include "bsp_board.h"
 
 #define VERSION_MAJOR 1
-#define VERSION_MINOR 0
-#define VERSION_REVISION 252
+#define VERSION_MINOR 1
+#define VERSION_REVISION 2
 #define VERSION_DEV 1
 
 #define MAX_GESTURE_SAMPLES 76
