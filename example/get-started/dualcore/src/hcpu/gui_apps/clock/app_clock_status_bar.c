@@ -219,7 +219,7 @@ static void reset_tools_selection(void);
 static void press_event(uint8_t press);
 static uint8_t shady_transparency = 0;
 static uint16_t bg_opa = LV_OPA_COVER;
-static uint16_t bg_opa_2 = LV_OPA_80;
+static uint16_t bg_opa_2 = LV_OPA_COVER;
 static uint16_t bg_opa_3 = LV_OPA_50;
 static void set_clock_main_status_opa(uint8_t opa);
 static uint8_t middle_layer_tileview_index = 255;
@@ -238,11 +238,31 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
     {
         lv_coord_t scroll_y = (466 - lv_obj_get_scroll_y(obj)) * bg_opa / 350;
         lv_coord_t scroll_x = (466 - lv_obj_get_scroll_x(obj)) * bg_opa / 350;
+        if (scroll_x > bg_opa)
+            scroll_x = bg_opa;
+        else if (scroll_x < 0)
+            scroll_x = 0;
+        if (scroll_y > bg_opa)
+            scroll_y = bg_opa;
+        else if (scroll_y < 0)
+            scroll_y = 0;
+
+        // LOG_D("scroll_y: %d, scroll_x: %d", lv_obj_get_scroll_y(obj), lv_obj_get_scroll_x(obj));
 
         lv_coord_t scroll_second_y =
             (466 - lv_obj_get_scroll_y(obj)) * bg_opa_2 / 466;
         lv_coord_t scroll_second_x =
             (466 - lv_obj_get_scroll_x(obj)) * bg_opa_2 / 466;
+
+        if (scroll_second_y > bg_opa_2)
+            scroll_second_y = bg_opa_2;
+        else if (scroll_second_y < 0)
+            scroll_second_y = 0;
+        if (scroll_second_x > bg_opa_2)
+            scroll_second_x = bg_opa_2;
+        else if (scroll_second_x < 0)
+            scroll_second_x = 0;
+
         if (((abs(scroll_y) < (bg_opa + 1)) && (scroll_y != 0)) ||
             ((abs(scroll_x) < (bg_opa + 1)) && (scroll_x != 0))) // 230
         {
@@ -262,8 +282,8 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 //     shady_transparency, 0);
                 set_clock_main_status_opa(shady_transparency);
             }
-            LOG_D("scroll_y: %d, scroll_x: %d, shady_transparency: %d",
-                  scroll_y, scroll_x, shady_transparency);
+            // LOG_D("scroll_y: %d, scroll_x: %d, shady_transparency: %d",
+            //       scroll_y, scroll_x, shady_transparency);
         }
         if (scroll_second_y == 0)
         {
