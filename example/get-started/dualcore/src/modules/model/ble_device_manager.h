@@ -215,6 +215,20 @@ extern "C"
     int ble_dev_mgr_load_from_flash(void);
 
     /**
+     * @brief Save bonded devices database to share_prefs (implemented in watch_global_data.c)
+     * @param db Pointer to the database to save
+     * @return 0 on success, negative on error
+     */
+    int ble_dev_prefs_save(const bonded_devices_db_t *db);
+
+    /**
+     * @brief Load bonded devices database from share_prefs (implemented in watch_global_data.c)
+     * @param db Pointer to the database to load into
+     * @return 0 on success, negative on error
+     */
+    int ble_dev_prefs_load(bonded_devices_db_t *db);
+
+    /**
      * @brief Get device connection state
      * @param device_idx Device index
      * @return Connection state @see ble_device_state_t, negative on error

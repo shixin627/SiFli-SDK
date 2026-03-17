@@ -206,12 +206,16 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         {
             lvgl_msg_handler.handle_dial_media_img(msg->data.media_data.title);
         }
+        LOG_D("REMOVE PREV MEDIA IMG: %s", msg->data.media_data.img_path);
+        lv_img_cache_invalidate_src(msg->data.media_data.img_path);
+        break;
+    case LVGL_MSG_TYPE_MEDIA_HEADER_IMG:
         if (lvgl_msg_handler.handle_dial_media_header_img)
         {
             lvgl_msg_handler.handle_dial_media_header_img(
                 msg->data.media_data.title);
         }
-        LOG_D("REMOVE PREV MEDIA IMG: %s", msg->data.media_data.img_path);
+        LOG_D("REMOVE PREV MEDIA HEADER IMG: %s", msg->data.media_data.img_path);
         // lv_img_cache_invalidate_src(msg->data.media_data.img_path);
 
         remove(msg->data.media_data.img_path);

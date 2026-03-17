@@ -357,7 +357,7 @@ static lv_obj_t *create_spinner(lv_obj_t *parent, const char *title, int field,
     lv_obj_add_event_cb(btn_down, spinner_btn_event_cb, LV_EVENT_ALL, &spinner_data[spinner_idx * 2]);
 
     lv_obj_t *btn_down_lbl = lv_label_create(btn_down);
-    lv_label_set_text(btn_down_lbl, LV_SYMBOL_MINUS);
+    lv_label_set_text(btn_down_lbl, "-");
     lv_obj_center(btn_down_lbl);
 
     /* Value label */
@@ -378,7 +378,7 @@ static lv_obj_t *create_spinner(lv_obj_t *parent, const char *title, int field,
     lv_obj_add_event_cb(btn_up, spinner_btn_event_cb, LV_EVENT_ALL, &spinner_data[spinner_idx * 2 + 1]);
 
     lv_obj_t *btn_up_lbl = lv_label_create(btn_up);
-    lv_label_set_text(btn_up_lbl, LV_SYMBOL_PLUS);
+    lv_label_set_text(btn_up_lbl, "+");
     lv_obj_center(btn_up_lbl);
 
     return val_label;
@@ -1045,6 +1045,7 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
     /* 身高 spinner */
     lv_obj_t *height_container = lv_obj_create(info_row1);
     lv_obj_set_size(height_container, LV_PCT(48), LV_SIZE_CONTENT);
+    lv_obj_clear_flag(height_container, LV_OBJ_FLAG_SCROLLABLE); // Disable scrolling for container
     lv_obj_set_flex_flow(height_container, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(height_container, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_bg_opa(height_container, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1056,6 +1057,7 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
     /* 體重 spinner */
     lv_obj_t *weight_container = lv_obj_create(info_row1);
     lv_obj_set_size(weight_container, LV_PCT(48), LV_SIZE_CONTENT);
+    lv_obj_clear_flag(weight_container, LV_OBJ_FLAG_SCROLLABLE); // Disable scrolling for container
     lv_obj_set_flex_flow(weight_container, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(weight_container, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_bg_opa(weight_container, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1076,7 +1078,8 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
 
     /* 年齡 spinner */
     lv_obj_t *age_container = lv_obj_create(info_row2);
-    lv_obj_set_size(age_container, LV_PCT(48), LV_SIZE_CONTENT);
+    lv_obj_set_size(age_container, LV_PCT(42), LV_SIZE_CONTENT);
+    lv_obj_clear_flag(age_container, LV_OBJ_FLAG_SCROLLABLE); // Disable scrolling for container
     lv_obj_set_flex_flow(age_container, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(age_container, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_bg_opa(age_container, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1087,7 +1090,8 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
 
     /* 性別 spinner */
     lv_obj_t *gender_container = lv_obj_create(info_row2);
-    lv_obj_set_size(gender_container, LV_PCT(48), LV_SIZE_CONTENT);
+    lv_obj_set_size(gender_container, LV_PCT(58), LV_SIZE_CONTENT);
+    lv_obj_clear_flag(gender_container, LV_OBJ_FLAG_SCROLLABLE); // Disable scrolling for container
     lv_obj_set_flex_flow(gender_container, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(gender_container, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_bg_opa(gender_container, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);

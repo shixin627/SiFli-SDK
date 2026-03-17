@@ -743,6 +743,10 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     {
         return;
     }
+    if (current_time - SkaiWatchSys.pre_hcpu_wakeup_tick < 300)
+    {
+        return;
+    }
 
     // Check lock conditions
     // if (motor_provider.get_motor_status())
@@ -776,10 +780,13 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
 
     if (!dataset->gesture_started && !dataset->gesture_ended)
     {
-        if ((waveform_gesture_state.difference_accel > start_threshold && !open_ppg_chacked) ||
-            (ppg_diff_rawdata > get_gesture_recognition_threshold() && open_ppg_chacked))
+        if ((waveform_gesture_state.difference_accel > start_threshold &&
+             !open_ppg_chacked) ||
+            (ppg_diff_rawdata > get_gesture_recognition_threshold() &&
+             open_ppg_chacked))
         {
-            if (ppg_diff_rawdata > get_gesture_recognition_threshold() && open_ppg_chacked)
+            if (ppg_diff_rawdata > get_gesture_recognition_threshold() &&
+                open_ppg_chacked)
                 LOG_D("PPG DIFF");
             dataset->gesture_started = true;
             int feedback_samples = 0;
@@ -828,7 +835,7 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                                 targetWave_algo);
                 }
             }
-            reset_gesture_state(dataset, current_time , 7);
+            reset_gesture_state(dataset, current_time, 7);
         }
     }
 }

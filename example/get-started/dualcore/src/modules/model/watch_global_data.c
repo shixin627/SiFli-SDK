@@ -45,6 +45,7 @@
 #include "communicate_protocol.h"
 #include "gesture_recognition_task.h"
 #include "ui_handler.h"
+#include "ble_device_manager.h"
 
 #define DBG_TAG "watch.global.data"
 #define DBG_LVL DBG_LOG
@@ -803,6 +804,118 @@ static int utest_watch_shared_preferences(int argc, char *argv[])
   return 0;
 }
 MSH_CMD_EXPORT(utest_watch_shared_preferences, "utest_watch_shared_preferences [OPTION] ...");
+
+// BLE device manager share_prefs operations
+int ble_dev_prefs_save(const bonded_devices_db_t *db)
+{
+  if (!db)
+  {
+    LOG_E("ble_dev_prefs_save: invalid parameter");
+    return -1;
+  }
+
+  watch_storage_api_lock();
+
+  share_prefs_t *pref = share_prefs_open("ble_dev", SHAREPREFS_MODE_PRIVATE);
+  if (!pref)
+  {
+    LOG_E("Failed to open share_prefs for BLE devices");
+    watch_storage_api_unlock();
+    return -2;
+  }
+
+  int ret = share_prefs_set_int(pref, "device_count", db->count);
+  if (ret < 0)
+  {
+    LOG_E("Failed to save device count");
+    share_prefs_close(pref);
+    watch_storage_api_unlock();
+    return -3;
+  }
+
+  ret = share_prefs_set_int(pref, "active_idx", db->active_device_idx);
+  if (ret < 0)
+  {
+    LOG_E("Failed to save active device index");
+    share_prefs_close(pref);
+    watch_storage_api_unlock();
+    return -4;
+  }
+
+  ret = share_prefs_set_block(pref, "devices",
+                              (void *)&db->devices,
+                              sizeof(db->devices));
+  if (ret < 0)
+  {
+    LOG_E("Failed to save device database");
+    share_prefs_close(pref);
+    watch_storage_api_unlock();
+    return -5;
+  }
+
+  share_prefs_close(pref);
+  watch_storage_api_unlock();
+
+  LOG_I("Successfully saved %d bonded devices to Flash", db->count);
+  return 0;
+}
+
+int ble_dev_prefs_load(bonded_devices_db_t *db)
+{
+  if (!db)
+  {
+    LOG_E("ble_dev_prefs_load: invalid parameter");
+    return -1;
+  }
+
+  watch_storage_api_lock();
+
+  share_prefs_t *pref = share_prefs_open("ble_dev", SHAREPREFS_MODE_PRIVATE);
+  if (!pref)
+  {
+    LOG_W("No saved BLE device data found");
+    watch_storage_api_unlock();
+    return 0;
+  }
+
+  int32_t count = share_prefs_get_int(pref, "device_count", -1);
+  if (count < 0 || count > MAX_BONDED_DEVICES)
+  {
+    LOG_W("Invalid device count in Flash: %d", count);
+    share_prefs_close(pref);
+    watch_storage_api_unlock();
+    return 0;
+  }
+
+  int32_t active_idx = share_prefs_get_int(pref, "active_idx", -1);
+  if (active_idx >= MAX_BONDED_DEVICES)
+  {
+    active_idx = 0xFF;
+  }
+
+  bonded_device_t temp_devices[MAX_BONDED_DEVICES];
+  int ret = share_prefs_get_block(pref, "devices", (void *)temp_devices,
+                                  sizeof(temp_devices));
+
+  if (ret >= 0)
+  {
+    memcpy(db->devices, temp_devices, sizeof(temp_devices));
+    db->count = count;
+    db->active_device_idx = active_idx;
+
+    LOG_I("Successfully loaded %d bonded devices from Flash", count);
+    LOG_I("Active device index: %d", active_idx);
+  }
+  else
+  {
+    LOG_W("Failed to load device database from Flash");
+  }
+
+  share_prefs_close(pref);
+  watch_storage_api_unlock();
+
+  return (ret >= 0) ? 0 : -2;
+}
 #endif
 
 // Task for shared prefernece

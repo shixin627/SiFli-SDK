@@ -2749,8 +2749,8 @@ static struct
     lv_obj_t *reset_btn;
 } menu_dev_list_ui = {0};
 
-        // Extra long press (2 seconds) for device deletion
-        #define MENU_EXTRA_LONG_PRESS_MS 2000
+        // Extra long press (1.2 seconds) for device deletion
+        #define MENU_EXTRA_LONG_PRESS_MS 800
 static lv_timer_t *menu_delete_timer = NULL;
 static uint8_t menu_delete_device_idx = 0xFF;
 static lv_obj_t *menu_delete_target_btn = NULL;
