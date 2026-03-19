@@ -20,6 +20,7 @@
 #include "bsp_board.h"
 #ifdef BSP_USING_MAHONY_AHRS
     #include "sensor_fusion.h"
+    #include "bmi270_driver.h"
 #endif
 #include "bloc_peripheral.h"
 #include "bloc_battery.h"
@@ -111,6 +112,40 @@ static Quaternion sensor_fusion_algorithm(sensor_fusion_param_t *param,
     Quaternion q =
         updateIMU(param, gxrs, gyrs, gzrs, acce->x, acce->y, acce->z);
     return q;
+}
+
+void reinitialize_ahrs_from_accel(void)
+{
+    struct bmi2_sens_axes_data *accel = bmi270_get_accel();
+    float ax = (float)accel->x;
+    float ay = (float)accel->y;
+    float az = (float)accel->z;
+
+    float norm = sqrtf(ax * ax + ay * ay + az * az);
+    if (norm < 0.01f)
+        return;
+    ax /= norm;
+    ay /= norm;
+    az /= norm;
+
+    float pitch = asinf(-ax);
+    float roll  = atan2f(ay, az);
+
+    float cr = cosf(roll * 0.5f);
+    float sr = sinf(roll * 0.5f);
+    float cp = cosf(pitch * 0.5f);
+    float sp = sinf(pitch * 0.5f);
+
+    sensor_fusion_param.q0 = cr * cp;
+    sensor_fusion_param.q1 = sr * cp;
+    sensor_fusion_param.q2 = cr * sp;
+    sensor_fusion_param.q3 = -sr * sp;
+    sensor_fusion_param.integralFBx = 0.0f;
+    sensor_fusion_param.integralFBy = 0.0f;
+    sensor_fusion_param.integralFBz = 0.0f;
+
+    LOG_I("AHRS reinitialized from accel: pitch=%.2f, roll=%.2f",
+          pitch * 57.29577951f, roll * 57.29577951f);
 }
 
 #endif

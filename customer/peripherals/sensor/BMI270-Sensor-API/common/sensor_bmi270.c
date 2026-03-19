@@ -46,12 +46,10 @@
 #endif
 #ifdef BSP_USING_MAHONY_AHRS
 #include "sensor_fusion.h"
+#include "gesture_detect.h"
 #endif
 #ifdef BSP_USING_BLOC_PERIPHERAL
 #include "bloc_peripheral.h"
-#endif
-#ifdef BSP_USING_HAND_TRACKING
-#include "gesture_detect.h"
 #endif
 
 #ifdef RT_USING_SENSOR
@@ -155,6 +153,7 @@ void bmi270_sensor_power_high_mode(void)
     bmi270_high_performance_mode();
 #ifdef BSP_USING_MAHONY_AHRS
     setSampleFrequencyAHRS(IMU_NOARMAL_SAMPLE_RATE);
+    reinitialize_ahrs_from_accel();
 #endif
     watch_sensor.imu_data.sample_rate = IMU_NOARMAL_SAMPLE_RATE;
     rt_bmi270_irq_pin_enable(1);
