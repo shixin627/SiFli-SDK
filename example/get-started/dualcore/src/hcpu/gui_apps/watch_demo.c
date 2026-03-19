@@ -65,6 +65,9 @@ static lv_timer_t *button_event_task;
 static struct rt_event btn_event;
 static lv_obj_t *mbox;
 
+static lv_obj_t *sleep_wake_overlay = NULL;
+static volatile bool sleep_fade_done = false;
+
 /*Compatible with private lib*/
 uint32_t g_mainmenu[2];
 
@@ -620,13 +623,56 @@ static void button_event_task_entry(struct _lv_timer_t *task)
     }
 }
 
+static void sleep_fade_out_ready_cb(lv_anim_t *a)
+{
+    if (!gui_is_force_close())
+    {
+        /* Sleep was cancelled (RESUME during fade-out), clean up overlay */
+        if (sleep_wake_overlay)
+        {
+            lv_obj_del(sleep_wake_overlay);
+            sleep_wake_overlay = NULL;
+        }
+        return;
+    }
+    sleep_fade_done = true;
+    lv_timer_enable(false);
+}
+
+static void create_sleep_wake_overlay(void)
+{
+    if (!sleep_wake_overlay)
+    {
+        sleep_wake_overlay = lv_obj_create(lv_layer_top());
+        lv_obj_remove_style_all(sleep_wake_overlay);
+        lv_obj_set_size(sleep_wake_overlay, LV_HOR_RES, LV_VER_RES);
+        lv_obj_set_style_bg_color(sleep_wake_overlay, lv_color_black(), LV_PART_MAIN);
+        lv_obj_clear_flag(sleep_wake_overlay, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    }
+}
+
+static void start_sleep_fade_out(void)
+{
+    sleep_fade_done = false;
+    create_sleep_wake_overlay();
+    lv_obj_set_style_bg_opa(sleep_wake_overlay, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, sleep_wake_overlay);
+    lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
+    lv_anim_set_time(&a, 150);
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)opa_anim);
+    lv_anim_set_ready_cb(&a, sleep_fade_out_ready_cb);
+    lv_anim_start(&a);
+}
+
 static void pm_event_handler(gui_pm_event_type_t event)
 {
     switch (event)
     {
     case GUI_PM_EVT_SUSPEND:
     {
-        lv_timer_enable(false);
+        start_sleep_fade_out();
         break;
     }
     case GUI_PM_EVT_RESUME:
@@ -792,8 +838,9 @@ void app_watch_entry(void *parameter)
 #ifdef BSP_USING_PM
         if (gui_is_force_close())
         {
-            if (lv_refreshing_done())
+            if (sleep_fade_done && lv_refreshing_done())
             {
+                sleep_fade_done = false;
                 LOG_I("no input:%d", lv_disp_get_inactive_time(NULL));
                 gui_suspend();
                 LOG_I("ui resume");
@@ -801,6 +848,21 @@ void app_watch_entry(void *parameter)
                 lv_obj_invalidate(lv_scr_act());
                 /* reset activity timer */
                 lv_disp_trig_activity(NULL);
+
+                /* Manual wake fade-in: bypass lv_anim to avoid stale elapsed time issues */
+                lv_timer_handler(); /* warm-up: flush stale timer timestamps */
+                if (sleep_wake_overlay)
+                {
+                    for (int32_t step = 1; step <= 20; step++)
+                    {
+                        lv_opa_t opa = (lv_opa_t)(LV_OPA_COVER - LV_OPA_COVER * step / 20);
+                        lv_obj_set_style_bg_opa(sleep_wake_overlay, opa, LV_PART_MAIN);
+                        lv_timer_handler();
+                        rt_thread_mdelay(10);
+                    }
+                    lv_obj_del(sleep_wake_overlay);
+                    sleep_wake_overlay = NULL;
+                }
             }
             else if (ms > 0)
             {
@@ -810,6 +872,15 @@ void app_watch_entry(void *parameter)
         else
 #endif /* BSP_USING_PM */
         {
+#ifdef BSP_USING_PM
+            /* Cancelled sleep: overlay stuck at full opacity, clean it up */
+            if (sleep_wake_overlay && sleep_fade_done)
+            {
+                sleep_fade_done = false;
+                lv_obj_del(sleep_wake_overlay);
+                sleep_wake_overlay = NULL;
+            }
+#endif /* BSP_USING_PM */
             // EventStartB(0);
             if (ms > 0)
                 rt_thread_mdelay(ms); /* Just to let the system breathe */
