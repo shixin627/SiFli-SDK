@@ -10,6 +10,7 @@ extern "C"
 
     void tap_detected_callback(uint8_t tap_mode);
     void calibrate_global_attitude(void);
+    void reinitialize_ahrs_from_accel(void);
     extern void process_ppg_rawdata(uint32_t rawdata);
     extern int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData);
 

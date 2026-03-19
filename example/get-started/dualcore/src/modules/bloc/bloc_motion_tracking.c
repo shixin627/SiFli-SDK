@@ -372,7 +372,7 @@ static float total_yaw_energy = 0;
 static uint8_t scroll_segment_count = 1;
 static uint16_t page_range = 100; // 每個頁面的範圍
 static float total_moving_distance = 1100.0f;
-static uint8_t control_angle = 80; // 預設控制角度為30度
+static uint8_t control_angle = 60; // 預設控制角度為30度
 float get_total_moving_distance(void)
 {
     return total_moving_distance;
@@ -469,8 +469,11 @@ getTargetWaveformFromSlidingWindow(gesture_dataset_t *dataset,
     }
 }
 
+static int cooldown_period = 0;
+static rt_tick_t wait_start_time = 0;
+extern bool imu_data_collection;
 static void reset_gesture_state(gesture_dataset_t *dataset,
-                                uint32_t current_time, uint8_t code)
+                                uint32_t current_time,gesture_type_t type, uint8_t code)
 {
     if (dataset->gesture_sample_count == 0)
     {
@@ -479,8 +482,23 @@ static void reset_gesture_state(gesture_dataset_t *dataset,
     dataset->gesture_started = false;
     dataset->gesture_ended = false;
     dataset->gesture_sample_count = 0;
-    dataset->wait_start_time = current_time;
-    LOG_D("Reset gesture state, code: %d", code);
+    wait_start_time = current_time;
+    if (imu_data_collection)
+    {
+        cooldown_period = 600;
+    }
+    else
+    {
+        if (type == GESTURE_TYPE_RELEASE)
+        {
+            cooldown_period = GESTURE_COLLECTION_COOLDOWN_PERIOD_MS;
+        }
+        else
+        {
+            cooldown_period = GESTURE_TAP_COOLDOWN_PERIOD_MS;
+        }
+    }
+    // LOG_D("Reset gesture state, code: %d,%d,%d", code,cooldown_period, current_time);
 }
 
 static uint16_t waveform_rtc_millisecond = 0;
@@ -694,7 +712,6 @@ static void notify_gesture_dataset_hcpu(uint32_t timestamp, int count,
 /**
  * @brief Main gesture event capture function for HCPU
  */
-extern bool imu_data_collection;
 static uint32_t prev_ppg_rawdata[3] = {0};
 static bool open_ppg_chacked = false;
 void set_open_ppg_chacked(bool checked)
@@ -705,6 +722,7 @@ bool get_open_ppg_chacked(void)
 {
     return open_ppg_chacked;
 }
+
 extern int get_gesture_recognition_threshold(void);
 static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                        Vector3 *linear_acce, Vector3 *gyro,
@@ -715,22 +733,6 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
 {
     rt_tick_t current_time = rt_tick_get_millisecond();
 
-    int cooldown_period = 0;
-    if (imu_data_collection)
-    {
-        cooldown_period = 600;
-    }
-    else
-    {
-        if (type == GESTURE_TYPE_RELEASE)
-        {
-            cooldown_period = GESTURE_COLLECTION_COOLDOWN_PERIOD_MS;
-        }
-        else
-        {
-            cooldown_period = GESTURE_TAP_COOLDOWN_PERIOD_MS;
-        }
-    }
     uint32_t ppg_diff_rawdata =
         abs((int32_t)ppg - (int32_t)prev_ppg_rawdata[2]);
 
@@ -739,7 +741,7 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
         prev_ppg_rawdata[i] = prev_ppg_rawdata[i + 1];
     }
     prev_ppg_rawdata[2] = ppg;
-    if ((current_time - dataset->wait_start_time) < cooldown_period)
+    if ((current_time - wait_start_time) < cooldown_period)
     {
         return;
     }
@@ -756,12 +758,12 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     // }
     else if (state->if_watchface_visible == false && !imu_data_collection)
     {
-        reset_gesture_state(dataset, current_time, 2);
+        reset_gesture_state(dataset, current_time,type, 2);
         return;
     }
     else if (state->gyro_lock_status && !imu_data_collection)
     {
-        reset_gesture_state(dataset, current_time, 3);
+        reset_gesture_state(dataset, current_time,type, 3);
         return;
     }
 
@@ -835,7 +837,7 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                                 targetWave_algo);
                 }
             }
-            reset_gesture_state(dataset, current_time, 7);
+            reset_gesture_state(dataset, current_time,type, 7);
         }
     }
 }

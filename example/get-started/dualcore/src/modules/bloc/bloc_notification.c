@@ -483,15 +483,17 @@ void interact_with_notification(notification_t *notification)
         need_wakeup = true;
         rt_thread_mdelay(100);
     }
-    if (!check_if_speech_interact() && !app_control_get_mouse_mode() &&
-        !need_wakeup)
-    {
-        navigate_notification_info(notification);
-    }
-    else if (need_wakeup)
-    {
-        navigate_notification_info(notification);
-    }
+    // Notification info is now shown via dial header (5s then red dot),
+    // no longer navigate to the notification app popup.
+    // if (!check_if_speech_interact() && !app_control_get_mouse_mode() &&
+    //     !need_wakeup)
+    // {
+    //     navigate_notification_info(notification);
+    // }
+    // else if (need_wakeup)
+    // {
+    //     navigate_notification_info(notification);
+    // }
     // if (notification->calling)
     // {
     //     motor_pattern_calling();
