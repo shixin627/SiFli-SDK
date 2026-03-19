@@ -1698,7 +1698,9 @@ static void refresh_new_message_widget(void)
 		lv_obj_clear_flag(new_notification_widgets.icon, LV_OBJ_FLAG_HIDDEN);
 		have_message_now = true;
 	}
-	handle_dial_header_new_notification();
+	/* handle_dial_header_new_notification is called directly by ui_handler
+	   via LVGL_MSG_TYPE_NOTIFICATION; it has its own count check to filter
+	   out refreshes that are not truly new notifications. */
 }
 
 lv_obj_t *lv_message_widget_builder(lv_obj_t *parent)
@@ -1777,7 +1779,82 @@ lv_obj_t *lv_message_widget_builder(lv_obj_t *parent)
 static lv_obj_t *dial_header_bg = NULL;
 static lv_obj_t *dial_header_title = NULL;
 static lv_obj_t *dial_header_img = NULL;
+static lv_obj_t *dial_header_red_dot = NULL;
 static bool dial_header_music_active = false;
+static lv_timer_t *dial_header_shrink_timer = NULL;
+static bool dial_header_was_music_before_notif = false;
+
+static void dial_header_fadeout_ready_cb(lv_anim_t *anim)
+{
+	lv_obj_t *obj = (lv_obj_t *)anim->var;
+	if (lv_obj_is_valid(obj))
+	{
+		lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+		// lv_obj_set_style_opa(obj, LV_OPA_COVER, 0);
+		lv_obj_set_style_img_opa(dial_header_img, LV_OPA_COVER, 0);
+		lv_obj_set_style_text_opa(dial_header_title, LV_OPA_COVER, 0);
+	}
+	if (lv_obj_is_valid(dial_header_red_dot) &&
+	    notification_center_get_info_count() > 0)
+		lv_obj_clear_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void dial_header_fadeout_exec_cb(void *obj, int32_t value)
+{
+	// lv_obj_set_style_opa((lv_obj_t *)obj, value, 0);
+	lv_obj_set_style_img_opa(dial_header_img, value, 0);
+	lv_obj_set_style_text_opa(dial_header_title, value, 0);
+}
+
+static void dial_header_show_as_red_dot(void)
+{
+	if (lv_obj_is_valid(dial_header_bg))
+	{
+		lv_anim_t a;
+		lv_anim_init(&a);
+		lv_anim_set_var(&a, dial_header_bg);
+		lv_anim_set_values(&a, LV_OPA_COVER, LV_OPA_TRANSP);
+		lv_anim_set_exec_cb(&a, dial_header_fadeout_exec_cb);
+		lv_anim_set_time(&a, 500);
+		lv_anim_set_ready_cb(&a, dial_header_fadeout_ready_cb);
+		lv_anim_start(&a);
+	}
+}
+
+static void dial_header_restore_music(void)
+{
+	if (!lv_obj_is_valid(dial_header_bg))
+		return;
+	char *media_title = get_media_title();
+	if (media_title && media_title[0] != '\0')
+	{
+		dial_header_music_active = true;
+		lv_obj_clear_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
+		lv_label_set_text(dial_header_title, media_title);
+		lv_img_set_src(dial_header_img, MEDIA_HEADER_IMG);
+		lv_obj_clear_flag(dial_header_img, LV_OBJ_FLAG_HIDDEN);
+	}
+	else
+	{
+		dial_header_music_active = false;
+		dial_header_show_as_red_dot();
+	}
+}
+
+static void dial_header_shrink_timer_cb(lv_timer_t *timer)
+{
+	dial_header_shrink_timer = NULL;
+	if (dial_header_was_music_before_notif)
+	{
+		dial_header_was_music_before_notif = false;
+		dial_header_restore_music();
+	}
+	else
+	{
+		dial_header_show_as_red_dot();
+	}
+	/* Timer auto-deletes after repeat_count reaches 0 */
+}
 
 static void dial_header_show_notification(void)
 {
@@ -1790,6 +1867,9 @@ static void dial_header_show_notification(void)
 		LOG_D("Dial header show notification: %s", notification->title);
 		if (notification)
 		{
+			/* Hide red dot when showing full header */
+			if (lv_obj_is_valid(dial_header_red_dot))
+				lv_obj_add_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);
 			lv_obj_clear_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
 			lv_label_set_text(dial_header_title, notification->title);
 			lv_img_set_src(dial_header_img, icon_list[notification->type]);
@@ -1811,13 +1891,31 @@ static void handle_dial_header_media_title(void *param)
 	if (media_title_text && media_title_text[0] != '\0')
 	{
 		dial_header_music_active = true;
-		lv_obj_clear_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
-		lv_label_set_text(dial_header_title, media_title_text);
+		/* Hide red dot when music header is active */
+		if (lv_obj_is_valid(dial_header_red_dot))
+			lv_obj_add_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);
+		/* Only update header if not currently showing a notification with timer */
+		if (!dial_header_shrink_timer)
+		{
+			lv_obj_clear_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
+			lv_label_set_text(dial_header_title, media_title_text);
+		}
 	}
 	else
 	{
 		dial_header_music_active = false;
-		dial_header_show_notification();
+		if (!dial_header_shrink_timer)
+		{
+			dial_header_show_notification();
+			/* Start 5-second timer to shrink to red dot */
+			if (notification_center_get_info_count() > 0)
+			{
+				dial_header_was_music_before_notif = false;
+				dial_header_shrink_timer =
+				    lv_timer_create(dial_header_shrink_timer_cb, 5000, NULL);
+				lv_timer_set_repeat_count(dial_header_shrink_timer, 1);
+			}
+		}
 	}
 }
 
@@ -1826,6 +1924,9 @@ static void handle_dial_header_media_img(void *param)
 	if (!lv_obj_is_valid(dial_header_img))
 		return;
 	if (!dial_header_music_active)
+		return;
+	/* Don't update image while notification is displayed */
+	if (dial_header_shrink_timer)
 		return;
 	char *img_data = (char *)param;
 	if (img_data && img_data[0] != '\0')
@@ -1842,13 +1943,30 @@ static void handle_dial_header_media_img(void *param)
 	}
 }
 
+static uint32_t dial_header_prev_notif_count = 0;
 static void handle_dial_header_new_notification(void)
 {
 	if (!lv_obj_is_valid(dial_header_bg))
 		return;
-	if (dial_header_music_active)
+	/* Only react when notification count actually increased
+	   (skip refreshes triggered by music operations, etc.) */
+	uint32_t current_count = notification_center_get_info_count();
+	if (current_count <= dial_header_prev_notif_count)
+	{
+		dial_header_prev_notif_count = current_count;
 		return;
+	}
+	dial_header_prev_notif_count = current_count;
+	/* Remember if music was playing before this notification */
+	dial_header_was_music_before_notif = dial_header_music_active;
+	/* Always show notification, even if music is active */
 	dial_header_show_notification();
+	/* Start or restart 5-second shrink timer */
+	if (dial_header_shrink_timer)
+		lv_timer_del(dial_header_shrink_timer);
+	dial_header_shrink_timer =
+	    lv_timer_create(dial_header_shrink_timer_cb, 5000, NULL);
+	lv_timer_set_repeat_count(dial_header_shrink_timer, 1);
 }
 
 void lv_dial_header_builder(lv_obj_t *parent)
@@ -1897,8 +2015,22 @@ void lv_dial_header_builder(lv_obj_t *parent)
 	lv_obj_align_to(dial_header_title, dial_header_img_bg,
 	                LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
 
+	/* Create red dot indicator (shown after notification header shrinks) */
+	dial_header_red_dot = lv_img_create(parent);
+	// lv_obj_set_size(dial_header_red_dot, 20, 20);
+	// lv_obj_set_style_bg_color(dial_header_red_dot, lv_color_hex(0xCC5252),
+	//                           LV_PART_MAIN | LV_STATE_DEFAULT);
+	// lv_obj_set_style_radius(dial_header_red_dot, 100,
+	//                         LV_PART_MAIN | LV_STATE_DEFAULT);
+	// lv_obj_set_style_border_width(dial_header_red_dot, 0, 0);
+	lv_img_set_src(dial_header_red_dot, NOTIFICATION_IMG);
+	lv_obj_align(dial_header_red_dot, LV_ALIGN_TOP_MID, 0, 5);
+	lv_obj_add_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);
+
 	/* Show initial state based on current music / notification status */
 	dial_header_music_active = false;
+	dial_header_shrink_timer = NULL;
+	dial_header_was_music_before_notif = false;
 	char *media_title = get_media_title();
 	if (media_title && media_title[0] != '\0')
 	{
@@ -1910,7 +2042,10 @@ void lv_dial_header_builder(lv_obj_t *parent)
 	}
 	else
 	{
-		dial_header_show_notification();
+		/* If there are notifications but no music, show as red dot
+		   (notification header already displayed and shrunk) */
+		if (notification_center_get_info_count() > 0)
+			dial_header_show_as_red_dot();
 	}
 }
 
@@ -1926,6 +2061,11 @@ void dial_media_header_init(void)
 
 void dial_media_header_deinit(void)
 {
+	if (dial_header_shrink_timer)
+	{
+		lv_timer_del(dial_header_shrink_timer);
+		dial_header_shrink_timer = NULL;
+	}
 	if (lvgl_msg_handler.handle_dial_media_header_title ==
 	    handle_dial_header_media_title)
 		lvgl_msg_handler.handle_dial_media_header_title = NULL;

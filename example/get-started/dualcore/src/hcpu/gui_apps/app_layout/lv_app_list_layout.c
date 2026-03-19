@@ -102,7 +102,7 @@
 
 #define DOT_SMOLL_PROPORTION (0.6)
 #define DOT_BIG_PROPORTION (1.3)
-#define DOT_BG_SIZE (80 * DOT_BIG_PROPORTION) + 2
+#define DOT_BG_SIZE (100 * DOT_BIG_PROPORTION) + 2
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -125,6 +125,7 @@ LV_IMG_DECLARE(message_bar);
 // LV_IMG_DECLARE(small_img_logo_matting);
 LV_IMG_DECLARE(select_prompt);
 LV_IMG_DECLARE(icon_release);
+LV_IMG_DECLARE(app_icon_frame);
 // LV_IMG_DECLARE(img_messages);
 
 typedef struct
@@ -351,6 +352,7 @@ static void animate_label_vertical(lv_obj_t *obj, bool move_up)
     lv_anim_start(&a);
 }
 
+lv_obj_t *app_icon_shadow[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)];
 static bool is_indicator_dots_visible = true;
 static uint16_t selected_item_index = ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - 1;
 static uint16_t last_zoom[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)] = {0};
@@ -456,11 +458,12 @@ static void update_indicator_dots_position(int input_value)
                         (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * ratio));
         if (abs((int)zoom - (int)last_zoom[i]) > 5)
         {
+            lv_img_set_zoom(app_icon_shadow[i], zoom);
             lv_img_set_zoom(p_app_list_layout->indicator_dots[i], zoom);
             last_zoom[i] = zoom;
         }
         lv_obj_center(p_app_list_layout->indicator_dots[i]);
-        dot_x -= (dot_size + 14) / 2;
+        dot_x -= (dot_size + 30) / 2;
         dot_y -= dot_size / 2;
 
         lv_obj_set_pos(p_app_list_layout->indicator_dots_bg[i], dot_x, dot_y);
@@ -481,6 +484,11 @@ static void create_indicator_dots(lv_obj_t *parent)
         lv_obj_set_style_bg_opa(dot_bg, LV_OPA_0, 0);
         lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
+
+        app_icon_shadow[i] = lv_img_create(dot_bg);
+        lv_img_set_src(app_icon_shadow[i], &app_icon_frame);
+        lv_obj_align(app_icon_shadow[i], LV_ALIGN_CENTER, 0, 0);
+        lv_obj_add_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
 
         lv_obj_t *dot = lv_img_create(dot_bg);
         // lv_obj_set_size(dot, 100, 100);
@@ -953,6 +961,8 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 {
                     lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
                 }
+
+                lv_obj_clear_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
                 // 將選中項的文本標籤放大一個字號
                 // lv_obj_set_style_text_font(
                 //     app_label[i], LV_EXT_FONT_GET(get_system_font_size(1)),
@@ -962,6 +972,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             {
                 // lv_img_set_zoom(p_app_list_layout->indicator_dots[i],
                 //                 256 * 0.75);
+                lv_obj_add_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
                 // 將非選中項的文本標籤恢復為正常字號

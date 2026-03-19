@@ -372,7 +372,7 @@ static float total_yaw_energy = 0;
 static uint8_t scroll_segment_count = 1;
 static uint16_t page_range = 100; // 每個頁面的範圍
 static float total_moving_distance = 1100.0f;
-static uint8_t control_angle = 80; // 預設控制角度為30度
+static uint8_t control_angle = 60; // 預設控制角度為30度
 float get_total_moving_distance(void)
 {
     return total_moving_distance;

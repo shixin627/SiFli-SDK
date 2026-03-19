@@ -159,6 +159,7 @@ LV_IMG_DECLARE(img_mail);
 // LV_IMG_DECLARE(gaus_clock5_bg);
 LV_IMG_DECLARE(gaus_clock4_bg);
 LV_IMG_DECLARE(gaus_clock1_bg);
+LV_IMG_DECLARE(notification_img);
 
 #define BTN_FLASHLIGHT btn_flashlight
 #define BG_LODING ((const void *)&bg_loading)
@@ -230,6 +231,7 @@ LV_IMG_DECLARE(gaus_clock1_bg);
 #define FIND_PHONE ((const void *)&find_phone)
 #define FLISHLIGHT_ICON ((const void *)&flashlight_icon)
 #define IMG_MAIL ((const void *)&img_mail)
+#define NOTIFICATION_IMG ((const void *)&notification_img)
 // #define GAUS_CLOCK5_BG (&gaus_clock5_bg)
 #define GAUS_CLOCK5_BG "/assets/gaus_images/gaus_clock5_bg.bin"
 #define GAUS_CLOCK4_BG (&gaus_clock4_bg)
