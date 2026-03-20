@@ -473,7 +473,8 @@ static int cooldown_period = 0;
 static rt_tick_t wait_start_time = 0;
 extern bool imu_data_collection;
 static void reset_gesture_state(gesture_dataset_t *dataset,
-                                uint32_t current_time,gesture_type_t type, uint8_t code)
+                                uint32_t current_time, gesture_type_t type,
+                                uint8_t code)
 {
     if (dataset->gesture_sample_count == 0)
     {
@@ -498,7 +499,8 @@ static void reset_gesture_state(gesture_dataset_t *dataset,
             cooldown_period = GESTURE_TAP_COOLDOWN_PERIOD_MS;
         }
     }
-    // LOG_D("Reset gesture state, code: %d,%d,%d", code,cooldown_period, current_time);
+    // LOG_D("Reset gesture state, code: %d,%d,%d", code,cooldown_period,
+    // current_time);
 }
 
 static uint16_t waveform_rtc_millisecond = 0;
@@ -758,12 +760,12 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     // }
     else if (state->if_watchface_visible == false && !imu_data_collection)
     {
-        reset_gesture_state(dataset, current_time,type, 2);
+        reset_gesture_state(dataset, current_time, type, 2);
         return;
     }
     else if (state->gyro_lock_status && !imu_data_collection)
     {
-        reset_gesture_state(dataset, current_time,type, 3);
+        reset_gesture_state(dataset, current_time, type, 3);
         return;
     }
 
@@ -837,7 +839,7 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                                 targetWave_algo);
                 }
             }
-            reset_gesture_state(dataset, current_time,type, 7);
+            reset_gesture_state(dataset, current_time, type, 7);
         }
     }
 }
@@ -1720,6 +1722,7 @@ void set_stop_mouse_move(bool stop)
     stop_mouse_move = stop;
 }
 
+static uint8_t scroll_log_count = 0;
 extern bool get_is_open_app_list_ai(void);
 extern uint8_t get_message_page_count(void);
 static euler_angle_t pevr_befor_switch_widget_delta_angle;
@@ -1825,9 +1828,7 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                     float diff_delta_yaw =
                         fabs(delta_senor_angle.yaw - prev_delta_yaw);
                     // navigation_bar_control_with_gyro(&watch_sensor.imu_data.gyro);
-                    // LOG_D("watch_sensor.imu_data.gyro
-                    // x:%0.5f,y:%0.5f,z:%0.5f",
-                    // watch_sensor.imu_data.gyro.x,watch_sensor.imu_data.gyro.y,watch_sensor.imu_data.gyro.z);
+                    // LOG_D("watch_sensor.imu_data.gyrox:%0.5f,y:%0.5f,z:%0.5f",watch_sensor.imu_data.gyro.x,watch_sensor.imu_data.gyro.y,watch_sensor.imu_data.gyro.z);
                     if (!paused_control_with_arm) //&&
                                                   // fabs(watch_sensor.imu_data.gyro.x)
                                                   //< 20
@@ -1836,7 +1837,7 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                         if (!get_enable_tap_and_hold() ||
                             peripheral_provider.get_tap_status())
                         {
-                            // if (diff_delta_roll < diff_delta_yaw)//
+                            if (diff_delta_roll < diff_delta_yaw * 0.8) //
                             // diff_delta_roll < diff_delta_yaw * 0.8 &&
                             // diff_delta_roll < 0.3f
                             {
