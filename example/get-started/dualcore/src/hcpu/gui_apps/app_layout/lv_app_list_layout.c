@@ -715,7 +715,7 @@ static void stop_all_animations_and_reset(void)
         if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
         {
             lv_anim_del(app_label[i], (lv_anim_exec_xcb_t)set_label_y);
-            lv_obj_align(app_label[i], LV_ALIGN_CENTER, 0, 0);
+            lv_obj_align(app_label[i], LV_ALIGN_CENTER, -20, 0);
             lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
         }
 
@@ -985,7 +985,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 if (abs(distance_from_the_center) > 1 || true)
                 {
                     lv_obj_align(app_icon[i], LV_ALIGN_RIGHT_MID, -25, 0);
-                    lv_obj_align(app_label[i], LV_ALIGN_CENTER, 0, 0);
+                    lv_obj_align(app_label[i], LV_ALIGN_CENTER, -20, 0);
                 }
                 // if (APP_LIST_ITEMS_DEFINITION[i] != app_id_note &&
                 //     APP_LIST_ITEMS_DEFINITION[i] != app_id_ai)
@@ -1090,14 +1090,14 @@ void open_selected_widget(bool need_widget_img_anima)
             if (lv_obj_is_valid(app_label[selected_item_index - 1]))
             {
                 lv_obj_align(app_label[selected_item_index - 1],
-                             LV_ALIGN_CENTER, 0, -30);
+                             LV_ALIGN_CENTER, -20, -30);
             }
         }
         if (selected_item_index != ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - 1)
         {
             lv_obj_align(app_icon[selected_item_index + 1], LV_ALIGN_RIGHT_MID,
                          -20, 30);
-            lv_obj_align(app_label[selected_item_index + 1], LV_ALIGN_CENTER, 0,
+            lv_obj_align(app_label[selected_item_index + 1], LV_ALIGN_CENTER, -30,
                          30);
         }
     }
@@ -1866,8 +1866,8 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
         app_label[i] = lv_label_create(item);
         lv_label_set_text(app_label[i], app_list_items[i].title);
         lv_obj_set_style_text_font(app_label[i],
-                                   LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-        lv_obj_align(app_label[i], LV_ALIGN_CENTER, 0, 0);
+                                   LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+        lv_obj_align(app_label[i], LV_ALIGN_CENTER, -20, 0);
         if (APP_LIST_ITEMS_DEFINITION[i] == app_id_note ||
             APP_LIST_ITEMS_DEFINITION[i] == app_id_ai)
         {

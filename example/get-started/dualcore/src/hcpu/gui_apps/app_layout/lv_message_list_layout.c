@@ -73,8 +73,8 @@
 #include <rtdbg.h>
 
 #define ENABLE_CURVE_LIST 1
-#define LIST_MESSAGE_WIDTH (420)
-#define LIST_MESSAGE_HEIGHT (260)
+#define LIST_MESSAGE_WIDTH (440)
+#define LIST_MESSAGE_HEIGHT (250)
 #define LIST_OPEN_APP_LIST_WIDTH (70)
 #define LIST_OPEN_APP_LIST_HEIGHT (70)
 #define LIST_MESSAGE_SPACING (40)
@@ -166,7 +166,11 @@ const char *const icon_list[NOTIFICATION_APP_QUANTITY] = {
 	ICON_DINGTALK,
 	ICON_GOOGLE_CHAT,
 	ICON_DISCORD,
-	ICON_YOUTUBE};
+	ICON_YOUTUBE,
+	ICON_TIKTOK,
+	ICON_TELEGRAM,
+	ICON_TWITCH
+};
 
 static bool open_shock = false;
 static bool open_action_flag = true;
@@ -195,10 +199,7 @@ static lv_obj_t *message_page = NULL;
 #define DRAG_THRESHOLD 10
 #define MAX_DRAG_DISTANCE (LIST_MESSAGE_WIDTH / 6)
 
-// 背景色塊相關變數
-static lv_obj_t *left_background = NULL;
-static lv_obj_t *right_background = NULL;
-static lv_obj_t *prohibit_icon = NULL;
+// 背景色塊相關變數（已移除）
 
 // 拖拽計時相關變數
 static lv_timer_t *drag_timer = NULL;
@@ -301,7 +302,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 				// }
 				if (left_hand_mode)
 				{
-					x_trans = res.i - 977;
+					x_trans = res.i - 985;
 				}
 				else
 				{
@@ -448,10 +449,10 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 		if (i == selected_message_index && button_selection_index == 1)
 		{
 			// Set the background color to blue
-			lv_obj_set_style_bg_color(child, lv_color_hex(0x000000), 0);
-			lv_obj_set_style_radius(child, 50, LV_PART_MAIN);
-			lv_obj_set_style_bg_opa(child, LV_OPA_COVER, 0);
-			lv_obj_set_style_border_color(child, lv_color_hex(0x4F4F4F), LV_PART_MAIN);
+			lv_obj_set_style_bg_color(child, lv_color_hex(0xFFFFFF), 0);
+			lv_obj_set_style_radius(child, 80, LV_PART_MAIN);
+			// lv_obj_set_style_bg_opa(child, LV_OPA_COVER, 0);
+			lv_obj_set_style_border_color(child, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
 			lv_obj_set_style_border_width(child, 2, LV_PART_MAIN); // 設置外框寬度為2
 		}
 		else
@@ -459,7 +460,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 			// Set the background color to original color
 			lv_obj_set_style_border_width(child, 1, LV_PART_MAIN); // 設置外框寬度為0
 			// lv_obj_set_style_bg_color(child, lv_color_hex(0x000000), 0);
-			lv_obj_set_style_bg_opa(child, LV_OPA_COVER, 0);
+			// lv_obj_set_style_bg_opa(child, LV_OPA_COVER, 0);
 		}
 	}
 
@@ -636,121 +637,31 @@ static void list_message_click_event_cb(lv_event_t *evt)
 // 創建背景色塊
 static void create_background_blocks(lv_obj_t *parent)
 {
-	// 左側藍色背景
-	left_background = lv_obj_create(parent);
-	lv_obj_set_size(left_background, MAX_DRAG_DISTANCE + 90, LIST_MESSAGE_HEIGHT);
-	lv_obj_set_style_bg_color(left_background, lv_color_hex(0xB42525), 0); // 紅色 FF3333
-	lv_obj_set_style_bg_opa(left_background, LV_OPA_100, 0);
-	lv_obj_set_style_radius(left_background, 50, LV_PART_MAIN);
-	lv_obj_add_flag(left_background, LV_OBJ_FLAG_HIDDEN);
-	lv_obj_clear_flag(left_background, LV_OBJ_FLAG_CLICKABLE);
-	lv_obj_clear_flag(left_background, LV_OBJ_FLAG_SCROLLABLE);
-	lv_obj_t *trash_icon = lv_img_create(left_background);
-	lv_img_set_src(trash_icon, ICON_TRASH);
-	lv_obj_align(trash_icon, LV_ALIGN_LEFT_MID, 10, 0);
-
-	// 右側紅色背景
-	right_background = lv_obj_create(parent);
-	lv_obj_set_size(right_background, MAX_DRAG_DISTANCE + 90, LIST_MESSAGE_HEIGHT);
-	lv_obj_set_style_bg_color(right_background, lv_color_hex(0x0041A4), 0); // 藍色 0066FF
-	lv_obj_set_style_bg_opa(right_background, LV_OPA_100, 0);
-	lv_obj_set_style_radius(right_background, 50, LV_PART_MAIN);
-	lv_obj_add_flag(right_background, LV_OBJ_FLAG_HIDDEN);
-	lv_obj_clear_flag(right_background, LV_OBJ_FLAG_CLICKABLE);
-	lv_obj_clear_flag(right_background, LV_OBJ_FLAG_SCROLLABLE);
-	lv_obj_t *send_icon = lv_img_create(right_background);
-	lv_img_set_src(send_icon, ICON_SAND);
-	lv_obj_align(send_icon, LV_ALIGN_RIGHT_MID, -10, 0);
-	prohibit_icon = lv_img_create(right_background);
-	lv_img_set_src(prohibit_icon, ICON_PROHIBIT);
-	lv_obj_align(prohibit_icon, LV_ALIGN_RIGHT_MID, -13, -6);
+	// 背景色塊已移除，不再需要顯示拖拽背景
 }
 
-// 更新背景色塊位置和可見性
+// 更新背景色塊位置和可見性（已移除背景色塊顯示）
 static void update_background_blocks(lv_obj_t *obj, lv_coord_t diff)
 {
-	if (!left_background || !right_background)
-		return;
-
-	if (diff > DRAG_THRESHOLD) // 向右拖拽，顯示左側藍色
-	{
-		lv_coord_t left_x = -((LIST_MESSAGE_WIDTH / 2) - 84);
-		lv_obj_align(left_background, LV_ALIGN_CENTER, left_x, 0);
-		lv_obj_set_width(left_background, MAX_DRAG_DISTANCE + 90); // 固定為最大寬度
-		lv_obj_clear_flag(left_background, LV_OBJ_FLAG_HIDDEN);
-		lv_obj_add_flag(right_background, LV_OBJ_FLAG_HIDDEN);
-		if (diff >= (MAX_DRAG_DISTANCE)-20) // 超過一半，變亮
-		{
-			lv_obj_set_style_bg_color(left_background, lv_color_hex(0x8F3738), 0); // 紅色 0x8F3738
-		}
-		else
-		{
-			lv_obj_set_style_bg_color(left_background, lv_color_hex(0x5F2627), 0); // 紅色 0x5F2627
-		}
-	}
-	else if (diff < -DRAG_THRESHOLD) // 向左拖拽，顯示右側紅色
-	{
-		lv_coord_t right_x = (LIST_MESSAGE_WIDTH / 2) - 84;
-		lv_obj_align(right_background, LV_ALIGN_CENTER, right_x, 0);
-		lv_obj_set_width(right_background, MAX_DRAG_DISTANCE + 90); // 固定為最大寬度
-		lv_obj_clear_flag(right_background, LV_OBJ_FLAG_HIDDEN);
-		lv_obj_add_flag(left_background, LV_OBJ_FLAG_HIDDEN);
-		if (!selection_notification->can_reply)
-		{
-			lv_obj_set_style_bg_color(right_background, lv_color_hex(0x5B5B5B), 0); // 灰色 0x8F3738
-			if (lv_obj_has_flag(prohibit_icon, LV_OBJ_FLAG_HIDDEN))
-				lv_obj_clear_flag(prohibit_icon, LV_OBJ_FLAG_HIDDEN);
-		}
-		else
-		{
-			if (!lv_obj_has_flag(prohibit_icon, LV_OBJ_FLAG_HIDDEN))
-				lv_obj_add_flag(prohibit_icon, LV_OBJ_FLAG_HIDDEN);
-			if (LV_ABS(diff) >= (MAX_DRAG_DISTANCE)-20) // 超過一半，變亮
-			{
-				lv_obj_set_style_bg_color(right_background, lv_color_hex(0x3A5978), 0); // 藍色 0x375A8F
-			}
-			else
-			{
-				lv_obj_set_style_bg_color(right_background, lv_color_hex(0x324C67), 0); // 藍色 0x263D5F
-			}
-		}
-	}
-	else // 在閾值內，隱藏背景
-	{
-		lv_obj_add_flag(left_background, LV_OBJ_FLAG_HIDDEN);
-		lv_obj_add_flag(right_background, LV_OBJ_FLAG_HIDDEN);
-	}
 }
 
-// 隱藏背景色塊
+// 隱藏背景色塊（已移除背景色塊）
 static void hide_background_blocks(void)
 {
-	if (left_background && !lv_obj_has_flag(left_background, LV_OBJ_FLAG_HIDDEN))
-		lv_obj_add_flag(left_background, LV_OBJ_FLAG_HIDDEN);
-	if (right_background && !lv_obj_has_flag(right_background, LV_OBJ_FLAG_HIDDEN))
-		lv_obj_add_flag(right_background, LV_OBJ_FLAG_HIDDEN);
 }
 
 static bool new_touching_obj = true;
 extern void remove_notification_by_id(const char *id);
-static bool is_reply = false;
 // 拖拽計時器回調函數
 static void drag_timer_cb(lv_timer_t *timer)
 {
 	if (is_dragging && dragging_widget && selected_message->coords.y1 == 103)
 	{
-		// 執行回覆動作
+		// 執行刪除動作
 		new_touching_obj = false;
 		motor_pattern_scrolling_app();
 		notification_t *notification = get_notification_in_reversed_ui(selected_message_index);
-		if (is_reply)
-		{
-			list_message_reply(notification);
-		}
-		else
-		{
-			remove_notification_by_id(notification->id);
-		}
+		remove_notification_by_id(notification->id);
 
 		drag_action_executed = true;
 
@@ -764,7 +675,7 @@ static void drag_timer_cb(lv_timer_t *timer)
 }
 
 // 開始拖拽計時器
-static void start_drag_timer(bool from_left)
+static void start_drag_timer(void)
 {
 	// 清除舊的計時器
 	if (drag_timer)
@@ -772,8 +683,7 @@ static void start_drag_timer(bool from_left)
 		lv_timer_del(drag_timer);
 		drag_timer = NULL;
 	}
-	// 創建新的計時器，500ms後執行
-	is_reply = !from_left;
+	// 創建新的計時器，200ms後執行刪除
 	drag_timer = lv_timer_create(drag_timer_cb, 200, NULL);
 	lv_timer_set_repeat_count(drag_timer, 1); // 只執行一次
 	drag_action_executed = false;
@@ -841,82 +751,14 @@ static void animate_to_position(lv_obj_t *obj, lv_coord_t target_x, bool end_mot
 	lv_anim_start(&a);
 }
 
-// 通過p_y數值觸發拖拽動作
+// 重力拖拽已移除，僅保留手指右拖拽
 static uint8_t gesture_control = 1;
-static void message_trigger_drag_by_py(int p_y)
-{
-	lv_coord_t diff = 0;
-	bool should_trigger = false;
-
-	// p_y 0~116 向右拖拽 (顯示紅色背景，刪除功能)
-	if (p_y >= 0 && p_y < 116)
-	{
-		// 將 0~116 映射到 DRAG_THRESHOLD~MAX_DRAG_DISTANCE
-		diff = DRAG_THRESHOLD + (MAX_DRAG_DISTANCE - DRAG_THRESHOLD) * (116 - p_y) / 116;
-		should_trigger = true;
-	}
-	// p_y 350~466 向左拖拽 (顯示藍色背景，回覆功能)
-	else if (p_y > 350 && p_y <= 466)
-	{
-		// 將 350~466 映射到 -DRAG_THRESHOLD~-MAX_DRAG_DISTANCE
-		diff = -(DRAG_THRESHOLD + (MAX_DRAG_DISTANCE - DRAG_THRESHOLD) * (p_y - 350) / 116);
-		should_trigger = true;
-	}
-	// LOG_D("p_y: %d, diff: %d, should_trigger: %d", p_y, diff, should_trigger);
-	if (should_trigger)
-	{
-		if (!is_dragging)
-		{
-			// 初始化拖拽狀態
-			dragging_widget = selected_message;
-			// original_x = lv_obj_get_x(selected_message);
-			original_x = 23;
-			// LOG_D("Start dragging widget x position: %d", original_x);
-			is_dragging = true;
-		}
-		// 設置widget位置
-		// lv_obj_set_x(selected_message, original_x + diff);
-
-		// // 如果達到最大拖拽距離
-		if (LV_ABS(diff) >= (MAX_DRAG_DISTANCE - 20) && !drag_timer && !drag_action_executed)
-		{
-			if (diff > 0 && gesture_control != 2)
-			{
-				animate_to_position(selected_message, 93, true);
-				gesture_control = 2; // 右拖拽
-				set_paused_control_with_arm(true);
-			}
-			else if (diff < 0 && gesture_control != 0)
-			{
-				animate_to_position(selected_message, -47, true);
-				gesture_control = 0; // 左拖拽
-				set_paused_control_with_arm(true);
-			}
-			// 更新背景色塊
-			update_background_blocks(selected_message, diff);
-		}
-		else if (gesture_control != 1)
-		{
-			animate_to_position(selected_message, original_x, false);
-			gesture_control = 1; // 無動作
-			set_paused_control_with_arm(false);
-			// 更新背景色塊
-			update_background_blocks(selected_message, diff);
-		}
-	}
-	else if (is_dragging)
-	{
-		// 如果p_y在116~350範圍內（無動作區間），停止拖拽並回到原位
-		is_dragging = false;
-		lv_obj_set_x(selected_message, original_x);
-	}
-}
 
 // 拖拽事件處理
 static void widget_drag_event_cb(lv_event_t *evt)
 {
 	lv_event_code_t code = lv_event_get_code(evt);
-	lv_obj_t *obj = lv_event_get_target(evt);
+	lv_obj_t *obj = lv_event_get_current_target(evt);
 	lv_indev_t *indev = lv_indev_get_act();
 	lv_point_t point;
 	lv_indev_get_point(indev, &point);
@@ -942,44 +784,45 @@ static void widget_drag_event_cb(lv_event_t *evt)
 			LOG_D("LV_EVENT_PRESSING :obj=%p", obj);
 			lv_coord_t diff = point.x - drag_start_x;
 
+			// 只允許向右拖拽（正值），忽略向左拖拽
+			if (diff < 0)
+				diff = 0;
+
 			// 檢查是否超過拖拽閾值
-			if (!is_dragging && LV_ABS(diff) > DRAG_THRESHOLD)
+			if (!is_dragging && diff > DRAG_THRESHOLD)
 			{
 				is_dragging = true;
 
-				// 如果是向左拖拽且達到最大距離，開始計時器
-				if (LV_ABS(diff) >= MAX_DRAG_DISTANCE)
+				if (diff >= MAX_DRAG_DISTANCE)
 				{
-					start_drag_timer(diff > 0);
+					start_drag_timer();
 				}
 			}
 
 			if (is_dragging)
 			{
 				// 限制拖拽距離
-				if (LV_ABS(diff) >= (MAX_DRAG_DISTANCE - 20) && !drag_timer && !drag_action_executed)
+				if (diff > MAX_DRAG_DISTANCE)
 				{
-					start_drag_timer(diff > 0);
+					diff = MAX_DRAG_DISTANCE;
 				}
-				if (LV_ABS(diff) > MAX_DRAG_DISTANCE)
-				{
-					diff = diff > 0 ? MAX_DRAG_DISTANCE : -MAX_DRAG_DISTANCE;
 
-					// 如果是向左拖拽到最大距離且計時器還沒開始，開始計時器
-				}
-				else
+				// 達到觸發距離時啟動刪除計時器
+				if (diff >= (MAX_DRAG_DISTANCE - 20) && !drag_timer && !drag_action_executed)
 				{
-					// 如果沒有達到最大拖拽距離，停止計時器
+					start_drag_timer();
+				}
+				else if (diff < (MAX_DRAG_DISTANCE - 20))
+				{
+					// 手指回縮未達觸發距離，停止計時器
 					stop_drag_timer();
 				}
 
 				lv_obj_set_x(obj, original_x + diff);
-				update_background_blocks(obj, diff);
 			}
 		}
 		else
 		{
-			// hide_background_blocks();
 			stop_drag_timer(); // 停止計時器
 		}
 		break;
@@ -1016,11 +859,14 @@ lv_obj_t *notification_card_builder(lv_obj_t *list, uint8_t i)
 	lv_coord_t y_offset = (LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING) * i;
 	lv_obj_t *message_widget = common_list_widget(list, (lv_style_t *)&LIST_MESSAGE_STYLE, x_offset, y_offset);
 	lv_obj_add_flag(message_widget, LV_OBJ_FLAG_CLICKABLE);
-	lv_obj_set_style_radius(message_widget, 50, LV_PART_MAIN);
-	lv_obj_set_style_bg_color(message_widget, lv_color_hex(0x000000), 0);
-	lv_obj_set_style_bg_opa(message_widget, LV_OPA_COVER, 0);
+	lv_obj_set_style_radius(message_widget, 80, LV_PART_MAIN);
+	lv_obj_set_style_bg_color(message_widget, lv_color_hex(0xFFFFFF), 0);
+	lv_obj_set_style_bg_opa(message_widget, 20, 0);
 	lv_obj_set_style_border_width(message_widget, 1, LV_PART_MAIN);
-	lv_obj_set_style_border_color(message_widget, lv_color_hex(0x4F4F4F), LV_PART_MAIN);
+	lv_obj_set_style_border_color(message_widget, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+	lv_obj_set_style_border_opa(message_widget, 30, LV_PART_MAIN);
+	// 預設主題設定 border_post=true（邊框在子物件之後繪製），改為 false 讓邊框在 icon 之下
+	lv_obj_set_style_border_post(message_widget, false, LV_PART_MAIN);
 
 	// 禁用此widget的滾動，讓父容器處理滾動
 	lv_obj_clear_flag(message_widget, LV_OBJ_FLAG_SCROLLABLE);
@@ -1028,36 +874,44 @@ lv_obj_t *notification_card_builder(lv_obj_t *list, uint8_t i)
 	// 設置較高的 Z-index，確保在背景色塊之上
 	lv_obj_move_foreground(message_widget);
 
-	// 禁用此widget的滾動，讓父容器處理滾動
-	lv_obj_clear_flag(message_widget, LV_OBJ_FLAG_SCROLLABLE);
-
-	lv_obj_t *icon_bg = lv_obj_create(message_widget);
-	lv_obj_align(icon_bg, LV_ALIGN_TOP_LEFT, 35, 20);
-	lv_obj_set_size(icon_bg, 60, 60);
-	lv_obj_clear_flag(icon_bg, LV_OBJ_FLAG_CLICKABLE);
-	lv_obj_clear_flag(icon_bg, LV_OBJ_FLAG_SCROLLABLE);
-	lv_obj_set_style_bg_opa(icon_bg, LV_OPA_0, 0);
-	lv_obj_t *icon = lv_img_create(icon_bg);
-	lv_obj_align(icon, LV_ALIGN_CENTER, 0, 0);
-	notification_widgets[i].icon = icon;
+	// 允許子物件超出邊界顯示（讓 icon 壓在 widget 上方）
+	lv_obj_add_flag(message_widget, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
 
 	lv_obj_t *label = lv_label_create(message_widget);
+	lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
 	lv_obj_set_height(label, 40);
-	lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
+	lv_obj_set_width(label, 265);
+	lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
 	lv_obj_set_style_text_color(label, lv_color_white(), 0);
-	lv_obj_align_to(label, icon_bg, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
-	//  根據 icon 的寬度來調整 label 的位置
+	lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_LEFT, 0);
+	lv_obj_align(label, LV_ALIGN_TOP_MID, 40, 5);
 	notification_widgets[i].title = label;
 
 	lv_obj_t *content = lv_label_create(message_widget);
 	lv_label_set_long_mode(content, LV_LABEL_LONG_WRAP);
-	lv_obj_set_height(content, LIST_MESSAGE_HEIGHT - 60);
+	lv_obj_set_height(content, LIST_MESSAGE_HEIGHT - 85);
 	lv_obj_set_width(content, LIST_MESSAGE_WIDTH - 65);
 	lv_obj_set_style_text_font(content, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-	lv_obj_set_style_text_color(content, lv_color_white(), 0);
-	lv_obj_align_to(content, icon_bg, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 10);
+	lv_obj_set_style_text_color(content, lv_color_hex(0xB3B3B3), 0);
+	lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 65);
 	lv_obj_clear_flag(message_widget, LV_OBJ_FLAG_SCROLLABLE);
 	notification_widgets[i].content = content;
+
+	// icon 最後創建，確保繪製在 widget 邊框之上
+	lv_obj_t *icon_bg = lv_obj_create(message_widget);
+	lv_obj_align(icon_bg, LV_ALIGN_TOP_LEFT, 35, -35);
+	lv_obj_set_size(icon_bg, 80, 80);
+	lv_obj_clear_flag(icon_bg, LV_OBJ_FLAG_CLICKABLE);
+	lv_obj_clear_flag(icon_bg, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_add_flag(icon_bg, LV_OBJ_FLAG_EVENT_BUBBLE);
+	lv_obj_set_style_bg_opa(icon_bg, LV_OPA_0, 0);
+	lv_obj_set_style_border_width(icon_bg, 0, 0);
+	lv_obj_t *icon = lv_img_create(icon_bg);
+	lv_obj_align(icon, LV_ALIGN_CENTER, 0, 0);
+	lv_obj_add_flag(icon, LV_OBJ_FLAG_EVENT_BUBBLE);
+	lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
+	notification_widgets[i].icon = icon;
+
 	return message_widget;
 }
 
@@ -1124,7 +978,7 @@ static void refresh_list(uint8_t new_item_count)
 			lv_label_set_text(notification_widgets[i].content, clean_message);
 			lv_mem_free(clean_message);
 			lv_img_set_src(notification_widgets[i].icon, icon_list[notification->type]);
-			lv_img_set_zoom(notification_widgets[i].icon, 152); // (60/100)*255
+			lv_img_set_zoom(notification_widgets[i].icon, 205); // (60/100)*255
 			if (i == new_item_count - 1)
 			{
 				selected_message = notification_widgets[i].card;
@@ -1227,9 +1081,10 @@ void refresh_notification_list(void *param)
 	else if (!have_media_widget && p_app_notification->no_notifications_widget == NULL)
 	{
 		p_app_notification->no_notifications_widget = common_list_widget(p_app_notification->list, (lv_style_t *)&LIST_MESSAGE_STYLE, 0, 0);
-		lv_obj_set_style_radius(p_app_notification->no_notifications_widget, 50, LV_PART_MAIN);
+		lv_obj_set_style_radius(p_app_notification->no_notifications_widget, 80, LV_PART_MAIN);
 		LOG_D("Created no_notifications_widget :%p", p_app_notification->no_notifications_widget);
-		lv_obj_set_style_bg_color(p_app_notification->no_notifications_widget, lv_color_hex(0x000000), 0);
+		lv_obj_set_style_bg_color(p_app_notification->no_notifications_widget, lv_color_hex(0xFFFFFF), 0);
+		lv_obj_set_style_bg_opa(p_app_notification->no_notifications_widget, 20, 0);
 		selected_message = p_app_notification->no_notifications_widget;
 		lv_obj_t *label = lv_label_create(p_app_notification->no_notifications_widget);
 		lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
@@ -1243,7 +1098,7 @@ void refresh_notification_list(void *param)
 		p_app_notification->media_widget = common_list_widget(p_app_notification->list, (lv_style_t *)&LIST_MESSAGE_STYLE, 0, (LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING) * notification_count);
 		lv_media_widget_builder(p_app_notification->media_widget);
 		lv_obj_set_size(p_app_notification->media_widget, LIST_MESSAGE_WIDTH, LIST_MESSAGE_HEIGHT);
-		lv_obj_set_style_radius(p_app_notification->media_widget, 50, LV_PART_MAIN);
+		lv_obj_set_style_radius(p_app_notification->media_widget, 80, LV_PART_MAIN);
 		lv_obj_set_style_bg_color(p_app_notification->media_widget, lv_color_hex(0x000000), 0);
 	}
 
@@ -1305,17 +1160,10 @@ uint8_t get_message_page_count(void)
 	return page_count;
 }
 
-static uint8_t prev_y = 0;
 static void new_message_cb(void *param)
 {
 	message_has_read = false;
-	uint8_t prev_gesture_control = gesture_control; // 保存刷新前的 gesture_control 狀態
 	refresh_notification_list(param);
-
-	if (is_at_message() && notification_count > 0)
-	{
-		message_trigger_drag_by_py(prev_y);
-	}
 }
 
 uint8_t get_gesture_control_state(void)
@@ -1457,20 +1305,13 @@ static void button_selection(gesture_position_t gesture_position)
 	{
 		set_paused_control_with_arm(true);
 	}
-	prev_y = p_y;
-// 首先處理 p_y 觸發的拖拽動作
-// LOG_D("button_selection p_y: %d,%d", p_y, is_at_media_widget);
+// 重力拖拽已移除，不再透過 p_y 觸發左右拖拽動作
 #ifdef MESSAGE_NEED_MEDIA_WIDGET
 	if (is_at_media_widget)
 	{
 		media_widget_trigger_drag_by_py(p_y);
 	}
-	else
 #endif
-		if ((lv_obj_is_valid(selected_message)) && (notification_count != 0))
-	{
-		message_trigger_drag_by_py(p_y);
-	}
 
 	// else
 	// {
@@ -1626,21 +1467,12 @@ static void on_tap(void)
 	}
 	else
 #endif
-		if (gesture_control == 0 || gesture_control == 2)
+		if (gesture_control == 2)
 	{
 		LOG_D("message on_tap :control%d", gesture_control);
 		notification_t *notification = get_notification_in_reversed_ui(selected_message_index);
-		if (gesture_control == 0)
-		{
-			list_message_reply(notification);
-			gesture_control = 1;
-		}
-		else
-		{
-			remove_notification_by_id(notification->id);
-			gesture_control = 1;
-		}
-		// check_is_at_message();
+		remove_notification_by_id(notification->id);
+		gesture_control = 1;
 		return; // 如果是拖拽動作，則不處理點擊
 	}
 #ifdef MESSAGE_NEED_MEDIA_WIDGET
@@ -2145,9 +1977,6 @@ rt_int32_t notification_on_deinit(void)
 	// 清理拖拽狀態
 	is_dragging = false;
 	dragging_widget = NULL;
-	left_background = NULL;
-	right_background = NULL;
-
 	// 清理計時器
 	stop_drag_timer();
 

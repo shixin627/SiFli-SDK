@@ -132,6 +132,9 @@ LV_IMG_DECLARE(icon_gmail);
 LV_IMG_DECLARE(icon_dingtalk);
 LV_IMG_DECLARE(icon_google_chat);
 LV_IMG_DECLARE(icon_discord);
+LV_IMG_DECLARE(icon_twitch);
+LV_IMG_DECLARE(icon_tiktok);
+LV_IMG_DECLARE(icon_telegram);
 LV_IMG_DECLARE(icon_youtube);
 LV_IMG_DECLARE(icon_prohibit);
 LV_IMG_DECLARE(icon_send);
@@ -198,6 +201,9 @@ LV_IMG_DECLARE(notification_img);
 #define ICON_OTHER ((const void *)&icon_other)
 #define ICON_QQ ((const void *)&icon_qq)
 #define ICON_SKYPE ((const void *)&icon_skype)
+#define ICON_TWITCH ((const void *)&icon_twitch)
+#define ICON_TIKTOK ((const void *)&icon_tiktok)
+#define ICON_TELEGRAM ((const void *)&icon_telegram)
 #define ICON_SMS ((const void *)&icon_sms)
 #define ICON_SNAP ((const void *)&icon_snap)
 #define ICON_TWITTER ((const void *)&icon_twitter)

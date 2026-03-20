@@ -336,6 +336,12 @@ const char *get_app_name_from_notify_id(Notifications_Type notify_id)
         return "Discord";
     case Notify_youtube:
         return "YouTube";
+    case Notify_tiktok:
+        return "TikTok";
+    case Notify_telegram:
+        return "Telegram";
+    case Notify_twitch:
+        return "Twitch";
     default:
         return "Unknown";
     }
