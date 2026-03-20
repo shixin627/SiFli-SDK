@@ -1549,6 +1549,7 @@ void set_gravity_position(int position)
         // show_speech_indicator(true);
         // voice_provider.start_v2t();
         // set_is_open_app_list_ai(true);
+        motor_pattern_unlocked();
         extern void animate_open_ai_widget(void);
         animate_open_ai_widget();
     }
@@ -1616,6 +1617,7 @@ static bool can_open_ai_interface(void)
 
 // extern void set_ai_hint_x(uint8_t x);
 extern void level_bar_update(int16_t value);
+extern bool get_is_open_app_list_ai(void);
 static uint8_t pevr_ai_hint_bg_pos = 0;
 static void calculate_gravity_position(Vector3 *gravity)
 {
@@ -1641,6 +1643,11 @@ static void calculate_gravity_position(Vector3 *gravity)
     else
     {
         set_gravity_position(GRAVITY_POSITION_OTHER);
+    }
+    if (gravity->x < 0.5 && get_is_open_app_list_ai())
+    {
+        extern void check_ai_widget_auto_close(void);
+        check_ai_widget_auto_close();
     }
 }
 
