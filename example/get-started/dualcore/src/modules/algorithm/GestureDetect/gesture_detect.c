@@ -20,7 +20,6 @@
 #include "bsp_board.h"
 #ifdef BSP_USING_MAHONY_AHRS
     #include "sensor_fusion.h"
-    #include "bmi270_driver.h"
 #endif
 #include "bloc_peripheral.h"
 #include "bloc_battery.h"
@@ -114,12 +113,11 @@ static Quaternion sensor_fusion_algorithm(sensor_fusion_param_t *param,
     return q;
 }
 
-void reinitialize_ahrs_from_accel(void)
+void reinitialize_ahrs_from_accel(int16_t raw_x, int16_t raw_y, int16_t raw_z)
 {
-    struct bmi2_sens_axes_data *accel = bmi270_get_accel();
-    float ax = (float)accel->x;
-    float ay = (float)accel->y;
-    float az = (float)accel->z;
+    float ax = (float)raw_x;
+    float ay = (float)raw_y;
+    float az = (float)raw_z;
 
     float norm = sqrtf(ax * ax + ay * ay + az * az);
     if (norm < 0.01f)
@@ -475,6 +473,7 @@ void handle_motion_data_in_25hz(rt_tick_t now, Vector3 *accData)
  * @return cost time in ms
  */
 
+static uint8_t watch_gravity_log = 0;
 int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
 {
     static float pre_freq = 0;
@@ -562,6 +561,20 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
         // Note: Waveform capture algorithm has been moved to HCPU (bloc_motion_tracking.c)
         // The HCPU will receive motion_data via motion_data_fetch() and process
         // gesture waveform capture directly, then notify gesture_sem when ready.
+    }
+        if (watch_gravity_log == 10)
+    {
+        LOG_I("Gravity: x=%.3f, y=%.3f, z=%.3f", watch_gravity.x, watch_gravity.y,
+              watch_gravity.z);
+        LOG_I("accData: x=%.3f, y=%.3f, z=%.3f", accData->x, accData->y, accData->z);
+              Vector3 linear_acce =
+            calculate_linear_acceleration(accData, &watch_gravity);
+        LOG_I("linear acceleration: x=%.3f, y=%.3f, z=%.3f", linear_acce.x, linear_acce.y, linear_acce.z);
+        watch_gravity_log = 0;
+    }
+    else
+    {
+        watch_gravity_log++;
     }
     return (rt_tick_get_millisecond() - now);
 }

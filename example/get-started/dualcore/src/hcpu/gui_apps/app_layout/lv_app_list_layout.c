@@ -715,7 +715,7 @@ static void stop_all_animations_and_reset(void)
         if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
         {
             lv_anim_del(app_label[i], (lv_anim_exec_xcb_t)set_label_y);
-            lv_obj_align(app_label[i], LV_ALIGN_CENTER, 0, 0);
+            lv_obj_align(app_label[i], LV_ALIGN_CENTER, -20, 0);
             lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
         }
 
@@ -985,7 +985,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 if (abs(distance_from_the_center) > 1 || true)
                 {
                     lv_obj_align(app_icon[i], LV_ALIGN_RIGHT_MID, -25, 0);
-                    lv_obj_align(app_label[i], LV_ALIGN_CENTER, 0, 0);
+                    lv_obj_align(app_label[i], LV_ALIGN_CENTER, -20, 0);
                 }
                 // if (APP_LIST_ITEMS_DEFINITION[i] != app_id_note &&
                 //     APP_LIST_ITEMS_DEFINITION[i] != app_id_ai)
@@ -1090,14 +1090,14 @@ void open_selected_widget(bool need_widget_img_anima)
             if (lv_obj_is_valid(app_label[selected_item_index - 1]))
             {
                 lv_obj_align(app_label[selected_item_index - 1],
-                             LV_ALIGN_CENTER, 0, -30);
+                             LV_ALIGN_CENTER, -20, -30);
             }
         }
         if (selected_item_index != ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - 1)
         {
             lv_obj_align(app_icon[selected_item_index + 1], LV_ALIGN_RIGHT_MID,
                          -20, 30);
-            lv_obj_align(app_label[selected_item_index + 1], LV_ALIGN_CENTER, 0,
+            lv_obj_align(app_label[selected_item_index + 1], LV_ALIGN_CENTER, -30,
                          30);
         }
     }
@@ -1195,6 +1195,7 @@ static void set_ai_bg_opa(void *obj, int32_t opa)
     set_skai_widget_opa(opa);
 }
 
+static rt_tick_t last_ai_widget_open_time = 0;
 void animate_open_ai_widget(void)
 {
     if (!get_bluetooth_connection_status())
@@ -1203,9 +1204,33 @@ void animate_open_ai_widget(void)
         LOG_D("Bluetooth is connected, ignoring voice recognition event");
         return;
     }
+    last_ai_widget_open_time = rt_tick_get();
     // animate_to_page(p_app_list_layout->p_app_list_ai_bg, 300);
     lv_obj_clear_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_tile_id(p_app_list_layout->p_app_list_ai_bg, 0, 0, LV_ANIM_ON);
+}
+
+void close_ai_widget(void)
+{
+    // lv_anim_del(p_app_list_layout->p_app_list_ai_bg, set_ai_bg_opa);
+    // lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_tile_id(p_app_list_layout->p_app_list_ai_bg, 1, 0, LV_ANIM_ON);
+    // set_skai_widget_opa(0);
+    // LOG_I("AI widget closed");
+}
+
+void check_ai_widget_auto_close(void)
+{
+    extern bool get_skai_input_text_is_null(void);
+    if (is_open_app_list_ai && !is_at_ai_widget && get_skai_input_text_is_null())
+    {
+        rt_tick_t current_time = rt_tick_get();
+        if (current_time - last_ai_widget_open_time < 3000) // 5秒后自动关闭
+        {
+            close_ai_widget();
+            is_open_app_list_ai = false;
+        }
+    }
 }
 
 void tap_on_ai_widget(void)
@@ -1242,14 +1267,6 @@ void tap_on_ai_widget(void)
     set_paused_control_with_arm(true);
 }
 
-void close_ai_widget(void)
-{
-    // lv_anim_del(p_app_list_layout->p_app_list_ai_bg, set_ai_bg_opa);
-    // lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_tile_id(p_app_list_layout->p_app_list_ai_bg, 1, 0, LV_ANIM_ON);
-    // set_skai_widget_opa(0);
-    // LOG_I("AI widget closed");
-}
 
 static bool app_list_ai_tapped = false;
 bool get_app_list_ai_tapped(void)
@@ -1849,8 +1866,8 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
         app_label[i] = lv_label_create(item);
         lv_label_set_text(app_label[i], app_list_items[i].title);
         lv_obj_set_style_text_font(app_label[i],
-                                   LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-        lv_obj_align(app_label[i], LV_ALIGN_CENTER, 0, 0);
+                                   LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+        lv_obj_align(app_label[i], LV_ALIGN_CENTER, -20, 0);
         if (APP_LIST_ITEMS_DEFINITION[i] == app_id_note ||
             APP_LIST_ITEMS_DEFINITION[i] == app_id_ai)
         {

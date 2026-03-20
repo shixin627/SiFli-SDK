@@ -528,6 +528,10 @@ void open_skai_widget_ai(bool open)
 }
 
 static bool input_text_is_null = true;
+bool get_skai_input_text_is_null(void)
+{
+    return input_text_is_null;
+}
 extern bool get_voice_recognition_started(void);
 extern bool set_is_open_app_list_ai(bool open);
 extern bool get_is_open_app_list_ai(void);

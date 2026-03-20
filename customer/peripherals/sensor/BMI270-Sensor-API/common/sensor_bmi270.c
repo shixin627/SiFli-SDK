@@ -153,7 +153,19 @@ void bmi270_sensor_power_high_mode(void)
     bmi270_high_performance_mode();
 #ifdef BSP_USING_MAHONY_AHRS
     setSampleFrequencyAHRS(IMU_NOARMAL_SAMPLE_RATE);
-    reinitialize_ahrs_from_accel();
+    rt_thread_mdelay(200);
+    {
+        int16_t ax, ay, az;
+        bmi270_accel_read(&ax, &ay, &az);
+        /* Apply same axis remapping as redirect_sensor_data */
+#if (WATCH_IMU_REVERSE_180)
+        int16_t rx = ax, ry = -ay;
+#else
+        int16_t rx = -ax, ry = ay;
+#endif
+        int16_t rz = -az;
+        reinitialize_ahrs_from_accel(rx, ry, rz);
+    }
 #endif
     watch_sensor.imu_data.sample_rate = IMU_NOARMAL_SAMPLE_RATE;
     rt_bmi270_irq_pin_enable(1);

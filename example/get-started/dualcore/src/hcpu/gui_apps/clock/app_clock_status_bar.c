@@ -1354,20 +1354,20 @@ static void set_clock_main_status_opa(uint8_t opa, bool mask)
     //                             LV_PART_MAIN | LV_STATE_DEFAULT);
     // }
     LOG_D("set_clock_main_status_opa opa: %d", opa);
-    if (lv_obj_is_valid(gaus_dial_bg))
-    {
-        lv_obj_set_style_bg_opa(gaus_dial_bg, opa,
-                                LV_PART_MAIN | LV_STATE_DEFAULT);
-    }
+    // if (lv_obj_is_valid(gaus_dial_bg))
+    // {
+    //     lv_obj_set_style_bg_opa(gaus_dial_bg, opa,
+    //                             LV_PART_MAIN | LV_STATE_DEFAULT);
+    // }
     if (lv_obj_is_valid(gaus_dial_img))
     {
-        uint8_t mask_traget_opa = LV_OPA_50;
-        if (mask)
-        {
-            mask_traget_opa = LV_OPA_80;
-        }
-        uint8_t mask_opa = (opa * mask_traget_opa) / LV_OPA_COVER;
-        lv_obj_set_style_img_opa(gaus_dial_img, mask_opa,
+        uint8_t mask_traget_opa = LV_OPA_COVER;
+        // if (mask)
+        // {
+        //     mask_traget_opa = LV_OPA_COVER;
+        // }
+        uint8_t mask_opa = (opa);
+        lv_obj_set_style_img_opa(gaus_dial_img, opa,
                                  LV_PART_MAIN | LV_STATE_DEFAULT);
     }
 }
