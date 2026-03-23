@@ -302,7 +302,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 				// }
 				if (left_hand_mode)
 				{
-					x_trans = res.i - 985;
+					x_trans = res.i - 987;
 				}
 				else
 				{
@@ -655,7 +655,7 @@ extern void remove_notification_by_id(const char *id);
 // 拖拽計時器回調函數
 static void drag_timer_cb(lv_timer_t *timer)
 {
-	if (is_dragging && dragging_widget && selected_message->coords.y1 == 103)
+	if (is_dragging && dragging_widget && selected_message->coords.y1 == 108)
 	{
 		// 執行刪除動作
 		new_touching_obj = false;
@@ -779,7 +779,7 @@ static void widget_drag_event_cb(lv_event_t *evt)
 		break;
 
 	case LV_EVENT_PRESSING:
-		if (dragging_widget == obj && selected_message->coords.y1 == 103 && new_touching_obj)
+		if (dragging_widget == obj && selected_message->coords.y1 == 108 && new_touching_obj)
 		{
 			LOG_D("LV_EVENT_PRESSING :obj=%p", obj);
 			lv_coord_t diff = point.x - drag_start_x;
@@ -829,13 +829,12 @@ static void widget_drag_event_cb(lv_event_t *evt)
 
 	case LV_EVENT_RELEASED:
 		stop_drag_timer(); // 放開時停止計時器
-
 		if (dragging_widget == obj && is_dragging)
 		{
 			// 動畫回到原位
 			animate_to_original_position(obj, original_x);
 		}
-		else if (dragging_widget == obj && !is_dragging && selected_message->coords.y1 == 103)
+		else if (dragging_widget == obj && !is_dragging && selected_message->coords.y1 == 108)
 		{
 			// 如果沒有拖拽，執行點擊事件
 			void *dat = lv_event_get_user_data(evt);
@@ -861,7 +860,7 @@ lv_obj_t *notification_card_builder(lv_obj_t *list, uint8_t i)
 	lv_obj_add_flag(message_widget, LV_OBJ_FLAG_CLICKABLE);
 	lv_obj_set_style_radius(message_widget, 80, LV_PART_MAIN);
 	lv_obj_set_style_bg_color(message_widget, lv_color_hex(0xFFFFFF), 0);
-	lv_obj_set_style_bg_opa(message_widget, 20, 0);
+	lv_obj_set_style_bg_opa(message_widget, 10, 0);
 	lv_obj_set_style_border_width(message_widget, 1, LV_PART_MAIN);
 	lv_obj_set_style_border_color(message_widget, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
 	lv_obj_set_style_border_opa(message_widget, 30, LV_PART_MAIN);
@@ -1084,7 +1083,7 @@ void refresh_notification_list(void *param)
 		lv_obj_set_style_radius(p_app_notification->no_notifications_widget, 80, LV_PART_MAIN);
 		LOG_D("Created no_notifications_widget :%p", p_app_notification->no_notifications_widget);
 		lv_obj_set_style_bg_color(p_app_notification->no_notifications_widget, lv_color_hex(0xFFFFFF), 0);
-		lv_obj_set_style_bg_opa(p_app_notification->no_notifications_widget, 20, 0);
+		lv_obj_set_style_bg_opa(p_app_notification->no_notifications_widget, 10, 0);
 		selected_message = p_app_notification->no_notifications_widget;
 		lv_obj_t *label = lv_label_create(p_app_notification->no_notifications_widget);
 		lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
@@ -1099,7 +1098,8 @@ void refresh_notification_list(void *param)
 		lv_media_widget_builder(p_app_notification->media_widget);
 		lv_obj_set_size(p_app_notification->media_widget, LIST_MESSAGE_WIDTH, LIST_MESSAGE_HEIGHT);
 		lv_obj_set_style_radius(p_app_notification->media_widget, 80, LV_PART_MAIN);
-		lv_obj_set_style_bg_color(p_app_notification->media_widget, lv_color_hex(0x000000), 0);
+		lv_obj_set_style_bg_color(p_app_notification->media_widget, lv_color_hex(0xFFFFFF), 0);
+		lv_obj_set_style_bg_opa(p_app_notification->media_widget, 10, 0);
 	}
 
 	if (p_app_notification->media_widget != NULL)
@@ -1636,6 +1636,10 @@ static void dial_header_fadeout_exec_cb(void *obj, int32_t value)
 	// lv_obj_set_style_opa((lv_obj_t *)obj, value, 0);
 	lv_obj_set_style_img_opa(dial_header_img, value, 0);
 	lv_obj_set_style_text_opa(dial_header_title, value, 0);
+	uint8_t header_border_opa = (value*30) / LV_OPA_COVER; // Border is half the opacity of the content
+	lv_obj_set_style_border_opa(dial_header_bg, header_border_opa, 0);
+	uint8_t header_bg_opa = (value*15) / LV_OPA_COVER; // Background is one-third the opacity of the content
+	lv_obj_set_style_bg_opa(dial_header_bg, header_bg_opa, 0);
 }
 
 static void dial_header_show_as_red_dot(void)
@@ -1661,9 +1665,16 @@ static void dial_header_restore_music(void)
 	if (media_title && media_title[0] != '\0')
 	{
 		dial_header_music_active = true;
+		/* Cancel any ongoing fadeout animation */
+		lv_anim_del(dial_header_bg, dial_header_fadeout_exec_cb);
+		lv_obj_set_style_img_opa(dial_header_img, LV_OPA_COVER, 0);
+		lv_obj_set_style_text_opa(dial_header_title, LV_OPA_COVER, 0);
 		lv_obj_clear_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
 		lv_label_set_text(dial_header_title, media_title);
 		lv_img_set_src(dial_header_img, MEDIA_HEADER_IMG);
+		lv_obj_set_size(dial_header_img, 40, 40);
+		lv_img_set_zoom(dial_header_img, 256);
+		lv_obj_align(dial_header_img, LV_ALIGN_CENTER, 0, 0);
 		lv_obj_clear_flag(dial_header_img, LV_OBJ_FLAG_HIDDEN);
 	}
 	else
@@ -1676,7 +1687,7 @@ static void dial_header_restore_music(void)
 static void dial_header_shrink_timer_cb(lv_timer_t *timer)
 {
 	dial_header_shrink_timer = NULL;
-	if (dial_header_was_music_before_notif)
+	if (dial_header_was_music_before_notif || dial_header_music_active)
 	{
 		dial_header_was_music_before_notif = false;
 		dial_header_restore_music();
@@ -1729,6 +1740,10 @@ static void handle_dial_header_media_title(void *param)
 		/* Only update header if not currently showing a notification with timer */
 		if (!dial_header_shrink_timer)
 		{
+			/* Cancel any ongoing fadeout animation so it won't hide us */
+			lv_anim_del(dial_header_bg, dial_header_fadeout_exec_cb);
+			lv_obj_set_style_img_opa(dial_header_img, LV_OPA_COVER, 0);
+			lv_obj_set_style_text_opa(dial_header_title, LV_OPA_COVER, 0);
 			lv_obj_clear_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
 			lv_label_set_text(dial_header_title, media_title_text);
 		}
@@ -1817,10 +1832,13 @@ void lv_dial_header_builder(lv_obj_t *parent)
 	lv_obj_add_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
 
 	lv_obj_t *dial_header_bg_mask = lv_obj_create(dial_header_bg);
-	lv_obj_set_size(dial_header_bg_mask, 252, 60);
+	lv_obj_set_size(dial_header_bg_mask, 252, 55);
 	lv_obj_set_style_bg_color(dial_header_bg_mask, lv_color_hex(0xFFFFFF), 0);
-	lv_obj_set_style_bg_opa(dial_header_bg_mask, 10, 0);
-	lv_obj_align(dial_header_bg_mask, LV_ALIGN_CENTER, 0, 0);
+	lv_obj_set_style_bg_opa(dial_header_bg_mask, 15, 0);
+	lv_obj_set_style_border_width(dial_header_bg_mask, 1, 0);
+	lv_obj_set_style_border_color(dial_header_bg_mask, lv_color_hex(0xFFFFFF), 0);
+	lv_obj_set_style_border_opa(dial_header_bg_mask, 30, 0);
+	lv_obj_align(dial_header_bg_mask, LV_ALIGN_CENTER, 0, 5);
 	lv_obj_set_style_radius(dial_header_bg_mask, 30, 0);
 
 	lv_obj_t *dial_header_img_bg = lv_obj_create(dial_header_bg);
@@ -1836,7 +1854,7 @@ void lv_dial_header_builder(lv_obj_t *parent)
 	lv_obj_align(dial_header_img, LV_ALIGN_CENTER, 0, 0);
 
 	dial_header_title = lv_label_create(dial_header_bg);
-	lv_obj_set_size(dial_header_title, 180, 40);
+	lv_obj_set_size(dial_header_title, 220, 40);
 	lv_label_set_long_mode(dial_header_title, LV_LABEL_LONG_DOT);
 	lv_obj_set_style_text_align(dial_header_title, LV_TEXT_ALIGN_CENTER,
 	                            LV_PART_MAIN);
@@ -1964,6 +1982,9 @@ rt_int32_t notification_on_resume(void)
 		set_paused_control_with_arm(false);
 	}
 	LOG_D("notification_on_resume");
+	/* User has seen the notification list — hide the red dot on the dial */
+	if (lv_obj_is_valid(dial_header_red_dot))
+		lv_obj_add_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);
 	lvgl_msg_handler.handle_tap_indicator = press_cb;
 	set_scroll_segment_count(get_message_page_count());
 	set_control_gravity_x_range(0.6f, -0.6f, false);
