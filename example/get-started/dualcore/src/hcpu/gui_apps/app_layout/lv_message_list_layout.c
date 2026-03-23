@@ -302,7 +302,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 				// }
 				if (left_hand_mode)
 				{
-					x_trans = res.i - 985;
+					x_trans = res.i - 987;
 				}
 				else
 				{
@@ -655,7 +655,7 @@ extern void remove_notification_by_id(const char *id);
 // 拖拽計時器回調函數
 static void drag_timer_cb(lv_timer_t *timer)
 {
-	if (is_dragging && dragging_widget && selected_message->coords.y1 == 103)
+	if (is_dragging && dragging_widget && selected_message->coords.y1 == 108)
 	{
 		// 執行刪除動作
 		new_touching_obj = false;
@@ -779,7 +779,7 @@ static void widget_drag_event_cb(lv_event_t *evt)
 		break;
 
 	case LV_EVENT_PRESSING:
-		if (dragging_widget == obj && selected_message->coords.y1 == 103 && new_touching_obj)
+		if (dragging_widget == obj && selected_message->coords.y1 == 108 && new_touching_obj)
 		{
 			LOG_D("LV_EVENT_PRESSING :obj=%p", obj);
 			lv_coord_t diff = point.x - drag_start_x;
@@ -829,13 +829,12 @@ static void widget_drag_event_cb(lv_event_t *evt)
 
 	case LV_EVENT_RELEASED:
 		stop_drag_timer(); // 放開時停止計時器
-
 		if (dragging_widget == obj && is_dragging)
 		{
 			// 動畫回到原位
 			animate_to_original_position(obj, original_x);
 		}
-		else if (dragging_widget == obj && !is_dragging && selected_message->coords.y1 == 103)
+		else if (dragging_widget == obj && !is_dragging && selected_message->coords.y1 == 108)
 		{
 			// 如果沒有拖拽，執行點擊事件
 			void *dat = lv_event_get_user_data(evt);
@@ -861,7 +860,7 @@ lv_obj_t *notification_card_builder(lv_obj_t *list, uint8_t i)
 	lv_obj_add_flag(message_widget, LV_OBJ_FLAG_CLICKABLE);
 	lv_obj_set_style_radius(message_widget, 80, LV_PART_MAIN);
 	lv_obj_set_style_bg_color(message_widget, lv_color_hex(0xFFFFFF), 0);
-	lv_obj_set_style_bg_opa(message_widget, 20, 0);
+	lv_obj_set_style_bg_opa(message_widget, 10, 0);
 	lv_obj_set_style_border_width(message_widget, 1, LV_PART_MAIN);
 	lv_obj_set_style_border_color(message_widget, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
 	lv_obj_set_style_border_opa(message_widget, 30, LV_PART_MAIN);
@@ -1099,7 +1098,8 @@ void refresh_notification_list(void *param)
 		lv_media_widget_builder(p_app_notification->media_widget);
 		lv_obj_set_size(p_app_notification->media_widget, LIST_MESSAGE_WIDTH, LIST_MESSAGE_HEIGHT);
 		lv_obj_set_style_radius(p_app_notification->media_widget, 80, LV_PART_MAIN);
-		lv_obj_set_style_bg_color(p_app_notification->media_widget, lv_color_hex(0x000000), 0);
+		lv_obj_set_style_bg_color(p_app_notification->media_widget, lv_color_hex(0xFFFFFF), 0);
+		lv_obj_set_style_bg_opa(p_app_notification->media_widget, 10, 0);
 	}
 
 	if (p_app_notification->media_widget != NULL)
