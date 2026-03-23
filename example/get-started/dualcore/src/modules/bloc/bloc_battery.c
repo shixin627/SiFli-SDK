@@ -102,6 +102,42 @@ void bloc_battery_init(void)
 extern void main_send_read_charge_status_event(void);
 extern void main_send_read_voltage_event(void);
 
+#define CHARGING_VOLTAGE_READ_INTERVAL_MS 1000
+
+static rt_timer_t s_charging_voltage_timer = RT_NULL;
+
+static void charging_voltage_timer_callback(void *parameter)
+{
+    main_send_read_voltage_event();
+}
+
+static void charging_voltage_timer_start(void)
+{
+    if (s_charging_voltage_timer == RT_NULL)
+    {
+        s_charging_voltage_timer = rt_timer_create(
+            "chg_vol",
+            charging_voltage_timer_callback,
+            RT_NULL,
+            rt_tick_from_millisecond(CHARGING_VOLTAGE_READ_INTERVAL_MS),
+            RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+    }
+    if (s_charging_voltage_timer)
+    {
+        rt_timer_start(s_charging_voltage_timer);
+        LOG_D("Charging voltage timer started (interval: %dms)", CHARGING_VOLTAGE_READ_INTERVAL_MS);
+    }
+}
+
+static void charging_voltage_timer_stop(void)
+{
+    if (s_charging_voltage_timer)
+    {
+        rt_timer_stop(s_charging_voltage_timer);
+        LOG_D("Charging voltage timer stopped");
+    }
+}
+
 void bloc_battery_read_charge_status(void)
 {
     main_send_read_charge_status_event();
@@ -135,6 +171,17 @@ static void read_charge_status(void)
     }
     battery_charge_state.is_charging = charging;
     battery_charge_state.is_plugged = charging;
+
+    if (charging)
+    {
+        // read voltage immediately and start periodic 1s timer
+        main_send_read_voltage_event();
+        charging_voltage_timer_start();
+    }
+    else
+    {
+        charging_voltage_timer_stop();
+    }
 }
 
 static void check_battery_voltage(void)

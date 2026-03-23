@@ -1085,7 +1085,7 @@ void refresh_notification_list(void *param)
 		lv_obj_set_style_radius(p_app_notification->no_notifications_widget, 80, LV_PART_MAIN);
 		LOG_D("Created no_notifications_widget :%p", p_app_notification->no_notifications_widget);
 		lv_obj_set_style_bg_color(p_app_notification->no_notifications_widget, lv_color_hex(0xFFFFFF), 0);
-		lv_obj_set_style_bg_opa(p_app_notification->no_notifications_widget, 10, 0);
+		lv_obj_set_style_bg_opa(p_app_notification->no_notifications_widget, 15, 0);
 		selected_message = p_app_notification->no_notifications_widget;
 		lv_obj_t *label = lv_label_create(p_app_notification->no_notifications_widget);
 		lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
@@ -1101,7 +1101,7 @@ void refresh_notification_list(void *param)
 		lv_obj_set_size(p_app_notification->media_widget, LIST_MESSAGE_WIDTH, LIST_MESSAGE_HEIGHT);
 		lv_obj_set_style_radius(p_app_notification->media_widget, 80, LV_PART_MAIN);
 		lv_obj_set_style_bg_color(p_app_notification->media_widget, lv_color_hex(0xFFFFFF), 0);
-		lv_obj_set_style_bg_opa(p_app_notification->media_widget, 10, 0);
+		lv_obj_set_style_bg_opa(p_app_notification->media_widget, 15, 0);
 	}
 
 	if (p_app_notification->media_widget != NULL)

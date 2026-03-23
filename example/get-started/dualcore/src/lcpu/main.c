@@ -222,7 +222,6 @@ int main(void)
                 bloc_battery_handle_voltage_event();
             }
 
-
             if (recv_set & MAIN_EVENT_HAND_LIFT)
             {
                 extern void hand_tracking_lift_callback(uint8_t lift);
