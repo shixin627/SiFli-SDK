@@ -473,7 +473,6 @@ void handle_motion_data_in_25hz(rt_tick_t now, Vector3 *accData)
  * @return cost time in ms
  */
 
-static uint8_t watch_gravity_log = 0;
 int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
 {
     static float pre_freq = 0;
@@ -561,20 +560,6 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
         // Note: Waveform capture algorithm has been moved to HCPU (bloc_motion_tracking.c)
         // The HCPU will receive motion_data via motion_data_fetch() and process
         // gesture waveform capture directly, then notify gesture_sem when ready.
-    }
-        if (watch_gravity_log == 10)
-    {
-        LOG_I("Gravity: x=%.3f, y=%.3f, z=%.3f", watch_gravity.x, watch_gravity.y,
-              watch_gravity.z);
-        LOG_I("accData: x=%.3f, y=%.3f, z=%.3f", accData->x, accData->y, accData->z);
-              Vector3 linear_acce =
-            calculate_linear_acceleration(accData, &watch_gravity);
-        LOG_I("linear acceleration: x=%.3f, y=%.3f, z=%.3f", linear_acce.x, linear_acce.y, linear_acce.z);
-        watch_gravity_log = 0;
-    }
-    else
-    {
-        watch_gravity_log++;
     }
     return (rt_tick_get_millisecond() - now);
 }
