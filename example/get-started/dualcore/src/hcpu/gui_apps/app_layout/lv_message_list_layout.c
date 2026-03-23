@@ -169,7 +169,9 @@ const char *const icon_list[NOTIFICATION_APP_QUANTITY] = {
 	ICON_YOUTUBE,
 	ICON_TIKTOK,
 	ICON_TELEGRAM,
-	ICON_TWITCH
+	ICON_TWITCH,
+	ICON_SLACK,
+	ICON_LARK,
 };
 
 static bool open_shock = false;

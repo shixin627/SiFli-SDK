@@ -4,6 +4,7 @@
 
 #include "lvgl.h"
 
+LV_IMG_DECLARE(emoji_1f4ab);
 LV_IMG_DECLARE(emoji_1f600);
 LV_IMG_DECLARE(emoji_1f601);
 LV_IMG_DECLARE(emoji_1f602);
@@ -79,5 +80,7 @@ LV_IMG_DECLARE(emoji_1f925);
 LV_IMG_DECLARE(emoji_1f927);
 LV_IMG_DECLARE(emoji_2639);
 LV_IMG_DECLARE(emoji_263a);
+LV_IMG_DECLARE(emoji_2764);
+LV_IMG_DECLARE(emoji_2728);
 
 #endif /* IMAGES_EMOJI_HEADER_H */

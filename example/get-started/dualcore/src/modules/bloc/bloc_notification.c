@@ -342,6 +342,10 @@ const char *get_app_name_from_notify_id(Notifications_Type notify_id)
         return "Telegram";
     case Notify_twitch:
         return "Twitch";
+    case Notify_slack:
+        return "Slack";
+    case Notify_lark:
+        return "Lark";
     default:
         return "Unknown";
     }
