@@ -18,6 +18,9 @@
 #include "lv_draw_sw.h"
 #include "lvsf_perf.h"
 #include "lv_gpu_sifli_epic.h"
+#ifdef EMOJI_SUPPORT
+#include "lvsf_emoji.h"
+#endif
 
 
 
@@ -850,6 +853,29 @@ static void draw_letter(lv_draw_ctx_t *draw_ctx, const lv_draw_label_dsc_t *dsc,
     {
         return;
     }
+
+#ifdef EMOJI_SUPPORT
+    /* If bpp == 0xF, this is an emoji image glyph - render as image */
+    if (g.bpp == 0xF)
+    {
+        void *emoji_img = lv_get_emoji_by_unicode(letter);
+        if (emoji_img)
+        {
+            lv_draw_img_dsc_t img_dsc;
+            lv_draw_img_dsc_init(&img_dsc);
+            img_dsc.opa = dsc->opa;
+
+            lv_area_t emoji_area;
+            emoji_area.x1 = gpos.x;
+            emoji_area.y1 = gpos.y;
+            emoji_area.x2 = gpos.x + g.box_w - 1;
+            emoji_area.y2 = gpos.y + g.box_h - 1;
+
+            lv_draw_img(draw_ctx, &img_dsc, &emoji_area, emoji_img);
+        }
+        return;
+    }
+#endif
 
     const uint8_t *map_p = lv_font_get_glyph_bitmap(g.resolved_font, letter);
     if (map_p == NULL)

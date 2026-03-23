@@ -11,7 +11,7 @@
     #include <dfs_file.h>
 #endif
 
-#if defined (SOLUTION_WATCH) && defined (EMOJI_SUPPORT)
+#if defined (EMOJI_SUPPORT)
     #include "images_emoji_header.h"
 #endif
 
@@ -47,20 +47,8 @@ void *lv_get_emoji_by_unicode(uint32_t u_letter)
 
     switch (u_letter)
     {
-#ifndef SOLUTION_WATCH
-        /*
-        GET_EMOJI_INFO(1f302)
-        GET_EMOJI_INFO(1f392)
-        GET_EMOJI_INFO(1f393)
-        GET_EMOJI_INFO(1f39a)
-        GET_EMOJI_INFO(2639)
-        GET_EMOJI_INFO(263a)
-        GET_EMOJI_INFO(26d1)
-        */
-#else /*for SOLUTION_WATCH*/
 #ifdef EMOJI_SUPPORT
 #include "emoji_info.h"
-#endif
 #endif
     default:
         return NULL;

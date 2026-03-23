@@ -136,24 +136,8 @@ void test_emoji_ttf_display(void)
     lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     // Test label 1: Direct emoji display
-    lv_obj_t *label1 = lv_label_create(cont);
-    lv_label_set_text(label1, "Emoji test:");
-    lv_obj_set_style_text_font(label1, LV_EXT_FONT_GET(FONT_NORMAL), LV_PART_MAIN);
-
-    const char *emoji_text = "😀😃😄😁😆😅😂🤣";
-    // Test emojis
-    lv_obj_t *label2 = lv_label_create(cont);
-
-    lv_label_set_text(label2, emoji_text);
-    lv_obj_set_style_text_font(label2, LV_EXT_FONT_GET(FONT_NORMAL), LV_PART_MAIN);
-
-    lv_obj_t *label3 = lv_label_create(cont);
-    lv_label_set_text(label3, emoji_text);
-    lv_obj_set_style_text_font(label3, LV_EXT_FONT_GET(FONT_SUBTITLE), LV_PART_MAIN);
-
-    lv_obj_t *label4 = lv_label_create(cont);
-    lv_label_set_text(label4, emoji_text);
-    lv_obj_set_style_text_font(label4, LV_EXT_FONT_GET(FONT_TITLE), LV_PART_MAIN);
+    lv_obj_t *label = lv_label_create(cont);
+    lv_label_set_text(label, "Hello \xF0\x9F\x98\x80"); // 😀😃😄😁😆😅😂🤣
 }
 
 #endif

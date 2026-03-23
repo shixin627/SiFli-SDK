@@ -9,6 +9,7 @@ list = os.listdir(cwd)
 objs_ezip = []
 objs_no_ezip = []
 objs_large_ezip = []
+objs_emoji_ezip = []
 
 objs_ezip += Glob('common/ezip/*.png')
 objs_ezip += Glob('common/ezip/*.gif')
@@ -16,6 +17,7 @@ objs_no_ezip = Glob('common/no_ezip/*.png')
 objs_no_ezip += Glob('common/no_ezip/*.gif')
 objs_large_ezip += Glob('common/large_ezip/*.png')
 objs_large_ezip += Glob('common/large_ezip/*.gif')
+objs_emoji_ezip += Glob('common/emoji_ezip/*.png')
 
 def align_to_power_of_two_and_str(num):
     power = 1
@@ -37,16 +39,17 @@ else:
     ers_v = '128'
 
 if GetDepend('BSP_USING_PC_SIMULATOR'):
-    objs = Env.ImgResource(objs_no_ezip + objs_ezip + objs_large_ezip, img_flags+' -cfile 1 -simu')
+    objs = Env.ImgResource(objs_no_ezip + objs_ezip + objs_large_ezip + objs_emoji_ezip, img_flags+' -cfile 1 -simu')
 else:
     objs = Env.ImgResource(objs_no_ezip, img_flags+' -cfile 1 -dpt 1')
     objs += Env.ImgResource(objs_ezip, img_flags+' -cfile 2 -dpt 1')
     objs += Env.ImgResource(objs_large_ezip, img_flags+' -cfile 2 -dpt 4 -ers '+ers_v)
+    objs += Env.ImgResource(objs_emoji_ezip, img_flags+' -cfile 2 -dpt 1')
 
 if GetOption('no_cc'):
     objs = []
     
-objs = DefineGroup('resource', objs, depend = ['PKG_USING_LITTLEVGL2RTT'])  
+objs = DefineGroup('resource', objs, depend = ['PKG_USING_LITTLEVGL2RTT'], CPPPATH = [cwd])  
 
 Return ('objs')
 

@@ -15,6 +15,10 @@ config FREETYPE_TINY_FONT_FULL
     bool
     default y
 
+config EMOJI_SUPPORT
+    bool "Enable emoji image rendering support"
+    default y
+
 menu "app cache Memory configuration"   
 
 choice
