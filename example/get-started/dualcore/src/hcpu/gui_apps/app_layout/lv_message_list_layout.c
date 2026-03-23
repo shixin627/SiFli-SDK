@@ -1982,6 +1982,9 @@ rt_int32_t notification_on_resume(void)
 		set_paused_control_with_arm(false);
 	}
 	LOG_D("notification_on_resume");
+	/* User has seen the notification list — hide the red dot on the dial */
+	if (lv_obj_is_valid(dial_header_red_dot))
+		lv_obj_add_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);
 	lvgl_msg_handler.handle_tap_indicator = press_cb;
 	set_scroll_segment_count(get_message_page_count());
 	set_control_gravity_x_range(0.6f, -0.6f, false);
