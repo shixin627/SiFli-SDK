@@ -134,10 +134,37 @@ void test_emoji_ttf_display(void)
     lv_obj_center(cont);
     lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(cont, 8, 0);
 
-    // Test label 1: Direct emoji display
-    lv_obj_t *label = lv_label_create(cont);
-    lv_label_set_text(label, "Hello \xF0\x9F\x98\x80"); // 😀😃😄😁😆😅😂🤣
+    /* FONT_SMALL (20px) - text mixed with emoji */
+    lv_obj_t *label_s = lv_label_create(cont);
+    lv_obj_set_style_text_font(label_s, LV_EXT_FONT_GET(FONT_SMALL), 0);
+    lv_obj_set_style_text_color(label_s, lv_color_white(), 0);
+    lv_label_set_text(label_s, "Small \xF0\x9F\x98\x80\xF0\x9F\x98\x83\xF0\x9F\x98\x84"); // 😀😃😄
+
+    /* FONT_NORMAL (24px) */
+    lv_obj_t *label_n = lv_label_create(cont);
+    lv_obj_set_style_text_font(label_n, LV_EXT_FONT_GET(FONT_NORMAL), 0);
+    lv_obj_set_style_text_color(label_n, lv_color_white(), 0);
+    lv_label_set_text(label_n, "Normal \xF0\x9F\x98\x82\xF0\x9F\x98\x8D\xF0\x9F\x98\x8E"); // 😂😍😎
+
+    /* FONT_SUBTITLE (28px) */
+    lv_obj_t *label_sub = lv_label_create(cont);
+    lv_obj_set_style_text_font(label_sub, LV_EXT_FONT_GET(FONT_SUBTITLE), 0);
+    lv_obj_set_style_text_color(label_sub, lv_color_white(), 0);
+    lv_label_set_text(label_sub, "Subtitle \xF0\x9F\x98\x98\xF0\x9F\x98\xA2"); // 😘😢
+
+    /* FONT_TITLE (36px) */
+    lv_obj_t *label_t = lv_label_create(cont);
+    lv_obj_set_style_text_font(label_t, LV_EXT_FONT_GET(FONT_TITLE), 0);
+    lv_obj_set_style_text_color(label_t, lv_color_white(), 0);
+    lv_label_set_text(label_t, "Title \xF0\x9F\x98\xB1\xF0\x9F\x98\xA1"); // 😱😡
+
+    /* Emoji-only row */
+    lv_obj_t *label_emoji = lv_label_create(cont);
+    lv_obj_set_style_text_font(label_emoji, LV_EXT_FONT_GET(FONT_NORMAL), 0);
+    lv_obj_set_style_text_color(label_emoji, lv_color_white(), 0);
+    lv_label_set_text(label_emoji, "😀😁😂😃😄😅😆😉😊😍");                                 
 }
 
 #endif
