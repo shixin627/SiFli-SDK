@@ -60,6 +60,15 @@ extern "C"
     extern rt_int32_t instruction_list_resume(void);
     extern rt_int32_t instruction_list_pause(void);
     extern rt_int32_t instruction_list_deinit(void);
+
+    /* Custom instruction list API */
+    extern void add_or_update_custom_instruction(const char *id, const char *title,
+                                                  bool is_interval, uint32_t interval_sec,
+                                                  bool enabled);
+    extern void clear_custom_instructions(void);
+    extern uint8_t get_custom_instruction_count(void);
+    extern void set_custom_instruction_tap_cb(void (*cb)(const char *id, bool enabled));
+    extern void refresh_custom_instructions(void);
     extern rt_int32_t notification_on_resume(void);
     extern rt_int32_t notification_on_pause(void);
     extern rt_int32_t notification_on_deinit(void);

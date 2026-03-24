@@ -535,7 +535,6 @@ static void app_clock_main_status_bar_down_event_cb(lv_event_t *event)
     {
     case LV_EVENT_RELEASED:
     {
-        LOG_D("LV_EVENT_RELEASED_Clock");
         if (lv_obj_get_scroll_x(myLancher[app_index_message].pagetileview) ==
                 466 &&
             lv_obj_get_scroll_y(myLancher[app_index_message].pagetileview) ==

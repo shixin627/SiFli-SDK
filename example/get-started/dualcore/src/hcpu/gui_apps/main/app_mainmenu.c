@@ -298,10 +298,10 @@ void check_is_at_instruction_list(void)
         if (_at_instruction_list)
         {
             setting_provider.set_power_save_mode(1);
-            extern uint8_t return_app_count(void);
+            extern uint8_t return_total_list_count(void);
             extern uint16_t get_gesture_starting_value(void);
             set_prev_sensor_quat(get_gesture_starting_value());
-            set_scroll_segment_count(return_app_count());
+            set_scroll_segment_count(return_total_list_count());
             // lvgl_msg_handler.handle_tap_indicator = on_tap_wrapper;
             extern void set_arc_stripe_external_offset(int16_t offset_degrees);
             lvgl_msg_handler.handle_set_arc_stripe_external_offset =

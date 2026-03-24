@@ -697,6 +697,18 @@ static int utest_gesture(int argc, char *argv[])
         {
             set_gravity_position(GRAVITY_POSITION_AI);
         }
+        else if (strcmp(argv[1], "instruction") == 0)
+        {
+            const char *test_json =
+                "{\"id\":\"dc396755-43ce-4fdb-ade4-d1ad683140c3\","
+                "\"title\":\"每分鐘提醒走動\",\"version\":1,"
+                "\"trigger\":{\"type\":\"interval\",\"intervalSeconds\":60}}";
+            add_or_update_custom_instruction(
+                "dc396755-43ce-4fdb-ade4-d1ad683140c3",
+                "每分鐘提醒走動", true, 60, true);
+            refresh_custom_instructions();
+            rt_kprintf("Test instruction added\n");
+        }
     }
     return 0;
 }
