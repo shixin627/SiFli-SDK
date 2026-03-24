@@ -513,11 +513,11 @@ lv_obj_t *lv_control_app_list_layout_create(lv_obj_t *parent)
 		}
 	}
 	reset_list();
-	// myLancher[app_index_app_list].reset_list = reset_list;
-	// myLancher[app_index_app_list].reset_list();
+	// myLancher[app_index_instruction_list].reset_list = reset_list;
+	// myLancher[app_index_instruction_list].reset_list();
 
 	lv_event_send(p_control_app_list, LV_EVENT_SCROLL, NULL);
-	// myLancher[app_index_app_list].on_tap = on_tap;
+	// myLancher[app_index_instruction_list].on_tap = on_tap;
 
 	return p_control_app_list_bg;
 }
@@ -1334,13 +1334,13 @@ rt_int32_t control_app_list_resume(void)
 #ifdef USE_QUICK_OPEN_AI
 	open_vibration = true;
 #endif
-	check_is_at_app_list();
+	check_is_at_instruction_list();
 	lvgl_msg_handler.handle_tap_indicator = on_tap;
 	request_weather_within_six_hours(false);
 	request_calendar_on_mobile(false);
 	return RT_EOK;
 #else
-	check_is_at_app_list();
+	check_is_at_instruction_list();
 	extern void set_movement_scale_ratio(float ratio);
 	set_movement_scale_ratio(3.0f); // 設置移動縮放比例
 	reset_control_pos();
@@ -1361,7 +1361,7 @@ rt_int32_t control_app_list_pause(void)
 	}
 	pause_control_app_list = true;
 	lvgl_msg_handler.handle_tap_indicator = NULL;
-	check_is_at_app_list();
+	check_is_at_instruction_list();
 	LOG_I("control_app_list_pause");
 	return RT_EOK;
 #else
@@ -1381,7 +1381,7 @@ rt_int32_t control_app_list_pause(void)
 	{
 		lvgl_msg_handler.handle_app_media_play_state = NULL;
 	}
-	check_is_at_app_list();
+	check_is_at_instruction_list();
 	return RT_EOK;
 #endif
 }

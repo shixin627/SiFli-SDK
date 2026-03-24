@@ -46,7 +46,7 @@
  */
 
 extern void reset_skai_widget_input_text(void);
-extern bool get_is_open_app_list_ai(void);
+extern bool get_is_open_instruction_list_ai(void);
 
 extern void parse_chat_item(cJSON *item, chat_t *note);
 static uint8_t weather_data_updata_count = 0;
@@ -94,7 +94,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         if (pValue[0])
         {
             if (is_at_ai_interface() || is_at_speech_interface() ||
-                get_is_open_app_list_ai())
+                get_is_open_instruction_list_ai())
                 show_ai_processing_indicator(true);
         }
         else
@@ -599,6 +599,15 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
             pValue[length] = '\0';
             LOG_I("watch received location data:%s", pValue);
             handle_location_data((char *)pValue);
+        }
+        break;
+    }
+
+    case KEY_SKAI_CREATION_INSTRUCTIONS:
+    {
+        if (length > 0)
+        {
+            // handle_skai_creation_instructions((char *)pValue);
         }
         break;
     }

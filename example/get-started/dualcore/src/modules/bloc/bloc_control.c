@@ -284,9 +284,9 @@ static void set_media_title(char *title)
 	current_media_object.state = true;
 	notify_media_title();
 	notify_provider.notification_refresh();
-	if (myLancher[app_index_app_list].reset_list != NULL && !is_at_app_list())
+	if (myLancher[app_index_instruction_list].reset_list != NULL && !is_at_instruction_list())
 	{
-		myLancher[app_index_app_list].reset_list();
+		myLancher[app_index_instruction_list].reset_list();
 	}
 }
 

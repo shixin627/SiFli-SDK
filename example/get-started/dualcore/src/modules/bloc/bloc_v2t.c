@@ -266,7 +266,7 @@ static void speaking_debounce_timer_stop(void)
  * 3. 距離上次VAD觸發超過0.5秒
  * 4. 不在AI處理中
  */
-extern bool get_is_open_app_list_ai(void);
+extern bool get_is_open_instruction_list_ai(void);
 static void notify_vad_status(bool status)
 {
     rt_tick_t current_tick = rt_tick_get();
@@ -280,7 +280,7 @@ static void notify_vad_status(bool status)
         if (status)
         {
             if (get_gravity_position() == GRAVITY_POSITION_AI ||
-                is_at_ai_interface() || is_at_app_list() ||
+                is_at_ai_interface() || is_at_instruction_list() ||
                 is_at_speech_interface())
             {
                 is_user_speaking_to_ai = true;

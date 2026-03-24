@@ -120,15 +120,15 @@ typedef struct
     rt_list_t list;                 //!< head of all clocks list
 
     rt_timer_t soft_timer; //!<  template vaiable for simulator
-    lv_obj_t *app_list_time_h;
-    lv_obj_t *app_list_time_m;
-    lv_obj_t *app_list_time_symbol;
-    lv_obj_t *app_list_time_bg;
-    lv_obj_t *app_list_weather_icon;
-    lv_obj_t *app_list_bluetooth_disconnection;
-    lv_obj_t *app_list_battery_bg;
-    lv_obj_t *app_list_battery;
-    lv_obj_t *app_list_battery_label;
+    lv_obj_t *instruction_list_time_h;
+    lv_obj_t *instruction_list_time_m;
+    lv_obj_t *instruction_list_time_symbol;
+    lv_obj_t *instruction_list_time_bg;
+    lv_obj_t *instruction_list_weather_icon;
+    lv_obj_t *instruction_list_bluetooth_disconnection;
+    lv_obj_t *instruction_list_battery_bg;
+    lv_obj_t *instruction_list_battery;
+    lv_obj_t *instruction_list_battery_label;
 } app_clock_main_t;
 
 #ifndef BSP_USING_LVGL_INPUT_AGENT
@@ -136,110 +136,110 @@ static
 #endif
     app_clock_main_t *p_app_clock_main = NULL;
 
-void set_app_list_time_opa(uint8_t opa)
+void set_instruction_list_time_opa(uint8_t opa)
 {
-    if (lv_obj_is_valid(p_app_clock_main->app_list_time_h) == 0 ||
-        lv_obj_is_valid(p_app_clock_main->app_list_time_m) == 0 ||
-        lv_obj_is_valid(p_app_clock_main->app_list_time_symbol) == 0 ||
-        lv_obj_is_valid(p_app_clock_main->app_list_weather_icon) == 0)
+    if (lv_obj_is_valid(p_app_clock_main->instruction_list_time_h) == 0 ||
+        lv_obj_is_valid(p_app_clock_main->instruction_list_time_m) == 0 ||
+        lv_obj_is_valid(p_app_clock_main->instruction_list_time_symbol) == 0 ||
+        lv_obj_is_valid(p_app_clock_main->instruction_list_weather_icon) == 0)
     {
-        LOG_W("app_list_time_h is not valid");
+        LOG_W("instruction_list_time_h is not valid");
         return;
     }
-    lv_obj_set_style_text_opa(p_app_clock_main->app_list_time_h, opa, 0);
-    lv_obj_set_style_text_opa(p_app_clock_main->app_list_time_m, opa, 0);
-    lv_obj_set_style_text_opa(p_app_clock_main->app_list_time_symbol, opa, 0);
-    lv_obj_set_style_img_opa(p_app_clock_main->app_list_weather_icon, opa, 0);
+    lv_obj_set_style_text_opa(p_app_clock_main->instruction_list_time_h, opa, 0);
+    lv_obj_set_style_text_opa(p_app_clock_main->instruction_list_time_m, opa, 0);
+    lv_obj_set_style_text_opa(p_app_clock_main->instruction_list_time_symbol, opa, 0);
+    lv_obj_set_style_img_opa(p_app_clock_main->instruction_list_weather_icon, opa, 0);
 }
 
 static lv_obj_t *charge_icon_obj = NULL;
 
-void set_app_list_battery_opa(uint8_t opa)
+void set_instruction_list_battery_opa(uint8_t opa)
 {
-    if (lv_obj_is_valid(p_app_clock_main->app_list_battery) == 0 ||
-        lv_obj_is_valid(p_app_clock_main->app_list_battery_label) == 0 ||
+    if (lv_obj_is_valid(p_app_clock_main->instruction_list_battery) == 0 ||
+        lv_obj_is_valid(p_app_clock_main->instruction_list_battery_label) == 0 ||
         lv_obj_is_valid(charge_icon_obj) == 0)
     {
-        LOG_W("app_list_battery is not valid");
+        LOG_W("instruction_list_battery is not valid");
         return;
     }
-    lv_obj_set_style_img_opa(p_app_clock_main->app_list_battery, opa, 0);
-    lv_obj_set_style_text_opa(p_app_clock_main->app_list_battery_label, opa, 0);
+    lv_obj_set_style_img_opa(p_app_clock_main->instruction_list_battery, opa, 0);
+    lv_obj_set_style_text_opa(p_app_clock_main->instruction_list_battery_label, opa, 0);
     lv_obj_set_style_img_opa(charge_icon_obj, opa, 0);
-    lv_obj_set_style_img_opa(p_app_clock_main->app_list_bluetooth_disconnection,
+    lv_obj_set_style_img_opa(p_app_clock_main->instruction_list_bluetooth_disconnection,
                              opa, 0);
 }
 
-lv_obj_t *get_app_list_time_bg(void)
+lv_obj_t *get_instruction_list_time_bg(void)
 {
-    return p_app_clock_main->app_list_time_bg;
+    return p_app_clock_main->instruction_list_time_bg;
 }
 
-void set_app_list_time_bg_opa(uint8_t opa)
+void set_instruction_list_time_bg_opa(uint8_t opa)
 {
-    if (lv_obj_is_valid(get_app_list_time_bg()))
+    if (lv_obj_is_valid(get_instruction_list_time_bg()))
     {
-        lv_obj_set_style_bg_opa(get_app_list_time_bg(), opa, 0);
+        lv_obj_set_style_bg_opa(get_instruction_list_time_bg(), opa, 0);
     }
 }
 
-lv_obj_t *get_app_list_bluetooth_disconnection(void)
+lv_obj_t *get_instruction_list_bluetooth_disconnection(void)
 {
-    return p_app_clock_main->app_list_bluetooth_disconnection;
+    return p_app_clock_main->instruction_list_bluetooth_disconnection;
 }
 
-lv_obj_t *get_app_list_battery(void)
+lv_obj_t *get_instruction_list_battery(void)
 {
-    return p_app_clock_main->app_list_battery;
+    return p_app_clock_main->instruction_list_battery;
 }
 
-lv_obj_t *get_app_list_battery_label(void)
+lv_obj_t *get_instruction_list_battery_label(void)
 {
-    return p_app_clock_main->app_list_battery_label;
+    return p_app_clock_main->instruction_list_battery_label;
 }
 
-lv_obj_t *get_app_list_battery_bg(void)
+lv_obj_t *get_instruction_list_battery_bg(void)
 {
-    return p_app_clock_main->app_list_battery_bg;
+    return p_app_clock_main->instruction_list_battery_bg;
 }
 
-void set_app_list_battery_bg_opa(uint8_t opa)
+void set_instruction_list_battery_bg_opa(uint8_t opa)
 {
-    if (lv_obj_is_valid(get_app_list_battery_bg()))
+    if (lv_obj_is_valid(get_instruction_list_battery_bg()))
     {
-        lv_obj_set_style_bg_opa(get_app_list_battery_bg(), opa, 0);
+        lv_obj_set_style_bg_opa(get_instruction_list_battery_bg(), opa, 0);
     }
 }
 
 void show_battery(bool show)
 {
-    if (!lv_obj_is_valid(get_app_list_battery_bg()))
+    if (!lv_obj_is_valid(get_instruction_list_battery_bg()))
     {
         return;
     }
     if (show)
     {
-        lv_obj_clear_flag(get_app_list_battery_bg(), LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(get_instruction_list_battery_bg(), LV_OBJ_FLAG_HIDDEN);
     }
     else
     {
-        lv_obj_add_flag(get_app_list_battery_bg(), LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(get_instruction_list_battery_bg(), LV_OBJ_FLAG_HIDDEN);
     }
 }
 
-void show_app_list_time(bool show)
+void show_instruction_list_time(bool show)
 {
-    if (!lv_obj_is_valid(get_app_list_time_bg()))
+    if (!lv_obj_is_valid(get_instruction_list_time_bg()))
     {
         return;
     }
     if (show)
     {
-        lv_obj_clear_flag(get_app_list_time_bg(), LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(get_instruction_list_time_bg(), LV_OBJ_FLAG_HIDDEN);
     }
     else
     {
-        lv_obj_add_flag(get_app_list_time_bg(), LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(get_instruction_list_time_bg(), LV_OBJ_FLAG_HIDDEN);
     }
 }
 
@@ -1025,29 +1025,29 @@ static void refersh_time(T_UTC_TIME *current_time)
     char time_str[3];
     LOG_D("refersh_time:%d:%d:%d", current_time->hour, current_time->minutes,
           current_time->seconds);
-    if (lv_obj_is_valid(p_app_clock_main->app_list_time_h) &&
-        lv_obj_is_valid(p_app_clock_main->app_list_time_m))
+    if (lv_obj_is_valid(p_app_clock_main->instruction_list_time_h) &&
+        lv_obj_is_valid(p_app_clock_main->instruction_list_time_m))
     {
         rt_snprintf(time_str, 3, "%02d", current_time->hour);
-        lv_label_set_text(p_app_clock_main->app_list_time_h, time_str);
+        lv_label_set_text(p_app_clock_main->instruction_list_time_h, time_str);
         rt_snprintf(time_str, 3, "%02d", current_time->minutes);
-        lv_label_set_text(p_app_clock_main->app_list_time_m, time_str);
+        lv_label_set_text(p_app_clock_main->instruction_list_time_m, time_str);
     }
     else
     {
-        LOG_W("app_list_time is not valid");
+        LOG_W("instruction_list_time is not valid");
     }
 }
 
 void refersh_weather_icon(void)
 {
     weather_t *get_weather_data = get_weather(WEATHER_TODAT_ITEM_AMOUNT - 1);
-    if (lv_obj_is_valid(p_app_clock_main->app_list_weather_icon) == 0)
+    if (lv_obj_is_valid(p_app_clock_main->instruction_list_weather_icon) == 0)
     {
-        LOG_W("app_list_weather_icon is not valid");
+        LOG_W("instruction_list_weather_icon is not valid");
         return;
     }
-    lv_img_set_src(p_app_clock_main->app_list_weather_icon,
+    lv_img_set_src(p_app_clock_main->instruction_list_weather_icon,
                    weather_icon_get(get_weather_data->description));
 }
 
@@ -1057,33 +1057,33 @@ void refersh_battery(uint8_t battery_level)
     rt_snprintf(battery_str, 5, "%d%%", battery_level);
     if (p_app_clock_main)
     {
-        if (lv_obj_is_valid(p_app_clock_main->app_list_battery_label))
+        if (lv_obj_is_valid(p_app_clock_main->instruction_list_battery_label))
         {
-            lv_label_set_text(p_app_clock_main->app_list_battery_label,
+            lv_label_set_text(p_app_clock_main->instruction_list_battery_label,
                               battery_str);
             if (SkaiWatchSys.charger_status == InCharging)
             {
                 lv_obj_set_style_text_color(
-                    p_app_clock_main->app_list_battery_label,
+                    p_app_clock_main->instruction_list_battery_label,
                     lv_color_hex(0x00CC00), 0);
             }
             else
             {
                 lv_obj_set_style_text_color(
-                    p_app_clock_main->app_list_battery_label,
+                    p_app_clock_main->instruction_list_battery_label,
                     lv_color_hex(0xFFFFFF), 0);
             }
         }
         else
         {
-            LOG_W("app_list_battery_label is not valid");
+            LOG_W("instruction_list_battery_label is not valid");
         }
         refresh_charge_icon(NULL);
-        set_battery_image(p_app_clock_main->app_list_battery, battery_level);
+        set_battery_image(p_app_clock_main->instruction_list_battery, battery_level);
     }
     else
     {
-        LOG_W("app_list_battery is NULL");
+        LOG_W("instruction_list_battery is NULL");
     }
 }
 
@@ -1216,11 +1216,11 @@ extern void ble_dev_mgr_start_main_phone_check_timer(uint32_t interval_ms);
 static void refresh_bluetooth_disconnection(bool connected)
 {
     is_bluetooth_connected = connected;
-    if (lv_obj_is_valid(p_app_clock_main->app_list_bluetooth_disconnection))
+    if (lv_obj_is_valid(p_app_clock_main->instruction_list_bluetooth_disconnection))
     {
         if (connected)
         {
-            lv_obj_add_flag(p_app_clock_main->app_list_bluetooth_disconnection,
+            lv_obj_add_flag(p_app_clock_main->instruction_list_bluetooth_disconnection,
                             LV_OBJ_FLAG_HIDDEN);
             // 當重新連接時，銷毀斷線提示視窗
             destroy_connection_tips();
@@ -1229,20 +1229,20 @@ static void refresh_bluetooth_disconnection(bool connected)
         {
             ble_dev_mgr_start_main_phone_check_timer(5000);
             lv_obj_clear_flag(
-                p_app_clock_main->app_list_bluetooth_disconnection,
+                p_app_clock_main->instruction_list_bluetooth_disconnection,
                 LV_OBJ_FLAG_HIDDEN);
         }
     }
     else
     {
-        LOG_W("app_list_bluetooth_disconnection is not valid");
+        LOG_W("instruction_list_bluetooth_disconnection is not valid");
     }
 }
 
 static T_UTC_TIME aligned_time;
 static lv_timer_t *gui_state_update_timer = NULL;
 
-void app_list_main_time_update(void)
+void instruction_list_main_time_update(void)
 {
     aligned_time = SkaiWatchSys.Global_Time;
     refersh_time(&aligned_time);
@@ -1264,7 +1264,7 @@ static void gui_state_update_timer_callback(lv_timer_t *timer)
     SkaiWatchSys.Global_Time.weekday = time_info->tm_wday;
     if (aligned_time.minutes != SkaiWatchSys.Global_Time.minutes)
     {
-        app_list_main_time_update();
+        instruction_list_main_time_update();
     }
     check_is_at_control_center();
     check_is_at_home();
@@ -1294,8 +1294,8 @@ static void gui_state_update_timer_stop(void)
 static lv_timer_t *open_widget_list_timer = NULL;
 static void open_widget_list_timer_callback(lv_timer_t *timer)
 {
-    animate_to_app_list();
-    set_user_want_to_open_display_to_app_list(false);
+    animate_to_instruction_list();
+    set_user_want_to_open_display_to_instruction_list(false);
     lv_timer_del(open_widget_list_timer);
 }
 
@@ -1321,17 +1321,17 @@ static void on_tap(void)
 
 static void update_time_symbol(void)
 {
-    if (lv_obj_is_valid(p_app_clock_main->app_list_time_symbol))
+    if (lv_obj_is_valid(p_app_clock_main->instruction_list_time_symbol))
     {
-        if (lv_obj_has_flag(p_app_clock_main->app_list_time_symbol,
+        if (lv_obj_has_flag(p_app_clock_main->instruction_list_time_symbol,
                             LV_OBJ_FLAG_HIDDEN))
         {
-            lv_obj_clear_flag(p_app_clock_main->app_list_time_symbol,
+            lv_obj_clear_flag(p_app_clock_main->instruction_list_time_symbol,
                               LV_OBJ_FLAG_HIDDEN);
         }
         else
         {
-            lv_obj_add_flag(p_app_clock_main->app_list_time_symbol,
+            lv_obj_add_flag(p_app_clock_main->instruction_list_time_symbol,
                             LV_OBJ_FLAG_HIDDEN);
         }
     }
@@ -1344,61 +1344,61 @@ static void colon_blink_timer_cb(lv_timer_t *timer)
 static lv_timer_t *colon_blink_timer = NULL;
 void top_digital_time_builder(lv_obj_t *parent)
 {
-    p_app_clock_main->app_list_time_bg = lv_obj_create(parent);
-    lv_obj_set_style_bg_color(p_app_clock_main->app_list_time_bg,
+    p_app_clock_main->instruction_list_time_bg = lv_obj_create(parent);
+    lv_obj_set_style_bg_color(p_app_clock_main->instruction_list_time_bg,
                               lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(p_app_clock_main->app_list_time_bg, LV_OPA_0, 0);
-    lv_obj_set_size(p_app_clock_main->app_list_time_bg, 466, 50);
-    lv_obj_align(p_app_clock_main->app_list_time_bg, LV_ALIGN_TOP_MID, -10, 0);
-    lv_obj_clear_flag(p_app_clock_main->app_list_time_bg,
+    lv_obj_set_style_bg_opa(p_app_clock_main->instruction_list_time_bg, LV_OPA_0, 0);
+    lv_obj_set_size(p_app_clock_main->instruction_list_time_bg, 466, 50);
+    lv_obj_align(p_app_clock_main->instruction_list_time_bg, LV_ALIGN_TOP_MID, -10, 0);
+    lv_obj_clear_flag(p_app_clock_main->instruction_list_time_bg,
                       LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t *app_list_time_h =
-        lv_label_create(p_app_clock_main->app_list_time_bg);
-    lv_obj_set_style_text_align(app_list_time_h, LV_TEXT_ALIGN_CENTER,
+    lv_obj_t *instruction_list_time_h =
+        lv_label_create(p_app_clock_main->instruction_list_time_bg);
+    lv_obj_set_style_text_align(instruction_list_time_h, LV_TEXT_ALIGN_CENTER,
                                 LV_PART_MAIN);
-    lv_obj_set_style_text_font(app_list_time_h,
+    lv_obj_set_style_text_font(instruction_list_time_h,
                                LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
-    lv_obj_align(app_list_time_h, LV_ALIGN_CENTER, -20, 0);
-    lv_obj_t *app_list_time_m =
-        lv_label_create(p_app_clock_main->app_list_time_bg);
-    lv_obj_set_style_text_align(app_list_time_m, LV_TEXT_ALIGN_CENTER,
+    lv_obj_align(instruction_list_time_h, LV_ALIGN_CENTER, -20, 0);
+    lv_obj_t *instruction_list_time_m =
+        lv_label_create(p_app_clock_main->instruction_list_time_bg);
+    lv_obj_set_style_text_align(instruction_list_time_m, LV_TEXT_ALIGN_CENTER,
                                 LV_PART_MAIN);
-    lv_obj_set_style_text_font(app_list_time_m,
+    lv_obj_set_style_text_font(instruction_list_time_m,
                                LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
-    lv_obj_align(app_list_time_m, LV_ALIGN_CENTER, 21, 0);
-    lv_obj_t *app_list_time_symbol =
-        lv_label_create(p_app_clock_main->app_list_time_bg);
-    lv_obj_set_style_text_align(app_list_time_symbol, LV_TEXT_ALIGN_CENTER,
+    lv_obj_align(instruction_list_time_m, LV_ALIGN_CENTER, 21, 0);
+    lv_obj_t *instruction_list_time_symbol =
+        lv_label_create(p_app_clock_main->instruction_list_time_bg);
+    lv_obj_set_style_text_align(instruction_list_time_symbol, LV_TEXT_ALIGN_CENTER,
                                 LV_PART_MAIN);
-    lv_obj_set_style_text_font(app_list_time_symbol,
+    lv_obj_set_style_text_font(instruction_list_time_symbol,
                                LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
-    lv_obj_align(app_list_time_symbol, LV_ALIGN_CENTER, 0, -1);
-    lv_obj_t *app_list_weather_icon =
-        lv_img_create(p_app_clock_main->app_list_time_bg);
+    lv_obj_align(instruction_list_time_symbol, LV_ALIGN_CENTER, 0, -1);
+    lv_obj_t *instruction_list_weather_icon =
+        lv_img_create(p_app_clock_main->instruction_list_time_bg);
     weather_t *get_weather_data = get_weather(WEATHER_TODAT_ITEM_AMOUNT - 1);
-    lv_img_set_src(app_list_weather_icon,
+    lv_img_set_src(instruction_list_weather_icon,
                    weather_icon_get(get_weather_data->description));
-    lv_img_set_zoom(app_list_weather_icon, 128); // zoom 80%
-    lv_obj_align(app_list_weather_icon, LV_ALIGN_CENTER, 58, 0);
-    p_app_clock_main->app_list_weather_icon = app_list_weather_icon;
+    lv_img_set_zoom(instruction_list_weather_icon, 128); // zoom 80%
+    lv_obj_align(instruction_list_weather_icon, LV_ALIGN_CENTER, 58, 0);
+    p_app_clock_main->instruction_list_weather_icon = instruction_list_weather_icon;
     uint8_t minutes = SkaiWatchSys.Global_Time.minutes;
     uint8_t hour = SkaiWatchSys.Global_Time.hour;
     char time_str[3];
     rt_snprintf(time_str, 3, "%02d", hour); // hh
-    lv_label_set_text(app_list_time_h, time_str);
+    lv_label_set_text(instruction_list_time_h, time_str);
     rt_snprintf(time_str, 3, "%02d", minutes); // mm
-    lv_label_set_text(app_list_time_m, time_str);
-    lv_label_set_text(app_list_time_symbol, ":");
+    lv_label_set_text(instruction_list_time_m, time_str);
+    lv_label_set_text(instruction_list_time_symbol, ":");
 
-    lv_obj_set_style_text_opa(app_list_time_h, LV_OPA_TRANSP, 0);
-    p_app_clock_main->app_list_time_h = app_list_time_h;
-    lv_obj_set_style_text_opa(app_list_time_m, LV_OPA_TRANSP, 0);
-    p_app_clock_main->app_list_time_m = app_list_time_m;
-    lv_obj_set_style_text_opa(app_list_time_symbol, LV_OPA_TRANSP, 0);
-    p_app_clock_main->app_list_time_symbol = app_list_time_symbol;
-    lv_obj_set_style_img_opa(app_list_weather_icon, LV_OPA_TRANSP, 0);
-    p_app_clock_main->app_list_weather_icon = app_list_weather_icon;
+    lv_obj_set_style_text_opa(instruction_list_time_h, LV_OPA_TRANSP, 0);
+    p_app_clock_main->instruction_list_time_h = instruction_list_time_h;
+    lv_obj_set_style_text_opa(instruction_list_time_m, LV_OPA_TRANSP, 0);
+    p_app_clock_main->instruction_list_time_m = instruction_list_time_m;
+    lv_obj_set_style_text_opa(instruction_list_time_symbol, LV_OPA_TRANSP, 0);
+    p_app_clock_main->instruction_list_time_symbol = instruction_list_time_symbol;
+    lv_obj_set_style_img_opa(instruction_list_weather_icon, LV_OPA_TRANSP, 0);
+    p_app_clock_main->instruction_list_weather_icon = instruction_list_weather_icon;
 
     if (colon_blink_timer == NULL)
     {
@@ -1408,41 +1408,41 @@ void top_digital_time_builder(lv_obj_t *parent)
 
 static void battery_status_indicator_builder(lv_obj_t *parent)
 {
-    lv_obj_t *app_list_battery_bg = lv_obj_create(parent);
-    lv_obj_set_style_bg_color(app_list_battery_bg, lv_color_black(),
+    lv_obj_t *instruction_list_battery_bg = lv_obj_create(parent);
+    lv_obj_set_style_bg_color(instruction_list_battery_bg, lv_color_black(),
                               LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(app_list_battery_bg, LV_OPA_0, 0);
-    lv_obj_set_size(app_list_battery_bg, 466, 80);
-    lv_obj_align(app_list_battery_bg, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_clear_flag(app_list_battery_bg, LV_OBJ_FLAG_CLICKABLE);
-    p_app_clock_main->app_list_battery_bg = app_list_battery_bg;
+    lv_obj_set_style_bg_opa(instruction_list_battery_bg, LV_OPA_0, 0);
+    lv_obj_set_size(instruction_list_battery_bg, 466, 80);
+    lv_obj_align(instruction_list_battery_bg, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_clear_flag(instruction_list_battery_bg, LV_OBJ_FLAG_CLICKABLE);
+    p_app_clock_main->instruction_list_battery_bg = instruction_list_battery_bg;
 
-    lv_obj_t *app_list_battery = lv_img_create(parent);
-    lv_obj_align(app_list_battery, LV_ALIGN_TOP_MID, 30, 18);
-    lv_obj_set_style_img_opa(app_list_battery, LV_OPA_TRANSP, 0);
-    p_app_clock_main->app_list_battery = app_list_battery;
+    lv_obj_t *instruction_list_battery = lv_img_create(parent);
+    lv_obj_align(instruction_list_battery, LV_ALIGN_TOP_MID, 30, 18);
+    lv_obj_set_style_img_opa(instruction_list_battery, LV_OPA_TRANSP, 0);
+    p_app_clock_main->instruction_list_battery = instruction_list_battery;
 
-    lv_obj_t *app_list_battery_label = lv_label_create(parent);
-    lv_obj_set_style_text_align(app_list_battery_label, LV_TEXT_ALIGN_CENTER,
+    lv_obj_t *instruction_list_battery_label = lv_label_create(parent);
+    lv_obj_set_style_text_align(instruction_list_battery_label, LV_TEXT_ALIGN_CENTER,
                                 LV_PART_MAIN);
-    lv_obj_align(app_list_battery_label, LV_ALIGN_TOP_MID, -30, 12);
-    lv_obj_set_style_text_opa(app_list_battery_label, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_text_color(app_list_battery_label, lv_color_white(), 0);
-    p_app_clock_main->app_list_battery_label = app_list_battery_label;
+    lv_obj_align(instruction_list_battery_label, LV_ALIGN_TOP_MID, -30, 12);
+    lv_obj_set_style_text_opa(instruction_list_battery_label, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_text_color(instruction_list_battery_label, lv_color_white(), 0);
+    p_app_clock_main->instruction_list_battery_label = instruction_list_battery_label;
 
-    charge_icon_obj = lv_img_create(app_list_battery);
+    charge_icon_obj = lv_img_create(instruction_list_battery);
     lv_img_set_src(charge_icon_obj, CHARGE_ICON);
     lv_obj_align(charge_icon_obj, LV_ALIGN_CENTER, -2, -1);
     lv_obj_set_style_img_opa(charge_icon_obj, LV_OPA_TRANSP, 0);
 
-    lv_obj_t *app_list_bluetooth_disconnection = lv_img_create(parent);
-    lv_img_set_src(app_list_bluetooth_disconnection,
+    lv_obj_t *instruction_list_bluetooth_disconnection = lv_img_create(parent);
+    lv_img_set_src(instruction_list_bluetooth_disconnection,
                    ICON_BLUETOOTH_DISCONNECTION);
-    lv_obj_align(app_list_bluetooth_disconnection, LV_ALIGN_TOP_MID, 0, 45);
-    lv_obj_set_style_img_opa(app_list_bluetooth_disconnection, LV_OPA_TRANSP,
+    lv_obj_align(instruction_list_bluetooth_disconnection, LV_ALIGN_TOP_MID, 0, 45);
+    lv_obj_set_style_img_opa(instruction_list_bluetooth_disconnection, LV_OPA_TRANSP,
                              0);
-    p_app_clock_main->app_list_bluetooth_disconnection =
-        app_list_bluetooth_disconnection;
+    p_app_clock_main->instruction_list_bluetooth_disconnection =
+        instruction_list_bluetooth_disconnection;
 
     lvgl_msg_handler.handle_charge_status = refresh_charge_icon;
 }
@@ -1486,7 +1486,7 @@ static void app_clock_main_init(lv_obj_t *scr)
     lvgl_msg_handler.handle_watchface = handle_watchface_changed_cb;
 #endif
     gui_state_update_timer_start();
-    if (is_user_want_to_open_display_to_app_list())
+    if (is_user_want_to_open_display_to_instruction_list())
     {
         open_widget_list_timer_start();
     }
@@ -1712,15 +1712,15 @@ void clock_on_stop(void)
 #endif /* RT_USING_XIP_MODULE */
             lv_mem_free(clk_desc);
         }
-        lv_obj_del(p_app_clock_main->app_list_time_h);
-        lv_obj_del(p_app_clock_main->app_list_time_m);
-        lv_obj_del(p_app_clock_main->app_list_time_symbol);
-        lv_obj_del(p_app_clock_main->app_list_weather_icon);
-        lv_obj_del(p_app_clock_main->app_list_bluetooth_disconnection);
-        lv_obj_del(p_app_clock_main->app_list_battery);
-        lv_obj_del(p_app_clock_main->app_list_battery_bg);
-        lv_obj_del(p_app_clock_main->app_list_battery_label);
-        lv_obj_del(p_app_clock_main->app_list_time_bg);
+        lv_obj_del(p_app_clock_main->instruction_list_time_h);
+        lv_obj_del(p_app_clock_main->instruction_list_time_m);
+        lv_obj_del(p_app_clock_main->instruction_list_time_symbol);
+        lv_obj_del(p_app_clock_main->instruction_list_weather_icon);
+        lv_obj_del(p_app_clock_main->instruction_list_bluetooth_disconnection);
+        lv_obj_del(p_app_clock_main->instruction_list_battery);
+        lv_obj_del(p_app_clock_main->instruction_list_battery_bg);
+        lv_obj_del(p_app_clock_main->instruction_list_battery_label);
+        lv_obj_del(p_app_clock_main->instruction_list_time_bg);
 
         if (colon_blink_timer != NULL)
         {
@@ -1782,10 +1782,10 @@ lv_obj_t *build_home_view(lv_obj_t *parent)
     battery_status_indicator_builder(lv_layer_top());
     refresh_bluetooth_disconnection(SkaiWatchSys.gap_conn_state ==
                                     GAP_CONN_STATE_CONNECTED);
-    app_list_main_time_update();
+    instruction_list_main_time_update();
     refersh_battery(SkaiWatchSys.battery_level_value);
 #ifdef BSP_USING_UI_HANDLER
-    lvgl_msg_handler.handle_time_text = app_list_main_time_update;
+    lvgl_msg_handler.handle_time_text = instruction_list_main_time_update;
     lvgl_msg_handler.handle_bluetooth_connection =
         refresh_bluetooth_disconnection;
     lvgl_msg_handler.refresh_battery_level = refersh_battery;

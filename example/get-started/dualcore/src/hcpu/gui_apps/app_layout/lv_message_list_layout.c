@@ -75,8 +75,8 @@
 #define ENABLE_CURVE_LIST 1
 #define LIST_MESSAGE_WIDTH (440)
 #define LIST_MESSAGE_HEIGHT (250)
-#define LIST_OPEN_APP_LIST_WIDTH (70)
-#define LIST_OPEN_APP_LIST_HEIGHT (70)
+#define LIST_OPEN_INSTRUCTION_LIST_WIDTH (70)
+#define LIST_OPEN_INSTRUCTION_LIST_HEIGHT (70)
 #define LIST_MESSAGE_SPACING (40)
 // #define APP_ID "message_list"
 #define LIST_RADIUS (1000)
@@ -107,14 +107,14 @@ static const lv_style_const_prop_t LIST_MESSAGE_STYLE_PROPS[] = {
 	LV_STYLE_PROP_INV,
 };
 
-static const lv_style_const_prop_t LIST_MESSAGE_OPEN_APP_LIST[] = {
-	LV_STYLE_CONST_WIDTH(LIST_OPEN_APP_LIST_WIDTH),
-	LV_STYLE_CONST_HEIGHT(LIST_OPEN_APP_LIST_HEIGHT),
+static const lv_style_const_prop_t LIST_MESSAGE_OPEN_INSTRUCTION_LIST[] = {
+	LV_STYLE_CONST_WIDTH(LIST_OPEN_INSTRUCTION_LIST_WIDTH),
+	LV_STYLE_CONST_HEIGHT(LIST_OPEN_INSTRUCTION_LIST_HEIGHT),
 	LV_STYLE_PROP_INV,
 };
 
 LV_STYLE_CONST_INIT(LIST_MESSAGE_STYLE, LIST_MESSAGE_STYLE_PROPS);
-LV_STYLE_CONST_INIT(LIST_MESSAGE_OPEN_APP_LIST_STYLE, LIST_MESSAGE_OPEN_APP_LIST);
+LV_STYLE_CONST_INIT(LIST_MESSAGE_OPEN_INSTRUCTION_LIST_STYLE, LIST_MESSAGE_OPEN_INSTRUCTION_LIST);
 
 LV_IMG_DECLARE(icon_apple_facetime);
 LV_IMG_DECLARE(icon_apple_mail);
@@ -394,7 +394,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 		if (no_notif_y_diff < -150 && rt_tick_get() - last_gohame_time > 500)
 		{
 			last_gohame_time = rt_tick_get();
-			animate_to_home_from_app_list();
+			animate_to_home_from_instruction_list();
 		}
 	}
 	else
@@ -415,7 +415,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 					if (last_y_diff < -150 && rt_tick_get() - last_gohame_time > 500) // last_y_diff < -100
 					{
 						last_gohame_time = rt_tick_get();
-						animate_to_home_from_app_list();
+						animate_to_home_from_instruction_list();
 					}
 					// LOG_D("last_y_diff: %d", last_y_diff);
 				}
@@ -432,7 +432,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 					if (no_notif_y_diff < -150 && rt_tick_get() - last_gohame_time > 500)
 					{
 						last_gohame_time = rt_tick_get();
-						animate_to_home_from_app_list();
+						animate_to_home_from_instruction_list();
 					}
 					// LOG_D("no_notif_y_diff: %d", no_notif_y_diff);
 				}
@@ -550,7 +550,7 @@ static void clear_all_btn_event_cb(lv_event_t *evt)
 // 		break;
 
 // 	case LV_EVENT_CLICKED:
-// 		gui_app_run(APP_ID_APP_LIST);
+// 		gui_app_run(APP_ID_INSTRUCTION_LIST);
 // 		break;
 
 // 	case LV_EVENT_RELEASED:

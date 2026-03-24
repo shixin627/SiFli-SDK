@@ -329,9 +329,9 @@ static void navigation_bar_control_with_quaternion(float delta_angle)
     }
 }
 
-// extern void app_list_scroll_to_app(bool up);
+// extern void instruction_list_scroll_to_app(bool up);
 // extern void mesage_list_scroll_to_app(bool up);
-// extern void control_app_list_scroll_to_app(bool up);
+// extern void control_instruction_list_scroll_to_app(bool up);
 // static void navigation_bar_control_with_gyro(Vector3 *gyro)
 // {
 //     static float navigation_gyro_z_count = 0;
@@ -347,9 +347,9 @@ static void navigation_bar_control_with_quaternion(float delta_angle)
 //                 {
 //                     mesage_list_scroll_to_app(false);
 //                 }
-//                 else if (is_at_app_list())
+//                 else if (is_at_instruction_list())
 //                 {
-//                     app_list_scroll_to_app(false);
+//                     instruction_list_scroll_to_app(false);
 //                 }
 //             }
 //             else
@@ -358,9 +358,9 @@ static void navigation_bar_control_with_quaternion(float delta_angle)
 //                 {
 //                     mesage_list_scroll_to_app(true);
 //                 }
-//                 else if (is_at_app_list())
+//                 else if (is_at_instruction_list())
 //                 {
-//                     app_list_scroll_to_app(true);
+//                     instruction_list_scroll_to_app(true);
 //                 }
 //             }
 //             navigation_gyro_z_count = 0;
@@ -1529,7 +1529,7 @@ void set_ai_open_mic(bool is_open)
         is_ai_open_mic = is_open;
     }
 }
-extern void set_is_open_app_list_ai(bool open);
+extern void set_is_open_instruction_list_ai(bool open);
 extern bool get_is_at_ai_widget(void);
 void set_gravity_position(int position)
 {
@@ -1541,14 +1541,14 @@ void set_gravity_position(int position)
     gravity_position = position;
     if (gravity_position == GRAVITY_POSITION_AI &&
         !SkaiWatchSys.motion_control_lock && !is_at_ai_interface() &&
-        is_at_app_list()) // && get_is_at_ai_widget()
+        is_at_instruction_list()) // && get_is_at_ai_widget()
     {
         // watch_system_interact(INTERACT_MOTOR_VIBRATE_TEST, NULL);
         // animate_to_ai_page();
         // is_ai_open_mic = true;
         // show_speech_indicator(true);
         // voice_provider.start_v2t();
-        // set_is_open_app_list_ai(true);
+        // set_is_open_instruction_list_ai(true);
         motor_pattern_unlocked();
         extern void animate_open_ai_widget(void);
         animate_open_ai_widget();
@@ -1617,7 +1617,7 @@ static bool can_open_ai_interface(void)
 
 // extern void set_ai_hint_x(uint8_t x);
 extern void level_bar_update(int16_t value);
-extern bool get_is_open_app_list_ai(void);
+extern bool get_is_open_instruction_list_ai(void);
 static uint8_t pevr_ai_hint_bg_pos = 0;
 static void calculate_gravity_position(Vector3 *gravity)
 {
@@ -1644,7 +1644,7 @@ static void calculate_gravity_position(Vector3 *gravity)
     {
         set_gravity_position(GRAVITY_POSITION_OTHER);
     }
-    if (gravity->x < 0.5 && get_is_open_app_list_ai())
+    if (gravity->x < 0.5 && get_is_open_instruction_list_ai())
     {
         extern void check_ai_widget_auto_close(void);
         check_ai_widget_auto_close();
@@ -1730,7 +1730,7 @@ void set_stop_mouse_move(bool stop)
 }
 
 static uint8_t scroll_log_count = 0;
-extern bool get_is_open_app_list_ai(void);
+extern bool get_is_open_instruction_list_ai(void);
 extern uint8_t get_message_page_count(void);
 static euler_angle_t pevr_befor_switch_widget_delta_angle;
 static float prev_delta_roll = 0.0f;
@@ -1811,7 +1811,7 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
         }
 
         // if (!peripheral_provider.get_tap_status())
-        if (!is_at_message() && !get_is_open_app_list_ai())
+        if (!is_at_message() && !get_is_open_instruction_list_ai())
         {
             if (motion_data->gravity.x < 0.3 && motion_data->gravity.x > -0.3)
             {

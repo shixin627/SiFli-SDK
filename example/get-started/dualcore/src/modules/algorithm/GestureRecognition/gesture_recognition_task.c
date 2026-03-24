@@ -600,7 +600,7 @@ static void gesture_recognition_thread_entry(void *parameter)
             continue;
         }
 
-        if (!is_at_app_list())
+        if (!is_at_instruction_list())
         {
             if (!open_gesture_model())
             {

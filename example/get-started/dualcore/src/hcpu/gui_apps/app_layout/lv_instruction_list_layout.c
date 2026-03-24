@@ -1,6 +1,6 @@
 /**
  ******************************************************************************
- * @file   lv_app_list_layout.c
+ * @file   lv_instruction_list_layout.c
  * @author Skaiwalk software development team
  ******************************************************************************
  */
@@ -71,11 +71,11 @@
     #include "bloc_motion_tracking.h"
 #endif
 
-#define DBG_TAG "app.list.layout"
+#define DBG_TAG "instruction.list.layout"
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
-#define APP_ID "app_list"
+#define APP_ID "instruction_list"
 #include <stdio.h>
 #include <stdint.h>
 
@@ -134,9 +134,9 @@ typedef struct
     const char *icon;
     lv_obj_t *widget;
     char *app_id;
-} app_list_item_t;
+} instruction_list_item_t;
 
-uint16_t APP_LIST_ITEMS_DEFINITION[] = {
+uint16_t INSTRUCTION_LIST_ITEMS_DEFINITION[] = {
 #ifdef APP_ID_TIMER
     app_id_timer,
 #endif
@@ -178,27 +178,27 @@ uint16_t APP_LIST_ITEMS_DEFINITION[] = {
 
 uint8_t return_app_count(void)
 {
-    LOG_D("APP_LIST_ITEMS_DEFINITION size:%d",
-          ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION));
-    return ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION);
+    LOG_D("INSTRUCTION_LIST_ITEMS_DEFINITION size:%d",
+          ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION));
+    return ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION);
 }
 
 typedef struct
 {
     lv_obj_t *list;
-    lv_obj_t *p_app_list_bg;
-    lv_obj_t *p_app_list_ai_bg;
-    lv_obj_t *p_app_list_ai_icon;
-    lv_obj_t *p_app_indicator_btn[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)];
+    lv_obj_t *p_instruction_list_bg;
+    lv_obj_t *p_instruction_list_ai_bg;
+    lv_obj_t *p_instruction_list_ai_icon;
+    lv_obj_t *p_app_indicator_btn[ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION)];
     lv_obj_t *
-        indicator_dots[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)]; // 灰色指示點陣列
-    lv_obj_t *indicator_dots_bg[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)];
+        indicator_dots[ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION)]; // 灰色指示點陣列
+    lv_obj_t *indicator_dots_bg[ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION)];
     lv_obj_t *movable_range_arc; // 可移動範圍圓弧線
-} app_list_layout_t;
-static app_list_layout_t *p_app_list_layout;
+} instruction_list_layout_t;
+static instruction_list_layout_t *p_instruction_list_layout;
 static bool created = false;
 
-static bool pause_app_list = true;
+static bool pause_instruction_list = true;
 
 const char *get_app_icon(uint8_t app_id)
 {
@@ -297,8 +297,8 @@ typedef struct
     lv_obj_t *bottom_img;
 } quick_open_app_t;
 
-app_list_item_t app_list_items[app_id_thirty];
-void load_app_list(void);
+instruction_list_item_t instruction_list_items[app_id_thirty];
+void load_instruction_list(void);
 
 static const lv_style_const_prop_t LIST_ITEM_STYLE_PROPS[] = {
     LV_STYLE_CONST_WIDTH(LIST_ITEM_WIDTH),
@@ -352,17 +352,17 @@ static void animate_label_vertical(lv_obj_t *obj, bool move_up)
     lv_anim_start(&a);
 }
 
-lv_obj_t *app_icon_shadow[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)];
+lv_obj_t *app_icon_shadow[ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION)];
 static bool is_indicator_dots_visible = true;
-static uint16_t selected_item_index = ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - 1;
-static uint16_t last_zoom[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)] = {0};
+static uint16_t selected_item_index = ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION) - 1;
+static uint16_t last_zoom[ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION)] = {0};
 static void update_indicator_dots_position(int input_value)
 {
     // LOG_I("Updating indicator dots position, input value: %d", input_value);
-    if (p_app_list_layout == NULL || !is_indicator_dots_visible)
+    if (p_instruction_list_layout == NULL || !is_indicator_dots_visible)
         return;
 
-    int total_dots = ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION);
+    int total_dots = ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION);
     if (total_dots <= 0)
         return;
 
@@ -382,7 +382,7 @@ static void update_indicator_dots_position(int input_value)
 
     for (int i = 0; i < total_dots; i++)
     {
-        if (p_app_list_layout->indicator_dots[i] == NULL)
+        if (p_instruction_list_layout->indicator_dots[i] == NULL)
             continue;
 
         float base_angle = i * angle_per_dot;
@@ -406,7 +406,7 @@ static void update_indicator_dots_position(int input_value)
         static int last_valid_dot_x[32] = {0};
         if (dot_y > 450 || dot_y < 16)
         {
-            if (p_app_list_layout->indicator_dots_bg[i] != NULL)
+            if (p_instruction_list_layout->indicator_dots_bg[i] != NULL)
             {
                 // dot_x 不變，使用上一次合法的 dot_x
                 dot_x = last_valid_dot_x[i];
@@ -449,7 +449,7 @@ static void update_indicator_dots_position(int input_value)
         if (opacity > LV_OPA_COVER)
             opacity = LV_OPA_COVER;
 
-        lv_obj_set_style_img_opa(p_app_list_layout->indicator_dots[i], opacity,
+        lv_obj_set_style_img_opa(p_instruction_list_layout->indicator_dots[i], opacity,
                                  0);
 
         uint16_t zoom =
@@ -459,23 +459,23 @@ static void update_indicator_dots_position(int input_value)
         if (abs((int)zoom - (int)last_zoom[i]) > 5)
         {
             lv_img_set_zoom(app_icon_shadow[i], zoom);
-            lv_img_set_zoom(p_app_list_layout->indicator_dots[i], zoom);
+            lv_img_set_zoom(p_instruction_list_layout->indicator_dots[i], zoom);
             last_zoom[i] = zoom;
         }
-        lv_obj_center(p_app_list_layout->indicator_dots[i]);
+        lv_obj_center(p_instruction_list_layout->indicator_dots[i]);
         dot_x -= (dot_size + 30) / 2;
         dot_y -= dot_size / 2;
 
-        lv_obj_set_pos(p_app_list_layout->indicator_dots_bg[i], dot_x, dot_y);
+        lv_obj_set_pos(p_instruction_list_layout->indicator_dots_bg[i], dot_x, dot_y);
     }
 }
 
 static void create_indicator_dots(lv_obj_t *parent)
 {
-    if (p_app_list_layout == NULL)
+    if (p_instruction_list_layout == NULL)
         return;
 
-    int total_dots = ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION);
+    int total_dots = ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION);
 
     for (int i = 0; i < total_dots; i++)
     {
@@ -493,15 +493,15 @@ static void create_indicator_dots(lv_obj_t *parent)
         lv_obj_t *dot = lv_img_create(dot_bg);
         // lv_obj_set_size(dot, 100, 100);
         lv_obj_center(dot);
-        lv_img_set_src(dot, app_list_items[i].icon);
-        if (APP_LIST_ITEMS_DEFINITION[i] == app_id_ai ||
-            APP_LIST_ITEMS_DEFINITION[i] == app_id_note)
+        lv_img_set_src(dot, instruction_list_items[i].icon);
+        if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai ||
+            INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_note)
         {
             lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
         }
 
-        p_app_list_layout->indicator_dots_bg[i] = dot_bg;
-        p_app_list_layout->indicator_dots[i] = dot;
+        p_instruction_list_layout->indicator_dots_bg[i] = dot_bg;
+        p_instruction_list_layout->indicator_dots[i] = dot;
     }
 
     update_indicator_dots_position(37);
@@ -509,7 +509,7 @@ static void create_indicator_dots(lv_obj_t *parent)
 
 // static void create_ai_hint_icon(lv_obj_t *parent)
 // {
-//     if (p_app_list_layout == NULL)
+//     if (p_instruction_list_layout == NULL)
 //         return;
 
 //     lv_obj_t *ai_hint_bg = lv_obj_create(parent);
@@ -521,11 +521,11 @@ static void create_indicator_dots(lv_obj_t *parent)
 //     lv_obj_set_style_border_width(ai_hint_bg, 2, 0);
 //     lv_obj_set_style_border_color(ai_hint_bg, lv_color_hex(0xFFFFFF), 0);
 //     lv_obj_set_style_border_opa(ai_hint_bg, LV_OPA_0, 0);
-//     p_app_list_layout->p_app_list_ai_bg = ai_hint_bg;
+//     p_instruction_list_layout->p_instruction_list_ai_bg = ai_hint_bg;
 //     lv_obj_t *ai_hint_icon = lv_img_create(ai_hint_bg);
 //     lv_img_set_src(ai_hint_icon, SMALL_IMG_LOGO_MATTING);
 //     lv_obj_align(ai_hint_icon, LV_ALIGN_CENTER, 0, 0);
-//     p_app_list_layout->p_app_list_ai_icon = ai_hint_icon;
+//     p_instruction_list_layout->p_instruction_list_ai_icon = ai_hint_icon;
 
 //     LOG_D("AI hint icon created");
 // }
@@ -534,14 +534,14 @@ extern void tap_on_ai_hint(void);
 static bool is_open_ai_gesture = false;
 // void set_ai_hint_x(uint8_t x)
 // {
-//     lv_obj_align(p_app_list_layout->p_app_list_ai_bg, LV_ALIGN_RIGHT_MID,
+//     lv_obj_align(p_instruction_list_layout->p_instruction_list_ai_bg, LV_ALIGN_RIGHT_MID,
 //                  -x + 93, 0);
 //     if (x > 85)
 //     {
 //         set_paused_control_with_arm(true);
-//         lv_obj_set_style_border_opa(p_app_list_layout->p_app_list_ai_bg,
+//         lv_obj_set_style_border_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
 //                                     LV_OPA_COVER, 0);
-//         lv_obj_set_style_img_opa(p_app_list_layout->p_app_list_ai_icon,
+//         lv_obj_set_style_img_opa(p_instruction_list_layout->p_instruction_list_ai_icon,
 //                                  LV_OPA_COVER, 0);
 //         if (!is_open_ai_gesture)
 //         {
@@ -553,9 +553,9 @@ static bool is_open_ai_gesture = false;
 //     else
 //     {
 //         set_paused_control_with_arm(false);
-//         lv_obj_set_style_border_opa(p_app_list_layout->p_app_list_ai_bg,
+//         lv_obj_set_style_border_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
 //                                     LV_OPA_0, 0);
-//         lv_obj_set_style_img_opa(p_app_list_layout->p_app_list_ai_icon,
+//         lv_obj_set_style_img_opa(p_instruction_list_layout->p_instruction_list_ai_icon,
 //                                  LV_OPA_50, 0);
 //         if (is_open_ai_gesture)
 //         {
@@ -569,18 +569,18 @@ void set_indicator_dots_visible(bool visible)
     if (is_indicator_dots_visible == visible)
         return;
     is_indicator_dots_visible = visible;
-    for (int i = 0; i < ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION); i++)
+    for (int i = 0; i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION); i++)
     {
-        if (p_app_list_layout->indicator_dots[i] != NULL)
+        if (p_instruction_list_layout->indicator_dots[i] != NULL)
         {
             if (visible)
             {
-                lv_obj_set_style_img_opa(p_app_list_layout->indicator_dots[i],
+                lv_obj_set_style_img_opa(p_instruction_list_layout->indicator_dots[i],
                                          LV_OPA_60, 0);
             }
             else
             {
-                lv_obj_set_style_img_opa(p_app_list_layout->indicator_dots[i],
+                lv_obj_set_style_img_opa(p_instruction_list_layout->indicator_dots[i],
                                          LV_OPA_20, 0);
             }
         }
@@ -589,7 +589,7 @@ void set_indicator_dots_visible(bool visible)
 
 static void create_movable_range_arc(lv_obj_t *parent)
 {
-    if (p_app_list_layout == NULL)
+    if (p_instruction_list_layout == NULL)
         return;
 
     lv_obj_t *arc = lv_arc_create(parent);
@@ -619,17 +619,17 @@ static void create_movable_range_arc(lv_obj_t *parent)
     lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(arc, LV_OBJ_FLAG_SCROLLABLE);
 
-    p_app_list_layout->movable_range_arc = arc;
+    p_instruction_list_layout->movable_range_arc = arc;
 
     LOG_D("Movable range arc created: radius=%d, start=%d°, end=%d°",
           LIST_RADIUS / 2, MOVABLE_ARC_START_ANGLE, MOVABLE_ARC_END_ANGLE);
 }
 
 extern lv_img_dsc_t *create_widget_snapshot_img(lv_obj_t *target_obj);
-lv_obj_t *app_icon[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)];
-lv_obj_t *app_widget[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)];
-lv_obj_t *touch_obj[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)];
-lv_obj_t *app_label[ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION)];
+lv_obj_t *app_icon[ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION)];
+lv_obj_t *app_widget[ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION)];
+lv_obj_t *touch_obj[ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION)];
+lv_obj_t *app_label[ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION)];
 static lv_obj_t *widget_img = NULL;
 static bool left_hand_mode = true;
 static bool need_correction = false;
@@ -637,7 +637,7 @@ static bool is_widget_animation_active = false; // 追蹤 widget 動畫狀態
 static uint8_t app_scroll_target_item = 0;
 static uint16_t old_selected_item_index = -1;
 static lv_obj_t *selected_label;
-static lv_obj_t *app_list_main_status_bar;
+static lv_obj_t *instruction_list_main_status_bar;
 static rt_tick_t last_gohame_time = 0;
 
 void set_arc_stripe_external_offset(int16_t offset_degrees)
@@ -704,7 +704,7 @@ static void stop_all_animations_and_reset(void)
         lv_obj_set_style_img_opa(widget_img, LV_OPA_0, LV_STATE_DEFAULT);
     }
 
-    for (uint8_t i = 0; i < ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION); i++)
+    for (uint8_t i = 0; i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION); i++)
     {
         if (app_icon[i] != NULL && lv_obj_is_valid(app_icon[i]))
         {
@@ -735,19 +735,19 @@ static void stop_all_animations_and_reset(void)
 }
 
 extern void open_skai_widget_ai(bool open);
-static bool is_open_app_list_ai = false;
-bool get_is_open_app_list_ai(void)
+static bool is_open_instruction_list_ai = false;
+bool get_is_open_instruction_list_ai(void)
 {
-    return is_open_app_list_ai;
+    return is_open_instruction_list_ai;
 }
-void set_is_open_app_list_ai(bool open)
+void set_is_open_instruction_list_ai(bool open)
 {
-    is_open_app_list_ai = open;
+    is_open_instruction_list_ai = open;
 }
 static bool is_at_ai_widget = false;
 static bool scroll_initialized = false;
 static bool touching_screen = false;
-static lv_obj_t *app_list_page = NULL;
+static lv_obj_t *instruction_list_page = NULL;
 
 // 延遲設置 touching_screen 為 false 的定時器
 static rt_timer_t touching_screen_timer = NULL;
@@ -794,7 +794,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         scroll_initialized = true;
     }
 
-    if (app_list_page->coords.y1 == -466)
+    if (instruction_list_page->coords.y1 == -466)
         need_correction = true;
     else
         need_correction = false;
@@ -893,13 +893,13 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 last_brightness[i] = brightness;
             }
             // if (zoom != last_zoom[i]) {
-            //     // lv_img_set_zoom(p_app_list_layout->indicator_dots[i],
+            //     // lv_img_set_zoom(p_instruction_list_layout->indicator_dots[i],
             //     zoom); last_zoom[i] = zoom;
             // }
             // if (i == 9)
             //     LOG_D("App %d: y_diff=%d, opa=%d, zoom=%d", i, y_diff, opa,
             //     zoom);
-            // lv_obj_center(p_app_list_layout->indicator_dots[i]);
+            // lv_obj_center(p_instruction_list_layout->indicator_dots[i]);
         }
     }
     if (touching_screen)
@@ -931,7 +931,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
     }
     if (selected_item_index != old_selected_item_index)
     {
-        if (selected_item_index == APP_LIST_ITEMS_DEFINITION[app_id_ai])
+        if (selected_item_index == INSTRUCTION_LIST_ITEMS_DEFINITION[app_id_ai])
         {
             is_at_ai_widget = true;
         }
@@ -953,11 +953,11 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             if (i == selected_item_index)
             {
                 LOG_D("Selected item index: %d", i);
-                // lv_img_set_zoom(p_app_list_layout->indicator_dots[i], 256);
+                // lv_img_set_zoom(p_instruction_list_layout->indicator_dots[i], 256);
                 // selected_label = lv_obj_get_child(child, 0);
                 lv_obj_clear_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
-                if (APP_LIST_ITEMS_DEFINITION[i] != app_id_note &&
-                    APP_LIST_ITEMS_DEFINITION[i] != app_id_ai)
+                if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] != app_id_note &&
+                    INSTRUCTION_LIST_ITEMS_DEFINITION[i] != app_id_ai)
                 {
                     lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
                 }
@@ -970,7 +970,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             }
             else
             {
-                // lv_img_set_zoom(p_app_list_layout->indicator_dots[i],
+                // lv_img_set_zoom(p_instruction_list_layout->indicator_dots[i],
                 //                 256 * 0.75);
                 lv_obj_add_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
                 lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
@@ -987,8 +987,8 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                     lv_obj_align(app_icon[i], LV_ALIGN_RIGHT_MID, -25, 0);
                     lv_obj_align(app_label[i], LV_ALIGN_CENTER, -20, 0);
                 }
-                // if (APP_LIST_ITEMS_DEFINITION[i] != app_id_note &&
-                //     APP_LIST_ITEMS_DEFINITION[i] != app_id_ai)
+                // if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] != app_id_note &&
+                //     INSTRUCTION_LIST_ITEMS_DEFINITION[i] != app_id_ai)
                 // {
                 //     lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
                 // }
@@ -1007,7 +1007,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
     // last_gohame_time > 500) // last_y_diff < -100
     // 	{
     // 		last_gohame_time = rt_tick_get();
-    // 		animate_to_home_from_app_list();
+    // 		animate_to_home_from_instruction_list();
     // 	}
     // }
 }
@@ -1048,7 +1048,7 @@ void open_selected_widget(bool need_widget_img_anima)
         lv_obj_is_valid(app_widget[selected_item_index]))
     {
         lv_obj_t *app_widget_img =
-            lv_img_create(p_app_list_layout->p_app_list_bg);
+            lv_img_create(p_instruction_list_layout->p_instruction_list_bg);
         lv_obj_set_style_radius(app_widget_img, 50, LV_STATE_DEFAULT);
         lv_img_dsc_t *img_desc =
             create_widget_snapshot_img(app_widget[selected_item_index]);
@@ -1063,7 +1063,7 @@ void open_selected_widget(bool need_widget_img_anima)
             animate_icon_vertical(app_icon[selected_item_index - 1], true);
             animate_label_vertical(app_label[selected_item_index - 1], true);
         }
-        if (selected_item_index != ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - 1)
+        if (selected_item_index != ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION) - 1)
         {
             animate_icon_vertical(app_icon[selected_item_index + 1], false);
             animate_label_vertical(app_label[selected_item_index + 1], false);
@@ -1093,7 +1093,7 @@ void open_selected_widget(bool need_widget_img_anima)
                              LV_ALIGN_CENTER, -20, -30);
             }
         }
-        if (selected_item_index != ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - 1)
+        if (selected_item_index != ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION) - 1)
         {
             lv_obj_align(app_icon[selected_item_index + 1], LV_ALIGN_RIGHT_MID,
                          -20, 30);
@@ -1191,7 +1191,7 @@ extern void set_skai_widget_input_text(const char *text);
 static void set_ai_bg_opa(void *obj, int32_t opa)
 {
     uint8_t bg_opa = 240 * opa / 255;
-    lv_obj_set_style_bg_opa(p_app_list_layout->p_app_list_ai_bg, bg_opa, 0);
+    lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg, bg_opa, 0);
     set_skai_widget_opa(opa);
 }
 
@@ -1205,16 +1205,16 @@ void animate_open_ai_widget(void)
         return;
     }
     last_ai_widget_open_time = rt_tick_get();
-    // animate_to_page(p_app_list_layout->p_app_list_ai_bg, 300);
-    lv_obj_clear_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_tile_id(p_app_list_layout->p_app_list_ai_bg, 0, 0, LV_ANIM_ON);
+    // animate_to_page(p_instruction_list_layout->p_instruction_list_ai_bg, 300);
+    lv_obj_clear_flag(p_instruction_list_layout->p_instruction_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 0, 0, LV_ANIM_ON);
 }
 
 void close_ai_widget(void)
 {
-    // lv_anim_del(p_app_list_layout->p_app_list_ai_bg, set_ai_bg_opa);
-    // lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_tile_id(p_app_list_layout->p_app_list_ai_bg, 1, 0, LV_ANIM_ON);
+    // lv_anim_del(p_instruction_list_layout->p_instruction_list_ai_bg, set_ai_bg_opa);
+    // lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 1, 0, LV_ANIM_ON);
     // set_skai_widget_opa(0);
     // LOG_I("AI widget closed");
 }
@@ -1222,13 +1222,13 @@ void close_ai_widget(void)
 void check_ai_widget_auto_close(void)
 {
     extern bool get_skai_input_text_is_null(void);
-    if (is_open_app_list_ai && !is_at_ai_widget && get_skai_input_text_is_null())
+    if (is_open_instruction_list_ai && !is_at_ai_widget && get_skai_input_text_is_null())
     {
         rt_tick_t current_time = rt_tick_get();
         if (current_time - last_ai_widget_open_time < 3000) // 5秒后自动关闭
         {
             close_ai_widget();
-            is_open_app_list_ai = false;
+            is_open_instruction_list_ai = false;
         }
     }
 }
@@ -1241,22 +1241,22 @@ void tap_on_ai_widget(void)
         LOG_D("Bluetooth is connected, ignoring voice recognition event");
         return;
     }
-    // if (is_open_app_list_ai)
+    // if (is_open_instruction_list_ai)
     // {
     //     extern void send_to_ai(void);
     //     send_to_ai();
     //     return;
     // }
-    // lv_obj_clear_flag(p_app_list_layout->p_app_list_ai_bg,
+    // lv_obj_clear_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
     // LV_OBJ_FLAG_HIDDEN); lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a,
-    // p_app_list_layout->p_app_list_ai_bg); lv_anim_set_values(&a,
+    // p_instruction_list_layout->p_instruction_list_ai_bg); lv_anim_set_values(&a,
     // LV_OPA_TRANSP, LV_OPA_COVER); lv_anim_set_time(&a, 300);
     // lv_anim_set_exec_cb(&a, set_ai_bg_opa);
     // lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
     // lv_anim_start(&a);
     set_ai_bg_opa(NULL, LV_OPA_COVER);
     LOG_D("AI widget opened");
-    is_open_app_list_ai = true;
+    is_open_instruction_list_ai = true;
     open_skai_widget_ai(true);
     // animate_to_ai_page();
     set_skai_widget_input_text("");
@@ -1268,14 +1268,14 @@ void tap_on_ai_widget(void)
 }
 
 
-static bool app_list_ai_tapped = false;
-bool get_app_list_ai_tapped(void)
+static bool instruction_list_ai_tapped = false;
+bool get_instruction_list_ai_tapped(void)
 {
-    return app_list_ai_tapped;
+    return instruction_list_ai_tapped;
 }
-void set_app_list_ai_tapped(void)
+void set_instruction_list_ai_tapped(void)
 {
-    app_list_ai_tapped = false;
+    instruction_list_ai_tapped = false;
 }
 void tap_on_ai_hint(void)
 {
@@ -1285,17 +1285,17 @@ void tap_on_ai_hint(void)
         LOG_D("Bluetooth is connected, ignoring voice recognition event");
         return;
     }
-    app_list_ai_tapped = true;
+    instruction_list_ai_tapped = true;
     extern void send_to_ai(void);
     send_to_ai();
-    animate_to_home_from_app_list();
+    animate_to_home_from_instruction_list();
     animate_to_ai_page();
     close_ai_widget();
 }
 
 extern void iot_gate_widget_tap_event_cb(void);
 extern void media_widget_tap_event_cb(void);
-static void on_item_tap(app_list_item_t *item)
+static void on_item_tap(instruction_list_item_t *item)
 {
     LOG_D("on_item_tap: %s", item->app_id);
     // if (is_open_ai_gesture)
@@ -1305,7 +1305,7 @@ static void on_item_tap(app_list_item_t *item)
     // else
     // if (strcmp(item->app_id, APP_ID_SKAI) == 0)
     // {
-    //     if (is_open_app_list_ai)
+    //     if (is_open_instruction_list_ai)
     //     {
     //         if (!isTextEmpty())
     //             tap_on_ai_hint();
@@ -1317,22 +1317,22 @@ static void on_item_tap(app_list_item_t *item)
     //         tap_on_ai_widget();
     //     }
     // }
-    if (is_open_app_list_ai)
+    if (is_open_instruction_list_ai)
     {
         if (!isTextEmpty())
             tap_on_ai_hint();
         else
             LOG_D("AI input is empty, ignoring tap");
     }
-    else if (!is_open_app_list_ai)
+    else if (!is_open_instruction_list_ai)
     {
-        animate_to_home_from_app_list();
+        animate_to_home_from_instruction_list();
         gui_app_run(item->app_id);
     }
 }
 static void list_item_click_event_cb(lv_event_t *evt)
 {
-    app_list_item_t *item = (app_list_item_t *)evt->user_data;
+    instruction_list_item_t *item = (instruction_list_item_t *)evt->user_data;
     lv_obj_t *obj = evt->target;
     LOG_D("ID: %s,obj:%p", item->app_id, obj);
     if (strcmp(item->app_id, APP_ID_SKAI) == 0)
@@ -1350,19 +1350,19 @@ static bool open_quick_app = false;
 static void on_tap(void)
 {
     LOG_D("open app TEST1");
-    on_item_tap(&app_list_items[selected_item_index]);
+    on_item_tap(&instruction_list_items[selected_item_index]);
 }
 
 static int16_t find_app_index_by_id(uint16_t app_id)
 {
-    for (int i = 0; i < ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION); i++)
+    for (int i = 0; i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION); i++)
     {
-        if (APP_LIST_ITEMS_DEFINITION[i] == app_id)
+        if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id)
         {
             return i;
         }
     }
-    return ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - 1; // 未找到
+    return ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION) - 1; // 未找到
 }
 
 extern char *get_media_title(void);
@@ -1370,7 +1370,7 @@ extern bool is_have_message_now(void);
 static uint16_t gesture_starting_value = 0;
 static void reset_list(void)
 {
-    if (p_app_list_layout->list == NULL)
+    if (p_instruction_list_layout->list == NULL)
     {
         return;
     }
@@ -1379,7 +1379,7 @@ static void reset_list(void)
     scroll_initialized = false;
     uint8_t scroll_to_index;
     uint16_t page_range =
-        1250 / ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION); // 保持原值
+        1250 / ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION); // 保持原值
     // const char *media_title = get_media_title();
     // if (media_title[0] != '\0')
     // {
@@ -1398,17 +1398,17 @@ static void reset_list(void)
         app_scroll_target_item = find_app_index_by_id(app_id_ai);
     }
     gesture_starting_value =
-        (100 * (ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION) - scroll_to_index - 1)) +
+        (100 * (ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION) - scroll_to_index - 1)) +
         37;
 
     selected_item_index = app_scroll_target_item;
     prev_app_scroll_target_item = app_scroll_target_item;
     lv_obj_t *child =
-        lv_obj_get_child(p_app_list_layout->list, scroll_to_index);
+        lv_obj_get_child(p_instruction_list_layout->list, scroll_to_index);
     lv_obj_scroll_to_view(child, LV_ANIM_OFF);
     if (!scroll_initialized)
     {
-        scroll_list(p_app_list_layout->list, 0);
+        scroll_list(p_instruction_list_layout->list, 0);
     }
     update_indicator_dots_position(gesture_starting_value);
     open_selected_widget(false);
@@ -1509,7 +1509,7 @@ static void move_quick_icon(QuickBtn pame)
     uint16_t distance = pame.new_point;
     uint16_t swich_quick_btn = pame.swich_quick_btn;
 
-    if (swich_quick_btn == 1 && is_at_app_list())
+    if (swich_quick_btn == 1 && is_at_instruction_list())
     {
     }
     else if (swich_quick_btn == 2)
@@ -1573,7 +1573,7 @@ static void move_quick_icon(QuickBtn pame)
 // input_value: 0-1000 的輸入值
 // 100 時第一個點在最右邊中心（0度），900 時最後一個點在最右邊中心（0度）
 // 所有點分佈在80度範圍內（-40度到+40度）
-void set_app_list_indicator_dots_position(int input_value)
+void set_instruction_list_indicator_dots_position(int input_value)
 {
     update_indicator_dots_position(input_value);
 }
@@ -1592,14 +1592,14 @@ static void indicator_test_anim_exec_cb(void *var, int32_t value)
         return; // 如果變化不大，則忽略
     }
     prev_value = value;
-    set_app_list_indicator_dots_position((int)value);
+    set_instruction_list_indicator_dots_position((int)value);
     LOG_D("Animation test: input_value = %d", (int)value);
 }
 
 // 開始動畫測試
 void start_indicator_dots_animation_test(void)
 {
-    if (p_app_list_layout == NULL || !created)
+    if (p_instruction_list_layout == NULL || !created)
     {
         LOG_D("App list layout not created yet, cannot start animation test");
         return;
@@ -1640,7 +1640,7 @@ void stop_indicator_dots_animation_test(void)
     lv_anim_del(&indicator_test_anim, indicator_test_anim_exec_cb);
 
     // 重置到中間位置
-    set_app_list_indicator_dots_position(500);
+    set_instruction_list_indicator_dots_position(500);
 }
 #endif
 
@@ -1663,7 +1663,7 @@ static void ai_bar_event_cb(lv_event_t *evt)
             LOG_D("Bluetooth is connected, ignoring voice recognition event");
             return;
         }
-        lv_obj_clear_flag(p_app_list_layout->p_app_list_ai_bg,
+        lv_obj_clear_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                           LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -1679,7 +1679,7 @@ static void ai_tileview_event_cb(lv_event_t *evt)
             (466 - lv_obj_get_scroll_x(obj)) * ai_bg_opa / 350;
         uint8_t calculated_opa =
             (ai_scroll_x > ai_bg_opa) ? ai_bg_opa : ai_scroll_x;
-        lv_obj_set_style_bg_opa(p_app_list_layout->p_app_list_ai_bg,
+        lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
                                 calculated_opa, 0);
         break;
     }
@@ -1693,17 +1693,17 @@ static void ai_tileview_event_cb(lv_event_t *evt)
         rt_uint32_t active_pos = (rt_uint32_t)lv_event_get_param(evt);
         if (active_pos == 0)
         {
-            // is_open_app_list_ai = false;
+            // is_open_instruction_list_ai = false;
             voice_provider.stop_v2t();
             stop_voice_recognition(V2T_INTENT_NOTHING);
-            set_is_open_app_list_ai(false);
+            set_is_open_instruction_list_ai(false);
             open_skai_widget_ai(false);
             set_paused_control_with_arm(false);
             set_ai_open_mic(false);
             // show_speech_indicator(false);
             // voice_provider.stop_v2t();
             // close_ai_widget();
-            lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg,
+            lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                             LV_OBJ_FLAG_HIDDEN);
         }
         else if (active_pos == 1)
@@ -1723,25 +1723,25 @@ static void ai_tileview_event_cb(lv_event_t *evt)
 }
 
 static lv_obj_t *ai_tileview = NULL;
-lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
+lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 {
     // 檢查是否已經分配，如果是則先釋放
-    if (p_app_list_layout != NULL)
+    if (p_instruction_list_layout != NULL)
     {
-        LOG_W("p_app_list_layout already exists, cleaning up...");
-        app_list_deinit();
+        LOG_W("p_instruction_list_layout already exists, cleaning up...");
+        instruction_list_deinit();
     }
-    size_t allocate_size = sizeof(app_list_layout_t);
-    p_app_list_layout =
-        (app_list_layout_t *)lv_mem_alloc(sizeof(app_list_layout_t));
-    if (p_app_list_layout == NULL)
+    size_t allocate_size = sizeof(instruction_list_layout_t);
+    p_instruction_list_layout =
+        (instruction_list_layout_t *)lv_mem_alloc(sizeof(instruction_list_layout_t));
+    if (p_instruction_list_layout == NULL)
     {
-        LOG_E("Failed to allocate memory for p_app_list_layout");
+        LOG_E("Failed to allocate memory for p_instruction_list_layout");
         return NULL;
     }
-    memset(p_app_list_layout, 0, sizeof(app_list_layout_t));
-    LOG_I("[CHECK_MEMORY]app_list_init(%d bytes)", allocate_size);
-    app_list_page = parent;
+    memset(p_instruction_list_layout, 0, sizeof(instruction_list_layout_t));
+    LOG_I("[CHECK_MEMORY]instruction_list_init(%d bytes)", allocate_size);
+    instruction_list_page = parent;
 
     extern void media_widget_start(void);
     media_widget_start();
@@ -1758,32 +1758,32 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     extern void note_widget_start(void);
     note_widget_start();
 
-    load_app_list();
-    lv_obj_t *p_app_list_bg = lv_obj_create(parent);
-    p_app_list_layout->p_app_list_bg = p_app_list_bg;
-    lv_obj_set_style_bg_opa(p_app_list_bg, LV_OPA_0, 0);
-    lv_obj_set_size(p_app_list_bg, LV_HOR_RES, LV_VER_RES);
-    lv_obj_align(p_app_list_bg, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_clear_flag(p_app_list_bg, LV_OBJ_FLAG_SCROLLABLE);
+    load_instruction_list();
+    lv_obj_t *p_instruction_list_bg = lv_obj_create(parent);
+    p_instruction_list_layout->p_instruction_list_bg = p_instruction_list_bg;
+    lv_obj_set_style_bg_opa(p_instruction_list_bg, LV_OPA_0, 0);
+    lv_obj_set_size(p_instruction_list_bg, LV_HOR_RES, LV_VER_RES);
+    lv_obj_align(p_instruction_list_bg, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(p_instruction_list_bg, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *p_app_list = lv_obj_create(p_app_list_bg);
-    p_app_list_layout->list = p_app_list;
-    LOG_D("p_app_list: %p", p_app_list);
-    lv_obj_set_size(p_app_list, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_style_bg_opa(p_app_list, LV_OPA_0, 0);
-    lv_obj_add_flag(p_app_list, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_scrollbar_mode(p_app_list, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_scroll_dir(p_app_list, LV_DIR_VER);
-    lv_obj_set_scroll_snap_y(p_app_list, LV_SCROLL_SNAP_CENTER);
-    lv_obj_set_style_pad_ver(p_app_list, LV_HOR_RES / 2, 0);
-    lv_obj_align(p_app_list, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_event_cb(p_app_list, list_window_scroll_event_cb, LV_EVENT_ALL,
+    lv_obj_t *p_instruction_list = lv_obj_create(p_instruction_list_bg);
+    p_instruction_list_layout->list = p_instruction_list;
+    LOG_D("p_instruction_list: %p", p_instruction_list);
+    lv_obj_set_size(p_instruction_list, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_bg_opa(p_instruction_list, LV_OPA_0, 0);
+    lv_obj_add_flag(p_instruction_list, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(p_instruction_list, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scroll_dir(p_instruction_list, LV_DIR_VER);
+    lv_obj_set_scroll_snap_y(p_instruction_list, LV_SCROLL_SNAP_CENTER);
+    lv_obj_set_style_pad_ver(p_instruction_list, LV_HOR_RES / 2, 0);
+    lv_obj_align(p_instruction_list, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_event_cb(p_instruction_list, list_window_scroll_event_cb, LV_EVENT_ALL,
                         NULL);
 
-    for (uint8_t i = 0; i < ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION); i++)
+    for (uint8_t i = 0; i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION); i++)
     {
         lv_obj_t *widget = NULL;
-        lv_obj_t *item = lv_simplified_obj_create(p_app_list);
+        lv_obj_t *item = lv_simplified_obj_create(p_instruction_list);
         lv_obj_clear_flag(item, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_size(item, 466, LIST_ITEM_WIDGET_HEIGHT);
         if (i == 0)
@@ -1799,7 +1799,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
 
         bool has_widget = true;
 
-        if (APP_LIST_ITEMS_DEFINITION[i] == app_id_note)
+        if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_note)
         {
             lv_obj_set_pos(item, 0,
                            (LIST_ITEM_WIDGET_HEIGHT + LIST_ITEM_SPACING) * i +
@@ -1807,7 +1807,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
             extern lv_obj_t *lv_note_widget_builder(lv_obj_t * parent);
             widget = lv_note_widget_builder(item);
         }
-        else if (APP_LIST_ITEMS_DEFINITION[i] == app_id_ai)
+        else if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai)
         {
             extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
             widget = lv_skai_widget_builder(item);
@@ -1823,7 +1823,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
 
             lv_obj_set_size(widget, LIST_ITEM_WIDGET_WIDTH,
                             LIST_ITEM_WIDGET_HEIGHT);
-            if (APP_LIST_ITEMS_DEFINITION[i] != app_id_ai)
+            if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] != app_id_ai)
             {
                 lv_obj_set_style_clip_corner(widget, true, 0);
             }
@@ -1831,7 +1831,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
             {
                 lv_obj_add_flag(widget, LV_OBJ_FLAG_SCROLLABLE);
             }
-            if (APP_LIST_ITEMS_DEFINITION[i] != app_id_ai)
+            if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] != app_id_ai)
             {
                 lv_obj_set_style_border_color(widget, lv_color_hex(0xFFFFFF),
                                               0);
@@ -1839,7 +1839,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
                 lv_obj_set_style_border_opa(widget, LV_OPA_20, 0);
                 lv_obj_add_event_cb(widget, list_item_click_event_cb,
                                     LV_EVENT_CLICKED,
-                                    (void *)&app_list_items[i]);
+                                    (void *)&instruction_list_items[i]);
             }
         }
 
@@ -1850,35 +1850,35 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
         lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_CLICKABLE);
         lv_obj_align(touch_obj[i], LV_ALIGN_CENTER, 0, 0);
         lv_obj_add_event_cb(touch_obj[i], list_item_click_event_cb,
-                            LV_EVENT_CLICKED, (void *)&app_list_items[i]);
+                            LV_EVENT_CLICKED, (void *)&instruction_list_items[i]);
 
         app_widget[i] = widget;
-        p_app_list_layout->p_app_indicator_btn[i] = lv_img_create(item);
-        lv_img_set_src(p_app_list_layout->p_app_indicator_btn[i],
-                       app_list_items[i].icon);
-        lv_obj_align(p_app_list_layout->p_app_indicator_btn[i],
+        p_instruction_list_layout->p_app_indicator_btn[i] = lv_img_create(item);
+        lv_img_set_src(p_instruction_list_layout->p_app_indicator_btn[i],
+                       instruction_list_items[i].icon);
+        lv_obj_align(p_instruction_list_layout->p_app_indicator_btn[i],
                      LV_ALIGN_RIGHT_MID, -25, 0);
-        app_icon[i] = p_app_list_layout->p_app_indicator_btn[i];
+        app_icon[i] = p_instruction_list_layout->p_app_indicator_btn[i];
         lv_obj_add_event_cb(app_icon[i], list_item_click_event_cb,
-                            LV_EVENT_CLICKED, (void *)&app_list_items[i]);
+                            LV_EVENT_CLICKED, (void *)&instruction_list_items[i]);
         lv_obj_add_flag(app_icon[i], LV_OBJ_FLAG_HIDDEN);
 
         app_label[i] = lv_label_create(item);
-        lv_label_set_text(app_label[i], app_list_items[i].title);
+        lv_label_set_text(app_label[i], instruction_list_items[i].title);
         lv_obj_set_style_text_font(app_label[i],
                                    LV_EXT_FONT_GET(get_system_font_size(1)), 0);
         lv_obj_align(app_label[i], LV_ALIGN_CENTER, -20, 0);
-        if (APP_LIST_ITEMS_DEFINITION[i] == app_id_note ||
-            APP_LIST_ITEMS_DEFINITION[i] == app_id_ai)
+        if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_note ||
+            INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai)
         {
             lv_obj_add_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
         }
     }
 
     // 創建指示點
-    create_indicator_dots(p_app_list_bg);
+    create_indicator_dots(p_instruction_list_bg);
 
-    lv_obj_t *ai_bar = lv_obj_create(p_app_list_bg);
+    lv_obj_t *ai_bar = lv_obj_create(p_instruction_list_bg);
     lv_obj_set_size(ai_bar, 80, LV_VER_RES);
     lv_obj_align(ai_bar, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_set_style_bg_color(ai_bar, lv_color_hex(0x000000), 0);
@@ -1887,34 +1887,34 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     // lv_obj_add_flag(ai_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_clear_flag(ai_bar, LV_OBJ_FLAG_PRESS_LOCK);
 
-    p_app_list_layout->p_app_list_ai_bg = lv_tileview_create(p_app_list_bg);
-    lv_obj_set_scrollbar_mode(p_app_list_layout->p_app_list_ai_bg,
+    p_instruction_list_layout->p_instruction_list_ai_bg = lv_tileview_create(p_instruction_list_bg);
+    lv_obj_set_scrollbar_mode(p_instruction_list_layout->p_instruction_list_ai_bg,
                               LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_size(p_app_list_layout->p_app_list_ai_bg, LV_HOR_RES,
+    lv_obj_set_size(p_instruction_list_layout->p_instruction_list_ai_bg, LV_HOR_RES,
                     LV_VER_RES);
-    lv_obj_set_style_bg_opa(p_app_list_layout->p_app_list_ai_bg, LV_OPA_0, 0);
-    lv_obj_align(p_app_list_layout->p_app_list_ai_bg, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg, LV_OPA_0, 0);
+    lv_obj_align(p_instruction_list_layout->p_instruction_list_ai_bg, LV_ALIGN_CENTER, 0, 0);
     lv_obj_t *home_page = lv_tileview_add_tile(
-        p_app_list_layout->p_app_list_ai_bg, 1, 0, LV_DIR_HOR);
+        p_instruction_list_layout->p_instruction_list_ai_bg, 1, 0, LV_DIR_HOR);
     lv_obj_set_size(home_page, LV_HOR_RES, LV_VER_RES);
     // lv_obj_set_style_bg_color(home_page, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_bg_opa(home_page, LV_OPA_0, 0);
     lv_obj_t *ai_page = lv_tileview_add_tile(
-        p_app_list_layout->p_app_list_ai_bg, 0, 0, LV_DIR_HOR);
+        p_instruction_list_layout->p_instruction_list_ai_bg, 0, 0, LV_DIR_HOR);
     lv_obj_set_size(ai_page, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_style_bg_opa(ai_page, LV_OPA_0, 0);
-    lv_obj_set_tile_id(p_app_list_layout->p_app_list_ai_bg, 1, 0, LV_ANIM_OFF);
-    lv_obj_add_event_cb(p_app_list_layout->p_app_list_ai_bg,
+    lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 1, 0, LV_ANIM_OFF);
+    lv_obj_add_event_cb(p_instruction_list_layout->p_instruction_list_ai_bg,
                         ai_tileview_event_cb, LV_EVENT_ALL, NULL);
-    lv_obj_add_flag(p_app_list_layout->p_app_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg, LV_OBJ_FLAG_HIDDEN);
 
-    // create_ai_hint_icon(p_app_list_bg);
-    // p_app_list_layout->p_app_list_ai_bg = lv_obj_create(ai_page);
-    // lv_obj_set_size(p_app_list_layout->p_app_list_ai_bg, 466, 466);
-    // lv_obj_align(p_app_list_layout->p_app_list_ai_bg, LV_ALIGN_CENTER, 0, 0);
-    // lv_obj_set_style_bg_color(p_app_list_layout->p_app_list_ai_bg,
+    // create_ai_hint_icon(p_instruction_list_bg);
+    // p_instruction_list_layout->p_instruction_list_ai_bg = lv_obj_create(ai_page);
+    // lv_obj_set_size(p_instruction_list_layout->p_instruction_list_ai_bg, 466, 466);
+    // lv_obj_align(p_instruction_list_layout->p_instruction_list_ai_bg, LV_ALIGN_CENTER, 0, 0);
+    // lv_obj_set_style_bg_color(p_instruction_list_layout->p_instruction_list_ai_bg,
     //                           lv_color_hex(0x000000), 0);
-    // lv_obj_set_style_bg_opa(p_app_list_layout->p_app_list_ai_bg, 240, 0);
+    // lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg, 240, 0);
     extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
     lv_obj_t *skai_widget = lv_skai_widget_builder(ai_page);
     lv_obj_align(skai_widget, LV_ALIGN_CENTER, 0, 0);
@@ -1930,37 +1930,37 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     lv_obj_align(ai_hint_btn, LV_ALIGN_CENTER, 0, 0);
 
     // 創建可移動範圍圓弧線
-    // create_movable_range_arc(p_app_list_bg);
+    // create_movable_range_arc(p_instruction_list_bg);
     created = true;
-    myLancher[app_index_app_list].reset_list = reset_list;
-    if (myLancher[app_index_app_list].reset_list != NULL)
+    myLancher[app_index_instruction_list].reset_list = reset_list;
+    if (myLancher[app_index_instruction_list].reset_list != NULL)
     {
-        myLancher[app_index_app_list].reset_list();
+        myLancher[app_index_instruction_list].reset_list();
     }
 
-    lv_event_send(p_app_list, LV_EVENT_SCROLL, NULL);
+    lv_event_send(p_instruction_list, LV_EVENT_SCROLL, NULL);
 
-    myLancher[app_index_app_list].on_tap = on_tap;
+    myLancher[app_index_instruction_list].on_tap = on_tap;
 
 #ifdef TEST_INDICATOR_ANIMATION
     start_indicator_dots_animation_test(); // 開始指示點動畫測試
 #endif
-    return p_app_list_bg;
+    return p_instruction_list_bg;
 }
 
 // static rt_uint32_t last_scroll_time = 0;
 static void scroll_list_to_index(uint16_t page)
 {
-    if (p_app_list_layout->list == NULL ||
-        !lv_obj_is_valid(p_app_list_layout->list))
+    if (p_instruction_list_layout->list == NULL ||
+        !lv_obj_is_valid(p_instruction_list_layout->list))
     {
-        LOG_E("p_app_list_layout->list is NULL");
+        LOG_E("p_instruction_list_layout->list is NULL");
         return;
     }
 
     app_scroll_target_item = page;
     LOG_D("scroll_list_to_index: %d", page);
-    lv_obj_t *child = lv_obj_get_child(p_app_list_layout->list, page);
+    lv_obj_t *child = lv_obj_get_child(p_instruction_list_layout->list, page);
     if (!lv_obj_is_valid(child))
     {
         LOG_W("scroll_list_to_index: child %d is invalid", page);
@@ -1971,17 +1971,17 @@ static void scroll_list_to_index(uint16_t page)
     lv_obj_scroll_to_view(child, LV_ANIM_ON);
     LOG_D("scroll_list_to_index done: %d", page);
     // set_scroll_anim_time(false);
-    scroll_list(p_app_list_layout->list, 0);
+    scroll_list(p_instruction_list_layout->list, 0);
 }
 
-static void app_list_scroll_to_app(int8_t action)
+static void instruction_list_scroll_to_app(int8_t action)
 {
-    if (pause_app_list)
+    if (pause_instruction_list)
     {
         return;
     }
 
-    if (action >= 0 && action < ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION))
+    if (action >= 0 && action < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION))
     {
         scroll_list_to_index(action);
     }
@@ -1992,9 +1992,9 @@ static void app_list_scroll_to_app(int8_t action)
     }
 }
 
-app_list_item_t map_app_id(uint8_t app_id)
+instruction_list_item_t map_app_id(uint8_t app_id)
 {
-    app_list_item_t item;
+    instruction_list_item_t item;
     switch (app_id)
     {
 #ifdef APP_ID_SKAI
@@ -2215,26 +2215,26 @@ app_list_item_t map_app_id(uint8_t app_id)
     return item;
 }
 
-void load_app_list(void)
+void load_instruction_list(void)
 {
-    uint8_t n = ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION);
+    uint8_t n = ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION);
     for (uint8_t i = 0; i < n; i++)
     {
-        app_list_items[i] = map_app_id(APP_LIST_ITEMS_DEFINITION[i]);
-        LOG_D("App %d: ID=%d, Title=%s", i, app_list_items[i].app_id,
-              app_list_items[i].title);
+        instruction_list_items[i] = map_app_id(INSTRUCTION_LIST_ITEMS_DEFINITION[i]);
+        LOG_D("App %d: ID=%d, Title=%s", i, instruction_list_items[i].app_id,
+              instruction_list_items[i].title);
     }
 }
 
 static rt_int32_t init(lv_obj_t *parent)
 {
-    lv_app_list_layout_create(parent);
+    lv_instruction_list_layout_create(parent);
     return RT_EOK;
 }
 
-rt_int32_t app_list_resume(void)
+rt_int32_t instruction_list_resume(void)
 {
-    if (pause_app_list == false)
+    if (pause_instruction_list == false)
     {
         return RT_EOK;
     }
@@ -2248,9 +2248,9 @@ rt_int32_t app_list_resume(void)
     }
     extern void reset_speech_coding(void);
     reset_speech_coding();
-    pause_app_list = false;
-    lvgl_msg_handler.handle_nav_bar_control = app_list_scroll_to_app;
-    LOG_I("app_list_resume");
+    pause_instruction_list = false;
+    lvgl_msg_handler.handle_nav_bar_control = instruction_list_scroll_to_app;
+    LOG_I("instruction_list_resume");
 #ifdef USE_QUICK_OPEN_AI
     open_vibration = true;
 #endif
@@ -2261,18 +2261,18 @@ rt_int32_t app_list_resume(void)
     return RT_EOK;
 }
 
-rt_int32_t app_list_pause(void)
+rt_int32_t instruction_list_pause(void)
 {
-    if (pause_app_list == true)
+    if (pause_instruction_list == true)
     {
         return RT_EOK;
     }
-    pause_app_list = true;
+    pause_instruction_list = true;
     set_paused_control_with_arm(true);
-    LOG_I("app_list_pause");
+    LOG_I("instruction_list_pause");
     if (gui_app_is_actived("Main"))
     {
-        if (lvgl_msg_handler.handle_nav_bar_control == app_list_scroll_to_app)
+        if (lvgl_msg_handler.handle_nav_bar_control == instruction_list_scroll_to_app)
         {
             lvgl_msg_handler.handle_nav_bar_control = NULL;
         }
@@ -2290,7 +2290,7 @@ rt_int32_t app_list_pause(void)
     return RT_EOK;
 }
 
-rt_int32_t app_list_deinit(void)
+rt_int32_t instruction_list_deinit(void)
 {
     // Delete the timer if it exists
     extern void close_note_chatroom_ui_app(void);
@@ -2312,9 +2312,9 @@ rt_int32_t app_list_deinit(void)
         timer_open_quick_app = RT_NULL;
     }
 #endif
-    if (myLancher[app_index_app_list].reset_list != NULL)
+    if (myLancher[app_index_instruction_list].reset_list != NULL)
     {
-        myLancher[app_index_app_list].reset_list = NULL;
+        myLancher[app_index_instruction_list].reset_list = NULL;
     }
 
     if (selected_widget_timer)
@@ -2326,20 +2326,20 @@ rt_int32_t app_list_deinit(void)
     // 停止所有動畫並重置狀態
     stop_all_animations_and_reset();
 
-    if (p_app_list_layout)
+    if (p_instruction_list_layout)
     {
         // 銷毀所有指示點
-        for (uint8_t i = 0; i < ARRAY_SIZE(APP_LIST_ITEMS_DEFINITION); i++)
+        for (uint8_t i = 0; i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION); i++)
         {
-            if (lv_obj_is_valid(p_app_list_layout->indicator_dots[i]))
+            if (lv_obj_is_valid(p_instruction_list_layout->indicator_dots[i]))
             {
-                lv_obj_del(p_app_list_layout->indicator_dots[i]);
-                p_app_list_layout->indicator_dots[i] = NULL;
+                lv_obj_del(p_instruction_list_layout->indicator_dots[i]);
+                p_instruction_list_layout->indicator_dots[i] = NULL;
             }
-            if (lv_obj_is_valid(p_app_list_layout->indicator_dots_bg[i]))
+            if (lv_obj_is_valid(p_instruction_list_layout->indicator_dots_bg[i]))
             {
-                lv_obj_del(p_app_list_layout->indicator_dots_bg[i]);
-                p_app_list_layout->indicator_dots_bg[i] = NULL;
+                lv_obj_del(p_instruction_list_layout->indicator_dots_bg[i]);
+                p_instruction_list_layout->indicator_dots_bg[i] = NULL;
             }
             if (lv_obj_is_valid(app_widget[i]))
             {
@@ -2361,46 +2361,46 @@ rt_int32_t app_list_deinit(void)
                 lv_obj_del(app_label[i]);
                 app_label[i] = NULL;
             }
-            if (lv_obj_is_valid(p_app_list_layout->p_app_indicator_btn[i]))
+            if (lv_obj_is_valid(p_instruction_list_layout->p_app_indicator_btn[i]))
             {
-                lv_obj_del(p_app_list_layout->p_app_indicator_btn[i]);
-                p_app_list_layout->p_app_indicator_btn[i] = NULL;
-                LOG_D("app list Deleted p_app_indicator_btn %d", i);
+                lv_obj_del(p_instruction_list_layout->p_app_indicator_btn[i]);
+                p_instruction_list_layout->p_app_indicator_btn[i] = NULL;
+                LOG_D("instruction list Deleted p_app_indicator_btn %d", i);
             }
         }
 
         // 銷毀可移動範圍圓弧線
-        if (lv_obj_is_valid(p_app_list_layout->movable_range_arc))
+        if (lv_obj_is_valid(p_instruction_list_layout->movable_range_arc))
         {
-            lv_obj_del(p_app_list_layout->movable_range_arc);
-            p_app_list_layout->movable_range_arc = NULL;
-            LOG_D("app list Deleted movable range arc");
+            lv_obj_del(p_instruction_list_layout->movable_range_arc);
+            p_instruction_list_layout->movable_range_arc = NULL;
+            LOG_D("instruction list Deleted movable range arc");
         }
 
-        if (lv_obj_is_valid(p_app_list_layout->list))
+        if (lv_obj_is_valid(p_instruction_list_layout->list))
         {
-            lv_obj_del(p_app_list_layout->list);
-            p_app_list_layout->list = NULL;
+            lv_obj_del(p_instruction_list_layout->list);
+            p_instruction_list_layout->list = NULL;
         }
-        if (lv_obj_is_valid(p_app_list_layout->p_app_list_bg))
+        if (lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
         {
-            lv_obj_del(p_app_list_layout->p_app_list_bg);
-            p_app_list_layout->p_app_list_bg = NULL;
+            lv_obj_del(p_instruction_list_layout->p_instruction_list_bg);
+            p_instruction_list_layout->p_instruction_list_bg = NULL;
         }
-        if (lv_obj_is_valid(p_app_list_layout->p_app_list_ai_bg))
+        if (lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_ai_bg))
         {
-            lv_obj_del(p_app_list_layout->p_app_list_ai_bg);
-            p_app_list_layout->p_app_list_ai_bg = NULL;
+            lv_obj_del(p_instruction_list_layout->p_instruction_list_ai_bg);
+            p_instruction_list_layout->p_instruction_list_ai_bg = NULL;
         }
-        if (lv_obj_is_valid(p_app_list_layout->p_app_list_ai_icon))
+        if (lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_ai_icon))
         {
-            lv_obj_del(p_app_list_layout->p_app_list_ai_icon);
-            p_app_list_layout->p_app_list_ai_icon = NULL;
+            lv_obj_del(p_instruction_list_layout->p_instruction_list_ai_icon);
+            p_instruction_list_layout->p_instruction_list_ai_icon = NULL;
         }
 
-        lv_mem_free(p_app_list_layout);
-        p_app_list_layout = NULL;
-        LOG_I("[CHECK_MEMORY]app_list_deinit");
+        lv_mem_free(p_instruction_list_layout);
+        p_instruction_list_layout = NULL;
+        LOG_I("[CHECK_MEMORY]instruction_list_deinit");
     }
 
     extern void media_widget_stop(void);
@@ -2420,8 +2420,8 @@ rt_int32_t app_list_deinit(void)
     extern void note_widget_stop(void);
     note_widget_stop();
 
-    LOG_I("app_list_deinit");
-    pause_app_list = true;
+    LOG_I("instruction_list_deinit");
+    pause_instruction_list = true;
     return RT_EOK;
 }
 
@@ -2438,15 +2438,15 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
 	break;
 
 	case GUI_APP_MSG_ONRESUME:
-		app_list_resume();
+		instruction_list_resume();
 		break;
 
 	case GUI_APP_MSG_ONPAUSE:
-		app_list_pause();
+		instruction_list_pause();
 		break;
 
 	case GUI_APP_MSG_ONSTOP:
-		app_list_deinit();
+		instruction_list_deinit();
 		break;
 	default:
 		break;
@@ -2460,7 +2460,7 @@ static int app_main(intent_t i)
 	return 0;
 }
 LV_IMG_DECLARE(skaiwalkicon);
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(app_list), LV_EXT_IMG_GET(skaiwalkicon), APP_ID, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(instruction_list), LV_EXT_IMG_GET(skaiwalkicon), APP_ID, app_main);
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/

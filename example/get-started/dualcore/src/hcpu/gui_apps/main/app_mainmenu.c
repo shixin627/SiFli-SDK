@@ -87,17 +87,17 @@
     #include <rtdbg.h>
 
 /**
- * iterate over builtin app list
+ * iterate over builtin instruction list
  */
-extern const builtin_app_desc_t *gui_builtin_app_list_open(void);
+extern const builtin_app_desc_t *gui_builtin_instruction_list_open(void);
 extern const builtin_app_desc_t *
-gui_builtin_app_list_get_next(const builtin_app_desc_t *ptr_app);
-extern void gui_builtin_app_list_close(const builtin_app_desc_t *ptr_app);
+gui_builtin_instruction_list_get_next(const builtin_app_desc_t *ptr_app);
+extern void gui_builtin_instruction_list_close(const builtin_app_desc_t *ptr_app);
 
 enum
 {
     APP_MAIN_CLOCK,
-    APP_MAIN_APP_LIST,
+    APP_MAIN_INSTRUCTION_LIST,
     APP_MAIN_MAX,
 };
 
@@ -128,9 +128,9 @@ static void set_stack_app_index(uint16_t index)
     {
         row_app_index = index;
         LOG_D("row_app_index: % d", row_app_index);
-        if (index == app_index_app_list)
+        if (index == app_index_instruction_list)
         {
-            LOG_I("Open app list");
+            LOG_I("Open instruction list");
             // switch_watch_motion_control_mode(true, true);
             clock_on_pause();
         }
@@ -144,14 +144,14 @@ static void set_stack_app_index(uint16_t index)
     check_is_at_home();
 }
 
-void animate_to_home_from_app_list(void)
+void animate_to_home_from_instruction_list(void)
 {
     lv_obj_set_tile_id(myLancher[app_index_message].pagetileview, 1, 1,
                        LV_ANIM_ON);
 }
 
     #define TOP_PAGE_INDEX app_index_clock
-    #define BOTTOM_PAGE_INDEX app_index_app_list
+    #define BOTTOM_PAGE_INDEX app_index_instruction_list
 
 static lv_obj_t *middle_layer_bg;
 
@@ -161,7 +161,7 @@ void close_middle_layer_bg(void)
     {
         LOG_D("close_middle_layer_bg");
         lv_obj_set_style_bg_opa(middle_layer_bg, LV_OPA_0, 0);
-        set_app_list_time_opa(LV_OPA_0);
+        set_instruction_list_time_opa(LV_OPA_0);
     }
     else
     {
@@ -169,7 +169,7 @@ void close_middle_layer_bg(void)
     }
 }
 
-static void handle_set_app_list_opa(uint8_t opa)
+static void handle_set_instruction_list_opa(uint8_t opa)
 {
     if (!middle_layer_bg)
         return;
@@ -187,10 +187,10 @@ static void set_test_obj_opa(void *_, int32_t opa)
     set_middle_layer_bg_opa(opa);
 }
 
-static bool close_app_list_opa_set = false;
-void set_close_app_list_opa_set(bool set)
+static bool close_instruction_list_opa_set = false;
+void set_close_instruction_list_opa_set(bool set)
 {
-    close_app_list_opa_set = set;
+    close_instruction_list_opa_set = set;
 }
 
 void handle_tap_event_in_mainmenu(void)
@@ -199,10 +199,10 @@ void handle_tap_event_in_mainmenu(void)
     RT_ASSERT(row_app_index < APP_MAIN_MAX);
     RT_ASSERT(myLancher[row_app_index].on_tap != NULL);
     bool is_hidden;
-    if (is_at_app_list())
+    if (is_at_instruction_list())
     {
-        LOG_D("app_index_app_list");
-        myLancher[app_index_app_list].on_tap();
+        LOG_D("app_index_instruction_list");
+        myLancher[app_index_instruction_list].on_tap();
     }
 }
 
@@ -212,8 +212,8 @@ bool is_at_ai_interface(void)
     return _at_ai_interface;
 }
 
-extern bool get_app_list_ai_tapped(void);
-extern void set_app_list_ai_tapped(void);
+extern bool get_instruction_list_ai_tapped(void);
+extern void set_instruction_list_ai_tapped(void);
 void check_is_at_ai_interface(void)
 {
     bool yes = !lv_obj_has_flag(myLancher[app_index_ai_interface].pagetileview,
@@ -225,10 +225,10 @@ void check_is_at_ai_interface(void)
         {
             switch_watch_motion_control_mode(true, false);
             setting_provider.set_power_save_mode(0);
-            show_app_list_time(false);
+            show_instruction_list_time(false);
             extern void reset_ai_coding(void);
             reset_ai_coding();
-            if (!get_app_list_ai_tapped())
+            if (!get_instruction_list_ai_tapped())
             {
                 set_ai_open_mic(true);
                 show_speech_indicator(true);
@@ -236,7 +236,7 @@ void check_is_at_ai_interface(void)
             }
             else
             {
-                set_app_list_ai_tapped();
+                set_instruction_list_ai_tapped();
             }
             
             set_free_control_with_arm(false);
@@ -244,23 +244,23 @@ void check_is_at_ai_interface(void)
         else
         {
             voice_provider.stop_v2t();
-            show_app_list_time(true);
+            show_instruction_list_time(true);
         }
         LOG_I("is_at_ai_interface: %d", _at_ai_interface);
     }
 }
 
-static bool _at_app_list = false;
-bool is_at_app_list(void)
+static bool _at_instruction_list = false;
+bool is_at_instruction_list(void)
 {
-    // LOG_D("is_at_app_list? %d", _at_app_list);
-    return _at_app_list;
+    // LOG_D("is_at_instruction_list? %d", _at_instruction_list);
+    return _at_instruction_list;
 }
 
 static void on_tap_wrapper(uint8_t gesture)
 {
-    if (gesture == 1 && myLancher[app_index_app_list].on_tap)
-        myLancher[app_index_app_list].on_tap();
+    if (gesture == 1 && myLancher[app_index_instruction_list].on_tap)
+        myLancher[app_index_instruction_list].on_tap();
 }
 
 static bool need_open_gesture_control = false;
@@ -283,19 +283,19 @@ void set_need_open_gesture_control(bool need)
 }
 extern void reset_skai_widget_input_text(void);
 extern uint8_t get_middle_layer_tileview_index(void);
-extern bool get_is_open_app_list_ai(void);
+extern bool get_is_open_instruction_list_ai(void);
 extern void open_skai_widget_ai(bool open);
-void check_is_at_app_list(void)
+void check_is_at_instruction_list(void)
 {
     bool yes = gui_app_is_actived(APP_ID_MAIN) &&
                !lv_obj_has_flag(myLancher[app_index_message].pagetileview,
                                 LV_OBJ_FLAG_HIDDEN) &&
                !_at_ai_interface &&
-               get_middle_layer_tileview_index() == APP_LIST_PAGE_INDEX;
-    if (yes != _at_app_list)
+               get_middle_layer_tileview_index() == INSTRUCTION_LIST_PAGE_INDEX;
+    if (yes != _at_instruction_list)
     {
-        _at_app_list = yes;
-        if (_at_app_list)
+        _at_instruction_list = yes;
+        if (_at_instruction_list)
         {
             setting_provider.set_power_save_mode(1);
             extern uint8_t return_app_count(void);
@@ -308,19 +308,19 @@ void check_is_at_app_list(void)
                 set_arc_stripe_external_offset;
             extern void refersh_weather_icon(void);
             refersh_weather_icon();
-            app_list_resume();
+            instruction_list_resume();
             display_status_bar_area(3, false);
             display_gesture_detect_objs(0, false);
         }
         else
         {
-            myLancher[app_index_app_list].reset_list();
-            app_list_pause();
+            myLancher[app_index_instruction_list].reset_list();
+            instruction_list_pause();
             display_gesture_detect_objs(0, true);
             open_skai_widget_ai(false);
             display_status_bar_area(3, true);
         }
-        LOG_I("is_at_app_list: %d", _at_app_list);
+        LOG_I("is_at_instruction_list: %d", _at_instruction_list);
     }
 }
 
@@ -532,7 +532,7 @@ bool is_at_home(void)
 
 void check_is_at_home(void)
 {
-    bool yes = gui_app_is_actived(APP_ID_MAIN) && !_at_app_list &&
+    bool yes = gui_app_is_actived(APP_ID_MAIN) && !_at_instruction_list &&
                !_at_message && !_at_control_center && !_at_mouse_mode &&
                !_at_ai_interface && !_at_note_list && !_at_speech_interface;
     if (yes != _at_home)
@@ -552,7 +552,7 @@ void check_is_at_home(void)
         }
         else
         {
-            if (!_at_mouse_mode && !_at_app_list)
+            if (!_at_mouse_mode && !_at_instruction_list)
             {
                 display_gesture_detect_objs(0, true);
             }
@@ -564,7 +564,7 @@ void check_is_at_home(void)
 
 static void clear_check_flags(void)
 {
-    _at_app_list = false;
+    _at_instruction_list = false;
     _at_message = false;
     _at_control_center = false;
     _at_home = false;
@@ -582,7 +582,7 @@ void set_open_scrolling_app_flag(bool flag)
 {
     open_scrolling_app_flag = flag;
 }
-void open_control_app_list(lv_anim_t *a)
+void open_control_instruction_list(lv_anim_t *a)
 {
     if (open_scrolling_app_flag)
     {
@@ -600,7 +600,7 @@ void open_control_app_list(lv_anim_t *a)
     clock_on_pause();
 }
 
-// extern void app_list_scroll_to_app(bool up);
+// extern void instruction_list_scroll_to_app(bool up);
 static uint16_t bg_opa = LV_OPA_COVER;
 static uint8_t bg_opa2 = LV_OPA_80;
 void *app_tap_indicate_function = NULL;
@@ -627,12 +627,12 @@ static void app_main_Clock_view_event_cb(lv_event_t *event)
         lv_coord_t text_opa = ((466 - sx) * bg_opa) / 466;
         if (text_opa > bg_opa)
             text_opa = bg_opa;
-        set_app_list_time_opa(text_opa);
+        set_instruction_list_time_opa(text_opa);
         /* Time background opacity */
         lv_coord_t time_bg_opa = ((466 - sx) * bg_opa2) / 466;
         if (time_bg_opa > bg_opa2)
             time_bg_opa = bg_opa2;
-        lv_obj_set_style_bg_opa(get_app_list_time_bg(), time_bg_opa, 0);
+        lv_obj_set_style_bg_opa(get_instruction_list_time_bg(), time_bg_opa, 0);
         break;
     }
     case LV_EVENT_SCROLL_END:
@@ -643,10 +643,10 @@ static void app_main_Clock_view_event_cb(lv_event_t *event)
             gui_runing_app_t *app = gui_app_get_actived();
             strncpy(pevr_app_id, app->id, sizeof(pevr_app_id) - 1);
             pevr_app_id[sizeof(pevr_app_id) - 1] = '\0';
-            lv_obj_set_style_bg_opa(get_app_list_time_bg(), bg_opa2, 0);
-            set_app_list_time_opa(bg_opa);
-            LOG_D("app_index_app_list");
-            set_stack_app_index(app_index_app_list);
+            lv_obj_set_style_bg_opa(get_instruction_list_time_bg(), bg_opa2, 0);
+            set_instruction_list_time_opa(bg_opa);
+            LOG_D("app_index_instruction_list");
+            set_stack_app_index(app_index_instruction_list);
             extern void reset_gravity_position(void);
             reset_gravity_position();
             clock_on_pause();
@@ -660,7 +660,7 @@ static void app_main_Clock_view_event_cb(lv_event_t *event)
                 lvgl_msg_handler.handle_tap_indicator = on_tap_wrapper;
                 LOG_D("handle_tap_indicator =%p", on_tap_wrapper);
                 // lvgl_msg_handler.handle_gyro_scroll_list =
-                //     app_list_scroll_to_app;
+                //     instruction_list_scroll_to_app;
     #ifdef APP_ID_WIDGETS
                 widget_page_flip(true);
     #endif
@@ -676,12 +676,12 @@ static void app_main_Clock_view_event_cb(lv_event_t *event)
             lvgl_msg_t msg;
             msg.type = LVGL_MSG_TYPE_TIME_TEXT;
             lvgl_send_msg(msg);
-            lv_obj_set_style_bg_opa(get_app_list_time_bg(), LV_OPA_0, 0);
-            set_app_list_time_opa(LV_OPA_0);
+            lv_obj_set_style_bg_opa(get_instruction_list_time_bg(), LV_OPA_0, 0);
+            set_instruction_list_time_opa(LV_OPA_0);
             LOG_D("app_index_clock");
-            if (myLancher[app_index_app_list].reset_list != NULL)
+            if (myLancher[app_index_instruction_list].reset_list != NULL)
             {
-                myLancher[app_index_app_list].reset_list();
+                myLancher[app_index_instruction_list].reset_list();
             }
             set_stack_app_index(app_index_clock);
             extern void set_q_vertical_movement_magnification(float mag);
@@ -775,11 +775,11 @@ void refreh_notification_bar_indicator(uint16_t count)
 void app_launcher_ui_init(void *param)
 {
     extern lv_obj_t *build_home_view(lv_obj_t * parent);
-    extern lv_obj_t *lv_app_list_layout_create(lv_obj_t * parent);
-    lv_obj_t *app_list = build_home_view(lv_scr_act());
+    extern lv_obj_t *lv_instruction_list_layout_create(lv_obj_t * parent);
+    lv_obj_t *instruction_list = build_home_view(lv_scr_act());
     // #ifdef ENABLE_NOTIFICATION_CENTER
     // app_mainmenu_ctx.message_indicator =
-    //     create_notification_bar_indicator(app_list);
+    //     create_notification_bar_indicator(instruction_list);
     // #endif
 
     gui_app_trans_anim_t enter_anim_cfg, exit_anim_cfg;
@@ -804,14 +804,14 @@ static void on_start(void)
     #ifdef BSP_USING_UI_HANDLER
     // lvgl_msg_handler.handle_clear_notification_bar_indicator =
     //     clear_notification_bar_indicator;
-    lvgl_msg_handler.handle_set_app_list_opa = handle_set_app_list_opa;
+    lvgl_msg_handler.handle_set_instruction_list_opa = handle_set_instruction_list_opa;
     #endif
 }
 
 void check_main_page(void)
 {
     check_is_at_message();
-    check_is_at_app_list();
+    check_is_at_instruction_list();
     check_is_at_control_center();
     check_is_at_home();
 }
@@ -821,7 +821,7 @@ static void on_resume(void)
     LOG_D("[mainmenu_on_resume] %d", get_idle_state());
     check_main_page();
     check_is_at_ai_interface();
-    if (is_at_home() || is_at_control_center() || is_at_app_list() ||
+    if (is_at_home() || is_at_control_center() || is_at_instruction_list() ||
         is_at_ai_interface())
     {
         screen_rotate_back_to_original_direction();
@@ -844,7 +844,7 @@ static void on_pause(void)
     // if (lv_obj_is_valid(app_mainmenu_ctx.message_indicator))
     //     lv_obj_add_flag(app_mainmenu_ctx.message_indicator, LV_OBJ_FLAG_HIDDEN);
     // #endif
-    app_list_pause();
+    instruction_list_pause();
     clock_on_pause();
     extern void reset_gravity_position(void);
     reset_gravity_position();
@@ -861,12 +861,12 @@ static void on_stop(void)
     // }
     notification_on_deinit();
     #endif
-    app_list_deinit();
+    instruction_list_deinit();
     clock_on_stop();
     unsubscribe_pwr_service();
 
     #ifdef BSP_USING_UI_HANDLER
-    lvgl_msg_handler.handle_set_app_list_opa = NULL;
+    lvgl_msg_handler.handle_set_instruction_list_opa = NULL;
     lvgl_msg_handler.handle_control_quick_btn = NULL;
     clear_all_handlers();
     #endif

@@ -484,7 +484,7 @@ static void listening_shadow_animation(bool start)
         lv_obj_set_style_shadow_opa(skai_widget_input_text_bg, LV_OPA_0, 0);
     }
 }
-extern bool set_is_open_app_list_ai(bool open);
+extern bool set_is_open_instruction_list_ai(bool open);
 void reset_skai_widget_input_text(void);
 static bool prev_open_state = false;
 void open_skai_widget_ai(bool open)
@@ -518,7 +518,7 @@ void open_skai_widget_ai(bool open)
             // voice_provider.auto_stop_listening();
             // voice_provider.stop_v2t();
             // reset_skai_widget_input_text();
-            // set_is_open_app_list_ai(false);
+            // set_is_open_instruction_list_ai(false);
             set_skai_widget_input_text("");
             lv_obj_update_layout(skai_widget_input_text);
             lv_obj_set_height(skai_widget_input_text_bg, 150);
@@ -533,8 +533,8 @@ bool get_skai_input_text_is_null(void)
     return input_text_is_null;
 }
 extern bool get_voice_recognition_started(void);
-extern bool set_is_open_app_list_ai(bool open);
-extern bool get_is_open_app_list_ai(void);
+extern bool set_is_open_instruction_list_ai(bool open);
+extern bool get_is_open_instruction_list_ai(void);
 void back_on_skai_widget(void)
 {
     if (skai_widget_input_text != NULL &&
@@ -547,7 +547,7 @@ void back_on_skai_widget(void)
             count_speech_coding();
             reset_skai_widget_input_text();
         }
-        else if (get_is_open_app_list_ai())
+        else if (get_is_open_instruction_list_ai())
         {
             // animate_to_home_from_notification_center();
             

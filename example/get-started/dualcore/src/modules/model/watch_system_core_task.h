@@ -64,11 +64,11 @@ extern "C"
     extern void send_sys_interact_event(uint32_t event);
 
     extern void set_watch_ready_to_open_display(bool state);
-    extern void set_user_want_to_open_display_to_app_list(bool state);
+    extern void set_user_want_to_open_display_to_instruction_list(bool state);
     extern void store_watch_shared_prefs(watch_prefs_key key);
     extern void watch_hcpu_resume_with_reason(uint8_t reason);
     extern void switch_watch_motion_control_mode(bool enable, bool animation);
-    extern bool is_user_want_to_open_display_to_app_list(void);
+    extern bool is_user_want_to_open_display_to_instruction_list(void);
     extern void gesture_touch_event_handler(void);
     extern void ble_app_advertising_start(bool restart_adv, bool mouse_mode, bool pairing_mode);
 

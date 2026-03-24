@@ -428,7 +428,7 @@
 //     {
 //         return;
 //     }
-//     if (is_at_app_list())
+//     if (is_at_instruction_list())
 //     {
 
 //         simulate_press_by_orientation();

@@ -31,18 +31,18 @@ extern "C"
 
     extern const lv_style_t CUSTOM_BUTTON_STYLE;
 
-    extern lv_obj_t *get_app_list_bluetooth_disconnection(void);
-    extern lv_obj_t *get_app_list_battery(void);
-    extern lv_obj_t *get_app_list_battery_bg(void);
-    extern lv_obj_t *get_app_list_battery_label(void);
-    extern lv_obj_t *get_app_list_charge_battery_icon(void);
-    extern void set_app_list_time_opa(uint8_t opa);
-    extern void set_app_list_time_bg_opa(uint8_t opa);
-    extern void set_app_list_battery_opa(uint8_t opa);
-    extern void set_app_list_battery_bg_opa(uint8_t opa);
-    extern lv_obj_t *get_app_list_time_bg(void);
+    extern lv_obj_t *get_instruction_list_bluetooth_disconnection(void);
+    extern lv_obj_t *get_instruction_list_battery(void);
+    extern lv_obj_t *get_instruction_list_battery_bg(void);
+    extern lv_obj_t *get_instruction_list_battery_label(void);
+    extern lv_obj_t *get_instruction_list_charge_battery_icon(void);
+    extern void set_instruction_list_time_opa(uint8_t opa);
+    extern void set_instruction_list_time_bg_opa(uint8_t opa);
+    extern void set_instruction_list_battery_opa(uint8_t opa);
+    extern void set_instruction_list_battery_bg_opa(uint8_t opa);
+    extern lv_obj_t *get_instruction_list_time_bg(void);
     extern void show_battery(bool show);
-    extern void show_app_list_time(bool show);
+    extern void show_instruction_list_time(bool show);
     extern lv_obj_t *create_animate_ripples(app_speech_ripple_t *ripple, lv_obj_t *par, uint8_t height);
     extern void trigger_voice_ripple(app_speech_ripple_t *ripple, bool start);
     extern lv_obj_t *create_animate_points(app_speech_ripple_t *point, lv_obj_t *par);
@@ -116,7 +116,7 @@ extern "C"
 
     typedef enum
     {
-        app_index_app_list,
+        app_index_instruction_list,
         app_index_clock,
         app_index_message,
         day_index_calendar_list,

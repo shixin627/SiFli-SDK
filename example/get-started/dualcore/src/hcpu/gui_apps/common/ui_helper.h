@@ -57,9 +57,9 @@ extern "C"
     extern rt_int32_t clock_on_resume(void);
     extern rt_int32_t clock_on_pause(void);
     extern void clock_on_stop(void);
-    extern rt_int32_t app_list_resume(void);
-    extern rt_int32_t app_list_pause(void);
-    extern rt_int32_t app_list_deinit(void);
+    extern rt_int32_t instruction_list_resume(void);
+    extern rt_int32_t instruction_list_pause(void);
+    extern rt_int32_t instruction_list_deinit(void);
     extern rt_int32_t notification_on_resume(void);
     extern rt_int32_t notification_on_pause(void);
     extern rt_int32_t notification_on_deinit(void);
@@ -72,11 +72,11 @@ extern "C"
     extern void lvgl_set_global_keypad_esc_cmd(void);
 
     extern bool is_at_home(void);
-    extern bool is_at_app_list(void);
+    extern bool is_at_instruction_list(void);
     extern bool is_at_message(void);
     extern bool is_at_widget(void);
     extern bool is_at_speech_interface(void);
-    extern void check_is_at_app_list(void);
+    extern void check_is_at_instruction_list(void);
     extern void check_is_at_speech_interface(void);
     extern void check_is_at_note_list(void);
     extern void check_is_at_mouse_mode(void);
@@ -165,8 +165,8 @@ extern "C"
     extern void show_speech_indicator(bool show);
     extern void show_ai_processing_indicator(bool show);
     extern void handle_download_progress_update(int progress);
-    extern bool is_user_want_to_open_display_to_app_list(void);
-    extern void set_user_want_to_open_display_to_app_list(bool state);
+    extern bool is_user_want_to_open_display_to_instruction_list(void);
+    extern void set_user_want_to_open_display_to_instruction_list(bool state);
 
 #ifdef __cplusplus
 } /*extern "C"*/
