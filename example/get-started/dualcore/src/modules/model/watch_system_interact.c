@@ -153,7 +153,7 @@ void handle_gesture_unlock(void)
         extern void set_q_vertical_movement_magnification(float mag);
         set_q_vertical_movement_magnification(5.0f);
         // motor_pattern_unlocked();
-        animate_to_app_list();
+        animate_to_instruction_list();
     }
     else
     {
@@ -913,8 +913,8 @@ static void handle_system_settings(INTERACT_Type type, void *pValue)
         char *language = (char *)pValue;
         LOG_D("[LANGUAGE_SET] Language:%s", language);
         setting_provider.set_language(language);
-        extern void load_app_list(void);
-        load_app_list();
+        extern void load_instruction_list(void);
+        load_instruction_list();
         break;
     }
     case WATCH_WATCHFACE_SET:
@@ -987,7 +987,7 @@ static void handle_power_management(INTERACT_Type type, void *pValue)
         break;
     case WATCH_OPEN_DISPLAY_TO_APP_LIST:
         // set_watch_ready_to_open_display(true);
-        set_user_want_to_open_display_to_app_list(true);
+        set_user_want_to_open_display_to_instruction_list(true);
         break;
     case WATCH_PREPARE_SLEEP:
         // send_sys_interact_event(SYS_EVENT_PREPARE_SLEEP);

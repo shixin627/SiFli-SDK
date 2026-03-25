@@ -81,11 +81,11 @@ extern bool lv_refreshing_done(void);
 
 static void handle_back_in_mainmenu(bool is_button)
 {
-    if (is_at_app_list())
+    if (is_at_instruction_list())
     {
-        LOG_D("handle_back_in_mainmenu: is_at_app_list");
+        LOG_D("handle_back_in_mainmenu: is_at_instruction_list");
         clock_on_resume();
-        animate_to_home_from_app_list();
+        animate_to_home_from_instruction_list();
         screen_rotate_back_to_original_direction();
     }
     else if (is_at_home())
@@ -104,7 +104,7 @@ static void handle_back_in_mainmenu(bool is_button)
 
 extern void note_list_handle_back(void);
 extern void back_on_skai_widget(void);
-extern bool get_is_open_app_list_ai(void);
+extern bool get_is_open_instruction_list_ai(void);
 static void handle_back_event(bool is_button)
 {
     if (SkaiWatchSys.sys_power_status == SYS_POWER_STATUS_ON)
@@ -157,19 +157,19 @@ static void handle_back_event(bool is_button)
         LOG_D("ESC in note list => note_list_handle_back");
         note_list_handle_back();
     }
-    else if (is_at_app_list())
+    else if (is_at_instruction_list())
     {
-        if (get_is_open_app_list_ai())
+        if (get_is_open_instruction_list_ai())
         {
             back_on_skai_widget();
-            LOG_D("ESC in app list with AI open => back_on_skai_widget");
+            LOG_D("ESC in instruction list with AI open => back_on_skai_widget");
         }
         else
         {
             clock_on_resume();
-            animate_to_home_from_app_list();
+            animate_to_home_from_instruction_list();
             screen_rotate_back_to_original_direction();
-            LOG_D("ESC in app list => animate_to_home_from_app_list");
+            LOG_D("ESC in instruction list => animate_to_home_from_instruction_list");
         }
     }
     else if (is_at_mouse_mode() || is_at_message())
@@ -287,23 +287,23 @@ static int32_t default_keypad_handler(lv_key_t key, lv_indev_state_t event)
                     }
                 }
             }
-            else if (is_at_app_list())
+            else if (is_at_instruction_list())
             {
                 extern bool get_enable_tap_and_hold(void);
                 if (!get_enable_tap_and_hold())
                 {
                     if (peripheral_provider.get_tap_status())
                     {
-                        if (myLancher[app_index_app_list].on_tap)
-                            myLancher[app_index_app_list].on_tap();
+                        if (myLancher[app_index_instruction_list].on_tap)
+                            myLancher[app_index_instruction_list].on_tap();
                     }
                 }
                 else
                 {
                     if (!peripheral_provider.get_tap_status())
                     {
-                        if (myLancher[app_index_app_list].on_tap)
-                            myLancher[app_index_app_list].on_tap();
+                        if (myLancher[app_index_instruction_list].on_tap)
+                            myLancher[app_index_instruction_list].on_tap();
                     }
                 }
             }

@@ -25,10 +25,10 @@
 
 #define CONTROL_CENTER_PAGE_INDEX MAIN_PAGE_TYPE_DOWN 
 #define HOME_PAGE_INDEX MAIN_PAGE_TYPE_HOME
-#define APP_LIST_PAGE_INDEX MAIN_PAGE_TYPE_LEFT
+#define INSTRUCTION_LIST_PAGE_INDEX MAIN_PAGE_TYPE_LEFT
 #define MESSAGE_PAGE_INDEX MAIN_PAGE_TYPE_UP
 #define AI_PAGE_INDEX MAIN_PAGE_TYPE_RIGHT
-// #define ENABLE_APP_LIST
+// #define ENABLE_INSTRUCTION_LIST
 
 typedef enum
 {
@@ -59,7 +59,7 @@ typedef rt_int32_t (*app_init_cb_t)(lv_obj_t *);
 typedef rt_int32_t (*app_func_ptr_t)(void);
 
 /****                     API for single app              ****/
-bool is_at_app_list(void);
+bool is_at_instruction_list(void);
 bool is_at_note_list(void);
 bool is_at_mouse_mode(void);
 bool is_at_home(void);
@@ -108,12 +108,12 @@ extern void handle_tap_event_in_mainmenu(void);
 extern void quick_open_note_chatroom_ui_app(void);
 extern void get_calendar_list_from_template(void);
 extern void animate_to_notification_center(void);
-extern void animate_to_app_list(void);
+extern void animate_to_instruction_list(void);
 extern void animate_to_message_list(void);
 extern void animate_to_ai_page(void);
 extern void animate_to_home_from_ai_page(void);
 extern void animate_to_home_from_notification_center(void);
-extern void animate_to_home_from_app_list(void);
+extern void animate_to_home_from_instruction_list(void);
 extern bool get_bluetooth_connection_status(void);
 extern void create_connection_tips(void);
 #endif /*__APP_MAINMENU_H__*/

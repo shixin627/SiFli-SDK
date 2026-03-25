@@ -117,6 +117,7 @@ extern "C"
 		KEY_UPDATE_WATCH_LCPU_PATCH = 0X62,
 		KEY_FILE_COMPARE_RESULT = 0X63,
 		KEY_BARO_BUFFER = 0X64,
+		KEY_SKAI_CREATION_INSTRUCTIONS = 0X65,
 	} NOTIFY_KEY;
 
 	void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length);

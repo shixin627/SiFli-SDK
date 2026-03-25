@@ -677,9 +677,9 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
 
     case LVGL_MSG_TYPE_APP_LIST_OPA:
-        if (lvgl_msg_handler.handle_set_app_list_opa)
+        if (lvgl_msg_handler.handle_set_instruction_list_opa)
         {
-            lvgl_msg_handler.handle_set_app_list_opa(msg->data.opa);
+            lvgl_msg_handler.handle_set_instruction_list_opa(msg->data.opa);
             trigger_activity();
         }
         break;

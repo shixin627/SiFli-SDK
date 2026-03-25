@@ -349,7 +349,7 @@ extern "C"
         void (*handle_time_text)(void);
         void (*handle_bluetooth_connection)(bool connected);
         void (*handle_send_message)(void);
-        void (*handle_set_app_list_opa)(uint8_t opa);
+        void (*handle_set_instruction_list_opa)(uint8_t opa);
         void (*handle_switch_selected)(bool switch_selected);
         void (*handle_set_arc_stripe_external_offset)(int16_t offset_degrees);
         void (*handle_open_message_page_content)(void);

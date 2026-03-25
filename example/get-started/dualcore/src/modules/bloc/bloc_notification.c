@@ -461,11 +461,11 @@ void navigate_notification_info(notification_t *notification)
     intent_set_string(intent, "noti_id", notification->id);
     intent_set_string(intent, "noti_can_reply",
                       notification->can_reply ? "true" : "false");
-    if (!is_at_app_list())
+    if (!is_at_instruction_list())
     {
-        if (myLancher[app_index_app_list].reset_list != NULL)
+        if (myLancher[app_index_instruction_list].reset_list != NULL)
         {
-            myLancher[app_index_app_list].reset_list();
+            myLancher[app_index_instruction_list].reset_list();
         }
     }
     intent_runapp(intent);
@@ -475,9 +475,9 @@ static bool need_wakeup = false;
 void interact_with_notification(notification_t *notification)
 {
     update_notification(*notification);
-    if (myLancher[app_index_app_list].reset_list != NULL && !is_at_app_list())
+    if (myLancher[app_index_instruction_list].reset_list != NULL && !is_at_instruction_list())
     {
-        myLancher[app_index_app_list].reset_list();
+        myLancher[app_index_instruction_list].reset_list();
     }
 
     if (SkaiWatchSys.DNDMode.config.status) // DND mode
@@ -841,11 +841,11 @@ static void bloc_notify_charge_status(uint8_t status)
     {
     #if (CUSTOMER_BOARD_VER != BOARD_VER_13)
         if (!is_at_mouse_mode() &&
-            !is_user_touching_screen()) //! is_at_app_list() ||  ||
+            !is_user_touching_screen()) //! is_at_instruction_list() ||  ||
                                         //! !is_at_control_center()
     #else
         if ((!is_at_mouse_mode() || !is_at_control_center() ||
-             !is_at_app_list()) &&
+             !is_at_instruction_list()) &&
             !is_user_touching_screen()) //
     #endif
         {

@@ -142,7 +142,7 @@ static void on_resume(void)
     {
         p_app_batt->redraw_task = lv_timer_create(refresh_battery_level, 30000, NULL);
     }
-    show_app_list_time(false);
+    show_instruction_list_time(false);
     show_battery(false);
 
 }
@@ -151,7 +151,7 @@ static void on_pause(void)
 {
     lv_timer_del(p_app_batt->redraw_task);
     p_app_batt->redraw_task = NULL;
-    show_app_list_time(true);
+    show_instruction_list_time(true);
     show_battery(true);
 }
 

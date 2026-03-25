@@ -1073,7 +1073,7 @@ void in_spire_AI(app_gesture_indicator_t *indicator)
     }
 }
 
-extern bool get_is_open_app_list_ai(void);
+extern bool get_is_open_instruction_list_ai(void);
 extern void set_skai_widget_input_text(const char *text);
 void refresh_ai_chat_input_message(char *text)
 {
@@ -1096,7 +1096,7 @@ void refresh_ai_chat_input_message(char *text)
         lv_obj_update_layout(gesture_indicator.speech_input);
         set_last_refresh_input_message_tick(rt_tick_get());
     }
-    if (get_is_open_app_list_ai()) // && get_is_open_app_list_ai() is_at_speech_interface() &&
+    if (get_is_open_instruction_list_ai()) // && get_is_open_instruction_list_ai() is_at_speech_interface() &&
     {
         LOG_D("refresh_ai_chat_input_message: %s", text);
         if (text && text[0] != '\0' && strspn(text, " \t\n\r") < strlen(text))
@@ -1122,7 +1122,7 @@ void refresh_ai_chat_input_message(char *text)
         in_spire_AI(&gesture_indicator);
     }
     delete_ai_reply_widget(&gesture_indicator);
-    LOG_D("Input message refreshed%d",get_is_open_app_list_ai());
+    LOG_D("Input message refreshed%d",get_is_open_instruction_list_ai());
 }
 
 static void update_ai_process_indicator(app_gesture_indicator_t *indicator, char *message, bool is_active)
@@ -1519,7 +1519,7 @@ void quick_ai_hint_hidden(app_gesture_indicator_t *indicator)
     reset_all_interface_states();
     LOG_D("quick_ai_hint_hidden: reset all interface states");
     animate_to_home_from_ai_page();
-    show_app_list_time(true);
+    show_instruction_list_time(true);
     voice_recognition_hint_create(indicator);
 }
 

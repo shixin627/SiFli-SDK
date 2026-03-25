@@ -21,6 +21,7 @@
 #include <string.h>
 #include "communicate_protocol.h"
 #include "communicate_parse.h"
+#include "communicate_parse_notify.h"
 #include "communicate_sync_pedo.h"
 #include "communicate_sync_sleep.h"
 #include "communicate_sync_heart_rate.h"
@@ -227,6 +228,7 @@ typedef struct
     PacketHandler handle_utest_state;
     PacketHandler handle_minute_activity;
     PacketHandler handle_holding_displacement;
+    PacketHandler handle_update_instruction;
 } CommunicateHandlerProvider;
 
 static CommunicateHandlerProvider commu_handler_provider;
@@ -829,6 +831,21 @@ static uint16_t handle_create_note(PacketBuilder *builder, L1SendData *data)
     return builder->length;
 }
 
+// Handler for update instruction
+static uint16_t handle_update_instruction(PacketBuilder *builder, L1SendData *data)
+{
+    uint8_t *buf = builder->buf;
+    char *string_ptr = data->res.json_string_ptr;
+    uint16_t len = strlen(string_ptr);
+
+    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_SKAI_CREATION_INSTRUCTIONS);
+    SET_PACKET_LENGTH(buf, len);
+    memcpy(buf + 5, string_ptr, len);
+
+    builder->length = 5 + len;
+    return builder->length;
+}
+
 // Handler for create calendar
 static uint16_t handle_create_calendar(PacketBuilder *builder, L1SendData *data)
 {
@@ -1211,6 +1228,7 @@ static int commu_handler_provider_register(void)
     commu_handler_provider.handle_gesture_detect = handle_gesture_detect;
     commu_handler_provider.handle_remote_input = handle_remote_input;
     commu_handler_provider.handle_create_note = handle_create_note;
+    commu_handler_provider.handle_update_instruction = handle_update_instruction;
     commu_handler_provider.handle_create_calendar = handle_create_calendar;
     commu_handler_provider.handle_tp_coordinate = handle_tp_coordinate;
     commu_handler_provider.handle_tp_gesture = handle_tp_gesture;
@@ -1503,6 +1521,9 @@ static uint16_t dispatch_packet_handler(L1SendData *data)
         break;
     case L1SEND_HOLDING_DISPLACEMENT:
         handler = commu_handler_provider.handle_holding_displacement;
+        break;
+    case L1SEND_UPDATE_INSTRUCTION:
+        handler = commu_handler_provider.handle_update_instruction;
         break;
 
     default:

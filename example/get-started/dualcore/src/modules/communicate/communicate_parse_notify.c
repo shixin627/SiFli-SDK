@@ -46,7 +46,7 @@
  */
 
 extern void reset_skai_widget_input_text(void);
-extern bool get_is_open_app_list_ai(void);
+extern bool get_is_open_instruction_list_ai(void);
 
 extern void parse_chat_item(cJSON *item, chat_t *note);
 static uint8_t weather_data_updata_count = 0;
@@ -94,7 +94,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         if (pValue[0])
         {
             if (is_at_ai_interface() || is_at_speech_interface() ||
-                get_is_open_app_list_ai())
+                get_is_open_instruction_list_ai())
                 show_ai_processing_indicator(true);
         }
         else
@@ -599,6 +599,59 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
             pValue[length] = '\0';
             LOG_I("watch received location data:%s", pValue);
             handle_location_data((char *)pValue);
+        }
+        break;
+    }
+
+    case KEY_SKAI_CREATION_INSTRUCTIONS:
+    {
+        if (length > 0)
+        {
+            LOG_I("Received instruction: %s", pValue);
+            cJSON *root = cJSON_Parse((const char *)pValue);
+            if (root)
+            {
+                cJSON *j_id = cJSON_GetObjectItem(root, "id");
+                cJSON *j_title = cJSON_GetObjectItem(root, "title");
+                cJSON *j_trigger = cJSON_GetObjectItem(root, "trigger");
+
+                const char *id = cJSON_IsString(j_id) ? j_id->valuestring : "";
+                const char *title = cJSON_IsString(j_title) ? j_title->valuestring : "";
+                const char *trigger_type = "";
+                uint32_t interval_sec = 0;
+
+                if (j_trigger)
+                {
+                    cJSON *j_type = cJSON_GetObjectItem(j_trigger, "type");
+                    if (cJSON_IsString(j_type))
+                    {
+                        trigger_type = j_type->valuestring;
+                        if (strcmp(trigger_type, "interval") == 0)
+                        {
+                            cJSON *j_sec = cJSON_GetObjectItem(j_trigger,
+                                                               "intervalSeconds");
+                            if (cJSON_IsNumber(j_sec))
+                                interval_sec = (uint32_t)j_sec->valuedouble;
+                        }
+                    }
+                }
+
+                uint32_t version = 0;
+                cJSON *j_version = cJSON_GetObjectItem(root, "version");
+                if (cJSON_IsNumber(j_version))
+                    version = (uint32_t)j_version->valuedouble;
+
+                bool enabled = false;
+                cJSON *j_enabled = cJSON_GetObjectItem(root, "enabled");
+                if (cJSON_IsBool(j_enabled))
+                    enabled = cJSON_IsTrue(j_enabled);
+
+                add_or_update_custom_instruction(id, title, trigger_type,
+                                                  interval_sec, enabled,
+                                                  version);
+                refresh_custom_instructions();
+                cJSON_Delete(root);
+            }
         }
         break;
     }

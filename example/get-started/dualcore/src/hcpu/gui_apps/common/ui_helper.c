@@ -726,15 +726,15 @@ void handle_download_progress_update(int progress)
 }
 
 
-static bool open_display_to_app_list = false;
-bool is_user_want_to_open_display_to_app_list(void)
+static bool open_display_to_instruction_list = false;
+bool is_user_want_to_open_display_to_instruction_list(void)
 {
-  return open_display_to_app_list;
+  return open_display_to_instruction_list;
 }
 
-void set_user_want_to_open_display_to_app_list(bool state)
+void set_user_want_to_open_display_to_instruction_list(bool state)
 {
-  open_display_to_app_list = state;
+  open_display_to_instruction_list = state;
 }
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
