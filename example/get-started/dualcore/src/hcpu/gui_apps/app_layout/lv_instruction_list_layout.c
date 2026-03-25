@@ -70,6 +70,8 @@
     #include "bloc_calendar.h"
     #include "bloc_motion_tracking.h"
 #endif
+#include "communicate_protocol.h"
+#include <cJSON.h>
 
 #define DBG_TAG "instruction.list.layout"
 #define DBG_LVL DBG_INFO
@@ -95,6 +97,8 @@ typedef struct {
     bool is_interval;                   // for instructions: has toggle switch
     bool enabled;                       // toggle state
     uint32_t interval_sec;              // intervalSeconds
+    char trigger_type[32];              // e.g. "interval", "once", etc.
+    uint32_t version;                   // version from server
 } list_item_t;
 
 static list_item_t list_items[MAX_LIST_ITEMS];
@@ -1342,6 +1346,45 @@ void tap_on_ai_hint(void)
     close_ai_widget();
 }
 
+/*******************************************************************************
+ * Send instruction update back to phone
+ ******************************************************************************/
+static void send_instruction_update(list_item_t *item)
+{
+    if (!item->is_instruction)
+        return;
+
+    cJSON *root = cJSON_CreateObject();
+    if (!root)
+        return;
+
+    cJSON_AddStringToObject(root, "id", item->id);
+    cJSON_AddStringToObject(root, "title", item->title);
+    cJSON_AddNumberToObject(root, "version", item->version);
+
+    cJSON *trigger = cJSON_CreateObject();
+    cJSON_AddStringToObject(trigger, "type", item->trigger_type);
+    if (item->is_interval)
+        cJSON_AddNumberToObject(trigger, "intervalSeconds", item->interval_sec);
+    cJSON_AddItemToObject(root, "trigger", trigger);
+
+    if (item->is_interval)
+        cJSON_AddBoolToObject(root, "enabled", item->enabled);
+
+    char *json_str = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+
+    if (json_str)
+    {
+        LOG_I("Send instruction update: %s", json_str);
+        L1SendData data;
+        data.event = L1SEND_UPDATE_INSTRUCTION;
+        data.res.json_string_ptr = json_str;
+        L1_send_event(data);
+        cJSON_free(json_str);
+    }
+}
+
 extern void iot_gate_widget_tap_event_cb(void);
 extern void media_widget_tap_event_cb(void);
 static void on_item_tap(list_item_t *item)
@@ -1434,6 +1477,7 @@ static void list_item_click_event_cb(lv_event_t *evt)
                 break;
             }
         }
+        send_instruction_update(item);
         if (instruction_tap_cb)
         {
             instruction_tap_cb(item->id, item->enabled);
@@ -1473,6 +1517,7 @@ static void on_tap(void)
             update_custom_switch_visual(selected_item_index);
         }
         flash_instruction_label(app_label[selected_item_index]);
+        send_instruction_update(item);
         if (instruction_tap_cb)
         {
             instruction_tap_cb(item->id, item->enabled);
@@ -1886,9 +1931,11 @@ static int find_instruction_by_id(const char *id)
 }
 
 void add_or_update_custom_instruction(const char *id, const char *title,
-                                      bool is_interval, uint32_t interval_sec,
-                                      bool enabled)
+                                      const char *trigger_type,
+                                      uint32_t interval_sec,
+                                      bool enabled, uint32_t version)
 {
+    bool is_interval = (trigger_type && strcmp(trigger_type, "interval") == 0);
     int idx = find_instruction_by_id(id);
     if (idx >= 0)
     {
@@ -1899,6 +1946,12 @@ void add_or_update_custom_instruction(const char *id, const char *title,
         list_items[idx].is_interval = is_interval;
         list_items[idx].interval_sec = interval_sec;
         list_items[idx].enabled = enabled;
+        list_items[idx].version = version;
+        if (trigger_type)
+        {
+            strncpy(list_items[idx].trigger_type, trigger_type, 31);
+            list_items[idx].trigger_type[31] = '\0';
+        }
         LOG_I("Updated id=%s, enabled=%d", id, enabled);
         return;
     }
@@ -1912,12 +1965,18 @@ void add_or_update_custom_instruction(const char *id, const char *title,
     instr->id[LIST_ITEM_ID_LEN - 1] = '\0';
     strncpy(instr->title, title, LIST_ITEM_TITLE_LEN - 1);
     instr->title[LIST_ITEM_TITLE_LEN - 1] = '\0';
+    if (trigger_type)
+    {
+        strncpy(instr->trigger_type, trigger_type, 31);
+        instr->trigger_type[31] = '\0';
+    }
     instr->icon = NULL;
     instr->widget = NULL;
     instr->is_instruction = true;
     instr->is_interval = is_interval;
     instr->enabled = enabled;
     instr->interval_sec = interval_sec;
+    instr->version = version;
     list_item_count++;
 }
 

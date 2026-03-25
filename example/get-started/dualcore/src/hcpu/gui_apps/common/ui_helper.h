@@ -63,8 +63,9 @@ extern "C"
 
     /* Custom instruction list API */
     extern void add_or_update_custom_instruction(const char *id, const char *title,
-                                                  bool is_interval, uint32_t interval_sec,
-                                                  bool enabled);
+                                                  const char *trigger_type,
+                                                  uint32_t interval_sec,
+                                                  bool enabled, uint32_t version);
     extern void clear_custom_instructions(void);
     extern uint8_t get_custom_instruction_count(void);
     extern void set_custom_instruction_tap_cb(void (*cb)(const char *id, bool enabled));

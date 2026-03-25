@@ -705,7 +705,7 @@ static int utest_gesture(int argc, char *argv[])
                 "\"trigger\":{\"type\":\"interval\",\"intervalSeconds\":60}}";
             add_or_update_custom_instruction(
                 "dc396755-43ce-4fdb-ade4-d1ad683140c3",
-                "每分鐘提醒走動", true, 60, true);
+                "每分鐘提醒走動", "interval", 60, true, 1);
             refresh_custom_instructions();
             rt_kprintf("Test instruction added\n");
         }

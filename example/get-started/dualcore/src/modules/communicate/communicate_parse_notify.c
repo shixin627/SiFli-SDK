@@ -617,30 +617,38 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
 
                 const char *id = cJSON_IsString(j_id) ? j_id->valuestring : "";
                 const char *title = cJSON_IsString(j_title) ? j_title->valuestring : "";
-                bool is_interval = false;
+                const char *trigger_type = "";
                 uint32_t interval_sec = 0;
 
                 if (j_trigger)
                 {
                     cJSON *j_type = cJSON_GetObjectItem(j_trigger, "type");
-                    if (cJSON_IsString(j_type) &&
-                        strcmp(j_type->valuestring, "interval") == 0)
+                    if (cJSON_IsString(j_type))
                     {
-                        is_interval = true;
-                        cJSON *j_sec = cJSON_GetObjectItem(j_trigger,
-                                                           "intervalSeconds");
-                        if (cJSON_IsNumber(j_sec))
-                            interval_sec = (uint32_t)j_sec->valuedouble;
+                        trigger_type = j_type->valuestring;
+                        if (strcmp(trigger_type, "interval") == 0)
+                        {
+                            cJSON *j_sec = cJSON_GetObjectItem(j_trigger,
+                                                               "intervalSeconds");
+                            if (cJSON_IsNumber(j_sec))
+                                interval_sec = (uint32_t)j_sec->valuedouble;
+                        }
                     }
                 }
+
+                uint32_t version = 0;
+                cJSON *j_version = cJSON_GetObjectItem(root, "version");
+                if (cJSON_IsNumber(j_version))
+                    version = (uint32_t)j_version->valuedouble;
 
                 bool enabled = false;
                 cJSON *j_enabled = cJSON_GetObjectItem(root, "enabled");
                 if (cJSON_IsBool(j_enabled))
                     enabled = cJSON_IsTrue(j_enabled);
 
-                add_or_update_custom_instruction(id, title, is_interval,
-                                                  interval_sec, enabled);
+                add_or_update_custom_instruction(id, title, trigger_type,
+                                                  interval_sec, enabled,
+                                                  version);
                 refresh_custom_instructions();
                 cJSON_Delete(root);
             }
