@@ -139,7 +139,8 @@ void music_ui_build(app_media_t *p_app_media, lv_obj_t *parent, float size)
     lv_img_set_zoom(img_next, zoom);
 
     /* Create the play/pause button */
-    const lv_img_dsc_t *img_src = control_provider.bt_speaker_get_status()
+    const lv_img_dsc_t *img_src = (control_provider.bt_speaker_get_status &&
+                                   control_provider.bt_speaker_get_status())
                                       ? &img_media_pause
                                       : &img_media_play;
     p_app_media->icon_btn_play_pause =
@@ -220,8 +221,8 @@ static void vol_bar_reset_collapse_timer(void)
         lv_timer_del(vol_bar_collapse_timer);
         vol_bar_collapse_timer = NULL;
     }
-    vol_bar_collapse_timer =
-        lv_timer_create(vol_bar_collapse_timer_cb, VOL_BAR_COLLAPSE_TIMEOUT, NULL);
+    vol_bar_collapse_timer = lv_timer_create(vol_bar_collapse_timer_cb,
+                                             VOL_BAR_COLLAPSE_TIMEOUT, NULL);
     lv_timer_set_repeat_count(vol_bar_collapse_timer, 1);
 }
 
@@ -314,8 +315,7 @@ static lv_timer_t *widget_vol_bar_collapse_timer = NULL;
 static void widget_vol_bar_anim_width_cb(void *var, int32_t v)
 {
     lv_obj_set_width((lv_obj_t *)var, v);
-    lv_obj_align((lv_obj_t *)var, LV_ALIGN_BOTTOM_MID, 0,
-                 MEDIA_WIDGET_BTN_Y );
+    lv_obj_align((lv_obj_t *)var, LV_ALIGN_BOTTOM_MID, 0, MEDIA_WIDGET_BTN_Y);
     uint8_t opacity = (v * 255) / WIDGET_VOL_BAR_WIDTH;
     if (opacity > 255)
         opacity = 255;
@@ -364,8 +364,8 @@ static void widget_vol_bar_reset_collapse_timer(void)
         lv_timer_del(widget_vol_bar_collapse_timer);
         widget_vol_bar_collapse_timer = NULL;
     }
-    widget_vol_bar_collapse_timer =
-        lv_timer_create(widget_vol_bar_collapse_timer_cb, VOL_BAR_COLLAPSE_TIMEOUT, NULL);
+    widget_vol_bar_collapse_timer = lv_timer_create(
+        widget_vol_bar_collapse_timer_cb, VOL_BAR_COLLAPSE_TIMEOUT, NULL);
     lv_timer_set_repeat_count(widget_vol_bar_collapse_timer, 1);
 }
 
@@ -470,8 +470,8 @@ static lv_timer_t *app_vol_bar_collapse_timer = NULL;
 static void app_vol_bar_anim_width_cb(void *var, int32_t v)
 {
     lv_obj_set_width((lv_obj_t *)var, v);
-    lv_obj_align_to((lv_obj_t *)var, app_vol_icon_btn,
-                    LV_ALIGN_OUT_TOP_MID, 0, -20);
+    lv_obj_align_to((lv_obj_t *)var, app_vol_icon_btn, LV_ALIGN_OUT_TOP_MID, 0,
+                    -20);
     uint8_t opacity = (v * 255) / APP_VOL_BAR_WIDTH;
     if (opacity > 255)
         opacity = 255;
@@ -520,8 +520,8 @@ static void app_vol_bar_reset_collapse_timer(void)
         lv_timer_del(app_vol_bar_collapse_timer);
         app_vol_bar_collapse_timer = NULL;
     }
-    app_vol_bar_collapse_timer =
-        lv_timer_create(app_vol_bar_collapse_timer_cb, VOL_BAR_COLLAPSE_TIMEOUT, NULL);
+    app_vol_bar_collapse_timer = lv_timer_create(
+        app_vol_bar_collapse_timer_cb, VOL_BAR_COLLAPSE_TIMEOUT, NULL);
     lv_timer_set_repeat_count(app_vol_bar_collapse_timer, 1);
 }
 
@@ -723,7 +723,8 @@ static lv_obj_t *music_app_ui_build(lv_obj_t *parent)
                               lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_bg_opa(music_app_obj.btn_play_pause, LV_OPA_0, 0);
     lv_obj_align(music_app_obj.btn_play_pause, LV_ALIGN_CENTER, 0, 20);
-    const lv_img_dsc_t *img_src = control_provider.bt_speaker_get_status()
+    const lv_img_dsc_t *img_src = (control_provider.bt_speaker_get_status &&
+                                   control_provider.bt_speaker_get_status())
                                       ? &img_media_pause
                                       : &img_media_play;
     p_app_media->icon_btn_play_pause = common_icon_button(
@@ -789,8 +790,8 @@ static lv_obj_t *music_app_ui_build(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(app_vol_icon_btn, 20, 0);
     lv_obj_set_style_shadow_width(app_vol_icon_btn, 0, 0);
     lv_obj_align(app_vol_icon_btn, LV_ALIGN_BOTTOM_MID, 0, -5);
-    lv_obj_add_event_cb(app_vol_icon_btn, app_vol_icon_click_cb,
-                        LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(app_vol_icon_btn, app_vol_icon_click_cb, LV_EVENT_ALL,
+                        NULL);
     lv_obj_t *app_vol_icon = lv_img_create(app_vol_icon_btn);
     lv_img_set_src(app_vol_icon, &volume_up);
     lv_img_set_zoom(app_vol_icon, 255 * 30 / 85);
@@ -801,8 +802,8 @@ static lv_obj_t *music_app_ui_build(lv_obj_t *parent)
     lv_bar_set_range(app_vol_bar, 0, 100);
     lv_obj_set_width(app_vol_bar, APP_VOL_BAR_WIDTH);
     lv_obj_set_height(app_vol_bar, 60);
-    lv_obj_align_to(app_vol_bar, app_vol_icon_btn,
-                    LV_ALIGN_OUT_TOP_MID, 0, -20);
+    lv_obj_align_to(app_vol_bar, app_vol_icon_btn, LV_ALIGN_OUT_TOP_MID, 0,
+                    -20);
     lv_obj_set_style_bg_color(app_vol_bar, lv_color_hex(0xCDCDCD),
                               LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(app_vol_bar, lv_color_hex(0x2F2F2F),
@@ -872,7 +873,8 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_radius(widget_selection_bg, 20, 0);
     lv_obj_set_style_bg_color(widget_selection_bg, lv_color_hex(0x737373), 0);
     lv_obj_set_style_bg_opa(widget_selection_bg, LV_OPA_0, 0);
-    lv_obj_align(widget_selection_bg, LV_ALIGN_BOTTOM_RIGHT, -25, MEDIA_WIDGET_BTN_Y);
+    lv_obj_align(widget_selection_bg, LV_ALIGN_BOTTOM_RIGHT, -25,
+                 MEDIA_WIDGET_BTN_Y);
     lv_obj_set_style_border_width(widget_selection_bg, 2, 0);
     lv_obj_set_style_border_color(widget_selection_bg, lv_color_hex(0xFFFFFF),
                                   0);
@@ -882,7 +884,8 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_size(widget_btn_prev_bg, 100, 100);
     lv_obj_set_style_radius(widget_btn_prev_bg, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(widget_btn_prev_bg, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align(widget_btn_prev_bg, LV_ALIGN_BOTTOM_LEFT, 25, MEDIA_WIDGET_BTN_Y+10);
+    lv_obj_align(widget_btn_prev_bg, LV_ALIGN_BOTTOM_LEFT, 25,
+                 MEDIA_WIDGET_BTN_Y + 10);
     lv_obj_set_style_bg_opa(widget_btn_prev_bg, LV_OPA_0, 0);
     lv_obj_set_style_border_width(widget_btn_prev_bg, 2, 0);
     lv_obj_set_style_border_color(widget_btn_prev_bg, lv_color_hex(0xFFFFFF),
@@ -898,7 +901,8 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_size(widget_btn_next_bg, 100, 100);
     lv_obj_set_style_radius(widget_btn_next_bg, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(widget_btn_next_bg, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align(widget_btn_next_bg, LV_ALIGN_BOTTOM_RIGHT, -25, MEDIA_WIDGET_BTN_Y+10);
+    lv_obj_align(widget_btn_next_bg, LV_ALIGN_BOTTOM_RIGHT, -25,
+                 MEDIA_WIDGET_BTN_Y + 10);
     lv_obj_set_style_bg_opa(widget_btn_next_bg, LV_OPA_0, 0);
     lv_obj_set_style_border_width(widget_btn_next_bg, 2, 0);
     lv_obj_set_style_border_color(widget_btn_next_bg, lv_color_hex(0xFFFFFF),
@@ -915,16 +919,18 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_radius(widget_btn_play_pause, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(widget_btn_play_pause, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_bg_opa(widget_btn_play_pause, LV_OPA_0, 0);
-    lv_obj_align(widget_btn_play_pause, LV_ALIGN_BOTTOM_MID, 0, MEDIA_WIDGET_BTN_Y+10);
+    lv_obj_align(widget_btn_play_pause, LV_ALIGN_BOTTOM_MID, 0,
+                 MEDIA_WIDGET_BTN_Y + 10);
     lv_obj_set_style_border_width(widget_btn_play_pause, 2, 0);
     lv_obj_set_style_border_color(widget_btn_play_pause, lv_color_hex(0xFFFFFF),
                                   0);
     lv_obj_set_style_border_opa(widget_btn_play_pause, LV_OPA_0, 0);
-    const lv_img_dsc_t *img_src = control_provider.bt_speaker_get_status()
+    const lv_img_dsc_t *img_src = (control_provider.bt_speaker_get_status &&
+                                   control_provider.bt_speaker_get_status())
                                       ? &img_media_pause
                                       : &img_media_play;
     p_widget_media->icon_btn_play_pause = common_icon_button(
-        widget_btn_play_pause, img_src, play_pause_btn_event_cb);
+        widget_btn_play_pause, &img_src, play_pause_btn_event_cb);
     lv_obj_align(p_widget_media->icon_btn_play_pause, LV_ALIGN_CENTER, 0, 0);
     music_widget_obj.widget_btn_play_pause_img =
         lv_obj_get_child(p_widget_media->icon_btn_play_pause, 0);
@@ -950,7 +956,7 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
     lv_bar_set_range(widget_vol_bar, 0, 100);
     lv_obj_set_width(widget_vol_bar, WIDGET_VOL_BAR_WIDTH);
     lv_obj_set_height(widget_vol_bar, 80);
-    lv_obj_align(widget_vol_bar, LV_ALIGN_BOTTOM_MID, 0, MEDIA_WIDGET_BTN_Y );
+    lv_obj_align(widget_vol_bar, LV_ALIGN_BOTTOM_MID, 0, MEDIA_WIDGET_BTN_Y);
     lv_obj_set_style_bg_color(widget_vol_bar, lv_color_hex(0xCDCDCD),
                               LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(widget_vol_bar, lv_color_hex(0x2F2F2F),
@@ -959,11 +965,11 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_radius(widget_vol_bar, 16, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(widget_vol_bar, LV_OPA_100, LV_PART_MAIN);
     lv_bar_set_value(widget_vol_bar, 0, LV_ANIM_ON);
-    lv_obj_add_event_cb(widget_vol_bar, widget_bar_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(widget_vol_bar, widget_bar_event_cb, LV_EVENT_ALL,
+                        NULL);
     lv_obj_add_flag(widget_vol_bar, LV_OBJ_FLAG_HIDDEN);
     widget_vol_bar_expanded = false;
 
-    
     p_widget_media->media_title = lv_label_create(widget);
     lv_label_set_text(p_widget_media->media_title, get_media_title());
     lv_obj_set_style_text_opa(p_widget_media->media_title, LV_OPA_70, 0);
@@ -1318,7 +1324,8 @@ lv_obj_t *media_play_pause_btn_create(lv_obj_t *parent)
     lv_obj_t *btn_play_pause_bg = lv_img_create(parent);
     lv_obj_set_size(btn_play_pause_bg, 110, 110);
     lv_img_set_src(btn_play_pause_bg, &control_selection_bg);
-    const lv_img_dsc_t *img_src = control_provider.bt_speaker_get_status()
+    const lv_img_dsc_t *img_src = (control_provider.bt_speaker_get_status &&
+                                   control_provider.bt_speaker_get_status())
                                       ? &img_media_pause
                                       : &img_media_play;
     lv_obj_t *btn_play_pause =
@@ -1475,7 +1482,8 @@ void lv_dial_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_border_color(dial_widget_btn_play_pause,
                                   lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(dial_widget_btn_play_pause, LV_OPA_0, 0);
-    const lv_img_dsc_t *img_src = control_provider.bt_speaker_get_status()
+    const lv_img_dsc_t *img_src = (control_provider.bt_speaker_get_status &&
+                                   control_provider.bt_speaker_get_status())
                                       ? &img_media_pause
                                       : &img_media_play;
     dial_widget_btn_play_pause_icon = common_icon_button(
@@ -1514,7 +1522,8 @@ void lv_dial_media_widget_builder(lv_obj_t *parent)
                               LV_PART_MAIN);
     lv_obj_set_style_radius(dial_widget_vol_bar, 16, LV_PART_MAIN);
     lv_obj_set_style_radius(dial_widget_vol_bar, 16, LV_PART_INDICATOR);
-    // lv_obj_set_style_bg_opa(dial_widget_vol_bar, LV_OPA_50, LV_PART_INDICATOR);
+    // lv_obj_set_style_bg_opa(dial_widget_vol_bar, LV_OPA_50,
+    // LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(dial_widget_vol_bar, LV_OPA_100, LV_PART_MAIN);
     lv_bar_set_value(dial_widget_vol_bar, 0, LV_ANIM_ON);
     lv_obj_add_event_cb(dial_widget_vol_bar, bar_event_cb, LV_EVENT_ALL, NULL);
@@ -1528,20 +1537,26 @@ void set_dial_media_widget_opa(uint8_t opa)
 {
     if (lv_obj_is_valid(dial_widget_btn_prev_bg))
     {
-        lv_obj_set_style_img_opa(lv_obj_get_child(lv_obj_get_child(dial_widget_btn_prev_bg, 0),0), opa, 0);
+        lv_obj_set_style_img_opa(
+            lv_obj_get_child(lv_obj_get_child(dial_widget_btn_prev_bg, 0), 0),
+            opa, 0);
     }
     if (lv_obj_is_valid(dial_widget_btn_play_pause))
     {
-        lv_obj_set_style_img_opa(lv_obj_get_child(dial_widget_btn_play_pause_icon, 0), opa, 0);
+        lv_obj_set_style_img_opa(
+            lv_obj_get_child(dial_widget_btn_play_pause_icon, 0), opa, 0);
     }
     if (lv_obj_is_valid(dial_widget_btn_next_bg))
     {
-        lv_obj_set_style_img_opa(lv_obj_get_child(lv_obj_get_child(dial_widget_btn_next_bg, 0),0), opa, 0);
+        lv_obj_set_style_img_opa(
+            lv_obj_get_child(lv_obj_get_child(dial_widget_btn_next_bg, 0), 0),
+            opa, 0);
     }
     if (lv_obj_is_valid(dial_widget_vol_icon_btn))
     {
-        lv_obj_set_style_img_opa(lv_obj_get_child(dial_widget_vol_icon_btn, 0), opa, 0);
-        uint8_t btn_opa = opa*20/LV_OPA_COVER;
+        lv_obj_set_style_img_opa(lv_obj_get_child(dial_widget_vol_icon_btn, 0),
+                                 opa, 0);
+        uint8_t btn_opa = opa * 20 / LV_OPA_COVER;
         lv_obj_set_style_bg_opa(dial_widget_vol_icon_btn, btn_opa, 0);
     }
 }

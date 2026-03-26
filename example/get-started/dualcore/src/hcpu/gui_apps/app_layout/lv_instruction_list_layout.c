@@ -2729,22 +2729,22 @@ rt_int32_t instruction_list_deinit(void)
         LOG_I("[CHECK_MEMORY]instruction_list_deinit");
     }
 
-    extern void media_widget_stop(void);
-    media_widget_stop();
-    extern void iot_gate_widget_stop(void);
-    iot_gate_widget_stop();
-    extern void recorder_widget_stop(void);
-    recorder_widget_stop();
-    extern void activity_widget_stop(void);
-    activity_widget_stop();
-    extern void message_widget_stop(void);
-    message_widget_stop();
-    extern void calendar_widget_stop(void);
-    calendar_widget_stop();
-    extern void weather_widget_stop(void);
-    weather_widget_stop();
-    extern void note_widget_stop(void);
-    note_widget_stop();
+    // extern void media_widget_stop(void);
+    // media_widget_stop();
+    // extern void iot_gate_widget_stop(void);
+    // iot_gate_widget_stop();
+    // extern void recorder_widget_stop(void);
+    // recorder_widget_stop();
+    // extern void activity_widget_stop(void);
+    // activity_widget_stop();
+    // extern void message_widget_stop(void);
+    // message_widget_stop();
+    // extern void calendar_widget_stop(void);
+    // calendar_widget_stop();
+    // extern void weather_widget_stop(void);
+    // weather_widget_stop();
+    // extern void note_widget_stop(void);
+    // note_widget_stop();
 
     LOG_I("instruction_list_deinit");
     pause_instruction_list = true;
