@@ -194,6 +194,7 @@ typedef struct
     PacketHandler handle_coordinate;
     PacketHandler handle_gesture_detect;
     PacketHandler handle_remote_input;
+    PacketHandler handle_dismiss_notification;
     PacketHandler handle_create_note;
     PacketHandler handle_create_calendar;
     PacketHandler handle_tp_coordinate;
@@ -816,6 +817,22 @@ static uint16_t handle_remote_input(PacketBuilder *builder, L1SendData *data)
     return builder->length;
 }
 
+// Handler for dismiss notification (watch → phone)
+static uint16_t handle_dismiss_notification(PacketBuilder *builder,
+                                            L1SendData *data)
+{
+    uint8_t *buf = builder->buf;
+    char *id_ptr = data->res.json_string_ptr;
+    uint16_t length = strlen(id_ptr);
+
+    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_DISMISS_NOTIFICATION);
+    SET_PACKET_LENGTH(buf, length);
+    memcpy(buf + 5, id_ptr, length);
+
+    builder->length = 5 + length;
+    return builder->length;
+}
+
 // Handler for create note
 static uint16_t handle_create_note(PacketBuilder *builder, L1SendData *data)
 {
@@ -1227,6 +1244,8 @@ static int commu_handler_provider_register(void)
     commu_handler_provider.handle_coordinate = handle_coordinate;
     commu_handler_provider.handle_gesture_detect = handle_gesture_detect;
     commu_handler_provider.handle_remote_input = handle_remote_input;
+    commu_handler_provider.handle_dismiss_notification =
+        handle_dismiss_notification;
     commu_handler_provider.handle_create_note = handle_create_note;
     commu_handler_provider.handle_update_instruction = handle_update_instruction;
     commu_handler_provider.handle_create_calendar = handle_create_calendar;
@@ -1431,6 +1450,9 @@ static uint16_t dispatch_packet_handler(L1SendData *data)
         break;
     case L1SEND_REMOTE_INPUT:
         handler = commu_handler_provider.handle_remote_input;
+        break;
+    case L1SEND_DISMISS_NOTIFICATION:
+        handler = commu_handler_provider.handle_dismiss_notification;
         break;
     case L1SEND_CREATE_NOTE:
         handler = commu_handler_provider.handle_create_note;

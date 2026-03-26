@@ -76,6 +76,16 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         handle_notification(msg_notify_type, (char *)payload.p_msg_value);
         break;
     }
+    case KEY_DISMISS_NOTIFICATION:
+    {
+        if (length > 0)
+        {
+            pValue[length] = '\0';
+            LOG_I("Dismiss notification id: %s", pValue);
+            dismiss_notification_from_phone((char *)pValue);
+        }
+        break;
+    }
 
     case KEY_VOICE_RECOGNITION_RESULT:
     {
