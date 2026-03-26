@@ -643,14 +643,10 @@ static void reset_list(bool scroll_to_last)
 
 static void list_message_click_cb(notification_t *notification)
 {
-    // LOG_D("notification->id: %s", notification->id);
-    // LOG_D("notification->title: %s", notification->title);
-    // LOG_D("notification->message: %s", notification->message);
     extern void app_message_set_open_from_message_list(bool open);
     app_message_set_open_from_message_list(true);
     animate_to_home_from_notification_center();
     navigate_notification_info(notification);
-    // bloc_notification_navigate_to_reply(notification);
 }
 
 extern void app_message_set_from_temp(notification_t *notification);
@@ -1757,7 +1753,7 @@ static void dial_header_fadeout_ready_cb(lv_anim_t *anim)
 static void dial_header_fadeout_exec_cb(void *obj, int32_t value)
 {
     // lv_obj_set_style_opa((lv_obj_t *)obj, value, 0);
-    LOG_D("dial_header_fadeout_exec_cb: %d", value);
+    // LOG_D("dial_header_fadeout_exec_cb: %d", value);
     lv_obj_set_style_img_opa(dial_header_img, value, 0);
     lv_obj_set_style_text_opa(dial_header_title, value, 0);
     uint8_t header_border_opa =
