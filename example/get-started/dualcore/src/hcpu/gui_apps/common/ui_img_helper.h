@@ -143,6 +143,8 @@ LV_IMG_DECLARE(icon_qrcode);
 LV_IMG_DECLARE(icon_dnd_mode);
 LV_IMG_DECLARE(icon_slack);
 LV_IMG_DECLARE(icon_lark);
+LV_IMG_DECLARE(icon_reddit);
+LV_IMG_DECLARE(icon_skaiwalk);
 LV_IMG_DECLARE(mouse_mode_icon);
 LV_IMG_DECLARE(skaiwalkicon);
 LV_IMG_DECLARE(img_charging);
@@ -223,6 +225,8 @@ LV_IMG_DECLARE(notification_img);
 #define ICON_DND_MODE ((const void *)&icon_dnd_mode)
 #define ICON_SLACK ((const void *)&icon_slack)
 #define ICON_LARK ((const void *)&icon_lark)
+#define ICON_REDDIT ((const void *)&icon_reddit)
+#define ICON_SKAIWALK ((const void *)&icon_skaiwalk)
 #define MOUSE_MODE_ICON ((const void *)&mouse_mode_icon)
 #define SKAIWALKICON ((const void *)&skaiwalkicon)
 #define IMG_CHARGING ((const void *)&img_charging)

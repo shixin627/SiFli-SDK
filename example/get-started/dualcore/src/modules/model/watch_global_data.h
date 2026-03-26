@@ -685,6 +685,8 @@ __attribute__((packed)) SkaiWatchSysType_t;
         Notify_twitch,
         Notify_slack,
         Notify_lark,
+        Notify_reddit,
+        Notify_Skaiwalk,
         NOTIFICATION_APP_QUANTITY,
     } Notifications_Type; // NOTIFICATIONS_TYPE;
 

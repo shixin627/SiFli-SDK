@@ -192,18 +192,25 @@ static void update_notification(notification_t newNotification)
 {
     // Dedup: if a notification with the same ID already exists, remove it first
     // so re-synced notifications don't create duplicates.
-    for (int i = 0; i < notification_items_amount; i++)
+    // For Notify_Skaiwalk category, also dedup by type to keep only the latest one.
+    for (int i = notification_items_amount - 1; i >= 0; i--)
     {
-        if (strcmp(_notification_list[i].id, newNotification.id) == 0)
+        bool dup = (strcmp(_notification_list[i].id, newNotification.id) == 0);
+        if (!dup && newNotification.type == Notify_Skaiwalk
+            && _notification_list[i].type == Notify_Skaiwalk)
         {
-            LOG_D("Dedup: removing existing notification id=%s", newNotification.id);
+            dup = true;
+        }
+        if (dup)
+        {
+            LOG_D("Dedup: removing existing notification id=%s type=%d",
+                  _notification_list[i].id, _notification_list[i].type);
             // Shift remaining items down
             for (int j = i; j < notification_items_amount - 1; j++)
             {
                 _notification_list[j] = _notification_list[j + 1];
             }
             notification_items_amount--;
-            break;
         }
     }
 
@@ -363,6 +370,10 @@ const char *get_app_name_from_notify_id(Notifications_Type notify_id)
         return "Slack";
     case Notify_lark:
         return "Lark";
+    case Notify_reddit:
+        return "Reddit";
+    case Notify_Skaiwalk:
+        return "Skaiwalk";
     default:
         return "Unknown";
     }
@@ -453,6 +464,34 @@ uint8_t get_notification_type_from_ios_ancs_name(const char *name)
     else if (strstr(name, "YouTube") != NULL)
     {
         return Notify_youtube;
+    }
+    else if (strstr(name, "TikTok") != NULL)
+    {
+        return Notify_tiktok;
+    }
+    else if (strstr(name, "Telegram") != NULL)
+    {
+        return Notify_telegram;
+    }
+    else if (strstr(name, "Twitch") != NULL)
+    {
+        return Notify_twitch;
+    }
+    else if (strstr(name, "Slack") != NULL)
+    {
+        return Notify_slack;
+    }
+    else if (strstr(name, "Lark") != NULL)
+    {
+        return Notify_lark;
+    }
+    else if (strstr(name, "Reddit") != NULL)
+    {
+        return Notify_reddit;
+    }
+    else if (strstr(name, "Skaiwalk") != NULL)
+    {
+        return Notify_Skaiwalk;
     }
     else
     {

@@ -172,6 +172,7 @@ const char *const icon_list[NOTIFICATION_APP_QUANTITY] = {
 	ICON_TWITCH,
 	ICON_SLACK,
 	ICON_LARK,
+	ICON_SKAIWALK,
 };
 
 static bool open_shock = false;
