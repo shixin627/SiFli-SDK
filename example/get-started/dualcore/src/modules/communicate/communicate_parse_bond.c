@@ -58,11 +58,11 @@ void resolve_private_bond_command(uint8_t key, const uint8_t *pValue, uint16_t l
             LOG_E("[KEY_BOND_REQUEST]user id length error");
             ret = -RT_ERROR;
         }
-        else if (SkaiWatchSys.flag_field.bond_state == true)
-        {
-            LOG_E("[KEY_BOND_REQUEST]device had bonded");
-            ret = -RT_ERROR;
-        }
+        // else if (SkaiWatchSys.flag_field.bond_state == true)
+        // {
+        //     LOG_E("[KEY_BOND_REQUEST]device had bonded");
+        //     ret = -RT_ERROR;
+        // }
         if (ret == RT_EOK)
         {
             LOG_I("[KEY_BOND_REQUEST]Bond Request");
@@ -87,22 +87,22 @@ void resolve_private_bond_command(uint8_t key, const uint8_t *pValue, uint16_t l
             LOG_I("[KEY_LOGIN_REQUEST]login request");
             extern void set_main_phonepeer_addr(void);
             set_main_phonepeer_addr();
-            request_weather_within_six_hours(true);
+            // request_weather_within_six_hours(true);
             /* check_user_id_bonded */
-            if (memcmp(pValue, (void *)SkaiWatchSys.user_data.user_id, length) == 0)
+            // if (memcmp(pValue, (void *)SkaiWatchSys.user_data.user_id, length) == 0)
             {
                 L1SendData data;
                 data.event = L1SEND_LOGIN_SUCCESS_EVENT;
                 L1_send_event(data);
                 watch_system_interact(INTERACT_LOGIN, NULL);
             }
-            else
-            {
-                LOG_W("[KEY_LOGIN_REQUEST]login fail");
-                L1SendData data;
-                data.event = L1SEND_LOGIN_FAIL_EVENT;
-                L1_send_event(data);
-            }
+            // else
+            // {
+            //     LOG_W("[KEY_LOGIN_REQUEST]login fail");
+            //     L1SendData data;
+            //     data.event = L1SEND_LOGIN_FAIL_EVENT;
+            //     L1_send_event(data);
+            // }
         }
         else
         {
