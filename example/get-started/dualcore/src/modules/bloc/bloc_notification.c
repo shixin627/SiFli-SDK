@@ -607,22 +607,38 @@ static void remote_input_to_notification(const char *id, const char *message)
     notify_provider.notification_refresh();
 }
 
+/**
+ * @brief Remove a notification by ID from the watch list and notify the phone.
+ *        This is the single entry point for watch-initiated dismissals.
+ */
 void remove_notification_by_id(const char *id)
 {
-    if (strlen(id) == 0)
+    if (!id || strlen(id) == 0)
     {
         LOG_E("[%s]id is empty", __func__);
         return;
     }
-    LOG_D("[%s]id:%s", __func__, id);
+    LOG_I("[%s] id:%s", __func__, id);
+
+    /* Send dismiss to phone via BLE */
+    strncpy(temp_send_json_string, id, sizeof(temp_send_json_string) - 1);
+    temp_send_json_string[sizeof(temp_send_json_string) - 1] = '\0';
+
+    L1SendData data;
+    data.event = L1SEND_DISMISS_NOTIFICATION;
+    data.res.json_string_ptr = temp_send_json_string;
+    L1_send_event(data);
+
+    /* Remove locally */
     remove_notification(_notification_list, &notification_items_amount, id);
+    SkaiWatchSys.notification_number = notification_items_amount;
     notify_provider.notification_refresh();
 }
 
 /**
- * @brief Phone dismissed a notification — remove it from watch list.
+ * @brief Phone dismissed a notification — remove it from watch list only.
  *        Called from communicate_parse_notify when KEY_DISMISS_NOTIFICATION
- *        is received.
+ *        is received. Does NOT send back to phone (would cause loop).
  */
 void dismiss_notification_from_phone(const char *id)
 {
@@ -632,34 +648,6 @@ void dismiss_notification_from_phone(const char *id)
         return;
     }
     LOG_I("[%s] phone dismiss → watch remove id:%s", __func__, id);
-    remove_notification(_notification_list, &notification_items_amount, id);
-    SkaiWatchSys.notification_number = notification_items_amount;
-    notify_provider.notification_refresh();
-}
-
-/**
- * @brief Send dismiss event to phone (watch user swiped away a notification).
- *        Sends the notification ID via BLE so the phone can cancel it.
- */
-void send_dismiss_to_phone(const char *id)
-{
-    if (!id || strlen(id) == 0)
-    {
-        LOG_E("[%s]id is empty", __func__);
-        return;
-    }
-    LOG_I("[%s] watch dismiss → phone id:%s", __func__, id);
-
-    /* Reuse the shared JSON buffer for the ID string */
-    strncpy(temp_send_json_string, id, sizeof(temp_send_json_string) - 1);
-    temp_send_json_string[sizeof(temp_send_json_string) - 1] = '\0';
-
-    L1SendData data;
-    data.event = L1SEND_DISMISS_NOTIFICATION;
-    data.res.json_string_ptr = temp_send_json_string;
-    L1_send_event(data);
-
-    /* Also remove locally */
     remove_notification(_notification_list, &notification_items_amount, id);
     SkaiWatchSys.notification_number = notification_items_amount;
     notify_provider.notification_refresh();

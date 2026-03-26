@@ -72,7 +72,6 @@ extern "C"
 	extern void interact_with_notification(notification_t *notification);
 	extern void remove_notification_by_id(const char *id);
 	extern void dismiss_notification_from_phone(const char *id);
-	extern void send_dismiss_to_phone(const char *id);
 	/* flash storage */
 	extern void store_notifications_before_sw_shutdown(void);
 	extern void get_notifications_after_sw_reboot(void);
