@@ -190,6 +190,23 @@ notification_t *get_cur_notification(void)
 
 static void update_notification(notification_t newNotification)
 {
+    // Dedup: if a notification with the same ID already exists, remove it first
+    // so re-synced notifications don't create duplicates.
+    for (int i = 0; i < notification_items_amount; i++)
+    {
+        if (strcmp(_notification_list[i].id, newNotification.id) == 0)
+        {
+            LOG_D("Dedup: removing existing notification id=%s", newNotification.id);
+            // Shift remaining items down
+            for (int j = i; j < notification_items_amount - 1; j++)
+            {
+                _notification_list[j] = _notification_list[j + 1];
+            }
+            notification_items_amount--;
+            break;
+        }
+    }
+
     if (notification_items_amount > 0)
     {
         uint8_t i = 0;
