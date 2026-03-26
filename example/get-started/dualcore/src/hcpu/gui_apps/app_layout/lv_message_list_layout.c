@@ -1089,6 +1089,8 @@ void refresh_notification_list(void *param)
         lv_obj_del(p_app_notification->media_widget);
         p_app_notification->media_widget = NULL;
         clear_media_widget();
+        extern void media_widget_stop(void);
+        media_widget_stop();
     }
 
     notification_count = notification_center_get_info_count();
@@ -1170,6 +1172,8 @@ void refresh_notification_list(void *param)
     if (p_app_notification->media_widget == NULL && have_media_widget)
     {
         extern lv_obj_t *lv_media_widget_builder(lv_obj_t * parent);
+        extern void media_widget_start(void);
+        media_widget_start();
         p_app_notification->media_widget = common_list_widget(
             p_app_notification->list, (lv_style_t *)&LIST_MESSAGE_STYLE, 0,
             (LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING) * notification_count);
