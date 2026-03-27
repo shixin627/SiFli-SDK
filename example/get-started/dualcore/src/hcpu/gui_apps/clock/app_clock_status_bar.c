@@ -1352,7 +1352,7 @@ static void set_clock_main_status_opa(uint8_t opa, bool mask)
     //     opa,
     //                             LV_PART_MAIN | LV_STATE_DEFAULT);
     // }
-    LOG_D("set_clock_main_status_opa opa: %d", opa);
+    // LOG_D("set_clock_main_status_opa opa: %d", opa);
     // if (lv_obj_is_valid(gaus_dial_bg))
     // {
     //     lv_obj_set_style_bg_opa(gaus_dial_bg, opa,

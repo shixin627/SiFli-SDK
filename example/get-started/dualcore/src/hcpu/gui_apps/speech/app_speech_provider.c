@@ -58,6 +58,11 @@ void app_speech_bind_title(lv_obj_t *target)
     p_app_speech_ctx->title_handle = lv_ex_bind_data(p_app_speech_ctx->title, &binding);
 }
 
+lv_ex_data_t *app_speech_get_content_data(void)
+{
+    return p_app_speech_ctx ? p_app_speech_ctx->content : NULL;
+}
+
 void app_speech_bind_content(lv_obj_t *target)
 {
     lv_ex_binding_t binding;

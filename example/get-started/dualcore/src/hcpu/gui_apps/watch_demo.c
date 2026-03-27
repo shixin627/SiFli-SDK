@@ -93,7 +93,7 @@ static void handle_back_in_mainmenu(bool is_button)
         if (is_button)
         {
             LOG_D("handle_back_in_mainmenu: is_at_home");
-            watch_system_interact(WATCH_SLEEP, NULL);
+            // watch_system_interact(WATCH_SLEEP, NULL);
         }
     }
     else
@@ -116,7 +116,7 @@ static void handle_back_event(bool is_button)
         LOG_I("ESC in ble dfu => return");
         return;
     }
-    else if (gui_app_is_actived(APP_ID_SPEECH))
+    else if (gui_app_is_actived(APP_ID_MESSAGE))
     {
         LOG_D("ESC => trigger_back_event in speech app");
         control_provider.trigger_back_event();
