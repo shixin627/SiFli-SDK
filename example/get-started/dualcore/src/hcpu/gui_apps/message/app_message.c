@@ -123,17 +123,23 @@ static void voice_text_label_set_text(lv_obj_t *label, const char *text)
      * Phase 2: text overflows container — p_window stays at max scroll,
      *          container scrolls internally to show the latest line.
      */
-    if (voice_reply_window && lv_obj_is_valid(voice_reply_window))
+    if (voice_reply_window && lv_obj_is_valid(voice_reply_window)
+        && text != NULL && text[0] != '\0')
     {
-        lv_coord_t offset = 52; /* Increase to push text lower on screen */
-        if (text_h > container_h)
+        /* Scroll so that the voice reply area is centered on screen */
+        lv_obj_t *voice_container = lv_obj_get_parent(text_container);
+        if (voice_container && lv_obj_is_valid(voice_container))
         {
-            offset -= 20;
-
+            lv_obj_update_layout(voice_reply_window);
+            lv_coord_t vc_y = voice_container->coords.y1 - voice_reply_window->coords.y1
+                              + lv_obj_get_scroll_y(voice_reply_window);
+            lv_coord_t vc_h = lv_obj_get_height(voice_container);
+            lv_coord_t win_h = lv_obj_get_height(voice_reply_window);
+            lv_coord_t target_scroll = vc_y - (win_h - vc_h) / 2;
+            if (target_scroll < 0)
+                target_scroll = 0;
+            lv_obj_scroll_to_y(voice_reply_window, target_scroll, LV_ANIM_ON);
         }
-        lv_coord_t raw_scroll = (text_h < container_h) ? text_h : container_h;
-        lv_coord_t extra_scroll = (raw_scroll > offset) ? (raw_scroll - offset) : 0;
-        lv_obj_scroll_to_y(voice_reply_window, extra_scroll, LV_ANIM_ON);
     }
 
     if (text_h > container_h)
@@ -492,6 +498,10 @@ static void on_resume(void)
         start_voice_recognition(V2T_INTENT_REMOTE_INPUT);
         #endif
     }
+    else
+    {
+        lvgl_msg_handler.handle_back_event = gui_app_self_exit;
+    }
     lvgl_msg_handler.handle_switch_selected = switch_selected_message;
     #endif
 }
@@ -504,9 +514,9 @@ static void on_pause(void)
         #ifdef BSP_USING_BLOC_V2T
         stop_voice_recognition(V2T_INTENT_NOTHING);
         #endif
-        lvgl_msg_handler.handle_back_event = NULL;
         lvgl_msg_handler.handle_vad_status = NULL;
     }
+    lvgl_msg_handler.handle_back_event = NULL;
     lvgl_msg_handler.handle_tap_event = NULL;
     lvgl_msg_handler.handle_tap_indicator = NULL;
     lvgl_msg_handler.handle_send_message = NULL;
