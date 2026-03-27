@@ -93,7 +93,7 @@ static void handle_back_in_mainmenu(bool is_button)
         if (is_button)
         {
             LOG_D("handle_back_in_mainmenu: is_at_home");
-            watch_system_interact(WATCH_SLEEP, NULL);
+            // watch_system_interact(WATCH_SLEEP, NULL);
         }
     }
     else
