@@ -926,8 +926,8 @@ lv_obj_t *notification_card_builder(lv_obj_t *list, uint8_t i)
     notification_widgets[i].title = label;
 
     lv_obj_t *content = lv_label_create(message_widget);
-    lv_label_set_long_mode(content, LV_LABEL_LONG_WRAP);
-    lv_obj_set_height(content, LIST_MESSAGE_HEIGHT - 85);
+    lv_label_set_long_mode(content, LV_LABEL_LONG_DOT);
+    lv_obj_set_height(content, LIST_MESSAGE_HEIGHT - 90);
     lv_obj_set_width(content, LIST_MESSAGE_WIDTH - 65);
     lv_obj_set_style_text_font(content,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
@@ -1796,7 +1796,7 @@ static void dial_header_restore_music(void)
         lv_obj_clear_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(dial_header_title, media_title);
         lv_img_set_src(dial_header_img, MEDIA_HEADER_IMG);
-        lv_obj_set_size(dial_header_img, 40, 40);
+        lv_obj_set_size(dial_header_img, 50, 50);
         lv_img_set_zoom(dial_header_img, 256);
         lv_obj_align(dial_header_img, LV_ALIGN_CENTER, 0, 0);
         lv_obj_clear_flag(dial_header_img, LV_OBJ_FLAG_HIDDEN);
@@ -1975,6 +1975,8 @@ void lv_dial_header_builder(lv_obj_t *parent)
 
     lv_obj_t *dial_header_img_bg = lv_obj_create(dial_header_bg);
     lv_obj_set_size(dial_header_img_bg, 40, 40);
+    lv_obj_set_style_radius(dial_header_img_bg, 20, 0);
+    lv_obj_set_style_clip_corner(dial_header_img_bg, true, 0);
     lv_obj_set_style_bg_opa(dial_header_img_bg, LV_OPA_TRANSP, 0);
     lv_obj_align(dial_header_img_bg, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_clear_flag(dial_header_img_bg, LV_OBJ_FLAG_SCROLLABLE);
@@ -1986,8 +1988,9 @@ void lv_dial_header_builder(lv_obj_t *parent)
     lv_obj_align(dial_header_img, LV_ALIGN_CENTER, 0, 0);
 
     dial_header_title = lv_label_create(dial_header_bg);
-    lv_obj_set_size(dial_header_title, 220, 40);
-    lv_label_set_long_mode(dial_header_title, LV_LABEL_LONG_DOT);
+    lv_obj_set_size(dial_header_title, 220, 50);
+    lv_label_set_long_mode(dial_header_title, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_style_anim_speed(dial_header_title, 15, 0);
     lv_obj_set_style_text_align(dial_header_title, LV_TEXT_ALIGN_CENTER,
                                 LV_PART_MAIN);
     lv_obj_set_style_text_font(dial_header_title,

@@ -50,6 +50,7 @@ typedef struct
 LV_IMG_DECLARE(icon_reply);
 LV_IMG_DECLARE(message_widget_bg);
 LV_IMG_DECLARE(gaus_clock1_bg);
+LV_IMG_DECLARE(voice_group);
 
 static app_message_ctx_t *p_app_message_ctx = NULL;
 static app_message_t *p_app_message = NULL;
@@ -99,11 +100,48 @@ static void ingore_btn_event_callback(lv_event_t *event)
 static lv_obj_t *voice_text_label = NULL;
 static lv_obj_t *voice_send_btn = NULL;
 static lv_obj_t *voice_send_icon = NULL;
+static lv_obj_t *voice_reply_window = NULL;
+static void *voice_text_bind_handle = NULL;
 static bool voice_reply_active = false;
 
 static void voice_text_label_set_text(lv_obj_t *label, const char *text)
 {
     lv_label_set_text(label, text);
+
+    /* text_container is the direct parent of label */
+    lv_obj_t *text_container = lv_obj_get_parent(label);
+    if (!text_container || !lv_obj_is_valid(text_container))
+        return;
+
+    lv_obj_update_layout(text_container);
+    lv_coord_t text_h = lv_obj_get_height(label);
+    lv_coord_t container_h = lv_obj_get_height(text_container);
+
+    /*
+     * Phase 1: text fits inside container — scroll p_window up by text growth
+     *          so the current bottom line stays at the same screen position.
+     * Phase 2: text overflows container — p_window stays at max scroll,
+     *          container scrolls internally to show the latest line.
+     */
+    if (voice_reply_window && lv_obj_is_valid(voice_reply_window))
+    {
+        lv_coord_t offset = 52; /* Increase to push text lower on screen */
+        if (text_h > container_h)
+        {
+            offset -= 20;
+
+        }
+        lv_coord_t raw_scroll = (text_h < container_h) ? text_h : container_h;
+        lv_coord_t extra_scroll = (raw_scroll > offset) ? (raw_scroll - offset) : 0;
+        lv_obj_scroll_to_y(voice_reply_window, extra_scroll, LV_ANIM_ON);
+    }
+
+    if (text_h > container_h)
+    {
+        lv_coord_t scroll_pos = text_h - container_h;
+        lv_obj_scroll_to_y(text_container, scroll_pos, LV_ANIM_ON);
+    }
+
     if (voice_send_icon && lv_obj_is_valid(voice_send_icon))
     {
         if (text == NULL || text[0] == '\0')
@@ -179,13 +217,24 @@ static void message_tap_send(uint8_t gesture)
 }
 
     #ifdef BSP_USING_UI_HANDLER
-static void handle_message_mic_status(void *param)
+static void mic_opa_anim_cb(void *obj, int32_t value)
 {
-    bool speaking = *(bool *)param;
+    lv_obj_set_style_bg_opa((lv_obj_t *)obj, value, 0);
+}
+
+static void handle_message_mic_status(bool speaking)
+{
     LOG_D("handle_message_mic_status: %d", speaking);
     if (lv_obj_is_valid(voice_send_btn))
     {
-        lv_obj_set_style_bg_opa(voice_send_btn, speaking ? LV_OPA_20 : LV_OPA_10, 0);
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, voice_send_btn);
+        lv_anim_set_values(&a, lv_obj_get_style_bg_opa(voice_send_btn, 0),
+                           speaking ? LV_OPA_30 : LV_OPA_10);
+        lv_anim_set_exec_cb(&a, mic_opa_anim_cb);
+        lv_anim_set_time(&a, 200);
+        lv_anim_start(&a);
     }
 }
     #endif
@@ -268,7 +317,8 @@ static lv_obj_t *message_content_builder(lv_obj_t *parent)
 {
     lv_obj_t *label = lv_label_create(parent);
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-    lv_obj_set_size(label, 400, 165);
+    // lv_obj_set_size(label, 400, 165);
+    lv_obj_set_width(label, 400);
     lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 10);
     char *content = replace_nbsp(p_app_message_ctx->content->value.s);
     lv_label_set_text(label, content);
@@ -292,6 +342,8 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
 
     lv_obj_t *p_window = common_black_bg(parent);
     lv_obj_set_style_bg_opa(p_window, LV_OPA_0, 0);
+    lv_obj_set_scrollbar_mode(p_window, LV_SCROLLBAR_MODE_OFF);
+    voice_reply_window = p_window;
     lv_obj_t *icon_bg = lv_obj_create(p_window);
     lv_obj_set_size(icon_bg, 67, 67);
     lv_obj_align(icon_bg, LV_ALIGN_TOP_MID, 0, -5);
@@ -329,27 +381,37 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
         /* Voice reply UI: text container + speech indicator + send/cancel
          * buttons */
         lv_obj_t *voice_container = lv_obj_create(p_window);
-        lv_obj_set_size(voice_container, 442, 252);
+        lv_obj_set_size(voice_container, 444, 254);
         lv_obj_set_style_radius(voice_container, 80, 0);
         lv_obj_set_style_bg_color(voice_container, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_bg_opa(voice_container, LV_OPA_0, 0);
-        lv_obj_set_style_border_width(voice_container, 1, 0);
-        lv_obj_set_style_border_color(voice_container, lv_color_hex(0xFFFFFF),
-                                      0);
-        lv_obj_set_style_border_opa(voice_container, LV_OPA_20, 0);
+        lv_obj_set_style_bg_opa(voice_container, LV_OPA_TRANSP, 0);
+        // lv_obj_set_style_border_width(voice_container, 1, 0);
+        // lv_obj_set_style_border_color(voice_container, lv_color_hex(0xFFFFFF),
+        //                               0);
+        // lv_obj_set_style_border_opa(voice_container, LV_OPA_TRANSP, 0);
         lv_obj_align_to(voice_container, message_widget,
                         LV_ALIGN_OUT_BOTTOM_MID, 0, 5);
-        lv_obj_clear_flag(voice_container, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_scrollbar_mode(voice_container, LV_SCROLLBAR_MODE_OFF);
 
-        lv_obj_t *voice_container_bg = lv_img_create(voice_container);
+        /* Background image on p_window (not inside voice_container) so it stays fixed when scrolling */
+        lv_obj_t *voice_container_bg = lv_img_create(p_window);
+        lv_obj_set_size(voice_container_bg, 442, 252);
         lv_img_set_src(voice_container_bg, &message_widget_bg);
-        lv_obj_align(voice_container_bg, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_align_to(voice_container_bg, voice_container, LV_ALIGN_CENTER, 0, 0);
+
+        /* Raise voice_container above bg so text is visible */
+        lv_obj_move_foreground(voice_container);
 
         /* Transcription text label */
-        voice_text_label = lv_label_create(voice_container);
-        lv_label_set_long_mode(voice_text_label, LV_LABEL_LONG_DOT);
-        lv_obj_set_size(voice_text_label, 380, 200);
-        lv_obj_align(voice_text_label, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_t *voice_text_container = lv_obj_create(voice_container);
+        lv_obj_set_size(voice_text_container, 444, 200);
+        lv_obj_set_style_bg_opa(voice_text_container, LV_OPA_TRANSP, 0);
+        lv_obj_align(voice_text_container, LV_ALIGN_CENTER, 0, 0);
+
+        voice_text_label = lv_label_create(voice_text_container);
+        lv_label_set_long_mode(voice_text_label, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(voice_text_label, 380);
+        lv_obj_align(voice_text_label, LV_ALIGN_TOP_MID, 0, 10);
         lv_obj_set_style_text_font(voice_text_label,
                                    LV_EXT_FONT_GET(get_system_font_size(0)), 0);
         lv_obj_set_style_text_color(voice_text_label, lv_color_white(), 0);
@@ -363,16 +425,20 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
             binding.target = voice_text_label;
             binding.arg_type = LV_EX_DATA_STRING;
             binding.setter = (void *)voice_text_label_set_text;
-            lv_ex_bind_data(speech_content, &binding);
+            voice_text_bind_handle = lv_ex_bind_data(speech_content, &binding);
         }
 
         voice_send_btn = lv_obj_create(parent);
         lv_obj_t *send_btn = voice_send_btn;
-        lv_obj_set_size(send_btn, 50, 50);
-        lv_obj_set_style_radius(send_btn, 25, 0);
-        lv_obj_set_style_bg_color(send_btn, lv_color_hex(0x0DEEFC), 0);
-        lv_obj_set_style_bg_opa(send_btn, LV_OPA_10, 0);
+        lv_obj_set_size(send_btn, 62, 62);
+        lv_obj_set_style_radius(send_btn, 31, 0);
+        lv_obj_set_style_bg_color(send_btn, lv_color_hex(0x00AAFF), 0);
+        lv_obj_set_style_bg_opa(send_btn, 10, 0);
         lv_obj_align(send_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
+
+        lv_obj_t *voice_btn_img = lv_img_create(send_btn);
+        lv_img_set_src(voice_btn_img, &voice_group);
+        lv_obj_align(voice_btn_img, LV_ALIGN_CENTER, 0, 0);
         
         // lv_obj_t *icon_btn_send =
         //     common_icon_button(parent, ICON_SAND, message_send_btn_cb);
@@ -381,6 +447,11 @@ lv_obj_t *app_message_init(lv_obj_t *parent)
         lv_obj_align(voice_send_icon, LV_ALIGN_CENTER, 2, 2);
         lv_obj_add_event_cb(send_btn, message_send_btn_cb, LV_EVENT_CLICKED, NULL);
         lv_obj_add_flag(voice_send_icon, LV_OBJ_FLAG_HIDDEN);
+
+        lv_obj_t *footer_obj = lv_obj_create(p_window);
+        lv_obj_set_size(footer_obj, 400, 106);
+        lv_obj_align_to(footer_obj, voice_container, LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
+        lv_obj_set_style_bg_opa(footer_obj, LV_OPA_TRANSP, 0);
     }
 
     return p_window;
@@ -414,9 +485,9 @@ static void on_resume(void)
     #ifdef BSP_USING_UI_HANDLER
     if (voice_reply_active)
     {
+        lvgl_msg_handler.handle_vad_status = handle_message_mic_status;
         lvgl_msg_handler.handle_tap_indicator = message_tap_send;
         lvgl_msg_handler.handle_back_event = message_voice_clear;
-        lvgl_msg_handler.handle_mic = handle_message_mic_status;
         #ifdef BSP_USING_BLOC_V2T
         start_voice_recognition(V2T_INTENT_REMOTE_INPUT);
         #endif
@@ -434,7 +505,7 @@ static void on_pause(void)
         stop_voice_recognition(V2T_INTENT_NOTHING);
         #endif
         lvgl_msg_handler.handle_back_event = NULL;
-        lvgl_msg_handler.handle_mic = NULL;
+        lvgl_msg_handler.handle_vad_status = NULL;
     }
     lvgl_msg_handler.handle_tap_event = NULL;
     lvgl_msg_handler.handle_tap_indicator = NULL;
@@ -451,13 +522,23 @@ static void on_stop(void)
     {
     #ifdef BSP_USING_BLOC_V2T
         stop_voice_recognition(V2T_INTENT_NOTHING);
-        extern void unbind_app_speech_data(void);
-        unbind_app_speech_data();
+        /* Unbind our voice text label from speech content data */
+        if (voice_text_bind_handle)
+        {
+            extern lv_ex_data_t *app_speech_get_content_data(void);
+            lv_ex_data_t *speech_content = app_speech_get_content_data();
+            if (speech_content)
+            {
+                lv_ex_unbind_data(speech_content, voice_text_bind_handle);
+            }
+            voice_text_bind_handle = NULL;
+        }
     #endif
         voice_reply_active = false;
         voice_text_label = NULL;
         voice_send_btn = NULL;
         voice_send_icon = NULL;
+        voice_reply_window = NULL;
     }
     if (p_app_message_ctx->content_handle)
     {
@@ -489,6 +570,18 @@ static void on_stop(void)
     if (open_from_message_list)
     {
         open_from_message_list = false;
+    }
+}
+
+static void handle_back_for_reply(void)
+{
+    if (isTextEmpty() == false)
+    {
+        clearVoice2Text();
+    }
+    else
+    {
+        gui_app_exit(APP_ID_MESSAGE);
     }
 }
 
