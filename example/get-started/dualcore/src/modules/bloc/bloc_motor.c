@@ -199,6 +199,20 @@ static void bloc_motor_vibrate(motor_params_t *params)
         #endif
 
     rt_uint32_t duty_cycle = 0;
+
+    if (params->repeat_times == 0)
+    {
+        // repeat_times == 0: 持續震動，不管 period，直到外部呼叫 stop
+        duty_cycle = params->duty_cycle;
+        rt_device_control(motor_device, MOTOR_CONTROL_PWM_OPEN,
+                          (void *)&duty_cycle);
+        while (!motor_stop_flag)
+        {
+            last_vibrate_tick = rt_tick_get();
+            rt_thread_delay(100);
+        }
+    }
+    else
     while (i < params->repeat_times)
     {
         last_vibrate_tick = rt_tick_get();
@@ -260,6 +274,23 @@ static void bloc_motor_vibrate(motor_params_t *params)
         duration_off = params->period / 2;
     }
     int i = 0;
+
+    if (params->repeat_times == 0)
+    {
+        // repeat_times == 0: 持續震動，不管 period，直到外部呼叫 stop
+        motor_control_io_pin_state = 1;
+        rt_device_control(motor_device, MOTOR_CONTROL_CTRL_IO,
+                          &motor_control_io_pin_state);
+        while (!motor_stop_flag)
+        {
+            last_vibrate_tick = rt_tick_get();
+            rt_thread_delay(100);
+        }
+        motor_control_io_pin_state = 0;
+        rt_device_control(motor_device, MOTOR_CONTROL_CTRL_IO,
+                          &motor_control_io_pin_state);
+    }
+    else
     while (i < params->repeat_times)
     {
         if (motor_stop_flag)

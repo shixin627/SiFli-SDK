@@ -94,7 +94,7 @@
      *      DEFINES
      *********************/
     #define PRESSED_TIME_MS 500
-    #define SCROLLING_THRESHOLD 10
+    #define SCROLLING_THRESHOLD 20
     #define EDGE_THRESHOLD_PIXELS 20
     #define BOTTOM_EDGE_THRESHOLD 50
     #define GESTURE_DISTANCE_THRESHOLD 50
@@ -200,6 +200,30 @@ static lv_obj_t *menu_tileview = NULL;
 static lv_obj_t *menu_home_tile = NULL;
 static lv_obj_t *menu_content_tile = NULL;
 static lv_obj_t *menu_swipe_area = NULL;
+static lv_obj_t *left_scroll_bar = NULL;
+static lv_point_t scroll_bar_last_point;
+static bool left_scroll_active = false;
+
+// 判斷觸碰點是否在左側滾動觸發區域
+// UI 弧線寬度 30px、角度 150°~210°，但觸發範圍更大
+static bool is_point_in_left_arc(const lv_point_t *p)
+{
+    float cx = LV_HOR_RES_MAX / 2.0f;
+    float cy = LV_VER_RES_MAX / 2.0f;
+    float dx = p->x - cx;
+    float dy = p->y - cy;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float outer_r = cx;
+    float inner_r = outer_r - 100.0f; // 觸發範圍比 UI（30px）更寬
+    if (dist < inner_r || dist > outer_r)
+        return false;
+    // 只接受左側（x < 中心）
+    if (dx >= 0)
+        return false;
+    // 角度放寬到約 140°~220°（sin(40°) ≈ 0.643）
+    float max_dy = dist * 0.643f;
+    return (dy >= -max_dy && dy <= max_dy);
+}
 static lv_obj_t *control_page = NULL;
 static lv_obj_t *status_bar_area = NULL;
 static lv_obj_t *connected_device_label = NULL;
@@ -2230,6 +2254,16 @@ static void handle_pressed_event(lv_indev_t *indev)
     scrolling = false;
     moving = false;
 
+    // 判斷是否按在左側滾動弧線區域
+    left_scroll_active = is_point_in_left_arc(&start_point);
+    if (left_scroll_active)
+    {
+        scroll_bar_last_point = start_point;
+        set_stop_mouse_move(true);
+        motor_pattern_damping();
+        LOG_D("left scroll bar pressed");
+    }
+
     // 重置滚动方向锁定
     scroll_direction_locked = false;
     is_horizontal_scroll = false;
@@ -2276,6 +2310,24 @@ static void handle_pressed_event(lv_indev_t *indev)
 static void handle_pressing_event(lv_indev_t *indev,
                                   const lv_point_t *current_point)
 {
+    // 左側滾動弧線模式：只做上下滾輪
+    if (left_scroll_active)
+    {
+        int16_t delta_y = current_point->y - scroll_bar_last_point.y;
+        if (abs(delta_y) >= SCROLLING_THRESHOLD)
+        {
+            int8_t scroll_val = delta_y / SCROLLING_THRESHOLD;
+            if (SkaiWatchSys.phone_os_version == IOS)
+            {
+                scroll_val = -scroll_val;
+            }
+            motor_pattern_damping();
+            control_provider.ble_hid_mouse_wheel_scroll(scroll_val);
+            scroll_bar_last_point = *current_point;
+        }
+        return;
+    }
+
     if (pressing)
     {
         return;
@@ -2307,40 +2359,22 @@ static void handle_pressing_event(lv_indev_t *indev,
 
     if (scrolling)
     {
-        // Update last point if movement exceeds threshold
-        if (abs(delta_y) >= SCROLLING_THRESHOLD)
+        // 每次更新 last_point，讓滑鼠移動更順暢
+        last_point.x = current_point->x;
+        last_point.y = current_point->y;
+
+        if (delta_x == 0 && delta_y == 0)
         {
-            last_point.y = current_point->y;
+            // 手指靜止（沒有拖曳）→ 恢復體感滑鼠
+            set_stop_mouse_move(false);
         }
-        if (abs(delta_x) >= SCROLLING_THRESHOLD)
+        else
         {
-            last_point.x = current_point->x;
+            // 正在拖曳 → 控制滑鼠移動（距離翻倍），鎖住體感滑鼠
+            set_stop_mouse_move(true);
+            control_provider.ble_hid_mouse_move(delta_x * 1.5, delta_y * 1.5);
         }
 
-        if (SkaiWatchSys.phone_os_version == IOS)
-        {
-            delta_x = -delta_x;
-            delta_y = -delta_y;
-        }
-        handle_mouse_wheel_scrolling(delta_x, delta_y);
-
-        // 追蹤慣性滾動速度
-        if (lv_tick_get() - last_scroll_tick > 0 &&
-            lv_tick_get() - last_scroll_tick < 500)
-        {
-            int scroll_units = is_horizontal_scroll
-                                   ? (delta_x / SCROLLING_THRESHOLD)
-                                   : (delta_y / SCROLLING_THRESHOLD);
-            float current_speed =
-                (float)scroll_units /
-                ((float)(lv_tick_get() - last_scroll_tick) / 1000.0f);
-            inertia_velocity = 0.7f * inertia_velocity + 0.3f * current_speed;
-        }
-        last_scroll_tick = lv_tick_get();
-
-    #if USING_TOUCHSCREEN_SCROLLING
-        handle_touchscreen_scrolling(current_point);
-    #endif
         return;
     }
 
@@ -2386,6 +2420,17 @@ static void handle_pressing_event(lv_indev_t *indev,
 static void handle_released_event(lv_indev_t *indev)
 {
     user_touching = false;
+
+    // 左側滾動弧線放手
+    if (left_scroll_active)
+    {
+        left_scroll_active = false;
+        set_stop_mouse_move(false);
+        motor_pattern_stop();
+        LOG_D("left scroll bar released");
+        return;
+    }
+
     // update_crosshair_brightness();
     if (is_gesture_active)
     {
@@ -2419,32 +2464,10 @@ static void handle_released_event(lv_indev_t *indev)
     if (scrolling)
     {
         scrolling = false;
-        LOG_D("Gesture detected: scrolling released");
+        LOG_D("Gesture detected: touch mouse move released");
 
-        // 啟動慣性滾動
-        if ((lv_tick_get() - last_scroll_tick) < 100 &&
-            fabsf(inertia_velocity) > MIN_SCROLL_SPEED)
-        {
-            inertia_accumulator = 0.0f;
-            if (inertia_timer)
-            {
-                lv_timer_del(inertia_timer);
-            }
-            inertia_timer = lv_timer_create(inertia_scroll_timer_cb,
-                                            INERTIA_TIMER_MS, NULL);
-        }
-        else
-        {
-            inertia_velocity = 0.0f;
-        }
-
-    #if USING_TOUCHSCREEN_SCROLLING
-        if (control_provider.ble_hid_touch_screen_release != NULL)
-        {
-            control_provider.ble_hid_touch_screen_release(touchscreen_point.x,
-                                                          touchscreen_point.y);
-        }
-    #endif
+        // 恢復體感滑鼠
+        set_stop_mouse_move(false);
     }
     else
     {
@@ -2463,6 +2486,7 @@ static void handle_released_event(lv_indev_t *indev)
                     (lv_tick_get() - press_time <= PRESSED_TIME_MS))
                 {
                     LOG_D("Air mouse - click_left");
+                    motor_pattern_tap();
                     control_provider.ble_hid_mouse_left_click();
                     last_click_time = lv_tick_get();
                 }
@@ -2483,6 +2507,7 @@ static void handle_released_event(lv_indev_t *indev)
                 {
                     LOG_D("Air mouse - click_right");
                     control_provider.ble_hid_mouse_right_click();
+                    motor_pattern_tap();
                 }
             }
         }
@@ -3602,6 +3627,30 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_set_style_bg_opa(touch_bg, LV_OPA_0, 0);
     lv_obj_add_event_cb(touch_bg, plain_event_cb, LV_EVENT_ALL, NULL);
 
+    // 左側滾動弧形條（貼著圓形畫面左側邊緣）
+    left_scroll_bar = (lv_obj_t *)lv_arc_create(bg);
+    lv_obj_set_size(left_scroll_bar, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_align(left_scroll_bar, LV_ALIGN_CENTER, 0, 0);
+    lv_arc_set_rotation((lv_obj_t *)left_scroll_bar, 0);
+    lv_arc_set_bg_angles((lv_obj_t *)left_scroll_bar, 150, 210);
+    // 前景角度設為 0，讓 indicator 不顯示
+    lv_arc_set_angles((lv_obj_t *)left_scroll_bar, 0, 0);
+    lv_arc_set_mode((lv_obj_t *)left_scroll_bar, LV_ARC_MODE_NORMAL);
+    // 隱藏旋鈕
+    lv_obj_set_style_pad_all(left_scroll_bar, 0, LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(left_scroll_bar, LV_OPA_0, LV_PART_KNOB);
+    // 背景弧線樣式（只顯示背景弧線）
+    lv_obj_set_style_arc_width(left_scroll_bar, 30, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(left_scroll_bar, lv_color_hex(0x333333),
+                               LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(left_scroll_bar, LV_OPA_60, LV_PART_MAIN);
+    // 隱藏前景 indicator
+    lv_obj_set_style_arc_width(left_scroll_bar, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_opa(left_scroll_bar, LV_OPA_0, LV_PART_INDICATOR);
+    lv_obj_clear_flag(left_scroll_bar, LV_OBJ_FLAG_SCROLLABLE);
+    // 純視覺，不攔截觸碰（由 plain_event_cb 判斷位置）
+    lv_obj_clear_flag(left_scroll_bar, LV_OBJ_FLAG_CLICKABLE);
+
     // Crosshair lines (dimmed by default, brighten when touching logo)
     lv_coord_t line_width = 3;
     lv_coord_t line_length = LV_HOR_RES_MAX - 6;
@@ -3875,6 +3924,7 @@ static void on_stop(void)
     menu_content_tile = NULL;
     menu_bg = NULL;
     menu_swipe_area = NULL;
+    left_scroll_bar = NULL;
 
     // Clean up file list
     file_list = NULL;

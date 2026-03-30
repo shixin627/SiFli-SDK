@@ -52,6 +52,9 @@ motor_err_t motor_open(void)
 motor_err_t motor_close(void)
 {
     rt_err_t ret = RT_EOK;
+
+    rt_thread_mdelay(10);
+    
 #ifdef PMIC_CONTROL_SERVICE
     pmic_service_control(PMIC_CONTROL_MOTOR, 0);
 #else

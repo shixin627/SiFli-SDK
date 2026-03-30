@@ -940,7 +940,7 @@ static void mouse_report_send(uint8_t *key_val, uint16_t key_val_len)
     value.len = key_val_len;
     value.value = key_val;
     int ret = sibles_write_value(g_conn_idx, &value);
-    LOG_D("mouse report send retry:%d", g_conn_idx);
+    // LOG_D("mouse report send retry:%d", g_conn_idx);
 
     if (ret == 0)
     {
