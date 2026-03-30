@@ -372,6 +372,50 @@ void motor_pattern_screen_on_longpress(void)
     }
 }
 
+void motor_pattern_damping(void)
+{
+    if (get_motor_switch_state())
+    {
+        motor_params_t params = {
+            .duty_cycle = 100,
+            .period = 9000, // 200ms
+            .repeat_times = 1,
+        };
+        peripheral_provider.control_motor(true, &params);
+    }
+}
+
+void motor_pattern_tap(void)
+{
+    if (get_motor_switch_state())
+    {
+        motor_params_t params = {
+            .duty_cycle = 100,
+            .period = 9000, // 200ms
+            .repeat_times = 1,
+        };
+        peripheral_provider.control_motor(true, &params);
+    }
+}
+
+void motor_pattern_test(void)
+{
+    if (get_motor_switch_state())
+    {
+        motor_params_t params = {
+            .duty_cycle = 100,
+            .period = 5000, // 200ms
+            .repeat_times = 0,
+        };
+        peripheral_provider.control_motor(true, &params);
+    }
+}
+
+void motor_pattern_stop(void)
+{
+    peripheral_provider.control_motor(false, NULL);
+}
+
 void motor_pattern_alarm(void)
 {
     if (get_motor_switch_state())
@@ -1292,6 +1336,15 @@ static int control_motor(int argc, char *argv[])
         {
             motor_pattern_screen_on_longpress();
         }
+        else if (strcmp(argv[1], "-damping") == 0)
+        {
+            motor_pattern_damping();
+        }
+        else if (strcmp(argv[1], "-test") == 0)
+        {
+            motor_pattern_test();
+        }
+
     }
     return 0;
 }

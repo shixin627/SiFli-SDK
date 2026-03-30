@@ -243,6 +243,10 @@ extern void BLE_LOG_E(const char *format, ...);
     extern void motor_pattern_normal(void);
     extern void motor_pattern_unlocked(void);
     extern void motor_pattern_touchpad_slide(void);
+    extern void motor_pattern_damping(void);
+    extern void motor_pattern_stop(void);
+    extern void motor_pattern_test(void);
+    extern void motor_pattern_tap(void);
 
 
 #ifdef __cplusplus
