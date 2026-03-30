@@ -678,8 +678,8 @@ void audio_transfer_entry(void *parameter)
                                        READ_AUDIO_BUF_SIZE);
 
                 /*audio data alg process, gain dc ramp nr*/
-                // auido_gain_pcm((int16_t *)audprc_adc_temp,
-                // READ_AUDIO_BUF_SIZE, 5); // pcm data left shift 4 bits
+                auido_gain_pcm((int16_t *)audprc_adc_temp,
+                READ_AUDIO_BUF_SIZE, 3); // pcm data left shift 3 bits (8x gain)
 
                 // rt_kprintf("audprc_adc_temp[0]=%d, audprc_adc_temp[1]=%d\n",
                 // audprc_adc_temp[0], audprc_adc_temp[1]);
