@@ -1,5 +1,5 @@
 {
-    "version": "1.1.9",
+    "version": "1.1.10",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
@@ -7,5 +7,5 @@
         "lcpu.bin",
         "lcpu_patch.bin"
     ],
-    "description": "更新通知背景框圖片"
+    "description": "馬達制動,新滑鼠操控方式"
 }
