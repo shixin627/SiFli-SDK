@@ -1003,37 +1003,48 @@ static void refresh_list(uint8_t new_item_count)
             notification_t *notification =
                 get_notification(new_item_count - i - 1);
             LOG_D("notification->type: %s", notification->type);
-            lv_obj_clear_flag(notification_widgets[i].card, LV_OBJ_FLAG_HIDDEN);
-
-            // 清除舊的事件處理器
-            lv_obj_remove_event_cb(notification_widgets[i].card,
-                                   list_message_click_event_cb);
-            lv_obj_remove_event_cb(notification_widgets[i].card,
-                                   widget_drag_event_cb);
-
-            // 添加新的拖拽事件處理器
-            lv_obj_add_event_cb(notification_widgets[i].card,
-                                widget_drag_event_cb, LV_EVENT_PRESSED,
-                                (void *)notification);
-            lv_obj_add_event_cb(notification_widgets[i].card,
-                                widget_drag_event_cb, LV_EVENT_PRESSING,
-                                (void *)notification);
-            lv_obj_add_event_cb(notification_widgets[i].card,
-                                widget_drag_event_cb, LV_EVENT_RELEASED,
-                                (void *)notification);
-
-            char *clean_title = replace_nbsp(notification->title);
-            lv_label_set_text(notification_widgets[i].title, clean_title);
-            lv_mem_free(clean_title);
-            char *clean_message = replace_nbsp(notification->message);
-            lv_label_set_text(notification_widgets[i].content, clean_message);
-            lv_mem_free(clean_message);
-            lv_img_set_src(notification_widgets[i].icon,
-                           icon_list[notification->type]);
-            lv_img_set_zoom(notification_widgets[i].icon, 226); // (90/100)*255
-            if (i == new_item_count - 1)
+            if (lv_obj_is_valid(notification_widgets[i].card))
             {
-                selected_message = notification_widgets[i].card;
+                lv_obj_clear_flag(notification_widgets[i].card,
+                                  LV_OBJ_FLAG_HIDDEN);
+
+                // 清除舊的事件處理器
+                lv_obj_remove_event_cb(notification_widgets[i].card,
+                                       list_message_click_event_cb);
+                lv_obj_remove_event_cb(notification_widgets[i].card,
+                                       widget_drag_event_cb);
+
+                // 添加新的拖拽事件處理器
+                lv_obj_add_event_cb(notification_widgets[i].card,
+                                    widget_drag_event_cb, LV_EVENT_PRESSED,
+                                    (void *)notification);
+                lv_obj_add_event_cb(notification_widgets[i].card,
+                                    widget_drag_event_cb, LV_EVENT_PRESSING,
+                                    (void *)notification);
+                lv_obj_add_event_cb(notification_widgets[i].card,
+                                    widget_drag_event_cb, LV_EVENT_RELEASED,
+                                    (void *)notification);
+                char *clean_title = replace_nbsp(notification->title);
+                lv_label_set_text(notification_widgets[i].title, clean_title);
+                lv_mem_free(clean_title);
+                char *clean_message = replace_nbsp(notification->message);
+                lv_label_set_text(notification_widgets[i].content,
+                                  clean_message);
+                lv_mem_free(clean_message);
+                if (notification->type > NOTIFICATION_APP_QUANTITY)
+                {
+                    LOG_W("Notification type %d exceeds max, using default icon",
+                          notification->type);
+                    notification->type = Notify_others; // 使用預設圖示
+                }
+                lv_img_set_src(notification_widgets[i].icon,
+                               icon_list[notification->type]);
+                lv_img_set_zoom(notification_widgets[i].icon,
+                                226); // (90/100)*255
+                if (i == new_item_count - 1)
+                {
+                    selected_message = notification_widgets[i].card;
+                }
             }
             // lv_obj_align_to(notification_widgets[i].title,
             // notification_widgets[i].icon, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
@@ -1835,7 +1846,8 @@ static void dial_header_show_notification(void)
 {
     if (!lv_obj_is_valid(dial_header_bg))
         return;
-    /* Cancel any ongoing fadeout animation to prevent it from overriding the opacity we set below */
+    /* Cancel any ongoing fadeout animation to prevent it from overriding the
+     * opacity we set below */
     lv_anim_del(dial_header_bg, dial_header_fadeout_exec_cb);
     uint32_t count = notification_center_get_info_count();
     if (count > 0)
@@ -1978,13 +1990,14 @@ void lv_dial_header_builder(lv_obj_t *parent)
     dial_header_bg_mask = lv_img_create(dial_header_bg);
     // lv_obj_set_size(dial_header_bg_mask, 252, 55);
     lv_img_set_src(dial_header_bg_mask, &header_bg);
-    // lv_obj_set_style_bg_color(dial_header_bg_mask, lv_color_hex(0xFFFFFF), 0);
-    // lv_obj_set_style_bg_opa(dial_header_bg_mask, 15, 0);
+    // lv_obj_set_style_bg_color(dial_header_bg_mask, lv_color_hex(0xFFFFFF),
+    // 0); lv_obj_set_style_bg_opa(dial_header_bg_mask, 15, 0);
     // lv_obj_set_style_border_width(dial_header_bg_mask, 1, 0);
-    // lv_obj_set_style_border_color(dial_header_bg_mask, lv_color_hex(0xFFFFFF),
+    // lv_obj_set_style_border_color(dial_header_bg_mask,
+    // lv_color_hex(0xFFFFFF),
     //                               0);
     // lv_obj_set_style_border_opa(dial_header_bg_mask, 30, 0);
-    lv_obj_align(dial_header_bg_mask, LV_ALIGN_CENTER, 0, 5);
+    lv_obj_align(dial_header_bg_mask, LV_ALIGN_CENTER, 0, 15);
     // lv_obj_set_style_radius(dial_header_bg_mask, 30, 0);
 
     lv_obj_t *dial_header_img_bg = lv_obj_create(dial_header_bg);
@@ -2012,7 +2025,7 @@ void lv_dial_header_builder(lv_obj_t *parent)
     lv_obj_set_style_text_color(dial_header_title, lv_color_white(), 0);
     lv_obj_set_style_text_opa(dial_header_title, LV_OPA_70, 0);
     lv_obj_align_to(dial_header_title, dial_header_img_bg,
-                    LV_ALIGN_OUT_BOTTOM_MID, 0, 2);
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 7);
 
     /* Create red dot indicator (shown after notification header shrinks) */
     dial_header_red_dot = lv_img_create(parent);
