@@ -61,6 +61,8 @@
 #endif
 #include "gesture_recognition_task.h"
 #include "watch_global_data.h"
+#include <dfs_posix.h>
+#include <unistd.h>
 
 #ifdef APP_ID_SETTING
 
@@ -556,6 +558,65 @@ static void btn_restart_event_callback(lv_event_t *e)
     }
 }
 
+static void recursive_delete(const char *path)
+{
+    DIR *dir = opendir(path);
+    if (!dir)
+    {
+        unlink(path);
+        return;
+    }
+
+    struct dirent *entry;
+    char filepath[256];
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+
+        if (strcmp(path, "/") == 0)
+            snprintf(filepath, sizeof(filepath), "/%s", entry->d_name);
+        else
+            snprintf(filepath, sizeof(filepath), "%s/%s", path, entry->d_name);
+
+        LOG_D("Deleting: %s", filepath);
+        if (entry->d_type == DT_DIR)
+            recursive_delete(filepath);
+        else
+            unlink(filepath);
+
+        rt_thread_mdelay(10);
+    }
+    closedir(dir);
+
+    if (strcmp(path, "/") != 0)
+        rmdir(path);
+}
+
+static void btn_clear_flash_event_callback(lv_event_t *e)
+{
+    lv_event_code_t event = lv_event_get_code(e);
+
+    if (LV_EVENT_SHORT_CLICKED == event)
+    {
+        static const char *dirs_to_clear[] = {
+            "/assets/icons",
+            "/assets/images",
+            "/prefdb",
+            "/recorder",
+            "/note_list",
+            "/photo",
+        };
+        LOG_I("Clearing flash data...");
+        for (int i = 0; i < ARRAY_SIZE(dirs_to_clear); i++)
+        {
+            LOG_I("Deleting: %s", dirs_to_clear[i]);
+            recursive_delete(dirs_to_clear[i]);
+        }
+        LOG_I("Flash data cleared.");
+    }
+}
+
 static void btn_developer_event_callback(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target(e);
@@ -733,6 +794,11 @@ void app_setting_init(void *param)
     list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(airplane),
                                         "BLE Devices", SkaiWatchSys.font_size, true, 100);
     lv_obj_add_event_cb(list_btn, btn_device_list_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
+
+    // Clear Flash button
+    list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(airplane),
+                                        "Clear Flash", SkaiWatchSys.font_size, true, 100);
+    lv_obj_add_event_cb(list_btn, btn_clear_flash_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
 
 #if !kReleaseMode
     // Test / Developer button

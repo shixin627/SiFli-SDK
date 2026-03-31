@@ -350,18 +350,17 @@ void received_file_handler(const char *path)
     else if (strstr(path, "media_header_img") != NULL)
     {
         // lv_img_cache_invalidate_src(path);
-        strncpy(prev_media_img_path, MEDIA_HEADER_IMG,
-                sizeof(prev_media_img_path) - 1);
-        prev_media_img_path[sizeof(prev_media_img_path) - 1] = '\0';
-        strncpy(MEDIA_HEADER_IMG, path, sizeof(MEDIA_HEADER_IMG) - 1);
-        MEDIA_HEADER_IMG[sizeof(MEDIA_HEADER_IMG) - 1] = '\0';
-		LOG_I("Invalidate image cache for src: %s", MEDIA_HEADER_IMG);
-        lv_img_cache_invalidate_src(prev_media_img_path);
+        // strncpy(prev_media_img_path, MEDIA_HEADER_IMG,
+        //         sizeof(prev_media_img_path) - 1);
+        // prev_media_img_path[sizeof(prev_media_img_path) - 1] = '\0';
+        // strncpy(MEDIA_HEADER_IMG, path, sizeof(MEDIA_HEADER_IMG) - 1);
+        // MEDIA_HEADER_IMG[sizeof(MEDIA_HEADER_IMG) - 1] = '\0';
+		// LOG_I("Invalidate image cache for src: %s", MEDIA_HEADER_IMG);
+        // lv_img_cache_invalidate_src(prev_media_img_path);
 		lv_img_cache_invalidate_src(MEDIA_HEADER_IMG);
 		rt_thread_mdelay(200);
-        notify_media_header_img(prev_media_img_path);
-        LOG_I("Received media header image file: %s,rm:%s", MEDIA_HEADER_IMG,
-              prev_media_img_path);
+        notify_media_header_img(MEDIA_HEADER_IMG);
+        LOG_I("Received media header image file: %s", MEDIA_HEADER_IMG);
         // rt_thread_mdelay(1000);
 		// remove(prev_media_img_path);
     }

@@ -218,7 +218,7 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         LOG_D("REMOVE PREV MEDIA HEADER IMG: %s", msg->data.media_data.img_path);
         // lv_img_cache_invalidate_src(msg->data.media_data.img_path);
 
-        remove(msg->data.media_data.img_path);
+        // remove(msg->data.media_data.img_path);
         break;
     case LVGL_MSG_TYPE_MEDIA_VOLUME:
         if (lvgl_msg_handler.handle_media_volume)
