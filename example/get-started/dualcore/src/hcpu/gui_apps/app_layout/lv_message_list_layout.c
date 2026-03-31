@@ -150,36 +150,38 @@ LV_IMG_DECLARE(message_widget_bg);
 LV_IMG_DECLARE(header_bg);
 
 const char *const icon_list[NOTIFICATION_APP_QUANTITY] = {
-	ICON_GOOGLE_CALENDAR,
-	ICON_FACEBOOK,
-	ICON_APPLE_FACETIME,
-	ICON_INSTAGRAM,
-	ICON_KAKAOTALK,
-	ICON_LINE,
-	ICON_LINKEDIN,
-	ICON_APPLE_MAIL,
-	ICON_MESSENGER,
-	ICON_OTHER,
-	ICON_QQ,
-	ICON_SKYPE,
-	ICON_SMS,
-	ICON_SNAP,
-	ICON_TWITTER,
-	ICON_WECHAT,
-	ICON_WHATSAPP,
-	ICON_GMAIL,
-	ICON_DINGTALK,
-	ICON_GOOGLE_CHAT,
-	ICON_DISCORD,
-	ICON_YOUTUBE,
-	ICON_TIKTOK,
-	ICON_TELEGRAM,
-	ICON_TWITCH,
-	ICON_SLACK,
-	ICON_LARK,
-	ICON_REDDIT,
-	ICON_SKAIWALK,
+    ICON_GOOGLE_CALENDAR,
+    ICON_FACEBOOK,
+    ICON_APPLE_FACETIME,
+    ICON_INSTAGRAM,
+    ICON_KAKAOTALK,
+    ICON_LINE,
+    ICON_LINKEDIN,
+    ICON_APPLE_MAIL,
+    ICON_MESSENGER,
+    ICON_OTHER,
+    ICON_QQ,
+    ICON_SKYPE,
+    ICON_SMS,
+    ICON_SNAP,
+    ICON_TWITTER,
+    ICON_WECHAT,
+    ICON_WHATSAPP,
+    ICON_GMAIL,
+    ICON_DINGTALK,
+    ICON_GOOGLE_CHAT,
+    ICON_DISCORD,
+    ICON_YOUTUBE,
+    ICON_TIKTOK,
+    ICON_TELEGRAM,
+    ICON_TWITCH,
+    ICON_SLACK,
+    ICON_LARK,
+    ICON_REDDIT,
+    ICON_SKAIWALK,
 };
+
+static bool dial_header_music_hidden_by_pause = false;
 
 static bool open_shock = false;
 static bool open_action_flag = true;
@@ -607,7 +609,7 @@ static void reset_list(bool scroll_to_last)
     old_selected_message_index = -1;
     if (!is_at_message() || scroll_to_last)
     {
-        if (have_media_widget)
+        if (have_media_widget && !dial_header_music_hidden_by_pause)
         {
             // 當有 media_widget 時，滾動到 media_widget 的位置
             // (notification_count 位置)
@@ -1033,8 +1035,9 @@ static void refresh_list(uint8_t new_item_count)
                 lv_mem_free(clean_message);
                 if (notification->type > NOTIFICATION_APP_QUANTITY)
                 {
-                    LOG_W("Notification type %d exceeds max, using default icon",
-                          notification->type);
+                    LOG_W(
+                        "Notification type %d exceeds max, using default icon",
+                        notification->type);
                     notification->type = Notify_others; // 使用預設圖示
                 }
                 lv_img_set_src(notification_widgets[i].icon,
@@ -1749,6 +1752,10 @@ static lv_obj_t *dial_header_bg_mask = NULL;
 static bool dial_header_music_active = false;
 static lv_timer_t *dial_header_shrink_timer = NULL;
 static bool dial_header_was_music_before_notif = false;
+static rt_timer_t dial_header_music_pause_timer = NULL;
+#define MUSIC_PAUSE_HIDE_TIMEOUT_MS 30000
+static void dial_header_music_pause_timer_stop(void);
+static void dial_header_music_pause_timer_start(void);
 
 static void dial_header_fadeout_ready_cb(lv_anim_t *anim)
 {
@@ -1886,6 +1893,9 @@ static void handle_dial_header_media_title(void *param)
     if (media_title_text && media_title_text[0] != '\0')
     {
         dial_header_music_active = true;
+        /* Song changed or resumed — cancel pause timer and restore header */
+        dial_header_music_pause_timer_stop();
+        dial_header_music_hidden_by_pause = false;
         /* Hide red dot when music header is active */
         if (lv_obj_is_valid(dial_header_red_dot))
             lv_obj_add_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);
@@ -2062,6 +2072,97 @@ void lv_dial_header_builder(lv_obj_t *parent)
     }
 }
 
+static bool dial_header_music_need_hidden_by_pause = false;
+void dial_header_music_pause_cb(void)
+{
+    dial_header_music_need_hidden_by_pause = false;
+    dial_header_music_hidden_by_pause = true;
+    dial_header_music_active = false;
+
+    /* Fade out the dial header (same animation as notification shrink) */
+    dial_header_show_as_red_dot();
+
+    /* Re-scroll message list to first notification instead of media widget */
+    if (p_app_notification && p_app_notification->list &&
+        notification_count > 0)
+    {
+        reset_list(true);
+    }
+    LOG_D("Music paused for 30s, hiding dial header");
+}
+
+static void dial_header_music_pause_timer_cb(void *parameter)
+{
+    LOG_D("dial_header_music_pause_cb: Music paused, starting timer to hide "
+          "header");
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_DIAL_HEADER_TIMER;
+    lvgl_send_msg(msg);
+}
+
+static rt_tick_t dial_header_music_pause_time = 0;
+void wakeup_chack_music_pause(void)
+{
+    if (dial_header_music_need_hidden_by_pause &&
+        rt_tick_get() - dial_header_music_pause_time >=
+            rt_tick_from_millisecond(MUSIC_PAUSE_HIDE_TIMEOUT_MS))
+    {
+        dial_header_music_pause_cb();
+    }
+}
+
+static void dial_header_music_pause_timer_start(void)
+{
+    dial_header_music_need_hidden_by_pause = true;
+    dial_header_music_pause_time = rt_tick_get();
+    if (!dial_header_music_pause_timer)
+    {
+        dial_header_music_pause_timer = rt_timer_create(
+            "music_pause_hide", dial_header_music_pause_timer_cb, NULL,
+            rt_tick_from_millisecond(MUSIC_PAUSE_HIDE_TIMEOUT_MS),
+            RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
+    }
+    else
+    {
+        rt_timer_stop(dial_header_music_pause_timer);
+    }
+    LOG_D("Starting music pause timer to hide dial header after %d ms",
+          MUSIC_PAUSE_HIDE_TIMEOUT_MS);
+    rt_timer_start(dial_header_music_pause_timer);
+}
+
+static void dial_header_music_pause_timer_stop(void)
+{
+    if (dial_header_music_pause_timer)
+    {
+        LOG_D("Stopping music pause timer");
+        dial_header_music_need_hidden_by_pause = false;
+        rt_timer_stop(dial_header_music_pause_timer);
+        rt_timer_delete(dial_header_music_pause_timer);
+        dial_header_music_pause_timer = NULL;
+    }
+}
+
+static void handle_dial_header_media_play_state(void *param)
+{
+    bool playing = *(bool *)param;
+    if (!playing)
+    {
+        /* Music paused — start 30s timer */
+        dial_header_music_pause_timer_start();
+    }
+    else
+    {
+        /* Music resumed — cancel 30s timer and restore header if hidden */
+        dial_header_music_pause_timer_stop();
+        if (dial_header_music_hidden_by_pause)
+        {
+            dial_header_music_hidden_by_pause = false;
+            dial_header_restore_music();
+        }
+    }
+}
+
 void dial_media_header_init(void)
 {
     lvgl_msg_handler.handle_dial_media_header_title =
@@ -2070,6 +2171,8 @@ void dial_media_header_init(void)
         handle_dial_header_media_img;
     lvgl_msg_handler.handle_dial_header_new_notification =
         handle_dial_header_new_notification;
+    lvgl_msg_handler.handle_dial_media_play_state =
+        handle_dial_header_media_play_state;
 }
 
 void dial_media_header_deinit(void)
@@ -2079,6 +2182,8 @@ void dial_media_header_deinit(void)
         lv_timer_del(dial_header_shrink_timer);
         dial_header_shrink_timer = NULL;
     }
+    // dial_header_music_pause_timer_stop();
+    dial_header_music_hidden_by_pause = false;
     if (lvgl_msg_handler.handle_dial_media_header_title ==
         handle_dial_header_media_title)
         lvgl_msg_handler.handle_dial_media_header_title = NULL;
@@ -2088,6 +2193,9 @@ void dial_media_header_deinit(void)
     if (lvgl_msg_handler.handle_dial_header_new_notification ==
         handle_dial_header_new_notification)
         lvgl_msg_handler.handle_dial_header_new_notification = NULL;
+    if (lvgl_msg_handler.handle_dial_media_play_state ==
+        handle_dial_header_media_play_state)
+        lvgl_msg_handler.handle_dial_media_play_state = NULL;
 }
 
 void message_widget_start(void)

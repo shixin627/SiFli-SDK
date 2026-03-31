@@ -198,6 +198,8 @@ extern "C"
         /****LVGL_MSG_AI****/
         LVGL_MSG_TYPE_AI_TAP_HINT,
         LVGL_MSG_TYPE_RESET_AI_WIDGET,
+        /****header****/
+        LVGL_MSG_TYPE_DIAL_HEADER_TIMER,
     };
 
     typedef struct

@@ -263,7 +263,7 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         if (lvgl_msg_handler.handle_battery_voltage)
         {
             lvgl_msg_handler.handle_battery_voltage(&msg->data.battery_voltage);
-            trigger_activity();
+            // trigger_activity();
         }
         break;
 
@@ -277,14 +277,14 @@ static void process_lvgl_message(lvgl_msg_t *msg)
             lvgl_msg_handler.handle_battery_percentage(
                 msg->data.battery_level);
         }
-        trigger_activity();
+        // trigger_activity();
         break;
 
     case LVGL_MSG_TYPE_CHARGE_STATUS:
         if (lvgl_msg_handler.handle_charge_status)
         {
             lvgl_msg_handler.handle_charge_status(&msg->data.charge_status);
-            trigger_activity();
+            // trigger_activity();
         }
         break;
 
@@ -859,6 +859,13 @@ extern void gaussian_blur(lv_img_dsc_t img_desc, lv_obj_t *parent_obj);
     {
         extern void reset_skai_widget_input_text(void);
         reset_skai_widget_input_text();
+        break;
+    }
+
+    case LVGL_MSG_TYPE_DIAL_HEADER_TIMER:
+    {
+        extern void dial_header_music_pause_cb(void);
+        dial_header_music_pause_cb();
         break;
     }
 

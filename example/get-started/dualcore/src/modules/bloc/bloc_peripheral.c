@@ -297,6 +297,11 @@ static void start_motor_on_timer(uint32_t duration_ms)
 
 static void control_motor_vibration(bool enable, motor_params_t *params)
 {
+    if (SkaiWatchSys.sys_power_status != SYS_POWER_STATUS_ON)
+    {
+        LOG_W("Cannot control motor while HCPU is suspended");
+        return;
+    }
     PeripheralMessageData data;
     data.event = CONTROL_MOTOR;
     data.arg.motor_control.enable = enable;
@@ -502,6 +507,8 @@ static void peripheral_task_entry(void *parameter)
                 {
                     peripheral_provider.hr_set_power(1);
                 }
+                extern void wakeup_chack_music_pause(void);
+                wakeup_chack_music_pause();
                 watch_sys_sync.notify_system_wakeup();
                 SkaiWatchSys.pre_hcpu_wakeup_tick = rt_tick_get();
                 SkaiWatchSys.sys_power_status = SYS_POWER_STATUS_ON;
