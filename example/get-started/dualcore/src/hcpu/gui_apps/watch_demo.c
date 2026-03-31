@@ -596,12 +596,13 @@ static void button_event_task_entry(struct _lv_timer_t *task)
     }
 
     // #if !kReleaseMode
+    extern bool get_motor_status(void);
     extern bool pause_sleep_cause_of_dev_reson(void);
     // #endif
 
     if (lv_disp_get_inactive_time(NULL) > limit_time &&
         setting_provider.get_power_save_mode() &&
-        !pause_sleep_cause_of_dev_reson())
+        !pause_sleep_cause_of_dev_reson() && !get_motor_status())
     {
         peripheral_provider.hcpu_suspend();
         gui_pm_fsm(GUI_PM_ACTION_SLEEP);

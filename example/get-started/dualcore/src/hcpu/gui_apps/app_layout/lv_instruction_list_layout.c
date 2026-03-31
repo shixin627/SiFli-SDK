@@ -1497,7 +1497,6 @@ static bool tap_to_open_control = false;
 static bool open_quick_app = false;
 static void on_tap(void)
 {
-    LOG_D("open app TEST1");
     if (selected_item_index >= list_item_count)
         return;
 

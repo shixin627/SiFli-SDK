@@ -320,7 +320,7 @@ void set_motor_switch_state(uint8_t state)
 }
 
 // Motor pattern functions - each pattern wrapped in a separate function
-    void motor_pattern_wheel_scrolling(void)
+void motor_pattern_wheel_scrolling(void)
 {
     if (get_motor_switch_state())
     {
@@ -1050,8 +1050,12 @@ static void handle_power_management(INTERACT_Type type, void *pValue)
     case WATCH_SLEEP:
     {
         // send_sys_interact_event(SYS_EVENT_HCPU_SUSPEND);
-        peripheral_provider.hcpu_suspend();
-        gui_pm_fsm(GUI_PM_ACTION_SLEEP);
+        extern bool get_motor_status(void);
+        if (!get_motor_status())
+        {
+            peripheral_provider.hcpu_suspend();
+            gui_pm_fsm(GUI_PM_ACTION_SLEEP);
+        }
         break;
     }
     case WATCH_GESTURE_UNLOCK:
@@ -1344,7 +1348,6 @@ static int control_motor(int argc, char *argv[])
         {
             motor_pattern_test();
         }
-
     }
     return 0;
 }
@@ -1371,7 +1374,8 @@ static int control_led(int argc, char *argv[])
         else if (strcmp(argv[1], "-breathing_green") == 0)
         {
             uint8_t led_brightness = 20;
-            watch_system_interact(INTERACT_RGB_LED_BREATHING_GREEN, &led_brightness);
+            watch_system_interact(INTERACT_RGB_LED_BREATHING_GREEN,
+                                  &led_brightness);
         }
         else if (strcmp(argv[1], "-fade_wight") == 0)
         {
