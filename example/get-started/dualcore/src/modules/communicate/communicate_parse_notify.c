@@ -32,6 +32,8 @@
 #include "communicate_update_icon.h"
 #include "bloc_filesystem.h"
 #include "gesture_model_loader.h"
+#include <sys/stat.h>
+#include "dfs_posix.h"
 
 #define DBG_TAG "commu.parse.notify"
 #define DBG_LVL DBG_LOG
@@ -47,6 +49,10 @@
 
 extern void reset_skai_widget_input_text(void);
 extern bool get_is_open_instruction_list_ai(void);
+extern void request_instruction_image(const char *id);
+extern void update_instruction_image(const char *id, const char *path);
+extern void remove_custom_instruction(const char *id);
+extern void refresh_custom_instructions(void);
 
 extern void parse_chat_item(cJSON *item, chat_t *note);
 static uint8_t weather_data_updata_count = 0;
@@ -659,9 +665,48 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
                 add_or_update_custom_instruction(id, title, trigger_type,
                                                   interval_sec, enabled,
                                                   version);
+
+                /* Check if instruction image exists, request from phone if not */
+                if (id[0] != '\0')
+                {
+                    char id_prefix[64];
+                    strncpy(id_prefix, id, sizeof(id_prefix) - 1);
+                    id_prefix[sizeof(id_prefix) - 1] = '\0';
+                    char *dash = strchr(id_prefix, '-');
+                    if (dash)
+                        *dash = '\0';
+
+                    char img_path[128];
+                    rt_snprintf(img_path, sizeof(img_path),
+                                "/assets/images/instruction/%s.bin", id_prefix);
+
+                    struct stat st;
+                    if (stat(img_path, &st) == 0)
+                    {
+                        /* Image already exists, set it on the instruction */
+                        update_instruction_image(id, img_path);
+                    }
+                    else
+                    {
+                        /* Image not found, request from phone */
+                        request_instruction_image(id);
+                    }
+                }
+
                 refresh_custom_instructions();
                 cJSON_Delete(root);
             }
+        }
+        break;
+    }
+
+    case KEY_DISMISS_SKAI_INSTRUCTION:
+    {
+        if (length > 0)
+        {
+            LOG_I("Dismiss instruction: %s", pValue);
+            remove_custom_instruction((const char *)pValue);
+            refresh_custom_instructions();
         }
         break;
     }

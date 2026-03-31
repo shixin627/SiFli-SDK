@@ -92,6 +92,7 @@ typedef struct {
     char id[LIST_ITEM_ID_LEN];         // app_id string or instruction UUID
     char title[LIST_ITEM_TITLE_LEN];
     const char *icon;                   // icon resource pointer, can be NULL
+    char img_path[64];                  // file-based image path for instructions
     lv_obj_t *widget;                   // app widget obj, NULL for instructions
     bool is_instruction;                // true = custom instruction, false = app
     bool is_interval;                   // for instructions: has toggle switch
@@ -395,8 +396,8 @@ static void update_indicator_dots_position(int input_value)
     if (total_dots <= 0)
         return;
 
-    LOG_I("Updating indicator dots position, input value: %d",
-          input_value);
+    // LOG_I("Updating indicator dots position, input value: %d",
+    //       input_value);
 
     const int circle_radius = 300;
     const int center_x = 120;
@@ -525,7 +526,11 @@ static void create_indicator_dots(lv_obj_t *parent)
 
         lv_obj_t *dot = lv_img_create(dot_bg);
         lv_obj_center(dot);
-        if (list_items[i].icon != NULL)
+        if (list_items[i].img_path[0] != '\0')
+        {
+            lv_img_set_src(dot, list_items[i].img_path);
+        }
+        else if (list_items[i].icon != NULL)
         {
             lv_img_set_src(dot, list_items[i].icon);
             if (strcmp(list_items[i].id, APP_ID_NOTE_CHATROOM) == 0 ||
@@ -997,14 +1002,16 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                     if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
                         lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
                 }
-                if (i < app_base_count && app_icon_shadow[i] != NULL && lv_obj_is_valid(app_icon_shadow[i]))
+                if ((i < app_base_count || list_items[i].img_path[0] != '\0') &&
+                    app_icon_shadow[i] != NULL && lv_obj_is_valid(app_icon_shadow[i]))
                     lv_obj_clear_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
                 if (switch_objs[i] != NULL && lv_obj_is_valid(switch_objs[i]))
                     lv_obj_clear_flag(switch_objs[i], LV_OBJ_FLAG_HIDDEN);
             }
             else
             {
-                if (i < app_base_count && app_icon_shadow[i] != NULL && lv_obj_is_valid(app_icon_shadow[i]))
+                if ((i < app_base_count || list_items[i].img_path[0] != '\0') &&
+                    app_icon_shadow[i] != NULL && lv_obj_is_valid(app_icon_shadow[i]))
                     lv_obj_add_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
                 if (touch_obj[i] != NULL && lv_obj_is_valid(touch_obj[i]))
                     lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
@@ -1383,6 +1390,21 @@ static void send_instruction_update(list_item_t *item)
         L1_send_event(data);
         cJSON_free(json_str);
     }
+}
+
+void request_instruction_image(const char *id)
+{
+    if (!id || id[0] == '\0')
+        return;
+
+    extern void set_pending_instruction_img_id(const char *id);
+    set_pending_instruction_img_id(id);
+
+    L1SendData data;
+    data.event = L1SEND_GET_INSTRUCTION_IMG;
+    data.res.json_string_ptr = (char *)id;
+    L1_send_event(data);
+    LOG_I("Requested instruction image for id=%s", id);
 }
 
 extern void iot_gate_widget_tap_event_cb(void);
@@ -1929,6 +1951,32 @@ static int find_instruction_by_id(const char *id)
     return -1;
 }
 
+void remove_custom_instruction(const char *id)
+{
+    int idx = find_instruction_by_id(id);
+    if (idx < 0)
+    {
+        LOG_W("remove_custom_instruction: id=%s not found", id);
+        return;
+    }
+
+    /* Delete image file if exists */
+    if (list_items[idx].img_path[0] != '\0')
+    {
+        remove(list_items[idx].img_path);
+        LOG_I("Deleted instruction image: %s", list_items[idx].img_path);
+    }
+
+    /* Shift remaining items left */
+    for (uint8_t i = idx; i < list_item_count - 1; i++)
+    {
+        memcpy(&list_items[i], &list_items[i + 1], sizeof(list_item_t));
+    }
+    list_item_count--;
+
+    LOG_I("Removed instruction: id=%s", id);
+}
+
 void add_or_update_custom_instruction(const char *id, const char *title,
                                       const char *trigger_type,
                                       uint32_t interval_sec,
@@ -2065,7 +2113,12 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx, uint8_t end_
 
         /* Create app icon */
         p_instruction_list_layout->p_app_indicator_btn[i] = lv_img_create(item);
-        if (list_items[i].icon != NULL)
+        if (list_items[i].img_path[0] != '\0')
+        {
+            lv_img_set_src(p_instruction_list_layout->p_app_indicator_btn[i],
+                           list_items[i].img_path);
+        }
+        else if (list_items[i].icon != NULL)
         {
             lv_img_set_src(p_instruction_list_layout->p_app_indicator_btn[i],
                            list_items[i].icon);
@@ -2077,7 +2130,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx, uint8_t end_
                             LV_EVENT_CLICKED,
                             (void *)&list_items[i]);
         lv_obj_add_flag(app_icon[i], LV_OBJ_FLAG_HIDDEN);
-        if (list_items[i].icon == NULL)
+        if (list_items[i].icon == NULL && list_items[i].img_path[0] == '\0')
         {
             lv_obj_add_flag(app_icon[i], LV_OBJ_FLAG_HIDDEN);
         }
@@ -2153,6 +2206,17 @@ void refresh_custom_instructions(void)
         p_instruction_list_layout->list == NULL)
         return;
 
+    LOG_I("Refreshing custom instructions...");
+    /* Debounce: skip if called again within 500ms */
+    static rt_tick_t last_refresh_tick = 0;
+    rt_tick_t now = rt_tick_get();
+    if (last_refresh_tick != 0 && (now - last_refresh_tick) < rt_tick_from_millisecond(500))
+    {
+        LOG_I("refresh_custom_instructions: skipped (debounce)");
+        return;
+    }
+    last_refresh_tick = now;
+
     lv_obj_t *list = p_instruction_list_layout->list;
 
     /* 先刪除舊的指示點（它們是 bg 的子物件，lv_obj_clean(list) 不會刪到） */
@@ -2165,6 +2229,10 @@ void refresh_custom_instructions(void)
             lv_obj_del(p_instruction_list_layout->indicator_dots_bg[i]);
         }
     }
+
+    /* Save current scroll position and selected index */
+    lv_coord_t saved_scroll_y = lv_obj_get_scroll_y(list);
+    uint16_t saved_selected = selected_item_index;
 
     /* Delete ALL children of the list */
     lv_obj_clean(list);
@@ -2189,11 +2257,83 @@ void refresh_custom_instructions(void)
     /* 重建指示點 */
     create_indicator_dots(bg);
 
-    /* Force scroll_list to re-run visibility */
+    /* Force layout so child coords are valid */
+    lv_obj_update_layout(list);
+
+    /* Restore scroll position */
     old_selected_item_index = (uint16_t)-1;
-    scroll_list(p_instruction_list_layout->list, 0);
+    if (saved_selected >= list_item_count && list_item_count > 0)
+    {
+        /* Selected item was removed — scroll to new last item */
+        uint16_t target = list_item_count - 1;
+        app_scroll_target_item = target;
+        selected_item_index = target;
+        lv_obj_t *child = lv_obj_get_child(list, target);
+        if (child && lv_obj_is_valid(child))
+            lv_obj_scroll_to_view(child, LV_ANIM_OFF);
+        lv_obj_update_layout(list);
+        scroll_list(list, 0);
+    }
+    else
+    {
+        /* Add or no change — keep exact same scroll position */
+        lv_obj_scroll_to_y(list, saved_scroll_y, LV_ANIM_OFF);
+        lv_obj_update_layout(list);
+        scroll_list(list, 0);
+    }
+
+    /* Recalculate input_value for indicator dots based on current selected_item_index */
+    if (list_item_count > 0)
+    {
+        float total_range = 100.0f * list_item_count;
+        float base_input = 63.0f;
+        float input_val = total_range - base_input -
+                          selected_item_index * (total_range / list_item_count);
+        gesture_starting_value = (uint16_t)input_val;
+        update_indicator_dots_position(gesture_starting_value);
+    }
 
     LOG_I("refresh_custom_instructions: %d items total", list_item_count);
+}
+
+void update_instruction_image(const char *id, const char *path)
+{
+    int idx = find_instruction_by_id(id);
+    if (idx < 0)
+    {
+        LOG_W("update_instruction_image: id=%s not found", id);
+        return;
+    }
+
+    /* Build image path using id prefix (before first '-') */
+    char id_prefix[64];
+    strncpy(id_prefix, id, sizeof(id_prefix) - 1);
+    id_prefix[sizeof(id_prefix) - 1] = '\0';
+    char *dash = strchr(id_prefix, '-');
+    if (dash)
+        *dash = '\0';
+
+    char img_path[128];
+    rt_snprintf(img_path, sizeof(img_path),
+                "/assets/images/instruction/%s.bin", id_prefix);
+
+    lv_img_cache_invalidate_src(list_items[idx].img_path);
+    strncpy(list_items[idx].img_path, img_path, sizeof(list_items[idx].img_path) - 1);
+    list_items[idx].img_path[sizeof(list_items[idx].img_path) - 1] = '\0';
+
+    /* Update the indicator dot directly if UI exists */
+    if (p_instruction_list_layout != NULL &&
+        p_instruction_list_layout->indicator_dots[idx] != NULL &&
+        lv_obj_is_valid(p_instruction_list_layout->indicator_dots[idx]))
+    {
+        lv_img_cache_invalidate_src(img_path);
+        lv_img_set_src(p_instruction_list_layout->indicator_dots[idx],
+                       list_items[idx].img_path);
+        lv_obj_clear_flag(p_instruction_list_layout->indicator_dots[idx],
+                          LV_OBJ_FLAG_HIDDEN);
+        LOG_I("Updated instructionwith new image %s", img_path);
+    }
+
 }
 
 static lv_obj_t *ai_tileview = NULL;

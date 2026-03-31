@@ -230,6 +230,7 @@ typedef struct
     PacketHandler handle_minute_activity;
     PacketHandler handle_holding_displacement;
     PacketHandler handle_update_instruction;
+    PacketHandler handle_get_instruction_img;
 } CommunicateHandlerProvider;
 
 static CommunicateHandlerProvider commu_handler_provider;
@@ -863,6 +864,21 @@ static uint16_t handle_update_instruction(PacketBuilder *builder, L1SendData *da
     return builder->length;
 }
 
+// Handler for get instruction image (sends only id to phone)
+static uint16_t handle_get_instruction_img(PacketBuilder *builder, L1SendData *data)
+{
+    uint8_t *buf = builder->buf;
+    char *string_ptr = data->res.json_string_ptr;
+    uint16_t len = strlen(string_ptr);
+
+    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_SKAI_INSTRUCTION_IMAGE);
+    SET_PACKET_LENGTH(buf, len);
+    memcpy(buf + 5, string_ptr, len);
+
+    builder->length = 5 + len;
+    return builder->length;
+}
+
 // Handler for create calendar
 static uint16_t handle_create_calendar(PacketBuilder *builder, L1SendData *data)
 {
@@ -1248,6 +1264,7 @@ static int commu_handler_provider_register(void)
         handle_dismiss_notification;
     commu_handler_provider.handle_create_note = handle_create_note;
     commu_handler_provider.handle_update_instruction = handle_update_instruction;
+    commu_handler_provider.handle_get_instruction_img = handle_get_instruction_img;
     commu_handler_provider.handle_create_calendar = handle_create_calendar;
     commu_handler_provider.handle_tp_coordinate = handle_tp_coordinate;
     commu_handler_provider.handle_tp_gesture = handle_tp_gesture;
@@ -1546,6 +1563,9 @@ static uint16_t dispatch_packet_handler(L1SendData *data)
         break;
     case L1SEND_UPDATE_INSTRUCTION:
         handler = commu_handler_provider.handle_update_instruction;
+        break;
+    case L1SEND_GET_INSTRUCTION_IMG:
+        handler = commu_handler_provider.handle_get_instruction_img;
         break;
 
     default:

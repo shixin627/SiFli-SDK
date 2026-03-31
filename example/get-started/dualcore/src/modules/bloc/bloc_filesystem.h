@@ -62,6 +62,9 @@ extern "C"
 	extern const file_receive_state_t *bloc_get_receive_progress(void);
 	extern file_receive_state_t *get_file_receive_state(void);
 
+	/* Instruction image request tracking */
+	extern void set_pending_instruction_img_id(const char *id);
+
 #ifdef __cplusplus
 }
 #endif

@@ -79,6 +79,37 @@ char MEDIA_HEADER_IMG[40] = "/assets/images/media_header_img.bin";
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
+/* Pending instruction image request tracking (queue) */
+#define MAX_PENDING_INSTRUCTION_IMG 10
+static char pending_instruction_img_ids[MAX_PENDING_INSTRUCTION_IMG][64];
+static uint8_t pending_instruction_img_count = 0;
+
+void set_pending_instruction_img_id(const char *id)
+{
+    if (!id || id[0] == '\0')
+        return;
+
+    /* Avoid duplicates */
+    for (uint8_t i = 0; i < pending_instruction_img_count; i++)
+    {
+        if (strcmp(pending_instruction_img_ids[i], id) == 0)
+            return;
+    }
+
+    if (pending_instruction_img_count >= MAX_PENDING_INSTRUCTION_IMG)
+    {
+        LOG_W("Pending instruction image queue full, dropping oldest");
+        /* Shift queue left, drop oldest */
+        memmove(&pending_instruction_img_ids[0], &pending_instruction_img_ids[1],
+                (MAX_PENDING_INSTRUCTION_IMG - 1) * sizeof(pending_instruction_img_ids[0]));
+        pending_instruction_img_count--;
+    }
+
+    strncpy(pending_instruction_img_ids[pending_instruction_img_count], id, 63);
+    pending_instruction_img_ids[pending_instruction_img_count][63] = '\0';
+    pending_instruction_img_count++;
+}
+
 /* Configuration constants */
 #define FILE_SYNC_THREAD_STACK_SIZE 4096
 #define FILE_SYNC_THREAD_PRIORITY 25
@@ -278,6 +309,8 @@ static void send_file_compare_result(uint8_t result)
 }
 
 extern char *get_media_title(void);
+extern void update_instruction_image(const char *id, const char *path);
+
 static void notify_media_img(char *path)
 {
     lvgl_msg_t msg;
@@ -363,6 +396,50 @@ void received_file_handler(const char *path)
         LOG_I("Received media header image file: %s", MEDIA_HEADER_IMG);
         // rt_thread_mdelay(1000);
 		// remove(prev_media_img_path);
+    }
+    else if (pending_instruction_img_count > 0)
+    {
+        /* Check if received file matches any pending instruction image request */
+        const char *base_name = strrchr(path, '/');
+        base_name = base_name ? base_name + 1 : path;
+
+        bool matched = false;
+        for (uint8_t i = 0; i < pending_instruction_img_count; i++)
+        {
+            /* Extract id prefix (before first '-') */
+            char id_prefix[64];
+            strncpy(id_prefix, pending_instruction_img_ids[i], sizeof(id_prefix) - 1);
+            id_prefix[sizeof(id_prefix) - 1] = '\0';
+            char *dash = strchr(id_prefix, '-');
+            if (dash)
+                *dash = '\0';
+
+            char expected_name[128];
+            rt_snprintf(expected_name, sizeof(expected_name),
+                        "%s.bin", id_prefix);
+
+            if (strcmp(base_name, expected_name) == 0)
+            {
+                LOG_I("Received instruction image: %s for id=%s", path,
+                      pending_instruction_img_ids[i]);
+                update_instruction_image(pending_instruction_img_ids[i], path);
+
+                /* Remove matched entry by shifting queue */
+                pending_instruction_img_count--;
+                for (uint8_t j = i; j < pending_instruction_img_count; j++)
+                {
+                    strncpy(pending_instruction_img_ids[j],
+                            pending_instruction_img_ids[j + 1], 63);
+                }
+                matched = true;
+                break;
+            }
+        }
+
+        if (!matched)
+        {
+            LOG_W("Received file is not recognized: %s", path);
+        }
     }
     else
     {
