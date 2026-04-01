@@ -746,8 +746,8 @@ void app_watch_entry(void *parameter)
     }
 #else
     {
-        set_date(2022, 7, 1);
-        set_time(9, 0, 0);
+        // set_date(2022, 7, 1);
+        // set_time(9, 0, 0);
     }
 #endif /* _MSC_VER */
 

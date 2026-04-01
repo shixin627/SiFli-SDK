@@ -80,8 +80,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
 #endif
             extern void app_clock_reset_time(void);
             app_clock_reset_time();
-            peripheral_provider.save_watch_shared_prefs(
-                WATCH_PREFS_KEY_GLOBAL_TIME);
         }
     }
     break;

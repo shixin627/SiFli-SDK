@@ -378,7 +378,7 @@ static lv_obj_t *lv_ex_btnmatrix(lv_obj_t *screen)
     // Add pressed state style to make buttons light up when pressed
     lv_obj_add_style(btnm, (lv_style_t *)&BTNM_KEY_PRESSED_STYLE, LV_PART_ITEMS | LV_STATE_PRESSED);
 
-    lv_obj_set_style_text_font(btnm, LV_EXT_FONT_GET(get_system_font_size(1)), LV_PART_ITEMS);
+    lv_obj_set_style_text_font(btnm, LV_EXT_FONT_GET(FONT_HUGE), LV_PART_ITEMS);
 
     // Set operator buttons text to cyan color
     lv_obj_set_style_text_color(btnm, lv_color_hex(0x3A6D7B), LV_PART_ITEMS | LV_STATE_CHECKED);

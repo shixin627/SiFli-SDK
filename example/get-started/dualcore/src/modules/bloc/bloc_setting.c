@@ -9,36 +9,39 @@
  * Copyright (c) 2024 - 2025, Skaiwalk Technology
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice, this
- *    list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer.
  *
- * 2. Redistributions in binary form, except as embedded into a Skaiwalk integrated circuit
- *    in a product or a software update for such product, must reproduce the above
- *    copyright notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
+ * 2. Redistributions in binary form, except as embedded into a Skaiwalk
+ * integrated circuit in a product or a software update for such product, must
+ * reproduce the above copyright notice, this list of conditions and the
+ * following disclaimer in the documentation and/or other materials provided
+ * with the distribution.
  *
  * 3. The names of Skaiwalk or its contributors may not be used to endorse
- *    or promote products derived from this software without specific prior written permission.
+ *    or promote products derived from this software without specific prior
+ * written permission.
  *
  * 4. This software, with or without modification, must only be used with a
  *    Skaiwalk integrated circuit.
  *
- * 5. Any binary form of this software must not be reverse engineered, decompiled, modified,
- *    or disassembled.
+ * 5. Any binary form of this software must not be reverse engineered,
+ * decompiled, modified, or disassembled.
  *
  * THIS SOFTWARE IS PROVIDED BY SKAIWALK TECHNOLOGY "AS IS" AND ANY EXPRESS
  * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
  * OF MERCHANTABILITY, NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE ARE
  * DISCLAIMED. IN NO EVENT SHALL SKAIWALK TECHNOLOGY OR CONTRIBUTORS BE
  * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
- * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
 /* Includes ------------------------------------------------------------------*/
@@ -56,7 +59,7 @@
 #include "watch_system_core_task.h"
 #include "bloc_peripheral.h"
 #ifdef BSP_USING_UI_HANDLER
-#include "ui_handler.h"
+    #include "ui_handler.h"
 #endif
 
 /* Debug configuration -------------------------------------------------------*/
@@ -128,11 +131,9 @@ static void shared_prefs_storage_timer_start(void)
 {
     if (!shared_prefs_storage_timer)
     {
-        shared_prefs_storage_timer = rt_timer_create("shared_prefs_smooth_storage",
-                                                     shared_prefs_storage_timer_callback,
-                                                     RT_NULL,
-                                                     PREFS_STORAGE_TIMEOUT,
-                                                     RT_TIMER_FLAG_ONE_SHOT);
+        shared_prefs_storage_timer = rt_timer_create(
+            "shared_prefs_smooth_storage", shared_prefs_storage_timer_callback,
+            RT_NULL, PREFS_STORAGE_TIMEOUT, RT_TIMER_FLAG_ONE_SHOT);
     }
     else
     {
@@ -215,11 +216,15 @@ static void set_hour_format(uint8_t format)
 static void set_watch_time(T_UTC_TIME datetime)
 {
 #ifndef BSP_USING_PC_SIMULATOR
-    extern rt_err_t set_date(rt_uint32_t year, rt_uint32_t month, rt_uint32_t day);
-    extern rt_err_t set_time(rt_uint32_t hour, rt_uint32_t minute, rt_uint32_t second);
+    extern rt_err_t set_date(rt_uint32_t year, rt_uint32_t month,
+                             rt_uint32_t day);
+    extern rt_err_t set_time(rt_uint32_t hour, rt_uint32_t minute,
+                             rt_uint32_t second);
 
     set_date(datetime.year, datetime.month, datetime.day);
     set_time(datetime.hour, datetime.minutes, datetime.seconds);
+
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_GLOBAL_TIME);
 #endif
 }
 
@@ -236,7 +241,8 @@ static void notify_brightness(void)
     data.res.lcd_brightness = SkaiWatchSys.brightness;
     L1_send_event(data);
 
-    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_BACKLIGHT_PERCENT);
+    peripheral_provider.save_watch_shared_prefs(
+        WATCH_PREFS_KEY_BACKLIGHT_PERCENT);
 }
 
 /**
@@ -273,7 +279,8 @@ static void notify_screen_time(void)
     data.res.lcd_display_time = SkaiWatchSys.oled_display_time;
     L1_send_event(data);
 
-    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_OLED_DISPLAY_TIME);
+    peripheral_provider.save_watch_shared_prefs(
+        WATCH_PREFS_KEY_OLED_DISPLAY_TIME);
 }
 
 /**
@@ -480,12 +487,10 @@ static void set_user_profile(userprofile_union_t profile)
 {
     /* Only update user profile when setting different data */
     if (memcmp((void *)&SkaiWatchSys.user_data.user_profile.data,
-               (void *)&profile.data,
-               sizeof(userprofile_union_t)) != 0)
+               (void *)&profile.data, sizeof(userprofile_union_t)) != 0)
     {
         LOG_I("[UI]Update user profile[age:%d, height:%d(cm), weight:%d(kg)]",
-              profile.bit_field.age,
-              profile.bit_field.height,
+              profile.bit_field.age, profile.bit_field.height,
               profile.bit_field.weight);
 
         SkaiWatchSys.user_data.user_profile.data = profile.data;
@@ -512,8 +517,7 @@ static void notify_sit_alert(void)
 static void set_sit_alert(T_SIT_ALERT sit_alert)
 {
     /* Return if settings are identical */
-    if (memcmp((void *)&SkaiWatchSys.sit_alert_data,
-               (void *)&sit_alert,
+    if (memcmp((void *)&SkaiWatchSys.sit_alert_data, (void *)&sit_alert,
                sizeof(T_SIT_ALERT)) == 0)
     {
         return;
@@ -527,11 +531,10 @@ static void set_sit_alert(T_SIT_ALERT sit_alert)
 
     SkaiWatchSys.sit_alert_data = sit_alert;
 
-    LOG_D("Set sit alert, on_off:%d, start_hour:%d, end_hour:%d, day_flag_bits:%d",
-          sit_alert.sit_alert.on_off,
-          sit_alert.sit_alert.start_hour,
-          sit_alert.sit_alert.end_hour,
-          sit_alert.sit_alert.day_flag_bits);
+    LOG_D("Set sit alert, on_off:%d, start_hour:%d, end_hour:%d, "
+          "day_flag_bits:%d",
+          sit_alert.sit_alert.on_off, sit_alert.sit_alert.start_hour,
+          sit_alert.sit_alert.end_hour, sit_alert.sit_alert.day_flag_bits);
 
     sit_alert_acknowledge();
     notify_sit_alert();
@@ -590,14 +593,14 @@ static int bloc_setting_provider_register(void)
 void bloc_setting_load_watch_system(void)
 {
     lv_ext_set_locale(NULL, bloc_setting_get_language());
-    set_watch_time(SkaiWatchSys.Global_Time);
-    LOG_I("bloc_setting_load_watch_system oled_display_time: %d, brightness: %d, font_size: %d",
-          SkaiWatchSys.oled_display_time,
-          SkaiWatchSys.brightness,
+    LOG_I("bloc_setting_load_watch_system oled_display_time: %d, brightness: "
+          "%d, font_size: %d",
+          SkaiWatchSys.oled_display_time, SkaiWatchSys.brightness,
           SkaiWatchSys.font_size);
     if (SkaiWatchSys.oled_display_time == 0)
     {
-        SkaiWatchSys.oled_display_time = 10; /* Default to 10 seconds if unset */
+        SkaiWatchSys.oled_display_time =
+            10; /* Default to 10 seconds if unset */
     }
     if (SkaiWatchSys.brightness == 0)
     {
@@ -613,4 +616,5 @@ void bloc_setting_load_watch_system(void)
 /* Export the setting provider registration function */
 INIT_APP_EXPORT(bloc_setting_provider_register);
 
-/************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/
+/************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
+ * FILE****/
