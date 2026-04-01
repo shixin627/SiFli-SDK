@@ -538,14 +538,19 @@ static void file_system_entry(void *parameter)
 
                 struct dirent *entry;
                 char file_path_buf[FILE_PATH_MAX_LEN];
-
-                skaiwatch_ble_set_performance(true);
+                bool has_files = false;
 
                 while ((entry = readdir(dir)) != NULL)
                 {
                     if (entry->d_type != DT_REG)
                     {
                         continue;
+                    }
+
+                    if (!has_files)
+                    {
+                        has_files = true;
+                        skaiwatch_ble_set_performance(true);
                     }
 
                     snprintf(file_path_buf, sizeof(file_path_buf), "%s/%s",
@@ -559,12 +564,14 @@ static void file_system_entry(void *parameter)
                             FILE_PATH_MAX_LEN - 1);
                     sync_progress.sync_in_file_path[FILE_PATH_MAX_LEN - 1] = '\0';
 
-                    ui_msg.type = LVGL_MSG_TYPE_SYNC_STATUS;
-                    ui_msg.data.sync_state = true;
-                    lvgl_send_msg(ui_msg);
+                    // ui_msg.type = LVGL_MSG_TYPE_SYNC_STATUS;
+                    // ui_msg.data.sync_state = true;
+                    // lvgl_send_msg(ui_msg);
 
-                    LOG_D("sync_multi: syncing %s", file_path_buf);
-                    sync_file_to_remote_client(file_path_buf);
+                    LOG_I("sync_multi: [%s] syncing start", file_path_buf);
+                    int sync_ret = sync_file_to_remote_client(file_path_buf);
+                    LOG_I("sync_multi: [%s] syncing %s", file_path_buf,
+                          sync_ret ? "success" : "failed");
 
                     if (del_after)
                     {
@@ -572,16 +579,19 @@ static void file_system_entry(void *parameter)
                     }
 
                     // Brief pause between files
-                    rt_thread_mdelay(100);
+                    rt_thread_mdelay(500);
                 }
 
-                skaiwatch_ble_set_performance(false);
+                if (has_files)
+                {
+                    skaiwatch_ble_set_performance(false);
+                }
                 closedir(dir);
 
                 sync_progress.sync_status = false;
-                ui_msg.type = LVGL_MSG_TYPE_SYNC_STATUS;
-                ui_msg.data.sync_state = false;
-                lvgl_send_msg(ui_msg);
+                // ui_msg.type = LVGL_MSG_TYPE_SYNC_STATUS;
+                // ui_msg.data.sync_state = false;
+                // lvgl_send_msg(ui_msg);
 
                 rt_free(msg_data.data.sync_multi.folder_path);
                 msg_data.data.sync_multi.folder_path = NULL;
