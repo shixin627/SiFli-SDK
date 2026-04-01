@@ -49,6 +49,10 @@
     #include "watch_system_interact.h"
 #endif
 #include "bloc_peripheral.h"
+#ifdef BSP_USING_BLOC
+    #include "bloc_v2t.h"
+    #include "bloc_filesystem.h"
+#endif
 
 #define DBG_TAG "sys.perception"
 #define DBG_LVL DBG_LOG
@@ -56,10 +60,11 @@
 
 /* Private variables */
 static uint32_t last_step_count = 0;
+static bool last_device_logged = false;
 static uint32_t last_activity_time = 0;
 
 /* RT-Thread thread handle and stack definition */
-#define PERIODIC_TASK_STACK_SIZE 1024
+#define PERIODIC_TASK_STACK_SIZE 2048
 #define PERIODIC_TASK_PRIORITY 27 // Adjust priority as needed
 #define PERIODIC_TASK_TICK (300 * RT_TICK_PER_SECOND) // Run every 5 minutes
 
@@ -208,6 +213,38 @@ void ui_display_sit_alert(void)
     on_sit_alert_dismissed();
 }
 
+#ifdef BSP_USING_BLOC
+/**
+ * @brief Check /recorder for pending files and sync them to phone
+ *        Called when device connects to phone after being disconnected
+ */
+static void check_and_sync_pending_recordings(void)
+{
+    if (!SkaiWatchSys.flag_field.device_had_logged)
+    {
+        return;
+    }
+
+    // Don't sync while recording is in progress
+    if (app_voice_get_recording_status())
+    {
+        LOG_D("Recording in progress, skip pending sync");
+        return;
+    }
+
+    // Don't sync if another file is already being synced
+    sync_progress_t *progress = get_sync_progress();
+    if (progress->sync_status)
+    {
+        LOG_D("Sync already in progress, skip pending sync");
+        return;
+    }
+
+    LOG_D("Checking /recorder for pending files to sync");
+    bloc_file_system.sync_folder_files("/recorder", true);
+}
+#endif /* BSP_USING_BLOC */
+
 /**
  * @brief Initialize application data
  */
@@ -253,6 +290,22 @@ void app_periodic_task(void)
 #endif
 
     // watch_system_interact(WATCH_REQUEST_BATTERY, NULL);
+
+#ifdef BSP_USING_BLOC
+    // Check if device just connected to phone (rising edge detection)
+    bool current_logged = SkaiWatchSys.flag_field.device_had_logged;
+    if (current_logged && !last_device_logged)
+    {
+        LOG_D("Phone connection detected, checking for pending recorder files");
+        check_and_sync_pending_recordings();
+    }
+    else if (current_logged)
+    {
+        // Already connected - still check for remaining unsync'd files
+        check_and_sync_pending_recordings();
+    }
+    last_device_logged = current_logged;
+#endif
 }
 
 /**

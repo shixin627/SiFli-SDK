@@ -124,6 +124,7 @@ void set_pending_instruction_img_id(const char *id)
 typedef enum
 {
     SYNC_FILE_MSG = 0,
+    SYNC_MULTI_FILES_MSG,
     DELETE_FILE_MSG,
     START_RECEIVE_FILE_MSG,
     RECEIVE_FILE_DATA_MSG,
@@ -152,6 +153,13 @@ typedef struct file_system_msg_data
             char *file_path;
             bool delete_after_sync;
         } sync;
+
+        /* For SYNC_MULTI_FILES_MSG */
+        struct
+        {
+            char *folder_path;
+            bool delete_after_sync;
+        } sync_multi;
 
         /* For file receive messages */
         file_receive_msg_data_t receive;
@@ -510,6 +518,76 @@ static void file_system_entry(void *parameter)
                 break;
             }
 
+            case SYNC_MULTI_FILES_MSG:
+            {
+                const char *folder_path = msg_data.data.sync_multi.folder_path;
+                bool del_after = msg_data.data.sync_multi.delete_after_sync;
+
+                if (folder_path == NULL)
+                {
+                    LOG_E("sync_multi: folder_path is NULL");
+                    break;
+                }
+
+                DIR *dir = opendir(folder_path);
+                if (dir == NULL)
+                {
+                    LOG_E("sync_multi: failed to open folder %s", folder_path);
+                    break;
+                }
+
+                struct dirent *entry;
+                char file_path_buf[FILE_PATH_MAX_LEN];
+
+                skaiwatch_ble_set_performance(true);
+
+                while ((entry = readdir(dir)) != NULL)
+                {
+                    if (entry->d_type != DT_REG)
+                    {
+                        continue;
+                    }
+
+                    snprintf(file_path_buf, sizeof(file_path_buf), "%s/%s",
+                             folder_path, entry->d_name);
+
+                    // Initialize sync progress for each file
+                    sync_progress.sync_status = true;
+                    sync_progress.transferred_bytes = 0;
+                    sync_progress.percent_complete = 0;
+                    strncpy(sync_progress.sync_in_file_path, file_path_buf,
+                            FILE_PATH_MAX_LEN - 1);
+                    sync_progress.sync_in_file_path[FILE_PATH_MAX_LEN - 1] = '\0';
+
+                    ui_msg.type = LVGL_MSG_TYPE_SYNC_STATUS;
+                    ui_msg.data.sync_state = true;
+                    lvgl_send_msg(ui_msg);
+
+                    LOG_D("sync_multi: syncing %s", file_path_buf);
+                    sync_file_to_remote_client(file_path_buf);
+
+                    if (del_after)
+                    {
+                        delete_file(file_path_buf);
+                    }
+
+                    // Brief pause between files
+                    rt_thread_mdelay(100);
+                }
+
+                skaiwatch_ble_set_performance(false);
+                closedir(dir);
+
+                sync_progress.sync_status = false;
+                ui_msg.type = LVGL_MSG_TYPE_SYNC_STATUS;
+                ui_msg.data.sync_state = false;
+                lvgl_send_msg(ui_msg);
+
+                rt_free(msg_data.data.sync_multi.folder_path);
+                msg_data.data.sync_multi.folder_path = NULL;
+                break;
+            }
+
             case DELETE_FILE_MSG:
             {
                 delete_file(msg_data.data.sync.file_path);
@@ -858,6 +936,44 @@ int bloc_system_sync(const char *file_path, bool delete_after_sync)
 }
 
 /**
+ * @brief Sync all files in a folder to the remote client
+ * @param folder_path Path to the folder containing files to sync
+ * @param delete_after_sync Whether to delete each file after sync
+ * @return RT_EOK on success, -RT_ERROR on failure
+ */
+int bloc_sync_folder_files(const char *folder_path, bool delete_after_sync)
+{
+    if (folder_path == NULL)
+    {
+        LOG_E("Invalid folder path: NULL pointer");
+        return -RT_ERROR;
+    }
+
+    file_system_msg_data_t msg_data;
+    msg_data.msg_type = SYNC_MULTI_FILES_MSG;
+    msg_data.data.sync_multi.delete_after_sync = delete_after_sync;
+
+    size_t path_len = strlen(folder_path) + 1;
+    msg_data.data.sync_multi.folder_path = (char *)rt_malloc(path_len);
+    if (msg_data.data.sync_multi.folder_path == NULL)
+    {
+        LOG_E("Failed to allocate memory for folder path");
+        return -RT_ERROR;
+    }
+
+    rt_strncpy(msg_data.data.sync_multi.folder_path, folder_path, path_len);
+
+    if (rt_mq_send(file_system_mq, (void *)&msg_data, sizeof(msg_data)) != RT_EOK)
+    {
+        LOG_E("Failed to send sync_multi message to queue");
+        rt_free(msg_data.data.sync_multi.folder_path);
+        return -RT_ERROR;
+    }
+
+    return RT_EOK;
+}
+
+/**
  * @brief Delete a file asynchronously
  * @param file_path Path to the file to be deleted
  * @return RT_EOK on success, -RT_ERROR on failure
@@ -906,6 +1022,7 @@ int bloc_system_delete_file(const char *file_path)
 static int bloc_file_system_register(void)
 {
     bloc_file_system.sync_file = bloc_system_sync;
+    bloc_file_system.sync_folder_files = bloc_sync_folder_files;
     bloc_file_system.delete_file = bloc_system_delete_file;
     return 0;
 }

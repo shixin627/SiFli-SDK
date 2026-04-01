@@ -38,6 +38,7 @@ extern "C"
 	typedef struct
 	{
 		int (*sync_file)(const char *file_path, bool delete_after_sync);
+		int (*sync_folder_files)(const char *folder_path, bool delete_after_sync);
 		int (*delete_file)(const char *file_path);
 	} BLocFileSystem;
 	extern BLocFileSystem bloc_file_system;
