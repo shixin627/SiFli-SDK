@@ -19,6 +19,7 @@
 #include "app_message.h"
 #include "bloc_v2t.h"
 #include "bloc_motor.h"
+#include "bloc_setting.h"
 #include "app_speech.h"
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
     #include "watch_system_interact.h"
@@ -488,6 +489,7 @@ static void on_start(void)
 
 static void on_resume(void)
 {
+    setting_provider.set_power_save_mode(0);
     #ifdef BSP_USING_UI_HANDLER
     if (voice_reply_active)
     {
@@ -508,6 +510,7 @@ static void on_resume(void)
 
 static void on_pause(void)
 {
+    setting_provider.set_power_save_mode(1);
     #ifdef BSP_USING_UI_HANDLER
     if (voice_reply_active)
     {
