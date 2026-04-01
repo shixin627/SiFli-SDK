@@ -18,12 +18,12 @@
 #include "watch_system_interact.h"
 #include "watch_system_core_task.h"
 #ifdef BSP_USING_MODEL_WATCH_GLOBAL_DATA
-#include "watch_global_data.h"
+    #include "watch_global_data.h"
 #endif
 #ifdef BSP_USING_BLOC
-#include "bloc_setting.h"
-#include "bloc_control.h"
-#include "bloc_peripheral.h"
+    #include "bloc_setting.h"
+    #include "bloc_control.h"
+    #include "bloc_peripheral.h"
 #endif
 #define DBG_TAG "commu.parse.setting"
 #define DBG_LVL DBG_LOG
@@ -38,12 +38,14 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
     {
         if (length == 0x02)
         {
-            LOG_D("Phone OS Version:%d; Pair Flag = %d", pValue[0],
-                  SkaiWatchSys.paired_info.paired_flag); // 0x01:ios,0x02:android
+            LOG_D(
+                "Phone OS Version:%d; Pair Flag = %d", pValue[0],
+                SkaiWatchSys.paired_info.paired_flag); // 0x01:ios,0x02:android
 
             SkaiWatchSys.phone_os_version = pValue[0];
 
-            if (IOS == SkaiWatchSys.phone_os_version && !SkaiWatchSys.paired_info.paired_flag)
+            if (IOS == SkaiWatchSys.phone_os_version &&
+                !SkaiWatchSys.paired_info.paired_flag)
             {
                 // TODO: le_bond_pair(SkaiWatchSys.watch_conn_id);
             }
@@ -62,7 +64,9 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
             time.data |= pValue[1] << 16;
             time.data |= pValue[0] << 24;
             // if set time pass a day,reset step count
-            LOG_D("Set DateTime: %d-%d-%d %d:%d:%d", time.time.year, time.time.month, time.time.day, time.time.hours, time.time.minute, time.time.seconds);
+            LOG_D("Set DateTime: %d-%d-%d %d:%d:%d", time.time.year,
+                  time.time.month, time.time.day, time.time.hours,
+                  time.time.minute, time.time.seconds);
             uint32_t old_sec = SkaiWatchSys.SecondCountRTC;
             SkaiWatchSys.Global_Time.year = 2000 + time.time.year;
             SkaiWatchSys.Global_Time.month = time.time.month;
@@ -74,6 +78,10 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
 #ifdef BSP_USING_BLOC_SETTING
             setting_provider.set_watch_time(SkaiWatchSys.Global_Time);
 #endif
+            extern void app_clock_reset_time(void);
+            app_clock_reset_time();
+            peripheral_provider.save_watch_shared_prefs(
+                WATCH_PREFS_KEY_GLOBAL_TIME);
         }
     }
     break;
@@ -110,12 +118,11 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
                     alarm.alarm.reserved = 0x1;
                 }
 
-                memcpy((void *)&(SkaiWatchSys.alarms[index]), &alarm, sizeof(T_ALARM));
+                memcpy((void *)&(SkaiWatchSys.alarms[index]), &alarm,
+                       sizeof(T_ALARM));
 #if 1
                 LOG_D("Set alarm day:%d, hour:%d, min:%d,repeat_flag:0x%x\n",
-                      alarm.alarm.day,
-                      alarm.alarm.hour,
-                      alarm.alarm.minute,
+                      alarm.alarm.day, alarm.alarm.hour, alarm.alarm.minute,
                       alarm.alarm.day_repeat_flag);
 
                 // TODO: set_alarm(&alarm);
@@ -155,13 +162,15 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
                 target = 10000;
             }
             SkaiWatchSys.gPedoData.daily_step_target = target;
-            LOG_D("Set daily step target:%d", SkaiWatchSys.gPedoData.daily_step_target);
+            LOG_D("Set daily step target:%d",
+                  SkaiWatchSys.gPedoData.daily_step_target);
 #if FEATURE_USE_FLASH
             uint32_t temp = SkaiWatchSys.gPedoData.daily_step_target;
             ftl_save(&temp, STEP_TARGET_OFFSET, STEP_TARGET_SIZE);
 #endif
 
-            if (SkaiWatchSys.gPedoData.daily_step_target >= SkaiWatchSys.gPedoData.global_steps)
+            if (SkaiWatchSys.gPedoData.daily_step_target >=
+                SkaiWatchSys.gPedoData.global_steps)
             {
                 SkaiWatchSys.flag_field.daily_target_achieved = false;
             }
@@ -182,7 +191,8 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
                 target = 480;
             }
             SkaiWatchSys.gPedoData.daily_sleep_target = target;
-            LOG_D("Set daily sleep target:%d", SkaiWatchSys.gPedoData.daily_sleep_target);
+            LOG_D("Set daily sleep target:%d",
+                  SkaiWatchSys.gPedoData.daily_sleep_target);
             // TODO: Set daily sleep target
 #if FEATURE_USE_FLASH
             uint32_t temp = SkaiWatchSys.gPedoData.daily_sleep_target;
@@ -314,20 +324,27 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
 
             if (SkaiWatchSys.msg_switch.data != 0)
             {
-                if (IOS == SkaiWatchSys.phone_os_version && !SkaiWatchSys.paired_info.paired_flag)
+                if (IOS == SkaiWatchSys.phone_os_version &&
+                    !SkaiWatchSys.paired_info.paired_flag)
                 {
                     // TODO: le_bond_pair(SkaiWatchSys.watch_conn_id);
                 }
-                else if (IOS == SkaiWatchSys.phone_os_version && SkaiWatchSys.paired_info.paired_flag)
+                else if (IOS == SkaiWatchSys.phone_os_version &&
+                         SkaiWatchSys.paired_info.paired_flag)
                 {
-                    // TODO: ancs_set_data_source_notify(SkaiWatchSys.watch_conn_id, true);
+                    // TODO:
+                    // ancs_set_data_source_notify(SkaiWatchSys.watch_conn_id,
+                    // true);
                 }
             }
             else
             {
-                if (IOS == SkaiWatchSys.phone_os_version && SkaiWatchSys.paired_info.paired_flag)
+                if (IOS == SkaiWatchSys.phone_os_version &&
+                    SkaiWatchSys.paired_info.paired_flag)
                 {
-                    // TODO: ancs_set_data_source_notify(SkaiWatchSys.watch_conn_id, false);
+                    // TODO:
+                    // ancs_set_data_source_notify(SkaiWatchSys.watch_conn_id,
+                    // false);
                 }
             }
         }
@@ -345,20 +362,27 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
 
             if (SkaiWatchSys.msg_switch.data != 0)
             {
-                if (IOS == SkaiWatchSys.phone_os_version && !SkaiWatchSys.paired_info.paired_flag)
+                if (IOS == SkaiWatchSys.phone_os_version &&
+                    !SkaiWatchSys.paired_info.paired_flag)
                 {
                     // TODO: le_bond_pair(SkaiWatchSys.watch_conn_id);
                 }
-                else if (IOS == SkaiWatchSys.phone_os_version && SkaiWatchSys.paired_info.paired_flag)
+                else if (IOS == SkaiWatchSys.phone_os_version &&
+                         SkaiWatchSys.paired_info.paired_flag)
                 {
-                    // TODO: ancs_set_data_source_notify(SkaiWatchSys.watch_conn_id, true);
+                    // TODO:
+                    // ancs_set_data_source_notify(SkaiWatchSys.watch_conn_id,
+                    // true);
                 }
             }
             else
             {
-                if (IOS == SkaiWatchSys.phone_os_version && SkaiWatchSys.paired_info.paired_flag)
+                if (IOS == SkaiWatchSys.phone_os_version &&
+                    SkaiWatchSys.paired_info.paired_flag)
                 {
-                    // TODO: ancs_set_data_source_notify(SkaiWatchSys.watch_conn_id, false);
+                    // TODO:
+                    // ancs_set_data_source_notify(SkaiWatchSys.watch_conn_id,
+                    // false);
                 }
             }
         }
@@ -380,7 +404,8 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
 
         if (length == 0x00)
         {
-            if ((!SkaiWatchSys.paired_info.paired_flag) && (SkaiWatchSys.phone_os_version == IOS) &&
+            if ((!SkaiWatchSys.paired_info.paired_flag) &&
+                (SkaiWatchSys.phone_os_version == IOS) &&
                 (SkaiWatchSys.msg_switch.data != 0))
             {
                 // TODO: le_bond_pair(SkaiWatchSys.watch_conn_id);
@@ -394,7 +419,8 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
     break;
     case KEY_FUNCTIONS_REQUEST:
     {
-        LOG_D("<><><><><><><><><><> KEY_FUNCTIONS_REQUEST <><><><><><><><><><>");
+        LOG_D(
+            "<><><><><><><><><><> KEY_FUNCTIONS_REQUEST <><><><><><><><><><>");
         if (length == 0x00)
         {
             L1SendData data;
@@ -481,7 +507,8 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x01)
         {
             SkaiWatchSys.flag_field.distance_unit = pValue[0];
-            LOG_D("Set distance unit:%d", SkaiWatchSys.flag_field.distance_unit);
+            LOG_D("Set distance unit:%d",
+                  SkaiWatchSys.flag_field.distance_unit);
         }
     }
     break;
@@ -530,7 +557,8 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
             if (pValue[0] > 4 && pValue[0] <= 30)
             {
                 SkaiWatchSys.oled_display_time = pValue[0];
-                LOG_D("Set OLED display time:%d", SkaiWatchSys.oled_display_time);
+                LOG_D("Set OLED display time:%d",
+                      SkaiWatchSys.oled_display_time);
             }
         }
     }
@@ -613,14 +641,17 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
             hidden_func.data |= pValue[1] << 16;
             hidden_func.data |= pValue[0] << 24;
 
-            SkaiWatchSys.flag_field.stopwatch_status = hidden_func.status.stopwatch_sw;
-            SkaiWatchSys.flag_field.findphone_status = hidden_func.status.findPhone_sw;
-            SkaiWatchSys.flag_field.system_lock_screen = hidden_func.status.lockScreen_sw;
-            LOG_D("Set hidden func:%d, stopwatch:%d, findphone:%d, lockscreen:%d",
-                  hidden_func.data,
-                  hidden_func.status.stopwatch_sw,
-                  hidden_func.status.findPhone_sw,
-                  hidden_func.status.lockScreen_sw);
+            SkaiWatchSys.flag_field.stopwatch_status =
+                hidden_func.status.stopwatch_sw;
+            SkaiWatchSys.flag_field.findphone_status =
+                hidden_func.status.findPhone_sw;
+            SkaiWatchSys.flag_field.system_lock_screen =
+                hidden_func.status.lockScreen_sw;
+            LOG_D(
+                "Set hidden func:%d, stopwatch:%d, findphone:%d, lockscreen:%d",
+                hidden_func.data, hidden_func.status.stopwatch_sw,
+                hidden_func.status.findPhone_sw,
+                hidden_func.status.lockScreen_sw);
         }
     }
     break;

@@ -56,8 +56,8 @@ static uint32_t last_activity_time = 0;
 
 /* RT-Thread thread handle and stack definition */
 #define PERIODIC_TASK_STACK_SIZE 1024
-#define PERIODIC_TASK_PRIORITY 27                   // Adjust priority as needed
-#define PERIODIC_TASK_TICK (300 * RT_TICK_PER_SECOND) // Run every 5 minutes
+#define PERIODIC_TASK_PRIORITY 27 // Adjust priority as needed
+#define PERIODIC_TASK_TICK (60 * RT_TICK_PER_SECOND) // Run every 1 minute
 
 static rt_thread_t periodic_task_thread = RT_NULL;
 static uint8_t periodic_task_stack[PERIODIC_TASK_STACK_SIZE];
@@ -219,18 +219,30 @@ void app_init(void)
  */
 void app_periodic_task(void)
 {
-    // sit_alert_status_t status = sit_alert_process();
+// sit_alert_status_t status = sit_alert_process();
 
-    // if (status == SIT_ALERT_TRIGGERED)
-    // {
-    // 	// Show alert to the user
-    // 	ui_display_sit_alert();
-    // }
+// if (status == SIT_ALERT_TRIGGERED)
+// {
+// 	// Show alert to the user
+// 	ui_display_sit_alert();
+// }
 
-    // extern void app_exercise_background_hr_cb(int hr);
-    // app_exercise_background_hr_cb(1800);
-    // peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_GLOBAL_TIME);
-    watch_system_interact(WATCH_REQUEST_BATTERY, NULL);
+// extern void app_exercise_background_hr_cb(int hr);
+// app_exercise_background_hr_cb(1800);
+#ifndef BSP_USING_PC_SIMULATOR
+    time_t now = get_current_time();
+    struct tm *time_info;
+    time_info = localtime(&now);
+    SkaiWatchSys.Global_Time.year = time_info->tm_year + 1900;
+    SkaiWatchSys.Global_Time.month = time_info->tm_mon + 1;
+    SkaiWatchSys.Global_Time.day = time_info->tm_mday;
+    SkaiWatchSys.Global_Time.hour = time_info->tm_hour;
+    SkaiWatchSys.Global_Time.minutes = time_info->tm_min;
+    SkaiWatchSys.Global_Time.seconds = time_info->tm_sec;
+    SkaiWatchSys.Global_Time.weekday = time_info->tm_wday;
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_GLOBAL_TIME);
+#endif
+    // watch_system_interact(WATCH_REQUEST_BATTERY, NULL);
 }
 
 /**

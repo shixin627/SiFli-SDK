@@ -221,11 +221,6 @@ static void set_watch_time(T_UTC_TIME datetime)
     set_date(datetime.year, datetime.month, datetime.day);
     set_time(datetime.hour, datetime.minutes, datetime.seconds);
 #endif
-
-    extern void app_clock_reset_time(void);
-    app_clock_reset_time();
-
-    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_GLOBAL_TIME);
 }
 
 /* Display functions --------------------------------------------------------*/

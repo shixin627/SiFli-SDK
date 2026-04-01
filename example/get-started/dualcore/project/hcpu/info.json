@@ -1,5 +1,5 @@
 {
-    "version": "1.1.10",
+    "version": "1.1.11",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
@@ -7,5 +7,5 @@
         "lcpu.bin",
         "lcpu_patch.bin"
     ],
-    "description": "馬達制動,新滑鼠操控方式"
+    "description": "休眠馬達不震動,指令圖片同步"
 }
