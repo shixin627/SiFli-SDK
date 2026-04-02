@@ -10,3 +10,4 @@
 extern void app_clock_main_status_bar_init(lv_obj_t *par);
 extern void app_clock_main_status_bar_deinit(void);
 extern void app_clock_ai_status_bar_init(lv_obj_t *par);
+extern void app_clock_device_change_bar_init(lv_obj_t *par);

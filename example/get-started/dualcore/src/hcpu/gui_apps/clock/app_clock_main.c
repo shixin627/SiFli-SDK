@@ -1776,7 +1776,7 @@ lv_obj_t *build_home_view(lv_obj_t *parent)
     app_clock_main_status_bar_init(lv_scr_act());
     app_clock_ai_status_bar_init(lv_scr_act());
 #endif
-
+    app_clock_device_change_bar_init(lv_layer_top());
     top_digital_time_builder(lv_layer_top());
 
     battery_status_indicator_builder(lv_layer_top());

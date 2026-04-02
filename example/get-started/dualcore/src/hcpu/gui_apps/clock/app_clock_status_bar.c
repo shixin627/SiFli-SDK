@@ -26,6 +26,10 @@
 #include "bloc_motion_tracking.h"
 #include "communicate_protocol.h"
 #include "bloc_v2t.h"
+#include "ble_device_manager.h"
+
+extern void refresh_connected_device_label(void);
+__attribute__((weak)) void refresh_connected_device_label(void) {}
 
 #define DBG_TAG "app.clock.status_bar"
 #define DBG_LVL DBG_LOG
@@ -67,6 +71,7 @@ LV_IMG_DECLARE(flashlight_icon);
 LV_IMG_DECLARE(img_settings);
 LV_IMG_DECLARE(find_phone);
 LV_IMG_DECLARE(img_logo);
+LV_IMG_DECLARE(device_btn);
 
 #define NOTIFICATION_ITEM_WIDTH 360
 #define NOTIFICATION_ITEM_HEIGHT 90
@@ -74,10 +79,17 @@ LV_IMG_DECLARE(img_logo);
 #define NOTIFICATION_ITEM_PAD_LEFT ((LV_HOR_RES - NOTIFICATION_ITEM_WIDTH) / 2)
 
 #define APP_MAIN_COLOR lv_color_hex(0xCECECE)
+#define DEV_CHANGE_BUTTON_WIDTH 202
+#define DEV_CHANGE_BUTTON_HEIGHT 102
+#define DEV_CHANGE_BUTTON_GAP 20
+#define DEV_CHANGE_CONTENT_SIDE_MARGIN 20
+#define DEV_CHANGE_CONTENT_HEIGHT (LV_VER_RES_MAX - 50)
 
 static lv_obj_t *app_clock_main_status_bar;
 static lv_obj_t *app_clock_main_status_bar_down;
 static lv_obj_t *app_clock_ai_status_bar;
+static lv_obj_t *app_clock_device_change_bar;
+static lv_obj_t *device_change_bar_area_right;
 static lv_obj_t *status_bar_area_up;
 static lv_obj_t *status_bar_area_down;
 static lv_obj_t *status_bar_area_left;
@@ -119,6 +131,9 @@ void display_status_bar_area(uint32_t idx, bool display)
 
 static lv_obj_t *gaus_dial_bg = NULL;
 static lv_obj_t *gaus_dial_img = NULL;
+static lv_obj_t *dev_change_gaus_bg = NULL;
+static lv_obj_t *dev_change_gaus_img = NULL;
+static void set_dev_change_gaus_opa(uint8_t opa);
 static void notification_status_bar_cb(lv_event_t *event)
 {
     if (lv_disp_get_rotation(NULL) != LV_DISP_ROT_90 &&
@@ -177,6 +192,34 @@ static void notification_status_bar_cb(lv_event_t *event)
             lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
             lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+static void dev_change_refresh_device_list(void);
+
+static void device_change_bar_cb(lv_event_t *event)
+{
+    if (lv_disp_get_rotation(NULL) != LV_DISP_ROT_90 &&
+        lv_disp_get_rotation(NULL) != LV_DISP_ROT_270)
+    {
+        if (LV_EVENT_RELEASED == event->code)
+        {
+            lv_obj_add_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(dev_change_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+            set_dev_change_gaus_opa(LV_OPA_0);
+        }
+        else if (LV_EVENT_PRESSED == event->code)
+        {
+            if (is_ble_dfu_thread_running())
+            {
+                LOG_I("app_clock_device_change_bar in ble dfu => return");
+                return;
+            }
+            lv_obj_set_tile_id(app_clock_device_change_bar, 0, 0, false);
+            lv_obj_clear_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(dev_change_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+            dev_change_refresh_device_list();
         }
     }
 }
@@ -406,14 +449,16 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
             set_instruction_list_time_opa(LV_OPA_0);
             // if (lv_obj_is_valid(get_instruction_list_time_bg()))
-            //     lv_obj_set_style_bg_opa(get_instruction_list_time_bg(), LV_OPA_0, 0);
+            //     lv_obj_set_style_bg_opa(get_instruction_list_time_bg(),
+            //     LV_OPA_0, 0);
 
 #ifdef APP_ID_WIDGETS
             widget_page_flip(false);
 #endif
 
             set_instruction_list_battery_opa(LV_OPA_TRANSP);
-            // lv_obj_set_style_bg_opa(get_instruction_list_battery_bg(), LV_OPA_TRANSP,
+            // lv_obj_set_style_bg_opa(get_instruction_list_battery_bg(),
+            // LV_OPA_TRANSP,
             //                         0);
         }
         else
@@ -437,7 +482,8 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             else
             {
                 // if (lv_obj_is_valid(get_instruction_list_time_bg()))
-                //     lv_obj_set_style_bg_opa(get_instruction_list_time_bg(), LV_OPA_0,
+                //     lv_obj_set_style_bg_opa(get_instruction_list_time_bg(),
+                //     LV_OPA_0,
                 //                             0);
                 set_instruction_list_time_opa(LV_OPA_0);
             }
@@ -519,6 +565,48 @@ static void app_clock_ai_status_bar_event_cb(lv_event_t *event)
     }
 }
 
+static void app_clock_device_change_bar_event_cb(lv_event_t *event)
+{
+    lv_obj_t *obj = lv_event_get_target(event);
+    switch (event->code)
+    {
+    case LV_EVENT_SCROLL:
+    {
+        // Animate gaussian blur opacity based on horizontal scroll
+        lv_coord_t scroll_x = lv_obj_get_scroll_x(obj);
+        uint8_t opa = 0;
+        if (scroll_x > 0)
+        {
+            opa = (scroll_x * LV_OPA_COVER) / LV_HOR_RES_MAX;
+            if (opa > LV_OPA_COVER)
+                opa = LV_OPA_COVER;
+        }
+        set_dev_change_gaus_opa(opa);
+    }
+    break;
+    case LV_EVENT_VALUE_CHANGED:
+    {
+        rt_uint32_t active_pos = (rt_uint32_t)lv_event_get_param(event);
+        LOG_D("LV_EVENT_VALUE_CHANGED_DEVICE_CHANGE %d", active_pos);
+        if (active_pos == 0)
+        {
+            lv_obj_add_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(dev_change_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+            set_dev_change_gaus_opa(LV_OPA_0);
+        }
+        else if (active_pos == 1)
+        {
+            lv_obj_clear_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
+            set_dev_change_gaus_opa(LV_OPA_COVER);
+            dev_change_refresh_device_list();
+        }
+    }
+    break;
+    default:
+        break;
+    }
+}
+
 uint8_t get_middle_layer_tileview_index(void)
 {
     return middle_layer_tileview_index;
@@ -562,6 +650,23 @@ static void app_clock_main_ai_status_bar_event_cb(lv_event_t *event)
     {
         LOG_D("LV_EVENT_RELEASED_Clock");
         lv_obj_add_flag(app_clock_ai_status_bar, LV_OBJ_FLAG_HIDDEN);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void app_clock_main_device_change_bar_event_cb(lv_event_t *event)
+{
+    lv_obj_t *obj = lv_event_get_target(event);
+
+    switch (event->code)
+    {
+    case LV_EVENT_RELEASED:
+    {
+        LOG_D("LV_EVENT_RELEASED_Clock");
+        lv_obj_add_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
         break;
     }
     default:
@@ -1727,6 +1832,458 @@ void app_clock_ai_status_bar_init(lv_obj_t *par)
     lv_obj_add_flag(app_clock_ai_status_bar, LV_OBJ_FLAG_HIDDEN);
 
     myLancher[app_index_ai_interface].pagetileview = app_clock_ai_status_bar;
+}
+
+// Device change bar - device list UI state
+static bool dev_change_watch_mode =
+    true; // true = Watch selected, false = device selected
+static struct
+{
+    lv_obj_t *watch_list;
+    lv_obj_t *device_list;
+    lv_obj_t *empty_label;
+} dev_change_list_ui = {0};
+
+static lv_obj_t *dev_change_create_device_item(lv_obj_t *parent,
+                                               const bonded_device_t *device,
+                                               uint8_t device_idx)
+{
+    int active_idx = ble_dev_mgr_get_active_device();
+    bool is_active = !dev_change_watch_mode && (active_idx == device_idx);
+
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_set_size(btn, DEV_CHANGE_BUTTON_WIDTH, DEV_CHANGE_BUTTON_HEIGHT);
+    lv_obj_set_style_radius(btn, 80, 0);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x2A2A2A), 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x3A3A3A), LV_STATE_PRESSED);
+    lv_obj_set_style_pad_all(btn, 6, 0);
+
+    lv_obj_t *device_bg = lv_img_create(btn);
+    lv_img_set_src(device_bg, &device_btn);
+    lv_obj_align(device_bg, LV_ALIGN_CENTER, 0, 0);
+
+    if (is_active)
+    {
+        lv_obj_set_style_border_width(btn, 2, 0);
+        lv_obj_set_style_border_color(btn, lv_color_hex(0x00AAFF), 0);
+    }
+    else
+    {
+        lv_obj_set_style_border_width(btn, 0, 0);
+    }
+
+    lv_obj_set_user_data(btn, (void *)(uintptr_t)device_idx);
+
+    // Connection status LED indicator
+    lv_obj_t *led_indicator = lv_obj_create(btn);
+    lv_obj_set_size(led_indicator, 12, 12);
+    lv_obj_set_style_radius(led_indicator, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(led_indicator, 0, 0);
+    lv_obj_set_style_pad_all(led_indicator, 0, 0);
+    lv_obj_align(led_indicator, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_clear_flag(led_indicator,
+                      LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+    if (device->conn_idx != 0xFF)
+    {
+        lv_obj_set_style_bg_color(led_indicator, lv_color_hex(0x00FF00), 0);
+        lv_obj_set_style_shadow_color(led_indicator, lv_color_hex(0x00FF00), 0);
+        lv_obj_set_style_shadow_width(led_indicator, 8, 0);
+        lv_obj_set_style_shadow_spread(led_indicator, 2, 0);
+    }
+    else
+    {
+        lv_obj_set_style_bg_color(led_indicator, lv_color_hex(0x666666), 0);
+    }
+
+    // Device name
+    lv_obj_t *name_label = lv_label_create(btn);
+    lv_label_set_text(name_label, device->device_name);
+    lv_obj_set_style_text_color(name_label, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_long_mode(name_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(name_label, LV_PCT(80));
+    lv_obj_align(name_label, LV_ALIGN_LEFT_MID, 18, 0);
+    lv_obj_clear_flag(name_label, LV_OBJ_FLAG_CLICKABLE);
+
+    return btn;
+}
+
+static void dev_change_watch_btn_cb(lv_event_t *e)
+{
+    lv_event_code_t event = lv_event_get_code(e);
+    if (event != LV_EVENT_SHORT_CLICKED)
+        return;
+
+    LOG_I("Device change bar: Watch selected, exit mouse app");
+    dev_change_watch_mode = true;
+    gui_app_exit(APP_ID_MOUSE);
+    dev_change_refresh_device_list();
+}
+
+static void dev_change_device_item_click_cb(lv_event_t *e)
+{
+    lv_event_code_t event = lv_event_get_code(e);
+    if (event != LV_EVENT_SHORT_CLICKED)
+        return;
+
+    lv_obj_t *btn = lv_event_get_target(e);
+    uint8_t device_idx = (uint8_t)(uintptr_t)lv_obj_get_user_data(btn);
+
+    const bonded_devices_db_t *db = ble_dev_mgr_get_database();
+    if (!db || device_idx >= MAX_BONDED_DEVICES)
+        return;
+    if (!db->devices[device_idx].is_valid)
+        return;
+
+    LOG_D("Device change bar: select device idx=%d, name=%s", device_idx,
+          db->devices[device_idx].device_name);
+    dev_change_watch_mode = false;
+    ble_dev_mgr_set_active_device(device_idx);
+    if (!gui_app_is_actived(APP_ID_MOUSE))
+    {
+        gui_app_run(APP_ID_MOUSE);
+    }
+    refresh_connected_device_label();
+    dev_change_refresh_device_list();
+}
+
+extern void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
+                                      bool pairing_mode);
+
+static void dev_change_add_device_btn_cb(lv_event_t *e)
+{
+    lv_event_code_t event = lv_event_get_code(e);
+    if (event == LV_EVENT_SHORT_CLICKED)
+    {
+        LOG_I("Device change bar: Add device (start advertising)");
+        ble_app_advertising_start(true, true, false);
+    }
+}
+
+static void dev_change_refresh_device_list(void)
+{
+    const bonded_devices_db_t *db = ble_dev_mgr_get_database();
+    if (!db)
+        return;
+
+    if (dev_change_list_ui.watch_list &&
+        lv_obj_is_valid(dev_change_list_ui.watch_list))
+    {
+        lv_obj_clean(dev_change_list_ui.watch_list);
+    }
+
+    if (dev_change_list_ui.device_list &&
+        lv_obj_is_valid(dev_change_list_ui.device_list))
+    {
+        lv_obj_clean(dev_change_list_ui.device_list);
+    }
+
+    if (db->count == 0)
+    {
+        if (dev_change_list_ui.empty_label &&
+            lv_obj_is_valid(dev_change_list_ui.empty_label))
+        {
+            lv_obj_clear_flag(dev_change_list_ui.empty_label,
+                              LV_OBJ_FLAG_HIDDEN);
+        }
+        return;
+    }
+
+    if (dev_change_list_ui.empty_label &&
+        lv_obj_is_valid(dev_change_list_ui.empty_label))
+    {
+        lv_obj_add_flag(dev_change_list_ui.empty_label, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (!dev_change_list_ui.device_list ||
+        !lv_obj_is_valid(dev_change_list_ui.device_list))
+    {
+        return;
+    }
+
+    // Watch button - in a dedicated row container
+    {
+        lv_obj_t *watch_btn = lv_btn_create(dev_change_list_ui.watch_list);
+        lv_obj_set_size(watch_btn, DEV_CHANGE_BUTTON_WIDTH,
+                        DEV_CHANGE_BUTTON_HEIGHT);
+        lv_obj_set_style_radius(watch_btn, 80, 0);
+        lv_obj_set_style_bg_opa(watch_btn, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_color(watch_btn, lv_color_hex(0x2A2A2A), 0);
+        lv_obj_set_style_bg_color(watch_btn, lv_color_hex(0x3A3A3A),
+                                  LV_STATE_PRESSED);
+        lv_obj_set_style_pad_all(watch_btn, 6, 0);
+
+        lv_obj_t *device_bg = lv_img_create(watch_btn);
+        lv_img_set_src(device_bg, &device_btn);
+        lv_obj_align(device_bg, LV_ALIGN_CENTER, 0, 0);
+
+        if (dev_change_watch_mode)
+        {
+            lv_obj_set_style_border_width(watch_btn, 2, 0);
+            lv_obj_set_style_border_color(watch_btn, lv_color_hex(0x00AAFF), 0);
+        }
+        else
+        {
+            lv_obj_set_style_border_width(watch_btn, 0, 0);
+        }
+
+        lv_obj_add_event_cb(watch_btn, dev_change_watch_btn_cb,
+                            LV_EVENT_SHORT_CLICKED, NULL);
+
+        // Green LED indicator (always connected)
+        lv_obj_t *watch_led = lv_obj_create(watch_btn);
+        lv_obj_set_size(watch_led, 12, 12);
+        lv_obj_set_style_radius(watch_led, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_width(watch_led, 0, 0);
+        lv_obj_set_style_pad_all(watch_led, 0, 0);
+        lv_obj_align(watch_led, LV_ALIGN_LEFT_MID, 0, 0);
+        lv_obj_clear_flag(watch_led,
+                          LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_bg_color(watch_led, lv_color_hex(0x00FF00), 0);
+        lv_obj_set_style_shadow_color(watch_led, lv_color_hex(0x00FF00), 0);
+        lv_obj_set_style_shadow_width(watch_led, 8, 0);
+        lv_obj_set_style_shadow_spread(watch_led, 2, 0);
+
+        lv_obj_t *watch_label = lv_label_create(watch_btn);
+        lv_label_set_text(watch_label, "Watch");
+        lv_obj_set_style_text_color(watch_label, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_align(watch_label, LV_ALIGN_LEFT_MID, 18, 0);
+        lv_obj_clear_flag(watch_label, LV_OBJ_FLAG_CLICKABLE);
+    }
+
+    // Device buttons - two per row, all same size
+    for (int i = 0; i < MAX_BONDED_DEVICES; i++)
+    {
+        if (db->devices[i].is_valid)
+        {
+            lv_obj_t *item = dev_change_create_device_item(
+                dev_change_list_ui.device_list, &db->devices[i], i);
+            lv_obj_add_event_cb(item, dev_change_device_item_click_cb,
+                                LV_EVENT_SHORT_CLICKED, NULL);
+        }
+    }
+
+    // Add Device button
+    {
+        lv_obj_t *add_btn = lv_btn_create(dev_change_list_ui.device_list);
+        lv_obj_set_size(add_btn, DEV_CHANGE_BUTTON_WIDTH,
+                        DEV_CHANGE_BUTTON_HEIGHT);
+        lv_obj_set_style_radius(add_btn, 80, 0);
+        lv_obj_set_style_bg_opa(add_btn, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_color(add_btn, lv_color_hex(0x2A2A2A), 0);
+        lv_obj_set_style_bg_color(add_btn, lv_color_hex(0x3A3A3A),
+                                  LV_STATE_PRESSED);
+        lv_obj_set_style_pad_all(add_btn, 6, 0);
+        lv_obj_set_style_border_width(add_btn, 0, 0);
+        lv_obj_add_event_cb(add_btn, dev_change_add_device_btn_cb,
+                            LV_EVENT_SHORT_CLICKED, NULL);
+        lv_obj_t *device_bg = lv_img_create(add_btn);
+        lv_img_set_src(device_bg, &device_btn);
+        lv_obj_align(device_bg, LV_ALIGN_CENTER, 0, 0);
+
+        lv_obj_t *add_label = lv_label_create(add_btn);
+        lv_label_set_text(add_label, "Add Device");
+        lv_obj_set_style_text_color(add_label, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_center(add_label);
+    }
+}
+
+static lv_obj_t *status_bar_device_bg = NULL;
+
+static void set_dev_change_gaus_opa(uint8_t opa)
+{
+    if (lv_obj_is_valid(dev_change_gaus_img))
+    {
+        lv_obj_set_style_img_opa(dev_change_gaus_img, opa,
+                                 LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
+}
+
+void app_clock_device_change_bar_init(lv_obj_t *par)
+{
+    // Gaussian blur background
+    dev_change_gaus_bg = lv_obj_create(par);
+    lv_obj_set_size(dev_change_gaus_bg, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_set_style_bg_color(dev_change_gaus_bg, LV_COLOR_BLACK,
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(dev_change_gaus_bg, LV_OPA_TRANSP,
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_center(dev_change_gaus_bg);
+    lv_obj_add_flag(dev_change_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+
+    dev_change_gaus_img = lv_img_create(dev_change_gaus_bg);
+    lv_img_set_src(dev_change_gaus_img, GAUS_CLOCK1_BG);
+    lv_obj_set_style_img_opa(dev_change_gaus_img, LV_OPA_0,
+                             LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_img_set_zoom(dev_change_gaus_img, 256 * 2);
+    lv_obj_center(dev_change_gaus_img);
+
+    status_bar_device_bg = lv_obj_create(par);
+    lv_obj_set_size(status_bar_device_bg, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_set_style_bg_opa(status_bar_device_bg, LV_OPA_0,
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(status_bar_device_bg, LV_COLOR_WHITE,
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_clear_flag(status_bar_device_bg, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_pos(status_bar_device_bg, 0, 0);
+
+    lv_obj_t *status_bar_area;
+    rt_uint16_t i;
+    lv_obj_t *pages[2];
+    status_bar_area = lv_obj_create(status_bar_device_bg);
+    lv_obj_set_size(status_bar_area, (LV_HOR_RES_MAX >> 4),
+                    (LV_VER_RES_MAX >> 2));
+    lv_obj_set_scrollbar_mode(status_bar_area, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(status_bar_area,
+                      LV_OBJ_FLAG_PRESS_LOCK); // Allow press event to tileview
+    lv_obj_set_style_bg_opa(status_bar_area, bar_opa,
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_add_event_cb(status_bar_area, device_change_bar_cb, LV_EVENT_ALL,
+                        NULL);
+    lv_obj_align(status_bar_area, LV_ALIGN_RIGHT_MID, 0, 0);
+    device_change_bar_area_right = status_bar_area;
+
+    app_clock_device_change_bar = lv_tileview_create(status_bar_device_bg);
+    lv_obj_set_scrollbar_mode(app_clock_device_change_bar,
+                              LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_bg_color(app_clock_device_change_bar, LV_COLOR_BLACK,
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(app_clock_device_change_bar, LV_OPA_TRANSP,
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    // Create a single tile for AI status bar
+    for (i = 0; i < 2; i++)
+    {
+        pages[i] =
+            lv_tileview_add_tile(app_clock_device_change_bar, i, 0, LV_DIR_HOR);
+        if (i == 0)
+        {
+            lv_obj_add_event_cb(pages[i],
+                                app_clock_main_device_change_bar_event_cb,
+                                LV_EVENT_ALL, NULL);
+            lv_obj_set_style_bg_color(pages[i], LV_COLOR_BLACK,
+                                      LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        else
+        {
+            lv_obj_set_style_bg_color(pages[i], LV_COLOR_WHITE,
+                                      LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        // if (g_ble_ulog_enable)
+        // {
+        //     lv_obj_set_style_bg_opa(pages[i], LV_OPA_50, LV_PART_MAIN |
+        //     LV_STATE_DEFAULT);
+        // }
+        // else
+        // {
+        lv_obj_set_style_bg_opa(pages[i], LV_OPA_TRANSP,
+                                LV_PART_MAIN | LV_STATE_DEFAULT);
+        // }
+        lv_obj_set_size(pages[i], LV_HOR_RES_MAX, LV_VER_RES_MAX);
+        lv_obj_set_scrollbar_mode(pages[i], LV_SCROLLBAR_MODE_OFF);
+    }
+
+    // Build vertical device list on pages[1]
+    {
+        lv_obj_t *dev_bg = lv_obj_create(pages[1]);
+        lv_obj_t *content_area;
+        lv_obj_set_size(dev_bg, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+        lv_obj_set_style_bg_color(dev_bg, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_bg_opa(dev_bg, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_radius(dev_bg, 0, 0);
+        lv_obj_set_style_border_width(dev_bg, 0, 0);
+        lv_obj_align(dev_bg, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_clear_flag(dev_bg, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_pad_all(dev_bg, 0, 0);
+
+        // Title
+        lv_obj_t *title_label = lv_label_create(dev_bg);
+        lv_label_set_text(title_label, "Devices");
+        lv_obj_set_style_text_color(title_label, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_width(title_label, LV_PCT(100));
+        lv_obj_set_style_text_align(title_label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 15);
+
+        // Content area under title keeps the button layout in flex mode.
+        content_area = lv_obj_create(dev_bg);
+        lv_obj_set_size(content_area,
+                        LV_HOR_RES_MAX - (DEV_CHANGE_CONTENT_SIDE_MARGIN * 2),
+                        DEV_CHANGE_CONTENT_HEIGHT);
+        lv_obj_set_style_bg_opa(content_area, LV_OPA_0, 0);
+        lv_obj_set_style_border_width(content_area, 0, 0);
+        lv_obj_set_style_pad_top(content_area, DEV_CHANGE_BUTTON_GAP, 0);
+        lv_obj_set_style_pad_bottom(content_area, 0, 0);
+        lv_obj_set_style_pad_left(content_area, 0, 0);
+        lv_obj_set_style_pad_right(content_area, 0, 0);
+        lv_obj_set_flex_flow(content_area, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(content_area, LV_FLEX_ALIGN_START,
+                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_row(content_area, 0, 0);
+        lv_obj_set_scrollbar_mode(content_area, LV_SCROLLBAR_MODE_OFF);
+        lv_obj_set_scroll_dir(content_area, LV_DIR_VER);
+        lv_obj_add_flag(content_area, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(content_area, LV_OBJ_FLAG_SCROLL_ELASTIC);
+        lv_obj_align_to(content_area, title_label, LV_ALIGN_OUT_BOTTOM_MID, 0,
+                        0);
+        // lv_obj_align(content_area, LV_ALIGN_TOP_MID, 0, 0);
+
+        // Dedicated row for watch button (keeps watch independent from grid)
+        lv_obj_t *watch_list = lv_obj_create(content_area);
+        lv_obj_set_size(watch_list, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_set_style_bg_opa(watch_list, LV_OPA_0, 0);
+        lv_obj_set_style_border_width(watch_list, 0, 0);
+        lv_obj_set_style_pad_all(watch_list, 0, 0);
+        lv_obj_set_flex_flow(watch_list, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(watch_list, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_clear_flag(watch_list, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_pad_bottom(watch_list, DEV_CHANGE_BUTTON_GAP, 0);
+        dev_change_list_ui.watch_list = watch_list;
+
+        // Scrollable device list container
+        lv_obj_t *device_list = lv_obj_create(content_area);
+        lv_obj_set_size(device_list, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_set_style_max_height(device_list, LV_VER_RES_MAX - 180, 0);
+        lv_obj_set_style_bg_opa(device_list, LV_OPA_0, 0);
+        lv_obj_set_style_border_width(device_list, 0, 0);
+        lv_obj_set_style_pad_all(device_list, 0, 0);
+        lv_obj_set_flex_flow(device_list, LV_FLEX_FLOW_ROW_WRAP);
+        lv_obj_set_flex_align(device_list, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_clear_flag(device_list, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_pad_row(device_list, DEV_CHANGE_BUTTON_GAP, 0);
+        lv_obj_set_style_pad_column(device_list, DEV_CHANGE_BUTTON_GAP, 0);
+        dev_change_list_ui.device_list = device_list;
+
+        // Empty state label
+        lv_obj_t *empty_label = lv_label_create(content_area);
+        lv_label_set_text(empty_label, "No paired devices");
+        lv_obj_set_style_text_color(empty_label, lv_color_hex(0x888888), 0);
+        lv_obj_add_flag(empty_label, LV_OBJ_FLAG_HIDDEN);
+        dev_change_list_ui.empty_label = empty_label;
+
+        // Invisible spacer to force content_area to always be scrollable
+        // (LVGL only allows scroll when children overflow the container)
+        lv_obj_t *spacer = lv_obj_create(content_area);
+        lv_obj_set_size(spacer, 1, DEV_CHANGE_BUTTON_HEIGHT);
+        lv_obj_set_style_bg_opa(spacer, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(spacer, 0, 0);
+        lv_obj_set_style_pad_all(spacer, 0, 0);
+        lv_obj_clear_flag(spacer, LV_OBJ_FLAG_CLICKABLE);
+
+        // Device list will be refreshed when user swipes to this page
+        // (in app_clock_device_change_bar_event_cb VALUE_CHANGED)
+    }
+
+    // Add event callback for AI status bar tile
+    lv_obj_add_event_cb(app_clock_device_change_bar,
+                        app_clock_device_change_bar_event_cb, LV_EVENT_ALL,
+                        NULL);
+
+    // Set the tile ID to the AI status bar tile
+    lv_obj_set_tile_id(app_clock_device_change_bar, 0, 0, false);
+    lv_obj_add_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
 }
 
 void set_status_bar_area_down_state(bool state)

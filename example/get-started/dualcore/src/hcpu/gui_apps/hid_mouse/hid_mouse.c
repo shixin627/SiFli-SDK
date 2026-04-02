@@ -2625,7 +2625,7 @@ static void menu_swipe_area_event_cb(lv_event_t *e)
             LOG_D("menu_swipe_area_event_cb: show menu tileview");
             /* 設定到首頁 tile，讓使用者從頂部往下滑到 menu */
             lv_obj_set_tile(menu_tileview, menu_home_tile, LV_ANIM_OFF);
-            lv_obj_clear_flag(menu_tileview, LV_OBJ_FLAG_HIDDEN);
+            // lv_obj_clear_flag(menu_tileview, LV_OBJ_FLAG_HIDDEN);
         }
     }
     else if (code == LV_EVENT_RELEASED)
@@ -3195,7 +3195,7 @@ static void menu_close_btn_event_cb(lv_event_t *e)
 /**
  * @brief Device manager event callback for menu
  */
-static void refresh_connected_device_label(void)
+void refresh_connected_device_label(void)
 {
     if (!lv_obj_is_valid(connected_device_label))
         return;
