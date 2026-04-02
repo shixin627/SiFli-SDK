@@ -1,5 +1,5 @@
 {
-    "version": "1.1.13",
+    "version": "1.1.14",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
@@ -7,5 +7,5 @@
         "lcpu.bin",
         "lcpu_patch.bin"
     ],
-    "description": "延長馬達震動後鎖手勢的時間"
+    "description": "右側設備頁面\nAI畫面優化"
 }
