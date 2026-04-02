@@ -1,5 +1,5 @@
 {
-    "version": "1.1.12",
+    "version": "1.1.13",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
@@ -7,5 +7,5 @@
         "lcpu.bin",
         "lcpu_patch.bin"
     ],
-    "description": "修復重啟後手錶時間錯誤的問題\n錄音時如果沒有連線,會等到與手機配對上之後再將錄音檔案傳到手機\n將任務週期從5分鐘調整為1分鐘,以更及時地感知系統狀態變化"
+    "description": "延長馬達震動後鎖手勢的時間"
 }
