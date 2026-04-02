@@ -73,6 +73,8 @@
 #include "communicate_protocol.h"
 #include <cJSON.h>
 
+LV_IMG_DECLARE(voice_group);
+
 #define DBG_TAG "instruction.list.layout"
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
@@ -578,6 +580,9 @@ static void create_indicator_dots(lv_obj_t *parent)
 
 extern void tap_on_ai_hint(void);
 static bool is_open_ai_gesture = false;
+static lv_obj_t *ai_voice_btn = NULL;
+static lv_obj_t *ai_voice_send_icon = NULL;
+static lv_obj_t *ai_gaus_bg = NULL;
 // void set_ai_hint_x(uint8_t x)
 // {
 //     lv_obj_align(p_instruction_list_layout->p_instruction_list_ai_bg,
@@ -1250,7 +1255,65 @@ static void set_ai_bg_opa(void *obj, int32_t opa)
     set_skai_widget_opa(opa);
 }
 
+/* Mic status: animate ai_voice_btn opacity based on VAD */
+static void ai_voice_btn_opa_anim_cb(void *obj, int32_t value)
+{
+    lv_obj_set_style_bg_opa((lv_obj_t *)obj, value, 0);
+}
+
+void handle_ai_voice_btn_vad(bool speaking)
+{
+    if (ai_voice_btn && lv_obj_is_valid(ai_voice_btn))
+    {
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, ai_voice_btn);
+        lv_anim_set_values(&a, lv_obj_get_style_bg_opa(ai_voice_btn, 0),
+                           speaking ? LV_OPA_30 : LV_OPA_10);
+        lv_anim_set_exec_cb(&a, ai_voice_btn_opa_anim_cb);
+        lv_anim_set_time(&a, 200);
+        lv_anim_start(&a);
+    }
+}
+
+/* Animate skai_widget fade-in */
+static bool skai_widget_shown = false;
+static void skai_fade_in_anim_cb(void *var, int32_t value)
+{
+    set_skai_widget_opa((uint8_t)value);
+}
+
+/* Called from app_skai.c when speech text is updated */
+void instruction_ai_show_skai_widget(void)
+{
+    if (!is_open_instruction_list_ai || !p_instruction_list_layout)
+        return;
+    if (skai_widget_shown)
+        return;
+    skai_widget_shown = true;
+    /* Phase 2: text arrived — show gaus bg, send icon, raise bg, fade skai_widget in */
+    if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
+    {
+        lv_obj_clear_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (ai_voice_send_icon && lv_obj_is_valid(ai_voice_send_icon))
+    {
+        lv_obj_clear_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
+                            LV_OPA_50, 0);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, NULL);
+    lv_anim_set_values(&a, 0, LV_OPA_COVER);
+    lv_anim_set_time(&a, 300);
+    lv_anim_set_exec_cb(&a, skai_fade_in_anim_cb);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    lv_anim_start(&a);
+}
+
 static rt_tick_t last_ai_widget_open_time = 0;
+void tap_on_ai_widget(void);
 void animate_open_ai_widget(void)
 {
     if (!get_bluetooth_connection_status())
@@ -1260,24 +1323,30 @@ void animate_open_ai_widget(void)
         return;
     }
     last_ai_widget_open_time = rt_tick_get();
-    // animate_to_page(p_instruction_list_layout->p_instruction_list_ai_bg,
-    // 300);
+    /* Show ai_page instantly (no slide from left) */
     lv_obj_clear_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                       LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(p_instruction_list_layout->p_instruction_list_ai_bg);
     lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 0,
-                       0, LV_ANIM_ON);
+                       0, LV_ANIM_OFF);
+    tap_on_ai_widget();
 }
 
 void close_ai_widget(void)
 {
-    // lv_anim_del(p_instruction_list_layout->p_instruction_list_ai_bg,
-    // set_ai_bg_opa);
-    // lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
-    // LV_OBJ_FLAG_HIDDEN);
+    skai_widget_shown = false;
+    // lvgl_msg_handler.handle_vad_status = NULL;
+    set_skai_widget_opa(0);
+    if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
+    {
+        lv_obj_add_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
+                            LV_OPA_0, 0);
     lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 1,
-                       0, LV_ANIM_ON);
-    // set_skai_widget_opa(0);
-    // LOG_I("AI widget closed");
+                       0, LV_ANIM_OFF);
+    lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
+                    LV_OBJ_FLAG_HIDDEN);
 }
 
 void check_ai_widget_auto_close(void)
@@ -1315,7 +1384,23 @@ void tap_on_ai_widget(void)
     // lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER); lv_anim_set_time(&a,
     // 300); lv_anim_set_exec_cb(&a, set_ai_bg_opa); lv_anim_set_path_cb(&a,
     // lv_anim_path_ease_in_out); lv_anim_start(&a);
-    set_ai_bg_opa(NULL, LV_OPA_COVER);
+    /* Phase 1: show voice indicator only, skai_widget stays transparent */
+    skai_widget_shown = false;
+    lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
+                            LV_OPA_30, 0);
+    set_skai_widget_opa(0);
+    if (ai_voice_btn && lv_obj_is_valid(ai_voice_btn))
+    {
+        lv_obj_clear_flag(ai_voice_btn, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (ai_voice_send_icon && lv_obj_is_valid(ai_voice_send_icon))
+    {
+        lv_obj_add_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
+    {
+        lv_obj_add_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+    }
     LOG_D("AI widget opened");
     is_open_instruction_list_ai = true;
     open_skai_widget_ai(true);
@@ -1881,6 +1966,12 @@ static void ai_tileview_event_cb(lv_event_t *evt)
             open_skai_widget_ai(false);
             set_paused_control_with_arm(false);
             set_ai_open_mic(false);
+            // lvgl_msg_handler.handle_vad_status = NULL;
+            skai_widget_shown = false;
+            if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
+            {
+                lv_obj_add_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+            }
             // show_speech_indicator(false);
             // voice_provider.stop_v2t();
             // close_ai_widget();
@@ -1889,8 +1980,11 @@ static void ai_tileview_event_cb(lv_event_t *evt)
         }
         else if (active_pos == 1)
         {
-            set_ai_open_mic(true);
-            tap_on_ai_widget();
+            if (!is_open_instruction_list_ai)
+            {
+                set_ai_open_mic(true);
+                tap_on_ai_widget();
+            }
         }
         else
         {
@@ -2423,19 +2517,33 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
                         ai_tileview_event_cb, LV_EVENT_ALL, NULL);
     lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                     LV_OBJ_FLAG_HIDDEN);
+    /* Gaus background to cover instruction list when widget shows */
+    ai_gaus_bg = lv_img_create(ai_page);
+    lv_img_set_src(ai_gaus_bg, GAUS_CLOCK1_BG);
+    lv_obj_align(ai_gaus_bg, LV_ALIGN_CENTER, 0, 0);
+    lv_img_set_zoom(ai_gaus_bg, 512);
+    lv_obj_add_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+
     extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
     lv_obj_t *skai_widget = lv_skai_widget_builder(ai_page);
     lv_obj_align(skai_widget, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_t *ai_hint = lv_img_create(ai_page);
-    lv_obj_set_size(ai_hint, 80, 80);
-    lv_img_set_src(ai_hint, IMG_LOGO);
-    lv_obj_align(ai_hint, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_t *ai_hint_btn = lv_obj_create(ai_hint);
-    lv_obj_set_size(ai_hint_btn, 80, 80);
-    lv_obj_set_style_bg_opa(ai_hint_btn, LV_OPA_TRANSP, 0);
-    lv_obj_add_event_cb(ai_hint_btn, logo_click_event_cb, LV_EVENT_CLICKED,
+
+    /* Voice indicator button — replaces ai_hint at bottom center */
+    ai_voice_btn = lv_obj_create(ai_page);
+    lv_obj_set_size(ai_voice_btn, 62, 62);
+    lv_obj_set_style_radius(ai_voice_btn, 31, 0);
+    lv_obj_set_style_bg_color(ai_voice_btn, lv_color_hex(0x00AAFF), 0);
+    lv_obj_set_style_bg_opa(ai_voice_btn, LV_OPA_10, 0);
+    lv_obj_align(ai_voice_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_add_event_cb(ai_voice_btn, logo_click_event_cb, LV_EVENT_CLICKED,
                         NULL);
-    lv_obj_align(ai_hint_btn, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_t *ai_voice_img = lv_img_create(ai_voice_btn);
+    lv_img_set_src(ai_voice_img, &voice_group);
+    lv_obj_align(ai_voice_img, LV_ALIGN_CENTER, 0, 0);
+    ai_voice_send_icon = lv_img_create(ai_voice_btn);
+    lv_img_set_src(ai_voice_send_icon, ICON_SAND);
+    lv_obj_align(ai_voice_send_icon, LV_ALIGN_CENTER, 2, 2);
+    lv_obj_add_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
     // 創建可移動範圍圓弧線
     // create_movable_range_arc(p_instruction_list_bg);
     created = true;

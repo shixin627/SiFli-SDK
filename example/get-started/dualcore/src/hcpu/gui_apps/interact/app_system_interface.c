@@ -732,6 +732,12 @@ static bool is_on_speech_input_variable = false;
 void is_on_speech_input(bool is_speech)
 {
     is_on_speech_input_variable = is_speech;
+    extern bool get_is_open_instruction_list_ai(void);
+    if (get_is_open_instruction_list_ai())
+    {
+        extern void handle_ai_voice_btn_vad(bool speaking);
+        handle_ai_voice_btn_vad(is_speech);
+    }
 }
 
 static void ai_prompt_border_white_anim_cb(void *var, int32_t value)

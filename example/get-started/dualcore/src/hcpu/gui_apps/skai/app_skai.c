@@ -608,6 +608,9 @@ void set_skai_widget_input_text(const char *text)
     }
     lv_obj_add_flag(skai_widget_input_prompt, LV_OBJ_FLAG_HIDDEN);
     input_text_is_null = false;
+    /* Show skai_widget when first text arrives */
+    extern void instruction_ai_show_skai_widget(void);
+    instruction_ai_show_skai_widget();
     if (skai_widget_input_text != NULL && skai_widget_input_text_bg != NULL &&
         lv_obj_is_valid(skai_widget_input_text))
     {
