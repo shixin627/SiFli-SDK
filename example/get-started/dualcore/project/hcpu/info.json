@@ -1,5 +1,5 @@
 {
-    "version": "1.1.14",
+    "version": "1.1.15",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
@@ -7,5 +7,5 @@
         "lcpu.bin",
         "lcpu_patch.bin"
     ],
-    "description": "右側設備頁面\nAI畫面優化"
+    "description": "update model"
 }
