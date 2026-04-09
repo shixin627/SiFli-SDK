@@ -577,9 +577,9 @@ static void app_clock_device_change_bar_event_cb(lv_event_t *event)
         uint8_t opa = 0;
         if (scroll_x > 0)
         {
-            opa = (scroll_x * LV_OPA_COVER) / LV_HOR_RES_MAX;
-            if (opa > LV_OPA_COVER)
-                opa = LV_OPA_COVER;
+            if (scroll_x > 350)
+                scroll_x = 350;
+            opa = (scroll_x * LV_OPA_COVER) / 350;
         }
         set_dev_change_gaus_opa(opa);
     }
@@ -2198,12 +2198,12 @@ void app_clock_device_change_bar_init(lv_obj_t *par)
         lv_obj_set_style_pad_all(dev_bg, 0, 0);
 
         // Title
-        lv_obj_t *title_label = lv_label_create(dev_bg);
-        lv_label_set_text(title_label, "Devices");
-        lv_obj_set_style_text_color(title_label, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_width(title_label, LV_PCT(100));
-        lv_obj_set_style_text_align(title_label, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 15);
+        // lv_obj_t *title_label = lv_label_create(dev_bg);
+        // lv_label_set_text(title_label, "Devices");
+        // lv_obj_set_style_text_color(title_label, lv_color_hex(0xFFFFFF), 0);
+        // lv_obj_set_width(title_label, LV_PCT(100));
+        // lv_obj_set_style_text_align(title_label, LV_TEXT_ALIGN_CENTER, 0);
+        // lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 15);
 
         // Content area under title keeps the button layout in flex mode.
         content_area = lv_obj_create(dev_bg);
@@ -2224,9 +2224,9 @@ void app_clock_device_change_bar_init(lv_obj_t *par)
         lv_obj_set_scroll_dir(content_area, LV_DIR_VER);
         lv_obj_add_flag(content_area, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_flag(content_area, LV_OBJ_FLAG_SCROLL_ELASTIC);
-        lv_obj_align_to(content_area, title_label, LV_ALIGN_OUT_BOTTOM_MID, 0,
-                        0);
-        // lv_obj_align(content_area, LV_ALIGN_TOP_MID, 0, 0);
+        // lv_obj_align_to(content_area, title_label, LV_ALIGN_OUT_BOTTOM_MID, 0,
+        //                 0);
+        lv_obj_align(content_area, LV_ALIGN_TOP_MID, 0, 0);
 
         // Dedicated row for watch button (keeps watch independent from grid)
         lv_obj_t *watch_list = lv_obj_create(content_area);

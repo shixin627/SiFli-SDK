@@ -692,7 +692,7 @@ extern void remove_notification_by_id(const char *id);
 // 拖拽計時器回調函數
 static void drag_timer_cb(lv_timer_t *timer)
 {
-    if (is_dragging && dragging_widget && selected_message->coords.y1 == 108)
+    if (is_dragging && dragging_widget && selected_message->coords.y1 == 107)
     {
         // 執行刪除動作
         new_touching_obj = false;
@@ -818,10 +818,9 @@ static void widget_drag_event_cb(lv_event_t *evt)
         break;
 
     case LV_EVENT_PRESSING:
-        if (dragging_widget == obj && selected_message->coords.y1 == 108 &&
+        if (dragging_widget == obj && selected_message->coords.y1 == 107 &&
             new_touching_obj)
         {
-            LOG_D("LV_EVENT_PRESSING :obj=%p", obj);
             lv_coord_t diff = point.x - drag_start_x;
 
             // 只允許向右拖拽（正值），忽略向左拖拽
@@ -1015,6 +1014,10 @@ static void refresh_list(uint8_t new_item_count)
                                        list_message_click_event_cb);
                 lv_obj_remove_event_cb(notification_widgets[i].card,
                                        widget_drag_event_cb);
+                lv_obj_remove_event_cb(notification_widgets[i].card,
+                                       widget_drag_event_cb);
+                lv_obj_remove_event_cb(notification_widgets[i].card,
+                                       widget_drag_event_cb);
 
                 // 添加新的拖拽事件處理器
                 lv_obj_add_event_cb(notification_widgets[i].card,
@@ -1059,6 +1062,10 @@ static void refresh_list(uint8_t new_item_count)
             lv_obj_add_flag(notification_widgets[i].card, LV_OBJ_FLAG_HIDDEN);
             lv_obj_remove_event_cb(notification_widgets[i].card,
                                    list_message_click_event_cb);
+            lv_obj_remove_event_cb(notification_widgets[i].card,
+                                   widget_drag_event_cb);
+            lv_obj_remove_event_cb(notification_widgets[i].card,
+                                   widget_drag_event_cb);
             lv_obj_remove_event_cb(notification_widgets[i].card,
                                    widget_drag_event_cb);
         }
