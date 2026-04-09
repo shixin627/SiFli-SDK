@@ -182,6 +182,9 @@ const char *const icon_list[NOTIFICATION_APP_QUANTITY] = {
 };
 
 static bool dial_header_music_hidden_by_pause = false;
+static lv_timer_t *dial_header_shrink_timer = NULL;
+static bool dial_header_music_active = false;
+static bool dial_header_showing_notification = false;
 
 static bool open_shock = false;
 static bool open_action_flag = true;
@@ -609,10 +612,11 @@ static void reset_list(bool scroll_to_last)
     old_selected_message_index = -1;
     if (!is_at_message() || scroll_to_last)
     {
-        if (have_media_widget && !dial_header_music_hidden_by_pause)
+        if (have_media_widget && !dial_header_music_hidden_by_pause
+            && !dial_header_showing_notification)
         {
-            // 當有 media_widget 時，滾動到 media_widget 的位置
-            // (notification_count 位置)
+            // 當有 media_widget 且 header 不在顯示通知時，滾動到 media_widget
+            // 的位置 (notification_count 位置)
             reset_count = notification_count;
             message_scoll_target_item = reset_count;
             lv_obj_scroll_to_view(
@@ -1279,6 +1283,13 @@ uint8_t get_message_page_count(void)
 static void new_message_cb(void *param)
 {
     message_has_read = false;
+    /* 在 refresh_notification_list 更新 notification_count 之前，
+       檢查是否為真正的新通知且音樂正在播放 */
+    if (dial_header_music_active &&
+        notification_center_get_info_count() > notification_count)
+    {
+        dial_header_showing_notification = true;
+    }
     refresh_notification_list(param);
 }
 
@@ -1756,8 +1767,6 @@ static lv_obj_t *dial_header_title = NULL;
 static lv_obj_t *dial_header_img = NULL;
 static lv_obj_t *dial_header_red_dot = NULL;
 static lv_obj_t *dial_header_bg_mask = NULL;
-static bool dial_header_music_active = false;
-static lv_timer_t *dial_header_shrink_timer = NULL;
 static bool dial_header_was_music_before_notif = false;
 static rt_timer_t dial_header_music_pause_timer = NULL;
 #define MUSIC_PAUSE_HIDE_TIMEOUT_MS 30000
@@ -1844,10 +1853,14 @@ static void dial_header_restore_music(void)
 static void dial_header_shrink_timer_cb(lv_timer_t *timer)
 {
     dial_header_shrink_timer = NULL;
+    dial_header_showing_notification = false;
     if (dial_header_was_music_before_notif || dial_header_music_active)
     {
         dial_header_was_music_before_notif = false;
         dial_header_restore_music();
+        /* Header 恢復音樂後，重新定位列表到音樂 widget */
+        if (p_app_notification && p_app_notification->list)
+            reset_list(true);
     }
     else
     {
@@ -1932,7 +1945,7 @@ static void handle_dial_header_media_title(void *param)
             {
                 dial_header_was_music_before_notif = false;
                 dial_header_shrink_timer =
-                    lv_timer_create(dial_header_shrink_timer_cb, 5000, NULL);
+                    lv_timer_create(dial_header_shrink_timer_cb, 10000, NULL);
                 lv_timer_set_repeat_count(dial_header_shrink_timer, 1);
             }
         }
@@ -1981,13 +1994,14 @@ static void handle_dial_header_new_notification(void)
     dial_header_prev_notif_count = current_count;
     /* Remember if music was playing before this notification */
     dial_header_was_music_before_notif = dial_header_music_active;
+    dial_header_showing_notification = true;
     /* Always show notification, even if music is active */
     dial_header_show_notification();
     /* Start or restart 5-second shrink timer */
     if (dial_header_shrink_timer)
         lv_timer_del(dial_header_shrink_timer);
     dial_header_shrink_timer =
-        lv_timer_create(dial_header_shrink_timer_cb, 5000, NULL);
+        lv_timer_create(dial_header_shrink_timer_cb, 10000, NULL);
     lv_timer_set_repeat_count(dial_header_shrink_timer, 1);
 }
 
@@ -2062,6 +2076,7 @@ void lv_dial_header_builder(lv_obj_t *parent)
     dial_header_music_active = false;
     dial_header_shrink_timer = NULL;
     dial_header_was_music_before_notif = false;
+    dial_header_showing_notification = false;
     char *media_title = get_media_title();
     if (media_title && media_title[0] != '\0')
     {
