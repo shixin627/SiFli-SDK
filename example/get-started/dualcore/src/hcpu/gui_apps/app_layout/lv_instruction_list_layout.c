@@ -834,6 +834,8 @@ static void stop_touching_screen_timer(void)
         rt_timer_stop(touching_screen_timer);
     }
 }
+
+static bool open_scroll_motor = false;
 static void scroll_list(lv_obj_t *obj, int16_t drift)
 {
     uint16_t min_offset = LV_VER_RES;
@@ -1032,7 +1034,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             lv_obj_set_style_border_opa(lv_obj_get_child(child, 0), LV_OPA_10,
                                         LV_STATE_DEFAULT);
         }
-        if (get_scrolling_motor_vibrate_status())
+        if (get_scrolling_motor_vibrate_status() && open_scroll_motor)
         {
             motor_pattern_scrolling_app();
         }
@@ -1656,6 +1658,7 @@ static void reset_list(void)
     {
         return;
     }
+    open_scroll_motor = false;
     disable_scrolling_motor_vibrate();
     set_paused_control_with_arm(false);
     scroll_initialized = false;
@@ -1679,6 +1682,7 @@ static void reset_list(void)
     open_selected_widget(false);
     is_widget_animation_active = false;
     enable_scrolling_motor_vibrate();
+    open_scroll_motor = true;
 }
 
 uint16_t get_gesture_starting_value(void)
@@ -2296,6 +2300,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx, uint8_t end_
 
 void refresh_custom_instructions(void)
 {
+    open_scroll_motor = false;
     if (p_instruction_list_layout == NULL ||
         p_instruction_list_layout->list == NULL)
         return;
@@ -2386,7 +2391,7 @@ void refresh_custom_instructions(void)
         gesture_starting_value = (uint16_t)input_val;
         update_indicator_dots_position(gesture_starting_value);
     }
-
+    open_scroll_motor = true;
     LOG_I("refresh_custom_instructions: %d items total", list_item_count);
 }
 

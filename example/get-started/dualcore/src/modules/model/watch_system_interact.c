@@ -1305,6 +1305,11 @@ static int set_watch_system(int argc, char *argv[])
             uint8_t ret = ble_gap_get_remote_rssi(&rssi);
             LOG_D("ble_gap_get_remote_rssi ret:%d", ret);
         }
+        else if (strcmp(argv[1], "-chack_tile") == 0)
+        {
+           extern void chack_tile_page(void);
+           chack_tile_page();
+        }
     }
     return 0;
 }

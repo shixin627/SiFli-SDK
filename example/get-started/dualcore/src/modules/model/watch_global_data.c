@@ -250,6 +250,7 @@ static void write_alarm()
 static void read_oled_display_time(share_prefs_t *pref)
 {
   int32_t oled_display_time = share_prefs_get_int(pref, "oled_display_time", -1);
+  LOG_D("Loaded OLED display time: %d", oled_display_time);
   if (oled_display_time > 0)
   {
     SkaiWatchSys.oled_display_time = oled_display_time;
@@ -263,6 +264,7 @@ static void read_oled_display_time(share_prefs_t *pref)
 static void write_oled_display_time(share_prefs_t *pref)
 {
   int32_t oled_display_time = SkaiWatchSys.oled_display_time;
+  LOG_D("Write OLED display time: %d", oled_display_time);
   share_prefs_set_int(pref, "oled_display_time", oled_display_time);
 }
 

@@ -125,7 +125,6 @@ const notification_t notifications_constant[] = {
 uint8_t notification_items_amount = 0;
 uint8_t selected_notification_index = 0;
 
-extern void motor_pattern_notification(void);
 extern void motor_pattern_calling(void);
 
 /**
@@ -193,9 +192,10 @@ static void update_notification(notification_t newNotification)
     // Dedup: if a notification with the same ID already exists, remove it first
     // so re-synced notifications don't create duplicates.
     // For Notify_Skaiwalk category, also dedup by type to keep only the latest one.
+    bool dup = false;
     for (int i = notification_items_amount - 1; i >= 0; i--)
     {
-        bool dup = (strcmp(_notification_list[i].id, newNotification.id) == 0);
+        dup = (strcmp(_notification_list[i].id, newNotification.id) == 0);
         if (!dup && newNotification.type == Notify_Skaiwalk
             && _notification_list[i].type == Notify_Skaiwalk)
         {
@@ -211,6 +211,7 @@ static void update_notification(notification_t newNotification)
                 _notification_list[j] = _notification_list[j + 1];
             }
             notification_items_amount--;
+            break;
         }
     }
 
@@ -565,9 +566,9 @@ void interact_with_notification(notification_t *notification)
     //     motor_pattern_calling();
     // }
     // else
-    {
-        motor_pattern_notification();
-    }
+    // {
+        
+    // }
     need_wakeup = false;
 }
 

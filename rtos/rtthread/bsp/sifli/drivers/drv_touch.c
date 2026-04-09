@@ -98,6 +98,10 @@ static void touch_write_more(rt_uint8_t  event, rt_uint16_t x, rt_uint16_t  y)
     {
         return;
     }
+    if (x > LCD_HOR_RES_MAX || y > LCD_VER_RES_MAX)
+    {
+        return;
+    }
 
     rt_mutex_take(more_data_lock, RT_WAITING_FOREVER);
 
