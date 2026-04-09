@@ -1945,7 +1945,7 @@ static void handle_dial_header_media_title(void *param)
             {
                 dial_header_was_music_before_notif = false;
                 dial_header_shrink_timer =
-                    lv_timer_create(dial_header_shrink_timer_cb, 10000, NULL);
+                    lv_timer_create(dial_header_shrink_timer_cb, 8000, NULL);
                 lv_timer_set_repeat_count(dial_header_shrink_timer, 1);
             }
         }
@@ -2001,7 +2001,7 @@ static void handle_dial_header_new_notification(void)
     if (dial_header_shrink_timer)
         lv_timer_del(dial_header_shrink_timer);
     dial_header_shrink_timer =
-        lv_timer_create(dial_header_shrink_timer_cb, 10000, NULL);
+        lv_timer_create(dial_header_shrink_timer_cb, 8000, NULL);
     lv_timer_set_repeat_count(dial_header_shrink_timer, 1);
 }
 
