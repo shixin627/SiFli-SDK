@@ -302,6 +302,11 @@ static void control_motor_vibration(bool enable, motor_params_t *params)
         LOG_W("Cannot control motor while HCPU is suspended");
         return;
     }
+    LOG_I("Control motor: %s, duty_cycle: %d, period: %d, repeat_times: %d",
+          enable ? "ON" : "OFF",
+          params ? params->duty_cycle : 0,
+          params ? params->period : 0,
+          params ? params->repeat_times : 0);
     PeripheralMessageData data;
     data.event = CONTROL_MOTOR;
     data.arg.motor_control.enable = enable;

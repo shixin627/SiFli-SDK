@@ -231,8 +231,6 @@ static rt_err_t read_point(touch_msg_t p_msg)
             p_msg->event = TOUCH_EVENT_DOWN;
             // ft3168_correct_pos(p_msg);
 
-            // LOG_I("Down event, x = %d, y = %d\n", p_msg->x, p_msg->y);
-
             return (tp_num > 1) ? RT_EOK : RT_EEMPTY;
         }
         else

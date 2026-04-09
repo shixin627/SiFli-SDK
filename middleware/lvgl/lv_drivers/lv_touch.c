@@ -46,6 +46,7 @@ static void input_read(struct _lv_indev_drv_t *indev_drv, lv_indev_data_t *data)
 
         data->point.x = touch_data.x;
         data->point.y = touch_data.y;
+        // rt_kprintf("touch event: %d, x: %d, y: %d\r\n", touch_data.event, touch_data.x, touch_data.y);
 
         if (touch_data_cnt > 0) --touch_data_cnt;
     }

@@ -363,7 +363,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         // LOG_D("message_OBJ: %p",
         // obj->spec_attr->children[selected_message_index]);
         LOG_D("selected_message_index: %d", selected_message_index);
-        if (!is_user_touching_screen() && open_shock)
+        if ( open_shock)//!is_user_touching_screen() &&
         {
             motor_pattern_scrolling_app();
         }
@@ -1856,6 +1856,7 @@ static void dial_header_shrink_timer_cb(lv_timer_t *timer)
     /* Timer auto-deletes after repeat_count reaches 0 */
 }
 
+extern void motor_pattern_notification(void);
 static void dial_header_show_notification(void)
 {
     if (!lv_obj_is_valid(dial_header_bg))
@@ -1870,6 +1871,7 @@ static void dial_header_show_notification(void)
         LOG_D("Dial header show notification: %s", notification->title);
         if (notification)
         {
+            motor_pattern_notification();
             /* Hide red dot when showing full header */
             if (lv_obj_is_valid(dial_header_red_dot))
                 lv_obj_add_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);

@@ -83,7 +83,7 @@ LV_IMG_DECLARE(device_btn);
 #define DEV_CHANGE_BUTTON_HEIGHT 102
 #define DEV_CHANGE_BUTTON_GAP 20
 #define DEV_CHANGE_CONTENT_SIDE_MARGIN 20
-#define DEV_CHANGE_CONTENT_HEIGHT (LV_VER_RES_MAX - 50)
+#define DEV_CHANGE_CONTENT_HEIGHT (LV_VER_RES_MAX)
 
 static lv_obj_t *app_clock_main_status_bar;
 static lv_obj_t *app_clock_main_status_bar_down;
@@ -133,6 +133,7 @@ static lv_obj_t *gaus_dial_bg = NULL;
 static lv_obj_t *gaus_dial_img = NULL;
 static lv_obj_t *dev_change_gaus_bg = NULL;
 static lv_obj_t *dev_change_gaus_img = NULL;
+static void set_clock_main_status_opa(uint8_t opa, bool mask);
 static void set_dev_change_gaus_opa(uint8_t opa);
 static void notification_status_bar_cb(lv_event_t *event)
 {
@@ -192,6 +193,7 @@ static void notification_status_bar_cb(lv_event_t *event)
             lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
             lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+            set_clock_main_status_opa(0, false);
         }
     }
 }
@@ -264,7 +266,6 @@ static uint8_t shady_transparency = 0;
 static uint16_t bg_opa = LV_OPA_COVER;
 static uint16_t bg_opa_2 = LV_OPA_COVER;
 static uint16_t bg_opa_3 = LV_OPA_50;
-static void set_clock_main_status_opa(uint8_t opa, bool mask);
 static uint8_t middle_layer_tileview_index = 255;
 static uint8_t ai_interface_tileview_index = 0;
 
@@ -438,7 +439,8 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 main_clock_tileview_scrollable = true;
             }
         }
-        if (1 == active_pos)
+        // if (1 == active_pos)
+        if (scroll_y == 466 && scroll_x == 466)
         {
             shady_transparency = 0;
             // lv_obj_set_style_bg_opa(myLancher[app_index_message].pagetileview,
@@ -447,6 +449,7 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             lv_obj_add_flag(myLancher[app_index_message].pagetileview,
                             LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+            set_clock_main_status_opa(LV_OPA_0, false);
             set_instruction_list_time_opa(LV_OPA_0);
             // if (lv_obj_is_valid(get_instruction_list_time_bg()))
             //     lv_obj_set_style_bg_opa(get_instruction_list_time_bg(),
@@ -721,6 +724,12 @@ void animate_to_message_list(void)
                            LV_ANIM_ON);
     }
     set_scroll_anim_time(false, NULL);
+}
+
+void chack_tile_page(void)
+{
+    LOG_D("chack_tile_page: %d, %d", lv_obj_get_scroll_x(myLancher[app_index_message].pagetileview),
+          lv_obj_get_scroll_y(myLancher[app_index_message].pagetileview));
 }
 
 void animate_to_ai_page(void)
@@ -2084,7 +2093,7 @@ static void dev_change_refresh_device_list(void)
 
         lv_obj_t *add_label = lv_label_create(add_btn);
         lv_label_set_text(add_label, "Add Device");
-        lv_obj_set_style_text_color(add_label, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_color(add_label, lv_color_hex(0x9CB5FF), 0);
         lv_obj_center(add_label);
     }
 }
