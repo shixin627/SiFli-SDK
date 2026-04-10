@@ -161,8 +161,8 @@ static void bar_event_cb(lv_event_t *e)
         }
         else if (p_display->auto_off == obj)
         {
-            if (value < 3)
-                value = 3;
+            if (value < 5)
+                value = 5;
 
             lv_bar_set_value(bar, value, LV_ANIM_OFF);
             datac_send_data(p_display->pwr_srv_hdl,
@@ -260,8 +260,8 @@ static int powermgr_srv_callback(data_callback_arg_t *arg)
               p_range->cur, p_range->min, p_range->max);
 
         lv_bar_set_range(p_display->auto_off, p_range->min, p_range->max);
-        lv_bar_set_value(p_display->auto_off, p_range->cur, LV_ANIM_ON);
-        refresh_auto_off_label(p_range->cur);
+        lv_bar_set_value(p_display->auto_off, SkaiWatchSys.oled_display_time, LV_ANIM_ON);
+        refresh_auto_off_label(SkaiWatchSys.oled_display_time);
     }
     break;
     case PWRMGR_MSG_LCD_AUTO_OFF_TIME_SET_RSP:
@@ -381,13 +381,14 @@ static void on_start(void)
     lv_obj_set_style_bg_color(item, lv_color_hex(0x1E1E1E), 0); // Dark gray
     /* Display time range 5 ~ 60, never(61) */
     bar = lv_bar_create(item);     // Create a progress bar
-    lv_bar_set_range(bar, 3, 100); // Set the range of the progress bar
+    lv_bar_set_range(bar, 5, 100); // Set the range of the progress bar
     lv_obj_set_width(bar, LV_PCT(70));
     lv_obj_set_height(bar, 80);
     lv_obj_align(bar, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(bar, lv_color_hex(0xE5E5EA), LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(bar, lv_color_hex(0xE5E5EA), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(bar, LV_OPA_10, LV_PART_MAIN);
+    LOG_D("oled_display_time:%d", SkaiWatchSys.oled_display_time);
     lv_bar_set_value(bar, SkaiWatchSys.oled_display_time, LV_ANIM_ON);
     lv_obj_add_event_cb(bar, bar_event_cb, LV_EVENT_ALL, NULL);
     icon = lv_img_create(bar);
