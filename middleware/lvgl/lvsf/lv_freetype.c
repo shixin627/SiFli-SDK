@@ -357,6 +357,38 @@ static FT_Error  font_Face_Requester(FTC_FaceID  face_id,
 }
 static bool get_glyph_dsc_cache_cb(const lv_font_t *font, lv_font_glyph_dsc_t *dsc_out, uint32_t unicode_letter, uint32_t unicode_letter_next)
 {
+#ifdef EMOJI_SUPPORT
+    /* Process emoji sequences before any other handling (including FE0F filter) */
+    int emoji_result = lv_emoji_process_glyph(unicode_letter, unicode_letter_next);
+    if (emoji_result > 0)
+    {
+        /* Emoji resolved — this codepoint carries the full emoji width */
+        void *emoji_img = lv_emoji_get_pending();
+        lv_img_header_t header;
+        if (emoji_img && LV_RES_OK == lv_img_decoder_get_info(emoji_img, &header))
+        {
+            dsc_out->adv_w = header.w;
+            dsc_out->box_w = header.w;
+            dsc_out->box_h = header.h;
+            dsc_out->ofs_x = 0;
+            dsc_out->ofs_y = 0;
+            dsc_out->bpp = 0xF; /* Special marker: emoji image glyph */
+            return true;
+        }
+    }
+    else if (emoji_result < 0)
+    {
+        /* Part of a compound emoji sequence — zero width, no render */
+        dsc_out->adv_w = 0;
+        dsc_out->box_h = 0;
+        dsc_out->box_w = 0;
+        dsc_out->ofs_x = 0;
+        dsc_out->ofs_y = 0;
+        dsc_out->bpp = 0;
+        return true;
+    }
+#endif
+
     if (unicode_letter < 0x20 || unicode_letter == 0xFE0F)
     {
         dsc_out->adv_w = 0;
@@ -367,22 +399,6 @@ static bool get_glyph_dsc_cache_cb(const lv_font_t *font, lv_font_glyph_dsc_t *d
         dsc_out->bpp = 0;
         return true;
     }
-
-#ifdef EMOJI_SUPPORT
-    /* Check if this unicode is an emoji with available image resource */
-    void *emoji_img = lv_get_emoji_by_unicode(unicode_letter);
-    if (emoji_img)
-    {
-        const lv_img_dsc_t *img = (const lv_img_dsc_t *)emoji_img;
-        dsc_out->adv_w = img->header.w;
-        dsc_out->box_w = img->header.w;
-        dsc_out->box_h = img->header.h;
-        dsc_out->ofs_x = 0;
-        dsc_out->ofs_y = 0;
-        dsc_out->bpp = 0xF; /* Special marker: emoji image glyph */
-        return true;
-    }
-#endif
 
     FT_UInt glyph_index;
     FT_UInt charmap_index;
@@ -492,6 +508,36 @@ static bool get_glyph_dsc_cache_cb(const lv_font_t *font, lv_font_glyph_dsc_t *d
 #else
 static bool get_glyph_dsc_cb(const lv_font_t *font, lv_font_glyph_dsc_t *dsc_out, uint32_t unicode_letter, uint32_t unicode_letter_next)
 {
+#ifdef EMOJI_SUPPORT
+    /* Process emoji sequences before any other handling (including FE0F filter) */
+    int emoji_result = lv_emoji_process_glyph(unicode_letter, unicode_letter_next);
+    if (emoji_result > 0)
+    {
+        void *emoji_img = lv_emoji_get_pending();
+        lv_img_header_t header;
+        if (emoji_img && LV_RES_OK == lv_img_decoder_get_info(emoji_img, &header))
+        {
+            dsc_out->adv_w = header.w;
+            dsc_out->box_w = header.w;
+            dsc_out->box_h = header.h;
+            dsc_out->ofs_x = 0;
+            dsc_out->ofs_y = 0;
+            dsc_out->bpp = 0xF;
+            return true;
+        }
+    }
+    else if (emoji_result < 0)
+    {
+        dsc_out->adv_w = 0;
+        dsc_out->box_h = 0;
+        dsc_out->box_w = 0;
+        dsc_out->ofs_x = 0;
+        dsc_out->ofs_y = 0;
+        dsc_out->bpp = 0;
+        return true;
+    }
+#endif
+
     if (unicode_letter < 0x20 || unicode_letter == 0xFE0F)
     {
         dsc_out->adv_w = 0;
@@ -502,22 +548,6 @@ static bool get_glyph_dsc_cb(const lv_font_t *font, lv_font_glyph_dsc_t *dsc_out
         dsc_out->bpp = 0;
         return true;
     }
-
-#ifdef EMOJI_SUPPORT
-    /* Check if this unicode is an emoji with available image resource */
-    void *emoji_img = lv_get_emoji_by_unicode(unicode_letter);
-    if (emoji_img)
-    {
-        const lv_img_dsc_t *img = (const lv_img_dsc_t *)emoji_img;
-        dsc_out->adv_w = img->header.w;
-        dsc_out->box_w = img->header.w;
-        dsc_out->box_h = img->header.h;
-        dsc_out->ofs_x = 0;
-        dsc_out->ofs_y = 0;
-        dsc_out->bpp = 0xF; /* Special marker: emoji image glyph */
-        return true;
-    }
-#endif
 
     int error;
     FT_Face face;

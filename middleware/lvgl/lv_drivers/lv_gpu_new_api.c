@@ -806,6 +806,40 @@ static void draw_img(struct _lv_draw_ctx_t *draw_ctx,
 static void draw_letter(lv_draw_ctx_t *draw_ctx, const lv_draw_label_dsc_t *dsc,  const lv_point_t *pos_p,
                         uint32_t letter)
 {
+#ifdef EMOJI_SUPPORT
+    /* Check emoji draw state BEFORE calling get_glyph_dsc (which would
+       re-enter the emoji state machine with letter_next='\0'). */
+    {
+        void *emoji_img = lv_emoji_get_draw(letter);
+        if (emoji_img == EMOJI_SKIP_DRAW)
+            return; /* part of compound sequence — skip */
+        if (emoji_img)
+        {
+            /* Resolve dimensions from the cached lv_img_dsc_t */
+            lv_img_header_t header;
+            if (LV_RES_OK == lv_img_decoder_get_info(emoji_img, &header))
+            {
+                lv_draw_img_dsc_t img_dsc;
+                lv_draw_img_dsc_init(&img_dsc);
+                img_dsc.opa = dsc->opa;
+
+                lv_point_t gpos;
+                gpos.x = pos_p->x;
+                gpos.y = pos_p->y + (dsc->font->line_height - dsc->font->base_line) - header.h;
+
+                lv_area_t emoji_area;
+                emoji_area.x1 = gpos.x;
+                emoji_area.y1 = gpos.y;
+                emoji_area.x2 = gpos.x + header.w - 1;
+                emoji_area.y2 = gpos.y + header.h - 1;
+
+                lv_draw_img(draw_ctx, &img_dsc, &emoji_area, emoji_img);
+            }
+            return;
+        }
+    }
+#endif
+
     lv_font_glyph_dsc_t g;
     bool g_ret = lv_font_get_glyph_dsc(dsc->font, &g, letter, '\0');
     if (g_ret == false)
@@ -853,29 +887,6 @@ static void draw_letter(lv_draw_ctx_t *draw_ctx, const lv_draw_label_dsc_t *dsc,
     {
         return;
     }
-
-#ifdef EMOJI_SUPPORT
-    /* If bpp == 0xF, this is an emoji image glyph - render as image */
-    if (g.bpp == 0xF)
-    {
-        void *emoji_img = lv_get_emoji_by_unicode(letter);
-        if (emoji_img)
-        {
-            lv_draw_img_dsc_t img_dsc;
-            lv_draw_img_dsc_init(&img_dsc);
-            img_dsc.opa = dsc->opa;
-
-            lv_area_t emoji_area;
-            emoji_area.x1 = gpos.x;
-            emoji_area.y1 = gpos.y;
-            emoji_area.x2 = gpos.x + g.box_w - 1;
-            emoji_area.y2 = gpos.y + g.box_h - 1;
-
-            lv_draw_img(draw_ctx, &img_dsc, &emoji_area, emoji_img);
-        }
-        return;
-    }
-#endif
 
     const uint8_t *map_p = lv_font_get_glyph_bitmap(g.resolved_font, letter);
     if (map_p == NULL)

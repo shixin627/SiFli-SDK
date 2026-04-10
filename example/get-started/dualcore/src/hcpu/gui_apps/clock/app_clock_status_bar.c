@@ -29,7 +29,9 @@
 #include "ble_device_manager.h"
 
 extern void refresh_connected_device_label(void);
-__attribute__((weak)) void refresh_connected_device_label(void) {}
+__attribute__((weak)) void refresh_connected_device_label(void)
+{
+}
 
 #define DBG_TAG "app.clock.status_bar"
 #define DBG_LVL DBG_LOG
@@ -728,7 +730,8 @@ void animate_to_message_list(void)
 
 void chack_tile_page(void)
 {
-    LOG_D("chack_tile_page: %d, %d", lv_obj_get_scroll_x(myLancher[app_index_message].pagetileview),
+    LOG_D("chack_tile_page: %d, %d",
+          lv_obj_get_scroll_x(myLancher[app_index_message].pagetileview),
           lv_obj_get_scroll_y(myLancher[app_index_message].pagetileview));
 }
 
@@ -1867,6 +1870,7 @@ static lv_obj_t *dev_change_create_device_item(lv_obj_t *parent,
     lv_obj_set_style_bg_color(btn, lv_color_hex(0x2A2A2A), 0);
     lv_obj_set_style_bg_color(btn, lv_color_hex(0x3A3A3A), LV_STATE_PRESSED);
     lv_obj_set_style_pad_all(btn, 6, 0);
+    lv_obj_clear_flag(btn, LV_OBJ_FLAG_PRESS_LOCK);
 
     lv_obj_t *device_bg = lv_img_create(btn);
     lv_img_set_src(device_bg, &device_btn);
@@ -1918,6 +1922,137 @@ static lv_obj_t *dev_change_create_device_item(lv_obj_t *parent,
     return btn;
 }
 
+// Long press delete for device change bar
+#define DEV_CHANGE_EXTRA_LONG_PRESS_MS 800
+static lv_timer_t *dev_change_delete_timer = NULL;
+static uint8_t dev_change_delete_device_idx = 0xFF;
+static lv_obj_t *dev_change_delete_confirm_msgbox = NULL;
+static uint8_t dev_change_pending_delete_idx = 0xFF;
+
+static void dev_change_delete_confirm_cb(lv_event_t *e)
+{
+    lv_obj_t *obj = lv_event_get_current_target(e);
+    const char *btn_txt = lv_msgbox_get_active_btn_text(obj);
+
+    if (btn_txt)
+    {
+        if (strcmp(btn_txt, "Yes") == 0)
+        {
+            if (dev_change_pending_delete_idx != 0xFF)
+            {
+                LOG_I("Device change bar: confirmed delete device [%d]",
+                      dev_change_pending_delete_idx);
+                ble_dev_mgr_disconnect_device(dev_change_pending_delete_idx);
+                ble_dev_mgr_remove_device(dev_change_pending_delete_idx);
+                dev_change_pending_delete_idx = 0xFF;
+                dev_change_refresh_device_list();
+            }
+        }
+        else
+        {
+            LOG_D("Device change bar: cancelled device deletion");
+            dev_change_pending_delete_idx = 0xFF;
+        }
+    }
+
+    lv_msgbox_close(obj);
+    dev_change_delete_confirm_msgbox = NULL;
+}
+
+static void dev_change_show_delete_confirm(uint8_t device_idx)
+{
+    const bonded_devices_db_t *db = ble_dev_mgr_get_database();
+    if (!db || device_idx >= MAX_BONDED_DEVICES)
+        return;
+
+    const bonded_device_t *dev = &db->devices[device_idx];
+    if (!dev->is_valid)
+        return;
+
+    if (dev_change_delete_confirm_msgbox)
+    {
+        lv_msgbox_close(dev_change_delete_confirm_msgbox);
+        dev_change_delete_confirm_msgbox = NULL;
+    }
+
+    dev_change_pending_delete_idx = device_idx;
+
+    static char msg_buf[128];
+    lv_snprintf(msg_buf, sizeof(msg_buf), "Delete device?\n%s",
+                dev->device_name);
+
+    static const char *btns[] = {"Yes", "No", ""};
+
+    dev_change_delete_confirm_msgbox =
+        lv_msgbox_create(NULL, "Confirm Delete", msg_buf, btns, false);
+    lv_obj_set_style_bg_color(dev_change_delete_confirm_msgbox,
+                              lv_color_hex(0x2A2A2A), 0);
+    lv_obj_set_style_text_color(dev_change_delete_confirm_msgbox,
+                                lv_color_hex(0xFFFFFF), 0);
+    lv_obj_center(dev_change_delete_confirm_msgbox);
+
+    lv_obj_add_event_cb(dev_change_delete_confirm_msgbox,
+                        dev_change_delete_confirm_cb, LV_EVENT_VALUE_CHANGED,
+                        NULL);
+}
+
+static void dev_change_stop_delete_timer(void);
+
+static void dev_change_delete_timer_cb(lv_timer_t *timer)
+{
+    if (dev_change_delete_device_idx != 0xFF)
+    {
+        LOG_I("Device change bar: long press delete for device [%d]",
+              dev_change_delete_device_idx);
+        uint8_t idx_to_delete = dev_change_delete_device_idx;
+        dev_change_delete_device_idx = 0xFF;
+
+        if (dev_change_delete_timer)
+        {
+            lv_timer_del(dev_change_delete_timer);
+            dev_change_delete_timer = NULL;
+        }
+
+        dev_change_show_delete_confirm(idx_to_delete);
+    }
+}
+
+static void dev_change_start_delete_timer(uint8_t device_idx)
+{
+    dev_change_delete_device_idx = device_idx;
+
+    if (dev_change_delete_timer)
+    {
+        lv_timer_del(dev_change_delete_timer);
+        dev_change_delete_timer = NULL;
+    }
+
+    dev_change_delete_timer = lv_timer_create(
+        dev_change_delete_timer_cb, DEV_CHANGE_EXTRA_LONG_PRESS_MS - 400, NULL);
+    lv_timer_set_repeat_count(dev_change_delete_timer, 1);
+    LOG_D("Device change bar: delete timer started for device [%d]",
+          device_idx);
+}
+
+static void dev_change_stop_delete_timer(void)
+{
+    if (dev_change_delete_timer)
+    {
+        lv_timer_del(dev_change_delete_timer);
+        dev_change_delete_timer = NULL;
+    }
+    dev_change_delete_device_idx = 0xFF;
+}
+
+static void dev_change_content_scroll_cb(lv_event_t *e)
+{
+    lv_event_code_t event = lv_event_get_code(e);
+    if (event == LV_EVENT_SCROLL_BEGIN)
+    {
+        dev_change_stop_delete_timer();
+    }
+}
+
 static void dev_change_watch_btn_cb(lv_event_t *e)
 {
     lv_event_code_t event = lv_event_get_code(e);
@@ -1933,28 +2068,46 @@ static void dev_change_watch_btn_cb(lv_event_t *e)
 static void dev_change_device_item_click_cb(lv_event_t *e)
 {
     lv_event_code_t event = lv_event_get_code(e);
-    if (event != LV_EVENT_SHORT_CLICKED)
-        return;
-
     lv_obj_t *btn = lv_event_get_target(e);
     uint8_t device_idx = (uint8_t)(uintptr_t)lv_obj_get_user_data(btn);
 
     const bonded_devices_db_t *db = ble_dev_mgr_get_database();
     if (!db || device_idx >= MAX_BONDED_DEVICES)
         return;
-    if (!db->devices[device_idx].is_valid)
+
+    const bonded_device_t *dev = &db->devices[device_idx];
+    if (!dev->is_valid)
         return;
 
-    LOG_D("Device change bar: select device idx=%d, name=%s", device_idx,
-          db->devices[device_idx].device_name);
-    dev_change_watch_mode = false;
-    ble_dev_mgr_set_active_device(device_idx);
-    if (!gui_app_is_actived(APP_ID_MOUSE))
+    if (LV_EVENT_SHORT_CLICKED == event)
     {
-        gui_app_run(APP_ID_MOUSE);
+        dev_change_stop_delete_timer();
+        LOG_D("Device change bar: select device idx=%d, name=%s", device_idx,
+              dev->device_name);
+        dev_change_watch_mode = false;
+        ble_dev_mgr_set_active_device(device_idx);
+        if (!gui_app_is_actived(APP_ID_MOUSE))
+        {
+            gui_app_run(APP_ID_MOUSE);
+        }
+        refresh_connected_device_label();
+        dev_change_refresh_device_list();
     }
-    refresh_connected_device_label();
-    dev_change_refresh_device_list();
+    else if (LV_EVENT_PRESSED == event)
+    {
+        extern uint8_t get_main_phonepeer_conn_idx(void);
+        uint8_t main_phone_conn_idx = get_main_phonepeer_conn_idx();
+        bool is_main_phone = (main_phone_conn_idx != 0xFF &&
+                              dev->conn_idx == main_phone_conn_idx);
+        if (!dev_change_delete_timer && !is_main_phone)
+        {
+            dev_change_start_delete_timer(device_idx);
+        }
+    }
+    else if (LV_EVENT_RELEASED == event || LV_EVENT_PRESS_LOST == event)
+    {
+        dev_change_stop_delete_timer();
+    }
 }
 
 extern void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
@@ -2069,7 +2222,7 @@ static void dev_change_refresh_device_list(void)
             lv_obj_t *item = dev_change_create_device_item(
                 dev_change_list_ui.device_list, &db->devices[i], i);
             lv_obj_add_event_cb(item, dev_change_device_item_click_cb,
-                                LV_EVENT_SHORT_CLICKED, NULL);
+                                LV_EVENT_ALL, NULL);
         }
     }
 
@@ -2178,6 +2331,7 @@ void app_clock_device_change_bar_init(lv_obj_t *par)
         {
             lv_obj_set_style_bg_color(pages[i], LV_COLOR_WHITE,
                                       LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_clear_flag(pages[i], LV_OBJ_FLAG_SCROLLABLE);
         }
         // if (g_ble_ulog_enable)
         // {
@@ -2233,7 +2387,10 @@ void app_clock_device_change_bar_init(lv_obj_t *par)
         lv_obj_set_scroll_dir(content_area, LV_DIR_VER);
         lv_obj_add_flag(content_area, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_flag(content_area, LV_OBJ_FLAG_SCROLL_ELASTIC);
-        // lv_obj_align_to(content_area, title_label, LV_ALIGN_OUT_BOTTOM_MID, 0,
+        lv_obj_add_event_cb(content_area, dev_change_content_scroll_cb,
+                            LV_EVENT_SCROLL_BEGIN, NULL);
+        // lv_obj_align_to(content_area, title_label, LV_ALIGN_OUT_BOTTOM_MID,
+        // 0,
         //                 0);
         lv_obj_align(content_area, LV_ALIGN_TOP_MID, 0, 0);
 
@@ -2250,10 +2407,9 @@ void app_clock_device_change_bar_init(lv_obj_t *par)
         lv_obj_set_style_pad_bottom(watch_list, DEV_CHANGE_BUTTON_GAP, 0);
         dev_change_list_ui.watch_list = watch_list;
 
-        // Scrollable device list container
+        // Device list container (not scrollable - content_area handles scrolling)
         lv_obj_t *device_list = lv_obj_create(content_area);
         lv_obj_set_size(device_list, LV_PCT(100), LV_SIZE_CONTENT);
-        lv_obj_set_style_max_height(device_list, LV_VER_RES_MAX - 180, 0);
         lv_obj_set_style_bg_opa(device_list, LV_OPA_0, 0);
         lv_obj_set_style_border_width(device_list, 0, 0);
         lv_obj_set_style_pad_all(device_list, 0, 0);
