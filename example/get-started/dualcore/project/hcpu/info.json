@@ -1,5 +1,5 @@
 {
-    "version": "1.1.15",
+    "version": "1.1.16",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
@@ -7,5 +7,5 @@
         "lcpu.bin",
         "lcpu_patch.bin"
     ],
-    "description": "update model"
+    "description": "1.修復通知點擊事件重複綁定的問題\n2.左右滑動通知刪除\n3.有通知來時8秒內下滑可導航到最新通知"
 }
