@@ -2975,7 +2975,9 @@ static void menu_device_item_click_cb(lv_event_t *e)
         // But do not allow deletion of main phone device
         extern uint8_t get_main_phonepeer_conn_idx(void);
         uint8_t main_phone_conn_idx = get_main_phonepeer_conn_idx();
-        if (!menu_delete_timer && dev->conn_idx != main_phone_conn_idx)
+        bool is_main_phone = (main_phone_conn_idx != 0xFF &&
+                              dev->conn_idx == main_phone_conn_idx);
+        if (!menu_delete_timer && !is_main_phone)
         {
             menu_start_delete_timer(device_idx, btn);
         }
