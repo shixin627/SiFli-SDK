@@ -373,14 +373,17 @@ static bool get_glyph_dsc_cache_cb(const lv_font_t *font, lv_font_glyph_dsc_t *d
     void *emoji_img = lv_get_emoji_by_unicode(unicode_letter);
     if (emoji_img)
     {
-        const lv_img_dsc_t *img = (const lv_img_dsc_t *)emoji_img;
-        dsc_out->adv_w = img->header.w;
-        dsc_out->box_w = img->header.w;
-        dsc_out->box_h = img->header.h;
-        dsc_out->ofs_x = 0;
-        dsc_out->ofs_y = 0;
-        dsc_out->bpp = 0xF; /* Special marker: emoji image glyph */
-        return true;
+        lv_img_header_t header;
+        if (LV_RES_OK == lv_img_decoder_get_info(emoji_img, &header))
+        {
+            dsc_out->adv_w = header.w;
+            dsc_out->box_w = header.w;
+            dsc_out->box_h = header.h;
+            dsc_out->ofs_x = 0;
+            dsc_out->ofs_y = 0;
+            dsc_out->bpp = 0xF; /* Special marker: emoji image glyph */
+            return true;
+        }
     }
 #endif
 
@@ -508,14 +511,17 @@ static bool get_glyph_dsc_cb(const lv_font_t *font, lv_font_glyph_dsc_t *dsc_out
     void *emoji_img = lv_get_emoji_by_unicode(unicode_letter);
     if (emoji_img)
     {
-        const lv_img_dsc_t *img = (const lv_img_dsc_t *)emoji_img;
-        dsc_out->adv_w = img->header.w;
-        dsc_out->box_w = img->header.w;
-        dsc_out->box_h = img->header.h;
-        dsc_out->ofs_x = 0;
-        dsc_out->ofs_y = 0;
-        dsc_out->bpp = 0xF; /* Special marker: emoji image glyph */
-        return true;
+        lv_img_header_t header;
+        if (LV_RES_OK == lv_img_decoder_get_info(emoji_img, &header))
+        {
+            dsc_out->adv_w = header.w;
+            dsc_out->box_w = header.w;
+            dsc_out->box_h = header.h;
+            dsc_out->ofs_x = 0;
+            dsc_out->ofs_y = 0;
+            dsc_out->bpp = 0xF; /* Special marker: emoji image glyph */
+            return true;
+        }
     }
 #endif
 
