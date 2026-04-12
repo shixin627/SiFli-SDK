@@ -1844,7 +1844,7 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                         if (!get_enable_tap_and_hold() ||
                             peripheral_provider.get_tap_status())
                         {
-                            if (diff_delta_roll < diff_delta_yaw * 0.8) //
+                            // if (diff_delta_roll < diff_delta_yaw * 0.8) //
                             // diff_delta_roll < diff_delta_yaw * 0.8 &&
                             // diff_delta_roll < 0.3f
                             {

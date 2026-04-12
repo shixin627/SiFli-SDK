@@ -1434,14 +1434,14 @@ extern void media_widget_trigger_drag_by_py(int p_y);
 static void button_selection(gesture_position_t gesture_position)
 {
     const int p_y = gesture_position.gesture_position_y;
-    if (abs(p_y - 233) < 50)
-    {
-        set_paused_control_with_arm(false);
-    }
-    else
-    {
-        set_paused_control_with_arm(true);
-    }
+    // if (abs(p_y - 233) < 50)
+    // {
+    //     set_paused_control_with_arm(false);
+    // }
+    // else
+    // {
+    //     set_paused_control_with_arm(true);
+    // }
 // 重力拖拽已移除，不再透過 p_y 觸發左右拖拽動作
 #ifdef MESSAGE_NEED_MEDIA_WIDGET
     if (is_at_media_widget)
