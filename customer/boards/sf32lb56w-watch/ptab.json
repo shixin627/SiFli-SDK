@@ -17,13 +17,13 @@
             },
             {
                 "offset": "0x00000000",
-                "max_size": "0x000A0000",
+                "max_size": "0x00400000",
                 "name": "dfu", 
                 "type": ["app_exec"]
             },
             {
                 "offset": "0x00400000",
-                "max_size": "0x00C00000",
+                "max_size": "0x00400000",
                 "tags": [
                     "PSRAM_DATA"
                 ]

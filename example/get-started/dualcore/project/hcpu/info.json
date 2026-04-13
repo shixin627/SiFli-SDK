@@ -1,13 +1,6 @@
 {
-    "version": "1.1.18",
-    "fileList": [
-        "bootloader.bin",
-        "ftab.bin",
-        "hcpu.bin",
-        "lcpu.bin",
-        "lcpu_patch.bin"
-    ],
-    "description": "修復負角度不能體感",
+    "version": "1.1.20",
+    "description": "更新emoji",
     "watchfaceFileList": [
         "/assets/emoji/emoji_0023-fe0f-20e3.bin",
         "/assets/emoji/emoji_0023_fe0f_20e3.bin",
@@ -1919,5 +1912,12 @@
         "/assets/emoji/emoji_303d_fe0f.bin",
         "/assets/emoji/emoji_3297_fe0f.bin",
         "/assets/emoji/emoji_3299_fe0f.bin"
+    ],
+    "fileList": [
+        "bootloader.bin",
+        "ftab.bin",
+        "hcpu.bin",
+        "lcpu.bin",
+        "lcpu_patch.bin"
     ]
 }
