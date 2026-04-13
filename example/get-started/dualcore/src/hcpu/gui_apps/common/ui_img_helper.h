@@ -243,8 +243,7 @@ LV_IMG_DECLARE(notification_img);
 #define ICON_X ((const void *)&icon_x)
 #define CALCULATOR_ICON ((const void *)&calculator_icon)
 #define FIND_PHONE ((const void *)&find_phone)
-// #define FLISHLIGHT_ICON ((const void *)&flashlight_icon)
-#define FLISHLIGHT_ICON "/assets/icons/flashlight_icon.bin"
+#define FLISHLIGHT_ICON ((const void *)&flashlight_icon)
 
 #define IMG_MAIL ((const void *)&img_mail)
 #define NOTIFICATION_IMG ((const void *)&notification_img)
