@@ -255,6 +255,8 @@ static void get_gesture_data(gesture_data_t *gesture, int sample_num,
             identifyWindow[i][1] = acceleration_y;
             identifyWindow[i][2] = acceleration_z;
             identifyWindow[i][3] = gesture->dataset[index].ppg_data;
+            LOG_D("get_gesture_data: sample %d, acc=(%f, %f, %f), ppg=%d", i, acceleration_x,
+                  acceleration_y, acceleration_z, gesture->dataset[index].ppg_data);
 #if USE_FFT_FILTER
             // int16_t total_acc = sqrt(gesture->dataset[i][0] *
             // gesture->dataset[i][0] +

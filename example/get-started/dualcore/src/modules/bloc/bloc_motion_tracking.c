@@ -876,8 +876,8 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     }
     uint32_t ppg_rawdata = motion_data->ppg_raw_data.raw_data[get_ppg_count];
 
-    rt_uint32_t fsr_adc_value = fsr_adc_read_value();
-    // rt_uint32_t fsr_adc_value = 0;
+    // rt_uint32_t fsr_adc_value = fsr_adc_read_value();
+    rt_uint32_t fsr_adc_value = 0;
     // LOG_D("ppg_rawdata:%d, fsr_adc_value:%d", ppg_rawdata, fsr_adc_value);
 
     // Update hand position detection

@@ -24,7 +24,7 @@ extern "C"
 
 #define BYTES_PER_SAMPLE                                                       \
     (6 * 2 + 6 + 2 +                                                           \
-     2) // 6軸，每軸2字節 + timestamp 6字節(UINT32 + UINT16 ) + ppg_data 2字節
+     2) // 6軸，每軸2字節 + timestamp 6字節(UINT32 + UINT16 ) + ppg_data 2字節 + fsr_adc_value 2字節
 
 /* Feature and buffer size definitions */
 #define BLE_G_SENSOR_SAMPLE_AMOUNT (SAMPLE_SIZE) /* sample count */
