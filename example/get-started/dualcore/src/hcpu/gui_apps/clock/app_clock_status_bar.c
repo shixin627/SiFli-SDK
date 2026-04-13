@@ -201,6 +201,7 @@ static void notification_status_bar_cb(lv_event_t *event)
 }
 
 static void dev_change_refresh_device_list(void);
+static void dev_change_stop_connecting_timer(void);
 
 static void device_change_bar_cb(lv_event_t *event)
 {
@@ -212,6 +213,7 @@ static void device_change_bar_cb(lv_event_t *event)
             lv_obj_add_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(dev_change_gaus_bg, LV_OBJ_FLAG_HIDDEN);
             set_dev_change_gaus_opa(LV_OPA_0);
+            dev_change_stop_connecting_timer();
         }
         else if (LV_EVENT_PRESSED == event->code)
         {
@@ -598,6 +600,7 @@ static void app_clock_device_change_bar_event_cb(lv_event_t *event)
             lv_obj_add_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(dev_change_gaus_bg, LV_OBJ_FLAG_HIDDEN);
             set_dev_change_gaus_opa(LV_OPA_0);
+            dev_change_stop_connecting_timer();
         }
         else if (active_pos == 1)
         {
@@ -1854,7 +1857,53 @@ static struct
     lv_obj_t *watch_list;
     lv_obj_t *device_list;
     lv_obj_t *empty_label;
+    lv_obj_t *connecting_btn;
+    lv_obj_t *connecting_label;
 } dev_change_list_ui = {0};
+
+static lv_timer_t *dev_change_connecting_timer = NULL;
+static uint8_t dev_change_connecting_dots = 1;
+
+static void dev_change_stop_connecting_timer(void)
+{
+    if (dev_change_connecting_timer)
+    {
+        lv_timer_del(dev_change_connecting_timer);
+        dev_change_connecting_timer = NULL;
+    }
+}
+
+static void dev_change_refresh_device_list(void);
+
+static void dev_change_connecting_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    if (!get_bluetooth_broadcasting_status())
+    {
+        dev_change_stop_connecting_timer();
+        dev_change_refresh_device_list();
+        return;
+    }
+
+    dev_change_connecting_dots = (dev_change_connecting_dots % 3) + 1;
+    static const char *const texts[] = {"Connecting.", "Connecting..",
+                                        "Connecting..."};
+    if (dev_change_list_ui.connecting_label &&
+        lv_obj_is_valid(dev_change_list_ui.connecting_label))
+    {
+        lv_label_set_text(dev_change_list_ui.connecting_label,
+                          texts[dev_change_connecting_dots - 1]);
+    }
+}
+
+static void dev_change_start_connecting_timer(void)
+{
+    if (dev_change_connecting_timer)
+        return;
+    dev_change_connecting_dots = 1;
+    dev_change_connecting_timer =
+        lv_timer_create(dev_change_connecting_timer_cb, 400, NULL);
+}
 
 static lv_obj_t *dev_change_create_device_item(lv_obj_t *parent,
                                                const bonded_device_t *device,
@@ -2120,6 +2169,7 @@ static void dev_change_add_device_btn_cb(lv_event_t *e)
     {
         LOG_I("Device change bar: Add device (start advertising)");
         ble_app_advertising_start(true, true, false);
+        dev_change_refresh_device_list();
     }
 }
 
@@ -2140,17 +2190,8 @@ static void dev_change_refresh_device_list(void)
     {
         lv_obj_clean(dev_change_list_ui.device_list);
     }
-
-    if (db->count == 0)
-    {
-        if (dev_change_list_ui.empty_label &&
-            lv_obj_is_valid(dev_change_list_ui.empty_label))
-        {
-            lv_obj_clear_flag(dev_change_list_ui.empty_label,
-                              LV_OBJ_FLAG_HIDDEN);
-        }
-        return;
-    }
+    dev_change_list_ui.connecting_btn = NULL;
+    dev_change_list_ui.connecting_label = NULL;
 
     if (dev_change_list_ui.empty_label &&
         lv_obj_is_valid(dev_change_list_ui.empty_label))
@@ -2224,6 +2265,40 @@ static void dev_change_refresh_device_list(void)
             lv_obj_add_event_cb(item, dev_change_device_item_click_cb,
                                 LV_EVENT_ALL, NULL);
         }
+    }
+
+    // Connecting... button (shown while BLE is advertising/pairing)
+    if (get_bluetooth_broadcasting_status())
+    {
+        lv_obj_t *conn_btn = lv_btn_create(dev_change_list_ui.device_list);
+        lv_obj_set_size(conn_btn, DEV_CHANGE_BUTTON_WIDTH,
+                        DEV_CHANGE_BUTTON_HEIGHT);
+        lv_obj_set_style_radius(conn_btn, 80, 0);
+        lv_obj_set_style_bg_opa(conn_btn, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_color(conn_btn, lv_color_hex(0x2A2A2A), 0);
+        lv_obj_set_style_bg_color(conn_btn, lv_color_hex(0x3A3A3A),
+                                  LV_STATE_PRESSED);
+        lv_obj_set_style_pad_all(conn_btn, 6, 0);
+        lv_obj_set_style_border_width(conn_btn, 0, 0);
+        lv_obj_clear_flag(conn_btn, LV_OBJ_FLAG_CLICKABLE);
+
+        lv_obj_t *conn_bg = lv_img_create(conn_btn);
+        lv_img_set_src(conn_bg, &device_btn);
+        lv_obj_align(conn_bg, LV_ALIGN_CENTER, 0, 0);
+
+        lv_obj_t *conn_label = lv_label_create(conn_btn);
+        lv_label_set_text(conn_label, "Connecting.");
+        lv_obj_set_style_text_color(conn_label, lv_color_hex(0x9CB5FF), 0);
+        lv_obj_center(conn_label);
+        lv_obj_clear_flag(conn_label, LV_OBJ_FLAG_CLICKABLE);
+
+        dev_change_list_ui.connecting_btn = conn_btn;
+        dev_change_list_ui.connecting_label = conn_label;
+        dev_change_start_connecting_timer();
+    }
+    else
+    {
+        dev_change_stop_connecting_timer();
     }
 
     // Add Device button
