@@ -3559,6 +3559,7 @@ void fsr_adc_read(void)
     // int duration = rt_tick_get();
     #ifdef USE_FSR_ADC
     fsr_adc_value = fsr_adc_read_value();
+    // LOG_D("FSR ADC raw value: %d (%.1fmV)", fsr_adc_value, fsr_adc_value / 10.0f);
     // duration = rt_tick_get() - duration;
     // LOG_D("FSR ADC read and process duration: %d ms", duration);
     // if (fsr_adc_label != NULL && lv_obj_is_valid(fsr_adc_label))
