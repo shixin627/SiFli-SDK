@@ -1,6 +1,6 @@
 {
-    "version": "1.1.20",
-    "description": "更新emoji",
+    "version": "1.1.21",
+    "description": "更新emoji,新增壓力感測接口",
     "watchfaceFileList": [
         "/assets/emoji/emoji_0023-fe0f-20e3.bin",
         "/assets/emoji/emoji_0023_fe0f_20e3.bin",
