@@ -107,6 +107,7 @@ typedef struct
     Vector3 sliding_window_accel[ACCEL_WINDOW_SIZE];
     Vector3 sliding_window_gravity[ACCEL_WINDOW_SIZE];
     uint32_t sliding_window_ppg[ACCEL_WINDOW_SIZE];
+    rt_uint32_t sliding_window_fsr_adc[ACCEL_WINDOW_SIZE];
     float gyro_sliding_window[GYRO_WINDOW_SIZE];
     uint8_t gyro_count;
     bool if_watchface_visible;
@@ -428,6 +429,7 @@ getTargetWaveformFromSlidingWindow(gesture_dataset_t *dataset,
             (float)(*(dataset->waveform[i] + 4)) * INT16_to_DPS;
         targetWave[i].gravity_z =
             (float)(*(dataset->waveform[i] + 5)) * INT16_to_DPS;
+        targetWave[i].fsr_adc_value = dataset->fsr_adc_value[i];
         targetWave[i].ppg_data = dataset->ppg_data[i];
         targetWave[i].on_pressed = dataset->on_pressed[i];
     }
@@ -506,7 +508,8 @@ static void reset_gesture_state(gesture_dataset_t *dataset,
 static uint16_t waveform_rtc_millisecond = 0;
 static void store_gesture_sample(gesture_dataset_t *dataset, time_t ts,
                                  Vector3 *linear_accel, Vector3 *gravity,
-                                 uint32_t ppg_data, bool on_pressed)
+                                 uint32_t ppg_data, rt_uint32_t fsr_adc_value,
+                                 bool on_pressed)
 {
     if (dataset->gesture_sample_count < MAX_RAWDATA_TIME_STEP)
     {
@@ -520,6 +523,7 @@ static void store_gesture_sample(gesture_dataset_t *dataset, time_t ts,
         dataset->timestamp_ms[dataset->gesture_sample_count] =
             waveform_rtc_millisecond;
         dataset->ppg_data[dataset->gesture_sample_count] = ppg_data;
+        dataset->fsr_adc_value[dataset->gesture_sample_count] = fsr_adc_value;
         dataset->on_pressed[dataset->gesture_sample_count] = on_pressed;
         dataset->gesture_sample_count++;
     }
@@ -532,6 +536,7 @@ static void store_gesture_sample(gesture_dataset_t *dataset, time_t ts,
 
 static void fill_realtime_accel_sliding_window(Vector3 *accel, Vector3 *gravity,
                                                uint32_t ppg,
+                                               rt_uint32_t fsr_adc_value,
                                                waveform_gesture_state_t *state)
 {
     for (int i = 0; i < ACCEL_WINDOW_SIZE - 1; i++)
@@ -539,10 +544,12 @@ static void fill_realtime_accel_sliding_window(Vector3 *accel, Vector3 *gravity,
         state->sliding_window_accel[i] = state->sliding_window_accel[i + 1];
         state->sliding_window_gravity[i] = state->sliding_window_gravity[i + 1];
         state->sliding_window_ppg[i] = state->sliding_window_ppg[i + 1];
+        state->sliding_window_fsr_adc[i] = state->sliding_window_fsr_adc[i + 1];
     }
     state->sliding_window_accel[ACCEL_WINDOW_SIZE - 1] = *accel;
     state->sliding_window_gravity[ACCEL_WINDOW_SIZE - 1] = *gravity;
     state->sliding_window_ppg[ACCEL_WINDOW_SIZE - 1] = ppg;
+    state->sliding_window_fsr_adc[ACCEL_WINDOW_SIZE - 1] = fsr_adc_value;
     // LOG_D("Updated sliding window with ppg: %d",ppg);
 }
 
@@ -687,7 +694,9 @@ void packMatrixToBuffer(uint8_t *targetArray, watch_sys_linear_acce_t *dataset,
             targetArray[i * BYTES_PER_SAMPLE + 19] =
                 (uint8_t)((dataset[i].ppg_data >> 8) & 0xFF);
             targetArray[i * BYTES_PER_SAMPLE + 20] =
-                (uint8_t)(dataset[i].on_pressed ? 1 : 0);
+                (uint8_t)(dataset[i].fsr_adc_value & 0xFF);
+            targetArray[i * BYTES_PER_SAMPLE + 21] =
+                (uint8_t)((dataset[i].fsr_adc_value >> 8) & 0xFF);
         }
     }
 }
@@ -729,6 +738,7 @@ extern int get_gesture_recognition_threshold(void);
 static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                        Vector3 *linear_acce, Vector3 *gyro,
                                        Vector3 *gravity, uint32_t ppg,
+                                       rt_uint32_t fsr_adc_value,
                                        waveform_gesture_state_t *state,
                                        gesture_type_t type,
                                        gesture_dataset_t *dataset)
@@ -808,7 +818,9 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                 store_gesture_sample(
                     dataset, ts, &state->sliding_window_accel[accel_index],
                     &state->sliding_window_gravity[accel_index],
-                    state->sliding_window_ppg[accel_index], state->on_pressed);
+                    state->sliding_window_ppg[accel_index],
+                    state->sliding_window_fsr_adc[accel_index],
+                    state->on_pressed);
             }
         }
     }
@@ -816,7 +828,7 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     if (dataset->gesture_started)
     {
         store_gesture_sample(dataset, ts, linear_acce, gravity, ppg,
-                             state->on_pressed);
+                             fsr_adc_value, state->on_pressed);
         if (dataset->gesture_sample_count >= target_samples)
         {
             dataset->gesture_ended = true;
@@ -847,6 +859,7 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
 /**
  * @brief Process waveform capture - called from motion_tracking_in_hcpu
  */
+extern rt_uint32_t fsr_adc_read_value(void);
 static uint8_t get_ppg_count = 0;
 static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
 {
@@ -862,6 +875,10 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
         get_ppg_count = 0;
     }
     uint32_t ppg_rawdata = motion_data->ppg_raw_data.raw_data[get_ppg_count];
+
+    rt_uint32_t fsr_adc_value = fsr_adc_read_value();
+    // rt_uint32_t fsr_adc_value = 0;
+    // LOG_D("ppg_rawdata:%d, fsr_adc_value:%d", ppg_rawdata, fsr_adc_value);
 
     // Update hand position detection
     uint8_t gesture_threshold_factor =
@@ -906,8 +923,10 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     extern bool imu_raw_data_collection;
     if (imu_raw_data_collection)
     {
+        // LOG_D("Collecting IMU raw data: ppg:%d, fsr_adc:%d", ppg_rawdata,
+        //       fsr_adc_value);
         store_gesture_sample(&release_dataset, rt_tick_get_millisecond(),
-                             linear_acce, gravity, ppg_rawdata,
+                             linear_acce, gravity, ppg_rawdata, fsr_adc_value,
                              waveform_gesture_state.on_pressed);
         if (release_dataset.gesture_sample_count >= MAX_RAWDATA_TIME_STEP)
         {
@@ -933,18 +952,18 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
 
     // Update sliding windows
     fill_realtime_accel_sliding_window(linear_acce, gravity, ppg_rawdata,
-                                       &waveform_gesture_state);
+                                       fsr_adc_value, &waveform_gesture_state);
     check_gyro_threshold(gyro, &waveform_gesture_state);
 
     if (app_control_get_game_mode())
     {
         gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts,
                                    linear_acce, gyro, gravity, ppg_rawdata,
-                                   &waveform_gesture_state, GESTURE_TYPE_TAP,
-                                   &tap_dataset);
+                                   fsr_adc_value, &waveform_gesture_state,
+                                   GESTURE_TYPE_TAP, &tap_dataset);
         gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts,
                                    linear_acce, gyro, gravity, ppg_rawdata,
-                                   &waveform_gesture_state,
+                                   fsr_adc_value, &waveform_gesture_state,
                                    GESTURE_TYPE_RELEASE, &release_dataset);
     }
     else
@@ -953,14 +972,14 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
         {
             gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts,
                                        linear_acce, gyro, gravity, ppg_rawdata,
-                                       &waveform_gesture_state,
+                                       fsr_adc_value, &waveform_gesture_state,
                                        GESTURE_TYPE_RELEASE, &release_dataset);
         }
         else
         {
             gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts,
                                        linear_acce, gyro, gravity, ppg_rawdata,
-                                       &waveform_gesture_state,
+                                       fsr_adc_value, &waveform_gesture_state,
                                        GESTURE_TYPE_TAP, &tap_dataset);
         }
     }
@@ -1743,7 +1762,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
     {
         return;
     }
-
 #if ENABLE_WAVEFORM_CAPTURE
     // Process waveform capture for gesture recognition (migrated from LCPU)
     // This runs regardless of UI state to capture gestures consistently
@@ -1752,7 +1770,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
         waveform_capture_process(motion_data, &watch_sensor.imu_data.gyro);
     }
 #endif
-
     calculate_gravity_position(&motion_data->gravity);
     if (is_at_home() && !is_at_speech_interface() && !is_at_control_center())
     {
@@ -1915,6 +1932,8 @@ static uint8_t accelSamplesBuffer[384] = {0}; // 64 * 6 = 384
  */
 static void motion_tracking_thread_entry(void *parameter)
 {
+    extern void fsr_adc_init(void);
+    fsr_adc_init();
     watch_sensor.imu_sem = rt_sem_create("imu_sem", 0, RT_IPC_FLAG_FIFO);
     while (1)
     {

@@ -122,7 +122,7 @@
 
     #define FRC_THRESHOLD_BTN 100
     #define FRC_THRESHOLD_MOVE_LOCK 10
-    // #define USE_FSR_ADC 1
+// #define USE_FSR_ADC 1
 
 /*********************
  *      TYPEDEFS
@@ -3455,10 +3455,11 @@ static void text_input_bar_cb(lv_event_t *e)
     }
 }
 
+#ifndef USE_FSR_ADC
 /**
  * @brief Initialize FSR-402 ADC device
  */
-static void fsr_adc_init(void)
+void fsr_adc_init(void)
 {
     HAL_PIN_Set_Analog(PAD_PB25, 1);
     fsr_adc_dev = rt_device_find(FSR_ADC_DEV_NAME);
@@ -3476,7 +3477,7 @@ static void fsr_adc_init(void)
 /**
  * @brief Deinitialize FSR-402 ADC device
  */
-static void fsr_adc_deinit(void)
+void fsr_adc_deinit(void)
 {
     if (fsr_adc_dev != NULL)
     {
@@ -3489,12 +3490,13 @@ static void fsr_adc_deinit(void)
  * @brief Read FSR-402 ADC value
  * @return ADC value in 0.1mV units
  */
-static rt_uint32_t fsr_adc_read_value(void)
+rt_uint32_t fsr_adc_read_value(void)
 {
     if (fsr_adc_dev == NULL)
         return 0;
     return rt_adc_read((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
 }
+#endif
 
 /**
  * @brief LVGL timer callback for periodic FSR ADC reading and display update
@@ -3559,10 +3561,10 @@ void fsr_adc_read(void)
     // int duration = rt_tick_get();
     #ifdef USE_FSR_ADC
     fsr_adc_value = fsr_adc_read_value();
-    // LOG_D("FSR ADC raw value: %d (%.1fmV)", fsr_adc_value, fsr_adc_value / 10.0f);
-    // duration = rt_tick_get() - duration;
-    // LOG_D("FSR ADC read and process duration: %d ms", duration);
-    // if (fsr_adc_label != NULL && lv_obj_is_valid(fsr_adc_label))
+    // LOG_D("FSR ADC raw value: %d (%.1fmV)", fsr_adc_value, fsr_adc_value
+    // / 10.0f); duration = rt_tick_get() - duration; LOG_D("FSR ADC read and
+    // process duration: %d ms", duration); if (fsr_adc_label != NULL &&
+    // lv_obj_is_valid(fsr_adc_label))
     // {
     //     char buf[48];
     //     rt_snprintf(buf, sizeof(buf), "FSR: %d.%dmV", fsr_adc_value / 10,
@@ -3721,7 +3723,9 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     // lv_obj_clear_flag(fsr_adc_label, LV_OBJ_FLAG_CLICKABLE);
 
     // Init ADC and start periodic reading
-    fsr_adc_init();
+#ifndef USE_FSR_ADC
+    // fsr_adc_init();
+#endif
     if (!fsr_adc_timer)
     {
         fsr_adc_timer =
@@ -3980,7 +3984,9 @@ static void on_stop(void)
         rt_timer_stop(fsr_adc_timer);
         fsr_adc_timer = NULL;
     }
-    fsr_adc_deinit();
+    #ifndef USE_FSR_ADC
+    // fsr_adc_deinit();
+    #endif
     // fsr_adc_label = NULL;
 
     // Clean up crosshair lines

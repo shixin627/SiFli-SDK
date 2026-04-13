@@ -13,7 +13,7 @@ extern "C"
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 1
-#define VERSION_REVISION 20
+#define VERSION_REVISION 18
 #define VERSION_DEV 1
 
 #define MAX_GESTURE_SAMPLES 76
@@ -24,7 +24,7 @@ extern "C"
 
 #define BYTES_PER_SAMPLE                                                       \
     (6 * 2 + 6 + 2 +                                                           \
-     1) // 6軸，每軸2字節 + timestamp 6字節(UINT32 + UINT16 ) + ppg_data 2字節
+     2) // 6軸，每軸2字節 + timestamp 6字節(UINT32 + UINT16 ) + ppg_data 2字節
 
 /* Feature and buffer size definitions */
 #define BLE_G_SENSOR_SAMPLE_AMOUNT (SAMPLE_SIZE) /* sample count */
@@ -64,6 +64,7 @@ extern "C"
         uint32_t timestamp_s[MAX_RAWDATA_TIME_STEP];
         uint16_t timestamp_ms[MAX_RAWDATA_TIME_STEP];
         uint16_t ppg_data[MAX_RAWDATA_TIME_STEP];
+        uint16_t fsr_adc_value[MAX_RAWDATA_TIME_STEP];
         bool on_pressed[MAX_RAWDATA_TIME_STEP];
     } gesture_dataset_t;
 

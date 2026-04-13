@@ -93,6 +93,7 @@ extern "C"
         int16_t gravity_y;
         int16_t gravity_z;
         uint16_t ppg_data;
+        uint16_t fsr_adc_value;
         bool on_pressed;
     } watch_sys_linear_acce_t;
 

@@ -2175,10 +2175,14 @@ static void dev_change_add_device_btn_cb(lv_event_t *e)
 
 static void dev_change_refresh_device_list(void)
 {
+    LOG_D("Device change bar: refresh device list");
     const bonded_devices_db_t *db = ble_dev_mgr_get_database();
     if (!db)
-        return;
-
+    {
+        LOG_D("Device change bar: no bonded device database (Watch/Add "
+              "Device will still be shown)");
+    }
+    LOG_D("Device change bar : DEBUG 1");
     if (dev_change_list_ui.watch_list &&
         lv_obj_is_valid(dev_change_list_ui.watch_list))
     {
@@ -2202,6 +2206,7 @@ static void dev_change_refresh_device_list(void)
     if (!dev_change_list_ui.device_list ||
         !lv_obj_is_valid(dev_change_list_ui.device_list))
     {
+        LOG_D("Device change bar : DEBUG 2");
         return;
     }
 
@@ -2256,14 +2261,17 @@ static void dev_change_refresh_device_list(void)
     }
 
     // Device buttons - two per row, all same size
-    for (int i = 0; i < MAX_BONDED_DEVICES; i++)
+    if (db)
     {
-        if (db->devices[i].is_valid)
+        for (int i = 0; i < MAX_BONDED_DEVICES; i++)
         {
-            lv_obj_t *item = dev_change_create_device_item(
-                dev_change_list_ui.device_list, &db->devices[i], i);
-            lv_obj_add_event_cb(item, dev_change_device_item_click_cb,
-                                LV_EVENT_ALL, NULL);
+            if (db->devices[i].is_valid)
+            {
+                lv_obj_t *item = dev_change_create_device_item(
+                    dev_change_list_ui.device_list, &db->devices[i], i);
+                lv_obj_add_event_cb(item, dev_change_device_item_click_cb,
+                                    LV_EVENT_ALL, NULL);
+            }
         }
     }
 

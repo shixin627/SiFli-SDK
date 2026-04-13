@@ -623,14 +623,14 @@ static uint16_t handle_linear_acce_buffer(PacketBuilder *builder,
 
     LOG_D("L1SEND_LINEAR_ACCE_BUFFER length=%d", len);
 
-    if (len > 483)
+    if (len > 484)
     {
         // 分段傳送，每段最多 483 bytes
         uint16_t offset = 0;
         uint8_t segment_index = 1;
         while (offset < len)
         {
-            uint16_t chunk_size = (len - offset > 483) ? 483 : (len - offset);
+            uint16_t chunk_size = (len - offset > 484) ? 484 : (len - offset);
             BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_GSENSOR_SAMPLE);
             buf[3] = (chunk_size + 1) >> 8;
             buf[4] = (chunk_size + 1) & 0xFF;
