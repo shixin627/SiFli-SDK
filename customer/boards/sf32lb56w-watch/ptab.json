@@ -5,9 +5,9 @@
         "base": "0x60800000", 
         "regions": [
             {
-                "offset": "0x00000000", 
-                "max_size": "0x00600000", 
-                "name": "main", 
+                "offset": "0x00000000",
+                "max_size": "0x00400000",
+                "name": "main",
                 "type": ["app_exec"],
                 "custom": {
                     "PSRAM_BL_MODE": 3, 
@@ -22,8 +22,8 @@
                 "type": ["app_exec"]
             },
             {
-                "offset": "0x00600000", 
-                "max_size": "0x00A00000", 
+                "offset": "0x00400000",
+                "max_size": "0x00C00000",
                 "tags": [
                     "PSRAM_DATA"
                 ]
@@ -36,7 +36,7 @@
         "regions": [
             {
                 "offset": "0x00000000",
-                "max_size": "0x00600000",
+                "max_size": "0x00400000",
                 "tags": [
                     "HCPU_FLASH_CODE_LOAD_REGION"
                 ],
@@ -44,8 +44,8 @@
                 "type": ["app_img"]
             },
             {
-                "offset": "0x00600000",
-                "max_size": "0x05400000",
+                "offset": "0x00400000",
+                "max_size": "0x05600000",
                 "tags": ["FS_REGION"]
             },
             {
