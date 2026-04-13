@@ -100,8 +100,10 @@ void set_pending_instruction_img_id(const char *id)
     {
         LOG_W("Pending instruction image queue full, dropping oldest");
         /* Shift queue left, drop oldest */
-        memmove(&pending_instruction_img_ids[0], &pending_instruction_img_ids[1],
-                (MAX_PENDING_INSTRUCTION_IMG - 1) * sizeof(pending_instruction_img_ids[0]));
+        memmove(&pending_instruction_img_ids[0],
+                &pending_instruction_img_ids[1],
+                (MAX_PENDING_INSTRUCTION_IMG - 1) *
+                    sizeof(pending_instruction_img_ids[0]));
         pending_instruction_img_count--;
     }
 
@@ -120,26 +122,14 @@ void set_pending_instruction_img_id(const char *id)
 #define FILE_SYNC_DELAY_MS 6
 #define FILE_RECEIVE_TIMEOUT_MS 5000 /* 5 seconds timeout for file receive */
 
-/* Message types for the file system queue */
+/* Message types for the file system queue. Receive-path messages are no
+ * longer queued — they run directly in the BLE mbox thread context. */
 typedef enum
 {
     SYNC_FILE_MSG = 0,
     SYNC_MULTI_FILES_MSG,
     DELETE_FILE_MSG,
-    START_RECEIVE_FILE_MSG,
-    RECEIVE_FILE_DATA_MSG,
-    END_RECEIVE_FILE_MSG,
-    CANCEL_RECEIVE_FILE_MSG
 } file_system_msg_t;
-
-/* File receive data for message passing */
-typedef struct
-{
-    char file_path[FILE_PATH_MAX_LEN];
-    uint32_t total_size;
-    uint16_t data_length;
-    uint8_t data[FILE_SYNC_BUFFER_SIZE];
-} file_receive_msg_data_t;
 
 /* Message data structure for file operations */
 typedef struct file_system_msg_data
@@ -160,9 +150,6 @@ typedef struct file_system_msg_data
             char *folder_path;
             bool delete_after_sync;
         } sync_multi;
-
-        /* For file receive messages */
-        file_receive_msg_data_t receive;
     } data;
 } file_system_msg_data_t;
 
@@ -185,6 +172,7 @@ static void file_system_entry(void *parameter);
 static int file_system_task_init(void);
 static int bloc_file_system_register(void);
 static void send_file_compare_result(uint8_t result);
+
 
 /**
  * @brief Get the current sync progress
@@ -378,15 +366,15 @@ void received_file_handler(const char *path)
         prev_media_img_path[sizeof(prev_media_img_path) - 1] = '\0';
         strncpy(MEDIA_IMG, path, sizeof(MEDIA_IMG) - 1);
         MEDIA_IMG[sizeof(MEDIA_IMG) - 1] = '\0';
-		LOG_I("Invalidate image cache for src: %s", MEDIA_IMG);
+        LOG_I("Invalidate image cache for src: %s", MEDIA_IMG);
         lv_img_cache_invalidate_src(prev_media_img_path);
-		lv_img_cache_invalidate_src(MEDIA_IMG);
-		rt_thread_mdelay(200);
+        lv_img_cache_invalidate_src(MEDIA_IMG);
+        rt_thread_mdelay(200);
         notify_media_img(prev_media_img_path);
         LOG_I("Received media image file: %s,rm:%s", MEDIA_IMG,
               prev_media_img_path);
         // rt_thread_mdelay(1000);
-		// remove(prev_media_img_path);
+        // remove(prev_media_img_path);
     }
     else if (strstr(path, "media_header_img") != NULL)
     {
@@ -396,18 +384,19 @@ void received_file_handler(const char *path)
         // prev_media_img_path[sizeof(prev_media_img_path) - 1] = '\0';
         // strncpy(MEDIA_HEADER_IMG, path, sizeof(MEDIA_HEADER_IMG) - 1);
         // MEDIA_HEADER_IMG[sizeof(MEDIA_HEADER_IMG) - 1] = '\0';
-		// LOG_I("Invalidate image cache for src: %s", MEDIA_HEADER_IMG);
+        // LOG_I("Invalidate image cache for src: %s", MEDIA_HEADER_IMG);
         // lv_img_cache_invalidate_src(prev_media_img_path);
-		lv_img_cache_invalidate_src(MEDIA_HEADER_IMG);
-		rt_thread_mdelay(200);
+        lv_img_cache_invalidate_src(MEDIA_HEADER_IMG);
+        rt_thread_mdelay(200);
         notify_media_header_img(MEDIA_HEADER_IMG);
         LOG_I("Received media header image file: %s", MEDIA_HEADER_IMG);
         // rt_thread_mdelay(1000);
-		// remove(prev_media_img_path);
+        // remove(prev_media_img_path);
     }
     else if (pending_instruction_img_count > 0)
     {
-        /* Check if received file matches any pending instruction image request */
+        /* Check if received file matches any pending instruction image request
+         */
         const char *base_name = strrchr(path, '/');
         base_name = base_name ? base_name + 1 : path;
 
@@ -416,15 +405,16 @@ void received_file_handler(const char *path)
         {
             /* Extract id prefix (before first '-') */
             char id_prefix[64];
-            strncpy(id_prefix, pending_instruction_img_ids[i], sizeof(id_prefix) - 1);
+            strncpy(id_prefix, pending_instruction_img_ids[i],
+                    sizeof(id_prefix) - 1);
             id_prefix[sizeof(id_prefix) - 1] = '\0';
             char *dash = strchr(id_prefix, '-');
             if (dash)
                 *dash = '\0';
 
             char expected_name[128];
-            rt_snprintf(expected_name, sizeof(expected_name),
-                        "%s.bin", id_prefix);
+            rt_snprintf(expected_name, sizeof(expected_name), "%s.bin",
+                        id_prefix);
 
             if (strcmp(base_name, expected_name) == 0)
             {
@@ -494,16 +484,14 @@ static void file_system_entry(void *parameter)
                 }
 
                 // Notify UI about sync start
-                ui_msg.type = LVGL_MSG_TYPE_SYNC_STATUS;
-                ui_msg.data.sync_state = sync_progress.sync_status;
-                lvgl_send_msg(ui_msg);
+                // ui_msg.type = LVGL_MSG_TYPE_SYNC_STATUS;
+                // ui_msg.data.sync_state = sync_progress.sync_status;
+                // lvgl_send_msg(ui_msg);
 
                 // Perform synchronization
-                skaiwatch_ble_set_performance(
-                    true); // Enable performance mode for BLE
+                skaiwatch_ble_set_performance(true);
                 sync_file_to_remote_client(msg_data.data.sync.file_path);
-                skaiwatch_ble_set_performance(
-                    false); // Disable performance mode after sync
+                skaiwatch_ble_set_performance(false);
                 // Delete file if requested
                 if (msg_data.data.sync.delete_after_sync)
                 {
@@ -512,9 +500,9 @@ static void file_system_entry(void *parameter)
 
                 // Update sync status and notify UI
                 sync_progress.sync_status = false;
-                ui_msg.type = LVGL_MSG_TYPE_SYNC_STATUS;
-                ui_msg.data.sync_state = sync_progress.sync_status;
-                lvgl_send_msg(ui_msg);
+                // ui_msg.type = LVGL_MSG_TYPE_SYNC_STATUS;
+                // ui_msg.data.sync_state = sync_progress.sync_status;
+                // lvgl_send_msg(ui_msg);
                 break;
             }
 
@@ -562,16 +550,14 @@ static void file_system_entry(void *parameter)
                     sync_progress.percent_complete = 0;
                     strncpy(sync_progress.sync_in_file_path, file_path_buf,
                             FILE_PATH_MAX_LEN - 1);
-                    sync_progress.sync_in_file_path[FILE_PATH_MAX_LEN - 1] = '\0';
+                    sync_progress.sync_in_file_path[FILE_PATH_MAX_LEN - 1] =
+                        '\0';
 
                     // ui_msg.type = LVGL_MSG_TYPE_SYNC_STATUS;
                     // ui_msg.data.sync_state = true;
                     // lvgl_send_msg(ui_msg);
 
-                    LOG_I("sync_multi: [%s] syncing start", file_path_buf);
                     int sync_ret = sync_file_to_remote_client(file_path_buf);
-                    LOG_I("sync_multi: [%s] syncing %s", file_path_buf,
-                          sync_ret ? "success" : "failed");
 
                     if (del_after)
                     {
@@ -601,248 +587,6 @@ static void file_system_entry(void *parameter)
             case DELETE_FILE_MSG:
             {
                 delete_file(msg_data.data.sync.file_path);
-                break;
-            }
-
-            case START_RECEIVE_FILE_MSG:
-            {
-                const char *file_path = msg_data.data.receive.file_path;
-                uint32_t total_size = msg_data.data.receive.total_size;
-
-                if (g_file_receive.is_active)
-                {
-                    LOG_E("File receive already in progress");
-                    break;
-                }
-
-                /* Check if file already exists and compare size */
-                struct stat file_stat;
-                if (stat(file_path, &file_stat) == 0)
-                {
-                    /* File exists, compare size */
-                    if ((uint32_t)file_stat.st_size == total_size)
-                    {
-                        /* File exists and size matches, skip update */
-                        LOG_I("File already exists with matching size: %s (%d "
-                              "bytes)",
-                              file_path, total_size);
-                        send_file_compare_result(0); /* 0 = skip update */
-                        break;
-                    }
-                    else
-                    {
-                        /* File exists but size differs, proceed with update */
-                        LOG_I("File exists but size differs: %s (existing: %d, "
-                              "new: %d)",
-                              file_path, file_stat.st_size, total_size);
-                        send_file_compare_result(
-                            1); /* 1 = proceed with update */
-                        if (is_ble_dfu_thread_running())
-                        {
-                            handle_download_progress_update(0);
-                        }
-                    }
-                }
-                else
-                {
-                    /* File doesn't exist, proceed with update */
-                    LOG_I("File doesn't exist, proceed with update: %s",
-                          file_path);
-                    send_file_compare_result(1); /* 1 = proceed with update */
-                    if (is_ble_dfu_thread_running())
-                    {
-                        handle_download_progress_update(0);
-                    }
-                }
-
-                /* Check if file path already has .temp extension */
-                char temp_file_path[FILE_PATH_MAX_LEN];
-                char *temp_ext = strstr(file_path, ".temp");
-                if (temp_ext != NULL && *(temp_ext + 5) == '\0')
-                {
-                    /* Already has .temp extension, use as is */
-                    rt_strncpy(temp_file_path, file_path,
-                               FILE_PATH_MAX_LEN - 1);
-                    temp_file_path[FILE_PATH_MAX_LEN - 1] = '\0';
-                }
-                else
-                {
-                    /* Add .temp extension */
-                    rt_snprintf(temp_file_path, FILE_PATH_MAX_LEN, "%s.temp",
-                                file_path);
-                }
-
-                /* Extract directory path and create all parent dirs if needed */
-                char dir_path[FILE_PATH_MAX_LEN];
-                rt_strncpy(dir_path, temp_file_path, FILE_PATH_MAX_LEN);
-                char *last_slash = strrchr(dir_path, '/');
-                if (last_slash)
-                {
-                    *last_slash = '\0';
-                    /* Recursively create parent directories */
-                    for (char *p = dir_path + 1; *p; p++)
-                    {
-                        if (*p == '/')
-                        {
-                            *p = '\0';
-                            mkdir(dir_path, 0777);
-                            *p = '/';
-                        }
-                    }
-                    mkdir(dir_path, 0777);
-                }
-
-                /* Open file for writing */
-                g_file_receive.fd =
-                    open(temp_file_path,
-                         O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0666);
-                if (g_file_receive.fd < 0)
-                {
-                    LOG_E("Failed to open file for writing: %s",
-                          temp_file_path);
-                    break;
-                }
-
-                /* Initialize receive state with .temp path */
-                rt_strncpy(g_file_receive.file_path, temp_file_path,
-                           FILE_PATH_MAX_LEN);
-                g_file_receive.total_size = total_size;
-                g_file_receive.received_size = 0;
-                g_file_receive.is_active = true;
-                g_file_receive.last_receive_tick = rt_tick_get();
-
-                LOG_I("Started receiving file: %s (%d bytes)", temp_file_path,
-                      total_size);
-                // skaiwatch_ble_set_performance(
-                //     true); // Enable performance mode for BLE
-                break;
-            }
-
-            case RECEIVE_FILE_DATA_MSG:
-            {
-                if (!g_file_receive.is_active)
-                {
-                    LOG_E("No active file receive");
-                    break;
-                }
-
-                uint16_t length = msg_data.data.receive.data_length;
-                const uint8_t *data = msg_data.data.receive.data;
-
-                /* Write data to file */
-                size_t written = write(g_file_receive.fd, data, length);
-                if (written != length)
-                {
-                    LOG_E("Failed to write data: %d/%d bytes", written, length);
-                    close(g_file_receive.fd);
-                    g_file_receive.is_active = false;
-                    remove(g_file_receive.file_path);
-                    break;
-                }
-
-                g_file_receive.received_size += written;
-                g_file_receive.last_receive_tick = rt_tick_get();
-
-                uint8_t progress = g_file_receive.total_size > 0
-                                       ? (g_file_receive.received_size * 100 /
-                                          g_file_receive.total_size)
-                                       : 0;
-                if (is_ble_dfu_thread_running())
-                {
-                    handle_download_progress_update(progress);
-                }
-
-                LOG_D("Received %d/%d bytes (%d%%)",
-                      g_file_receive.received_size, g_file_receive.total_size,
-                      progress);
-                break;
-            }
-
-            case END_RECEIVE_FILE_MSG:
-            {
-                if (!g_file_receive.is_active)
-                {
-                    LOG_E("No active file receive");
-                    break;
-                }
-
-                /* Close file */
-                close(g_file_receive.fd);
-
-                /* Check if all data received */
-                if (g_file_receive.received_size != g_file_receive.total_size)
-                {
-                    LOG_E("Incomplete file: received %d/%d bytes",
-                          g_file_receive.received_size,
-                          g_file_receive.total_size);
-                    remove(g_file_receive.file_path);
-                    g_file_receive.is_active = false;
-                    break;
-                }
-
-                LOG_I("File receive completed: %s (%d bytes)",
-                      g_file_receive.file_path, g_file_receive.received_size);
-
-                /* Check if file has .temp extension and rename to final name */
-                char *temp_ext = strstr(g_file_receive.file_path, ".temp");
-                if (temp_ext != NULL && *(temp_ext + 5) == '\0')
-                {
-                    /* This is a .temp file, rename to final name */
-                    char final_path[FILE_PATH_MAX_LEN];
-                    size_t base_len = temp_ext - g_file_receive.file_path;
-                    rt_strncpy(final_path, g_file_receive.file_path, base_len);
-                    final_path[base_len] = '\0';
-
-                    /* Remove existing final file if it exists */
-                    if (remove(final_path))
-                    {
-                        LOG_W("No existing file to remove: %s", final_path);
-                    }
-                    else
-                    {
-                        LOG_I("Removed existing file: %s", final_path);
-                    }
-                    // remove(final_path);
-
-                    /* Rename temp file to final file */
-                    if (rename(g_file_receive.file_path, final_path) == 0)
-                    {
-                        LOG_I("Renamed %s to %s", g_file_receive.file_path,
-                              final_path);
-                        /* Call file handler with final path */
-                        received_file_handler(final_path);
-                    }
-                    else
-                    {
-                        LOG_E("Failed to rename %s to %s",
-                              g_file_receive.file_path, final_path);
-                        /* Still call handler with temp path as fallback */
-                        received_file_handler(g_file_receive.file_path);
-                    }
-                }
-                else
-                {
-                    /* Not a .temp file, call handler directly */
-                    received_file_handler(g_file_receive.file_path);
-                }
-
-                /* Reset state */
-                skaiwatch_ble_set_performance(
-                    false); // Disable performance mode after BLE transfer
-                g_file_receive.is_active = false;
-                break;
-            }
-
-            case CANCEL_RECEIVE_FILE_MSG:
-            {
-                if (g_file_receive.is_active)
-                {
-                    close(g_file_receive.fd);
-                    remove(g_file_receive.file_path);
-                    g_file_receive.is_active = false;
-                    LOG_I("Cancel file receive for: %s",
-                          g_file_receive.file_path);
-                }
                 break;
             }
 
@@ -973,7 +717,8 @@ int bloc_sync_folder_files(const char *folder_path, bool delete_after_sync)
 
     rt_strncpy(msg_data.data.sync_multi.folder_path, folder_path, path_len);
 
-    if (rt_mq_send(file_system_mq, (void *)&msg_data, sizeof(msg_data)) != RT_EOK)
+    if (rt_mq_send(file_system_mq, (void *)&msg_data, sizeof(msg_data)) !=
+        RT_EOK)
     {
         LOG_E("Failed to send sync_multi message to queue");
         rt_free(msg_data.data.sync_multi.folder_path);
@@ -1058,20 +803,89 @@ int bloc_start_receive_file(const char *file_path, uint32_t total_size)
         return -RT_ERROR;
     }
 
-    file_system_msg_data_t msg_data;
-    msg_data.msg_type = START_RECEIVE_FILE_MSG;
-    rt_strncpy(msg_data.data.receive.file_path, file_path,
-               FILE_PATH_MAX_LEN - 1);
-    msg_data.data.receive.file_path[FILE_PATH_MAX_LEN - 1] = '\0';
-    msg_data.data.receive.total_size = total_size;
-
-    if (rt_mq_send(file_system_mq, (void *)&msg_data, sizeof(msg_data)) !=
-        RT_EOK)
+    if (g_file_receive.is_active)
     {
-        LOG_E("Failed to send start receive file message to queue");
+        LOG_E("File receive already in progress");
         return -RT_ERROR;
     }
 
+    /* Check if file already exists and compare size */
+    struct stat file_stat;
+    if (stat(file_path, &file_stat) == 0)
+    {
+        if ((uint32_t)file_stat.st_size == total_size)
+        {
+            LOG_I("File already exists with matching size: %s (%d bytes)",
+                  file_path, total_size);
+            send_file_compare_result(0); /* 0 = skip update */
+            return RT_EOK;
+        }
+        LOG_I("File exists but size differs: %s (existing: %d, new: %d)",
+              file_path, file_stat.st_size, total_size);
+        send_file_compare_result(1); /* 1 = proceed with update */
+        if (is_ble_dfu_thread_running())
+        {
+            handle_download_progress_update(0);
+        }
+    }
+    else
+    {
+        LOG_I("File doesn't exist, proceed with update: %s", file_path);
+        send_file_compare_result(1);
+        if (is_ble_dfu_thread_running())
+        {
+            handle_download_progress_update(0);
+        }
+    }
+
+    /* Normalize to .temp path */
+    char temp_file_path[FILE_PATH_MAX_LEN];
+    char *temp_ext = strstr(file_path, ".temp");
+    if (temp_ext != NULL && *(temp_ext + 5) == '\0')
+    {
+        rt_strncpy(temp_file_path, file_path, FILE_PATH_MAX_LEN - 1);
+        temp_file_path[FILE_PATH_MAX_LEN - 1] = '\0';
+    }
+    else
+    {
+        rt_snprintf(temp_file_path, FILE_PATH_MAX_LEN, "%s.temp", file_path);
+    }
+
+    /* Recursively create parent directories */
+    char dir_path[FILE_PATH_MAX_LEN];
+    rt_strncpy(dir_path, temp_file_path, FILE_PATH_MAX_LEN);
+    char *last_slash = strrchr(dir_path, '/');
+    if (last_slash)
+    {
+        *last_slash = '\0';
+        for (char *p = dir_path + 1; *p; p++)
+        {
+            if (*p == '/')
+            {
+                *p = '\0';
+                mkdir(dir_path, 0777);
+                *p = '/';
+            }
+        }
+        mkdir(dir_path, 0777);
+    }
+
+    g_file_receive.fd = open(temp_file_path,
+                             O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0666);
+    if (g_file_receive.fd < 0)
+    {
+        LOG_E("Failed to open file for writing: %s", temp_file_path);
+        return -RT_ERROR;
+    }
+
+    rt_strncpy(g_file_receive.file_path, temp_file_path, FILE_PATH_MAX_LEN);
+    g_file_receive.total_size = total_size;
+    g_file_receive.received_size = 0;
+    g_file_receive.is_active = true;
+    g_file_receive.last_receive_tick = rt_tick_get();
+
+    LOG_I("Started receiving file: %s (%d bytes)", temp_file_path, total_size);
+    skaiwatch_ble_set_performance(true);
     return RT_EOK;
 }
 
@@ -1089,25 +903,36 @@ int bloc_receive_file_data(const uint8_t *data, uint16_t length)
         return -RT_ERROR;
     }
 
-    if (length > FILE_SYNC_BUFFER_SIZE)
+    if (!g_file_receive.is_active)
     {
-        LOG_E("Data too large: %d bytes (max: %d)", length,
-              FILE_SYNC_BUFFER_SIZE);
+        LOG_E("No active file receive");
         return -RT_ERROR;
     }
 
-    file_system_msg_data_t msg_data;
-    msg_data.msg_type = RECEIVE_FILE_DATA_MSG;
-    msg_data.data.receive.data_length = length;
-    rt_memcpy(msg_data.data.receive.data, data, length);
-
-    if (rt_mq_send(file_system_mq, (void *)&msg_data, sizeof(msg_data)) !=
-        RT_EOK)
+    size_t written = write(g_file_receive.fd, data, length);
+    if (written != length)
     {
-        LOG_E("Failed to send receive file data message to queue");
+        LOG_E("Failed to write data: %d/%d bytes", written, length);
+        close(g_file_receive.fd);
+        g_file_receive.is_active = false;
+        remove(g_file_receive.file_path);
         return -RT_ERROR;
     }
 
+    g_file_receive.received_size += written;
+    g_file_receive.last_receive_tick = rt_tick_get();
+
+    uint8_t progress =
+        g_file_receive.total_size > 0
+            ? (g_file_receive.received_size * 100 / g_file_receive.total_size)
+            : 0;
+    if (is_ble_dfu_thread_running())
+    {
+        handle_download_progress_update(progress);
+    }
+
+    LOG_D("Received %d/%d bytes (%d%%)", g_file_receive.received_size,
+          g_file_receive.total_size, progress);
     return RT_EOK;
 }
 
@@ -1117,16 +942,63 @@ int bloc_receive_file_data(const uint8_t *data, uint16_t length)
  */
 int bloc_end_receive_file(void)
 {
-    file_system_msg_data_t msg_data;
-    msg_data.msg_type = END_RECEIVE_FILE_MSG;
-
-    if (rt_mq_send(file_system_mq, (void *)&msg_data, sizeof(msg_data)) !=
-        RT_EOK)
+    if (!g_file_receive.is_active)
     {
-        LOG_E("Failed to send end receive file message to queue");
+        LOG_E("No active file receive");
         return -RT_ERROR;
     }
 
+    close(g_file_receive.fd);
+
+    if (g_file_receive.received_size != g_file_receive.total_size)
+    {
+        LOG_E("Incomplete file: received %d/%d bytes",
+              g_file_receive.received_size, g_file_receive.total_size);
+        remove(g_file_receive.file_path);
+        g_file_receive.is_active = false;
+        return -RT_ERROR;
+    }
+
+    LOG_I("File receive completed: %s (%d bytes)", g_file_receive.file_path,
+          g_file_receive.received_size);
+
+    /* Check if file has .temp extension and rename to final name */
+    char *temp_ext = strstr(g_file_receive.file_path, ".temp");
+    if (temp_ext != NULL && *(temp_ext + 5) == '\0')
+    {
+        char final_path[FILE_PATH_MAX_LEN];
+        size_t base_len = temp_ext - g_file_receive.file_path;
+        rt_strncpy(final_path, g_file_receive.file_path, base_len);
+        final_path[base_len] = '\0';
+
+        if (remove(final_path))
+        {
+            LOG_W("No existing file to remove: %s", final_path);
+        }
+        else
+        {
+            LOG_I("Removed existing file: %s", final_path);
+        }
+
+        if (rename(g_file_receive.file_path, final_path) == 0)
+        {
+            LOG_I("Renamed %s to %s", g_file_receive.file_path, final_path);
+            received_file_handler(final_path);
+        }
+        else
+        {
+            LOG_E("Failed to rename %s to %s", g_file_receive.file_path,
+                  final_path);
+            received_file_handler(g_file_receive.file_path);
+        }
+    }
+    else
+    {
+        received_file_handler(g_file_receive.file_path);
+    }
+
+    skaiwatch_ble_set_performance(false);
+    g_file_receive.is_active = false;
     return RT_EOK;
 }
 
@@ -1136,16 +1008,13 @@ int bloc_end_receive_file(void)
  */
 int bloc_cancel_receive_file(void)
 {
-    file_system_msg_data_t msg_data;
-    msg_data.msg_type = CANCEL_RECEIVE_FILE_MSG;
-
-    if (rt_mq_send(file_system_mq, (void *)&msg_data, sizeof(msg_data)) !=
-        RT_EOK)
+    if (g_file_receive.is_active)
     {
-        LOG_E("Failed to send cancel receive file message to queue");
-        return -RT_ERROR;
+        close(g_file_receive.fd);
+        remove(g_file_receive.file_path);
+        g_file_receive.is_active = false;
+        LOG_I("Cancel file receive for: %s", g_file_receive.file_path);
     }
-
     return RT_EOK;
 }
 
