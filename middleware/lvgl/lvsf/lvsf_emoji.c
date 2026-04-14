@@ -29,7 +29,8 @@ typedef struct emoji_cache_entry {
     char path[80];
     uint32_t access_cnt;
     lv_img_dsc_t img_dsc;
-    uint8_t *data;
+    uint8_t *data;       /* NULL = negative entry (path not found on fs) */
+    bool    not_found;   /* set when lv_fs_open failed for this path */
 } emoji_cache_entry_t;
 
 static emoji_cache_entry_t *emoji_cache_head = NULL;
@@ -70,16 +71,39 @@ static void cache_evict_lru(void)
     if (lru_prev) lru_prev->next = lru->next;
     else          emoji_cache_head = lru->next;
 
-    lv_mem_free(lru->data);
+    if (lru->data) lv_mem_free(lru->data);
     lv_mem_free(lru);
     emoji_cache_count--;
+}
+
+static void cache_insert_negative(const char *path)
+{
+    if (emoji_cache_count >= EMOJI_CACHE_MAX)
+        cache_evict_lru();
+
+    emoji_cache_entry_t *entry = lv_mem_alloc(sizeof(emoji_cache_entry_t));
+    if (!entry) return;
+
+    strncpy(entry->path, path, sizeof(entry->path) - 1);
+    entry->path[sizeof(entry->path) - 1] = '\0';
+    entry->data = NULL;
+    entry->not_found = true;
+    entry->access_cnt = ++emoji_access_counter;
+    memset(&entry->img_dsc, 0, sizeof(entry->img_dsc));
+
+    entry->next = emoji_cache_head;
+    emoji_cache_head = entry;
+    emoji_cache_count++;
 }
 
 static emoji_cache_entry_t *cache_load(const char *path)
 {
     lv_fs_file_t f;
     if (lv_fs_open(&f, path, LV_FS_MODE_RD) != LV_FS_RES_OK)
+    {
+        cache_insert_negative(path);
         return NULL;
+    }
 
     lv_img_header_t header;
     uint32_t br;
@@ -115,6 +139,7 @@ static emoji_cache_entry_t *cache_load(const char *path)
     strncpy(entry->path, path, sizeof(entry->path) - 1);
     entry->path[sizeof(entry->path) - 1] = '\0';
     entry->data = buf;
+    entry->not_found = false;
     entry->access_cnt = ++emoji_access_counter;
     entry->img_dsc.header = header;
     entry->img_dsc.data_size = data_size;
@@ -131,9 +156,13 @@ static emoji_cache_entry_t *cache_load(const char *path)
 static void *emoji_get_by_path(const char *path)
 {
     emoji_cache_entry_t *e = cache_find(path);
-    if (e) return &e->img_dsc;
+    if (e)
+    {
+        if (e->not_found) return NULL;
+        return &e->img_dsc;
+    }
     e = cache_load(path);
-    if (e) return &e->img_dsc;
+    if (e && !e->not_found) return &e->img_dsc;
     return NULL;
 }
 
