@@ -832,10 +832,17 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
         if (dataset->gesture_sample_count >= target_samples)
         {
             dataset->gesture_ended = true;
+            static rt_tick_t median_lock_trigger_time = 0;
             float median_difference_accel =
                 calculate_median_difference_accel(75);
             bool is_gesture = true;
             if (median_difference_accel > 0.25f)
+            {
+                is_gesture = false;
+                median_lock_trigger_time = current_time;
+            }
+            else if (median_lock_trigger_time != 0 &&
+                     (current_time - median_lock_trigger_time) < 1000)
             {
                 is_gesture = false;
             }
