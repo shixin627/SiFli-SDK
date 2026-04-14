@@ -265,13 +265,40 @@ static void *resolve_sequence(void)
 
 int lv_emoji_process_glyph(uint32_t letter, uint32_t letter_next)
 {
-    /* Skip joiners/selectors themselves — they are always zero-width */
+    /* Joiners / variation selector / keycap combiner — always zero-width.
+       If a sequence is active, append and check whether it should be resolved
+       here (e.g. ❤️ = 2764 FE0F ends on FE0F).  Without this, seq_active would
+       leak across the end of the sequence and sweep the next unrelated letter
+       into resolve_sequence(), causing failed fs lookups (lag) and mis-drawn
+       emojis on the wrong character. */
     if (letter == 0xFE0F || letter == 0x200D || letter == 0x20E3)
     {
-        if (seq_active && seq_len < EMOJI_SEQ_MAX)
-            seq_buf[seq_len++] = letter;
+        if (seq_active)
+        {
+            if (seq_len < EMOJI_SEQ_MAX)
+                seq_buf[seq_len++] = letter;
+
+            if (seq_should_continue(letter, letter_next))
+            {
+                last_glyph_is_seq_member = true;
+                return -1;
+            }
+
+            pending_emoji = resolve_sequence();
+            seq_active = false;
+            seq_len = 0;
+            if (pending_emoji)
+            {
+                draw_trigger_letter = letter;
+                draw_trigger_emoji  = pending_emoji;
+                last_glyph_is_seq_member = false;
+                return 1;
+            }
+            last_glyph_is_seq_member = false;
+            return 0;
+        }
         last_glyph_is_seq_member = true;
-        return -1; /* zero-width, part of sequence */
+        return -1; /* stray joiner outside any sequence — zero width */
     }
 
     /* Skin tone modifier in an active sequence */
