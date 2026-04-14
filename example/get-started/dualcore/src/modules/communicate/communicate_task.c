@@ -176,6 +176,7 @@ typedef struct
     PacketHandler handle_phone_control_cmd;
     PacketHandler handle_find_mobile;
     PacketHandler handle_call_reject;
+    PacketHandler handle_call_accept;
     PacketHandler handle_media_control;
     PacketHandler handle_mqtt_control;
     PacketHandler handle_volume_percentage;
@@ -490,6 +491,15 @@ static uint16_t handle_call_reject(PacketBuilder *builder, L1SendData *data)
 {
     BUILD_SIMPLE_PACKET(builder->buf, NOTIFY_COMMAND_ID,
                         KEY_INCOMMING_CALL_REJECT, 0);
+    builder->length = 5;
+    return builder->length;
+}
+
+// Handler for call accept command
+static uint16_t handle_call_accept(PacketBuilder *builder, L1SendData *data)
+{
+    BUILD_SIMPLE_PACKET(builder->buf, NOTIFY_COMMAND_ID,
+                        KEY_INCOMMING_CALL_ACCEPT, 0);
     builder->length = 5;
     return builder->length;
 }
@@ -1240,6 +1250,7 @@ static int commu_handler_provider_register(void)
     commu_handler_provider.handle_phone_control_cmd = handle_phone_control_cmd;
     commu_handler_provider.handle_find_mobile = handle_find_mobile;
     commu_handler_provider.handle_call_reject = handle_call_reject;
+    commu_handler_provider.handle_call_accept = handle_call_accept;
     commu_handler_provider.handle_media_control = handle_media_control;
     commu_handler_provider.handle_mqtt_control = handle_mqtt_control;
     commu_handler_provider.handle_volume_percentage = handle_volume_percentage;
@@ -1417,6 +1428,9 @@ static uint16_t dispatch_packet_handler(L1SendData *data)
         break;
     case L1SEND_RETURN_CALL_REJECT_COMMAND:
         handler = commu_handler_provider.handle_call_reject;
+        break;
+    case L1SEND_RETURN_CALL_ACCEPT_COMMAND:
+        handler = commu_handler_provider.handle_call_accept;
         break;
     case L1SEND_MEDIA_CONTROL:
         handler = commu_handler_provider.handle_media_control;

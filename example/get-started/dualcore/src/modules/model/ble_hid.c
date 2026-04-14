@@ -63,6 +63,14 @@ static struct hids_report input_consumer = {
 static struct consume_key_state hid_consume_state;
 #endif
 
+#ifdef HID_TELEPHONY
+static struct hids_report input_telephony = {
+    .id = REPORT_ID_TELEPHONY,
+    .type = HIDS_INPUT,
+};
+static struct telephony_key_state hid_telephony_state;
+#endif
+
 #ifdef HID_TOUCHSCREEN
 static struct hids_report input_touchscreen = {
     .id = REPORT_ID_TOUCH,
@@ -288,6 +296,40 @@ static const uint8_t report_map[] = {
     0x02, // Usage (AC Back)
     0x81,
     0x06, // Input (Data,Value,Relative,Bit Field)
+    0xC0, // End Collection
+#endif
+
+#ifdef HID_TELEPHONY
+    0x05,
+    0x0B, // Usage Page (Telephony)
+    0x09,
+    0x05, // Usage (Headset)
+    0xA1,
+    0x01, // Collection (Application)
+    0x85,
+    REPORT_ID_TELEPHONY, // Report ID
+    0x15,
+    0x00, // Logical Minimum (0)
+    0x25,
+    0x01, // Logical Maximum (1)
+    0x75,
+    0x01, // Report Size (1)
+    0x95,
+    0x01, // Report Count (1)
+    0x09,
+    0x20, // Usage (Hook Switch)
+    0x81,
+    0x06, // Input (Data,Var,Rel)
+    0x09,
+    0x26, // Usage (Drop)
+    0x81,
+    0x06, // Input (Data,Var,Rel)
+    0x75,
+    0x06, // Report Size (6)
+    0x95,
+    0x01, // Report Count (1)
+    0x81,
+    0x01, // Input (Const) - padding to byte
     0xC0, // End Collection
 #endif
 
@@ -541,6 +583,24 @@ struct attm_desc hids_att_db[] = {
                                       PERM(RI, ENABLE), 2},
 #endif
 
+#ifdef HID_TELEPHONY
+    // HID Report (Telephony)
+    [HIDS_TELEPHONY_IDX_REPORT] = {ATT_DECL_CHARACTERISTIC, PERM(RD, ENABLE), 0,
+                                   0},
+    [HIDS_TELEPHONY_IDX_REPORT_VAL] =
+        {ATT_CHAR_REPORT,
+         PERM(RD, ENABLE) | PERM(WRITE_REQ, ENABLE) |
+             PERM(WRITE_COMMAND, ENABLE) | PERM(NTF, ENABLE) | PERM(WP, UNAUTH),
+         PERM(UUID_LEN, UUID_16) | PERM(RI, ENABLE), 8},
+    [HIDS_TELEPHONY_IDX_REPORT_NTF_CFG] = {ATT_DESC_CLIENT_CHAR_CFG,
+                                           PERM(RD, ENABLE) |
+                                               PERM(WRITE_REQ, ENABLE) |
+                                               PERM(WP, UNAUTH),
+                                           PERM(RI, ENABLE), 2},
+    [HIDS_TELEPHONY_IDX_REPORT_REF] = {ATT_DESC_REPORT_REF, PERM(RD, ENABLE),
+                                       PERM(RI, ENABLE), 2},
+#endif
+
 #ifdef HID_TOUCHSCREEN
     // HID Report (Touchscreen)
     [HIDS_TOUCHSCREEN_IDX_REPORT] = {ATT_DECL_CHARACTERISTIC, PERM(RD, ENABLE),
@@ -619,6 +679,16 @@ uint8_t *ble_hids_gatts_get_cbk(uint8_t conn_idx, uint8_t idx, uint16_t *len)
     }
     break;
 #endif
+#ifdef HID_TELEPHONY
+    case HIDS_TELEPHONY_IDX_REPORT_VAL:
+        break;
+    case HIDS_TELEPHONY_IDX_REPORT_REF:
+    {
+        ret_val = (uint8_t *)&input_telephony;
+        *len = sizeof(input_telephony);
+    }
+    break;
+#endif
 #ifdef HID_KEYBOARD
     case HIDS_KEYBOARD_IDX_REPORT_VAL:
         break;
@@ -677,6 +747,12 @@ uint8_t ble_hids_gatts_set_cbk(uint8_t conn_idx, sibles_set_cbk_t *para)
     case HIDS_CONSUMER_IDX_REPORT_NTF_CFG:
         g_hid_data->is_consumer_config_on = *(para->value);
         LOG_I("CONSUMER CCCD %d", g_hid_data->is_consumer_config_on);
+        break;
+#endif
+#ifdef HID_TELEPHONY
+    case HIDS_TELEPHONY_IDX_REPORT_NTF_CFG:
+        g_hid_data->is_telephony_config_on = *(para->value);
+        LOG_I("TELEPHONY CCCD %d", g_hid_data->is_telephony_config_on);
         break;
 #endif
 #ifdef HID_KEYBOARD
@@ -790,6 +866,28 @@ static int hid_consume_state_key_clear_bit(uint8_t key)
 }
 #endif
 
+#ifdef HID_TELEPHONY
+static int hid_telephony_state_key_set_bit(uint8_t key)
+{
+    if ((hid_telephony_state.key_state & (1 << key)) == 0)
+    {
+        hid_telephony_state.key_state |= 1 << key;
+        return 0;
+    }
+    return -EBUSY;
+}
+
+static int hid_telephony_state_key_clear_bit(uint8_t key)
+{
+    if ((hid_telephony_state.key_state & (1 << key)) != 0)
+    {
+        hid_telephony_state.key_state &= ~(1 << key);
+        return 0;
+    }
+    return -EBUSY;
+}
+#endif
+
 #ifdef HID_MOUSE
 static int hid_mouse_state_set(uint8_t buttons, int8_t x, int8_t y,
                                int8_t wheel, int8_t pan)
@@ -851,6 +949,41 @@ static int hid_touchpad_state_clear(void)
 
 /**********************HID Report Send Functions
  * ****************************************************/
+
+#ifdef HID_TELEPHONY
+static void telephony_report_send(uint8_t *key_val, uint16_t key_val_len)
+{
+    if (!g_hid_data || !g_hid_data->is_telephony_config_on)
+        return;
+
+    sibles_value_t value;
+    value.hdl = g_hid_data->srv_handle;
+    value.idx = HIDS_TELEPHONY_IDX_REPORT_VAL;
+    value.len = key_val_len;
+    value.value = key_val;
+    int ret = sibles_write_value(g_conn_idx, &value);
+    LOG_D("telephony report send retry:%d", g_conn_idx);
+    if (ret == 0)
+    {
+        int retry = 20;
+        while (retry > 0)
+        {
+            retry--;
+            rt_thread_mdelay(50);
+            ret = sibles_write_value(g_conn_idx, &value);
+            if (ret == key_val_len)
+            {
+                LOG_I("telephony send retry success : %d", key_val[0]);
+                return;
+            }
+        }
+    }
+    else
+    {
+        LOG_I("telephony send success : %d", key_val[0]);
+    }
+}
+#endif
 
 #ifdef HID_CONSUMER
 static void consumer_report_send(uint8_t *key_val, uint16_t key_val_len)
@@ -1039,6 +1172,9 @@ void ble_hid_reset_on_disconnect(void)
 #ifdef HID_CONSUMER
     g_hid_data->is_consumer_config_on = 0;
 #endif
+#ifdef HID_TELEPHONY
+    g_hid_data->is_telephony_config_on = 0;
+#endif
 #ifdef HID_MOUSE
     g_hid_data->is_mouse_config_on = 0;
 #endif
@@ -1213,6 +1349,32 @@ void HID_CONSUMER_GoBack(void)
     rt_thread_mdelay(200);
     BLE_HID_Mouse_BackRelease();
 }
+
+#ifdef HID_TELEPHONY
+void hang_up_through_hid(void)
+{
+    LOG_I("HID telephony: drop");
+    hid_telephony_state_key_set_bit(HIDS_TEL_DROP);
+    telephony_report_send((uint8_t *)&hid_telephony_state,
+                          sizeof(hid_telephony_state));
+    rt_thread_mdelay(200);
+    hid_telephony_state_key_clear_bit(HIDS_TEL_DROP);
+    telephony_report_send((uint8_t *)&hid_telephony_state,
+                          sizeof(hid_telephony_state));
+}
+
+void hook_switch_through_hid(void)
+{
+    LOG_I("HID telephony: hook switch");
+    hid_telephony_state_key_set_bit(HIDS_TEL_HOOK_SWITCH);
+    telephony_report_send((uint8_t *)&hid_telephony_state,
+                          sizeof(hid_telephony_state));
+    rt_thread_mdelay(200);
+    hid_telephony_state_key_clear_bit(HIDS_TEL_HOOK_SWITCH);
+    telephony_report_send((uint8_t *)&hid_telephony_state,
+                          sizeof(hid_telephony_state));
+}
+#endif
 
 void HID_CONSUMER_GoHome(void)
 {

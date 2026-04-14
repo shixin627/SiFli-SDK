@@ -53,6 +53,10 @@
 #include "bloc_skaiwalk.h"
 #include "bloc_v2t.h"
 #include "bloc_peripheral.h"
+#include "gui_app_fwk.h"
+
+extern void incoming_call_set_caller(const char *title, const char *id, uint8_t type);
+extern void incoming_call_close_if_active(const char *id);
 
 /* Communication modules */
 #include "communicate_protocol.h"
@@ -561,14 +565,12 @@ void interact_with_notification(notification_t *notification)
     // {
     //     navigate_notification_info(notification);
     // }
-    // if (notification->calling)
-    // {
-    //     motor_pattern_calling();
-    // }
-    // else
-    // {
-        
-    // }
+    if (notification->calling)
+    {
+        motor_pattern_calling();
+        incoming_call_set_caller(notification->title, notification->id, notification->type);
+        gui_app_run(APP_ID_INCOMING_CALL);
+    }
     need_wakeup = false;
 }
 
@@ -705,6 +707,7 @@ void dismiss_notification_from_phone(const char *id)
         return;
     }
     LOG_I("[%s] phone dismiss → watch remove id:%s", __func__, id);
+    incoming_call_close_if_active(id);
     remove_notification(_notification_list, &notification_items_amount, id);
     SkaiWatchSys.notification_number = notification_items_amount;
     notify_provider.notification_refresh();

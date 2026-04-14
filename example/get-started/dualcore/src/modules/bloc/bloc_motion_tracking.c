@@ -832,10 +832,17 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
         if (dataset->gesture_sample_count >= target_samples)
         {
             dataset->gesture_ended = true;
+            static rt_tick_t median_lock_trigger_time = 0;
             float median_difference_accel =
                 calculate_median_difference_accel(75);
             bool is_gesture = true;
             if (median_difference_accel > 0.25f)
+            {
+                is_gesture = false;
+                median_lock_trigger_time = current_time;
+            }
+            else if (median_lock_trigger_time != 0 &&
+                     (current_time - median_lock_trigger_time) < 1000)
             {
                 is_gesture = false;
             }
@@ -860,6 +867,10 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
  * @brief Process waveform capture - called from motion_tracking_in_hcpu
  */
 extern rt_uint32_t fsr_adc_read_value(void);
+
+// 10Hz FSR sampler — motion loop (100Hz) 連續 10 筆 IMU 共用同一個 latch 值
+static volatile rt_uint32_t g_fsr_adc_latest = 0;
+
 static uint8_t get_ppg_count = 0;
 static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
 {
@@ -876,8 +887,7 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     }
     uint32_t ppg_rawdata = motion_data->ppg_raw_data.raw_data[get_ppg_count];
 
-    // rt_uint32_t fsr_adc_value = fsr_adc_read_value();
-    rt_uint32_t fsr_adc_value = 0;
+    rt_uint32_t fsr_adc_value = g_fsr_adc_latest;
     // LOG_D("ppg_rawdata:%d, fsr_adc_value:%d", ppg_rawdata, fsr_adc_value);
 
     // Update hand position detection
@@ -1928,6 +1938,20 @@ static uint8_t accelSamplesBuffer[384] = {0}; // 64 * 6 = 384
 #endif
 
 /*
+ ***** FSR ADC sampler thread — 10Hz, 獨立 thread 不阻塞 motion loop
+ */
+static rt_thread_t fsr_adc_sampler_thread = RT_NULL;
+static void fsr_adc_sampler_thread_entry(void *parameter)
+{
+    while (1)
+    {
+        g_fsr_adc_latest = fsr_adc_read_value();
+        // LOG_D("fsr latch=%d", g_fsr_adc_latest);
+        rt_thread_mdelay(100); // 10Hz
+    }
+}
+
+/*
  ***** Motion Tracking processing
  */
 static void motion_tracking_thread_entry(void *parameter)
@@ -1999,12 +2023,20 @@ static int motion_tracking_thread_init(void)
     if (motion_tracking_thread != RT_NULL)
     {
         rt_thread_startup(motion_tracking_thread);
-        return RT_EOK;
     }
     else
     {
         return -RT_ERROR;
     }
+
+    fsr_adc_sampler_thread =
+        rt_thread_create("fsr_smp", fsr_adc_sampler_thread_entry, RT_NULL,
+                         1024, RT_THREAD_PRIORITY_MAX - 4, 10);
+    if (fsr_adc_sampler_thread != RT_NULL)
+    {
+        rt_thread_startup(fsr_adc_sampler_thread);
+    }
+    return RT_EOK;
 }
 INIT_APP_EXPORT(motion_tracking_thread_init);
 
