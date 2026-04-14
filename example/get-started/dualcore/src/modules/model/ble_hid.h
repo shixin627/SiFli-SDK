@@ -14,6 +14,7 @@ extern "C" {
 #define HID_MOUSE
 #define HID_KEYBOARD
 #define HID_CONSUMER
+#define HID_TELEPHONY
 // #define HID_TOUCHSCREEN
 // #define HID_TOUCHPAD
 
@@ -34,6 +35,9 @@ typedef enum
 #endif
 #ifdef HID_TOUCHPAD
     REPORT_ID_TOUCHPAD = 0x05,
+#endif
+#ifdef HID_TELEPHONY
+    REPORT_ID_TELEPHONY = 0x06,
 #endif
 } report_id_t;
 
@@ -100,6 +104,20 @@ struct consume_key_state
 };
 #endif
 
+#ifdef HID_TELEPHONY
+/* Telephony Usage Page (0x0B) key codes (bit positions in report) */
+enum
+{
+    HIDS_TEL_HOOK_SWITCH = 0, /* Usage 0x20 */
+    HIDS_TEL_DROP = 1,        /* Usage 0x26 */
+};
+
+struct telephony_key_state
+{
+    uint8_t key_state;
+};
+#endif
+
 #ifdef HID_MOUSE
 /* Mouse State Structure */
 struct mouse_state
@@ -146,6 +164,9 @@ typedef struct
 #ifdef HID_CONSUMER
     uint8_t is_consumer_config_on;
 #endif
+#ifdef HID_TELEPHONY
+    uint8_t is_telephony_config_on;
+#endif
 #ifdef HID_TOUCHSCREEN
     uint8_t is_touchscreen_config_on;
 #endif
@@ -179,6 +200,12 @@ enum
     HIDS_CONSUMER_IDX_REPORT_VAL,
     HIDS_CONSUMER_IDX_REPORT_REF,
     HIDS_CONSUMER_IDX_REPORT_NTF_CFG,
+#endif
+#ifdef HID_TELEPHONY
+    HIDS_TELEPHONY_IDX_REPORT,
+    HIDS_TELEPHONY_IDX_REPORT_VAL,
+    HIDS_TELEPHONY_IDX_REPORT_REF,
+    HIDS_TELEPHONY_IDX_REPORT_NTF_CFG,
 #endif
 #ifdef HID_TOUCHSCREEN
     HIDS_TOUCHSCREEN_IDX_REPORT,
@@ -256,6 +283,12 @@ void volume_up_through_hid(void);
 void volume_down_through_hid(void);
 void HID_CONSUMER_GoBack(void);
 void HID_CONSUMER_GoHome(void);
+#endif
+
+#ifdef HID_TELEPHONY
+/* Telephony Control Functions */
+void hang_up_through_hid(void);
+void hook_switch_through_hid(void);
 #endif
 
 #ifdef HID_TOUCHSCREEN

@@ -1,0 +1,15 @@
+from building import *
+import rtconfig
+
+cwd = GetCurrentDir()
+
+src = []
+inc = [cwd]
+
+src = src + Glob('*.c')
+
+LOCAL_CCFLAGS = ''
+
+group = DefineGroup('App_incoming_call', src, depend = [''], CPPPATH = inc, LOCAL_CCFLAGS = LOCAL_CCFLAGS)
+
+Return('group')
