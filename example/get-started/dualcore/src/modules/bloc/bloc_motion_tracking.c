@@ -1937,27 +1937,37 @@ static uint8_t accel_sample_num = 0;
 static uint8_t accelSamplesBuffer[384] = {0}; // 64 * 6 = 384
 #endif
 
+#ifdef USING_FSR_ADC_SAMPLER
 /*
  ***** FSR ADC sampler thread — 10Hz, 獨立 thread 不阻塞 motion loop
+ *     休眠時拉長 delay 到 500ms,避免持續採樣耗電
  */
 static rt_thread_t fsr_adc_sampler_thread = RT_NULL;
 static void fsr_adc_sampler_thread_entry(void *parameter)
 {
     while (1)
     {
+        if (SkaiWatchSys.sys_power_status != SYS_POWER_STATUS_ON)
+        {
+            rt_thread_mdelay(1000);
+            continue;
+        }
         g_fsr_adc_latest = fsr_adc_read_value();
         // LOG_D("fsr latch=%d", g_fsr_adc_latest);
         rt_thread_mdelay(100); // 10Hz
     }
 }
+#endif // USING_FSR_ADC_SAMPLER
 
 /*
  ***** Motion Tracking processing
  */
 static void motion_tracking_thread_entry(void *parameter)
 {
+#ifdef USING_FSR_ADC_SAMPLER
     extern void fsr_adc_init(void);
     fsr_adc_init();
+#endif
     watch_sensor.imu_sem = rt_sem_create("imu_sem", 0, RT_IPC_FLAG_FIFO);
     while (1)
     {
@@ -2029,13 +2039,15 @@ static int motion_tracking_thread_init(void)
         return -RT_ERROR;
     }
 
+#ifdef USING_FSR_ADC_SAMPLER
     fsr_adc_sampler_thread =
-        rt_thread_create("fsr_smp", fsr_adc_sampler_thread_entry, RT_NULL,
-                         1024, RT_THREAD_PRIORITY_MAX - 4, 10);
+        rt_thread_create("fsr_smp", fsr_adc_sampler_thread_entry, RT_NULL, 1024,
+                         RT_THREAD_PRIORITY_MAX - 4, 10);
     if (fsr_adc_sampler_thread != RT_NULL)
     {
         rt_thread_startup(fsr_adc_sampler_thread);
     }
+#endif // USING_FSR_ADC_SAMPLER
     return RT_EOK;
 }
 INIT_APP_EXPORT(motion_tracking_thread_init);

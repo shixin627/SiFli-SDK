@@ -252,9 +252,9 @@ static int sync_file_to_remote_client(const char *file_path)
                                             : 0;
 
         // Send progress update to UI
-        ui_msg.type = LVGL_MSG_TYPE_SYNC_PROGRESS;
-        ui_msg.data.action = sync_progress.percent_complete;
-        lvgl_send_msg(ui_msg);
+        // ui_msg.type = LVGL_MSG_TYPE_SYNC_PROGRESS;
+        // ui_msg.data.action = sync_progress.percent_complete;
+        // lvgl_send_msg(ui_msg);
 
         rt_thread_mdelay(FILE_SYNC_DELAY_MS);
     }

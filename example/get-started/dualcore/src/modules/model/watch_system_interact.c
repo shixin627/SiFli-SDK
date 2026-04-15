@@ -167,7 +167,7 @@ void motor_pattern_calling(void)
     {
         motor_params_t params = {
             .duty_cycle = 51,
-            .period = 100000, // 400ms
+            .period = 1000000, // 1000ms
             .repeat_times = 3,
         };
         peripheral_provider.control_motor(true, &params);
