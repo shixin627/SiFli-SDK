@@ -80,6 +80,10 @@ LV_IMG_DECLARE(common_background_vague);
 LV_IMG_DECLARE(weather_sun);
 LV_IMG_DECLARE(media_gaus_bg);
 
+/* Forward declarations for wear status indicator */
+static void refresh_wear_status_indicator(void);
+static void wear_status_indicator_builder(lv_obj_t *parent);
+
 static const char *battery_level_img_dsc[] = {
     APP_ELC_5, APP_ELC_20, APP_ELC_40, APP_ELC_60, APP_ELC_80, APP_ELC_100,
 };
@@ -1266,6 +1270,7 @@ static void gui_state_update_timer_callback(lv_timer_t *timer)
     {
         instruction_list_main_time_update();
     }
+    refresh_wear_status_indicator();
     check_is_at_control_center();
     check_is_at_home();
 #endif
@@ -1404,6 +1409,37 @@ void top_digital_time_builder(lv_obj_t *parent)
     {
         colon_blink_timer = lv_timer_create(colon_blink_timer_cb, 1000, NULL);
     }
+}
+
+/* Wear status indicator */
+static lv_obj_t *wear_status_indicator = NULL;
+
+static void refresh_wear_status_indicator(void)
+{
+    if (!lv_obj_is_valid(wear_status_indicator))
+        return;
+
+    if (SkaiWatchSys.flag_field.is_wearing)
+    {
+        lv_obj_set_style_bg_color(wear_status_indicator, lv_color_hex(0x00FF00), 0);
+    }
+    else
+    {
+        lv_obj_set_style_bg_color(wear_status_indicator, lv_color_hex(0xFF0000), 0);
+    }
+}
+
+static void wear_status_indicator_builder(lv_obj_t *parent)
+{
+    wear_status_indicator = lv_obj_create(parent);
+    lv_obj_set_size(wear_status_indicator, 12, 12);
+    lv_obj_align(wear_status_indicator, LV_ALIGN_TOP_MID, 60, 20);
+    lv_obj_set_style_radius(wear_status_indicator, 6, 0);
+    lv_obj_set_style_border_opa(wear_status_indicator, LV_OPA_0, 0);
+    lv_obj_set_style_bg_opa(wear_status_indicator, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(wear_status_indicator, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+    refresh_wear_status_indicator();
 }
 
 static void battery_status_indicator_builder(lv_obj_t *parent)
@@ -1722,6 +1758,8 @@ void clock_on_stop(void)
         lv_obj_del(p_app_clock_main->instruction_list_battery_label);
         lv_obj_del(p_app_clock_main->instruction_list_time_bg);
 
+        wear_status_indicator = NULL;
+
         if (colon_blink_timer != NULL)
         {
             lv_timer_del(colon_blink_timer);
@@ -1780,6 +1818,7 @@ lv_obj_t *build_home_view(lv_obj_t *parent)
     top_digital_time_builder(lv_layer_top());
 
     battery_status_indicator_builder(lv_layer_top());
+    wear_status_indicator_builder(lv_layer_top());
     refresh_bluetooth_disconnection(SkaiWatchSys.gap_conn_state ==
                                     GAP_CONN_STATE_CONNECTED);
     instruction_list_main_time_update();

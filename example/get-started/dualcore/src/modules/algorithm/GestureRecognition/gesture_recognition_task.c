@@ -597,6 +597,11 @@ static void gesture_recognition_thread_entry(void *parameter)
         // {
         //     continue;
         // }
+        if (!SkaiWatchSys.flag_field.is_wearing)
+        {
+            continue;
+        }
+
         if (is_user_touching_screen())
         {
             continue;
