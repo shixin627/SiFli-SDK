@@ -189,6 +189,7 @@ extern "C"
     void (*notify_battery_voltage)(uint32_t data);
     void (*charge_status_callback)(int status);
     void (*lift_status_callback)(uint8_t status);
+    void (*soft_adt_status_callback)(bool status);
     void (*notify_gesture_event)(uint32_t gesture);
     void (*notify_health_info)(void);
     void (*notify_sleep_state)(uint8_t mode, uint32_t timestamp);

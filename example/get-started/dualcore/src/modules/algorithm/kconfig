@@ -32,4 +32,8 @@ menu "Select algorithm"
 	config BSP_USING_ACTIVITY_ALGO_KRAEPELIN
 			bool "Enable activity algorithm kraepelin"
 			default n
+
+	config BSP_USING_WEAR_DETECT
+		bool "Enable wear detection (IMU + PPG)"
+		default n
 endmenu

@@ -1,0 +1,16 @@
+Import('RTT_ROOT')
+Import('rtconfig')
+import os
+import sys
+from building import *
+
+cwd = GetCurrentDir()
+
+src = []
+path = [cwd]
+
+src += ['wear_detect.c']
+
+group = DefineGroup('Algorithm', src, depend = ['BSP_USING_WEAR_DETECT'], CPPPATH = path)
+
+Return('group')

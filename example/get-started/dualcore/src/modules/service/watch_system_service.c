@@ -142,6 +142,21 @@ static void lift_status_callback(uint8_t status)
     RT_ASSERT(0 == result);
 }
 
+static void soft_adt_status_callback(bool status)
+{
+    if (watch_sys_service_env.service == NULL)
+        return;
+
+    int32_t result = 0;
+    watch_sys_service_data_ind_t data_ind;
+    data_ind.data = (uint32_t)status;
+    result = datas_push_msg_to_client(watch_sys_service_env.service,
+                                      MSG_SERVICE_SOFT_ADT_IND, sizeof(data_ind),
+                                      (uint8_t *)&data_ind);
+    RT_ASSERT(0 == result);
+    LOG_I("Wear detect: %s", status ? "ON WRIST" : "OFF WRIST");
+}
+
 static void notify_gesture_event(uint32_t gesture)
 {
     if (watch_sys_service_env.service == NULL)
@@ -495,6 +510,7 @@ static void register_watch_sys_service_funs(void)
     watch_sys_sync.notify_battery_voltage = indicate_battery_voltage;
     watch_sys_sync.charge_status_callback = charge_status_callback;
     watch_sys_sync.lift_status_callback = lift_status_callback;
+    watch_sys_sync.soft_adt_status_callback = soft_adt_status_callback;
     watch_sys_sync.notify_gesture_event = notify_gesture_event;
     watch_sys_sync.notify_health_info = notify_health_info;
     watch_sys_sync.notify_minute_of_activity = notify_minute_of_activity;

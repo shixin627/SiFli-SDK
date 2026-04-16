@@ -32,6 +32,9 @@
 #ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
     #include "activity.h"
 #endif
+#ifdef BSP_USING_WEAR_DETECT
+    #include "wear_detect.h"
+#endif
 
 #define DBG_TAG "gesture.detect"
 #define DBG_LVL DBG_INFO
@@ -127,7 +130,7 @@ void reinitialize_ahrs_from_accel(int16_t raw_x, int16_t raw_y, int16_t raw_z)
     az /= norm;
 
     float pitch = asinf(-ax);
-    float roll  = atan2f(ay, az);
+    float roll = atan2f(ay, az);
 
     float cr = cosf(roll * 0.5f);
     float sr = sinf(roll * 0.5f);
@@ -481,17 +484,20 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
     // Calculate orientation using sensor fusion
     global_q = sensor_fusion_algorithm(&sensor_fusion_param, accData, gyroData);
     watch_gravity = calculate_gravity(&global_q);
+#ifdef BSP_USING_WEAR_DETECT
+    wear_detect_feed_imu(accData, hz);
+#endif
 #ifdef BSP_USING_HAND_TRACKING
     float horizontal_threshold =
         gesture_threshold_factor * 0.01f; // Default 0.3
     // Hand position detection
     user_hand_horizontal =
         (watch_gravity.x < 0.9f && watch_gravity.x > -horizontal_threshold);
-    watchface_visible =
-        (fabs(watch_gravity.x) < 0.4f && watch_gravity.y > -0.7f && watch_gravity.z > -0.6f);
+    watchface_visible = (fabs(watch_gravity.x) < 0.4f &&
+                         watch_gravity.y > -0.7f && watch_gravity.z > -0.6f);
     float abs_gx = fabsf(gyroData->x);
-    open_wrist_rotation = user_hand_horizontal &&
-        abs_gx > fabsf(gyroData->y) && abs_gx > fabsf(gyroData->z);
+    open_wrist_rotation = user_hand_horizontal && abs_gx > fabsf(gyroData->y) &&
+                          abs_gx > fabsf(gyroData->z);
     // Zero velocity detection
     if (judge_if_moving_by_gyro(gyroData->y))
     {
@@ -517,9 +523,9 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
     {
         handle_motion_data_in_25hz(now, accData);
 #ifdef BSP_USING_HAND_TRACKING
-        hand_tracking_data_update(
-            25, gyroData->x, gyroData->y, open_wrist_rotation,
-            watchface_visible, zero_velocity);
+        hand_tracking_data_update(25, gyroData->x, gyroData->y,
+                                  open_wrist_rotation, watchface_visible,
+                                  zero_velocity);
 #endif
         health_algo_counter = 0;
     }
@@ -557,9 +563,10 @@ int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
         };
         motion_data_fetch(&motion_data);
 
-        // Note: Waveform capture algorithm has been moved to HCPU (bloc_motion_tracking.c)
-        // The HCPU will receive motion_data via motion_data_fetch() and process
-        // gesture waveform capture directly, then notify gesture_sem when ready.
+        // Note: Waveform capture algorithm has been moved to HCPU
+        // (bloc_motion_tracking.c) The HCPU will receive motion_data via
+        // motion_data_fetch() and process gesture waveform capture directly,
+        // then notify gesture_sem when ready.
     }
     return (rt_tick_get_millisecond() - now);
 }
@@ -646,6 +653,9 @@ static int gesture_imu_thread_init(void)
 #endif
 
 // Initialize feature modules
+#ifdef BSP_USING_WEAR_DETECT
+    wear_detect_init();
+#endif
 #ifdef BSP_USING_HAND_TRACKING
     hand_tracking_init(lift_cb, back_cb);
 #endif
@@ -717,17 +727,30 @@ extern bool is_hcpu_wakeup_in_last_3s(void);
  * @brief Process raw PPG data for gesture detection
  * @param rawdata Raw PPG value
  */
-
+static uint8_t log_count = 0;
 void process_ppg_rawdata(uint32_t rawdata)
 {
-    // LOG_D("PPG Raw Data: %d", rawdata);
+#ifdef BSP_USING_WEAR_DETECT
+    wear_detect_feed_ppg(rawdata, 0);
+#endif
+    // if (log_count < 10)
+    // {
+    //     log_count++;
+    // }
+    // else
+    // {
+    //     log_count = 0;
+    //     LOG_D("PPG raw data: %d", rawdata);
+    // }
+    
     static float prev_ppg_value[6] = {0};
     static float ppg_gradient_array[PPG_BUFFER_LENGTH + 1];
 
     uint32_t current_time = rt_tick_get_millisecond();
 
     // Shift filter buffer and insert new sample
-    memmove(&ppg_buffer[0], &ppg_buffer[1], (PPG_FILTER_SAMPLE_NUM - 1) * sizeof(float));
+    memmove(&ppg_buffer[0], &ppg_buffer[1],
+            (PPG_FILTER_SAMPLE_NUM - 1) * sizeof(float));
     ppg_buffer[PPG_FILTER_SAMPLE_NUM - 1] = (float)rawdata;
 
     // Calculate moving average
