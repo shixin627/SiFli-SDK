@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(grep -E \"\\\\.\\(c|h\\)$\")"
+      "Bash(grep -E \"\\\\.\\(c|h\\)$\")",
+      "WebSearch"
     ]
   }
 }

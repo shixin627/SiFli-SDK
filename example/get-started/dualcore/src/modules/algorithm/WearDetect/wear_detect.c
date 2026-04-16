@@ -4,14 +4,25 @@
  * @author Skaiwalk software development team
  * @brief  Wear detection algorithm combining IMU and PPG sensor signals.
  *
- *         Detection principle (event-driven):
- *         1. Monitor PPG for large changes (delta > threshold). When detected,
- *            start a 3-second detection window.
- *         2. During the window, check PPG level:
- *            - PPG < 50000: nothing touching the sensor → NOT wearing.
- *            - PPG >= 50000: something is touching. Check IMU variance:
- *              - IMU has motion → WEARING (human wrist moves).
- *              - IMU no motion  → NOT wearing (static object).
+ *         Detection principle (continuous, multi-indicator fusion):
+ *
+ *         Four indicators are evaluated every EVAL_PERIOD_MS:
+ *
+ *         1. PPG freshness: if PPG sensor is off (no new samples),
+ *            fall back to IMU-only re-trigger to wake PPG up.
+ *
+ *         2. PPG DC Level (contact detection):
+ *            - DC < threshold → nothing touching → NOT wearing.
+ *
+ *         3. Perfusion Index (PI = AC / DC) + variability:
+ *            - PI > threshold AND varying → heartbeat → WEARING.
+ *            - PI > threshold BUT constant → noise → NOT wearing.
+ *
+ *         4. IMU Variance (supplementary):
+ *            - Used to disambiguate when PI is low but DC is high.
+ *            - Also used as sole re-trigger when PPG data is stale.
+ *
+ *         State transitions use hysteresis counters to prevent oscillation.
  ******************************************************************************
  */
 #include <rtthread.h>
@@ -22,65 +33,84 @@
 #include "watch_sys_service.h"
 
 #define DBG_TAG "wear_detect"
-#define DBG_LVL DBG_INFO
+#define DBG_LVL DBG_LOG
 #include "rtdbg.h"
 
 /* -------------------- Configuration -------------------- */
 
-/* PPG threshold: above this value means something is touching the sensor */
-#define PPG_CONTACT_THD         70000
+/* Evaluation period in milliseconds (continuous, not event-driven) */
+#define EVAL_PERIOD_MS          3000
 
-/* PPG delta threshold to trigger a detection window.
- * A sudden change larger than this indicates put-on or take-off event. */
-#define PPG_DELTA_THD           800
+/* PPG DC threshold: below this → nothing touching the sensor */
+#define PPG_DC_LOW_THD          50000
 
-/* Detection window duration in milliseconds */
-#define DETECT_WINDOW_MS        3000
+/* Perfusion Index threshold (AC_pp / DC_mean).
+ * Measured data: wearing PI >= 0.00052, off-wrist PI ~= 0.00029.
+ * Set between these two ranges. */
+#define PI_THD                  0.0004f
 
-/* IMU ring buffer size: at 25 Hz, 75 samples = 3 seconds */
-#define IMU_WINDOW_SIZE         75
-
-/* IMU variance threshold (m/s^2)^2.
- * On-wrist micro-motion typically produces variance > 0.03.
- * Static surface is < 0.01. */
+/* IMU variance threshold (m/s^2)^2 for supplementary motion check */
 #define IMU_VARIANCE_THD        0.03f
 
-/* IMU variance threshold to trigger re-detection when OFF wrist.
- * Should be higher than IMU_VARIANCE_THD to avoid noise triggers. */
+/* Hysteresis: consecutive evaluations needed to change state */
+#define HYSTERESIS_ON           2   /* OFF→ON:  2 consecutive ON  (~6s) */
+#define HYSTERESIS_OFF          3   /* ON→OFF:  3 consecutive OFF (~9s) */
+
+/* PI variability check: real heartbeat causes PI to fluctuate across
+ * evaluations.  Constant PI (noise/static surface) should be rejected.
+ * Track the last PI_HISTORY_LEN evaluations and require the range
+ * (max - min) to exceed PI_RANGE_THD before accepting PI as heartbeat. */
+#define PI_HISTORY_LEN          5
+#define PI_RANGE_THD            0.0002f
+
+/* PPG freshness: if no new PPG sample arrives within this many
+ * milliseconds, consider PPG data stale (sensor likely powered off). */
+#define PPG_STALE_MS            5000
+
+/* When PPG is stale and device is OFF-wrist, use IMU motion to
+ * re-trigger ON (which causes system to restart PPG sensor).
+ * Require N consecutive IMU-motion evaluations before voting ON. */
+#define IMU_RETRIGGER_COUNT     2
 #define IMU_RETRIGGER_THD       0.05f
 
-/* How many IMU samples between each re-trigger check (at 25Hz, 25 = 1s) */
-#define IMU_RETRIGGER_PERIOD    25
+/* PPG ring buffer size: at ~25 Hz, 75 samples = 3 seconds */
+#define PPG_WINDOW_SIZE         75
 
-/* Moving average length for PPG to smooth noise before delta check */
-#define PPG_AVG_LEN             5
+/* IMU ring buffer size: at ~25 Hz, 75 samples = 3 seconds */
+#define IMU_WINDOW_SIZE         75
 
 /* -------------------- Internal state -------------------- */
 
 typedef struct
 {
-    /* IMU ring buffer */
+    /* PPG ring buffer for PI calculation */
+    uint32_t ppg_buf[PPG_WINDOW_SIZE];
+    uint16_t ppg_idx;
+    uint16_t ppg_count;
+
+    /* IMU ring buffer (acceleration magnitude) */
     float acce_mag[IMU_WINDOW_SIZE];
     uint16_t imu_idx;
     uint16_t imu_count;
 
-    /* PPG moving average */
-    uint32_t ppg_history[PPG_AVG_LEN];
-    uint16_t ppg_idx;
-    uint16_t ppg_count;
-    uint32_t ppg_avg;           /* current moving average */
-    uint32_t ppg_prev_avg;      /* previous moving average (for delta) */
+    /* PI history for variability check */
+    float pi_history[PI_HISTORY_LEN];
+    uint8_t pi_hist_idx;
+    uint8_t pi_hist_count;
 
-    /* Detection window */
-    bool detecting;             /* true while inside a 3s window */
-    uint32_t detect_start_ms;   /* timestamp when window started */
+    /* PPG freshness tracking */
+    uint32_t last_ppg_ms;       /* timestamp of last PPG sample */
+    bool ppg_ever_received;     /* true after first PPG sample */
 
-    /* Accumulated PPG samples during detection window */
-    uint32_t detect_ppg_sum;
-    uint16_t detect_ppg_count;
+    /* IMU re-trigger counter (for stale PPG + OFF state) */
+    uint8_t imu_retrigger_cnt;
 
-    /* IMU re-trigger counter (for OFF state) */
-    uint16_t imu_retrigger_counter;
+    /* Timing for periodic evaluation */
+    uint32_t last_eval_ms;
+
+    /* Hysteresis counters */
+    int8_t on_counter;      /* counts consecutive ON  evaluations */
+    int8_t off_counter;     /* counts consecutive OFF evaluations */
 
     /* Current output */
     wear_status_t status;
@@ -91,7 +121,7 @@ static wear_detect_ctx_t ctx;
 
 /* -------------------- Helpers -------------------- */
 
-static float compute_variance(const float *buf, uint16_t len)
+static float compute_imu_variance(const float *buf, uint16_t len)
 {
     float sum = 0.0f;
     float sum_sq = 0.0f;
@@ -104,6 +134,50 @@ static float compute_variance(const float *buf, uint16_t len)
 
     float mean = sum / (float)len;
     return (sum_sq / (float)len) - (mean * mean);
+}
+
+/**
+ * @brief Compute PPG DC mean, AC peak-to-peak, and Perfusion Index
+ */
+static void compute_ppg_metrics(float *dc_mean, float *ac_pp, float *pi)
+{
+    uint16_t len = (ctx.ppg_count < PPG_WINDOW_SIZE)
+                       ? ctx.ppg_count : PPG_WINDOW_SIZE;
+
+    if (len == 0)
+    {
+        *dc_mean = 0.0f;
+        *ac_pp = 0.0f;
+        *pi = 0.0f;
+        return;
+    }
+
+    uint32_t ppg_min = UINT32_MAX;
+    uint32_t ppg_max = 0;
+    uint64_t ppg_sum = 0;
+
+    for (uint16_t i = 0; i < len; i++)
+    {
+        uint32_t v = ctx.ppg_buf[i];
+        ppg_sum += v;
+        if (v < ppg_min) ppg_min = v;
+        if (v > ppg_max) ppg_max = v;
+    }
+
+    *dc_mean = (float)ppg_sum / (float)len;
+    *ac_pp = (float)(ppg_max - ppg_min);
+
+    if (*dc_mean > 1.0f)
+        *pi = *ac_pp / *dc_mean;
+    else
+        *pi = 0.0f;
+}
+
+static bool is_ppg_stale(uint32_t now)
+{
+    if (!ctx.ppg_ever_received)
+        return true;
+    return (now - ctx.last_ppg_ms) > PPG_STALE_MS;
 }
 
 static void notify_wear_status(bool wearing)
@@ -133,51 +207,184 @@ static void set_status(wear_status_t new_status)
     }
 }
 
-/* -------------------- Detection window evaluation -------------------- */
+/* -------------------- Core evaluation -------------------- */
 
-static void wear_detect_finish_window(void)
+/**
+ * @brief Evaluate using only IMU when PPG data is stale.
+ *        Used to re-trigger ON state so system restarts PPG sensor.
+ * @return  1 = vote ON,  0 = no change
+ */
+static int evaluate_imu_only(void)
 {
-    ctx.detecting = false;
+    uint16_t imu_len = (ctx.imu_count < IMU_WINDOW_SIZE)
+                           ? ctx.imu_count : IMU_WINDOW_SIZE;
+    if (imu_len == 0)
+        return 0;
 
-    /* Average PPG during the 3s window */
-    uint32_t avg_ppg = 0;
-    if (ctx.detect_ppg_count > 0)
+    float imu_var = compute_imu_variance(ctx.acce_mag, imu_len);
+
+    if (imu_var >= IMU_RETRIGGER_THD)
     {
-        avg_ppg = ctx.detect_ppg_sum / ctx.detect_ppg_count;
+        ctx.imu_retrigger_cnt++;
+        LOG_I("Eval: PPG stale, IMU_var=%.5f (motion %u/%u)",
+              imu_var, ctx.imu_retrigger_cnt, IMU_RETRIGGER_COUNT);
+
+        if (ctx.imu_retrigger_cnt >= IMU_RETRIGGER_COUNT)
+        {
+            ctx.imu_retrigger_cnt = 0;
+            return 1; /* vote ON to trigger PPG restart */
+        }
+    }
+    else
+    {
+        ctx.imu_retrigger_cnt = 0;
+        LOG_D("Eval: PPG stale, IMU_var=%.5f (no motion)", imu_var);
     }
 
-    // LOG_D("Window done: avg_ppg=%u, imu_count=%u", avg_ppg, ctx.imu_count);
+    return 0;
+}
 
-    // if (avg_ppg < PPG_CONTACT_THD)
-    // {
-    //     /* PPG low → nothing touching sensor → not wearing */
-    //     LOG_D("PPG < %u → no contact", PPG_CONTACT_THD);
-    //     set_status(WEAR_STATUS_NOT_WEARING);
-    // }
-    // else
+/**
+ * @brief Evaluate all indicators and determine wear/not-wear vote.
+ * @return  1 = vote ON,  -1 = vote OFF,  0 = uncertain
+ */
+static int evaluate_once(uint32_t now)
+{
+    /* --- Check PPG freshness first --- */
+    if (is_ppg_stale(now))
     {
-        /* PPG high → something touching. Check IMU for motion. */
-        uint16_t len = (ctx.imu_count < IMU_WINDOW_SIZE)
-                           ? ctx.imu_count : IMU_WINDOW_SIZE;
-        if (len > 0)
+        /* PPG sensor is off. Only IMU can re-trigger. */
+        if (ctx.status == WEAR_STATUS_NOT_WEARING)
         {
-            float var = compute_variance(ctx.acce_mag, len);
-            // LOG_D("PPG >= %u, IMU variance=%.6f", PPG_CONTACT_THD, var);
+            return evaluate_imu_only();
+        }
+        /* If currently ON but PPG went stale, don't change state yet */
+        return 0;
+    }
 
-            if (var >= IMU_VARIANCE_THD)
-            {
-                set_status(WEAR_STATUS_WEARING);
-            }
-            else
-            {
-                set_status(WEAR_STATUS_NOT_WEARING);
-            }
+    /* Reset IMU retrigger counter since PPG is active */
+    ctx.imu_retrigger_cnt = 0;
+
+    float dc_mean, ac_pp, pi;
+    compute_ppg_metrics(&dc_mean, &ac_pp, &pi);
+
+    /* Record PI into history ring buffer */
+    ctx.pi_history[ctx.pi_hist_idx] = pi;
+    ctx.pi_hist_idx = (ctx.pi_hist_idx + 1) % PI_HISTORY_LEN;
+    if (ctx.pi_hist_count < PI_HISTORY_LEN)
+        ctx.pi_hist_count++;
+
+    /* Compute PI variability (range = max - min over recent history) */
+    float pi_range = 0.0f;
+    if (ctx.pi_hist_count >= 2)
+    {
+        float pi_min = ctx.pi_history[0];
+        float pi_max = ctx.pi_history[0];
+        for (uint8_t i = 1; i < ctx.pi_hist_count; i++)
+        {
+            if (ctx.pi_history[i] < pi_min) pi_min = ctx.pi_history[i];
+            if (ctx.pi_history[i] > pi_max) pi_max = ctx.pi_history[i];
+        }
+        pi_range = pi_max - pi_min;
+    }
+
+    /* --- Indicator 1: DC level (contact) --- */
+    if (dc_mean < (float)PPG_DC_LOW_THD)
+    {
+        LOG_I("Eval: DC=%.0f (< %u) -> no contact -> OFF", dc_mean, PPG_DC_LOW_THD);
+        return -1;
+    }
+
+    /* --- Indicator 2: Perfusion Index (heartbeat) --- */
+    if (pi >= PI_THD)
+    {
+        /* Check PI variability: real heartbeat causes PI to fluctuate.
+         * Constant PI (noise/static surface) should be rejected. */
+        if (ctx.pi_hist_count >= PI_HISTORY_LEN && pi_range < PI_RANGE_THD)
+        {
+            LOG_I("Eval: DC=%.0f, AC_pp=%.0f, PI=%.5f, pi_range=%.5f (constant -> noise) -> OFF",
+                  dc_mean, ac_pp, pi, pi_range);
+            return -1;
+        }
+
+        LOG_I("Eval: DC=%.0f, AC_pp=%.0f, PI=%.5f, pi_range=%.5f -> ON",
+              dc_mean, ac_pp, pi, pi_range);
+        return 1;
+    }
+
+    /* --- Indicator 3: IMU variance (supplementary) --- */
+    uint16_t imu_len = (ctx.imu_count < IMU_WINDOW_SIZE)
+                           ? ctx.imu_count : IMU_WINDOW_SIZE;
+    if (imu_len > 0)
+    {
+        float imu_var = compute_imu_variance(ctx.acce_mag, imu_len);
+        LOG_I("Eval: DC=%.0f, PI=%.5f (low), pi_range=%.5f, IMU_var=%.5f",
+              dc_mean, pi, pi_range, imu_var);
+
+        if (imu_var >= IMU_VARIANCE_THD)
+        {
+            return 0; /* uncertain */
         }
         else
         {
-            /* No IMU data yet, can't decide */
-            LOG_D("No IMU data during window, keeping current status");
+            return -1; /* static object → OFF */
         }
+    }
+
+    return 0; /* not enough data */
+}
+
+/**
+ * @brief Run periodic evaluation with hysteresis
+ */
+static void try_evaluate(void)
+{
+    uint32_t now = rt_tick_get_millisecond();
+    if (now - ctx.last_eval_ms < EVAL_PERIOD_MS)
+        return;
+    ctx.last_eval_ms = now;
+
+    /* Need minimum data before evaluating (PPG or IMU) */
+    if (ctx.ppg_count < 20 && ctx.imu_count < 20)
+        return;
+
+    int vote = evaluate_once(now);
+
+    if (vote > 0)
+    {
+        /* Vote ON */
+        ctx.off_counter = 0;
+        ctx.on_counter++;
+        if (ctx.on_counter > HYSTERESIS_ON)
+            ctx.on_counter = HYSTERESIS_ON;
+
+        if (ctx.status != WEAR_STATUS_WEARING && ctx.on_counter >= HYSTERESIS_ON)
+        {
+            /* Reset PI history and PPG buffer on state change so fresh
+             * PPG data will be evaluated after sensor restarts. */
+            ctx.pi_hist_count = 0;
+            ctx.pi_hist_idx = 0;
+            set_status(WEAR_STATUS_WEARING);
+        }
+    }
+    else if (vote < 0)
+    {
+        /* Vote OFF */
+        ctx.on_counter = 0;
+        ctx.off_counter++;
+        if (ctx.off_counter > HYSTERESIS_OFF)
+            ctx.off_counter = HYSTERESIS_OFF;
+
+        if (ctx.status != WEAR_STATUS_NOT_WEARING && ctx.off_counter >= HYSTERESIS_OFF)
+        {
+            set_status(WEAR_STATUS_NOT_WEARING);
+        }
+    }
+    else
+    {
+        /* Uncertain: decay both counters slowly */
+        if (ctx.on_counter > 0) ctx.on_counter--;
+        if (ctx.off_counter > 0) ctx.off_counter--;
     }
 }
 
@@ -187,8 +394,9 @@ void wear_detect_init(void)
 {
     memset(&ctx, 0, sizeof(ctx));
     ctx.status = WEAR_STATUS_WEARING; /* default: assume wearing at boot */
+    ctx.last_eval_ms = rt_tick_get_millisecond();
     ctx.initialized = true;
-    LOG_I("Wear detection initialized");
+    LOG_I("Wear detection initialized (PI-based, eval every %u ms)", EVAL_PERIOD_MS);
 }
 
 void wear_detect_feed_imu(Vector3 *acce, float sample_rate)
@@ -202,46 +410,11 @@ void wear_detect_feed_imu(Vector3 *acce, float sample_rate)
                       acce->z * acce->z);
     ctx.acce_mag[ctx.imu_idx] = mag;
     ctx.imu_idx = (ctx.imu_idx + 1) % IMU_WINDOW_SIZE;
-
     if (ctx.imu_count < IMU_WINDOW_SIZE)
         ctx.imu_count++;
 
-    /* Check if detection window has expired */
-    if (ctx.detecting)
-    {
-        uint32_t now = rt_tick_get_millisecond();
-        if (now - ctx.detect_start_ms >= DETECT_WINDOW_MS)
-        {
-            wear_detect_finish_window();
-        }
-    }
-
-    /* When OFF wrist and not detecting, periodically check IMU for large motion.
-     * If motion detected → start a detection window to re-evaluate. */
-    if (ctx.status == WEAR_STATUS_NOT_WEARING && !ctx.detecting)
-    {
-        ctx.imu_retrigger_counter++;
-        if (ctx.imu_retrigger_counter >= IMU_RETRIGGER_PERIOD)
-        {
-            ctx.imu_retrigger_counter = 0;
-            uint16_t len = (ctx.imu_count < IMU_WINDOW_SIZE)
-                               ? ctx.imu_count : IMU_WINDOW_SIZE;
-            if (len >= IMU_RETRIGGER_PERIOD)
-            {
-                float var = compute_variance(ctx.acce_mag, len);
-                if (var >= IMU_RETRIGGER_THD)
-                {
-                    LOG_I("IMU motion while OFF (var=%.4f), start detect window", var);
-                    ctx.detecting = true;
-                    ctx.detect_start_ms = rt_tick_get_millisecond();
-                    ctx.detect_ppg_sum = 0;
-                    ctx.detect_ppg_count = 0;
-                    ctx.imu_idx = 0;
-                    ctx.imu_count = 0;
-                }
-            }
-        }
-    }
+    /* Try periodic evaluation */
+    try_evaluate();
 }
 
 void wear_detect_feed_ppg(uint32_t ppg_raw, uint32_t ppg_raw2)
@@ -249,69 +422,18 @@ void wear_detect_feed_ppg(uint32_t ppg_raw, uint32_t ppg_raw2)
     if (!ctx.initialized)
         return;
 
-    /* Update moving average */
-    ctx.ppg_history[ctx.ppg_idx] = ppg_raw;
-    ctx.ppg_idx = (ctx.ppg_idx + 1) % PPG_AVG_LEN;
-    if (ctx.ppg_count < PPG_AVG_LEN)
+    /* Update PPG freshness timestamp */
+    ctx.last_ppg_ms = rt_tick_get_millisecond();
+    ctx.ppg_ever_received = true;
+
+    /* Store PPG sample into ring buffer */
+    ctx.ppg_buf[ctx.ppg_idx] = ppg_raw;
+    ctx.ppg_idx = (ctx.ppg_idx + 1) % PPG_WINDOW_SIZE;
+    if (ctx.ppg_count < PPG_WINDOW_SIZE)
         ctx.ppg_count++;
 
-    uint32_t sum = 0;
-    for (uint16_t i = 0; i < ctx.ppg_count; i++)
-        sum += ctx.ppg_history[i];
-    uint32_t new_avg = sum / ctx.ppg_count;
-
-    /* Accumulate PPG during detection window */
-    if (ctx.detecting)
-    {
-        ctx.detect_ppg_sum += ppg_raw;
-        ctx.detect_ppg_count++;
-
-        /* If PPG is still changing drastically → immediately mark as not wearing,
-         * then postpone the window to re-evaluate once stable. */
-        uint32_t win_delta = (new_avg > ctx.ppg_prev_avg)
-                                 ? (new_avg - ctx.ppg_prev_avg)
-                                 : (ctx.ppg_prev_avg - new_avg);
-        LOG_D("During window: PPG raw=%u, avg=%u, prev_avg=%u, delta=%u",
-              ppg_raw, new_avg, ctx.ppg_prev_avg, win_delta);
-        if (win_delta >= PPG_DELTA_THD)
-        {
-            LOG_D("PPG still unstable (delta=%u), not wearing", win_delta);
-            set_status(WEAR_STATUS_NOT_WEARING);
-            ctx.detect_start_ms = rt_tick_get_millisecond();
-            ctx.detect_ppg_sum = ppg_raw;
-            ctx.detect_ppg_count = 1;
-            ctx.imu_idx = 0;
-            ctx.imu_count = 0;
-        }
-    }
-
-    /* Check for large PPG change → trigger detection window */
-    if (ctx.ppg_count >= PPG_AVG_LEN && !ctx.detecting)
-    {
-        uint32_t delta = (new_avg > ctx.ppg_prev_avg)
-                             ? (new_avg - ctx.ppg_prev_avg)
-                             : (ctx.ppg_prev_avg - new_avg);
-
-        // LOG_D("PPG feed: raw=%u, avg=%u, prev_avg=%u, delta=%u", ppg_raw, new_avg,
-        //       ctx.ppg_prev_avg, delta);
-        if (delta >= PPG_DELTA_THD)
-        {
-            LOG_I("PPG delta=%u (avg %u->%u), start 3s detect window",
-                  delta, ctx.ppg_prev_avg, new_avg);
-
-            ctx.detecting = true;
-            ctx.detect_start_ms = rt_tick_get_millisecond();
-            ctx.detect_ppg_sum = ppg_raw;
-            ctx.detect_ppg_count = 1;
-
-            /* Reset IMU buffer so we only measure motion during this window */
-            ctx.imu_idx = 0;
-            ctx.imu_count = 0;
-        }
-    }
-
-    ctx.ppg_prev_avg = ctx.ppg_avg;
-    ctx.ppg_avg = new_avg;
+    /* Try periodic evaluation */
+    try_evaluate();
 }
 
 wear_status_t wear_detect_get_status(void)
