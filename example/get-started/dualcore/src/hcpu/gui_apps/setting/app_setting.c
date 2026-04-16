@@ -780,11 +780,6 @@ void app_setting_init(void *param)
                                         LV_EXT_STR_GET_BY_KEY(setting_display, "Display"), SkaiWatchSys.font_size, true, 100);
     lv_obj_add_event_cb(list_btn, list_display_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
 
-    // Game Mode
-    list_btn = create_setting_list_item(general_group, IMG_GAME,
-                                        "Dinosaur game", SkaiWatchSys.font_size, true, 50);
-    lv_obj_add_event_cb(list_btn, dinosaur_game_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
-
     // System Info
     list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(airplane),
                                         LV_EXT_STR_GET_BY_KEY(system_info, "System Info"), SkaiWatchSys.font_size, true, 100);
@@ -801,6 +796,11 @@ void app_setting_init(void *param)
     lv_obj_add_event_cb(list_btn, btn_clear_flash_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
 
 #if !kReleaseMode
+    // Game Mode
+    list_btn = create_setting_list_item(general_group, IMG_GAME,
+                                        "Dinosaur game", SkaiWatchSys.font_size, true, 50);
+    lv_obj_add_event_cb(list_btn, dinosaur_game_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
+
     // Test / Developer button
     list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(airplane),
                                         LV_EXT_STR_GET_BY_KEY(test_str, "Test"), SkaiWatchSys.font_size, false, 100);
