@@ -56,10 +56,6 @@ static float ppg_buffer[PPG_FILTER_SAMPLE_NUM];
 static bool user_hand_horizontal = false;
 static bool watchface_visible = false;
 
-// State variables
-
-static bool ppg_gradient_anomaly_detected = false;
-static uint32_t ppg_anomaly_detection_time = 0;
 // Timer variables
 static rt_timer_t timer_zero_velocity = NULL;
 static rt_timer_t timer_hold_confirm = NULL;
@@ -795,24 +791,6 @@ void process_ppg_rawdata(uint32_t rawdata)
     }
     ppg_gradient_average /= (PPG_BUFFER_LENGTH + 1);
 
-    if (ppg_gradient_anomaly_detected)
-    {
-        if ((current_time - ppg_anomaly_detection_time) >=
-            PPG_ANOMALY_DISABLE_DURATION_MS)
-        {
-            ppg_gradient_anomaly_detected = false;
-            LOG_D("PPG gradient anomaly cleared");
-        }
-    }
-    else
-    {
-        if (fabsf(ppg_gradient_average) > 2000 && !is_hcpu_wakeup_in_last_3s())
-        {
-            ppg_gradient_anomaly_detected = true;
-            LOG_D("PPG gradient anomaly detected: %f", ppg_gradient_average);
-            ppg_anomaly_detection_time = current_time;
-        }
-    }
 
     static float standard_count = 0;
     static float standard_ppg_gradient = 0;

@@ -41,8 +41,10 @@
 /* Evaluation period in milliseconds (continuous, not event-driven) */
 #define EVAL_PERIOD_MS          3000
 
-/* PPG DC threshold: below this → nothing touching the sensor */
-#define PPG_DC_LOW_THD          50000
+/* PPG DC threshold: below this → nothing touching the sensor (suspended in air).
+ * Measured data: air DC ~= 40000-41000, contact (wrist/table) DC >= 48000.
+ * Set between these ranges for immediate OFF detection. */
+#define PPG_DC_LOW_THD          45000
 
 /* Perfusion Index threshold (AC_pp / DC_mean).
  * Measured data: wearing PI >= 0.00052, off-wrist PI ~= 0.00029.
@@ -54,18 +56,23 @@
 
 /* Hysteresis: consecutive evaluations needed to change state */
 #define HYSTERESIS_ON           2   /* OFF→ON:  2 consecutive ON  (~6s) */
-#define HYSTERESIS_OFF          3   /* ON→OFF:  3 consecutive OFF (~9s) */
+#define HYSTERESIS_OFF          4   /* ON→OFF:  4 consecutive OFF (~12s) */
 
 /* PI variability check: real heartbeat causes PI to fluctuate across
  * evaluations.  Constant PI (noise/static surface) should be rejected.
  * Track the last PI_HISTORY_LEN evaluations and require the range
  * (max - min) to exceed PI_RANGE_THD before accepting PI as heartbeat. */
 #define PI_HISTORY_LEN          5
-#define PI_RANGE_THD            0.0002f
+#define PI_RANGE_THD            0.0003f
 
 /* PPG freshness: if no new PPG sample arrives within this many
  * milliseconds, consider PPG data stale (sensor likely powered off). */
 #define PPG_STALE_MS            5000
+
+/* PPG settle time: after PPG sensor restarts, the first few seconds
+ * produce wildly inaccurate readings (huge PI spikes).  Ignore PPG
+ * data during this settle period. */
+#define PPG_SETTLE_MS           6000
 
 /* When PPG is stale and device is OFF-wrist, use IMU motion to
  * re-trigger ON (which causes system to restart PPG sensor).
@@ -101,6 +108,10 @@ typedef struct
     /* PPG freshness tracking */
     uint32_t last_ppg_ms;       /* timestamp of last PPG sample */
     bool ppg_ever_received;     /* true after first PPG sample */
+
+    /* PPG settle: timestamp when PPG resumed after a stale gap */
+    uint32_t ppg_restart_ms;
+    bool ppg_settling;          /* true during settle period after restart */
 
     /* IMU re-trigger counter (for stale PPG + OFF state) */
     uint8_t imu_retrigger_cnt;
@@ -264,6 +275,25 @@ static int evaluate_once(uint32_t now)
 
     /* Reset IMU retrigger counter since PPG is active */
     ctx.imu_retrigger_cnt = 0;
+
+    /* --- Check PPG settle period after sensor restart --- */
+    if (ctx.ppg_settling)
+    {
+        if (now - ctx.ppg_restart_ms < PPG_SETTLE_MS)
+        {
+            LOG_D("Eval: PPG settling (%u ms remaining)",
+                  PPG_SETTLE_MS - (now - ctx.ppg_restart_ms));
+            return 0; /* don't vote during settle */
+        }
+        ctx.ppg_settling = false;
+        /* Clear PPG buffer and PI history to use only post-settle data */
+        ctx.ppg_count = 0;
+        ctx.ppg_idx = 0;
+        ctx.pi_hist_count = 0;
+        ctx.pi_hist_idx = 0;
+        LOG_I("PPG settle complete, cleared buffers");
+        return 0; /* wait for fresh data next eval */
+    }
 
     float dc_mean, ac_pp, pi;
     compute_ppg_metrics(&dc_mean, &ac_pp, &pi);

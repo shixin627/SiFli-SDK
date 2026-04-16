@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(grep -E \"\\\\.\\(c|h\\)$\")",
-      "WebSearch"
+      "WebSearch",
+      "Bash(git checkout:*)"
     ]
   }
 }
