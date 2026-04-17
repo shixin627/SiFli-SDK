@@ -1,6 +1,6 @@
 {
-    "version": "1.1.22",
-    "description": "修復部分emoji解碼會卡頓的問題,新增接電話功能(無手勢,需搭配最新app)",
+    "version": "1.1.23",
+    "description": "配戴偵測",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
