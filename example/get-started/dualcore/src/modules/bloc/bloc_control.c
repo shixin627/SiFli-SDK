@@ -43,6 +43,7 @@
 #include <stdlib.h>
 #include <rtthread.h>
 #include <math.h>
+#include <cJSON.h>
 #include "rtdevice.h"
 #include "communicate_protocol.h"
 #include "communicate_parse.h"
@@ -267,7 +268,13 @@ void reset_audio_processing_flag(void)
 static media_t current_media_object;
 char *get_media_title(void)
 {
+	LOG_D("get_media_title: title=%s", current_media_object.title);
 	return current_media_object.title;
+}
+char *get_media_artist(void)
+{
+	LOG_D("get_media_artist: artist=%s", current_media_object.artist);
+	return current_media_object.artist;
 }
 static void notify_media_title(void)
 {
@@ -278,9 +285,69 @@ static void notify_media_title(void)
 #endif
 }
 
+/* Input may be either a plain title string (legacy) or a JSON object of the
+   form {"title": "...", "artist": "..."}. Parse accordingly and fill the
+   media object's title/artist fields. */
 static void set_media_title(char *title)
 {
-	strcpy(current_media_object.title, title);
+	if (title == NULL)
+	{
+		current_media_object.title[0] = '\0';
+		current_media_object.artist[0] = '\0';
+	}
+	else
+	{
+		bool parsed_as_json = false;
+		/* Quick check: only attempt JSON parse if it looks like an object. */
+		const char *p = title;
+		while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+		if (*p == '{')
+		{
+			cJSON *root = cJSON_Parse(title);
+			if (root != NULL)
+			{
+				cJSON *title_item  = cJSON_GetObjectItem(root, "title");
+				cJSON *artist_item = cJSON_GetObjectItem(root, "artist");
+				if (title_item && cJSON_IsString(title_item) &&
+					title_item->valuestring)
+				{
+					strncpy(current_media_object.title,
+							title_item->valuestring,
+							sizeof(current_media_object.title) - 1);
+					current_media_object.title
+						[sizeof(current_media_object.title) - 1] = '\0';
+				}
+				else
+				{
+					current_media_object.title[0] = '\0';
+				}
+				if (artist_item && cJSON_IsString(artist_item) &&
+					artist_item->valuestring)
+				{
+					strncpy(current_media_object.artist,
+							artist_item->valuestring,
+							sizeof(current_media_object.artist) - 1);
+					current_media_object.artist
+						[sizeof(current_media_object.artist) - 1] = '\0';
+				}
+				else
+				{
+					current_media_object.artist[0] = '\0';
+				}
+				cJSON_Delete(root);
+				parsed_as_json = true;
+			}
+		}
+		if (!parsed_as_json)
+		{
+			/* Fallback: treat the whole input as a plain title. */
+			strncpy(current_media_object.title, title,
+					sizeof(current_media_object.title) - 1);
+			current_media_object.title
+				[sizeof(current_media_object.title) - 1] = '\0';
+			current_media_object.artist[0] = '\0';
+		}
+	}
 	current_media_object.state = true;
 	notify_media_title();
 	notify_provider.notification_refresh();
@@ -1004,6 +1071,7 @@ static int bloc_control_provider_register(void)
 	control_provider.bt_speaker_media_prev = bt_speaker_media_prev;
 	control_provider.set_media_title = set_media_title;
 	control_provider.get_media_title = get_media_title;
+	control_provider.get_media_artist = get_media_artist;
 	control_provider.take_photo = take_photo;
 	control_provider.find_phone = find_phone;
 	control_provider.screen_brightness_smoothly = set_screen_brightness_smoothly;

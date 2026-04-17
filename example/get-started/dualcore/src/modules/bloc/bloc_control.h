@@ -79,6 +79,7 @@ extern "C"
     {
         bool state;
         char title[256];
+        char artist[256];
     } media_t;
 
     // enum for device id
@@ -125,6 +126,7 @@ extern "C"
         // media
         void (*set_media_title)(char *title);
         char *(*get_media_title)(void);
+        char *(*get_media_artist)(void);
 
         // hid
         void (*ble_hid_mouse_left_press)(void);

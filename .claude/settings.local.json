@@ -3,7 +3,8 @@
     "allow": [
       "Bash(grep -E \"\\\\.\\(c|h\\)$\")",
       "WebSearch",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(awk 'NR>=250 && NR<=320')"
     ]
   }
 }

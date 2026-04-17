@@ -1421,10 +1421,12 @@ static void refresh_wear_status_indicator(void)
 
     if (SkaiWatchSys.flag_field.is_wearing)
     {
+        lv_obj_add_flag(wear_status_indicator, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_bg_color(wear_status_indicator, lv_color_hex(0x00FF00), 0);
     }
     else
     {
+        lv_obj_clear_flag(wear_status_indicator, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_bg_color(wear_status_indicator, lv_color_hex(0xFF0000), 0);
     }
 }

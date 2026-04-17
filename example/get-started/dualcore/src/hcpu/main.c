@@ -731,15 +731,18 @@ void skaiwatch_ble_set_performance(bool status)
     if (status)
     {
         blebredr_rf_power_set(0, 10);
-        // Use 12 interval units (15ms) - more acceptable to most phones
-        // Original: 6 units (7.5ms) may be rejected by iOS/Android
-        skaiwalk_ble_app_update_conn_param(SkaiWatchSys.watch_conn_id, 6, 6,
+        // Apple Accessory Design Guidelines:
+        //   Interval Min >= 15 ms, Interval Max - Min >= 20 ms,
+        //   Slave Latency <= 30, Supervision Timeout <= 6 s
+        // Fast: Min=12 (15 ms), Max=28 (35 ms), diff=20 ms, ST=5 s
+        skaiwalk_ble_app_update_conn_param(SkaiWatchSys.watch_conn_id, 12, 28,
                                            500);
     }
     else
     {
         blebredr_rf_power_set(0, 0);
-        skaiwalk_ble_app_update_conn_param(SkaiWatchSys.watch_conn_id, 24, 24,
+        // Slow: Min=24 (30 ms), Max=40 (50 ms), diff=20 ms, ST=5 s
+        skaiwalk_ble_app_update_conn_param(SkaiWatchSys.watch_conn_id, 24, 40,
                                            500);
     }
 }

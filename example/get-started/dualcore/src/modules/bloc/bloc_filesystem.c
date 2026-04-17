@@ -173,7 +173,6 @@ static int file_system_task_init(void);
 static int bloc_file_system_register(void);
 static void send_file_compare_result(uint8_t result);
 
-
 /**
  * @brief Get the current sync progress
  * @return Pointer to the sync_progress structure
@@ -325,6 +324,14 @@ static void notify_media_header_img(char *path)
     lvgl_send_msg(msg);
 }
 
+static void refresh_media_images(void)
+{
+    lv_img_cache_invalidate_src(MEDIA_HEADER_IMG);
+    rt_thread_mdelay(200);
+    notify_media_header_img(MEDIA_HEADER_IMG);
+    LOG_I("Received media header image file: %s", MEDIA_HEADER_IMG);
+}
+
 static char prev_media_img_path[40];
 void received_file_handler(const char *path)
 {
@@ -386,10 +393,7 @@ void received_file_handler(const char *path)
         // MEDIA_HEADER_IMG[sizeof(MEDIA_HEADER_IMG) - 1] = '\0';
         // LOG_I("Invalidate image cache for src: %s", MEDIA_HEADER_IMG);
         // lv_img_cache_invalidate_src(prev_media_img_path);
-        lv_img_cache_invalidate_src(MEDIA_HEADER_IMG);
-        rt_thread_mdelay(200);
-        notify_media_header_img(MEDIA_HEADER_IMG);
-        LOG_I("Received media header image file: %s", MEDIA_HEADER_IMG);
+        refresh_media_images();
         // rt_thread_mdelay(1000);
         // remove(prev_media_img_path);
     }
@@ -818,6 +822,8 @@ int bloc_start_receive_file(const char *file_path, uint32_t total_size)
             LOG_I("File already exists with matching size: %s (%d bytes)",
                   file_path, total_size);
             send_file_compare_result(0); /* 0 = skip update */
+
+            refresh_media_images();
             return RT_EOK;
         }
         LOG_I("File exists but size differs: %s (existing: %d, new: %d)",
@@ -870,8 +876,8 @@ int bloc_start_receive_file(const char *file_path, uint32_t total_size)
         mkdir(dir_path, 0777);
     }
 
-    g_file_receive.fd = open(temp_file_path,
-                             O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0666);
+    g_file_receive.fd =
+        open(temp_file_path, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0666);
     if (g_file_receive.fd < 0)
     {
         LOG_E("Failed to open file for writing: %s", temp_file_path);
