@@ -70,6 +70,12 @@ extern "C"
 	extern void receive_notificaiton_process(bool replyAvailable);
 	extern uint8_t get_notification_type_from_ios_ancs_name(const char *name);
 	extern void interact_with_notification(notification_t *notification);
+	/* Fire the dedicated incoming-call UI (wake HCPU, vibrate, launch the
+	 * call screen) without adding anything to the notification list. Intended
+	 * for iOS INCOMING_CALL / in-progress-call events that should not appear
+	 * in the notification history — only missed calls should go through
+	 * interact_with_notification(). */
+	extern void trigger_incoming_call_ui(notification_t *notification);
 	extern void remove_notification_by_id(const char *id);
 	extern void dismiss_notification_from_phone(const char *id);
 	/* flash storage */

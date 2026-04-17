@@ -23,6 +23,10 @@
  * which pulls in BT internal types (U8, BOOL, bts2_app_stru, ...). */
 extern int bt_hfp_hf_answer_call_send(void);
 extern int bt_hfp_hf_hangup_call_send(void);
+
+/* iOS ANCS perform-action helper, implemented in app_message_database.c.
+ * Returns 0 on success, negative on failure (e.g. ANCS not connected). */
+extern int ancs_perform_call_action(uint32_t noti_uid, int positive);
 #ifdef BSP_USING_UI_HANDLER
     #include "ui_handler.h"
     #include "ui_img_helper.h"
@@ -48,6 +52,7 @@ static char s_caller_title[NOTIFICATION_TITLE_LEN] = {0};
 static char s_caller_id[NOTIFICATION_ID_LEN] = {0};
 static uint8_t s_caller_type = Notify_others;
 static bool s_is_active = false;
+static uint32_t s_ancs_noti_uid = 0; /* 0 = not an iOS ANCS call */
 
 static void send_simple_event(L1SEND_TYPE_WATCH event)
 {
@@ -66,6 +71,11 @@ static void accept_btn_event_cb(lv_event_t *e)
     LOG_I("incoming_call: accept -> HFP ATA");
     int ret = bt_hfp_hf_answer_call_send();
     LOG_I("hfp answer ret=%d", ret);
+    if (s_ancs_noti_uid != 0)
+    {
+        int r = ancs_perform_call_action(s_ancs_noti_uid, 1);
+        LOG_I("ancs positive action uid=%u ret=%d", s_ancs_noti_uid, r);
+    }
     gui_app_exit(APP_ID_INCOMING_CALL);
 }
 
@@ -78,6 +88,11 @@ static void hangup_btn_event_cb(lv_event_t *e)
     LOG_I("incoming_call: hangup -> HFP CHUP");
     int ret = bt_hfp_hf_hangup_call_send();
     LOG_I("hfp hangup ret=%d", ret);
+    if (s_ancs_noti_uid != 0)
+    {
+        int r = ancs_perform_call_action(s_ancs_noti_uid, 0);
+        LOG_I("ancs negative action uid=%u ret=%d", s_ancs_noti_uid, r);
+    }
     gui_app_exit(APP_ID_INCOMING_CALL);
 }
 
@@ -157,6 +172,7 @@ static void on_stop(void)
     s_is_active = false;
     s_caller_id[0] = '\0';
     s_caller_title[0] = '\0';
+    s_ancs_noti_uid = 0;
     if (p_app)
     {
         if (p_app->main_window)
@@ -219,6 +235,21 @@ void incoming_call_close_if_active(const char *id)
         LOG_I("incoming_call: phone dismissed, closing app");
         gui_app_exit(APP_ID_INCOMING_CALL);
     }
+}
+
+void incoming_call_set_ancs_uid(uint32_t noti_uid)
+{
+    s_ancs_noti_uid = noti_uid;
+}
+
+void incoming_call_force_close(void)
+{
+    if (!s_is_active)
+    {
+        return;
+    }
+    LOG_I("incoming_call: force close");
+    gui_app_exit(APP_ID_INCOMING_CALL);
 }
 
 static int app_main(intent_t i)

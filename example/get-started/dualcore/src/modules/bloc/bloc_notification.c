@@ -574,6 +574,31 @@ void interact_with_notification(notification_t *notification)
     need_wakeup = false;
 }
 
+void trigger_incoming_call_ui(notification_t *notification)
+{
+    if (!notification)
+    {
+        return;
+    }
+
+    if (SkaiWatchSys.DNDMode.config.status)
+    {
+        return;
+    }
+
+    watch_system_interact(HCPU_WAKEUP, NULL);
+    while (is_hcpu_suspend())
+    {
+        need_wakeup = true;
+        rt_thread_mdelay(100);
+    }
+
+    motor_pattern_calling();
+    incoming_call_set_caller(notification->title, notification->id, notification->type);
+    gui_app_run(APP_ID_INCOMING_CALL);
+    need_wakeup = false;
+}
+
 void handle_notification(uint8_t notify_id, char *json_string)
 {
     LOG_D("handle_notification, notify_id:%d, msgData:%s", notify_id,
