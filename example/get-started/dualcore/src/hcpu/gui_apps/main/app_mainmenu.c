@@ -467,6 +467,10 @@ void check_is_at_message(void)
             set_scroll_segment_count(get_message_page_count());
             set_prev_sensor_quat(0);
             notification_on_resume();
+            /* Route motion-tracking scroll offset to message list indicator dots */
+            extern void set_message_list_arc_stripe_external_offset(int16_t offset_degrees);
+            lvgl_msg_handler.handle_set_arc_stripe_external_offset =
+                set_message_list_arc_stripe_external_offset;
             extern void refersh_weather_icon(void);
             refersh_weather_icon();
         }
@@ -476,6 +480,13 @@ void check_is_at_message(void)
             set_open_control_options(false);
             set_media_control_threshold(3000);
             notification_on_pause();
+            /* Stop routing motion-tracking offsets to message list dots */
+            extern void set_message_list_arc_stripe_external_offset(int16_t offset_degrees);
+            if (lvgl_msg_handler.handle_set_arc_stripe_external_offset ==
+                set_message_list_arc_stripe_external_offset)
+            {
+                lvgl_msg_handler.handle_set_arc_stripe_external_offset = NULL;
+            }
         }
     }
     LOG_I("is_at_message: %d", _at_message);

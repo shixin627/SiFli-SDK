@@ -28,8 +28,10 @@
 #include <rtthread.h>
 #include <math.h>
 #include <string.h>
+#include "bsp_board.h"
 #include "wear_detect.h"
 #include "bloc_peripheral.h"
+#include "bloc_battery.h"
 #include "watch_sys_service.h"
 
 #define DBG_TAG "wear_detect"
@@ -39,7 +41,7 @@
 /* -------------------- Configuration -------------------- */
 
 /* Evaluation period in milliseconds (continuous, not event-driven) */
-#define EVAL_PERIOD_MS          3000
+#define EVAL_PERIOD_MS          1500
 
 /* PPG DC threshold: below this → nothing touching the sensor (suspended in air).
  * Measured data: air DC ~= 40000-41000, contact (wrist/table) DC >= 48000.
@@ -47,16 +49,20 @@
 #define PPG_DC_LOW_THD          45000
 
 /* Perfusion Index threshold (AC_pp / DC_mean).
- * Measured data: wearing PI >= 0.00052, off-wrist PI ~= 0.00029.
- * Set between these two ranges. */
-#define PI_THD                  0.0004f
+ * Asymmetric (Schmitt trigger) to prevent oscillation on static surfaces:
+ *   - PI_THD_TO_ON:   stricter bar for OFF→ON  (real heartbeat is clearly > this).
+ *   - PI_THD_KEEP_ON: looser bar to maintain ON state.
+ * Measured data: wearing PI spikes > 0.001, table PI occasionally spikes to
+ * ~0.0005-0.0008 from noise. */
+#define PI_THD_TO_ON            0.0010f
+#define PI_THD_KEEP_ON          0.0004f
 
 /* IMU variance threshold (m/s^2)^2 for supplementary motion check */
 #define IMU_VARIANCE_THD        0.03f
 
 /* Hysteresis: consecutive evaluations needed to change state */
-#define HYSTERESIS_ON           2   /* OFF→ON:  2 consecutive ON  (~6s) */
-#define HYSTERESIS_OFF          4   /* ON→OFF:  4 consecutive OFF (~12s) */
+#define HYSTERESIS_ON           3   /* OFF→ON:  3 consecutive ON  (~4.5s) */
+#define HYSTERESIS_OFF          3   /* ON→OFF:  3 consecutive OFF (~4.5s) */
 
 /* PI variability check: real heartbeat causes PI to fluctuate across
  * evaluations.  Constant PI (noise/static surface) should be rejected.
@@ -261,6 +267,15 @@ static int evaluate_imu_only(void)
  */
 static int evaluate_once(uint32_t now)
 {
+#if (CUSTOMER_BOARD_VER == BOARD_VER_29)
+    /* --- Board v29: charging always means OFF WRIST --- */
+    if (battery_get_charge_state()->is_charging)
+    {
+        LOG_I("Eval: charging (board v29) -> force OFF");
+        return -1;
+    }
+#endif
+
     /* --- Check PPG freshness first --- */
     if (is_ppg_stale(now))
     {
@@ -326,7 +341,13 @@ static int evaluate_once(uint32_t now)
     }
 
     /* --- Indicator 2: Perfusion Index (heartbeat) --- */
-    if (pi >= PI_THD)
+    /* Asymmetric threshold (Schmitt trigger): require stronger PI to go
+     * OFF->ON than to stay ON.  This prevents oscillation on static
+     * surfaces where PI occasionally spikes above the low threshold. */
+    float pi_thd = (ctx.status == WEAR_STATUS_WEARING)
+                       ? PI_THD_KEEP_ON : PI_THD_TO_ON;
+
+    if (pi >= pi_thd)
     {
         /* Check PI variability: real heartbeat causes PI to fluctuate.
          * Constant PI (noise/static surface) should be rejected. */
@@ -337,8 +358,8 @@ static int evaluate_once(uint32_t now)
             return -1;
         }
 
-        LOG_I("Eval: DC=%.0f, AC_pp=%.0f, PI=%.5f, pi_range=%.5f -> ON",
-              dc_mean, ac_pp, pi, pi_range);
+        LOG_I("Eval: DC=%.0f, AC_pp=%.0f, PI=%.5f, pi_range=%.5f, thd=%.4f -> ON",
+              dc_mean, ac_pp, pi, pi_range, pi_thd);
         return 1;
     }
 
@@ -348,8 +369,8 @@ static int evaluate_once(uint32_t now)
     if (imu_len > 0)
     {
         float imu_var = compute_imu_variance(ctx.acce_mag, imu_len);
-        LOG_I("Eval: DC=%.0f, PI=%.5f (low), pi_range=%.5f, IMU_var=%.5f",
-              dc_mean, pi, pi_range, imu_var);
+        LOG_I("Eval: DC=%.0f, PI=%.5f (< %.4f), pi_range=%.5f, IMU_var=%.5f",
+              dc_mean, pi, pi_thd, pi_range, imu_var);
 
         if (imu_var >= IMU_VARIANCE_THD)
         {
