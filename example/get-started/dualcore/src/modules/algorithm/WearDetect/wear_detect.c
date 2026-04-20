@@ -25,6 +25,11 @@
  *         State transitions use hysteresis counters to prevent oscillation.
  ******************************************************************************
  */
+/* Temporary PPG stall diagnostic instrumentation. Remove once done. */
+#ifndef PPG_RACE_DEBUG
+    #define PPG_RACE_DEBUG 1
+#endif
+
 #include <rtthread.h>
 #include <math.h>
 #include <string.h>
@@ -399,7 +404,21 @@ static void try_evaluate(void)
     if (ctx.ppg_count < 20 && ctx.imu_count < 20)
         return;
 
+#ifdef PPG_RACE_DEBUG
+    uint32_t eval_t0 = rt_tick_get_millisecond();
+    LOG_I("[WE-EVAL] enter ts=%u", (unsigned)eval_t0);
+#endif
     int vote = evaluate_once(now);
+#ifdef PPG_RACE_DEBUG
+    {
+        uint32_t eval_dt = rt_tick_get_millisecond() - eval_t0;
+        if (eval_dt > 20)
+        {
+            LOG_I("[WE-EVAL] exit took=%ums vote=%d (slow!)",
+                  (unsigned)eval_dt, vote);
+        }
+    }
+#endif
 
     if (vote > 0)
     {

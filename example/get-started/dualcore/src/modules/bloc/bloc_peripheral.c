@@ -42,6 +42,12 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+/* Temporary PPG producer/consumer race instrumentation. Remove this line
+ * (and the matching one in data_service.c) once verification is done. */
+#ifndef PPG_RACE_DEBUG
+    #define PPG_RACE_DEBUG 1
+#endif
+
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <string.h>
@@ -814,6 +820,29 @@ void process_ppg_sensor_data(uint8_t sample_num, uint32_t *data,
                sample_num * sizeof(uint32_t));
     }
 
+#ifdef PPG_RACE_DEBUG
+    {
+        static uint32_t s_prod_seq = 0;
+        static uint32_t s_prev_ts = 0;
+        uint32_t v0 = (data && sample_num > 0) ? data[0] : 0;
+        uint32_t v1 = (data && sample_num > 1) ? data[1] : 0;
+        uint32_t ts = (uint32_t)rt_tick_get_millisecond();
+        uint32_t gap = s_prev_ts ? (ts - s_prev_ts) : 0;
+        s_prod_seq++;
+        if (gap > 50)
+        {
+            LOG_W("[PPG-PROD] seq=%u n=%u v0=%u v1=%u ts=%u GAP=%ums",
+                  s_prod_seq, sample_num, v0, v1, ts, gap);
+        }
+        else
+        {
+            LOG_I("[PPG-PROD] seq=%u n=%u v0=%u v1=%u ts=%u",
+                  s_prod_seq, sample_num, v0, v1, ts);
+        }
+        s_prev_ts = ts;
+    }
+#endif
+
     // Only trigger the semaphore if not in sleep mode
     if (!is_sleep_mode())
     {
@@ -887,6 +916,41 @@ static void gesture_ppg_thread_entry(void *parameter)
                 ble_ppg_data[2 * i + 1] =
                     (float)watch_sensor.ppg_data2.raw_data[i];
             }
+#ifdef PPG_RACE_DEBUG
+            {
+                static uint32_t s_cons_seq = 0;
+                static uint32_t s_last_v0 = 0;
+                static uint32_t s_dup_run = 0;
+                uint32_t v0 = (sample_num > 0)
+                                  ? watch_sensor.ppg_data.raw_data[0]
+                                  : 0;
+                uint32_t v1 = (sample_num > 1)
+                                  ? watch_sensor.ppg_data.raw_data[1]
+                                  : 0;
+                s_cons_seq++;
+                if (v0 == s_last_v0)
+                {
+                    s_dup_run++;
+                }
+                else
+                {
+                    if (s_dup_run > 0)
+                    {
+                        LOG_W("[PPG-CONS] DUP streak ended, run=%u",
+                              s_dup_run);
+                    }
+                    s_dup_run = 0;
+                    s_last_v0 = v0;
+                }
+                rt_uint16_t sem_val = watch_sensor.ppg_sem
+                                          ? watch_sensor.ppg_sem->value
+                                          : 0;
+                LOG_I("[PPG-CONS] seq=%u n=%d v0=%u v1=%u dup=%u sem=%u ts=%u",
+                      s_cons_seq, sample_num, v0, v1, s_dup_run,
+                      (uint32_t)sem_val,
+                      (uint32_t)rt_tick_get_millisecond());
+            }
+#endif
             send_ppg_dataset_with_ble(ble_ppg_data, sample_num * 2);
         }
     }
