@@ -1,6 +1,6 @@
 {
-    "version": "1.1.24",
-    "description": "優化通知欄",
+    "version": "1.1.25",
+    "description": "新增LOG檔案紀錄功能(除錯用)\n修復無謂刷新APP列表中非可視區的問題",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",

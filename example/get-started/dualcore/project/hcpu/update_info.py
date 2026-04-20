@@ -91,7 +91,7 @@ def get_watchface_file_list():
         return []
 
 
-def update_info_json():
+def update_info_json(include_watchface=False):
     """Update info.json with version and file lists"""
     try:
         # Read version
@@ -106,8 +106,12 @@ def update_info_json():
         file_list = get_file_list_from_sys()
         print(f"Found {len(file_list)} files in sys directory")
 
-        watchface_file_list = get_watchface_file_list()
-        print(f"Found {len(watchface_file_list)} files in watchface directory")
+        if include_watchface:
+            watchface_file_list = get_watchface_file_list()
+            print(f"Found {len(watchface_file_list)} files in watchface directory")
+        else:
+            watchface_file_list = []
+            print("Skipping watchface file list (not requested).")
 
         # Read existing info.json
         info_data = {}
@@ -132,8 +136,12 @@ def update_info_json():
         if file_list:
             info_data['fileList'] = file_list
 
-        if watchface_file_list:
-            info_data['watchfaceFileList'] = watchface_file_list
+        if include_watchface:
+            if watchface_file_list:
+                info_data['watchfaceFileList'] = watchface_file_list
+        else:
+            # Remove watchfaceFileList when watchface is not included
+            info_data.pop('watchfaceFileList', None)
 
         # Write updated info.json
         with open(INFO_JSON, 'w', encoding='utf-8') as f:
@@ -143,7 +151,10 @@ def update_info_json():
         if version:
             print(f"  - Version: {version}")
         print(f"  - File list: {len(file_list)} files")
-        print(f"  - Watchface file list: {len(watchface_file_list)} files")
+        if include_watchface:
+            print(f"  - Watchface file list: {len(watchface_file_list)} files")
+        else:
+            print(f"  - Watchface file list: (excluded)")
 
     except Exception as e:
         print(f"Error updating info.json: {e}")
@@ -157,7 +168,8 @@ if __name__ == "__main__":
     print("Updating info.json...")
     print("=" * 60)
 
-    success = update_info_json()
+    include_watchface = "--with-watchface" in sys.argv
+    success = update_info_json(include_watchface=include_watchface)
 
     print("=" * 60)
     if success:

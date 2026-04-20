@@ -132,15 +132,20 @@ def copy_watchface_files():
 def main():
     success = True
 
+    include_watchface = "--with-watchface" in sys.argv
+
     # Step 1: Copy firmware bin files
     if not package_firmware():
         success = False
 
     print()
 
-    # Step 2: Copy watchface files
-    if not copy_watchface_files():
-        success = False
+    # Step 2: Copy watchface files (optional)
+    if include_watchface:
+        if not copy_watchface_files():
+            success = False
+    else:
+        print_color("Skipping watchface files copy (not requested).", "yellow")
 
     sys.exit(0 if success else 1)
 

@@ -33,12 +33,14 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <ulog.h>
+#include <board.h>
+#include "communicate_update_image.h"
 
 extern void rt_assert_set_hook(void (*hook)(const char *ex, const char *func,
                                             rt_size_t line));
 extern void rt_hw_exception_install(rt_err_t (*handler)(void *context));
 
-#ifndef LOG_FILE_BACKEND_DISABLE
+#if !kReleaseMode
 
 #define LOG_DIR                 "/logs"
 #define LOG_FILE_EXT            ".log"
@@ -351,6 +353,14 @@ static void flush_thread_entry(void *param)
     while (1)
     {
         rt_sem_take(flush_sem, interval);
+        /* Pause disk writes during BLE DFU (OTA) to avoid contending with
+         * the firmware write path. Producer keeps filling the ring buffer;
+         * logs that overflow are counted in dropped_bytes and reported once
+         * OTA finishes. */
+        if (is_ble_dfu_thread_running())
+        {
+            continue;
+        }
         flush_once(&fsync_ctr);
     }
 }
