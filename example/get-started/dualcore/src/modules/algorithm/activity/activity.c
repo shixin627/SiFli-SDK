@@ -563,5 +563,5 @@ int activity_main(void)
   return 0;
 }
 
-// INIT_APP_EXPORT(activity_main);
+INIT_APP_EXPORT(activity_main);
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

@@ -851,10 +851,10 @@ void process_ppg_sensor_data(uint8_t sample_num, uint32_t *data,
             rt_sem_release(watch_sensor.ppg_sem);
 #else
     #ifdef SOC_BF0_LCPU
-        for (uint8_t i = 0; i < sample_num; i++)
-        {
-            process_ppg_rawdata(watch_sensor.ppg_data.raw_data[i]);
-        }
+        // for (uint8_t i = 0; i < sample_num; i++)
+        // {
+        //     process_ppg_rawdata(watch_sensor.ppg_data.raw_data[i]);
+        // }
     #endif
 #endif
     }

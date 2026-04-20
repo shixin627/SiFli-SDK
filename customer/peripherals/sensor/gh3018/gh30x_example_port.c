@@ -8,9 +8,9 @@
  */
 
 /* Temporary PPG stall diagnostic instrumentation. Remove once done. */
-#ifndef PPG_RACE_DEBUG
-    #define PPG_RACE_DEBUG 1
-#endif
+// #ifndef PPG_RACE_DEBUG
+//     #define PPG_RACE_DEBUG 1
+// #endif
 
 #include "gh30x_example_common.h"
 #include "gh30x_example.h"
@@ -33,7 +33,7 @@ static struct rt_semaphore gh3018_int_sem;
 #endif
 
 #define THREAD_STACK_SIZE 6144
-#define THREAD_PRIORITY 7
+#define THREAD_PRIORITY 6
 #define THREAD_TIMESLICE RT_THREAD_TICK_DEFAULT
 
 rt_thread_t gh3018_thread = NULL;
@@ -187,7 +187,21 @@ uint8_t hal_gh30x_i2c_write(uint8_t device_id, const uint8_t write_buffer[],
         msgs[0].buf = (uint8_t *)write_buffer; /* Slave register address */
         msgs[0].len = length;                  /* Number of bytes sent */
 
+#ifdef PPG_RACE_DEBUG
+        rt_uint32_t t0 = rt_tick_get_millisecond();
+#endif
         res = rt_i2c_transfer(gh3018_i2cbus, msgs, 1);
+#ifdef PPG_RACE_DEBUG
+        {
+            rt_uint32_t dt = rt_tick_get_millisecond() - t0;
+            if (dt > 20)
+            {
+                LOG_W("[I2C-WR] slow %ums len=%u ts=%u",
+                      (unsigned)dt, (unsigned)length,
+                      (unsigned)rt_tick_get_millisecond());
+            }
+        }
+#endif
         if (res == 1)
         {
             // LOG_D("GH3018_I2C_Write OK: 0x%x, %d\n", device_id, length);
@@ -226,7 +240,21 @@ uint8_t hal_gh30x_i2c_read(uint8_t device_id, const uint8_t write_buffer[],
         msgs[1].buf = read_buffer;     /* Read data pointer */
         msgs[1].len = read_length;     /* Number of bytes read */
 
+#ifdef PPG_RACE_DEBUG
+        rt_uint32_t t0 = rt_tick_get_millisecond();
+#endif
         res = rt_i2c_transfer(gh3018_i2cbus, msgs, 2);
+#ifdef PPG_RACE_DEBUG
+        {
+            rt_uint32_t dt = rt_tick_get_millisecond() - t0;
+            if (dt > 20)
+            {
+                LOG_W("[I2C-RD] slow %ums rdlen=%u ts=%u",
+                      (unsigned)dt, (unsigned)read_length,
+                      (unsigned)rt_tick_get_millisecond());
+            }
+        }
+#endif
         if (res == 2)
         {
             // LOG_D("GH3018_I2C_Read OK: 0x%x\n", msgs[0].addr);
@@ -449,8 +477,21 @@ static void gh30x_sensor_task(void *params)
         rt_uint32_t wait_ms = t_woke - prev_done_ms;
         if (wait_ms > 50)
         {
-            LOG_I("[GH-LOOP] sem wait %ums (gap!) ts=%u",
-                  (unsigned)wait_ms, (unsigned)t_woke);
+            /* On long stalls, also sample the INT pin level. If pin is HIGH
+             * when we finally woke, it means the sensor had INT asserted the
+             * whole time but our rising-edge IRQ never re-fired (edge lost).
+             * If pin is LOW, the sensor genuinely stopped producing samples. */
+            int pin_lvl = -1;
+            if (wait_ms > 200)
+            {
+    #ifdef GH3018_INT_BIT
+                pin_lvl = rt_pin_read(GH3018_INT_BIT);
+    #else
+                pin_lvl = rt_pin_read(PPG_INT_PIN);
+    #endif
+            }
+            LOG_I("[GH-LOOP] sem wait %ums (gap!) ts=%u pin=%d",
+                  (unsigned)wait_ms, (unsigned)t_woke, pin_lvl);
         }
 #endif
         gh30x_api_lock();

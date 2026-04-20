@@ -87,7 +87,7 @@
     #define READ_WRITE_LEN UINT8_C(46)
 
     #define THREAD_STACK_SIZE 1 * 1024 + 256
-    #define THREAD_PRIORITY 6
+    #define THREAD_PRIORITY 7
     #define THREAD_TIMESLICE RT_THREAD_TICK_DEFAULT
 
 /*!
