@@ -452,6 +452,8 @@ static void log_file_assert_hook(const char *ex, const char *func,
     log_file_emergency_flush();
 }
 
+static volatile int infra_ready;   /* dir + sem + flush thread + hooks ready */
+
 static int log_file_backend_init(void)
 {
     struct stat st;
@@ -464,16 +466,9 @@ static int log_file_backend_init(void)
         }
     }
 
-    if (open_new_log_file() != RT_EOK)
-    {
-        return -RT_ERROR;
-    }
-
     flush_sem = rt_sem_create("logfe", 0, RT_IPC_FLAG_FIFO);
     if (flush_sem == RT_NULL)
     {
-        close(current_fd);
-        current_fd = -1;
         return -RT_ERROR;
     }
 
@@ -484,8 +479,6 @@ static int log_file_backend_init(void)
     {
         rt_sem_delete(flush_sem);
         flush_sem = RT_NULL;
-        close(current_fd);
-        current_fd = -1;
         return -RT_ERROR;
     }
     rt_thread_startup(flush_tid);
@@ -494,19 +487,70 @@ static int log_file_backend_init(void)
     log_file_be.output = log_file_output;
     log_file_be.flush = log_file_flush_cb;
 
-    backend_ready = 1;
-    ulog_backend_register(&log_file_be, "filebe", RT_FALSE);
-
     /* Flush pending logs to disk on RT_ASSERT / HardFault so the last
      * messages before reset survive in the current log file. */
     rt_assert_set_hook(log_file_assert_hook);
     rt_hw_exception_install(log_file_exception_hook);
 
+    infra_ready = 1;
+
+    /* File log is DISABLED by default; user turns it on via the developer
+     * app switch. Until then, no file is opened and the backend is not
+     * registered with ulog — zero overhead. */
     return RT_EOK;
 }
-/* Level "6" (INIT_PRE_ENV_EXPORT region isn't defined; use INIT_APP_EXPORT
- * which runs after INIT_ENV_EXPORT where the root fs is mounted) */
+/* Runs after INIT_ENV_EXPORT where the root fs is mounted */
 INIT_APP_EXPORT(log_file_backend_init);
+
+int log_file_backend_is_enabled(void)
+{
+    return backend_ready ? 1 : 0;
+}
+
+int log_file_backend_set_enabled(int enable)
+{
+    if (!infra_ready)
+    {
+        return -RT_ERROR;
+    }
+    if (enable)
+    {
+        if (backend_ready)
+        {
+            return RT_EOK;
+        }
+        if (current_fd < 0)
+        {
+            if (open_new_log_file() != RT_EOK)
+            {
+                return -RT_ERROR;
+            }
+        }
+        backend_ready = 1;
+        ulog_backend_register(&log_file_be, "filebe", RT_FALSE);
+        rt_kprintf("[log_file_be] enabled\n");
+    }
+    else
+    {
+        if (!backend_ready)
+        {
+            return RT_EOK;
+        }
+        /* Unregister first so ulog stops routing logs to us, then drain
+         * whatever is already in the ring buffer and seal the file. */
+        ulog_backend_unregister(&log_file_be);
+        backend_ready = 0;
+        if (current_fd >= 0)
+        {
+            drain_ring_to_fd(0);
+            fsync(current_fd);
+            close(current_fd);
+            current_fd = -1;
+        }
+        rt_kprintf("[log_file_be] disabled\n");
+    }
+    return RT_EOK;
+}
 
 /* Shell: force the ring buffer to drain and fsync so the current file on
  * disk is up to date (useful before copying it off via file browser). */
@@ -514,6 +558,11 @@ static void logfe_sync(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
+    if (!backend_ready)
+    {
+        rt_kprintf("[log_file_be] disabled\n");
+        return;
+    }
     if (flush_sem != RT_NULL)
     {
         rt_sem_release(flush_sem);
@@ -533,6 +582,11 @@ static void logfe_rotate(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
+    if (!backend_ready)
+    {
+        rt_kprintf("[log_file_be] disabled\n");
+        return;
+    }
     if (flush_sem != RT_NULL)
     {
         rt_sem_release(flush_sem);
@@ -541,5 +595,19 @@ static void logfe_rotate(int argc, char **argv)
     open_new_log_file();
 }
 MSH_CMD_EXPORT(logfe_rotate, seal current log file and open a new one);
+
+/* Shell: toggle file logging on/off at runtime. Mirrors the developer
+ * app switch. Usage: logfe_enable [0|1] */
+static void logfe_enable(int argc, char **argv)
+{
+    if (argc < 2)
+    {
+        rt_kprintf("[log_file_be] %s\n",
+                   log_file_backend_is_enabled() ? "enabled" : "disabled");
+        return;
+    }
+    log_file_backend_set_enabled(atoi(argv[1]));
+}
+MSH_CMD_EXPORT(logfe_enable, enable or disable file log backend);
 
 #endif /* !LOG_FILE_BACKEND_DISABLE */

@@ -95,6 +95,9 @@ extern void lv_gpu_set_enable(bool en);
 extern bool lv_gpu_is_enabled(void);
 #endif
 
+extern int log_file_backend_is_enabled(void);
+extern int log_file_backend_set_enabled(int enable);
+
 extern void accelerometer_subscribe(void);
 extern void accelerometer_unsubscribe(void);
 extern void gyroscope_subscribe(void);
@@ -114,6 +117,7 @@ static void test_all_callback(lv_event_t *e);
 static void restart_callback(lv_event_t *e);
 static void reset_restart_num_callback(lv_event_t *e);
 static void ble_log_sw_event_callback(lv_event_t *e);
+static void file_log_sw_event_callback(lv_event_t *e);
 static void accel_sub_unsub_sw_event_callback(lv_event_t *e);
 static void gyro_sub_unsub_sw_event_callback(lv_event_t *e);
 static void hr_sub_unsub_sw_event_callback(lv_event_t *e);
@@ -305,13 +309,29 @@ static void lv_create_dev_screen(void)
     lv_obj_set_size(ble_log_sw, 100, 50);
     lv_obj_add_event_cb(ble_log_sw, ble_log_sw_event_callback, LV_EVENT_CLICKED, NULL);
 
+    /* File log switch (writes logs to /logs/ ; default OFF) */
+    lv_obj_t *file_log_container = lv_obj_create(cont);
+    lv_obj_set_size(file_log_container, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(file_log_container, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(file_log_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_align_to(file_log_container, ble_log_container, LV_ALIGN_OUT_BOTTOM_MID, 0, 30);
+
+    lv_obj_t *file_log_label = lv_label_create(file_log_container);
+    lv_label_set_text(file_log_label, "File log");
+    lv_obj_set_style_text_font(file_log_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+
+    lv_obj_t *file_log_sw = lv_switch_create(file_log_container);
+    lv_obj_add_state(file_log_sw, log_file_backend_is_enabled() ? LV_STATE_CHECKED : 0);
+    lv_obj_set_size(file_log_sw, 100, 50);
+    lv_obj_add_event_cb(file_log_sw, file_log_sw_event_callback, LV_EVENT_CLICKED, NULL);
+
     /* [IMU] Create accelerometer subscription/unsubscription label and switch */
     extern bool accel_service_subscribed(void);
     lv_obj_t *accel_sub_unsub_container = lv_obj_create(cont);
     lv_obj_set_size(accel_sub_unsub_container, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(accel_sub_unsub_container, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(accel_sub_unsub_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_align_to(accel_sub_unsub_container, ble_log_container, LV_ALIGN_OUT_BOTTOM_MID, 0, 30);
+    lv_obj_align_to(accel_sub_unsub_container, file_log_container, LV_ALIGN_OUT_BOTTOM_MID, 0, 30);
 
     bool is_subscribed = accel_service_subscribed();
     lv_obj_t *accel_sub_unsub_label = lv_label_create(accel_sub_unsub_container);
@@ -740,6 +760,30 @@ static void ble_log_sw_event_callback(lv_event_t *e)
     {
         SkaiWatchSys.flag_field.debug_mode = 0;
         open_test_mode(false);
+    }
+}
+
+static void file_log_sw_event_callback(lv_event_t *e)
+{
+    lv_obj_t *obj = lv_event_get_target(e);
+    int enable = (lv_obj_get_state(obj) & LV_STATE_CHECKED) ? 1 : 0;
+    int ret = log_file_backend_set_enabled(enable);
+    if (ret != RT_EOK)
+    {
+        /* Revert UI state on failure so the switch reflects reality. */
+        if (enable)
+        {
+            lv_obj_clear_state(obj, LV_STATE_CHECKED);
+        }
+        else
+        {
+            lv_obj_add_state(obj, LV_STATE_CHECKED);
+        }
+        LOG_E("File log toggle failed (ret=%d)", ret);
+    }
+    else
+    {
+        LOG_I("File log %s", enable ? "enabled" : "disabled");
     }
 }
 
