@@ -440,6 +440,31 @@ static void update_indicator_dots_position(int input_value)
         int dot_x = center_x + (int)(circle_radius * cos(angle_rad));
         int dot_y = center_y + (int)(circle_radius * sin(angle_rad));
 
+        /* 畫面為 466x466 圓形，指示點中心距離螢幕中心超過 (半徑 + 半個 dot) 就完全看不到，
+         * 直接 HIDDEN 並跳過後面的 opa / zoom / set_pos 計算，避免 dot 越多越卡 */
+        {
+            const int screen_cx = LV_HOR_RES / 2;
+            const int screen_cy = LV_VER_RES / 2;
+            const int visible_r = LV_HOR_RES / 2 + (int)(DOT_BG_SIZE) / 2;
+            int ddx = dot_x - screen_cx;
+            int ddy = dot_y - screen_cy;
+            lv_obj_t *dot_bg_obj = p_instruction_list_layout->indicator_dots_bg[i];
+            if (ddx * ddx + ddy * ddy > visible_r * visible_r)
+            {
+                if (dot_bg_obj != NULL &&
+                    !lv_obj_has_flag(dot_bg_obj, LV_OBJ_FLAG_HIDDEN))
+                {
+                    lv_obj_add_flag(dot_bg_obj, LV_OBJ_FLAG_HIDDEN);
+                }
+                continue;
+            }
+            if (dot_bg_obj != NULL &&
+                lv_obj_has_flag(dot_bg_obj, LV_OBJ_FLAG_HIDDEN))
+            {
+                lv_obj_clear_flag(dot_bg_obj, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
+
         // 限制 dot_y 超過 450 或小於 16 時，dot_x 不再變動
         static int last_valid_dot_x[MAX_LIST_ITEMS] = {0};
         if (dot_y > 450 || dot_y < 16)
