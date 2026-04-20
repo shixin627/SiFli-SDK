@@ -4,7 +4,32 @@
       "Bash(grep -E \"\\\\.\\(c|h\\)$\")",
       "WebSearch",
       "Bash(git checkout:*)",
-      "Bash(awk 'NR>=250 && NR<=320')"
+      "Bash(awk 'NR>=250 && NR<=320')",
+      "Bash(awk -F'v0=' '{print $2}')",
+      "Read(//tmp/**)",
+      "Bash(awk 'NR>1 && $0==prev{run++; if\\(run>maxrun\\){maxrun=run; runstart=NR-run; runval=$0}} NR>1 && $0!=prev{if\\(run>=3\\){print \"run of\",run+1,\"at line\",NR-run-1,\"value\",prev} run=0} {prev=$0} END{print \"MAX dup-run =\",maxrun+1,\"at line\",runstart,\"value=\",runval}' /tmp/ppg_v0.txt)",
+      "Bash(awk 'BEGIN{run=1; prev=\"\"} {if\\($0==prev\\){run++} else{if\\(run>=3\\){print \"RUN of\",run,\"ending line\",NR-1,\"value\",prev}; run=1}; prev=$0} END{if\\(run>=3\\)print \"RUN of\",run,\"ending line\",NR,\"value\",prev}' /tmp/ppg_v0.txt)",
+      "Bash(awk 'NR==1{prev=$0; next} {d=$0-prev; if\\(d>50\\)c++; prev=$0} END{print c}' /tmp/ppg_ts.txt)",
+      "Bash(awk 'NR==1{prev=$0; max=0; next} {d=$0-prev; if\\(d>max\\){max=d; maxline=NR}; prev=$0} END{print \"max=\"max\"ms at line \"maxline}' /tmp/ppg_ts.txt)",
+      "Bash(awk -F: 'NR>=1500 && NR<=1510')",
+      "Bash(awk '/11:53:3[89]/ && !/PPG-PROD/' \"C:/dev/SiFli_Trace_v2.3.3/log/窗口2_COM9_\\(2026-04-20-11-53-07\\)_ui.log\")",
+      "Bash(awk '/12:10:48:[5-9]/ || /12:10:49:[0-2]/' \"C:/dev/SiFli_Trace_v2.3.3/log/窗口2_COM9_\\(2026-04-20-12-10-32\\)_ui.log\")",
+      "Bash(awk -F'seq=' '{print $2}')",
+      "Bash(awk -F' ' '{seq=$1; ts=$0; gsub\\(/.*ts=/,\"\",ts\\); gsub\\(/ .*/,\"\",ts\\); if\\(prev>0 && seq-prev>1\\) print \"MISSING seq between\",prev,\"and\",seq; prev=seq}')",
+      "Bash(awk '/12:10:47:4/ || /12:10:47:[5-9]/ || /12:10:48:[0-7]/' \"C:/dev/SiFli_Trace_v2.3.3/log/窗口2_COM9_\\(2026-04-20-12-10-32\\)_ui.log\")",
+      "Bash(awk '/12:10:52:[3-9]/ || /12:10:53:[0-7]/' \"C:/dev/SiFli_Trace_v2.3.3/log/窗口2_COM9_\\(2026-04-20-12-10-32\\)_ui.log\")",
+      "Bash(awk '/12:10:47:[4-9]/ || /12:10:48/' \"C:/dev/SiFli_Trace_v2.3.3/log/窗口1_COM10_\\(2026-04-20-12-10-30\\)_ui.log\")",
+      "Bash(awk '{print $1,$2}')",
+      "Bash(awk '/12:10:4[7-9]/ || /12:10:5[23]/')",
+      "Bash(awk '/PPG-PROD/ && /ts=26[0-9]{3}/' \"C:/dev/SiFli_Trace_v2.3.3/log/窗口2_COM9_\\(2026-04-20-12-10-32\\)_ui.log\")",
+      "Bash(awk '/12:10:47:[4-9]/ || /12:10:48:[0-7]/' \"C:/dev/SiFli_Trace_v2.3.3/log/窗口2_COM9_\\(2026-04-20-12-10-32\\)_ui.log\")",
+      "Bash(awk '/12:10:47:[4-9]/ || /12:10:48:[0-7]/' \"C:/dev/SiFli_Trace_v2.3.3/log/窗口1_COM10_\\(2026-04-20-12-10-30\\)_ui.log\")",
+      "Bash(awk '/12:10:52:[4-9]/ || /12:10:53:[0-7]/' \"C:/dev/SiFli_Trace_v2.3.3/log/窗口1_COM10_\\(2026-04-20-12-10-30\\)_ui.log\")",
+      "Bash(awk '/12:10:57:[4-9]/ || /12:10:58:[0-7]/' \"C:/dev/SiFli_Trace_v2.3.3/log/窗口1_COM10_\\(2026-04-20-12-10-30\\)_ui.log\")",
+      "Bash(awk '/12:10:52:[4-9]/ || /12:10:53:[0-7]/' \"C:/dev/SiFli_Trace_v2.3.3/log/窗口2_COM9_\\(2026-04-20-12-10-32\\)_ui.log\")",
+      "Bash(awk '/12:10:4[7-9]/ || /12:10:5[0-4]/')",
+      "Bash(awk '/12:10:5[0-3]/')",
+      "Bash(grep -E '#define GH3018_I2C_BUS|#define BMI270_BUS' /c/SiFli-SDK/customer/peripherals/sensor/Kconfig echo \"---\" grep -rE 'BMI270_BUS_NAME|GH3018_I2C_BUS' \"C:/SiFli-SDK/customer/boards/sf32lb56-watch_base\")"
     ]
   }
 }

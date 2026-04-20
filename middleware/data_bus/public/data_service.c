@@ -4,6 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+/* Temporary PPG producer/consumer race instrumentation. Remove this line
+ * (and the matching one in bloc_peripheral.c) once verification is done. */
+#ifndef PPG_RACE_DEBUG
+    #define PPG_RACE_DEBUG 1
+#endif
+
 #include "rtdef.h"
 #include "rtthread.h"
 #include "string.h"
@@ -836,7 +842,19 @@ static void handle_proxy_msg(data_msg_t *msg)
         }
 
         result = rt_mq_send(queue, msg, sizeof(*msg));
+#ifdef PPG_RACE_DEBUG
+        if (RT_EOK != result)
+        {
+            LOG_W("[DS-DROP] queue '%s' full (entry=%u/max=%u) msg_id=%u",
+                  queue->parent.parent.name,
+                  (unsigned)queue->entry, (unsigned)queue->max_msgs,
+                  (unsigned)msg->msg_id);
+            /* drop the message instead of asserting so that verification
+             * can keep running to observe PPG duplicate behaviour. */
+        }
+#else
         RT_ASSERT(RT_EOK == result);
+#endif
     }
     }
 }
@@ -1671,6 +1689,32 @@ void *data_service_get_thread(uint8_t ds_id)
     return NULL;
 }
 
+#ifdef RT_USING_FINSH
+    #include <finsh.h>
+static int dserv_stat(int argc, char **argv)
+{
+    rt_kprintf("=== data_service queue stat ===\n");
+#ifndef DATA_SVC_PROC_THREAD_DISABLED
+    if (g_ds_queue)
+    {
+        rt_kprintf("dserv:      entry=%u / max=%u\n",
+                   (unsigned)g_ds_queue->entry,
+                   (unsigned)g_ds_queue->max_msgs);
+    }
+#endif
+#ifndef DS_MBOX_DISABLED
+    if (g_data_mbox_mq)
+    {
+        rt_kprintf("data_mb_mq: entry=%u / max=%u\n",
+                   (unsigned)g_data_mbox_mq->entry,
+                   (unsigned)g_data_mbox_mq->max_msgs);
+    }
+#endif
+    return 0;
+}
+MSH_CMD_EXPORT(dserv_stat, show data_service queue depth);
+#endif /* RT_USING_FINSH */
+
 int32_t datas_push_msg_to_client(datas_handle_t svc, uint16_t msg_id, uint32_t len, uint8_t *data)
 {
     rt_list_t *iter;
@@ -1812,7 +1856,16 @@ rt_err_t datas_data_ready(datas_handle_t svc, uint32_t size, uint8_t *data)
         body->data = data;
         msg.dst_cid = MAKE_ROUT_ID(DATA_CONN_INVALID_ID, service->id);
         result = dispatch_msg(&msg);
+#ifdef PPG_RACE_DEBUG
+        if (RT_EOK != result)
+        {
+            LOG_W("[DS-DROP] datas_data_ready service=%s size=%u dropped "
+                  "(dispatch ret=%d)",
+                  service->name, (unsigned)size, (int)result);
+        }
+#else
         RT_ASSERT(RT_EOK == result);
+#endif
     }
     return result;
 }

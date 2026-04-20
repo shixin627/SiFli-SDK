@@ -7,6 +7,11 @@
  *
  */
 
+/* Temporary PPG stall diagnostic instrumentation. Remove once done. */
+#ifndef PPG_RACE_DEBUG
+    #define PPG_RACE_DEBUG 1
+#endif
+
 #include "gh30x_example_common.h"
 #include "gh30x_example.h"
 #include <rtthread.h>
@@ -429,6 +434,9 @@ static void gh30x_int_handle(void *args)
 // start a thread to process semphone
 static void gh30x_sensor_task(void *params)
 {
+#ifdef PPG_RACE_DEBUG
+    rt_uint32_t prev_done_ms = rt_tick_get_millisecond();
+#endif
     while (1)
     {
 #ifdef GH3018_USE_INT
@@ -436,10 +444,31 @@ static void gh30x_sensor_task(void *params)
 #else
         rt_thread_mdelay(PERIOD_IN_FREQUENCY_25HZ);
 #endif
+#ifdef PPG_RACE_DEBUG
+        rt_uint32_t t_woke = rt_tick_get_millisecond();
+        rt_uint32_t wait_ms = t_woke - prev_done_ms;
+        if (wait_ms > 50)
+        {
+            LOG_I("[GH-LOOP] sem wait %ums (gap!) ts=%u",
+                  (unsigned)wait_ms, (unsigned)t_woke);
+        }
+#endif
         gh30x_api_lock();
         // LOG_I("gh30x_sensor_task");
         hal_gh30x_int_handler_bottom_half();
         gh30x_api_unlock();
+#ifdef PPG_RACE_DEBUG
+        {
+            rt_uint32_t t_done = rt_tick_get_millisecond();
+            rt_uint32_t proc_ms = t_done - t_woke;
+            if (proc_ms > 50)
+            {
+                LOG_I("[GH-LOOP] proc %ums (slow!) ts=%u",
+                      (unsigned)proc_ms, (unsigned)t_done);
+            }
+            prev_done_ms = t_done;
+        }
+#endif
 #ifdef GH3018_USE_INT
     #ifdef GH3018_INT_BIT
         rt_pin_irq_enable(GH3018_INT_BIT, 1);
