@@ -371,10 +371,18 @@ static void log_file_output(struct ulog_backend *backend, rt_uint32_t level,
 {
     (void)backend;
     (void)level;
-    (void)tag;
     (void)is_raw;
 
     if (!backend_ready || len == 0 || log == NULL)
+    {
+        return;
+    }
+
+    /* Drop chatty BLE stack event logs (e.g. "sibles KE_EVT2: ...") —
+     * they fire on every BLE packet and would otherwise fill the file
+     * with transport-layer noise during BLE-heavy operations. Console
+     * output is unaffected. */
+    if (tag != NULL && rt_strncmp(tag, "sibles", 6) == 0)
     {
         return;
     }
