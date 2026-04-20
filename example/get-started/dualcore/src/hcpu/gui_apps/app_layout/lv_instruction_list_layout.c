@@ -1358,6 +1358,7 @@ void instruction_ai_show_skai_widget(void)
 }
 
 static rt_tick_t last_ai_widget_open_time = 0;
+static bool ai_widget_opened_by_drag = false;
 void tap_on_ai_widget(void);
 void animate_open_ai_widget(void)
 {
@@ -1368,18 +1369,30 @@ void animate_open_ai_widget(void)
         return;
     }
     last_ai_widget_open_time = rt_tick_get();
-    /* Show ai_page instantly (no slide from left) */
+    ai_widget_opened_by_drag = false;
+    /* Show ai_page instantly (no slide from left).
+       Call tap_on_ai_widget() BEFORE set_tile_id: the tile change fires
+       SCROLL_END → VALUE_CHANGED synchronously with LV_ANIM_OFF, and the
+       ai_tileview_event_cb would otherwise see is_open_instruction_list_ai==false
+       and run the drag-open branch, wrongly setting ai_widget_opened_by_drag. */
     lv_obj_clear_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                       LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(p_instruction_list_layout->p_instruction_list_ai_bg);
+    tap_on_ai_widget();
     lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 0,
                        0, LV_ANIM_OFF);
-    tap_on_ai_widget();
+    /* set_tile_id fires SCROLL events that drive bg_opa toward ~240 (dark)
+       based on scroll position. Reassert the Phase 1 light bg so wrist-raise
+       shows only the mic without blacking out the background. */
+    lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
+                            LV_OPA_30, 0);
 }
 
 void close_ai_widget(void)
 {
     skai_widget_shown = false;
+    ai_widget_opened_by_drag = false;
+    is_open_instruction_list_ai = false;
     // lvgl_msg_handler.handle_vad_status = NULL;
     set_skai_widget_opa(0);
     if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
@@ -1397,6 +1410,9 @@ void close_ai_widget(void)
 void check_ai_widget_auto_close(void)
 {
     extern bool get_skai_input_text_is_null(void);
+    /* Manual drag-open: user explicitly opened it, don't auto-close */
+    if (ai_widget_opened_by_drag)
+        return;
     if (is_open_instruction_list_ai && !is_at_ai_widget &&
         get_skai_input_text_is_null())
     {
@@ -1977,6 +1993,21 @@ static void ai_bar_event_cb(lv_event_t *evt)
         }
         lv_obj_clear_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                           LV_OBJ_FLAG_HIDDEN);
+        /* Pre-set Phase 2 visual state so the skai_widget and gaus_bg are
+           already opaque as the user drags ai_page in. Skipped if AI is
+           already open (e.g. wrist-raise Phase 1 is active with mic only). */
+        if (!is_open_instruction_list_ai)
+        {
+            if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
+            {
+                lv_obj_clear_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+            }
+            if (ai_voice_send_icon && lv_obj_is_valid(ai_voice_send_icon))
+            {
+                lv_obj_clear_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
+            }
+            set_skai_widget_opa(LV_OPA_COVER);
+        }
     }
 }
 static uint16_t ai_bg_opa = 240;
@@ -2031,6 +2062,23 @@ static void ai_tileview_event_cb(lv_event_t *evt)
             {
                 set_ai_open_mic(true);
                 tap_on_ai_widget();
+                /* Drag-opened: jump straight to Phase 2 (widget visible, dark bg)
+                   without the fade-in animation — the drag itself already provides
+                   the reveal motion. */
+                ai_widget_opened_by_drag = true;
+                skai_widget_shown = true;
+                if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
+                {
+                    lv_obj_clear_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+                }
+                if (ai_voice_send_icon && lv_obj_is_valid(ai_voice_send_icon))
+                {
+                    lv_obj_clear_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
+                }
+                lv_obj_set_style_bg_opa(
+                    p_instruction_list_layout->p_instruction_list_ai_bg,
+                    LV_OPA_50, 0);
+                set_skai_widget_opa(LV_OPA_COVER);
             }
         }
         else
@@ -2051,12 +2099,15 @@ static void home_tileview_event_cb(lv_event_t *evt)
     {
     case LV_EVENT_RELEASED:
     {
-        if (lv_obj_get_scroll_x(obj) ==
-                0 &&
-            lv_obj_get_scroll_y(obj) ==
-                0)
+        /* Only hide ai_bg if user pressed without actually opening the AI page.
+           `obj` is the home_page tile (always scroll 0,0); check the tileview's
+           scroll via its parent, and keep it visible whenever AI is open. */
+        lv_obj_t *tileview = lv_obj_get_parent(obj);
+        if (!is_open_instruction_list_ai && tileview &&
+            lv_obj_get_scroll_x(tileview) == 466)
         {
-            lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg , LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
+                            LV_OBJ_FLAG_HIDDEN);
         }
         break;
     }
