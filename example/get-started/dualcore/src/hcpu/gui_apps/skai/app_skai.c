@@ -264,6 +264,8 @@ static lv_obj_t *skai_widget_input_text_bg;
 static lv_obj_t *skai_widget_ai_bg;
 static lv_obj_t *skai_widget_note_button;
 static lv_obj_t *skai_widget_ai_button;
+static lv_obj_t *skai_widget_ai_reply;
+static lv_obj_t *skai_widget_bg_scroller;
 lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
 {
     // lv_obj_t *widget = common_widget_container(parent);
@@ -272,8 +274,20 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
     // lv_obj_set_size(widget, 280, 90);
     // lv_obj_align(widget, LV_ALIGN_CENTER, 0, 0);
     // lv_obj_clear_flag(widget, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *skai_widget_bg = lv_obj_create(parent);
+    skai_widget_bg_scroller = skai_widget_bg;
+    lv_obj_set_size(skai_widget_bg, 466, 466);
+    lv_obj_align(skai_widget_bg, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_opa(skai_widget_bg, LV_OPA_0, 0);
+    lv_obj_set_style_border_width(skai_widget_bg, 0, 0);
+    lv_obj_set_style_pad_all(skai_widget_bg, 0, 0);
+    lv_obj_set_scroll_dir(skai_widget_bg, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(skai_widget_bg, LV_SCROLLBAR_MODE_OFF);
+    /* Prevent vertical scroll chain to ai_page/tileview so scrolling the
+       AI reply never slides the outer tileview toward the app grid. */
+    lv_obj_clear_flag(skai_widget_bg, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
 
-    skai_widget_input_text_bg = lv_obj_create(parent);
+    skai_widget_input_text_bg = lv_obj_create(skai_widget_bg);
     lv_obj_set_size(skai_widget_input_text_bg, 430, 250);
     lv_obj_align(skai_widget_input_text_bg, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(skai_widget_input_text_bg, lv_color_hex(0xFFFFFF),
@@ -315,6 +329,25 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
     lv_obj_set_width(skai_widget_input_prompt, 380);
     lv_obj_set_style_text_color(skai_widget_input_prompt, lv_color_white(), 0);
     lv_obj_align(skai_widget_input_prompt, LV_ALIGN_CENTER, 10, 0);
+
+    /* AI reply label — positioned below the input bg.
+       Narrower width (340) so text fits in the visible area of the 466-circle
+       at lower y positions, and a large pad_bottom so the last lines can be
+       scrolled into the visible center (the bottom corners of the circle
+       clip the text). */
+    skai_widget_ai_reply = lv_label_create(skai_widget_bg);
+    lv_label_set_text(skai_widget_ai_reply, "");
+    lv_obj_set_style_text_font(skai_widget_ai_reply,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_label_set_long_mode(skai_widget_ai_reply, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(skai_widget_ai_reply, 340);
+    lv_obj_set_style_text_color(skai_widget_ai_reply, lv_color_hex(0xF0F0F0),
+                                0);
+    lv_obj_set_style_text_opa(skai_widget_ai_reply, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_bottom(skai_widget_ai_reply, 150, 0);
+    lv_obj_align_to(skai_widget_ai_reply, skai_widget_input_text_bg,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_add_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
 
     // 創建筆記按鈕（左邊）
     // skai_widget_note_button = lv_obj_create(parent);
@@ -377,6 +410,10 @@ void set_skai_widget_opa(uint8_t opa)
     lv_obj_set_style_text_opa(skai_widget_input_text, text_opa, 0);
     uint8_t prompt_opa = LV_OPA_60 * opa / LV_OPA_COVER;
     lv_obj_set_style_text_opa(skai_widget_input_prompt, prompt_opa, 0);
+    if (skai_widget_ai_reply != NULL && lv_obj_is_valid(skai_widget_ai_reply))
+    {
+        lv_obj_set_style_text_opa(skai_widget_ai_reply, text_opa, 0);
+    }
     // LOG_D("set_skai_widget_opa opa=%d,%d,%d,%d", opa, bg_opa, border_opa,
     //       text_opa);
     if (opa == 0)
@@ -486,6 +523,7 @@ static void listening_shadow_animation(bool start)
 }
 extern bool set_is_open_instruction_list_ai(bool open);
 void reset_skai_widget_input_text(void);
+void clear_skai_widget_ai_reply(void);
 static bool prev_open_state = false;
 void open_skai_widget_ai(bool open)
 {
@@ -520,6 +558,7 @@ void open_skai_widget_ai(bool open)
             // reset_skai_widget_input_text();
             // set_is_open_instruction_list_ai(false);
             set_skai_widget_input_text("");
+            clear_skai_widget_ai_reply();
             lv_obj_update_layout(skai_widget_input_text);
             lv_obj_set_height(skai_widget_input_text_bg, 150);
         }
@@ -596,6 +635,7 @@ static void button_selection(gesture_position_t gesture_position)
     // }
 }
 
+extern void show_send_icon(void);
 void set_skai_widget_input_text(const char *text)
 {
     if (strcmp(text, "") == 0)
@@ -606,6 +646,7 @@ void set_skai_widget_input_text(const char *text)
         input_text_is_null = true;
         return;
     }
+    show_send_icon();
     lv_obj_add_flag(skai_widget_input_prompt, LV_OBJ_FLAG_HIDDEN);
     input_text_is_null = false;
     /* Show skai_widget when first text arrives */
@@ -667,6 +708,130 @@ void reset_skai_widget_input_text(void)
         //     LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 10);
         // }
     }
+}
+
+/* True between the user tapping send and the first AI chunk arriving; lets
+   us show a placeholder that the first chunk replaces. */
+static bool skai_widget_awaiting_first_chunk = false;
+
+/* Update the placeholder text with the AI's current action (sent via
+   KEY_AI_PROCESS_TOOLKIT). Only affects the widget while we're waiting for
+   the first AI reply chunk; after real text starts arriving this is a no-op
+   so the streamed reply isn't overwritten. */
+void set_skai_widget_processing_text(const char *text)
+{
+    if (text == NULL || skai_widget_ai_reply == NULL ||
+        !lv_obj_is_valid(skai_widget_ai_reply))
+    {
+        return;
+    }
+    if (!skai_widget_awaiting_first_chunk)
+    {
+        return;
+    }
+    lv_label_set_text(skai_widget_ai_reply, text);
+    if (lv_obj_has_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN))
+    {
+        lv_obj_clear_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_align_to(skai_widget_ai_reply, skai_widget_input_text_bg,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_update_layout(skai_widget_ai_reply);
+}
+
+/* Show "AI處理中..." below the input box so the user gets immediate feedback
+   after tapping send. Replaced by the real reply on the first chunk. */
+void set_skai_widget_awaiting_ai(void)
+{
+    if (skai_widget_ai_reply == NULL ||
+        !lv_obj_is_valid(skai_widget_ai_reply))
+    {
+        return;
+    }
+    skai_widget_awaiting_first_chunk = true;
+    lv_label_set_text(skai_widget_ai_reply, "AI處理中...");
+    if (lv_obj_has_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN))
+    {
+        lv_obj_clear_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_align_to(skai_widget_ai_reply, skai_widget_input_text_bg,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+}
+
+/* Append streamed AI reply text under the input box. */
+void append_skai_widget_ai_reply(const char *text)
+{
+    if (skai_widget_ai_reply == NULL ||
+        !lv_obj_is_valid(skai_widget_ai_reply) || text == NULL)
+    {
+        return;
+    }
+    if (lv_obj_has_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN))
+    {
+        lv_obj_clear_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
+    }
+    /* First real chunk replaces the "AI處理中..." placeholder. */
+    if (skai_widget_awaiting_first_chunk)
+    {
+        lv_label_set_text(skai_widget_ai_reply, "");
+        skai_widget_awaiting_first_chunk = false;
+    }
+    const char *current = lv_label_get_text(skai_widget_ai_reply);
+    size_t cur_len = current ? strlen(current) : 0;
+    size_t combined_len = cur_len + strlen(text) + 1;
+    char *combined = (char *)rt_malloc(combined_len);
+    if (combined == NULL)
+        return;
+    if (cur_len > 0)
+        strcpy(combined, current);
+    else
+        combined[0] = '\0';
+    strcat(combined, text);
+    lv_label_set_text(skai_widget_ai_reply, combined);
+    rt_free(combined);
+
+    lv_obj_align_to(skai_widget_ai_reply, skai_widget_input_text_bg,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_update_layout(skai_widget_ai_reply);
+
+    /* Auto-scroll to the latest line like the old voice_recognition page
+       did (lv_obj_scroll_to_y on speech_bg with a large y). */
+    if (skai_widget_bg_scroller != NULL &&
+        lv_obj_is_valid(skai_widget_bg_scroller))
+    {
+        lv_obj_scroll_to_y(skai_widget_bg_scroller, 10000, LV_ANIM_ON);
+    }
+}
+
+/* Clear AI reply; called when user wants to ask again. */
+void clear_skai_widget_ai_reply(void)
+{
+    skai_widget_awaiting_first_chunk = false;
+    if (skai_widget_ai_reply == NULL ||
+        !lv_obj_is_valid(skai_widget_ai_reply))
+    {
+        return;
+    }
+    lv_label_set_text(skai_widget_ai_reply, "");
+    lv_obj_add_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
+    if (skai_widget_bg_scroller != NULL &&
+        lv_obj_is_valid(skai_widget_bg_scroller))
+    {
+        lv_obj_scroll_to_y(skai_widget_bg_scroller, 0, LV_ANIM_OFF);
+    }
+}
+
+bool skai_widget_has_ai_reply(void)
+{
+    if (skai_widget_ai_reply == NULL ||
+        !lv_obj_is_valid(skai_widget_ai_reply))
+    {
+        return false;
+    }
+    if (lv_obj_has_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN))
+        return false;
+    const char *current = lv_label_get_text(skai_widget_ai_reply);
+    return current != NULL && current[0] != '\0';
 }
 
 rt_int32_t speech_on_resume(void)
