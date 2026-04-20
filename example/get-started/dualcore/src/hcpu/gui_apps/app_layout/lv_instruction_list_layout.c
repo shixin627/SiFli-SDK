@@ -1390,10 +1390,12 @@ void animate_open_ai_widget(void)
 
 void close_ai_widget(void)
 {
+    extern void clear_skai_widget_ai_reply(void);
     skai_widget_shown = false;
     ai_widget_opened_by_drag = false;
     is_open_instruction_list_ai = false;
     // lvgl_msg_handler.handle_vad_status = NULL;
+    clear_skai_widget_ai_reply();
     set_skai_widget_opa(0);
     if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
     {
@@ -1491,12 +1493,38 @@ void tap_on_ai_hint(void)
         LOG_D("Bluetooth is connected, ignoring voice recognition event");
         return;
     }
+    if (isTextEmpty())
+    {
+        LOG_D("tap_on_ai_hint: empty, skip send");
+        return;
+    }
     instruction_list_ai_tapped = true;
     extern void send_to_ai(void);
+    extern void set_skai_widget_awaiting_ai(void);
     send_to_ai();
-    animate_to_home_from_instruction_list();
-    animate_to_ai_page();
-    close_ai_widget();
+    /* Immediate visual feedback: show "AI處理中..." placeholder inside the
+       widget. The first streamed AI chunk replaces it. */
+    set_skai_widget_awaiting_ai();
+    LOG_D("tap_on_ai_hint: send_to_ai fired");
+}
+
+/* Called when the first AI reply chunk arrives: hide the "sending" sand icon
+   so the mic button indicates the widget is ready for re-ask. */
+void on_ai_reply_started(void)
+{
+    if (ai_voice_send_icon && lv_obj_is_valid(ai_voice_send_icon) &&
+        !lv_obj_has_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN))
+    {
+        lv_obj_add_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void show_send_icon(void)
+{
+    if (ai_voice_send_icon && lv_obj_is_valid(ai_voice_send_icon))
+    {
+        lv_obj_clear_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 /*******************************************************************************
@@ -1972,14 +2000,47 @@ void stop_indicator_dots_animation_test(void)
 }
 #endif
 
+static bool send_to_ai_again = false;
+bool get_send_to_ai_again(void)
+{
+    return send_to_ai_again;
+}
+void set_send_to_ai_again(bool value)
+{
+    send_to_ai_again = value;
+}
 extern void set_ai_open_mic(bool is_open);
+extern bool skai_widget_has_ai_reply(void);
+extern void clear_skai_widget_ai_reply(void);
+extern bool get_voice_recognition_started(void);
+extern void clearVoice2Text(void);
 static void logo_click_event_cb(lv_event_t *evt)
 {
-    // set_ai_open_mic(true);
-    // extern void tap_on_ai_widget(void);
-    // tap_on_ai_widget();
+    /* Re-ask has priority: once the AI has replied, the button's job is to
+       clear everything and start a new voice capture — even if the old
+       speech text is still in the v2t buffer. */
+    if (skai_widget_has_ai_reply() && !get_voice_recognition_started())
+    {
+        if (!get_bluetooth_connection_status())
+        {
+            create_connection_tips();
+            return;
+        }
+        send_to_ai_again = true;
+        clearVoice2Text();
+        clear_skai_widget_ai_reply();
+        set_skai_widget_input_text("");
+        set_ai_open_mic(true);
+        open_skai_widget_ai(true);
+        voice_provider.start_v2t();
+        return;
+    }
+    /* Normal flow: if we have speech text in the buffer, send it to AI. */
     if (!isTextEmpty())
+    {
         tap_on_ai_hint();
+        lv_obj_add_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 static void ai_bar_event_cb(lv_event_t *evt)
 {
@@ -2071,10 +2132,10 @@ static void ai_tileview_event_cb(lv_event_t *evt)
                 {
                     lv_obj_clear_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
                 }
-                if (ai_voice_send_icon && lv_obj_is_valid(ai_voice_send_icon))
-                {
-                    lv_obj_clear_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
-                }
+                // if (ai_voice_send_icon && lv_obj_is_valid(ai_voice_send_icon))
+                // {
+                //     lv_obj_clear_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
+                // }
                 lv_obj_set_style_bg_opa(
                     p_instruction_list_layout->p_instruction_list_ai_bg,
                     LV_OPA_50, 0);
@@ -2450,6 +2511,16 @@ void refresh_custom_instructions(void)
     /* 重建指示點 */
     create_indicator_dots(bg);
 
+    /* Keep the AI widget tileview above the recreated dots — dots are
+       siblings of p_instruction_list_ai_bg under p_instruction_list_bg and
+       new children are drawn on top, so re-raise the AI widget. */
+    if (p_instruction_list_layout->p_instruction_list_ai_bg != NULL &&
+        lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_ai_bg))
+    {
+        lv_obj_move_foreground(
+            p_instruction_list_layout->p_instruction_list_ai_bg);
+    }
+
     /* Force layout so child coords are valid */
     lv_obj_update_layout(list);
 
@@ -2671,6 +2742,12 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
         p_instruction_list_layout->p_instruction_list_ai_bg, 0, 0, LV_DIR_HOR);
     lv_obj_set_size(ai_page, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_style_bg_opa(ai_page, LV_OPA_0, 0);
+    /* Stop vertical scroll from chaining up to the app_list_tileview
+       (which would slide to the app grid). The AI widget should only scroll
+       its own content. */
+    lv_obj_clear_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
+                      LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+    lv_obj_clear_flag(ai_page, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
     lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 1,
                        0, LV_ANIM_OFF);
     lv_obj_add_event_cb(p_instruction_list_layout->p_instruction_list_ai_bg,

@@ -2293,10 +2293,8 @@ static void dial_header_event_cb(lv_event_t *evt)
 static uint32_t dial_header_prev_notif_count = 0;
 static void handle_dial_header_new_notification(void)
 {
-    LOG_D("DEBUG 1");
     if (!lv_obj_is_valid(dial_header_bg))
         return;
-    LOG_D("DEBUG 2");
     /* Only react when notification count actually increased
        (skip refreshes triggered by music operations, etc.) */
     uint32_t current_count = notification_center_get_info_count();
@@ -2305,8 +2303,6 @@ static void handle_dial_header_new_notification(void)
         dial_header_prev_notif_count = current_count;
         return;
     }
-    LOG_D("DEBUG 3, current_count: %d, prev_count: %d", current_count,
-          dial_header_prev_notif_count);
     dial_header_prev_notif_count = current_count;
     /* Remember if music was playing before this notification */
     dial_header_was_music_before_notif = dial_header_music_active;

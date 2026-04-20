@@ -696,8 +696,14 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
     {
         LOG_D("[INTERACT_CHAT_RESULT] handle chat result");
         MSG_DATA_PAYLOAD *msgData = (MSG_DATA_PAYLOAD *)pValue;
-        if (!lv_obj_has_flag(gui_app_get_gesture_indicator()->speech_bg,
-                             LV_OBJ_FLAG_HIDDEN))
+        /* Accept reply if voice_recognition's speech_bg is shown OR the
+           instruction-list AI widget is open (speech_bg may be NULL in the
+           widget-integrated flow). */
+        extern bool get_is_open_instruction_list_ai(void);
+        lv_obj_t *sbg = gui_app_get_gesture_indicator()->speech_bg;
+        bool speech_bg_shown = sbg && lv_obj_is_valid(sbg) &&
+                               !lv_obj_has_flag(sbg, LV_OBJ_FLAG_HIDDEN);
+        if (speech_bg_shown || get_is_open_instruction_list_ai())
         {
             handle_skai_message("quick_ai", msgData);
         }

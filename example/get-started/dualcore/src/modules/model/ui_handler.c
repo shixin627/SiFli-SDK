@@ -626,11 +626,19 @@ static void process_lvgl_message(lvgl_msg_t *msg)
 
     case LVGL_MSG_TYPE_UPDATE_PROCESS_TOOLKIT:
     {
-        uint8_t action = msg->data.action;
-        // TODO: Check if the action is valid and generate the appropriate
-        // message
-        update_ai_process_indicator_by_tool(gui_app_get_gesture_indicator(),
-                                            action, true);
+        /* Payload is now a description string allocated by the sender. */
+        char *description = msg->data.app_message;
+        if (description != NULL)
+        {
+            extern void update_ai_process_indicator_text(
+                app_gesture_indicator_t * indicator, const char *message,
+                bool is_active);
+            extern void set_skai_widget_processing_text(const char *text);
+            update_ai_process_indicator_text(gui_app_get_gesture_indicator(),
+                                             description, true);
+            set_skai_widget_processing_text(description);
+            lv_mem_free(description);
+        }
         break;
     }
 

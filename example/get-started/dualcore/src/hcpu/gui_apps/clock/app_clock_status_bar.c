@@ -740,15 +740,9 @@ void chack_tile_page(void)
 
 void animate_to_ai_page(void)
 {
-    // set_scroll_anim_time(true);
-    if (lv_obj_is_valid(myLancher[app_index_ai_interface].pagetileview))
-    {
-        lv_obj_clear_flag(myLancher[app_index_ai_interface].pagetileview,
-                          LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_tile_id(myLancher[app_index_ai_interface].pagetileview, 1, 0,
-                           LV_ANIM_ON);
-    }
-    // set_scroll_anim_time(false);
+    /* Voice recognition tile was removed — AI UI lives inside the AI widget
+       on the instruction list layout. This function is kept as a no-op for
+       compatibility with existing callers. */
 }
 
 void animate_to_home_from_ai_page(void)
@@ -1784,8 +1778,7 @@ void app_clock_ai_status_bar_init(lv_obj_t *par)
     lv_obj_set_pos(status_bar_bg_ai, 0, 0);
 
     lv_obj_t *status_bar_area;
-    rt_uint16_t i;
-    lv_obj_t *pages[2];
+    lv_obj_t *main_page;
     status_bar_area = lv_obj_create(status_bar_bg_ai);
     lv_obj_set_size(status_bar_area, (LV_HOR_RES_MAX >> 4),
                     (LV_VER_RES_MAX >> 2));
@@ -1805,38 +1798,18 @@ void app_clock_ai_status_bar_init(lv_obj_t *par)
     lv_obj_set_style_bg_opa(app_clock_ai_status_bar, LV_OPA_TRANSP,
                             LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    // Create a single tile for AI status bar
-    for (i = 0; i < 2; i++)
-    {
-        pages[i] =
-            lv_tileview_add_tile(app_clock_ai_status_bar, i, 0, LV_DIR_HOR);
-        if (i == 0)
-        {
-            lv_obj_add_event_cb(pages[i], app_clock_main_ai_status_bar_event_cb,
-                                LV_EVENT_ALL, NULL);
-            lv_obj_set_style_bg_color(pages[i], LV_COLOR_BLACK,
-                                      LV_PART_MAIN | LV_STATE_DEFAULT);
-        }
-        else
-        {
-            lv_obj_set_style_bg_color(pages[i], LV_COLOR_WHITE,
-                                      LV_PART_MAIN | LV_STATE_DEFAULT);
-        }
-        // if (g_ble_ulog_enable)
-        // {
-        //     lv_obj_set_style_bg_opa(pages[i], LV_OPA_50, LV_PART_MAIN |
-        //     LV_STATE_DEFAULT);
-        // }
-        // else
-        // {
-        lv_obj_set_style_bg_opa(pages[i], LV_OPA_TRANSP,
-                                LV_PART_MAIN | LV_STATE_DEFAULT);
-        // }
-        lv_obj_set_size(pages[i], LV_HOR_RES_MAX, LV_VER_RES_MAX);
-        lv_obj_set_scrollbar_mode(pages[i], LV_SCROLLBAR_MODE_OFF);
-    }
-
-    voice_recognition_hint_builder(pages[1], gui_app_get_gesture_indicator());
+    /* Voice recognition tile was removed — UI is now integrated into the AI
+       widget (lv_instruction_list_layout.c). Only the main AI status bar
+       tile remains here. */
+    main_page = lv_tileview_add_tile(app_clock_ai_status_bar, 0, 0, LV_DIR_HOR);
+    lv_obj_add_event_cb(main_page, app_clock_main_ai_status_bar_event_cb,
+                        LV_EVENT_ALL, NULL);
+    lv_obj_set_style_bg_color(main_page, LV_COLOR_BLACK,
+                              LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(main_page, LV_OPA_TRANSP,
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_size(main_page, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_set_scrollbar_mode(main_page, LV_SCROLLBAR_MODE_OFF);
 
     // Add event callback for AI status bar tile
     lv_obj_add_event_cb(app_clock_ai_status_bar,

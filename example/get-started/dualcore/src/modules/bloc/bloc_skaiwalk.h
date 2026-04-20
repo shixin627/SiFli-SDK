@@ -130,7 +130,7 @@ extern "C"
 	 * @return int Number of entries successfully read
 	 */
 	int get_recent_chat_history(chat_history_entry_t *entries, int max_entries);
-	extern void parse_ai_processing_toolkit(uint8_t key);
+	extern void parse_ai_processing_toolkit(const char *description);
 	extern void parse_ai_reply_data(uint8_t *data, uint16_t len, lv_obj_t *parent);
 
 	// Note list save/load/clear

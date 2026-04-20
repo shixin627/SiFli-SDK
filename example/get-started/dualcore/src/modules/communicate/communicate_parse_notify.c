@@ -540,9 +540,19 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
 
     case KEY_AI_PROCESS_TOOLKIT:
     {
-        if (length > 0)
+        /* Payload changed from a single-byte tool key to a UTF-8 string
+           describing the AI's current action. Copy into a null-terminated
+           buffer and forward the string to the UI layer. */
+        if (length > 0 && pValue != NULL)
         {
-            parse_ai_processing_toolkit(pValue[0]);
+            char *desc = (char *)rt_malloc(length + 1);
+            if (desc != NULL)
+            {
+                memcpy(desc, pValue, length);
+                desc[length] = '\0';
+                parse_ai_processing_toolkit(desc);
+                rt_free(desc);
+            }
         }
         break;
     }

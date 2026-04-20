@@ -1157,6 +1157,14 @@ static void update_ai_process_indicator(app_gesture_indicator_t *indicator, char
     }
 }
 
+/* Public wrapper that accepts a description string directly — used by the
+   new KEY_AI_PROCESS_TOOLKIT protocol which sends the string over BLE. */
+void update_ai_process_indicator_text(app_gesture_indicator_t *indicator,
+                                      const char *message, bool is_active)
+{
+    update_ai_process_indicator(indicator, (char *)message, is_active);
+}
+
 void update_ai_process_indicator_by_tool(app_gesture_indicator_t *indicator, LangchainToolKey tool_key, bool is_active)
 {
     const char *tool_description = get_tool_description(tool_key);
@@ -1284,10 +1292,23 @@ void wait_for_ai_reply_message(void)
     ai_thinking_timer = lv_timer_create(ai_thinking_timer_cb, 1000, NULL);
 }
 
+extern bool get_send_to_ai_again(void);
+extern void set_send_to_ai_again(bool value);
 void refresh_ai_reply_message(char *new_text)
 {
     update_ai_process_indicator(&gesture_indicator, NULL, false);
     LOG_D("refresh_ai_reply_message");
+    /* Route AI replies into the AI widget when the instruction-list AI is open. */
+    if (get_is_open_instruction_list_ai())
+    {
+        set_send_to_ai_again(false);
+        extern void append_skai_widget_ai_reply(const char *text);
+        extern void on_ai_reply_started(void);
+        on_ai_reply_started();
+        append_skai_widget_ai_reply(new_text);
+        set_last_refresh_ai_reply_message_tick(rt_tick_get());
+        return;
+    }
     if (gesture_indicator.speech_skai_reply)
     {
         const char *current_text = lv_label_get_text(gesture_indicator.speech_skai_reply);

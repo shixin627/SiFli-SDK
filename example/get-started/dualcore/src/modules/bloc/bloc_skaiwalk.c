@@ -242,14 +242,30 @@ static void bloc_notify_skai_message_stream(char *text)
 }
 
 /**
- * @brief Parse AI processing toolkit key
- * @param key Toolkit key identifier
+ * @brief Parse AI processing toolkit description string
+ * @param description UTF-8 string describing the AI's current action
+ *
+ * The LVGL handler takes ownership of the allocated copy and frees it after
+ * dispatch (same pattern as bloc_notify_skai_message_stream).
  */
-void parse_ai_processing_toolkit(uint8_t key)
+void parse_ai_processing_toolkit(const char *description)
 {
+	if (description == NULL)
+	{
+		return;
+	}
+	LOG_I("parse_ai_processing_toolkit: %s", description);
 	lvgl_msg_t msg;
 	msg.type = LVGL_MSG_TYPE_UPDATE_PROCESS_TOOLKIT;
-	msg.data.action = key;
+	size_t len = strlen(description);
+	msg.data.app_message = (char *)lv_mem_alloc(len + 1);
+	if (msg.data.app_message == NULL)
+	{
+		LOG_E("parse_ai_processing_toolkit: alloc failed");
+		return;
+	}
+	memcpy(msg.data.app_message, description, len);
+	msg.data.app_message[len] = '\0';
 	lvgl_send_msg(msg);
 }
 
