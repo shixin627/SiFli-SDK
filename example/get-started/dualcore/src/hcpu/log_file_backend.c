@@ -34,6 +34,10 @@
 #include <sys/stat.h>
 #include <ulog.h>
 
+extern void rt_assert_set_hook(void (*hook)(const char *ex, const char *func,
+                                            rt_size_t line));
+extern void rt_hw_exception_install(rt_err_t (*handler)(void *context));
+
 #ifndef LOG_FILE_BACKEND_DISABLE
 
 #define LOG_DIR                 "/logs"
@@ -44,9 +48,9 @@
 
 #define LOG_RING_BUF_SIZE       8192           /* MUST be power of 2 */
 #define LOG_RING_MASK           (LOG_RING_BUF_SIZE - 1)
-#define LOG_FLUSH_THRESHOLD     1024
-#define LOG_FLUSH_INTERVAL_MS   500
-#define LOG_FSYNC_EVERY_N       4
+#define LOG_FLUSH_THRESHOLD     512
+#define LOG_FLUSH_INTERVAL_MS   100
+#define LOG_FSYNC_EVERY_N       1              /* fsync on every non-empty flush */
 
 #define LOG_FLUSH_STACK         2048
 #define LOG_FLUSH_PRIO          28
@@ -67,6 +71,7 @@ static int current_fd = -1;
 static rt_uint32_t current_file_size;
 static char current_file_path[LOG_PATH_MAX];
 static volatile int backend_ready;
+static volatile int in_emergency_flush;
 
 static void build_log_filename(char *out, size_t out_sz, int seq)
 {
@@ -223,11 +228,17 @@ static int open_new_log_file(void)
     return RT_EOK;
 }
 
-static void flush_once(int *fsync_ctr)
+/* Drain the ring buffer into current_fd. Returns number of bytes written.
+ * Callable from the flush thread (normal case) or an assert / exception
+ * context (emergency case) — in the latter interrupts are already disabled
+ * by the caller. The rotation path is skipped in emergency so we don't
+ * touch the file system more than necessary right before reset. */
+static rt_uint32_t drain_ring_to_fd(int allow_rotate)
 {
+    rt_uint32_t total_written = 0;
     if (current_fd < 0)
     {
-        return;
+        return 0;
     }
 
     for (;;)
@@ -250,17 +261,15 @@ static void flush_once(int *fsync_ctr)
         int w = write(current_fd, &ring_buf[t_idx], chunk);
         if (w <= 0)
         {
-            /* Abandon this chunk to avoid getting stuck */
             ring_tail = t + chunk;
             break;
         }
         ring_tail = t + (rt_uint32_t)w;
         current_file_size += (rt_uint32_t)w;
+        total_written += (rt_uint32_t)w;
 
-        if (current_file_size >= LOG_FILE_MAX_SIZE)
+        if (allow_rotate && current_file_size >= LOG_FILE_MAX_SIZE)
         {
-            /* Rotate now; fsync_ctr reset avoids double-fsync */
-            *fsync_ctr = 0;
             open_new_log_file();
             if (current_fd < 0)
             {
@@ -282,6 +291,7 @@ static void flush_once(int *fsync_ctr)
             if (w > 0)
             {
                 current_file_size += (rt_uint32_t)w;
+                total_written += (rt_uint32_t)w;
             }
         }
         rt_base_t flags = rt_hw_interrupt_disable();
@@ -289,11 +299,47 @@ static void flush_once(int *fsync_ctr)
         rt_hw_interrupt_enable(flags);
     }
 
+    return total_written;
+}
+
+static void flush_once(int *fsync_ctr)
+{
+    rt_uint32_t wrote = drain_ring_to_fd(1 /* allow rotate */);
+    if (wrote == 0)
+    {
+        /* Nothing to persist this cycle — skip fsync to avoid needless
+         * NAND churn when the system is idle. */
+        return;
+    }
     if (++(*fsync_ctr) >= LOG_FSYNC_EVERY_N)
     {
         *fsync_ctr = 0;
-        fsync(current_fd);
+        if (current_fd >= 0)
+        {
+            fsync(current_fd);
+        }
     }
+}
+
+/* Best-effort synchronous flush for use from rt_assert_handler / HardFault /
+ * shell. Interrupts may already be disabled by the caller; DFS / NAND
+ * drivers that rely on IRQ may hang here, but that is no worse than not
+ * attempting — WDT will reset the device and the most recent periodic
+ * fsync (at most LOG_FLUSH_INTERVAL_MS old) is already on disk. */
+static void log_file_emergency_flush(void)
+{
+    if (!backend_ready || current_fd < 0)
+    {
+        return;
+    }
+    if (in_emergency_flush)
+    {
+        return;
+    }
+    in_emergency_flush = 1;
+    drain_ring_to_fd(0 /* no rotation during emergency */);
+    fsync(current_fd);
+    in_emergency_flush = 0;
 }
 
 static void flush_thread_entry(void *param)
@@ -362,10 +408,30 @@ static void log_file_output(struct ulog_backend *backend, rt_uint32_t level,
 static void log_file_flush_cb(struct ulog_backend *backend)
 {
     (void)backend;
+    /* ulog_flush() is called from rt_assert_handler with interrupts disabled
+     * and the scheduler frozen, so the periodic flush thread cannot run.
+     * Do a best-effort synchronous drain here so asserts land on disk. */
+    log_file_emergency_flush();
     if (flush_sem != RT_NULL)
     {
         rt_sem_release(flush_sem);
     }
+}
+
+static rt_err_t log_file_exception_hook(void *context)
+{
+    (void)context;
+    log_file_emergency_flush();
+    return RT_EOK;
+}
+
+static void log_file_assert_hook(const char *ex, const char *func,
+                                 rt_size_t line)
+{
+    (void)ex;
+    (void)func;
+    (void)line;
+    log_file_emergency_flush();
 }
 
 static int log_file_backend_init(void)
@@ -412,6 +478,12 @@ static int log_file_backend_init(void)
 
     backend_ready = 1;
     ulog_backend_register(&log_file_be, "filebe", RT_FALSE);
+
+    /* Flush pending logs to disk on RT_ASSERT / HardFault so the last
+     * messages before reset survive in the current log file. */
+    rt_assert_set_hook(log_file_assert_hook);
+    rt_hw_exception_install(log_file_exception_hook);
+
     return RT_EOK;
 }
 /* Level "6" (INIT_PRE_ENV_EXPORT region isn't defined; use INIT_APP_EXPORT
