@@ -10,10 +10,16 @@
  *********************************************************************************************************
  */
 #include <rtthread.h>
+#include <stdio.h>
+#include <time.h>
+#include <dfs_posix.h>
+#include <sys/stat.h>
 #include "board.h"
 #include "communicate_parse.h"
 #include "communicate_protocol.h"
 #include "watch_global_data.h"
+#include "bloc_exercise.h"
+#include "bloc_filesystem.h"
 #include "string.h"
 
 #define DBG_TAG "commu.parse.health"
@@ -27,7 +33,8 @@
  * @param   length: value length
  * @retval  error code
  */
-void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t length)
+void resolve_HealthData_command(uint8_t key, const uint8_t *pValue,
+                                uint16_t length)
 {
     switch (key)
     {
@@ -35,10 +42,37 @@ void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t len
     {
         if (length == 0)
         {
-            LOG_I("request today's sport data");
-            L1SendData data;
-            data.event = L1SEND_SPORT_DATA;
-            L1_send_event(data);
+            LOG_I("request today's exercise data");
+
+            time_t now;
+            struct tm *tm_info;
+            char file_path[40];
+
+            time(&now);
+            tm_info = localtime(&now);
+            snprintf(file_path, sizeof(file_path),
+                     "/exercise/%04d%02d%02d.json",
+                     tm_info->tm_year + 1900, tm_info->tm_mon + 1,
+                     tm_info->tm_mday);
+
+            struct stat st;
+            if (stat(file_path, &st) == 0)
+            {
+                int sync_ret =
+                    bloc_file_system.sync_file((char *)file_path, false);
+                if (sync_ret == 0)
+                {
+                    LOG_D("sync today's exercise: %s", file_path);
+                }
+                else
+                {
+                    LOG_E("failed to sync today's exercise: %s", file_path);
+                }
+            }
+            else
+            {
+                LOG_D("no exercise data today: %s", file_path);
+            }
         }
     }
     break;
