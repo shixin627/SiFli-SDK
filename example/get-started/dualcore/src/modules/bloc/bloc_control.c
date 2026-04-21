@@ -403,6 +403,8 @@ uint8_t bt_speaker_get_volume_percent(void)
 {
 	return volume_percent;
 }
+extern void set_widget_vol_bar_value(uint8_t volume);
+extern void set_app_vol_bar_value(uint8_t volume);
 static void bt_speaker_set_volume_percent(uint8_t percent)
 {
 	if (percent > 100)
@@ -413,12 +415,15 @@ static void bt_speaker_set_volume_percent(uint8_t percent)
 	{
 		percent = 0;
 	}
+	LOG_D("bt_speaker_set_volume_percent %d", percent);
 	volume_percent = percent;
+	set_app_vol_bar_value(volume_percent);
+	set_widget_vol_bar_value(volume_percent);
 	// notify ui
-#ifdef BSP_USING_UI_HANDLER
-	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_VOLUME, .data.media_volume = volume_percent};
-	lvgl_send_msg(msg);
-#endif
+// #ifdef BSP_USING_UI_HANDLER
+// 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_VOLUME, .data.media_volume = volume_percent};
+// 	lvgl_send_msg(msg);
+// #endif
 }
 static rt_timer_t smooth_volume_changed_timer = RT_NULL;
 static void smooth_volume_changed_timer_callback(void *param)

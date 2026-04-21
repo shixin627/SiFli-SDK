@@ -161,6 +161,7 @@ void music_ui_build(app_media_t *p_app_media, lv_obj_t *parent, float size)
     lv_obj_align(btn_vol_up, LV_ALIGN_BOTTOM_RIGHT, -70, -40);
 }
 
+static lv_obj_t *widget_vol_bar = NULL;
 static lv_obj_t *dial_widget_vol_bar = NULL;
 static lv_obj_t *dial_widget_vol_icon_btn = NULL;
 static bool vol_bar_expanded = false;
@@ -194,13 +195,13 @@ static void vol_bar_collapse(void)
         return;
     vol_bar_expanded = false;
 
-    if (!lv_obj_is_valid(dial_widget_vol_bar))
+    if (!lv_obj_is_valid(widget_vol_bar))
         return;
 
     lv_anim_t a;
     lv_anim_init(&a);
-    lv_anim_set_var(&a, dial_widget_vol_bar);
-    lv_anim_set_values(&a, lv_obj_get_width(dial_widget_vol_bar), 0);
+    lv_anim_set_var(&a, widget_vol_bar);
+    lv_anim_set_values(&a, lv_obj_get_width(widget_vol_bar), 0);
     lv_anim_set_time(&a, 300);
     lv_anim_set_exec_cb(&a, vol_bar_anim_width_cb);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
@@ -306,7 +307,6 @@ static void bar_event_cb(lv_event_t *e)
 }
 
 /* ---- Media widget volume bar (independent from dial widget) ---- */
-static lv_obj_t *widget_vol_bar = NULL;
 static lv_obj_t *widget_vol_icon_btn = NULL;
 static bool widget_vol_bar_expanded = false;
 static lv_timer_t *widget_vol_bar_collapse_timer = NULL;
@@ -447,11 +447,10 @@ static void widget_bar_event_cb(lv_event_t *e)
     }
 }
 
-static void set_widget_vol_bar_value(void *param)
+void set_widget_vol_bar_value(uint8_t volume)
 {
     if (lv_obj_is_valid(widget_vol_bar))
     {
-        uint8_t volume = *(uint8_t *)param;
         lv_bar_set_value(widget_vol_bar, volume, LV_ANIM_ON);
         if (!widget_vol_bar_expanded)
             widget_vol_bar_expand();
@@ -601,11 +600,11 @@ static void app_bar_event_cb(lv_event_t *e)
     }
 }
 
-static void set_app_vol_bar_value(void *param)
+void set_app_vol_bar_value(uint8_t volume)
 {
     if (lv_obj_is_valid(app_vol_bar))
     {
-        uint8_t volume = *(uint8_t *)param;
+        // uint8_t volume = *(uint8_t *)param;
         lv_bar_set_value(app_vol_bar, volume, LV_ANIM_ON);
         if (!app_vol_bar_expanded)
             app_vol_bar_expand();
@@ -620,10 +619,6 @@ typedef struct
     lv_obj_t *btn_prev_img;
     lv_obj_t *btn_next_bg;
     lv_obj_t *btn_next_img;
-    lv_obj_t *btn_vol_down;
-    lv_obj_t *btn_vol_down_img;
-    lv_obj_t *btn_vol_up;
-    lv_obj_t *btn_vol_up_img;
     lv_obj_t *btn_play_pause;
     lv_obj_t *btn_play_pause_img;
 
@@ -720,30 +715,6 @@ static lv_obj_t *music_app_ui_build(lv_obj_t *parent)
     music_app_obj.btn_play_pause_img =
         lv_obj_get_child(p_app_media->icon_btn_play_pause, 0);
     lv_img_set_zoom(music_app_obj.btn_play_pause_img, app_zoom);
-    music_app_obj.btn_vol_up = lv_btn_create(p_window);
-    lv_obj_set_size(music_app_obj.btn_vol_up, 116, 80);
-    lv_obj_set_style_radius(music_app_obj.btn_vol_up, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(music_app_obj.btn_vol_up, lv_color_hex(0xFFFFFF),
-                              0);
-    lv_obj_align(music_app_obj.btn_vol_up, LV_ALIGN_CENTER, 80, 130);
-    lv_obj_set_style_bg_opa(music_app_obj.btn_vol_up, LV_OPA_0, 0);
-    lv_obj_t *btn_vol_up = common_icon_button(
-        music_app_obj.btn_vol_up, &volume_up, volume_up_btn_event_cb);
-    lv_obj_align(btn_vol_up, LV_ALIGN_CENTER, 0, 0);
-    music_app_obj.btn_vol_up_img = lv_obj_get_child(btn_vol_up, 0);
-    lv_img_set_zoom(music_app_obj.btn_vol_up_img, app_zoom);
-    music_app_obj.btn_vol_down = lv_btn_create(p_window);
-    lv_obj_set_size(music_app_obj.btn_vol_down, 116, 80);
-    lv_obj_set_style_radius(music_app_obj.btn_vol_down, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(music_app_obj.btn_vol_down,
-                              lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align(music_app_obj.btn_vol_down, LV_ALIGN_CENTER, -80, 130);
-    lv_obj_set_style_bg_opa(music_app_obj.btn_vol_down, LV_OPA_0, 0);
-    lv_obj_t *btn_vol_down = common_icon_button(
-        music_app_obj.btn_vol_down, &volume_down, volume_down_btn_event_cb);
-    lv_obj_align(btn_vol_down, LV_ALIGN_CENTER, 0, 0);
-    music_app_obj.btn_vol_down_img = lv_obj_get_child(btn_vol_down, 0);
-    lv_img_set_zoom(music_app_obj.btn_vol_down_img, app_zoom);
 
     p_app_media->media_title = lv_label_create(p_window);
     char *title = get_media_title();
@@ -1409,7 +1380,7 @@ void lv_dial_media_widget_builder(lv_obj_t *parent)
     lv_obj_add_flag(dial_widget_vol_bar, LV_OBJ_FLAG_HIDDEN);
     vol_bar_expanded = false;
     dial_media_widget_init();
-    lvgl_msg_handler.handle_media_volume = set_vol_bar_value;
+    // lvgl_msg_handler.handle_media_volume = set_vol_bar_value;
 }
 
 void set_dial_media_widget_opa(uint8_t opa)
@@ -1617,11 +1588,6 @@ static void reset_btn_state(void)
     lv_img_set_zoom(music_app_obj.btn_prev_img, 256 * WIDGET_ICON_ZOOM_SIZE);
     lv_obj_set_style_shadow_opa(music_app_obj.btn_next_bg, LV_OPA_0, 0);
     lv_img_set_zoom(music_app_obj.btn_next_img, 256 * WIDGET_ICON_ZOOM_SIZE);
-    lv_obj_set_style_shadow_opa(music_app_obj.btn_vol_down, LV_OPA_0, 0);
-    lv_img_set_zoom(music_app_obj.btn_vol_down_img,
-                    256 * WIDGET_ICON_ZOOM_SIZE);
-    lv_obj_set_style_shadow_opa(music_app_obj.btn_vol_up, LV_OPA_0, 0);
-    lv_img_set_zoom(music_app_obj.btn_vol_up_img, 256 * WIDGET_ICON_ZOOM_SIZE);
 }
 
 static void button_selection(gesture_position_t gesture_position)
@@ -1636,8 +1602,6 @@ static void clear_highlight_cb(void *param)
     lv_obj_set_style_bg_opa(music_app_obj.btn_play_pause, LV_OPA_0, 0);
     lv_obj_set_style_bg_opa(music_app_obj.btn_prev_bg, LV_OPA_0, 0);
     lv_obj_set_style_bg_opa(music_app_obj.btn_next_bg, LV_OPA_0, 0);
-    lv_obj_set_style_bg_opa(music_app_obj.btn_vol_up, LV_OPA_0, 0);
-    lv_obj_set_style_bg_opa(music_app_obj.btn_vol_down, LV_OPA_0, 0);
 }
 
 // 添加計時器句柄
@@ -1888,7 +1852,7 @@ void media_on_start(lv_obj_t *scr)
     // lvgl_msg_handler.handle_app_media_play_state = handle_media_play_state;
     // lvgl_msg_handler.handle_app_media_title = handle_media_title;
     lvgl_msg_handler.handle_app_media_img = handle_media_img;
-    lvgl_msg_handler.handle_media_volume = set_app_vol_bar_value;
+    // lvgl_msg_handler.handle_media_volume = set_app_vol_bar_value;
 }
 
 void media_on_resume(void)
