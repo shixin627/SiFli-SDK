@@ -276,13 +276,17 @@ char *get_media_artist(void)
 	LOG_D("get_media_artist: artist=%s", current_media_object.artist);
 	return current_media_object.artist;
 }
+extern void handle_media_widget_title(char *media_title_text);
+extern void handle_media_title(char *media_title_text);
 static void notify_media_title(void)
 {
-#ifdef BSP_USING_UI_HANDLER
-	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_TITLE,
-					  .data.media_data.title = get_media_title()};
-	lvgl_send_msg(msg);
-#endif
+	handle_media_title(get_media_title());
+	handle_media_widget_title(get_media_title());
+// #ifdef BSP_USING_UI_HANDLER
+// 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_TITLE,
+// 					  .data.media_data.title = get_media_title()};
+// 	lvgl_send_msg(msg);
+// #endif
 }
 
 /* Input may be either a plain title string (legacy) or a JSON object of the
@@ -370,14 +374,18 @@ static void bt_speaker_set_status(bool status)
 {
 	bt_media_playing = status;
 }
+extern void handle_media_play_state(bool media_state);
+extern void handle_media_widget_play_state(bool media_state);
 static void notify_bt_speaker_media_status(bool status)
 {
 	bt_media_playing = status;
-#ifdef BSP_USING_UI_HANDLER
-	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_PLAY_STATE,
-					  .data.media_play_state = bt_media_playing};
-	lvgl_send_msg(msg);
-#endif
+	handle_media_widget_play_state(bt_media_playing);
+    handle_media_play_state(bt_media_playing);
+// #ifdef BSP_USING_UI_HANDLER
+// 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_PLAY_STATE,
+// 					  .data.media_play_state = bt_media_playing};
+// 	lvgl_send_msg(msg);
+// #endif
 }
 
 uint8_t app_audio_get_control_command(void)

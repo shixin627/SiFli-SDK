@@ -886,31 +886,31 @@ static void gesture_test_btn_event_cb(lv_event_t *e)
     animate_to_home_from_notification_center();
 }
 
-static void handle_media_play_state(void *param)
-{
-    if (lv_obj_is_valid(p_app_media->icon_btn_play_pause) == false)
-    {
-        return;
-    }
-    bool media_state = *(bool *)param;
-    lv_obj_t *img = lv_obj_get_child(p_app_media->icon_btn_play_pause, 0);
+// static void handle_media_play_state(void *param)
+// {
+//     if (lv_obj_is_valid(p_app_media->icon_btn_play_pause) == false)
+//     {
+//         return;
+//     }
+//     bool media_state = *(bool *)param;
+//     lv_obj_t *img = lv_obj_get_child(p_app_media->icon_btn_play_pause, 0);
 
-    /* Change the image source */
-    lv_img_set_src(img, media_state ? &img_media_pause : &img_media_play);
-}
+//     /* Change the image source */
+//     lv_img_set_src(img, media_state ? &img_media_pause : &img_media_play);
+// }
 
-static void handle_media_title(void *param)
-{
-    if (lv_obj_is_valid(p_app_media->media_title) == false)
-    {
-        return;
-    }
-    char *media_title_text = (char *)param;
-    if (media_title_text)
-    {
-        lv_label_set_text(p_app_media->media_title, media_title_text);
-    }
-}
+// static void handle_media_title(void *param)
+// {
+//     if (lv_obj_is_valid(p_app_media->media_title) == false)
+//     {
+//         return;
+//     }
+//     char *media_title_text = (char *)param;
+//     if (media_title_text)
+//     {
+//         lv_label_set_text(p_app_media->media_title, media_title_text);
+//     }
+// }
 
 static datac_handle_t pwr_srv_hdl = DATA_CLIENT_INVALID_HANDLE;
 static lv_obj_t *brightness_bar;
@@ -1225,8 +1225,8 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 #endif
 
 #ifdef BSP_USING_UI_HANDLER
-    lvgl_msg_handler.handle_bar_media_play_state = handle_media_play_state;
-    lvgl_msg_handler.handle_bar_media_title = handle_media_title;
+    // lvgl_msg_handler.handle_bar_media_play_state = handle_media_play_state;
+    // lvgl_msg_handler.handle_bar_media_title = handle_media_title;
 #endif
 
     return control_center_window;

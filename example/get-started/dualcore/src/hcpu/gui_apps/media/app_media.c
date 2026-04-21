@@ -94,8 +94,8 @@ static app_media_t *p_widget_media = NULL;
 /* Declare the action functions for the buttons */
 static void prev_btn_event_cb(lv_event_t *e);
 static void play_pause_btn_event_cb(lv_event_t *e);
-static void handle_media_play_state(void *param);
-static void handle_media_title(void *param);
+void handle_media_play_state(bool media_state);
+void handle_media_title(char *media_title_text);
 static void next_btn_event_cb(lv_event_t *e);
 static void volume_up_btn_event_cb(lv_event_t *e);
 static void volume_down_btn_event_cb(lv_event_t *e);
@@ -631,7 +631,6 @@ typedef struct
     lv_obj_t *btn_quick_second_app_bg;
     lv_obj_t *btn_quick_third_app_bg;
     lv_obj_t *btn_quick_fourth_app_bg;
-    lv_obj_t *btn_select_background;
     lv_obj_t *btn_madia_img_bg;
     lv_obj_t *btn_madia_img_mask;
     lv_obj_t *volume_bar;
@@ -673,18 +672,6 @@ static lv_obj_t *music_app_ui_build(lv_obj_t *parent)
     lv_obj_center(p_window);
     if (!p_window)
         return NULL;
-    music_app_obj.btn_select_background = lv_obj_create(p_window);
-    lv_obj_set_size(music_app_obj.btn_select_background, 116, 80);
-    lv_obj_set_style_radius(music_app_obj.btn_select_background, 20, 0);
-    lv_obj_set_style_bg_color(music_app_obj.btn_select_background,
-                              lv_color_hex(0x737373), 0);
-    lv_obj_set_style_bg_opa(music_app_obj.btn_select_background, LV_OPA_0, 0);
-    lv_obj_align(music_app_obj.btn_select_background, LV_ALIGN_CENTER, 0, 30);
-    lv_obj_set_style_border_width(music_app_obj.btn_select_background, 2, 0);
-    lv_obj_set_style_border_color(music_app_obj.btn_select_background,
-                                  lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(music_app_obj.btn_select_background, LV_OPA_50,
-                                0);
     music_app_obj.btn_madia_img_bg = lv_img_create(p_window);
     lv_obj_align(music_app_obj.btn_madia_img_bg, LV_ALIGN_CENTER, 0, 0);
 
@@ -986,40 +973,6 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
     return widget;
 }
 
-static lv_timer_t *media_bg_timer = NULL;
-// 計時器回調函數，用於恢復透明度
-static void media_bg_reset_cb(lv_timer_t *timer)
-{
-    if (music_app_obj.btn_select_background)
-    {
-        lv_obj_set_style_bg_opa(music_app_obj.btn_select_background, LV_OPA_0,
-                                0);
-    }
-    lv_timer_del(media_bg_timer);
-    media_bg_timer = NULL;
-}
-
-void media_btn_press_cb(void)
-{
-    if (!music_app_obj.btn_select_background)
-        return;
-
-    // 立即設置透明度為50
-    lv_obj_set_style_bg_opa(music_app_obj.btn_select_background, LV_OPA_80, 0);
-
-    // 創建或重置計時器，500ms後恢復透明度
-    if (!media_bg_timer)
-    {
-        media_bg_timer = lv_timer_create(media_bg_reset_cb, 300, NULL);
-    }
-    else
-    {
-        lv_timer_reset(media_bg_timer);
-    }
-
-    LOG_D("media_widget_btn_press_anim");
-}
-
 static lv_timer_t *media_widget_bg_timer = NULL;
 // 計時器回調函數，用於恢復透明度
 static void media_widget_bg_reset_cb(lv_timer_t *timer)
@@ -1072,26 +1025,6 @@ static void animate_media_widget_selection_bg(lv_coord_t move_offset,
     // Y軸固定
     lv_obj_align(widget_selection_bg, LV_ALIGN_BOTTOM_MID, prev_move_offset,
                  MEDIA_WIDGET_BTN_Y);
-}
-
-static void animate_media_selection_bg(lv_coord_t move_offset,
-                                       lv_coord_t prev_move_offset)
-{
-    if (music_app_obj.btn_select_background == NULL)
-        return;
-
-    // 設定動畫
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, music_app_obj.btn_select_background);
-    lv_anim_set_values(&a, prev_move_offset, move_offset);
-    lv_anim_set_time(&a, 75);
-    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_x);
-    lv_anim_start(&a);
-
-    // Y軸固定
-    lv_obj_align(music_app_obj.btn_select_background, LV_ALIGN_CENTER,
-                 prev_move_offset, 30);
 }
 
 static uint8_t prev_widget_selection_index = 1;
@@ -1151,59 +1084,6 @@ static void set_media_widget_selection_bg_pos(uint8_t selection_index,
     prev_widget_offset = offset;
 }
 
-static uint8_t prev_selection_index = 1;
-static lv_coord_t prev_offset = 0;
-static lv_coord_t prev_move_offset = 0;
-static void set_media_app_selection_bg_pos(uint8_t selection_index,
-                                           lv_coord_t offset)
-{
-    if (music_app_obj.btn_select_background == NULL ||
-        (prev_selection_index == selection_index && prev_offset == offset))
-        return;
-    int move_offset = 0;
-    switch (selection_index)
-    {
-    case 0:
-        move_offset = -150 + offset;
-        if (prev_selection_index != 0)
-        {
-            animate_media_selection_bg(move_offset, prev_move_offset);
-            motor_pattern_scrolling_app();
-        }
-        else
-            lv_obj_align(music_app_obj.btn_select_background, LV_ALIGN_CENTER,
-                         move_offset, 30);
-        break;
-    case 1:
-        move_offset = offset;
-        if (prev_selection_index != 1)
-        {
-            animate_media_selection_bg(move_offset, prev_move_offset);
-            motor_pattern_scrolling_app();
-        }
-        else
-            lv_obj_align(music_app_obj.btn_select_background, LV_ALIGN_CENTER,
-                         move_offset, 30);
-        break;
-    case 2:
-        move_offset = 150 + offset;
-        if (prev_selection_index != 2)
-        {
-            animate_media_selection_bg(move_offset, prev_move_offset);
-            motor_pattern_scrolling_app();
-        }
-        else
-            lv_obj_align(music_app_obj.btn_select_background, LV_ALIGN_CENTER,
-                         move_offset, 30);
-        break;
-    default:
-        break;
-    }
-    prev_move_offset = move_offset;
-    prev_selection_index = selection_index;
-    prev_offset = offset;
-}
-
 static uint8_t media_widget_selection_index = 1;
 uint8_t get_media_widget_selection_index(void)
 {
@@ -1260,7 +1140,6 @@ void media_trigger_drag_by_py(int p_y)
     }
     // LOG_D("p_y: %d, diff: %d, media_selection_index: %d", p_y, diff,
     // media_selection_index);
-    set_media_app_selection_bg_pos(media_selection_index, diff);
 }
 
 void media_widget_tap_event_cb(void)
@@ -1805,7 +1684,6 @@ uint8_t get_volume_control_value(void)
 // 修改 handle_tap_event 函數
 static void handle_tap_event(void)
 {
-    media_btn_press_cb();
     if (media_selection_index == 0)
     {
         sys_media_event_set(SYS_EVENT_PREV);
@@ -1844,35 +1722,35 @@ static void play_pause_btn_event_cb(lv_event_t *e)
     }
 }
 
-static void handle_media_play_state(void *param)
+void handle_media_play_state(bool media_state)
 {
     if (lv_obj_is_valid(p_app_media->icon_btn_play_pause) == false)
     {
         return;
     }
-    bool media_state = *(bool *)param;
+    // bool media_state = *(bool *)param;
     change_icon_image(p_app_media->icon_btn_play_pause,
                       media_state ? &img_media_pause : &img_media_play);
 }
 
-static void handle_media_widget_play_state(void *param)
+void handle_media_widget_play_state(bool media_state)
 {
     if (lv_obj_is_valid(p_widget_media->icon_btn_play_pause) == false)
     {
         return;
     }
-    bool media_state = *(bool *)param;
+    // bool media_state = *(bool *)param;
     change_icon_image(p_widget_media->icon_btn_play_pause,
                       media_state ? &img_media_pause : &img_media_play);
 }
 
-static void handle_media_title(void *param)
+void handle_media_title(char *media_title_text)
 {
     if (lv_obj_is_valid(p_app_media->media_title) == false)
     {
         return;
     }
-    char *media_title_text = (char *)param;
+    // char *media_title_text = (char *)param;
     if (media_title_text && media_title_text[0] != '\0')
     {
         lv_label_set_text(p_app_media->media_title, media_title_text);
@@ -1904,13 +1782,13 @@ static void handle_media_img(void *param)
     }
 }
 
-static void handle_media_widget_title(void *param)
+void handle_media_widget_title(char *media_title_text)
 {
     if (lv_obj_is_valid(p_widget_media->media_title) == false)
     {
         return;
     }
-    char *media_title_text = (char *)param;
+    // char *media_title_text = (char *)param;
     if (media_title_text)
     {
         lv_label_set_text(p_widget_media->media_title, media_title_text);
@@ -1972,9 +1850,9 @@ void media_widget_start(void)
     LOG_D("media_widget_start");
     // lvgl_msg_handler.handle_widgets_control = button_selection;
     // lvgl_msg_handler.handle_tap_indicator = media_widget_handle_press_event;
-    lvgl_msg_handler.handle_app_media_play_state =
-        handle_media_widget_play_state;
-    lvgl_msg_handler.handle_app_media_title = handle_media_widget_title;
+    // lvgl_msg_handler.handle_app_media_play_state =
+    //     handle_media_widget_play_state;
+    // lvgl_msg_handler.handle_app_media_title = handle_media_widget_title;
     lvgl_msg_handler.handle_app_media_img = handle_media_widget_img;
     // lvgl_msg_handler.handle_media_control = button_selection;
 }
@@ -2007,8 +1885,8 @@ void media_on_start(lv_obj_t *scr)
     set_open_control_options(true);
     lvgl_msg_handler.handle_widgets_control = button_selection;
     lvgl_msg_handler.handle_tap_indicator = media_widget_handle_press_event;
-    lvgl_msg_handler.handle_app_media_play_state = handle_media_play_state;
-    lvgl_msg_handler.handle_app_media_title = handle_media_title;
+    // lvgl_msg_handler.handle_app_media_play_state = handle_media_play_state;
+    // lvgl_msg_handler.handle_app_media_title = handle_media_title;
     lvgl_msg_handler.handle_app_media_img = handle_media_img;
     lvgl_msg_handler.handle_media_volume = set_app_vol_bar_value;
 }

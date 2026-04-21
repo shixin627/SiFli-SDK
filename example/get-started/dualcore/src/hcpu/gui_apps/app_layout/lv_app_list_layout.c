@@ -52,7 +52,7 @@ static const uint16_t APP_LIST_ITEMS[] = {
     // app_id_heart_rate,
 #endif
 #ifdef APP_ID_ACTIVITY
-    app_id_activity,
+    // app_id_activity,
 #endif
 #ifdef APP_ID_ALARM
     // app_id_alarm,
