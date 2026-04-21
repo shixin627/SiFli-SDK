@@ -704,6 +704,10 @@ static int utest_gesture(int argc, char *argv[])
         {
             set_gravity_position(GRAVITY_POSITION_AI);
         }
+        else if (strcmp(argv[1], "test_cb") == 0)
+        {
+            
+        }
         else if (strcmp(argv[1], "instruction") == 0)
         {
             const char *test_json =

@@ -1818,9 +1818,9 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
     if (app_control_get_mouse_mode() || is_at_mouse_mode() ||
         gui_app_is_actived(APP_ID_MOUSE)) // app_control_get_cursor_mode()
     {
-        air_mouse_process(motion_data->timestamp, &motion_data->global_q,
-                          &prev_global_quat);
-        prev_global_quat = motion_data->global_q;
+        // air_mouse_process(motion_data->timestamp, &motion_data->global_q,
+        //                   &prev_global_quat);
+        // prev_global_quat = motion_data->global_q;
         // LOG_D("air mouse process, global_q: w:%f, x:%f, y:%f, z:%f",
         // motion_data->global_q.w, motion_data->global_q.x,
         // motion_data->global_q.y, motion_data->global_q.z);

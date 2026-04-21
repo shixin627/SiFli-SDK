@@ -1073,7 +1073,7 @@ static void mouse_report_send(uint8_t *key_val, uint16_t key_val_len)
     value.len = key_val_len;
     value.value = key_val;
     int ret = sibles_write_value(g_conn_idx, &value);
-    // LOG_D("mouse report send retry:%d", g_conn_idx);
+    LOG_D("mouse report send retry:%d", g_conn_idx);
 
     if (ret == 0)
     {
@@ -1453,16 +1453,22 @@ void BLE_HID_Keyboard_Multitask(bool state)
     {
         HID_KEY_SET(KEY_MOD_LMETA);
         HID_KEY_SEND();
-        rt_thread_mdelay(200);
+        rt_thread_mdelay(50);
         HID_KEY_SET(KEY_TAB);
         HID_KEY_SEND();
-        rt_thread_mdelay(200);
+        rt_thread_mdelay(50);
         HID_KEY_CLEAR(KEY_TAB);
+        HID_KEY_SEND();
+        rt_thread_mdelay(50);
+        HID_KEY_CLEAR(KEY_MOD_LMETA);
         HID_KEY_SEND();
     }
     else
     {
-        HID_KEY_CLEAR(KEY_MOD_LMETA);
+        HID_KEY_SET(KEY_ESC);
+        HID_KEY_SEND();
+        rt_thread_mdelay(50);
+        HID_KEY_CLEAR(KEY_ESC);
         HID_KEY_SEND();
     }
 }

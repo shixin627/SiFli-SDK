@@ -29,7 +29,9 @@
       "Bash(awk '/12:10:52:[4-9]/ || /12:10:53:[0-7]/' \"C:/dev/SiFli_Trace_v2.3.3/log/窗口2_COM9_\\(2026-04-20-12-10-32\\)_ui.log\")",
       "Bash(awk '/12:10:4[7-9]/ || /12:10:5[0-4]/')",
       "Bash(awk '/12:10:5[0-3]/')",
-      "Bash(grep -E '#define GH3018_I2C_BUS|#define BMI270_BUS' /c/SiFli-SDK/customer/peripherals/sensor/Kconfig echo \"---\" grep -rE 'BMI270_BUS_NAME|GH3018_I2C_BUS' \"C:/SiFli-SDK/customer/boards/sf32lb56-watch_base\")"
+      "Bash(grep -E '#define GH3018_I2C_BUS|#define BMI270_BUS' /c/SiFli-SDK/customer/peripherals/sensor/Kconfig echo \"---\" grep -rE 'BMI270_BUS_NAME|GH3018_I2C_BUS' \"C:/SiFli-SDK/customer/boards/sf32lb56-watch_base\")",
+      "Bash(awk 'NR>=2700 && NR<=3400 {if\\(/^    #if /\\) {d++; print NR\": [+\"d\"] \"$0} else if\\(/^    #endif/\\) {print NR\": [-\"d\"] \"$0; d--}}' C:/SiFli-SDK/example/get-started/dualcore/src/hcpu/gui_apps/hid_mouse/hid_mouse.c)",
+      "Bash(awk 'NR>=3340 && NR<=3370 {print NR\": \"$0}' C:/SiFli-SDK/example/get-started/dualcore/src/hcpu/gui_apps/hid_mouse/hid_mouse.c)"
     ]
   }
 }
