@@ -88,7 +88,7 @@ static double before = 0;
 static char operate = '\0';
 static char num[MAX_NUM];
 
-static double save_num(char *num) // 将字符串保存成浮点数
+static double save_num(const char *num) // 将字符串保存成浮点数
 {
     return atof(num);
 }
@@ -153,10 +153,12 @@ static void handle_button_text(const char *txt)
         case '=':
             if (judge_num(before) == 0)
             {
-                now = save_num(num);
+                now = save_num(lv_textarea_get_text(ta));
                 calculate(before, now, operate, num);
                 operate = '\0';
                 before = save_num(num);
+                lv_textarea_set_text(ta, num);
+                lv_textarea_set_cursor_pos(ta, LV_TEXTAREA_CURSOR_LAST);
             }
             else
             {
@@ -166,84 +168,38 @@ static void handle_button_text(const char *txt)
             }
             break;
         case 'D':
-            num[strlen(num) - 1] = '\0';
+            lv_textarea_del_char(ta);
             break;
         case '+':
-            now = save_num(num);
-            if (operate != '\0')
-            {
-                calculate(before, now, operate, num);
-                before = save_num(num);
-                ;
-            }
-            else
-            {
-                before = now;
-            }
-            operate = '+';
-            memset(num, 0, MAX_NUM);
-            break;
         case '-':
-            now = save_num(num);
-            if (operate != '\0')
-            {
-                calculate(before, now, operate, num);
-                before = save_num(num);
-                ;
-            }
-            else
-            {
-                before = now;
-            }
-            operate = '-';
-            memset(num, 0, MAX_NUM);
-            break;
         case 'x':
-            now = save_num(num);
-            if (operate != '\0')
-            {
-                calculate(before, now, operate, num);
-                before = save_num(num);
-                ;
-            }
-            else
-            {
-                before = now;
-            }
-            memset(num, 0, MAX_NUM);
-            operate = '*';
-            break;
         case '/':
-            now = save_num(num);
+            now = save_num(lv_textarea_get_text(ta));
             if (operate != '\0')
             {
                 calculate(before, now, operate, num);
                 before = save_num(num);
-                ;
             }
             else
             {
                 before = now;
             }
-            memset(num, 0, MAX_NUM);
-            operate = '/';
+            operate = (txt[0] == 'x') ? '*' : txt[0];
+            lv_textarea_set_text(ta, "");
             break;
         case ' ':
             break;
         default:
-            if (strlen(num) < MAX_NUM)
-            {
-                num[strlen(num)] = txt[0];
-            }
+            lv_textarea_add_char(ta, txt[0]);
             break;
         }
     }
     if (txt[0] == 'C')
     {
         clear_result();
+        lv_textarea_set_text(ta, "");
         now = 0;
     }
-    lv_textarea_set_text(ta, num);
     LOG_D("before:%lf, now:%lf", before, now);
 }
 
