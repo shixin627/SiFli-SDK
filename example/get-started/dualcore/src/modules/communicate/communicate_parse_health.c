@@ -35,17 +35,9 @@ void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t len
     {
         if (length == 0)
         {
-            LOG_I("request data");
+            LOG_I("request today's sport data");
             L1SendData data;
-            data.event = L1SEND_HISTORY_DATA_SYNC_START;
-            L1_send_event(data);
             data.event = L1SEND_SPORT_DATA;
-            L1_send_event(data);
-            data.event = L1SEND_SLEEP_DATA;
-            L1_send_event(data);
-            data.event = L1SEND_HEART_DATA;
-            L1_send_event(data);
-            data.event = L1SEND_HISTORY_DATA_SYNC_END;
             L1_send_event(data);
         }
     }

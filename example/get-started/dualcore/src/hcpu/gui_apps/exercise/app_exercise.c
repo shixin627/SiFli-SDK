@@ -222,10 +222,16 @@ static void workout_timer_cb(void *parameter)
                 workout_list[current_session.type].calories_per_min, 60,
                 avr_hr_in_min);
             current_session.calories += calories_minute;
-
+            LOG_D("Minute %d: avg HR=%d, calories this minute=%.2f, total calories=%.2f",
+                  current_session.duration / 60, avr_hr_in_min, calories_minute,
+                  current_session.calories);
             // 重置心率累计值，准备下一分钟的计算
             current_session.sum_of_hr_in_min = 0;
             current_session.num_of_hr_in_min = 0;
+        }
+        else
+        {
+            LOG_D("No heart rate data for this minute, skipping calorie calculation");
         }
     }
 
@@ -392,6 +398,20 @@ int stop_exercise(void)
             if (ret == 0)
             {
                 LOG_D("Exercise data stored successfully");
+
+                const char *file_path = get_last_exercise_file();
+                if (file_path && strlen(file_path) > 0)
+                {
+                    int sync_ret = bloc_file_system.sync_file((char *)file_path, false);
+                    if (sync_ret == 0)
+                    {
+                        LOG_D("sync last exercise: %s", file_path);
+                    }
+                    else
+                    {
+                        LOG_E("failed to sync last exercise: %s", file_path);
+                    }
+                }
             }
             else
             {

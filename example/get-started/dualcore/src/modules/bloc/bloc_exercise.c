@@ -153,6 +153,47 @@ float calculate_calories(float base_calories, uint32_t duration_seconds, uint16_
  * - 卡路里消耗
  * - 心率记录
  */
+static char last_exercise_file[MAX_WORKOUT_PATH_LEN] = {0};
+
+const char *get_last_exercise_file(void)
+{
+    return last_exercise_file;
+}
+
+#define MAX_DAILY_EXERCISE_FILE_BYTES 16384
+
+/* Read an existing daily file into a cJSON root, or return NULL. */
+static cJSON *read_daily_exercise_file(const char *filename)
+{
+    FILE *fp = fopen(filename, "r");
+    if (fp == NULL)
+    {
+        return NULL;
+    }
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    if (file_size <= 0 || file_size > MAX_DAILY_EXERCISE_FILE_BYTES)
+    {
+        fclose(fp);
+        return NULL;
+    }
+    char *buf = (char *)rt_malloc(file_size + 1);
+    if (buf == NULL)
+    {
+        fclose(fp);
+        return NULL;
+    }
+    size_t read_size = fread(buf, 1, file_size, fp);
+    buf[read_size] = '\0';
+    fclose(fp);
+
+    cJSON *root = cJSON_Parse(buf);
+    rt_free(buf);
+    return root;
+}
+
 int store_exercise_data(workout_session_t *session)
 {
     // 如果沒有有效的運動數據，則不保存
@@ -182,49 +223,70 @@ int store_exercise_data(workout_session_t *session)
 
     // 取得目前時間
     time(&now);
-    // // 測試用：設定固定時間 2026-01-26 12:00:00
-    // struct tm fixed_tm = {0};
-    // fixed_tm.tm_year = 2025 - 1900;
-    // fixed_tm.tm_mon = 0; // 1月
-    // fixed_tm.tm_mday = 26;
-    // fixed_tm.tm_hour = 12;
-    // fixed_tm.tm_min = 0;
-    // fixed_tm.tm_sec = 0;
-    // now = mktime(&fixed_tm);
     tm_info = localtime(&now);
 
     mkdir("/exercise", 0x777);
 
-    // 建立帶有時間戳的檔名
-    snprintf(filename, sizeof(filename), "/exercise/%04d%02d%02d_%02d%02d.json",
-             tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday,
-             tm_info->tm_hour, tm_info->tm_min);
+    // 以日期為單位的檔名：YYYYMMDD.json
+    snprintf(filename, sizeof(filename), "/exercise/%04d%02d%02d.json",
+             tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday);
 
-    // 建立 JSON 物件
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "activity", workout_title_list[session->type]);
-    cJSON_AddNumberToObject(root, "timestamp", (long)now);
-    cJSON_AddNumberToObject(root, "duration_sec", session->duration);
-    cJSON_AddNumberToObject(root, "calories", session->calories);
-    // 心率資料陣列
+    // 讀取當天既有的檔案（若存在），否則建立新的 root
+    cJSON *root = read_daily_exercise_file(filename);
+    cJSON *sessions = NULL;
+    if (root != NULL)
+    {
+        sessions = cJSON_GetObjectItem(root, "sessions");
+        if (sessions == NULL || !cJSON_IsArray(sessions))
+        {
+            cJSON_DeleteItemFromObject(root, "sessions");
+            sessions = cJSON_CreateArray();
+            cJSON_AddItemToObject(root, "sessions", sessions);
+        }
+    }
+    else
+    {
+        root = cJSON_CreateObject();
+        cJSON_AddNumberToObject(root, "date", (long)now);
+        sessions = cJSON_CreateArray();
+        cJSON_AddItemToObject(root, "sessions", sessions);
+    }
+
+    // 建立這次 session 的 JSON 物件
+    cJSON *session_item = cJSON_CreateObject();
+    cJSON_AddStringToObject(session_item, "activity", workout_title_list[session->type]);
+    cJSON_AddNumberToObject(session_item, "timestamp", (long)now);
+    cJSON_AddNumberToObject(session_item, "duration_sec", session->duration);
+    cJSON_AddNumberToObject(session_item, "calories", session->calories);
     cJSON *hrm_array = cJSON_CreateArray();
     for (int i = 0; i < session->hrm_count; i++)
     {
-        cJSON *hrm_item = cJSON_CreateNumber(session->hrm_array[i]);
-        cJSON_AddItemToArray(hrm_array, hrm_item);
+        cJSON_AddItemToArray(hrm_array, cJSON_CreateNumber(session->hrm_array[i]));
     }
-    cJSON_AddItemToObject(root, "hrm", hrm_array);
+    cJSON_AddItemToObject(session_item, "hrm", hrm_array);
+
+    // 加入當天的 sessions 陣列
+    cJSON_AddItemToArray(sessions, session_item);
 
     // 轉換成字串
     char *json_str = cJSON_Print(root);
-    LOG_D("Exercise data: %s", json_str);
+    if (json_str == NULL)
+    {
+        LOG_E("cJSON_Print failed");
+        cJSON_Delete(root);
+        watch_storage_api_unlock();
+        return EXERCISE_FILE_OPEN_FAILED;
+    }
+    LOG_D("Daily exercise data: %s", json_str);
 
-    // 寫入檔案
+    // 覆寫檔案
     FILE *fp = fopen(filename, "w");
     if (fp != NULL)
     {
         fwrite(json_str, strlen(json_str), 1, fp);
         fclose(fp);
+        strncpy(last_exercise_file, filename, sizeof(last_exercise_file) - 1);
+        last_exercise_file[sizeof(last_exercise_file) - 1] = '\0';
     }
     else
     {
@@ -235,7 +297,6 @@ int store_exercise_data(workout_session_t *session)
         return EXERCISE_FILE_OPEN_FAILED;
     }
 
-    // 釋放記憶體
     cJSON_free(json_str);
     cJSON_Delete(root);
 
@@ -284,29 +345,8 @@ workout_history_t *get_workout_history(void)
         return history;
     }
 
-    // 第一次遍历：计算文件数量
-    uint16_t file_count = 0;
-    while ((ent = readdir(dir)) != NULL)
-    {
-        if (ent->d_type == DT_REG && strstr(ent->d_name, ".json"))
-        {
-            file_count++;
-        }
-    }
-
-    // 如果没有文件，直接返回
-    if (file_count == 0)
-    {
-        LOG_D("No workout history found");
-        closedir(dir);
-        return history;
-    }
-
-    LOG_D("Found %d workout history files", file_count);
-
-    // 分配记录数组内存
-    uint16_t max_to_process = file_count > MAX_WORKOUT_RECORDS ? MAX_WORKOUT_RECORDS : file_count;
-    history->records = (workout_record_t *)rt_malloc(max_to_process * sizeof(workout_record_t));
+    // 分配记录数组内存（以每天多個 session 計，上限 MAX_WORKOUT_RECORDS）
+    history->records = (workout_record_t *)rt_malloc(MAX_WORKOUT_RECORDS * sizeof(workout_record_t));
     if (!history->records)
     {
         LOG_E("Failed to allocate memory for workout records");
@@ -314,109 +354,111 @@ workout_history_t *get_workout_history(void)
         closedir(dir);
         return NULL;
     }
-    memset(history->records, 0, max_to_process * sizeof(workout_record_t));
+    memset(history->records, 0, MAX_WORKOUT_RECORDS * sizeof(workout_record_t));
 
-    // 重置目录指针
-    rewinddir(dir);
-
-    // 第二次遍历：读取文件内容
+    // 遍歷所有每日檔案並展開每天的 sessions 陣列
     uint16_t index = 0;
     uint16_t files_processed = 0;
-    while ((ent = readdir(dir)) != NULL && index < max_to_process)
+    while ((ent = readdir(dir)) != NULL && index < MAX_WORKOUT_RECORDS)
     {
-        if (ent->d_type == DT_REG && strstr(ent->d_name, ".json"))
+        if (ent->d_type != DT_REG || !strstr(ent->d_name, ".json"))
         {
-            files_processed++;
-            snprintf(path, MAX_WORKOUT_PATH_LEN, "/exercise/%s", ent->d_name);
-
-            // 读取文件内容
-            FILE *fp = fopen(path, "r");
-            if (fp)
-            {
-                // 获取文件大小
-                fseek(fp, 0, SEEK_END);
-                long file_size = ftell(fp);
-                fseek(fp, 0, SEEK_SET);
-
-                if (file_size > 0 && file_size < 4096)
-                { // 限制文件大小
-                    char *json_str = (char *)rt_malloc(file_size + 1);
-                    if (json_str)
-                    {
-                        size_t read_size = fread(json_str, 1, file_size, fp);
-                        json_str[read_size] = '\0';
-
-                        // 解析JSON
-                        cJSON *root = cJSON_Parse(json_str);
-                        if (root)
-                        {
-                            cJSON *activity = cJSON_GetObjectItem(root, "activity");
-                            cJSON *timestamp = cJSON_GetObjectItem(root, "timestamp");
-                            cJSON *duration = cJSON_GetObjectItem(root, "duration_sec");
-                            cJSON *calories = cJSON_GetObjectItem(root, "calories");
-
-                            if (activity && activity->valuestring &&
-                                timestamp && timestamp->valueint &&
-                                duration && duration->valueint &&
-                                calories && calories->valueint)
-                            {
-                                // 填充记录数据
-                                strncpy(history->records[index].filename, ent->d_name, MAX_WORKOUT_FILENAME_LEN - 1);
-                                history->records[index].filename[MAX_WORKOUT_FILENAME_LEN - 1] = '\0';
-                                history->records[index].timestamp = timestamp->valueint;
-                                history->records[index].duration = duration->valueint;
-                                history->records[index].calories = calories->valueint;
-
-                                // 确定运动类型
-                                for (int i = 0; i < WORKOUT_COUNT; i++)
-                                {
-                                    if (strcmp(activity->valuestring, workout_title_list[i]) == 0)
-                                    {
-                                        history->records[index].type = i;
-                                        break;
-                                    }
-                                }
-
-                                index++;
-                            }
-                            else
-                            {
-                                LOG_W("File %s is missing required fields", ent->d_name);
-                                parse_failures++;
-                            }
-
-                            cJSON_Delete(root);
-                        }
-                        else
-                        {
-                            LOG_W("Failed to parse JSON from file %s", ent->d_name);
-                            parse_failures++;
-                        }
-
-                        rt_free(json_str);
-                    }
-                    else
-                    {
-                        LOG_W("Failed to allocate memory for JSON string from %s", ent->d_name);
-                        parse_failures++;
-                    }
-                }
-                else
-                {
-                    LOG_W("File %s size invalid: %ld bytes", ent->d_name, file_size);
-                    parse_failures++;
-                }
-
-                fclose(fp);
-            }
-            else
-            {
-                LOG_W("Failed to open file %s", ent->d_name);
-                parse_failures++;
-            }
+            continue;
         }
+        files_processed++;
+        snprintf(path, MAX_WORKOUT_PATH_LEN, "/exercise/%s", ent->d_name);
+
+        FILE *fp = fopen(path, "r");
+        if (!fp)
+        {
+            LOG_W("Failed to open file %s", ent->d_name);
+            parse_failures++;
+            continue;
+        }
+
+        fseek(fp, 0, SEEK_END);
+        long file_size = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+
+        if (file_size <= 0 || file_size > MAX_DAILY_EXERCISE_FILE_BYTES)
+        {
+            LOG_W("File %s size invalid: %ld bytes", ent->d_name, file_size);
+            parse_failures++;
+            fclose(fp);
+            continue;
+        }
+
+        char *json_str = (char *)rt_malloc(file_size + 1);
+        if (!json_str)
+        {
+            LOG_W("Failed to allocate memory for JSON string from %s", ent->d_name);
+            parse_failures++;
+            fclose(fp);
+            continue;
+        }
+        size_t read_size = fread(json_str, 1, file_size, fp);
+        json_str[read_size] = '\0';
+        fclose(fp);
+
+        cJSON *root = cJSON_Parse(json_str);
+        rt_free(json_str);
+        if (!root)
+        {
+            LOG_W("Failed to parse JSON from file %s", ent->d_name);
+            parse_failures++;
+            continue;
+        }
+
+        cJSON *sessions = cJSON_GetObjectItem(root, "sessions");
+        if (!sessions || !cJSON_IsArray(sessions))
+        {
+            LOG_W("File %s has no sessions array", ent->d_name);
+            parse_failures++;
+            cJSON_Delete(root);
+            continue;
+        }
+
+        int n_sessions = cJSON_GetArraySize(sessions);
+        for (int si = 0; si < n_sessions && index < MAX_WORKOUT_RECORDS; si++)
+        {
+            cJSON *s = cJSON_GetArrayItem(sessions, si);
+            if (!s) continue;
+
+            cJSON *activity = cJSON_GetObjectItem(s, "activity");
+            cJSON *timestamp = cJSON_GetObjectItem(s, "timestamp");
+            cJSON *duration = cJSON_GetObjectItem(s, "duration_sec");
+            cJSON *calories = cJSON_GetObjectItem(s, "calories");
+
+            if (!activity || !activity->valuestring ||
+                !timestamp || !duration || !calories)
+            {
+                LOG_W("Session %d in %s missing required fields", si, ent->d_name);
+                parse_failures++;
+                continue;
+            }
+
+            strncpy(history->records[index].filename, ent->d_name, MAX_WORKOUT_FILENAME_LEN - 1);
+            history->records[index].filename[MAX_WORKOUT_FILENAME_LEN - 1] = '\0';
+            history->records[index].timestamp = timestamp->valueint;
+            history->records[index].duration = duration->valueint;
+            history->records[index].calories = calories->valueint;
+
+            for (int i = 0; i < WORKOUT_COUNT; i++)
+            {
+                if (strcmp(activity->valuestring, workout_title_list[i]) == 0)
+                {
+                    history->records[index].type = i;
+                    break;
+                }
+            }
+
+            index++;
+        }
+
+        cJSON_Delete(root);
     }
 
+    uint16_t file_count = files_processed;
     closedir(dir);
 
     // 按时间戳排序 (降序)

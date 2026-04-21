@@ -126,6 +126,7 @@ extern "C"
     void free_workout_history(workout_history_t *history);
     void format_date_string(time_t timestamp, char *buffer, size_t buffer_size);
     extern workout_session_t *get_current_workout_session(void);
+    extern const char *get_last_exercise_file(void);
 
 #ifdef __cplusplus
 }
