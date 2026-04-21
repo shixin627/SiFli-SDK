@@ -94,7 +94,7 @@
      *      DEFINES
      *********************/
     #define PRESSED_TIME_MS 500
-    #define SCROLLING_THRESHOLD 20
+    #define SCROLLING_THRESHOLD 60
     #define EDGE_THRESHOLD_PIXELS 20
     #define BOTTOM_EDGE_THRESHOLD 50
     #define GESTURE_DISTANCE_THRESHOLD 50
@@ -103,7 +103,6 @@
     #define INERTIA_DECAY_FACTOR 0.95f
     #define MIN_SCROLL_SPEED 1.0f
     #define SCROLL_SPEED_MULTIPLIER 2.0f
-    #define DOUBLE_TAP_MS 300
 
     #define SIMULATE_MOUSE_RIGHT_BUTTON 0
     #define USING_MOUSE_WHEEL_SCROLLING 1
@@ -112,7 +111,7 @@
     #define USING_EDGE_LEFT_DETECTION 0
     #define USING_EDGE_RIGHT_DETECTION 0
 
-    #define ENABLE_MENU_FEATURE 1
+    #define ENABLE_MENU_FEATURE 0
     #define KB_ANIM_TIME_MS 300
 
     // FSR-402 pressure sensor ADC config
@@ -155,11 +154,9 @@ static lv_point_t bottom_bar_start_point;
 static lv_point_t bottom_bar_last_point;
 static unsigned int press_time = 0;
 static bool user_touching = false;
-static bool pressing = false;
 static bool scrolling = false;
 static bool scrolling_confirmed = false;
 static bool moving = false;
-static bool has_moved_during_touch = false;
 
 static bool go_back = false;
 static bool handfree = false;
@@ -178,7 +175,6 @@ static float inertia_velocity = 0.0f;
 static float inertia_accumulator = 0.0f;
 static lv_timer_t *inertia_timer = NULL;
 static uint32_t last_scroll_tick = 0;
-static uint32_t last_click_time = 0;
 
 // FSR-402 ADC pressure sensor
 static rt_device_t fsr_adc_dev = NULL;
@@ -201,8 +197,41 @@ static lv_obj_t *menu_home_tile = NULL;
 static lv_obj_t *menu_content_tile = NULL;
 static lv_obj_t *menu_swipe_area = NULL;
 static lv_obj_t *left_scroll_bar = NULL;
-static lv_point_t scroll_bar_last_point;
 static bool left_scroll_active = false;
+
+// 左側滾動節點：以手指繞螢幕中心的角度追蹤，可無限旋轉；
+// 節點沿弧線跟手移動，每通過一個節點觸發一次滾輪。
+#define LEFT_SCROLL_NODE_COUNT 5
+#define LEFT_SCROLL_ARC_MIN_DEG 150.0f
+#define LEFT_SCROLL_ARC_MAX_DEG 210.0f
+#define LEFT_SCROLL_ARC_SPAN_DEG 60.0f
+#define LEFT_SCROLL_NODE_SPACING_DEG                                           \
+    (LEFT_SCROLL_ARC_SPAN_DEG / LEFT_SCROLL_NODE_COUNT) // = 12°
+#define LEFT_SCROLL_NODE_MAX_SIZE 14
+#define LEFT_SCROLL_NODE_MIN_SIZE 3
+// 未觸碰時暗/細，觸碰時亮/粗，100ms 過渡
+#define LEFT_SCROLL_ARC_W_DIM 12
+#define LEFT_SCROLL_ARC_W_ACTIVE 30
+#define LEFT_SCROLL_ARC_OPA_DIM LV_OPA_30
+#define LEFT_SCROLL_ARC_OPA_ACTIVE LV_OPA_60
+#define LEFT_SCROLL_NODE_OPA_DIM LV_OPA_30
+#define LEFT_SCROLL_NODE_OPA_ACTIVE LV_OPA_COVER
+#define LEFT_SCROLL_UI_ANIM_MS 300
+#ifndef LEFT_SCROLL_PI
+    #define LEFT_SCROLL_PI 3.14159265358979323846f
+#endif
+static lv_obj_t *left_scroll_nodes[LEFT_SCROLL_NODE_COUNT] = {NULL};
+static float scroll_last_theta = 0.0f;      // 上次手指相對中心的角度（弧度）
+static float scroll_accum_angle = 0.0f;     // 未觸發滾動的累積角度（弧度）
+static float scroll_node_offset_deg = 0.0f; // 節點視覺偏移（度，已正規化）
+static int32_t scroll_ui_level = 0; // 0 = 暗/細，1000 = 亮/粗（動畫用）
+
+// 左側滾動節點相關（實作在 mouse screen 建立處）
+static float left_scroll_finger_theta(const lv_point_t *p);
+static float left_scroll_normalize_delta(float d);
+static void update_left_scroll_nodes(void);
+static void apply_scroll_ui_level(void);
+static void animate_scroll_ui_to(bool active);
 
 // 判斷觸碰點是否在左側滾動觸發區域
 // UI 弧線寬度 30px、角度 150°~210°，但觸發範圍更大
@@ -2250,7 +2279,6 @@ static void handle_pressed_event(lv_indev_t *indev)
 
     lv_indev_get_point(indev, &start_point);
     lv_indev_get_point(indev, &last_point);
-    pressing = false;
     scrolling = false;
     moving = false;
 
@@ -2258,17 +2286,17 @@ static void handle_pressed_event(lv_indev_t *indev)
     left_scroll_active = is_point_in_left_arc(&start_point);
     if (left_scroll_active)
     {
-        scroll_bar_last_point = start_point;
+        scroll_last_theta = left_scroll_finger_theta(&start_point);
+        scroll_accum_angle = 0.0f;
         set_stop_mouse_move(true);
         motor_pattern_damping();
+        animate_scroll_ui_to(true); // 觸碰時亮起（100ms）
         LOG_D("left scroll bar pressed");
     }
 
     // 重置滚动方向锁定
     scroll_direction_locked = false;
     is_horizontal_scroll = false;
-
-    has_moved_during_touch = false;
 
     // 停止慣性滾動
     if (inertia_timer)
@@ -2287,19 +2315,6 @@ static void handle_pressed_event(lv_indev_t *indev)
     LOG_D("pressed x: %d, y: %d", start_point.x, start_point.y);
     update_edge_detection(&start_point);
     gesture_detected = false;
-
-    // 雙擊拖曳：第二下按下去直接觸發長按效果
-    #ifndef USE_FSR_ADC
-    if (last_click_time > 0 &&
-        (lv_tick_get() - last_click_time) < DOUBLE_TAP_MS)
-    {
-        pressing = true;
-        control_provider.ble_hid_mouse_left_press();
-        motor_pattern_touchpad_slide();
-        LOG_D("Air mouse - double tap hold (left press)");
-        last_click_time = 0;
-    }
-    #endif
 }
 
 /**
@@ -2310,28 +2325,53 @@ static void handle_pressed_event(lv_indev_t *indev)
 static void handle_pressing_event(lv_indev_t *indev,
                                   const lv_point_t *current_point)
 {
-    // 左側滾動弧線模式：只做上下滾輪
+    // 左側滾動弧線模式：以角度追蹤手指繞中心的旋轉量，
+    // 可連續旋轉多圈；節點跟手在弧線上循環移動，每過一個節點滾動一次。
     if (left_scroll_active)
     {
-        int16_t delta_y = current_point->y - scroll_bar_last_point.y;
-        if (abs(delta_y) >= SCROLLING_THRESHOLD)
+        float theta = left_scroll_finger_theta(current_point);
+        float delta = left_scroll_normalize_delta(theta - scroll_last_theta);
+        scroll_last_theta = theta;
+
+        // 手指幾乎沒動就不更新視覺、也不累積（避免 BLE/LVGL 做無謂工作）
+        if (fabsf(delta) < 0.001f)
         {
-            int8_t scroll_val = delta_y / SCROLLING_THRESHOLD;
+            return;
+        }
+
+        // 更新節點視覺偏移，讓節點跟手旋轉
+        scroll_node_offset_deg += delta * 180.0f / LEFT_SCROLL_PI;
+        // 把偏移收斂到 [0, span)，避免長時間旋轉後浮點精度損失
+        scroll_node_offset_deg =
+            fmodf(scroll_node_offset_deg, LEFT_SCROLL_ARC_SPAN_DEG);
+        update_left_scroll_nodes();
+
+        // 累積角度，計算這次事件要觸發多少個節點單位
+        scroll_accum_angle += delta;
+        const float threshold_rad =
+            LEFT_SCROLL_NODE_SPACING_DEG * LEFT_SCROLL_PI / 180.0f;
+        int steps = 0;
+        while (fabsf(scroll_accum_angle) >= threshold_rad)
+        {
+            int sign = (scroll_accum_angle > 0.0f) ? 1 : -1;
+            steps += sign;
+            scroll_accum_angle -= (float)sign * threshold_rad;
+        }
+        // 一次 move event 只送一筆 BLE 報告（合併本次所有節點單位），
+        // 避免快速旋轉時把 BLE/motor queue 灌爆造成記憶體堆積
+        if (steps != 0)
+        {
+            int8_t scroll_val = (int8_t)steps;
             if (SkaiWatchSys.phone_os_version == IOS)
             {
                 scroll_val = -scroll_val;
             }
             motor_pattern_damping();
             control_provider.ble_hid_mouse_wheel_scroll(scroll_val);
-            scroll_bar_last_point = *current_point;
         }
         return;
     }
 
-    if (pressing)
-    {
-        return;
-    }
     int16_t delta_x = current_point->x - last_point.x;
     int16_t delta_y = current_point->y - last_point.y;
     if (handle_edge_scrolling(current_point, delta_x, delta_y))
@@ -2372,45 +2412,13 @@ static void handle_pressing_event(lv_indev_t *indev,
         {
             // 正在拖曳 → 控制滑鼠移動（距離翻倍），鎖住體感滑鼠
             set_stop_mouse_move(true);
-            control_provider.ble_hid_mouse_move(delta_x * 1.5, delta_y * 1.5);
+            LOG_D("touch mouse move - delta_x: %d, delta_y: %d", delta_x, delta_y);
+            control_provider.ble_hid_mouse_move(delta_x * 1, delta_y * 1);
         }
 
         return;
     }
 
-    // 記錄這次觸碰期間是否有移動過
-    if (moving)
-    {
-        has_moved_during_touch = true;
-    }
-
-    // 長按觸發：超過閾值且這次觸碰期間從未移動過
-    #ifndef USE_FSR_ADC
-    if (!has_moved_during_touch &&
-        (lv_tick_get() - press_time > PRESSED_TIME_MS))
-    {
-        pressing = true;
-        #if SIMULATE_MOUSE_RIGHT_BUTTON
-        if (lv_tick_get() - press_time > PRESSED_TIME_MS)
-        {
-            if (pressed_left_half)
-            {
-        #endif
-                control_provider.ble_hid_mouse_left_press();
-                motor_pattern_touchpad_slide();
-                LOG_D("Air mouse - left press");
-
-        #if SIMULATE_MOUSE_RIGHT_BUTTON
-            }
-            else
-            {
-                control_provider.ble_hid_mouse_right_press();
-                LOG_D("Air mouse - right press");
-            }
-        }
-        #endif
-    }
-    #endif
 }
 
 /**
@@ -2427,6 +2435,7 @@ static void handle_released_event(lv_indev_t *indev)
         left_scroll_active = false;
         set_stop_mouse_move(false);
         motor_pattern_stop();
+        animate_scroll_ui_to(false); // 放開後淡回暗/細（100ms）
         LOG_D("left scroll bar released");
         return;
     }
@@ -2475,40 +2484,23 @@ static void handle_released_event(lv_indev_t *indev)
         if (pressed_left_half)
     #endif
         {
-            if (pressing)
+            if (!scrolling &&
+                (lv_tick_get() - press_time <= PRESSED_TIME_MS))
             {
-                control_provider.ble_hid_mouse_left_release();
-                LOG_D("Air mouse - left release");
-            }
-            else
-            {
-                if (!scrolling &&
-                    (lv_tick_get() - press_time <= PRESSED_TIME_MS))
-                {
-                    LOG_D("Air mouse - click_left");
-                    motor_pattern_tap();
-                    control_provider.ble_hid_mouse_left_click();
-                    last_click_time = lv_tick_get();
-                }
+                LOG_D("Air mouse - click_left");
+                motor_pattern_tap();
+                control_provider.ble_hid_mouse_left_click();
             }
         }
     #if SIMULATE_MOUSE_RIGHT_BUTTON
         else
         {
-            if (pressing)
+            if (!scrolling &&
+                (lv_tick_get() - press_time <= PRESSED_TIME_MS))
             {
-                control_provider.ble_hid_mouse_right_release();
-                LOG_D("Air mouse - right release");
-            }
-            else
-            {
-                if (!scrolling &&
-                    (lv_tick_get() - press_time <= PRESSED_TIME_MS))
-                {
-                    LOG_D("Air mouse - click_right");
-                    control_provider.ble_hid_mouse_right_click();
-                    motor_pattern_tap();
-                }
+                LOG_D("Air mouse - click_right");
+                control_provider.ble_hid_mouse_right_click();
+                motor_pattern_tap();
             }
         }
     #endif
@@ -3194,29 +3186,6 @@ static void menu_close_btn_event_cb(lv_event_t *e)
     }
 }
 
-/**
- * @brief Device manager event callback for menu
- */
-void refresh_connected_device_label(void)
-{
-    if (!lv_obj_is_valid(connected_device_label))
-        return;
-
-    const bonded_devices_db_t *db = ble_dev_mgr_get_database();
-    int active_idx = ble_dev_mgr_get_active_device();
-    if (db && active_idx >= 0 && active_idx < MAX_BONDED_DEVICES &&
-        db->devices[active_idx].is_valid &&
-        db->devices[active_idx].conn_idx != 0xFF)
-    {
-        lv_label_set_text(connected_device_label,
-                          db->devices[active_idx].device_name);
-    }
-    else
-    {
-        lv_label_set_text(connected_device_label, "");
-    }
-}
-
 static void menu_dev_mgr_event_cb(dev_mgr_event_t event, uint8_t device_idx,
                                   void *user_data)
 {
@@ -3313,14 +3282,97 @@ static lv_obj_t *menu_window(lv_obj_t *par)
 }
     #endif
 
+/**
+ * @brief 刷新 mouse 畫面頂部顯示的當前控制裝置名稱
+ *        放在 ENABLE_MENU_FEATURE guard 外面，讓 status bar 的選單切換後也能更新
+ */
+void refresh_connected_device_label(void)
+{
+    if (!lv_obj_is_valid(connected_device_label))
+        return;
+
+    const bonded_devices_db_t *db = ble_dev_mgr_get_database();
+    int active_idx = ble_dev_mgr_get_active_device();
+    if (db && active_idx >= 0 && active_idx < MAX_BONDED_DEVICES &&
+        db->devices[active_idx].is_valid &&
+        db->devices[active_idx].conn_idx != 0xFF)
+    {
+        lv_label_set_text(connected_device_label,
+                          db->devices[active_idx].device_name);
+    }
+    else
+    {
+        lv_label_set_text(connected_device_label, "");
+    }
+}
+
 // static lv_obj_t *text_input_bar = NULL;
-static uint8_t text_input_bar_pressed_count = 0;
-static bool text_input_bar_pressed = false;
 static rt_tick_t text_input_bar_pressing_time = NULL;
 static rt_tick_t text_input_bar_press_time = NULL;
 static uint16_t max_move_y = 0;
 static uint8_t test_count = 0;
 static float prev_elapsed = 0.0f;
+
+// 底部 bar 被上拉到某個視覺高度且停住後觸發多工鍵
+// 門檻看的是「bar 實際 UI 位置」，不是手指位移（bar 用 1:20 衰減）
+// bar 公式：lift = 10 + (move_y - 10) / 20；貼底時 lift=10
+// 例：lift=12 ≈ 手指 ~50px、lift=15 ≈ ~110px、lift=20 ≈ ~210px
+#define BOTTOM_BAR_MULTITASK_BAR_LIFT 12     // bar 升到離底部 >= 12px 才可觸發
+#define BOTTOM_BAR_MULTITASK_STILL_EPSILON 10 // 停住容忍範圍（px）
+#define BOTTOM_BAR_MULTITASK_HOLD_MS 100     // 停住多久觸發
+static bool bottom_bar_multitask_ready = false; // 已達成往上位移條件
+static bool bottom_bar_multitask_fired = false; // 這次 gesture 已觸發過
+static lv_point_t bottom_bar_multitask_anchor;
+// 用 rt_timer 而非 lv_timer：拖曳時 BLE queue 會把 LVGL task 塞到 lv_timer
+// 延遲數百 ms 才 fire；rt_timer 跑在獨立 timer thread，不受 LVGL 佔用影響
+static rt_timer_t bottom_bar_multitask_timer = NULL;
+
+static void bottom_bar_multitask_fire(void)
+{
+    LOG_D("Bottom bar: multitask triggered");
+    if (bottom_bar_multitask_fired)
+        return;
+    bottom_bar_multitask_fired = true;
+    if (control_provider.ble_hid_keyboard_multitask != NULL)
+    {
+        control_provider.ble_hid_keyboard_multitask(true);
+    }
+    motor_pattern_tap();
+}
+
+static void bottom_bar_multitask_rt_timer_cb(void *parameter)
+{
+    // Soft timer thread 被 BLE/其他高優 thread 卡住時，本 callback 可能比
+    // 預期晚很多才排到執行。RELEASED/再次 PRESSED 會把 ready 設成 false，
+    // 這裡先 double-check 才真的送 HID，避免放手後「事後被戳」。
+    if (!bottom_bar_multitask_ready || bottom_bar_multitask_fired)
+        return;
+    bottom_bar_multitask_fire();
+}
+
+// 手指每次位移超過 epsilon（或剛 armed）就呼叫，重新倒數 HOLD_MS
+static void bottom_bar_multitask_restart_timer(void)
+{
+    if (bottom_bar_multitask_timer == NULL)
+    {
+        bottom_bar_multitask_timer = rt_timer_create(
+            "bb_mt", bottom_bar_multitask_rt_timer_cb, NULL,
+            rt_tick_from_millisecond(BOTTOM_BAR_MULTITASK_HOLD_MS),
+            RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
+    }
+    if (bottom_bar_multitask_timer != NULL)
+    {
+        rt_timer_start(bottom_bar_multitask_timer);
+    }
+}
+
+static void bottom_bar_multitask_cancel_timer(void)
+{
+    if (bottom_bar_multitask_timer != NULL)
+    {
+        rt_timer_stop(bottom_bar_multitask_timer);
+    }
+}
 static void text_input_bar_cb(lv_event_t *e)
 {
     // Don't handle gestures when keyboard is visible (bar is now input display)
@@ -3337,7 +3389,10 @@ static void text_input_bar_cb(lv_event_t *e)
         lv_indev_get_point(indev, &bottom_bar_last_point);
         text_input_bar_press_time = rt_tick_get();
         max_move_y = 0;
-        notify_provider.holding_displacement(0, 0, 0);
+        bottom_bar_multitask_ready = false;
+        bottom_bar_multitask_fired = false;
+        bottom_bar_multitask_cancel_timer();
+        // notify_provider.holding_displacement(0, 0, 0);
         break;
 
     case LV_EVENT_PRESSING:
@@ -3351,14 +3406,47 @@ static void text_input_bar_cb(lv_event_t *e)
         if (move_y > max_move_y)
             max_move_y = move_y;
 
-        notify_provider.holding_displacement(1, dx, dy);
+        // notify_provider.holding_displacement(1, dx, dy);
+
+        // bar 視覺位移（和下方 UI 對齊用的同一個公式）
+        int bar_lift = 10;
+        if (move_y > 10)
+            bar_lift = 10 + (move_y - 10) / 20;
+        // bar 被往上拉到視覺門檻且停住後 → 送 HID 多工鍵（每 gesture 只觸發一次）
+        // 用 LVGL timer 倒數；手指完全靜止（LVGL 不再發 PRESSING）也能準時觸發
+        if (!bottom_bar_multitask_fired)
+        {
+            if (!bottom_bar_multitask_ready)
+            {
+                if (dy < 0 && bar_lift >= BOTTOM_BAR_MULTITASK_BAR_LIFT)
+                {
+                    bottom_bar_multitask_ready = true;
+                    bottom_bar_multitask_anchor = bottom_bar_now_point;
+                    bottom_bar_multitask_restart_timer();
+                }
+            }
+            else
+            {
+                int adx = bottom_bar_now_point.x -
+                          bottom_bar_multitask_anchor.x;
+                int ady = bottom_bar_now_point.y -
+                          bottom_bar_multitask_anchor.y;
+                if (abs(adx) > BOTTOM_BAR_MULTITASK_STILL_EPSILON ||
+                    abs(ady) > BOTTOM_BAR_MULTITASK_STILL_EPSILON)
+                {
+                    // 又動了，重啟 timer 並更新錨點
+                    bottom_bar_multitask_anchor = bottom_bar_now_point;
+                    bottom_bar_multitask_restart_timer();
+                }
+                // 靜止情況由 timer 自己觸發，不需要在這裡判斷 elapsed
+            }
+        }
+
         if (is_bottom_bar_gesture_active)
             return;
         if (move_y > 10)
         {
-            uint8_t text_input_bar_move_y = 10 + (move_y - 10) / 20;
-            lv_obj_align(text_input_bar, LV_ALIGN_BOTTOM_MID, 0,
-                         -text_input_bar_move_y);
+            lv_obj_align(text_input_bar, LV_ALIGN_BOTTOM_MID, 0, -bar_lift);
     #if USING_EDGE_BOTTOM_DETECTION
             if (!bottom_bar_gesture_timer_enabled && move_y > 150)
             {
@@ -3367,23 +3455,6 @@ static void text_input_bar_cb(lv_event_t *e)
             }
     #endif
         }
-        else if (max_move_y <= 10 &&
-                 rt_tick_get() - text_input_bar_press_time >= 500 &&
-                 !text_input_bar_pressed)
-        {
-            if (!text_input_bar_pressed)
-            {
-                text_input_bar_pressed = true;
-                motor_pattern_wheel_scrolling();
-                extern void set_voice_recognition_notified_from_mouse(
-                    bool status);
-                set_voice_recognition_notified_from_mouse(true);
-                watch_system_interact(INTERACT_MIC_LISTEN,
-                                      &text_input_bar_pressed);
-                LOG_D("Gesture detected: voice recognition");
-            }
-        }
-
         // Map (rt_tick_get() - text_input_bar_press_time) from 0~500 to
         // 1~1.2
         float elapsed = (float)(rt_tick_get() - text_input_bar_press_time);
@@ -3413,7 +3484,7 @@ static void text_input_bar_cb(lv_event_t *e)
                 abs(bottom_bar_now_point.y - bottom_bar_start_point.y);
             int dx = bottom_bar_now_point.x - bottom_bar_start_point.x;
             int dy = bottom_bar_now_point.y - bottom_bar_start_point.y;
-            notify_provider.holding_displacement(2, dx, dy);
+            // notify_provider.holding_displacement(2, dx, dy);
             LOG_D("Gesture detected: bottom bar released, move_y: %d", move_y);
             lv_obj_set_size(text_input_bar, 100, 10);
             lv_obj_align(text_input_bar, LV_ALIGN_BOTTOM_MID, 0, -10);
@@ -3421,17 +3492,12 @@ static void text_input_bar_cb(lv_event_t *e)
             {
                 // control_provider.trigger_finger_event(6);
             }
-            if (!text_input_bar_pressed && max_move_y < 60 &&
-                !bottom_bar_gesture_timer_enabled &&
+            if (max_move_y < 60 && !bottom_bar_gesture_timer_enabled &&
                 !is_bottom_bar_gesture_active)
             {
                 LOG_D("Gesture detected: short press");
                 // Toggle keyboard visibility when short press is detected
                 toggle_keyboard_visibility();
-            }
-            else if (text_input_bar_pressed)
-            {
-                text_input_bar_pressed = false;
             }
     #if USING_EDGE_BOTTOM_DETECTION
             if (bottom_bar_gesture_timer_enabled)
@@ -3443,6 +3509,9 @@ static void text_input_bar_cb(lv_event_t *e)
     #endif
 
             is_bottom_bar_gesture_active = false;
+            bottom_bar_multitask_ready = false;
+            bottom_bar_multitask_fired = false;
+            bottom_bar_multitask_cancel_timer();
         }
         break;
 
@@ -3615,6 +3684,164 @@ void fsr_adc_read(void)
 }
 
 /**
+ * @brief 計算手指相對螢幕中心的角度（atan2 慣例，LVGL 時鐘方向）
+ */
+static float left_scroll_finger_theta(const lv_point_t *p)
+{
+    const float cx = LV_HOR_RES_MAX / 2.0f;
+    const float cy = LV_VER_RES_MAX / 2.0f;
+    return atan2f((float)p->y - cy, (float)p->x - cx);
+}
+
+/**
+ * @brief 把角度差正規化到 [-π, π]，處理跨越 ±π 的情況
+ */
+static float left_scroll_normalize_delta(float d)
+{
+    while (d > LEFT_SCROLL_PI)
+        d -= 2.0f * LEFT_SCROLL_PI;
+    while (d < -LEFT_SCROLL_PI)
+        d += 2.0f * LEFT_SCROLL_PI;
+    return d;
+}
+
+/**
+ * @brief 根據目前的視覺偏移更新所有節點的位置與大小
+ *        節點會跟手旋轉並在 150°~210° 弧線上循環，越靠近 180° 越大
+ */
+static void update_left_scroll_nodes(void)
+{
+    if (left_scroll_nodes[0] == NULL)
+        return;
+
+    const float cx = LV_HOR_RES_MAX / 2.0f;
+    const float cy = LV_VER_RES_MAX / 2.0f;
+    // 弧線中線半徑：跟著當下的 arc 寬度走，避免節點在細弧線上飄出邊緣
+    const int32_t cur_arc_w =
+        LEFT_SCROLL_ARC_W_DIM +
+        (LEFT_SCROLL_ARC_W_ACTIVE - LEFT_SCROLL_ARC_W_DIM) * scroll_ui_level /
+            1000;
+    const float mid_r = cx - (float)cur_arc_w * 0.5f;
+    const float span = LEFT_SCROLL_ARC_SPAN_DEG;
+    const float spacing = LEFT_SCROLL_NODE_SPACING_DEG;
+
+    // 節點透明度：在 DIM 與 ACTIVE 間依 scroll_ui_level 插值
+    int32_t opa_v = (int32_t)LEFT_SCROLL_NODE_OPA_DIM +
+                    ((int32_t)LEFT_SCROLL_NODE_OPA_ACTIVE -
+                     (int32_t)LEFT_SCROLL_NODE_OPA_DIM) *
+                        scroll_ui_level / 1000;
+    if (opa_v < 0)
+        opa_v = 0;
+    if (opa_v > 255)
+        opa_v = 255;
+    const lv_opa_t node_opa = (lv_opa_t)opa_v;
+
+    for (int i = 0; i < LEFT_SCROLL_NODE_COUNT; i++)
+    {
+        if (left_scroll_nodes[i] == NULL)
+            continue;
+
+        float base = LEFT_SCROLL_ARC_MIN_DEG + spacing * (float)i;
+        float angle_deg = base + scroll_node_offset_deg;
+
+        // 包裹到 [150°, 210°) 讓節點在可視弧線內循環
+        angle_deg = fmodf(angle_deg - LEFT_SCROLL_ARC_MIN_DEG, span);
+        if (angle_deg < 0.0f)
+            angle_deg += span;
+        angle_deg += LEFT_SCROLL_ARC_MIN_DEG;
+
+        float rad = angle_deg * LEFT_SCROLL_PI / 180.0f;
+        int16_t px = (int16_t)(cx + mid_r * cosf(rad));
+        int16_t py = (int16_t)(cy + mid_r * sinf(rad));
+
+        // 越靠近 180°（弧線正中）越大，兩端最小（cos² 平滑過渡）
+        float t = (angle_deg - 180.0f) / (span * 0.5f); // [-1, 1)
+        float factor = cosf(t * LEFT_SCROLL_PI * 0.5f);
+        factor = factor * factor;
+        int16_t size =
+            (int16_t)((float)LEFT_SCROLL_NODE_MIN_SIZE +
+                      (float)(LEFT_SCROLL_NODE_MAX_SIZE -
+                              LEFT_SCROLL_NODE_MIN_SIZE) *
+                          factor);
+        if (size < 1)
+            size = 1;
+
+        lv_obj_set_size(left_scroll_nodes[i], size, size);
+        lv_obj_set_pos(left_scroll_nodes[i], px - size / 2, py - size / 2);
+        lv_obj_set_style_bg_opa(left_scroll_nodes[i], node_opa, 0);
+    }
+}
+
+/**
+ * @brief 依當前 scroll_ui_level（0 暗/細 ~ 1000 亮/粗）套用 arc 與節點樣式
+ */
+static void apply_scroll_ui_level(void)
+{
+    if (left_scroll_bar != NULL)
+    {
+        int32_t w = (int32_t)LEFT_SCROLL_ARC_W_DIM +
+                    ((int32_t)LEFT_SCROLL_ARC_W_ACTIVE -
+                     (int32_t)LEFT_SCROLL_ARC_W_DIM) *
+                        scroll_ui_level / 1000;
+        int32_t opa_v = (int32_t)LEFT_SCROLL_ARC_OPA_DIM +
+                        ((int32_t)LEFT_SCROLL_ARC_OPA_ACTIVE -
+                         (int32_t)LEFT_SCROLL_ARC_OPA_DIM) *
+                            scroll_ui_level / 1000;
+        if (opa_v < 0)
+            opa_v = 0;
+        if (opa_v > 255)
+            opa_v = 255;
+        lv_obj_set_style_arc_width(left_scroll_bar, (int16_t)w, LV_PART_MAIN);
+        lv_obj_set_style_arc_opa(left_scroll_bar, (lv_opa_t)opa_v,
+                                 LV_PART_MAIN);
+    }
+    update_left_scroll_nodes();
+}
+
+static void scroll_ui_anim_cb(void *var, int32_t v)
+{
+    (void)var;
+    scroll_ui_level = v;
+    apply_scroll_ui_level();
+}
+
+/**
+ * @brief 啟動 100ms UI 過渡：active=true → 亮/粗，false → 暗/細
+ */
+static void animate_scroll_ui_to(bool active)
+{
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, &scroll_ui_level);
+    lv_anim_set_exec_cb(&a, scroll_ui_anim_cb);
+    lv_anim_set_time(&a, LEFT_SCROLL_UI_ANIM_MS);
+    lv_anim_set_values(&a, scroll_ui_level, active ? 1000 : 0);
+    lv_anim_start(&a); // 會自動取代同 var+cb 的既有動畫
+}
+
+/**
+ * @brief 建立左側滾動弧線上的節點（初始位置與大小由 update 設定）
+ */
+static void create_left_scroll_nodes(lv_obj_t *parent)
+{
+    for (int i = 0; i < LEFT_SCROLL_NODE_COUNT; i++)
+    {
+        lv_obj_t *dot = lv_obj_create(parent);
+        lv_obj_remove_style_all(dot);
+        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(dot, lv_color_hex(0xAAAAAA), 0);
+        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(dot, 0, 0);
+        lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
+        left_scroll_nodes[i] = dot;
+    }
+    scroll_node_offset_deg = 0.0f;
+    scroll_ui_level = 0; // 預設暗/細
+    apply_scroll_ui_level();
+}
+
+/**
  * @brief Creates the mouse screen
  * @param scr Screen object
  */
@@ -3655,6 +3882,9 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_clear_flag(left_scroll_bar, LV_OBJ_FLAG_SCROLLABLE);
     // 純視覺，不攔截觸碰（由 plain_event_cb 判斷位置）
     lv_obj_clear_flag(left_scroll_bar, LV_OBJ_FLAG_CLICKABLE);
+
+    // 在弧線上加上節點指示點（視覺提示「每過一個節點 = 滾動一次」）
+    create_left_scroll_nodes(bg);
 
     // Crosshair lines (dimmed by default, brighten when touching logo)
     lv_coord_t line_width = 3;
@@ -3925,13 +4155,33 @@ static void on_stop(void)
 {
     app_control_set_mouse_mode(false);
 
+    // 停掉底部 bar 多工鍵 timer（如果還在走）
+    if (bottom_bar_multitask_timer != NULL)
+    {
+        rt_timer_stop(bottom_bar_multitask_timer);
+        rt_timer_delete(bottom_bar_multitask_timer);
+        bottom_bar_multitask_timer = NULL;
+    }
+    bottom_bar_multitask_ready = false;
+    bottom_bar_multitask_fired = false;
+
     // Clean up menu tileview
     menu_tileview = NULL;
     menu_home_tile = NULL;
     menu_content_tile = NULL;
     menu_bg = NULL;
     menu_swipe_area = NULL;
+    lv_anim_del(&scroll_ui_level, NULL); // 停掉 UI 過渡動畫
     left_scroll_bar = NULL;
+    for (int i = 0; i < LEFT_SCROLL_NODE_COUNT; i++)
+    {
+        left_scroll_nodes[i] = NULL;
+    }
+    scroll_node_offset_deg = 0.0f;
+    scroll_accum_angle = 0.0f;
+    scroll_last_theta = 0.0f;
+    scroll_ui_level = 0;
+    left_scroll_active = false;
 
     // Clean up file list
     file_list = NULL;

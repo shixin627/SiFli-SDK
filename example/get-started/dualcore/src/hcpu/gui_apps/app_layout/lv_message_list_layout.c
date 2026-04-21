@@ -242,11 +242,24 @@ static bool is_at_media_widget = false;
 static void hide_background_blocks(void);
 static notification_t *selection_notification = NULL;
 
-/* ---- Indicator dots (match instruction list style, per-notification) ---- */
-static lv_obj_t *msg_indicator_dots[ITEM_AMOUNT_NOTIFICATION] = {0};
-static lv_obj_t *msg_indicator_dots_bg[ITEM_AMOUNT_NOTIFICATION] = {0};
+/* ---- Indicator dots (match instruction list style, per-notification +
+   one extra dot for the media widget when present) ---- */
+#define MAX_MSG_DOTS (ITEM_AMOUNT_NOTIFICATION + 1) /* +1 for media widget */
+static lv_obj_t *msg_indicator_dots[MAX_MSG_DOTS] = {0};
+static lv_obj_t *msg_indicator_dots_bg[MAX_MSG_DOTS] = {0};
 static lv_obj_t *msg_indicator_dots_parent = NULL;
-static uint16_t msg_last_zoom[ITEM_AMOUNT_NOTIFICATION] = {0};
+static uint16_t msg_last_zoom[MAX_MSG_DOTS] = {0};
+
+/* Total dot count = notifications + media-widget (if active). */
+static int msg_dot_total(void)
+{
+    int n = (int)notification_count;
+    if (have_media_widget)
+        n += 1;
+    if (n > MAX_MSG_DOTS)
+        n = MAX_MSG_DOTS;
+    return n;
+}
 
 static void update_msg_indicator_dots_position(int input_value);
 static void create_msg_indicator_dots(lv_obj_t *parent);
@@ -254,7 +267,7 @@ static void destroy_msg_indicator_dots(void);
 
 static void update_msg_indicator_dots_position(int input_value)
 {
-    int total_dots = notification_count;
+    int total_dots = msg_dot_total();
     if (total_dots <= 0)
         return;
 
@@ -286,7 +299,7 @@ static void update_msg_indicator_dots_position(int input_value)
         int dot_x = center_x + (int)((float)circle_radius * cosf(angle_rad));
         int dot_y = center_y + (int)((float)circle_radius * sinf(angle_rad));
 
-        static int last_valid_dot_x[ITEM_AMOUNT_NOTIFICATION] = {0};
+        static int last_valid_dot_x[MAX_MSG_DOTS] = {0};
         if (dot_y > 450 || dot_y < 16)
         {
             if (msg_indicator_dots_bg[i] != NULL)
@@ -340,9 +353,7 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
         return;
     msg_indicator_dots_parent = parent;
 
-    int total_dots = notification_count;
-    if (total_dots > ITEM_AMOUNT_NOTIFICATION)
-        total_dots = ITEM_AMOUNT_NOTIFICATION;
+    int total_dots = msg_dot_total();
 
     for (int i = 0; i < total_dots; i++)
     {
@@ -356,13 +367,21 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
         lv_obj_t *dot = lv_img_create(dot_bg);
         lv_obj_center(dot);
 
-        /* Image = app icon of the notification at display index i
-           (display index 0 = newest, matching the card list order). */
-        notification_t *notif = get_notification_in_reversed_ui(i);
-        uint8_t type = Notify_others;
-        if (notif != NULL && notif->type <= NOTIFICATION_APP_QUANTITY)
-            type = notif->type;
-        lv_img_set_src(dot, icon_list[type]);
+        if (i < (int)notification_count)
+        {
+            /* Notification dot — app icon matching the card at display
+               index i (display 0 = newest). */
+            notification_t *notif = get_notification_in_reversed_ui(i);
+            uint8_t type = Notify_others;
+            if (notif != NULL && notif->type <= NOTIFICATION_APP_QUANTITY)
+                type = notif->type;
+            lv_img_set_src(dot, icon_list[type]);
+        }
+        else
+        {
+            /* Media widget dot — fixed iTunes icon. */
+            lv_img_set_src(dot, IMG_ITUNES);
+        }
 
         msg_indicator_dots_bg[i] = dot_bg;
         msg_indicator_dots[i] = dot;
@@ -374,7 +393,7 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
 
 static void destroy_msg_indicator_dots(void)
 {
-    for (int i = 0; i < ITEM_AMOUNT_NOTIFICATION; i++)
+    for (int i = 0; i < MAX_MSG_DOTS; i++)
     {
         if (msg_indicator_dots_bg[i] != NULL &&
             lv_obj_is_valid(msg_indicator_dots_bg[i]))
@@ -532,12 +551,14 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         /* Indicator dots — same lock as instruction list:
            only user touch scrolling updates dots here; the motion control
            path updates them via handle_set_arc_stripe_external_offset.
-           Scale first_y_diff so that 1 list item == 100 input units. */
-        if (notification_count > 0 && SkaiWatchSys.motion_control_lock)
+           Scale first_y_diff so that 1 list item == 100 input units.
+           Total item count includes the media widget when present. */
+        int total_items_for_dots = msg_dot_total();
+        if (total_items_for_dots > 0 && SkaiWatchSys.motion_control_lock)
         {
             const int pitch = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING;
             int scaled_first = (int)first_y_diff * 100 / pitch;
-            int dots_value = (int)notification_count * 100 + scaled_first - 63;
+            int dots_value = total_items_for_dots * 100 + scaled_first - 63;
             if (dots_value < 0)
                 dots_value = 0;
             update_msg_indicator_dots_position(dots_value);
@@ -888,16 +909,20 @@ static void reset_list(bool scroll_to_last)
        motion_control_lock which aren't true during a programmatic reset,
        so the dots would keep their old position. Recompute the input
        value from selected_message_index and apply it directly — matches
-       how lv_instruction_list_layout.c reseats its dots after refresh. */
-    if (notification_count > 0)
+       how lv_instruction_list_layout.c reseats its dots after refresh.
+       Total item count includes the media widget dot when present. */
     {
-        uint16_t sel = selected_message_index;
-        if (sel >= notification_count)
-            sel = notification_count - 1;
-        int dots_value = (int)(notification_count - sel) * 100 - 63;
-        if (dots_value < 0)
-            dots_value = 0;
-        update_msg_indicator_dots_position(dots_value);
+        int total_items_for_dots = msg_dot_total();
+        if (total_items_for_dots > 0)
+        {
+            uint16_t sel = selected_message_index;
+            if (sel >= (uint16_t)total_items_for_dots)
+                sel = (uint16_t)(total_items_for_dots - 1);
+            int dots_value = (total_items_for_dots - (int)sel) * 100 - 63;
+            if (dots_value < 0)
+                dots_value = 0;
+            update_msg_indicator_dots_position(dots_value);
+        }
     }
 
     open_shock = true;
@@ -946,6 +971,9 @@ static void hide_background_blocks(void)
 
 static bool new_touching_obj = true;
 extern void remove_notification_by_id(const char *id);
+/* Forward decl — used by drag_timer_cb to cancel any running drag anim. */
+static void set_drag_translate_x(void *obj, int32_t value);
+
 // 拖拽計時器回調函數
 static void drag_timer_cb(lv_timer_t *timer)
 {
@@ -956,7 +984,24 @@ static void drag_timer_cb(lv_timer_t *timer)
         motor_pattern_scrolling_app();
         notification_t *notification =
             get_notification_in_reversed_ui(selected_message_index);
+
+        /* Snapshot the card we were dragging before delete triggers a
+           refresh_list — refresh_list can hide this card (selected index
+           shifts) and LV_EVENT_RELEASED will then never fire on it, leaving
+           is_dragging = true and dragging_widget stuck. Reset the card's
+           translate_x and force-clear drag state here so the next press
+           starts clean. */
+        lv_obj_t *card_to_reset = dragging_widget;
+
         remove_notification_by_id(notification->id);
+
+        if (card_to_reset && lv_obj_is_valid(card_to_reset))
+        {
+            lv_anim_del(card_to_reset, set_drag_translate_x);
+            lv_obj_set_style_translate_x(card_to_reset, 0, 0);
+        }
+        is_dragging = false;
+        dragging_widget = NULL;
 
         drag_action_executed = true;
 
@@ -1004,14 +1049,21 @@ static void drag_anim_ready_cb(lv_anim_t *a)
     stop_drag_timer(); // 確保停止計時器
 }
 
+/* Render-only x offset (doesn't change layout, so the parent list won't
+   try to scroll to keep the moved child visible). */
+static void set_drag_translate_x(void *obj, int32_t value)
+{
+    lv_obj_set_style_translate_x((lv_obj_t *)obj, (lv_coord_t)value, 0);
+}
+
 // 回到原位的動畫
 static void animate_to_original_position(lv_obj_t *obj, lv_coord_t target_x)
 {
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, obj);
-    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_x);
-    lv_anim_set_values(&a, lv_obj_get_x(obj), target_x);
+    lv_anim_set_exec_cb(&a, set_drag_translate_x);
+    lv_anim_set_values(&a, lv_obj_get_style_translate_x(obj, 0), target_x);
     lv_anim_set_time(&a, 300);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
     lv_anim_set_ready_cb(&a, drag_anim_ready_cb);
@@ -1032,8 +1084,8 @@ static void animate_to_position(lv_obj_t *obj, lv_coord_t target_x,
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, obj);
-    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_x);
-    lv_anim_set_values(&a, lv_obj_get_x(obj), target_x);
+    lv_anim_set_exec_cb(&a, set_drag_translate_x);
+    lv_anim_set_values(&a, lv_obj_get_style_translate_x(obj, 0), target_x);
     lv_anim_set_time(&a, 200);
     lv_anim_set_path_cb(&a, lv_anim_path_bounce);
     if (end_motor)
@@ -1067,7 +1119,10 @@ static void widget_drag_event_cb(lv_event_t *evt)
             drag_start_x = point.x;
             drag_current_x = point.x;
             dragging_widget = obj;
-            original_x = lv_obj_get_x(obj);
+            /* We drive drag via translate_x (render-only), not lv_obj_set_x,
+               so the list doesn't auto-scroll to keep the moved child visible.
+               Baseline translate_x is usually 0 at rest. */
+            original_x = lv_obj_get_style_translate_x(obj, 0);
             is_dragging = false; // 還未開始拖拽
             stop_drag_timer();   // 確保停止任何之前的計時器
             new_touching_obj = true;
@@ -1115,7 +1170,7 @@ static void widget_drag_event_cb(lv_event_t *evt)
                     stop_drag_timer();
                 }
 
-                lv_obj_set_x(obj, original_x + diff);
+                lv_obj_set_style_translate_x(obj, original_x + diff, 0);
             }
         }
         else
@@ -1329,21 +1384,36 @@ static void refresh_list(uint8_t new_item_count)
             lv_obj_remove_event_cb(notification_widgets[i].card,
                                    widget_drag_event_cb);
         }
+
+        /* Safety: clear any lingering drag translate_x so the card doesn't
+           come back with a stale offset from an interrupted drag. */
+        if (notification_widgets[i].card &&
+            lv_obj_is_valid(notification_widgets[i].card))
+        {
+            lv_anim_del(notification_widgets[i].card, set_drag_translate_x);
+            lv_obj_set_style_translate_x(notification_widgets[i].card, 0, 0);
+        }
     }
 
-    /* Rebuild indicator dots so each dot reflects the current notification icon. */
+    /* Rebuild indicator dots so each dot reflects the current notification icon
+       (plus a fixed iTunes icon when the media widget is present). */
     if (msg_indicator_dots_parent != NULL &&
         lv_obj_is_valid(msg_indicator_dots_parent))
     {
         destroy_msg_indicator_dots();
-        if (notification_count > 0)
+        if (msg_dot_total() > 0)
             create_msg_indicator_dots(msg_indicator_dots_parent);
     }
 
-    /* Clamp selected index to current notification range before applying
-       visibility, so the chosen card is valid after add/remove. */
-    if (notification_count > 0 && selected_message_index >= notification_count)
-        selected_message_index = notification_count - 1;
+    /* Clamp selected index to current item range (notifications + media
+       widget) before applying visibility, so the chosen card is valid
+       after add/remove. */
+    {
+        int total_items = msg_dot_total();
+        if (total_items > 0 &&
+            selected_message_index >= (uint16_t)total_items)
+            selected_message_index = (uint16_t)(total_items - 1);
+    }
     update_notification_card_visibility();
 
     reset_list(false);
@@ -1602,6 +1672,7 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
                             LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_size(notification_center, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     lv_obj_set_scrollbar_mode(notification_center, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(notification_center, LV_OBJ_FLAG_SCROLLABLE);
 
     /* Indicator dots live on the non-scrolling background so they stay
        fixed on screen while the list scrolls. */

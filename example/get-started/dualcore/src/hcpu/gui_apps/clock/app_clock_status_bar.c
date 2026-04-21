@@ -27,6 +27,7 @@
 #include "communicate_protocol.h"
 #include "bloc_v2t.h"
 #include "ble_device_manager.h"
+#include "ble_hid.h"
 
 extern void refresh_connected_device_label(void);
 __attribute__((weak)) void refresh_connected_device_label(void)
@@ -581,6 +582,7 @@ static void app_clock_device_change_bar_event_cb(lv_event_t *event)
     {
         // Animate gaussian blur opacity based on horizontal scroll
         lv_coord_t scroll_x = lv_obj_get_scroll_x(obj);
+        // LOG_D("Device change bar scroll_x: %d", scroll_x);
         uint8_t opa = 0;
         if (scroll_x > 0)
         {
@@ -886,31 +888,31 @@ static void gesture_test_btn_event_cb(lv_event_t *e)
     animate_to_home_from_notification_center();
 }
 
-static void handle_media_play_state(void *param)
-{
-    if (lv_obj_is_valid(p_app_media->icon_btn_play_pause) == false)
-    {
-        return;
-    }
-    bool media_state = *(bool *)param;
-    lv_obj_t *img = lv_obj_get_child(p_app_media->icon_btn_play_pause, 0);
+// static void handle_media_play_state(void *param)
+// {
+//     if (lv_obj_is_valid(p_app_media->icon_btn_play_pause) == false)
+//     {
+//         return;
+//     }
+//     bool media_state = *(bool *)param;
+//     lv_obj_t *img = lv_obj_get_child(p_app_media->icon_btn_play_pause, 0);
 
-    /* Change the image source */
-    lv_img_set_src(img, media_state ? &img_media_pause : &img_media_play);
-}
+//     /* Change the image source */
+//     lv_img_set_src(img, media_state ? &img_media_pause : &img_media_play);
+// }
 
-static void handle_media_title(void *param)
-{
-    if (lv_obj_is_valid(p_app_media->media_title) == false)
-    {
-        return;
-    }
-    char *media_title_text = (char *)param;
-    if (media_title_text)
-    {
-        lv_label_set_text(p_app_media->media_title, media_title_text);
-    }
-}
+// static void handle_media_title(void *param)
+// {
+//     if (lv_obj_is_valid(p_app_media->media_title) == false)
+//     {
+//         return;
+//     }
+//     char *media_title_text = (char *)param;
+//     if (media_title_text)
+//     {
+//         lv_label_set_text(p_app_media->media_title, media_title_text);
+//     }
+// }
 
 static datac_handle_t pwr_srv_hdl = DATA_CLIENT_INVALID_HANDLE;
 static lv_obj_t *brightness_bar;
@@ -1225,8 +1227,8 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 #endif
 
 #ifdef BSP_USING_UI_HANDLER
-    lvgl_msg_handler.handle_bar_media_play_state = handle_media_play_state;
-    lvgl_msg_handler.handle_bar_media_title = handle_media_title;
+    // lvgl_msg_handler.handle_bar_media_play_state = handle_media_play_state;
+    // lvgl_msg_handler.handle_bar_media_title = handle_media_title;
 #endif
 
     return control_center_window;
@@ -2075,6 +2077,18 @@ static void dev_change_content_scroll_cb(lv_event_t *e)
     }
 }
 
+// BLE 裝置狀態變化時自動刷新列表（取代舊 menu_dev_mgr_event_cb）
+// 若不註冊，手機自動重連或新配對完成時 g_conn_idx 不會更新
+static void dev_change_mgr_event_cb(dev_mgr_event_t event, uint8_t device_idx,
+                                    void *user_data)
+{
+    (void)event;
+    (void)device_idx;
+    (void)user_data;
+    dev_change_refresh_device_list();
+    refresh_connected_device_label();
+}
+
 static void dev_change_watch_btn_cb(lv_event_t *e)
 {
     lv_event_code_t event = lv_event_get_code(e);
@@ -2084,7 +2098,7 @@ static void dev_change_watch_btn_cb(lv_event_t *e)
     LOG_I("Device change bar: Watch selected, exit mouse app");
     dev_change_watch_mode = true;
     gui_app_exit(APP_ID_MOUSE);
-    dev_change_refresh_device_list();
+    lv_obj_set_tile_id(app_clock_device_change_bar, 0, 0, true);
 }
 
 static void dev_change_device_item_click_cb(lv_event_t *e)
@@ -2104,16 +2118,22 @@ static void dev_change_device_item_click_cb(lv_event_t *e)
     if (LV_EVENT_SHORT_CLICKED == event)
     {
         dev_change_stop_delete_timer();
-        LOG_D("Device change bar: select device idx=%d, name=%s", device_idx,
-              dev->device_name);
+        LOG_D("Device change bar: select device idx=%d, name=%s, conn_idx=%d",
+              device_idx, dev->device_name, dev->conn_idx);
         dev_change_watch_mode = false;
+        // 同步 HID 送出目標：沒這行的話 mouse_report_send 會繼續用舊的 g_conn_idx
+        if (dev->conn_idx != 0xFF)
+        {
+            ble_hid_set_conn_idx(dev->conn_idx);
+        }
         ble_dev_mgr_set_active_device(device_idx);
         if (!gui_app_is_actived(APP_ID_MOUSE))
         {
             gui_app_run(APP_ID_MOUSE);
         }
+        //
         refresh_connected_device_label();
-        dev_change_refresh_device_list();
+        lv_obj_set_tile_id(app_clock_device_change_bar, 0, 0, true);
     }
     else if (LV_EVENT_PRESSED == event)
     {
@@ -2154,6 +2174,19 @@ static void dev_change_refresh_device_list(void)
     {
         LOG_D("Device change bar: no bonded device database (Watch/Add "
               "Device will still be shown)");
+    }
+
+    // 把 HID 目標同步到當前 active device（跟舊 menu_refresh_device_list 相同）
+    // 防止自動重連/配對等情況下 g_conn_idx 停在舊值
+    if (db)
+    {
+        int active_idx = ble_dev_mgr_get_active_device();
+        if (active_idx >= 0 && active_idx < MAX_BONDED_DEVICES &&
+            db->devices[active_idx].is_valid &&
+            db->devices[active_idx].conn_idx != 0xFF)
+        {
+            ble_hid_set_conn_idx(db->devices[active_idx].conn_idx);
+        }
     }
     LOG_D("Device change bar : DEBUG 1");
     if (dev_change_list_ui.watch_list &&
@@ -2463,7 +2496,8 @@ void app_clock_device_change_bar_init(lv_obj_t *par)
         lv_obj_set_style_pad_bottom(watch_list, DEV_CHANGE_BUTTON_GAP, 0);
         dev_change_list_ui.watch_list = watch_list;
 
-        // Device list container (not scrollable - content_area handles scrolling)
+        // Device list container (not scrollable - content_area handles
+        // scrolling)
         lv_obj_t *device_list = lv_obj_create(content_area);
         lv_obj_set_size(device_list, LV_PCT(100), LV_SIZE_CONTENT);
         lv_obj_set_style_bg_opa(device_list, LV_OPA_0, 0);
@@ -2505,6 +2539,9 @@ void app_clock_device_change_bar_init(lv_obj_t *par)
     // Set the tile ID to the AI status bar tile
     lv_obj_set_tile_id(app_clock_device_change_bar, 0, 0, false);
     lv_obj_add_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
+
+    // 監聽 BLE 裝置事件，連線/配對/斷線時自動刷新並同步 g_conn_idx
+    ble_dev_mgr_register_callback(dev_change_mgr_event_cb, NULL);
 }
 
 void set_status_bar_area_down_state(bool state)

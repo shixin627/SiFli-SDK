@@ -563,7 +563,7 @@ void check_is_at_home(void)
         }
         else
         {
-            if (!_at_mouse_mode && !_at_instruction_list)
+            if (!_at_mouse_mode && !_at_instruction_list && !gui_app_is_actived(APP_ID_MOUSE))
             {
                 display_gesture_detect_objs(0, true);
             }

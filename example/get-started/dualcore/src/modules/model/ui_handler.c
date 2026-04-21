@@ -152,28 +152,23 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
 
     case LVGL_MSG_TYPE_MEDIA_PLAY_STATE:
-        if (lvgl_msg_handler.handle_app_media_play_state)
-        {
-            lvgl_msg_handler.handle_app_media_play_state(
-                &msg->data.media_play_state);
-        }
-        if (lvgl_msg_handler.handle_bar_media_play_state)
-        {
-            lvgl_msg_handler.handle_bar_media_play_state(
-                &msg->data.media_play_state);
-        }
-        if (lvgl_msg_handler.handle_dial_media_play_state)
-        {
-            lvgl_msg_handler.handle_dial_media_play_state(
-                &msg->data.media_play_state);
-        }
+        // if (lvgl_msg_handler.handle_bar_media_play_state)
+        // {
+        //     lvgl_msg_handler.handle_bar_media_play_state(
+        //         &msg->data.media_play_state);
+        // }
+        // if (lvgl_msg_handler.handle_dial_media_play_state)
+        // {
+        //     lvgl_msg_handler.handle_dial_media_play_state(
+        //         &msg->data.media_play_state);
+        // }
         break;
 
     case LVGL_MSG_TYPE_MEDIA_TITLE:
-        if (lvgl_msg_handler.handle_app_media_title)
-        {
-            lvgl_msg_handler.handle_app_media_title(msg->data.media_data.title);
-        }
+        // if (lvgl_msg_handler.handle_app_media_title)
+        // {
+        //     lvgl_msg_handler.handle_app_media_title(msg->data.media_data.title);
+        // }
         if (lvgl_msg_handler.handle_bar_media_title)
         {
             lvgl_msg_handler.handle_bar_media_title(msg->data.media_data.title);
@@ -215,7 +210,8 @@ static void process_lvgl_message(lvgl_msg_t *msg)
             lvgl_msg_handler.handle_dial_media_header_img(
                 msg->data.media_data.title);
         }
-        LOG_D("REMOVE PREV MEDIA HEADER IMG: %s", msg->data.media_data.img_path);
+        LOG_D("REMOVE PREV MEDIA HEADER IMG: %s",
+              msg->data.media_data.img_path);
         // lv_img_cache_invalidate_src(msg->data.media_data.img_path);
 
         // remove(msg->data.media_data.img_path);
@@ -274,8 +270,7 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         }
         if (lvgl_msg_handler.handle_battery_percentage)
         {
-            lvgl_msg_handler.handle_battery_percentage(
-                msg->data.battery_level);
+            lvgl_msg_handler.handle_battery_percentage(msg->data.battery_level);
         }
         // trigger_activity();
         break;

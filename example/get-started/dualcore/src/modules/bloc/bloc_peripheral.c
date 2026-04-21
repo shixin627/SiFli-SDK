@@ -292,8 +292,15 @@ static void start_motor_on_timer(uint32_t duration_ms)
         rt_timer_stop(motor_on_timer);
     }
 
-    motor_on_timer = rt_timer_create("motor_off_timer", set_motor_off, NULL,
-                                     duration_ms, RT_TIMER_FLAG_ONE_SHOT);
+    if (!motor_on_timer)
+    {
+        motor_on_timer = rt_timer_create("motor_off_timer", set_motor_off, NULL,
+                                         duration_ms, RT_TIMER_FLAG_ONE_SHOT);
+    }
+    else
+    {
+        rt_timer_control(motor_on_timer, RT_TIMER_CTRL_SET_TIME, &duration_ms);
+    }
 
     if (motor_on_timer)
     {

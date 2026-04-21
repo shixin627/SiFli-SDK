@@ -276,13 +276,17 @@ char *get_media_artist(void)
 	LOG_D("get_media_artist: artist=%s", current_media_object.artist);
 	return current_media_object.artist;
 }
+extern void handle_media_widget_title(char *media_title_text);
+extern void handle_media_title(char *media_title_text);
 static void notify_media_title(void)
 {
-#ifdef BSP_USING_UI_HANDLER
-	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_TITLE,
-					  .data.media_data.title = get_media_title()};
-	lvgl_send_msg(msg);
-#endif
+	handle_media_title(get_media_title());
+	handle_media_widget_title(get_media_title());
+// #ifdef BSP_USING_UI_HANDLER
+// 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_TITLE,
+// 					  .data.media_data.title = get_media_title()};
+// 	lvgl_send_msg(msg);
+// #endif
 }
 
 /* Input may be either a plain title string (legacy) or a JSON object of the
@@ -370,14 +374,18 @@ static void bt_speaker_set_status(bool status)
 {
 	bt_media_playing = status;
 }
+extern void handle_media_play_state(bool media_state);
+extern void handle_media_widget_play_state(bool media_state);
 static void notify_bt_speaker_media_status(bool status)
 {
 	bt_media_playing = status;
-#ifdef BSP_USING_UI_HANDLER
-	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_PLAY_STATE,
-					  .data.media_play_state = bt_media_playing};
-	lvgl_send_msg(msg);
-#endif
+	handle_media_widget_play_state(bt_media_playing);
+    handle_media_play_state(bt_media_playing);
+// #ifdef BSP_USING_UI_HANDLER
+// 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_PLAY_STATE,
+// 					  .data.media_play_state = bt_media_playing};
+// 	lvgl_send_msg(msg);
+// #endif
 }
 
 uint8_t app_audio_get_control_command(void)
@@ -395,6 +403,8 @@ uint8_t bt_speaker_get_volume_percent(void)
 {
 	return volume_percent;
 }
+extern void set_widget_vol_bar_value(uint8_t volume);
+extern void set_app_vol_bar_value(uint8_t volume);
 static void bt_speaker_set_volume_percent(uint8_t percent)
 {
 	if (percent > 100)
@@ -405,12 +415,15 @@ static void bt_speaker_set_volume_percent(uint8_t percent)
 	{
 		percent = 0;
 	}
+	LOG_D("bt_speaker_set_volume_percent %d", percent);
 	volume_percent = percent;
+	set_app_vol_bar_value(volume_percent);
+	set_widget_vol_bar_value(volume_percent);
 	// notify ui
-#ifdef BSP_USING_UI_HANDLER
-	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_VOLUME, .data.media_volume = volume_percent};
-	lvgl_send_msg(msg);
-#endif
+// #ifdef BSP_USING_UI_HANDLER
+// 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_VOLUME, .data.media_volume = volume_percent};
+// 	lvgl_send_msg(msg);
+// #endif
 }
 static rt_timer_t smooth_volume_changed_timer = RT_NULL;
 static void smooth_volume_changed_timer_callback(void *param)
