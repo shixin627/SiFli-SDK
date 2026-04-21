@@ -535,7 +535,10 @@ void navigate_notification_info(notification_t *notification)
 static bool need_wakeup = false;
 void interact_with_notification(notification_t *notification)
 {
-    update_notification(*notification);
+    if (!notification->calling)
+    {
+        update_notification(*notification);
+    }
     if (myLancher[app_index_instruction_list].reset_list != NULL && !is_at_instruction_list())
     {
         myLancher[app_index_instruction_list].reset_list();
@@ -554,17 +557,6 @@ void interact_with_notification(notification_t *notification)
         need_wakeup = true;
         rt_thread_mdelay(100);
     }
-    // Notification info is now shown via dial header (5s then red dot),
-    // no longer navigate to the notification app popup.
-    // if (!check_if_speech_interact() && !app_control_get_mouse_mode() &&
-    //     !need_wakeup)
-    // {
-    //     navigate_notification_info(notification);
-    // }
-    // else if (need_wakeup)
-    // {
-    //     navigate_notification_info(notification);
-    // }
     if (notification->calling)
     {
         motor_pattern_calling();
