@@ -91,23 +91,26 @@ LV_IMG_DECLARE(menu_icon);
 #define LIST_ITEM_ID_LEN 64
 #define LIST_ITEM_TITLE_LEN 64
 
-typedef struct {
-    char id[LIST_ITEM_ID_LEN];         // app_id string or instruction UUID
+typedef struct
+{
+    char id[LIST_ITEM_ID_LEN]; // app_id string or instruction UUID
     char title[LIST_ITEM_TITLE_LEN];
-    const char *icon;                   // icon resource pointer, can be NULL
-    char img_path[64];                  // file-based image path for instructions
-    lv_obj_t *widget;                   // app widget obj, NULL for instructions
-    bool is_instruction;                // true = custom instruction, false = app
-    bool is_interval;                   // for instructions: has toggle switch
-    bool enabled;                       // toggle state
-    uint32_t interval_sec;              // intervalSeconds
-    char trigger_type[32];              // e.g. "interval", "once", etc.
-    uint32_t version;                   // version from server
+    const char *icon;      // icon resource pointer, can be NULL
+    char img_path[64];     // file-based image path for instructions
+    lv_obj_t *widget;      // app widget obj, NULL for instructions
+    bool is_instruction;   // true = custom instruction, false = app
+    bool is_interval;      // for instructions: has toggle switch
+    bool enabled;          // toggle state
+    uint32_t interval_sec; // intervalSeconds
+    char trigger_type[32]; // e.g. "interval", "once", etc.
+    uint32_t version;      // version from server
 } list_item_t;
 
 static list_item_t list_items[MAX_LIST_ITEMS];
-static uint8_t list_item_count = 0;  // total count of all items (app + instructions)
-static uint8_t app_base_count = 0;   // number of app items loaded from INSTRUCTION_LIST_ITEMS_DEFINITION
+static uint8_t list_item_count =
+    0; // total count of all items (app + instructions)
+static uint8_t app_base_count =
+    0; // number of app items loaded from INSTRUCTION_LIST_ITEMS_DEFINITION
 
 /* Callback: tapped or toggled. Receives id string and enabled state. */
 static void (*instruction_tap_cb)(const char *id, bool enabled) = NULL;
@@ -228,8 +231,9 @@ typedef struct
     lv_obj_t *indicator_dots[MAX_LIST_ITEMS];
     lv_obj_t *indicator_dots_bg[MAX_LIST_ITEMS];
     lv_obj_t *movable_range_arc; // 可移動範圍圓弧線
-    lv_obj_t *app_list_tileview;  // vertical tileview: instruction list + app grid
-    lv_obj_t *app_list_tile;      // tile 1: app grid page
+    lv_obj_t
+        *app_list_tileview;  // vertical tileview: instruction list + app grid
+    lv_obj_t *app_list_tile; // tile 1: app grid page
 } instruction_list_layout_t;
 static instruction_list_layout_t *p_instruction_list_layout;
 static bool created = false;
@@ -440,15 +444,17 @@ static void update_indicator_dots_position(int input_value)
         int dot_x = center_x + (int)(circle_radius * cos(angle_rad));
         int dot_y = center_y + (int)(circle_radius * sin(angle_rad));
 
-        /* 畫面為 466x466 圓形，指示點中心距離螢幕中心超過 (半徑 + 半個 dot) 就完全看不到，
-         * 直接 HIDDEN 並跳過後面的 opa / zoom / set_pos 計算，避免 dot 越多越卡 */
+        /* 畫面為 466x466 圓形，指示點中心距離螢幕中心超過 (半徑 + 半個 dot)
+         * 就完全看不到， 直接 HIDDEN 並跳過後面的 opa / zoom / set_pos
+         * 計算，避免 dot 越多越卡 */
         {
             const int screen_cx = LV_HOR_RES / 2;
             const int screen_cy = LV_VER_RES / 2;
             const int visible_r = LV_HOR_RES / 2 + (int)(DOT_BG_SIZE) / 2;
             int ddx = dot_x - screen_cx;
             int ddy = dot_y - screen_cy;
-            lv_obj_t *dot_bg_obj = p_instruction_list_layout->indicator_dots_bg[i];
+            lv_obj_t *dot_bg_obj =
+                p_instruction_list_layout->indicator_dots_bg[i];
             if (ddx * ddx + ddy * ddy > visible_r * visible_r)
             {
                 if (dot_bg_obj != NULL &&
@@ -563,14 +569,19 @@ static void create_indicator_dots(lv_obj_t *parent)
         else if (list_items[i].icon != NULL)
         {
             lv_img_set_src(dot, list_items[i].icon);
-            if (
 #ifdef APP_ID_NOTE_CHATROOM
-                strcmp(list_items[i].id, APP_ID_NOTE_CHATROOM) == 0 ||
-#endif
-                strcmp(list_items[i].id, APP_ID_SKAI) == 0)
+            if (strcmp(list_items[i].id, APP_ID_NOTE_CHATROOM) == 0)
             {
                 lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
             }
+#endif
+
+#ifdef APP_ID_SKAI
+            else if (strcmp(list_items[i].id, APP_ID_SKAI) == 0)
+            {
+                lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
+            }
+#endif
         }
         else
         {
@@ -735,12 +746,14 @@ static void animate_open_selected_widget_cb(lv_anim_t *a)
         if (app_widget[selected_item_index] != NULL &&
             lv_obj_is_valid(app_widget[selected_item_index]))
         {
-            lv_obj_clear_flag(app_widget[selected_item_index], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(app_widget[selected_item_index],
+                              LV_OBJ_FLAG_HIDDEN);
         }
         if (touch_obj[selected_item_index] != NULL &&
             lv_obj_is_valid(touch_obj[selected_item_index]))
         {
-            lv_obj_clear_flag(touch_obj[selected_item_index], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(touch_obj[selected_item_index],
+                              LV_OBJ_FLAG_HIDDEN);
         }
     }
     lv_obj_add_flag(widget_img, LV_OBJ_FLAG_HIDDEN);
@@ -1010,9 +1023,8 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 p_instruction_list_layout->app_list_tileview != NULL)
             {
                 last_gohame_time = rt_tick_get();
-                lv_obj_set_tile_id(
-                    p_instruction_list_layout->app_list_tileview, 0, 1,
-                    LV_ANIM_ON);
+                lv_obj_set_tile_id(p_instruction_list_layout->app_list_tileview,
+                                   0, 1, LV_ANIM_ON);
                 LOG_I("Auto-navigate to app list (scroll past bottom)");
             }
         }
@@ -1043,11 +1055,14 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 LOG_D("Selected item index: %d", i);
                 if (touch_obj[i] != NULL && lv_obj_is_valid(touch_obj[i]))
                     lv_obj_clear_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
-                if (!list_items[i].is_instruction &&
+                if (!list_items[i].is_instruction
 #ifdef APP_ID_NOTE_CHATROOM
-                    strcmp(list_items[i].id, APP_ID_NOTE_CHATROOM) != 0 &&
+                    && strcmp(list_items[i].id, APP_ID_NOTE_CHATROOM) != 0
 #endif
-                    strcmp(list_items[i].id, APP_ID_SKAI) != 0)
+#ifdef APP_ID_SKAI
+                    && strcmp(list_items[i].id, APP_ID_SKAI) != 0
+#endif
+                )
                 {
                     if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
                         lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
@@ -1058,7 +1073,8 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                         lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
                 }
                 if ((i < app_base_count || list_items[i].img_path[0] != '\0') &&
-                    app_icon_shadow[i] != NULL && lv_obj_is_valid(app_icon_shadow[i]))
+                    app_icon_shadow[i] != NULL &&
+                    lv_obj_is_valid(app_icon_shadow[i]))
                     lv_obj_clear_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
                 if (switch_objs[i] != NULL && lv_obj_is_valid(switch_objs[i]))
                     lv_obj_clear_flag(switch_objs[i], LV_OBJ_FLAG_HIDDEN);
@@ -1066,7 +1082,8 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             else
             {
                 if ((i < app_base_count || list_items[i].img_path[0] != '\0') &&
-                    app_icon_shadow[i] != NULL && lv_obj_is_valid(app_icon_shadow[i]))
+                    app_icon_shadow[i] != NULL &&
+                    lv_obj_is_valid(app_icon_shadow[i]))
                     lv_obj_add_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
                 if (touch_obj[i] != NULL && lv_obj_is_valid(touch_obj[i]))
                     lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
@@ -1156,7 +1173,8 @@ void open_selected_widget(bool need_widget_img_anima)
                 animate_icon_vertical(app_icon[selected_item_index - 1], true);
             if (app_label[selected_item_index - 1] != NULL &&
                 lv_obj_is_valid(app_label[selected_item_index - 1]))
-                animate_label_vertical(app_label[selected_item_index - 1], true);
+                animate_label_vertical(app_label[selected_item_index - 1],
+                                       true);
         }
         if (selected_item_index != list_item_count - 1)
         {
@@ -1165,7 +1183,8 @@ void open_selected_widget(bool need_widget_img_anima)
                 animate_icon_vertical(app_icon[selected_item_index + 1], false);
             if (app_label[selected_item_index + 1] != NULL &&
                 lv_obj_is_valid(app_label[selected_item_index + 1]))
-                animate_label_vertical(app_label[selected_item_index + 1], false);
+                animate_label_vertical(app_label[selected_item_index + 1],
+                                       false);
         }
     }
     else
@@ -1199,14 +1218,14 @@ void open_selected_widget(bool need_widget_img_anima)
             if (app_icon[selected_item_index + 1] != NULL &&
                 lv_obj_is_valid(app_icon[selected_item_index + 1]))
             {
-                lv_obj_align(app_icon[selected_item_index + 1], LV_ALIGN_RIGHT_MID,
-                             -20, 30);
+                lv_obj_align(app_icon[selected_item_index + 1],
+                             LV_ALIGN_RIGHT_MID, -20, 30);
             }
             if (app_label[selected_item_index + 1] != NULL &&
                 lv_obj_is_valid(app_label[selected_item_index + 1]))
             {
-                lv_obj_align(app_label[selected_item_index + 1], LV_ALIGN_CENTER,
-                             -30, 30);
+                lv_obj_align(app_label[selected_item_index + 1],
+                             LV_ALIGN_CENTER, -30, 30);
             }
         }
     }
@@ -1341,7 +1360,8 @@ void instruction_ai_show_skai_widget(void)
     if (skai_widget_shown)
         return;
     skai_widget_shown = true;
-    /* Phase 2: text arrived — show gaus bg, send icon, raise bg, fade skai_widget in */
+    /* Phase 2: text arrived — show gaus bg, send icon, raise bg, fade
+     * skai_widget in */
     if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
     {
         lv_obj_clear_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
@@ -1378,8 +1398,9 @@ void animate_open_ai_widget(void)
     /* Show ai_page instantly (no slide from left).
        Call tap_on_ai_widget() BEFORE set_tile_id: the tile change fires
        SCROLL_END → VALUE_CHANGED synchronously with LV_ANIM_OFF, and the
-       ai_tileview_event_cb would otherwise see is_open_instruction_list_ai==false
-       and run the drag-open branch, wrongly setting ai_widget_opened_by_drag. */
+       ai_tileview_event_cb would otherwise see
+       is_open_instruction_list_ai==false and run the drag-open branch, wrongly
+       setting ai_widget_opened_by_drag. */
     lv_obj_clear_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                       LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(p_instruction_list_layout->p_instruction_list_ai_bg);
@@ -1657,7 +1678,8 @@ static void list_item_click_event_cb(lv_event_t *evt)
 
     if (item->is_instruction)
     {
-        LOG_I("Custom instruction tapped: id=%s, title=%s", item->id, item->title);
+        LOG_I("Custom instruction tapped: id=%s, title=%s", item->id,
+              item->title);
         if (is_open_instruction_list_ai)
         {
             if (!isTextEmpty())
@@ -1684,10 +1706,12 @@ static void list_item_click_event_cb(lv_event_t *evt)
             instruction_tap_cb(item->id, item->enabled);
         }
     }
+#ifdef APP_ID_SKAI
     else if (strcmp(item->id, APP_ID_SKAI) == 0)
     {
         tap_on_ai_hint();
     }
+#endif
     else
     {
         on_item_tap(item);
@@ -2089,8 +2113,8 @@ static void ai_tileview_event_cb(lv_event_t *evt)
         uint8_t calculated_opa =
             (ai_scroll_x > ai_bg_opa) ? ai_bg_opa : ai_scroll_x;
         lv_obj_set_style_bg_opa(
-            p_instruction_list_layout->p_instruction_list_ai_bg,
-            calculated_opa, 0);
+            p_instruction_list_layout->p_instruction_list_ai_bg, calculated_opa,
+            0);
         break;
     }
     case LV_EVENT_VALUE_CHANGED:
@@ -2128,18 +2152,20 @@ static void ai_tileview_event_cb(lv_event_t *evt)
             {
                 set_ai_open_mic(true);
                 tap_on_ai_widget();
-                /* Drag-opened: jump straight to Phase 2 (widget visible, dark bg)
-                   without the fade-in animation — the drag itself already provides
-                   the reveal motion. */
+                /* Drag-opened: jump straight to Phase 2 (widget visible, dark
+                   bg) without the fade-in animation — the drag itself already
+                   provides the reveal motion. */
                 ai_widget_opened_by_drag = true;
                 skai_widget_shown = true;
                 if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
                 {
                     lv_obj_clear_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
                 }
-                // if (ai_voice_send_icon && lv_obj_is_valid(ai_voice_send_icon))
+                // if (ai_voice_send_icon &&
+                // lv_obj_is_valid(ai_voice_send_icon))
                 // {
-                //     lv_obj_clear_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
+                //     lv_obj_clear_flag(ai_voice_send_icon,
+                //     LV_OBJ_FLAG_HIDDEN);
                 // }
                 lv_obj_set_style_bg_opa(
                     p_instruction_list_layout->p_instruction_list_ai_bg,
@@ -2237,16 +2263,15 @@ void remove_custom_instruction(const char *id)
 
 void add_or_update_custom_instruction(const char *id, const char *title,
                                       const char *trigger_type,
-                                      uint32_t interval_sec,
-                                      bool enabled, uint32_t version)
+                                      uint32_t interval_sec, bool enabled,
+                                      uint32_t version)
 {
     bool is_interval = (trigger_type && strcmp(trigger_type, "interval") == 0);
     int idx = find_instruction_by_id(id);
     if (idx >= 0)
     {
         /* 已存在 — 更新標題、參數和開關狀態 */
-        strncpy(list_items[idx].title, title,
-                LIST_ITEM_TITLE_LEN - 1);
+        strncpy(list_items[idx].title, title, LIST_ITEM_TITLE_LEN - 1);
         list_items[idx].title[LIST_ITEM_TITLE_LEN - 1] = '\0';
         list_items[idx].is_interval = is_interval;
         list_items[idx].interval_sec = interval_sec;
@@ -2286,7 +2311,8 @@ void add_or_update_custom_instruction(const char *id, const char *title,
 }
 
 /* Helper: create list item UI objects for items in [start_idx, end_idx) */
-static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx, uint8_t end_idx)
+static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
+                                 uint8_t end_idx)
 {
     for (uint8_t i = start_idx; i < end_idx; i++)
     {
@@ -2315,16 +2341,17 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx, uint8_t end_
 #ifdef APP_ID_NOTE_CHATROOM
                 if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_note)
                 {
-                    lv_obj_set_pos(item, 0,
-                                   (LIST_ITEM_WIDGET_HEIGHT + LIST_ITEM_SPACING) * i +
-                                       (130 + LIST_ITEM_SPACING));
+                    lv_obj_set_pos(
+                        item, 0,
+                        (LIST_ITEM_WIDGET_HEIGHT + LIST_ITEM_SPACING) * i +
+                            (130 + LIST_ITEM_SPACING));
                     extern lv_obj_t *lv_note_widget_builder(lv_obj_t * parent);
                     widget = lv_note_widget_builder(item);
                     has_widget = true;
                 }
                 else
 #endif
-                if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai)
+                    if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai)
                 {
                     extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
                     widget = lv_skai_widget_builder(item);
@@ -2349,12 +2376,12 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx, uint8_t end_
             if (i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION) &&
                 INSTRUCTION_LIST_ITEMS_DEFINITION[i] != app_id_ai)
             {
-                lv_obj_set_style_border_color(widget, lv_color_hex(0xFFFFFF), 0);
+                lv_obj_set_style_border_color(widget, lv_color_hex(0xFFFFFF),
+                                              0);
                 lv_obj_set_style_border_width(widget, 2, 0);
                 lv_obj_set_style_border_opa(widget, LV_OPA_20, 0);
                 lv_obj_add_event_cb(widget, list_item_click_event_cb,
-                                    LV_EVENT_CLICKED,
-                                    (void *)&list_items[i]);
+                                    LV_EVENT_CLICKED, (void *)&list_items[i]);
             }
         }
 
@@ -2366,8 +2393,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx, uint8_t end_
         lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_CLICKABLE);
         lv_obj_align(touch_obj[i], LV_ALIGN_CENTER, 0, 0);
         lv_obj_add_event_cb(touch_obj[i], list_item_click_event_cb,
-                            LV_EVENT_CLICKED,
-                            (void *)&list_items[i]);
+                            LV_EVENT_CLICKED, (void *)&list_items[i]);
 
         app_widget[i] = widget;
         list_items[i].widget = widget;
@@ -2388,8 +2414,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx, uint8_t end_
                      LV_ALIGN_RIGHT_MID, -25, 0);
         app_icon[i] = p_instruction_list_layout->p_app_indicator_btn[i];
         lv_obj_add_event_cb(app_icon[i], list_item_click_event_cb,
-                            LV_EVENT_CLICKED,
-                            (void *)&list_items[i]);
+                            LV_EVENT_CLICKED, (void *)&list_items[i]);
         lv_obj_add_flag(app_icon[i], LV_OBJ_FLAG_HIDDEN);
         if (list_items[i].icon == NULL && list_items[i].img_path[0] == '\0')
         {
@@ -2403,7 +2428,8 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx, uint8_t end_
                                    LV_EXT_FONT_GET(get_system_font_size(1)), 0);
         lv_obj_set_style_text_color(app_label[i], lv_color_hex(0xFFFFFF), 0);
 
-        /* For instructions with interval, create switch and position label left */
+        /* For instructions with interval, create switch and position label left
+         */
         if (list_items[i].is_instruction && list_items[i].is_interval)
         {
             lv_obj_align(app_label[i], LV_ALIGN_LEFT_MID, 30, 0);
@@ -2457,7 +2483,8 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx, uint8_t end_
         }
 
         LOG_D("List item %d: id=%s, title=%s, is_instruction=%d", i,
-              list_items[i].id, list_items[i].title, list_items[i].is_instruction);
+              list_items[i].id, list_items[i].title,
+              list_items[i].is_instruction);
     }
 }
 
@@ -2472,7 +2499,8 @@ void refresh_custom_instructions(void)
     /* Debounce: skip if called again within 500ms */
     static rt_tick_t last_refresh_tick = 0;
     rt_tick_t now = rt_tick_get();
-    if (last_refresh_tick != 0 && (now - last_refresh_tick) < rt_tick_from_millisecond(500))
+    if (last_refresh_tick != 0 &&
+        (now - last_refresh_tick) < rt_tick_from_millisecond(500))
     {
         LOG_I("refresh_custom_instructions: skipped (debounce)");
         return;
@@ -2554,7 +2582,8 @@ void refresh_custom_instructions(void)
         scroll_list(list, 0);
     }
 
-    /* Recalculate input_value for indicator dots based on current selected_item_index */
+    /* Recalculate input_value for indicator dots based on current
+     * selected_item_index */
     if (list_item_count > 0)
     {
         float total_range = 100.0f * list_item_count;
@@ -2586,11 +2615,12 @@ void update_instruction_image(const char *id, const char *path)
         *dash = '\0';
 
     char img_path[128];
-    rt_snprintf(img_path, sizeof(img_path),
-                "/assets/images/instruction/%s.bin", id_prefix);
+    rt_snprintf(img_path, sizeof(img_path), "/assets/images/instruction/%s.bin",
+                id_prefix);
 
     lv_img_cache_invalidate_src(list_items[idx].img_path);
-    strncpy(list_items[idx].img_path, img_path, sizeof(list_items[idx].img_path) - 1);
+    strncpy(list_items[idx].img_path, img_path,
+            sizeof(list_items[idx].img_path) - 1);
     list_items[idx].img_path[sizeof(list_items[idx].img_path) - 1] = '\0';
 
     /* Update the indicator dot directly if UI exists */
@@ -2605,7 +2635,6 @@ void update_instruction_image(const char *id, const char *path)
                           LV_OBJ_FLAG_HIDDEN);
         LOG_I("Updated instructionwith new image %s", img_path);
     }
-
 }
 
 static lv_obj_t *ai_tileview = NULL;
@@ -2643,7 +2672,8 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 
     load_instruction_list();
 
-    /* Create vertical tileview: tile(0,0)=instruction list, tile(0,1)=app grid */
+    /* Create vertical tileview: tile(0,0)=instruction list, tile(0,1)=app grid
+     */
     lv_obj_t *main_tileview = lv_tileview_create(parent);
     p_instruction_list_layout->app_list_tileview = main_tileview;
     lv_obj_set_size(main_tileview, LV_HOR_RES, LV_VER_RES);
@@ -2651,10 +2681,12 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_set_scrollbar_mode(main_tileview, LV_SCROLLBAR_MODE_OFF);
     lv_obj_align(main_tileview, LV_ALIGN_CENTER, 0, 0);
 
-    lv_obj_t *instr_tile = lv_tileview_add_tile(main_tileview, 0, 0, LV_DIR_BOTTOM);
+    lv_obj_t *instr_tile =
+        lv_tileview_add_tile(main_tileview, 0, 0, LV_DIR_BOTTOM);
     lv_obj_set_style_bg_opa(instr_tile, LV_OPA_0, 0);
 
-    lv_obj_t *app_grid_tile = lv_tileview_add_tile(main_tileview, 0, 1, LV_DIR_TOP);
+    lv_obj_t *app_grid_tile =
+        lv_tileview_add_tile(main_tileview, 0, 1, LV_DIR_TOP);
     lv_obj_set_style_bg_color(app_grid_tile, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(app_grid_tile, LV_OPA_COVER, 0);
     p_instruction_list_layout->app_list_tile = app_grid_tile;
@@ -2662,7 +2694,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_set_tile_id(main_tileview, 0, 0, LV_ANIM_OFF);
 
     /* Build app grid in tile 1 */
-    extern lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent);
+    extern lv_obj_t *lv_app_list_layout_create(lv_obj_t * parent);
     lv_app_list_layout_create(app_grid_tile);
 
     lv_obj_t *p_instruction_list_bg = lv_obj_create(instr_tile);
@@ -2711,7 +2743,8 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
         // lv_obj_t *arrow_label = lv_label_create(app_list_btn);
         // lv_label_set_text(arrow_label, "Apps list");
         // lv_obj_set_style_text_color(arrow_label, lv_color_hex(0xCCCCCC), 0);
-        // lv_obj_set_style_text_font(arrow_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+        // lv_obj_set_style_text_font(arrow_label,
+        // LV_EXT_FONT_GET(get_system_font_size(0)), 0);
         // lv_obj_center(arrow_label);
 
         lv_obj_t *arrow_img = lv_img_create(app_list_btn);
@@ -2744,8 +2777,8 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_set_size(home_page, LV_HOR_RES, LV_VER_RES);
     // lv_obj_set_style_bg_color(home_page, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_bg_opa(home_page, LV_OPA_0, 0);
-    lv_obj_add_event_cb(home_page,
-                        home_tileview_event_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(home_page, home_tileview_event_cb, LV_EVENT_RELEASED,
+                        NULL);
     lv_obj_t *ai_page = lv_tileview_add_tile(
         p_instruction_list_layout->p_instruction_list_ai_bg, 0, 0, LV_DIR_HOR);
     lv_obj_set_size(ai_page, LV_HOR_RES, LV_VER_RES);
@@ -3066,9 +3099,6 @@ rt_int32_t instruction_list_resume(void)
 #ifdef USE_QUICK_OPEN_AI
     open_vibration = true;
 #endif
-    request_weather_within_six_hours(false);
-    request_calendar_on_mobile(false);
-    // watch_sys_sync.request_pedometer_data();
     // lvgl_msg_handler.handle_widgets_control = button_selection;
     return RT_EOK;
 }

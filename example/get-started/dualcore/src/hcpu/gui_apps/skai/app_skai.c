@@ -74,7 +74,7 @@
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-#ifdef APP_ID_SKAI
+
 typedef struct
 {
     lv_obj_t *bg;
@@ -853,6 +853,7 @@ rt_int32_t speech_on_pause(void)
     return RT_EOK;
 }
 
+#ifdef APP_ID_SKAI
 static bool last = false;
 static void refresh_list(lv_obj_t *list, uint8_t new_item_count,
                          bool wait_for_ai)
@@ -1202,6 +1203,7 @@ static void main_speech_event_callback(lv_event_t *event)
         LOG_D("main_speech_event_callback");
     }
 }
+
 static lv_obj_t *lbl_content;
 static void app_speech_main_init(lv_obj_t *parent)
 {
@@ -1344,20 +1346,6 @@ static int app_main(intent_t i)
 }
 
 BUILTIN_APP_EXPORT(LV_EXT_STR_ID(skai_ai), IMG_LOGO, APP_ID_SKAI, app_main);
-
-lv_obj_t *open_skai_app(lv_obj_t *parent)
-{
-    // on_start(parent);
-    // on_resume();
-    gui_app_create_page(APP_ID_SKAI, msg_handler);
-    return parent;
-}
-
-void close_skai_app(void)
-{
-    on_pause();
-    on_stop();
-}
 
 static void display_chat_history(lv_obj_t *list)
 {

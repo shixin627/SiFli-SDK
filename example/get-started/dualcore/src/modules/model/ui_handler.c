@@ -840,13 +840,6 @@ extern void gaussian_blur(lv_img_dsc_t img_desc, lv_obj_t *parent_obj);
         }
         break;
 
-    case LVGL_MSG_TYPE_REFRESH_ACTIVITY_WIDGET:
-    {
-        extern void refresh_activity_widget(void);
-        refresh_activity_widget();
-    }
-    break;
-
     case LVGL_MSG_TYPE_TRIGGER_ACTIVITY:
     {
         trigger_activity();

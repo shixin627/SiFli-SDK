@@ -27,16 +27,15 @@ extern "C"
 #define APP_ID_SETTING "setting"
 #define APP_ID_SPEECH "speech"
 #define APP_ID_WEATHER "weather"
-#define APP_ID_ALARM "alarm"
-#define APP_ID_GESTURE "gesture"
-#define APP_ID_IOT_GATE "iot_gate"
-#define APP_ID_SKAI "skai_ai"
 #define APP_ID_PHOTO "photo"
 #define APP_ID_MEDIA "media"
 #define APP_ID_GAME_DINOSAUR "game_dinosaur"
-#define APP_ID_ACTIVITY "activity"
 #define APP_ID_FILE_BROWSER "file_browser"
 #define APP_ID_INCOMING_CALL "incoming_call"
+#define APP_ID_ALARM "alarm"
+#define APP_ID_GESTURE "gesture"
+// #define APP_ID_SKAI "skai_ai"
+// #define APP_ID_ACTIVITY "activity"
 // #define APP_ID_NOTE_CHATROOM "note_chatroom"
 // #define APP_ID_CALENDAR "calendar"
 // #define JS_APP_QRCODE "JA_app1"
@@ -47,6 +46,7 @@ extern "C"
 // #define APP_ID_WIDGETS "widgets"
 // #define APP_ID_TOUCHSCREEN "touchscreen"
 // #define APP_ID_TOUCHPAD "touchpad"
+// #define APP_ID_IOT_GATE "iot_gate"
 
     typedef enum
     {
@@ -192,8 +192,6 @@ extern "C"
         LVGL_MSG_TYPE_TOAST,
         // motion control
         LVGL_MSG_TYPE_GRAVITY_INDICATOR,
-        // --- refresh activity widget ---
-        LVGL_MSG_TYPE_REFRESH_ACTIVITY_WIDGET,
         // --- refresh trigger activity ---
         LVGL_MSG_TYPE_TRIGGER_ACTIVITY,
         /****LVGL_MSG_AI****/
