@@ -278,10 +278,12 @@ char *get_media_artist(void)
 }
 extern void handle_media_widget_title(char *media_title_text);
 extern void handle_media_title(char *media_title_text);
+extern void handle_dial_header_media_title(char *media_title_text);
 static void notify_media_title(void)
 {
 	handle_media_title(get_media_title());
 	handle_media_widget_title(get_media_title());
+	handle_dial_header_media_title(get_media_title());
 // #ifdef BSP_USING_UI_HANDLER
 // 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_TITLE,
 // 					  .data.media_data.title = get_media_title()};

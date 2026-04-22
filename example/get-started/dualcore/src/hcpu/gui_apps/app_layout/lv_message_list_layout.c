@@ -2272,13 +2272,12 @@ static void dial_header_show_notification(void)
     lv_obj_add_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
 }
 
-static void handle_dial_header_media_title(void *param)
+void handle_dial_header_media_title(char *media_title_text)
 {
     if (!lv_obj_is_valid(dial_header_title) ||
         !lv_obj_is_valid(dial_header_content) ||
         !lv_obj_is_valid(dial_header_bg))
         return;
-    char *media_title_text = (char *)param;
     if (media_title_text && media_title_text[0] != '\0')
     {
         dial_header_music_active = true;
@@ -2604,8 +2603,6 @@ static void handle_dial_header_media_play_state(void *param)
 
 void dial_media_header_init(void)
 {
-    lvgl_msg_handler.handle_dial_media_header_title =
-        handle_dial_header_media_title;
     lvgl_msg_handler.handle_dial_media_header_img =
         handle_dial_header_media_img;
     lvgl_msg_handler.handle_dial_header_new_notification =
@@ -2623,9 +2620,6 @@ void dial_media_header_deinit(void)
     }
     // dial_header_music_pause_timer_stop();
     dial_header_music_hidden_by_pause = false;
-    if (lvgl_msg_handler.handle_dial_media_header_title ==
-        handle_dial_header_media_title)
-        lvgl_msg_handler.handle_dial_media_header_title = NULL;
     if (lvgl_msg_handler.handle_dial_media_header_img ==
         handle_dial_header_media_img)
         lvgl_msg_handler.handle_dial_media_header_img = NULL;
