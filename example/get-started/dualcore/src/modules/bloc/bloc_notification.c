@@ -55,9 +55,6 @@
 #include "bloc_peripheral.h"
 #include "gui_app_fwk.h"
 
-extern void incoming_call_set_caller(const char *title, const char *id, uint8_t type);
-extern void incoming_call_close_if_active(const char *id);
-
 /* Communication modules */
 #include "communicate_protocol.h"
 
@@ -85,9 +82,13 @@ extern void incoming_call_close_if_active(const char *id);
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-#define STORE_BUFFER_SIZE 4096
+#define CHARGE_INTERACT_ENABLE 1
 
-char temp_send_json_string[512];
+extern void incoming_call_set_caller(const char *title, const char *id,
+                                     uint8_t type);
+extern void incoming_call_close_if_active(const char *id);
+
+static char temp_send_json_string[512];
 
 static char temp_speech_text[512];
 
@@ -195,13 +196,14 @@ static void update_notification(notification_t newNotification)
 {
     // Dedup: if a notification with the same ID already exists, remove it first
     // so re-synced notifications don't create duplicates.
-    // For Notify_Skaiwalk category, also dedup by type to keep only the latest one.
+    // For Notify_Skaiwalk category, also dedup by type to keep only the latest
+    // one.
     bool dup = false;
     for (int i = notification_items_amount - 1; i >= 0; i--)
     {
         dup = (strcmp(_notification_list[i].id, newNotification.id) == 0);
-        if (!dup && newNotification.type == Notify_Skaiwalk
-            && _notification_list[i].type == Notify_Skaiwalk)
+        if (!dup && newNotification.type == Notify_Skaiwalk &&
+            _notification_list[i].type == Notify_Skaiwalk)
         {
             dup = true;
         }
@@ -539,7 +541,8 @@ void interact_with_notification(notification_t *notification)
     {
         update_notification(*notification);
     }
-    if (myLancher[app_index_instruction_list].reset_list != NULL && !is_at_instruction_list())
+    if (myLancher[app_index_instruction_list].reset_list != NULL &&
+        !is_at_instruction_list())
     {
         myLancher[app_index_instruction_list].reset_list();
     }
@@ -560,7 +563,8 @@ void interact_with_notification(notification_t *notification)
     if (notification->calling)
     {
         motor_pattern_calling();
-        incoming_call_set_caller(notification->title, notification->id, notification->type);
+        incoming_call_set_caller(notification->title, notification->id,
+                                 notification->type);
         gui_app_run(APP_ID_INCOMING_CALL);
     }
     need_wakeup = false;
@@ -586,7 +590,8 @@ void trigger_incoming_call_ui(notification_t *notification)
     }
 
     motor_pattern_calling();
-    incoming_call_set_caller(notification->title, notification->id, notification->type);
+    incoming_call_set_caller(notification->title, notification->id,
+                             notification->type);
     gui_app_run(APP_ID_INCOMING_CALL);
     need_wakeup = false;
 }
@@ -824,39 +829,6 @@ void handle_user_speech_intent(uint8_t intent, char *message)
     }
 }
 
-void store_notifications_before_sw_shutdown(void)
-{
-    SkaiWatchSys.notification_number = notification_items_amount;
-    uint8_t prev_bp_lv = 0;
-    uint16_t len = SkaiWatchSys.notification_number * sizeof(notification_t);
-    uint8_t buffer[STORE_BUFFER_SIZE];
-    for (int i = 0; i < SkaiWatchSys.notification_number; i++)
-    {
-        uint8_t *ptr = buffer + i * sizeof(notification_t);
-        memcpy(ptr, &_notification_list[i], sizeof(notification_t));
-    }
-    // TODO: write to flash
-}
-
-void get_notifications_after_sw_reboot(void)
-{
-    // TODO: check reboot reason
-    // if (reboot_reason != 0xF0 && reboot_reason != 0xAB)
-    // {
-    // 	return;
-    // }
-    uint16_t len = SkaiWatchSys.notification_number * sizeof(notification_t);
-    uint8_t buffer[STORE_BUFFER_SIZE];
-    uint32_t data = 0;
-
-    // TODO: read from flash
-    for (int i = 0; i < SkaiWatchSys.notification_number; i++)
-    {
-        uint8_t *ptr = buffer + i * sizeof(notification_t);
-        memcpy(&_notification_list[i], ptr, sizeof(notification_t));
-    }
-}
-
 #ifdef BSP_USING_UI_HANDLER
 static void bloc_notify_accelerometer(float x, float y, float z)
 {
@@ -915,7 +887,6 @@ static void bloc_notify_hr(int hr)
 
 static void bloc_notify_battery_voltage(uint16_t voltage)
 {
-    LOG_D("bloc_notify_battery_voltage:%d", voltage);
     lvgl_msg_t msg;
     msg.type = LVGL_MSG_TYPE_BATTERY_VOLTAGE;
     msg.data.battery_voltage = voltage;
@@ -929,14 +900,13 @@ static void bloc_notify_battery_voltage(uint16_t voltage)
 
 static void bloc_notify_battery_level(uint8_t level)
 {
-    LOG_D("bloc_notify_battery_level:%d", level);
+    extern void refersh_battery(uint8_t battery_level);
+    refersh_battery(level);
+
     lvgl_msg_t msg;
     msg.type = LVGL_MSG_TYPE_BATTERY_LEVEL;
     msg.data.battery_level = level;
     lvgl_send_msg(msg);
-    // extern void refersh_battery(uint8_t battery_level);
-    // refersh_battery(level);
-    
 
     L1SendData data;
     data.event = L1SEND_RETURN_BATTERY_LEVEL;
@@ -944,50 +914,36 @@ static void bloc_notify_battery_level(uint8_t level)
     L1_send_event(data);
 }
 
-#define CHARGE_INTERACT_ENABLE 0
 // 跳出充電狀頁面
 static void bloc_notify_charge_status(uint8_t status)
 {
-    LOG_D("bloc_notify_charge_status:%d", status);
-#if CHARGE_INTERACT_ENABLE
-    if (status > NoCharge)
-    {
-    #if (CUSTOMER_BOARD_VER != BOARD_VER_13)
-        if (!is_at_mouse_mode() &&
-            !is_user_touching_screen()) //! is_at_instruction_list() ||  ||
-                                        //! !is_at_control_center()
-    #else
-        if ((!is_at_mouse_mode() || !is_at_control_center() ||
-             !is_at_instruction_list()) &&
-            !is_user_touching_screen()) //
-    #endif
-        {
-            uint8_t led_brightness = 20;
-			if (status == InCharging)
-			{
-				watch_system_interact(INTERACT_RGB_LED_BREATHING_GREEN, &led_brightness);
-			}
-			else if (status == ChargingComplete)
-			{
-				watch_system_interact(INTERACT_RGB_LED_OPEN_GREEN, &led_brightness);
-			}
-        }
-    }
-    else
-    {
-		watch_system_interact(INTERACT_RGB_LED_CLOSE, NULL);
-        // watch_exit_app(APP_ID_BATTERY);
-    }
-#endif
-    
-    lvgl_msg_t msg;
-    msg.type = LVGL_MSG_TYPE_CHARGE_STATUS;
-    msg.data.charge_status = status;
-    lvgl_send_msg(msg);
-
+    refresh_charge_icon();
     L1SendData data;
     data.event = L1SEND_RETURN_CHARGE_STATUS;
     L1_send_event(data);
+
+    #if CHARGE_INTERACT_ENABLE
+    if (status > NoCharge)
+    {
+        // uint8_t led_brightness = 20;
+        // if (status == InCharging)
+        // {
+        //     watch_system_interact(INTERACT_RGB_LED_BREATHING_GREEN,
+        //                           &led_brightness);
+        // }
+        // else if (status == ChargingComplete)
+        // {
+        //     watch_system_interact(INTERACT_RGB_LED_OPEN_GREEN,
+        //     &led_brightness);
+        // }
+        gui_app_run(APP_ID_BATTERY);
+    }
+    else
+    {
+        // watch_system_interact(INTERACT_RGB_LED_CLOSE, NULL);
+        watch_exit_app(APP_ID_BATTERY);
+    }
+    #endif
 }
 
 // static rt_timer_t notification_timer = RT_NULL;
@@ -999,26 +955,6 @@ static void send_refresh_notification_cmd(void)
     msg.data.notification = NULL; // get_cur_notification();
     lvgl_send_msg(msg);
 }
-
-// static void notification_timer_callback(void *parameter)
-// {
-// 	send_refresh_notification_cmd();
-// }
-
-// // 通知頁面刷新
-// static void bloc_notify_notification(void)
-// {
-// 	if (!notification_timer)
-// 	{
-// 		notification_timer = rt_timer_create("notification_timer",
-// notification_timer_callback, NULL, 500, RT_TIMER_FLAG_ONE_SHOT);
-// 	}
-// 	else
-// 	{
-// 		rt_timer_stop(notification_timer);
-// 	}
-// 	rt_timer_start(notification_timer);
-// }
 
 // 導航至回覆通知頁面
 static void bloc_notification_navigate_to_reply(notification_t *notification)

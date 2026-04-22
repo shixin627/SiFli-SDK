@@ -54,7 +54,6 @@ extern "C"
 		uint16_t str_content_buffer[32];
 	} notification_ui_t;
 
-	extern char temp_send_json_string[512];
 	extern char replying_notification_id[NOTIFICATION_ID_LEN];
 	extern void init_notification_items(void);
 	extern uint32_t notification_center_get_info_count(void);

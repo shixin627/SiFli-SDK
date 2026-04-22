@@ -28,8 +28,14 @@
 #include "data_service_subscriber.h"
 #include "watch_system_core_task.h"
 #include "watch_system_interact.h"
-#include "rgb_control_panel.h"
 #include "bloc_peripheral.h"
+
+/* Set to 1 to enable the RGB control panel, 0 to disable */
+#define USE_RGB_CONTROL_PANEL 0
+
+#if USE_RGB_CONTROL_PANEL
+    #include "rgb_control_panel.h"
+#endif
 #ifdef BSP_USING_UI_HANDLER
     #include "ui_handler.h"
     #include "ui_img_helper.h"
@@ -47,22 +53,22 @@ typedef struct
 {
     lv_obj_t *main_window;
     datac_handle_t pwr_srv_hdl;
+    #if USE_RGB_CONTROL_PANEL
     rgb_led_state_t *rgb_state;
+    #endif
 } app_flashlight_t;
 
 /* Forward declarations */
 static void toggle_flashlight_btn_event_cb(lv_event_t *e);
 static void tap_change_flashlight_state(void);
-static void flashlight_switch_cb(lv_event_t *e);
 static int powermgr_srv_callback(data_callback_arg_t *arg);
 static void set_amoled_brightness(uint8_t brightness);
+    #if USE_RGB_CONTROL_PANEL
 static void rgb_btn_event_cb(lv_event_t *e);
+    #endif
 
 /* Global variables */
 static app_flashlight_t *p_app_flashlight = NULL;
-static lv_obj_t *flashlight_switch;
-static bool widget_flashlight_on = false;
-
 /**
  * @brief Creates the flashlight screen
  *
@@ -98,6 +104,7 @@ lv_obj_t *create_flashlight_screen(lv_obj_t *scr)
     lv_img_set_src(image_flashlight, LV_EXT_IMG_GET(BTN_FLASHLIGHT));
     lv_obj_center(image_flashlight);
 
+    #if USE_RGB_CONTROL_PANEL
     /* Create RGB LED control button */
     lv_obj_t *rgb_btn = lv_btn_create(bg);
     lv_obj_set_size(rgb_btn, 120, 50);
@@ -111,6 +118,7 @@ lv_obj_t *create_flashlight_screen(lv_obj_t *scr)
     lv_label_set_text(rgb_label, "RGB LED");
     lv_obj_set_style_text_color(rgb_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(rgb_label);
+    #endif
 
     return bg;
 }
@@ -122,34 +130,7 @@ static void handle_gesture_event(uint8_t type)
 {
     if (type == 1)
     {
-        // send_virtual_gesture_event(GESTURE_EVENT_FORCE_RELEASE);
-
-        if (lv_obj_is_valid(flashlight_switch))
-        {
-            lv_obj_clear_state(flashlight_switch, LV_STATE_CHECKED);
-        }
-
         gui_app_exit(APP_ID_FLASHLIGHT);
-    }
-}
-
-/**
- * @brief Changes the flashlight switch state
- *
- * @param state The state to set (true = on, false = off)
- */
-void change_flashlight_switch(bool state)
-{
-    if (lv_obj_is_valid(flashlight_switch))
-    {
-        if (state)
-        {
-            lv_obj_add_state(flashlight_switch, LV_STATE_CHECKED);
-        }
-        else
-        {
-            lv_obj_clear_state(flashlight_switch, LV_STATE_CHECKED);
-        }
     }
 }
 
@@ -183,72 +164,11 @@ static lv_obj_t *flashlight_on_widget(lv_obj_t *parent)
 }
 
 /**
- * @brief Turns off the flashlight
- */
-void turn_off_flashlight(void)
-{
-    if (lv_obj_is_valid(flashlight_switch))
-    {
-        lv_obj_clear_state(flashlight_switch, LV_STATE_CHECKED);
-        widget_flashlight_on = false;
-    }
-}
-
-/**
  * @brief Changes flashlight state and opens app on tap
  */
 static void tap_change_flashlight_state(void)
 {
-    LOG_D("tap_change_flashlight_state");
-    // if (lv_obj_is_valid(flashlight_switch))
-    // {
-    //     lv_obj_add_state(flashlight_switch, LV_STATE_CHECKED);
-    // }
     gui_app_run(APP_ID_FLASHLIGHT);
-}
-
-/**
- * @brief Flashlight switch event callback
- */
-static void flashlight_switch_cb(lv_event_t *e)
-{
-    lv_event_code_t event = lv_event_get_code(e);
-
-    if (LV_EVENT_VALUE_CHANGED == event)
-    {
-        if (lv_obj_has_state(flashlight_switch, LV_STATE_CHECKED))
-        {
-            LOG_D("flashlight_switch_cb");
-            change_flashlight_switch(true);
-            lvgl_msg_t msg;
-            msg.type = LVGL_MSG_TYPE_SWITCH_FLASHLIGHT;
-            lvgl_send_msg(msg);
-            widget_flashlight_on = true;
-        }
-        else
-        {
-            widget_flashlight_on = false;
-        }
-    }
-}
-
-/**
- * @brief Creates the flashlight widget
- *
- * @param parent Parent object
- * @return lv_obj_t* Created widget
- */
-lv_obj_t *lv_flashlight_widget_builder(lv_obj_t *parent)
-{
-    lv_obj_t *widget = common_widget_container(parent);
-    lv_obj_set_style_bg_opa(widget, LV_OPA_0, 0);
-    flashlight_switch = lv_switch_create(widget);
-    lv_obj_align(flashlight_switch, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_event_cb(flashlight_switch, flashlight_switch_cb,
-                        LV_EVENT_VALUE_CHANGED, NULL);
-    lvgl_msg_handler.handle_switch_flashlight = tap_change_flashlight_state;
-
-    return widget;
 }
 
 /**
@@ -315,6 +235,7 @@ static void set_amoled_brightness(uint8_t brightness)
     }
 }
 
+    #if USE_RGB_CONTROL_PANEL
 /**
  * @brief RGB button event callback
  */
@@ -330,6 +251,7 @@ static void rgb_btn_event_cb(lv_event_t *e)
         }
     }
 }
+    #endif
 
 /**
  * @brief Initialize the app on start
@@ -353,6 +275,7 @@ static lv_obj_t *on_start(lv_obj_t *scr)
     ui_datac_subscribe(p_app_flashlight->pwr_srv_hdl, "powermgr",
                        powermgr_srv_callback, 0);
 
+    #if USE_RGB_CONTROL_PANEL
     /* Initialize RGB LED state */
     p_app_flashlight->rgb_state =
         (rgb_led_state_t *)lv_mem_alloc(sizeof(rgb_led_state_t));
@@ -365,6 +288,7 @@ static lv_obj_t *on_start(lv_obj_t *scr)
     {
         LOG_E("Failed to allocate memory for RGB state");
     }
+    #endif
 
     cust_trans_anim_config(CUST_ANIM_TYPE_1, NULL);
     return p_app_flashlight->main_window;
@@ -375,8 +299,6 @@ static lv_obj_t *on_start(lv_obj_t *scr)
  */
 static void on_resume(void)
 {
-    uint8_t led_brightness = 100;
-    watch_system_interact(INTERACT_RGB_LED_OPEN_WRITE, &led_brightness);
     set_open_control_options(false);
     set_free_control_with_arm(false);
     reset_lvgl_msg_handler();
@@ -389,12 +311,13 @@ static void on_resume(void)
 static void on_pause(void)
 {
     setting_provider.set_power_save_mode(1);
-    watch_system_interact(INTERACT_RGB_LED_CLOSE, NULL);
+    #if USE_RGB_CONTROL_PANEL
     /* Close RGB control panel if open */
     if (is_rgb_panel_open())
     {
         close_rgb_control_panel();
     }
+    #endif
 }
 
 /**
@@ -404,6 +327,7 @@ static void on_stop(void)
 {
     if (p_app_flashlight)
     {
+    #if USE_RGB_CONTROL_PANEL
         /* Close RGB control panel if open */
         if (is_rgb_panel_open())
         {
@@ -417,6 +341,7 @@ static void on_stop(void)
             lv_mem_free(p_app_flashlight->rgb_state);
             p_app_flashlight->rgb_state = NULL;
         }
+    #endif
 
         if (DATA_CLIENT_INVALID_HANDLE != p_app_flashlight->pwr_srv_hdl)
         {
@@ -433,9 +358,6 @@ static void on_stop(void)
         lv_mem_free(p_app_flashlight);
         p_app_flashlight = NULL;
     }
-
-    change_flashlight_switch(false);
-    LOG_I("Flashlight app stopped and resources cleaned up");
 }
 
 /**

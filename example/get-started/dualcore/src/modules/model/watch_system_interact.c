@@ -1446,23 +1446,6 @@ static int utest_user_speech_intent(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(utest_user_speech_intent,
                "utest_user_speech_intent [OPTION] ...");
-
-/// 測試高斯模糊
-static int test_gaussian_blur(int argc, char *argv[])
-{
-    if (argc >= 2)
-    {
-        /// 創建高斯模糊
-        if (strcmp(argv[1], "-create") == 0)
-        {
-            lvgl_msg_t msg;
-            msg.type = LVGL_MSG_TYPE_GAUSSIAN_BLUR;
-            lvgl_send_msg(msg);
-        }
-    }
-    return 0;
-}
-MSH_CMD_EXPORT(test_gaussian_blur, "test_gaussian_blur");
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/

@@ -92,7 +92,8 @@
 extern const builtin_app_desc_t *gui_builtin_instruction_list_open(void);
 extern const builtin_app_desc_t *
 gui_builtin_instruction_list_get_next(const builtin_app_desc_t *ptr_app);
-extern void gui_builtin_instruction_list_close(const builtin_app_desc_t *ptr_app);
+extern void
+gui_builtin_instruction_list_close(const builtin_app_desc_t *ptr_app);
 
 enum
 {
@@ -238,7 +239,7 @@ void check_is_at_ai_interface(void)
             {
                 set_instruction_list_ai_tapped();
             }
-            
+
             set_free_control_with_arm(false);
         }
         else
@@ -324,7 +325,7 @@ void check_is_at_instruction_list(void)
     }
 }
 
-#if defined(APP_ID_NOTE_CHATROOM)
+    #if defined(APP_ID_NOTE_CHATROOM)
 static bool _at_note_list;
 
 bool is_at_note_list(void)
@@ -355,7 +356,7 @@ void check_is_at_note_list(void)
         LOG_I("is_at_note_list: %d", _at_note_list);
     }
 }
-#endif
+    #endif
 
 extern void ai_widget_start(void);
 static bool _at_speech_interface;
@@ -469,8 +470,10 @@ void check_is_at_message(void)
             set_scroll_segment_count(get_message_page_count());
             set_prev_sensor_quat(0);
             notification_on_resume();
-            /* Route motion-tracking scroll offset to message list indicator dots */
-            extern void set_message_list_arc_stripe_external_offset(int16_t offset_degrees);
+            /* Route motion-tracking scroll offset to message list indicator
+             * dots */
+            extern void set_message_list_arc_stripe_external_offset(
+                int16_t offset_degrees);
             lvgl_msg_handler.handle_set_arc_stripe_external_offset =
                 set_message_list_arc_stripe_external_offset;
             extern void refersh_weather_icon(void);
@@ -483,7 +486,8 @@ void check_is_at_message(void)
             set_media_control_threshold(3000);
             notification_on_pause();
             /* Stop routing motion-tracking offsets to message list dots */
-            extern void set_message_list_arc_stripe_external_offset(int16_t offset_degrees);
+            extern void set_message_list_arc_stripe_external_offset(
+                int16_t offset_degrees);
             if (lvgl_msg_handler.handle_set_arc_stripe_external_offset ==
                 set_message_list_arc_stripe_external_offset)
             {
@@ -548,9 +552,9 @@ void check_is_at_home(void)
     bool yes = gui_app_is_actived(APP_ID_MAIN) && !_at_instruction_list &&
                !_at_message && !_at_control_center && !_at_mouse_mode &&
                !_at_ai_interface &&
-#if defined(APP_ID_NOTE_CHATROOM)
+    #if defined(APP_ID_NOTE_CHATROOM)
                !_at_note_list &&
-#endif
+    #endif
                !_at_speech_interface;
     if (yes != _at_home)
     {
@@ -569,7 +573,8 @@ void check_is_at_home(void)
         }
         else
         {
-            if (!_at_mouse_mode && !_at_instruction_list && !gui_app_is_actived(APP_ID_MOUSE))
+            if (!_at_mouse_mode && !_at_instruction_list &&
+                !gui_app_is_actived(APP_ID_MOUSE))
             {
                 display_gesture_detect_objs(0, true);
             }
@@ -587,9 +592,9 @@ static void clear_check_flags(void)
     _at_home = false;
     _at_mouse_mode = false;
     _at_ai_interface = false;
-#if defined(APP_ID_NOTE_CHATROOM)
+    #if defined(APP_ID_NOTE_CHATROOM)
     _at_note_list = false;
-#endif
+    #endif
     _at_speech_interface = false;
 }
 
@@ -695,7 +700,8 @@ static void app_main_Clock_view_event_cb(lv_event_t *event)
             lvgl_msg_t msg;
             msg.type = LVGL_MSG_TYPE_TIME_TEXT;
             lvgl_send_msg(msg);
-            lv_obj_set_style_bg_opa(get_instruction_list_time_bg(), LV_OPA_0, 0);
+            lv_obj_set_style_bg_opa(get_instruction_list_time_bg(), LV_OPA_0,
+                                    0);
             set_instruction_list_time_opa(LV_OPA_0);
             LOG_D("app_index_clock");
             if (myLancher[app_index_instruction_list].reset_list != NULL)
@@ -787,7 +793,8 @@ void refreh_notification_bar_indicator(uint16_t count)
     // }
     // else
     // {
-    //     lv_obj_add_flag(app_mainmenu_ctx.message_indicator, LV_OBJ_FLAG_HIDDEN);
+    //     lv_obj_add_flag(app_mainmenu_ctx.message_indicator,
+    //     LV_OBJ_FLAG_HIDDEN);
     // }
 }
 
@@ -823,7 +830,8 @@ static void on_start(void)
     #ifdef BSP_USING_UI_HANDLER
     // lvgl_msg_handler.handle_clear_notification_bar_indicator =
     //     clear_notification_bar_indicator;
-    lvgl_msg_handler.handle_set_instruction_list_opa = handle_set_instruction_list_opa;
+    lvgl_msg_handler.handle_set_instruction_list_opa =
+        handle_set_instruction_list_opa;
     #endif
 }
 
@@ -841,7 +849,7 @@ static void on_resume(void)
     check_main_page();
     check_is_at_ai_interface();
     if (is_at_home() || is_at_control_center() || is_at_instruction_list() ||
-        is_at_ai_interface())
+        is_at_message() || is_at_ai_interface())
     {
         screen_rotate_back_to_original_direction();
         clock_on_resume();
@@ -861,7 +869,8 @@ static void on_pause(void)
     // clear_check_flags();
     // #ifdef ENABLE_NOTIFICATION_CENTER
     // if (lv_obj_is_valid(app_mainmenu_ctx.message_indicator))
-    //     lv_obj_add_flag(app_mainmenu_ctx.message_indicator, LV_OBJ_FLAG_HIDDEN);
+    //     lv_obj_add_flag(app_mainmenu_ctx.message_indicator,
+    //     LV_OBJ_FLAG_HIDDEN);
     // #endif
     instruction_list_pause();
     clock_on_pause();

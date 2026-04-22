@@ -785,24 +785,11 @@ static void process_lvgl_message(lvgl_msg_t *msg)
             trigger_activity();
         }
         break;
-#if 0
-extern void gaussian_blur(lv_img_dsc_t img_desc, lv_obj_t *parent_obj);
-    case LVGL_MSG_TYPE_GAUSSIAN_BLUR:
-        gaussian_blur(instagram, lv_scr_act());
-        break;
-#endif
+
     case LVGL_MSG_TYPE_OPEN_MESSAGE_PAGE:
         if (lvgl_msg_handler.handle_open_message_page_content)
         {
             lvgl_msg_handler.handle_open_message_page_content();
-            trigger_activity();
-        }
-        break;
-
-    case LVGL_MSG_TYPE_SWITCH_FLASHLIGHT:
-        if (lvgl_msg_handler.handle_switch_flashlight)
-        {
-            lvgl_msg_handler.handle_switch_flashlight();
             trigger_activity();
         }
         break;

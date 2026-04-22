@@ -29,24 +29,27 @@ extern "C"
 #define APP_ID_WEATHER "weather"
 #define APP_ID_PHOTO "photo"
 #define APP_ID_MEDIA "media"
-#define APP_ID_GAME_DINOSAUR "game_dinosaur"
-#define APP_ID_FILE_BROWSER "file_browser"
 #define APP_ID_INCOMING_CALL "incoming_call"
+#define APP_ID_BATTERY "battery"
+// ----- Todo
 #define APP_ID_ALARM "alarm"
+// ----- Dev
+#define APP_ID_GAME_DINOSAUR "game_dinosaur"
 #define APP_ID_GESTURE "gesture"
-// #define APP_ID_SKAI "skai_ai"
-// #define APP_ID_ACTIVITY "activity"
-// #define APP_ID_NOTE_CHATROOM "note_chatroom"
-// #define APP_ID_CALENDAR "calendar"
-// #define JS_APP_QRCODE "JA_app1"
-// #define APP_ID_BATTERY "battery"
-// #define APP_ID_HEART_RATE "heart_rate"
-// #define APP_ID_BAROMETER "barometer"
-// #define APP_ID_MESSAGE_LIST "message_list"
-// #define APP_ID_WIDGETS "widgets"
-// #define APP_ID_TOUCHSCREEN "touchscreen"
-// #define APP_ID_TOUCHPAD "touchpad"
-// #define APP_ID_IOT_GATE "iot_gate"
+#define APP_ID_FILE_BROWSER "file_browser"
+
+    // #define APP_ID_SKAI "skai_ai"
+    // #define APP_ID_ACTIVITY "activity"
+    // #define APP_ID_NOTE_CHATROOM "note_chatroom"
+    // #define APP_ID_CALENDAR "calendar"
+    // #define JS_APP_QRCODE "JA_app1"
+    // #define APP_ID_HEART_RATE "heart_rate"
+    // #define APP_ID_BAROMETER "barometer"
+    // #define APP_ID_MESSAGE_LIST "message_list"
+    // #define APP_ID_WIDGETS "widgets"
+    // #define APP_ID_TOUCHSCREEN "touchscreen"
+    // #define APP_ID_TOUCHPAD "touchpad"
+    // #define APP_ID_IOT_GATE "iot_gate"
 
     typedef enum
     {
@@ -181,10 +184,6 @@ extern "C"
         LVGL_MSG_TYPE_OPEN_MESSAGE_PAGE,
         /****CLEAR NOTIFICATION INDICATIOR*/
         LVGL_MSG_TYPE_CLEAR_NOTIFICATION_BAR_INDICATOR,
-        /****GAUSSIAN BLUR****/
-        LVGL_MSG_TYPE_GAUSSIAN_BLUR,
-        /****SWITCH FLASHLIGHT****/
-        LVGL_MSG_TYPE_SWITCH_FLASHLIGHT,
         // --- file sync ---
         LVGL_MSG_TYPE_SYNC_STATUS,
         LVGL_MSG_TYPE_SYNC_PROGRESS,
@@ -346,7 +345,6 @@ extern "C"
         void (*handle_loading)(bool loading);
         void (*handle_tap_indicator)(uint8_t gesture);
         void (*handle_gyro_scroll_list)(bool up);
-        void (*handle_switch_flashlight)(void);
         void (*handle_time_text)(void);
         void (*handle_bluetooth_connection)(bool connected);
         void (*handle_send_message)(void);
@@ -362,7 +360,6 @@ extern "C"
         void (*handle_sync_progress)(uint8_t progress);
         void (*handle_toast)(char *text);
         void (*handle_gravity_indicator)(uint8_t action);
-        void (*handle_gaussian_blur)(void);
     } lvgl_msg_handler_t;
 
     extern lvgl_msg_handler_t lvgl_msg_handler;
@@ -372,13 +369,21 @@ extern "C"
     extern app_gesture_indicator_t *gui_app_get_gesture_indicator(void);
     extern bool is_ai_interface_active(void);
     extern void clear_all_handlers(void);
-    extern void tap_indicator_builder(void *par, app_gesture_indicator_t *indicator);
-    extern void open_watch_hint_builder(void *par, app_gesture_indicator_t *indicator);
-    extern void voice_recognition_hint_builder(void *par, app_gesture_indicator_t *indicator);
+    extern void tap_indicator_builder(void *par,
+                                      app_gesture_indicator_t *indicator);
+    extern void open_watch_hint_builder(void *par,
+                                        app_gesture_indicator_t *indicator);
+    extern void
+    voice_recognition_hint_builder(void *par,
+                                   app_gesture_indicator_t *indicator);
     extern void tap_indicator_destroy(app_gesture_indicator_t *indicator);
-    extern void unknown_indicator_builder(void *par, app_gesture_indicator_t *indicator);
-    extern void ungrab_indicator_builder(void *par, app_gesture_indicator_t *indicator);
-    extern void gesture_release_indicator_builder(void *par, app_gesture_indicator_t *indicator);
+    extern void unknown_indicator_builder(void *par,
+                                          app_gesture_indicator_t *indicator);
+    extern void ungrab_indicator_builder(void *par,
+                                         app_gesture_indicator_t *indicator);
+    extern void
+    gesture_release_indicator_builder(void *par,
+                                      app_gesture_indicator_t *indicator);
     extern void bad_signal_indicator_builder(void *par);
     extern void reset_lvgl_msg_handler(void);
 
@@ -392,7 +397,9 @@ extern "C"
     extern bool get_scrolling_motor_vibrate_status(void);
     extern void enable_scrolling_motor_vibrate(void);
     extern void disable_scrolling_motor_vibrate(void);
-    
+
+    extern void refresh_charge_icon(void);
+
 #ifdef __cplusplus
 }
 #endif
