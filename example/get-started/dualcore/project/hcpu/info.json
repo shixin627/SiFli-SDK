@@ -1,6 +1,6 @@
 {
-    "version": "1.1.29",
-    "description": "修復通知欄定位問題\n馬達記憶體洩漏\n優化滑鼠模式滾輪體驗",
+    "version": "1.1.30",
+    "description": "修復錶盤沒刷新音樂標題\n刪除行事曆APP和沒用到的Note相關程式碼",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",

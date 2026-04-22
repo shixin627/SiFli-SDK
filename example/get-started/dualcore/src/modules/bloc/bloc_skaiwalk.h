@@ -25,6 +25,7 @@ extern "C"
 #include "stdint.h"
 #include "lv_obj.h"
 #include "watch_global_data.h"
+#include "ui_handler.h"
 #include <cJSON.h>
 
 	extern char *generate_random_id(void);
@@ -90,11 +91,15 @@ extern "C"
 	extern void bloc_skaiwalk_prepare_quaternion_buffer(float *quat);
 
 	extern chat_t *get_message_list(void);
+#if defined(APP_ID_NOTE_CHATROOM)
 	extern chat_t *get_note_list(void);
+#endif
 	extern chat_t *temp_chat(void);
 	extern SkaiwalkProvider skaiwalk_provider;
 	extern uint16_t *skai_message_count_ptr(void);
+#if defined(APP_ID_NOTE_CHATROOM)
 	extern uint16_t *skai_note_count_ptr(void);
+#endif
 	extern chat_t *get_skai_message(chat_t *chat_list, uint16_t items_amount, int index, bool is_reverse);
 	extern void add_self_message(chat_t *chat_list, uint16_t *items_amount_ptr, const char *message);
 	extern void add_skai_message(chat_t *chat_list, uint16_t *items_amount_ptr, const char *message);
@@ -134,10 +139,12 @@ extern "C"
 	extern void parse_ai_reply_data(uint8_t *data, uint16_t len, lv_obj_t *parent);
 
 	// Note list save/load/clear
+#if defined(APP_ID_NOTE_CHATROOM)
 	void save_note_list_to_file(void);
 	void load_note_list_from_file(void);
 	void parse_chat_item(cJSON *item, chat_t *note);
 	void clear_note_list_file(void);
+#endif
 
 	extern void *get_temp_calendar(void);
 	extern void *get_temp_finance(void);

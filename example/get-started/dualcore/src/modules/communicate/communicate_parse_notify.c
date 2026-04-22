@@ -143,6 +143,8 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         movement_threshold = pValue[0];
         break;
     }
+
+#if defined(APP_ID_CALENDAR)
     case KEY_CALENDAR_SYNC_START:
     {
         // LOG_D("KEY_CALENDAR_SYNC_START");
@@ -176,7 +178,9 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         notify_calendar();
         break;
     }
+#endif
 
+#if defined(APP_ID_NOTE_CHATROOM)
     case KEY_NOTE_SYNC_START:
     {
         LOG_D("KEY_NOTE_SYNC_START");
@@ -230,6 +234,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         lvgl_send_msg(msg);
         break;
     }
+#endif
 
     case KEY_WEATHER_SYNC_START:
     {

@@ -450,7 +450,9 @@ void handle_ai_reply_calendar(char *json, uint8_t action, lv_obj_t *parent)
 	memset(&temp_calendar_event, 0, sizeof(temp_calendar_event));
 	parse_calendar(json, &temp_calendar_event);
 
+#ifdef APP_ID_CALENDAR
 	lv_calendar_object_builder(parent, (void *)&temp_calendar_event);
+#endif
 	// lvgl_msg_t msg;
 	// msg.type = LVGL_MSG_TYPE_CREATE_SPEECH_WIDGET;
 	// msg.data.action = action;
@@ -630,12 +632,14 @@ chat_t *get_message_list()
 {
 	return _message_list;
 }
+#if defined(APP_ID_NOTE_CHATROOM)
 static chat_t _note_list[ITEM_AMOUNT];
 
 chat_t *get_note_list()
 {
 	return _note_list;
 }
+#endif
 
 const chat_t messages_constant[] =
 	{
@@ -646,17 +650,20 @@ const chat_t messages_constant[] =
 		[4] = {.id = "msg_4", .message = "明天不會下雨", .attachment = "", .state = true, .is_self = false, .timestamp = 0, .widget_data = NULL},
 };
 
-static uint16_t message_items_amount = 0;
+#if defined(APP_ID_NOTE_CHATROOM)
 static uint16_t note_items_amount = 0;
-static uint8_t selected_message_index = 0;
 static uint8_t selected_note_index = 0;
-uint16_t *skai_message_count_ptr(void)
-{
-	return &message_items_amount;
-}
 uint16_t *skai_note_count_ptr(void)
 {
 	return &note_items_amount;
+}
+#endif
+
+static uint16_t message_items_amount = 0;
+static uint8_t selected_message_index = 0;
+uint16_t *skai_message_count_ptr(void)
+{
+	return &message_items_amount;
 }
 
 chat_t *get_skai_message(chat_t *chat_list, uint16_t items_amount, int index, bool is_reverse)
@@ -687,10 +694,12 @@ chat_t *get_cur_skai_message(void)
 	return &_message_list[selected_message_index];
 }
 
+#if defined(APP_ID_NOTE_CHATROOM)
 chat_t *get_cur_skai_note(void)
 {
 	return &_note_list[selected_note_index];
 }
+#endif
 
 void clear_skai_message_list(chat_t *list, uint16_t *items_amount_ptr)
 {
@@ -1132,26 +1141,6 @@ void clear_chat_history(void)
 	LOG_D("Chat history cleared");
 }
 
-void clear_note_list(void)
-{
-	DIR *dir = opendir("/note_list");
-	if (dir == NULL)
-	{
-		LOG_E("Failed to open note list directory");
-		return;
-	}
-	struct dirent *entry;
-	while ((entry = readdir(dir)) != NULL)
-	{
-		if (entry->d_type == DT_REG) // Regular file
-		{
-			char filepath[64];
-			snprintf(filepath, sizeof(filepath), "/note_list/%s", entry->d_name);
-			unlink(filepath); // Delete the file
-		}
-	}
-}
-
 int read_user_and_ai_chat(const char *filename, chat_history_entry_t *entry)
 {
 	if (filename == NULL || entry == NULL)
@@ -1330,48 +1319,6 @@ int get_recent_chat_history(chat_history_entry_t *entries, int max_entries)
 	return entry_count;
 }
 
-// === Note List Save/Load/Clear Functions ===
-void save_note_list_to_file(void)
-{
-	// Create note_list directory if it doesn't exist
-	if (access("/note_list", 0) != 0)
-	{
-		if (mkdir("/note_list", 0x777) != 0)
-		{
-			LOG_E("Failed to create note_list directory");
-			return;
-		}
-		LOG_D("Created note_list directory");
-	}
-
-	// Create JSON array
-	cJSON *root = cJSON_CreateArray();
-	for (int i = 0; i < note_items_amount; i++)
-	{
-		cJSON *item = cJSON_CreateObject();
-		cJSON_AddStringToObject(item, "id", _note_list[i].id);
-		cJSON_AddStringToObject(item, "message", _note_list[i].message);
-		cJSON_AddStringToObject(item, "attachment", _note_list[i].attachment);
-		cJSON_AddBoolToObject(item, "is_self", _note_list[i].is_self);
-		cJSON_AddNumberToObject(item, "timestamp", (long)_note_list[i].timestamp);
-		cJSON_AddItemToArray(root, item);
-	}
-
-	char *json_str = cJSON_Print(root);
-	FILE *fp = fopen("/note_list/notes.json", "w");
-	if (fp == NULL)
-	{
-		LOG_E("Failed to open note file for writing");
-		cJSON_free(json_str);
-		cJSON_Delete(root);
-		return;
-	}
-	fwrite(json_str, strlen(json_str), 1, fp);
-	fclose(fp);
-	cJSON_free(json_str);
-	cJSON_Delete(root);
-	LOG_D("Note list saved to /note_list/notes.json");
-}
 
 /**
  * @brief Parse a single chat_t item from cJSON object
@@ -1425,6 +1372,71 @@ void parse_chat_item(cJSON *json_item, chat_t *chat_item)
 	chat_item->widget_data = NULL;
 }
 
+
+// === Note List Save/Load/Clear Functions ===
+#if defined(APP_ID_NOTE_CHATROOM)
+void clear_note_list(void)
+{
+	DIR *dir = opendir("/note_list");
+	if (dir == NULL)
+	{
+		LOG_E("Failed to open note list directory");
+		return;
+	}
+	struct dirent *entry;
+	while ((entry = readdir(dir)) != NULL)
+	{
+		if (entry->d_type == DT_REG) // Regular file
+		{
+			char filepath[64];
+			snprintf(filepath, sizeof(filepath), "/note_list/%s", entry->d_name);
+			unlink(filepath); // Delete the file
+		}
+	}
+}
+
+void save_note_list_to_file(void)
+{
+	// Create note_list directory if it doesn't exist
+	if (access("/note_list", 0) != 0)
+	{
+		if (mkdir("/note_list", 0x777) != 0)
+		{
+			LOG_E("Failed to create note_list directory");
+			return;
+		}
+		LOG_D("Created note_list directory");
+	}
+
+	// Create JSON array
+	cJSON *root = cJSON_CreateArray();
+	for (int i = 0; i < note_items_amount; i++)
+	{
+		cJSON *item = cJSON_CreateObject();
+		cJSON_AddStringToObject(item, "id", _note_list[i].id);
+		cJSON_AddStringToObject(item, "message", _note_list[i].message);
+		cJSON_AddStringToObject(item, "attachment", _note_list[i].attachment);
+		cJSON_AddBoolToObject(item, "is_self", _note_list[i].is_self);
+		cJSON_AddNumberToObject(item, "timestamp", (long)_note_list[i].timestamp);
+		cJSON_AddItemToArray(root, item);
+	}
+
+	char *json_str = cJSON_Print(root);
+	FILE *fp = fopen("/note_list/notes.json", "w");
+	if (fp == NULL)
+	{
+		LOG_E("Failed to open note file for writing");
+		cJSON_free(json_str);
+		cJSON_Delete(root);
+		return;
+	}
+	fwrite(json_str, strlen(json_str), 1, fp);
+	fclose(fp);
+	cJSON_free(json_str);
+	cJSON_Delete(root);
+	LOG_D("Note list saved to /note_list/notes.json");
+}
+
 void load_note_list_from_file(void)
 {
 	FILE *fp = fopen("/note_list/notes.json", "r");
@@ -1469,6 +1481,7 @@ void clear_note_list_file(void)
 		LOG_W("No note list file to clear or failed to delete");
 	}
 }
+#endif
 
 /// AI ///
 
@@ -1600,10 +1613,12 @@ static int utest_skaiwalk(int argc, char *argv[])
 		{
 			clear_chat_history();
 		}
+#if defined(APP_ID_NOTE_CHATROOM)
 		else if (strcmp(argv[1], "-clear_notes") == 0)
 		{
 			clear_note_list();
 		}
+#endif
 		else if (strcmp(argv[1], "-read") == 0)
 		{
 			if (argc == 3)

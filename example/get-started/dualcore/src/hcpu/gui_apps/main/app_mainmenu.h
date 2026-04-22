@@ -20,6 +20,7 @@
 #include "lvgl.h"
 #include "gui_app_fwk.h"
 #include "lv_ext_resource_manager.h"
+#include "ui_handler.h"
 
 #define ENABLE_NOTIFICATION_CENTER
 
@@ -60,7 +61,9 @@ typedef rt_int32_t (*app_func_ptr_t)(void);
 
 /****                     API for single app              ****/
 bool is_at_instruction_list(void);
+#if defined(APP_ID_NOTE_CHATROOM)
 bool is_at_note_list(void);
+#endif
 bool is_at_mouse_mode(void);
 bool is_at_home(void);
 bool is_at_ai_interface(void);

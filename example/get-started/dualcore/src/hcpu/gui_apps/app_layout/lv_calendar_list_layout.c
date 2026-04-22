@@ -120,7 +120,9 @@ static void scroll_list(lv_obj_t *obj, int16_t drift, uint8_t reset_page)
     if (calendar_list_amount != child_cnt)
     {
         calendar_list_amount = child_cnt;
+#ifdef APP_ID_CALENDAR
         set_calendar_list_amount(child_cnt);
+#endif
     }
     for (i = 0; i < child_cnt; i++)
     {
@@ -158,7 +160,9 @@ static void scroll_list(lv_obj_t *obj, int16_t drift, uint8_t reset_page)
             {
                 min_offset = y_diff;
                 calendar_view.selected_calendar_list_index = i;
+#ifdef APP_ID_CALENDAR
                 set_calendar_list_index(i);
+#endif
             }
             x_sqr = LIST_RADIUS * LIST_RADIUS - y_diff * y_diff;
             lv_sqrt(x_sqr, &res, 0x8000);

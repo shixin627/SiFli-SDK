@@ -807,12 +807,14 @@ void handle_user_speech_intent(uint8_t intent, char *message)
     }
     case V2T_INTENT_NOTE_CREATING:
     {
+#if defined(APP_ID_NOTE_CHATROOM)
         append_text_to_latest_message(get_note_list(), skai_note_count_ptr(),
                                       temp_speech_text);
 
         // Save note list after adding new note
         save_note_list_to_file();
         send_message_to_note(temp_speech_text);
+#endif
         break;
     }
 

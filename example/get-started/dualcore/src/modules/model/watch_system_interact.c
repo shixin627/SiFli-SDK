@@ -671,8 +671,11 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
             break;
         }
         if (gui_app_is_actived(APP_ID_SPEECH) ||
-            gui_app_is_actived(APP_ID_MESSAGE) ||
-            gui_app_is_actived(APP_ID_NOTE_CHATROOM) || is_at_note_list())
+            gui_app_is_actived(APP_ID_MESSAGE)
+#if defined(APP_ID_NOTE_CHATROOM)
+            || gui_app_is_actived(APP_ID_NOTE_CHATROOM) || is_at_note_list()
+#endif
+        )
         {
             LOG_D("[INTERACT_VOICE_RECOGNITION]:%d, coding:%d", msgData->header,
                   get_speech_coding());
@@ -1313,8 +1316,8 @@ static int set_watch_system(int argc, char *argv[])
         }
         else if (strcmp(argv[1], "-chack_tile") == 0)
         {
-           extern void chack_tile_page(void);
-           chack_tile_page();
+            extern void chack_tile_page(void);
+            chack_tile_page();
         }
     }
     return 0;

@@ -557,6 +557,7 @@ static void process_lvgl_message(lvgl_msg_t *msg)
             update_ai_process_indicator_by_tool(gui_app_get_gesture_indicator(),
                                                 WeatherTool, false);
         }
+#ifdef APP_ID_CALENDAR
         else if (action == CalendarQueryTool)
         {
             gui_app_get_gesture_indicator()->data_model = get_temp_calendar();
@@ -573,6 +574,7 @@ static void process_lvgl_message(lvgl_msg_t *msg)
             update_ai_process_indicator_by_tool(gui_app_get_gesture_indicator(),
                                                 CalendarCreateTool, false);
         }
+#endif
         else if (action == FinanceTool)
         {
             gui_app_get_gesture_indicator()->data_model = get_temp_finance();

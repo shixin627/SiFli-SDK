@@ -324,6 +324,7 @@ void check_is_at_instruction_list(void)
     }
 }
 
+#if defined(APP_ID_NOTE_CHATROOM)
 static bool _at_note_list;
 
 bool is_at_note_list(void)
@@ -354,6 +355,7 @@ void check_is_at_note_list(void)
         LOG_I("is_at_note_list: %d", _at_note_list);
     }
 }
+#endif
 
 extern void ai_widget_start(void);
 static bool _at_speech_interface;
@@ -545,7 +547,11 @@ void check_is_at_home(void)
 {
     bool yes = gui_app_is_actived(APP_ID_MAIN) && !_at_instruction_list &&
                !_at_message && !_at_control_center && !_at_mouse_mode &&
-               !_at_ai_interface && !_at_note_list && !_at_speech_interface;
+               !_at_ai_interface &&
+#if defined(APP_ID_NOTE_CHATROOM)
+               !_at_note_list &&
+#endif
+               !_at_speech_interface;
     if (yes != _at_home)
     {
         _at_home = yes;
@@ -581,7 +587,9 @@ static void clear_check_flags(void)
     _at_home = false;
     _at_mouse_mode = false;
     _at_ai_interface = false;
+#if defined(APP_ID_NOTE_CHATROOM)
     _at_note_list = false;
+#endif
     _at_speech_interface = false;
 }
 

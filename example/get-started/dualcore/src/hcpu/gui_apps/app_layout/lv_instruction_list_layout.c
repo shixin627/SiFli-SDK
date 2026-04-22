@@ -563,7 +563,10 @@ static void create_indicator_dots(lv_obj_t *parent)
         else if (list_items[i].icon != NULL)
         {
             lv_img_set_src(dot, list_items[i].icon);
-            if (strcmp(list_items[i].id, APP_ID_NOTE_CHATROOM) == 0 ||
+            if (
+#ifdef APP_ID_NOTE_CHATROOM
+                strcmp(list_items[i].id, APP_ID_NOTE_CHATROOM) == 0 ||
+#endif
                 strcmp(list_items[i].id, APP_ID_SKAI) == 0)
             {
                 lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
@@ -1041,7 +1044,9 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 if (touch_obj[i] != NULL && lv_obj_is_valid(touch_obj[i]))
                     lv_obj_clear_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
                 if (!list_items[i].is_instruction &&
+#ifdef APP_ID_NOTE_CHATROOM
                     strcmp(list_items[i].id, APP_ID_NOTE_CHATROOM) != 0 &&
+#endif
                     strcmp(list_items[i].id, APP_ID_SKAI) != 0)
                 {
                     if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
@@ -2307,6 +2312,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx, uint8_t end_
             /* App items: check for special widgets */
             if (i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION))
             {
+#ifdef APP_ID_NOTE_CHATROOM
                 if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_note)
                 {
                     lv_obj_set_pos(item, 0,
@@ -2316,7 +2322,9 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx, uint8_t end_
                     widget = lv_note_widget_builder(item);
                     has_widget = true;
                 }
-                else if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai)
+                else
+#endif
+                if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai)
                 {
                     extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
                     widget = lv_skai_widget_builder(item);
@@ -3089,9 +3097,11 @@ rt_int32_t instruction_list_pause(void)
 
 rt_int32_t instruction_list_deinit(void)
 {
+#ifdef APP_ID_NOTE_CHATROOM
     // Delete the timer if it exists
     extern void close_note_chatroom_ui_app(void);
     close_note_chatroom_ui_app();
+#endif
 
     // 清理 touching_screen 定時器
     if (touching_screen_timer)

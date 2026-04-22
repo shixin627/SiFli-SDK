@@ -152,11 +152,13 @@ static void handle_back_event(bool is_button)
     {
         animate_to_home_from_notification_center();
     }
+#if defined(APP_ID_NOTE_CHATROOM)
     else if (is_at_note_list())
     {
         LOG_D("ESC in note list => note_list_handle_back");
         note_list_handle_back();
     }
+#endif
     else if (is_at_instruction_list())
     {
         if (get_is_open_instruction_list_ai())
@@ -803,7 +805,9 @@ void app_watch_entry(void *parameter)
     // #endif
     bloc_setting_load_watch_system();
     bloc_system_schedule_init();
+#if defined(APP_ID_NOTE_CHATROOM)
     load_note_list_from_file();
+#endif
 
 #ifdef BSP_USING_PM
     button_event_task = lv_timer_create(button_event_task_entry, 30, 0);

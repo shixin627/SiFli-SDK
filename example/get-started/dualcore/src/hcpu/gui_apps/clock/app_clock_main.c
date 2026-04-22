@@ -457,9 +457,11 @@ void dial_widget_event(lv_event_t *e)
             {
                 switch (dial_widget_app_id)
                 {
+#ifdef APP_ID_CALENDAR
                 case app_id_calendar:
                     gui_app_run(APP_ID_CALENDAR);
                     break;
+#endif
 #ifdef APP_ID_MEDIA
                 case app_id_media:
                     gui_app_run(APP_ID_MEDIA);
