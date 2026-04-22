@@ -1,6 +1,6 @@
 {
-    "version": "1.1.28",
-    "description": "整合AI畫面",
+    "version": "1.1.29",
+    "description": "修復通知欄定位問題\n馬達記憶體洩漏\n優化滑鼠模式滾輪體驗",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
