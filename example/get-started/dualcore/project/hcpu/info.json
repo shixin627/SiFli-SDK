@@ -1,6 +1,6 @@
 {
-    "version": "1.1.31",
-    "description": "刪減不必要的應用\n新增充電提示",
+    "version": "1.1.32",
+    "description": "修復觸控板飛鼠亂跳",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
