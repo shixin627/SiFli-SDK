@@ -94,7 +94,7 @@
      *      DEFINES
      *********************/
     #define PRESSED_TIME_MS 500
-    #define SCROLLING_THRESHOLD 60
+    #define SCROLLING_THRESHOLD 5
     #define EDGE_THRESHOLD_PIXELS 20
     #define BOTTOM_EDGE_THRESHOLD 50
     #define GESTURE_DISTANCE_THRESHOLD 50
@@ -199,32 +199,32 @@ static lv_obj_t *menu_swipe_area = NULL;
 static lv_obj_t *left_scroll_bar = NULL;
 static bool left_scroll_active = false;
 
-// 左側滾動節點：以手指繞螢幕中心的角度追蹤，可無限旋轉；
-// 節點沿弧線跟手移動，每通過一個節點觸發一次滾輪。
-#define LEFT_SCROLL_NODE_COUNT 5
-#define LEFT_SCROLL_ARC_MIN_DEG 150.0f
-#define LEFT_SCROLL_ARC_MAX_DEG 210.0f
-#define LEFT_SCROLL_ARC_SPAN_DEG 60.0f
-#define LEFT_SCROLL_NODE_SPACING_DEG                                           \
-    (LEFT_SCROLL_ARC_SPAN_DEG / LEFT_SCROLL_NODE_COUNT) // = 12°
-#define LEFT_SCROLL_NODE_MAX_SIZE 14
-#define LEFT_SCROLL_NODE_MIN_SIZE 3
-// 未觸碰時暗/細，觸碰時亮/粗，100ms 過渡
-#define LEFT_SCROLL_ARC_W_DIM 12
-#define LEFT_SCROLL_ARC_W_ACTIVE 30
-#define LEFT_SCROLL_ARC_OPA_DIM LV_OPA_30
-#define LEFT_SCROLL_ARC_OPA_ACTIVE LV_OPA_60
-#define LEFT_SCROLL_NODE_OPA_DIM LV_OPA_30
-#define LEFT_SCROLL_NODE_OPA_ACTIVE LV_OPA_COVER
-#define LEFT_SCROLL_UI_ANIM_MS 300
-#ifndef LEFT_SCROLL_PI
-    #define LEFT_SCROLL_PI 3.14159265358979323846f
-#endif
+    // 左側滾動節點：以手指繞螢幕中心的角度追蹤，可無限旋轉；
+    // 節點沿弧線跟手移動，每通過一個節點觸發一次滾輪。
+    #define LEFT_SCROLL_NODE_COUNT 5
+    #define LEFT_SCROLL_ARC_MIN_DEG 150.0f
+    #define LEFT_SCROLL_ARC_MAX_DEG 210.0f
+    #define LEFT_SCROLL_ARC_SPAN_DEG 60.0f
+    #define LEFT_SCROLL_NODE_SPACING_DEG                                       \
+        (LEFT_SCROLL_ARC_SPAN_DEG / LEFT_SCROLL_NODE_COUNT) // = 12°
+    #define LEFT_SCROLL_NODE_MAX_SIZE 14
+    #define LEFT_SCROLL_NODE_MIN_SIZE 3
+    // 未觸碰時暗/細，觸碰時亮/粗，100ms 過渡
+    #define LEFT_SCROLL_ARC_W_DIM 12
+    #define LEFT_SCROLL_ARC_W_ACTIVE 30
+    #define LEFT_SCROLL_ARC_OPA_DIM LV_OPA_30
+    #define LEFT_SCROLL_ARC_OPA_ACTIVE LV_OPA_60
+    #define LEFT_SCROLL_NODE_OPA_DIM LV_OPA_30
+    #define LEFT_SCROLL_NODE_OPA_ACTIVE LV_OPA_COVER
+    #define LEFT_SCROLL_UI_ANIM_MS 300
+    #ifndef LEFT_SCROLL_PI
+        #define LEFT_SCROLL_PI 3.14159265358979323846f
+    #endif
 static lv_obj_t *left_scroll_nodes[LEFT_SCROLL_NODE_COUNT] = {NULL};
 static float scroll_last_theta = 0.0f;      // 上次手指相對中心的角度（弧度）
 static float scroll_accum_angle = 0.0f;     // 未觸發滾動的累積角度（弧度）
 static float scroll_node_offset_deg = 0.0f; // 節點視覺偏移（度，已正規化）
-static int32_t scroll_ui_level = 0; // 0 = 暗/細，1000 = 亮/粗（動畫用）
+static int32_t scroll_ui_level = 0;         // 0 = 暗/細，1000 = 亮/粗（動畫用）
 
 // 左側滾動節點相關（實作在 mouse screen 建立處）
 static float left_scroll_finger_theta(const lv_point_t *p);
@@ -2382,8 +2382,8 @@ static void handle_pressing_event(lv_indev_t *indev,
     int16_t dx_from_start = current_point->x - start_point.x;
     int16_t dy_from_start = current_point->y - start_point.y;
 
-    if ((abs(dx_from_start) >= SCROLLING_THRESHOLD) ||
-        (abs(dy_from_start) >= SCROLLING_THRESHOLD))
+    if (((abs(dx_from_start) >= SCROLLING_THRESHOLD) ||
+        (abs(dy_from_start) >= SCROLLING_THRESHOLD)) && !scroll_direction_locked)
     {
         scrolling = true;
         if (abs(dy_from_start) < abs(dx_from_start))
@@ -2395,14 +2395,13 @@ static void handle_pressing_event(lv_indev_t *indev,
             is_horizontal_scroll = false;
         }
         scroll_direction_locked = true;
+        last_point.x = current_point->x;
+        last_point.y = current_point->y;
     }
 
     if (scrolling)
     {
         // 每次更新 last_point，讓滑鼠移動更順暢
-        last_point.x = current_point->x;
-        last_point.y = current_point->y;
-
         if (delta_x == 0 && delta_y == 0)
         {
             // 手指靜止（沒有拖曳）→ 恢復體感滑鼠
@@ -2412,13 +2411,18 @@ static void handle_pressing_event(lv_indev_t *indev,
         {
             // 正在拖曳 → 控制滑鼠移動（距離翻倍），鎖住體感滑鼠
             set_stop_mouse_move(true);
-            LOG_D("touch mouse move - delta_x: %d, delta_y: %d", delta_x, delta_y);
-            control_provider.ble_hid_mouse_move(delta_x * 1, delta_y * 1);
+            // LOG_D("touch mouse move - delta_x: %d, delta_y: %d", delta_x,
+            //       delta_y);
+            // if (abs(delta_x) < 60 && abs(delta_y) < 60)
+            {
+                control_provider.ble_hid_mouse_move(delta_x * 1.5, delta_y * 1.5);
+                last_point.x = current_point->x;
+                last_point.y = current_point->y;
+            }
         }
 
         return;
     }
-
 }
 
 /**
@@ -2484,8 +2488,7 @@ static void handle_released_event(lv_indev_t *indev)
         if (pressed_left_half)
     #endif
         {
-            if (!scrolling &&
-                (lv_tick_get() - press_time <= PRESSED_TIME_MS))
+            if (!scrolling && (lv_tick_get() - press_time <= PRESSED_TIME_MS))
             {
                 LOG_D("Air mouse - click_left");
                 motor_pattern_tap();
@@ -2495,8 +2498,7 @@ static void handle_released_event(lv_indev_t *indev)
     #if SIMULATE_MOUSE_RIGHT_BUTTON
         else
         {
-            if (!scrolling &&
-                (lv_tick_get() - press_time <= PRESSED_TIME_MS))
+            if (!scrolling && (lv_tick_get() - press_time <= PRESSED_TIME_MS))
             {
                 LOG_D("Air mouse - click_right");
                 control_provider.ble_hid_mouse_right_click();
@@ -2553,9 +2555,10 @@ static void plain_event_cb(lv_event_t *e)
     switch (code)
     {
     case LV_EVENT_PRESSED:
+    {
         handle_pressed_event(indev);
         break;
-
+    }
     case LV_EVENT_PRESSING:
     {
         lv_point_t now_point;
@@ -3284,7 +3287,8 @@ static lv_obj_t *menu_window(lv_obj_t *par)
 
 /**
  * @brief 刷新 mouse 畫面頂部顯示的當前控制裝置名稱
- *        放在 ENABLE_MENU_FEATURE guard 外面，讓 status bar 的選單切換後也能更新
+ *        放在 ENABLE_MENU_FEATURE guard 外面，讓 status bar
+ * 的選單切換後也能更新
  */
 void refresh_connected_device_label(void)
 {
@@ -3313,15 +3317,15 @@ static uint16_t max_move_y = 0;
 static uint8_t test_count = 0;
 static float prev_elapsed = 0.0f;
 
-// 底部 bar 被上拉到某個視覺高度且停住後觸發多工鍵
-// 門檻看的是「bar 實際 UI 位置」，不是手指位移（bar 用 1:20 衰減）
-// bar 公式：lift = 10 + (move_y - 10) / 20；貼底時 lift=10
-// 例：lift=12 ≈ 手指 ~50px、lift=15 ≈ ~110px、lift=20 ≈ ~210px
-#define BOTTOM_BAR_MULTITASK_BAR_LIFT 12     // bar 升到離底部 >= 12px 才可觸發
-#define BOTTOM_BAR_MULTITASK_STILL_EPSILON 10 // 停住容忍範圍（px）
-#define BOTTOM_BAR_MULTITASK_HOLD_MS 100     // 停住多久觸發
-static bool bottom_bar_multitask_ready = false; // 已達成往上位移條件
-static bool bottom_bar_multitask_fired = false; // 這次 gesture 已觸發過
+    // 底部 bar 被上拉到某個視覺高度且停住後觸發多工鍵
+    // 門檻看的是「bar 實際 UI 位置」，不是手指位移（bar 用 1:20 衰減）
+    // bar 公式：lift = 10 + (move_y - 10) / 20；貼底時 lift=10
+    // 例：lift=12 ≈ 手指 ~50px、lift=15 ≈ ~110px、lift=20 ≈ ~210px
+    #define BOTTOM_BAR_MULTITASK_BAR_LIFT 12 // bar 升到離底部 >= 12px 才可觸發
+    #define BOTTOM_BAR_MULTITASK_STILL_EPSILON 10 // 停住容忍範圍（px）
+    #define BOTTOM_BAR_MULTITASK_HOLD_MS 100      // 停住多久觸發
+static bool bottom_bar_multitask_ready = false;   // 已達成往上位移條件
+static bool bottom_bar_multitask_fired = false;   // 這次 gesture 已觸發過
 static lv_point_t bottom_bar_multitask_anchor;
 // 用 rt_timer 而非 lv_timer：拖曳時 BLE queue 會把 LVGL task 塞到 lv_timer
 // 延遲數百 ms 才 fire；rt_timer 跑在獨立 timer thread，不受 LVGL 佔用影響
@@ -3412,8 +3416,9 @@ static void text_input_bar_cb(lv_event_t *e)
         int bar_lift = 10;
         if (move_y > 10)
             bar_lift = 10 + (move_y - 10) / 20;
-        // bar 被往上拉到視覺門檻且停住後 → 送 HID 多工鍵（每 gesture 只觸發一次）
-        // 用 LVGL timer 倒數；手指完全靜止（LVGL 不再發 PRESSING）也能準時觸發
+        // bar 被往上拉到視覺門檻且停住後 → 送 HID 多工鍵（每 gesture
+        // 只觸發一次） 用 LVGL timer 倒數；手指完全靜止（LVGL 不再發
+        // PRESSING）也能準時觸發
         if (!bottom_bar_multitask_fired)
         {
             if (!bottom_bar_multitask_ready)
@@ -3427,10 +3432,10 @@ static void text_input_bar_cb(lv_event_t *e)
             }
             else
             {
-                int adx = bottom_bar_now_point.x -
-                          bottom_bar_multitask_anchor.x;
-                int ady = bottom_bar_now_point.y -
-                          bottom_bar_multitask_anchor.y;
+                int adx =
+                    bottom_bar_now_point.x - bottom_bar_multitask_anchor.x;
+                int ady =
+                    bottom_bar_now_point.y - bottom_bar_multitask_anchor.y;
                 if (abs(adx) > BOTTOM_BAR_MULTITASK_STILL_EPSILON ||
                     abs(ady) > BOTTOM_BAR_MULTITASK_STILL_EPSILON)
                 {
@@ -3524,7 +3529,7 @@ static void text_input_bar_cb(lv_event_t *e)
     }
 }
 
-#ifndef USE_FSR_ADC
+    #ifndef USE_FSR_ADC
 /**
  * @brief Initialize FSR-402 ADC device
  */
@@ -3565,7 +3570,7 @@ rt_uint32_t fsr_adc_read_value(void)
         return 0;
     return rt_adc_read((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
 }
-#endif
+    #endif
 
 /**
  * @brief LVGL timer callback for periodic FSR ADC reading and display update
@@ -3758,11 +3763,10 @@ static void update_left_scroll_nodes(void)
         float t = (angle_deg - 180.0f) / (span * 0.5f); // [-1, 1)
         float factor = cosf(t * LEFT_SCROLL_PI * 0.5f);
         factor = factor * factor;
-        int16_t size =
-            (int16_t)((float)LEFT_SCROLL_NODE_MIN_SIZE +
-                      (float)(LEFT_SCROLL_NODE_MAX_SIZE -
-                              LEFT_SCROLL_NODE_MIN_SIZE) *
-                          factor);
+        int16_t size = (int16_t)((float)LEFT_SCROLL_NODE_MIN_SIZE +
+                                 (float)(LEFT_SCROLL_NODE_MAX_SIZE -
+                                         LEFT_SCROLL_NODE_MIN_SIZE) *
+                                     factor);
         if (size < 1)
             size = 1;
 
@@ -3953,9 +3957,9 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     // lv_obj_clear_flag(fsr_adc_label, LV_OBJ_FLAG_CLICKABLE);
 
     // Init ADC and start periodic reading
-#ifndef USE_FSR_ADC
-    // fsr_adc_init();
-#endif
+    #ifndef USE_FSR_ADC
+        // fsr_adc_init();
+    #endif
     if (!fsr_adc_timer)
     {
         fsr_adc_timer =
