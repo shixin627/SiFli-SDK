@@ -1,6 +1,6 @@
 {
-    "version": "1.1.30",
-    "description": "修復錶盤沒刷新音樂標題\n刪除行事曆APP和沒用到的Note相關程式碼",
+    "version": "1.1.31",
+    "description": "刪減不必要的應用\n新增充電提示",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
