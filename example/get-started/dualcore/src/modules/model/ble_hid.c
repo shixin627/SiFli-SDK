@@ -1440,6 +1440,8 @@ void HID_CONSUMER_GoHome(void)
     #define KEY_F3 0x3C
     #define KEY_TAB 0x2B
     #define KEY_MOD_LMETA 0xE3
+    #define KEY_PAGE_UP 0x4B
+    #define KEY_PAGE_DOWN 0x4E
 
     #define HID_KEY_SET(key) hid_kbd_state_key_set(key)
     #define HID_KEY_CLEAR(key) hid_kbd_state_key_clear(key)
@@ -1473,6 +1475,25 @@ void BLE_HID_Keyboard_Multitask(bool state)
     }
 }
 
+static void BLE_HID_Keyboard_Scrollpage(bool up)
+{
+    if (up)
+    {
+        HID_KEY_SET(KEY_PAGE_UP);
+        HID_KEY_SEND();
+        rt_thread_mdelay(50);
+        HID_KEY_CLEAR(KEY_PAGE_UP);
+        HID_KEY_SEND();
+    }
+    else
+    {
+        HID_KEY_SET(KEY_PAGE_DOWN);
+        HID_KEY_SEND();
+        rt_thread_mdelay(50);
+        HID_KEY_CLEAR(KEY_PAGE_DOWN);
+        HID_KEY_SEND();
+    }
+}
 void BLE_HID_keyboard_go_home(void)
 {
     HID_KEY_SET(KEY_MOD_LMETA);
@@ -1537,6 +1558,8 @@ static void BLE_HID_MAC_ZOOM(bool state)
     HID_KEY_CLEAR(KEY_LEFTGUI);
     HID_KEY_SEND();
 }
+
+
 
 void BLE_HID_computer_zoom(uint8_t device, bool state)
 {
@@ -1724,6 +1747,7 @@ void BLE_HID_Send_String(const char *str)
 
 static int init_ble_keyboard_func(void)
 {
+    control_provider.ble_hid_keyboard_scroll_page = BLE_HID_Keyboard_Scrollpage;
     control_provider.ble_hid_keyboard_multitask = BLE_HID_Keyboard_Multitask;
     control_provider.ble_hid_keyboard_shift = BLE_HID_keyboard_Shift;
     control_provider.ble_hid_keyboard_go_home = BLE_HID_keyboard_go_home;

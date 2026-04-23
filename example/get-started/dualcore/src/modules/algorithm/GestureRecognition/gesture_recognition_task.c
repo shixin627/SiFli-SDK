@@ -255,8 +255,10 @@ static void get_gesture_data(gesture_data_t *gesture, int sample_num,
             identifyWindow[i][1] = acceleration_y;
             identifyWindow[i][2] = acceleration_z;
             identifyWindow[i][3] = gesture->dataset[index].ppg_data;
-            // LOG_D("get_gesture_data: sample %d, acc=(%f, %f, %f), ppg=%d", i, acceleration_x,
-            //       acceleration_y, acceleration_z, gesture->dataset[index].ppg_data);
+            // LOG_D("get_gesture_data: sample %d, acc=(%f, %f, %f), ppg=%d", i,
+            // acceleration_x,
+            //       acceleration_y, acceleration_z,
+            //       gesture->dataset[index].ppg_data);
 #if USE_FFT_FILTER
             // int16_t total_acc = sqrt(gesture->dataset[i][0] *
             // gesture->dataset[i][0] +
@@ -270,22 +272,24 @@ static void get_gesture_data(gesture_data_t *gesture, int sample_num,
                 fft_in_buffer[i] = gesture->dataset[i][2];
             }
 #endif
-
         }
         // PPG min-max normalization to [-1, 1]
         float ppg_min = identifyWindow[0][3];
         float ppg_max = identifyWindow[0][3];
         for (int i = 1; i < sample_num; i++)
         {
-            if (identifyWindow[i][3] < ppg_min) ppg_min = identifyWindow[i][3];
-            if (identifyWindow[i][3] > ppg_max) ppg_max = identifyWindow[i][3];
+            if (identifyWindow[i][3] < ppg_min)
+                ppg_min = identifyWindow[i][3];
+            if (identifyWindow[i][3] > ppg_max)
+                ppg_max = identifyWindow[i][3];
         }
         float ppg_range = ppg_max - ppg_min;
         if (ppg_range > 0.0f)
         {
             for (int i = 0; i < sample_num; i++)
             {
-                identifyWindow[i][3] = 2.0f * (identifyWindow[i][3] - ppg_min) / ppg_range - 1.0f;
+                identifyWindow[i][3] =
+                    2.0f * (identifyWindow[i][3] - ppg_min) / ppg_range - 1.0f;
             }
         }
         else
@@ -390,6 +394,11 @@ int get_gesture_recognition_threshold(void)
     return gesture_recognition_threshold;
 }
 
+extern bool get_switch_freehand_mode(void);
+extern bool get_switch_mouse_scroll_mode(void);
+extern bool get_scroll_up_mode(void);
+extern bool get_hid_mouse_handfree_mode(void);
+extern void set_hid_mouse_handfree_mode(void);
 extern bool level_bar_is_flat(void);
 static void gesture_recognition_algorithm(gesture_data_t *gesture)
 {
@@ -507,25 +516,53 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                   tap_recognition_score);
             if (tap_recognition_score == 1)
             {
-                label = kTapGesture;
-                send_virtual_gesture_event(GESTURE_EVENT_PRESS);
-                extern bool get_enable_tap_and_hold(void);
-                if (get_enable_tap_and_hold())
+                if (app_control_get_mouse_mode())
                 {
-                    // if (watch_sys_sync.is_ppg_enabled())
-                    watch_sys_sync.notify_tap_detected();
+                    motor_pattern_scrolling_app();
+                    if (get_switch_freehand_mode())
+                    {
+                        set_hid_mouse_handfree_mode();
+                    }
+                    else if (get_switch_mouse_scroll_mode())
+                    {
+                        control_provider.ble_hid_keyboard_scroll_page(get_scroll_up_mode());
+                    }
+                    else if (get_hid_mouse_handfree_mode())
+                    {
+                        control_provider.ble_hid_mouse_left_click();
+                    }
+                    
                 }
                 else
                 {
-                    rt_thread_mdelay(100);
-                    send_virtual_gesture_event(GESTURE_EVENT_TAP);
+                    label = kTapGesture;
+                    send_virtual_gesture_event(GESTURE_EVENT_PRESS);
+                    extern bool get_enable_tap_and_hold(void);
+                    if (get_enable_tap_and_hold())
+                    {
+                        // if (watch_sys_sync.is_ppg_enabled())
+                        watch_sys_sync.notify_tap_detected();
+                    }
+                    else
+                    {
+                        rt_thread_mdelay(100);
+                        send_virtual_gesture_event(GESTURE_EVENT_TAP);
+                    }
                 }
             }
             else if (tap_recognition_score == 0)
             {
-                if (level_bar_is_flat())
+                if (app_control_get_mouse_mode())
                 {
-                    watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
+                    motor_pattern_scrolling_app();
+                    control_provider.ble_hid_keyboard_multitask(true);
+                }
+                else
+                {
+                    if (level_bar_is_flat())
+                    {
+                        watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
+                    }
                 }
             }
             else
@@ -572,7 +609,6 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
     }
 }
 
-extern bool get_hid_mouse_handfree_mode(void);
 #define IMU_THREAD_STACK_SIZE 4 * 1024
 #define IMU_THREAD_PRIORITY RT_THREAD_PRIORITY_MIDDLE - 1
 #define IMU_THREAD_TIMESLICE 10
@@ -615,8 +651,10 @@ static void gesture_recognition_thread_entry(void *parameter)
             }
 
             // 飛鼠手持模式下
-            if (app_control_get_mouse_mode() && !get_hid_mouse_handfree_mode())
+            if (app_control_get_mouse_mode() && !get_hid_mouse_handfree_mode() && !get_switch_freehand_mode())
             {
+                // LOG_D("DEBUG 1:%d,%d", app_control_get_mouse_mode(),
+                //       get_hid_mouse_handfree_mode());
                 continue;
             }
 
@@ -706,7 +744,6 @@ static int utest_gesture(int argc, char *argv[])
         }
         else if (strcmp(argv[1], "test_cb") == 0)
         {
-            
         }
         else if (strcmp(argv[1], "instruction") == 0)
         {
@@ -715,8 +752,8 @@ static int utest_gesture(int argc, char *argv[])
                 "\"title\":\"每分鐘提醒走動\",\"version\":1,"
                 "\"trigger\":{\"type\":\"interval\",\"intervalSeconds\":60}}";
             add_or_update_custom_instruction(
-                "dc396755-43ce-4fdb-ade4-d1ad683140c3",
-                "每分鐘提醒走動", "interval", 60, true, 1);
+                "dc396755-43ce-4fdb-ade4-d1ad683140c3", "每分鐘提醒走動",
+                "interval", 60, true, 1);
             refresh_custom_instructions();
             rt_kprintf("Test instruction added\n");
         }

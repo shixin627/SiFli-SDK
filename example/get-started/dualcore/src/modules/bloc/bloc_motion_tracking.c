@@ -897,7 +897,7 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     user_hand_horizontal = (gravity->x < 0.9 && gravity->x > -0.4);
 
     // Update watchface visibility
-    if (gravity->y > -0.7 && gravity->z > -0.6)
+    if ((gravity->y > -0.7 && gravity->z > -0.6) || app_control_get_mouse_mode())
     {
         if (!waveform_gesture_state.if_watchface_visible)
         {
@@ -1232,6 +1232,22 @@ void air_mouse_movement_lock_reset(void)
     gyro_movement_distance = 0.0f;
 }
 
+static bool switch_freehand_mode = false;
+bool get_switch_freehand_mode(void)
+{
+    return switch_freehand_mode;
+}
+static bool switch_mouse_scroll_mode = false;
+bool get_switch_mouse_scroll_mode(void)
+{
+    return switch_mouse_scroll_mode;
+}
+static bool scroll_up_mode = false;
+bool get_scroll_up_mode(void)
+{
+    return scroll_up_mode;
+}
+extern bool get_hid_mouse_handfree_mode(void);
 static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                               Quaternion *prev_quat)
 {
@@ -1245,10 +1261,13 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
 
     // Use raw gyroscope data directly (GyroService approach)
     // Convert from dps to rad/s to match GyroService units
-    float gyro_x = watch_sensor.imu_data.gyro.x * DPS_TO_RADS;
-    float gyro_z = watch_sensor.imu_data.gyro.z * DPS_TO_RADS;
 
-    delta_movement = air_mouse_algorithm(gyro_x, gyro_z, AIR_MOUSE_SENSITIVITY);
+    float gyro_z = watch_sensor.imu_data.gyro.z * DPS_TO_RADS;
+    float gyro_y =
+        watch_sensor.imu_data.gyro.y * DPS_TO_RADS; // 新增Y軸陀螺儀數據
+
+    delta_movement =
+        air_mouse_algorithm(-gyro_y, gyro_z, AIR_MOUSE_SENSITIVITY);
 
     if (abs(delta_movement.x) >= 3 || abs(delta_movement.y) >= 3)
     {
@@ -1273,8 +1292,9 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     // }
 
     // 按住面板才可體感移動，且移動鎖已解除
-    if (!stop_mouse_move && is_skai_touch_enabled() && !mouse_movement_lock &&
-        !is_fsr_change_detected())
+    if (!mouse_movement_lock && get_hid_mouse_handfree_mode() &&
+        !is_fsr_change_detected() && !switch_freehand_mode && !switch_mouse_scroll_mode) //! stop_mouse_move &&
+                                   //! is_skai_touch_enabled() &&
     {
         report_air_mouse_data(&delta_movement, ts);
     }
@@ -1758,7 +1778,7 @@ void set_stop_mouse_move(bool stop)
     stop_mouse_move = stop;
 }
 
-static uint8_t scroll_log_count = 0;
+// static uint8_t scroll_log_count = 0;
 extern bool get_is_open_instruction_list_ai(void);
 extern uint8_t get_message_page_count(void);
 static euler_angle_t pevr_befor_switch_widget_delta_angle;
@@ -1818,9 +1838,40 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
     if (app_control_get_mouse_mode() || is_at_mouse_mode() ||
         gui_app_is_actived(APP_ID_MOUSE)) // app_control_get_cursor_mode()
     {
-        // air_mouse_process(motion_data->timestamp, &motion_data->global_q,
-        //                   &prev_global_quat);
-        // prev_global_quat = motion_data->global_q;
+        air_mouse_process(motion_data->timestamp, &motion_data->global_q,
+                          &prev_global_quat);
+        prev_global_quat = motion_data->global_q;
+        // if (scroll_log_count++ > 10)
+        // {
+        //     scroll_log_count = 0;
+        //     LOG_D("motion_data->gravity: x:%f, y:%f, z:%f", motion_data->gravity.x,
+        //           motion_data->gravity.y, motion_data->gravity.z);
+        // }
+        if (motion_data->gravity.z < -0.5f)
+        {
+            switch_freehand_mode = true;
+        }
+        else
+        {
+            switch_freehand_mode = false;
+        }
+        if (motion_data->gravity.y < -0.7f)
+        {
+            switch_mouse_scroll_mode = true;
+        }
+        else
+        {
+            switch_mouse_scroll_mode = false;
+        }
+        if (motion_data->gravity.x < 0)
+        {
+            scroll_up_mode = false;
+        }
+        else
+        {
+            scroll_up_mode = true;
+        }
+        
         // LOG_D("air mouse process, global_q: w:%f, x:%f, y:%f, z:%f",
         // motion_data->global_q.w, motion_data->global_q.x,
         // motion_data->global_q.y, motion_data->global_q.z);
