@@ -140,6 +140,7 @@ extern "C"
         void (*ble_hid_mouse_wheel_scroll)(int8_t delta);
         void (*ble_hid_mouse_pan_scroll)(int8_t delta);
         void (*ble_hid_keyboard_multitask)(bool state);
+        void (*ble_hid_keyboard_scroll_page)(bool up);
         void (*ble_hid_keyboard_shift)(bool state);
         void (*ble_hid_keyboard_input)(const char *input);
         void (*ble_hid_keyboard_go_home)(void);

@@ -613,7 +613,7 @@ void toggle_keyboard_visibility(void)
     {
         // === CLOSE KEYBOARD ===
         keyboard_visible = false;
-        set_stop_mouse_move(false);
+        // set_stop_mouse_move(false);
         hide_key_popup();
         clear_input_display();
         stop_cursor_blink();
@@ -672,7 +672,7 @@ void toggle_keyboard_visibility(void)
     else
     {
         // === OPEN KEYBOARD ===
-        set_stop_mouse_move(true);
+        // set_stop_mouse_move(true);
         keyboard_visible = true;
 
         // Set open style on bar
@@ -2288,7 +2288,7 @@ static void handle_pressed_event(lv_indev_t *indev)
     {
         scroll_last_theta = left_scroll_finger_theta(&start_point);
         scroll_accum_angle = 0.0f;
-        set_stop_mouse_move(true);
+        // set_stop_mouse_move(true);
         motor_pattern_damping();
         animate_scroll_ui_to(true); // 觸碰時亮起（100ms）
         LOG_D("left scroll bar pressed");
@@ -2315,6 +2315,8 @@ static void handle_pressed_event(lv_indev_t *indev)
     LOG_D("pressed x: %d, y: %d", start_point.x, start_point.y);
     update_edge_detection(&start_point);
     gesture_detected = false;
+
+    BLE_HID_Mouse_Touch_Press((uint16_t)start_point.x, (uint16_t)start_point.y);
 }
 
 /**
@@ -2325,6 +2327,8 @@ static void handle_pressed_event(lv_indev_t *indev)
 static void handle_pressing_event(lv_indev_t *indev,
                                   const lv_point_t *current_point)
 {
+    BLE_HID_Mouse_Touch_Move((uint16_t)current_point->x, (uint16_t)current_point->y);
+
     // 左側滾動弧線模式：以角度追蹤手指繞中心的旋轉量，
     // 可連續旋轉多圈；節點跟手在弧線上循環移動，每過一個節點滾動一次。
     if (left_scroll_active)
@@ -2405,12 +2409,12 @@ static void handle_pressing_event(lv_indev_t *indev,
         if (delta_x == 0 && delta_y == 0)
         {
             // 手指靜止（沒有拖曳）→ 恢復體感滑鼠
-            set_stop_mouse_move(false);
+            // set_stop_mouse_move(false);
         }
         else
         {
             // 正在拖曳 → 控制滑鼠移動（距離翻倍），鎖住體感滑鼠
-            set_stop_mouse_move(true);
+            // set_stop_mouse_move(true);
             // LOG_D("touch mouse move - delta_x: %d, delta_y: %d", delta_x,
             //       delta_y);
             // if (abs(delta_x) < 60 && abs(delta_y) < 60)
@@ -2433,11 +2437,16 @@ static void handle_released_event(lv_indev_t *indev)
 {
     user_touching = false;
 
+    lv_point_t _release_pt;
+    lv_indev_get_point(indev, &_release_pt);
+    bool _long_press_ended = BLE_HID_Mouse_Touch_Release(
+        (uint16_t)_release_pt.x, (uint16_t)_release_pt.y);
+
     // 左側滾動弧線放手
     if (left_scroll_active)
     {
         left_scroll_active = false;
-        set_stop_mouse_move(false);
+        // set_stop_mouse_move(false);
         motor_pattern_stop();
         animate_scroll_ui_to(false); // 放開後淡回暗/細（100ms）
         LOG_D("left scroll bar released");
@@ -2479,8 +2488,8 @@ static void handle_released_event(lv_indev_t *indev)
         scrolling = false;
         LOG_D("Gesture detected: touch mouse move released");
 
-        // 恢復體感滑鼠
-        set_stop_mouse_move(false);
+        // // 恢復體感滑鼠
+        // set_stop_mouse_move(false);
     }
     else
     {
@@ -2488,7 +2497,8 @@ static void handle_released_event(lv_indev_t *indev)
         if (pressed_left_half)
     #endif
         {
-            if (!scrolling && (lv_tick_get() - press_time <= PRESSED_TIME_MS))
+            if (!scrolling && !_long_press_ended &&
+                (lv_tick_get() - press_time <= PRESSED_TIME_MS))
             {
                 LOG_D("Air mouse - click_left");
                 motor_pattern_tap();
@@ -2498,7 +2508,8 @@ static void handle_released_event(lv_indev_t *indev)
     #if SIMULATE_MOUSE_RIGHT_BUTTON
         else
         {
-            if (!scrolling && (lv_tick_get() - press_time <= PRESSED_TIME_MS))
+            if (!scrolling && !_long_press_ended &&
+                (lv_tick_get() - press_time <= PRESSED_TIME_MS))
             {
                 LOG_D("Air mouse - click_right");
                 control_provider.ble_hid_mouse_right_click();
@@ -4095,6 +4106,11 @@ bool get_hid_mouse_handfree_mode(void)
     return handfree;
 }
 
+void set_hid_mouse_handfree_mode(void)
+{
+    handfree = !handfree;
+}
+
 /**
  * @brief Checks if mouse movement is locked
  * @return true if movement is locked, false otherwise
@@ -4134,12 +4150,12 @@ static void on_start(lv_obj_t *scr)
 static void on_resume(void)
 {
     reset_lvgl_msg_handler();
-    if (handfree)
-    {
+    // if (handfree)
+    // {
         extern void switch_watch_motion_control_mode(bool enable,
                                                      bool animation);
         switch_watch_motion_control_mode(true, false);
-    }
+    // }
 
     setting_provider.set_power_save_mode(0);
 }
@@ -4150,6 +4166,7 @@ static void on_resume(void)
 static void on_pause(void)
 {
     setting_provider.set_power_save_mode(1);
+    switch_watch_motion_control_mode(false, false);
 }
 
 /**
@@ -4261,12 +4278,13 @@ static void on_stop(void)
 /**
  * @brief Resumes the watch system mouse
  */
+extern void switch_watch_motion_control_mode(bool enable, bool animation);
 void watch_system_mouse_resume(void)
 {
     app_control_set_mouse_mode(true);
     // if (handfree)
     // {
-    extern void switch_watch_motion_control_mode(bool enable, bool animation);
+    
     switch_watch_motion_control_mode(true, false);
     // }
 
@@ -4280,6 +4298,8 @@ void watch_system_mouse_resume(void)
 void watch_system_mouse_pause(void)
 {
     app_control_set_mouse_mode(false);
+    switch_watch_motion_control_mode(false, false);
+    setting_provider.set_power_save_mode(1);
 }
 
 /**
