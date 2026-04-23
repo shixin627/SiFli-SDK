@@ -262,6 +262,34 @@ void BLE_HID_Mouse_Wheel_Scroll(int8_t delta);
 void BLE_HID_Mouse_Pan_Scroll(int8_t delta);
 void BLE_HID_Mouse_LeftClick(void);
 void BLE_HID_Mouse_RightClick(void);
+
+/**
+ * @brief Begin a touch interaction on the 466x466 watch face.
+ *        Call on press-down. Starts a 500ms long-press timer; if the
+ *        previous release was within the double-click window and close
+ *        to this point, enters long-press immediately.
+ * @param x Touch X in screen coords (0 ~ 465)
+ * @param y Touch Y in screen coords (0 ~ 465)
+ */
+void BLE_HID_Mouse_Touch_Press(uint16_t x, uint16_t y);
+
+/**
+ * @brief Update touch position while finger is down. Cancels the
+ *        pending long-press if the finger moves too far, and drives
+ *        edge-panning when already in long-press.
+ */
+void BLE_HID_Mouse_Touch_Move(uint16_t x, uint16_t y);
+
+/**
+ * @brief End the touch interaction. If long-press was active, releases
+ *        the left button. If it was a short tap, defers the click for
+ *        MOUSE_DOUBLECLICK_WINDOW_MS so a second tap can upgrade it to
+ *        a long-press instead.
+ * @return true if the state machine has taken ownership of this release
+ *         (caller MUST NOT fire its own click); false if nothing was
+ *         in progress (e.g. the tap was cancelled by drag).
+ */
+bool BLE_HID_Mouse_Touch_Release(uint16_t x, uint16_t y);
 #endif
 
 #ifdef HID_KEYBOARD

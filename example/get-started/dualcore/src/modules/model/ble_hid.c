@@ -1265,6 +1265,281 @@ static void BLE_HID_Mouse_BackRelease(void)
     hid_mouse_state_clear();
 }
 
+/**********************HID Touch-to-Mouse: long-press + edge-pan
+ * ****************************************************/
+
+/* Vibration pattern reused from the UI layer for long-press feedback. */
+extern void motor_pattern_scrolling_app(void);
+
+#define MOUSE_LONG_PRESS_MS           500    /* hold threshold */
+#define MOUSE_DOUBLECLICK_WINDOW_MS   300    /* after 1st release: wait this long for a 2nd press */
+#define MOUSE_DOUBLECLICK_RADIUS_PX   40     /* same-place tolerance for 2nd press */
+#define MOUSE_LONGPRESS_MOVE_CANCEL   5      /* finger must stay inside this radius (px) to arm long-press — matches SCROLLING_THRESHOLD */
+
+#define WATCH_SCREEN_SIZE             466
+#define WATCH_CENTER_PX               (WATCH_SCREEN_SIZE / 2)   /* 233 */
+#define WATCH_RADIUS_PX               (WATCH_SCREEN_SIZE / 2)   /* 233 */
+#define EDGE_PAN_MARGIN_PX            65                         /* edge-band width — pan starts this far inward from the circular edge */
+#define EDGE_PAN_PERIOD_MS            30                         /* pan tick */
+#define EDGE_PAN_MAX_SPEED            18                         /* px per tick at the very edge */
+
+typedef enum
+{
+    MOUSE_TOUCH_IDLE = 0,
+    MOUSE_TOUCH_ARMED,          /* finger down, long-press timer running */
+    MOUSE_TOUCH_LONG_PRESSING,  /* long-press active, left button held */
+    MOUSE_TOUCH_PENDING_CLICK,  /* finger up after short tap, waiting to see if a 2nd press arrives */
+} mouse_touch_state_t;
+
+static mouse_touch_state_t s_touch_state = MOUSE_TOUCH_IDLE;
+static rt_timer_t s_long_press_timer    = NULL;
+static rt_timer_t s_edge_pan_timer      = NULL;
+static rt_timer_t s_pending_click_timer = NULL;
+static bool       s_edge_pan_running    = false;
+static int8_t     s_edge_pan_dx         = 0;
+static int8_t     s_edge_pan_dy         = 0;
+
+static uint16_t   s_press_start_x = 0;   /* position of the most recent press (used for double-click match) */
+static uint16_t   s_press_start_y = 0;
+
+static int mouse_sq_dist(int dx, int dy) { return dx * dx + dy * dy; }
+
+static void mouse_enter_long_press(void)
+{
+    if (s_touch_state == MOUSE_TOUCH_LONG_PRESSING)
+        return;
+    s_touch_state = MOUSE_TOUCH_LONG_PRESSING;
+    BLE_HID_Mouse_LeftPress();
+    motor_pattern_scrolling_app();
+    LOG_I("HID mouse long-press start");
+}
+
+static void mouse_exit_long_press(void)
+{
+    if (s_touch_state != MOUSE_TOUCH_LONG_PRESSING)
+        return;
+    BLE_HID_Mouse_LeftRelease();
+    s_touch_state = MOUSE_TOUCH_IDLE;
+    LOG_I("HID mouse long-press end");
+}
+
+static void long_press_timer_cb(void *parameter)
+{
+    (void)parameter;
+    if (s_touch_state == MOUSE_TOUCH_ARMED)
+        mouse_enter_long_press();
+}
+
+static void long_press_timer_arm(void)
+{
+    if (s_long_press_timer == NULL)
+    {
+        s_long_press_timer = rt_timer_create(
+            "hid_lp", long_press_timer_cb, RT_NULL,
+            rt_tick_from_millisecond(MOUSE_LONG_PRESS_MS),
+            RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
+    }
+    if (s_long_press_timer)
+    {
+        rt_timer_stop(s_long_press_timer);
+        rt_timer_start(s_long_press_timer);
+    }
+}
+
+static void long_press_timer_cancel(void)
+{
+    if (s_long_press_timer)
+        rt_timer_stop(s_long_press_timer);
+}
+
+static void pending_click_timer_cb(void *parameter)
+{
+    (void)parameter;
+    if (s_touch_state != MOUSE_TOUCH_PENDING_CLICK)
+        return;
+    s_touch_state = MOUSE_TOUCH_IDLE;
+    LOG_I("HID mouse deferred click fires");
+    BLE_HID_Mouse_LeftClick();
+}
+
+static void pending_click_timer_arm(void)
+{
+    if (s_pending_click_timer == NULL)
+    {
+        s_pending_click_timer = rt_timer_create(
+            "hid_pc", pending_click_timer_cb, RT_NULL,
+            rt_tick_from_millisecond(MOUSE_DOUBLECLICK_WINDOW_MS),
+            RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
+    }
+    if (s_pending_click_timer)
+    {
+        rt_timer_stop(s_pending_click_timer);
+        rt_timer_start(s_pending_click_timer);
+    }
+}
+
+static void pending_click_timer_cancel(void)
+{
+    if (s_pending_click_timer)
+        rt_timer_stop(s_pending_click_timer);
+}
+
+static void edge_pan_timer_cb(void *parameter)
+{
+    (void)parameter;
+    if (s_touch_state != MOUSE_TOUCH_LONG_PRESSING)
+        return;
+    if (s_edge_pan_dx == 0 && s_edge_pan_dy == 0)
+        return;
+    BLE_HID_Mouse_Move(s_edge_pan_dx, s_edge_pan_dy);
+}
+
+static void edge_pan_stop(void)
+{
+    if (s_edge_pan_running && s_edge_pan_timer)
+        rt_timer_stop(s_edge_pan_timer);
+    s_edge_pan_running = false;
+    s_edge_pan_dx = 0;
+    s_edge_pan_dy = 0;
+}
+
+static void edge_pan_start(void)
+{
+    if (s_edge_pan_timer == NULL)
+    {
+        s_edge_pan_timer = rt_timer_create(
+            "hid_pan", edge_pan_timer_cb, RT_NULL,
+            rt_tick_from_millisecond(EDGE_PAN_PERIOD_MS),
+            RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+    }
+    if (s_edge_pan_timer && !s_edge_pan_running)
+    {
+        rt_timer_start(s_edge_pan_timer);
+        s_edge_pan_running = true;
+    }
+}
+
+/* Approximate vector length, avoids sqrt. Max error ~3% vs true magnitude. */
+static int approx_len(int dx, int dy)
+{
+    int a = dx < 0 ? -dx : dx;
+    int b = dy < 0 ? -dy : dy;
+    return (a > b) ? (a + (b >> 1)) : (b + (a >> 1));
+}
+
+static void edge_pan_update(uint16_t x, uint16_t y)
+{
+    int dx = (int)x - WATCH_CENTER_PX;
+    int dy = (int)y - WATCH_CENTER_PX;
+    int inner = WATCH_RADIUS_PX - EDGE_PAN_MARGIN_PX;
+
+    if (mouse_sq_dist(dx, dy) <= inner * inner)
+    {
+        edge_pan_stop();
+        return;
+    }
+
+    int len = approx_len(dx, dy);
+    if (len == 0)
+    {
+        edge_pan_stop();
+        return;
+    }
+
+    int depth = len - inner;                      /* 0..margin (or beyond) */
+    if (depth > EDGE_PAN_MARGIN_PX) depth = EDGE_PAN_MARGIN_PX;
+    int intensity = (depth * EDGE_PAN_MAX_SPEED) / EDGE_PAN_MARGIN_PX;
+    if (intensity < 1) intensity = 1;
+
+    s_edge_pan_dx = (int8_t)((dx * intensity) / len);
+    s_edge_pan_dy = (int8_t)((dy * intensity) / len);
+    edge_pan_start();
+}
+
+void BLE_HID_Mouse_Touch_Press(uint16_t x, uint16_t y)
+{
+    /* Case A: 2nd press arrived within the double-click window → long-press. */
+    if (s_touch_state == MOUSE_TOUCH_PENDING_CLICK)
+    {
+        int ddx = (int)x - (int)s_press_start_x;
+        int ddy = (int)y - (int)s_press_start_y;
+        bool same_place =
+            mouse_sq_dist(ddx, ddy) <=
+            MOUSE_DOUBLECLICK_RADIUS_PX * MOUSE_DOUBLECLICK_RADIUS_PX;
+
+        pending_click_timer_cancel();
+
+        if (same_place)
+        {
+            s_press_start_x = x;
+            s_press_start_y = y;
+            s_touch_state = MOUSE_TOUCH_ARMED;    /* treat as pressed-in */
+            mouse_enter_long_press();
+            return;
+        }
+        /* Different place → honour the pending single click, then restart. */
+        BLE_HID_Mouse_LeftClick();
+        s_touch_state = MOUSE_TOUCH_IDLE;
+    }
+
+    /* Clear any residuals from an abnormal prior interaction. */
+    long_press_timer_cancel();
+    edge_pan_stop();
+    if (s_touch_state == MOUSE_TOUCH_LONG_PRESSING)
+        mouse_exit_long_press();
+
+    s_press_start_x = x;
+    s_press_start_y = y;
+    s_touch_state = MOUSE_TOUCH_ARMED;
+    long_press_timer_arm();
+}
+
+void BLE_HID_Mouse_Touch_Move(uint16_t x, uint16_t y)
+{
+    if (s_touch_state == MOUSE_TOUCH_ARMED)
+    {
+        int dx = (int)x - (int)s_press_start_x;
+        int dy = (int)y - (int)s_press_start_y;
+        if (mouse_sq_dist(dx, dy) >
+            MOUSE_LONGPRESS_MOVE_CANCEL * MOUSE_LONGPRESS_MOVE_CANCEL)
+        {
+            long_press_timer_cancel();
+            s_touch_state = MOUSE_TOUCH_IDLE;
+        }
+    }
+    else if (s_touch_state == MOUSE_TOUCH_LONG_PRESSING)
+    {
+        edge_pan_update(x, y);
+    }
+}
+
+bool BLE_HID_Mouse_Touch_Release(uint16_t x, uint16_t y)
+{
+    (void)x;
+    (void)y;
+
+    long_press_timer_cancel();
+    edge_pan_stop();
+
+    if (s_touch_state == MOUSE_TOUCH_LONG_PRESSING)
+    {
+        mouse_exit_long_press();
+        return true;    /* caller must skip its own click */
+    }
+
+    if (s_touch_state == MOUSE_TOUCH_ARMED)
+    {
+        /* Short tap — defer the click; a 2nd press inside the window upgrades to long-press. */
+        s_touch_state = MOUSE_TOUCH_PENDING_CLICK;
+        pending_click_timer_arm();
+        return true;    /* caller must NOT fire its own click — we own it now */
+    }
+
+    /* Moved-too-far cancel, or nothing in progress. */
+    s_touch_state = MOUSE_TOUCH_IDLE;
+    return false;
+}
+
 static int init_ble_mouse_func(void)
 {
     control_provider.ble_hid_mouse_move = BLE_HID_Mouse_Move;

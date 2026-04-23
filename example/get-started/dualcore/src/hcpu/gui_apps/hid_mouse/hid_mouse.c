@@ -2315,6 +2315,8 @@ static void handle_pressed_event(lv_indev_t *indev)
     LOG_D("pressed x: %d, y: %d", start_point.x, start_point.y);
     update_edge_detection(&start_point);
     gesture_detected = false;
+
+    BLE_HID_Mouse_Touch_Press((uint16_t)start_point.x, (uint16_t)start_point.y);
 }
 
 /**
@@ -2325,6 +2327,8 @@ static void handle_pressed_event(lv_indev_t *indev)
 static void handle_pressing_event(lv_indev_t *indev,
                                   const lv_point_t *current_point)
 {
+    BLE_HID_Mouse_Touch_Move((uint16_t)current_point->x, (uint16_t)current_point->y);
+
     // 左側滾動弧線模式：以角度追蹤手指繞中心的旋轉量，
     // 可連續旋轉多圈；節點跟手在弧線上循環移動，每過一個節點滾動一次。
     if (left_scroll_active)
@@ -2433,6 +2437,11 @@ static void handle_released_event(lv_indev_t *indev)
 {
     user_touching = false;
 
+    lv_point_t _release_pt;
+    lv_indev_get_point(indev, &_release_pt);
+    bool _long_press_ended = BLE_HID_Mouse_Touch_Release(
+        (uint16_t)_release_pt.x, (uint16_t)_release_pt.y);
+
     // 左側滾動弧線放手
     if (left_scroll_active)
     {
@@ -2488,7 +2497,8 @@ static void handle_released_event(lv_indev_t *indev)
         if (pressed_left_half)
     #endif
         {
-            if (!scrolling && (lv_tick_get() - press_time <= PRESSED_TIME_MS))
+            if (!scrolling && !_long_press_ended &&
+                (lv_tick_get() - press_time <= PRESSED_TIME_MS))
             {
                 LOG_D("Air mouse - click_left");
                 motor_pattern_tap();
@@ -2498,7 +2508,8 @@ static void handle_released_event(lv_indev_t *indev)
     #if SIMULATE_MOUSE_RIGHT_BUTTON
         else
         {
-            if (!scrolling && (lv_tick_get() - press_time <= PRESSED_TIME_MS))
+            if (!scrolling && !_long_press_ended &&
+                (lv_tick_get() - press_time <= PRESSED_TIME_MS))
             {
                 LOG_D("Air mouse - click_right");
                 control_provider.ble_hid_mouse_right_click();
