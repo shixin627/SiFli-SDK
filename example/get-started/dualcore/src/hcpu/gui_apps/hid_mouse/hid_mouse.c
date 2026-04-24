@@ -3740,6 +3740,9 @@ static void update_left_scroll_nodes(void)
     const float mid_r = cx - (float)cur_arc_w * 0.5f;
     const float span = LEFT_SCROLL_ARC_SPAN_DEG;
     const float spacing = LEFT_SCROLL_NODE_SPACING_DEG;
+    // 節點尺寸跟著 arc 寬度同比縮放，避免 arc 變細時節點仍是原尺寸
+    const float size_scale =
+        (float)cur_arc_w / (float)LEFT_SCROLL_ARC_W_ACTIVE;
 
     // 節點透明度：在 DIM 與 ACTIVE 間依 scroll_ui_level 插值
     int32_t opa_v = (int32_t)LEFT_SCROLL_NODE_OPA_DIM +
@@ -3774,12 +3777,14 @@ static void update_left_scroll_nodes(void)
         float t = (angle_deg - 180.0f) / (span * 0.5f); // [-1, 1)
         float factor = cosf(t * LEFT_SCROLL_PI * 0.5f);
         factor = factor * factor;
-        int16_t size = (int16_t)((float)LEFT_SCROLL_NODE_MIN_SIZE +
-                                 (float)(LEFT_SCROLL_NODE_MAX_SIZE -
-                                         LEFT_SCROLL_NODE_MIN_SIZE) *
-                                     factor);
-        if (size < 1)
-            size = 1;
+        // int16_t size = (int16_t)(((float)LEFT_SCROLL_NODE_MIN_SIZE +
+        //                            (float)(LEFT_SCROLL_NODE_MAX_SIZE -
+        //                                    LEFT_SCROLL_NODE_MIN_SIZE) *
+        //                                factor) *
+        //                           size_scale);
+        int16_t size = 14*size_scale;
+        // if (size < 1)
+        //     size = 1;
 
         lv_obj_set_size(left_scroll_nodes[i], size, size);
         lv_obj_set_pos(left_scroll_nodes[i], px - size / 2, py - size / 2);

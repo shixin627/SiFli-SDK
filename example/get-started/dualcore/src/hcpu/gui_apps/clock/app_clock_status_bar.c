@@ -2118,14 +2118,17 @@ static void dev_change_device_item_click_cb(lv_event_t *e)
     if (LV_EVENT_SHORT_CLICKED == event)
     {
         dev_change_stop_delete_timer();
+        if (dev->conn_idx == 0xFF)
+        {
+            LOG_D("Device change bar: device idx=%d (%s) not connected, ignore click",
+                  device_idx, dev->device_name);
+            return;
+        }
         LOG_D("Device change bar: select device idx=%d, name=%s, conn_idx=%d",
               device_idx, dev->device_name, dev->conn_idx);
         dev_change_watch_mode = false;
         // 同步 HID 送出目標：沒這行的話 mouse_report_send 會繼續用舊的 g_conn_idx
-        if (dev->conn_idx != 0xFF)
-        {
-            ble_hid_set_conn_idx(dev->conn_idx);
-        }
+        ble_hid_set_conn_idx(dev->conn_idx);
         ble_dev_mgr_set_active_device(device_idx);
         if (!gui_app_is_actived(APP_ID_MOUSE))
         {
