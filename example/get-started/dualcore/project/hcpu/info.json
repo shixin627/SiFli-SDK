@@ -1,6 +1,6 @@
 {
-    "version": "1.1.32",
-    "description": "修復觸控板飛鼠亂跳",
+    "version": "1.1.33",
+    "description": "優化滑鼠模式",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
