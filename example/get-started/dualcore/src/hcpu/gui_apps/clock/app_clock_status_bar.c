@@ -121,7 +121,7 @@ void display_status_bar_area(uint32_t idx, bool display)
         status_bar_area_up,
         status_bar_area_down,
         status_bar_area_left,
-        status_bar_area_right,
+        device_change_bar_area_right,
     };
     if (lv_obj_is_valid(status_bar_area_objs[idx]))
     {
@@ -607,6 +607,7 @@ static void app_clock_device_change_bar_event_cb(lv_event_t *event)
         else if (active_pos == 1)
         {
             lv_obj_clear_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(dev_change_gaus_bg, LV_OBJ_FLAG_HIDDEN);
             set_dev_change_gaus_opa(LV_OPA_COVER);
             dev_change_refresh_device_list();
         }
@@ -677,6 +678,7 @@ static void app_clock_main_device_change_bar_event_cb(lv_event_t *event)
     {
         LOG_D("LV_EVENT_RELEASED_Clock");
         lv_obj_add_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(dev_change_gaus_bg, LV_OBJ_FLAG_HIDDEN);
         break;
     }
     default:
