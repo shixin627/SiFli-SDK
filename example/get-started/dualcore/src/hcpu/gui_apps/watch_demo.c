@@ -688,16 +688,20 @@ static void start_sleep_fade_out(void)
 
 static void pm_event_handler(gui_pm_event_type_t event)
 {
+    extern void dial_header_on_suspend(void);
+    extern void dial_header_on_resume(void);
     switch (event)
     {
     case GUI_PM_EVT_SUSPEND:
     {
+        dial_header_on_suspend();
         start_sleep_fade_out();
         break;
     }
     case GUI_PM_EVT_RESUME:
     {
         lv_timer_enable(true);
+        dial_header_on_resume();
         break;
     }
     case GUI_PM_EVT_SHUTDOWN:

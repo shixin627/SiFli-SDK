@@ -378,11 +378,13 @@ static void bt_speaker_set_status(bool status)
 }
 extern void handle_media_play_state(bool media_state);
 extern void handle_media_widget_play_state(bool media_state);
+extern void handle_dial_header_media_play_state(bool playing);
 static void notify_bt_speaker_media_status(bool status)
 {
 	bt_media_playing = status;
 	handle_media_widget_play_state(bt_media_playing);
     handle_media_play_state(bt_media_playing);
+	handle_dial_header_media_play_state(bt_media_playing);
 // #ifdef BSP_USING_UI_HANDLER
 // 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_PLAY_STATE,
 // 					  .data.media_play_state = bt_media_playing};

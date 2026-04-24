@@ -122,6 +122,8 @@ lv_obj_t *lv_notification_count_widget_create(lv_obj_t *parent);
 void lv_dial_media_header_builder(lv_obj_t *parent);
 void dial_media_header_init(void);
 void dial_media_header_deinit(void);
+void dial_header_on_suspend(void);
+void dial_header_on_resume(void);
 
 /**********************
  *      MACROS
