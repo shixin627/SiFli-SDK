@@ -382,6 +382,10 @@ void check_is_at_speech_interface(void)
             // switch_watch_motion_control_mode(true, true);
             speech_on_resume();
             set_open_control_options(true);
+            display_status_bar_area(0, false);
+            display_status_bar_area(1, false);
+            display_status_bar_area(2, false);
+            display_status_bar_area(3, false);
         }
         else
         {
@@ -475,6 +479,10 @@ void check_is_at_message(void)
                 set_message_list_arc_stripe_external_offset;
             extern void refersh_weather_icon(void);
             refersh_weather_icon();
+            display_status_bar_area(0, false);
+            display_status_bar_area(1, false);
+            display_status_bar_area(2, false);
+            display_status_bar_area(3, false);
         }
         else
         {
@@ -525,6 +533,10 @@ void check_is_at_control_center(void)
             extern void control_center_on_resume(void);
             control_center_on_resume();
             // display_status_bar_area(3, false);
+            display_status_bar_area(0, false);
+            display_status_bar_area(1, false);
+            display_status_bar_area(2, false);
+            display_status_bar_area(3, false);
         }
         else
         {
@@ -576,10 +588,6 @@ void check_is_at_home(void)
             {
                 display_gesture_detect_objs(0, true);
             }
-            display_status_bar_area(2, false);
-            display_status_bar_area(0, false);
-            display_status_bar_area(1, false);
-            display_status_bar_area(3, false);
         }
         LOG_I("is_at_home: %d", _at_home);
     }

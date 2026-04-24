@@ -112,7 +112,7 @@
     #define USING_EDGE_RIGHT_DETECTION 0
 
     #define ENABLE_MENU_FEATURE 0
-    #define KB_ANIM_TIME_MS 300
+    #define KB_ANIM_TIME_MS 100
 
     // FSR-402 pressure sensor ADC config
     #define FSR_ADC_DEV_NAME "bat1"
@@ -202,25 +202,26 @@ static bool left_scroll_active = false;
     // 左側滾動節點：以手指繞螢幕中心的角度追蹤，可無限旋轉；
     // 節點沿弧線跟手移動，每通過一個節點觸發一次滾輪。
     #define LEFT_SCROLL_NODE_COUNT 5
-    #define LEFT_SCROLL_ARC_MIN_DEG 150.0f
-    #define LEFT_SCROLL_ARC_MAX_DEG 210.0f
-    #define LEFT_SCROLL_ARC_SPAN_DEG 60.0f
+    #define LEFT_SCROLL_ARC_MIN_DEG 135.0f
+    #define LEFT_SCROLL_ARC_MAX_DEG 225.0f
+    #define LEFT_SCROLL_ARC_SPAN_DEG 90.0f
     #define LEFT_SCROLL_NODE_SPACING_DEG                                       \
-        (LEFT_SCROLL_ARC_SPAN_DEG / LEFT_SCROLL_NODE_COUNT) // = 12°
+        (LEFT_SCROLL_ARC_SPAN_DEG / LEFT_SCROLL_NODE_COUNT) // ≈ 12.86°
     #define LEFT_SCROLL_NODE_MAX_SIZE 14
     #define LEFT_SCROLL_NODE_MIN_SIZE 3
     // 未觸碰時暗/細，觸碰時亮/粗，100ms 過渡
     #define LEFT_SCROLL_ARC_W_DIM 12
-    #define LEFT_SCROLL_ARC_W_ACTIVE 30
-    #define LEFT_SCROLL_ARC_OPA_DIM LV_OPA_30
-    #define LEFT_SCROLL_ARC_OPA_ACTIVE LV_OPA_60
-    #define LEFT_SCROLL_NODE_OPA_DIM LV_OPA_30
+    #define LEFT_SCROLL_ARC_W_ACTIVE 35
+    #define LEFT_SCROLL_ARC_OPA_DIM LV_OPA_TRANSP
+    #define LEFT_SCROLL_ARC_OPA_ACTIVE LV_OPA_TRANSP
+    #define LEFT_SCROLL_NODE_OPA_DIM LV_OPA_70
     #define LEFT_SCROLL_NODE_OPA_ACTIVE LV_OPA_COVER
     #define LEFT_SCROLL_UI_ANIM_MS 300
     #ifndef LEFT_SCROLL_PI
         #define LEFT_SCROLL_PI 3.14159265358979323846f
     #endif
 static lv_obj_t *left_scroll_nodes[LEFT_SCROLL_NODE_COUNT] = {NULL};
+static lv_point_t left_scroll_node_pts[LEFT_SCROLL_NODE_COUNT][2];
 static float scroll_last_theta = 0.0f;      // 上次手指相對中心的角度（弧度）
 static float scroll_accum_angle = 0.0f;     // 未觸發滾動的累積角度（弧度）
 static float scroll_node_offset_deg = 0.0f; // 節點視覺偏移（度，已正規化）
@@ -243,14 +244,14 @@ static bool is_point_in_left_arc(const lv_point_t *p)
     float dy = p->y - cy;
     float dist = sqrtf(dx * dx + dy * dy);
     float outer_r = cx;
-    float inner_r = outer_r - 100.0f; // 觸發範圍比 UI（30px）更寬
+    float inner_r = outer_r - 50.0f; // 觸發範圍比 UI（30px）更寬
     if (dist < inner_r || dist > outer_r)
         return false;
     // 只接受左側（x < 中心）
     if (dx >= 0)
         return false;
-    // 角度放寬到約 140°~220°（sin(40°) ≈ 0.643）
-    float max_dy = dist * 0.643f;
+    // 角度放寬到約 125°~235°（sin(55°) ≈ 0.819）
+    float max_dy = dist * 0.819f;
     return (dy >= -max_dy && dy <= max_dy);
 }
 static lv_obj_t *control_page = NULL;
@@ -656,6 +657,7 @@ void toggle_keyboard_visibility(void)
         lv_anim_set_values(&a, lv_obj_get_height(text_input_bar_bg), 50);
         lv_anim_set_time(&a, KB_ANIM_TIME_MS);
         lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_height);
+        // lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
         lv_anim_set_ready_cb(&a, keyboard_close_anim_ready_cb);
         lv_anim_start(&a);
 
@@ -3732,17 +3734,13 @@ static void update_left_scroll_nodes(void)
 
     const float cx = LV_HOR_RES_MAX / 2.0f;
     const float cy = LV_VER_RES_MAX / 2.0f;
-    // 弧線中線半徑：跟著當下的 arc 寬度走，避免節點在細弧線上飄出邊緣
-    const int32_t cur_arc_w =
-        LEFT_SCROLL_ARC_W_DIM +
-        (LEFT_SCROLL_ARC_W_ACTIVE - LEFT_SCROLL_ARC_W_DIM) * scroll_ui_level /
-            1000;
+    // arc 寬度固定，節點自身大小依 scroll_ui_level 變化
+    const int32_t cur_arc_w = LEFT_SCROLL_ARC_W_ACTIVE;
     const float mid_r = cx - (float)cur_arc_w * 0.5f;
     const float span = LEFT_SCROLL_ARC_SPAN_DEG;
     const float spacing = LEFT_SCROLL_NODE_SPACING_DEG;
-    // 節點尺寸跟著 arc 寬度同比縮放，避免 arc 變細時節點仍是原尺寸
-    const float size_scale =
-        (float)cur_arc_w / (float)LEFT_SCROLL_ARC_W_ACTIVE;
+    // 節點尺寸固定為最大，不隨觸碰/放開變化（僅透明度會淡出）
+    const float size_scale = 1.0f;
 
     // 節點透明度：在 DIM 與 ACTIVE 間依 scroll_ui_level 插值
     int32_t opa_v = (int32_t)LEFT_SCROLL_NODE_OPA_DIM +
@@ -3782,13 +3780,28 @@ static void update_left_scroll_nodes(void)
         //                                    LEFT_SCROLL_NODE_MIN_SIZE) *
         //                                factor) *
         //                           size_scale);
-        int16_t size = 14*size_scale;
-        // if (size < 1)
-        //     size = 1;
+        // 刻度長度（徑向）與線寬隨 size_scale 變化
+        float tick_len = 20.0f * size_scale;
+        int16_t line_w = (int16_t)(6.0f * size_scale);
+        if (tick_len < 2.0f) tick_len = 2.0f;
+        if (line_w < 1) line_w = 1;
 
-        lv_obj_set_size(left_scroll_nodes[i], size, size);
-        lv_obj_set_pos(left_scroll_nodes[i], px - size / 2, py - size / 2);
-        lv_obj_set_style_bg_opa(left_scroll_nodes[i], node_opa, 0);
+        // 徑向單位向量（從圓心指向節點）
+        float ux = cosf(rad);
+        float uy = sinf(rad);
+        // 兩端點沿徑向：外端（靠邊）與內端（靠圓心）
+        int16_t x0 = (int16_t)(px + ux * tick_len * 0.5f);
+        int16_t y0 = (int16_t)(py + uy * tick_len * 0.5f);
+        int16_t x1 = (int16_t)(px - ux * tick_len * 0.5f);
+        int16_t y1 = (int16_t)(py - uy * tick_len * 0.5f);
+        left_scroll_node_pts[i][0].x = x0;
+        left_scroll_node_pts[i][0].y = y0;
+        left_scroll_node_pts[i][1].x = x1;
+        left_scroll_node_pts[i][1].y = y1;
+
+        lv_line_set_points(left_scroll_nodes[i], left_scroll_node_pts[i], 2);
+        lv_obj_set_style_line_width(left_scroll_nodes[i], line_w, 0);
+        lv_obj_set_style_line_opa(left_scroll_nodes[i], node_opa, 0);
     }
 }
 
@@ -3799,10 +3812,7 @@ static void apply_scroll_ui_level(void)
 {
     if (left_scroll_bar != NULL)
     {
-        int32_t w = (int32_t)LEFT_SCROLL_ARC_W_DIM +
-                    ((int32_t)LEFT_SCROLL_ARC_W_ACTIVE -
-                     (int32_t)LEFT_SCROLL_ARC_W_DIM) *
-                        scroll_ui_level / 1000;
+        // arc 寬度固定，僅透明度仍隨觸碰動畫
         int32_t opa_v = (int32_t)LEFT_SCROLL_ARC_OPA_DIM +
                         ((int32_t)LEFT_SCROLL_ARC_OPA_ACTIVE -
                          (int32_t)LEFT_SCROLL_ARC_OPA_DIM) *
@@ -3811,8 +3821,9 @@ static void apply_scroll_ui_level(void)
             opa_v = 0;
         if (opa_v > 255)
             opa_v = 255;
-        lv_obj_set_style_arc_width(left_scroll_bar, (int16_t)w, LV_PART_MAIN);
-        lv_obj_set_style_arc_opa(left_scroll_bar, (lv_opa_t)opa_v,
+        lv_obj_set_style_arc_width(left_scroll_bar,
+                                   LEFT_SCROLL_ARC_W_ACTIVE, LV_PART_MAIN);
+        lv_obj_set_style_arc_opa(left_scroll_bar, opa_v,
                                  LV_PART_MAIN);
     }
     update_left_scroll_nodes();
@@ -3846,15 +3857,16 @@ static void create_left_scroll_nodes(lv_obj_t *parent)
 {
     for (int i = 0; i < LEFT_SCROLL_NODE_COUNT; i++)
     {
-        lv_obj_t *dot = lv_obj_create(parent);
-        lv_obj_remove_style_all(dot);
-        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(dot, lv_color_hex(0xAAAAAA), 0);
-        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(dot, 0, 0);
-        lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
-        left_scroll_nodes[i] = dot;
+        lv_obj_t *line = lv_line_create(parent);
+        lv_obj_remove_style_all(line);
+        lv_obj_set_pos(line, 0, 0);
+        lv_obj_set_style_line_color(line, lv_color_hex(0x4D4D4D), 0);
+        lv_obj_set_style_line_rounded(line, true, 0);
+        lv_obj_set_style_line_width(line, 3, 0);
+        lv_obj_set_style_line_opa(line, LV_OPA_COVER, 0);
+        lv_obj_clear_flag(line, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(line, LV_OBJ_FLAG_CLICKABLE);
+        left_scroll_nodes[i] = line;
     }
     scroll_node_offset_deg = 0.0f;
     scroll_ui_level = 0; // 預設暗/細
@@ -3884,7 +3896,7 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_set_size(left_scroll_bar, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     lv_obj_align(left_scroll_bar, LV_ALIGN_CENTER, 0, 0);
     lv_arc_set_rotation((lv_obj_t *)left_scroll_bar, 0);
-    lv_arc_set_bg_angles((lv_obj_t *)left_scroll_bar, 150, 210);
+    lv_arc_set_bg_angles((lv_obj_t *)left_scroll_bar, 135, 225);
     // 前景角度設為 0，讓 indicator 不顯示
     lv_arc_set_angles((lv_obj_t *)left_scroll_bar, 0, 0);
     lv_arc_set_mode((lv_obj_t *)left_scroll_bar, LV_ARC_MODE_NORMAL);

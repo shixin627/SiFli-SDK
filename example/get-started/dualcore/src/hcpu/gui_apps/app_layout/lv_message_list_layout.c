@@ -331,6 +331,12 @@ static void update_msg_indicator_dots_position(int input_value)
         if (opacity > LV_OPA_COVER)
             opacity = LV_OPA_COVER;
 
+        /* Hide the dot whose index matches the currently selected card.
+           Dot i corresponds to display index i (same ordering as the
+           notification cards / media widget). */
+        if (i == (int)selected_message_index)
+            opacity = LV_OPA_TRANSP;
+
         lv_obj_set_style_img_opa(msg_indicator_dots[i], opacity, 0);
 
         uint16_t zoom =
