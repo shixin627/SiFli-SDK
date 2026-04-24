@@ -67,6 +67,7 @@ static lv_obj_t *mbox;
 
 static lv_obj_t *sleep_wake_overlay = NULL;
 static volatile bool sleep_fade_done = false;
+static volatile bool sleep_fading_out = false;
 
 /*Compatible with private lib*/
 uint32_t g_mainmenu[2];
@@ -628,6 +629,7 @@ static void button_event_task_entry(struct _lv_timer_t *task)
 
 static void sleep_fade_out_ready_cb(lv_anim_t *a)
 {
+    sleep_fading_out = false;
     if (!gui_is_force_close())
     {
         /* Sleep was cancelled (RESUME during fade-out), clean up overlay */
@@ -640,6 +642,20 @@ static void sleep_fade_out_ready_cb(lv_anim_t *a)
     }
     sleep_fade_done = true;
     lv_timer_enable(false);
+}
+
+static void cancel_sleep_fade_out_if_active(void)
+{
+    if (!sleep_fading_out || !sleep_wake_overlay)
+    {
+        return;
+    }
+    sleep_fading_out = false;
+    lv_anim_del(sleep_wake_overlay, NULL);
+    lv_obj_del(sleep_wake_overlay);
+    sleep_wake_overlay = NULL;
+    gui_pm_fsm(GUI_PM_ACTION_BUTTON_CLICKED);
+    lv_disp_trig_activity(NULL);
 }
 
 static void create_sleep_wake_overlay(void)
@@ -657,6 +673,7 @@ static void create_sleep_wake_overlay(void)
 static void start_sleep_fade_out(void)
 {
     sleep_fade_done = false;
+    sleep_fading_out = true;
     create_sleep_wake_overlay();
     lv_obj_set_style_bg_opa(sleep_wake_overlay, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_anim_t a;
@@ -714,6 +731,9 @@ static void on_touch_gesture(touch_gesture_t gesture, uint16_t x, uint16_t y)
     {
     case TOUCH_GESTURE_PRESSED:
         LOG_D("Touch pressed at (%d, %d)", x, y);
+#ifdef BSP_USING_PM
+        cancel_sleep_fade_out_if_active();
+#endif
         break;
     case TOUCH_GESTURE_QUICK_CLICK:
         LOG_D("Quick click at (%d, %d)", x, y);
