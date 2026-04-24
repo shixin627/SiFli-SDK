@@ -201,6 +201,8 @@ static bool dial_header_music_hidden_by_pause = false;
 static lv_timer_t *dial_header_shrink_timer = NULL;
 static bool dial_header_music_active = false;
 static bool dial_header_showing_notification = false;
+static rt_tick_t dial_header_shrink_start_tick = 0;
+static uint32_t dial_header_shrink_duration_ms = 0;
 
 static bool open_shock = false;
 static bool open_action_flag = true;
@@ -328,6 +330,12 @@ static void update_msg_indicator_dots_position(int input_value)
             opacity = LV_OPA_30;
         if (opacity > LV_OPA_COVER)
             opacity = LV_OPA_COVER;
+
+        /* Hide the dot whose index matches the currently selected card.
+           Dot i corresponds to display index i (same ordering as the
+           notification cards / media widget). */
+        if (i == (int)selected_message_index)
+            opacity = LV_OPA_TRANSP;
 
         lv_obj_set_style_img_opa(msg_indicator_dots[i], opacity, 0);
 
@@ -2124,21 +2132,26 @@ static rt_timer_t dial_header_music_pause_timer = NULL;
 static void dial_header_music_pause_timer_stop(void);
 static void dial_header_music_pause_timer_start(void);
 
-static void dial_header_fadeout_ready_cb(lv_anim_t *anim)
+static void dial_header_apply_hidden_state(void)
 {
-    lv_obj_t *obj = (lv_obj_t *)anim->var;
-    if (lv_obj_is_valid(obj))
+    if (lv_obj_is_valid(dial_header_bg))
     {
-        lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-        // lv_obj_set_style_opa(obj, LV_OPA_COVER, 0);
+        lv_obj_add_flag(dial_header_bg, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_img_opa(dial_header_bg_mask, LV_OPA_COVER, 0);
         lv_obj_set_style_img_opa(dial_header_img, LV_OPA_30, 0);
         lv_obj_set_style_text_opa(dial_header_title, LV_OPA_COVER, 0);
         lv_obj_set_style_text_opa(dial_header_content, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_opa(dial_header_bg, 30, 0);
+        lv_obj_set_style_bg_opa(dial_header_bg, 15, 0);
     }
     if (lv_obj_is_valid(dial_header_red_dot) &&
         notification_center_get_info_count() > 0)
         lv_obj_clear_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void dial_header_fadeout_ready_cb(lv_anim_t *anim)
+{
+    dial_header_apply_hidden_state();
 }
 
 static void dial_header_fadeout_exec_cb(void *obj, int32_t value)
@@ -2213,6 +2226,7 @@ static void dial_header_restore_music(void)
 static void dial_header_shrink_timer_cb(lv_timer_t *timer)
 {
     dial_header_shrink_timer = NULL;
+    dial_header_shrink_duration_ms = 0;
     dial_header_showing_notification = false;
     if (dial_header_was_music_before_notif || dial_header_music_active)
     {
@@ -2316,8 +2330,11 @@ void handle_dial_header_media_title(char *media_title_text)
             if (notification_center_get_info_count() > 0)
             {
                 dial_header_was_music_before_notif = false;
+                dial_header_shrink_duration_ms = 8000;
+                dial_header_shrink_start_tick = rt_tick_get();
                 dial_header_shrink_timer =
-                    lv_timer_create(dial_header_shrink_timer_cb, 8000, NULL);
+                    lv_timer_create(dial_header_shrink_timer_cb,
+                                    dial_header_shrink_duration_ms, NULL);
                 lv_timer_set_repeat_count(dial_header_shrink_timer, 1);
             }
         }
@@ -2382,8 +2399,11 @@ static void handle_dial_header_new_notification(void)
     /* Start or restart 5-second shrink timer */
     if (dial_header_shrink_timer)
         lv_timer_del(dial_header_shrink_timer);
+    dial_header_shrink_duration_ms = 8000;
+    dial_header_shrink_start_tick = rt_tick_get();
     dial_header_shrink_timer =
-        lv_timer_create(dial_header_shrink_timer_cb, 8000, NULL);
+        lv_timer_create(dial_header_shrink_timer_cb,
+                        dial_header_shrink_duration_ms, NULL);
     lv_timer_set_repeat_count(dial_header_shrink_timer, 1);
 }
 
@@ -2581,9 +2601,8 @@ static void dial_header_music_pause_timer_stop(void)
     }
 }
 
-static void handle_dial_header_media_play_state(void *param)
+void handle_dial_header_media_play_state(bool playing)
 {
-    bool playing = *(bool *)param;
     if (!playing)
     {
         /* Music paused — start 30s timer */
@@ -2601,14 +2620,58 @@ static void handle_dial_header_media_play_state(void *param)
     }
 }
 
+void dial_header_on_suspend(void)
+{
+    /* Delete the lv_timer but preserve start_tick/duration so we can
+       compensate on resume. */
+    if (dial_header_shrink_timer)
+    {
+        lv_timer_del(dial_header_shrink_timer);
+        dial_header_shrink_timer = NULL;
+    }
+}
+
+void dial_header_on_resume(void)
+{
+    if (dial_header_shrink_duration_ms == 0)
+        return;
+    uint32_t elapsed_ms =
+        (rt_tick_get() - dial_header_shrink_start_tick) * 1000 / RT_TICK_PER_SECOND;
+    if (elapsed_ms >= dial_header_shrink_duration_ms)
+    {
+        /* Timer expired during sleep — jump to end state without animation. */
+        dial_header_shrink_duration_ms = 0;
+        dial_header_showing_notification = false;
+        if (dial_header_was_music_before_notif || dial_header_music_active)
+        {
+            dial_header_was_music_before_notif = false;
+            dial_header_restore_music();
+            if (p_app_notification && p_app_notification->list)
+                reset_list(true);
+        }
+        else
+        {
+            dial_header_apply_hidden_state();
+        }
+    }
+    else
+    {
+        /* Not yet expired — recreate timer with remaining time. */
+        uint32_t remaining_ms = dial_header_shrink_duration_ms - elapsed_ms;
+        dial_header_shrink_timer =
+            lv_timer_create(dial_header_shrink_timer_cb, remaining_ms, NULL);
+        lv_timer_set_repeat_count(dial_header_shrink_timer, 1);
+    }
+}
+
 void dial_media_header_init(void)
 {
     lvgl_msg_handler.handle_dial_media_header_img =
         handle_dial_header_media_img;
     lvgl_msg_handler.handle_dial_header_new_notification =
         handle_dial_header_new_notification;
-    lvgl_msg_handler.handle_dial_media_play_state =
-        handle_dial_header_media_play_state;
+    // lvgl_msg_handler.handle_dial_media_play_state =
+    //     handle_dial_header_media_play_state;
 }
 
 void dial_media_header_deinit(void)
@@ -2626,9 +2689,9 @@ void dial_media_header_deinit(void)
     if (lvgl_msg_handler.handle_dial_header_new_notification ==
         handle_dial_header_new_notification)
         lvgl_msg_handler.handle_dial_header_new_notification = NULL;
-    if (lvgl_msg_handler.handle_dial_media_play_state ==
-        handle_dial_header_media_play_state)
-        lvgl_msg_handler.handle_dial_media_play_state = NULL;
+    // if (lvgl_msg_handler.handle_dial_media_play_state ==
+    //     handle_dial_header_media_play_state)
+    //     lvgl_msg_handler.handle_dial_media_play_state = NULL;
 }
 
 void message_widget_start(void)
