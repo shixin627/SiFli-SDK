@@ -110,6 +110,8 @@
     #define USING_EDGE_BOTTOM_DETECTION 0
     #define USING_EDGE_LEFT_DETECTION 0
     #define USING_EDGE_RIGHT_DETECTION 0
+    // 除錯顯示：把弧形觸發區與中間態區段以折線標出邊界
+    #define SHOW_SCROLL_ZONE_DEBUG 0
 
     #define ENABLE_MENU_FEATURE 0
     #define KB_ANIM_TIME_MS 100
@@ -146,6 +148,7 @@ LV_IMG_DECLARE(icon_mic);
 LV_IMG_DECLARE(space);
 LV_IMG_DECLARE(img_skai); // 160 * 160
 LV_IMG_DECLARE(erth);
+LV_IMG_DECLARE(img_left_arrow);
 
 static lv_point_t touchscreen_point;
 static lv_point_t start_point;
@@ -199,6 +202,39 @@ static lv_obj_t *menu_swipe_area = NULL;
 static lv_obj_t *left_scroll_bar = NULL;
 static bool left_scroll_active = false;
 
+// 左側滾動區（弧形 + 中間態）等待方向判定的 pending 狀態：
+// 上下→升級為 left_scroll_active 角度滾動；向右→送 mouse back；向左→走拖曳
+static bool center_zone_pending = false;
+// 已進入 back-hint 流程（向右拖曳中）：pressing 持續期更新 hint，release 判定觸發
+static bool back_pending_active = false;
+static int16_t back_hint_drag_offset = 0;
+// 按下時是否落在弧形區：弧形按下整個 session 都跳過 BLE_HID_Mouse_Touch_*
+// 避免 deferred click（按弧形不該觸發點擊）
+static bool press_in_arc_zone = false;
+
+// === 向右返回 hint（仿 lvsf_gesture.c 的返回視覺/動畫流程）===
+    #define BACK_HINT_LIMIT 80
+    #define BACK_HINT_SIZE 70
+static lv_obj_t *back_hint_obj = NULL;
+static lv_obj_t *back_hint_icon = NULL;
+static lv_anim_t back_hint_anim;
+static lv_anim_t back_hint_release_anim;
+static bool back_hint_hidden = true;
+static bool back_hint_vibrated = false;
+static bool back_hint_anim_is_running = false;
+static void back_hint_anim_cb(void *obj, uint16_t x);
+static void hidden_back_hint(bool hide);
+static void hidden_back_hint_release_anim_cb(lv_anim_t *a);
+static void hidden_back_hint_cb(lv_anim_t *a);
+static void set_back_hint_obj_opa(void *obj, uint8_t opa);
+
+    #if SHOW_SCROLL_ZONE_DEBUG
+        // 折線近似圓弧的取樣點數（19 點 = 5° 間距，覆蓋 90° 弧）
+        #define DBG_ZONE_ARC_POINTS 19
+static lv_point_t dbg_zone_outer_pts[DBG_ZONE_ARC_POINTS];
+static lv_point_t dbg_zone_inner_pts[DBG_ZONE_ARC_POINTS];
+    #endif
+
     // 左側滾動節點：以手指繞螢幕中心的角度追蹤，可無限旋轉；
     // 節點沿弧線跟手移動，每通過一個節點觸發一次滾輪。
     #define LEFT_SCROLL_NODE_COUNT 5
@@ -207,6 +243,12 @@ static bool left_scroll_active = false;
     #define LEFT_SCROLL_ARC_SPAN_DEG 90.0f
     #define LEFT_SCROLL_NODE_SPACING_DEG                                       \
         (LEFT_SCROLL_ARC_SPAN_DEG / LEFT_SCROLL_NODE_COUNT) // ≈ 12.86°
+    // 每觸發一個節點時，送出的 wheel 步數倍率（手感不夠強就調大）
+    #define LEFT_SCROLL_STEP_MULTIPLIER 3
+    // 中間滾動觸發區：弧形觸發區內緣再往內延伸的弧形圓環厚度（px）
+    // 幾何上接在 is_point_in_left_arc 的內緣（dist = outer_r - 50）後面
+    // 上下方向觸發後升級為左弧形角度滾動，跟左弧形共用同一套邏輯
+    #define CENTER_SCROLL_ZONE_THICKNESS 50
     #define LEFT_SCROLL_NODE_MAX_SIZE 14
     #define LEFT_SCROLL_NODE_MIN_SIZE 3
     // 未觸碰時暗/細，觸碰時亮/粗，100ms 過渡
@@ -233,6 +275,8 @@ static float left_scroll_normalize_delta(float d);
 static void update_left_scroll_nodes(void);
 static void apply_scroll_ui_level(void);
 static void animate_scroll_ui_to(bool active);
+static void scroll_node_snap_anim_cb(void *var, int32_t v);
+static void snap_scroll_nodes(void);
 
 // 判斷觸碰點是否在左側滾動觸發區域
 // UI 弧線寬度 30px、角度 150°~210°，但觸發範圍更大
@@ -251,6 +295,27 @@ static bool is_point_in_left_arc(const lv_point_t *p)
     if (dx >= 0)
         return false;
     // 角度放寬到約 125°~235°（sin(55°) ≈ 0.819）
+    float max_dy = dist * 0.819f;
+    return (dy >= -max_dy && dy <= max_dy);
+}
+
+// 判斷觸碰點是否在中間滾動觸發區
+// 幾何：弧形觸發區（dist = outer_r-50 ~ outer_r）的內緣，再往內延 THICKNESS px，
+// 角度範圍跟 is_point_in_left_arc 相同（左半 ±55°），兩塊接成完整的左側弧帶
+static bool is_point_in_center_scroll_zone(const lv_point_t *p)
+{
+    float cx = LV_HOR_RES_MAX / 2.0f;
+    float cy = LV_VER_RES_MAX / 2.0f;
+    float dx = p->x - cx;
+    float dy = p->y - cy;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float outer_r = cx;
+    float zone_outer = outer_r - 50.0f; // 接弧形觸發區的內緣
+    float zone_inner = zone_outer - (float)CENTER_SCROLL_ZONE_THICKNESS;
+    if (dist < zone_inner || dist > zone_outer)
+        return false;
+    if (dx >= 0)
+        return false;
     float max_dy = dist * 0.819f;
     return (dy >= -max_dy && dy <= max_dy);
 }
@@ -2284,16 +2349,24 @@ static void handle_pressed_event(lv_indev_t *indev)
     scrolling = false;
     moving = false;
 
-    // 判斷是否按在左側滾動弧線區域
-    left_scroll_active = is_point_in_left_arc(&start_point);
-    if (left_scroll_active)
+    // 左側滾動範圍（弧形 + 中間態）統一走方向判定：
+    //   上下→升級為角度滾動（left_scroll_active）
+    //   向右→觸發 ble_hid_mouse_back（瀏覽器後退鍵）
+    //   向左→退出 pending，走原本拖曳/滑鼠移動
+    left_scroll_active = false;
+    center_zone_pending = false;
+    back_pending_active = false;
+    back_hint_drag_offset = 0;
+    bool in_arc = is_point_in_left_arc(&start_point);
+    bool in_center = is_point_in_center_scroll_zone(&start_point);
+    press_in_arc_zone = in_arc;
+    if (in_arc || in_center)
     {
-        scroll_last_theta = left_scroll_finger_theta(&start_point);
-        scroll_accum_angle = 0.0f;
-        // set_stop_mouse_move(true);
-        motor_pattern_damping();
-        animate_scroll_ui_to(true); // 觸碰時亮起（100ms）
-        LOG_D("left scroll bar pressed");
+        center_zone_pending = true;
+        // 取消可能還在跑的 snap 動畫，避免按下後 offset 被動畫繼續覆蓋
+        lv_anim_del(&scroll_node_offset_deg, scroll_node_snap_anim_cb);
+        animate_scroll_ui_to(true); // 觸碰立刻給視覺回饋（亮起）
+        LOG_D("scroll zone pending (arc=%d center=%d)", in_arc, in_center);
     }
 
     // 重置滚动方向锁定
@@ -2318,7 +2391,13 @@ static void handle_pressed_event(lv_indev_t *indev)
     update_edge_detection(&start_point);
     gesture_detected = false;
 
-    BLE_HID_Mouse_Touch_Press((uint16_t)start_point.x, (uint16_t)start_point.y);
+    // 弧形區整個 session 跳過 BLE_HID 點擊偵測（避免按弧形誤觸 click）
+    // 中間態與其他區域仍走 BLE_HID 偵測（沒移動放開時可正常觸發點擊）
+    if (!press_in_arc_zone)
+    {
+        BLE_HID_Mouse_Touch_Press((uint16_t)start_point.x,
+                                  (uint16_t)start_point.y);
+    }
 }
 
 /**
@@ -2329,7 +2408,39 @@ static void handle_pressed_event(lv_indev_t *indev)
 static void handle_pressing_event(lv_indev_t *indev,
                                   const lv_point_t *current_point)
 {
-    BLE_HID_Mouse_Touch_Move((uint16_t)current_point->x, (uint16_t)current_point->y);
+    if (!press_in_arc_zone && !left_scroll_active)
+    {
+        BLE_HID_Mouse_Touch_Move((uint16_t)current_point->x,
+                                 (uint16_t)current_point->y);
+    }
+
+    // 在 back-hint 流程中：持續更新 hint 寬度，不再做其他處理
+    if (back_pending_active)
+    {
+        int16_t dx = current_point->x - start_point.x;
+        if (dx < 0) dx = 0;
+        back_hint_drag_offset = dx;
+        // drag 接近門檻且 hint 還隱藏 → 啟動 50ms 進場動畫（從 0 → LIMIT 寬度）
+        if (dx > BACK_HINT_LIMIT - 10 && back_hint_hidden)
+        {
+            back_hint_anim_is_running = true;
+            hidden_back_hint(false);
+            lv_anim_init(&back_hint_anim);
+            lv_anim_set_var(&back_hint_anim, back_hint_obj);
+            lv_anim_set_time(&back_hint_anim, 50);
+            lv_anim_set_values(&back_hint_anim, 0, BACK_HINT_LIMIT);
+            lv_anim_set_exec_cb(&back_hint_anim,
+                                (lv_anim_exec_xcb_t)back_hint_anim_cb);
+            lv_anim_set_ready_cb(&back_hint_anim, hidden_back_hint_cb);
+            lv_anim_start(&back_hint_anim);
+        }
+        // hint 已顯示且進場動畫沒在跑 → 直接跟手更新寬度
+        if (!back_hint_hidden && !back_hint_anim_is_running)
+        {
+            back_hint_anim_cb(back_hint_obj, (uint16_t)dx);
+        }
+        return;
+    }
 
     // 左側滾動弧線模式：以角度追蹤手指繞中心的旋轉量，
     // 可連續旋轉多圈；節點跟手在弧線上循環移動，每過一個節點滾動一次。
@@ -2367,7 +2478,12 @@ static void handle_pressing_event(lv_indev_t *indev,
         // 避免快速旋轉時把 BLE/motor queue 灌爆造成記憶體堆積
         if (steps != 0)
         {
-            int8_t scroll_val = (int8_t)steps;
+            int scaled = steps * LEFT_SCROLL_STEP_MULTIPLIER;
+            if (scaled > 127)
+                scaled = 127;
+            else if (scaled < -127)
+                scaled = -127;
+            int8_t scroll_val = (int8_t)scaled;
             if (SkaiWatchSys.phone_os_version == IOS)
             {
                 scroll_val = -scroll_val;
@@ -2380,6 +2496,53 @@ static void handle_pressing_event(lv_indev_t *indev,
 
     int16_t delta_x = current_point->x - last_point.x;
     int16_t delta_y = current_point->y - last_point.y;
+
+    // 左側滾動區方向判定：上下→升級滾動；向右→mouse back；向左→走拖曳
+    if (center_zone_pending)
+    {
+        int16_t dx_from_start = current_point->x - start_point.x;
+        int16_t dy_from_start = current_point->y - start_point.y;
+        if ((abs(dx_from_start) >= SCROLLING_THRESHOLD) ||
+            (abs(dy_from_start) >= SCROLLING_THRESHOLD))
+        {
+            center_zone_pending = false;
+            if (abs(dy_from_start) > abs(dx_from_start))
+            {
+                // 強制把 BLE_HID 內部 deferred-click state 推到 IDLE
+                BLE_HID_Mouse_Touch_Move((uint16_t)(start_point.x + 100),
+                                         (uint16_t)start_point.y);
+                // 上下 → 升級為左弧形角度滾動（共用既有邏輯）
+                left_scroll_active = true;
+                scrolling = true;
+                scroll_last_theta = left_scroll_finger_theta(current_point);
+                scroll_accum_angle = 0.0f;
+                motor_pattern_damping();
+                LOG_D("scroll zone -> wheel scroll");
+                return;
+            }
+            else if (dx_from_start > 0)
+            {
+                // 向右 → 進入 back-hint 流程（hint 動畫追蹤拖曳，release 時才觸發）
+                BLE_HID_Mouse_Touch_Move((uint16_t)(start_point.x + 100),
+                                         (uint16_t)start_point.y);
+                scrolling = true;          // 避免放開時誤觸 click
+                back_pending_active = true;
+                back_hint_drag_offset = dx_from_start;
+                back_hint_vibrated = false;
+                animate_scroll_ui_to(false); // 弧形 UI 淡回暗
+                LOG_D("scroll zone -> back hint");
+                return;
+            }
+            // 向左 → 退出 pending，UI 淡回，讓底下拖曳邏輯接手送 mouse_move
+            animate_scroll_ui_to(false);
+        }
+        else
+        {
+            // 還沒過閾值，繼續等
+            return;
+        }
+    }
+
     if (handle_edge_scrolling(current_point, delta_x, delta_y))
     {
         return;
@@ -2441,8 +2604,13 @@ static void handle_released_event(lv_indev_t *indev)
 
     lv_point_t _release_pt;
     lv_indev_get_point(indev, &_release_pt);
-    bool _long_press_ended = BLE_HID_Mouse_Touch_Release(
-        (uint16_t)_release_pt.x, (uint16_t)_release_pt.y);
+    // 弧形整 session、或已升級的滾動模式都跳過 BLE_HID 釋放，避免 deferred click
+    bool _long_press_ended = false;
+    if (!press_in_arc_zone && !left_scroll_active)
+    {
+        _long_press_ended = BLE_HID_Mouse_Touch_Release(
+            (uint16_t)_release_pt.x, (uint16_t)_release_pt.y);
+    }
 
     // 左側滾動弧線放手
     if (left_scroll_active)
@@ -2451,8 +2619,67 @@ static void handle_released_event(lv_indev_t *indev)
         // set_stop_mouse_move(false);
         motor_pattern_stop();
         animate_scroll_ui_to(false); // 放開後淡回暗/細（100ms）
+        snap_scroll_nodes();         // 節點 snap 回對齊位置（中央條置中）
         LOG_D("left scroll bar released");
         return;
+    }
+
+    // back-hint 流程放手：依拖曳距離判定觸發 back 或縮回（仿 lvsf_gesture）
+    if (back_pending_active)
+    {
+        back_pending_active = false;
+        back_hint_vibrated = false;
+        if (back_hint_drag_offset > BACK_HINT_LIMIT)
+        {
+            // 過門檻 → 觸發 mouse back + 200ms opa 淡出
+            if (control_provider.ble_hid_mouse_back)
+            {
+                control_provider.ble_hid_mouse_back();
+            }
+            lv_anim_init(&back_hint_release_anim);
+            lv_anim_set_time(&back_hint_release_anim, 200);
+            lv_anim_set_values(&back_hint_release_anim, LV_OPA_80,
+                               LV_OPA_TRANSP);
+            lv_anim_set_var(&back_hint_release_anim, back_hint_obj);
+            lv_anim_set_exec_cb(&back_hint_release_anim,
+                                (lv_anim_exec_xcb_t)set_back_hint_obj_opa);
+            lv_anim_set_ready_cb(&back_hint_release_anim,
+                                 hidden_back_hint_release_anim_cb);
+            lv_anim_start(&back_hint_release_anim);
+            LOG_D("back hint -> mouse back");
+        }
+        else
+        {
+            // 沒過門檻 → 100ms 寬度縮回 0
+            lv_anim_init(&back_hint_release_anim);
+            lv_anim_set_time(&back_hint_release_anim, 100);
+            lv_anim_set_values(&back_hint_release_anim,
+                               back_hint_drag_offset, 0);
+            lv_anim_set_var(&back_hint_release_anim, back_hint_obj);
+            lv_anim_set_exec_cb(&back_hint_release_anim,
+                                (lv_anim_exec_xcb_t)back_hint_anim_cb);
+            lv_anim_set_ready_cb(&back_hint_release_anim,
+                                 hidden_back_hint_release_anim_cb);
+            lv_anim_start(&back_hint_release_anim);
+            LOG_D("back hint -> retract");
+        }
+        back_hint_drag_offset = 0;
+        press_in_arc_zone = false;
+        return;
+    }
+
+    // pending 沒解除就放手（沒移動超過閾值）：清旗標
+    // - 弧形：滾動區不該 click，淡回 UI 並 early return
+    // - 中間態：fall-through 到底下 click 流程（沒移動可以點擊）
+    if (center_zone_pending)
+    {
+        center_zone_pending = false;
+        if (press_in_arc_zone)
+        {
+            animate_scroll_ui_to(false);
+            press_in_arc_zone = false;
+            return;
+        }
     }
 
     // update_crosshair_brightness();
@@ -3780,7 +4007,7 @@ static void update_left_scroll_nodes(void)
         //                                    LEFT_SCROLL_NODE_MIN_SIZE) *
         //                                factor) *
         //                           size_scale);
-        // 刻度長度（徑向）與線寬隨 size_scale 變化
+        // 線長度（徑向）與線寬隨 size_scale 變化
         float tick_len = 20.0f * size_scale;
         int16_t line_w = (int16_t)(6.0f * size_scale);
         if (tick_len < 2.0f) tick_len = 2.0f;
@@ -3799,9 +4026,19 @@ static void update_left_scroll_nodes(void)
         left_scroll_node_pts[i][1].x = x1;
         left_scroll_node_pts[i][1].y = y1;
 
+        // 越靠近弧線中央（180°）節點越亮，兩端淡出
+        // 不動 line_opa（避免 round-cap 殘色），改用 line_color 朝黑色背景插值
+        // 效果：中央 0x4D 灰、邊緣接近 0x0F 幾乎融入黑底
+        float blend = 0.2f + 0.8f * factor;
+        if (blend < 0.0f) blend = 0.0f;
+        if (blend > 1.0f) blend = 1.0f;
+        uint8_t cv = (uint8_t)((float)0x4D * blend);
+        lv_color_t node_color = lv_color_make(cv, cv, cv);
+
         lv_line_set_points(left_scroll_nodes[i], left_scroll_node_pts[i], 2);
         lv_obj_set_style_line_width(left_scroll_nodes[i], line_w, 0);
-        lv_obj_set_style_line_opa(left_scroll_nodes[i], node_opa, 0);
+        lv_obj_set_style_line_color(left_scroll_nodes[i], node_color, 0);
+        // lv_obj_set_style_line_opa(left_scroll_nodes[i], node_opa, 0);
     }
 }
 
@@ -3848,6 +4085,117 @@ static void animate_scroll_ui_to(bool active)
     lv_anim_set_time(&a, LEFT_SCROLL_UI_ANIM_MS);
     lv_anim_set_values(&a, scroll_ui_level, active ? 1000 : 0);
     lv_anim_start(&a); // 會自動取代同 var+cb 的既有動畫
+}
+
+/**
+ * @brief 節點對齊動畫的 exec callback：v 是 offset_deg × 100
+ */
+static void scroll_node_snap_anim_cb(void *var, int32_t v)
+{
+    (void)var;
+    scroll_node_offset_deg = (float)v / 100.0f;
+    update_left_scroll_nodes();
+}
+
+// === 返回 hint 動畫實作（仿 lvsf_gesture.c）===
+static void back_hint_anim_cb(void *obj, uint16_t x)
+{
+    if (!lv_obj_is_valid(obj))
+        return;
+    if (x < BACK_HINT_LIMIT)
+    {
+        uint16_t obj_width = (uint16_t)((uint32_t)BACK_HINT_SIZE * x /
+                                        BACK_HINT_LIMIT);
+        lv_obj_set_width(obj, obj_width);
+        lv_obj_set_style_radius(obj, 25, 0);
+        lv_obj_align(obj, LV_ALIGN_LEFT_MID, 0, 0);
+        if (back_hint_icon)
+        {
+            lv_obj_set_style_text_opa(back_hint_icon,
+                                      obj_width > 30 ? LV_OPA_COVER
+                                                     : LV_OPA_TRANSP,
+                                      0);
+        }
+        if (back_hint_vibrated)
+        {
+            back_hint_vibrated = false; // 跌回門檻下，重置以便下次再震
+        }
+    }
+    else
+    {
+        lv_obj_set_width(obj, BACK_HINT_SIZE);
+        lv_obj_set_style_radius(obj, LV_RADIUS_CIRCLE, 0);
+        lv_obj_align(obj, LV_ALIGN_LEFT_MID, 0, 0);
+        if (back_hint_icon)
+            lv_obj_set_style_text_opa(back_hint_icon, LV_OPA_COVER, 0);
+        if (!back_hint_vibrated)
+        {
+            motor_pattern_scrolling_app(); // 跨過門檻瞬間震動一次
+            back_hint_vibrated = true;
+        }
+    }
+}
+
+static void hidden_back_hint(bool hide)
+{
+    back_hint_hidden = hide;
+    if (!back_hint_obj)
+        return;
+    if (hide)
+    {
+        lv_obj_add_flag(back_hint_obj, LV_OBJ_FLAG_HIDDEN);
+    }
+    else
+    {
+        lv_obj_set_style_bg_opa(back_hint_obj, LV_OPA_80, 0);
+        lv_obj_clear_flag(back_hint_obj, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void hidden_back_hint_release_anim_cb(lv_anim_t *a)
+{
+    (void)a;
+    hidden_back_hint(true);
+    back_hint_anim_cb(back_hint_obj, 0);
+}
+
+static void hidden_back_hint_cb(lv_anim_t *a)
+{
+    (void)a;
+    back_hint_anim_cb(back_hint_obj, BACK_HINT_LIMIT);
+    back_hint_anim_is_running = false;
+}
+
+static void set_back_hint_obj_opa(void *obj, uint8_t opa)
+{
+    if (lv_obj_is_valid(obj))
+        lv_obj_set_style_bg_opa(obj, opa, 0);
+}
+
+/**
+ * @brief 放開時把節點對齊到「某個節點正好落在 180° 中央」的位置
+ *        snap 位置每 18° 一格、bias 9°（5 個合法值：9°, 27°, 45°, 63°, 81°）
+ */
+static void snap_scroll_nodes(void)
+{
+    const float spacing = LEFT_SCROLL_NODE_SPACING_DEG; // 18°
+    const float bias = spacing * 0.5f;                  // 9°
+    float k = roundf((scroll_node_offset_deg - bias) / spacing);
+    float target = k * spacing + bias;
+
+    int32_t from = (int32_t)(scroll_node_offset_deg * 100.0f);
+    int32_t to = (int32_t)(target * 100.0f);
+    if (from == to)
+        return; // 已在 snap 位置
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, &scroll_node_offset_deg);
+    lv_anim_set_exec_cb(&a, scroll_node_snap_anim_cb);
+    lv_anim_set_time(&a, 120);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_values(&a, from, to);
+    lv_anim_start(&a);
 }
 
 /**
@@ -3917,6 +4265,67 @@ void lv_create_mouse_screen(lv_obj_t *scr)
 
     // 在弧線上加上節點指示點（視覺提示「每過一個節點 = 滾動一次」）
     create_left_scroll_nodes(bg);
+
+    // 向右返回 hint：螢幕左側中央，預設隱藏；超過拖曳門檻會顯示成圓 + 左箭頭
+    back_hint_obj = lv_obj_create(bg);
+    lv_obj_remove_style_all(back_hint_obj);
+    lv_obj_set_size(back_hint_obj, BACK_HINT_SIZE, BACK_HINT_SIZE);
+    lv_obj_align(back_hint_obj, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_bg_color(back_hint_obj, lv_color_hex(0x444444), 0);
+    lv_obj_set_style_bg_opa(back_hint_obj, LV_OPA_80, 0);
+    lv_obj_set_style_radius(back_hint_obj, 25, 0);
+    lv_obj_clear_flag(back_hint_obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(back_hint_obj, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(back_hint_obj, LV_OBJ_FLAG_HIDDEN);
+    back_hint_hidden = true;
+    back_hint_vibrated = false;
+    back_hint_anim_is_running = false;
+
+    back_hint_icon = lv_img_create(back_hint_obj);
+    lv_img_set_src(back_hint_icon, &img_left_arrow);
+    lv_obj_align(back_hint_icon, LV_ALIGN_CENTER, 0, 0);
+
+    #if SHOW_SCROLL_ZONE_DEBUG
+    // 用 lv_line 折線近似畫圓弧，標出兩塊觸發區的邊界
+    // （之前用 lv_arc + size 380 會死當，改用 left_scroll_nodes 同款 lv_line 方案）
+    {
+        const float cxf = LV_HOR_RES_MAX / 2.0f;
+        const float cyf = LV_VER_RES_MAX / 2.0f;
+        const float dist_outer = (float)(LV_HOR_RES_MAX / 2) - 50.0f; // 190
+        const float dist_inner = dist_outer - (float)CENTER_SCROLL_ZONE_THICKNESS; // 140
+        for (int i = 0; i < DBG_ZONE_ARC_POINTS; i++)
+        {
+            float angle_deg =
+                135.0f + 90.0f * (float)i / (float)(DBG_ZONE_ARC_POINTS - 1);
+            float rad = angle_deg * LEFT_SCROLL_PI / 180.0f;
+            float c = cosf(rad);
+            float s = sinf(rad);
+            dbg_zone_outer_pts[i].x = (lv_coord_t)(cxf + dist_outer * c);
+            dbg_zone_outer_pts[i].y = (lv_coord_t)(cyf + dist_outer * s);
+            dbg_zone_inner_pts[i].x = (lv_coord_t)(cxf + dist_inner * c);
+            dbg_zone_inner_pts[i].y = (lv_coord_t)(cyf + dist_inner * s);
+        }
+        lv_obj_t *dbg_line_outer = lv_line_create(bg);
+        lv_line_set_points(dbg_line_outer, dbg_zone_outer_pts,
+                           DBG_ZONE_ARC_POINTS);
+        lv_obj_set_style_line_color(dbg_line_outer, lv_color_hex(0xFF3030), 0);
+        lv_obj_set_style_line_width(dbg_line_outer, 2, 0);
+        lv_obj_set_style_line_opa(dbg_line_outer, LV_OPA_70, 0);
+        lv_obj_set_style_line_rounded(dbg_line_outer, true, 0);
+        lv_obj_clear_flag(dbg_line_outer, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(dbg_line_outer, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t *dbg_line_inner = lv_line_create(bg);
+        lv_line_set_points(dbg_line_inner, dbg_zone_inner_pts,
+                           DBG_ZONE_ARC_POINTS);
+        lv_obj_set_style_line_color(dbg_line_inner, lv_color_hex(0x3080FF), 0);
+        lv_obj_set_style_line_width(dbg_line_inner, 2, 0);
+        lv_obj_set_style_line_opa(dbg_line_inner, LV_OPA_70, 0);
+        lv_obj_set_style_line_rounded(dbg_line_inner, true, 0);
+        lv_obj_clear_flag(dbg_line_inner, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(dbg_line_inner, LV_OBJ_FLAG_SCROLLABLE);
+    }
+    #endif
 
     // Crosshair lines (dimmed by default, brighten when touching logo)
     lv_coord_t line_width = 3;
@@ -4210,6 +4619,16 @@ static void on_stop(void)
     menu_bg = NULL;
     menu_swipe_area = NULL;
     lv_anim_del(&scroll_ui_level, NULL); // 停掉 UI 過渡動畫
+    lv_anim_del(&scroll_node_offset_deg, NULL); // 停掉節點 snap 動畫
+    lv_anim_del(&back_hint_anim, NULL);          // 停掉 back hint 進場動畫
+    lv_anim_del(&back_hint_release_anim, NULL);  // 停掉 back hint 釋放動畫
+    back_hint_obj = NULL;
+    back_hint_icon = NULL;
+    back_hint_hidden = true;
+    back_hint_vibrated = false;
+    back_hint_anim_is_running = false;
+    back_pending_active = false;
+    back_hint_drag_offset = 0;
     left_scroll_bar = NULL;
     for (int i = 0; i < LEFT_SCROLL_NODE_COUNT; i++)
     {

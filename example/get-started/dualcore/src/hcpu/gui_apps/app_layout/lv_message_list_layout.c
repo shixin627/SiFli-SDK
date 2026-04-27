@@ -229,13 +229,17 @@ static lv_obj_t *dragging_widget = NULL;
 static lv_coord_t original_x = 0;
 static lv_obj_t *message_page = NULL;
 #define DRAG_THRESHOLD 10
-#define MAX_DRAG_DISTANCE (LIST_MESSAGE_WIDTH / 6)
+#define MAX_DRAG_DISTANCE (LIST_MESSAGE_WIDTH / 2)
+// 放開時若右滑距離超過此值才觸發刪除
+#define DRAG_DELETE_THRESHOLD (MAX_DRAG_DISTANCE - 20)
+// 右滑到此距離時 widget 完全透明，距離以線性比例淡出
+#define DRAG_FADE_DISTANCE (300)
+// 點擊判定：x 移動量 < 此值且按壓時間 < CLICK_MAX_DURATION_MS 才當成 tap
+#define CLICK_CANCEL_MOVEMENT 5
+#define CLICK_MAX_DURATION_MS 250
 
 // 背景色塊相關變數（已移除）
 
-// 拖拽計時相關變數
-static lv_timer_t *drag_timer = NULL;
-static bool drag_action_executed = false;
 static bool touching_screen = false;
 static bool have_media_widget = false;
 #ifdef MESSAGE_NEED_MEDIA_WIDGET
@@ -978,74 +982,48 @@ static void hide_background_blocks(void)
 }
 
 static bool new_touching_obj = true;
+// 點擊判定：紀錄按壓時間 + 是否在按壓過程中有過任何 x 方向移動
+static uint32_t press_start_tick = 0;
+static bool press_had_movement = false;
 extern void remove_notification_by_id(const char *id);
-/* Forward decl — used by drag_timer_cb to cancel any running drag anim. */
+/* Forward decl — used by do_drag_delete to cancel any running drag anim. */
 static void set_drag_translate_x(void *obj, int32_t value);
+static void apply_drag_opa_to_children(lv_obj_t *node, lv_opa_t opa);
+static void drag_opa_anim_exec_cb(void *obj, int32_t value);
+static void start_fade_in(lv_obj_t *card);
 
-// 拖拽計時器回調函數
-static void drag_timer_cb(lv_timer_t *timer)
+// 放開後若右滑距離超過閾值，執行刪除動作
+static void do_drag_delete(void)
 {
-    if (is_dragging && dragging_widget && selected_message->coords.y1 == 107)
+    if (!is_dragging || !dragging_widget || selected_message->coords.y1 != 107)
+        return;
+
+    new_touching_obj = false;
+    motor_pattern_scrolling_app();
+    notification_t *notification =
+        get_notification_in_reversed_ui(selected_message_index);
+
+    /* Snapshot the card we were dragging before delete triggers a
+       refresh_list — refresh_list can hide this card (selected index
+       shifts) and LV_EVENT_RELEASED will then never fire on it, leaving
+       is_dragging = true and dragging_widget stuck. Reset the card's
+       translate_x and force-clear drag state here so the next press
+       starts clean. */
+    lv_obj_t *card_to_reset = dragging_widget;
+
+    remove_notification_by_id(notification->id);
+
+    if (card_to_reset && lv_obj_is_valid(card_to_reset))
     {
-        // 執行刪除動作
-        new_touching_obj = false;
-        motor_pattern_scrolling_app();
-        notification_t *notification =
-            get_notification_in_reversed_ui(selected_message_index);
-
-        /* Snapshot the card we were dragging before delete triggers a
-           refresh_list — refresh_list can hide this card (selected index
-           shifts) and LV_EVENT_RELEASED will then never fire on it, leaving
-           is_dragging = true and dragging_widget stuck. Reset the card's
-           translate_x and force-clear drag state here so the next press
-           starts clean. */
-        lv_obj_t *card_to_reset = dragging_widget;
-
-        remove_notification_by_id(notification->id);
-
-        if (card_to_reset && lv_obj_is_valid(card_to_reset))
-        {
-            lv_anim_del(card_to_reset, set_drag_translate_x);
-            lv_obj_set_style_translate_x(card_to_reset, 0, 0);
-        }
-        is_dragging = false;
-        dragging_widget = NULL;
-
-        drag_action_executed = true;
-
-        // 停止計時器
-        if (drag_timer)
-        {
-            lv_timer_del(drag_timer);
-            drag_timer = NULL;
-        }
+        lv_anim_del(card_to_reset, set_drag_translate_x);
+        lv_obj_set_style_translate_x(card_to_reset, 0, 0);
+        // refresh_list 可能把這張 card 重新綁定成下一筆通知並讓它顯示，
+        // 直接 snap 回 LV_OPA_COVER 會看到「在原位瞬間出現」的閃爍。
+        // 改成從透明 fade-in，看起來像下一張 card 自然浮現。
+        start_fade_in(card_to_reset);
     }
-}
-
-// 開始拖拽計時器
-static void start_drag_timer(void)
-{
-    // 清除舊的計時器
-    if (drag_timer)
-    {
-        lv_timer_del(drag_timer);
-        drag_timer = NULL;
-    }
-    // 創建新的計時器，200ms後執行刪除
-    drag_timer = lv_timer_create(drag_timer_cb, 200, NULL);
-    lv_timer_set_repeat_count(drag_timer, 1); // 只執行一次
-    drag_action_executed = false;
-}
-
-// 停止拖拽計時器
-static void stop_drag_timer(void)
-{
-    if (drag_timer)
-    {
-        lv_timer_del(drag_timer);
-        drag_timer = NULL;
-    }
-    drag_action_executed = false;
+    is_dragging = false;
+    dragging_widget = NULL;
 }
 
 // 拖拽動畫完成回調
@@ -1054,14 +1032,79 @@ static void drag_anim_ready_cb(lv_anim_t *a)
     is_dragging = false;
     dragging_widget = NULL;
     hide_background_blocks();
-    stop_drag_timer(); // 確保停止計時器
+}
+
+/* 遞迴對 widget 內所有子物件（圖片/文字）逐個套用透明度。
+   這個 LVGL build 上 lv_obj_set_style_opa 不能用，必須分別呼叫
+   lv_obj_set_style_img_opa / text_opa 才會生效。
+   注意：不去動 bg_opa——label 預設 bg_opa=0，一旦設成非零會把 theme
+   的白色背景亮出來，造成「先變白再淡掉」的閃爍。 */
+static void apply_drag_opa_to_children(lv_obj_t *node, lv_opa_t opa)
+{
+    if (!node || !lv_obj_is_valid(node))
+        return;
+
+    uint32_t cnt = lv_obj_get_child_cnt(node);
+    for (uint32_t i = 0; i < cnt; i++)
+    {
+        lv_obj_t *child = lv_obj_get_child(node, i);
+        if (!child || !lv_obj_is_valid(child))
+            continue;
+
+        lv_obj_set_style_img_opa(child, opa, 0);
+        lv_obj_set_style_text_opa(child, opa, 0);
+
+        apply_drag_opa_to_children(child, opa);
+    }
 }
 
 /* Render-only x offset (doesn't change layout, so the parent list won't
-   try to scroll to keep the moved child visible). */
+   try to scroll to keep the moved child visible). 透明度也跟著右滑距離
+   線性下降，這樣放開時的回彈動畫會把透明度一起補回 LV_OPA_COVER。 */
 static void set_drag_translate_x(void *obj, int32_t value)
 {
-    lv_obj_set_style_translate_x((lv_obj_t *)obj, (lv_coord_t)value, 0);
+    lv_obj_t *o = (lv_obj_t *)obj;
+    lv_obj_set_style_translate_x(o, (lv_coord_t)value, 0);
+
+    lv_coord_t diff = (lv_coord_t)value - original_x;
+    if (diff < 0)
+        diff = 0;
+    lv_opa_t opa;
+    if (diff >= DRAG_FADE_DISTANCE)
+    {
+        opa = LV_OPA_TRANSP;
+    }
+    else
+    {
+        opa = (lv_opa_t)(LV_OPA_COVER -
+                         (diff * LV_OPA_COVER / DRAG_FADE_DISTANCE));
+    }
+    apply_drag_opa_to_children(o, opa);
+}
+
+// 給 lv_anim 用的 opa 動畫 exec_cb：每幀把整顆 widget 子物件的 opa 設定成 value
+static void drag_opa_anim_exec_cb(void *obj, int32_t value)
+{
+    apply_drag_opa_to_children((lv_obj_t *)obj, (lv_opa_t)value);
+}
+
+// 從完全透明 fade-in 回 LV_OPA_COVER，~200ms。do_drag_delete 後使用
+// 讓重新綁定的下一筆通知不會在原位瞬間 pop in。
+static void start_fade_in(lv_obj_t *card)
+{
+    if (!card || !lv_obj_is_valid(card))
+        return;
+    lv_anim_del(card, drag_opa_anim_exec_cb);
+    apply_drag_opa_to_children(card, LV_OPA_TRANSP);
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, card);
+    lv_anim_set_exec_cb(&a, drag_opa_anim_exec_cb);
+    lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
+    lv_anim_set_time(&a, 200);
+    lv_anim_set_path_cb(&a, lv_anim_path_linear);
+    lv_anim_start(&a);
 }
 
 // 回到原位的動畫
@@ -1110,6 +1153,28 @@ static void animate_to_position(lv_obj_t *obj, lv_coord_t target_x,
 // 重力拖拽已移除，僅保留手指右拖拽
 static uint8_t gesture_control = 1;
 
+// 滑出畫面+淡出完成後才真的刪除，避免看到 card 跳回原位
+static void drag_delete_anim_ready_cb(lv_anim_t *a)
+{
+    do_drag_delete();
+}
+
+// 滑出+淡出動畫：從目前位置一路滑到 DRAG_FADE_DISTANCE，set_drag_translate_x
+// 會把 opa 同步帶到 LV_OPA_TRANSP；動畫完成才呼叫 do_drag_delete()
+static void animate_to_delete(lv_obj_t *obj)
+{
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, obj);
+    lv_anim_set_exec_cb(&a, set_drag_translate_x);
+    lv_coord_t cur = lv_obj_get_style_translate_x(obj, 0);
+    lv_anim_set_values(&a, cur, original_x + DRAG_FADE_DISTANCE);
+    lv_anim_set_time(&a, 180);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&a, drag_delete_anim_ready_cb);
+    lv_anim_start(&a);
+}
+
 // 拖拽事件處理
 static void widget_drag_event_cb(lv_event_t *evt)
 {
@@ -1132,12 +1197,27 @@ static void widget_drag_event_cb(lv_event_t *evt)
                Baseline translate_x is usually 0 at rest. */
             original_x = lv_obj_get_style_translate_x(obj, 0);
             is_dragging = false; // 還未開始拖拽
-            stop_drag_timer();   // 確保停止任何之前的計時器
             new_touching_obj = true;
+            // 點擊判定狀態
+            press_start_tick = lv_tick_get();
+            press_had_movement = false;
+            // 殺掉前一輪可能還在跑的 fade-in 動畫，避免跟手勢的 opa 互打
+            lv_anim_del(obj, drag_opa_anim_exec_cb);
+            // 確保起始為完全不透明
+            apply_drag_opa_to_children(obj, LV_OPA_COVER);
         }
         break;
 
     case LV_EVENT_PRESSING:
+        // 不論方向，只要 x 移動量超過閾值就標記為「有移動」，後面 RELEASED 用來阻擋 click
+        if (dragging_widget == obj)
+        {
+            lv_coord_t abs_dx = point.x >= drag_start_x
+                                    ? point.x - drag_start_x
+                                    : drag_start_x - point.x;
+            if (abs_dx > CLICK_CANCEL_MOVEMENT)
+                press_had_movement = true;
+        }
         if (dragging_widget == obj && selected_message->coords.y1 == 107 &&
             new_touching_obj)
         {
@@ -1151,54 +1231,43 @@ static void widget_drag_event_cb(lv_event_t *evt)
             if (!is_dragging && diff > DRAG_THRESHOLD)
             {
                 is_dragging = true;
-
-                if (diff >= MAX_DRAG_DISTANCE)
-                {
-                    start_drag_timer();
-                }
             }
 
             if (is_dragging)
             {
-                // 限制拖拽距離
-                if (diff > MAX_DRAG_DISTANCE)
-                {
-                    diff = MAX_DRAG_DISTANCE;
-                }
-
-                // 達到觸發距離時啟動刪除計時器
-                if (diff >= (MAX_DRAG_DISTANCE - 20) && !drag_timer &&
-                    !drag_action_executed)
-                {
-                    start_drag_timer();
-                }
-                else if (diff < (MAX_DRAG_DISTANCE - 20))
-                {
-                    // 手指回縮未達觸發距離，停止計時器
-                    stop_drag_timer();
-                }
-
-                lv_obj_set_style_translate_x(obj, original_x + diff, 0);
+                // 不再限制拖拽距離，完全跟著手指移動，並讓透明度跟著淡出
+                drag_current_x = drag_start_x + diff;
+                set_drag_translate_x(obj, original_x + diff);
             }
-        }
-        else
-        {
-            stop_drag_timer(); // 停止計時器
         }
         break;
 
     case LV_EVENT_RELEASED:
-        stop_drag_timer(); // 放開時停止計時器
         // LOG_D("coords.y1: %d", selected_message->coords.y1);
         if (dragging_widget == obj && is_dragging)
         {
-            // 動畫回到原位
-            animate_to_original_position(obj, original_x);
+            // 以實際視覺位移作為放開時的右滑距離（不依賴最後一刻的 indev 點）
+            lv_coord_t release_diff =
+                lv_obj_get_style_translate_x(obj, 0) - original_x;
+            LOG_D("release_diff: %d", release_diff);
+            if (release_diff >= DRAG_DELETE_THRESHOLD &&
+                selected_message->coords.y1 == 107)
+            {
+                // 距離足夠，先滑出+淡出再刪除（避免看到跳回原位的瞬間）
+                animate_to_delete(obj);
+            }
+            else
+            {
+                // 動畫回到原位
+                animate_to_original_position(obj, original_x);
+            }
         }
         else if (dragging_widget == obj && !is_dragging &&
+                 !press_had_movement &&
+                 lv_tick_elaps(press_start_tick) < CLICK_MAX_DURATION_MS &&
                  selected_message->coords.y1 == 107)
         {
-            // 如果沒有拖拽，執行點擊事件
+            // 沒拖拽、沒位移、按壓時間夠短 → 視為 tap，執行點擊事件
             void *dat = lv_event_get_user_data(evt);
             if (dat != NULL)
             {
@@ -1244,6 +1313,8 @@ lv_obj_t *notification_card_builder(lv_obj_t *list, uint8_t i)
     lv_obj_t *bg_img = lv_img_create(message_widget);
     lv_obj_align(bg_img, LV_ALIGN_CENTER, 0, 0);
     lv_img_set_src(bg_img, &message_widget_bg);
+    // 強制 bg 透明，避免拖拽時 helper 動到 opa 後 theme 預設白底冒出來
+    lv_obj_set_style_bg_opa(bg_img, LV_OPA_TRANSP, 0);
 
     // 禁用此widget的滾動，讓父容器處理滾動
     lv_obj_clear_flag(message_widget, LV_OBJ_FLAG_SCROLLABLE);
@@ -1262,6 +1333,7 @@ lv_obj_t *notification_card_builder(lv_obj_t *list, uint8_t i)
                                0);
     lv_obj_set_style_text_color(label, lv_color_white(), 0);
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_style_bg_opa(label, LV_OPA_TRANSP, 0);
     lv_obj_align(label, LV_ALIGN_TOP_LEFT, 50, 10);
     notification_widgets[i].title = label;
 
@@ -1273,6 +1345,7 @@ lv_obj_t *notification_card_builder(lv_obj_t *list, uint8_t i)
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_set_style_text_color(content, lv_color_hex(0xB3B3B3), 0);
     lv_obj_set_style_text_align(content, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
     lv_obj_align(content, LV_ALIGN_TOP_LEFT, 25, 65);
     lv_obj_clear_flag(message_widget, LV_OBJ_FLAG_SCROLLABLE);
     notification_widgets[i].content = content;
@@ -2391,6 +2464,10 @@ static void handle_dial_header_new_notification(void)
         return;
     }
     dial_header_prev_notif_count = current_count;
+    /* User 已經在通知列表 → 新通知會直接出現在列表裡，不需要再彈 header。
+       count 仍要更新（上面已做）才不會之後一次補彈。 */
+    if (is_at_message())
+        return;
     /* Remember if music was playing before this notification */
     dial_header_was_music_before_notif = dial_header_music_active;
     dial_header_showing_notification = true;
@@ -2749,6 +2826,26 @@ rt_int32_t notification_on_resume(void)
         set_paused_control_with_arm(false);
     }
     LOG_D("notification_on_resume");
+    /* 進到通知列表 → header 不應該再顯示通知（例外：音樂一直要在）。
+       同時把 shrink timer / 狀態清乾淨，避免回主畫面時還殘留通知 header。 */
+    if (dial_header_shrink_timer)
+    {
+        lv_timer_del(dial_header_shrink_timer);
+        dial_header_shrink_timer = NULL;
+    }
+    dial_header_shrink_duration_ms = 0;
+    dial_header_showing_notification = false;
+    dial_header_was_music_before_notif = false;
+    if (dial_header_music_active)
+    {
+        /* 音樂一直要在 → 還原音樂 header */
+        dial_header_restore_music();
+    }
+    else
+    {
+        /* 沒音樂 → 整個 header 收起來（紅點接著也會被下一行隱藏） */
+        dial_header_apply_hidden_state();
+    }
     /* User has seen the notification list — hide the red dot on the dial */
     if (lv_obj_is_valid(dial_header_red_dot))
         lv_obj_add_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);
@@ -2765,8 +2862,6 @@ rt_int32_t notification_on_deinit(void)
     // 清理拖拽狀態
     is_dragging = false;
     dragging_widget = NULL;
-    // 清理計時器
-    stop_drag_timer();
 
     /* Tear down touching_screen delay timer */
     if (touching_screen_timer)
