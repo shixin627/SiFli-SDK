@@ -3888,7 +3888,7 @@ static void update_left_scroll_nodes(void)
         //                                    LEFT_SCROLL_NODE_MIN_SIZE) *
         //                                factor) *
         //                           size_scale);
-        // 刻度長度（徑向）與線寬隨 size_scale 變化
+        // 線長度（徑向）與線寬隨 size_scale 變化
         float tick_len = 20.0f * size_scale;
         int16_t line_w = (int16_t)(6.0f * size_scale);
         if (tick_len < 2.0f) tick_len = 2.0f;
@@ -3907,17 +3907,19 @@ static void update_left_scroll_nodes(void)
         left_scroll_node_pts[i][1].x = x1;
         left_scroll_node_pts[i][1].y = y1;
 
-        // 越靠近弧線中央（180°）節點越亮，兩端逐漸淡出（factor 是 cos² 過渡）
-        int32_t opa_scaled = (int32_t)((float)node_opa * factor);
-        if (opa_scaled < 0)
-            opa_scaled = 0;
-        if (opa_scaled > 255)
-            opa_scaled = 255;
-        lv_opa_t this_node_opa = (lv_opa_t)opa_scaled;
+        // 越靠近弧線中央（180°）節點越亮，兩端淡出
+        // 不動 line_opa（避免 round-cap 殘色），改用 line_color 朝黑色背景插值
+        // 效果：中央 0x4D 灰、邊緣接近 0x0F 幾乎融入黑底
+        float blend = 0.2f + 0.8f * factor;
+        if (blend < 0.0f) blend = 0.0f;
+        if (blend > 1.0f) blend = 1.0f;
+        uint8_t cv = (uint8_t)((float)0x4D * blend);
+        lv_color_t node_color = lv_color_make(cv, cv, cv);
 
         lv_line_set_points(left_scroll_nodes[i], left_scroll_node_pts[i], 2);
         lv_obj_set_style_line_width(left_scroll_nodes[i], line_w, 0);
-        lv_obj_set_style_line_opa(left_scroll_nodes[i], this_node_opa, 0);
+        lv_obj_set_style_line_color(left_scroll_nodes[i], node_color, 0);
+        // lv_obj_set_style_line_opa(left_scroll_nodes[i], node_opa, 0);
     }
 }
 
