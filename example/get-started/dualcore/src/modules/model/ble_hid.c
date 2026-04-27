@@ -2022,6 +2022,7 @@ void BLE_HID_Send_String(const char *str)
 
 static int init_ble_keyboard_func(void)
 {
+    control_provider.ble_hid_mouse_back = HID_CONSUMER_GoBack;
     control_provider.ble_hid_keyboard_scroll_page = BLE_HID_Keyboard_Scrollpage;
     control_provider.ble_hid_keyboard_multitask = BLE_HID_Keyboard_Multitask;
     control_provider.ble_hid_keyboard_shift = BLE_HID_keyboard_Shift;
