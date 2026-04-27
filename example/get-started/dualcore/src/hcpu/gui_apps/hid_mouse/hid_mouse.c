@@ -251,6 +251,8 @@ static float left_scroll_normalize_delta(float d);
 static void update_left_scroll_nodes(void);
 static void apply_scroll_ui_level(void);
 static void animate_scroll_ui_to(bool active);
+static void scroll_node_snap_anim_cb(void *var, int32_t v);
+static void snap_scroll_nodes(void);
 
 // 判斷觸碰點是否在左側滾動觸發區域
 // UI 弧線寬度 30px、角度 150°~210°，但觸發範圍更大
@@ -2327,6 +2329,8 @@ static void handle_pressed_event(lv_indev_t *indev)
     left_scroll_active = is_point_in_left_arc(&start_point);
     if (left_scroll_active)
     {
+        // 取消可能還在跑的 snap 動畫，避免按下後 offset 被動畫繼續覆蓋
+        lv_anim_del(&scroll_node_offset_deg, scroll_node_snap_anim_cb);
         scroll_last_theta = left_scroll_finger_theta(&start_point);
         scroll_accum_angle = 0.0f;
         // set_stop_mouse_move(true);
@@ -2457,6 +2461,9 @@ static void handle_pressing_event(lv_indev_t *indev,
                 // （邊界情況：dx²+dy²=25 不會自動 cancel，會誤送 click）
                 BLE_HID_Mouse_Touch_Move((uint16_t)(start_point.x + 100),
                                          (uint16_t)start_point.y);
+                // 取消可能還在跑的 snap 動畫
+                lv_anim_del(&scroll_node_offset_deg,
+                            scroll_node_snap_anim_cb);
                 // 一開始是上下 → 升級為左弧形滾動（共用既有角度式邏輯）
                 left_scroll_active = true;
                 scrolling = true; // 避免放開時誤觸 click
@@ -2552,6 +2559,7 @@ static void handle_released_event(lv_indev_t *indev)
         // set_stop_mouse_move(false);
         motor_pattern_stop();
         animate_scroll_ui_to(false); // 放開後淡回暗/細（100ms）
+        snap_scroll_nodes();         // 節點 snap 回對齊位置（中央條置中）
         LOG_D("left scroll bar released");
         return;
     }
@@ -3969,6 +3977,42 @@ static void animate_scroll_ui_to(bool active)
 }
 
 /**
+ * @brief 節點對齊動畫的 exec callback：v 是 offset_deg × 100
+ */
+static void scroll_node_snap_anim_cb(void *var, int32_t v)
+{
+    (void)var;
+    scroll_node_offset_deg = (float)v / 100.0f;
+    update_left_scroll_nodes();
+}
+
+/**
+ * @brief 放開時把節點對齊到「某個節點正好落在 180° 中央」的位置
+ *        snap 位置每 18° 一格、bias 9°（5 個合法值：9°, 27°, 45°, 63°, 81°）
+ */
+static void snap_scroll_nodes(void)
+{
+    const float spacing = LEFT_SCROLL_NODE_SPACING_DEG; // 18°
+    const float bias = spacing * 0.5f;                  // 9°
+    float k = roundf((scroll_node_offset_deg - bias) / spacing);
+    float target = k * spacing + bias;
+
+    int32_t from = (int32_t)(scroll_node_offset_deg * 100.0f);
+    int32_t to = (int32_t)(target * 100.0f);
+    if (from == to)
+        return; // 已在 snap 位置
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, &scroll_node_offset_deg);
+    lv_anim_set_exec_cb(&a, scroll_node_snap_anim_cb);
+    lv_anim_set_time(&a, 120);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_values(&a, from, to);
+    lv_anim_start(&a);
+}
+
+/**
  * @brief 建立左側滾動弧線上的節點（初始位置與大小由 update 設定）
  */
 static void create_left_scroll_nodes(lv_obj_t *parent)
@@ -4370,6 +4414,7 @@ static void on_stop(void)
     menu_bg = NULL;
     menu_swipe_area = NULL;
     lv_anim_del(&scroll_ui_level, NULL); // 停掉 UI 過渡動畫
+    lv_anim_del(&scroll_node_offset_deg, NULL); // 停掉節點 snap 動畫
     left_scroll_bar = NULL;
     for (int i = 0; i < LEFT_SCROLL_NODE_COUNT; i++)
     {
