@@ -234,6 +234,9 @@ static lv_obj_t *message_page = NULL;
 #define DRAG_DELETE_THRESHOLD (MAX_DRAG_DISTANCE - 20)
 // 右滑到此距離時 widget 完全透明，距離以線性比例淡出
 #define DRAG_FADE_DISTANCE (300)
+// 點擊判定：x 移動量 < 此值且按壓時間 < CLICK_MAX_DURATION_MS 才當成 tap
+#define CLICK_CANCEL_MOVEMENT 5
+#define CLICK_MAX_DURATION_MS 250
 
 // 背景色塊相關變數（已移除）
 
@@ -979,6 +982,9 @@ static void hide_background_blocks(void)
 }
 
 static bool new_touching_obj = true;
+// 點擊判定：紀錄按壓時間 + 是否在按壓過程中有過任何 x 方向移動
+static uint32_t press_start_tick = 0;
+static bool press_had_movement = false;
 extern void remove_notification_by_id(const char *id);
 /* Forward decl — used by do_drag_delete to cancel any running drag anim. */
 static void set_drag_translate_x(void *obj, int32_t value);
@@ -1192,6 +1198,9 @@ static void widget_drag_event_cb(lv_event_t *evt)
             original_x = lv_obj_get_style_translate_x(obj, 0);
             is_dragging = false; // 還未開始拖拽
             new_touching_obj = true;
+            // 點擊判定狀態
+            press_start_tick = lv_tick_get();
+            press_had_movement = false;
             // 殺掉前一輪可能還在跑的 fade-in 動畫，避免跟手勢的 opa 互打
             lv_anim_del(obj, drag_opa_anim_exec_cb);
             // 確保起始為完全不透明
@@ -1200,6 +1209,15 @@ static void widget_drag_event_cb(lv_event_t *evt)
         break;
 
     case LV_EVENT_PRESSING:
+        // 不論方向，只要 x 移動量超過閾值就標記為「有移動」，後面 RELEASED 用來阻擋 click
+        if (dragging_widget == obj)
+        {
+            lv_coord_t abs_dx = point.x >= drag_start_x
+                                    ? point.x - drag_start_x
+                                    : drag_start_x - point.x;
+            if (abs_dx > CLICK_CANCEL_MOVEMENT)
+                press_had_movement = true;
+        }
         if (dragging_widget == obj && selected_message->coords.y1 == 107 &&
             new_touching_obj)
         {
@@ -1245,9 +1263,11 @@ static void widget_drag_event_cb(lv_event_t *evt)
             }
         }
         else if (dragging_widget == obj && !is_dragging &&
+                 !press_had_movement &&
+                 lv_tick_elaps(press_start_tick) < CLICK_MAX_DURATION_MS &&
                  selected_message->coords.y1 == 107)
         {
-            // 如果沒有拖拽，執行點擊事件
+            // 沒拖拽、沒位移、按壓時間夠短 → 視為 tap，執行點擊事件
             void *dat = lv_event_get_user_data(evt);
             if (dat != NULL)
             {
@@ -2444,6 +2464,10 @@ static void handle_dial_header_new_notification(void)
         return;
     }
     dial_header_prev_notif_count = current_count;
+    /* User 已經在通知列表 → 新通知會直接出現在列表裡，不需要再彈 header。
+       count 仍要更新（上面已做）才不會之後一次補彈。 */
+    if (is_at_message())
+        return;
     /* Remember if music was playing before this notification */
     dial_header_was_music_before_notif = dial_header_music_active;
     dial_header_showing_notification = true;
@@ -2802,6 +2826,26 @@ rt_int32_t notification_on_resume(void)
         set_paused_control_with_arm(false);
     }
     LOG_D("notification_on_resume");
+    /* 進到通知列表 → header 不應該再顯示通知（例外：音樂一直要在）。
+       同時把 shrink timer / 狀態清乾淨，避免回主畫面時還殘留通知 header。 */
+    if (dial_header_shrink_timer)
+    {
+        lv_timer_del(dial_header_shrink_timer);
+        dial_header_shrink_timer = NULL;
+    }
+    dial_header_shrink_duration_ms = 0;
+    dial_header_showing_notification = false;
+    dial_header_was_music_before_notif = false;
+    if (dial_header_music_active)
+    {
+        /* 音樂一直要在 → 還原音樂 header */
+        dial_header_restore_music();
+    }
+    else
+    {
+        /* 沒音樂 → 整個 header 收起來（紅點接著也會被下一行隱藏） */
+        dial_header_apply_hidden_state();
+    }
     /* User has seen the notification list — hide the red dot on the dial */
     if (lv_obj_is_valid(dial_header_red_dot))
         lv_obj_add_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);
