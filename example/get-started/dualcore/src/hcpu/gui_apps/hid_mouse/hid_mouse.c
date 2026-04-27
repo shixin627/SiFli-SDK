@@ -110,6 +110,8 @@
     #define USING_EDGE_BOTTOM_DETECTION 0
     #define USING_EDGE_LEFT_DETECTION 0
     #define USING_EDGE_RIGHT_DETECTION 0
+    // 除錯顯示：把弧形觸發區與中間態區段以折線標出邊界
+    #define SHOW_SCROLL_ZONE_DEBUG 0
 
     #define ENABLE_MENU_FEATURE 0
     #define KB_ANIM_TIME_MS 100
@@ -199,6 +201,16 @@ static lv_obj_t *menu_swipe_area = NULL;
 static lv_obj_t *left_scroll_bar = NULL;
 static bool left_scroll_active = false;
 
+// 中間滾動觸發區狀態（按下中間區，等方向判定後升級為 left_scroll_active）
+static bool center_zone_pending = false;
+
+    #if SHOW_SCROLL_ZONE_DEBUG
+        // 折線近似圓弧的取樣點數（19 點 = 5° 間距，覆蓋 90° 弧）
+        #define DBG_ZONE_ARC_POINTS 19
+static lv_point_t dbg_zone_outer_pts[DBG_ZONE_ARC_POINTS];
+static lv_point_t dbg_zone_inner_pts[DBG_ZONE_ARC_POINTS];
+    #endif
+
     // 左側滾動節點：以手指繞螢幕中心的角度追蹤，可無限旋轉；
     // 節點沿弧線跟手移動，每通過一個節點觸發一次滾輪。
     #define LEFT_SCROLL_NODE_COUNT 5
@@ -207,6 +219,12 @@ static bool left_scroll_active = false;
     #define LEFT_SCROLL_ARC_SPAN_DEG 90.0f
     #define LEFT_SCROLL_NODE_SPACING_DEG                                       \
         (LEFT_SCROLL_ARC_SPAN_DEG / LEFT_SCROLL_NODE_COUNT) // ≈ 12.86°
+    // 每觸發一個節點時，送出的 wheel 步數倍率（手感不夠強就調大）
+    #define LEFT_SCROLL_STEP_MULTIPLIER 3
+    // 中間滾動觸發區：弧形觸發區內緣再往內延伸的弧形圓環厚度（px）
+    // 幾何上接在 is_point_in_left_arc 的內緣（dist = outer_r - 50）後面
+    // 上下方向觸發後升級為左弧形角度滾動，跟左弧形共用同一套邏輯
+    #define CENTER_SCROLL_ZONE_THICKNESS 50
     #define LEFT_SCROLL_NODE_MAX_SIZE 14
     #define LEFT_SCROLL_NODE_MIN_SIZE 3
     // 未觸碰時暗/細，觸碰時亮/粗，100ms 過渡
@@ -251,6 +269,27 @@ static bool is_point_in_left_arc(const lv_point_t *p)
     if (dx >= 0)
         return false;
     // 角度放寬到約 125°~235°（sin(55°) ≈ 0.819）
+    float max_dy = dist * 0.819f;
+    return (dy >= -max_dy && dy <= max_dy);
+}
+
+// 判斷觸碰點是否在中間滾動觸發區
+// 幾何：弧形觸發區（dist = outer_r-50 ~ outer_r）的內緣，再往內延 THICKNESS px，
+// 角度範圍跟 is_point_in_left_arc 相同（左半 ±55°），兩塊接成完整的左側弧帶
+static bool is_point_in_center_scroll_zone(const lv_point_t *p)
+{
+    float cx = LV_HOR_RES_MAX / 2.0f;
+    float cy = LV_VER_RES_MAX / 2.0f;
+    float dx = p->x - cx;
+    float dy = p->y - cy;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float outer_r = cx;
+    float zone_outer = outer_r - 50.0f; // 接弧形觸發區的內緣
+    float zone_inner = zone_outer - (float)CENTER_SCROLL_ZONE_THICKNESS;
+    if (dist < zone_inner || dist > zone_outer)
+        return false;
+    if (dx >= 0)
+        return false;
     float max_dy = dist * 0.819f;
     return (dy >= -max_dy && dy <= max_dy);
 }
@@ -2291,9 +2330,16 @@ static void handle_pressed_event(lv_indev_t *indev)
         scroll_last_theta = left_scroll_finger_theta(&start_point);
         scroll_accum_angle = 0.0f;
         // set_stop_mouse_move(true);
-        motor_pattern_damping();
         animate_scroll_ui_to(true); // 觸碰時亮起（100ms）
         LOG_D("left scroll bar pressed");
+    }
+
+    // 中間滾動觸發區：等待方向判定（上下→升級為左弧形滾動；水平→走滑鼠移動）
+    center_zone_pending = false;
+    if (!left_scroll_active && is_point_in_center_scroll_zone(&start_point))
+    {
+        center_zone_pending = true;
+        LOG_D("center scroll zone pending");
     }
 
     // 重置滚动方向锁定
@@ -2318,7 +2364,13 @@ static void handle_pressed_event(lv_indev_t *indev)
     update_edge_detection(&start_point);
     gesture_detected = false;
 
-    BLE_HID_Mouse_Touch_Press((uint16_t)start_point.x, (uint16_t)start_point.y);
+    // 弧形區直接進滾動模式，不接 BLE_HID 點擊偵測（避免放開時送 deferred click）
+    // 中間態 pending 仍走 BLE_HID 偵測，等沒移動就放開時可正常觸發點擊
+    if (!left_scroll_active)
+    {
+        BLE_HID_Mouse_Touch_Press((uint16_t)start_point.x,
+                                  (uint16_t)start_point.y);
+    }
 }
 
 /**
@@ -2329,7 +2381,11 @@ static void handle_pressed_event(lv_indev_t *indev)
 static void handle_pressing_event(lv_indev_t *indev,
                                   const lv_point_t *current_point)
 {
-    BLE_HID_Mouse_Touch_Move((uint16_t)current_point->x, (uint16_t)current_point->y);
+    if (!left_scroll_active)
+    {
+        BLE_HID_Mouse_Touch_Move((uint16_t)current_point->x,
+                                 (uint16_t)current_point->y);
+    }
 
     // 左側滾動弧線模式：以角度追蹤手指繞中心的旋轉量，
     // 可連續旋轉多圈；節點跟手在弧線上循環移動，每過一個節點滾動一次。
@@ -2367,7 +2423,12 @@ static void handle_pressing_event(lv_indev_t *indev,
         // 避免快速旋轉時把 BLE/motor queue 灌爆造成記憶體堆積
         if (steps != 0)
         {
-            int8_t scroll_val = (int8_t)steps;
+            int scaled = steps * LEFT_SCROLL_STEP_MULTIPLIER;
+            if (scaled > 127)
+                scaled = 127;
+            else if (scaled < -127)
+                scaled = -127;
+            int8_t scroll_val = (int8_t)scaled;
             if (SkaiWatchSys.phone_os_version == IOS)
             {
                 scroll_val = -scroll_val;
@@ -2380,6 +2441,41 @@ static void handle_pressing_event(lv_indev_t *indev,
 
     int16_t delta_x = current_point->x - last_point.x;
     int16_t delta_y = current_point->y - last_point.y;
+
+    // 中間滾動觸發區：先做方向判定，上下→升級成左弧形角度滾動，水平→走拖曳
+    if (center_zone_pending)
+    {
+        int16_t dx_from_start = current_point->x - start_point.x;
+        int16_t dy_from_start = current_point->y - start_point.y;
+        if ((abs(dx_from_start) >= SCROLLING_THRESHOLD) ||
+            (abs(dy_from_start) >= SCROLLING_THRESHOLD))
+        {
+            center_zone_pending = false;
+            if (abs(dy_from_start) > abs(dx_from_start))
+            {
+                // 強制把 BLE_HID 內部 deferred-click state 推到 IDLE
+                // （邊界情況：dx²+dy²=25 不會自動 cancel，會誤送 click）
+                BLE_HID_Mouse_Touch_Move((uint16_t)(start_point.x + 100),
+                                         (uint16_t)start_point.y);
+                // 一開始是上下 → 升級為左弧形滾動（共用既有角度式邏輯）
+                left_scroll_active = true;
+                scrolling = true; // 避免放開時誤觸 click
+                scroll_last_theta = left_scroll_finger_theta(current_point);
+                scroll_accum_angle = 0.0f;
+                motor_pattern_damping();
+                animate_scroll_ui_to(true);
+                LOG_D("center -> left scroll upgraded");
+                return; // 本 frame 不再處理，下個 pressing 走 left_scroll_active 分支
+            }
+            // 一開始是水平 → 不再 pending，讓底下原本的拖曳邏輯接手
+        }
+        else
+        {
+            // 還沒過閾值，繼續等
+            return;
+        }
+    }
+
     if (handle_edge_scrolling(current_point, delta_x, delta_y))
     {
         return;
@@ -2441,8 +2537,13 @@ static void handle_released_event(lv_indev_t *indev)
 
     lv_point_t _release_pt;
     lv_indev_get_point(indev, &_release_pt);
-    bool _long_press_ended = BLE_HID_Mouse_Touch_Release(
-        (uint16_t)_release_pt.x, (uint16_t)_release_pt.y);
+    // 弧形/已升級的滾動模式跳過 BLE_HID 釋放，避免觸發 deferred click
+    bool _long_press_ended = false;
+    if (!left_scroll_active)
+    {
+        _long_press_ended = BLE_HID_Mouse_Touch_Release(
+            (uint16_t)_release_pt.x, (uint16_t)_release_pt.y);
+    }
 
     // 左側滾動弧線放手
     if (left_scroll_active)
@@ -2453,6 +2554,13 @@ static void handle_released_event(lv_indev_t *indev)
         animate_scroll_ui_to(false); // 放開後淡回暗/細（100ms）
         LOG_D("left scroll bar released");
         return;
+    }
+
+    // 中間態 pending（按下中間區但還沒過閾值就放開）：清旗標，讓底下走正常 click 流程
+    // 已升級為 left_scroll_active 的情況前面已處理並 return，不會走到這
+    if (center_zone_pending)
+    {
+        center_zone_pending = false;
     }
 
     // update_crosshair_brightness();
@@ -3917,6 +4025,48 @@ void lv_create_mouse_screen(lv_obj_t *scr)
 
     // 在弧線上加上節點指示點（視覺提示「每過一個節點 = 滾動一次」）
     create_left_scroll_nodes(bg);
+
+    #if SHOW_SCROLL_ZONE_DEBUG
+    // 用 lv_line 折線近似畫圓弧，標出兩塊觸發區的邊界
+    // （之前用 lv_arc + size 380 會死當，改用 left_scroll_nodes 同款 lv_line 方案）
+    {
+        const float cxf = LV_HOR_RES_MAX / 2.0f;
+        const float cyf = LV_VER_RES_MAX / 2.0f;
+        const float dist_outer = (float)(LV_HOR_RES_MAX / 2) - 50.0f; // 190
+        const float dist_inner = dist_outer - (float)CENTER_SCROLL_ZONE_THICKNESS; // 140
+        for (int i = 0; i < DBG_ZONE_ARC_POINTS; i++)
+        {
+            float angle_deg =
+                135.0f + 90.0f * (float)i / (float)(DBG_ZONE_ARC_POINTS - 1);
+            float rad = angle_deg * LEFT_SCROLL_PI / 180.0f;
+            float c = cosf(rad);
+            float s = sinf(rad);
+            dbg_zone_outer_pts[i].x = (lv_coord_t)(cxf + dist_outer * c);
+            dbg_zone_outer_pts[i].y = (lv_coord_t)(cyf + dist_outer * s);
+            dbg_zone_inner_pts[i].x = (lv_coord_t)(cxf + dist_inner * c);
+            dbg_zone_inner_pts[i].y = (lv_coord_t)(cyf + dist_inner * s);
+        }
+        lv_obj_t *dbg_line_outer = lv_line_create(bg);
+        lv_line_set_points(dbg_line_outer, dbg_zone_outer_pts,
+                           DBG_ZONE_ARC_POINTS);
+        lv_obj_set_style_line_color(dbg_line_outer, lv_color_hex(0xFF3030), 0);
+        lv_obj_set_style_line_width(dbg_line_outer, 2, 0);
+        lv_obj_set_style_line_opa(dbg_line_outer, LV_OPA_70, 0);
+        lv_obj_set_style_line_rounded(dbg_line_outer, true, 0);
+        lv_obj_clear_flag(dbg_line_outer, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(dbg_line_outer, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t *dbg_line_inner = lv_line_create(bg);
+        lv_line_set_points(dbg_line_inner, dbg_zone_inner_pts,
+                           DBG_ZONE_ARC_POINTS);
+        lv_obj_set_style_line_color(dbg_line_inner, lv_color_hex(0x3080FF), 0);
+        lv_obj_set_style_line_width(dbg_line_inner, 2, 0);
+        lv_obj_set_style_line_opa(dbg_line_inner, LV_OPA_70, 0);
+        lv_obj_set_style_line_rounded(dbg_line_inner, true, 0);
+        lv_obj_clear_flag(dbg_line_inner, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(dbg_line_inner, LV_OBJ_FLAG_SCROLLABLE);
+    }
+    #endif
 
     // Crosshair lines (dimmed by default, brighten when touching logo)
     lv_coord_t line_width = 3;
