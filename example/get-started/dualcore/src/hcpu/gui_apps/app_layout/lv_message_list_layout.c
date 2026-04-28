@@ -338,8 +338,8 @@ static void update_msg_indicator_dots_position(int input_value)
         /* Hide the dot whose index matches the currently selected card.
            Dot i corresponds to display index i (same ordering as the
            notification cards / media widget). */
-        if (i == (int)selected_message_index)
-            opacity = LV_OPA_TRANSP;
+        // if (i == (int)selected_message_index)
+        //     opacity = LV_OPA_TRANSP;
 
         lv_obj_set_style_img_opa(msg_indicator_dots[i], opacity, 0);
 
@@ -391,8 +391,11 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
         }
         else
         {
-            /* Media widget dot — fixed iTunes icon. */
+            /* Media widget dot — fixed iTunes icon.
+               Keep the dot object so total_dots / position math is unaffected,
+               but hide it so the music indicator dot is not visible. */
             lv_img_set_src(dot, IMG_ITUNES);
+            lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_HIDDEN);
         }
 
         msg_indicator_dots_bg[i] = dot_bg;
