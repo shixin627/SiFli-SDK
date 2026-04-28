@@ -36,11 +36,11 @@
 #include <board.h>
 #include "communicate_update_image.h"
 
+#if !kReleaseMode
+
 extern void rt_assert_set_hook(void (*hook)(const char *ex, const char *func,
                                             rt_size_t line));
 extern void rt_hw_exception_install(rt_err_t (*handler)(void *context));
-
-#if !kReleaseMode
 
 #define LOG_DIR                 "/logs"
 #define LOG_FILE_EXT            ".log"
@@ -352,7 +352,21 @@ static void flush_thread_entry(void *param)
 
     while (1)
     {
+        /* When the backend is disabled, block indefinitely with no periodic
+         * wakeups. The producer naturally releases flush_sem once logs start
+         * flowing again after re-enable. */
+        if (!backend_ready)
+        {
+            rt_sem_take(flush_sem, RT_WAITING_FOREVER);
+            continue;
+        }
+
         rt_sem_take(flush_sem, interval);
+
+        if (!backend_ready)
+        {
+            continue;
+        }
         /* Pause disk writes during BLE DFU (OTA) to avoid contending with
          * the firmware write path. Producer keeps filling the ring buffer;
          * logs that overflow are counted in dropped_bytes and reported once
@@ -610,4 +624,4 @@ static void logfe_enable(int argc, char **argv)
 }
 MSH_CMD_EXPORT(logfe_enable, enable or disable file log backend);
 
-#endif /* !LOG_FILE_BACKEND_DISABLE */
+#endif
