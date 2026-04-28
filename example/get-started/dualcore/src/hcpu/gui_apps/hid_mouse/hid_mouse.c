@@ -4646,6 +4646,177 @@ static void create_left_scroll_nodes(lv_obj_t *parent)
 }
 
 /**
+ * @brief 建立 Trackpad mode 的所有 UI 元件（弧形滾動條、節點、debug 邊界等）
+ *        要加新的 trackpad 元件就在這個函式內加，parent 用傳進來的參數
+ *        （即 mode_container[HID_MODE_TRACKPAD]，會跟著 mode 切換動）
+ */
+static void create_trackpad_mode_ui(lv_obj_t *parent)
+{
+    // 左側滾動弧形條（貼著圓形畫面左側邊緣）
+    left_scroll_bar = (lv_obj_t *)lv_arc_create(parent);
+    lv_obj_set_size(left_scroll_bar, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_align(left_scroll_bar, LV_ALIGN_CENTER, 0, 0);
+    lv_arc_set_rotation((lv_obj_t *)left_scroll_bar, 0);
+    lv_arc_set_bg_angles((lv_obj_t *)left_scroll_bar, 135, 225);
+    lv_arc_set_angles((lv_obj_t *)left_scroll_bar, 0, 0);
+    lv_arc_set_mode((lv_obj_t *)left_scroll_bar, LV_ARC_MODE_NORMAL);
+    lv_obj_set_style_pad_all(left_scroll_bar, 0, LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(left_scroll_bar, LV_OPA_0, LV_PART_KNOB);
+    lv_obj_set_style_arc_width(left_scroll_bar, 30, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(left_scroll_bar, lv_color_hex(0x333333),
+                               LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(left_scroll_bar, LV_OPA_60, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(left_scroll_bar, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_opa(left_scroll_bar, LV_OPA_0, LV_PART_INDICATOR);
+    lv_obj_clear_flag(left_scroll_bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(left_scroll_bar, LV_OBJ_FLAG_CLICKABLE);
+
+    // 弧線上的節點指示點
+    create_left_scroll_nodes(parent);
+
+    #if SHOW_SCROLL_ZONE_DEBUG
+    {
+        const float cxf = LV_HOR_RES_MAX / 2.0f;
+        const float cyf = LV_VER_RES_MAX / 2.0f;
+        const float dist_outer = (float)(LV_HOR_RES_MAX / 2) - 50.0f;
+        const float dist_inner =
+            dist_outer - (float)CENTER_SCROLL_ZONE_THICKNESS;
+        for (int i = 0; i < DBG_ZONE_ARC_POINTS; i++)
+        {
+            float angle_deg =
+                135.0f + 90.0f * (float)i / (float)(DBG_ZONE_ARC_POINTS - 1);
+            float rad = angle_deg * LEFT_SCROLL_PI / 180.0f;
+            float c = cosf(rad);
+            float s = sinf(rad);
+            dbg_zone_outer_pts[i].x = (lv_coord_t)(cxf + dist_outer * c);
+            dbg_zone_outer_pts[i].y = (lv_coord_t)(cyf + dist_outer * s);
+            dbg_zone_inner_pts[i].x = (lv_coord_t)(cxf + dist_inner * c);
+            dbg_zone_inner_pts[i].y = (lv_coord_t)(cyf + dist_inner * s);
+        }
+        lv_obj_t *dbg_line_outer = lv_line_create(parent);
+        lv_line_set_points(dbg_line_outer, dbg_zone_outer_pts,
+                           DBG_ZONE_ARC_POINTS);
+        lv_obj_set_style_line_color(dbg_line_outer, lv_color_hex(0xFF3030), 0);
+        lv_obj_set_style_line_width(dbg_line_outer, 2, 0);
+        lv_obj_set_style_line_opa(dbg_line_outer, LV_OPA_70, 0);
+        lv_obj_set_style_line_rounded(dbg_line_outer, true, 0);
+        lv_obj_clear_flag(dbg_line_outer, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(dbg_line_outer, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t *dbg_line_inner = lv_line_create(parent);
+        lv_line_set_points(dbg_line_inner, dbg_zone_inner_pts,
+                           DBG_ZONE_ARC_POINTS);
+        lv_obj_set_style_line_color(dbg_line_inner, lv_color_hex(0x3080FF), 0);
+        lv_obj_set_style_line_width(dbg_line_inner, 2, 0);
+        lv_obj_set_style_line_opa(dbg_line_inner, LV_OPA_70, 0);
+        lv_obj_set_style_line_rounded(dbg_line_inner, true, 0);
+        lv_obj_clear_flag(dbg_line_inner, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(dbg_line_inner, LV_OBJ_FLAG_SCROLLABLE);
+    }
+    #endif
+}
+
+/**
+ * @brief 建立 Keyboard mode 的所有 UI 元件
+ *        （input bar、輸入框、Enter 鍵、鍵盤本身）
+ *        要加新的 keyboard 元件就在這個函式內加
+ */
+static void create_keyboard_mode_ui(lv_obj_t *parent)
+{
+    // Input bar 容器（深色框，keyboard mode 顯示在鍵盤上方）
+    text_input_bar_bg = lv_obj_create(parent);
+    lv_obj_set_size(text_input_bar_bg, 200, 50);
+    lv_obj_set_pos(text_input_bar_bg, (LV_HOR_RES_MAX - 200) / 2,
+                   LV_VER_RES_MAX - 50);
+    lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(text_input_bar_bg, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(text_input_bar_bg, 22, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(text_input_bar_bg, 5, LV_PART_MAIN);
+    lv_obj_clear_flag(text_input_bar_bg, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Indicator line (永遠 hidden，事件處理在 bottom_swipe_area)
+    text_input_bar = lv_obj_create(text_input_bar_bg);
+    lv_obj_set_size(text_input_bar, 130, 25);
+    lv_obj_set_style_bg_color(text_input_bar, lv_color_hex(0x1a1a1a),
+                              LV_PART_MAIN);
+    lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(text_input_bar, 50, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(text_input_bar, LV_OPA_90, LV_PART_MAIN);
+    lv_obj_set_style_border_color(text_input_bar, lv_color_hex(0xFFFFFF),
+                                  LV_PART_MAIN);
+    lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(text_input_bar, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_align(text_input_bar, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_obj_clear_flag(text_input_bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(text_input_bar, LV_OBJ_FLAG_HIDDEN);
+
+    // Input content container
+    input_content_container = lv_obj_create(text_input_bar_bg);
+    lv_obj_set_size(input_content_container, 290, 40);
+    lv_obj_center(input_content_container);
+    lv_obj_set_style_bg_opa(input_content_container, LV_OPA_TRANSP,
+                            LV_PART_MAIN);
+    lv_obj_set_style_border_width(input_content_container, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(input_content_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
+
+    // Input text label
+    input_display_label = lv_label_create(input_content_container);
+    lv_label_set_text(input_display_label, "");
+    lv_obj_set_style_text_color(input_display_label, lv_color_hex(0xFFFFFF),
+                                LV_PART_MAIN);
+    lv_obj_set_style_text_font(input_display_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)),
+                               LV_PART_MAIN);
+    lv_obj_set_width(input_display_label, LV_SIZE_CONTENT);
+    lv_label_set_long_mode(input_display_label, LV_LABEL_LONG_CLIP);
+    lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
+
+    // Blinking cursor
+    input_cursor = lv_obj_create(text_input_bar_bg);
+    lv_obj_set_size(input_cursor, 2, 25);
+    lv_obj_set_style_bg_color(input_cursor, lv_color_hex(0x4a90e2),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(input_cursor, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(input_cursor, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(input_cursor, 1, LV_PART_MAIN);
+    lv_obj_align_to(input_cursor, input_display_label, LV_ALIGN_OUT_RIGHT_MID,
+                    2, 0);
+    lv_obj_add_flag(input_cursor, LV_OBJ_FLAG_HIDDEN);
+
+    // Enter button
+    input_enter_btn = lv_obj_create(parent);
+    lv_obj_set_size(input_enter_btn, 50, 45);
+    lv_obj_set_pos(input_enter_btn, (LV_HOR_RES_MAX - 50) / 2 + 165,
+                   LV_VER_RES_MAX - 305 - 45);
+    lv_obj_set_style_bg_color(input_enter_btn, lv_color_hex(0x4a90e2),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(input_enter_btn, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(input_enter_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(input_enter_btn, 22, LV_PART_MAIN);
+    lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(input_enter_btn, input_enter_btn_event_cb,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_t *enter_img = lv_img_create(input_enter_btn);
+    lv_img_set_src(enter_img, &enter_icon);
+    lv_obj_center(enter_img);
+
+    // 鍵盤 layout（內部創建 keyboard_container, custom_keyboard, 所有按鍵）
+    create_circular_keyboard_layout(parent);
+    if (keyboard_container)
+    {
+        // mode 系統用 hidden 控制可見性，需要解除預設 hidden 並 reset translate_y
+        lv_obj_clear_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_translate_y(keyboard_container, 0, 0);
+        lv_obj_align(keyboard_container, LV_ALIGN_BOTTOM_MID, 0, 0);
+    }
+    if (custom_keyboard)
+        lv_obj_clear_flag(custom_keyboard, LV_OBJ_FLAG_HIDDEN);
+}
+
+/**
  * @brief Creates the mouse screen
  * @param scr Screen object
  */
@@ -4659,7 +4830,7 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_clear_flag(bg, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(bg, LV_OBJ_FLAG_SCROLL_CHAIN);
 
-    // Touch background
+    // Touch background（跨 mode 觸控接收）
     lv_obj_t *touch_bg = lv_obj_create(bg);
     lv_obj_set_size(touch_bg, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     lv_obj_align(touch_bg, LV_ALIGN_CENTER, 0, 0);
@@ -4667,33 +4838,26 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_set_style_bg_opa(touch_bg, LV_OPA_0, 0);
     lv_obj_add_event_cb(touch_bg, plain_event_cb, LV_EVENT_ALL, NULL);
 
-    // 左側滾動弧形條（貼著圓形畫面左側邊緣）
-    left_scroll_bar = (lv_obj_t *)lv_arc_create(bg);
-    lv_obj_set_size(left_scroll_bar, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_align(left_scroll_bar, LV_ALIGN_CENTER, 0, 0);
-    lv_arc_set_rotation((lv_obj_t *)left_scroll_bar, 0);
-    lv_arc_set_bg_angles((lv_obj_t *)left_scroll_bar, 135, 225);
-    // 前景角度設為 0，讓 indicator 不顯示
-    lv_arc_set_angles((lv_obj_t *)left_scroll_bar, 0, 0);
-    lv_arc_set_mode((lv_obj_t *)left_scroll_bar, LV_ARC_MODE_NORMAL);
-    // 隱藏旋鈕
-    lv_obj_set_style_pad_all(left_scroll_bar, 0, LV_PART_KNOB);
-    lv_obj_set_style_bg_opa(left_scroll_bar, LV_OPA_0, LV_PART_KNOB);
-    // 背景弧線樣式（只顯示背景弧線）
-    lv_obj_set_style_arc_width(left_scroll_bar, 30, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(left_scroll_bar, lv_color_hex(0x333333),
-                               LV_PART_MAIN);
-    lv_obj_set_style_arc_opa(left_scroll_bar, LV_OPA_60, LV_PART_MAIN);
-    // 隱藏前景 indicator
-    lv_obj_set_style_arc_width(left_scroll_bar, 0, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_opa(left_scroll_bar, LV_OPA_0, LV_PART_INDICATOR);
-    lv_obj_clear_flag(left_scroll_bar, LV_OBJ_FLAG_SCROLLABLE);
-    // 純視覺，不攔截觸碰（由 plain_event_cb 判斷位置）
-    lv_obj_clear_flag(left_scroll_bar, LV_OBJ_FLAG_CLICKABLE);
+    // === Mode containers（每個 mode 一個 480×480 透明容器）===
+    for (int i = 0; i < HID_MODE_COUNT; i++)
+    {
+        mode_container[i] = lv_obj_create(bg);
+        lv_obj_remove_style_all(mode_container[i]);
+        lv_obj_set_size(mode_container[i], LV_HOR_RES_MAX, LV_VER_RES_MAX);
+        lv_obj_set_pos(mode_container[i], 0, 0);
+        lv_obj_set_style_bg_opa(mode_container[i], LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(mode_container[i], 0, 0);
+        lv_obj_set_style_pad_all(mode_container[i], 0, 0);
+        lv_obj_clear_flag(mode_container[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(mode_container[i], LV_OBJ_FLAG_CLICKABLE);
+    }
 
-    // 在弧線上加上節點指示點（視覺提示「每過一個節點 = 滾動一次」）
-    create_left_scroll_nodes(bg);
+    // === Per-mode UI ===
+    // 加新元件改下面兩個函式
+    create_trackpad_mode_ui(mode_container[HID_MODE_TRACKPAD]);
+    create_keyboard_mode_ui(mode_container[HID_MODE_KEYBOARD]);
 
+    // === Cross-mode UI（跨 mode 共用元件）===
     // 向右返回 hint：螢幕左側中央，預設隱藏；超過拖曳門檻會顯示成圓 + 左箭頭
     back_hint_obj = lv_obj_create(bg);
     lv_obj_remove_style_all(back_hint_obj);
@@ -4732,48 +4896,6 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_img_set_src(multitask_hint_icon, &Map_fill);
     lv_obj_set_style_img_opa(multitask_hint_icon, LV_OPA_TRANSP, 0);
     lv_obj_align(multitask_hint_icon, LV_ALIGN_CENTER, 0, 0);
-
-    #if SHOW_SCROLL_ZONE_DEBUG
-    // 用 lv_line 折線近似畫圓弧，標出兩塊觸發區的邊界
-    // （之前用 lv_arc + size 380 會死當，改用 left_scroll_nodes 同款 lv_line 方案）
-    {
-        const float cxf = LV_HOR_RES_MAX / 2.0f;
-        const float cyf = LV_VER_RES_MAX / 2.0f;
-        const float dist_outer = (float)(LV_HOR_RES_MAX / 2) - 50.0f; // 190
-        const float dist_inner = dist_outer - (float)CENTER_SCROLL_ZONE_THICKNESS; // 140
-        for (int i = 0; i < DBG_ZONE_ARC_POINTS; i++)
-        {
-            float angle_deg =
-                135.0f + 90.0f * (float)i / (float)(DBG_ZONE_ARC_POINTS - 1);
-            float rad = angle_deg * LEFT_SCROLL_PI / 180.0f;
-            float c = cosf(rad);
-            float s = sinf(rad);
-            dbg_zone_outer_pts[i].x = (lv_coord_t)(cxf + dist_outer * c);
-            dbg_zone_outer_pts[i].y = (lv_coord_t)(cyf + dist_outer * s);
-            dbg_zone_inner_pts[i].x = (lv_coord_t)(cxf + dist_inner * c);
-            dbg_zone_inner_pts[i].y = (lv_coord_t)(cyf + dist_inner * s);
-        }
-        lv_obj_t *dbg_line_outer = lv_line_create(bg);
-        lv_line_set_points(dbg_line_outer, dbg_zone_outer_pts,
-                           DBG_ZONE_ARC_POINTS);
-        lv_obj_set_style_line_color(dbg_line_outer, lv_color_hex(0xFF3030), 0);
-        lv_obj_set_style_line_width(dbg_line_outer, 2, 0);
-        lv_obj_set_style_line_opa(dbg_line_outer, LV_OPA_70, 0);
-        lv_obj_set_style_line_rounded(dbg_line_outer, true, 0);
-        lv_obj_clear_flag(dbg_line_outer, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_clear_flag(dbg_line_outer, LV_OBJ_FLAG_SCROLLABLE);
-
-        lv_obj_t *dbg_line_inner = lv_line_create(bg);
-        lv_line_set_points(dbg_line_inner, dbg_zone_inner_pts,
-                           DBG_ZONE_ARC_POINTS);
-        lv_obj_set_style_line_color(dbg_line_inner, lv_color_hex(0x3080FF), 0);
-        lv_obj_set_style_line_width(dbg_line_inner, 2, 0);
-        lv_obj_set_style_line_opa(dbg_line_inner, LV_OPA_70, 0);
-        lv_obj_set_style_line_rounded(dbg_line_inner, true, 0);
-        lv_obj_clear_flag(dbg_line_inner, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_clear_flag(dbg_line_inner, LV_OBJ_FLAG_SCROLLABLE);
-    }
-    #endif
 
     // Crosshair lines (dimmed by default, brighten when touching logo)
     lv_coord_t line_width = 3;
@@ -4866,88 +4988,6 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_event_cb(bottom_swipe_area, text_input_bar_cb, LV_EVENT_ALL,
                         NULL);
 
-    // Keyboard mode 的 input bar（會在 mouse screen 末尾 reparent 到 keyboard mode container）
-    text_input_bar_bg = lv_obj_create(bg);
-    lv_obj_set_size(text_input_bar_bg, 200, 50);
-    lv_obj_set_pos(text_input_bar_bg, (LV_HOR_RES_MAX - 200) / 2,
-                   LV_VER_RES_MAX - 50);
-    lv_obj_set_style_bg_opa(text_input_bar_bg, LV_OPA_0, LV_PART_MAIN);
-    lv_obj_set_style_border_width(text_input_bar_bg, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(text_input_bar_bg, 22, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(text_input_bar_bg, 5, LV_PART_MAIN);
-    lv_obj_clear_flag(text_input_bar_bg, LV_OBJ_FLAG_SCROLLABLE);
-    // 不再綁 text_input_bar_cb：multitask 觸發改由 bottom_swipe_area 接
-
-    // Indicator line (visible in closed state)
-    text_input_bar = lv_obj_create(text_input_bar_bg);
-    lv_obj_set_size(text_input_bar, 130, 25);
-    lv_obj_set_style_bg_color(text_input_bar, lv_color_hex(0x1a1a1a),
-                              LV_PART_MAIN);
-    lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
-    lv_obj_set_style_radius(text_input_bar, 50, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(text_input_bar, LV_OPA_90, LV_PART_MAIN);
-    lv_obj_set_style_border_color(text_input_bar, lv_color_hex(0xFFFFFF),
-                                  LV_PART_MAIN);
-    lv_obj_set_style_border_width(text_input_bar, 2, LV_PART_MAIN);
-    lv_obj_set_style_border_opa(text_input_bar, LV_OPA_50, LV_PART_MAIN);
-    lv_obj_align(text_input_bar, LV_ALIGN_BOTTOM_MID, 0, -5);
-    lv_obj_clear_flag(text_input_bar, LV_OBJ_FLAG_SCROLLABLE);
-    // 完全隱藏 indicator bar；事件處理在 bottom_swipe_area 上
-    lv_obj_add_flag(text_input_bar, LV_OBJ_FLAG_HIDDEN);
-
-    // Input content container (hidden in closed state)
-    input_content_container = lv_obj_create(text_input_bar_bg);
-    lv_obj_set_size(input_content_container, 290, 40);
-    lv_obj_center(input_content_container);
-    lv_obj_set_style_bg_opa(input_content_container, LV_OPA_TRANSP,
-                            LV_PART_MAIN);
-    lv_obj_set_style_border_width(input_content_container, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(input_content_container, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(input_content_container, LV_OBJ_FLAG_HIDDEN);
-
-    // Input text label
-    input_display_label = lv_label_create(input_content_container);
-    lv_label_set_text(input_display_label, "");
-    lv_obj_set_style_text_color(input_display_label, lv_color_hex(0xFFFFFF),
-                                LV_PART_MAIN);
-    lv_obj_set_style_text_font(input_display_label,
-                               LV_EXT_FONT_GET(get_system_font_size(0)),
-                               LV_PART_MAIN);
-    lv_obj_set_width(input_display_label, LV_SIZE_CONTENT);
-    lv_label_set_long_mode(input_display_label, LV_LABEL_LONG_CLIP);
-    lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
-
-    // Blinking cursor
-    input_cursor = lv_obj_create(text_input_bar_bg);
-    lv_obj_set_size(input_cursor, 2, 25);
-    lv_obj_set_style_bg_color(input_cursor, lv_color_hex(0x4a90e2),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(input_cursor, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(input_cursor, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(input_cursor, 1, LV_PART_MAIN);
-    lv_obj_align_to(input_cursor, input_display_label, LV_ALIGN_OUT_RIGHT_MID,
-                    2, 0);
-    lv_obj_add_flag(input_cursor, LV_OBJ_FLAG_HIDDEN);
-
-    // Enter button (hidden initially, shows next to bar when keyboard opens)
-    input_enter_btn = lv_obj_create(bg);
-    lv_obj_set_size(input_enter_btn, 50, 45);
-    lv_obj_set_pos(input_enter_btn, (LV_HOR_RES_MAX - 50) / 2 + 165,
-                   LV_VER_RES_MAX - 305 - 45);
-    lv_obj_set_style_bg_color(input_enter_btn, lv_color_hex(0x4a90e2),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(input_enter_btn, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(input_enter_btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(input_enter_btn, 22, LV_PART_MAIN);
-    lv_obj_clear_flag(input_enter_btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(input_enter_btn, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(input_enter_btn, input_enter_btn_event_cb,
-                        LV_EVENT_CLICKED, NULL);
-    lv_obj_t *enter_img = lv_img_create(input_enter_btn);
-    lv_img_set_src(enter_img, &enter_icon);
-    lv_obj_center(enter_img);
-
     #if ENABLE_MENU_FEATURE
     menu_window(bg);
 
@@ -4964,57 +5004,6 @@ void lv_create_mouse_screen(lv_obj_t *scr)
                         NULL);
     #endif
 
-    // Create custom circular keyboard
-    create_circular_keyboard_layout(bg);
-
-    // === HID mode 切換：每個 mode 一個 480×480 透明 container 包對應 UI ===
-    // 統一容器大小 → 不同 mode 內元件大小不同也定位一致
-    for (int i = 0; i < HID_MODE_COUNT; i++)
-    {
-        mode_container[i] = lv_obj_create(bg);
-        lv_obj_remove_style_all(mode_container[i]);
-        lv_obj_set_size(mode_container[i], LV_HOR_RES_MAX, LV_VER_RES_MAX);
-        // 用 set_pos 而非 align：align 跟手動 set_x 會在重算 layout 時打架
-        lv_obj_set_pos(mode_container[i], 0, 0);
-        lv_obj_set_style_bg_opa(mode_container[i], LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(mode_container[i], 0, 0);
-        lv_obj_set_style_pad_all(mode_container[i], 0, 0);
-        lv_obj_clear_flag(mode_container[i], LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_clear_flag(mode_container[i], LV_OBJ_FLAG_CLICKABLE);
-    }
-
-    // reparent trackpad UI 到 trackpad container
-    if (left_scroll_bar)
-        lv_obj_set_parent(left_scroll_bar, mode_container[HID_MODE_TRACKPAD]);
-    for (int i = 0; i < LEFT_SCROLL_NODE_COUNT; i++)
-    {
-        if (left_scroll_nodes[i])
-            lv_obj_set_parent(left_scroll_nodes[i],
-                              mode_container[HID_MODE_TRACKPAD]);
-    }
-
-    // reparent keyboard 到 keyboard container；解除 HIDDEN flag、reset translate_y
-    if (keyboard_container)
-    {
-        lv_obj_set_parent(keyboard_container, mode_container[HID_MODE_KEYBOARD]);
-        lv_obj_clear_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_style_translate_y(keyboard_container, 0, 0);
-        lv_obj_align(keyboard_container, LV_ALIGN_BOTTOM_MID, 0, 0);
-    }
-    if (custom_keyboard)
-        lv_obj_clear_flag(custom_keyboard, LV_OBJ_FLAG_HIDDEN);
-    // reparent text_input_bar_bg 到 keyboard mode container：跟著 keyboard 拖動
-    if (text_input_bar_bg)
-        lv_obj_set_parent(text_input_bar_bg,
-                          mode_container[HID_MODE_KEYBOARD]);
-    // input_enter_btn 的 parent 是 bg（不是 text_input_bar_bg），也要單獨 reparent
-    if (input_enter_btn)
-        lv_obj_set_parent(input_enter_btn,
-                          mode_container[HID_MODE_KEYBOARD]);
-
-    // mode_container 在 z-order 最下方，不擋 mode_label / hint 等共用元件
-    // 不再 move_background：mode_container 自然 z 在 touch_bg 之上才能讓
-    // keyboard 觸控優先；mode_container 自身不 CLICKABLE，事件穿透到 touch_bg
     apply_hid_mode(current_hid_mode);
 }
 
