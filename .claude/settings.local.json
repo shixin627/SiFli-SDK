@@ -30,7 +30,8 @@
       "Bash(awk '/12:10:4[7-9]/ || /12:10:5[0-4]/')",
       "Bash(awk '/12:10:5[0-3]/')",
       "Bash(grep -E '#define GH3018_I2C_BUS|#define BMI270_BUS' /c/SiFli-SDK/customer/peripherals/sensor/Kconfig echo \"---\" grep -rE 'BMI270_BUS_NAME|GH3018_I2C_BUS' \"C:/SiFli-SDK/customer/boards/sf32lb56-watch_base\")",
-      "Bash(grep -i \".h$\")"
+      "Bash(grep -i \".h$\")",
+      "Bash(awk '/^void lv_create_mouse_screen/,/^}$/' \"C:\\\\SiFli-SDK\\\\example\\\\get-started\\\\dualcore\\\\src\\\\hcpu\\\\gui_apps\\\\hid_mouse\\\\hid_mouse.c\")"
     ]
   }
 }

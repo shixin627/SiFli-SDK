@@ -643,6 +643,13 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         open_v2t_mic();
         break;
 
+    case LVGL_MSG_TYPE_MOUSE_INPUT_TEXT:
+    {
+        extern void mouse_apply_v2t_input(const char *text);
+        mouse_apply_v2t_input(msg->data.message);
+    }
+    break;
+
     case LVGL_MSG_TYPE_MOUSE_OPEN_KEYBOARD:
     {
         extern void toggle_keyboard_visibility(void);

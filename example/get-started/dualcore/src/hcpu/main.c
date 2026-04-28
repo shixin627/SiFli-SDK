@@ -900,13 +900,23 @@ int audio_profile_send_voice_data(uint8_t *voice_data, uint16_t voice_data_len)
         {
             return 0;
         }
+        // Audio 跟著 HID active device 一起切目標（之前固定送 phone_device_idx，
+        // 現在改用 ble_dev_mgr 的 active device conn_idx）
+        uint8_t target_conn_idx = phone_device_idx;
+        const bonded_devices_db_t *db = ble_dev_mgr_get_database();
+        int active_idx = ble_dev_mgr_get_active_device();
+        if (db && active_idx >= 0 && active_idx < MAX_BONDED_DEVICES &&
+            db->devices[active_idx].conn_idx != 0xFF)
+        {
+            target_conn_idx = db->devices[active_idx].conn_idx;
+        }
         ble_api_lock();
         sibles_value_t value;
         value.hdl = g_audio_profile_hdl;
         value.idx = AUDIOPROFILE_AUDIO_VAL;
         value.len = voice_data_len;
         value.value = voice_data;
-        int ret = sibles_write_value(phone_device_idx, &value);
+        int ret = sibles_write_value(target_conn_idx, &value);
 #if BLE_AUDIO_RETRY_TIMES
         if (ret == 0 && !is_signal_bad())
         {
@@ -915,7 +925,7 @@ int audio_profile_send_voice_data(uint8_t *voice_data, uint16_t voice_data_len)
             {
                 retry--;
                 rt_thread_mdelay(50);
-                ret = sibles_write_value(phone_device_idx, &value);
+                ret = sibles_write_value(target_conn_idx, &value);
                 if (ret == voice_data_len)
                 {
                     break;

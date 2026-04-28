@@ -692,6 +692,12 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
             extern void append_text_to_input_message();
             append_text_to_input_message();
         }
+        else if (gui_app_is_actived(APP_ID_MOUSE))
+        {
+            handle_v2t_result(msgData);
+            extern void append_text_to_mouse_input(void);
+            append_text_to_mouse_input();
+        }
         break;
     }
 
