@@ -82,7 +82,11 @@
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-#define CHARGE_INTERACT_ENABLE 1
+#if CUSTOMER_BOARD_VER > BOARD_VER_28
+    #define CHARGE_INTERACT_ENABLE 1
+#else
+    #define CHARGE_INTERACT_ENABLE 0
+#endif
 
 extern void incoming_call_set_caller(const char *title, const char *id,
                                      uint8_t type);

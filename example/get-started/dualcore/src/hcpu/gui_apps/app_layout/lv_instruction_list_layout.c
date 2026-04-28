@@ -1314,6 +1314,27 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
     }
 }
 
+extern void check_is_at_instruction_list(void);
+static void app_list_window_scroll_event_cb(lv_event_t *evt)
+{
+    lv_obj_t *obj = evt->target;
+    switch (evt->code)
+    {
+    case LV_EVENT_VALUE_CHANGED:
+    {
+        if (lv_obj_get_scroll_y(p_instruction_list_layout->app_list_tileview)/466 != 0)
+            return;
+        check_is_at_instruction_list();
+        break;
+    }
+    default:
+        break;
+    }
+    if (obj == NULL)
+    {
+        return;
+    }
+}
 extern void set_skai_widget_opa(uint8_t opa);
 extern void set_skai_widget_input_text(const char *text);
 static void set_ai_bg_opa(void *obj, int32_t opa)
@@ -2488,6 +2509,19 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
     }
 }
 
+static rt_tick_t s_last_refresh_tick = 0;
+static lv_timer_t *s_pending_refresh_timer = NULL;
+
+static void deferred_refresh_cb(lv_timer_t *t)
+{
+    s_pending_refresh_timer = NULL;
+    /* Bypass debounce on the trailing run so the latest pending state
+       (e.g. multiple instructions added in rapid succession) is rebuilt. */
+    s_last_refresh_tick = 0;
+    lv_timer_del(t);
+    refresh_custom_instructions();
+}
+
 void refresh_custom_instructions(void)
 {
     open_scroll_motor = false;
@@ -2496,16 +2530,30 @@ void refresh_custom_instructions(void)
         return;
 
     LOG_I("Refreshing custom instructions...");
-    /* Debounce: skip if called again within 500ms */
-    static rt_tick_t last_refresh_tick = 0;
+    /* Trailing-edge debounce: within 500ms, skip the immediate run but
+       schedule a deferred refresh so the latest call still rebuilds the UI.
+       Without this, a burst of N>=2 add_or_update calls would leave
+       list_item_count incremented past the number of indicator dots actually
+       created, breaking dot positioning. */
     rt_tick_t now = rt_tick_get();
-    if (last_refresh_tick != 0 &&
-        (now - last_refresh_tick) < rt_tick_from_millisecond(500))
+    if (s_last_refresh_tick != 0 &&
+        (now - s_last_refresh_tick) < rt_tick_from_millisecond(500))
     {
-        LOG_I("refresh_custom_instructions: skipped (debounce)");
+        LOG_I("refresh_custom_instructions: deferred (debounce)");
+        if (s_pending_refresh_timer == NULL)
+        {
+            s_pending_refresh_timer =
+                lv_timer_create(deferred_refresh_cb, 550, NULL);
+            lv_timer_set_repeat_count(s_pending_refresh_timer, 1);
+        }
         return;
     }
-    last_refresh_tick = now;
+    s_last_refresh_tick = now;
+    if (s_pending_refresh_timer != NULL)
+    {
+        lv_timer_del(s_pending_refresh_timer);
+        s_pending_refresh_timer = NULL;
+    }
 
     lv_obj_t *list = p_instruction_list_layout->list;
 
@@ -2649,6 +2697,27 @@ static void go_to_app_list_btn_cb(lv_event_t *evt)
     LOG_I("Navigate to app list via button");
 }
 
+void back_to_instruction_list_btn(void)
+{
+    if (p_instruction_list_layout == NULL ||
+        p_instruction_list_layout->app_list_tileview == NULL)
+        return;
+    lv_obj_set_tile_id(p_instruction_list_layout->app_list_tileview, 0, 0,
+                       LV_ANIM_ON);
+    LOG_I("Navigate back to instruction list via button");
+}
+
+bool get_app_list_tileview_page(void)
+{
+    if (p_instruction_list_layout == NULL ||
+        p_instruction_list_layout->app_list_tileview == NULL)
+        return false;
+    // LOG_I("app_list_tileview scroll_y: %d",
+    //       lv_obj_get_scroll_y(p_instruction_list_layout->app_list_tileview));
+    return lv_obj_get_scroll_y(p_instruction_list_layout->app_list_tileview) ==
+           0;
+}
+
 lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 {
     // 檢查是否已經分配，如果是則先釋放
@@ -2680,6 +2749,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(main_tileview, LV_OPA_0, 0);
     lv_obj_set_scrollbar_mode(main_tileview, LV_SCROLLBAR_MODE_OFF);
     lv_obj_align(main_tileview, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_event_cb(main_tileview, app_list_window_scroll_event_cb, LV_EVENT_ALL, NULL);
 
     lv_obj_t *instr_tile =
         lv_tileview_add_tile(main_tileview, 0, 0, LV_DIR_BOTTOM);

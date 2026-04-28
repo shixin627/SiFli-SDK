@@ -285,13 +285,14 @@ void set_need_open_gesture_control(bool need)
 extern void reset_skai_widget_input_text(void);
 extern uint8_t get_middle_layer_tileview_index(void);
 extern bool get_is_open_instruction_list_ai(void);
+extern bool get_app_list_tileview_page(void);
 extern void open_skai_widget_ai(bool open);
 void check_is_at_instruction_list(void)
 {
     bool yes = gui_app_is_actived(APP_ID_MAIN) &&
                !lv_obj_has_flag(myLancher[app_index_message].pagetileview,
                                 LV_OBJ_FLAG_HIDDEN) &&
-               !_at_ai_interface &&
+               !_at_ai_interface && get_app_list_tileview_page() &&
                get_middle_layer_tileview_index() == INSTRUCTION_LIST_PAGE_INDEX;
     if (yes != _at_instruction_list)
     {
@@ -585,6 +586,8 @@ void check_is_at_home(void)
             display_status_bar_area(0, true);
             display_status_bar_area(1, true);
             display_status_bar_area(3, true);
+            extern void back_to_instruction_list_btn(void);
+            back_to_instruction_list_btn();
         }
         else
         {
