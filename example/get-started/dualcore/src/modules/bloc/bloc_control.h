@@ -144,6 +144,7 @@ extern "C"
         void (*ble_hid_keyboard_shift)(bool state);
         void (*ble_hid_keyboard_input)(const char *input);
         void (*ble_hid_keyboard_go_home)(void);
+        void (*ble_hid_keyboard_paste)(void); // Ctrl+V 貼上
         void (*ble_hid_zoom)(uint8_t device, bool state); // true: zoom in, false: zoom out
         void (*ble_hid_zoom_esc)(void);                   // zoom escape
         void (*ble_hid_touch_screen_press)(uint16_t x, uint16_t y);

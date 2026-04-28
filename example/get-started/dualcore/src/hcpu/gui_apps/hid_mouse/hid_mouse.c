@@ -202,6 +202,7 @@ static lv_obj_t *menu_home_tile = NULL;
 static lv_obj_t *menu_content_tile = NULL;
 static lv_obj_t *menu_swipe_area = NULL;
 static lv_obj_t *left_scroll_bar = NULL;
+static lv_obj_t *v2t_mic_img = NULL;
 static bool left_scroll_active = false;
 
 // 左側滾動區（弧形 + 中間態）等待方向判定的 pending 狀態：
@@ -437,6 +438,19 @@ static lv_timer_t *cursor_blink_timer = NULL;
 static char input_buffer[128] = {0};
 static int input_length = 0;
 static bool cursor_visible = true;
+// V2T 鎖：當輸入框累積 ≥ 90 字符時 set true，自動關麥克風；
+// input 清空（buffer 空）才解鎖，期間不允許再次長按空白鍵啟動 V2T
+static bool mouse_v2t_locked = false;
+    #define MOUSE_V2T_MAX_CHARS 90
+// V2T 啟動中（mic 開）：space btn 顯示紅圓 X，按下關 mic
+static bool mouse_v2t_active = false;
+static lv_obj_t *space_btn = NULL;
+static lv_obj_t *space_icon = NULL;
+static lv_obj_t *mic_icon = NULL;
+static lv_obj_t *space_red_dot = NULL;
+static lv_obj_t *space_red_dot_x = NULL;
+static void update_space_btn_appearance(bool mic_active);
+static void mouse_v2t_set_active(bool active);
     #define MAX_DISPLAY_WIDTH 280 // 輸入框最大顯示寬度（縮短後）
 
 // File list variables
@@ -621,6 +635,7 @@ static void clear_input_display(void)
 {
     memset(input_buffer, 0, sizeof(input_buffer));
     input_length = 0;
+    mouse_v2t_locked = false; // 清空後解鎖 V2T
     if (input_display_label != NULL)
     {
         lv_label_set_text(input_display_label, "");
@@ -684,6 +699,8 @@ static void remove_from_input_buffer(void)
     {
         input_buffer[input_length - 1] = '\0';
         input_length--;
+        if (input_length == 0)
+            mouse_v2t_locked = false; // backspace 刪到清空後解鎖 V2T
         update_input_display();
     }
 }
@@ -1111,6 +1128,12 @@ static void long_press_timer_callback(void *parameter)
 
     if (key_text != NULL && strcmp(key_text, "Space") == 0)
     {
+        if (mouse_v2t_locked)
+        {
+            // V2T 鎖定中（input 滿 90 字尚未清空），不允許再次啟動
+            LOG_D("V2T locked, ignore long-press space");
+            return;
+        }
         is_long_press_triggered = true;
         lvgl_msg_t msg;
         msg.type = LVGL_MSG_TYPE_MOUSE_OPEN_V2T;
@@ -1124,8 +1147,8 @@ void open_v2t_mic(void)
     extern void set_voice_recognition_notified_from_mouse(bool status);
     set_voice_recognition_notified_from_mouse(true);
     watch_system_interact(INTERACT_MIC_V2T_INPUT, &mic_listen_status);
-    // 在這裡添加你想要的長按空白鍵功能
-    // 例如：啟動語音輸入、切換輸入法、打開設置等
+    // mic 啟動 → space btn 切成紅圓 X，按下會關 mic
+    mouse_v2t_set_active(true);
 
     // 隱藏彈出框（如果有的話）
     hide_key_popup();
@@ -1583,9 +1606,25 @@ static void handle_proximity_input(lv_event_t *e)
                 }
                 else if (strcmp(closest_key_text, "Space") == 0)
                 {
-                    LOG_D("Space key pressed");
-                    control_provider.ble_hid_keyboard_input(" ");
-                    add_to_input_buffer(" "); // 添加空格到顯示
+                    if (mouse_v2t_active)
+                    {
+                        // mic 啟動中 → 關 mic + 送 Ctrl+V 貼上 + 清空 input bar
+                        bool status = false;
+                        watch_system_interact(INTERACT_MIC_LISTEN, &status);
+                        mouse_v2t_set_active(false);
+                        if (control_provider.ble_hid_keyboard_paste)
+                        {
+                            control_provider.ble_hid_keyboard_paste();
+                        }
+                        clear_input_display();
+                        LOG_D("Space pressed, V2T close + paste + clear");
+                    }
+                    else
+                    {
+                        LOG_D("Space key pressed");
+                        control_provider.ble_hid_keyboard_input(" ");
+                        add_to_input_buffer(" "); // 添加空格到顯示
+                    }
                 }
                 else
                 {
@@ -1944,32 +1983,41 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
     lv_obj_center(mode_icon);
 
     // Space 按鍵
-    lv_obj_t *space_btn = lv_obj_create(keyboard_container);
+    space_btn = lv_obj_create(keyboard_container);
     lv_obj_set_size(space_btn, 120, 50);
     lv_obj_set_pos(space_btn, 160, row4_y);
     lv_obj_set_style_bg_opa(space_btn, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(space_btn, 0, LV_PART_MAIN);
     lv_obj_clear_flag(space_btn, LV_OBJ_FLAG_SCROLLABLE);
-    // lv_obj_t *space_label = lv_label_create(space_btn);
-    // lv_label_set_text(space_label, "Space");
-    // lv_obj_set_style_text_color(space_label, lv_color_hex(0xFFFFFF),
-    // LV_PART_MAIN); lv_obj_set_style_text_opa(space_label, LV_OPA_70,
-    // LV_PART_MAIN); lv_obj_align(space_label, LV_ALIGN_CENTER, -10, 0);
-    // lv_obj_update_layout(space_label);
-    lv_obj_t *space_icon = lv_img_create(space_btn);
+    space_icon = lv_img_create(space_btn);
     lv_img_set_src(space_icon, &space);
     lv_obj_align(space_icon, LV_ALIGN_CENTER, 0, 10);
-    // lv_img_set_zoom(space_icon, 256 * 0.6); // 調整圖標大小
     lv_obj_set_style_img_opa(space_icon, LV_OPA_50, LV_PART_MAIN);
 
-    // lv_obj_center(space_label);
     lv_obj_clear_flag(space_btn, LV_OBJ_FLAG_CLICKABLE);
     register_key_button(space_btn);
-    lv_obj_t *mic_icon = lv_img_create(space_btn);
+    mic_icon = lv_img_create(space_btn);
     lv_img_set_src(mic_icon, &icon_mic);
     lv_obj_align(mic_icon, LV_ALIGN_CENTER, 0, 0);
-    lv_img_set_zoom(mic_icon, 256 * 0.7); // 調整圖標大小
+    lv_img_set_zoom(mic_icon, 256 * 0.7);
     lv_obj_set_style_img_opa(mic_icon, LV_OPA_30, LV_PART_MAIN);
+
+    // 紅色圓點 + 白色 X：mic 啟動時顯示，按下關 mic（預設隱藏）
+    space_red_dot = lv_obj_create(space_btn);
+    lv_obj_remove_style_all(space_red_dot);
+    lv_obj_set_size(space_red_dot, 120, 60);
+    lv_obj_align(space_red_dot, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(space_red_dot, lv_color_hex(0x4A83FF), 0);
+    lv_obj_set_style_bg_opa(space_red_dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(space_red_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_clear_flag(space_red_dot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(space_red_dot, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(space_red_dot, LV_OBJ_FLAG_HIDDEN);
+
+    space_red_dot_x = lv_label_create(space_red_dot);
+    lv_label_set_text(space_red_dot_x, "確定");
+    lv_obj_set_style_text_color(space_red_dot_x, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_align(space_red_dot_x, LV_ALIGN_CENTER, 0, 0);
 
     // Del 按鍵（原本 Enter 的位置）
     lv_obj_t *del_btn = lv_obj_create(keyboard_container);
@@ -3584,6 +3632,87 @@ void refresh_connected_device_label(void)
     lv_label_set_text(connected_device_label, next_mode_name(current_hid_mode));
 }
 
+// 切換 space btn 內 child 的可見性：
+//   mic_active = true  → 隱藏 space_icon + mic_icon、顯示紅圓 X
+//   mic_active = false → 反之
+static void update_space_btn_appearance(bool mic_active)
+{
+    if (space_icon && lv_obj_is_valid(space_icon))
+    {
+        if (mic_active)
+            lv_obj_add_flag(space_icon, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_clear_flag(space_icon, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (mic_icon && lv_obj_is_valid(mic_icon))
+    {
+        if (mic_active)
+            lv_obj_add_flag(mic_icon, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_clear_flag(mic_icon, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (space_red_dot && lv_obj_is_valid(space_red_dot))
+    {
+        if (mic_active)
+            lv_obj_clear_flag(space_red_dot, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(space_red_dot, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// 集中設 V2T 啟動狀態 + 同步 space btn 視覺
+static void mouse_v2t_set_active(bool active)
+{
+    mouse_v2t_active = active;
+    update_space_btn_appearance(active);
+}
+
+/**
+ * @brief 把 V2T 結果文字直接 set 到 hid_mouse 的 input bar
+ *        （V2T 是 streaming 累積文字，每次來都是「目前為止全文」→ 整個 replace buffer）
+ *        注意：必須在 LVGL thread 內呼叫；外部入口請用 append_text_to_mouse_input()
+ */
+void mouse_apply_v2t_input(const char *text)
+{
+    if (text == NULL || input_display_label == NULL)
+        return;
+    size_t text_len = strlen(text);
+    if (text_len >= sizeof(input_buffer))
+        text_len = sizeof(input_buffer) - 1;
+    memset(input_buffer, 0, sizeof(input_buffer));
+    memcpy(input_buffer, text, text_len);
+    input_buffer[text_len] = '\0';
+    input_length = (int)text_len;
+    update_input_display();
+
+    // 字數超過上限 → 自動關麥克風 + 鎖定（直到 input 清空才能再開）
+    if (text_len >= MOUSE_V2T_MAX_CHARS && !mouse_v2t_locked)
+    {
+        mouse_v2t_locked = true;
+        bool status = false;
+        watch_system_interact(INTERACT_MIC_LISTEN, &status);
+        mouse_v2t_set_active(false); // 同步 space btn 視覺
+        LOG_D("V2T input >= %d chars, mic auto-closed and locked",
+              MOUSE_V2T_MAX_CHARS);
+    }
+}
+
+/**
+ * @brief V2T 結果通知入口：仿 append_text_to_input_message 的方式，
+ *        從 V2T 模組拿合併文字、透過 LVGL message queue 切到 LVGL thread 套用
+ */
+void append_text_to_mouse_input(void)
+{
+    extern char *get_combined_voice2text(void);
+    char *text = get_combined_voice2text();
+    if (text == NULL)
+        return;
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_MOUSE_INPUT_TEXT;
+    msg.data.message = text;
+    lvgl_send_msg(msg);
+}
+
 // static lv_obj_t *text_input_bar = NULL;
 static rt_tick_t text_input_bar_pressing_time = NULL;
 static rt_tick_t text_input_bar_press_time = NULL;
@@ -4673,6 +4802,16 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
 
     // 弧線上的節點指示點
     create_left_scroll_nodes(parent);
+
+    lv_obj_t *v2t_mic_bg = lv_obj_create(parent);
+    lv_obj_set_size(v2t_mic_bg, 50, 50);
+    lv_obj_align(v2t_mic_bg, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_set_style_bg_color(v2t_mic_bg, lv_color_hex(0x1a1a1a), LV_PART_MAIN);
+    lv_obj_set_style_radius(v2t_mic_bg, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+
+    v2t_mic_img = lv_img_create(v2t_mic_bg);
+    lv_img_set_src(v2t_mic_img, &icon_mic);
+    lv_obj_center(v2t_mic_img);
 
     #if SHOW_SCROLL_ZONE_DEBUG
     {

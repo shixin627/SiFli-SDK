@@ -1784,6 +1784,21 @@ void BLE_HID_keyboard_go_home(void)
     HID_KEY_SEND();
 }
 
+void BLE_HID_Keyboard_Paste(void)
+{
+    HID_KEY_SET(KEY_CTRL);
+    HID_KEY_SEND();
+    rt_thread_mdelay(50);
+    HID_KEY_SET(KEY_V);
+    HID_KEY_SEND();
+    rt_thread_mdelay(50);
+    HID_KEY_CLEAR(KEY_V);
+    HID_KEY_SEND();
+    rt_thread_mdelay(50);
+    HID_KEY_CLEAR(KEY_CTRL);
+    HID_KEY_SEND();
+}
+
 void BLE_HID_keyboard_Shift(bool state)
 {
     if (state)
@@ -2027,6 +2042,7 @@ static int init_ble_keyboard_func(void)
     control_provider.ble_hid_keyboard_multitask = BLE_HID_Keyboard_Multitask;
     control_provider.ble_hid_keyboard_shift = BLE_HID_keyboard_Shift;
     control_provider.ble_hid_keyboard_go_home = BLE_HID_keyboard_go_home;
+    control_provider.ble_hid_keyboard_paste = BLE_HID_Keyboard_Paste;
     control_provider.ble_hid_keyboard_input = BLE_HID_Send_String;
     control_provider.ble_hid_zoom = BLE_HID_computer_zoom;
     control_provider.ble_hid_zoom_esc = BLE_HID_ZOOM_ESC;
