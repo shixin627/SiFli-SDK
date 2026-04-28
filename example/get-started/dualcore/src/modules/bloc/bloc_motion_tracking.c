@@ -1681,10 +1681,10 @@ static void calculate_gravity_position(Vector3 *gravity)
     {
         set_gravity_position(GRAVITY_POSITION_SIDE);
     }
-    else if (gravity->x > 0.5 && can_open_ai_interface())
-    {
-        set_gravity_position(GRAVITY_POSITION_AI);
-    }
+    // else if (gravity->x > 0.5 && can_open_ai_interface())
+    // {
+    //     set_gravity_position(GRAVITY_POSITION_AI);
+    // }
     else if ((gravity->x < 0.5 && gravity->x > -0.3) && fabs(gravity->y) < 0.5)
     {
         set_gravity_position(GRAVITY_POSITION_HORIZONTAL);
@@ -1693,11 +1693,11 @@ static void calculate_gravity_position(Vector3 *gravity)
     {
         set_gravity_position(GRAVITY_POSITION_OTHER);
     }
-    if (gravity->x < 0.5 && get_is_open_instruction_list_ai())
-    {
-        extern void check_ai_widget_auto_close(void);
-        check_ai_widget_auto_close();
-    }
+    // if (gravity->x < 0.5 && get_is_open_instruction_list_ai())
+    // {
+    //     extern void check_ai_widget_auto_close(void);
+    //     check_ai_widget_auto_close();
+    // }
 }
 
 void widget_ai_open(bool is_open)

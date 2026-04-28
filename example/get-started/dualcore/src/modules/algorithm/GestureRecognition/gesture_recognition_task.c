@@ -525,13 +525,13 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                     }
                     else if (get_switch_mouse_scroll_mode())
                     {
-                        control_provider.ble_hid_keyboard_scroll_page(get_scroll_up_mode());
+                        control_provider.ble_hid_keyboard_scroll_page(
+                            get_scroll_up_mode());
                     }
                     else if (get_hid_mouse_handfree_mode())
                     {
                         control_provider.ble_hid_mouse_left_click();
                     }
-                    
                 }
                 else
                 {
@@ -559,10 +559,19 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                 }
                 else
                 {
-                    if (level_bar_is_flat())
+                    if (is_at_instruction_list())
                     {
+                        LOG_D("Unlock gesture recognized at instruction list, unlocking watch and open AI widget");
+                        motor_pattern_unlocked();
+                        extern void animate_open_ai_widget(void);
+                        animate_open_ai_widget();
+                    }
+                    else if (level_bar_is_flat())
+                    {
+                        LOG_D("Unlock gesture recognized, unlocking watch");
                         watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
                     }
+                     
                 }
             }
             else
@@ -651,7 +660,8 @@ static void gesture_recognition_thread_entry(void *parameter)
             }
 
             // 飛鼠手持模式下
-            if (app_control_get_mouse_mode() && !get_hid_mouse_handfree_mode() && !get_switch_freehand_mode())
+            if (app_control_get_mouse_mode() &&
+                !get_hid_mouse_handfree_mode() && !get_switch_freehand_mode())
             {
                 // LOG_D("DEBUG 1:%d,%d", app_control_get_mouse_mode(),
                 //       get_hid_mouse_handfree_mode());
