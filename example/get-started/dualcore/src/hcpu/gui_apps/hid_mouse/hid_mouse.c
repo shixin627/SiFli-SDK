@@ -456,6 +456,11 @@ static lv_obj_t *trackpad_mic_btn = NULL;
 static lv_obj_t *trackpad_mic_icon = NULL;
 static lv_obj_t *trackpad_mic_red_dot = NULL;
 static lv_obj_t *trackpad_mic_red_dot_x = NULL;
+// trackpad mode 中央的 V2T 結果顯示 panel（mic active 時顯示）
+static lv_obj_t *trackpad_v2t_panel = NULL;
+static lv_obj_t *trackpad_v2t_label = NULL;
+// trackpad mode 的 enter btn（樣式跟 keyboard input_enter_btn 一致）
+static lv_obj_t *trackpad_enter_btn = NULL;
 static void update_v2t_btn_appearance(bool mic_active);
 static void mouse_v2t_set_active(bool active);
 static void mouse_v2t_open(void);
@@ -3691,11 +3696,31 @@ static void update_v2t_btn_appearance(bool mic_active)
     }
 }
 
-// 集中設 V2T 啟動狀態 + 同步兩個 mode 的按鈕視覺
+// 集中設 V2T 啟動狀態 + 同步兩個 mode 的按鈕視覺 + trackpad 中央 panel
 static void mouse_v2t_set_active(bool active)
 {
     mouse_v2t_active = active;
     update_v2t_btn_appearance(active);
+    if (trackpad_v2t_panel && lv_obj_is_valid(trackpad_v2t_panel))
+    {
+        if (active)
+        {
+            lv_obj_clear_flag(trackpad_v2t_panel, LV_OBJ_FLAG_HIDDEN);
+        }
+        else
+        {
+            lv_obj_add_flag(trackpad_v2t_panel, LV_OBJ_FLAG_HIDDEN);
+            if (trackpad_v2t_label && lv_obj_is_valid(trackpad_v2t_label))
+                lv_label_set_text(trackpad_v2t_label, "");
+        }
+    }
+    if (trackpad_enter_btn && lv_obj_is_valid(trackpad_enter_btn))
+    {
+        if (active)
+            lv_obj_clear_flag(trackpad_enter_btn, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(trackpad_enter_btn, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 // 開 mic：仿 long_press_timer_callback 觸發 V2T 的方式，給 trackpad mic btn 用
@@ -3744,7 +3769,7 @@ static void trackpad_mic_btn_event_cb(lv_event_t *e)
  */
 void mouse_apply_v2t_input(const char *text)
 {
-    if (text == NULL || input_display_label == NULL)
+    if (text == NULL)
         return;
     size_t text_len = strlen(text);
     if (text_len >= sizeof(input_buffer))
@@ -3753,7 +3778,11 @@ void mouse_apply_v2t_input(const char *text)
     memcpy(input_buffer, text, text_len);
     input_buffer[text_len] = '\0';
     input_length = (int)text_len;
-    update_input_display();
+    if (input_display_label != NULL)
+        update_input_display();
+    // 同步更新 trackpad mode 中央的 V2T 顯示 panel
+    if (trackpad_v2t_label && lv_obj_is_valid(trackpad_v2t_label))
+        lv_label_set_text(trackpad_v2t_label, input_buffer);
 
     // 字數超過上限 → 自動關麥克風 + 鎖定（直到 input 清空才能再開）
     if (text_len >= MOUSE_V2T_MAX_CHARS && !mouse_v2t_locked)
@@ -4875,6 +4904,52 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
 
     // 弧線上的節點指示點
     create_left_scroll_nodes(parent);
+
+    // === Trackpad mode 中央的 V2T 顯示 panel（樣式對齊 keyboard input bar）===
+    // 寬度縮一點讓出右邊空間給 enter btn
+    trackpad_v2t_panel = lv_obj_create(parent);
+    lv_obj_set_size(trackpad_v2t_panel, 290, 160);
+    lv_obj_align(trackpad_v2t_panel, LV_ALIGN_CENTER, -35, 0);
+    // 底色：深灰 + 90% 不透明（同 text_input_bar_bg open 狀態）
+    lv_obj_set_style_bg_color(trackpad_v2t_panel, lv_color_hex(0x1a1a1a),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(trackpad_v2t_panel, LV_OPA_90, LV_PART_MAIN);
+    // 邊框：白色 50%、寬度 2
+    lv_obj_set_style_border_color(trackpad_v2t_panel, lv_color_hex(0xFFFFFF),
+                                  LV_PART_MAIN);
+    lv_obj_set_style_border_width(trackpad_v2t_panel, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(trackpad_v2t_panel, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_set_style_radius(trackpad_v2t_panel, 22, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(trackpad_v2t_panel, 12, LV_PART_MAIN);
+    lv_obj_clear_flag(trackpad_v2t_panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(trackpad_v2t_panel, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(trackpad_v2t_panel, LV_OBJ_FLAG_HIDDEN);
+
+    trackpad_v2t_label = lv_label_create(trackpad_v2t_panel);
+    lv_label_set_text(trackpad_v2t_label, "");
+    lv_obj_set_width(trackpad_v2t_label, lv_pct(100));
+    lv_label_set_long_mode(trackpad_v2t_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(trackpad_v2t_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_align(trackpad_v2t_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(trackpad_v2t_label);
+
+    // === Trackpad mode 的 enter btn（樣式同 keyboard input_enter_btn）===
+    trackpad_enter_btn = lv_obj_create(parent);
+    lv_obj_set_size(trackpad_enter_btn, 50, 45);
+    lv_obj_align(trackpad_enter_btn, LV_ALIGN_CENTER, 140, 0);
+    lv_obj_set_style_bg_color(trackpad_enter_btn, lv_color_hex(0x4a90e2),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(trackpad_enter_btn, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(trackpad_enter_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(trackpad_enter_btn, 22, LV_PART_MAIN);
+    lv_obj_clear_flag(trackpad_enter_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(trackpad_enter_btn, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(trackpad_enter_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(trackpad_enter_btn, input_enter_btn_event_cb,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_t *trackpad_enter_img = lv_img_create(trackpad_enter_btn);
+    lv_img_set_src(trackpad_enter_img, &enter_icon);
+    lv_obj_center(trackpad_enter_img);
 
     // === Trackpad mode 的麥克風按鈕（純視覺指示）===
     // 點擊跟拖動都由下方擴大版的 bottom_swipe_area 統一處理：
