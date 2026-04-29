@@ -55,7 +55,7 @@ void resolve_private_bond_command(uint8_t key, const uint8_t *pValue, uint16_t l
         bool ret = RT_EOK;
         if (length != USER_ID_LENGTH)
         {
-            LOG_E("[KEY_BOND_REQUEST]user id length error");
+            LOG_E("[KEY_BOND_REQUEST]user id length error(%d != %d)", length, USER_ID_LENGTH);
             ret = -RT_ERROR;
         }
         // else if (SkaiWatchSys.flag_field.bond_state == true)

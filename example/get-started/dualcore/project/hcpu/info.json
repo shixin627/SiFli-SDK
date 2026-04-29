@@ -1,6 +1,6 @@
 {
-    "version": "1.1.35",
-    "description": "優化使用體驗",
+    "version": "1.1.36",
+    "description": "修復已知問題",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
