@@ -13,6 +13,7 @@
 #include <cJSON.h>
 #include "communicate_parse.h"
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
 #include "string.h"
@@ -509,9 +510,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     {
         if (length == 0x00)
         {
-            L1SendData data;
-            data.event = L1SEND_WATCH_SYSTEM_SYNC;
-            L1_send_event(data);
+            commu_send_watch_system_sync();
         }
         break;
     }

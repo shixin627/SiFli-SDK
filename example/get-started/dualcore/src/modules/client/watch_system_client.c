@@ -77,6 +77,7 @@
 #include "app_mainmenu.h"
 #ifdef BSP_USING_COMMUNICATE
     #include "communicate_protocol.h"
+    #include "communicate_task.h"
 #endif
 
 #define DBG_LVL DBG_LOG
@@ -337,9 +338,7 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         SkaiWatchSys.gPedoData.global_calories = data_ind->calories; // cal
         extern void refresh_activity_rings(void);
         refresh_activity_rings();
-        L1SendData data;
-        data.event = L1SEND_SPORT_DATA;
-        L1_send_event(data);
+        commu_send_sport_data();
         break;
     }
     case MSG_SERVICE_SLEEP_STATE_IND:
@@ -367,10 +366,8 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         RT_ASSERT(arg->data_len == sizeof(watch_sys_minute_activity_t));
         data_ind = (watch_sys_minute_activity_t *)arg->data;
         RT_ASSERT(data_ind);
-        L1SendData data;
-        data.event = L1SEND_RETURN_MINUTE_ACTIVITY;
         SkaiWatchSys.activity = *data_ind;
-        L1_send_event(data);
+        commu_send_minute_activity();
         break;
     }
     case MSG_SERVICE_SUBSCRIBE_RSP:

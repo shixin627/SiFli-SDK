@@ -71,6 +71,7 @@
     #include "bloc_motion_tracking.h"
 #endif
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include <cJSON.h>
 
 LV_IMG_DECLARE(voice_group);
@@ -1605,10 +1606,7 @@ static void send_instruction_update(list_item_t *item)
     if (json_str)
     {
         LOG_I("Send instruction update: %s", json_str);
-        L1SendData data;
-        data.event = L1SEND_UPDATE_INSTRUCTION;
-        data.res.json_string_ptr = json_str;
-        L1_send_event(data);
+        commu_send_update_instruction(json_str);
         cJSON_free(json_str);
     }
 }
@@ -1621,10 +1619,7 @@ void request_instruction_image(const char *id)
     extern void set_pending_instruction_img_id(const char *id);
     set_pending_instruction_img_id(id);
 
-    L1SendData data;
-    data.event = L1SEND_GET_INSTRUCTION_IMG;
-    data.res.json_string_ptr = (char *)id;
-    L1_send_event(data);
+    commu_send_get_instruction_img(id);
     LOG_I("Requested instruction image for id=%s", id);
 }
 

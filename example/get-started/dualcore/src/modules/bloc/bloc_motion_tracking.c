@@ -55,6 +55,7 @@
 #include "watch_global_data.h"
 #ifdef BSP_USING_COMMUNICATE
     #include "communicate_protocol.h"
+    #include "communicate_task.h"
 #endif
 #include "ui_handler.h"
 #include "watch_system_interact.h"
@@ -946,13 +947,9 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
             {
                 packMatrixToBuffer(gsensorSamplesBuffer, targetWave_algo, NULL,
                                    release_dataset.gesture_sample_count);
-                sensor_buf_t buffer_info = {
-                    .data = gsensorSamplesBuffer,
-                    .length = release_dataset.gesture_sample_count *
-                              BYTES_PER_SAMPLE};
-                L1SendData data = {.event = L1SEND_LINEAR_ACCE_BUFFER,
-                                   .res.imu_data = buffer_info};
-                L1_send_event(data);
+                commu_send_linear_acce_buffer(
+                    gsensorSamplesBuffer,
+                    release_dataset.gesture_sample_count * BYTES_PER_SAMPLE);
             }
             release_dataset.gesture_sample_count = 0;
         }
@@ -1117,9 +1114,7 @@ static void send_quaternion_to_ble_client(rt_uint32_t ts, Quaternion *q)
         bloc_skaiwalk_prepare_quaternion_buffer(quat);
 #endif
 #ifdef BSP_USING_COMMUNICATE
-        L1SendData l1_send_data = {.event = L1SEND_QUATERNION_DATA,
-                                   .res = NULL};
-        L1_send_event(l1_send_data);
+        commu_send_quaternion_data();
 #endif
         last_tick = ts;
     }
@@ -1943,8 +1938,7 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                                               &motion_data->gravity);
                     }
 #if ENABLE_SEND_GRAVITY_TO_BLE_CLIENT
-                    L1SendData data = {.event = L1SEND_GSENSOR_GRAVITY_DATA};
-                    L1_send_event(data);
+                    commu_send_gsensor_gravity_data();
 #endif
                 }
                 else if (open_control_options && !is_at_ai_interface())
@@ -2038,11 +2032,7 @@ static void motion_tracking_thread_entry(void *parameter)
             }
             else
             {
-                sensor_buf_t buffer_info = {.data = accelSamplesBuffer,
-                                            .length = 384};
-                L1SendData data = {.event = L1SEND_LINEAR_ACCE_BUFFER,
-                                   .res.imu_data = buffer_info};
-                L1_send_event(data);
+                commu_send_linear_acce_buffer(accelSamplesBuffer, 384);
                 accel_sample_num = 0;
             }
         }
@@ -2062,11 +2052,7 @@ static void motion_tracking_thread_entry(void *parameter)
             }
             else
             {
-                sensor_buf_t buffer_info = {.data = accelSamplesBuffer,
-                                            .length = 384};
-                L1SendData data = {.event = L1SEND_IMU_BUFFER,
-                                   .res.imu_data = buffer_info};
-                L1_send_event(data);
+                commu_send_imu_buffer(accelSamplesBuffer, 384);
                 accel_sample_num = 0;
             }
         }

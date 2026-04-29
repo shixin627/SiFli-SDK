@@ -63,6 +63,7 @@
 #endif
 #ifdef BSP_USING_COMMUNICATE
     #include "communicate_protocol.h"
+    #include "communicate_task.h"
 #endif
 #include "watch_sys_service.h"
 
@@ -899,10 +900,7 @@ static rt_thread_t gesture_ppg_thread = RT_NULL;
 //*************連續傳原始數據*************//
 static void send_ppg_dataset_with_ble(float *ppg, int len)
 {
-    sensor_buf_float_t ppg_data = {.data = ppg, .length = len};
-    L1SendData data = {.event = L1SEND_HEART_RATE_SERIES,
-                       .res.ppg_data = ppg_data};
-    L1_send_event(data);
+    commu_send_heart_rate_series(ppg, (uint16_t)len);
 }
 
 extern bool ppg_data_collection;

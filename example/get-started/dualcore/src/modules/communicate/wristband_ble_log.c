@@ -19,6 +19,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include "wristband_ble_log.h"
 #include "watch_global_data.h"
 
@@ -45,8 +46,7 @@ bool check_send_interval(void)
 
 void BLE_LOG_OUTPUT(char *buf)
 {
-    L1SendData data = {.event = L1SEND_BLUETOOTH_LOG, .res.log_buffer_ptr = buf};
-    L1_send_event(data);
+    commu_send_bluetooth_log(buf);
 }
 
 void ble_log_output(rt_uint32_t level, const char *buf, size_t len)

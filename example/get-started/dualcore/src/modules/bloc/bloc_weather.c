@@ -50,6 +50,7 @@
 #include "bloc_peripheral.h"
 #include "watch_global_data.h"
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include "ui_handler.h"
 
 #define DBG_TAG "bloc.weather"
@@ -394,9 +395,7 @@ void request_weather_within_six_hours(bool active_call)
 	if (active_call || !has_synchronized_recently)
 	{
 		LOG_D("Requesting weather update within six hours");
-		L1SendData data = {0};
-		data.event = L1SEND_RETURN_WEATHER_DATA_GET;
-		L1_send_event(data);
+		commu_send_weather_request();
 
 		/* Update the last request time */
 		last_request_time = current_time;

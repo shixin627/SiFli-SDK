@@ -17,6 +17,7 @@
 #include "board.h"
 #include "communicate_parse.h"
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include "watch_global_data.h"
 #include "bloc_exercise.h"
 #include "bloc_filesystem.h"
@@ -206,9 +207,7 @@ void resolve_HealthData_command(uint8_t key, const uint8_t *pValue,
         if (length == 0)
         {
             LOG_I("request heart sample setting");
-            L1SendData data;
-            data.event = L1SEND_RETURN_HEART_SETTING;
-            L1_send_event(data);
+            commu_send_heart_setting();
         }
     }
     break;

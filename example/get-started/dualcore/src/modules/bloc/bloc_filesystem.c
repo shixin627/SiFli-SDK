@@ -49,6 +49,7 @@
 #include "communicate_protocol.h"
 #include "communicate_parse.h"
 #include "communicate_parse_notify.h"
+#include "communicate_task.h"
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
 #include "app_mainmenu.h"
@@ -199,7 +200,6 @@ char *get_sync_in_file_path(void)
 static int sync_file_to_remote_client(const char *file_path)
 {
     struct stat file_stat;
-    L1SendData data;
     int fd, read_bytes;
     char buf[FILE_SYNC_BUFFER_SIZE];
     lvgl_msg_t ui_msg;
@@ -225,19 +225,13 @@ static int sync_file_to_remote_client(const char *file_path)
     }
 
     // Send start sync event with file size
-    data.event = L1SEND_START_SYNC_FILE;
-    data.res.id = sync_progress.total_bytes;
-    L1_send_event(data);
+    commu_send_start_sync_file(sync_progress.total_bytes);
     rt_thread_mdelay(50);
 
     // Send file data in chunks
     while ((read_bytes = read(fd, buf, sizeof(buf))) > 0)
     {
-        data.event = L1SEND_SYNC_FILE;
-        data.res.file_buffer.length = read_bytes;
-        data.res.file_buffer.data = (uint8_t *)buf;
-        int res = L1_send_event(data);
-        if (res <= 0)
+        if (!commu_send_sync_file((uint8_t *)buf, read_bytes))
         {
             LOG_E("Failed to send file data for %s", file_path);
             goto exit_sync;
@@ -261,8 +255,7 @@ static int sync_file_to_remote_client(const char *file_path)
 exit_sync:
     close(fd);
     rt_thread_mdelay(50);
-    data.event = L1SEND_END_SYNC_FILE;
-    L1_send_event(data);
+    commu_send_end_sync_file();
 
     return 1;
 }
@@ -296,10 +289,7 @@ static void delete_file(char *file_path)
  */
 static void send_file_compare_result(uint8_t result)
 {
-    L1SendData data;
-    data.event = L1SEND_FILE_COMPARE_RESULT;
-    data.res.status = result;
-    L1_send_event(data);
+    commu_send_file_compare_result(result);
     LOG_I("Sent file compare result: %d", result);
 }
 

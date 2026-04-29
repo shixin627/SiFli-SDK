@@ -70,6 +70,7 @@
 #endif
 #ifdef BSP_USING_COMMUNICATE
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #endif
 #define DBG_TAG "app.test"
 #define DBG_LVL DBG_LOG
@@ -671,10 +672,7 @@ static void on_stop(void)
 static void sync_back_to_phone(test_state_t state)
 {
     LOG_D("Sync back to phone");
-    L1SendData data;
-    data.event = L1SEND_RETURN_UTEST_STATE;
-    data.res.status = (uint8_t)state;
-    L1_send_ota_event(data);
+    commu_send_utest_state((uint8_t)state);
 }
 
 static bool check_amoled()

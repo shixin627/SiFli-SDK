@@ -52,6 +52,7 @@
 #include "gui_app_fwk.h"
 #include "mem_section.h"
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include "ui_handler.h"
 #include "rtthread.h"
 
@@ -539,9 +540,7 @@ void request_calendar_on_mobile(bool active_call)
 	if (active_call || !has_synchronized_recently)
 	{
 		LOG_D("Requesting calendar");
-		L1SendData data = {0};
-		data.event = L1SEND_RETURN_CALENDAR_DATA_GET;
-		L1_send_event(data);
+		commu_send_calendar_request();
 
 		// Update last request timestamp
 		last_calendar_request_time = current_time;

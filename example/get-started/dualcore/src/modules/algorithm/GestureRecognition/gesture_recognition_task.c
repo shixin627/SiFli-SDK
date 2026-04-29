@@ -63,6 +63,7 @@
 /* Conditional includes */
 #include "watch_sys_service.h"
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include "communicate_update_image.h"
 #include "main_functions.h"
 #include "constants.h"
@@ -404,18 +405,6 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
 {
     LOG_D("gesture_recognition_algorithm sample_num:%d", gesture->sample_num);
     uint8_t sample_num = gesture->sample_num;
-    // convert int16_t data to float in g unit to identifyWindow
-    // if (imu_raw_data_collection)
-    // {
-    //     packMatrixToBuffer(gsensorSamplesBuffer, gesture->dataset, NULL,
-    //                        sample_num);
-    //     sensor_buf_t buffer_info = {.data = gsensorSamplesBuffer,
-    //                                 .length = sample_num * BYTES_PER_SAMPLE};
-    //     L1SendData data = {.event = L1SEND_LINEAR_ACCE_BUFFER,
-    //                        .res.imu_data = buffer_info};
-    //     L1_send_event(data);
-    // }
-    // else
     if (imu_data_collection)
     {
         if (imu_data_collection_error)
@@ -437,12 +426,9 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                 {
                     packMatrixToBuffer(gsensorSamplesBuffer, gesture->dataset,
                                        NULL, TAP_TARGET_SAMPLE_NUM);
-                    sensor_buf_t buffer_info = {
-                        .data = gsensorSamplesBuffer,
-                        .length = TAP_TARGET_SAMPLE_NUM * BYTES_PER_SAMPLE};
-                    L1SendData data = {.event = L1SEND_LINEAR_ACCE_BUFFER,
-                                       .res.imu_data = buffer_info};
-                    L1_send_event(data);
+                    commu_send_linear_acce_buffer(
+                        gsensorSamplesBuffer,
+                        TAP_TARGET_SAMPLE_NUM * BYTES_PER_SAMPLE);
                 }
             }
             // incorrect release gesture
@@ -462,12 +448,8 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                 {
                     packMatrixToBuffer(gsensorSamplesBuffer, gesture->dataset,
                                        NULL, sample_num);
-                    sensor_buf_t buffer_info = {.data = gsensorSamplesBuffer,
-                                                .length = sample_num *
-                                                          BYTES_PER_SAMPLE};
-                    L1SendData data = {.event = L1SEND_LINEAR_ACCE_BUFFER,
-                                       .res.imu_data = buffer_info};
-                    L1_send_event(data);
+                    commu_send_linear_acce_buffer(
+                        gsensorSamplesBuffer, sample_num * BYTES_PER_SAMPLE);
                 }
             }
         }
@@ -475,12 +457,8 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
         {
             packMatrixToBuffer(gsensorSamplesBuffer, gesture->dataset, NULL,
                                sample_num);
-            sensor_buf_t buffer_info = {.data = gsensorSamplesBuffer,
-                                        .length =
-                                            sample_num * BYTES_PER_SAMPLE};
-            L1SendData data = {.event = L1SEND_LINEAR_ACCE_BUFFER,
-                               .res.imu_data = buffer_info};
-            L1_send_event(data);
+            commu_send_linear_acce_buffer(gsensorSamplesBuffer,
+                                          sample_num * BYTES_PER_SAMPLE);
             static int16_t converted_data[RELEASE_TARGET_SAMPLE_NUM][6];
             for (int i = 0; i < sample_num && i < RELEASE_TARGET_SAMPLE_NUM;
                  i++)

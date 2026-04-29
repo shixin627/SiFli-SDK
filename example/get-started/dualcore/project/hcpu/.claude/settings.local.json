@@ -13,7 +13,10 @@
     ],
     "additionalDirectories": [
       "c:\\SiFli-SDK\\example\\get-started\\dualcore\\src\\hcpu\\gui_apps\\media",
-      "c:\\SiFli-SDK\\example\\get-started\\dualcore\\src\\hcpu\\gui_apps\\hid_mouse"
+      "c:\\SiFli-SDK\\example\\get-started\\dualcore\\src\\hcpu\\gui_apps\\hid_mouse",
+      "c:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\src\\modules\\algorithm\\GestureRecognition",
+      "c:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\src\\hcpu\\gui_apps\\test",
+      "c:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\src\\hcpu\\gui_apps\\incoming_call"
     ]
   }
 }

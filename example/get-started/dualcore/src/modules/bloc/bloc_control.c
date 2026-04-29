@@ -47,6 +47,7 @@
 #include "rtdevice.h"
 #include "communicate_protocol.h"
 #include "communicate_parse.h"
+#include "communicate_task.h"
 #include "app_mainmenu.h"
 #include "communicate_parse_control.h"
 #include "watch_global_data.h"
@@ -242,10 +243,6 @@ gesture_t *getGesture(void)
 
 static void notifyGesture()
 {
-	// L1SendData data;
-	// data.event = L1SEND_GESTURE_DETECT;
-	// data.res.gesture_label = label;
-	// L1_send_event(data);
 	_gesture.state = true;
 }
 
@@ -432,8 +429,7 @@ static void bt_speaker_set_volume_percent(uint8_t percent)
 static rt_timer_t smooth_volume_changed_timer = RT_NULL;
 static void smooth_volume_changed_timer_callback(void *param)
 {
-	L1SendData data = {.event = L1SEND_VOLUME_PERCENTAGE, .res.bt_speaker_volume = volume_percent};
-	L1_send_event(data);
+	commu_send_volume_percentage(volume_percent);
 }
 
 static void smooth_volume_changed_timer_start(void)
@@ -473,18 +469,14 @@ void bt_speaker_media_volume_up(void)
 {
 	LOG_D("Volume Up");
 	app_audio_set_control_command(AUDIO_CMD_VOLUME_UP);
-	L1SendData data;
-	data.event = L1SEND_MEDIA_CONTROL;
-	L1_send_event(data);
+	commu_send_media_control();
 }
 
 void bt_speaker_media_volume_down(void)
 {
 	LOG_D("Volume Down");
 	app_audio_set_control_command(AUDIO_CMD_VOLUME_DOWN);
-	L1SendData data;
-	data.event = L1SEND_MEDIA_CONTROL;
-	L1_send_event(data);
+	commu_send_media_control();
 }
 
 static void ble_hid_play_pause(void)
@@ -507,9 +499,7 @@ static void bt_speaker_media_play(void)
 #endif
 	notify_bt_speaker_media_status(true);
 	app_audio_set_control_command(AUDIO_CMD_PLAY);
-	L1SendData data;
-	data.event = L1SEND_MEDIA_CONTROL;
-	L1_send_event(data);
+	commu_send_media_control();
 }
 static void bt_speaker_media_pause(void)
 {
@@ -518,25 +508,19 @@ static void bt_speaker_media_pause(void)
 #endif
 	notify_bt_speaker_media_status(false);
 	app_audio_set_control_command(AUDIO_CMD_PAUSE);
-	L1SendData data;
-	data.event = L1SEND_MEDIA_CONTROL;
-	L1_send_event(data);
+	commu_send_media_control();
 }
 static void bt_speaker_media_next(void)
 {
 	LOG_D("Next Audio");
 	app_audio_set_control_command(AUDIO_CMD_NEXT);
-	L1SendData data;
-	data.event = L1SEND_MEDIA_CONTROL;
-	L1_send_event(data);
+	commu_send_media_control();
 }
 static void bt_speaker_media_prev(void)
 {
 	LOG_D("Previous Audio");
 	app_audio_set_control_command(AUDIO_CMD_PREVIOUS);
-	L1SendData data;
-	data.event = L1SEND_MEDIA_CONTROL;
-	L1_send_event(data);
+	commu_send_media_control();
 }
 
 /* skaios mode state */
@@ -727,10 +711,7 @@ static void trigger_tap_event(void)
 
 static void send_remote_control_event(uint8_t action)
 {
-	L1SendData data;
-	data.event = L1SEND_FINGER_TAP;
-	data.res.gesture_label = action;
-	L1_send_event(data);
+	commu_send_finger_tap(action);
 }
 
 /*Tap indicator*/
@@ -784,10 +765,7 @@ static void trigger_unknown_event(void)
 
 static void send_virtual_gesture(uint8_t gesture)
 {
-	L1SendData data;
-	data.event = L1SEND_VIRTUAL_GESTURE;
-	data.res.gesture_label = gesture;
-	L1_send_event(data);
+	commu_send_virtual_gesture(gesture);
 }
 
 static void trigger_longpress_event(void)
@@ -827,16 +805,12 @@ static void test_all(uint8_t action)
 // remote control
 static void take_photo(void)
 {
-	L1SendData data;
-	data.event = L1SEND_RETURN_PHONE_CONTROL_CMD_EVENT;
-	L1_send_event(data);
+	commu_send_phone_control_cmd();
 }
 
 static void find_phone(void)
 {
-	L1SendData data;
-	data.event = L1SEND_RETURN_FIND_MOBILE_COMMAND;
-	L1_send_event(data);
+	commu_send_find_mobile();
 }
 
 extern void volume_up_through_hid(void);

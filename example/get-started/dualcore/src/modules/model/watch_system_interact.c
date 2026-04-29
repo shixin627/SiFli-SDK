@@ -865,10 +865,6 @@ static void handle_health_monitoring(INTERACT_Type type, void *pValue)
         //   SkaiWatchSys.sleep_data_show.prev_sleep_stamp =
         //   sleepState->timestamp;
         // }
-        // L1SendData data;
-        // data.event = L1SEND_SLEEP_DATA;
-        // data.res.status = sleepState->mode;
-        // L1_send_event(data);
         break;
     }
     case INTERACT_HEARTRATEHIGH:

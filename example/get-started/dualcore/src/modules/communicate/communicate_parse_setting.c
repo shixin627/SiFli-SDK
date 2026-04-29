@@ -12,6 +12,7 @@
 #include <rtthread.h>
 #include "communicate_parse.h"
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 
 #include "string.h"
 #include "communicate_sync_pedo.h"
@@ -139,9 +140,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0)
         {
             LOG_D("Request alarm clock list");
-            L1SendData data;
-            data.event = L1SEND_RETURN_ALARM_EVENT;
-            L1_send_event(data);
+            commu_send_alarm_settings();
         }
     }
     break;
@@ -236,9 +235,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request lift switch status");
-            L1SendData data;
-            data.event = L1SEND_RETURN_LIFT_SWITCH_EVENT;
-            L1_send_event(data);
+            commu_send_lift_switch();
         }
     }
     break;
@@ -266,9 +263,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request twist switch status");
-            L1SendData data;
-            data.event = L1SEND_RETURN_TWIST_SWITCH_EVENT;
-            L1_send_event(data);
+            commu_send_twist_switch();
         }
     }
     break;
@@ -391,9 +386,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request long time sit setting");
-            L1SendData data;
-            data.event = L1SEND_SIT_SETTING_RETURN;
-            L1_send_event(data);
+            commu_send_sit_setting();
         }
     }
     break;
@@ -409,9 +402,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
                 // TODO: le_bond_pair(SkaiWatchSys.watch_conn_id);
             }
             LOG_D("request incomming message settings");
-            L1SendData data;
-            data.event = L1SEND_RETURN_INCOMMING_MESSAGE_SETTINGS;
-            L1_send_event(data);
+            commu_send_incoming_message_settings();
         }
     }
     break;
@@ -419,16 +410,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
     {
         LOG_D(
             "<><><><><><><><><><> KEY_FUNCTIONS_REQUEST <><><><><><><><><><>");
-        if (length == 0x00)
-        {
-            L1SendData data;
-            data.event = L1SEND_RETURN_FUNCTIONS_EVENT;
-            L1_send_event(data);
-            data.event = L1SEND_RETURN_BBPRO_CONN_INFO;
-            L1_send_event(data);
-            data.event = L1SEND_RETURN_HIDDEN_FUNC;
-            L1_send_event(data);
-        }
     }
     break;
     case KEY_EXERCISEMODE_REQUEST:
@@ -436,9 +417,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request exercise mode");
-            L1SendData data;
-            data.event = L1SEND_RETURN_EXERCISEMODE_EVENT;
-            L1_send_event(data);
         }
     }
     break;
@@ -463,20 +441,13 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request dial");
-            L1SendData data;
-            data.event = L1SEND_RETURN_DIAL_CHANGE;
-            L1_send_event(data);
+            commu_send_dial_change();
         }
     }
     break;
     case KEY_HR_SAMPLE_REQUEST:
     {
-        if (length == 0x00)
-        {
-            L1SendData data;
-            data.event = L1SEND_RETURN_HR_SAMPLE_EVENT;
-            L1_send_event(data);
-        }
+        /* No handler, request ignored */
     }
     break;
     case KEY_HOUR_FORMAT_SETTING:
@@ -494,9 +465,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request hour format");
-            L1SendData data;
-            data.event = L1SEND_RETURN_HOUR_FORMAT_SETTING;
-            L1_send_event(data);
+            commu_send_hour_format();
         }
     }
     break;
@@ -515,9 +484,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request distance unit");
-            L1SendData data;
-            data.event = L1SEND_RETURN_DISTANCE_UNIT_SETTING;
-            L1_send_event(data);
+            commu_send_distance_unit();
         }
     }
     break;
@@ -542,9 +509,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
     {
         if (length == 0x00)
         {
-            L1SendData data;
-            data.event = L1SEND_RETURN_DNDM_SETTING;
-            L1_send_event(data);
+            commu_send_dndm_setting();
         }
     }
     break;
@@ -566,9 +531,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request OLED display time");
-            L1SendData data;
-            data.event = L1SEND_RETURN_OLED_DISPLAY_TIME;
-            L1_send_event(data);
+            commu_send_oled_display_time(SkaiWatchSys.oled_display_time);
         }
     }
     break;
@@ -589,9 +552,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request language");
-            L1SendData data;
-            data.event = L1SEND_RETURN_LANGUAGE;
-            L1_send_event(data);
+            commu_send_language();
         }
     }
     break;
@@ -600,9 +561,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request device info");
-            L1SendData data;
-            data.event = L1SEND_RETURN_DEVICE_INFO;
-            L1_send_event(data);
+            commu_send_device_info();
         }
     }
     break;
@@ -622,9 +581,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request backlight");
-            L1SendData data;
-            data.event = L1SEND_RETURN_BACKLIGHT_EVENT;
-            L1_send_event(data);
+            commu_send_backlight(SkaiWatchSys.brightness);
         }
     }
     break;
@@ -658,9 +615,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request hidden func");
-            L1SendData data;
-            data.event = L1SEND_RETURN_HIDDEN_FUNC;
-            L1_send_event(data);
         }
     }
     break;
@@ -669,9 +623,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         if (length == 0x00)
         {
             LOG_D("request BT audio connected state");
-            L1SendData data;
-            data.event = L1SEND_RETURN_BBPRO_CONNECTED_STATE;
-            L1_send_event(data);
         }
     }
     break;

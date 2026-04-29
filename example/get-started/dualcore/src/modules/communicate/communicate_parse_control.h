@@ -48,6 +48,7 @@ extern "C"
 		KEY_APP_RUN = 0X29,
 		KEY_COUNTROL_KEYBOARD = 0X2A,
 		KEY_MQTT_CONTROL = 0X2B,
+		KEY_PASTE_TEXT = 0X2C,
 	} CONTROL_KEY;
 
 	void resolve_Control_command(uint8_t key, const uint8_t *pValue, uint16_t length);

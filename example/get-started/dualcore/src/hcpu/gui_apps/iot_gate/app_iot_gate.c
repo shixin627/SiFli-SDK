@@ -59,6 +59,7 @@
 #include "bloc_motion_tracking.h"
 #include "ui_handler.h"
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 
 #define DBG_TAG "app.iot_gate"
 #define DBG_LVL DBG_LOG
@@ -167,10 +168,7 @@ static void update_gate_status_label(gate_state_t state)
 
 static void send_gate_command_to_client(uint8_t state)
 {
-    L1SendData data;
-    data.event = L1SEND_MQTT_CONTROL;
-    data.res.status = state;
-    L1_send_event(data);
+    commu_send_mqtt_control(state);
 }
 
 static void send_gate_command(gate_state_t state)

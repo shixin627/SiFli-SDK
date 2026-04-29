@@ -48,6 +48,7 @@
 #include "watch_global_data.h"
 #include "wristband_ble_log.h"
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include "watch_global_data.h"
 #include "cJSON.h"
 #include "ui_handler.h"
@@ -249,10 +250,7 @@ void create_note(note_t *note)
 		return;
 	}
 	note_to_json_string(note);
-	L1SendData data;
-	data.event = L1SEND_CREATE_NOTE;
-	data.res.json_string_ptr = temp_send_json_string;
-	L1_send_event(data);
+	commu_send_create_note(temp_send_json_string);
 }
 
 void update_note(note_t *note)
@@ -262,10 +260,6 @@ void update_note(note_t *note)
 		return;
 	}
 	note_to_json_string(note);
-	L1SendData data;
-	data.event = L1SEND_UPDATE_NOTE;
-	data.res.json_string_ptr = temp_send_json_string;
-	L1_send_event(data);
 }
 
 void delete_note(note_t *note)
@@ -279,10 +273,6 @@ void delete_note(note_t *note)
 		return;
 	}
 	note_to_json_string(note);
-	L1SendData data;
-	data.event = L1SEND_DELETE_NOTE;
-	data.res.json_string_ptr = temp_send_json_string;
-	L1_send_event(data);
 }
 
 static int utest_note(int argc, char *argv[])

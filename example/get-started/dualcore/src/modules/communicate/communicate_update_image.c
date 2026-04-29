@@ -44,6 +44,7 @@
 #include "watch_global_data.h"
 #include "communicate_parse.h"
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include "communicate_update_image.h"
 #include "gui_app_fwk.h"
 #include "watch_system_interact.h"
@@ -417,10 +418,7 @@ void set_ble_dfu_thread_run(int run)
 
 static void notify_update_status_to_client(uint8_t status)
 {
-	L1SendData data;
-	data.event = L1SEND_RETURN_OTA_STATUS;
-	data.res.status = status;
-	L1_send_ota_event(data);
+	commu_send_ota_status(status);
 }
 
 static int ota_progress = -1;

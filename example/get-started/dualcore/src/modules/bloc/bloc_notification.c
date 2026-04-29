@@ -57,6 +57,7 @@
 
 /* Communication modules */
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 
 /* System and data modules */
 #include "watch_global_data.h"
@@ -684,10 +685,7 @@ static void remote_input_to_notification(const char *id, const char *message)
     }
     LOG_D("[%s]id:%s, message:%s", __func__, id, message);
     generate_json_for_remote_input(message, id);
-    L1SendData data;
-    data.event = L1SEND_REMOTE_INPUT;
-    data.res.json_string_ptr = temp_send_json_string;
-    L1_send_event(data);
+    commu_send_remote_input(temp_send_json_string);
     remove_notification(_notification_list, &notification_items_amount, id);
     notify_provider.notification_refresh();
 }
@@ -709,10 +707,7 @@ void remove_notification_by_id(const char *id)
     strncpy(temp_send_json_string, id, sizeof(temp_send_json_string) - 1);
     temp_send_json_string[sizeof(temp_send_json_string) - 1] = '\0';
 
-    L1SendData data;
-    data.event = L1SEND_DISMISS_NOTIFICATION;
-    data.res.json_string_ptr = temp_send_json_string;
-    L1_send_event(data);
+    commu_send_dismiss_notification(temp_send_json_string);
 
     /* Remove locally */
     remove_notification(_notification_list, &notification_items_amount, id);
@@ -755,10 +750,7 @@ static void send_message_to_chatgpt(const char *message)
         return;
     }
     generate_json_for_gpt_message(message);
-    L1SendData data;
-    data.event = L1SEND_CHAT_WITH_AI;
-    data.res.json_string_ptr = temp_send_json_string;
-    L1_send_event(data);
+    commu_send_chat_with_ai(temp_send_json_string);
 }
 
 static void generate_json_for_note_message(const char *message)
@@ -777,10 +769,7 @@ static void send_message_to_note(const char *message)
         return;
     }
     generate_json_for_note_message(message);
-    L1SendData data;
-    data.event = L1SEND_CREATE_NOTE;
-    data.res.json_string_ptr = temp_send_json_string;
-    L1_send_event(data);
+    commu_send_create_note(temp_send_json_string);
 }
 
 static void set_user_speech_text(char *text)
@@ -882,10 +871,7 @@ static void bloc_notify_hr(int hr)
     lvgl_send_msg(msg);
 
     #ifdef BSP_USING_COMMUNICATE
-    L1SendData commuData;
-    commuData.event = L1SEND_HEART_DATA;
-    commuData.res.hr = hr;
-    L1_send_event(commuData);
+    commu_send_heart_data(hr);
     #endif
 }
 
@@ -896,10 +882,7 @@ static void bloc_notify_battery_voltage(uint16_t voltage)
     msg.data.battery_voltage = voltage;
     lvgl_send_msg(msg);
 
-    L1SendData data;
-    data.event = L1SEND_RETURN_BATTERY_VOLTAGE;
-    data.res.battery_voltage = voltage;
-    L1_send_event(data);
+    commu_send_battery_voltage(voltage);
 }
 
 static void bloc_notify_battery_level(uint8_t level)
@@ -912,19 +895,14 @@ static void bloc_notify_battery_level(uint8_t level)
     msg.data.battery_level = level;
     lvgl_send_msg(msg);
 
-    L1SendData data;
-    data.event = L1SEND_RETURN_BATTERY_LEVEL;
-    data.res.battery_level = level;
-    L1_send_event(data);
+    commu_send_battery_level(level);
 }
 
 // 跳出充電狀頁面
 static void bloc_notify_charge_status(uint8_t status)
 {
     refresh_charge_icon();
-    L1SendData data;
-    data.event = L1SEND_RETURN_CHARGE_STATUS;
-    L1_send_event(data);
+    commu_send_charge_status();
 
     #if CHARGE_INTERACT_ENABLE
     if (status > NoCharge)
@@ -998,14 +976,9 @@ static void bloc_notify_holding_displacement(uint8_t event, int x, int y)
     }
     last_x = x;
     last_y = y;
-    L1SendData data;
-    data.event = L1SEND_HOLDING_DISPLACEMENT;
-    data.res.holding_displacement.event = event;
-    data.res.holding_displacement.x = x;
-    data.res.holding_displacement.y = y;
     // LOG_D("bloc_notify_holding_displacement: event:%d, x:%d, y:%d", event, x,
     // y);
-    L1_send_event(data);
+    commu_send_holding_displacement(event, x, y);
 }
 
 /* NotifyProvider global instance */

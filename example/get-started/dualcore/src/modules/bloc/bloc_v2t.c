@@ -47,6 +47,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
 #include "app_mainmenu.h"
@@ -188,9 +189,7 @@ void app_voice_set_listening_status(bool status)
 /* ========== 語音辨識自動停止邏輯核心函數 ========== */
 static void notify_user_speaking_intent(int status)
 {
-    L1SendData data = {.event = L1SEND_RETURN_USER_SPEAKING_STATE,
-                       .res.status = status};
-    L1_send_event(data);
+    commu_send_user_speaking_state((uint8_t)status);
 }
 /**
  * @brief 自動停止計時器回調函數
@@ -956,18 +955,14 @@ void start_sync_voice_recording(void)
     app_voice_set_recording_intent(true);
     _voice_recording_time = get_current_time();
     LOG_D("start_sync_voice_recording: %d", _voice_recording_time);
-    L1SendData data = {.event = L1SEND_RETURN_VOICE_RECORD_INTENT,
-                       .res.id = _voice_recording_time};
-    L1_send_event(data);
+    commu_send_voice_record_intent(_voice_recording_time);
 }
 
 void stop_sync_voice_recording(void)
 {
     app_voice_set_recording_intent(false);
     LOG_D("stop_sync_voice_recording: %d", _voice_recording_time);
-    L1SendData data = {.event = L1SEND_RETURN_VOICE_RECORD_INTENT,
-                       .res.id = _voice_recording_time};
-    L1_send_event(data);
+    commu_send_voice_record_intent(_voice_recording_time);
     _voice_recording_time = 0;
 }
 

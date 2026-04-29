@@ -61,6 +61,7 @@
 #include "data_service_provider.h"
 #include "ui_handler.h"
 #include "bloc_setting.h"
+#include "communicate_task.h"
 
 #define DBG_TAG "app.barometer"
 #define DBG_LVL DBG_LOG
@@ -151,10 +152,7 @@ static int baro_data_callback(data_callback_arg_t *arg)
 
         if ((data->data.baro > 0))
         {
-            L1SendData l1event = {.event = L1SEND_BARO_BUFFER,
-                                  .res.baro_data =
-                                      (float)data->data.baro / 100};
-            L1_send_event(l1event);
+            commu_send_baro_buffer((float)data->data.baro / 100);
             if ((data->data.baro != app_baro_data_table.cur_baro))
             {
                 char *s = lv_mem_alloc(MAX_PRESSURE_STR_LEN);

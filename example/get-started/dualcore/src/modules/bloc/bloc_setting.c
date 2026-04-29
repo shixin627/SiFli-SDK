@@ -53,6 +53,7 @@
 #include "bloc_setting.h"
 #include "bloc_system_perception.h"
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include "lv_ext_resource_manager.h"
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
@@ -161,9 +162,7 @@ static void set_key_to_store(watch_prefs_key key)
  */
 static void notify_watch_face_changed(uint8_t watch_face)
 {
-    L1SendData data;
-    data.event = L1SEND_RETURN_DIAL_CHANGE;
-    L1_send_event(data);
+    commu_send_dial_change();
 
 #ifdef BSP_USING_UI_HANDLER
     lvgl_msg_t msg;
@@ -201,9 +200,7 @@ static void set_hour_format(uint8_t format)
 {
     SkaiWatchSys.flag_field.hour_format = format;
 
-    L1SendData data;
-    data.event = L1SEND_RETURN_HOUR_FORMAT_SETTING;
-    L1_send_event(data);
+    commu_send_hour_format();
 
     peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
 }
@@ -236,10 +233,7 @@ static void set_watch_time(T_UTC_TIME datetime)
  */
 static void notify_brightness(void)
 {
-    L1SendData data;
-    data.event = L1SEND_RETURN_BACKLIGHT_EVENT;
-    data.res.lcd_brightness = SkaiWatchSys.brightness;
-    L1_send_event(data);
+    commu_send_backlight(SkaiWatchSys.brightness);
 
     peripheral_provider.save_watch_shared_prefs(
         WATCH_PREFS_KEY_BACKLIGHT_PERCENT);
@@ -274,10 +268,7 @@ void set_brightness(uint8_t percent)
  */
 static void notify_screen_time(void)
 {
-    L1SendData data;
-    data.event = L1SEND_RETURN_OLED_DISPLAY_TIME;
-    data.res.lcd_display_time = SkaiWatchSys.oled_display_time;
-    L1_send_event(data);
+    commu_send_oled_display_time(SkaiWatchSys.oled_display_time);
 
     peripheral_provider.save_watch_shared_prefs(
         WATCH_PREFS_KEY_OLED_DISPLAY_TIME);
@@ -343,9 +334,7 @@ static void set_power_save_mode(uint8_t mode)
  */
 static void notify_lift_switch_status(void)
 {
-    L1SendData data;
-    data.event = L1SEND_RETURN_LIFT_SWITCH_EVENT;
-    L1_send_event(data);
+    commu_send_lift_switch();
     peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
 }
 
@@ -416,9 +405,7 @@ static uint8_t convert_string_to_language_code(char *str)
  */
 static void notify_language(void)
 {
-    L1SendData data;
-    data.event = L1SEND_RETURN_LANGUAGE;
-    L1_send_event(data);
+    commu_send_language();
 
     lv_ext_set_locale(NULL, bloc_setting_get_language());
     peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_LANGUAGE);
@@ -458,9 +445,7 @@ static void set_dnd_status(uint8_t status)
 {
     SkaiWatchSys.DNDMode.config.status = status;
 
-    L1SendData data;
-    data.event = L1SEND_RETURN_DNDM_SETTING;
-    L1_send_event(data);
+    commu_send_dndm_setting();
 
     // peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_DNDMODE);
 }

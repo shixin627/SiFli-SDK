@@ -54,14 +54,6 @@ static uint8_t s_caller_type = Notify_others;
 static bool s_is_active = false;
 static uint32_t s_ancs_noti_uid = 0; /* 0 = not an iOS ANCS call */
 
-static void send_simple_event(L1SEND_TYPE_WATCH event)
-{
-    L1SendData data;
-    memset(&data, 0, sizeof(data));
-    data.event = event;
-    L1_send_event(data);
-}
-
 static void accept_btn_event_cb(lv_event_t *e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED)

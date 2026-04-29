@@ -160,24 +160,7 @@ void sync_task_by_way(task_t *task, TASK_SYNC_WAY way)
 
 	task_to_json_string(task);
 	LOG_D("[sync_task] task_json_string:%s", task_json_string);
-	if (way == TASK_SYNC_CREATE)
-	{
-		L1SendData data;
-		data.event = L1SEND_CREATE_TASK;
-		L1_send_event(data);
-	}
-	else if (way == TASK_SYNC_TOGGLE)
-	{
-		L1SendData data;
-		data.event = L1SEND_TOGGLE_TASK;
-		L1_send_event(data);
-	}
-	else if (way == TASK_SYNC_UPDATE)
-	{
-		L1SendData data;
-		data.event = L1SEND_UPDATE_TASK;
-		L1_send_event(data);
-	}
+	(void)way;
 }
 
 void update_task_content(task_t *task, char *content)

@@ -14,6 +14,7 @@
 #include "string.h"
 #include "communicate_parse.h"
 #include "communicate_protocol.h"
+#include "communicate_task.h"
 #include "watch_global_data.h"
 #include "bloc_peripheral.h"
 #include "bloc_weather.h"
@@ -66,17 +67,13 @@ void resolve_private_bond_command(uint8_t key, const uint8_t *pValue, uint16_t l
         if (ret == RT_EOK)
         {
             LOG_I("[KEY_BOND_REQUEST]Bond Request");
-            L1SendData data;
-            data.event = L1SEND_BOND_SUCCESS_EVENT;
-            L1_send_event(data);
+            commu_send_bond_success();
             watch_system_interact(INTERACT_BONDED, (void *)pValue);
         }
         else
         {
             LOG_I("[KEY_BOND_REQUEST]send bond fail event");
-            L1SendData data;
-            data.event = L1SEND_BOND_FAIL_EVENT;
-            L1_send_event(data);
+            commu_send_bond_fail();
         }
     }
     break;
@@ -91,24 +88,18 @@ void resolve_private_bond_command(uint8_t key, const uint8_t *pValue, uint16_t l
             /* check_user_id_bonded */
             // if (memcmp(pValue, (void *)SkaiWatchSys.user_data.user_id, length) == 0)
             {
-                L1SendData data;
-                data.event = L1SEND_LOGIN_SUCCESS_EVENT;
-                L1_send_event(data);
+                commu_send_login_success();
                 watch_system_interact(INTERACT_LOGIN, NULL);
             }
             // else
             // {
             //     LOG_W("[KEY_LOGIN_REQUEST]login fail");
-            //     L1SendData data;
-            //     data.event = L1SEND_LOGIN_FAIL_EVENT;
-            //     L1_send_event(data);
+            //     commu_send_login_fail();
             // }
         }
         else
         {
-            L1SendData data;
-            data.event = L1SEND_LOGIN_FAIL_EVENT;
-            L1_send_event(data);
+            commu_send_login_fail();
         }
     }
     break;
