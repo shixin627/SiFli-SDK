@@ -1990,6 +1990,10 @@ static uint8_t accelSamplesBuffer[384] = {0}; // 64 * 6 = 384
 static rt_thread_t fsr_adc_sampler_thread = RT_NULL;
 static void fsr_adc_sampler_thread_entry(void *parameter)
 {
+    extern void set_hid_mouse_handfree_mode_to(bool v);
+    // 邊緣觸發：避免每 100ms 重複 set / press / release 造成 BLE 流量
+    bool prev_handfree = false;
+    bool left_pressed = false;
     while (1)
     {
         if (SkaiWatchSys.sys_power_status != SYS_POWER_STATUS_ON)
@@ -1999,6 +2003,29 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
         }
         g_fsr_adc_latest = fsr_adc_read_value();
         // LOG_D("fsr latch=%d", g_fsr_adc_latest);
+
+        // 壓感 < 17000 → handfree on（自由滑鼠模式）；否則 off
+        bool want_handfree = (g_fsr_adc_latest < 17000);
+        if (want_handfree != prev_handfree)
+        {
+            set_hid_mouse_handfree_mode_to(want_handfree);
+            prev_handfree = want_handfree;
+        }
+
+        // 壓感 < 3000 → 左鍵按下；> 3000 → 左鍵放開
+        if (g_fsr_adc_latest < 3000 && !left_pressed)
+        {
+            if (control_provider.ble_hid_mouse_left_press)
+                control_provider.ble_hid_mouse_left_press();
+            left_pressed = true;
+        }
+        else if (g_fsr_adc_latest > 3000 && left_pressed)
+        {
+            if (control_provider.ble_hid_mouse_left_release)
+                control_provider.ble_hid_mouse_left_release();
+            left_pressed = false;
+        }
+
         rt_thread_mdelay(100); // 10Hz
     }
 }

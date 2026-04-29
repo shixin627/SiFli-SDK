@@ -442,15 +442,29 @@ static bool cursor_visible = true;
 // input 清空（buffer 空）才解鎖，期間不允許再次長按空白鍵啟動 V2T
 static bool mouse_v2t_locked = false;
     #define MOUSE_V2T_MAX_CHARS 90
-// V2T 啟動中（mic 開）：space btn 顯示紅圓 X，按下關 mic
+// V2T 啟動中（mic 開）：keyboard mode 的 space btn 跟 trackpad mode 的 mic btn
+// 都顯示紅圓 X，按下關 mic + paste + clear
 static bool mouse_v2t_active = false;
+// keyboard mode 的 space btn 內元件
 static lv_obj_t *space_btn = NULL;
 static lv_obj_t *space_icon = NULL;
 static lv_obj_t *mic_icon = NULL;
 static lv_obj_t *space_red_dot = NULL;
 static lv_obj_t *space_red_dot_x = NULL;
-static void update_space_btn_appearance(bool mic_active);
+// trackpad mode 的 mic btn 內元件（功能跟 keyboard 長按 space 完全等效）
+static lv_obj_t *trackpad_mic_btn = NULL;
+static lv_obj_t *trackpad_mic_icon = NULL;
+static lv_obj_t *trackpad_mic_red_dot = NULL;
+static lv_obj_t *trackpad_mic_red_dot_x = NULL;
+// trackpad mode 中央的 V2T 結果顯示 panel（mic active 時顯示）
+static lv_obj_t *trackpad_v2t_panel = NULL;
+static lv_obj_t *trackpad_v2t_label = NULL;
+// trackpad mode 的 enter btn（樣式跟 keyboard input_enter_btn 一致）
+static lv_obj_t *trackpad_enter_btn = NULL;
+static void update_v2t_btn_appearance(bool mic_active);
 static void mouse_v2t_set_active(bool active);
+static void mouse_v2t_open(void);
+static void mouse_v2t_close_and_paste(void);
     #define MAX_DISPLAY_WIDTH 280 // 輸入框最大顯示寬度（縮短後）
 
 // File list variables
@@ -1608,16 +1622,7 @@ static void handle_proximity_input(lv_event_t *e)
                 {
                     if (mouse_v2t_active)
                     {
-                        // mic 啟動中 → 關 mic + 送 Ctrl+V 貼上 + 清空 input bar
-                        bool status = false;
-                        watch_system_interact(INTERACT_MIC_LISTEN, &status);
-                        mouse_v2t_set_active(false);
-                        if (control_provider.ble_hid_keyboard_paste)
-                        {
-                            control_provider.ble_hid_keyboard_paste();
-                        }
-                        clear_input_display();
-                        LOG_D("Space pressed, V2T close + paste + clear");
+                        mouse_v2t_close_and_paste();
                     }
                     else
                     {
@@ -3632,11 +3637,12 @@ void refresh_connected_device_label(void)
     lv_label_set_text(connected_device_label, next_mode_name(current_hid_mode));
 }
 
-// 切換 space btn 內 child 的可見性：
-//   mic_active = true  → 隱藏 space_icon + mic_icon、顯示紅圓 X
+// 切換 V2T 按鈕（keyboard space btn + trackpad mic btn）內 child 的可見性：
+//   mic_active = true  → 隱藏 mic icon、顯示紅圓 X
 //   mic_active = false → 反之
-static void update_space_btn_appearance(bool mic_active)
+static void update_v2t_btn_appearance(bool mic_active)
 {
+    // Keyboard mode 的 space btn
     if (space_icon && lv_obj_is_valid(space_icon))
     {
         if (mic_active)
@@ -3658,13 +3664,102 @@ static void update_space_btn_appearance(bool mic_active)
         else
             lv_obj_add_flag(space_red_dot, LV_OBJ_FLAG_HIDDEN);
     }
+    // Trackpad mode 的 mic btn — mic active 時整個變大成 capsule 「確定」按鈕
+    if (trackpad_mic_btn && lv_obj_is_valid(trackpad_mic_btn))
+    {
+        if (mic_active)
+            lv_obj_set_size(trackpad_mic_btn, 120, 60);
+        else
+            lv_obj_set_size(trackpad_mic_btn, 50, 50);
+        lv_obj_align(trackpad_mic_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
+    }
+    if (trackpad_mic_icon && lv_obj_is_valid(trackpad_mic_icon))
+    {
+        if (mic_active)
+            lv_obj_add_flag(trackpad_mic_icon, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_clear_flag(trackpad_mic_icon, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (trackpad_mic_red_dot && lv_obj_is_valid(trackpad_mic_red_dot))
+    {
+        if (mic_active)
+        {
+            lv_obj_set_size(trackpad_mic_red_dot, 120, 60);
+            lv_obj_align(trackpad_mic_red_dot, LV_ALIGN_CENTER, 0, 0);
+            lv_obj_clear_flag(trackpad_mic_red_dot, LV_OBJ_FLAG_HIDDEN);
+        }
+        else
+        {
+            lv_obj_set_size(trackpad_mic_red_dot, 50, 50);
+            lv_obj_add_flag(trackpad_mic_red_dot, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }
 
-// 集中設 V2T 啟動狀態 + 同步 space btn 視覺
+// 集中設 V2T 啟動狀態 + 同步兩個 mode 的按鈕視覺 + trackpad 中央 panel
 static void mouse_v2t_set_active(bool active)
 {
     mouse_v2t_active = active;
-    update_space_btn_appearance(active);
+    update_v2t_btn_appearance(active);
+    if (trackpad_v2t_panel && lv_obj_is_valid(trackpad_v2t_panel))
+    {
+        if (active)
+        {
+            lv_obj_clear_flag(trackpad_v2t_panel, LV_OBJ_FLAG_HIDDEN);
+        }
+        else
+        {
+            lv_obj_add_flag(trackpad_v2t_panel, LV_OBJ_FLAG_HIDDEN);
+            if (trackpad_v2t_label && lv_obj_is_valid(trackpad_v2t_label))
+                lv_label_set_text(trackpad_v2t_label, "");
+        }
+    }
+    if (trackpad_enter_btn && lv_obj_is_valid(trackpad_enter_btn))
+    {
+        if (active)
+            lv_obj_clear_flag(trackpad_enter_btn, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(trackpad_enter_btn, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// 開 mic：仿 long_press_timer_callback 觸發 V2T 的方式，給 trackpad mic btn 用
+static void mouse_v2t_open(void)
+{
+    if (mouse_v2t_locked)
+    {
+        LOG_D("V2T locked, ignore open");
+        return;
+    }
+    is_long_press_triggered = true;
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_MOUSE_OPEN_V2T;
+    lvgl_send_msg(msg);
+}
+
+// 關 mic + 送 Ctrl+V 貼上 + 清空 input bar（兩個 mode 共用）
+static void mouse_v2t_close_and_paste(void)
+{
+    bool status = false;
+    watch_system_interact(INTERACT_MIC_LISTEN, &status);
+    mouse_v2t_set_active(false);
+    if (control_provider.ble_hid_keyboard_paste)
+    {
+        control_provider.ble_hid_keyboard_paste();
+    }
+    clear_input_display();
+    LOG_D("V2T close + paste + clear");
+}
+
+// trackpad mic btn 點擊：根據當前狀態切換開/關
+static void trackpad_mic_btn_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED)
+        return;
+    if (mouse_v2t_active)
+        mouse_v2t_close_and_paste();
+    else
+        mouse_v2t_open();
 }
 
 /**
@@ -3674,7 +3769,7 @@ static void mouse_v2t_set_active(bool active)
  */
 void mouse_apply_v2t_input(const char *text)
 {
-    if (text == NULL || input_display_label == NULL)
+    if (text == NULL)
         return;
     size_t text_len = strlen(text);
     if (text_len >= sizeof(input_buffer))
@@ -3683,7 +3778,11 @@ void mouse_apply_v2t_input(const char *text)
     memcpy(input_buffer, text, text_len);
     input_buffer[text_len] = '\0';
     input_length = (int)text_len;
-    update_input_display();
+    if (input_display_label != NULL)
+        update_input_display();
+    // 同步更新 trackpad mode 中央的 V2T 顯示 panel
+    if (trackpad_v2t_label && lv_obj_is_valid(trackpad_v2t_label))
+        lv_label_set_text(trackpad_v2t_label, input_buffer);
 
     // 字數超過上限 → 自動關麥克風 + 鎖定（直到 input 清空才能再開）
     if (text_len >= MOUSE_V2T_MAX_CHARS && !mouse_v2t_locked)
@@ -3925,12 +4024,15 @@ static void text_input_bar_cb(lv_event_t *e)
                 break;
             }
 
-            if (max_move_y < 60 && !bottom_bar_gesture_timer_enabled &&
+            if (max_move_y < 10 && !bottom_bar_gesture_timer_enabled &&
                 !is_bottom_bar_gesture_active)
             {
-                LOG_D("Gesture detected: short press");
-                // Toggle keyboard visibility when short press is detected
-                toggle_keyboard_visibility();
+                // 純點擊（沒明顯拖動）→ 觸發 mic 開/關（等同 keyboard 長按空白鍵）
+                LOG_D("Bottom bar tap → toggle V2T mic");
+                if (mouse_v2t_active)
+                    mouse_v2t_close_and_paste();
+                else
+                    mouse_v2t_open();
             }
     #if USING_EDGE_BOTTOM_DETECTION
             if (bottom_bar_gesture_timer_enabled)
@@ -4803,15 +4905,88 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     // 弧線上的節點指示點
     create_left_scroll_nodes(parent);
 
-    lv_obj_t *v2t_mic_bg = lv_obj_create(parent);
-    lv_obj_set_size(v2t_mic_bg, 50, 50);
-    lv_obj_align(v2t_mic_bg, LV_ALIGN_BOTTOM_MID, 0, -10);
-    lv_obj_set_style_bg_color(v2t_mic_bg, lv_color_hex(0x1a1a1a), LV_PART_MAIN);
-    lv_obj_set_style_radius(v2t_mic_bg, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    // === Trackpad mode 中央的 V2T 顯示 panel（樣式對齊 keyboard input bar）===
+    // 寬度縮一點讓出右邊空間給 enter btn
+    trackpad_v2t_panel = lv_obj_create(parent);
+    lv_obj_set_size(trackpad_v2t_panel, 290, 160);
+    lv_obj_align(trackpad_v2t_panel, LV_ALIGN_CENTER, -35, 0);
+    // 底色：深灰 + 90% 不透明（同 text_input_bar_bg open 狀態）
+    lv_obj_set_style_bg_color(trackpad_v2t_panel, lv_color_hex(0x1a1a1a),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(trackpad_v2t_panel, LV_OPA_90, LV_PART_MAIN);
+    // 邊框：白色 50%、寬度 2
+    lv_obj_set_style_border_color(trackpad_v2t_panel, lv_color_hex(0xFFFFFF),
+                                  LV_PART_MAIN);
+    lv_obj_set_style_border_width(trackpad_v2t_panel, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(trackpad_v2t_panel, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_set_style_radius(trackpad_v2t_panel, 22, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(trackpad_v2t_panel, 12, LV_PART_MAIN);
+    lv_obj_clear_flag(trackpad_v2t_panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(trackpad_v2t_panel, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(trackpad_v2t_panel, LV_OBJ_FLAG_HIDDEN);
 
-    v2t_mic_img = lv_img_create(v2t_mic_bg);
+    trackpad_v2t_label = lv_label_create(trackpad_v2t_panel);
+    lv_label_set_text(trackpad_v2t_label, "");
+    lv_obj_set_width(trackpad_v2t_label, lv_pct(100));
+    lv_label_set_long_mode(trackpad_v2t_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(trackpad_v2t_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_align(trackpad_v2t_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(trackpad_v2t_label);
+
+    // === Trackpad mode 的 enter btn（樣式同 keyboard input_enter_btn）===
+    trackpad_enter_btn = lv_obj_create(parent);
+    lv_obj_set_size(trackpad_enter_btn, 50, 45);
+    lv_obj_align(trackpad_enter_btn, LV_ALIGN_CENTER, 140, 0);
+    lv_obj_set_style_bg_color(trackpad_enter_btn, lv_color_hex(0x4a90e2),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(trackpad_enter_btn, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(trackpad_enter_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(trackpad_enter_btn, 22, LV_PART_MAIN);
+    lv_obj_clear_flag(trackpad_enter_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(trackpad_enter_btn, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(trackpad_enter_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(trackpad_enter_btn, input_enter_btn_event_cb,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_t *trackpad_enter_img = lv_img_create(trackpad_enter_btn);
+    lv_img_set_src(trackpad_enter_img, &enter_icon);
+    lv_obj_center(trackpad_enter_img);
+
+    // === Trackpad mode 的麥克風按鈕（純視覺指示）===
+    // 點擊跟拖動都由下方擴大版的 bottom_swipe_area 統一處理：
+    //   點擊 → 觸發 mic 開/關；拖向上 → multitask hint
+    trackpad_mic_btn = lv_obj_create(parent);
+    lv_obj_set_size(trackpad_mic_btn, 50, 50);
+    lv_obj_align(trackpad_mic_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_set_style_bg_color(trackpad_mic_btn, lv_color_hex(0x1a1a1a),
+                              LV_PART_MAIN);
+    lv_obj_set_style_radius(trackpad_mic_btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_SCROLLABLE);
+    // 不 CLICKABLE：事件穿透到下層 bottom_swipe_area 統一處理
+    lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_CLICKABLE);
+
+    // 預設顯示：mic icon（保留既有 v2t_mic_img 變數）
+    v2t_mic_img = lv_img_create(trackpad_mic_btn);
+    trackpad_mic_icon = v2t_mic_img;
     lv_img_set_src(v2t_mic_img, &icon_mic);
     lv_obj_center(v2t_mic_img);
+
+    // mic 啟動時顯示：藍色「確定」按鈕（與 keyboard space 確定鍵一致）
+    trackpad_mic_red_dot = lv_obj_create(trackpad_mic_btn);
+    lv_obj_remove_style_all(trackpad_mic_red_dot);
+    lv_obj_set_size(trackpad_mic_red_dot, 50, 50);
+    lv_obj_align(trackpad_mic_red_dot, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(trackpad_mic_red_dot, lv_color_hex(0x4A83FF), 0);
+    lv_obj_set_style_bg_opa(trackpad_mic_red_dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(trackpad_mic_red_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_clear_flag(trackpad_mic_red_dot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(trackpad_mic_red_dot, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(trackpad_mic_red_dot, LV_OBJ_FLAG_HIDDEN);
+
+    trackpad_mic_red_dot_x = lv_label_create(trackpad_mic_red_dot);
+    lv_label_set_text(trackpad_mic_red_dot_x, "確定");
+    lv_obj_set_style_text_color(trackpad_mic_red_dot_x, lv_color_hex(0xFFFFFF),
+                                0);
+    lv_obj_align(trackpad_mic_red_dot_x, LV_ALIGN_CENTER, 0, 0);
 
     #if SHOW_SCROLL_ZONE_DEBUG
     {
@@ -5118,9 +5293,10 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     // Trackpad mode 下方 multitask hint 觸發區（跨 mode hit area）
     bottom_swipe_area = lv_obj_create(bg);
     lv_obj_remove_style_all(bottom_swipe_area);
-    lv_obj_set_size(bottom_swipe_area, 200, 50);
-    lv_obj_set_pos(bottom_swipe_area, (LV_HOR_RES_MAX - 200) / 2,
-                   LV_VER_RES_MAX - 50);
+    // 擴大範圍覆蓋 trackpad mic btn 跟周圍，整個下方區域都接收觸碰
+    lv_obj_set_size(bottom_swipe_area, 280, 100);
+    lv_obj_set_pos(bottom_swipe_area, (LV_HOR_RES_MAX - 280) / 2,
+                   LV_VER_RES_MAX - 100);
     lv_obj_set_style_bg_opa(bottom_swipe_area, LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(bottom_swipe_area, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(bottom_swipe_area, LV_OBJ_FLAG_CLICKABLE);
@@ -5169,6 +5345,12 @@ bool get_hid_mouse_handfree_mode(void)
 void set_hid_mouse_handfree_mode(void)
 {
     handfree = !handfree;
+}
+
+// 直接設定 handfree state（不 toggle），給 fsr 壓感 sampler 用
+void set_hid_mouse_handfree_mode_to(bool v)
+{
+    handfree = v;
 }
 
 /**
