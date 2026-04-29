@@ -5347,6 +5347,12 @@ void set_hid_mouse_handfree_mode(void)
     handfree = !handfree;
 }
 
+// 直接設定 handfree state（不 toggle），給 fsr 壓感 sampler 用
+void set_hid_mouse_handfree_mode_to(bool v)
+{
+    handfree = v;
+}
+
 /**
  * @brief Checks if mouse movement is locked
  * @return true if movement is locked, false otherwise
