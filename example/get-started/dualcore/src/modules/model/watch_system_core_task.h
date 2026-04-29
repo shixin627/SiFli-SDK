@@ -70,7 +70,7 @@ extern "C"
     extern void switch_watch_motion_control_mode(bool enable, bool animation);
     extern bool is_user_want_to_open_display_to_instruction_list(void);
     extern void gesture_touch_event_handler(void);
-    extern void ble_app_advertising_start(bool restart_adv, bool mouse_mode, bool pairing_mode);
+    extern void ble_app_advertising_start(bool mouse_mode, bool pairing_mode);
 
 #ifdef __cplusplus
 }

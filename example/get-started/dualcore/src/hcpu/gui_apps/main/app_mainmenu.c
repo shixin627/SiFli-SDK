@@ -417,9 +417,7 @@ void check_is_at_mouse_mode(void)
         _at_mouse_mode = yes;
         if (_at_mouse_mode)
         {
-            ble_app_advertising_start(SkaiWatchSys.gap_conn_state ==
-                                          GAP_CONN_STATE_DISCONNECTED,
-                                      true, false);
+            ble_app_advertising_start(true, false);
             // switch_watch_motion_control_mode(true, true);
             display_gesture_detect_objs(0, false);
             // display_status_bar_area(3, false);
@@ -430,9 +428,7 @@ void check_is_at_mouse_mode(void)
         }
         else
         {
-            ble_app_advertising_start(SkaiWatchSys.gap_conn_state ==
-                                          GAP_CONN_STATE_DISCONNECTED,
-                                      false, false);
+            ble_app_advertising_start(false, false);
             // display_gesture_detect_objs(0, true);
             // display_status_bar_area(3, true);
             extern void watch_system_mouse_pause(void);

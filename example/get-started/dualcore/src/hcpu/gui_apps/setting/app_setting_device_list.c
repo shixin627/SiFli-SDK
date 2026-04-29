@@ -20,7 +20,7 @@
 
 // Forward declarations
 extern void ble_app_clear_bonded_device(void);
-extern void ble_app_advertising_start(bool restart_adv, bool mouse_mode, bool pairing_mode);
+extern void ble_app_advertising_start(bool mouse_mode, bool pairing_mode);
 extern void ble_app_start_targeted_advertising(uint8_t device_idx);
 
 // UI state
@@ -380,7 +380,7 @@ static void pairing_btn_event_callback(lv_event_t *e)
         {
             generate_random_public_address(0);
         }
-        ble_app_advertising_start(true, g_dev_list_ui.is_pairing_mode, false);
+        ble_app_advertising_start(g_dev_list_ui.is_pairing_mode, false);
     }
 }
 

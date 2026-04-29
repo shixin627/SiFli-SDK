@@ -460,11 +460,7 @@ void ble_app_start_targeted_advertising(uint8_t device_idx)
     ble_dev_mgr_set_active_device(device_idx);
 
     // Restart advertising with the new target device
-    // If currently connected, we pass false to restart_adv
-    // If disconnected, we pass true to restart_adv
-    bool restart_adv =
-        (SkaiWatchSys.gap_conn_state == GAP_CONN_STATE_DISCONNECTED);
-    ble_app_advertising_start(restart_adv, false, false);
+    ble_app_advertising_start(false, false);
 
     LOG_I("Targeted advertising started for device[%d]", device_idx);
 }
@@ -1092,8 +1088,7 @@ bool get_bluetooth_broadcasting_status(void)
     return bluetooth_broadcasting_status;
 }
 extern int check_main_phone_counterpart_connection(void);
-void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
-                               bool pairing_mode);
+void ble_app_advertising_start(bool mouse_mode, bool pairing_mode);
 
 static lv_timer_t *main_phone_check_timer = NULL;
 
@@ -1112,7 +1107,7 @@ check_main_phone_counterpart_connection_timer_callback(lv_timer_t *timer)
     {
         LOG_I(
             "Main phone counterpart not connected, restarting advertising...");
-        ble_app_advertising_start(false, false, false);
+        ble_app_advertising_start(false, false);
     }
     else
     {
@@ -1198,8 +1193,7 @@ uint8_t sibles_advertising_disc_mode_get()
 #define GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE 192
 #define GAP_GATT_APPEARANCE_MOUSE 962
 #define ENABLE_ADV_SERVICE_UUID 1
-void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
-                               bool pairing_mode)
+void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
 {
     LOG_I("Starting advertising...");
     app_env_t *env = ble_app_get_env();
@@ -1324,23 +1318,17 @@ void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
 
     uint8_t curr_conn_idx = g_app_advertising_context->conn_idx;
 
-    if (restart_adv)
-    {
-        // stop advertising first
-        sibles_advertising_stop(g_app_advertising_context);
-        rt_thread_mdelay(100); // Increased delay for proper cleanup
-        // Delete existing advertising configuration before reinit
-        // This is required to allow switching between advertising modes or
-        // reinit with same mode
-        sibles_advertising_delete(g_app_advertising_context);
-        rt_thread_mdelay(100); // Increased delay for proper cleanup
-    }
+    // Always tear down any existing ADV activity before re-init. sibles_advertising_init
+    // resets adv_idx to INVALID, so without deleting first, sibles_advertising_start
+    // creates a brand-new GAP activity each call and leaks the previous one — the BLE
+    // stack only has a few activity slots and runs out after a few restarts.
+    sibles_advertising_stop(g_app_advertising_context);
+    rt_thread_mdelay(100);
+    sibles_advertising_delete(g_app_advertising_context);
+    rt_thread_mdelay(100);
 
     ret = sibles_advertising_init(g_app_advertising_context, &para);
-    if (restart_adv)
-    {
-        sibles_advertising_reconfig(g_app_advertising_context, &para.config);
-    }
+    sibles_advertising_reconfig(g_app_advertising_context, &para.config);
     if (ret == SIBLES_ADV_NO_ERR)
     {
         sibles_advertising_start(g_app_advertising_context);
@@ -1446,7 +1434,7 @@ void ble_app_entry(void *param)
 
             env->is_power_on = 1;
             env->conn_para.mtu = 23; /* Default value. */
-            ble_app_advertising_start(false, false, false);
+            ble_app_advertising_start(false, false);
             ble_dev_mgr_start_main_phone_check_timer(5000);
         }
 #ifdef USING_BLE_SERIAL

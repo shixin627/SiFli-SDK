@@ -16,8 +16,7 @@
 
 // Forward declarations for BLE app functions
 extern void ble_app_set_bonded_device_addr(ble_gap_addr_t *addr);
-extern void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
-                                      bool pairing_mode);
+extern void ble_app_advertising_start(bool mouse_mode, bool pairing_mode);
 
 // BLE GAP connection parameters
 #define CONN_TIMEOUT_MS 10000  // 10 seconds

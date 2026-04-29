@@ -3097,8 +3097,7 @@ static void dummy_file3_callback(void)
 }
 
 // Forward declarations for BLE functions
-extern void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
-                                      bool pairing_mode);
+extern void ble_app_advertising_start(bool mouse_mode, bool pairing_mode);
 
 // Menu device list UI state
 static struct
@@ -3515,7 +3514,7 @@ static void menu_reset_ble_btn_cb(lv_event_t *e)
     if (LV_EVENT_SHORT_CLICKED == event)
     {
         LOG_I("Menu: Reset BLE advertising");
-        ble_app_advertising_start(true, true, false);
+        ble_app_advertising_start(true, false);
     }
 }
 

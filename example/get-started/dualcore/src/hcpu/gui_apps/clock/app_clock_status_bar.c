@@ -2157,8 +2157,7 @@ static void dev_change_device_item_click_cb(lv_event_t *e)
     }
 }
 
-extern void ble_app_advertising_start(bool restart_adv, bool mouse_mode,
-                                      bool pairing_mode);
+extern void ble_app_advertising_start(bool mouse_mode, bool pairing_mode);
 
 static void dev_change_add_device_btn_cb(lv_event_t *e)
 {
@@ -2166,7 +2165,7 @@ static void dev_change_add_device_btn_cb(lv_event_t *e)
     if (event == LV_EVENT_SHORT_CLICKED)
     {
         LOG_I("Device change bar: Add device (start advertising)");
-        ble_app_advertising_start(true, true, false);
+        ble_app_advertising_start(true, false);
         dev_change_refresh_device_list();
     }
 }
