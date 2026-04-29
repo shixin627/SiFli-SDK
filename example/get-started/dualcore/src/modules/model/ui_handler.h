@@ -31,6 +31,7 @@ extern "C"
 #define APP_ID_MEDIA "media"
 #define APP_ID_INCOMING_CALL "incoming_call"
 #define APP_ID_BATTERY "battery"
+#define APP_ID_CAMERA "camera"
 // ----- Todo
 #define APP_ID_ALARM "alarm"
 // ----- Dev

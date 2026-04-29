@@ -2008,7 +2008,7 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
             continue;
         }
         g_fsr_adc_latest = fsr_adc_read_value();
-        LOG_D("fsr latch=%d", g_fsr_adc_latest);
+        // LOG_D("fsr latch=%d", g_fsr_adc_latest);
 
         // 壓感 < 17000 → handfree on（自由滑鼠模式）；否則 off
         bool want_handfree = (g_fsr_adc_latest < 17000);
