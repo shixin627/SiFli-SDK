@@ -104,6 +104,7 @@ LV_IMG_DECLARE(img_heart_rate);
 LV_IMG_DECLARE(img_calculator);
 LV_IMG_DECLARE(img_alarm);
 LV_IMG_DECLARE(img_settings);
+LV_IMG_DECLARE(img_settings_app);
 LV_IMG_DECLARE(img_messages);
 LV_IMG_DECLARE(img_mouse);
 LV_IMG_DECLARE(small_img_logo_matting);
@@ -186,6 +187,7 @@ LV_IMG_DECLARE(notification_img);
 #define IMG_CALCULATOR ((const void *)&img_calculator)
 #define IMG_ALARM ((const void *)&img_alarm)
 #define IMG_SETTINGS ((const void *)&img_settings)
+#define IMG_SETTINGS_APP ((const void *)&img_settings_app)
 #define IMG_MESSAGES ((const void *)&img_messages)
 #define IMG_MOUSE ((const void *)&img_mouse)
 #define SMALL_IMG_LOGO_MATTING ((const void *)&small_img_logo_matting)

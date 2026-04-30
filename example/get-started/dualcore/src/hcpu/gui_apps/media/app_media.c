@@ -802,6 +802,12 @@ void clear_media_widget(void)
     }
 }
 
+static void widget_title_event_cb(lv_event_t *e)
+{
+    LOG_D("Media widget title clicked");
+    gui_app_run(APP_ID_MEDIA);
+}
+
 lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
 {
     uint16_t widget_zoom = 256 * WIDGET_ICON_ZOOM_SIZE;
@@ -888,7 +894,7 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
                                       ? &img_media_pause
                                       : &img_media_play;
     p_widget_media->icon_btn_play_pause = common_icon_button(
-        widget_btn_play_pause, &img_src, play_pause_btn_event_cb);
+        widget_btn_play_pause, &img_media_pause, play_pause_btn_event_cb);
     lv_obj_align(p_widget_media->icon_btn_play_pause, LV_ALIGN_CENTER, 0, 0);
     music_widget_obj.widget_btn_play_pause_img =
         lv_obj_get_child(p_widget_media->icon_btn_play_pause, 0);
@@ -940,6 +946,15 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_text_color(p_widget_media->media_title, lv_color_white(),
                                 0);
     lv_obj_align(p_widget_media->media_title, LV_ALIGN_TOP_MID, 0, 15);
+    // lv_obj_add_event_cb(p_widget_media->media_title, widget_title_event_cb,
+    //                     LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *title_btn =lv_obj_create(widget);
+    lv_obj_set_size(title_btn, 400, 150);
+    lv_obj_align(title_btn, LV_ALIGN_TOP_MID, 0, 15);
+    lv_obj_set_style_bg_opa(title_btn, LV_OPA_TRANSP, 0);
+    lv_obj_add_event_cb(title_btn, widget_title_event_cb, LV_EVENT_CLICKED, NULL);
+
     button_selection_index = 5;
     return widget;
 }
