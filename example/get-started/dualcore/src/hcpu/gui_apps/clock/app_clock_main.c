@@ -1758,9 +1758,12 @@ void clock_on_stop(void)
 
     if (p_app_clock_main)
     {
-        rt_list_t *pos;
+        rt_list_t *pos, *n;
 
-        rt_list_for_each(pos, (&p_app_clock_main->list))
+        /* Use _safe variant: clk_desc (containing the node) is freed inside
+         * the loop body, so we must capture pos->next before freeing.
+         * Plain rt_list_for_each would read pos->next from freed memory. */
+        rt_list_for_each_safe(pos, n, (&p_app_clock_main->list))
         {
             app_clock_desc_t *clk_desc;
             clk_desc = rt_list_entry(pos, app_clock_desc_t, node);
@@ -1772,6 +1775,7 @@ void clock_on_stop(void)
                 dlclose(clk_desc->mod);
             }
 #endif /* RT_USING_XIP_MODULE */
+            rt_list_remove(&clk_desc->node);
             lv_mem_free(clk_desc);
         }
 #define SAFE_OBJ_DEL(obj) do { if ((obj) && lv_obj_is_valid(obj)) lv_obj_del(obj); } while (0)
