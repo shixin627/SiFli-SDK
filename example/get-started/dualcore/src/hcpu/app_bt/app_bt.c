@@ -339,7 +339,7 @@ int32_t app_bt(int32_t argc, char **argv)
         }
         else
         {
-            bt_dtmf_key_t key = atoi(argv[2]);
+            key = atoi(argv[2]);
         }
         rt_kprintf("dtmf key inputkey %c,outkey %x\n", *argv[2], key);
         ret = app_bt_dtmf_dial(key);

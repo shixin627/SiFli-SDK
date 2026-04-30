@@ -776,7 +776,7 @@ static lv_obj_t *on_start(lv_obj_t *scr)
     p_app_photo = (app_photo_t *)lv_mem_alloc(sizeof(app_photo_t));
     if (!p_app_photo)
     {
-        LOG_E("Failed to allocate memory for flashlight app");
+        LOG_E("Failed to allocate memory for photo app");
         return NULL;
     }
 
@@ -818,7 +818,7 @@ static void on_stop(void)
         p_app_photo = NULL;
     }
 
-    LOG_I("Flashlight app stopped and resources cleaned up");
+    LOG_I("Photo app stopped and resources cleaned up");
 }
 
 /**

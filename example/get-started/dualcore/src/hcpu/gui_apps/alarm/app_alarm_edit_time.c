@@ -201,7 +201,7 @@ void app_alarm_edit_time_init(void *param)
     lv_obj_t *btn, *label;
     btn = lv_btn_create(scr);
     label = lv_label_create(btn);
-    lv_label_set_text(label, LV_EXT_STR_GET_BY_KEY(cancel, "Canel"));
+    lv_label_set_text(label, LV_EXT_STR_GET_BY_KEY(cancel, "Cancel"));
     // lv_obj_set_click(label, false);
     lv_obj_add_flag(label, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_align_to(btn, roller_h, LV_ALIGN_BOTTOM_MID, 0, BORDER_GAP_VER);

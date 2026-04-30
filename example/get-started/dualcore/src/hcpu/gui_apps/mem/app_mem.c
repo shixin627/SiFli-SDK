@@ -173,7 +173,7 @@ MSH_CMD_EXPORT_ALIAS(app_mem_log, app_mem, app_mem: open or close app_mem log);
  **********************/
 
 
-static int app_cahe_memheap_init(void)
+static int app_cache_memheap_init(void)
 {
 
 #if IMAGE_CACHE_IN_PSRAM_SIZE > 0
@@ -213,7 +213,7 @@ static int app_cahe_memheap_init(void)
 
     return 0;
 }
-INIT_PREV_EXPORT(app_cahe_memheap_init);
+INIT_PREV_EXPORT(app_cache_memheap_init);
 
 
 void *app_cache_alloc(size_t size, image_cache_t cache_type)
