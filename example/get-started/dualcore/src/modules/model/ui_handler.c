@@ -152,23 +152,9 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
 
     case LVGL_MSG_TYPE_MEDIA_PLAY_STATE:
-        // if (lvgl_msg_handler.handle_bar_media_play_state)
-        // {
-        //     lvgl_msg_handler.handle_bar_media_play_state(
-        //         &msg->data.media_play_state);
-        // }
-        // if (lvgl_msg_handler.handle_dial_media_play_state)
-        // {
-        //     lvgl_msg_handler.handle_dial_media_play_state(
-        //         &msg->data.media_play_state);
-        // }
         break;
 
     case LVGL_MSG_TYPE_MEDIA_TITLE:
-        // if (lvgl_msg_handler.handle_app_media_title)
-        // {
-        //     lvgl_msg_handler.handle_app_media_title(msg->data.media_data.title);
-        // }
         if (lvgl_msg_handler.handle_bar_media_title)
         {
             lvgl_msg_handler.handle_bar_media_title(msg->data.media_data.title);
@@ -183,14 +169,6 @@ static void process_lvgl_message(lvgl_msg_t *msg)
             lvgl_msg_handler.handle_dial_media_header_title(
                 msg->data.media_data.title);
         }
-        // if (lvgl_msg_handler.handle_app_media_img)
-        // {
-        //     lvgl_msg_handler.handle_app_media_img(msg->data.media_data.title);
-        // }
-        // if (lvgl_msg_handler.handle_dial_media_img)
-        // {
-        //     lvgl_msg_handler.handle_dial_media_img(msg->data.media_data.title);
-        // }
         break;
     case LVGL_MSG_TYPE_MEDIA_IMG:
         if (lvgl_msg_handler.handle_app_media_img)

@@ -598,66 +598,11 @@ static void create_indicator_dots(lv_obj_t *parent)
     update_indicator_dots_position(37);
 }
 
-// static void create_ai_hint_icon(lv_obj_t *parent)
-// {
-//     if (p_instruction_list_layout == NULL)
-//         return;
-
-//     lv_obj_t *ai_hint_bg = lv_obj_create(parent);
-//     lv_obj_set_size(ai_hint_bg, 80, 80);
-//     lv_obj_set_style_radius(ai_hint_bg, 80, 0);
-//     lv_obj_set_style_bg_color(ai_hint_bg, lv_color_hex(0x000000), 0);
-//     lv_obj_set_style_bg_opa(ai_hint_bg, LV_OPA_100, 0);
-//     lv_obj_align(ai_hint_bg, LV_ALIGN_RIGHT_MID, 93, 0);
-//     lv_obj_set_style_border_width(ai_hint_bg, 2, 0);
-//     lv_obj_set_style_border_color(ai_hint_bg, lv_color_hex(0xFFFFFF), 0);
-//     lv_obj_set_style_border_opa(ai_hint_bg, LV_OPA_0, 0);
-//     p_instruction_list_layout->p_instruction_list_ai_bg = ai_hint_bg;
-//     lv_obj_t *ai_hint_icon = lv_img_create(ai_hint_bg);
-//     lv_img_set_src(ai_hint_icon, SMALL_IMG_LOGO_MATTING);
-//     lv_obj_align(ai_hint_icon, LV_ALIGN_CENTER, 0, 0);
-//     p_instruction_list_layout->p_instruction_list_ai_icon = ai_hint_icon;
-
-//     LOG_D("AI hint icon created");
-// }
-
 extern void tap_on_ai_hint(void);
 static bool is_open_ai_gesture = false;
 static lv_obj_t *ai_voice_btn = NULL;
 static lv_obj_t *ai_voice_send_icon = NULL;
 static lv_obj_t *ai_gaus_bg = NULL;
-// void set_ai_hint_x(uint8_t x)
-// {
-//     lv_obj_align(p_instruction_list_layout->p_instruction_list_ai_bg,
-//     LV_ALIGN_RIGHT_MID,
-//                  -x + 93, 0);
-//     if (x > 85)
-//     {
-//         set_paused_control_with_arm(true);
-//         lv_obj_set_style_border_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
-//                                     LV_OPA_COVER, 0);
-//         lv_obj_set_style_img_opa(p_instruction_list_layout->p_instruction_list_ai_icon,
-//                                  LV_OPA_COVER, 0);
-//         if (!is_open_ai_gesture)
-//         {
-//             motor_pattern_unlocked();
-//             is_open_ai_gesture = true;
-//             tap_on_ai_hint();
-//         }
-//     }
-//     else
-//     {
-//         set_paused_control_with_arm(false);
-//         lv_obj_set_style_border_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
-//                                     LV_OPA_0, 0);
-//         lv_obj_set_style_img_opa(p_instruction_list_layout->p_instruction_list_ai_icon,
-//                                  LV_OPA_50, 0);
-//         if (is_open_ai_gesture)
-//         {
-//             is_open_ai_gesture = false;
-//         }
-//     }
-// }
 
 void set_indicator_dots_visible(bool visible)
 {

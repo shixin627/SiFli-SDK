@@ -50,7 +50,6 @@
 #include "watch_global_data.h"
 #include "bloc_calendar.h"
 #include "bloc_control.h"
-#include "lvgl/lvgl.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdint.h>

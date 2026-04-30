@@ -89,18 +89,6 @@ typedef enum
     GATE_STATE_OPENED
 } gate_state_t;
 
-//     turnOnLight1(0x01),  // 開燈1
-//     turnOffLight1(0x02), // 關燈1
-//     turnOnLight2(0x03),  // 開燈2
-//     turnOffLight2(0x04), // 關燈2
-//     turnOnFan(0x05),     // 開風扇
-//     turnOffFan(0x06),    // 關風扇
-//     turnOnAc(0x07),      // 開空調
-//     turnOffAc(0x08),     // 關空調
-//     openDoor(0x09),      // 開門
-//     closeDoor(0x0A),     // 關門
-//     customCommand(0xFF); // 自訂命令
-
 typedef struct
 {
     lv_obj_t *icon_btn_close;

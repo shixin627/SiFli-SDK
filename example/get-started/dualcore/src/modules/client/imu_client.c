@@ -106,17 +106,6 @@ static int imu_callback(data_callback_arg_t *arg)
         {
             LOG_I("Unsubscribed IMU id(%d), result(%d) => success\r\n", arg->msg_id, rsp->result);
             watch_sensor.imu_client_num--;
-            // LOG_D("Unsubscribe IMU client_num:%d\n", watch_sensor.imu_client_num);
-            // if (accel_service_handle != DATA_CLIENT_INVALID_HANDLE)
-            // {
-            //     if (RT_EOK != datac_close(accel_service_handle))
-            //     {
-            //         LOG_E("accel_service_handle close failed\n");
-            //         return -RT_ERROR;
-            //     }
-            //     accel_service_handle = DATA_CLIENT_INVALID_HANDLE;
-            //     watch_sensor.imu_client_num = 0;
-            // }
         }
         else
         {

@@ -268,12 +268,6 @@ static lv_obj_t *skai_widget_ai_reply;
 static lv_obj_t *skai_widget_bg_scroller;
 lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
 {
-    // lv_obj_t *widget = common_widget_container(parent);
-    // lv_obj_set_style_clip_corner(widget, true, 0);
-    // lv_obj_set_style_bg_opa(widget, LV_OPA_0, 0);
-    // lv_obj_set_size(widget, 280, 90);
-    // lv_obj_align(widget, LV_ALIGN_CENTER, 0, 0);
-    // lv_obj_clear_flag(widget, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *skai_widget_bg = lv_obj_create(parent);
     skai_widget_bg_scroller = skai_widget_bg;
     lv_obj_set_size(skai_widget_bg, 466, 466);
@@ -298,17 +292,6 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_border_color(skai_widget_input_text_bg,
                                   lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(skai_widget_input_text_bg, LV_OPA_50, 0);
-    // lv_obj_set_style_outline_width(skai_widget_input_text_bg, 5,
-    //                                   LV_STATE_DEFAULT);
-    // lv_obj_set_style_outline_opa(skai_widget_input_text_bg, LV_OPA_30,
-    //                                   LV_STATE_DEFAULT);
-    // lv_obj_set_style_outline_color(skai_widget_input_text_bg,
-    //                                   lv_color_hex(0xFFFFFF),
-    //                                   LV_STATE_DEFAULT);
-    // lv_obj_set_style_shadow_width(skai_widget_input_text_bg, 5, 0);
-    // lv_obj_set_style_shadow_color(skai_widget_input_text_bg,
-    //                               lv_color_hex(0xFFFFFF), 0);
-    // lv_obj_set_style_shadow_opa(skai_widget_input_text_bg, LV_OPA_COVER, 0);
 
     skai_widget_input_text = lv_label_create(skai_widget_input_text_bg);
     lv_label_set_text(skai_widget_input_text, "");

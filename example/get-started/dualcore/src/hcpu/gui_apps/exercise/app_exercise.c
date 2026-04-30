@@ -324,14 +324,7 @@ static void start_workout_session(workout_type_t type)
     // Start the timer
     rt_timer_start(current_session.workout_timer);
 
-    // // Set up heart rate monitoring
-    // sensor_subscription_t sensor_subscription = (sensor_subscription_t){
-    //     .type = SENSOR_TYPE_HEART_RATE,
-    //     .status = true,
-    // };
-    // watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
     app_exercise_data_ctx.active = true;
-    // lvgl_msg_handler.handle_hr = ui_heart_rate_callback;
 
     // Switch to workout view
     show_workout_view();
@@ -467,11 +460,6 @@ int stop_exercise(void)
 
     // Disable heart rate monitoring mode
     app_exercise_data_ctx.active = false;
-    // sensor_subscription_t sensor_subscription = (sensor_subscription_t){
-    //     .type = SENSOR_TYPE_HEART_RATE,
-    //     .status = false,
-    // };
-    // watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
 
     return ret;
 }

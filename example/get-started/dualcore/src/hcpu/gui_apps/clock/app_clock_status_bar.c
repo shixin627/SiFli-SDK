@@ -1341,47 +1341,6 @@ static lv_obj_t *pages[5];
 static bool test_mode = false;
 void open_test_mode(bool open)
 {
-    // test_mode = open;
-    // for (int i = 0; i < 5; i++)
-    // {
-    //     if (open)
-    //     {
-    //         if (lv_obj_is_valid(pages[i]))
-    //             lv_obj_set_style_bg_opa(pages[i], LV_OPA_50,
-    //                                     LV_PART_MAIN | LV_STATE_DEFAULT);
-    //     }
-    //     else
-    //     {
-    //         if (lv_obj_is_valid(pages[i]))
-    //             lv_obj_set_style_bg_opa(pages[i], LV_OPA_TRANSP,
-    //                                     LV_PART_MAIN | LV_STATE_DEFAULT);
-    //     }
-    // }
-    // // for (int i = 0; i < 4; i++)
-    // // {
-    // if (open)
-    // {
-    //     if (lv_obj_is_valid(status_bar_area_left))
-    //         lv_obj_set_style_bg_opa(status_bar_area_left, LV_OPA_50, 0);
-    //     if (lv_obj_is_valid(status_bar_area_right))
-    //         lv_obj_set_style_bg_opa(status_bar_area_right, LV_OPA_50, 0);
-    //     if (lv_obj_is_valid(status_bar_area_up))
-    //         lv_obj_set_style_bg_opa(status_bar_area_up, LV_OPA_50, 0);
-    //     if (lv_obj_is_valid(status_bar_area_down))
-    //         lv_obj_set_style_bg_opa(status_bar_area_down, LV_OPA_50, 0);
-    // }
-    // else
-    // {
-    //     if (lv_obj_is_valid(status_bar_area_left))
-    //         lv_obj_set_style_bg_opa(status_bar_area_left, LV_OPA_TRANSP, 0);
-    //     if (lv_obj_is_valid(status_bar_area_right))
-    //         lv_obj_set_style_bg_opa(status_bar_area_right, LV_OPA_TRANSP, 0);
-    //     if (lv_obj_is_valid(status_bar_area_up))
-    //         lv_obj_set_style_bg_opa(status_bar_area_up, LV_OPA_TRANSP, 0);
-    //     if (lv_obj_is_valid(status_bar_area_down))
-    //         lv_obj_set_style_bg_opa(status_bar_area_down, LV_OPA_TRANSP, 0);
-    // }
-    // }
     watch_sys_sync.set_debug_mode(open);
 }
 
@@ -2380,14 +2339,6 @@ void app_clock_device_change_bar_init(lv_obj_t *par)
         lv_obj_align(dev_bg, LV_ALIGN_CENTER, 0, 0);
         lv_obj_clear_flag(dev_bg, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_style_pad_all(dev_bg, 0, 0);
-
-        // Title
-        // lv_obj_t *title_label = lv_label_create(dev_bg);
-        // lv_label_set_text(title_label, "Devices");
-        // lv_obj_set_style_text_color(title_label, lv_color_hex(0xFFFFFF), 0);
-        // lv_obj_set_width(title_label, LV_PCT(100));
-        // lv_obj_set_style_text_align(title_label, LV_TEXT_ALIGN_CENTER, 0);
-        // lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 15);
 
         // Content area under title keeps the button layout in flex mode.
         content_area = lv_obj_create(dev_bg);

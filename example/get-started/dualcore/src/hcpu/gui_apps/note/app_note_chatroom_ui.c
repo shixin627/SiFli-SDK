@@ -63,7 +63,6 @@
 #ifdef BSP_USING_BLOC
 #include "bloc_setting.h"
 #include "bloc_control.h"
-#include "bloc_skaiwalk.h"
 #include "bloc_v2t.h"
 #include "bloc_peripheral.h"
 #include "bloc_motion_tracking.h"

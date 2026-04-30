@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <rtthread.h>
 #include "telephone_service.h"
 #define DBG_TAG           "DS.TEL"
 #define DBG_LVL           DBG_LOG

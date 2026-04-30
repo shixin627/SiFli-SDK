@@ -204,28 +204,6 @@ static void notify_health_info(void)
 #endif
 }
 
-// static void notify_sleep_state(uint32_t total_seconds, uint32_t
-// total_restful_seconds)
-// {
-//     if (watch_sys_service_env.service == NULL)
-//         return;
-//     if (is_sleep_mode())
-//     {
-//         return;
-//     }
-// #ifdef MSG_SEND_INTERVAL_MS
-//     if (!can_send_message())
-//         return;
-// #endif
-//     int32_t result = 0;
-//     watch_sys_sleep_state_t data_ind;
-//     data_ind.total_seconds = total_seconds;
-//     data_ind.total_restful_seconds = total_restful_seconds;
-//     result = datas_push_msg_to_client(watch_sys_service_env.service,
-//     MSG_SERVICE_SLEEP_STATE_IND, sizeof(data_ind), (uint8_t *)&data_ind);
-//     RT_ASSERT(0 == result);
-// }
-
 static void notify_minute_of_activity(time_t utc_now, uint8_t steps,
                                       uint8_t orientation, uint16_t vmc)
 {
