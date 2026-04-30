@@ -1301,50 +1301,17 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
 
 static lv_obj_t *controls_container = NULL;
 
-// --- 動畫相關 ---
-static lv_obj_t *g_hr_icon = NULL;
-static rt_timer_t hr_icon_anim_timer = NULL;
-static int hr_icon_zoom = 100;
-static int hr_icon_zoom_dir = 1; // 1: 放大, -1: 縮小
-
-static void hr_icon_anim_cb(void *parameter)
+static void start_hr_icon_anim(lv_obj_t *hr_icon)
 {
-    if (!g_hr_icon)
-        return;
-    hr_icon_zoom += hr_icon_zoom_dir * 2; // 每次變化 2
-    if (hr_icon_zoom >= 128)
-    {
-        hr_icon_zoom = 128;
-        hr_icon_zoom_dir = -1;
-    }
-    else if (hr_icon_zoom <= 100)
-    {
-        hr_icon_zoom = 100;
-        hr_icon_zoom_dir = 1;
-    }
-    lv_img_set_zoom(g_hr_icon, hr_icon_zoom);
-}
-
-static void start_hr_icon_anim(void)
-{
-    if (!hr_icon_anim_timer)
-    {
-        hr_icon_anim_timer = rt_timer_create(
-            "hr_icon_anim", hr_icon_anim_cb, NULL, RT_TICK_PER_SECOND / 20,
-            RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
-        if (hr_icon_anim_timer)
-            rt_timer_start(hr_icon_anim_timer);
-    }
-}
-
-static void stop_hr_icon_anim(void)
-{
-    if (hr_icon_anim_timer)
-    {
-        rt_timer_stop(hr_icon_anim_timer);
-        rt_timer_delete(hr_icon_anim_timer);
-        hr_icon_anim_timer = NULL;
-    }
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, hr_icon);
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_img_set_zoom);
+    lv_anim_set_values(&a, 100, 128);
+    lv_anim_set_time(&a, 700);
+    lv_anim_set_playback_time(&a, 700);
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_start(&a);
 }
 
 static lv_obj_t *create_workout_screen(lv_obj_t *parent)
@@ -1378,8 +1345,7 @@ static lv_obj_t *create_workout_screen(lv_obj_t *parent)
     lv_img_set_src(hr_icon, &img_red_heart);
     lv_obj_align(hr_icon, LV_ALIGN_BOTTOM_MID, -28, -10);
     lv_img_set_zoom(hr_icon, 100); // 初始 100
-    g_hr_icon = hr_icon;
-    start_hr_icon_anim();
+    start_hr_icon_anim(hr_icon);
 
     ui.heart_rate_label = lv_label_create(workout_screen);
     lv_obj_set_style_text_font(ui.heart_rate_label,
@@ -1514,7 +1480,6 @@ static void on_pause(void)
 static void on_stop(void)
 {
     stop_exercise();
-    stop_hr_icon_anim();
     // 清理UI
     lv_obj_del(ui.bg);
 }
