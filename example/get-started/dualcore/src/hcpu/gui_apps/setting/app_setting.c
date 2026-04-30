@@ -61,6 +61,7 @@
 #endif
 #include "gesture_recognition_task.h"
 #include "watch_global_data.h"
+#include "bloc_control.h"
 #include <dfs_posix.h>
 #include <unistd.h>
 
@@ -96,6 +97,7 @@ typedef struct
 } app_setting_t;
 
 static app_setting_t *p_app_setting = NULL;
+static lv_obj_t *dnd_quick_btn = NULL;
 
 extern void app_setting_display_main(void);
 extern void app_setting_sys_main(void);
@@ -719,6 +721,71 @@ static void btn_device_list_event_callback(lv_event_t *e)
     }
 }
 
+static void btn_find_phone_event_callback(lv_event_t *e)
+{
+    lv_event_code_t event = lv_event_get_code(e);
+    if (LV_EVENT_SHORT_CLICKED == event || LV_EVENT_CLICKED == event)
+    {
+        control_provider.find_phone();
+    }
+}
+
+static void btn_qrcode_event_callback(lv_event_t *e)
+{
+    lv_event_code_t event = lv_event_get_code(e);
+    if (LV_EVENT_SHORT_CLICKED == event || LV_EVENT_CLICKED == event)
+    {
+        /* Close Setting before launching to keep running-app count under MAX */
+        gui_app_goback();
+        gui_app_run(APP_ID_QRCODE);
+    }
+}
+
+static void update_dnd_btn_style(bool enabled)
+{
+    if (dnd_quick_btn == NULL || !lv_obj_is_valid(dnd_quick_btn))
+    {
+        return;
+    }
+    if (enabled)
+    {
+        lv_obj_set_style_bg_opa(dnd_quick_btn, LV_OPA_90, 0);
+        lv_obj_set_style_bg_color(dnd_quick_btn, lv_color_hex(0xCECECE), 0);
+    }
+    else
+    {
+        lv_obj_set_style_bg_opa(dnd_quick_btn, LV_OPA_10, 0);
+        lv_obj_set_style_bg_color(dnd_quick_btn, lv_color_hex(0xFFFFFF), 0);
+    }
+}
+
+static void btn_dnd_mode_event_callback(lv_event_t *e)
+{
+    lv_event_code_t event = lv_event_get_code(e);
+    if (LV_EVENT_SHORT_CLICKED == event || LV_EVENT_CLICKED == event)
+    {
+        bool new_status = !SkaiWatchSys.DNDMode.config.status;
+        SkaiWatchSys.DNDMode.config.status = new_status;
+#ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
+        watch_system_interact(WATCH_DND_MODE_SET, &new_status);
+#endif
+        update_dnd_btn_style(new_status);
+        LOG_I("DND mode toggled: %d", new_status);
+    }
+}
+
+#if !kReleaseMode
+static void btn_gesture_test_event_callback(lv_event_t *e)
+{
+    lv_event_code_t event = lv_event_get_code(e);
+    if (LV_EVENT_SHORT_CLICKED == event || LV_EVENT_CLICKED == event)
+    {
+        gui_app_goback();
+        gui_app_run(APP_ID_GESTURE);
+    }
+}
+#endif
+
 void app_setting_init(void *param)
 {
     lv_obj_t *cont = lv_obj_create(lv_scr_act());
@@ -745,6 +812,49 @@ void app_setting_init(void *param)
     lv_obj_align(cont_title, LV_ALIGN_TOP_MID, 0, 20);
     lv_obj_update_layout(cont_title);
 
+    /* Quick actions grid (styled like the original control center) */
+    lv_obj_t *quick_actions = lv_obj_create(settings_container);
+    lv_obj_set_size(quick_actions, LV_HOR_RES, 230);
+    lv_obj_set_style_bg_opa(quick_actions, LV_OPA_0, 0);
+    lv_obj_set_style_border_width(quick_actions, 0, 0);
+    lv_obj_set_style_pad_all(quick_actions, 0, 0);
+    lv_obj_clear_flag(quick_actions, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align_to(quick_actions, cont_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+
+    // Find Phone (top-left)
+    lv_obj_t *find_phone_btn = common_image_button(quick_actions, FIND_PHONE, 100, 100, btn_find_phone_event_callback);
+    lv_obj_set_style_border_width(find_phone_btn, 2, 0);
+    lv_obj_set_style_border_color(find_phone_btn, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_opa(find_phone_btn, LV_OPA_0, 0);
+    lv_obj_set_style_bg_opa(find_phone_btn, LV_OPA_10, 0);
+    lv_obj_align(find_phone_btn, LV_ALIGN_TOP_LEFT, 120, 0);
+
+    // QR Code (top-right)
+    lv_obj_t *qrcode_btn = common_image_button(quick_actions, ICON_QRCODE, 100, 100, btn_qrcode_event_callback);
+    lv_obj_set_style_border_width(qrcode_btn, 2, 0);
+    lv_obj_set_style_border_color(qrcode_btn, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_opa(qrcode_btn, LV_OPA_0, 0);
+    lv_obj_set_style_bg_opa(qrcode_btn, LV_OPA_10, 0);
+    lv_obj_align(qrcode_btn, LV_ALIGN_TOP_RIGHT, -120, 0);
+
+    // DND Mode (bottom-left, toggleable with visual feedback)
+    dnd_quick_btn = common_image_button(quick_actions, ICON_DND_MODE, 100, 100, btn_dnd_mode_event_callback);
+    lv_obj_set_style_border_width(dnd_quick_btn, 2, 0);
+    lv_obj_set_style_border_color(dnd_quick_btn, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_opa(dnd_quick_btn, LV_OPA_0, 0);
+    lv_obj_align(dnd_quick_btn, LV_ALIGN_TOP_LEFT, 120, 115);
+    update_dnd_btn_style(SkaiWatchSys.DNDMode.config.status);
+
+#if !kReleaseMode
+    // Gesture Test (bottom-right)
+    lv_obj_t *gesture_btn = common_image_button(quick_actions, IMG_LOGO, 100, 100, btn_gesture_test_event_callback);
+    lv_obj_set_style_border_width(gesture_btn, 2, 0);
+    lv_obj_set_style_border_color(gesture_btn, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_opa(gesture_btn, LV_OPA_0, 0);
+    lv_obj_set_style_bg_opa(gesture_btn, LV_OPA_10, 0);
+    lv_obj_align(gesture_btn, LV_ALIGN_TOP_RIGHT, -120, 115);
+#endif
+
     // Create general settings group
     lv_obj_t *general_group = lv_obj_create(settings_container);
     lv_obj_set_size(general_group, LV_PCT(90), LV_SIZE_CONTENT);
@@ -754,7 +864,7 @@ void app_setting_init(void *param)
     lv_obj_set_style_pad_top(general_group, 5, 0);
     lv_obj_set_style_pad_bottom(general_group, 5, 0);
     lv_obj_set_flex_flow(general_group, LV_FLEX_FLOW_COLUMN);
-    lv_obj_align_to(general_group, cont_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
+    lv_obj_align_to(general_group, quick_actions, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
 
     // Add list items to general group
     lv_obj_t *list_btn; // Gesture Confidence Threshold - FIRST ITEM
@@ -856,6 +966,7 @@ static void on_stop(void)
         lv_mem_free(p_app_setting);
         p_app_setting = NULL;
     }
+    dnd_quick_btn = NULL;
 }
 
 static void back_to_main_menu(void)

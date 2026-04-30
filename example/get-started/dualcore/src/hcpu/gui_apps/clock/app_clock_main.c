@@ -1774,15 +1774,17 @@ void clock_on_stop(void)
 #endif /* RT_USING_XIP_MODULE */
             lv_mem_free(clk_desc);
         }
-        lv_obj_del(p_app_clock_main->instruction_list_time_h);
-        lv_obj_del(p_app_clock_main->instruction_list_time_m);
-        lv_obj_del(p_app_clock_main->instruction_list_time_symbol);
-        lv_obj_del(p_app_clock_main->instruction_list_weather_icon);
-        lv_obj_del(p_app_clock_main->instruction_list_bluetooth_disconnection);
-        lv_obj_del(p_app_clock_main->instruction_list_battery);
-        lv_obj_del(p_app_clock_main->instruction_list_battery_bg);
-        lv_obj_del(p_app_clock_main->instruction_list_battery_label);
-        lv_obj_del(p_app_clock_main->instruction_list_time_bg);
+#define SAFE_OBJ_DEL(obj) do { if ((obj) && lv_obj_is_valid(obj)) lv_obj_del(obj); } while (0)
+        SAFE_OBJ_DEL(p_app_clock_main->instruction_list_time_h);
+        SAFE_OBJ_DEL(p_app_clock_main->instruction_list_time_m);
+        SAFE_OBJ_DEL(p_app_clock_main->instruction_list_time_symbol);
+        SAFE_OBJ_DEL(p_app_clock_main->instruction_list_weather_icon);
+        SAFE_OBJ_DEL(p_app_clock_main->instruction_list_bluetooth_disconnection);
+        SAFE_OBJ_DEL(p_app_clock_main->instruction_list_battery);
+        SAFE_OBJ_DEL(p_app_clock_main->instruction_list_battery_bg);
+        SAFE_OBJ_DEL(p_app_clock_main->instruction_list_battery_label);
+        SAFE_OBJ_DEL(p_app_clock_main->instruction_list_time_bg);
+#undef SAFE_OBJ_DEL
 
         wear_status_indicator = NULL;
 

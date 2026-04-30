@@ -205,7 +205,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     lv_obj_t *container = lv_obj_create(parent);
     lv_obj_set_size(container, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_style_bg_color(container, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(container, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(container, 0, 0);
     lv_obj_set_style_pad_all(container, 0, 0);
     lv_obj_align(container, LV_ALIGN_CENTER, 0, 0);

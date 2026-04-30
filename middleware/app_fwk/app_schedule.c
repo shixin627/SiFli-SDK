@@ -43,7 +43,7 @@ typedef enum
     APP_FLAG_GOBACK_ANIM   = 0x01,
 } APP_FLAG_ENUM;
 
-static uint32_t max_running_apps = 2; //!< mainmenu & avtive app
+static uint32_t max_running_apps = 3; //!< mainmenu & avtive app
 static uint8_t en_suspend_app = 0; //Save the history of apps stopped by app scheduler when > max_running_apps
 static uint8_t en_check_duplicated_subpage = 1;
 static uint8_t en_check_duplicated_apps = 1;
