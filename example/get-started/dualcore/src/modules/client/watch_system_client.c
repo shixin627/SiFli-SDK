@@ -336,8 +336,6 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         SkaiWatchSys.gPedoData.global_steps = data_ind->steps;
         SkaiWatchSys.gPedoData.global_distance = data_ind->distance; // mm
         SkaiWatchSys.gPedoData.global_calories = data_ind->calories; // cal
-        extern void refresh_activity_rings(void);
-        refresh_activity_rings();
         commu_send_sport_data();
         break;
     }

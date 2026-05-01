@@ -79,8 +79,19 @@
 #ifdef BSP_USING_UI_HANDLER
     #include "ui_handler.h"
 #endif
-#define LIST_EXERCISE_HEIGHT (200)
-#define RING_WIDTH 15
+#define ICON_LIST_X_OFFSET (-10)
+#define ICON_ITEM_SIZE 80
+#define ICON_ZOOM_CENTER 256
+#define ICON_ZOOM_MIN 128
+#define ICON_OPA_CENTER LV_OPA_COVER           /* 中央 icon 完全不透明 */
+#define ICON_OPA_MIN LV_OPA_30                 /* 邊緣 icon 最低透明度（30%）*/
+#define ICON_SLOT_HEIGHT (ICON_ITEM_SIZE + 10) /* flex 主軸每格高度（item + pad_row） */
+#define ICON_SLOT_ANGLE_DEG 36                 /* 每格對應的角度（等角間距）*/
+#define ICON_ARC_RADIUS 200                    /* item 圓心軌跡半徑 */
+
+#ifndef M_PI
+    #define M_PI 3.14159265358979323846f
+#endif
 
 #ifdef APP_ID_EXERCISE
 
@@ -92,13 +103,9 @@ typedef struct
 {
     lv_obj_t *bg;           // 背景
     lv_obj_t *tileview;     // 主视图容器
-    lv_obj_t *list_tile;    // 运动列表视图
-    lv_obj_t *history_tile; // 历史记录视图
     lv_obj_t *workout_list; // 运动列表
-    lv_obj_t *history_list; // 历史记录列表
     lv_obj_t *workout_screen;
-    lv_obj_t *timer_label; // 计时标签
-    lv_obj_t *metrics_container;
+    lv_obj_t *timer_label;            // 计时标签
     lv_obj_t *heart_rate_label;       // 心率标签(运动界面)
     lv_obj_t *title_heart_rate_label; // 心率标签(标题栏)
     lv_obj_t *calories_label;         // 卡路里标签
@@ -126,8 +133,6 @@ LV_IMG_DECLARE(img_workout_gym);
 LV_IMG_DECLARE(img_media_play);
 LV_IMG_DECLARE(img_media_pause);
 LV_IMG_DECLARE(img_red_heart);
-LV_IMG_DECLARE(img_calories);
-LV_IMG_DECLARE(icon_history);
 
 extern void refresh_heartrate_widget(uint8_t hr);
 
@@ -161,8 +166,6 @@ workout_session_t *get_current_workout_session(void)
 }
 static void show_workout_view();
 static lv_obj_t *create_workout_list(lv_obj_t *parent);
-static lv_obj_t *create_history_list(lv_obj_t *parent);
-static void handle_tap_event(void);
 static void refresh_session_pause_button(void);
 static lv_obj_t *cal_label;
 
@@ -330,20 +333,6 @@ static void start_workout_session(workout_type_t type)
     show_workout_view();
 }
 
-// 切换到运动选择界面
-static void show_workout_list_view()
-{
-    // 显示运动列表视图
-    // lv_obj_set_tile_id(ui.tileview, 0, 0, LV_ANIM_ON);
-}
-
-// 切换到历史记录界面
-static void show_history_view()
-{
-    // 显示历史记录视图
-    // lv_obj_set_tile_id(ui.tileview, 0, 1, LV_ANIM_ON);
-}
-
 static void refresh_ui(lv_obj_t *_, workout_session_t *session)
 {
     update_workout_display();
@@ -372,7 +361,6 @@ static void show_workout_view()
     refresh_session_pause_button();
 }
 
-static void statistics_exercise_data(void);
 int stop_exercise(void)
 {
     LOG_D("Stopping exercise session");
@@ -445,9 +433,6 @@ int stop_exercise(void)
     if (lv_obj_is_valid(ui.tileview))
     {
         lv_obj_clear_flag(ui.tileview, LV_OBJ_FLAG_HIDDEN);
-        // Refresh the history list to show the newly added workout
-        statistics_exercise_data();
-        // create_history_list(ui.history_tile);
     }
 
     // Clean up data bindings
@@ -481,23 +466,9 @@ static void pause_button_event_cb(lv_event_t *e)
 // 停止按钮回调
 static void stop_button_event_cb(lv_event_t *e)
 {
-    if (stop_exercise() == 0)
+    if (stop_exercise() != 0)
     {
-        show_history_view();
-    }
-    else
-    {
-        // 停止运动会话失败，显示错误信息
         ui_show_hint_toast("Failed to stop exercise session");
-    }
-}
-
-static void nav_to_history_icon_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED)
-    {
-        show_history_view();
     }
 }
 
@@ -533,447 +504,11 @@ static void press_cb(uint8_t press)
     }
 }
 
-// 删除或查看历史记录
-static void delete_history_event_handler(lv_event_t *e)
-{
-    lv_obj_t *obj = lv_event_get_user_data(e);
-
-    // 获取文件名
-    lv_obj_t *label = lv_obj_get_child(obj, 0);
-    const char *filename = lv_label_get_text(label);
-
-    // 构建完整文件路径
-    char file_path[64];
-    snprintf(file_path, sizeof(file_path), "/exercise/%s", filename);
-
-    // 删除文件
-    if (remove(file_path) == 0)
-    {
-        LOG_D("File %s deleted successfully", file_path);
-    }
-    else
-    {
-        LOG_E("Failed to delete file %s", file_path);
-    }
-
-    // 更新UI
-    lv_obj_del(obj);
-    statistics_exercise_data();
-    // create_history_list(ui.history_tile);
-}
-
-// 历史记录左滑动处理
-static void history_swipe_event_handler(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t *obj = lv_event_get_target(e);
-
-    if (code == LV_EVENT_GESTURE)
-    {
-        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
-        if (dir == LV_DIR_LEFT)
-        {
-            // 创建删除按钮
-            LOG_D("Swipe left on history item");
-            lv_obj_t *delete_btn = lv_btn_create(obj);
-            lv_obj_set_size(delete_btn, 60, lv_obj_get_height(obj));
-            lv_obj_align(delete_btn, LV_ALIGN_RIGHT_MID, 0, 0);
-            lv_obj_set_style_bg_color(delete_btn, lv_color_hex(0xFF0000), 0);
-
-            lv_obj_t *label = lv_label_create(delete_btn);
-            lv_label_set_text(label, "Delete");
-            lv_obj_center(label);
-
-            lv_obj_add_event_cb(delete_btn, delete_history_event_handler,
-                                LV_EVENT_CLICKED, obj);
-        }
-    }
-}
-
-// 历史记录项目点击处理
-static void history_list_event_cb(lv_event_t *e)
-{
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED)
-    {
-        lv_obj_t *item = lv_event_get_target(e);
-        // 获取记录信息
-        // 这只是从按钮中获取文件名，我们在实际应用中可能需要更多数据
-        const char *filename = lv_list_get_btn_text(ui.history_list, item);
-        LOG_D("Selected history record: %s", filename);
-
-        if (!SkaiWatchSys.connected_to_phone)
-        {
-            ui_show_hint_toast("Phone not connected, cannot sync exercise %s\n",
-                               filename);
-            return;
-        }
-
-        // TODO: 显示历史记录详情或播放动画
-
-        char file_path[40];
-        snprintf(file_path, sizeof(file_path), "/exercise/%s", filename);
-        int ret = bloc_file_system.sync_file(file_path, false);
-        if (ret == 0)
-        {
-            LOG_D("Sync exercise data successfully");
-        }
-        else
-        {
-            LOG_E("Failed to sync exercise data");
-        }
-    }
-}
-
-static lv_obj_t *log_icon = NULL;
-static lv_obj_t *log_label = NULL;
-static lv_obj_t *total_time = NULL;
-static lv_obj_t *total_calories = NULL;
-static lv_obj_t *total_calories_hint = NULL;
-
-// Activity rings
-static lv_obj_t *calories_ring = NULL;
-static lv_obj_t *calories_ring_label_hint = NULL;
-static lv_obj_t *calories_ring_label = NULL;
-static lv_obj_t *steps_ring = NULL;
-static lv_obj_t *steps_ring_label_hint = NULL;
-static lv_obj_t *steps_ring_label = NULL;
-static lv_obj_t *distance_ring = NULL;
-static lv_obj_t *distance_ring_label_hint = NULL;
-static lv_obj_t *distance_ring_label = NULL;
-
-// Helper function to get today's steps
-static uint32_t get_steps_today(void)
-{
-    return SkaiWatchSys.health_info_today.steps;
-}
-
-// Helper function to get today's distance
-static float get_distance_today(void)
-{
-    return SkaiWatchSys.health_info_today.distance;
-}
-
-// Helper function to get today's calories
-static float get_calories_today(void)
-{
-    return SkaiWatchSys.health_info_today.calories;
-}
-
-// Create a single activity ring
-static lv_obj_t *create_ring(lv_obj_t *parent, lv_coord_t size,
-                             lv_color_t color, lv_obj_t *align_to,
-                             lv_align_t align, lv_coord_t x_ofs,
-                             lv_coord_t y_ofs)
-{
-    lv_obj_t *ring = lv_arc_create(parent);
-    lv_obj_set_size(ring, size, size);
-    lv_arc_set_range(ring, 0, 100);
-    lv_arc_set_value(ring, 0);
-
-    // 設置圓環顏色
-    lv_obj_set_style_arc_color(ring, color, LV_PART_INDICATOR);
-
-    lv_arc_set_rotation(ring, 270);
-    lv_arc_set_bg_angles(ring, 0, 360);
-    // 設置圓環的寬度
-    lv_obj_set_style_arc_width(ring, RING_WIDTH, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(ring, RING_WIDTH, LV_PART_INDICATOR);
-
-    // 背景圓環的顏色設置為半透明
-    lv_obj_set_style_arc_color(ring, lv_color_hex(0xE0E0E0), LV_PART_MAIN);
-    lv_obj_set_style_arc_opa(ring, 77, LV_PART_MAIN);
-
-    lv_obj_remove_style(ring, NULL, LV_PART_KNOB);
-    lv_obj_clear_flag(ring, LV_OBJ_FLAG_CLICKABLE);
-    if (align_to)
-    {
-        lv_obj_align_to(ring, align_to, align, x_ofs, y_ofs);
-    }
-    else
-    {
-        lv_obj_align(ring, align, x_ofs, y_ofs);
-    }
-    return ring;
-}
-
-void refresh_activity_rings(void)
-{
-    if (!lv_obj_is_valid(calories_ring) || !lv_obj_is_valid(steps_ring) ||
-        !lv_obj_is_valid(distance_ring))
-        return;
-
-    uint32_t steps = get_steps_today();
-    float distance = get_distance_today() / 1000000; // km
-    float calories = get_calories_today() / 1000;    // k-calories
-
-    // 計算圓環進度百分比
-    int32_t calories_percent =
-        (int32_t)(calories * 100 / 300);                    // 300 k-calories
-    int32_t steps_percent = (int32_t)(steps * 100 / 10000); // 10000 steps
-    int32_t distance_percent = (int32_t)(distance * 100 / 7.5); // 7.5km
-
-    // 限制百分比在0-100之間
-    calories_percent = calories_percent > 100
-                           ? 100
-                           : (calories_percent < 0 ? 0 : calories_percent);
-    steps_percent =
-        steps_percent > 100 ? 100 : (steps_percent < 0 ? 0 : steps_percent);
-    distance_percent = distance_percent > 100
-                           ? 100
-                           : (distance_percent < 0 ? 0 : distance_percent);
-
-    // 更新圓環進度
-    if (lv_obj_is_valid(calories_ring))
-    {
-        lv_arc_set_value(calories_ring, calories_percent);
-        char calories_str[16];
-        snprintf(calories_str, sizeof(calories_str), "%.0f", calories);
-        lv_label_set_text(calories_ring_label, calories_str);
-        lv_obj_align_to(calories_ring_label, calories_ring_label_hint,
-                        LV_ALIGN_OUT_LEFT_MID, -4, -5);
-    }
-
-    if (lv_obj_is_valid(steps_ring))
-    {
-        lv_arc_set_value(steps_ring, steps_percent);
-        char steps_str[16];
-        snprintf(steps_str, sizeof(steps_str), "%d", steps);
-        lv_label_set_text(steps_ring_label, steps_str);
-        lv_obj_align_to(steps_ring_label, steps_ring_label_hint,
-                        LV_ALIGN_OUT_LEFT_MID, -4, -5);
-    }
-
-    if (lv_obj_is_valid(distance_ring))
-    {
-        lv_arc_set_value(distance_ring, distance_percent);
-        char distance_str[16];
-        snprintf(distance_str, sizeof(distance_str), "%.2f", distance);
-        lv_label_set_text(distance_ring_label, distance_str);
-        lv_obj_align_to(distance_ring_label, distance_ring_label_hint,
-                        LV_ALIGN_OUT_LEFT_MID, -4, -5);
-    }
-}
-
-static void statistics_exercise_data(void)
-{
-    workout_history_t *history = get_workout_history();
-    if (!history || history->count == 0)
-    {
-        refresh_activity_rings();
-        return;
-    }
-
-    // 取得當前時間
-    time_t now = time(NULL);
-    struct tm *now_tm = localtime(&now);
-
-    // 算出本週一的 0:00:00 時間戳
-    struct tm monday_tm = *now_tm;
-    int days_since_monday =
-        (now_tm->tm_wday == 0) ? 6 : (now_tm->tm_wday - 1); // 週日為0，週一為1
-    monday_tm.tm_mday -= days_since_monday;
-    monday_tm.tm_hour = 0;
-    monday_tm.tm_min = 0;
-    monday_tm.tm_sec = 0;
-    time_t monday_start = mktime(&monday_tm);
-
-    // 本週區間結束：今天 23:59:59
-    struct tm today_end_tm = *now_tm;
-    today_end_tm.tm_hour = 23;
-    today_end_tm.tm_min = 59;
-    today_end_tm.tm_sec = 59;
-    time_t today_end = mktime(&today_end_tm);
-
-    int week_count = 0;
-    int week_total_duration = 0;
-    int week_total_calories = 0;
-
-    for (int i = 0; i < history->count; i++)
-    {
-        workout_record_t *record = &history->records[i];
-        LOG_D("Record %d: timestamp=%ld, duration=%d, calories=%d", i,
-              record->timestamp, record->duration, record->calories);
-        if (record->timestamp >= monday_start && record->timestamp <= today_end)
-        {
-            week_count++;
-            week_total_duration += record->duration;
-            week_total_calories += record->calories;
-        }
-    }
-
-    // week_count: 本週運動次數（週一到今天）
-    // week_total_duration: 本週總運動秒數
-    // week_total_calories: 本週總卡路里
-    if (lv_obj_is_valid(log_label))
-    {
-        char log_label_str[32];
-        snprintf(log_label_str, sizeof(log_label_str), "本周 %d 次運動",
-                 week_count);
-        lv_label_set_text(log_label, log_label_str);
-        // lv_obj_align(log_label, LV_ALIGN_TOP_MID, 0, 50);
-        lv_obj_align_to(log_label, log_icon, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
-    }
-
-    if (lv_obj_is_valid(total_time))
-    {
-        char time_str[16];
-        snprintf(time_str, sizeof(time_str), "%d:%02d:%02d",
-                 week_total_duration / 3600, (week_total_duration % 3600) / 60,
-                 week_total_duration % 60);
-        lv_label_set_text(total_time, time_str);
-        lv_obj_align(total_time, LV_ALIGN_TOP_MID, -85, 68);
-    }
-
-    if (lv_obj_is_valid(total_calories))
-    {
-        char cal_str[16];
-        snprintf(cal_str, sizeof(cal_str), "%d", week_total_calories);
-        lv_label_set_text(total_calories, cal_str);
-        // lv_obj_align(total_calories, LV_ALIGN_TOP_MID, 85, 68);
-        lv_obj_align_to(total_calories, total_calories_hint,
-                        LV_ALIGN_OUT_LEFT_MID, -4, -5);
-        LOG_D("This week workout count: %d, total duration: %d seconds, total "
-              "calories: %d",
-              week_count, week_total_duration, week_total_calories);
-    }
-
-    // 更新圓環數據
-    refresh_activity_rings();
-
-    // 釋放歷史記憶體
-    free_workout_history(history);
-}
-
-// 创建历史记录列表视图
-static lv_obj_t *create_history_list(lv_obj_t *parent)
-{
-    // 删除之前的容器内容
-    // if (lv_obj_get_child_cnt(parent) > 0)
-    // {
-    //     lv_obj_clean(parent);
-    // }
-
-    // 创建容器
-    lv_obj_t *container = lv_obj_create(parent);
-    lv_obj_set_size(container, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_set_style_bg_color(container, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(container, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
-
-    // 添加标题
-    lv_obj_t *title = lv_label_create(container);
-    lv_label_set_text(title, "Workout History");
-    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(0)),
-                               0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
-
-    // // 添加向上滑动提示
-    // lv_obj_t *scroll_hint = lv_label_create(container);
-    // lv_label_set_text(scroll_hint, "▲ swipe down for workouts");
-    // lv_obj_set_style_text_color(scroll_hint, lv_color_hex(0xAAAAAA), 0);
-    // lv_obj_align(scroll_hint, LV_ALIGN_TOP_MID, 0, 40);
-
-    // 创建列表容器
-    lv_obj_t *list = lv_obj_create(container);
-    lv_obj_set_size(list, LV_PCT(90), 466 - 70);
-    lv_obj_align_to(list, title, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-    lv_obj_set_style_bg_opa(list, LV_OPA_0, 0);
-    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_pad_row(list, 10, 0); // 缩小
-
-    // 获取历史记录
-    workout_history_t *history = get_workout_history();
-    if (!history || history->count == 0)
-    {
-        lv_obj_t *no_history = lv_label_create(container);
-        lv_label_set_text(no_history, "No workout history yet");
-        lv_obj_set_style_text_color(no_history, lv_color_hex(0xAAAAAA), 0);
-        lv_obj_center(no_history);
-        free_workout_history(history);
-        return container;
-    }
-
-    LOG_D("Workout history count: %d", history->count);
-
-    // 填充历史记录列表（自訂樣式，類似 workout_widget）
-    for (int i = 0; i < history->count; i++)
-    {
-        workout_record_t *record = &history->records[i];
-        char date_str[32];
-        format_date_string(record->timestamp, date_str, sizeof(date_str));
-
-        // 創建自訂 container
-        lv_obj_t *item = lv_obj_create(list);
-        lv_obj_set_size(item, LV_PCT(100), 250);
-        lv_obj_set_style_radius(item, 40, 0);
-        lv_obj_set_style_bg_color(item, lv_color_hex(0x1E1E1E), 0);
-        lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
-
-        // 運動圖標
-        lv_obj_t *icon = lv_img_create(item);
-        lv_img_set_src(icon, workout_list[record->type].icon);
-        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 20, -70);
-
-        lv_obj_t *type_label = lv_label_create(item);
-        lv_label_set_text(type_label, workout_list[record->type].name);
-        lv_obj_set_style_text_color(type_label, lv_color_hex(0x9EFE00), 0);
-        lv_obj_set_style_text_font(type_label,
-                                   LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-        lv_obj_align_to(type_label, icon, LV_ALIGN_OUT_RIGHT_TOP, 10, -10);
-
-        // 日期
-        lv_obj_t *date_label = lv_label_create(item);
-        lv_label_set_text(date_label, date_str);
-        lv_obj_set_style_text_color(date_label, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_align_to(date_label, type_label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 0);
-
-        // 運動時長
-        lv_obj_t *duration = lv_label_create(item);
-        lv_label_set_text_fmt(duration, "%d:%02d:%02d", record->duration / 3600,
-                              (record->duration % 3600) / 60,
-                              record->duration % 60);
-        lv_obj_set_style_text_color(duration, lv_color_hex(0x40A6FF), 0);
-        lv_obj_set_style_text_font(duration,
-                                   LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-        lv_obj_align(duration, LV_ALIGN_LEFT_MID, 25, 10);
-
-        // 卡路里
-        lv_obj_t *calories = lv_label_create(item);
-        lv_label_set_text_fmt(calories, "%d KCAL", record->calories);
-        lv_obj_set_style_text_color(calories, lv_color_hex(0xFF4089), 0);
-        lv_obj_set_style_text_font(calories,
-                                   LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-        lv_obj_align(calories, LV_ALIGN_RIGHT_MID, -25, 10);
-
-        // 點擊事件
-        // lv_obj_add_event_cb(item, history_list_event_cb, LV_EVENT_CLICKED,
-        // NULL); 滑動刪除 lv_obj_add_event_cb(item,
-        // history_swipe_event_handler, LV_EVENT_GESTURE, NULL);
-    }
-
-    // 释放内存
-    free_workout_history(history);
-
-    return container;
-}
-
-static void workout_log_widget_event_cb(lv_event_t *e)
-{
-    ui.history_tile = create_history_list(lv_scr_act());
-}
-
 static void handle_back_event(void)
 {
     if (app_exercise_data_ctx.active)
     {
-        // 如果正在運動中，停止運動
         stop_exercise();
-    }
-    else if (lv_obj_is_valid(ui.history_tile))
-    {
-        lv_obj_del(ui.history_tile);
-        ui.history_tile = NULL;
     }
     else
     {
@@ -981,39 +516,126 @@ static void handle_back_event(void)
     }
 }
 
+/* 仿 lv_instruction_list_layout.c 的指示點做法：
+ *   - icons 是 list 的 floating child，用 lv_obj_set_pos 直接放在環上
+ *   - 每個 icon 有固定 base_angle = i * step；offset_angle 由 scroll_y 推導
+ *   - 整個 ring 隨 scroll 旋轉，不走 flex/translate 那條鏈
+ *   - 另外建 7 個透明 snap_targets 提供 LVGL snap-to-center 用的線性 y anchor
+ *   - labels 是 icon 的 child，跟著 icon 移動，預設藏起來只顯示選中的那個 */
+static lv_obj_t *workout_icons[WORKOUT_COUNT] = {0};
+static lv_obj_t *workout_name_labels[WORKOUT_COUNT] = {0};
+
+static void update_workout_name_label(void)
+{
+    if (selected_exercise_index >= WORKOUT_COUNT) return;
+    for (int j = 0; j < WORKOUT_COUNT; j++)
+    {
+        if (!lv_obj_is_valid(workout_name_labels[j])) continue;
+        if (j == selected_exercise_index)
+        {
+            lv_obj_clear_flag(workout_name_labels[j], LV_OBJ_FLAG_HIDDEN);
+        }
+        else
+        {
+            lv_obj_add_flag(workout_name_labels[j], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+/* 弧形排列：仿 lv_instruction_list_layout.c::update_indicator_dots_position 的做法。
+ *
+ *   offset_angle = (scroll_y - base_scroll) / SLOT × angle_per_slot
+ *   current_angle_i = i × angle_per_slot - offset_angle  (含 ±π 環繞)
+ *   icon_screen_pos = (cx + R·cos(angle), cy + R·sin(angle))
+ *
+ * 用 lv_obj_set_pos 直接放，不經過 flex / translate。
+ * 同時找出 |angle| 最小的 icon 設成 selected，並更新 label 顯示。 */
+static void apply_circular_layout(lv_obj_t *list)
+{
+    const int32_t cx = LV_HOR_RES / 2;
+    const int32_t cy = LV_VER_RES / 2;
+    const float angle_per_slot = (float)ICON_SLOT_ANGLE_DEG * (M_PI / 180.0f);
+    const lv_coord_t list_x1 = list->coords.x1;
+    const lv_coord_t list_y1 = list->coords.y1;
+    const lv_coord_t pad_top = lv_obj_get_style_pad_top(list, LV_PART_MAIN);
+    const lv_coord_t pad_left = lv_obj_get_style_pad_left(list, LV_PART_MAIN);
+
+    /* base_scroll = snap_target i 被中央時對應的 scroll_y（i = 0 的情況）*/
+    const int32_t base_scroll = list_y1 + pad_top + ICON_ITEM_SIZE / 2 - cy;
+    const lv_coord_t scroll_y = lv_obj_get_scroll_y(list);
+    const float scroll_in_slots = (float)(scroll_y - base_scroll) / ICON_SLOT_HEIGHT;
+    const float offset_angle = scroll_in_slots * angle_per_slot;
+
+    int closest_i = 0;
+    float min_abs_angle = M_PI;
+
+    for (int i = 0; i < WORKOUT_COUNT; i++)
+    {
+        if (workout_icons[i] == NULL) continue;
+
+        float current_angle = (float)i * angle_per_slot - offset_angle;
+        while (current_angle > M_PI) current_angle -= 2.0f * M_PI;
+        while (current_angle <= -M_PI) current_angle += 2.0f * M_PI;
+        float abs_angle = fabsf(current_angle);
+
+        if (abs_angle < min_abs_angle)
+        {
+            min_abs_angle = abs_angle;
+            closest_i = i;
+        }
+
+        if (abs_angle > M_PI / 2.0f)
+        {
+            lv_obj_add_flag(workout_icons[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        lv_obj_clear_flag(workout_icons[i], LV_OBJ_FLAG_HIDDEN);
+
+        /* 環上的螢幕座標 → list 內部 set_pos 座標
+         *   screen = list.x1 + pad_left + set_pos_x  (LVGL floating obj 規則) */
+        int32_t icon_sx = cx + (int32_t)(ICON_ARC_RADIUS * cosf(current_angle));
+        int32_t icon_sy = cy + (int32_t)(ICON_ARC_RADIUS * sinf(current_angle));
+        int32_t local_x = icon_sx - list_x1 - pad_left - ICON_ITEM_SIZE / 2;
+        int32_t local_y = icon_sy - list_y1 - pad_top - ICON_ITEM_SIZE / 2;
+        lv_obj_set_pos(workout_icons[i], local_x, local_y);
+
+        int32_t zoom_range = ICON_ZOOM_CENTER - ICON_ZOOM_MIN;
+        int32_t zoom = ICON_ZOOM_MIN + (int32_t)(zoom_range * cosf(abs_angle));
+        lv_img_set_zoom(workout_icons[i], zoom);
+
+        /* opacity：中央 = COVER (255)，邊緣 = MIN (≈76)，用 cos(angle) 做插值 */
+        int32_t opa_range = ICON_OPA_CENTER - ICON_OPA_MIN;
+        lv_opa_t opa = ICON_OPA_MIN + (lv_opa_t)(opa_range * cosf(abs_angle));
+        lv_obj_set_style_img_opa(workout_icons[i], opa, 0);
+    }
+
+    /* 更新 label：closest_i 顯示，其他隱藏 */
+    if (closest_i != selected_exercise_index)
+    {
+        selected_exercise_index = closest_i;
+    }
+    for (int i = 0; i < WORKOUT_COUNT; i++)
+    {
+        if (workout_name_labels[i] == NULL) continue;
+        if (i == closest_i && min_abs_angle <= M_PI / 2.0f)
+        {
+            lv_obj_clear_flag(workout_name_labels[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        else
+        {
+            lv_obj_add_flag(workout_name_labels[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
 static void scroll_list(lv_obj_t *obj)
 {
-    uint16_t min_offset = LV_VER_RES;
-    uint8_t child_cnt = obj->spec_attr->child_cnt;
-    lv_coord_t y_diff = 0;
-    for (uint8_t i = 0; i < child_cnt; i++)
-    {
-        lv_obj_t *child = obj->spec_attr->children[i];
-        lv_coord_t y_center = child->coords.y1 + LIST_EXERCISE_HEIGHT / 2;
-        y_diff = y_center - LV_VER_RES / 2;
-        y_diff = LV_ABS(y_diff);
-        if (y_diff < min_offset)
-        {
-            min_offset = y_diff;
-            selected_exercise_index = i;
-        }
-    }
-    if (old_selected_exercise_index != selected_exercise_index)
-    {
-        old_selected_exercise_index = selected_exercise_index;
-        for (uint8_t i = 0; i < child_cnt; i++)
-        {
-            lv_obj_t *start_btn = obj->spec_attr->children[i];
-            if (i == selected_exercise_index)
-            {
-                lv_obj_set_style_border_width(start_btn, 1, 0);
-            }
-            else
-            {
-                lv_obj_set_style_border_width(start_btn, 0, 0);
-            }
-        }
-    }
+    /* apply_circular_layout 已經依 scroll_y 算出 closest_i，更新
+     * selected_exercise_index，並切換 label 顯示。這裡只剩 old_selected
+     * 偵測，避免重複工作 */
+    apply_circular_layout(obj);
+
+    old_selected_exercise_index = selected_exercise_index;
 }
 
 static void list_scroll_event_cb(lv_event_t *evt)
@@ -1026,9 +648,8 @@ static void list_scroll_event_cb(lv_event_t *evt)
     switch (evt->code)
     {
     case LV_EVENT_SCROLL:
-    {
         scroll_list(obj);
-    }
+        break;
     default:
         break;
     }
@@ -1036,64 +657,107 @@ static void list_scroll_event_cb(lv_event_t *evt)
 
 static lv_obj_t *create_workout_list(lv_obj_t *parent)
 {
-    // 創建列表容器
     lv_obj_t *list_container = lv_obj_create(parent);
     lv_obj_set_size(list_container, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     lv_obj_set_style_bg_opa(list_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(list_container, 0, 0);
     lv_obj_set_style_pad_all(list_container, 0, 0);
+    lv_obj_clear_flag(list_container, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(list_container, LV_ALIGN_TOP_MID, 0, 0);
 
-    // 創建垂直列表
+    /* List 是全螢幕的 scrollable 容器（無 flex），仿
+     * lv_instruction_list_layout.c 的 p_instruction_list 做法 */
     lv_obj_t *list = lv_obj_create(list_container);
-    lv_obj_set_size(list, LV_PCT(90), 466);
+    lv_obj_set_size(list, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     lv_obj_align(list, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(list, 0, 0);
-    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(list, 0, 0);
+    lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_scroll_snap_y(list, LV_SCROLL_SNAP_CENTER);
     lv_obj_set_scroll_dir(list, LV_DIR_VER);
-    lv_obj_set_style_pad_row(list, 50, 0); // 增加 widget 間的間隔
+    lv_obj_set_scroll_snap_y(list, LV_SCROLL_SNAP_CENTER);
     lv_obj_set_style_pad_ver(list, LV_VER_RES / 2, 0);
     lv_obj_add_event_cb(list, list_scroll_event_cb, LV_EVENT_ALL, NULL);
     ui.workout_list = list;
 
-    // 添加標題
-    lv_obj_t *title_bg = lv_obj_create(list_container);
-    lv_obj_set_size(title_bg, 466, 80);
-    lv_obj_set_style_bg_color(title_bg, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(title_bg, LV_OPA_80, 0);
-    lv_obj_align(title_bg, LV_ALIGN_TOP_MID, 0, 0);
+    /* 7 個透明 snap_targets（non-floating），只負責提供 LVGL 的 snap-to-center
+     * anchors，視覺上不顯示 */
+    for (int i = 0; i < WORKOUT_COUNT; i++)
+    {
+        lv_obj_t *snap_target = lv_obj_create(list);
+        lv_obj_set_size(snap_target, ICON_ITEM_SIZE, ICON_ITEM_SIZE);
+        lv_obj_set_pos(snap_target, 0, i * ICON_SLOT_HEIGHT);
+        lv_obj_set_style_bg_opa(snap_target, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(snap_target, 0, 0);
+        lv_obj_set_style_pad_all(snap_target, 0, 0);
+        lv_obj_clear_flag(snap_target, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(snap_target, LV_OBJ_FLAG_SCROLLABLE);
+    }
 
-    // 創建標題容器用來放置愛心和心率
-    lv_obj_t *title_container = lv_obj_create(title_bg);
-    lv_obj_set_size(title_container, 466, 40);
-    lv_obj_set_style_bg_opa(title_container, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(title_container, 0, 0);
-    lv_obj_set_style_pad_all(title_container, 0, 0);
-    lv_obj_align(title_container, LV_ALIGN_CENTER, 0, 0);
+    /* 7 個 visible icons：list 的 floating child（不影響 scroll content size）。
+     * 位置由 apply_circular_layout 用 lv_obj_set_pos 直接放，不走 flex/translate。
+     * clickable，drag 會 bubble 給 list 觸發 scroll。 */
+    for (int i = 0; i < WORKOUT_COUNT; i++)
+    {
+        workout_icons[i] = lv_img_create(list);
+        lv_img_set_src(workout_icons[i], workout_list[i].icon);
+        lv_img_set_size_mode(workout_icons[i], LV_IMG_SIZE_MODE_REAL);
+        const lv_img_dsc_t *dsc = (const lv_img_dsc_t *)workout_list[i].icon;
+        lv_img_set_pivot(workout_icons[i], dsc->header.w / 2, dsc->header.h / 2);
+        lv_obj_add_flag(workout_icons[i], LV_OBJ_FLAG_FLOATING);
+        lv_obj_add_flag(workout_icons[i], LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+        lv_obj_add_flag(workout_icons[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_user_data(workout_icons[i], (void *)workout_list[i].name);
+        lv_obj_add_event_cb(workout_icons[i], workout_list_event_cb,
+                            LV_EVENT_CLICKED, NULL);
 
-    // 創建愛心圖示
-    lv_obj_t *heart_icon = lv_img_create(title_container);
+        /* label 是 icon 的 child；click 會 bubble 給 icon 觸發 workout。
+         * 對齊到 icon 左外側，當 icon 在 angle=0 時 label 視覺中心 ~ 螢幕 x=180 */
+        workout_name_labels[i] = lv_label_create(workout_icons[i]);
+        lv_label_set_text(workout_name_labels[i], workout_list[i].name);
+        lv_obj_set_style_text_color(workout_name_labels[i], lv_color_white(), 0);
+        lv_obj_set_style_text_font(workout_name_labels[i],
+                                   LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+        lv_obj_set_width(workout_name_labels[i], 250);
+        lv_obj_set_style_text_align(workout_name_labels[i],
+                                    LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(workout_name_labels[i], LV_ALIGN_LEFT_MID, -338, 0);
+        if (i != 0)
+        {
+            lv_obj_add_flag(workout_name_labels[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    lv_obj_update_layout(list);
+    /* 滾到第一個 snap target 中央，然後 apply 一次把 icons 放上環 */
+    lv_obj_scroll_to_view(lv_obj_get_child(list, 0), LV_ANIM_OFF);
+    apply_circular_layout(list);
+
+    /* 頂端中央心率顯示 */
+    lv_obj_t *hr_container = lv_obj_create(list_container);
+    lv_obj_set_size(hr_container, 200, 60);
+    lv_obj_set_style_bg_opa(hr_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(hr_container, 0, 0);
+    lv_obj_set_style_pad_all(hr_container, 0, 0);
+    lv_obj_clear_flag(hr_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(hr_container, LV_ALIGN_TOP_MID, 0, 30);
+
+    lv_obj_t *heart_icon = lv_img_create(hr_container);
     lv_img_set_src(heart_icon, &img_red_heart);
     lv_obj_align(heart_icon, LV_ALIGN_CENTER, -30, 0);
 
-    // 設置愛心放大縮小動畫
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, heart_icon);
     lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_img_set_zoom);
-    lv_anim_set_values(&a, 75, 100);     // 0.8 to 1.0 (204 to 256)
-    lv_anim_set_time(&a, 2000);          // 1000 milliseconds
-    lv_anim_set_playback_time(&a, 2000); // 1000 milliseconds for playback
-    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE); // Infinite repeat
+    lv_anim_set_values(&a, 75, 100);
+    lv_anim_set_time(&a, 2000);
+    lv_anim_set_playback_time(&a, 2000);
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
     lv_anim_start(&a);
 
-    // 創建心率標籤並保存到全局UI結構體
-    ui.title_heart_rate_label = lv_label_create(title_container);
+    ui.title_heart_rate_label = lv_label_create(hr_container);
     lv_label_set_text(ui.title_heart_rate_label, "--");
     lv_obj_set_style_text_font(ui.title_heart_rate_label,
                                LV_EXT_FONT_GET(get_system_font_size(1)), 0);
@@ -1102,204 +766,8 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_align_to(ui.title_heart_rate_label, heart_icon,
                     LV_ALIGN_OUT_RIGHT_MID, -5, 0);
 
-    // 添加運動項目到列表
-    for (int i = 0; i < WORKOUT_COUNT; i++)
-    {
-        // 創建運動項目 widget
-        lv_obj_t *workout_widget = lv_obj_create(list);
-        lv_obj_set_size(workout_widget, LV_PCT(100), 200);
-        lv_obj_set_style_radius(workout_widget, 40, 0);
-        lv_obj_set_style_bg_color(workout_widget, lv_color_hex(0x1E1E1E), 0);
-        lv_obj_set_style_bg_opa(workout_widget, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(workout_widget, 0, 0);
-        lv_obj_set_style_border_color(workout_widget, lv_color_hex(0xFFFFFF),
-                                      0);
-        lv_obj_set_style_border_opa(workout_widget, LV_OPA_50, 0);
-
-        // 添加圖標
-        lv_obj_t *icon = lv_img_create(workout_widget);
-        lv_img_set_src(icon, workout_list[i].icon);
-        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 20, -30);
-
-        // 添加運動名稱
-        lv_obj_t *label = lv_label_create(workout_widget);
-        lv_label_set_text(label, workout_list[i].name);
-        lv_obj_set_style_text_color(label, lv_color_white(), 0);
-        lv_obj_set_style_text_font(label,
-                                   LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-        lv_obj_align_to(label, icon, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 0);
-
-        lv_obj_t *start_btn = lv_obj_create(workout_widget);
-        lv_obj_set_size(start_btn, 85, 85);
-        lv_obj_align(start_btn, LV_ALIGN_RIGHT_MID, -10, 0);
-        lv_obj_set_style_radius(start_btn, 45, 0);
-        lv_obj_set_style_bg_color(start_btn, lv_color_hex(0x9EFE00), 0);
-
-        lv_obj_t *start_icon = lv_img_create(start_btn);
-        lv_img_set_src(start_icon, &img_media_play);
-        lv_img_set_zoom(start_icon, 200);
-        lv_obj_align(start_icon, LV_ALIGN_CENTER, 5, 0);
-
-        // lv_obj_t *start_label = lv_label_create(workout_widget);
-        // lv_label_set_text(start_label, "Start Workout");
-        // lv_obj_set_style_text_color(start_label, lv_color_hex(0x9EFE00), 0);
-        // lv_obj_set_style_text_font(start_label,
-        //                            LV_EXT_FONT_GET(get_system_font_size(1)),
-        //                            0);
-        // lv_obj_align_to(start_label, label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 15);
-
-        // 添加點擊事件
-        lv_obj_add_event_cb(workout_widget, workout_list_event_cb,
-                            LV_EVENT_CLICKED, NULL);
-        lv_obj_set_user_data(workout_widget, (void *)workout_list[i].name);
-    }
-
-    lv_obj_t *workout_log_widget = lv_obj_create(list);
-    lv_obj_set_size(workout_log_widget, 386, 300);
-    lv_obj_set_style_radius(workout_log_widget, 40, 0);
-    lv_obj_set_style_bg_color(workout_log_widget, lv_color_hex(0x1E1E1E), 0);
-    lv_obj_set_style_bg_opa(workout_log_widget, LV_OPA_COVER, 0);
-    lv_obj_add_event_cb(workout_log_widget, workout_log_widget_event_cb,
-                        LV_EVENT_CLICKED, NULL);
-    lv_obj_set_style_border_width(workout_log_widget, 0, 0);
-    lv_obj_set_style_border_color(workout_log_widget, lv_color_hex(0xFFFFFF),
-                                  0);
-    lv_obj_set_style_border_opa(workout_log_widget, LV_OPA_50, 0);
-
-    log_icon = lv_img_create(workout_log_widget);
-    lv_img_set_src(log_icon, &img_workout_running);
-    lv_img_set_zoom(log_icon, 128);
-    lv_obj_align(log_icon, LV_ALIGN_TOP_LEFT, 35, 10);
-
-    log_label = lv_label_create(workout_log_widget);
-    lv_label_set_text(log_label, "本周 0 次運動");
-    lv_obj_set_style_text_color(log_label, lv_color_white(), 0);
-    lv_obj_set_style_text_font(log_label,
-                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_align_to(log_label, log_icon, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
-
-    total_time = lv_label_create(workout_log_widget);
-    lv_label_set_text(total_time, "0:00:00");
-    lv_obj_set_style_text_color(total_time, lv_color_hex(0x40A6FF), 0);
-    lv_obj_set_style_text_font(total_time,
-                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_align(total_time, LV_ALIGN_TOP_MID, -85, 65);
-
-    total_calories_hint = lv_label_create(workout_log_widget);
-    lv_label_set_text(total_calories_hint, "kcal");
-    lv_obj_set_style_text_color(total_calories_hint, lv_color_hex(0xFF4089), 0);
-    lv_obj_set_style_text_font(total_calories_hint,
-                               LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
-    // lv_obj_align_to(total_calories_hint, total_calories,
-    // LV_ALIGN_OUT_RIGHT_MID, 5, 5);
-    lv_obj_align(total_calories_hint, LV_ALIGN_TOP_MID, 115, 82);
-
-    total_calories = lv_label_create(workout_log_widget);
-    lv_label_set_text(total_calories, "0");
-    lv_obj_set_style_text_color(total_calories, lv_color_hex(0xFF4089), 0);
-    lv_obj_set_style_text_font(total_calories,
-                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_align_to(total_calories, total_calories_hint, LV_ALIGN_OUT_LEFT_MID,
-                    -4, -5);
-
-    lv_obj_t *activity_bg = lv_obj_create(workout_log_widget);
-    lv_obj_set_size(activity_bg, 384, 180);
-    lv_obj_align(activity_bg, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_opa(activity_bg, LV_OPA_0, 0);
-
-    // 在 activity_bg 上方加一條分隔線
-    lv_obj_t *divider = lv_obj_create(activity_bg);
-    lv_obj_set_size(divider, 384, 2);
-    lv_obj_set_style_bg_color(divider, lv_color_hex(0x444444), 0);
-    lv_obj_set_style_bg_opa(divider, LV_OPA_80, 0);
-    lv_obj_align(divider, LV_ALIGN_TOP_MID, 0, 0);
-
-    lv_obj_t *container_title = lv_label_create(activity_bg);
-    lv_label_set_text(container_title, "步數");
-    lv_obj_set_style_text_color(container_title, lv_color_white(), 0);
-    lv_obj_set_style_text_font(container_title,
-                               LV_EXT_FONT_GET(get_system_font_size(-2)), 0);
-    lv_obj_align(container_title, LV_ALIGN_TOP_MID, 0, 0);
-
-    // 創建活動圓環 - 在 widget 底部創建圓環容器
-    lv_obj_t *rings_container = lv_obj_create(activity_bg);
-    lv_obj_set_size(rings_container, 180, 180);
-    lv_obj_set_style_bg_opa(rings_container, LV_OPA_0, 0);
-    lv_obj_set_style_border_width(rings_container, 0, 0);
-    lv_obj_set_style_pad_all(rings_container, 0, 0);
-    lv_obj_clear_flag(rings_container, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(rings_container, LV_ALIGN_LEFT_MID, 10, 0);
-
-    // 創建三個圓環
-    calories_ring =
-        create_ring(rings_container, 150, lv_palette_main(LV_PALETTE_RED), NULL,
-                    LV_ALIGN_CENTER, 0, 0);
-    steps_ring =
-        create_ring(rings_container, 115, lv_palette_main(LV_PALETTE_GREEN),
-                    calories_ring, LV_ALIGN_CENTER, 0, 0);
-    distance_ring =
-        create_ring(rings_container, 80, lv_palette_main(LV_PALETTE_BLUE),
-                    calories_ring, LV_ALIGN_CENTER, 0, 0);
-
-    calories_ring_label_hint = lv_label_create(activity_bg);
-    lv_label_set_text(calories_ring_label_hint, "kcal");
-    lv_obj_set_style_text_color(calories_ring_label_hint,
-                                lv_palette_main(LV_PALETTE_RED), 0);
-    lv_obj_set_style_text_font(calories_ring_label_hint,
-                               LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
-    lv_obj_align(calories_ring_label_hint, LV_ALIGN_RIGHT_MID, -23, -40);
-
-    calories_ring_label = lv_label_create(activity_bg);
-    lv_label_set_text(calories_ring_label, "0");
-    lv_obj_set_style_text_color(calories_ring_label,
-                                lv_palette_main(LV_PALETTE_RED), 0);
-    lv_obj_set_style_text_font(calories_ring_label,
-                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_align_to(calories_ring_label, calories_ring_label_hint,
-                    LV_ALIGN_OUT_LEFT_MID, -4, -5);
-
-    steps_ring_label_hint = lv_label_create(activity_bg);
-    lv_label_set_text(steps_ring_label_hint, "steps");
-    lv_obj_set_style_text_color(steps_ring_label_hint,
-                                lv_palette_main(LV_PALETTE_GREEN), 0);
-    lv_obj_set_style_text_font(steps_ring_label_hint,
-                               LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
-    lv_obj_align(steps_ring_label_hint, LV_ALIGN_RIGHT_MID, -10, 0);
-
-    steps_ring_label = lv_label_create(activity_bg);
-    lv_label_set_text(steps_ring_label, "0");
-    lv_obj_set_style_text_color(steps_ring_label,
-                                lv_palette_main(LV_PALETTE_GREEN), 0);
-    lv_obj_set_style_text_font(steps_ring_label,
-                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_align_to(steps_ring_label, steps_ring_label_hint,
-                    LV_ALIGN_OUT_LEFT_MID, -4, -5);
-
-    distance_ring_label_hint = lv_label_create(activity_bg);
-    lv_label_set_text(distance_ring_label_hint, "km");
-    lv_obj_set_style_text_color(distance_ring_label_hint,
-                                lv_palette_main(LV_PALETTE_BLUE), 0);
-    lv_obj_set_style_text_font(distance_ring_label_hint,
-                               LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
-    lv_obj_align(distance_ring_label_hint, LV_ALIGN_RIGHT_MID, -32, 40);
-
-    distance_ring_label = lv_label_create(activity_bg);
-    lv_label_set_text(distance_ring_label, "0");
-    lv_obj_set_style_text_color(distance_ring_label,
-                                lv_palette_main(LV_PALETTE_BLUE), 0);
-    lv_obj_set_style_text_font(distance_ring_label,
-                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_align_to(distance_ring_label, distance_ring_label_hint,
-                    LV_ALIGN_OUT_LEFT_MID, -4, -5);
-
-    lv_obj_scroll_to_view(workout_log_widget, LV_ANIM_OFF);
-
-    statistics_exercise_data();
-
     return list_container;
 }
-
-static lv_obj_t *controls_container = NULL;
 
 static void start_hr_icon_anim(lv_obj_t *hr_icon)
 {
@@ -1407,33 +875,10 @@ static void on_start(void)
     // 创建基础UI
     ui.bg = common_black_bg(lv_scr_act());
 
-    // Create tileview (main container for vertical navigation)
-    // ui.tileview = lv_tileview_create(ui.bg);
-    // lv_obj_set_size(ui.tileview, LV_HOR_RES, LV_VER_RES);
-    // lv_obj_set_scrollbar_mode(ui.tileview, LV_SCROLLBAR_MODE_OFF);
-
-    // // 创建基础UI
-    // ui.list_tile = lv_tileview_add_tile(ui.tileview, 0, 0, LV_DIR_VER);
-    // lv_obj_set_pos(ui.list_tile, 0, 0);
-    // lv_obj_set_size(ui.list_tile, LV_HOR_RES, LV_VER_RES);
-    // lv_obj_set_user_data(ui.list_tile, (void *)"workout_list");
-    // ui.workout_list =
     ui.tileview = create_workout_list(ui.bg);
 
-    // 创建历史记录视图(第二个tile)
-    // ui.history_tile = lv_tileview_add_tile(ui.tileview, 0, 1, LV_DIR_VER);
-    // // add user data
-    // lv_obj_set_user_data(ui.history_tile, (void *)"history_tile");
-    // lv_obj_set_pos(ui.history_tile, 0, LV_VER_RES);
-    // lv_obj_set_size(ui.history_tile, LV_HOR_RES, LV_VER_RES);
-    // create_history_list(ui.history_tile);
-
-    // 创建运动界面元素
     ui.workout_screen = create_workout_screen(ui.bg);
-    // 默认隐藏运动界面
     lv_obj_add_flag(ui.workout_screen, LV_OBJ_FLAG_HIDDEN);
-    // 默认显示运动列表
-    show_workout_list_view();
 }
 
 static void on_resume(void)
@@ -1445,15 +890,13 @@ static void on_resume(void)
     };
     watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
     lvgl_msg_handler.handle_hr = ui_heart_rate_callback;
-    set_scroll_segment_count(WORKOUT_COUNT +
-                             1); // +2 for history and exercise screen
+    set_scroll_segment_count(WORKOUT_COUNT);
     set_prev_sensor_quat(0);
     #ifdef BSP_USING_UI_HANDLER
     lvgl_msg_handler.handle_back_event = handle_back_event;
     #endif
     lvgl_msg_handler.handle_nav_bar_control = scroll_list_to_index;
     lvgl_msg_handler.handle_tap_indicator = press_cb;
-    refresh_activity_rings();
 }
 
 static void on_pause(void)
