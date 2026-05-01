@@ -525,6 +525,118 @@ static void handle_back_event(void)
 static lv_obj_t *workout_icons[WORKOUT_COUNT] = {0};
 static lv_obj_t *workout_name_labels[WORKOUT_COUNT] = {0};
 
+/* 右側弧形觸控滾動 — 仿 hid_mouse.c 的 left_scroll_active 機制，
+ * 但抓螢幕右側邊緣弧帶區域。手指在弧區拖曳時，每移動一個角度增量
+ * 就把 list 滾對應的 pixel，可連續沿邊緣滑下/滑上而不需要放開重壓 */
+#define ARC_ZONE_THICKNESS 50          /* 觸控感應環厚度（從螢幕邊往內 px）*/
+#define ARC_ZONE_HALF_ANGLE_SIN 0.819f /* sin(55°)，定義右側弧帶的 ±55° 範圍 */
+static bool arc_scroll_active = false;
+static float arc_last_theta = 0.0f;
+
+static bool is_point_in_right_arc(lv_coord_t x, lv_coord_t y)
+{
+    float cx = LV_HOR_RES / 2.0f;
+    float cy = LV_VER_RES / 2.0f;
+    float dx = (float)x - cx;
+    float dy = (float)y - cy;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float outer_r = cx;
+    float inner_r = outer_r - (float)ARC_ZONE_THICKNESS;
+    if (dist < inner_r || dist > outer_r) return false;
+    if (dx <= 0) return false; /* 只接受右側 */
+    float max_dy = dist * ARC_ZONE_HALF_ANGLE_SIN;
+    if (dy < -max_dy || dy > max_dy) return false;
+
+    /* 排除目前可見 icons 的觸控區，這樣點 icon 仍能正常 click 觸發運動 */
+    for (int i = 0; i < WORKOUT_COUNT; i++)
+    {
+        if (workout_icons[i] == NULL) continue;
+        if (lv_obj_has_flag(workout_icons[i], LV_OBJ_FLAG_HIDDEN)) continue;
+        lv_area_t a;
+        lv_obj_get_coords(workout_icons[i], &a);
+        if (x >= a.x1 && x <= a.x2 && y >= a.y1 && y <= a.y2)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void arc_zone_hit_test_cb(lv_event_t *e)
+{
+    lv_hit_test_info_t *info = lv_event_get_hit_test_info(e);
+    if (info == NULL || info->point == NULL) return;
+    info->res = is_point_in_right_arc(info->point->x, info->point->y);
+}
+
+static void arc_zone_pressed_cb(lv_event_t *e)
+{
+    (void)e;
+    lv_indev_t *indev = lv_indev_get_act();
+    if (indev == NULL) return;
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+    arc_scroll_active = true;
+    arc_last_theta = atan2f((float)p.y - LV_VER_RES / 2.0f,
+                            (float)p.x - LV_HOR_RES / 2.0f);
+}
+
+static void arc_zone_pressing_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!arc_scroll_active || ui.workout_list == NULL) return;
+    lv_indev_t *indev = lv_indev_get_act();
+    if (indev == NULL) return;
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+
+    float theta = atan2f((float)p.y - LV_VER_RES / 2.0f,
+                         (float)p.x - LV_HOR_RES / 2.0f);
+    float delta = theta - arc_last_theta;
+    while (delta > M_PI) delta -= 2.0f * M_PI;
+    while (delta < -M_PI) delta += 2.0f * M_PI;
+    arc_last_theta = theta;
+
+    /* 把角度增量換算成 list 的 scroll pixel：每滑過一個 angle_per_slot
+     * 就等於滾動一個 ICON_SLOT_HEIGHT。
+     * 加負號讓拖曳手感反過來 — 拖下去 = scroll 往回（上面的 item 滑到中央），
+     * 跟一般「抓著內容往下拉」的直覺一致 */
+    float angle_per_slot_rad = (float)ICON_SLOT_ANGLE_DEG * (M_PI / 180.0f);
+    float scroll_delta = -delta * (float)ICON_SLOT_HEIGHT / angle_per_slot_rad;
+    if (scroll_delta > -0.5f && scroll_delta < 0.5f) return;
+
+    /* clamp 到第一個 / 最後一個 item 對應的 scroll_y，避免滑過頭 */
+    lv_coord_t list_y1 = ui.workout_list->coords.y1;
+    lv_coord_t pad_top = lv_obj_get_style_pad_top(ui.workout_list, LV_PART_MAIN);
+    lv_coord_t min_scroll = list_y1 + pad_top + ICON_ITEM_SIZE / 2 - LV_VER_RES / 2;
+    lv_coord_t max_scroll = min_scroll + (WORKOUT_COUNT - 1) * ICON_SLOT_HEIGHT;
+
+    lv_coord_t cur_scroll = lv_obj_get_scroll_y(ui.workout_list);
+    lv_coord_t target_scroll = cur_scroll + (lv_coord_t)scroll_delta;
+    if (target_scroll < min_scroll) target_scroll = min_scroll;
+    if (target_scroll > max_scroll) target_scroll = max_scroll;
+    if (target_scroll == cur_scroll) return;
+
+    lv_obj_scroll_to_y(ui.workout_list, target_scroll, LV_ANIM_OFF);
+}
+
+static void arc_zone_released_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!arc_scroll_active) return;
+    arc_scroll_active = false;
+
+    /* arc_zone 接走了觸控事件 → list 自己的 LVGL 內建 release-snap 沒跑。
+     * 手動把 list scroll 到目前 closest item（selected_exercise_index）
+     * 對應的 snap target，補回 snap-to-center 行為 */
+    if (ui.workout_list == NULL || selected_exercise_index >= WORKOUT_COUNT) return;
+    lv_obj_t *target = lv_obj_get_child(ui.workout_list, selected_exercise_index);
+    if (target != NULL)
+    {
+        lv_obj_scroll_to_view(target, LV_ANIM_ON);
+    }
+}
+
 static void update_workout_name_label(void)
 {
     if (selected_exercise_index >= WORKOUT_COUNT) return;
@@ -573,9 +685,9 @@ static void apply_circular_layout(lv_obj_t *list)
     {
         if (workout_icons[i] == NULL) continue;
 
+        /* 不做 ±π wraparound：items 走過 ±90° 就直接隱藏，
+         * 不會繞到另一側出現（避免列表循環）*/
         float current_angle = (float)i * angle_per_slot - offset_angle;
-        while (current_angle > M_PI) current_angle -= 2.0f * M_PI;
-        while (current_angle <= -M_PI) current_angle += 2.0f * M_PI;
         float abs_angle = fabsf(current_angle);
 
         if (abs_angle < min_abs_angle)
@@ -765,6 +877,23 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
                                 lv_color_hex(0xFFFFFF), 0);
     lv_obj_align_to(ui.title_heart_rate_label, heart_icon,
                     LV_ALIGN_OUT_RIGHT_MID, -5, 0);
+
+    /* 右側弧形觸控滾動 overlay：full-screen 透明 obj，但 HIT_TEST 只接受
+     * 右側邊緣弧帶內的觸控；其他位置的 touch 自然 fall-through 到下層的
+     * icons / list */
+    lv_obj_t *arc_zone = lv_obj_create(list_container);
+    lv_obj_set_size(arc_zone, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_align(arc_zone, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_opa(arc_zone, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(arc_zone, 0, 0);
+    lv_obj_set_style_pad_all(arc_zone, 0, 0);
+    lv_obj_clear_flag(arc_zone, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(arc_zone, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(arc_zone, arc_zone_hit_test_cb, LV_EVENT_HIT_TEST, NULL);
+    lv_obj_add_event_cb(arc_zone, arc_zone_pressed_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(arc_zone, arc_zone_pressing_cb, LV_EVENT_PRESSING, NULL);
+    lv_obj_add_event_cb(arc_zone, arc_zone_released_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(arc_zone, arc_zone_released_cb, LV_EVENT_PRESS_LOST, NULL);
 
     return list_container;
 }
