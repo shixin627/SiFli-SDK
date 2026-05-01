@@ -288,17 +288,12 @@ void load_control_app_list(void);
 
 static bool left_hand_mode = true;
 static bool Title_moves_left = false;
-static bool open_action_flag = false;
-static bool is_hidden = false;
 static bool scroll_begin = false;
 static bool open_shock = false;
 static uint8_t app_scroll_target_item = 1;
 static uint16_t selected_item_index = 0;
 static uint16_t old_selected_item_index = 0;
 static uint16_t strict_selected_item_index = 0;
-static lv_obj_t *selected_label;
-static lv_obj_t *app_list_main_status_bar;
-static uint8_t start_app = 0;
 
 static void scroll_list(lv_obj_t *obj);
 extern void scrolling_object(bool open_scrolling_object_flag);
@@ -427,8 +422,6 @@ static void list_item_click_event_cb(lv_event_t *evt)
 	LOG_D("ID: %s", item->app_id);
 	on_item_tap(item);
 }
-
-static bool open_quick_app = false;
 
 static void reset_list(void)
 {

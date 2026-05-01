@@ -138,5 +138,5 @@ static int alarm_request(int argc, char *argv[])
     }
     return 0;
 }
-MSH_CMD_EXPORT(alarm_request, "alarm request")
+MSH_CMD_EXPORT(alarm_request, "alarm request");
 #endif

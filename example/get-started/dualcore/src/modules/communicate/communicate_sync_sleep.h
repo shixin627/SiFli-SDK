@@ -12,7 +12,7 @@ extern "C" {
 void send_sleep_data(void);
 void WristBandSleepDataBlockInit(void);
 bool WristBandSleepDataStore(uint8_t *buf, uint16_t len);
-static bool WristBandSleepDataRestore(uint8_t *buf, uint16_t len);
+bool WristBandSleepDataRestore(uint8_t *buf, uint16_t len);
 
 
 

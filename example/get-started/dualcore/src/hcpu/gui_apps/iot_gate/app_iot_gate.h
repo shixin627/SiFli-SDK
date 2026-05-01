@@ -113,11 +113,6 @@ void reset_iot_gate_widget(void);
  */
 void selection_iot_gate_widget(uint8_t index);
 
-/**
- * @brief Reset widget button background opacity
- */
-void reset_widget_btn_bg(void);
-
 /**********************
  *      MACROS
  **********************/

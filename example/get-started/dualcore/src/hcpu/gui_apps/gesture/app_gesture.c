@@ -1173,19 +1173,6 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
     lv_obj_set_style_border_width(imu_row2, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_radius(imu_row2, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    /* 6Axis data */
-    // lv_obj_t *imu_6axis_container = lv_btn_create(imu_row2);
-    // lv_obj_set_size(imu_6axis_container, LV_PCT(30), 60);
-    // lv_obj_set_style_bg_color(imu_6axis_container, imu_6Axis_data_collection ? lv_color_make(0, 150, 0) : lv_color_make(60, 60, 60), LV_PART_MAIN | LV_STATE_DEFAULT);
-    // lv_obj_set_style_radius(imu_6axis_container, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
-    // lv_obj_add_event_cb(imu_6axis_container, imu_6Axis_data_collection_sw_event_callback, LV_EVENT_CLICKED, NULL);
-
-    // lv_obj_t *imu_6Axis_data_collection_label = lv_label_create(imu_6axis_container);
-    // lv_label_set_text(imu_6Axis_data_collection_label, "6Axis");
-    // lv_obj_set_style_text_font(imu_6Axis_data_collection_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    // lv_obj_set_style_text_color(imu_6Axis_data_collection_label, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    // lv_obj_center(imu_6Axis_data_collection_label);
-
     /* PPG chacked */
     ppg_data_collection = get_open_ppg_chacked();
     lv_obj_t *ppg_container = lv_btn_create(imu_row2);

@@ -532,43 +532,9 @@ static lv_obj_t *find_closest_key(lv_point_t touch_point);
 static void handle_proximity_input(lv_event_t *e);
 static void input_enter_btn_event_cb(lv_event_t *e);
 
-// File list functions
-static void file_item_clicked_cb(lv_event_t *e);
-static void add_file_to_list(const char *file_name, void (*callback)(void));
-static void dummy_file1_callback(void);
-static void dummy_file2_callback(void);
-static void dummy_file3_callback(void);
-
     #if USING_EDGE_BOTTOM_DETECTION
 static void start_multiple_pages_timer(void);
     #endif
-
-// static void update_crosshair_brightness(void)
-// {
-//     if (crosshair_line1 != NULL && crosshair_line2 != NULL)
-//     {
-//         if (user_touching)
-//         {
-//             // Bright color when touching
-//             lv_obj_set_style_bg_color(crosshair_line1,
-//             lv_color_hex(0xCCCCCC),
-//                                       0);
-//             lv_obj_set_style_bg_color(crosshair_line2,
-//             lv_color_hex(0xCCCCCC),
-//                                       0);
-//         }
-//         else
-//         {
-//             // Dim color when not touching
-//             lv_obj_set_style_bg_color(crosshair_line1,
-//             lv_color_hex(0x666666),
-//                                       0);
-//             lv_obj_set_style_bg_color(crosshair_line2,
-//             lv_color_hex(0x666666),
-//                                       0);
-//         }
-//     }
-// }
 
 /**
  * @brief Update cursor position to follow the text
@@ -2439,7 +2405,6 @@ static void inertia_scroll_timer_cb(lv_timer_t *timer)
 static void handle_pressed_event(lv_indev_t *indev)
 {
     user_touching = true;
-    // update_crosshair_brightness();
     press_time = lv_tick_get();
     air_mouse_movement_lock_reset();
 
@@ -2781,7 +2746,6 @@ static void handle_released_event(lv_indev_t *indev)
         }
     }
 
-    // update_crosshair_brightness();
     if (is_gesture_active)
     {
         is_gesture_active = false;
@@ -2861,7 +2825,6 @@ static void top_logo_event_cb(lv_event_t *e)
     {
     case LV_EVENT_PRESSED:
         user_touching = true;
-        // update_crosshair_brightness();
         break;
 
     case LV_EVENT_PRESSING:
@@ -2869,7 +2832,6 @@ static void top_logo_event_cb(lv_event_t *e)
 
     case LV_EVENT_RELEASED:
         user_touching = false;
-        // update_crosshair_brightness();
         break;
 
     case LV_EVENT_CLICKED:
@@ -2999,101 +2961,6 @@ static void handfree_mode_sw_event_callback(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target(e);
     handfree = (lv_obj_get_state(obj) & LV_STATE_CHECKED) ? true : false;
-}
-
-/**
- * @brief File item clicked callback
- * @param e Pointer to the event
- */
-static void file_item_clicked_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED)
-    {
-        lv_obj_t *clicked_obj = lv_event_get_target(e);
-        void (*callback)(void) = (void (*)(void))lv_event_get_user_data(e);
-
-        if (callback)
-        {
-            callback();
-        }
-    }
-}
-
-/**
- * @brief Add file to list
- * @param file_name Name of the file
- * @param callback Callback function when file is clicked
- */
-static void add_file_to_list(const char *file_name, void (*callback)(void))
-{
-    if (file_items_count >= 10)
-    {
-        LOG_E("File list is full!");
-        return;
-    }
-
-    strncpy(file_items[file_items_count].name, file_name,
-            sizeof(file_items[file_items_count].name) - 1);
-    file_items[file_items_count]
-        .name[sizeof(file_items[file_items_count].name) - 1] = '\0';
-    file_items[file_items_count].callback = callback;
-    file_items_count++;
-
-    // Create visual representation
-    if (file_list)
-    {
-        lv_obj_t *item_container = lv_obj_create(file_list);
-        lv_obj_set_size(item_container, lv_pct(100), 80);
-        lv_obj_set_style_bg_color(item_container, lv_color_hex(0x333333), 0);
-        lv_obj_set_style_bg_opa(item_container, LV_OPA_80, 0);
-        lv_obj_set_style_radius(item_container, 10, 0);
-        lv_obj_set_style_border_width(item_container, 2, 0);
-        lv_obj_set_style_border_color(item_container, lv_color_hex(0x666666),
-                                      0);
-        lv_obj_add_event_cb(item_container, file_item_clicked_cb,
-                            LV_EVENT_CLICKED, callback);
-
-        // Create circular icon placeholder
-        lv_obj_t *icon = lv_obj_create(item_container);
-        lv_obj_set_size(icon, 50, 50);
-        lv_obj_set_style_bg_color(icon, lv_color_hex(0x00AA00), 0);
-        lv_obj_set_style_radius(icon, 25, 0);
-        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 10, 0);
-
-        // Create file name label
-        lv_obj_t *label = lv_label_create(item_container);
-        lv_label_set_text(label, file_name);
-        lv_obj_align_to(label, icon, LV_ALIGN_OUT_RIGHT_MID, 15, 0);
-        lv_obj_set_style_text_color(label, lv_color_white(), 0);
-    }
-}
-
-/**
- * @brief Dummy file 1 callback
- */
-static void dummy_file1_callback(void)
-{
-    LOG_I("Dummy File 1 clicked!");
-    // Here you would handle the file selection
-}
-
-/**
- * @brief Dummy file 2 callback
- */
-static void dummy_file2_callback(void)
-{
-    LOG_I("Dummy File 2 clicked!");
-    // Here you would handle the file selection
-}
-
-/**
- * @brief Dummy file 3 callback
- */
-static void dummy_file3_callback(void)
-{
-    LOG_I("Dummy File 3 clicked!");
-    // Here you would handle the file selection
 }
 
 // Forward declarations for BLE functions

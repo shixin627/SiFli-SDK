@@ -46,7 +46,7 @@ static const uint16_t APP_LIST_ITEMS[] = {
     app_id_weather,
 #endif
 #ifdef APP_ID_MEDIA
-    app_id_media,
+    // app_id_media,
 #endif
 #ifdef APP_ID_HEART_RATE
     // app_id_heart_rate,
@@ -73,7 +73,7 @@ static const uint16_t APP_LIST_ITEMS[] = {
     app_id_photo,
 #endif
 #ifdef APP_ID_GAME_DINOSAUR
-    // app_id_game_dinosaur,
+    app_id_game_dinosaur,
 #endif
 #ifdef APP_ID_NOTE_CHATROOM
     // app_id_note,
@@ -174,7 +174,7 @@ static const char *get_app_list_icon(uint16_t app_id)
     case app_id_alarm:       return IMG_ALARM;
 #endif
 #ifdef APP_ID_SETTING
-    case app_id_setting:     return IMG_SETTINGS;
+    case app_id_setting:     return IMG_SETTINGS_APP;
 #endif
 #ifdef APP_ID_MOUSE
     case app_id_mouse:       return IMG_MOUSE;
@@ -205,7 +205,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     lv_obj_t *container = lv_obj_create(parent);
     lv_obj_set_size(container, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_style_bg_color(container, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(container, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(container, 0, 0);
     lv_obj_set_style_pad_all(container, 0, 0);
     lv_obj_align(container, LV_ALIGN_CENTER, 0, 0);

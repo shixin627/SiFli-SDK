@@ -12,7 +12,7 @@ extern "C" {
 void send_heart_data(void);
 void WristBandHeartDataBlockInit(void);
 bool WristBandHeartRateDataStore(uint8_t *buf, uint16_t len);
-static bool WristBandHeartRateDataRestore(uint8_t *buf, uint16_t len);
+bool WristBandHeartRateDataRestore(uint8_t *buf, uint16_t len);
 void heart_rate_monitor_handler(uint8_t heartRate);
 
 

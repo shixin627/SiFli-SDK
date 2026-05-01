@@ -198,11 +198,6 @@ struct tm *time_to_tm(const time_t *tim_p, struct tm *res, bool utc_mode)
   return time_info;
 }
 
-// struct tm *gmtime_r(const time_t *timep, struct tm *result)
-// {
-//   return time_to_tm(timep, result, true);
-// }
-
 struct tm *_localtime_r(const time_t *timep, struct tm *result)
 {
   return time_to_tm(timep, result, false);

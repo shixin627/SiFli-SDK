@@ -270,10 +270,6 @@ static void act_twist_hdl(uint16 para)
     // LOG_I("======twist_action_callback======\n");
 }
 
-static void gsa_sleep_state_cb(uint16 para)
-{
-}
-
 static usr_prof_t *get_user_profile(void)
 {
     LOG_I("[get_user_profile] gender:%d age:%d height:%d weight:%d\r\n", user_profile.gender,

@@ -49,7 +49,6 @@
 #include "app_mainmenu.h"
 #include "common_widget.h"
 #include "bloc_control.h"
-#include "lvgl/lvgl.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdint.h>

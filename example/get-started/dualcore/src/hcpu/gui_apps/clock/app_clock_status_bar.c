@@ -777,15 +777,18 @@ static void set_dnd_mode(bool dnd_mode)
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
         watch_system_interact(WATCH_DND_MODE_SET, &dndmode_enabled);
 #endif
-        if (dndmode_enabled)
+        if (dnd_mode_btn != NULL)
         {
-            lv_obj_set_style_bg_opa(dnd_mode_btn, LV_OPA_90, 0);
-            lv_obj_set_style_bg_color(dnd_mode_btn, APP_MAIN_COLOR, 0);
-        }
-        else
-        {
-            lv_obj_set_style_bg_opa(dnd_mode_btn, LV_OPA_10, 0);
-            lv_obj_set_style_bg_color(dnd_mode_btn, lv_color_hex(0xFFFFFF), 0);
+            if (dndmode_enabled)
+            {
+                lv_obj_set_style_bg_opa(dnd_mode_btn, LV_OPA_90, 0);
+                lv_obj_set_style_bg_color(dnd_mode_btn, APP_MAIN_COLOR, 0);
+            }
+            else
+            {
+                lv_obj_set_style_bg_opa(dnd_mode_btn, LV_OPA_10, 0);
+                lv_obj_set_style_bg_color(dnd_mode_btn, lv_color_hex(0xFFFFFF), 0);
+            }
         }
     }
 }
@@ -1086,24 +1089,40 @@ extern void build_media_contorll_widget(app_media_t *p_app_media,
 extern lv_obj_t *lv_media_widget_builder(lv_obj_t *parent);
 static lv_obj_t *tools[9] = {NULL};
 static lv_obj_t *control_center_window;
+static lv_obj_t *control_center_app_list = NULL;
 static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 {
     control_center_window = lv_obj_create(parent);
     lv_obj_set_size(control_center_window, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_scrollbar_mode(control_center_window, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_add_flag(control_center_window, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_scroll_dir(control_center_window, LV_DIR_VER);
+    lv_obj_clear_flag(control_center_window, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(control_center_window, LV_COLOR_WHITE,
                               LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(control_center_window, LV_OPA_0,
                             LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(control_center_window, 0, 0);
+    lv_obj_set_style_pad_all(control_center_window, 0, 0);
 
-    lv_obj_t *bar =
-        lv_bar_create(control_center_window); // Create a progress bar
-    lv_bar_set_range(bar, 0, 100); // Set the range of the progress bar
-    lv_obj_set_width(bar, LV_PCT(70));
-    lv_obj_set_height(bar, 80);
-    lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 100);
+    /* App list grid (full size, scrollable) */
+    extern lv_obj_t *lv_app_list_layout_create(lv_obj_t * parent);
+    lv_obj_t *app_list = lv_app_list_layout_create(control_center_window);
+    control_center_app_list = app_list;
+
+    /* Shift app cells down so the brightness bar fits at the top of content */
+    const lv_coord_t bar_offset = 120;
+    uint32_t child_count = lv_obj_get_child_cnt(app_list);
+    for (uint32_t i = 0; i < child_count; i++)
+    {
+        lv_obj_t *child = lv_obj_get_child(app_list, i);
+        lv_obj_set_y(child, lv_obj_get_y(child) + bar_offset);
+    }
+
+    /* Brightness bar inside the scrollable app list — scrolls with content */
+    const lv_coord_t bar_w = LV_HOR_RES * 70 / 100;
+    lv_obj_t *bar = lv_bar_create(app_list);
+    lv_bar_set_range(bar, 0, 100);
+    lv_obj_set_size(bar, bar_w, 80);
+    lv_obj_set_pos(bar, (LV_HOR_RES - bar_w) / 2, 40);
     lv_obj_set_style_bg_color(bar, APP_MAIN_COLOR, LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(bar, APP_MAIN_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(bar, LV_OPA_90, LV_PART_INDICATOR);
@@ -1115,123 +1134,25 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     lv_obj_align(icon, LV_ALIGN_LEFT_MID, 20, 0);
     brightness_bar = bar;
 
-    lv_obj_t *control_center_bottom = lv_obj_create(control_center_window);
-    lv_obj_set_size(control_center_bottom, LV_HOR_RES, LV_VER_RES);
-    // lv_obj_set_scrollbar_mode(control_center_bottom, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_bg_color(control_center_bottom, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(control_center_bottom, LV_OPA_0, 0);
-    lv_obj_align_to(control_center_bottom, bar, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-
-    // 2 * N
-    // - | -
-    // - | -
-    // - | -
-    // setting icon
-    // --- Mouse mode button
-    lv_obj_t *calculator_btn =
-        common_image_button(control_center_bottom, CALCULATOR_ICON, 100, 100,
-                            calculator_btn_event_cb);
-    lv_obj_set_style_border_width(calculator_btn, 2, 0);
-    lv_obj_set_style_border_color(calculator_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(calculator_btn, LV_OPA_0, 0);
-    lv_obj_set_style_bg_opa(calculator_btn, LV_OPA_10, 0);
-    lv_obj_align(calculator_btn, LV_ALIGN_TOP_LEFT, 70, 0);
-    tools[0] = calculator_btn;
-
-    lv_obj_t *recorder_btn = common_image_button(
-        control_center_bottom, &micro_icon, 100, 100, recorder_btn_event_cb);
-    lv_obj_set_style_border_width(recorder_btn, 2, 0);
-    lv_obj_set_style_border_color(recorder_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(recorder_btn, LV_OPA_0, 0);
-    lv_obj_align(recorder_btn, LV_ALIGN_TOP_RIGHT, -70, 0);
-    tools[2] = recorder_btn;
-
-    lv_obj_t *flishlight_btn =
-        common_image_button(control_center_bottom, FLISHLIGHT_ICON, 100, 100,
-                            flishlight_icon_event_cb);
-    lv_obj_set_style_border_width(flishlight_btn, 2, 0);
-    lv_obj_set_style_border_color(flishlight_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(flishlight_btn, LV_OPA_0, 0);
-    lv_obj_align(flishlight_btn, LV_ALIGN_TOP_MID, 0, 0);
-    tools[1] = flishlight_btn;
-
-    // setting icon (bottom left)
-    lv_obj_t *setting_icon = common_image_button(
-        control_center_bottom, IMG_SETTINGS, 100, 100, setting_icon_event_cb);
-    lv_obj_set_style_border_width(setting_icon, 2, 0);
-    lv_obj_set_style_border_color(setting_icon, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(setting_icon, LV_OPA_0, 0);
-    lv_obj_align_to(setting_icon, calculator_btn, LV_ALIGN_OUT_BOTTOM_MID, 0,
-                    15);
-    lv_obj_set_style_bg_opa(setting_icon, LV_OPA_10, 0);
-    lv_obj_set_style_bg_color(setting_icon, lv_color_hex(0xFFFFFF), 0);
-    tools[3] = setting_icon;
-
-    // --- QRcode button
-    lv_obj_t *qrcode_btn = common_image_button(
-        control_center_bottom, ICON_QRCODE, 100, 100, qrcode_btn_event_cb);
-    lv_obj_set_style_border_width(qrcode_btn, 2, 0);
-    lv_obj_set_style_border_color(qrcode_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(qrcode_btn, LV_OPA_0, 0);
-    lv_obj_align_to(qrcode_btn, flishlight_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
-    tools[4] = qrcode_btn;
-
-    // --- Dont disturb mode button
-    dndmode_enabled = SkaiWatchSys.DNDMode.config.status;
-    dnd_mode_btn = common_image_button(control_center_bottom, ICON_DND_MODE,
-                                       100, 100, dnd_mode_btn_event_cb);
-    lv_obj_set_style_border_width(dnd_mode_btn, 2, 0);
-    lv_obj_set_style_border_color(dnd_mode_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(dnd_mode_btn, LV_OPA_0, 0);
-    lv_obj_align_to(dnd_mode_btn, recorder_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
-    if (dndmode_enabled)
+    /* Invisible bottom spacer so the last app row isn't clipped at scroll end */
+    lv_coord_t max_bottom = 0;
+    uint32_t total_children = lv_obj_get_child_cnt(app_list);
+    for (uint32_t i = 0; i < total_children; i++)
     {
-        lv_obj_set_style_bg_opa(dnd_mode_btn, LV_OPA_90, 0);
-        lv_obj_set_style_bg_color(dnd_mode_btn, APP_MAIN_COLOR, 0);
+        lv_obj_t *child = lv_obj_get_child(app_list, i);
+        lv_coord_t child_bottom = lv_obj_get_y(child) + lv_obj_get_height(child);
+        if (child_bottom > max_bottom)
+        {
+            max_bottom = child_bottom;
+        }
     }
-    else
-    {
-        lv_obj_set_style_bg_opa(dnd_mode_btn, LV_OPA_10, 0);
-        lv_obj_set_style_bg_color(dnd_mode_btn, lv_color_hex(0xFFFFFF), 0);
-    }
-    tools[5] = dnd_mode_btn;
-
-    lv_obj_t *mouse_btn =
-        common_image_button(control_center_bottom, MOUSE_MODE_ICON, 100, 100,
-                            mouse_mode_icon_event_cb);
-    lv_obj_set_style_border_width(mouse_btn, 2, 0);
-    lv_obj_set_style_border_color(mouse_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(mouse_btn, LV_OPA_0, 0);
-    lv_obj_set_style_bg_opa(mouse_btn, LV_OPA_10, 0);
-    lv_obj_set_style_bg_color(mouse_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align_to(mouse_btn, dnd_mode_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 35);
-    tools[6] = mouse_btn;
-
-    // -------------- find phone button
-    lv_obj_t *find_phone_btn = common_image_button(
-        control_center_bottom, FIND_PHONE, 100, 100, find_phone_btn_event_cb);
-    lv_obj_set_style_border_width(find_phone_btn, 2, 0);
-    lv_obj_set_style_border_color(find_phone_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(find_phone_btn, LV_OPA_0, 0);
-    lv_obj_align_to(find_phone_btn, setting_icon, LV_ALIGN_OUT_BOTTOM_MID, 0,
-                    35);
-    tools[7] = find_phone_btn;
-#if !kReleaseMode
-    // Gesture test app
-    lv_obj_t *gesture_test_btn = common_image_button(
-        control_center_bottom, IMG_LOGO, 100, 100, gesture_test_btn_event_cb);
-    lv_obj_set_style_border_width(gesture_test_btn, 2, 0);
-    lv_obj_set_style_border_color(gesture_test_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(gesture_test_btn, LV_OPA_0, 0);
-    lv_obj_align_to(gesture_test_btn, qrcode_btn, LV_ALIGN_OUT_BOTTOM_MID, 0,
-                    35);
-    tools[8] = gesture_test_btn;
-#endif
-
-#ifdef BSP_USING_UI_HANDLER
-    // lvgl_msg_handler.handle_bar_media_play_state = handle_media_play_state;
-    // lvgl_msg_handler.handle_bar_media_title = handle_media_title;
-#endif
+    lv_obj_t *bottom_spacer = lv_obj_create(app_list);
+    lv_obj_set_size(bottom_spacer, 1, 200);
+    lv_obj_set_pos(bottom_spacer, 0, max_bottom);
+    lv_obj_set_style_bg_opa(bottom_spacer, LV_OPA_0, 0);
+    lv_obj_set_style_border_width(bottom_spacer, 0, 0);
+    lv_obj_clear_flag(bottom_spacer, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(bottom_spacer, LV_OBJ_FLAG_SCROLLABLE);
 
     return control_center_window;
 }
@@ -1250,6 +1171,10 @@ static void clean_tools_selection(void)
 }
 static void scroll_control_center_to_top(void)
 {
+    if (control_center_app_list && lv_obj_is_valid(control_center_app_list))
+    {
+        lv_obj_scroll_to_y(control_center_app_list, 0, LV_ANIM_OFF);
+    }
     if (lv_obj_is_valid(control_center_window))
     {
         lv_obj_scroll_to_y(control_center_window, 0, LV_ANIM_OFF);
@@ -1279,7 +1204,10 @@ static void reset_tools_selection(void)
     }
     reset_media_widget();
     button_selection_index = 4;
-    lv_obj_set_style_border_opa(tools[1], LV_OPA_80, 0);
+    if (tools[1] != NULL)
+    {
+        lv_obj_set_style_border_opa(tools[1], LV_OPA_80, 0);
+    }
 }
 
 extern void selection_media_widget(uint8_t index);
@@ -1337,7 +1265,7 @@ static void button_selection(gesture_position_t gesture_position)
     motor_pattern_scrolling_app();
     LOG_D("button_selection_index: %d", button_selection_index);
     clean_tools_selection();
-    if (category > 2)
+    if (category > 2 && tools[category - 3] != NULL)
     {
         lv_obj_set_style_border_opa(tools[category - 3], LV_OPA_80, 0);
     }
@@ -1413,47 +1341,6 @@ static lv_obj_t *pages[5];
 static bool test_mode = false;
 void open_test_mode(bool open)
 {
-    // test_mode = open;
-    // for (int i = 0; i < 5; i++)
-    // {
-    //     if (open)
-    //     {
-    //         if (lv_obj_is_valid(pages[i]))
-    //             lv_obj_set_style_bg_opa(pages[i], LV_OPA_50,
-    //                                     LV_PART_MAIN | LV_STATE_DEFAULT);
-    //     }
-    //     else
-    //     {
-    //         if (lv_obj_is_valid(pages[i]))
-    //             lv_obj_set_style_bg_opa(pages[i], LV_OPA_TRANSP,
-    //                                     LV_PART_MAIN | LV_STATE_DEFAULT);
-    //     }
-    // }
-    // // for (int i = 0; i < 4; i++)
-    // // {
-    // if (open)
-    // {
-    //     if (lv_obj_is_valid(status_bar_area_left))
-    //         lv_obj_set_style_bg_opa(status_bar_area_left, LV_OPA_50, 0);
-    //     if (lv_obj_is_valid(status_bar_area_right))
-    //         lv_obj_set_style_bg_opa(status_bar_area_right, LV_OPA_50, 0);
-    //     if (lv_obj_is_valid(status_bar_area_up))
-    //         lv_obj_set_style_bg_opa(status_bar_area_up, LV_OPA_50, 0);
-    //     if (lv_obj_is_valid(status_bar_area_down))
-    //         lv_obj_set_style_bg_opa(status_bar_area_down, LV_OPA_50, 0);
-    // }
-    // else
-    // {
-    //     if (lv_obj_is_valid(status_bar_area_left))
-    //         lv_obj_set_style_bg_opa(status_bar_area_left, LV_OPA_TRANSP, 0);
-    //     if (lv_obj_is_valid(status_bar_area_right))
-    //         lv_obj_set_style_bg_opa(status_bar_area_right, LV_OPA_TRANSP, 0);
-    //     if (lv_obj_is_valid(status_bar_area_up))
-    //         lv_obj_set_style_bg_opa(status_bar_area_up, LV_OPA_TRANSP, 0);
-    //     if (lv_obj_is_valid(status_bar_area_down))
-    //         lv_obj_set_style_bg_opa(status_bar_area_down, LV_OPA_TRANSP, 0);
-    // }
-    // }
     watch_sys_sync.set_debug_mode(open);
 }
 
@@ -2452,14 +2339,6 @@ void app_clock_device_change_bar_init(lv_obj_t *par)
         lv_obj_align(dev_bg, LV_ALIGN_CENTER, 0, 0);
         lv_obj_clear_flag(dev_bg, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_style_pad_all(dev_bg, 0, 0);
-
-        // Title
-        // lv_obj_t *title_label = lv_label_create(dev_bg);
-        // lv_label_set_text(title_label, "Devices");
-        // lv_obj_set_style_text_color(title_label, lv_color_hex(0xFFFFFF), 0);
-        // lv_obj_set_width(title_label, LV_PCT(100));
-        // lv_obj_set_style_text_align(title_label, LV_TEXT_ALIGN_CENTER, 0);
-        // lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 15);
 
         // Content area under title keeps the button layout in flex mode.
         content_area = lv_obj_create(dev_bg);

@@ -119,44 +119,6 @@ bool activity_sessions_prv_is_sleep_activity(ActivitySessionType activity_type)
 }
 
 // ------------------------------------------------------------------------------------
-// Return true if this is a valid activity session
-static bool prv_is_valid_activity_session(ActivitySession *session)
-{
-    // Make sure the type is valid
-    switch (session->type)
-    {
-    case ActivitySessionType_Sleep:
-    case ActivitySessionType_RestfulSleep:
-    case ActivitySessionType_Nap:
-    case ActivitySessionType_RestfulNap:
-    case ActivitySessionType_Walk:
-    case ActivitySessionType_Run:
-    case ActivitySessionType_Open:
-        break;
-    case ActivitySessionType_None:
-    case ActivitySessionTypeCount:
-        LOG_W("Invalid activity type: %d", (int)session->type);
-        return false;
-    }
-
-    // The length must be reasonable
-    if (session->length_min > ACTIVITY_SESSION_MAX_LENGTH_MIN)
-    {
-        LOG_W("Invalid duration: %d", session->length_min);
-        return false;
-    }
-
-    // The flags must be valid
-    if (session->reserved != 0)
-    {
-        LOG_W("Invalid flags: %d", (int)session->reserved);
-        return false;
-    }
-
-    return true;
-}
-
-// ------------------------------------------------------------------------------------
 // Return true if two activity sessions are equal in their type and start time
 // @param[in] session_a ptr to first session
 // @param[in] session_b ptr to second session

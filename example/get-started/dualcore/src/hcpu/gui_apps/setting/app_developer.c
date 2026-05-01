@@ -132,8 +132,6 @@ static void fps_cpu_load_switch_event_callback(lv_event_t *e);
 static void EPIC_switch_event_callback(lv_event_t *e);
 static void fs_test_callback(lv_event_t *e);
 static void fs_update_info_cb(lv_timer_t *timer);
-static void fs_test_callback(lv_event_t *e);
-static void fs_update_info_cb(lv_timer_t *timer);
 
 // indicates whether data collection from an Inertial Measurement Unit (IMU) is active or enabled.
 // indicates whether raw data collection from the IMU is active or enabled.

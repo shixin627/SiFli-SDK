@@ -598,66 +598,11 @@ static void create_indicator_dots(lv_obj_t *parent)
     update_indicator_dots_position(37);
 }
 
-// static void create_ai_hint_icon(lv_obj_t *parent)
-// {
-//     if (p_instruction_list_layout == NULL)
-//         return;
-
-//     lv_obj_t *ai_hint_bg = lv_obj_create(parent);
-//     lv_obj_set_size(ai_hint_bg, 80, 80);
-//     lv_obj_set_style_radius(ai_hint_bg, 80, 0);
-//     lv_obj_set_style_bg_color(ai_hint_bg, lv_color_hex(0x000000), 0);
-//     lv_obj_set_style_bg_opa(ai_hint_bg, LV_OPA_100, 0);
-//     lv_obj_align(ai_hint_bg, LV_ALIGN_RIGHT_MID, 93, 0);
-//     lv_obj_set_style_border_width(ai_hint_bg, 2, 0);
-//     lv_obj_set_style_border_color(ai_hint_bg, lv_color_hex(0xFFFFFF), 0);
-//     lv_obj_set_style_border_opa(ai_hint_bg, LV_OPA_0, 0);
-//     p_instruction_list_layout->p_instruction_list_ai_bg = ai_hint_bg;
-//     lv_obj_t *ai_hint_icon = lv_img_create(ai_hint_bg);
-//     lv_img_set_src(ai_hint_icon, SMALL_IMG_LOGO_MATTING);
-//     lv_obj_align(ai_hint_icon, LV_ALIGN_CENTER, 0, 0);
-//     p_instruction_list_layout->p_instruction_list_ai_icon = ai_hint_icon;
-
-//     LOG_D("AI hint icon created");
-// }
-
 extern void tap_on_ai_hint(void);
 static bool is_open_ai_gesture = false;
 static lv_obj_t *ai_voice_btn = NULL;
 static lv_obj_t *ai_voice_send_icon = NULL;
 static lv_obj_t *ai_gaus_bg = NULL;
-// void set_ai_hint_x(uint8_t x)
-// {
-//     lv_obj_align(p_instruction_list_layout->p_instruction_list_ai_bg,
-//     LV_ALIGN_RIGHT_MID,
-//                  -x + 93, 0);
-//     if (x > 85)
-//     {
-//         set_paused_control_with_arm(true);
-//         lv_obj_set_style_border_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
-//                                     LV_OPA_COVER, 0);
-//         lv_obj_set_style_img_opa(p_instruction_list_layout->p_instruction_list_ai_icon,
-//                                  LV_OPA_COVER, 0);
-//         if (!is_open_ai_gesture)
-//         {
-//             motor_pattern_unlocked();
-//             is_open_ai_gesture = true;
-//             tap_on_ai_hint();
-//         }
-//     }
-//     else
-//     {
-//         set_paused_control_with_arm(false);
-//         lv_obj_set_style_border_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
-//                                     LV_OPA_0, 0);
-//         lv_obj_set_style_img_opa(p_instruction_list_layout->p_instruction_list_ai_icon,
-//                                  LV_OPA_50, 0);
-//         if (is_open_ai_gesture)
-//         {
-//             is_open_ai_gesture = false;
-//         }
-//     }
-// }
 
 void set_indicator_dots_visible(bool visible)
 {
@@ -1016,19 +961,6 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             update_indicator_dots_position(dots_value);
         }
 
-        /* Auto-navigate to app list when scrolled past last item */
-        if (selected_item_index == child_cnt - 1 && last_y_diff < -150 &&
-            rt_tick_get() - last_gohame_time > 500)
-        {
-            if (p_instruction_list_layout != NULL &&
-                p_instruction_list_layout->app_list_tileview != NULL)
-            {
-                last_gohame_time = rt_tick_get();
-                lv_obj_set_tile_id(p_instruction_list_layout->app_list_tileview,
-                                   0, 1, LV_ANIM_ON);
-                LOG_I("Auto-navigate to app list (scroll past bottom)");
-            }
-        }
     }
     if (selected_item_index != old_selected_item_index)
     {
@@ -2704,13 +2636,8 @@ void back_to_instruction_list_btn(void)
 
 bool get_app_list_tileview_page(void)
 {
-    if (p_instruction_list_layout == NULL ||
-        p_instruction_list_layout->app_list_tileview == NULL)
-        return false;
-    // LOG_I("app_list_tileview scroll_y: %d",
-    //       lv_obj_get_scroll_y(p_instruction_list_layout->app_list_tileview));
-    return lv_obj_get_scroll_y(p_instruction_list_layout->app_list_tileview) ==
-           0;
+    /* App list tileview was removed; the instruction list is the only page. */
+    return true;
 }
 
 lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
@@ -2736,33 +2663,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 
     load_instruction_list();
 
-    /* Create vertical tileview: tile(0,0)=instruction list, tile(0,1)=app grid
-     */
-    lv_obj_t *main_tileview = lv_tileview_create(parent);
-    p_instruction_list_layout->app_list_tileview = main_tileview;
-    lv_obj_set_size(main_tileview, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_style_bg_opa(main_tileview, LV_OPA_0, 0);
-    lv_obj_set_scrollbar_mode(main_tileview, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_align(main_tileview, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_event_cb(main_tileview, app_list_window_scroll_event_cb, LV_EVENT_ALL, NULL);
-
-    lv_obj_t *instr_tile =
-        lv_tileview_add_tile(main_tileview, 0, 0, LV_DIR_BOTTOM);
-    lv_obj_set_style_bg_opa(instr_tile, LV_OPA_0, 0);
-
-    lv_obj_t *app_grid_tile =
-        lv_tileview_add_tile(main_tileview, 0, 1, LV_DIR_TOP);
-    lv_obj_set_style_bg_color(app_grid_tile, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(app_grid_tile, LV_OPA_COVER, 0);
-    p_instruction_list_layout->app_list_tile = app_grid_tile;
-
-    lv_obj_set_tile_id(main_tileview, 0, 0, LV_ANIM_OFF);
-
-    /* Build app grid in tile 1 */
-    extern lv_obj_t *lv_app_list_layout_create(lv_obj_t * parent);
-    lv_app_list_layout_create(app_grid_tile);
-
-    lv_obj_t *p_instruction_list_bg = lv_obj_create(instr_tile);
+    lv_obj_t *p_instruction_list_bg = lv_obj_create(parent);
     p_instruction_list_layout->p_instruction_list_bg = p_instruction_list_bg;
     lv_obj_set_style_bg_opa(p_instruction_list_bg, LV_OPA_0, 0);
     lv_obj_set_size(p_instruction_list_bg, LV_HOR_RES, LV_VER_RES);
@@ -2788,34 +2689,6 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 
     // 創建指示點
     create_indicator_dots(p_instruction_list_bg);
-
-    /* "Go to App List" button at bottom center */
-    {
-        lv_obj_t *app_list_btn = lv_obj_create(p_instruction_list_bg);
-        lv_obj_set_size(app_list_btn, 120, 36);
-        lv_obj_set_style_radius(app_list_btn, 18, 0);
-        lv_obj_set_style_bg_color(app_list_btn, lv_color_hex(0x333333), 0);
-        lv_obj_set_style_bg_opa(app_list_btn, LV_OPA_80, 0);
-        lv_obj_set_style_border_width(app_list_btn, 1, 0);
-        lv_obj_set_style_border_color(app_list_btn, lv_color_hex(0x666666), 0);
-        lv_obj_set_style_border_opa(app_list_btn, LV_OPA_60, 0);
-        lv_obj_align(app_list_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
-        lv_obj_add_flag(app_list_btn, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_clear_flag(app_list_btn, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_event_cb(app_list_btn, go_to_app_list_btn_cb,
-                            LV_EVENT_CLICKED, NULL);
-
-        // lv_obj_t *arrow_label = lv_label_create(app_list_btn);
-        // lv_label_set_text(arrow_label, "Apps list");
-        // lv_obj_set_style_text_color(arrow_label, lv_color_hex(0xCCCCCC), 0);
-        // lv_obj_set_style_text_font(arrow_label,
-        // LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-        // lv_obj_center(arrow_label);
-
-        lv_obj_t *arrow_img = lv_img_create(app_list_btn);
-        lv_img_set_src(arrow_img, &menu_icon);
-        lv_obj_align(arrow_img, LV_ALIGN_CENTER, 0, 0);
-    }
 
     lv_obj_t *ai_bar = lv_obj_create(p_instruction_list_bg);
     lv_obj_set_size(ai_bar, 80, LV_VER_RES);
