@@ -1,6 +1,6 @@
 {
-    "version": "1.1.37",
-    "description": "修復已知藍芽廣播失效的問題",
+    "version": "1.1.38",
+    "description": "修復已知問題",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
