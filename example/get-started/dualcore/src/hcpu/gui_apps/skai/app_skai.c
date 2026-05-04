@@ -722,7 +722,7 @@ void set_skai_widget_processing_text(const char *text)
     lv_obj_update_layout(skai_widget_ai_reply);
 }
 
-/* Show "AI處理中..." below the input box so the user gets immediate feedback
+/* Show "AI processing..." below the input box so the user gets immediate feedback
    after tapping send. Replaced by the real reply on the first chunk. */
 void set_skai_widget_awaiting_ai(void)
 {
@@ -732,7 +732,7 @@ void set_skai_widget_awaiting_ai(void)
         return;
     }
     skai_widget_awaiting_first_chunk = true;
-    lv_label_set_text(skai_widget_ai_reply, "AI處理中...");
+    lv_label_set_text(skai_widget_ai_reply, "AI processing...");
     if (lv_obj_has_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN))
     {
         lv_obj_clear_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
@@ -753,7 +753,7 @@ void append_skai_widget_ai_reply(const char *text)
     {
         lv_obj_clear_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
     }
-    /* First real chunk replaces the "AI處理中..." placeholder. */
+    /* First real chunk replaces the "AI processing..." placeholder. */
     if (skai_widget_awaiting_first_chunk)
     {
         lv_label_set_text(skai_widget_ai_reply, "");

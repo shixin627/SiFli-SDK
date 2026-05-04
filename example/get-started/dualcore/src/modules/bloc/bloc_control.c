@@ -701,13 +701,6 @@ void notify_launcher_action(uint8_t action)
 	lvgl_send_msg(msg);
 #endif
 }
-static void trigger_tap_event(void)
-{
-#ifdef BSP_USING_UI_HANDLER
-	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_TAP_EVENT};
-	lvgl_send_msg(msg);
-#endif
-}
 
 static void send_remote_control_event(uint8_t action)
 {
@@ -1042,7 +1035,6 @@ static int bloc_control_provider_register(void)
 {
 	control_provider.notify_pageview_action = notify_pageview_action;
 	control_provider.notify_unit_test_action = test_all;
-	control_provider.trigger_tap_event = trigger_tap_event;
 	control_provider.trigger_longpress_event = trigger_longpress_event;
 	control_provider.trigger_back_event = trigger_back_event;
 	control_provider.trigger_finger_event = trigger_finger_event;

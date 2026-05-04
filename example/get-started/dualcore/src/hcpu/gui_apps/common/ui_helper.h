@@ -144,15 +144,12 @@ extern "C"
         lv_obj_t *speech_input;
         // lv_obj_t *speech_interact_button;
         lv_obj_t *speech_skai_reply;
-        lv_obj_t *speech_widget;
-        lv_obj_t *selection_tips;
         lv_obj_t *speech_wait_indicator;
         lv_obj_t *ai_status_label;
         lv_obj_t *ai_tap_hint_bg;
         lv_obj_t *ai_icon_hint_bg;
         // lv_obj_t *flow_panel;
         lv_obj_t *ai_response_options;
-        void *data_model;
         app_speech_ripple_t speech_ripple[4];
     } app_gesture_indicator_t;
     /// APP system interface
@@ -162,7 +159,6 @@ extern "C"
     extern void unknown_indicator_create(app_gesture_indicator_t *indicator);
     extern void unknown_indicator_hidden(app_gesture_indicator_t *indicator);
     extern void voice_recognition_hint_bg_show(app_gesture_indicator_t *indicator);
-    extern void create_ai_reply_widget(app_gesture_indicator_t *indicator, lv_obj_t *(*widget_builder)(lv_obj_t *parent, void *data));
     extern void wait_for_ai_reply_message(void);
     extern void voice_recognition_hint_hidden(app_gesture_indicator_t *indicator);
     extern void refresh_ai_reply_message(char *new_text);
@@ -171,7 +167,6 @@ extern "C"
     extern void ai_icon_hint_builder(void *par, app_gesture_indicator_t *indicator);
     extern void voice_recognition_hint_create(app_gesture_indicator_t *indicator);
     extern void quick_ai_hint_hidden(app_gesture_indicator_t *indicator);
-    extern void update_ai_process_indicator_by_tool(app_gesture_indicator_t *indicator, LangchainToolKey tool_key, bool is_active);
     extern void show_speech_indicator(bool show);
     extern void show_ai_processing_indicator(bool show);
     extern void handle_download_progress_update(int progress);

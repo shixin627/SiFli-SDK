@@ -390,14 +390,6 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         }
         break;
 
-        // case LVGL_MSG_TYPE_TAP_EVENT:
-        //     if (lvgl_msg_handler.handle_tap_event)
-        //     {
-        //         lvgl_msg_handler.handle_tap_event();
-        //         trigger_activity();
-        //     }
-        //     break;
-
     case LVGL_MSG_TYPE_UNGRAB_EVENT:
         if (lvgl_msg_handler.handle_ungrab_event)
         {
@@ -451,7 +443,6 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         toggle_ungrab_indicator(gui_app_get_gesture_indicator(),
                                 msg->data.gesture);
 #endif
-        trigger_activity();
     }
     break;
 
@@ -525,81 +516,6 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         voice_recognition_hint_hidden(gui_app_get_gesture_indicator());
         break;
     }
-
-    case LVGL_MSG_TYPE_CREATE_SPEECH_WIDGET:
-    {
-        uint8_t action = msg->data.action;
-        if (action == WeatherTool)
-        {
-            gui_app_get_gesture_indicator()->data_model = get_temp_weather();
-            create_ai_reply_widget(gui_app_get_gesture_indicator(),
-                                   lv_weather_object_builder);
-            update_ai_process_indicator_by_tool(gui_app_get_gesture_indicator(),
-                                                WeatherTool, false);
-        }
-#ifdef APP_ID_CALENDAR
-        else if (action == CalendarQueryTool)
-        {
-            gui_app_get_gesture_indicator()->data_model = get_temp_calendar();
-            create_ai_reply_widget(gui_app_get_gesture_indicator(),
-                                   lv_calendar_object_builder);
-            update_ai_process_indicator_by_tool(gui_app_get_gesture_indicator(),
-                                                CalendarQueryTool, false);
-        }
-        else if (action == CalendarCreateTool)
-        {
-            gui_app_get_gesture_indicator()->data_model = get_temp_calendar();
-            create_ai_reply_widget(gui_app_get_gesture_indicator(),
-                                   lv_calendar_object_builder);
-            update_ai_process_indicator_by_tool(gui_app_get_gesture_indicator(),
-                                                CalendarCreateTool, false);
-        }
-#endif
-        else if (action == FinanceTool)
-        {
-            gui_app_get_gesture_indicator()->data_model = get_temp_finance();
-            create_ai_reply_widget(gui_app_get_gesture_indicator(),
-                                   lv_finance_object_builder);
-            update_ai_process_indicator_by_tool(gui_app_get_gesture_indicator(),
-                                                FinanceTool, false);
-        }
-        else if (action == CurrencyConversionTool)
-        {
-            gui_app_get_gesture_indicator()->data_model =
-                get_temp_currency_conversion();
-            create_ai_reply_widget(gui_app_get_gesture_indicator(),
-                                   lv_currency_conversion_object_builder);
-            update_ai_process_indicator_by_tool(gui_app_get_gesture_indicator(),
-                                                CurrencyConversionTool, false);
-        }
-        // else if (action == RagTool)
-        // {
-        //     gui_app_get_gesture_indicator()->data_model = get_temp_rag();
-        //     create_ai_reply_widget(gui_app_get_gesture_indicator(),
-        //     lv_rag_object_builder);
-        //     update_ai_process_indicator_by_tool(gui_app_get_gesture_indicator(),
-        //     RagTool, false);
-        // }
-        // else if (action == WebPageTool)
-        // {
-        //     gui_app_get_gesture_indicator()->data_model =
-        //     get_temp_web_page();
-        //     create_ai_reply_widget(gui_app_get_gesture_indicator(),
-        //     lv_web_page_object_builder);
-        //     update_ai_process_indicator_by_tool(gui_app_get_gesture_indicator(),
-        //     WebPageTool, false);
-        // }
-        // else if (action == WebSearchTool)
-        // {
-        //     gui_app_get_gesture_indicator()->data_model =
-        //     get_temp_web_search();
-        //     create_ai_reply_widget(gui_app_get_gesture_indicator(),
-        //     lv_web_search_object_builder);
-        //     update_ai_process_indicator_by_tool(gui_app_get_gesture_indicator(),
-        //     WebSearchTool, false);
-        // }
-    }
-    break;
 
     case LVGL_MSG_TYPE_UPDATE_PROCESS_TOOLKIT:
     {

@@ -131,7 +131,6 @@ extern "C"
         /***** [test] Remote control launcher ******/
         LVGL_MSG_TYPE_LAUNCHER_ACTION,
         /***** virtual gesture event ******/
-        LVGL_MSG_TYPE_TAP_EVENT,
         LVGL_MSG_TYPE_LONGPRESS_EVENT,
         LVGL_MSG_TYPE_UNGRAB_EVENT,
         LVGL_MSG_TYPE_BACK_EVENT,
@@ -145,7 +144,6 @@ extern "C"
         LVGL_MSG_TYPE_WAITING_INDICATOR,
         LVGL_MSG_TYPE_HIDDEN_INDICATOR,
         LVGL_MSG_TYPE_SPEECH_SHOW_BG,
-        LVGL_MSG_TYPE_CREATE_SPEECH_WIDGET,
         LVGL_MSG_TYPE_UPDATE_PROCESS_TOOLKIT,
         /***** Control ******/
         LVGL_MSG_TYPE_GYRO_SCROLL_LIST,
@@ -393,7 +391,6 @@ extern "C"
     extern void reset_lvgl_msg_handler(void);
 
     extern lv_obj_t *open_note_chatroom_ui_app(lv_obj_t *parent);
-    extern void set_selected_object(lv_obj_t *obj);
     extern void open_message_app(const char *notification_id);
     extern void close_message_app(void);
     extern void close_note_chatroom_ui_app(void);

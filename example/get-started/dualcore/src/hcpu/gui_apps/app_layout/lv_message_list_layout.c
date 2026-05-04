@@ -580,7 +580,6 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
     if (old_selected_message_index != selected_message_index)
     {
         selected_message = obj->spec_attr->children[selected_message_index];
-        set_selected_object(obj->spec_attr->children[selected_message_index]);
         // LOG_D("message_OBJ: %p",
         // obj->spec_attr->children[selected_message_index]);
         LOG_D("selected_message_index: %d", selected_message_index);

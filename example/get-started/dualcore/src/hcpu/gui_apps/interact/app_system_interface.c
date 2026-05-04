@@ -551,141 +551,6 @@ static void bad_signal_indicator_hidden(void)
 #define USE_SPEECH_RECOGNITION_HINT
 #ifdef USE_SPEECH_RECOGNITION_HINT
 
-static void delete_ai_reply_widget(app_gesture_indicator_t *indicator)
-{
-    if (indicator->speech_widget && lv_obj_is_valid(indicator->speech_widget))
-    {
-        lv_obj_del(indicator->speech_widget);
-        indicator->speech_widget = NULL;
-    }
-    if (indicator->selection_tips && lv_obj_is_valid(indicator->selection_tips))
-    {
-        lv_obj_del(indicator->selection_tips);
-        indicator->selection_tips = NULL;
-    }
-}
-static app_gesture_indicator_t *widget_indicator;
-static void widget_event_handler(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    static lv_coord_t tips_w;
-    static lv_coord_t tips_h;
-    static lv_coord_t tips_y;
-    switch (code)
-    {
-    case LV_EVENT_PRESSED:
-        lv_obj_clear_flag(widget_indicator->selection_tips, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(widget_indicator->speech_bg, LV_OBJ_FLAG_SCROLLABLE);
-        tips_w = lv_obj_get_width(widget_indicator->selection_tips);
-        tips_h = lv_obj_get_height(widget_indicator->selection_tips);
-        break;
-    case LV_EVENT_PRESSING:
-    {
-        lv_point_t point;
-        lv_indev_t *indev = lv_indev_get_act();
-        if (indev)
-        {
-            lv_indev_get_point(indev, &point);
-            lv_obj_set_pos(widget_indicator->selection_tips, point.x - tips_w / 2, point.y - tips_h / 2);
-            tips_y = point.y - tips_h / 2;
-            // 動態縮放與透明度
-            if (tips_y < 50)
-            {
-                // 計算縮放比例與透明度（y 越小越小）
-                int min_y = 0, max_y = 50;
-                float ratio = (float)(tips_y - min_y) / (max_y - min_y);
-                if (ratio < 0)
-                    ratio = 0;
-                if (ratio > 1)
-                    ratio = 1;
-                uint16_t scale = 256 * ratio; // LVGL縮放256=100%
-                lv_img_set_zoom(widget_indicator->selection_tips, scale);
-                lv_obj_set_style_img_opa(widget_indicator->selection_tips, (lv_opa_t)(255 * ratio), 0);
-                // flow_panel 放大
-                uint16_t flow_scale = 256 + (int)(128 * (1 - ratio)); // 最大放大到1.5倍
-                // lv_img_set_zoom(widget_indicator->flow_panel, flow_scale);
-            }
-            else
-            {
-                // 恢復原狀
-                lv_img_set_zoom(widget_indicator->selection_tips, 256);
-                lv_obj_set_style_img_opa(widget_indicator->selection_tips, 255, 0);
-                // lv_img_set_zoom(widget_indicator->flow_panel, 256);
-            }
-        }
-        break;
-    }
-    case LV_EVENT_RELEASED:
-        lv_obj_add_flag(widget_indicator->selection_tips, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(widget_indicator->speech_bg, LV_OBJ_FLAG_SCROLLABLE);
-        if (tips_y < 50)
-        {
-            LOG_D("sending widget data to flow panel");
-        }
-        break;
-    default:
-        break;
-    }
-    // Handle widget events
-}
-
-void create_ai_reply_widget(app_gesture_indicator_t *indicator, lv_obj_t *(*widget_builder)(lv_obj_t *parent, void *data))
-{
-    if (indicator->speech_bg && lv_obj_is_valid(indicator->speech_bg))
-    {
-        delete_ai_reply_widget(indicator);
-        if (!lv_obj_has_flag(indicator->speech_bg, LV_OBJ_FLAG_HIDDEN))
-        {
-            widget_indicator = indicator;
-            lv_obj_update_layout(indicator->speech_input);
-            indicator->speech_widget = widget_builder(indicator->speech_bg, indicator->data_model);
-            lv_obj_align_to(indicator->speech_widget, indicator->speech_input, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
-
-            // Set elegant background with gradient-like effect using solid colors
-            lv_obj_set_style_bg_color(indicator->speech_widget, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_set_style_bg_opa(indicator->speech_widget, LV_OPA_90, LV_PART_MAIN | LV_STATE_DEFAULT);
-            // lv_obj_set_style_bg_color(indicator->speech_widget, lv_color_make(0xF8, 0xFA, 0xFC), 0);
-            // lv_obj_set_style_bg_opa(indicator->speech_widget, LV_OPA_COVER, 0);
-            lv_obj_set_style_border_color(indicator->speech_widget, lv_color_make(0xE2, 0xE8, 0xF0), 0);
-            lv_obj_set_style_border_width(indicator->speech_widget, 1, 0);
-            lv_obj_set_style_radius(indicator->speech_widget, 20, 0);
-            lv_obj_add_event_cb(indicator->speech_widget, widget_event_handler, LV_EVENT_ALL, NULL);
-            lv_obj_update_layout(indicator->speech_widget);
-
-            extern lv_img_dsc_t *create_widget_snapshot_img(lv_obj_t * target_obj);
-            lv_obj_t *img_obj = lv_img_create(indicator->speech_bg);
-            lv_img_dsc_t *img_dsc = create_widget_snapshot_img(indicator->speech_widget);
-            lv_img_set_src(img_obj, img_dsc);
-            indicator->selection_tips = img_obj;
-            lv_obj_align_to(indicator->selection_tips, indicator->speech_input, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
-            lv_obj_set_style_img_opa(indicator->selection_tips, LV_OPA_50, 0);
-            lv_obj_add_flag(indicator->selection_tips, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-}
-static lv_obj_t *selected_object = NULL;
-void set_selected_object(lv_obj_t *obj)
-{
-    if (obj != NULL && lv_obj_is_valid(obj))
-    {
-        LOG_D("set_selected_object: %p", obj);
-        selected_object = obj;
-    }
-}
-static void catch_obj_to_ai(app_gesture_indicator_t *indicator)
-{
-    delete_ai_reply_widget(indicator);
-    if (!lv_obj_has_flag(indicator->speech_bg, LV_OBJ_FLAG_HIDDEN))
-    {
-        widget_indicator = indicator;
-        lv_obj_update_layout(indicator->speech_input);
-        extern lv_img_dsc_t *create_widget_snapshot_img(lv_obj_t * target_obj);
-        lv_obj_t *catch_obj = lv_img_create(indicator->speech_bg);
-        lv_img_dsc_t *img_dsc = create_widget_snapshot_img(selected_object);
-        lv_img_set_src(catch_obj, img_dsc);
-        lv_obj_align(catch_obj, LV_ALIGN_CENTER, 0, 0);
-    }
-}
 static void speech_user_interact_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
@@ -891,7 +756,6 @@ static void send_msg_to_ai(lv_event_t *e)
     ai_tap_cb();
 }
 
-static bool select_obj_to_ai = false;
 void voice_recognition_hint_builder(void *par, app_gesture_indicator_t *indicator)
 {
     if (indicator->speech_bg)
@@ -985,25 +849,6 @@ void voice_recognition_hint_builder(void *par, app_gesture_indicator_t *indicato
     lv_obj_align_to(ai_reply_text, input_text, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 20);
     indicator->speech_skai_reply = ai_reply_text;
 
-    if (select_obj_to_ai)
-    {
-        lv_obj_t *response_options = lv_obj_create(voice_recognition_hint_bg);
-        lv_obj_set_size(response_options, 350, 100);
-        lv_obj_align_to(response_options, ai_reply_text, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
-        lv_obj_set_style_radius(response_options, 50, 0);
-        lv_obj_set_style_bg_color(response_options, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_bg_opa(response_options, LV_OPA_10, LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_shadow_width(response_options, 30, 0);
-        lv_obj_set_style_shadow_color(response_options, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_shadow_opa(response_options, LV_OPA_0, 0);
-        lv_obj_t *response_options_text = lv_label_create(response_options);
-        lv_label_set_text(response_options_text, "加入行事曆");
-        lv_obj_align(response_options_text, LV_ALIGN_CENTER, 0, 0);
-        lv_obj_set_style_text_font(response_options_text, LV_EXT_FONT_GET(get_system_font_size(0)), LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_text_color(response_options_text, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-        indicator->ai_response_options = response_options;
-        // lv_obj_add_event_cb(response_options, response_options_event_cb, LV_EVENT_CLICKED, indicator);
-    }
     // Initially hide everything
 
     open_ai_prompt_border(indicator, false);
@@ -1127,7 +972,6 @@ void refresh_ai_chat_input_message(char *text)
     {
         in_spire_AI(&gesture_indicator);
     }
-    delete_ai_reply_widget(&gesture_indicator);
     LOG_D("Input message refreshed%d",get_is_open_instruction_list_ai());
 }
 
@@ -1165,20 +1009,10 @@ void update_ai_process_indicator_text(app_gesture_indicator_t *indicator,
     update_ai_process_indicator(indicator, (char *)message, is_active);
 }
 
-void update_ai_process_indicator_by_tool(app_gesture_indicator_t *indicator, LangchainToolKey tool_key, bool is_active)
-{
-    const char *tool_description = get_tool_description(tool_key);
-    update_ai_process_indicator(indicator, (char *)tool_description, is_active);
-}
-
 static lv_timer_t *ai_thinking_timer = NULL;
 
 static void reset_all_interface_states(void)
 {
-    // Reset static variables
-    selected_object = NULL;
-    select_obj_to_ai = false;
-
     // Clean up timers - just check if not NULL before deleting
     if (ai_thinking_timer)
     {
@@ -1235,11 +1069,6 @@ static void reset_all_interface_states(void)
         {
             lv_obj_add_flag(indicator->ai_status_label, LV_OBJ_FLAG_HIDDEN);
             lv_label_set_text(indicator->ai_status_label, "");
-        }
-
-        if (indicator->selection_tips && lv_obj_is_valid(indicator->selection_tips))
-        {
-            lv_obj_add_flag(indicator->selection_tips, LV_OBJ_FLAG_HIDDEN);
         }
     }
 
@@ -1323,14 +1152,7 @@ void refresh_ai_reply_message(char *new_text)
         lv_label_set_text(gesture_indicator.speech_skai_reply, combined_text);
         free(combined_text);
         // Align the reply text
-        if (gesture_indicator.speech_widget && lv_obj_is_valid(gesture_indicator.speech_widget))
-        {
-            lv_obj_align_to(gesture_indicator.speech_skai_reply, gesture_indicator.speech_widget, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
-        }
-        else
-        {
-            lv_obj_align_to(gesture_indicator.speech_skai_reply, gesture_indicator.speech_input, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
-        }
+        lv_obj_align_to(gesture_indicator.speech_skai_reply, gesture_indicator.speech_input, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
         lv_obj_set_style_pad_bottom(gesture_indicator.speech_skai_reply, 60, LV_PART_MAIN);
         lv_obj_update_layout(gesture_indicator.speech_skai_reply);
         set_last_refresh_ai_reply_message_tick(rt_tick_get());
@@ -1434,7 +1256,6 @@ void voice_recognition_hint_create(app_gesture_indicator_t *indicator)
     if (indicator->speech_skai_reply && lv_obj_is_valid(indicator->speech_skai_reply))
     {
         lv_label_set_text(indicator->speech_skai_reply, "");
-        delete_ai_reply_widget(indicator);
         lv_obj_update_layout(indicator->speech_skai_reply);
         lv_obj_align_to(indicator->speech_skai_reply, indicator->speech_input, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
     }
@@ -1462,10 +1283,6 @@ void voice_recognition_hint_create(app_gesture_indicator_t *indicator)
     //     lv_obj_clear_flag(indicator->flow_panel, LV_OBJ_FLAG_HIDDEN);
     //     lv_obj_update_layout(indicator->flow_panel);
     // }
-    if (select_obj_to_ai)
-    {
-        catch_obj_to_ai(indicator);
-    }
     open_ai_tap_hint_bg(false);
     set_ai_hint_bg_pos(0);
     is_on_speech_input_variable = false;
@@ -1541,7 +1358,6 @@ void quick_ai_hint_hidden(app_gesture_indicator_t *indicator)
     lvgl_msg_handler.handle_input_message = NULL;
     lvgl_msg_handler.refresh_message_stream = NULL;
     lvgl_msg_handler.handle_vad_status = NULL;
-    delete_ai_reply_widget(indicator);
     reset_user_speaking_to_ai();
 
     // Reset all states when closing

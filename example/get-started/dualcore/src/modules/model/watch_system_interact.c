@@ -667,16 +667,14 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
 
     case INTERACT_LOGIN:
     {
-        LOG_D("login success");
+        LOG_D("[INTERACT_LOGIN]");
         SkaiWatchSys.flag_field.device_had_logged = true;
-        // send_sys_interact_event(SYS_EVENT_BATT_VOLTAGE);
-        // send_sys_interact_event(SYS_EVENT_BATT_CHARGE);
     }
     break;
 
     case INTERACT_CANCEL_BOND:
     {
-        LOG_D("[INTERACT]Cancel Bond");
+        LOG_D("[INTERACT_CANCEL_BOND]");
         SkaiWatchSys.flag_field.bond_state = false;
         SkaiWatchSys.flag_field.device_had_logged = false;
 

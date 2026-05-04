@@ -102,7 +102,6 @@ extern "C"
     {
         void (*notify_pageview_action)(uint8_t action);
         void (*notify_unit_test_action)(uint8_t action);
-        void (*trigger_tap_event)(void);
         void (*trigger_longpress_event)(void);
         void (*trigger_back_event)(void);
         void (*trigger_finger_event)(uint8_t finger_event);

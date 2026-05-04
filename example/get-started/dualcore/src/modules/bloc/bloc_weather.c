@@ -363,11 +363,6 @@ void handle_ai_reply_weather(char *json, lv_obj_t *parent)
 	parse_weather(json, &temp_weather);
 
 	lv_weather_object_builder(parent, (void *)&temp_weather);
-
-// 	lvgl_msg_t msg;
-// 	msg.type = LVGL_MSG_TYPE_CREATE_SPEECH_WIDGET;
-// 	msg.data.action = WeatherTool;
-// 	lvgl_send_msg(msg);
 }
 
 /**

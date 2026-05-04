@@ -453,10 +453,6 @@ void handle_ai_reply_calendar(char *json, uint8_t action, lv_obj_t *parent)
 #ifdef APP_ID_CALENDAR
 	lv_calendar_object_builder(parent, (void *)&temp_calendar_event);
 #endif
-	// lvgl_msg_t msg;
-	// msg.type = LVGL_MSG_TYPE_CREATE_SPEECH_WIDGET;
-	// msg.data.action = action;
-	// lvgl_send_msg(msg);
 }
 
 void handle_ai_reply_finance(char *json, lv_obj_t *parent)
@@ -470,11 +466,6 @@ void handle_ai_reply_finance(char *json, lv_obj_t *parent)
 	parse_finance(json, &temp_finance);
 
 	lv_finance_object_builder(parent, (void *)&temp_finance);
-
-	// lvgl_msg_t msg;
-	// msg.type = LVGL_MSG_TYPE_CREATE_SPEECH_WIDGET;
-	// msg.data.action = FinanceTool;
-	// lvgl_send_msg(msg);
 }
 
 void handle_ai_reply_currency_conversion(char *json, lv_obj_t *parent)
@@ -488,10 +479,6 @@ void handle_ai_reply_currency_conversion(char *json, lv_obj_t *parent)
 	parse_currency_conversion(json, &temp_currency_conversion);
 
 	lv_currency_conversion_object_builder(parent, (void *)&temp_currency_conversion);
-	// lvgl_msg_t msg;
-	// msg.type = LVGL_MSG_TYPE_CREATE_SPEECH_WIDGET;
-	// msg.data.action = CurrencyConversionTool;
-	// lvgl_send_msg(msg);
 }
 
 void handle_ai_reply_hint(char *json)
