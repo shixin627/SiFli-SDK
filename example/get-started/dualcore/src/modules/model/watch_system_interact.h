@@ -204,7 +204,6 @@ extern void BLE_LOG_E(const char *format, ...);
         WATCH_GESTURE_UNLOCK,
         WATCH_REBOOT,
         STANDBY_WAKEUP,
-        WATCH_POWER_MANAGE,
         WATCH_REQUEST_BATTERY,
         WATCH_REQUEST_CHARGE_STATUS,
 /// Sensors
@@ -228,7 +227,8 @@ extern void BLE_LOG_E(const char *format, ...);
     extern char qrcode_data[256];
 
     extern void *watch_system_interact(INTERACT_Type type, void *pValue);
-    extern void send_sys_interact_event(unsigned int event);
+    extern void ble_app_advertising_start(bool mouse_mode, bool pairing_mode);
+    extern void switch_watch_motion_control_mode(bool enable, bool animation);
     extern bool get_idle_state(void);
     extern void set_idle_state(bool state);
     extern bool is_user_touching_screen(void);

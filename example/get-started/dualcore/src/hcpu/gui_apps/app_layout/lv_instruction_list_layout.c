@@ -49,7 +49,6 @@
 #include "app_mainmenu.h"
 #include "common_widget.h"
 #include "watch_system_interact.h"
-#include "watch_system_core_task.h"
 #include "custom_trans_anim.h"
 #include <math.h>
 #include "ui_helper.h"

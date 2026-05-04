@@ -69,7 +69,6 @@
 #include "constants.h"
 #include "gesture_handler.h"
 #include "watch_system_interact.h"
-#include "watch_system_core_task.h"
 #include "bloc_peripheral.h"
 #include "bloc_setting.h"
 #include "bloc_notification.h"

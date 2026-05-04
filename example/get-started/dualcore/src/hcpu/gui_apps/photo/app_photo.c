@@ -30,7 +30,6 @@
 #include "data_service.h"
 #include "power_manager_service.h"
 #include "data_service_subscriber.h"
-#include "watch_system_core_task.h"
 #include "bloc_peripheral.h"
 #ifdef BSP_USING_UI_HANDLER
     #include "ui_handler.h"

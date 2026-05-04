@@ -68,7 +68,6 @@
 #endif
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
-#include "watch_system_core_task.h"
 
 #define DBG_TAG "app.notification"
 #define DBG_LVL DBG_LOG

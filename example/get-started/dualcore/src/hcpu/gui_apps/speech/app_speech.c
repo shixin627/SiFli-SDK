@@ -55,7 +55,6 @@
 #include "app_mainmenu.h"
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
 #include "watch_system_interact.h"
-#include "watch_system_core_task.h"
 #endif
 #ifdef BSP_USING_UI_HANDLER
 #include "ui_handler.h"

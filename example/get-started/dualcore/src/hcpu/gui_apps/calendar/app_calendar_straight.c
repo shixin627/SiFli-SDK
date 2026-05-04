@@ -45,7 +45,6 @@
 #include "lv_simplified_obj.h"
 #include "lv_ext_resource_manager.h"
 #include "watch_global_data.h"
-#include "watch_system_core_task.h"
 #include "app_mainmenu.h"
 #include "app_clock_main.h"
 #ifdef BSP_USING_GESTURE_HANDLER

@@ -17,7 +17,6 @@
 #include "string.h"
 #include "communicate_sync_pedo.h"
 #include "watch_system_interact.h"
-#include "watch_system_core_task.h"
 #ifdef BSP_USING_MODEL_WATCH_GLOBAL_DATA
     #include "watch_global_data.h"
 #endif

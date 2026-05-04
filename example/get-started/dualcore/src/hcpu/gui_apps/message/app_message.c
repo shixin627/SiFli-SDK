@@ -23,7 +23,6 @@
 #include "app_speech.h"
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
     #include "watch_system_interact.h"
-    #include "watch_system_core_task.h"
 #endif
 
 #define DBG_TAG "app.message"

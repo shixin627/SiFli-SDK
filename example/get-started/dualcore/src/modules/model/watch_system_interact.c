@@ -48,7 +48,6 @@
 #include <stdlib.h>
 #include <board.h>
 #include "watch_system_interact.h"
-#include "watch_system_core_task.h"
 #include "data_service_subscriber.h"
 #include "power_manager_service.h"
 #include "lv_ext_resource_manager.h"
@@ -468,6 +467,7 @@ void motor_pattern_unlocked(void)
     }
 }
 
+#ifdef RGB_LED_CONTROL_PIN
 static void led_pattern_rgb_led_colse(void)
 {
     peripheral_provider.control_rgb_led(false, NULL);
@@ -544,6 +544,7 @@ static void led_pattern_rgb_led_fad_wight(uint8_t brightness)
     };
     peripheral_provider.control_rgb_led(true, &params);
 }
+#endif // RGB_LED_CONTROL_PIN
 
 extern void handle_wakeup_event(void);
 
@@ -896,6 +897,7 @@ static void handle_system_control(INTERACT_Type type, void *pValue)
     case INTERACT_STOP_MOTOR_AND_OLED:
         break;
 
+#ifdef RGB_LED_CONTROL_PIN
     case INTERACT_RGB_LED_OPEN_WRITE:
     {
         led_pattern_rgb_led_open_write(*(uint8_t *)pValue);
@@ -926,6 +928,7 @@ static void handle_system_control(INTERACT_Type type, void *pValue)
         led_pattern_rgb_led_fad_wight(*(uint8_t *)pValue);
         break;
     }
+#endif // RGB_LED_CONTROL_PIN
 #ifdef BSP_USING_BLOC_CONTROL
     case INTERACT_SHOW_MEDIA_TITLE:
     {
@@ -1083,18 +1086,6 @@ static void handle_power_management(INTERACT_Type type, void *pValue)
     {
         SkaiWatchSys.sys_power_status = 0;
         sys_poweron_fsm(SYS_PWRON_EVT_BUTTON_LONG_PRESSED);
-        break;
-    }
-    case WATCH_POWER_MANAGE:
-    {
-        uint8_t target = ((uint8_t *)pValue)[0];
-        uint8_t status = ((uint8_t *)pValue)[1];
-        if (target == 0x01)
-        {
-            LOG_D("[WATCH_POWER_MANAGER] System load switch 3.3v enable:%d",
-                  status);
-            // TODO: enable/disable 3.3v
-        }
         break;
     }
     case WATCH_REQUEST_BATTERY:
@@ -1369,6 +1360,7 @@ static int control_motor(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(control_motor, "control_motor [OPTION] ...");
 
+#ifdef RGB_LED_CONTROL_PIN
 static int control_led(int argc, char *argv[])
 {
     if (argc >= 2)
@@ -1407,6 +1399,7 @@ static int control_led(int argc, char *argv[])
     return 0;
 }
 MSH_CMD_EXPORT(control_led, "control_led [OPTION] ...");
+#endif // RGB_LED_CONTROL_PIN
 
 static int utest_user_speech_intent(int argc, char *argv[])
 {

@@ -54,7 +54,6 @@
 #include "hr_service.h"
 #include "ui_datasrv_subscriber.h"
 #include "app_mainmenu.h"
-#include "watch_system_core_task.h"
 #include "bloc_motion_tracking.h"
 #include "common_widget.h"
 #ifdef BSP_USING_BLOC

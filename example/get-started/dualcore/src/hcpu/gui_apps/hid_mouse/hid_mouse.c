@@ -71,7 +71,6 @@
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
     #include "watch_system_interact.h"
 #endif
-#include "watch_system_core_task.h"
 
 #include "communicate_protocol.h"
 #include "ui_handler.h"

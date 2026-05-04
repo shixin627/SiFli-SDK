@@ -63,7 +63,6 @@
 #include "custom_trans_anim.h"
 #include "common_widget.h"
 #include "watch_global_data.h"
-#include "watch_system_core_task.h"
 #include "ui_handler.h"
 #include "ui_img_helper.h"
 #include "communicate_protocol.h"

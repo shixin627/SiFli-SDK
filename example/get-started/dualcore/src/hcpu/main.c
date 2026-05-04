@@ -34,7 +34,6 @@
 #include "bloc_setting.h"
 #include "bloc_notification.h"
 #include "watch_system_interact.h"
-#include "watch_system_core_task.h"
 #ifdef BSP_USING_UI_HANDLER
     #include "ui_handler.h"
 #endif

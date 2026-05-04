@@ -48,7 +48,6 @@
 #include "common_widget.h"
 #include "app_clock_main.h"
 #include "app_clock_status_bar.h"
-#include "watch_system_core_task.h"
 #include "lvsf_gesture.h"
 #include "lvsf.h"
 #ifdef RT_USING_XIP_MODULE

@@ -51,7 +51,6 @@
 #include "lv_ext_resource_manager.h"
 #include "lv_ex_data.h"
 #include "watch_system_interact.h"
-#include "watch_system_core_task.h"
 #include "app_mainmenu.h"
 #include "common_widget.h"
 #include "custom_trans_anim.h"

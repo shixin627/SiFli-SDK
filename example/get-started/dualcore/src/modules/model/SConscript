@@ -12,7 +12,6 @@ if GetDepend('BSP_USING_MODEL_WATCH_GLOBAL_DATA'):
     src += Glob('watch_global_data.c')
 if GetDepend('BSP_USING_MODEL_WATCH_SYS_INTERACT'):
     src += Glob('watch_system_interact.c')
-    src += Glob('watch_system_core_task.c')
 if GetDepend('BSP_USING_UI_HANDLER'):
     src += Glob('ui_handler.c')
 if GetDepend('BSP_USING_GESTURE_HANDLER'):

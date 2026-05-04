@@ -53,7 +53,6 @@
 #include "lv_ex_data.h"
 #include "common_widget.h"
 #include "app_mainmenu.h"
-#include "watch_system_core_task.h"
 #include "gesture_handler.h"
 #include "watch_global_data.h"
 #ifdef BSP_USING_BLOC

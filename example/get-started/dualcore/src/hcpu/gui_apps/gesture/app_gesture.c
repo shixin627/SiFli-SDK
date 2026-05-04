@@ -26,7 +26,6 @@
 #include "lv_ex_data.h"
 #include "common_widget.h"
 #include "app_mainmenu.h"
-#include "watch_system_core_task.h"
 #include "bloc_control.h"
 #include "bloc_motor.h"
 #include "bloc_peripheral.h"

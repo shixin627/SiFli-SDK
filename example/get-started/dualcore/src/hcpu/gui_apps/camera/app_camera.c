@@ -24,8 +24,9 @@
 #include "ble_hid.h"
 #include "ui_handler.h"
 #include "ui_img_helper.h"
-#include "watch_system_core_task.h"
-
+#ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
+    #include "watch_system_interact.h"
+#endif
 
 #define DBG_TAG "app.camera"
 #define DBG_LVL DBG_LOG
