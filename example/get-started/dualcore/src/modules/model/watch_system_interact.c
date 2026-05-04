@@ -149,9 +149,6 @@ void handle_gesture_unlock(void)
         switch_watch_motion_control_mode(true, false);
         extern void set_open_scrolling_app_flag(bool flag);
         set_open_scrolling_app_flag(true);
-        extern void set_q_vertical_movement_magnification(float mag);
-        set_q_vertical_movement_magnification(5.0f);
-        // motor_pattern_unlocked();
         animate_to_instruction_list();
     }
     else

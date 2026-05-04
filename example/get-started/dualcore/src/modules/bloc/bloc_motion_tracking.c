@@ -4,44 +4,6 @@
  * @author Skaiwalk software development team
  ******************************************************************************
  */
-/**
- * Copyright (c) 2024 - 2025, Skaiwalk Technology
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form, except as embedded into a Skaiwalk
- * integrated circuit in a product or a software update for such product, must
- * reproduce the above copyright notice, this list of conditions and the
- * following disclaimer in the documentation and/or other materials provided
- * with the distribution.
- *
- * 3. The names of Skaiwalk or its contributors may not be used to endorse
- *    or promote products derived from this software without specific prior
- * written permission.
- *
- * 4. This software, with or without modification, must only be used with a
- *    Skaiwalk integrated circuit.
- *
- * 5. Any binary form of this software must not be reverse engineered,
- * decompiled, modified, or disassembled.
- *
- * THIS SOFTWARE IS PROVIDED BY SKAIWALK TECHNOLOGY "AS IS" AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY, NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL SKAIWALK TECHNOLOGY OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- */
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <stdlib.h>
@@ -130,30 +92,14 @@ static bool user_hand_horizontal = false;
 
 // Forward declarations for waveform capture functions
 static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro);
-// static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
-//                                        Vector3 *linear_acce, Vector3 *gyro,
-//                                        Vector3 *gravity, float ppg,
-//                                        waveform_gesture_state_t *state,
-//                                        gesture_type_t type,
-//                                        gesture_dataset_t *dataset);
 #endif // ENABLE_WAVEFORM_CAPTURE
-
-#define ENABLE_SEND_GRAVITY_TO_BLE_CLIENT 0
-
-#define ENABLE_QUICK_ACTION 0
 
 #define MOTION_TRACKING_THREAD_STACK_SIZE 2 * 1024
 #define MOTION_TRACKING_THREAD_PRIORITY 17
 #define MOTION_TRACKING_THREAD_TIMESLICE 10
 
-#define DISPLACEMENT_YAW_THRESHOLD                                             \
-    2.0f                        // 當角度變化超過此值時，才更新一次移動量
-#define DEFAULT_ROTATION_MAG 30 // 水平旋轉操作之放大倍數
 #define STARTED_MOVE_THRESHOLD                                                 \
     4.0f // 當角度變化超過此值時，表示使用者已經開始控制手臂
-#define VOLUME_CONTROL_RATIO 2.0f // 音量控制的放大倍數
-
-extern rt_err_t air_mouse_rx_indicate(void);
 
 static rt_thread_t motion_tracking_thread = RT_NULL;
 
@@ -167,106 +113,6 @@ static bool stop_mouse_move = false;
 #ifdef BSP_USING_AIR_MOUSE
 static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                               Quaternion *prev_quat);
-#endif
-
-#define INIT_OFFSET_Y (LV_VER_RES / 2 + 100)
-
-static float q_vertical_movement_magnification = 1.0;
-void set_q_vertical_movement_magnification(float mag)
-{
-    q_vertical_movement_magnification = mag;
-}
-static void use_q_vertical_movement(float delta_angle)
-{
-    /// **** Simulate air mouse pointer device **** ///
-    air_mouse_rx_indicate();
-    int16_t rotation_magnification =
-        -DEFAULT_ROTATION_MAG * q_vertical_movement_magnification;
-    float displacement_yaw = delta_angle * rotation_magnification;
-    float yaw_threshold =
-        q_vertical_movement_magnification * DISPLACEMENT_YAW_THRESHOLD;
-    if (fabs(delta_angle) > yaw_threshold)
-    {
-        int16_t new_position = INIT_OFFSET_Y + (int16_t)displacement_yaw;
-        setCoordinateY(new_position);
-    }
-}
-
-#if ENABLE_MEDIA_VOLUMN_BAR_CONTROL
-
-static uint8_t volume_control_difference = 0;
-uint8_t get_volume_control_difference(void)
-{
-    return volume_control_difference;
-}
-
-    #define VOLUME_CONTROL_TIMEOUT 200 // 200ms timeout
-static uint8_t vertical_movement_start_volume = 0;
-static uint8_t pevr_volume_control_value = 0;
-
-static rt_timer_t volume_control_timer = RT_NULL;
-
-static void volume_control_timeout_cb(void *parameter)
-{
-    // 在這裡處理超時後的動作
-    volume_control_difference =
-        abs(vertical_movement_start_volume - pevr_volume_control_value) / 2;
-    LOG_D("Volume control timeout %d", volume_control_difference);
-    if (vertical_movement_start_volume > pevr_volume_control_value)
-    {
-        sys_media_event_set(SYS_EVENT_VOLUME_DOWN);
-    }
-    else if (vertical_movement_start_volume < pevr_volume_control_value)
-    {
-        sys_media_event_set(SYS_EVENT_VOLUME_UP);
-    }
-}
-
-static void reset_volume_control_timer(void)
-{
-    if (!volume_control_timer)
-    {
-        // 首次建立計時器
-        volume_control_timer = rt_timer_create(
-            "vol_ctrl_timer", volume_control_timeout_cb, RT_NULL,
-            VOLUME_CONTROL_TIMEOUT, RT_TIMER_FLAG_ONE_SHOT);
-    }
-
-    // 重新啟動計時器
-    rt_timer_stop(volume_control_timer);
-    rt_timer_start(volume_control_timer);
-}
-
-extern uint8_t get_volume_control_value(void);
-extern bool get_volume_control_status(void);
-static uint8_t volume_control_value = 0;
-static void media_use_q_vertical_movement(float delta_angle)
-{
-    /// **** Simulate air mouse pointer device **** ///
-    if (!SkaiWatchSys.connected_to_phone)
-    {
-        reset_volume_control_timer();
-        vertical_movement_start_volume = get_volume_control_value();
-    }
-    float displacement_yaw = delta_angle * VOLUME_CONTROL_RATIO;
-    if ((fabs(delta_angle) > DISPLACEMENT_YAW_THRESHOLD || start_move_flag) &&
-        get_volume_control_status())
-    {
-        int new_volume = get_volume_control_value() + (int16_t)displacement_yaw;
-        new_volume =
-            (new_volume > 100) ? 100 : (new_volume < 0 ? 0 : new_volume);
-        if (abs(new_volume - pevr_volume_control_value) >= 10 ||
-            new_volume == 0 || new_volume == 100)
-        {
-            lvgl_msg_t msg;
-            msg.type = LVGL_MSG_TYPE_VOLUME_CONTROL;
-            msg.data.volume_control = new_volume;
-            LOG_D("msg.data.volume_control:%d", msg.data.volume_control);
-            lvgl_send_msg(msg);
-            pevr_volume_control_value = new_volume;
-        }
-    }
-}
 #endif
 
 #ifdef APP_ID_WIDGETS
@@ -313,62 +159,6 @@ void widget_page_flip(bool is_gravity_x_positive)
 }
 
 #endif // APP_ID_WIDGETS
-
-#define SCROLL_APP_THRESHOLD 200
-static uint8_t move_count = 0;
-static int16_t old_position = 0;
-static int16_t last_scroll_time = 0;
-static void navigation_bar_control_with_quaternion(float delta_angle)
-{
-    /// **** Simulate air mouse pointer device **** ///
-    air_mouse_rx_indicate();
-    int16_t rotation_magnification = -DEFAULT_ROTATION_MAG;
-
-    float displacement_yaw = delta_angle * rotation_magnification;
-    if (fabs(delta_angle) > DISPLACEMENT_YAW_THRESHOLD)
-    {
-        int16_t new_position = (LV_VER_RES / 2) + (int16_t)displacement_yaw;
-    }
-}
-
-// extern void instruction_list_scroll_to_app(bool up);
-// extern void mesage_list_scroll_to_app(bool up);
-// extern void control_instruction_list_scroll_to_app(bool up);
-// static void navigation_bar_control_with_gyro(Vector3 *gyro)
-// {
-//     static float navigation_gyro_z_count = 0;
-//     if (gyro->z > 5 || gyro->z < -5)
-//     {
-//         navigation_gyro_z_count += gyro->z;
-//         if (fabs(navigation_gyro_z_count) > SCROLL_APP_THRESHOLD)
-//         {
-//             last_scroll_time = rt_tick_get_millisecond();
-//             if (navigation_gyro_z_count > 0)
-//             {
-//                 if (is_at_message())
-//                 {
-//                     mesage_list_scroll_to_app(false);
-//                 }
-//                 else if (is_at_instruction_list())
-//                 {
-//                     instruction_list_scroll_to_app(false);
-//                 }
-//             }
-//             else
-//             {
-//                 if (is_at_message())
-//                 {
-//                     mesage_list_scroll_to_app(true);
-//                 }
-//                 else if (is_at_instruction_list())
-//                 {
-//                     instruction_list_scroll_to_app(true);
-//                 }
-//             }
-//             navigation_gyro_z_count = 0;
-//         }
-//     }
-// }
 
 static float total_yaw_energy = 0;
 static uint8_t scroll_segment_count = 1;
@@ -762,13 +552,6 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     {
         return;
     }
-
-    // Check lock conditions
-    // if (motor_provider.get_motor_status())
-    // {
-    // 	reset_gesture_state(dataset, current_time, 1);
-    // 	return;
-    // }
     else if (state->if_watchface_visible == false && !imu_data_collection)
     {
         reset_gesture_state(dataset, current_time, type, 2);
@@ -898,7 +681,8 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     user_hand_horizontal = (gravity->x < 0.9 && gravity->x > -0.4);
 
     // Update watchface visibility
-    if ((gravity->y > -0.7 && gravity->z > -0.6) || app_control_get_mouse_mode())
+    if ((gravity->y > -0.7 && gravity->z > -0.6) ||
+        app_control_get_mouse_mode())
     {
         if (!waveform_gesture_state.if_watchface_visible)
         {
@@ -1285,52 +1069,11 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
 
     // 按住面板才可體感移動，且移動鎖已解除
     if (!mouse_movement_lock && get_hid_mouse_handfree_mode() &&
-        !is_fsr_change_detected() && !switch_freehand_mode && !switch_mouse_scroll_mode) //! stop_mouse_move &&
+        !is_fsr_change_detected() && !switch_freehand_mode &&
+        !switch_mouse_scroll_mode) //! stop_mouse_move &&
                                    //! is_skai_touch_enabled() &&
     {
         report_air_mouse_data(&delta_movement, ts);
-    }
-}
-#endif
-
-#if ENABLE_QUICK_ACTION
-static uint8_t pevr_quick_btn_state = 6;
-static int new_point = 0;
-static uint16_t pevr_point = 0;
-static uint8_t swich_quick_btn = 2; // 0:左icon, 1:上icon, 2:右icon 3:全消失
-static float conversion_ratio = 0.0f;
-static bool close_quick_app = false;
-static void quick_action_process(Vector3 *gravity)
-{
-    if (gravity->x > 0.5 && !is_at_home() &&
-        !gui_app_is_actived(APP_ID_WIDGETS) &&
-        !gui_app_is_actived(APP_ID_MESSAGE) && !is_ai_interface_active())
-    {
-        if (gravity->x < 0.61)
-        {
-            swich_quick_btn = 3;
-            new_point = (gravity->x - 0.5) * 500;
-        }
-        else
-        {
-            swich_quick_btn = 4;
-        }
-    }
-    else
-    {
-        new_point = 0;
-        swich_quick_btn = 0;
-    }
-
-    if (new_point != pevr_point || swich_quick_btn != pevr_quick_btn_state)
-    {
-        lvgl_msg_t msg;
-        msg.type = LVGL_MSG_TYPE_CONTROL_QUICK_BTN;
-        msg.data.quick_btn_action.new_point = new_point;
-        msg.data.quick_btn_action.swich_quick_btn = swich_quick_btn;
-        lvgl_send_msg(msg);
-        pevr_point = new_point;
-        pevr_quick_btn_state = swich_quick_btn;
     }
 }
 #endif
@@ -1421,13 +1164,6 @@ static void app_control_interface(Vector3 *gyro, Vector3 *gravity)
         raw_x = 466;
         if (gyro_z_count == 0)
         {
-            // rt_tick_t current_tick = rt_tick_get();
-            // if (current_tick - last_vibrate_time_at_boundary >=
-            // rt_tick_from_millisecond(MOTOR_INTERVAL_MS))
-            // {
-            // 	last_vibrate_time_at_boundary = current_tick; // Update last log
-            // time 	motor_provider.motor_vibrate_scrolling_app();
-            // }
             gyro_z_count = overflow_threshold;
         }
     }
@@ -1437,13 +1173,6 @@ static void app_control_interface(Vector3 *gyro, Vector3 *gravity)
         raw_x = 0;
         if (gyro_z_count >= (threshold + overflow_threshold) * 2)
         {
-            // rt_tick_t current_tick = rt_tick_get();
-            // if (current_tick - last_vibrate_time_at_boundary >=
-            // rt_tick_from_millisecond(MOTOR_INTERVAL_MS))
-            // {
-            // 	last_vibrate_time_at_boundary = current_tick; // Update last log
-            // time 	motor_provider.motor_vibrate_scrolling_app();
-            // }
             gyro_z_count =
                 (threshold + overflow_threshold) * 2 - overflow_threshold;
         }
@@ -1582,14 +1311,8 @@ void set_gravity_position(int position)
     gravity_position = position;
     if (gravity_position == GRAVITY_POSITION_AI &&
         !SkaiWatchSys.motion_control_lock && !is_at_ai_interface() &&
-        is_at_instruction_list()) // && get_is_at_ai_widget()
+        is_at_instruction_list())
     {
-        // watch_system_interact(INTERACT_MOTOR_VIBRATE_TEST, NULL);
-        // animate_to_ai_page();
-        // is_ai_open_mic = true;
-        // show_speech_indicator(true);
-        // voice_provider.start_v2t();
-        // set_is_open_instruction_list_ai(true);
         motor_pattern_unlocked();
         extern void animate_open_ai_widget(void);
         animate_open_ai_widget();
@@ -1616,9 +1339,7 @@ void set_gravity_position(int position)
 
 void reset_gravity_position(void)
 {
-    LOG_D("reset_gravity_position");
     gravity_position = GRAVITY_POSITION_OTHER;
-
 #ifdef SHOW_UNGRAB_ENABLE_INDICATOR
     lvgl_msg_t msg;
     msg.type = LVGL_MSG_TYPE_RELEASE_INDICATOR;
@@ -1647,8 +1368,6 @@ static bool can_open_ai_interface(void)
         gui_app_is_actived(APP_ID_EXERCISE) ||
         gui_app_is_actived(APP_ID_GESTURE) ||
         gui_app_is_actived(APP_ID_RECORDER) ||
-        // gui_app_is_actived(APP_ID_BATTERY) ||
-        // gui_app_is_actived(APP_ID_MEDIA) ||
         (!is_ai_open_mic && app_voice_get_listening_status()))
     {
         return false;
@@ -1656,7 +1375,6 @@ static bool can_open_ai_interface(void)
     return true;
 }
 
-// extern void set_ai_hint_x(uint8_t x);
 extern void level_bar_update(int16_t value);
 extern bool get_is_open_instruction_list_ai(void);
 static uint8_t pevr_ai_hint_bg_pos = 0;
@@ -1798,15 +1516,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
         return;
     }
     // stop_mouse_move = motion_data->gravity.y < -0.4;
-#if ENABLE_QUICK_ACTIONs
-    if (motion_data->gravity.z > -0.2)
-    {
-        if (!peripheral_provider.get_tap_status())
-        {
-            quick_action_process(&motion_data->gravity);
-        }
-    }
-#endif
 
     extern bool get_enable_tap_and_hold(void);
     if (get_enable_tap_and_hold())
@@ -1833,12 +1542,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
         air_mouse_process(motion_data->timestamp, &motion_data->global_q,
                           &prev_global_quat);
         prev_global_quat = motion_data->global_q;
-        // if (scroll_log_count++ > 10)
-        // {
-        //     scroll_log_count = 0;
-        //     LOG_D("motion_data->gravity: x:%f, y:%f, z:%f", motion_data->gravity.x,
-        //           motion_data->gravity.y, motion_data->gravity.z);
-        // }
         if (motion_data->gravity.z < -0.5f)
         {
             switch_freehand_mode = true;
@@ -1863,10 +1566,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
         {
             scroll_up_mode = true;
         }
-        
-        // LOG_D("air mouse process, global_q: w:%f, x:%f, y:%f, z:%f",
-        // motion_data->global_q.w, motion_data->global_q.x,
-        // motion_data->global_q.y, motion_data->global_q.z);
     }
 #endif
     else
@@ -1880,7 +1579,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
             return;
         }
 
-        // if (!peripheral_provider.get_tap_status())
         if (!is_at_message() && !get_is_open_instruction_list_ai())
         {
             if (motion_data->gravity.x < 0.3 && motion_data->gravity.x > -0.3)
@@ -1892,58 +1590,50 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                 set_paused_control_with_arm(true);
             }
         }
+
+        if (app_control_get_motion_tracking())
         {
-            if (app_control_get_motion_tracking())
+            if (free_control_with_arm() &&
+                !is_at_ai_interface()) //&& !is_user_touching_screen()
             {
-                if (free_control_with_arm() &&
-                    !is_at_ai_interface()) //&& !is_user_touching_screen()
+                // 上下
+                float diff_delta_roll =
+                    fabs(delta_senor_angle.roll - prev_delta_roll);
+                // 左右
+                float diff_delta_yaw =
+                    fabs(delta_senor_angle.yaw - prev_delta_yaw);
+                if (!paused_control_with_arm)
                 {
-                    // 上下
-                    float diff_delta_roll =
-                        fabs(delta_senor_angle.roll - prev_delta_roll);
-                    // 左右
-                    float diff_delta_yaw =
-                        fabs(delta_senor_angle.yaw - prev_delta_yaw);
-                    // navigation_bar_control_with_gyro(&watch_sensor.imu_data.gyro);
-                    // LOG_D("watch_sensor.imu_data.gyrox:%0.5f,y:%0.5f,z:%0.5f",watch_sensor.imu_data.gyro.x,watch_sensor.imu_data.gyro.y,watch_sensor.imu_data.gyro.z);
-                    if (!paused_control_with_arm) //&&
-                                                  // fabs(watch_sensor.imu_data.gyro.x)
-                                                  //< 20
+                    extern bool get_enable_tap_and_hold(void);
+                    if (!get_enable_tap_and_hold() ||
+                        peripheral_provider.get_tap_status())
                     {
-                        extern bool get_enable_tap_and_hold(void);
-                        if (!get_enable_tap_and_hold() ||
-                            peripheral_provider.get_tap_status())
+                        if (diff_delta_roll < diff_delta_yaw * 0.8)
                         {
-                            if (diff_delta_roll < diff_delta_yaw * 0.8) //
-                            // diff_delta_roll < diff_delta_yaw * 0.8 &&
-                            // diff_delta_roll < 0.3f
-                            {
-                                navigation_bar_control_with_euler_angle(
-                                    &delta_senor_angle, motion_data);
-                            }
+                            navigation_bar_control_with_euler_angle(
+                                &delta_senor_angle, motion_data);
                         }
                     }
-                    else
-                    {
-                        set_prev_sensor_quat(total_yaw_energy_uint);
-                    }
-                    prev_delta_roll = delta_senor_angle.roll;
-                    prev_delta_yaw = delta_senor_angle.yaw;
-                    if (open_control_options && !is_at_ai_interface())
-                    {
-                        app_control_interface(&watch_sensor.imu_data.gyro,
-                                              &motion_data->gravity);
-                    }
                 }
-                else if (open_control_options && !is_at_ai_interface())
+                else
+                {
+                    set_prev_sensor_quat(total_yaw_energy_uint);
+                }
+                prev_delta_roll = delta_senor_angle.roll;
+                prev_delta_yaw = delta_senor_angle.yaw;
+                if (open_control_options && !is_at_ai_interface())
                 {
                     app_control_interface(&watch_sensor.imu_data.gyro,
                                           &motion_data->gravity);
                 }
-                // LOG_D("control_options:%d,%d,%d", paused_control_with_arm,
-                // free_control_with_arm(),is_at_ai_interface());
+            }
+            else if (open_control_options && !is_at_ai_interface())
+            {
+                app_control_interface(&watch_sensor.imu_data.gyro,
+                                      &motion_data->gravity);
             }
         }
+
         extern bool get_enable_tap_and_hold(void);
         if (get_enable_tap_and_hold())
         {
@@ -1959,16 +1649,8 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                 }
             }
         }
-
-#if ENABLE_MEDIA_VOLUMN_BAR_CONTROL
-        else if (gui_app_is_actived(APP_ID_MEDIA))
-        {
-            media_use_q_vertical_movement(befor_tap_delta_angle.yaw);
-        }
-#endif
     }
 }
-
 
 #ifdef USING_FSR_ADC_SAMPLER
 /*
