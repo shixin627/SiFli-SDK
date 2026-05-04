@@ -527,11 +527,20 @@ static lv_obj_t *workout_name_labels[WORKOUT_COUNT] = {0};
 
 /* 右側弧形觸控滾動 — 仿 hid_mouse.c 的 left_scroll_active 機制，
  * 但抓螢幕右側邊緣弧帶區域。手指在弧區拖曳時，每移動一個角度增量
- * 就把 list 滾對應的 pixel，可連續沿邊緣滑下/滑上而不需要放開重壓 */
-#define ARC_ZONE_THICKNESS 50          /* 觸控感應環厚度（從螢幕邊往內 px）*/
+ * 就把 list 滾對應的 pixel，可連續沿邊緣滑下/滑上而不需要放開重壓。
+ *
+ * 配合 tap-vs-hold 時間判斷：短點放就轉發 CLICK 給選中 icon（=點擊功能），
+ * 按住超過閾值或有移動才走 arc-scroll。所以 thickness 可以做大一點，
+ * 整顆 icon 都在 band 內也沒關係。 */
+#define ARC_ZONE_THICKNESS 150         /* 觸控感應環厚度（從螢幕邊往內 px）*/
 #define ARC_ZONE_HALF_ANGLE_SIN 0.819f /* sin(55°)，定義右側弧帶的 ±55° 範圍 */
+#define ARC_TAP_THRESHOLD_SQ (12 * 12) /* 12 px：超過這個距離一律算 drag */
+#define ARC_TAP_DURATION_MS 200        /* 按下到放開超過這個時間就算 hold/scroll，不轉發 click */
 static bool arc_scroll_active = false;
 static float arc_last_theta = 0.0f;
+static lv_point_t arc_press_point;
+static uint32_t arc_press_tick = 0;
+static bool arc_motion_detected = false;
 
 static bool is_point_in_right_arc(lv_coord_t x, lv_coord_t y)
 {
@@ -547,25 +556,26 @@ static bool is_point_in_right_arc(lv_coord_t x, lv_coord_t y)
     float max_dy = dist * ARC_ZONE_HALF_ANGLE_SIN;
     if (dy < -max_dy || dy > max_dy) return false;
 
-    /* 排除目前可見 icons 的觸控區，這樣點 icon 仍能正常 click 觸發運動 */
-    for (int i = 0; i < WORKOUT_COUNT; i++)
-    {
-        if (workout_icons[i] == NULL) continue;
-        if (lv_obj_has_flag(workout_icons[i], LV_OBJ_FLAG_HIDDEN)) continue;
-        lv_area_t a;
-        lv_obj_get_coords(workout_icons[i], &a);
-        if (x >= a.x1 && x <= a.x2 && y >= a.y1 && y <= a.y2)
-        {
-            return false;
-        }
-    }
+    /* 不在這裡排除 icon — 排除會讓 band 內絕大多數面積（icon 所在處）變成
+     * 不能 arc-scroll，使用者很容易碰到 icon 後 hit_test 直接 false 而觸發不到。
+     * 改成 arc_zone 一律接走 band 內 press，再在 RELEASED 用 tap-vs-drag 判斷：
+     *   - tap → 用 press 點找出落在哪顆 icon 上，forward CLICKED 給那顆，
+     *           落在 icon 之外的 band 空白處才 fallback 到選中 icon
+     *   - drag → arc-scroll 並 snap-to-center */
     return true;
 }
 
 static void arc_zone_hit_test_cb(lv_event_t *e)
 {
     lv_hit_test_info_t *info = lv_event_get_hit_test_info(e);
-    if (info == NULL || info->point == NULL) return;
+    if (info == NULL) return;
+    if (info->point == NULL)
+    {
+        /* 防呆：info->res 預設為 true，若 point 缺失就讓 arc_zone 不要吃這個 hit，
+         * 否則 arc_zone 會誤吃任何 press */
+        info->res = false;
+        return;
+    }
     info->res = is_point_in_right_arc(info->point->x, info->point->y);
 }
 
@@ -576,6 +586,9 @@ static void arc_zone_pressed_cb(lv_event_t *e)
     if (indev == NULL) return;
     lv_point_t p;
     lv_indev_get_point(indev, &p);
+    arc_press_point = p;
+    arc_press_tick = lv_tick_get();
+    arc_motion_detected = false;
     arc_scroll_active = true;
     arc_last_theta = atan2f((float)p.y - LV_VER_RES / 2.0f,
                             (float)p.x - LV_HOR_RES / 2.0f);
@@ -589,6 +602,18 @@ static void arc_zone_pressing_cb(lv_event_t *e)
     if (indev == NULL) return;
     lv_point_t p;
     lv_indev_get_point(indev, &p);
+
+    /* tap-vs-drag 判定：超過閾值就標記為 drag，後續 RELEASED 走 arc-snap；
+     * 沒超過 + 時間夠短就是 tap，RELEASED 把 click 轉發給選中 icon */
+    if (!arc_motion_detected)
+    {
+        int32_t mdx = p.x - arc_press_point.x;
+        int32_t mdy = p.y - arc_press_point.y;
+        if (mdx * mdx + mdy * mdy > ARC_TAP_THRESHOLD_SQ)
+        {
+            arc_motion_detected = true;
+        }
+    }
 
     float theta = atan2f((float)p.y - LV_VER_RES / 2.0f,
                          (float)p.x - LV_HOR_RES / 2.0f);
@@ -626,14 +651,74 @@ static void arc_zone_released_cb(lv_event_t *e)
     if (!arc_scroll_active) return;
     arc_scroll_active = false;
 
-    /* arc_zone 接走了觸控事件 → list 自己的 LVGL 內建 release-snap 沒跑。
-     * 手動把 list scroll 到目前 closest item（selected_exercise_index）
-     * 對應的 snap target，補回 snap-to-center 行為 */
     if (ui.workout_list == NULL || selected_exercise_index >= WORKOUT_COUNT) return;
-    lv_obj_t *target = lv_obj_get_child(ui.workout_list, selected_exercise_index);
-    if (target != NULL)
+
+    /* tap = 沒拖過 + 按下到放開很短。其他情形（拖過、或按住超過 hold 時間）
+     * 一律當 arc-scroll，補一次 snap-to-center 把 list 對齊 */
+    uint32_t elapsed = lv_tick_elaps(arc_press_tick);
+    bool is_tap = !arc_motion_detected && elapsed < ARC_TAP_DURATION_MS;
+
+    if (is_tap)
     {
-        lv_obj_scroll_to_view(target, LV_ANIM_ON);
+        /* arc_zone 攔走 press → CLICK 不會 bubble 到 icon。手動把 CLICKED 轉
+         * 給該 press 點落在的那顆 icon，這樣點哪顆就啟動哪顆 workout。
+         * 若 press 點不落在任何可見 icon（純粹 band 空白處），fallback 給
+         * 目前選中 icon — 等同「點邊緣 = 啟動選中 workout」 */
+        lv_obj_t *target = NULL;
+        for (int i = 0; i < WORKOUT_COUNT; i++)
+        {
+            if (workout_icons[i] == NULL) continue;
+            if (!lv_obj_is_valid(workout_icons[i])) continue;
+            if (lv_obj_has_flag(workout_icons[i], LV_OBJ_FLAG_HIDDEN)) continue;
+            lv_area_t a;
+            lv_obj_get_coords(workout_icons[i], &a);
+            if (arc_press_point.x >= a.x1 && arc_press_point.x <= a.x2 &&
+                arc_press_point.y >= a.y1 && arc_press_point.y <= a.y2)
+            {
+                target = workout_icons[i];
+                break;
+            }
+        }
+        if (target == NULL)
+        {
+            lv_obj_t *fallback = workout_icons[selected_exercise_index];
+            if (fallback != NULL && lv_obj_is_valid(fallback) &&
+                !lv_obj_has_flag(fallback, LV_OBJ_FLAG_HIDDEN))
+            {
+                target = fallback;
+            }
+        }
+        if (target != NULL)
+        {
+            lv_event_send(target, LV_EVENT_CLICKED, NULL);
+        }
+    }
+    else
+    {
+        /* 真的拖過 / 按住一段時間 → 補做 snap-to-center（arc_zone 攔走 press，
+         * list 自己的 release-snap 沒機會跑） */
+        lv_obj_t *target = lv_obj_get_child(ui.workout_list, selected_exercise_index);
+        if (target != NULL)
+        {
+            lv_obj_scroll_to_view(target, LV_ANIM_ON);
+        }
+    }
+}
+
+/* label 是 icon 的 child 但用 -338 偏到螢幕左側，已經跑出 icon 的 bbox。
+ * LVGL hit test 從父物件進來才往子物件遞迴，icon bbox 不含 label 位置 →
+ * 即使把 label 設成 CLICKABLE 也永遠到不了。改在 label 的視覺位置疊一個透明
+ * overlay 接 click，再把 CLICKED 轉發給目前選中的 workout icon 觸發 workout。
+ * 一次只有選中那顆的 label 是顯示的，所以一個固定 overlay 就夠用 */
+static void label_tap_zone_click_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    if (selected_exercise_index >= WORKOUT_COUNT) return;
+    lv_obj_t *icon = workout_icons[selected_exercise_index];
+    if (icon != NULL && lv_obj_is_valid(icon) &&
+        !lv_obj_has_flag(icon, LV_OBJ_FLAG_HIDDEN))
+    {
+        lv_event_send(icon, LV_EVENT_CLICKED, NULL);
     }
 }
 
@@ -893,11 +978,29 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_set_style_pad_all(arc_zone, 0, 0);
     lv_obj_clear_flag(arc_zone, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(arc_zone, LV_OBJ_FLAG_CLICKABLE);
+    /* 沒這個 flag 的話 lv_obj_hit_test 根本不會發 LV_EVENT_HIT_TEST，
+     * arc_zone 的 bbox 會直接吃掉每個 press（包含整片螢幕的 icon click），
+     * 必須加 ADV_HITTEST 才會走自定義 hit_test */
+    lv_obj_add_flag(arc_zone, LV_OBJ_FLAG_ADV_HITTEST);
     lv_obj_add_event_cb(arc_zone, arc_zone_hit_test_cb, LV_EVENT_HIT_TEST, NULL);
     lv_obj_add_event_cb(arc_zone, arc_zone_pressed_cb, LV_EVENT_PRESSED, NULL);
     lv_obj_add_event_cb(arc_zone, arc_zone_pressing_cb, LV_EVENT_PRESSING, NULL);
     lv_obj_add_event_cb(arc_zone, arc_zone_released_cb, LV_EVENT_RELEASED, NULL);
     lv_obj_add_event_cb(arc_zone, arc_zone_released_cb, LV_EVENT_PRESS_LOST, NULL);
+
+    /* label 文字區塊的 click overlay：透明、寬度涵蓋 label 視覺範圍。
+     * 加在 arc_zone 之後 → z-order 在 arc_zone 上面，左側點擊優先給 overlay
+     * 接走（arc_zone 反正只接受右側弧帶內的 hit_test）*/
+    lv_obj_t *label_tap_zone = lv_obj_create(list_container);
+    lv_obj_set_size(label_tap_zone, 250, 80);
+    lv_obj_align(label_tap_zone, LV_ALIGN_LEFT_MID, 27, 0);
+    lv_obj_set_style_bg_opa(label_tap_zone, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(label_tap_zone, 0, 0);
+    lv_obj_set_style_pad_all(label_tap_zone, 0, 0);
+    lv_obj_clear_flag(label_tap_zone, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(label_tap_zone, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(label_tap_zone, label_tap_zone_click_cb,
+                        LV_EVENT_CLICKED, NULL);
 
     return list_container;
 }
