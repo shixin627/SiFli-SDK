@@ -12,8 +12,6 @@ if GetDepend('BSP_USING_BLOC_CONTROL'):
     src += Glob('bloc_control.c')
 if GetDepend('BSP_USING_BLOC_FLASH'):
     src += Glob('bloc_flash.c')
-if GetDepend('BSP_USING_BLOC_NOTE'):
-    src += Glob('bloc_note.c')
 if GetDepend('BSP_USING_BLOC_CALENDAR'):
     src += Glob('bloc_calendar.c')
 if GetDepend('BSP_USING_BLOC_NOTIFY'):

@@ -363,7 +363,6 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         data_ind = (watch_sys_minute_activity_t *)arg->data;
         RT_ASSERT(data_ind);
         SkaiWatchSys.activity = *data_ind;
-        commu_send_minute_activity();
         break;
     }
     case MSG_SERVICE_SUBSCRIBE_RSP:

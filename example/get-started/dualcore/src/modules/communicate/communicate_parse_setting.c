@@ -211,51 +211,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         }
     }
     break;
-    case KEY_LIFT_SWITCH_SETTING:
-    {
-        if (length == 0x01)
-        {
-            setting_provider.set_lift_switch_status(pValue[0]);
-        }
-    }
-    break;
-    case KEY_LIFT_SWITCH_REQUEST:
-    {
-        if (length == 0x00)
-        {
-            LOG_D("request lift switch status");
-            commu_send_lift_switch();
-        }
-    }
-    break;
-    case KEY_TWIST_SWITCH_SETTING:
-    {
-        if (length == 0x01)
-        {
-            if (pValue[0] == 0x01)
-            {
-                SkaiWatchSys.flag_field.twist_switch_status = true;
-                LOG_D("twist switch on");
-                // TODO: wrist gsa action twist enable
-            }
-            else
-            {
-                SkaiWatchSys.flag_field.twist_switch_status = false;
-                LOG_D("twist switch off");
-                // TODO: wrist gsa action twist disable
-            }
-        }
-    }
-    break;
-    case KEY_TWIST_SWITCH_REQUEST:
-    {
-        if (length == 0x00)
-        {
-            LOG_D("request twist switch status");
-            commu_send_twist_switch();
-        }
-    }
-    break;
     case KEY_INCOMMING_MESSAGE_SETTINGS:
     {
         if (length == 1)
@@ -332,74 +287,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         }
     }
     break;
-    case KEY_INCOMMING_MESSAGE_ALL_SETTINGS:
-    {
-        if (length == 4)
-        {
-            LOG_D("Set incomming message all settings");
-            SkaiWatchSys.msg_switch.data = pValue[3];
-            SkaiWatchSys.msg_switch.data |= pValue[2] << 8;
-            SkaiWatchSys.msg_switch.data |= pValue[1] << 16;
-            SkaiWatchSys.msg_switch.data |= pValue[0] << 24;
-
-            if (SkaiWatchSys.msg_switch.data != 0)
-            {
-                if (IOS == SkaiWatchSys.phone_os_version &&
-                    !SkaiWatchSys.paired_info.paired_flag)
-                {
-                    // TODO: le_bond_pair(SkaiWatchSys.watch_conn_id);
-                }
-                else if (IOS == SkaiWatchSys.phone_os_version &&
-                         SkaiWatchSys.paired_info.paired_flag)
-                {
-                    // TODO:
-                    // ancs_set_data_source_notify(SkaiWatchSys.watch_conn_id,
-                    // true);
-                }
-            }
-            else
-            {
-                if (IOS == SkaiWatchSys.phone_os_version &&
-                    SkaiWatchSys.paired_info.paired_flag)
-                {
-                    // TODO:
-                    // ancs_set_data_source_notify(SkaiWatchSys.watch_conn_id,
-                    // false);
-                }
-            }
-        }
-    }
-    break;
-    case KEY_INCOMMING_MESSAGE_SETTINGS_REQUEST:
-    {
-
-        if (length == 0x00)
-        {
-            if ((!SkaiWatchSys.paired_info.paired_flag) &&
-                (SkaiWatchSys.phone_os_version == IOS) &&
-                (SkaiWatchSys.msg_switch.data != 0))
-            {
-                // TODO: le_bond_pair(SkaiWatchSys.watch_conn_id);
-            }
-            LOG_D("request incomming message settings");
-            commu_send_incoming_message_settings();
-        }
-    }
-    break;
-    case KEY_FUNCTIONS_REQUEST:
-    {
-        LOG_D(
-            "<><><><><><><><><><> KEY_FUNCTIONS_REQUEST <><><><><><><><><><>");
-    }
-    break;
-    case KEY_EXERCISEMODE_REQUEST:
-    {
-        if (length == 0x00)
-        {
-            LOG_D("request exercise mode");
-        }
-    }
-    break;
     case KEY_DIAL_SETTING:
     {
         if (length == 0x01)
@@ -423,11 +310,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
             LOG_D("request dial");
             commu_send_dial_change();
         }
-    }
-    break;
-    case KEY_HR_SAMPLE_REQUEST:
-    {
-        /* No handler, request ignored */
     }
     break;
     case KEY_HOUR_FORMAT_SETTING:
@@ -465,31 +347,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         {
             LOG_D("request distance unit");
             commu_send_distance_unit();
-        }
-    }
-    break;
-    case KEY_DNDM_SETTING:
-    {
-        if (length == 0x03)
-        {
-            bool temp_DNDM_start = SkaiWatchSys.DNDMode.config.DNDM_start;
-            memset((void *)&SkaiWatchSys.DNDMode, 0x00, sizeof(T_DND_MODE));
-            SkaiWatchSys.DNDMode.data |= pValue[0] << 16;
-            SkaiWatchSys.DNDMode.data |= pValue[1] << 8;
-            SkaiWatchSys.DNDMode.data |= pValue[2];
-            SkaiWatchSys.DNDMode.config.DNDM_start = temp_DNDM_start;
-            LOG_D("Set DNDM:%d, start:%d, end:%d",
-                  SkaiWatchSys.DNDMode.config.status,
-                  SkaiWatchSys.DNDMode.config.start_hour,
-                  SkaiWatchSys.DNDMode.config.end_hour);
-        }
-    }
-    break;
-    case KEY_DNDM_REQUEST:
-    {
-        if (length == 0x00)
-        {
-            commu_send_dndm_setting();
         }
     }
     break;
@@ -545,105 +402,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         }
     }
     break;
-    case KEY_BACKLIGHT_SETTING:
-    {
-        if (length == 0x01)
-        {
-            if (pValue[0] > 3 && pValue[0] < 101)
-            {
-                LOG_D("Set brightness from remote:%d", pValue[0]);
-            }
-        }
-    }
-    break;
-    case KEY_BACKLIGHT_REQUEST:
-    {
-        if (length == 0x00)
-        {
-            LOG_D("request backlight");
-            commu_send_backlight(SkaiWatchSys.brightness);
-        }
-    }
-    break;
-    case KEY_HIDDEN_FUNC_SETTING:
-    {
-        if (length == 0x04)
-        {
-            Hidden_FunC_t hidden_func;
-            hidden_func.data = 0;
-            hidden_func.data |= pValue[3];
-            hidden_func.data |= pValue[2] << 8;
-            hidden_func.data |= pValue[1] << 16;
-            hidden_func.data |= pValue[0] << 24;
-
-            SkaiWatchSys.flag_field.stopwatch_status =
-                hidden_func.status.stopwatch_sw;
-            SkaiWatchSys.flag_field.findphone_status =
-                hidden_func.status.findPhone_sw;
-            SkaiWatchSys.flag_field.system_lock_screen =
-                hidden_func.status.lockScreen_sw;
-            LOG_D(
-                "Set hidden func:%d, stopwatch:%d, findphone:%d, lockscreen:%d",
-                hidden_func.data, hidden_func.status.stopwatch_sw,
-                hidden_func.status.findPhone_sw,
-                hidden_func.status.lockScreen_sw);
-        }
-    }
-    break;
-    case KEY_HIDDEN_FUNC_REQUEST:
-    {
-        if (length == 0x00)
-        {
-            LOG_D("request hidden func");
-        }
-    }
-    break;
-    case KEY_BBPRO_CONNECTED_STATE_REQUEST:
-    {
-        if (length == 0x00)
-        {
-            LOG_D("request BT audio connected state");
-        }
-    }
-    break;
-    case KEY_BBPRO_CREATE_CONNECTION_REQUEST:
-    {
-        if (length == 0x00)
-        {
-            /*iOS Initiate pairing, wirstband display dynamic picture*/
-            SkaiWatchSys.flag_field.headset_pair_button = true;
-            SkaiWatchSys.flag_field.headset_pair_handler = true;
-            SkaiWatchSys.flag_field.headset_pair_state = false;
-            LOG_D("request BT audio create connection");
-        }
-    }
-    break;
-    case KEY_MOTOR_STRENGTH_SETTING:
-    {
-        if (length == 0x01)
-        {
-            uint8_t motor_strength = pValue[0];
-            if (motor_strength > 0 && motor_strength < 101)
-            {
-                LOG_D("Set motor strength:%d", motor_strength);
-                // TODO: motor_set_strength(motor_strength);
-            }
-        }
-    }
-    break;
-    case KEY_MOTOR_PERIOD_SETTING:
-    {
-        if (length == 0x01)
-        {
-            uint8_t motor_period = pValue[0];
-            if (motor_period > 0 && motor_period < 101)
-            {
-                LOG_D("Set motor period:%d", motor_period);
-                // TODO: motor_set_period(motor_period);
-            }
-        }
-    }
-    break;
 #if !kReleaseMode
     case KEY_GESTURE_ACCEL_LIMIT_SETTING:
     {
@@ -656,66 +414,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
     }
     break;
 #endif
-    case KEY_ACCEL_SUBSCRIBE_REQUEST:
-    {
-        if (length == 0x01)
-        {
-            uint8_t value = pValue[0];
-            sensor_subscription_t sensor_subscription;
-            sensor_subscription.type = SENSOR_TYPE_ACCELEROMETER;
-            sensor_subscription.thread_safe = true;
-            if (value == 0x00)
-            {
-                sensor_subscription.status = false;
-            }
-            else if (value == 0x01)
-            {
-                sensor_subscription.status = true;
-            }
-            watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
-        }
-    }
-    break;
-    case KEY_HR_SUBSCRIBE_REQUEST:
-    {
-        if (length == 0x01)
-        {
-            uint8_t value = pValue[0];
-            sensor_subscription_t sensor_subscription;
-            sensor_subscription.type = SENSOR_TYPE_PPG;
-            sensor_subscription.thread_safe = true;
-            if (value == 0x00)
-            {
-                sensor_subscription.status = false;
-            }
-            else if (value == 0x01)
-            {
-                sensor_subscription.status = true;
-            }
-            watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
-        }
-    }
-    break;
-    case KEY_AUDIO_SUBSCRIBE_REQUEST:
-    {
-        if (length == 0x01)
-        {
-            uint8_t value = pValue[0];
-            sensor_subscription_t sensor_subscription;
-            sensor_subscription.type = SENSOR_TYPE_MIC;
-            sensor_subscription.thread_safe = true;
-            if (value == 0x00)
-            {
-                sensor_subscription.status = false;
-            }
-            else if (value == 0x01)
-            {
-                sensor_subscription.status = true;
-            }
-            watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
-        }
-        break;
-    }
     default:
         break;
     }

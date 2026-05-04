@@ -38,16 +38,6 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
 {
     switch (key)
     {
-    case KEY_PHONE_CAMERA_STATUS:
-    {
-        if (length == 1)
-        {
-            uint8_t status = pValue[0];
-            watch_system_interact(INTERACT_CAMERA, &status);
-        }
-        break;
-    }
-
     case KEY_FIND_WATCH:
     {
         if (length == 1)
@@ -111,24 +101,8 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
         break;
     }
 
-    case KEY_AUDIO_RECORD:
-    {
-        // Not implemented yet
-        break;
-    }
-
-    case KEY_AUDIO_PLAY:
-    {
-        // Not implemented yet
-        break;
-    }
-
     case KEY_REBOOT:
         watch_system_interact(WATCH_REBOOT, NULL);
-        break;
-
-    case KEY_SHUTDOWN:
-        // Not implemented yet
         break;
 
     case KEY_SLEEP:
@@ -139,15 +113,6 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
         watch_system_interact(HCPU_WAKEUP, NULL);
         break;
 
-    case KEY_MIC_LISTEN:
-    {
-        if (length == 1)
-        {
-            bool status = pValue[0] ? true : false;
-            watch_system_interact(INTERACT_MIC_LISTEN, &status);
-        }
-    }
-    break;
     case KEY_APP_RUN:
     {
         extern void parse_open_app_command(const uint8_t *pValue,
@@ -155,20 +120,6 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
         parse_open_app_command(pValue, length);
     }
     break;
-    case KEY_COUNTROL_KEYBOARD:
-    {
-        if (length == 1)
-        {
-            bool status = pValue[0] ? true : false;
-            if (is_at_mouse_mode() && status)
-            {
-                lvgl_msg_t msg;
-                msg.type = LVGL_MSG_TYPE_MOUSE_OPEN_KEYBOARD;
-                lvgl_send_msg(msg);
-            }
-            break;
-        }
-    }
     default:
         break;
     }

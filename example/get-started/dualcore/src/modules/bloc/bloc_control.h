@@ -106,7 +106,6 @@ extern "C"
         void (*trigger_back_event)(void);
         void (*trigger_finger_event)(uint8_t finger_event);
         void (*trigger_unknown_event)(void);
-        void (*send_virtual_gesture)(uint8_t gesture);
         // bt_speaker
         bool (*bt_speaker_get_status)(void);
         void (*bt_speaker_set_status)(bool status);
@@ -185,10 +184,6 @@ extern "C"
     /* cursor */
     extern bool app_control_get_cursor_mode(void);
     extern void app_control_set_cursor_mode(bool flag);
-    extern void set_cursor_movement(int8_t deltaX, int8_t deltaY, int speed);
-    extern void app_control_set_cursor_gesture(uint8_t gesture);
-    extern void Send_Cursor_Report(void);
-    extern void Send_Touchpad_Gesture(void);
     /* hid */
     extern void app_control_set_hid_event_flag(bool flag);
     extern bool app_control_get_hid_event_flag(void);
@@ -202,9 +197,7 @@ extern "C"
     extern void app_control_set_motion_tracking(bool flag);
     /* hid control */
     extern void setSelectIndexOfApp(uint8_t index);
-    extern void bloc_control_send_slide_command(uint8_t command);
     extern uint8_t bloc_control_get_skaios_mode_state(void);
-    extern void bloc_control_send_skaios_mode_state(void);
     /* unit test */
     extern void set_Unicode(uint16_t unicode);
     extern uint16_t get_Unicode(void);

@@ -1113,9 +1113,6 @@ static void send_quaternion_to_ble_client(rt_uint32_t ts, Quaternion *q)
 #ifdef BSP_USING_BLOC_SKAIWALK
         bloc_skaiwalk_prepare_quaternion_buffer(quat);
 #endif
-#ifdef BSP_USING_COMMUNICATE
-        commu_send_quaternion_data();
-#endif
         last_tick = ts;
     }
 }
@@ -1937,9 +1934,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                         app_control_interface(&watch_sensor.imu_data.gyro,
                                               &motion_data->gravity);
                     }
-#if ENABLE_SEND_GRAVITY_TO_BLE_CLIENT
-                    commu_send_gsensor_gravity_data();
-#endif
                 }
                 else if (open_control_options && !is_at_ai_interface())
                 {

@@ -230,8 +230,6 @@ static void set_watch_time(T_UTC_TIME datetime)
  */
 static void notify_brightness(void)
 {
-    commu_send_backlight(SkaiWatchSys.brightness);
-
     peripheral_provider.save_watch_shared_prefs(
         WATCH_PREFS_KEY_BACKLIGHT_PERCENT);
 }
@@ -331,7 +329,6 @@ static void set_power_save_mode(uint8_t mode)
  */
 static void notify_lift_switch_status(void)
 {
-    commu_send_lift_switch();
     peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
 }
 
@@ -441,8 +438,6 @@ static void set_language(char *language)
 static void set_dnd_status(uint8_t status)
 {
     SkaiWatchSys.DNDMode.config.status = status;
-
-    commu_send_dndm_setting();
 
     // peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_DNDMODE);
 }

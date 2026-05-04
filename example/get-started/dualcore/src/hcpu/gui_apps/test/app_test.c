@@ -671,7 +671,7 @@ static void on_stop(void)
 static void sync_back_to_phone(test_state_t state)
 {
     LOG_D("Sync back to phone");
-    commu_send_utest_state((uint8_t)state);
+    (void)state;
 }
 
 static bool check_amoled()

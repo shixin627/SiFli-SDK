@@ -189,36 +189,6 @@ bool commu_send_alarm_settings(void)
     return skaiwatch_ble_notify(buf, 5 + alarm_item_count * 5);
 }
 
-bool commu_send_lift_switch(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, SET_CONFIG_COMMAND_ID,
-                                       KEY_LIFT_SWITCH_RETURN,
-                                       SkaiWatchSys.flag_field.lift_switch_status);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_twist_switch(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, SET_CONFIG_COMMAND_ID,
-                                       KEY_TWIST_SWITCH_RETURN,
-                                       SkaiWatchSys.flag_field.twist_switch_status);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_incoming_message_settings(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, SET_CONFIG_COMMAND_ID,
-                                       KEY_INCOMMING_MESSAGE_SETTINGS_RETURN,
-                                       SkaiWatchSys.msg_switch.data);
-    return skaiwatch_ble_notify(buf, len);
-}
-
 bool commu_send_hour_format(void)
 {
     if (!commu_can_send()) return false;
@@ -237,17 +207,6 @@ bool commu_send_distance_unit(void)
                                        KEY_DISTANCE_UNIT_RETURN,
                                        SkaiWatchSys.flag_field.distance_unit);
     return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_dndm_setting(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[8];
-    BUILD_SIMPLE_PACKET(buf, SET_CONFIG_COMMAND_ID, KEY_DNDM_RETURN, 3);
-    buf[5] = SkaiWatchSys.DNDMode.data >> 16;
-    buf[6] = SkaiWatchSys.DNDMode.data >> 8;
-    buf[7] = SkaiWatchSys.DNDMode.data;
-    return skaiwatch_ble_notify(buf, 8);
 }
 
 bool commu_send_oled_display_time(uint8_t time)
@@ -279,15 +238,6 @@ bool commu_send_dial_change(void)
     return skaiwatch_ble_notify(buf, len);
 }
 
-bool commu_send_backlight(uint8_t brightness)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, SET_CONFIG_COMMAND_ID,
-                                       KEY_BACKLIGHT_RETURN, brightness);
-    return skaiwatch_ble_notify(buf, len);
-}
-
 bool commu_send_sport_data(void)
 {
     if (!commu_can_send()) return false;
@@ -306,17 +256,6 @@ bool commu_send_heart_data(int hr)
     uint16_t len = build_status_packet(buf, HEALTH_DATA_COMMAND_ID,
                                        KEY_HEART_DATA_RETURN, (uint8_t)hr);
     return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_heart_setting(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[7];
-    BUILD_SIMPLE_PACKET(buf, HEALTH_DATA_COMMAND_ID,
-                        KEY_RETURN_HEART_SAMPLE_SETTING, 2);
-    buf[5] = SkaiWatchSys.hrs_detect_period ? 0x01 : 0x00;
-    buf[6] = SkaiWatchSys.hrs_detect_period;
-    return skaiwatch_ble_notify(buf, 7);
 }
 
 bool commu_send_heart_rate_series(const float *ppg, uint16_t count)
@@ -357,53 +296,12 @@ bool commu_send_media_control(void)
     return skaiwatch_ble_notify(buf, len);
 }
 
-bool commu_send_mqtt_control(uint8_t status)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, CONTROL_COMMAND_ID,
-                                       KEY_MQTT_CONTROL, status);
-    return skaiwatch_ble_notify(buf, len);
-}
-
 bool commu_send_volume_percentage(uint8_t volume)
 {
     if (!commu_can_send()) return false;
     uint8_t buf[6];
     uint16_t len = build_status_packet(buf, CONTROL_COMMAND_ID,
                                        KEY_RETURN_VOLUMN, volume);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_voice_record_intent(uint32_t millisecondsFromEpoch)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[10];
-    BUILD_SIMPLE_PACKET(buf, CONTROL_COMMAND_ID, KEY_RETURN_VOICE_RECORD_INTENT,
-                        5);
-    buf[5] = app_voice_get_recording_intent();
-    buf[6] = millisecondsFromEpoch >> 24;
-    buf[7] = millisecondsFromEpoch >> 16;
-    buf[8] = millisecondsFromEpoch >> 8;
-    buf[9] = millisecondsFromEpoch;
-    return skaiwatch_ble_notify(buf, 10);
-}
-
-bool commu_send_virtual_gesture(uint8_t label)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, CONTROL_COMMAND_ID,
-                                       KEY_VIRTUAL_GESTURE, label);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_finger_tap(uint8_t label)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, CONTROL_COMMAND_ID,
-                                       KEY_TP_GESTURE, label);
     return skaiwatch_ble_notify(buf, len);
 }
 
@@ -466,18 +364,6 @@ bool commu_send_dismiss_notification(const char *id)
     return skaiwatch_ble_notify(buf, 5 + length);
 }
 
-bool commu_send_create_note(const char *json)
-{
-    if (!commu_can_send() || !json) return false;
-    uint16_t length = strlen(json);
-    uint8_t buf[5 + MAX_PACKET_PAYLOAD_SIZE];
-    if (length + 5 > sizeof(buf)) return false;
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_CREATE_NOTE);
-    SET_PACKET_LENGTH(buf, length);
-    memcpy(buf + 5, json, length);
-    return skaiwatch_ble_notify(buf, 5 + length);
-}
-
 bool commu_send_user_speaking_state(uint8_t status)
 {
     if (!commu_can_send()) return false;
@@ -499,25 +385,6 @@ bool commu_send_chat_with_ai(const char *json)
     return skaiwatch_ble_notify(buf, 5 + length);
 }
 
-bool commu_send_quaternion_data(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[21];
-    BUILD_SIMPLE_PACKET(buf, NOTIFY_COMMAND_ID, KEY_QUATERNION_DATA, 16);
-    memcpy(buf + 5, &quaternion_buffer, 16);
-    return skaiwatch_ble_notify(buf, 21);
-}
-
-bool commu_send_battery_voltage(uint16_t voltage)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[7];
-    BUILD_SIMPLE_PACKET(buf, NOTIFY_COMMAND_ID, KEY_BATTERY_VOLTAGE, 2);
-    buf[5] = voltage >> 8;
-    buf[6] = voltage & 0xFF;
-    return skaiwatch_ble_notify(buf, 7);
-}
-
 bool commu_send_battery_level(uint8_t level)
 {
     if (!commu_can_send()) return false;
@@ -525,17 +392,6 @@ bool commu_send_battery_level(uint8_t level)
     uint16_t len = build_status_packet(buf, NOTIFY_COMMAND_ID,
                                        KEY_BATTERY_LEVEL, level);
     return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_holding_displacement(uint8_t event, int x, int y)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[14];
-    BUILD_SIMPLE_PACKET(buf, NOTIFY_COMMAND_ID, KEY_HOLDING_DISPLACEMENT, 9);
-    buf[5] = event;
-    memcpy(buf + 6, &x, sizeof(x));
-    memcpy(buf + 10, &y, sizeof(y));
-    return skaiwatch_ble_notify(buf, 14);
 }
 
 bool commu_send_update_instruction(const char *json)
@@ -599,38 +455,6 @@ bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length)
     buf[5] = 0; /* no segmentation */
     memcpy(buf + 6, acce, length);
     return skaiwatch_ble_notify(buf, length + 6);
-}
-
-bool commu_send_imu_buffer(const uint8_t *imu, uint16_t length)
-{
-    if (!commu_can_send() || !imu) return false;
-    uint8_t buf[5 + 512];
-    if (length + 5 > sizeof(buf)) return false;
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_IMU_BUFFER);
-    SET_PACKET_LENGTH(buf, length);
-    memcpy(buf + 5, imu, length);
-    return skaiwatch_ble_notify(buf, length + 5);
-}
-
-bool commu_send_baro_buffer(float pressure)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[9];
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_BARO_BUFFER);
-    SET_PACKET_LENGTH(buf, 4);
-    memcpy(buf + 5, &pressure, 4);
-    return skaiwatch_ble_notify(buf, 9);
-}
-
-bool commu_send_gsensor_gravity_data(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t len = sizeof(watch_sensor.motion_data.gravity);
-    uint8_t buf[5 + sizeof(watch_sensor.motion_data.gravity)];
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_GSENSOR_GRAVITY_DATA);
-    SET_PACKET_LENGTH(buf, len);
-    memcpy(buf + 5, &watch_sensor.motion_data.gravity, len);
-    return skaiwatch_ble_notify(buf, len + 5);
 }
 
 bool commu_send_start_sync_file(uint32_t total_size)
@@ -713,27 +537,6 @@ bool commu_send_ota_status(uint8_t status)
     uint16_t len = build_status_packet(buf, NOTIFY_COMMAND_ID,
                                        KEY_OTA_STATUS, status);
     return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_utest_state(uint8_t state)
-{
-    if (!commu_can_send_ota()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, SKAI_LINK_COMMAND_ID,
-                                       KEY_UNIT_TEST_SYNC, state);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_minute_activity(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t len = sizeof(SkaiWatchSys.activity);
-    uint8_t buf[5 + sizeof(SkaiWatchSys.activity)];
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_MINUTE_ACTIVITY);
-    buf[3] = 0;
-    buf[4] = len;
-    memcpy(buf + 5, &SkaiWatchSys.activity, len);
-    return skaiwatch_ble_notify(buf, 5 + len);
 }
 
 bool commu_send_device_info(void)

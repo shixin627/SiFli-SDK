@@ -277,18 +277,6 @@ static void process_lvgl_message(lvgl_msg_t *msg)
             lvgl_msg_handler.handle_dial_header_new_notification();
         }
         break;
-    case LVGL_MSG_TYPE_NOTE_LIST:
-        if (lvgl_msg_handler.handle_note_list)
-        {
-            lvgl_msg_handler.handle_note_list();
-            trigger_activity();
-        }
-        if (lvgl_msg_handler.handle_new_note)
-        {
-            lvgl_msg_handler.handle_new_note();
-            trigger_activity();
-        }
-        break;
     case LVGL_MSG_TYPE_CALNEDAR:
         if (lvgl_msg_handler.refresh_calendar)
         {

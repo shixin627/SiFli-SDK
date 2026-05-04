@@ -75,9 +75,6 @@ static const uint16_t APP_LIST_ITEMS[] = {
 #ifdef APP_ID_GAME_DINOSAUR
     app_id_game_dinosaur,
 #endif
-#ifdef APP_ID_NOTE_CHATROOM
-    // app_id_note,
-#endif
 };
 
 #define APP_LIST_COUNT (sizeof(APP_LIST_ITEMS) / sizeof(APP_LIST_ITEMS[0]))
@@ -133,9 +130,6 @@ static const char *get_app_id_str(uint16_t app_id)
 #ifdef APP_ID_GAME_DINOSAUR
     case app_id_game_dinosaur: return APP_ID_GAME_DINOSAUR;
 #endif
-#ifdef APP_ID_NOTE_CHATROOM
-    case app_id_note:        return APP_ID_NOTE_CHATROOM;
-#endif
     default:                 return APP_ID_MAIN;
     }
 }
@@ -184,9 +178,6 @@ static const char *get_app_list_icon(uint16_t app_id)
 #endif
 #ifdef APP_ID_GAME_DINOSAUR
     case app_id_game_dinosaur: return IMG_GAME;
-#endif
-#ifdef APP_ID_NOTE_CHATROOM
-    case app_id_note:        return IMG_NOTE;
 #endif
     default:                 return IMG_LOGO;
     }

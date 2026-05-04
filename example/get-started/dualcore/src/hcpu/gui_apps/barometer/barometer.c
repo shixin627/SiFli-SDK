@@ -152,7 +152,6 @@ static int baro_data_callback(data_callback_arg_t *arg)
 
         if ((data->data.baro > 0))
         {
-            commu_send_baro_buffer((float)data->data.baro / 100);
             if ((data->data.baro != app_baro_data_table.cur_baro))
             {
                 char *s = lv_mem_alloc(MAX_PRESSURE_STR_LEN);

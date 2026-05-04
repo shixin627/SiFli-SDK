@@ -205,9 +205,6 @@ uint16_t INSTRUCTION_LIST_ITEMS_DEFINITION[] = {
 #ifdef APP_ID_MEDIA
 // app_id_media,
 #endif
-#ifdef APP_ID_NOTE_CHATROOM
-// app_id_note,
-#endif
     // app_id_ai,
 };
 
@@ -251,10 +248,6 @@ const char *get_app_icon(uint8_t app_id)
 #ifdef APP_ID_RECORDER
     case app_id_recorder:
         return IMG_RECORDER;
-#endif
-#ifdef APP_ID_NOTE_CHATROOM
-    case app_id_note:
-        return IMG_NOTE;
 #endif
     case app_id_calendar:
         return IMG_CALENDAR;
@@ -569,15 +562,8 @@ static void create_indicator_dots(lv_obj_t *parent)
         else if (list_items[i].icon != NULL)
         {
             lv_img_set_src(dot, list_items[i].icon);
-#ifdef APP_ID_NOTE_CHATROOM
-            if (strcmp(list_items[i].id, APP_ID_NOTE_CHATROOM) == 0)
-            {
-                lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
-            }
-#endif
-
 #ifdef APP_ID_SKAI
-            else if (strcmp(list_items[i].id, APP_ID_SKAI) == 0)
+            if (strcmp(list_items[i].id, APP_ID_SKAI) == 0)
             {
                 lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
             }
@@ -987,9 +973,6 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 if (touch_obj[i] != NULL && lv_obj_is_valid(touch_obj[i]))
                     lv_obj_clear_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
                 if (!list_items[i].is_instruction
-#ifdef APP_ID_NOTE_CHATROOM
-                    && strcmp(list_items[i].id, APP_ID_NOTE_CHATROOM) != 0
-#endif
 #ifdef APP_ID_SKAI
                     && strcmp(list_items[i].id, APP_ID_SKAI) != 0
 #endif
@@ -2284,20 +2267,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
             /* App items: check for special widgets */
             if (i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION))
             {
-#ifdef APP_ID_NOTE_CHATROOM
-                if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_note)
-                {
-                    lv_obj_set_pos(
-                        item, 0,
-                        (LIST_ITEM_WIDGET_HEIGHT + LIST_ITEM_SPACING) * i +
-                            (130 + LIST_ITEM_SPACING));
-                    extern lv_obj_t *lv_note_widget_builder(lv_obj_t * parent);
-                    widget = lv_note_widget_builder(item);
-                    has_widget = true;
-                }
-                else
-#endif
-                    if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai)
+                if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai)
                 {
                     extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
                     widget = lv_skai_widget_builder(item);
@@ -2417,12 +2387,11 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
             switch_objs[i] = NULL;
         }
 
-        /* Hide labels for note/ai apps */
+        /* Hide labels for ai apps */
         if (!list_items[i].is_instruction &&
             i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION))
         {
-            if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_note ||
-                INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai)
+            if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai)
             {
                 lv_obj_add_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
             }
@@ -2854,13 +2823,6 @@ static void map_app_id(uint8_t app_id, list_item_t *item)
         id_str = APP_ID_RECORDER;
         break;
 #endif
-#ifdef APP_ID_NOTE_CHATROOM
-    case app_id_note:
-        title = LV_EXT_STR_GET_BY_KEY(note, "Note");
-        icon = IMG_NOTE;
-        id_str = APP_ID_NOTE_CHATROOM;
-        break;
-#endif
 #ifdef APP_ID_CALENDAR
     case app_id_calendar:
         title = LV_EXT_STR_GET_BY_KEY(calendar, "Calendar");
@@ -3067,12 +3029,6 @@ rt_int32_t instruction_list_pause(void)
 
 rt_int32_t instruction_list_deinit(void)
 {
-#ifdef APP_ID_NOTE_CHATROOM
-    // Delete the timer if it exists
-    extern void close_note_chatroom_ui_app(void);
-    close_note_chatroom_ui_app();
-#endif
-
     // 清理 touching_screen 定時器
     if (touching_screen_timer)
     {

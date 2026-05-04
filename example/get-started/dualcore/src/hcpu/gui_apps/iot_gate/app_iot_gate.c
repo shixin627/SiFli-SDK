@@ -156,7 +156,7 @@ static void update_gate_status_label(gate_state_t state)
 
 static void send_gate_command_to_client(uint8_t state)
 {
-    commu_send_mqtt_control(state);
+    (void)state;
 }
 
 static void send_gate_command(gate_state_t state)

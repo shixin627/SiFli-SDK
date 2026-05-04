@@ -316,39 +316,6 @@ void check_is_at_instruction_list(void)
     }
 }
 
-    #if defined(APP_ID_NOTE_CHATROOM)
-static bool _at_note_list;
-
-bool is_at_note_list(void)
-{
-    return _at_note_list;
-}
-
-extern void note_list_on_resume(void);
-extern void note_list_on_pause(void);
-void check_is_at_note_list(void)
-{
-    bool yes = gui_app_is_actived(APP_ID_MAIN) &&
-               !lv_obj_has_flag(myLancher[app_index_message].pagetileview,
-                                LV_OBJ_FLAG_HIDDEN) &&
-               get_middle_layer_tileview_index() == 3;
-    if (yes != _at_note_list)
-    {
-        _at_note_list = yes;
-        if (_at_note_list)
-        {
-            setting_provider.set_power_save_mode(1);
-            note_list_on_resume();
-        }
-        else
-        {
-            note_list_on_pause();
-        }
-        LOG_I("is_at_note_list: %d", _at_note_list);
-    }
-}
-    #endif
-
 extern void ai_widget_start(void);
 static bool _at_speech_interface;
 
@@ -551,9 +518,6 @@ void check_is_at_home(void)
     bool yes = gui_app_is_actived(APP_ID_MAIN) && !_at_instruction_list &&
                !_at_message && !_at_control_center && !_at_mouse_mode &&
                !_at_ai_interface &&
-    #if defined(APP_ID_NOTE_CHATROOM)
-               !_at_note_list &&
-    #endif
                !_at_speech_interface;
     if (yes != _at_home)
     {
@@ -595,9 +559,6 @@ static void clear_check_flags(void)
     _at_home = false;
     _at_mouse_mode = false;
     _at_ai_interface = false;
-    #if defined(APP_ID_NOTE_CHATROOM)
-    _at_note_list = false;
-    #endif
     _at_speech_interface = false;
 }
 

@@ -139,12 +139,6 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         watch_system_interact(INTERACT_CHAT_RESULT, &payload);
         break;
     }
-    case KEY_MOVEMENT_SENSITIVITY:
-    {
-        movement_threshold = pValue[0];
-        break;
-    }
-
 #if defined(APP_ID_CALENDAR)
     case KEY_CALENDAR_SYNC_START:
     {
@@ -177,62 +171,6 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_CALENDAR_SYNC_END:
     {
         notify_calendar();
-        break;
-    }
-#endif
-
-#if defined(APP_ID_NOTE_CHATROOM)
-    case KEY_NOTE_SYNC_START:
-    {
-        LOG_D("KEY_NOTE_SYNC_START");
-        // Optionally clear or prepare note list for sync
-        clear_skai_message_list(get_note_list(), skai_note_count_ptr());
-        break;
-    }
-
-    case KEY_UPDATE_NOTE:
-    {
-        if (pValue != NULL && length > 0)
-        {
-            // Null-terminate the received JSON string
-            static char temp_json_text[512];
-            size_t copy_len = (length < sizeof(temp_json_text) - 1)
-                                  ? length
-                                  : sizeof(temp_json_text) - 1;
-            memcpy(temp_json_text, pValue, copy_len);
-            temp_json_text[copy_len] = '\0';
-
-            LOG_D("KEY_UPDATE_NOTE: %s", temp_json_text);
-
-            // Parse JSON and create a new note item
-            cJSON *json_item = cJSON_Parse(temp_json_text);
-            if (json_item != NULL)
-            {
-                chat_t new_note = {0};
-                parse_chat_item(json_item, &new_note);
-
-                // Add the parsed note to the note list
-                update_skai_message(get_note_list(), skai_note_count_ptr(),
-                                    new_note);
-
-                cJSON_Delete(json_item);
-            }
-            else
-            {
-                LOG_W("Failed to parse note JSON");
-            }
-        }
-        break;
-    }
-
-    case KEY_NOTE_SYNC_END:
-    {
-        LOG_D("KEY_NOTE_SYNC_END");
-        // Save note list to file
-        save_note_list_to_file();
-        lvgl_msg_t msg;
-        msg.type = LVGL_MSG_TYPE_NOTE_LIST;
-        lvgl_send_msg(msg);
         break;
     }
 #endif
@@ -523,22 +461,6 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
             LOG_D("media title: %s", pValue);
             watch_system_interact(INTERACT_SHOW_MEDIA_TITLE, (char *)pValue);
         }
-        break;
-    }
-
-    case KEY_QRCODE_DATA:
-    {
-        pValue[length] = '\0';
-        if (pValue != NULL)
-        {
-            watch_system_interact(INTERACT_SHOW_QRCODE, (char *)pValue);
-        }
-        break;
-    }
-
-    case KEY_AI_REPLY_DATA_MODEL:
-    {
-        // parse_ai_reply_data(pValue, length);
         break;
     }
 

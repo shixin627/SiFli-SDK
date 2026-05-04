@@ -3,7 +3,7 @@
  * @file   app_incoming_call.c
  * @brief  Incoming call screen. Activated when a calling notification arrives,
  *         shows caller title, app icon and accept/hangup buttons. Accept sends
- *         KEY_INCOMMING_CALL_ACCEPT to phone, hangup sends KEY_INCOMMING_CALL_REJECT.
+ *         KEY_INCOMMING_CALL_ACCEPT to phone, hangup sends KEY_INCOMMING_CALL_REFUSE.
  *         The app closes when the phone dismisses the originating notification.
  ******************************************************************************
  */

@@ -77,23 +77,6 @@ void resolve_HealthData_command(uint8_t key, const uint8_t *pValue,
         }
     }
     break;
-    case KEY_SET_STEPS_NOTIFY:
-    {
-        if (length == 1)
-        {
-            LOG_I("Steps Autosync value:%d\n", pValue[0]);
-            if (pValue[0])
-            {
-                SkaiWatchSys.flag_field.auto_sync_enable = true;
-            }
-            else
-            {
-                SkaiWatchSys.flag_field.auto_sync_enable = false;
-            }
-        }
-    }
-    break;
-
     case KEY_DAILY_DATA_SYNC:
     {
         uint32_t daily_step = 0;
@@ -151,64 +134,6 @@ void resolve_HealthData_command(uint8_t key, const uint8_t *pValue,
               SkaiWatchSys.gPedoData.quarter_steps,
               SkaiWatchSys.gPedoData.quarter_distance,
               SkaiWatchSys.gPedoData.quarter_calories);
-    }
-    break;
-#if 0
-    case KEY_REQUEST_HEART_DATA:
-        {
-            //start a single sample
-            if (length == 1)
-            {
-                if (pValue[0] == 0x01)
-                {
-                    SkaiWatchSys.hrs_start_up_mode = HRS_MOBILE_START;
-                    SkaiWatchSys.heart_sample_by_phone = true;
-                    hal_hrs_timer_start();
-                }
-                else if (pValue[0] == 0x00)
-                {
-                    hal_hrs_timer_stop();
-                }
-            }
-        }
-        break;
-    case KEY_HEART_DATA_SAMPLE_SETTING:
-        {
-            if (length == 2)
-            {
-                if (pValue[0] == 0x01)
-                {
-                    //to do get sample period
-                    if (pValue[1] > 0 && pValue[1] <= 10)
-                    {
-                        hal_hrs_sample_continuously_start(pValue[1] * 60 * 1000);
-                        SkaiWatchSys.hrs_detect_period = pValue[1];
-                    }
-                    else
-                    {
-                        hal_hrs_sample_continuously_start(300000);//5min
-                        SkaiWatchSys.hrs_detect_period = 5;
-                    }
-                }
-                else if (pValue[0] == 0x00)
-                {
-                    hal_hrs_sample_continuously_stop();
-                    hal_hrs_timer_stop();
-                    SkaiWatchSys.hrs_detect_period = 0;
-                }
-                uint32_t temp = SkaiWatchSys.hrs_detect_period;
-                ftl_save(&temp, HRS_PERIOD_OFFSET, HRS_PERIOD_SIZE);
-            }
-        }
-        break;
-#endif
-    case KEY_REQUEST_HEART_SAMPLE_SETTING:
-    {
-        if (length == 0)
-        {
-            LOG_I("request heart sample setting");
-            commu_send_heart_setting();
-        }
     }
     break;
     default:

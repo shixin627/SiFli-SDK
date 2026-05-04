@@ -83,18 +83,6 @@ void app_speech_set_title(const uint8_t *s)
 
 void app_speech_set_content(const uint8_t *s)
 {
-#ifdef APP_ID_NOTE_CHATROOM
-    if (gui_app_is_actived(APP_ID_NOTE_CHATROOM) || is_at_note_list())
-    {
-        const char *input_message = (const char *)s;
-        LOG_D("app_speech_set_content NOTE_CHATROOM: %s", input_message);
-        lvgl_msg_t msg;
-        msg.type = LVGL_MSG_TYPE_INPUT_MESSAGE;
-        msg.data.message = (char *)s;
-        lvgl_send_msg(msg);
-    }
-    else
-#endif
     if (p_app_speech_ctx->content)
     {
         LOG_D("app_speech_set_content p_app_speech_ctx: %s", s);

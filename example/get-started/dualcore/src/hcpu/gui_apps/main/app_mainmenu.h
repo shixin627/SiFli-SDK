@@ -61,9 +61,6 @@ typedef rt_int32_t (*app_func_ptr_t)(void);
 
 /****                     API for single app              ****/
 bool is_at_instruction_list(void);
-#if defined(APP_ID_NOTE_CHATROOM)
-bool is_at_note_list(void);
-#endif
 bool is_at_mouse_mode(void);
 bool is_at_home(void);
 bool is_at_ai_interface(void);
@@ -108,7 +105,6 @@ char *app_change_context(void);
 #endif
 extern lv_obj_t *standby_page;
 extern void handle_tap_event_in_mainmenu(void);
-extern void quick_open_note_chatroom_ui_app(void);
 extern void get_calendar_list_from_template(void);
 extern void animate_to_notification_center(void);
 extern void animate_to_instruction_list(void);

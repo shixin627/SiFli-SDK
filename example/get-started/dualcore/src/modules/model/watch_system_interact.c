@@ -613,11 +613,7 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
             break;
         }
         if (gui_app_is_actived(APP_ID_SPEECH) ||
-            gui_app_is_actived(APP_ID_MESSAGE)
-#if defined(APP_ID_NOTE_CHATROOM)
-            || gui_app_is_actived(APP_ID_NOTE_CHATROOM) || is_at_note_list()
-#endif
-        )
+            gui_app_is_actived(APP_ID_MESSAGE))
         {
             LOG_D("[INTERACT_VOICE_RECOGNITION]:%d, coding:%d", msgData->header,
                   get_speech_coding());

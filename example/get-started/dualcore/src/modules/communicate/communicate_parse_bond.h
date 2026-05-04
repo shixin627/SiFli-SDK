@@ -29,8 +29,6 @@ extern "C"
         KEY_LOGIN_REQUEST = 0x03,
         KEY_LOGIN_RESPONSE = 0x04,
         KEY_UNBOND = 0x05,
-        KEY_SUPER_BOND = 0x06,
-        KEY_SUPER_BOND_RESPONSE = 0x07,
     } BOND_KEY;
 
     void resolve_private_bond_command(uint8_t key, const uint8_t *pValue, uint16_t length);

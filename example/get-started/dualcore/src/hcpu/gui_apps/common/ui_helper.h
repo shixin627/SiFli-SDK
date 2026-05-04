@@ -88,7 +88,6 @@ extern "C"
     extern bool is_at_speech_interface(void);
     extern void check_is_at_instruction_list(void);
     extern void check_is_at_speech_interface(void);
-    extern void check_is_at_note_list(void);
     extern void check_is_at_mouse_mode(void);
     extern void check_is_at_message(void);
     extern void check_is_at_control_center(void);

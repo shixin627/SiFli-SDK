@@ -44,7 +44,6 @@ extern "C"
 
     // #define APP_ID_SKAI "skai_ai"
     // #define APP_ID_ACTIVITY "activity"
-    // #define APP_ID_NOTE_CHATROOM "note_chatroom"
     // #define APP_ID_CALENDAR "calendar"
     // #define JS_APP_QRCODE "JA_app1"
     // #define APP_ID_HEART_RATE "heart_rate"
@@ -60,7 +59,6 @@ extern "C"
         app_id_mainmenu,
         app_id_ai,
         app_id_recorder,
-        app_id_note,
         app_id_calendar,
         app_id_flashlight,
         app_id_mouse,
@@ -110,8 +108,6 @@ extern "C"
         LVGL_MSG_TYPE_CHARGE_STATUS,
         /***** Notification event ******/
         LVGL_MSG_TYPE_NOTIFICATION,
-        /* note */
-        LVGL_MSG_TYPE_NOTE_LIST,
         /* calendar */
         LVGL_MSG_TYPE_CALNEDAR,
         LVGL_MSG_TYPE_REFRESH_CALENDAR_WIDGET,
@@ -326,8 +322,6 @@ extern "C"
         void (*handle_notification)(void *param);
         void (*handle_new_notification)(void);
         void (*handle_dial_header_new_notification)(void);
-        void (*handle_note_list)(void);
-        void (*handle_new_note)(void);
         void (*refresh_calendar)(void);
         void (*refresh_message)(void);
         void (*refresh_message_stream)(char *text);
@@ -390,10 +384,8 @@ extern "C"
     extern void bad_signal_indicator_builder(void *par);
     extern void reset_lvgl_msg_handler(void);
 
-    extern lv_obj_t *open_note_chatroom_ui_app(lv_obj_t *parent);
     extern void open_message_app(const char *notification_id);
     extern void close_message_app(void);
-    extern void close_note_chatroom_ui_app(void);
     extern void change_flashlight_switch(bool state);
 
     extern bool get_scrolling_motor_vibrate_status(void);

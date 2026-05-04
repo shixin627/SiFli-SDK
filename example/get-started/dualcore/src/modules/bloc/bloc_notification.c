@@ -752,25 +752,6 @@ static void send_message_to_chatgpt(const char *message)
     commu_send_chat_with_ai(temp_send_json_string);
 }
 
-static void generate_json_for_note_message(const char *message)
-{
-    strcpy(temp_send_json_string, "");
-    cJSON *obj = cJSON_CreateObject();
-    cJSON_AddStringToObject(obj, "content", message);
-    strcpy(temp_send_json_string, cJSON_PrintUnformatted(obj));
-    cJSON_Delete(obj);
-}
-
-static void send_message_to_note(const char *message)
-{
-    if (strlen(message) == 0)
-    {
-        return;
-    }
-    generate_json_for_note_message(message);
-    commu_send_create_note(temp_send_json_string);
-}
-
 static void set_user_speech_text(char *text)
 {
     strcpy(temp_speech_text, text);
@@ -804,14 +785,6 @@ void handle_user_speech_intent(uint8_t intent, char *message)
     }
     case V2T_INTENT_NOTE_CREATING:
     {
-#if defined(APP_ID_NOTE_CHATROOM)
-        append_text_to_latest_message(get_note_list(), skai_note_count_ptr(),
-                                      temp_speech_text);
-
-        // Save note list after adding new note
-        save_note_list_to_file();
-        send_message_to_note(temp_speech_text);
-#endif
         break;
     }
 
@@ -880,8 +853,6 @@ static void bloc_notify_battery_voltage(uint16_t voltage)
     msg.type = LVGL_MSG_TYPE_BATTERY_VOLTAGE;
     msg.data.battery_voltage = voltage;
     lvgl_send_msg(msg);
-
-    commu_send_battery_voltage(voltage);
 }
 
 static void bloc_notify_battery_level(uint8_t level)
@@ -967,17 +938,9 @@ static void bloc_notify_bluetooth_connection(void)
 
 static void bloc_notify_holding_displacement(uint8_t event, int x, int y)
 {
-    static int last_x = 0;
-    static int last_y = 0;
-    if (x == last_x && y == last_y && event == 1)
-    {
-        return; // No change in displacement
-    }
-    last_x = x;
-    last_y = y;
-    // LOG_D("bloc_notify_holding_displacement: event:%d, x:%d, y:%d", event, x,
-    // y);
-    commu_send_holding_displacement(event, x, y);
+    (void)event;
+    (void)x;
+    (void)y;
 }
 
 /* NotifyProvider global instance */

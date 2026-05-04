@@ -955,14 +955,12 @@ void start_sync_voice_recording(void)
     app_voice_set_recording_intent(true);
     _voice_recording_time = get_current_time();
     LOG_D("start_sync_voice_recording: %d", _voice_recording_time);
-    commu_send_voice_record_intent(_voice_recording_time);
 }
 
 void stop_sync_voice_recording(void)
 {
     app_voice_set_recording_intent(false);
     LOG_D("stop_sync_voice_recording: %d", _voice_recording_time);
-    commu_send_voice_record_intent(_voice_recording_time);
     _voice_recording_time = 0;
 }
 

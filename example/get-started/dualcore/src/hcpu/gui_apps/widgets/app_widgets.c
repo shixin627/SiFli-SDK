@@ -169,9 +169,6 @@ uint16_t CONTROL_APP_LIST_ITEMS_DEFINITION[] = {
 #ifdef APP_ID_TOUCHPAD
 	app_id_touchpad,
 #endif
-#ifdef APP_ID_NOTE_CHATROOM
-// app_id_note,
-#endif
 
 };
 
@@ -197,10 +194,6 @@ const char *get_control_app_icon(uint8_t control_app_id)
 #ifdef APP_ID_RECORDER
     case app_id_recorder:
         return IMG_RECORDER;
-#endif
-#ifdef APP_ID_NOTE_CHATROOM
-    case app_id_note:
-        return IMG_NOTE;
 #endif
     case app_id_calendar:
         return IMG_CALENDAR;
@@ -1097,16 +1090,6 @@ control_app_list_item_t map_control_app_id(uint8_t app_id)
     }
     break;
 #endif
-#ifdef APP_ID_NOTE_CHATROOM
-    case app_id_note:
-    {
-        item.title = LV_EXT_STR_GET_BY_KEY(note, "Note");
-        item.icon = IMG_NOTE;
-        item.app_id = APP_ID_NOTE_CHATROOM;
-    }
-    break;
-#endif
-
 #ifdef APP_ID_CALENDAR
     case app_id_calendar:
     {

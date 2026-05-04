@@ -33,32 +33,22 @@ bool commu_send_login_fail(void);
 
 /* Settings */
 bool commu_send_alarm_settings(void);
-bool commu_send_lift_switch(void);
-bool commu_send_twist_switch(void);
-bool commu_send_incoming_message_settings(void);
 bool commu_send_hour_format(void);
 bool commu_send_distance_unit(void);
-bool commu_send_dndm_setting(void);
 bool commu_send_oled_display_time(uint8_t time);
 bool commu_send_language(void);
 bool commu_send_dial_change(void);
-bool commu_send_backlight(uint8_t brightness);
 
 /* Health */
 bool commu_send_sport_data(void);
 bool commu_send_heart_data(int hr);
-bool commu_send_heart_setting(void);
 bool commu_send_heart_rate_series(const float *ppg, uint16_t count);
 
 /* Control */
 bool commu_send_phone_control_cmd(void);
 bool commu_send_find_mobile(void);
 bool commu_send_media_control(void);
-bool commu_send_mqtt_control(uint8_t status);
 bool commu_send_volume_percentage(uint8_t volume);
-bool commu_send_voice_record_intent(uint32_t millisecondsFromEpoch);
-bool commu_send_virtual_gesture(uint8_t label);
-bool commu_send_finger_tap(uint8_t label);
 
 /* Notification */
 bool commu_send_charge_status(void);
@@ -67,21 +57,14 @@ bool commu_send_calendar_request(void);
 bool commu_send_gesture_detect(uint8_t label);
 bool commu_send_remote_input(const char *json);
 bool commu_send_dismiss_notification(const char *id);
-bool commu_send_create_note(const char *json);
 bool commu_send_user_speaking_state(uint8_t status);
 bool commu_send_chat_with_ai(const char *json);
-bool commu_send_quaternion_data(void);
-bool commu_send_battery_voltage(uint16_t voltage);
 bool commu_send_battery_level(uint8_t level);
-bool commu_send_holding_displacement(uint8_t event, int x, int y);
 bool commu_send_update_instruction(const char *json);
 bool commu_send_get_instruction_img(const char *id);
 
 /* Sensor */
 bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length);
-bool commu_send_imu_buffer(const uint8_t *imu, uint16_t length);
-bool commu_send_baro_buffer(float pressure);
-bool commu_send_gsensor_gravity_data(void);
 
 /* File sync */
 bool commu_send_start_sync_file(uint32_t total_size);
@@ -93,8 +76,6 @@ bool commu_send_file_compare_result(uint8_t result);
 bool commu_send_bluetooth_log(const char *log);
 bool commu_send_watch_system_sync(void);
 bool commu_send_ota_status(uint8_t status);
-bool commu_send_utest_state(uint8_t state);
-bool commu_send_minute_activity(void);
 bool commu_send_device_info(void);
 
 #endif

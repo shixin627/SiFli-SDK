@@ -83,12 +83,6 @@ enum
 	AUDIO_CMD_VOLUME_DOWN = 5,
 };
 
-typedef struct
-{
-	int8_t x;
-	int8_t y;
-} CURSOR_COORDINATE_T;
-
 #define CURSOR_SENSITIVITY_SCALE 1.0f
 #define MOUSE_SENSITIVITY_SCALE 2.5f
 /// AMOLED
@@ -539,20 +533,7 @@ static void bloc_control_set_skaios_mode_state(uint8_t state)
 	skaios_mode_state = state;
 }
 
-void bloc_control_send_skaios_mode_state(void)
-{
-	uint8_t psendbuf[6];
-	psendbuf[0] = SKAI_LINK_COMMAND_ID;			  /*command id*/
-	psendbuf[1] = L2_HEADER_VERSION;			  /*L2 header version */
-	psendbuf[2] = SKAILINK_KEY_SKAIOS_MODE_STATE; /*first key, */
-	psendbuf[3] = 0;
-	psendbuf[4] = 1; /* length  = 1 */
-	psendbuf[5] = skaios_mode_state;
-	skaiwatch_ble_notify(psendbuf, 6);
-}
-
 /*cursor*/
-CURSOR_COORDINATE_T cursor_coordinate;
 bool isCursorMode = false;
 bool app_control_get_cursor_mode(void)
 {
@@ -561,43 +542,6 @@ bool app_control_get_cursor_mode(void)
 void app_control_set_cursor_mode(bool flag)
 {
 	isCursorMode = flag;
-}
-uint8_t cursor_gesture = 0;
-void app_control_set_cursor_gesture(uint8_t gesture)
-{
-	cursor_gesture = gesture;
-}
-void set_cursor_movement(int8_t deltaX, int8_t deltaY, int speed)
-{
-	int scaled_dx = deltaX * speed;
-	int scaled_dy = deltaY * speed;
-
-	cursor_coordinate.x = scaled_dx;
-	cursor_coordinate.y = scaled_dy;
-}
-
-void Send_Cursor_Report(void)
-{
-	uint8_t psendbuf[7];
-	psendbuf[0] = CONTROL_COMMAND_ID; /*command id*/
-	psendbuf[1] = L2_HEADER_VERSION;  /*L2 header version */
-	psendbuf[2] = KEY_TP_COORDINATE;  /*first key, */
-	psendbuf[3] = 0;
-	psendbuf[4] = 2; /* length  = 2 */
-	psendbuf[5] = cursor_coordinate.x;
-	psendbuf[6] = cursor_coordinate.y;
-	skaiwatch_ble_notify(psendbuf, 7);
-}
-void Send_Touchpad_Gesture(void)
-{
-	uint8_t psendbuf[6];
-	psendbuf[0] = CONTROL_COMMAND_ID; /*command id*/
-	psendbuf[1] = L2_HEADER_VERSION;  /*L2 header version */
-	psendbuf[2] = KEY_TP_GESTURE;	  /*first key, */
-	psendbuf[3] = 0;
-	psendbuf[4] = 1; /* length  = 1 */
-	psendbuf[5] = cursor_gesture;
-	skaiwatch_ble_notify(psendbuf, 6);
 }
 
 static bool hid_event_flag = true;
@@ -622,13 +566,11 @@ void app_control_set_mouse_mode(bool flag)
 	{
 		// skaiwatch_ble_set_performance(true);
 		bloc_control_set_skaios_mode_state(true);
-		bloc_control_send_skaios_mode_state();
 	}
 	else
 	{
 		// skaiwatch_ble_set_performance(false);
 		bloc_control_set_skaios_mode_state(false);
-		bloc_control_send_skaios_mode_state();
 	}
 	isMouseMode = flag;
 }
@@ -702,11 +644,6 @@ void notify_launcher_action(uint8_t action)
 #endif
 }
 
-static void send_remote_control_event(uint8_t action)
-{
-	commu_send_finger_tap(action);
-}
-
 /*Tap indicator*/
 // 0: press
 // 1: release
@@ -736,10 +673,6 @@ static void trigger_finger_event(uint8_t finger_event)
 			lvgl_set_global_keypad_enter_cmd();
 		}
 	}
-	else if (finger_event >= 2)
-	{
-		send_remote_control_event(finger_event);
-	}
 }
 
 /*Tap indicator*/
@@ -754,11 +687,6 @@ static void trigger_unknown_event(void)
 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_UNKNOWN_INDICATOR, .data.action = 1};
 	lvgl_send_msg(msg);
 #endif
-}
-
-static void send_virtual_gesture(uint8_t gesture)
-{
-	commu_send_virtual_gesture(gesture);
 }
 
 static void trigger_longpress_event(void)
@@ -1039,7 +967,6 @@ static int bloc_control_provider_register(void)
 	control_provider.trigger_back_event = trigger_back_event;
 	control_provider.trigger_finger_event = trigger_finger_event;
 	control_provider.trigger_unknown_event = trigger_unknown_event;
-	control_provider.send_virtual_gesture = send_virtual_gesture;
 	control_provider.bt_speaker_get_status = bt_speaker_get_status;
 	control_provider.bt_speaker_set_status = bt_speaker_set_status;
 	control_provider.notify_bt_speaker_media_status = notify_bt_speaker_media_status;

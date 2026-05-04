@@ -107,21 +107,6 @@ extern "C"
         ANDROID = 0x02,
     } PHONE_OS_VERSION;
 
-    typedef enum
-    {
-        KEY_WEATHER_GET = 0x01,
-        KEY_WEATHER_CURRENT = 0x02,
-        KEY_WEATHER_FUTURE_HOUR = 0x03,
-        KEY_WEATHER_FUTURE_DAY = 0x04,
-    } WEATHER_KEY;
-
-    typedef enum
-    {
-        WEATHER_SUCCESS = 0x0,
-        WEATHER_CITY_INVALID = 0x01,
-        WEATHER_SERVICE_INVALID = 0x02,
-    } WEATHER_ERROR_CODE;
-
     /******************* Function definition **********************************/
     extern void skaiwatch_ble_set_performance(bool status);
     extern void ble_station_entry(void *parameter);
