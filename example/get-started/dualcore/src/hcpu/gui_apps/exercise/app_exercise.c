@@ -64,6 +64,7 @@
 #include "lv_ext_resource_manager.h"
 #include "lv_ex_data.h"
 #include "common_widget.h"
+#include "arc_scroll.h"
 #include "app_mainmenu.h"
 #include "bloc_motor.h"
 #include "bloc_setting.h"
@@ -525,184 +526,45 @@ static void handle_back_event(void)
 static lv_obj_t *workout_icons[WORKOUT_COUNT] = {0};
 static lv_obj_t *workout_name_labels[WORKOUT_COUNT] = {0};
 
-/* 右側弧形觸控滾動 — 仿 hid_mouse.c 的 left_scroll_active 機制，
- * 但抓螢幕右側邊緣弧帶區域。手指在弧區拖曳時，每移動一個角度增量
- * 就把 list 滾對應的 pixel，可連續沿邊緣滑下/滑上而不需要放開重壓。
- *
- * 配合 tap-vs-hold 時間判斷：短點放就轉發 CLICK 給選中 icon（=點擊功能），
- * 按住超過閾值或有移動才走 arc-scroll。所以 thickness 可以做大一點，
- * 整顆 icon 都在 band 內也沒關係。 */
-#define ARC_ZONE_THICKNESS 150         /* 觸控感應環厚度（從螢幕邊往內 px）*/
-#define ARC_ZONE_HALF_ANGLE_SIN 0.819f /* sin(55°)，定義右側弧帶的 ±55° 範圍 */
-#define ARC_TAP_THRESHOLD_SQ (12 * 12) /* 12 px：超過這個距離一律算 drag */
-#define ARC_TAP_DURATION_MS 200        /* 按下到放開超過這個時間就算 hold/scroll，不轉發 click */
-static bool arc_scroll_active = false;
-static float arc_last_theta = 0.0f;
-static lv_point_t arc_press_point;
-static uint32_t arc_press_tick = 0;
-static bool arc_motion_detected = false;
-
-static bool is_point_in_right_arc(lv_coord_t x, lv_coord_t y)
+/* 右側弧形觸控滾動 — 改用共用模組 common/arc_scroll.h，跟 instruction_list、
+ * clock 等其他位置共享同一份偵測算法。各應用只需提供：
+ *   - tap_cb：短點放開時，使用者根據 press 點決定要把 CLICKED 派給哪顆 obj
+ *   - snap_cb：drag 放開時，回傳要 scroll-to-view 的 obj */
+static lv_obj_t *workout_arc_tap_cb(lv_point_t pt, void *ctx)
 {
-    float cx = LV_HOR_RES / 2.0f;
-    float cy = LV_VER_RES / 2.0f;
-    float dx = (float)x - cx;
-    float dy = (float)y - cy;
-    float dist = sqrtf(dx * dx + dy * dy);
-    float outer_r = cx;
-    float inner_r = outer_r - (float)ARC_ZONE_THICKNESS;
-    if (dist < inner_r || dist > outer_r) return false;
-    if (dx <= 0) return false; /* 只接受右側 */
-    float max_dy = dist * ARC_ZONE_HALF_ANGLE_SIN;
-    if (dy < -max_dy || dy > max_dy) return false;
-
-    /* 不在這裡排除 icon — 排除會讓 band 內絕大多數面積（icon 所在處）變成
-     * 不能 arc-scroll，使用者很容易碰到 icon 後 hit_test 直接 false 而觸發不到。
-     * 改成 arc_zone 一律接走 band 內 press，再在 RELEASED 用 tap-vs-drag 判斷：
-     *   - tap → 用 press 點找出落在哪顆 icon 上，forward CLICKED 給那顆，
-     *           落在 icon 之外的 band 空白處才 fallback 到選中 icon
-     *   - drag → arc-scroll 並 snap-to-center */
-    return true;
-}
-
-static void arc_zone_hit_test_cb(lv_event_t *e)
-{
-    lv_hit_test_info_t *info = lv_event_get_hit_test_info(e);
-    if (info == NULL) return;
-    if (info->point == NULL)
+    (void)ctx;
+    /* arc_zone 攔走 press → CLICK 不會 bubble 到 icon。手動把 CLICKED 轉給
+     * press 點落在的那顆 icon，這樣點哪顆就啟動哪顆 workout。
+     * 若 press 點不落在任何可見 icon（純粹 band 空白處），fallback 給目前
+     * 選中 icon — 等同「點邊緣 = 啟動選中 workout」 */
+    for (int i = 0; i < WORKOUT_COUNT; i++)
     {
-        /* 防呆：info->res 預設為 true，若 point 缺失就讓 arc_zone 不要吃這個 hit，
-         * 否則 arc_zone 會誤吃任何 press */
-        info->res = false;
-        return;
-    }
-    info->res = is_point_in_right_arc(info->point->x, info->point->y);
-}
-
-static void arc_zone_pressed_cb(lv_event_t *e)
-{
-    (void)e;
-    lv_indev_t *indev = lv_indev_get_act();
-    if (indev == NULL) return;
-    lv_point_t p;
-    lv_indev_get_point(indev, &p);
-    arc_press_point = p;
-    arc_press_tick = lv_tick_get();
-    arc_motion_detected = false;
-    arc_scroll_active = true;
-    arc_last_theta = atan2f((float)p.y - LV_VER_RES / 2.0f,
-                            (float)p.x - LV_HOR_RES / 2.0f);
-}
-
-static void arc_zone_pressing_cb(lv_event_t *e)
-{
-    (void)e;
-    if (!arc_scroll_active || ui.workout_list == NULL) return;
-    lv_indev_t *indev = lv_indev_get_act();
-    if (indev == NULL) return;
-    lv_point_t p;
-    lv_indev_get_point(indev, &p);
-
-    /* tap-vs-drag 判定：超過閾值就標記為 drag，後續 RELEASED 走 arc-snap；
-     * 沒超過 + 時間夠短就是 tap，RELEASED 把 click 轉發給選中 icon */
-    if (!arc_motion_detected)
-    {
-        int32_t mdx = p.x - arc_press_point.x;
-        int32_t mdy = p.y - arc_press_point.y;
-        if (mdx * mdx + mdy * mdy > ARC_TAP_THRESHOLD_SQ)
+        if (workout_icons[i] == NULL) continue;
+        if (!lv_obj_is_valid(workout_icons[i])) continue;
+        if (lv_obj_has_flag(workout_icons[i], LV_OBJ_FLAG_HIDDEN)) continue;
+        lv_area_t a;
+        lv_obj_get_coords(workout_icons[i], &a);
+        if (pt.x >= a.x1 && pt.x <= a.x2 && pt.y >= a.y1 && pt.y <= a.y2)
         {
-            arc_motion_detected = true;
+            return workout_icons[i];
         }
     }
-
-    float theta = atan2f((float)p.y - LV_VER_RES / 2.0f,
-                         (float)p.x - LV_HOR_RES / 2.0f);
-    float delta = theta - arc_last_theta;
-    while (delta > M_PI) delta -= 2.0f * M_PI;
-    while (delta < -M_PI) delta += 2.0f * M_PI;
-    arc_last_theta = theta;
-
-    /* 把角度增量換算成 list 的 scroll pixel：每滑過一個 angle_per_slot
-     * 就等於滾動一個 ICON_SLOT_HEIGHT。
-     * 加負號讓拖曳手感反過來 — 拖下去 = scroll 往回（上面的 item 滑到中央），
-     * 跟一般「抓著內容往下拉」的直覺一致 */
-    float angle_per_slot_rad = (float)ICON_SLOT_ANGLE_DEG * (M_PI / 180.0f);
-    float scroll_delta = -delta * (float)ICON_SLOT_HEIGHT / angle_per_slot_rad;
-    if (scroll_delta > -0.5f && scroll_delta < 0.5f) return;
-
-    /* clamp 到第一個 / 最後一個 item 對應的 scroll_y，避免滑過頭 */
-    lv_coord_t list_y1 = ui.workout_list->coords.y1;
-    lv_coord_t pad_top = lv_obj_get_style_pad_top(ui.workout_list, LV_PART_MAIN);
-    lv_coord_t min_scroll = list_y1 + pad_top + ICON_ITEM_SIZE / 2 - LV_VER_RES / 2;
-    lv_coord_t max_scroll = min_scroll + (WORKOUT_COUNT - 1) * ICON_SLOT_HEIGHT;
-
-    lv_coord_t cur_scroll = lv_obj_get_scroll_y(ui.workout_list);
-    lv_coord_t target_scroll = cur_scroll + (lv_coord_t)scroll_delta;
-    if (target_scroll < min_scroll) target_scroll = min_scroll;
-    if (target_scroll > max_scroll) target_scroll = max_scroll;
-    if (target_scroll == cur_scroll) return;
-
-    lv_obj_scroll_to_y(ui.workout_list, target_scroll, LV_ANIM_OFF);
+    if (selected_exercise_index < WORKOUT_COUNT &&
+        workout_icons[selected_exercise_index] != NULL &&
+        lv_obj_is_valid(workout_icons[selected_exercise_index]) &&
+        !lv_obj_has_flag(workout_icons[selected_exercise_index], LV_OBJ_FLAG_HIDDEN))
+    {
+        return workout_icons[selected_exercise_index];
+    }
+    return NULL;
 }
 
-static void arc_zone_released_cb(lv_event_t *e)
+static lv_obj_t *workout_arc_snap_cb(void *ctx)
 {
-    (void)e;
-    if (!arc_scroll_active) return;
-    arc_scroll_active = false;
-
-    if (ui.workout_list == NULL || selected_exercise_index >= WORKOUT_COUNT) return;
-
-    /* tap = 沒拖過 + 按下到放開很短。其他情形（拖過、或按住超過 hold 時間）
-     * 一律當 arc-scroll，補一次 snap-to-center 把 list 對齊 */
-    uint32_t elapsed = lv_tick_elaps(arc_press_tick);
-    bool is_tap = !arc_motion_detected && elapsed < ARC_TAP_DURATION_MS;
-
-    if (is_tap)
-    {
-        /* arc_zone 攔走 press → CLICK 不會 bubble 到 icon。手動把 CLICKED 轉
-         * 給該 press 點落在的那顆 icon，這樣點哪顆就啟動哪顆 workout。
-         * 若 press 點不落在任何可見 icon（純粹 band 空白處），fallback 給
-         * 目前選中 icon — 等同「點邊緣 = 啟動選中 workout」 */
-        lv_obj_t *target = NULL;
-        for (int i = 0; i < WORKOUT_COUNT; i++)
-        {
-            if (workout_icons[i] == NULL) continue;
-            if (!lv_obj_is_valid(workout_icons[i])) continue;
-            if (lv_obj_has_flag(workout_icons[i], LV_OBJ_FLAG_HIDDEN)) continue;
-            lv_area_t a;
-            lv_obj_get_coords(workout_icons[i], &a);
-            if (arc_press_point.x >= a.x1 && arc_press_point.x <= a.x2 &&
-                arc_press_point.y >= a.y1 && arc_press_point.y <= a.y2)
-            {
-                target = workout_icons[i];
-                break;
-            }
-        }
-        if (target == NULL)
-        {
-            lv_obj_t *fallback = workout_icons[selected_exercise_index];
-            if (fallback != NULL && lv_obj_is_valid(fallback) &&
-                !lv_obj_has_flag(fallback, LV_OBJ_FLAG_HIDDEN))
-            {
-                target = fallback;
-            }
-        }
-        if (target != NULL)
-        {
-            lv_event_send(target, LV_EVENT_CLICKED, NULL);
-        }
-    }
-    else
-    {
-        /* 真的拖過 / 按住一段時間 → 補做 snap-to-center（arc_zone 攔走 press，
-         * list 自己的 release-snap 沒機會跑） */
-        lv_obj_t *target = lv_obj_get_child(ui.workout_list, selected_exercise_index);
-        if (target != NULL)
-        {
-            lv_obj_scroll_to_view(target, LV_ANIM_ON);
-        }
-    }
+    (void)ctx;
+    if (ui.workout_list == NULL || !lv_obj_is_valid(ui.workout_list)) return NULL;
+    if (selected_exercise_index >= WORKOUT_COUNT) return NULL;
+    return lv_obj_get_child(ui.workout_list, selected_exercise_index);
 }
 
 /* label 是 icon 的 child 但用 -338 偏到螢幕左側，已經跑出 icon 的 bbox。
@@ -967,26 +829,22 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_align_to(ui.title_heart_rate_label, heart_icon,
                     LV_ALIGN_OUT_RIGHT_MID, -5, 0);
 
-    /* 右側弧形觸控滾動 overlay：full-screen 透明 obj，但 HIT_TEST 只接受
-     * 右側邊緣弧帶內的觸控；其他位置的 touch 自然 fall-through 到下層的
-     * icons / list */
-    lv_obj_t *arc_zone = lv_obj_create(list_container);
-    lv_obj_set_size(arc_zone, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_align(arc_zone, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_opa(arc_zone, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(arc_zone, 0, 0);
-    lv_obj_set_style_pad_all(arc_zone, 0, 0);
-    lv_obj_clear_flag(arc_zone, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(arc_zone, LV_OBJ_FLAG_CLICKABLE);
-    /* 沒這個 flag 的話 lv_obj_hit_test 根本不會發 LV_EVENT_HIT_TEST，
-     * arc_zone 的 bbox 會直接吃掉每個 press（包含整片螢幕的 icon click），
-     * 必須加 ADV_HITTEST 才會走自定義 hit_test */
-    lv_obj_add_flag(arc_zone, LV_OBJ_FLAG_ADV_HITTEST);
-    lv_obj_add_event_cb(arc_zone, arc_zone_hit_test_cb, LV_EVENT_HIT_TEST, NULL);
-    lv_obj_add_event_cb(arc_zone, arc_zone_pressed_cb, LV_EVENT_PRESSED, NULL);
-    lv_obj_add_event_cb(arc_zone, arc_zone_pressing_cb, LV_EVENT_PRESSING, NULL);
-    lv_obj_add_event_cb(arc_zone, arc_zone_released_cb, LV_EVENT_RELEASED, NULL);
-    lv_obj_add_event_cb(arc_zone, arc_zone_released_cb, LV_EVENT_PRESS_LOST, NULL);
+    /* 右側弧形觸控滾動 — 用共用模組 common/arc_scroll.h */
+    arc_scroll_config_t arc_cfg = {
+        .parent          = list_container,
+        .list            = list,
+        .slot_height_px  = ICON_SLOT_HEIGHT,    /* 90 = 80 + 10 spacing */
+        .item_height_px  = ICON_ITEM_SIZE,      /* 80，clamp 上下界用 */
+        .slot_angle_deg  = ICON_SLOT_ANGLE_DEG,
+        .item_count      = WORKOUT_COUNT,
+        .band_thickness  = 150,
+        .lock_ancestors  = false, /* exercise bg 直接掛在 lv_scr_act()，沒有 tileview 祖先 */
+        .tap_cb          = workout_arc_tap_cb,
+        .snap_cb         = workout_arc_snap_cb,
+        .ctx             = NULL,
+    };
+    arc_scroll_create(&arc_cfg);
+    /* WORKOUT_COUNT 是常數、overlay 跟 list_container 一起死，不存 handle */
 
     /* label 文字區塊的 click overlay：透明、寬度涵蓋 label 視覺範圍。
      * 加在 arc_zone 之後 → z-order 在 arc_zone 上面，左側點擊優先給 overlay

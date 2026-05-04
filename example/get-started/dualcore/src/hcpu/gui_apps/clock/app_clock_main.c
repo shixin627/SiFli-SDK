@@ -46,6 +46,7 @@
 #include <time.h>
 #include "app_mainmenu.h"
 #include "common_widget.h"
+#include "arc_scroll.h"
 #include "app_clock_main.h"
 #include "app_clock_status_bar.h"
 #include "watch_system_core_task.h"
@@ -1841,6 +1842,49 @@ lv_obj_t *build_home_view(lv_obj_t *parent)
 {
     lv_obj_t *obj = lv_home_listview_layout_create(parent);
     app_clock_main_select(last_active_clock);
+
+    /* ────────────────────────────────────────────────────────────────
+     * 共用「右側弧形觸控滾動」模組（common/arc_scroll.h）。同一份算法已套用在
+     *   - lv_instruction_list_layout.c（指令列表）
+     *   - app_exercise.c（運動列表）
+     *
+     * 之後在這個 home view 或任何其他位置要掛同樣的 arc-scroll，照下面範本填
+     * 一份 config 然後 arc_scroll_create() 即可。每個位置可獨立持有一個 handle，
+     * 用各自的 list / item_count / 回呼。
+     *
+     *   static lv_obj_t *my_tap_cb(lv_point_t pt, void *ctx) {
+     *       // 收到 tap：根據 press 點 pt 自行決定要把 CLICKED 派給哪個 obj，
+     *       // 回傳該 obj；不想派發就回 NULL
+     *       return target_or_null;
+     *   }
+     *   static lv_obj_t *my_snap_cb(void *ctx) {
+     *       // 收到 drag 放開：回傳要 scroll-to-view 的 obj
+     *       return lv_obj_get_child(my_list, my_selected_idx);
+     *   }
+     *
+     *   arc_scroll_config_t cfg = {
+     *       .parent          = obj,           // overlay 掛在這個父物件下
+     *       .list            = my_list,       // 真正要 scroll 的 scrollable 容器
+     *       .slot_height_px  = 100,           // 兩個相鄰 item 的位置間距 px（item_h + spacing）
+     *       .item_height_px  = 200,           // item 本身高度 px；spacing ≥ 0 可填 0
+     *       .slot_angle_deg  = 27,            // 手指滑幾度 = 一個 slot
+     *       .item_count      = N,             // 目前 item 總數
+     *       .band_thickness  = 150,           // 弧帶厚度，0 → 預設 150
+     *       .lock_ancestors  = false,         // 子層在 tileview 裡才設 true
+     *       .tap_cb          = my_tap_cb,     // 可為 NULL
+     *       .snap_cb         = my_snap_cb,    // 可為 NULL
+     *       .ctx             = my_ctx,
+     *   };
+     *   arc_scroll_handle_t *h = arc_scroll_create(&cfg);
+     *   // handle 會在 overlay obj 被 lv_obj_del 時自動釋放，
+     *   // parent 死了 overlay 就死，handle 也跟著死，通常不必手動 destroy。
+     *   // item 數變動時呼叫 arc_scroll_set_item_count(h, new_count)。
+     *
+     * 行為（兩個位置都這樣，跟現有實作一致）：
+     *   - 短按馬上放（無位移 + < 200ms）→ 走 tap_cb 路徑，把 CLICKED 派給回傳 obj
+     *   - 拖過 / 按住 200ms 以上 → 走 snap_cb 路徑，scroll-to-view 回傳 obj
+     *   - 中間區域的 press 不會進來（弧帶幾何過濾），自然 fall-through
+     * ──────────────────────────────────────────────────────────────── */
 
 #ifdef ENABLE_NOTIFICATION_CENTER
     app_clock_main_status_bar_init(lv_scr_act());
