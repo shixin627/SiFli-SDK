@@ -840,11 +840,10 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
     {
         scroll_initialized = true;
     }
-
-    if (instruction_list_page->coords.y1 == -466)
-        need_correction = true;
-    else
+    if (instruction_list_page->coords.y1 == 0)
         need_correction = false;
+    else
+        need_correction = true;
 
     for (uint8_t i = 0; i < child_cnt; i++)
     {
@@ -853,7 +852,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         lv_coord_t y_center = child->coords.y1 + widget_hight / 2;
         if (need_correction)
         {
-            y_diff = y_center - LV_VER_RES / 2 + 466;
+            y_diff = y_center - LV_VER_RES / 2 - instruction_list_page->coords.y1;
         }
         else
         {
@@ -985,7 +984,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             lv_obj_t *child = obj->spec_attr->children[i];
             if (i == selected_item_index)
             {
-                LOG_D("Selected item index: %d", i);
+                LOG_I("instruction DEBUG Selected item index: %d", i);
                 if (touch_obj[i] != NULL && lv_obj_is_valid(touch_obj[i]))
                     lv_obj_clear_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
                 if (!list_items[i].is_instruction
@@ -2569,7 +2568,11 @@ void refresh_custom_instructions(void)
         update_indicator_dots_position(gesture_starting_value);
     }
     open_scroll_motor = true;
-    LOG_I("refresh_custom_instructions: %d items total", list_item_count);
+    if (!is_at_instruction_list())
+    {
+        reset_list();
+    }
+    LOG_D("refresh_custom_instructions: %d items total", list_item_count);
 }
 
 void update_instruction_image(const char *id, const char *path)
