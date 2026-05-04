@@ -217,47 +217,23 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         {
             uint8_t messageType = pValue[0];
             LOG_D("Set incomming messageType = %d", messageType);
+            /* Each pair: (set_code, clear_code) toggles one notify-source bit. */
+            #define MSG_TOGGLE(set_code, clear_code, field) \
+                case set_code:   SkaiWatchSys.msg_switch.bit.field = true;  break; \
+                case clear_code: SkaiWatchSys.msg_switch.bit.field = false; break;
+
             switch (messageType)
             {
-            case 0x01:
-                SkaiWatchSys.msg_switch.bit.switch_call_msg = true;
-                break;
-            case 0x02:
-                SkaiWatchSys.msg_switch.bit.switch_call_msg = false;
-                break;
-            case 0x03:
-                SkaiWatchSys.msg_switch.bit.switch_qq_msg = true;
-                break;
-            case 0x04:
-                SkaiWatchSys.msg_switch.bit.switch_qq_msg = false;
-                break;
-            case 0x05:
-                SkaiWatchSys.msg_switch.bit.switch_wechat_msg = true;
-                break;
-            case 0x06:
-                SkaiWatchSys.msg_switch.bit.switch_wechat_msg = false;
-                break;
-            case 0x07:
-                SkaiWatchSys.msg_switch.bit.switch_shortmessage_msg = true;
-                break;
-            case 0x08:
-                SkaiWatchSys.msg_switch.bit.switch_shortmessage_msg = false;
-                break;
-            case 0x09:
-                SkaiWatchSys.msg_switch.bit.switch_line_msg = true;
-                break;
-            case 0x0a:
-                SkaiWatchSys.msg_switch.bit.switch_line_msg = false;
-                break;
-            case 0x0b:
-                SkaiWatchSys.msg_switch.bit.switch_twitter_msg = true;
-                break;
-            case 0x0c:
-                SkaiWatchSys.msg_switch.bit.switch_twitter_msg = false;
-                break;
+                MSG_TOGGLE(0x01, 0x02, switch_call_msg)
+                MSG_TOGGLE(0x03, 0x04, switch_qq_msg)
+                MSG_TOGGLE(0x05, 0x06, switch_wechat_msg)
+                MSG_TOGGLE(0x07, 0x08, switch_shortmessage_msg)
+                MSG_TOGGLE(0x09, 0x0a, switch_line_msg)
+                MSG_TOGGLE(0x0b, 0x0c, switch_twitter_msg)
             default:
                 break;
             }
+            #undef MSG_TOGGLE
 
             if (SkaiWatchSys.msg_switch.data != 0)
             {

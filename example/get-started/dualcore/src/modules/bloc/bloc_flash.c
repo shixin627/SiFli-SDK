@@ -523,25 +523,31 @@ static int dfu_update_firmware(image_header_t img_header)
 
     LOG_D("erase target addr 0x%x", target_addr);
 
-    if (img_header.id == DFU_IMG_ID_NAND_HCPU)
+    /* Per-image flash parameters: erase max size + flash bus type.
+       Looked up once and reused by both erase and write paths. */
+    static const struct flash_img_param {
+        uint8_t  id;
+        uint32_t max_size;
+        uint8_t  flash_type;
+    } flash_map[] = {
+        { DFU_IMG_ID_NAND_HCPU,       HCPU_CODE_MAX_SIZE,         DFU_FLASH_TYPE_NAND },
+        { DFU_IMG_ID_NAND_LCPU,       LCPU_CODE_MAX_SIZE,         DFU_FLASH_TYPE_NOR  },
+        { DFU_IMG_ID_NAND_FTAB,       FTAB_ACTUAL_MAX_SIZE,       DFU_FLASH_TYPE_NOR  },
+        { DFU_IMG_ID_NAND_BOOTLOADER, BOOTLOADER_ACTUAL_MAX_SIZE, DFU_FLASH_TYPE_NOR  },
+        { DFU_IMG_ID_NAND_LCPU_PATCH, LCPU_PATCH_ACTUAL_MAX_SIZE, DFU_FLASH_TYPE_NOR  },
+    };
+    const struct flash_img_param *params = NULL;
+    for (size_t i = 0; i < sizeof(flash_map) / sizeof(flash_map[0]); i++)
     {
-        ret = flash_erase(target_addr, 0, HCPU_CODE_MAX_SIZE, DFU_FLASH_TYPE_NAND);
+        if (flash_map[i].id == img_header.id)
+        {
+            params = &flash_map[i];
+            break;
+        }
     }
-    else if (img_header.id == DFU_IMG_ID_NAND_LCPU)
+    if (params)
     {
-        ret = flash_erase(target_addr, 0, LCPU_CODE_MAX_SIZE, DFU_FLASH_TYPE_NOR);
-    }
-    else if (img_header.id == DFU_IMG_ID_NAND_FTAB)
-    {
-        ret = flash_erase(target_addr, 0, FTAB_ACTUAL_MAX_SIZE, DFU_FLASH_TYPE_NOR);
-    }
-    else if (img_header.id == DFU_IMG_ID_NAND_BOOTLOADER)
-    {
-        ret = flash_erase(target_addr, 0, BOOTLOADER_ACTUAL_MAX_SIZE, DFU_FLASH_TYPE_NOR);
-    }
-    else if (img_header.id == DFU_IMG_ID_NAND_LCPU_PATCH)
-    {
-        ret = flash_erase(target_addr, 0, LCPU_PATCH_ACTUAL_MAX_SIZE, DFU_FLASH_TYPE_NOR);
+        ret = flash_erase(target_addr, 0, params->max_size, params->flash_type);
     }
 
     if (ret != 0)
@@ -577,25 +583,10 @@ static int dfu_update_firmware(image_header_t img_header)
             packet_size = FLASH_WRITE_PACKET_SIZE;
         }
 
-        if (img_header.id == DFU_IMG_ID_NAND_HCPU)
+        if (params)
         {
-            ret = flash_write(target_addr + offset, temp_buf, FLASH_WRITE_PACKET_SIZE, DFU_FLASH_TYPE_NAND);
-        }
-        else if (img_header.id == DFU_IMG_ID_NAND_LCPU)
-        {
-            ret = flash_write(target_addr + offset, temp_buf, FLASH_WRITE_PACKET_SIZE, DFU_FLASH_TYPE_NOR);
-        }
-        else if (img_header.id == DFU_IMG_ID_NAND_FTAB)
-        {
-            ret = flash_write(target_addr + offset, temp_buf, FLASH_WRITE_PACKET_SIZE, DFU_FLASH_TYPE_NOR);
-        }
-        else if (img_header.id == DFU_IMG_ID_NAND_BOOTLOADER)
-        {
-            ret = flash_write(target_addr + offset, temp_buf, FLASH_WRITE_PACKET_SIZE, DFU_FLASH_TYPE_NOR);
-        }
-        else if (img_header.id == DFU_IMG_ID_NAND_LCPU_PATCH)
-        {
-            ret = flash_write(target_addr + offset, temp_buf, FLASH_WRITE_PACKET_SIZE, DFU_FLASH_TYPE_NOR);
+            ret = flash_write(target_addr + offset, temp_buf,
+                              FLASH_WRITE_PACKET_SIZE, params->flash_type);
         }
         if (ret != 0)
         {

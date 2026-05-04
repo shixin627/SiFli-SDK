@@ -69,6 +69,12 @@ extern "C"
         return ((uint16_t)p[0] << 8) | (uint16_t)p[1];
     }
 
+    static inline void write_be16(uint8_t *p, uint16_t v)
+    {
+        p[0] = (uint8_t)(v >> 8);
+        p[1] = (uint8_t)v;
+    }
+
 #ifdef __cplusplus
 }
 #endif

@@ -82,20 +82,15 @@ bool L1_send(uint8_t *buf, uint16_t length)
 {
     uint16_t record_len = length;
     /*fill header*/
-    buf[L1_HEADER_MAGIC_POS] = L1_HEADER_MAGIC;                            /* Magic */
-    buf[L1_HEADER_PROTOCOL_VERSION_POS] = L1_HEADER_VERSION;               /* protocol version */
-    buf[L1_PAYLOAD_LENGTH_HIGH_BYTE_POS] = (length - L1_HEADER_SIZE) >> 8; /* length high byte */
-    buf[L1_PAYLOAD_LENGTH_LOW_BYTE_POS] = length - L1_HEADER_SIZE;         /* length low byte */
+    buf[L1_HEADER_MAGIC_POS] = L1_HEADER_MAGIC;
+    buf[L1_HEADER_PROTOCOL_VERSION_POS] = L1_HEADER_VERSION;
+    write_be16(&buf[L1_PAYLOAD_LENGTH_HIGH_BYTE_POS], length - L1_HEADER_SIZE);
     /*cal crc*/
     uint16_t crc16_ret = 0; // TODO: btxfcs(0, buf + L1_HEADER_SIZE, length - L1_HEADER_SIZE);
-    buf[L1_HEADER_CRC16_HIGH_BYTE_POS] = crc16_ret >> 8;
-    buf[L1_HEADER_CRC16_LOW_BYTE_POS] = crc16_ret;
+    write_be16(&buf[L1_HEADER_CRC16_HIGH_BYTE_POS], crc16_ret);
 
     L1_sequence_id++;
-
-    /* sequence id */
-    buf[L1_HEADER_SEQ_ID_HIGH_BYTE_POS] = L1_sequence_id >> 8;
-    buf[L1_HEADER_SEQ_ID_LOW_BYTE_POS] = L1_sequence_id;
+    write_be16(&buf[L1_HEADER_SEQ_ID_HIGH_BYTE_POS], L1_sequence_id);
 
     LOG_I("sequence id:%d", L1_sequence_id);
 
@@ -183,12 +178,8 @@ void L1_send_ack(uint16_t sequence_id, bool check_success)
 
     ack_package_buffer[0] = L1_HEADER_MAGIC;
     ack_package_buffer[1] = version_ack.value;
-    ack_package_buffer[2] = 0; // length
-    ack_package_buffer[3] = 0; // length
-    ack_package_buffer[4] = 0; // crc16
-    ack_package_buffer[5] = 0; // crc16
-    ack_package_buffer[6] = (sequence_id >> 8) & 0xFF;
-    ack_package_buffer[7] = sequence_id & 0xFF;
+    /* length(2) + crc16(2) all stay 0 */
+    write_be16(&ack_package_buffer[L1_HEADER_SEQ_ID_HIGH_BYTE_POS], sequence_id);
     skaiwalk_ble_app_notify(ack_package_buffer, L1_HEADER_SIZE);
 }
 

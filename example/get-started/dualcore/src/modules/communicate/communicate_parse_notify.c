@@ -58,6 +58,18 @@ extern void refresh_custom_instructions(void);
 extern void parse_chat_item(cJSON *item, chat_t *note);
 static uint8_t weather_data_updata_count = 0;
 
+/* Copy a BLE payload slice into a NUL-terminated stack buffer.
+   Truncates if payload exceeds dst_size-1. Avoids the
+   `pValue[length] = '\0'` pattern, which writes one byte past the
+   L1 receive buffer when length == max payload size. */
+static inline void ble_payload_to_cstr(char *dst, size_t dst_size,
+                                       const uint8_t *src, uint16_t len)
+{
+    size_t n = (len < dst_size - 1) ? len : dst_size - 1;
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
 #ifndef BSP_USING_PC_SIMULATOR
 /* Common dispatch for all OTA *_SYNC_START handlers — the 6 image flavours
    only differ in img_id and download address. Payload layout:
@@ -91,27 +103,30 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     {
         if (SkaiWatchSys.msg_switch.bit.switch_call_msg)
         {
-            pValue[length] = '\0';
-            LOG_I("watch received imcoming call:%s", pValue);
+            LOG_I("watch received imcoming call:%.*s", length, pValue);
         }
         break;
     }
     case KEY_INCOMMING_MESSAGE:
     {
-        uint8_t msg_notify_type = pValue[0];
-        payload.length = length - 1;
-        payload.p_msg_value = pValue + 1;
-        payload.p_msg_value[payload.length] = '\0';
-        handle_notification(msg_notify_type, (char *)payload.p_msg_value);
+        if (length >= 1)
+        {
+            uint8_t msg_notify_type = pValue[0];
+            char msg_buf[240];
+            ble_payload_to_cstr(msg_buf, sizeof(msg_buf),
+                                pValue + 1, length - 1);
+            handle_notification(msg_notify_type, msg_buf);
+        }
         break;
     }
     case KEY_DISMISS_NOTIFICATION:
     {
         if (length > 0)
         {
-            pValue[length] = '\0';
-            LOG_I("Dismiss notification id: %s", pValue);
-            dismiss_notification_from_phone((char *)pValue);
+            char id_buf[NOTIFICATION_ID_LEN];
+            ble_payload_to_cstr(id_buf, sizeof(id_buf), pValue, length);
+            LOG_I("Dismiss notification id: %s", id_buf);
+            dismiss_notification_from_phone(id_buf);
         }
         break;
     }
@@ -362,12 +377,10 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     //// Watch System Request (end) ////
     case KEY_MEDIA_TITLE:
     {
-        pValue[length] = '\0';
-        // if (strlen((char *)pValue) > 0)
-        {
-            LOG_D("media title: %s", pValue);
-            watch_system_interact(INTERACT_SHOW_MEDIA_TITLE, (char *)pValue);
-        }
+        char title_buf[128];
+        ble_payload_to_cstr(title_buf, sizeof(title_buf), pValue, length);
+        LOG_D("media title: %s", title_buf);
+        watch_system_interact(INTERACT_SHOW_MEDIA_TITLE, title_buf);
         break;
     }
 
@@ -410,9 +423,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         rt_memcpy(file_path, &pValue[1], path_len);
         file_path[path_len] = '\0';
 
-        uint32_t total_size =
-            (pValue[1 + path_len] << 24) | (pValue[1 + path_len + 1] << 16) |
-            (pValue[1 + path_len + 2] << 8) | pValue[1 + path_len + 3];
+        uint32_t total_size = read_be32(&pValue[1 + path_len]);
 
         LOG_I("Start receiving file: %s (%d bytes)", file_path, total_size);
         bloc_start_receive_file(file_path, total_size);
@@ -455,9 +466,10 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     {
         if (length > 0)
         {
-            pValue[length] = '\0';
-            LOG_I("watch received location data:%s", pValue);
-            handle_location_data((char *)pValue);
+            char json_buf[240];
+            ble_payload_to_cstr(json_buf, sizeof(json_buf), pValue, length);
+            LOG_I("watch received location data:%s", json_buf);
+            handle_location_data(json_buf);
         }
         break;
     }

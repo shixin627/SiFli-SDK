@@ -1,6 +1,6 @@
 {
-    "version": "1.1.39",
-    "description": "測試發布版,移除不需要的DEBUG功能",
+    "version": "1.1.40",
+    "description": "測試刪減後的程式(!!!!!不要更新!!!!!)",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
