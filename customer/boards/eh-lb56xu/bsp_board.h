@@ -70,7 +70,7 @@ extern int __bss_end;
 // #define INT16_to_UT (3.3333f)
 
 #define SkaiwalkWatchOS 26
-#define kReleaseMode 1
+#define kReleaseMode 0
 
 #define BOARD_VER_11 11
 #define BOARD_VER_12 12
@@ -90,7 +90,7 @@ extern int __bss_end;
 #define BOARD_VER_28 28
 #define BOARD_VER_29 29
 
-#define CUSTOMER_BOARD_VER BOARD_VER_29
+#define CUSTOMER_BOARD_VER BOARD_VER_28
 
 #define ENABLE_TAP_AND_HOLD 0
 #define MAX_RAWDATA_TIME_STEP 35

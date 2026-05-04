@@ -48,6 +48,7 @@
 #include "lv_ext_resource_manager.h"
 #include "app_mainmenu.h"
 #include "common_widget.h"
+#include "arc_scroll.h"
 #include "watch_system_interact.h"
 #include "custom_trans_anim.h"
 #include <math.h>
@@ -224,6 +225,7 @@ typedef struct
     lv_obj_t
         *app_list_tileview;  // vertical tileview: instruction list + app grid
     lv_obj_t *app_list_tile; // tile 1: app grid page
+    arc_scroll_handle_t *arc_handle; // 共用 arc-scroll 模組 instance
 } instruction_list_layout_t;
 static instruction_list_layout_t *p_instruction_list_layout;
 static bool created = false;
@@ -2519,6 +2521,12 @@ void refresh_custom_instructions(void)
     {
         reset_list();
     }
+    /* item 數變了 → 同步給共用 arc_scroll 模組做 scroll clamp */
+    if (p_instruction_list_layout->arc_handle != NULL)
+    {
+        arc_scroll_set_item_count(p_instruction_list_layout->arc_handle,
+                                  list_item_count);
+    }
     LOG_D("refresh_custom_instructions: %d items total", list_item_count);
 }
 
@@ -2590,6 +2598,37 @@ bool get_app_list_tileview_page(void)
     return true;
 }
 
+/* 右側弧形觸控滾動 — 改用共用模組 common/arc_scroll.h，跟 exercise、clock
+ * 等其他位置共享同一份偵測算法。LIST_ITEM_SLOT_HEIGHT / LIST_ITEM_SLOT_ANGLE_DEG
+ * 仍留著，給 cfg 傳進共用模組用。 */
+#define LIST_ITEM_SLOT_HEIGHT (LIST_ITEM_WIDGET_HEIGHT + LIST_ITEM_SPACING)
+#define LIST_ITEM_SLOT_ANGLE_DEG 27 /* 與 update_indicator_dots_position::angle_per_dot 一致 */
+
+static lv_obj_t *list_arc_tap_cb(lv_point_t pt, void *ctx)
+{
+    (void)ctx;
+    /* arc 模組 overlay 攔走 press → CLICK 不會 bubble 到 touch_obj。
+     * 手動把 CLICKED 轉給選中項的 touch_obj，前提是 press 點在它的 coords 內 */
+    if (selected_item_index >= list_item_count) return NULL;
+    if (touch_obj[selected_item_index] == NULL) return NULL;
+    if (!lv_obj_is_valid(touch_obj[selected_item_index])) return NULL;
+    if (lv_obj_has_flag(touch_obj[selected_item_index], LV_OBJ_FLAG_HIDDEN)) return NULL;
+    lv_area_t a;
+    lv_obj_get_coords(touch_obj[selected_item_index], &a);
+    if (pt.x < a.x1 || pt.x > a.x2 || pt.y < a.y1 || pt.y > a.y2) return NULL;
+    return touch_obj[selected_item_index];
+}
+
+static lv_obj_t *list_arc_snap_cb(void *ctx)
+{
+    (void)ctx;
+    if (p_instruction_list_layout == NULL) return NULL;
+    if (p_instruction_list_layout->list == NULL) return NULL;
+    if (!lv_obj_is_valid(p_instruction_list_layout->list)) return NULL;
+    if (selected_item_index >= list_item_count) return NULL;
+    return lv_obj_get_child(p_instruction_list_layout->list, selected_item_index);
+}
+
 lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 {
     // 檢查是否已經分配，如果是則先釋放
@@ -2610,6 +2649,9 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     memset(switch_objs, 0, sizeof(switch_objs));
     LOG_I("[CHECK_MEMORY]instruction_list_init(%d bytes)", allocate_size);
     instruction_list_page = parent;
+
+    /* 共用 arc_scroll 模組內部自帶 idempotent lock（lock 前先 unlock），
+     * 不需要在這邊清 stale 狀態 */
 
     load_instruction_list();
 
@@ -2639,6 +2681,23 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 
     // 創建指示點
     create_indicator_dots(p_instruction_list_bg);
+
+    /* 右側弧形觸控滾動 — 用共用模組 common/arc_scroll.h。
+     * 放在 ai_bar / ai_bg 之前 → AI 開啟時 ai_bg 蓋在上面，自然停用 */
+    arc_scroll_config_t arc_cfg = {
+        .parent          = p_instruction_list_bg,
+        .list            = p_instruction_list,
+        .slot_height_px  = LIST_ITEM_SLOT_HEIGHT,        /* 100 = 200 + (-100) */
+        .item_height_px  = LIST_ITEM_WIDGET_HEIGHT,      /* 200，items 互相重疊 100 */
+        .slot_angle_deg  = LIST_ITEM_SLOT_ANGLE_DEG,
+        .item_count      = list_item_count,
+        .band_thickness  = 150,
+        .lock_ancestors  = true, /* instruction_list 是 tileview 子層，要鎖外層 */
+        .tap_cb          = list_arc_tap_cb,
+        .snap_cb         = list_arc_snap_cb,
+        .ctx             = NULL,
+    };
+    p_instruction_list_layout->arc_handle = arc_scroll_create(&arc_cfg);
 
     lv_obj_t *ai_bar = lv_obj_create(p_instruction_list_bg);
     lv_obj_set_size(ai_bar, 80, LV_VER_RES);

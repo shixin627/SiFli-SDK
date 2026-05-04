@@ -48,6 +48,7 @@
 #include "drv_touch.h"
 #include "app_mainmenu.h"
 #include "common_widget.h"
+#include "arc_scroll.h"
 #include "bloc_control.h"
 #include <math.h>
 #include <stdio.h>
@@ -100,6 +101,7 @@ typedef struct
     lv_obj_t *no_notifications_widget;
     lv_obj_t *media_widget;
     // lv_obj_t *app_list_btn;
+    arc_scroll_handle_t *arc_handle; // 共用右側弧形觸控滾動 instance
 } app_notification_t;
 static app_notification_t *p_app_notification;
 
@@ -1691,6 +1693,13 @@ void refresh_notification_list(void *param)
         }
     }
     refresh_list(notification_count);
+
+    /* item 數變了 → 同步給共用 arc_scroll 模組做 scroll clamp。
+     * 用 page_count（含 media_widget），否則最後一格永遠 clamp 卡住 */
+    if (p_app_notification != NULL && p_app_notification->arc_handle != NULL)
+    {
+        arc_scroll_set_item_count(p_app_notification->arc_handle, page_count);
+    }
 }
 
 uint16_t get_message_gesture_starting_value(void)
@@ -1740,6 +1749,57 @@ static void reset_list_cb(void)
 
 static void on_tap(void);
 static void button_selection(gesture_position_t gesture_position);
+/* 右側弧形觸控滾動 — 用共用模組 common/arc_scroll.h */
+static lv_obj_t *message_arc_tap_cb(lv_point_t pt, void *ctx)
+{
+    (void)pt;
+    (void)ctx;
+    /* message card 的 click 不是 LV_EVENT_CLICKED 機制，是 widget_drag_event_cb
+     * 在 LV_EVENT_RELEASED 自己做 tap-vs-drag 判斷後直接呼叫 list_message_click_cb。
+     * arc_scroll 模組的 tap 路徑會 lv_event_send(LV_EVENT_CLICKED) 給回傳 obj，
+     * 但 send CLICKED 給 card 不會觸發 widget_drag_event_cb。所以這邊直接自己
+     * call list_message_click_cb，回傳 NULL 讓 arc_scroll 不要再 dispatch event。
+     *
+     * notification 的 data index 與 visual index 是反向的（refresh_list 裡用
+     * `get_notification(new_item_count - i - 1)`），所以選中那個 visual i 對應
+     * data index = notification_count - i - 1 */
+    if (p_app_notification == NULL) return NULL;
+    if (notification_count == 0) return NULL;
+    if (selected_message_index >= notification_count) return NULL;
+    notification_t *notification =
+        get_notification(notification_count - selected_message_index - 1);
+    if (notification == NULL) return NULL;
+    list_message_click_cb(notification);
+    return NULL;
+}
+
+static lv_obj_t *message_arc_snap_cb(void *ctx)
+{
+    (void)ctx;
+    if (p_app_notification == NULL) return NULL;
+    lv_obj_t *list = p_app_notification->list;
+    if (list == NULL || !lv_obj_is_valid(list)) return NULL;
+    if (page_count == 0) return NULL;
+
+    /* 不靠 selected_message_index — 它由既有的 scroll_list 更新，用嚴格 y_diff <
+     * min_offset 比較，當 scroll 剛好停在兩個 item 中間時會偏向較小的 idx，
+     * release 時就會 snap 回去剛才的 item，使用者體驗變成「拖一半就被推回去」。
+     * 改成直接從目前 scroll_y 算出最近的 item idx（四捨五入），讓 release 時
+     * 跑到最近那個 item，不偏向較小 idx */
+    lv_coord_t scroll_y = lv_obj_get_scroll_y(list);
+    lv_coord_t pad_top = lv_obj_get_style_pad_top(list, LV_PART_MAIN);
+    lv_coord_t list_y1 = list->coords.y1;
+    const int slot = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING;
+    const int item_h = LIST_MESSAGE_HEIGHT;
+    /* item i 對到中央時 scroll_y = list_y1 + pad_top + i*slot + item_h/2 - LV_VER_RES/2
+     * → i = (scroll_y - base) / slot，四捨五入用 +slot/2 */
+    int base = (int)list_y1 + (int)pad_top + item_h / 2 - LV_VER_RES / 2;
+    int idx = (scroll_y - base + slot / 2) / slot;
+    if (idx < 0) idx = 0;
+    if (idx >= (int)page_count) idx = (int)page_count - 1;
+    return lv_obj_get_child(list, (uint32_t)idx);
+}
+
 lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
 {
     RT_ASSERT(NULL == p_app_notification);
@@ -1838,6 +1898,30 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
     p_app_notification->main_window = p_window;
     refresh_notification_list(p_app_notification->main_window);
     lv_event_send(p_app_notification->main_window, LV_EVENT_SCROLL, NULL);
+
+    /* 右側弧形觸控滾動 — 跟 instruction_list / exercise / clock 共用同一份算法。
+     * slot_height = 252 + 40 = 292（item 間距），item_height = 252（item 本身高度）。
+     * slot_angle_deg=27 跟 msg_indicator_dots 的 angle_per_dot 對齊。
+     * message_list 是 tileview 子層，lock_ancestors 設 true 防止上下端切線拖曳被外層 tileview 搶走。
+     *
+     * item_count 必須用 page_count（= notification_count + media_widget），
+     * 否則 media widget 的 scroll 位置會超出 arc clamp 的 max_scroll，使用者一進來
+     * 就被卡住、CCW 完全動不了（只有 CW 能回到上一個 notification）*/
+    arc_scroll_config_t arc_cfg = {
+        .parent          = notification_center,
+        .list            = p_window,
+        .slot_height_px  = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING,
+        .item_height_px  = LIST_MESSAGE_HEIGHT,
+        .slot_angle_deg  = 27,
+        .item_count      = page_count,
+        .band_thickness  = 150,
+        .lock_ancestors  = true,
+        .tap_cb          = message_arc_tap_cb,
+        .snap_cb         = message_arc_snap_cb,
+        .ctx             = NULL,
+    };
+    p_app_notification->arc_handle = arc_scroll_create(&arc_cfg);
+
     myLancher[app_index_message].reset_list = reset_list_cb;
     myLancher[app_index_message].on_tap = on_tap;
     lvgl_msg_handler.handle_widgets_control = button_selection;

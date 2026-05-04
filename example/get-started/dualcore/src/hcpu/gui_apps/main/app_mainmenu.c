@@ -301,7 +301,7 @@ void check_is_at_instruction_list(void)
             extern void refersh_weather_icon(void);
             refersh_weather_icon();
             instruction_list_resume();
-            // display_status_bar_area(3, false);
+            display_status_bar_area(3, false);
             display_gesture_detect_objs(0, false);
         }
         else
@@ -310,7 +310,7 @@ void check_is_at_instruction_list(void)
             instruction_list_pause();
             display_gesture_detect_objs(0, true);
             open_skai_widget_ai(false);
-            // display_status_bar_area(3, true);
+            display_status_bar_area(3, true);
         }
         LOG_I("is_at_instruction_list: %d", _at_instruction_list);
     }

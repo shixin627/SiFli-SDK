@@ -921,7 +921,7 @@ static void ppg_data_collection_sw_event_callback(lv_event_t *e)
 }
 
 static bool have_change_tap_hz = false;
-static void imu_raw_data_collection_sw_event_callback(lv_event_t *e)
+void imu_raw_data_collection_sw_event_callback(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target(e);
     imu_raw_data_collection = !imu_raw_data_collection;
@@ -946,7 +946,7 @@ static void imu_raw_data_collection_sw_event_callback(lv_event_t *e)
     watch_sys_sync.notify_imu_rawdata_collection(imu_raw_data_collection);
 }
 
-static void imu_lock_sw_event_callback(lv_event_t *e)
+void imu_lock_sw_event_callback(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target(e);
     gesture_tap_hz = !gesture_tap_hz;

@@ -122,8 +122,7 @@ static void accel_sub_unsub_sw_event_callback(lv_event_t *e);
 static void hr_sub_unsub_sw_event_callback(lv_event_t *e);
 static void imu_data_collection_sw_event_callback(lv_event_t *e);
 static void imu_data_collection_error_sw_event_callback(lv_event_t *e);
-static void imu_raw_data_collection_sw_event_callback(lv_event_t *e);
-static void imu_lock_sw_event_callback(lv_event_t *e);
+extern void imu_raw_data_collection_sw_event_callback(lv_event_t *e);
 static void ppg_data_collection_sw_event_callback(lv_event_t *e);
 static void tap_and_hold_sw_event_callback(lv_event_t *e);
 static void motor_switch_event_callback(lv_event_t *e);
@@ -131,6 +130,7 @@ static void fps_cpu_load_switch_event_callback(lv_event_t *e);
 static void EPIC_switch_event_callback(lv_event_t *e);
 static void fs_test_callback(lv_event_t *e);
 static void fs_update_info_cb(lv_timer_t *timer);
+extern void imu_lock_sw_event_callback(lv_event_t *e);
 
 // indicates whether data collection from an Inertial Measurement Unit (IMU) is active or enabled.
 // indicates whether raw data collection from the IMU is active or enabled.

@@ -679,6 +679,7 @@ __attribute__((packed)) SkaiWatchSysType_t;
     extern void reset_watch_config(void);
     extern void watch_config_struct_flash_write(void);
     extern void watch_config_data_init(void);
+    extern bool imu_raw_data_collection;
 #ifdef __cplusplus
 }
 #endif
