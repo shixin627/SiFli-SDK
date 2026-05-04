@@ -77,22 +77,28 @@ static struct sifli_uart_config uartv[] =
 
 int virtul_uart_init(void)
 {
-    struct rt_serial_device *serial;
-    struct sifli_uart_config *uart;
-    serial = &serialv;
-    uart = (struct sifli_uart_config *)&uartv;
+    struct rt_serial_device *serial = &serialv;
+    struct sifli_uart_config *uart = (struct sifli_uart_config *)&uartv;
+    struct serial_configure cfg = RT_SERIAL_CONFIG_DEFAULT;
+
     serial->ops = &_uart_opss;
+    serial->config = cfg;
+
 #ifdef SOC_BF0_HCPU
-    rt_hw_serial_register(serial,
-                          "vuart1",
-                          RT_DEVICE_FLAG_RDWR | RT_DEVICE_FLAG_INT_RX,
-                          uart);
+    const char *name = "vuart1";
 #else
-    rt_hw_serial_register(serial,
-                          "vuart4",
+    const char *name = "vuart4";
+#endif
+
+    rt_hw_serial_register(serial, name,
                           RT_DEVICE_FLAG_RDWR | RT_DEVICE_FLAG_INT_RX,
                           uart);
-#endif
+
+    /* drv_common.c sets the console to vuart1/vuart4 inside rt_hw_board_init,
+     * which runs before INIT_BOARD callbacks. At that point this device is
+     * not yet registered, so the call silently fails and the console stays
+     * NULL. Re-bind it now that the device exists. */
+    rt_console_set_device(name);
     return 0;
 }
 INIT_BOARD_EXPORT(virtul_uart_init);
