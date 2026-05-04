@@ -119,7 +119,6 @@ extern void BLE_LOG_E(const char *format, ...);
         INTERACT_SHOW_QRCODE,
         INTERACT_FIND_WATCH,
         INTERACT_TIMER_REMINDER,
-        INTERACT_LONG_SIT_ALERT,
         INTERACT_MIC_LISTEN,
         INTERACT_MIC_V2T_INPUT,
         INTERACT_VOICE_RECOGNITION,
@@ -191,12 +190,6 @@ extern void BLE_LOG_E(const char *format, ...);
 
     } INTERACT_Type; // include interact priority
 
-    typedef struct
-    {
-        void (*wirte)(void);
-    } watch_system_task_t;
-
-    extern bool is_touch_event(void); // if user touch the screen
     extern rt_sem_t go_to_sleep_sem;
     extern char qrcode_data[256];
 

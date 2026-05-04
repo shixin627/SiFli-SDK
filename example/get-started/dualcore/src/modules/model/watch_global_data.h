@@ -138,22 +138,6 @@ extern "C"
         alarm_clock_bit_field_type_t alarm;
     } T_ALARM;
 
-    typedef struct
-    {
-        uint64_t reserved : 8;
-        uint64_t on_off : 8;
-        uint64_t step_low_limit : 16;
-        uint64_t sit_min : 8;
-        uint64_t start_hour : 8;
-        uint64_t end_hour : 8;
-        uint64_t day_flag_bits : 8;
-    } long_time_sit_alert_field_type_t;
-
-    typedef union
-    {
-        uint64_t data;
-        long_time_sit_alert_field_type_t sit_alert;
-    } T_SIT_ALERT;
     typedef enum
     {
         TGET_UP = 0x00,
@@ -492,7 +476,6 @@ extern "C"
         volatile uint8_t ota_progress;
         volatile uint8_t brightness; // o
         volatile uint16_t battery_vol_value;
-        volatile uint16_t current_stationary_time;
         volatile uint32_t SecondCountRTC;
         volatile uint32_t pre_hcpu_wakeup_tick;
 
@@ -502,7 +485,6 @@ extern "C"
         volatile T_DND_MODE DNDMode;     // o
         T_ALARM alarms[MAX_ALARM_NUM];   // o
         volatile T_USER_DATA user_data;  // o
-        T_SIT_ALERT sit_alert_data;      // o
         volatile T_UTC_TIME Global_Time; // o
         volatile T_MSG_DATA_CONFIG msg_data_config;
 
@@ -601,7 +583,6 @@ __attribute__((packed)) SkaiWatchSysType_t;
         WATCH_PREFS_KEY_PEDODATA,
         WATCH_PREFS_KEY_DNDMODE,
         WATCH_PREFS_KEY_USER_DATA,
-        WATCH_PREFS_KEY_SIT_ALERT_DATA,
         WATCH_PREFS_KEY_GLOBAL_TIME,
         WATCH_PREFS_KEY_SLEEP_DATA_SHOW,
         WATCH_PREFS_KEY_CLOCK_STATUS,
@@ -641,8 +622,6 @@ __attribute__((packed)) SkaiWatchSysType_t;
         void (*write_dnd_mode)(share_prefs_t *pref);
         void (*read_user_data)(share_prefs_t *pref);
         void (*write_user_data)(share_prefs_t *pref);
-        void (*read_sit_alert)(share_prefs_t *pref);
-        void (*write_sit_alert)(share_prefs_t *pref);
         void (*read_global_time)(share_prefs_t *pref);
         void (*write_global_time)(share_prefs_t *pref);
         void (*read_sleep_data)(share_prefs_t *pref);

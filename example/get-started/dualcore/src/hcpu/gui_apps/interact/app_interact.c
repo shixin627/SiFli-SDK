@@ -99,7 +99,6 @@ typedef enum
 {
     TEST_STATE_UNKNOWN,
     INTERACT_STATE_FIND_ME,        /* Find my device mode */
-    INTERACT_STATE_LONG_SIT_ALERT, /* Sedentary reminder */
     LOW_POWER_WARNING,             /* Low battery warning */
     OTA_UPDATING,                  /* Firmware update mode */
     INTERACT_STATE_SHOW_QRCODE,    /* QR code display mode */
@@ -112,7 +111,6 @@ typedef struct
 {
     lv_obj_t *hint_label;    /* Common hint label for all states */
     lv_obj_t *qr_code;       /* QR code object for show_qrcode state */
-    lv_obj_t *ignore_button; /* Ignore button for sit alert state */
     lv_obj_t *status_image;  /* Status image for warning/pairing states */
     lv_obj_t *progress_bar;  /* Progress bar for OTA updating state */
     lv_timer_t *blink_timer; /* Blink timer for image states */
@@ -198,10 +196,6 @@ static void set_text_hint(interact_state_t state)
         text = "Finding me...";
         break;
 
-    case INTERACT_STATE_LONG_SIT_ALERT:
-        text = "Please stand up";
-        break;
-
     case LOW_POWER_WARNING:
         text = "Please charge";
         break;
@@ -257,19 +251,6 @@ void update_progress_bar(uint8_t progress)
     lv_label_set_text(hint_label, text);
 }
 
-/**
- * @brief Callback for the ignore button on sit alert
- * @param event LVGL event
- */
-static void ignore_btn_event_callback(lv_event_t *event)
-{
-    if (LV_EVENT_CLICKED == event->code)
-    {
-        on_sit_alert_dismissed();
-        gui_app_self_exit();
-    }
-}
-
 static void close_btn_event_callback(lv_event_t *event)
 {
     if (LV_EVENT_CLICKED == event->code)
@@ -315,29 +296,6 @@ static void builder(interact_state_t state, lv_obj_t *parent)
             peripheral_provider.control_motor(true, &param);
         }
 
-        break;
-    }
-
-    case INTERACT_STATE_LONG_SIT_ALERT:
-    {
-        create_hint_label(parent, state);
-        /* Create ignore button */
-        lv_obj_t *ignore_btn = common_text_button(parent, "Ignore", get_system_font_size(0), 366, 100, ignore_btn_event_callback);
-        lv_obj_align(ignore_btn, LV_ALIGN_BOTTOM_MID, 0, -100);
-        ui_components.ignore_button = ignore_btn;
-        if (SkaiWatchSys.DNDMode.config.status) // DND mode
-        {
-            return;
-        }
-        if (get_motor_switch_state())
-        {
-            motor_params_t param = {
-                .duty_cycle = 51,
-                .period = 200000, // 200ms
-                .repeat_times =3,
-            };
-            peripheral_provider.control_motor(true, &param);
-        }
         break;
     }
 
@@ -478,10 +436,6 @@ static void on_stop(void)
         peripheral_provider.control_motor(false, NULL);
         break;
 
-    case INTERACT_STATE_LONG_SIT_ALERT:
-        sit_alert_acknowledge();
-        break;
-
     default:
         /* No specific cleanup for other states */
         break;
@@ -543,10 +497,6 @@ static int app_main(intent_t i)
         else if (strcmp(intent, "show_qrcode") == 0)
         {
             interact_state = INTERACT_STATE_SHOW_QRCODE;
-        }
-        else if (strcmp(intent, "long_sit_alert") == 0)
-        {
-            interact_state = INTERACT_STATE_LONG_SIT_ALERT;
         }
         else if (strcmp(intent, "low_power_warning") == 0)
         {

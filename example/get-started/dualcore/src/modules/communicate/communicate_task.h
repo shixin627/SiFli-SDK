@@ -36,7 +36,6 @@ bool commu_send_alarm_settings(void);
 bool commu_send_lift_switch(void);
 bool commu_send_twist_switch(void);
 bool commu_send_incoming_message_settings(void);
-bool commu_send_sit_setting(void);
 bool commu_send_hour_format(void);
 bool commu_send_distance_unit(void);
 bool commu_send_dndm_setting(void);

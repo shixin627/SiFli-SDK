@@ -22,7 +22,6 @@ extern "C"
         void (*set_brightness)(uint8_t percent);         // 函數用於設置屏幕亮度
         void (*set_screen_time)(uint8_t time);           // 函數用於設置屏幕時間
         void (*set_user_profile)(userprofile_union_t profile);
-        void (*set_sit_alert)(T_SIT_ALERT sit_alert);
         uint8_t (*get_power_save_mode)(void);
         void (*set_power_save_mode)(uint8_t mode);
 

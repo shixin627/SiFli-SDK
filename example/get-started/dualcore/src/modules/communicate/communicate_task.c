@@ -219,17 +219,6 @@ bool commu_send_incoming_message_settings(void)
     return skaiwatch_ble_notify(buf, len);
 }
 
-bool commu_send_sit_setting(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t status =
-        (SkaiWatchSys.sit_alert_data.sit_alert.on_off == 0x01) ? 0x01 : 0x00;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, SET_CONFIG_COMMAND_ID,
-                                       KEY_LONG_TIME_SIT_SETTING_RETURN, status);
-    return skaiwatch_ble_notify(buf, len);
-}
-
 bool commu_send_hour_format(void)
 {
     if (!commu_can_send()) return false;

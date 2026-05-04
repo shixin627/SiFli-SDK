@@ -616,18 +616,6 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
         break;
     }
 
-    case INTERACT_LONG_SIT_ALERT:
-    {
-        if (!gui_app_is_actived(APP_ID_INTERACT))
-        {
-            AppIntent appIntent;
-            strcpy(appIntent.app_id, APP_ID_INTERACT);
-            strcpy(appIntent.intent, "long_sit_alert");
-            watch_run_app_by_intent(&appIntent);
-        }
-        break;
-    }
-
     case INTERACT_MIC_LISTEN:
     {
         bool enable = *(bool *)pValue;

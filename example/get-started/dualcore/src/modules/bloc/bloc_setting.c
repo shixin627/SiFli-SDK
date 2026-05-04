@@ -100,7 +100,6 @@ static void set_lift_switch_status(bool status);
 static uint8_t get_power_save_mode(void);
 static void set_power_save_mode(uint8_t mode);
 static void set_user_profile(userprofile_union_t profile);
-static void set_sit_alert(T_SIT_ALERT sit_alert);
 static void shared_prefs_storage_timer_start(void);
 static void shared_prefs_storage_timer_callback(void *param);
 static void notify_watch_face_changed(uint8_t watch_face);
@@ -109,7 +108,6 @@ static void notify_screen_time(void);
 static void notify_power_save_mode(void);
 static void notify_lift_switch_status(void);
 static void notify_user_profile(void);
-static void notify_sit_alert(void);
 static uint8_t convert_string_to_language_code(char *str);
 
 /* Private function implementations -----------------------------------------*/
@@ -482,48 +480,6 @@ static void set_user_profile(userprofile_union_t profile)
     }
 }
 
-/* Sit alert functions -----------------------------------------------------*/
-
-/**
- * @brief  Notify system about sit alert settings change
- * @retval None
- */
-static void notify_sit_alert(void)
-{
-    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_SIT_ALERT_DATA);
-}
-
-/**
- * @brief  Set sit alert settings
- * @param  sit_alert: Sit alert configuration structure
- * @retval None
- */
-static void set_sit_alert(T_SIT_ALERT sit_alert)
-{
-    /* Return if settings are identical */
-    if (memcmp((void *)&SkaiWatchSys.sit_alert_data, (void *)&sit_alert,
-               sizeof(T_SIT_ALERT)) == 0)
-    {
-        return;
-    }
-
-    /* Clear stationary counter if turning off sit alerts */
-    if (sit_alert.sit_alert.on_off == 0)
-    {
-        SkaiWatchSys.current_stationary_time = 0;
-    }
-
-    SkaiWatchSys.sit_alert_data = sit_alert;
-
-    LOG_D("Set sit alert, on_off:%d, start_hour:%d, end_hour:%d, "
-          "day_flag_bits:%d",
-          sit_alert.sit_alert.on_off, sit_alert.sit_alert.start_hour,
-          sit_alert.sit_alert.end_hour, sit_alert.sit_alert.day_flag_bits);
-
-    sit_alert_acknowledge();
-    notify_sit_alert();
-}
-
 /* Development settings functions -------------------------------------------*/
 
 /**
@@ -565,7 +521,6 @@ static int bloc_setting_provider_register(void)
     setting_provider.get_power_save_mode = get_power_save_mode;
     setting_provider.set_power_save_mode = set_power_save_mode;
     setting_provider.set_user_profile = set_user_profile;
-    setting_provider.set_sit_alert = set_sit_alert;
 
     return 0;
 }

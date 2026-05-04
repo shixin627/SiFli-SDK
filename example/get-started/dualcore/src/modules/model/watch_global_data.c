@@ -167,9 +167,6 @@ static void write_dnd_mode(share_prefs_t *pref);
 // user_data               	| T_USER_DATA
 static void read_user_data(share_prefs_t *pref);
 static void write_user_data(share_prefs_t *pref);
-// sit_alert_data	          | T_SIT_ALERT
-static void read_sit_alert(share_prefs_t *pref);
-static void write_sit_alert(share_prefs_t *pref);
 // Global_Time	            | T_UTC_TIME
 static void read_global_time(share_prefs_t *pref);
 static void write_global_time(share_prefs_t *pref);
@@ -391,16 +388,6 @@ static void write_user_data(share_prefs_t *pref)
   share_prefs_set_block(pref, "user_data", (void *)&SkaiWatchSys.user_data, sizeof(T_USER_DATA));
 }
 
-static void read_sit_alert(share_prefs_t *pref)
-{
-  share_prefs_get_block(pref, "sit_alert", (void *)&SkaiWatchSys.sit_alert_data, sizeof(T_SIT_ALERT));
-}
-
-static void write_sit_alert(share_prefs_t *pref)
-{
-  share_prefs_set_block(pref, "sit_alert", (void *)&SkaiWatchSys.sit_alert_data, sizeof(T_SIT_ALERT));
-}
-
 static void read_global_time(share_prefs_t *pref)
 {
   share_prefs_get_block(pref, "global_time", (void *)&SkaiWatchSys.Global_Time, sizeof(T_UTC_TIME));
@@ -487,8 +474,6 @@ static int watch_prefs_register(void)
   WatchPrefs.write_dnd_mode = write_dnd_mode;
   WatchPrefs.read_user_data = read_user_data;
   WatchPrefs.write_user_data = write_user_data;
-  WatchPrefs.read_sit_alert = read_sit_alert;
-  WatchPrefs.write_sit_alert = write_sit_alert;
   WatchPrefs.read_global_time = read_global_time;
   WatchPrefs.write_global_time = write_global_time;
   WatchPrefs.read_sleep_data = read_sleep_data;
@@ -523,7 +508,6 @@ void watch_config_struct_flash_read(void)
   WatchPrefs.read_pedo_data(pref);
   WatchPrefs.read_dnd_mode(pref);
   WatchPrefs.read_user_data(pref);
-  WatchPrefs.read_sit_alert(pref);
   WatchPrefs.read_global_time(pref);
   WatchPrefs.read_sleep_data(pref);
   WatchPrefs.read_clock_status(pref);
@@ -577,7 +561,6 @@ void watch_config_struct_flash_write(void)
   WatchPrefs.write_pedo_data(pref);
   WatchPrefs.write_dnd_mode(pref);
   WatchPrefs.write_user_data(pref);
-  WatchPrefs.write_sit_alert(pref);
   WatchPrefs.write_global_time(pref);
   WatchPrefs.write_sleep_data(pref);
   WatchPrefs.write_clock_status(pref);
@@ -625,9 +608,6 @@ void store_watch_prefs(watch_prefs_key key)
     break;
   case WATCH_PREFS_KEY_USER_DATA:
     WatchPrefs.write_user_data(pref);
-    break;
-  case WATCH_PREFS_KEY_SIT_ALERT_DATA:
-    WatchPrefs.write_sit_alert(pref);
     break;
   case WATCH_PREFS_KEY_GLOBAL_TIME:
     WatchPrefs.write_global_time(pref);
@@ -702,10 +682,6 @@ static int utest_watch_shared_preferences(int argc, char *argv[])
         {
           read_user_data(pref);
         }
-        else if (strcmp(argv[2], "sit_alert") == 0)
-        {
-          read_sit_alert(pref);
-        }
         else if (strcmp(argv[2], "global_time") == 0)
         {
           read_global_time(pref);
@@ -774,10 +750,6 @@ static int utest_watch_shared_preferences(int argc, char *argv[])
         else if (strcmp(argv[2], "user_data") == 0)
         {
           write_user_data(pref);
-        }
-        else if (strcmp(argv[2], "sit_alert") == 0)
-        {
-          write_sit_alert(pref);
         }
         else if (strcmp(argv[2], "global_time") == 0)
         {
@@ -980,9 +952,6 @@ void show_SkaiWatchSys_info(void)
   // size = sizeof(SkaiWatchSys.battery_vol_value);
   // DBG_DIRECT("size of battery_vol_value: %d", size);
 
-  // size = sizeof(SkaiWatchSys.current_stationary_time);
-  // DBG_DIRECT("size of current_stationary_time: %d", size);
-
   // size = sizeof(SkaiWatchSys.SecondCountRTC);
   // DBG_DIRECT("size of SecondCountRTC: %d", size);
 
@@ -1033,9 +1002,6 @@ void show_SkaiWatchSys_info(void)
 
   // size = sizeof(SkaiWatchSys.user_data);
   // DBG_DIRECT("size of user_data: %d", size);
-
-  // size = sizeof(SkaiWatchSys.sit_alert_data);
-  // DBG_DIRECT("size of sit_alert_data: %d", size);
 
   // size = sizeof(SkaiWatchSys.Global_Time);
   // DBG_DIRECT("size of Global_Time: %d", size);

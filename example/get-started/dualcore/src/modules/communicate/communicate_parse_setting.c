@@ -211,16 +211,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         }
     }
     break;
-    case KEY_LONG_TIME_SIT_ALERT:
-    {
-        if (length == 8)
-        {
-            T_SIT_ALERT sit_alert;
-            memcpy((uint8_t *)&(sit_alert), pValue, sizeof(T_SIT_ALERT));
-            setting_provider.set_sit_alert(sit_alert);
-        }
-    }
-    break;
     case KEY_LIFT_SWITCH_SETTING:
     {
         if (length == 0x01)
@@ -377,15 +367,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
                     // false);
                 }
             }
-        }
-    }
-    break;
-    case KEY_LONG_TIME_SIT_SETTING_REQUEST:
-    {
-        if (length == 0x00)
-        {
-            LOG_D("request long time sit setting");
-            commu_send_sit_setting();
         }
     }
     break;
