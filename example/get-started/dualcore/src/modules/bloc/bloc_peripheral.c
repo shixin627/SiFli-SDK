@@ -157,10 +157,6 @@ static void send_peripheral_data(PeripheralMessageData data)
     #ifndef SOC_BF0_LCPU
 extern void accelerometer_subscribe(void);
 extern void accelerometer_unsubscribe(void);
-extern void gyroscope_subscribe(void);
-extern void gyroscope_unsubscribe(void);
-extern void magnetometer_subscribe(void);
-extern void magnetometer_unsubscribe(void);
 extern void heart_rate_subscribe(void);
 extern void heart_rate_unsubscribe(void);
 extern void ppg_subscribe(void);
@@ -238,22 +234,6 @@ static void subscribe_accelerometer_sensor(bool status)
 {
     PeripheralMessageData data;
     data.event = SUBSCRIBE_ACCELEROMETER;
-    data.arg.subscribe_status = status;
-    send_peripheral_data(data);
-}
-
-static void subscribe_gyroscope_sensor(bool status)
-{
-    PeripheralMessageData data;
-    data.event = SUBSCRIBE_GYROSCOPE;
-    data.arg.subscribe_status = status;
-    send_peripheral_data(data);
-}
-
-static void subscribe_magnetometer_sensor(bool status)
-{
-    PeripheralMessageData data;
-    data.event = SUBSCRIBE_MAGNETOMETER;
     data.arg.subscribe_status = status;
     send_peripheral_data(data);
 }
@@ -408,9 +388,6 @@ static int bloc_peripheral_register(void)
     peripheral_provider.hr_set_power = ppg_sensor_power_control;
     peripheral_provider.subscribe_accelerometer_sensor =
         subscribe_accelerometer_sensor;
-    peripheral_provider.subscribe_gyroscope_sensor = subscribe_gyroscope_sensor;
-    peripheral_provider.subscribe_magnetometer_sensor =
-        subscribe_magnetometer_sensor;
     peripheral_provider.subscribe_hr_sensor = subscribe_hr_sensor;
     peripheral_provider.subscribe_ppg_signal = subscribe_ppg_signal;
     peripheral_provider.control_motor = control_motor_vibration;
@@ -452,10 +429,6 @@ static void peripheral_task_entry(void *parameter)
                 }
             }
             break;
-            case SUBSCRIBE_GYROSCOPE:
-                break;
-            case SUBSCRIBE_MAGNETOMETER:
-                break;
             case SUBSCRIBE_HR:
             {
                 if (data.arg.subscribe_status)
@@ -986,16 +959,6 @@ static int utest_peripheral_task(int argc, char *argv[])
             bool status = atoi(argv[2]);
             subscribe_accelerometer_sensor(status);
         }
-        else if (strcmp(argv[1], "-gyro") == 0)
-        {
-            bool status = atoi(argv[2]);
-            subscribe_gyroscope_sensor(status);
-        }
-        else if (strcmp(argv[1], "-mag") == 0)
-        {
-            bool status = atoi(argv[2]);
-            subscribe_magnetometer_sensor(status);
-        }
         else if (strcmp(argv[1], "-ppg") == 0)
         {
             bool status = atoi(argv[2]);
@@ -1027,8 +990,6 @@ static int utest_peripheral_task(int argc, char *argv[])
         LOG_D("utest_peripheral_task [OPTION] ...\n"
               "Options:\n"
               "  -acce [0/1]\n"
-              "  -gyro [0/1]\n"
-              "  -mag [0/1]\n"
               "  -ppg [0/1]\n"
               "  -hr [0/1]\n"
               "  -audio [0/1]\n"

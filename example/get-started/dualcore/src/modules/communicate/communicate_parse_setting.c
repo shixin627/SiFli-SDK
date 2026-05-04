@@ -676,46 +676,6 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
         }
     }
     break;
-    case KEY_GYRO_SUBSCRIBE_REQUEST:
-    {
-        if (length == 0x01)
-        {
-            uint8_t value = pValue[0];
-            sensor_subscription_t sensor_subscription;
-            sensor_subscription.type = SENSOR_TYPE_GYROSCOPE;
-            sensor_subscription.thread_safe = true;
-            if (value == 0x00)
-            {
-                sensor_subscription.status = false;
-            }
-            else if (value == 0x01)
-            {
-                sensor_subscription.status = true;
-            }
-            watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
-        }
-    }
-    break;
-    case KEY_MAG_SUBSCRIBE_REQUEST:
-    {
-        if (length == 0x01)
-        {
-            uint8_t value = pValue[0];
-            sensor_subscription_t sensor_subscription;
-            sensor_subscription.type = SENSOR_TYPE_MAGNETOMETER;
-            sensor_subscription.thread_safe = true;
-            if (value == 0x00)
-            {
-                sensor_subscription.status = false;
-            }
-            else if (value == 0x01)
-            {
-                sensor_subscription.status = true;
-            }
-            watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
-        }
-    }
-    break;
     case KEY_HR_SUBSCRIBE_REQUEST:
     {
         if (length == 0x01)

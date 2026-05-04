@@ -65,8 +65,6 @@
 #include "rtdbg.h"
 
 static datac_handle_t accel_service_handle = DATA_CLIENT_INVALID_HANDLE;
-static datac_handle_t gyro_service_handle = DATA_CLIENT_INVALID_HANDLE;
-static datac_handle_t mag_service_handle = DATA_CLIENT_INVALID_HANDLE;
 
 static int imu_callback(data_callback_arg_t *arg)
 {
@@ -173,75 +171,9 @@ void accelerometer_unsubscribe(void)
     }
 }
 
-void gyroscope_subscribe(void)
-{
-    if (gyro_service_handle != DATA_CLIENT_INVALID_HANDLE)
-    {
-        LOG_E("gyro service is subscribed\n");
-        return;
-    }
-    gyro_service_handle = datac_open();
-    // RT_ASSERT(DATA_CLIENT_INVALID_HANDLE != gyro_service_handle);
-    if (gyro_service_handle == DATA_CLIENT_INVALID_HANDLE)
-    {
-        LOG_E("gyro_service_handle is invalid\n");
-        return;
-    }
-    datac_subscribe(gyro_service_handle, "GYRO", imu_callback, 0);
-}
-
-void gyroscope_unsubscribe(void)
-{
-    if (gyro_service_handle == DATA_CLIENT_INVALID_HANDLE)
-    {
-        LOG_E("gyro_service_handle is invalid\n");
-        return;
-    }
-    datac_unsubscribe(gyro_service_handle);
-    datac_close(gyro_service_handle);
-    gyro_service_handle = DATA_CLIENT_INVALID_HANDLE;
-}
-
-bool mag_service_subscribed(void)
-{
-    return mag_service_handle != DATA_CLIENT_INVALID_HANDLE;
-}
-void magnetometer_subscribe(void)
-{
-    if (mag_service_handle != DATA_CLIENT_INVALID_HANDLE)
-    {
-        LOG_E("mag service is subscribed\n");
-        return;
-    }
-    mag_service_handle = datac_open();
-    // RT_ASSERT(DATA_CLIENT_INVALID_HANDLE != mag_service_handle);
-    if (mag_service_handle == DATA_CLIENT_INVALID_HANDLE)
-    {
-        LOG_E("mag_service_handle is invalid\n");
-        return;
-    }
-    datac_subscribe(mag_service_handle, "MAG", imu_callback, 0);
-}
-
-void magnetometer_unsubscribe(void)
-{
-    if (mag_service_handle == DATA_CLIENT_INVALID_HANDLE)
-    {
-        LOG_E("mag_service_handle is invalid\n");
-        return;
-    }
-    datac_unsubscribe(mag_service_handle);
-    datac_close(mag_service_handle);
-    mag_service_handle = DATA_CLIENT_INVALID_HANDLE;
-}
-
 //**********************************************************************************************
 
 #if !kReleaseMode
 MSH_CMD_EXPORT(accelerometer_subscribe, Subscribe accelerometer data service);
-MSH_CMD_EXPORT(gyroscope_subscribe, Subscribe gyroscope data service);
 MSH_CMD_EXPORT(accelerometer_unsubscribe, Unsubscribe accelerometer data service);
-MSH_CMD_EXPORT(gyroscope_unsubscribe, Unsubscribe gyroscope data service);
-MSH_CMD_EXPORT(magnetometer_subscribe, Subscribe magnetometer data service);
-MSH_CMD_EXPORT(magnetometer_unsubscribe, Unsubscribe magnetometer data service);
 #endif

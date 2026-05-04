@@ -102,8 +102,6 @@ extern int log_file_backend_set_enabled(int enable);
 
 extern void accelerometer_subscribe(void);
 extern void accelerometer_unsubscribe(void);
-extern void gyroscope_subscribe(void);
-extern void gyroscope_unsubscribe(void);
 extern void heart_rate_subscribe(void);
 extern void heart_rate_unsubscribe(void);
 
@@ -121,7 +119,6 @@ static void reset_restart_num_callback(lv_event_t *e);
 static void ble_log_sw_event_callback(lv_event_t *e);
 static void file_log_sw_event_callback(lv_event_t *e);
 static void accel_sub_unsub_sw_event_callback(lv_event_t *e);
-static void gyro_sub_unsub_sw_event_callback(lv_event_t *e);
 static void hr_sub_unsub_sw_event_callback(lv_event_t *e);
 static void imu_data_collection_sw_event_callback(lv_event_t *e);
 static void imu_data_collection_error_sw_event_callback(lv_event_t *e);
@@ -930,21 +927,6 @@ static void accel_sub_unsub_sw_event_callback(lv_event_t *e)
     {
         peripheral_provider.subscribe_accelerometer_sensor(false);
         LOG_D("Accelerometer unsubscribed");
-    }
-}
-
-static void gyro_sub_unsub_sw_event_callback(lv_event_t *e)
-{
-    lv_obj_t *obj = lv_event_get_target(e);
-    if (lv_obj_get_state(obj) & LV_STATE_CHECKED)
-    {
-        peripheral_provider.subscribe_gyroscope_sensor(true);
-        LOG_D("Gyroscope subscribed");
-    }
-    else
-    {
-        peripheral_provider.subscribe_gyroscope_sensor(false);
-        LOG_D("Gyroscope unsubscribed");
     }
 }
 

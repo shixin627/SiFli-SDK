@@ -172,8 +172,6 @@ extern "C"
         void (*hcpu_suspend)(void);
         void (*subscribe_system_service)(bool status);
         void (*subscribe_accelerometer_sensor)(bool status);
-        void (*subscribe_gyroscope_sensor)(bool status);
-        void (*subscribe_magnetometer_sensor)(bool status);
         void (*subscribe_hr_sensor)(bool status);
         void (*subscribe_ppg_signal)(bool status);
         void (*control_motor)(bool enable, motor_params_t *params);
@@ -208,8 +206,6 @@ extern "C"
     typedef enum
     {
         SUBSCRIBE_ACCELEROMETER = 0,
-        SUBSCRIBE_GYROSCOPE,
-        SUBSCRIBE_MAGNETOMETER,
         SUBSCRIBE_HR,
         SUBSCRIBE_PPG,
         SUBSCRIBE_AUDIO_MIC,
@@ -294,10 +290,6 @@ extern "C"
 
 extern void accelerometer_subscribe(void);
 extern void accelerometer_unsubscribe(void);
-extern void gyroscope_subscribe(void);
-extern void gyroscope_unsubscribe(void);
-extern void magnetometer_subscribe(void);
-extern void magnetometer_unsubscribe(void);
 extern void heart_rate_subscribe(void);
 extern void heart_rate_unsubscribe(void);
 extern void hr_data_handler(hr_sensor_data_t *data);
@@ -305,11 +297,7 @@ extern void ppg_subscribe(void);
 extern void ppg_unsubscribe(void);
 extern void audio_subscribe(void);
 extern void audio_unsubscribe(void);
-extern void powermgr_subscribe(int todo_count);
-extern void powermgr_unsubscribe(void);
-extern void powermgr_set_screen_brightness(uint16_t brightness);
-extern void powermgr_set_screen_timeout(uint16_t timeout);
-extern void powermgr_reverse_watch_screen(void);
+extern bool get_motor_status(void);
 extern time_t get_current_time(void);
 extern void drv_reboot(void);
 #endif

@@ -88,10 +88,8 @@ extern "C"
         KEY_MOTOR_PERIOD_SETTING = 0x66,
         KEY_GESTURE_ACCEL_LIMIT_SETTING = 0x67,
         KEY_ACCEL_SUBSCRIBE_REQUEST = 0x68,
-        KEY_GYRO_SUBSCRIBE_REQUEST = 0x69,
         KEY_HR_SUBSCRIBE_REQUEST = 0x6A,
         KEY_AUDIO_SUBSCRIBE_REQUEST = 0x6B,
-        KEY_MAG_SUBSCRIBE_REQUEST = 0x6C,
     } SETTINGS_KEY;
 
     void resolve_settings_config_command(uint8_t key, const uint8_t *pValue, uint16_t length);

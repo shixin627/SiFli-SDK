@@ -395,6 +395,8 @@ static void load_photo_list(lv_obj_t *parent)
     {
         LOG_W("Cannot open /photo directory");
         lv_obj_t *label = lv_label_create(parent);
+        lv_obj_set_style_text_font(label,
+                                   LV_EXT_FONT_GET(get_system_font_size(0)), 0);
         lv_label_set_text(label, "No photos found");
         lv_obj_set_style_text_color(label, lv_color_white(), 0);
         lv_obj_center(label);
@@ -507,6 +509,8 @@ static void load_photo_list(lv_obj_t *parent)
     {
         lv_obj_t *label = lv_label_create(parent);
         lv_label_set_text(label, "No photos found");
+        lv_obj_set_style_text_font(label,
+                                   LV_EXT_FONT_GET(get_system_font_size(0)), 0);
         lv_obj_set_style_text_color(label, lv_color_white(), 0);
         lv_obj_center(label);
     }
@@ -596,7 +600,8 @@ static void photo_select_cb(lv_event_t *e)
     {
         char dst_path[64];
         char folder[64];
-        snprintf(folder, sizeof(folder), "/JW_wf%u", (unsigned)choose_photo_page_ptr);
+        snprintf(folder, sizeof(folder), "/JW_wf%u",
+                 (unsigned)choose_photo_page_ptr);
         // 先刪除 picture_ 開頭的檔案（只會有一個）
         DIR *dir = opendir(folder);
         if (dir)
@@ -607,7 +612,8 @@ static void photo_select_cb(lv_event_t *e)
                 if (strncmp(entry->d_name, "picture_", 8) == 0)
                 {
                     char pic_path[128];
-                    snprintf(pic_path, sizeof(pic_path), "%s/%s", folder, entry->d_name);
+                    snprintf(pic_path, sizeof(pic_path), "%s/%s", folder,
+                             entry->d_name);
                     remove(pic_path);
                     lv_img_cache_invalidate_src(pic_path);
                     break; // 只會有一個
@@ -653,118 +659,6 @@ static void close_photo_list_cb(lv_event_t *e)
     choose_photo_page_ptr = NULL;
     LOG_D("Photo list closed");
 }
-void choose_photo_list(uint16_t page)
-{
-    LOG_D("Choosing photo list for page %d", page);
-    choose_photo_page_ptr = page;
-    DIR *dir;
-    struct dirent *entry;
-    char file_path[MAX_PHOTO_PATH_LEN];
-    photo_list_obj = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(photo_list_obj, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_style_bg_color(photo_list_obj, lv_color_black(), 0);
-    lv_obj_add_flag(photo_list_obj, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_scrollbar_mode(photo_list_obj, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_scroll_dir(photo_list_obj, LV_DIR_VER);
-
-    // 開啟 /photo 資料夾
-    dir = opendir("/photo");
-    if (dir == NULL)
-    {
-        lv_obj_t *label = lv_label_create(photo_list_obj);
-        lv_label_set_text(label, "No photos found");
-        lv_obj_set_style_text_color(label, lv_color_white(), 0);
-        lv_obj_center(label);
-        lv_obj_add_event_cb(photo_list_obj, close_photo_list_cb,
-                            LV_EVENT_CLICKED, NULL);
-        choose_photo_page_ptr = NULL;
-        return;
-    }
-
-    uint8_t photo_count = 0;
-    uint16_t top_spacer_height = PHOTO_LIST_PAD * 3;
-    // 上方間距
-    lv_obj_t *top_spacer = lv_obj_create(photo_list_obj);
-    lv_obj_set_size(top_spacer, PHOTO_THUMB_SIZE * 2 + PHOTO_LIST_PAD * 3,
-                    top_spacer_height);
-    lv_obj_set_pos(top_spacer, 0, 0);
-    lv_obj_set_style_bg_opa(top_spacer, LV_OPA_0, 0);
-    lv_obj_set_style_border_width(top_spacer, 0, 0);
-    lv_obj_set_style_pad_all(top_spacer, 0, 0);
-    lv_obj_set_style_radius(top_spacer, 0, 0);
-    lv_obj_clear_flag(top_spacer, LV_OBJ_FLAG_SCROLLABLE);
-
-    while ((entry = readdir(dir)) != NULL)
-    {
-        if (entry->d_type == DT_REG && is_image_file(entry->d_name))
-        {
-            snprintf(file_path, sizeof(file_path), "/photo/%s", entry->d_name);
-
-            lv_img_header_t header;
-            if (lv_img_decoder_get_info(file_path, &header) != LV_RES_OK)
-                continue;
-
-            uint16_t zoom = 256;
-            if (header.w < header.h && header.w > PHOTO_THUMB_SIZE)
-                zoom = (256 * PHOTO_THUMB_SIZE) / header.w;
-            else if (header.h <= header.w && header.h > PHOTO_THUMB_SIZE)
-                zoom = (256 * PHOTO_THUMB_SIZE) / header.h;
-
-            uint16_t x =
-                PHOTO_LIST_PAD +
-                (photo_count % 2) * (PHOTO_THUMB_SIZE + PHOTO_LIST_PAD);
-            uint16_t y =
-                top_spacer_height + PHOTO_LIST_PAD +
-                (photo_count / 2) * (PHOTO_THUMB_SIZE + PHOTO_LIST_PAD);
-            lv_obj_t *img_container = lv_obj_create(photo_list_obj);
-            lv_obj_set_size(img_container, PHOTO_THUMB_SIZE, PHOTO_THUMB_SIZE);
-            lv_obj_set_pos(img_container, x, y);
-            lv_obj_set_style_radius(img_container, 0, 0);
-            lv_obj_set_style_bg_color(img_container, lv_color_black(), 0);
-            lv_obj_set_style_border_width(img_container, 3, 0);
-            lv_obj_set_style_border_color(img_container, lv_color_black(), 0);
-            lv_obj_set_user_data(img_container, strdup(file_path));
-            lv_obj_set_style_pad_all(img_container, 0, 0);
-            lv_obj_clear_flag(img_container, LV_OBJ_FLAG_SCROLLABLE);
-
-            // 綁定點擊事件
-            lv_obj_add_event_cb(img_container, photo_select_cb,
-                                LV_EVENT_CLICKED, strdup(file_path));
-
-            lv_obj_t *img = lv_img_create(img_container);
-            lv_img_set_src(img, file_path);
-            if (zoom != 256)
-                lv_img_set_zoom(img, zoom);
-            lv_obj_center(img);
-            photo_count++;
-        }
-    }
-
-    // 下方間距
-    lv_obj_t *bottom_spacer = lv_obj_create(photo_list_obj);
-    lv_obj_set_size(bottom_spacer, PHOTO_THUMB_SIZE * 2 + PHOTO_LIST_PAD * 3,
-                    PHOTO_LIST_PAD * 3);
-    lv_obj_set_pos(bottom_spacer, 0,
-                   top_spacer_height + PHOTO_LIST_PAD +
-                       ((photo_count + 1) / 2) *
-                           (PHOTO_THUMB_SIZE + PHOTO_LIST_PAD));
-    lv_obj_set_style_bg_opa(bottom_spacer, LV_OPA_0, 0);
-    lv_obj_set_style_border_width(bottom_spacer, 0, 0);
-    lv_obj_set_style_pad_all(bottom_spacer, 0, 0);
-    lv_obj_set_style_radius(bottom_spacer, 0, 0);
-    lv_obj_clear_flag(bottom_spacer, LV_OBJ_FLAG_SCROLLABLE);
-
-    closedir(dir);
-    if (photo_count == 0)
-    {
-        lv_obj_t *label = lv_label_create(photo_list_obj);
-        lv_label_set_text(label, "No photos found");
-        lv_obj_set_style_text_color(label, lv_color_white(), 0);
-        lv_obj_center(label);
-        lv_obj_add_event_cb(photo_list_obj, close_photo_list_cb,
-                            LV_EVENT_CLICKED, NULL);
-    }
-}
 
 /**
  * @brief Initialize the app on start
@@ -786,23 +680,14 @@ static lv_obj_t *on_start(lv_obj_t *scr)
     return p_app_photo->main_window;
 }
 
-/**
- * @brief Resume the app
- */
 static void on_resume(void)
 {
 }
 
-/**
- * @brief Pause the app
- */
 static void on_pause(void)
 {
 }
 
-/**
- * @brief Stop and clean up the app
- */
 static void on_stop(void)
 {
     if (p_app_photo)

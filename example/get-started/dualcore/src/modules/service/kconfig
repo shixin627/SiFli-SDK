@@ -1,16 +1,5 @@
 menu "Select data service"      
     if BSP_USING_DATA_SVC
-        config BSP_USING_COMP_SVC
-            bool "Enable Compass Service"
-            select BSP_USING_MAG_SVC
-            default n
-        
-        config BSP_USING_MAG_SVC
-            bool "Enable Magnetic Service"
-            select SENSOR_USING_MAG
-            select MAG_USING_BMM150
-            default n
-            
         config BSP_USING_WEA_SVC
             bool "Enable Weather Service"
             select BSP_BLE_SIBLES
@@ -29,12 +18,7 @@ menu "Select data service"
         config BSP_USING_ACCE_SVC
             bool "Enable Accelerator Service"
             select ACC_USING_BMI270
-            default n 	
-
-        config BSP_USING_GYRO_SVC
-            bool "Enable Gyro Service"
-            select ACC_USING_BMI270
-            default n 	
+            default n
 
         config BSP_USING_STEP_SVC
             bool "Enable Step Service"

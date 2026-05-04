@@ -524,8 +524,6 @@ __attribute__((packed)) SkaiWatchSysType_t;
     typedef enum
     {
         SENSOR_TYPE_ACCELEROMETER,
-        SENSOR_TYPE_GYROSCOPE,
-        SENSOR_TYPE_MAGNETOMETER,
         SENSOR_TYPE_STEP_COUNTER,
         SENSOR_TYPE_WAKE_GESTURE,
         SENSOR_TYPE_PICK_UP_GESTURE,

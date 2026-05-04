@@ -224,34 +224,6 @@ handle_sensor_subscription(sensor_subscription_t sensor_subscription)
         }
         break;
     }
-    case SENSOR_TYPE_GYROSCOPE:
-    {
-        if (sensor_subscription.status)
-        {
-            LOG_D("request gyroscope subscribe on");
-            peripheral_provider.subscribe_gyroscope_sensor(true);
-        }
-        else
-        {
-            LOG_D("request gyroscope subscribe off");
-            peripheral_provider.subscribe_gyroscope_sensor(false);
-        }
-        break;
-    }
-    case SENSOR_TYPE_MAGNETOMETER:
-    {
-        if (sensor_subscription.status)
-        {
-            LOG_D("request magnetometer subscribe on");
-            peripheral_provider.subscribe_magnetometer_sensor(true);
-        }
-        else
-        {
-            LOG_D("request magnetometer subscribe off");
-            peripheral_provider.subscribe_magnetometer_sensor(false);
-        }
-        break;
-    }
     case SENSOR_TYPE_PPG:
     {
 #if !kReleaseMode
@@ -392,19 +364,6 @@ void motor_pattern_tap(void)
             .duty_cycle = 100,
             .period = 9000, // 200ms
             .repeat_times = 1,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
-}
-
-void motor_pattern_test(void)
-{
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 100,
-            .period = 5000, // 200ms
-            .repeat_times = 0,
         };
         peripheral_provider.control_motor(true, &params);
     }
@@ -962,7 +921,6 @@ static void handle_power_management(INTERACT_Type type, void *pValue)
         break;
     case HCPU_WAKEUP:
     {
-        // watch_hcpu_resume_with_reason(*(uint8_t *)pValue);
         if (!gui_is_active())
         {
             gui_pm_fsm(GUI_PM_ACTION_BUTTON_CLICKED);
@@ -972,8 +930,6 @@ static void handle_power_management(INTERACT_Type type, void *pValue)
     }
     case WATCH_SLEEP:
     {
-        // send_sys_interact_event(SYS_EVENT_HCPU_SUSPEND);
-        extern bool get_motor_status(void);
         if (!get_motor_status())
         {
             peripheral_provider.hcpu_suspend();
@@ -982,37 +938,28 @@ static void handle_power_management(INTERACT_Type type, void *pValue)
         break;
     }
     case WATCH_GESTURE_UNLOCK:
-    {
         handle_gesture_unlock();
         break;
-    }
+
     case WATCH_REBOOT:
-    {
         peripheral_provider.hcpu_reboot();
         break;
-    }
+
     case STANDBY_WAKEUP:
     {
         SkaiWatchSys.sys_power_status = 0;
         sys_poweron_fsm(SYS_PWRON_EVT_BUTTON_LONG_PRESSED);
         break;
     }
-    case WATCH_REQUEST_BATTERY:
-    {
 #ifdef BSP_USING_WATCH_SYS_CLIENT
+    case WATCH_REQUEST_BATTERY:
         watch_sys_sync.request_battery_voltage();
-#endif
         break;
-    }
 
     case WATCH_REQUEST_CHARGE_STATUS:
-    {
-#ifdef BSP_USING_WATCH_SYS_CLIENT
         watch_sys_sync.request_charge_status();
-#endif
         break;
-    }
-
+#endif
     default:
         break;
     }
@@ -1256,7 +1203,7 @@ static int control_motor(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(control_motor, "control_motor [OPTION] ...");
 
-#ifdef RGB_LED_CONTROL_PIN
+    #ifdef RGB_LED_CONTROL_PIN
 static int control_led(int argc, char *argv[])
 {
     if (argc >= 2)
@@ -1295,7 +1242,7 @@ static int control_led(int argc, char *argv[])
     return 0;
 }
 MSH_CMD_EXPORT(control_led, "control_led [OPTION] ...");
-#endif // RGB_LED_CONTROL_PIN
+    #endif // RGB_LED_CONTROL_PIN
 
 static int utest_user_speech_intent(int argc, char *argv[])
 {
