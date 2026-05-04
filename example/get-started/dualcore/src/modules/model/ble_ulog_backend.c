@@ -7,7 +7,7 @@
 #include "watch_global_data.h"
 #include <string.h>
 
-#if VERSION_DEV
+#if !kReleaseMode
 // BLE backend 名稱
 #define BLE_ULOG_BACKEND_NAME "ble"
 
@@ -75,6 +75,6 @@ void ble_ulog_backend_unregister(void)
     ulog_backend_unregister(&ble_ulog_backend);
 }
 
-#endif /* VERSION_DEV */
+#endif /* !kReleaseMode */
 
 #endif /* RT_USING_ULOG */

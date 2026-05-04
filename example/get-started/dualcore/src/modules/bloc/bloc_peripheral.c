@@ -601,6 +601,7 @@ static void peripheral_task_entry(void *parameter)
                 }
             }
             break;
+        #ifdef RGB_LED_CONTROL_PIN
             case CONTROL_RGB_LED:
             {
                 watch_sys_rgb_led_params_t params;
@@ -643,6 +644,7 @@ static void peripheral_task_entry(void *parameter)
                 watch_sys_sync.control_rgb_led(&params);
             }
             break;
+        #endif
     #endif
 
             case SAVE_SHARE_PREFS:
