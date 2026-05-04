@@ -703,17 +703,20 @@ static void apply_circular_layout(lv_obj_t *list)
         }
         lv_obj_clear_flag(workout_icons[i], LV_OBJ_FLAG_HIDDEN);
 
-        /* 環上的螢幕座標 → list 內部 set_pos 座標
-         *   screen = list.x1 + pad_left + set_pos_x  (LVGL floating obj 規則) */
-        int32_t icon_sx = cx + (int32_t)(ICON_ARC_RADIUS * cosf(current_angle));
-        int32_t icon_sy = cy + (int32_t)(ICON_ARC_RADIUS * sinf(current_angle));
-        int32_t local_x = icon_sx - list_x1 - pad_left - ICON_ITEM_SIZE / 2;
-        int32_t local_y = icon_sy - list_y1 - pad_top - ICON_ITEM_SIZE / 2;
-        lv_obj_set_pos(workout_icons[i], local_x, local_y);
-
+        /* 先設 zoom，再用 icon 當前實際寬高（VIRTUAL mode 下會縮）算置中 */
         int32_t zoom_range = ICON_ZOOM_CENTER - ICON_ZOOM_MIN;
         int32_t zoom = ICON_ZOOM_MIN + (int32_t)(zoom_range * cosf(abs_angle));
         lv_img_set_zoom(workout_icons[i], zoom);
+
+        /* 環上的螢幕座標 → list 內部 set_pos 座標。
+         *   screen = list.x1 + pad_left + set_pos_x  (LVGL floating obj 規則) */
+        int32_t icon_sx = cx + (int32_t)(ICON_ARC_RADIUS * cosf(current_angle));
+        int32_t icon_sy = cy + (int32_t)(ICON_ARC_RADIUS * sinf(current_angle));
+        lv_coord_t icon_w = lv_obj_get_width(workout_icons[i]);
+        lv_coord_t icon_h = lv_obj_get_height(workout_icons[i]);
+        int32_t local_x = icon_sx - list_x1 - pad_left - icon_w / 2;
+        int32_t local_y = icon_sy - list_y1 - pad_top - icon_h / 2;
+        lv_obj_set_pos(workout_icons[i], local_x, local_y);
 
         /* opacity：中央 = COVER (255)，邊緣 = MIN (≈76)，用 cos(angle) 做插值 */
         int32_t opa_range = ICON_OPA_CENTER - ICON_OPA_MIN;
@@ -814,7 +817,8 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     {
         workout_icons[i] = lv_img_create(list);
         lv_img_set_src(workout_icons[i], workout_list[i].icon);
-        lv_img_set_size_mode(workout_icons[i], LV_IMG_SIZE_MODE_REAL);
+        /* 用預設 VIRTUAL 模式：obj.size = src.size × zoom / 256，
+         * 跟著 zoom 縮小 → LVGL 不會在多餘空間 tile 同一張圖 */
         const lv_img_dsc_t *dsc = (const lv_img_dsc_t *)workout_list[i].icon;
         lv_img_set_pivot(workout_icons[i], dsc->header.w / 2, dsc->header.h / 2);
         lv_obj_add_flag(workout_icons[i], LV_OBJ_FLAG_FLOATING);
