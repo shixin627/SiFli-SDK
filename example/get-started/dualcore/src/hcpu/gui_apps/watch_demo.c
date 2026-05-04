@@ -856,6 +856,7 @@ void app_watch_entry(void *parameter)
 
     ui_layer_system_builder();
     // ui_layer_top_builder();
+    watch_system_interact(WATCH_REQUEST_CHARGE_STATUS, NULL);
 #if defined(GUI_APP_FRAMEWORK) && (!defined(APP_TRANS_ANIMATION_NONE))
     lvsf_gesture_init(lv_layer_top());
 #endif /* defined(GUI_APP_FRAMEWORK)&&(!defined (APP_TRANS_ANIMATION_NONE)) */

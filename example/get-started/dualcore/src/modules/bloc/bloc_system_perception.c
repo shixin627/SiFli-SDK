@@ -121,8 +121,6 @@ void app_periodic_task(void)
     // peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_GLOBAL_TIME); // 不需要手動儲存時間到shared prefs,因為只要系統不斷電,rtc模組會自動保存時間
 #endif
 
-    // watch_system_interact(WATCH_REQUEST_BATTERY, NULL);
-
 #ifdef BSP_USING_BLOC
     // Check if device just connected to phone (rising edge detection)
     bool current_logged = SkaiWatchSys.flag_field.device_had_logged;
