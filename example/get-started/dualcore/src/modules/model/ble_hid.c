@@ -79,14 +79,6 @@ static struct hids_report input_touchscreen = {
 static struct touch_state hid_touch_state;
 #endif
 
-#ifdef HID_TOUCHPAD
-static struct hids_report input_touchpad = {
-    .id = REPORT_ID_TOUCHPAD,
-    .type = HIDS_INPUT,
-};
-static struct touchpad_state hid_touchpad_state;
-#endif
-
 static uint8_t ctrl_point;
 static uint8_t g_conn_idx = 0;
 static ble_hid_data_t *g_hid_data = NULL;
@@ -454,62 +446,6 @@ static const uint8_t report_map[] = {
     0xC0, // End Collection
 #endif
 
-#ifdef HID_TOUCHPAD
-    0x05,
-    0x0D, // Usage Page (Digitizers)
-    0x09,
-    0x05, // Usage (Touch Pad)
-    0xA1,
-    0x01, // Collection (Application)
-    0x85,
-    REPORT_ID_TOUCHPAD, // Report ID (Touchpad)
-    0x09,
-    0x22, // Usage (Finger)
-    0xA1,
-    0x02, // Collection (Logical)
-    0x09,
-    0x42, // Usage (Tip Switch)
-    0x15,
-    0x00, // Logical Minimum (0)
-    0x25,
-    0x01, // Logical Maximum (1)
-    0x75,
-    0x01, // Report Size (1)
-    0x95,
-    0x01, // Report Count (1)
-    0x81,
-    0x02, // Input (Data, Variable, Absolute)
-    0x09,
-    0x51, // Usage (Contact Identifier)
-    0x25,
-    0x7F, // Logical Maximum (127)
-    0x75,
-    0x07, // Report Size (7)
-    0x95,
-    0x01, // Report Count (1)
-    0x81,
-    0x02, // Input (Data, Variable, Absolute)
-    0x05,
-    0x01, // Usage Page (Generic Desktop)
-    0x09,
-    0x30, // Usage (X)
-    0x09,
-    0x31, // Usage (Y)
-    0x16,
-    0x00,
-    0x00, // Logical Minimum (0)
-    0x26,
-    0xFF,
-    0x7F, // Logical Maximum (32767)
-    0x75,
-    0x10, // Report Size (16)
-    0x95,
-    0x02, // Report Count (2)
-    0x81,
-    0x02, // Input (Data, Variable, Absolute)
-    0xC0, // End Collection
-    0xC0, // End Collection
-#endif
 };
 
 /**********************HID Attribute Database
@@ -619,24 +555,6 @@ struct attm_desc hids_att_db[] = {
                                          PERM(RI, ENABLE), 2},
 #endif
 
-#ifdef HID_TOUCHPAD
-    // HID Report (Touchpad)
-    [HIDS_TOUCHPAD_IDX_REPORT] = {ATT_DECL_CHARACTERISTIC, PERM(RD, ENABLE), 0,
-                                  0},
-    [HIDS_TOUCHPAD_IDX_REPORT_VAL] =
-        {ATT_CHAR_REPORT,
-         PERM(RD, ENABLE) | PERM(WRITE_REQ, ENABLE) |
-             PERM(WRITE_COMMAND, ENABLE) | PERM(NTF, ENABLE) | PERM(WP, UNAUTH),
-         PERM(UUID_LEN, UUID_16) | PERM(RI, ENABLE), 8},
-    [HIDS_TOUCHPAD_IDX_REPORT_NTF_CFG] = {ATT_DESC_CLIENT_CHAR_CFG,
-                                          PERM(RD, ENABLE) |
-                                              PERM(WRITE_REQ, ENABLE) |
-                                              PERM(WP, UNAUTH),
-                                          PERM(RI, ENABLE), 2},
-    [HIDS_TOUCHPAD_IDX_REPORT_REF] = {ATT_DESC_REPORT_REF, PERM(RD, ENABLE),
-                                      PERM(RI, ENABLE), 2},
-#endif
-
     // HID Control
     [HIDS_IDX_CTRL] = {ATT_DECL_CHARACTERISTIC, PERM(RD, ENABLE), 0, 0},
     [HIDS_IDX_CTRL_VAL] = {ATT_CHAR_HID_CTNL_PT,
@@ -719,16 +637,6 @@ uint8_t *ble_hids_gatts_get_cbk(uint8_t conn_idx, uint8_t idx, uint16_t *len)
     }
     break;
 #endif
-#ifdef HID_TOUCHPAD
-    case HIDS_TOUCHPAD_IDX_REPORT_VAL:
-        break;
-    case HIDS_TOUCHPAD_IDX_REPORT_REF:
-    {
-        ret_val = (uint8_t *)&input_touchpad;
-        *len = sizeof(input_touchpad);
-    }
-    break;
-#endif
     default:
         break;
     }
@@ -771,12 +679,6 @@ uint8_t ble_hids_gatts_set_cbk(uint8_t conn_idx, sibles_set_cbk_t *para)
     case HIDS_TOUCHSCREEN_IDX_REPORT_NTF_CFG:
         g_hid_data->is_touchscreen_config_on = *(para->value);
         LOG_I("TOUCHSCREEN CCCD %d", g_hid_data->is_touchscreen_config_on);
-        break;
-#endif
-#ifdef HID_TOUCHPAD
-    case HIDS_TOUCHPAD_IDX_REPORT_NTF_CFG:
-        g_hid_data->is_touchpad_config_on = *(para->value);
-        LOG_I("TOUCHPAD CCCD %d", g_hid_data->is_touchpad_config_on);
         break;
 #endif
     case HIDS_IDX_CTRL_VAL:
@@ -925,24 +827,6 @@ static int hid_touch_state_clear(void)
     hid_touch_state.touch = 0;
     hid_touch_state.x = 0;
     hid_touch_state.y = 0;
-    return 0;
-}
-#endif
-
-#ifdef HID_TOUCHPAD
-static int hid_touchpad_state_set(uint8_t touch, uint16_t x, uint16_t y)
-{
-    hid_touchpad_state.touch = touch;
-    hid_touchpad_state.x = x;
-    hid_touchpad_state.y = y;
-    return 0;
-}
-
-static int hid_touchpad_state_clear(void)
-{
-    hid_touchpad_state.touch = 0;
-    hid_touchpad_state.x = 0;
-    hid_touchpad_state.y = 0;
     return 0;
 }
 #endif
@@ -1108,21 +992,6 @@ static void touchscreen_report_send(uint8_t *key_val, uint16_t key_val_len)
 }
 #endif
 
-#ifdef HID_TOUCHPAD
-static void touchpad_report_send(uint8_t *key_val, uint16_t key_val_len)
-{
-    if (!g_hid_data || !g_hid_data->is_touchpad_config_on)
-        return;
-
-    sibles_value_t value;
-    value.hdl = g_hid_data->srv_handle;
-    value.idx = HIDS_TOUCHPAD_IDX_REPORT_VAL;
-    value.len = key_val_len;
-    value.value = key_val;
-    sibles_write_value(g_conn_idx, &value);
-}
-#endif
-
 /**********************Public API Functions
  * ****************************************************/
 
@@ -1183,9 +1052,6 @@ void ble_hid_reset_on_disconnect(void)
 #endif
 #ifdef HID_TOUCHSCREEN
     g_hid_data->is_touchscreen_config_on = 0;
-#endif
-#ifdef HID_TOUCHPAD
-    g_hid_data->is_touchpad_config_on = 0;
 #endif
 }
 
@@ -2082,35 +1948,6 @@ INIT_APP_EXPORT(init_ble_touch_screen_func);
     #endif
 #endif // HID_TOUCHSCREEN
 
-/**********************HID Input Functions - Touchpad
- * ****************************************************/
-
-#ifdef HID_TOUCHPAD
-void BLE_HID_Touchpad_Press(uint16_t x, uint16_t y)
-{
-    hid_touchpad_state_set(1, x, y);
-    touchpad_report_send((uint8_t *)&hid_touchpad_state,
-                         sizeof(hid_touchpad_state));
-}
-
-void BLE_HID_Touchpad_Release(uint16_t x, uint16_t y)
-{
-    hid_touchpad_state_set(0, x, y);
-    touchpad_report_send((uint8_t *)&hid_touchpad_state,
-                         sizeof(hid_touchpad_state));
-}
-
-static int init_ble_touchpad_func(void)
-{
-    control_provider.ble_hid_touchpad_press = BLE_HID_Touchpad_Press;
-    control_provider.ble_hid_touchpad_release = BLE_HID_Touchpad_Release;
-    return 0;
-}
-    #ifndef BSP_USING_PC_SIMULATOR
-INIT_APP_EXPORT(init_ble_touchpad_func);
-    #endif
-#endif // HID_TOUCHPAD
-
 /**********************HID Test Commands (MSH)
  * ****************************************************/
 
@@ -2434,43 +2271,5 @@ FINSH_FUNCTION_EXPORT(test_hids_touchscreen_ctrl,
                       Test HIDS Touchscreen Control);
 MSH_CMD_EXPORT(test_hids_touchscreen_ctrl, Test HIDS Touchscreen Control);
     #endif // HID_TOUCHSCREEN
-
-    #ifdef HID_TOUCHPAD
-static rt_err_t test_hids_touchpad_ctrl(int argc, char **argv)
-{
-    if (argc < 2)
-    {
-        LOG_D(
-            "usage: test_hids_touchpad_ctrl press|release|slide_ver|slide_hor");
-        return 0;
-    }
-
-    if (strcmp(argv[1], "press") == 0)
-    {
-        if (argc < 4)
-        {
-            LOG_D("usage: test_hids_touchpad_ctrl press x y");
-            return 0;
-        }
-        uint16_t x = atoi(argv[2]);
-        uint16_t y = atoi(argv[3]);
-        LOG_D("Set touchpad press %d %d", x, y);
-        hid_touchpad_state_set(1, x, y);
-        touchpad_report_send((uint8_t *)&hid_touchpad_state,
-                             sizeof(hid_touchpad_state));
-    }
-    else if (strcmp(argv[1], "release") == 0)
-    {
-        LOG_D("Set touchpad release");
-        hid_touchpad_state_clear();
-        touchpad_report_send((uint8_t *)&hid_touchpad_state,
-                             sizeof(hid_touchpad_state));
-    }
-    // Add slide_ver and slide_hor similar to touchscreen
-    return 0;
-}
-FINSH_FUNCTION_EXPORT(test_hids_touchpad_ctrl, Test HIDS Touchpad Control);
-MSH_CMD_EXPORT(test_hids_touchpad_ctrl, Test HIDS Touchpad Control);
-    #endif // HID_TOUCHPAD
 
 #endif // HIDS_TEST

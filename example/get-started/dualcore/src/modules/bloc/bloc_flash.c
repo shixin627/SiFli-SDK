@@ -77,24 +77,21 @@ typedef enum
     DFU_FLASH_TYPE_NOR,
 } DFU_FLASH_TYPE;
 
+/* Round size up to a power-of-two alignment boundary. */
+#define FLASH_ALIGN_UP(sz, align) (((sz) + (align) - 1) & ~((align) - 1))
+
 static int flash_erase(uint32_t dest, uint32_t offset, uint32_t size, uint8_t type)
 {
     int ret = -1;
     // erase should 128k aligned
     if (type == DFU_FLASH_TYPE_NAND)
     {
-        if (size % 0x20000 != 0)
-        {
-            size = (size + 0x20000) / 0x20000 * 0x20000;
-        }
+        size = FLASH_ALIGN_UP(size, 0x20000);
     }
     // erase should 8k aligned
     else if (type == DFU_FLASH_TYPE_NOR)
     {
-        if (size % 0x2000 != 0)
-        {
-            size = (size + 0x2000) / 0x2000 * 0x2000;
-        }
+        size = FLASH_ALIGN_UP(size, 0x2000);
     }
 
     LOG_D("flash_erase dest 0x%x, size %d", dest, size);

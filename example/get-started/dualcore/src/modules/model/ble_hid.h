@@ -16,7 +16,6 @@ extern "C" {
 #define HID_CONSUMER
 #define HID_TELEPHONY
 // #define HID_TOUCHSCREEN
-// #define HID_TOUCHPAD
 
 /* HID Report IDs */
 typedef enum
@@ -32,9 +31,6 @@ typedef enum
 #endif
 #ifdef HID_TOUCHSCREEN
     REPORT_ID_TOUCH = 0x04,
-#endif
-#ifdef HID_TOUCHPAD
-    REPORT_ID_TOUCHPAD = 0x05,
 #endif
 #ifdef HID_TELEPHONY
     REPORT_ID_TELEPHONY = 0x06,
@@ -140,16 +136,6 @@ struct touch_state
 };
 #endif
 
-#ifdef HID_TOUCHPAD
-/* Touchpad State Structure */
-struct touchpad_state
-{
-    uint8_t touch;
-    uint16_t x;
-    uint16_t y;
-};
-#endif
-
 /* HID Service Data Structure */
 typedef struct
 {
@@ -169,9 +155,6 @@ typedef struct
 #endif
 #ifdef HID_TOUCHSCREEN
     uint8_t is_touchscreen_config_on;
-#endif
-#ifdef HID_TOUCHPAD
-    uint8_t is_touchpad_config_on;
 #endif
 } ble_hid_data_t;
 
@@ -212,12 +195,6 @@ enum
     HIDS_TOUCHSCREEN_IDX_REPORT_VAL,
     HIDS_TOUCHSCREEN_IDX_REPORT_REF,
     HIDS_TOUCHSCREEN_IDX_REPORT_NTF_CFG,
-#endif
-#ifdef HID_TOUCHPAD
-    HIDS_TOUCHPAD_IDX_REPORT,
-    HIDS_TOUCHPAD_IDX_REPORT_VAL,
-    HIDS_TOUCHPAD_IDX_REPORT_REF,
-    HIDS_TOUCHPAD_IDX_REPORT_NTF_CFG,
 #endif
     HIDS_IDX_CTRL,
     HIDS_IDX_CTRL_VAL,
@@ -323,12 +300,6 @@ void hook_switch_through_hid(void);
 /* Touchscreen Control Functions */
 void BLE_HID_Touchscreen_Press(uint16_t x, uint16_t y);
 void BLE_HID_Touchscreen_Release(uint16_t x, uint16_t y);
-#endif
-
-#ifdef HID_TOUCHPAD
-/* Touchpad Control Functions */
-void BLE_HID_Touchpad_Press(uint16_t x, uint16_t y);
-void BLE_HID_Touchpad_Release(uint16_t x, uint16_t y);
 #endif
 
 #ifdef __cplusplus

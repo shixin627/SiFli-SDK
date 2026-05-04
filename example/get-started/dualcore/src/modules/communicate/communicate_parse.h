@@ -57,6 +57,18 @@ extern "C"
 
     bool L2_frame_resolve(uint8_t *pData, uint16_t length);
 
+    /* Wire-format big-endian byte readers (BLE multi-byte fields are MSB-first). */
+    static inline uint32_t read_be32(const uint8_t *p)
+    {
+        return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+               ((uint32_t)p[2] << 8)  |  (uint32_t)p[3];
+    }
+
+    static inline uint16_t read_be16(const uint8_t *p)
+    {
+        return ((uint16_t)p[0] << 8) | (uint16_t)p[1];
+    }
+
 #ifdef __cplusplus
 }
 #endif

@@ -79,24 +79,9 @@ void resolve_HealthData_command(uint8_t key, const uint8_t *pValue,
     break;
     case KEY_DAILY_DATA_SYNC:
     {
-        uint32_t daily_step = 0;
-        uint32_t daily_distance = 0;
-        uint32_t daily_calory = 0;
-
-        daily_step |= pValue[3];
-        daily_step |= pValue[2] << 8;
-        daily_step |= pValue[1] << 16;
-        daily_step |= pValue[0] << 24;
-
-        daily_distance |= pValue[3 + 4];
-        daily_distance |= pValue[2 + 4] << 8;
-        daily_distance |= pValue[1 + 4] << 16;
-        daily_distance |= pValue[0 + 4] << 24;
-
-        daily_calory |= pValue[3 + 8];
-        daily_calory |= pValue[2 + 8] << 8;
-        daily_calory |= pValue[1 + 8] << 16;
-        daily_calory |= pValue[0 + 8] << 24;
+        uint32_t daily_step = read_be32(&pValue[0]);
+        uint32_t daily_distance = read_be32(&pValue[4]);
+        uint32_t daily_calory = read_be32(&pValue[8]);
 
         if (daily_step != SkaiWatchSys.gPedoData.global_steps)
         {
@@ -113,19 +98,9 @@ void resolve_HealthData_command(uint8_t key, const uint8_t *pValue,
 
     case KEY_LATEST_DATA_SYNC:
     {
-        uint32_t calories = 0;
-        uint16_t steps = 0;
-        uint16_t distance = 0;
-        calories |= pValue[2 + 0] << 24;
-        calories |= pValue[2 + 1] << 16;
-        calories |= pValue[2 + 2] << 8;
-        calories |= pValue[2 + 3];
-
-        steps |= pValue[6 + 0] << 8;
-        steps |= pValue[6 + 1];
-
-        distance |= pValue[8 + 0] << 8;
-        distance |= pValue[8 + 1];
+        uint32_t calories = read_be32(&pValue[2]);
+        uint16_t steps = read_be16(&pValue[6]);
+        uint16_t distance = read_be16(&pValue[8]);
 
         SkaiWatchSys.gPedoData.quarter_steps = (uint16_t)steps;
         SkaiWatchSys.gPedoData.quarter_distance = (uint32_t)distance * 1600;

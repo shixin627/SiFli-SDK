@@ -1537,7 +1537,7 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
 
 #ifdef BSP_USING_AIR_MOUSE
     if (app_control_get_mouse_mode() || is_at_mouse_mode() ||
-        gui_app_is_actived(APP_ID_MOUSE)) // app_control_get_cursor_mode()
+        gui_app_is_actived(APP_ID_MOUSE))
     {
         air_mouse_process(motion_data->timestamp, &motion_data->global_q,
                           &prev_global_quat);

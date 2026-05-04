@@ -281,7 +281,6 @@ void lv_create_touch_screen(lv_obj_t *scr)
 static void on_start(lv_obj_t *scr)
 {
 	lv_create_touch_screen(scr);
-	app_control_set_cursor_mode(true);
 }
 
 static void on_resume(void)
@@ -296,7 +295,6 @@ static void on_pause(void)
 
 static void on_stop(void)
 {
-	app_control_set_cursor_mode(false);
 }
 
 static void msg_handler(gui_app_msg_type_t msg, void *param)

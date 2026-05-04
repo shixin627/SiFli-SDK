@@ -147,8 +147,6 @@ extern "C"
         void (*ble_hid_zoom_esc)(void);                   // zoom escape
         void (*ble_hid_touch_screen_press)(uint16_t x, uint16_t y);
         void (*ble_hid_touch_screen_release)(uint16_t x, uint16_t y);
-        void (*ble_hid_touchpad_press)(uint16_t x, uint16_t y);
-        void (*ble_hid_touchpad_release)(uint16_t x, uint16_t y);
         // remote control
         void (*take_photo)(void);
         void (*find_phone)(void);
@@ -181,9 +179,6 @@ extern "C"
     extern void app_audio_set_control_command(uint8_t command);
     extern uint8_t *app_audio_get_volume_percent(void);
 
-    /* cursor */
-    extern bool app_control_get_cursor_mode(void);
-    extern void app_control_set_cursor_mode(bool flag);
     /* hid */
     extern void app_control_set_hid_event_flag(bool flag);
     extern bool app_control_get_hid_event_flag(void);
@@ -197,7 +192,6 @@ extern "C"
     extern void app_control_set_motion_tracking(bool flag);
     /* hid control */
     extern void setSelectIndexOfApp(uint8_t index);
-    extern uint8_t bloc_control_get_skaios_mode_state(void);
     /* unit test */
     extern void set_Unicode(uint16_t unicode);
     extern uint16_t get_Unicode(void);

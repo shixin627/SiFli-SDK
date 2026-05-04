@@ -57,6 +57,28 @@ extern void refresh_custom_instructions(void);
 
 extern void parse_chat_item(cJSON *item, chat_t *note);
 static uint8_t weather_data_updata_count = 0;
+
+#ifndef BSP_USING_PC_SIMULATOR
+/* Common dispatch for all OTA *_SYNC_START handlers — the 6 image flavours
+   only differ in img_id and download address. Payload layout:
+   [0..3] size (BE32), [4..7] compressed_size (BE32, optional),
+   [8] compression_type (optional). */
+static void ota_sync_start(uint8_t img_id, uint32_t addr, const uint8_t *pValue)
+{
+    uint32_t size = read_be32(&pValue[0]);
+    #ifdef PKG_USING_LZ4
+    uint32_t compressed_size = read_be32(&pValue[4]);
+    uint8_t compression_type = pValue[8];
+    if (compression_type == 1)
+    {
+        init_ble_dfu_thread_compressed(img_id, addr, size, compressed_size);
+        return;
+    }
+    #endif
+    init_ble_dfu_thread(img_id, addr, size);
+}
+#endif
+
 void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
 {
     static MSG_DATA_PAYLOAD payload;
@@ -222,27 +244,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_WATCH_IMAGE_SYNC_START:
     {
 #ifndef BSP_USING_PC_SIMULATOR
-        uint32_t size =
-            pValue[0] << 24 | pValue[1] << 16 | pValue[2] << 8 | pValue[3];
-    #ifdef PKG_USING_LZ4
-        uint32_t compressed_size =
-            pValue[4] << 24 | pValue[5] << 16 | pValue[6] << 8 | pValue[7];
-        uint8_t compression_type = pValue[8];
-        if (compression_type == 1)
-        {
-            init_ble_dfu_thread_compressed(DFU_IMG_ID_NAND_IMAGE,
-                                           FS_START_DOWNLOAD_ADDRESS, size,
-                                           compressed_size);
-        }
-        else
-        {
-            init_ble_dfu_thread(DFU_IMG_ID_NAND_IMAGE,
-                                FS_START_DOWNLOAD_ADDRESS, size);
-        }
-    #else
-        init_ble_dfu_thread(DFU_IMG_ID_NAND_IMAGE, FS_START_DOWNLOAD_ADDRESS,
-                            size);
-    #endif
+        ota_sync_start(DFU_IMG_ID_NAND_IMAGE, FS_START_DOWNLOAD_ADDRESS, pValue);
 #endif
     }
     break;
@@ -259,27 +261,8 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_WATCH_LCPU_SYNC_START:
     {
 #ifndef BSP_USING_PC_SIMULATOR
-        uint32_t size =
-            pValue[0] << 24 | pValue[1] << 16 | pValue[2] << 8 | pValue[3];
-    #ifdef PKG_USING_LZ4
-        uint32_t compressed_size =
-            pValue[4] << 24 | pValue[5] << 16 | pValue[6] << 8 | pValue[7];
-        uint8_t compression_type = pValue[8];
-        if (compression_type == 1)
-        {
-            init_ble_dfu_thread_compressed(DFU_IMG_ID_NAND_LCPU,
-                                           LCPU_CODE_DOWNLOAD_START_ADDRESS,
-                                           size, compressed_size);
-        }
-        else
-        {
-            init_ble_dfu_thread(DFU_IMG_ID_NAND_LCPU,
-                                LCPU_CODE_DOWNLOAD_START_ADDRESS, size);
-        }
-    #else
-        init_ble_dfu_thread(DFU_IMG_ID_NAND_LCPU,
-                            LCPU_CODE_DOWNLOAD_START_ADDRESS, size);
-    #endif
+        ota_sync_start(DFU_IMG_ID_NAND_LCPU,
+                       LCPU_CODE_DOWNLOAD_START_ADDRESS, pValue);
 #endif
     }
     break;
@@ -296,27 +279,8 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_WATCH_HCPU_SYNC_START:
     {
 #ifndef BSP_USING_PC_SIMULATOR
-        uint32_t size =
-            pValue[0] << 24 | pValue[1] << 16 | pValue[2] << 8 | pValue[3];
-    #ifdef PKG_USING_LZ4
-        uint32_t compressed_size =
-            pValue[4] << 24 | pValue[5] << 16 | pValue[6] << 8 | pValue[7];
-        uint8_t compression_type = pValue[8];
-        if (compression_type == 1)
-        {
-            init_ble_dfu_thread_compressed(DFU_IMG_ID_NAND_HCPU,
-                                           HCPU_CODE_DOWNLOAD_START_ADDRESS,
-                                           size, compressed_size);
-        }
-        else
-        {
-            init_ble_dfu_thread(DFU_IMG_ID_NAND_HCPU,
-                                HCPU_CODE_DOWNLOAD_START_ADDRESS, size);
-        }
-    #else
-        init_ble_dfu_thread(DFU_IMG_ID_NAND_HCPU,
-                            HCPU_CODE_DOWNLOAD_START_ADDRESS, size);
-    #endif
+        ota_sync_start(DFU_IMG_ID_NAND_HCPU,
+                       HCPU_CODE_DOWNLOAD_START_ADDRESS, pValue);
 #endif
     }
     break;
@@ -333,27 +297,8 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_WATCH_FTAB_SYNC_START:
     {
 #ifndef BSP_USING_PC_SIMULATOR
-        uint32_t size =
-            pValue[0] << 24 | pValue[1] << 16 | pValue[2] << 8 | pValue[3];
-    #ifdef PKG_USING_LZ4
-        uint32_t compressed_size =
-            pValue[4] << 24 | pValue[5] << 16 | pValue[6] << 8 | pValue[7];
-        uint8_t compression_type = pValue[8];
-        if (compression_type == 1)
-        {
-            init_ble_dfu_thread_compressed(DFU_IMG_ID_NAND_FTAB,
-                                           FTAB_START_DOWNLOAD_ADDRESS, size,
-                                           compressed_size);
-        }
-        else
-        {
-            init_ble_dfu_thread(DFU_IMG_ID_NAND_FTAB,
-                                FTAB_START_DOWNLOAD_ADDRESS, size);
-        }
-    #else
-        init_ble_dfu_thread(DFU_IMG_ID_NAND_FTAB, FTAB_START_DOWNLOAD_ADDRESS,
-                            size);
-    #endif
+        ota_sync_start(DFU_IMG_ID_NAND_FTAB, FTAB_START_DOWNLOAD_ADDRESS,
+                       pValue);
 #endif
     }
     break;
@@ -370,27 +315,8 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_WATCH_BOOTLOADER_SYNC_START:
     {
 #ifndef BSP_USING_PC_SIMULATOR
-        uint32_t size =
-            pValue[0] << 24 | pValue[1] << 16 | pValue[2] << 8 | pValue[3];
-    #ifdef PKG_USING_LZ4
-        uint32_t compressed_size =
-            pValue[4] << 24 | pValue[5] << 16 | pValue[6] << 8 | pValue[7];
-        uint8_t compression_type = pValue[8];
-        if (compression_type == 1)
-        {
-            init_ble_dfu_thread_compressed(DFU_IMG_ID_NAND_BOOTLOADER,
-                                           BOOTLOADER_DOWNLOAD_START_ADDRESS,
-                                           size, compressed_size);
-        }
-        else
-        {
-            init_ble_dfu_thread(DFU_IMG_ID_NAND_BOOTLOADER,
-                                BOOTLOADER_DOWNLOAD_START_ADDRESS, size);
-        }
-    #else
-        init_ble_dfu_thread(DFU_IMG_ID_NAND_BOOTLOADER,
-                            BOOTLOADER_DOWNLOAD_START_ADDRESS, size);
-    #endif
+        ota_sync_start(DFU_IMG_ID_NAND_BOOTLOADER,
+                       BOOTLOADER_DOWNLOAD_START_ADDRESS, pValue);
 #endif
     }
     break;
@@ -407,27 +333,8 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_WATCH_LCPU_PATCH_SYNC_START:
     {
 #ifndef BSP_USING_PC_SIMULATOR
-        uint32_t size =
-            pValue[0] << 24 | pValue[1] << 16 | pValue[2] << 8 | pValue[3];
-    #ifdef PKG_USING_LZ4
-        uint32_t compressed_size =
-            pValue[4] << 24 | pValue[5] << 16 | pValue[6] << 8 | pValue[7];
-        uint8_t compression_type = pValue[8];
-        if (compression_type == 1)
-        {
-            init_ble_dfu_thread_compressed(DFU_IMG_ID_NAND_LCPU_PATCH,
-                                           LCPU_PATCH_DOWNLOAD_START_ADDRESS,
-                                           size, compressed_size);
-        }
-        else
-        {
-            init_ble_dfu_thread(DFU_IMG_ID_NAND_LCPU_PATCH,
-                                LCPU_PATCH_DOWNLOAD_START_ADDRESS, size);
-        }
-    #else
-        init_ble_dfu_thread(DFU_IMG_ID_NAND_LCPU_PATCH,
-                            LCPU_PATCH_DOWNLOAD_START_ADDRESS, size);
-    #endif
+        ota_sync_start(DFU_IMG_ID_NAND_LCPU_PATCH,
+                       LCPU_PATCH_DOWNLOAD_START_ADDRESS, pValue);
 #endif
     }
     break;

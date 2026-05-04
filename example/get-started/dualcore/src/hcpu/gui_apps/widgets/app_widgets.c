@@ -99,7 +99,6 @@ LV_IMG_DECLARE(img_note);
 LV_IMG_DECLARE(message_bar);
 LV_IMG_DECLARE(img_mouse);
 LV_IMG_DECLARE(img_touchscreen);
-LV_IMG_DECLARE(img_touchpad);
 LV_IMG_DECLARE(img_workout);
 LV_IMG_DECLARE(select_prompt);
 LV_IMG_DECLARE(mouse_mode_icon);
@@ -166,9 +165,6 @@ uint16_t CONTROL_APP_LIST_ITEMS_DEFINITION[] = {
 #ifdef APP_ID_TOUCHSCREEN
 	app_id_touchscreen,
 #endif
-#ifdef APP_ID_TOUCHPAD
-	app_id_touchpad,
-#endif
 
 };
 
@@ -211,10 +207,6 @@ const char *get_control_app_icon(uint8_t control_app_id)
     case app_id_game_dinosaur:
         return IMG_GAME;
 #endif
-#ifdef APP_ID_IOT_GATE
-    case app_id_iot_gate:
-        return IMG_GAME;
-#endif
 #ifdef APP_ID_HEART_RATE
     case app_id_heart_rate:
         return IMG_HEART_RATE;
@@ -254,10 +246,6 @@ const char *get_control_app_icon(uint8_t control_app_id)
 #ifdef APP_ID_TOUCHSCREEN
     case app_id_touchscreen:
         return IMG_TOUCHSCREEN;
-#endif
-#ifdef APP_ID_TOUCHPAD
-    case app_id_touchpad:
-        return IMG_TOUCHPAD;
 #endif
     default:
         return IMG_LOGO;
@@ -1158,16 +1146,6 @@ control_app_list_item_t map_control_app_id(uint8_t app_id)
     break;
 #endif
 
-#ifdef APP_ID_IOT_GATE
-    case app_id_iot_gate:
-    {
-        item.title = LV_EXT_STR_GET_BY_KEY(iot_gate, "iot_gate");
-        item.icon = IMG_GAME;
-        item.app_id = APP_ID_IOT_GATE;
-    }
-    break;
-#endif
-
 #ifdef APP_ID_HEART_RATE
     case app_id_heart_rate:
     {
@@ -1255,16 +1233,6 @@ control_app_list_item_t map_control_app_id(uint8_t app_id)
         item.title = LV_EXT_STR_GET_BY_KEY(touchscreen, "Touchscreen");
         item.icon = &img_touchscreen;
         item.app_id = APP_ID_TOUCHSCREEN;
-        break;
-    }
-#endif
-
-#ifdef APP_ID_TOUCHPAD
-    case app_id_touchpad:
-    {
-        item.title = LV_EXT_STR_GET_BY_KEY(touchpad, "Touchpad");
-        item.icon = &img_touchpad;
-        item.app_id = APP_ID_TOUCHPAD;
         break;
     }
 #endif

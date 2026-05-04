@@ -205,7 +205,7 @@ void L1_receive_data(uint8_t *data, uint16_t length)
 
     if ((data[0] == L1_HEADER_MAGIC) && (!receiving))
     {
-        package_len = (((uint16_t)(data[2])) << 8) + data[3] + 8;
+        package_len = read_be16(&data[L1_PAYLOAD_LENGTH_HIGH_BYTE_POS]) + 8;
         receiving = true;
     }
     else if (!receiving)
@@ -237,9 +237,9 @@ void L1_receive_data(uint8_t *data, uint16_t length)
         receiving = false;
         // data package
         inner_version.value = received_buffer[L1_HEADER_PROTOCOL_VERSION_POS];
-        uint16_t crc16_value = (received_buffer[L1_HEADER_CRC16_HIGH_BYTE_POS] << 8 | received_buffer[L1_HEADER_CRC16_LOW_BYTE_POS]);
-        uint16_t L2_frame_length = received_buffer[L1_PAYLOAD_LENGTH_LOW_BYTE_POS] | (received_buffer[L1_PAYLOAD_LENGTH_HIGH_BYTE_POS] << 8);
-        uint16_t seq_id = received_buffer[L1_HEADER_SEQ_ID_LOW_BYTE_POS] | (received_buffer[L1_HEADER_SEQ_ID_HIGH_BYTE_POS] << 8);
+        uint16_t crc16_value = read_be16(&received_buffer[L1_HEADER_CRC16_HIGH_BYTE_POS]);
+        uint16_t L2_frame_length = read_be16(&received_buffer[L1_PAYLOAD_LENGTH_HIGH_BYTE_POS]);
+        uint16_t seq_id = read_be16(&received_buffer[L1_HEADER_SEQ_ID_HIGH_BYTE_POS]);
 
         LOG_I("ack error flag:%d, ack or data flag:%d, version:%d, seq_id:%d\n",
               inner_version.version_def.err_flag, inner_version.version_def.ack_flag,

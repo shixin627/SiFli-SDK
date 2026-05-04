@@ -517,33 +517,6 @@ static void bt_speaker_media_prev(void)
 	commu_send_media_control();
 }
 
-/* skaios mode state */
-// use 2-bit to define the state on two devices
-// 0x00: both devices are not in skaios mode
-// 0x01: device 1 is in skaios mode, device 2 is not in skaios mode
-// 0x10: device 1 is not in skaios mode, device 2 is in skaios mode
-// 0x11: both devices are in skaios mode
-static uint8_t skaios_mode_state = 0x00;
-uint8_t bloc_control_get_skaios_mode_state(void)
-{
-	return skaios_mode_state;
-}
-static void bloc_control_set_skaios_mode_state(uint8_t state)
-{
-	skaios_mode_state = state;
-}
-
-/*cursor*/
-bool isCursorMode = false;
-bool app_control_get_cursor_mode(void)
-{
-	return isCursorMode;
-}
-void app_control_set_cursor_mode(bool flag)
-{
-	isCursorMode = flag;
-}
-
 static bool hid_event_flag = true;
 void app_control_set_hid_event_flag(bool flag)
 {
@@ -562,16 +535,6 @@ bool app_control_get_mouse_mode(void)
 }
 void app_control_set_mouse_mode(bool flag)
 {
-	if (flag)
-	{
-		// skaiwatch_ble_set_performance(true);
-		bloc_control_set_skaios_mode_state(true);
-	}
-	else
-	{
-		// skaiwatch_ble_set_performance(false);
-		bloc_control_set_skaios_mode_state(false);
-	}
 	isMouseMode = flag;
 }
 /* Game */

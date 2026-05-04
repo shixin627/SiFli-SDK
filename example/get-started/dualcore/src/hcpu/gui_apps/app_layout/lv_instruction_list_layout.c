@@ -160,7 +160,6 @@ LV_IMG_DECLARE(weather);
 LV_IMG_DECLARE(message_bar);
 // LV_IMG_DECLARE(img_mouse);
 // LV_IMG_DECLARE(img_touchscreen);
-// LV_IMG_DECLARE(img_touchpad);
 // LV_IMG_DECLARE(img_logo);
 // LV_IMG_DECLARE(img_photo);
 // LV_IMG_DECLARE(img_workout);
@@ -192,13 +191,7 @@ uint16_t INSTRUCTION_LIST_ITEMS_DEFINITION[] = {
 #ifdef APP_ID_PHOTO
 // app_id_photo,
 #endif
-#ifdef APP_ID_TOUCHPAD
-    app_id_touchpad,
-#endif
 // app_id_weather,
-#ifdef APP_ID_IOT_GATE
-// app_id_iot_gate,
-#endif
 #ifdef APP_ID_GAME_DINOSAUR
 // app_id_game_dinosaur,
 #endif
@@ -265,10 +258,6 @@ const char *get_app_icon(uint8_t app_id)
     case app_id_game_dinosaur:
         return IMG_GAME;
 #endif
-#ifdef APP_ID_IOT_GATE
-    case app_id_iot_gate:
-        return IMG_GAME;
-#endif
 #ifdef APP_ID_HEART_RATE
     case app_id_heart_rate:
         return IMG_HEART_RATE;
@@ -308,10 +297,6 @@ const char *get_app_icon(uint8_t app_id)
 #ifdef APP_ID_TOUCHSCREEN
     case app_id_touchscreen:
         return IMG_TOUCHSCREEN;
-#endif
-#ifdef APP_ID_TOUCHPAD
-    case app_id_touchpad:
-        return IMG_TOUCHPAD;
 #endif
     default:
         return IMG_LOGO;
@@ -1536,7 +1521,6 @@ void request_instruction_image(const char *id)
     LOG_I("Requested instruction image for id=%s", id);
 }
 
-extern void iot_gate_widget_tap_event_cb(void);
 extern void media_widget_tap_event_cb(void);
 static void on_item_tap(list_item_t *item)
 {
@@ -1736,17 +1720,12 @@ uint16_t get_gesture_starting_value(void)
 }
 
 extern void media_widget_trigger_drag_by_py(int p_y);
-extern void iot_gate_trigger_drag_by_py(int p_y);
 static void button_selection(gesture_position_t gesture_position)
 {
     const int p_y = gesture_position.gesture_position_y;
     if (selected_item_index == find_app_index_by_id(app_id_media))
     {
         media_widget_trigger_drag_by_py(p_y);
-    }
-    else if (selected_item_index == find_app_index_by_id(app_id_iot_gate))
-    {
-        iot_gate_trigger_drag_by_py(p_y);
     }
 }
 
@@ -2872,13 +2851,6 @@ static void map_app_id(uint8_t app_id, list_item_t *item)
         id_str = APP_ID_GAME_DINOSAUR;
         break;
 #endif
-#ifdef APP_ID_IOT_GATE
-    case app_id_iot_gate:
-        title = LV_EXT_STR_GET_BY_KEY(iot_gate, "iot_gate");
-        icon = IMG_GAME;
-        id_str = APP_ID_IOT_GATE;
-        break;
-#endif
 #ifdef APP_ID_HEART_RATE
     case app_id_heart_rate:
         title = LV_EXT_STR_GET_BY_KEY(heart_rate, "Heart Rate");
@@ -2940,13 +2912,6 @@ static void map_app_id(uint8_t app_id, list_item_t *item)
         title = LV_EXT_STR_GET_BY_KEY(touchscreen, "Touchscreen");
         icon = &img_touchscreen;
         id_str = APP_ID_TOUCHSCREEN;
-        break;
-#endif
-#ifdef APP_ID_TOUCHPAD
-    case app_id_touchpad:
-        title = LV_EXT_STR_GET_BY_KEY(touchpad, "Touchpad");
-        icon = &img_touchpad;
-        id_str = APP_ID_TOUCHPAD;
         break;
 #endif
     default:
@@ -3159,8 +3124,6 @@ rt_int32_t instruction_list_deinit(void)
 
     // extern void media_widget_stop(void);
     // media_widget_stop();
-    // extern void iot_gate_widget_stop(void);
-    // iot_gate_widget_stop();
     // extern void activity_widget_stop(void);
     // activity_widget_stop();
     // extern void message_widget_stop(void);

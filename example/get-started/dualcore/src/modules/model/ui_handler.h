@@ -51,8 +51,6 @@ extern "C"
     // #define APP_ID_MESSAGE_LIST "message_list"
     // #define APP_ID_WIDGETS "widgets"
     // #define APP_ID_TOUCHSCREEN "touchscreen"
-    // #define APP_ID_TOUCHPAD "touchpad"
-    // #define APP_ID_IOT_GATE "iot_gate"
 
     typedef enum
     {
@@ -63,9 +61,7 @@ extern "C"
         app_id_flashlight,
         app_id_mouse,
         app_id_touchscreen,
-        app_id_touchpad,
         app_id_media,
-        app_id_iot_gate,
         app_id_heart_rate,
         app_id_activity,
         app_id_weather,
