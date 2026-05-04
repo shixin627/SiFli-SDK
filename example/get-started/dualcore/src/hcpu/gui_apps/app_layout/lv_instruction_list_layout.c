@@ -2643,6 +2643,248 @@ bool get_app_list_tileview_page(void)
     return true;
 }
 
+/* ============================================================
+ * 右側弧形觸控滾動 — 仿 app_exercise.c 的做法。
+ *   - arc_zone 是全螢幕透明 obj，HIT_TEST 只接受右側邊緣弧帶內的觸控；
+ *     其他位置的 touch 自然 fall-through 到下層的 list / ai_bar
+ *   - PRESSED 記錄初始 theta；PRESSING 算出 theta 增量，每滑過一個
+ *     LIST_ITEM_SLOT_ANGLE_DEG 就把 list 滾動 LIST_ITEM_SLOT_HEIGHT 個 pixel，
+ *     可連續沿邊緣滑下/滑上而不需放開重壓
+ *   - RELEASED 補回 snap-to-center（arc_zone 接走觸控 → list 自己的內建
+ *     release-snap 沒跑）
+ * ============================================================ */
+#define LIST_ARC_ZONE_THICKNESS 150         /* 觸控感應環厚度（從螢幕邊往內 px）— 配合 tap-vs-hold
+                                             * 時間判斷可以做大一點：短點放會走 icon click，超過時間
+                                             * 才開始 arc-scroll，所以即使整顆 icon 都在 band 內也沒問題 */
+#define LIST_ARC_ZONE_HALF_ANGLE_SIN 0.819f /* sin(55°)，定義右側弧帶的 ±55° 範圍 */
+#define LIST_ITEM_SLOT_HEIGHT (LIST_ITEM_WIDGET_HEIGHT + LIST_ITEM_SPACING)
+#define LIST_ITEM_SLOT_ANGLE_DEG 27 /* 與 update_indicator_dots_position::angle_per_dot 一致 */
+
+static bool list_arc_scroll_active = false;
+static float list_arc_last_theta = 0.0f;
+/* tap-vs-hold 判斷狀態：紀錄起始 press 點與時間戳，配合是否有移動，來決定
+ * RELEASED 時要把 click 轉給 touch_obj 還是當成 arc-scroll。 */
+static lv_point_t list_arc_press_point;
+static uint32_t list_arc_press_tick = 0;
+static bool list_arc_motion_detected = false;
+#define LIST_ARC_TAP_THRESHOLD_SQ (12 * 12) /* 12 px：超過這個距離一律算 drag */
+#define LIST_ARC_TAP_DURATION_MS 200        /* 按下到放開超過這個時間就算 hold/scroll，不轉發 click */
+
+/* 拖動 arc_zone 期間鎖住所有祖先 scrollable 的 scroll_dir，避免外層 tileview
+ * 把弧形拖曳誤判為水平 swipe（特別是手指在弧的上下端時，切線方向其實接近水平）。
+ * 釋放時還原。最多記 8 層，足以覆蓋 bg → instruction_list_page → tileview 路徑 */
+#define ARC_LOCK_MAX_ANCESTORS 8
+static lv_obj_t *arc_lock_ancestors[ARC_LOCK_MAX_ANCESTORS];
+static lv_dir_t arc_lock_ancestor_dirs[ARC_LOCK_MAX_ANCESTORS];
+static uint8_t arc_lock_ancestor_count = 0;
+
+static void arc_unlock_ancestor_scrolls(void);
+
+static void arc_lock_ancestor_scrolls(lv_obj_t *from)
+{
+    /* 防呆：上一次 press 結束時若 unlock 沒跑（obj 在 deinit 前就被銷毀、
+     * 事件漏發等），count 會殘留 > 0。直接 lock 會把 stale 的 LV_DIR_NONE
+     * 當成「原值」存起來，之後 unlock 會把 NONE 寫回，永遠把祖先 scroll 鎖死，
+     * 整個 app 就再也滾不動。先 unlock 把可能的 stale 狀態還原，再重新 lock */
+    arc_unlock_ancestor_scrolls();
+    lv_obj_t *p = (from != NULL) ? lv_obj_get_parent(from) : NULL;
+    while (p != NULL && arc_lock_ancestor_count < ARC_LOCK_MAX_ANCESTORS)
+    {
+        if (lv_obj_has_flag(p, LV_OBJ_FLAG_SCROLLABLE))
+        {
+            arc_lock_ancestors[arc_lock_ancestor_count] = p;
+            arc_lock_ancestor_dirs[arc_lock_ancestor_count] =
+                lv_obj_get_scroll_dir(p);
+            lv_obj_set_scroll_dir(p, LV_DIR_NONE);
+            arc_lock_ancestor_count++;
+        }
+        p = lv_obj_get_parent(p);
+    }
+}
+
+static void arc_unlock_ancestor_scrolls(void)
+{
+    for (uint8_t i = 0; i < arc_lock_ancestor_count; i++)
+    {
+        if (arc_lock_ancestors[i] != NULL &&
+            lv_obj_is_valid(arc_lock_ancestors[i]))
+        {
+            lv_obj_set_scroll_dir(arc_lock_ancestors[i],
+                                  arc_lock_ancestor_dirs[i]);
+        }
+        arc_lock_ancestors[i] = NULL;
+    }
+    arc_lock_ancestor_count = 0;
+}
+
+static bool is_point_in_list_right_arc(lv_coord_t x, lv_coord_t y)
+{
+    float cx = LV_HOR_RES / 2.0f;
+    float cy = LV_VER_RES / 2.0f;
+    float dx = (float)x - cx;
+    float dy = (float)y - cy;
+    float dist = sqrtf(dx * dx + dy * dy);
+    float outer_r = cx;
+    float inner_r = outer_r - (float)LIST_ARC_ZONE_THICKNESS;
+    if (dist < inner_r || dist > outer_r) return false;
+    if (dx <= 0) return false; /* 只接受右側 */
+    float max_dy = dist * LIST_ARC_ZONE_HALF_ANGLE_SIN;
+    if (dy < -max_dy || dy > max_dy) return false;
+
+    /* 不在這裡排除 touch_obj：選中項的 touch_obj 寬達 430 px，排除後在赤道
+     * 只剩 x=[449,466] 17 px 細條能觸發 arc，幾乎按不到。改成 arc_zone 一律
+     * 接走弧帶內的 press，再在 RELEASED 用 tap-vs-drag 判斷：tap 把 click
+     * 轉發給 touch_obj，drag 才做 arc-snap。 */
+    return true;
+}
+
+static void list_arc_zone_hit_test_cb(lv_event_t *evt)
+{
+    lv_hit_test_info_t *info = lv_event_get_hit_test_info(evt);
+    if (info == NULL)
+    {
+        return;
+    }
+    if (info->point == NULL)
+    {
+        /* 防呆：info->res 預設為 true，若 point 缺失就讓 arc_zone 不要吃這個 hit，
+         * 否則 arc_zone 會誤吃任何 press */
+        info->res = false;
+        return;
+    }
+    info->res = is_point_in_list_right_arc(info->point->x, info->point->y);
+}
+
+static void list_arc_zone_pressed_cb(lv_event_t *evt)
+{
+    lv_indev_t *indev = lv_indev_get_act();
+    if (indev == NULL) return;
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+    list_arc_press_point = p;
+    list_arc_press_tick = lv_tick_get();
+    list_arc_motion_detected = false;
+    list_arc_scroll_active = true;
+    list_arc_last_theta = atan2f((float)p.y - LV_VER_RES / 2.0f,
+                                 (float)p.x - LV_HOR_RES / 2.0f);
+    /* 一進入弧區就鎖住外層所有 scrollable 祖先（包含 tileview），
+     * 整個拖曳期間 LVGL 的 scroll detection 都不會把切線方向當成
+     * 水平 swipe 拉動 tileview */
+    arc_lock_ancestor_scrolls(lv_event_get_target(evt));
+}
+
+static void list_arc_zone_pressing_cb(lv_event_t *evt)
+{
+    (void)evt;
+    if (!list_arc_scroll_active || p_instruction_list_layout == NULL ||
+        p_instruction_list_layout->list == NULL || list_item_count == 0)
+        return;
+    lv_indev_t *indev = lv_indev_get_act();
+    if (indev == NULL) return;
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+
+    /* tap-vs-drag 判定：超過閾值就標記為 drag，後續 RELEASED 走 arc-snap；
+     * 沒超過就是 tap，RELEASED 把 click 轉發給 touch_obj */
+    if (!list_arc_motion_detected)
+    {
+        int32_t mdx = p.x - list_arc_press_point.x;
+        int32_t mdy = p.y - list_arc_press_point.y;
+        if (mdx * mdx + mdy * mdy > LIST_ARC_TAP_THRESHOLD_SQ)
+        {
+            list_arc_motion_detected = true;
+        }
+    }
+
+    float theta = atan2f((float)p.y - LV_VER_RES / 2.0f,
+                         (float)p.x - LV_HOR_RES / 2.0f);
+    float delta = theta - list_arc_last_theta;
+    while (delta > M_PI) delta -= 2.0f * M_PI;
+    while (delta < -M_PI) delta += 2.0f * M_PI;
+    list_arc_last_theta = theta;
+
+    /* 把角度增量換算成 list 的 scroll pixel：每滑過一個 angle_per_slot
+     * 就等於滾動一個 LIST_ITEM_SLOT_HEIGHT。
+     * 加負號讓拖曳手感反過來 — 拖下去 = scroll 往回（上面的 item 滑到中央），
+     * 跟一般「抓著內容往下拉」的直覺一致 */
+    float angle_per_slot_rad =
+        (float)LIST_ITEM_SLOT_ANGLE_DEG * (float)M_PI / 180.0f;
+    float scroll_delta =
+        -delta * (float)LIST_ITEM_SLOT_HEIGHT / angle_per_slot_rad;
+    if (scroll_delta > -0.5f && scroll_delta < 0.5f) return;
+
+    lv_obj_t *list = p_instruction_list_layout->list;
+
+    /* clamp 到第一個 / 最後一個 item 對應的 scroll_y，避免滑過頭。
+     * item i 在 list 內容區域的中心 y = i * LIST_ITEM_SLOT_HEIGHT
+     *                                 + LIST_ITEM_WIDGET_HEIGHT / 2 */
+    lv_coord_t list_y1 = list->coords.y1;
+    lv_coord_t pad_top = lv_obj_get_style_pad_top(list, LV_PART_MAIN);
+    lv_coord_t min_scroll =
+        list_y1 + pad_top + LIST_ITEM_WIDGET_HEIGHT / 2 - LV_VER_RES / 2;
+    lv_coord_t max_scroll =
+        min_scroll + (list_item_count - 1) * LIST_ITEM_SLOT_HEIGHT;
+
+    lv_coord_t cur_scroll = lv_obj_get_scroll_y(list);
+    lv_coord_t target_scroll = cur_scroll + (lv_coord_t)scroll_delta;
+    if (target_scroll < min_scroll) target_scroll = min_scroll;
+    if (target_scroll > max_scroll) target_scroll = max_scroll;
+    if (target_scroll == cur_scroll) return;
+    LOG_D("Arc scroll: delta=%.2f°, scroll_delta=%d, target_scroll=%d", delta * 180.0f / (float)M_PI,
+          (int)scroll_delta, (int)target_scroll);
+    lv_obj_scroll_to_y(list, target_scroll, LV_ANIM_OFF);
+}
+
+static void list_arc_zone_released_cb(lv_event_t *evt)
+{
+    (void)evt;
+    if (!list_arc_scroll_active) return;
+    list_arc_scroll_active = false;
+    arc_unlock_ancestor_scrolls();
+
+    if (p_instruction_list_layout == NULL ||
+        p_instruction_list_layout->list == NULL ||
+        selected_item_index >= list_item_count)
+        return;
+
+    /* tap = 沒拖過 + 按下到放開很短。其他情形（拖過、或按住超過 hold 時間）
+     * 一律當 arc-scroll / hold，補一次 snap-to-center 把 list 對齊就好。 */
+    uint32_t elapsed = lv_tick_elaps(list_arc_press_tick);
+    bool is_tap = !list_arc_motion_detected && elapsed < LIST_ARC_TAP_DURATION_MS;
+
+    if (is_tap)
+    {
+        /* arc_zone 攔走了 press，CLICK 不會 bubble 到 touch_obj。手動把 CLICKED
+         * 轉給選中項的 touch_obj，前提是 press 點在它的 coords 內 */
+        if (touch_obj[selected_item_index] != NULL &&
+            lv_obj_is_valid(touch_obj[selected_item_index]) &&
+            !lv_obj_has_flag(touch_obj[selected_item_index], LV_OBJ_FLAG_HIDDEN))
+        {
+            lv_area_t a;
+            lv_obj_get_coords(touch_obj[selected_item_index], &a);
+            if (list_arc_press_point.x >= a.x1 &&
+                list_arc_press_point.x <= a.x2 &&
+                list_arc_press_point.y >= a.y1 &&
+                list_arc_press_point.y <= a.y2)
+            {
+                lv_event_send(touch_obj[selected_item_index],
+                              LV_EVENT_CLICKED, NULL);
+            }
+        }
+    }
+    else
+    {
+        /* 真的拖過 / 按住一段時間 → 補做 snap-to-center（arc_zone 攔走 press，
+         * list 自己的 release-snap 沒機會跑） */
+        lv_obj_t *target = lv_obj_get_child(p_instruction_list_layout->list,
+                                            selected_item_index);
+        if (target != NULL)
+        {
+            lv_obj_scroll_to_view(target, LV_ANIM_ON);
+        }
+    }
+}
+
 lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 {
     // 檢查是否已經分配，如果是則先釋放
@@ -2663,6 +2905,13 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     memset(switch_objs, 0, sizeof(switch_objs));
     LOG_I("[CHECK_MEMORY]instruction_list_init(%d bytes)", allocate_size);
     instruction_list_page = parent;
+
+    /* 把上一輪可能殘留的 arc lock 狀態清掉。如果上次 deinit 時剛好有 press 在進行
+     * （或事件漏發），arc_lock_ancestors[] 會卡住指向舊祖先 + 已寫入 LV_DIR_NONE。
+     * 重建後直接 unlock 一次：valid 的舊祖先會被還原回真原 scroll_dir，
+     * 已銷毀的會被 lv_obj_is_valid 跳過 */
+    arc_unlock_ancestor_scrolls();
+    list_arc_scroll_active = false;
 
     load_instruction_list();
 
@@ -2692,6 +2941,37 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 
     // 創建指示點
     create_indicator_dots(p_instruction_list_bg);
+
+    /* 右側弧形觸控滾動 overlay：只在右側邊緣弧帶的 bounding box 內生存，
+     * 中間區域的 touch 連 arc_zone 的 coords 都進不來，必然 fall-through 到
+     * 下層的 indicator dots / list / ai_bar。HIT_TEST 在此 bbox 內再用
+     * 半徑+角度做精細過濾，把 bbox 角落不屬於弧帶的那塊也排除。
+     * 放在 ai_bar / ai_bg 之前 → AI 開啟時 ai_bg 蓋在上面，自然停用 */
+    lv_obj_t *list_arc_zone = lv_obj_create(p_instruction_list_bg);
+    /* 弧帶現在較寬（thickness=150），bbox 也跟著放大避免有些可觸發點落在 bbox 外。
+     * 直接 full-screen — ADV_HITTEST 保證每次都叫 hit_test_cb，bbox 大小只是個
+     * 預先過濾，不影響正確性 */
+    lv_obj_set_size(list_arc_zone, LV_HOR_RES, LV_VER_RES);
+    lv_obj_align(list_arc_zone, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_opa(list_arc_zone, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(list_arc_zone, 0, 0);
+    lv_obj_set_style_pad_all(list_arc_zone, 0, 0);
+    lv_obj_clear_flag(list_arc_zone, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(list_arc_zone, LV_OBJ_FLAG_CLICKABLE);
+    /* 沒這個 flag 的話 lv_obj_hit_test 根本不會發 LV_EVENT_HIT_TEST，
+     * arc_zone 的 bbox 會直接吃掉每個 press（包含中央被選中圖示），
+     * 點擊 icon 就完全送不到 touch_obj。必須加 ADV_HITTEST 才會走自定義 hit_test */
+    lv_obj_add_flag(list_arc_zone, LV_OBJ_FLAG_ADV_HITTEST);
+    lv_obj_add_event_cb(list_arc_zone, list_arc_zone_hit_test_cb,
+                        LV_EVENT_HIT_TEST, NULL);
+    lv_obj_add_event_cb(list_arc_zone, list_arc_zone_pressed_cb,
+                        LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(list_arc_zone, list_arc_zone_pressing_cb,
+                        LV_EVENT_PRESSING, NULL);
+    lv_obj_add_event_cb(list_arc_zone, list_arc_zone_released_cb,
+                        LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(list_arc_zone, list_arc_zone_released_cb,
+                        LV_EVENT_PRESS_LOST, NULL);
 
     lv_obj_t *ai_bar = lv_obj_create(p_instruction_list_bg);
     lv_obj_set_size(ai_bar, 80, LV_VER_RES);
