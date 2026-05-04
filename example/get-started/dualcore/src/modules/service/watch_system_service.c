@@ -506,9 +506,9 @@ static int watch_sys_service_register(void)
 }
 INIT_COMPONENT_EXPORT(watch_sys_service_register);
 
-static int
-test_watch_sys_service(int argc,
-                       char *argv[]) // test_watch_sys_service ble_bool
+#if !kReleaseMode
+static int test_watch_sys_service(int argc,
+                                  char *argv[]) // test_watch_sys_service ble_bool
 {
     if (argc < 2)
     {
@@ -542,3 +542,4 @@ test_watch_sys_service(int argc,
     return 0;
 }
 MSH_CMD_EXPORT(test_watch_sys_service, "test battery service")
+#endif

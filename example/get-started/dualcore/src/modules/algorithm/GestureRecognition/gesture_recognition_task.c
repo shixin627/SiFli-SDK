@@ -405,6 +405,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
 {
     LOG_D("gesture_recognition_algorithm sample_num:%d", gesture->sample_num);
     uint8_t sample_num = gesture->sample_num;
+#if !kReleaseMode
     if (imu_data_collection)
     {
         if (imu_data_collection_error)
@@ -473,7 +474,9 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
             app_gesture_receive_imu_data(converted_data, sample_num);
         }
     }
-    else if (gesture_recognition_lock)
+    else
+#endif // !kReleaseMode
+    if (gesture_recognition_lock)
     {
         LOG_D("gesture_recognition_algorithm is locked, ignore gesture");
         return;
@@ -688,7 +691,7 @@ static int gesture_recognition_thread_init(void)
 INIT_APP_EXPORT(gesture_recognition_thread_init);
 #endif
 
-#ifdef BSP_USING_PM
+#if defined(BSP_USING_PM) && !kReleaseMode
 extern void set_gravity_position(int position);
 static int utest_gesture(int argc, char *argv[])
 {

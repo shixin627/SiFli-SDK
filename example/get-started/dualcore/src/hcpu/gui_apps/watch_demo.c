@@ -212,8 +212,10 @@ void ui_layer_system_builder(void)
 {
     lv_obj_clear_flag(lv_layer_sys(), LV_OBJ_FLAG_CLICKABLE);
     ai_icon_hint_builder(lv_layer_sys(), gui_app_get_gesture_indicator());
+#ifdef SHOW_TAP_GESTURE_INDICATOR
     tap_indicator_builder(lv_layer_sys(), gui_app_get_gesture_indicator());
     ungrab_indicator_builder(lv_layer_sys(), gui_app_get_gesture_indicator());
+#endif
     // create_message_toast(lv_layer_sys());
 }
 
@@ -598,14 +600,17 @@ static void button_event_task_entry(struct _lv_timer_t *task)
         limit_time = SkaiWatchSys.oled_display_time * 1000;
     }
 
-    // #if !kReleaseMode
     extern bool get_motor_status(void);
+#if !kReleaseMode
     extern bool pause_sleep_cause_of_dev_reson(void);
-    // #endif
+#endif
 
     if (lv_disp_get_inactive_time(NULL) > limit_time &&
         setting_provider.get_power_save_mode() &&
-        !pause_sleep_cause_of_dev_reson() && !get_motor_status())
+#if !kReleaseMode
+        !pause_sleep_cause_of_dev_reson() &&
+#endif
+        !get_motor_status())
     {
         peripheral_provider.hcpu_suspend();
         gui_pm_fsm(GUI_PM_ACTION_SLEEP);

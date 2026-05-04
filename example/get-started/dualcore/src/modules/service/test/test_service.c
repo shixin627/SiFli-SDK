@@ -51,6 +51,7 @@
 #include <rtdevice.h>
 #include <rtdef.h>
 #include <board.h>
+#if !kReleaseMode
 #include "data_service_provider.h"
 #include "sensor.h"
 #include "bf0_hal_hlp.h"
@@ -730,6 +731,7 @@ int simu_service_register(void)
     return 0;
 }
 INIT_COMPONENT_EXPORT(simu_service_register);
+#endif
 
 
 

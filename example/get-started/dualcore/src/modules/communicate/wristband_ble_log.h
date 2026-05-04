@@ -31,11 +31,20 @@ extern "C"
 #define BLE_LOG_LEVEL_ERROR 4
 #define BLE_LOG_LEVEL_NONE 0
 
+#include "board.h"
+#if !kReleaseMode
     extern void ble_log_output(rt_uint32_t level, const char *buf, size_t len);
     extern void BLE_LOG_D(const char *format, ...);
     extern void BLE_LOG_I(const char *format, ...);
     extern void BLE_LOG_W(const char *format, ...);
     extern void BLE_LOG_E(const char *format, ...);
+#else
+    #define ble_log_output(level, buf, len) ((void)0)
+    #define BLE_LOG_D(...) ((void)0)
+    #define BLE_LOG_I(...) ((void)0)
+    #define BLE_LOG_W(...) ((void)0)
+    #define BLE_LOG_E(...) ((void)0)
+#endif
     
 #ifdef __cplusplus
 }

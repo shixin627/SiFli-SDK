@@ -999,6 +999,7 @@ NotifyProvider notify_provider = {
                                           // displacement function
 };
 
+#if !kReleaseMode
 static int bloc_notification_test(int argc, char *argv[])
 {
     if (argc >= 2)
@@ -1020,6 +1021,7 @@ static int bloc_notification_test(int argc, char *argv[])
     return 0;
 }
 MSH_CMD_EXPORT(bloc_notification_test, "bloc_notification_test [OPTION] ...");
+#endif
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/

@@ -887,11 +887,13 @@ static void find_phone_btn_event_cb(lv_event_t *e)
     control_provider.find_phone();
 }
 
+#if !kReleaseMode
 static void gesture_test_btn_event_cb(lv_event_t *e)
 {
     gui_app_run(APP_ID_GESTURE);
     animate_to_home_from_notification_center();
 }
+#endif
 
 // static void handle_media_play_state(void *param)
 // {

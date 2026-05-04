@@ -1949,6 +1949,7 @@ static void button_selection(gesture_position_t gesture_position)
     // }
 }
 
+#if !kReleaseMode
 int scroll_message_list(int argc, char **argv)
 {
     if (argc < 1)
@@ -1963,6 +1964,7 @@ int scroll_message_list(int argc, char **argv)
     return 0;
 }
 MSH_CMD_EXPORT(scroll_message_list, reset list)
+#endif
 
 static rt_tick_t last_scroll_time = 0;
 void scroll_message_list_to_index(int8_t page)

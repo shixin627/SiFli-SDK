@@ -647,6 +647,7 @@ void store_watch_prefs(watch_prefs_key key)
   close_watch_prefs(pref);
 }
 
+#if !kReleaseMode
 static int utest_watch_shared_preferences(int argc, char *argv[])
 {
   if (argc >= 2)
@@ -806,6 +807,7 @@ static int utest_watch_shared_preferences(int argc, char *argv[])
   return 0;
 }
 MSH_CMD_EXPORT(utest_watch_shared_preferences, "utest_watch_shared_preferences [OPTION] ...");
+#endif
 
 // BLE device manager share_prefs operations
 int ble_dev_prefs_save(const bonded_devices_db_t *db)

@@ -1975,12 +1975,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
     }
 }
 
-#ifdef REAL_TIME_ACCEL_STEPS_COLLECTION
-extern bool accel_steps_data_collection;
-extern bool imu_6Axis_data_collection;
-static uint8_t accel_sample_num = 0;
-static uint8_t accelSamplesBuffer[384] = {0}; // 64 * 6 = 384
-#endif
 
 #ifdef USING_FSR_ADC_SAMPLER
 /*
@@ -2045,45 +2039,6 @@ static void motion_tracking_thread_entry(void *parameter)
     {
         rt_sem_take(watch_sensor.imu_sem, RT_WAITING_FOREVER);
         motion_data_t motion_data = watch_sensor.motion_data;
-#ifdef REAL_TIME_ACCEL_STEPS_COLLECTION
-        if (accel_steps_data_collection)
-        {
-            if (accel_sample_num < 64)
-            {
-                int16_t accel[3];
-                accel[0] = watch_sensor.imu_data.acce.x * INT16_to_G / GRAVITY;
-                accel[1] = watch_sensor.imu_data.acce.y * INT16_to_G / GRAVITY;
-                accel[2] = watch_sensor.imu_data.acce.z * INT16_to_G / GRAVITY;
-                memcpy(&accelSamplesBuffer[accel_sample_num * 6], accel, 6);
-                accel_sample_num++;
-            }
-            else
-            {
-                commu_send_linear_acce_buffer(accelSamplesBuffer, 384);
-                accel_sample_num = 0;
-            }
-        }
-        else if (imu_6Axis_data_collection)
-        {
-            if (accel_sample_num < 32)
-            {
-                int16_t imu[6];
-                imu[0] = watch_sensor.imu_data.acce.x * INT16_to_G / GRAVITY;
-                imu[1] = watch_sensor.imu_data.acce.y * INT16_to_G / GRAVITY;
-                imu[2] = watch_sensor.imu_data.acce.z * INT16_to_G / GRAVITY;
-                imu[3] = watch_sensor.imu_data.gyro.x * INT16_to_DPS;
-                imu[4] = watch_sensor.imu_data.gyro.y * INT16_to_DPS;
-                imu[5] = watch_sensor.imu_data.gyro.z * INT16_to_DPS;
-                memcpy(&accelSamplesBuffer[accel_sample_num * 12], imu, 12);
-                accel_sample_num++;
-            }
-            else
-            {
-                commu_send_imu_buffer(accelSamplesBuffer, 384);
-                accel_sample_num = 0;
-            }
-        }
-#endif
         motion_tracking_in_hcpu(&motion_data);
     }
 }

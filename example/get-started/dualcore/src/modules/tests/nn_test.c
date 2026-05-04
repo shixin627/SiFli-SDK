@@ -36,6 +36,8 @@
 * POSSIBILITY OF SUCH DAMAGE.
 * -------------------------------------------------------------------- */
 #include "rtthread.h"
+#include "board.h"
+#if !kReleaseMode
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -1153,5 +1155,6 @@ int nn_test_run(void)
     return RT_EOK;
 }
 //INIT_APP_EXPORT(nn_test_run);
+#endif
 
 

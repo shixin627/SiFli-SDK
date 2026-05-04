@@ -8,6 +8,7 @@ extern "C"
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "board.h"
 #include "lvgl.h"
 #include "bloc_control.h"
 #include "bloc_notification.h"
@@ -35,9 +36,11 @@ extern "C"
 // ----- Todo
 #define APP_ID_ALARM "alarm"
 // ----- Dev
-#define APP_ID_GAME_DINOSAUR "game_dinosaur"
 #define APP_ID_GESTURE "gesture"
+#define APP_ID_GAME_DINOSAUR "game_dinosaur"
+#if !kReleaseMode
 #define APP_ID_FILE_BROWSER "file_browser"
+#endif
 
     // #define APP_ID_SKAI "skai_ai"
     // #define APP_ID_ACTIVITY "activity"

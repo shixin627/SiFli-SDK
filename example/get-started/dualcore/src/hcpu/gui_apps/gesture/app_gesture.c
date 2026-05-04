@@ -50,7 +50,23 @@
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-#ifdef APP_ID_GESTURE
+/* Data-collection flags & helpers — referenced by production code paths
+ * (bloc_motion_tracking, gesture_handler, app_clock_status_bar). Kept
+ * outside the kReleaseMode wrap so externs link in release builds. */
+bool imu_data_collection_error = false;
+bool imu_data_collection = false;
+bool imu_raw_data_collection = false;
+
+bool pause_sleep_cause_of_imu_reson(void)
+{
+    return imu_data_collection || imu_raw_data_collection;
+}
+bool get_imu_data_collection_status(void)
+{
+    return imu_data_collection;
+}
+
+#if defined(APP_ID_GESTURE) && !kReleaseMode
 
 
 /**
@@ -879,21 +895,6 @@ static void bottom_clear_release_model_cb(lv_event_t *e)
     clear_release_model_file();
 }
 
-bool imu_data_collection_error = false;
-bool accel_steps_data_collection = false;
-bool imu_data_collection = false;
-bool imu_6Axis_data_collection = false;
-bool imu_raw_data_collection = false;
-
-bool pause_sleep_cause_of_imu_reson(void)
-{
-    return imu_data_collection || imu_raw_data_collection || accel_steps_data_collection || imu_6Axis_data_collection;
-}
-bool get_imu_data_collection_status(void)
-{
-    return imu_data_collection;
-}
-
 static void imu_data_collection_sw_event_callback(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target(e);
@@ -907,20 +908,6 @@ static void imu_data_collection_error_sw_event_callback(lv_event_t *e)
     lv_obj_t *obj = lv_event_get_target(e);
     imu_data_collection_error = !imu_data_collection_error;
     lv_obj_set_style_bg_color(obj, imu_data_collection_error ? lv_color_make(0, 150, 0) : lv_color_make(60, 60, 60), LV_PART_MAIN | LV_STATE_DEFAULT);
-}
-
-static void accel_steps_data_collection_sw_event_callback(lv_event_t *e)
-{
-    lv_obj_t *obj = lv_event_get_target(e);
-    accel_steps_data_collection = !accel_steps_data_collection;
-    lv_obj_set_style_bg_color(obj, accel_steps_data_collection ? lv_color_make(0, 150, 0) : lv_color_make(60, 60, 60), LV_PART_MAIN | LV_STATE_DEFAULT);
-}
-
-static void imu_6Axis_data_collection_sw_event_callback(lv_event_t *e)
-{
-    lv_obj_t *obj = lv_event_get_target(e);
-    imu_6Axis_data_collection = !imu_6Axis_data_collection;
-    lv_obj_set_style_bg_color(obj, imu_6Axis_data_collection ? lv_color_make(0, 150, 0) : lv_color_make(60, 60, 60), LV_PART_MAIN | LV_STATE_DEFAULT);
 }
 
 extern void set_open_ppg_chacked(bool checked);
@@ -1199,19 +1186,6 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
     lv_obj_set_style_text_font(imu_raw_data_collection_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_set_style_text_color(imu_raw_data_collection_label, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_center(imu_raw_data_collection_label);
-
-    /* STEP data */
-    lv_obj_t *step_container = lv_btn_create(imu_row2);
-    lv_obj_set_size(step_container, LV_PCT(30), 60);
-    lv_obj_set_style_bg_color(step_container, accel_steps_data_collection ? lv_color_make(0, 150, 0) : lv_color_make(60, 60, 60), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(step_container, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_add_event_cb(step_container, accel_steps_data_collection_sw_event_callback, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *accel_steps_data_collection_label = lv_label_create(step_container);
-    lv_label_set_text(accel_steps_data_collection_label, "STEP");
-    lv_obj_set_style_text_font(accel_steps_data_collection_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_style_text_color(accel_steps_data_collection_label, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_center(accel_steps_data_collection_label);
 
     /* Gesture collection row */
     lv_obj_t *collect_row = lv_obj_create(ui.main_container);

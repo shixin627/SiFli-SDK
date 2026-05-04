@@ -24,7 +24,7 @@ enum
 } ;
 
 
-#ifdef RT_USING_FINSH
+#if defined(RT_USING_FINSH) && !kReleaseMode
 #include <finsh.h>
 static uint8_t mem_log = 0;
 int app_mem_log(void)

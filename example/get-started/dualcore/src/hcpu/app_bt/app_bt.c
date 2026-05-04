@@ -235,6 +235,7 @@ bt_err_t app_bt_dtmf_dial(bt_dtmf_key_t key)
 
 
 
+#if !kReleaseMode
 int32_t app_bt(int32_t argc, char **argv)
 {
     bt_err_t ret = BT_EOK;
@@ -352,6 +353,7 @@ int32_t app_bt(int32_t argc, char **argv)
 }
 
 MSH_CMD_EXPORT(app_bt, app_bt cmd);
+#endif
 
 int app_bt_comm_init(void)
 {

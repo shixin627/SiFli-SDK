@@ -526,6 +526,7 @@ static void list_display_event_callback(lv_event_t *e)
     }
 }
 
+#if !kReleaseMode
 static void dinosaur_game_event_callback(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target(e);
@@ -537,6 +538,7 @@ static void dinosaur_game_event_callback(lv_event_t *e)
         gui_app_run(APP_ID_GAME_DINOSAUR);
     }
 }
+#endif
 
 static void btn_sysinfo_event_callback(lv_event_t *e)
 {
@@ -619,6 +621,7 @@ static void btn_clear_flash_event_callback(lv_event_t *e)
     }
 }
 
+#if !kReleaseMode
 static void btn_developer_event_callback(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target(e);
@@ -629,6 +632,7 @@ static void btn_developer_event_callback(lv_event_t *e)
         app_developer_main();
     }
 }
+#endif
 
 static lv_obj_t *threshold_window = NULL;
 static lv_obj_t *threshold_slider = NULL;

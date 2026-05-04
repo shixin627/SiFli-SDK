@@ -1583,6 +1583,7 @@ void set_ai_processing(bool state)
 }
 
 //  ********  test ********  //
+#if !kReleaseMode
 static int utest_skaiwalk(int argc, char *argv[])
 {
 	if (argc >= 2)
@@ -1661,5 +1662,6 @@ static int utest_skaiwalk(int argc, char *argv[])
 	return 0;
 }
 MSH_CMD_EXPORT(utest_skaiwalk, "utest_skaiwalk [OPTION] ...");
+#endif
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

@@ -21,7 +21,7 @@
  * Vin = (R1+R2)/R2*Vref*(ADC_Value/4096)
  *                   The sample code reference voltage is 3.3V and the number of conversion bits is 12 bits.
  */
-#ifdef BSP_USING_ADC
+#if defined(BSP_USING_ADC) && !kReleaseMode
 
 #define ADC_DEV_NAME "bat1"    /* ADC device name */
 #define ADC_DEV_CHANNEL 5      /* ADC channel */

@@ -237,9 +237,11 @@ void magnetometer_unsubscribe(void)
 
 //**********************************************************************************************
 
+#if !kReleaseMode
 MSH_CMD_EXPORT(accelerometer_subscribe, Subscribe accelerometer data service);
 MSH_CMD_EXPORT(gyroscope_subscribe, Subscribe gyroscope data service);
 MSH_CMD_EXPORT(accelerometer_unsubscribe, Unsubscribe accelerometer data service);
 MSH_CMD_EXPORT(gyroscope_unsubscribe, Unsubscribe gyroscope data service);
 MSH_CMD_EXPORT(magnetometer_subscribe, Subscribe magnetometer data service);
 MSH_CMD_EXPORT(magnetometer_unsubscribe, Unsubscribe magnetometer data service);
+#endif

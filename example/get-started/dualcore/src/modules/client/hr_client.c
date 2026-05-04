@@ -145,9 +145,11 @@ void heart_rate_unsubscribe(void)
 //     datas_push_msg_to_client(hr_service_handle, MSG_SERVICE_PING_REQ, 0, NULL);
 // }
 
+#if !kReleaseMode
 MSH_CMD_EXPORT(heart_rate_subscribe, Subscribe HR data service);
 MSH_CMD_EXPORT(heart_rate_unsubscribe, Unsubscribe HR data service);
 // MSH_CMD_EXPORT(heart_rate_request_ping, Request HR data service ping);
+#endif
 
 #if !kReleaseMode
 #define PPG_FIFO_LENGTH 4

@@ -82,6 +82,9 @@
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
+/* Referenced by bloc_peripheral PPG thread — kept outside the wrap. */
+bool ppg_data_collection = false;
+
 #if !kReleaseMode
 
 #ifdef WIN32
@@ -135,8 +138,6 @@ static void fs_update_info_cb(lv_timer_t *timer);
 
 // indicates whether data collection from an Inertial Measurement Unit (IMU) is active or enabled.
 // indicates whether raw data collection from the IMU is active or enabled.
-
-bool ppg_data_collection = false;
 
 extern bool pause_sleep_cause_of_imu_reson(void);
 bool pause_sleep_cause_of_dev_reson(void)
@@ -365,15 +366,7 @@ static void lv_create_dev_screen(void)
     lv_obj_set_flex_align(imu_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
     lv_obj_align_to(imu_container, imu_section_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
 
-#ifdef REAL_TIME_ACCEL_STEPS_COLLECTION
-    /* Row 2: STEP data collection + IMU 6Axis data collection */
-    lv_obj_t *imu_row2 = lv_obj_create(imu_container);
-    lv_obj_set_size(imu_row2, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(imu_row2, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(imu_row2, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-#else
-    /* Row 2: IMU RAW data collection + lock IMU (when REAL_TIME_ACCEL_STEPS_COLLECTION is not defined) */
+    /* Row 2: IMU RAW data collection + lock IMU */
     lv_obj_t *imu_row2 = lv_obj_create(imu_container);
     lv_obj_set_size(imu_row2, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(imu_row2, LV_FLEX_FLOW_ROW);
@@ -408,7 +401,6 @@ static void lv_create_dev_screen(void)
     lv_obj_add_state(lock_imu_sw_else, false ? LV_STATE_CHECKED : 0);
     lv_obj_set_size(lock_imu_sw_else, 80, 40);
     lv_obj_add_event_cb(lock_imu_sw_else, imu_lock_sw_event_callback, LV_EVENT_CLICKED, NULL);
-#endif
 
     /* [PPG] Create PPG subscription/unsubscription label and switch */
     lv_obj_t *hr_sub_unsub_container = lv_obj_create(cont);

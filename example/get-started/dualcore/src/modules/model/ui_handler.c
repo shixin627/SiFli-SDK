@@ -447,8 +447,10 @@ static void process_lvgl_message(lvgl_msg_t *msg)
 
     case LVGL_MSG_TYPE_UNGRAB_INDICATOR:
     {
+#ifdef SHOW_TAP_GESTURE_INDICATOR
         toggle_ungrab_indicator(gui_app_get_gesture_indicator(),
                                 msg->data.gesture);
+#endif
         trigger_activity();
     }
     break;

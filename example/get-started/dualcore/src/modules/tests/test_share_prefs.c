@@ -8,7 +8,8 @@
 
 #include <rtthread.h>
 #include <stdlib.h>
-#ifdef BSP_SHARE_PREFS
+#include "board.h"
+#if defined(BSP_SHARE_PREFS) && !kReleaseMode
 #include "share_prefs.h"
 
 #define DBG_TAG "utest.sf"

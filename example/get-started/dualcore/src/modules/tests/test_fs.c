@@ -7,7 +7,7 @@
  */
 
 #include "board.h"
-#ifdef RT_USING_DFS
+#if defined(RT_USING_DFS) && !kReleaseMode
 #include "dfs_file.h"
 #include "dfs_posix.h"
 #include "drv_flash.h"

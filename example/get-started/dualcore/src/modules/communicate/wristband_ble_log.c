@@ -23,6 +23,8 @@
 #include "wristband_ble_log.h"
 #include "watch_global_data.h"
 
+#if !kReleaseMode
+
 #define BLE_LOG_DBG_LV BLE_LOG_LEVEL_INFO
 
 // int g_ble_ulog_enable = 0;
@@ -127,3 +129,5 @@ void BLE_LOG_E(const char *format, ...)
     BLE_LOG_OUTPUT(log_buffer);
 #endif
 }
+
+#endif // !kReleaseMode

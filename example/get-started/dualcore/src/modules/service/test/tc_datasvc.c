@@ -46,6 +46,8 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <rtdbg.h>
+#include "board.h"
+#if !kReleaseMode
 
 // #include "utest.h"
 #include "string.h"
@@ -324,5 +326,6 @@ static void datac(int argc, char *argv[])
     }
 }
 MSH_CMD_EXPORT(datac, Test data service subscriber);
+#endif
 
 /************************ (C) COPYRIGHT Sifli Technology *******END OF FILE****/

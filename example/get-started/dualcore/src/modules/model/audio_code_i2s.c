@@ -788,15 +788,6 @@ void audio_subscribe(void)
     // i2s_device_open();
 }
 
-static void audio_open_demo(uint8_t argc, char **argv)
-{
-    audio_codec_open();
-    audio_prc_open();
-    // i2s_device_open();
-}
-
-MSH_CMD_EXPORT(audio_open_demo, audio_open_demo test);
-
 void audio_unsubscribe(void)
 {
     // i2s_device_close();
@@ -804,14 +795,23 @@ void audio_unsubscribe(void)
     audio_prc_close();
 }
 
+#if !kReleaseMode
+static void audio_open_demo(uint8_t argc, char **argv)
+{
+    audio_codec_open();
+    audio_prc_open();
+    // i2s_device_open();
+}
+MSH_CMD_EXPORT(audio_open_demo, audio_open_demo test);
+
 static void audio_close_demo(uint8_t argc, char **argv)
 {
     // i2s_device_close();
     audio_codec_close();
     audio_prc_close();
 }
-
 MSH_CMD_EXPORT(audio_close_demo, audio_close_demo test);
+#endif
 
 #ifndef BSP_USING_PC_SIMULATOR
 // Increased stack size for Opus encoder

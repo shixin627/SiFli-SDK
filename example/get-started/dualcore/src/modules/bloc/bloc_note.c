@@ -275,6 +275,7 @@ void delete_note(note_t *note)
 	note_to_json_string(note);
 }
 
+#if !kReleaseMode
 static int utest_note(int argc, char *argv[])
 {
 	if (argc >= 2)
@@ -314,6 +315,7 @@ static int utest_note(int argc, char *argv[])
 	return 0;
 }
 MSH_CMD_EXPORT(utest_note, "utest_note [OPTION] ...");
+#endif
 
 #define STORE_BUFFER_SIZE 4096
 void store_notes_before_sw_shutdown(void)

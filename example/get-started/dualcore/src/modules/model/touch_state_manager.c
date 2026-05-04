@@ -602,7 +602,7 @@ static void notify_gesture_callbacks(touch_gesture_t gesture, uint16_t x,
 }
 
 /* ========== MSH Command for Testing ========== */
-#ifdef RT_USING_FINSH
+#if defined(RT_USING_FINSH) && !kReleaseMode
     #include <finsh.h>
 
 static void touch_state_info(int argc, char **argv)

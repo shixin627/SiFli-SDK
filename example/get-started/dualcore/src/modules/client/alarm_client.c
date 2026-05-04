@@ -117,8 +117,7 @@ static void get_alarm(void)
     RT_ASSERT(RT_EOK == err);
 }
 
-#define UTEST_ALARM_CLIENT
-#ifdef UTEST_ALARM_CLIENT
+#if !kReleaseMode
 static int alarm_request(int argc, char *argv[])
 {
     if (argc == 2)

@@ -991,6 +991,7 @@ void sys_media_event_set(uint32_t event)
 	rt_event_send(&sys_media_event, event);
 }
 
+#if !kReleaseMode
 // 媒體播放器
 static int control_bt_speaker(int argc, char *argv[])
 {
@@ -1032,6 +1033,7 @@ static int control_bt_speaker(int argc, char *argv[])
 	return 0;
 }
 MSH_CMD_EXPORT(control_bt_speaker, "control_bt_speaker [OPTION] ...");
+#endif
 
 // Combine function in provider object
 ControlProvider control_provider;
@@ -1072,6 +1074,7 @@ static int bloc_control_provider_register(void)
 
 INIT_APP_EXPORT(bloc_control_provider_register);
 
+#if !kReleaseMode
 static int bloc_control_cmd(int argc, char *argv[])
 {
 	if (argc >= 2)
@@ -1105,4 +1108,5 @@ static int bloc_control_cmd(int argc, char *argv[])
 	return 0;
 }
 MSH_CMD_EXPORT(bloc_control_cmd, "bloc_control_cmd [OPTION] ...");
+#endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

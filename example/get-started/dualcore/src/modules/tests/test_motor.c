@@ -15,6 +15,8 @@
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
+#if !kReleaseMode
+
 /// @brief
 /// @param argc
 /// @param argv start [duty cycle] [period(us)] [repeat times]
@@ -51,3 +53,4 @@ static int utest_motor_vibrate(int argc, char *argv[])
     return RT_EOK;
 }
 MSH_CMD_EXPORT(utest_motor_vibrate, control motor vibrate);
+#endif

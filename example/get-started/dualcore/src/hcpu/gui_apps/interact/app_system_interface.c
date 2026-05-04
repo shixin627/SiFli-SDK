@@ -1203,7 +1203,9 @@ static void reset_all_interface_states(void)
 #ifdef SHOW_UNKNOWN_GESTURE_INDICATOR
         unknown_indicator_hidden(indicator);
 #endif
+#ifdef SHOW_TAP_GESTURE_INDICATOR
         tap_indicator_hidden(indicator);
+#endif
 
         // Stop any animations
         if (indicator->ai_prompt_border_wight && lv_obj_is_valid(indicator->ai_prompt_border_wight) &&

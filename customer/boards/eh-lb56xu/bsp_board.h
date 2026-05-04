@@ -70,7 +70,7 @@ extern int __bss_end;
 // #define INT16_to_UT (3.3333f)
 
 #define SkaiwalkWatchOS 26
-#define kReleaseMode 0
+#define kReleaseMode 1
 
 #define BOARD_VER_11 11
 #define BOARD_VER_12 12
@@ -240,14 +240,15 @@ extern int __bss_end;
 // #define WATCH_DISPLAY_REVERSE_180
 // #define RELEASE_WATCH
 #define PWM_LRA_MOTOR // Linear Resonant Actuator (LRA) Driver IC
-#define REAL_TIME_IMU_DATA_COLLECTION
-#define REAL_TIME_ACCEL_STEPS_COLLECTION
 
+#if !kReleaseMode
+#define REAL_TIME_IMU_DATA_COLLECTION
 #define SHOW_TAP_GESTURE_INDICATOR
 // #define SHOW_UNKNOWN_GESTURE_INDICATOR
 // #define SHOW_UNGRAB_ENABLFE_INDICATOR
 // #define SHOW_BAD_SIGNAL_INDICATOR
 // #define SHOW_OPEN_WATCH_HINT_LIGHT
+#endif
 
 #define ENABLE_OPUS_ENCODER
 
