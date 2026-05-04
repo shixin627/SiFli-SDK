@@ -114,8 +114,6 @@ extern void BLE_LOG_E(const char *format, ...);
 #define APP_INTERACT_TYPE_BEGIN INTERACT_FUNCTION_MENU_MAIN
 #define APP_INTERACT_TYPE_END INTERACT_CAMERA
         INTERACT_FUNCTION_MENU_MAIN,
-        INTERACT_CAMERA_MENU,
-        INTERACT_REBOOT_MENU,
         INTERACT_BAT_LOW_LEVEL,
         INTERACT_TASK_LOADING,
         INTERACT_SHOW_QRCODE,
@@ -126,35 +124,16 @@ extern void BLE_LOG_E(const char *format, ...);
         INTERACT_MIC_V2T_INPUT,
         INTERACT_VOICE_RECOGNITION,
         INTERACT_CHAT_RESULT,
-        INTERACT_GESTURE_RECOGNITION,
         INTERACT_LOGIN,
         INTERACT_CANCEL_BOND,
         INTERACT_BONDED,
         INTERACT_PAIRING,
         INTERACT_CAMERA,
-////////////////////////
-// health monitoring
 
-// Health Monitoring Types
-#define HEALTH_INTERACT_TYPE_BEGIN INTERACT_HeartRate
-#define HEALTH_INTERACT_TYPE_END INTERACT_NO_MOVEMENT
-
-        INTERACT_HeartRate,
-        INTERACT_BloodPressure,
-        INTERACT_HRS_DISPALY_VALUE,
-        INTERACT_SLEEP_STATE,
-        INTERACT_HEARTRATEHIGH,
-        INTERACT_TARGET,
-        INTERACT_NO_MOVEMENT,
-        
 // System Control Types
-#define CONTROL_INTERACT_TYPE_BEGIN INTERACT_FIND_PHONE
+#define CONTROL_INTERACT_TYPE_BEGIN INTERACT_RGB_LED_OPEN_WRITE
 #define CONTROL_INTERACT_TYPE_END INTERACT_SYNC_MEDIA_STATUS
 
-        INTERACT_FIND_PHONE,
-        /***** Motor ******/
-        INTERACT_STOP_OLED_ONLY,
-        INTERACT_STOP_MOTOR_AND_OLED,
         /*****  LED *******/
         INTERACT_RGB_LED_OPEN_WRITE,
         INTERACT_RGB_LED_OPEN_GREEN,
@@ -163,7 +142,6 @@ extern void BLE_LOG_E(const char *format, ...);
         INTERACT_RGB_LED_BREATHING_GREEN,
         INTERACT_RGB_LED_FADE_WIGHT,
         /***** Media ******/
-        INTERACT_MEDIA_VOLUME_SET,
         INTERACT_SHOW_MEDIA_TITLE,
         INTERACT_SYNC_MEDIA_STATUS,
 ///////////////////////////////
@@ -179,8 +157,6 @@ extern void BLE_LOG_E(const char *format, ...);
         WATCH_DND_MODE_SET,
         /***** Alarm *****/
         WATCH_ALARM_INIT,
-        WATCH_ALARM_GET,
-        WATCH_ALARM_SET,
         /***** Brightness *****/
         WATCH_BRIGHTNESS_SET,
         /***** Time *****/
@@ -194,12 +170,10 @@ extern void BLE_LOG_E(const char *format, ...);
 /// Power
 
 // Power Management Types
-#define POWER_INTERACT_TYPE_BEGIN WATCH_PREPARE_SLEEP
+#define POWER_INTERACT_TYPE_BEGIN WATCH_SLEEP
 #define POWER_INTERACT_TYPE_END WATCH_REQUEST_CHARGE_STATUS
-        WATCH_PREPARE_SLEEP,
         WATCH_SLEEP,
         HCPU_WAKEUP,
-        WATCH_OPEN_DISPLAY,
         WATCH_OPEN_DISPLAY_TO_APP_LIST,
         WATCH_GESTURE_UNLOCK,
         WATCH_REBOOT,
@@ -232,6 +206,9 @@ extern void BLE_LOG_E(const char *format, ...);
     extern bool get_idle_state(void);
     extern void set_idle_state(bool state);
     extern bool is_user_touching_screen(void);
+#ifdef BSP_USING_WATCH_SYS_CLIENT
+    extern void set_watch_sleep_state(const watch_sys_sleep_state_t *state);
+#endif
 
     /// Motor control for watch system interact
     extern bool get_motor_switch_state(void);

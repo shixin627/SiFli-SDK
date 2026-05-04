@@ -546,8 +546,6 @@ static void led_pattern_rgb_led_fad_wight(uint8_t brightness)
 }
 #endif // RGB_LED_CONTROL_PIN
 
-extern void handle_wakeup_event(void);
-
 // Extract app management handling into a separate function
 static void handle_app_management(INTERACT_Type type, void *pValue)
 {
@@ -555,10 +553,6 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
     {
     case INTERACT_FUNCTION_MENU_MAIN:
         gui_app_run("Main");
-        break;
-    case INTERACT_CAMERA_MENU:
-        break;
-    case INTERACT_REBOOT_MENU:
         break;
 
     case INTERACT_BAT_LOW_LEVEL:
@@ -820,83 +814,21 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
     }
 }
 
-// Extract health monitoring handling into a separate function
-static void handle_health_monitoring(INTERACT_Type type, void *pValue)
+#ifdef BSP_USING_WATCH_SYS_CLIENT
+void set_watch_sleep_state(const watch_sys_sleep_state_t *state)
 {
-    switch (type)
-    {
-    case INTERACT_HeartRate:
-    {
-        uint8_t heartRate = *(uint8_t *)pValue;
-        LOG_D("[INTERACT_HeartRate] %d", heartRate);
-        break;
-    }
-    case INTERACT_BloodPressure:
-        break;
-
-    case INTERACT_HRS_DISPALY_VALUE:
-        break;
-
-    case INTERACT_SLEEP_STATE:
-    {
-        SkaiWatchSys.sleep_state = *(watch_sys_sleep_state_t *)pValue;
-        LOG_D("[Sleep State]total_seconds=%d | total_restful_seconds=%d",
-              SkaiWatchSys.sleep_state.total_seconds,
-              SkaiWatchSys.sleep_state.total_restful_seconds);
-        // if (SkaiWatchSys.watch_sleep_status != sleepState->mode)
-        // {
-        //   switch (SkaiWatchSys.watch_sleep_status)
-        //   {
-        //   case 1:
-        //     SkaiWatchSys.sleep_data_show.light_sleep_time +=
-        //     (sleepState->timestamp -
-        //     SkaiWatchSys.sleep_data_show.prev_sleep_stamp); break;
-        //   case 2:
-        //     SkaiWatchSys.sleep_data_show.deep_sleep_time +=
-        //     (sleepState->timestamp -
-        //     SkaiWatchSys.sleep_data_show.prev_sleep_stamp); break;
-        //   case 3:
-        //     SkaiWatchSys.sleep_data_show.wake_up_time +=
-        //     (sleepState->timestamp -
-        //     SkaiWatchSys.sleep_data_show.prev_sleep_stamp); break;
-        //   default:
-        //     break;
-        //   }
-        //   SkaiWatchSys.watch_sleep_status = sleepState->mode;
-        //   SkaiWatchSys.sleep_data_show.prev_sleep_stamp =
-        //   sleepState->timestamp;
-        // }
-        break;
-    }
-    case INTERACT_HEARTRATEHIGH:
-        LOG_D("[INTERACT_HEARTRATEHIGH]");
-        break;
-    case INTERACT_TARGET:
-        LOG_D("[INTERACT_TARGET] daily health target achieved");
-        break;
-    case INTERACT_NO_MOVEMENT:
-        LOG_D("[INTERACT_NO_MOVEMENT]");
-        break;
-    default:
-        break;
-    }
+    SkaiWatchSys.sleep_state = *state;
+    LOG_D("[Sleep State]total_seconds=%d | total_restful_seconds=%d",
+          SkaiWatchSys.sleep_state.total_seconds,
+          SkaiWatchSys.sleep_state.total_restful_seconds);
 }
+#endif
 
 // Extract system control handling into a separate function
 static void handle_system_control(INTERACT_Type type, void *pValue)
 {
     switch (type)
     {
-    case INTERACT_FIND_PHONE:
-    {
-        bool enable = *(bool *)pValue;
-        break;
-    }
-    case INTERACT_STOP_OLED_ONLY:
-        break;
-    case INTERACT_STOP_MOTOR_AND_OLED:
-        break;
-
 #ifdef RGB_LED_CONTROL_PIN
     case INTERACT_RGB_LED_OPEN_WRITE:
     {
@@ -996,10 +928,6 @@ static void handle_system_settings(INTERACT_Type type, void *pValue)
         subscribe_alarm_client();
         break;
     }
-    case WATCH_ALARM_GET:
-        break;
-    case WATCH_ALARM_SET:
-        break;
     case WATCH_BRIGHTNESS_SET:
     {
         uint8_t brightness = *(uint8_t *)pValue;
@@ -1041,15 +969,8 @@ static void handle_power_management(INTERACT_Type type, void *pValue)
 {
     switch (type)
     {
-    case WATCH_OPEN_DISPLAY:
-        // set_watch_ready_to_open_display(true);
-        break;
     case WATCH_OPEN_DISPLAY_TO_APP_LIST:
-        // set_watch_ready_to_open_display(true);
         set_user_want_to_open_display_to_instruction_list(true);
-        break;
-    case WATCH_PREPARE_SLEEP:
-        // send_sys_interact_event(SYS_EVENT_PREPARE_SLEEP);
         break;
     case HCPU_WAKEUP:
     {
@@ -1130,11 +1051,6 @@ void *watch_system_interact(INTERACT_Type type, void *pValue)
     else if (type >= APP_INTERACT_TYPE_BEGIN && type <= APP_INTERACT_TYPE_END)
     {
         handle_app_management(type, pValue);
-    }
-    else if (type >= HEALTH_INTERACT_TYPE_BEGIN &&
-             type <= HEALTH_INTERACT_TYPE_END)
-    {
-        handle_health_monitoring(type, pValue);
     }
     else if (type >= CONTROL_INTERACT_TYPE_BEGIN &&
              type <= CONTROL_INTERACT_TYPE_END)
@@ -1277,17 +1193,9 @@ static int set_watch_system(int argc, char *argv[])
                 }
             }
         }
-        else if (strcmp(argv[1], "-shutdown") == 0)
-        {
-            LOG_D("TODO:Shutting down the watch...");
-        }
         else if (strcmp(argv[1], "-reboot_hcpu") == 0)
         {
             watch_system_interact(WATCH_REBOOT, NULL);
-        }
-        else if (strcmp(argv[1], "-reboot_lcpu") == 0)
-        {
-            LOG_D("TODO:Rebooting the LCPU...");
         }
         else if (strcmp(argv[1], "-sleep") == 0)
         {

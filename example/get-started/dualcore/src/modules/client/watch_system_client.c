@@ -249,7 +249,6 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
             {
                 if (!is_sleep_mode())
                 {
-                    // watch_system_interact(WATCH_PREPARE_SLEEP, NULL);
                     watch_system_interact(WATCH_SLEEP, NULL);
                 }
             }
@@ -344,7 +343,7 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         RT_ASSERT(arg->data_len == sizeof(watch_sys_sleep_state_t));
         data_ind = (watch_sys_sleep_state_t *)arg->data;
         RT_ASSERT(data_ind);
-        watch_system_interact(INTERACT_SLEEP_STATE, (void *)data_ind);
+        set_watch_sleep_state(data_ind);
         break;
     }
     case MSG_SERVICE_DEBUG_LOG_IND:
