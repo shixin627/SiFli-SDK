@@ -230,8 +230,6 @@ extern int __bss_end;
 #define AMOLED_DISPLAY_3V3_EN (33) // PB33 (33+96=129)
 #define AMOLED_1V8_EN (21)         // PB21 (21+96=117)
 #define MOTOR_POWER_EN_PIN (5)     // PA05
-#define RGB_LED_CONTROL_PIN (121)   // PB25 (25+96=121)
-#define WS2812B_TIMING
 #define USING_LINEAR_MOTOR_0619
 #define WATCH_IMU_REVERSE_180 (1)
 #endif

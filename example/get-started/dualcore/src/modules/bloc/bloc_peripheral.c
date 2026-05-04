@@ -317,10 +317,8 @@ static void control_motor_vibration(bool enable, motor_params_t *params)
         return;
     }
     LOG_I("Control motor: %s, duty_cycle: %d, period: %d, repeat_times: %d",
-          enable ? "ON" : "OFF",
-          params ? params->duty_cycle : 0,
-          params ? params->period : 0,
-          params ? params->repeat_times : 0);
+          enable ? "ON" : "OFF", params ? params->duty_cycle : 0,
+          params ? params->period : 0, params ? params->repeat_times : 0);
     PeripheralMessageData data;
     data.event = CONTROL_MOTOR;
     data.arg.motor_control.enable = enable;
@@ -330,7 +328,8 @@ static void control_motor_vibration(bool enable, motor_params_t *params)
     }
     send_peripheral_data(data);
     motor_on = true;
-    start_motor_on_timer(((params->period/1000)*params->repeat_times)+600);
+    start_motor_on_timer(((params->period / 1000) * params->repeat_times) +
+                         600);
 }
 
 static void control_rgb_led(bool enable, rgb_led_params_t *params)
@@ -573,14 +572,19 @@ static void peripheral_task_entry(void *parameter)
             }
             break;
     #endif // #ifndef SOC_BF0_LCPU
+
+    #ifdef USING_FSR_ADC_SAMPLER
             case FSR_ADC_READ:
             {
                 fsr_adc_read();
             }
             break;
+    #endif
+
+    #ifdef BSP_USING_WATCH_SYS_CLIENT
             case CONTROL_MOTOR:
             {
-    #ifdef BSP_USING_WATCH_SYS_CLIENT
+
                 if (data.arg.motor_control.enable)
                 {
                     motor_params_t param = {
@@ -595,12 +599,10 @@ static void peripheral_task_entry(void *parameter)
                 {
                     watch_sys_sync.control_motor(false, NULL);
                 }
-    #endif
             }
             break;
             case CONTROL_RGB_LED:
             {
-    #ifdef BSP_USING_WATCH_SYS_CLIENT
                 watch_sys_rgb_led_params_t params;
                 params.enable = data.arg.rgb_led_control.enable;
 
@@ -639,9 +641,9 @@ static void peripheral_task_entry(void *parameter)
                 }
 
                 watch_sys_sync.control_rgb_led(&params);
-    #endif
             }
             break;
+    #endif
 
             case SAVE_SHARE_PREFS:
             {
@@ -844,8 +846,8 @@ void process_ppg_sensor_data(uint8_t sample_num, uint32_t *data,
         }
         else
         {
-            LOG_I("[PPG-PROD] seq=%u n=%u v0=%u v1=%u ts=%u",
-                  s_prod_seq, sample_num, v0, v1, ts);
+            LOG_I("[PPG-PROD] seq=%u n=%u v0=%u v1=%u ts=%u", s_prod_seq,
+                  sample_num, v0, v1, ts);
         }
         s_prev_ts = ts;
     }
@@ -859,10 +861,10 @@ void process_ppg_sensor_data(uint8_t sample_num, uint32_t *data,
             rt_sem_release(watch_sensor.ppg_sem);
 #else
     #ifdef SOC_BF0_LCPU
-        // for (uint8_t i = 0; i < sample_num; i++)
-        // {
-        //     process_ppg_rawdata(watch_sensor.ppg_data.raw_data[i]);
-        // }
+            // for (uint8_t i = 0; i < sample_num; i++)
+            // {
+            //     process_ppg_rawdata(watch_sensor.ppg_data.raw_data[i]);
+            // }
     #endif
 #endif
     }
@@ -921,17 +923,15 @@ static void gesture_ppg_thread_entry(void *parameter)
                 ble_ppg_data[2 * i + 1] =
                     (float)watch_sensor.ppg_data2.raw_data[i];
             }
-#ifdef PPG_RACE_DEBUG
+        #ifdef PPG_RACE_DEBUG
             {
                 static uint32_t s_cons_seq = 0;
                 static uint32_t s_last_v0 = 0;
                 static uint32_t s_dup_run = 0;
-                uint32_t v0 = (sample_num > 0)
-                                  ? watch_sensor.ppg_data.raw_data[0]
-                                  : 0;
-                uint32_t v1 = (sample_num > 1)
-                                  ? watch_sensor.ppg_data.raw_data[1]
-                                  : 0;
+                uint32_t v0 =
+                    (sample_num > 0) ? watch_sensor.ppg_data.raw_data[0] : 0;
+                uint32_t v1 =
+                    (sample_num > 1) ? watch_sensor.ppg_data.raw_data[1] : 0;
                 s_cons_seq++;
                 if (v0 == s_last_v0)
                 {
@@ -941,21 +941,18 @@ static void gesture_ppg_thread_entry(void *parameter)
                 {
                     if (s_dup_run > 0)
                     {
-                        LOG_W("[PPG-CONS] DUP streak ended, run=%u",
-                              s_dup_run);
+                        LOG_W("[PPG-CONS] DUP streak ended, run=%u", s_dup_run);
                     }
                     s_dup_run = 0;
                     s_last_v0 = v0;
                 }
-                rt_uint16_t sem_val = watch_sensor.ppg_sem
-                                          ? watch_sensor.ppg_sem->value
-                                          : 0;
+                rt_uint16_t sem_val =
+                    watch_sensor.ppg_sem ? watch_sensor.ppg_sem->value : 0;
                 LOG_I("[PPG-CONS] seq=%u n=%d v0=%u v1=%u dup=%u sem=%u ts=%u",
                       s_cons_seq, sample_num, v0, v1, s_dup_run,
-                      (uint32_t)sem_val,
-                      (uint32_t)rt_tick_get_millisecond());
+                      (uint32_t)sem_val, (uint32_t)rt_tick_get_millisecond());
             }
-#endif
+        #endif
             send_ppg_dataset_with_ble(ble_ppg_data, sample_num * 2);
         }
     }
