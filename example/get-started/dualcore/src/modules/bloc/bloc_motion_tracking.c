@@ -2012,14 +2012,14 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
             prev_handfree = want_handfree;
         }
 
-        // 壓感 < 3000 → 左鍵按下；> 3000 → 左鍵放開
-        if (g_fsr_adc_latest < 3000 && !left_pressed)
+        // 壓感 < 10000 → 左鍵按下；> 10000 → 左鍵放開
+        if (g_fsr_adc_latest < 10000 && !left_pressed)
         {
             if (control_provider.ble_hid_mouse_left_press)
                 control_provider.ble_hid_mouse_left_press();
             left_pressed = true;
         }
-        else if (g_fsr_adc_latest > 3000 && left_pressed)
+        else if (g_fsr_adc_latest > 10000 && left_pressed)
         {
             if (control_provider.ble_hid_mouse_left_release)
                 control_provider.ble_hid_mouse_left_release();
