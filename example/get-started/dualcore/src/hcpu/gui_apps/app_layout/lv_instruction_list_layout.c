@@ -76,6 +76,7 @@
 
 LV_IMG_DECLARE(voice_group);
 LV_IMG_DECLARE(menu_icon);
+LV_IMG_DECLARE(plus);
 
 #define DBG_TAG "instruction.list.layout"
 #define DBG_LVL DBG_INFO
@@ -1956,6 +1957,18 @@ extern bool skai_widget_has_ai_reply(void);
 extern void clear_skai_widget_ai_reply(void);
 extern bool get_voice_recognition_started(void);
 extern void clearVoice2Text(void);
+static void add_instruction_btn_event_cb(lv_event_t *evt)
+{
+    if (!get_bluetooth_connection_status())
+    {
+        create_connection_tips();
+        return;
+    }
+    const char *json = "{\"action\":\"add\"}";
+    LOG_I("Send create-instruction request: %s", json);
+    commu_send_update_instruction(json);
+}
+
 static void logo_click_event_cb(lv_event_t *evt)
 {
     /* Re-ask has priority: once the AI has replied, the button's job is to
@@ -2794,6 +2807,27 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_add_event_cb(ai_bar, ai_bar_event_cb, LV_EVENT_ALL, NULL);
     // lv_obj_add_flag(ai_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_clear_flag(ai_bar, LV_OBJ_FLAG_PRESS_LOCK);
+
+    /* Bottom-center "add instruction" button: 100x70 pill, plus icon, taps
+       phone-side create-instruction flow */
+    /* Bottom-center "add instruction" button: 50x35 pill, 32x32 plus icon,
+       taps phone-side create-instruction flow */
+    lv_obj_t *add_inst_btn = lv_obj_create(p_instruction_list_bg);
+    lv_obj_set_size(add_inst_btn, 50, 35);
+    lv_obj_set_style_radius(add_inst_btn, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(add_inst_btn, lv_color_hex(0xE3E3E3), 0);
+    lv_obj_set_style_bg_opa(add_inst_btn, LV_OPA_50, 0);
+    lv_obj_set_style_border_width(add_inst_btn, 0, 0);
+    lv_obj_set_style_pad_all(add_inst_btn, 0, 0);
+    lv_obj_align(add_inst_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_clear_flag(add_inst_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(add_inst_btn, add_instruction_btn_event_cb,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_t *add_inst_img = lv_img_create(add_inst_btn);
+    lv_img_set_src(add_inst_img, &plus);
+    lv_img_set_zoom(add_inst_img, 128); /* plus.png is 64x64 → render at 32x32 */
+    lv_obj_align(add_inst_img, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(add_inst_img, LV_OBJ_FLAG_CLICKABLE);
 
     p_instruction_list_layout->p_instruction_list_ai_bg =
         lv_tileview_create(p_instruction_list_bg);
