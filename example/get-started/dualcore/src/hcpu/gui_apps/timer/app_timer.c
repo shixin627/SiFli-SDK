@@ -58,6 +58,7 @@
 #include "lv_ext_resource_manager.h"
 #include "lv_ex_data.h"
 #include "common_widget.h"
+#include "arc_scroll.h"
 #include "app_mainmenu.h"
 #include "ui_img_helper.h"
 #include "bloc_control.h"
@@ -85,8 +86,27 @@
 #define LIST_TIMER_HEIGHT (200)
 #define LIST_TIMER_WIDGET_RADIUS (40)
 #define LIST_TIMER_BG_COLOR (0x1E1E1E)
-#define LIST_TIMER_ACCENT_COLOR (0x80A0FF)
+#define LIST_TIMER_ACCENT_COLOR (0xFF9500)  /* iOS 風格橘 — 同時用於 title 跟 pie indicator */
 #define LIST_TIMER_ROW_SPACING (50)
+
+// 圓形圖示列表佈局常數（與 app_exercise.c 同樣的視覺規格）
+#define TIMER_OPTION_COUNT 12
+#define TIMER_ICON_ITEM_SIZE 80
+#define TIMER_ICON_ZOOM_CENTER 256
+#define TIMER_ICON_ZOOM_MIN 128
+#define TIMER_ICON_OPA_CENTER LV_OPA_COVER
+#define TIMER_ICON_OPA_MIN LV_OPA_30
+#define TIMER_ICON_SLOT_HEIGHT (TIMER_ICON_ITEM_SIZE + 10)
+#define TIMER_ICON_SLOT_ANGLE_DEG 36
+#define TIMER_ICON_ARC_RADIUS 200
+/* zoom / opa 量化步階：值越大，set_size / arc_width / arc_opa 呼叫越少（越省 CPU），
+ * 但視覺上跳得越粗。zoom 32 → size 每 ~10px 跳一階；opa 32 → 每 ~12% 跳一階 */
+#define TIMER_ICON_ZOOM_STEP 16
+#define TIMER_ICON_OPA_STEP  16
+
+#ifndef M_PI
+    #define M_PI 3.14159265358979323846f
+#endif
 
 /**
  * @brief Structure to hold all UI components of the timer app
@@ -119,6 +139,7 @@ LV_IMG_DECLARE(img_media_play);
 LV_IMG_DECLARE(img_media_pause);
 LV_IMG_DECLARE(img_media_previous); // 用作重啟圖標
 LV_IMG_DECLARE(img_pause);
+LV_IMG_DECLARE(app_icon_frame);     // 中央選中項目背後的 icon 框（仿 lv_instruction_list_layout.c）
 
 static const char *timer_options[] = {
     "30 secs",
@@ -134,6 +155,39 @@ static const char *timer_options[] = {
     "30 mins",
     "1 hour",
     ""};
+
+/* 各 timer option 對應的秒數，用來算圓餅圖填充比例（全滿 = 3600 秒 = 1 hour）。
+ * Index 與 timer_options[] 一一對應 */
+static const uint32_t timer_seconds[TIMER_OPTION_COUNT] = {
+    30,    /* "30 secs" */
+    60,    /* "1 min"   */
+    120,   /* "2 mins"  */
+    180,   /* "3 mins"  */
+    240,   /* "4 mins"  */
+    300,   /* "5 mins"  */
+    600,   /* "10 mins" */
+    900,   /* "15 mins" */
+    1200,  /* "20 mins" */
+    1500,  /* "25 mins" */
+    1800,  /* "30 mins" */
+    3600,  /* "1 hour"  */
+};
+
+/* 圓形 icon 排列：仿 app_exercise.c 的做法
+ *   - icons 是 list 的 floating child，用 lv_obj_set_pos 直接放在環上
+ *   - 另外建 N 個透明 snap_targets 提供 LVGL snap-to-center 用的線性 y anchor
+ *   - labels 是 icon 的 child，跟著 icon 移動，預設藏起來只顯示選中那個
+ *   - frames 是 icon 的 child（z-order 在 pie 後面），平常藏起來只顯示中央那個 */
+static lv_obj_t *timer_icons[TIMER_OPTION_COUNT] = {0};
+static lv_obj_t *timer_icon_pies[TIMER_OPTION_COUNT] = {0};
+static lv_obj_t *timer_icon_frames[TIMER_OPTION_COUNT] = {0};
+static lv_obj_t *timer_name_labels[TIMER_OPTION_COUNT] = {0};
+
+/* 量化後的 zoom/opa 上次套用值 — 避免每個 scroll event 都重複呼叫 set_size /
+ * set_arc_width / set_arc_opa / set_zoom 觸發 invalidate 重畫填滿 disk arc。
+ * 量化步階：zoom = 8（target_size 差 2-3px 視覺幾乎一樣），opa = 8 */
+static int16_t timer_icon_last_zoom[TIMER_OPTION_COUNT] = {0};
+static lv_opa_t timer_icon_last_opa[TIMER_OPTION_COUNT] = {0};
 
 /* Forward declarations for functions */
 static void update_timer_label(void);
@@ -447,44 +501,202 @@ static void handle_tap_event(void)
     }
 }
 
-// 列表滾動處理 - 與exercise app相同的邏輯
+/* 右側弧形觸控滾動 — tap 時把 click 派給 press 點所在的 icon；
+ * 落在空白處則 fallback 給目前選中 icon（點邊緣 = 啟動選中項目） */
+static lv_obj_t *timer_arc_tap_cb(lv_point_t pt, void *ctx)
+{
+    (void)ctx;
+    for (int i = 0; i < TIMER_OPTION_COUNT; i++)
+    {
+        if (timer_icons[i] == NULL) continue;
+        if (!lv_obj_is_valid(timer_icons[i])) continue;
+        if (lv_obj_has_flag(timer_icons[i], LV_OBJ_FLAG_HIDDEN)) continue;
+        lv_area_t a;
+        lv_obj_get_coords(timer_icons[i], &a);
+        if (pt.x >= a.x1 && pt.x <= a.x2 && pt.y >= a.y1 && pt.y <= a.y2)
+        {
+            return timer_icons[i];
+        }
+    }
+    if (selected_timer_index >= 0 && selected_timer_index < TIMER_OPTION_COUNT &&
+        timer_icons[selected_timer_index] != NULL &&
+        lv_obj_is_valid(timer_icons[selected_timer_index]) &&
+        !lv_obj_has_flag(timer_icons[selected_timer_index], LV_OBJ_FLAG_HIDDEN))
+    {
+        return timer_icons[selected_timer_index];
+    }
+    return NULL;
+}
+
+static lv_obj_t *timer_arc_snap_cb(void *ctx)
+{
+    (void)ctx;
+    if (ui.timer_list == NULL || !lv_obj_is_valid(ui.timer_list)) return NULL;
+    if (selected_timer_index < 0 || selected_timer_index >= TIMER_OPTION_COUNT) return NULL;
+    return lv_obj_get_child(ui.timer_list, selected_timer_index);
+}
+
+/* label 偏到螢幕左側、跑出 icon bbox，無法接到 click。
+ * 在 label 視覺位置疊一個透明 overlay 接 click，再轉發給目前選中的 icon */
+static void label_tap_zone_click_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    if (selected_timer_index < 0 || selected_timer_index >= TIMER_OPTION_COUNT) return;
+    lv_obj_t *icon = timer_icons[selected_timer_index];
+    if (icon != NULL && lv_obj_is_valid(icon) &&
+        !lv_obj_has_flag(icon, LV_OBJ_FLAG_HIDDEN))
+    {
+        lv_event_send(icon, LV_EVENT_CLICKED, NULL);
+    }
+}
+
+/* 弧形排列：仿 app_exercise.c::apply_circular_layout
+ *   offset_angle = (scroll_y - base_scroll) / SLOT × angle_per_slot
+ *   current_angle_i = i × angle_per_slot - offset_angle
+ *   icon_screen_pos = (cx + R·cos(angle), cy + R·sin(angle)) */
+static void apply_circular_layout(lv_obj_t *list)
+{
+    const int32_t cx = LV_HOR_RES / 2;
+    const int32_t cy = LV_VER_RES / 2;
+    const float angle_per_slot = (float)TIMER_ICON_SLOT_ANGLE_DEG * (M_PI / 180.0f);
+    const lv_coord_t list_x1 = list->coords.x1;
+    const lv_coord_t list_y1 = list->coords.y1;
+    const lv_coord_t pad_top = lv_obj_get_style_pad_top(list, LV_PART_MAIN);
+    const lv_coord_t pad_left = lv_obj_get_style_pad_left(list, LV_PART_MAIN);
+
+    const int32_t base_scroll = list_y1 + pad_top + TIMER_ICON_ITEM_SIZE / 2 - cy;
+    /* 拖動時 LVGL 的 elastic overshoot 會讓 scroll_y 暫時衝出正常範圍，
+     * offset_angle 算出來會非常大 → 全部 icon 的 abs_angle > 90° 被一起藏起來，
+     * 直到放開彈回。夾在 [base_scroll, base_scroll + (N-1)*SLOT] 內，
+     * 確保任何 scroll 位置至少有一個 icon 落在 ±90° 內，不會整片消失 */
+    lv_coord_t scroll_y = lv_obj_get_scroll_y(list);
+    const int32_t scroll_y_max = base_scroll +
+                                  (TIMER_OPTION_COUNT - 1) * TIMER_ICON_SLOT_HEIGHT;
+    if (scroll_y < base_scroll) scroll_y = base_scroll;
+    if (scroll_y > scroll_y_max) scroll_y = scroll_y_max;
+    const float scroll_in_slots = (float)(scroll_y - base_scroll) / TIMER_ICON_SLOT_HEIGHT;
+    const float offset_angle = scroll_in_slots * angle_per_slot;
+
+    int closest_i = 0;
+    float min_abs_angle = M_PI;
+
+    for (int i = 0; i < TIMER_OPTION_COUNT; i++)
+    {
+        if (timer_icons[i] == NULL) continue;
+
+        float current_angle = (float)i * angle_per_slot - offset_angle;
+        float abs_angle = fabsf(current_angle);
+
+        if (abs_angle < min_abs_angle)
+        {
+            min_abs_angle = abs_angle;
+            closest_i = i;
+        }
+
+        if (abs_angle > M_PI / 2.0f)
+        {
+            lv_obj_add_flag(timer_icons[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        lv_obj_clear_flag(timer_icons[i], LV_OBJ_FLAG_HIDDEN);
+
+        /* 中央 = ZOOM_CENTER（80px 全大），邊緣 = ZOOM_MIN（≈40px），用 cos(angle) 插值。
+         * zoom 量化到 TIMER_ICON_ZOOM_STEP 一階 → 大多數 scroll event 落在同一階，
+         * 跳過 set_size / set_arc_width / set_zoom（這些都會 invalidate 觸發
+         * disk arc 重畫，最貴）。提高 STEP → 更省 CPU，視覺跳得粗一點 */
+        int32_t zoom_range = TIMER_ICON_ZOOM_CENTER - TIMER_ICON_ZOOM_MIN;
+        int32_t zoom_raw = TIMER_ICON_ZOOM_MIN + (int32_t)(zoom_range * cosf(abs_angle));
+        int32_t zoom = ((zoom_raw + TIMER_ICON_ZOOM_STEP / 2) / TIMER_ICON_ZOOM_STEP)
+                       * TIMER_ICON_ZOOM_STEP;
+        if (zoom < TIMER_ICON_ZOOM_MIN) zoom = TIMER_ICON_ZOOM_MIN;
+        if (zoom > TIMER_ICON_ZOOM_CENTER) zoom = TIMER_ICON_ZOOM_CENTER;
+        int32_t target_size = (TIMER_ICON_ITEM_SIZE * zoom) / 256;
+        if (target_size < 2) target_size = 2;
+
+        lv_obj_t *pie = timer_icon_pies[i];
+        bool zoom_changed = ((int16_t)zoom != timer_icon_last_zoom[i]);
+        if (zoom_changed)
+        {
+            lv_obj_set_size(timer_icons[i], target_size, target_size);
+            if (pie != NULL && lv_obj_is_valid(pie))
+            {
+                int32_t new_radius = target_size / 2;
+                lv_obj_set_size(pie, target_size, target_size);
+                lv_obj_center(pie);
+                lv_obj_set_style_arc_width(pie, new_radius, LV_PART_MAIN);
+                lv_obj_set_style_arc_width(pie, new_radius, LV_PART_INDICATOR);
+            }
+            if (timer_icon_frames[i] != NULL && lv_obj_is_valid(timer_icon_frames[i]))
+            {
+                lv_img_set_zoom(timer_icon_frames[i], zoom);
+                lv_obj_center(timer_icon_frames[i]);
+            }
+            timer_icon_last_zoom[i] = (int16_t)zoom;
+        }
+
+        /* 位置每個 event 都要更新（手指移動的視覺反饋來源） */
+        int32_t icon_sx = cx + (int32_t)(TIMER_ICON_ARC_RADIUS * cosf(current_angle));
+        int32_t icon_sy = cy + (int32_t)(TIMER_ICON_ARC_RADIUS * sinf(current_angle));
+        int32_t local_x = icon_sx - list_x1 - pad_left - target_size / 2;
+        int32_t local_y = icon_sy - list_y1 - pad_top - target_size / 2;
+        lv_obj_set_pos(timer_icons[i], local_x, local_y);
+
+        /* opa 同樣量化（TIMER_ICON_OPA_STEP），沒變就不重設（arc_opa 也會 invalidate 重畫）。
+         * 必須在 int32_t 算完並 clamp 才 cast — 直接 cast 成 uint8_t 在量化值 = 256
+         * 時會 wrap 成 0 → 中央最亮那段反而被打到 OPA_MIN（突然變暗）*/
+        int32_t opa_range = TIMER_ICON_OPA_CENTER - TIMER_ICON_OPA_MIN;
+        int32_t opa_raw = TIMER_ICON_OPA_MIN + (int32_t)(opa_range * cosf(abs_angle));
+        int32_t opa_q = ((opa_raw + TIMER_ICON_OPA_STEP / 2) / TIMER_ICON_OPA_STEP)
+                        * TIMER_ICON_OPA_STEP;
+        if (opa_q > LV_OPA_COVER) opa_q = LV_OPA_COVER;
+        if (opa_q < TIMER_ICON_OPA_MIN) opa_q = TIMER_ICON_OPA_MIN;
+        lv_opa_t opa = (lv_opa_t)opa_q;
+        if (opa != timer_icon_last_opa[i])
+        {
+            if (pie != NULL && lv_obj_is_valid(pie))
+            {
+                /* bg ring 原本 70% opa，乘上整體 opa 比例 */
+                lv_opa_t main_opa = (lv_opa_t)((opa * (uint16_t)LV_OPA_70) / 255);
+                lv_obj_set_style_arc_opa(pie, main_opa, LV_PART_MAIN);
+                lv_obj_set_style_arc_opa(pie, opa, LV_PART_INDICATOR);
+            }
+            timer_icon_last_opa[i] = opa;
+        }
+    }
+
+    if (closest_i != selected_timer_index)
+    {
+        selected_timer_index = closest_i;
+    }
+    if (selected_timer_index >= 0 && selected_timer_index < TIMER_OPTION_COUNT)
+    {
+        ui.current_button = timer_icons[selected_timer_index];
+    }
+    for (int i = 0; i < TIMER_OPTION_COUNT; i++)
+    {
+        bool is_center = (i == closest_i && min_abs_angle <= M_PI / 2.0f);
+        if (timer_name_labels[i] != NULL)
+        {
+            if (is_center)
+                lv_obj_clear_flag(timer_name_labels[i], LV_OBJ_FLAG_HIDDEN);
+            else
+                lv_obj_add_flag(timer_name_labels[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        /* frame 只在中央那個顯示（仿 lv_instruction_list_layout.c 的 app_icon_shadow） */
+        if (timer_icon_frames[i] != NULL)
+        {
+            if (is_center)
+                lv_obj_clear_flag(timer_icon_frames[i], LV_OBJ_FLAG_HIDDEN);
+            else
+                lv_obj_add_flag(timer_icon_frames[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
 static void scroll_timer_list(lv_obj_t *list)
 {
-    uint16_t min_offset = LV_VER_RES;
-    uint8_t child_cnt = list->spec_attr->child_cnt;
-    lv_coord_t y_diff = 0;
-
-    for (uint8_t i = 0; i < child_cnt; i++)
-    {
-        lv_obj_t *child = list->spec_attr->children[i];
-        lv_coord_t y_center = child->coords.y1 + LIST_TIMER_HEIGHT / 2;
-        y_diff = y_center - LV_VER_RES / 2;
-        y_diff = LV_ABS(y_diff);
-        if (y_diff < min_offset)
-        {
-            min_offset = y_diff;
-            selected_timer_index = i;
-        }
-    }
-
-    // 使用邊框指示選中狀態 - 與exercise app相同
-    if (old_selected_timer_index != selected_timer_index)
-    {
-        old_selected_timer_index = selected_timer_index;
-        for (uint8_t i = 0; i < child_cnt; i++)
-        {
-            lv_obj_t *item = list->spec_attr->children[i];
-            if (i == selected_timer_index)
-            {
-                lv_obj_set_style_border_width(item, 1, 0);
-                ui.current_button = item;
-            }
-            else
-            {
-                lv_obj_set_style_border_width(item, 0, 0);
-            }
-        }
-    }
+    apply_circular_layout(list);
+    old_selected_timer_index = selected_timer_index;
 }
 
 // timer列表滾動事件處理
@@ -538,15 +750,13 @@ static void timer_list_nav_control(int8_t action)
     scroll_timer_list_to_index(action);
 }
 
-// 創建timer列表 - 與exercise app相同的樣式
+// 創建 timer 列表 - 與 app_exercise.c 相同的圓形圖示佈局
 static lv_obj_t *create_timer_list(lv_obj_t *parent)
 {
     ui.current_button = NULL;
-
-    // 計算選項數量
-    int option_count = 0;
-    while (timer_options[option_count][0] != '\0')
-        option_count++;
+    /* 重置 zoom/opa cache（icon 重新建立，第一次 apply 必須套用一輪） */
+    memset(timer_icon_last_zoom, 0, sizeof(timer_icon_last_zoom));
+    memset(timer_icon_last_opa, 0, sizeof(timer_icon_last_opa));
 
     // 創建列表外層容器
     lv_obj_t *list_container = lv_obj_create(parent);
@@ -554,97 +764,157 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(list_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(list_container, 0, 0);
     lv_obj_set_style_pad_all(list_container, 0, 0);
+    lv_obj_clear_flag(list_container, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(list_container, LV_ALIGN_TOP_MID, 0, 0);
 
-    // 創建垂直列表 - 與exercise app相同
+    /* List 是全螢幕的 scrollable 容器（無 flex），仿
+     * app_exercise.c::create_workout_list 的做法 */
     lv_obj_t *list = lv_obj_create(list_container);
-    lv_obj_set_size(list, LV_PCT(90), 466);
+    lv_obj_set_size(list, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     lv_obj_align(list, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_opa(list, LV_OPA_0, 0);
+    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(list, 0, 0);
-    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(list, 0, 0);
+    lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_scroll_snap_y(list, LV_SCROLL_SNAP_CENTER);
     lv_obj_set_scroll_dir(list, LV_DIR_VER);
-    lv_obj_set_style_pad_row(list, LIST_TIMER_ROW_SPACING, 0);
+    lv_obj_set_scroll_snap_y(list, LV_SCROLL_SNAP_CENTER);
     lv_obj_set_style_pad_ver(list, LV_VER_RES / 2, 0);
     lv_obj_add_event_cb(list, timer_list_scroll_event_cb, LV_EVENT_ALL, NULL);
     ui.timer_list = list;
 
-    // 添加標題背景 - 與exercise app相同
-    lv_obj_t *title_bg = lv_obj_create(list_container);
-    lv_obj_set_size(title_bg, 466, 80);
-    lv_obj_set_style_bg_color(title_bg, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(title_bg, LV_OPA_80, 0);
-    lv_obj_set_style_border_width(title_bg, 0, 0);
-    lv_obj_align(title_bg, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_clear_flag(title_bg, LV_OBJ_FLAG_SCROLLABLE);
+    /* N 個透明 snap_targets（non-floating），只負責提供 LVGL 的 snap-to-center
+     * anchors，視覺上不顯示 */
+    for (int i = 0; i < TIMER_OPTION_COUNT; i++)
+    {
+        lv_obj_t *snap_target = lv_obj_create(list);
+        lv_obj_set_size(snap_target, TIMER_ICON_ITEM_SIZE, TIMER_ICON_ITEM_SIZE);
+        lv_obj_set_pos(snap_target, 0, i * TIMER_ICON_SLOT_HEIGHT);
+        lv_obj_set_style_bg_opa(snap_target, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(snap_target, 0, 0);
+        lv_obj_set_style_pad_all(snap_target, 0, 0);
+        lv_obj_clear_flag(snap_target, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(snap_target, LV_OBJ_FLAG_SCROLLABLE);
+    }
 
-    ui.timer_title = lv_label_create(title_bg);
-    lv_obj_set_size(ui.timer_title, 466, 40);
+    /* N 個 visible icons：list 的 floating child（不影響 scroll content size）。
+     * 每個 icon 是「透明 generic 容器（hit zone）+ 內嵌 lv_arc 圓餅圖（純視覺）」。
+     * lv_obj_remove_style_all 把 default theme 樣式（rounded bg、padding 等）洗掉，
+     * 才不會在 arc 旁邊再多一個圓角矩形 */
+    const int32_t pie_radius = TIMER_ICON_ITEM_SIZE / 2;
+    for (int i = 0; i < TIMER_OPTION_COUNT; i++)
+    {
+        timer_icons[i] = lv_obj_create(list);
+        lv_obj_remove_style_all(timer_icons[i]);
+        lv_obj_set_size(timer_icons[i], TIMER_ICON_ITEM_SIZE, TIMER_ICON_ITEM_SIZE);
+        lv_obj_clear_flag(timer_icons[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(timer_icons[i], LV_OBJ_FLAG_FLOATING);
+        lv_obj_add_flag(timer_icons[i], LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+        lv_obj_add_flag(timer_icons[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_user_data(timer_icons[i], (void *)timer_options[i]);
+        lv_obj_add_event_cb(timer_icons[i], timer_list_event_cb,
+                            LV_EVENT_CLICKED, NULL);
+
+        /* 先建 frame（child 0，最底層）→ pie 蓋在它上面。
+         * 仿 lv_instruction_list_layout.c 的 app_icon_shadow 做法：平常藏起來，
+         * 在 apply_circular_layout 結尾才把 closest_i 對應的 frame 顯示 */
+        timer_icon_frames[i] = lv_img_create(timer_icons[i]);
+        lv_img_set_src(timer_icon_frames[i], &app_icon_frame);
+        lv_obj_center(timer_icon_frames[i]);
+        lv_obj_clear_flag(timer_icon_frames[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(timer_icon_frames[i], LV_OBJ_FLAG_HIDDEN);
+
+        /* 圓餅圖：bg 是滿圓灰盤，indicator 是從 12 點鐘順時針的 pie wedge。
+         * arc_width = radius → 整個 disk 填滿（不是中空 ring）。
+         * 比例 = 該選項秒數 / 3600（1 hour 為全滿） */
+        timer_icon_pies[i] = lv_arc_create(timer_icons[i]);
+        lv_obj_t *pie = timer_icon_pies[i];
+        lv_obj_remove_style_all(pie);
+        lv_obj_set_size(pie, TIMER_ICON_ITEM_SIZE, TIMER_ICON_ITEM_SIZE);
+        lv_obj_center(pie);
+        lv_obj_clear_flag(pie, LV_OBJ_FLAG_CLICKABLE); /* click/drag 由 container 處理 */
+        lv_obj_clear_flag(pie, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_arc_width(pie, pie_radius, LV_PART_MAIN);
+        lv_obj_set_style_arc_width(pie, pie_radius, LV_PART_INDICATOR);
+        lv_obj_set_style_arc_color(pie, lv_color_hex(0x404040), LV_PART_MAIN);
+        lv_obj_set_style_arc_opa(pie, LV_OPA_70, LV_PART_MAIN);
+        lv_obj_set_style_arc_color(pie,
+                                   lv_color_hex(LIST_TIMER_ACCENT_COLOR),
+                                   LV_PART_INDICATOR);
+        lv_obj_set_style_arc_opa(pie, LV_OPA_COVER, LV_PART_INDICATOR);
+
+        /* 0° 在 3 點鐘方向，rotation=270 把起點轉到 12 點鐘，順時針填充 */
+        lv_arc_set_rotation(pie, 270);
+        lv_arc_set_bg_angles(pie, 0, 360);
+        uint32_t fill_deg32 = (timer_seconds[i] * 360u + 1800u) / 3600u; /* 四捨五入 */
+        if (fill_deg32 == 0) fill_deg32 = 1;       /* 太小也至少露一條縫 */
+        if (fill_deg32 > 360) fill_deg32 = 360;
+        lv_arc_set_angles(pie, 0, (uint16_t)fill_deg32);
+
+        /* label 是 icon container 的 child；click bubble 給 container 觸發 timer。
+         * 對齊到 container 左外側，當 icon 在 angle=0 時 label 視覺中心 ~ 螢幕 x=180 */
+        timer_name_labels[i] = lv_label_create(timer_icons[i]);
+        lv_label_set_text(timer_name_labels[i], timer_options[i]);
+        lv_obj_set_style_text_color(timer_name_labels[i], lv_color_white(), 0);
+        lv_obj_set_style_text_font(timer_name_labels[i],
+                                   LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+        lv_obj_set_width(timer_name_labels[i], 250);
+        lv_obj_set_style_text_align(timer_name_labels[i],
+                                    LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(timer_name_labels[i], LV_ALIGN_LEFT_MID, -338, 0);
+        if (i != 0)
+        {
+            lv_obj_add_flag(timer_name_labels[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    lv_obj_update_layout(list);
+
+    /* 預設選中第一個項目 */
+    selected_timer_index = 0;
+    old_selected_timer_index = -1;
+    lv_obj_scroll_to_view(lv_obj_get_child(list, 0), LV_ANIM_OFF);
+    apply_circular_layout(list);
+
+    /* 頂端中央標題 */
+    ui.timer_title = lv_label_create(list_container);
     lv_label_set_text(ui.timer_title, "Timer");
     lv_obj_set_style_text_align(ui.timer_title, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(ui.timer_title, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_set_style_text_color(ui.timer_title, lv_color_hex(LIST_TIMER_ACCENT_COLOR), 0);
-    lv_obj_align(ui.timer_title, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_text_font(ui.timer_title,
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_color(ui.timer_title,
+                                lv_color_hex(LIST_TIMER_ACCENT_COLOR), 0);
+    lv_obj_align(ui.timer_title, LV_ALIGN_TOP_MID, 0, 30);
 
-    // 添加計時器選項到列表 - 與exercise app workout widget相同的樣式
-    for (int i = 0; i < option_count; i++)
-    {
-        // 創建timer選項widget
-        lv_obj_t *timer_widget = lv_obj_create(list);
-        lv_obj_set_size(timer_widget, LV_PCT(100), LIST_TIMER_HEIGHT);
-        lv_obj_set_style_radius(timer_widget, LIST_TIMER_WIDGET_RADIUS, 0);
-        lv_obj_set_style_bg_color(timer_widget, lv_color_hex(LIST_TIMER_BG_COLOR), 0);
-        lv_obj_set_style_bg_opa(timer_widget, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(timer_widget, 0, 0);
-        lv_obj_set_style_border_color(timer_widget, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_border_opa(timer_widget, LV_OPA_50, 0);
-        lv_obj_clear_flag(timer_widget, LV_OBJ_FLAG_SCROLLABLE);
+    /* 右側弧形觸控滾動 — 用共用模組 common/arc_scroll.h */
+    arc_scroll_config_t arc_cfg = {
+        .parent          = list_container,
+        .list            = list,
+        .slot_height_px  = TIMER_ICON_SLOT_HEIGHT,
+        .item_height_px  = TIMER_ICON_ITEM_SIZE,
+        .slot_angle_deg  = TIMER_ICON_SLOT_ANGLE_DEG,
+        .item_count      = TIMER_OPTION_COUNT,
+        .band_thickness  = 150,
+        .lock_ancestors  = false,
+        .tap_cb          = timer_arc_tap_cb,
+        .snap_cb         = timer_arc_snap_cb,
+        .ctx             = NULL,
+    };
+    arc_scroll_create(&arc_cfg);
 
-        // 添加鬧鐘圖標
-        lv_obj_t *icon = lv_img_create(timer_widget);
-        lv_img_set_src(icon, IMG_ALARM_2);
-        lv_obj_align(icon, LV_ALIGN_LEFT_MID, 20, -30);
-
-        // 添加時間標籤
-        lv_obj_t *label = lv_label_create(timer_widget);
-        lv_label_set_text(label, timer_options[i]);
-        lv_obj_set_style_text_color(label, lv_color_white(), 0);
-        lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-        lv_obj_align_to(label, icon, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 0);
-
-        // 添加開始按鈕 - 與exercise app相同
-        lv_obj_t *start_btn = lv_obj_create(timer_widget);
-        lv_obj_set_size(start_btn, 85, 85);
-        lv_obj_align(start_btn, LV_ALIGN_RIGHT_MID, -10, 0);
-        lv_obj_set_style_radius(start_btn, 45, 0);
-        lv_obj_set_style_bg_color(start_btn, lv_color_hex(LIST_TIMER_ACCENT_COLOR), 0);
-        lv_obj_set_style_border_width(start_btn, 0, 0);
-        lv_obj_clear_flag(start_btn, LV_OBJ_FLAG_SCROLLABLE);
-
-        lv_obj_t *start_icon = lv_img_create(start_btn);
-        lv_img_set_src(start_icon, &img_media_play);
-        lv_img_set_zoom(start_icon, 200);
-        lv_obj_align(start_icon, LV_ALIGN_CENTER, 5, 0);
-
-        // 添加點擊事件
-        lv_obj_add_event_cb(timer_widget, timer_list_event_cb, LV_EVENT_CLICKED, NULL);
-        lv_obj_set_user_data(timer_widget, (void *)timer_options[i]);
-    }
-
-    // 滾動到預設位置
-    selected_timer_index = option_count-1;//3
-    old_selected_timer_index = -1;
-    if (option_count > selected_timer_index)
-    {
-        lv_obj_t *default_item = lv_obj_get_child(list, selected_timer_index);
-        lv_obj_scroll_to_view(default_item, LV_ANIM_OFF);
-        ui.current_button = default_item;
-        // 設置初始選中狀態
-        lv_obj_set_style_border_width(default_item, 1, 0);
-        old_selected_timer_index = selected_timer_index;
-    }
+    /* label 文字區塊的 click overlay：透明、寬度涵蓋 label 視覺範圍。
+     * 加在 arc_zone 之後 → z-order 在 arc_zone 上面，左側點擊優先給 overlay
+     * 接走（arc_zone 反正只接受右側弧帶內的 hit_test）*/
+    lv_obj_t *label_tap_zone = lv_obj_create(list_container);
+    lv_obj_set_size(label_tap_zone, 250, 80);
+    lv_obj_align(label_tap_zone, LV_ALIGN_LEFT_MID, 27, 0);
+    lv_obj_set_style_bg_opa(label_tap_zone, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(label_tap_zone, 0, 0);
+    lv_obj_set_style_pad_all(label_tap_zone, 0, 0);
+    lv_obj_clear_flag(label_tap_zone, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(label_tap_zone, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(label_tap_zone, label_tap_zone_click_cb,
+                        LV_EVENT_CLICKED, NULL);
 
     return list_container;
 }
@@ -797,6 +1067,14 @@ static void create_timer_app_ui(lv_obj_t *parent)
 {
     // 創建主背景容器
     ui.bg = common_black_bg(parent);
+
+    /* gaus_clock1_bg 圖底圖 — 加在 ui.bg 第一個 child（最底層）。
+     * countdown_screen 自帶不透明黑底會蓋住它，只有列表視圖會看到背景圖 */
+    lv_obj_t *bg_img = lv_img_create(ui.bg);
+    lv_img_set_src(bg_img, &gaus_clock1_bg);
+    lv_obj_align(bg_img, LV_ALIGN_CENTER, 0, 0);
+    lv_img_set_zoom(bg_img, 512);
+    lv_obj_clear_flag(bg_img, LV_OBJ_FLAG_CLICKABLE);
 
     // 創建列表容器
     ui.list_container = create_timer_list(ui.bg);
