@@ -894,7 +894,7 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
         .item_height_px  = TIMER_ICON_ITEM_SIZE,
         .slot_angle_deg  = TIMER_ICON_SLOT_ANGLE_DEG,
         .item_count      = TIMER_OPTION_COUNT,
-        .band_thickness  = 150,
+        .band_thickness  = 90,
         .lock_ancestors  = false,
         .tap_cb          = timer_arc_tap_cb,
         .snap_cb         = timer_arc_snap_cb,

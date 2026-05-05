@@ -2691,7 +2691,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
         .item_height_px  = LIST_ITEM_WIDGET_HEIGHT,      /* 200，items 互相重疊 100 */
         .slot_angle_deg  = LIST_ITEM_SLOT_ANGLE_DEG,
         .item_count      = list_item_count,
-        .band_thickness  = 150,
+        .band_thickness  = 90,
         .lock_ancestors  = true, /* instruction_list 是 tileview 子層，要鎖外層 */
         .tap_cb          = list_arc_tap_cb,
         .snap_cb         = list_arc_snap_cb,

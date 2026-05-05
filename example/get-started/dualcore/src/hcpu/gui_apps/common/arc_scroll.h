@@ -60,6 +60,11 @@ void arc_scroll_set_item_count(arc_scroll_handle_t *handle, uint16_t count);
 /* 提早銷毀 — 一般情形 overlay 跟著 parent 一起死，不用呼叫。 */
 void arc_scroll_destroy(arc_scroll_handle_t *handle);
 
+/* Debug 視覺化：顯示 / 隱藏 arc band 觸發範圍。打開時會在 overlay 上面疊一個
+ * 半透明綠色弧帶，標示出哪裡可以觸發 arc-scroll。完全 non-clickable，不影響
+ * 真實 hit_test 行為，只是視覺。預設 OFF。 */
+void arc_scroll_set_debug_visible(arc_scroll_handle_t *handle, bool visible);
+
 #ifdef __cplusplus
 }
 #endif

@@ -12,8 +12,8 @@
     #define M_PI 3.14159265358979323846
 #endif
 
-#define ARC_DEFAULT_THICKNESS 150
-#define ARC_HALF_ANGLE_SIN 0.819f /* sin(55°)：弧帶 ±55° 角度範圍 */
+#define ARC_DEFAULT_THICKNESS 100
+#define ARC_HALF_ANGLE_SIN 1.0f /* sin(55°)：弧帶 ±55° 角度範圍 */
 #define ARC_TAP_THRESHOLD_SQ (12 * 12)
 #define ARC_TAP_DURATION_MS 200
 #define ARC_LOCK_MAX_ANCESTORS 8
@@ -22,6 +22,7 @@ struct arc_scroll_handle
 {
     arc_scroll_config_t cfg;
     lv_obj_t *overlay;
+    lv_obj_t *debug_arc;          /* debug 視覺化：half-transparent band；NULL 為關閉 */
     bool active;
     bool motion_detected;
     float last_theta;
@@ -282,5 +283,56 @@ void arc_scroll_destroy(arc_scroll_handle_t *h)
     {
         unlock_ancestors(h);
         lv_mem_free(h);
+    }
+}
+
+void arc_scroll_set_debug_visible(arc_scroll_handle_t *h, bool visible)
+{
+    if (h == NULL) return;
+    if (visible)
+    {
+        if (h->debug_arc != NULL && lv_obj_is_valid(h->debug_arc)) return;
+        if (h->overlay == NULL || !lv_obj_is_valid(h->overlay)) return;
+
+        /* 用 lv_arc 畫一個半透明的圓環 segment，反映實際 hit_test 的幾何：
+         *   - 圓心：螢幕中央
+         *   - 半徑帶：[outer_r - thickness, outer_r]，outer_r = LV_HOR_RES/2
+         *   - 角度：±55°（跟 ARC_HALF_ANGLE_SIN ≈ sin(55°) 對齊）
+         *
+         * lv_arc 的 size = 整圓直徑、arc_width = band 厚度。
+         * arc 角度系：0° 在 3 點鐘、順時針增加。所以「右側 ±55°」=
+         * start=305°（11 點上方），end=55°（5 點上方），LVGL 會跨 0° wrap。 */
+        lv_obj_t *arc = lv_arc_create(h->overlay);
+        lv_obj_remove_style_all(arc); /* 把 theme 預設 knob/border 等清掉 */
+        lv_obj_set_size(arc, LV_HOR_RES, LV_VER_RES);
+        lv_obj_align(arc, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(arc, LV_OBJ_FLAG_SCROLLABLE);
+
+        /* MAIN = bg arc 用來畫整個 band */
+        lv_obj_set_style_arc_color(arc, lv_color_hex(0x00FF00), LV_PART_MAIN);
+        lv_obj_set_style_arc_opa(arc, LV_OPA_30, LV_PART_MAIN);
+        lv_obj_set_style_arc_width(arc, h->cfg.band_thickness, LV_PART_MAIN);
+        /* 從 ARC_HALF_ANGLE_SIN 反推實際半角度，確保 debug 視覺跟 hit_test 對齊 */
+        float half_deg_f = asinf(ARC_HALF_ANGLE_SIN) * 180.0f / (float)M_PI;
+        int half_deg = (int)(half_deg_f + 0.5f);
+        int start_deg = 360 - half_deg; /* 例如 ±55° → 305° */
+        int end_deg = half_deg;          /* 例如 ±55° → 55° */
+        lv_arc_set_bg_angles(arc, (uint16_t)start_deg, (uint16_t)end_deg);
+
+        /* INDICATOR / KNOB 都不顯示 */
+        lv_obj_set_style_arc_opa(arc, LV_OPA_TRANSP, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
+        lv_obj_set_style_pad_all(arc, 0, LV_PART_KNOB);
+
+        h->debug_arc = arc;
+    }
+    else
+    {
+        if (h->debug_arc != NULL && lv_obj_is_valid(h->debug_arc))
+        {
+            lv_obj_del(h->debug_arc);
+        }
+        h->debug_arc = NULL;
     }
 }

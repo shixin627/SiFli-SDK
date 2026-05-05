@@ -1914,13 +1914,15 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
         .item_height_px  = LIST_MESSAGE_HEIGHT,
         .slot_angle_deg  = 27,
         .item_count      = page_count,
-        .band_thickness  = 150,
+        .band_thickness  = 90,
         .lock_ancestors  = true,
         .tap_cb          = message_arc_tap_cb,
         .snap_cb         = message_arc_snap_cb,
         .ctx             = NULL,
     };
     p_app_notification->arc_handle = arc_scroll_create(&arc_cfg);
+    /* DEBUG：顯示 arc band 觸發範圍。確認位置後可以拿掉這行 */
+    // arc_scroll_set_debug_visible(p_app_notification->arc_handle, true);
 
     myLancher[app_index_message].reset_list = reset_list_cb;
     myLancher[app_index_message].on_tap = on_tap;

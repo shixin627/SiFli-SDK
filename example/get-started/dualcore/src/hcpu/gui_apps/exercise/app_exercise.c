@@ -838,7 +838,7 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
         .item_height_px  = ICON_ITEM_SIZE,      /* 80，clamp 上下界用 */
         .slot_angle_deg  = ICON_SLOT_ANGLE_DEG,
         .item_count      = WORKOUT_COUNT,
-        .band_thickness  = 150,
+        .band_thickness  = 90,
         .lock_ancestors  = false, /* exercise bg 直接掛在 lv_scr_act()，沒有 tileview 祖先 */
         .tap_cb          = workout_arc_tap_cb,
         .snap_cb         = workout_arc_snap_cb,
