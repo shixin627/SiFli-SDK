@@ -423,10 +423,10 @@ static rt_err_t send_watch_sys_msg_with_retry(data_msg_t *msg,
         LOG_D("send code [%d] succeeded after %d retries", operation_code,
               retry_count);
     }
-    else
-    {
-        LOG_D("send code [%d] succeeded on first attempt", operation_code);
-    }
+    // else
+    // {
+    //     LOG_D("send code [%d] succeeded on first attempt", operation_code);
+    // }
 
     return err;
 }

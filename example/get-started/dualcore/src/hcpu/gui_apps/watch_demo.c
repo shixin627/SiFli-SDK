@@ -690,14 +690,29 @@ static void pm_event_handler(gui_pm_event_type_t event)
     {
     case GUI_PM_EVT_SUSPEND:
     {
+        extern void lv_touch_arm_wake_suppression(void);
         dial_header_on_suspend();
         start_sleep_fade_out();
+        /* Arm wake-up touch suppression. Stays set through the fade-out
+         * animation (LVGL still running, would otherwise let touches
+         * trigger widgets) and the entire sleep period. RESUME's
+         * set_window() takes over once the device wakes. */
+        lv_touch_arm_wake_suppression();
         break;
     }
     case GUI_PM_EVT_RESUME:
     {
+        extern void lv_touch_set_wake_suppress_window(uint32_t window_ms);
         lv_timer_enable(true);
         dial_header_on_resume();
+        /* Hand off from the SUSPEND-time `armed` flag to a time window
+         * that covers the post-wake event burst from the touch chip.
+         * The chip is repowered after this handler runs (open_display in
+         * the GUI thread, ~5-15 ms later) and then replays its last touch
+         * state — that's the event we must drop. 250 ms is long enough
+         * for the replay to drain, short enough that the user's next
+         * intentional tap goes through. */
+        lv_touch_set_wake_suppress_window(250);
         break;
     }
     case GUI_PM_EVT_SHUTDOWN:

@@ -13,6 +13,39 @@ static lv_indev_drv_t indev_drv;
 static rt_device_t touch_device = NULL;
 static rt_uint32_t touch_data_cnt = 0;
 
+/* Wake-up touch suppression. Two independent gates:
+ *   - `armed` (boolean): set by SUSPEND hook, lasts through fade-out and
+ *     sleep until RESUME explicitly takes over. Survives idle chip events
+ *     (it doesn't auto-clear on UP — the chip polls and emits idle UPs at
+ *     ~50Hz during fade-out, which would prematurely clear an
+ *     auto-clearing flag).
+ *   - `window` (deadline tick): set by RESUME hook to cover the brief
+ *     burst of post-wake events the chip emits when it's repowered
+ *     (the chip replays its last touch state and then idle UPs). Chosen
+ *     long enough for the chip to finish replaying; shorter durations
+ *     risk the wake-tap leaking through.
+ * RESUME's set_window() also clears `armed`, so post-wake the window is
+ * the sole gate. */
+static volatile bool s_wake_suppress_armed = false;
+static volatile uint32_t s_wake_suppress_until_tick = 0;
+
+void lv_touch_arm_wake_suppression(void)
+{
+    s_wake_suppress_armed = true;
+}
+
+void lv_touch_set_wake_suppress_window(uint32_t window_ms)
+{
+    s_wake_suppress_armed = false;
+    s_wake_suppress_until_tick = lv_tick_get() + window_ms;
+}
+
+void lv_touch_clear_wake_suppression(void)
+{
+    s_wake_suppress_armed = false;
+    s_wake_suppress_until_tick = 0;
+}
+
 static rt_err_t rx_indicate(rt_device_t dev, rt_size_t size)
 {
     ++touch_data_cnt;
@@ -31,17 +64,30 @@ static void input_read(struct _lv_indev_drv_t *indev_drv, lv_indev_data_t *data)
 
         rt_device_read(touch_device, 0, &touch_data, 1);
 
-        switch (touch_data.event)
+        bool in_window = (s_wake_suppress_until_tick != 0) &&
+            ((int32_t)(s_wake_suppress_until_tick - lv_tick_get()) > 0);
+        if (s_wake_suppress_armed || in_window)
         {
-        case TOUCH_EVENT_DOWN:
-        case TOUCH_EVENT_MOVE:
-            data->state = LV_INDEV_STATE_PR;
-            break;
-
-        case TOUCH_EVENT_UP:
-        default:
             data->state = LV_INDEV_STATE_REL;
-            break;
+        }
+        else
+        {
+            if (s_wake_suppress_until_tick != 0)
+            {
+                s_wake_suppress_until_tick = 0;
+            }
+            switch (touch_data.event)
+            {
+            case TOUCH_EVENT_DOWN:
+            case TOUCH_EVENT_MOVE:
+                data->state = LV_INDEV_STATE_PR;
+                break;
+
+            case TOUCH_EVENT_UP:
+            default:
+                data->state = LV_INDEV_STATE_REL;
+                break;
+            }
         }
 
         data->point.x = touch_data.x;
