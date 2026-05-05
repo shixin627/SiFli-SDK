@@ -556,7 +556,7 @@ static void label_tap_zone_click_cb(lv_event_t *e)
  *   icon_screen_pos = (cx + R·cos(angle), cy + R·sin(angle)) */
 static void apply_circular_layout(lv_obj_t *list)
 {
-    const int32_t cx = LV_HOR_RES / 2;
+    const int32_t cx = LV_HOR_RES / 2 - 20;
     const int32_t cy = LV_VER_RES / 2;
     const float angle_per_slot = (float)TIMER_ICON_SLOT_ANGLE_DEG * (M_PI / 180.0f);
     const lv_coord_t list_x1 = list->coords.x1;
