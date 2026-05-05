@@ -123,6 +123,16 @@ static notification_widget_t notification_widgets[ITEM_AMOUNT_NOTIFICATION];
    parent and remain visible regardless. */
 static void update_notification_card_visibility(void);
 
+/* arc-scroll detached / discrete 模式狀態 — 拖動時 arc 不動 list、由 drag_cb
+ * 接管，到 page change 才 snap。完整定義在後面，scroll_list 要先 visible。 */
+static bool s_msg_arc_drag_active = false;
+static int s_msg_drag_input = -1;       /* dot input value，<0 代表未初始化 */
+static int s_msg_drag_last_idx = -1;    /* 上一次中央的 dot idx */
+static void message_arc_reset_drag_state(void);
+
+/* drag_cb 在 page change 時呼叫到的 snap，定義在下方 */
+void scroll_message_list_to_index(int8_t page);
+
 static const lv_style_const_prop_t LIST_MESSAGE_STYLE_PROPS[] = {
     LV_STYLE_CONST_WIDTH(LIST_MESSAGE_WIDTH),
     LV_STYLE_CONST_HEIGHT(LIST_MESSAGE_HEIGHT),
@@ -543,7 +553,20 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             if (y_diff < min_offset)
             {
                 min_offset = y_diff;
-                if (i + 1 <= (notification_count + (have_media_widget ? 1 : 0)))
+                /* 只在 touch 路徑（motion_control_lock=TRUE）才用「最靠近中央
+                 * 的卡」來推 selected_message_index — touch 模式下面接著會
+                 * call update_msg_indicator_dots_position 用 dot 角度再覆蓋一次，
+                 * 結果以 dot 為準。motion 路徑由外部 set_message_list_arc_stripe_external_offset
+                 * → update_msg_indicator_dots_position 直接從 dot 角度設定
+                 * selected_message_index，scroll_list 是被 lv_obj_scroll_to_view
+                 * 動畫間接觸發的，這裡不能把已經設好的 index 推回 card-based
+                 * 那組（不然動畫途中卡片會閃變）。
+                 * 同樣地，arc-scroll drag_cb 模式（s_msg_arc_drag_active）下，
+                 * selected_message_index 由 page-change snap 統一管理，scroll_list
+                 * 也不要再從 card y_diff 推回去 */
+                if (SkaiWatchSys.motion_control_lock &&
+                    !s_msg_arc_drag_active &&
+                    i + 1 <= (notification_count + (have_media_widget ? 1 : 0)))
                 {
                     selected_message_index = i;
                 }
@@ -606,7 +629,11 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
            Scale first_y_diff so that 1 list item == 100 input units.
            Total item count includes the media widget when present. */
         int total_items_for_dots = msg_dot_total();
-        if (total_items_for_dots > 0 && SkaiWatchSys.motion_control_lock)
+        /* arc-scroll drag_cb 模式下 dot 由 message_arc_drag_cb 用累積的 input
+         * 自己更新，scroll_list 不要再用 list scroll_y 反推蓋過去（會讓 dot
+         * 在 page snap 動畫中跳到 list 真實位置而不是手指對應位置）*/
+        if (total_items_for_dots > 0 && SkaiWatchSys.motion_control_lock &&
+            !s_msg_arc_drag_active)
         {
             const int pitch = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING;
             int scaled_first = (int)first_y_diff * 100 / pitch;
@@ -1793,10 +1820,73 @@ static void reset_list_cb(void)
 
 static void on_tap(void);
 static void button_selection(gesture_position_t gesture_position);
+/* arc-scroll 的 detached / discrete 模式狀態 — 變數跟 forward decl 在檔案開頭，
+ * 拖動時 arc 不去動 list（由 drag_cb 接管），只更新 indicator dot，
+ * 偵測到「最靠近中央的 dot 換了一顆」（= page change）才 call
+ * scroll_message_list_to_index 把 list snap 過去。釋放時 reset。 */
+static void message_arc_reset_drag_state(void)
+{
+    s_msg_arc_drag_active = false;
+    s_msg_drag_input = -1;
+    s_msg_drag_last_idx = -1;
+}
+
 /* 右側弧形觸控滾動 — 用共用模組 common/arc_scroll.h */
+static void message_arc_drag_cb(lv_coord_t scroll_delta_px, void *ctx)
+{
+    (void)ctx;
+    int total = (int)notification_count + (have_media_widget ? 1 : 0);
+    if (total <= 0) return;
+
+    s_msg_arc_drag_active = true;
+
+    /* 第一次進來：用目前的 selected_message_index 反算 input value，
+     * 避免從預設 37（= 最後一顆 dot 在中央）跳到實際 selected。
+     * input 跟 idx 對應公式：input = 100*(N - idx) - 63
+     * （從 update_msg_indicator_dots_position 的 offset_angle 推回，
+     * 解 idx*36 = (100N - input - 63)/100 * 36） */
+    if (s_msg_drag_input < 0)
+    {
+        int idx = (int)selected_message_index;
+        if (idx < 0) idx = 0;
+        if (idx >= total) idx = total - 1;
+        s_msg_drag_input = 100 * (total - idx) - 63;
+        s_msg_drag_last_idx = idx;
+    }
+
+    /* scroll_delta_px → input delta：scroll_list 用
+     * scaled_first = first_y_diff * 100 / pitch；scroll_y 增加（CCW）→
+     * first_y_diff 減少 → input 減少。所以 d_input = -scroll_delta * 100 / pitch */
+    const int pitch = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING;
+    s_msg_drag_input -= ((int)scroll_delta_px * 100) / pitch;
+
+    /* clamp 到合法 input 範圍：idx ∈ [0, total-1]
+     *   idx=0:        input = 100*total - 63
+     *   idx=total-1:  input = 100*1 - 63 = 37 */
+    int min_input = 100 - 63;            /* idx=total-1 */
+    int max_input = 100 * total - 63;    /* idx=0 */
+    if (s_msg_drag_input < min_input) s_msg_drag_input = min_input;
+    if (s_msg_drag_input > max_input) s_msg_drag_input = max_input;
+
+    update_msg_indicator_dots_position(s_msg_drag_input);
+
+    /* 反算當前最靠近中央的 idx：input = 100*(N-idx) - 63 → idx = N - (input+63)/100 */
+    int closest_idx = total - ((s_msg_drag_input + 63 + 50) / 100); /* +50 = round */
+    if (closest_idx < 0) closest_idx = 0;
+    if (closest_idx >= total) closest_idx = total - 1;
+
+    if (closest_idx != s_msg_drag_last_idx)
+    {
+        s_msg_drag_last_idx = closest_idx;
+        scroll_message_list_to_index((int8_t)closest_idx);
+    }
+}
+
 static lv_obj_t *message_arc_tap_cb(lv_point_t pt, void *ctx)
 {
     (void)ctx;
+    /* tap 的話沒有過 drag 路徑，但保險起見 reset 一下 */
+    message_arc_reset_drag_state();
     /* 仿 app_exercise.c 的 tap 路徑：先用 press 點比對所有可見的 indicator dot
      * bbox，找到哪顆就 forward CLICKED 給那顆。dot 上有掛 msg_dot_click_cb，
      * 直接打開該 notification — 不必先把它 scroll 到中央再點。
@@ -1837,28 +1927,10 @@ static lv_obj_t *message_arc_tap_cb(lv_point_t pt, void *ctx)
 static lv_obj_t *message_arc_snap_cb(void *ctx)
 {
     (void)ctx;
-    if (p_app_notification == NULL) return NULL;
-    lv_obj_t *list = p_app_notification->list;
-    if (list == NULL || !lv_obj_is_valid(list)) return NULL;
-    if (page_count == 0) return NULL;
-
-    /* 不靠 selected_message_index — 它由既有的 scroll_list 更新，用嚴格 y_diff <
-     * min_offset 比較，當 scroll 剛好停在兩個 item 中間時會偏向較小的 idx，
-     * release 時就會 snap 回去剛才的 item，使用者體驗變成「拖一半就被推回去」。
-     * 改成直接從目前 scroll_y 算出最近的 item idx（四捨五入），讓 release 時
-     * 跑到最近那個 item，不偏向較小 idx */
-    lv_coord_t scroll_y = lv_obj_get_scroll_y(list);
-    lv_coord_t pad_top = lv_obj_get_style_pad_top(list, LV_PART_MAIN);
-    lv_coord_t list_y1 = list->coords.y1;
-    const int slot = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING;
-    const int item_h = LIST_MESSAGE_HEIGHT;
-    /* item i 對到中央時 scroll_y = list_y1 + pad_top + i*slot + item_h/2 - LV_VER_RES/2
-     * → i = (scroll_y - base) / slot，四捨五入用 +slot/2 */
-    int base = (int)list_y1 + (int)pad_top + item_h / 2 - LV_VER_RES / 2;
-    int idx = (scroll_y - base + slot / 2) / slot;
-    if (idx < 0) idx = 0;
-    if (idx >= (int)page_count) idx = (int)page_count - 1;
-    return lv_obj_get_child(list, (uint32_t)idx);
+    /* drag_cb 模式下 list 已經在 page change 當下被 snap 過了，這裡不用再 snap。
+     * 只 reset state 讓下次 drag 重新初始化 */
+    message_arc_reset_drag_state();
+    return NULL;
 }
 
 lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
@@ -1970,6 +2042,9 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
      * 就被卡住、CCW 完全動不了（只有 CW 能回到上一個 notification）*/
     arc_scroll_config_t arc_cfg = {
         .parent          = notification_center,
+        /* list 雖然還是傳進來給 bounds_cb 之類用得到，drag_cb 模式下 arc 不會
+         * 直接 _lv_obj_scroll_by_raw 它 — 改由 drag_cb 累積角度更新 dot，
+         * 偵測到 page 換才 call scroll_message_list_to_index snap list */
         .list            = p_window,
         .slot_height_px  = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING,
         .item_height_px  = LIST_MESSAGE_HEIGHT,
@@ -1979,6 +2054,7 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
         .lock_ancestors  = true,
         .tap_cb          = message_arc_tap_cb,
         .snap_cb         = message_arc_snap_cb,
+        .drag_cb         = message_arc_drag_cb,
         .ctx             = NULL,
     };
     p_app_notification->arc_handle = arc_scroll_create(&arc_cfg);
@@ -2127,6 +2203,21 @@ void scroll_message_list_to_index(int8_t page)
     LOG_D("scroll_message_list_to_index: %d,%d,%d", page, notification_count,
           have_media_widget);
     last_scroll_time = now;
+
+    /* 中間 widget 跟著「最靠近中央的 dot」走 — navigation_bar_control_with_euler_angle
+     * 在 page 變了的時候會送 NAV_BAR_CONTROL 進來這個函式。先把對應的 card unhide
+     * 並更新 selected_message_index，再 scroll 列表，這樣中央卡片立刻換成新的、
+     * list 隨後動畫到那個位置。順序很重要 — 先 set 再 scroll，動畫途中
+     * scroll_list 的 motion-mode gate 會擋住把 selected 推回去 */
+    int8_t total = (int8_t)(notification_count + (have_media_widget ? 1 : 0));
+    if (page >= 0 && page < total &&
+        page != (int8_t)selected_message_index)
+    {
+        selected_message_index = (uint16_t)page;
+        update_notification_card_visibility();
+        old_selected_message_index = selected_message_index;
+    }
+
     lv_obj_scroll_to_view(lv_obj_get_child(p_app_notification->list, page),
                           LV_ANIM_ON);
     set_scroll_anim_time(false, NULL);

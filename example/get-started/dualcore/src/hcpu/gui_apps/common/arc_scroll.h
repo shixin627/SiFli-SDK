@@ -37,6 +37,13 @@ typedef lv_obj_t *(*arc_scroll_snap_cb_t)(void *ctx);
 typedef void (*arc_scroll_bounds_cb_t)(lv_coord_t *min_scroll,
                                        lv_coord_t *max_scroll, void *ctx);
 
+/* drag_cb：「detached 模式」的每幀回呼，回傳這一幀的角度增量等價的 scroll
+ * 像素數（跟內建 _lv_obj_scroll_by_raw 會塞給 list 的同一個值）。設了之後
+ * arc_scroll 完全不去動 list — 由呼叫者自己決定要不要動、什麼時候動。
+ * 用法：要做「dot 平滑轉但 list 只在 page 邊界 snap」這類 discrete UX，
+ * 上層用 drag_cb 累積 offset 自己更新 indicator 跟 page 偵測 */
+typedef void (*arc_scroll_drag_cb_t)(lv_coord_t scroll_delta_px, void *ctx);
+
 typedef struct
 {
     lv_obj_t *parent;               /* overlay 要掛在哪個父物件下 */
@@ -54,6 +61,8 @@ typedef struct
     arc_scroll_tap_cb_t tap_cb;     /* 可為 NULL */
     arc_scroll_snap_cb_t snap_cb;   /* 可為 NULL */
     arc_scroll_bounds_cb_t bounds_cb; /* 可為 NULL，NULL 走內建 centered-list 公式 */
+    arc_scroll_drag_cb_t drag_cb;   /* 可為 NULL；非 NULL 時 arc 不再內建滾 list，
+                                     * 改成把每幀 scroll_delta 丟給 cb */
     void *ctx;                      /* 給 cb 用的使用者 context */
 } arc_scroll_config_t;
 

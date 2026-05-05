@@ -118,7 +118,10 @@ static void pressed_cb(lv_event_t *e)
 static void pressing_cb(lv_event_t *e)
 {
     arc_scroll_handle_t *h = lv_event_get_user_data(e);
-    if (!h->active || h->cfg.list == NULL || !lv_obj_is_valid(h->cfg.list))
+    if (!h->active) return;
+    /* drag_cb 模式：可以沒有 list，arc 純粹當輸入用 */
+    if (h->cfg.drag_cb == NULL &&
+        (h->cfg.list == NULL || !lv_obj_is_valid(h->cfg.list)))
         return;
     lv_indev_t *indev = lv_indev_get_act();
     if (indev == NULL) return;
@@ -149,6 +152,13 @@ static void pressing_cb(lv_event_t *e)
     float scroll_delta =
         -delta * (float)h->cfg.slot_height_px / angle_per_slot_rad;
     if (scroll_delta > -0.5f && scroll_delta < 0.5f) return;
+
+    /* drag_cb 模式：把 delta 丟給 cb 自己處理，不去動 list */
+    if (h->cfg.drag_cb != NULL)
+    {
+        h->cfg.drag_cb((lv_coord_t)scroll_delta, h->cfg.ctx);
+        return;
+    }
 
     if (h->cfg.item_count == 0) return;
 
