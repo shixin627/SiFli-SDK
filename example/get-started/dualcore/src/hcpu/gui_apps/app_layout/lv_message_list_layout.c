@@ -88,9 +88,12 @@
 #endif
 
 /* Indicator dots — same visual style as instruction list */
-#define DOT_SMOLL_PROPORTION (0.4)
+#define DOT_SMOLL_PROPORTION (0.2)
 #define DOT_BIG_PROPORTION (0.9)
 #define DOT_BG_SIZE ((int)(100 * DOT_BIG_PROPORTION) + 2)
+/* 縮放曲線指數：1.0 = 線性、2.0 = 平方（中央放大突出）、3.0 = 立方更陡峭。
+ * 值越大，「中央 dot 顯著大、其他都很小」越明顯 */
+#define DOT_ZOOM_EXPONENT 2.0f
 
 #define MESSAGE_NEED_MEDIA_WIDGET
 
@@ -119,6 +122,19 @@ static notification_widget_t notification_widgets[ITEM_AMOUNT_NOTIFICATION];
    notification cards. Indicator dots are separate objects on the bg
    parent and remain visible regardless. */
 static void update_notification_card_visibility(void);
+
+/* arc-scroll detached / discrete 模式狀態 — 拖動時 arc 不動 list、由 drag_cb
+ * 接管，到 page change 才 snap。完整定義在後面，scroll_list 要先 visible。
+ * 用獨立 bool flag 而不是 input 的特殊值當「是否已初始化」 — elastic overshoot
+ * 會讓 input 掉到負值（min_input - 50 = -13），不能再用 <0 當 sentinel */
+static bool s_msg_arc_drag_active = false;
+static bool s_msg_drag_initialized = false;
+static int s_msg_drag_input = 0;
+static int s_msg_drag_last_idx = -1;    /* 上一次中央的 dot idx */
+static void message_arc_reset_drag_state(void);
+
+/* drag_cb 在 page change 時呼叫到的 snap，定義在下方 */
+void scroll_message_list_to_index(int8_t page);
 
 static const lv_style_const_prop_t LIST_MESSAGE_STYLE_PROPS[] = {
     LV_STYLE_CONST_WIDTH(LIST_MESSAGE_WIDTH),
@@ -178,7 +194,7 @@ const char *const icon_list[NOTIFICATION_APP_QUANTITY] = {
     ICON_OTHER,
     ICON_QQ,
     ICON_SKYPE,
-    ICON_SMS,
+    ICON_OTHER,
     ICON_SNAP,
     ICON_TWITTER,
     ICON_WECHAT,
@@ -277,10 +293,14 @@ static void update_msg_indicator_dots_position(int input_value)
     if (total_dots <= 0)
         return;
 
-    const int circle_radius = 300;
-    const int center_x = 120;
-    const int center_y = 233;
-    const float angle_per_dot = 27.0f;
+    /* 跟 app_exercise.c::apply_circular_layout 對齊：圓心在螢幕正中、
+     * radius=200。原本 (120, 233, 300) 那組會讓 arc 中心偏左、半徑大、
+     * dots 上下散開比較廣，視覺上跟 exercise 不一樣。
+     * center_x 往左偏 30 px，避免中央 dot zoom 後右邊跑出螢幕 */
+    const int circle_radius = 200;
+    const int center_x = LV_HOR_RES / 2 - 20;
+    const int center_y = LV_VER_RES / 2;
+    const float angle_per_dot = 36.0f; /* 跟 app_exercise.c 的 ICON_SLOT_ANGLE_DEG=36 對齊 */
     float base_input = 63.0f;
     float degrees_per_200_input = angle_per_dot;
     float total_input_range = 100.0f * (float)total_dots;
@@ -295,11 +315,26 @@ static void update_msg_indicator_dots_position(int input_value)
             continue;
 
         float base_angle = (float)i * angle_per_dot;
+        /* 不做 [0,360) normalize — 留 signed angle，用 |angle| > 90 一刀過濾掉
+         * 「list 第一格時 dot N-1 從另一邊 wrap 過來出現在上方」的問題。 */
         float current_angle = base_angle - offset_angle;
-        while (current_angle < 0)
-            current_angle += 360.0f;
-        while (current_angle >= 360.0f)
-            current_angle -= 360.0f;
+
+        if (current_angle < -90.0f || current_angle > 90.0f)
+        {
+            if (msg_indicator_dots_bg[i] != NULL &&
+                !lv_obj_has_flag(msg_indicator_dots_bg[i], LV_OBJ_FLAG_HIDDEN))
+            {
+                lv_obj_add_flag(msg_indicator_dots_bg[i], LV_OBJ_FLAG_HIDDEN);
+            }
+            continue;
+        }
+        /* 進到右半圓 → unhide。media widget dot 例外（建立時就 hide 不該動）*/
+        if (msg_indicator_dots_bg[i] != NULL &&
+            lv_obj_has_flag(msg_indicator_dots_bg[i], LV_OBJ_FLAG_HIDDEN) &&
+            i < (int)notification_count)
+        {
+            lv_obj_clear_flag(msg_indicator_dots_bg[i], LV_OBJ_FLAG_HIDDEN);
+        }
 
         float angle_rad = current_angle * (float)M_PI / 180.0f;
         int dot_x = center_x + (int)((float)circle_radius * cosf(angle_rad));
@@ -316,17 +351,10 @@ static void update_msg_indicator_dots_position(int input_value)
             last_valid_dot_x[i] = dot_x;
         }
 
-        float angle_from_horizontal = current_angle;
-        if (angle_from_horizontal > 180.0f)
-            angle_from_horizontal = 360.0f - angle_from_horizontal;
-        float distance_angle = angle_from_horizontal;
-        if (distance_angle > 90.0f)
-            distance_angle = 180.0f - distance_angle;
-
-        float max_distance_angle = 25.0f;
-        float ratio = 0.0f;
-        if (distance_angle <= max_distance_angle)
-            ratio = 1.0f - (distance_angle / max_distance_angle);
+        /* 跟 app_exercise.c::apply_circular_layout 一致：用 cos(abs_angle) 做
+         * 平滑漸層。current_angle 現在是 signed [-90,90]，直接 fabsf */
+        float abs_angle_deg = fabsf(current_angle);
+        float ratio = cosf(abs_angle_deg * (float)M_PI / 180.0f);
 
         int dot_size = DOT_BG_SIZE;
         int opacity = (int)(LV_OPA_30 + (LV_OPA_COVER - LV_OPA_30) * ratio);
@@ -343,10 +371,12 @@ static void update_msg_indicator_dots_position(int input_value)
 
         lv_obj_set_style_img_opa(msg_indicator_dots[i], opacity, 0);
 
+        /* 用指數曲線 ratio^N 取代線性：N>1 時中央放大、邊緣縮小都加劇 */
+        float zoom_ratio = powf(ratio, DOT_ZOOM_EXPONENT);
         uint16_t zoom =
             (uint16_t)(255 *
                        (DOT_SMOLL_PROPORTION +
-                        (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * ratio));
+                        (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * zoom_ratio));
         if (abs((int)zoom - (int)msg_last_zoom[i]) > 5)
         {
             lv_img_set_zoom(msg_indicator_dots[i], zoom);
@@ -357,6 +387,22 @@ static void update_msg_indicator_dots_position(int input_value)
         dot_y -= dot_size / 2;
         lv_obj_set_pos(msg_indicator_dots_bg[i], dot_x, dot_y);
     }
+}
+
+/* fwd decl — msg_dot_click_cb 直接 call 後面定義的 list_message_click_cb */
+static void list_message_click_cb(notification_t *notification);
+
+/* 仿 app_exercise.c：tap 任一可見 dot 直接觸發對應 notification，
+ * user_data 是 visual idx（cast 成 void*），click 時才查 notification —
+ * 因為 notification 列表會動，存 ptr 會 stale */
+static void msg_dot_click_cb(lv_event_t *evt)
+{
+    if (lv_event_get_code(evt) != LV_EVENT_CLICKED) return;
+    int idx = (int)(intptr_t)lv_event_get_user_data(evt);
+    if (idx < 0 || idx >= (int)notification_count) return;
+    notification_t *notif = get_notification_in_reversed_ui(idx);
+    if (notif == NULL) return;
+    list_message_click_cb(notif);
 }
 
 static void create_msg_indicator_dots(lv_obj_t *parent)
@@ -374,7 +420,6 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
         lv_obj_set_style_bg_opa(dot_bg, LV_OPA_0, 0);
         lv_obj_set_style_border_width(dot_bg, 0, 0);
         lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
 
         lv_obj_t *dot = lv_img_create(dot_bg);
         lv_obj_center(dot);
@@ -388,6 +433,10 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
             if (notif != NULL && notif->type <= NOTIFICATION_APP_QUANTITY)
                 type = notif->type;
             lv_img_set_src(dot, icon_list[type]);
+            /* dot 直接可點：tap → 開該 notification 詳細頁 */
+            lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_add_event_cb(dot_bg, msg_dot_click_cb, LV_EVENT_CLICKED,
+                                (void *)(intptr_t)i);
         }
         else
         {
@@ -396,6 +445,7 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
                but hide it so the music indicator dot is not visible. */
             lv_img_set_src(dot, IMG_ITUNES);
             lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
         }
 
         msg_indicator_dots_bg[i] = dot_bg;
@@ -506,7 +556,20 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             if (y_diff < min_offset)
             {
                 min_offset = y_diff;
-                if (i + 1 <= (notification_count + (have_media_widget ? 1 : 0)))
+                /* 只在 touch 路徑（motion_control_lock=TRUE）才用「最靠近中央
+                 * 的卡」來推 selected_message_index — touch 模式下面接著會
+                 * call update_msg_indicator_dots_position 用 dot 角度再覆蓋一次，
+                 * 結果以 dot 為準。motion 路徑由外部 set_message_list_arc_stripe_external_offset
+                 * → update_msg_indicator_dots_position 直接從 dot 角度設定
+                 * selected_message_index，scroll_list 是被 lv_obj_scroll_to_view
+                 * 動畫間接觸發的，這裡不能把已經設好的 index 推回 card-based
+                 * 那組（不然動畫途中卡片會閃變）。
+                 * 同樣地，arc-scroll drag_cb 模式（s_msg_arc_drag_active）下，
+                 * selected_message_index 由 page-change snap 統一管理，scroll_list
+                 * 也不要再從 card y_diff 推回去 */
+                if (SkaiWatchSys.motion_control_lock &&
+                    !s_msg_arc_drag_active &&
+                    i + 1 <= (notification_count + (have_media_widget ? 1 : 0)))
                 {
                     selected_message_index = i;
                 }
@@ -569,7 +632,11 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
            Scale first_y_diff so that 1 list item == 100 input units.
            Total item count includes the media widget when present. */
         int total_items_for_dots = msg_dot_total();
-        if (total_items_for_dots > 0 && SkaiWatchSys.motion_control_lock)
+        /* arc-scroll drag_cb 模式下 dot 由 message_arc_drag_cb 用累積的 input
+         * 自己更新，scroll_list 不要再用 list scroll_y 反推蓋過去（會讓 dot
+         * 在 page snap 動畫中跳到 list 真實位置而不是手指對應位置）*/
+        if (total_items_for_dots > 0 && SkaiWatchSys.motion_control_lock &&
+            !s_msg_arc_drag_active)
         {
             const int pitch = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING;
             int scaled_first = (int)first_y_diff * 100 / pitch;
@@ -1488,6 +1555,13 @@ static void refresh_list(uint8_t new_item_count)
             create_msg_indicator_dots(msg_indicator_dots_parent);
     }
 
+    /* 新建的 dots 在 z-order 上會跑到 arc_zone overlay 上面，導致 dot 把 press
+     * 從 arc_zone 搶走、整個 arc-scroll 失效。把 overlay 拉回最上層 */
+    if (p_app_notification != NULL && p_app_notification->arc_handle != NULL)
+    {
+        arc_scroll_bring_to_front(p_app_notification->arc_handle);
+    }
+
     /* Clamp selected index to current item range (notifications + media
        widget) before applying visibility, so the chosen card is valid
        after add/remove. */
@@ -1749,21 +1823,157 @@ static void reset_list_cb(void)
 
 static void on_tap(void);
 static void button_selection(gesture_position_t gesture_position);
+/* arc-scroll 的 detached / discrete 模式狀態 — 變數跟 forward decl 在檔案開頭，
+ * 拖動時 arc 不去動 list（由 drag_cb 接管），只更新 indicator dot，
+ * 偵測到「最靠近中央的 dot 換了一顆」（= page change）才 call
+ * scroll_message_list_to_index 把 list snap 過去。釋放時 reset。 */
+static void message_arc_reset_drag_state(void)
+{
+    s_msg_arc_drag_active = false;
+    s_msg_drag_initialized = false;
+    s_msg_drag_input = 0;
+    s_msg_drag_last_idx = -1;
+}
+
+/* dot 回彈動畫 — release 時若 input 還在 elastic overshoot 區，把它從當前
+ * 位置補間到 canonical（idx 對應的 input value），看得到 dot 平滑回彈 */
+static int32_t s_msg_snap_anim_dummy;
+static void msg_snap_anim_exec_cb(void *var, int32_t value)
+{
+    (void)var;
+    /* 動畫進行中如果 user 又開始拖，就讓 drag_cb 蓋過去；exec_cb 不再動 dot */
+    if (s_msg_arc_drag_active) return;
+    update_msg_indicator_dots_position((int)value);
+}
+
+static void msg_start_snap_anim(int from, int to)
+{
+    lv_anim_del(&s_msg_snap_anim_dummy, msg_snap_anim_exec_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, &s_msg_snap_anim_dummy);
+    lv_anim_set_exec_cb(&a, msg_snap_anim_exec_cb);
+    lv_anim_set_values(&a, from, to);
+    lv_anim_set_time(&a, 200);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+}
+
 /* 右側弧形觸控滾動 — 用共用模組 common/arc_scroll.h */
+static void message_arc_drag_cb(lv_coord_t scroll_delta_px, void *ctx)
+{
+    (void)ctx;
+    int total = (int)notification_count + (have_media_widget ? 1 : 0);
+    if (total <= 0) return;
+
+    s_msg_arc_drag_active = true;
+
+    /* 第一次進來：用目前的 selected_message_index 反算 input value，
+     * 避免從預設 37（= 最後一顆 dot 在中央）跳到實際 selected。
+     * input 跟 idx 對應公式：input = 100*(N - idx) - 63
+     * （從 update_msg_indicator_dots_position 的 offset_angle 推回，
+     * 解 idx*36 = (100N - input - 63)/100 * 36） */
+    if (!s_msg_drag_initialized)
+    {
+        /* 新的拖動開始 — 取消上一輪 release 起的 snap anim，避免它跟 drag_cb
+         * 同時寫 dot 位置打架 */
+        lv_anim_del(&s_msg_snap_anim_dummy, msg_snap_anim_exec_cb);
+        int idx = (int)selected_message_index;
+        if (idx < 0) idx = 0;
+        if (idx >= total) idx = total - 1;
+        s_msg_drag_input = 100 * (total - idx) - 63;
+        s_msg_drag_last_idx = idx;
+        s_msg_drag_initialized = true;
+    }
+
+    /* scroll_delta_px → input delta：scroll_list 用
+     * scaled_first = first_y_diff * 100 / pitch；scroll_y 增加（CCW）→
+     * first_y_diff 減少 → input 減少。所以 d_input = -scroll_delta * 100 / pitch */
+    const int pitch = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING;
+    int target_input = s_msg_drag_input - ((int)scroll_delta_px * 100) / pitch;
+
+    /* 合法 input 範圍：idx ∈ [0, total-1]
+     *   idx=0:        input = 100*total - 63
+     *   idx=total-1:  input = 100*1 - 63 = 37 */
+    int min_input = 100 - 63;
+    int max_input = 100 * total - 63;
+    /* elastic overshoot：邊界外的 input 套 0.4 resistance、總 overshoot 上限
+     * 50 input 單位（= 半 slot，因為 100 input = 1 slot）— 跟 arc_scroll 內建
+     * 模式的 slot_height_px/2 + 0.4 對齊。snap_cb 會在釋放時把 dot 拉回 valid */
+    const int MAX_OVERSHOOT = 50;
+    if (target_input < min_input)
+    {
+        int over_now = (s_msg_drag_input < min_input) ? (min_input - s_msg_drag_input) : 0;
+        int over_raw = min_input - target_input;
+        if (over_raw > over_now)
+        {
+            int additional = (over_raw - over_now) * 4 / 10;
+            int new_over = over_now + additional;
+            if (new_over > MAX_OVERSHOOT) new_over = MAX_OVERSHOOT;
+            target_input = min_input - new_over;
+        }
+    }
+    else if (target_input > max_input)
+    {
+        int over_now = (s_msg_drag_input > max_input) ? (s_msg_drag_input - max_input) : 0;
+        int over_raw = target_input - max_input;
+        if (over_raw > over_now)
+        {
+            int additional = (over_raw - over_now) * 4 / 10;
+            int new_over = over_now + additional;
+            if (new_over > MAX_OVERSHOOT) new_over = MAX_OVERSHOOT;
+            target_input = max_input + new_over;
+        }
+    }
+    s_msg_drag_input = target_input;
+
+    update_msg_indicator_dots_position(s_msg_drag_input);
+
+    /* 反算當前最靠近中央的 idx：input = 100*(N-idx) - 63 → idx = N - (input+63)/100 */
+    int closest_idx = total - ((s_msg_drag_input + 63 + 50) / 100); /* +50 = round */
+    if (closest_idx < 0) closest_idx = 0;
+    if (closest_idx >= total) closest_idx = total - 1;
+
+    if (closest_idx != s_msg_drag_last_idx)
+    {
+        s_msg_drag_last_idx = closest_idx;
+        scroll_message_list_to_index((int8_t)closest_idx);
+    }
+}
+
 static lv_obj_t *message_arc_tap_cb(lv_point_t pt, void *ctx)
 {
-    (void)pt;
     (void)ctx;
-    /* message card 的 click 不是 LV_EVENT_CLICKED 機制，是 widget_drag_event_cb
-     * 在 LV_EVENT_RELEASED 自己做 tap-vs-drag 判斷後直接呼叫 list_message_click_cb。
-     * arc_scroll 模組的 tap 路徑會 lv_event_send(LV_EVENT_CLICKED) 給回傳 obj，
-     * 但 send CLICKED 給 card 不會觸發 widget_drag_event_cb。所以這邊直接自己
-     * call list_message_click_cb，回傳 NULL 讓 arc_scroll 不要再 dispatch event。
+    /* tap 的話沒有過 drag 路徑，但保險起見 reset 一下 */
+    message_arc_reset_drag_state();
+    /* 仿 app_exercise.c 的 tap 路徑：先用 press 點比對所有可見的 indicator dot
+     * bbox，找到哪顆就 forward CLICKED 給那顆。dot 上有掛 msg_dot_click_cb，
+     * 直接打開該 notification — 不必先把它 scroll 到中央再點。
      *
-     * notification 的 data index 與 visual index 是反向的（refresh_list 裡用
-     * `get_notification(new_item_count - i - 1)`），所以選中那個 visual i 對應
-     * data index = notification_count - i - 1 */
+     * 沒落在任何 dot 上 → fallback 用「選中項目」的舊邏輯：直接 call
+     * list_message_click_cb（card 的 click 是自製 drag/tap 判斷不走 CLICKED，
+     * 所以這邊不能 forward 給 card），回傳 NULL 讓 arc_scroll 不再 dispatch */
     if (p_app_notification == NULL) return NULL;
+
+    /* 1. 先看 press 點落在哪顆 dot */
+    int total_dots = (int)notification_count;
+    if (have_media_widget) total_dots++;
+    for (int i = 0; i < total_dots && i < MAX_MSG_DOTS; i++)
+    {
+        lv_obj_t *dot_bg = msg_indicator_dots_bg[i];
+        if (dot_bg == NULL) continue;
+        if (!lv_obj_is_valid(dot_bg)) continue;
+        if (lv_obj_has_flag(dot_bg, LV_OBJ_FLAG_HIDDEN)) continue;
+        lv_area_t a;
+        lv_obj_get_coords(dot_bg, &a);
+        if (pt.x >= a.x1 && pt.x <= a.x2 && pt.y >= a.y1 && pt.y <= a.y2)
+        {
+            return dot_bg;
+        }
+    }
+
+    /* 2. fallback：選中項目（card 的 click 不走 LV_EVENT_CLICKED，所以這邊
+     *    自己 call list_message_click_cb，回傳 NULL 讓 arc_scroll 不再 send 事件）*/
     if (notification_count == 0) return NULL;
     if (selected_message_index >= notification_count) return NULL;
     notification_t *notification =
@@ -1776,28 +1986,23 @@ static lv_obj_t *message_arc_tap_cb(lv_point_t pt, void *ctx)
 static lv_obj_t *message_arc_snap_cb(void *ctx)
 {
     (void)ctx;
-    if (p_app_notification == NULL) return NULL;
-    lv_obj_t *list = p_app_notification->list;
-    if (list == NULL || !lv_obj_is_valid(list)) return NULL;
-    if (page_count == 0) return NULL;
-
-    /* 不靠 selected_message_index — 它由既有的 scroll_list 更新，用嚴格 y_diff <
-     * min_offset 比較，當 scroll 剛好停在兩個 item 中間時會偏向較小的 idx，
-     * release 時就會 snap 回去剛才的 item，使用者體驗變成「拖一半就被推回去」。
-     * 改成直接從目前 scroll_y 算出最近的 item idx（四捨五入），讓 release 時
-     * 跑到最近那個 item，不偏向較小 idx */
-    lv_coord_t scroll_y = lv_obj_get_scroll_y(list);
-    lv_coord_t pad_top = lv_obj_get_style_pad_top(list, LV_PART_MAIN);
-    lv_coord_t list_y1 = list->coords.y1;
-    const int slot = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING;
-    const int item_h = LIST_MESSAGE_HEIGHT;
-    /* item i 對到中央時 scroll_y = list_y1 + pad_top + i*slot + item_h/2 - LV_VER_RES/2
-     * → i = (scroll_y - base) / slot，四捨五入用 +slot/2 */
-    int base = (int)list_y1 + (int)pad_top + item_h / 2 - LV_VER_RES / 2;
-    int idx = (scroll_y - base + slot / 2) / slot;
-    if (idx < 0) idx = 0;
-    if (idx >= (int)page_count) idx = (int)page_count - 1;
-    return lv_obj_get_child(list, (uint32_t)idx);
+    /* list 已經在 page change 當下被 snap 過了。如果 drag 結束在 elastic
+     * overshoot 區（input 超出 valid 範圍），起一個 anim 把 dot 從當前位置
+     * 平滑彈回 idx 對應的 canonical input，看得到回彈動畫 */
+    if (s_msg_drag_last_idx >= 0)
+    {
+        int total = (int)notification_count + (have_media_widget ? 1 : 0);
+        if (total > 0)
+        {
+            int snap_input = 100 * (total - s_msg_drag_last_idx) - 63;
+            if (s_msg_drag_input != snap_input)
+            {
+                msg_start_snap_anim(s_msg_drag_input, snap_input);
+            }
+        }
+    }
+    message_arc_reset_drag_state();
+    return NULL;
 }
 
 lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
@@ -1901,7 +2106,7 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
 
     /* 右側弧形觸控滾動 — 跟 instruction_list / exercise / clock 共用同一份算法。
      * slot_height = 252 + 40 = 292（item 間距），item_height = 252（item 本身高度）。
-     * slot_angle_deg=27 跟 msg_indicator_dots 的 angle_per_dot 對齊。
+     * slot_angle_deg=36 跟 msg_indicator_dots 的 angle_per_dot 對齊（同 exercise）。
      * message_list 是 tileview 子層，lock_ancestors 設 true 防止上下端切線拖曳被外層 tileview 搶走。
      *
      * item_count 必須用 page_count（= notification_count + media_widget），
@@ -1909,18 +2114,24 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
      * 就被卡住、CCW 完全動不了（只有 CW 能回到上一個 notification）*/
     arc_scroll_config_t arc_cfg = {
         .parent          = notification_center,
+        /* list 雖然還是傳進來給 bounds_cb 之類用得到，drag_cb 模式下 arc 不會
+         * 直接 _lv_obj_scroll_by_raw 它 — 改由 drag_cb 累積角度更新 dot，
+         * 偵測到 page 換才 call scroll_message_list_to_index snap list */
         .list            = p_window,
         .slot_height_px  = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING,
         .item_height_px  = LIST_MESSAGE_HEIGHT,
-        .slot_angle_deg  = 27,
+        .slot_angle_deg  = 36,
         .item_count      = page_count,
-        .band_thickness  = 150,
+        .band_thickness  = 90,
         .lock_ancestors  = true,
         .tap_cb          = message_arc_tap_cb,
         .snap_cb         = message_arc_snap_cb,
+        .drag_cb         = message_arc_drag_cb,
         .ctx             = NULL,
     };
     p_app_notification->arc_handle = arc_scroll_create(&arc_cfg);
+    /* DEBUG：顯示 arc band 觸發範圍。確認位置後可以拿掉這行 */
+    // arc_scroll_set_debug_visible(p_app_notification->arc_handle, true);
 
     myLancher[app_index_message].reset_list = reset_list_cb;
     myLancher[app_index_message].on_tap = on_tap;
@@ -2064,6 +2275,21 @@ void scroll_message_list_to_index(int8_t page)
     LOG_D("scroll_message_list_to_index: %d,%d,%d", page, notification_count,
           have_media_widget);
     last_scroll_time = now;
+
+    /* 中間 widget 跟著「最靠近中央的 dot」走 — navigation_bar_control_with_euler_angle
+     * 在 page 變了的時候會送 NAV_BAR_CONTROL 進來這個函式。先把對應的 card unhide
+     * 並更新 selected_message_index，再 scroll 列表，這樣中央卡片立刻換成新的、
+     * list 隨後動畫到那個位置。順序很重要 — 先 set 再 scroll，動畫途中
+     * scroll_list 的 motion-mode gate 會擋住把 selected 推回去 */
+    int8_t total = (int8_t)(notification_count + (have_media_widget ? 1 : 0));
+    if (page >= 0 && page < total &&
+        page != (int8_t)selected_message_index)
+    {
+        selected_message_index = (uint16_t)page;
+        update_notification_card_visibility();
+        old_selected_message_index = selected_message_index;
+    }
+
     lv_obj_scroll_to_view(lv_obj_get_child(p_app_notification->list, page),
                           LV_ANIM_ON);
     set_scroll_anim_time(false, NULL);

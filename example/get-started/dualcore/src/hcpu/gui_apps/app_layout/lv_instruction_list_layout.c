@@ -76,6 +76,7 @@
 
 LV_IMG_DECLARE(voice_group);
 LV_IMG_DECLARE(menu_icon);
+LV_IMG_DECLARE(plus);
 
 #define DBG_TAG "instruction.list.layout"
 #define DBG_LVL DBG_INFO
@@ -144,9 +145,12 @@ static lv_obj_t *switch_objs[MAX_LIST_ITEMS]; // toggle switches for any item
 #define LIST_ITEM_RADIUS (240)
 #define LIST_ITEM_BORDER_SIDE LV_BORDER_SIDE_RIGHT
 
-#define DOT_SMOLL_PROPORTION (0.6)
+#define DOT_SMOLL_PROPORTION (0.5)
 #define DOT_BIG_PROPORTION (1.3)
 #define DOT_BG_SIZE (100 * DOT_BIG_PROPORTION) + 2
+/* 縮放曲線指數：1.0 = 線性、2.0 = 平方（中央放大效果突出，邊緣下降快）、
+ * 3.0 = 立方（更陡峭）。值越大，「中央 dot 顯著大、其他 dot 都很小」越明顯 */
+#define DOT_ZOOM_EXPONENT 2.0f
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -375,6 +379,18 @@ lv_obj_t *app_icon_shadow[MAX_LIST_ITEMS];
 static bool is_indicator_dots_visible = true;
 static uint16_t selected_item_index = 0;
 static uint16_t last_zoom[MAX_LIST_ITEMS] = {0};
+
+/* arc-scroll detached / discrete 模式狀態 — 拖動時 arc 不動 list、由 drag_cb
+ * 接管，到 page change 才 snap。完整定義在後面，scroll_list 要先 visible。
+ * 用獨立 bool flag 而不是 input 的特殊值當「是否已初始化」 — elastic overshoot
+ * 會讓 input 掉到負值（min_input - 50 = -13），不能再用 <0 當 sentinel */
+static bool s_inst_arc_drag_active = false;
+static bool s_inst_drag_initialized = false;
+static int s_inst_drag_input = 0;
+static int s_inst_drag_last_idx = -1;    /* 上一次中央的 dot idx */
+static void inst_arc_reset_drag_state(void);
+static void scroll_list_to_index(uint16_t page);
+
 static void update_indicator_dots_position(int input_value)
 {
     // LOG_I("Updating indicator dots position, input value: %d", input_value);
@@ -388,11 +404,16 @@ static void update_indicator_dots_position(int input_value)
     // LOG_I("Updating indicator dots position, input value: %d",
     //       input_value);
 
-    const int circle_radius = 300;
-    const int center_x = 120;
-    const int center_y = 233;
+    /* 跟 app_exercise.c::apply_circular_layout 對齊：圓心在螢幕正中、
+     * radius=200。原本 (120, 233, 300) 那組會讓 arc 中心偏左、半徑大、
+     * dots 上下散開比較廣，視覺上跟 exercise 不一樣。
+     * center_x 往左偏 30 px：中央 dot zoom 到 1.3x（130 px 寬）時，沒偏的話
+     * 右邊會跑出螢幕；偏 30 後最右邊大約在 448，剛好在 466 螢幕內 */
+    const int circle_radius = 200;
+    const int center_x = LV_HOR_RES / 2 - 20;
+    const int center_y = LV_VER_RES / 2;
 
-    const float angle_per_dot = 27.0f;
+    const float angle_per_dot = 36.0f; /* 跟 app_exercise.c 的 ICON_SLOT_ANGLE_DEG=36 對齊 */
 
     float base_input = 63.0f;
     float degrees_per_200_input = angle_per_dot;
@@ -408,34 +429,23 @@ static void update_indicator_dots_position(int input_value)
             continue;
 
         float base_angle = i * angle_per_dot;
+        /* 不做 [0,360) normalize — 留 signed angle，方便用 |angle| > 90 一刀
+         * 過濾掉「在 list 第一格時 dot N-1 從另一邊 wrap 過來出現在上方」的問題。
+         * 例如 N=10 顆 dot，第一格時 dot 9 的 base_angle = 9*36 = 324°，wrap 後
+         * 變成 (270, 360) 區間 → 既有 (90,270) 過濾擋不到 → 出現在右上方。
+         * signed_angle = 324°（不 wrap）→ > 90° → 直接 hide */
         float current_angle = base_angle - offset_angle;
-
-        while (current_angle < 0)
-        {
-            current_angle += 360.0f;
-        }
-        while (current_angle >= 360.0f)
-        {
-            current_angle -= 360.0f;
-        }
 
         float angle_rad = current_angle * M_PI / 180.0f;
 
         int dot_x = center_x + (int)(circle_radius * cos(angle_rad));
         int dot_y = center_y + (int)(circle_radius * sin(angle_rad));
 
-        /* 畫面為 466x466 圓形，指示點中心距離螢幕中心超過 (半徑 + 半個 dot)
-         * 就完全看不到， 直接 HIDDEN 並跳過後面的 opa / zoom / set_pos
-         * 計算，避免 dot 越多越卡 */
+        /* 用 |signed angle| > 90° 一次過濾掉左半圓 + 從另一邊繞回來的 dots */
         {
-            const int screen_cx = LV_HOR_RES / 2;
-            const int screen_cy = LV_VER_RES / 2;
-            const int visible_r = LV_HOR_RES / 2 + (int)(DOT_BG_SIZE) / 2;
-            int ddx = dot_x - screen_cx;
-            int ddy = dot_y - screen_cy;
             lv_obj_t *dot_bg_obj =
                 p_instruction_list_layout->indicator_dots_bg[i];
-            if (ddx * ddx + ddy * ddy > visible_r * visible_r)
+            if (current_angle < -90.0f || current_angle > 90.0f)
             {
                 if (dot_bg_obj != NULL &&
                     !lv_obj_has_flag(dot_bg_obj, LV_OBJ_FLAG_HIDDEN))
@@ -466,30 +476,11 @@ static void update_indicator_dots_position(int input_value)
             last_valid_dot_x[i] = dot_x;
         }
 
-        float angle_from_horizontal = current_angle;
-
-        if (angle_from_horizontal > 180.0f)
-        {
-            angle_from_horizontal = 360.0f - angle_from_horizontal;
-        }
-
-        float distance_angle = angle_from_horizontal;
-        if (distance_angle > 90.0f)
-        {
-            distance_angle = 180.0f - distance_angle;
-        }
-
-        float max_distance_angle = 25.0f;
-        float ratio = 0.0f;
-
-        if (distance_angle <= max_distance_angle)
-        {
-            ratio = 1.0f - (distance_angle / max_distance_angle);
-        }
-        else
-        {
-            ratio = 0.0f;
-        }
+        /* 跟 app_exercise.c::apply_circular_layout 一致：用 cos(abs_angle) 做
+         * 平滑漸層。current_angle 現在是 signed [-90,90]，直接 fabsf 就是
+         * 從水平右軸算起的 abs_angle */
+        float abs_angle_deg = fabsf(current_angle);
+        float ratio = cosf(abs_angle_deg * (float)M_PI / 180.0f);
 
         int dot_size = DOT_BG_SIZE;
         int opacity = (int)(LV_OPA_30 + (LV_OPA_COVER - LV_OPA_30) * ratio);
@@ -501,10 +492,13 @@ static void update_indicator_dots_position(int input_value)
         lv_obj_set_style_img_opa(p_instruction_list_layout->indicator_dots[i],
                                  opacity, 0);
 
+        /* 用指數曲線 ratio^N 取代線性 ratio：N>1 時，中央 dot 大幅放大，
+         * 邊緣 dot 快速縮小，視覺上中央更突出 */
+        float zoom_ratio = powf(ratio, DOT_ZOOM_EXPONENT);
         uint16_t zoom =
             (uint16_t)(255 *
                        (DOT_SMOLL_PROPORTION +
-                        (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * ratio));
+                        (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * zoom_ratio));
         if (abs((int)zoom - (int)last_zoom[i]) > 5)
         {
             lv_img_set_zoom(app_icon_shadow[i], zoom);
@@ -520,6 +514,9 @@ static void update_indicator_dots_position(int input_value)
     }
 }
 
+/* fwd decl — dot click 直接走跟 touch_obj 同樣的 click handler，省去重複邏輯 */
+static void list_item_click_event_cb(lv_event_t *evt);
+
 static void create_indicator_dots(lv_obj_t *parent)
 {
     if (p_instruction_list_layout == NULL)
@@ -533,7 +530,11 @@ static void create_indicator_dots(lv_obj_t *parent)
         lv_obj_set_size(dot_bg, DOT_BG_SIZE, DOT_BG_SIZE);
         lv_obj_set_style_bg_opa(dot_bg, LV_OPA_0, 0);
         lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
+        /* 仿 app_exercise.c 把 icon 本身設成可點擊：tap 任一可見 dot 直接觸發
+         * 對應 item 的 click handler，不需要先把它 scroll 到中央再點 */
+        lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(dot_bg, list_item_click_event_cb,
+                            LV_EVENT_CLICKED, (void *)&list_items[i]);
 
         app_icon_shadow[i] = lv_img_create(dot_bg);
         lv_img_set_src(app_icon_shadow[i], &app_icon_frame);
@@ -858,7 +859,12 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             {
                 min_offset = y_diff;
                 selected_item_y_diff = y_diff2;
-                selected_item_index = i;
+                /* drag_cb 模式下 selected_item_index 由 page-change snap 統一管理，
+                 * scroll_list 不要再從 card y_diff 推回去（會跟 snap 動畫打架）*/
+                if (!s_inst_arc_drag_active)
+                {
+                    selected_item_index = i;
+                }
             }
             rt_uint32_t x_sqr = LIST_RADIUS * LIST_RADIUS - y_diff * y_diff;
             lv_sqrt_res_t res;
@@ -925,9 +931,10 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             target_value = get_total_moving_distance();
         set_prev_sensor_quat(target_value);
 
-        /* 指示點也用全部項目範圍 */
+        /* 指示點也用全部項目範圍。drag_cb 模式下 dot 由 inst_arc_drag_cb 用累積
+         * 的 input 自己更新，scroll_list 不要再用 list scroll_y 反推蓋過去 */
         int dots_value = child_cnt * 100 + first_y_diff - 63;
-        if (SkaiWatchSys.motion_control_lock)
+        if (SkaiWatchSys.motion_control_lock && !s_inst_arc_drag_active)
         {
             update_indicator_dots_position(dots_value);
         }
@@ -1953,6 +1960,18 @@ extern bool skai_widget_has_ai_reply(void);
 extern void clear_skai_widget_ai_reply(void);
 extern bool get_voice_recognition_started(void);
 extern void clearVoice2Text(void);
+static void add_instruction_btn_event_cb(lv_event_t *evt)
+{
+    if (!get_bluetooth_connection_status())
+    {
+        create_connection_tips();
+        return;
+    }
+    const char *json = "{\"action\":\"add\"}";
+    LOG_I("Send create-instruction request: %s", json);
+    commu_send_update_instruction(json);
+}
+
 static void logo_click_event_cb(lv_event_t *evt)
 {
     /* Re-ask has priority: once the AI has replied, the button's job is to
@@ -2470,9 +2489,13 @@ void refresh_custom_instructions(void)
     /* 重建指示點 */
     create_indicator_dots(bg);
 
-    /* Keep the AI widget tileview above the recreated dots — dots are
-       siblings of p_instruction_list_ai_bg under p_instruction_list_bg and
-       new children are drawn on top, so re-raise the AI widget. */
+    /* 新建的 dots 是 bg 的 child，appended 在尾端 → 預設 z-order 在 arc_zone
+     * 上面，導致 dots 把 press 從 arc_zone 搶走。先把 arc_zone 拉回最上層，
+     * 再把 ai_bg 拉到最上 — 最終順序：dots → arc_zone → ai_bg（top）*/
+    if (p_instruction_list_layout->arc_handle != NULL)
+    {
+        arc_scroll_bring_to_front(p_instruction_list_layout->arc_handle);
+    }
     if (p_instruction_list_layout->p_instruction_list_ai_bg != NULL &&
         lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_ai_bg))
     {
@@ -2602,13 +2625,144 @@ bool get_app_list_tileview_page(void)
  * 等其他位置共享同一份偵測算法。LIST_ITEM_SLOT_HEIGHT / LIST_ITEM_SLOT_ANGLE_DEG
  * 仍留著，給 cfg 傳進共用模組用。 */
 #define LIST_ITEM_SLOT_HEIGHT (LIST_ITEM_WIDGET_HEIGHT + LIST_ITEM_SPACING)
-#define LIST_ITEM_SLOT_ANGLE_DEG 27 /* 與 update_indicator_dots_position::angle_per_dot 一致 */
+#define LIST_ITEM_SLOT_ANGLE_DEG 36 /* 與 update_indicator_dots_position::angle_per_dot 一致；跟 exercise 對齊 */
+
+static void inst_arc_reset_drag_state(void)
+{
+    s_inst_arc_drag_active = false;
+    s_inst_drag_initialized = false;
+    s_inst_drag_input = 0;
+    s_inst_drag_last_idx = -1;
+}
+
+/* dot 回彈動畫 — release 時若 input 還在 elastic overshoot 區，把它從當前
+ * 位置補間到 canonical（idx 對應的 input value），看得到 dot 平滑回彈 */
+static int32_t s_inst_snap_anim_dummy;
+static void inst_snap_anim_exec_cb(void *var, int32_t value)
+{
+    (void)var;
+    if (s_inst_arc_drag_active) return;
+    update_indicator_dots_position((int)value);
+}
+
+static void inst_start_snap_anim(int from, int to)
+{
+    lv_anim_del(&s_inst_snap_anim_dummy, inst_snap_anim_exec_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, &s_inst_snap_anim_dummy);
+    lv_anim_set_exec_cb(&a, inst_snap_anim_exec_cb);
+    lv_anim_set_values(&a, from, to);
+    lv_anim_set_time(&a, 200);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+}
+
+/* drag_cb 模式：arc 拖動時不直接動 list，由這裡接管。
+ * - 累積 input value，每幀 call update_indicator_dots_position 讓 dot 平滑轉
+ * - 偵測「最靠近中央的 dot 換了一顆」（= page change）才 call scroll_list_to_index
+ *   把 list snap 到對應 item，list 動畫期間 scroll_list 的 gate 會擋住反推 */
+static void inst_arc_drag_cb(lv_coord_t scroll_delta_px, void *ctx)
+{
+    (void)ctx;
+    int total = (int)list_item_count;
+    if (total <= 0) return;
+
+    s_inst_arc_drag_active = true;
+
+    /* 第一次進來：用目前的 selected_item_index 反算 input。
+     * input 跟 idx 對應公式（見 update_indicator_dots_position 的 offset_angle）：
+     *   input = 100*(N - idx) - 63 */
+    if (!s_inst_drag_initialized)
+    {
+        /* 新的拖動開始 — 取消上一輪 release 起的 snap anim */
+        lv_anim_del(&s_inst_snap_anim_dummy, inst_snap_anim_exec_cb);
+        int idx = (int)selected_item_index;
+        if (idx < 0) idx = 0;
+        if (idx >= total) idx = total - 1;
+        s_inst_drag_input = 100 * (total - idx) - 63;
+        s_inst_drag_last_idx = idx;
+        s_inst_drag_initialized = true;
+    }
+
+    /* d_input = -d_scroll * 100 / pitch；instruction_list 的 pitch =
+     * LIST_ITEM_SLOT_HEIGHT，dots_value 公式裡是 1:1（因為 SLOT_HEIGHT=100），
+     * 寫成 generic 式更安全 */
+    const int pitch = LIST_ITEM_SLOT_HEIGHT;
+    int target_input = s_inst_drag_input - ((int)scroll_delta_px * 100) / pitch;
+
+    int min_input = 100 - 63;             /* idx=N-1 */
+    int max_input = 100 * total - 63;     /* idx=0 */
+    /* elastic overshoot：跟 message_list 一致，邊界外 0.4 resistance、上限 50
+     * input 單位（= 半 slot）。snap_cb 在釋放時把 dot 拉回 valid */
+    const int MAX_OVERSHOOT = 50;
+    if (target_input < min_input)
+    {
+        int over_now = (s_inst_drag_input < min_input) ? (min_input - s_inst_drag_input) : 0;
+        int over_raw = min_input - target_input;
+        if (over_raw > over_now)
+        {
+            int additional = (over_raw - over_now) * 4 / 10;
+            int new_over = over_now + additional;
+            if (new_over > MAX_OVERSHOOT) new_over = MAX_OVERSHOOT;
+            target_input = min_input - new_over;
+        }
+    }
+    else if (target_input > max_input)
+    {
+        int over_now = (s_inst_drag_input > max_input) ? (s_inst_drag_input - max_input) : 0;
+        int over_raw = target_input - max_input;
+        if (over_raw > over_now)
+        {
+            int additional = (over_raw - over_now) * 4 / 10;
+            int new_over = over_now + additional;
+            if (new_over > MAX_OVERSHOOT) new_over = MAX_OVERSHOOT;
+            target_input = max_input + new_over;
+        }
+    }
+    s_inst_drag_input = target_input;
+
+    update_indicator_dots_position(s_inst_drag_input);
+
+    int closest_idx = total - ((s_inst_drag_input + 63 + 50) / 100); /* round */
+    if (closest_idx < 0) closest_idx = 0;
+    if (closest_idx >= total) closest_idx = total - 1;
+
+    if (closest_idx != s_inst_drag_last_idx)
+    {
+        s_inst_drag_last_idx = closest_idx;
+        scroll_list_to_index((uint16_t)closest_idx);
+    }
+}
 
 static lv_obj_t *list_arc_tap_cb(lv_point_t pt, void *ctx)
 {
     (void)ctx;
-    /* arc 模組 overlay 攔走 press → CLICK 不會 bubble 到 touch_obj。
-     * 手動把 CLICKED 轉給選中項的 touch_obj，前提是 press 點在它的 coords 內 */
+    /* tap 收尾，順手 reset drag state */
+    inst_arc_reset_drag_state();
+    /* arc 模組 overlay 攔走 press → CLICK 不會 bubble 到 dot 或 touch_obj。
+     * 仿 app_exercise.c 的 tap 路徑：
+     *   1. 先用 press 點比對所有可見 indicator dot 的 bbox，找到哪顆 dot 就 forward
+     *      CLICKED 給那顆，dot 上有註冊 list_item_click_event_cb（user_data = 對應
+     *      list_items[i] ptr），所以點哪顆 dot 就觸發那 item 的動作。
+     *   2. fallback：press 不在任何 dot 上但在選中項 touch_obj 範圍內 → forward 給
+     *      touch_obj，行為跟舊版相同（保留中央區塊大面積可點）。 */
+    if (p_instruction_list_layout != NULL)
+    {
+        for (int i = 0; i < list_item_count; i++)
+        {
+            lv_obj_t *dot_bg = p_instruction_list_layout->indicator_dots_bg[i];
+            if (dot_bg == NULL) continue;
+            if (!lv_obj_is_valid(dot_bg)) continue;
+            if (lv_obj_has_flag(dot_bg, LV_OBJ_FLAG_HIDDEN)) continue;
+            lv_area_t a;
+            lv_obj_get_coords(dot_bg, &a);
+            if (pt.x >= a.x1 && pt.x <= a.x2 && pt.y >= a.y1 && pt.y <= a.y2)
+            {
+                return dot_bg;
+            }
+        }
+    }
     if (selected_item_index >= list_item_count) return NULL;
     if (touch_obj[selected_item_index] == NULL) return NULL;
     if (!lv_obj_is_valid(touch_obj[selected_item_index])) return NULL;
@@ -2622,11 +2776,23 @@ static lv_obj_t *list_arc_tap_cb(lv_point_t pt, void *ctx)
 static lv_obj_t *list_arc_snap_cb(void *ctx)
 {
     (void)ctx;
-    if (p_instruction_list_layout == NULL) return NULL;
-    if (p_instruction_list_layout->list == NULL) return NULL;
-    if (!lv_obj_is_valid(p_instruction_list_layout->list)) return NULL;
-    if (selected_item_index >= list_item_count) return NULL;
-    return lv_obj_get_child(p_instruction_list_layout->list, selected_item_index);
+    /* list 已經在 page change 當下被 snap 過了。如果 drag 結束在 elastic
+     * overshoot 區（input 超出 valid 範圍），起一個 anim 把 dot 從當前位置
+     * 平滑彈回 idx 對應的 canonical input，看得到回彈動畫 */
+    if (s_inst_drag_last_idx >= 0)
+    {
+        int total = (int)list_item_count;
+        if (total > 0)
+        {
+            int snap_input = 100 * (total - s_inst_drag_last_idx) - 63;
+            if (s_inst_drag_input != snap_input)
+            {
+                inst_start_snap_anim(s_inst_drag_input, snap_input);
+            }
+        }
+    }
+    inst_arc_reset_drag_state();
+    return NULL;
 }
 
 lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
@@ -2691,13 +2857,16 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
         .item_height_px  = LIST_ITEM_WIDGET_HEIGHT,      /* 200，items 互相重疊 100 */
         .slot_angle_deg  = LIST_ITEM_SLOT_ANGLE_DEG,
         .item_count      = list_item_count,
-        .band_thickness  = 150,
+        .band_thickness  = 90,
         .lock_ancestors  = true, /* instruction_list 是 tileview 子層，要鎖外層 */
         .tap_cb          = list_arc_tap_cb,
         .snap_cb         = list_arc_snap_cb,
+        .drag_cb         = inst_arc_drag_cb,
         .ctx             = NULL,
     };
     p_instruction_list_layout->arc_handle = arc_scroll_create(&arc_cfg);
+    /* DEBUG：顯示 arc band 觸發範圍。確認位置後可以拿掉這行 */
+    // arc_scroll_set_debug_visible(p_instruction_list_layout->arc_handle, true);
 
     lv_obj_t *ai_bar = lv_obj_create(p_instruction_list_bg);
     lv_obj_set_size(ai_bar, 80, LV_VER_RES);
@@ -2707,6 +2876,27 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_add_event_cb(ai_bar, ai_bar_event_cb, LV_EVENT_ALL, NULL);
     // lv_obj_add_flag(ai_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_clear_flag(ai_bar, LV_OBJ_FLAG_PRESS_LOCK);
+
+    /* Bottom-center "add instruction" button: 100x70 pill, plus icon, taps
+       phone-side create-instruction flow */
+    /* Bottom-center "add instruction" button: 50x35 pill, 32x32 plus icon,
+       taps phone-side create-instruction flow */
+    lv_obj_t *add_inst_btn = lv_obj_create(p_instruction_list_bg);
+    lv_obj_set_size(add_inst_btn, 50, 35);
+    lv_obj_set_style_radius(add_inst_btn, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(add_inst_btn, lv_color_hex(0xE3E3E3), 0);
+    lv_obj_set_style_bg_opa(add_inst_btn, LV_OPA_50, 0);
+    lv_obj_set_style_border_width(add_inst_btn, 0, 0);
+    lv_obj_set_style_pad_all(add_inst_btn, 0, 0);
+    lv_obj_align(add_inst_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_clear_flag(add_inst_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(add_inst_btn, add_instruction_btn_event_cb,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_t *add_inst_img = lv_img_create(add_inst_btn);
+    lv_img_set_src(add_inst_img, &plus);
+    lv_img_set_zoom(add_inst_img, 128); /* plus.png is 64x64 → render at 32x32 */
+    lv_obj_align(add_inst_img, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(add_inst_img, LV_OBJ_FLAG_CLICKABLE);
 
     p_instruction_list_layout->p_instruction_list_ai_bg =
         lv_tileview_create(p_instruction_list_bg);
@@ -2804,6 +2994,14 @@ static void scroll_list_to_index(uint16_t page)
     {
         LOG_W("scroll_list_to_index: child %d is invalid", page);
         return;
+    }
+    /* drag_cb 模式下 scroll_list 的 selected_item_index 自動更新被 gate 擋住，
+     * 這邊先手動 set 起來，等下 scroll_list call 跑到 line 939 那段
+     * (selected != old) 的可見性 loop 才會把新的 widget/label show 出來、舊的藏起來。
+     * motion 路徑（NAV_BAR_CONTROL）也共用這個函式，多 set 一次同樣 idempotent */
+    if (page < list_item_count)
+    {
+        selected_item_index = page;
     }
     // lv_disp_trig_activity(NULL);
     // set_scroll_anim_time(true);

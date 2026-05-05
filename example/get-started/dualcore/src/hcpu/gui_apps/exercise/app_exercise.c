@@ -746,9 +746,12 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
         lv_obj_add_event_cb(workout_icons[i], workout_list_event_cb,
                             LV_EVENT_CLICKED, NULL);
 
-        /* label 是 icon 的 child；click 會 bubble 給 icon 觸發 workout。
-         * 對齊到 icon 左外側，當 icon 在 angle=0 時 label 視覺中心 ~ 螢幕 x=180 */
-        workout_name_labels[i] = lv_label_create(workout_icons[i]);
+        /* label 改掛在 list_container（不滾、不轉），不再跟著 icon 旋轉跑。
+         * 可見性還是用 closest_i 在 apply_circular_layout 切，icon 指到誰
+         * 就 show 誰、其他 hide。click 走 label_tap_zone overlay，不需要 bubble。
+         * 螢幕位置：對齊 LEFT_MID 偏 55px → 跟舊版「icon 在 angle=0 時 label 左
+         * 邊在螢幕 x=55」對齊（cx + R - icon_w/2 - 338 = 55） */
+        workout_name_labels[i] = lv_label_create(list_container);
         lv_label_set_text(workout_name_labels[i], workout_list[i].name);
         lv_obj_set_style_text_color(workout_name_labels[i], lv_color_white(), 0);
         lv_obj_set_style_text_font(workout_name_labels[i],
@@ -756,7 +759,7 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
         lv_obj_set_width(workout_name_labels[i], 250);
         lv_obj_set_style_text_align(workout_name_labels[i],
                                     LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_align(workout_name_labels[i], LV_ALIGN_LEFT_MID, -338, 0);
+        lv_obj_align(workout_name_labels[i], LV_ALIGN_LEFT_MID, 55, 0);
         if (i != 0)
         {
             lv_obj_add_flag(workout_name_labels[i], LV_OBJ_FLAG_HIDDEN);
@@ -808,7 +811,7 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
         .item_height_px  = ICON_ITEM_SIZE,      /* 80，clamp 上下界用 */
         .slot_angle_deg  = ICON_SLOT_ANGLE_DEG,
         .item_count      = WORKOUT_COUNT,
-        .band_thickness  = 150,
+        .band_thickness  = 90,
         .lock_ancestors  = false, /* exercise bg 直接掛在 lv_scr_act()，沒有 tileview 祖先 */
         .tap_cb          = workout_arc_tap_cb,
         .snap_cb         = workout_arc_snap_cb,

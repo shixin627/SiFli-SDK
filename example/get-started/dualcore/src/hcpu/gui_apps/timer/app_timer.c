@@ -530,7 +530,7 @@ static void label_tap_zone_click_cb(lv_event_t *e)
  *   icon_screen_pos = (cx + R·cos(angle), cy + R·sin(angle)) */
 static void apply_circular_layout(lv_obj_t *list)
 {
-    const int32_t cx = LV_HOR_RES / 2;
+    const int32_t cx = LV_HOR_RES / 2 - 20;
     const int32_t cy = LV_VER_RES / 2;
     const float angle_per_slot = (float)TIMER_ICON_SLOT_ANGLE_DEG * (M_PI / 180.0f);
     const lv_coord_t list_x1 = list->coords.x1;
@@ -819,9 +819,12 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
         if (fill_deg32 > 360) fill_deg32 = 360;
         lv_arc_set_angles(pie, 0, (uint16_t)fill_deg32);
 
-        /* label 是 icon container 的 child；click bubble 給 container 觸發 timer。
-         * 對齊到 container 左外側，當 icon 在 angle=0 時 label 視覺中心 ~ 螢幕 x=180 */
-        timer_name_labels[i] = lv_label_create(timer_icons[i]);
+        /* label 改掛在 list_container（不滾、不轉），不再跟著 icon 旋轉跑。
+         * 可見性還是用 closest_i 在 apply_circular_layout 切，icon 指到誰
+         * 就 show 誰、其他 hide。click 走 label_tap_zone overlay，不需要 bubble。
+         * 螢幕位置：對齊 LEFT_MID 偏 35px → 跟舊版「icon 在 angle=0 時 label 左
+         * 邊在螢幕 x=35」對齊（cx + R - icon_w/2 - 338 = 35） */
+        timer_name_labels[i] = lv_label_create(list_container);
         lv_label_set_text(timer_name_labels[i], timer_options[i]);
         lv_obj_set_style_text_color(timer_name_labels[i], lv_color_white(), 0);
         lv_obj_set_style_text_font(timer_name_labels[i],
@@ -829,7 +832,7 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
         lv_obj_set_width(timer_name_labels[i], 250);
         lv_obj_set_style_text_align(timer_name_labels[i],
                                     LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_align(timer_name_labels[i], LV_ALIGN_LEFT_MID, -338, 0);
+        lv_obj_align(timer_name_labels[i], LV_ALIGN_LEFT_MID, 35, 0);
         if (i != 0)
         {
             lv_obj_add_flag(timer_name_labels[i], LV_OBJ_FLAG_HIDDEN);
@@ -861,7 +864,7 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
         .item_height_px  = TIMER_ICON_ITEM_SIZE,
         .slot_angle_deg  = TIMER_ICON_SLOT_ANGLE_DEG,
         .item_count      = TIMER_OPTION_COUNT,
-        .band_thickness  = 150,
+        .band_thickness  = 90,
         .lock_ancestors  = false,
         .tap_cb          = timer_arc_tap_cb,
         .snap_cb         = timer_arc_snap_cb,

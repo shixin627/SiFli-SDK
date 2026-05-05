@@ -12,6 +12,7 @@
 #include "common_widget.h"
 #include "ui_handler.h"
 #include "ui_img_helper.h"
+#include "arc_scroll.h"
 #include <string.h>
 
 #define DBG_TAG "app_list.layout"
@@ -22,6 +23,10 @@
 #define APP_LIST_PAD_H      40  /* horizontal inset from each side */
 #define APP_LIST_CELL_W     ((LV_HOR_RES - 2 * APP_LIST_PAD_H) / APP_LIST_COLS)
 #define APP_LIST_CELL_H     APP_LIST_CELL_W
+#define APP_LIST_PAD_TOP    20
+#define APP_LIST_SLOT_ANGLE_DEG 30 /* 弧形滑過 30° = 一行 */
+#define APP_LIST_BAND_THICKNESS 90
+#define APP_LIST_EXTRA_SCROLL APP_LIST_CELL_H /* 拉到底之後可再往下一個 cell */
 
 /*******************************************************************************
  * Configure which apps to show in the grid.
@@ -191,6 +196,94 @@ static void app_list_item_click_cb(lv_event_t *evt)
     gui_app_run(app_id_str);
 }
 
+static lv_obj_t *find_cell_at_point(lv_obj_t *container, lv_point_t pt)
+{
+    if (container == NULL || !lv_obj_is_valid(container)) return NULL;
+    uint32_t cnt = lv_obj_get_child_cnt(container);
+    for (uint32_t i = 0; i < cnt; i++)
+    {
+        lv_obj_t *cell = lv_obj_get_child(container, i);
+        if (cell == NULL || !lv_obj_is_valid(cell)) continue;
+        if (lv_obj_has_flag(cell, LV_OBJ_FLAG_HIDDEN)) continue;
+        lv_area_t a;
+        lv_obj_get_coords(cell, &a);
+        if (pt.x >= a.x1 && pt.x <= a.x2 && pt.y >= a.y1 && pt.y <= a.y2)
+        {
+            return cell;
+        }
+    }
+    return NULL;
+}
+
+static lv_obj_t *app_list_arc_tap_cb(lv_point_t press_point, void *ctx)
+{
+    return find_cell_at_point((lv_obj_t *)ctx, press_point);
+}
+
+static lv_coord_t app_list_max_scroll(lv_obj_t *container)
+{
+    /* 走 children 抓最底邊（natural inner y），讓 caller 可以在 layout_create
+     * 之後 set_y 把 cell 推下去、加 brightness bar 之類，arc-scroll 也能算對。
+     * 只看 CLICKABLE 的 child — cell 都會掛這個 flag，bottom_spacer 之類非
+     * 互動 widget 排除掉。lv_obj_get_y 已經內含 scroll 補償（見 lv_obj_pos.c），
+     * 回傳的就是 natural inner y，不要再加 scroll_y。
+     * 多塞一個 APP_LIST_EXTRA_SCROLL 當尾端緩衝，讓 user 可以把最後一行拉過
+     * 螢幕底邊一段，elastic 才有空間表現出「拉到底還能再多一點」 */
+    if (container == NULL || !lv_obj_is_valid(container)) return 0;
+    lv_coord_t pad_top = lv_obj_get_style_pad_top(container, LV_PART_MAIN);
+    lv_coord_t pad_bottom = lv_obj_get_style_pad_bottom(container, LV_PART_MAIN);
+    lv_coord_t max_bottom = 0;
+    uint32_t cnt = lv_obj_get_child_cnt(container);
+    for (uint32_t i = 0; i < cnt; i++)
+    {
+        lv_obj_t *c = lv_obj_get_child(container, i);
+        if (c == NULL || !lv_obj_is_valid(c)) continue;
+        if (lv_obj_has_flag(c, LV_OBJ_FLAG_HIDDEN)) continue;
+        if (!lv_obj_has_flag(c, LV_OBJ_FLAG_CLICKABLE)) continue;
+        lv_coord_t bottom = lv_obj_get_y(c) + lv_obj_get_height(c);
+        if (bottom > max_bottom) max_bottom = bottom;
+    }
+    lv_coord_t inner_viewport =
+        lv_obj_get_height(container) - pad_top - pad_bottom;
+    lv_coord_t base = (max_bottom > inner_viewport)
+                          ? (max_bottom - inner_viewport)
+                          : 0;
+    return base + APP_LIST_EXTRA_SCROLL;
+}
+
+static lv_obj_t *app_list_arc_snap_cb(void *ctx)
+{
+    /* grid 沒有 selected item 概念，只負責把 overshoot 拉回 [0, max]。snap_cb
+     * 直接呼叫 lv_obj_scroll_to_y 處理動畫，回傳 NULL 讓 released_cb 不再做事 */
+    lv_obj_t *container = (lv_obj_t *)ctx;
+    if (container == NULL || !lv_obj_is_valid(container)) return NULL;
+    lv_coord_t cur = lv_obj_get_scroll_y(container);
+    lv_coord_t max_scroll = app_list_max_scroll(container);
+    if (cur < 0)
+    {
+        lv_obj_scroll_to_y(container, 0, LV_ANIM_ON);
+    }
+    else if (cur > max_scroll)
+    {
+        lv_obj_scroll_to_y(container, max_scroll, LV_ANIM_ON);
+    }
+    return NULL;
+}
+
+static void app_list_arc_bounds_cb(lv_coord_t *out_min, lv_coord_t *out_max,
+                                   void *ctx)
+{
+    lv_obj_t *container = (lv_obj_t *)ctx;
+    if (container == NULL || !lv_obj_is_valid(container))
+    {
+        *out_min = 0;
+        *out_max = 0;
+        return;
+    }
+    *out_min = 0;
+    *out_max = app_list_max_scroll(container);
+}
+
 lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
 {
     lv_obj_t *container = lv_obj_create(parent);
@@ -203,7 +296,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     lv_obj_add_flag(container, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(container, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(container, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_pad_top(container, 20, 0);
+    lv_obj_set_style_pad_top(container, APP_LIST_PAD_TOP, 0);
 
     uint8_t count = APP_LIST_COUNT;
     uint8_t rows = (count + APP_LIST_COLS - 1) / APP_LIST_COLS;
@@ -221,7 +314,7 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
         lv_obj_clear_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
 
         lv_coord_t x = APP_LIST_PAD_H + col * APP_LIST_CELL_W;
-        lv_coord_t y = row * APP_LIST_CELL_H + 20;
+        lv_coord_t y = row * APP_LIST_CELL_H + APP_LIST_PAD_TOP;
         lv_obj_set_pos(cell, x, y);
 
         /* Icon (no label) */
@@ -235,6 +328,23 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
         lv_obj_add_event_cb(cell, app_list_item_click_cb, LV_EVENT_CLICKED,
                             (void *)get_app_id_str(APP_LIST_ITEMS[i]));
     }
+
+    /* 右側弧形觸控滾動：grid 用 row 當 slot，bounds_cb 提供 [0, max] 邊界
+     * （centered-list 公式不適用），tap_cb 把右欄 cell 的點擊轉發給 cell */
+    arc_scroll_config_t arc_cfg = {0};
+    arc_cfg.parent = parent;
+    arc_cfg.list = container;
+    arc_cfg.slot_height_px = APP_LIST_CELL_H;
+    arc_cfg.item_height_px = APP_LIST_CELL_H;
+    arc_cfg.slot_angle_deg = APP_LIST_SLOT_ANGLE_DEG;
+    arc_cfg.item_count = rows;
+    arc_cfg.band_thickness = APP_LIST_BAND_THICKNESS;
+    arc_cfg.lock_ancestors = true;
+    arc_cfg.tap_cb = app_list_arc_tap_cb;
+    arc_cfg.snap_cb = app_list_arc_snap_cb;
+    arc_cfg.bounds_cb = app_list_arc_bounds_cb;
+    arc_cfg.ctx = container;
+    arc_scroll_create(&arc_cfg);
 
     LOG_I("App list created with %d apps, %d rows", count, rows);
     return container;

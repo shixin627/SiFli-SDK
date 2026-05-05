@@ -31,6 +31,19 @@ typedef lv_obj_t *(*arc_scroll_tap_cb_t)(lv_point_t press_point, void *ctx);
 /* snap_cb：drag 放開時被叫，回傳要 scroll 到中央的目標 obj；NULL 代表不 snap */
 typedef lv_obj_t *(*arc_scroll_snap_cb_t)(void *ctx);
 
+/* bounds_cb：回傳 list 的 min/max scroll_y。NULL 走內建公式（假設「第一個 item
+ * 中心對齊螢幕中央」，適用 curve list 類）。grid / 第一行貼頂的 layout 要自己
+ * 提供版本 */
+typedef void (*arc_scroll_bounds_cb_t)(lv_coord_t *min_scroll,
+                                       lv_coord_t *max_scroll, void *ctx);
+
+/* drag_cb：「detached 模式」的每幀回呼，回傳這一幀的角度增量等價的 scroll
+ * 像素數（跟內建 _lv_obj_scroll_by_raw 會塞給 list 的同一個值）。設了之後
+ * arc_scroll 完全不去動 list — 由呼叫者自己決定要不要動、什麼時候動。
+ * 用法：要做「dot 平滑轉但 list 只在 page 邊界 snap」這類 discrete UX，
+ * 上層用 drag_cb 累積 offset 自己更新 indicator 跟 page 偵測 */
+typedef void (*arc_scroll_drag_cb_t)(lv_coord_t scroll_delta_px, void *ctx);
+
 typedef struct
 {
     lv_obj_t *parent;               /* overlay 要掛在哪個父物件下 */
@@ -47,6 +60,9 @@ typedef struct
     bool lock_ancestors;            /* drag 期間鎖住外層 scrollable 祖先（防 tileview 誤搶）*/
     arc_scroll_tap_cb_t tap_cb;     /* 可為 NULL */
     arc_scroll_snap_cb_t snap_cb;   /* 可為 NULL */
+    arc_scroll_bounds_cb_t bounds_cb; /* 可為 NULL，NULL 走內建 centered-list 公式 */
+    arc_scroll_drag_cb_t drag_cb;   /* 可為 NULL；非 NULL 時 arc 不再內建滾 list，
+                                     * 改成把每幀 scroll_delta 丟給 cb */
     void *ctx;                      /* 給 cb 用的使用者 context */
 } arc_scroll_config_t;
 
@@ -57,8 +73,18 @@ arc_scroll_handle_t *arc_scroll_create(const arc_scroll_config_t *cfg);
 /* item 數變動時更新（影響 scroll 上下界 clamp） */
 void arc_scroll_set_item_count(arc_scroll_handle_t *handle, uint16_t count);
 
+/* 把 overlay 移到父物件 children list 最後（= z-order 最上）。在外部重建
+ * sibling（例如 indicator dots）之後呼叫，避免新建的 sibling 蓋在 overlay
+ * 上面、把 press 從 arc_zone 搶走。 */
+void arc_scroll_bring_to_front(arc_scroll_handle_t *handle);
+
 /* 提早銷毀 — 一般情形 overlay 跟著 parent 一起死，不用呼叫。 */
 void arc_scroll_destroy(arc_scroll_handle_t *handle);
+
+/* Debug 視覺化：顯示 / 隱藏 arc band 觸發範圍。打開時會在 overlay 上面疊一個
+ * 半透明綠色弧帶，標示出哪裡可以觸發 arc-scroll。完全 non-clickable，不影響
+ * 真實 hit_test 行為，只是視覺。預設 OFF。 */
+void arc_scroll_set_debug_visible(arc_scroll_handle_t *handle, bool visible);
 
 #ifdef __cplusplus
 }
