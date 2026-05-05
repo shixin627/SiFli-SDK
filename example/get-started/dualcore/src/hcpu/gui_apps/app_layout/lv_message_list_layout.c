@@ -124,9 +124,12 @@ static notification_widget_t notification_widgets[ITEM_AMOUNT_NOTIFICATION];
 static void update_notification_card_visibility(void);
 
 /* arc-scroll detached / discrete 模式狀態 — 拖動時 arc 不動 list、由 drag_cb
- * 接管，到 page change 才 snap。完整定義在後面，scroll_list 要先 visible。 */
+ * 接管，到 page change 才 snap。完整定義在後面，scroll_list 要先 visible。
+ * 用獨立 bool flag 而不是 input 的特殊值當「是否已初始化」 — elastic overshoot
+ * 會讓 input 掉到負值（min_input - 50 = -13），不能再用 <0 當 sentinel */
 static bool s_msg_arc_drag_active = false;
-static int s_msg_drag_input = -1;       /* dot input value，<0 代表未初始化 */
+static bool s_msg_drag_initialized = false;
+static int s_msg_drag_input = 0;
 static int s_msg_drag_last_idx = -1;    /* 上一次中央的 dot idx */
 static void message_arc_reset_drag_state(void);
 
@@ -1827,8 +1830,33 @@ static void button_selection(gesture_position_t gesture_position);
 static void message_arc_reset_drag_state(void)
 {
     s_msg_arc_drag_active = false;
-    s_msg_drag_input = -1;
+    s_msg_drag_initialized = false;
+    s_msg_drag_input = 0;
     s_msg_drag_last_idx = -1;
+}
+
+/* dot 回彈動畫 — release 時若 input 還在 elastic overshoot 區，把它從當前
+ * 位置補間到 canonical（idx 對應的 input value），看得到 dot 平滑回彈 */
+static int32_t s_msg_snap_anim_dummy;
+static void msg_snap_anim_exec_cb(void *var, int32_t value)
+{
+    (void)var;
+    /* 動畫進行中如果 user 又開始拖，就讓 drag_cb 蓋過去；exec_cb 不再動 dot */
+    if (s_msg_arc_drag_active) return;
+    update_msg_indicator_dots_position((int)value);
+}
+
+static void msg_start_snap_anim(int from, int to)
+{
+    lv_anim_del(&s_msg_snap_anim_dummy, msg_snap_anim_exec_cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, &s_msg_snap_anim_dummy);
+    lv_anim_set_exec_cb(&a, msg_snap_anim_exec_cb);
+    lv_anim_set_values(&a, from, to);
+    lv_anim_set_time(&a, 200);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
 }
 
 /* 右側弧形觸控滾動 — 用共用模組 common/arc_scroll.h */
@@ -1845,28 +1873,59 @@ static void message_arc_drag_cb(lv_coord_t scroll_delta_px, void *ctx)
      * input 跟 idx 對應公式：input = 100*(N - idx) - 63
      * （從 update_msg_indicator_dots_position 的 offset_angle 推回，
      * 解 idx*36 = (100N - input - 63)/100 * 36） */
-    if (s_msg_drag_input < 0)
+    if (!s_msg_drag_initialized)
     {
+        /* 新的拖動開始 — 取消上一輪 release 起的 snap anim，避免它跟 drag_cb
+         * 同時寫 dot 位置打架 */
+        lv_anim_del(&s_msg_snap_anim_dummy, msg_snap_anim_exec_cb);
         int idx = (int)selected_message_index;
         if (idx < 0) idx = 0;
         if (idx >= total) idx = total - 1;
         s_msg_drag_input = 100 * (total - idx) - 63;
         s_msg_drag_last_idx = idx;
+        s_msg_drag_initialized = true;
     }
 
     /* scroll_delta_px → input delta：scroll_list 用
      * scaled_first = first_y_diff * 100 / pitch；scroll_y 增加（CCW）→
      * first_y_diff 減少 → input 減少。所以 d_input = -scroll_delta * 100 / pitch */
     const int pitch = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING;
-    s_msg_drag_input -= ((int)scroll_delta_px * 100) / pitch;
+    int target_input = s_msg_drag_input - ((int)scroll_delta_px * 100) / pitch;
 
-    /* clamp 到合法 input 範圍：idx ∈ [0, total-1]
+    /* 合法 input 範圍：idx ∈ [0, total-1]
      *   idx=0:        input = 100*total - 63
      *   idx=total-1:  input = 100*1 - 63 = 37 */
-    int min_input = 100 - 63;            /* idx=total-1 */
-    int max_input = 100 * total - 63;    /* idx=0 */
-    if (s_msg_drag_input < min_input) s_msg_drag_input = min_input;
-    if (s_msg_drag_input > max_input) s_msg_drag_input = max_input;
+    int min_input = 100 - 63;
+    int max_input = 100 * total - 63;
+    /* elastic overshoot：邊界外的 input 套 0.4 resistance、總 overshoot 上限
+     * 50 input 單位（= 半 slot，因為 100 input = 1 slot）— 跟 arc_scroll 內建
+     * 模式的 slot_height_px/2 + 0.4 對齊。snap_cb 會在釋放時把 dot 拉回 valid */
+    const int MAX_OVERSHOOT = 50;
+    if (target_input < min_input)
+    {
+        int over_now = (s_msg_drag_input < min_input) ? (min_input - s_msg_drag_input) : 0;
+        int over_raw = min_input - target_input;
+        if (over_raw > over_now)
+        {
+            int additional = (over_raw - over_now) * 4 / 10;
+            int new_over = over_now + additional;
+            if (new_over > MAX_OVERSHOOT) new_over = MAX_OVERSHOOT;
+            target_input = min_input - new_over;
+        }
+    }
+    else if (target_input > max_input)
+    {
+        int over_now = (s_msg_drag_input > max_input) ? (s_msg_drag_input - max_input) : 0;
+        int over_raw = target_input - max_input;
+        if (over_raw > over_now)
+        {
+            int additional = (over_raw - over_now) * 4 / 10;
+            int new_over = over_now + additional;
+            if (new_over > MAX_OVERSHOOT) new_over = MAX_OVERSHOOT;
+            target_input = max_input + new_over;
+        }
+    }
+    s_msg_drag_input = target_input;
 
     update_msg_indicator_dots_position(s_msg_drag_input);
 
@@ -1927,8 +1986,21 @@ static lv_obj_t *message_arc_tap_cb(lv_point_t pt, void *ctx)
 static lv_obj_t *message_arc_snap_cb(void *ctx)
 {
     (void)ctx;
-    /* drag_cb 模式下 list 已經在 page change 當下被 snap 過了，這裡不用再 snap。
-     * 只 reset state 讓下次 drag 重新初始化 */
+    /* list 已經在 page change 當下被 snap 過了。如果 drag 結束在 elastic
+     * overshoot 區（input 超出 valid 範圍），起一個 anim 把 dot 從當前位置
+     * 平滑彈回 idx 對應的 canonical input，看得到回彈動畫 */
+    if (s_msg_drag_last_idx >= 0)
+    {
+        int total = (int)notification_count + (have_media_widget ? 1 : 0);
+        if (total > 0)
+        {
+            int snap_input = 100 * (total - s_msg_drag_last_idx) - 63;
+            if (s_msg_drag_input != snap_input)
+            {
+                msg_start_snap_anim(s_msg_drag_input, snap_input);
+            }
+        }
+    }
     message_arc_reset_drag_state();
     return NULL;
 }
