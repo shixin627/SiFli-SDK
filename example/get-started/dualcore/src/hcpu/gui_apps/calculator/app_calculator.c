@@ -57,20 +57,10 @@
 #include "lv_ex_data.h"
 #include "common_widget.h"
 #include "app_mainmenu.h"
-#include "bloc_control.h"
 #include "bloc_motion_tracking.h"
 #include "bloc_setting.h"
-#ifdef BSP_USING_MODEL_WATCH_GLOBAL_DATA
-#include "watch_global_data.h"
-#endif
-#ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-#include "watch_system_interact.h"
-#endif
-
-#ifdef BSP_USING_UI_HANDLER
-#include "ui_handler.h"
 #include "ui_img_helper.h"
-#endif
+
 #define DBG_TAG "app.calculator"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
@@ -81,7 +71,6 @@
 
 static lv_obj_t *ta = NULL;      // 文本框对象
 static lv_obj_t *my_btnm = NULL; // 按钮对象
-static char result[MAX_NUM];     // 缓存结果
 static char error = 0;
 static double before = 0;
 static char operate = '\0';
@@ -133,7 +122,6 @@ static void calculate(double before, double now, char operate, char *num) // 计
 
 static void clear_result(void) // 清空文本框
 {
-    memset(result, 0, MAX_NUM);
     memset(num, 0, MAX_NUM);
     before = 0;
     error = 0;
@@ -235,20 +223,10 @@ static void event_handler(lv_event_t *event)
         handle_button_text(txt);
     }
 }
-static void ta_event_cb(lv_event_t *event)
-{
-    lv_obj_t *obj = lv_event_get_target(event); // 获取事件目标
-    if (event->code == LV_EVENT_VALUE_CHANGED)
-    {
-        const char *txt = lv_textarea_get_text(obj);
-    }
-}
-
 static lv_obj_t *lv_ex_textarea(lv_obj_t *screen)
 {
     // Create the text area
     lv_obj_t *ta = lv_textarea_create(screen);
-    lv_obj_add_event_cb(ta, ta_event_cb, LV_EVENT_ALL, NULL);
     lv_textarea_set_accepted_chars(ta, "0123456789+-.*/EOR");
     lv_textarea_set_max_length(ta, MAX_NUM);
     lv_textarea_set_one_line(ta, true);
@@ -263,7 +241,6 @@ static lv_obj_t *lv_ex_textarea(lv_obj_t *screen)
     lv_obj_set_style_radius(ta, 10, 0);
     lv_obj_set_style_pad_all(ta, 2, 0);
 
-    // lv_obj_set_size(ta, 250, 80);
     lv_obj_set_width(ta, lv_pct(53));
     lv_obj_align(ta, LV_ALIGN_TOP_MID, 0, 50); // Adjust position to be closer to the button matrix
 
@@ -282,7 +259,6 @@ static lv_obj_t *lv_ex_textarea(lv_obj_t *screen)
     lv_obj_set_style_radius(float_btn, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(float_btn, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(float_btn, LV_OPA_TRANSP, 0);
-    // lv_obj_set_style_bg_img_src(float_btn, ICON_DELETE, 0);
     return ta;
 }
 
@@ -313,8 +289,6 @@ static const lv_style_const_prop_t BTNM_KEY_PRESSED_STYLE_PROPS[] = {
 LV_STYLE_CONST_INIT(BTNM_BG_STYLE, BTNM_BG_STYLE_PROPS);
 LV_STYLE_CONST_INIT(BTNM_KEY_STYLE, BTNM_KEY_STYLE_PROPS);
 LV_STYLE_CONST_INIT(BTNM_KEY_PRESSED_STYLE, BTNM_KEY_PRESSED_STYLE_PROPS);
-
-// cyan color
 
 static const char *btnm_map[] = {
     "7", "8", "9", "+", "\n",
@@ -387,7 +361,6 @@ static void on_start(void)
 
 static void on_resume(void)
 {
-    // switch_watch_motion_control_mode(true, false);
     set_open_control_options(false);
     set_free_control_with_arm(false);
     setting_provider.set_power_save_mode(0);

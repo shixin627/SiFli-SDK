@@ -59,20 +59,8 @@ typedef enum
     CONTROL_BTN_RECORDER = 5
 } control_button_index_t;
 
-LV_IMG_DECLARE(bluetooth_broadcasting);
-LV_IMG_DECLARE(icon_qrcode);
-LV_IMG_DECLARE(icon_dnd_mode);
 LV_IMG_DECLARE(sun);
-LV_IMG_DECLARE(img_media_play);
-LV_IMG_DECLARE(img_media_pause);
-LV_IMG_DECLARE(icon_release);
 LV_IMG_DECLARE(mouse_mode_icon);
-LV_IMG_DECLARE(icon_tap);
-LV_IMG_DECLARE(micro_icon);
-LV_IMG_DECLARE(flashlight_icon);
-LV_IMG_DECLARE(img_settings);
-LV_IMG_DECLARE(find_phone);
-LV_IMG_DECLARE(img_logo);
 LV_IMG_DECLARE(device_btn);
 
 #define NOTIFICATION_ITEM_WIDTH 360
@@ -97,17 +85,7 @@ static lv_obj_t *status_bar_area_down;
 static lv_obj_t *status_bar_area_left;
 static lv_obj_t *status_bar_area_right;
 
-static rt_bool_t bt_enabled = RT_TRUE;
 static rt_bool_t dndmode_enabled = RT_FALSE;
-static rt_bool_t alarm_enabled = RT_TRUE;
-static rt_bool_t timer_enabled = RT_TRUE;
-
-static const lv_btnmatrix_ctrl_t btnm_ctrl_map[] = {
-    1 | LV_BTNMATRIX_CTRL_CHECKABLE,
-    1 | LV_BTNMATRIX_CTRL_CHECKABLE,
-    1 | LV_BTNMATRIX_CTRL_CHECKABLE,
-    1 | LV_BTNMATRIX_CTRL_CHECKABLE,
-};
 
 void display_status_bar_area(uint32_t idx, bool display)
 {
@@ -139,64 +117,33 @@ static void set_clock_main_status_opa(uint8_t opa, bool mask);
 static void set_dev_change_gaus_opa(uint8_t opa);
 static void notification_status_bar_cb(lv_event_t *event)
 {
-    if (lv_disp_get_rotation(NULL) != LV_DISP_ROT_90 &&
-        lv_disp_get_rotation(NULL) != LV_DISP_ROT_270)
+    if (lv_disp_get_rotation(NULL) == LV_DISP_ROT_90 ||
+        lv_disp_get_rotation(NULL) == LV_DISP_ROT_270)
     {
-        lv_obj_t *obj = lv_event_get_target(event);
-        status_bar_area_t area_id =
-            (status_bar_area_t)lv_obj_get_user_data(obj);
+        return;
+    }
 
-        if (LV_EVENT_RELEASED == event->code)
+    lv_obj_t *obj = lv_event_get_target(event);
+    status_bar_area_t area_id = (status_bar_area_t)lv_obj_get_user_data(obj);
+
+    if (LV_EVENT_RELEASED == event->code)
+    {
+        LOG_I("LV_EVENT_RELEASED_Clock from area: %d", area_id);
+        lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    }
+    else if (LV_EVENT_PRESSED == event->code)
+    {
+        if (is_ble_dfu_thread_running())
         {
-            LOG_I("LV_EVENT_RELEASED_Clock from area: %d", area_id);
-            // 根據不同區域執行不同操作
-            switch (area_id)
-            {
-            case STATUS_BAR_AREA_LEFT:
-                LOG_D("Released from LEFT area");
-                break;
-            case STATUS_BAR_AREA_UP:
-                LOG_D("Released from TOP area");
-                break;
-            case STATUS_BAR_AREA_DOWN:
-                LOG_D("Released from BOTTOM area");
-                break;
-            case STATUS_BAR_AREA_RIGHT:
-                LOG_D("Released from RIGHT area");
-                break;
-            }
-            lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+            LOG_I("notification_status_bar_cb in ble dfu => return");
+            return;
         }
-        else if (LV_EVENT_PRESSED == event->code)
-        {
-            if (is_ble_dfu_thread_running())
-            {
-                LOG_I("notification_status_bar_cb in ble dfu => return");
-                return;
-            }
-            LOG_I("notification_status_bar_cb from area: %d", area_id);
-            // 根據不同區域執行不同操作
-            switch (area_id)
-            {
-            case STATUS_BAR_AREA_LEFT:
-                LOG_D("Pressed from LEFT area");
-                break;
-            case STATUS_BAR_AREA_UP:
-                LOG_D("Pressed from TOP area");
-                break;
-            case STATUS_BAR_AREA_DOWN:
-                LOG_D("Pressed from BOTTOM area");
-                break;
-            case STATUS_BAR_AREA_RIGHT:
-                LOG_D("Pressed from RIGHT area");
-                break;
-            }
-            lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
-            lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-            set_clock_main_status_opa(0, false);
-        }
+        LOG_I("notification_status_bar_cb from area: %d", area_id);
+        lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
+        lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+        set_clock_main_status_opa(0, false);
     }
 }
 
@@ -260,12 +207,8 @@ static void ai_status_bar_cb(lv_event_t *event)
 }
 
 extern void check_main_page(void);
-extern bool gesture_tap_collection;
 extern void widget_page_flip(bool is_gravity_x_positive);
 bool main_clock_tileview_scrollable = true;
-static void button_selection(gesture_position_t gesture_position);
-static void reset_tools_selection(void);
-static void press_event(uint8_t press);
 static uint8_t shady_transparency = 0;
 static uint16_t bg_opa = LV_OPA_COVER;
 static uint16_t bg_opa_2 = LV_OPA_COVER;
@@ -277,9 +220,6 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
 {
     lv_obj_t *obj = lv_event_get_target(event);
 
-    // if (LV_EVENT_PRESSING != event->code)
-    //     LOG_D("app_clock_main_status_bar_event_cb %p, got event %s", obj,
-    //     lv_event_to_name(event->code));
     switch (event->code)
     {
     case LV_EVENT_SCROLL:
@@ -310,26 +250,18 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             scroll_second_x = -bg_opa_2;
 
         if (((abs(scroll_y) < (bg_opa + 1)) && (scroll_y != 0)) ||
-            ((abs(scroll_x) < (bg_opa + 1)) && (scroll_x != 0))) // 230
+            ((abs(scroll_x) < (bg_opa + 1)) && (scroll_x != 0)))
         {
             if (scroll_y == 0)
             {
                 shady_transparency = abs(scroll_x);
-                // lv_obj_set_style_bg_opa(
-                //     myLancher[app_index_message].pagetileview,
-                //     shady_transparency, 0);
                 set_clock_main_status_opa(shady_transparency, false);
             }
             else
             {
                 shady_transparency = abs(scroll_y);
-                // lv_obj_set_style_bg_opa(
-                //     myLancher[app_index_message].pagetileview,
-                //     shady_transparency, 0);
                 set_clock_main_status_opa(shady_transparency, true);
             }
-            // LOG_D("scroll_y: %d, scroll_x: %d, shady_transparency: %d",
-            //       scroll_y, scroll_x, shady_transparency);
         }
         if (scroll_second_y == 0)
         {
@@ -340,63 +272,28 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                     shady_transparency > 0)
                 {
                     set_instruction_list_time_opa(shady_transparency);
-                    // set_instruction_list_time_bg_opa(shady_transparency);
                 }
             }
             else
             {
                 shady_transparency = -scroll_second_x;
                 set_instruction_list_battery_opa(shady_transparency);
-                // set_instruction_list_battery_bg_opa(shady_transparency);
             }
         }
         else
         {
             shady_transparency = abs(scroll_second_y);
-            // if (scroll_second_y > 0)
-            // {
-            //     if (shady_transparency < (bg_opa_2 + 1) && shady_transparency
-            //     > 0)
-            //     {
-            //         set_instruction_list_time_opa(shady_transparency);
-            //         set_instruction_list_time_bg_opa(shady_transparency);
-            //     }
-            //     else if (shady_transparency >= bg_opa_2)
-            //     {
-            //         set_instruction_list_time_opa(bg_opa_2);
-            //         set_instruction_list_time_bg_opa(bg_opa_2);
-            //     }
-            // }
-            // else
+            if (shady_transparency < (bg_opa_2 + 1) &&
+                shady_transparency > 0)
             {
-                if (shady_transparency < (bg_opa_2 + 1) &&
-                    shady_transparency > 0)
-                {
-                    set_instruction_list_battery_opa(shady_transparency);
-                    // set_instruction_list_battery_bg_opa(shady_transparency);
-                }
-                else if (shady_transparency >= bg_opa_2)
-                {
-                    set_instruction_list_battery_opa(bg_opa_2);
-                    // set_instruction_list_battery_bg_opa(bg_opa_2);
-                }
+                set_instruction_list_battery_opa(shady_transparency);
+            }
+            else if (shady_transparency >= bg_opa_2)
+            {
+                set_instruction_list_battery_opa(bg_opa_2);
             }
         }
 
-        // if (shady_transparency < (bg_opa_2 + 1) && shady_transparency > 0)
-        // {
-        //     lv_obj_set_style_img_opa(get_instruction_list_bluetooth_disconnection(),
-        //     bg_opa_2 - shady_transparency, 0);
-        // }
-        // else if (shady_transparency >= bg_opa_2)
-        // {
-        //     lv_obj_set_style_img_opa(get_instruction_list_bluetooth_disconnection(),
-        //     LV_OPA_COVER, 0);
-        // }
-
-        lv_coord_t scroll_third_y =
-            (466 - lv_obj_get_scroll_y(obj)) * bg_opa_3 / 466;
-        lv_coord_t scroll_third_x = lv_obj_get_scroll_x(obj) * bg_opa_3 / 466;
         if (scroll_second_y == 0)
         {
             shady_transparency = scroll_second_x;
@@ -405,7 +302,6 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         {
             shady_transparency = scroll_second_y;
         }
-        // }
         break;
     }
     case LV_EVENT_VALUE_CHANGED:
@@ -443,59 +339,35 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 main_clock_tileview_scrollable = true;
             }
         }
-        // if (1 == active_pos)
         if (scroll_y == 466 && scroll_x == 466)
         {
             shady_transparency = 0;
-            // lv_obj_set_style_bg_opa(myLancher[app_index_message].pagetileview,
-            //                         shady_transparency, 0);
             set_clock_main_status_opa(shady_transparency, false);
             lv_obj_add_flag(myLancher[app_index_message].pagetileview,
                             LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
             set_clock_main_status_opa(LV_OPA_0, false);
             set_instruction_list_time_opa(LV_OPA_0);
-            // if (lv_obj_is_valid(get_instruction_list_time_bg()))
-            //     lv_obj_set_style_bg_opa(get_instruction_list_time_bg(),
-            //     LV_OPA_0, 0);
 
 #ifdef APP_ID_WIDGETS
             widget_page_flip(false);
 #endif
 
             set_instruction_list_battery_opa(LV_OPA_TRANSP);
-            // lv_obj_set_style_bg_opa(get_instruction_list_battery_bg(),
-            // LV_OPA_TRANSP,
-            //                         0);
         }
         else
         {
-            lvgl_msg_t msg;
-            // msg.type = LVGL_MSG_TYPE_CLEAR_NOTIFICATION_BAR_INDICATOR;
-            // lvgl_send_msg(msg);
-
             lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
                               LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-            if (active_pos ==
-                MAIN_PAGE_TYPE_LEFT) // || active_pos == MAIN_PAGE_TYPE_UP
+            if (active_pos == MAIN_PAGE_TYPE_LEFT)
             {
-                // if (lv_obj_is_valid(get_instruction_list_time_bg()))
-                //     lv_obj_set_style_bg_opa(get_instruction_list_time_bg(),
-                //     LV_OPA_80,
-                //                             0);
                 set_instruction_list_time_opa(LV_OPA_100);
             }
             else
             {
-                // if (lv_obj_is_valid(get_instruction_list_time_bg()))
-                //     lv_obj_set_style_bg_opa(get_instruction_list_time_bg(),
-                //     LV_OPA_0,
-                //                             0);
                 set_instruction_list_time_opa(LV_OPA_0);
             }
-            // lv_obj_set_style_bg_opa(myLancher[app_index_message].pagetileview,
-            //                         LV_OPA_80, 0);
             if (active_pos == MAIN_PAGE_TYPE_UP)
             {
                 set_clock_main_status_opa(LV_OPA_100, true);
@@ -524,14 +396,7 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         LOG_D("LV_EVENT_PRESSED_Clock");
         break;
     }
-    case LV_EVENT_RELEASED:
-    case LV_EVENT_SHORT_CLICKED:
-    case LV_EVENT_LONG_PRESSED:
-    case LV_EVENT_CLICKED:
-    case LV_EVENT_FOCUSED:
     default:
-        // printf("Released");
-
         break;
     }
 }
@@ -687,14 +552,11 @@ static void app_clock_main_device_change_bar_event_cb(lv_event_t *event)
 
 void animate_to_notification_center(void)
 {
-    // set_scroll_anim_time(true);
-    reset_tools_selection();
     lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
                       LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_tile_id(myLancher[app_index_message].pagetileview, 0, 1,
                        LV_ANIM_ON);
-    // set_scroll_anim_time(false);
 }
 
 void animate_to_home_from_notification_center(void)
@@ -741,13 +603,6 @@ void chack_tile_page(void)
           lv_obj_get_scroll_y(myLancher[app_index_message].pagetileview));
 }
 
-void animate_to_ai_page(void)
-{
-    /* Voice recognition tile was removed — AI UI lives inside the AI widget
-       on the instruction list layout. This function is kept as a no-op for
-       compatibility with existing callers. */
-}
-
 void animate_to_home_from_ai_page(void)
 {
     LOG_D("animate_to_home_from_ai_page");
@@ -758,8 +613,6 @@ void animate_to_home_from_ai_page(void)
 
 static app_media_t *p_app_media = NULL;
 static lv_obj_t *ble_mode_btn;
-static lv_obj_t *gesture_collect_btn;
-static lv_obj_t *gesture_select_icon;
 static lv_obj_t *dnd_mode_btn;
 static void calculator_btn_event_cb(lv_event_t *e)
 {
@@ -802,35 +655,6 @@ static void dnd_mode_btn_event_cb(lv_event_t *e)
     set_dnd_mode(mode);
 }
 
-extern bool imu_data_collection;
-extern bool imu_data_collection_error;
-static void gesture_collect_btn_event_cb(lv_event_t *e)
-{
-    if (gesture_collect_btn == NULL)
-    {
-        return;
-    }
-    if (imu_data_collection_error)
-    {
-        lv_obj_set_style_bg_opa(gesture_collect_btn, LV_OPA_10, 0);
-        lv_obj_set_style_bg_color(gesture_collect_btn, lv_color_hex(0xFFFFFF),
-                                  0);
-        imu_data_collection_error = false;
-        imu_data_collection = false;
-        watch_sys_sync.notify_imu_data_collection(imu_data_collection);
-        set_dnd_mode(false);
-    }
-    else
-    {
-        lv_obj_set_style_bg_opa(gesture_collect_btn, LV_OPA_90, 0);
-        lv_obj_set_style_bg_color(gesture_collect_btn, APP_MAIN_COLOR, 0);
-        imu_data_collection_error = true;
-        imu_data_collection = true;
-        watch_sys_sync.notify_imu_data_collection(imu_data_collection);
-        set_dnd_mode(true);
-    }
-}
-
 static void qrcode_btn_event_cb(lv_event_t *e)
 {
     // AppIntent intent = {0};
@@ -864,23 +688,6 @@ static void recorder_btn_event_cb(lv_event_t *e)
     animate_to_home_from_notification_center();
 }
 
-static void gesture_select_icon_event_cb(lv_event_t *e)
-{
-    if (gesture_tap_collection)
-    {
-        lv_obj_set_style_bg_opa(gesture_select_icon, LV_OPA_10, 0);
-        lv_obj_set_style_bg_color(gesture_select_icon, lv_color_hex(0xFFFFFF),
-                                  0);
-        gesture_tap_collection = false;
-    }
-    else
-    {
-        lv_obj_set_style_bg_opa(gesture_select_icon, LV_OPA_90, 0);
-        lv_obj_set_style_bg_color(gesture_select_icon, APP_MAIN_COLOR, 0);
-        gesture_tap_collection = true;
-    }
-}
-
 static void find_phone_btn_event_cb(lv_event_t *e)
 {
     control_provider.find_phone();
@@ -893,32 +700,6 @@ static void gesture_test_btn_event_cb(lv_event_t *e)
     animate_to_home_from_notification_center();
 }
 #endif
-
-// static void handle_media_play_state(void *param)
-// {
-//     if (lv_obj_is_valid(p_app_media->icon_btn_play_pause) == false)
-//     {
-//         return;
-//     }
-//     bool media_state = *(bool *)param;
-//     lv_obj_t *img = lv_obj_get_child(p_app_media->icon_btn_play_pause, 0);
-
-//     /* Change the image source */
-//     lv_img_set_src(img, media_state ? &img_media_pause : &img_media_play);
-// }
-
-// static void handle_media_title(void *param)
-// {
-//     if (lv_obj_is_valid(p_app_media->media_title) == false)
-//     {
-//         return;
-//     }
-//     char *media_title_text = (char *)param;
-//     if (media_title_text)
-//     {
-//         lv_label_set_text(p_app_media->media_title, media_title_text);
-//     }
-// }
 
 static datac_handle_t pwr_srv_hdl = DATA_CLIENT_INVALID_HANDLE;
 static lv_obj_t *brightness_bar;
@@ -1088,7 +869,6 @@ static void bar_event_cb(lv_event_t *e)
 extern void build_media_contorll_widget(app_media_t *p_app_media,
                                         lv_obj_t *parent);
 extern lv_obj_t *lv_media_widget_builder(lv_obj_t *parent);
-static lv_obj_t *tools[9] = {NULL};
 static lv_obj_t *control_center_window;
 static lv_obj_t *control_center_app_list = NULL;
 static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
@@ -1158,18 +938,6 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     return control_center_window;
 }
 
-extern void reset_media_widget(void);
-static void clean_tools_selection(void)
-{
-    for (int i = 0; i < 7; i++)
-    {
-        if (tools[i] != NULL)
-        {
-            lv_obj_set_style_border_opa(tools[i], LV_OPA_0, 0);
-        }
-    }
-    reset_media_widget();
-}
 static void scroll_control_center_to_top(void)
 {
     if (control_center_app_list && lv_obj_is_valid(control_center_app_list))
@@ -1184,127 +952,11 @@ static void scroll_control_center_to_top(void)
 
 void control_center_on_resume(void)
 {
-    // scroll_control_center_to_top();
-    // reset_tools_selection();
 }
 
 void control_center_on_pause(void)
 {
     scroll_control_center_to_top();
-}
-
-static uint8_t button_selection_index = 4;
-static void reset_tools_selection(void)
-{
-    for (int i = 0; i < 7; i++)
-    {
-        if (tools[i] != NULL)
-        {
-            lv_obj_set_style_border_opa(tools[i], LV_OPA_0, 0);
-        }
-    }
-    reset_media_widget();
-    button_selection_index = 4;
-    if (tools[1] != NULL)
-    {
-        lv_obj_set_style_border_opa(tools[1], LV_OPA_80, 0);
-    }
-}
-
-extern void selection_media_widget(uint8_t index);
-static void button_selection(gesture_position_t gesture_position)
-{
-    if (middle_layer_tileview_index != 3)
-    {
-        return;
-    }
-
-    const int p_x = gesture_position.gesture_position_x;
-    const int p_y = gesture_position.gesture_position_y;
-    LOG_D("button_selection p_x: %d, p_y: %d", p_x, p_y);
-    int category = 1;
-    if (p_y > 266)
-    {
-        if (p_x < 155)
-        {
-            category = 0; // Previous
-        }
-        else if (p_x < 310)
-        {
-            category = 1; // Play/Pause
-        }
-        else
-        {
-            category = 2; // Next
-        }
-    }
-    else if (p_y > 66)
-    {
-        if (p_x < 155)
-        {
-            category = 3; // Mouse Mode
-        }
-        else if (p_x < 310)
-        {
-            category = 4; // Flashlight
-        }
-        else
-        {
-            category = 5; // Recorder
-        }
-    }
-    else
-    {
-        category = 6; // Settings
-    }
-
-    if (button_selection_index == category || category == 6)
-    {
-        return;
-    }
-    button_selection_index = category;
-    motor_pattern_scrolling_app();
-    LOG_D("button_selection_index: %d", button_selection_index);
-    clean_tools_selection();
-    if (category > 2 && tools[category - 3] != NULL)
-    {
-        lv_obj_set_style_border_opa(tools[category - 3], LV_OPA_80, 0);
-    }
-    else
-    {
-        selection_media_widget(category);
-    }
-}
-
-static void press_event(uint8_t press)
-{
-    if (press == 0)
-    {
-        return;
-    }
-    switch (button_selection_index)
-    {
-    case CONTROL_BTN_MEDIA_PREV:
-        sys_media_event_set(SYS_EVENT_PREV);
-        break;
-    case CONTROL_BTN_MEDIA_PLAY_PAUSE:
-        sys_media_event_set(SYS_EVENT_PLAY_PAUSE);
-        break;
-    case CONTROL_BTN_MEDIA_NEXT:
-        sys_media_event_set(SYS_EVENT_NEXT);
-        break;
-    case CONTROL_BTN_CALCULATOR:
-        calculator_btn_event_cb(NULL);
-        break;
-    case CONTROL_BTN_FLASHLIGHT:
-        flishlight_icon_event_cb(NULL);
-        break;
-    case CONTROL_BTN_RECORDER:
-        recorder_btn_event_cb(NULL);
-        break;
-    default:
-        break;
-    }
 }
 
 extern bool get_bluetooth_broadcasting_status(void);
@@ -1328,16 +980,6 @@ void refresh_ble_mode_btn(void)
     }
 }
 
-static void app_clock_main_tileview_event(lv_event_t *event)
-{
-    lv_event_code_t code = lv_event_get_code(event);
-
-    if (code == LV_EVENT_PRESSED)
-    {
-        LOG_D("LV_EVENT_PRESSED_Tileview");
-    }
-}
-
 static lv_obj_t *pages[5];
 static bool test_mode = false;
 void open_test_mode(bool open)
@@ -1352,26 +994,9 @@ bool is_test_mode(void)
 
 static void set_clock_main_status_opa(uint8_t opa, bool mask)
 {
-    // if (lv_obj_is_valid(myLancher[app_index_message].pagetileview))
-    // {
-    //     lv_obj_set_style_bg_opa(myLancher[app_index_message].pagetileview,
-    //     opa,
-    //                             LV_PART_MAIN | LV_STATE_DEFAULT);
-    // }
-    // LOG_D("set_clock_main_status_opa opa: %d", opa);
-    // if (lv_obj_is_valid(gaus_dial_bg))
-    // {
-    //     lv_obj_set_style_bg_opa(gaus_dial_bg, opa,
-    //                             LV_PART_MAIN | LV_STATE_DEFAULT);
-    // }
+    (void)mask;
     if (lv_obj_is_valid(gaus_dial_img))
     {
-        uint8_t mask_traget_opa = LV_OPA_COVER;
-        // if (mask)
-        // {
-        //     mask_traget_opa = LV_OPA_COVER;
-        // }
-        uint8_t mask_opa = (opa);
         lv_obj_set_style_img_opa(gaus_dial_img, opa,
                                  LV_PART_MAIN | LV_STATE_DEFAULT);
     }
@@ -1385,30 +1010,6 @@ void set_clock_main_status_img(const void *img_src)
         lv_img_set_zoom(gaus_dial_img, 256 * 2);
         lv_obj_center(gaus_dial_img);
     }
-}
-
-extern uint8_t get_last_active_clock(void);
-static char *get_picture_name(void)
-{
-    static char name[64];
-    char folder[64];
-    snprintf(folder, sizeof(folder), "/JW_wf%u", get_last_active_clock());
-    DIR *dir = opendir(folder);
-    if (!dir)
-        return NULL;
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL)
-    {
-        if (strncmp(entry->d_name, "picture_", 8) == 0)
-        {
-            strncpy(name, entry->d_name + 8, sizeof(name) - 1);
-            name[sizeof(name) - 1] = '\0';
-            closedir(dir);
-            return name;
-        }
-    }
-    closedir(dir);
-    return NULL;
 }
 
 static lv_obj_t *status_bar_bg_main = NULL;
@@ -1433,40 +1034,6 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
                             LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_center(gaus_dial_bg);
     lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-    // char dst_path[64];
-    // if (get_last_active_clock() == 2 || get_last_active_clock() == 3)
-    // {
-    //     char *filename = get_picture_name();
-    //     if (filename != NULL)
-    //     {
-    //         snprintf(dst_path, sizeof(dst_path),
-    //         "/assets/gaus_images/gaus_%s",
-    //                  filename);
-    //     }
-    //     else
-    //     {
-    //         snprintf(dst_path, sizeof(dst_path),
-    //                  "/assets/gaus_images/gaus_default_picture.bin");
-    //     }
-    // }
-    // else if (get_last_active_clock() == 1)
-    // {
-    //     strncpy(dst_path, "/assets/gaus_images/gaus_clock1_bg.bin",
-    //             sizeof(dst_path));
-    //     dst_path[sizeof(dst_path) - 1] = '\0';
-    // }
-    // else if (get_last_active_clock() == 4)
-    // {
-    //     strncpy(dst_path, "/assets/gaus_images/gaus_clock4_bg.bin",
-    //             sizeof(dst_path));
-    //     dst_path[sizeof(dst_path) - 1] = '\0';
-    // }
-    // else if (get_last_active_clock() == 5)
-    // {
-    //     strncpy(dst_path, "/assets/gaus_images/gaus_clock5_bg.bin",
-    //             sizeof(dst_path));
-    //     dst_path[sizeof(dst_path) - 1] = '\0';
-    // }
     gaus_dial_img = lv_img_create(gaus_dial_bg);
     lv_img_set_src(gaus_dial_img, GAUS_CLOCK1_BG);
     lv_obj_set_style_img_opa(gaus_dial_img, LV_OPA_0,
@@ -1619,25 +1186,8 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
             }
             lv_obj_set_size(pages[i], LV_HOR_RES_MAX, LV_VER_RES_MAX);
             lv_obj_set_scrollbar_mode(pages[i], LV_SCROLLBAR_MODE_OFF);
-            // lv_obj_add_event_cb(pages[i], app_clock_main_tileview_event,
-            // LV_EVENT_ALL, NULL);
         }
     }
-    // pages[2] = lv_tileview_add_tile(app_clock_main_status_bar, 0, 1,
-    // LV_DIR_RIGHT); if (TILEVIEW_HIDDEN_CLOSE)
-    // {
-    //     lv_obj_set_style_bg_opa(pages[2], LV_OPA_50, LV_PART_MAIN |
-    //     LV_STATE_DEFAULT);
-    // }
-    // else
-    // {
-    //     lv_obj_set_style_bg_opa(pages[2], LV_OPA_TRANSP, LV_PART_MAIN |
-    //     LV_STATE_DEFAULT);
-    // }
-    // lv_obj_set_style_bg_color(pages[2], LV_COLOR_BLACK, LV_PART_MAIN |
-    // LV_STATE_DEFAULT); lv_obj_set_size(pages[2], LV_HOR_RES_MAX,
-    // LV_VER_RES_MAX); lv_obj_set_scrollbar_mode(pages[2],
-    // LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
     lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
     control_center_layout_create(pages[CONTROL_CENTER_PAGE_INDEX]);

@@ -38,68 +38,6 @@ static device_list_ui_t g_dev_list_ui = {0};
 static void device_item_click_callback(lv_event_t *e);
 
 /**
- * @brief Update add button appearance based on pairing mode state
- */
-static void update_add_button_appearance(void)
-{
-    if (!g_dev_list_ui.add_btn || !g_dev_list_ui.add_btn_label)
-    {
-        return;
-    }
-
-    if (g_dev_list_ui.is_pairing_mode)
-    {
-        // Pairing mode active - show as green "Stop Pairing" button
-        lv_obj_set_style_bg_color(g_dev_list_ui.add_btn, lv_color_hex(0x00AA00), 0);
-        lv_obj_set_style_bg_color(g_dev_list_ui.add_btn, lv_color_hex(0x008800), LV_STATE_PRESSED);
-        lv_label_set_text(g_dev_list_ui.add_btn_label, LV_SYMBOL_CLOSE " Stop Pairing");
-    }
-    else
-    {
-        // Normal mode - show as blue "Add New Device" button
-        lv_obj_set_style_bg_color(g_dev_list_ui.add_btn, lv_color_hex(0x0066CC), 0);
-        lv_obj_set_style_bg_color(g_dev_list_ui.add_btn, lv_color_hex(0x0055AA), LV_STATE_PRESSED);
-        lv_label_set_text(g_dev_list_ui.add_btn_label, LV_SYMBOL_PLUS " Add New Device");
-    }
-}
-
-/**
- * @brief Get device type icon name
- */
-static const char *get_device_type_icon(uint8_t device_type)
-{
-    switch (device_type)
-    {
-    case DEVICE_TYPE_PHONE:
-        return "phone"; // TODO: Use actual icon resource
-    case DEVICE_TYPE_COMPUTER:
-        return "computer";
-    case DEVICE_TYPE_TABLET:
-        return "tablet";
-    default:
-        return "bluetooth";
-    }
-}
-
-/**
- * @brief Get device type name
- */
-static const char *get_device_type_name(uint8_t device_type)
-{
-    switch (device_type)
-    {
-    case DEVICE_TYPE_PHONE:
-        return "Phone";
-    case DEVICE_TYPE_COMPUTER:
-        return "Computer";
-    case DEVICE_TYPE_TABLET:
-        return "Tablet";
-    default:
-        return "Device";
-    }
-}
-
-/**
  * @brief Create a device list item
  */
 static lv_obj_t *create_device_list_item(lv_obj_t *parent, const bonded_device_t *device,
@@ -272,19 +210,6 @@ static void device_item_click_callback(lv_event_t *e)
     if (LV_EVENT_SHORT_CLICKED == event)
     {
         LOG_D("Device item clicked: idx=%d, name=%s", device_idx, dev->device_name);
-        // Short click: Switch to target device and start advertising
-        // if (dev->conn_idx != 0xFF)
-        // {
-        //     // Device is already connected, set it as active
-        //     LOG_I("Device [%d] already connected, setting as active: %s", device_idx, dev->device_name);
-        //     ble_dev_mgr_set_active_device(device_idx);
-        // }
-        // else
-        // {
-        //     // Device is not connected, start targeted advertising
-        //     LOG_I("Starting targeted advertising for device [%d]: %s", device_idx, dev->device_name);
-        //     ble_app_start_targeted_advertising(device_idx);
-        // }
         ble_dev_mgr_connect_device(device_idx);
     }
     else if (LV_EVENT_LONG_PRESSED == event)
@@ -353,19 +278,6 @@ static void pairing_switch_event_callback(lv_event_t *e)
         bool is_on = lv_obj_has_state(sw, LV_STATE_CHECKED);
 
         g_dev_list_ui.is_pairing_mode = is_on;
-
-        // if (is_on)
-        // {
-        //     LOG_I("Pairing mode enabled - open advertising");
-        //     // Restart advertising in pairing mode to allow all devices to discover the watch
-        //     ble_app_advertising_start(SkaiWatchSys.gap_conn_state == GAP_CONN_STATE_DISCONNECTED, true, false);
-        // }
-        // else
-        // {
-        //     LOG_I("Pairing mode disabled - whitelist advertising");
-        //     // Restart advertising in whitelist mode (only paired devices can connect)
-        //     ble_app_advertising_start(SkaiWatchSys.gap_conn_state == GAP_CONN_STATE_DISCONNECTED, false, false);
-        // }
     }
 }
 

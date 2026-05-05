@@ -68,28 +68,12 @@
 
 LV_IMG_DECLARE(img_clock);
 LV_IMG_DECLARE(img_settings);
-// LV_IMG_DECLARE(img_activity);
-// LV_IMG_DECLARE(img_flashlight);
 LV_IMG_DECLARE(img_messages);
 LV_IMG_DECLARE(weather);
 LV_IMG_DECLARE(football_card);
 
 #define LIST_ITEM_WIDTH (88)
 #define LIST_ITEM_HEIGHT (88)
-#define LIST_ITEM_SPACING (60)
-#define LIST_RADIUS (363)
-#define LIST_ITEM_RADIUS (240)
-#define LIST_ITEM_BORDER_SIDE LV_BORDER_SIDE_RIGHT
-#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
-
-static MyWidget_T myWidget[WIDGET_NULL];
-
-// Data structures
-typedef struct
-{
-	const char *title;
-	const char *icon;
-} calendar_list_item_t;
 
 typedef struct
 {
@@ -106,23 +90,6 @@ calendar_model_t *get_on_coming_calendar_model(void)
 {
 	return &one_calendar_data;
 }
-
-// Styles
-static const lv_style_const_prop_t CALENDAR_ITEM_STYLE_PROPS[] = {
-	LV_STYLE_CONST_WIDTH(LIST_ITEM_WIDTH),
-	LV_STYLE_CONST_HEIGHT(LIST_ITEM_HEIGHT),
-	LV_STYLE_PROP_INV,
-};
-
-static const lv_style_const_prop_t CALENDAR_ITEM_TITLE_STYLE_PROPS[] = {
-	LV_STYLE_CONST_TEXT_FONT(&lv_font_montserrat_14),
-	LV_STYLE_CONST_TEXT_COLOR(LV_COLOR_MAKE(0xFF, 0xFF, 0xFF)),
-	LV_STYLE_CONST_BG_COLOR(LV_COLOR_MAKE(0, 0, 0)),
-	LV_STYLE_PROP_INV,
-};
-
-LV_STYLE_CONST_INIT(CALENDAR_ITEM_STYLE, CALENDAR_ITEM_STYLE_PROPS);
-LV_STYLE_CONST_INIT(CALENDAR_ITEM_TITLE_STYLE, CALENDAR_ITEM_TITLE_STYLE_PROPS);
 
 // Forward declarations
 static lv_obj_t *calendar_tileview_builder(lv_obj_t *parent);
@@ -145,32 +112,6 @@ void convert_to_tm(T_UTC_TIME *src, struct tm *dst)
 }
 
 /**
- * @brief Event handler for scroll events
- */
-static void list_window_scroll_event_cb(lv_event_t *evt)
-{
-	lv_obj_t *obj = evt->target;
-	lv_obj_mark_layout_as_dirty(obj);
-}
-
-/**
- * @brief Handler for item tap
- */
-static void on_item_tap(calendar_list_item_t *item)
-{
-	// Placeholder for item tap handling
-}
-
-/**
- * @brief Event handler for list item clicks
- */
-static void list_item_click_event_cb(lv_event_t *evt)
-{
-	calendar_list_item_t *item = (calendar_list_item_t *)evt->user_data;
-	on_item_tap(item);
-}
-
-/**
  * @brief Event handler for calendar navigation
  */
 static void set_button_selection(bool reset);
@@ -185,14 +126,6 @@ void calendar_event(lv_event_t *e)
 		rt_uint32_t active_pos = (rt_uint32_t)lv_event_get_param(e);
 		if (active_pos != old_active_pos)
 		{
-			// if (active_pos != 0)
-			// {
-			// 	myList[active_pos - 1].reset_list_top(active_pos - 1);
-			// }
-			// if (active_pos != 6)
-			// {
-			// 	myList[active_pos + 1].reset_list_down(active_pos + 1);
-			// }
 			old_active_pos = active_pos;
 			set_button_selection(true);
 			force_release_finger();
@@ -238,11 +171,6 @@ static lv_obj_t *calendar_tileview_builder(lv_obj_t *parent)
 		// Add scroll indicator if not the last page
 		if (i != 6)
 		{
-			// lv_obj_t *down_grip_img = lv_obj_create(pages[i]);
-			// lv_obj_set_size(down_grip_img, 50, 10);
-			// lv_obj_align(down_grip_img, LV_ALIGN_BOTTOM_MID, 0, 0);
-			// lv_obj_set_style_bg_color(down_grip_img, lv_color_hex(0x5B5B5B), 0);
-
 			lv_obj_t *down_grip = lv_obj_create(pages[i]);
 			lv_obj_set_size(down_grip, 466, 40);
 			lv_obj_align(down_grip, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -250,27 +178,6 @@ static lv_obj_t *calendar_tileview_builder(lv_obj_t *parent)
 			lv_obj_set_style_opa(down_grip, LV_OPA_0, 0);
 		}
 
-		// if (i == 0)
-		// {
-		// 	lv_obj_t *next_day_img = lv_img_create(pages[i]);
-		// 	lv_img_set_src(next_day_img, NEXT_ARROW);
-		// 	lv_obj_align(next_day_img, LV_ALIGN_RIGHT_MID, 5, 0);
-		// }
-		// else if (i == 6)
-		// {
-		// 	lv_obj_t *previous_day_img = lv_img_create(pages[i]);
-		// 	lv_img_set_src(previous_day_img, PREVIOUS_ARROW);
-		// 	lv_obj_align(previous_day_img, LV_ALIGN_LEFT_MID, -5, 0);
-		// }
-		// else
-		// {
-		// 	lv_obj_t *next_day_img = lv_img_create(pages[i]);
-		// 	lv_img_set_src(next_day_img, NEXT_ARROW);
-		// 	lv_obj_align(next_day_img, LV_ALIGN_RIGHT_MID, 5, 0);
-		// 	lv_obj_t *previous_day_img = lv_img_create(pages[i]);
-		// 	lv_img_set_src(previous_day_img, PREVIOUS_ARROW);
-		// 	lv_obj_align(previous_day_img, LV_ALIGN_LEFT_MID, -5, 0);
-		// }
 		// Create top header bar
 		lv_obj_t *header_bar = lv_obj_create(pages[i]);
 		lv_obj_set_size(header_bar, 466, 70);
@@ -447,8 +354,6 @@ lv_obj_t *lv_calendar_widget_builder(lv_obj_t *parent, calendar_model_t *calenda
 	lv_obj_set_size(widget, 400, 230);
 	lv_obj_set_style_bg_color(widget, lv_color_hex(0x000000), 0);
 	// lv_obj_set_style_bg_opa(widget, LV_OPA_70, 0);
-	T_UTC_TIME time_now = SkaiWatchSys.Global_Time;
-	char date_str[10];
 
 	lv_obj_t *event_category = lv_obj_create(widget);
 	lv_obj_set_size(event_category, 10, 35);
@@ -492,7 +397,6 @@ void refresh_calendar_model(calendar_model_t *calendar_model, calendar_event_t *
 		return;
 	}
 
-	T_UTC_TIME time_now = SkaiWatchSys.Global_Time;
 	char date_str[32];
 
 	// Validate UI objects
@@ -535,8 +439,6 @@ void calendar_today_refresh(void)
 	if (!calendar_day || calendar_day->event_count == 0)
 	{
 		// 沒有日曆事件時的處理
-		T_UTC_TIME time_now = SkaiWatchSys.Global_Time;
-		char date_str[32];
 
 		// Validate UI objects
 		if (
@@ -840,13 +742,6 @@ static void on_start(lv_obj_t *parent)
 
 	memset(p_app_calendar, 0, sizeof(app_calendar_t));
 
-	// Ensure we have some default calendar data if no real data exists
-	// calendar_t *day0_calendar = get_calendar_day(0);
-	// if (day0_calendar == NULL || day0_calendar->event_count == 0) {
-	// 	LOG_D("No calendar data found, creating default events");
-	// 	get_calendar_list_from_template();
-	// }
-
 	// Create main window
 	p_app_calendar->main_window = calendar_tileview_builder(parent);
 	myLancher[app_index_calendar_list].pagetileview = p_app_calendar->main_window;
@@ -860,7 +755,6 @@ static void on_start(lv_obj_t *parent)
  */
 static void on_resume(void)
 {
-	// switch_watch_motion_control_mode(true, false);
 	set_open_control_options(true);
 	set_free_control_with_arm(false);
 	set_media_control_threshold(1000);

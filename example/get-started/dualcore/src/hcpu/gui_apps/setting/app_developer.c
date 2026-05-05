@@ -120,8 +120,6 @@ static void ble_log_sw_event_callback(lv_event_t *e);
 static void file_log_sw_event_callback(lv_event_t *e);
 static void accel_sub_unsub_sw_event_callback(lv_event_t *e);
 static void hr_sub_unsub_sw_event_callback(lv_event_t *e);
-static void imu_data_collection_sw_event_callback(lv_event_t *e);
-static void imu_data_collection_error_sw_event_callback(lv_event_t *e);
 extern void imu_raw_data_collection_sw_event_callback(lv_event_t *e);
 static void ppg_data_collection_sw_event_callback(lv_event_t *e);
 static void tap_and_hold_sw_event_callback(lv_event_t *e);
@@ -147,7 +145,6 @@ static lv_obj_t *attitude_data_label;
 static lv_obj_t *hr_data_label;
 static lv_obj_t *battery_voltage_label;
 static lv_obj_t *battery_percentage_label;
-static lv_obj_t *slider;
 static lv_timer_t *battery_request_timer = NULL;
 static bool battery_request_enabled = false;
 static lv_obj_t *reset_restart_num_btn = NULL;
@@ -601,16 +598,6 @@ static void handle_battery_percentage(uint8_t percentage)
 }
 #endif
 
-static int32_t wheel_handler(int16_t diff, lv_indev_state_t event, void *user_data)
-{
-    LOG_D("wheel_handler: diff = %d, event = %d", diff, event);
-    if (diff != 0)
-    {
-        lv_slider_set_value(slider, lv_slider_get_value(slider) + diff, LV_ANIM_ON);
-    }
-    return 0;
-}
-
 static void on_start(void)
 {
     lv_create_dev_screen();
@@ -626,8 +613,6 @@ static void on_start(void)
     // Start FS info update timer
     fs_update_timer = lv_timer_create(fs_update_info_cb, 1000, NULL);
     fs_update_info_cb(NULL); // Initial update
-
-    // wheel_default_handler_register(wheel_handler, NULL);
 }
 
 static void on_resume(void)
@@ -664,8 +649,6 @@ static void on_stop(void)
         battery_request_timer = NULL;
     }
     battery_request_enabled = false;
-
-    // wheel_default_handler_register(NULL, NULL);
 }
 
 static void msg_handler(gui_app_msg_type_t msg, void *param)

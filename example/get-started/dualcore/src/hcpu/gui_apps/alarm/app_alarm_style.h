@@ -13,7 +13,6 @@
 /* Colors — borrowed from iOS / Apple Watch dark mode. */
 #define ALARM_COLOR_BG              lv_color_hex(0x000000)
 #define ALARM_COLOR_CARD            lv_color_hex(0x1C1C1E)
-#define ALARM_COLOR_DIVIDER         lv_color_hex(0x2C2C2E)
 #define ALARM_COLOR_NEUTRAL         lv_color_hex(0x2C2C2E)
 #define ALARM_COLOR_TEXT_PRIMARY    lv_color_hex(0xFFFFFF)
 #define ALARM_COLOR_TEXT_SECONDARY  lv_color_hex(0x8E8E93)

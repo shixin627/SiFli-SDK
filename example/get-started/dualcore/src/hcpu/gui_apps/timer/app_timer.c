@@ -83,11 +83,7 @@
 #ifdef APP_ID_TIMER
 
 // Exercise app style constants
-#define LIST_TIMER_HEIGHT (200)
-#define LIST_TIMER_WIDGET_RADIUS (40)
-#define LIST_TIMER_BG_COLOR (0x1E1E1E)
 #define LIST_TIMER_ACCENT_COLOR (0xFF9500)  /* iOS 風格橘 — 同時用於 title 跟 pie indicator */
-#define LIST_TIMER_ROW_SPACING (50)
 
 // 圓形圖示列表佈局常數（與 app_exercise.c 同樣的視覺規格）
 #define TIMER_OPTION_COUNT 12
@@ -199,7 +195,6 @@ static void timer_list_nav_control(int8_t action);
 static void refresh_pause_button_icon(void);
 
 // 追蹤當前選中的timer選項索引
-static int16_t old_selected_timer_index = -1;
 static int16_t selected_timer_index = 0;
 
 // Create data bindings
@@ -241,10 +236,6 @@ static void remove_countdown_timer(void)
 }
 
 static bool _timeout = false;
-static void set_timeout(bool status)
-{
-    _timeout = status;
-}
 
 /**
  * @brief Callback for the countdown timer
@@ -262,7 +253,7 @@ static void countdown_timer_cb(void *parameter)
 
         if (app_timer_data_ctx.remaining_time == 0)
         {
-            set_timeout(true);
+            _timeout = true;
             watch_system_interact(INTERACT_TIMER_REMINDER, NULL);
             LOG_D("Timer finished");
         }
@@ -345,7 +336,6 @@ static void refresh_ui(lv_obj_t *_, void *para)
     if (app_timer_data_ctx.remaining_time == 0)
     {
         show_counter_listview();
-        // remove_countdown_timer();
         show_timeout_notification();
         motor_pattern_timer_reminder();
     }
@@ -365,37 +355,21 @@ static void tap_button(lv_obj_t *btn)
         return;
     }
 
-    const char *text = (const char *)lv_obj_get_user_data(btn);
-    if (strcmp(text, "30 secs") == 0)
-        app_timer_data_ctx.remaining_time = 30;
-    else if (strcmp(text, "1 min") == 0)
-        app_timer_data_ctx.remaining_time = 60;
-    else if (strcmp(text, "2 mins") == 0)
-        app_timer_data_ctx.remaining_time = 120;
-    else if (strcmp(text, "3 mins") == 0)
-        app_timer_data_ctx.remaining_time = 180;
-    else if (strcmp(text, "4 mins") == 0)
-        app_timer_data_ctx.remaining_time = 240;
-    else if (strcmp(text, "5 mins") == 0)
-        app_timer_data_ctx.remaining_time = 300;
-    else if (strcmp(text, "10 mins") == 0)
-        app_timer_data_ctx.remaining_time = 600;
-    else if (strcmp(text, "15 mins") == 0)
-        app_timer_data_ctx.remaining_time = 900;
-    else if (strcmp(text, "20 mins") == 0)
-        app_timer_data_ctx.remaining_time = 1200;
-    else if (strcmp(text, "25 mins") == 0)
-        app_timer_data_ctx.remaining_time = 1500;
-    else if (strcmp(text, "30 mins") == 0)
-        app_timer_data_ctx.remaining_time = 1800;
-    else if (strcmp(text, "1 hour") == 0)
-        app_timer_data_ctx.remaining_time = 3600;
+    /* user_data 在 create_timer_list 是設成 (intptr_t)i 編碼的索引 */
+    int idx = (int)(intptr_t)lv_obj_get_user_data(btn);
+    if (idx >= 0 && idx < TIMER_OPTION_COUNT)
+    {
+        app_timer_data_ctx.remaining_time = timer_seconds[idx];
+    }
     else
+    {
         app_timer_data_ctx.remaining_time = 0;
+        idx = 0;
+    }
 
     create_timer_data_bindings();
     update_timer_label();
-    show_new_timer_view(text);
+    show_new_timer_view(timer_options[idx]);
     create_countdown_timer();
 }
 
@@ -696,7 +670,6 @@ static void apply_circular_layout(lv_obj_t *list)
 static void scroll_timer_list(lv_obj_t *list)
 {
     apply_circular_layout(list);
-    old_selected_timer_index = selected_timer_index;
 }
 
 // timer列表滾動事件處理
@@ -719,12 +692,7 @@ static void timer_list_scroll_event_cb(lv_event_t *e)
 // 滾動到指定的timer選項 - 用於體感控制
 static void scroll_timer_list_to_index(int8_t index)
 {
-    // 計算選項數量
-    int option_count = 0;
-    while (timer_options[option_count][0] != '\0')
-        option_count++;
-
-    if (index < 0 || index >= option_count)
+    if (index < 0 || index >= TIMER_OPTION_COUNT)
     {
         LOG_W("Timer index out of bounds: %d", index);
         return;
@@ -811,7 +779,7 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
         lv_obj_add_flag(timer_icons[i], LV_OBJ_FLAG_FLOATING);
         lv_obj_add_flag(timer_icons[i], LV_OBJ_FLAG_OVERFLOW_VISIBLE);
         lv_obj_add_flag(timer_icons[i], LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_user_data(timer_icons[i], (void *)timer_options[i]);
+        lv_obj_set_user_data(timer_icons[i], (void *)(intptr_t)i);
         lv_obj_add_event_cb(timer_icons[i], timer_list_event_cb,
                             LV_EVENT_CLICKED, NULL);
 
@@ -872,7 +840,6 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
 
     /* 預設選中第一個項目 */
     selected_timer_index = 0;
-    old_selected_timer_index = -1;
     lv_obj_scroll_to_view(lv_obj_get_child(list, 0), LV_ANIM_OFF);
     apply_circular_layout(list);
 
@@ -985,7 +952,7 @@ static void close_timeout_notification_cb(lv_event_t *e)
         }
         timeout_msg_box = NULL;
     }
-    set_timeout(false);
+    _timeout = false;
     remove_countdown_timer();
     show_counter_listview();
     setting_provider.set_power_save_mode(1);
@@ -1144,11 +1111,6 @@ static void on_resume(void)
 {
     refresh_timer_status();
 
-    // 計算選項數量用於設置segment count
-    int option_count = 0;
-    while (timer_options[option_count][0] != '\0')
-        option_count++;
-
     // 根據當前狀態設置不同的handler
     if (app_timer_data_ctx.countdown_timer)
     {
@@ -1165,7 +1127,7 @@ static void on_resume(void)
     else
     {
         // timer列表模式 - 啟用列表滾動控制
-        set_scroll_segment_count(option_count);
+        set_scroll_segment_count(TIMER_OPTION_COUNT);
         set_prev_sensor_quat(0);
         set_open_control_options(false);
         set_free_control_with_arm(true);
@@ -1202,7 +1164,6 @@ static void on_stop(void)
 
     // Reset app context
     memset(&ui, 0, sizeof(timer_ui_t));
-    old_selected_timer_index = -1;
     selected_timer_index = 0;
     _timeout = false;
     setting_provider.set_power_save_mode(1);

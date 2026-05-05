@@ -2,7 +2,6 @@
  *      INCLUDES
  *********************/
 #include <rtthread.h>
-#include <rtdevice.h>
 #include "littlevgl2rtt.h"
 #include "gui_app_fwk.h"
 #include "lv_ext_resource_manager.h"

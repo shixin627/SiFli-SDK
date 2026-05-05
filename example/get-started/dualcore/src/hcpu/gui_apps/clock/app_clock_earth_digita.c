@@ -43,14 +43,12 @@ static app_clock_earth_digital_t *p_clk_earth_digital = NULL;
 static void app_clock_earth_digital_redraw(lv_timer_t *task)
 {
     app_clock_time_t current_time;
-    rt_uint8_t hours, minutes, seconds;
+    rt_uint8_t hours, minutes;
     static char time_buf[8];
-    static char date_buf[32];
 
     app_clock_main_get_current_time(&current_time);
     hours = current_time.h;
     minutes = current_time.m;
-    seconds = current_time.s;
 
     // Update hour display with images
     int hour_0 = hours / 10;
@@ -95,7 +93,6 @@ static rt_int32_t pause_callback(void)
     return RT_EOK;
 }
 
-// #define CHECK_CLOCK
 lv_obj_t *lv_earth_digital_layout_create(lv_obj_t *parent)
 {
     p_clk_earth_digital = (app_clock_earth_digital_t *)rt_malloc(
@@ -154,21 +151,10 @@ lv_obj_t *lv_earth_digital_layout_create(lv_obj_t *parent)
     lv_obj_set_style_img_opa(p_clk_earth_digital->minute_1_img, LV_OPA_70, 0);
     lv_obj_center(p_clk_earth_digital->minute_1_img);
 
-#ifdef CHECK_CLOCK
-    lv_obj_set_style_border_width(h_0, 1, 0);
-    lv_obj_set_style_border_color(h_0, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_width(h_1, 1, 0);
-    lv_obj_set_style_border_color(h_1, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_width(m_0, 1, 0);
-    lv_obj_set_style_border_color(m_0, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_width(m_1, 1, 0);
-    lv_obj_set_style_border_color(m_1, lv_color_hex(0xFFFFFF), 0);
-#else
     lv_obj_set_style_bg_opa(h_0, LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_opa(h_1, LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_opa(m_0, LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_opa(m_1, LV_OPA_TRANSP, 0);
-#endif
 
     p_clk_earth_digital->earth_img = lv_img_create(p_clk_earth_digital->bg);
     lv_img_set_src(p_clk_earth_digital->earth_img, &img_earth_digital_bg);

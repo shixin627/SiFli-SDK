@@ -53,8 +53,6 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <math.h>
-#include <time.h>
-#include <cJSON.h>
 #include "sensor.h"
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
@@ -80,7 +78,6 @@
 #ifdef BSP_USING_UI_HANDLER
     #include "ui_handler.h"
 #endif
-#define ICON_LIST_X_OFFSET (-10)
 #define ICON_ITEM_SIZE 80
 #define ICON_ZOOM_CENTER 256
 #define ICON_ZOOM_MIN 128
@@ -135,8 +132,6 @@ LV_IMG_DECLARE(img_media_play);
 LV_IMG_DECLARE(img_media_pause);
 LV_IMG_DECLARE(img_red_heart);
 LV_IMG_DECLARE(gaus_clock1_bg);
-
-extern void refresh_heartrate_widget(uint8_t hr);
 
 typedef struct
 {
@@ -252,24 +247,20 @@ static void workout_timer_cb(void *parameter)
 
 static void ui_heart_rate_callback(int hr)
 {
-    // if (hr != current_session.heart_rate)
-    {
-        LOG_D("[UI]Heart rate changed: %d", hr);
-        char bpm_str[16];
-        snprintf(bpm_str, sizeof(bpm_str), "%d", current_session.heart_rate);
+    LOG_D("[UI]Heart rate changed: %d", hr);
+    char bpm_str[16];
+    snprintf(bpm_str, sizeof(bpm_str), "%d", current_session.heart_rate);
 
-        // Update workout screen heart rate label
-        if (lv_obj_is_valid(ui.heart_rate_label))
-        {
-            lv_label_set_text(ui.heart_rate_label, bpm_str);
-        }
-        snprintf(bpm_str, sizeof(bpm_str), "%d", hr);
-        // Update title heart rate label
-        if (lv_obj_is_valid(ui.title_heart_rate_label))
-        {
-            lv_label_set_text(ui.title_heart_rate_label, bpm_str);
-        }
-        // refresh_heartrate_widget(hr);
+    // Update workout screen heart rate label
+    if (lv_obj_is_valid(ui.heart_rate_label))
+    {
+        lv_label_set_text(ui.heart_rate_label, bpm_str);
+    }
+    snprintf(bpm_str, sizeof(bpm_str), "%d", hr);
+    // Update title heart rate label
+    if (lv_obj_is_valid(ui.title_heart_rate_label))
+    {
+        lv_label_set_text(ui.title_heart_rate_label, bpm_str);
     }
 }
 
@@ -495,7 +486,6 @@ static void workout_list_event_cb(lv_event_t *e)
     }
 }
 
-static uint16_t old_selected_exercise_index = -1;
 static uint16_t selected_exercise_index = 0;
 static void press_cb(uint8_t press)
 {
@@ -582,23 +572,6 @@ static void label_tap_zone_click_cb(lv_event_t *e)
         !lv_obj_has_flag(icon, LV_OBJ_FLAG_HIDDEN))
     {
         lv_event_send(icon, LV_EVENT_CLICKED, NULL);
-    }
-}
-
-static void update_workout_name_label(void)
-{
-    if (selected_exercise_index >= WORKOUT_COUNT) return;
-    for (int j = 0; j < WORKOUT_COUNT; j++)
-    {
-        if (!lv_obj_is_valid(workout_name_labels[j])) continue;
-        if (j == selected_exercise_index)
-        {
-            lv_obj_clear_flag(workout_name_labels[j], LV_OBJ_FLAG_HIDDEN);
-        }
-        else
-        {
-            lv_obj_add_flag(workout_name_labels[j], LV_OBJ_FLAG_HIDDEN);
-        }
     }
 }
 
@@ -694,11 +667,8 @@ static void apply_circular_layout(lv_obj_t *list)
 static void scroll_list(lv_obj_t *obj)
 {
     /* apply_circular_layout 已經依 scroll_y 算出 closest_i，更新
-     * selected_exercise_index，並切換 label 顯示。這裡只剩 old_selected
-     * 偵測，避免重複工作 */
+     * selected_exercise_index，並切換 label 顯示 */
     apply_circular_layout(obj);
-
-    old_selected_exercise_index = selected_exercise_index;
 }
 
 static void list_scroll_event_cb(lv_event_t *evt)

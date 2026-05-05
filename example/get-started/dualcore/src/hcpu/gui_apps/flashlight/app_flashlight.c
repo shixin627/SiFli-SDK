@@ -59,7 +59,6 @@ typedef struct
 
 /* Forward declarations */
 static void toggle_flashlight_btn_event_cb(lv_event_t *e);
-static void tap_change_flashlight_state(void);
 static int powermgr_srv_callback(data_callback_arg_t *arg);
 static void set_amoled_brightness(uint8_t brightness);
     #if USE_RGB_CONTROL_PANEL
@@ -144,30 +143,6 @@ static void toggle_flashlight_btn_event_cb(lv_event_t *e)
     {
         handle_gesture_event(1);
     }
-}
-
-/**
- * @brief Creates a flashlight background widget
- *
- * @param parent Parent object
- * @return lv_obj_t* Created widget
- */
-static lv_obj_t *flashlight_on_widget(lv_obj_t *parent)
-{
-    lv_obj_t *flashlight_on = lv_obj_create(parent);
-    lv_obj_set_size(flashlight_on, 466, 466);
-    lv_obj_set_style_bg_color(flashlight_on, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align(flashlight_on, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_flag(flashlight_on, LV_OBJ_FLAG_HIDDEN);
-    return flashlight_on;
-}
-
-/**
- * @brief Changes flashlight state and opens app on tap
- */
-static void tap_change_flashlight_state(void)
-{
-    gui_app_run(APP_ID_FLASHLIGHT);
 }
 
 /**

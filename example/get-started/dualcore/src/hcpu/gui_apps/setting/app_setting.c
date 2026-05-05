@@ -76,11 +76,6 @@ LV_IMG_DECLARE(dn);
 LV_IMG_DECLARE(language);
 LV_IMG_DECLARE(airplane);
 LV_IMG_DECLARE(clock_40);
-LV_IMG_DECLARE(clock_80);
-LV_IMG_DECLARE(clock_100);
-
-LV_IMG_DECLARE(img_stocks);
-LV_IMG_DECLARE(img_game);
 LV_IMG_DECLARE(icon_release);
 
 /**
@@ -939,9 +934,6 @@ static void on_start(lv_obj_t *scr)
     memset(p_app_setting, 0, sizeof(app_setting_t));
 
     app_setting_init(NULL);
-#if 0
-    cust_trans_anim_config(CUST_ANIM_TYPE_0, NULL);
-#else
     gui_app_trans_anim_t enter_anim_cfg, exit_anim_cfg;
 
     gui_app_trans_anim_init_cfg(&enter_anim_cfg, GUI_APP_TRANS_ANIM_NONE);
@@ -951,7 +943,6 @@ static void on_start(lv_obj_t *scr)
     gui_app_set_exit_trans_anim(&exit_anim_cfg);
 
     gui_app_set_trans_anim_prio(1, -1);
-#endif
 }
 static void on_resume(void)
 {

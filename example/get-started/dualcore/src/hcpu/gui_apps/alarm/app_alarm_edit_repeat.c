@@ -2,14 +2,13 @@
  *      INCLUDES
  *********************/
 #include <rtthread.h>
-#include <rtdevice.h>
 #include "littlevgl2rtt.h"
 #include "gui_app_fwk.h"
 #include "lv_ext_resource_manager.h"
 #include "alarm_manager_service.h"
-#include "alarm_client.h"
 #include "ui_datasrv_subscriber.h"
 #include "ui_helper.h"
+#include "alarm_client.h"
 #include "app_alarm_style.h"
 
 #define DBG_TAG "APP.ALARM.ER"

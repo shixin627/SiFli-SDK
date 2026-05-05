@@ -5,7 +5,6 @@
 #include "lv_ext_resource_manager.h"
 #include "ui_datasrv_subscriber.h"
 #include "power_manager_service.h"
-#include "app_mainmenu.h"
 #include "custom_trans_anim.h"
 #ifdef BSP_USING_BLOC_SETTING
 #include "bloc_setting.h"
@@ -14,7 +13,6 @@
 #define DBG_TAG "app.setting.display"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
-#define OPEN_ROTATE_DISPLAY
 
 #ifdef APP_ID_SETTING
 LV_IMG_DECLARE(sun);
@@ -99,7 +97,6 @@ static void event_cb(lv_event_t *e)
             setting_provider.set_screen_time(v);
 #endif
         }
-#ifdef OPEN_ROTATE_DISPLAY
         else if (p_display->rotate == obj)
         {
             uint16_t v = (lv_obj_get_state(obj) & LV_STATE_CHECKED) ? 1 : 0;
@@ -121,7 +118,6 @@ static void event_cb(lv_event_t *e)
             lv_anim_set_time(&a, 100);
             lv_anim_start(&a);
         }
-#endif
     }
 }
 
@@ -280,7 +276,6 @@ static int powermgr_srv_callback(data_callback_arg_t *arg)
     case PWRMGR_MSG_LCD_ROTATE_180_GET_RSP:
     case PWRMGR_MSG_LCD_ROTATE_180_SET_RSP:
     {
-#ifdef OPEN_ROTATE_DISPLAY
         uint16_t r = *((uint16_t *)arg->data);
 
         LOG_D("PWRMGR_MSG_LCD_ROTATE_180_GET/SET_RSP %d", r);
@@ -289,7 +284,6 @@ static int powermgr_srv_callback(data_callback_arg_t *arg)
             lv_obj_add_state(p_display->rotate, LV_STATE_CHECKED);
         else
             lv_obj_clear_state(p_display->rotate, LV_STATE_CHECKED);
-#endif
     }
     break;
 
@@ -364,9 +358,6 @@ static void on_start(void)
     lv_img_set_src(icon, &sun);
     lv_obj_align(icon, LV_ALIGN_LEFT_MID, 20, 0);
     p_display->brightness = bar;
-    // p_display->brightness = lv_slider_create(general_group);
-    // lv_obj_set_width(p_display->brightness, lv_obj_get_width(general_group) * 0.8);
-    // lv_obj_align_to(p_display->brightness, label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, LV_DPX(10));
 
     // Screen time settings
     label = lv_label_create(general_group);
@@ -400,7 +391,6 @@ static void on_start(void)
     lv_obj_set_style_text_font(p_display->auto_off_label, LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
     lv_obj_align(p_display->auto_off_label, LV_ALIGN_CENTER, 50, 0);
 
-#ifdef OPEN_ROTATE_DISPLAY
     // Screen rotation
     label = lv_label_create(general_group);
     lv_label_set_text(label, "Rotate Display");
@@ -411,7 +401,7 @@ static void on_start(void)
     p_display->rotate = lv_switch_create(general_group);
     lv_obj_align(p_display->rotate, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_event_cb(p_display->rotate, event_cb, LV_EVENT_ALL, 0);
-#endif
+
     // Get data from service
     p_display->pwr_srv_hdl = datac_open();
     RT_ASSERT(DATA_CLIENT_INVALID_HANDLE != p_display->pwr_srv_hdl);
@@ -455,9 +445,7 @@ static void on_stop(void)
         lv_obj_del(p_display->brightness);
         lv_obj_del(p_display->auto_off);
         lv_obj_del(p_display->auto_off_label);
-#ifdef OPEN_ROTATE_DISPLAY
         lv_obj_del(p_display->rotate);
-#endif
 
         lv_mem_free(p_display);
         p_display = NULL;

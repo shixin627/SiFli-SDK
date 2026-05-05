@@ -56,11 +56,10 @@
 #include "lv_ext_resource_manager.h"
 #include "lv_ex_data.h"
 #include "bloc_control.h"
-#include "bloc_weather.h"
 #include "bloc_motion_tracking.h"
+#include "bloc_weather.h"
 #include "app_mainmenu.h"
 #include "app_clock_main.h"
-#include "custom_trans_anim.h"
 #include "common_widget.h"
 #include "watch_global_data.h"
 #include "ui_handler.h"
@@ -78,27 +77,6 @@ LV_IMG_DECLARE(weather_heavy_rain);
 LV_IMG_DECLARE(weather_sun);
 LV_IMG_DECLARE(weather_rain);
 LV_IMG_DECLARE(weather_thunder);
-
-// Weather type definitions improved with more descriptive naming
-enum weather_type
-{
-    WEATHER_TYPE_CLEAR = 0,
-    WEATHER_TYPE_CLOUDY,
-    WEATHER_TYPE_DRIZZLE,
-    WEATHER_TYPE_DUST,
-    WEATHER_TYPE_GLOOMY,
-    WEATHER_TYPE_HEAVY_RAIN,
-    WEATHER_TYPE_HEAVY_SNOW,
-    WEATHER_TYPE_LIGHT_SNOW,
-    WEATHER_TYPE_MODERATE_RAIN,
-    WEATHER_TYPE_MODERATE_SNOW,
-};
-
-typedef struct
-{
-    uint8_t min_tem_val;
-    uint8_t max_tem_val;
-} future_tem_val_t;
 
 typedef struct
 {
@@ -143,11 +121,6 @@ static app_weather_t *p_app_weather = NULL;
 static char buffer[32];
 static weather_data_t weather_data[3] = {0};
 static weather_data_t daily_weather_data[4] = {0};
-
-// Improved array definitions with proper naming
-static const char *WEATHER_TYPES[] = {
-    "Clear",      "Cloudy",     "Drizzle",    "Dust",          "Gloomy",
-    "Heavy Rain", "Heavy Snow", "Light Snow", "Moderate Rain", "Moderate Snow"};
 
 LV_IMG_DECLARE(weather_widget_bg);
 /*
@@ -335,7 +308,7 @@ lv_obj_t *create_dial_weather_obj(lv_obj_t *parent, weather_data_t *children,
     lv_obj_set_style_text_font(temperature,
                                LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
     lv_obj_set_style_text_color(temperature, lv_color_white(), 0);
-    snprintf(buffer, sizeof(buffer), "%0.5f", round(weather->temperature));
+    snprintf(buffer, sizeof(buffer), "%0.f", round(weather->temperature));
     lv_label_set_text(temperature, buffer);
     lv_obj_align_to(temperature, time, LV_ALIGN_OUT_TOP_MID, 12, -5);
 
@@ -861,12 +834,13 @@ lv_obj_t *lv_card_layout_weather_create(lv_obj_t *parent_tv_obj)
     lv_obj_clear_flag(current_weather_page, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_opa(current_weather_page, LV_OPA_0, 0);
 
-    /* Index 3 is the "current hour" slot in the weather array;
-       indices 2,1,0 are the next-three-hour forecasts (newer entries shift
-       toward 0 in update_weather). The previous get_weather(4) read the
-       hour BEFORE current, which is why the centre widget always lagged
-       behind the leftmost forecast widget. */
-    weather_t *get_weather_dayone_data = get_weather(3);
+    /* Tail of the today array (WEATHER_TODAT_ITEM_AMOUNT-1) is the "current
+       hour" slot. Earlier indices (WEATHER_TODAT_ITEM_AMOUNT-2 ... 0) are
+       the next-N-hour forecasts (newer entries shift toward 0 in
+       update_weather). Using the symbolic constant keeps every weather
+       widget in sync if the array size is retuned. */
+    weather_t *get_weather_dayone_data =
+        get_weather(WEATHER_TODAT_ITEM_AMOUNT - 1);
     if (!get_weather_dayone_data)
     {
         LOG_E("Failed to get main weather data");
@@ -951,13 +925,13 @@ lv_obj_t *lv_card_layout_weather_create(lv_obj_t *parent_tv_obj)
                     LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
     lv_obj_align(p_line, LV_ALIGN_CENTER, 0, 10);
 
-    /* Forecast row: shifted one slot earlier — leftmost is now hour+1,
-       middle hour+2, rightmost hour+3. Centre widget already shows hour 0. */
+    /* Forecast row: leftmost = hour+1, middle = hour+2, rightmost = hour+3.
+       Centre widget already shows hour 0 (= WEATHER_TODAT_ITEM_AMOUNT - 1). */
     weather_t *forecast_data;
     for (int i = 0; i < 3; i++)
     {
         int offset = (i - 1) * 130; // -130, 0, 130
-        forecast_data = get_weather(2 - i);
+        forecast_data = get_weather(WEATHER_TODAT_ITEM_AMOUNT - 2 - i);
         if (forecast_data)
         {
             create_forecast_widget(current_weather_page, p_line, i, offset,
@@ -1067,14 +1041,14 @@ void weather_layout_update(void)
     }
 
     /* Indices must match lv_card_layout_weather_create():
-       current = get_weather(3), forecast slots = get_weather(2),(1),(0).
+       current = WEATHER_TODAT_ITEM_AMOUNT-1, forecasts = AMOUNT-2..0.
        Don't early-return on NULL — render whatever slots are filled so the
        first widget refresh after entering the app picks up the freshly
        received data instead of waiting for the next app re-entry. */
-    weather_t *current_weather = get_weather(3);
+    weather_t *current_weather = get_weather(WEATHER_TODAT_ITEM_AMOUNT - 1);
     if (!current_weather)
     {
-        LOG_W("weather_layout_update: get_weather(3) returned NULL");
+        LOG_W("weather_layout_update: current weather slot is NULL");
         return;
     }
 
@@ -1106,7 +1080,7 @@ void weather_layout_update(void)
     lv_obj_align_to(p_app_weather->weather_label, p_app_weather->cur_tem_label,
                     LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
 
-    /* Forecast slots: build path uses get_weather(2), (1), (0) for i=0,1,2
+    /* Forecast slots: build path uses WEATHER_TODAT_ITEM_AMOUNT-2 .. 0
        (see lv_card_layout_weather_create). Mirror that here. */
     for (int i = 0; i < 3; i++)
     {
@@ -1117,7 +1091,7 @@ void weather_layout_update(void)
             continue;
         }
 
-        weather_t *forecast = get_weather(2 - i);
+        weather_t *forecast = get_weather(WEATHER_TODAT_ITEM_AMOUNT - 2 - i);
         if (!forecast)
         {
             continue; /* skip this slot; don't abort the whole refresh */

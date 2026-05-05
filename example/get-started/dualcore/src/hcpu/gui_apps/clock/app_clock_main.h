@@ -40,7 +40,6 @@ typedef struct
     app_clock_init_cb_t   init;     //!< clock UI init cbk func
     app_clock_func_ptr_t  pause;    //!< clock UI pause cbk func
     app_clock_func_ptr_t resume;    //!< clock UI resume cbk func
-    //app_clock_func_ptr_t click;   use sys layer to filte other event
     app_clock_func_ptr_t deinit;    //!< clock UI destroy cbk func
 } app_clock_ops_t;
 
@@ -107,21 +106,6 @@ void create_connection_tips(void);
  * Can be called to close the tips window before auto-close timer
  */
 void destroy_connection_tips(void);
-
-#if 0
-    /**
-    * duplicate an image to SRAM to improve drawn performance
-    * \n
-    *
-    * @return
-    * @param copy
-    * \n
-    * @see
-    */
-    lv_img_dsc_t *app_clock_img_cache_malloc(const void *copy);
-
-    void app_clock_img_cache_free(lv_img_dsc_t *p_img);
-#endif
 
 /**
  * Update level bar position to indicate watch tilt

@@ -17,23 +17,11 @@
 #include "lv_ext_resource_manager.h"
 #include "lv_ex_data.h"
 #include "gesture_handler.h"
-#include "bloc_control.h"
-#include "app_mainmenu.h"
 #include "custom_trans_anim.h"
 #include "common_widget.h"
-#include "bloc_setting.h"
-#include "bloc_motion_tracking.h"
 #include "bloc_filesystem.h"
-#include "ui_datasrv_subscriber.h"
 #include "ui_img_helper.h"
 #include "ui_handler.h"
-#include "data_service.h"
-#include "power_manager_service.h"
-#include "data_service_subscriber.h"
-#include "bloc_peripheral.h"
-#ifdef BSP_USING_UI_HANDLER
-    #include "ui_handler.h"
-#endif
 #define DBG_TAG "app.photo"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
@@ -247,12 +235,6 @@ static void show_photo_action_sheet(lv_obj_t *img_container,
         clear_selected_imgs();
         add_selected_img(img_container);
     }
-    // 建立遮罩層
-    // lv_obj_t *mask = lv_obj_create(lv_scr_act());
-    // lv_obj_set_size(mask, LV_HOR_RES, LV_VER_RES);
-    // lv_obj_set_style_bg_opa(mask, LV_OPA_50, 0);
-    // lv_obj_set_style_bg_color(mask, lv_color_black(), 0);
-    // lv_obj_clear_flag(mask, LV_OBJ_FLAG_SCROLLABLE);
 
     // 建立底部操作欄
     lv_obj_t *sheet = lv_obj_create(lv_scr_act());
@@ -282,15 +264,13 @@ static void show_photo_action_sheet(lv_obj_t *img_container,
     lv_label_set_text(label_cancel, "取消");
     lv_obj_center(label_cancel);
 
-    // // 刪除事件，無需傳 file_path
+    // 刪除事件，無需傳 file_path
     lv_obj_add_event_cb(btn_del, btn_del_event_cb, LV_EVENT_CLICKED, NULL);
-    // // 取消事件
+    // 取消事件
     lv_obj_add_event_cb(btn_cancel, btn_cancel_event_cb, LV_EVENT_CLICKED,
                         NULL);
 }
 
-// 圖片容器長按事件
-// 點擊或長按事件：點擊顯示大圖，長按顯示操作欄
 // 點擊或長按事件：點擊顯示大圖，長按顯示操作欄
 static bool event_cb_registered = false;
 
@@ -530,9 +510,6 @@ lv_obj_t *create_photo_screen(lv_obj_t *scr)
 {
     lv_obj_t *bg = lv_obj_create(scr);
     lv_obj_set_size(bg, LV_HOR_RES, LV_VER_RES);
-    // lv_obj_set_style_bg_color(bg, lv_color_black(), 0);
-    // lv_obj_set_style_border_width(bg, 0, 0);
-    // lv_obj_set_style_pad_all(bg, 0, 0);
     lv_obj_clear_flag(bg, LV_OBJ_FLAG_SCROLLABLE);
 
     /* Create photo folder if not exists */
@@ -546,8 +523,6 @@ lv_obj_t *create_photo_screen(lv_obj_t *scr)
     lv_obj_set_scrollbar_mode(photo_list, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_scroll_dir(photo_list, LV_DIR_VER);
 
-    // lv_obj_align(photo_list, LV_ALIGN_TOP_MID, 0, 0);
-
     /* Store reference */
     if (p_app_photo)
     {
@@ -560,105 +535,7 @@ lv_obj_t *create_photo_screen(lv_obj_t *scr)
     return bg;
 }
 
-static lv_obj_t *photo_list_obj = NULL;
-static uint16_t choose_photo_page_ptr = 0;
-// 複製檔案工具
-static int copy_file(const char *src, const char *dst)
-{
-    FILE *fsrc = fopen(src, "rb");
-    if (!fsrc)
-        return -1;
-    FILE *fdst = fopen(dst, "wb");
-    if (!fdst)
-    {
-        fclose(fsrc);
-        return -2;
-    }
-    char buf[1024];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), fsrc)) > 0)
-    {
-        if (fwrite(buf, 1, n, fdst) != n)
-        {
-            fclose(fsrc);
-            fclose(fdst);
-            return -3;
-        }
-    }
-    fclose(fsrc);
-    fclose(fdst);
-    return 0;
-}
-// choose_photo_list callback
-extern void set_clock_main_status_img(const void *img_src);
 char *GAUS_DEFAULT_PICTURE = "/assets/gaus_images/gaus_default_picture.bin";
-static void photo_select_cb(lv_event_t *e)
-{
-    const char *selected_path = (const char *)lv_event_get_user_data(e);
-    LOG_D("Photo selected: %s", selected_path);
-    if (choose_photo_page_ptr && selected_path)
-    {
-        char dst_path[64];
-        char folder[64];
-        snprintf(folder, sizeof(folder), "/JW_wf%u",
-                 (unsigned)choose_photo_page_ptr);
-        // 先刪除 picture_ 開頭的檔案（只會有一個）
-        DIR *dir = opendir(folder);
-        if (dir)
-        {
-            struct dirent *entry;
-            while ((entry = readdir(dir)) != NULL)
-            {
-                if (strncmp(entry->d_name, "picture_", 8) == 0)
-                {
-                    char pic_path[128];
-                    snprintf(pic_path, sizeof(pic_path), "%s/%s", folder,
-                             entry->d_name);
-                    remove(pic_path);
-                    lv_img_cache_invalidate_src(pic_path);
-                    break; // 只會有一個
-                }
-            }
-            closedir(dir);
-        }
-
-        const char *filename = strrchr(selected_path, '/');
-        if (filename)
-            filename++; // 跳過 '/' 字元
-        else
-            filename = selected_path; // 沒有 '/'，直接用原字串
-        snprintf(dst_path, sizeof(dst_path), "/JW_wf%u/picture_%s",
-                 (unsigned)choose_photo_page_ptr, filename);
-        lv_img_cache_invalidate_src(dst_path);
-        int ret = copy_file(selected_path, dst_path);
-        if (ret == 0)
-        {
-            LOG_I("Copied %s to %s", selected_path, dst_path);
-        }
-        else
-        {
-            LOG_E("Copy failed: %d", ret);
-        }
-
-        snprintf(dst_path, sizeof(dst_path), "/assets/gaus_images/gaus_%s",
-                 filename);
-        if (GAUS_DEFAULT_PICTURE)
-        {
-            GAUS_DEFAULT_PICTURE = strdup(dst_path);
-        }
-    }
-    set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
-    // 關閉視窗
-    lv_obj_del(photo_list_obj);
-    choose_photo_page_ptr = NULL;
-}
-
-static void close_photo_list_cb(lv_event_t *e)
-{
-    lv_obj_del(photo_list_obj);
-    choose_photo_page_ptr = NULL;
-    LOG_D("Photo list closed");
-}
 
 /**
  * @brief Initialize the app on start

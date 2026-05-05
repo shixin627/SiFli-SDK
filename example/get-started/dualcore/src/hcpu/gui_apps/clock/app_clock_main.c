@@ -372,32 +372,10 @@ void app_clock_main_get_current_time(app_clock_time_t *t)
     }
 }
 
-static const char *app_clock_state_to_name(uint8_t state)
-{
-#define STATE_TO_NAME_CASE(e)                                                  \
-    case e:                                                                    \
-        return #e
-    switch (state)
-    {
-        STATE_TO_NAME_CASE(STATE_DEINIT);
-        STATE_TO_NAME_CASE(STATE_PAUSED);
-        STATE_TO_NAME_CASE(STATE_ACTIVE);
-
-    default:
-        return "UNKNOW";
-    }
-}
-
 static char *change_context;
-static lv_obj_t *clk_parent;
 char *app_clock_change_context(void)
 {
     return change_context;
-}
-
-lv_obj_t *gui_app_get_clock_parent(void)
-{
-    return clk_parent;
 }
 
 static void show_dial_widget_select_list(lv_obj_t *parent);
@@ -494,103 +472,11 @@ extern void write_clock_widget_number(void);
 static lv_obj_t *dial_widget = NULL;
 static lv_obj_t *dial_widget_img_bg = NULL;
 
-lv_obj_t *app_clock_main_get_dial_widget(void)
-{
-    return dial_widget;
-}
-
 // Level bar for flat detection
-#define LEVEL_BAR_WIDTH 200
-#define LEVEL_BAR_HEIGHT 20
-#define LEVEL_DOT_SIZE 14
-#define LEVEL_CENTER_BOX_W 40
-#define LEVEL_CENTER_BOX_H 20
-#define LEVEL_BAR_Y_OFFSET 195
-
-static lv_obj_t *level_bar_container = NULL;
-static lv_obj_t *level_bar_line = NULL;
-static lv_obj_t *level_bar_dot = NULL;
-static lv_obj_t *level_bar_arc_left = NULL;
-static lv_obj_t *level_bar_arc_right = NULL;
-
-static void level_bar_builder(lv_obj_t *parent)
-{
-    // Container
-    level_bar_container = lv_obj_create(parent);
-    lv_obj_set_size(level_bar_container, LEVEL_BAR_WIDTH + LEVEL_DOT_SIZE,
-                    LEVEL_CENTER_BOX_H + 4);
-    lv_obj_align(level_bar_container, LV_ALIGN_CENTER, 0, LEVEL_BAR_Y_OFFSET);
-    lv_obj_set_style_bg_opa(level_bar_container, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(level_bar_container, LV_OPA_0, 0);
-    lv_obj_set_style_pad_all(level_bar_container, 0, 0);
-    lv_obj_clear_flag(level_bar_container, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Horizontal bar line
-    level_bar_line = lv_obj_create(level_bar_container);
-    lv_obj_set_size(level_bar_line, LEVEL_BAR_WIDTH, LEVEL_BAR_HEIGHT);
-    lv_obj_align(level_bar_line, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(level_bar_line, lv_color_hex(0x666666), 0);
-    lv_obj_set_style_bg_opa(level_bar_line, LV_OPA_30, 0);
-    lv_obj_set_style_radius(level_bar_line, LEVEL_BAR_HEIGHT / 2, 0);
-
-    // Left arc (flat zone left boundary)
-    level_bar_arc_left = lv_arc_create(level_bar_container);
-    lv_obj_set_size(level_bar_arc_left, 24, 24);
-    lv_arc_set_rotation(level_bar_arc_left, 120);
-    lv_arc_set_bg_angles(level_bar_arc_left, 0, 120);
-    lv_arc_set_angles(level_bar_arc_left, 0, 0);
-    lv_obj_set_style_arc_width(level_bar_arc_left, 2, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(level_bar_arc_left, lv_color_hex(0xFFFFFF),
-                               LV_PART_MAIN);
-    lv_obj_set_style_arc_opa(level_bar_arc_left, LV_OPA_60, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(level_bar_arc_left, 0, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(level_bar_arc_left, LV_OPA_0, LV_PART_KNOB);
-    lv_obj_clear_flag(level_bar_arc_left, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_align(level_bar_arc_left, LV_ALIGN_CENTER, -(LEVEL_CENTER_BOX_W / 2),
-                 0);
-
-    // Right arc (flat zone right boundary)
-    level_bar_arc_right = lv_arc_create(level_bar_container);
-    lv_obj_set_size(level_bar_arc_right, 24, 24);
-    lv_arc_set_rotation(level_bar_arc_right, 300);
-    lv_arc_set_bg_angles(level_bar_arc_right, 0, 120);
-    lv_arc_set_angles(level_bar_arc_right, 0, 0);
-    lv_obj_set_style_arc_width(level_bar_arc_right, 2, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(level_bar_arc_right, lv_color_hex(0xFFFFFF),
-                               LV_PART_MAIN);
-    lv_obj_set_style_arc_opa(level_bar_arc_right, LV_OPA_60, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(level_bar_arc_right, 0, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(level_bar_arc_right, LV_OPA_0, LV_PART_KNOB);
-    lv_obj_clear_flag(level_bar_arc_right, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_align(level_bar_arc_right, LV_ALIGN_CENTER, (LEVEL_CENTER_BOX_W / 2),
-                 0);
-
-    // Moving dot
-    level_bar_dot = lv_obj_create(level_bar_container);
-    lv_obj_set_size(level_bar_dot, LEVEL_DOT_SIZE, LEVEL_DOT_SIZE);
-    lv_obj_align(level_bar_dot, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(level_bar_dot, lv_color_hex(0x9D9D9D), 0);
-    lv_obj_set_style_bg_opa(level_bar_dot, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(level_bar_dot, LEVEL_DOT_SIZE / 2, 0);
-    lv_obj_set_style_border_opa(level_bar_dot, LV_OPA_0, 0);
-}
-
-static void level_bar_deinit(void)
-{
-    level_bar_container = NULL;
-    level_bar_line = NULL;
-    level_bar_dot = NULL;
-    level_bar_arc_left = NULL;
-    level_bar_arc_right = NULL;
-}
-
-// Flat zone threshold: dot pixel range vs arc position
-// Arc centers at ±(LEVEL_CENTER_BOX_W/2) = ±20px
-// Dot x_offset = value * ((LEVEL_BAR_WIDTH-20)/2) / 100
-// Flat when |x_offset| <= LEVEL_CENTER_BOX_W/2
-// => |value| <= LEVEL_CENTER_BOX_W/2 * 100 / ((LEVEL_BAR_WIDTH-20)/2)
-#define LEVEL_FLAT_THRESHOLD                                                   \
-    ((LEVEL_CENTER_BOX_W / 2) * 100 / ((LEVEL_BAR_WIDTH - 20) / 2)) - 5
+// Flat zone threshold: see original geometry — dot range vs arc bracket position.
+// Original constants: LEVEL_BAR_WIDTH=200, LEVEL_CENTER_BOX_W=40
+// |value| flat when ((40/2) * 100 / ((200-20)/2)) - 5 == ~17
+#define LEVEL_FLAT_THRESHOLD ((40 / 2) * 100 / ((200 - 20) / 2)) - 5
 
 static bool level_is_flat = false;
 
@@ -611,7 +497,6 @@ void level_bar_update(int16_t value)
     level_is_flat =
         (value >= -LEVEL_FLAT_THRESHOLD && value <= LEVEL_FLAT_THRESHOLD);
 }
-static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent);
 // 生成一個列表用於切換 dial_widget_app_id，選擇後自動刪除
 static lv_obj_t *dial_widget_select_list = NULL;
 static void dial_widget_select_event_cb(lv_event_t *e)
@@ -643,8 +528,6 @@ static void dial_widget_select_event_cb(lv_event_t *e)
                 {
 
                     lv_obj_del(dial_widget);
-                    // swich_dial_widget_builder(dial_widget_app_id,
-                    //                           clk_desc->parent);
                     break;
                 }
             }
@@ -694,76 +577,6 @@ void set_dial_widget_opa(uint8_t opa)
     set_dial_media_widget_opa(opa);
 }
 
-extern void dial_calendar_widget_deinit(void);
-extern void dial_media_widget_deinit(void);
-extern void dial_weather_widget_deinit(void);
-extern void lv_dial_calendar_widget_builder(lv_obj_t *parent);
-extern void lv_dial_media_widget_builder(lv_obj_t *parent);
-extern void lv_dial_weather_widget_builder(lv_obj_t *parent);
-static void swich_dial_widget_builder(uint8_t app_id, lv_obj_t *parent)
-{
-    LOG_I("swich_dial_widget_builder to app_id=%d", app_id);
-    dial_media_widget_deinit();
-    dial_calendar_widget_deinit();
-    dial_weather_widget_deinit();
-    dial_widget = lv_obj_create(parent);
-    lv_obj_set_style_radius(dial_widget, 25, 0);
-    lv_obj_align(dial_widget, LV_ALIGN_CENTER, 0, 99);
-    lv_obj_set_size(dial_widget, 340, 160);
-    lv_obj_set_style_bg_color(dial_widget, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(dial_widget, LV_OPA_0, 0);
-    lv_obj_set_style_border_width(dial_widget, 2, 0);
-    lv_obj_set_style_border_color(dial_widget, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(dial_widget, LV_OPA_0, 0);
-    lv_obj_set_style_clip_corner(dial_widget, true, 0);     // 啟用裁切
-    lv_obj_clear_flag(dial_widget, LV_OBJ_FLAG_SCROLLABLE); // 禁用滾動
-
-    dial_widget_img_bg = lv_img_create(dial_widget);
-    // lv_obj_set_style_radius(dial_widget_img_bg, 50, LV_PART_MAIN);
-    // lv_obj_set_style_bg_opa(dial_widget_img_bg, LV_OPA_100, 0);
-    lv_img_set_src(dial_widget_img_bg, &media_gaus_bg);
-    // lv_img_set_zoom(dial_widget_img_bg, 256 ); // 100%
-    lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, 0);
-    if (app_id == app_id_calendar)
-    {
-        request_calendar_on_mobile(false);
-        lv_dial_calendar_widget_builder(dial_widget);
-        lv_obj_add_event_cb(dial_widget, dial_widget_event, LV_EVENT_ALL, NULL);
-    }
-#ifdef APP_ID_MEDIA
-    else if (app_id == app_id_media)
-    {
-        lv_dial_media_widget_builder(dial_widget);
-    }
-#endif
-    else if (app_id == app_id_weather)
-    {
-        request_weather_within_six_hours(false);
-        lv_dial_weather_widget_builder(dial_widget);
-    }
-
-    // Build level bar below the widget
-    // level_bar_builder(parent);
-}
-
-static void swich_dial_widget_deinit(uint8_t app_id)
-{
-    if (app_id == app_id_calendar)
-    {
-        dial_calendar_widget_deinit();
-    }
-#ifdef APP_ID_MEDIA
-    else if (app_id == app_id_media)
-    {
-        dial_media_widget_deinit();
-    }
-#endif
-    else if (app_id == app_id_weather)
-    {
-        dial_weather_widget_deinit();
-    }
-    level_bar_deinit();
-}
 static void get_clock_main_status_img_path(char *clk_id)
 {
     char folder[64];
@@ -810,52 +623,22 @@ static void clock_change_page(char *clk_id)
     LOG_D("clock_change_page: %s", clk_id);
     if (strcmp(clk_id, "JW_wf1") == 0)
     {
-        // if (lv_obj_is_valid(dial_widget_img_bg))
-        // {
-        //     // lv_img_set_src(dial_widget_img_bg, &gaus_clock1_bg);
-        //     lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-        //     lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
-        // }
         set_clock_main_status_img(&gaus_clock1_bg);
     }
     else if (strcmp(clk_id, "JW_wf2") == 0)
     {
-        // if (lv_obj_is_valid(dial_widget_img_bg))
-        // {
-        //     // lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
-        //     lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-        //     lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
-        // }
         set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
     }
     else if (strcmp(clk_id, "JW_wf3") == 0)
     {
-        // if (lv_obj_is_valid(dial_widget_img_bg))
-        // {
-        //     // lv_img_set_src(dial_widget_img_bg, GAUS_DEFAULT_PICTURE);
-        //     lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-        //     lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
-        // }
         set_clock_main_status_img(GAUS_DEFAULT_PICTURE);
     }
     else if (strcmp(clk_id, "JW_wf4") == 0)
     {
-        // if (lv_obj_is_valid(dial_widget_img_bg))
-        // {
-        //     // lv_img_set_src(dial_widget_img_bg, &gaus_clock4_bg);
-        //     lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-        //     lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
-        // }
         set_clock_main_status_img(&gaus_clock4_bg);
     }
     else if (strcmp(clk_id, "JW_wf5") == 0)
     {
-        // if (lv_obj_is_valid(dial_widget_img_bg))
-        // {
-        //     // lv_img_set_src(dial_widget_img_bg, GAUS_CLOCK5_BG);
-        //     lv_img_set_zoom(dial_widget_img_bg, 256 * 2); // 100%
-        //     lv_obj_align(dial_widget_img_bg, LV_ALIGN_CENTER, 0, -115);
-        // }
         set_clock_main_status_img(GAUS_CLOCK5_BG);
     }
 }
@@ -866,7 +649,6 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
         return;
 
     change_context = p_clock->id;
-    clk_parent = p_clock->parent;
 
     switch (new_state)
     {
@@ -878,12 +660,6 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
             if (p_clock->ops->pause)
             {
                 p_clock->ops->pause();
-                // if (strcmp(p_clock->id, "JW_wf1") == 0)
-                // {
-                //     swich_dial_widget_deinit(dial_widget_app_id);
-                // }
-                // else if (strcmp(p_clock->id, "JW_wf3") == 0)
-                //     swich_dial_widget_deinit(dial_widget_app_id);
             }
         }
         LOG_D("Deiniting clock id=%s", p_clock->id);
@@ -909,23 +685,11 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
             if (p_clock->ops->pause)
             {
                 p_clock->ops->pause();
-                // if (strcmp(p_clock->id, "JW_wf1") == 0)
-                //     swich_dial_widget_deinit(dial_widget_app_id);
-                // else if (strcmp(p_clock->id, "JW_wf3") == 0)
-                //     swich_dial_widget_deinit(dial_widget_app_id);
             }
         }
         else if (p_clock->ops->init)
         {
             p_clock->ops->init(p_clock->parent);
-            // if (strcmp(p_clock->id, "JW_wf1") == 0)
-            // {
-            //     swich_dial_widget_builder(dial_widget_app_id,
-            //     p_clock->parent);
-            // }
-            // else if (strcmp(p_clock->id, "JW_wf3") == 0)
-            //     swich_dial_widget_builder(dial_widget_app_id,
-            //     p_clock->parent);
         }
     }
     break;
@@ -937,16 +701,6 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
             if (p_clock->ops->init)
             {
                 p_clock->ops->init(p_clock->parent);
-                // if (strcmp(p_clock->id, "JW_wf1") == 0)
-                // {
-                //     swich_dial_widget_builder(dial_widget_app_id,
-                //                               p_clock->parent);
-                // }
-                // else if (strcmp(p_clock->id, "JW_wf3") == 0)
-                // {
-                //     swich_dial_widget_builder(dial_widget_app_id,
-                //                               p_clock->parent);
-                // }
             }
         }
         LOG_D("Resuming clock id11=%s", p_clock->id);
@@ -963,23 +717,6 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
     }
 
     p_clock->state = new_state;
-}
-
-static void app_clock_change_state_by_id(uint16_t idx, uint8_t new_state)
-{
-    uint16_t i = 0;
-    rt_list_t *pos;
-    rt_list_for_each(pos, (&p_app_clock_main->list))
-    {
-        app_clock_desc_t *clk_desc = rt_list_entry(pos, app_clock_desc_t, node);
-
-        if (idx == i)
-        {
-            app_clock_change_state(clk_desc, new_state);
-            break;
-        }
-        i++;
-    }
 }
 
 static void app_clock_main_select(uint16_t clock_idx)
@@ -1057,10 +794,11 @@ static void refresh_time(T_UTC_TIME *current_time)
 
 void refersh_weather_icon(void)
 {
-    /* Index 3 is the "current hour" slot; WEATHER_TODAT_ITEM_AMOUNT-1 (=7)
-       is the oldest entry in the array (newest items shift toward 0 in
-       update_weather), so reading the tail gave us a stale icon. */
-    weather_t *get_weather_data = get_weather(3);
+    /* Tail of the today array = current hour (newest items shift toward
+       index 0 in update_weather, the array is sized so the oldest valid
+       slot is the "now" slot). Use the symbolic constant so all weather
+       widgets stay in sync if WEATHER_TODAT_ITEM_AMOUNT is retuned. */
+    weather_t *get_weather_data = get_weather(WEATHER_TODAT_ITEM_AMOUNT - 1);
     if (!get_weather_data)
     {
         return;
@@ -1341,10 +1079,6 @@ static void handle_watchface_changed_cb(void *param)
     uint8_t index = *(uint8_t *)param;
     if (p_app_clock_main)
         app_clock_switch_to(index);
-}
-static void on_tap(void)
-{
-    LOG_D("Tap in Clock");
 }
 
 static void update_time_symbol(void)
@@ -1640,8 +1374,6 @@ static void app_clock_load_dyn_wf(void)
 
 #endif /* RT_USING_XIP_MODULE */
 
-extern void app_clock_media_register(void);
-
 #ifdef PKG_USING_FFMPEG
 extern void app_clock_video_audio_register(void);
 #endif /* PKG_USING_FFMPEG */
@@ -1676,12 +1408,8 @@ lv_obj_t *lv_home_listview_layout_create(lv_obj_t *parent)
     memset(p_app_clock_main, 0, sizeof(app_clock_main_t));
     rt_list_init(&p_app_clock_main->list);
 
-#if 1
-    // extern void app_clock_digital_elegant_register(void);
-    // app_clock_digital_elegant_register();
     extern void app_clock_earth_digital_register(void);
     app_clock_earth_digital_register();
-#endif
 #ifdef PKG_USING_FFMPEG
     app_clock_video_audio_register();
 #endif /* PKG_USING_FFMPEG */
@@ -1697,14 +1425,6 @@ lv_obj_t *lv_home_listview_layout_create(lv_obj_t *parent)
     return parent;
 }
 
-static bool clock_initiated = false;
-static void on_start(lv_obj_t *scr)
-{
-    if (clock_initiated)
-        return;
-    app_clock_main_init(scr);
-}
-
 static bool pause_clock = true;
 
 extern void dial_media_header_init(void);
@@ -1718,7 +1438,6 @@ rt_int32_t clock_on_resume(void)
     dial_media_header_init();
     app_clock_main_select(last_active_clock);
     LOG_D("clock_on_resume");
-    clock_initiated = true;
     return 1;
 }
 
@@ -1730,7 +1449,6 @@ rt_int32_t clock_on_pause(void)
         return -RT_EOK;
     }
     rt_list_t *pos;
-    uint16_t i = 0;
     pause_clock = true;
     dial_media_header_deinit();
     rt_list_for_each(pos, (&p_app_clock_main->list))
@@ -1746,7 +1464,6 @@ rt_int32_t clock_on_pause(void)
 void clock_on_stop(void)
 {
     rt_list_t *pos;
-    uint16_t i = 0;
     pause_clock = true;
     rt_list_for_each(pos, (&p_app_clock_main->list))
     {
@@ -1811,8 +1528,6 @@ void clock_on_stop(void)
 
         lv_mem_free(p_app_clock_main);
         p_app_clock_main = NULL;
-
-        clock_initiated = false;
     }
 }
 
@@ -1849,49 +1564,6 @@ lv_obj_t *build_home_view(lv_obj_t *parent)
 {
     lv_obj_t *obj = lv_home_listview_layout_create(parent);
     app_clock_main_select(last_active_clock);
-
-    /* ────────────────────────────────────────────────────────────────
-     * 共用「右側弧形觸控滾動」模組（common/arc_scroll.h）。同一份算法已套用在
-     *   - lv_instruction_list_layout.c（指令列表）
-     *   - app_exercise.c（運動列表）
-     *
-     * 之後在這個 home view 或任何其他位置要掛同樣的 arc-scroll，照下面範本填
-     * 一份 config 然後 arc_scroll_create() 即可。每個位置可獨立持有一個 handle，
-     * 用各自的 list / item_count / 回呼。
-     *
-     *   static lv_obj_t *my_tap_cb(lv_point_t pt, void *ctx) {
-     *       // 收到 tap：根據 press 點 pt 自行決定要把 CLICKED 派給哪個 obj，
-     *       // 回傳該 obj；不想派發就回 NULL
-     *       return target_or_null;
-     *   }
-     *   static lv_obj_t *my_snap_cb(void *ctx) {
-     *       // 收到 drag 放開：回傳要 scroll-to-view 的 obj
-     *       return lv_obj_get_child(my_list, my_selected_idx);
-     *   }
-     *
-     *   arc_scroll_config_t cfg = {
-     *       .parent          = obj,           // overlay 掛在這個父物件下
-     *       .list            = my_list,       // 真正要 scroll 的 scrollable 容器
-     *       .slot_height_px  = 100,           // 兩個相鄰 item 的位置間距 px（item_h + spacing）
-     *       .item_height_px  = 200,           // item 本身高度 px；spacing ≥ 0 可填 0
-     *       .slot_angle_deg  = 27,            // 手指滑幾度 = 一個 slot
-     *       .item_count      = N,             // 目前 item 總數
-     *       .band_thickness  = 150,           // 弧帶厚度，0 → 預設 150
-     *       .lock_ancestors  = false,         // 子層在 tileview 裡才設 true
-     *       .tap_cb          = my_tap_cb,     // 可為 NULL
-     *       .snap_cb         = my_snap_cb,    // 可為 NULL
-     *       .ctx             = my_ctx,
-     *   };
-     *   arc_scroll_handle_t *h = arc_scroll_create(&cfg);
-     *   // handle 會在 overlay obj 被 lv_obj_del 時自動釋放，
-     *   // parent 死了 overlay 就死，handle 也跟著死，通常不必手動 destroy。
-     *   // item 數變動時呼叫 arc_scroll_set_item_count(h, new_count)。
-     *
-     * 行為（兩個位置都這樣，跟現有實作一致）：
-     *   - 短按馬上放（無位移 + < 200ms）→ 走 tap_cb 路徑，把 CLICKED 派給回傳 obj
-     *   - 拖過 / 按住 200ms 以上 → 走 snap_cb 路徑，scroll-to-view 回傳 obj
-     *   - 中間區域的 press 不會進來（弧帶幾何過濾），自然 fall-through
-     * ──────────────────────────────────────────────────────────────── */
 
 #ifdef ENABLE_NOTIFICATION_CENTER
     app_clock_main_status_bar_init(lv_scr_act());

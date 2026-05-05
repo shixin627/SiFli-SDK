@@ -4,7 +4,6 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 #include "littlevgl2rtt.h"
-#include "lvgl.h"
 #include "gui_app_fwk.h"
 #include "lv_ext_resource_manager.h"
 #include "alarm_manager_service.h"

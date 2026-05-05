@@ -13,6 +13,7 @@
 #include "ui_handler.h"
 #include "ui_helper.h"
 #include "ui_img_helper.h"
+#include "app_alarm_style.h"
 #ifdef APP_ID_ALARM
 
 /**
@@ -38,24 +39,10 @@
 /*********************
  *      DEFINES
  *********************/
-#define ALARM_LIST_W 420
 #define ALARM_CARD_H 96
-#define ALARM_CARD_RADIUS 16
 #define HEADER_H 64
 #define FOOTER_H 88        /* room for the floating "+" button */
 #define ADD_BTN_SIZE 64    /* round, sits on the optical center bottom */
-
-#define COLOR_BG          lv_color_hex(0x000000)
-#define COLOR_CARD        lv_color_hex(0x1C1C1E)  /* iOS dark surface */
-#define COLOR_DIVIDER     lv_color_hex(0x2C2C2E)
-#define COLOR_TEXT_PRIMARY    lv_color_hex(0xFFFFFF)
-#define COLOR_TEXT_SECONDARY  lv_color_hex(0x8E8E93)
-#define COLOR_TEXT_DIM        lv_color_hex(0x6E6E73)
-#define COLOR_SWITCH_ON   lv_color_hex(0x34C759)  /* iOS green */
-#define COLOR_SWITCH_OFF  lv_color_hex(0x39393D)
-#define COLOR_ACCENT      lv_color_hex(0xFF9F0A)  /* iOS Alarm orange */
-#define COLOR_DANGER      lv_color_hex(0xFF453A)  /* iOS red — Stop button */
-#define COLOR_NEUTRAL     lv_color_hex(0x2C2C2E)  /* dark grey — Snooze button */
 
 typedef enum
 {
@@ -79,7 +66,6 @@ typedef struct
 
     datac_handle_t srv_handle;
     alarm_view_t view;
-    bool first_resume;
     uint8_t alarm_num;
 } app_alarm_t;
 
@@ -212,9 +198,9 @@ static void add_btn_event_cb(lv_event_t *e)
 static void style_switch_ios(lv_obj_t *sw)
 {
     lv_obj_set_size(sw, 56, 32);
-    lv_obj_set_style_bg_color(sw, COLOR_SWITCH_OFF, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(sw, ALARM_COLOR_SWITCH_OFF, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(sw, COLOR_SWITCH_ON,
+    lv_obj_set_style_bg_color(sw, ALARM_COLOR_SWITCH_ON,
                               LV_PART_INDICATOR | LV_STATE_CHECKED);
     lv_obj_set_style_radius(sw, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     lv_obj_set_style_radius(sw, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
@@ -228,7 +214,7 @@ static void create_alarm_card(lv_obj_t *parent, const alarm_msg_t *alarm)
 
     lv_obj_t *card = lv_obj_create(parent);
     lv_obj_set_size(card, LV_PCT(100), ALARM_CARD_H);
-    lv_obj_set_style_bg_color(card, COLOR_CARD, 0);
+    lv_obj_set_style_bg_color(card, ALARM_COLOR_CARD, 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(card, ALARM_CARD_RADIUS, 0);
     lv_obj_set_style_border_width(card, 0, 0);
@@ -250,7 +236,7 @@ static void create_alarm_card(lv_obj_t *parent, const alarm_msg_t *alarm)
     lv_obj_set_style_text_font(
         time_lbl, LV_EXT_FONT_GET(get_system_font_size(2)), 0);
     lv_obj_set_style_text_color(
-        time_lbl, enabled ? COLOR_TEXT_PRIMARY : COLOR_TEXT_DIM, 0);
+        time_lbl, enabled ? ALARM_COLOR_TEXT_PRIMARY : ALARM_COLOR_TEXT_DIM, 0);
     lv_obj_align(time_lbl, LV_ALIGN_LEFT_MID, 0, -14);
 
     /* Repeat-day subtitle. */
@@ -260,7 +246,7 @@ static void create_alarm_card(lv_obj_t *parent, const alarm_msg_t *alarm)
     lv_label_set_text(sub_lbl, repeat_buf);
     lv_obj_set_style_text_font(
         sub_lbl, LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
-    lv_obj_set_style_text_color(sub_lbl, COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_text_color(sub_lbl, ALARM_COLOR_TEXT_SECONDARY, 0);
     lv_obj_align(sub_lbl, LV_ALIGN_LEFT_MID, 0, 22);
 
     /* Toggle switch. */
@@ -371,7 +357,7 @@ static void build_ringing_view(lv_obj_t *parent)
     lv_obj_t *root = lv_obj_create(parent);
     lv_obj_set_size(root, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     lv_obj_align(root, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(root, COLOR_BG, 0);
+    lv_obj_set_style_bg_color(root, ALARM_COLOR_BG, 0);
     lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(root, 0, 0);
     lv_obj_set_style_pad_all(root, 0, 0);
@@ -382,7 +368,7 @@ static void build_ringing_view(lv_obj_t *parent)
     /* "Alarm" label at top, in accent orange. */
     lv_obj_t *kicker = lv_label_create(root);
     lv_label_set_text(kicker, "Alarm");
-    lv_obj_set_style_text_color(kicker, COLOR_ACCENT, 0);
+    lv_obj_set_style_text_color(kicker, ALARM_COLOR_ACCENT, 0);
     lv_obj_set_style_text_font(
         kicker, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_align(kicker, LV_ALIGN_TOP_MID, 0, 80);
@@ -390,7 +376,7 @@ static void build_ringing_view(lv_obj_t *parent)
     /* Big time, fills the optical center. */
     lv_obj_t *time_lbl = lv_label_create(root);
     lv_label_set_text(time_lbl, "00:00");
-    lv_obj_set_style_text_color(time_lbl, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_text_color(time_lbl, ALARM_COLOR_TEXT_PRIMARY, 0);
     lv_obj_set_style_text_font(
         time_lbl, LV_EXT_FONT_GET(get_system_font_size(4)), 0);
     lv_obj_align(time_lbl, LV_ALIGN_CENTER, 0, -30);
@@ -400,7 +386,7 @@ static void build_ringing_view(lv_obj_t *parent)
     lv_obj_t *snooze_btn = lv_btn_create(root);
     lv_obj_set_size(snooze_btn, 140, 56);
     lv_obj_align(snooze_btn, LV_ALIGN_BOTTOM_MID, -80, -30);
-    lv_obj_set_style_bg_color(snooze_btn, COLOR_NEUTRAL, 0);
+    lv_obj_set_style_bg_color(snooze_btn, ALARM_COLOR_NEUTRAL, 0);
     lv_obj_set_style_bg_opa(snooze_btn, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(snooze_btn, 28, 0);
     lv_obj_set_style_border_width(snooze_btn, 0, 0);
@@ -409,7 +395,7 @@ static void build_ringing_view(lv_obj_t *parent)
                         NULL);
     lv_obj_t *snooze_lbl = lv_label_create(snooze_btn);
     lv_label_set_text(snooze_lbl, "Snooze");
-    lv_obj_set_style_text_color(snooze_lbl, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_text_color(snooze_lbl, ALARM_COLOR_TEXT_PRIMARY, 0);
     lv_obj_set_style_text_font(
         snooze_lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_center(snooze_lbl);
@@ -418,7 +404,7 @@ static void build_ringing_view(lv_obj_t *parent)
     lv_obj_t *stop_btn = lv_btn_create(root);
     lv_obj_set_size(stop_btn, 140, 56);
     lv_obj_align(stop_btn, LV_ALIGN_BOTTOM_MID, 80, -30);
-    lv_obj_set_style_bg_color(stop_btn, COLOR_DANGER, 0);
+    lv_obj_set_style_bg_color(stop_btn, ALARM_COLOR_DANGER, 0);
     lv_obj_set_style_bg_opa(stop_btn, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(stop_btn, 28, 0);
     lv_obj_set_style_border_width(stop_btn, 0, 0);
@@ -426,7 +412,7 @@ static void build_ringing_view(lv_obj_t *parent)
     lv_obj_add_event_cb(stop_btn, stop_btn_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *stop_lbl = lv_label_create(stop_btn);
     lv_label_set_text(stop_lbl, "Stop");
-    lv_obj_set_style_text_color(stop_lbl, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_text_color(stop_lbl, ALARM_COLOR_TEXT_PRIMARY, 0);
     lv_obj_set_style_text_font(
         stop_lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_center(stop_lbl);
@@ -454,7 +440,7 @@ static void build_list_view(lv_obj_t *parent)
     lv_label_set_text(title, "Alarm");
     lv_obj_set_style_text_font(
         title, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_set_style_text_color(title, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_text_color(title, ALARM_COLOR_TEXT_PRIMARY, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 24);
 
     /* Scrollable list of alarm cards. */
@@ -476,7 +462,7 @@ static void build_list_view(lv_obj_t *parent)
     lv_obj_t *add_btn = lv_btn_create(root);
     lv_obj_set_size(add_btn, ADD_BTN_SIZE, ADD_BTN_SIZE);
     lv_obj_align(add_btn, LV_ALIGN_BOTTOM_MID, 0, -16);
-    lv_obj_set_style_bg_color(add_btn, COLOR_CARD, 0);
+    lv_obj_set_style_bg_color(add_btn, ALARM_COLOR_CARD, 0);
     lv_obj_set_style_bg_opa(add_btn, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(add_btn, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(add_btn, 0, 0);
@@ -487,7 +473,7 @@ static void build_list_view(lv_obj_t *parent)
 
     lv_obj_t *plus = lv_label_create(add_btn);
     lv_label_set_text(plus, "+");
-    lv_obj_set_style_text_color(plus, COLOR_ACCENT, 0);
+    lv_obj_set_style_text_color(plus, ALARM_COLOR_ACCENT, 0);
     lv_obj_set_style_text_font(
         plus, LV_EXT_FONT_GET(get_system_font_size(3)), 0);
     lv_obj_center(plus);
@@ -497,7 +483,7 @@ static void build_list_view(lv_obj_t *parent)
     lv_label_set_text(empty, "No Alarms");
     lv_obj_set_style_text_font(
         empty, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_style_text_color(empty, COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_text_color(empty, ALARM_COLOR_TEXT_SECONDARY, 0);
     lv_obj_align(empty, LV_ALIGN_CENTER, 0, -10);
     lv_obj_add_flag(empty, LV_OBJ_FLAG_HIDDEN);
     p_app_alarm->empty_label = empty;
@@ -567,7 +553,7 @@ static void fire_poll_cb(lv_timer_t *t)
 static void build_layout(void)
 {
     lv_obj_t *scr = lv_scr_act();
-    lv_obj_set_style_bg_color(scr, COLOR_BG, 0);
+    lv_obj_set_style_bg_color(scr, ALARM_COLOR_BG, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
 
     build_list_view(scr);
@@ -580,7 +566,6 @@ static void on_start(void)
     p_app_alarm = (app_alarm_t *)lv_mem_alloc(sizeof(app_alarm_t));
     memset(p_app_alarm, 0, sizeof(app_alarm_t));
     p_app_alarm->srv_handle = DATA_CLIENT_INVALID_HANDLE;
-    p_app_alarm->first_resume = true;
 
     build_layout();
 }
@@ -593,11 +578,6 @@ static void on_resume(void)
     p_app_alarm->srv_handle = datac_open();
     RT_ASSERT(DATA_CLIENT_INVALID_HANDLE != p_app_alarm->srv_handle);
     ui_datac_subscribe(p_app_alarm->srv_handle, "alarmmgr", srv_msg_handler, 0);
-
-    if (p_app_alarm->first_resume)
-    {
-        p_app_alarm->first_resume = false;
-    }
 
     /* If we landed here because an alarm just fired, jump straight to the
        ringing view. Otherwise show the normal list. */
