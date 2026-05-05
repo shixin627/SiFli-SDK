@@ -134,6 +134,7 @@ LV_IMG_DECLARE(img_workout_gym);
 LV_IMG_DECLARE(img_media_play);
 LV_IMG_DECLARE(img_media_pause);
 LV_IMG_DECLARE(img_red_heart);
+LV_IMG_DECLARE(gaus_clock1_bg);
 
 extern void refresh_heartrate_widget(uint8_t hr);
 
@@ -968,6 +969,14 @@ static void on_start(void)
 
     // 创建基础UI
     ui.bg = common_black_bg(lv_scr_act());
+
+    /* gaus_clock1_bg 圖底圖 — 加在 ui.bg 第一個 child（最底層）。
+     * workout_screen 自帶不透明黑底會蓋住它，只有列表視圖會看到背景圖 */
+    lv_obj_t *bg_img = lv_img_create(ui.bg);
+    lv_img_set_src(bg_img, &gaus_clock1_bg);
+    lv_obj_align(bg_img, LV_ALIGN_CENTER, 0, 0);
+    lv_img_set_zoom(bg_img, 512);
+    lv_obj_clear_flag(bg_img, LV_OBJ_FLAG_CLICKABLE);
 
     ui.tileview = create_workout_list(ui.bg);
 

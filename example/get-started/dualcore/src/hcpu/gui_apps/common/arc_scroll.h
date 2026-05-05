@@ -37,11 +37,12 @@ typedef struct
     lv_obj_t *list;                 /* arc-drag 要捲動的 scrollable 容器 */
     uint16_t slot_height_px;        /* 兩個相鄰 item 的「位置間距」px（= item_height + spacing），
                                      * 跟 slot_angle_deg 一起決定「滑幾度等於滾一個 item」*/
-    uint16_t item_height_px;        /* 單一 item 本身的 px 高度。目前模組內部沒用到（scroll 範圍
-                                     * 直接由 LVGL clamp），保留欄位給未來可能的 clamp 重啟用 */
+    uint16_t item_height_px;        /* 單一 item 本身的 px 高度，scroll 邊界 clamp 會用到。
+                                     * spacing ≥ 0（item 不重疊）可填 0 → 自動取 slot_height_px；
+                                     * spacing < 0（item 重疊，例如 instruction_list）要明確填 */
     uint16_t slot_angle_deg;        /* 手指滑過幾度等於一個 slot */
-    uint16_t item_count;            /* 目前 item 數。目前內部沒用到（同上理由）；建議仍正確填，
-                                     * 如果 set_item_count 之後行為要靠這個值就會用得到 */
+    uint16_t item_count;            /* 目前 item 數。決定 scroll max 邊界（拖到最後一個就不能再
+                                     * 往下）。動態變動時呼叫 arc_scroll_set_item_count 更新 */
     uint16_t band_thickness;        /* 弧帶從螢幕邊往內的 px 厚度；0 → 預設 150 */
     bool lock_ancestors;            /* drag 期間鎖住外層 scrollable 祖先（防 tileview 誤搶）*/
     arc_scroll_tap_cb_t tap_cb;     /* 可為 NULL */

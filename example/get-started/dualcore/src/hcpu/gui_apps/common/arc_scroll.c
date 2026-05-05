@@ -150,19 +150,34 @@ static void pressing_cb(lv_event_t *e)
 
     if (h->cfg.item_count == 0) return;
 
-    /* 用 _lv_obj_scroll_by_raw 直接動 scroll，繞過 lv_obj_scroll_by_bounded 的
-     * 邊界檢查。LVGL 那層 clamp 在某些 layout（含 media_widget 之類的 floating
-     * 子物件、ENABLE_CURVE_LIST 修改 children 的 translate_x、隱藏 child 跟可見
-     * child 混在一起）會算出比實際可滾範圍小的 scroll_max，使用者拖到一半就被
-     * 卡住。raw 版本只更新 scroll.y + 移動 children + 發 SCROLL 事件，不做
-     * bounds check；snap_cb 在 RELEASE 時會把 list 拉回最近 item，即使中間飄過
-     * 頭最後也會回到合理位置 */
     lv_obj_t *list = h->cfg.list;
-    lv_coord_t int_scroll_delta = (lv_coord_t)scroll_delta;
-    if (int_scroll_delta == 0) return;
+    lv_coord_t cur_scroll = lv_obj_get_scroll_y(list);
+    lv_coord_t target_scroll = cur_scroll + (lv_coord_t)scroll_delta;
+
+    /* 自己算 min/max 邊界並 clamp，讓使用者不能拖過第一個/最後一個 item。
+     * 不能直接靠 lv_obj_scroll_to_y 內建 clamp — LVGL 的 scroll_by_bounded 在
+     * 某些 layout（CURVE_LIST 改 translate_x、hidden+visible 子物件混合、
+     * floating widget 等）會算出比真實可滾範圍小的 scroll_max，使用者拖一半
+     * 就被卡住。改成 (1) 用我們知道 item 幾何的公式自己 clamp，(2) 用
+     * _lv_obj_scroll_by_raw 直接套位移繞過 LVGL 的錯 clamp */
+    lv_coord_t list_y1 = list->coords.y1;
+    lv_coord_t pad_top = lv_obj_get_style_pad_top(list, LV_PART_MAIN);
+    lv_coord_t item_h = (h->cfg.item_height_px > 0)
+                            ? (lv_coord_t)h->cfg.item_height_px
+                            : (lv_coord_t)h->cfg.slot_height_px;
+    lv_coord_t min_scroll =
+        list_y1 + pad_top + item_h / 2 - LV_VER_RES / 2;
+    lv_coord_t max_scroll =
+        min_scroll +
+        (lv_coord_t)(h->cfg.item_count - 1) * (lv_coord_t)h->cfg.slot_height_px;
+    if (target_scroll < min_scroll) target_scroll = min_scroll;
+    if (target_scroll > max_scroll) target_scroll = max_scroll;
+    if (target_scroll == cur_scroll) return;
+
     /* lv_obj_scroll_by_raw 的 dy 跟 user-facing scroll_y 方向相反（dy 是
      * scroll.y 的增量，scroll.y = -scroll_y_user），所以要傳負號 */
-    _lv_obj_scroll_by_raw(list, 0, -int_scroll_delta);
+    lv_coord_t actual_delta = target_scroll - cur_scroll;
+    _lv_obj_scroll_by_raw(list, 0, -actual_delta);
 }
 
 static void released_cb(lv_event_t *e)
