@@ -24,7 +24,8 @@
 #endif
 
 #define DBG_TAG "commu.parse.control"
-#define DBG_LVL DBG_LOG
+#include "bsp_board.h"
+#define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 /**
  * @brief   resolve Control data command received from remote APP

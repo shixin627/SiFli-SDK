@@ -52,7 +52,6 @@
 #include "bloc_calendar.h"
 #include "communicate_protocol.h"
 #include "communicate_parse.h"
-#include "communicate_parse_skailink.h"
 #include "watch_global_data.h"
 #include "ui_handler.h"
 #include "gui_app_fwk.h"
@@ -60,7 +59,8 @@
 #include "watch_system_interact.h"
 
 #define DBG_TAG "bloc.skaiwalk"
-#define DBG_LVL DBG_LOG
+#include "bsp_board.h"
+#define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
 #define ITEM_AMOUNT 10

@@ -21,7 +21,8 @@
 #include "watch_system_interact.h"
 
 #define DBG_TAG "commu.parse.bond"
-#define DBG_LVL DBG_LOG
+#include "bsp_board.h"
+#define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 /* disconnect timer */
 rt_timer_t unbond_disc_timer = RT_NULL;

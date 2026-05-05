@@ -28,16 +28,14 @@
 #include "bloc_notification.h"
 #include "bloc_skaiwalk.h"
 #include "bloc_flash.h"
-#include "communicate_update_font.h"
-#include "communicate_update_image.h"
-#include "communicate_update_icon.h"
 #include "bloc_filesystem.h"
 #include "gesture_model_loader.h"
 #include <sys/stat.h>
 #include "dfs_posix.h"
 
 #define DBG_TAG "commu.parse.notify"
-#define DBG_LVL DBG_LOG
+#include "bsp_board.h"
+#define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
 /**

@@ -15,7 +15,8 @@
 #include "communicate_protocol.h"
 
 #define DBG_TAG "communicate.parse"
-#define DBG_LVL DBG_LOG
+#include "bsp_board.h"
+#define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 /**
  * @brief   resolve received data from remote APP
@@ -68,13 +69,6 @@ bool L2_frame_resolve(uint8_t *pData, uint16_t length)
     {
         LOG_D("CONTROL_COMMAND, KEY = 0x%x", first_key);
         resolve_Control_command(first_key, pData + L2_FIRST_VALUE_POS, first_value_length);
-    }
-    break;
-
-    case SKAI_LINK_COMMAND_ID:
-    {
-        LOG_D("SKAILINK_COMMAND, KEY = 0x%x", first_key);
-        resolve_SkaiLink_command(first_key, pData + L2_FIRST_VALUE_POS, first_value_length);
     }
     break;
 

@@ -24,7 +24,8 @@
 #include "string.h"
 
 #define DBG_TAG "commu.parse.health"
-#define DBG_LVL DBG_LOG
+#include "bsp_board.h"
+#define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
 /**

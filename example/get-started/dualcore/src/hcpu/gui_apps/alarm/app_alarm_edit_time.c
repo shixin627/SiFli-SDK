@@ -9,6 +9,7 @@
 #include "gui_app_fwk.h"
 #include "lv_ext_resource_manager.h"
 #include "alarm_manager_service.h"
+#include "alarm_client.h"
 #include "ui_datasrv_subscriber.h"
 
 #define DBG_TAG "APP.ALARM.ET"
@@ -135,7 +136,7 @@ static int srv_msg_handler(data_callback_arg_t *arg)
         data_rsp_t *rsp = (data_rsp_t *)arg->data;
 
         LOG_D("alarm edit err: %d", rsp->result);
-
+        if (rsp->result == 0) bloc_alarm_push_to_phone();
         gui_app_goback();
     }
     break;
@@ -144,6 +145,7 @@ static int srv_msg_handler(data_callback_arg_t *arg)
         data_rsp_t *rsp = (data_rsp_t *)arg->data;
 
         LOG_D("alarm add err: %d", rsp->result);
+        if (rsp->result == 0) bloc_alarm_push_to_phone();
         gui_app_goback();
     }
     break;

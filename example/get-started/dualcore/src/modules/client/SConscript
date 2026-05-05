@@ -20,6 +20,6 @@ if GetDepend('BSP_USING_WATCH_SYS_CLIENT'):
 if GetDepend('BSP_USING_ALARM_CLIENT'):
     src += Glob('alarm_client.c')
 
-group = DefineGroup('Client', src, depend = [''])
+group = DefineGroup('Client', src, depend = [''], CPPPATH = [cwd])
 
 Return('group')

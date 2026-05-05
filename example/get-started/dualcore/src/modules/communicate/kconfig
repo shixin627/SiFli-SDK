@@ -25,10 +25,6 @@ menu "Select Communicatie"
 				bool "Enable setting resolver"
 				default n
 
-			config BSP_USING_COMM_SKAILINK
-				bool "Enable skia-link resolver"
-				default n
-				
 			config BSP_USING_COMM_DFU
 				bool "Enable DFU resolver"
 				default n

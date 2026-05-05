@@ -26,7 +26,6 @@ extern "C"
 #include "communicate_parse_control.h"
 #include "communicate_parse_health.h"
 #include "communicate_parse_notify.h"
-#include "communicate_parse_skailink.h"
 
     /* Command ID */
     typedef enum
@@ -39,8 +38,6 @@ extern "C"
         FACTORY_TEST_COMMAND_ID = 0x06,
         CONTROL_COMMAND_ID = 0X07,
         BLUETOOTH_LOG_COMMAND_ID = 0x0a,
-        WEATHER_INFORMATION_ID = 0X0b,
-        SKAI_LINK_COMMAND_ID = 0x20,
         TEST_FLASH_READ_WRITE = 0xFE,
         TEST_COMMAND_ID = 0xFF,
     } WRISTBAND_COMMUNICATE_COMMAND;

@@ -42,63 +42,12 @@ extern "C"
 #define WATCH_DATA_HEADER_ACTIVITY (0xAC)        // Activity Data Heading [Ac]
 #define WATCH_DATA_HEADER_GSENSOR (0x47)         // Gsensor Data Heading [G]
 
-/******************* Macro defination *************************************/
-#define L1_HEADER_MAGIC (0xAB)   /*header magic number */
-#define L1_HEADER_VERSION (0x00) /*protocol version */
-#define L1_HEADER_SIZE (8)       /*L1 header length*/
-
-/**************************************************************************
- * define L1 header byte order
- ***************************************************************************/
-#define L1_HEADER_MAGIC_POS (0)
-#define L1_HEADER_PROTOCOL_VERSION_POS (1)
-#define L1_PAYLOAD_LENGTH_HIGH_BYTE_POS (2) /* L1 payload lengh high byte */
-#define L1_PAYLOAD_LENGTH_LOW_BYTE_POS (3)
-#define L1_HEADER_CRC16_HIGH_BYTE_POS (4)
-#define L1_HEADER_CRC16_LOW_BYTE_POS (5)
-#define L1_HEADER_SEQ_ID_HIGH_BYTE_POS (6)
-#define L1_HEADER_SEQ_ID_LOW_BYTE_POS (7)
-
-    /********************************************************************************
-     * define version response
-     *********************************************************************************/
-    typedef enum
-    {
-        DATA_PACKAGE = 0,
-        RESPONSE_PACKAGE = 1,
-    } L1_PACKAGE_TYPE;
-
-    /********************************************************************************
-     * define ack or nak
-     *********************************************************************************/
-    typedef enum
-    {
-        ACK = 0,
-        NAK = 1,
-    } L1_ERROR_FLAG;
-
 #define L2_HEADER_SIZE (2)       /*L2 header length*/
 #define L2_HEADER_VERSION (0x00) /*L2 header version*/
 #define L2_KEY_SIZE (1)
 #define L2_PAYLOAD_HEADER_SIZE (3) /*L2 payload header*/
 
 #define L2_FIRST_VALUE_POS (L2_HEADER_SIZE + L2_PAYLOAD_HEADER_SIZE)
-
-    /******************* Enum & Struct defination ******************************/
-    /*L1 version defination */
-    typedef struct
-    {
-        uint8_t version : 4;
-        uint8_t ack_flag : 1;
-        uint8_t err_flag : 1;
-        uint8_t reserve : 2;
-    } L1_version_def_t;
-
-    typedef union
-    {
-        L1_version_def_t version_def;
-        uint8_t value;
-    } L1_version_value_t;
 
     typedef enum
     {
@@ -111,8 +60,6 @@ extern "C"
     extern void skaiwatch_ble_set_performance(bool status);
     extern void ble_station_entry(void *parameter);
     extern void communicate_protocol_init(void);
-    extern bool L1_send(uint8_t *buf, uint16_t length);
-    extern void L1_receive_data(uint8_t *data, uint16_t length);
     extern bool skaiwatch_ble_notify(uint8_t *buf, uint16_t length);
     extern bool skaiwatch_ble_audio_send(uint8_t *buf, uint16_t length);
 

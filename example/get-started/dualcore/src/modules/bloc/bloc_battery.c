@@ -13,7 +13,8 @@
 #include "charge.h"
 
 #define DBG_TAG "bloc.battery"
-#define DBG_LVL DBG_LOG
+#include "bsp_board.h"
+#define DBG_LVL BSP_DBG_LVL
 #include "rtdbg.h"
 
 #ifdef BSP_USING_ADC

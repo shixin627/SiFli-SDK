@@ -52,7 +52,8 @@
 #include "bloc_setting.h"
 
 #define DBG_TAG "bloc.motor"
-#define DBG_LVL DBG_LOG
+#include "bsp_board.h"
+#define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
 #define MOTOR_FREQ 300

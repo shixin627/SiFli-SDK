@@ -79,7 +79,8 @@
 #include "cJSON.h"
 
 #define DBG_TAG "bloc.notification"
-#define DBG_LVL DBG_LOG
+#include "bsp_board.h"
+#define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
 #if CUSTOMER_BOARD_VER > BOARD_VER_28

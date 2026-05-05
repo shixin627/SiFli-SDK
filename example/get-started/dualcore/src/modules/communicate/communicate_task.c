@@ -21,11 +21,6 @@
 #include <string.h>
 #include "communicate_protocol.h"
 #include "communicate_parse.h"
-#include "communicate_parse_notify.h"
-#include "communicate_sync_pedo.h"
-#include "communicate_sync_sleep.h"
-#include "communicate_sync_heart_rate.h"
-#include "communicate_update_image.h"
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
 
@@ -43,7 +38,8 @@
 #endif
 
 #define DBG_TAG "communicate.task"
-#define DBG_LVL DBG_LOG
+#include "bsp_board.h"
+#define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
 /** @addtogroup  PERIPH_DEMO

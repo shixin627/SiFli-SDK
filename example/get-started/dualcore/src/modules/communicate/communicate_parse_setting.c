@@ -15,7 +15,6 @@
 #include "communicate_task.h"
 
 #include "string.h"
-#include "communicate_sync_pedo.h"
 #include "watch_system_interact.h"
 #ifdef BSP_USING_MODEL_WATCH_GLOBAL_DATA
     #include "watch_global_data.h"
@@ -25,8 +24,13 @@
     #include "bloc_control.h"
     #include "bloc_peripheral.h"
 #endif
+#ifdef BSP_USING_ALARM_CLIENT
+    #include "alarm_client.h"
+#endif
+
 #define DBG_TAG "commu.parse.setting"
-#define DBG_LVL DBG_LOG
+#include "bsp_board.h"
+#define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
 void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
@@ -111,21 +115,20 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
                 alarm.data |= alarmData << 8;
                 alarmData = pValue[4 + index * 5];
                 alarm.data |= alarmData;
-                if (alarm.alarm.day_repeat_flag == 0)
-                {
-                    alarm.alarm.reserved = 0x1;
-                }
+                /* Phone packs the enabled flag into reserved[0]; preserve it
+                   bit-for-bit so apply_alarms_from_ble can read it. */
 
                 memcpy((void *)&(SkaiWatchSys.alarms[index]), &alarm,
                        sizeof(T_ALARM));
-#if 1
-                LOG_D("Set alarm day:%d, hour:%d, min:%d,repeat_flag:0x%x\n",
+                LOG_D("Set alarm day:%d, hour:%d, min:%d,repeat_flag:0x%x",
                       alarm.alarm.day, alarm.alarm.hour, alarm.alarm.minute,
                       alarm.alarm.day_repeat_flag);
-
-                // TODO: set_alarm(&alarm);
-#endif
             }
+#ifdef BSP_USING_ALARM_CLIENT
+            /* Push the freshly parsed list to alarm_manager_service so the
+               HW alarm gets armed (and survives reboot via share_prefs). */
+            apply_alarms_from_ble(SkaiWatchSys.alarms, num);
+#endif
 #if FEATURE_USE_FLASH
             ftl_save((void *)SkaiWatchSys.alarms, ALARM_OFFSET, ALARM_SIZE);
             uint32_t temp = SkaiWatchSys.alarm_num;
