@@ -9,7 +9,9 @@
 #define __ALARM_CLIENT_H__
 
 #include <stdint.h>
-#include "watch_global_data.h" /* T_ALARM */
+#include <stdbool.h>
+#include "watch_global_data.h"     /* T_ALARM */
+#include "alarm_manager_service.h" /* alarm_contxt_t */
 
 #ifdef __cplusplus
 extern "C"
@@ -30,13 +32,29 @@ extern "C"
     void apply_alarms_from_ble(const T_ALARM *alarms, uint8_t num);
 
     /**
-     * Snapshot the current alarm_manager_service list and push it to the phone
-     * (KEY_RETURN_ALARM_SETTINGS). Call after any watch-side mutation
-     * (toggle / add / edit / delete) so the phone UI stays in sync without
-     * having to poll. Safe to call back-to-back — concurrent invocations
-     * coalesce into a single follow-up pass.
+     * Mirror a watch-side mutation into SkaiWatchSys.alarms[] so the
+     * BLE-reply path (commu_send_alarm_settings on phone pull) and the
+     * boot-restore path (WatchPrefs.read_alarms) stay consistent with the
+     * alarm_manager_service state. Persists to flash via WatchPrefs.write_alarms.
+     *   - op = 0 : add at end
+     *   - op = 1 : replace slot @p idx
+     *   - op = 2 : delete slot @p idx (shifts remaining alarms down)
      */
-    void bloc_alarm_push_to_phone(void);
+    void watch_alarm_local_sync(int op, int32_t idx,
+                                const alarm_contxt_t *ctx);
+
+    /**
+     * Returns the index of the currently-ringing alarm, or -1 if none.
+     * Polled by app_alarm.c so it can flip to the ringing UI when an alarm
+     * fires while the app is open (foreground).
+     */
+    int32_t bloc_alarm_get_ringing_idx(void);
+
+    /**
+     * Stop the currently ringing alarm.
+     * @param snooze_5min  true → schedule a one-shot alarm 5 minutes from now.
+     */
+    void bloc_alarm_stop_ringing(bool snooze_5min);
 
 #ifdef __cplusplus
 }

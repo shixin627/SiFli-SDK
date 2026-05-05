@@ -443,6 +443,31 @@ static void write_gesture_threshold(share_prefs_t *pref)
   LOG_I("Saved gesture threshold: %d", threshold);
 }
 
+static void read_alarms(share_prefs_t *pref)
+{
+  int32_t num = share_prefs_get_int(pref, "alarm_num", 0);
+  if (num < 0)                  num = 0;
+  if (num > MAX_ALARM_NUM)       num = MAX_ALARM_NUM;
+  SkaiWatchSys.alarm_num = (uint8_t)num;
+  if (num > 0)
+  {
+    share_prefs_get_block(pref, "alarms", (void *)&SkaiWatchSys.alarms,
+                          sizeof(T_ALARM) * MAX_ALARM_NUM);
+  }
+  else
+  {
+    memset(&SkaiWatchSys.alarms, 0, sizeof(SkaiWatchSys.alarms));
+  }
+  LOG_I("Loaded %d alarms from prefs", num);
+}
+
+static void write_alarms(share_prefs_t *pref)
+{
+  share_prefs_set_int(pref, "alarm_num", SkaiWatchSys.alarm_num);
+  share_prefs_set_block(pref, "alarms", (void *)&SkaiWatchSys.alarms,
+                        sizeof(T_ALARM) * MAX_ALARM_NUM);
+}
+
 static int watch_prefs_register(void)
 {
   WatchPrefs.pref = NULL;
@@ -482,9 +507,19 @@ static int watch_prefs_register(void)
   WatchPrefs.write_clock_status = write_clock_status;
   WatchPrefs.read_gesture_threshold = read_gesture_threshold;
   WatchPrefs.write_gesture_threshold = write_gesture_threshold;
+  WatchPrefs.read_alarms = read_alarms;
+  WatchPrefs.write_alarms = write_alarms;
   return 0;
 }
 INIT_APP_EXPORT(watch_prefs_register);
+
+void watch_prefs_save_alarms(void)
+{
+  share_prefs_t *pref = open_watch_prefs();
+  if (pref == NULL) { LOG_E("watch_prefs_save_alarms: open failed"); return; }
+  write_alarms(pref);
+  close_watch_prefs(pref);
+}
 
 void watch_config_struct_flash_read(void)
 {
@@ -498,7 +533,6 @@ void watch_config_struct_flash_read(void)
   WatchPrefs.read_flag_field(pref);
   WatchPrefs.read_msg_switch(pref);
   WatchPrefs.read_phone_os_version(pref);
-  // WatchPrefs.read_alarm();
   WatchPrefs.read_oled_display_time(pref);
   WatchPrefs.read_language(pref);
   WatchPrefs.read_clock_screen_num(pref);
@@ -512,7 +546,18 @@ void watch_config_struct_flash_read(void)
   WatchPrefs.read_sleep_data(pref);
   WatchPrefs.read_clock_status(pref);
   WatchPrefs.read_gesture_threshold(pref);
+  WatchPrefs.read_alarms(pref);
   close_watch_prefs(pref);
+
+  /* Restore HW alarms in alarm_manager_service from the freshly-loaded
+     SkaiWatchSys.alarms[]. apply_alarms_from_ble re-arms each entry. */
+#if defined(BSP_USING_ALARM_CLIENT)
+  if (SkaiWatchSys.alarm_num > 0)
+  {
+    extern void apply_alarms_from_ble(const T_ALARM *alarms, uint8_t num);
+    apply_alarms_from_ble(SkaiWatchSys.alarms, SkaiWatchSys.alarm_num);
+  }
+#endif
 }
 
 void reset_watch_restart_number(void)
@@ -553,7 +598,6 @@ void watch_config_struct_flash_write(void)
   WatchPrefs.write_flag_field(pref);
   WatchPrefs.write_msg_switch(pref);
   WatchPrefs.write_phone_os_version(pref);
-  // WatchPrefs.write_alarm();
   WatchPrefs.write_oled_display_time(pref);
   WatchPrefs.write_language(pref);
   WatchPrefs.write_clock_screen_num(pref);

@@ -55,7 +55,7 @@ static const uint16_t APP_LIST_ITEMS[] = {
     // app_id_activity,
 #endif
 #ifdef APP_ID_ALARM
-    // app_id_alarm,
+    app_id_alarm,
 #endif
 #ifdef APP_ID_SETTING
     app_id_setting,

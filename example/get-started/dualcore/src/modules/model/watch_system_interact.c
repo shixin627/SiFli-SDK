@@ -1185,10 +1185,6 @@ static int control_motor(int argc, char *argv[])
         {
             motor_pattern_damping();
         }
-        else if (strcmp(argv[1], "-test") == 0)
-        {
-            motor_pattern_test();
-        }
     }
     return 0;
 }

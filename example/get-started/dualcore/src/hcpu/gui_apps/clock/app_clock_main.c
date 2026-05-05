@@ -1036,10 +1036,10 @@ void app_clock_switch_to(uint16_t clock_idx)
 }
 
 extern const lv_img_dsc_t *weather_icon_get(char *weather);
-static void refersh_time(T_UTC_TIME *current_time)
+static void refresh_time(T_UTC_TIME *current_time)
 {
     char time_str[3];
-    LOG_D("refersh_time:%d:%d:%d", current_time->hour, current_time->minutes,
+    LOG_D("refresh_time:%d:%d:%d", current_time->hour, current_time->minutes,
           current_time->seconds);
     if (lv_obj_is_valid(p_app_clock_main->instruction_list_time_h) &&
         lv_obj_is_valid(p_app_clock_main->instruction_list_time_m))
@@ -1264,7 +1264,7 @@ static lv_timer_t *gui_state_update_timer = NULL;
 void instruction_list_main_time_update(void)
 {
     aligned_time = SkaiWatchSys.Global_Time;
-    refersh_time(&aligned_time);
+    refresh_time(&aligned_time);
 }
 
 static void gui_state_update_timer_callback(lv_timer_t *timer)

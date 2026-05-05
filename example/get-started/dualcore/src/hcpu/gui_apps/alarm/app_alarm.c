@@ -42,6 +42,8 @@
 #define ALARM_CARD_H 96
 #define ALARM_CARD_RADIUS 16
 #define HEADER_H 64
+#define FOOTER_H 88        /* room for the floating "+" button */
+#define ADD_BTN_SIZE 64    /* round, sits on the optical center bottom */
 
 #define COLOR_BG          lv_color_hex(0x000000)
 #define COLOR_CARD        lv_color_hex(0x1C1C1E)  /* iOS dark surface */
@@ -52,12 +54,31 @@
 #define COLOR_SWITCH_ON   lv_color_hex(0x34C759)  /* iOS green */
 #define COLOR_SWITCH_OFF  lv_color_hex(0x39393D)
 #define COLOR_ACCENT      lv_color_hex(0xFF9F0A)  /* iOS Alarm orange */
+#define COLOR_DANGER      lv_color_hex(0xFF453A)  /* iOS red — Stop button */
+#define COLOR_NEUTRAL     lv_color_hex(0x2C2C2E)  /* dark grey — Snooze button */
+
+typedef enum
+{
+    ALARM_VIEW_LIST,
+    ALARM_VIEW_RINGING,
+} alarm_view_t;
 
 typedef struct
 {
+    /* List view */
     lv_obj_t *list_cnt;       /* scroll container holding the cards */
     lv_obj_t *empty_label;    /* shown when list is empty */
+    lv_obj_t *list_root;      /* groups all list-mode widgets for show/hide */
+
+    /* Ringing view */
+    lv_obj_t *ringing_root;
+    lv_obj_t *ringing_time_lbl;
+
+    /* Polling */
+    lv_timer_t *fire_poll_timer; /* checks bloc_alarm_get_ringing_idx */
+
     datac_handle_t srv_handle;
+    alarm_view_t view;
     bool first_resume;
     uint8_t alarm_num;
 } app_alarm_t;
@@ -143,8 +164,19 @@ static void switch_event_cb(lv_event_t *e)
         sizeof(alarm_msg_t));
     p->idx = idx;
     datac_send_msg(p_app_alarm->srv_handle, &msg);
-    /* Mirror the new state to the phone so its UI doesn't drift. */
-    bloc_alarm_push_to_phone();
+
+    /* Mirror the enable/disable into SkaiWatchSys.alarms[] reserved bit so
+       phone polls see the latest state and persistence reflects it after
+       reboot. memcpy through a local T_ALARM avoids the unaligned 64-bit
+       bit-field RMW that triggers SCB_CFSR.UNALIGNED on Cortex-M. */
+    if (idx >= 0 && idx < SkaiWatchSys.alarm_num)
+    {
+        T_ALARM tmp;
+        memcpy(&tmp, &SkaiWatchSys.alarms[idx], sizeof(T_ALARM));
+        tmp.alarm.reserved = enable ? 0x1 : 0x0;
+        memcpy(&SkaiWatchSys.alarms[idx], &tmp, sizeof(T_ALARM));
+        watch_prefs_save_alarms();
+    }
 }
 
 static void card_event_cb(lv_event_t *e)
@@ -312,6 +344,223 @@ static int srv_msg_handler(data_callback_arg_t *arg)
 }
 
 /*********************
+ *   RINGING VIEW
+ *********************/
+
+static void show_view(alarm_view_t v);
+
+static void stop_btn_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    bloc_alarm_stop_ringing(false);
+    /* Exit back to the previous screen — matches Apple Watch behaviour. */
+    gui_app_goback();
+}
+
+static void snooze_btn_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    bloc_alarm_stop_ringing(true);
+    /* Snooze creates a one-shot 5 min later — leave the app for now;
+       it'll re-launch in ringing mode when the snooze fires. */
+    gui_app_goback();
+}
+
+static void build_ringing_view(lv_obj_t *parent)
+{
+    lv_obj_t *root = lv_obj_create(parent);
+    lv_obj_set_size(root, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_align(root, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(root, COLOR_BG, 0);
+    lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(root, 0, 0);
+    lv_obj_set_style_pad_all(root, 0, 0);
+    lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(root, LV_OBJ_FLAG_HIDDEN);
+    p_app_alarm->ringing_root = root;
+
+    /* "Alarm" label at top, in accent orange. */
+    lv_obj_t *kicker = lv_label_create(root);
+    lv_label_set_text(kicker, "Alarm");
+    lv_obj_set_style_text_color(kicker, COLOR_ACCENT, 0);
+    lv_obj_set_style_text_font(
+        kicker, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align(kicker, LV_ALIGN_TOP_MID, 0, 80);
+
+    /* Big time, fills the optical center. */
+    lv_obj_t *time_lbl = lv_label_create(root);
+    lv_label_set_text(time_lbl, "00:00");
+    lv_obj_set_style_text_color(time_lbl, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_text_font(
+        time_lbl, LV_EXT_FONT_GET(get_system_font_size(4)), 0);
+    lv_obj_align(time_lbl, LV_ALIGN_CENTER, 0, -30);
+    p_app_alarm->ringing_time_lbl = time_lbl;
+
+    /* Snooze button (secondary) — left of bottom row. */
+    lv_obj_t *snooze_btn = lv_btn_create(root);
+    lv_obj_set_size(snooze_btn, 140, 56);
+    lv_obj_align(snooze_btn, LV_ALIGN_BOTTOM_MID, -80, -30);
+    lv_obj_set_style_bg_color(snooze_btn, COLOR_NEUTRAL, 0);
+    lv_obj_set_style_bg_opa(snooze_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(snooze_btn, 28, 0);
+    lv_obj_set_style_border_width(snooze_btn, 0, 0);
+    lv_obj_set_style_shadow_width(snooze_btn, 0, 0);
+    lv_obj_add_event_cb(snooze_btn, snooze_btn_event_cb, LV_EVENT_CLICKED,
+                        NULL);
+    lv_obj_t *snooze_lbl = lv_label_create(snooze_btn);
+    lv_label_set_text(snooze_lbl, "Snooze");
+    lv_obj_set_style_text_color(snooze_lbl, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_text_font(
+        snooze_lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_center(snooze_lbl);
+
+    /* Stop button (primary danger) — right of bottom row. */
+    lv_obj_t *stop_btn = lv_btn_create(root);
+    lv_obj_set_size(stop_btn, 140, 56);
+    lv_obj_align(stop_btn, LV_ALIGN_BOTTOM_MID, 80, -30);
+    lv_obj_set_style_bg_color(stop_btn, COLOR_DANGER, 0);
+    lv_obj_set_style_bg_opa(stop_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(stop_btn, 28, 0);
+    lv_obj_set_style_border_width(stop_btn, 0, 0);
+    lv_obj_set_style_shadow_width(stop_btn, 0, 0);
+    lv_obj_add_event_cb(stop_btn, stop_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *stop_lbl = lv_label_create(stop_btn);
+    lv_label_set_text(stop_lbl, "Stop");
+    lv_obj_set_style_text_color(stop_lbl, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_text_font(
+        stop_lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_center(stop_lbl);
+}
+
+/*********************
+ *   LIST VIEW
+ *********************/
+
+static void build_list_view(lv_obj_t *parent)
+{
+    /* Group everything list-related under one root so we can hide/show in
+       one call when flipping to/from the ringing view. */
+    lv_obj_t *root = lv_obj_create(parent);
+    lv_obj_set_size(root, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_align(root, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_opa(root, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(root, 0, 0);
+    lv_obj_set_style_pad_all(root, 0, 0);
+    lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+    p_app_alarm->list_root = root;
+
+    /* Header: title only, centred — round screens clip the corners. */
+    lv_obj_t *title = lv_label_create(root);
+    lv_label_set_text(title, "Alarm");
+    lv_obj_set_style_text_font(
+        title, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_color(title, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 24);
+
+    /* Scrollable list of alarm cards. */
+    lv_obj_t *list = lv_obj_create(root);
+    lv_obj_set_size(list, ALARM_LIST_W,
+                    LV_VER_RES_MAX - HEADER_H - FOOTER_H);
+    lv_obj_align(list, LV_ALIGN_TOP_MID, 0, HEADER_H);
+    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(list, 0, 0);
+    lv_obj_set_style_pad_all(list, 8, 0);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(list, 10, 0);
+    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
+    p_app_alarm->list_cnt = list;
+
+    /* "+" floating button at bottom-centre — only safe area on a round face. */
+    lv_obj_t *add_btn = lv_btn_create(root);
+    lv_obj_set_size(add_btn, ADD_BTN_SIZE, ADD_BTN_SIZE);
+    lv_obj_align(add_btn, LV_ALIGN_BOTTOM_MID, 0, -16);
+    lv_obj_set_style_bg_color(add_btn, COLOR_CARD, 0);
+    lv_obj_set_style_bg_opa(add_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(add_btn, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(add_btn, 0, 0);
+    lv_obj_set_style_shadow_width(add_btn, 16, 0);
+    lv_obj_set_style_shadow_color(add_btn, lv_color_black(), 0);
+    lv_obj_set_style_shadow_opa(add_btn, LV_OPA_30, 0);
+    lv_obj_add_event_cb(add_btn, add_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *plus = lv_label_create(add_btn);
+    lv_label_set_text(plus, "+");
+    lv_obj_set_style_text_color(plus, COLOR_ACCENT, 0);
+    lv_obj_set_style_text_font(
+        plus, LV_EXT_FONT_GET(get_system_font_size(3)), 0);
+    lv_obj_center(plus);
+
+    /* "No Alarms" empty state — hidden until the list-load finishes empty. */
+    lv_obj_t *empty = lv_label_create(root);
+    lv_label_set_text(empty, "No Alarms");
+    lv_obj_set_style_text_font(
+        empty, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_color(empty, COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(empty, LV_ALIGN_CENTER, 0, -10);
+    lv_obj_add_flag(empty, LV_OBJ_FLAG_HIDDEN);
+    p_app_alarm->empty_label = empty;
+}
+
+/*********************
+ *   VIEW SWITCHING
+ *********************/
+
+static void enter_ringing_view(int32_t idx)
+{
+    char buf[8];
+    /* Read time from the manager's stored alarm via SkaiWatchSys.alarms[]
+       isn't reliable for snoozes; fetch from the request the user just made
+       isn't easy either. Show wall-clock current time as a fallback — the
+       alarm just fired, so this is the moment that matters. */
+    rt_snprintf(buf, sizeof(buf), "%02d:%02d",
+                SkaiWatchSys.Global_Time.hour,
+                SkaiWatchSys.Global_Time.minutes);
+    lv_label_set_text(p_app_alarm->ringing_time_lbl, buf);
+    show_view(ALARM_VIEW_RINGING);
+    (void)idx;
+}
+
+static void show_view(alarm_view_t v)
+{
+    if (!p_app_alarm) return;
+    p_app_alarm->view = v;
+    if (v == ALARM_VIEW_RINGING)
+    {
+        if (p_app_alarm->list_root)
+            lv_obj_add_flag(p_app_alarm->list_root, LV_OBJ_FLAG_HIDDEN);
+        if (p_app_alarm->ringing_root)
+            lv_obj_clear_flag(p_app_alarm->ringing_root, LV_OBJ_FLAG_HIDDEN);
+    }
+    else
+    {
+        if (p_app_alarm->ringing_root)
+            lv_obj_add_flag(p_app_alarm->ringing_root, LV_OBJ_FLAG_HIDDEN);
+        if (p_app_alarm->list_root)
+            lv_obj_clear_flag(p_app_alarm->list_root, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void fire_poll_cb(lv_timer_t *t)
+{
+    (void)t;
+    if (!p_app_alarm) return;
+    int32_t idx = bloc_alarm_get_ringing_idx();
+    if (idx >= 0 && p_app_alarm->view != ALARM_VIEW_RINGING)
+    {
+        /* Alarm fired while user was on the list view — flip to ringing UI. */
+        enter_ringing_view(idx);
+    }
+    else if (idx < 0 && p_app_alarm->view == ALARM_VIEW_RINGING)
+    {
+        /* External code stopped the ring (e.g. phone-side dismiss) — go back
+           to the list. */
+        show_view(ALARM_VIEW_LIST);
+    }
+}
+
+/*********************
  *   LIFECYCLE
  *********************/
 
@@ -321,63 +570,8 @@ static void build_layout(void)
     lv_obj_set_style_bg_color(scr, COLOR_BG, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
 
-    /* ── Header: "Alarm" title + "+" button ── */
-    lv_obj_t *header = lv_obj_create(scr);
-    lv_obj_set_size(header, LV_HOR_RES_MAX, HEADER_H);
-    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_opa(header, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(header, 0, 0);
-    lv_obj_set_style_pad_all(header, 0, 0);
-    lv_obj_clear_flag(header, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *title = lv_label_create(header);
-    lv_label_set_text(title, "Alarm");
-    lv_obj_set_style_text_font(
-        title, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-    lv_obj_set_style_text_color(title, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_align(title, LV_ALIGN_CENTER, 0, 0);
-
-    lv_obj_t *add_btn = lv_btn_create(header);
-    lv_obj_set_size(add_btn, 44, 44);
-    lv_obj_align(add_btn, LV_ALIGN_RIGHT_MID, -16, 0);
-    lv_obj_set_style_bg_color(add_btn, COLOR_CARD, 0);
-    lv_obj_set_style_bg_opa(add_btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(add_btn, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(add_btn, 0, 0);
-    lv_obj_set_style_shadow_width(add_btn, 0, 0);
-    lv_obj_add_event_cb(add_btn, add_btn_event_cb, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *plus = lv_label_create(add_btn);
-    lv_label_set_text(plus, "+");
-    lv_obj_set_style_text_color(plus, COLOR_ACCENT, 0);
-    lv_obj_set_style_text_font(
-        plus, LV_EXT_FONT_GET(get_system_font_size(2)), 0);
-    lv_obj_center(plus);
-
-    /* ── Scrollable list of cards ── */
-    lv_obj_t *list = lv_obj_create(scr);
-    lv_obj_set_size(list, ALARM_LIST_W, LV_VER_RES_MAX - HEADER_H - 20);
-    lv_obj_align(list, LV_ALIGN_BOTTOM_MID, 0, -10);
-    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(list, 0, 0);
-    lv_obj_set_style_pad_all(list, 8, 0);
-    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(list, 10, 0);
-    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
-
-    p_app_alarm->list_cnt = list;
-
-    /* ── Empty state — sits behind the list, shown when alarm_num == 0. ── */
-    lv_obj_t *empty = lv_label_create(scr);
-    lv_label_set_text(empty, "No Alarms");
-    lv_obj_set_style_text_font(
-        empty, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_style_text_color(empty, COLOR_TEXT_SECONDARY, 0);
-    lv_obj_align(empty, LV_ALIGN_CENTER, 0, 20);
-    lv_obj_add_flag(empty, LV_OBJ_FLAG_HIDDEN);
-    p_app_alarm->empty_label = empty;
+    build_list_view(scr);
+    build_ringing_view(scr);
 }
 
 static void on_start(void)
@@ -404,10 +598,28 @@ static void on_resume(void)
     {
         p_app_alarm->first_resume = false;
     }
+
+    /* If we landed here because an alarm just fired, jump straight to the
+       ringing view. Otherwise show the normal list. */
+    int32_t ringing = bloc_alarm_get_ringing_idx();
+    if (ringing >= 0)
+        enter_ringing_view(ringing);
+    else
+        show_view(ALARM_VIEW_LIST);
+
+    /* Poll while the app is in the foreground so we still flip into the
+       ringing view if an alarm fires while the user is browsing the list. */
+    if (!p_app_alarm->fire_poll_timer)
+        p_app_alarm->fire_poll_timer = lv_timer_create(fire_poll_cb, 500, NULL);
 }
 
 static void on_pause(void)
 {
+    if (p_app_alarm->fire_poll_timer)
+    {
+        lv_timer_del(p_app_alarm->fire_poll_timer);
+        p_app_alarm->fire_poll_timer = NULL;
+    }
     if (p_app_alarm->srv_handle != DATA_CLIENT_INVALID_HANDLE)
     {
         datac_close(p_app_alarm->srv_handle);
@@ -421,6 +633,11 @@ static void on_stop(void)
 {
     if (p_app_alarm)
     {
+        if (p_app_alarm->fire_poll_timer)
+        {
+            lv_timer_del(p_app_alarm->fire_poll_timer);
+            p_app_alarm->fire_poll_timer = NULL;
+        }
         if (p_app_alarm->srv_handle != DATA_CLIENT_INVALID_HANDLE)
         {
             datac_close(p_app_alarm->srv_handle);

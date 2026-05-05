@@ -628,11 +628,19 @@ __attribute__((packed)) SkaiWatchSysType_t;
         void (*write_clock_status)(share_prefs_t *pref);
         void (*read_gesture_threshold)(share_prefs_t *pref);
         void (*write_gesture_threshold)(share_prefs_t *pref);
+        /* Alarm list — persisted as a single block so reboot restores both
+           the count and per-slot T_ALARM bit-packed payload. */
+        void (*read_alarms)(share_prefs_t *pref);
+        void (*write_alarms)(share_prefs_t *pref);
     } WatchPrefs_t;
 
     extern SkaiWatchSysType_t SkaiWatchSys;
     extern WatchPrefs_t WatchPrefs;
     extern void watch_config_struct_flash_read(void);
+
+    /* Persist SkaiWatchSys.alarms[] + alarm_num to share_prefs immediately.
+       Caller-friendly wrapper around open_watch_prefs / write_alarms / close. */
+    extern void watch_prefs_save_alarms(void);
 
     typedef enum
     {

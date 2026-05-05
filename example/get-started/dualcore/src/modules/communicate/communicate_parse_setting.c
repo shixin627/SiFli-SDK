@@ -129,11 +129,9 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
                HW alarm gets armed (and survives reboot via share_prefs). */
             apply_alarms_from_ble(SkaiWatchSys.alarms, num);
 #endif
-#if FEATURE_USE_FLASH
-            ftl_save((void *)SkaiWatchSys.alarms, ALARM_OFFSET, ALARM_SIZE);
-            uint32_t temp = SkaiWatchSys.alarm_num;
-            ftl_save(&temp, ALARM_NUM_OFFSET, ALARM_NUM_SIZE);
-#endif
+            /* Persist to share_prefs so SkaiWatchSys.alarms[] survives reboot.
+               watch_config_struct_flash_read() loads them back on boot. */
+            watch_prefs_save_alarms();
         }
     }
     break;

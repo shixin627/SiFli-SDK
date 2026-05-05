@@ -25,6 +25,35 @@ static int32_t g_alarms_num;
 static struct rt_mutex s_alm_mgr_mutex;
 static void hw_alarm_callback(rt_alarm_t alarm, time_t timestamp);
 
+/* Alarm fire signaling. The hw_alarm_callback runs on the soft-RTC thread,
+   which can't safely call into LVGL / motor / GUI APIs. We just record which
+   alarm fired and post a sem; a dedicated worker thread invokes the user-
+   provided ring hook (bloc_alarm_on_fire, weak — overridden by alarm_client). */
+static rt_sem_t s_alarm_fire_sem = RT_NULL;
+static volatile int32_t s_alarm_fired_idx = -1;
+
+RT_WEAK void bloc_alarm_on_fire(int32_t alarm_idx)
+{
+    (void)alarm_idx;
+}
+
+static void alarm_fire_thread_entry(void *param)
+{
+    (void)param;
+    while (1)
+    {
+        if (rt_sem_take(s_alarm_fire_sem, RT_WAITING_FOREVER) == RT_EOK)
+        {
+            int32_t idx = s_alarm_fired_idx;
+            s_alarm_fired_idx = -1;
+            if (idx >= 0)
+            {
+                bloc_alarm_on_fire(idx);
+            }
+        }
+    }
+}
+
 // TODO:
 extern time_t time(time_t *raw_time);
 struct tm *_localtime_r(const time_t *t, struct tm *r);
@@ -57,11 +86,21 @@ static rt_alarm_t setup_hw_alarm(alarm_contxt_t *alm_ctx)
 #else
         localtime_s(&timestamp, &now);
 #endif
-        for (; (alm_ctx->days & (1 << now.tm_wday)) != 0; now.tm_wday++)
+        /* Find the first wday (starting today) where the alarm should fire.
+           The previous loop had its condition inverted: it exited when the
+           bit was *clear*, so days==0x7F (every day) walked tm_wday from 0
+           to 7, an invalid value that produced an alarm rt_alarm_create()
+           treated as "fire immediately". The callback then ran setup again,
+           starving the soft-RTC thread → HCPU WDT timeout. */
+        int n;
+        for (n = 0; n < 7; n++)
         {
-            if (now.tm_wday > 6)
-                now.tm_wday = 0;
+            if (alm_ctx->days & (1 << now.tm_wday))
+                break;
+            now.tm_wday = (now.tm_wday + 1) % 7;
         }
+        if (n == 7) /* no day bit set — caller should have rejected this */
+            return NULL;
 
         setup.flag = RT_ALARM_WEEKLY;
         setup.wktime.tm_wday = now.tm_wday;
@@ -79,31 +118,28 @@ static rt_alarm_t setup_hw_alarm(alarm_contxt_t *alm_ctx)
 
 static void hw_alarm_callback(rt_alarm_t alarm, time_t timestamp)
 {
+    /* Stay minimal — this runs on the soft-RTC thread. Heavy work (LVGL,
+       motor, BLE) happens in the fire worker thread.
+
+       For RT_ALARM_WEEKLY the kernel auto-rearms; we don't recreate. The
+       previous code did delete+recreate, which both leaked the alarm
+       (`alarm` argument was never freed before being overwritten) and
+       compounded the WDT issue when setup_hw_alarm produced a bad wday. */
     int32_t i;
 
     for (i = 0; i < g_alarms_num; i++)
     {
-        mgr_alarm_ctx_t *p_alm;
-
-        p_alm = p_mgr_alarms + i;
-
+        mgr_alarm_ctx_t *p_alm = p_mgr_alarms + i;
         if (p_alm->p_hw_alarm == alarm)
         {
-#ifndef _MSC_VER
-            // restart alarm if NOT oneshot
-            if (p_alm->ctx->days != ALARM_REPEAT_ONE_SHOT)
+            if (p_alm->ctx->days == ALARM_REPEAT_ONE_SHOT)
             {
-                p_alm->p_hw_alarm = setup_hw_alarm(p_alm->ctx);
-                rt_alarm_start(p_alm->p_hw_alarm);
-            }
-            else
-            {
-                rt_alarm_delete(p_alm->p_hw_alarm);
-                p_alm->p_hw_alarm = NULL;
+                /* Mark disabled so update_alarms() drops it next pass.
+                   Don't rt_alarm_delete from the callback — unsafe. */
                 p_alm->ctx->state = ALARM_STATE_DISABLE;
             }
-#endif
-
+            s_alarm_fired_idx = i;
+            if (s_alarm_fire_sem) rt_sem_release(s_alarm_fire_sem);
             break;
         }
     }
@@ -149,6 +185,17 @@ static void init(void)
     int32_t read_len, content_len;
 
     rt_mutex_init(&s_alm_mgr_mutex, "alm_mgr", RT_IPC_FLAG_FIFO);
+
+    /* Fire-event worker — keeps hw_alarm_callback off the LVGL/motor path. */
+    if (!s_alarm_fire_sem)
+    {
+        s_alarm_fire_sem = rt_sem_create("alm_fire", 0, RT_IPC_FLAG_FIFO);
+        rt_thread_t t = rt_thread_create("alm_fire",
+                                         alarm_fire_thread_entry, RT_NULL,
+                                         2048, 20, 10);
+        if (t) rt_thread_startup(t);
+    }
+
     prefs = share_prefs_open("alarm", SHAREPREFS_MODE_PRIVATE);
     LOG_D("share_prefs_open alm_alarmmgr ok");
     if (prefs != NULL)
