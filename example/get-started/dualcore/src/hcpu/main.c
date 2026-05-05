@@ -530,13 +530,15 @@ struct attm_desc_128 ble_app_att_db[] = {
     [BLE_APP_TX_VALUE] = {ble_app_tx_uuid,
                           PERM(RD, ENABLE) | PERM(WRITE_REQ, ENABLE) |
                               PERM(WRITE_COMMAND, ENABLE),
-                          PERM(UUID_LEN, UUID_128) | PERM(RI, ENABLE), 256},
+                          PERM(UUID_LEN, UUID_128) | PERM(RI, ENABLE),
+                          BLE_APP_CHAR_MAX_LEN},
     [BLE_APP_RX_CHAR] = {SERIAL_UUID_16(ATT_DECL_CHARACTERISTIC),
                          PERM(RD, ENABLE), 0, 0},
     [BLE_APP_RX_VALUE] = {ble_app_rx_uuid,
                           PERM(RD, ENABLE) | PERM(NTF, ENABLE) |
                               PERM(IND, ENABLE),
-                          PERM(UUID_LEN, UUID_128) | PERM(RI, ENABLE), 256},
+                          PERM(UUID_LEN, UUID_128) | PERM(RI, ENABLE),
+                          BLE_APP_CHAR_MAX_LEN},
     [BLE_APP_RX_CCCD] = {SERIAL_UUID_16(ATT_DESC_CLIENT_CHAR_CFG),
                          PERM(RD, ENABLE) | PERM(WRITE_REQ, ENABLE),
                          PERM(RI, ENABLE), 2},

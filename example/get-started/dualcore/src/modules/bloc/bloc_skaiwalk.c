@@ -798,7 +798,6 @@ void add_skai_message(chat_t *chat_list, uint16_t *items_amount_ptr, const char 
 }
 
 static uint32_t last_updated_ts;
-int maxPayloadSize = 235;
 static chat_t temp_message = {
 	.id = "",
 	.state = false,
@@ -829,76 +828,91 @@ void handle_skai_message(char *app_id, MSG_DATA_PAYLOAD *msgData)
 	switch (msgData->header)
 	{
 	case MESSAGE_PART_START:
-		// Free previous buffer if it exists
+		/* L2 fragmentation guarantees this packet carries the full message
+		   regardless of size, so header=0 always means "complete one-shot
+		   message" — drop any pending multi-part state and render. The old
+		   `length < 235` heuristic that distinguished single from multi was
+		   tied to the phone-side 200-byte chunking and is no longer needed. */
 		if (accumulated_text != NULL)
 		{
 			rt_free(accumulated_text);
 		}
-
-		// Allocate new buffer
 		accumulated_text = rt_malloc(msgData->length + 1);
 		if (accumulated_text == NULL)
 		{
 			LOG_E("Failed to allocate memory for message");
-			return;
-		}
-
-		memcpy(accumulated_text, msgData->p_msg_value, msgData->length);
-		accumulated_length = msgData->length;
-		if (accumulated_length < maxPayloadSize)
-		{
-			accumulated_text[accumulated_length] = '\0';
-			prepared = true;
-		}
-		break;
-
-	case MESSAGE_PART_MIDDLE:
-		// Ensure we have a valid buffer to append to
-		if (accumulated_text == NULL)
-		{
-			LOG_E("Received middle part with no starting part");
-			return;
-		}
-
-		// Reallocate the buffer to append
-		char *new_buffer = rt_realloc(accumulated_text, accumulated_length + msgData->length + 1);
-		if (new_buffer == NULL)
-		{
-			LOG_E("Failed to reallocate memory for message");
-			rt_free(accumulated_text);
-			accumulated_text = NULL;
 			accumulated_length = 0;
 			return;
 		}
-		accumulated_text = new_buffer;
+		memcpy(accumulated_text, msgData->p_msg_value, msgData->length);
+		accumulated_length = msgData->length;
+		accumulated_text[accumulated_length] = '\0';
+		prepared = true;
+		break;
 
-		memcpy(accumulated_text + accumulated_length, msgData->p_msg_value, msgData->length);
-		accumulated_length += msgData->length;
+	case MESSAGE_PART_MIDDLE:
+		/* Streaming start/middle: append to the running buffer, no render
+		   yet. Tolerates a missing prior START — we just init the buffer. */
+		if (accumulated_text == NULL)
+		{
+			accumulated_text = rt_malloc(msgData->length + 1);
+			if (accumulated_text == NULL)
+			{
+				LOG_E("Failed to allocate memory for message");
+				accumulated_length = 0;
+				return;
+			}
+			memcpy(accumulated_text, msgData->p_msg_value, msgData->length);
+			accumulated_length = msgData->length;
+		}
+		else
+		{
+			char *new_buffer = rt_realloc(accumulated_text, accumulated_length + msgData->length + 1);
+			if (new_buffer == NULL)
+			{
+				LOG_E("Failed to reallocate memory for message");
+				rt_free(accumulated_text);
+				accumulated_text = NULL;
+				accumulated_length = 0;
+				return;
+			}
+			accumulated_text = new_buffer;
+			memcpy(accumulated_text + accumulated_length, msgData->p_msg_value, msgData->length);
+			accumulated_length += msgData->length;
+		}
 		accumulated_text[accumulated_length] = '\0';
 		break;
 
 	case MESSAGE_PART_END:
-		// Ensure we have a valid buffer to append to
+		/* Streaming end: append, then render. Tolerates a missing START so
+		   a lone END behaves like a single-shot message. */
 		if (accumulated_text == NULL)
 		{
-			LOG_E("Received end part with no starting part");
-			return;
+			accumulated_text = rt_malloc(msgData->length + 1);
+			if (accumulated_text == NULL)
+			{
+				LOG_E("Failed to allocate memory for message");
+				accumulated_length = 0;
+				return;
+			}
+			memcpy(accumulated_text, msgData->p_msg_value, msgData->length);
+			accumulated_length = msgData->length;
 		}
-
-		// Reallocate the buffer for the final part
-		char *final_buffer = rt_realloc(accumulated_text, accumulated_length + msgData->length + 1);
-		if (final_buffer == NULL)
+		else
 		{
-			LOG_E("Failed to reallocate memory for final message part");
-			rt_free(accumulated_text);
-			accumulated_text = NULL;
-			accumulated_length = 0;
-			return;
+			char *final_buffer = rt_realloc(accumulated_text, accumulated_length + msgData->length + 1);
+			if (final_buffer == NULL)
+			{
+				LOG_E("Failed to reallocate memory for final message part");
+				rt_free(accumulated_text);
+				accumulated_text = NULL;
+				accumulated_length = 0;
+				return;
+			}
+			accumulated_text = final_buffer;
+			memcpy(accumulated_text + accumulated_length, msgData->p_msg_value, msgData->length);
+			accumulated_length += msgData->length;
 		}
-		accumulated_text = final_buffer;
-
-		memcpy(accumulated_text + accumulated_length, msgData->p_msg_value, msgData->length);
-		accumulated_length += msgData->length;
 		accumulated_text[accumulated_length] = '\0';
 		prepared = true;
 		break;

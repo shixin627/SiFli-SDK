@@ -418,39 +418,10 @@ bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length)
 {
     if (!commu_can_send() || !acce) return false;
     LOG_D("commu_send_linear_acce_buffer length=%d", length);
-
-    if (length > 484)
-    {
-        /* Segmented transmission, each segment up to 484 bytes */
-        uint8_t buf[6 + 484];
-        uint16_t offset = 0;
-        uint8_t segment_index = 1;
-        while (offset < length)
-        {
-            uint16_t chunk_size = (length - offset > 484) ? 484
-                                                          : (length - offset);
-            BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_GSENSOR_SAMPLE);
-            buf[3] = (chunk_size + 1) >> 8;
-            buf[4] = (chunk_size + 1) & 0xFF;
-            buf[5] = segment_index;
-            memcpy(buf + 6, acce + offset, chunk_size);
-            if (!skaiwatch_ble_notify(buf, chunk_size + 6))
-            {
-                return false;
-            }
-            offset += chunk_size;
-            segment_index++;
-        }
-        return true;
-    }
-
-    uint8_t buf[6 + 484];
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_GSENSOR_SAMPLE);
-    buf[3] = (length + 1) >> 8;
-    buf[4] = (length + 1) & 0xFF;
-    buf[5] = 0; /* no segmentation */
-    memcpy(buf + 6, acce, length);
-    return skaiwatch_ble_notify(buf, length + 6);
+    /* The L2 layer handles MTU-based fragmentation transparently; the phone
+       receives one logical command containing the full sample buffer. */
+    return skaiwatch_ble_send_l2(NOTIFY_COMMAND_ID, KEY_GSENSOR_SAMPLE,
+                                  acce, length);
 }
 
 bool commu_send_start_sync_file(uint32_t total_size)
