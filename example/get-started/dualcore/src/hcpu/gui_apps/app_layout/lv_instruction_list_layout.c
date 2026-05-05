@@ -144,9 +144,12 @@ static lv_obj_t *switch_objs[MAX_LIST_ITEMS]; // toggle switches for any item
 #define LIST_ITEM_RADIUS (240)
 #define LIST_ITEM_BORDER_SIDE LV_BORDER_SIDE_RIGHT
 
-#define DOT_SMOLL_PROPORTION (0.6)
+#define DOT_SMOLL_PROPORTION (0.5)
 #define DOT_BIG_PROPORTION (1.3)
 #define DOT_BG_SIZE (100 * DOT_BIG_PROPORTION) + 2
+/* 縮放曲線指數：1.0 = 線性、2.0 = 平方（中央放大效果突出，邊緣下降快）、
+ * 3.0 = 立方（更陡峭）。值越大，「中央 dot 顯著大、其他 dot 都很小」越明顯 */
+#define DOT_ZOOM_EXPONENT 2.0f
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -388,11 +391,16 @@ static void update_indicator_dots_position(int input_value)
     // LOG_I("Updating indicator dots position, input value: %d",
     //       input_value);
 
-    const int circle_radius = 300;
-    const int center_x = 120;
-    const int center_y = 233;
+    /* 跟 app_exercise.c::apply_circular_layout 對齊：圓心在螢幕正中、
+     * radius=200。原本 (120, 233, 300) 那組會讓 arc 中心偏左、半徑大、
+     * dots 上下散開比較廣，視覺上跟 exercise 不一樣。
+     * center_x 往左偏 30 px：中央 dot zoom 到 1.3x（130 px 寬）時，沒偏的話
+     * 右邊會跑出螢幕；偏 30 後最右邊大約在 448，剛好在 466 螢幕內 */
+    const int circle_radius = 200;
+    const int center_x = LV_HOR_RES / 2 - 20;
+    const int center_y = LV_VER_RES / 2;
 
-    const float angle_per_dot = 27.0f;
+    const float angle_per_dot = 36.0f; /* 跟 app_exercise.c 的 ICON_SLOT_ANGLE_DEG=36 對齊 */
 
     float base_input = 63.0f;
     float degrees_per_200_input = angle_per_dot;
@@ -408,34 +416,23 @@ static void update_indicator_dots_position(int input_value)
             continue;
 
         float base_angle = i * angle_per_dot;
+        /* 不做 [0,360) normalize — 留 signed angle，方便用 |angle| > 90 一刀
+         * 過濾掉「在 list 第一格時 dot N-1 從另一邊 wrap 過來出現在上方」的問題。
+         * 例如 N=10 顆 dot，第一格時 dot 9 的 base_angle = 9*36 = 324°，wrap 後
+         * 變成 (270, 360) 區間 → 既有 (90,270) 過濾擋不到 → 出現在右上方。
+         * signed_angle = 324°（不 wrap）→ > 90° → 直接 hide */
         float current_angle = base_angle - offset_angle;
-
-        while (current_angle < 0)
-        {
-            current_angle += 360.0f;
-        }
-        while (current_angle >= 360.0f)
-        {
-            current_angle -= 360.0f;
-        }
 
         float angle_rad = current_angle * M_PI / 180.0f;
 
         int dot_x = center_x + (int)(circle_radius * cos(angle_rad));
         int dot_y = center_y + (int)(circle_radius * sin(angle_rad));
 
-        /* 畫面為 466x466 圓形，指示點中心距離螢幕中心超過 (半徑 + 半個 dot)
-         * 就完全看不到， 直接 HIDDEN 並跳過後面的 opa / zoom / set_pos
-         * 計算，避免 dot 越多越卡 */
+        /* 用 |signed angle| > 90° 一次過濾掉左半圓 + 從另一邊繞回來的 dots */
         {
-            const int screen_cx = LV_HOR_RES / 2;
-            const int screen_cy = LV_VER_RES / 2;
-            const int visible_r = LV_HOR_RES / 2 + (int)(DOT_BG_SIZE) / 2;
-            int ddx = dot_x - screen_cx;
-            int ddy = dot_y - screen_cy;
             lv_obj_t *dot_bg_obj =
                 p_instruction_list_layout->indicator_dots_bg[i];
-            if (ddx * ddx + ddy * ddy > visible_r * visible_r)
+            if (current_angle < -90.0f || current_angle > 90.0f)
             {
                 if (dot_bg_obj != NULL &&
                     !lv_obj_has_flag(dot_bg_obj, LV_OBJ_FLAG_HIDDEN))
@@ -466,30 +463,11 @@ static void update_indicator_dots_position(int input_value)
             last_valid_dot_x[i] = dot_x;
         }
 
-        float angle_from_horizontal = current_angle;
-
-        if (angle_from_horizontal > 180.0f)
-        {
-            angle_from_horizontal = 360.0f - angle_from_horizontal;
-        }
-
-        float distance_angle = angle_from_horizontal;
-        if (distance_angle > 90.0f)
-        {
-            distance_angle = 180.0f - distance_angle;
-        }
-
-        float max_distance_angle = 25.0f;
-        float ratio = 0.0f;
-
-        if (distance_angle <= max_distance_angle)
-        {
-            ratio = 1.0f - (distance_angle / max_distance_angle);
-        }
-        else
-        {
-            ratio = 0.0f;
-        }
+        /* 跟 app_exercise.c::apply_circular_layout 一致：用 cos(abs_angle) 做
+         * 平滑漸層。current_angle 現在是 signed [-90,90]，直接 fabsf 就是
+         * 從水平右軸算起的 abs_angle */
+        float abs_angle_deg = fabsf(current_angle);
+        float ratio = cosf(abs_angle_deg * (float)M_PI / 180.0f);
 
         int dot_size = DOT_BG_SIZE;
         int opacity = (int)(LV_OPA_30 + (LV_OPA_COVER - LV_OPA_30) * ratio);
@@ -501,10 +479,13 @@ static void update_indicator_dots_position(int input_value)
         lv_obj_set_style_img_opa(p_instruction_list_layout->indicator_dots[i],
                                  opacity, 0);
 
+        /* 用指數曲線 ratio^N 取代線性 ratio：N>1 時，中央 dot 大幅放大，
+         * 邊緣 dot 快速縮小，視覺上中央更突出 */
+        float zoom_ratio = powf(ratio, DOT_ZOOM_EXPONENT);
         uint16_t zoom =
             (uint16_t)(255 *
                        (DOT_SMOLL_PROPORTION +
-                        (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * ratio));
+                        (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * zoom_ratio));
         if (abs((int)zoom - (int)last_zoom[i]) > 5)
         {
             lv_img_set_zoom(app_icon_shadow[i], zoom);
@@ -520,6 +501,9 @@ static void update_indicator_dots_position(int input_value)
     }
 }
 
+/* fwd decl — dot click 直接走跟 touch_obj 同樣的 click handler，省去重複邏輯 */
+static void list_item_click_event_cb(lv_event_t *evt);
+
 static void create_indicator_dots(lv_obj_t *parent)
 {
     if (p_instruction_list_layout == NULL)
@@ -533,7 +517,11 @@ static void create_indicator_dots(lv_obj_t *parent)
         lv_obj_set_size(dot_bg, DOT_BG_SIZE, DOT_BG_SIZE);
         lv_obj_set_style_bg_opa(dot_bg, LV_OPA_0, 0);
         lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
+        /* 仿 app_exercise.c 把 icon 本身設成可點擊：tap 任一可見 dot 直接觸發
+         * 對應 item 的 click handler，不需要先把它 scroll 到中央再點 */
+        lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(dot_bg, list_item_click_event_cb,
+                            LV_EVENT_CLICKED, (void *)&list_items[i]);
 
         app_icon_shadow[i] = lv_img_create(dot_bg);
         lv_img_set_src(app_icon_shadow[i], &app_icon_frame);
@@ -2470,9 +2458,13 @@ void refresh_custom_instructions(void)
     /* 重建指示點 */
     create_indicator_dots(bg);
 
-    /* Keep the AI widget tileview above the recreated dots — dots are
-       siblings of p_instruction_list_ai_bg under p_instruction_list_bg and
-       new children are drawn on top, so re-raise the AI widget. */
+    /* 新建的 dots 是 bg 的 child，appended 在尾端 → 預設 z-order 在 arc_zone
+     * 上面，導致 dots 把 press 從 arc_zone 搶走。先把 arc_zone 拉回最上層，
+     * 再把 ai_bg 拉到最上 — 最終順序：dots → arc_zone → ai_bg（top）*/
+    if (p_instruction_list_layout->arc_handle != NULL)
+    {
+        arc_scroll_bring_to_front(p_instruction_list_layout->arc_handle);
+    }
     if (p_instruction_list_layout->p_instruction_list_ai_bg != NULL &&
         lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_ai_bg))
     {
@@ -2602,13 +2594,34 @@ bool get_app_list_tileview_page(void)
  * 等其他位置共享同一份偵測算法。LIST_ITEM_SLOT_HEIGHT / LIST_ITEM_SLOT_ANGLE_DEG
  * 仍留著，給 cfg 傳進共用模組用。 */
 #define LIST_ITEM_SLOT_HEIGHT (LIST_ITEM_WIDGET_HEIGHT + LIST_ITEM_SPACING)
-#define LIST_ITEM_SLOT_ANGLE_DEG 27 /* 與 update_indicator_dots_position::angle_per_dot 一致 */
+#define LIST_ITEM_SLOT_ANGLE_DEG 36 /* 與 update_indicator_dots_position::angle_per_dot 一致；跟 exercise 對齊 */
 
 static lv_obj_t *list_arc_tap_cb(lv_point_t pt, void *ctx)
 {
     (void)ctx;
-    /* arc 模組 overlay 攔走 press → CLICK 不會 bubble 到 touch_obj。
-     * 手動把 CLICKED 轉給選中項的 touch_obj，前提是 press 點在它的 coords 內 */
+    /* arc 模組 overlay 攔走 press → CLICK 不會 bubble 到 dot 或 touch_obj。
+     * 仿 app_exercise.c 的 tap 路徑：
+     *   1. 先用 press 點比對所有可見 indicator dot 的 bbox，找到哪顆 dot 就 forward
+     *      CLICKED 給那顆，dot 上有註冊 list_item_click_event_cb（user_data = 對應
+     *      list_items[i] ptr），所以點哪顆 dot 就觸發那 item 的動作。
+     *   2. fallback：press 不在任何 dot 上但在選中項 touch_obj 範圍內 → forward 給
+     *      touch_obj，行為跟舊版相同（保留中央區塊大面積可點）。 */
+    if (p_instruction_list_layout != NULL)
+    {
+        for (int i = 0; i < list_item_count; i++)
+        {
+            lv_obj_t *dot_bg = p_instruction_list_layout->indicator_dots_bg[i];
+            if (dot_bg == NULL) continue;
+            if (!lv_obj_is_valid(dot_bg)) continue;
+            if (lv_obj_has_flag(dot_bg, LV_OBJ_FLAG_HIDDEN)) continue;
+            lv_area_t a;
+            lv_obj_get_coords(dot_bg, &a);
+            if (pt.x >= a.x1 && pt.x <= a.x2 && pt.y >= a.y1 && pt.y <= a.y2)
+            {
+                return dot_bg;
+            }
+        }
+    }
     if (selected_item_index >= list_item_count) return NULL;
     if (touch_obj[selected_item_index] == NULL) return NULL;
     if (!lv_obj_is_valid(touch_obj[selected_item_index])) return NULL;
@@ -2698,6 +2711,8 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
         .ctx             = NULL,
     };
     p_instruction_list_layout->arc_handle = arc_scroll_create(&arc_cfg);
+    /* DEBUG：顯示 arc band 觸發範圍。確認位置後可以拿掉這行 */
+    // arc_scroll_set_debug_visible(p_instruction_list_layout->arc_handle, true);
 
     lv_obj_t *ai_bar = lv_obj_create(p_instruction_list_bg);
     lv_obj_set_size(ai_bar, 80, LV_VER_RES);

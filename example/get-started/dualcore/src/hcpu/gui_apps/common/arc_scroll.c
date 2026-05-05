@@ -17,6 +17,7 @@
 #define ARC_TAP_THRESHOLD_SQ (12 * 12)
 #define ARC_TAP_DURATION_MS 200
 #define ARC_LOCK_MAX_ANCESTORS 8
+#define ARC_SCROLL_OVERSHOOT_RESISTANCE 0.4f /* 邊界外 resistance：input * 0.4 = 實際移動 */
 
 struct arc_scroll_handle
 {
@@ -171,8 +172,36 @@ static void pressing_cb(lv_event_t *e)
     lv_coord_t max_scroll =
         min_scroll +
         (lv_coord_t)(h->cfg.item_count - 1) * (lv_coord_t)h->cfg.slot_height_px;
-    if (target_scroll < min_scroll) target_scroll = min_scroll;
-    if (target_scroll > max_scroll) target_scroll = max_scroll;
+    /* 邊界 elastic overshoot：拖到 min/max 外時，「比 over_now 還深」的那段
+     * 套 resistance 慢動作，總 overshoot 上限 max_overshoot。放開後
+     * released_cb → snap_cb 會把 list 拉回到合法 item。*/
+    lv_coord_t max_overshoot = (lv_coord_t)(h->cfg.slot_height_px / 2);
+    if (target_scroll < min_scroll)
+    {
+        lv_coord_t over_now = (cur_scroll < min_scroll) ? (min_scroll - cur_scroll) : 0;
+        lv_coord_t over_raw = min_scroll - target_scroll;
+        if (over_raw > over_now)
+        {
+            lv_coord_t additional = (lv_coord_t)((float)(over_raw - over_now) *
+                                                  ARC_SCROLL_OVERSHOOT_RESISTANCE);
+            lv_coord_t new_over = over_now + additional;
+            if (new_over > max_overshoot) new_over = max_overshoot;
+            target_scroll = min_scroll - new_over;
+        }
+    }
+    else if (target_scroll > max_scroll)
+    {
+        lv_coord_t over_now = (cur_scroll > max_scroll) ? (cur_scroll - max_scroll) : 0;
+        lv_coord_t over_raw = target_scroll - max_scroll;
+        if (over_raw > over_now)
+        {
+            lv_coord_t additional = (lv_coord_t)((float)(over_raw - over_now) *
+                                                  ARC_SCROLL_OVERSHOOT_RESISTANCE);
+            lv_coord_t new_over = over_now + additional;
+            if (new_over > max_overshoot) new_over = max_overshoot;
+            target_scroll = max_scroll + new_over;
+        }
+    }
     if (target_scroll == cur_scroll) return;
 
     /* lv_obj_scroll_by_raw 的 dy 跟 user-facing scroll_y 方向相反（dy 是
@@ -255,6 +284,12 @@ arc_scroll_handle_t *arc_scroll_create(const arc_scroll_config_t *cfg)
     /* 沒這個 flag → lv_obj_hit_test 直接用 bbox 判斷，不會發 LV_EVENT_HIT_TEST，
      * 整個全螢幕 overlay 會吃掉每一個 press */
     lv_obj_add_flag(overlay, LV_OBJ_FLAG_ADV_HITTEST);
+    /* 清掉 SCROLL_CHAIN，LVGL 的 find_scroll_obj 走到 overlay 就 break，
+     * 不會再往上找到 tileview / 其他 scrollable 祖先去做 scroll，
+     * 比 runtime 改 ancestor scroll_dir 穩（後者會被 tileview 自己的
+     * SCROLL_END handler 重置，造成弧形拖到一半變成 tileview 翻頁）*/
+    lv_obj_clear_flag(overlay, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    lv_obj_clear_flag(overlay, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
 
     lv_obj_add_event_cb(overlay, hit_test_cb, LV_EVENT_HIT_TEST, h);
     lv_obj_add_event_cb(overlay, pressed_cb, LV_EVENT_PRESSED, h);
@@ -269,6 +304,15 @@ arc_scroll_handle_t *arc_scroll_create(const arc_scroll_config_t *cfg)
 void arc_scroll_set_item_count(arc_scroll_handle_t *h, uint16_t count)
 {
     if (h != NULL) h->cfg.item_count = count;
+}
+
+void arc_scroll_bring_to_front(arc_scroll_handle_t *h)
+{
+    if (h == NULL) return;
+    if (h->overlay != NULL && lv_obj_is_valid(h->overlay))
+    {
+        lv_obj_move_foreground(h->overlay);
+    }
 }
 
 void arc_scroll_destroy(arc_scroll_handle_t *h)

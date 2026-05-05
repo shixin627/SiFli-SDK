@@ -57,6 +57,11 @@ arc_scroll_handle_t *arc_scroll_create(const arc_scroll_config_t *cfg);
 /* item 數變動時更新（影響 scroll 上下界 clamp） */
 void arc_scroll_set_item_count(arc_scroll_handle_t *handle, uint16_t count);
 
+/* 把 overlay 移到父物件 children list 最後（= z-order 最上）。在外部重建
+ * sibling（例如 indicator dots）之後呼叫，避免新建的 sibling 蓋在 overlay
+ * 上面、把 press 從 arc_zone 搶走。 */
+void arc_scroll_bring_to_front(arc_scroll_handle_t *handle);
+
 /* 提早銷毀 — 一般情形 overlay 跟著 parent 一起死，不用呼叫。 */
 void arc_scroll_destroy(arc_scroll_handle_t *handle);
 

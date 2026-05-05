@@ -88,9 +88,12 @@
 #endif
 
 /* Indicator dots — same visual style as instruction list */
-#define DOT_SMOLL_PROPORTION (0.4)
+#define DOT_SMOLL_PROPORTION (0.2)
 #define DOT_BIG_PROPORTION (0.9)
 #define DOT_BG_SIZE ((int)(100 * DOT_BIG_PROPORTION) + 2)
+/* 縮放曲線指數：1.0 = 線性、2.0 = 平方（中央放大突出）、3.0 = 立方更陡峭。
+ * 值越大，「中央 dot 顯著大、其他都很小」越明顯 */
+#define DOT_ZOOM_EXPONENT 2.0f
 
 #define MESSAGE_NEED_MEDIA_WIDGET
 
@@ -277,10 +280,14 @@ static void update_msg_indicator_dots_position(int input_value)
     if (total_dots <= 0)
         return;
 
-    const int circle_radius = 300;
-    const int center_x = 120;
-    const int center_y = 233;
-    const float angle_per_dot = 27.0f;
+    /* 跟 app_exercise.c::apply_circular_layout 對齊：圓心在螢幕正中、
+     * radius=200。原本 (120, 233, 300) 那組會讓 arc 中心偏左、半徑大、
+     * dots 上下散開比較廣，視覺上跟 exercise 不一樣。
+     * center_x 往左偏 30 px，避免中央 dot zoom 後右邊跑出螢幕 */
+    const int circle_radius = 200;
+    const int center_x = LV_HOR_RES / 2 - 20;
+    const int center_y = LV_VER_RES / 2;
+    const float angle_per_dot = 36.0f; /* 跟 app_exercise.c 的 ICON_SLOT_ANGLE_DEG=36 對齊 */
     float base_input = 63.0f;
     float degrees_per_200_input = angle_per_dot;
     float total_input_range = 100.0f * (float)total_dots;
@@ -295,11 +302,26 @@ static void update_msg_indicator_dots_position(int input_value)
             continue;
 
         float base_angle = (float)i * angle_per_dot;
+        /* 不做 [0,360) normalize — 留 signed angle，用 |angle| > 90 一刀過濾掉
+         * 「list 第一格時 dot N-1 從另一邊 wrap 過來出現在上方」的問題。 */
         float current_angle = base_angle - offset_angle;
-        while (current_angle < 0)
-            current_angle += 360.0f;
-        while (current_angle >= 360.0f)
-            current_angle -= 360.0f;
+
+        if (current_angle < -90.0f || current_angle > 90.0f)
+        {
+            if (msg_indicator_dots_bg[i] != NULL &&
+                !lv_obj_has_flag(msg_indicator_dots_bg[i], LV_OBJ_FLAG_HIDDEN))
+            {
+                lv_obj_add_flag(msg_indicator_dots_bg[i], LV_OBJ_FLAG_HIDDEN);
+            }
+            continue;
+        }
+        /* 進到右半圓 → unhide。media widget dot 例外（建立時就 hide 不該動）*/
+        if (msg_indicator_dots_bg[i] != NULL &&
+            lv_obj_has_flag(msg_indicator_dots_bg[i], LV_OBJ_FLAG_HIDDEN) &&
+            i < (int)notification_count)
+        {
+            lv_obj_clear_flag(msg_indicator_dots_bg[i], LV_OBJ_FLAG_HIDDEN);
+        }
 
         float angle_rad = current_angle * (float)M_PI / 180.0f;
         int dot_x = center_x + (int)((float)circle_radius * cosf(angle_rad));
@@ -316,17 +338,10 @@ static void update_msg_indicator_dots_position(int input_value)
             last_valid_dot_x[i] = dot_x;
         }
 
-        float angle_from_horizontal = current_angle;
-        if (angle_from_horizontal > 180.0f)
-            angle_from_horizontal = 360.0f - angle_from_horizontal;
-        float distance_angle = angle_from_horizontal;
-        if (distance_angle > 90.0f)
-            distance_angle = 180.0f - distance_angle;
-
-        float max_distance_angle = 25.0f;
-        float ratio = 0.0f;
-        if (distance_angle <= max_distance_angle)
-            ratio = 1.0f - (distance_angle / max_distance_angle);
+        /* 跟 app_exercise.c::apply_circular_layout 一致：用 cos(abs_angle) 做
+         * 平滑漸層。current_angle 現在是 signed [-90,90]，直接 fabsf */
+        float abs_angle_deg = fabsf(current_angle);
+        float ratio = cosf(abs_angle_deg * (float)M_PI / 180.0f);
 
         int dot_size = DOT_BG_SIZE;
         int opacity = (int)(LV_OPA_30 + (LV_OPA_COVER - LV_OPA_30) * ratio);
@@ -343,10 +358,12 @@ static void update_msg_indicator_dots_position(int input_value)
 
         lv_obj_set_style_img_opa(msg_indicator_dots[i], opacity, 0);
 
+        /* 用指數曲線 ratio^N 取代線性：N>1 時中央放大、邊緣縮小都加劇 */
+        float zoom_ratio = powf(ratio, DOT_ZOOM_EXPONENT);
         uint16_t zoom =
             (uint16_t)(255 *
                        (DOT_SMOLL_PROPORTION +
-                        (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * ratio));
+                        (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * zoom_ratio));
         if (abs((int)zoom - (int)msg_last_zoom[i]) > 5)
         {
             lv_img_set_zoom(msg_indicator_dots[i], zoom);
@@ -357,6 +374,22 @@ static void update_msg_indicator_dots_position(int input_value)
         dot_y -= dot_size / 2;
         lv_obj_set_pos(msg_indicator_dots_bg[i], dot_x, dot_y);
     }
+}
+
+/* fwd decl — msg_dot_click_cb 直接 call 後面定義的 list_message_click_cb */
+static void list_message_click_cb(notification_t *notification);
+
+/* 仿 app_exercise.c：tap 任一可見 dot 直接觸發對應 notification，
+ * user_data 是 visual idx（cast 成 void*），click 時才查 notification —
+ * 因為 notification 列表會動，存 ptr 會 stale */
+static void msg_dot_click_cb(lv_event_t *evt)
+{
+    if (lv_event_get_code(evt) != LV_EVENT_CLICKED) return;
+    int idx = (int)(intptr_t)lv_event_get_user_data(evt);
+    if (idx < 0 || idx >= (int)notification_count) return;
+    notification_t *notif = get_notification_in_reversed_ui(idx);
+    if (notif == NULL) return;
+    list_message_click_cb(notif);
 }
 
 static void create_msg_indicator_dots(lv_obj_t *parent)
@@ -374,7 +407,6 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
         lv_obj_set_style_bg_opa(dot_bg, LV_OPA_0, 0);
         lv_obj_set_style_border_width(dot_bg, 0, 0);
         lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
 
         lv_obj_t *dot = lv_img_create(dot_bg);
         lv_obj_center(dot);
@@ -388,6 +420,10 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
             if (notif != NULL && notif->type <= NOTIFICATION_APP_QUANTITY)
                 type = notif->type;
             lv_img_set_src(dot, icon_list[type]);
+            /* dot 直接可點：tap → 開該 notification 詳細頁 */
+            lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_add_event_cb(dot_bg, msg_dot_click_cb, LV_EVENT_CLICKED,
+                                (void *)(intptr_t)i);
         }
         else
         {
@@ -396,6 +432,7 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
                but hide it so the music indicator dot is not visible. */
             lv_img_set_src(dot, IMG_ITUNES);
             lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
         }
 
         msg_indicator_dots_bg[i] = dot_bg;
@@ -1488,6 +1525,13 @@ static void refresh_list(uint8_t new_item_count)
             create_msg_indicator_dots(msg_indicator_dots_parent);
     }
 
+    /* 新建的 dots 在 z-order 上會跑到 arc_zone overlay 上面，導致 dot 把 press
+     * 從 arc_zone 搶走、整個 arc-scroll 失效。把 overlay 拉回最上層 */
+    if (p_app_notification != NULL && p_app_notification->arc_handle != NULL)
+    {
+        arc_scroll_bring_to_front(p_app_notification->arc_handle);
+    }
+
     /* Clamp selected index to current item range (notifications + media
        widget) before applying visibility, so the chosen card is valid
        after add/remove. */
@@ -1752,18 +1796,35 @@ static void button_selection(gesture_position_t gesture_position);
 /* 右側弧形觸控滾動 — 用共用模組 common/arc_scroll.h */
 static lv_obj_t *message_arc_tap_cb(lv_point_t pt, void *ctx)
 {
-    (void)pt;
     (void)ctx;
-    /* message card 的 click 不是 LV_EVENT_CLICKED 機制，是 widget_drag_event_cb
-     * 在 LV_EVENT_RELEASED 自己做 tap-vs-drag 判斷後直接呼叫 list_message_click_cb。
-     * arc_scroll 模組的 tap 路徑會 lv_event_send(LV_EVENT_CLICKED) 給回傳 obj，
-     * 但 send CLICKED 給 card 不會觸發 widget_drag_event_cb。所以這邊直接自己
-     * call list_message_click_cb，回傳 NULL 讓 arc_scroll 不要再 dispatch event。
+    /* 仿 app_exercise.c 的 tap 路徑：先用 press 點比對所有可見的 indicator dot
+     * bbox，找到哪顆就 forward CLICKED 給那顆。dot 上有掛 msg_dot_click_cb，
+     * 直接打開該 notification — 不必先把它 scroll 到中央再點。
      *
-     * notification 的 data index 與 visual index 是反向的（refresh_list 裡用
-     * `get_notification(new_item_count - i - 1)`），所以選中那個 visual i 對應
-     * data index = notification_count - i - 1 */
+     * 沒落在任何 dot 上 → fallback 用「選中項目」的舊邏輯：直接 call
+     * list_message_click_cb（card 的 click 是自製 drag/tap 判斷不走 CLICKED，
+     * 所以這邊不能 forward 給 card），回傳 NULL 讓 arc_scroll 不再 dispatch */
     if (p_app_notification == NULL) return NULL;
+
+    /* 1. 先看 press 點落在哪顆 dot */
+    int total_dots = (int)notification_count;
+    if (have_media_widget) total_dots++;
+    for (int i = 0; i < total_dots && i < MAX_MSG_DOTS; i++)
+    {
+        lv_obj_t *dot_bg = msg_indicator_dots_bg[i];
+        if (dot_bg == NULL) continue;
+        if (!lv_obj_is_valid(dot_bg)) continue;
+        if (lv_obj_has_flag(dot_bg, LV_OBJ_FLAG_HIDDEN)) continue;
+        lv_area_t a;
+        lv_obj_get_coords(dot_bg, &a);
+        if (pt.x >= a.x1 && pt.x <= a.x2 && pt.y >= a.y1 && pt.y <= a.y2)
+        {
+            return dot_bg;
+        }
+    }
+
+    /* 2. fallback：選中項目（card 的 click 不走 LV_EVENT_CLICKED，所以這邊
+     *    自己 call list_message_click_cb，回傳 NULL 讓 arc_scroll 不再 send 事件）*/
     if (notification_count == 0) return NULL;
     if (selected_message_index >= notification_count) return NULL;
     notification_t *notification =
@@ -1901,7 +1962,7 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
 
     /* 右側弧形觸控滾動 — 跟 instruction_list / exercise / clock 共用同一份算法。
      * slot_height = 252 + 40 = 292（item 間距），item_height = 252（item 本身高度）。
-     * slot_angle_deg=27 跟 msg_indicator_dots 的 angle_per_dot 對齊。
+     * slot_angle_deg=36 跟 msg_indicator_dots 的 angle_per_dot 對齊（同 exercise）。
      * message_list 是 tileview 子層，lock_ancestors 設 true 防止上下端切線拖曳被外層 tileview 搶走。
      *
      * item_count 必須用 page_count（= notification_count + media_widget），
@@ -1912,7 +1973,7 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
         .list            = p_window,
         .slot_height_px  = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING,
         .item_height_px  = LIST_MESSAGE_HEIGHT,
-        .slot_angle_deg  = 27,
+        .slot_angle_deg  = 36,
         .item_count      = page_count,
         .band_thickness  = 90,
         .lock_ancestors  = true,
