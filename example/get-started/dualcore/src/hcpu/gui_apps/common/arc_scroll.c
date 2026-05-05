@@ -162,16 +162,23 @@ static void pressing_cb(lv_event_t *e)
      * floating widget 等）會算出比真實可滾範圍小的 scroll_max，使用者拖一半
      * 就被卡住。改成 (1) 用我們知道 item 幾何的公式自己 clamp，(2) 用
      * _lv_obj_scroll_by_raw 直接套位移繞過 LVGL 的錯 clamp */
-    lv_coord_t list_y1 = list->coords.y1;
-    lv_coord_t pad_top = lv_obj_get_style_pad_top(list, LV_PART_MAIN);
-    lv_coord_t item_h = (h->cfg.item_height_px > 0)
-                            ? (lv_coord_t)h->cfg.item_height_px
-                            : (lv_coord_t)h->cfg.slot_height_px;
-    lv_coord_t min_scroll =
-        list_y1 + pad_top + item_h / 2 - LV_VER_RES / 2;
-    lv_coord_t max_scroll =
-        min_scroll +
-        (lv_coord_t)(h->cfg.item_count - 1) * (lv_coord_t)h->cfg.slot_height_px;
+    lv_coord_t min_scroll, max_scroll;
+    if (h->cfg.bounds_cb != NULL)
+    {
+        h->cfg.bounds_cb(&min_scroll, &max_scroll, h->cfg.ctx);
+    }
+    else
+    {
+        lv_coord_t list_y1 = list->coords.y1;
+        lv_coord_t pad_top = lv_obj_get_style_pad_top(list, LV_PART_MAIN);
+        lv_coord_t item_h = (h->cfg.item_height_px > 0)
+                                ? (lv_coord_t)h->cfg.item_height_px
+                                : (lv_coord_t)h->cfg.slot_height_px;
+        min_scroll = list_y1 + pad_top + item_h / 2 - LV_VER_RES / 2;
+        max_scroll = min_scroll +
+                     (lv_coord_t)(h->cfg.item_count - 1) *
+                         (lv_coord_t)h->cfg.slot_height_px;
+    }
     /* 邊界 elastic overshoot：拖到 min/max 外時，「比 over_now 還深」的那段
      * 套 resistance 慢動作，總 overshoot 上限 max_overshoot。放開後
      * released_cb → snap_cb 會把 list 拉回到合法 item。*/

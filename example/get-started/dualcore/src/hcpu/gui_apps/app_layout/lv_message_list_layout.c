@@ -181,7 +181,7 @@ const char *const icon_list[NOTIFICATION_APP_QUANTITY] = {
     ICON_OTHER,
     ICON_QQ,
     ICON_SKYPE,
-    ICON_SMS,
+    ICON_OTHER,
     ICON_SNAP,
     ICON_TWITTER,
     ICON_WECHAT,

@@ -31,6 +31,12 @@ typedef lv_obj_t *(*arc_scroll_tap_cb_t)(lv_point_t press_point, void *ctx);
 /* snap_cb：drag 放開時被叫，回傳要 scroll 到中央的目標 obj；NULL 代表不 snap */
 typedef lv_obj_t *(*arc_scroll_snap_cb_t)(void *ctx);
 
+/* bounds_cb：回傳 list 的 min/max scroll_y。NULL 走內建公式（假設「第一個 item
+ * 中心對齊螢幕中央」，適用 curve list 類）。grid / 第一行貼頂的 layout 要自己
+ * 提供版本 */
+typedef void (*arc_scroll_bounds_cb_t)(lv_coord_t *min_scroll,
+                                       lv_coord_t *max_scroll, void *ctx);
+
 typedef struct
 {
     lv_obj_t *parent;               /* overlay 要掛在哪個父物件下 */
@@ -47,6 +53,7 @@ typedef struct
     bool lock_ancestors;            /* drag 期間鎖住外層 scrollable 祖先（防 tileview 誤搶）*/
     arc_scroll_tap_cb_t tap_cb;     /* 可為 NULL */
     arc_scroll_snap_cb_t snap_cb;   /* 可為 NULL */
+    arc_scroll_bounds_cb_t bounds_cb; /* 可為 NULL，NULL 走內建 centered-list 公式 */
     void *ctx;                      /* 給 cb 用的使用者 context */
 } arc_scroll_config_t;
 
