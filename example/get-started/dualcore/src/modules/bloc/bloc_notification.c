@@ -135,8 +135,6 @@ const notification_t notifications_constant[] = {
 uint8_t notification_items_amount = 0;
 uint8_t selected_notification_index = 0;
 
-extern void motor_pattern_calling(void);
-
 /**
  * @brief Mark a notification as read/seen
  * @param index Index of the notification to mark

@@ -1057,8 +1057,16 @@ static void refresh_time(T_UTC_TIME *current_time)
 
 void refersh_weather_icon(void)
 {
-    weather_t *get_weather_data = get_weather(WEATHER_TODAT_ITEM_AMOUNT - 1);
-    if (lv_obj_is_valid(p_app_clock_main->instruction_list_weather_icon) == 0)
+    /* Index 3 is the "current hour" slot; WEATHER_TODAT_ITEM_AMOUNT-1 (=7)
+       is the oldest entry in the array (newest items shift toward 0 in
+       update_weather), so reading the tail gave us a stale icon. */
+    weather_t *get_weather_data = get_weather(3);
+    if (!get_weather_data)
+    {
+        return;
+    }
+    if (!p_app_clock_main ||
+        lv_obj_is_valid(p_app_clock_main->instruction_list_weather_icon) == 0)
     {
         LOG_W("instruction_list_weather_icon is not valid");
         return;

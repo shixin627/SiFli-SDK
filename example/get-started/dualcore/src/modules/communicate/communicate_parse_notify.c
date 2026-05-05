@@ -222,13 +222,6 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         LOG_D("KEY_UPDATE_WEATHER: %d", weather_data_updata_count);
         handle_weather((char *)pValue);
         weather_data_updata_count++;
-        // for (int i = 0; i < 4; i++)
-        // {
-        //     weather_t *weather = get_weather_week(i);
-        //     // LOG_D("weather[%d]: %d-%d-%d %d:%d\n", i, weather->time.year,
-        //     // weather->time.month, weather->time.day, weather->time.hour,
-        //     // weather->time.minutes);
-        // }
         SkaiWatchSys.weather_moment_count = weather_data_updata_count;
         break;
     }

@@ -424,7 +424,6 @@ static void game_tick(lv_timer_t *timer)
 
         if (check_collision())
         {
-            extern void motor_pattern_scrolling_app(void);
             motor_pattern_scrolling_app();
             game_over();
         }

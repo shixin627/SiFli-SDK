@@ -206,11 +206,14 @@ extern void BLE_LOG_E(const char *format, ...);
     /// Motor control for watch system interact
     extern bool get_motor_switch_state(void);
     extern void set_motor_switch_state(uint8_t state);
+    extern void motor_pattern_alarm(void);
+    extern void motor_pattern_calling(void);
+    extern void motor_pattern_notification(void);
+    extern void motor_pattern_normal(void);
     extern void motor_pattern_scrolling_app(void);
     extern void motor_pattern_wheel_scrolling(void);
     extern void motor_pattern_screen_on_longpress(void);
     extern void motor_pattern_timer_reminder(void);
-    extern void motor_pattern_normal(void);
     extern void motor_pattern_unlocked(void);
     extern void motor_pattern_touchpad_slide(void);
     extern void motor_pattern_damping(void);

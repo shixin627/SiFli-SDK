@@ -212,10 +212,19 @@ static void parse_weather(const char *json_str, weather_t *weather)
 	}
 
 	cJSON *location_json = cJSON_GetObjectItem(root, "location");
-	if (location_json)
+	if (cJSON_IsString(location_json))
 	{
-		strncpy(weather->location, cJSON_GetStringValue(location_json), sizeof(weather->location) - 1);
-		weather->location[sizeof(weather->location) - 1] = '\0'; // Ensure null termination
+		const char *loc = cJSON_GetStringValue(location_json);
+		if (loc && loc[0] != '\0')
+		{
+			strncpy(weather->location, loc, sizeof(weather->location) - 1);
+			weather->location[sizeof(weather->location) - 1] = '\0';
+			/* Phone embeds location in the weather JSON instead of sending a
+			   separate KEY_LOCATION_DATA packet. Mirror it into the global so
+			   get_current_location() (used by the weather UI) returns it. */
+			strncpy(current_location, loc, sizeof(current_location) - 1);
+			current_location[sizeof(current_location) - 1] = '\0';
+		}
 	}
 
 	cJSON *time_json = cJSON_GetObjectItem(root, "date");

@@ -7,6 +7,7 @@
 #include "bf0_sibles.h"
 #include "bf0_ble_gap.h"
 #include "bloc_control.h"
+#include "watch_system_interact.h"
 
 #define DBG_TAG "ble.hid"
 #define DBG_LVL DBG_LOG
@@ -1133,9 +1134,6 @@ static void BLE_HID_Mouse_BackRelease(void)
 
 /**********************HID Touch-to-Mouse: long-press + edge-pan
  * ****************************************************/
-
-/* Vibration pattern reused from the UI layer for long-press feedback. */
-extern void motor_pattern_scrolling_app(void);
 
 #define MOUSE_LONG_PRESS_MS           500    /* hold threshold */
 #define MOUSE_DOUBLECLICK_WINDOW_MS   300    /* after 1st release: wait this long for a 2nd press */

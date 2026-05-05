@@ -2402,7 +2402,6 @@ static void dial_header_shrink_timer_cb(lv_timer_t *timer)
     /* Timer auto-deletes after repeat_count reaches 0 */
 }
 
-extern void motor_pattern_notification(void);
 static void dial_header_show_notification(void)
 {
     if (!lv_obj_is_valid(dial_header_bg))

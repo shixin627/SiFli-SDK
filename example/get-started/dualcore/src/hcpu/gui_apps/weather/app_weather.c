@@ -861,8 +861,12 @@ lv_obj_t *lv_card_layout_weather_create(lv_obj_t *parent_tv_obj)
     lv_obj_clear_flag(current_weather_page, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_opa(current_weather_page, LV_OPA_0, 0);
 
-    // Get weather data
-    weather_t *get_weather_dayone_data = get_weather(4);
+    /* Index 3 is the "current hour" slot in the weather array;
+       indices 2,1,0 are the next-three-hour forecasts (newer entries shift
+       toward 0 in update_weather). The previous get_weather(4) read the
+       hour BEFORE current, which is why the centre widget always lagged
+       behind the leftmost forecast widget. */
+    weather_t *get_weather_dayone_data = get_weather(3);
     if (!get_weather_dayone_data)
     {
         LOG_E("Failed to get main weather data");
@@ -947,12 +951,13 @@ lv_obj_t *lv_card_layout_weather_create(lv_obj_t *parent_tv_obj)
                     LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
     lv_obj_align(p_line, LV_ALIGN_CENTER, 0, 10);
 
-    // Create forecast widgets for the next 3 days
+    /* Forecast row: shifted one slot earlier — leftmost is now hour+1,
+       middle hour+2, rightmost hour+3. Centre widget already shows hour 0. */
     weather_t *forecast_data;
     for (int i = 0; i < 3; i++)
     {
         int offset = (i - 1) * 130; // -130, 0, 130
-        forecast_data = get_weather(3 - i);
+        forecast_data = get_weather(2 - i);
         if (forecast_data)
         {
             create_forecast_widget(current_weather_page, p_line, i, offset,
@@ -991,6 +996,12 @@ static void weather_widget_layout_update(void)
             lv_label_set_text(weather_data[i].time, "Now");
         }
     }
+    /* Also refresh the small weather icon shown in the dial face's
+       instruction list — phone weather updates fan out from this single
+       handler. */
+    extern void refersh_weather_icon(void);
+    refersh_weather_icon();
+
     lvgl_msg_handler.handle_refresh_weather_widget =
         weather_widget_layout_update;
 }
@@ -1055,26 +1066,17 @@ void weather_layout_update(void)
         return;
     }
 
-    // Get all weather data at once to avoid multiple calls
-    weather_t *weather_data[4] = {NULL};
-    bool data_valid = true;
-
-    for (int i = 1; i <= 4; i++)
+    /* Indices must match lv_card_layout_weather_create():
+       current = get_weather(3), forecast slots = get_weather(2),(1),(0).
+       Don't early-return on NULL — render whatever slots are filled so the
+       first widget refresh after entering the app picks up the freshly
+       received data instead of waiting for the next app re-entry. */
+    weather_t *current_weather = get_weather(3);
+    if (!current_weather)
     {
-        weather_data[i - 1] = get_weather(i + 3);
-        if (!weather_data[i - 1])
-        {
-            LOG_E("Failed to get weather data for index %d", i);
-            data_valid = false;
-            break;
-        }
-    }
-
-    if (!data_valid)
+        LOG_W("weather_layout_update: get_weather(3) returned NULL");
         return;
-
-    // Update main weather display
-    weather_t *current_weather = weather_data[3]; // get_weather(4)
+    }
 
     // Update location label
     const char *location_text = get_current_location();
@@ -1092,28 +1094,20 @@ void weather_layout_update(void)
     lv_label_set_text(p_app_weather->weather_label,
                       current_weather->description);
 
-    // Show weather info or no-data message based on data freshness
-    bool data_outdated =
-        (current_weather->time.day != SkaiWatchSys.Global_Time.day &&
-         current_weather->time.month != SkaiWatchSys.Global_Time.month);
+    /* refresh_ui is only triggered when fresh weather data arrives, so by
+       definition the data is not stale — always reveal the temperature /
+       description and hide the "no data" placeholder. The previous
+       day/month comparison incorrectly hid cur_tem_label whenever the
+       phone-supplied epoch decoded to a date that didn't match the as-yet-
+       unsynced Global_Time on first entry. */
+    lv_obj_add_flag(p_app_weather->no_dat_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(p_app_weather->cur_tem_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(p_app_weather->weather_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_align_to(p_app_weather->weather_label, p_app_weather->cur_tem_label,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
 
-    if (data_outdated)
-    {
-        lv_obj_clear_flag(p_app_weather->no_dat_label, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(p_app_weather->cur_tem_label, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(p_app_weather->weather_label, LV_OBJ_FLAG_HIDDEN);
-    }
-    else
-    {
-        lv_obj_add_flag(p_app_weather->no_dat_label, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(p_app_weather->cur_tem_label, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(p_app_weather->weather_label, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_align_to(p_app_weather->weather_label,
-                        p_app_weather->cur_tem_label, LV_ALIGN_OUT_BOTTOM_MID,
-                        0, 0);
-    }
-
-    // Update forecast information
+    /* Forecast slots: build path uses get_weather(2), (1), (0) for i=0,1,2
+       (see lv_card_layout_weather_create). Mirror that here. */
     for (int i = 0; i < 3; i++)
     {
         if (!lv_obj_is_valid(p_app_weather->future_date[i]) ||
@@ -1123,7 +1117,11 @@ void weather_layout_update(void)
             continue;
         }
 
-        weather_t *forecast = weather_data[2 - i]; // get_weather(3-i)
+        weather_t *forecast = get_weather(2 - i);
+        if (!forecast)
+        {
+            continue; /* skip this slot; don't abort the whole refresh */
+        }
 
         // Update time
         snprintf(buffer, sizeof(buffer), "%02d:%02d", forecast->time.hour,
