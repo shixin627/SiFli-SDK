@@ -47,6 +47,12 @@
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
+/* MAC address printf helper. bd_addr_t / bonded_device_t::mac_addr both store
+   the address byte-reversed (LSB at index 0); print high-to-low so the output
+   matches the canonical XX:XX:XX:XX:XX:XX form humans expect. */
+#define MAC_FMT      "%02x:%02x:%02x:%02x:%02x:%02x"
+#define MAC_ARG(a)   (a)[5], (a)[4], (a)[3], (a)[2], (a)[1], (a)[0]
+
 // Set default strategy if not defined
 #ifndef CONNECT_STRATEGY
     #define CONNECT_STRATEGY CONNECT_STRATEGY_GENERAL
@@ -93,7 +99,9 @@ static void rssi_timer_callback(void *parameter)
 {
     ble_gap_get_rssi_t rssi;
     rssi.conn_idx = g_app_env.conn_idx;
-    uint8_t ret = ble_gap_get_remote_rssi(&rssi);
+    /* Result is delivered asynchronously via BLE_GAP_REMOTE_RSSI_IND; we only
+       need to kick off the request here. */
+    ble_gap_get_remote_rssi(&rssi);
 }
 void start_ble_rssi_checker(void)
 {
@@ -119,17 +127,6 @@ void stop_ble_rssi_checker(void)
     }
 }
 #endif
-
-// void notify_signal_bad(bool bad)
-// {
-// #ifdef SHOW_BAD_SIGNAL_INDICATOR
-//     #ifdef BSP_USING_UI_HANDLER
-//     lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_BAD_SIGNAL_INDICATOR,
-//                       .data.action = bad};
-//     lvgl_send_msg(msg);
-//     #endif
-// #endif
-// }
 
 // --------- GAP Info Reader (read remote Device Name & Appearance after connection) ---------
 typedef struct
@@ -344,11 +341,8 @@ static uint8_t ble_app_get_bonded_device_addr(ble_gap_addr_t *addr)
     if (g_has_target_device)
     {
         memcpy(addr, &g_target_device_addr, sizeof(ble_gap_addr_t));
-        LOG_I("Using cached bonded device addr: %02x:%02x:%02x:%02x:%02x:%02x "
-              "(type:%d)",
-              addr->addr.addr[5], addr->addr.addr[4], addr->addr.addr[3],
-              addr->addr.addr[2], addr->addr.addr[1], addr->addr.addr[0],
-              addr->addr_type);
+        LOG_I("Using cached bonded device addr: " MAC_FMT " (type:%d)",
+              MAC_ARG(addr->addr.addr), addr->addr_type);
         return 1;
     }
 
@@ -375,11 +369,8 @@ static uint8_t ble_app_get_bonded_device_addr(ble_gap_addr_t *addr)
             memcpy(&g_target_device_addr, addr, sizeof(ble_gap_addr_t));
             g_has_target_device = 1;
 
-            LOG_I("Found active device[%d] addr: %02x:%02x:%02x:%02x:%02x:%02x "
-                  "(type:%d)",
-                  active_idx, addr->addr.addr[5], addr->addr.addr[4],
-                  addr->addr.addr[3], addr->addr.addr[2], addr->addr.addr[1],
-                  addr->addr.addr[0], addr->addr_type);
+            LOG_I("Found active device[%d] addr: " MAC_FMT " (type:%d)",
+                  active_idx, MAC_ARG(addr->addr.addr), addr->addr_type);
             return 1;
         }
     }
@@ -397,11 +388,8 @@ static uint8_t ble_app_get_bonded_device_addr(ble_gap_addr_t *addr)
             memcpy(&g_target_device_addr, addr, sizeof(ble_gap_addr_t));
             g_has_target_device = 1;
 
-            LOG_I("Found bonded device[%d] addr: %02x:%02x:%02x:%02x:%02x:%02x "
-                  "(type:%d)",
-                  i, addr->addr.addr[5], addr->addr.addr[4], addr->addr.addr[3],
-                  addr->addr.addr[2], addr->addr.addr[1], addr->addr.addr[0],
-                  addr->addr_type);
+            LOG_I("Found bonded device[%d] addr: " MAC_FMT " (type:%d)",
+                  i, MAC_ARG(addr->addr.addr), addr->addr_type);
             return 1;
         }
     }
@@ -418,10 +406,8 @@ void ble_app_set_bonded_device_addr(ble_gap_addr_t *addr)
 {
     memcpy(&g_target_device_addr, addr, sizeof(ble_gap_addr_t));
     g_has_target_device = 1;
-    LOG_I("Saved bonded device addr: %02x:%02x:%02x:%02x:%02x:%02x (type:%d)",
-          addr->addr.addr[5], addr->addr.addr[4], addr->addr.addr[3],
-          addr->addr.addr[2], addr->addr.addr[1], addr->addr.addr[0],
-          addr->addr_type);
+    LOG_I("Saved bonded device addr: " MAC_FMT " (type:%d)",
+          MAC_ARG(addr->addr.addr), addr->addr_type);
 }
 
 /**
@@ -449,10 +435,7 @@ void ble_app_start_targeted_advertising(uint8_t device_idx)
 
     LOG_I("Starting targeted advertising for device[%d]: %s", device_idx,
           target_dev->device_name);
-    LOG_I("Target MAC: %02X:%02X:%02X:%02X:%02X:%02X", target_dev->mac_addr[5],
-          target_dev->mac_addr[4], target_dev->mac_addr[3],
-          target_dev->mac_addr[2], target_dev->mac_addr[1],
-          target_dev->mac_addr[0]);
+    LOG_I("Target MAC: " MAC_FMT, MAC_ARG(target_dev->mac_addr));
 
     // Set this device as the active device (this will also set it as target
     // device and save to flash)
@@ -547,34 +530,9 @@ struct attm_desc_128 ble_app_att_db[] = {
 static uint8_t g_ble_app_svc[ATT_UUID_128_LEN] = ble_app_service_uuid;
 static sibles_hdl g_sifli_test_ble_test_hdl;
 
-#define ENABLE_BLE_MUTEX 0
-static rt_mutex_t ble_api_mutex;
-static void ble_api_mutex_init(void)
-{
-#if ENABLE_BLE_MUTEX
-    ble_api_mutex = rt_mutex_create("ble_api_mutex", RT_IPC_FLAG_FIFO);
-    RT_ASSERT(ble_api_mutex != RT_NULL);
-#endif
-}
-
-void ble_api_lock(void)
-{
-#if ENABLE_BLE_MUTEX
-    rt_mutex_take(ble_api_mutex, RT_WAITING_FOREVER);
-#endif
-}
-
-void ble_api_unlock(void)
-{
-#if ENABLE_BLE_MUTEX
-    rt_mutex_release(ble_api_mutex);
-#endif
-}
-
 // sifli ble test
 static uint8_t *ble_app_get_cbk(uint8_t conn_idx, uint8_t idx, uint16_t *len)
 {
-    ble_api_lock();
     LOG_D("ble_app_get_cbk %d", idx);
     switch (idx)
     {
@@ -584,13 +542,11 @@ static uint8_t *ble_app_get_cbk(uint8_t conn_idx, uint8_t idx, uint16_t *len)
     }
     }
     *len = 1;
-    ble_api_unlock();
     return 0;
 }
 
 static uint8_t ble_app_set_cbk(uint8_t conn_idx, sibles_set_cbk_t *para)
 {
-    ble_api_lock();
     switch (para->idx)
     {
     case BLE_APP_TX_VALUE:
@@ -625,7 +581,6 @@ static uint8_t ble_app_set_cbk(uint8_t conn_idx, sibles_set_cbk_t *para)
     default:
         break;
     }
-    ble_api_unlock();
     return 0;
 }
 
@@ -749,7 +704,6 @@ uint16_t skaiwalk_ble_app_notify(uint8_t *p_data, uint16_t data_length)
 {
     if (g_sifli_test_ble_test_hdl)
     {
-        ble_api_lock();
         app_env_t *env = ble_app_get_env();
         sibles_value_t value;
         value.hdl = g_sifli_test_ble_test_hdl;
@@ -779,7 +733,6 @@ uint16_t skaiwalk_ble_app_notify(uint8_t *p_data, uint16_t data_length)
             }
         }
 #endif
-        ble_api_unlock();
         return ret;
     }
     else
@@ -892,8 +845,7 @@ int audio_profile_send_voice_data(uint8_t *voice_data, uint16_t voice_data_len)
 {
     if (g_audio_profile_hdl)
     {
-        app_env_t *env = ble_app_get_env();
-        if (env->data.is_audio_subscribed == 0)
+        if (ble_app_get_env()->data.is_audio_subscribed == 0)
         {
             return 0;
         }
@@ -907,7 +859,6 @@ int audio_profile_send_voice_data(uint8_t *voice_data, uint16_t voice_data_len)
         {
             target_conn_idx = db->devices[active_idx].conn_idx;
         }
-        ble_api_lock();
         sibles_value_t value;
         value.hdl = g_audio_profile_hdl;
         value.idx = AUDIOPROFILE_AUDIO_VAL;
@@ -939,8 +890,6 @@ int audio_profile_send_voice_data(uint8_t *voice_data, uint16_t voice_data_len)
         {
             rt_thread_mdelay(50);
         }
-
-        ble_api_unlock();
         return ret;
     }
     else
@@ -1067,7 +1016,9 @@ void bt_stack_update_flash(void)
         uint8_t *buf_addr = (uint8_t *)(ptr1 + 1);
         rt_kprintf("used mem len:%d\r\n", ptr1->used_mem);
 
-        // 寫入偏移量 8 開始的資料: 03 25 AA AA AA AA
+        /* Patch BD_ADDRESS region (NVDS layout: 6 raw MAC bytes start at
+           offset 8). The values below are the production MAC override; do
+           not change without coordinating with provisioning. */
         uint8_t write_data[] = {0xE0, 0x63, 0x66, 0x20, 0x95, 0x01};
         memcpy(&buf_addr[8], write_data, sizeof(write_data));
         sifli_nvds_write(SIFLI_NVDS_TYPE_STACK, ptr1->used_mem,
@@ -1231,27 +1182,21 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
 
     // Set advertising address as static
     para.own_addr_type = GAPM_STATIC_ADDR;
-    // Check if we have a bonded device for targeted advertising
-    ble_gap_addr_t bonded_addr;
-    bool has_bonded_device =
-        ble_app_get_bonded_device_addr(&bonded_addr) && !pairing_mode;
 
-    if (has_bonded_device)
-    {
-        para.config.adv_mode = SIBLES_ADV_CONNECT_MODE;
-        para.config.mode_config.conn_config.duration = 0x0;
-        para.config.mode_config.conn_config.interval = 0x140;
-        para.config.max_tx_pwr = 0x7F;
-    }
-    else
-    {
-        // No bonded device or in pairing mode - use general advertising with
-        // background mode
-        para.config.adv_mode = SIBLES_ADV_CONNECT_MODE;
-        para.config.mode_config.conn_config.duration = 0x0;
-        para.config.mode_config.conn_config.interval = 0x140;
-        para.config.max_tx_pwr = 0x7F;
-    }
+    /* Refresh the bonded-device cache. The targeted-vs-general branching that
+       used to live here was removed — both paths set identical config, and
+       targeted advertising is enforced via sibles_advertising_reconfig +
+       g_target_device_addr down the call chain. The pairing_mode parameter
+       is kept on the API surface for callers still passing it. */
+    ble_gap_addr_t bonded_addr;
+    (void)ble_app_get_bonded_device_addr(&bonded_addr);
+    (void)pairing_mode;
+
+    para.config.adv_mode = SIBLES_ADV_CONNECT_MODE;
+    para.config.mode_config.conn_config.duration = 0x0;
+    para.config.mode_config.conn_config.interval = 0x140;
+    para.config.max_tx_pwr = 0x7F;
+
     // Enable restart after disconnected
     para.config.is_auto_restart = 1;
     // adv data and rsp data use same data
@@ -1402,14 +1347,15 @@ void generate_random_public_address(uint8_t device_id)
     LOG_I("Resetting BLE stack to apply new address...");
 }
 
+#ifdef USING_BLE_SERIAL
 uint8_t g_diss_conn_idx;
 uint16_t g_th_total_cnt;
 uint16_t g_th_interval;
 uint16_t g_th_packet_size;
+#endif
 void ble_app_entry(void *param)
 {
     app_env_t *env = ble_app_get_env();
-    ble_api_mutex_init();
 
     // Start advertising start timeout timer
     // start_ble_adv_start_timer();
@@ -1537,7 +1483,6 @@ void get_main_phonepeer_addr(uint8_t *addr)
 int ble_app_event_handler(uint16_t event_id, uint8_t *data, uint16_t len,
                           uint32_t context)
 {
-    ble_api_lock();
     app_env_t *env = ble_app_get_env();
     switch (event_id)
     {
@@ -1558,11 +1503,8 @@ int ble_app_event_handler(uint16_t event_id, uint8_t *data, uint16_t len,
         if (ind->role == 0)
             LOG_E("Peripheral should be slave!!!");
 
-        LOG_I(
-            "Peer device(%x-%x-%x-%x-%x-%x) connected",
-            env->conn_para.peer_addr.addr[5], env->conn_para.peer_addr.addr[4],
-            env->conn_para.peer_addr.addr[3], env->conn_para.peer_addr.addr[2],
-            env->conn_para.peer_addr.addr[1], env->conn_para.peer_addr.addr[0]);
+        LOG_I("Peer device(" MAC_FMT ") connected",
+              MAC_ARG(env->conn_para.peer_addr.addr));
 
         // Update device manager with connection
         int dev_idx = ble_dev_mgr_find_device(env->conn_para.peer_addr.addr);
@@ -1720,7 +1662,6 @@ int ble_app_event_handler(uint16_t event_id, uint8_t *data, uint16_t len,
     default:
         break;
     }
-    ble_api_unlock();
     return 0;
 }
 BLE_EVENT_REGISTER(ble_app_event_handler, NULL);
@@ -1760,22 +1701,17 @@ void wdt_store_exception_information(void)
  */
 static void watchdog_set_status(uint8_t en)
 {
-    #ifdef RT_USING_WDT
-    /* Set wdt status 0. */
     rt_hw_watchdog_set_status(en);
-    /* Avoid repeat set hook. */
+    /* Avoid repeated hook installation. */
     rt_hw_watchdog_hook(0);
     if (!en)
     {
-        /* Stop wdt. */
         rt_hw_watchdog_deinit();
     }
     else
     {
-        /* Set hook for watchdog petting. */
         rt_hw_watchdog_hook(1);
     }
-    #endif
 }
 #endif
 

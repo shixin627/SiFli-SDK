@@ -1,22 +1,16 @@
 /**
-*****************************************************************************************
-*     Copyright(c) 2018, Skaiwalk Corporation. All rights reserved.
-*****************************************************************************************
-* @file      communicate_task.c
-* @brief     Routines to create App task and handle events & messages
-* @author    shixin
-* @date      2019-12-26
-* @version   v1.0
-**************************************************************************************
-* @attention
-* <h2><center>&copy; COPYRIGHT 2017 Realtek Semiconductor
-* Corporation</center></h2>
-**************************************************************************************
-*/
+ *****************************************************************************************
+ *     Copyright(c) 2018, Skaiwalk Corporation. All rights reserved.
+ *****************************************************************************************
+ * @file      communicate_task.c
+ * @brief     Direct-send API: build L2 packets and write to BLE notify.
+ *
+ *            All commu_send_* functions share three primitives:
+ *              - commu_send_status / _empty / _string / _blob
+ *            which centralize connection guard, header build, and notify.
+ *****************************************************************************************
+ */
 
-/*============================================================================*
- *                              Header Files
- *============================================================================*/
 #include <rtthread.h>
 #include <string.h>
 #include "communicate_protocol.h"
@@ -42,502 +36,301 @@
 #define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
-/** @addtogroup  PERIPH_DEMO
- * @{
- */
-
-/** @defgroup  PERIPH_APP_TASK Peripheral App Task
- * @brief This file handles the implementation of application task related
- * functions.
- *
- * Create App task and handle events & messages
- * @{
- */
 /*============================================================================*
- *                              Packet Builder Macros
+ *                              Constants
  *============================================================================*/
-// Helper macros to build packet headers
-#define BUILD_PACKET_HEADER(buf, cmd_id, key)                                  \
-    do                                                                         \
-    {                                                                          \
-        (buf)[0] = (cmd_id);                                                   \
-        (buf)[1] = L2_HEADER_VERSION;                                          \
-        (buf)[2] = (key);                                                      \
-    } while (0)
 
-#define SET_PACKET_LENGTH(buf, len)                                            \
-    do                                                                         \
-    {                                                                          \
-        (buf)[3] = ((len) >> 8) & 0xFF;                                        \
-        (buf)[4] = (len) & 0xFF;                                               \
-    } while (0)
-
-#define BUILD_SIMPLE_PACKET(buf, cmd_id, key, len)                             \
-    do                                                                         \
-    {                                                                          \
-        BUILD_PACKET_HEADER(buf, cmd_id, key);                                 \
-        SET_PACKET_LENGTH(buf, len);                                           \
-    } while (0)
-
-// Maximum payload buffer size
+/* Max payload bytes carried in one un-fragmented L2 frame (BLE_APP_CHAR_MAX_LEN
+   minus the 5-byte L2 header). Larger payloads must use skaiwatch_ble_send_l2
+   directly so the fragmenter handles splitting. */
 #define MAX_PACKET_PAYLOAD_SIZE 507
 
-// Status codes
-#define BOND_SUCCESS 0x00
-#define BOND_FAIL 0x01
+/* Phone-side cap on PPG sample buffer per command. */
+#define HEART_RATE_SERIES_MAX_BYTES 256
+
+#define BOND_SUCCESS  0x00
+#define BOND_FAIL     0x01
 #define LOGIN_SUCCESS 0x00
-#define LOGIN_FAIL 0x01
+#define LOGIN_FAIL    0x01
 
 /*============================================================================*
- *                              Helpers
+ *                              Internal helpers
  *============================================================================*/
 
-// Helper: Build simple status packet (1 byte payload)
-static inline uint16_t build_status_packet(uint8_t *buf, uint8_t cmd_id,
-                                           uint8_t key, uint8_t status)
+/* Big-endian field writers. write_be16 lives in communicate_parse.h; the wider
+   variants are local since no other file currently needs them. */
+static inline void write_be32(uint8_t *p, uint32_t v)
 {
-    BUILD_SIMPLE_PACKET(buf, cmd_id, key, 1);
-    buf[5] = status;
-    return 6;
+    p[0] = (uint8_t)(v >> 24);
+    p[1] = (uint8_t)(v >> 16);
+    p[2] = (uint8_t)(v >> 8);
+    p[3] = (uint8_t)v;
+}
+static inline void write_be40(uint8_t *p, uint64_t v)
+{
+    p[0] = (uint8_t)(v >> 32);
+    p[1] = (uint8_t)(v >> 24);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 8);
+    p[4] = (uint8_t)v;
 }
 
-// Helper: connection state check shared by all direct send APIs
+/* Write the 5-byte L2 header into buf. The phone side masks the length field
+   with 0x1FF, so writing a full byte in buf[3] is harmless for length < 512. */
+static inline void l2_write_header(uint8_t *buf, uint8_t cmd_id, uint8_t key,
+                                    uint16_t length)
+{
+    buf[0] = cmd_id;
+    buf[1] = L2_HEADER_VERSION;
+    buf[2] = key;
+    buf[3] = (uint8_t)((length >> 8) & 0xFF);
+    buf[4] = (uint8_t)(length & 0xFF);
+}
+
+/* Connection guard shared by all direct-send APIs. */
 static inline bool commu_can_send(void)
 {
     return SkaiWatchSys.connected_to_phone && !is_ble_dfu_thread_running();
 }
 
-// Helper: connection state check for OTA-related sends (skip DFU guard)
+/* OTA path skips the DFU guard — by definition we report OTA status while
+   DFU may be running. */
 static inline bool commu_can_send_ota(void)
 {
     return SkaiWatchSys.gap_conn_state == GAP_CONN_STATE_CONNECTED &&
            SkaiWatchSys.connected_to_phone;
 }
 
+/* Header-only frame (no payload). */
+static bool commu_send_empty(uint8_t cmd_id, uint8_t key)
+{
+    if (!commu_can_send()) return false;
+    uint8_t buf[L2_FIRST_VALUE_POS];
+    l2_write_header(buf, cmd_id, key, 0);
+    return skaiwatch_ble_notify(buf, sizeof(buf));
+}
+
+/* Single-byte status frame (header + 1 byte). Small fixed buffer so the
+   common case avoids the MAX_PACKET_PAYLOAD_SIZE stack cost. */
+static bool commu_send_status(uint8_t cmd_id, uint8_t key, uint8_t status)
+{
+    if (!commu_can_send()) return false;
+    uint8_t buf[L2_FIRST_VALUE_POS + 1];
+    l2_write_header(buf, cmd_id, key, 1);
+    buf[L2_FIRST_VALUE_POS] = status;
+    return skaiwatch_ble_notify(buf, sizeof(buf));
+}
+
+/* Variable-length payload up to MAX_PACKET_PAYLOAD_SIZE. */
+static bool commu_send_blob(uint8_t cmd_id, uint8_t key,
+                             const void *payload, uint16_t length)
+{
+    if (!commu_can_send()) return false;
+    if (length > MAX_PACKET_PAYLOAD_SIZE) return false;
+
+    uint8_t buf[L2_FIRST_VALUE_POS + MAX_PACKET_PAYLOAD_SIZE];
+    l2_write_header(buf, cmd_id, key, length);
+    if (length > 0 && payload != NULL)
+    {
+        memcpy(buf + L2_FIRST_VALUE_POS, payload, length);
+    }
+    return skaiwatch_ble_notify(buf, (uint16_t)(L2_FIRST_VALUE_POS + length));
+}
+
+/* String payload via strlen; rejects NULL. */
+static bool commu_send_string(uint8_t cmd_id, uint8_t key, const char *s)
+{
+    if (s == NULL) return false;
+    return commu_send_blob(cmd_id, key, s, (uint16_t)strlen(s));
+}
+
 /*============================================================================*
- *                              Direct Send API
- *  Public functions that build the packet and send via BLE notify directly,
- *  replacing the legacy event-dispatch pattern.
+ *                              Bond / Login
  *============================================================================*/
 
-bool commu_send_bond_success(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, BOND_COMMAND_ID,
-                                       KEY_BOND_RESPOSE, BOND_SUCCESS);
-    return skaiwatch_ble_notify(buf, len);
-}
+bool commu_send_bond_success(void)  { return commu_send_status(BOND_COMMAND_ID, KEY_BOND_RESPOSE,   BOND_SUCCESS); }
+bool commu_send_bond_fail(void)     { return commu_send_status(BOND_COMMAND_ID, KEY_BOND_RESPOSE,   BOND_FAIL); }
+bool commu_send_login_success(void) { return commu_send_status(BOND_COMMAND_ID, KEY_LOGIN_RESPONSE, LOGIN_SUCCESS); }
+bool commu_send_login_fail(void)    { return commu_send_status(BOND_COMMAND_ID, KEY_LOGIN_RESPONSE, LOGIN_FAIL); }
 
-bool commu_send_bond_fail(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, BOND_COMMAND_ID,
-                                       KEY_BOND_RESPOSE, BOND_FAIL);
-    return skaiwatch_ble_notify(buf, len);
-}
+/*============================================================================*
+ *                              Settings
+ *============================================================================*/
 
-bool commu_send_login_success(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, BOND_COMMAND_ID,
-                                       KEY_LOGIN_RESPONSE, LOGIN_SUCCESS);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_login_fail(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, BOND_COMMAND_ID,
-                                       KEY_LOGIN_RESPONSE, LOGIN_FAIL);
-    return skaiwatch_ble_notify(buf, len);
-}
-
+/* Side effect (preserved from legacy): scanning the alarm list also prunes
+   "fired once" entries (day_repeat_flag == 0 && reserved == 0) by decrementing
+   SkaiWatchSys.alarm_num. The phone receives only the surviving items, and
+   local state is left consistent with what was sent. Don't move the prune
+   out without auditing callers — they rely on this combined behavior. */
 bool commu_send_alarm_settings(void)
 {
     if (!commu_can_send()) return false;
-    uint8_t buf[5 + 5 * 16];
-    BUILD_PACKET_HEADER(buf, SET_CONFIG_COMMAND_ID, KEY_RETURN_ALARM_SETTINGS);
 
+    uint8_t buf[L2_FIRST_VALUE_POS + 5 * 16];
     uint8_t alarm_item_count = 0;
     uint8_t alarm_num = SkaiWatchSys.alarm_num;
-    for (uint8_t index = 0; index < alarm_num; index++)
+
+    for (uint8_t i = 0; i < alarm_num; i++)
     {
-        if (SkaiWatchSys.alarms[index].alarm.day_repeat_flag == 0 &&
-            SkaiWatchSys.alarms[index].alarm.reserved == 0)
+        const T_ALARM *a = &SkaiWatchSys.alarms[i];
+        if (a->alarm.day_repeat_flag == 0 && a->alarm.reserved == 0)
         {
             SkaiWatchSys.alarm_num--;
-            LOG_I("delete alarm once item...\n");
+            LOG_I("delete alarm once item...");
             continue;
         }
-        buf[5 + alarm_item_count * 5] = SkaiWatchSys.alarms[index].data >> 32;
-        buf[6 + alarm_item_count * 5] = SkaiWatchSys.alarms[index].data >> 24;
-        buf[7 + alarm_item_count * 5] = SkaiWatchSys.alarms[index].data >> 16;
-        buf[8 + alarm_item_count * 5] = SkaiWatchSys.alarms[index].data >> 8;
-        buf[9 + alarm_item_count * 5] = SkaiWatchSys.alarms[index].data;
+        write_be40(buf + L2_FIRST_VALUE_POS + alarm_item_count * 5, a->data);
         alarm_item_count++;
     }
 
-    SET_PACKET_LENGTH(buf, alarm_item_count * 5);
-    return skaiwatch_ble_notify(buf, 5 + alarm_item_count * 5);
+    uint16_t payload_len = (uint16_t)(alarm_item_count * 5);
+    l2_write_header(buf, SET_CONFIG_COMMAND_ID, KEY_RETURN_ALARM_SETTINGS, payload_len);
+    return skaiwatch_ble_notify(buf, (uint16_t)(L2_FIRST_VALUE_POS + payload_len));
 }
 
-bool commu_send_hour_format(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, SET_CONFIG_COMMAND_ID,
-                                       KEY_HOUR_FORMAT_RETURN,
-                                       SkaiWatchSys.flag_field.hour_format);
-    return skaiwatch_ble_notify(buf, len);
-}
+bool commu_send_hour_format(void)              { return commu_send_status(SET_CONFIG_COMMAND_ID, KEY_HOUR_FORMAT_RETURN,       SkaiWatchSys.flag_field.hour_format); }
+bool commu_send_distance_unit(void)            { return commu_send_status(SET_CONFIG_COMMAND_ID, KEY_DISTANCE_UNIT_RETURN,     SkaiWatchSys.flag_field.distance_unit); }
+bool commu_send_oled_display_time(uint8_t t)   { return commu_send_status(SET_CONFIG_COMMAND_ID, KEY_OLED_DISPLAY_TIME_RETURN, t); }
+bool commu_send_language(void)                 { return commu_send_status(SET_CONFIG_COMMAND_ID, KEY_LANGUAGE_RETURN,          SkaiWatchSys.language); }
+bool commu_send_dial_change(void)              { return commu_send_status(SET_CONFIG_COMMAND_ID, KEY_DIAL_RETURN,              SkaiWatchSys.clock_status); }
 
-bool commu_send_distance_unit(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, SET_CONFIG_COMMAND_ID,
-                                       KEY_DISTANCE_UNIT_RETURN,
-                                       SkaiWatchSys.flag_field.distance_unit);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_oled_display_time(uint8_t time)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, SET_CONFIG_COMMAND_ID,
-                                       KEY_OLED_DISPLAY_TIME_RETURN, time);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_language(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, SET_CONFIG_COMMAND_ID,
-                                       KEY_LANGUAGE_RETURN,
-                                       SkaiWatchSys.language);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_dial_change(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, SET_CONFIG_COMMAND_ID,
-                                       KEY_DIAL_RETURN,
-                                       SkaiWatchSys.clock_status);
-    return skaiwatch_ble_notify(buf, len);
-}
+/*============================================================================*
+ *                              Health
+ *============================================================================*/
 
 bool commu_send_sport_data(void)
 {
-    if (!commu_can_send()) return false;
-    uint16_t length = sizeof(watch_sys_heath_info_t);
-    uint8_t buf[5 + sizeof(watch_sys_heath_info_t)];
-    BUILD_PACKET_HEADER(buf, HEALTH_DATA_COMMAND_ID, KEY_RETURN_SPORTS_DATA);
-    SET_PACKET_LENGTH(buf, length);
-    memcpy(buf + 5, &SkaiWatchSys.health_info_today, length);
-    return skaiwatch_ble_notify(buf, 5 + length);
+    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_RETURN_SPORTS_DATA,
+                            &SkaiWatchSys.health_info_today,
+                            (uint16_t)sizeof(watch_sys_heath_info_t));
 }
 
 bool commu_send_heart_data(int hr)
 {
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, HEALTH_DATA_COMMAND_ID,
-                                       KEY_HEART_DATA_RETURN, (uint8_t)hr);
-    return skaiwatch_ble_notify(buf, len);
+    return commu_send_status(HEALTH_DATA_COMMAND_ID, KEY_HEART_DATA_RETURN, (uint8_t)hr);
 }
 
 bool commu_send_heart_rate_series(const float *ppg, uint16_t count)
 {
-    if (!commu_can_send()) return false;
-    uint16_t bytes = count * sizeof(float);
-    uint8_t buf[5 + 256];
-    if (bytes + 5 > sizeof(buf)) return false;
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_HEART_RATE_SENSOR_SAMPLE);
-    SET_PACKET_LENGTH(buf, bytes);
-    memcpy(buf + 5, ppg, bytes);
-    return skaiwatch_ble_notify(buf, 5 + bytes);
+    if (ppg == NULL) return false;
+    uint16_t bytes = (uint16_t)(count * sizeof(float));
+    if (bytes > HEART_RATE_SERIES_MAX_BYTES) return false;
+    return commu_send_blob(NOTIFY_COMMAND_ID, KEY_HEART_RATE_SENSOR_SAMPLE, ppg, bytes);
 }
 
-bool commu_send_phone_control_cmd(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[5];
-    BUILD_SIMPLE_PACKET(buf, CONTROL_COMMAND_ID, KEY_TAKE_PHOTO, 0);
-    return skaiwatch_ble_notify(buf, 5);
-}
+/*============================================================================*
+ *                              Control
+ *============================================================================*/
 
-bool commu_send_find_mobile(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[5];
-    BUILD_SIMPLE_PACKET(buf, CONTROL_COMMAND_ID, KEY_FIND_PHONE, 0);
-    return skaiwatch_ble_notify(buf, 5);
-}
+bool commu_send_phone_control_cmd(void)        { return commu_send_empty(CONTROL_COMMAND_ID, KEY_TAKE_PHOTO); }
+bool commu_send_find_mobile(void)              { return commu_send_empty(CONTROL_COMMAND_ID, KEY_FIND_PHONE); }
+bool commu_send_media_control(void)            { return commu_send_status(CONTROL_COMMAND_ID, KEY_PHONE_MEDIA_CONTROL, app_audio_get_control_command()); }
+bool commu_send_volume_percentage(uint8_t v)   { return commu_send_status(CONTROL_COMMAND_ID, KEY_RETURN_VOLUMN, v); }
 
-bool commu_send_media_control(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, CONTROL_COMMAND_ID,
-                                       KEY_PHONE_MEDIA_CONTROL,
-                                       app_audio_get_control_command());
-    return skaiwatch_ble_notify(buf, len);
-}
+/*============================================================================*
+ *                              Notification
+ *============================================================================*/
 
-bool commu_send_volume_percentage(uint8_t volume)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, CONTROL_COMMAND_ID,
-                                       KEY_RETURN_VOLUMN, volume);
-    return skaiwatch_ble_notify(buf, len);
-}
+bool commu_send_charge_status(void)                  { return commu_send_status(NOTIFY_COMMAND_ID, KEY_BATTERY_CHARGE_STATUS, SkaiWatchSys.charger_status); }
+bool commu_send_weather_request(void)                { return commu_send_empty (NOTIFY_COMMAND_ID, KEY_REQUEST_WEATHER); }
+bool commu_send_calendar_request(void)               { return commu_send_empty (NOTIFY_COMMAND_ID, KEY_REQUEST_CALENDAR); }
+bool commu_send_gesture_detect(uint8_t label)        { return commu_send_status(NOTIFY_COMMAND_ID, KEY_GESTURE_DETECT, label); }
+bool commu_send_remote_input(const char *json)       { return commu_send_string(NOTIFY_COMMAND_ID, KEY_REMOTE_INPUT, json); }
+bool commu_send_dismiss_notification(const char *id) { return commu_send_string(NOTIFY_COMMAND_ID, KEY_DISMISS_NOTIFICATION, id); }
+bool commu_send_user_speaking_state(uint8_t s)       { return commu_send_status(NOTIFY_COMMAND_ID, KEY_USER_SPEAKING_STATE, s); }
+bool commu_send_chat_with_ai(const char *json)       { return commu_send_string(NOTIFY_COMMAND_ID, KEY_RETURN_CHAT_INTENT, json); }
+bool commu_send_battery_level(uint8_t level)         { return commu_send_status(NOTIFY_COMMAND_ID, KEY_BATTERY_LEVEL, level); }
+bool commu_send_update_instruction(const char *json) { return commu_send_string(NOTIFY_COMMAND_ID, KEY_SKAI_CREATION_INSTRUCTIONS, json); }
+bool commu_send_get_instruction_img(const char *id)  { return commu_send_string(NOTIFY_COMMAND_ID, KEY_SKAI_INSTRUCTION_IMAGE, id); }
 
-bool commu_send_charge_status(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, NOTIFY_COMMAND_ID,
-                                       KEY_BATTERY_CHARGE_STATUS,
-                                       SkaiWatchSys.charger_status);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_weather_request(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[5];
-    BUILD_SIMPLE_PACKET(buf, NOTIFY_COMMAND_ID, KEY_REQUEST_WEATHER, 0);
-    return skaiwatch_ble_notify(buf, 5);
-}
-
-bool commu_send_calendar_request(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[5];
-    BUILD_SIMPLE_PACKET(buf, NOTIFY_COMMAND_ID, KEY_REQUEST_CALENDAR, 0);
-    return skaiwatch_ble_notify(buf, 5);
-}
-
-bool commu_send_gesture_detect(uint8_t label)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, NOTIFY_COMMAND_ID,
-                                       KEY_GESTURE_DETECT, label);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_remote_input(const char *json)
-{
-    if (!commu_can_send() || !json) return false;
-    uint16_t length = strlen(json);
-    uint8_t buf[5 + MAX_PACKET_PAYLOAD_SIZE];
-    if (length + 5 > sizeof(buf)) return false;
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_REMOTE_INPUT);
-    SET_PACKET_LENGTH(buf, length);
-    memcpy(buf + 5, json, length);
-    return skaiwatch_ble_notify(buf, 5 + length);
-}
-
-bool commu_send_dismiss_notification(const char *id)
-{
-    if (!commu_can_send() || !id) return false;
-    uint16_t length = strlen(id);
-    uint8_t buf[5 + MAX_PACKET_PAYLOAD_SIZE];
-    if (length + 5 > sizeof(buf)) return false;
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_DISMISS_NOTIFICATION);
-    SET_PACKET_LENGTH(buf, length);
-    memcpy(buf + 5, id, length);
-    return skaiwatch_ble_notify(buf, 5 + length);
-}
-
-bool commu_send_user_speaking_state(uint8_t status)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, NOTIFY_COMMAND_ID,
-                                       KEY_USER_SPEAKING_STATE, status);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_chat_with_ai(const char *json)
-{
-    if (!commu_can_send() || !json) return false;
-    uint16_t length = strlen(json);
-    uint8_t buf[5 + MAX_PACKET_PAYLOAD_SIZE];
-    if (length + 5 > sizeof(buf)) return false;
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_RETURN_CHAT_INTENT);
-    SET_PACKET_LENGTH(buf, length);
-    memcpy(buf + 5, json, length);
-    return skaiwatch_ble_notify(buf, 5 + length);
-}
-
-bool commu_send_battery_level(uint8_t level)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, NOTIFY_COMMAND_ID,
-                                       KEY_BATTERY_LEVEL, level);
-    return skaiwatch_ble_notify(buf, len);
-}
-
-bool commu_send_update_instruction(const char *json)
-{
-    if (!commu_can_send() || !json) return false;
-    uint16_t length = strlen(json);
-    uint8_t buf[5 + MAX_PACKET_PAYLOAD_SIZE];
-    if (length + 5 > sizeof(buf)) return false;
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_SKAI_CREATION_INSTRUCTIONS);
-    SET_PACKET_LENGTH(buf, length);
-    memcpy(buf + 5, json, length);
-    return skaiwatch_ble_notify(buf, 5 + length);
-}
-
-bool commu_send_get_instruction_img(const char *id)
-{
-    if (!commu_can_send() || !id) return false;
-    uint16_t length = strlen(id);
-    uint8_t buf[5 + MAX_PACKET_PAYLOAD_SIZE];
-    if (length + 5 > sizeof(buf)) return false;
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_SKAI_INSTRUCTION_IMAGE);
-    SET_PACKET_LENGTH(buf, length);
-    memcpy(buf + 5, id, length);
-    return skaiwatch_ble_notify(buf, 5 + length);
-}
+/*============================================================================*
+ *                              Sensor
+ *============================================================================*/
 
 bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length)
 {
-    if (!commu_can_send() || !acce) return false;
+    if (!commu_can_send() || acce == NULL) return false;
     LOG_D("commu_send_linear_acce_buffer length=%d", length);
-    /* The L2 layer handles MTU-based fragmentation transparently; the phone
-       receives one logical command containing the full sample buffer. */
-    return skaiwatch_ble_send_l2(NOTIFY_COMMAND_ID, KEY_GSENSOR_SAMPLE,
-                                  acce, length);
+    /* L2 fragmenter handles MTU-based splitting transparently. */
+    return skaiwatch_ble_send_l2(NOTIFY_COMMAND_ID, KEY_GSENSOR_SAMPLE, acce, length);
 }
+
+/*============================================================================*
+ *                              File sync
+ *============================================================================*/
 
 bool commu_send_start_sync_file(uint32_t total_size)
 {
     if (!commu_can_send()) return false;
-    char *file_path = get_sync_in_file_path();
-    uint8_t path_len = strlen(file_path);
-    uint8_t buf[9 + 256];
-    if (9 + path_len > sizeof(buf)) return false;
+    const char *file_path = get_sync_in_file_path();
+    uint8_t path_len = (uint8_t)strlen(file_path);
 
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_START_SYNC_FILE);
-    /* Protocol: [total_size(4)][file_path] */
-    buf[3] = 0;
-    buf[4] = path_len + 4;
-    buf[5] = (total_size >> 24) & 0xFF;
-    buf[6] = (total_size >> 16) & 0xFF;
-    buf[7] = (total_size >> 8) & 0xFF;
-    buf[8] = total_size & 0xFF;
-    memcpy(buf + 9, file_path, path_len);
-    return skaiwatch_ble_notify(buf, 9 + path_len);
+    /* Payload: [total_size:4 BE][file_path:path_len] */
+    uint8_t buf[L2_FIRST_VALUE_POS + 4 + 256];
+    if ((size_t)(4 + path_len) > sizeof(buf) - L2_FIRST_VALUE_POS) return false;
+
+    l2_write_header(buf, NOTIFY_COMMAND_ID, KEY_START_SYNC_FILE,
+                    (uint16_t)(4 + path_len));
+    write_be32(buf + L2_FIRST_VALUE_POS, total_size);
+    memcpy(buf + L2_FIRST_VALUE_POS + 4, file_path, path_len);
+    return skaiwatch_ble_notify(buf, (uint16_t)(L2_FIRST_VALUE_POS + 4 + path_len));
 }
 
 bool commu_send_sync_file(const uint8_t *chunk, uint16_t length)
 {
-    if (!commu_can_send() || !chunk) return false;
-    uint8_t buf[5 + MAX_PACKET_PAYLOAD_SIZE];
-    if (length + 5 > sizeof(buf)) return false;
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_SYNC_FILE);
-    SET_PACKET_LENGTH(buf, length);
-    memcpy(buf + 5, chunk, length);
-    return skaiwatch_ble_notify(buf, length + 5);
+    if (chunk == NULL) return false;
+    return commu_send_blob(NOTIFY_COMMAND_ID, KEY_SYNC_FILE, chunk, length);
 }
 
-bool commu_send_end_sync_file(void)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[5];
-    BUILD_SIMPLE_PACKET(buf, NOTIFY_COMMAND_ID, KEY_END_SYNC_FILE, 0);
-    return skaiwatch_ble_notify(buf, 5);
-}
+bool commu_send_end_sync_file(void)             { return commu_send_empty (NOTIFY_COMMAND_ID, KEY_END_SYNC_FILE); }
+bool commu_send_file_compare_result(uint8_t r)  { return commu_send_status(NOTIFY_COMMAND_ID, KEY_FILE_COMPARE_RESULT, r); }
 
-bool commu_send_file_compare_result(uint8_t result)
-{
-    if (!commu_can_send()) return false;
-    uint8_t buf[6];
-    BUILD_SIMPLE_PACKET(buf, NOTIFY_COMMAND_ID, KEY_FILE_COMPARE_RESULT, 1);
-    buf[5] = result;
-    return skaiwatch_ble_notify(buf, 6);
-}
+/*============================================================================*
+ *                              Other
+ *============================================================================*/
 
-bool commu_send_bluetooth_log(const char *log)
-{
-    if (!commu_can_send() || !log) return false;
-    uint16_t buffer_len = strlen(log);
-    uint8_t buf[5 + MAX_PACKET_PAYLOAD_SIZE];
-    if (buffer_len + 5 > sizeof(buf)) return false;
-    BUILD_PACKET_HEADER(buf, BLUETOOTH_LOG_COMMAND_ID, KEY_DEBUG);
-    SET_PACKET_LENGTH(buf, buffer_len);
-    memcpy(buf + 5, log, buffer_len);
-    return skaiwatch_ble_notify(buf, 5 + buffer_len);
-}
+bool commu_send_bluetooth_log(const char *log) { return commu_send_string(BLUETOOTH_LOG_COMMAND_ID, KEY_DEBUG, log); }
 
+/* Watch system snapshot can be larger than one MTU — route through send_l2 to
+   avoid putting sizeof(SkaiWatchSys) on the stack. Wire format is identical
+   to the legacy notify path (single fragment when it fits). */
 bool commu_send_watch_system_sync(void)
 {
     if (!commu_can_send()) return false;
-    size_t total_size = sizeof(SkaiWatchSys);
-    LOG_D("commu_send_watch_system_sync total_size = %d", total_size);
-    uint8_t buf[5 + sizeof(SkaiWatchSys)];
-    if (total_size + 5 > sizeof(buf)) return false;
-    BUILD_PACKET_HEADER(buf, NOTIFY_COMMAND_ID, KEY_WATCH_SYS_RETURN);
-    SET_PACKET_LENGTH(buf, total_size);
-    memcpy(buf + 5, (uint8_t *)&SkaiWatchSys, total_size);
-    return skaiwatch_ble_notify(buf, total_size + 5);
+    LOG_D("commu_send_watch_system_sync total_size = %u", (unsigned)sizeof(SkaiWatchSys));
+    return skaiwatch_ble_send_l2(NOTIFY_COMMAND_ID, KEY_WATCH_SYS_RETURN,
+                                  (const uint8_t *)&SkaiWatchSys,
+                                  (uint16_t)sizeof(SkaiWatchSys));
 }
 
 bool commu_send_ota_status(uint8_t status)
 {
     if (!commu_can_send_ota()) return false;
-    uint8_t buf[6];
-    uint16_t len = build_status_packet(buf, NOTIFY_COMMAND_ID,
-                                       KEY_OTA_STATUS, status);
-    return skaiwatch_ble_notify(buf, len);
+    uint8_t buf[L2_FIRST_VALUE_POS + 1];
+    l2_write_header(buf, NOTIFY_COMMAND_ID, KEY_OTA_STATUS, 1);
+    buf[L2_FIRST_VALUE_POS] = status;
+    return skaiwatch_ble_notify(buf, sizeof(buf));
 }
 
 bool commu_send_device_info(void)
 {
     if (!commu_can_send()) return false;
-    uint16_t deviceID = CUSTOMER_BOARD_VER;
-    uint8_t buf[10];
-    BUILD_SIMPLE_PACKET(buf, SET_CONFIG_COMMAND_ID, KEY_DEVICEINFO_RETURN, 5);
-    buf[5] = deviceID >> 8;
-    buf[6] = deviceID & 0xFF;
-    buf[7] = VERSION_MAJOR;
-    buf[8] = VERSION_MINOR;
-    buf[9] = VERSION_REVISION;
-    return skaiwatch_ble_notify(buf, 10);
+    /* Payload: [board_id:2 BE][major:1][minor:1][rev:1] = 5 bytes */
+    uint8_t buf[L2_FIRST_VALUE_POS + 5];
+    l2_write_header(buf, SET_CONFIG_COMMAND_ID, KEY_DEVICEINFO_RETURN, 5);
+    write_be16(buf + L2_FIRST_VALUE_POS, (uint16_t)CUSTOMER_BOARD_VER);
+    buf[L2_FIRST_VALUE_POS + 2] = VERSION_MAJOR;
+    buf[L2_FIRST_VALUE_POS + 3] = VERSION_MINOR;
+    buf[L2_FIRST_VALUE_POS + 4] = VERSION_REVISION;
+    return skaiwatch_ble_notify(buf, sizeof(buf));
 }
 
 /*============================================================================*
- *                              Audio Send Helper
+ *                              Audio
  *============================================================================*/
 
-extern int audio_profile_send_voice_data(uint8_t *voice_data,
-                                         uint16_t voice_data_len);
+extern int audio_profile_send_voice_data(uint8_t *voice_data, uint16_t voice_data_len);
 bool skaiwatch_ble_audio_send(uint8_t *buf, uint16_t length)
 {
-    int res = audio_profile_send_voice_data(buf, length);
-    return res > 0;
+    return audio_profile_send_voice_data(buf, length) > 0;
 }
-
-/**
- * @brief  Initialize communicate task module
- * @return 0 on success
- */
-int communicate_task_init(void)
-{
-    return 0;
-}
-INIT_APP_EXPORT(communicate_task_init);

@@ -2,7 +2,7 @@
  *               Copyright(c) 2018, Skaiwalk Corporation. All rights reserved.
  **********************************************************************************************************
  * @file     communicate_protocol.c
- * @brief    斯凱沃克通信協議
+ * @brief    Communicate protocol implementation for Skaiwalk watch system.
  *********************************************************************************************************
  */
 
@@ -18,6 +18,15 @@
 #include <rtdbg.h>
 
 extern uint16_t skaiwalk_ble_app_notify(uint8_t *p_data, uint16_t data_len);
+
+/* Effective ATT NTF/WRT payload ceiling: negotiated MTU (clamped to spec
+   minimum) minus the 3-byte ATT header. */
+static inline uint16_t l2_max_att_payload(void)
+{
+    uint16_t mtu = SkaiWatchSys.watch_mtu;
+    if (mtu < BLE_DEFAULT_MTU) mtu = BLE_DEFAULT_MTU;
+    return (uint16_t)(mtu - L2_ATT_OVERHEAD);
+}
 
 /* The original L1 layer (magic 0xAB + length + CRC16 + seq + ACK retry) was
    never wired up to the phone — phone packets arrive as raw L2 frames, so
@@ -36,12 +45,10 @@ void L1_receive_data_without_crc_check(uint8_t *data, uint16_t length)
 bool skaiwatch_ble_send_l2(uint8_t cmd_id, uint8_t key,
                            const uint8_t *payload, uint16_t payload_len)
 {
-    uint16_t mtu = SkaiWatchSys.watch_mtu;
-    if (mtu < BLE_DEFAULT_MTU) mtu = BLE_DEFAULT_MTU;
-    uint16_t max_pkt = mtu - L2_ATT_OVERHEAD;
+    uint16_t max_pkt = l2_max_att_payload();
     if (max_pkt <= L2_FIRST_VALUE_POS)
     {
-        LOG_E("MTU %u too small for L2 framing", mtu);
+        LOG_E("MTU too small for L2 framing");
         return false;
     }
     /* Cap by our notify characteristic's declared max_len. Sending more than
@@ -97,9 +104,7 @@ bool skaiwatch_ble_notify(uint8_t *buf, uint16_t length)
         return false;
     }
 
-    uint16_t mtu = SkaiWatchSys.watch_mtu;
-    if (mtu < BLE_DEFAULT_MTU) mtu = BLE_DEFAULT_MTU;
-    if (length <= (uint16_t)(mtu - L2_ATT_OVERHEAD))
+    if (length <= l2_max_att_payload())
     {
         return skaiwalk_ble_app_notify(buf, length) > 0;
     }

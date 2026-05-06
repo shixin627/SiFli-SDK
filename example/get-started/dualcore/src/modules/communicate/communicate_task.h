@@ -18,8 +18,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-int communicate_task_init(void);
-
 /*============================================================================*
  *                              Direct Send API
  *  Each function builds the packet and sends it via BLE notify directly.
