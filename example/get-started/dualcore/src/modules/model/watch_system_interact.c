@@ -87,11 +87,23 @@
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-/**
- * @brief Is
- *
- * Launches the test application with "all" intent
- */
+/* Cross-module symbols reached from individual case bodies. Moved here from
+   inline `extern` decls inside switch cases. */
+extern void set_open_scrolling_app_flag(bool flag);
+extern char qrcode_data[256];
+extern uint8_t get_ai_coding(void);
+extern bool get_is_open_app_list_ai(void);
+extern bool get_is_open_instruction_list_ai(void);
+extern void append_text_to_input_message(void);
+extern void append_text_to_mouse_input(void);
+extern void load_instruction_list(void);
+extern int subscribe_alarm_client(void);
+#if !kReleaseMode
+extern bool ppg_data_collection;
+extern void blebredr_rf_power_set(uint8_t type, int8_t txpwr);
+extern void chack_tile_page(void);
+#endif
+
 bool get_idle_state(void)
 {
     return SkaiWatchSys.idle_state;
@@ -147,7 +159,6 @@ void handle_gesture_unlock(void)
     if (is_at_home())
     {
         switch_watch_motion_control_mode(true, false);
-        extern void set_open_scrolling_app_flag(bool flag);
         set_open_scrolling_app_flag(true);
         animate_to_instruction_list();
     }
@@ -157,34 +168,29 @@ void handle_gesture_unlock(void)
     }
 }
 
+/* Common haptic-fire path: respects the global motor-on-off switch and
+   forwards to the peripheral provider. Period is in microseconds. */
+static void motor_play_if_enabled(uint8_t duty, uint32_t period_us,
+                                   uint8_t repeats)
+{
+    if (!get_motor_switch_state()) return;
+    motor_params_t params = {
+        .duty_cycle   = duty,
+        .period       = period_us,
+        .repeat_times = repeats,
+    };
+    peripheral_provider.control_motor(true, &params);
+}
+
 void motor_pattern_calling(void)
 {
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 51,
-            .period = 1000000, // 1000ms
-            .repeat_times = 3,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
+    motor_play_if_enabled(51, 1000000, 3); /* 1000ms × 3 */
 }
 
 void motor_pattern_notification(void)
 {
-    if (SkaiWatchSys.DNDMode.config.status) // DND mode
-    {
-        return;
-    }
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 51,
-            .period = 50000, // 50ms
-            .repeat_times = 2,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
+    if (SkaiWatchSys.DNDMode.config.status) return; /* DND mode */
+    motor_play_if_enabled(51, 50000, 2); /* 50ms × 2 */
 }
 
 // Extract sensor handling into a separate function
@@ -224,7 +230,6 @@ handle_sensor_subscription(sensor_subscription_t sensor_subscription)
     case SENSOR_TYPE_PPG:
     {
 #if !kReleaseMode
-        extern bool ppg_data_collection;
         if (sensor_subscription.status)
         {
             LOG_D("request ppg subscribe on");
@@ -287,147 +292,31 @@ void set_motor_switch_state(uint8_t state)
     }
 }
 
-// Motor pattern functions - each pattern wrapped in a separate function
-void motor_pattern_wheel_scrolling(void)
-{
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 100,
-            .period = 100000, // 100ms
-            .repeat_times = 1,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
-}
-
-void motor_pattern_scrolling_app(void)
-{
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 100,
-            .period = 12000, // 12ms
-            .repeat_times = 1,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
-}
-
-void motor_pattern_touchpad_slide(void)
-{
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 100,
-            .period = 10000, // 10ms
-            .repeat_times = 1,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
-}
-
-void motor_pattern_screen_on_longpress(void)
-{
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 100,
-            .period = 200000, // 200ms
-            .repeat_times = 1,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
-}
-
-void motor_pattern_damping(void)
-{
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 100,
-            .period = 9000, // 200ms
-            .repeat_times = 1,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
-}
-
-void motor_pattern_tap(void)
-{
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 100,
-            .period = 9000, // 200ms
-            .repeat_times = 1,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
-}
+/* All single-burst motor patterns differ only in (duty, period_us, repeats).
+   Period comments below match the actual µs values; the legacy comments on
+   damping/tap/unlocked were stale (claimed 200ms / 30ms but values were
+   9ms/9ms/25ms). Wire-equivalent: same params struct, same provider call. */
+void motor_pattern_wheel_scrolling(void)     { motor_play_if_enabled(100, 100000, 1); /* 100ms */ }
+void motor_pattern_scrolling_app(void)       { motor_play_if_enabled(100,  12000, 1); /*  12ms */ }
+void motor_pattern_touchpad_slide(void)      { motor_play_if_enabled(100,  10000, 1); /*  10ms */ }
+void motor_pattern_screen_on_longpress(void) { motor_play_if_enabled(100, 200000, 1); /* 200ms */ }
+void motor_pattern_damping(void)             { motor_play_if_enabled(100,   9000, 1); /*   9ms */ }
+void motor_pattern_tap(void)                 { motor_play_if_enabled(100,   9000, 1); /*   9ms */ }
+void motor_pattern_alarm(void)               { motor_play_if_enabled( 51, 500000, 30); /* 500ms × 30 */ }
+void motor_pattern_normal(void)              { motor_play_if_enabled( 51, 100000, 1); /* 100ms */ }
+void motor_pattern_timer_reminder(void)      { motor_play_if_enabled( 51, 500000, 10); /* 500ms × 10 */ }
+void motor_pattern_unlocked(void)            { motor_play_if_enabled(100,  25000, 1); /*  25ms */ }
 
 void motor_pattern_stop(void)
 {
     peripheral_provider.control_motor(false, NULL);
 }
 
-void motor_pattern_alarm(void)
-{
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 51,
-            .period = 500000, // 500ms
-            .repeat_times = 30,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
-}
-
-void motor_pattern_normal(void)
-{
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 51,
-            .period = 100000, // 100ms
-            .repeat_times = 1,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
-}
-
-void motor_pattern_timer_reminder(void)
-{
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 51,
-            .period = 500000, // 500ms
-            .repeat_times = 10,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
-}
-
-void motor_pattern_unlocked(void)
-{
-    if (get_motor_switch_state())
-    {
-        motor_params_t params = {
-            .duty_cycle = 100,
-            .period = 25000, // 30ms
-            .repeat_times = 1,
-        };
-        peripheral_provider.control_motor(true, &params);
-    }
-}
-
 #ifdef RGB_LED_CONTROL_PIN
-static void led_pattern_rgb_led_colse(void)
+static void led_pattern_rgb_led_close(void)
 {
     peripheral_provider.control_rgb_led(false, NULL);
-    LOG_D("led_pattern_rgb_led_colse");
+    LOG_D("led_pattern_rgb_led_close");
     rgb_led_params_t params = {
         .color = {.red = 0, .green = 0, .blue = 0},
         .brightness = 0,
@@ -541,7 +430,6 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
     case INTERACT_SHOW_QRCODE:
     {
         LOG_D("[INTERACT_SHOW_QRCODE] QRCODE:%s", pValue);
-        extern char qrcode_data[256];
         strcpy(qrcode_data, pValue);
         AppIntent appIntent;
         strcpy(appIntent.app_id, APP_ID_INTERACT);
@@ -603,8 +491,6 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
             gui_app_get_gesture_indicator();
         VOICE_RECOGNITION_PAYLOAD *msgData =
             (VOICE_RECOGNITION_PAYLOAD *)pValue;
-        extern uint8_t get_ai_coding(void);
-        extern bool get_is_open_app_list_ai(void);
         if (get_speech_coding() != msgData->header)
         {
             break;
@@ -624,13 +510,11 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
             lvgl_msg_t msg;
             msg.type = LVGL_MSG_TYPE_SPEECH_SHOW_BG;
             lvgl_send_msg(msg);
-            extern void append_text_to_input_message();
             append_text_to_input_message();
         }
         else if (gui_app_is_actived(APP_ID_MOUSE))
         {
             handle_v2t_result(msgData);
-            extern void append_text_to_mouse_input(void);
             append_text_to_mouse_input();
         }
         break;
@@ -643,7 +527,6 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
         /* Accept reply if voice_recognition's speech_bg is shown OR the
            instruction-list AI widget is open (speech_bg may be NULL in the
            widget-integrated flow). */
-        extern bool get_is_open_instruction_list_ai(void);
         lv_obj_t *sbg = gui_app_get_gesture_indicator()->speech_bg;
         bool speech_bg_shown = sbg && lv_obj_is_valid(sbg) &&
                                !lv_obj_has_flag(sbg, LV_OBJ_FLAG_HIDDEN);
@@ -785,7 +668,7 @@ static void handle_system_control(INTERACT_Type type, void *pValue)
     }
     case INTERACT_RGB_LED_CLOSE:
     {
-        led_pattern_rgb_led_colse();
+        led_pattern_rgb_led_close();
         break;
     }
     case INTERACT_RGB_LED_BREATHING_GREEN:
@@ -842,7 +725,6 @@ static void handle_system_settings(INTERACT_Type type, void *pValue)
         char *language = (char *)pValue;
         LOG_D("[LANGUAGE_SET] Language:%s", language);
         setting_provider.set_language(language);
-        extern void load_instruction_list(void);
         load_instruction_list();
         break;
     }
@@ -861,11 +743,8 @@ static void handle_system_settings(INTERACT_Type type, void *pValue)
         break;
     }
     case WATCH_ALARM_INIT:
-    {
-        extern int subscribe_alarm_client(void);
         subscribe_alarm_client();
         break;
-    }
     case WATCH_BRIGHTNESS_SET:
     {
         uint8_t brightness = *(uint8_t *)pValue;
@@ -1131,7 +1010,6 @@ static int set_watch_system(int argc, char *argv[])
         else if (strcmp(argv[1], "-set_ble_rf") == 0)
         {
             int watch_ble_rf_power = atoi(argv[2]);
-            extern void blebredr_rf_power_set(uint8_t type, int8_t txpwr);
             blebredr_rf_power_set(0, watch_ble_rf_power);
         }
         else if (strcmp(argv[1], "-get_rssi") == 0)
@@ -1143,7 +1021,6 @@ static int set_watch_system(int argc, char *argv[])
         }
         else if (strcmp(argv[1], "-chack_tile") == 0)
         {
-            extern void chack_tile_page(void);
             chack_tile_page();
         }
     }

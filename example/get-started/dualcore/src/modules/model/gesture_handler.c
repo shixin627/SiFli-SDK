@@ -62,6 +62,15 @@
 
 // #define USE_DOUBLE_TAP_GESTURE
 
+/* Cross-module externs used below — declared at file scope rather than
+   inline at each call site. */
+extern bool imu_data_collection;
+extern bool get_hid_mouse_handfree_mode(void);
+extern bool get_imu_data_collection_status(void);
+#if ENABLE_VIRTUAL_TOUCH
+extern void release_navigation_bar(void);
+#endif
+
 // create an event to handle hold event detection
 static rt_event_t virtual_gesture_detect_event;
 static rt_uint32_t last_gesture_event;
@@ -130,52 +139,28 @@ static void set_gesture(rt_tick_t ts, gesture_detect_state_t gesture)
   LOG_I("set_gesture: %d to %d", gesture_detect_state, gesture);
   switch (gesture)
   {
+  /* All "real" gestures share the same body: stamp time, update state, and
+     poke LVGL's activity timer so the screen-off countdown resets. */
   case gesture_press:
-    last_gesture_time = ts;
-    gesture_detect_state = gesture;
-    lv_disp_trig_activity(NULL);
-    break;
   case gesture_tap:
-    last_gesture_time = ts;
-    gesture_detect_state = gesture;
-    lv_disp_trig_activity(NULL);
-    break;
   case gesture_hold:
-    last_gesture_time = ts;
-    gesture_detect_state = gesture;
-    lv_disp_trig_activity(NULL);
-    break;
   case gesture_finger_release:
+  case gesture_back:
+  case gesture_double_tap:
+  case gesture_wrist_pronation:
+  case gesture_hand_release:
     last_gesture_time = ts;
     gesture_detect_state = gesture;
     lv_disp_trig_activity(NULL);
     break;
 #if GestureLongPress
   case gesture_longpress:
+    /* Skip lv_disp_trig_activity — long press is held by user, no need to
+       refresh the inactivity timer. */
     last_gesture_time = ts;
     gesture_detect_state = gesture;
     break;
 #endif
-  case gesture_back:
-    last_gesture_time = ts;
-    gesture_detect_state = gesture;
-    lv_disp_trig_activity(NULL);
-    break;
-  case gesture_double_tap:
-    last_gesture_time = ts;
-    gesture_detect_state = gesture;
-    lv_disp_trig_activity(NULL);
-    break;
-  case gesture_wrist_pronation:
-    last_gesture_time = ts;
-    gesture_detect_state = gesture;
-    lv_disp_trig_activity(NULL);
-    break;
-  case gesture_hand_release:
-    last_gesture_time = ts;
-    gesture_detect_state = gesture;
-    lv_disp_trig_activity(NULL);
-    break;
   case gesture_unknown:
     gesture_detect_state = gesture;
     LOG_W("gesture unknown");
@@ -186,18 +171,18 @@ static void set_gesture(rt_tick_t ts, gesture_detect_state_t gesture)
   }
 }
 
-static bool open_geture_model = false;
+static bool open_gesture_model_state = false;
 bool open_gesture_model(void)
 {
   if (gesture_detect_state == gesture_back && last_gesture_time + 500 > rt_tick_get())
   {
-    open_geture_model = false;
+    open_gesture_model_state = false;
   }
   else
   {
-    open_geture_model = true;
+    open_gesture_model_state = true;
   }
-  return open_geture_model;
+  return open_gesture_model_state;
 }
 
 #ifdef USE_DOUBLE_TAP_GESTURE
@@ -206,7 +191,6 @@ static void handle_double_tap(rt_tick_t ts);
 
 static void handle_finger_tap(rt_tick_t ts);
 static void handle_finger_release(rt_tick_t ts);
-static rt_tick_t hold_time = NULL;
 
 static void handle_finger_pressed(rt_tick_t ts)
 {
@@ -278,13 +262,10 @@ static void handle_finger_release(rt_tick_t ts)
   }
 
 #if ENABLE_VIRTUAL_TOUCH
-  extern void release_navigation_bar(void);
   release_navigation_bar();
 #endif
 }
 
-extern bool get_hid_mouse_handfree_mode(void);
-extern bool get_imu_data_collection_status(void);
 static void handle_wrist_back(rt_tick_t ts)
 {
   if ((ts - last_gesture_time < rt_tick_from_millisecond(GESTURE_BREATHE_INTERVAL_MS)) && gesture_detect_state == gesture_back)
@@ -319,7 +300,6 @@ void force_release_finger(void)
   }
 }
 
-extern bool imu_data_collection;
 static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
 {
   rt_tick_t current_time = rt_tick_get();

@@ -2,11 +2,8 @@
  *               Copyright(c) 2024, Skaiwalk Corporation. All rights reserved.
  **********************************************************************************************************
  * @file     communicate_parse_control.c
- * @brief
- * @details
- * @author
- * @date
- * @version  v0.1
+ * @brief    Resolves CONTROL_COMMAND_ID payloads (find watch, media/volume,
+ *           reboot/sleep/wake, app launch) sent from the phone.
  *********************************************************************************************************
  */
 #include <rtthread.h>
@@ -55,10 +52,10 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
         }
         else if (length == 5)
         {
-            // test motor command from app
-            uint8_t value = pValue[0];
+            /* Test motor command: [enable:1][duty:1][period_ms BE:2][repeat:1] */
+            uint8_t value      = pValue[0];
             uint8_t duty_cycle = pValue[1];
-            uint32_t period_us = ((pValue[2] << 8) + pValue[3]) * 1000;
+            uint32_t period_us = (uint32_t)read_be16(&pValue[2]) * 1000;
             uint8_t repeat_times = pValue[4];
             if (value == 0x01)
             {
@@ -95,7 +92,6 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
         if (length == 1)
         {
             uint8_t percent = pValue[0];
-            // control_provider.bt_speaker_set_volume(percent, false);
             control_provider.bt_phone_set_volume(percent);
             LOG_D("Received volume percentage from phone: %d", percent);
         }

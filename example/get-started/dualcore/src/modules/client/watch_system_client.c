@@ -92,6 +92,14 @@
 watch_sys_sync_t watch_sys_sync;
 static datac_handle_t watch_sys_client_handle;
 
+/* Cast `arg->data` to a pointer of the expected indication/response struct,
+   asserting that the payload size matches. Eliminates the 4-line preamble
+   that every callback case used to repeat. */
+#define UNPACK_DATA(arg, T, var)                                               \
+    RT_ASSERT((arg)->data_len == sizeof(T));                                   \
+    T *var = (T *)(arg)->data;                                                 \
+    RT_ASSERT(var)
+
 #if ENABLE_PPG_SENSOR
 static bool _is_imu_sensor_enabled = false;
 
@@ -155,90 +163,62 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
     {
     case MSG_SERVICE_DATA_NTF_IND:
     {
-        watch_sys_service_data_ntf_ind_t *data_ntf_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_service_data_ntf_ind_t));
-        data_ntf_ind = (watch_sys_service_data_ntf_ind_t *)arg->data;
-        RT_ASSERT(data_ntf_ind);
+        UNPACK_DATA(arg, watch_sys_service_data_ntf_ind_t, data_ntf_ind);
         uint16_t percentage = data_ntf_ind->data & 0xFFFF;
         uint32_t vol = data_ntf_ind->data >> 16;
         set_battery_voltage(vol, percentage);
-        // send_sys_interact_event(SYS_EVENT_BATT_VOLTAGE);
         peripheral_provider.notify_battery_voltage(vol);
         break;
     }
     case MSG_SERVICE_BATTERY_DATA_RSP:
     {
-        watch_sys_service_data_rsp_t *data_rsp;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_service_data_rsp_t));
-        data_rsp = (watch_sys_service_data_rsp_t *)arg->data;
-        RT_ASSERT(data_rsp);
+        UNPACK_DATA(arg, watch_sys_service_data_rsp_t, data_rsp);
         uint16_t percentage = data_rsp->data & 0xFFFF;
         uint16_t vol = data_rsp->data >> 16;
         set_battery_voltage(vol, percentage);
-        // send_sys_interact_event(SYS_EVENT_BATT_VOLTAGE);
         peripheral_provider.notify_battery_voltage(vol);
         break;
     }
     case MSG_SERVICE_BATTERY_DATA_IND:
     {
-        watch_sys_service_data_ind_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_service_data_ind_t));
-        data_ind = (watch_sys_service_data_ind_t *)arg->data;
-        RT_ASSERT(data_ind);
+        UNPACK_DATA(arg, watch_sys_service_data_ind_t, data_ind);
         uint16_t percentage = data_ind->data & 0xFFFF;
         uint16_t vol = data_ind->data >> 16;
         set_battery_voltage(vol, percentage);
-        // send_sys_interact_event(SYS_EVENT_BATT_VOLTAGE);
         peripheral_provider.notify_battery_voltage(vol);
         break;
     }
     case MSG_SERVICE_CHARGE_STATE_IND:
     {
-        watch_sys_service_data_ind_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_service_data_ind_t));
-        data_ind = (watch_sys_service_data_ind_t *)arg->data;
-        RT_ASSERT(data_ind);
+        UNPACK_DATA(arg, watch_sys_service_data_ind_t, data_ind);
         uint8_t status = data_ind->data;
         SkaiWatchSys.charger_status = status;
-        // send_sys_interact_event(SYS_EVENT_BATT_CHARGE);
         peripheral_provider.charge_status_callback(status);
         break;
     }
     case MSG_SERVICE_IMU_STATE_IND:
     {
-        watch_sys_service_data_ind_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_service_data_ind_t));
-        data_ind = (watch_sys_service_data_ind_t *)arg->data;
-        RT_ASSERT(data_ind);
-        bool status = data_ind->data;
-        set_imu_enabled(status);
+        UNPACK_DATA(arg, watch_sys_service_data_ind_t, data_ind);
+        set_imu_enabled((bool)data_ind->data);
         break;
     }
     case MSG_SERVICE_MAG_STATE_IND:
     {
-        watch_sys_service_data_ind_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_service_data_ind_t));
-        data_ind = (watch_sys_service_data_ind_t *)arg->data;
-        RT_ASSERT(data_ind);
-        bool status = data_ind->data;
+        /* Payload validated for shape parity with sibling cases; mag state is
+           not currently consumed (no setter wired up). */
+        UNPACK_DATA(arg, watch_sys_service_data_ind_t, data_ind);
+        (void)data_ind;
         break;
     }
     case MSG_SERVICE_PPG_STATE_IND:
     {
-        watch_sys_service_data_ind_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_service_data_ind_t));
-        data_ind = (watch_sys_service_data_ind_t *)arg->data;
-        RT_ASSERT(data_ind);
-        bool status = data_ind->data;
-        set_ppg_enabled(status);
+        UNPACK_DATA(arg, watch_sys_service_data_ind_t, data_ind);
+        set_ppg_enabled((bool)data_ind->data);
         break;
     }
     case MSG_SERVICE_LIFT_IND:
     {
-        watch_sys_service_data_ind_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_service_data_ind_t));
-        data_ind = (watch_sys_service_data_ind_t *)arg->data;
-        RT_ASSERT(data_ind);
+        UNPACK_DATA(arg, watch_sys_service_data_ind_t, data_ind);
         uint8_t status = data_ind->data;
         if (status == 0 && setting_provider.get_power_save_mode() != 0)
         {
@@ -271,33 +251,25 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
     }
     case MSG_SERVICE_SOFT_ADT_IND:
     {
-        watch_sys_service_data_ind_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_service_data_ind_t));
-        data_ind = (watch_sys_service_data_ind_t *)arg->data;
-        RT_ASSERT(data_ind);
-        bool status = data_ind->data;
+        UNPACK_DATA(arg, watch_sys_service_data_ind_t, data_ind);
+        bool status = (bool)data_ind->data;
         LOG_I("[WATCH_SOFT_ADT] soft detect status:%d", status);
         SkaiWatchSys.flag_field.is_wearing = status;
         break;
     }
     case MSG_SERVICE_GESTURE_IND:
     {
-        watch_sys_service_data_ind_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_service_data_ind_t));
-        data_ind = (watch_sys_service_data_ind_t *)arg->data;
-        RT_ASSERT(data_ind);
-        rt_uint32_t gesture = data_ind->data;
+        UNPACK_DATA(arg, watch_sys_service_data_ind_t, data_ind);
 #ifdef BSP_USING_GESTURE_HANDLER
-        send_virtual_gesture_event(gesture);
+        send_virtual_gesture_event((rt_uint32_t)data_ind->data);
+#else
+        (void)data_ind;
 #endif
         break;
     }
     case MSG_SERVICE_GESTURE_DATASET_IND:
     {
-        watch_sys_gesture_dataset_rsp_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_gesture_dataset_rsp_t));
-        data_ind = (watch_sys_gesture_dataset_rsp_t *)arg->data;
-        RT_ASSERT(data_ind);
+        UNPACK_DATA(arg, watch_sys_gesture_dataset_rsp_t, data_ind);
         watch_sensor.gesture_data.timestamp = data_ind->timestamp;
         watch_sensor.gesture_data.sample_num = data_ind->count;
         memcpy(watch_sensor.gesture_data.dataset, data_ind->acce,
@@ -310,10 +282,7 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
     }
     case MSG_SERVICE_GESTURE_PPG_DATASET_IND:
     {
-        watch_sys_gesture_ppg_dataset_rsp_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_gesture_ppg_dataset_rsp_t));
-        data_ind = (watch_sys_gesture_ppg_dataset_rsp_t *)arg->data;
-        RT_ASSERT(data_ind);
+        UNPACK_DATA(arg, watch_sys_gesture_ppg_dataset_rsp_t, data_ind);
         watch_sensor.gesture_data.timestamp = data_ind->timestamp;
         watch_sensor.gesture_data.sample_num = data_ind->count;
         memcpy(watch_sensor.gesture_data.dataset_ppg, data_ind->acce,
@@ -326,10 +295,7 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
     }
     case MSG_SERVICE_HEALTH_INFO_IND:
     {
-        watch_sys_heath_info_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_heath_info_t));
-        data_ind = (watch_sys_heath_info_t *)arg->data;
-        RT_ASSERT(data_ind);
+        UNPACK_DATA(arg, watch_sys_heath_info_t, data_ind);
         SkaiWatchSys.health_info_today = *data_ind;
         SkaiWatchSys.gPedoData.global_steps = data_ind->steps;
         SkaiWatchSys.gPedoData.global_distance = data_ind->distance; // mm
@@ -339,29 +305,19 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
     }
     case MSG_SERVICE_SLEEP_STATE_IND:
     {
-        watch_sys_sleep_state_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_sleep_state_t));
-        data_ind = (watch_sys_sleep_state_t *)arg->data;
-        RT_ASSERT(data_ind);
+        UNPACK_DATA(arg, watch_sys_sleep_state_t, data_ind);
         set_watch_sleep_state(data_ind);
         break;
     }
     case MSG_SERVICE_DEBUG_LOG_IND:
     {
-        watch_sys_debug_log_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_debug_log_t));
-        data_ind = (watch_sys_debug_log_t *)arg->data;
-        RT_ASSERT(data_ind);
-        char *log = data_ind->log;
-        LOG_I(log);
+        UNPACK_DATA(arg, watch_sys_debug_log_t, data_ind);
+        LOG_I(data_ind->log);
         break;
     }
     case MSG_SERVICE_MINUTE_ACTIVITY_IND:
     {
-        watch_sys_minute_activity_t *data_ind;
-        RT_ASSERT(arg->data_len == sizeof(watch_sys_minute_activity_t));
-        data_ind = (watch_sys_minute_activity_t *)arg->data;
-        RT_ASSERT(data_ind);
+        UNPACK_DATA(arg, watch_sys_minute_activity_t, data_ind);
         SkaiWatchSys.activity = *data_ind;
         break;
     }
@@ -431,40 +387,39 @@ static rt_err_t send_watch_sys_msg_with_retry(data_msg_t *msg,
     return err;
 }
 
-static int request_battery_voltage(void)
+/* Build a SYS_DATA_REQ from {cmd, optional body bytes after body[0]} and send
+   it through the retry helper. The 17 LCPU-bound notify/request functions
+   below all collapse to one or two lines via this. */
+static rt_err_t send_sys_data_req(uint8_t cmd, const uint8_t *body_after_cmd,
+                                   size_t body_len)
 {
     data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = SysRequestBattery;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
-    // RT_ASSERT(RT_EOK == err);
-    return err;
+    msg.body[0] = cmd;
+    if (body_after_cmd && body_len > 0)
+    {
+        memcpy(&msg.body[1], body_after_cmd, body_len);
+    }
+    /* data_service_init_msg fills the message header; the body has already
+       been populated above so we deliberately discard the returned pointer. */
+    (void)data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
+    return send_watch_sys_msg_with_retry(&msg, 50, 1);
 }
 
-static int request_charge_status(void)
+static rt_err_t send_sys_cmd_only(uint8_t cmd)
 {
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = SysRequestChargeStatus;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
-    // RT_ASSERT(RT_EOK == err);
-    return err;
+    return send_sys_data_req(cmd, NULL, 0);
 }
 
-static int request_pedometer_data(void)
+static rt_err_t send_sys_cmd_b1(uint8_t cmd, uint8_t b1)
 {
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = SysRequestPedometerData;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
-    return err;
+    return send_sys_data_req(cmd, &b1, 1);
 }
+
+static int request_battery_voltage(void)  { return send_sys_cmd_only(SysRequestBattery); }
+static int request_charge_status(void)    { return send_sys_cmd_only(SysRequestChargeStatus); }
+static int request_pedometer_data(void)   { return send_sys_cmd_only(SysRequestPedometerData); }
+static int notify_system_wakeup(void)     { return send_sys_cmd_only(SysWakeUp); }
+static int notify_calibration_global_attitude(void) { return send_sys_cmd_only(CalibrateGlobalAttitude); }
 
 static int notify_system_standby(void)
 {
@@ -472,187 +427,84 @@ static int notify_system_standby(void)
     {
         gui_app_exit(APP_ID_MESSAGE);
     }
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = SysStandBy;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
-    return err;
+    return send_sys_cmd_only(SysStandBy);
 }
 
-static int notify_system_wakeup(void)
-{
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = SysWakeUp;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
-    return err;
-}
-
-static int hr_power_manage(bool enable)
-{
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = PpgSensorPowerManage;
-    msg.body[1] = enable ? 1 : 0;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
-    return err;
-}
+static int hr_power_manage(bool enable) { return send_sys_cmd_b1(PpgSensorPowerManage, enable ? 1 : 0); }
 
 static int sync_api_lock(bool locked)
 {
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = SysSyncApiLock;
-    msg.body[1] = locked ? 1 : 0;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
+    rt_err_t err = send_sys_cmd_b1(SysSyncApiLock, locked ? 1 : 0);
     LOG_D("sync_api_lock:%d", locked);
     return err;
 }
 
 static bool tap_type = false;
-void set_tap_type(bool type)
-{
-    tap_type = type;
-}
+void set_tap_type(bool type) { tap_type = type; }
+
+/* These three preserve the original `RT_ASSERT(RT_EOK == err)` panic-on-fail
+   contract — any other caller that doesn't carry the assert is using err
+   only as a return value. */
 static int notify_tap_detected(void)
 {
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = UserTapDetected;
-    msg.body[1] = tap_type;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
+    rt_err_t err = send_sys_cmd_b1(UserTapDetected, tap_type);
     RT_ASSERT(RT_EOK == err);
     return err;
 }
 
 static int notify_imu_data_collection(bool status)
 {
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = ImuDataCollection;
-    msg.body[1] = status ? 1 : 0;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
+    rt_err_t err = send_sys_cmd_b1(ImuDataCollection, status ? 1 : 0);
     RT_ASSERT(RT_EOK == err);
     return err;
 }
 
 static int notify_imu_rawdata_collection(bool status)
 {
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = ImuRawdataCollection;
-    msg.body[1] = status ? 1 : 0;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
+    rt_err_t err = send_sys_cmd_b1(ImuRawdataCollection, status ? 1 : 0);
     RT_ASSERT(RT_EOK == err);
-    return err;
-}
-
-static int notify_calibration_global_attitude(void)
-{
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = CalibrateGlobalAttitude;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
     return err;
 }
 
 static int notify_user_profile(void)
 {
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = UserProfileUpdate;
-    msg.body[1] = SkaiWatchSys.user_data.user_profile.bit_field.gender;
-    msg.body[2] = SkaiWatchSys.user_data.user_profile.bit_field.age;
-    msg.body[3] = SkaiWatchSys.user_data.user_profile.bit_field.height;
-    msg.body[4] = SkaiWatchSys.user_data.user_profile.bit_field.weight;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
-    return err;
+    uint8_t b[4] = {
+        SkaiWatchSys.user_data.user_profile.bit_field.gender,
+        SkaiWatchSys.user_data.user_profile.bit_field.age,
+        SkaiWatchSys.user_data.user_profile.bit_field.height,
+        SkaiWatchSys.user_data.user_profile.bit_field.weight,
+    };
+    return send_sys_data_req(UserProfileUpdate, b, sizeof(b));
 }
 
-static int notify_debug_param_update(uint8_t value)
-{
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = DebugParamUpdate;
-    msg.body[1] = value;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
-    return err;
-}
+static int notify_debug_param_update(uint8_t value) { return send_sys_cmd_b1(DebugParamUpdate, value); }
 
 static int control_motor(bool enable, motor_params_t *param)
 {
     LOG_D("MOTOR control duty_cycle: %d, period: %d, repeat_times: %d",
           param->duty_cycle, param->period, param->repeat_times);
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = MotorControl;
-    msg.body[1] = enable ? 1 : 0;
-    if (enable)
+    /* When enable=false the legacy code wrote only body[1] and left
+       body[2..7] uninitialized (LCPU side ignores them). Preserve that —
+       send 1-byte body in that case to avoid leaking stack contents. */
+    if (!enable)
     {
-        msg.body[2] = param->duty_cycle;
-        memcpy(msg.body + 3, &param->period, sizeof(rt_uint32_t));
-        msg.body[7] = param->repeat_times;
+        return send_sys_cmd_b1(MotorControl, 0);
     }
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
-    return err;
+    uint8_t b[7];
+    b[0] = 1;
+    b[1] = param->duty_cycle;
+    memcpy(b + 2, &param->period, sizeof(rt_uint32_t));
+    b[6] = param->repeat_times;
+    return send_sys_data_req(MotorControl, b, sizeof(b));
 }
 
 static void set_debug_mode(bool enable)
 {
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = DebugMode;
-    msg.body[1] = enable ? 1 : 0;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
+    (void)send_sys_cmd_b1(DebugMode, enable ? 1 : 0);
 }
 
-static int set_multi_gesture_mode(bool enable)
-{
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = MultiGestureMode;
-    msg.body[1] = enable ? 1 : 0;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
-    return err;
-}
-
-static int set_tap_and_hold_mode(bool enable)
-{
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    msg.body[0] = TapAndHoldMode;
-    msg.body[1] = enable ? 1 : 0;
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
-    return err;
-}
+static int set_multi_gesture_mode(bool enable) { return send_sys_cmd_b1(MultiGestureMode,  enable ? 1 : 0); }
+static int set_tap_and_hold_mode(bool enable)  { return send_sys_cmd_b1(TapAndHoldMode,    enable ? 1 : 0); }
 
 /**
  * @brief Control RGB LED with structured parameters
@@ -688,28 +540,22 @@ static int control_rgb_led(watch_sys_rgb_led_params_t *params)
           params->brightness, params->animation_mode, params->period_ms,
           params->repeat_times);
 
-    data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-
-    msg.body[0] = RgbLedControl;
-    msg.body[1] = params->enable;
-
-    if (params->enable)
+    /* Disabled path matches legacy: only body[1]=enable is written. */
+    if (!params->enable)
     {
-        msg.body[2] = params->red;
-        msg.body[3] = params->green;
-        msg.body[4] = params->blue;
-        msg.body[5] = params->brightness;
-        msg.body[6] = params->animation_mode;
-        memcpy(msg.body + 7, &params->period_ms, sizeof(uint16_t));
-        memcpy(msg.body + 9, &params->repeat_times, sizeof(uint16_t));
+        return send_sys_cmd_b1(RgbLedControl, 0);
     }
-
-    body = data_service_init_msg(&msg, MSG_SERVICE_SYS_DATA_REQ, 0);
-    err = send_watch_sys_msg_with_retry(&msg, 50, 1);
-
-    return err;
+    /* Enabled body layout: enable | r | g | b | brightness | mode | period_ms(2) | repeat(2) */
+    uint8_t b[10];
+    b[0] = 1;
+    b[1] = params->red;
+    b[2] = params->green;
+    b[3] = params->blue;
+    b[4] = params->brightness;
+    b[5] = params->animation_mode;
+    memcpy(b + 6, &params->period_ms,    sizeof(uint16_t));
+    memcpy(b + 8, &params->repeat_times, sizeof(uint16_t));
+    return send_sys_data_req(RgbLedControl, b, sizeof(b));
 }
 
 /**
@@ -810,7 +656,6 @@ int UnsubscribeDualCoreSyncService(void)
 
 static int init_watch_sys_client(void)
 {
-    // SubscribeDualCoreSyncService();
     register_watch_sys_sync_funs();
     return 0;
 }

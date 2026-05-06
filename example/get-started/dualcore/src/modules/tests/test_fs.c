@@ -35,15 +35,13 @@ int fs_read_test(char *path, char *name)
     if (fd < 0)
     {
         LOG_E("Cannot open file: %s", fname);
-        r = -1;
-        return r;
+        return -1;
     }
     size = read(fd, &header, sizeof(lv_img_header_t));
     if (size != sizeof(lv_img_header_t))
     {
         LOG_E("Get header error: %s, %d", name, size);
-        r = -1;
-        return r;
+        return -1;
     }
     if (header.cf > LV_IMG_CF_TRUE_COLOR_CHROMA_KEYED)
     {
@@ -55,16 +53,14 @@ int fs_read_test(char *path, char *name)
     if (stat(fname, &file_stat))
     {
         LOG_E("Cannot Get file size: %s", fname);
-        r = -1;
-        return r;
+        return -1;
     }
 
     fd = open(fname, O_RDONLY);
     if (fd < 0)
     {
         LOG_E("Cannot open file: %s", fname);
-        r = -1;
-        return r;
+        return -1;
     }
 
     size = file_stat.st_size - sizeof(lv_img_header_t);
@@ -73,8 +69,7 @@ int fs_read_test(char *path, char *name)
     {
         LOG_E("Cannot allocate: %s,%d", name, size);
         close(fd);
-        r = -1;
-        return r;
+        return -1;
     }
     lseek(fd, sizeof(lv_img_header_t), SEEK_SET);
     if (size != read(fd, data, size))

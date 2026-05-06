@@ -54,7 +54,6 @@ static void process_hr_sensor_data(struct rt_sensor_data *data)
     }
 }
 
-// static uint32_t ppg_rawdata[PPG_FIFO_LENGTH];
 static int hr_callback(data_callback_arg_t *arg)
 {
     if (MSG_SERVICE_DATA_NTF_IND == arg->msg_id)
@@ -140,15 +139,9 @@ void heart_rate_unsubscribe(void)
     }
 }
 
-// void heart_rate_request_ping(void)
-// {
-//     datas_push_msg_to_client(hr_service_handle, MSG_SERVICE_PING_REQ, 0, NULL);
-// }
-
 #if !kReleaseMode
 MSH_CMD_EXPORT(heart_rate_subscribe, Subscribe HR data service);
 MSH_CMD_EXPORT(heart_rate_unsubscribe, Unsubscribe HR data service);
-// MSH_CMD_EXPORT(heart_rate_request_ping, Request HR data service ping);
 #endif
 
 #if !kReleaseMode
@@ -219,12 +212,10 @@ bool ppg_service_subscribed(void)
 
 void ppg_subscribe(void)
 {
-    // RT_ASSERT(check_ppg_sensor());
     if (ppg_service_handle == DATA_CLIENT_INVALID_HANDLE)
     {
         ppg_service_handle = datac_open();
     }
-    // RT_ASSERT(DATA_CLIENT_INVALID_HANDLE != ppg_service_handle);
     if (ppg_service_handle != DATA_CLIENT_INVALID_HANDLE)
     {
         datac_subscribe(ppg_service_handle, "PPG", ppg_callback, 0);

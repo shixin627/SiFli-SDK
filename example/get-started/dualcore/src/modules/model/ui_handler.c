@@ -79,6 +79,24 @@
 LV_IMG_DECLARE(icon_mic);
 LV_IMG_DECLARE(instagram);
 
+/* Forward declarations for cross-module helpers reached from individual
+   message cases. Kept here rather than inline-extern'd in each case body. */
+extern void open_v2t_mic(void);
+extern void update_ai_process_indicator_text(app_gesture_indicator_t *indicator,
+                                              const char *message,
+                                              bool is_active);
+extern void set_skai_widget_processing_text(const char *text);
+extern void mouse_apply_v2t_input(const char *text);
+extern void toggle_keyboard_visibility(void);
+extern void fsr_long_press(void);
+extern void open_selected_widget(bool need_widget_img_anima);
+extern void open_ai_tap_hint_bg(bool open);
+extern void reset_skai_widget_input_text(void);
+extern void dial_header_music_pause_cb(void);
+#ifdef SHOW_BAD_SIGNAL_INDICATOR
+extern void set_signal_bad(bool bad);
+#endif
+
 /* ============== Global Variables ============== */
 static rt_mq_t lvgl_mq; /**< Message queue for LVGL messages */
 
@@ -132,28 +150,12 @@ static void trigger_activity(void)
  * @param msg Pointer to the LVGL message structure
  */
 
-extern void open_v2t_mic(void);
 static void process_lvgl_message(lvgl_msg_t *msg)
 {
     uint8_t type = msg->type;
 
     switch (type)
     {
-    case LVGL_MSG_TYPE_TOUCH:
-        if (lvgl_msg_handler.handle_touch)
-        {
-            lvgl_msg_handler.handle_touch(&msg->data.touch);
-            trigger_activity();
-        }
-        break;
-
-    case LVGL_MSG_TYPE_KEY:
-        /* Key handling - currently not implemented */
-        break;
-
-    case LVGL_MSG_TYPE_MEDIA_PLAY_STATE:
-        break;
-
     case LVGL_MSG_TYPE_MEDIA_TITLE:
         if (lvgl_msg_handler.handle_bar_media_title)
         {
@@ -459,7 +461,6 @@ static void process_lvgl_message(lvgl_msg_t *msg)
 #ifdef SHOW_BAD_SIGNAL_INDICATOR
     case LVGL_MSG_TYPE_BAD_SIGNAL_INDICATOR:
     {
-        extern void set_signal_bad(bool bad);
         if (msg->data.action)
         {
             set_signal_bad(true);
@@ -511,10 +512,6 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         char *description = msg->data.app_message;
         if (description != NULL)
         {
-            extern void update_ai_process_indicator_text(
-                app_gesture_indicator_t * indicator, const char *message,
-                bool is_active);
-            extern void set_skai_widget_processing_text(const char *text);
             update_ai_process_indicator_text(gui_app_get_gesture_indicator(),
                                              description, true);
             set_skai_widget_processing_text(description);
@@ -528,25 +525,16 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
 
     case LVGL_MSG_TYPE_MOUSE_INPUT_TEXT:
-    {
-        extern void mouse_apply_v2t_input(const char *text);
         mouse_apply_v2t_input(msg->data.message);
-    }
-    break;
+        break;
 
     case LVGL_MSG_TYPE_MOUSE_OPEN_KEYBOARD:
-    {
-        extern void toggle_keyboard_visibility(void);
         toggle_keyboard_visibility();
-    }
-    break;
+        break;
 
     case LVGL_MSG_TYPE_MOUSE_LONG_PRESS:
-    {
-        extern void fsr_long_press(void);
         fsr_long_press();
-    }
-    break;
+        break;
 
     case LVGL_MSG_TYPE_LOADING:
         if (lvgl_msg_handler.handle_loading)
@@ -623,11 +611,8 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         }
         break;
     case LVGL_MSG_TYPE_WIDGET_LIST_SELECT:
-    {
-        extern void open_selected_widget(bool need_widget_img_anima);
         open_selected_widget(true);
         break;
-    }
     case LVGL_MSG_TYPE_HAND_UP:
         if (lvgl_msg_handler.handle_hand_up)
         {
@@ -725,25 +710,16 @@ static void process_lvgl_message(lvgl_msg_t *msg)
     }
 
     case LVGL_MSG_TYPE_AI_TAP_HINT:
-    {
-        extern void open_ai_tap_hint_bg(bool open);
         open_ai_tap_hint_bg(true);
         break;
-    }
 
     case LVGL_MSG_TYPE_RESET_AI_WIDGET:
-    {
-        extern void reset_skai_widget_input_text(void);
         reset_skai_widget_input_text();
         break;
-    }
 
     case LVGL_MSG_TYPE_DIAL_HEADER_TIMER:
-    {
-        extern void dial_header_music_pause_cb(void);
         dial_header_music_pause_cb();
         break;
-    }
 
     default:
     {

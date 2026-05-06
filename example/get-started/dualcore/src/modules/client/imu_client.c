@@ -141,12 +141,10 @@ void accelerometer_subscribe(void)
         LOG_I("accel service is subscribed\n");
         return;
     }
-    // RT_ASSERT(check_imu_sensor());
     if (accel_service_handle == DATA_CLIENT_INVALID_HANDLE)
     {
         accel_service_handle = datac_open();
     }
-    // RT_ASSERT(DATA_CLIENT_INVALID_HANDLE != accel_service_handle);
     if (accel_service_handle != DATA_CLIENT_INVALID_HANDLE)
     {
         datac_subscribe(accel_service_handle, "ACCE", imu_callback, 0);

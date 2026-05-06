@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2024-2026, Skaiwalk Development Team
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Telephony data service: bridges AT-command HFP traffic on uart2 to
+ * data_service clients (incoming-call notification, outgoing-call request,
+ * etc.). Owned by Skaiwalk; no upstream Sifli template.
+ */
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <stdio.h>
@@ -20,16 +28,8 @@
 static datas_handle_t this_service = NULL;
 static struct rt_semaphore tx_sem;
 static rt_device_t serial;
-static rt_timer_t rsp_timer;
 static char uart_rx_data[ONE_DATA_MAXLEN];
 static uint8_t uart_rx_i = 0;
-
-static void rsp_timeout_ind(void *param)
-{
-    rt_err_t result = -RT_ERROR;
-
-}
-
 
 static rt_err_t uart_rx_ind(rt_device_t dev, rt_size_t size)
 {
@@ -287,9 +287,7 @@ static int telephone_service_register(void)
     rt_device_control(serial, RT_DEVICE_CTRL_CONFIG, &config);
     rt_device_set_rx_indicate(serial, uart_rx_ind);
 
-    rsp_timer = rt_timer_create("telreq", rsp_timeout_ind, 0, rt_tick_from_millisecond(1000),  RT_TIMER_FLAG_SOFT_TIMER);
     this_service = datas_register("telephone", &telephone_service_cb);
-
 
     return ret;
 }

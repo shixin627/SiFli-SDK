@@ -16,7 +16,13 @@
 
 // Forward declarations for BLE app functions
 extern void ble_app_set_bonded_device_addr(ble_gap_addr_t *addr);
-extern void ble_app_advertising_start(bool mouse_mode, bool pairing_mode);
+extern void get_main_phonepeer_addr(uint8_t *addr);
+
+/* MAC address printf helper. mac_addr stores the address byte-reversed
+   (LSB at index 0); print high-to-low to get the canonical XX:XX:XX:XX:XX:XX
+   form humans expect. */
+#define MAC_FMT      "%02X:%02X:%02X:%02X:%02X:%02X"
+#define MAC_ARG(a)   (a)[5], (a)[4], (a)[3], (a)[2], (a)[1], (a)[0]
 
 // BLE GAP connection parameters
 #define CONN_TIMEOUT_MS 10000  // 10 seconds
@@ -222,9 +228,8 @@ int ble_dev_mgr_add_device(const uint8_t *mac_addr, uint8_t addr_type,
     if (existing_idx == -1)
     {
         g_dev_mgr.database.count++;
-        LOG_I("Added new device [%d]: %s (%02X:%02X:%02X:%02X:%02X:%02X)",
-              device_idx, dev->device_name, mac_addr[5], mac_addr[4],
-              mac_addr[3], mac_addr[2], mac_addr[1], mac_addr[0]);
+        LOG_I("Added new device [%d]: %s (" MAC_FMT ")",
+              device_idx, dev->device_name, MAC_ARG(mac_addr));
         dev_mgr_notify_event(DEV_MGR_EVT_DEVICE_ADDED, device_idx);
     }
     else
@@ -430,9 +435,8 @@ int ble_dev_mgr_set_active_device(uint8_t device_idx)
         target_addr.addr_type = dev->addr_type;
 
         ble_app_set_bonded_device_addr(&target_addr);
-        LOG_I("Set device[%d] as target device: %02X:%02X:%02X:%02X:%02X:%02X",
-              device_idx, dev->mac_addr[5], dev->mac_addr[4], dev->mac_addr[3],
-              dev->mac_addr[2], dev->mac_addr[1], dev->mac_addr[0]);
+        LOG_I("Set device[%d] as target device: " MAC_FMT,
+              device_idx, MAC_ARG(dev->mac_addr));
     }
 
     if (old_active != device_idx)
@@ -509,11 +513,8 @@ int ble_dev_mgr_connect_device(uint8_t device_idx)
         return 0;
     }
 
-    LOG_I("Initiating connection to device [%d]: %s "
-          "(%02X:%02X:%02X:%02X:%02X:%02X)",
-          device_idx, dev->device_name, dev->mac_addr[5], dev->mac_addr[4],
-          dev->mac_addr[3], dev->mac_addr[2], dev->mac_addr[1],
-          dev->mac_addr[0]);
+    LOG_I("Initiating connection to device [%d]: %s (" MAC_FMT ")",
+          device_idx, dev->device_name, MAC_ARG(dev->mac_addr));
 
     // Step 1: Disconnect all currently connected devices
     LOG_I("Step 1: Disconnecting all current connections...");
@@ -550,17 +551,6 @@ int ble_dev_mgr_connect_device(uint8_t device_idx)
     target_addr.addr_type = dev->addr_type;
     memcpy(target_addr.addr.addr, dev->mac_addr, BD_ADDR_LEN);
 
-    // ble_app_set_bonded_device_addr(&target_addr);
-    // LOG_I("  Target device set: %02X:%02X:%02X:%02X:%02X:%02X (type:%d)",
-    //       dev->mac_addr[5], dev->mac_addr[4], dev->mac_addr[3],
-    //       dev->mac_addr[2], dev->mac_addr[1], dev->mac_addr[0],
-    //       dev->addr_type);
-    LOG_I("Initiating connection to device [%d]: %s "
-          "(%02X:%02X:%02X:%02X:%02X:%02X)",
-          device_idx, dev->device_name, dev->mac_addr[5], dev->mac_addr[4],
-          dev->mac_addr[3], dev->mac_addr[2], dev->mac_addr[1],
-          dev->mac_addr[0]);
-
     // Prepare BLE GAP connection parameters
     ble_gap_connection_create_param_t conn_param;
     memset(&conn_param, 0, sizeof(conn_param));
@@ -586,14 +576,7 @@ int ble_dev_mgr_connect_device(uint8_t device_idx)
 
     dev_mgr_unlock();
 
-    // // Step 3: Restart advertising with directed mode
-    // LOG_I("Step 3: Restarting advertising in directed mode...");
-    // // restart_adv=true, mouse_mode=false, pairing_mode=false
-    // // This will use directed advertising to the bonded device we just set
-    // ble_app_advertising_start(true, false, false);
-
-    // LOG_I("Directed advertising started for device [%d], waiting for
-    // connection...", device_idx); Initiate BLE connection
+    // Initiate BLE connection
     uint8_t result = ble_gap_create_connection(&conn_param);
 
     if (result != 0)
@@ -709,14 +692,9 @@ int ble_dev_mgr_load_from_flash(void)
     {
         if (g_dev_mgr.database.devices[i].is_valid)
         {
-            LOG_I("  [%d] %s (%02X:%02X:%02X:%02X:%02X:%02X)%s", i,
+            LOG_I("  [%d] %s (" MAC_FMT ")%s", i,
                   g_dev_mgr.database.devices[i].device_name,
-                  g_dev_mgr.database.devices[i].mac_addr[5],
-                  g_dev_mgr.database.devices[i].mac_addr[4],
-                  g_dev_mgr.database.devices[i].mac_addr[3],
-                  g_dev_mgr.database.devices[i].mac_addr[2],
-                  g_dev_mgr.database.devices[i].mac_addr[1],
-                  g_dev_mgr.database.devices[i].mac_addr[0],
+                  MAC_ARG(g_dev_mgr.database.devices[i].mac_addr),
                   (i == active_idx) ? " [ACTIVE]" : "");
         }
     }
@@ -944,7 +922,6 @@ int ble_dev_mgr_switch_to_next_device(void)
 }
 
 static uint8_t main_addr[6] = {0};
-extern void get_main_phonepeer_addr(uint8_t *addr);
 
 /**
  * @brief Check if main phone counterpart device is connected

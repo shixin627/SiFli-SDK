@@ -65,6 +65,16 @@
 #define PAGE_SIZE 2048
 #define BINARY_FILE_PREPARED_ERASE_SECTOR 8191
 
+/* Little-endian 32-bit reader for the LZ4 fragment-size header. The phone
+   writes this field LE (the LZ4 framing-format convention) — different from
+   the BE used by the rest of the L2 protocol, hence a local helper rather
+   than the shared read_be32. */
+static inline uint32_t read_le32(const uint8_t *p)
+{
+    return (uint32_t)p[0]        | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
 #ifdef PKG_USING_LZ4
 #define LZ4_DECOMPRESS_BUFFER_SIZE (8 * 1024)  // 8KB decompression buffer
 #define LZ4_COMPRESS_PACKET_MAX_SIZE (5 * 1024)  // 5KB max compressed packet size (increased from 4KB to handle edge cases)
@@ -262,10 +272,7 @@ static bool watch_compressed_image_update_handler(uint8_t *buf, uint16_t len)
 		// Extract compressed packet size from header if not already done
 		if (g_lz4_ctx.expected_packet_size == 0)
 		{
-			g_lz4_ctx.expected_packet_size = g_lz4_ctx.compress_buffer[0] |
-			                                  (g_lz4_ctx.compress_buffer[1] << 8) |
-			                                  (g_lz4_ctx.compress_buffer[2] << 16) |
-			                                  (g_lz4_ctx.compress_buffer[3] << 24);
+			g_lz4_ctx.expected_packet_size = read_le32(g_lz4_ctx.compress_buffer);
 
 			// Validate packet size is reasonable (between 1 byte and buffer capacity - 4)
 			if (g_lz4_ctx.expected_packet_size == 0 ||
@@ -622,12 +629,9 @@ void init_ble_dfu_thread(dfu_img_id_t id, uint32_t dest_addr, uint32_t size)
 	watch_image_end_addr = dest_addr + size;
 	ota_progress = -1;
 
-	// bool success = verify_ble_dfu_image(watch_img_id);
-	// if (!success)
-	// {
-	// 	LOG_E("verify_ble_dfu_image failed");
-	// 	return;
-	// }
+	/* verify_ble_dfu_image() is run later from the DFU thread on receipt of
+	   DFU_FLASH_MSG_TYPE_ENTER, not here — running it on the BLE rx thread
+	   serializes flash-erase against incoming packets. */
 	if (ble_dfu_thread_run == 0)
 	{
 		ble_dfu_thread_run = 1;

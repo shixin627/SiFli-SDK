@@ -1,12 +1,11 @@
 /*********************************************************************************************************
  *               Copyright(c) 2018, Skaiwalk Corporation. All rights reserved.
  **********************************************************************************************************
- * @file     communicate_parse.c
- * @brief
- * @details
- * @author
- * @date
- * @version  v0.1
+ * @file     communicate_parse_setting.c
+ * @brief    Resolves SET_CONFIG_COMMAND_ID payloads (time/alarm/profile/dial
+ *           and friends) sent from the phone. Each case validates length,
+ *           updates SkaiWatchSys + provider state, and may echo back via
+ *           commu_send_*.
  *********************************************************************************************************
  */
 #include <rtthread.h>
@@ -58,15 +57,10 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
     break;
     case KEY_TIME_SETTINGS:
     {
-        if (length == 0x04)
+        if (length == 4)
         {
             time_union_t time;
-
-            time.data = 0;
-            time.data |= pValue[3];
-            time.data |= pValue[2] << 8;
-            time.data |= pValue[1] << 16;
-            time.data |= pValue[0] << 24;
+            time.data = read_be32(pValue);
             // if set time pass a day,reset step count
             LOG_D("Set DateTime: %d-%d-%d %d:%d:%d", time.time.year,
                   time.time.month, time.time.day, time.time.hours,
@@ -91,35 +85,25 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
     {
         if (length % 5 == 0)
         {
-            uint8_t index;
-            uint64_t alarmData;
-            uint8_t num;
-            T_ALARM alarm;
-
-            num = length / 5;
-
+            uint8_t num = length / 5;
             if (num > MAX_ALARM_NUM)
             {
                 num = MAX_ALARM_NUM;
             }
             SkaiWatchSys.alarm_num = num;
-            for (index = 0; index < num; index++)
+            for (uint8_t i = 0; i < num; i++)
             {
-                alarmData = pValue[0 + index * 5];
-                alarm.data = alarmData << 32;
-                alarmData = pValue[1 + index * 5];
-                alarm.data |= alarmData << 24;
-                alarmData = pValue[2 + index * 5];
-                alarm.data |= alarmData << 16;
-                alarmData = pValue[3 + index * 5];
-                alarm.data |= alarmData << 8;
-                alarmData = pValue[4 + index * 5];
-                alarm.data |= alarmData;
-                /* Phone packs the enabled flag into reserved[0]; preserve it
+                /* 5-byte BE pack of the 40-bit T_ALARM bit-field, mirror of
+                   write_be40 in communicate_task.c::commu_send_alarm_settings.
+                   Phone packs the enabled flag into reserved[0]; preserve it
                    bit-for-bit so apply_alarms_from_ble can read it. */
+                const uint8_t *p = pValue + i * 5;
+                T_ALARM alarm;
+                alarm.data = ((uint64_t)p[0] << 32) | ((uint64_t)p[1] << 24) |
+                             ((uint64_t)p[2] << 16) | ((uint64_t)p[3] << 8)  |
+                              (uint64_t)p[4];
 
-                memcpy((void *)&(SkaiWatchSys.alarms[index]), &alarm,
-                       sizeof(T_ALARM));
+                memcpy(&SkaiWatchSys.alarms[i], &alarm, sizeof(T_ALARM));
                 LOG_D("Set alarm day:%d, hour:%d, min:%d,repeat_flag:0x%x",
                       alarm.alarm.day, alarm.alarm.hour, alarm.alarm.minute,
                       alarm.alarm.day_repeat_flag);
@@ -148,12 +132,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
     {
         if (length == 4)
         {
-            uint32_t target = 0;
-            target |= pValue[3];
-            target |= pValue[2] << 8;
-            target |= pValue[1] << 16;
-            target |= pValue[0] << 24;
-
+            uint32_t target = read_be32(pValue);
             if (target == 0)
             {
                 target = 10000;
@@ -179,10 +158,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
     {
         if (length == 2)
         {
-            uint16_t target = 0;
-            target |= pValue[1];
-            target |= pValue[0] << 8;
-
+            uint16_t target = read_be16(pValue);
             if (target == 0)
             {
                 target = 480;
@@ -200,14 +176,10 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
     break;
     case KEY_PROFILE_SETTINGS:
     {
-        if (length == 0x04)
+        if (length == 4)
         {
             userprofile_union_t profile;
-            profile.data = 0;
-            profile.data |= pValue[3];
-            profile.data |= pValue[2] << 8;
-            profile.data |= pValue[1] << 16;
-            profile.data |= pValue[0] << 24;
+            profile.data = read_be32(pValue);
             setting_provider.set_user_profile(profile);
         }
     }

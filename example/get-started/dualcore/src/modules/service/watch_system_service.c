@@ -80,164 +80,110 @@ bool is_multi_gesture_mode(void)
     return _multi_gesture_mode;
 }
 
+/* Push an arbitrary blob as a service IND message. No-op if service is not
+   yet registered; asserts on push failure (queue full / wrong cb). */
+static void push_msg_to_hcpu(uint16_t msg_id, const void *data, size_t len)
+{
+    if (watch_sys_service_env.service == NULL) return;
+    int32_t r = datas_push_msg_to_client(watch_sys_service_env.service,
+                                          msg_id, (uint16_t)len,
+                                          (uint8_t *)data);
+    RT_ASSERT(0 == r);
+}
+
+/* Common single-uint32 IND payload (battery / charge / lift / soft-adt /
+   gesture all share watch_sys_service_data_ind_t with one .data field). */
+static void push_uint32_ind(uint16_t msg_id, uint32_t data)
+{
+    watch_sys_service_data_ind_t data_ind = { .data = data };
+    push_msg_to_hcpu(msg_id, &data_ind, sizeof(data_ind));
+}
+
 static void notify_battery_voltage(uint32_t data)
 {
     if (watch_sys_service_env.service == NULL)
         return;
-    rt_err_t err;
-    err = datas_data_ready(watch_sys_service_env.service, sizeof(data),
-                           (uint8_t *)data);
+    rt_err_t err = datas_data_ready(watch_sys_service_env.service, sizeof(data),
+                                    (uint8_t *)data);
     RT_ASSERT(RT_EOK == err);
 }
 
 static void indicate_battery_voltage(uint32_t data)
 {
-    if (watch_sys_service_env.service == NULL)
-        return;
 #ifdef MSG_SEND_INTERVAL_MS
-    if (!can_send_message())
-        return;
+    if (!can_send_message()) return;
 #endif
-    int32_t result = 0;
-    watch_sys_service_data_ind_t data_ind;
-    data_ind.data = data;
-    result = datas_push_msg_to_client(watch_sys_service_env.service,
-                                      MSG_SERVICE_BATTERY_DATA_IND,
-                                      sizeof(data_ind), (uint8_t *)&data_ind);
-    RT_ASSERT(0 == result);
+    push_uint32_ind(MSG_SERVICE_BATTERY_DATA_IND, data);
 }
 
 static void charge_status_callback(int status)
 {
-    if (watch_sys_service_env.service == NULL)
-        return;
 #ifdef MSG_SEND_INTERVAL_MS
-    if (!can_send_message())
-        return;
+    if (!can_send_message()) return;
 #endif
-    int32_t result = 0;
-    watch_sys_service_data_ind_t data_ind;
-    data_ind.data = status;
-    result = datas_push_msg_to_client(watch_sys_service_env.service,
-                                      MSG_SERVICE_CHARGE_STATE_IND,
-                                      sizeof(data_ind), (uint8_t *)&data_ind);
-    RT_ASSERT(0 == result);
+    push_uint32_ind(MSG_SERVICE_CHARGE_STATE_IND, (uint32_t)status);
 }
 
 static void lift_status_callback(uint8_t status)
 {
-    if (watch_sys_service_env.service == NULL)
-        return;
 #ifdef MSG_SEND_INTERVAL_MS
-    if (!can_send_message())
-        return;
+    if (!can_send_message()) return;
 #endif
-
-    int32_t result = 0;
-    watch_sys_service_data_ind_t data_ind;
-    data_ind.data = status;
-    result = datas_push_msg_to_client(watch_sys_service_env.service,
-                                      MSG_SERVICE_LIFT_IND, sizeof(data_ind),
-                                      (uint8_t *)&data_ind);
-    RT_ASSERT(0 == result);
+    push_uint32_ind(MSG_SERVICE_LIFT_IND, status);
 }
 
 static void soft_adt_status_callback(bool status)
 {
-    if (watch_sys_service_env.service == NULL)
-        return;
-
-    int32_t result = 0;
-    watch_sys_service_data_ind_t data_ind;
-    data_ind.data = (uint32_t)status;
-    result = datas_push_msg_to_client(watch_sys_service_env.service,
-                                      MSG_SERVICE_SOFT_ADT_IND, sizeof(data_ind),
-                                      (uint8_t *)&data_ind);
-    RT_ASSERT(0 == result);
+    push_uint32_ind(MSG_SERVICE_SOFT_ADT_IND, (uint32_t)status);
     LOG_I("Wear detect: %s", status ? "ON WRIST" : "OFF WRIST");
 }
 
 static void notify_gesture_event(uint32_t gesture)
 {
-    if (watch_sys_service_env.service == NULL)
-        return;
-    if (is_sleep_mode())
-    {
-        return;
-    }
+    if (is_sleep_mode()) return;
 #ifdef MSG_SEND_INTERVAL_MS
-    if (!can_send_message())
-        return;
+    if (!can_send_message()) return;
 #endif
-    int32_t result = 0;
-    watch_sys_service_data_ind_t data_ind;
-    data_ind.data = gesture;
-    result = datas_push_msg_to_client(watch_sys_service_env.service,
-                                      MSG_SERVICE_GESTURE_IND, sizeof(data_ind),
-                                      (uint8_t *)&data_ind);
-    RT_ASSERT(0 == result);
+    push_uint32_ind(MSG_SERVICE_GESTURE_IND, gesture);
 }
 
 static void notify_health_info(void)
 {
-    if (watch_sys_service_env.service == NULL)
-        return;
-    if (is_sleep_mode())
-    {
-        return;
-    }
+    if (is_sleep_mode()) return;
 #ifdef MSG_SEND_INTERVAL_MS
-    if (!can_send_message())
-        return;
+    if (!can_send_message()) return;
 #endif
 
 #ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
-    int32_t result = 0;
-    watch_sys_heath_info_t data_ind;
-    data_ind.steps = activity_private_state()->step_data.steps;
-    data_ind.distance = activity_private_state()->distance_mm;
-    data_ind.calories = activity_private_state()->active_calories;
-    result = datas_push_msg_to_client(watch_sys_service_env.service,
-                                      MSG_SERVICE_HEALTH_INFO_IND,
-                                      sizeof(data_ind), (uint8_t *)&data_ind);
-    RT_ASSERT(0 == result);
+    watch_sys_heath_info_t data_ind = {
+        .steps    = activity_private_state()->step_data.steps,
+        .distance = activity_private_state()->distance_mm,
+        .calories = activity_private_state()->active_calories,
+    };
+    push_msg_to_hcpu(MSG_SERVICE_HEALTH_INFO_IND, &data_ind, sizeof(data_ind));
 #endif
 }
 
 static void notify_minute_of_activity(time_t utc_now, uint8_t steps,
                                       uint8_t orientation, uint16_t vmc)
 {
-    if (watch_sys_service_env.service == NULL)
-        return;
-    if (is_sleep_mode())
-    {
-        return;
-    }
-    int32_t result = 0;
-    watch_sys_minute_activity_t data_ind;
-    data_ind.utc_now = utc_now;
-    data_ind.steps = steps;
-    data_ind.orientation = orientation;
-    data_ind.vmc = vmc;
-    result = datas_push_msg_to_client(watch_sys_service_env.service,
-                                      MSG_SERVICE_MINUTE_ACTIVITY_IND,
-                                      sizeof(data_ind), (uint8_t *)&data_ind);
-    RT_ASSERT(0 == result);
+    if (is_sleep_mode()) return;
+    watch_sys_minute_activity_t data_ind = {
+        .utc_now     = utc_now,
+        .steps       = steps,
+        .orientation = orientation,
+        .vmc         = vmc,
+    };
+    push_msg_to_hcpu(MSG_SERVICE_MINUTE_ACTIVITY_IND, &data_ind, sizeof(data_ind));
 }
 
 extern time_t get_current_time(void);
 static void notify_debug_log(char *log)
 {
-    if (watch_sys_service_env.service == NULL)
-        return;
-    int32_t result = 0;
     watch_sys_debug_log_t data_ind;
     data_ind.rtc_time = get_current_time();
     strncpy(data_ind.log, log, sizeof(data_ind.log));
-    result = datas_push_msg_to_client(watch_sys_service_env.service,
-                                      MSG_SERVICE_DEBUG_LOG_IND,
-                                      sizeof(data_ind), (uint8_t *)&data_ind);
-    RT_ASSERT(0 == result);
+    push_msg_to_hcpu(MSG_SERVICE_DEBUG_LOG_IND, &data_ind, sizeof(data_ind));
 }
 
 static bool debug_mode = false;

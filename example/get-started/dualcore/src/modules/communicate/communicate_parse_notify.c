@@ -141,7 +141,6 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
 
     case KEY_VOICE_RECOGNITION_END:
     {
-        // voice_provider.auto_stop_listening();
         LOG_D("KEY_VOICE_RECOGNITION_END: %d", pValue[0]);
         if (pValue[0])
         {
@@ -177,7 +176,6 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
 #if defined(APP_ID_CALENDAR)
     case KEY_CALENDAR_SYNC_START:
     {
-        // LOG_D("KEY_CALENDAR_SYNC_START");
         if (pValue != NULL)
         {
             calendar_day = pValue[0];
@@ -438,13 +436,6 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         if (ret == RT_EOK)
         {
             LOG_I("File receive completed successfully");
-
-            /* Check if it's a model file and reload if needed */
-            // const file_receive_state_t *state = bloc_get_receive_progress();
-            // if (state)
-            // {
-            // 	send_sys_interact_event(SYS_EVENT_RELOAD_GESTURE_MODEL);
-            // }
         }
         else
         {

@@ -143,7 +143,6 @@ static int32_t data_service_msg_handler(datas_handle_t service, data_msg_t *msg)
     {
         data_req_t *req = (data_req_t *)data_service_get_msg_body(msg);
         int32_t result = weather_service_config(service, req);
-
         break;
     }
     case MSG_SERVICE_TX_REQ:

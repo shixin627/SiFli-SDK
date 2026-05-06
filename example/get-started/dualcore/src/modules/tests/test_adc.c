@@ -28,16 +28,15 @@
 #define REFER_VOLTAGE 180      /* Reference voltage 1.8V, data accuracy multiplied by 100 and reserve 2 decimal places*/
 #define CONVERT_BITS (1 << 10) /* The number of conversion bits is 10 */
 
+/* Linear-fit ADC counts → millivolts, calibrated for the SF32LB52x bat1
+   channel with the production board's voltage divider. mV = round(value *
+   2.366) - 8157. Coefficients come from a two-point bench calibration; if
+   the divider resistors change these must be re-measured. */
 static int skaiwalk_adc_get_mv(uint32_t value)
 {
-    int offset;
-    float ratio;
-
-    // get offset
-    offset = 8157;
-    ratio = 2366;
-
-    return (int)((ratio / 1000.0) * value) - offset;
+    const int   offset = 8157;
+    const float ratio  = 2366.0f;
+    return (int)((ratio / 1000.0f) * value) - offset;
 }
 
 static int utest_battery_adc(int argc, char *argv[])

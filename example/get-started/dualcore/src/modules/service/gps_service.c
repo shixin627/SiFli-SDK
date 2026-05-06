@@ -149,8 +149,6 @@ static int32_t gps_service_data_proc(datas_handle_t service, uint8_t *data)
 {
     gps_service_env_t *env = &gps_service_env;
     struct rt_sensor_data *value = (struct rt_sensor_data *)data;
-    int32_t alti;
-
     return 0;
 }
 
@@ -275,17 +273,14 @@ int gps_service_register(void)
     rt_err_t err;
     int res = 0;
 
-    //TODO: no use
     cfg.intf.dev_name = "uart2";
     res = rt_hw_uc6226_init(GPS_MODEL_NAME, &cfg);
-    //RT_ASSERT(res == 0);
     if (res != 0)
     {
         LOG_W("DataS init %s fail\n", GPS_MODEL_NAME);
         return 1;
     }
     env->device = rt_device_find(GPS_DEV_NAME);
-    //RT_ASSERT(env->device);
     if (env->device == NULL)
     {
         LOG_W("DataS find device %s fail\n", GPS_DEV_NAME);
@@ -293,7 +288,6 @@ int gps_service_register(void)
     }
 
     err = rt_device_open(env->device, RT_DEVICE_OFLAG_RDONLY);
-    //RT_ASSERT(RT_EOK == err);
     if (err != RT_EOK)
     {
         LOG_W("DataS open device %s fail\n", GPS_DEV_NAME);

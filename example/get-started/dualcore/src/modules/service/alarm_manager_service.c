@@ -54,7 +54,8 @@ static void alarm_fire_thread_entry(void *param)
     }
 }
 
-// TODO:
+/* armcc / clang under __STRICT_ANSI__ omits localtime_r from <time.h>; declare
+   the toolchain-specific replacement here so the call below resolves. */
 extern time_t time(time_t *raw_time);
 struct tm *_localtime_r(const time_t *t, struct tm *r);
 
@@ -503,17 +504,15 @@ static data_service_config_t service_cb =
         .msg_handler = msg_handler,
 };
 
+/* Static on target; externally visible on the PC simulator so the harness
+   can call it directly during init. */
 #ifndef _MSC_VER
 static
 #endif
-    int
-    alarm_manager_service_register(void)
+int alarm_manager_service_register(void)
 {
-    rt_err_t ret = RT_EOK;
-
     this_service = datas_register("alarmmgr", &service_cb);
-
-    return ret;
+    return RT_EOK;
 }
 
 INIT_PRE_APP_EXPORT(alarm_manager_service_register);

@@ -1,12 +1,10 @@
 /*********************************************************************************************************
  *               Copyright(c) 2018, Skaiwalk Corporation. All rights reserved.
  **********************************************************************************************************
- * @file     communicate_parse.c
- * @brief
- * @details
- * @author
- * @date
- * @version  v0.1
+ * @file     communicate_parse_bond.c
+ * @brief    Resolves BOND_COMMAND_ID payloads (bond/login request, unbond)
+ *           sent from the phone. The watch acks success/fail and triggers
+ *           the corresponding watch_system_interact events.
  *********************************************************************************************************
  */
 
@@ -20,11 +18,17 @@
 #include "bloc_weather.h"
 #include "watch_system_interact.h"
 
+extern void le_disconnect(uint8_t conn_id);
+extern void set_main_phonepeer_addr(void);
+
 #define DBG_TAG "commu.parse.bond"
 #include "bsp_board.h"
 #define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
-/* disconnect timer */
+
+/* Disconnect after a 2-second pause when the phone sends KEY_UNBOND. The
+   pause lets us finish flushing the unbond ack notification before the link
+   drops; if the phone disconnects first the timer fires harmlessly. */
 rt_timer_t unbond_disc_timer = RT_NULL;
 
 void unbond_timerout_callback(void *pxTimer)
@@ -32,21 +36,23 @@ void unbond_timerout_callback(void *pxTimer)
     if (SkaiWatchSys.gap_conn_state == GAP_CONN_STATE_CONNECTED)
     {
         LOG_I("unbond timeout disconnect!");
-        extern void le_disconnect(uint8_t conn_id);
         le_disconnect(SkaiWatchSys.watch_conn_id);
     }
 }
+
 void communicate_parse_init(void)
 {
-    unbond_disc_timer = rt_timer_create("unbond disc_timer", unbond_timerout_callback, RT_NULL, 2000, RT_TIMER_FLAG_ONE_SHOT);
+    unbond_disc_timer = rt_timer_create("unbond disc_timer",
+                                         unbond_timerout_callback,
+                                         RT_NULL, 2000,
+                                         RT_TIMER_FLAG_ONE_SHOT);
 }
 
 /**
- * @brief   resolve private bond command received from remote APP
- * @param   key: L2 key
- * @param   pValue: received value pointer
- * @param   length: value length
- * @retval  error code
+ * @brief   Resolve private bond commands from the phone.
+ * @param   key      L2 key (one of BOND_KEY enums)
+ * @param   pValue   payload pointer (may be borrowed by INTERACT_BONDED)
+ * @param   length   payload length
  */
 void resolve_private_bond_command(uint8_t key, const uint8_t *pValue, uint16_t length)
 {
@@ -54,60 +60,35 @@ void resolve_private_bond_command(uint8_t key, const uint8_t *pValue, uint16_t l
     {
     case KEY_BOND_REQUEST:
     {
-        bool ret = RT_EOK;
         if (length != USER_ID_LENGTH)
         {
-            LOG_E("[KEY_BOND_REQUEST]user id length error(%d != %d)", length, USER_ID_LENGTH);
-            ret = -RT_ERROR;
-        }
-        // else if (SkaiWatchSys.flag_field.bond_state == true)
-        // {
-        //     LOG_E("[KEY_BOND_REQUEST]device had bonded");
-        //     ret = -RT_ERROR;
-        // }
-        if (ret == RT_EOK)
-        {
-            LOG_I("[KEY_BOND_REQUEST]Bond Request");
-            commu_send_bond_success();
-            watch_system_interact(INTERACT_BONDED, (void *)pValue);
-        }
-        else
-        {
+            LOG_E("[KEY_BOND_REQUEST]user id length error(%d != %d)",
+                  length, USER_ID_LENGTH);
             LOG_I("[KEY_BOND_REQUEST]send bond fail event");
             commu_send_bond_fail();
+            break;
         }
+        LOG_I("[KEY_BOND_REQUEST]Bond Request");
+        commu_send_bond_success();
+        watch_system_interact(INTERACT_BONDED, (void *)pValue);
     }
     break;
     case KEY_LOGIN_REQUEST:
     {
-        if (length == USER_ID_LENGTH) //  && SkaiWatchSys.flag_field.bond_state == true
-        {
-            LOG_I("[KEY_LOGIN_REQUEST]login request");
-            extern void set_main_phonepeer_addr(void);
-            set_main_phonepeer_addr();
-            // request_weather_within_six_hours(true);
-            /* check_user_id_bonded */
-            // if (memcmp(pValue, (void *)SkaiWatchSys.user_data.user_id, length) == 0)
-            {
-                commu_send_login_success();
-                watch_system_interact(INTERACT_LOGIN, NULL);
-            }
-            // else
-            // {
-            //     LOG_W("[KEY_LOGIN_REQUEST]login fail");
-            //     commu_send_login_fail();
-            // }
-        }
-        else
+        if (length != USER_ID_LENGTH)
         {
             commu_send_login_fail();
+            break;
         }
+        LOG_I("[KEY_LOGIN_REQUEST]login request");
+        set_main_phonepeer_addr();
+        commu_send_login_success();
+        watch_system_interact(INTERACT_LOGIN, NULL);
     }
     break;
     case KEY_UNBOND:
     {
         watch_system_interact(INTERACT_CANCEL_BOND, NULL);
-
         if (unbond_disc_timer != RT_NULL)
         {
             rt_timer_start(unbond_disc_timer);

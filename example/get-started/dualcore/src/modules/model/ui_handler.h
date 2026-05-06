@@ -83,10 +83,7 @@ extern "C"
     enum
     {
         LVGL_MSG_TYPE_UNKNOWN = 0,
-        LVGL_MSG_TYPE_TOUCH,
-        LVGL_MSG_TYPE_KEY,
         /***** Media event ******/
-        LVGL_MSG_TYPE_MEDIA_PLAY_STATE,
         LVGL_MSG_TYPE_MEDIA_TITLE,
         LVGL_MSG_TYPE_MEDIA_IMG,
         LVGL_MSG_TYPE_MEDIA_HEADER_IMG,

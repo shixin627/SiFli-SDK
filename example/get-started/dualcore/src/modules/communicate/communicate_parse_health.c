@@ -1,12 +1,9 @@
 /*********************************************************************************************************
  *               Copyright(c) 2018, Skaiwalk Corporation. All rights reserved.
  **********************************************************************************************************
- * @file     communicate_parse.c
- * @brief
- * @details
- * @author
- * @date
- * @version  v0.1
+ * @file     communicate_parse_health.c
+ * @brief    Resolves HEALTH_DATA_COMMAND_ID payloads from the phone (request
+ *           today's exercise, daily/quarter pedometer sync).
  *********************************************************************************************************
  */
 #include <rtthread.h>

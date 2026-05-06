@@ -1,13 +1,13 @@
 /**
  ******************************************************************************
- * @file   i2s_test.c
+ * @file   audio_code_i2s.c
  * @author Sifli software development team
  ******************************************************************************
  */
 /**
  * @attention
  * Copyright (c) 2021 - 2021,  Sifli Technology
- *is_test.c
+ *
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -112,7 +112,7 @@ static uint16_t buffer_index = 0;
 
 static struct rt_ringbuffer audprc_ringbuffer;
 
-bool mic_prepared = false;
+static bool mic_prepared = false;
 static uint8_t mic_prepared_count = 0;
 
 rt_uint8_t *get_audio_adc_buf(void)
@@ -189,9 +189,9 @@ int audio_codec_open(void)
         rt_device_control(g_codec_dev, AUDIO_CTL_CONFIGURE, &caps);
     }
 
-    // codec set vol
-    int volumex2 = -20;
-    rt_device_control(g_codec_dev, AUDIO_CTL_SETVOLUME, (void *)volumex2);
+    // codec set vol (-36 to 0 dB range; see audio_codec_set_volume)
+    int vol = -20;
+    rt_device_control(g_codec_dev, AUDIO_CTL_SETVOLUME, (void *)vol);
     // codec dac tx start
     stream = AUDIO_STREAM_REPLAY;
     stream |= ((1 << HAL_AUDCODEC_DAC_CH0) << 8);
@@ -628,7 +628,7 @@ extern bool get_is_open_app_list_ai(void);
 void audio_transfer_entry(void *parameter)
 {
     rt_uint32_t evt = 0, rdlen = 0, putlen = 0, wrlen = 0, getlen = 0;
-    rt_uint8_t index = 0, index1 = 0, index2 = 0;
+    rt_uint8_t index1 = 0, index2 = 0;
     rt_event_init(&aud_event, "audio_trans", RT_IPC_FLAG_FIFO);
 
 #ifdef PA_USING_AW8155

@@ -142,10 +142,7 @@ static void write_msg_switch(share_prefs_t *pref);
 // phone_os_version	        | uint8_t
 static void read_phone_os_version(share_prefs_t *pref);
 static void write_phone_os_version(share_prefs_t *pref);
-// alarm_num	              | uint8_t
-// alarms	                  | T_ALARM[MAX_ALARM_NUM]
-static void read_alarm();
-static void write_alarm();
+// alarm_num + alarms       | uint8_t + T_ALARM[MAX_ALARM_NUM] (read_alarms / write_alarms below)
 // oled_display_time	      | uint8_t
 static void read_oled_display_time(share_prefs_t *pref);
 static void write_oled_display_time(share_prefs_t *pref);
@@ -213,35 +210,6 @@ static void write_phone_os_version(share_prefs_t *pref)
 {
   int32_t version = SkaiWatchSys.phone_os_version;
   share_prefs_set_int(pref, "phone_os_version", version);
-}
-
-static void read_alarm()
-{
-  rt_err_t res = RT_EOK;
-  share_prefs_t *pref = share_prefs_open("alarm", SHAREPREFS_MODE_PRIVATE);
-  int32_t list_len;
-  /* Read alarm list*/
-  list_len = share_prefs_get_int(pref, "list_len", -1);
-  SkaiWatchSys.alarm_num = list_len;
-  if (list_len > 0)
-  {
-    res = share_prefs_get_block(pref, "list", (void *)&SkaiWatchSys.alarms, list_len * sizeof(T_ALARM));
-  }
-  res = share_prefs_close(pref);
-}
-
-static void write_alarm()
-{
-  rt_err_t res = RT_EOK;
-  share_prefs_t *pref = share_prefs_open("alarm", SHAREPREFS_MODE_PRIVATE);
-  int32_t list_len = SkaiWatchSys.alarm_num;
-  /* Write alarm list*/
-  res = share_prefs_set_int(pref, "list_len", list_len);
-  if (list_len > 0)
-  {
-    res = share_prefs_set_block(pref, "list", (void *)&SkaiWatchSys.alarms, list_len * sizeof(T_ALARM));
-  }
-  res = share_prefs_close(pref);
 }
 
 static void read_oled_display_time(share_prefs_t *pref)
@@ -938,253 +906,20 @@ int ble_dev_prefs_load(bonded_devices_db_t *db)
 }
 #endif
 
-// Task for shared prefernece
+// Task for shared preference
 
 uint8_t reboot_reason;
-void show_SkaiWatchSys_info(void)
-{
-  // uint32_t size;
 
-  // size = sizeof(SkaiWatchSysType_t);
-  // DBG_DIRECT("size of SkaiWatchSysType_t:%d", size);
-
-  // size = sizeof(SkaiWatchSys);
-  // DBG_DIRECT("size of SkaiWatchSys:%d", size);
-
-  // size = sizeof(SkaiWatchSys.flag_field);
-  // DBG_DIRECT("size of flag_field: %d", size);
-
-  // size = sizeof(SkaiWatchSys.msg_switch);
-  // DBG_DIRECT("size of msg_switch: %d", size);
-
-  // size = sizeof(SkaiWatchSys.battery_level_value);
-  // DBG_DIRECT("size of battery_level_value: %d", size);
-
-  // size = sizeof(SkaiWatchSys.hrs_detect_period);
-  // DBG_DIRECT("size of hrs_detect_period: %d", size);
-
-  // size = sizeof(SkaiWatchSys.hrs_start_up_mode);
-  // DBG_DIRECT("size of hrs_start_up_mode: %d", size);
-
-  // size = sizeof(SkaiWatchSys.phone_os_version);
-  // DBG_DIRECT("size of phone_os_version: %d", size);
-
-  // size = sizeof(SkaiWatchSys.alarm_num);
-  // DBG_DIRECT("size of alarm_num: %d", size);
-
-  // size = sizeof(SkaiWatchSys.oled_display_time);
-  // DBG_DIRECT("size of oled_display_time: %d", size);
-
-  // size = sizeof(SkaiWatchSys.language);
-  // DBG_DIRECT("size of language: %d", size);
-
-  // size = sizeof(SkaiWatchSys.clock_screen_num);
-  // DBG_DIRECT("size of clock_screen_num: %d", size);
-
-  // size = sizeof(SkaiWatchSys.weather_sync_hour);
-  // DBG_DIRECT("size of weather_sync_hour: %d", size);
-
-  // size = sizeof(SkaiWatchSys.weather_moment_count);
-  // DBG_DIRECT("size of weather_moment_count: %d", size);
-
-  // size = sizeof(SkaiWatchSys.weather_day_count);
-  // DBG_DIRECT("size of weather_day_count: %d", size);
-
-  // size = sizeof(SkaiWatchSys.backlight_percent);
-  // DBG_DIRECT("size of backlight_percent: %d", size);
-
-  // size = sizeof(SkaiWatchSys.battery_vol_value);
-  // DBG_DIRECT("size of battery_vol_value: %d", size);
-
-  // size = sizeof(SkaiWatchSys.SecondCountRTC);
-  // DBG_DIRECT("size of SecondCountRTC: %d", size);
-
-  // size = sizeof(SkaiWatchSys.pre_rtc_tick_count);
-  // DBG_DIRECT("size of pre_rtc_tick_count: %d", size);
-
-  // size = sizeof(SkaiWatchSys.weather_sync_secondcount);
-  // DBG_DIRECT("size of weather_sync_secondcount: %d", size);
-
-  // size = sizeof(SkaiWatchSys.wristband_sleep_status);
-  // DBG_DIRECT("size of wristband_sleep_status: %d", size);
-
-  // size = sizeof(SkaiWatchSys.charger_status);
-  // DBG_DIRECT("size of charger_status: %d", size);
-
-  // size = sizeof(SkaiWatchSys.sport_address);
-  // DBG_DIRECT("size of sport_address: %d", size);
-
-  // size = sizeof(SkaiWatchSys.sleep_address);
-  // DBG_DIRECT("size of sleep_address: %d", size);
-
-  // size = sizeof(SkaiWatchSys.heart_address);
-  // DBG_DIRECT("size of heart_address: %d", size);
-
-  // size = sizeof(SkaiWatchSys.gps_address);
-  // DBG_DIRECT("size of gps_address: %d", size);
-
-  // size = sizeof(SkaiWatchSys.weather_location_address);
-  // DBG_DIRECT("size of weather_location_address: %d", size);
-
-  // size = sizeof(SkaiWatchSys.weather_current_address);
-  // DBG_DIRECT("size of weather_current_address: %d", size);
-
-  // size = sizeof(SkaiWatchSys.weather_future_hour_address);
-  // DBG_DIRECT("size of weather_future_hour_address: %d", size);
-
-  // size = sizeof(SkaiWatchSys.weather_future_day_address);
-  // DBG_DIRECT("size of weather_future_day_address: %d", size);
-
-  // size = sizeof(SkaiWatchSys.gPedoData);
-  // DBG_DIRECT("size of gPedoData: %d", size);
-
-  // size = sizeof(SkaiWatchSys.DNDMode);
-  // DBG_DIRECT("size of DNDMode: %d", size);
-
-  // size = sizeof(SkaiWatchSys.alarms);
-  // DBG_DIRECT("size of alarms: %d", size);
-
-  // size = sizeof(SkaiWatchSys.user_data);
-  // DBG_DIRECT("size of user_data: %d", size);
-
-  // size = sizeof(SkaiWatchSys.Global_Time);
-  // DBG_DIRECT("size of Global_Time: %d", size);
-
-  // size = sizeof(SkaiWatchSys.msg_data_config);
-  // DBG_DIRECT("size of msg_data_config: %d", size);
-
-  // size = sizeof(SkaiWatchSys.sleep_data_show);
-  // DBG_DIRECT("size of sleep_data_show: %d", size);
-
-  // size = sizeof(SkaiWatchSys.bbpro_hci_link_status);
-  // DBG_DIRECT("size of bbpro_hci_link_status: %d", size);
-
-  // size = sizeof(SkaiWatchSys.bbpro_device_status);
-  // DBG_DIRECT("size of bbpro_device_status: %d", size);
-
-  // size = sizeof(SkaiWatchSys.paired_info);
-  // DBG_DIRECT("size of paired_info: %d", size);
-
-  // size = sizeof(SkaiWatchSys.gap_dev_state);
-  // DBG_DIRECT("size of gap_dev_state: %d", size);
-
-  // size = sizeof(SkaiWatchSys.gap_conn_state);
-  // DBG_DIRECT("size of gap_conn_state: %d", size);
-
-  // size = sizeof(SkaiWatchSys.clock_status);
-  // DBG_DIRECT("size of clock_status: %d", size);
-
-  // size = sizeof(SkaiWatchSys.watch_conn_id);
-  // DBG_DIRECT("size of watch_conn_id: %d", size);
-
-  // size = sizeof(SkaiWatchSys.conn_interval);
-  // DBG_DIRECT("size of conn_interval:%d", size);
-
-  // size = sizeof(SkaiWatchSys.conn_latency);
-  // DBG_DIRECT("size of conn_latency:%d", size);
-
-  // size = sizeof(SkaiWatchSys.conn_superv_tout);
-  // DBG_DIRECT("size of conn_superv_tout:%d", size);
-
-  // size = sizeof(SkaiWatchSys.watch_mtu);
-  // DBG_DIRECT("size of watch_mtu:%d", size);
-
-  // size = sizeof(SkaiWatchSys.notification_number);
-  // DBG_DIRECT("size of notification_number:%d", size);
-
-  // size = sizeof(SkaiWatchSys.todolist_number);
-  // DBG_DIRECT("size of todolist_number:%d", size);
-}
-
-void wristband_config_data_init(void)
-{
-  //   user_wdg_cb = (BOOL_WDG_CB)wristband_wdg_reboot_callback;
-  //   // show_SkaiWatchSys_info();
-  //   memset((uint8_t *)&SkaiWatchSys, 0x00, sizeof(SkaiWatchSys));
-  //   // Set the OLED display time to 5 seconds
-  //   SkaiWatchSys.oled_display_time = 5;
-  //   // Set the backlight brightness to 20 percent
-  //   SkaiWatchSys.backlight_percent = 20;
-  //   // Set the clock status to the 6th menu option
-  //   SkaiWatchSys.clock_status = CLOCK_6TH_MENU;
-  //   // Enable the lift switch status
-  //   SkaiWatchSys.flag_field.lift_switch_status = true;
-  //   // Enable the twist switch status
-  //   SkaiWatchSys.flag_field.twist_switch_status = true;
-
-  // #if 1
-  //   reboot_reason = wristband_get_reboot_reason();
-  //   DBG_DIRECT("[WRISTBAND CONFIG INIT] reason = %d!", reboot_reason);
-  //   // load_wristband_config();
-  // #endif
-}
-
-void wristband_config_struct_flash_reset(void)
-{
-  // DBG_DIRECT("wristband_config_struct_flash_reset");
-  // uint8_t prev_bp_lv = 0;
-  // flash_sw_protect_unlock_by_addr_locked(WRISTBAND_CONFIG_START_ADDR, &prev_bp_lv);
-  // flash_erase_locked(FLASH_ERASE_SECTOR, WRISTBAND_CONFIG_START_ADDR);
-  // flash_set_block_protect_locked(prev_bp_lv);
-}
-
-void wristband_hw_reboot_handle(void)
-{
-  // /* reset config data when HW reboot reason*/
-  // wristband_config_struct_flash_reset();
-  // /* reset health data when hardware reset */
-  // WristBandPedoDataBlockInit();
-  // WristBandSleepDataBlockInit();
-  // WristBandHeartDataBlockInit();
-  // WristBandMSGDataBlockInit();
-  // DBG_DIRECT("[WRISTBAND RESET => HW]!");
-}
-
-void wristband_sw_reboot_handle(void)
-{
-  // DBG_DIRECT("[WRISTBAND RESET => SW]!");
-}
-
-uint8_t wristband_get_reboot_reason(void)
-{
-  uint32_t reason = 0;
-  // if (ftl_load(&reason, REBOOT_REASON_OFFSET, REBOOT_REASON_SIZE) == 0)
-  // {
-  //   if (reason == 0xF0 || reason == 0xAB)
-  //   {
-  //     DBG_DIRECT("soft reboot reason, reason value = %d", reason);
-  //     wristband_sw_reboot_handle();
-  //   }
-  //   else if (reason == 0x01)
-  //   {
-  //     DBG_DIRECT("soft reboot reason, reason value = %d", reason);
-  //     wristband_sw_reboot_handle();
-  //   }
-  //   else if (reason == 0x00)
-  //   {
-  //     DBG_DIRECT("HW reboot reason, reason value = %d", reason);
-  //     wristband_hw_reboot_handle();
-  //   }
-  //   else if (reason == 0xF1)
-  //   {
-  //     DBG_DIRECT("UNBOND reboot reason, reason value = %d", reason);
-  //     wristband_hw_reboot_handle();
-  //   }
-  //   else
-  //   {
-  //     DBG_DIRECT("Unknow reboot reason");
-  //     wristband_hw_reboot_handle();
-  //   }
-  // }
-  // else
-  // {
-  //   DBG_DIRECT("wristband load reboot Fail");
-  //   wristband_hw_reboot_handle();
-  //   reason = 0;
-  // }
-  // uint32_t original_reason = 0;
-  // ftl_save(&original_reason, REBOOT_REASON_OFFSET, REBOOT_REASON_SIZE);
-  return reason;
-}
+/* Diagnostic-dump and wristband-reboot stubs preserved as no-ops for symbol
+   compatibility. The original ftl-based reboot-reason / config-flash flow
+   was rewritten on top of share_prefs and these entry points have no live
+   callers in the example tree; left as empty bodies so they don't get
+   stripped if any out-of-tree code still extern-decls them. */
+void show_SkaiWatchSys_info(void) {}
+void wristband_config_data_init(void) {}
+void wristband_config_struct_flash_reset(void) {}
+void wristband_hw_reboot_handle(void) {}
+void wristband_sw_reboot_handle(void) {}
+uint8_t wristband_get_reboot_reason(void) { return 0; }
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

@@ -2,7 +2,7 @@
 *********************************************************************************************************
 *               Copyright(c) 2018, Skaiwalk Corporation. All rights reserved.
 *********************************************************************************************************
-* @file         communicate_protocol.c
+* @file         communicate_parse_notify.h
 * @brief
 * @details
 * @author

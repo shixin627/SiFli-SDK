@@ -69,7 +69,6 @@
 
 /* Alarm */
 static datac_handle_t alarm_client_handle;
-static alarm_msg_t alarm_msg;
 
 static int alarm_service_callback(data_callback_arg_t *arg)
 {
@@ -221,10 +220,8 @@ void apply_alarms_from_ble(const T_ALARM *alarms, uint8_t num)
 static void get_alarm(void)
 {
     data_msg_t msg;
-    uint8_t *body;
-    rt_err_t err = RT_EOK;
-    body = data_service_init_msg(&msg, ALARMMGR_MSG_GET_ALARM_REQ, 0);
-    err = datac_send_msg(alarm_client_handle, &msg);
+    (void)data_service_init_msg(&msg, ALARMMGR_MSG_GET_ALARM_REQ, 0);
+    rt_err_t err = datac_send_msg(alarm_client_handle, &msg);
     RT_ASSERT(RT_EOK == err);
 }
 

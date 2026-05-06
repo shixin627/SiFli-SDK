@@ -284,7 +284,6 @@ static int32_t baro_service_data_fetch(datas_handle_t service, uint32_t data_siz
 
     *data = (uint8_t *)&env->data;
     size = rt_device_read(env->device, 0, *data, 1);
-    //RT_ASSERT(1 == size);
     if (size != 1)
         return 0;
 
@@ -416,7 +415,6 @@ int baro_service_register(void)
         return 1;
     }
     env->device = rt_device_find(BARO_DEV_NAME);
-    //RT_ASSERT(env->device);
     if (env->device == NULL)
     {
         LOG_W("DataS find device %s fail\n", BARO_DEV_NAME);
@@ -424,7 +422,6 @@ int baro_service_register(void)
     }
 
     err = rt_device_open(env->device, RT_DEVICE_OFLAG_RDONLY);
-    //RT_ASSERT(RT_EOK == err);
     if (err != RT_EOK)
     {
         LOG_W("DataS open device %s fail\n", BARO_DEV_NAME);

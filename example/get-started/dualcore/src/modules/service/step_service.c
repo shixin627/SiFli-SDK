@@ -224,23 +224,20 @@ static void timeout_ind(void *param)
 
 int step_service_register(void)
 {
-    struct rt_sensor_config cfg;
     step_service_env_t *env = &step_service_env;
     rt_err_t err;
 
-    // TODO: no use
-    // cfg.intf.dev_name = "i2c3";
-    // rt_hw_lsm6dsl_init(STEP_MODEL_NAME, &cfg);
+    /* The driver is initialized by the accelerometer init path (BMI270 / LSM6DSL
+       are shared between acce and step services); we just look up the already-
+       registered device here. */
     env->device = rt_device_find(STEP_DEV_NAME);
     if (env->device == NULL)
     {
         LOG_W("DataS find device %s fail\n", STEP_DEV_NAME);
         return 1;
     }
-    // RT_ASSERT(env->device);
 
     err = rt_device_open(env->device, RT_DEVICE_OFLAG_RDONLY);
-    // RT_ASSERT(RT_EOK == err);
     if (err != RT_EOK)
     {
         LOG_W("DataS open device %s fail\n", STEP_DEV_NAME);

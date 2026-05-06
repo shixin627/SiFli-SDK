@@ -184,9 +184,6 @@ static void imu_data_fetch(motion_sensor_data_t *data)
     data->timestamp = rt_sensor_get_ts();
 
     // IMU data
-#ifdef ACC_USING_BMI270
-    struct bmi2_sens_axes_data *imu = bmi270_get_accel();
-#endif
     data->imu.timestamp = watch_sensor.imu_data.timestamp;
     data->imu.sample_rate = watch_sensor.imu_data.sample_rate;
     data->imu.acce = watch_sensor.imu_data.acce;
@@ -199,7 +196,6 @@ static void imu_data_fetch(motion_sensor_data_t *data)
     data->motion.global_q = watch_sensor.motion_data.global_q;
     data->motion.sensor_q = watch_sensor.motion_data.sensor_q;
     data->motion.ppg_raw_data = watch_sensor.ppg_data;
-    // LOG_D("Fetched PPG data: %d", watch_sensor.ppg_data.raw_data[0]);
 }
 
 /**
