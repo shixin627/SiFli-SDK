@@ -332,10 +332,6 @@ void handle_ai_reply_calendar(char *json, uint8_t action, lv_obj_t *parent)
 	}
 	memset(&temp_calendar_event, 0, sizeof(temp_calendar_event));
 	parse_calendar(json, &temp_calendar_event);
-
-#ifdef APP_ID_CALENDAR
-	lv_calendar_object_builder(parent, (void *)&temp_calendar_event);
-#endif
 }
 
 void handle_ai_reply_finance(char *json, lv_obj_t *parent)

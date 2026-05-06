@@ -382,7 +382,7 @@ static void show_dial_widget_select_list(lv_obj_t *parent);
 #ifdef APP_ID_MEDIA
 static uint8_t dial_widget_app_id = app_id_media;
 #else
-static uint8_t dial_widget_app_id = app_id_calendar;
+static uint8_t dial_widget_app_id = app_id_weather;
 #endif
 static bool edit_mode = false;
 
@@ -443,11 +443,6 @@ void dial_widget_event(lv_event_t *e)
             {
                 switch (dial_widget_app_id)
                 {
-#ifdef APP_ID_CALENDAR
-                case app_id_calendar:
-                    gui_app_run(APP_ID_CALENDAR);
-                    break;
-#endif
 #ifdef APP_ID_MEDIA
                 case app_id_media:
                     gui_app_run(APP_ID_MEDIA);
@@ -545,11 +540,6 @@ static void show_dial_widget_select_list(lv_obj_t *parent)
     dial_widget_select_list = lv_list_create(parent);
     lv_obj_set_size(dial_widget_select_list, 466, 466);
     lv_obj_align(dial_widget_select_list, LV_ALIGN_CENTER, 0, 0);
-
-    lv_obj_t *btn_calendar =
-        lv_list_add_btn(dial_widget_select_list, NULL, "Calendar");
-    lv_obj_add_event_cb(btn_calendar, dial_widget_select_event_cb,
-                        LV_EVENT_CLICKED, (void *)app_id_calendar);
 
 #ifdef APP_ID_MEDIA
     lv_obj_t *btn_media =

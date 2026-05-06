@@ -431,6 +431,12 @@ void bt_speaker_set_volumn_smoothly(uint8_t percent, bool notify)
 	}
 }
 
+static void bt_send_media_cmd(uint8_t cmd)
+{
+	app_audio_set_control_command(cmd);
+	commu_send_media_control();
+}
+
 void bt_speaker_media_volume_up(void)   { LOG_D("Volume Up");   bt_send_media_cmd(AUDIO_CMD_VOLUME_UP); }
 void bt_speaker_media_volume_down(void) { LOG_D("Volume Down"); bt_send_media_cmd(AUDIO_CMD_VOLUME_DOWN); }
 
@@ -447,11 +453,6 @@ static void ble_hid_consumer_back(void)
 	HID_CONSUMER_GoBack();
 }
 
-static void bt_send_media_cmd(uint8_t cmd)
-{
-	app_audio_set_control_command(cmd);
-	commu_send_media_control();
-}
 static void bt_speaker_media_play(void)
 {
 	LOG_D("Play Audio");

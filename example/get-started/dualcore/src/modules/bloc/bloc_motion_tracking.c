@@ -120,51 +120,6 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                               Quaternion *prev_quat);
 #endif
 
-#ifdef APP_ID_WIDGETS
-extern void set_init_navigation_bar_position(void);
-
-static bool is_hand_up = false;
-
-static bool navigation_bar_handled = false;
-
-static int16_t navigation_bar_control_value = 0;
-static int16_t navigation_bar_control_value_prev = 0;
-
-void press_navigation_bar(void)
-{
-    if (is_hand_up)
-    {
-        return;
-    }
-
-    if (gui_app_is_actived(APP_ID_WIDGETS))
-    {
-        set_init_navigation_bar_position();
-        navigation_bar_handled = true;
-        navigation_bar_control_value = 0;
-    }
-}
-
-void release_navigation_bar(void)
-{
-    if (gui_app_is_actived(APP_ID_WIDGETS))
-    {
-        navigation_bar_handled = false;
-    }
-}
-
-void widget_page_flip(bool is_gravity_x_positive)
-{
-    is_hand_up = is_gravity_x_positive;
-    LOG_D("is_hand_up:%d", is_hand_up);
-    lvgl_msg_t msg;
-    msg.type = LVGL_MSG_TYPE_HAND_UP;
-    msg.data.action = !is_hand_up;
-    lvgl_send_msg(msg);
-}
-
-#endif // APP_ID_WIDGETS
-
 static float total_yaw_energy = 0;
 static uint8_t scroll_segment_count = 1;
 static uint16_t page_range = 100; // 每個頁面的範圍

@@ -93,7 +93,6 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
 {
     static MSG_DATA_PAYLOAD payload;
     static VOICE_RECOGNITION_PAYLOAD voice_recog_payload;
-    static uint8_t calendar_day = 0;
 
     switch (key)
     {
@@ -173,40 +172,6 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         watch_system_interact(INTERACT_CHAT_RESULT, &payload);
         break;
     }
-#if defined(APP_ID_CALENDAR)
-    case KEY_CALENDAR_SYNC_START:
-    {
-        if (pValue != NULL)
-        {
-            calendar_day = pValue[0];
-            if (calendar_day == 0)
-            {
-                cleanup_all_calendars();
-            }
-            LOG_D("calendar_day: %d, amount: %d", calendar_day, pValue[1]);
-            if (calendar_day == 6 && pValue[1] == 0)
-            {
-                LOG_D("No calendar data for today, skipping notification.");
-                notify_calendar();
-            }
-        }
-        break;
-    }
-    case KEY_UPDATE_CALENDAR:
-    {
-        if (pValue != NULL)
-        {
-            handle_calendar((char *)pValue, calendar_day);
-        }
-        break;
-    }
-
-    case KEY_CALENDAR_SYNC_END:
-    {
-        notify_calendar();
-        break;
-    }
-#endif
 
     case KEY_WEATHER_SYNC_START:
     {

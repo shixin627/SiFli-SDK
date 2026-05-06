@@ -207,7 +207,6 @@ static void ai_status_bar_cb(lv_event_t *event)
 }
 
 extern void check_main_page(void);
-extern void widget_page_flip(bool is_gravity_x_positive);
 bool main_clock_tileview_scrollable = true;
 static uint8_t shady_transparency = 0;
 static uint16_t bg_opa = LV_OPA_COVER;
@@ -349,10 +348,6 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             set_clock_main_status_opa(LV_OPA_0, false);
             set_instruction_list_time_opa(LV_OPA_0);
 
-#ifdef APP_ID_WIDGETS
-            widget_page_flip(false);
-#endif
-
             set_instruction_list_battery_opa(LV_OPA_TRANSP);
         }
         else
@@ -380,10 +375,6 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             {
                 set_instruction_list_battery_opa(LV_OPA_100);
             }
-
-#ifdef APP_ID_WIDGETS
-            widget_page_flip(true);
-#endif
 
             extern void reset_gravity_position(void);
             reset_gravity_position();

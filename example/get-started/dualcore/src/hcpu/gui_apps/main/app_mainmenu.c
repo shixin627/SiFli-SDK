@@ -562,7 +562,6 @@ static void clear_check_flags(void)
     _at_speech_interface = false;
 }
 
-extern void widget_page_flip(bool is_gravity_x_positive);
 extern void scrolling_object(bool open_scrolling_object_flag);
 extern void stop_scrolling_object(void);
 static bool open_scrolling_app_flag = true;
@@ -576,9 +575,6 @@ void open_control_instruction_list(lv_anim_t *a)
     {
         lvgl_msg_handler.handle_tap_indicator = on_tap_wrapper;
         LOG_D("handle_tap_indicator =%p", on_tap_wrapper);
-    #ifdef APP_ID_WIDGETS
-        widget_page_flip(true);
-    #endif
 
     #if ENABLE_VIRTUAL_TOUCH
         scrolling_object(true);
@@ -649,9 +645,6 @@ static void app_main_Clock_view_event_cb(lv_event_t *event)
                 LOG_D("handle_tap_indicator =%p", on_tap_wrapper);
                 // lvgl_msg_handler.handle_gyro_scroll_list =
                 //     instruction_list_scroll_to_app;
-    #ifdef APP_ID_WIDGETS
-                widget_page_flip(true);
-    #endif
     #if ENABLE_VIRTUAL_TOUCH
                 scrolling_object(true);
     #endif
@@ -678,9 +671,6 @@ static void app_main_Clock_view_event_cb(lv_event_t *event)
 
     #if ENABLE_VIRTUAL_TOUCH
             stop_scrolling_object();
-    #endif
-    #ifdef APP_ID_WIDGETS
-            widget_page_flip(false);
     #endif
             if (gui_app_is_actived(APP_ID_MAIN))
             {

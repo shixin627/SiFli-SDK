@@ -3207,39 +3207,5 @@ rt_int32_t notification_on_deinit(void)
     return RT_EOK;
 }
 
-#ifdef APP_ID_MESSAGE_LIST
-static void msg_handler(gui_app_msg_type_t msg, void *param)
-{
-    switch (msg)
-    {
-    case GUI_APP_MSG_ONSTART:
-        init(lv_scr_act());
-        break;
-
-    case GUI_APP_MSG_ONRESUME:
-        notification_on_resume();
-        break;
-
-    case GUI_APP_MSG_ONPAUSE:
-        notification_on_pause();
-        break;
-
-    case GUI_APP_MSG_ONSTOP:
-        notification_on_deinit();
-        break;
-    default:
-        break;
-    }
-}
-
-static int app_main(intent_t i)
-{
-    gui_app_regist_msg_handler(APP_ID_MESSAGE_LIST, msg_handler);
-
-    return 0;
-}
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(notification), SKAIWALKICON,
-                   APP_ID_MESSAGE_LIST, app_main);
-#endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/

@@ -184,15 +184,7 @@ uint16_t INSTRUCTION_LIST_ITEMS_DEFINITION[] = {
 // app_id_calculator,
 #endif
     // app_id_exercise,
-    // app_id_heart_rate,
     app_id_recorder,
-#ifdef APP_ID_ACTIVITY
-// app_id_activity,
-#endif
-// app_id_calendar,
-#ifdef APP_ID_TOUCHSCREEN
-    app_id_touchscreen,
-#endif
 #ifdef APP_ID_PHOTO
 // app_id_photo,
 #endif
@@ -244,8 +236,6 @@ const char *get_app_icon(uint8_t app_id)
     case app_id_recorder:
         return IMG_RECORDER;
 #endif
-    case app_id_calendar:
-        return IMG_CALENDAR;
     case app_id_weather:
         return IMG_GROUP;
     case app_id_exercise:
@@ -259,14 +249,6 @@ const char *get_app_icon(uint8_t app_id)
 #ifdef APP_ID_GAME_DINOSAUR
     case app_id_game_dinosaur:
         return IMG_GAME;
-#endif
-#ifdef APP_ID_HEART_RATE
-    case app_id_heart_rate:
-        return IMG_HEART_RATE;
-#endif
-#ifdef APP_ID_ACTIVITY
-    case app_id_activity:
-        return IMG_ACTIVITY;
 #endif
 #ifdef APP_ID_PHOTO
     case app_id_photo:
@@ -288,17 +270,9 @@ const char *get_app_icon(uint8_t app_id)
     case app_id_setting:
         return IMG_SETTINGS;
 #endif
-#ifdef APP_ID_MESSAGE_LIST
-    case app_id_message_list:
-        return IMG_MESSAGES;
-#endif
 #ifdef APP_ID_MOUSE
     case app_id_mouse:
         return IMG_MOUSE;
-#endif
-#ifdef APP_ID_TOUCHSCREEN
-    case app_id_touchscreen:
-        return IMG_TOUCHSCREEN;
 #endif
     default:
         return IMG_LOGO;
@@ -3032,13 +3006,6 @@ static void map_app_id(uint8_t app_id, list_item_t *item)
         id_str = APP_ID_RECORDER;
         break;
 #endif
-#ifdef APP_ID_CALENDAR
-    case app_id_calendar:
-        title = LV_EXT_STR_GET_BY_KEY(calendar, "Calendar");
-        icon = IMG_CALENDAR;
-        id_str = APP_ID_CALENDAR;
-        break;
-#endif
 #ifdef APP_ID_WEATHER
     case app_id_weather:
         title = LV_EXT_STR_GET_BY_KEY(weather, "Weather");
@@ -3081,20 +3048,6 @@ static void map_app_id(uint8_t app_id, list_item_t *item)
         id_str = APP_ID_GAME_DINOSAUR;
         break;
 #endif
-#ifdef APP_ID_HEART_RATE
-    case app_id_heart_rate:
-        title = LV_EXT_STR_GET_BY_KEY(heart_rate, "Heart Rate");
-        icon = IMG_HEART_RATE;
-        id_str = APP_ID_HEART_RATE;
-        break;
-#endif
-#ifdef APP_ID_ACTIVITY
-    case app_id_activity:
-        title = LV_EXT_STR_GET_BY_KEY(activity, "Activity");
-        icon = IMG_ACTIVITY;
-        id_str = APP_ID_ACTIVITY;
-        break;
-#endif
 #ifdef APP_ID_CALCULATOR
     case app_id_calculator:
         title = LV_EXT_STR_GET_BY_KEY(calculator, "Calculator");
@@ -3123,25 +3076,11 @@ static void map_app_id(uint8_t app_id, list_item_t *item)
         id_str = APP_ID_SETTING;
         break;
 #endif
-#ifdef APP_ID_MESSAGE_LIST
-    case app_id_message_list:
-        title = LV_EXT_STR_GET_BY_KEY(message, "Message");
-        icon = IMG_MESSAGES;
-        id_str = APP_ID_MESSAGE_LIST;
-        break;
-#endif
 #ifdef APP_ID_MOUSE
     case app_id_mouse:
         title = LV_EXT_STR_GET_BY_KEY(mouse, "Mouse");
         icon = IMG_MOUSE;
         id_str = APP_ID_MOUSE;
-        break;
-#endif
-#ifdef APP_ID_TOUCHSCREEN
-    case app_id_touchscreen:
-        title = LV_EXT_STR_GET_BY_KEY(touchscreen, "Touchscreen");
-        icon = &img_touchscreen;
-        id_str = APP_ID_TOUCHSCREEN;
         break;
 #endif
     default:

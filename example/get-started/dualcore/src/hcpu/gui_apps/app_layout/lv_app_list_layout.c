@@ -44,20 +44,11 @@ static const uint16_t APP_LIST_ITEMS[] = {
 #ifdef APP_ID_CALCULATOR
     app_id_calculator,
 #endif
-#ifdef APP_ID_CALENDAR
-    app_id_calendar,
-#endif
 #ifdef APP_ID_WEATHER
     app_id_weather,
 #endif
 #ifdef APP_ID_MEDIA
     // app_id_media,
-#endif
-#ifdef APP_ID_HEART_RATE
-    // app_id_heart_rate,
-#endif
-#ifdef APP_ID_ACTIVITY
-    // app_id_activity,
 #endif
 #ifdef APP_ID_ALARM
     app_id_alarm,
@@ -67,12 +58,6 @@ static const uint16_t APP_LIST_ITEMS[] = {
 #endif
 #ifdef APP_ID_MOUSE
     // app_id_mouse,
-#endif
-#ifdef APP_ID_TOUCHSCREEN
-    app_id_touchscreen,
-#endif
-#ifdef APP_ID_TOUCHPAD
-    app_id_touchpad,
 #endif
 #ifdef APP_ID_PHOTO
     app_id_photo,
@@ -96,20 +81,11 @@ static const char *get_app_id_str(uint16_t app_id)
 #ifdef APP_ID_CALCULATOR
     case app_id_calculator:  return APP_ID_CALCULATOR;
 #endif
-#ifdef APP_ID_CALENDAR
-    case app_id_calendar:    return APP_ID_CALENDAR;
-#endif
 #ifdef APP_ID_WEATHER
     case app_id_weather:     return APP_ID_WEATHER;
 #endif
 #ifdef APP_ID_MEDIA
     case app_id_media:       return APP_ID_MEDIA;
-#endif
-#ifdef APP_ID_HEART_RATE
-    case app_id_heart_rate:  return APP_ID_HEART_RATE;
-#endif
-#ifdef APP_ID_ACTIVITY
-    case app_id_activity:    return APP_ID_ACTIVITY;
 #endif
 #ifdef APP_ID_TIMER
     case app_id_timer:       return APP_ID_TIMER;
@@ -122,9 +98,6 @@ static const char *get_app_id_str(uint16_t app_id)
 #endif
 #ifdef APP_ID_MOUSE
     case app_id_mouse:       return APP_ID_MOUSE;
-#endif
-#ifdef APP_ID_TOUCHSCREEN
-    case app_id_touchscreen: return APP_ID_TOUCHSCREEN;
 #endif
 #ifdef APP_ID_TOUCHPAD
     case app_id_touchpad:    return APP_ID_TOUCHPAD;
@@ -151,20 +124,11 @@ static const char *get_app_list_icon(uint16_t app_id)
 #ifdef APP_ID_CALCULATOR
     case app_id_calculator:  return IMG_CALCULATOR;
 #endif
-#ifdef APP_ID_CALENDAR
-    case app_id_calendar:    return IMG_CALENDAR;
-#endif
 #ifdef APP_ID_WEATHER
     case app_id_weather:     return IMG_GROUP;
 #endif
 #ifdef APP_ID_MEDIA
     case app_id_media:       return IMG_ITUNES;
-#endif
-#ifdef APP_ID_HEART_RATE
-    case app_id_heart_rate:  return IMG_HEART_RATE;
-#endif
-#ifdef APP_ID_ACTIVITY
-    case app_id_activity:    return IMG_ACTIVITY;
 #endif
 #ifdef APP_ID_TIMER
     case app_id_timer:       return IMG_ALARM_2;
