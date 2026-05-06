@@ -1,6 +1,6 @@
 {
-    "version": "1.1.42",
-    "description": "不要更新!!!!",
+    "version": "1.1.43",
+    "description": "優化藍芽通訊協議，更新環狀滑動列表",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
