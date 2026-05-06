@@ -109,6 +109,10 @@ static euler_angle_t motion_tracking_algorithm(Quaternion *quaternion,
 static void send_quaternion_to_ble_client(rt_uint32_t ts, Quaternion *q);
 static Quaternion multiply_quaternions(Quaternion *q1, Quaternion *q2);
 
+/* Cross-module externs (defined in sibling bloc translation units). */
+extern bool get_enable_tap_and_hold(void);
+extern bool get_is_open_instruction_list_ai(void);
+
 static bool stop_mouse_move = false;
 
 #ifdef BSP_USING_AIR_MOUSE
@@ -411,85 +415,43 @@ static float calculate_median_difference_accel(uint8_t check_samples)
 }
 
 /**
- * @brief Packs accelerometer matrix data into a byte buffer
+ * @brief Packs accelerometer matrix data into a byte buffer (little-endian).
  *
- * @param targetArray The target buffer to store packed data
- * @param matrix The source accelerometer data matrix
- * @param sample_len The number of samples to pack
+ * Layout per sample (BYTES_PER_SAMPLE = 22):
+ *   [0..3]   timestamp_s   (u32)
+ *   [4..5]   timestamp_ms  (u16)
+ *   [6..7]   x             (i16)
+ *   [8..9]   y             (i16)
+ *   [10..11] z             (i16)
+ *   [12..13] gravity_x     (i16)
+ *   [14..15] gravity_y     (i16)
+ *   [16..17] gravity_z     (i16)
+ *   [18..19] ppg_data      (u16)
+ *   [20..21] fsr_adc_value (u16)
+ *
+ * `fft_buffer` is unused in the current path (all callers pass NULL); kept
+ * for API compatibility.
  */
 void packMatrixToBuffer(uint8_t *targetArray, watch_sys_linear_acce_t *dataset,
                         int32_t *fft_buffer, int sample_len)
 {
+    if (fft_buffer != NULL)
+    {
+        return;
+    }
     for (uint8_t i = 0; i < sample_len; i++)
     {
-        if (fft_buffer == NULL)
-        {
-            // timestamp_s(uint32_t -> 4 bytes)
-            // LOG_D("Pack sample %d: ts_s=%u, ts_ms=%u, x=%d, y=%d, z=%d,
-            // gx=%d, gy=%d, gz=%d",
-            //       i,
-            //       dataset[i].timestamp_s,
-            //       dataset[i].timestamp_ms,
-            //       dataset[i].x,
-            //       dataset[i].y,
-            //       dataset[i].z,
-            //       dataset[i].gravity_x,
-            //       dataset[i].gravity_y,
-            //       dataset[i].gravity_z);
-            targetArray[i * BYTES_PER_SAMPLE + 0] =
-                (uint8_t)(dataset[i].timestamp_s & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 1] =
-                (uint8_t)((dataset[i].timestamp_s >> 8) & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 2] =
-                (uint8_t)((dataset[i].timestamp_s >> 16) & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 3] =
-                (uint8_t)((dataset[i].timestamp_s >> 24) & 0xFF);
-            // timestamp_ms(uint16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 4] =
-                (uint8_t)(dataset[i].timestamp_ms & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 5] =
-                (uint8_t)((dataset[i].timestamp_ms >> 8) & 0xFF);
-            // x(int16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 6] =
-                (uint8_t)(dataset[i].x & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 7] =
-                (uint8_t)((dataset[i].x >> 8) & 0xFF);
-            // y(int16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 8] =
-                (uint8_t)(dataset[i].y & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 9] =
-                (uint8_t)((dataset[i].y >> 8) & 0xFF);
-            // z(int16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 10] =
-                (uint8_t)(dataset[i].z & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 11] =
-                (uint8_t)((dataset[i].z >> 8) & 0xFF);
-            // gravity_x, gravity_y, gravity_z
-            // x(int16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 12] =
-                (uint8_t)(dataset[i].gravity_x & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 13] =
-                (uint8_t)((dataset[i].gravity_x >> 8) & 0xFF);
-            // y(int16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 14] =
-                (uint8_t)(dataset[i].gravity_y & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 15] =
-                (uint8_t)((dataset[i].gravity_y >> 8) & 0xFF);
-            // z(int16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 16] =
-                (uint8_t)(dataset[i].gravity_z & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 17] =
-                (uint8_t)((dataset[i].gravity_z >> 8) & 0xFF);
-            // ppg_data(uint16_t -> 2 bytes)
-            targetArray[i * BYTES_PER_SAMPLE + 18] =
-                (uint8_t)(dataset[i].ppg_data & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 19] =
-                (uint8_t)((dataset[i].ppg_data >> 8) & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 20] =
-                (uint8_t)(dataset[i].fsr_adc_value & 0xFF);
-            targetArray[i * BYTES_PER_SAMPLE + 21] =
-                (uint8_t)((dataset[i].fsr_adc_value >> 8) & 0xFF);
-        }
+        uint8_t *p = &targetArray[i * BYTES_PER_SAMPLE];
+        memcpy(p +  0, &dataset[i].timestamp_s,   sizeof(dataset[i].timestamp_s));
+        memcpy(p +  4, &dataset[i].timestamp_ms,  sizeof(dataset[i].timestamp_ms));
+        memcpy(p +  6, &dataset[i].x,             sizeof(dataset[i].x));
+        memcpy(p +  8, &dataset[i].y,             sizeof(dataset[i].y));
+        memcpy(p + 10, &dataset[i].z,             sizeof(dataset[i].z));
+        memcpy(p + 12, &dataset[i].gravity_x,     sizeof(dataset[i].gravity_x));
+        memcpy(p + 14, &dataset[i].gravity_y,     sizeof(dataset[i].gravity_y));
+        memcpy(p + 16, &dataset[i].gravity_z,     sizeof(dataset[i].gravity_z));
+        memcpy(p + 18, &dataset[i].ppg_data,      sizeof(dataset[i].ppg_data));
+        memcpy(p + 20, &dataset[i].fsr_adc_value, sizeof(dataset[i].fsr_adc_value));
     }
 }
 
@@ -662,14 +624,7 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     time_t current_ts = rt_tick_get(); // time(NULL);
     Vector3 *linear_acce = &motion_data->linear_acce;
     Vector3 *gravity = &motion_data->gravity;
-    if (get_ppg_count == 0)
-    {
-        get_ppg_count = 1;
-    }
-    else
-    {
-        get_ppg_count = 0;
-    }
+    get_ppg_count ^= 1;
     uint32_t ppg_rawdata = motion_data->ppg_raw_data.raw_data[get_ppg_count];
 
     rt_uint32_t fsr_adc_value = g_fsr_adc_latest;
@@ -682,21 +637,8 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     user_hand_horizontal = (gravity->x < 0.9 && gravity->x > -0.4);
 
     // Update watchface visibility
-    if ((gravity->y > -0.7 && gravity->z > -0.6) ||
-        app_control_get_mouse_mode())
-    {
-        if (!waveform_gesture_state.if_watchface_visible)
-        {
-            waveform_gesture_state.if_watchface_visible = true;
-        }
-    }
-    else
-    {
-        if (waveform_gesture_state.if_watchface_visible)
-        {
-            waveform_gesture_state.if_watchface_visible = false;
-        }
-    }
+    waveform_gesture_state.if_watchface_visible =
+        (gravity->y > -0.7 && gravity->z > -0.6) || app_control_get_mouse_mode();
 
     // Calculate linear acceleration difference
     float linear_accel_resultant = total_acceleration_magnitude(
@@ -1249,14 +1191,8 @@ static void app_control_interface(Vector3 *gyro, Vector3 *gravity)
         media_x_control = (uint16_t)(relative_x);
         media_y_control = (uint16_t)(relative_y);
 
-        if (media_x_control > 466)
-            media_x_control = 466;
-        if (media_x_control < 0)
-            media_x_control = 0;
-        if (media_y_control > 466)
-            media_y_control = 466;
-        if (media_y_control < 0)
-            media_y_control = 0;
+        if (media_x_control > 466) media_x_control = 466;
+        if (media_y_control > 466) media_y_control = 466;
     }
 
     if (abs(media_x_control - pevr_media_control[0]) > 5 ||
@@ -1349,22 +1285,10 @@ void reset_gravity_position(void)
 #endif
 }
 
-static bool ai_interface_lock_flag = false;
-static void ai_interface_lock(void)
-{
-    ai_interface_lock_flag = true;
-}
-
-static void ai_interface_unlock(void)
-{
-    ai_interface_lock_flag = false;
-}
-
 static bool can_open_ai_interface(void)
 {
-    // Check if the AI interface can be opened
     if (is_at_home() || is_at_control_center() || is_at_mouse_mode() ||
-        ai_interface_lock_flag || gui_app_is_actived(APP_ID_FLASHLIGHT) ||
+        gui_app_is_actived(APP_ID_FLASHLIGHT) ||
         gui_app_is_actived(APP_ID_TIMER) || gui_app_is_actived(APP_ID_MOUSE) ||
         gui_app_is_actived(APP_ID_EXERCISE) ||
         gui_app_is_actived(APP_ID_GESTURE) ||
@@ -1377,7 +1301,6 @@ static bool can_open_ai_interface(void)
 }
 
 extern void level_bar_update(int16_t value);
-extern bool get_is_open_instruction_list_ai(void);
 static uint8_t pevr_ai_hint_bg_pos = 0;
 static void calculate_gravity_position(Vector3 *gravity)
 {
@@ -1413,14 +1336,7 @@ static void calculate_gravity_position(Vector3 *gravity)
 
 void widget_ai_open(bool is_open)
 {
-    if (is_open)
-    {
-        is_hand_lifting = true;
-    }
-    else
-    {
-        is_hand_lifting = false;
-    }
+    is_hand_lifting = is_open;
 }
 
 static Quaternion tap_state_q;
@@ -1434,7 +1350,6 @@ static float befor_tap_delta_max_angle = 0.0f;
 // 使用者正在移動手臂
 bool has_user_started_controlling_with_arm(void)
 {
-    extern bool get_enable_tap_and_hold(void);
     if (get_enable_tap_and_hold())
     {
         double delta_angle_abs =
@@ -1489,8 +1404,6 @@ void set_stop_mouse_move(bool stop)
     stop_mouse_move = stop;
 }
 
-// static uint8_t scroll_log_count = 0;
-extern bool get_is_open_instruction_list_ai(void);
 extern uint8_t get_message_page_count(void);
 static euler_angle_t pevr_befor_switch_widget_delta_angle;
 static float prev_delta_roll = 0.0f;
@@ -1518,7 +1431,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
     }
     // stop_mouse_move = motion_data->gravity.y < -0.4;
 
-    extern bool get_enable_tap_and_hold(void);
     if (get_enable_tap_and_hold())
     {
         if (!tap_state_q_flag && peripheral_provider.get_tap_status())
@@ -1543,30 +1455,9 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
         air_mouse_process(motion_data->timestamp, &motion_data->global_q,
                           &prev_global_quat);
         prev_global_quat = motion_data->global_q;
-        if (motion_data->gravity.z < -0.5f)
-        {
-            switch_freehand_mode = true;
-        }
-        else
-        {
-            switch_freehand_mode = false;
-        }
-        if (motion_data->gravity.y < -0.7f)
-        {
-            switch_mouse_scroll_mode = true;
-        }
-        else
-        {
-            switch_mouse_scroll_mode = false;
-        }
-        if (motion_data->gravity.x < 0)
-        {
-            scroll_up_mode = false;
-        }
-        else
-        {
-            scroll_up_mode = true;
-        }
+        switch_freehand_mode      = motion_data->gravity.z < -0.5f;
+        switch_mouse_scroll_mode  = motion_data->gravity.y < -0.7f;
+        scroll_up_mode            = motion_data->gravity.x >= 0;
     }
 #endif
     else
@@ -1582,14 +1473,8 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
 
         if (!is_at_message() && !get_is_open_instruction_list_ai())
         {
-            if (motion_data->gravity.x < 0.3 && motion_data->gravity.x > -0.3)
-            {
-                set_paused_control_with_arm(false);
-            }
-            else
-            {
-                set_paused_control_with_arm(true);
-            }
+            set_paused_control_with_arm(
+                !(motion_data->gravity.x < 0.3 && motion_data->gravity.x > -0.3));
         }
 
         if (app_control_get_motion_tracking())
@@ -1605,7 +1490,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
                     fabs(delta_senor_angle.yaw - prev_delta_yaw);
                 if (!paused_control_with_arm)
                 {
-                    extern bool get_enable_tap_and_hold(void);
                     if (!get_enable_tap_and_hold() ||
                         peripheral_provider.get_tap_status())
                     {
@@ -1635,7 +1519,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
             }
         }
 
-        extern bool get_enable_tap_and_hold(void);
         if (get_enable_tap_and_hold())
         {
             if (peripheral_provider.get_tap_status())

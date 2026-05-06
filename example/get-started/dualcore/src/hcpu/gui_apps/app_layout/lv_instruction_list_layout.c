@@ -240,10 +240,6 @@ const char *get_app_icon(uint8_t app_id)
 {
     switch (app_id)
     {
-#ifdef APP_ID_SKAI
-    case app_id_ai:
-        return IMG_LOGO;
-#endif
 #ifdef APP_ID_RECORDER
     case app_id_recorder:
         return IMG_RECORDER;
@@ -550,12 +546,6 @@ static void create_indicator_dots(lv_obj_t *parent)
         else if (list_items[i].icon != NULL)
         {
             lv_img_set_src(dot, list_items[i].icon);
-#ifdef APP_ID_SKAI
-            if (strcmp(list_items[i].id, APP_ID_SKAI) == 0)
-            {
-                lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
-            }
-#endif
         }
         else
         {
@@ -966,11 +956,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 LOG_I("instruction DEBUG Selected item index: %d", i);
                 if (touch_obj[i] != NULL && lv_obj_is_valid(touch_obj[i]))
                     lv_obj_clear_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
-                if (!list_items[i].is_instruction
-#ifdef APP_ID_SKAI
-                    && strcmp(list_items[i].id, APP_ID_SKAI) != 0
-#endif
-                )
+                if (!list_items[i].is_instruction)
                 {
                     if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
                         lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
@@ -1628,12 +1614,6 @@ static void list_item_click_event_cb(lv_event_t *evt)
             instruction_tap_cb(item->id, item->enabled);
         }
     }
-#ifdef APP_ID_SKAI
-    else if (strcmp(item->id, APP_ID_SKAI) == 0)
-    {
-        tap_on_ai_hint();
-    }
-#endif
     else
     {
         on_item_tap(item);
@@ -3045,13 +3025,6 @@ static void map_app_id(uint8_t app_id, list_item_t *item)
 
     switch (app_id)
     {
-#ifdef APP_ID_SKAI
-    case app_id_ai:
-        title = LV_EXT_STR_GET_BY_KEY(skai_ai, "AI");
-        icon = IMG_LOGO;
-        id_str = APP_ID_SKAI;
-        break;
-#endif
 #ifdef APP_ID_RECORDER
     case app_id_recorder:
         title = LV_EXT_STR_GET_BY_KEY(recorder, "Recorder");

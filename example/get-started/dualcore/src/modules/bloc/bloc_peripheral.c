@@ -191,69 +191,33 @@ void audio_unsubscribe(void)
 }
         #endif //  #ifndef BSP_USING_PC_SIMULATOR
 
-static void hcpu_reboot(void)
+/* Helpers used by the small wrappers below. The provider exposes them as
+   distinct function pointers, so each wrapper has to be its own symbol. */
+static void send_simple_event(PeripheralEvent ev)
 {
-    PeripheralMessageData data;
-    data.event = HCPU_REBOOT;
+    PeripheralMessageData data = { .event = ev };
     send_peripheral_data(data);
 }
-static void hcpu_resume(void)
+static void send_subscribe_event(PeripheralEvent ev, bool status)
 {
-    PeripheralMessageData data;
-    data.event = HCPU_RESUME;
+    PeripheralMessageData data = { .event = ev };
+    data.arg.subscribe_status = status;
     send_peripheral_data(data);
 }
-static void hcpu_suspend(void)
-{
-    PeripheralMessageData data;
-    data.event = HCPU_SUSPEND;
-    send_peripheral_data(data);
-}
+
+static void hcpu_reboot(void)  { send_simple_event(HCPU_REBOOT); }
+static void hcpu_resume(void)  { send_simple_event(HCPU_RESUME); }
+static void hcpu_suspend(void) { send_simple_event(HCPU_SUSPEND); }
 
 static void subscribe_audio_mic_sensor(bool status)
 {
-    if (voice_provider.audio_subscribed == status)
-    {
-        return;
-    }
-    PeripheralMessageData data;
-    data.event = SUBSCRIBE_AUDIO_MIC;
-    data.arg.subscribe_status = status;
-    send_peripheral_data(data);
+    if (voice_provider.audio_subscribed == status) return;
+    send_subscribe_event(SUBSCRIBE_AUDIO_MIC, status);
 }
-
-static void ppg_sensor_power_control(uint8_t status)
-{
-    PeripheralMessageData data;
-    data.event = POWER_MANAGE_HR;
-    data.arg.subscribe_status = status;
-    send_peripheral_data(data);
-}
-
-static void subscribe_accelerometer_sensor(bool status)
-{
-    PeripheralMessageData data;
-    data.event = SUBSCRIBE_ACCELEROMETER;
-    data.arg.subscribe_status = status;
-    send_peripheral_data(data);
-}
-
-/// heart rate
-static void subscribe_hr_sensor(bool status)
-{
-    PeripheralMessageData data;
-    data.event = SUBSCRIBE_HR;
-    data.arg.subscribe_status = status;
-    send_peripheral_data(data);
-}
-
-static void subscribe_ppg_signal(bool status)
-{
-    PeripheralMessageData data;
-    data.event = SUBSCRIBE_PPG;
-    data.arg.subscribe_status = status;
-    send_peripheral_data(data);
-}
+static void ppg_sensor_power_control(uint8_t status)    { send_subscribe_event(POWER_MANAGE_HR, status); }
+static void subscribe_accelerometer_sensor(bool status) { send_subscribe_event(SUBSCRIBE_ACCELEROMETER, status); }
+static void subscribe_hr_sensor(bool status)            { send_subscribe_event(SUBSCRIBE_HR, status); }
+static void subscribe_ppg_signal(bool status)           { send_subscribe_event(SUBSCRIBE_PPG, status); }
 
 static bool motor_on = false;
 static rt_timer_t motor_on_timer = NULL;
@@ -466,16 +430,6 @@ static void peripheral_task_entry(void *parameter)
                     audio_unsubscribe();
                 }
                 voice_provider.audio_subscribed = data.arg.subscribe_status;
-            }
-            break;
-            case RECORD_AUDIO_MIC:
-            {
-                // TODO: start or stop audio recording
-            }
-            break;
-            case PLAY_AUDIO_SPEAKER:
-            {
-                // TODO: implement audio playback
             }
             break;
         #ifndef BSP_USING_PC_SIMULATOR
@@ -716,15 +670,12 @@ watch_sensor_t watch_sensor;
 
 void process_motion_sensor_data(motion_sensor_data_t *data)
 {
+    /* Copy IMU timestamp/acce/gyro only; mag and sample_rate are populated
+       elsewhere and must not be clobbered, so don't copy the whole struct. */
     watch_sensor.imu_data.timestamp = data->imu.timestamp;
-    watch_sensor.imu_data.acce = data->imu.acce;
-    watch_sensor.imu_data.gyro = data->imu.gyro;
-    watch_sensor.motion_data.timestamp = data->motion.timestamp;
-    watch_sensor.motion_data.linear_acce = data->motion.linear_acce;
-    watch_sensor.motion_data.gravity = data->motion.gravity;
-    watch_sensor.motion_data.global_q = data->motion.global_q;
-    watch_sensor.motion_data.sensor_q = data->motion.sensor_q;
-    watch_sensor.motion_data.ppg_raw_data = data->motion.ppg_raw_data;
+    watch_sensor.imu_data.acce      = data->imu.acce;
+    watch_sensor.imu_data.gyro      = data->imu.gyro;
+    watch_sensor.motion_data        = data->motion;
     if (watch_sensor.imu_sem)
     {
         rt_sem_release(watch_sensor.imu_sem);
@@ -739,10 +690,6 @@ static int watch_sensor_init_lcpu(void)
 {
     #if ENABLE_IMU_SEM_FIFO
     watch_sensor.imu_sem = rt_sem_create("imu_sem", 0, RT_IPC_FLAG_FIFO);
-    #endif
-
-    #if ENABLE_PPG_SEM_FIFO
-    watch_sensor.ppg_sem = rt_sem_create("ppg_sem", 0, RT_IPC_FLAG_FIFO);
     #endif
     return 0;
 }
@@ -828,21 +775,9 @@ void process_ppg_sensor_data(uint8_t sample_num, uint32_t *data,
     }
 #endif
 
-    // Only trigger the semaphore if not in sleep mode
-    if (!is_sleep_mode())
-    {
-#if ENABLE_PPG_SEM_FIFO
-        if (watch_sensor.ppg_sem)
-            rt_sem_release(watch_sensor.ppg_sem);
-#else
-    #ifdef SOC_BF0_LCPU
-            // for (uint8_t i = 0; i < sample_num; i++)
-            // {
-            //     process_ppg_rawdata(watch_sensor.ppg_data.raw_data[i]);
-            // }
-    #endif
-#endif
-    }
+    /* Note: previously released a per-PPG semaphore for a consumer thread.
+       That FIFO mechanism (ENABLE_PPG_SEM_FIFO) is gated off on both cores
+       and has been removed. */
 }
 
 bool check_if_ppg_sensor_data_is_normal(void)
@@ -866,141 +801,6 @@ void hr_data_handler(hr_sensor_data_t *data)
     notify_provider.hr(data->hr);
 }
 
-    #if ENABLE_PPG_SEM_FIFO
-        /**
-         ***** PPG data processing
-         */
-        #define PPG_THREAD_STACK_SIZE 1 * 1024
-        #define PPG_THREAD_PRIORITY 16
-        #define PPG_THREAD_TIMESLICE 10
-static rt_thread_t gesture_ppg_thread = RT_NULL;
-//*************連續傳原始數據*************//
-static void send_ppg_dataset_with_ble(float *ppg, int len)
-{
-    commu_send_heart_rate_series(ppg, (uint16_t)len);
-}
-
-extern bool ppg_data_collection;
-static float ble_ppg_data[4];
-static void gesture_ppg_thread_entry(void *parameter)
-{
-    watch_sensor.ppg_sem = rt_sem_create("ppg_sem", 0, RT_IPC_FLAG_FIFO);
-    while (1)
-    {
-        rt_sem_take(watch_sensor.ppg_sem, RT_WAITING_FOREVER);
-
-        if (ppg_data_collection)
-        {
-            int sample_num = watch_sensor.ppg_data.sample_num;
-            for (int i = 0; i < sample_num; i++)
-            {
-                ble_ppg_data[2 * i] = (float)watch_sensor.ppg_data.raw_data[i];
-                ble_ppg_data[2 * i + 1] =
-                    (float)watch_sensor.ppg_data2.raw_data[i];
-            }
-        #ifdef PPG_RACE_DEBUG
-            {
-                static uint32_t s_cons_seq = 0;
-                static uint32_t s_last_v0 = 0;
-                static uint32_t s_dup_run = 0;
-                uint32_t v0 =
-                    (sample_num > 0) ? watch_sensor.ppg_data.raw_data[0] : 0;
-                uint32_t v1 =
-                    (sample_num > 1) ? watch_sensor.ppg_data.raw_data[1] : 0;
-                s_cons_seq++;
-                if (v0 == s_last_v0)
-                {
-                    s_dup_run++;
-                }
-                else
-                {
-                    if (s_dup_run > 0)
-                    {
-                        LOG_W("[PPG-CONS] DUP streak ended, run=%u", s_dup_run);
-                    }
-                    s_dup_run = 0;
-                    s_last_v0 = v0;
-                }
-                rt_uint16_t sem_val =
-                    watch_sensor.ppg_sem ? watch_sensor.ppg_sem->value : 0;
-                LOG_I("[PPG-CONS] seq=%u n=%d v0=%u v1=%u dup=%u sem=%u ts=%u",
-                      s_cons_seq, sample_num, v0, v1, s_dup_run,
-                      (uint32_t)sem_val, (uint32_t)rt_tick_get_millisecond());
-            }
-        #endif
-            send_ppg_dataset_with_ble(ble_ppg_data, sample_num * 2);
-        }
-    }
-}
-
-static int gesture_ppg_thread_init(void)
-{
-    gesture_ppg_thread = rt_thread_create(
-        "ppg", gesture_ppg_thread_entry, RT_NULL, PPG_THREAD_STACK_SIZE,
-        PPG_THREAD_PRIORITY, PPG_THREAD_TIMESLICE);
-    if (gesture_ppg_thread != RT_NULL)
-    {
-        rt_thread_startup(gesture_ppg_thread);
-        return RT_EOK;
-    }
-    else
-    {
-        return -RT_ERROR;
-    }
-}
-INIT_APP_EXPORT(gesture_ppg_thread_init);
-
-static int utest_peripheral_task(int argc, char *argv[])
-{
-    if (argc >= 3)
-    {
-        if (strcmp(argv[1], "-acce") == 0)
-        {
-            bool status = atoi(argv[2]);
-            subscribe_accelerometer_sensor(status);
-        }
-        else if (strcmp(argv[1], "-ppg") == 0)
-        {
-            bool status = atoi(argv[2]);
-            subscribe_ppg_signal(status);
-        }
-        else if (strcmp(argv[1], "-hr") == 0)
-        {
-            bool status = atoi(argv[2]);
-            subscribe_hr_sensor(status);
-        }
-        else if (strcmp(argv[1], "-audio") == 0)
-        {
-            bool status = atoi(argv[2]);
-            subscribe_audio_mic_sensor(status);
-        }
-        else if (strcmp(argv[1], "-record") == 0)
-        {
-            bool status = atoi(argv[2]);
-            audio_recording(status);
-        }
-        else if (strcmp(argv[1], "-play") == 0)
-        {
-            bool status = atoi(argv[2]);
-            audio_playback(status);
-        }
-    }
-    else
-    {
-        LOG_D("utest_peripheral_task [OPTION] ...\n"
-              "Options:\n"
-              "  -acce [0/1]\n"
-              "  -ppg [0/1]\n"
-              "  -hr [0/1]\n"
-              "  -audio [0/1]\n"
-              "  -record [0/1]\n"
-              "  -play [0/1]\n"
-              "  -request_batt_lvl\n");
-    }
-    return 0;
-}
-MSH_CMD_EXPORT(utest_peripheral_task, "utest_peripheral_task [OPTION] ...");
-    #endif // #ifdef ENABLE_PPG_SEM_FIFO
 #else
 static bool imu_data_collection_mode = false;
 static bool imu_rawdata_collection = false;
@@ -1031,63 +831,6 @@ bool is_imu_rawdata_collection(void)
 {
     return imu_rawdata_collection;
 }
-
-    #if ENABLE_PPG_SEM_FIFO
-        #define PPG_THREAD_STACK_SIZE 1 * 1024
-        #define PPG_THREAD_PRIORITY 16
-        #define PPG_THREAD_TIMESLICE 10
-/**
- * @brief PPG thread entry function
- * @param parameter Thread parameter
- */
-static void gesture_ppg_thread_entry(void *parameter)
-{
-    while (1)
-    {
-        rt_sem_take(watch_sensor.ppg_sem, RT_WAITING_FOREVER);
-
-        // Process main PPG data
-        uint32_t *buffer = gh3018_get_ppg();
-        if (buffer != NULL)
-        {
-            memcpy(buffer, watch_sensor.ppg_data.raw_data,
-                   watch_sensor.ppg_data.sample_num * sizeof(uint32_t));
-            for (int i = 0; i < watch_sensor.ppg_data.sample_num; i++)
-            {
-                process_ppg_rawdata(buffer[i]);
-            }
-        }
-        // Process secondary PPG data if available
-        // buffer = gh3018_get_ppg2();
-        // if (buffer != NULL)
-        // {
-        //     memcpy(buffer, watch_sensor.ppg_data2.raw_data,
-        //     watch_sensor.ppg_data2.sample_num * sizeof(uint32_t));
-        // }
-    }
-}
-
-/**
- * @brief Initialize PPG thread
- * @return RT_EOK on success, error code otherwise
- */
-static int gesture_ppg_thread_init(void)
-{
-    gesture_ppg_thread = rt_thread_create(
-        "ppg", gesture_ppg_thread_entry, RT_NULL, PPG_THREAD_STACK_SIZE,
-        PPG_THREAD_PRIORITY, PPG_THREAD_TIMESLICE);
-    if (gesture_ppg_thread != RT_NULL)
-    {
-        rt_thread_startup(gesture_ppg_thread);
-        return RT_EOK;
-    }
-    else
-    {
-        return -RT_ERROR;
-    }
-}
-INIT_APP_EXPORT(gesture_ppg_thread_init);
-    #endif
 
 #endif // #ifndef SOC_BF0_LCPU
 

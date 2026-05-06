@@ -91,6 +91,22 @@ enum
 static uint16_t cur_brightness = 0;
 static uint16_t cur_screen_time = 0;
 static rt_timer_t smooth_brightness_changed_timer = RT_NULL;
+static rt_timer_t smooth_display_changed_timer = RT_NULL;
+
+/* Lazy-create the one-shot timer if needed, otherwise stop + restart it. */
+static void debounce_timer_kick(rt_timer_t *t, const char *name,
+                                void (*cb)(void *), uint32_t period_ms)
+{
+	if (!*t)
+	{
+		*t = rt_timer_create(name, cb, RT_NULL, period_ms, RT_TIMER_FLAG_ONE_SHOT);
+	}
+	else
+	{
+		rt_timer_stop(*t);
+	}
+	if (*t) rt_timer_start(*t);
+}
 
 static void oled_brightness_changed_callback(void *param)
 {
@@ -98,18 +114,6 @@ static void oled_brightness_changed_callback(void *param)
 	setting_provider.set_brightness(cur_brightness);
 #endif
 	LOG_D("oled_brightness_changed_callback %d", cur_brightness);
-}
-static void oled_brightness_changed_timer_start(uint16_t brightness)
-{
-	if (!smooth_brightness_changed_timer)
-	{
-		smooth_brightness_changed_timer = rt_timer_create("oled_brightness_timer", oled_brightness_changed_callback, RT_NULL, 2000, RT_TIMER_FLAG_ONE_SHOT);
-	}
-	else
-	{
-		rt_timer_stop(smooth_brightness_changed_timer);
-	}
-	rt_timer_start(smooth_brightness_changed_timer);
 }
 
 /* display time */
@@ -120,20 +124,6 @@ static void oled_display_time_changed_cb(void *param)
 #endif
 }
 
-static rt_timer_t smooth_display_changed_timer = RT_NULL;
-static void display_time_changed_timer_start(uint16_t display_time)
-{
-	if (!smooth_display_changed_timer)
-	{
-		smooth_display_changed_timer = rt_timer_create("display_time_timer", oled_display_time_changed_cb, RT_NULL, 2000, RT_TIMER_FLAG_ONE_SHOT);
-	}
-	else
-	{
-		rt_timer_stop(smooth_display_changed_timer);
-	}
-	rt_timer_start(smooth_display_changed_timer);
-}
-
 static void set_screen_brightness_smoothly(uint16_t brightness)
 {
 	if (cur_brightness == brightness || brightness > 100 || brightness < 3)
@@ -142,7 +132,9 @@ static void set_screen_brightness_smoothly(uint16_t brightness)
 	}
 	cur_brightness = brightness;
 	LOG_D("set_screen_brightness_smoothly %d", cur_brightness);
-	oled_brightness_changed_timer_start(cur_brightness);
+	debounce_timer_kick(&smooth_brightness_changed_timer,
+	                    "oled_brightness_timer",
+	                    oled_brightness_changed_callback, 2000);
 }
 
 static void control_screen_time(uint16_t time)
@@ -177,7 +169,9 @@ static void set_screen_time_smoothly(uint16_t time)
 	{
 		cur_screen_time = time;
 		LOG_D("set_screen_time_smoothly %d", cur_screen_time);
-		display_time_changed_timer_start(cur_screen_time);
+		debounce_timer_kick(&smooth_display_changed_timer,
+		                    "display_time_timer",
+		                    oled_display_time_changed_cb, 2000);
 	}
 }
 
@@ -202,33 +196,17 @@ coordinate_t *getCoordinate(void)
 	return &_virtualPlane;
 }
 
-void setCoordinateX(int value)
+static inline void coord_axis_set(int *axis, int value)
 {
-	if (_virtualPlane.x != value)
+	if (*axis != value)
 	{
-		_virtualPlane.x = value;
+		*axis = value;
 		_virtualPlane.state = true;
 	}
 }
-
-void setCoordinateY(int value)
-{
-	if (_virtualPlane.y != value)
-	{
-		_virtualPlane.y = value;
-		_virtualPlane.state = true;
-		// LOG_D("setCoordinateY %d", _virtualPlane.y);
-	}
-}
-
-void setCoordinateZ(int value)
-{
-	if (_virtualPlane.z != value)
-	{
-		_virtualPlane.z = value;
-		_virtualPlane.state = true;
-	}
-}
+void setCoordinateX(int value) { coord_axis_set(&_virtualPlane.x, value); }
+void setCoordinateY(int value) { coord_axis_set(&_virtualPlane.y, value); }
+void setCoordinateZ(int value) { coord_axis_set(&_virtualPlane.z, value); }
 
 static gesture_t _gesture = {.index = -1, .state = true};
 gesture_t *getGesture(void)
@@ -403,14 +381,7 @@ extern void set_widget_vol_bar_value(uint8_t volume);
 extern void set_app_vol_bar_value(uint8_t volume);
 static void bt_speaker_set_volume_percent(uint8_t percent)
 {
-	if (percent > 100)
-	{
-		percent = 100;
-	}
-	else if (percent < 0)
-	{
-		percent = 0;
-	}
+	if (percent > 100) percent = 100;
 	LOG_D("bt_speaker_set_volume_percent %d", percent);
 	volume_percent = percent;
 	set_app_vol_bar_value(volume_percent);
@@ -460,19 +431,8 @@ void bt_speaker_set_volumn_smoothly(uint8_t percent, bool notify)
 	}
 }
 
-void bt_speaker_media_volume_up(void)
-{
-	LOG_D("Volume Up");
-	app_audio_set_control_command(AUDIO_CMD_VOLUME_UP);
-	commu_send_media_control();
-}
-
-void bt_speaker_media_volume_down(void)
-{
-	LOG_D("Volume Down");
-	app_audio_set_control_command(AUDIO_CMD_VOLUME_DOWN);
-	commu_send_media_control();
-}
+void bt_speaker_media_volume_up(void)   { LOG_D("Volume Up");   bt_send_media_cmd(AUDIO_CMD_VOLUME_UP); }
+void bt_speaker_media_volume_down(void) { LOG_D("Volume Down"); bt_send_media_cmd(AUDIO_CMD_VOLUME_DOWN); }
 
 static void ble_hid_play_pause(void)
 {
@@ -487,36 +447,25 @@ static void ble_hid_consumer_back(void)
 	HID_CONSUMER_GoBack();
 }
 
+static void bt_send_media_cmd(uint8_t cmd)
+{
+	app_audio_set_control_command(cmd);
+	commu_send_media_control();
+}
 static void bt_speaker_media_play(void)
 {
 	LOG_D("Play Audio");
-#ifdef AUDIO_USING_MANAGER
-#endif
 	notify_bt_speaker_media_status(true);
-	app_audio_set_control_command(AUDIO_CMD_PLAY);
-	commu_send_media_control();
+	bt_send_media_cmd(AUDIO_CMD_PLAY);
 }
 static void bt_speaker_media_pause(void)
 {
 	LOG_D("Pause Audio");
-#ifdef AUDIO_USING_MANAGER
-#endif
 	notify_bt_speaker_media_status(false);
-	app_audio_set_control_command(AUDIO_CMD_PAUSE);
-	commu_send_media_control();
+	bt_send_media_cmd(AUDIO_CMD_PAUSE);
 }
-static void bt_speaker_media_next(void)
-{
-	LOG_D("Next Audio");
-	app_audio_set_control_command(AUDIO_CMD_NEXT);
-	commu_send_media_control();
-}
-static void bt_speaker_media_prev(void)
-{
-	LOG_D("Previous Audio");
-	app_audio_set_control_command(AUDIO_CMD_PREVIOUS);
-	commu_send_media_control();
-}
+static void bt_speaker_media_next(void) { LOG_D("Next Audio");     bt_send_media_cmd(AUDIO_CMD_NEXT); }
+static void bt_speaker_media_prev(void) { LOG_D("Previous Audio"); bt_send_media_cmd(AUDIO_CMD_PREVIOUS); }
 
 static bool hid_event_flag = true;
 void app_control_set_hid_event_flag(bool flag)
@@ -590,23 +539,16 @@ void bloc_control_set_gui_interactive_mode(bool flag)
 	}
 }
 
-// Function implementation
-void notify_pageview_action(uint8_t action)
+/* Send a {.type, .data.action} LVGL message; no-op if UI handler disabled. */
+static void send_action_msg(uint8_t msg_type, uint8_t action)
 {
 #ifdef BSP_USING_UI_HANDLER
-	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_PAGEVIEW_ACTION,
-					  .data.action = action};
+	lvgl_msg_t msg = {.type = msg_type, .data.action = action};
 	lvgl_send_msg(msg);
 #endif
 }
-void notify_launcher_action(uint8_t action)
-{
-#ifdef BSP_USING_UI_HANDLER
-	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_LAUNCHER_ACTION,
-					  .data.action = action};
-	lvgl_send_msg(msg);
-#endif
-}
+void notify_pageview_action(uint8_t action) { send_action_msg(LVGL_MSG_TYPE_PAGEVIEW_ACTION, action); }
+void notify_launcher_action(uint8_t action) { send_action_msg(LVGL_MSG_TYPE_LAUNCHER_ACTION, action); }
 
 /*Tap indicator*/
 // 0: press
@@ -653,21 +595,16 @@ static void trigger_unknown_event(void)
 #endif
 }
 
-static void trigger_longpress_event(void)
+/* Bare-event LVGL message (no payload); no-op if UI handler disabled. */
+static void send_bare_msg(uint8_t msg_type)
 {
 #ifdef BSP_USING_UI_HANDLER
-	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_LONGPRESS_EVENT};
+	lvgl_msg_t msg = {.type = msg_type};
 	lvgl_send_msg(msg);
 #endif
 }
-
-static void trigger_back_event(void)
-{
-#ifdef BSP_USING_UI_HANDLER
-	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_BACK_EVENT};
-	lvgl_send_msg(msg);
-#endif
-}
+static void trigger_longpress_event(void) { send_bare_msg(LVGL_MSG_TYPE_LONGPRESS_EVENT); }
+static void trigger_back_event(void)      { send_bare_msg(LVGL_MSG_TYPE_BACK_EVENT); }
 
 static void test_all(uint8_t action)
 {
@@ -706,26 +643,13 @@ static struct rt_event sys_media_event;
 
 static void remote_volume_up(void)
 {
-	if (SkaiWatchSys.connected_to_phone)
-	{
-		control_provider.bt_speaker_media_volume_up();
-	}
-	else
-	{
-		volume_up_through_hid();
-	}
+	if (SkaiWatchSys.connected_to_phone) control_provider.bt_speaker_media_volume_up();
+	else                                 volume_up_through_hid();
 }
-
 static void remote_volume_down(void)
 {
-	if (SkaiWatchSys.connected_to_phone)
-	{
-		control_provider.bt_speaker_media_volume_down();
-	}
-	else
-	{
-		volume_down_through_hid();
-	}
+	if (SkaiWatchSys.connected_to_phone) control_provider.bt_speaker_media_volume_down();
+	else                                 volume_down_through_hid();
 }
 
 #if ENABLE_MEDIA_VOLUMN_BAR_CONTROL

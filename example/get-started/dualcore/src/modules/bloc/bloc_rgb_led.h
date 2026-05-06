@@ -59,24 +59,8 @@ typedef struct
  */
 void rgb_led_init(void);
 
-/**
- * @brief Set RGB LED color
- * @param color RGB color value (0xRRGGBB)
- */
-void rgb_led_set_color(uint32_t color);
-
 void rgb_led_animate(rgb_led_params_t *params);
-/**
- * @brief Cycle through predefined colors
- */
-void rgb_color_cycle(void);
-void rgb_fade_cycle(void);
 void rgb_fade_cycle_base_on_battery_level(uint8_t level);
-
-/**
- * @brief Turn off RGB LED
- */
-void rgb_led_off(void);
 
 /**
  * @brief Set all RGB LEDs to the same color
@@ -88,18 +72,6 @@ void rgb_led_set_all_color(uint32_t color);
  * @brief Turn off all RGB LEDs
  */
 void rgb_led_all_off(void);
-
-/**
- * @brief Set main event handle for RGB updates
- * @param event Event handle from main thread
- */
-void rgb_led_set_main_event(rt_event_t event);
-
-/**
- * @brief Process pending RGB LED update (called from main thread)
- */
-void rgb_led_process_update(void);
-void animation_mode_handler(void);
 
 /**
  * @brief Control RGB LED with enable, color components, brightness, animation,

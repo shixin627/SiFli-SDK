@@ -104,10 +104,8 @@ extern "C"
 
 #if defined(SOC_BF0_HCPU)
     #define ENABLE_IMU_SEM_FIFO 1
-    #define ENABLE_PPG_SEM_FIFO 0
 #else
     #define ENABLE_IMU_SEM_FIFO 0
-    #define ENABLE_PPG_SEM_FIFO 0
 #endif
 
     typedef struct
@@ -127,10 +125,6 @@ extern "C"
 
 #if ENABLE_IMU_SEM_FIFO
         rt_sem_t imu_sem;
-#endif
-
-#if ENABLE_PPG_SEM_FIFO
-        rt_sem_t ppg_sem;
 #endif
 
         rt_sem_t gesture_sem;
@@ -209,12 +203,6 @@ extern "C"
         SUBSCRIBE_HR,
         SUBSCRIBE_PPG,
         SUBSCRIBE_AUDIO_MIC,
-        RECORD_AUDIO_MIC,
-        PLAY_AUDIO_SPEAKER,
-        SUBSCRIBE_POWERMANAGER,
-        SET_SCREEN_BRIGHTNESS,
-        SET_SCREEN_TIMEOUT,
-        REVERSE_WATCH_SCREEN,
         HCPU_REBOOT,
         HCPU_RESUME,
         HCPU_SUSPEND,
@@ -226,7 +214,6 @@ extern "C"
         SAVE_SHARE_PREFS,
         NOTIFY_BATTERY_VOLTAGE,
         CHARGE_STATUS_CALLBACK,
-
     } PeripheralEvent;
 
     /// @brief peripheral message arg

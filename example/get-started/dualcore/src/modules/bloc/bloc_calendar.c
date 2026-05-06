@@ -67,16 +67,10 @@
 
 uint8_t calendar_items_amount = 0;
 int selected_calendar_index = 0;
-static char current_sync_id[44];
 
 // 動態日曆存儲 - 每天一個日曆對象
 ITCM_NON_RET_DATA_SECT(calendar)
 calendar_t *calendar_days[DAYS_PER_WEEK] = {NULL};
-
-void set_calendar_items_amount(uint8_t day, uint8_t amount)
-{
-	calendar_items_amount = amount;
-}
 
 /**
  * 分配並複製字符串
@@ -312,31 +306,6 @@ void parse_calendar(const char *json_str, calendar_event_t *calendar_event)
 	cJSON_Delete(root);
 }
 
-void add_calendar(calendar_t *calendar_day, calendar_event_t new_event)
-{
-	if (!calendar_day)
-	{
-		LOG_E("Invalid parameters in add_calendar");
-		return;
-	}
-
-	int result = add_calendar_event(calendar_day, 
-		new_event.id, new_event.summary, new_event.description, new_event.location,
-		new_event.startTime, new_event.endTime);
-		
-	if (result >= 0) {
-		selected_calendar_index = result;
-		LOG_D("selected_calendar_index: %d", selected_calendar_index);
-	}
-}
-
-static uint32_t get_today_timestamp = 0;
-void handle_calendar_start(uint8_t amount)
-{
-	// Function body left empty as in original code
-	// Consider implementing or removing if not needed
-}
-
 void notify_calendar(void)
 {
 	lvgl_msg_t msg;
@@ -356,7 +325,6 @@ void notify_calendar(void)
 }
 
 static uint8_t calendar_data_updata_count = 0;
-static uint8_t last_calendar_day = 0;
 
 static void update_calendar(calendar_event_t newEvent, int day)
 {
@@ -398,58 +366,6 @@ static void update_calendar(calendar_event_t newEvent, int day)
 		LOG_D("Added event to day %d, event index: %d", day, result);
 	} else {
 		LOG_E("Failed to add event to day %d", day);	}
-}
-
-// Removed: static uint8_t calendar_day_sync_amout[DAYS_PER_WEEK] = {0};
-// Event count is now managed dynamically through calendar_t structure
-
-void get_calendar_list_from_template(void)
-{
-	// 檢查是否已經有預設事件，避免重複新增
-	if (calendar_days[DEFAULT_CALENDAR_DAY] != NULL && 
-		calendar_days[DEFAULT_CALENDAR_DAY]->event_count > 0) {
-		// 進一步檢查是否已經有這個特定的預設事件
-		calendar_t *calendar_day = calendar_days[DEFAULT_CALENDAR_DAY];
-		for (uint16_t i = 0; i < calendar_day->event_count; i++) {
-			calendar_event_t *existing_event = &calendar_day->events[i];
-			if (existing_event->id != NULL && 
-				strcmp(existing_event->id, "eqwfwqefwq") == 0) {
-				LOG_D("Default calendar event already exists, skipping template creation");
-				return;
-			}
-		}
-	}
-	
-	LOG_D("Creating default calendar event from template");
-	
-	// 創建默認日曆事件
-	calendar_event_t default_event = {
-		.id = NULL,
-		.summary = NULL,
-		.description = NULL,
-		.location = NULL,
-		.startTime = 0,
-		.endTime = 0,
-		.notified = false,
-	};
-	
-	// 為默認事件分配字符串
-	default_event.id = allocate_string("eqwfwqefwq", &default_event.id_length);
-	default_event.summary = allocate_string("Daily Exercise", &default_event.summary_length);
-	default_event.description = allocate_string("Play basketball", &default_event.description_length);
-	default_event.location = allocate_string("Basketball court", &default_event.location_length);
-	
-	// 確保第0天有日曆
-	if (calendar_days[DEFAULT_CALENDAR_DAY] == NULL) {
-		calendar_days[DEFAULT_CALENDAR_DAY] = create_calendar_day(0);
-	}
-	
-	if (calendar_days[DEFAULT_CALENDAR_DAY]) {
-		add_calendar_event(calendar_days[DEFAULT_CALENDAR_DAY],
-			default_event.id, default_event.summary, default_event.description, default_event.location,
-			default_event.startTime, default_event.endTime);
-		LOG_D("Default calendar event added to day %d", DEFAULT_CALENDAR_DAY);
-	}
 }
 
 void handle_calendar(char *json, uint8_t day)

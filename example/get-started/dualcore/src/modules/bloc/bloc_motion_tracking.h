@@ -73,7 +73,6 @@ extern "C"
     extern void set_control_gravity_x_range(float start, float end,
                                             bool is_circular);
     extern void set_media_control_threshold(uint16_t threshold_value);
-    extern void reset_total_yaw_energy(void);
     extern void set_scroll_segment_count(uint8_t count);
     extern float get_total_moving_distance(void);
     extern void list_auto_positioning(void);
@@ -83,11 +82,6 @@ extern "C"
                                    int32_t *fft_buffer, int sample_len);
     extern void air_mouse_movement_lock_reset(void);
 
-    typedef struct
-    {
-        void (*ai_interface_lock)(void);
-        void (*ai_interface_unlock)(void);
-    } MotionTracking;
     #ifdef __cplusplus
 }
     #endif

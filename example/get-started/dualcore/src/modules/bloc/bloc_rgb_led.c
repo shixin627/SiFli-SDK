@@ -31,11 +31,6 @@ static rt_uint32_t
 static rt_timer_t rgb_anim_timer = RT_NULL; // Timer for animation updates
 static bool rgb_led_stop_flag = true;       // Flag to stop animation
 
-static struct rt_color rgb_color_arry[] = {
-    {"black", 0x000000},  {"blue", 0x0000ff}, {"green", 0x00ff00},
-    {"cyan", 0x00ffff},   {"red", 0xff0000},  {"purple", 0xff00ff},
-    {"yellow", 0xffff00}, {"white", 0xffffff}};
-
 static uint32_t apply_brightness(uint8_t r, uint8_t g, uint8_t b,
                                  uint8_t brightness);
 static void hsv_to_rgb(uint16_t h, uint8_t s, uint8_t v, uint8_t *r, uint8_t *g,
@@ -65,60 +60,6 @@ void rgb_led_init(void)
     }
 
     LOG_I("RGB LED initialized successfully.");
-}
-
-void rgb_led_set_color(uint32_t color)
-{
-    if (!rgbled_device)
-    {
-        LOG_E("Error: RGB LED device not initialized!");
-        return;
-    }
-
-    #ifdef SF32LB52X
-    HAL_PIN_Set(PAD_PA32, GPTIM2_CH1, PIN_NOPULL, 1); // RGB LED 52x  pwm3_cc1
-    #elif defined SF32LB58X
-    HAL_PIN_Set(PAD_PB39, GPTIM3_CH4, PIN_NOPULL, 0); // 58x pwm4_cc4
-    #elif defined SF32LB56X
-    HAL_PIN_Set(PAD_PB25, GPTIM3_CH4, PIN_NOPULL, 0); // 566 pwm4_cc4
-    #endif
-
-    struct rt_rgbled_configuration configuration;
-    configuration.color_rgb = color;
-    rt_device_control(rgbled_device, PWM_CMD_SET_COLOR, &configuration);
-}
-
-void rgb_color_cycle(void)
-{
-    static uint16_t color_index = 0;
-
-    if (color_index < sizeof(rgb_color_arry) / sizeof(struct rt_color))
-    {
-        // rgb_led_set_color(rgb_color_arry[color_index].color);
-        rgb_led_set_all_color(rgb_color_arry[color_index].color);
-    }
-
-    color_index++;
-    if (color_index >= sizeof(rgb_color_arry) / sizeof(struct rt_color))
-    {
-        color_index = 0;
-    }
-}
-
-void rgb_fade_cycle(void)
-{
-    static uint8_t brightness = 0;
-    static int8_t step = 5; // Fade step
-
-    brightness += step;
-    if (brightness == 0 || brightness == 255)
-    {
-        step = -step; // Reverse direction at limits
-    }
-
-    uint32_t color =
-        apply_brightness(0, 255, 0, brightness); // Fade green color
-    rgb_led_set_all_color(color);
 }
 
 static void rgb_parse_hex_color(uint32_t hex_color, uint8_t *r, uint8_t *g,
@@ -189,11 +130,6 @@ void rgb_fade_cycle_base_on_battery_level(uint8_t level)
     }
 
     rgb_led_send_buffer();
-}
-
-void rgb_led_off(void)
-{
-    rgb_led_set_color(0x000000);
 }
 
 void rgb_led_set_all_color(uint32_t color)
@@ -429,13 +365,6 @@ static void rgb_led_stop_internal(void)
 {
     led_state.enabled = 0;
     rgb_led_all_off();
-}
-
-// Legacy function for compatibility - kept but not used in new architecture
-void rgb_led_process_update(void)
-{
-    // This function is no longer used in the event-driven architecture
-    // Kept for backward compatibility if needed
 }
 
 // Helper function to send the LED color buffer to the device

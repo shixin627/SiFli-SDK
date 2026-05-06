@@ -272,45 +272,28 @@ static void parse_notification(const char *json_str,
         return;
     }
 
-    cJSON *id_json = cJSON_GetObjectItem(root, "id");
-    cJSON *title_json = cJSON_GetObjectItem(root, "title");
+    cJSON *id_json      = cJSON_GetObjectItem(root, "id");
+    cJSON *title_json   = cJSON_GetObjectItem(root, "title");
     cJSON *message_json = cJSON_GetObjectItem(root, "message");
-    cJSON *reply_json = cJSON_GetObjectItem(root, "reply");
+    cJSON *reply_json   = cJSON_GetObjectItem(root, "reply");
     cJSON *calling_json = cJSON_GetObjectItem(root, "calling");
     notification->calling = calling_json ? cJSON_IsTrue(calling_json) : false;
 
-    if (id_json && id_json->valuestring)
-    {
-        strncpy(notification->id, id_json->valuestring,
-                sizeof(notification->id) - 1);
-        notification->id[sizeof(notification->id) - 1] = '\0';
-    }
-    else
-    {
-        strcpy(notification->id, "unknown");
-    }
+    /* Copy a cJSON string into a fixed-size dst array, falling back to `def`
+       if the field is missing/null. `dst` must be a real array. */
+    #define COPY_STR_OR_DEF(dst, j, def) do { \
+        if ((j) && (j)->valuestring) { \
+            strncpy((dst), (j)->valuestring, sizeof(dst) - 1); \
+            (dst)[sizeof(dst) - 1] = '\0'; \
+        } else { \
+            strcpy((dst), (def)); \
+        } \
+    } while (0)
 
-    if (title_json && title_json->valuestring)
-    {
-        strncpy(notification->title, title_json->valuestring,
-                sizeof(notification->title) - 1);
-        notification->title[sizeof(notification->title) - 1] = '\0';
-    }
-    else
-    {
-        strcpy(notification->title, "Unknown");
-    }
-
-    if (message_json && message_json->valuestring)
-    {
-        strncpy(notification->message, message_json->valuestring,
-                sizeof(notification->message) - 1);
-        notification->message[sizeof(notification->message) - 1] = '\0';
-    }
-    else
-    {
-        strcpy(notification->message, "");
-    }
+    COPY_STR_OR_DEF(notification->id,      id_json,      "unknown");
+    COPY_STR_OR_DEF(notification->title,   title_json,   "Unknown");
+    COPY_STR_OR_DEF(notification->message, message_json, "");
+    #undef COPY_STR_OR_DEF
 
     notification->can_reply = reply_json ? cJSON_IsTrue(reply_json) : false;
 
@@ -322,191 +305,95 @@ static void parse_notification(const char *json_str,
     cJSON_Delete(root);
 }
 
+/* Notification id <-> app-name table. The order of `notify_name_map` is
+   load-bearing: shorter names that are substrings of longer ones (e.g.
+   "Mail" vs "Gmail", "Line" vs "LinkedIn") would shadow the longer ones
+   under strstr — preserve the original priority by listing them first. */
+static const char *const notify_app_names[] = {
+    [Notify_calendar]   = "Calendar",
+    [Notify_facebook]   = "Facebook",
+    [Notify_facetime]   = "FaceTime",
+    [Notify_instagram]  = "Instagram",
+    [Notify_kakaotalk]  = "KakaoTalk",
+    [Notify_line]       = "Line",
+    [Notify_linkedin]   = "LinkedIn",
+    [Notify_mail]       = "Mail",
+    [Notify_messenger]  = "Messenger",
+    [Notify_others]     = "Others",
+    [Notify_QQ]         = "QQ",
+    [Notify_skype]      = "Skype",
+    [Notify_SMS]        = "SMS",
+    [Notify_snap]       = "Snap",
+    [Notify_twitter]    = "Twitter",
+    [Notify_wechat]     = "WeChat",
+    [Notify_whatsapp]   = "WhatsApp",
+    [Notify_gmail]      = "Gmail",
+    [Notify_dingtalk]   = "DingTalk",
+    [Notify_googlechat] = "Google Chat",
+    [Notify_discord]    = "Discord",
+    [Notify_youtube]    = "YouTube",
+    [Notify_tiktok]     = "TikTok",
+    [Notify_telegram]   = "Telegram",
+    [Notify_twitch]     = "Twitch",
+    [Notify_slack]      = "Slack",
+    [Notify_lark]       = "Lark",
+    [Notify_reddit]     = "Reddit",
+    [Notify_Skaiwalk]   = "Skaiwalk",
+};
+
 const char *get_app_name_from_notify_id(Notifications_Type notify_id)
 {
-    switch (notify_id)
+    if ((unsigned)notify_id < sizeof(notify_app_names) / sizeof(notify_app_names[0])
+        && notify_app_names[notify_id])
     {
-    case Notify_calendar:
-        return "Calendar";
-    case Notify_facebook:
-        return "Facebook";
-    case Notify_facetime:
-        return "FaceTime";
-    case Notify_instagram:
-        return "Instagram";
-    case Notify_kakaotalk:
-        return "KakaoTalk";
-    case Notify_line:
-        return "Line";
-    case Notify_linkedin:
-        return "LinkedIn";
-    case Notify_mail:
-        return "Mail";
-    case Notify_messenger:
-        return "Messenger";
-    case Notify_others:
-        return "Others";
-    case Notify_QQ:
-        return "QQ";
-    case Notify_skype:
-        return "Skype";
-    case Notify_SMS:
-        return "SMS";
-    case Notify_snap:
-        return "Snap";
-    case Notify_twitter:
-        return "Twitter";
-    case Notify_wechat:
-        return "WeChat";
-    case Notify_whatsapp:
-        return "WhatsApp";
-    case Notify_gmail:
-        return "Gmail";
-    case Notify_dingtalk:
-        return "DingTalk";
-    case Notify_googlechat:
-        return "Google Chat";
-    case Notify_discord:
-        return "Discord";
-    case Notify_youtube:
-        return "YouTube";
-    case Notify_tiktok:
-        return "TikTok";
-    case Notify_telegram:
-        return "Telegram";
-    case Notify_twitch:
-        return "Twitch";
-    case Notify_slack:
-        return "Slack";
-    case Notify_lark:
-        return "Lark";
-    case Notify_reddit:
-        return "Reddit";
-    case Notify_Skaiwalk:
-        return "Skaiwalk";
-    default:
-        return "Unknown";
+        return notify_app_names[notify_id];
     }
+    return "Unknown";
 }
+
+/* Same name list, ordered for ANCS lookup (Mail before Gmail etc., as in the
+   original cascade — kept verbatim to preserve substring priorities). */
+static const struct { const char *name; uint8_t type; } notify_name_map[] = {
+    {"Calendar",     Notify_calendar},
+    {"Facebook",     Notify_facebook},
+    {"FaceTime",     Notify_facetime},
+    {"Instagram",    Notify_instagram},
+    {"KakaoTalk",    Notify_kakaotalk},
+    {"Line",         Notify_line},
+    {"LinkedIn",     Notify_linkedin},
+    {"Mail",         Notify_mail},
+    {"Messenger",    Notify_messenger},
+    {"QQ",           Notify_QQ},
+    {"Skype",        Notify_skype},
+    {"SMS",          Notify_SMS},
+    {"Snap",         Notify_snap},
+    {"Twitter",      Notify_twitter},
+    {"WeChat",       Notify_wechat},
+    {"WhatsApp",     Notify_whatsapp},
+    {"Gmail",        Notify_gmail},
+    {"DingTalk",     Notify_dingtalk},
+    {"Google Chat",  Notify_googlechat},
+    {"Discord",      Notify_discord},
+    {"YouTube",      Notify_youtube},
+    {"TikTok",       Notify_tiktok},
+    {"Telegram",     Notify_telegram},
+    {"Twitch",       Notify_twitch},
+    {"Slack",        Notify_slack},
+    {"Lark",         Notify_lark},
+    {"Reddit",       Notify_reddit},
+    {"Skaiwalk",     Notify_Skaiwalk},
+};
 
 uint8_t get_notification_type_from_ios_ancs_name(const char *name)
 {
-    if (strstr(name, "Calendar") != NULL)
+    for (size_t i = 0; i < sizeof(notify_name_map) / sizeof(notify_name_map[0]); i++)
     {
-        return Notify_calendar;
+        if (strstr(name, notify_name_map[i].name) != NULL)
+        {
+            return notify_name_map[i].type;
+        }
     }
-    else if (strstr(name, "Facebook") != NULL)
-    {
-        return Notify_facebook;
-    }
-    else if (strstr(name, "FaceTime") != NULL)
-    {
-        return Notify_facetime;
-    }
-    else if (strstr(name, "Instagram") != NULL)
-    {
-        return Notify_instagram;
-    }
-    else if (strstr(name, "KakaoTalk") != NULL)
-    {
-        return Notify_kakaotalk;
-    }
-    else if (strstr(name, "Line") != NULL)
-    {
-        return Notify_line;
-    }
-    else if (strstr(name, "LinkedIn") != NULL)
-    {
-        return Notify_linkedin;
-    }
-    else if (strstr(name, "Mail") != NULL)
-    {
-        return Notify_mail;
-    }
-    else if (strstr(name, "Messenger") != NULL)
-    {
-        return Notify_messenger;
-    }
-    else if (strstr(name, "QQ") != NULL)
-    {
-        return Notify_QQ;
-    }
-    else if (strstr(name, "Skype") != NULL)
-    {
-        return Notify_skype;
-    }
-    else if (strstr(name, "SMS") != NULL)
-    {
-        return Notify_SMS;
-    }
-    else if (strstr(name, "Snap") != NULL)
-    {
-        return Notify_snap;
-    }
-    else if (strstr(name, "Twitter") != NULL)
-    {
-        return Notify_twitter;
-    }
-    else if (strstr(name, "WeChat") != NULL)
-    {
-        return Notify_wechat;
-    }
-    else if (strstr(name, "WhatsApp") != NULL)
-    {
-        return Notify_whatsapp;
-    }
-    else if (strstr(name, "Gmail") != NULL)
-    {
-        return Notify_gmail;
-    }
-    else if (strstr(name, "DingTalk") != NULL)
-    {
-        return Notify_dingtalk;
-    }
-    else if (strstr(name, "Google Chat") != NULL)
-    {
-        return Notify_googlechat;
-    }
-    else if (strstr(name, "Discord") != NULL)
-    {
-        return Notify_discord;
-    }
-    else if (strstr(name, "YouTube") != NULL)
-    {
-        return Notify_youtube;
-    }
-    else if (strstr(name, "TikTok") != NULL)
-    {
-        return Notify_tiktok;
-    }
-    else if (strstr(name, "Telegram") != NULL)
-    {
-        return Notify_telegram;
-    }
-    else if (strstr(name, "Twitch") != NULL)
-    {
-        return Notify_twitch;
-    }
-    else if (strstr(name, "Slack") != NULL)
-    {
-        return Notify_slack;
-    }
-    else if (strstr(name, "Lark") != NULL)
-    {
-        return Notify_lark;
-    }
-    else if (strstr(name, "Reddit") != NULL)
-    {
-        return Notify_reddit;
-    }
-    else if (strstr(name, "Skaiwalk") != NULL)
-    {
-        return Notify_Skaiwalk;
-    }
-    else
-    {
-        return Notify_others;
-    }
+    return Notify_others;
 }
 
 static notification_t temp_notification;

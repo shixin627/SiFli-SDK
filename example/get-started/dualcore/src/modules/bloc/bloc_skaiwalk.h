@@ -91,7 +91,6 @@ extern "C"
 	extern void bloc_skaiwalk_prepare_quaternion_buffer(float *quat);
 
 	extern chat_t *get_message_list(void);
-	extern chat_t *temp_chat(void);
 	extern SkaiwalkProvider skaiwalk_provider;
 	extern uint16_t *skai_message_count_ptr(void);
 	extern chat_t *get_skai_message(chat_t *chat_list, uint16_t items_amount, int index, bool is_reverse);

@@ -6767,7 +6767,7 @@
                   <MiscControls></MiscControls>
                   <Define> </Define>
                   <Undefine> </Undefine>
-                  <IncludePath> </IncludePath>
+                  <IncludePath></IncludePath>
                 </VariousControls>
               </Cads>
               <Aads>
@@ -9138,36 +9138,26 @@
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\rtos\rtthread\components\finsh\shell.c</FilePath>
             </File>
-          </Files>
-          <Files>
             <File>
               <FileName>symbol.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\rtos\rtthread\components\finsh\symbol.c</FilePath>
             </File>
-          </Files>
-          <Files>
             <File>
               <FileName>cmd.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\rtos\rtthread\components\finsh\cmd.c</FilePath>
             </File>
-          </Files>
-          <Files>
             <File>
               <FileName>msh.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\rtos\rtthread\components\finsh\msh.c</FilePath>
             </File>
-          </Files>
-          <Files>
             <File>
               <FileName>msh_cmd.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\rtos\rtthread\components\finsh\msh_cmd.c</FilePath>
             </File>
-          </Files>
-          <Files>
             <File>
               <FileName>msh_file.c</FileName>
               <FileType>1</FileType>

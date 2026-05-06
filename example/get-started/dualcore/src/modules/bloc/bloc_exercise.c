@@ -369,43 +369,10 @@ workout_history_t *get_workout_history(void)
         files_processed++;
         snprintf(path, MAX_WORKOUT_PATH_LEN, "/exercise/%s", ent->d_name);
 
-        FILE *fp = fopen(path, "r");
-        if (!fp)
-        {
-            LOG_W("Failed to open file %s", ent->d_name);
-            parse_failures++;
-            continue;
-        }
-
-        fseek(fp, 0, SEEK_END);
-        long file_size = ftell(fp);
-        fseek(fp, 0, SEEK_SET);
-
-        if (file_size <= 0 || file_size > MAX_DAILY_EXERCISE_FILE_BYTES)
-        {
-            LOG_W("File %s size invalid: %ld bytes", ent->d_name, file_size);
-            parse_failures++;
-            fclose(fp);
-            continue;
-        }
-
-        char *json_str = (char *)rt_malloc(file_size + 1);
-        if (!json_str)
-        {
-            LOG_W("Failed to allocate memory for JSON string from %s", ent->d_name);
-            parse_failures++;
-            fclose(fp);
-            continue;
-        }
-        size_t read_size = fread(json_str, 1, file_size, fp);
-        json_str[read_size] = '\0';
-        fclose(fp);
-
-        cJSON *root = cJSON_Parse(json_str);
-        rt_free(json_str);
+        cJSON *root = read_daily_exercise_file(path);
         if (!root)
         {
-            LOG_W("Failed to parse JSON from file %s", ent->d_name);
+            LOG_W("Failed to read/parse %s", ent->d_name);
             parse_failures++;
             continue;
         }

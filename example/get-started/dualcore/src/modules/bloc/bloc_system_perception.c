@@ -65,7 +65,6 @@ static bool last_device_logged = false;
 #define PERIODIC_TASK_TICK (60 * RT_TICK_PER_SECOND) // Run every 1 minute
 
 static rt_thread_t periodic_task_thread = RT_NULL;
-static uint8_t periodic_task_stack[PERIODIC_TASK_STACK_SIZE];
 
 #ifdef BSP_USING_BLOC
 /**
@@ -123,16 +122,16 @@ void app_periodic_task(void)
 #endif
 
 #ifdef BSP_USING_BLOC
-    // Check if device just connected to phone (rising edge detection)
+    /* Check pending /recorder sync whenever phone is logged in. The first
+       transition (false -> true) gets an extra log so the boundary is visible
+       in traces. */
     bool current_logged = SkaiWatchSys.flag_field.device_had_logged;
-    if (current_logged && !last_device_logged)
+    if (current_logged)
     {
-        LOG_D("Phone connection detected, checking for pending recorder files");
-        check_and_sync_pending_recordings();
-    }
-    else if (current_logged)
-    {
-        // Already connected - still check for remaining unsync'd files
+        if (!last_device_logged)
+        {
+            LOG_D("Phone connection detected, checking for pending recorder files");
+        }
         check_and_sync_pending_recordings();
     }
     last_device_logged = current_logged;

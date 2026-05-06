@@ -72,7 +72,6 @@ extern "C"
 	extern void start_sync_voice_recording(void);
 	extern void stop_sync_voice_recording(void);
 
-	extern voice2text_t *getVoice2TextResult(void);
 	extern char *get_combined_voice2text(void);
 	extern void setVoice2TextState(bool state);
 	extern void setVoice2Text(char *text);
@@ -83,9 +82,6 @@ extern "C"
 	extern bool app_voice_get_listening_status(void);
 	extern void app_voice_set_listening_status(bool status);
 	/* voice text2voice */
-	extern uint16_t record_time_string[8];
-	extern void voice_record_timer_start(void);
-	extern void voice_record_timer_stop(void);
 	extern uint8_t app_voice_get_voice2text_intent(void);
 	extern void app_voice_set_voice2text_intent(uint8_t intent);
 	extern bool app_voice_get_voice2text_status(void);

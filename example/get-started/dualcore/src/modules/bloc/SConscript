@@ -20,16 +20,12 @@ if GetDepend('BSP_USING_BLOC_SETTING'):
     src += Glob('bloc_setting.c')
 if GetDepend('BSP_USING_BLOC_SKAIWALK'):
     src += Glob('bloc_skaiwalk.c')
-if GetDepend('BSP_USING_BLOC_TASK'):
-    src += Glob('bloc_task.c')
 if GetDepend('BSP_USING_BLOC_V2T'):
     src += Glob('bloc_v2t.c')
 if GetDepend('BSP_USING_BLOC_BATTERY'):
     src += Glob('bloc_battery.c')
 if GetDepend('BSP_USING_BLOC_MOTOR'):
     src += Glob('bloc_motor.c')
-if GetDepend('BSP_USING_BLOC_BUTTON'):
-    src += Glob('bloc_button.c')
 if GetDepend('BSP_USING_BLOC_PERIPHERAL'):
     src += Glob('bloc_peripheral.c')
 if GetDepend('BSP_USING_BLOC_WEATHER'):

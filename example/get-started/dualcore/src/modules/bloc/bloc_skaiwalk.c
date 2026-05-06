@@ -170,40 +170,13 @@ static int bloc_skaiwalk_provider_register(void)
 
 INIT_APP_EXPORT(bloc_skaiwalk_provider_register);
 
-/**
- * @brief Convert float to IEEE754 standard bytes
- * @param quaternion Float value to convert
- * @param buffer Output buffer (4 bytes)
- */
-static void ieee754FloatingPointStandardConvertor(float quaternion, unsigned char *buffer)
-{
-	if (buffer == NULL)
-	{
-		return;
-	}
-
-	unsigned char *p = (unsigned char *)&quaternion;
-	buffer[0] = p[0];
-	buffer[1] = p[1];
-	buffer[2] = p[2];
-	buffer[3] = p[3];
-}
-
-/**
- * @brief Prepare quaternion buffer with IEEE754 format
- * @param quat Array of 4 quaternion float values
- */
 void bloc_skaiwalk_prepare_quaternion_buffer(float *quat)
 {
 	if (quat == NULL)
 	{
 		return;
 	}
-
-	for (uint8_t i = 0; i < 4; i++)
-	{
-		ieee754FloatingPointStandardConvertor(quat[i], &quaternion_buffer[i * 4]);
-	}
+	memcpy(quaternion_buffer, quat, sizeof(float) * 4);
 }
 
 /**
@@ -269,145 +242,55 @@ void parse_ai_processing_toolkit(const char *description)
 	lvgl_send_msg(msg);
 }
 
-/**
- * @brief Parse finance data from JSON string
- * @param json_str JSON string containing finance data
- * @param finance Pointer to finance structure to populate
- */
+/* Copy a cJSON string field into a fixed-size char buffer (NUL-terminated).
+   `dst` must be a real array (sizeof works on it). */
+#define COPY_JSON_STR(root, key, dst) do {                       \
+	cJSON *_v = cJSON_GetObjectItem((root), (key));              \
+	if (_v && cJSON_IsString(_v)) {                              \
+		strncpy((dst), cJSON_GetStringValue(_v), sizeof(dst) - 1); \
+		(dst)[sizeof(dst) - 1] = '\0';                           \
+	}                                                            \
+} while (0)
+
+#define COPY_JSON_NUM(root, key, dst) do {                       \
+	cJSON *_v = cJSON_GetObjectItem((root), (key));              \
+	if (_v && cJSON_IsNumber(_v)) (dst) = cJSON_GetNumberValue(_v); \
+} while (0)
+
 static void parse_finance(const char *json_str, finance_t *finance)
 {
-	if (json_str == NULL || finance == NULL)
-	{
-		return;
-	}
-
+	if (json_str == NULL || finance == NULL) return;
 	cJSON *root = cJSON_Parse(json_str);
-	if (!root)
-	{
-		return;
-	}
+	if (!root) return;
 
-	cJSON *id = cJSON_GetObjectItem(root, "id");
-	cJSON *code = cJSON_GetObjectItem(root, "code");
-	cJSON *name = cJSON_GetObjectItem(root, "name");
-	cJSON *price = cJSON_GetObjectItem(root, "price");
-	cJSON *change = cJSON_GetObjectItem(root, "change");
-	cJSON *volume = cJSON_GetObjectItem(root, "volume");
-	cJSON *high = cJSON_GetObjectItem(root, "high");
-	cJSON *low = cJSON_GetObjectItem(root, "low");
-	cJSON *open = cJSON_GetObjectItem(root, "open");
-	cJSON *close = cJSON_GetObjectItem(root, "close");
-	cJSON *updatedAt = cJSON_GetObjectItem(root, "updatedAt");
-
-	if (id && cJSON_IsString(id))
-	{
-		strncpy(finance->id, cJSON_GetStringValue(id), sizeof(finance->id) - 1);
-		finance->id[sizeof(finance->id) - 1] = '\0';
-	}
-	if (code && cJSON_IsString(code))
-	{
-		strncpy(finance->code, cJSON_GetStringValue(code), sizeof(finance->code) - 1);
-		finance->code[sizeof(finance->code) - 1] = '\0';
-	}
-	if (name && cJSON_IsString(name))
-	{
-		strncpy(finance->name, cJSON_GetStringValue(name), sizeof(finance->name) - 1);
-		finance->name[sizeof(finance->name) - 1] = '\0';
-	}
-	if (price && cJSON_IsNumber(price))
-	{
-		finance->price = cJSON_GetNumberValue(price);
-	}
-	if (change && cJSON_IsNumber(change))
-	{
-		finance->change = cJSON_GetNumberValue(change);
-	}
-	if (volume && cJSON_IsNumber(volume))
-	{
-		finance->volume = cJSON_GetNumberValue(volume);
-	}
-	if (high && cJSON_IsNumber(high))
-	{
-		finance->high = cJSON_GetNumberValue(high);
-	}
-	if (low && cJSON_IsNumber(low))
-	{
-		finance->low = cJSON_GetNumberValue(low);
-	}
-	if (open && cJSON_IsNumber(open))
-	{
-		finance->open = cJSON_GetNumberValue(open);
-	}
-	if (close && cJSON_IsNumber(close))
-	{
-		finance->close = cJSON_GetNumberValue(close);
-	}
-	if (updatedAt && cJSON_IsNumber(updatedAt))
-	{
-		finance->updatedAt = cJSON_GetNumberValue(updatedAt);
-	}
+	COPY_JSON_STR(root, "id",        finance->id);
+	COPY_JSON_STR(root, "code",      finance->code);
+	COPY_JSON_STR(root, "name",      finance->name);
+	COPY_JSON_NUM(root, "price",     finance->price);
+	COPY_JSON_NUM(root, "change",    finance->change);
+	COPY_JSON_NUM(root, "volume",    finance->volume);
+	COPY_JSON_NUM(root, "high",      finance->high);
+	COPY_JSON_NUM(root, "low",       finance->low);
+	COPY_JSON_NUM(root, "open",      finance->open);
+	COPY_JSON_NUM(root, "close",     finance->close);
+	COPY_JSON_NUM(root, "updatedAt", finance->updatedAt);
 
 	cJSON_Delete(root);
 }
 
-/**
- * @brief Parse currency conversion data from JSON string
- * @param json_str JSON string containing currency conversion data
- * @param cc Pointer to currency conversion structure to populate
- */
 static void parse_currency_conversion(const char *json_str, currency_conversion_t *cc)
 {
-	if (json_str == NULL || cc == NULL)
-	{
-		return;
-	}
-
+	if (json_str == NULL || cc == NULL) return;
 	cJSON *root = cJSON_Parse(json_str);
-	if (!root)
-	{
-		return;
-	}
+	if (!root) return;
 
-	cJSON *from = cJSON_GetObjectItem(root, "from_currency");
-	cJSON *to = cJSON_GetObjectItem(root, "to_currency");
-	cJSON *amount = cJSON_GetObjectItem(root, "amount");
-	cJSON *converted_amount = cJSON_GetObjectItem(root, "converted_amount");
-	cJSON *exchange_rate = cJSON_GetObjectItem(root, "exchange_rate");
-	cJSON *result = cJSON_GetObjectItem(root, "result");
-	cJSON *timestamp = cJSON_GetObjectItem(root, "timestamp");
-
-	if (from && cJSON_IsString(from))
-	{
-		strncpy(cc->from_currency, cJSON_GetStringValue(from), sizeof(cc->from_currency) - 1);
-		cc->from_currency[sizeof(cc->from_currency) - 1] = '\0';
-	}
-	if (to && cJSON_IsString(to))
-	{
-		strncpy(cc->to_currency, cJSON_GetStringValue(to), sizeof(cc->to_currency) - 1);
-		cc->to_currency[sizeof(cc->to_currency) - 1] = '\0';
-	}
-	if (amount && cJSON_IsNumber(amount))
-	{
-		cc->amount = cJSON_GetNumberValue(amount);
-	}
-	if (converted_amount && cJSON_IsNumber(converted_amount))
-	{
-		cc->converted_amount = cJSON_GetNumberValue(converted_amount);
-	}
-	if (exchange_rate && cJSON_IsNumber(exchange_rate))
-	{
-		cc->exchange_rate = cJSON_GetNumberValue(exchange_rate);
-	}
-	if (result && cJSON_IsString(result))
-	{
-		strncpy(cc->result, cJSON_GetStringValue(result), sizeof(cc->result) - 1);
-		cc->result[sizeof(cc->result) - 1] = '\0';
-	}
-	if (timestamp && cJSON_IsString(timestamp))
-	{
-		strncpy(cc->timestamp, cJSON_GetStringValue(timestamp), sizeof(cc->timestamp) - 1);
-		cc->timestamp[sizeof(cc->timestamp) - 1] = '\0';
-	}
+	COPY_JSON_STR(root, "from_currency",    cc->from_currency);
+	COPY_JSON_STR(root, "to_currency",      cc->to_currency);
+	COPY_JSON_NUM(root, "amount",           cc->amount);
+	COPY_JSON_NUM(root, "converted_amount", cc->converted_amount);
+	COPY_JSON_NUM(root, "exchange_rate",    cc->exchange_rate);
+	COPY_JSON_STR(root, "result",           cc->result);
+	COPY_JSON_STR(root, "timestamp",        cc->timestamp);
 
 	cJSON_Delete(root);
 }
@@ -599,18 +482,15 @@ void parse_ai_reply_data(uint8_t *data, uint16_t len, lv_obj_t *parent)
 	}
 }
 
-// extern void notify_voice_recognition(uint16_t text_len);
 static void bloc_notify_skai_input_message()
 {
+	char *text = get_combined_voice2text();
+	LOG_D("bloc_notify_skai_input_message: %s", text);
+	
 	lvgl_msg_t msg;
 	msg.type = LVGL_MSG_TYPE_INPUT_MESSAGE;
-	char *text = get_combined_voice2text();
-	// msg.data.message = (char *)getVoice2TextResult()->text;
 	msg.data.message = text;
-	LOG_D("bloc_notify_skai_input_message: %s", text);
 	lvgl_send_msg(msg);
-
-	// notify_voice_recognition(strlen(text));
 }
 
 // Skai AI
@@ -620,17 +500,7 @@ chat_t *get_message_list()
 	return _message_list;
 }
 
-const chat_t messages_constant[] =
-	{
-		[0] = {.id = "msg_0", .message = "有甚麼需要幫忙?", .attachment = "", .state = true, .is_self = false, .timestamp = 0, .widget_data = NULL},
-		[1] = {.id = "msg_1", .message = "明天天氣如何", .attachment = "", .state = true, .is_self = true, .timestamp = 0, .widget_data = NULL},
-		[2] = {.id = "msg_2", .message = "明天天氣晴", .attachment = "", .state = true, .is_self = false, .timestamp = 0, .widget_data = NULL},
-		[3] = {.id = "msg_3", .message = "請問明天有沒有下雨", .attachment = "", .state = true, .is_self = true, .timestamp = 0, .widget_data = NULL},
-		[4] = {.id = "msg_4", .message = "明天不會下雨", .attachment = "", .state = true, .is_self = false, .timestamp = 0, .widget_data = NULL},
-};
-
 static uint16_t message_items_amount = 0;
-static uint8_t selected_message_index = 0;
 uint16_t *skai_message_count_ptr(void)
 {
 	return &message_items_amount;
@@ -645,23 +515,17 @@ chat_t *get_skai_message(chat_t *chat_list, uint16_t items_amount, int index, bo
 	return &chat_list[index];
 }
 
-void set_skai_message(chat_t *chat_list, chat_t message, int index)
+static void set_skai_message(chat_t *chat_list, chat_t message, int index)
 {
 	chat_list[index] = message;
 }
 
-void append_message_content(chat_t *chat_list, int index, char *message)
+static void append_message_content(chat_t *chat_list, int index, char *message)
 {
 	// Preserve the original timestamp
 	time_t original_timestamp = chat_list[index].timestamp;
 	strcat(chat_list[index].message, message);
-	// Restore the timestamp
 	chat_list[index].timestamp = original_timestamp;
-}
-
-chat_t *get_cur_skai_message(void)
-{
-	return &_message_list[selected_message_index];
 }
 
 void clear_skai_message_list(chat_t *list, uint16_t *items_amount_ptr)
@@ -705,25 +569,6 @@ void delete_skai_message(chat_t *chat_list, uint16_t *items_amount_ptr, uint8_t 
 		(*items_amount_ptr)--;
 	}
 	bloc_notify_skai_message();
-}
-
-void get_messages_list_from_template(void)
-{
-	time_t current_time = time(NULL);
-	for (uint8_t i = 0; i < ITEM_AMOUNT; i++)
-	{
-		LOG_D("message(%d) is in constant resources", i);
-		_message_list[i] = messages_constant[i];
-		// Set current timestamp for constant messages
-		_message_list[i].timestamp = current_time - (ITEM_AMOUNT - i) * 60; // Stagger timestamps
-		message_items_amount++;
-	}
-}
-static void parse_skai_message(const char *encoded_str, chat_t *message)
-{
-	strncpy(message->message, encoded_str, sizeof(message->message));
-	message->timestamp = time(NULL); // Set current timestamp
-	LOG_D("skai_message:%s", message->message);
 }
 
 void append_text_to_latest_message(chat_t *chat_list, uint16_t *items_amount_ptr, char *text)
@@ -806,11 +651,30 @@ static chat_t temp_message = {
 	.widget_data = NULL,
 	.is_self = false,
 	.timestamp = 0};
-chat_t *temp_chat(void)
+/* Append `src_len` bytes from `src` onto *buf (allocating or reallocating as
+   needed). Maintains NUL-termination at *buf[*len]. Returns 0 on success, -1
+   on alloc failure (in which case *buf is freed and zeroed). */
+static int sk_buf_append(char **buf, int *len, const uint8_t *src, uint16_t src_len)
 {
-	return &temp_message;
+	if (*buf == NULL)
+	{
+		*buf = rt_malloc(src_len + 1);
+		if (*buf == NULL) { *len = 0; return -1; }
+		memcpy(*buf, src, src_len);
+		*len = src_len;
+	}
+	else
+	{
+		char *nb = rt_realloc(*buf, *len + src_len + 1);
+		if (nb == NULL) { rt_free(*buf); *buf = NULL; *len = 0; return -1; }
+		*buf = nb;
+		memcpy(*buf + *len, src, src_len);
+		*len += src_len;
+	}
+	(*buf)[*len] = '\0';
+	return 0;
 }
-// Modified function with an additional parameter for the message part
+
 void handle_skai_message(char *app_id, MSG_DATA_PAYLOAD *msgData)
 {
 	static char *accumulated_text = NULL; // Buffer to accumulate message parts
@@ -836,84 +700,38 @@ void handle_skai_message(char *app_id, MSG_DATA_PAYLOAD *msgData)
 		if (accumulated_text != NULL)
 		{
 			rt_free(accumulated_text);
+			accumulated_text = NULL;
+			accumulated_length = 0;
 		}
-		accumulated_text = rt_malloc(msgData->length + 1);
-		if (accumulated_text == NULL)
+		if (sk_buf_append(&accumulated_text, &accumulated_length,
+						  msgData->p_msg_value, msgData->length) != 0)
 		{
 			LOG_E("Failed to allocate memory for message");
-			accumulated_length = 0;
 			return;
 		}
-		memcpy(accumulated_text, msgData->p_msg_value, msgData->length);
-		accumulated_length = msgData->length;
-		accumulated_text[accumulated_length] = '\0';
 		prepared = true;
 		break;
 
 	case MESSAGE_PART_MIDDLE:
-		/* Streaming start/middle: append to the running buffer, no render
-		   yet. Tolerates a missing prior START — we just init the buffer. */
-		if (accumulated_text == NULL)
+		/* Streaming start/middle: append to the running buffer, no render yet.
+		   Tolerates a missing prior START — we just init the buffer. */
+		if (sk_buf_append(&accumulated_text, &accumulated_length,
+						  msgData->p_msg_value, msgData->length) != 0)
 		{
-			accumulated_text = rt_malloc(msgData->length + 1);
-			if (accumulated_text == NULL)
-			{
-				LOG_E("Failed to allocate memory for message");
-				accumulated_length = 0;
-				return;
-			}
-			memcpy(accumulated_text, msgData->p_msg_value, msgData->length);
-			accumulated_length = msgData->length;
+			LOG_E("Failed to (re)allocate memory for message");
+			return;
 		}
-		else
-		{
-			char *new_buffer = rt_realloc(accumulated_text, accumulated_length + msgData->length + 1);
-			if (new_buffer == NULL)
-			{
-				LOG_E("Failed to reallocate memory for message");
-				rt_free(accumulated_text);
-				accumulated_text = NULL;
-				accumulated_length = 0;
-				return;
-			}
-			accumulated_text = new_buffer;
-			memcpy(accumulated_text + accumulated_length, msgData->p_msg_value, msgData->length);
-			accumulated_length += msgData->length;
-		}
-		accumulated_text[accumulated_length] = '\0';
 		break;
 
 	case MESSAGE_PART_END:
 		/* Streaming end: append, then render. Tolerates a missing START so
 		   a lone END behaves like a single-shot message. */
-		if (accumulated_text == NULL)
+		if (sk_buf_append(&accumulated_text, &accumulated_length,
+						  msgData->p_msg_value, msgData->length) != 0)
 		{
-			accumulated_text = rt_malloc(msgData->length + 1);
-			if (accumulated_text == NULL)
-			{
-				LOG_E("Failed to allocate memory for message");
-				accumulated_length = 0;
-				return;
-			}
-			memcpy(accumulated_text, msgData->p_msg_value, msgData->length);
-			accumulated_length = msgData->length;
+			LOG_E("Failed to (re)allocate memory for final message part");
+			return;
 		}
-		else
-		{
-			char *final_buffer = rt_realloc(accumulated_text, accumulated_length + msgData->length + 1);
-			if (final_buffer == NULL)
-			{
-				LOG_E("Failed to reallocate memory for final message part");
-				rt_free(accumulated_text);
-				accumulated_text = NULL;
-				accumulated_length = 0;
-				return;
-			}
-			accumulated_text = final_buffer;
-			memcpy(accumulated_text + accumulated_length, msgData->p_msg_value, msgData->length);
-			accumulated_length += msgData->length;
-		}
-		accumulated_text[accumulated_length] = '\0';
 		prepared = true;
 		break;
 
@@ -926,25 +744,9 @@ void handle_skai_message(char *app_id, MSG_DATA_PAYLOAD *msgData)
 	{
 		temp_message.is_self = false;
 		temp_message.state = true;
-		parse_skai_message(accumulated_text, &temp_message);
-#ifdef APP_ID_SKAI
-		if (app_id != NULL && strcmp(app_id, APP_ID_SKAI) == 0)
-		{
-			LOG_D("chat_list is message_list");
-			if (rt_tick_get() - last_updated_ts > 2000)
-			{
-				update_skai_message(get_message_list(), &message_items_amount, temp_message);
-			}
-			else
-			{
-				append_message_content(get_message_list(), 0, temp_message.message);
-			}
-			last_updated_ts = rt_tick_get();
-		}
-		else
-#endif
-
-			bloc_notify_skai_message_stream(temp_message.message);
+		strncpy(temp_message.message, accumulated_text, sizeof(temp_message.message));
+		temp_message.timestamp = time(NULL);
+		bloc_notify_skai_message_stream(temp_message.message);
 
 		// Free the accumulated buffer
 		rt_free(accumulated_text);

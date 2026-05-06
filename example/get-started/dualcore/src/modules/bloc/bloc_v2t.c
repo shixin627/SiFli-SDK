@@ -101,8 +101,6 @@
 /* Global variables */
 VoiceProvider voice_provider;
 
-static bool audio_subscribed = false;
-
 /* Static variables */
 static bool _vad_status = false;
 static folder_t _recorder_folder = {0, NULL};
@@ -134,9 +132,6 @@ static bool is_user_speaking_to_ai = false;
 static rt_timer_t speaking_debounce_timer = NULL;
 static bool is_voice_recognition_notified = false;
 static bool is_voice_recognition_notified_from_mouse = false;
-/* Debounce timer for V2T completion */
-static bool is_v2t_completed = false;
-static rt_timer_t v2t_complete_debounce_timer = NULL;
 
 static bool voiceRecordIntent = false;
 static bool isVoiceRecording = false;
@@ -266,7 +261,6 @@ static void speaking_debounce_timer_stop(void)
  * 3. 距離上次VAD觸發超過0.5秒
  * 4. 不在AI處理中
  */
-extern bool get_is_open_instruction_list_ai(void);
 static void notify_vad_status(bool status)
 {
     rt_tick_t current_tick = rt_tick_get();
@@ -306,38 +300,6 @@ static void notify_vad_status(bool status)
         }
         // LOG_D("status:%d,is_user_speaking:%d,check_if_ai_processing:%d",
         last_vad_trigger_tick = current_tick;
-    }
-}
-
-/**
- * @brief 語音辨識結果通知處理
- *
- * 當收到語音辨識文字結果時：
- * 1. 設置已收到語音辨識結果標記
- * 2. 調整計時器為1.5秒（縮短等待時間）
- * 3. 重新啟動計時器
- *
- * @param text_len 辨識文字長度
- */
-void notify_voice_recognition(uint16_t text_len)
-{
-    if (text_len == 0)
-    {
-        return;
-    }
-
-    if (is_user_speaking)
-    {
-        if (!is_voice_recognition_notified)
-        {
-            // 收到第一個語音辨識結果後，縮短計時器時間為0.5秒
-            rt_uint32_t time_left = 500;
-            rt_timer_stop(speaking_debounce_timer);
-            rt_timer_control(speaking_debounce_timer, RT_TIMER_CTRL_SET_TIME,
-                             &time_left);
-            rt_timer_start(speaking_debounce_timer);
-            is_voice_recognition_notified = true;
-        }
     }
 }
 
@@ -420,42 +382,6 @@ void stop_voice_recognition(uint8_t intent)
     is_voice_recognition_notified = false;
     _vad_status = false;
 }
-
-/* ========== 語音辨識自動停止邏輯流程總結 ========== */
-/*
- * 整體邏輯流程：
- *
- * 1. 語音辨識啟動階段 (start_voice_recognition)：
- *    - 初始化狀態標記：is_voice_recognition_notified = false
- *    - 記錄當前時間：last_vad_trigger_tick = rt_tick_get()
- *    - 設置高性能模式和感測器
- *
- * 2. 自動停止計時器管理：
- *    - 預設計時器：3秒超時
- *    - 收到語音辨識結果後：調整為1.5秒超時
- *    - 計時器回調：觸發 voice_provider.auto_stop_listening()
- *
- * 3. VAD狀態處理 (notify_vad_status)：
- *    - 檢測到語音：重新啟動計時器，更新last_vad_trigger_tick
- *    - 無語音活動：檢查自動停止條件
- *
- * 4. 自動停止條件 (所有條件同時滿足)：
- *    - is_voice_recognition_notified == true (已收到語音辨識結果)
- *    - current_tick - get_last_refresh_input_message_tick() > 5000
- * (距上次輸入更新>5秒)
- *    - current_tick - last_vad_trigger_tick > 500 (距上次VAD觸發>0.5秒)
- *    - !check_if_ai_processing() (不在AI處理中)
- *
- * 5. 語音辨識結果處理 (notify_voice_recognition)：
- *    - 設置 is_voice_recognition_notified = true
- *    - 調整計時器為1.5秒
- *    - 重新啟動計時器
- *
- * 6. 語音辨識停止階段 (stop_voice_recognition)：
- *    - 停止自動停止計時器
- *    - 重置所有狀態標記
- *    - 關閉感測器和高性能模式
- */
 
 int free_recorder_folder(folder_t *folder)
 {
@@ -629,18 +555,14 @@ void start_voice_recording(void)
         rec_pcm_buffer_idx = 0;
         LOG_D("Opus encoder initialized for recording\n");
     }
-
-    // Use .opus extension when Opus encoding is enabled
-    snprintf(file_path, sizeof(file_path),
-             "/recorder/record_%04d%02d%02d_%02d%02d%02d.opus",
-             tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday,
-             tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
+    const char *rec_ext = ".opus";
 #else
-    snprintf(file_path, sizeof(file_path),
-             "/recorder/record_%04d%02d%02d_%02d%02d%02d.pcm",
-             tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday,
-             tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
+    const char *rec_ext = ".pcm";
 #endif
+    snprintf(file_path, sizeof(file_path),
+             "/recorder/record_%04d%02d%02d_%02d%02d%02d%s",
+             tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday,
+             tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec, rec_ext);
 
     LOG_D("[%s] %s\n", __FUNCTION__, file_path);
     rec_fd = open(file_path, O_RDWR | O_CREAT | O_TRUNC | O_BINARY);
@@ -990,49 +912,25 @@ static void notifyVoice2Text()
     app_speech_set_content((const uint8_t *)get_combined_voice2text());
 }
 
-void copy_string_to_voice2text(voice2text_t *v2t, const char *str)
-{
-    strcpy(v2t->text, str);
-}
-
 void setVoice2Text(char *text)
 {
     if (text != NULL)
     {
-        copy_string_to_voice2text(&_v2t_result, text);
+        strcpy(_v2t_result.text, text);
         notifyVoice2Text();
     }
 }
 
 void clearVoice2Text(void)
 {
-    copy_string_to_voice2text(&_v2t_result, "");
-    RT_ASSERT(strlen(_v2t_result.text) == 0);
-    copy_string_to_voice2text(&_v2t_result_temp, "");
-    RT_ASSERT(strlen(_v2t_result_temp.text) == 0);
+    _v2t_result.text[0] = '\0';
+    _v2t_result_temp.text[0] = '\0';
     notifyVoice2Text();
 }
 
 bool isTextEmpty(void)
 {
-    return strlen(_v2t_result.text) == 0 && strlen(_v2t_result_temp.text) == 0;
-}
-
-static void addVoice2Text(char *text, uint16_t length)
-{
-    if (text != NULL)
-    {
-        if (strlen(_v2t_result.text) + length + 1 < sizeof(_v2t_result.text))
-        {
-            strcat(_v2t_result.text, " ");
-            strcat(_v2t_result.text, text);
-            notifyVoice2Text();
-        }
-        else
-        {
-            LOG_E("Voice2Text buffer overflow");
-        }
-    }
+    return _v2t_result.text[0] == '\0' && _v2t_result_temp.text[0] == '\0';
 }
 
 static void appendVoice2Text(char *buffer, uint16_t len)
@@ -1044,18 +942,23 @@ static void appendVoice2Text(char *buffer, uint16_t len)
     if (isTextEmpty())
     {
         setVoice2Text(buffer);
+        return;
+    }
+    if (strlen(_v2t_result.text) + len + 1 < sizeof(_v2t_result.text))
+    {
+        strcat(_v2t_result.text, " ");
+        strcat(_v2t_result.text, buffer);
+        notifyVoice2Text();
     }
     else
     {
-        addVoice2Text(buffer, len);
+        LOG_E("Voice2Text buffer overflow");
     }
 }
 
-static void insertVoiceText(char *buffer, uint16_t len)
+static void insertVoiceText(char *buffer)
 {
-    copy_string_to_voice2text(&_v2t_result_temp, "");
-    RT_ASSERT(strlen(_v2t_result_temp.text) == 0);
-    strcat(_v2t_result_temp.text, buffer);
+    strcpy(_v2t_result_temp.text, buffer);
     notifyVoice2Text();
 }
 
@@ -1086,14 +989,14 @@ void handle_v2t_result(VOICE_RECOGNITION_PAYLOAD *msgData)
         // LOG_D("[handle_v2t_result]New sentence: %d, insert len:%d",
         // sentence_index, msgData->length);
         appendVoice2Text(_v2t_result_temp.text, strlen(_v2t_result_temp.text));
-        insertVoiceText(buffer, msgData->length);
+        insertVoiceText(buffer);
         last_sentence_index = sentence_index;
     }
     else
     {
         // LOG_D("[handle_v2t_result]Append text len(%d) to sentence(%d)",
         // msgData->length, sentence_index);
-        insertVoiceText(buffer, msgData->length);
+        insertVoiceText(buffer);
     }
 
     free(buffer);
@@ -1165,86 +1068,17 @@ static void vad_deinit(void)
 
 /* ========== 語音辨識狀態管理函數 ========== */
 
-/**
- * @brief Gets the combined voice-to-text result
- * @return Current voice-to-text result string
- */
-bool app_voice_get_voice2text_status(void)
-{
-    return voice2TextStatus;
-}
-
-/**
- * @brief Sets the voice-to-text status
- * @param status true to enable voice-to-text, false to disable
- */
-void app_voice_set_voice2text_status(bool status)
-{
-    voice2TextStatus = status;
-}
-
-uint8_t app_voice_get_voice2text_intent(void)
-{
-    return voice2TextIntent;
-}
-void app_voice_set_voice2text_intent(uint8_t intent)
-{
-    voice2TextIntent = intent;
-}
-
-/**
- * @brief Gets the recording intent status
- * @return true if recording is intended, false otherwise
- */
-bool app_voice_get_recording_intent(void)
-{
-    return voiceRecordIntent;
-}
-
-/**
- * @brief Sets the recording intent status
- * @param intent true to set recording intent, false to clear
- */
-void app_voice_set_recording_intent(bool intent)
-{
-    voiceRecordIntent = intent;
-}
-
-/**
- * @brief Gets the current recording status
- * @return true if currently recording, false otherwise
- */
-bool app_voice_get_recording_status(void)
-{
-    return isVoiceRecording;
-}
-
-/**
- * @brief Sets the recording status
- * @param status true to indicate recording is active, false otherwise
- */
-void app_voice_set_recording_status(bool status)
-{
-    isVoiceRecording = status;
-}
-
-/**
- * @brief Gets the current voice recording time
- * @return Pointer to the voice recording time value
- */
-uint32_t *app_voice_get_record_time(void)
-{
-    return &_voice_recording_time;
-}
-
-/**
- * @brief Sets the voice recording time
- * @param time New recording time value
- */
-void app_voice_set_record_time(uint32_t time)
-{
-    _voice_recording_time = time;
-}
+/* ========== voice/recording state accessors ========== */
+bool app_voice_get_voice2text_status(void)      { return voice2TextStatus; }
+void app_voice_set_voice2text_status(bool s)    { voice2TextStatus = s; }
+uint8_t app_voice_get_voice2text_intent(void)   { return voice2TextIntent; }
+void app_voice_set_voice2text_intent(uint8_t i) { voice2TextIntent = i; }
+bool app_voice_get_recording_intent(void)       { return voiceRecordIntent; }
+void app_voice_set_recording_intent(bool i)     { voiceRecordIntent = i; }
+bool app_voice_get_recording_status(void)       { return isVoiceRecording; }
+void app_voice_set_recording_status(bool s)     { isVoiceRecording = s; }
+uint32_t *app_voice_get_record_time(void)       { return &_voice_recording_time; }
+void app_voice_set_record_time(uint32_t t)      { _voice_recording_time = t; }
 
 static bool voice_recognition_started = false;
 void set_voice_recognition_started(bool started)
@@ -1430,7 +1264,6 @@ uint8_t get_ai_coding(void)
     return ai_coding;
 }
 
-extern bool get_voice_recognition_started(void);
 void back_tap_cb(void)
 {
     if (isTextEmpty())

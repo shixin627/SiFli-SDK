@@ -98,10 +98,6 @@ extern "C"
     } FlashProvider;
     extern FlashProvider flash_provider;
     extern int dfu_check_fw_upgrade(image_header_t img_header);
-    extern int dfu_backup_current_firmware(dfu_img_id_t img_id);
-    extern int dfu_restore_firmware_from_backup(dfu_img_id_t img_id);
-
-    extern void save_device_address_to_fs(void);
 #ifdef __cplusplus
 }
 #endif

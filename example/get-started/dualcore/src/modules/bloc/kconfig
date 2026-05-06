@@ -32,10 +32,6 @@ menu "Select BLoc(Business Logic)"
 			bool "Enable bloc skaiwalk"
 			default n
 
-		config BSP_USING_BLOC_TASK
-			bool "Enable bloc task"
-			default n
-
 		config BSP_USING_BLOC_V2T
 			bool "Enable bloc voice to text"
 			default n
@@ -46,10 +42,6 @@ menu "Select BLoc(Business Logic)"
 
 		config BSP_USING_BLOC_BATTERY
 			bool "Enable bloc battery"
-			default n
-
-		config BSP_USING_BLOC_BUTTON
-			bool "Enable bloc button"
 			default n
 
 		config BSP_USING_BLOC_PERIPHERAL

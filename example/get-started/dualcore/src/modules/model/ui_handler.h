@@ -42,16 +42,6 @@ extern "C"
 #define APP_ID_FILE_BROWSER "file_browser"
 #endif
 
-    // #define APP_ID_SKAI "skai_ai"
-    // #define APP_ID_ACTIVITY "activity"
-    // #define APP_ID_CALENDAR "calendar"
-    // #define JS_APP_QRCODE "JA_app1"
-    // #define APP_ID_HEART_RATE "heart_rate"
-    // #define APP_ID_BAROMETER "barometer"
-    // #define APP_ID_MESSAGE_LIST "message_list"
-    // #define APP_ID_WIDGETS "widgets"
-    // #define APP_ID_TOUCHSCREEN "touchscreen"
-
     typedef enum
     {
         app_id_mainmenu,

@@ -296,19 +296,10 @@ static void send_file_compare_result(uint8_t result)
 extern char *get_media_title(void);
 extern void update_instruction_image(const char *id, const char *path);
 
-static void notify_media_img(char *path)
+static void notify_media_image(uint8_t msg_type, char *path)
 {
     lvgl_msg_t msg;
-    msg.type = LVGL_MSG_TYPE_MEDIA_IMG;
-    msg.data.media_data.img_path = path;
-    msg.data.media_data.title = get_media_title();
-    lvgl_send_msg(msg);
-}
-
-static void notify_media_header_img(char *path)
-{
-    lvgl_msg_t msg;
-    msg.type = LVGL_MSG_TYPE_MEDIA_HEADER_IMG;
+    msg.type = msg_type;
     msg.data.media_data.img_path = path;
     msg.data.media_data.title = get_media_title();
     lvgl_send_msg(msg);
@@ -318,7 +309,7 @@ static void refresh_media_images(void)
 {
     lv_img_cache_invalidate_src(MEDIA_HEADER_IMG);
     rt_thread_mdelay(200);
-    notify_media_header_img(MEDIA_HEADER_IMG);
+    notify_media_image(LVGL_MSG_TYPE_MEDIA_HEADER_IMG, MEDIA_HEADER_IMG);
     LOG_I("Received media header image file: %s", MEDIA_HEADER_IMG);
 }
 
@@ -329,23 +320,15 @@ void received_file_handler(const char *path)
     /* Check if it's a gesture model file */
     if (strstr(path, "gesture_tap.tflite") != NULL)
     {
-        unload_tap_model();
-        /* Reinitialize interpreters */
         extern void init_gesture_recognition_model(void);
-        if (strstr(path, "gesture_tap.tflite") != NULL)
-        {
-            init_gesture_recognition_model();
-        }
+        unload_tap_model();
+        init_gesture_recognition_model();
     }
     else if (strstr(path, "gesture_release.tflite") != NULL)
     {
-        unload_release_model();
-        /* Reinitialize interpreters */
         extern void init_gesture_recognition_release_model(void);
-        if (strstr(path, "gesture_release.tflite") != NULL)
-        {
-            init_gesture_recognition_release_model();
-        }
+        unload_release_model();
+        init_gesture_recognition_release_model();
     }
     // else if (strncmp(path, "/JW_wf", 6) == 0)
     // {
@@ -367,7 +350,7 @@ void received_file_handler(const char *path)
         lv_img_cache_invalidate_src(prev_media_img_path);
         lv_img_cache_invalidate_src(MEDIA_IMG);
         rt_thread_mdelay(200);
-        notify_media_img(prev_media_img_path);
+        notify_media_image(LVGL_MSG_TYPE_MEDIA_IMG, prev_media_img_path);
         LOG_I("Received media image file: %s,rm:%s", MEDIA_IMG,
               prev_media_img_path);
         // rt_thread_mdelay(1000);
@@ -446,7 +429,6 @@ void received_file_handler(const char *path)
 static void file_system_entry(void *parameter)
 {
     file_system_msg_data_t msg_data;
-    lvgl_msg_t ui_msg;
     rt_err_t result;
 
     while (1)
@@ -639,13 +621,12 @@ static int file_system_task_init(void)
     return RT_EOK;
 }
 
-/**
- * @brief Synchronize a file to the remote client
- * @param file_path Path to the file to be synchronized
- * @param delete_after_sync Whether to delete the file after synchronization
- * @return RT_EOK on success, -RT_ERROR on failure
- */
-int bloc_system_sync(const char *file_path, bool delete_after_sync)
+/* Common path: copy `file_path` into a heap buffer, build a SYNC/DELETE
+   message, and post to file_system_mq. On failure the buffer is freed.
+   `msg_type` must be SYNC_FILE_MSG or DELETE_FILE_MSG (both share the
+   `data.sync` shape). */
+static int post_path_msg(file_system_msg_t msg_type, const char *file_path,
+                         bool delete_after_sync)
 {
     if (file_path == NULL)
     {
@@ -654,33 +635,33 @@ int bloc_system_sync(const char *file_path, bool delete_after_sync)
     }
 
     file_system_msg_data_t msg_data;
-    size_t path_len;
-
-    // Prepare message data
-    msg_data.msg_type = SYNC_FILE_MSG;
+    msg_data.msg_type = msg_type;
     msg_data.data.sync.delete_after_sync = delete_after_sync;
 
-    // Allocate and copy file path
-    path_len = strlen(file_path) + 1;
+    size_t path_len = strlen(file_path) + 1;
     msg_data.data.sync.file_path = (char *)rt_malloc(path_len);
     if (msg_data.data.sync.file_path == NULL)
     {
         LOG_E("Failed to allocate memory for file path");
         return -RT_ERROR;
     }
-
     rt_strncpy(msg_data.data.sync.file_path, file_path, path_len);
 
-    // Send message to queue
-    if (rt_mq_send(file_system_mq, (void *)&msg_data, sizeof(msg_data)) !=
-        RT_EOK)
+    if (rt_mq_send(file_system_mq, (void *)&msg_data, sizeof(msg_data)) != RT_EOK)
     {
-        LOG_E("Failed to send file sync message to queue");
+        LOG_E("Failed to post file message (type=%d) to queue", (int)msg_type);
         rt_free(msg_data.data.sync.file_path);
         return -RT_ERROR;
     }
-
     return RT_EOK;
+}
+
+/**
+ * @brief Synchronize a file to the remote client
+ */
+int bloc_system_sync(const char *file_path, bool delete_after_sync)
+{
+    return post_path_msg(SYNC_FILE_MSG, file_path, delete_after_sync);
 }
 
 /**
@@ -724,44 +705,10 @@ int bloc_sync_folder_files(const char *folder_path, bool delete_after_sync)
 
 /**
  * @brief Delete a file asynchronously
- * @param file_path Path to the file to be deleted
- * @return RT_EOK on success, -RT_ERROR on failure
  */
 int bloc_system_delete_file(const char *file_path)
 {
-    file_system_msg_data_t msg_data;
-    size_t path_len;
-
-    if (file_path == NULL)
-    {
-        LOG_E("Invalid file path: NULL pointer");
-        return -RT_ERROR;
-    }
-
-    // Prepare message data
-    msg_data.msg_type = DELETE_FILE_MSG;
-
-    // Allocate and copy file path
-    path_len = strlen(file_path) + 1;
-    msg_data.data.sync.file_path = (char *)rt_malloc(path_len);
-    if (msg_data.data.sync.file_path == NULL)
-    {
-        LOG_E("Failed to allocate memory for file path");
-        return -RT_ERROR;
-    }
-
-    rt_strncpy(msg_data.data.sync.file_path, file_path, path_len);
-
-    // Send message to queue
-    if (rt_mq_send(file_system_mq, (void *)&msg_data, sizeof(msg_data)) !=
-        RT_EOK)
-    {
-        LOG_E("Failed to send file delete message to queue");
-        rt_free(msg_data.data.sync.file_path);
-        return -RT_ERROR;
-    }
-
-    return RT_EOK;
+    return post_path_msg(DELETE_FILE_MSG, file_path, false);
 }
 
 /**

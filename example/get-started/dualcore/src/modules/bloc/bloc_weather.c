@@ -250,62 +250,34 @@ static void parse_weather(const char *json_str, weather_t *weather)
 	cJSON_Delete(root);
 }
 
-/**
- * @brief Update weather data list with new weather info
- * @param new_weather New weather data to add
- */
+/* Push `new_weather` to the head of `list[max]` (newest first), shifting older
+   entries by one. `*count` is incremented up to `max`; once full, the oldest
+   item is dropped. Shared body of update_weather / update_weather_week. */
+static void weather_push_front(weather_t *list, uint8_t max, uint8_t *count,
+                               weather_t new_weather)
+{
+	if (*count > 0)
+	{
+		uint8_t i = (*count == max) ? 1 : 0;
+		for (; i <= *count - 1; i++)
+		{
+			list[*count - i] = list[*count - i - 1];
+		}
+	}
+	list[0] = new_weather;
+	if (*count < max) (*count)++;
+}
+
 static void update_weather(weather_t new_weather)
 {
-	/* Shift existing items to make room for new item at index 0 */
-	if (weather_items_amount > 0)
-	{
-		uint8_t i = 0;
-		if (weather_items_amount == WEATHER_TODAT_ITEM_AMOUNT)
-		{
-			i = 1; /* Start at 1 if list is full to avoid losing last item */
-		}
-
-		for (; i <= weather_items_amount - 1; i++)
-		{
-			weather_t prev_weather = *get_weather(weather_items_amount - i - 1);
-			set_cur_weather(prev_weather, weather_items_amount - i);
-		}
-	}
-
-	/* Add new weather item at the beginning */
-	set_cur_weather(new_weather, 0);
-
-	/* Increment item count if not at maximum */
-	if (weather_items_amount < WEATHER_TODAT_ITEM_AMOUNT)
-	{
-		weather_items_amount++;
-	}
+	weather_push_front(today_weather_list, WEATHER_TODAT_ITEM_AMOUNT,
+	                   &weather_items_amount, new_weather);
 }
 
 static void update_weather_week(weather_t new_weather)
 {
-	/* Shift existing items to make room for new item at specified index */
-	if (weather_items_amount_week > 0)
-	{
-		uint8_t i = 0;
-		if (weather_items_amount_week == WEATHER_DAILY_ITEM_AMOUNT)
-		{
-			i = 1; /* Start at 1 if list is full to avoid losing last item */
-		}
-
-		for (; i <= weather_items_amount_week - 1; i++)
-		{
-			weather_t prev_weather = *get_weather_week(weather_items_amount_week - i - 1);
-			set_cur_weather_week(prev_weather, weather_items_amount_week - i);
-		}
-	}
-	/* Add new weather item at the beginning */
-	set_cur_weather_week(new_weather, 0);
-	/* Increment item count if not at maximum */
-	if (weather_items_amount_week < WEATHER_DAILY_ITEM_AMOUNT)
-	{
-		weather_items_amount_week++;
-	}
+	weather_push_front(week_weather_list, WEATHER_DAILY_ITEM_AMOUNT,
+	                   &weather_items_amount_week, new_weather);
 }
 
 /**
