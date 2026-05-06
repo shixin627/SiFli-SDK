@@ -591,7 +591,6 @@ static void button_event_task_entry(struct _lv_timer_t *task)
         limit_time = SkaiWatchSys.oled_display_time * 1000;
     }
 
-    extern bool get_motor_status(void);
 #if !kReleaseMode
     extern bool pause_sleep_cause_of_dev_reson(void);
 #endif

@@ -433,18 +433,14 @@ static void lv_rt_log(lv_log_level_t level, const char *buf)
 
 int gui_lib_init(void)
 {
-
-#if LV_USING_FREETYPE_ENGINE
-    extern uint32_t ft_get_cache_size(void);
-    lvsf_font_load(ft_get_cache_size());
-    /* open freetype */
-    lv_freetype_open_font(false);
-
-#endif
-
-
-
-
+    /* Freetype init was moved out of here to gui_freetype_init() below at
+       INIT_ENV. Reason: file-mode fonts (font_lib_size==0, font_lib_data is
+       a DFS path) require the user's filesystem to be mounted, but mnt_init
+       lives at INIT_ENV and ELMFAT registration (elm_init) at INIT_COMPONENT
+       — link order isn't guaranteed within INIT_COMPONENT, so doing the
+       mount + freetype open here races against ELMFAT registration.
+       INIT_ENV runs strictly after every INIT_COMPONENT, so the dependency
+       chain elm_init -> mnt_init -> freetype is safe there. */
     lv_init();
 #if LV_USE_TINY_TTF
     extern void lv_font_tiny_init(void);
@@ -455,6 +451,24 @@ int gui_lib_init(void)
 #endif
     return 0;
 }
+
+#if LV_USING_FREETYPE_ENGINE
+int gui_freetype_init(void)
+{
+    /* Ensure the user's root FS is mounted before FreeType file mode tries
+       to open font files via DFS. mnt_init is a weak symbol; boards that
+       don't use DFS-backed fonts link against NULL and skip the call. */
+    extern int __attribute__((weak)) mnt_init(void);
+    if (&mnt_init)
+        mnt_init();
+
+    extern uint32_t ft_get_cache_size(void);
+    lvsf_font_load(ft_get_cache_size());
+    lv_freetype_open_font(false);
+    return 0;
+}
+INIT_ENV_EXPORT(gui_freetype_init);
+#endif
 INIT_COMPONENT_EXPORT(gui_lib_init);
 
 static rt_thread_t host_thread = NULL;

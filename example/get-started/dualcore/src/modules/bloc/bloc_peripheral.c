@@ -53,14 +53,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
-#include "bloc_peripheral.h"
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
 #include "bf0_ble_bass.h"
-#ifdef BSP_USING_BLOC_NOTIFY
-    #include "bloc_notification.h"
+#include "bloc_peripheral.h"
+#include "bloc_notification.h"
     #include "bloc_v2t.h"
-#endif
 #ifdef BSP_USING_COMMUNICATE
     #include "communicate_protocol.h"
     #include "communicate_task.h"

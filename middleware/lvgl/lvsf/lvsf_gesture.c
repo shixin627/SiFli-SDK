@@ -137,7 +137,6 @@ static void back_hint_anim_cb(void *obj, uint16_t x)
             if (!back_hint_vibrated)
             {
     #ifdef SkaiwalkWatchOS
-                rt_kprintf("DEBUG 5\n");
                 extern void motor_pattern_scrolling_app(void);
                 motor_pattern_scrolling_app();
     #endif

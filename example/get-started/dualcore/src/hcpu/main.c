@@ -1420,13 +1420,25 @@ void ble_app_entry(void *param)
     #define NAND_MTD_NAME "root"
 int mnt_init(void)
 {
+    /* Idempotent: middleware/lvgl/littlevgl2rtt.c also calls this from
+       gui_lib_init() (INIT_COMPONENT) so the root FS is mounted before
+       FreeType opens font files. The auto INIT_ENV invocation below is a
+       safety fallback for cases where freetype isn't enabled. */
+    static int mounted = 0;
+    if (mounted)
+        return RT_EOK;
+
+    rt_kprintf("[mnt_init] enter, FS_REGION_START_ADDR=0x%08x size=0x%08x\n",
+               FS_REGION_START_ADDR, FS_REGION_SIZE);
     register_nand_device(FS_REGION_START_ADDR & (0xFC000000),
                          FS_REGION_START_ADDR -
                              (FS_REGION_START_ADDR & (0xFC000000)),
                          FS_REGION_SIZE, NAND_MTD_NAME);
+    rt_kprintf("[mnt_init] register_nand_device done, mounting...\n");
     if (dfs_mount(NAND_MTD_NAME, "/", "elm", 0, 0) == 0) // fs exist
     {
         rt_kprintf("mount fs on flash to root success\n");
+        mounted = 1;
     }
     else
     {
@@ -1436,7 +1448,10 @@ int mnt_init(void)
         {
             rt_kprintf("make elm fs on flash sucess, mount again\n");
             if (dfs_mount(NAND_MTD_NAME, "/", "elm", 0, 0) == 0)
+            {
                 rt_kprintf("mount fs on flash success\n");
+                mounted = 1;
+            }
             else
                 rt_kprintf("mount to fs on flash fail\n");
         }
