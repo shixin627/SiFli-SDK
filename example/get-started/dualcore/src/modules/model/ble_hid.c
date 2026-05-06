@@ -945,10 +945,6 @@ static void mouse_report_send(uint8_t *key_val, uint16_t key_val_len)
 {
     if (!g_hid_data || !g_hid_data->is_mouse_config_on)
     {
-        // if (!g_hid_data)
-        //     LOG_E("g_hid_data is NULL");
-        // if (!g_hid_data->is_mouse_config_on)
-        //     LOG_I("g_hid_data->is_mouse_config_on is 0");
         return;
     }
 
@@ -1426,60 +1422,26 @@ INIT_APP_EXPORT(init_ble_mouse_func);
  * ****************************************************/
 
 #ifdef HID_CONSUMER
-void play_pause_through_hid(void)
+/* Press → wait → release helper. Each consumer button is "set bit, send,
+   hold for delay_ms, clear bit, send" — same structure for play/next/prev
+   (200ms hold) and volume up/down (50ms — shorter so repeated taps register
+   discretely on the host OS volume mixer). */
+static void hid_consumer_press_release(uint16_t key, uint32_t delay_ms)
 {
-    hid_consume_state_key_set_bit(HIDS_CTRL_PLAY);
+    hid_consume_state_key_set_bit(key);
     consumer_report_send((uint8_t *)&hid_consume_state,
                          sizeof(hid_consume_state));
-    rt_thread_mdelay(200);
-    hid_consume_state_key_clear_bit(HIDS_CTRL_PLAY);
+    rt_thread_mdelay(delay_ms);
+    hid_consume_state_key_clear_bit(key);
     consumer_report_send((uint8_t *)&hid_consume_state,
                          sizeof(hid_consume_state));
 }
 
-void play_next_through_hid(void)
-{
-    hid_consume_state_key_set_bit(HIDS_CTRL_SCAN_NEX);
-    consumer_report_send((uint8_t *)&hid_consume_state,
-                         sizeof(hid_consume_state));
-    rt_thread_mdelay(200);
-    hid_consume_state_key_clear_bit(HIDS_CTRL_SCAN_NEX);
-    consumer_report_send((uint8_t *)&hid_consume_state,
-                         sizeof(hid_consume_state));
-}
-
-void play_prev_through_hid(void)
-{
-    hid_consume_state_key_set_bit(HIDS_CTRL_SCAN_PREV);
-    consumer_report_send((uint8_t *)&hid_consume_state,
-                         sizeof(hid_consume_state));
-    rt_thread_mdelay(200);
-    hid_consume_state_key_clear_bit(HIDS_CTRL_SCAN_PREV);
-    consumer_report_send((uint8_t *)&hid_consume_state,
-                         sizeof(hid_consume_state));
-}
-
-void volume_up_through_hid(void)
-{
-    hid_consume_state_key_set_bit(HIDS_CTRL_VOL_UP);
-    consumer_report_send((uint8_t *)&hid_consume_state,
-                         sizeof(hid_consume_state));
-    rt_thread_mdelay(50);
-    hid_consume_state_key_clear_bit(HIDS_CTRL_VOL_UP);
-    consumer_report_send((uint8_t *)&hid_consume_state,
-                         sizeof(hid_consume_state));
-}
-
-void volume_down_through_hid(void)
-{
-    hid_consume_state_key_set_bit(HIDS_CTRL_VOL_DOWN);
-    consumer_report_send((uint8_t *)&hid_consume_state,
-                         sizeof(hid_consume_state));
-    rt_thread_mdelay(50);
-    hid_consume_state_key_clear_bit(HIDS_CTRL_VOL_DOWN);
-    consumer_report_send((uint8_t *)&hid_consume_state,
-                         sizeof(hid_consume_state));
-}
+void play_pause_through_hid(void)  { hid_consumer_press_release(HIDS_CTRL_PLAY,      200); }
+void play_next_through_hid(void)   { hid_consumer_press_release(HIDS_CTRL_SCAN_NEX,  200); }
+void play_prev_through_hid(void)   { hid_consumer_press_release(HIDS_CTRL_SCAN_PREV, 200); }
+void volume_up_through_hid(void)   { hid_consumer_press_release(HIDS_CTRL_VOL_UP,     50); }
+void volume_down_through_hid(void) { hid_consumer_press_release(HIDS_CTRL_VOL_DOWN,   50); }
 
 void HID_CONSUMER_GoBack(void)
 {
@@ -1490,28 +1452,27 @@ void HID_CONSUMER_GoBack(void)
 }
 
 #ifdef HID_TELEPHONY
+static void hid_telephony_press_release(uint16_t key, uint32_t delay_ms)
+{
+    hid_telephony_state_key_set_bit(key);
+    telephony_report_send((uint8_t *)&hid_telephony_state,
+                          sizeof(hid_telephony_state));
+    rt_thread_mdelay(delay_ms);
+    hid_telephony_state_key_clear_bit(key);
+    telephony_report_send((uint8_t *)&hid_telephony_state,
+                          sizeof(hid_telephony_state));
+}
+
 void hang_up_through_hid(void)
 {
     LOG_I("HID telephony: drop");
-    hid_telephony_state_key_set_bit(HIDS_TEL_DROP);
-    telephony_report_send((uint8_t *)&hid_telephony_state,
-                          sizeof(hid_telephony_state));
-    rt_thread_mdelay(200);
-    hid_telephony_state_key_clear_bit(HIDS_TEL_DROP);
-    telephony_report_send((uint8_t *)&hid_telephony_state,
-                          sizeof(hid_telephony_state));
+    hid_telephony_press_release(HIDS_TEL_DROP, 200);
 }
 
 void hook_switch_through_hid(void)
 {
     LOG_I("HID telephony: hook switch");
-    hid_telephony_state_key_set_bit(HIDS_TEL_HOOK_SWITCH);
-    telephony_report_send((uint8_t *)&hid_telephony_state,
-                          sizeof(hid_telephony_state));
-    rt_thread_mdelay(200);
-    hid_telephony_state_key_clear_bit(HIDS_TEL_HOOK_SWITCH);
-    telephony_report_send((uint8_t *)&hid_telephony_state,
-                          sizeof(hid_telephony_state));
+    hid_telephony_press_release(HIDS_TEL_HOOK_SWITCH, 200);
 }
 #endif
 
