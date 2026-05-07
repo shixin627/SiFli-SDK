@@ -13,7 +13,29 @@
 #endif
 
 #define ARC_DEFAULT_THICKNESS 100
-#define ARC_HALF_ANGLE_SIN 1.0f /* sin(55°)：弧帶 ±55° 角度範圍 */
+/* 弧帶 angle filter：sin(55°) ≈ 0.819 → ±55° 角度範圍。
+ *
+ * 為什麼不用 ±90° + 純靠 motion 方向偵測：方向偵測雖然能識別「不是 arc-scroll」
+ * 並讓 h->active = false，但 LVGL 的 press capture 一旦給了 overlay 就不能在
+ * 拖動途中釋放/換手，外層 tileview 的 natural drag-to-switch 拿不到 motion。
+ * 結果是「arc 不滾，但 tileview 也不能拖」。
+ *
+ * ±55° 上下各留 ~42 px 邊緣讓「下→上托回錶盤 / 上→下托回錶盤」這類邊緣手勢的
+ * 初始 press 落在 overlay 之外，hit_test 直接 false，press 自然落到底下的
+ * tileview，natural drag + tileview 自己的 LV_DIR snap 都能正常觸發。
+ *
+ * ±55° 內仍由 motion 方向偵測 (ARC_DIRECTION_MATCH_MIN_COS) 作第二層過濾 —
+ * 例如「按右側 icon 往左拖」這種垂直於 tangent 的 motion，arc 雖然 capture
+ * 了 press 但會 deactivate；LVGL 在 release 時若 motion 夠大/快會發
+ * LV_EVENT_GESTURE，bubble 上去由 tileview gesture handler 處理。 */
+#define ARC_HALF_ANGLE_SIN 1.0f
+
+/* 拖動方向偵測：第一次偵測到顯著移動時，比對「motion 向量」跟「press 點對
+ * 中心的切線方向」。arc-scroll 的自然動作是沿著 tangent 旋轉，motion 應該
+ * 跟 tangent 大致平行。cos(angle) < 0.5 (即夾角 > 60°) 就放棄 arc 處理，
+ * 例如 angle=0 處往左拖（垂直 tangent）就會被擋掉，讓 LVGL gesture 流可以
+ * bubble 上去觸發 tileview swipe 之類的回上層手勢 */
+#define ARC_DIRECTION_MATCH_MIN_COS 0.5f
 #define ARC_TAP_THRESHOLD_SQ (12 * 12)
 #define ARC_TAP_DURATION_MS 200
 #define ARC_LOCK_MAX_ANCESTORS 8
@@ -29,6 +51,12 @@ struct arc_scroll_handle
     float last_theta;
     lv_point_t press_point;
     uint32_t press_tick;
+    /* hit-test 短暫停用：方向偵測失敗時 lv_indev_reset 把 press 從 overlay
+     * 釋放，LVGL 接著會立刻用 hit_test 重新搜尋 act_obj。這時 overlay 必須
+     * 回 false 才能讓 press 落到底下的 tileview。disable_tick 紀錄 reset 的
+     * 時間點，> 50ms 後（= 使用者真的鬆開又重按）才恢復正常 hit_test */
+    bool hit_test_disabled;
+    uint32_t disable_tick;
     /* parent-lock 狀態（lock_ancestors=true 才用）*/
     lv_obj_t *locked_ancestors[ARC_LOCK_MAX_ANCESTORS];
     lv_dir_t locked_dirs[ARC_LOCK_MAX_ANCESTORS];
@@ -96,6 +124,18 @@ static void hit_test_cb(lv_event_t *e)
         info->res = false;
         return;
     }
+    /* 方向偵測剛失敗時 lv_indev_reset 後 LVGL 會立刻 re-search act_obj，
+     * 這時 overlay 要回 false 讓 press 落到底下的 tileview。50ms 後（= 使用者
+     * 真的鬆開又重按）才解除停用 */
+    if (h->hit_test_disabled)
+    {
+        if (lv_tick_elaps(h->disable_tick) < 50)
+        {
+            info->res = false;
+            return;
+        }
+        h->hit_test_disabled = false;
+    }
     info->res = point_in_band(h, info->point->x, info->point->y);
 }
 
@@ -132,9 +172,43 @@ static void pressing_cb(lv_event_t *e)
     {
         int32_t mdx = p.x - h->press_point.x;
         int32_t mdy = p.y - h->press_point.y;
-        if (mdx * mdx + mdy * mdy > ARC_TAP_THRESHOLD_SQ)
+        int32_t mdist_sq = mdx * mdx + mdy * mdy;
+        if (mdist_sq > ARC_TAP_THRESHOLD_SQ)
         {
             h->motion_detected = true;
+
+            /* 方向偵測：motion 大致沿 arc tangent 才當 arc-scroll，否則放棄。
+             * tangent 跟 radial 垂直 → tangent_dir = (-pdy, pdx)（CCW 方向）。
+             * |cos(motion, tangent)| < threshold 表示太垂直、不是滾動，
+             * 讓 LVGL gesture 流走原本的回首頁/切 tile */
+            float pdx = (float)h->press_point.x - LV_HOR_RES / 2.0f;
+            float pdy = (float)h->press_point.y - LV_VER_RES / 2.0f;
+            float t_len_sq = pdx * pdx + pdy * pdy;
+            if (t_len_sq > 1.0f)
+            {
+                /* normalize tangent (= rotate radial 90°) 跟 motion，做 dot product */
+                float t_len = sqrtf(t_len_sq);
+                float tx = -pdy / t_len;
+                float ty = pdx / t_len;
+                float m_len = sqrtf((float)mdist_sq);
+                float mx = (float)mdx / m_len;
+                float my = (float)mdy / m_len;
+                float dot = mx * tx + my * ty;
+                if (dot < 0.0f) dot = -dot; /* 接受 +tangent / -tangent 兩個方向 */
+                if (dot < ARC_DIRECTION_MATCH_MIN_COS)
+                {
+                    h->active = false;
+                    unlock_ancestors(h);
+                    /* 把 press 從 overlay 釋放，並讓 hit_test 短暫回 false，
+                     * LVGL 在同一隻手指還按著的狀態下會 re-search act_obj，
+                     * 這次找到底下的 tileview，後續 motion + release 都歸 tileview，
+                     * 它的 natural drag-to-switch / snap 就能正常觸發 */
+                    h->hit_test_disabled = true;
+                    h->disable_tick = lv_tick_get();
+                    lv_indev_reset(indev, h->overlay);
+                    return;
+                }
+            }
         }
     }
 
