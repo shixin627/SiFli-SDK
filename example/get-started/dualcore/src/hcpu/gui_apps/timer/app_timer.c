@@ -539,15 +539,20 @@ static void apply_circular_layout(lv_obj_t *list)
     const lv_coord_t pad_left = lv_obj_get_style_pad_left(list, LV_PART_MAIN);
 
     const int32_t base_scroll = list_y1 + pad_top + TIMER_ICON_ITEM_SIZE / 2 - cy;
-    /* 拖動時 LVGL 的 elastic overshoot 會讓 scroll_y 暫時衝出正常範圍，
-     * offset_angle 算出來會非常大 → 全部 icon 的 abs_angle > 90° 被一起藏起來，
-     * 直到放開彈回。夾在 [base_scroll, base_scroll + (N-1)*SLOT] 內，
-     * 確保任何 scroll 位置至少有一個 icon 落在 ±90° 內，不會整片消失 */
+    /* arc_scroll 的 elastic overshoot 上限 = SLOT/2，這段範圍要能直接被
+     * apply_circular_layout 反映成 icon 額外旋轉，使用者才看得到「拖到底還能
+     * 再多一點」的彈性。但 LVGL 自己的 SCROLL_ELASTIC（直接拖 list body）可以
+     * 衝得遠超這個範圍，offset_angle 會大到全部 icon 的 abs_angle > 90° 被
+     * 整片藏起來，畫面變空白。所以 clamp 在 [base - SLOT/2, max + SLOT/2]：
+     * arc 弧形拖動的彈性視覺照常顯示，超過的 deep overshoot 用 clamp 擋住整片消失 */
     lv_coord_t scroll_y = lv_obj_get_scroll_y(list);
+    const int32_t visual_overshoot = TIMER_ICON_SLOT_HEIGHT / 2;
     const int32_t scroll_y_max = base_scroll +
                                   (TIMER_OPTION_COUNT - 1) * TIMER_ICON_SLOT_HEIGHT;
-    if (scroll_y < base_scroll) scroll_y = base_scroll;
-    if (scroll_y > scroll_y_max) scroll_y = scroll_y_max;
+    if (scroll_y < base_scroll - visual_overshoot)
+        scroll_y = base_scroll - visual_overshoot;
+    if (scroll_y > scroll_y_max + visual_overshoot)
+        scroll_y = scroll_y_max + visual_overshoot;
     const float scroll_in_slots = (float)(scroll_y - base_scroll) / TIMER_ICON_SLOT_HEIGHT;
     const float offset_angle = scroll_in_slots * angle_per_slot;
 
