@@ -622,7 +622,19 @@ static void apply_circular_layout(lv_obj_t *list)
 
     /* base_scroll = snap_target i 被中央時對應的 scroll_y（i = 0 的情況）*/
     const int32_t base_scroll = list_y1 + pad_top + ICON_ITEM_SIZE / 2 - cy;
-    const lv_coord_t scroll_y = lv_obj_get_scroll_y(list);
+    /* arc_scroll 的 elastic overshoot 上限 = SLOT/2，這段範圍要能直接被
+     * apply_circular_layout 反映成 icon 額外旋轉，使用者才看得到「拖到底還能
+     * 再多一點」的彈性。LVGL 自己的 SCROLL_ELASTIC 可以衝得更遠 → offset_angle
+     * 大到所有 icon 都 abs > 90° 被整片藏起來。clamp 在 [base - SLOT/2,
+     * max + SLOT/2] 維持彈性視覺、擋掉 deep overshoot 整片消失 */
+    lv_coord_t scroll_y = lv_obj_get_scroll_y(list);
+    const int32_t visual_overshoot = ICON_SLOT_HEIGHT / 2;
+    const int32_t scroll_y_max = base_scroll +
+                                  (WORKOUT_COUNT - 1) * ICON_SLOT_HEIGHT;
+    if (scroll_y < base_scroll - visual_overshoot)
+        scroll_y = base_scroll - visual_overshoot;
+    if (scroll_y > scroll_y_max + visual_overshoot)
+        scroll_y = scroll_y_max + visual_overshoot;
     const float scroll_in_slots = (float)(scroll_y - base_scroll) / ICON_SLOT_HEIGHT;
     const float offset_angle = scroll_in_slots * angle_per_slot;
 
