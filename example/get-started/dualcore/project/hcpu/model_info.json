@@ -1,0 +1,11 @@
+{
+  "models": [
+    {
+      "name": "gesture_release",
+      "version": "1.0.1",
+      "file": "release_v1_0_1.tflite",
+      "watchPath": "/model/gesture_release.tflite",
+      "description": "Unified tap+release classifier"
+    }
+  ]
+}

@@ -65,8 +65,7 @@ bool get_imu_data_collection_status(void)
     return imu_data_collection;
 }
 
-#if defined(APP_ID_GESTURE) && !kReleaseMode
-
+#if defined(APP_ID_GESTURE)
 
 /**
  * @brief Structure to hold all UI components of the gesture app
