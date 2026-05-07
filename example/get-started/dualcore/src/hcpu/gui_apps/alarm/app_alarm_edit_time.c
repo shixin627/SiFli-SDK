@@ -18,15 +18,18 @@
 
 #define SUBPAGE_NAME "almadd"
 
+/* No trailing '\n' — that creates a phantom empty entry, which inflates
+   label height and throws off lv_roller's SELECTED-overlay proportional
+   positioning (drift increases with sel_id). */
 #define HOURS_ROLLER_STR \
     "00\n01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n11\n12\n" \
-    "13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n"
+    "13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23"
 #define MINUTE_ROLLER_STR \
     "00\n01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n11\n12\n" \
     "13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n" \
     "26\n27\n28\n29\n30\n31\n32\n33\n34\n35\n36\n37\n38\n" \
     "39\n40\n41\n42\n43\n44\n45\n46\n47\n48\n49\n50\n51\n" \
-    "52\n53\n54\n55\n56\n57\n58\n59\n"
+    "52\n53\n54\n55\n56\n57\n58\n59"
 
 /**
  * Apple-style time picker.
@@ -96,6 +99,99 @@ static void minute_roller_event_cb(lv_event_t *e)
     p_app_alarm_edit_time->alarm_ctx.minute =
         lv_roller_get_selected(lv_event_get_target(e));
 }
+
+/* Workaround for LVGL roller's tap-handling on this touch panel:
+   lv_roller's PRESSING sets `moved=1` on ANY non-zero y vect from the
+   indev. SiFli's FT3168 reports a downward jitter at touchdown, so taps
+   immediately become "drags", and the RELEASE path uses
+   lv_indev_scroll_throw_predict() which returns ~3 rows of momentum from
+   that jitter. Symptoms: every tap (above or below the selected row)
+   moves the selection +3 rows. We intercept PRESSED to remember the
+   pre-click sel and tap y, and on RELEASED override LVGL's choice with a
+   clean ±1 step when the actual finger travel was small. */
+static struct {
+    lv_obj_t *roller;
+    lv_obj_t *label;
+    uint16_t sel_at_press;
+    lv_coord_t y_at_press;
+    lv_coord_t label_y_at_press;
+} g_roller_tap = { NULL, NULL, 0, 0, 0 };
+
+static void roller_tap_step_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t *roller = lv_event_get_target(e);
+
+    if (code == LV_EVENT_PRESSED)
+    {
+        lv_indev_t *indev = lv_indev_get_act();
+        if (!indev) return;
+        lv_point_t p;
+        lv_indev_get_point(indev, &p);
+        g_roller_tap.roller = roller;
+        g_roller_tap.label = lv_obj_get_child(roller, 0);
+        g_roller_tap.sel_at_press = lv_roller_get_selected(roller);
+        g_roller_tap.y_at_press = p.y;
+        g_roller_tap.label_y_at_press =
+            g_roller_tap.label ? lv_obj_get_y(g_roller_tap.label) : 0;
+    }
+    else if (code == LV_EVENT_RELEASED && g_roller_tap.roller == roller)
+    {
+        g_roller_tap.roller = NULL;
+
+        /* True drag detection: lv_roller's PRESSING handler accumulates
+           every indev y-vect into the internal label's y. By the time we
+           run, label.y has either barely budged (FT3168 touchdown jitter,
+           a few px) or moved a lot (real drag/flick). A label.y delta of
+           >20 px = the user actually dragged — let LVGL's release_handler
+           snap to wherever the throw lands. We deliberately read label.y
+           BEFORE the snap animation visibly moves it; LVGL starts the
+           animation in release_handler but the property hasn't ticked
+           yet when our user cb runs. */
+        if (g_roller_tap.label)
+        {
+            lv_coord_t label_moved = LV_ABS(lv_obj_get_y(g_roller_tap.label)
+                                            - g_roller_tap.label_y_at_press);
+            if (label_moved > 20) return; /* real drag, trust LVGL */
+        }
+
+        /* Tap. Use the SELECTED row's vertical band to decide direction —
+           tapping the centre row should not step at all. */
+        lv_area_t coords;
+        lv_obj_get_coords(roller, &coords);
+        const lv_font_t *font =
+            lv_obj_get_style_text_font(roller, LV_PART_MAIN);
+        lv_coord_t row_h = lv_font_get_line_height(font);
+        lv_coord_t sel_top = coords.y1
+                             + (lv_area_get_height(&coords) - row_h) / 2;
+        lv_coord_t sel_bot = sel_top + row_h;
+
+        int target = (int)g_roller_tap.sel_at_press;
+        if (g_roller_tap.y_at_press < sel_top)
+        {
+            if (target > 0) target--;
+        }
+        else if (g_roller_tap.y_at_press > sel_bot)
+        {
+            uint16_t total = lv_roller_get_option_cnt(roller);
+            if ((uint16_t)(target + 1) < total) target++;
+        }
+
+        /* Override LVGL's wrong jump (caused by throw-prediction bias on
+           the touchdown jitter) with the clean ±1 step, or restore to the
+           original sel if the tap landed on the centre row. */
+        lv_roller_set_selected(roller, (uint16_t)target, LV_ANIM_ON);
+    }
+}
+
+/* No fade-mask handler here. lv_example_roller_3's vertical fade pushes
+   2 lv_draw_mask layers, which trips the SiFli EPIC GPU fast-path
+   (`mask_cnt < 2`) and falls through to SW-renderer code paths that have
+   stub `LV_ASSERT(0)` bodies in lv_gpu_new_api.c::draw_letter,
+   lv_gpu_new_api.c::draw_blend, and lv_lcd.c::set_px_cb_assert. SDK
+   patches to fix those were attempted but the watch still hard-faults
+   when the alarm-edit page transitions in, so we leave fade off. See
+   memory feedback_sifli_epic_mask_limit. */
 
 /*********************
  *   DATA SYNC
@@ -173,26 +269,36 @@ static int srv_msg_handler(data_callback_arg_t *arg)
 
 static void style_dark_roller(lv_obj_t *roller)
 {
-    /* Main roller area — non-selected rows. The default text color was too
-       dim (#6E6E73) against the dark card background; bump to the secondary
-       grey so digits stay legible. */
+    /* MAIN and SELECTED share the same font. Mixing fonts of very different
+       sizes breaks lv_roller's DRAW_POST proportional positioning math (the
+       Q14 scaling in lv_roller.c::draw_main loses precision once the long
+       INFINITE-mode label is drawn at 2× scale), which makes the selected
+       digit drift out of sync with the rows above/below it. */
+    const lv_font_t *font = LV_EXT_FONT_GET(get_system_font_size(2));
+    lv_obj_set_style_text_font(roller, font, LV_PART_MAIN);
+    lv_obj_set_style_text_font(roller, font, LV_PART_SELECTED);
+
     lv_obj_set_style_bg_color(roller, ALARM_COLOR_CARD, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(roller, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(roller, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(roller, ALARM_CARD_RADIUS, LV_PART_MAIN);
     lv_obj_set_style_text_color(roller, ALARM_COLOR_TEXT_SECONDARY,
                                 LV_PART_MAIN);
-    lv_obj_set_style_text_font(
-        roller, LV_EXT_FONT_GET(get_system_font_size(1)), LV_PART_MAIN);
     lv_obj_set_style_text_align(roller, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_pad_ver(roller, 12, LV_PART_MAIN);
 
-    /* Selected row — bright white, larger font. */
+    /* lv_roller_set_visible_row_count sizes the roller as
+       row_cnt * (line_height + line_space) + 2*border, with NO padding term.
+       So padding here visually shrinks the row area and the rows stop
+       lining up with line_height. Force pad/line_space to 0 to keep the
+       roller height === N rows exactly. */
+    lv_obj_set_style_pad_all(roller, 0, LV_PART_MAIN);
+    lv_obj_set_style_text_line_space(roller, 0, LV_PART_MAIN);
+
+    /* No SELECTED bg pill — the iOS-style fade mask (roller_fade_mask_cb
+       below) provides the focus emphasis. */
     lv_obj_set_style_bg_opa(roller, LV_OPA_TRANSP, LV_PART_SELECTED);
     lv_obj_set_style_text_color(roller, ALARM_COLOR_TEXT_PRIMARY,
                                 LV_PART_SELECTED);
-    lv_obj_set_style_text_font(
-        roller, LV_EXT_FONT_GET(get_system_font_size(2)), LV_PART_SELECTED);
 }
 
 static lv_obj_t *create_action_btn(lv_obj_t *parent, const char *text,
@@ -234,15 +340,24 @@ static void build_layout(void)
     lv_obj_set_style_text_color(title, ALARM_COLOR_TEXT_PRIMARY, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 28);
 
-    /* Hour roller (left). */
+    /* Hour roller (left).
+       Using LV_ROLLER_MODE_NORMAL (not INFINITE) on purpose: INFINITE mode
+       duplicates the option list 7× — combined with this project's FreeType
+       fonts (line_height ~41px) the resulting 168-line label and the
+       Q14-scaled SELECTED-overlay positioning lose precision and the label
+       sits outside the clip region (digits invisible) or shows mismatched
+       values across rows. NORMAL mode renders cleanly; users hitting the
+       end of the list just bounce, which matches iOS picker UX. */
     lv_obj_t *roller_h = lv_roller_create(scr);
-    lv_roller_set_options(roller_h, HOURS_ROLLER_STR, LV_ROLLER_MODE_INFINITE);
+    style_dark_roller(roller_h);
+    lv_roller_set_options(roller_h, HOURS_ROLLER_STR, LV_ROLLER_MODE_NORMAL);
     lv_roller_set_visible_row_count(roller_h, 3);
     lv_obj_set_width(roller_h, 110);
-    style_dark_roller(roller_h);
     lv_obj_align(roller_h, LV_ALIGN_CENTER, -70, -10);
     lv_obj_add_event_cb(roller_h, hour_roller_event_cb, LV_EVENT_VALUE_CHANGED,
                         NULL);
+    lv_obj_add_event_cb(roller_h, roller_tap_step_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(roller_h, roller_tap_step_cb, LV_EVENT_RELEASED, NULL);
     p_app_alarm_edit_time->roller_hour = roller_h;
 
     /* Colon between rollers. */
@@ -253,15 +368,17 @@ static void build_layout(void)
         colon, LV_EXT_FONT_GET(get_system_font_size(3)), 0);
     lv_obj_align(colon, LV_ALIGN_CENTER, 0, -10);
 
-    /* Minute roller (right). */
+    /* Minute roller (right). Same ordering rule as the hour roller above. */
     lv_obj_t *roller_m = lv_roller_create(scr);
-    lv_roller_set_options(roller_m, MINUTE_ROLLER_STR, LV_ROLLER_MODE_INFINITE);
+    style_dark_roller(roller_m);
+    lv_roller_set_options(roller_m, MINUTE_ROLLER_STR, LV_ROLLER_MODE_NORMAL);
     lv_roller_set_visible_row_count(roller_m, 3);
     lv_obj_set_width(roller_m, 110);
-    style_dark_roller(roller_m);
     lv_obj_align(roller_m, LV_ALIGN_CENTER, 70, -10);
     lv_obj_add_event_cb(roller_m, minute_roller_event_cb,
                         LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(roller_m, roller_tap_step_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(roller_m, roller_tap_step_cb, LV_EVENT_RELEASED, NULL);
     p_app_alarm_edit_time->roller_minute = roller_m;
 
     /* Bottom buttons. */
