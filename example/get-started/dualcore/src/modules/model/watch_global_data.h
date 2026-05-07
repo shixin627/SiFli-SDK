@@ -13,7 +13,7 @@ extern "C"
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 1
-#define VERSION_REVISION 44
+#define VERSION_REVISION 45
 #define VERSION_DEV 1
 
 #define MAX_GESTURE_SAMPLES 76
@@ -31,8 +31,7 @@ extern "C"
 #if USE_FFT_FILTER
     #define BYTES_PER_FEATURE (2)
     #define BLE_G_SENSOR_BUF_SIZE                                              \
-        ((FEATURE_NUM + 1) * BYTES_PER_FEATURE * SAMPLE_SIZE) /* total bytes   \
-                                                               */
+        ((FEATURE_NUM + 1) * BYTES_PER_FEATURE * SAMPLE_SIZE)
 #else
     #define BLE_G_SENSOR_BUF_SIZE (BYTES_PER_SAMPLE * MAX_RAWDATA_TIME_STEP)
     extern uint8_t gsensorSamplesBuffer[BLE_G_SENSOR_BUF_SIZE];
