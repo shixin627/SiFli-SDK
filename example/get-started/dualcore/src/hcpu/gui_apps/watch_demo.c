@@ -825,7 +825,16 @@ void app_watch_entry(void *parameter)
     resource_init();
     watch_config_struct_flash_read();
 #if LV_USING_FREETYPE_ENGINE
-    lv_freetype_open_font(true); /* open freetype */
+    /* gui_freetype_init() (INIT_ENV) already opened freetype with init=false
+       and flipped g_lvsf_freetype_skipped if the ttf wasn't on the FS. The
+       (init=true) call here re-runs lvsf_font_inital, which would assert if
+       we already skipped at boot. Honour the same flag so this fallback
+       path stays alive when fonts are missing. */
+    {
+        extern bool g_lvsf_freetype_skipped;
+        if (!g_lvsf_freetype_skipped)
+            lv_freetype_open_font(true); /* open freetype */
+    }
 #endif
     gui_app_init();
     ui_datac_init();

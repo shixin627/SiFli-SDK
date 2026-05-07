@@ -1,6 +1,6 @@
 {
-    "version": "1.1.43",
-    "description": "優化藍芽通訊協議，更新環狀滑動列表",
+    "version": "1.1.44",
+    "description": "字庫放到flash裡(先更新韌體)",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",

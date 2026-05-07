@@ -453,6 +453,11 @@ int gui_lib_init(void)
 }
 
 #if LV_USING_FREETYPE_ENGINE
+/* Read by LV_EXT_FONT_GET in lvsf_font.h to fall back to LVGL theme fonts
+   (Montserrat) when freetype init was skipped — otherwise lvsf's empty
+   font_list causes lvsf_get_font_from_size to assert and brick the watch. */
+bool g_lvsf_freetype_skipped = false;
+
 int gui_freetype_init(void)
 {
     /* Ensure the user's root FS is mounted before FreeType file mode tries
@@ -461,6 +466,22 @@ int gui_freetype_init(void)
     extern int __attribute__((weak)) mnt_init(void);
     if (&mnt_init)
         mnt_init();
+
+    /* Defensive: lvsf_font_inital lives in a precompiled lib and asserts
+       on FT_New_Face failure (e.g. ENOENT for a missing ttf), which kills
+       the main thread and bricks boot. Apps that load fonts via DFS file
+       paths can supply this weak hook to access()-check the ttf first;
+       returning false here causes us to skip lv_freetype_open_font entirely
+       and flip the global flag so LV_EXT_FONT_GET returns LVGL theme fonts
+       (Montserrat is always compiled in via CONFIG_LV_FONT_MONTSERRAT_*). */
+    extern bool __attribute__((weak)) is_freetype_safe_to_init(void);
+    if (&is_freetype_safe_to_init && !is_freetype_safe_to_init())
+    {
+        rt_kprintf("[gui_freetype_init] skipped: font file unavailable, "
+                   "falling back to LVGL theme fonts\n");
+        g_lvsf_freetype_skipped = true;
+        return 0;
+    }
 
     extern uint32_t ft_get_cache_size(void);
     lvsf_font_load(ft_get_cache_size());

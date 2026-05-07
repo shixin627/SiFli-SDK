@@ -4,41 +4,6 @@
  * @author Skaiwalk software development team
  ******************************************************************************
  */
-/**
- * Copyright (c) 2018 - 2024, Skaiwalk Technology
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this
- *    list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form, except as embedded into a Skaiwalk integrated circuit
- *    in a product or a software update for such product, must reproduce the above
- *    copyright notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * 3. The names of Skaiwalk or its contributors may not be used to endorse
- *    or promote products derived from this software without specific prior written permission.
- *
- * 4. This software, with or without modification, must only be used with a
- *    Skaiwalk integrated circuit.
- *
- * 5. Any binary form of this software must not be reverse engineered, decompiled, modified,
- *    or disassembled.
- *
- * THIS SOFTWARE IS PROVIDED BY SKAIWALK TECHNOLOGY "AS IS" AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY, NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL SKAIWALK TECHNOLOGY OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
- * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
 /*********************
  *      INCLUDES
  *********************/
@@ -56,29 +21,29 @@
 #include "gesture_handler.h"
 #include "watch_global_data.h"
 #ifdef BSP_USING_BLOC
-#include "bloc_v2t.h"
-#include "bloc_setting.h"
-#include "bloc_peripheral.h"
+    #include "bloc_v2t.h"
+    #include "bloc_setting.h"
+    #include "bloc_peripheral.h"
 #endif
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-#include "watch_system_interact.h"
+    #include "watch_system_interact.h"
 #endif
 #ifdef BSP_USING_UI_HANDLER
-#include "ui_handler.h"
-#include "ui_img_helper.h"
+    #include "ui_handler.h"
+    #include "ui_img_helper.h"
 #endif
 #ifdef BSP_USING_COMMUNICATE
-#include "communicate_protocol.h"
-#include "communicate_task.h"
+    #include "communicate_protocol.h"
+    #include "communicate_task.h"
 #endif
 #define DBG_TAG "app.test"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-#if (kReleaseMode == 0)
+// #if (kReleaseMode == 1)
+#if 1
 
-#define APP_ID "test"
-
+    #define APP_ID "test"
 
 typedef enum
 {
@@ -110,13 +75,10 @@ static bool wait_for_touch();
 static bool check_imu_sensor();
 static bool check_ppg_sensor();
 static bool record_with_mic(int seconds);
-static bool play_with_speaker(int seconds);
-static bool run_motor(int seconds);
 static void send_ok_to_phone_and_exit();
 static void exit_app();
 
 static rt_thread_t test_thread = RT_NULL;
-static rt_thread_t test_operational_thread = RT_NULL;
 static rt_thread_t cpu_stress_thread = RT_NULL;
 static rt_thread_t amoled_thread = RT_NULL;
 static rt_thread_t imu_thread = RT_NULL;
@@ -125,6 +87,7 @@ static rt_thread_t motor_thread = RT_NULL;
 
 static lv_obj_t *test_label;
 static lv_obj_t *status_label;
+static lv_obj_t *ppg_status_label;
 static lv_obj_t *mode_select_container;
 
 // CPU intensive stress test functions
@@ -177,7 +140,8 @@ static void cpu_stress_thread_entry(void *parameter)
                 matrix_c[i * 4 + j] = 0;
                 for (int k = 0; k < 4; k++)
                 {
-                    matrix_c[i * 4 + j] += matrix_a[i * 4 + k] * matrix_b[k * 4 + j];
+                    matrix_c[i * 4 + j] +=
+                        matrix_a[i * 4 + k] * matrix_b[k * 4 + j];
                 }
             }
         }
@@ -204,21 +168,16 @@ static void amoled_stress_thread_entry(void *parameter)
 {
     LOG_D("AMOLED stress thread started");
     lv_color_t colors[] = {
-        LV_COLOR_WHITE,
-        LV_COLOR_RED,
-        LV_COLOR_ORANGE,
-        LV_COLOR_YELLOW,
-        LV_COLOR_GREEN,
-        LV_COLOR_BLUE,
-        LV_COLOR_NAVY,
-        LV_COLOR_PURPLE,
+        LV_COLOR_WHITE, LV_COLOR_RED,  LV_COLOR_ORANGE, LV_COLOR_YELLOW,
+        LV_COLOR_GREEN, LV_COLOR_BLUE, LV_COLOR_NAVY,   LV_COLOR_PURPLE,
     };
     int num_colors = sizeof(colors) / sizeof(colors[0]);
     int idx = 0;
 
     while (stress_test_running)
     {
-        lv_obj_set_style_bg_color(lv_scr_act(), colors[idx % num_colors], LV_PART_MAIN);
+        lv_obj_set_style_bg_color(lv_scr_act(), colors[idx % num_colors],
+                                  LV_PART_MAIN);
         idx++;
         rt_thread_mdelay(500);
     }
@@ -239,8 +198,12 @@ static void imu_stress_thread_entry(void *parameter)
             // Update status label with IMU data
             char buf[128];
             rt_sprintf(buf, "IMU: A(%ld,%ld,%ld) G(%ld,%ld,%ld)",
-                       (long)watch_sensor.imu_data.acce.x, (long)watch_sensor.imu_data.acce.y, (long)watch_sensor.imu_data.acce.z,
-                       (long)watch_sensor.imu_data.gyro.x, (long)watch_sensor.imu_data.gyro.y, (long)watch_sensor.imu_data.gyro.z);
+                       (long)watch_sensor.imu_data.acce.x,
+                       (long)watch_sensor.imu_data.acce.y,
+                       (long)watch_sensor.imu_data.acce.z,
+                       (long)watch_sensor.imu_data.gyro.x,
+                       (long)watch_sensor.imu_data.gyro.y,
+                       (long)watch_sensor.imu_data.gyro.z);
             if (status_label != NULL)
             {
                 lv_label_set_text(status_label, buf);
@@ -254,19 +217,18 @@ static void imu_stress_thread_entry(void *parameter)
 static void ppg_stress_thread_entry(void *parameter)
 {
     LOG_D("PPG stress thread started");
-    sensor_subscription_t sensor_subscription;
-    sensor_subscription.type = SENSOR_TYPE_PPG;
-    sensor_subscription.thread_safe = true;
-    sensor_subscription.status = true;
-    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
 
     while (stress_test_running)
     {
+        char buf[64];
+        rt_sprintf(buf, "PPG: %d, %d", watch_sensor.ppg_data.raw_data[0],
+                   watch_sensor.ppg_data.raw_data[1]);
+        if (ppg_status_label != NULL)
+        {
+            lv_label_set_text(ppg_status_label, buf);
+        }
         rt_thread_mdelay(100);
     }
-
-    sensor_subscription.status = false;
-    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
     LOG_D("PPG stress thread stopped");
 }
 
@@ -301,12 +263,6 @@ static void test_thread_entry(void *parameter)
         goto EXIT;
     }
 
-    // lv_label_set_text(test_label, "[Motor] Running for 5 seconds...");
-    // if (!run_motor(5))
-    // {
-    //     goto EXIT;
-    // }
-
     lv_label_set_text(test_label, "[IMU] Checking sensor raw data...");
     if (!check_imu_sensor())
     {
@@ -325,12 +281,6 @@ static void test_thread_entry(void *parameter)
         goto EXIT;
     }
 
-    // lv_label_set_text(test_label, "[Audio] playing sound for 5 seconds...");
-    // if (!play_with_speaker(5))
-    // {
-    //     goto EXIT;
-    // }
-
     send_ok_to_phone_and_exit();
 
 EXIT:
@@ -339,107 +289,50 @@ EXIT:
 
 static void create_test_thread(void)
 {
-    test_thread = rt_thread_create("utest", test_thread_entry, RT_NULL, 2048, 10, 10);
+    test_thread =
+        rt_thread_create("utest", test_thread_entry, RT_NULL, 2048, 10, 10);
     if (test_thread != RT_NULL)
     {
         rt_thread_startup(test_thread);
     }
 }
 
-static bool open_operational_thread = false;
-void close_operational_test_thread(void)
+typedef struct
 {
-    open_operational_thread = false;
-    if (test_operational_thread != RT_NULL)
-    {
-        rt_thread_delete(test_operational_thread);
-        test_operational_thread = RT_NULL;
-    }
-}
-extern uint8_t return_app_count(void);
-static void operational_thread_entry(void *parameter)
-{
-    uint8_t page = 0;
-    open_operational_thread = true;
-    while (open_operational_thread)
-    {
-        watch_system_interact(WATCH_SLEEP, NULL);
-        rt_thread_mdelay(1000);
-        watch_system_interact(HCPU_WAKEUP, NULL);
-        rt_thread_mdelay(1000);
-        // send_virtual_gesture_event(GESTURE_EVENT_HAND_RELEASE);
-        // animate_to_app_list();
-        watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
-        rt_thread_mdelay(1000);
-        // extern void app_list_scroll_to_app(int8_t action);
-        // int app_index = atoi(argv[2]);
-        // app_list_scroll_to_app(app_index);
-        // rt_thread_mdelay(500);
-        lvgl_msg_t msg;
-        msg.type = LVGL_MSG_TYPE_NAV_BAR_CONTROL;
-        msg.data.action = page;
-        lvgl_send_msg(msg);
-        // LOG_D("Operational test: switching to app page %d", page);
-        if (page >= return_app_count() - 1)
-            page = 0;
-        else
-            page++;
-        rt_thread_mdelay(1000);
-        send_virtual_gesture_event(GESTURE_EVENT_PRESS);
-        rt_thread_mdelay(1000);
-    }
-}
+    rt_thread_t *handle;
+    const char *name;
+    void (*entry)(void *);
+    rt_uint32_t stack_size;
+    rt_uint8_t priority;
+} stress_thread_def_t;
 
-static void create_operational_test_thread(void)
-{
-    test_operational_thread = rt_thread_create("operationaltest", operational_thread_entry, RT_NULL, 2048, 10, 10);
-    if (test_operational_thread != RT_NULL)
-    {
-        rt_thread_startup(test_operational_thread);
-    }
-}
+static const stress_thread_def_t stress_thread_defs[] = {
+    {&cpu_stress_thread,    "cpu_stress",    cpu_stress_thread_entry,    4096, 5},
+    {&amoled_thread,        "amoled_stress", amoled_stress_thread_entry, 2048, 15},
+    {&imu_thread,           "imu_stress",    imu_stress_thread_entry,    2048, 12},
+    {&ppg_thread,           "ppg_stress",    ppg_stress_thread_entry,    2048, 12},
+    {&motor_thread,         "motor_stress",  motor_stress_thread_entry,  1024, 20},
+};
+
+    #define STRESS_THREAD_COUNT \
+        (sizeof(stress_thread_defs) / sizeof(stress_thread_defs[0]))
 
 static void start_stress_test(void)
 {
     LOG_I("Starting stress test mode");
     stress_test_running = true;
 
-    // Start CPU stress thread (high priority for maximum load)
-    cpu_stress_thread = rt_thread_create("cpu_stress", cpu_stress_thread_entry, RT_NULL, 4096, 5, 10);
-    if (cpu_stress_thread != RT_NULL)
+    for (size_t i = 0; i < STRESS_THREAD_COUNT; i++)
     {
-        rt_thread_startup(cpu_stress_thread);
+        const stress_thread_def_t *def = &stress_thread_defs[i];
+        *def->handle = rt_thread_create(def->name, def->entry, RT_NULL,
+                                        def->stack_size, def->priority, 10);
+        if (*def->handle != RT_NULL)
+        {
+            rt_thread_startup(*def->handle);
+        }
     }
 
-    // Start AMOLED stress thread
-    amoled_thread = rt_thread_create("amoled_stress", amoled_stress_thread_entry, RT_NULL, 2048, 15, 10);
-    if (amoled_thread != RT_NULL)
-    {
-        rt_thread_startup(amoled_thread);
-    }
-
-    // Start IMU monitoring thread
-    imu_thread = rt_thread_create("imu_stress", imu_stress_thread_entry, RT_NULL, 2048, 12, 10);
-    if (imu_thread != RT_NULL)
-    {
-        rt_thread_startup(imu_thread);
-    }
-
-    // Start PPG monitoring thread
-    ppg_thread = rt_thread_create("ppg_stress", ppg_stress_thread_entry, RT_NULL, 2048, 12, 10);
-    if (ppg_thread != RT_NULL)
-    {
-        rt_thread_startup(ppg_thread);
-    }
-
-    // Start motor stress thread
-    motor_thread = rt_thread_create("motor_stress", motor_stress_thread_entry, RT_NULL, 1024, 20, 10);
-    if (motor_thread != RT_NULL)
-    {
-        rt_thread_startup(motor_thread);
-    }
-
-    // Start audio recording
     voice_provider.vad_init();
     start_voice_recognition(V2T_INTENT_CHAT);
 
@@ -450,44 +343,23 @@ static void stop_stress_test(void)
 {
     LOG_I("Stopping stress test mode");
     stress_test_running = false;
-
     rt_thread_mdelay(100);
 
-    if (cpu_stress_thread != RT_NULL)
+    for (size_t i = 0; i < STRESS_THREAD_COUNT; i++)
     {
-        rt_thread_delete(cpu_stress_thread);
-        cpu_stress_thread = RT_NULL;
-    }
-
-    if (amoled_thread != RT_NULL)
-    {
-        rt_thread_delete(amoled_thread);
-        amoled_thread = RT_NULL;
-    }
-
-    if (imu_thread != RT_NULL)
-    {
-        rt_thread_delete(imu_thread);
-        imu_thread = RT_NULL;
-    }
-
-    if (ppg_thread != RT_NULL)
-    {
-        rt_thread_delete(ppg_thread);
-        ppg_thread = RT_NULL;
-    }
-
-    if (motor_thread != RT_NULL)
-    {
-        rt_thread_delete(motor_thread);
-        motor_thread = RT_NULL;
+        rt_thread_t *handle = stress_thread_defs[i].handle;
+        if (*handle != RT_NULL)
+        {
+            rt_thread_delete(*handle);
+            *handle = RT_NULL;
+        }
     }
 
     stop_voice_recognition(V2T_INTENT_NOTHING);
     voice_provider.vad_deinit();
 }
 
-#define REQUIRE_TOUCH_COUNT 3
+    #define REQUIRE_TOUCH_COUNT 3
 static uint8_t click_count = 0;
 
 static void mode_button_event_handler(lv_event_t *e)
@@ -495,7 +367,6 @@ static void mode_button_event_handler(lv_event_t *e)
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED)
     {
-        lv_obj_t *btn = lv_event_get_target(e);
         test_mode_t *mode = (test_mode_t *)lv_event_get_user_data(e);
 
         if (mode != NULL)
@@ -523,19 +394,21 @@ static void mode_button_event_handler(lv_event_t *e)
     }
 }
 
-static void operational_button_event_handler(lv_event_t *e)
+static void random_address_button_event_handler(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_CLICKED)
     {
-        create_operational_test_thread();
+        extern void generate_random_public_address(uint8_t device_id);
+        generate_random_public_address(0);
+        rt_thread_mdelay(50);
+        watch_system_interact(WATCH_REBOOT, NULL);
     }
 }
 
 static void screen_event_handler(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t *obj = lv_event_get_target(e);
     if (code == LV_EVENT_GESTURE)
     {
         lv_dir_t g = lv_indev_get_gesture_dir(lv_indev_get_act());
@@ -563,6 +436,26 @@ static void screen_event_handler(lv_event_t *e)
         }
     }
 }
+static lv_obj_t *create_mode_button(lv_obj_t *parent, const char *text,
+                                    lv_coord_t y_offset,
+                                    lv_palette_t bg_palette, lv_event_cb_t cb,
+                                    void *user_data)
+{
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_set_size(btn, 180, 60);
+    lv_obj_align(btn, LV_ALIGN_CENTER, 0, y_offset);
+    if (bg_palette != LV_PALETTE_NONE)
+    {
+        lv_obj_set_style_bg_color(btn, lv_palette_main(bg_palette), 0);
+    }
+    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
+
+    lv_obj_t *label = lv_label_create(btn);
+    lv_label_set_text(label, text);
+    lv_obj_center(label);
+    return btn;
+}
+
 static void create_mode_selection_ui(lv_obj_t *parent)
 {
     static test_mode_t normal_mode = TEST_MODE_NORMAL;
@@ -578,45 +471,24 @@ static void create_mode_selection_ui(lv_obj_t *parent)
     lv_obj_t *title = lv_label_create(mode_select_container);
     lv_label_set_text(title, "Select Test Mode");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
-    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(1)),
+                               0);
 
-    // Normal test button
-    lv_obj_t *btn_normal = lv_btn_create(mode_select_container);
-    lv_obj_set_size(btn_normal, 180, 60);
-    lv_obj_align(btn_normal, LV_ALIGN_CENTER, 0, -40);
-    lv_obj_add_event_cb(btn_normal, mode_button_event_handler, LV_EVENT_CLICKED, &normal_mode);
-
-    lv_obj_t *label_normal = lv_label_create(btn_normal);
-    lv_label_set_text(label_normal, "Normal Test");
-    lv_obj_center(label_normal);
-
-    // Stress test button
-    lv_obj_t *btn_stress = lv_btn_create(mode_select_container);
-    lv_obj_set_size(btn_stress, 180, 60);
-    lv_obj_align(btn_stress, LV_ALIGN_CENTER, 0, 40);
-    lv_obj_set_style_bg_color(btn_stress, lv_palette_main(LV_PALETTE_RED), 0);
-    lv_obj_add_event_cb(btn_stress, mode_button_event_handler, LV_EVENT_CLICKED, &stress_mode);
-
-    lv_obj_t *label_stress = lv_label_create(btn_stress);
-    lv_label_set_text(label_stress, "Stress Test");
-    lv_obj_center(label_stress);
-
-    // Stress test Operational
-    lv_obj_t *btn_operational = lv_btn_create(mode_select_container);
-    lv_obj_set_size(btn_operational, 180, 60);
-    lv_obj_align(btn_operational, LV_ALIGN_CENTER, 0, 120);
-    lv_obj_set_style_bg_color(btn_operational, lv_palette_main(LV_PALETTE_GREEN), 0);
-    lv_obj_add_event_cb(btn_operational, operational_button_event_handler, LV_EVENT_CLICKED, &stress_mode);
-
-    lv_obj_t *label_operational = lv_label_create(btn_operational);
-    lv_label_set_text(label_operational, "Operational Test");
-    lv_obj_center(label_operational);
+    create_mode_button(mode_select_container, "Normal Test", -40,
+                       LV_PALETTE_NONE, mode_button_event_handler,
+                       &normal_mode);
+    create_mode_button(mode_select_container, "Stress Test", 40,
+                       LV_PALETTE_RED, mode_button_event_handler, &stress_mode);
+    create_mode_button(mode_select_container, "Random Address", 120,
+                       LV_PALETTE_BLUE, random_address_button_event_handler,
+                       NULL);
 
     // Description
     lv_obj_t *desc = lv_label_create(mode_select_container);
     lv_label_set_text(desc, "Stress: All sensors + CPU load");
     lv_obj_align(desc, LV_ALIGN_BOTTOM_MID, 0, -20);
-    lv_obj_set_style_text_font(desc, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_font(desc, LV_EXT_FONT_GET(get_system_font_size(0)),
+                               0);
 }
 
 static lv_obj_t *on_start(lv_obj_t *parent)
@@ -628,9 +500,16 @@ static lv_obj_t *on_start(lv_obj_t *parent)
     lv_label_set_text(test_label, "");
 
     status_label = lv_label_create(parent);
-    lv_obj_align(status_label, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_align(status_label, LV_ALIGN_BOTTOM_MID, 0, -40);
     lv_label_set_text(status_label, "");
-    lv_obj_set_style_text_font(status_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_font(status_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+
+    ppg_status_label = lv_label_create(parent);
+    lv_obj_align(ppg_status_label, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_label_set_text(ppg_status_label, "");
+    lv_obj_set_style_text_font(ppg_status_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
 
     // Show mode selection UI
     create_mode_selection_ui(parent);
@@ -668,35 +547,23 @@ static void on_stop(void)
         test_thread = RT_NULL;
     }
 }
-static void sync_back_to_phone(test_state_t state)
-{
-    LOG_D("Sync back to phone");
-    (void)state;
-}
-
 static bool check_amoled()
 {
     LOG_D("Testing AMOLED");
     test_state = TEST_STATE_AMOLED;
     lv_color_t colors[] = {
-        LV_COLOR_WHITE,
-        LV_COLOR_RED,
-        LV_COLOR_ORANGE,
-        LV_COLOR_YELLOW,
-        LV_COLOR_GREEN,
-        LV_COLOR_BLUE,
-        LV_COLOR_NAVY,
-        LV_COLOR_PURPLE,
-        LV_COLOR_BLACK,
+        LV_COLOR_WHITE,  LV_COLOR_RED,    LV_COLOR_ORANGE,
+        LV_COLOR_YELLOW, LV_COLOR_GREEN,  LV_COLOR_BLUE,
+        LV_COLOR_NAVY,   LV_COLOR_PURPLE, LV_COLOR_BLACK,
     };
     int num_colors = sizeof(colors) / sizeof(colors[0]);
 
     for (int i = 0; i < num_colors; i++)
     {
-        lv_obj_set_style_bg_color(lv_scr_act(), colors[i % num_colors], LV_PART_MAIN);
+        lv_obj_set_style_bg_color(lv_scr_act(), colors[i % num_colors],
+                                  LV_PART_MAIN);
         rt_thread_mdelay(300);
     }
-    sync_back_to_phone(test_state);
     return true;
 }
 
@@ -709,7 +576,6 @@ static bool wait_for_touch()
     {
         rt_thread_mdelay(100);
     }
-    sync_back_to_phone(test_state);
     return true;
 }
 
@@ -725,22 +591,30 @@ static bool check_imu_sensor()
     for (int i = 0; i < 10; i++)
     {
         rt_thread_mdelay(100);
-        if (fabs(watch_sensor.imu_data.acce.x) < 1 && fabs(watch_sensor.imu_data.acce.y) < 1 && fabs(watch_sensor.imu_data.acce.z) < 1)
+        if (fabs(watch_sensor.imu_data.acce.x) < 1 &&
+            fabs(watch_sensor.imu_data.acce.y) < 1 &&
+            fabs(watch_sensor.imu_data.acce.z) < 1)
         {
             LOG_E("IMU sensor acce is invalid");
             return false;
         }
-        if (fabs(watch_sensor.imu_data.gyro.x) == 0 && fabs(watch_sensor.imu_data.gyro.y) == 0 && fabs(watch_sensor.imu_data.gyro.z) == 0)
+        if (fabs(watch_sensor.imu_data.gyro.x) == 0 &&
+            fabs(watch_sensor.imu_data.gyro.y) == 0 &&
+            fabs(watch_sensor.imu_data.gyro.z) == 0)
         {
             LOG_E("IMU sensor gyro is invalid");
             return false;
         }
         // print out the sensor data
-        lv_label_set_text_fmt(test_label, "IMU: acce(%ld, %ld, %ld), gyro(%ld, %ld, %ld)",
-                              (long)watch_sensor.imu_data.acce.x, (long)watch_sensor.imu_data.acce.y, (long)watch_sensor.imu_data.acce.z,
-                              (long)watch_sensor.imu_data.gyro.x, (long)watch_sensor.imu_data.gyro.y, (long)watch_sensor.imu_data.gyro.z);
+        lv_label_set_text_fmt(test_label,
+                              "IMU: acce(%ld, %ld, %ld), gyro(%ld, %ld, %ld)",
+                              (long)watch_sensor.imu_data.acce.x,
+                              (long)watch_sensor.imu_data.acce.y,
+                              (long)watch_sensor.imu_data.acce.z,
+                              (long)watch_sensor.imu_data.gyro.x,
+                              (long)watch_sensor.imu_data.gyro.y,
+                              (long)watch_sensor.imu_data.gyro.z);
     }
-    sync_back_to_phone(test_state);
 
     return true;
 }
@@ -748,31 +622,31 @@ static bool check_imu_sensor()
 static bool check_ppg_sensor()
 {
     test_state = TEST_STATE_SENSOR_PPG;
-    sensor_subscription_t sensor_subscription;
-    sensor_subscription.type = SENSOR_TYPE_PPG;
-    sensor_subscription.thread_safe = true;
-    sensor_subscription.status = true;
-    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
+    // sensor_subscription_t sensor_subscription;
+    // sensor_subscription.type = SENSOR_TYPE_PPG;
+    // sensor_subscription.thread_safe = true;
+    // sensor_subscription.status = true;
+    // watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
     for (int i = 0; i < 10; i++)
     {
         rt_thread_mdelay(100);
-        if (watch_sensor.ppg_data.raw_data[0] == 0 && watch_sensor.ppg_data.raw_data[1] == 0)
+        if (watch_sensor.ppg_data.raw_data[0] == 0 &&
+            watch_sensor.ppg_data.raw_data[1] == 0)
         {
-            sensor_subscription.status = false;
-            watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
-            rt_thread_mdelay(100);
+            // sensor_subscription.status = false;
+            // watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
+            // rt_thread_mdelay(100);
             LOG_E("Heart rate sensor is invalid");
             return false;
         }
         // print out the sensor data
         lv_label_set_text_fmt(test_label, "PPG: raw_data(%d, %d)",
-                              watch_sensor.ppg_data.raw_data[0], watch_sensor.ppg_data.raw_data[1]);
+                              watch_sensor.ppg_data.raw_data[0],
+                              watch_sensor.ppg_data.raw_data[1]);
     }
-    rt_thread_mdelay(200);
-    sensor_subscription.status = false;
-    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
-    rt_thread_mdelay(200);
-    sync_back_to_phone(test_state);
+    // rt_thread_mdelay(200);
+    // sensor_subscription.status = false;
+    // watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
     return true;
 }
 
@@ -784,33 +658,6 @@ static bool record_with_mic(int seconds)
     start_voice_recognition(V2T_INTENT_CHAT);
     rt_thread_mdelay(seconds * 1000);
     // stop_voice_recording();
-    sync_back_to_phone(test_state);
-    return true;
-}
-
-static bool play_with_speaker(int seconds)
-{
-    test_state = TEST_STATE_SOUND_PLAY;
-    // peripheral_provider.audio_playback(true);
-    // rt_thread_mdelay(seconds * 1000);
-    // peripheral_provider.audio_playback(false);
-    start_sync_voice_recording();
-    rt_thread_mdelay((seconds + 1) * 1000);
-    sync_back_to_phone(test_state);
-    return true;
-}
-
-static bool run_motor(int seconds)
-{
-    test_state = TEST_STATE_MOTOR;
-    motor_params_t param = {
-        .duty_cycle = 50,        // 50%
-        .period = 1000000,       // 1s
-        .repeat_times = seconds, // 5s
-    };
-    peripheral_provider.control_motor(true, &param);
-    rt_thread_mdelay(seconds * 1000);
-    sync_back_to_phone(test_state);
     return true;
 }
 
@@ -818,7 +665,6 @@ static void send_ok_to_phone_and_exit()
 {
     LOG_D("Sending OK to phone");
     test_state = TEST_STATE_OK;
-    sync_back_to_phone(test_state);
     gui_app_exit(APP_ID);
 }
 
@@ -828,7 +674,6 @@ static void exit_app()
     stop_voice_recognition(V2T_INTENT_NOTHING);
     voice_provider.vad_deinit();
     test_state = TEST_STATE_EXIT;
-    sync_back_to_phone(test_state);
     gui_app_exit(APP_ID);
 }
 
@@ -868,4 +713,5 @@ static int app_main(intent_t i)
 
 BUILTIN_APP_EXPORT(LV_EXT_STR_ID(skaiwalk_demo), IMG_LOGO, APP_ID, app_main);
 #endif
-/************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/
+/************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
+ * FILE****/

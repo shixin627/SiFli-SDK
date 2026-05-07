@@ -618,8 +618,6 @@ static void test_all(uint8_t action)
 	}
 	else
 	{
-		extern void close_operational_test_thread(void);
-		close_operational_test_thread();
 		extern void exit_testing_app(void);
 		exit_testing_app();
 	}

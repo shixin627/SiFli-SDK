@@ -119,9 +119,25 @@ lv_font_t *lvsf_get_font_from_size(uint16_t size);
 void lvsf_reset_font_size_by_name(char *font_name, int *size);
 lv_font_t *lvsf_get_font_by_name(char *font_name, int size);
 
+/* Set by gui_freetype_init() in littlevgl2rtt.c when the user-supplied
+   is_freetype_safe_to_init() weak hook returns false (e.g. ttf missing on
+   DFS). In that state lvsf's font_list is empty and lvsf_get_font_from_size
+   would assert. Fall through to LVGL built-in theme fonts (Montserrat) so
+   the UI still renders ASCII; non-ASCII glyphs become tofu boxes but the
+   watch boots. */
+extern bool g_lvsf_freetype_skipped;
+
 static inline const lv_font_t *LV_EXT_FONT_GET(uint8_t size)
 {
     lvsf_convert_font_size(size);
+    if (g_lvsf_freetype_skipped)
+    {
+        if (FONT_BIGL <= size)      return lv_theme_get_font_bigl(NULL);
+        if (FONT_TITLE <= size)     return lv_theme_get_font_title(NULL);
+        if (FONT_SUBTITLE <= size)  return lv_theme_get_font_subtitle(NULL);
+        if (FONT_NORMAL <= size)    return lv_theme_get_font_normal(NULL);
+        return lv_theme_get_font_small(NULL);
+    }
     lv_font_t *font = lvsf_get_font_from_size(size);
     return (const lv_font_t *) font;
 }
