@@ -65,6 +65,7 @@
 #include "ui_handler.h"
 #include "ui_img_helper.h"
 #include "communicate_protocol.h"
+#include "arc_scroll.h"
 
 #define DBG_TAG "app.weather"
 #define DBG_LVL DBG_LOG
@@ -109,6 +110,8 @@ typedef struct
     lv_obj_t *daily_rain_label[5];
     lv_obj_t *daily_max_temp[5];
     lv_obj_t *daily_min_temp[5];
+
+    arc_scroll_handle_t *arc_handle; // 共用右側弧形觸控滾動 instance
 } app_weather_t;
 
 /*
@@ -158,6 +161,32 @@ static void weather_event_cb(lv_event_t *e)
     default:
         break;
     }
+}
+
+/* arc-scroll snap：放手後從目前 scroll_y 算最近的 tile，直接 lv_obj_set_tile
+ * 讓 tileview 自己更新 tile_act 跟動畫滾過去。
+ * 不能單純 return tile 給 arc_scroll 的 released_cb 走 lv_obj_scroll_to_view —
+ * 那只動 scroll 不更新 tile_act，後續 LV_DIR_TOP/BOTTOM 滑動或 motion 控制會
+ * 拿到舊的 active tile，行為錯亂；arc_scroll 拖動時又是用 _lv_obj_scroll_by_raw
+ * 直接刷 scroll，tileview 內部 snap-on-scroll-end 不一定有觸發過 */
+static lv_obj_t *weather_arc_snap_cb(void *ctx)
+{
+    (void)ctx;
+    if (p_app_weather == NULL) return NULL;
+    if (p_app_weather->tileview == NULL ||
+        !lv_obj_is_valid(p_app_weather->tileview))
+        return NULL;
+    lv_coord_t scroll_y = lv_obj_get_scroll_y(p_app_weather->tileview);
+    int idx = (scroll_y + LV_VER_RES / 2) / LV_VER_RES;
+    if (idx < 0) idx = 0;
+    if (idx > 1) idx = 1;
+    lv_obj_t *target = (idx == 0) ? p_app_weather->tile1 : p_app_weather->tile2;
+    if (target != NULL && lv_obj_is_valid(target))
+    {
+        lv_obj_set_tile(p_app_weather->tileview, target, LV_ANIM_ON);
+    }
+    /* 已經自己 snap 了，回 NULL 讓 arc_scroll 的 released_cb 不再 lv_obj_scroll_to_view */
+    return NULL;
 }
 
 /*
@@ -944,6 +973,28 @@ lv_obj_t *lv_card_layout_weather_create(lv_obj_t *parent_tv_obj)
 
     lv_obj_add_event_cb(p_app_weather->tileview, weather_event_cb, LV_EVENT_ALL,
                         NULL);
+
+    /* 右側弧形觸控滾動 — 在 tileview 兩個 tile 間切換。
+     * slot_height = LV_VER_RES（一個 tile 一螢幕），item_count = 2，
+     * slot_angle = 60°（拖過 60° 弧 = 1 個 tile，比 instruction list 寬鬆些）。
+     * 預設模式（沒給 drag_cb）— arc 直接滾 tileview，放手 snap_cb 回傳目標 tile，
+     * arc_scroll 的 released_cb 會 lv_obj_scroll_to_view 動畫過去 + tileview 自己
+     * 的 LV_DIR_BOTTOM/TOP snap 接手 */
+    arc_scroll_config_t arc_cfg = {
+        .parent          = parent_tv_obj,
+        .list            = p_app_weather->tileview,
+        .slot_height_px  = LV_VER_RES,
+        .item_height_px  = LV_VER_RES,
+        .slot_angle_deg  = 60,
+        .item_count      = 2,
+        .band_thickness  = 90,
+        .lock_ancestors  = false,
+        .tap_cb          = NULL,
+        .snap_cb         = weather_arc_snap_cb,
+        .ctx             = NULL,
+    };
+    p_app_weather->arc_handle = arc_scroll_create(&arc_cfg);
+
     return p_app_weather->tileview;
 }
 
@@ -1193,6 +1244,14 @@ static void on_stop(void)
     // Clean up UI elements
     if (p_app_weather)
     {
+        /* arc_scroll overlay 是 scr 的 child（跟 tileview 同層），自己不會被
+         * tileview del 連帶清掉 — 顯式 destroy */
+        if (p_app_weather->arc_handle != NULL)
+        {
+            arc_scroll_destroy(p_app_weather->arc_handle);
+            p_app_weather->arc_handle = NULL;
+        }
+
         if (lv_obj_is_valid(p_app_weather->bg))
         {
             lv_obj_del(p_app_weather->bg);
