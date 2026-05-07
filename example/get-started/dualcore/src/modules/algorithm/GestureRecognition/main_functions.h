@@ -24,8 +24,6 @@ extern "C"
 #endif
     // Initializes all data needed for the example. The name is important, and needs
     // to be setup() for Arduino compatibility.
-    void init_gesture_recognition_model(void);
-    int recognize_gesture_tap(float (*matrix)[kChannelNumber]);
     void init_gesture_recognition_release_model(void);
     int recognize_gesture_release(float (*matrix)[kChannelReleaseNumber]);
 #ifdef __cplusplus

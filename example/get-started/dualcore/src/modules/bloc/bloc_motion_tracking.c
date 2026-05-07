@@ -568,11 +568,6 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
 /**
  * @brief Process waveform capture - called from motion_tracking_in_hcpu
  */
-extern rt_uint32_t fsr_adc_read_value(void);
-
-// 10Hz FSR sampler — motion loop (100Hz) 連續 10 筆 IMU 共用同一個 latch 值
-static volatile rt_uint32_t g_fsr_adc_latest = 0;
-
 static uint8_t get_ppg_count = 0;
 static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
 {
@@ -582,7 +577,11 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     get_ppg_count ^= 1;
     uint32_t ppg_rawdata = motion_data->ppg_raw_data.raw_data[get_ppg_count];
 
-    rt_uint32_t fsr_adc_value = g_fsr_adc_latest;
+#ifdef USING_FSR_ADC_SAMPLER
+    rt_uint32_t fsr_adc_value = bloc_control_fsr_adc_latest();
+#else
+    rt_uint32_t fsr_adc_value = 0;
+#endif
     // LOG_D("ppg_rawdata:%d, fsr_adc_value:%d", ppg_rawdata, fsr_adc_value);
 
     // Update hand position detection
@@ -864,7 +863,6 @@ static euler_angle_t motion_tracking_algorithm(Quaternion *quaternion,
 
 #ifdef BSP_USING_AIR_MOUSE
 extern bool is_skai_touch_enabled(void);
-extern bool is_fsr_change_detected(void);
 extern void set_air_mouse_moving_state(bool state);
 static void report_air_mouse_data(air_plane_delta_movement_t *movement,
                                   rt_uint32_t ts)
@@ -960,14 +958,9 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
         mouse_movement_lock = false;
     }
 
-    // if (is_fsr_change_detected())
-    // {
-    //     LOG_D("FSR change detected, locking mouse movement");
-    // }
-
     // 按住面板才可體感移動，且移動鎖已解除
     if (!mouse_movement_lock && get_hid_mouse_handfree_mode() &&
-        !is_fsr_change_detected() && !switch_freehand_mode &&
+        !switch_freehand_mode &&
         !switch_mouse_scroll_mode) //! stop_mouse_move &&
                                    //! is_skai_touch_enabled() &&
     {
@@ -1491,64 +1484,11 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
     }
 }
 
-#ifdef USING_FSR_ADC_SAMPLER
-/*
- ***** FSR ADC sampler thread — 10Hz, 獨立 thread 不阻塞 motion loop
- *     休眠時拉長 delay 到 500ms,避免持續採樣耗電
- */
-static rt_thread_t fsr_adc_sampler_thread = RT_NULL;
-static void fsr_adc_sampler_thread_entry(void *parameter)
-{
-    extern void set_hid_mouse_handfree_mode_to(bool v);
-    // 邊緣觸發：避免每 100ms 重複 set / press / release 造成 BLE 流量
-    bool prev_handfree = false;
-    bool left_pressed = false;
-    while (1)
-    {
-        if (SkaiWatchSys.sys_power_status != SYS_POWER_STATUS_ON)
-        {
-            rt_thread_mdelay(1000);
-            continue;
-        }
-        g_fsr_adc_latest = fsr_adc_read_value();
-        // LOG_D("fsr latch=%d", g_fsr_adc_latest);
-
-        // 壓感 < 17000 → handfree on（自由滑鼠模式）；否則 off
-        bool want_handfree = (g_fsr_adc_latest < 17000);
-        if (want_handfree != prev_handfree)
-        {
-            set_hid_mouse_handfree_mode_to(want_handfree);
-            prev_handfree = want_handfree;
-        }
-
-        // 壓感 < 10000 → 左鍵按下；> 10000 → 左鍵放開
-        if (g_fsr_adc_latest < 10000 && !left_pressed)
-        {
-            if (control_provider.ble_hid_mouse_left_press)
-                control_provider.ble_hid_mouse_left_press();
-            left_pressed = true;
-        }
-        else if (g_fsr_adc_latest > 10000 && left_pressed)
-        {
-            if (control_provider.ble_hid_mouse_left_release)
-                control_provider.ble_hid_mouse_left_release();
-            left_pressed = false;
-        }
-
-        rt_thread_mdelay(100); // 10Hz
-    }
-}
-#endif // USING_FSR_ADC_SAMPLER
-
 /*
  ***** Motion Tracking processing
  */
 static void motion_tracking_thread_entry(void *parameter)
 {
-#ifdef USING_FSR_ADC_SAMPLER
-    extern void fsr_adc_init(void);
-    fsr_adc_init();
-#endif
     watch_sensor.imu_sem = rt_sem_create("imu_sem", 0, RT_IPC_FLAG_FIFO);
     while (1)
     {
@@ -1572,16 +1512,6 @@ static int motion_tracking_thread_init(void)
     {
         return -RT_ERROR;
     }
-
-#ifdef USING_FSR_ADC_SAMPLER
-    fsr_adc_sampler_thread =
-        rt_thread_create("fsr_smp", fsr_adc_sampler_thread_entry, RT_NULL, 1024,
-                         RT_THREAD_PRIORITY_MAX - 4, 10);
-    if (fsr_adc_sampler_thread != RT_NULL)
-    {
-        rt_thread_startup(fsr_adc_sampler_thread);
-    }
-#endif // USING_FSR_ADC_SAMPLER
     return RT_EOK;
 }
 INIT_APP_EXPORT(motion_tracking_thread_init);

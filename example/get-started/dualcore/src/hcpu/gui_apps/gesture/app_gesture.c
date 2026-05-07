@@ -884,11 +884,6 @@ static void sync_button_event_cb(lv_event_t *e)
     sync_all_gesture_files();
 }
 
-static void bottom_clear_tap_model_cb(lv_event_t *e)
-{
-    clear_tap_model_file();
-}
-
 static void bottom_clear_release_model_cb(lv_event_t *e)
 {
     clear_release_model_file();
@@ -1248,18 +1243,6 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
     lv_obj_set_size(top_margin, 100, 100);
     lv_obj_set_style_bg_opa(top_margin, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align_to(top_margin, ui.main_container, LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
-
-    lv_obj_t *bottom_clear_tap_model = lv_btn_create(ui.main_container);
-    lv_obj_set_size(bottom_clear_tap_model, LV_PCT(80), 50);
-    lv_obj_set_style_bg_color(bottom_clear_tap_model, lv_color_make(200, 50, 50), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(bottom_clear_tap_model, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_add_event_cb(bottom_clear_tap_model, bottom_clear_tap_model_cb, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *clear_tap_model_label = lv_label_create(bottom_clear_tap_model);
-    lv_label_set_text(clear_tap_model_label, "清除Tap模型");
-    lv_obj_set_style_text_color(clear_tap_model_label, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(clear_tap_model_label, LV_EXT_FONT_GET(get_system_font_size(0)), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_center(clear_tap_model_label);
 
     lv_obj_t *bottom_clear_release_model = lv_btn_create(ui.main_container);
     lv_obj_set_size(bottom_clear_release_model, LV_PCT(80), 50);

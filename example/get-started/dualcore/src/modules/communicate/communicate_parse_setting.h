@@ -52,6 +52,9 @@ extern "C"
         KEY_DEVICEINFO_REQUEST = 0x51,
         KEY_DEVICEINFO_RETURN = 0x52,
         KEY_GESTURE_ACCEL_LIMIT_SETTING = 0x67,
+        KEY_MODEL_VERSION_REQUEST = 0x68,
+        KEY_MODEL_VERSION_RETURN  = 0x69,
+        KEY_MODEL_VERSION_SET     = 0x6A,
     } SETTINGS_KEY;
 
     void resolve_settings_config_command(uint8_t key, const uint8_t *pValue, uint16_t length);

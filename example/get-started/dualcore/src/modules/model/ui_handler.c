@@ -88,7 +88,6 @@ extern void update_ai_process_indicator_text(app_gesture_indicator_t *indicator,
 extern void set_skai_widget_processing_text(const char *text);
 extern void mouse_apply_v2t_input(const char *text);
 extern void toggle_keyboard_visibility(void);
-extern void fsr_long_press(void);
 extern void open_selected_widget(bool need_widget_img_anima);
 extern void open_ai_tap_hint_bg(bool open);
 extern void reset_skai_widget_input_text(void);
@@ -530,10 +529,6 @@ static void process_lvgl_message(lvgl_msg_t *msg)
 
     case LVGL_MSG_TYPE_MOUSE_OPEN_KEYBOARD:
         toggle_keyboard_visibility();
-        break;
-
-    case LVGL_MSG_TYPE_MOUSE_LONG_PRESS:
-        fsr_long_press();
         break;
 
     case LVGL_MSG_TYPE_LOADING:

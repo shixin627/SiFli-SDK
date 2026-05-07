@@ -20,15 +20,12 @@ extern "C"
 
 /* Model file paths in flash file system */
 #define GESTURE_MODEL_DIR "/model"
-#define GESTURE_TAP_MODEL_FILE "gesture_tap.tflite"
 #define GESTURE_RELEASE_MODEL_FILE "gesture_release.tflite"
 
 /* Full paths */
-#define GESTURE_TAP_MODEL_FULLPATH GESTURE_MODEL_DIR "/" GESTURE_TAP_MODEL_FILE
 #define GESTURE_RELEASE_MODEL_FULLPATH GESTURE_MODEL_DIR "/" GESTURE_RELEASE_MODEL_FILE
 
 /* Model size limits */
-#define MAX_TAP_MODEL_SIZE (10 * 1024)      // 10KB
 #define MAX_RELEASE_MODEL_SIZE (10 * 1024)  // 10KB
 
 /**

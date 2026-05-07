@@ -56,6 +56,9 @@
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
 #include "bf0_ble_bass.h"
+#if defined(USING_FSR_ADC_SAMPLER) && !defined(SOC_BF0_LCPU)
+    #include "bf0_hal.h"
+#endif
 #include "bloc_peripheral.h"
 #include "bloc_notification.h"
     #include "bloc_v2t.h"
@@ -311,12 +314,53 @@ static void charge_status_callback(uint8_t status)
     send_peripheral_data(data);
 }
 
-static void read_fsr_adc(void)
+    #ifdef USING_FSR_ADC_SAMPLER
+/* FSR-402 ADC HW driver (was in hid_mouse.c). Init runs at INIT_APP_EXPORT
+ * time so any consumer (bloc_control sampler thread, in-app timer) can read
+ * the device without coordinating init. */
+        #define FSR_ADC_DEV_NAME "bat1"
+        #define FSR_ADC_CHANNEL  3
+
+static rt_device_t fsr_adc_dev = NULL;
+
+void fsr_adc_init(void)
 {
-    PeripheralMessageData data;
-    data.event = FSR_ADC_READ;
-    send_peripheral_data(data);
+    HAL_PIN_Set_Analog(PAD_PB25, 1);
+    fsr_adc_dev = rt_device_find(FSR_ADC_DEV_NAME);
+    if (fsr_adc_dev != NULL)
+    {
+        rt_adc_enable((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
+        LOG_I("FSR-402 ADC initialized on channel %d", FSR_ADC_CHANNEL);
+    }
+    else
+    {
+        LOG_E("FSR-402 ADC device not found!");
+    }
 }
+
+void fsr_adc_deinit(void)
+{
+    if (fsr_adc_dev != NULL)
+    {
+        rt_adc_disable((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
+        fsr_adc_dev = NULL;
+    }
+}
+
+rt_uint32_t fsr_adc_read_value(void)
+{
+    if (fsr_adc_dev == NULL)
+        return 0;
+    return rt_adc_read((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
+}
+
+static int fsr_adc_hw_init(void)
+{
+    fsr_adc_init();
+    return 0;
+}
+INIT_APP_EXPORT(fsr_adc_hw_init);
+    #endif // USING_FSR_ADC_SAMPLER
 
     #else
 
@@ -358,7 +402,6 @@ static int bloc_peripheral_register(void)
     peripheral_provider.save_watch_shared_prefs = save_watch_shared_prefs;
     peripheral_provider.notify_battery_voltage = notify_battery_voltage;
     peripheral_provider.charge_status_callback = charge_status_callback;
-    peripheral_provider.read_fsr_adc = read_fsr_adc;
     #else
     peripheral_provider.sensor_power_manage = sensor_power_manage;
     #endif
@@ -366,7 +409,6 @@ static int bloc_peripheral_register(void)
 }
 INIT_APP_EXPORT(bloc_peripheral_register);
 
-extern void fsr_adc_read(void);
 static void peripheral_task_entry(void *parameter)
 {
     static PeripheralMessageData data;
@@ -497,14 +539,6 @@ static void peripheral_task_entry(void *parameter)
             }
             break;
     #endif // #ifndef SOC_BF0_LCPU
-
-    #ifdef USING_FSR_ADC_SAMPLER
-            case FSR_ADC_READ:
-            {
-                fsr_adc_read();
-            }
-            break;
-    #endif
 
     #ifdef BSP_USING_WATCH_SYS_CLIENT
             case CONTROL_MOTOR:

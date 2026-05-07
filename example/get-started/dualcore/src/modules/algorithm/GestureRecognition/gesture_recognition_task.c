@@ -92,107 +92,6 @@ static float identifyWindow[TAP_TARGET_SAMPLE_NUM][4];
 static float release_identifyWindow[RELEASE_TARGET_SAMPLE_NUM][4];
 static float ppgidentifyWindow[16][kChannelReleaseNumber];
 
-#if USE_FFT_FILTER
-volatile static uint8_t fft_done_flag;
-static int32_t fft_in_buffer[32];
-static int32_t fft_out_buffer[32];
-extern fft_env_t g_fft_env;
-/**
- * @brief FFT completion callback function
- *
- * @param fft Pointer to the FFT handle
- */
-static void fft_done(FFT_HandleTypeDef *fft)
-{
-    fft_done_flag = 1;
-}
-
-/**
- * @brief Initialize FFT hardware for gesture recognition
- */
-void init_fft(void)
-{ // Initialize driver and enable FFT IRQ
-    LOG_D("init_fft");
-    HAL_NVIC_SetPriority(FFT1_IRQn, 3, 0);
-    HAL_NVIC_EnableIRQ(FFT1_IRQn);
-
-    HAL_RCC_EnableModule(RCC_MOD_FFT1);
-
-    g_fft_env.fft_handle.Instance = hwp_fft1;
-    HAL_FFT_Init(&g_fft_env.fft_handle);
-}
-
-void deinit_fft(void)
-{
-    HAL_FFT_DeInit(&g_fft_env.fft_handle);
-    g_fft_env.fft_handle.Instance = NULL;
-
-    HAL_RCC_DisableModule(RCC_MOD_FFT1);
-    HAL_NVIC_DisableIRQ(FFT1_IRQn);
-    LOG_D("deinit_fft");
-}
-
-// 計算標準差
-float calc_std(const float *data, int len)
-{
-    float mean = 0.0f, sum = 0.0f;
-    for (int i = 0; i < len; ++i)
-        mean += data[i];
-    mean /= len;
-    for (int i = 0; i < len; ++i)
-        sum += (data[i] - mean) * (data[i] - mean);
-    return sqrtf(sum / len);
-}
-
-bool check_linear_acce_condition_with_fft(void)
-{
-    FFT_ConfigTypeDef config;
-    HAL_StatusTypeDef res;
-
-    /* 初始化 */
-    memset(&config, 0, sizeof(config));
-
-    config.bitwidth = FFT_BW_32BIT; // 16bit FFT: input format is Q1.15
-    config.fft_length = FFT_LEN_32; // output format is Q5.11
-    config.ifft_flag = 0;
-    config.rfft_flag = 0;
-    config.input_data = fft_in_buffer;
-    config.output_data = fft_out_buffer;
-
-    fft_done_flag = 0;
-    g_fft_env.fft_handle.CpltCallback = fft_done;
-    res = HAL_FFT_StartFFT_IT(&g_fft_env.fft_handle, &config);
-
-    /* wait for interrupt, fft_done_flag is changed to 1 in fft_done */
-    int timeout = 10; // 設定最大等待次數，依實際情況調整
-    while (0 == fft_done_flag && timeout-- > 0)
-    {
-        rt_thread_mdelay(1); // 每次延遲1ms
-    }
-    if (timeout <= 0)
-    {
-        LOG_E("FFT timeout");
-        return false; // 超時，返回錯誤
-    }
-
-    float fft_data[32];
-    for (int i = 0; i < 32; i++)
-    {
-        fft_data[i] = fft_out_buffer[i] / 2048.0f;
-    }
-
-    float std = calc_std(fft_data, 32);
-    // LOG_I("FFT std=%0.5f", std);
-    if (std > 0.06f) // 0.0875
-    {
-        return false;
-    }
-
-    // ui_show_hint_toast("[o] FFT std=%0.5f", std);
-    return true;
-}
-#endif
-
 /**
  * @brief Handle detected gesture by updating gesture index
  *
@@ -224,20 +123,6 @@ static void get_gesture_data(gesture_data_t *gesture, int sample_num,
             release_identifyWindow[i][1] = acceleration_y;
             release_identifyWindow[i][2] = acceleration_z;
             release_identifyWindow[i][3] = gesture->dataset[index].ppg_data;
-
-#if USE_FFT_FILTER
-            // int16_t total_acc = sqrt(dataset->dataset[i][0] *
-            // dataset->dataset[i][0] +
-            //                          dataset->dataset[i][1] *
-            //                          dataset->dataset[i][1] +
-            //                          dataset->dataset[i][2] *
-            //                          dataset->dataset[i][2]);
-            if (i < 32)
-            {
-                // fft_in_buffer[i] = total_acc;
-                fft_in_buffer[i] = dataset->dataset[i][2];
-            }
-#endif
         }
     }
     else
@@ -255,23 +140,6 @@ static void get_gesture_data(gesture_data_t *gesture, int sample_num,
             identifyWindow[i][1] = acceleration_y;
             identifyWindow[i][2] = acceleration_z;
             identifyWindow[i][3] = gesture->dataset[index].ppg_data;
-            // LOG_D("get_gesture_data: sample %d, acc=(%f, %f, %f), ppg=%d", i,
-            // acceleration_x,
-            //       acceleration_y, acceleration_z,
-            //       gesture->dataset[index].ppg_data);
-#if USE_FFT_FILTER
-            // int16_t total_acc = sqrt(gesture->dataset[i][0] *
-            // gesture->dataset[i][0] +
-            //                          gesture->dataset[i][1] *
-            //                          gesture->dataset[i][1] +
-            //                          gesture->dataset[i][2] *
-            //                          gesture->dataset[i][2]);
-            if (i < 32)
-            {
-                // fft_in_buffer[i] = total_acc;
-                fft_in_buffer[i] = gesture->dataset[i][2];
-            }
-#endif
         }
         // PPG min-max normalization to [-1, 1]
         float ppg_min = identifyWindow[0][3];
@@ -330,18 +198,6 @@ static void get_gesture_data_with_ppg(gesture_data_t *dataset, int sample_num,
         ppgidentifyWindow[i][2] =
             dataset->dataset_ppg[index].acce.z / INT16_to_G * GRAVITY;
 #endif
-#if USE_FFT_FILTER
-        // if (i <= 16)
-        // {
-        //     int16_t total_acc = sqrt(dataset->dataset_ppg[i].acce.x *
-        //     dataset->dataset_ppg[i].acce.x +
-        //                              dataset->dataset_ppg[i].acce.y *
-        //                              dataset->dataset_ppg[i].acce.y +
-        //                              dataset->dataset_ppg[i].acce.z *
-        //                              dataset->dataset_ppg[i].acce.z);
-        //     fft_buffer_imu[i - 1] = total_acc;
-        // }
-#endif
     }
 }
 
@@ -377,7 +233,6 @@ static void trigger_gesture_unlock_timer(void)
 
 extern bool imu_data_collection;
 extern bool imu_data_collection_error;
-extern bool gesture_tap_collection;
 
 int tap_recognition_score;
 int release_recognition_score;
@@ -404,7 +259,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
 {
     LOG_D("gesture_recognition_algorithm sample_num:%d", gesture->sample_num);
     uint8_t sample_num = gesture->sample_num;
-#if !kReleaseMode
+#if 1 // !kReleaseMode
     if (imu_data_collection)
     {
         if (imu_data_collection_error)
@@ -426,9 +281,9 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                 {
                     packMatrixToBuffer(gsensorSamplesBuffer, gesture->dataset,
                                        NULL, TAP_TARGET_SAMPLE_NUM);
-                    commu_send_linear_acce_buffer(
-                        gsensorSamplesBuffer,
-                        TAP_TARGET_SAMPLE_NUM * BYTES_PER_SAMPLE);
+                    commu_send_linear_acce_buffer(gsensorSamplesBuffer,
+                                                  TAP_TARGET_SAMPLE_NUM *
+                                                      BYTES_PER_SAMPLE);
                 }
             }
             // incorrect release gesture
@@ -475,18 +330,15 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
     }
     else
 #endif // !kReleaseMode
-    if (gesture_recognition_lock)
-    {
-        LOG_D("gesture_recognition_algorithm is locked, ignore gesture");
-        return;
-    }
-    else if (sample_num == TAP_TARGET_SAMPLE_NUM)
-    {
-        get_gesture_data(gesture, sample_num, 1);
-#if USE_FFT_FILTER
-        // if (check_linear_acce_condition_with_fft() || collection_mode)
-#endif
+        if (gesture_recognition_lock)
         {
+            LOG_D("gesture_recognition_algorithm is locked, ignore gesture");
+            return;
+        }
+        else if (sample_num == TAP_TARGET_SAMPLE_NUM)
+        {
+            get_gesture_data(gesture, sample_num, 1);
+
             int label = kNoGesture;
             rt_tick_t tick_time_start = rt_tick_get();
             tap_recognition_score = recognize_gesture_release(identifyWindow);
@@ -541,7 +393,8 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                 {
                     if (is_at_instruction_list())
                     {
-                        LOG_D("Unlock gesture recognized at instruction list, unlocking watch and open AI widget");
+                        LOG_D("Unlock gesture recognized at instruction list, "
+                              "unlocking watch and open AI widget");
                         motor_pattern_unlocked();
                         extern void animate_open_ai_widget(void);
                         animate_open_ai_widget();
@@ -551,7 +404,6 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                         LOG_D("Unlock gesture recognized, unlocking watch");
                         watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
                     }
-                     
                 }
             }
             else
@@ -567,14 +419,10 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
             }
             handle_gesture(label);
         }
-    }
-    else if (sample_num == RELEASE_TARGET_SAMPLE_NUM)
-    {
-        get_gesture_data(gesture, sample_num, 1);
-#if USE_FFT_FILTER
-        // if (check_ppg_condition_with_fft())
-#endif
+        else if (sample_num == RELEASE_TARGET_SAMPLE_NUM)
         {
+            get_gesture_data(gesture, sample_num, 1);
+
             rt_tick_t tick_time_start = rt_tick_get();
             release_recognition_score =
                 recognize_gesture_release(release_identifyWindow);
@@ -595,7 +443,6 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                       cost_tick, release_recognition_score);
             }
         }
-    }
 }
 
 #define IMU_THREAD_STACK_SIZE 4 * 1024
@@ -604,14 +451,10 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
 extern bool get_motor_status(void);
 static void gesture_recognition_thread_entry(void *parameter)
 {
-    // init_gesture_recognition_model();
     init_gesture_recognition_release_model();
 
     watch_sensor.gesture_sem =
         rt_sem_create("gesture_sem", 0, RT_IPC_FLAG_FIFO);
-#if USE_FFT_FILTER
-    init_fft();
-#endif
 
     static Vector3 accData, gyroData, magData;
     while (1)

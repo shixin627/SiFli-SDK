@@ -201,6 +201,13 @@ extern "C"
     extern void notify_pageview_action(uint8_t action);
     extern void refresh_ble_mode_btn(void);
 
+#ifdef USING_FSR_ADC_SAMPLER
+    /* Latest FSR-402 latched value, written @ 10Hz by the sampler thread in
+     * bloc_control.c. Read by motion_tracking (100Hz) so all 10 IMU samples
+     * within a window share the same FSR snapshot. */
+    rt_uint32_t bloc_control_fsr_adc_latest(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

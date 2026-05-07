@@ -880,6 +880,78 @@ static int bloc_control_provider_register(void)
 
 INIT_APP_EXPORT(bloc_control_provider_register);
 
+#ifdef USING_FSR_ADC_SAMPLER
+/*
+ * FSR-402 ADC sampler thread — 10Hz, 獨立 thread 不阻塞 motion loop。
+ * 休眠時拉長 delay 到 1s,避免持續採樣耗電。
+ *
+ * Latched 值供 motion_tracking (100Hz) 讀取(透過 bloc_control_fsr_adc_latest());
+ * 同時做邊緣觸發的 HID mouse handfree 切換 + 左鍵 press/release。
+ */
+extern void set_hid_mouse_handfree_mode_to(bool v);
+
+static volatile rt_uint32_t g_fsr_adc_latest = 0;
+static rt_thread_t fsr_adc_sampler_thread = RT_NULL;
+
+rt_uint32_t bloc_control_fsr_adc_latest(void)
+{
+	return g_fsr_adc_latest;
+}
+
+static void fsr_adc_sampler_thread_entry(void *parameter)
+{
+	/* 邊緣觸發：避免每 100ms 重複 set / press / release 造成 BLE 流量 */
+	bool prev_handfree = false;
+	bool left_pressed = false;
+	while (1)
+	{
+		if (SkaiWatchSys.sys_power_status != SYS_POWER_STATUS_ON)
+		{
+			rt_thread_mdelay(1000);
+			continue;
+		}
+		g_fsr_adc_latest = fsr_adc_read_value();
+
+		/* 壓感 < 17000 → handfree on (自由滑鼠模式);否則 off */
+		bool want_handfree = (g_fsr_adc_latest < 17000);
+		if (want_handfree != prev_handfree)
+		{
+			set_hid_mouse_handfree_mode_to(want_handfree);
+			prev_handfree = want_handfree;
+		}
+
+		/* 壓感 < 10000 → 左鍵按下;> 10000 → 左鍵放開 */
+		if (g_fsr_adc_latest < 10000 && !left_pressed)
+		{
+			if (control_provider.ble_hid_mouse_left_press)
+				control_provider.ble_hid_mouse_left_press();
+			left_pressed = true;
+		}
+		else if (g_fsr_adc_latest > 10000 && left_pressed)
+		{
+			if (control_provider.ble_hid_mouse_left_release)
+				control_provider.ble_hid_mouse_left_release();
+			left_pressed = false;
+		}
+
+		rt_thread_mdelay(100); /* 10Hz */
+	}
+}
+
+static int fsr_adc_sampler_thread_init(void)
+{
+	fsr_adc_sampler_thread = rt_thread_create(
+		"fsr_smp", fsr_adc_sampler_thread_entry, RT_NULL, 1024,
+		RT_THREAD_PRIORITY_MAX - 4, 10);
+	if (fsr_adc_sampler_thread != RT_NULL)
+	{
+		rt_thread_startup(fsr_adc_sampler_thread);
+	}
+	return 0;
+}
+INIT_APP_EXPORT(fsr_adc_sampler_thread_init);
+#endif // USING_FSR_ADC_SAMPLER
+
 #if !kReleaseMode
 static int bloc_control_cmd(int argc, char *argv[])
 {

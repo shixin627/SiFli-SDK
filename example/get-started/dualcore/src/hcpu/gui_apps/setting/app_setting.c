@@ -97,7 +97,6 @@ static lv_obj_t *dnd_quick_btn = NULL;
 extern void app_setting_display_main(void);
 extern void app_setting_sys_main(void);
 extern void app_developer_main(void);
-extern void app_setting_device_list_main(void);
 
 static void time_format_setting_win_event_handler(lv_event_t *e)
 {
@@ -521,20 +520,6 @@ static void list_display_event_callback(lv_event_t *e)
     }
 }
 
-#if !kReleaseMode
-static void dinosaur_game_event_callback(lv_event_t *e)
-{
-    lv_obj_t *obj = lv_event_get_target(e);
-    lv_event_code_t event = lv_event_get_code(e);
-
-    if (LV_EVENT_SHORT_CLICKED == event)
-    {
-        LOG_D("dinosaur game item clicked: %s", lv_list_get_btn_text(NULL, obj));
-        gui_app_run(APP_ID_GAME_DINOSAUR);
-    }
-}
-#endif
-
 static void btn_sysinfo_event_callback(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target(e);
@@ -592,27 +577,56 @@ static void recursive_delete(const char *path)
         rmdir(path);
 }
 
+static void clear_flash_do(void)
+{
+    static const char *dirs_to_clear[] = {
+        "/assets/icons",
+        "/assets/images",
+        "/prefdb",
+        "/recorder",
+        "/note_list",
+        "/photo",
+    };
+    LOG_I("Clearing flash data...");
+    for (int i = 0; i < ARRAY_SIZE(dirs_to_clear); i++)
+    {
+        LOG_I("Deleting: %s", dirs_to_clear[i]);
+        recursive_delete(dirs_to_clear[i]);
+    }
+    LOG_I("Flash data cleared.");
+}
+
+static void clear_flash_confirm_event_cb(lv_event_t *e)
+{
+    lv_obj_t *mbox = lv_event_get_target(e);
+    uint16_t btn_id = lv_msgbox_get_active_btn(mbox);
+
+    if (btn_id == 0) // "Yes"
+    {
+        clear_flash_do();
+    }
+    /* btn_id == 1 ("No") or LV_BTNMATRIX_BTN_NONE: just close */
+
+    lv_msgbox_close(mbox);
+}
+
 static void btn_clear_flash_event_callback(lv_event_t *e)
 {
     lv_event_code_t event = lv_event_get_code(e);
 
     if (LV_EVENT_SHORT_CLICKED == event)
     {
-        static const char *dirs_to_clear[] = {
-            "/assets/icons",
-            "/assets/images",
-            "/prefdb",
-            "/recorder",
-            "/note_list",
-            "/photo",
-        };
-        LOG_I("Clearing flash data...");
-        for (int i = 0; i < ARRAY_SIZE(dirs_to_clear); i++)
-        {
-            LOG_I("Deleting: %s", dirs_to_clear[i]);
-            recursive_delete(dirs_to_clear[i]);
-        }
-        LOG_I("Flash data cleared.");
+        static const char *btns[] = {"Yes", "No", ""};
+        lv_obj_t *mbox = lv_msgbox_create(
+            lv_scr_act(),
+            "Clear Flash",
+            "Delete all icons, images,\nrecordings, photos and prefs?\nThis cannot be undone.",
+            btns, false);
+        lv_obj_add_event_cb(mbox, clear_flash_confirm_event_cb,
+                            LV_EVENT_VALUE_CHANGED, NULL);
+        lv_obj_set_style_bg_color(mbox, lv_color_make(40, 40, 40),
+                                  LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_center(mbox);
     }
 }
 
@@ -709,14 +723,14 @@ static void btn_gesture_threshold_event_callback(lv_event_t *e)
         create_gesture_threshold_window();
     }
 }
-static void btn_device_list_event_callback(lv_event_t *e)
+static void btn_test_app_event_callback(lv_event_t *e)
 {
     lv_event_code_t event = lv_event_get_code(e);
 
     if (LV_EVENT_SHORT_CLICKED == event)
     {
-        LOG_I("Opening device list...");
-        app_setting_device_list_main();
+        gui_app_goback();
+        gui_app_run("test");
     }
 }
 
@@ -894,10 +908,10 @@ void app_setting_init(void *param)
                                         LV_EXT_STR_GET_BY_KEY(system_info, "System Info"), SkaiWatchSys.font_size, true, 100);
     lv_obj_add_event_cb(list_btn, btn_sysinfo_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
 
-    // BLE Devices button
+    // Test App button
     list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(airplane),
-                                        "BLE Devices", SkaiWatchSys.font_size, true, 100);
-    lv_obj_add_event_cb(list_btn, btn_device_list_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
+                                        "Test App", SkaiWatchSys.font_size, true, 100);
+    lv_obj_add_event_cb(list_btn, btn_test_app_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
 
     // Clear Flash button
     list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(airplane),
@@ -905,14 +919,9 @@ void app_setting_init(void *param)
     lv_obj_add_event_cb(list_btn, btn_clear_flash_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
 
 #if !kReleaseMode
-    // Game Mode
-    list_btn = create_setting_list_item(general_group, IMG_GAME,
-                                        "Dinosaur game", SkaiWatchSys.font_size, true, 50);
-    lv_obj_add_event_cb(list_btn, dinosaur_game_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
-
-    // Test / Developer button
+    // Development button
     list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(airplane),
-                                        LV_EXT_STR_GET_BY_KEY(test_str, "Test"), SkaiWatchSys.font_size, false, 100);
+                                        "Development", SkaiWatchSys.font_size, false, 100);
     lv_obj_add_event_cb(list_btn, btn_developer_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
 #else
     // Restart button (only in release mode)

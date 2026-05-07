@@ -318,13 +318,7 @@ void received_file_handler(const char *path)
 {
     rt_thread_mdelay(500); // Small delay to ensure file is closed
     /* Check if it's a gesture model file */
-    if (strstr(path, "gesture_tap.tflite") != NULL)
-    {
-        extern void init_gesture_recognition_model(void);
-        unload_tap_model();
-        init_gesture_recognition_model();
-    }
-    else if (strstr(path, "gesture_release.tflite") != NULL)
+    if (strstr(path, "gesture_release.tflite") != NULL)
     {
         extern void init_gesture_recognition_release_model(void);
         unload_release_model();

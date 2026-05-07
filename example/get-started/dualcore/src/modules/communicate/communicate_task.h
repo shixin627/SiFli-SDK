@@ -75,6 +75,7 @@ bool commu_send_bluetooth_log(const char *log);
 bool commu_send_watch_system_sync(void);
 bool commu_send_ota_status(uint8_t status);
 bool commu_send_device_info(void);
+bool commu_send_model_versions(void);
 
 #endif
 

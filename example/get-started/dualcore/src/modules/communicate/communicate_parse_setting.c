@@ -15,6 +15,7 @@
 
 #include "string.h"
 #include "watch_system_interact.h"
+#include "gesture_model_loader.h"
 #ifdef BSP_USING_MODEL_WATCH_GLOBAL_DATA
     #include "watch_global_data.h"
 #endif
@@ -349,6 +350,43 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
             LOG_D("request device info");
             commu_send_device_info();
         }
+    }
+    break;
+    case KEY_MODEL_VERSION_REQUEST:
+    {
+        if (length == 0x00)
+        {
+            LOG_D("request model versions");
+            commu_send_model_versions();
+        }
+    }
+    break;
+    case KEY_MODEL_VERSION_SET:
+    {
+        /* Payload: [name_len:1][name][ver_len:1][ver][size:4 BE]
+           Phone calls this after a successful model file END_SYNC. */
+        if (length < 1 + 1 + 1 + 1 + 4) break;
+
+        uint8_t name_len = pValue[0];
+        if (name_len == 0 || name_len > MODEL_NAME_MAX_LEN) break;
+        if ((size_t)(1 + name_len + 1 + 4) >= length) break;
+
+        uint8_t ver_len = pValue[1 + name_len];
+        if (ver_len == 0 || ver_len > MODEL_VERSION_MAX_LEN) break;
+        if ((size_t)(1 + name_len + 1 + ver_len + 4) != length) break;
+
+        char name[MODEL_NAME_MAX_LEN + 1];
+        char version[MODEL_VERSION_MAX_LEN + 1];
+        memcpy(name, pValue + 1, name_len);
+        name[name_len] = '\0';
+        memcpy(version, pValue + 1 + name_len + 1, ver_len);
+        version[ver_len] = '\0';
+
+        uint32_t file_size = read_be32(pValue + 1 + name_len + 1 + ver_len);
+
+        LOG_I("Set model version: %s = %s (%u bytes)", name, version,
+              (unsigned)file_size);
+        model_manifest_set_version(name, version, file_size);
     }
     break;
 #if !kReleaseMode

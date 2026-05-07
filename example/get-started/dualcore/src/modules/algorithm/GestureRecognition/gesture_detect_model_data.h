@@ -21,8 +21,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_GESTURE_DETECTION_EXPERIMENTAL_GESTURE_DETECT_MODEL_DATA_H_
 #define TENSORFLOW_LITE_MICRO_EXAMPLES_GESTURE_DETECTION_EXPERIMENTAL_GESTURE_DETECT_MODEL_DATA_H_
 
-extern const unsigned char g_gesture_detect_model_data[];
-extern const unsigned int g_gesture_detect_model_data_len;
 extern const unsigned char g_gesture_detect_release_model_data[];
 extern const unsigned int g_gesture_detect_release_model_data_len;
 

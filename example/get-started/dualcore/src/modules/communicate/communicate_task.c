@@ -17,6 +17,7 @@
 #include "communicate_parse.h"
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
+#include "gesture_model_loader.h"
 
 #ifdef BSP_USING_BLOC
     #include "bloc_control.h"
@@ -323,6 +324,23 @@ bool commu_send_device_info(void)
     buf[L2_FIRST_VALUE_POS + 3] = VERSION_MINOR;
     buf[L2_FIRST_VALUE_POS + 4] = VERSION_REVISION;
     return skaiwatch_ble_notify(buf, sizeof(buf));
+}
+
+/* Replies with the manifest JSON as raw bytes (no NUL). Phone parses the
+   string into {name → {version, size}} and reconciles with its SP cache. */
+bool commu_send_model_versions(void)
+{
+    if (!commu_can_send()) return false;
+
+    char json[MODEL_MANIFEST_JSON_MAX_LEN];
+    int len = model_manifest_to_json(json, sizeof(json));
+    if (len < 0)
+    {
+        LOG_E("model_manifest_to_json failed: %d", len);
+        return false;
+    }
+    return commu_send_blob(SET_CONFIG_COMMAND_ID, KEY_MODEL_VERSION_RETURN,
+                           json, (uint16_t)len);
 }
 
 /*============================================================================*

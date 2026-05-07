@@ -50,6 +50,7 @@ typedef enum
     TEST_MODE_SELECT = 0,
     TEST_MODE_NORMAL,
     TEST_MODE_STRESS,
+    TEST_MODE_GIF,
 } test_mode_t;
 
 typedef enum
@@ -89,6 +90,11 @@ static lv_obj_t *test_label;
 static lv_obj_t *status_label;
 static lv_obj_t *ppg_status_label;
 static lv_obj_t *mode_select_container;
+static lv_obj_t *gif_test_obj;
+static lv_obj_t *gif_test_hint_label;
+
+LV_IMG_DECLARE(test_gif_bulb);
+static void start_gif_test(void);
 
 // CPU intensive stress test functions
 static void cpu_stress_thread_entry(void *parameter)
@@ -236,6 +242,9 @@ static void motor_stress_thread_entry(void *parameter)
 {
     LOG_D("Motor stress thread started");
 
+    /* Vibrate every 5 seconds, but poll the exit flag at 100ms granularity
+     * so stop_stress_test() doesn't have to wait up to 5s for this thread
+     * to wake up and notice stress_test_running == false. */
     while (stress_test_running)
     {
         motor_params_t param = {
@@ -244,7 +253,11 @@ static void motor_stress_thread_entry(void *parameter)
             .repeat_times = 1, // 1 time
         };
         peripheral_provider.control_motor(true, &param);
-        rt_thread_mdelay(5000); // Vibrate every 5 seconds
+
+        for (int i = 0; i < 50 && stress_test_running; i++)
+        {
+            rt_thread_mdelay(100);
+        }
     }
     LOG_D("Motor stress thread stopped");
 }
@@ -289,8 +302,12 @@ EXIT:
 
 static void create_test_thread(void)
 {
+    /* 2048 bytes was insufficient and caused STKOF (UFSR=0x10) right after
+     * test mode 1 starts: test_thread_entry drives LVGL from a non-LVGL
+     * thread (lv_label_set_text + check_amoled's bg-color loop) and also
+     * calls vad_init / start_voice_recognition which have deep call chains. */
     test_thread =
-        rt_thread_create("utest", test_thread_entry, RT_NULL, 2048, 10, 10);
+        rt_thread_create("utest", test_thread_entry, RT_NULL, 8192, 10, 10);
     if (test_thread != RT_NULL)
     {
         rt_thread_startup(test_thread);
@@ -306,12 +323,18 @@ typedef struct
     rt_uint8_t priority;
 } stress_thread_def_t;
 
+/* Stack sizes intentionally generous:
+ * - cpu_stress: heavy double-precision math (pow/sin/cos/sqrt/tan) + matrix
+ * - amoled/imu/ppg: each iteration touches LVGL from non-LVGL thread (TODO:
+ *   move to lvgl_send_msg per project convention) plus sprintf buffers
+ * - motor: control_motor goes through data_service IPC -> deeper call chain
+ * Previously 1024/2048/4096 caused STKOF (UFSR=0x10) shortly after startup. */
 static const stress_thread_def_t stress_thread_defs[] = {
-    {&cpu_stress_thread,    "cpu_stress",    cpu_stress_thread_entry,    4096, 5},
-    {&amoled_thread,        "amoled_stress", amoled_stress_thread_entry, 2048, 15},
-    {&imu_thread,           "imu_stress",    imu_stress_thread_entry,    2048, 12},
-    {&ppg_thread,           "ppg_stress",    ppg_stress_thread_entry,    2048, 12},
-    {&motor_thread,         "motor_stress",  motor_stress_thread_entry,  1024, 20},
+    {&cpu_stress_thread,    "cpu_stress",    cpu_stress_thread_entry,    8192, 5},
+    {&amoled_thread,        "amoled_stress", amoled_stress_thread_entry, 4096, 15},
+    {&imu_thread,           "imu_stress",    imu_stress_thread_entry,    4096, 12},
+    {&ppg_thread,           "ppg_stress",    ppg_stress_thread_entry,    4096, 12},
+    {&motor_thread,         "motor_stress",  motor_stress_thread_entry,  2048, 20},
 };
 
     #define STRESS_THREAD_COUNT \
@@ -343,20 +366,62 @@ static void stop_stress_test(void)
 {
     LOG_I("Stopping stress test mode");
     stress_test_running = false;
-    rt_thread_mdelay(100);
+
+    /* Wait for all stress threads to exit naturally. Worst-case latency:
+     *   - cpu_stress finishes its current iteration (prime calc + FP +
+     *     matrix + hash) which can take ~200ms on M33
+     *   - motor_stress wakes from its 100ms poll
+     *   - others wake from their 100/500ms mdelay
+     * 600ms covers everyone with slack.
+     *
+     * IMPORTANT: do NOT call rt_thread_delete() here. rt_thread_create()
+     * makes dynamic threads that RT-Thread auto-cleans up after the entry
+     * function returns. Calling rt_thread_delete on an already-exited
+     * thread asserts at rtthread.c:421 (rt_object_get_type fails because
+     * the thread object was already freed). */
+    rt_thread_mdelay(600);
 
     for (size_t i = 0; i < STRESS_THREAD_COUNT; i++)
     {
-        rt_thread_t *handle = stress_thread_defs[i].handle;
-        if (*handle != RT_NULL)
-        {
-            rt_thread_delete(*handle);
-            *handle = RT_NULL;
-        }
+        *stress_thread_defs[i].handle = RT_NULL;
     }
 
     stop_voice_recognition(V2T_INTENT_NOTHING);
     voice_provider.vad_deinit();
+}
+
+static void start_gif_test(void)
+{
+    LOG_I("Starting GIF test mode");
+
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_black(), LV_PART_MAIN);
+
+    if (test_label != NULL)
+    {
+        lv_obj_add_flag(test_label, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (status_label != NULL)
+    {
+        lv_obj_add_flag(status_label, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (ppg_status_label != NULL)
+    {
+        lv_obj_add_flag(ppg_status_label, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    gif_test_obj = lv_gif_create(lv_scr_act());
+    if (gif_test_obj != NULL)
+    {
+        lv_gif_set_src(gif_test_obj, &test_gif_bulb);
+        lv_obj_align(gif_test_obj, LV_ALIGN_CENTER, 0, -30);
+    }
+
+    gif_test_hint_label = lv_label_create(lv_scr_act());
+    lv_label_set_text(gif_test_hint_label,
+                      "GIF Test\nSwipe right to exit");
+    lv_obj_set_style_text_color(gif_test_hint_label, lv_color_white(), 0);
+    lv_obj_set_style_text_align(gif_test_hint_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(gif_test_hint_label, LV_ALIGN_BOTTOM_MID, 0, -40);
 }
 
     #define REQUIRE_TOUCH_COUNT 3
@@ -389,6 +454,10 @@ static void mode_button_event_handler(lv_event_t *e)
             else if (test_mode == TEST_MODE_STRESS)
             {
                 start_stress_test();
+            }
+            else if (test_mode == TEST_MODE_GIF)
+            {
+                start_gif_test();
             }
         }
     }
@@ -460,6 +529,7 @@ static void create_mode_selection_ui(lv_obj_t *parent)
 {
     static test_mode_t normal_mode = TEST_MODE_NORMAL;
     static test_mode_t stress_mode = TEST_MODE_STRESS;
+    static test_mode_t gif_mode = TEST_MODE_GIF;
 
     mode_select_container = lv_obj_create(parent);
     lv_obj_set_size(mode_select_container, LV_PCT(100), LV_PCT(100));
@@ -482,6 +552,8 @@ static void create_mode_selection_ui(lv_obj_t *parent)
     create_mode_button(mode_select_container, "Random Address", 120,
                        LV_PALETTE_BLUE, random_address_button_event_handler,
                        NULL);
+    create_mode_button(mode_select_container, "GIF Test", -120,
+                       LV_PALETTE_GREEN, mode_button_event_handler, &gif_mode);
 
     // Description
     lv_obj_t *desc = lv_label_create(mode_select_container);

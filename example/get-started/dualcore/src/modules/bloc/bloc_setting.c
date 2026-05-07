@@ -67,7 +67,6 @@
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
-bool gesture_tap_collection = false;
 /* Private defines -----------------------------------------------------------*/
 #define THREAD_PRIORITY 25
 #define THREAD_STACK_SIZE 1024

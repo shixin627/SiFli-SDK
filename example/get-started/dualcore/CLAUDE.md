@@ -110,7 +110,6 @@ watch_system_interact(WATCH_SLEEP, NULL);
 - **`kReleaseMode`**:dev-only feature 包在 `#if !kReleaseMode`(MSH debug 命令、PPG raw collection、gesture threshold tuning 等)。Release build 自動排除
 - **`#ifdef APP_ID_*`**:某 app 沒在當前 board 開啟,相關引用就要用 `#ifdef` 包起來避免編譯錯誤
 - **MSH 命令**:`MSH_CMD_EXPORT(name, "help")` 註冊 shell 命令,大多在 `#if !kReleaseMode` 下
-- **不要直接在 BLE thread 操作 LVGL**:走 `lvgl_send_msg(msg)` 把訊息丟進 LVGL 佇列,由 `ui_handler.c` 統一處理
 - **新增送資料函式**:加在 `communicate_task.c`,**檢查 dart 端有對應 key**,否則資料會被手機忽略
 
 ## 常見任務速查
