@@ -1914,16 +1914,116 @@ extern bool skai_widget_has_ai_reply(void);
 extern void clear_skai_widget_ai_reply(void);
 extern bool get_voice_recognition_started(void);
 extern void clearVoice2Text(void);
+
+static lv_obj_t *complete_on_phone_tip_window = NULL;
+static lv_obj_t *complete_on_phone_tip_label = NULL;
+static lv_timer_t *complete_on_phone_tip_timer = NULL;
+
+static void complete_on_phone_tip_fade_ready_cb(lv_anim_t *anim)
+{
+    if (lv_obj_is_valid(complete_on_phone_tip_window))
+    {
+        lv_obj_del(complete_on_phone_tip_window);
+        complete_on_phone_tip_window = NULL;
+        complete_on_phone_tip_label = NULL;
+    }
+}
+
+static void complete_on_phone_tip_set_opa(void *obj, int32_t opa)
+{
+    if (lv_obj_is_valid(complete_on_phone_tip_window))
+    {
+        uint8_t window_opa = opa * LV_OPA_90 / LV_OPA_100;
+        lv_obj_set_style_bg_opa(complete_on_phone_tip_window, window_opa,
+                                LV_PART_MAIN);
+        uint8_t border_opa = opa * LV_OPA_50 / LV_OPA_100;
+        lv_obj_set_style_border_opa(complete_on_phone_tip_window, border_opa,
+                                    LV_PART_MAIN);
+        if (complete_on_phone_tip_label)
+        {
+            lv_obj_set_style_text_opa(complete_on_phone_tip_label, opa,
+                                      LV_PART_MAIN);
+        }
+    }
+}
+
+static void complete_on_phone_tip_timer_cb(lv_timer_t *timer)
+{
+    if (complete_on_phone_tip_timer)
+    {
+        lv_timer_del(complete_on_phone_tip_timer);
+        complete_on_phone_tip_timer = NULL;
+    }
+    if (lv_obj_is_valid(complete_on_phone_tip_window))
+    {
+        lv_anim_t fade_out_anim;
+        lv_anim_init(&fade_out_anim);
+        lv_anim_set_var(&fade_out_anim, complete_on_phone_tip_window);
+        lv_anim_set_exec_cb(&fade_out_anim, complete_on_phone_tip_set_opa);
+        lv_anim_set_values(&fade_out_anim, LV_OPA_100, LV_OPA_TRANSP);
+        lv_anim_set_time(&fade_out_anim, 600);
+        lv_anim_set_path_cb(&fade_out_anim, lv_anim_path_ease_in);
+        lv_anim_set_ready_cb(&fade_out_anim,
+                             complete_on_phone_tip_fade_ready_cb);
+        lv_anim_start(&fade_out_anim);
+    }
+}
+
+static void show_complete_on_phone_tip(void)
+{
+    if (complete_on_phone_tip_timer)
+    {
+        lv_timer_del(complete_on_phone_tip_timer);
+        complete_on_phone_tip_timer = NULL;
+    }
+    if (lv_obj_is_valid(complete_on_phone_tip_window))
+    {
+        lv_obj_del(complete_on_phone_tip_window);
+        complete_on_phone_tip_window = NULL;
+        complete_on_phone_tip_label = NULL;
+    }
+
+    complete_on_phone_tip_window = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(complete_on_phone_tip_window, 260, 70);
+    lv_obj_align(complete_on_phone_tip_window, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(complete_on_phone_tip_window,
+                              lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(complete_on_phone_tip_window, LV_OPA_90,
+                            LV_PART_MAIN);
+    lv_obj_set_style_border_color(complete_on_phone_tip_window,
+                                  lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_style_border_width(complete_on_phone_tip_window, 1,
+                                  LV_PART_MAIN);
+    lv_obj_set_style_border_opa(complete_on_phone_tip_window, LV_OPA_50,
+                                LV_PART_MAIN);
+    lv_obj_set_style_radius(complete_on_phone_tip_window, 35, LV_PART_MAIN);
+    lv_obj_clear_flag(complete_on_phone_tip_window, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(complete_on_phone_tip_window, LV_OBJ_FLAG_CLICKABLE);
+
+    complete_on_phone_tip_label = lv_label_create(complete_on_phone_tip_window);
+    lv_label_set_text(complete_on_phone_tip_label, "在手機上完成");
+    lv_obj_set_style_text_color(complete_on_phone_tip_label, lv_color_white(),
+                                LV_PART_MAIN);
+    lv_obj_set_style_text_font(complete_on_phone_tip_label,
+                               LV_EXT_FONT_GET(get_system_font_size(1)),
+                               LV_PART_MAIN);
+    lv_obj_center(complete_on_phone_tip_label);
+
+    complete_on_phone_tip_timer =
+        lv_timer_create(complete_on_phone_tip_timer_cb, 1000, NULL);
+    lv_timer_set_repeat_count(complete_on_phone_tip_timer, 1);
+}
+
 static void add_instruction_btn_event_cb(lv_event_t *evt)
 {
-    if (!get_bluetooth_connection_status())
+    LOG_I("add_inst_btn clicked: show 'complete on phone' tip");
+    if (get_bluetooth_connection_status())
     {
-        create_connection_tips();
-        return;
+        const char *json = "{\"action\":\"add\"}";
+        LOG_I("Send create-instruction request: %s", json);
+        commu_send_update_instruction(json);
     }
-    const char *json = "{\"action\":\"add\"}";
-    LOG_I("Send create-instruction request: %s", json);
-    commu_send_update_instruction(json);
+    show_complete_on_phone_tip();
 }
 
 static void logo_click_event_cb(lv_event_t *evt)
@@ -2836,7 +2936,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     /* Bottom-center "add instruction" button: 50x35 pill, 32x32 plus icon,
        taps phone-side create-instruction flow */
     lv_obj_t *add_inst_btn = lv_obj_create(p_instruction_list_bg);
-    lv_obj_set_size(add_inst_btn, 50, 35);
+    lv_obj_set_size(add_inst_btn, 70, 50);
     lv_obj_set_style_radius(add_inst_btn, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(add_inst_btn, lv_color_hex(0xE3E3E3), 0);
     lv_obj_set_style_bg_opa(add_inst_btn, LV_OPA_50, 0);
