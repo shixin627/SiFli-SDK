@@ -63,7 +63,7 @@ extern "C"
 
     extern lv_obj_t *create_divider_line(lv_obj_t *parent);
     extern lv_obj_t *create_setting_list_item(lv_obj_t *parent, const void *icon, const char *text, uint8_t font_size, bool show_divider, uint8_t icon_scale);
-    extern lv_obj_t *create_dark_toggle_item(lv_obj_t *parent, const char *text, bool initial_state, uint8_t font_size, bool show_divider);
+    extern lv_obj_t *create_dark_toggle_item(lv_obj_t *parent, const void *icon, const char *text, bool initial_state, uint8_t font_size, bool show_divider);
 
     // Label
     extern lv_obj_t *common_gradient_label(lv_obj_t *parent, const char *text);

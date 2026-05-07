@@ -1353,19 +1353,19 @@ static void widget_drag_event_cb(lv_event_t *evt)
 
 static void update_notification_card_visibility(void)
 {
-    if (p_app_notification == NULL)
-        return;
-    for (uint8_t i = 0; i < notification_count && i < ITEM_AMOUNT_NOTIFICATION;
-         i++)
-    {
-        if (notification_widgets[i].card == NULL ||
-            !lv_obj_is_valid(notification_widgets[i].card))
-            continue;
-        if (i == selected_message_index)
-            lv_obj_clear_flag(notification_widgets[i].card, LV_OBJ_FLAG_HIDDEN);
-        else
-            lv_obj_add_flag(notification_widgets[i].card, LV_OBJ_FLAG_HIDDEN);
-    }
+    // if (p_app_notification == NULL)
+    //     return;
+    // for (uint8_t i = 0; i < notification_count && i < ITEM_AMOUNT_NOTIFICATION;
+    //      i++)
+    // {
+    //     if (notification_widgets[i].card == NULL ||
+    //         !lv_obj_is_valid(notification_widgets[i].card))
+    //         continue;
+    //     if (i == selected_message_index)
+    //         lv_obj_clear_flag(notification_widgets[i].card, LV_OBJ_FLAG_HIDDEN);
+    //     else
+    //         lv_obj_add_flag(notification_widgets[i].card, LV_OBJ_FLAG_HIDDEN);
+    // }
 }
 
 lv_obj_t *notification_card_builder(lv_obj_t *list, uint8_t i)

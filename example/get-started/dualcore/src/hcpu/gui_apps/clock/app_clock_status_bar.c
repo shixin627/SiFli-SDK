@@ -816,47 +816,6 @@ void gui_set_screen_rotation(uint8_t rotation)
     }
 }
 
-static void bar_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_PRESSING)
-    {
-        lv_obj_t *bar = lv_event_get_target(e);
-
-        lv_point_t p;
-        lv_indev_get_point(lv_indev_get_act(), &p);
-
-        lv_coord_t min = lv_bar_get_min_value(bar);
-        lv_coord_t max = lv_bar_get_max_value(bar);
-
-        lv_coord_t w = lv_obj_get_width(bar);
-        lv_coord_t rel_x = p.x - lv_obj_get_x(bar);
-        if (rel_x < 0)
-            rel_x = 0;
-        if (rel_x > w)
-            rel_x = w;
-
-        lv_coord_t value = (rel_x * (max - min)) / w + min;
-        if (value < 5)
-            value = 5;
-        lv_bar_set_value(bar, value, LV_ANIM_OFF);
-        uint16_t brightness = lv_bar_get_value(bar);
-        gui_set_brightness(brightness, true);
-    }
-    else if (code == LV_EVENT_PRESSED)
-    {
-        LOG_D("LV_EVENT_PRESSED_Brightness Bar");
-        lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
-                          LV_OBJ_FLAG_SCROLLABLE);
-    }
-    else if (code == LV_EVENT_RELEASED)
-    {
-        LOG_D("LV_EVENT_RELEASED_Brightness Bar");
-        lv_obj_add_flag(myLancher[app_index_message].pagetileview,
-                        LV_OBJ_FLAG_SCROLLABLE);
-    }
-}
-
 extern void build_media_contorll_widget(app_media_t *p_app_media,
                                         lv_obj_t *parent);
 extern lv_obj_t *lv_media_widget_builder(lv_obj_t *parent);
@@ -879,32 +838,6 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     extern lv_obj_t *lv_app_list_layout_create(lv_obj_t * parent);
     lv_obj_t *app_list = lv_app_list_layout_create(control_center_window);
     control_center_app_list = app_list;
-
-    /* Shift app cells down so the brightness bar fits at the top of content */
-    const lv_coord_t bar_offset = 120;
-    uint32_t child_count = lv_obj_get_child_cnt(app_list);
-    for (uint32_t i = 0; i < child_count; i++)
-    {
-        lv_obj_t *child = lv_obj_get_child(app_list, i);
-        lv_obj_set_y(child, lv_obj_get_y(child) + bar_offset);
-    }
-
-    /* Brightness bar inside the scrollable app list — scrolls with content */
-    const lv_coord_t bar_w = LV_HOR_RES * 70 / 100;
-    lv_obj_t *bar = lv_bar_create(app_list);
-    lv_bar_set_range(bar, 0, 100);
-    lv_obj_set_size(bar, bar_w, 80);
-    lv_obj_set_pos(bar, (LV_HOR_RES - bar_w) / 2, 40);
-    lv_obj_set_style_bg_color(bar, APP_MAIN_COLOR, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(bar, APP_MAIN_COLOR, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(bar, LV_OPA_90, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(bar, LV_OPA_10, LV_PART_MAIN);
-    lv_bar_set_value(bar, SkaiWatchSys.brightness, LV_ANIM_ON);
-    lv_obj_add_event_cb(bar, bar_event_cb, LV_EVENT_ALL, NULL);
-    lv_obj_t *icon = lv_img_create(bar);
-    lv_img_set_src(icon, &sun);
-    lv_obj_align(icon, LV_ALIGN_LEFT_MID, 20, 0);
-    brightness_bar = bar;
 
     /* Invisible bottom spacer so the last app row isn't clipped at scroll end */
     lv_coord_t max_bottom = 0;

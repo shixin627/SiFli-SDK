@@ -6,6 +6,7 @@
 #include "ui_datasrv_subscriber.h"
 #include "power_manager_service.h"
 #include "custom_trans_anim.h"
+#include "common_widget.h"
 #ifdef BSP_USING_BLOC_SETTING
 #include "bloc_setting.h"
 #endif
@@ -16,6 +17,7 @@
 
 #ifdef APP_ID_SETTING
 LV_IMG_DECLARE(sun);
+LV_IMG_DECLARE(dn);
 typedef struct
 {
     lv_obj_t *brightness;
@@ -391,15 +393,12 @@ static void on_start(void)
     lv_obj_set_style_text_font(p_display->auto_off_label, LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
     lv_obj_align(p_display->auto_off_label, LV_ALIGN_CENTER, 50, 0);
 
-    // Screen rotation
-    label = lv_label_create(general_group);
-    lv_label_set_text(label, "Rotate Display");
-    lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_width(label, LV_PCT(100));
-    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-
-    p_display->rotate = lv_switch_create(general_group);
-    lv_obj_align(p_display->rotate, LV_ALIGN_CENTER, 0, 0);
+    // Screen rotation (icon + name + switch)
+    p_display->rotate = create_dark_toggle_item(general_group, &dn,
+                                                "Rotate Display",
+                                                false,
+                                                get_system_font_size(0),
+                                                false);
     lv_obj_add_event_cb(p_display->rotate, event_cb, LV_EVENT_ALL, 0);
 
     // Get data from service

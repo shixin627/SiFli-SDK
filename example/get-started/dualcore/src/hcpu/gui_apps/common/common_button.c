@@ -284,7 +284,7 @@ lv_obj_t *create_setting_list_item(lv_obj_t *parent, const void *icon, const cha
 }
 
 // For toggle switches, we need a special create function with dark theme styling
-lv_obj_t *create_dark_toggle_item(lv_obj_t *parent, const char *text, bool initial_state, uint8_t font_size, bool show_divider)
+lv_obj_t *create_dark_toggle_item(lv_obj_t *parent, const void *icon, const char *text, bool initial_state, uint8_t font_size, bool show_divider)
 {
     lv_obj_t *item = lv_obj_create(parent);
     lv_obj_set_size(item, LV_PCT(100), BUTTON_HEIGHT);          // Larger height for better touch targets
@@ -298,7 +298,18 @@ lv_obj_t *create_dark_toggle_item(lv_obj_t *parent, const char *text, bool initi
     lv_label_set_text(label, text);
     lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), 0); // White text
     lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(font_size), 0);
-    lv_obj_align(label, LV_ALIGN_LEFT_MID, 0, 0);
+
+    if (icon)
+    {
+        lv_obj_t *img = lv_img_create(item);
+        lv_img_set_src(img, icon);
+        lv_obj_align(img, LV_ALIGN_LEFT_MID, 5, 0);
+        lv_obj_align_to(label, img, LV_ALIGN_OUT_RIGHT_MID, 20, 0);
+    }
+    else
+    {
+        lv_obj_align(label, LV_ALIGN_LEFT_MID, 0, 0);
+    }
 
     // Create dark theme switch
     lv_obj_t *sw = lv_switch_create(item);
