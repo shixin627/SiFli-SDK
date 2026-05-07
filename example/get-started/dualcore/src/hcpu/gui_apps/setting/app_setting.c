@@ -52,6 +52,8 @@
 #include "common_widget.h"
 #include "ui_handler.h"
 #include "ui_img_helper.h"
+#include "ui_datasrv_subscriber.h"
+#include "power_manager_service.h"
 
 #define DBG_TAG "app.setting"
 #define DBG_LVL DBG_LOG
@@ -77,6 +79,7 @@ LV_IMG_DECLARE(language);
 LV_IMG_DECLARE(airplane);
 LV_IMG_DECLARE(clock_40);
 LV_IMG_DECLARE(icon_release);
+LV_IMG_DECLARE(sun);
 
 /**
  *  description of app setting
@@ -89,10 +92,12 @@ typedef struct
     lv_obj_t *selected_lang;
     lv_obj_t *selected_time_format;
     lv_obj_t *selected_font_size;
+    lv_obj_t *brightness_bar;
+    datac_handle_t pwr_srv_hdl;
 } app_setting_t;
 
 static app_setting_t *p_app_setting = NULL;
-static lv_obj_t *dnd_quick_btn = NULL;
+static lv_obj_t *dnd_switch = NULL;
 
 extern void app_setting_display_main(void);
 extern void app_setting_sys_main(void);
@@ -754,35 +759,17 @@ static void btn_qrcode_event_callback(lv_event_t *e)
     }
 }
 
-static void update_dnd_btn_style(bool enabled)
-{
-    if (dnd_quick_btn == NULL || !lv_obj_is_valid(dnd_quick_btn))
-    {
-        return;
-    }
-    if (enabled)
-    {
-        lv_obj_set_style_bg_opa(dnd_quick_btn, LV_OPA_90, 0);
-        lv_obj_set_style_bg_color(dnd_quick_btn, lv_color_hex(0xCECECE), 0);
-    }
-    else
-    {
-        lv_obj_set_style_bg_opa(dnd_quick_btn, LV_OPA_10, 0);
-        lv_obj_set_style_bg_color(dnd_quick_btn, lv_color_hex(0xFFFFFF), 0);
-    }
-}
-
-static void btn_dnd_mode_event_callback(lv_event_t *e)
+static void dnd_switch_event_callback(lv_event_t *e)
 {
     lv_event_code_t event = lv_event_get_code(e);
-    if (LV_EVENT_SHORT_CLICKED == event || LV_EVENT_CLICKED == event)
+    if (LV_EVENT_VALUE_CHANGED == event)
     {
-        bool new_status = !SkaiWatchSys.DNDMode.config.status;
+        lv_obj_t *sw = lv_event_get_target(e);
+        bool new_status = (lv_obj_get_state(sw) & LV_STATE_CHECKED) ? true : false;
         SkaiWatchSys.DNDMode.config.status = new_status;
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
         watch_system_interact(WATCH_DND_MODE_SET, &new_status);
 #endif
-        update_dnd_btn_style(new_status);
         LOG_I("DND mode toggled: %d", new_status);
     }
 }
@@ -798,6 +785,90 @@ static void btn_gesture_test_event_callback(lv_event_t *e)
     }
 }
 #endif
+
+static void brightness_bar_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSING)
+    {
+        lv_obj_t *bar = lv_event_get_target(e);
+
+        lv_point_t p;
+        lv_indev_get_point(lv_indev_get_act(), &p);
+
+        lv_coord_t min = lv_bar_get_min_value(bar);
+        lv_coord_t max = lv_bar_get_max_value(bar);
+
+        lv_coord_t w = lv_obj_get_width(bar);
+        lv_coord_t rel_x = p.x - lv_obj_get_x(bar);
+        if (rel_x < 0)
+            rel_x = 0;
+        if (rel_x > w)
+            rel_x = w;
+
+        lv_coord_t value = (rel_x * (max - min)) / w + min;
+        if (value < 5)
+            value = 5;
+        lv_bar_set_value(bar, value, LV_ANIM_OFF);
+        uint16_t brightness = lv_bar_get_value(bar);
+        gui_set_brightness(brightness, true);
+    }
+    else if (code == LV_EVENT_PRESSED)
+    {
+        if (p_app_setting && p_app_setting->list1)
+        {
+            lv_obj_clear_flag(p_app_setting->list1, LV_OBJ_FLAG_SCROLLABLE);
+        }
+    }
+    else if (code == LV_EVENT_RELEASED)
+    {
+        if (p_app_setting && p_app_setting->list1)
+        {
+            lv_obj_add_flag(p_app_setting->list1, LV_OBJ_FLAG_SCROLLABLE);
+        }
+    }
+}
+
+static int setting_powermgr_srv_callback(data_callback_arg_t *arg)
+{
+    if (!p_app_setting && (MSG_SERVICE_SUBSCRIBE_RSP != arg->msg_id))
+    {
+        return 0;
+    }
+    if (p_app_setting && !lv_obj_is_valid(p_app_setting->brightness_bar) &&
+        (MSG_SERVICE_SUBSCRIBE_RSP != arg->msg_id))
+    {
+        return 0;
+    }
+
+    switch (arg->msg_id)
+    {
+    case MSG_SERVICE_SUBSCRIBE_RSP:
+    {
+        data_subscribe_rsp_t *rsp = (data_subscribe_rsp_t *)arg->data;
+        RT_ASSERT(rsp);
+        if (p_app_setting && rsp->result >= 0)
+        {
+            data_msg_t msg;
+            data_service_init_msg(&msg, PWRMGR_MSG_LCD_BRIGHTNESS_GET_REQ, 0);
+            datac_send_msg(p_app_setting->pwr_srv_hdl, &msg);
+        }
+    }
+    break;
+
+    case PWRMGR_MSG_LCD_BRIGHTNESS_GET_RSP:
+    {
+        range_msg_t *p_range = (range_msg_t *)arg->data;
+        lv_bar_set_range(p_app_setting->brightness_bar, p_range->min, p_range->max);
+        lv_bar_set_value(p_app_setting->brightness_bar, p_range->cur, LV_ANIM_ON);
+    }
+    break;
+
+    default:
+        break;
+    }
+    return 0;
+}
 
 void app_setting_init(void *param)
 {
@@ -825,47 +896,62 @@ void app_setting_init(void *param)
     lv_obj_align(cont_title, LV_ALIGN_TOP_MID, 0, 20);
     lv_obj_update_layout(cont_title);
 
-    /* Quick actions grid (styled like the original control center) */
+    /* Brightness bar at the top of settings content */
+    const lv_coord_t brightness_bar_w = LV_HOR_RES * 70 / 100;
+    lv_obj_t *brightness_bar = lv_bar_create(settings_container);
+    lv_bar_set_range(brightness_bar, 0, 100);
+    lv_obj_set_size(brightness_bar, brightness_bar_w, 80);
+    lv_obj_align_to(brightness_bar, cont_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_set_style_bg_color(brightness_bar, lv_color_hex(0xCECECE), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(brightness_bar, lv_color_hex(0xCECECE), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(brightness_bar, LV_OPA_90, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(brightness_bar, LV_OPA_10, LV_PART_MAIN);
+    lv_bar_set_value(brightness_bar, SkaiWatchSys.brightness, LV_ANIM_ON);
+    lv_obj_add_event_cb(brightness_bar, brightness_bar_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_t *brightness_icon = lv_img_create(brightness_bar);
+    lv_img_set_src(brightness_icon, &sun);
+    lv_obj_align(brightness_icon, LV_ALIGN_LEFT_MID, 20, 0);
+    p_app_setting->brightness_bar = brightness_bar;
+
+    /* Quick actions row (Find Phone / QR Code / Gesture all in one row) */
     lv_obj_t *quick_actions = lv_obj_create(settings_container);
-    lv_obj_set_size(quick_actions, LV_HOR_RES, 230);
+    lv_obj_set_size(quick_actions, LV_HOR_RES, 115);
     lv_obj_set_style_bg_opa(quick_actions, LV_OPA_0, 0);
     lv_obj_set_style_border_width(quick_actions, 0, 0);
     lv_obj_set_style_pad_all(quick_actions, 0, 0);
     lv_obj_clear_flag(quick_actions, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align_to(quick_actions, cont_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_align_to(quick_actions, brightness_bar, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
 
-    // Find Phone (top-left)
+    // Find Phone
     lv_obj_t *find_phone_btn = common_image_button(quick_actions, FIND_PHONE, 100, 100, btn_find_phone_event_callback);
     lv_obj_set_style_border_width(find_phone_btn, 2, 0);
     lv_obj_set_style_border_color(find_phone_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(find_phone_btn, LV_OPA_0, 0);
     lv_obj_set_style_bg_opa(find_phone_btn, LV_OPA_10, 0);
-    lv_obj_align(find_phone_btn, LV_ALIGN_TOP_LEFT, 120, 0);
 
-    // QR Code (top-right)
+    // QR Code
     lv_obj_t *qrcode_btn = common_image_button(quick_actions, ICON_QRCODE, 100, 100, btn_qrcode_event_callback);
     lv_obj_set_style_border_width(qrcode_btn, 2, 0);
     lv_obj_set_style_border_color(qrcode_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(qrcode_btn, LV_OPA_0, 0);
     lv_obj_set_style_bg_opa(qrcode_btn, LV_OPA_10, 0);
-    lv_obj_align(qrcode_btn, LV_ALIGN_TOP_RIGHT, -120, 0);
-
-    // DND Mode (bottom-left, toggleable with visual feedback)
-    dnd_quick_btn = common_image_button(quick_actions, ICON_DND_MODE, 100, 100, btn_dnd_mode_event_callback);
-    lv_obj_set_style_border_width(dnd_quick_btn, 2, 0);
-    lv_obj_set_style_border_color(dnd_quick_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(dnd_quick_btn, LV_OPA_0, 0);
-    lv_obj_align(dnd_quick_btn, LV_ALIGN_TOP_LEFT, 120, 115);
-    update_dnd_btn_style(SkaiWatchSys.DNDMode.config.status);
 
 #if !kReleaseMode
-    // Gesture Test (bottom-right)
+    // Gesture Test
     lv_obj_t *gesture_btn = common_image_button(quick_actions, IMG_LOGO, 100, 100, btn_gesture_test_event_callback);
     lv_obj_set_style_border_width(gesture_btn, 2, 0);
     lv_obj_set_style_border_color(gesture_btn, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(gesture_btn, LV_OPA_0, 0);
     lv_obj_set_style_bg_opa(gesture_btn, LV_OPA_10, 0);
-    lv_obj_align(gesture_btn, LV_ALIGN_TOP_RIGHT, -120, 115);
+
+    /* 3 buttons evenly spread in one row */
+    lv_obj_align(find_phone_btn, LV_ALIGN_TOP_LEFT, 80, 0);
+    lv_obj_align(qrcode_btn, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(gesture_btn, LV_ALIGN_TOP_RIGHT, -80, 0);
+#else
+    /* 2 buttons in one row */
+    lv_obj_align(find_phone_btn, LV_ALIGN_TOP_LEFT, 120, 0);
+    lv_obj_align(qrcode_btn, LV_ALIGN_TOP_RIGHT, -120, 0);
 #endif
 
     // Create general settings group
@@ -880,7 +966,14 @@ void app_setting_init(void *param)
     lv_obj_align_to(general_group, quick_actions, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
 
     // Add list items to general group
-    lv_obj_t *list_btn; // Gesture Confidence Threshold - FIRST ITEM
+    // DND Mode (icon + name + switch)
+    dnd_switch = create_dark_toggle_item(general_group, ICON_DND_MODE,
+                                         "DND Mode",
+                                         SkaiWatchSys.DNDMode.config.status,
+                                         SkaiWatchSys.font_size, true);
+    lv_obj_add_event_cb(dnd_switch, dnd_switch_event_callback, LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_obj_t *list_btn; // Gesture Confidence Threshold
     list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(icon_release), "Gesture Threshold", SkaiWatchSys.font_size, true, 100);
     lv_obj_add_event_cb(list_btn, btn_gesture_threshold_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
     // Time settings
@@ -934,6 +1027,12 @@ void app_setting_init(void *param)
 
     // Store reference to main list container
     p_app_setting->list1 = settings_container;
+
+    // Subscribe to power manager service to sync brightness bar
+    p_app_setting->pwr_srv_hdl = datac_open();
+    RT_ASSERT(DATA_CLIENT_INVALID_HANDLE != p_app_setting->pwr_srv_hdl);
+    ui_datac_subscribe(p_app_setting->pwr_srv_hdl, "powermgr",
+                       setting_powermgr_srv_callback, 0);
 }
 
 static void on_start(lv_obj_t *scr)
@@ -965,12 +1064,17 @@ static void on_stop(void)
 {
     if (p_app_setting)
     {
+        if (DATA_CLIENT_INVALID_HANDLE != p_app_setting->pwr_srv_hdl)
+        {
+            datac_close(p_app_setting->pwr_srv_hdl);
+            p_app_setting->pwr_srv_hdl = DATA_CLIENT_INVALID_HANDLE;
+        }
         lv_obj_del(p_app_setting->main_window);
         p_app_setting->main_window = NULL;
         lv_mem_free(p_app_setting);
         p_app_setting = NULL;
     }
-    dnd_quick_btn = NULL;
+    dnd_switch = NULL;
 }
 
 static void back_to_main_menu(void)
