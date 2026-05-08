@@ -676,6 +676,11 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
 #endif // ENABLE_WAVEFORM_CAPTURE
 void set_prev_sensor_quat(uint16_t target_value)
 {
+    /* PC sim / pre-IMU-init: motion_data callback never registered so
+     * watch_sensor_motion_data stays NULL. Skip — air-mouse positioning
+     * isn't meaningful without sensor data anyway. */
+    if (watch_sensor_motion_data == NULL)
+        return;
     float middle_delta_yaw =
         (float)(target_value * control_angle) /
         total_moving_distance; // 將 total_yaw_energy_uint 轉換為浮點數
@@ -696,6 +701,8 @@ static uint8_t previous_page = 0;
 static int total_yaw_energy_uint = 0;
 void list_auto_positioning(void)
 {
+    if (watch_sensor_motion_data == NULL)
+        return;
     // 找出 total_yaw_energy_uint 當前所在 page_range 區間的中間值
     uint8_t current_page = total_yaw_energy_uint / page_range;
     int page_middle = current_page * page_range + (page_range / 2);

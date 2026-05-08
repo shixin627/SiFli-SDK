@@ -293,20 +293,29 @@ void check_is_at_instruction_list(void)
         _at_instruction_list = yes;
         if (_at_instruction_list)
         {
-            setting_provider.set_power_save_mode(1);
+            LOG_I("DBG inst_list: before set_power_save_mode");
+            if (setting_provider.set_power_save_mode)
+                setting_provider.set_power_save_mode(1);
+            LOG_I("DBG inst_list: before sensor_quat");
             extern uint8_t return_total_list_count(void);
             extern uint16_t get_gesture_starting_value(void);
             set_prev_sensor_quat(get_gesture_starting_value());
             set_scroll_segment_count(return_total_list_count());
+            LOG_I("DBG inst_list: after scroll_seg_count");
             // lvgl_msg_handler.handle_tap_indicator = on_tap_wrapper;
             extern void set_arc_stripe_external_offset(int16_t offset_degrees);
             lvgl_msg_handler.handle_set_arc_stripe_external_offset =
                 set_arc_stripe_external_offset;
             extern void refersh_weather_icon(void);
+            LOG_I("DBG inst_list: before refersh_weather_icon");
             refersh_weather_icon();
+            LOG_I("DBG inst_list: before instruction_list_resume");
             instruction_list_resume();
+            LOG_I("DBG inst_list: before display_status_bar_area");
             display_status_bar_area(3, false);
+            LOG_I("DBG inst_list: before display_gesture_detect_objs");
             display_gesture_detect_objs(0, false);
+            LOG_I("DBG inst_list: enter-block done");
         }
         else
         {

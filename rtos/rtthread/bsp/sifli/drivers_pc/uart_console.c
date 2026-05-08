@@ -209,17 +209,24 @@ static int console_putc(struct rt_serial_device *serial, char c)
     RT_ASSERT(serial != RT_NULL);
     uart = (struct console_uart *)serial->parent.user_data;
 
-#if 0 /* Enable it if you want to save the console log */
+    /* PC sim: also tee every byte to pc_console.log next to main.exe and
+     * flush on newline. Lets the dev (and Claude in sandbox) read the full
+     * console output even after a crash, since stdout to ConEmu is locked
+     * to that one window. */
     {
         static FILE *fp = NULL;
-
-        if (fp == NULL)
-            fp = fopen("log.txt", "wb+");
-
+        static int suppressed = 0;
+        if (fp == NULL && !suppressed)
+        {
+            fp = fopen("pc_console.log", "wb");
+            if (fp == NULL) suppressed = 1;
+        }
         if (fp != NULL)
-            fwrite(buffer, size, 1, fp);
+        {
+            fputc(c, fp);
+            if (c == '\n') fflush(fp);
+        }
     }
-#endif
     rt_sem_take(&uart->sem, RT_WAITING_FOREVER);
     fputc(c, stdout);
     rt_sem_release(&uart->sem);
