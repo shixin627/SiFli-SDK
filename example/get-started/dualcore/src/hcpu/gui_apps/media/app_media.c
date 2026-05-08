@@ -937,7 +937,7 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
     p_widget_media->media_title = lv_label_create(widget);
     lv_label_set_text(p_widget_media->media_title, get_media_title());
     lv_obj_set_style_text_opa(p_widget_media->media_title, LV_OPA_70, 0);
-    lv_obj_set_size(p_widget_media->media_title, 400, 150);
+    lv_obj_set_size(p_widget_media->media_title, 400, 70);
     lv_label_set_long_mode(p_widget_media->media_title, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(p_widget_media->media_title,
                                 LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -950,7 +950,7 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
     //                     LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *title_btn =lv_obj_create(widget);
-    lv_obj_set_size(title_btn, 400, 150);
+    lv_obj_set_size(title_btn, 400, 70);
     lv_obj_align(title_btn, LV_ALIGN_TOP_MID, 0, 15);
     lv_obj_set_style_bg_opa(title_btn, LV_OPA_TRANSP, 0);
     lv_obj_add_event_cb(title_btn, widget_title_event_cb, LV_EVENT_CLICKED, NULL);

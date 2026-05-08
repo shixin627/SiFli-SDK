@@ -167,6 +167,7 @@ LV_IMG_DECLARE(img_mail);
 // LV_IMG_DECLARE(gaus_clock5_bg);
 LV_IMG_DECLARE(gaus_clock4_bg);
 LV_IMG_DECLARE(gaus_clock1_bg);
+LV_IMG_DECLARE(icon_sleep_mode);
 LV_IMG_DECLARE(notification_img);
 
 #define BTN_FLASHLIGHT btn_flashlight
@@ -225,6 +226,7 @@ LV_IMG_DECLARE(notification_img);
 #define ICON_TRASH ((const void *)&icon_trash)
 #define ICON_QRCODE ((const void *)&icon_qrcode)
 #define ICON_DND_MODE ((const void *)&icon_dnd_mode)
+#define ICON_SLEEP_MODE ((const void *)&icon_sleep_mode)
 #define ICON_SLACK ((const void *)&icon_slack)
 #define ICON_LARK ((const void *)&icon_lark)
 #define ICON_REDDIT ((const void *)&icon_reddit)

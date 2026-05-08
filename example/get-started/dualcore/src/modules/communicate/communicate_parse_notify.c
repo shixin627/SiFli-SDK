@@ -51,7 +51,17 @@ extern bool get_is_open_instruction_list_ai(void);
 extern void request_instruction_image(const char *id);
 extern void update_instruction_image(const char *id, const char *path);
 extern void remove_custom_instruction(const char *id);
-extern void refresh_custom_instructions(void);
+
+/* Defer instruction-list rebuild to LVGL thread.
+   This handler runs on KE_EVT2 (BLE kernel-event task, 4KB stack).
+   Calling refresh_custom_instructions() directly from here blew the
+   stack (creates 10+ lv_obj with FreeType labels) — see the STKOF
+   usage-fault crash in 2026-05-08 ui.log. */
+static inline void defer_refresh_custom_instructions(void)
+{
+    lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_INSTRUCTION_LIST};
+    lvgl_send_msg(msg);
+}
 
 extern void parse_chat_item(cJSON *item, chat_t *note);
 static uint8_t weather_data_updata_count = 0;
@@ -495,7 +505,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
                     }
                 }
 
-                refresh_custom_instructions();
+                defer_refresh_custom_instructions();
                 cJSON_Delete(root);
             }
         }
@@ -508,7 +518,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         {
             LOG_I("Dismiss instruction: %s", pValue);
             remove_custom_instruction((const char *)pValue);
-            refresh_custom_instructions();
+            defer_refresh_custom_instructions();
         }
         break;
     }

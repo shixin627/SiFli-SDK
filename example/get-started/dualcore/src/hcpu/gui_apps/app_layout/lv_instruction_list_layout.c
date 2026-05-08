@@ -1659,7 +1659,8 @@ static int16_t find_app_index_by_id(uint16_t app_id)
 extern char *get_media_title(void);
 extern bool is_have_message_now(void);
 static uint16_t gesture_starting_value = 0;
-static void reset_list(void)
+
+static void reset_list_internal(void)
 {
     if (p_instruction_list_layout->list == NULL)
     {
@@ -1690,6 +1691,28 @@ static void reset_list(void)
     is_widget_animation_active = false;
     enable_scrolling_motor_vibrate();
     open_scroll_motor = true;
+}
+
+/* Thread-aware wrapper assigned to myLancher[...].reset_list. Callers in
+   bloc_notification (KE_EVT2) hit reset_list_internal's lv_obj_scroll_to_view
+   which cascades through scroll events and blows the 4KB BLE stack. Defer to
+   the LVGL thread when invoked off-thread. */
+static void reset_list(void)
+{
+    if (!is_on_lvgl_thread())
+    {
+        lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST};
+        lvgl_send_msg(msg);
+        return;
+    }
+    reset_list_internal();
+}
+
+/* Public entry called by the LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST handler.
+   Always invoked from the LVGL thread, so no thread check needed. */
+void apply_instruction_list_reset_on_lvgl_thread(void)
+{
+    reset_list_internal();
 }
 
 uint16_t get_gesture_starting_value(void)
@@ -2466,6 +2489,21 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
             }
         }
 
+        /* Default visibility: only the currently selected item exposes its
+           label / switch / touch overlay. scroll_list normally maintains this
+           when the selection changes, but on initial create / rebuild no
+           scroll has fired yet, so non-selected items would otherwise show
+           every label at once. */
+        if (i != selected_item_index)
+        {
+            if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
+                lv_obj_add_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
+            if (switch_objs[i] != NULL && lv_obj_is_valid(switch_objs[i]))
+                lv_obj_add_flag(switch_objs[i], LV_OBJ_FLAG_HIDDEN);
+            if (touch_obj[i] != NULL && lv_obj_is_valid(touch_obj[i]))
+                lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
+        }
+
         LOG_D("List item %d: id=%s, title=%s, is_instruction=%d", i,
               list_items[i].id, list_items[i].title,
               list_items[i].is_instruction);
@@ -2516,6 +2554,18 @@ void refresh_custom_instructions(void)
     {
         lv_timer_del(s_pending_refresh_timer);
         s_pending_refresh_timer = NULL;
+    }
+
+    /* Invalidate the image cache for every instruction's current image path.
+       update_instruction_image() running on a non-LVGL thread skips its own
+       cache invalidation (deferring it here is safer than calling LVGL APIs
+       on KE_EVT2's 4KB stack). When the phone replaces an existing image at
+       the same path, we need this flush so lv_img_set_src below picks up the
+       new pixels rather than a stale cached entry. */
+    for (uint8_t i = 0; i < list_item_count; i++)
+    {
+        if (list_items[i].img_path[0] != '\0')
+            lv_img_cache_invalidate_src(list_items[i].img_path);
     }
 
     lv_obj_t *list = p_instruction_list_layout->list;
@@ -2643,17 +2693,32 @@ void update_instruction_image(const char *id, const char *path)
     rt_snprintf(img_path, sizeof(img_path), "/assets/images/instruction/%s.bin",
                 id_prefix);
 
-    lv_img_cache_invalidate_src(list_items[idx].img_path);
+    /* Path-string update is thread-safe (single owner per index in practice). */
     strncpy(list_items[idx].img_path, img_path,
             sizeof(list_items[idx].img_path) - 1);
     list_items[idx].img_path[sizeof(list_items[idx].img_path) - 1] = '\0';
+
+    /* LVGL ops only on the LVGL thread.
+       BLE notify (parse_notify) and file-receive callback (bloc_filesystem)
+       both run on KE_EVT2 (4KB stack). lv_img_set_src / lv_obj_clear_flag
+       cascade through lv_event_send → potentially the list's scroll handler
+       → scroll_list, blowing the stack. Defer the rebuild via the LVGL msg
+       queue; refresh_custom_instructions invalidates caches and recreates
+       the indicator dots from list_items[i].img_path. */
+    if (!is_on_lvgl_thread())
+    {
+        lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_INSTRUCTION_LIST};
+        lvgl_send_msg(msg);
+        return;
+    }
+
+    lv_img_cache_invalidate_src(img_path);
 
     /* Update the indicator dot directly if UI exists */
     if (p_instruction_list_layout != NULL &&
         p_instruction_list_layout->indicator_dots[idx] != NULL &&
         lv_obj_is_valid(p_instruction_list_layout->indicator_dots[idx]))
     {
-        lv_img_cache_invalidate_src(img_path);
         lv_img_set_src(p_instruction_list_layout->indicator_dots[idx],
                        list_items[idx].img_path);
         lv_obj_clear_flag(p_instruction_list_layout->indicator_dots[idx],
@@ -3216,6 +3281,28 @@ static void map_app_id(uint8_t app_id, list_item_t *item)
 void load_instruction_list(void)
 {
     uint8_t n = ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION);
+    uint8_t custom_count = (list_item_count > app_base_count)
+                               ? list_item_count - app_base_count
+                               : 0;
+
+    /* App slot count changed → shift custom items so they line up after the
+       new app block. Walk the right direction to avoid clobbering on overlap. */
+    if (custom_count > 0 && app_base_count != n)
+    {
+        if (n > app_base_count)
+        {
+            for (int i = custom_count - 1; i >= 0; i--)
+                memcpy(&list_items[n + i],
+                       &list_items[app_base_count + i], sizeof(list_item_t));
+        }
+        else
+        {
+            for (uint8_t i = 0; i < custom_count; i++)
+                memcpy(&list_items[n + i],
+                       &list_items[app_base_count + i], sizeof(list_item_t));
+        }
+    }
+
     for (uint8_t i = 0; i < n; i++)
     {
         map_app_id(INSTRUCTION_LIST_ITEMS_DEFINITION[i], &list_items[i]);
@@ -3223,7 +3310,7 @@ void load_instruction_list(void)
               list_items[i].title);
     }
     app_base_count = n;
-    list_item_count = n;
+    list_item_count = n + custom_count;
 }
 
 static rt_int32_t init(lv_obj_t *parent)
