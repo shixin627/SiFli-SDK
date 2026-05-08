@@ -3,8 +3,12 @@
 
 #if defined(_MSC_VER)
     /* PC sim: GUI_APP_FRAMEWORK is off so the Kconfig choice doesn't fire;
-     * app_mem.c needs one of the APP_TRANS_ANIMATION_* to be defined. */
-    #define APP_TRANS_ANIMATION_NONE
+     * app_mem.c needs one of the APP_TRANS_ANIMATION_* to be defined.
+     * Use OVERWRITE (also 0-buffer) — NONE would gate out lvsf_gesture
+     * (`#if !defined(APP_TRANS_ANIMATION_NONE)` in lvsf_gesture.c +
+     * watch_demo.c), making the left-edge swipe-back detection area
+     * disappear in PC sim. */
+    #define APP_TRANS_ANIMATION_OVERWRITE
 
     /* watch_sys_service.h gates HCPU-side struct members on SOC_BF0_HCPU
      * (vs the LCPU set). PC sim is single-core acting as HCPU. */
