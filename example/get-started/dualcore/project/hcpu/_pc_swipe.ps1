@@ -155,8 +155,8 @@ if ($tap) {
 }
 
 switch ($dir.ToLower()) {
-    "up"    { $a = ClientPercent-To-Screen 50 85; $b = ClientPercent-To-Screen 50 15 }
-    "down"  { $a = ClientPercent-To-Screen 50 15; $b = ClientPercent-To-Screen 50 85 }
+    "up"    { $a = ClientPercent-To-Screen 50 80; $b = ClientPercent-To-Screen 50 30 }
+    "down"  { $a = ClientPercent-To-Screen 50 20; $b = ClientPercent-To-Screen 50 75 }
     "left"  {
         if ($edge) { $a = ClientPercent-To-Screen 95 50; $b = ClientPercent-To-Screen 25 50 }
         else       { $a = ClientPercent-To-Screen 85 50; $b = ClientPercent-To-Screen 15 50 }
