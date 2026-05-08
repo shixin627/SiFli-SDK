@@ -2474,6 +2474,21 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
             }
         }
 
+        /* Default visibility: only the currently selected item exposes its
+           label / switch / touch overlay. scroll_list normally maintains this
+           when the selection changes, but on initial create / rebuild no
+           scroll has fired yet, so non-selected items would otherwise show
+           every label at once. */
+        if (i != selected_item_index)
+        {
+            if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
+                lv_obj_add_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
+            if (switch_objs[i] != NULL && lv_obj_is_valid(switch_objs[i]))
+                lv_obj_add_flag(switch_objs[i], LV_OBJ_FLAG_HIDDEN);
+            if (touch_obj[i] != NULL && lv_obj_is_valid(touch_obj[i]))
+                lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
+        }
+
         LOG_D("List item %d: id=%s, title=%s, is_instruction=%d", i,
               list_items[i].id, list_items[i].title,
               list_items[i].is_instruction);
@@ -3247,6 +3262,28 @@ static void map_app_id(uint8_t app_id, list_item_t *item)
 void load_instruction_list(void)
 {
     uint8_t n = ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION);
+    uint8_t custom_count = (list_item_count > app_base_count)
+                               ? list_item_count - app_base_count
+                               : 0;
+
+    /* App slot count changed → shift custom items so they line up after the
+       new app block. Walk the right direction to avoid clobbering on overlap. */
+    if (custom_count > 0 && app_base_count != n)
+    {
+        if (n > app_base_count)
+        {
+            for (int i = custom_count - 1; i >= 0; i--)
+                memcpy(&list_items[n + i],
+                       &list_items[app_base_count + i], sizeof(list_item_t));
+        }
+        else
+        {
+            for (uint8_t i = 0; i < custom_count; i++)
+                memcpy(&list_items[n + i],
+                       &list_items[app_base_count + i], sizeof(list_item_t));
+        }
+    }
+
     for (uint8_t i = 0; i < n; i++)
     {
         map_app_id(INSTRUCTION_LIST_ITEMS_DEFINITION[i], &list_items[i]);
@@ -3254,7 +3291,7 @@ void load_instruction_list(void)
               list_items[i].title);
     }
     app_base_count = n;
-    list_item_count = n;
+    list_item_count = n + custom_count;
 }
 
 static rt_int32_t init(lv_obj_t *parent)
