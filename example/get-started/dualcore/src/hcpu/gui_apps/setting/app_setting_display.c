@@ -21,8 +21,6 @@ LV_IMG_DECLARE(dn);
 typedef struct
 {
     lv_obj_t *brightness;
-    lv_obj_t *auto_off;
-    lv_obj_t *auto_off_label;
     lv_obj_t *rotate;
     datac_handle_t pwr_srv_hdl;
 } display_ctx_t;
@@ -87,18 +85,6 @@ static void event_cb(lv_event_t *e)
                             PWRMGR_MSG_LCD_BRIGHTNESS_SET_REQ,
                             (uint8_t *)&v, sizeof(uint16_t));
         }
-        else if (p_display->auto_off == obj)
-        {
-            uint16_t v = (uint16_t)lv_slider_get_value(obj);
-
-            datac_send_data(p_display->pwr_srv_hdl,
-                            PWRMGR_MSG_LCD_AUTO_OFF_TIME_SET_REQ,
-                            (uint8_t *)&v, sizeof(uint16_t));
-
-#ifdef BSP_USING_BLOC_SETTING
-            setting_provider.set_screen_time(v);
-#endif
-        }
         else if (p_display->rotate == obj)
         {
             uint16_t v = (lv_obj_get_state(obj) & LV_STATE_CHECKED) ? 1 : 0;
@@ -157,34 +143,7 @@ static void bar_event_cb(lv_event_t *e)
                             PWRMGR_MSG_LCD_BRIGHTNESS_SET_REQ,
                             (uint8_t *)&result, sizeof(uint16_t));
         }
-        else if (p_display->auto_off == obj)
-        {
-            if (value < 5)
-                value = 5;
-
-            lv_bar_set_value(bar, value, LV_ANIM_OFF);
-            datac_send_data(p_display->pwr_srv_hdl,
-                            PWRMGR_MSG_LCD_AUTO_OFF_TIME_SET_REQ,
-                            (uint8_t *)&result, sizeof(uint16_t));
-
-        }
     }
-}
-
-/**
- * @brief Updates the auto-off time label text
- *
- * @param value Time value in seconds
- */
-static void refresh_auto_off_label(uint8_t value)
-{
-    char buf[16];
-    if (value >= 60)
-        snprintf(buf, sizeof(buf), "never");
-    else
-        snprintf(buf, sizeof(buf), "%d s", value);
-    lv_label_set_text(p_display->auto_off_label, buf);
-    lv_obj_align_to(p_display->auto_off_label, p_display->auto_off, LV_ALIGN_OUT_RIGHT_MID, 0, 0);
 }
 
 /**
@@ -216,9 +175,6 @@ static int powermgr_srv_callback(data_callback_arg_t *arg)
                 data_service_init_msg(&msg, PWRMGR_MSG_LCD_BRIGHTNESS_GET_REQ, 0);
                 datac_send_msg(p_display->pwr_srv_hdl, &msg);
 
-                data_service_init_msg(&msg, PWRMGR_MSG_LCD_AUTO_OFF_TIME_GET_REQ, 0);
-                datac_send_msg(p_display->pwr_srv_hdl, &msg);
-
                 data_service_init_msg(&msg, PWRMGR_MSG_LCD_ROTATE_180_GET_REQ, 0);
                 datac_send_msg(p_display->pwr_srv_hdl, &msg);
             }
@@ -245,32 +201,6 @@ static int powermgr_srv_callback(data_callback_arg_t *arg)
               p_range->cur, p_range->min, p_range->max);
 #ifdef BSP_USING_BLOC_CONTROL
         control_provider.screen_brightness_smoothly(p_range->cur);
-#endif
-    }
-    break;
-
-    case PWRMGR_MSG_LCD_AUTO_OFF_TIME_GET_RSP:
-    {
-        range_msg_t *p_range;
-        p_range = (range_msg_t *)arg->data;
-
-        LOG_D("PWRMGR_MSG_LCD_AUTO_OFF_TIME_GET_RSP cur=%d[%d,%d]",
-              p_range->cur, p_range->min, p_range->max);
-
-        lv_bar_set_range(p_display->auto_off, p_range->min, p_range->max);
-        lv_bar_set_value(p_display->auto_off, SkaiWatchSys.oled_display_time, LV_ANIM_ON);
-        refresh_auto_off_label(SkaiWatchSys.oled_display_time);
-    }
-    break;
-    case PWRMGR_MSG_LCD_AUTO_OFF_TIME_SET_RSP:
-    {
-        range_msg_t *p_range;
-        p_range = (range_msg_t *)arg->data;
-        LOG_D("PWRMGR_MSG_LCD_AUTO_OFF_TIME_SET_RSP cur=%d[%d,%d]",
-              p_range->cur, p_range->min, p_range->max);
-        refresh_auto_off_label(p_range->cur);
-#ifdef BSP_USING_BLOC_CONTROL
-        control_provider.screen_time_smoothly(p_range->cur);
 #endif
     }
     break;
@@ -361,38 +291,6 @@ static void on_start(void)
     lv_obj_align(icon, LV_ALIGN_LEFT_MID, 20, 0);
     p_display->brightness = bar;
 
-    // Screen time settings
-    label = lv_label_create(general_group);
-    lv_label_set_text(label, LV_EXT_STR_GET_BY_KEY(screen_time, "Screen Time"));
-    lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_width(label, LV_PCT(100));
-    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-
-    item = lv_obj_create(general_group);
-    lv_obj_clear_flag(item, LV_OBJ_FLAG_SCROLLABLE); // Make the whole item non-clickable
-    lv_obj_set_size(item, LV_PCT(100), 100);                    // Larger height for better touch targets
-    lv_obj_set_style_bg_color(item, lv_color_hex(0x1E1E1E), 0); // Dark gray
-    /* Display time range 5 ~ 60, never(61) */
-    bar = lv_bar_create(item);     // Create a progress bar
-    lv_bar_set_range(bar, 5, 100); // Set the range of the progress bar
-    lv_obj_set_width(bar, LV_PCT(70));
-    lv_obj_set_height(bar, 80);
-    lv_obj_align(bar, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(bar, lv_color_hex(0xE5E5EA), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(bar, lv_color_hex(0xE5E5EA), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(bar, LV_OPA_10, LV_PART_MAIN);
-    LOG_D("oled_display_time:%d", SkaiWatchSys.oled_display_time);
-    lv_bar_set_value(bar, SkaiWatchSys.oled_display_time, LV_ANIM_ON);
-    lv_obj_add_event_cb(bar, bar_event_cb, LV_EVENT_ALL, NULL);
-    icon = lv_img_create(bar);
-    lv_img_set_src(icon, &sun);
-    lv_obj_align(icon, LV_ALIGN_LEFT_MID, 20, 0);
-    p_display->auto_off = bar;
-    p_display->auto_off_label = lv_label_create(item);
-    lv_label_set_text(p_display->auto_off_label, "");
-    lv_obj_set_style_text_font(p_display->auto_off_label, LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
-    lv_obj_align(p_display->auto_off_label, LV_ALIGN_CENTER, 50, 0);
-
     // Screen rotation (icon + name + switch)
     p_display->rotate = create_dark_toggle_item(general_group, &dn,
                                                 "Rotate Display",
@@ -442,8 +340,6 @@ static void on_stop(void)
 
         // Clean up UI elements
         lv_obj_del(p_display->brightness);
-        lv_obj_del(p_display->auto_off);
-        lv_obj_del(p_display->auto_off_label);
         lv_obj_del(p_display->rotate);
 
         lv_mem_free(p_display);

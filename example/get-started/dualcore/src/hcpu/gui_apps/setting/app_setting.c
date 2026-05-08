@@ -80,6 +80,7 @@ LV_IMG_DECLARE(airplane);
 LV_IMG_DECLARE(clock_40);
 LV_IMG_DECLARE(icon_release);
 LV_IMG_DECLARE(sun);
+LV_IMG_DECLARE(service_hour);
 
 /**
  *  description of app setting
@@ -90,78 +91,21 @@ typedef struct
     lv_obj_t *main_window;
     lv_obj_t *list1;
     lv_obj_t *selected_lang;
-    lv_obj_t *selected_time_format;
     lv_obj_t *selected_font_size;
     lv_obj_t *brightness_bar;
+    lv_obj_t *screen_time_bar;
+    lv_obj_t *screen_time_label;
     datac_handle_t pwr_srv_hdl;
 } app_setting_t;
 
 static app_setting_t *p_app_setting = NULL;
-static lv_obj_t *dnd_switch = NULL;
+static lv_obj_t *dnd_quick_btn = NULL;
+static lv_obj_t *time_format_quick_btn = NULL;
+static lv_obj_t *time_format_title_label = NULL;
+static lv_obj_t *time_format_badge_label = NULL;
 
-extern void app_setting_display_main(void);
 extern void app_setting_sys_main(void);
 extern void app_developer_main(void);
-
-static void time_format_setting_win_event_handler(lv_event_t *e)
-{
-    lv_obj_t *obj = lv_event_get_target(e);
-    lv_event_code_t event = lv_event_get_code(e);
-
-    if (event == LV_EVENT_CLICKED)
-    {
-        lv_obj_del(obj->parent);
-        p_app_setting->selected_lang = NULL;
-    }
-}
-
-static void time_format_btn_event_handler(lv_event_t *e)
-{
-    lv_obj_t *obj = lv_event_get_target(e);
-    lv_event_code_t event = lv_event_get_code(e);
-
-    if (event == LV_EVENT_VALUE_CHANGED)
-    {
-        lv_state_t new_state = lv_obj_get_state(obj);
-        if ((p_app_setting->selected_time_format != obj) && (0 == (LV_STATE_PRESSED & new_state)))
-        {
-            // Clear the previous selection if there was one
-            if (p_app_setting->selected_time_format)
-            {
-                lv_obj_clear_state(p_app_setting->selected_time_format, LV_STATE_CHECKED);
-            }
-
-            // Set the new selection
-            p_app_setting->selected_time_format = obj;
-            uint8_t time_format_flag;
-            if (0 == strcmp(lv_list_get_btn_text(NULL, obj), "12hr"))
-            {
-                time_format_flag = 0x00;
-#ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-                watch_system_interact(TIME_FORMAT_SET, &time_format_flag);
-#endif
-            }
-            else if (0 == strcmp(lv_list_get_btn_text(NULL, obj), "24hr"))
-            {
-                time_format_flag = 0x01;
-#ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-                watch_system_interact(TIME_FORMAT_SET, &time_format_flag);
-#endif
-            }
-        }
-        else if ((p_app_setting->selected_time_format == obj) && (0 == (LV_STATE_PRESSED & new_state)))
-        {
-            if (lv_obj_get_state(obj) & LV_STATE_CHECKED)
-            {
-                lv_obj_clear_state(obj, LV_STATE_CHECKED);
-            }
-            else
-            {
-                lv_obj_add_state(obj, LV_STATE_CHECKED);
-            }
-        }
-    }
-}
 
 static void lang_btn_event_handler(lv_event_t *e)
 {
@@ -304,13 +248,13 @@ static lv_obj_t *create_setting_template_win(
     lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
 
-    // Create container for the options
+    // Options container — transparent flex column (no surrounding box)
     lv_obj_t *options_container = lv_obj_create(cont);
     lv_obj_set_size(options_container, LV_PCT(90), LV_SIZE_CONTENT);
-    lv_obj_set_style_radius(options_container, 15, 0);                       // Rounded corners
-    lv_obj_set_style_bg_color(options_container, lv_color_hex(0x1E1E1E), 0); // Dark gray
+    lv_obj_set_style_bg_opa(options_container, LV_OPA_0, 0);
     lv_obj_set_style_border_width(options_container, 0, 0);
-    lv_obj_set_style_pad_all(options_container, 10, 0);
+    lv_obj_set_style_pad_all(options_container, 0, 0);
+    lv_obj_set_style_pad_row(options_container, 10, 0);
     lv_obj_set_flex_flow(options_container, LV_FLEX_FLOW_COLUMN);
     lv_obj_align_to(options_container, title, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
 
@@ -320,21 +264,22 @@ static lv_obj_t *create_setting_template_win(
     // title_text is font size
     bool is_setting_font_size = (strcmp(title_text, LV_EXT_STR_GET_BY_KEY(setting_font_size, "Font Size")) == 0);
 
-    // Add options as buttons
+    // Capsule-style options
     for (int i = 0; i < option_count; i++)
     {
-        // Create a button for each option
         lv_obj_t *btn = lv_btn_create(options_container);
-        lv_obj_set_size(btn, LV_PCT(100), BUTTON_HEIGHT);          // Match height with other items
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x1E1E1E), 0); // Dark gray
+        lv_obj_set_size(btn, LV_PCT(100), 80);
+        lv_obj_set_style_radius(btn, 40, 0);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(0xCECECE), 0);
+        lv_obj_set_style_bg_opa(btn, LV_OPA_10, 0);
+        lv_obj_set_style_bg_opa(btn, LV_OPA_90, LV_STATE_CHECKED);
         lv_obj_set_style_border_width(btn, 0, 0);
-        lv_obj_set_style_radius(btn, 12, 0); // Rounded corners
+        lv_obj_set_style_pad_all(btn, 0, 0);
         lv_obj_add_flag(btn, LV_OBJ_FLAG_CHECKABLE);
 
-        // Add label to button
         lv_obj_t *label = lv_label_create(btn);
         lv_label_set_text(label, options[i]);
-        lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), 0); // White text
+        lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), 0);
         if (is_setting_font_size)
         {
             // Use mapped font index: 0->3(Title), 1->4(Big), 2->5(Huge)
@@ -347,13 +292,11 @@ static lv_obj_t *create_setting_template_win(
         }
         lv_obj_center(label);
 
-        // Add event handler
         if (option_callback)
         {
             lv_obj_add_event_cb(btn, option_callback, LV_EVENT_ALL, NULL);
         }
 
-        // Set the initial selected state if needed
         if (i == initial_selected)
         {
             lv_obj_add_state(btn, LV_STATE_CHECKED);
@@ -361,16 +304,20 @@ static lv_obj_t *create_setting_template_win(
         }
     }
 
-    // Add back button at the bottom
+    // Back button — capsule style
     lv_obj_t *back_btn = lv_btn_create(cont);
-    lv_obj_set_size(back_btn, LV_PCT(90), BUTTON_HEIGHT);
-    lv_obj_set_style_radius(back_btn, 15, 0);
-    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0x1E1E1E), 0);
+    lv_obj_set_size(back_btn, LV_PCT(90), 80);
+    lv_obj_set_style_radius(back_btn, 40, 0);
+    lv_obj_set_style_bg_color(back_btn, lv_color_hex(0xCECECE), 0);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_10, 0);
+    lv_obj_set_style_border_width(back_btn, 0, 0);
+    lv_obj_set_style_pad_all(back_btn, 0, 0);
     lv_obj_align_to(back_btn, options_container, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
 
     lv_obj_t *back_label = lv_label_create(back_btn);
     lv_label_set_text(back_label, LV_EXT_STR_GET_BY_KEY(back, "Back"));
     lv_obj_set_style_text_color(back_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(back_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_center(back_label);
 
     // Add event handler for back button
@@ -464,31 +411,81 @@ static void create_font_size_setting_win(void)
         font_size_setting_win_back_event_handler);
 }
 
-static void create_time_format_setting_win(void)
+static lv_obj_t *create_capsule_item(lv_obj_t *parent, lv_obj_t *anchor,
+                                     const void *icon, const char *text,
+                                     bool show_arrow)
 {
-    // Time format options
-    const char *time_format_options[] = {"12hr", "24hr"};
+    const lv_coord_t w = LV_HOR_RES * 80 / 100;
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_set_size(btn, w, 80);
+    lv_obj_align_to(btn, anchor, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_set_style_radius(btn, 40, 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xCECECE), 0);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_10, 0);
+    lv_obj_set_style_border_width(btn, 0, 0);
+    lv_obj_set_style_pad_all(btn, 0, 0);
 
-    // Get current time format setting
-    uint8_t hour_format = SkaiWatchSys.flag_field.hour_format;
-    const char *title_text = LV_EXT_STR_GET_BY_KEY(setting_time, "Time Format");
-    // Use the template to create the time format settings window
-    p_app_setting->selected_time_format = create_setting_template_win(
-        title_text,
-        time_format_options, 2,
-        hour_format,
-        time_format_btn_event_handler,
-        time_format_setting_win_event_handler);
+    if (icon)
+    {
+        lv_obj_t *img = lv_img_create(btn);
+        lv_img_set_src(img, icon);
+        lv_obj_align(img, LV_ALIGN_LEFT_MID, 20, 0);
+
+        lv_obj_t *label = lv_label_create(btn);
+        lv_label_set_text(label, text);
+        lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_font(label,
+                                   LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+        lv_obj_align_to(label, img, LV_ALIGN_OUT_RIGHT_MID, 20, 0);
+    }
+    else
+    {
+        lv_obj_t *label = lv_label_create(btn);
+        lv_label_set_text(label, text);
+        lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_font(label,
+                                   LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+        lv_obj_align(label, LV_ALIGN_LEFT_MID, 20, 0);
+    }
+
+    if (show_arrow)
+    {
+        lv_obj_t *arrow = lv_label_create(btn);
+        lv_label_set_text(arrow, ">");
+        lv_obj_set_style_text_color(arrow, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_font(arrow,
+                                   LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+        lv_obj_align(arrow, LV_ALIGN_RIGHT_MID, -20, 0);
+    }
+    return btn;
 }
 
-static void btn_time_event_callback(lv_event_t *e)
+static void update_time_format_title_label(uint8_t hour_format)
 {
-    lv_obj_t *obj = lv_event_get_target(e);
-    lv_event_code_t event = lv_event_get_code(e);
-
-    if (LV_EVENT_SHORT_CLICKED == event)
+    if (time_format_title_label && lv_obj_is_valid(time_format_title_label))
     {
-        create_time_format_setting_win();
+        lv_label_set_text(time_format_title_label,
+                          (hour_format == 0x01) ? "24-hour" : "12-hour");
+    }
+    if (time_format_badge_label && lv_obj_is_valid(time_format_badge_label))
+    {
+        lv_label_set_text(time_format_badge_label,
+                          (hour_format == 0x01) ? "24" : "12");
+    }
+}
+
+static void time_format_switch_event_callback(lv_event_t *e)
+{
+    if (LV_EVENT_VALUE_CHANGED == lv_event_get_code(e))
+    {
+        lv_obj_t *sw = lv_event_get_target(e);
+        uint8_t new_format = (lv_obj_get_state(sw) & LV_STATE_CHECKED) ? 0x01 : 0x00;
+        SkaiWatchSys.flag_field.hour_format = new_format;
+#ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
+        watch_system_interact(TIME_FORMAT_SET, &new_format);
+#endif
+        update_time_format_title_label(new_format);
+        LOG_I("Time format toggled: %s", (new_format == 0x01) ? "24h" : "12h");
     }
 }
 
@@ -511,17 +508,6 @@ static void btn_font_size_event_callback(lv_event_t *e)
     if (LV_EVENT_SHORT_CLICKED == event)
     {
         create_font_size_setting_win();
-    }
-}
-
-static void list_display_event_callback(lv_event_t *e)
-{
-    lv_obj_t *obj = lv_event_get_target(e);
-    lv_event_code_t event = lv_event_get_code(e);
-
-    if (LV_EVENT_SHORT_CLICKED == event)
-    {
-        app_setting_display_main();
     }
 }
 
@@ -601,37 +587,109 @@ static void clear_flash_do(void)
     LOG_I("Flash data cleared.");
 }
 
-static void clear_flash_confirm_event_cb(lv_event_t *e)
+static lv_obj_t *reset_modal = NULL;
+
+static void reset_modal_close(void)
 {
-    lv_obj_t *mbox = lv_event_get_target(e);
-    uint16_t btn_id = lv_msgbox_get_active_btn(mbox);
-
-    if (btn_id == 0) // "Yes"
+    if (reset_modal && lv_obj_is_valid(reset_modal))
     {
-        clear_flash_do();
+        lv_obj_del(reset_modal);
     }
-    /* btn_id == 1 ("No") or LV_BTNMATRIX_BTN_NONE: just close */
+    reset_modal = NULL;
+}
 
-    lv_msgbox_close(mbox);
+static void reset_modal_close_event_cb(lv_event_t *e)
+{
+    reset_modal_close();
+}
+
+static void reset_modal_confirm_event_cb(lv_event_t *e)
+{
+    reset_modal_close();
+    clear_flash_do();
+}
+
+static void show_reset_modal(void)
+{
+    if (reset_modal && lv_obj_is_valid(reset_modal))
+    {
+        return;
+    }
+
+    /* Full-screen 50%-transparent black overlay */
+    reset_modal = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(reset_modal, LV_HOR_RES, LV_VER_RES);
+    lv_obj_align(reset_modal, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(reset_modal, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(reset_modal, LV_OPA_90, 0);
+    lv_obj_set_style_border_width(reset_modal, 0, 0);
+    lv_obj_set_style_pad_all(reset_modal, 0, 0);
+    lv_obj_clear_flag(reset_modal, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* Title — white, centered, wraps */
+    lv_obj_t *title = lv_label_create(reset_modal);
+    lv_label_set_text(title, "Erase all content\nand settings?");
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(title,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(title, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(title, LV_PCT(80));
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 110);
+
+    /* Description — smaller, gray, centered */
+    lv_obj_t *desc = lv_label_create(reset_modal);
+    lv_label_set_text(desc, "This will reset the\ndevice to factory\ndefaults.");
+    lv_obj_set_style_text_color(desc, lv_color_hex(0xAAAAAA), 0);
+    lv_obj_set_style_text_font(desc,
+                               LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
+    lv_obj_set_style_text_align(desc, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(desc, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(desc, LV_PCT(80));
+    lv_obj_align_to(desc, title, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
+
+    /* Red Reset pill button at the bottom */
+    lv_obj_t *reset_btn = lv_btn_create(reset_modal);
+    lv_obj_set_size(reset_btn, LV_HOR_RES * 60 / 100, 56);
+    lv_obj_align(reset_btn, LV_ALIGN_BOTTOM_MID, 0, -40);
+    lv_obj_set_style_radius(reset_btn, 28, 0);
+    lv_obj_set_style_bg_color(reset_btn, lv_color_hex(0xCC0033), 0);
+    lv_obj_set_style_bg_opa(reset_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(reset_btn, 0, 0);
+    lv_obj_set_style_shadow_width(reset_btn, 0, 0);
+    lv_obj_add_event_cb(reset_btn, reset_modal_confirm_event_cb,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_t *reset_label = lv_label_create(reset_btn);
+    lv_label_set_text(reset_label, "Reset");
+    lv_obj_set_style_text_color(reset_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(reset_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_center(reset_label);
+
+    /* Cancel pill button above Reset */
+    lv_obj_t *cancel_btn = lv_btn_create(reset_modal);
+    lv_obj_set_size(cancel_btn, LV_HOR_RES * 60 / 100, 56);
+    lv_obj_align_to(cancel_btn, reset_btn, LV_ALIGN_OUT_TOP_MID, 0, -10);
+    lv_obj_set_style_radius(cancel_btn, 28, 0);
+    lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(0x2C2C2E), 0);
+    lv_obj_set_style_bg_opa(cancel_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(cancel_btn, 0, 0);
+    lv_obj_set_style_shadow_width(cancel_btn, 0, 0);
+    lv_obj_add_event_cb(cancel_btn, reset_modal_close_event_cb,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_t *cancel_label = lv_label_create(cancel_btn);
+    lv_label_set_text(cancel_label, "Cancel");
+    lv_obj_set_style_text_color(cancel_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(cancel_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_center(cancel_label);
 }
 
 static void btn_clear_flash_event_callback(lv_event_t *e)
 {
-    lv_event_code_t event = lv_event_get_code(e);
-
-    if (LV_EVENT_SHORT_CLICKED == event)
+    if (LV_EVENT_SHORT_CLICKED == lv_event_get_code(e))
     {
-        static const char *btns[] = {"Yes", "No", ""};
-        lv_obj_t *mbox = lv_msgbox_create(
-            lv_scr_act(),
-            "Clear Flash",
-            "Delete all icons, images,\nrecordings, photos and prefs?\nThis cannot be undone.",
-            btns, false);
-        lv_obj_add_event_cb(mbox, clear_flash_confirm_event_cb,
-                            LV_EVENT_VALUE_CHANGED, NULL);
-        lv_obj_set_style_bg_color(mbox, lv_color_make(40, 40, 40),
-                                  LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_center(mbox);
+        show_reset_modal();
     }
 }
 
@@ -761,8 +819,7 @@ static void btn_qrcode_event_callback(lv_event_t *e)
 
 static void dnd_switch_event_callback(lv_event_t *e)
 {
-    lv_event_code_t event = lv_event_get_code(e);
-    if (LV_EVENT_VALUE_CHANGED == event)
+    if (LV_EVENT_VALUE_CHANGED == lv_event_get_code(e))
     {
         lv_obj_t *sw = lv_event_get_target(e);
         bool new_status = (lv_obj_get_state(sw) & LV_STATE_CHECKED) ? true : false;
@@ -829,13 +886,83 @@ static void brightness_bar_event_cb(lv_event_t *e)
     }
 }
 
+static void refresh_screen_time_label(uint8_t value)
+{
+    if (!p_app_setting || !p_app_setting->screen_time_label ||
+        !lv_obj_is_valid(p_app_setting->screen_time_label))
+    {
+        return;
+    }
+    char buf[16];
+    if (value >= 60)
+        snprintf(buf, sizeof(buf), "never");
+    else
+        snprintf(buf, sizeof(buf), "%d s", value);
+    lv_label_set_text(p_app_setting->screen_time_label, buf);
+}
+
+static void screen_time_bar_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSING)
+    {
+        lv_obj_t *bar = lv_event_get_target(e);
+
+        lv_point_t p;
+        lv_indev_get_point(lv_indev_get_act(), &p);
+
+        lv_coord_t min = lv_bar_get_min_value(bar);
+        lv_coord_t max = lv_bar_get_max_value(bar);
+
+        lv_coord_t w = lv_obj_get_width(bar);
+        lv_coord_t rel_x = p.x - lv_obj_get_x(bar);
+        if (rel_x < 0)
+            rel_x = 0;
+        if (rel_x > w)
+            rel_x = w;
+
+        lv_coord_t value = (rel_x * (max - min)) / w + min;
+        if (value < 5)
+            value = 5;
+        lv_bar_set_value(bar, value, LV_ANIM_OFF);
+        uint16_t timeout = (uint16_t)lv_bar_get_value(bar);
+        /* Send SET_REQ via setting's own pwr handle so the SET_RSP comes back
+         * to setting_powermgr_srv_callback (which calls
+         * control_provider.screen_time_smoothly to persist the new value). */
+        if (p_app_setting &&
+            DATA_CLIENT_INVALID_HANDLE != p_app_setting->pwr_srv_hdl)
+        {
+            datac_send_data(p_app_setting->pwr_srv_hdl,
+                            PWRMGR_MSG_LCD_AUTO_OFF_TIME_SET_REQ,
+                            (uint8_t *)&timeout, sizeof(uint16_t));
+        }
+        refresh_screen_time_label((uint8_t)timeout);
+    }
+    else if (code == LV_EVENT_PRESSED)
+    {
+        if (p_app_setting && p_app_setting->list1)
+        {
+            lv_obj_clear_flag(p_app_setting->list1, LV_OBJ_FLAG_SCROLLABLE);
+        }
+    }
+    else if (code == LV_EVENT_RELEASED)
+    {
+        if (p_app_setting && p_app_setting->list1)
+        {
+            lv_obj_add_flag(p_app_setting->list1, LV_OBJ_FLAG_SCROLLABLE);
+        }
+    }
+}
+
 static int setting_powermgr_srv_callback(data_callback_arg_t *arg)
 {
     if (!p_app_setting && (MSG_SERVICE_SUBSCRIBE_RSP != arg->msg_id))
     {
         return 0;
     }
-    if (p_app_setting && !lv_obj_is_valid(p_app_setting->brightness_bar) &&
+    if (p_app_setting &&
+        !lv_obj_is_valid(p_app_setting->brightness_bar) &&
+        !lv_obj_is_valid(p_app_setting->screen_time_bar) &&
         (MSG_SERVICE_SUBSCRIBE_RSP != arg->msg_id))
     {
         return 0;
@@ -852,6 +979,9 @@ static int setting_powermgr_srv_callback(data_callback_arg_t *arg)
             data_msg_t msg;
             data_service_init_msg(&msg, PWRMGR_MSG_LCD_BRIGHTNESS_GET_REQ, 0);
             datac_send_msg(p_app_setting->pwr_srv_hdl, &msg);
+
+            data_service_init_msg(&msg, PWRMGR_MSG_LCD_AUTO_OFF_TIME_GET_REQ, 0);
+            datac_send_msg(p_app_setting->pwr_srv_hdl, &msg);
         }
     }
     break;
@@ -859,8 +989,40 @@ static int setting_powermgr_srv_callback(data_callback_arg_t *arg)
     case PWRMGR_MSG_LCD_BRIGHTNESS_GET_RSP:
     {
         range_msg_t *p_range = (range_msg_t *)arg->data;
-        lv_bar_set_range(p_app_setting->brightness_bar, p_range->min, p_range->max);
-        lv_bar_set_value(p_app_setting->brightness_bar, p_range->cur, LV_ANIM_ON);
+        if (lv_obj_is_valid(p_app_setting->brightness_bar))
+        {
+            lv_bar_set_range(p_app_setting->brightness_bar, p_range->min, p_range->max);
+            lv_bar_set_value(p_app_setting->brightness_bar, p_range->cur, LV_ANIM_ON);
+        }
+    }
+    break;
+
+    case PWRMGR_MSG_LCD_AUTO_OFF_TIME_GET_RSP:
+    {
+        range_msg_t *p_range = (range_msg_t *)arg->data;
+        if (lv_obj_is_valid(p_app_setting->screen_time_bar))
+        {
+            lv_bar_set_range(p_app_setting->screen_time_bar, p_range->min, p_range->max);
+            /* Trust SkaiWatchSys.oled_display_time (loaded from prefs) over the
+             * service's runtime cur, which may still be a stale default at boot
+             * before it gets synced. Clamp to the bar's range so 255 ("never")
+             * doesn't visually overflow. */
+            int32_t bar_val = SkaiWatchSys.oled_display_time;
+            if (bar_val < p_range->min) bar_val = p_range->min;
+            if (bar_val > p_range->max) bar_val = p_range->max;
+            lv_bar_set_value(p_app_setting->screen_time_bar, bar_val, LV_ANIM_ON);
+            refresh_screen_time_label(SkaiWatchSys.oled_display_time);
+        }
+    }
+    break;
+
+    case PWRMGR_MSG_LCD_AUTO_OFF_TIME_SET_RSP:
+    {
+        range_msg_t *p_range = (range_msg_t *)arg->data;
+        refresh_screen_time_label((uint8_t)p_range->cur);
+#ifdef BSP_USING_BLOC_CONTROL
+        control_provider.screen_time_smoothly(p_range->cur);
+#endif
     }
     break;
 
@@ -876,9 +1038,15 @@ void app_setting_init(void *param)
     p_app_setting->main_window = cont;
     lv_obj_set_size(cont, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     // Dark theme background for circular watch face
-    lv_obj_set_style_bg_color(cont, lv_color_hex(0x121212), 0);
+    // lv_obj_set_style_bg_color(cont, lv_color_hex(0x121212), 0);
+    lv_obj_set_style_bg_opa(cont, LV_OPA_0, 0);
     lv_obj_align(cont, LV_ALIGN_CENTER, 0, 0);
     lv_obj_update_layout(cont);
+
+    lv_obj_t *bg_img = lv_img_create(cont);
+    lv_img_set_src(bg_img, GAUS_CLOCK1_BG);
+    lv_img_set_zoom(bg_img, 256*2); // 100% zoom
+    lv_obj_align(bg_img, LV_ALIGN_CENTER, 0, 0);
 
     // Create a container for settings groups - adjusted for circular display
     lv_obj_t *settings_container = lv_obj_create(cont);
@@ -897,7 +1065,7 @@ void app_setting_init(void *param)
     lv_obj_update_layout(cont_title);
 
     /* Brightness bar at the top of settings content */
-    const lv_coord_t brightness_bar_w = LV_HOR_RES * 70 / 100;
+    const lv_coord_t brightness_bar_w = LV_HOR_RES * 80 / 100;
     lv_obj_t *brightness_bar = lv_bar_create(settings_container);
     lv_bar_set_range(brightness_bar, 0, 100);
     lv_obj_set_size(brightness_bar, brightness_bar_w, 80);
@@ -913,115 +1081,281 @@ void app_setting_init(void *param)
     lv_obj_align(brightness_icon, LV_ALIGN_LEFT_MID, 20, 0);
     p_app_setting->brightness_bar = brightness_bar;
 
-    /* Quick actions row (Find Phone / QR Code / Gesture all in one row) */
-    lv_obj_t *quick_actions = lv_obj_create(settings_container);
-    lv_obj_set_size(quick_actions, LV_HOR_RES, 115);
-    lv_obj_set_style_bg_opa(quick_actions, LV_OPA_0, 0);
-    lv_obj_set_style_border_width(quick_actions, 0, 0);
-    lv_obj_set_style_pad_all(quick_actions, 0, 0);
-    lv_obj_clear_flag(quick_actions, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align_to(quick_actions, brightness_bar, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    /* Screen time bar directly below the brightness bar (range 5..60, never@>=60) */
+    const lv_coord_t screen_time_bar_w = LV_HOR_RES * 80 / 100;
+    lv_obj_t *screen_time_bar = lv_bar_create(settings_container);
+    lv_bar_set_range(screen_time_bar, 5, 100);
+    lv_obj_set_size(screen_time_bar, screen_time_bar_w, 80);
+    lv_obj_align_to(screen_time_bar, brightness_bar, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_set_style_bg_color(screen_time_bar, lv_color_hex(0xCECECE), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(screen_time_bar, lv_color_hex(0xCECECE), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(screen_time_bar, LV_OPA_90, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(screen_time_bar, LV_OPA_10, LV_PART_MAIN);
+    /* Clamp before initial set — oled_display_time may be 255 ("never") which is
+     * out of bar range and would visually fill the whole bar at first entry. */
+    {
+        int32_t initial_val = SkaiWatchSys.oled_display_time;
+        LOG_I("Initial screen timeout from sys: %d", initial_val);
+        if (initial_val < 5) initial_val = 5;
+        if (initial_val > 100) initial_val = 100;
+        lv_bar_set_value(screen_time_bar, initial_val, LV_ANIM_OFF);
+    }
+    lv_obj_add_event_cb(screen_time_bar, screen_time_bar_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_t *screen_time_icon = lv_img_create(screen_time_bar);
+    lv_img_set_src(screen_time_icon, ICON_SLEEP_MODE);
+    lv_obj_align(screen_time_icon, LV_ALIGN_LEFT_MID, 20, 0);
+    p_app_setting->screen_time_bar = screen_time_bar;
 
-    // Find Phone
-    lv_obj_t *find_phone_btn = common_image_button(quick_actions, FIND_PHONE, 100, 100, btn_find_phone_event_callback);
-    lv_obj_set_style_border_width(find_phone_btn, 2, 0);
-    lv_obj_set_style_border_color(find_phone_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(find_phone_btn, LV_OPA_0, 0);
+    p_app_setting->screen_time_label = lv_label_create(screen_time_bar);
+    lv_obj_set_style_text_color(p_app_setting->screen_time_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(p_app_setting->screen_time_label,
+                               LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
+    lv_obj_align(p_app_setting->screen_time_label, LV_ALIGN_CENTER, 50, 0);
+    refresh_screen_time_label(SkaiWatchSys.oled_display_time);
+
+    /* Find Phone wide widget (same width as the bars), icon on the left */
+    const lv_coord_t find_phone_btn_w = LV_HOR_RES * 80 / 100;
+    lv_obj_t *find_phone_btn = lv_btn_create(settings_container);
+    lv_obj_set_size(find_phone_btn, find_phone_btn_w, 80);
+    lv_obj_align_to(find_phone_btn, screen_time_bar, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_add_event_cb(find_phone_btn, btn_find_phone_event_callback,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_set_style_radius(find_phone_btn, 40, 0);
+    lv_obj_set_style_bg_color(find_phone_btn, lv_color_hex(0xCECECE), 0);
     lv_obj_set_style_bg_opa(find_phone_btn, LV_OPA_10, 0);
+    lv_obj_set_style_border_width(find_phone_btn, 0, 0);
+    lv_obj_set_style_pad_all(find_phone_btn, 0, 0);
+    lv_obj_t *find_phone_icon = lv_img_create(find_phone_btn);
+    lv_img_set_src(find_phone_icon, FIND_PHONE);
+    lv_obj_align(find_phone_icon, LV_ALIGN_LEFT_MID, 20, 0);
+    lv_obj_t *find_phone_label = lv_label_create(find_phone_btn);
+    lv_label_set_text(find_phone_label, "Find Phone");
+    lv_obj_set_style_text_color(find_phone_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(find_phone_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align_to(find_phone_label, find_phone_icon, LV_ALIGN_OUT_RIGHT_MID, 20, 0);
 
-    // QR Code
-    lv_obj_t *qrcode_btn = common_image_button(quick_actions, ICON_QRCODE, 100, 100, btn_qrcode_event_callback);
-    lv_obj_set_style_border_width(qrcode_btn, 2, 0);
-    lv_obj_set_style_border_color(qrcode_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(qrcode_btn, LV_OPA_0, 0);
+    /* QR Code wide widget (same width as the bars), icon on the left */
+    const lv_coord_t qrcode_btn_w = LV_HOR_RES * 80 / 100;
+    lv_obj_t *qrcode_btn = lv_btn_create(settings_container);
+    lv_obj_set_size(qrcode_btn, qrcode_btn_w, 80);
+    lv_obj_align_to(qrcode_btn, find_phone_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_add_event_cb(qrcode_btn, btn_qrcode_event_callback,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_set_style_radius(qrcode_btn, 40, 0);
+    lv_obj_set_style_bg_color(qrcode_btn, lv_color_hex(0xCECECE), 0);
     lv_obj_set_style_bg_opa(qrcode_btn, LV_OPA_10, 0);
+    lv_obj_set_style_border_width(qrcode_btn, 0, 0);
+    lv_obj_set_style_pad_all(qrcode_btn, 0, 0);
+    lv_obj_t *qrcode_icon = lv_img_create(qrcode_btn);
+    lv_img_set_src(qrcode_icon, ICON_QRCODE);
+    lv_obj_align(qrcode_icon, LV_ALIGN_LEFT_MID, 20, 0);
+    lv_obj_t *qrcode_label = lv_label_create(qrcode_btn);
+    lv_label_set_text(qrcode_label, "QR Code");
+    lv_obj_set_style_text_color(qrcode_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(qrcode_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align_to(qrcode_label, qrcode_icon, LV_ALIGN_OUT_RIGHT_MID, 20, 0);
 
 #if !kReleaseMode
-    // Gesture Test
-    lv_obj_t *gesture_btn = common_image_button(quick_actions, IMG_LOGO, 100, 100, btn_gesture_test_event_callback);
-    lv_obj_set_style_border_width(gesture_btn, 2, 0);
-    lv_obj_set_style_border_color(gesture_btn, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_opa(gesture_btn, LV_OPA_0, 0);
+    /* Gesture Test wide widget (dev only), same style as Find Phone / QR Code */
+    const lv_coord_t gesture_btn_w = LV_HOR_RES * 80 / 100;
+    lv_obj_t *gesture_btn = lv_btn_create(settings_container);
+    lv_obj_set_size(gesture_btn, gesture_btn_w, 80);
+    lv_obj_align_to(gesture_btn, qrcode_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_add_event_cb(gesture_btn, btn_gesture_test_event_callback,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_set_style_radius(gesture_btn, 40, 0);
+    lv_obj_set_style_bg_color(gesture_btn, lv_color_hex(0xCECECE), 0);
     lv_obj_set_style_bg_opa(gesture_btn, LV_OPA_10, 0);
-
-    /* 3 buttons evenly spread in one row */
-    lv_obj_align(find_phone_btn, LV_ALIGN_TOP_LEFT, 80, 0);
-    lv_obj_align(qrcode_btn, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_align(gesture_btn, LV_ALIGN_TOP_RIGHT, -80, 0);
-#else
-    /* 2 buttons in one row */
-    lv_obj_align(find_phone_btn, LV_ALIGN_TOP_LEFT, 120, 0);
-    lv_obj_align(qrcode_btn, LV_ALIGN_TOP_RIGHT, -120, 0);
+    lv_obj_set_style_border_width(gesture_btn, 0, 0);
+    lv_obj_set_style_pad_all(gesture_btn, 0, 0);
+    lv_obj_t *gesture_icon = lv_img_create(gesture_btn);
+    lv_img_set_src(gesture_icon, IMG_LOGO);
+    lv_img_set_pivot(gesture_icon, 32, 32);
+    lv_img_set_zoom(gesture_icon, 208); // Scale up the icon for better visibility
+    lv_img_set_size_mode(gesture_icon, LV_IMG_SIZE_MODE_REAL);
+    lv_obj_align(gesture_icon, LV_ALIGN_LEFT_MID, 20, 0);
+    lv_obj_t *gesture_label = lv_label_create(gesture_btn);
+    lv_label_set_text(gesture_label, "Gesture Test");
+    lv_obj_set_style_text_color(gesture_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(gesture_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align_to(gesture_label, gesture_icon, LV_ALIGN_OUT_RIGHT_MID, 15, 0);
 #endif
 
-    // Create general settings group
-    lv_obj_t *general_group = lv_obj_create(settings_container);
-    lv_obj_set_size(general_group, LV_PCT(90), LV_SIZE_CONTENT);
-    lv_obj_set_style_radius(general_group, 15, 0);                       // More rounded corners
-    lv_obj_set_style_bg_color(general_group, lv_color_hex(0x1E1E1E), 0); // Dark gray for items
-    lv_obj_set_style_pad_row(general_group, 5, 0);                       // More padding between rows
-    lv_obj_set_style_pad_top(general_group, 5, 0);
-    lv_obj_set_style_pad_bottom(general_group, 5, 0);
-    lv_obj_set_flex_flow(general_group, LV_FLEX_FLOW_COLUMN);
-    lv_obj_align_to(general_group, quick_actions, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
+    /* DND Mode wide widget (icon + name on the left, switch on the right) */
+    const lv_coord_t dnd_btn_w = LV_HOR_RES * 80 / 100;
+    dnd_quick_btn = lv_obj_create(settings_container);
+    lv_obj_set_size(dnd_quick_btn, dnd_btn_w, 80);
+#if !kReleaseMode
+    lv_obj_align_to(dnd_quick_btn, gesture_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+#else
+    lv_obj_align_to(dnd_quick_btn, qrcode_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+#endif
+    lv_obj_set_style_radius(dnd_quick_btn, 40, 0);
+    lv_obj_set_style_bg_color(dnd_quick_btn, lv_color_hex(0xCECECE), 0);
+    lv_obj_set_style_bg_opa(dnd_quick_btn, LV_OPA_10, 0);
+    lv_obj_set_style_border_width(dnd_quick_btn, 0, 0);
+    lv_obj_set_style_pad_all(dnd_quick_btn, 0, 0);
+    lv_obj_clear_flag(dnd_quick_btn, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Add list items to general group
-    // DND Mode (icon + name + switch)
-    dnd_switch = create_dark_toggle_item(general_group, ICON_DND_MODE,
-                                         "DND Mode",
-                                         SkaiWatchSys.DNDMode.config.status,
-                                         SkaiWatchSys.font_size, true);
-    lv_obj_add_event_cb(dnd_switch, dnd_switch_event_callback, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_t *dnd_icon = lv_img_create(dnd_quick_btn);
+    lv_img_set_src(dnd_icon, ICON_DND_MODE);
+    lv_obj_align(dnd_icon, LV_ALIGN_LEFT_MID, 20, 0);
+    lv_obj_t *dnd_label = lv_label_create(dnd_quick_btn);
+    lv_label_set_text(dnd_label, "DND");
+    lv_obj_set_style_text_color(dnd_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(dnd_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align_to(dnd_label, dnd_icon, LV_ALIGN_OUT_RIGHT_MID, 20, 0);
 
-    lv_obj_t *list_btn; // Gesture Confidence Threshold
-    list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(icon_release), "Gesture Threshold", SkaiWatchSys.font_size, true, 100);
-    lv_obj_add_event_cb(list_btn, btn_gesture_threshold_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
-    // Time settings
-    list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(clock_40),
-                                        LV_EXT_STR_GET_BY_KEY(setting_time, "Time"), SkaiWatchSys.font_size, true, 100);
-    lv_obj_add_event_cb(list_btn, btn_time_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
+    lv_obj_t *dnd_sw = lv_switch_create(dnd_quick_btn);
+    lv_obj_set_size(dnd_sw, 80, 40);
+    lv_obj_align(dnd_sw, LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_set_style_bg_color(dnd_sw, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(dnd_sw, lv_color_hex(0x0078D7),
+                              LV_PART_INDICATOR | LV_STATE_CHECKED);
+    if (SkaiWatchSys.DNDMode.config.status)
+    {
+        lv_obj_add_state(dnd_sw, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(dnd_sw, dnd_switch_event_callback,
+                        LV_EVENT_VALUE_CHANGED, NULL);
 
-    // Language settings
-    list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(language),
-                                        LV_EXT_STR_GET_BY_KEY(setting_language, "Language"), SkaiWatchSys.font_size, true, 100);
-    lv_obj_add_event_cb(list_btn, btn_lang_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
+    /* Time Format wide widget (icon + name on the left, switch on the right;
+     * same look as DND. Switch CHECKED = 24h, unchecked = 12h.) */
+    const lv_coord_t time_format_btn_w = LV_HOR_RES * 80 / 100;
+    time_format_quick_btn = lv_obj_create(settings_container);
+    lv_obj_set_size(time_format_quick_btn, time_format_btn_w, 80);
+    lv_obj_align_to(time_format_quick_btn, dnd_quick_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_set_style_radius(time_format_quick_btn, 40, 0);
+    lv_obj_set_style_bg_color(time_format_quick_btn, lv_color_hex(0xCECECE), 0);
+    lv_obj_set_style_bg_opa(time_format_quick_btn, LV_OPA_10, 0);
+    lv_obj_set_style_border_width(time_format_quick_btn, 0, 0);
+    lv_obj_set_style_pad_all(time_format_quick_btn, 0, 0);
+    lv_obj_clear_flag(time_format_quick_btn, LV_OBJ_FLAG_SCROLLABLE);
 
-    // font size
-    list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(language),
-                                        LV_EXT_STR_GET_BY_KEY(setting_font_size, "Font Size"), SkaiWatchSys.font_size, true, 100);
-    lv_obj_add_event_cb(list_btn, btn_font_size_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
+    lv_obj_t *time_format_icon = lv_img_create(time_format_quick_btn);
+    lv_img_set_src(time_format_icon, &service_hour);
+    lv_obj_align(time_format_icon, LV_ALIGN_LEFT_MID, 20, 0);
 
-    // Display settings
-    list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(dn),
-                                        LV_EXT_STR_GET_BY_KEY(setting_display, "Display"), SkaiWatchSys.font_size, true, 100);
-    lv_obj_add_event_cb(list_btn, list_display_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
+    /* White circle badge at the bottom-right of the icon, showing 12 / 24 */
+    lv_obj_t *time_format_badge = lv_obj_create(time_format_quick_btn);
+    lv_obj_set_size(time_format_badge, 25, 25);
+    lv_obj_align_to(time_format_badge, time_format_icon, LV_ALIGN_BOTTOM_RIGHT, -3, -3);
+    lv_obj_set_style_radius(time_format_badge, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(time_format_badge, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_opa(time_format_badge, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(time_format_badge, 0, 0);
+    lv_obj_set_style_pad_all(time_format_badge, 0, 0);
+    lv_obj_clear_flag(time_format_badge, LV_OBJ_FLAG_SCROLLABLE);
 
-    // System Info
-    list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(airplane),
-                                        LV_EXT_STR_GET_BY_KEY(system_info, "System Info"), SkaiWatchSys.font_size, true, 100);
-    lv_obj_add_event_cb(list_btn, btn_sysinfo_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
+    time_format_badge_label = lv_label_create(time_format_badge);
+    lv_obj_set_style_text_color(time_format_badge_label, lv_color_hex(0x121212), 0);
+    lv_obj_set_style_text_font(time_format_badge_label,
+                               LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
+    lv_obj_center(time_format_badge_label);
 
-    // Test App button
-    list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(airplane),
-                                        "Test App", SkaiWatchSys.font_size, true, 100);
-    lv_obj_add_event_cb(list_btn, btn_test_app_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
+    time_format_title_label = lv_label_create(time_format_quick_btn);
+    lv_obj_set_style_text_color(time_format_title_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(time_format_title_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align_to(time_format_title_label, time_format_icon, LV_ALIGN_OUT_RIGHT_MID, 20, 0);
+    update_time_format_title_label(SkaiWatchSys.flag_field.hour_format);
 
-    // Clear Flash button
-    list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(airplane),
-                                        "Clear Flash", SkaiWatchSys.font_size, true, 100);
-    lv_obj_add_event_cb(list_btn, btn_clear_flash_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
+    lv_obj_t *time_format_sw = lv_switch_create(time_format_quick_btn);
+    lv_obj_set_size(time_format_sw, 80, 40);
+    lv_obj_align(time_format_sw, LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_set_style_bg_color(time_format_sw, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(time_format_sw, lv_color_hex(0x0078D7),
+                              LV_PART_INDICATOR | LV_STATE_CHECKED);
+    if (SkaiWatchSys.flag_field.hour_format == 0x01)
+    {
+        lv_obj_add_state(time_format_sw, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(time_format_sw, time_format_switch_event_callback,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+
+    /* Capsule list items (same style as the wide widgets above).
+     * Items that navigate to another page get a ">" arrow on the right. */
+    lv_obj_t *list_btn;
+
+    // Gesture Threshold (opens threshold window)
+    list_btn = create_capsule_item(settings_container, time_format_quick_btn,
+                                   LV_EXT_IMG_GET(icon_release), "Gesture",
+                                   true);
+    lv_obj_add_event_cb(list_btn, btn_gesture_threshold_event_callback,
+                        LV_EVENT_SHORT_CLICKED, NULL);
+
+    // Language settings (opens sub-window)
+    list_btn = create_capsule_item(settings_container, list_btn,
+                                   LV_EXT_IMG_GET(language),
+                                   LV_EXT_STR_GET_BY_KEY(setting_language, "Language"),
+                                   true);
+    lv_obj_add_event_cb(list_btn, btn_lang_event_callback,
+                        LV_EVENT_SHORT_CLICKED, NULL);
+
+    // Font size (opens sub-window)
+    list_btn = create_capsule_item(settings_container, list_btn,
+                                   LV_EXT_IMG_GET(language),
+                                   LV_EXT_STR_GET_BY_KEY(setting_font_size, "Font Size"),
+                                   true);
+    lv_obj_add_event_cb(list_btn, btn_font_size_event_callback,
+                        LV_EVENT_SHORT_CLICKED, NULL);
+
+    // System Info (opens sub-page)
+    list_btn = create_capsule_item(settings_container, list_btn,
+                                   LV_EXT_IMG_GET(airplane),
+                                   LV_EXT_STR_GET_BY_KEY(system_info, "System Info"),
+                                   true);
+    lv_obj_add_event_cb(list_btn, btn_sysinfo_event_callback,
+                        LV_EVENT_SHORT_CLICKED, NULL);
+
+    // Test App (launches another app)
+    list_btn = create_capsule_item(settings_container, list_btn,
+                                   LV_EXT_IMG_GET(airplane), "Test App",
+                                   true);
+    lv_obj_add_event_cb(list_btn, btn_test_app_event_callback,
+                        LV_EVENT_SHORT_CLICKED, NULL);
+
+    // Reset device (in-place msgbox, no arrow)
+    list_btn = create_capsule_item(settings_container, list_btn,
+                                   LV_EXT_IMG_GET(airplane), "Reset device",
+                                   false);
+    lv_obj_add_event_cb(list_btn, btn_clear_flash_event_callback,
+                        LV_EVENT_SHORT_CLICKED, NULL);
 
 #if !kReleaseMode
-    // Development button
-    list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(airplane),
-                                        "Development", SkaiWatchSys.font_size, false, 100);
-    lv_obj_add_event_cb(list_btn, btn_developer_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
+    // Development (opens sub-page)
+    list_btn = create_capsule_item(settings_container, list_btn,
+                                   LV_EXT_IMG_GET(airplane), "Development",
+                                   true);
+    lv_obj_add_event_cb(list_btn, btn_developer_event_callback,
+                        LV_EVENT_SHORT_CLICKED, NULL);
 #else
-    // Restart button (only in release mode)
-    list_btn = create_setting_list_item(general_group, LV_EXT_IMG_GET(airplane),
-                                        LV_EXT_STR_GET_BY_KEY(restart, "restart"), SkaiWatchSys.font_size, false, 100);
-    lv_obj_add_event_cb(list_btn, btn_restart_event_callback, LV_EVENT_SHORT_CLICKED, NULL);
+    // Restart (action only, no arrow)
+    list_btn = create_capsule_item(settings_container, list_btn,
+                                   LV_EXT_IMG_GET(airplane),
+                                   LV_EXT_STR_GET_BY_KEY(restart, "restart"),
+                                   false);
+    lv_obj_add_event_cb(list_btn, btn_restart_event_callback,
+                        LV_EVENT_SHORT_CLICKED, NULL);
 #endif
+
+#ifdef BSP_USING_MODEL_WATCH_GLOBAL_DATA
+    /* Version footer at the very bottom of the settings page */
+    lv_obj_t *version_label = lv_label_create(settings_container);
+    char version_buf[32];
+    snprintf(version_buf, sizeof(version_buf), "Version %d.%d.%d",
+             VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION);
+    lv_label_set_text(version_label, version_buf);
+    lv_obj_set_style_text_color(version_label, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_text_font(version_label,
+                               LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
+    lv_obj_align_to(version_label, list_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
+#endif
+
     // Add scrollbar styling for circular watch face - make it more subtle
     lv_obj_set_scrollbar_mode(settings_container, LV_SCROLLBAR_MODE_AUTO);
 
@@ -1074,7 +1408,13 @@ static void on_stop(void)
         lv_mem_free(p_app_setting);
         p_app_setting = NULL;
     }
-    dnd_switch = NULL;
+    dnd_quick_btn = NULL;
+    time_format_quick_btn = NULL;
+    time_format_title_label = NULL;
+    time_format_badge_label = NULL;
+    /* The modal is parented to lv_scr_act() (and gets deleted with the screen),
+     * but reset the static pointer so a stale reference isn't reused. */
+    reset_modal = NULL;
 }
 
 static void back_to_main_menu(void)

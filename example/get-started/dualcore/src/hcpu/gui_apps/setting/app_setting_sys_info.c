@@ -52,13 +52,6 @@ static void on_start(void)
     print_sysinfo(buf, BUF_SIZE);
 #endif
 
-#ifdef BSP_USING_MODEL_WATCH_GLOBAL_DATA
-    // Append version info at the end of buffer
-    size_t current_len = strlen(buf);
-    snprintf(buf + current_len, BUF_SIZE - current_len, "\nVersion %d.%d.%d\n",
-             VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION);
-#endif
-
     lv_label_set_text(lbl_sys_info, buf);
     lv_mem_free(buf);
 
