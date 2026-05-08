@@ -9,11 +9,15 @@ cwd = GetCurrentDir()
 src = []
 path = [cwd + '/includes']
 
-src += Glob('trig.c')
-src += Glob('list.c')
-src += Glob('math_fixed.c')
-src += Glob('platform.c')
-src += Glob('includes/util/time/time.c')
+# PC simulator skips util/ entirely — list.c uses __builtin_expect/__FILE_NAME__
+# (GCC/Clang only), math_fixed.h uses Pebble-style fixed-point types not on
+# MSVC, and the only consumers (BLOC providers, sensor clients) are also off.
+if not GetDepend('BSP_USING_PC_SIMULATOR'):
+    src += Glob('trig.c')
+    src += Glob('list.c')
+    src += Glob('math_fixed.c')
+    src += Glob('platform.c')
+    src += Glob('includes/util/time/time.c')
 
 group = DefineGroup('Utils', src, depend = [''], CPPPATH = path)
 

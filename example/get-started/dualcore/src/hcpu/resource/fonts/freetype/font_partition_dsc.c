@@ -29,7 +29,11 @@ LVSF_FREETYPE_FONT_REGISTER(tiny55_full)
    dead-strips the symbol ¡X the weak extern resolves to NULL, the safety
    check is bypassed, and the watch bricks anyway. Verified by grepping
    main.htm: pre-`used`, the symbol is missing from the linked image. */
+#ifdef _MSC_VER
+bool is_freetype_safe_to_init(void)
+#else
 __attribute__((used)) bool is_freetype_safe_to_init(void)
+#endif
 {
     int fd = open("/assets/fonts/tiny55_full.ttf", O_RDONLY);
     if (fd < 0)

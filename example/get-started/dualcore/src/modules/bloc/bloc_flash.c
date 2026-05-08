@@ -57,7 +57,9 @@
 #include "bloc_flash.h"
 #include "watch_global_data.h"
 #include "fal.h"
+#ifdef RT_USING_BLUETOOTH
 #include "bf0_ble_common.h"
+#endif
 
 #ifdef RT_USING_DFS
 #include "dfs_file.h"

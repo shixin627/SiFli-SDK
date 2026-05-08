@@ -460,6 +460,7 @@ bool g_lvsf_freetype_skipped = false;
 
 int gui_freetype_init(void)
 {
+#ifndef _MSC_VER
     /* Ensure the user's root FS is mounted before FreeType file mode tries
        to open font files via DFS. mnt_init is a weak symbol; boards that
        don't use DFS-backed fonts link against NULL and skip the call. */
@@ -476,6 +477,13 @@ int gui_freetype_init(void)
        (Montserrat is always compiled in via CONFIG_LV_FONT_MONTSERRAT_*). */
     extern bool __attribute__((weak)) is_freetype_safe_to_init(void);
     if (&is_freetype_safe_to_init && !is_freetype_safe_to_init())
+#else
+    /* MSVC: no weak-symbol support, but font_partition_dsc.c always provides
+     * is_freetype_safe_to_init on PC build (no `used` attribute / dead-strip).
+     * Call it directly so .ttf-missing path skips the fatal assert in lvsf. */
+    extern bool is_freetype_safe_to_init(void);
+    if (!is_freetype_safe_to_init())
+#endif
     {
         rt_kprintf("[gui_freetype_init] skipped: font file unavailable, "
                    "falling back to LVGL theme fonts\n");

@@ -32,7 +32,7 @@ void rt_hw_win32_low_cpu(void);
 void rt_hw_exit(void);
 
 #ifdef CUSTOM_MEM_MAP
-    #include "flash_map.h"
+    #include "custom_mem_map.h"
 #endif /* CUSTOM_MEM_MAP */
 
 #endif

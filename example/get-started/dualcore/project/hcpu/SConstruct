@@ -13,14 +13,15 @@ if not SIFLI_SDK:
 # Add bootloader project
 AddBootLoader(SIFLI_SDK, rtconfig.CHIP)
 
-# Add LCPU project
-if not GetDepend('SOC_SF32LB52X'):
-    lcpu_proj_path = '../lcpu'   
-    lcpu_proj_name = 'lcpu'
-    AddChildProj(lcpu_proj_name, lcpu_proj_path, True, core="LCPU")
-else:
-    # use common LCPU project
-    AddLCPU(SIFLI_SDK, rtconfig.CHIP)
+# Add LCPU project (skip for PC simulator — single-core build, no second MCU)
+if not GetDepend('BSP_USING_PC_SIMULATOR'):
+    if not GetDepend('SOC_SF32LB52X'):
+        lcpu_proj_path = '../lcpu'
+        lcpu_proj_name = 'lcpu'
+        AddChildProj(lcpu_proj_name, lcpu_proj_path, True, core="LCPU")
+    else:
+        # use common LCPU project
+        AddLCPU(SIFLI_SDK, rtconfig.CHIP)
     
 # Set default compile options
 SifliEnv()

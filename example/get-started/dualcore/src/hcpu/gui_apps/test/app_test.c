@@ -409,12 +409,14 @@ static void start_gif_test(void)
         lv_obj_add_flag(ppg_status_label, LV_OBJ_FLAG_HIDDEN);
     }
 
+#if LV_USE_GIF
     gif_test_obj = lv_gif_create(lv_scr_act());
     if (gif_test_obj != NULL)
     {
         lv_gif_set_src(gif_test_obj, &test_gif_bulb);
         lv_obj_align(gif_test_obj, LV_ALIGN_CENTER, 0, -30);
     }
+#endif
 
     gif_test_hint_label = lv_label_create(lv_scr_act());
     lv_label_set_text(gif_test_hint_label,

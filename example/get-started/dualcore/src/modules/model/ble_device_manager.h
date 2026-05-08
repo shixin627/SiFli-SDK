@@ -16,7 +16,9 @@
 
 #include <rtthread.h>
 #include <rtdevice.h>
+#ifdef RT_USING_BLUETOOTH
 #include "bf0_ble_gap.h"
+#endif
 
 #ifdef __cplusplus
 extern "C"
@@ -258,7 +260,9 @@ extern "C"
      */
     int ble_dev_mgr_switch_to_next_device(void);
 
+#ifdef RT_USING_BLUETOOTH
     extern void ble_app_set_bonded_device_addr(ble_gap_addr_t *addr);
+#endif
 
     /**
      * @brief Start targeted advertising for specific bonded device

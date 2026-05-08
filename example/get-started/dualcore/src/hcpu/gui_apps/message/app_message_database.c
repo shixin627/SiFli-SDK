@@ -5,8 +5,10 @@
 #include <rtdevice.h>
 #include <board.h>
 #include "string.h"
+#ifdef RT_USING_BLUETOOTH
 #include "bf0_sibles.h"
 #include "bf0_ble_ancs.h"
+#endif
 #include "data_service_subscriber.h"
 #include "app_message.h"
 #include "app_incoming_call.h"

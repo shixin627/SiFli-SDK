@@ -32,10 +32,16 @@ static void hw_alarm_callback(rt_alarm_t alarm, time_t timestamp);
 static rt_sem_t s_alarm_fire_sem = RT_NULL;
 static volatile int32_t s_alarm_fired_idx = -1;
 
+/* MSVC: RT_WEAK expands to nothing → would collide with the strong def in
+ * alarm_client.c. When alarm_client provides the real impl, just declare it. */
+#if defined(_MSC_VER) && defined(BSP_USING_ALARM_CLIENT)
+extern void bloc_alarm_on_fire(int32_t alarm_idx);
+#else
 RT_WEAK void bloc_alarm_on_fire(int32_t alarm_idx)
 {
     (void)alarm_idx;
 }
+#endif
 
 static void alarm_fire_thread_entry(void *param)
 {

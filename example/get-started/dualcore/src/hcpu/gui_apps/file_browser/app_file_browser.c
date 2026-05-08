@@ -159,6 +159,9 @@ static bool is_sendable_file(const char *name)
     {
         return false;
     }
+#ifdef _MSC_VER
+#define strcasecmp _stricmp
+#endif
     return (strcasecmp(dot, ".log") == 0 ||
             strcasecmp(dot, ".txt") == 0 ||
             strcasecmp(dot, ".bin") == 0);

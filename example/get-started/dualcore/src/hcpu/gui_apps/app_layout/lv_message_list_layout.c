@@ -1609,7 +1609,9 @@ void refresh_notification_list(void *param)
 #endif
     {
         have_media_widget = false;
-        lv_obj_del(p_app_notification->media_widget);
+        if (p_app_notification->media_widget != NULL &&
+            lv_obj_is_valid(p_app_notification->media_widget))
+            lv_obj_del(p_app_notification->media_widget);
         p_app_notification->media_widget = NULL;
         clear_media_widget();
         extern void media_widget_stop(void);
@@ -2007,11 +2009,13 @@ static lv_obj_t *message_arc_snap_cb(void *ctx)
 
 lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
 {
+    LOG_I("message_list_layout_create: enter");
     RT_ASSERT(NULL == p_app_notification);
     p_app_notification =
         (app_notification_t *)lv_mem_alloc(sizeof(app_notification_t));
     memset(p_app_notification, 0, sizeof(app_notification_t));
     message_page = parent;
+    LOG_I("message_list_layout_create: alloc ok");
 
     lv_obj_t *notification_center = lv_obj_create(parent);
     lv_obj_set_style_bg_opa(notification_center, LV_OPA_TRANSP,
@@ -2024,8 +2028,10 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
        fixed on screen while the list scrolls. */
     msg_indicator_dots_parent = notification_center;
 
+    LOG_I("message_list_layout_create: before create_background_blocks");
     // 創建背景色塊
     create_background_blocks(notification_center);
+    LOG_I("message_list_layout_create: after create_background_blocks");
 
     lv_obj_t *p_window = lv_obj_create(notification_center);
     lv_obj_set_style_bg_color(p_window, lv_color_hex(0x000000), 0);
@@ -2042,11 +2048,14 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
     lv_obj_add_event_cb(p_window, list_window_scroll_event_cb, LV_EVENT_ALL,
                         NULL);
 
+    LOG_I("message_list_layout_create: before card builder loop");
     /* Repopulate the list with the new number of items */
     for (uint8_t i = 0; i < 10; i++) // new_item_count
     {
+        LOG_I("card builder i=%d", i);
         notification_widgets[i].card = notification_card_builder(p_window, i);
     }
+    LOG_I("message_list_layout_create: after card builder loop");
 
     // lv_obj_t *down_grip_img = lv_obj_create(notification_center);
     // lv_obj_set_size(down_grip_img, 50, 10);
@@ -2101,8 +2110,11 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
     lvgl_msg_handler.handle_notification = new_message_cb;
 #endif
     p_app_notification->main_window = p_window;
+    LOG_I("message_list_layout_create: before refresh_notification_list");
     refresh_notification_list(p_app_notification->main_window);
+    LOG_I("message_list_layout_create: before lv_event_send SCROLL");
     lv_event_send(p_app_notification->main_window, LV_EVENT_SCROLL, NULL);
+    LOG_I("message_list_layout_create: after lv_event_send SCROLL");
 
     /* 右側弧形觸控滾動 — 跟 instruction_list / exercise / clock 共用同一份算法。
      * slot_height = 252 + 40 = 292（item 間距），item_height = 252（item 本身高度）。
@@ -2129,7 +2141,9 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
         .drag_cb         = message_arc_drag_cb,
         .ctx             = NULL,
     };
+    LOG_I("message_list_layout_create: before arc_scroll_create");
     p_app_notification->arc_handle = arc_scroll_create(&arc_cfg);
+    LOG_I("message_list_layout_create: after arc_scroll_create");
     /* DEBUG：顯示 arc band 觸發範圍。確認位置後可以拿掉這行 */
     // arc_scroll_set_debug_visible(p_app_notification->arc_handle, true);
 
@@ -2137,6 +2151,7 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
     myLancher[app_index_message].on_tap = on_tap;
     lvgl_msg_handler.handle_widgets_control = button_selection;
 
+    LOG_I("message_list_layout_create: returning");
     return p_app_notification->main_window;
 }
 

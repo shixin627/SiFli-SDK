@@ -53,9 +53,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
+#include "gui_app_pm.h"
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
+#ifdef RT_USING_BLUETOOTH
 #include "bf0_ble_bass.h"
+#endif
 #if defined(USING_FSR_ADC_SAMPLER) && !defined(SOC_BF0_LCPU)
     #include "bf0_hal.h"
 #endif
@@ -165,7 +169,7 @@ extern void ppg_unsubscribe(void);
 extern void audio_subscribe(void);
 extern void audio_unsubscribe(void);
 
-        #ifdef BSP_USING_PC_SIMULATOR
+        #if defined(BSP_USING_PC_SIMULATOR) && !defined(BSP_USING_HR_CLIENT)
 void heart_rate_subscribe(void)
 {
     LOG_D("heart rate subscribe");

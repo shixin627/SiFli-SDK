@@ -1297,11 +1297,16 @@ static int utest_skaiwalk(int argc, char *argv[])
 			{
 				max_entries = atoi(argv[2]);
 			}
-			chat_history_entry_t entries[max_entries];
-			int count = get_recent_chat_history(entries, max_entries);
-			for (int i = 0; i < count; i++)
+			/* MSVC: no VLA in C — heap-allocate the buffer instead. */
+			chat_history_entry_t *entries = rt_malloc(sizeof(chat_history_entry_t) * max_entries);
+			if (entries)
 			{
-				LOG_D("Entry %d: Timestamp: %lu, User: %s, AI: %s", i + 1, (unsigned long)entries[i].timestamp, entries[i].user_text, entries[i].ai_text);
+				int count = get_recent_chat_history(entries, max_entries);
+				for (int i = 0; i < count; i++)
+				{
+					LOG_D("Entry %d: Timestamp: %lu, User: %s, AI: %s", i + 1, (unsigned long)entries[i].timestamp, entries[i].user_text, entries[i].ai_text);
+				}
+				rt_free(entries);
 			}
 		}
 		else if (strcmp(argv[1], "-generate_random_id") == 0)

@@ -43,6 +43,10 @@
 #ifndef __BLOC_EXERCISE_H__
 #define __BLOC_EXERCISE_H__
 
+#include <stdbool.h>
+#include <stdint.h>
+#include <time.h>
+
 #ifdef __cplusplus
 extern "C"
 {

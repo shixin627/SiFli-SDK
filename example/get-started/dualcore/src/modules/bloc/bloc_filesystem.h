@@ -19,6 +19,7 @@ extern "C"
 #endif
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #define FILE_PATH_MAX_LEN 128
 

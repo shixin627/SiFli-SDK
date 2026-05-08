@@ -4,7 +4,9 @@
     #include "rwip.h"
 #endif
 
+#ifdef RT_USING_FINSH
 #include <shell.h>
+#endif
 #ifdef RT_USING_DFS
     #include "dfs_fs.h"
 #endif

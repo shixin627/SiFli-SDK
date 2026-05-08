@@ -9,6 +9,13 @@ cwd = GetCurrentDir() # get current dir path
 src+=Glob('*.c')
 inc+= [cwd]
 
+# PC simulator: drop the full firmware main.c (BLE/BT/BLOC heavy) and
+# log_file_backend.c (POSIX-only), keep main_pc.c stub instead.
+if GetDepend('BSP_USING_PC_SIMULATOR'):
+    SrcRemove(src, ['main.c', 'log_file_backend.c'])
+else:
+    SrcRemove(src, ['main_pc.c', 'pc_link_stubs.c'])
+
 #Add resources.
 # Ensure directory is created before any builder is executed
 # If the path is not present, it would not be added in "include path" and 'lang_pack.h' dependency would not work
@@ -18,11 +25,30 @@ src.extend(SConscript(os.path.join(cwd, 'resource/fonts/SConscript'), variant_di
 src.extend(SConscript(os.path.join(cwd, 'resource/strings/SConscript'), variant_dir="resource/strings", duplicate=0))
 
 # Add code in subdirectories
+# PC simulator: skip app_bt/ (Classic BT/HFP — pure ARM) but keep gui_apps/.
 d_list = os.listdir(cwd)
+skip_pc = ('app_bt',) if GetDepend('BSP_USING_PC_SIMULATOR') else ()
 for d in d_list:
+    if d in skip_pc:
+        continue
     path = os.path.join(cwd, d)
     if os.path.isfile(os.path.join(path, 'SConscript')):
         src.extend(SConscript(os.path.join(d, 'SConscript')))
+
+# PC: expose headers from gui_apps subdirs and modules/algorithm even when
+# their .c sources are skipped (compiled-out apps still have other code that
+# includes their public headers — app_speech.h, gesture_recognition_task.h).
+if GetDepend('BSP_USING_PC_SIMULATOR'):
+    inc += [os.path.join(cwd, 'gui_apps', 'speech')]
+    inc += [os.path.join(cwd, 'gui_apps', 'gesture')]
+    inc += [os.path.join(cwd, 'gui_apps', 'recorder')]
+    inc += [os.path.join(cwd, 'gui_apps', 'camera')]
+    inc += [os.path.join(cwd, 'gui_apps', 'incoming_call')]
+    inc += [os.path.join(cwd, 'gui_apps', 'exercise')]
+    inc += [os.path.join(cwd, 'gui_apps', 'media')]
+    inc += [os.path.join(cwd, 'gui_apps', 'skai')]
+    inc += [os.path.join(cwd, 'gui_apps', 'hid_mouse')]
+    inc += [os.path.join(cwd, '../modules/algorithm/GestureRecognition')]
 
 group = DefineGroup('app', src, depend = [], CPPPATH = inc)
 Return('group')

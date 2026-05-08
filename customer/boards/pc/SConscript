@@ -1,0 +1,11 @@
+from building import *
+
+cwd = GetCurrentDir()
+
+# Expose pc/hcpu/ on CPPPATH so cross-cutting headers (e.g. watch_sys_service.h)
+# can resolve "bsp_board.h" the same way ARM boards do via their *_base/script.
+path = [os.path.join(cwd, "hcpu")]
+
+group = DefineGroup('Drivers', [], depend=['BSP_USING_PC_SIMULATOR'], CPPPATH=path)
+
+Return('group')

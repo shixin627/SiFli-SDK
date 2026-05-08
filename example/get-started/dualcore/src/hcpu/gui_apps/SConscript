@@ -10,8 +10,17 @@ objs = []
 if GetDepend('PKG_USING_LITTLEVGL2RTT'):
 	objs = Glob('*.c')
 	group = DefineGroup('App_watch_demo', objs, depend = ['PKG_USING_LITTLEVGL2RTT'], CPPPATH = [''], LOCAL_CCFLAGS = '')
+	# PC simulator: skip apps that pull TFLite-Micro (gesture, dinosaur game),
+	# WebRTC VAD (speech, skai), audio HAL (recorder, camera), or otherwise
+	# tightly coupled to ARM-only peripherals. The rest of the app surface
+	# (clock, main, setting, alarm, calculator, file_browser, ...) compiles.
+	pc_skip = ('gesture', 'speech', 'skai', 'recorder', 'camera',
+	           'incoming_call', 'media', 'hid_mouse', 'exercise', 'game') \
+	          if GetDepend('BSP_USING_PC_SIMULATOR') else ()
 	for d in list:
+	    if d in pc_skip:
+	        continue
 	    path = os.path.join(cwd, d)
 	    if os.path.isfile(os.path.join(path, 'SConscript')):
-	        objs = objs + SConscript(os.path.join(d, 'SConscript'))  
+	        objs = objs + SConscript(os.path.join(d, 'SConscript'))
 Return('objs')

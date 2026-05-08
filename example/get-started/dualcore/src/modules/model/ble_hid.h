@@ -4,7 +4,11 @@
 #include <rtthread.h>
 #include <stdint.h>
 #include <stdbool.h>
+#ifdef RT_USING_BLUETOOTH
 #include "bf0_sibles.h"
+#else
+typedef void *sibles_hdl;  /* PC sim stub: no BLE */
+#endif
 
 #ifdef __cplusplus
 extern "C" {

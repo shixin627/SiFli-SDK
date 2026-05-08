@@ -51,7 +51,9 @@
 #include "data_service_subscriber.h"
 #include "power_manager_service.h"
 #include "lv_ext_resource_manager.h"
+#ifdef RT_USING_BLUETOOTH
 #include "bf0_ble_common.h"
+#endif
 #include "app_mainmenu.h"
 #include "ui_handler.h"
 #include "ui_helper.h"
@@ -78,10 +80,12 @@
 #endif
 #ifdef BSP_USING_PM
     #include "bf0_pm.h"
-    #include "gui_app_pm.h"
 #endif
+#include "gui_app_pm.h"  /* always — gui_pm_fsm/gui_is_active called unconditionally */
+#ifdef RT_USING_BLUETOOTH
 #include "bf0_sibles_internal.h"
 #include "bf0_ble_gap.h"
+#endif
 
 #define DBG_TAG "watch.interact"
 #define DBG_LVL DBG_LOG
@@ -1006,6 +1010,7 @@ static int set_watch_system(int argc, char *argv[])
         {
             watch_system_interact(WATCH_SLEEP, NULL);
         }
+#ifdef RT_USING_BLUETOOTH
         // ----- Bluetooth
         else if (strcmp(argv[1], "-set_ble_rf") == 0)
         {
@@ -1019,6 +1024,7 @@ static int set_watch_system(int argc, char *argv[])
             uint8_t ret = ble_gap_get_remote_rssi(&rssi);
             LOG_D("ble_gap_get_remote_rssi ret:%d", ret);
         }
+#endif
         else if (strcmp(argv[1], "-chack_tile") == 0)
         {
             chack_tile_page();

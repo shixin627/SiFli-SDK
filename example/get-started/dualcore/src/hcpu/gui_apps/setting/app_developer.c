@@ -249,13 +249,13 @@ static void random_address_btn_event_callback(lv_event_t *e)
     }
 }
 
-#ifndef BSP_USING_PC_SIMULATOR
-extern bool ppg_service_subscribed(void);
-#else
+#if defined(BSP_USING_PC_SIMULATOR) && !defined(BSP_USING_HR_CLIENT)
 bool ppg_service_subscribed(void)
 {
     return false;
 }
+#else
+extern bool ppg_service_subscribed(void);
 #endif
 
 static void lv_create_dev_screen(void)

@@ -922,12 +922,14 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         old_selected_item_index = selected_item_index;
         // LOG_D("selected_app_index: %d", selected_item_index);
 
+        LOG_D("DBGinner-loop start child_cnt=%d sel=%d", child_cnt, selected_item_index);
         for (uint8_t i = 0; i < child_cnt; i++)
         {
             lv_obj_t *child = obj->spec_attr->children[i];
+            LOG_D("DBGi=%d child=%p", i, child);
             if (i == selected_item_index)
             {
-                LOG_I("instruction DEBUG Selected item index: %d", i);
+                LOG_D("instruction DEBUG Selected item index: %d", i);
                 if (touch_obj[i] != NULL && lv_obj_is_valid(touch_obj[i]))
                     lv_obj_clear_flag(touch_obj[i], LV_OBJ_FLAG_HIDDEN);
                 if (!list_items[i].is_instruction)
@@ -960,17 +962,30 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 if (switch_objs[i] != NULL && lv_obj_is_valid(switch_objs[i]))
                     lv_obj_add_flag(switch_objs[i], LV_OBJ_FLAG_HIDDEN);
             }
+            LOG_D("DBGi=%d before app_icon", i);
             if (app_icon[i] != NULL && lv_obj_is_valid(app_icon[i]))
                 lv_obj_align(app_icon[i], LV_ALIGN_RIGHT_MID, -25, 0);
+            LOG_D("DBGi=%d before app_label", i);
             if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
                 lv_obj_align(app_label[i], LV_ALIGN_CENTER, -20, 0);
-            lv_obj_set_style_border_opa(lv_obj_get_child(child, 0), LV_OPA_10,
-                                        LV_STATE_DEFAULT);
+            LOG_D("DBGi=%d before get_child", i);
+            {
+                lv_obj_t *first_child = lv_obj_get_child(child, 0);
+                LOG_D("DBGi=%d first_child=%p", i, first_child);
+                if (first_child)
+                    lv_obj_set_style_border_opa(first_child, LV_OPA_10,
+                                                LV_STATE_DEFAULT);
+                LOG_D("DBGi=%d after set_style_border_opa", i);
+            }
         }
+        LOG_D("DBGinner-loop end");
         if (get_scrolling_motor_vibrate_status() && open_scroll_motor)
         {
+            LOG_D("DBGcalling motor_pattern_scrolling_app");
             motor_pattern_scrolling_app();
+            LOG_D("DBGafter motor_pattern_scrolling_app");
         }
+        LOG_D("DBGscroll_list returning");
     }
 }
 
@@ -3016,14 +3031,18 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     // 創建可移動範圍圓弧線
     // create_movable_range_arc(p_instruction_list_bg);
     created = true;
+    LOG_I("instruction_list_init: before myLancher reset_list");
     myLancher[app_index_instruction_list].reset_list = reset_list;
     if (myLancher[app_index_instruction_list].reset_list != NULL)
     {
         myLancher[app_index_instruction_list].reset_list();
     }
+    LOG_I("instruction_list_init: before lv_event_send SCROLL");
     lv_event_send(p_instruction_list, LV_EVENT_SCROLL, NULL);
+    LOG_I("instruction_list_init: after lv_event_send SCROLL");
 
     myLancher[app_index_instruction_list].on_tap = on_tap;
+    LOG_I("instruction_list_init: returning");
 
 #ifdef TEST_INDICATOR_ANIMATION
     start_indicator_dots_animation_test(); // 開始指示點動畫測試

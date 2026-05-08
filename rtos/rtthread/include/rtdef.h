@@ -179,6 +179,7 @@ typedef __gnuc_va_list          va_list;
 #define RTT_API
 #elif defined (_MSC_VER)
 #include <stdarg.h>
+#include <stdint.h>
 #define SECTION(x)                  __pragma(section(x, read)) \
                                         __declspec(allocate(x))
 #define RT_UNUSED

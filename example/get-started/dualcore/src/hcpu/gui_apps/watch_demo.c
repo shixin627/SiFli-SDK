@@ -34,9 +34,9 @@
 #endif
 #ifdef BSP_USING_PM
     #include "bf0_pm.h"
-    #include "gui_app_pm.h"
     #include "drv_gpio.h"
 #endif /* BSP_USING_PM */
+#include "gui_app_pm.h"  /* always — gui_is_active / gui_pm_fsm referenced unconditionally */
 
 #include "data_service_subscriber.h"
 

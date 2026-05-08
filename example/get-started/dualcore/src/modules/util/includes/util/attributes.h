@@ -22,6 +22,28 @@
 #define GCC_ONLY(x) x
 #endif
 
+#if defined(_MSC_VER)
+// MSVC has no GCC-style attributes; expand them to no-ops or MSVC equivalents.
+#define FORMAT_FUNC(TYPE, STR_IDX, FIRST)
+#define FORMAT_PRINTF(STR_IDX, FIRST)
+#define ALWAYS_INLINE __forceinline
+#define DEPRECATED __declspec(deprecated)
+#define NOINLINE __declspec(noinline)
+#define NORETURN __declspec(noreturn) void
+#define NAKED_FUNC __declspec(naked)
+#define OPTIMIZE_FUNC(LVL)
+#define CONST_FUNC
+#define PURE_FUNC
+#define ATTR_CLEANUP(FUNC)
+#define PACKED
+#define USED
+#define UNUSED
+#define WEAK
+#define ALIAS(sym)
+#define EXTERNALLY_VISIBLE
+#define ALIGN(bytes) __declspec(align(bytes))
+#else
+
 // Function attributes
 #define FORMAT_FUNC(TYPE, STR_IDX, FIRST) __attribute__((__format__(TYPE, STR_IDX, FIRST)))
 
@@ -49,6 +71,7 @@
 #define ALIAS(sym) __attribute__((__weak__, __alias__(sym)))
 #define EXTERNALLY_VISIBLE GCC_ONLY(__attribute__((__externally_visible__)))
 #define ALIGN(bytes) __attribute__((__aligned__(bytes)))
+#endif /* _MSC_VER */
 
 // Unit tests break if variables go in custom sections
 #if !UNITTEST

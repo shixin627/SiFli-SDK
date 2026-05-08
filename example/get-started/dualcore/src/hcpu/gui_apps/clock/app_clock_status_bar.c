@@ -29,9 +29,11 @@
 #include "ble_hid.h"
 
 extern void refresh_connected_device_label(void);
+#ifndef _MSC_VER
 __attribute__((weak)) void refresh_connected_device_label(void)
 {
 }
+#endif
 
 #define DBG_TAG "app.clock.status_bar"
 #define DBG_LVL DBG_LOG
@@ -1117,9 +1119,13 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     control_center_layout_create(pages[CONTROL_CENTER_PAGE_INDEX]);
 
     extern lv_obj_t *lv_instruction_list_layout_create(lv_obj_t * parent);
+    LOG_I("clock_status_bar: before instruction_list_layout_create");
     lv_instruction_list_layout_create(pages[INSTRUCTION_LIST_PAGE_INDEX]);
+    LOG_I("clock_status_bar: after instruction_list_layout_create");
     extern lv_obj_t *lv_message_list_layout_create(lv_obj_t * parent);
+    LOG_I("clock_status_bar: before message_list_layout_create");
     lv_message_list_layout_create(pages[MESSAGE_PAGE_INDEX]);
+    LOG_I("clock_status_bar: after message_list_layout_create");
 
     LOG_D("tileview set tile id to 1,1");
     myLancher[app_index_message].pagetileview = app_clock_main_status_bar;

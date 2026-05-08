@@ -137,6 +137,9 @@ static bool is_image_file(const char *filename)
     {
         return false;
     }
+#ifdef _MSC_VER
+#define strcasecmp _stricmp
+#endif
     /* Support common image formats */
     if (strcasecmp(ext, ".png") == 0 || strcasecmp(ext, ".jpg") == 0 ||
         strcasecmp(ext, ".jpeg") == 0 || strcasecmp(ext, ".bin") == 0 ||

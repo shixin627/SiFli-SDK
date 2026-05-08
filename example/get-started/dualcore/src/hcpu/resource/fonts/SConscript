@@ -70,7 +70,11 @@ LVSF_FREETYPE_FONT_REGISTER({var})
    dead-strips the symbol — the weak extern resolves to NULL, the safety
    check is bypassed, and the watch bricks anyway. Verified by grepping
    main.htm: pre-`used`, the symbol is missing from the linked image. */
+#ifdef _MSC_VER
+bool is_freetype_safe_to_init(void)
+#else
 __attribute__((used)) bool is_freetype_safe_to_init(void)
+#endif
 {{
     int fd = open("{path}", O_RDONLY);
     if (fd < 0)
