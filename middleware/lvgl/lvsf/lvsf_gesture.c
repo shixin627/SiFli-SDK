@@ -194,7 +194,8 @@ static void left_bar_event_handler(lv_event_t *e)
     static lv_coord_t drag_offset = 0;
     static lv_point_t start_point;
     static lv_point_t end_point;
-    // LOG_D("left_bar_event_handler got event %d", (int)event);
+    if (event == 1 || event == 2 || event == 7 || event == 8)  /* PRESSED/PRESSING/RELEASED/SCROLL_BEGIN */
+        LOG_I("left_bar_event_handler event %d", (int)event);
     if (event == LV_EVENT_SCROLL_BEGIN)
     {
         if (gesture_img_objs[0])
