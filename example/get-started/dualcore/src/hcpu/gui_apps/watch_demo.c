@@ -245,63 +245,18 @@ static int32_t default_keypad_handler(lv_key_t key, lv_indev_state_t event)
             LOG_I("ENTER key event was %d", event);
             if (is_at_ai_interface())
             {
-                extern bool get_enable_tap_and_hold(void);
-                if (!get_enable_tap_and_hold())
-                {
-                    if (peripheral_provider.get_tap_status())
-                    {
-                        extern void ai_tap_cb(void);
-                        ai_tap_cb();
-                    }
-                }
-                else
-                {
-                    if (!peripheral_provider.get_tap_status())
-                    {
-                        extern void ai_tap_cb(void);
-                        ai_tap_cb();
-                    }
-                }
+                extern void ai_tap_cb(void);
+                ai_tap_cb();
             }
             else if (is_at_message() && !gui_app_is_actived(APP_ID_SPEECH))
             {
-                extern bool get_enable_tap_and_hold(void);
-                if (!get_enable_tap_and_hold())
-                {
-                    if (peripheral_provider.get_tap_status())
-                    {
-                        if (myLancher[app_index_message].on_tap)
-                            myLancher[app_index_message].on_tap();
-                    }
-                }
-                else
-                {
-                    if (!peripheral_provider.get_tap_status())
-                    {
-                        if (myLancher[app_index_message].on_tap)
-                            myLancher[app_index_message].on_tap();
-                    }
-                }
+                if (myLancher[app_index_message].on_tap)
+                    myLancher[app_index_message].on_tap();
             }
             else if (is_at_instruction_list())
             {
-                extern bool get_enable_tap_and_hold(void);
-                if (!get_enable_tap_and_hold())
-                {
-                    if (peripheral_provider.get_tap_status())
-                    {
-                        if (myLancher[app_index_instruction_list].on_tap)
-                            myLancher[app_index_instruction_list].on_tap();
-                    }
-                }
-                else
-                {
-                    if (!peripheral_provider.get_tap_status())
-                    {
-                        if (myLancher[app_index_instruction_list].on_tap)
-                            myLancher[app_index_instruction_list].on_tap();
-                    }
-                }
+                if (myLancher[app_index_instruction_list].on_tap)
+                    myLancher[app_index_instruction_list].on_tap();
             }
             else if ((app_control_get_mouse_mode() || is_at_mouse_mode()))
             {
@@ -591,15 +546,15 @@ static void button_event_task_entry(struct _lv_timer_t *task)
         limit_time = SkaiWatchSys.oled_display_time * 1000;
     }
 
-#if !kReleaseMode
+    #if !kReleaseMode
     extern bool pause_sleep_cause_of_dev_reson(void);
-#endif
+    #endif
 
     if (lv_disp_get_inactive_time(NULL) > limit_time &&
         setting_provider.get_power_save_mode() &&
-#if !kReleaseMode
+    #if !kReleaseMode
         !pause_sleep_cause_of_dev_reson() &&
-#endif
+    #endif
         !get_motor_status())
     {
         peripheral_provider.hcpu_suspend();
@@ -660,8 +615,10 @@ static void create_sleep_wake_overlay(void)
         sleep_wake_overlay = lv_obj_create(lv_layer_top());
         lv_obj_remove_style_all(sleep_wake_overlay);
         lv_obj_set_size(sleep_wake_overlay, LV_HOR_RES, LV_VER_RES);
-        lv_obj_set_style_bg_color(sleep_wake_overlay, lv_color_black(), LV_PART_MAIN);
-        lv_obj_clear_flag(sleep_wake_overlay, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_bg_color(sleep_wake_overlay, lv_color_black(),
+                                  LV_PART_MAIN);
+        lv_obj_clear_flag(sleep_wake_overlay,
+                          LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
     }
 }
 
@@ -895,14 +852,17 @@ void app_watch_entry(void *parameter)
                 /* reset activity timer */
                 lv_disp_trig_activity(NULL);
 
-                /* Manual wake fade-in: bypass lv_anim to avoid stale elapsed time issues */
+                /* Manual wake fade-in: bypass lv_anim to avoid stale elapsed
+                 * time issues */
                 lv_timer_handler(); /* warm-up: flush stale timer timestamps */
                 if (sleep_wake_overlay)
                 {
                     for (int32_t step = 1; step <= 20; step++)
                     {
-                        lv_opa_t opa = (lv_opa_t)(LV_OPA_COVER - LV_OPA_COVER * step / 20);
-                        lv_obj_set_style_bg_opa(sleep_wake_overlay, opa, LV_PART_MAIN);
+                        lv_opa_t opa =
+                            (lv_opa_t)(LV_OPA_COVER - LV_OPA_COVER * step / 20);
+                        lv_obj_set_style_bg_opa(sleep_wake_overlay, opa,
+                                                LV_PART_MAIN);
                         lv_timer_handler();
                         rt_thread_mdelay(10);
                     }
