@@ -873,13 +873,21 @@ void app_watch_entry(void *parameter)
     lvsf_gesture_init(lv_layer_top());
 #endif /* defined(GUI_APP_FRAMEWORK)&&(!defined (APP_TRANS_ANIMATION_NONE)) */
 
+    LOG_I("watch_entry: about to enter main loop");
+    int loop_iter = 0;
     while (1)
     {
         int ms;
+        if (loop_iter < 5)
+            LOG_I("watch_entry loop iter %d before lv_timer_handler", loop_iter);
 
         rt_pm_request(PM_SLEEP_MODE_IDLE);
         ms = lv_timer_handler();
         rt_pm_release(PM_SLEEP_MODE_IDLE);
+
+        if (loop_iter < 5)
+            LOG_I("watch_entry loop iter %d after lv_timer_handler ms=%d", loop_iter, ms);
+        loop_iter++;
 
 #ifdef BSP_USING_PM
         if (gui_is_force_close())

@@ -216,6 +216,10 @@ extern bool get_instruction_list_ai_tapped(void);
 extern void set_instruction_list_ai_tapped(void);
 void check_is_at_ai_interface(void)
 {
+    /* PC sim: AI/speech apps excluded → pagetileview never set. Treat as not
+     * at AI interface (default false) instead of NULL-deref'ing. */
+    if (myLancher[app_index_ai_interface].pagetileview == NULL)
+        return;
     bool yes = !lv_obj_has_flag(myLancher[app_index_ai_interface].pagetileview,
                                 LV_OBJ_FLAG_HIDDEN);
     if (yes != _at_ai_interface)
@@ -751,18 +755,26 @@ void check_main_page(void)
 static void on_resume(void)
 {
     LOG_D("[mainmenu_on_resume] %d", get_idle_state());
+    LOG_I("on_resume: before check_main_page");
     check_main_page();
+    LOG_I("on_resume: after check_main_page");
     check_is_at_ai_interface();
+    LOG_I("on_resume: after check_is_at_ai_interface");
     if (is_at_home() || is_at_control_center() || is_at_instruction_list() ||
         is_at_message() || is_at_ai_interface())
     {
+        LOG_I("on_resume: before screen_rotate_back");
         screen_rotate_back_to_original_direction();
+        LOG_I("on_resume: before clock_on_resume");
         clock_on_resume();
+        LOG_I("on_resume: after clock_on_resume");
     }
 
+    LOG_I("on_resume: before lvgl_send_msg");
     lvgl_msg_t msg;
     msg.type = LVGL_MSG_TYPE_TRIGGER_ACTIVITY;
     lvgl_send_msg(msg);
+    LOG_I("on_resume: returning");
 }
 
 static void on_pause(void)

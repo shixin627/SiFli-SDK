@@ -1420,12 +1420,17 @@ static bool pause_clock = true;
 extern void dial_media_header_init(void);
 rt_int32_t clock_on_resume(void)
 {
-    notify_provider.bluetooth_connection();
+    LOG_I("clock_on_resume: enter");
+    if (notify_provider.bluetooth_connection)
+        notify_provider.bluetooth_connection();
+    LOG_I("clock_on_resume: after bluetooth_connection");
     if (pause_clock == false)
         return -RT_EOK;
     pause_clock = false;
 
+    LOG_I("clock_on_resume: before dial_media_header_init");
     dial_media_header_init();
+    LOG_I("clock_on_resume: before app_clock_main_select");
     app_clock_main_select(last_active_clock);
     LOG_D("clock_on_resume");
     return 1;
