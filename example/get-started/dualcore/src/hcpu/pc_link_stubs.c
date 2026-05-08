@@ -149,8 +149,9 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 #include "lvgl/lvgl.h"
 #include "bloc_v2t.h"
 
-/* gesture indicator on layer-top — gesture app excluded for PC */
-void display_gesture_detect_objs(int idx, bool show) { (void)idx; (void)show; }
+/* gesture indicator on layer-top: real impl now lives in lvsf_gesture.c
+ * (re-enabled by switching APP_TRANS_ANIMATION_NONE → OVERWRITE).
+ * Don't stub here. */
 
 /* IMU collection state globals — gesture/exercise app provides them on ARM */
 bool imu_data_collection = false;

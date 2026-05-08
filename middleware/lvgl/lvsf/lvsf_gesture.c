@@ -1,6 +1,9 @@
 #include "rtconfig.h"
 #include "lvgl.h"
 #include "lvsf.h"
+#define DBG_TAG "lvsf.gesture"
+#define DBG_LVL DBG_LOG
+#include <rtdbg.h>
 #if defined(GUI_APP_FRAMEWORK) && (!defined(APP_TRANS_ANIMATION_NONE))
 
     #include "gui_app_fwk.h"
@@ -191,7 +194,7 @@ static void left_bar_event_handler(lv_event_t *e)
     static lv_coord_t drag_offset = 0;
     static lv_point_t start_point;
     static lv_point_t end_point;
-    // LOG_I("left_bar_event_handler  got event %s", lv_event_to_name(event));
+    // LOG_D("left_bar_event_handler got event %d", (int)event);
     if (event == LV_EVENT_SCROLL_BEGIN)
     {
         if (gesture_img_objs[0])
@@ -288,6 +291,8 @@ void lvsf_gesture_init(lv_obj_t *parent)
 {
     lv_obj_t *bar;
 
+    LOG_D("lvsf_gesture_init: parent=%p hor=%d ver=%d",
+          parent, (int)LV_HOR_RES_MAX, (int)LV_VER_RES_MAX);
     memset(gesture_detect_objs, 0, sizeof(gesture_detect_objs));
     memset(gesture_img_objs, 0, sizeof(gesture_img_objs));
     lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
