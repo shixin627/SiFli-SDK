@@ -1644,7 +1644,8 @@ static int16_t find_app_index_by_id(uint16_t app_id)
 extern char *get_media_title(void);
 extern bool is_have_message_now(void);
 static uint16_t gesture_starting_value = 0;
-static void reset_list(void)
+
+static void reset_list_internal(void)
 {
     if (p_instruction_list_layout->list == NULL)
     {
@@ -1675,6 +1676,28 @@ static void reset_list(void)
     is_widget_animation_active = false;
     enable_scrolling_motor_vibrate();
     open_scroll_motor = true;
+}
+
+/* Thread-aware wrapper assigned to myLancher[...].reset_list. Callers in
+   bloc_notification (KE_EVT2) hit reset_list_internal's lv_obj_scroll_to_view
+   which cascades through scroll events and blows the 4KB BLE stack. Defer to
+   the LVGL thread when invoked off-thread. */
+static void reset_list(void)
+{
+    if (!is_on_lvgl_thread())
+    {
+        lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST};
+        lvgl_send_msg(msg);
+        return;
+    }
+    reset_list_internal();
+}
+
+/* Public entry called by the LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST handler.
+   Always invoked from the LVGL thread, so no thread check needed. */
+void apply_instruction_list_reset_on_lvgl_thread(void)
+{
+    reset_list_internal();
 }
 
 uint16_t get_gesture_starting_value(void)
@@ -2503,6 +2526,18 @@ void refresh_custom_instructions(void)
         s_pending_refresh_timer = NULL;
     }
 
+    /* Invalidate the image cache for every instruction's current image path.
+       update_instruction_image() running on a non-LVGL thread skips its own
+       cache invalidation (deferring it here is safer than calling LVGL APIs
+       on KE_EVT2's 4KB stack). When the phone replaces an existing image at
+       the same path, we need this flush so lv_img_set_src below picks up the
+       new pixels rather than a stale cached entry. */
+    for (uint8_t i = 0; i < list_item_count; i++)
+    {
+        if (list_items[i].img_path[0] != '\0')
+            lv_img_cache_invalidate_src(list_items[i].img_path);
+    }
+
     lv_obj_t *list = p_instruction_list_layout->list;
 
     /* 先刪除舊的指示點（它們是 bg 的子物件，lv_obj_clean(list) 不會刪到） */
@@ -2628,17 +2663,32 @@ void update_instruction_image(const char *id, const char *path)
     rt_snprintf(img_path, sizeof(img_path), "/assets/images/instruction/%s.bin",
                 id_prefix);
 
-    lv_img_cache_invalidate_src(list_items[idx].img_path);
+    /* Path-string update is thread-safe (single owner per index in practice). */
     strncpy(list_items[idx].img_path, img_path,
             sizeof(list_items[idx].img_path) - 1);
     list_items[idx].img_path[sizeof(list_items[idx].img_path) - 1] = '\0';
+
+    /* LVGL ops only on the LVGL thread.
+       BLE notify (parse_notify) and file-receive callback (bloc_filesystem)
+       both run on KE_EVT2 (4KB stack). lv_img_set_src / lv_obj_clear_flag
+       cascade through lv_event_send → potentially the list's scroll handler
+       → scroll_list, blowing the stack. Defer the rebuild via the LVGL msg
+       queue; refresh_custom_instructions invalidates caches and recreates
+       the indicator dots from list_items[i].img_path. */
+    if (!is_on_lvgl_thread())
+    {
+        lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_INSTRUCTION_LIST};
+        lvgl_send_msg(msg);
+        return;
+    }
+
+    lv_img_cache_invalidate_src(img_path);
 
     /* Update the indicator dot directly if UI exists */
     if (p_instruction_list_layout != NULL &&
         p_instruction_list_layout->indicator_dots[idx] != NULL &&
         lv_obj_is_valid(p_instruction_list_layout->indicator_dots[idx]))
     {
-        lv_img_cache_invalidate_src(img_path);
         lv_img_set_src(p_instruction_list_layout->indicator_dots[idx],
                        list_items[idx].img_path);
         lv_obj_clear_flag(p_instruction_list_layout->indicator_dots[idx],

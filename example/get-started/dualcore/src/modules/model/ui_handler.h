@@ -174,6 +174,17 @@ extern "C"
         LVGL_MSG_TYPE_RESET_AI_WIDGET,
         /****header****/
         LVGL_MSG_TYPE_DIAL_HEADER_TIMER,
+        /* Defer instruction-list rebuild to LVGL thread.
+           BLE notify handlers run on KE_EVT2 (4KB stack) and the rebuild
+           is too stack-heavy (FreeType + 10+ lv_obj_create) to run there. */
+        LVGL_MSG_TYPE_REFRESH_INSTRUCTION_LIST,
+        /* Defer instruction-list reset (scroll-to-end + dot reposition) to
+           the LVGL thread. bloc_notification's interact_with_notification
+           calls myLancher[...].reset_list() from KE_EVT2 when a phone
+           notification arrives — that fires lv_obj_scroll_to_view which
+           cascades through scroll events / scroll_list, blowing the 4KB
+           BLE stack. */
+        LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST,
     };
 
     typedef struct
@@ -339,6 +350,14 @@ extern "C"
     extern lvgl_msg_handler_t lvgl_msg_handler;
     extern void lvgl_send_msg(lvgl_msg_t msg);
     extern rt_tick_t get_last_refresh_tick(void);
+
+    /* True if called from the LVGL/UI thread (where lv_timer_handler runs).
+       Cross-thread callers (BLE notify on KE_EVT2, file-receive callback)
+       should check this before invoking LVGL APIs and otherwise defer
+       through lvgl_send_msg. The flag is populated lazily on the first
+       process_lvgl_message() call, so it returns false until LVGL is
+       running — that's the desired behaviour for early callers. */
+    extern bool is_on_lvgl_thread(void);
 
     extern app_gesture_indicator_t *gui_app_get_gesture_indicator(void);
     extern bool is_ai_interface_active(void);

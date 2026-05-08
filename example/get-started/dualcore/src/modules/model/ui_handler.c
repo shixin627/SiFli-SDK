@@ -103,6 +103,17 @@ static rt_mq_t lvgl_mq; /**< Message queue for LVGL messages */
 static lvgl_msg_t lvgl_msg; /**< LVGL message buffer for timer mode */
 #endif
 
+/* Captured at first process_lvgl_message() invocation. Used by callers in
+   BLE / file-receive threads (KE_EVT2, 4KB stack) to detect whether they
+   can safely run LVGL ops directly, or must defer via lvgl_send_msg().
+   Direct LVGL ops on KE_EVT2 cascade through lv_event_send and STKOF. */
+static rt_thread_t s_lvgl_thread = RT_NULL;
+
+bool is_on_lvgl_thread(void)
+{
+    return s_lvgl_thread != RT_NULL && rt_thread_self() == s_lvgl_thread;
+}
+
 lvgl_msg_handler_t lvgl_msg_handler; /**< Message handler function table */
 static rt_tick_t last_refresh_tick;  /**< Last screen refresh timestamp */
 static watch_app_id_t watch_app_id =
@@ -151,6 +162,9 @@ static void trigger_activity(void)
 
 static void process_lvgl_message(lvgl_msg_t *msg)
 {
+    if (s_lvgl_thread == RT_NULL)
+        s_lvgl_thread = rt_thread_self();
+
     uint8_t type = msg->type;
 
     switch (type)
@@ -715,6 +729,20 @@ static void process_lvgl_message(lvgl_msg_t *msg)
     case LVGL_MSG_TYPE_DIAL_HEADER_TIMER:
         dial_header_music_pause_cb();
         break;
+
+    case LVGL_MSG_TYPE_REFRESH_INSTRUCTION_LIST:
+    {
+        extern void refresh_custom_instructions(void);
+        refresh_custom_instructions();
+        break;
+    }
+
+    case LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST:
+    {
+        extern void apply_instruction_list_reset_on_lvgl_thread(void);
+        apply_instruction_list_reset_on_lvgl_thread();
+        break;
+    }
 
     default:
     {
