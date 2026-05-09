@@ -71,13 +71,21 @@ across crashes (flushed on every newline by `uart_console.c`).
 
 **Project-level** (`example/get-started/dualcore/project/hcpu/`):
 - `pc_hcpu/proj.conf` — Kconfig overrides for PC (BLE/BT/TFLite/EZIPA/PM off,
-  COMMUNICATE on, FlashDB LIBC mode, `APP_TRANS_ANIMATION_OVERWRITE` etc.)
+  COMMUNICATE on, FlashDB LIBC mode, `APP_TRANS_ANIMATION_OVERWRITE` etc.).
+  Also turns FINSH/MSH **on** so tshell drives main.exe via stdin —
+  `CONFIG_RT_USING_FINSH=y` + `CONFIG_FINSH_USING_MSH=y` (the dualcore
+  `proj.conf` shared base has FINSH off; the PC override flips it on).
 - `rtconfig_project.h` — MSVC defines: `RT_HEAP_SIZE`, `SOC_BF0_HCPU`,
   `BSP_USING_COMMUNICATE`, warning suppression
 - `SConstruct` — skips LCPU child project on PC (`if not GetDepend('BSP_USING_PC_SIMULATOR')`)
 - `SConscript` — would skip `src/modules`, but it's currently kept on
 - `_pc_build.cmd` — env-init wrapper to run scons outside ConEmu
 - `_pc_swipe.ps1` — DPI-aware mouse scripting (see Input below)
+- `_send_to_main.py` — Win32 keystroke injection helper (AttachConsole +
+  WriteConsoleInputW). Status: writes events successfully and main.exe
+  consumes them per `GetNumberOfConsoleInputEvents`, but FINSH on the
+  other end doesn't always echo/process — use only as a starting point,
+  prefer typing into the main.exe console window directly for now.
 - `_genstub.py` + `_syms_clean.txt` — regenerate `pc_link_stubs.c`
 
 **Project sources** (`example/get-started/dualcore/src/hcpu/`):
@@ -144,6 +152,7 @@ LOG_I from a callback — points to the crashing function.
 | Compile error: `__attribute__((weak))` / `((used))` | `#ifdef _MSC_VER` skip the attribute or wrap with no-op equivalent |
 | Compile error: `bf0_ble_*.h` / `bf0_sibles*.h` not found | Wrap include in `#ifdef RT_USING_BLUETOOTH` and any code referencing BLE types in same guard |
 | Compile error: `unistd.h` not found | Already mapped via `customer/boards/pc/hcpu/unistd.h` — should resolve. If new file uses `read()/write()` directly, it's already aliased to `_read/_write` |
+| LNK2019 `_setVoice2Text` / `_app_voice_set_voice2text_intent` after enabling FINSH | These were dead-stripped before FINSH; once `MSH_CMD_EXPORT` macros expand, `watch_system_interact` MSH handlers reference them. Stubs added to `pc_link_stubs.c` — keep them. |
 
 **5. Add probes when stuck:**
 Drop `LOG_I("dbg before X");` / `LOG_I("dbg after X");` around suspect

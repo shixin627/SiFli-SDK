@@ -165,3 +165,8 @@ int rt_wdt_init(void) { return 0; }
 
 /* Voice provider struct — bloc_v2t module excluded; expose empty instance */
 VoiceProvider voice_provider = {0};
+
+/* bloc_v2t.h — referenced by watch_system_interact MSH_CMD handlers (now
+ * pulled in by FINSH on PC sim), but bloc_v2t.c is excluded above. */
+void setVoice2Text(char *text) { (void)text; }
+void app_voice_set_voice2text_intent(uint8_t intent) { (void)intent; }

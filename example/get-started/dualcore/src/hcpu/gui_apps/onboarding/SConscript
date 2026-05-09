@@ -1,0 +1,11 @@
+from building import *
+import rtconfig
+
+cwd = GetCurrentDir()
+src = Glob('*.c')
+inc = [cwd]
+
+group = DefineGroup('App_onboarding', src, depend = ['PKG_USING_LITTLEVGL2RTT'],
+                    CPPPATH = inc, LOCAL_CCFLAGS = '')
+
+Return('group')
