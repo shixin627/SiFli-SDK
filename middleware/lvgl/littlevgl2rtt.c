@@ -1,7 +1,17 @@
+/*
+ * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <rtthread.h>
 #include "littlevgl2rtt.h"
 #ifdef LV_USE_LVSF
     #include "lv_ext_resource_manager.h"
+    #ifndef DISABLE_LVGL_V8
+        #include "lvsf/lvsf_font.h"
+        #include "lvsf/lvsf_theme_1.h"
+    #endif /* DISABLE_LVGL_V8 */
 #endif /* LV_USE_LVSF */
 #include "cpu_usage_profiler.h"
 #if !defined(_MSC_VER)
@@ -305,9 +315,9 @@ static void enable_fps_label(int en)
     {
         lv_obj_t *sys_scr = lv_disp_get_layer_sys(NULL);      /*Get the current screen*/
         fps_cpu_load_label = lv_label_create(sys_scr);
-#ifdef LV_USE_LVSF
+#if defined(LV_USE_LVSF) && !defined(DISABLE_LVGL_V8)
         lv_ext_set_local_font(fps_cpu_load_label, FONT_NORMAL, lv_palette_main(LV_PALETTE_RED));
-#endif /* LV_USE_LVSF */
+#endif /* LV_USE_LVSF && !DISABLE_LVGL_V8 */
         lv_obj_align(fps_cpu_load_label, LV_ALIGN_TOP_MID, 0, 0);
         //display_fps_and_cpu_load();
         lv_label_set_text(fps_cpu_load_label, "Waitting...");
@@ -513,9 +523,9 @@ rt_err_t littlevgl2rtt_init(const char *name)
 
     lv_hal_init(name);
 #ifdef LV_USE_LVSF
-    #ifndef LV_USE_THEME_DEFALUT
+    #if (!defined(LV_USE_THEME_DEFAULT) || !(LV_USE_THEME_DEFAULT))
     lv_theme_1_init();
-    #endif /* LV_USE_THEME_DEFALUT */
+    #endif /* !LV_USE_THEME_DEFAULT */
 #endif /* LV_USE_LVSF */
 #if 0
 #ifdef LCD_SDL2
@@ -553,4 +563,3 @@ static rt_err_t switch_fps_cpu_label(int argc, char **argv)
 FINSH_FUNCTION_EXPORT(switch_fps_cpu_label, switch fps cpu label on display);
 MSH_CMD_EXPORT(switch_fps_cpu_label, switch fps cpu label on display);
 #endif*/
-

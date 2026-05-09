@@ -1,7 +1,8 @@
 # peripheral_with_ota example说明和SDK DFU接入
+源码路径：example/ble/peripheral_with_ota
 
 ## 支持的平台
-52x，56x和58x的芯片
+全平台
 
 ## 概述
 <!-- 例程简介 -->
@@ -14,10 +15,10 @@
 
 ## 例程的使用
 1. 本例程的主工程同BLE peripheral，该工程的时候方法可以参照example/ble/peripheral工程
-2. 制作升级包的工具ezip.exe，img_toolv37.exe在tool/secureboot目录下，key相关内容在tool/secureboot/sifli02目录下，把以上文件放在同一目录然后按照下文制作升级包部分，制作升级包。
+2. 制作升级包的工具img_toolv37.exe在tool/secureboot目录下
 3. 将升级包通过BLE APP下载，或者uart/jlink下载DFU_DOWNLOAD_REGION区域。
-4. 如果使用sifli ble app下载，将自动安装重启，如果是自行下载，需要调用dfu_offline_install_set_v2，然后调用HAL_PMU_ReBoot进行重启
-5. 重启后将运行升级包中的主程序。
+4. 如果使用sifli ble app下载，将自动安装重启，如果是自行下载，需要调用dfu_package_install_set，然后在非55x平台调用HAL_PMU_ReBoot进行重启，55x平台需要调用dfu_bootjump进行跳转
+5. 重启或跳转后将运行升级包中的主程序。
 
 ### menuconfig配置
 见接入方法-主工程
@@ -45,7 +46,7 @@ DFU_FLASH_CODE是dfu.bin的区域，size推荐大小384KB
 DFU_DOWNLOAD_REGION是存放下载文件的空间，需要预留一次升级所有文件大小 * 0.7的空间
 ![ptab](./assets/ptab_561.png)
 
-对于nand工程，修改ptab时需要额外进行以下修改
+对于nand，emmc，sdnand工程，修改ptab时需要额外进行以下修改
 1. HCPU_FLASH_CODE的宏移动到flash2的hcpu tags中
 2. 添加DFU_DOWNLOAD_REGION和
 3. 额外添加一个DFU_INFO_REGION，128KB
@@ -72,21 +73,43 @@ example/boot_loader/project/sf32lb58x_v2\
 ### 主工程
 本example下的相关配置已配置好，无需修改\
 如果是其他工程想要使用本DFU功能，参照如下修改：\
-Kconfig.proj
+
+#### Kconfig.proj
 增加DFU开关
 ![main1](./assets/mainproject1.png)
  
 
-proj.conf
+#### proj.conf
 打开DFU相关的代码和DFU开关
 ![main2](./assets/mainproject2.png)
  
 
-Sconstruct
+#### Sconstruct
 添加DFU子工程
 注：需要添加到AddFTAB之前
 ![main3](./assets/mainproject3.png)
+
+
+#### custom_mem_map.h
+需要参考ptab.h和ptab.json, 把相关分区都添加到FAL_PART_TABLE中\
+以eh-lb561为例\
+magic_word\
+固定值FAL_PART_MAGIC_WORD\
+name\
+分区名，供在代码中使用，例如在本工程的board.c，如果flash类型为EMMC，则使用rt_device_find寻找名为"fs_root"的设备进行mount\
+flash_name\
+该分区所在flash的名字，对应ptab.json中的"mem"，根据分区具体在哪块flash填写\
+offset\
+ptab.json中，对应分区的偏移\
+len\
+ptab.json中，对应分区的长度\
+reserved\
+0\
+dfu_info分区\
+只有非nor flash，才需要该分区
+![main4](./assets/mainproject4.png)
  
+
 ### DFU工程
 通常无需修改
 
@@ -103,9 +126,17 @@ Sconstruct
 
 
 ## 制作升级包
+```c
 .\imgtoolv37.exe gen_dfu --img_para hcpu 16 0 dfu 16 6 --com_type=0 --offline_img=2
+```
 
-所有文件和待制作的升级文件，放到同一目录
+如果移动了tool/secureboot/imgtoolv37.exe的位置，可能会找不到tool/png2ezip/ezip.exe，可以使用--ezip_path指定ezip.exe的位置。\
+举个例子，如果移动imgtoolv37.exe和ezip.exe到了另一个目录，两个文件在同一层，则可以使用如下命令\
+```c
+.\imgtoolv37.exe gen_dfu --img_para hcpu 16 0 dfu 16 6 --com_type=0 --offline_img=2 --ezip_path=ezip.exe
+```
+
+制作工具和待制作的升级文件，放到同一目录\
 同时制作hcpu和dfu的命令如上，hcpu代表制作hcpu.bin，dfu代表制作dfu.bin
 Bin名字后面的第一个参数用于压缩，16是使用压缩，0是不压缩
 Bin名字后面的第二个参数表示image id，hcpu是0，dfu 是6。
@@ -117,7 +148,52 @@ Bin名字后面的第二个参数表示image id，hcpu是0，dfu 是6。
 
 如果需要升级HCPU和DFU以外的bin，需要自行指定image id对应的flash地址，在dfu_flash.c的dfu_get_download_addr_by_id中，添加新的ID，然后返回ptab.c中定义的地址即可，flag&DFU_FLAG_COMPRESS条件下的地址不需要实现。
 ![package](./assets/package.png)
- 
+
+## 升级包结构和安装流程
+|OFFSET|LENGTH|CONTENT|
+|:---|:---|:---|
+|0|4|DFU Magic(0x46, 0x43, 0x 45, 0x53)|
+|4|1|安装包的协议版本|
+|5|1|安装flag，0xFF|
+|6|2|Image count|
+|8|4|所有image内容一起（image1+image2+…），做CRC32MPEG2的结果|
+|12|1|第一个image的id|
+|13|1|第一个image的flag|
+|14|4|第一个image的长度|
+|18|1|第二个image的id|
+|19|1|第二个image的flag|
+|20|4|第二个image的长度|
+| | |...|
+| | |ImageX|
+| | |ImageY|
+| | |...|
+
+### HCPU中的安装流程
+调用dfu_package_install(INSTALL_TYPE_OTA_MANAGER)
+1. 检查MAGIC，计算CRC（规则见安装包结构），检验安装包的合法性和完整性。
+2. 如果有安装包中有ota manager，则安装ota manager。
+3. 擦除原ota manager
+4. 如果是非压缩的bin，直接将dfu安装包对应image的内容，复制到目标区域。
+5. 如果是压缩的bin，则解压然后写到对应区域。
+6. 更新DFU NV
+7. 更新RTC寄存器，重启
+
+### OTA MANAGER中的安装流程
+调用dfu_package_install(INSTALL_TYPE_IMAGE)
+1. 检查MAGIC，计算CRC（规则见安装包结构），检验安装包的合法性和完整性
+2. 安装除了ota manager之外的所有bin，安装处理同hcpu中的安装。
+3. 更新DFU NV
+4. 更新RTC寄存器，重启
+
+###  压缩格式
+压缩数据格式
+
+生成每个压缩bin时，会先填充一个8字节的header，包括了4字节原长和4字节分块长度，目前通常是10240。
+
+然后将原数据按照分块长度切分，每一块做EZIP硬件GZIP压缩或者软件ZLIB压缩，目前基本使用的是前者。把每一块压缩后的长度+压缩后的数据拼接，然后再把所有压缩块的数据拼接，再加上刚才的header，就组成了一个完整的compress bin。
+
+
+
 ## 手机APP和DEMO工程获取使用
 ### Android sifli ble app下载地址
 https://www.pgyer.com/gurSBc
@@ -131,13 +207,13 @@ https://github.com/OpenSiFli/SiFli_OTA_APP_IOS\
 对应的部分在"SiFli-SDK OTA (Nor Offline)"
 
 ## 手机使用
-操作如下图示意，搜索板子的BLE广播，点击对应设备，然后选择nor dfu，最后选择offline，不需要再点击下方的start等按钮
+操作如下图示意，搜索板子的BLE广播，点击对应设备，然后选择nor dfu，最后选择offline，不需要再点击下方的start等按钮\
 ![app1](./assets/app.jpg)![app2](./assets/app2.jpg)
 ![app3](./assets/app3.jpg)![app2](./assets/app4.jpg)
 
 
 ## 异常诊断
-1.	编译时DFU工程提示空间不足
+1.   编译时DFU工程提示空间不足
 board.conf中打开的内容，dfu工程也会编译，导致dfu工程编译一些不需要的东西，大小也可能超过ptab.json中DFU_FLASH_CODE的大小。
 对于borad.conf中定义的不需要编译到dfu工程的内容，修改dfu工程下的proj.conf，定义对应项为n
 ![more](./assets/more.png)
@@ -148,6 +224,8 @@ board.conf中打开的内容，dfu工程也会编译，导致dfu工程编译一�
 例如设计最大升级为同时升级hcpu.bin + res.bin + dfu.bin，其中res.bin为图片资源
 那么就需要预留最大hcpu.bin size * 0.7+ res.bin size + dfu.bin size * 0.7的空间
 
+3.   flash类型判断
+在0.0.8更新后，判断flash类型时，默认根据FAL_PART_TABLE的内容进行判断，如果没有完善FAL_PART_TABLE，则会有"dfu_get_flash_type: get flash type by fal part table failed"打印，然后尝试使用之前的方式判断，在nor和nand flash上，仍然可以正常工作，但是在EMMC，SDNAND上，将无法正常工作，必须完善FAL_PART_TABLE
 
 
 ## 参考文档
@@ -162,3 +240,6 @@ board.conf中打开的内容，dfu工程也会编译，导致dfu工程编译一�
 |0.0.4 |04/2025 |增加http下载示例，调整目录结构和宏开关 |
 |0.0.5 |11/2025 |增加55x的升级适配 |
 |0.0.6 |11/2025 |更新一些过时内容 |
+|0.0.7 |01/2026 |更新制作工具，修复ezip工具的路径问题 |
+|0.0.8 |01/2026 |增加关于安装的说明 |
+|0.0.9 |04/2026 |增加EMMC flash的支持，更新获取flash类型的方法 |

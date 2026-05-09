@@ -1,7 +1,13 @@
+/*
+ * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /*********************
  *      INCLUDES
  *********************/
 #include "littlevgl2rtt.h"
+#include "lvsf.h"
 #include "lv_ext_resource_manager.h"
 #include <rtdevice.h>
 #ifndef _WIN32
@@ -11,7 +17,7 @@
 #include "lv_ex_data.h"
 #include "app_mem.h"
 #include "log.h"
-#include "lv_freetype.h"
+#include "lvsf/lv_freetype.h"
 
 #ifdef BSP_USING_PM
     #include "bf0_pm.h"

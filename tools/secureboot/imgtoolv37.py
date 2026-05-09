@@ -13,13 +13,14 @@ import zlib
 import os
 import binascii
 import array
+import platform
 
-from Cryptodome.PublicKey import RSA
-from Cryptodome.Random import get_random_bytes
-from Cryptodome.Cipher import AES, PKCS1_OAEP
-from Cryptodome.Hash import SHA256
-from Cryptodome.Signature import pkcs1_15
-from Cryptodome.Util import Counter
+from Crypto.PublicKey import RSA
+from Crypto.Random import get_random_bytes
+from Crypto.Cipher import AES, PKCS1_OAEP
+from Crypto.Hash import SHA256
+from Crypto.Signature import pkcs1_15
+from Crypto.Util import Counter
 from crccheck.crc import Crc32Mpeg2
 
 DFU_FLAG_ENC      =1
@@ -259,12 +260,12 @@ def compress_and_sign_image_help(img, eimg) :
 
     img_len = to_bytes(len(data))
 
-	# Generate header
+    # Generate header
     pksize=struct.pack("<I", FLAGS.pksize)
     header=img_len+pksize
     i = 0
-	
-	# Compress
+    
+    # Compress
     compresstext = b''
     print(len(data))
     while (i < len(data)):
@@ -288,7 +289,7 @@ def compress_and_sign_image_help(img, eimg) :
     file_out=open(eimg, "wb")
     file_out.write(signature)
     file_out.write(img_text)
-	
+    
 def compress_and_sign_image() :
     if os.path.isdir(FLAGS.img):
         if os.path.exists(FLAGS.eimg):
@@ -300,8 +301,8 @@ def compress_and_sign_image() :
             print(FLAGS.eimg+'/'+f+'_compress.bin')  
             compress_and_sign_image_help(FLAGS.img+'/'+f, FLAGS.eimg+'/'+f+'_compress.bin')
     else:
-        compress_and_sign_image_help(FLAGS.img,FLAGS.eimg)	
-	
+        compress_and_sign_image_help(FLAGS.img,FLAGS.eimg)    
+    
 def gen_uid() :
     session_key = get_random_bytes(16)
     file_out = open(FLAGS.key+".bin", "wb")
@@ -333,7 +334,7 @@ def gen_root() :
     session_key = get_random_bytes(32) 
     file_out = open(FLAGS.key+".bin", "wb")
     file_out.write(session_key)
-	
+    
 def enc_ftab() :
     #1. Open key
     file_in=open(FLAGS.key+".bin", "rb")
@@ -557,8 +558,18 @@ def dfu_compress_bin(img, eimg):
             temp_file = "temp_com.bin"
             with open (temp_file, "wb") as fi:
                 fi.write(data2)
+            if FLAGS.ezip_path:
+                ezip_cmd = FLAGS.ezip_path
+            else:
+                if platform.system() == 'Windows':
+                    ezip_cmd = os.path.join("..", "png2ezip", "eZIP")
+                elif platform.system() == 'Linux':
+                    ezip_cmd = os.path.join("..", "png2ezip", "ezip_linux")
+                else:
+                    ezip_cmd = os.path.join("..", "png2ezip", "ezip_mac")
 
-            main = "eZIP.exe -gzip " + temp_file + " -length -noheader"
+            main = f'{ezip_cmd} -gzip {temp_file} -length -noheader'
+            print (main)
             r_v = os.system(main)
             #print (r_v)
 
@@ -586,21 +597,30 @@ def dfu_compress_bin(img, eimg):
 
 
 def dfu_bin_generation(bin, flag, session_key):
-    img = bin+'.bin'
-    is_enc=flag & DFU_FLAG_ENC
-    if (flag & DFU_FLAG_COMPRESS):
-        out_img = 'com_'+img
+    img = bin + '.bin'
+    is_enc = flag & DFU_FLAG_ENC
+
+    def add_suffix_to_filename(filepath, suffix):
+        dir_path = os.path.dirname(filepath)
+        base_name = os.path.basename(filepath)
+        name, ext = os.path.splitext(base_name)
+        new_name = f"{suffix}_{name}{ext}"
+        return os.path.join(FLAGS.dst_dir, new_name)
+
+    if flag & DFU_FLAG_COMPRESS:
+        out_img = add_suffix_to_filename(img, 'com')
         dfu_compress_bin(img, out_img)
-        img = 'com_'+img
-    if (flag & DFU_FLAG_ENC):
-        out_img = 'enc'+img
-    else :
-        out_img = 'out' + img
-    if (FLAGS.offline_img == 2):
+        img = out_img
+
+    if flag & DFU_FLAG_ENC:
+        out_img = add_suffix_to_filename(img, 'enc')
+    else:
+        out_img = add_suffix_to_filename(img, 'out')
+
+    if FLAGS.offline_img == 2:
         return 0
+    print(os.system("dir"))
     return dfu_packed_bin(img, out_img, session_key, is_enc)
-
-
 
 
 def dfu_generation() :
@@ -639,7 +659,7 @@ def dfu_generation() :
         control_packet += img_header_len
         control_packet += img_header
         #print(control_packet)
-        file_out = open('control_packet_value.txt', "wb")
+        file_out = open(FLAGS.dst_dir + "/" + 'control_packet_value.txt', "wb")
         file_out.write(control_packet)
     
         #6. Encrypt header
@@ -652,14 +672,14 @@ def dfu_generation() :
         enc_header = cipher_core_aes.encrypt(control_packet)
         
     
-        file_out = open('enc_header.txt', "wb")
+        file_out = open(FLAGS.dst_dir + "/" + 'enc_header.txt', "wb")
         file_out.write(enc_header)
         
         pri_key = RSA.import_key(open(FLAGS.sigkey+"_pri.pem").read())
         sign_rsa = pkcs1_15.new(pri_key)
         signature = sign_rsa.sign(hash)
     
-        file_out = open('ctrl_packet.bin', "wb")
+        file_out = open(FLAGS.dst_dir + "/" + 'ctrl_packet.bin', "wb")
         file_out.write(hash.digest())
         file_out.write(enc_header)
         file_out.write(signature)
@@ -680,7 +700,7 @@ def dfu_generation() :
         return
     if (FLAGS.offline_img == 1): 
         ota_magic = [0x46, 0x43, 0x45, 0x53]
-        file_offline = open('offline_install.bin', "wb")
+        file_offline = open(FLAGS.dst_dir + "/" + 'offline_install.bin', "wb")
         for byte_one in ota_magic:
             byte_str = struct.pack('B', byte_one)
             file_offline.write(byte_str)
@@ -694,7 +714,7 @@ def dfu_generation() :
     
         
         file_offline.write(DFU_IMG_ID_CTRL.to_bytes(1, byteorder="little"))
-        ctrl_packet_len = (os.stat('ctrl_packet.bin')).st_size
+        ctrl_packet_len = (os.stat(FLAGS.dst_dir + "/" + 'ctrl_packet.bin')).st_size
         #print(ctrl_packet_len)
         file_offline.write(ctrl_packet_len.to_bytes(4, byteorder="little"))
         
@@ -705,7 +725,7 @@ def dfu_generation() :
             file_len = (os.stat(file_name)).st_size
             file_offline.write(file_len.to_bytes(4, byteorder="little"))
         
-        file = open('ctrl_packet.bin', "rb")
+        file = open(FLAGS.dst_dir + "/" + 'ctrl_packet.bin', "rb")
         file_content = file.read();
         file_offline.write(file_content)
         file.close 
@@ -748,12 +768,12 @@ def dfu_generation() :
             
             img_flag = int(a[1])
             if (img_flag == 16):
-                file_name = "com_" + a[0] + ".bin"
+                file_name = FLAGS.dst_dir + "/" + "com_" + a[0] + ".bin"
                 file_len = (os.stat(file_name)).st_size
                 file_offline.write(file_len.to_bytes(4, byteorder="little"))
                 #print("add file info com " + file_name + ", " + file_len)
             else:
-                file_name = a[0] + ".bin"
+                file_name = FLAGS.dst_dir + "/" + a[0] + ".bin"
                 file_len = (os.stat(file_name)).st_size
                 file_offline.write(file_len.to_bytes(4, byteorder="little"))
                 #print("add file info " + file_name + ", " + file_len)
@@ -763,14 +783,14 @@ def dfu_generation() :
         for a in list_pair:
             img_flag = int(a[1])
             if (img_flag == 16):
-                file_name = "com_" + a[0] + ".bin"
+                file_name = FLAGS.dst_dir + "/" + "com_" + a[0] + ".bin"
                 file = open(file_name, "rb")
                 file_content = file.read();
                 file_data += file_content
                 file_offline.write(file_content)
                 file.close()
             else:
-                file_name = a[0] + ".bin"
+                file_name = FLAGS.dst_dir + "/" + a[0] + ".bin"
                 file = open(file_name, "rb")
                 file_content = file.read();
                 file_offline.write(file_content)
@@ -868,6 +888,11 @@ if __name__ == '__main__':
         nargs='*',
         help='img parameter list')
     parser.add_argument(
+        '--dst_dir',
+        type=str,
+        default=".",
+        help='img dst dir')
+    parser.add_argument(
         '--dfu_id',
         type=int,
         default=0,
@@ -902,6 +927,11 @@ if __name__ == '__main__':
         type=int,
         default=1,
         help='make general file 16-byte alignment')
+    parser.add_argument(
+        '--ezip_path',
+        type=str,
+        default=None,
+        help='ezip path dir')
     FLAGS, unparsed = parser.parse_known_args()
     FLAGS, unparsed = parser.parse_known_args()
     FLAGS, unparsed = parser.parse_known_args()

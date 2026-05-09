@@ -207,6 +207,12 @@ SECTIONS
 #else
     *(.text*)
     *(.rodata*)
+    
+    *(.ROM1_IMG)
+    *(.ROM3_IMG*)
+    * (.ROM_IMG*.*)
+    *lvsf_font_*(.rodata*)
+    *(.font_data)
 
     KEEP(*(.init))
     KEEP(*(.fini))
@@ -471,6 +477,8 @@ SECTIONS
     *(.*l2_ret_bss_*)
     *(.*l2_cache_ret_data_*)
     *(.*l2_cache_ret_bss_*)
+    *(.*l2_non_ret_bss_anim_frambuf)
+    *(.bss.l2_ret_bss_app_psram_ret_cache)
     . = ALIGN(4);
   __rw_psram2_end__ = .;
 
@@ -486,6 +494,7 @@ SECTIONS
     *(.*l2_non_ret_bss_*)
     *(.*l2_cache_non_ret_data_*)
     *(.*l2_cache_non_ret_bss_*)
+    *(.bss.l2_non_ret_bss_frambuf)
     . = ALIGN(4);
     __RW_PSRAM_NON_RET_end__ = .;
 
@@ -531,15 +540,15 @@ SECTIONS
   /* Check if data + heap + stack exceeds RAM limit */
   /* ASSERT(__StackLimit >= __HeapLimit, "region RAM overflowed with stack") */
   
+  /*
   .rom2 :
   {
-    * (.ROM1_IMG)
-    * (.ROM3_IMG)    
+
   } > ROM2
 
   .rom3 :
   {
-    *lvsf_font_*(.rodata*)
   } > ROM3
+  */
 #endif
 }

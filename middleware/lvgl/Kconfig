@@ -54,32 +54,36 @@ menu "SiFli extend"
 
             comment "------------1. Config LCD framebuffer on PSRAM-----------"
             choice
-                prompt "LCD Framebuffer numbers"
+                prompt "LCD Framebuffer config"
                 default LCD_FB_USING_AUTO
+		help  
+                      LCD Framebuffer is used to buffer the LVGL framebuffer,
+		      and retain the full image of the LCD screen. This prevents
+		      tearing effect caused by slow rendering.
 
                 config LCD_FB_USING_AUTO
                     bool "Auto"
                     select BSP_USING_LCD_FRAMEBUFFER
                 config LCD_FB_USING_ONE_UNCOMPRESSED
-                    bool "One screen sized buffer for ram LCD typically"
+                    bool "One screen sized buffer"
                     select BSP_USING_LCD_FRAMEBUFFER
                 config LCD_FB_USING_TWO_UNCOMPRESSED
                     bool "Two screen sized buffer for ramless LCD typically"
                     select BSP_USING_LCD_FRAMEBUFFER
                 config LCD_FB_USING_ONE_COMPRESSED
-                    bool "One screen sized compressed buffer for ram LCD typically"
+                    bool "One screen sized compressed buffer"
                     select BSP_USING_LCD_FRAMEBUFFER
                 config LCD_FB_USING_TWO_COMPRESSED
                     bool "Two screen sized compressed buffer for ramless LCD typically"
                     select BSP_USING_LCD_FRAMEBUFFER
                 config LCD_FB_USING_NONE
-                    bool "No Framebuffer"
+                    bool "No Framebuffer, flush LVGL buffer to LCD directly"
             endchoice
 
 
             comment "------------2. Config LVGL framebuffer on SRAM-----------"
             choice
-                prompt "LVGL Framebuffer size"
+                prompt "LVGL Framebuffer config"
                 default LV_FB_ONE_NOT_SCREEN_SIZE
 
                 config LV_FB_ONE_SCREEN_SIZE
@@ -88,13 +92,13 @@ menu "SiFli extend"
                 config LV_FB_TWO_SCREEN_SIZE
                     bool "TWO screen sized framebuffer"
                 config LV_FB_ONE_NOT_SCREEN_SIZE
-                    bool "One part of screen sized framebuffer"
+                    bool "One part of framebuffer (1*LV_FB_LINE_NUM)"
                 config LV_FB_TWO_NOT_SCREEN_SIZE
-                    bool "Two part of screen sized framebuffer"
+                    bool "Two part of framebuffer (2*LV_FB_LINE_NUM)"
             endchoice
 
             config LV_FB_LINE_NUM
-                int "LVGL Frame Buffer Line Number(The part size)"
+                int "LVGL Frame Buffer Line Number(LV_FB_LINE_NUM)"
                 depends on LV_FB_ONE_NOT_SCREEN_SIZE ||  LV_FB_TWO_NOT_SCREEN_SIZE
                 default 100
         endmenu
@@ -110,6 +114,19 @@ menu "SiFli extend"
             int "vertical pixels"
             depends on !LV_RES_AUTO
             default 272
+        config MEDIA_CACHE_SIZE
+            int "Media cache size"
+            default 4000000
+            help
+                Size of the dedicated memory heap used by ffmpeg_alloc().
 
+                When this value is greater than 0, FFmpeg allocations use an
+                independent media heap reserved in app memory.
 
+                When this value is 0, ffmpeg_alloc() falls back to the
+                app_anim_mem_alloc() path and shares memory with the animation/image
+                allocation pool.
+
+                This setting directly affects the memory space available to FFmpeg
+                decoding and whether FFmpeg memory is isolated from other app pools.
     endmenu

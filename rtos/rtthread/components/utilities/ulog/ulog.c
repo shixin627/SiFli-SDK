@@ -621,7 +621,8 @@ __ROM_USED void ulog_raw(const char *format, ...)
     va_list args;
     int fmt_result;
 
-    RT_ASSERT(ulog.init_ok);
+    if (!ulog.init_ok)
+        return;
 
     /* get log buffer */
     log_buf = get_log_buf();
@@ -662,7 +663,8 @@ __ROM_USED void ulog_vraw(const char *format, va_list args)
     char *log_buf = NULL;
     int fmt_result;
 
-    RT_ASSERT(ulog.init_ok);
+    if (!ulog.init_ok)
+        return;
 
     /* get log buffer */
     log_buf = get_log_buf();
@@ -713,7 +715,8 @@ __ROM_USED void ulog_hexdump(const char *tag, rt_size_t width, rt_uint8_t *buf, 
     char *log_buf = NULL, dump_string[8];
     int fmt_result;
 
-    RT_ASSERT(ulog.init_ok);
+    if (!ulog.init_ok)
+        return;
 
 #ifdef ULOG_USING_FILTER
     /* level filter */

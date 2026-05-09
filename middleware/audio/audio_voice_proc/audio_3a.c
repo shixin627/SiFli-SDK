@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2020-2021 SiFli Technologies(Nanjing) Co., Ltd
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -33,7 +33,7 @@
     #include "webrtc/modules/audio_processing/ramp_out/ramp_out.h"
 #endif
 
-#if defined(RT_USING_BT) && defined(SOLUTION_WATCH)
+#if defined(RT_USING_BT) && defined(SOLUTION)
     #include "bt_connect.h"
 #endif
 
@@ -684,7 +684,6 @@ void audio_3a_data_process(audio_3a_t *p_3a_env, uint8_t *fifo, uint16_t fifo_si
     audio_dump_data(ADUMP_DC_OUT, (uint8_t *)data_out, p_3a_env->frame_len);
 #endif
 
-    if (p_3a_env->is_far_putted)
     {
         data_in = data_out;  //spframe
         data_out = outframe;
@@ -705,7 +704,7 @@ void audio_3a_data_process(audio_3a_t *p_3a_env, uint8_t *fifo, uint16_t fifo_si
 
         data_in2 = data_out; //outframe
 #ifdef WEBRTC_AECM
-        if (g_u16_test_aec)
+        if (p_3a_env->is_far_putted && g_u16_test_aec)
         {
             aec_input_para_t input_para;
             data_out = outframe2;
@@ -795,10 +794,6 @@ bypass_3a:
         audio_mem_free(outframe2);
 #endif
     }
-    else
-    {
-        LOG_I("3a_w rbuf_far empty");
-    }
 }
 
 void audio_3a_module_free(audio_3a_t *p_3a_env)
@@ -849,10 +844,16 @@ void audio_3a_module_free(audio_3a_t *p_3a_env)
 }
 
 extern uint32_t bt_connect_get_peer_type(void);
-void audio_3a_open(uint32_t samplerate, uint8_t is_bt_voice, uint8_t disable_uplink_agc)
+
+RT_WEAK void hfp_opened_for_xiaozhi(uint32_t samplerate)
 {
+}
+
+void audio_3a_open(uint32_t samplerate, uint8_t is_bt_voice, uint8_t disable_uplink_agc, uint8_t all_mic_channels)
+{
+    all_mic_channels = 1;
     audio_3a_t *thiz = &g_audio_3a_env;
-#if defined(SOLUTION_WATCH) && defined(RT_USING_BT)
+#if defined(SOLUTION) && defined(RT_USING_BT)
     bool talk_with_abox = false;
 
     if (BT_DEV_CLS_AUDIO_BOX ==  bt_connect_get_peer_type())
@@ -904,6 +905,7 @@ void audio_3a_open(uint32_t samplerate, uint8_t is_bt_voice, uint8_t disable_upl
         if (is_bt_voice)
             bt_voice_open(samplerate);
 #endif
+        hfp_opened_for_xiaozhi(g_audio_3a_env.samplerate);
     }
 }
 
@@ -981,6 +983,37 @@ uint8_t audio_3a_dnlink_buf_is_full(uint8_t size)
     }
 }
 
+void xiaozhi_to_hfp(uint8_t *fifo, uint16_t fifo_size)
+{
+    audio_3a_t *p_3a_env = &g_audio_3a_env;
+    uint16_t putsize, getsize;
+
+    if (p_3a_env->state == 0)
+    {
+        return;
+    }
+
+    if (p_3a_env->samplerate == 8000)
+    {
+        RT_ASSERT(fifo_size == 120);
+#ifdef AUDIO_BT_AUDIO
+        msbc_encode_process(fifo, 120);
+#endif
+    }
+    else
+    {
+        RT_ASSERT(fifo_size == 240);
+#ifdef AUDIO_BT_AUDIO
+        msbc_encode_process(fifo, 240);
+#endif
+    }
+}
+
+RT_WEAK int hfp_to_xiaozhi(uint32_t samplerate, uint8_t *data, uint8_t data_len)
+{
+    return 0;
+}
+
 void audio_3a_downlink(uint8_t *fifo, uint8_t size)
 {
     audio_3a_t *p_3a_env = &g_audio_3a_env;
@@ -990,6 +1023,12 @@ void audio_3a_downlink(uint8_t *fifo, uint8_t size)
         LOG_I("3a_w downlink error: closed");
         return;
     }
+
+    if (hfp_to_xiaozhi(g_audio_3a_env.samplerate, fifo, size))
+    {
+        return;
+    }
+
 #ifdef AUDIO_MEM_ALLOC
     uint8_t  *data1 = audio_mem_malloc(320);
     uint8_t  *data2 = audio_mem_malloc(320);
@@ -1058,6 +1097,10 @@ void audio_3a_uplink(uint8_t *fifo, uint16_t fifo_size, uint8_t is_mute, uint8_t
         if (!is_bt_voice)
         {
             rt_ringbuffer_get(p_3a_env->rbuf_out, fifo, 320);
+            if (is_mute)
+            {
+                memset(fifo, 0, 320);
+            }
             return;
         }
         while (rt_ringbuffer_data_len(p_3a_env->rbuf_out) >= 120)

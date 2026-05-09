@@ -36,7 +36,7 @@
         "regions": [
             {
                 "offset": "0x00000000", 
-                "max_size": "0x00700000", 
+                "max_size": "0x00580000", 
                 "tags": [],
                 "ftab": {
                     "name": "main",
@@ -51,8 +51,8 @@
                }
             },
             {
-                "offset": "0x00700000", 
-                "max_size": "0x00500000", 
+                "offset": "0x00580000", 
+                "max_size": "0x00278000", 
                 "tags": [
                     "PSRAM_DATA"
                 ]
@@ -65,7 +65,7 @@
         "regions": [
             {
                 "offset": "0x00000000", 
-                "max_size": "0x00600000", 
+                "max_size": "0x00580000", 
                 "tags": [
                     "HCPU_FLASH_CODE"
                 ],
@@ -75,7 +75,7 @@
     },    
     {
         "mem": "psram2", 
-        "base": "0x60A80000", 
+        "base": "0x60800000", 
         "regions": [
             {
                 "offset": "0x00000000", 
@@ -92,7 +92,7 @@
         "regions": [
             {
                 "offset": "0x00000000", 
-                "max_size": "0x00300000", 
+                "max_size": "0x00580000", 
                 "tags": [
                     "HCPU_FLASH_CODE_LOAD_REGION"
                 ], 
@@ -105,7 +105,7 @@
                 }
             }, 
             {
-                "offset": "0x00300000", 
+                "offset": "0x00580000", 
                 "max_size": "0x00400000", 
                 "img": "fs_root", 
                 "tags": [
@@ -113,14 +113,14 @@
                 ]
             }, 
             {
-                "offset": "0x00700000", 
+                "offset": "0x00980000", 
                 "max_size": "0x00004000", 
                 "tags": [
                     "KVDB_DFU_REGION"
                 ]
             }, 
             {
-                "offset": "0x00704000", 
+                "offset": "0x00984000", 
                 "max_size": "0x00004000", 
                 "tags": [
                     "KVDB_BLE_REGION"
@@ -170,3 +170,4 @@
         ]
     }
 ]
+

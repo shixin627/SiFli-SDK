@@ -131,11 +131,15 @@ int gettimeofday(struct timeval *tp, struct timezone  *tz)
     time_t time;
     rt_device_t device;
 
-    device = rt_device_find("rtc");
-    RT_ASSERT(device != RT_NULL);
+
 
     if (tp)
+    {
+        device = rt_device_find("rtc");
+        RT_ASSERT(device != RT_NULL);
         rt_device_control(device, RT_DEVICE_CTRL_RTC_GET_TIMEVAL, tp);
+    }
+
     if (tz)
         memcpy(tz, &_current_timezone, sizeof(struct timezone));
     return time;

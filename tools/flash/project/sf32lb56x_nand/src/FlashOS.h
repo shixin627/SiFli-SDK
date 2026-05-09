@@ -4,6 +4,11 @@
 *                           www.segger.com                           *
 **********************************************************************
 */
+/*
+ * SPDX-FileCopyrightText: 2025-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #include "stdint.h"
 #define U8  uint8_t
 #define U16 uint16_t
@@ -15,7 +20,7 @@
 
 #define ONCHIP     (1)             // On-chip Flash Memory
 
-#define MAX_NUM_SECTORS (4096)      // Max. number of sectors, must not be modified.
+#define MAX_NUM_SECTORS (512)      // Max. number of sectors, must not be modified.
 #define ALGO_VERSION    (0x0101)   // Algo version, must not be modified.
 
 struct SECTOR_INFO
@@ -49,6 +54,7 @@ extern int ProgramPage(U32 Addr, U32 NumBytes, U8 *pSrcBuff);   // Mandatory
 extern int BlankCheck(U32 Addr, U32 NumBytes, U8 BlankData);    // Optional
 extern int EraseChip(void);                                     // Optional
 extern U32 Verify(U32 Addr, U32 NumBytes, U8 *pSrcBuff);        // Optional
+extern void HAL_MspInit(void);
 
 //
 // SEGGER defined functions
@@ -58,6 +64,3 @@ extern int  SEGGER_OPEN_Read(U32 Addr, U32 NumBytes, U8 *pDestBuff);            
 extern int  SEGGER_OPEN_Program(U32 DestAddr, U32 NumBytes, U8 *pSrcBuff);          // Optional
 extern int  SEGGER_OPEN_Erase(U32 SectorAddr, U32 SectorIndex, U32 NumSectors);     // Optional
 //extern void SEGGER_OPEN_Start    (volatile struct SEGGER_OPEN_CMD_INFO* pInfo);     // Optional
-
-
-

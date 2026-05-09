@@ -278,6 +278,11 @@ extern "C" {
 #define SDMMC2_DMA_INSTANCE            DMA1_Channel3
 #define SDMMC2_DMA_IRQ                 DMAC1_CH3_IRQn
 
+#define SPI1_DMA_RX_IRQHandler       DMAC1_CH3_IRQHandler
+#define SPI1_RX_DMA_IRQ_PRIO         0
+#define SPI1_RX_DMA_INSTANCE         DMA1_Channel3
+#define SPI1_RX_DMA_IRQ              DMAC1_CH3_IRQn
+
 /* DMA1 channel4  */
 //PDM1 L
 #define PDM1_L_DMA_IRQHandler           DMAC1_CH4_IRQHandler
@@ -285,10 +290,22 @@ extern "C" {
 #define PDM1_L_DMA_INSTANCE             DMA1_Channel4
 #define PDM1_L_DMA_IRQ                  DMAC1_CH4_IRQn
 
+#if !defined(PDM2_L_DMA_INSTANCE) && defined(BSP_USING_PDM2)
+#define PDM2_L_DMA_IRQHandler           DMAC1_CH3_IRQHandler
+#define PDM2_L_DMA_IRQ_PRIO             0
+#define PDM2_L_DMA_INSTANCE             DMA1_Channel3
+#define PDM2_L_DMA_IRQ                  DMAC1_CH3_IRQn
+#endif
+
 #define I2S_TX_DMA_IRQHandler              DMAC1_CH4_IRQHandler
 #define I2S_TX_DMA_IRQ_PRIO                     0
 #define I2S_TX_DMA_INSTANCE                DMA1_Channel4
 #define I2S_TX_DMA_IRQ                     DMAC1_CH4_IRQn
+
+#define SPI1_DMA_TX_IRQHandler       DMAC1_CH4_IRQHandler
+#define SPI1_TX_DMA_IRQ_PRIO         0
+#define SPI1_TX_DMA_INSTANCE         DMA1_Channel4
+#define SPI1_TX_DMA_IRQ              DMAC1_CH4_IRQn
 
 /* DMA1 channel5 */
 #define UART1_DMA_TX_IRQHandler          DMAC1_CH5_IRQHandler
@@ -336,6 +353,11 @@ extern "C" {
 #define I2S_RX_DMA_INSTANCE                DMA1_Channel7
 #define I2S_RX_DMA_IRQ                     DMAC1_CH7_IRQn
 
+#define SPI2_DMA_RX_IRQHandler         DMAC1_CH7_IRQHandler
+#define SPI2_RX_DMA_IRQ_PRIO           0
+#define SPI2_RX_DMA_INSTANCE           DMA1_Channel7
+#define SPI2_RX_DMA_IRQ                DMAC1_CH7_IRQn
+
 /* DMA1 channel8  */
 #define UART3_DMA_RX_IRQHandler         DMAC1_CH8_IRQHandler
 #define UART3_RX_DMA_IRQ_PRIO           0
@@ -346,6 +368,11 @@ extern "C" {
 #define AUDPRC_TX2_DMA_IRQ_PRIO                0
 #define AUDPRC_TX2_DMA_INSTANCE                DMA1_Channel8
 #define AUDPRC_TX2_DMA_IRQ                     DMAC1_CH8_IRQn
+
+#define SPI2_DMA_TX_IRQHandler         DMAC1_CH8_IRQHandler
+#define SPI2_TX_DMA_IRQ_PRIO           0
+#define SPI2_TX_DMA_INSTANCE           DMA1_Channel8
+#define SPI2_TX_DMA_IRQ                DMAC1_CH8_IRQn
 
 /*************************************DMA2 ***************************************/
 #define UART4_TX_DMA_REQUEST                   DMA_REQUEST_0

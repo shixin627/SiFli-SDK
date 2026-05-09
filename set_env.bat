@@ -4,8 +4,9 @@
 set SIFLI_SDK=%~dp0
 set SIFLI_SDK_PATH=%~dp0
 set PKGS_DIR=%PKGS_ROOT%
+set CONAN_HOME=%ENV_ROOT%\tools\conan
 
-set "ver_check=1.1.3"
+set "ver_check=1.1.4"
 if not defined ENV_VER (
     echo Please upgrate env to v%ver_check% or greater
     echo set_env FAIL
@@ -21,6 +22,7 @@ set "ver_current_num=%ver_current:.=%"
 REM Compare versions
 if %ver_current_num% LSS %ver_check_num% (
     echo Error: Env version v%ENV_VER% is lower than required v%ver_check%
+    echo Please download latest env from: https://downloads.sifli.com/tools/env/env_latest.zip
     exit /b 1
 )
 
@@ -35,7 +37,7 @@ if defined REG_KEIL_PATH (
 if "%1"=="gcc" goto :SET_GCC
 if "%1"=="iar" goto :SET_IAR
 if "%1"=="keil" goto :CHECK
-if "%1"==""    goto :CHECK
+if "%1"==""    goto :SET_GCC
 
 echo Unsupported toolchain: %1.
 echo Supported toolchain: keil, iar, gcc.
@@ -72,6 +74,7 @@ set PATH=%PYTHONHOME%;%PATH%
 set PATH=%PYTHONPATH%;%PATH%
 set PATH=%SCONS%;%PATH%
 set PATH=%ENV_ROOT%\tools\qemu\qemu32;%PATH%
+set PATH=%ENV_ROOT%\tools\cmake\bin;%PATH%
 
 set PYTHONPATH= %PYTHONPATH%;%SIFLI_SDK%tools\build;%SIFLI_SDK%tools\build\default;
 set SIFLI_SDK=%SIFLI_SDK:\=/%

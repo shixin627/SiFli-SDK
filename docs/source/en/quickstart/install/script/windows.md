@@ -1,23 +1,21 @@
 # Windows Installation Process
 
+We recommend using the [CodeKit](https://marketplace.visualstudio.com/items?itemName=SiFli.sifli-sdk-codekit) VSCode extension to install SiFli-SDK and related tools.
+
 ## Installation Prerequisites
 
-### Python Environment
+### `uv` Environment
 
-For Windows users, you need to ensure that the `Python` environment variable exists in the environment variables.
+Windows users do not need to pre-install system Python for the SDK scripts anymore. The supported workflow uses `uv` to provision the locked Python runtime on demand.
 
-If Python is not installed, please refer to the [Python official website](https://www.python.org/downloads/) to download and install Python version 3.9 or above, below 3.14. After installation, make sure to add Python to the system's environment variables.
-
-![](image/2025-05-26-13-39-17.png)
-
-```{note}
-For domestic users in China, you can use the following domestic mirror link to download Python installer: <https://mirrors.ustc.edu.cn/python/3.12.0/python-3.12.0.exe>
-```
-
-After installation, you can run the `python --version` command in the terminal to check if Python is installed successfully. Normally, it should output Python version information, such as:
+After installing `uv`, run the following command in PowerShell to verify it is available:
 
 ```powershell
-Python 3.12.0
+uv --version
+```
+
+```{note}
+`uv` is an extremely fast Python package and project management tool written in Rust. For installation instructions, refer to the [official uv documentation](https://docs.astral.sh/uv/getting-started/installation).
 ```
 
 ### Git Environment
@@ -36,7 +34,7 @@ git version 2.47.0.windows.1
 
 ### Terminal Setup
 
-SiFli-SDK script installation only supports `powershell`, and we recommend using `PowerShell 7` version. For specific installation procedures, please refer to the Microsoft documentation [PowerShell Installation](https://learn.microsoft.com/zh-cn/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.5).
+SiFli-SDK script installation only supports `powershell`.
 
 For terminal choice, we recommend using [Windows Terminal](https://aka.ms/terminal). Users can also choose other terminals, such as the integrated terminal that comes with VSCode. However, Windows Terminal is more recommended. Note that in some newer Windows 10/11 versions, Windows Terminal is already pre-installed.
 
@@ -46,17 +44,6 @@ To open `PowerShell`, you can use the following methods:
 - Press Win + R key combination to open the Run window, type `powershell`, then click OK.
 
 If you are using Windows Terminal, you can directly open PowerShell in the terminal. To open the terminal, you can press the Win key or click the Windows icon in the lower left corner, type `terminal`, then click to open Windows Terminal.
-
-````{warning}
-Note that if you are using PowerShell 5, running the install script in Windows Terminal may result in errors, prompting that `PowerShell.exe` is not supported. In this case, please upgrade to PowerShell 7 or use the PowerShell native terminal (the one with blue background after opening).
-
-To check PowerShell version, you can use the following command:
-
-```powershell
-$PSVersionTable.PSVersion
-```
-
-````
 
 If you encounter the error message 
 `Cannot load file C:\OpenSiFli\SiFli-SDK\export.ps1 because running scripts is disabled on this system.` in the subsequent script running steps, or if you have never heard of or run `.ps1` scripts before, please open PowerShell terminal in **administrator mode** and run the following command:
@@ -129,19 +116,38 @@ cd C:\OpenSiFli\SiFli-SDK
 .\install.ps1
 ```
 
-```{warning} 
-It should be noted that the pyenv tool should not be used to manage the Python environment of the system. Otherwise, errors may occur during the subsequent process.
+`install.ps1` will:
+
+- use `uv` to provision the locked Python runtime
+- sync the locked Python dependency graph from `tools/locks/default/pyproject.toml` and `tools/locks/default/uv.lock`
+- install the SDK toolchain versions bound by `tools/locks/default/lock.json`
+- initialize the profile-specific Conan home under `SIFLI_SDK_TOOLS_PATH`
+
+If you need to build with Keil/ARMCLANG, record the Keil root during installation. The directory must already exist and contain `ARM\ARMCLANG\bin`:
+
+```powershell
+.\install.ps1 --keil C:\Keil_v5
 ```
 
+If the SDK environment is already installed, run the same command again. `install.ps1` is idempotent: it reuses the existing Python, tool, and Conan state, and records the Keil path in `${SIFLI_SDK_TOOLS_PATH}\sifli-sdk-env.json`.
+
 ````{note}
-Domestic users in China can use the following commands to install tool packages through domestic mirror sources to avoid slow download speeds from default sources. Note that if you choose to execute the following commands, you do not need to execute the commands in the above code block.
+Domestic users in China can use the following commands to enable the bundled China mirror preset and avoid slow downloads from default sources. Note that if you choose to execute the following commands, you do not need to execute the commands in the above code block.
 
 ```powershell
 cd C:\OpenSiFli\SiFli-SDK
-$env:SIFLI_SDK_GITHUB_ASSETS="downloads.sifli.com/github_assets"
-$env:PIP_INDEX_URL="https://mirrors.ustc.edu.cn/pypi/simple"
+$env:SIFLI_SDK_MIRROR_CHINA="1"
 .\install.ps1
 ```
+
+When enabled, this preset forcefully overrides the following environment variables:
+
+- `SIFLI_SDK_GITHUB_ASSETS="https://downloads.sifli.com/github_assets"`
+- `SIFLI_SDK_PYPI_DEFAULT_INDEX="https://mirrors.ustc.edu.cn/pypi/simple"`
+- `UV_PYTHON_DOWNLOADS_JSON_URL="https://uv.agentsmirror.com/metadata/python-downloads.json"`
+- `UV_PYPY_INSTALL_MIRROR="https://uv.agentsmirror.com/pypy"`
+
+If you do not want the bundled preset, you can still set the fine-grained mirror variables manually.
 
 ````
 
@@ -177,6 +183,20 @@ cd C:\OpenSiFli\SiFli-SDK
 .\export.ps1
 ```
 
+Without `-t`, `export.ps1` exports the GCC environment. This is equivalent to:
+
+```powershell
+.\export.ps1 -t gcc
+```
+
+If you have recorded a Keil root with `install.ps1 --keil`, switch to Keil/ARMCLANG with:
+
+```powershell
+.\export.ps1 -t keil
+```
+
+`export.ps1` now invokes `tools/sdk_env.py export` through `uv run`. The environment manager resolves the current `profile + lock` snapshot to the matching SDK environment instance and uses the Python virtual environment recorded there. If that instance is missing or invalid, `export.ps1` will either reconcile it according to the saved preference or fail and ask you to run `.\install.ps1` again.
+
 ````{note}
 If you have set a custom tool installation path according to the above instructions, then you **must** set the `SIFLI_SDK_TOOLS_PATH` variable before running the `export.ps1` script
 ```powershell
@@ -191,7 +211,9 @@ Each time you open a new terminal window, you need to run the `export.ps1` scrip
 ```
 
 ```{note}
-The current script may have some occasional bugs. If you get prompts like "command not found `arm-none-eabi-gcc`" during compilation, you can try running `. export.ps1` twice to resolve it.
+`export.ps1` now validates the resolved environment instance before exporting. If the local Python environment, tools, or Conan config do not match the current repo lock, `export.ps1` may prompt to reconcile the environment or fail deterministically in non-interactive shells.
+
+`export.ps1` requires `uv` in PATH because it launches `tools/sdk_env.py` through `uv run`.
 ```
 
 ### Windows Terminal Quick Configuration

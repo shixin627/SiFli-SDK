@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <stdio.h>
 #include <string.h>
@@ -7,6 +12,9 @@
 #include "vg_lite_util.h"
 #include "utest.h"
 #include "tc_vglite.h"
+#include "demo_ctrl.h"
+
+void tc_vglite_linear_grad_entry(void);
 
 #define DEFAULT_SIZE   320.0f;
 #define DEFAULT_WIDTH 192
@@ -78,22 +86,21 @@ static void cleanup(void)
 
 void tc_vglite_linear_grad(int argc, char **argv)
 {
+    tc_vglite_linear_grad_entry();
+}
+
+void tc_vglite_linear_grad_entry(void)
+{
     vg_lite_filter_t filter;
     vg_lite_linear_gradient_t grad;
-    uint32_t ramps[] = {0xff000000, 0xffff0000, 0xff00ff00, 0xff0000ff, 0xffffffff};
-    uint32_t stops[] = {0, 66, 122, 200, 255};
+    vg_lite_uint32_t ramps[] = {0xff000000, 0xffff0000, 0xff00ff00, 0xff0000ff, 0xffffffff};
+    vg_lite_uint32_t stops[] = {0, 66, 122, 200, 255};
     vg_lite_matrix_t *matGrad;
     vg_lite_matrix_t matPath;
     int fcount = 0;
-    rt_device_t lcd_device;
     uint16_t cf = RTGRAPHIC_PIXEL_FORMAT_RGB565;
 
-    lcd_device = rt_device_find("lcd");
-
-    RT_ASSERT(lcd_device);
-
-    rt_device_open(lcd_device, RT_DEVICE_OFLAG_RDWR);
-
+    tc_vglite_init();
 
     /* Initialize vg_lite engine. */
     vg_lite_error_t error = VG_LITE_SUCCESS;
@@ -114,6 +121,10 @@ void tc_vglite_linear_grad(int argc, char **argv)
     frames = 10;
     while (frames > 0)
     {
+        if (demo_should_exit())
+        {
+            return;
+        }
         memset(&grad, 0, sizeof(grad));
         if (VG_LITE_SUCCESS != vg_lite_init_grad(&grad))
         {
@@ -141,19 +152,19 @@ void tc_vglite_linear_grad(int argc, char **argv)
         vg_lite_clear_grad(&grad);
         frames--;
         printf("frame %d done\n", fcount++);
-        rt_graphix_ops(lcd_device)->set_window(0, 0, fb_width - 1, fb_height - 1);
-        rt_device_control(lcd_device, RTGRAPHIC_CTRL_SET_BUF_FORMAT, &cf);
-        rt_graphix_ops(lcd_device)->draw_rect((const char *)fb->memory, 0, 0, fb_width - 1, fb_height - 1);
-        rt_thread_mdelay(2000);
+        tc_vg_send_data_to_lcd((uint8_t *)fb->memory, fb->width, fb->height, cf);
+        if (!demo_delay_ms(2000))
+        {
+            goto ErrorHandler;
+        }
     }
 
-    // Save PNG file.
-    //vg_lite_save_png("linearGrad.png", fb);
+        // Save PNG file.
+        //vg_lite_save_png("linearGrad.png", fb);
 
 ErrorHandler:
     // Cleanup.
     cleanup();
-    rt_device_close(lcd_device);
 }
 
 UTEST_TC_EXPORT(tc_vglite_linear_grad, "tc_vglite_0_0", tc_vglite_init, tc_vglite_cleanup, 10);
