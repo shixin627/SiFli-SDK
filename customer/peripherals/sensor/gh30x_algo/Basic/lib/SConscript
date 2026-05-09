@@ -1,9 +1,16 @@
+Import("rtconfig")
 from building import *
 
 cwd = GetCurrentDir()
 src = Glob('*.c')
 path = [cwd]
-lib = ['cortexM33_armcland-mdk531_common', 'cortexM33_armcland-mdk531_hba', 'cortexM33_armcland-mdk531_hrv', 'cortexM33_armcland-mdk531_nadt', 'cortexM33_armcland-mdk531_spo2']
-group = DefineGroup('Drivers', src, depend = ['HR_USING_GH3018'], LIBS = lib, CPPPATH = path, LIBPATH = path)
+# Goodix algo libraries are armclang-built (cortexM33_armcland-mdk531_*.lib).
+# Skip linking for GCC; callers are stubbed via gh30x_gcc_stubs.c. Pattern
+# borrowed from customer/peripherals/sensor/sc7r30/SConscript.
+if rtconfig.CROSS_TOOL == "gcc":
+    group = DefineGroup('Drivers', src, depend = ['HR_USING_GH3018'], CPPPATH = path)
+else:
+    lib = ['cortexM33_armcland-mdk531_common', 'cortexM33_armcland-mdk531_hba', 'cortexM33_armcland-mdk531_hrv', 'cortexM33_armcland-mdk531_nadt', 'cortexM33_armcland-mdk531_spo2']
+    group = DefineGroup('Drivers', src, depend = ['HR_USING_GH3018'], LIBS = lib, CPPPATH = path, LIBPATH = path)
 
 Return('group')

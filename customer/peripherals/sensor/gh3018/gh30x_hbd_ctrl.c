@@ -7,8 +7,8 @@ typedef signed char GS8;
 typedef unsigned short GU16;
 typedef signed short GS16;
 
-typedef int GS32;
-typedef unsigned int GU32;
+typedef long int GS32;
+typedef unsigned long int GU32;
 typedef unsigned long long   GU64;
 typedef signed long long GS64;
 typedef float GF32;

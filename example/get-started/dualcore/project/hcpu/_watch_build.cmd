@@ -13,7 +13,7 @@ set PATH=%PYTHONHOME%;%PATH%
 set PATH=%PYTHONPATH%;%PATH%
 set PATH=%SCONS%;%PATH%
 
-call C:\work\SiFli-SDK\set_env.bat keil
+call C:\work\SiFli-SDK\set_env.bat gcc
 if errorlevel 1 exit /b %errorlevel%
 
 cd /d C:\work\SiFli-SDK\example\get-started\dualcore\project\hcpu

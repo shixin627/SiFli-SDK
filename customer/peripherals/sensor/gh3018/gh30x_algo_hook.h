@@ -349,9 +349,9 @@ extern GS8* NADT_GetVersion(void);
 #endif
 #if(__HBD_HRV_ALGORITHM_ENABLE__)
 extern GU8 *goodix_hrv_version(void);
-extern GU32 goodix_hrv_init(goodix_hrv_config *config);
-extern GU32 goodix_hrv_calc(goodix_hrv_input_rawdata *input_data, goodix_hrv_result *output_data);
-extern GU32 goodix_hrv_deinit(void);
+extern goodix_hrv_ret goodix_hrv_init(goodix_hrv_config *config);
+extern goodix_hrv_ret goodix_hrv_calc(goodix_hrv_input_rawdata *input_data, goodix_hrv_result *output_data);
+extern goodix_hrv_ret goodix_hrv_deinit(void);
 #endif
 
 #if(__HBD_NADT_ALGORITHM_ENABLE__)
