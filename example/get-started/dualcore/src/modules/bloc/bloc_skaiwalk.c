@@ -825,6 +825,15 @@ void parse_open_app_command(const uint8_t *pValue, uint16_t length)
 	watch_run_app_by_intent(&intent);
 }
 
+#ifdef _MSC_VER
+/* PC simulator stubs: chat history persistence uses POSIX dirent which has
+   no MSVC equivalent. Chat history isn't testable on PC anyway (AI feature
+   off), so stub these out. */
+void save_user_and_ai_chat(char *user_text, char *ai_text) { (void)user_text; (void)ai_text; }
+void clear_chat_history(void) {}
+int read_user_and_ai_chat(const char *filename, chat_history_entry_t *entry) { (void)filename; (void)entry; return -RT_ERROR; }
+int get_recent_chat_history(chat_history_entry_t *entries, int max_entries) { (void)entries; (void)max_entries; return 0; }
+#else
 void save_user_and_ai_chat(char *user_text, char *ai_text)
 {
 	if (user_text == NULL || ai_text == NULL)
@@ -1093,6 +1102,7 @@ int get_recent_chat_history(chat_history_entry_t *entries, int max_entries)
 	rt_free(files);
 	return entry_count;
 }
+#endif /* !_MSC_VER */
 
 
 /**

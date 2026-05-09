@@ -1,5 +1,5 @@
 @echo off
-REM Temporary wrapper to run scons --board=pc with full SiFli env
+REM Temporary wrapper to run scons --board=sf32lb56w-watch with full SiFli env
 REM (replicates what ConEmu CmdInit.cmd + set_env.bat would do interactively)
 
 set ENV_ROOT=C:\dev\env_latest
@@ -13,9 +13,9 @@ set PATH=%PYTHONHOME%;%PATH%
 set PATH=%PYTHONPATH%;%PATH%
 set PATH=%SCONS%;%PATH%
 
-call C:\work\SiFli-SDK\set_env.bat gcc
+call C:\work\SiFli-SDK\set_env.bat keil
 if errorlevel 1 exit /b %errorlevel%
 
 cd /d C:\work\SiFli-SDK\example\get-started\dualcore\project\hcpu
-scons --board=pc %* > _pc_build.log 2>&1
-type _pc_build.log
+scons --board=sf32lb56w-watch %* > _watch_build.log 2>&1
+type _watch_build.log

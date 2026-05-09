@@ -10,6 +10,10 @@
 #include <stdbool.h>
 #include "rtconfig.h"
 #include "lvgl.h"
+/* Match pre-merge behavior: many gui_apps rely on transitive lvsf_font.h
+   exposure (LV_EXT_FONT_GET, LVSF_FONT_*) via this header. Keep that
+   contract so existing call-sites compile without 30+ extra includes. */
+#include "lvsf/lvsf.h"
 
 #ifdef LV_USING_EXT_RESOURCE_MANAGER
 //#include "app_mem.h"

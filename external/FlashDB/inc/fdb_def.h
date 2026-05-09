@@ -23,6 +23,9 @@ extern "C" {
 #include <fdb_cfg.h>
 #include "stdint.h"
 #include "stdbool.h"
+#if defined(FDB_USING_FILE_LIBC_MODE)
+#include <stdio.h>
+#endif
 
 /* software version number */
 #define FDB_SW_VERSION                 "2.1.1"

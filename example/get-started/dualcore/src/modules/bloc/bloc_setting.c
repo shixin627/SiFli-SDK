@@ -55,6 +55,7 @@
 #include "communicate_protocol.h"
 #include "communicate_task.h"
 #include "lv_ext_resource_manager.h"
+#include "lvsf/lvsf_font.h"
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
 #include "bloc_peripheral.h"
