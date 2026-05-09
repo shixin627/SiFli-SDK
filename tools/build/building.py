@@ -2924,6 +2924,10 @@ def SifliGccEnv(cpu):
     # We don't need to delete the SDK prefix now, as this would make debugging inconvenient.
     # rtconfig.CFLAGS += f' -ffile-prefix-map={SIFLI_SDK}=./'
     rtconfig.CFLAGS += ' -mlittle-endian -gdwarf-3 -Wno-packed -Wno-missing-noreturn -Wno-sign-conversion -Wno-unused-macros -Wnull-dereference'
+    # GCC 14 promoted these to default errors (implicit decl + pointer-type mismatch).
+    # Demote back to warnings so legacy code paths still compile, matching pre-merge
+    # behavior where Keil simply emitted warnings.
+    rtconfig.CFLAGS += ' -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=builtin-declaration-mismatch -Wno-error=int-conversion'
     rtconfig.CFLAGS += ' -fno-unwind-tables -fno-exceptions'
     rtconfig.CFLAGS += ' -fno-common -fno-strict-aliasing'
     

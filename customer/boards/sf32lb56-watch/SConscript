@@ -1,15 +1,27 @@
 from building import *
 
 cwd = GetCurrentDir()
+this_board = os.path.basename(cwd)
+
+# Only the active board should pull in eh-lb56xu drivers. Three boards share
+# BSP_USING_BOARD_EH_LB563XXX (sf32lb56-watch, sf32lb56w-watch, eh-lb563), and
+# customer/boards/SConscript scans every subdir, so without this guard each
+# would call eh-lb56xu/script/SConscript and the same .o files would be linked
+# multiple times. Keil tolerates it (L6304W warning); GCC ld errors out.
+active_board = GetBoardName() or ''
+for suffix in ('_hcpu', '_lcpu', '_acpu'):
+    if active_board.endswith(suffix):
+        active_board = active_board[:-len(suffix)]
+        break
 
 src = Glob('./*.c')
 
-path =  [cwd, 
+path =  [cwd,
          os.path.join(cwd, '../include')]
 
 group = DefineGroup('Drivers', src, depend = ['BSP_USING_BOARD_EH_LB563XXX'], CPPPATH = path)
 
-if GetDepend('BSP_USING_BOARD_EH_LB563XXX'):
+if GetDepend('BSP_USING_BOARD_EH_LB563XXX') and active_board == this_board:
     group = group + SConscript('../eh-lb56xu/script/SConscript')
 
 Return('group')

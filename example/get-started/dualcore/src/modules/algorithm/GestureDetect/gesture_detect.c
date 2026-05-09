@@ -14,9 +14,11 @@
 #include <math.h>
 #include <string.h>
 #include "acce_service.h"
+#include "hr_service.h"
 #include "gesture_detect.h"
 #include "hand_tracking.h"
 #include "watch_sys_service.h"
+extern void hal_gsensor_drv_int1_handler(void);
 #include "bsp_board.h"
 #ifdef BSP_USING_MAHONY_AHRS
     #include "sensor_fusion.h"
@@ -383,12 +385,12 @@ static void handle_accel_rawdata_rb(AccelRawData *data)
     if (rt_ringbuffer_space_len(accel_rawdata_rb) < sizeof(AccelRawData))
     {
         AccelRawData *global_rawdata = activity_get_accel_rawdata();
-        rt_ringbuffer_get(accel_rawdata_rb, global_rawdata,
+        rt_ringbuffer_get(accel_rawdata_rb, (rt_uint8_t *)global_rawdata,
                           sizeof(AccelRawData) * 125);
         notify_activity_algorithm();
     }
 
-    int ret = rt_ringbuffer_put(accel_rawdata_rb, data, sizeof(AccelRawData));
+    int ret = rt_ringbuffer_put(accel_rawdata_rb, (const rt_uint8_t *)data, sizeof(AccelRawData));
     if (ret != sizeof(AccelRawData))
     {
         LOG_E("Failed to put data into accel_rawdata_rb, ret: %d", ret);
