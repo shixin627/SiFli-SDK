@@ -129,3 +129,121 @@ project/lcpu/<board>_lcpu/
 ```
 
 板型決定 `board.h` 中的 `APP_ID_*` 啟用與否、感測器型號、PWM/I2C 接腳。改板型不要動 `proj.conf` 共用設定,改 `<board>_hcpu/` 內專屬設定。
+
+### 工具鏈與 wrapper
+
+`set_env.bat <toolchain>` 設置編譯環境。**沒帶參數預設是 GCC**(set_env.bat 內的 `if "%1"==""    goto :SET_GCC` ),不是 Keil。
+
+ConEmu 之外要編譯,用 `project/hcpu/` 下的 wrapper:
+
+| Wrapper | 板子 | 工具鏈 | 用途 |
+|---|---|---|---|
+| `_pc_build.cmd` | `pc` | MSVC | PC simulator(LVGL Win32) |
+| `_watch_build.cmd` | `sf32lb56w-watch` | GCC | 手錶 ARM build(已驗證 GCC 通過) |
+
+兩個 wrapper 都 `set ENV_VER=1.1.4` 自己 override(免依賴 ConEmu 的 CmdInit.cmd)。SDK env 升級時要同步更新。
+
+**驗收輸出**:
+- PC sim:`build_pc_hcpu/main.exe` ~9.6 MB
+- 手錶 GCC:`build_sf32lb56w-watch_hcpu/main.bin` ~2.4 MB,`bootloader.bin` ~35 KB,`lcpu.elf` ~2.3 MB
+- 手錶 Keil:同上但 `.axf` / `.bin`,可能有 L6304W 警告(已修復為 0)
+
+### 編譯踩雷紀錄(2026-05 upstream/main 合併 + env 1.1.4 升級時整理)
+
+#### 1. SDK env 版本檢查(`set_env.bat` v1.1.4 起)
+SDK 跟 env 版號綁定。env 太舊會被 set_env.bat 擋。升級:下載 https://downloads.sifli.com/tools/env/env_latest.zip 解壓覆蓋 `C:\dev\env_latest`(先關 ConEmu)。詳細記錄在 backup 分支 `backup/main-before-upstream-merge-2026-05-09`。
+
+#### 2. 多板共用 `BSP_USING_BOARD_EH_LB563XXX` → eh-lb56xu 重複連結
+`customer/boards/SConscript` 會掃所有子目錄並執行各 SConscript。`sf32lb56-watch` / `sf32lb56w-watch` / `eh-lb563` 三個板子的 SConscript 都對 `BSP_USING_BOARD_EH_LB563XXX` 做 `if GetDepend(...)` 然後 `SConscript('../eh-lb56xu/script/SConscript')`,結果 eh-lb56xu 的 .o 被加進 link 三次。
+
+- **Keil**:L6304W 重複輸入警告,但仍能完成 link
+- **GCC**:`multiple definition of 'BSP_GetFlash2DIV'` 等硬錯誤,build 失敗
+
+**修復**:三個 SConscript 加 active-board guard:
+```python
+this_board = os.path.basename(cwd)
+active_board = (GetBoardName() or '').rstrip()
+for suffix in ('_hcpu', '_lcpu', '_acpu'):
+    if active_board.endswith(suffix):
+        active_board = active_board[:-len(suffix)]
+        break
+if GetDepend('BSP_USING_BOARD_EH_LB563XXX') and active_board == this_board:
+    group = group + SConscript('../eh-lb56xu/script/SConscript')
+```
+這個 pattern 對任何「多板共用 flag」的 vendor SConscript 都適用。
+
+#### 3. GCC 14 預設嚴格化
+`arm_gcc_14.2.1` 把幾類預設從 warning 升成 error。在 `tools/build/building.py` GCC 區塊 (~L2926) 加上:
+```python
+rtconfig.CFLAGS += ' -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=builtin-declaration-mismatch -Wno-error=int-conversion'
+```
+讓這幾類回到警告(維持與舊 GCC / Keil 一致的容忍度),否則大量 legacy code 過不了。
+
+#### 4. Goodix gh3018 sensor lib 只有 armclang 版
+`customer/peripherals/sensor/gh3018/Default_KEIL5_M33_hard-fp_fshort.lib` 和
+`customer/peripherals/sensor/gh30x_algo/Basic/lib/cortexM33_armcland-mdk531_*.lib` 都是 armclang 編譯,GCC 無法 link。
+
+**修復**(模式參考 `customer/peripherals/sensor/sc7r30/SConscript`):
+- 兩個 SConscript 改 `if rtconfig.CROSS_TOOL == "gcc":` 不加 `LIBS=...`
+- 新增 `customer/peripherals/sensor/gh3018/gh30x_gcc_stubs.c` 提供所有 lib 函式的 no-op stub(goodix_mem_init / goodix_hba_* / goodix_spo2_* / goodix_hrv_* / NADT_* / Gh30xHBDVersionGet / Gh30xRawdata24BitTo32Bit)
+- Keil build 用 SrcRemove 排除 stub 檔避免 symbol clash
+
+**副作用**:GCC 版本的 LCPU 沒有真正的 PPG/HR/SPO2 算法。要 production 用 Keil,GCC 只適合驗證編譯不破。
+
+#### 5. Goodix `GS32` typedef 不一致
+五個 header / .c 各自 typedef `GS32`,有的是 `int`、有的是 `long int`。在 ARM 上 `int32_t = long int`,所以 `int` 版的 `GS32` 跟 `goodix_mem.h` 的 `int32_t goodix_mem_init(...)` 衝突。GCC 14 直接 `error: conflicting types`。
+
+**修復**:全部統一成 `long int` / `unsigned long int`。涉及檔案:
+- `customer/peripherals/sensor/gh3018/gh30x_example_common.h`
+- `customer/peripherals/sensor/gh3018/gh30x_hbd_ctrl.c`
+- `customer/peripherals/sensor/gh30x_algo/Basic/inc/goodix_type.h`
+- `customer/peripherals/sensor/gh30x_algo/Basic/inc/iot_sys_def.h`
+- `customer/peripherals/sensor/gh30x_algo_demo/call/inc/goodix_algo.h`
+
+外加 `customer/peripherals/sensor/gh3018/gh30x_algo_hook.h` 把 `extern GU32 goodix_hrv_*` 改成 `extern goodix_hrv_ret goodix_hrv_*`(對齊 `goodix_sys_hrv.h`)。
+
+#### 6. **重要:Goodix / 其他中文註解檔的編碼問題**
+`customer/peripherals/sensor/gh3018/gh30x_algo_hook.h`、`iot_sys_def.h` 等檔是 **GBK/ISO-8859 + CRLF** 不是 UTF-8。**用 Edit/Write 工具寫會把編碼轉成 UTF-8** → 中文註解的 byte 序列改變 → git diff 變成 100+ 行(每行只是 byte 不同),encoding 也壞掉。
+
+**正解**:這類檔用 `sed -i 's|old|new|' file` 做 byte-level 替換,保留原編碼。例:
+```bash
+sed -i 's|^typedef int GS32;|typedef long int GS32;|' \
+    customer/peripherals/sensor/gh3018/gh30x_example_common.h
+```
+編輯前用 `file <path>` 確認編碼,看到 `ISO-8859 text` 或 `Unicode text, UTF-8` 含中文就走 sed。
+
+#### 7. PC simulator 後續修
+- `external/FlashDB/inc/fdb_def.h`:FlashDB 2.1.1 的 `FILE *cur_file` 缺 stdio.h(`FDB_USING_FILE_LIBC_MODE` 條件下補)
+- `middleware/lvgl/lv_ext_resouce/lv_ext_resource_manager.h`:upstream 把這檔從 `lvsf/` 抽出後沒再 include `lvsf.h`,33 個 gui_apps 的 `LV_EXT_FONT_GET` / `LVSF_FONT_TITLE` 都會失效。我補回 `#include "lvsf/lvsf.h"`
+- `bloc_skaiwalk.c`:`save_user_and_ai_chat` / `clear_chat_history` / `read_user_and_ai_chat` / `get_recent_chat_history` 用 POSIX dirent (DIR / opendir / readdir / mkdir / open),MSVC 沒有。整段用 `#ifdef _MSC_VER` 包起來給 stub
+- `bloc_setting.c`:`LVSF_FONT_TITLE` 找不到 → 加 `#include "lvsf/lvsf_font.h"`
+
+#### 8. `gesture_detect.c` 缺宣告 + pointer cast(GCC 14 升級才浮現)
+- 加 `#include "hr_service.h"` 取得 `is_ppg_service_ready`
+- 加 `extern void hal_gsensor_drv_int1_handler(void);`
+- `rt_ringbuffer_get/put` 對 `AccelRawData *` 加 `(rt_uint8_t *)` cast
+
+### 跑編譯的標準流程(下次給我用)
+
+```bash
+# 1. PC sim
+cd /c/work/SiFli-SDK
+cmd.exe /c "C:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\project\\hcpu\\_pc_build.cmd -j8" 2>&1 | tail -30
+
+# 2. 手錶 GCC
+cmd.exe /c "C:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\project\\hcpu\\_watch_build.cmd -j8" 2>&1 | tail -30
+# 看 "scons: done building targets." 即成功
+
+# 失敗時抓 error 摘要(避免被 warning 洗版):
+grep -E "( error:|undefined reference|cannot find|scons:.*\\*\\*\\*)" \
+    example/get-started/dualcore/project/hcpu/_watch_build.log
+```
+
+`_watch_build.cmd` 預設用 GCC。要切 Keil 改 wrapper 裡 `set_env.bat keil`(行 16)。Keil 結果在 `.axf` / `.map` 檔,GCC 結果在 `.elf` / `.bin` / `.map` 檔。
+
+### Don't-touch 清單(這些是 SDK / vendor 介面,改了會破壞下次 upstream merge)
+
+- `tools/build/building.py` 的 `-Wno-error=` 那行 — 上游若補了相同 flag 要保留並避免重複
+- `customer/boards/{sf32lb56-watch,sf32lb56w-watch,eh-lb563}/SConscript` 的 active-board guard — 上游若做了類似結構性修復可以接受 upstream 版本
+- `customer/peripherals/sensor/gh3018/SConscript` + `gh30x_gcc_stubs.c` — 上游若提供 GCC 版 .a 就刪 stub
+- Goodix `GS32` typedef 統一 — 上游若統一就 follow 上游
