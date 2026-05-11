@@ -1,7 +1,7 @@
 @echo off
 REM Generate Keil MDK5 project (.uvprojx) for sf32lb56w-watch.
 REM Must run under Keil/armclang env because the project-local template.uvprojx
-REM is TargetArmAds/Cads (armclang) structure — keil.py with PLATFORM=gcc would
+REM is TargetArmAds/Cads (armclang) structure -- keil.py with PLATFORM=gcc would
 REM look for TargetArm/Carm and fail with AttributeError.
 REM
 REM Output: project.uvprojx (+ project.uvoptx) in this dir, open with Keil MDK 5.
