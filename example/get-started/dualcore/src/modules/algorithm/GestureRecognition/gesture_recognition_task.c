@@ -76,6 +76,7 @@
 #include "bloc_v2t.h"
 #include "bloc_motion_tracking.h"
 #include "watch_global_data.h"
+#include "gui_app_pm.h"  /* always — gui_is_active() gates the inference loop */
 
 #define DBG_TAG "APP.GESTURE"
 #define DBG_LVL DBG_LOG
@@ -460,6 +461,13 @@ static void gesture_recognition_thread_entry(void *parameter)
     while (1)
     {
         rt_sem_take(watch_sensor.gesture_sem, RT_WAITING_FOREVER);
+
+        /* GUI suspended (screen off): skip TFLite inference. LCPU still posts
+           IMU samples but HCPU returns to sleep without running the model. */
+        if (!gui_is_active())
+        {
+            continue;
+        }
 
         // if (SkaiWatchSys.charger_status != NoCharge)
         // {

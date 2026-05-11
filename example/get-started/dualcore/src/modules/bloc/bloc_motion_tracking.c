@@ -36,6 +36,8 @@
 #define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
+#include "gui_app_pm.h"  /* always — gui_is_active() gates the IMU consumer */
+
 // ============================================================================
 // Waveform Capture Configuration (migrated from LCPU gesture_detect.c)
 // ============================================================================
@@ -1500,6 +1502,14 @@ static void motion_tracking_thread_entry(void *parameter)
     while (1)
     {
         rt_sem_take(watch_sensor.imu_sem, RT_WAITING_FOREVER);
+        /* GUI suspended (screen off): everything downstream of
+           motion_tracking_in_hcpu is already gated by is_sleep_mode() —
+           which is just !gui_is_active() on HCPU. Skip the call entirely
+           so the thread returns to sleep without doing the wrapper work. */
+        if (!gui_is_active())
+        {
+            continue;
+        }
         motion_data_t motion_data = watch_sensor.motion_data;
         motion_tracking_in_hcpu(&motion_data);
     }
