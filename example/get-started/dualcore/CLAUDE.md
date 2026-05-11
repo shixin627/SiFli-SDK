@@ -156,6 +156,14 @@ grep -E "( error:|undefined reference|cannot find|scons:.*\\*\\*\\*)" \
 
 > ⚠️ `set_env.bat` 不帶參數**預設是 GCC**(`if "%1"==""    goto :SET_GCC`),不是 Keil。在 ConEmu 直接打 `scons --board=...` 用的是 GCC。
 
+#### 產 Keil `.uvprojx` 一定要在 Keil env
+
+`scons --target=mdk5` 用的 template 看 `rtconfig.PLATFORM`:
+- PLATFORM=gcc → `keil.py` 找 `<TargetArm><Carm>` 結構(Keil MDK 內嵌 GCC)
+- PLATFORM=armcc → 找 `<TargetArmAds><Cads>` 結構(armclang)
+
+本專案 `project/hcpu/template.uvprojx` 是 armclang 結構。所以 `--target=mdk5` 之前要 `set_env.bat keil` 不能用預設的 gcc env,否則 `IncludePath` 找不到變成 `AttributeError: 'NoneType' object has no attribute 'text'`。用 `_watch_mdk5.cmd` wrapper 已 hardcode keil。
+
 ### 編譯規則
 
 #### 多板共用 `BSP_USING_BOARD_*` flag → 加 active-board guard
