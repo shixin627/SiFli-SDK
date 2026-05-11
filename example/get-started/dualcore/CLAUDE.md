@@ -137,9 +137,10 @@ project/lcpu/<board>_lcpu/
 cmd.exe /c "C:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\project\\hcpu\\_pc_build.cmd -j8"
 # → build_pc_hcpu/main.exe ~9.6 MB
 
-# 手錶 (GCC)
+# 手錶 (Keil,production)
 cmd.exe /c "C:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\project\\hcpu\\_watch_build.cmd -j8"
-# → build_sf32lb56w-watch_hcpu/main.bin ~2.4 MB,lcpu.elf ~2.3 MB,bootloader.bin ~35 KB
+# → build_sf32lb56w-watch_hcpu/main.bin ~2.4 MB,lcpu IROM1+IROM2 ~159 KB,bootloader.bin ~35 KB
+# Keil 是 production 工具鏈:armclang + microlib,LCPU 比 GCC 小 ~75 KB
 
 # 產 Keil .uvprojx (要 Keil env,wrapper 內已 hardcode)
 cmd.exe /c "C:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\project\\hcpu\\_watch_mdk5.cmd -j8"
@@ -155,6 +156,8 @@ grep -E "( error:|undefined reference|cannot find|scons:.*\\*\\*\\*)" \
 ### Wrapper 設計
 
 `_pc_build.cmd` / `_watch_build.cmd` / `_watch_mdk5.cmd` 是 ConEmu 之外的編譯入口,自帶 env 初始化(因為 ConEmu 的 `CmdInit.cmd` 在 cmd.exe `/c` 模式下不會跑)。三個 wrapper 都 `set ENV_VER=...` 自己 override env 版號檢查 -- SDK env 升級時要同步改 wrapper 裡的版號。
+
+**Production = Keil**。`_watch_build.cmd` 和 `_watch_mdk5.cmd` 都 hardcode `set_env.bat keil`。GCC 通過編譯但只供驗證 -- newlib full vs microlib 差距讓 GCC 版本 LCPU 多 ~75 KB,主要是 `hr_service.c` / `alarm_manager_service.c` 的 `localtime`/`mktime` 拖進 newlib 時區 DB 和 printf-float 家族。要走 GCC production 需要先 enable `USE_MICROLIB=True` 在 lcpu/rtconfig.py 啟用 nano.specs(未驗證副作用)或改寫 LCPU 不要用 `localtime`。
 
 > ⚠️ wrapper / `.cmd` 檔案內容**只用 ASCII**。Em-dash (`—`) 或全形標點會讓 cmd.exe 把它的 UTF-8 byte 各自當成 command 解析,出現 `'M' 不是內部或外部命令` 之類的錯誤。寫註解一律用 `--` / `:`、不用破折號。`file <path>` 結果應該是 `DOS batch file, ASCII text`,出現 `Unicode text` 就有問題。
 

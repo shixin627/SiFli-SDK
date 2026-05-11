@@ -84,3 +84,28 @@ GCC 版的 LCPU 因此沒有真正的 PPG/HR/SPO2 算法 — 適合驗證編譯,
 - ✅ PC sim:`scons --board=pc -j8` → `main.exe` 9.6 MB
 - ✅ 手錶 GCC:`scons --board=sf32lb56w-watch -j8` → `main.bin` 2.4 MB / `lcpu.elf` 2.3 MB / `bootloader.bin` 35 KB,0 errors
 - ✅ 手錶 Keil:`scons --board=sf32lb56w-watch -j8` (with `set_env.bat keil`) → `main.bin` 2.4 MB,0 errors,L6304W 重複警告也消除了
+
+### 2026-05-11 — Keil project gen (.uvprojx) 修復 + LCPU size 分析 → 確定 production 用 Keil
+
+- `tools/build/keil.py`:`scons --target=mdk5` 改成看 template 實際結構而非 scons env(`commit 425ad22a2`)。ConEmu 預設 gcc env 也能產 armclang `.uvprojx`。同時 `LINKFLAGS` (list vs string) 跨 env 正規化。
+- 新增 `_watch_mdk5.cmd` wrapper:hardcode `set_env.bat keil` 因為 `--target=mdk5` 會順便 build。
+- 修 `_watch_mdk5.cmd` em-dash → ASCII `--`(`commit 59ebe2044`):cmd.exe 在 .cmd 註解碰到 UTF-8 三 byte 字會分別當成 'M' command,出 3 個 `'M' 不是內部或外部命令` 噪訊。**規則寫入 CLAUDE.md:wrapper .cmd 一律 ASCII。**
+
+#### LCPU size 對比 — production 確定用 Keil
+
+對比同一份程式碼在兩個工具鏈下的 LCPU 大小:
+
+| Toolchain | Code | RO | RW | 總 ROM | .bin |
+|---|---|---|---|---|---|
+| Keil (armclang + microlib) | 124 KB | 34 KB | 1 KB | **159 KB** | 22.9 + 136.6 KB |
+| GCC 14 (arm-none-eabi + full newlib) | 21 KB(.text) | 211 KB(.rom2) | 2 KB | **234 KB** | 23 + 211 KB |
+
+差距 ~75 KB 主因:`hr_service.c` / `alarm_manager_service.c` 用 `localtime`/`mktime` 把 newlib 時區 DB(`categories` 13.7 KB) + printf-float family(`_vfprintf_r` + `_dtoa_r` 等共 ~22 KB)拉進來。Keil microlib 沒這些。
+
+**決策**:production 用 Keil。`_watch_build.cmd` / `_watch_mdk5.cmd` 都 hardcode `set_env.bat keil`。GCC build path 保留供驗證(我們之前花了一輪修通,留著對抗未來 upstream 的 Keil-only 假設)。
+
+#### Goodix typedef 二次修正
+
+之前(`commit 99d7f9959`)為了 GCC 過,把 5 個 header 的 `GS32` 從 `int` 改成 `long int`(對齊 GCC 上 `int32_t = long int`),反而打破 Keil(armclang 上 `int32_t = int`)。
+
+正解(`commit f369b7bb4`):`GS32` 全部還原成 vendor 原樣 `int`,只在實際衝突點 `gh30x_algo_hook.h:328` 改用 `int32_t` 對齊 `goodix_mem.h`。這樣兩邊 stdint 實作差異不再撞 typedef。
