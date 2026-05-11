@@ -325,7 +325,7 @@ typedef struct
 #endif
 
 /* from hba lib. */
-extern GS32 goodix_mem_init(void* mem_addr, GS32 size);
+extern int32_t goodix_mem_init(void* mem_addr, int32_t size); /* match goodix_mem.h to avoid GCC int32_t vs GS32 type-mismatch */
 extern void goodix_mem_deinit(void);
 
 #if(__HBD_HB_ALGORITHM_ENABLE__)

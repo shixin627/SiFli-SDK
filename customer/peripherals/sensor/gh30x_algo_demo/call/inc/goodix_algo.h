@@ -14,8 +14,8 @@ typedef unsigned char       GU8;    /**< 8bit unsigned integer type */
 typedef signed char         GS8;    /**< 8bit signed integer type */
 typedef unsigned short      GU16;   /**< 16bit unsigned integer type */
 typedef signed short        GS16;   /**< 16bit signed integer type */
-typedef long int            GS32;   /**< 32bit signed integer type */
-typedef unsigned long int   GU32;   /**< 32bit unsigned integer type */
+typedef int                 GS32;   /**< 32bit signed integer type */
+typedef unsigned int        GU32;   /**< 32bit unsigned integer type */
 typedef float               GF32;   /**< float type */
 typedef double              GD64;   /**< double type */
 typedef char                GCHAR;  /**< char type */
