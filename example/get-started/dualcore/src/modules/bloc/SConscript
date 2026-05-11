@@ -38,8 +38,6 @@ if GetDepend('BSP_USING_BLOC_SYSTEM_PERCEPTION'):
     src += Glob('bloc_system_perception.c')
 if GetDepend('BSP_USING_BLOC_EXERCISE'):
     src += Glob('bloc_exercise.c')
-if GetDepend('BSP_USING_BLOC_RGB_LED'):
-    src += Glob('bloc_rgb_led.c')
 
 group = DefineGroup('Bloc', src, depend = [''], CPPPATH = path)
 

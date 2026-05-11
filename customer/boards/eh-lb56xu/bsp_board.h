@@ -53,7 +53,7 @@ extern int __bss_end;
 #define GRAVITY 9.80665f
 #define IMU_NOARMAL_SAMPLE_RATE 100
 #define IMU_NOARMAL_PERIOD 1000 / IMU_NOARMAL_SAMPLE_RATE
-#define IMU_SLEEPING_SAMPLE_RATE 25
+#define IMU_SLEEPING_SAMPLE_RATE 50
 #define IMU_SLEEPING_PERIOD 1000 / IMU_SLEEPING_SAMPLE_RATE
 // #define USE_IMU_REPORT_TIMER
 // default range is +-2000dps, so conversion factor is (((1 << 15)/4.0f))

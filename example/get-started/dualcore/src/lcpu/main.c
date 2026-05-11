@@ -16,10 +16,6 @@
 #include "stdio.h"
 #include "string.h"
 #include "drivers/rt_drv_pwm.h"
-#if defined(RGB_SK6812MINI_HS_ENABLE)
-#include "drv_rgbled.h"
-#endif
-#include "bloc_rgb_led.h"
 #include "bloc_battery.h"
 #include "charge.h"
 #ifdef ACC_USING_BMI270
@@ -53,7 +49,7 @@ static rt_timer_t wrist_wake_init_timer;
    selected mode is applied a few seconds after boot once the BMI270 is
    guaranteed to be open (it's opened lazily on first subscriber). */
 #ifndef USE_BMI270_HW_WRIST_WAKE
-    #define USE_BMI270_HW_WRIST_WAKE 0
+    #define USE_BMI270_HW_WRIST_WAKE 1
 #endif
 
 #define MAIN_EVENT_BATTERY_CHARGING (1 << 0)
@@ -92,10 +88,45 @@ void main_send_hand_lift_event(void)
 /* Override the weak default in bmi270_driver.c. The BMI270 fires this when
    its internal wrist-wake detector triggers; route it through the same
    path the software algorithm uses. */
+extern void hand_tracking_lift_callback(uint8_t lift);
 void bmi270_on_wrist_wake_detected(void)
 {
-    main_send_hand_lift_event();
+    rt_kprintf("[wrist-wake] LCPU override fired tick=%u -> hand_lift event\n",
+               (unsigned)rt_tick_get());
+    // main_send_hand_lift_event();
+    hand_tracking_lift_callback(2);
 }
+
+/* === LCPU PM policy override =============================================
+   The middleware default in bf0_pm.c (RT_WEAK pm_policy[]) picks STANDBY
+   sleep for LCPU when PM_STANDBY_ENABLE is set in rtconfig — STANDBY/DEEP
+   power down enough of the GPIO controller that PB26 (BMI270 INT1) cannot
+   wake the SoC on this board (LPAON wakeup map only covers PB32~36 / PA50
+   ~54 / PBR0~3, and BMI270 INT is wired to PB26 = GPIO 122).
+
+   Override here with a LIGHT-only policy: idle threshold 15 ms, max sleep
+   = LIGHT. LIGHT keeps GPIO controller alive so PB26 IRQ can wake LCPU.
+   Power penalty vs STANDBY is small in practice because LCPU has nothing
+   else periodic to run during screen-off (no audio / no LVGL).
+
+   Override whole table — strong defn beats RT_WEAK in the middleware. */
+#ifdef BSP_USING_PM
+const pm_policy_t pm_policy[] =
+{
+    { 15, PM_SLEEP_MODE_LIGHT },
+};
+
+/* Print the active PM policy at boot so we can confirm the strong override
+   above actually beat the RT_WEAK in bf0_pm.c. If we still see STANDBY
+   (=4) instead of LIGHT (=2), the linker didn't pick up our override. */
+static int log_active_pm_policy(void)
+{
+    rt_kprintf("[pm] policy override active: thresh=%u mode=%u (LIGHT=2 DEEP=3 STANDBY=4)\n",
+               (unsigned)pm_policy[0].thresh, (unsigned)pm_policy[0].mode);
+    return 0;
+}
+INIT_APP_EXPORT(log_active_pm_policy);
+#endif
 
     #if USE_BMI270_HW_WRIST_WAKE
 /* HW-mode auto-switch driven by HCPU's screen state — two-mode design.
@@ -294,8 +325,8 @@ static void bmi270_init_wakeup_pin(void)
 
 int main(void)
 {
-    init_pin();   /* Register the button as a wakeup source when PM is on.
-                     No-op'd internally when BSP_KEY1_PIN < GPIO1_PIN_NUM. */
+    // init_pin();   /* Register the button as a wakeup source when PM is on.
+    //                  No-op'd internally when BSP_KEY1_PIN < GPIO1_PIN_NUM. */
 #if defined(BSP_USING_PM) && defined(BMI270_INT_GPIO_BIT)
     bmi270_init_wakeup_pin();
 #endif
@@ -317,11 +348,6 @@ int main(void)
     watchdog_set_status(1);
     rt_kprintf("LCPH WDT on.(timeout: %d seconds)\n", WDT_TIMEOUT);
 #endif /* RT_USING_WDT */
-
-#if defined(RGB_SK6812MINI_HS_ENABLE)
-    // 初始化 RGB LED
-    rgb_led_init();
-#endif
 
     // 創建事件對象
     main_event = rt_event_create("main_evt", RT_IPC_FLAG_FIFO);
@@ -350,16 +376,10 @@ int main(void)
     rt_uint32_t recv_set = 0;
     while (1)
     {
-#if defined(RGB_SK6812MINI_HS_ENABLE)
-        rt_err_t result = rt_event_recv(
-            main_event, MAIN_EVENT_ALL, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR,
-            rt_tick_from_millisecond(30), &recv_set);
-#else
         rt_err_t result = rt_event_recv(main_event, MAIN_EVENT_ALL,
                                         RT_EVENT_FLAG_OR |
                                         RT_EVENT_FLAG_CLEAR,
                                         RT_WAITING_FOREVER, &recv_set);
-#endif
 
         if (result == RT_EOK)
         {
@@ -378,18 +398,6 @@ int main(void)
                 extern void hand_tracking_lift_callback(uint8_t lift);
                 hand_tracking_lift_callback(0);
             }
-        }
-        else
-        {
-#if defined(RGB_SK6812MINI_HS_ENABLE)
-            if (battery_get_charge_state()->is_plugged) // &&
-                                                        // battery_get_charge_state()->charge_percent
-                                                        // > 10
-            {
-                rgb_fade_cycle_base_on_battery_level(
-                    battery_get_charge_state()->charge_percent);
-            }
-#endif
         }
     }
     return RT_EOK;

@@ -132,7 +132,7 @@ static rt_mutex_t api_lock = RT_NULL;
    behavior. All values are chip-scaled (2048 × trig(angle)).
      - min_angle_*    : larger = more sensitive (smaller angle change triggers)
      - max_tilt_*     : larger = more permissive (wider "looking" envelope)
-   Bosch defaults shown in /* default */ comments for reference. */
+   Bosch defaults shown in trailing comments for reference. */
 
 /* Required attitude change to enter "looking at watch" state.
    1856 = 2048 × cos(25°) — most sensitive allowed by spec, matches SW's
@@ -864,13 +864,13 @@ redirect_sensor_data(struct bmi2_sens_axes_data *data)
     struct bmi2_sens_axes_data dataRedirect;
     dataRedirect.virt_sens_time = data->virt_sens_time;
     #if (WATCH_IMU_REVERSE_180)
-    dataRedirect.x = data->x;
-    dataRedirect.y = -data->y;
-    #else
     dataRedirect.x = -data->x;
     dataRedirect.y = data->y;
+    #else
+    dataRedirect.x = data->x;
+    dataRedirect.y = -data->y;
     #endif
-    dataRedirect.z = -data->z;
+    dataRedirect.z = data->z;
     return dataRedirect;
 }
 
@@ -991,10 +991,28 @@ static void bmi270_int_msg_handler(void)
     uint16_t status = 0;
     bmi2_get_int_status(&status, &bmi2_dev);
 
+    /* Per-interrupt diagnostic: noisy when accel DRDY fires every 10 ms,
+       so default to LOG_D and only escalate to LOG_I when something
+       interesting happens (wrist-wake armed, wrist-wake bit set, or any
+       feature bit in the upper byte). */
+    const uint16_t drdy_mask = (BMI2_ACC_DRDY_INT_MASK | BMI2_GYR_DRDY_INT_MASK);
+    const bool wrist_bit = (status & BMI270_WRIST_WAKE_UP_STATUS_MASK) != 0;
+    const bool feat_bits = (status & ~drdy_mask) != 0;
+    if (hw_wrist_wake_armed || wrist_bit || feat_bits)
+    {
+        LOG_I("BMI270 int fired: status=0x%04x, wrist_armed=%d, wrist_bit=%d",
+              status, hw_wrist_wake_armed ? 1 : 0, wrist_bit ? 1 : 0);
+    }
+    else
+    {
+        LOG_D("BMI270 int fired: status=0x%04x", status);
+    }
+
     /* Feature interrupts first. When HW wrist-wake is armed, INT1 may fire
        solely for the gesture without any DRDY bit set. */
-    if (hw_wrist_wake_armed && (status & BMI270_WRIST_WAKE_UP_STATUS_MASK))
+    if (hw_wrist_wake_armed && wrist_bit)
     {
+        LOG_I("BMI270 wrist-wake detected -> dispatching handler");
         bmi270_on_wrist_wake_detected();
     }
 
@@ -1009,7 +1027,7 @@ static void bmi270_int_msg_handler(void)
     }
     else if (status == 0)
     {
-        LOG_D("BMI270 spurious int (status=0)");
+        LOG_W("BMI270 spurious int (status=0)");
     }
 }
 
@@ -1467,13 +1485,21 @@ int bmi270_pedo_enable(int en)
    the event up to HCPU via main_send_hand_lift_event(). */
 RT_WEAK void bmi270_on_wrist_wake_detected(void)
 {
-    LOG_I("BMI270 HW wrist-wake (default handler, override me)");
+    LOG_I("BMI270 HW wrist-wake (default handler, override me) tick=%u",
+          (unsigned)rt_tick_get());
 }
 
 int bmi270_hw_wrist_wake_is_enabled(void)
 {
     return hw_wrist_wake_armed ? 1 : 0;
 }
+
+/* Set 0 to use Bosch defaults (start here when bringing wrist-wake up — if
+   defaults work but custom values don't, the tuning is too tight). Set 1
+   once the basic gesture detection is confirmed working. */
+#ifndef BMI270_WRIST_WAKE_USE_CUSTOM_TUNING
+    #define BMI270_WRIST_WAKE_USE_CUSTOM_TUNING 0
+#endif
 
 int bmi270_hw_wrist_wake_enable(int en)
 {
@@ -1484,63 +1510,168 @@ int bmi270_hw_wrist_wake_enable(int en)
     }
 
     int8_t rslt;
-    uint8_t sensors[] = {BMI2_WRIST_WEAR_WAKE_UP};
 
     bmi270_api_lock();
 
     if (en)
     {
-        /* Load defaults, override with our tuned values, re-apply.
-           Tuning rationale: see BMI270_WRIST_WAKE_* macros near the top
-           of this file. The intent is to approximate the SW algorithm's
-           "deliberate raise → wide looking-envelope" behaviour within the
-           bounds of what Bosch's algorithm allows. */
-        struct bmi2_sens_config cfg;
-        cfg.type = BMI2_WRIST_WEAR_WAKE_UP;
+        /* Order mirrors Bosch reference (bmi270_examples/wrist_wear_wakeup):
+             1. Enable ACCEL + WRIST_WEAR_WAKE_UP atomically in one call.
+                Bosch's API turns on the feature engine at this point — if
+                accel isn't included in the same list, the feature won't
+                receive samples even though the engine is "enabled".
+             2. Get default config, optionally override, set back.
+             3. Explicit INT pin config (active-low, push-pull, non-latch).
+             4. Map the feature interrupt to INT1.
+           Each step has its own log so we can tell which one fails. */
+
+        uint8_t sens_list[2] = { BMI2_ACCEL, BMI2_WRIST_WEAR_WAKE_UP };
+        rslt = bmi270_sensor_enable(sens_list, 2, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("wrist-wake step1 sensor_enable(ACCEL+WW) failed: %d", rslt);
+            goto out;
+        }
+        /* Read accel config back to confirm sensor_enable didn't reset our
+           50 Hz / perf-opt config (Bosch API normally only flips the enable
+           bit, but we want proof — wrist-wake silently fails if accel falls
+           below 50 Hz or filter_perf drops to power-opt). */
+        struct bmi2_sens_config acc_dbg = { .type = BMI2_ACCEL };
+        if (bmi270_get_sensor_config(&acc_dbg, 1, &bmi2_dev) == BMI2_OK)
+        {
+            LOG_I("wrist-wake step1: ACCEL+WW enabled (accel odr=0x%02x bwp=0x%02x range=0x%02x perf=%d)",
+                  acc_dbg.cfg.acc.odr, acc_dbg.cfg.acc.bwp,
+                  acc_dbg.cfg.acc.range, acc_dbg.cfg.acc.filter_perf);
+        }
+        else
+        {
+            LOG_I("wrist-wake step1: ACCEL+WW enabled (accel readback failed)");
+        }
+
+        /* Step 1.5 — axis remap.
+           Bosch's wrist-wake feature engine uses chip-internal axes. If the
+           IMU is physically mounted with axes pointing different directions
+           than the watch face, the algorithm sees gestures in the wrong
+           frame and never fires.
+
+           Per visual comparison with Bosch's BMI270 axis diagram, on this
+           watch: Y matches, but X and Z point opposite to the chip's
+           natural axes. So we tell the chip to negate X and Z before
+           feeding the feature engine.
+
+           Logged before/after so we can confirm what's stored. */
+        struct bmi2_remap remap_before = { 0 };
+        if (bmi2_get_remap_axes(&remap_before, &bmi2_dev) == BMI2_OK)
+        {
+            LOG_I("wrist-wake step1.5 remap before: x=0x%02x y=0x%02x z=0x%02x",
+                  remap_before.x, remap_before.y, remap_before.z);
+        }
+        struct bmi2_remap remap_want = {
+            .x = BMI2_NEG_X,  /* watch X = -chip X (flipped) */
+            .y = BMI2_NEG_Y,      /* watch Y = +chip Y (same) */
+            .z = BMI2_NEG_Z,  /* watch Z = -chip Z (flipped) */
+        };
+        rslt = bmi2_set_remap_axes(&remap_want, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("wrist-wake step1.5 set_remap_axes failed: %d", rslt);
+            goto out;
+        }
+        struct bmi2_remap remap_after = { 0 };
+        if (bmi2_get_remap_axes(&remap_after, &bmi2_dev) == BMI2_OK)
+        {
+            LOG_I("wrist-wake step1.5 remap after:  x=0x%02x y=0x%02x z=0x%02x",
+                  remap_after.x, remap_after.y, remap_after.z);
+        }
+
+        struct bmi2_sens_config cfg = { .type = BMI2_WRIST_WEAR_WAKE_UP };
         rslt = bmi270_get_sensor_config(&cfg, 1, &bmi2_dev);
         if (rslt != BMI2_OK)
         {
-            LOG_E("wrist-wake get_config failed: %d", rslt);
+            LOG_E("wrist-wake step2 get_config failed: %d", rslt);
             goto out;
         }
+        LOG_I("wrist-wake step2 defaults: angle nf=%u f=%u tilt lr=%u ll=%u pd=%u pu=%u",
+              cfg.cfg.wrist_wear_wake_up.min_angle_nonfocus,
+              cfg.cfg.wrist_wear_wake_up.min_angle_focus,
+              cfg.cfg.wrist_wear_wake_up.max_tilt_lr,
+              cfg.cfg.wrist_wear_wake_up.max_tilt_ll,
+              cfg.cfg.wrist_wear_wake_up.max_tilt_pd,
+              cfg.cfg.wrist_wear_wake_up.max_tilt_pu);
+
+    #if BMI270_WRIST_WAKE_USE_CUSTOM_TUNING
         cfg.cfg.wrist_wear_wake_up.min_angle_focus    = BMI270_WRIST_WAKE_MIN_ANGLE_FOCUS;
         cfg.cfg.wrist_wear_wake_up.min_angle_nonfocus = BMI270_WRIST_WAKE_MIN_ANGLE_NONFOCUS;
         cfg.cfg.wrist_wear_wake_up.max_tilt_lr        = BMI270_WRIST_WAKE_MAX_TILT_LR;
         cfg.cfg.wrist_wear_wake_up.max_tilt_ll        = BMI270_WRIST_WAKE_MAX_TILT_LL;
         cfg.cfg.wrist_wear_wake_up.max_tilt_pd        = BMI270_WRIST_WAKE_MAX_TILT_PD;
         cfg.cfg.wrist_wear_wake_up.max_tilt_pu        = BMI270_WRIST_WAKE_MAX_TILT_PU;
+    #endif
         rslt = bmi270_set_sensor_config(&cfg, 1, &bmi2_dev);
         if (rslt != BMI2_OK)
         {
-            LOG_E("wrist-wake set_config failed: %d", rslt);
+            LOG_E("wrist-wake step3 set_config failed: %d", rslt);
             goto out;
         }
+        LOG_I("wrist-wake step3 config set (custom_tuning=%d)",
+              BMI270_WRIST_WAKE_USE_CUSTOM_TUNING);
 
-        rslt = bmi270_sensor_enable(sensors, 1, &bmi2_dev);
+        /* Explicit INT pin re-config — defensive against any earlier path
+           (drdy un-routing, gyro suspend etc.) that may have left the pin
+           in a state where the feature interrupt can't drive it. Mirror
+           Bosch wrist_gesture_hw_int.c. */
+        struct bmi2_int_pin_config pin_cfg = { 0 };
+        rslt = bmi2_get_int_pin_config(&pin_cfg, &bmi2_dev);
         if (rslt != BMI2_OK)
         {
-            LOG_E("wrist-wake sensor_enable failed: %d", rslt);
+            LOG_E("wrist-wake step4 get_int_pin_config failed: %d", rslt);
             goto out;
         }
-
     #if BMI270_USE_INT1
-        struct bmi2_sens_int_config sens_int = {
-            .type = BMI2_WRIST_WEAR_WAKE_UP, .hw_int_pin = BMI2_INT1};
+        pin_cfg.pin_type           = BMI2_INT1;
+        pin_cfg.pin_cfg[0].lvl        = BMI2_INT_ACTIVE_LOW;
+        pin_cfg.pin_cfg[0].od         = BMI2_INT_PUSH_PULL;
+        pin_cfg.pin_cfg[0].output_en  = BMI2_INT_OUTPUT_ENABLE;
+        pin_cfg.pin_cfg[0].input_en   = BMI2_INT_INPUT_DISABLE;
+        const enum bmi2_hw_int_pin int_pin = BMI2_INT1;
     #else
-        struct bmi2_sens_int_config sens_int = {
-            .type = BMI2_WRIST_WEAR_WAKE_UP, .hw_int_pin = BMI2_INT2};
+        pin_cfg.pin_type           = BMI2_INT2;
+        pin_cfg.pin_cfg[1].lvl        = BMI2_INT_ACTIVE_LOW;
+        pin_cfg.pin_cfg[1].od         = BMI2_INT_PUSH_PULL;
+        pin_cfg.pin_cfg[1].output_en  = BMI2_INT_OUTPUT_ENABLE;
+        pin_cfg.pin_cfg[1].input_en   = BMI2_INT_INPUT_DISABLE;
+        const enum bmi2_hw_int_pin int_pin = BMI2_INT2;
     #endif
+        pin_cfg.int_latch = BMI2_INT_NON_LATCH;
+        rslt = bmi2_set_int_pin_config(&pin_cfg, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("wrist-wake step4 set_int_pin_config failed: %d", rslt);
+            goto out;
+        }
+        LOG_I("wrist-wake step4: pin %d active-low push-pull non-latch", int_pin);
+
+        struct bmi2_sens_int_config sens_int = {
+            .type = BMI2_WRIST_WEAR_WAKE_UP, .hw_int_pin = int_pin };
         rslt = bmi270_map_feat_int(&sens_int, 1, &bmi2_dev);
         if (rslt != BMI2_OK)
         {
-            LOG_E("wrist-wake map_feat_int failed: %d", rslt);
+            LOG_E("wrist-wake step5 map_feat_int failed: %d", rslt);
             goto out;
         }
+        LOG_I("wrist-wake step5: feat int mapped to pin %d", int_pin);
+
         hw_wrist_wake_armed = true;
         LOG_I("BMI270 HW wrist-wake armed");
     }
     else
     {
+        /* Disable the feature. Don't disable accel here — other consumers
+           (SW hand_tracking) re-enable it when screen turns on, and the
+           transition would briefly drop accel power. Just turn off the
+           feature; the leftover INT mapping is harmless because the
+           feature engine won't fire. */
+        uint8_t sensors[] = { BMI2_WRIST_WEAR_WAKE_UP };
         rslt = bmi270_sensor_disable(sensors, 1, &bmi2_dev);
         if (rslt != BMI2_OK)
         {

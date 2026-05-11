@@ -67,9 +67,5 @@ menu "Select BLoc(Business Logic)"
 		config BSP_USING_BLOC_EXERCISE
 			bool "Enable bloc exercise"
 			default n
-
-		config BSP_USING_BLOC_RGB_LED
-			bool "Enable bloc rgb led"
-			default n
 	endif
 endmenu
