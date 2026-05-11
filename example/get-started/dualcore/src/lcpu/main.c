@@ -28,6 +28,9 @@
 #ifdef BSP_USING_HAND_TRACKING
     #include "hand_tracking.h"
 #endif
+#ifdef BSP_USING_BLOC_PERIPHERAL
+    #include "bloc_peripheral.h"  /* on_lcpu_sleep_mode_changed weak hook */
+#endif
 #ifdef BSP_KEY1_ACTIVE_HIGH
     #define BUTTON_ACTIVE_POL BUTTON_ACTIVE_HIGH
 #else
@@ -94,36 +97,62 @@ void bmi270_on_wrist_wake_detected(void)
     main_send_hand_lift_event();
 }
 
-/* Apply the selected raise-wrist mode. Runs on a one-shot timer ~3s after
-   boot so the various INIT_*_EXPORT init paths have completed first. */
+    #if USE_BMI270_HW_WRIST_WAKE
+/* HW-mode auto-switch driven by HCPU's screen state.
+
+   Architectural rationale: the SW state machine in hand_tracking.c does two
+   things that have different lifecycles:
+     - Wake detection (raise-wrist) — only meaningful while the screen is
+       OFF; once on, firing it again is redundant.
+     - Post-wake gestures (put-down confirm, back gesture, wrist
+       pronation) — only meaningful while the screen is ON; the user can't
+       perform these while not looking at the watch.
+
+   In HW mode we hand each lifecycle to the right owner:
+     - screen OFF → BMI270 internal detector handles wake; SW is parked.
+     - screen ON  → HW is parked (avoid duplicate fires); SW state machine
+                    runs full so post-wake gestures still work. */
+void on_lcpu_sleep_mode_changed(bool sleep)
+{
+    if (sleep)
+    {
+        bmi270_hw_wrist_wake_enable(1);
+        #ifdef BSP_USING_HAND_TRACKING
+        hand_tracking_set_enabled(false);
+        #endif
+    }
+    else
+    {
+        bmi270_hw_wrist_wake_enable(0);
+        #ifdef BSP_USING_HAND_TRACKING
+        hand_tracking_set_enabled(true);
+        #endif
+    }
+}
+    #endif /* USE_BMI270_HW_WRIST_WAKE */
+
+/* Open the BMI270 if the timer fires before any subscriber has done it,
+   then sync to whatever screen state HCPU is currently in. In SW mode this
+   is a one-shot log; in HW mode it primes the auto-switch. */
 static void wrist_wake_init_apply(void *param)
 {
     (void)param;
     #if USE_BMI270_HW_WRIST_WAKE
-    /* Ensure the BMI270 is open (idempotent; just verifies open_flag and
-       starts the sensor thread if needed). Without this, the wrist-wake
-       INT would fire but no thread would consume the int_sem. */
     if (bmi270_open() != 0)
     {
-        rt_kprintf("[wrist-wake] bmi270_open failed, staying on SW\n");
+        rt_kprintf("[wrist-wake] bmi270_open failed; HW path disabled\n");
         return;
     }
-    int rc = bmi270_hw_wrist_wake_enable(1);
-    if (rc == 0)
-    {
-        #ifdef BSP_USING_HAND_TRACKING
-        hand_tracking_set_enabled(false);
-        #endif
-        rt_kprintf("[wrist-wake] HW mode active (BMI270 internal)\n");
-    }
-    else
-    {
-        rt_kprintf("[wrist-wake] HW enable failed (%d), staying on SW\n", rc);
-    }
+    /* Apply current state — HCPU may have already moved us to sleep before
+       the 3 s timer fired, in which case we need to arm HW now. Default
+       _sleep_mode at boot is false (awake), so this typically just leaves
+       SW enabled. */
+    on_lcpu_sleep_mode_changed(is_sleep_mode());
+    rt_kprintf("[wrist-wake] HW auto-switch armed: HW on screen-off, SW on "
+               "screen-on (current: %s)\n",
+               is_sleep_mode() ? "off" : "on");
     #else
-    /* SW mode is the default — hand_tracking is already enabled. Log for
-       clarity so the active mode is visible in boot logs. */
-    rt_kprintf("[wrist-wake] SW mode active (hand_tracking.c state machine)\n");
+    rt_kprintf("[wrist-wake] SW mode (hand_tracking.c state machine)\n");
     #endif
 }
 #endif /* ACC_USING_BMI270 */

@@ -95,6 +95,16 @@ bool is_sleep_mode(void)
 }
 
 #ifdef SOC_BF0_LCPU
+/* Weak hook fired right after the LCPU's mirror of HCPU's GUI sleep state
+   flips. Override in LCPU app (e.g. main.c) to drive screen-state-aware
+   peripheral toggles — e.g. arm BMI270 HW wrist-wake on sleep, switch back
+   to SW state machine on wake so post-wake gestures (back / pronation /
+   lift2) keep working. */
+RT_WEAK void on_lcpu_sleep_mode_changed(bool sleep)
+{
+    (void)sleep;
+}
+
 void set_sleep_mode(bool mode)
 {
     if (_sleep_mode == mode)
@@ -102,6 +112,7 @@ void set_sleep_mode(bool mode)
         return;
     }
     _sleep_mode = mode;
+    on_lcpu_sleep_mode_changed(mode);
 }
 #else
 

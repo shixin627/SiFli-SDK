@@ -256,6 +256,9 @@ extern "C"
     bool is_sleep_mode(void);
     bool is_hcpu_suspend(void);
     void set_sleep_mode(bool mode);
+    /* Weak hook the LCPU app can override to react to screen-state changes
+       (e.g. switch raise-wrist source). See bloc_peripheral.c. */
+    void on_lcpu_sleep_mode_changed(bool sleep);
 
     extern bool get_enable_tap_and_hold(void);
     extern void set_enable_tap_and_hold(bool enable);
