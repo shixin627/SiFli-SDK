@@ -141,6 +141,10 @@ cmd.exe /c "C:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\project\\hcpu\\
 cmd.exe /c "C:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\project\\hcpu\\_watch_build.cmd -j8"
 # → build_sf32lb56w-watch_hcpu/main.bin ~2.4 MB,lcpu.elf ~2.3 MB,bootloader.bin ~35 KB
 
+# 產 Keil .uvprojx (要 Keil env,wrapper 內已 hardcode)
+cmd.exe /c "C:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\project\\hcpu\\_watch_mdk5.cmd -j8"
+# → project.uvprojx 可直接用 Keil MDK 5 開
+
 # 失敗時抓 error 摘要(警告很多會洗版):
 grep -E "( error:|undefined reference|cannot find|scons:.*\\*\\*\\*)" \
     example/get-started/dualcore/project/hcpu/_watch_build.log
