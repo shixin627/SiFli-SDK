@@ -670,6 +670,23 @@ void skaiwalk_disconnected_ind(ble_gap_disconnected_ind_t *ind)
 void skaiwalk_ble_mtu_exchange_ind(sibles_mtu_exchange_ind_t *ind)
 {
     SkaiWatchSys.watch_mtu = ind->mtu;
+
+    /* Upgrade link PHY to LE 2M now that MTU exchange has completed —
+       initial negotiations are done, link is stable. 2M PHY halves the
+       radio-active time per packet (same data, half the airtime) for
+       roughly 50% less BLE radio energy. TX power is unchanged so the
+       link budget loses ~3 dB sensitivity vs 1M; in normal proximity
+       use this is invisible, only edge-of-range scenarios may notice.
+       If the phone doesn't support 2M PHY the request is ignored and
+       the link stays at 1M — no functional impact. */
+    ble_gap_update_phy_t phy = {
+        .conn_idx = ind->conn_idx,
+        .tx_phy   = GAP_PHY_LE_2MBPS,
+        .rx_phy   = GAP_PHY_LE_2MBPS,
+        .phy_opt  = 0,
+    };
+    uint8_t ret = ble_gap_update_phy(&phy);
+    LOG_I("Request LE 2M PHY for conn %d: ret=%d", ind->conn_idx, ret);
 }
 
 extern void blebredr_rf_power_set(uint8_t type, int8_t txpwr);
