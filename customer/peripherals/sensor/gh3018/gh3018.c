@@ -104,7 +104,7 @@ int open_gh3018_high_power(void)
     LOG_I("%s", __func__);
     gh30x_module_stop();
     // gh30x_module_start(GH30X_FUNCTION_SPO2);
-    gh30x_module_start(GH30X_FUNCTION_HR | GH30X_FUNCTION_SOFT_ADT);
+    gh30x_module_start(GH30X_FUNCTION_HR); // | GH30X_FUNCTION_SOFT_ADT
     // gh30x_module_start(GH30X_FUNCTION_SOFT_ADT);
     return 0;
 }
@@ -113,7 +113,7 @@ int open_gh3018_low_power(void)
 {
     LOG_I("%s", __func__);
     gh30x_module_stop();
-    gh30x_module_start(GH30X_FUNCTION_ADT | GH30X_FUNCTION_SOFT_ADT);
+    gh30x_module_start(GH30X_FUNCTION_HR);
     return 0;
 }
 
