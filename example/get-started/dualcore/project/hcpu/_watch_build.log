@@ -1,0 +1,131 @@
+scons: Reading SConscript files ...
+Board: sf32lb56w-watch_hcpu
+Mkdir("src")
+Mkdir("resource/strings")
+========
+Multi-Project Info
+--------
+full_name       main.bootloader
+parent          main
+bsp_root        C:\work\SiFli-SDK\example\boot_loader\project\sf32lb56x_v2
+build_dir       build_sf32lb56w-watch_hcpu/bootloader
+link_script     C:/work/SiFli-SDK/drivers/cmsis/sf32lb56x/Templates/gcc/hcpu/link
+ptab            C:/work/SiFli-SDK/customer/boards/sf32lb56w-watch\ptab.json
+embedded:       False
+--------
+full_name       main.lcpu
+parent          main
+bsp_root        C:\work\SiFli-SDK\example\get-started\dualcore\project\lcpu
+build_dir       build_sf32lb56w-watch_hcpu/lcpu
+link_script     C:/work/SiFli-SDK/drivers/cmsis/sf32lb56x/Templates/gcc/lcpu/link
+ptab            C:/work/SiFli-SDK/customer/boards/sf32lb56w-watch\ptab.json
+embedded:       True
+--------
+full_name       main
+parent          
+bsp_root        C:\work\SiFli-SDK\example\get-started\dualcore\project\hcpu
+build_dir       build_sf32lb56w-watch_hcpu/
+link_script     C:/work/SiFli-SDK/drivers/cmsis/sf32lb56x/Templates/gcc/hcpu/link
+ptab            C:/work/SiFli-SDK/customer/boards/sf32lb56w-watch\ptab.json
+--------
+full_name       main.ftab
+parent          main
+bsp_root        C:\work\SiFli-SDK\example\flash_table\sf32lb56x_common_v2
+build_dir       build_sf32lb56w-watch_hcpu/ftab
+link_script     C:/work/SiFli-SDK/drivers/cmsis/sf32lb56x/Templates/gcc/hcpu/link
+ptab            C:/work/SiFli-SDK/customer/boards/sf32lb56w-watch\ptab.json
+embedded:       False
+========
+scons: done reading SConscript files.
+scons: Building targets ...
+scons: building associated VariantDir targets: build_sf32lb56w-watch_hcpu . . .
+Generating build_sf32lb56w-watch_hcpu\bootloader\link_copy.lds ...
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh3018.o
+Building compilation database build_sf32lb56w-watch_hcpu\compile_commands.json
+Building compilation database build_sf32lb56w-watch_hcpu\bootloader\compile_commands.json
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_comm_pkg.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_ctrl.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_hook.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_port.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_process.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_reg_array.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_gcc_stubs.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_hbd_ctrl.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\sensor_goodix_gh3018.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knBasicWeights.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knConfNetWeights.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knSceneNetWeights.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knSceneSwitchWeights.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knWeights.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knWeightsSmall.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\heart_net_org_dll.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\pre_v2.1.0_spo2_for_GH3011_N1_basic_730eb8.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\call\src\gh30x_demo_algo_call_adt.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\call\src\gh30x_demo_algo_call_hr.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\call\src\gh30x_demo_algo_call_hrv.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\call\src\gh30x_demo_algo_call_nadt.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\call\src\gh30x_demo_algo_call_spo2.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\common\src\gh30x_demo_algo_call.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\common\src\gh30x_demo_algo_config.o
+C:\work\SiFli-SDK\customer\peripherals\sensor\gh3018\sensor_goodix_gh3018.c: In function '_gh3018_set_power':
+C:\work\SiFli-SDK\customer\peripherals\sensor\gh3018\sensor_goodix_gh3018.c:137:9: warning: implicit declaration of function 'open_gh3018_low_power'; did you mean 'open_gh3018_high_power'? [-Wimplicit-function-declaration]
+  137 |         open_gh3018_low_power();
+      |         ^~~~~~~~~~~~~~~~~~~~~
+      |         open_gh3018_high_power
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\common\src\gh30x_demo_algo_hook.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\common\src\gh30x_demo_algo_memory.o
+Generating build_sf32lb56w-watch_hcpu\lcpu\link_copy.lds ...
+Generating build_sf32lb56w-watch_hcpu\link_copy.lds ...
+LINK build_sf32lb56w-watch_hcpu\lcpu\lcpu.elf
+Generating build_sf32lb56w-watch_hcpu\ftab\link_copy.lds ...
+Building compilation database build_sf32lb56w-watch_hcpu\ftab\compile_commands.json
+Building compilation database build_sf32lb56w-watch_hcpu\lcpu\compile_commands.json
+C:/dev/env_latest/tools/gnu_gcc/arm_gcc_14.2.1/bin/../lib/gcc/arm-none-eabi/14.2.1/../../../../arm-none-eabi/bin/ld.exe: warning: build_sf32lb56w-watch_hcpu\lcpu\lcpu.elf has a LOAD segment with RWX permissions
+Generating build_sf32lb56w-watch_hcpu\lcpu\lcpu.asm ...
+Generating build_sf32lb56w-watch_hcpu\lcpu\lcpu.hex ...
+Generating build_sf32lb56w-watch_hcpu\lcpu\lcpu.bin ...
+Generating build_sf32lb56w-watch_hcpu\lcpu\lcpu.c ...
+CC build_sf32lb56w-watch_hcpu\lcpu\lcpu.o
+Generating build_sf32lb56w-watch_hcpu\download.bat ...
+Generated sftool param: build_sf32lb56w-watch_hcpu/sftool_param.json
+scons: done building targets.
+
+                                              main                             
++------------------------------------------------------------------------------
+| Region / Section         |            Total |             Used |             
+|--------------------------+------------------+------------------+-------------
+| ROM                      |      2,621,440 B |      1,889,082 B |        732,3
+|   .text                  |      1,392,680 B |                  |             
+|   .rodata                |        452,694 B |                  |             
+|   other                  |          2,040 B |                  |             
+| RAM                      |        801,792 B |        408,196 B |        393,5
+|   other                  |        243,988 B |                  |             
+|   .bss                   |        157,164 B |                  |             
+|   .data                  |          7,044 B |                  |             
+| PSRAM                    |      5,767,168 B |      2,596,000 B |      3,171,1
+|   other                  |      2,596,000 B |                  |             
++------------------------------------------------------------------------------
+  Binary size: 2,435,808 B
+
+                                              lcpu                             
++------------------------------------------------------------------------------
+| Region / Section         |            Total |             Used |             
+|--------------------------+------------------+------------------+-------------
+| ROM                      |         61,440 B |         32,736 B |         28,7
+|   .text                  |         10,422 B |                  |             
+|   .rodata                |          8,854 B |                  |             
+|   other                  |             28 B |                  |             
+| ROM2                     |        524,288 B |        218,068 B |        306,2
+|   other                  |        218,068 B |                  |             
+| RAM                      |         97,280 B |         32,204 B |         65,0
+|   .bss                   |         18,772 B |                  |             
+|   other                  |         11,264 B |                  |             
+|   .data                  |          2,168 B |                  |             
++------------------------------------------------------------------------------
+  Binary size: 247,748 B
+
+================================================================================
+Memory Usage Analysis
+================================================================================
+================================================================================
+

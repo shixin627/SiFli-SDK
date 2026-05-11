@@ -49,10 +49,10 @@
 #define __FUNC_TYPE_ADT_ENABLE__            (1)    /**< adt function tye */
 #define __FUNC_TYPE_HR_ENABLE__             (1)    /**< hb function tye */
 #define __FUNC_TYPE_HRV_ENABLE__            (1)    /**< hb function tye */
-#define __FUNC_TYPE_SPO2_ENABLE__           (1)    /**< spo2 function tye */
-#define __FUNC_TYPE_SOFT_ADT_ENABLE__       (1)    /**< support soft adt config */
-#define __FUNC_TYPE_PROTOCOL_ENABLE__       (1)    /**< protocol function tye */
-#define __FUNC_TYPE_AGC_ENABLE__            (1)    /**< AGC function tye */
+#define __FUNC_TYPE_SPO2_ENABLE__           (0)    /**< spo2 function tye */
+#define __FUNC_TYPE_SOFT_ADT_ENABLE__       (0)    /**< support soft adt config */
+#define __FUNC_TYPE_PROTOCOL_ENABLE__       (0)    /**< protocol function tye */
+#define __FUNC_TYPE_AGC_ENABLE__            (0)    /**< AGC function tye */
 
 /*********************function channel number config**************************/
 #define GH30X_ADT_CHNL_NUM                  (1)    /**< ADT function channel num */

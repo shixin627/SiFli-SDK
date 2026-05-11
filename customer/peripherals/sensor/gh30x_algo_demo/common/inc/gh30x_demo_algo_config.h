@@ -35,11 +35,11 @@
 #define __USER_DYNAMIC_ALGO_MEM_EN__           (0)
 
 /* function algo enable config */
-#define __USE_GOODIX_ADT_ALGORITHM__           (1)
+#define __USE_GOODIX_ADT_ALGORITHM__           (0)
 #define __USE_GOODIX_HR_ALGORITHM__            (1)
 #define __USE_GOODIX_HRV_ALGORITHM__           (1)
-#define __USE_GOODIX_SPO2_ALGORITHM__          (1)
-#define __USE_GOODIX_SOFT_ADT_ALGORITHM__      (1)
+#define __USE_GOODIX_SPO2_ALGORITHM__          (0)
+#define __USE_GOODIX_SOFT_ADT_ALGORITHM__      (0)
 
 /* algorithm log */
 #ifdef GOODIX_DEMO_PLANFORM

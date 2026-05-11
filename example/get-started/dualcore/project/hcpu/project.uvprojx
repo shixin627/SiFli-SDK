@@ -332,10 +332,10 @@
             <v6WtE>1</v6WtE>
             <v6Rtti>0</v6Rtti>
             <VariousControls>
-              <MiscControls>-Wno-builtin-macro-redefined </MiscControls>
-              <Define>SIFLI_BUILD="b990d419", HAVE_ALLOCA_H, HAL_TICK_PER_SECOND=1000, ARM_MATH_LOOPUNROLL, SOC_BF0_HCPU, FIXED_POINT, USE_HAL_DRIVER, HAL_USE_NAND, SIFLI_VERSION=33816576, USE_FULL_ASSERT, OPUS_BUILD, FREETYPE_FONT_NAME=tiny55_full, USE_ALLOCA, __FILE__=__FILE_NAME__, HAVE_LRINTF, LCPU_CONFIG_V1, OPUS_CELT_SUPPORT, RT_USING_ARM_LIBC, FT2_BUILD_LIBRARY, DISABLE_FLOAT_API, LV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;, SF32LB56X</Define>
+              <MiscControls>-Wno-builtin-macro-redefined</MiscControls>
+              <Define>USE_ALLOCA, SIFLI_VERSION=33882112, DISABLE_FLOAT_API, FIXED_POINT, HAL_USE_NAND, RT_USING_NEWLIB, OPUS_CELT_SUPPORT, SF32LB56X, LV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;, SOC_BF0_HCPU, FT2_BUILD_LIBRARY, ARM_MATH_LOOPUNROLL, SIFLI_BUILD="eaa5af8e", USE_FULL_ASSERT, HAVE_ALLOCA_H, HAL_TICK_PER_SECOND=1000, USE_HAL_DRIVER, OPUS_BUILD, LCPU_CONFIG_V1, FREETYPE_FONT_NAME=tiny55_full, HAVE_LRINTF, HAVE_CCONFIG_H</Define>
               <Undefine />
-              <IncludePath>build_sf32lb56w-watch_hcpu;..\..\..\..\..\rtos\rtthread\include;..\..\..\..\..\customer\boards\common;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\..\..\..\customer\boards\eh-lb563;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56w-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\common;..\..\..\..\..\customer\peripherals\co5300;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\cst820;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\ft3168;..\..\..\..\..\rtos\rtthread\bsp\sifli\drivers;..\..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\..\drivers\cmsis\Include;..\..\..\..\..\external\CMSIS\Include;..\..\..\..\..\drivers\Include;..\..\..\..\..\drivers\hal_epic_ex;..\..\..\..\..\external\cJSON-1.7.17;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\FlashDB\inc;..\..\..\..\..\external\FlashDB\port\fal\inc;..\..\..\..\..\external\freetype\include;..\..\..\..\..\external\libhelix-mp3;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\external\libhelix-mp3\real;..\..\..\..\..\external\lvgl_v8;..\..\..\..\..\external\lvgl_v8\lvgl;..\..\..\..\..\external\lvgl_v8\src;..\..\..\..\..\external\lvgl_v8\src\core;..\..\..\..\..\external\lvgl_v8\src\draw;..\..\..\..\..\external\lvgl_v8\src\extra;..\..\..\..\..\external\lvgl_v8\src\font;..\..\..\..\..\external\lvgl_v8\src\hal;..\..\..\..\..\external\lvgl_v8\src\misc;..\..\..\..\..\external\lvgl_v8\src\widgets;..\..\..\..\..\external\lvgl_v8\src\draw\arm2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp;..\..\..\..\..\external\lvgl_v8\src\draw\sdl;..\..\..\..\..\external\lvgl_v8\src\draw\sifli_epic;..\..\..\..\..\external\lvgl_v8\src\draw\stm32_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\sw;..\..\..\..\..\external\lvgl_v8\src\draw\swm341_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\pxp;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\vglite;..\..\..\..\..\external\lvgl_v8\src\extra\layouts;..\..\..\..\..\external\lvgl_v8\src\extra\libs;..\..\..\..\..\external\lvgl_v8\src\extra\others;..\..\..\..\..\external\lvgl_v8\src\extra\themes;..\..\..\..\..\external\lvgl_v8\src\extra\widgets;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\flex;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\grid;..\..\..\..\..\external\lvgl_v8\src\extra\libs\bmp;..\..\..\..\..\external\lvgl_v8\src\extra\libs\ffmpeg;..\..\..\..\..\external\lvgl_v8\src\extra\libs\freetype;..\..\..\..\..\external\lvgl_v8\src\extra\libs\fsdrv;..\..\..\..\..\external\lvgl_v8\src\extra\libs\gif;..\..\..\..\..\external\lvgl_v8\src\extra\libs\png;..\..\..\..\..\external\lvgl_v8\src\extra\libs\qrcode;..\..\..\..\..\external\lvgl_v8\src\extra\libs\rlottie;..\..\..\..\..\external\lvgl_v8\src\extra\libs\sjpg;..\..\..\..\..\external\lvgl_v8\src\extra\others\fragment;..\..\..\..\..\external\lvgl_v8\src\extra\others\gridnav;..\..\..\..\..\external\lvgl_v8\src\extra\others\ime;..\..\..\..\..\external\lvgl_v8\src\extra\others\imgfont;..\..\..\..\..\external\lvgl_v8\src\extra\others\monkey;..\..\..\..\..\external\lvgl_v8\src\extra\others\msg;..\..\..\..\..\external\lvgl_v8\src\extra\others\snapshot;..\..\..\..\..\external\lvgl_v8\src\extra\themes\basic;..\..\..\..\..\external\lvgl_v8\src\extra\themes\default;..\..\..\..\..\external\lvgl_v8\src\extra\themes\mono;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\animimg;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\calendar;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\chart;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\colorwheel;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\imgbtn;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\keyboard;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\led;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\list;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\menu;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\meter;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\msgbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\span;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinner;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tabview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tileview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\win;..\..\..\..\..\external\lz4;..\..\..\..\..\external\opus-1.4;..\..\..\..\..\external\opus-1.4\include;..\..\..\..\..\external\opus-1.4\src;..\..\..\..\..\external\opus-1.4\silk;..\..\..\..\..\external\opus-1.4\celt;..\..\..\..\..\external\opus-1.4\silk\fixed;..\..\..\..\..\external\state_machine-latest\inc;..\..\..\..\..\external\TensorFlow-Lite-Micro\src;..\..\..\..\..\external\WebRTC_audio_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\vad\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\system_wrappers\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\agc\legacy;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\logging;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\utility;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\dc_correction;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_in;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_out;..\..\..\..\..\middleware\include;..\..\..\..\..\middleware\button;..\..\..\..\..\middleware\context_backup;..\..\..\..\..\middleware\cpu_usage_profiler;..\..\..\..\..\middleware\ezipa_dec;..\..\..\..\..\middleware\ipc_queue\common;..\..\..\..\..\middleware\ipc_queue\include;..\..\..\..\..\middleware\ipc_queue\porting\os;..\..\..\..\..\middleware\ipc_queue\porting\os\rtthread;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x\hcpu;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio;..\..\..\..\..\middleware\audio\include;..\..\..\..\..\middleware\audio;.;..\..\..\..\..\middleware\btdm_internal\plf;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio\anyka;..\..\..\..\..\middleware\audio\vbe_drc;..\..\..\..\..\middleware\audio\audio_bt_voice;..\..\..\..\..\middleware\audio\audio_local_music;..\..\..\..\..\middleware\audio\audio_manager;..\..\..\..\..\middleware\audio\audio_port;..\..\..\..\..\middleware\audio\audio_speaker_mic;..\..\..\..\..\middleware\audio\audio_voice_proc;..\..\..\..\..\middleware\barcode128;..\..\..\..\..\middleware\bluetooth\service;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\ble\gatt_service;..\..\..\..\..\middleware\bluetooth\service\bt\bt_audio;..\..\..\..\..\middleware\bluetooth\service\bt\bt_cm;..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh;..\..\..\..\..\middleware\bluetooth\service\common;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\internal;..\..\..\..\..\middleware\bluetooth\include;..\..\..\..\..\middleware\data_bus\public;..\..\..\..\..\middleware\data_bus\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lvsf;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lv_drivers;..\..\..\..\..\middleware\lvgl\lvgl_extensions;..\..\..\..\..\middleware\lvgl\gif_dec;..\..\..\..\..\middleware\share_prefs;..\..\..\..\..\middleware\sifli_lib\lib;..\..\..\..\..\middleware\include;..\..\..\..\..\rtos\os_adaptor\src;..\..\..\..\..\rtos\os_adaptor\inc;..\..\src\hcpu\resource\images;build_sf32lb56w-watch_hcpu\src\resource\strings;build_sf32lb56w-watch_hcpu\src\gui_apps;..\..\src\hcpu\gui_apps\app_layout;..\..\src\hcpu\gui_apps\battery;..\..\src\hcpu\gui_apps\clock;..\..\src\hcpu\gui_apps\common;..\..\src\hcpu\gui_apps\game;..\..\src\hcpu\gui_apps\gesture;..\..\src\hcpu\gui_apps\interact;..\..\src\hcpu\gui_apps\main;..\..\src\hcpu\gui_apps\message;..\..\src\hcpu\gui_apps\speech;..\..\src\hcpu\gui_apps\test;..\..\src\hcpu\gui_apps\utils;..\..\src\hcpu\gui_apps\incoming_call;..\..\src\hcpu\gui_apps\mem;..\..\src\hcpu;..\..\src\modules\algorithm\AirMouse;..\..\src\modules\algorithm\GestureRecognition;..\..\src\modules\bloc;..\..\src\modules\client;..\..\src\modules\communicate;..\..\src\modules\model;..\..\src\modules\service;..\..\src\modules\tests;..\..\src\modules\util\includes;..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33;..\..\..\..\..\rtos\rtthread\libcpu\arm\common;..\..\..\..\..\rtos\rtthread\components\cplusplus;..\..\..\..\..\rtos\rtthread\components\dfs\include;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\devfs;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\elmfat;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\dhara\dhara;..\..\..\..\..\rtos\rtthread\components\drivers\audio;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\spi;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\finsh;..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc;..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\include;..\..\..\..\..\rtos\rtthread\components\utilities\llt_mem;..\..\..\..\..\rtos\rtthread\components\utilities\ulog;..\..\..\..\..\rtos\rtthread\components\utilities\ulog\backend</IncludePath>
+              <IncludePath>build_sf32lb56w-watch_hcpu;..\..\..\..\..\rtos\rtthread\include;..\..\..\..\..\customer\boards\common;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\..\..\..\customer\boards\eh-lb563;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56w-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\common;..\..\..\..\..\customer\peripherals\co5300;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\cst820;..\..\..\..\..\customer\peripherals\common;..\..\..\..\..\customer\peripherals\ft3168;..\..\..\..\..\rtos\rtthread\bsp\sifli\drivers;..\..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\..\drivers\cmsis\Include;..\..\..\..\..\external\CMSIS\Include;..\..\..\..\..\drivers\Include;..\..\..\..\..\drivers\hal_epic_ex;..\..\..\..\..\external\cJSON-1.7.17;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\CMSIS\CMSIS\Include;..\..\..\..\..\external\CMSIS\cmsis_NN\Source\NNTest;..\..\..\..\..\external\CMSIS\RTOS2\Include;..\..\..\..\..\external\FlashDB\inc;..\..\..\..\..\external\FlashDB\port\fal\inc;..\..\..\..\..\external\freetype\include;..\..\..\..\..\external\libhelix-mp3;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\external\libhelix-mp3\real;..\..\..\..\..\external\lvgl_v8;..\..\..\..\..\external\lvgl_v8\lvgl;..\..\..\..\..\external\lvgl_v8\src;..\..\..\..\..\external\lvgl_v8\src\core;..\..\..\..\..\external\lvgl_v8\src\draw;..\..\..\..\..\external\lvgl_v8\src\extra;..\..\..\..\..\external\lvgl_v8\src\font;..\..\..\..\..\external\lvgl_v8\src\hal;..\..\..\..\..\external\lvgl_v8\src\misc;..\..\..\..\..\external\lvgl_v8\src\widgets;..\..\..\..\..\external\lvgl_v8\src\draw\arm2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp;..\..\..\..\..\external\lvgl_v8\src\draw\sdl;..\..\..\..\..\external\lvgl_v8\src\draw\sifli_epic;..\..\..\..\..\external\lvgl_v8\src\draw\stm32_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\sw;..\..\..\..\..\external\lvgl_v8\src\draw\swm341_dma2d;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\pxp;..\..\..\..\..\external\lvgl_v8\src\draw\nxp\vglite;..\..\..\..\..\external\lvgl_v8\src\extra\layouts;..\..\..\..\..\external\lvgl_v8\src\extra\libs;..\..\..\..\..\external\lvgl_v8\src\extra\others;..\..\..\..\..\external\lvgl_v8\src\extra\themes;..\..\..\..\..\external\lvgl_v8\src\extra\widgets;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\flex;..\..\..\..\..\external\lvgl_v8\src\extra\layouts\grid;..\..\..\..\..\external\lvgl_v8\src\extra\libs\bmp;..\..\..\..\..\external\lvgl_v8\src\extra\libs\ffmpeg;..\..\..\..\..\external\lvgl_v8\src\extra\libs\freetype;..\..\..\..\..\external\lvgl_v8\src\extra\libs\fsdrv;..\..\..\..\..\external\lvgl_v8\src\extra\libs\gif;..\..\..\..\..\external\lvgl_v8\src\extra\libs\png;..\..\..\..\..\external\lvgl_v8\src\extra\libs\qrcode;..\..\..\..\..\external\lvgl_v8\src\extra\libs\rlottie;..\..\..\..\..\external\lvgl_v8\src\extra\libs\sjpg;..\..\..\..\..\external\lvgl_v8\src\extra\others\fragment;..\..\..\..\..\external\lvgl_v8\src\extra\others\gridnav;..\..\..\..\..\external\lvgl_v8\src\extra\others\ime;..\..\..\..\..\external\lvgl_v8\src\extra\others\imgfont;..\..\..\..\..\external\lvgl_v8\src\extra\others\monkey;..\..\..\..\..\external\lvgl_v8\src\extra\others\msg;..\..\..\..\..\external\lvgl_v8\src\extra\others\snapshot;..\..\..\..\..\external\lvgl_v8\src\extra\themes\basic;..\..\..\..\..\external\lvgl_v8\src\extra\themes\default;..\..\..\..\..\external\lvgl_v8\src\extra\themes\mono;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\animimg;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\calendar;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\chart;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\colorwheel;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\imgbtn;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\keyboard;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\led;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\list;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\menu;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\meter;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\msgbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\span;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinbox;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\spinner;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tabview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\tileview;..\..\..\..\..\external\lvgl_v8\src\extra\widgets\win;..\..\..\..\..\external\lz4;..\..\..\..\..\external\opus-1.4;..\..\..\..\..\external\opus-1.4\include;..\..\..\..\..\external\opus-1.4\src;..\..\..\..\..\external\opus-1.4\silk;..\..\..\..\..\external\opus-1.4\celt;..\..\..\..\..\external\opus-1.4\silk\fixed;..\..\..\..\..\external\state_machine-latest\inc;..\..\..\..\..\external\TensorFlow-Lite-Micro\src;..\..\..\..\..\external\WebRTC_audio_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\vad\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\system_wrappers\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\agc\legacy;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm\include;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\logging;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\utility;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\dc_correction;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_in;..\..\..\..\..\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_out;..\..\..\..\..\middleware\include;..\..\..\..\..\middleware\button;..\..\..\..\..\middleware\context_backup;..\..\..\..\..\middleware\cpu_usage_profiler;..\..\..\..\..\middleware\ezipa_dec;..\..\..\..\..\middleware\ipc_queue\common;..\..\..\..\..\middleware\ipc_queue\include;..\..\..\..\..\middleware\ipc_queue\porting\os;..\..\..\..\..\middleware\ipc_queue\porting\os\rtthread;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x\hcpu;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\app_fwk\reg_fwk;..\..\..\..\..\middleware\audio;..\..\..\..\..\middleware\audio\include;..\..\..\..\..\middleware\audio;.;..\..\..\..\..\middleware\btdm_internal\plf;..\..\..\..\..\external\libhelix-mp3\pub;..\..\..\..\..\middleware\app_fwk;..\..\..\..\..\middleware\audio\anyka;..\..\..\..\..\middleware\audio\vbe_drc;..\..\..\..\..\middleware\audio\audio_bt_voice;..\..\..\..\..\middleware\audio\audio_local_music;..\..\..\..\..\middleware\audio\audio_manager;..\..\..\..\..\middleware\audio\audio_port;..\..\..\..\..\middleware\audio\audio_speaker_mic;..\..\..\..\..\middleware\audio\audio_voice_proc;..\..\..\..\..\middleware\barcode128;..\..\..\..\..\middleware\bluetooth\service;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\ble\gatt_service;..\..\..\..\..\middleware\bluetooth\service\bt\bt_audio;..\..\..\..\..\middleware\bluetooth\service\bt\bt_cm;..\..\..\..\..\middleware\bluetooth\service\bt\bt_finsh;..\..\..\..\..\middleware\bluetooth\service\common;..\..\..\..\..\middleware\bluetooth\service\ble;..\..\..\..\..\middleware\bluetooth\service\internal;..\..\..\..\..\middleware\bluetooth\include;..\..\..\..\..\middleware\data_bus\public;..\..\..\..\..\middleware\data_bus\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lv_ext_resouce;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lvsf;..\..\..\..\..\middleware\lvgl;..\..\..\..\..\middleware\lvgl\lvsf\gui_widgets;..\..\..\..\..\middleware\lvgl\lvsf\gui_widgets;..\..\..\..\..\middleware\lvgl\lv_drivers;..\..\..\..\..\middleware\lvgl\lvgl_extensions;..\..\..\..\..\middleware\lvgl\gif_dec;..\..\..\..\..\middleware\share_prefs;..\..\..\..\..\middleware\sifli_lib\lib;..\..\..\..\..\middleware\include;..\..\..\..\..\rtos\os_adaptor\src;..\..\..\..\..\rtos\os_adaptor\inc;..\..\src\hcpu\resource\images;build_sf32lb56w-watch_hcpu\src\resource\strings;build_sf32lb56w-watch_hcpu\src\gui_apps;..\..\src\hcpu\gui_apps\app_layout;..\..\src\hcpu\gui_apps\battery;..\..\src\hcpu\gui_apps\clock;..\..\src\hcpu\gui_apps\common;..\..\src\hcpu\gui_apps\game;..\..\src\hcpu\gui_apps\gesture;..\..\src\hcpu\gui_apps\interact;..\..\src\hcpu\gui_apps\main;..\..\src\hcpu\gui_apps\message;..\..\src\hcpu\gui_apps\speech;..\..\src\hcpu\gui_apps\test;..\..\src\hcpu\gui_apps\utils;..\..\src\hcpu\gui_apps\incoming_call;..\..\src\hcpu\gui_apps\onboarding;..\..\src\hcpu;..\..\src\modules\algorithm\AirMouse;..\..\src\modules\algorithm\GestureRecognition;..\..\src\modules\bloc;..\..\src\modules\client;..\..\src\modules\communicate;..\..\src\modules\model;..\..\src\modules\service;..\..\src\modules\tests;..\..\src\modules\util\includes;..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33;..\..\..\..\..\rtos\rtthread\libcpu\arm\common;..\..\..\..\..\rtos\rtthread\components\cplusplus;..\..\..\..\..\rtos\rtthread\components\dfs\include;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\devfs;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\elmfat;..\..\..\..\..\rtos\rtthread\components\dfs\filesystems\dhara\dhara;..\..\..\..\..\rtos\rtthread\components\drivers\audio;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\spi;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\finsh;..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\include;..\..\..\..\..\rtos\rtthread\components\libc\compilers\newlib;..\..\..\..\..\rtos\rtthread\components\utilities\llt_mem;..\..\..\..\..\rtos\rtthread\components\utilities\ulog;..\..\..\..\..\rtos\rtthread\components\utilities\ulog\backend</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -350,7 +350,7 @@
             <useXO>0</useXO>
             <ClangAsOpt>4</ClangAsOpt>
             <VariousControls>
-              <MiscControls> --cpreproc  --cpreproc</MiscControls>
+              <MiscControls />
               <Define />
               <Undefine />
               <IncludePath />
@@ -366,10 +366,10 @@
             <TextAddressRange>0x00000000</TextAddressRange>
             <DataAddressRange>0x20000000</DataAddressRange>
             <pXoBase />
-            <ScatterFile>build_sf32lb56w-watch_hcpu/link.sct</ScatterFile>
+            <ScatterFile>build_sf32lb56w-watch_hcpu//link_copy.sct</ScatterFile>
             <IncludeLibs />
             <IncludeLibsPath />
-            <Misc>  --cpu=cortex-m33 --strict --scatter build_sf32lb56w-watch_hcpu/link.sct --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols --info sizes --info totals --info unused --info veneers --any_contingency  --list build_sf32lb56w-watch_hcpu/main.map  --libpath=C:\Keil_v5/ARM/ARMCLANG/lib --diag_suppress=L6314 --diag_suppress=L6329 --predefine="-DSF32LB56X" --predefine="-DLCPU_CONFIG_V1" --predefine="-DSOC_BF0_HCPU" --predefine="-DSIFLI_BUILD="b990d419"" --predefine="-DUSE_HAL_DRIVER" --predefine="-DHAL_USE_NAND" --predefine="-DSIFLI_VERSION=33816576" --predefine="-DHAL_TICK_PER_SECOND=1000" --predefine="-DARM_MATH_LOOPUNROLL" --predefine="-DUSE_FULL_ASSERT" --predefine="-DSF32LB56X" --predefine="-DFT2_BUILD_LIBRARY" --predefine="-DLV_CONF_KCONFIG_EXTERNAL_INCLUDE=&lt;lv_conf_sifli.h&gt;" --predefine="-DOPUS_BUILD" --predefine="-DOPUS_CELT_SUPPORT" --predefine="-DFIXED_POINT" --predefine="-DUSE_ALLOCA" --predefine="-DHAVE_ALLOCA_H" --predefine="-DHAVE_LRINTF" --predefine="-DDISABLE_FLOAT_API" --predefine="-DFREETYPE_FONT_NAME=tiny55_full" --predefine="-DRT_USING_ARM_LIBC"</Misc>
+            <Misc> -mtune=cortex-m33 -march=armv8-m.main+dsp+fp+cdecp1 -mthumb -ffunction-sections -fdata-sections -mfpu=fpv5-sp-d16 -mfloat-abi=hard -funsigned-char -fshort-enums -fshort-wchar -mlittle-endian -gdwarf-3 -Wno-packed -Wno-missing-noreturn -Wno-sign-conversion -Wno-unused-macros -Wnull-dereference -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=builtin-declaration-mismatch -Wno-error=int-conversion -fno-unwind-tables -fno-exceptions -fno-common -fno-strict-aliasing -Os -Wl,--no-wchar-size-warning,--gc-sections,-Map=build_sf32lb56w-watch_hcpu//main.map,-cref,-u,Reset_Handler -T build_sf32lb56w-watch_hcpu//link_copy.lds -specs=nosys.specs -eentry</Misc>
             <LinkerInputFile />
             <DisabledWarnings />
           </LDads>
@@ -446,6 +446,13 @@
               <FileName>memheap.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\rtos\rtthread\src\memheap.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>memheap2.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\rtos\rtthread\src\memheap2.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -538,76 +545,6 @@
           <Files>
             <File>
               <FileName>bsp_power.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_power.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_battery_table.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\battery_table.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_bsp_init.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_init.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_bsp_lcd_tp.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_lcd_tp.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_bsp_pinmux.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_pinmux.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_bsp_power.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_power.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_battery_table.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\battery_table.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_bsp_init.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_init.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_bsp_lcd_tp.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_lcd_tp.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_bsp_pinmux.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_pinmux.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>eh-lb56xu_bsp_power.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\customer\boards\eh-lb56xu\bsp_power.c</FilePath>
             </File>
@@ -927,7 +864,7 @@
             <File>
               <FileName>startup_bf0_hcpu.S</FileName>
               <FileType>2</FileType>
-              <FilePath>..\..\..\..\..\drivers\cmsis\sf32lb56x\Templates\arm\startup_bf0_hcpu.S</FilePath>
+              <FilePath>..\..\..\..\..\drivers\cmsis\sf32lb56x\Templates\gcc\startup_bf0_hcpu.S</FilePath>
             </File>
           </Files>
         </Group>
@@ -987,6 +924,13 @@
               <FileName>bf0_hal_busmon.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\drivers\hal\bf0_hal_busmon.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>bf0_hal_can.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\drivers\hal\bf0_hal_can.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -1357,9 +1301,9 @@
         <Group>lib_hal_epic_ex<GroupName>lib_hal_epic_ex</GroupName>
           <Files>
             <File>
-              <FileName>hal_epic_ex_rvds.lib</FileName>
-              <FileType>4</FileType>
-              <FilePath>..\..\..\..\..\drivers\hal_epic_ex\hal_epic_ex_rvds.lib</FilePath>
+              <FileName>hal_epic_ex_gcc</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\hal_epic_ex_gcc</FilePath>
             </File>
           </Files>
         </Group>
@@ -2090,41 +2034,6 @@
           <GroupName>FlashDB</GroupName>
           <Files>
             <File>
-              <FileName>fdb.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\external\FlashDB\src\fdb.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>fdb_file.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\external\FlashDB\src\fdb_file.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>fdb_kvdb.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\external\FlashDB\src\fdb_kvdb.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>fdb_tsdb.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\external\FlashDB\src\fdb_tsdb.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>fdb_utils.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\external\FlashDB\src\fdb_utils.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
               <FileName>fal.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\external\FlashDB\port\fal\src\fal.c</FilePath>
@@ -2156,6 +2065,41 @@
               <FileName>fal_rtt.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\external\FlashDB\port\fal\src\fal_rtt.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>fdb.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\external\FlashDB\src\fdb.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>fdb_file.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\external\FlashDB\src\fdb_file.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>fdb_kvdb.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\external\FlashDB\src\fdb_kvdb.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>fdb_tsdb.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\external\FlashDB\src\fdb_tsdb.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>fdb_utils.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\external\FlashDB\src\fdb_utils.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -2303,6 +2247,13 @@
               <FileName>lv_event.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\external\lvgl_v8\src\core\lv_event.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>lv_gesture.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\external\lvgl_v8\src\core\lv_gesture.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -4539,7 +4490,7 @@
             <GroupArmAds>
               <Cads>
                 <VariousControls>
-                  <MiscControls> -Wno-error -Wno-#warnings -Oz</MiscControls>
+                  <MiscControls />
                   <Define> </Define>
                   <Undefine> </Undefine>
                   <IncludePath> </IncludePath>
@@ -6207,6 +6158,13 @@
           </Files>
           <Files>
             <File>
+              <FileName>app_reg.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\middleware\app_fwk\reg_fwk\app_reg.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>app_trans_anim_port.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\middleware\app_fwk\lvgl_v8\app_trans_anim_port.c</FilePath>
@@ -6324,9 +6282,9 @@
         <Group>lib_barcode128<GroupName>lib_barcode128</GroupName>
           <Files>
             <File>
-              <FileName>barcode128_rvds.lib</FileName>
-              <FileType>4</FileType>
-              <FilePath>..\..\..\..\..\middleware\barcode128\barcode128_rvds.lib</FilePath>
+              <FileName>barcode128_gcc</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\barcode128_gcc</FilePath>
             </File>
           </Files>
         </Group>
@@ -6776,9 +6734,9 @@
         <Group>sifli_bt<GroupName>sifli_bt</GroupName>
           <Files>
             <File>
-              <FileName>lib_bt_rvds.lib</FileName>
-              <FileType>4</FileType>
-              <FilePath>..\..\..\..\..\middleware\bluetooth\lib\lib_bt_rvds.lib</FilePath>
+              <FileName>lib_bt_gcc</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\lib_bt_gcc</FilePath>
             </File>
           </Files>
         </Group>
@@ -6850,6 +6808,58 @@
               <FilePath>..\..\..\..\..\middleware\lvgl\lvsf_perf_v9.c</FilePath>
             </File>
           </Files>
+          <Files>
+            <File>
+              <FileName>app_mem.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\middleware\lvgl\app_mem.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>lv_ext_resouce</GroupName>
+          <Files>
+            <File>
+              <FileName>app_comm.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\middleware\lvgl\lv_ext_resouce\app_comm.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>app_lang.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\middleware\lvgl\lv_ext_resouce\app_lang.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>app_nvm_lang_compat.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\middleware\lvgl\lv_ext_resouce\app_nvm_lang_compat.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>lv_ext_resource_manager.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>lv_ext_resource_manager_builtin.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager_builtin.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>lv_ext_resource_manager_dl_impl.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager_dl_impl.c</FilePath>
+            </File>
+          </Files>
         </Group>
         <Group>
           <GroupName>LV_SF</GroupName>
@@ -6858,27 +6868,6 @@
               <FileName>lv_ex_data.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\middleware\lvgl\lvsf\lv_ex_data.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>lv_ext_resource_manager.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\lvgl\lvsf\lv_ext_resource_manager.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>lv_ext_resource_manager_builtin.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\lvgl\lvsf\lv_ext_resource_manager_builtin.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>lv_ext_resource_manager_dl_impl.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\middleware\lvgl\lvsf\lv_ext_resource_manager_dl_impl.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -7020,6 +7009,15 @@
             </GroupArmAds>
           </GroupOption>
         </Group>
+        <Group>gui_widgets<GroupName>gui_widgets</GroupName>
+          <Files>
+            <File>
+              <FileName>gui_widgets_gcc</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\gui_widgets_gcc</FilePath>
+            </File>
+          </Files>
+        </Group>
         <Group>
           <GroupName>lv_drivers</GroupName>
           <Files>
@@ -7075,18 +7073,18 @@
         <Group>lib_lvgl_extensions<GroupName>lib_lvgl_extensions</GroupName>
           <Files>
             <File>
-              <FileName>lvgl_extensions_rvds.lib</FileName>
-              <FileType>4</FileType>
-              <FilePath>..\..\..\..\..\middleware\lvgl\lvgl_extensions\lvgl_extensions_rvds.lib</FilePath>
+              <FileName>lvgl_extensions_gcc</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\lvgl_extensions_gcc</FilePath>
             </File>
           </Files>
         </Group>
         <Group>lib_gif_dec<GroupName>lib_gif_dec</GroupName>
           <Files>
             <File>
-              <FileName>gif_dec_rvds.lib</FileName>
-              <FileType>4</FileType>
-              <FilePath>..\..\..\..\..\middleware\lvgl\gif_dec\gif_dec_rvds.lib</FilePath>
+              <FileName>gif_dec_gcc</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\gif_dec_gcc</FilePath>
             </File>
           </Files>
         </Group>
@@ -7127,9 +7125,9 @@
         <Group>sifli_lib<GroupName>sifli_lib</GroupName>
           <Files>
             <File>
-              <FileName>Tiny_font_rvds.lib</FileName>
-              <FileType>4</FileType>
-              <FilePath>..\..\..\..\..\middleware\sifli_lib\lib\Tiny_font_rvds.lib</FilePath>
+              <FileName>Tiny_font_gcc</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Tiny_font_gcc</FilePath>
             </File>
           </Files>
         </Group>
@@ -7738,6 +7736,13 @@
           </Files>
           <Files>
             <File>
+              <FileName>icon_sleep_mode.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_sleep_mode.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>icon_sms.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_sms.tmp.c</FilePath>
@@ -8168,6 +8173,13 @@
               <FileName>previous_arrow.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\previous_arrow.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>service_hour.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\service_hour.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -8853,12 +8865,12 @@
           </GroupOption>
         </Group>
         <Group>
-          <GroupName>App_watch_component</GroupName>
+          <GroupName>App_onboarding</GroupName>
           <Files>
             <File>
-              <FileName>app_mem.c</FileName>
+              <FileName>app_onboarding.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\src\hcpu\gui_apps\mem\app_mem.c</FilePath>
+              <FilePath>..\..\src\hcpu\gui_apps\onboarding\app_onboarding.c</FilePath>
             </File>
           </Files>
           <GroupOption>
@@ -9459,6 +9471,13 @@
           </Files>
           <Files>
             <File>
+              <FileName>ezip_icon_sleep_mode.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_sleep_mode.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
               <FileName>ezip_icon_sms.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\icon_sms.tmp.c</FilePath>
@@ -9889,6 +9908,13 @@
               <FileName>ezip_previous_arrow.tmp.c</FileName>
               <FileType>1</FileType>
               <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\previous_arrow.tmp.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>ezip_service_hour.tmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>build_sf32lb56w-watch_hcpu\src\resource\images\common\ezip\service_hour.tmp.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -10418,13 +10444,6 @@
           </Files>
           <Files>
             <File>
-              <FileName>mem_app_mem.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\src\hcpu\gui_apps\mem\app_mem.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
               <FileName>message_app_message.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\src\hcpu\gui_apps\message\app_message.c</FilePath>
@@ -10435,6 +10454,13 @@
               <FileName>message_app_message_database.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\src\hcpu\gui_apps\message\app_message_database.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>onboarding_app_onboarding.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\src\hcpu\gui_apps\onboarding\app_onboarding.c</FilePath>
             </File>
           </Files>
           <Files>
@@ -10959,9 +10985,9 @@
           </Files>
           <Files>
             <File>
-              <FileName>context_rvds.S</FileName>
+              <FileName>context_gcc.S</FileName>
               <FileType>2</FileType>
-              <FilePath>..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33\context_rvds.S</FilePath>
+              <FilePath>..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33\context_gcc.S</FilePath>
             </File>
           </Files>
           <Files>
@@ -11370,44 +11396,70 @@
           <GroupName>libc</GroupName>
           <Files>
             <File>
-              <FileName>libc.c</FileName>
+              <FileName>gmtime_r.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc\libc.c</FilePath>
+              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\gmtime_r.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
-              <FileName>mem_std.c</FileName>
+              <FileName>unistd.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc\mem_std.c</FilePath>
+              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\unistd.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>newlib</GroupName>
+          <Files>
+            <File>
+              <FileName>libc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\newlib\libc.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>libc_syms.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\newlib\libc_syms.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
               <FileName>stdio.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc\stdio.c</FilePath>
+              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\newlib\stdio.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
-              <FileName>stubs.c</FileName>
+              <FileName>syscalls.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc\stubs.c</FilePath>
+              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\newlib\syscalls.c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
-              <FileName>armlibc_time.c</FileName>
+              <FileName>newlib_time.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc\time.c</FilePath>
+              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\newlib\time.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>newlib<GroupName>newlib</GroupName>
+          <Files>
+            <File>
+              <FileName>c</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\c</FilePath>
             </File>
           </Files>
           <Files>
             <File>
-              <FileName>gmtime_r.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\gmtime_r.c</FilePath>
+              <FileName>m</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\m</FilePath>
             </File>
           </Files>
         </Group>

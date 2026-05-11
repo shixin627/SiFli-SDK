@@ -129,3 +129,108 @@ project/lcpu/<board>_lcpu/
 ```
 
 板型決定 `board.h` 中的 `APP_ID_*` 啟用與否、感測器型號、PWM/I2C 接腳。改板型不要動 `proj.conf` 共用設定,改 `<board>_hcpu/` 內專屬設定。
+
+### 跑編譯
+
+```bash
+# PC sim (MSVC)
+cmd.exe /c "C:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\project\\hcpu\\_pc_build.cmd -j8"
+# → build_pc_hcpu/main.exe ~9.6 MB
+
+# 手錶 (GCC)
+cmd.exe /c "C:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\project\\hcpu\\_watch_build.cmd -j8"
+# → build_sf32lb56w-watch_hcpu/main.bin ~2.4 MB,lcpu.elf ~2.3 MB,bootloader.bin ~35 KB
+
+# 產 Keil .uvprojx (要 Keil env,wrapper 內已 hardcode)
+cmd.exe /c "C:\\work\\SiFli-SDK\\example\\get-started\\dualcore\\project\\hcpu\\_watch_mdk5.cmd -j8"
+# → project.uvprojx 可直接用 Keil MDK 5 開
+
+# 失敗時抓 error 摘要(警告很多會洗版):
+grep -E "( error:|undefined reference|cannot find|scons:.*\\*\\*\\*)" \
+    example/get-started/dualcore/project/hcpu/_watch_build.log
+```
+
+成功訊號:`scons: done building targets.`
+
+### Wrapper 設計
+
+`_pc_build.cmd` / `_watch_build.cmd` / `_watch_mdk5.cmd` 是 ConEmu 之外的編譯入口,自帶 env 初始化(因為 ConEmu 的 `CmdInit.cmd` 在 cmd.exe `/c` 模式下不會跑)。三個 wrapper 都 `set ENV_VER=...` 自己 override env 版號檢查 -- SDK env 升級時要同步改 wrapper 裡的版號。
+
+> ⚠️ wrapper / `.cmd` 檔案內容**只用 ASCII**。Em-dash (`—`) 或全形標點會讓 cmd.exe 把它的 UTF-8 byte 各自當成 command 解析,出現 `'M' 不是內部或外部命令` 之類的錯誤。寫註解一律用 `--` / `:`、不用破折號。`file <path>` 結果應該是 `DOS batch file, ASCII text`,出現 `Unicode text` 就有問題。
+
+切換工具鏈:改 wrapper 內 `call C:\work\SiFli-SDK\set_env.bat <toolchain>` 那一行(`gcc` / `keil`)。
+
+> ⚠️ `set_env.bat` 不帶參數**預設是 GCC**(`if "%1"==""    goto :SET_GCC`),不是 Keil。在 ConEmu 直接打 `scons --board=...` 用的是 GCC。
+
+#### 產 Keil `.uvprojx` 不限 env(從 2026-05 起)
+
+`tools/build/keil.py` 已改成檢視 template 實際結構(`tree.find('TargetArm')` 是否存在),不再單看 `rtconfig.PLATFORM`。本專案 `project/hcpu/template.uvprojx` 是 armclang 結構(`<TargetArmAds>`),所以在 gcc 或 keil env 都能跑 `scons --target=mdk5`,產出的 .uvprojx 都是 armclang 結構給 Keil MDK 開。
+
+`_watch_mdk5.cmd` wrapper 還是 hardcode `set_env.bat keil` 因為 scons 跑 `--target=mdk5` 時也會順便 build 一次,Keil env 跑 armclang build 較合適(不會撞 GCC 14 嚴格化 / Goodix lib 等 GCC 才有的問題)。
+
+### 編譯規則
+
+#### 多板共用 `BSP_USING_BOARD_*` flag → 加 active-board guard
+
+`customer/boards/SConscript` 會掃所有子目錄並執行各板 SConscript。如果 N 個板子 SConscript 都對同一個 `BSP_USING_BOARD_*` flag 做 `if GetDepend(...)` 然後拉同一個 vendor 子模組,vendor 的 .o 會被加進 link N 次。Keil 只發 L6304W 警告,**GCC ld 會 multiple definition 失敗**。
+
+修法 pattern(已套在 `sf32lb56-watch`、`sf32lb56w-watch`、`eh-lb563` 三個共用 `BSP_USING_BOARD_EH_LB563XXX` 的板子):
+
+```python
+this_board = os.path.basename(cwd)
+active_board = (GetBoardName() or '').rstrip()
+for suffix in ('_hcpu', '_lcpu', '_acpu'):
+    if active_board.endswith(suffix):
+        active_board = active_board[:-len(suffix)]
+        break
+# 只有當前 active 的板子才拉 vendor 模組
+if GetDepend('BSP_USING_BOARD_XXX') and active_board == this_board:
+    group = group + SConscript('../<vendor>/script/SConscript')
+```
+
+#### Vendor lib 只有 armclang 版 → 在 SConscript toolchain-gate + 補 GCC stub
+
+如果 `customer/peripherals/sensor/<name>/*.lib` 是 armclang 編譯(`KEIL5_M33` / `armcland-mdk531` / `cortexM33_keil` 字樣),GCC 鏈無法 link。先例:`gh3018` 的 SConscript:
+
+```python
+if rtconfig.CROSS_TOOL == "gcc":
+    SrcRemove(src, '<no-stub-needed-for-gcc>.c')  # 反過來:keil 才 SrcRemove gcc stub
+    group = DefineGroup(..., CPPPATH = path)      # 不加 LIBS
+else:
+    SrcRemove(src, '<vendor>_gcc_stubs.c')
+    lib = ['<armclang_lib_name>']
+    group = DefineGroup(..., LIBS = lib, CPPPATH = path, LIBPATH = path)
+```
+
+GCC stub 檔內提供所有 lib 函式的 no-op 實作 — 編譯通過但功能不可用,適合 dev / CI,production 仍要 Keil。
+
+#### ⚠️ GBK / ISO-8859 中文註解檔不能用 Edit/Write
+
+vendor / legacy 檔案常見編碼:**GBK / ISO-8859 + CRLF**,不是 UTF-8。Edit/Write 工具會強制 UTF-8 + LF → 中文註解的 byte 序列整批變動 → git diff 從 3 行變成 100+ 行,而且檔案編碼壞掉(下次別人讀就是亂碼)。
+
+**規則**:編輯前先 `file <path>` 看編碼。出現 `ISO-8859 text` 或 `Unicode text, UTF-8` **而且**裡面有中文,改用 `sed -i 's|old|new|' file` 做 byte-level 替換。
+
+```bash
+file customer/peripherals/sensor/gh3018/gh30x_algo_hook.h
+# C source, ISO-8859 text, with CRLF line terminators  ← 別 Edit,用 sed
+
+sed -i 's|^extern GU32 goodix_hrv_init|extern goodix_hrv_ret goodix_hrv_init|' \
+    customer/peripherals/sensor/gh3018/gh30x_algo_hook.h
+```
+
+驗證:`git diff --shortstat <file>` 應該只有實際改動的行數,不會幾百行。
+
+#### GCC 14 對 legacy code 太嚴
+
+`arm_gcc_14.2.1` 把 `-Wimplicit-function-declaration`、`-Wincompatible-pointer-types`、`-Wbuiltin-declaration-mismatch`、`-Wint-conversion` 升成 default error。`tools/build/building.py` GCC 區塊(~L2926)已經加 `-Wno-error=...` 把它們降回警告,維持與舊 GCC / Keil 一致的容忍度。新加的 SDK / vendor 程式碼若觸發新類型的 GCC 14 error,看是要 fix code 還是擴充這串 flag。
+
+### Don't-touch 清單(下次 upstream merge 要小心)
+
+以下是為了讓 GCC + 新 env 編得過所做的本地修改。upstream merge 時若衝突,通常本地版本要**保留**,但若上游做了結構性等價修復(例如統一 GS32 typedef、提供 GCC lib),可以接受上游版本並刪本地補丁:
+
+- `tools/build/building.py` 的 `-Wno-error=` 那行
+- `customer/boards/{sf32lb56-watch,sf32lb56w-watch,eh-lb563}/SConscript` 的 active-board guard
+- `customer/peripherals/sensor/gh3018/SConscript` + `gh30x_gcc_stubs.c` + `gh30x_algo/Basic/lib/SConscript` 的 GCC 分支
+- Goodix `GS32` typedef 跨檔統一(5 檔)
+
+詳細的修復歷史看 [CHANGELOG.md](CHANGELOG.md)。

@@ -902,8 +902,11 @@ void app_watch_entry(void *parameter)
             }
 #endif /* BSP_USING_PM */
             // EventStartB(0);
-            if (ms > 0)
-                rt_thread_mdelay(ms); /* Just to let the system breathe */
+            /* Always yield at least 1ms — even when lv_timer_handler says 0ms.
+             * On the PC simulator this thread runs at PRIORITY_MIDDLE and would
+             * otherwise busy-loop and starve lower-priority threads (notably the
+             * finsh shell at priority 20) so tshell never gets to read input. */
+            rt_thread_mdelay(ms > 0 ? ms : 1);
             // EventStopB(0);
         }
 
