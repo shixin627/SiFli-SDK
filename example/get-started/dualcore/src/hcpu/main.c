@@ -1197,14 +1197,21 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
 
     para.config.adv_mode = SIBLES_ADV_CONNECT_MODE;
     para.config.mode_config.conn_config.duration = 0x0;
-    /* Adv interval is in 0.625 ms units.
-       - Pairing mode or no bonded device: 200 ms (0x140) for fast discovery.
-       - Already bonded + waiting to reconnect: 1.28 s (0x800) — phone takes
-         at most ~1 extra second to find us when it comes back in range, but
-         we cut the radio-on duty by ~6×. */
-    if (pairing_mode || !is_bonded)
+    /* Adv interval is in 0.625 ms units. Three-tier policy:
+       - Pairing mode UI: 200 ms (0x140) — user is actively trying to pair,
+         keep discovery snappy.
+       - No bonded device but not in pairing UI: 500 ms (0x320) — power
+         settle until the user opens the pairing flow.
+       - Bonded + waiting to reconnect: 1.28 s (0x800) — phone takes at
+         most ~1 extra second to find us when it comes back in range, but
+         we cut the radio-on duty by ~6× vs the 200 ms case. */
+    if (pairing_mode)
     {
         para.config.mode_config.conn_config.interval = 0x140;
+    }
+    else if (!is_bonded)
+    {
+        para.config.mode_config.conn_config.interval = 0x320;
     }
     else
     {

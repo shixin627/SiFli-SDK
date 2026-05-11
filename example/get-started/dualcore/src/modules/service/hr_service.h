@@ -94,6 +94,10 @@ typedef struct
 
 extern rt_bool_t is_ppg_service_ready(void);
 extern void hr_set_power(uint8_t arg);
+/* Number of active HR subscribers (sum of HR + PPG raw). Lets callers
+   (e.g. wear-detect) decide whether re-powering the PPG hardware has any
+   consumer. Returns 0 if nothing is listening. */
+extern int hr_service_subscriber_count(void);
 
 /// @} file
 

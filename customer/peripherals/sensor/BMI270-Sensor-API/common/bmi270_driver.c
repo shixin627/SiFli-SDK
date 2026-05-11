@@ -1519,6 +1519,123 @@ out:
     return (rslt == BMI2_OK) ? 0 : -1;
 }
 
+// function for hardware step counter ----------------
+int bmi270_hw_step_counter_enable(int en)
+{
+    if (accel_gyro_dev_info.open_flag == 0)
+    {
+        LOG_W("hw_step_counter_enable: bmi270 not open");
+        return -1;
+    }
+
+    int8_t rslt;
+    uint8_t sensors[] = {BMI2_STEP_COUNTER};
+
+    bmi270_api_lock();
+    if (en)
+    {
+        rslt = bmi270_sensor_enable(sensors, 1, &bmi2_dev);
+        if (rslt == BMI2_OK)
+            LOG_I("BMI270 HW step counter enabled");
+        else
+            LOG_E("step counter enable failed: %d", rslt);
+    }
+    else
+    {
+        rslt = bmi270_sensor_disable(sensors, 1, &bmi2_dev);
+        if (rslt == BMI2_OK)
+            LOG_I("BMI270 HW step counter disabled");
+        else
+            LOG_E("step counter disable failed: %d", rslt);
+    }
+    bmi270_api_unlock();
+    return (rslt == BMI2_OK) ? 0 : -1;
+}
+
+int bmi270_hw_step_counter_read(uint32_t *steps)
+{
+    if (accel_gyro_dev_info.open_flag == 0 || steps == NULL)
+        return -1;
+
+    struct bmi2_feat_sensor_data fdata = {.type = BMI2_STEP_COUNTER};
+    bmi270_api_lock();
+    int8_t rslt = bmi270_get_feature_data(&fdata, 1, &bmi2_dev);
+    bmi270_api_unlock();
+    if (rslt != BMI2_OK)
+    {
+        LOG_W("step_counter_read failed: %d", rslt);
+        return -1;
+    }
+    *steps = fdata.sens_data.step_counter_output;
+    return 0;
+}
+
+int bmi270_hw_step_counter_reset(void)
+{
+    if (accel_gyro_dev_info.open_flag == 0)
+        return -1;
+
+    /* Reset by toggling the reset_counter bit in the step config. The chip
+       clears the running counter on the rising edge of this bit. */
+    struct bmi2_sens_config cfg = {.type = BMI2_STEP_COUNTER};
+    bmi270_api_lock();
+    int8_t rslt = bmi270_get_sensor_config(&cfg, 1, &bmi2_dev);
+    if (rslt == BMI2_OK)
+    {
+        cfg.cfg.step_counter.reset_counter = 1;
+        rslt = bmi270_set_sensor_config(&cfg, 1, &bmi2_dev);
+    }
+    bmi270_api_unlock();
+    return (rslt == BMI2_OK) ? 0 : -1;
+}
+
+int bmi270_set_drdy_int_routing(int en)
+{
+    if (accel_gyro_dev_info.open_flag == 0)
+        return -1;
+
+    int8_t rslt;
+    bmi270_api_lock();
+    #if BMI270_USE_INT1
+    enum bmi2_hw_int_pin pin = en ? BMI2_INT1 : BMI2_INT_NONE;
+    #else
+    enum bmi2_hw_int_pin pin = en ? BMI2_INT2 : BMI2_INT_NONE;
+    #endif
+    rslt = bmi2_map_data_int(BMI2_DRDY_INT, pin, &bmi2_dev);
+    bmi270_api_unlock();
+    if (rslt != BMI2_OK)
+    {
+        LOG_E("set_drdy_int_routing(%d) failed: %d", en, rslt);
+        return -1;
+    }
+    LOG_I("BMI270 DRDY interrupt %s", en ? "routed to INT" : "un-routed");
+    return 0;
+}
+
+int bmi270_set_gyro_suspend(int suspend)
+{
+    if (accel_gyro_dev_info.open_flag == 0)
+        return -1;
+
+    int8_t rslt;
+    uint8_t gyro_sensor = BMI2_GYRO;
+    bmi270_api_lock();
+    if (suspend)
+    {
+        rslt = bmi2_sensor_disable(&gyro_sensor, 1, &bmi2_dev);
+        if (rslt == BMI2_OK)
+            LOG_I("BMI270 gyro suspended");
+    }
+    else
+    {
+        rslt = bmi2_sensor_enable(&gyro_sensor, 1, &bmi2_dev);
+        if (rslt == BMI2_OK)
+            LOG_I("BMI270 gyro resumed");
+    }
+    bmi270_api_unlock();
+    return (rslt == BMI2_OK) ? 0 : -1;
+}
+
 int bmi270_pedo_fifo2step(uint8_t *buf, int len)
 {
     /*

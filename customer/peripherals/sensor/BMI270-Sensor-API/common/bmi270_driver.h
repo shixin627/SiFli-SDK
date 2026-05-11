@@ -133,6 +133,34 @@ int bmi270_hw_wrist_wake_enable(int en);
 int bmi270_hw_wrist_wake_is_enabled(void);
 void bmi270_on_wrist_wake_detected(void);
 
+/* Hardware step counter feature (BMI2_STEP_COUNTER). The chip maintains a
+   running step total internally; the host just reads it periodically. This
+   lets the host stop processing DRDY samples for step counting (Kraepelin
+   is the SW alternative and consumes every sample). Stays enabled across
+   screen-on/off transitions.
+   Returns 0 on success, negative on failure. */
+int bmi270_hw_step_counter_enable(int en);
+/* Read the current step count from chip register. Returns 0 on success;
+   *steps is left unchanged on failure. */
+int bmi270_hw_step_counter_read(uint32_t *steps);
+
+/* Reset the chip step counter to 0. Use sparingly — daily/per-session
+   resets are the only sensible use. */
+int bmi270_hw_step_counter_reset(void);
+
+/* Suspend / resume the gyroscope without touching the accel.
+   Use in screen-off mode where gyro-derived gestures (air mouse, AHRS yaw)
+   aren't needed but accel is still wanted for the step counter and
+   wrist-wake feature. */
+int bmi270_set_gyro_suspend(int suspend);
+
+/* Route or un-route the accel/gyro data-ready interrupt to the BMI270 INT1
+   line. When un-routed (en=0) the GPIO IRQ stays armed but DRDY events no
+   longer fire on it — only feature interrupts (wrist-wake, step counter,
+   etc.) reach the host. Use this in screen-off mode to stop per-sample
+   wakes without losing the wake-from-sleep path. */
+int bmi270_set_drdy_int_routing(int en);
+
 int bmi270_gyro_read(int16_t *psX, int16_t *psY, int16_t *psZ);
 int bmi270_accel_read(int16_t *psX, int16_t *psY, int16_t *psZ);
 int bmi270_tempra_read(float *tempra);

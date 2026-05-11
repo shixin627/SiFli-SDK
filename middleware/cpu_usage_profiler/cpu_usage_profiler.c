@@ -309,7 +309,14 @@ static int cpu_prof_init(void)
 }
 MSH_CMD_EXPORT(cpu_prof_init, init prof);
 #ifndef PKG_USING_SYSTEMVIEW
+    #if !kReleaseMode
+    /* Release builds skip auto-init: the scheduler hook is the entry that
+       keeps the profiler thread doing periodic work on every context
+       switch — pure debug-only overhead in production. The cpu_*
+       symbols stay compiled in for any caller that wants to invoke them
+       explicitly. */
     INIT_COMPONENT_EXPORT(cpu_prof_init);
+    #endif
 #endif /* PKG_USING_SYSTEMVIEW */
 
 static void cpu_prof_deinit()
@@ -445,7 +452,9 @@ static int cpu_usage_metrics_init(void)
     return 0;
 
 }
-INIT_APP_EXPORT(cpu_usage_metrics_init);
+#if !kReleaseMode
+    INIT_APP_EXPORT(cpu_usage_metrics_init);
+#endif
 
 #ifndef MC_CLIENT_ENABLED
 #if 0
@@ -577,7 +586,9 @@ static int cpu_usage_metrics_init(void)
     return 0;
 
 }
-INIT_APP_EXPORT(cpu_usage_metrics_init);
+#if !kReleaseMode
+    INIT_APP_EXPORT(cpu_usage_metrics_init);
+#endif
 
 #endif /* CPU_USAGE_METRICS_PRINT_DIRECTLY */
 

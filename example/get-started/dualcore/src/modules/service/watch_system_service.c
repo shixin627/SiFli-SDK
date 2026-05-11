@@ -136,6 +136,32 @@ static void soft_adt_status_callback(bool status)
 {
     push_uint32_ind(MSG_SERVICE_SOFT_ADT_IND, (uint32_t)status);
     LOG_I("Wear detect: %s", status ? "ON WRIST" : "OFF WRIST");
+
+    /* Wear-gate PPG hardware: with the watch off-wrist there's nothing for
+       the LED to measure, so kill the LED until the user puts it back on.
+       The ref-counted timer in hr_service keeps running (so re-subscribers
+       still work), but reads return nothing while powered down. On
+       re-wear, the hardware comes back up only if there's still a
+       subscriber — otherwise we'd waste LED current with no consumer. */
+    if (status)
+    {
+        if (is_ppg_service_ready())
+        {
+            /* Re-power only if someone is actively waiting on HR data.
+               hr_subscribe/unsubscribe is the source of truth here. */
+            if (hr_service_subscriber_count() > 0)
+            {
+                hr_set_power(1);
+            }
+        }
+    }
+    else
+    {
+        if (is_ppg_service_ready())
+        {
+            hr_set_power(0);
+        }
+    }
 }
 
 static void notify_gesture_event(uint32_t gesture)
@@ -233,8 +259,13 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
         case SysStandBy:
         {
             LOG_I("System Stand by");
-            set_sleep_mode(true);
+            /* Order matters: acce_set_power(LOW) ends by re-enabling INT1
+               (bmi270_sensor_power_low_mode). set_sleep_mode() fires the
+               on_lcpu_sleep_mode_changed hook, which in HW wrist-wake mode
+               wants the final say on IRQ state — so it must run AFTER the
+               acce power transition. */
             acce_set_power(RT_SENSOR_POWER_LOW);
+            set_sleep_mode(true);
         }
         break;
 
@@ -242,9 +273,9 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
         {
             LOG_I("System Wake up");
             last_hcpu_wakeup_time = rt_tick_get_millisecond();
-            set_sleep_mode(false);
             bloc_battery_read_voltage();
             acce_set_power(RT_SENSOR_POWER_HIGH);
+            set_sleep_mode(false);
         }
         break;
 

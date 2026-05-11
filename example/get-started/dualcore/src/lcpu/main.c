@@ -98,35 +98,43 @@ void bmi270_on_wrist_wake_detected(void)
 }
 
     #if USE_BMI270_HW_WRIST_WAKE
-/* HW-mode auto-switch driven by HCPU's screen state.
+/* HW-mode auto-switch driven by HCPU's screen state — two-mode design.
 
-   Architectural rationale: the SW state machine in hand_tracking.c does two
-   things that have different lifecycles:
-     - Wake detection (raise-wrist) — only meaningful while the screen is
-       OFF; once on, firing it again is redundant.
-     - Post-wake gestures (put-down confirm, back gesture, wrist
-       pronation) — only meaningful while the screen is ON; the user can't
-       perform these while not looking at the watch.
+   ACTIVE (screen on):
+     - accel/gyro both 100 Hz, DRDY IRQ on (already configured by
+       acce_set_power(HIGH) that fires right before this hook).
+     - SW hand_tracking ON for post-wake gestures (put-down / back /
+       pronation / lift2).
+     - HW wrist-wake feature OFF (we'd just fire redundant events).
 
-   In HW mode we hand each lifecycle to the right owner:
-     - screen OFF → BMI270 internal detector handles wake; SW is parked.
-     - screen ON  → HW is parked (avoid duplicate fires); SW state machine
-                    runs full so post-wake gestures still work. */
+   DARK (screen off):
+     - accel 25 Hz low-power (already configured by acce_set_power(LOW)
+       that fires before this hook); gyro suspended on top of that.
+     - DRDY interrupt un-routed from INT1 at the chip — the GPIO IRQ stays
+       armed so wrist-wake can still wake the host, but per-sample DRDY no
+       longer fires every 40 ms. Step counter feature continues running
+       internally on the chip's own clock.
+     - SW hand_tracking OFF (no DRDY → no samples flowing anyway).
+     - HW wrist-wake feature ON. */
 void on_lcpu_sleep_mode_changed(bool sleep)
 {
     if (sleep)
     {
         bmi270_hw_wrist_wake_enable(1);
+        bmi270_set_gyro_suspend(1);
+        bmi270_set_drdy_int_routing(0);
         #ifdef BSP_USING_HAND_TRACKING
         hand_tracking_set_enabled(false);
         #endif
     }
     else
     {
-        bmi270_hw_wrist_wake_enable(0);
         #ifdef BSP_USING_HAND_TRACKING
         hand_tracking_set_enabled(true);
         #endif
+        bmi270_set_gyro_suspend(0);
+        bmi270_set_drdy_int_routing(1);
+        bmi270_hw_wrist_wake_enable(0);
     }
 }
     #endif /* USE_BMI270_HW_WRIST_WAKE */
@@ -142,6 +150,14 @@ static void wrist_wake_init_apply(void *param)
     {
         rt_kprintf("[wrist-wake] bmi270_open failed; HW path disabled\n");
         return;
+    }
+    /* Enable BMI270 internal step counter once at boot. It stays on across
+       screen-on/off transitions — chip runs it on its own (very low power)
+       and just exposes a register the host can poll periodically. Replaces
+       the SW Kraepelin step accumulation in the dark-screen path. */
+    if (bmi270_hw_step_counter_enable(1) != 0)
+    {
+        rt_kprintf("[wrist-wake] HW step counter enable failed\n");
     }
     /* Apply current state — HCPU may have already moved us to sleep before
        the 3 s timer fired, in which case we need to arm HW now. Default
@@ -252,9 +268,37 @@ static void watchdog_set_status(uint8_t en)
 }
 #endif
 
+#if defined(BSP_USING_PM) && defined(BMI270_INT_GPIO_BIT)
+/* Register the BMI270 INT1 line as a wakeup source so the chip can pull
+   LCPU out of deep sleep when its internal wrist-wake (or any other
+   feature mapped to INT1) fires. Falling edge: BMI270 default int polarity
+   on this board is active-low, push-pull. */
+static void bmi270_init_wakeup_pin(void)
+{
+    GPIO_TypeDef *gpio = GET_GPIO_INSTANCE(BMI270_INT_GPIO_BIT);
+    uint16_t gpio_pin = GET_GPIOx_PIN(BMI270_INT_GPIO_BIT);
+    int8_t wakeup_pin = HAL_LPAON_QueryWakeupPin(gpio, gpio_pin);
+    if (wakeup_pin >= 0)
+    {
+        pm_enable_pin_wakeup(wakeup_pin, AON_PIN_MODE_NEG_EDGE);
+        rt_kprintf("[pm] BMI270 INT1 registered as wakeup pin %d\n",
+                   wakeup_pin);
+    }
+    else
+    {
+        rt_kprintf("[pm] BMI270 INT pin %d cannot be a wakeup source\n",
+                   BMI270_INT_GPIO_BIT);
+    }
+}
+#endif
+
 int main(void)
 {
-    // init_pin();
+    init_pin();   /* Register the button as a wakeup source when PM is on.
+                     No-op'd internally when BSP_KEY1_PIN < GPIO1_PIN_NUM. */
+#if defined(BSP_USING_PM) && defined(BMI270_INT_GPIO_BIT)
+    bmi270_init_wakeup_pin();
+#endif
     if (HAL_LXT_DISABLED())
     {
         rc10k_time_handle = rt_timer_create(
