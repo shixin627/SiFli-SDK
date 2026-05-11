@@ -92,7 +92,6 @@ static app_env_t *ble_app_get_env(void);
 
 #define USE_BLE_RSSI_CHECK_TIMER
 #ifdef USE_BLE_RSSI_CHECK_TIMER
-// --------- create a timer to read the RSSI value every 5 seconds ---------
 extern uint8_t ble_gap_get_remote_rssi(ble_gap_get_rssi_t *rssi);
 static rt_timer_t rssi_timer = NULL;
 static void rssi_timer_callback(void *parameter)
@@ -103,17 +102,22 @@ static void rssi_timer_callback(void *parameter)
        need to kick off the request here. */
     ble_gap_get_remote_rssi(&rssi);
 }
-void start_ble_rssi_checker(void)
+/* Period is in milliseconds. Two main callers:
+   - The MTU-exchange path starts it at 10 s for TX-power control (TPC).
+   - V2T starts it at 1 s when the user is on the voice screen, for the
+     signal-strength UI indicator. */
+void start_ble_rssi_checker(uint32_t period_ms)
 {
+    rt_tick_t ticks = rt_tick_from_millisecond(period_ms);
     if (!rssi_timer)
     {
-        rssi_timer =
-            rt_timer_create("rssi_timer", rssi_timer_callback, NULL,
-                            RT_TICK_PER_SECOND, RT_TIMER_FLAG_PERIODIC);
+        rssi_timer = rt_timer_create("rssi_timer", rssi_timer_callback, NULL,
+                                     ticks, RT_TIMER_FLAG_PERIODIC);
     }
     else
     {
         rt_timer_stop(rssi_timer);
+        rt_timer_control(rssi_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
     }
     rt_timer_start(rssi_timer);
 }
@@ -127,6 +131,91 @@ void stop_ble_rssi_checker(void)
     }
 }
 #endif
+
+extern void blebredr_rf_power_set(uint8_t type, int8_t txpwr);
+
+/* ===== TX Power Control (TPC) ==========================================
+   Three-tier dynamic TX power adjustment driven by remote RSSI:
+     - Tier 0 (LOW):  0 dBm   — close to phone, save power
+     - Tier 1 (MID):  +3 dBm  — moderate distance, gentle boost
+     - Tier 2 (HIGH): +10 dBm — weak signal, max output
+
+   Only active while in slow profile (idle). Fast profile (V2T / file
+   transfer / HID) forces +10 dBm and pauses TPC to avoid mid-transfer
+   power dips. Hysteresis bands prevent ping-pong:
+     0 → 1  when avg RSSI < -65 dBm
+     1 → 2  when avg RSSI < -80 dBm
+     2 → 1  when avg RSSI > -70 dBm (15 dB margin from upgrade)
+     1 → 0  when avg RSSI > -55 dBm (10 dB margin from upgrade)
+   Plus a 30 s minimum interval between any two changes. */
+
+#define TPC_UPGRADE_LOW_TO_MID    -65
+#define TPC_UPGRADE_MID_TO_HIGH   -80
+#define TPC_DOWNGRADE_HIGH_TO_MID -70
+#define TPC_DOWNGRADE_MID_TO_LOW  -55
+#define TPC_MIN_CHANGE_INTERVAL_MS 30000
+
+static const int8_t TPC_TIER_DBM[3] = {0, 3, 10};
+static int8_t   g_tpc_rssi_avg = -50;     /* EMA, dBm */
+static uint8_t  g_tpc_rssi_warmup = 0;    /* samples since reset */
+static uint8_t  g_tpc_tier = 0;           /* current tier index */
+static rt_tick_t g_tpc_last_change_tick = 0;
+static bool     g_ble_perf_is_fast = false; /* set by skaiwatch_ble_set_performance */
+
+static void ble_tpc_reset(void)
+{
+    g_tpc_rssi_avg = -50;
+    g_tpc_rssi_warmup = 0;
+    g_tpc_tier = 0;
+    g_tpc_last_change_tick = 0;
+}
+
+static void ble_tpc_on_rssi_sample(int8_t rssi)
+{
+    /* Bootstrap the EMA on the first few samples instead of dragging the
+       seed value into the average for 30 s+. */
+    if (g_tpc_rssi_warmup < 5)
+    {
+        g_tpc_rssi_avg = rssi;
+        g_tpc_rssi_warmup++;
+        return;
+    }
+    /* EMA: alpha = 0.3, integer math with rounding. */
+    g_tpc_rssi_avg = (int8_t)((g_tpc_rssi_avg * 7 + (int)rssi * 3 + 5) / 10);
+
+    /* TPC only owns TX power in slow profile. Fast profile callers are
+       intentionally aggressive — don't fight them. */
+    if (g_ble_perf_is_fast)
+    {
+        return;
+    }
+    /* Rate-limit changes to avoid oscillation when RSSI sits near a band edge. */
+    rt_tick_t now = rt_tick_get();
+    if ((now - g_tpc_last_change_tick) <
+        rt_tick_from_millisecond(TPC_MIN_CHANGE_INTERVAL_MS))
+    {
+        return;
+    }
+
+    uint8_t target = g_tpc_tier;
+    if (g_tpc_tier == 0 && g_tpc_rssi_avg < TPC_UPGRADE_LOW_TO_MID)
+        target = 1;
+    else if (g_tpc_tier == 1 && g_tpc_rssi_avg < TPC_UPGRADE_MID_TO_HIGH)
+        target = 2;
+    else if (g_tpc_tier == 2 && g_tpc_rssi_avg > TPC_DOWNGRADE_HIGH_TO_MID)
+        target = 1;
+    else if (g_tpc_tier == 1 && g_tpc_rssi_avg > TPC_DOWNGRADE_MID_TO_LOW)
+        target = 0;
+
+    if (target != g_tpc_tier)
+    {
+        blebredr_rf_power_set(0, TPC_TIER_DBM[target]);
+        LOG_I("TPC: tier %d → %d (avg RSSI=%d dBm)",
+              g_tpc_tier, target, g_tpc_rssi_avg);
+        g_tpc_tier = target;
+        g_tpc_last_change_tick = now;
+    }
+}
 
 // --------- GAP Info Reader (read remote Device Name & Appearance after connection) ---------
 typedef struct
@@ -664,6 +753,11 @@ void skaiwalk_disconnected_ind(ble_gap_disconnected_ind_t *ind)
 #ifdef USE_BLE_RSSI_CHECK_TIMER
         stop_ble_rssi_checker();
 #endif
+        /* Wipe TPC state so the next connection starts at tier 0 (0 dBm).
+           Otherwise an old "user-walked-far" tier could persist across a
+           reconnect, burning power before the first RSSI sample arrives. */
+        ble_tpc_reset();
+        g_ble_perf_is_fast = false;
     }
 }
 
@@ -687,9 +781,17 @@ void skaiwalk_ble_mtu_exchange_ind(sibles_mtu_exchange_ind_t *ind)
     };
     uint8_t ret = ble_gap_update_phy(&phy);
     LOG_I("Request LE 2M PHY for conn %d: ret=%d", ind->conn_idx, ret);
+
+    /* Kick off TX-power control: sample remote RSSI every 10 s while
+       connected, feed ble_tpc_on_rssi_sample() to ramp TX power
+       between tiers (0 / +3 / +10 dBm). Cheap (one BLE controller read
+       per sample) and only runs while the watch is connected. */
+    ble_tpc_reset();
+    start_ble_rssi_checker(10000);
 }
 
-extern void blebredr_rf_power_set(uint8_t type, int8_t txpwr);
+/* blebredr_rf_power_set extern is declared at the top of this file (near
+   the TPC block) so static helpers there can call it. */
 void skaiwatch_ble_set_performance(bool status)
 {
     app_env_t *env = ble_app_get_env();
@@ -698,8 +800,13 @@ void skaiwatch_ble_set_performance(bool status)
         return;
     }
     LOG_I("ble_set_performance %d", status);
+    g_ble_perf_is_fast = status;
     if (status)
     {
+        /* Fast profile (V2T / file transfer / HID): hard-pin TX to +10 dBm
+           regardless of TPC state — active operations can't afford a TX
+           dip mid-transfer if RSSI happens to be good right then. TPC
+           stays paused until we switch back to slow. */
         blebredr_rf_power_set(0, 10);
         // Apple Accessory Design Guidelines:
         //   Interval Min >= 15 ms, Interval Max - Min >= 20 ms,
@@ -710,7 +817,11 @@ void skaiwatch_ble_set_performance(bool status)
     }
     else
     {
-        blebredr_rf_power_set(0, 0);
+        /* Slow profile (idle): return TX to whichever tier TPC currently
+           prefers (0 dBm if signal is good, +3 / +10 if it has been
+           ramping up). Without this we'd always drop to 0 dBm on exit
+           from fast, undoing TPC's escalation. */
+        blebredr_rf_power_set(0, TPC_TIER_DBM[g_tpc_tier]);
         // Slow (idle): Min=80 (100 ms), Max=96 (120 ms), latency=9,
         //   effective wake ~1.2 s when idle, ST=400 (4 s).
         // Phone can still wake us within 120 ms when it has data to send.
@@ -1642,6 +1753,7 @@ int ble_app_event_handler(uint16_t event_id, uint8_t *data, uint16_t len,
         ble_gap_remote_rssi_ind_t *ind = (ble_gap_remote_rssi_ind_t *)data;
         LOG_D("BLE_GAP_REMOTE_RSSI_IND %d", ind->rssi);
         set_signal_bad(ind->rssi < -80);
+        ble_tpc_on_rssi_sample(ind->rssi);
         break;
     }
     case SIBLES_SEARCH_SVC_RSP:

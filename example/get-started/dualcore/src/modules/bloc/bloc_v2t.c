@@ -340,8 +340,10 @@ void start_voice_recognition(uint8_t intent)
     }
     speech_coding = 0;
     notify_user_speaking_intent(intent);
-    extern void start_ble_rssi_checker(void);
-    start_ble_rssi_checker();
+    extern void start_ble_rssi_checker(uint32_t period_ms);
+    /* V2T wants a 1 Hz signal-strength UI indicator; bump the always-on
+       10 s TPC sampling up to 1 s while voice is active. */
+    start_ble_rssi_checker(1000);
     skaiwatch_ble_set_performance(true);
 #ifdef BSP_USING_BLOC_PERIPHERAL
     peripheral_provider.subscribe_audio_mic_sensor(true);
@@ -374,8 +376,11 @@ void stop_voice_recognition(uint8_t intent)
     speaking_debounce_timer_stop();
     notify_user_speaking_intent(stop_intent);
     app_voice_set_voice2text_status(false);
-    extern void stop_ble_rssi_checker(void);
-    stop_ble_rssi_checker();
+    /* V2T ended — fall back from the 1 s UI-indicator cadence to the 10 s
+       TPC cadence. Don't stop the checker entirely; it stays running for
+       the whole connection lifetime and is only stopped on disconnect. */
+    extern void start_ble_rssi_checker(uint32_t period_ms);
+    start_ble_rssi_checker(10000);
     skaiwatch_ble_set_performance(false);
     reset_ai_open_mic();
     // 重置語音辨識狀態標記
