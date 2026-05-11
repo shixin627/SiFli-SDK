@@ -162,13 +162,11 @@ grep -E "( error:|undefined reference|cannot find|scons:.*\\*\\*\\*)" \
 
 > ⚠️ `set_env.bat` 不帶參數**預設是 GCC**(`if "%1"==""    goto :SET_GCC`),不是 Keil。在 ConEmu 直接打 `scons --board=...` 用的是 GCC。
 
-#### 產 Keil `.uvprojx` 一定要在 Keil env
+#### 產 Keil `.uvprojx` 不限 env(從 2026-05 起)
 
-`scons --target=mdk5` 用的 template 看 `rtconfig.PLATFORM`:
-- PLATFORM=gcc → `keil.py` 找 `<TargetArm><Carm>` 結構(Keil MDK 內嵌 GCC)
-- PLATFORM=armcc → 找 `<TargetArmAds><Cads>` 結構(armclang)
+`tools/build/keil.py` 已改成檢視 template 實際結構(`tree.find('TargetArm')` 是否存在),不再單看 `rtconfig.PLATFORM`。本專案 `project/hcpu/template.uvprojx` 是 armclang 結構(`<TargetArmAds>`),所以在 gcc 或 keil env 都能跑 `scons --target=mdk5`,產出的 .uvprojx 都是 armclang 結構給 Keil MDK 開。
 
-本專案 `project/hcpu/template.uvprojx` 是 armclang 結構。所以 `--target=mdk5` 之前要 `set_env.bat keil` 不能用預設的 gcc env,否則 `IncludePath` 找不到變成 `AttributeError: 'NoneType' object has no attribute 'text'`。用 `_watch_mdk5.cmd` wrapper 已 hardcode keil。
+`_watch_mdk5.cmd` wrapper 還是 hardcode `set_env.bat keil` 因為 scons 跑 `--target=mdk5` 時也會順便 build 一次,Keil env 跑 armclang build 較合適(不會撞 GCC 14 嚴格化 / Goodix lib 等 GCC 才有的問題)。
 
 ### 編譯規則
 
