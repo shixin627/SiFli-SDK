@@ -135,27 +135,29 @@ void stop_ble_rssi_checker(void)
 extern void blebredr_rf_power_set(uint8_t type, int8_t txpwr);
 
 /* ===== TX Power Control (TPC) ==========================================
-   Three-tier dynamic TX power adjustment driven by remote RSSI:
+   Two-tier dynamic TX power adjustment driven by remote RSSI:
      - Tier 0 (LOW):  0 dBm   — close to phone, save power
      - Tier 1 (MID):  +3 dBm  — moderate distance, gentle boost
-     - Tier 2 (HIGH): +10 dBm — weak signal, max output
 
-   Only active while in slow profile (idle). Fast profile (V2T / file
-   transfer / HID) forces +10 dBm and pauses TPC to avoid mid-transfer
-   power dips. Hysteresis bands prevent ping-pong:
-     0 → 1  when avg RSSI < -65 dBm
-     1 → 2  when avg RSSI < -80 dBm
-     2 → 1  when avg RSSI > -70 dBm (15 dB margin from upgrade)
-     1 → 0  when avg RSSI > -55 dBm (10 dB margin from upgrade)
+   +10 dBm is intentionally NOT in this list — that level is reserved for
+   fast profile (V2T / file / DFU) where the watch is doing a real-time
+   bulk operation and reliability matters more than power. For slow
+   profile we prefer to give up the link at the edge of range and let
+   the user reconnect when closer, rather than burn current to maintain
+   marginal coverage.
+
+   Only active while in slow profile (idle). Fast profile hard-pins
+   +10 dBm and pauses TPC. Hysteresis prevents ping-pong:
+     0 → 1  when avg RSSI < -75 dBm
+     1 → 0  when avg RSSI > -55 dBm (20 dB margin from upgrade)
    Plus a 30 s minimum interval between any two changes. */
 
-#define TPC_UPGRADE_LOW_TO_MID    -65
-#define TPC_UPGRADE_MID_TO_HIGH   -80
-#define TPC_DOWNGRADE_HIGH_TO_MID -70
+#define TPC_UPGRADE_LOW_TO_MID    -75
 #define TPC_DOWNGRADE_MID_TO_LOW  -55
 #define TPC_MIN_CHANGE_INTERVAL_MS 30000
 
-static const int8_t TPC_TIER_DBM[3] = {0, 3, 10};
+#define TPC_TIER_COUNT 2
+static const int8_t TPC_TIER_DBM[TPC_TIER_COUNT] = {0, 3};
 static int8_t   g_tpc_rssi_avg = -50;     /* EMA, dBm */
 static uint8_t  g_tpc_rssi_warmup = 0;    /* samples since reset */
 static uint8_t  g_tpc_tier = 0;           /* current tier index */
@@ -199,10 +201,6 @@ static void ble_tpc_on_rssi_sample(int8_t rssi)
 
     uint8_t target = g_tpc_tier;
     if (g_tpc_tier == 0 && g_tpc_rssi_avg < TPC_UPGRADE_LOW_TO_MID)
-        target = 1;
-    else if (g_tpc_tier == 1 && g_tpc_rssi_avg < TPC_UPGRADE_MID_TO_HIGH)
-        target = 2;
-    else if (g_tpc_tier == 2 && g_tpc_rssi_avg > TPC_DOWNGRADE_HIGH_TO_MID)
         target = 1;
     else if (g_tpc_tier == 1 && g_tpc_rssi_avg > TPC_DOWNGRADE_MID_TO_LOW)
         target = 0;
