@@ -159,6 +159,14 @@ grep -E "( error:|undefined reference|cannot find|scons:.*\\*\\*\\*)" \
 
 **Production = Keil**。`_watch_build.cmd` 和 `_watch_mdk5.cmd` 都 hardcode `set_env.bat keil`。GCC 通過編譯但只供驗證 -- newlib full vs microlib 差距讓 GCC 版本 LCPU 多 ~75 KB,主要是 `hr_service.c` / `alarm_manager_service.c` 的 `localtime`/`mktime` 拖進 newlib 時區 DB 和 printf-float 家族。要走 GCC production 需要先 enable `USE_MICROLIB=True` 在 lcpu/rtconfig.py 啟用 nano.specs(未驗證副作用)或改寫 LCPU 不要用 `localtime`。
 
+### ConEmu 預設 toolchain = Keil(env 升級後要重做)
+
+ConEmu 開啟時 `SifliUser.cmd` 會從當前目錄往上找 `set_env.bat` 自動呼叫,**預設沒帶 toolchain 參數 = GCC**。改 ConEmu 一開就是 Keil env(在 ConEmu 直接打 `scons --board=sf32lb56w-watch -j8` 就跑 Keil):
+
+編輯 `C:\dev\env_latest\tools\ConEmu\ConEmu\SifliUser.cmd`,兩處 `@call %first_file%` / `@call %current_path%\%target_file%` 加上 ` keil` 參數(echo 行同步)。
+
+> ⚠️ 這是 env 工具內的檔,**env 升級後會被覆蓋**,要重做。env 升級流程已在 [CHANGELOG.md](CHANGELOG.md) 2026-05-09 那段;升級後記得重 patch SifliUser.cmd。
+
 > ⚠️ wrapper / `.cmd` 檔案內容**只用 ASCII**。Em-dash (`—`) 或全形標點會讓 cmd.exe 把它的 UTF-8 byte 各自當成 command 解析,出現 `'M' 不是內部或外部命令` 之類的錯誤。寫註解一律用 `--` / `:`、不用破折號。`file <path>` 結果應該是 `DOS batch file, ASCII text`,出現 `Unicode text` 就有問題。
 
 切換工具鏈:改 wrapper 內 `call C:\work\SiFli-SDK\set_env.bat <toolchain>` 那一行(`gcc` / `keil`)。
