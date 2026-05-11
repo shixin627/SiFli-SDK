@@ -808,6 +808,12 @@ static void handle_power_management(INTERACT_Type type, void *pValue)
         {
             peripheral_provider.hcpu_suspend();
             gui_pm_fsm(GUI_PM_ACTION_SLEEP);
+            /* Defense-in-depth: ensure BLE is in slow profile (~1.2 s
+               effective via slave_latency) once we go idle. V2T / file
+               transfer already restore slow on completion, but if the user
+               sleeps mid-transfer or before that path runs we'd otherwise
+               stay on fast (~30 ms) for nothing. */
+            skaiwatch_ble_set_performance(false);
         }
         break;
     }

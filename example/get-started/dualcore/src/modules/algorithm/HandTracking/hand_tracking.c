@@ -21,8 +21,11 @@
 #define USING_PUT_DOWN_TIMER 1
 
 #if USING_PUT_DOWN_TIMER
-    // 在手往身體反方向轉的情況下，如果在800ms內沒有再次轉回，則視為放下手腕
-    #define PUT_DOWN_CONFIRM_TIME 800
+    /* Window for confirming a hand-put-down after a body-direction rotation.
+       400 ms keeps the window long enough to reject the natural micro-rotation
+       that follows a tap-back gesture but halves the worst-case raise-to-
+       screen latency vs. the old 800 ms. */
+    #define PUT_DOWN_CONFIRM_TIME 400
     #define PUT_DOWN_CONFIRM_TIME_MS                                           \
         rt_tick_from_millisecond(PUT_DOWN_CONFIRM_TIME)
 #endif
@@ -32,6 +35,28 @@
 #define THRESHOLD_PARAM_ON_SLEEP 450
 #define WRIST_PRONATION_THRESHOLD 700
 #define GESTURE_BACK_DURATION 500
+
+/* Steps-per-minute threshold above which raise-wrist detection is suppressed.
+   Walking is typically 80-120 spm, running 150+. Below 60 we treat it as
+   idle/casual movement and keep detection active. */
+#define HAND_TRACKING_WALK_SUPPRESS_SPM 60
+
+#ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
+/* Kraepelin metric — declared extern to avoid pulling in the full activity
+   header. Safe pre-init: the underlying state is a file-static zero-
+   initialised struct, so this returns 0 before Kraepelin starts producing
+   estimates. */
+extern uint16_t activity_metrics_prv_steps_per_minute(void);
+#endif
+
+static bool is_user_walking_or_running(void)
+{
+#ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
+    return activity_metrics_prv_steps_per_minute() > HAND_TRACKING_WALK_SUPPRESS_SPM;
+#else
+    return false;
+#endif
+}
 
 static float max_pronation_gyro_x = 0;
 static float max_supination_gyro_x = 0;
@@ -229,6 +254,16 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
 {
     static rt_tick_t state_enter_time = 0;
     rt_tick_t current_time = rt_tick_get();
+
+    /* During walking/running the arm swings naturally past the gyro_x
+       threshold every step. Suppress detection while Kraepelin says the user
+       is actively in motion — they're not looking at the watch, and any
+       trigger here would just wake HCPU for a false positive. */
+    if (is_user_walking_or_running())
+    {
+        return;
+    }
+
     threshold = THRESHOLD_PARAM_ON_SLEEP * (freq / 25.0f);
     zero_velocity_buffer[zero_velocity_buffer_index] = zero_velocity;
     zero_velocity_buffer_index++;

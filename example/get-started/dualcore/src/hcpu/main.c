@@ -603,7 +603,8 @@ static void skaiwalk_ble_service_init()
 
 static uint8_t phone_device_idx = 0xFF;
 void skaiwalk_ble_app_update_conn_param(uint8_t conn_idx, uint16_t inv_max,
-                                        uint16_t inv_min, uint16_t timeout)
+                                        uint16_t inv_min, uint16_t latency,
+                                        uint16_t timeout)
 {
     ble_gap_update_conn_param_t conn_para;
     conn_para.conn_idx = conn_idx;
@@ -612,12 +613,12 @@ void skaiwalk_ble_app_update_conn_param(uint8_t conn_idx, uint16_t inv_max,
     /* value = argv * 1.25 */
     // conn_para.ce_len_max = 0x100;
     // conn_para.ce_len_min = 0x1;
-    conn_para.latency = 0;
+    conn_para.latency = latency;
     conn_para.time_out = timeout;
 
     LOG_D("Request conn param update: intv_min=%d (%.2f ms), intv_max=%d (%.2f "
-          "ms), timeout=%d",
-          inv_min, inv_min * 1.25f, inv_max, inv_max * 1.25f, timeout);
+          "ms), latency=%d, timeout=%d",
+          inv_min, inv_min * 1.25f, inv_max, inv_max * 1.25f, latency, timeout);
 
     uint8_t ret = ble_gap_update_conn_param(&conn_para);
     LOG_D("ble_gap_update_conn_param result: %d", ret);
@@ -686,16 +687,19 @@ void skaiwatch_ble_set_performance(bool status)
         // Apple Accessory Design Guidelines:
         //   Interval Min >= 15 ms, Interval Max - Min >= 20 ms,
         //   Slave Latency <= 30, Supervision Timeout <= 6 s
-        // Fast: Min=12 (15 ms), Max=28 (35 ms), diff=20 ms, ST=5 s
+        // Fast: Min=12 (15 ms), Max=28 (35 ms), diff=20 ms, latency=0, ST=5 s
         skaiwalk_ble_app_update_conn_param(SkaiWatchSys.watch_conn_id, 12, 28,
-                                           500);
+                                           0, 500);
     }
     else
     {
         blebredr_rf_power_set(0, 0);
-        // Slow: Min=24 (30 ms), Max=40 (50 ms), diff=20 ms, ST=5 s
-        skaiwalk_ble_app_update_conn_param(SkaiWatchSys.watch_conn_id, 24, 40,
-                                           500);
+        // Slow (idle): Min=80 (100 ms), Max=96 (120 ms), latency=9,
+        //   effective wake ~1.2 s when idle, ST=400 (4 s).
+        // Phone can still wake us within 120 ms when it has data to send.
+        // ST > (latency+1) * max_intv * 2 = 10 * 120ms * 2 = 2400ms < 4000ms ✓
+        skaiwalk_ble_app_update_conn_param(SkaiWatchSys.watch_conn_id, 80, 96,
+                                           9, 400);
     }
 }
 
@@ -1186,15 +1190,26 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
     /* Refresh the bonded-device cache. The targeted-vs-general branching that
        used to live here was removed — both paths set identical config, and
        targeted advertising is enforced via sibles_advertising_reconfig +
-       g_target_device_addr down the call chain. The pairing_mode parameter
-       is kept on the API surface for callers still passing it. */
+       g_target_device_addr down the call chain. pairing_mode and is_bonded
+       now drive the adv interval choice below. */
     ble_gap_addr_t bonded_addr;
-    (void)ble_app_get_bonded_device_addr(&bonded_addr);
-    (void)pairing_mode;
+    uint8_t is_bonded = ble_app_get_bonded_device_addr(&bonded_addr);
 
     para.config.adv_mode = SIBLES_ADV_CONNECT_MODE;
     para.config.mode_config.conn_config.duration = 0x0;
-    para.config.mode_config.conn_config.interval = 0x140;
+    /* Adv interval is in 0.625 ms units.
+       - Pairing mode or no bonded device: 200 ms (0x140) for fast discovery.
+       - Already bonded + waiting to reconnect: 1.28 s (0x800) — phone takes
+         at most ~1 extra second to find us when it comes back in range, but
+         we cut the radio-on duty by ~6×. */
+    if (pairing_mode || !is_bonded)
+    {
+        para.config.mode_config.conn_config.interval = 0x140;
+    }
+    else
+    {
+        para.config.mode_config.conn_config.interval = 0x800;
+    }
     para.config.max_tx_pwr = 0x7F;
 
     // Enable restart after disconnected
