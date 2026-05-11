@@ -396,6 +396,10 @@ def MDK5Project(target, script):
     else:
         import shutil
         template_path=template_path.replace('uvprojx', 'uvoptx')
+        if not os.path.exists(template_path):
+            # uvoptx is Keil per-user options, not toolchain-specific;
+            # fall back to the generic template.uvoptx (no template_gcc.uvoptx ships)
+            template_path = os.path.join(os.path.dirname(__file__), 'template', 'template.uvoptx')
         shutil.copy2(template_path, 'project.uvoptx')
 
 def MDKProject(target, script):
