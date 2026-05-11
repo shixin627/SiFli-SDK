@@ -122,6 +122,17 @@ int bmi270_awt_enable(int en);
 int bmi270_pedo_enable(int en);
 int bmi270_pedo_fifo2step(uint8_t *buf, int len);
 
+/* Hardware wrist-wake feature (BMI2_WRIST_WEAR_WAKE_UP). When enabled, the
+   BMI270 internal gesture detector fires INT1 on a real raise-wrist gesture
+   so the host doesn't need to compute it from raw IMU samples. Accel+gyro
+   data-ready interrupts keep running for other consumers (AHRS, Kraepelin,
+   software hand_tracking, ...). The application overrides
+   bmi270_on_wrist_wake_detected() to act on the event.
+   Returns 0 on success, negative on failure. */
+int bmi270_hw_wrist_wake_enable(int en);
+int bmi270_hw_wrist_wake_is_enabled(void);
+void bmi270_on_wrist_wake_detected(void);
+
 int bmi270_gyro_read(int16_t *psX, int16_t *psY, int16_t *psZ);
 int bmi270_accel_read(int16_t *psX, int16_t *psY, int16_t *psZ);
 int bmi270_tempra_read(float *tempra);

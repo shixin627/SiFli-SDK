@@ -89,6 +89,22 @@ bool check_zero_velocity_event(void)
 }
 
 static HandTrackingProvider hand_tracking;
+
+/* Runtime kill-switch — defaults to true (software detection is the
+   historical behavior). Flip to false to delegate raise-wrist to the BMI270
+   hardware feature. */
+static bool sw_hand_tracking_enabled = true;
+
+void hand_tracking_set_enabled(bool enabled)
+{
+    sw_hand_tracking_enabled = enabled;
+}
+
+bool hand_tracking_is_enabled(void)
+{
+    return sw_hand_tracking_enabled;
+}
+
 void hand_tracking_init(void (*lift_callback)(uint8_t lift),
                         void (*back_callback)(void))
 {
@@ -254,6 +270,13 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
 {
     static rt_tick_t state_enter_time = 0;
     rt_tick_t current_time = rt_tick_get();
+
+    /* Runtime kill-switch: when the BMI270 HW wrist-wake feature is in
+       charge, skip the software state machine entirely. */
+    if (!sw_hand_tracking_enabled)
+    {
+        return;
+    }
 
     /* During walking/running the arm swings naturally past the gyro_x
        threshold every step. Suppress detection while Kraepelin says the user

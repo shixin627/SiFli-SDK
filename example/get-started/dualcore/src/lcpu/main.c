@@ -22,6 +22,12 @@
 #include "bloc_rgb_led.h"
 #include "bloc_battery.h"
 #include "charge.h"
+#ifdef ACC_USING_BMI270
+    #include "bmi270_driver.h"
+#endif
+#ifdef BSP_USING_HAND_TRACKING
+    #include "hand_tracking.h"
+#endif
 #ifdef BSP_KEY1_ACTIVE_HIGH
     #define BUTTON_ACTIVE_POL BUTTON_ACTIVE_HIGH
 #else
@@ -31,6 +37,21 @@
 static rt_timer_t rc10k_time_handle;
 static int32_t key1_button_handle;
 static rt_event_t main_event;
+static rt_timer_t wrist_wake_init_timer;
+
+/* ===== Raise-wrist source selection =====
+   0 = software (existing hand_tracking.c state machine, gyro_x threshold).
+       Lower latency, supports back-gesture / wrist-rotation; consumes IMU
+       samples on every interrupt.
+   1 = hardware (BMI270 BMI2_WRIST_WEAR_WAKE_UP). The chip detects raise-
+       wrist internally and fires INT1 only on the gesture; SW state machine
+       is killed. No back-gesture / wrist-rotation in this mode.
+   Toggle this and rebuild LCPU. The two modes are mutually exclusive; the
+   selected mode is applied a few seconds after boot once the BMI270 is
+   guaranteed to be open (it's opened lazily on first subscriber). */
+#ifndef USE_BMI270_HW_WRIST_WAKE
+    #define USE_BMI270_HW_WRIST_WAKE 0
+#endif
 
 #define MAIN_EVENT_BATTERY_CHARGING (1 << 0)
 #define MAIN_EVENT_BATTERY_VOLTAGE (1 << 1)
@@ -63,6 +84,49 @@ void main_send_hand_lift_event(void)
         rt_event_send(main_event, MAIN_EVENT_HAND_LIFT);
     }
 }
+
+#ifdef ACC_USING_BMI270
+/* Override the weak default in bmi270_driver.c. The BMI270 fires this when
+   its internal wrist-wake detector triggers; route it through the same
+   path the software algorithm uses. */
+void bmi270_on_wrist_wake_detected(void)
+{
+    main_send_hand_lift_event();
+}
+
+/* Apply the selected raise-wrist mode. Runs on a one-shot timer ~3s after
+   boot so the various INIT_*_EXPORT init paths have completed first. */
+static void wrist_wake_init_apply(void *param)
+{
+    (void)param;
+    #if USE_BMI270_HW_WRIST_WAKE
+    /* Ensure the BMI270 is open (idempotent; just verifies open_flag and
+       starts the sensor thread if needed). Without this, the wrist-wake
+       INT would fire but no thread would consume the int_sem. */
+    if (bmi270_open() != 0)
+    {
+        rt_kprintf("[wrist-wake] bmi270_open failed, staying on SW\n");
+        return;
+    }
+    int rc = bmi270_hw_wrist_wake_enable(1);
+    if (rc == 0)
+    {
+        #ifdef BSP_USING_HAND_TRACKING
+        hand_tracking_set_enabled(false);
+        #endif
+        rt_kprintf("[wrist-wake] HW mode active (BMI270 internal)\n");
+    }
+    else
+    {
+        rt_kprintf("[wrist-wake] HW enable failed (%d), staying on SW\n", rc);
+    }
+    #else
+    /* SW mode is the default — hand_tracking is already enabled. Log for
+       clarity so the active mode is visible in boot logs. */
+    rt_kprintf("[wrist-wake] SW mode active (hand_tracking.c state machine)\n");
+    #endif
+}
+#endif /* ACC_USING_BMI270 */
 
 static rt_err_t charge_event_rx_ind(rt_device_t dev, rt_size_t size)
 {
@@ -195,6 +259,20 @@ int main(void)
 
     // 註冊 SDK 充電事件回調，當充電狀態改變時通知主循環
     rt_charge_set_rx_ind(charge_event_rx_ind);
+
+#ifdef ACC_USING_BMI270
+    /* One-shot 3-second delay before applying wrist-wake mode. The BMI270 is
+       opened lazily on first subscriber (acce service / hand_tracking init);
+       waiting a few seconds lets that happen first. */
+    wrist_wake_init_timer = rt_timer_create(
+        "ww_init", wrist_wake_init_apply, NULL,
+        rt_tick_from_millisecond(3000),
+        RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
+    if (wrist_wake_init_timer)
+    {
+        rt_timer_start(wrist_wake_init_timer);
+    }
+#endif
 
     rt_uint32_t recv_set = 0;
     while (1)

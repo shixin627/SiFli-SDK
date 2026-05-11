@@ -113,6 +113,9 @@ static uint8_t sensor_list[2] = {BMI2_ACCEL, BMI2_GYRO};
 /* Sensor initialization configuration. */
 static struct bmi2_dev bmi2_dev;
 static uint16_t _int_status;
+/* Set by bmi270_hw_wrist_wake_enable(); checked in the int handler to
+   decide whether to dispatch the wrist-wake feature interrupt. */
+static bool hw_wrist_wake_armed = false;
 /*! Variable that holds the I2C device address or SPI chip selection */
 static uint8_t dev_addr;
 
@@ -949,14 +952,31 @@ static int gyroscopeAvailable()
 
 static void bmi270_int_msg_handler(void)
 {
-    // if (accelerationAvailable() || gyroscopeAvailable())
-    if (imuDataAvailable())
+    /* Read int_status once. The chip clears bits on read, so we have to
+       decode every event from this single value — calling imuDataAvailable()
+       afterwards would see zeros and miss the DRDY. */
+    uint16_t status = 0;
+    bmi2_get_int_status(&status, &bmi2_dev);
+
+    /* Feature interrupts first. When HW wrist-wake is armed, INT1 may fire
+       solely for the gesture without any DRDY bit set. */
+    if (hw_wrist_wake_armed && (status & BMI270_WRIST_WAKE_UP_STATUS_MASK))
     {
+        bmi270_on_wrist_wake_detected();
+    }
+
+    /* Accel / gyro data-ready — same code path as before. */
+    if (status & (BMI2_ACC_DRDY_INT_MASK | BMI2_GYR_DRDY_INT_MASK))
+    {
+        /* Mirror the old _int_status bookkeeping so any other code paths
+           that still consult it see consistent state. */
+        _int_status = status;
+        _int_status &= ~(BMI2_ACC_DRDY_INT_MASK | BMI2_GYR_DRDY_INT_MASK);
         bmi270_acc_gyro_evt_handler();
     }
-    else
+    else if (status == 0)
     {
-        LOG_E("Unknown interrupt status: 0x%x\n", _int_status);
+        LOG_D("BMI270 spurious int (status=0)");
     }
 }
 
@@ -1404,6 +1424,99 @@ int bmi270_awt_enable(int en)
 int bmi270_pedo_enable(int en)
 {
     return 0;
+}
+
+// function for hardware wrist-wake ------------------
+/* hw_wrist_wake_armed declared near the top of this file so the int handler
+   can see it. */
+
+/* Default handler: log only. The LCPU application overrides this to forward
+   the event up to HCPU via main_send_hand_lift_event(). */
+RT_WEAK void bmi270_on_wrist_wake_detected(void)
+{
+    LOG_I("BMI270 HW wrist-wake (default handler, override me)");
+}
+
+int bmi270_hw_wrist_wake_is_enabled(void)
+{
+    return hw_wrist_wake_armed ? 1 : 0;
+}
+
+int bmi270_hw_wrist_wake_enable(int en)
+{
+    if (accel_gyro_dev_info.open_flag == 0)
+    {
+        LOG_W("hw_wrist_wake_enable: bmi270 not open");
+        return -1;
+    }
+
+    int8_t rslt;
+    uint8_t sensors[] = {BMI2_WRIST_WEAR_WAKE_UP};
+
+    bmi270_api_lock();
+
+    if (en)
+    {
+        /* Load Bosch defaults for the wrist-wake feature, then re-apply.
+           Defaults are tuned per BMI270 datasheet 3.2.4:
+             min_angle_focus=1448, min_angle_nonfocus=1774,
+             max_tilt_lr=1024, max_tilt_ll=700,
+             max_tilt_pd=179, max_tilt_pu=1925
+           These can be retuned later if the wrist-orientation profile of the
+           watch case doesn't match Bosch's reference. */
+        struct bmi2_sens_config cfg;
+        cfg.type = BMI2_WRIST_WEAR_WAKE_UP;
+        rslt = bmi270_get_sensor_config(&cfg, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("wrist-wake get_config failed: %d", rslt);
+            goto out;
+        }
+        rslt = bmi270_set_sensor_config(&cfg, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("wrist-wake set_config failed: %d", rslt);
+            goto out;
+        }
+
+        rslt = bmi270_sensor_enable(sensors, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("wrist-wake sensor_enable failed: %d", rslt);
+            goto out;
+        }
+
+    #if BMI270_USE_INT1
+        struct bmi2_sens_int_config sens_int = {
+            .type = BMI2_WRIST_WEAR_WAKE_UP, .hw_int_pin = BMI2_INT1};
+    #else
+        struct bmi2_sens_int_config sens_int = {
+            .type = BMI2_WRIST_WEAR_WAKE_UP, .hw_int_pin = BMI2_INT2};
+    #endif
+        rslt = bmi270_map_feat_int(&sens_int, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("wrist-wake map_feat_int failed: %d", rslt);
+            goto out;
+        }
+        hw_wrist_wake_armed = true;
+        LOG_I("BMI270 HW wrist-wake armed");
+    }
+    else
+    {
+        rslt = bmi270_sensor_disable(sensors, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("wrist-wake sensor_disable failed: %d", rslt);
+            goto out;
+        }
+        hw_wrist_wake_armed = false;
+        LOG_I("BMI270 HW wrist-wake disarmed");
+    }
+
+out:
+    bmi270_api_unlock();
+    return (rslt == BMI2_OK) ? 0 : -1;
 }
 
 int bmi270_pedo_fifo2step(uint8_t *buf, int len)
