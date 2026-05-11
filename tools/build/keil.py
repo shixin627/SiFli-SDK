@@ -188,6 +188,12 @@ def MDK45Project(tree, target, script):
     out = open(target, 'w')
     out.write('<?xml version="1.0" encoding="UTF-8" standalone="no" ?>\n')
 
+    # Use the template's actual structure rather than just rtconfig.PLATFORM.
+    # Projects can ship an armclang-style template.uvprojx (<TargetArmAds>) but
+    # be generated under a GCC scons env; the produced .uvprojx is still meant
+    # to be opened in Keil, so must match the template, not the host toolchain.
+    _template_is_gcc = tree.find('Targets/Target/TargetOption/TargetArm') is not None
+
     CPPPATH = []
     if 'CPPDEFINES' in building.Env:
         CPPDEFINES = building.Env['CPPDEFINES']
@@ -195,6 +201,11 @@ def MDK45Project(tree, target, script):
         CPPDEFINES = []
     CPPDEFINES = [i for i in CPPDEFINES]
     LINKFLAGS = building.Env['LINKFLAGS']
+    # GCC scons env stores LINKFLAGS as a list (rtconfig.CFLAGS.split());
+    # Keil/armcc env stores it as a string. Always normalize to string so the
+    # `Misc.text += ' ' + LINKFLAGS` site below works regardless of env.
+    if isinstance(LINKFLAGS, list):
+        LINKFLAGS = ' '.join(LINKFLAGS)
     CCFLAGS = ''
     ASFLAGS = ''
     ProjectFiles = []
@@ -210,7 +221,7 @@ def MDK45Project(tree, target, script):
         # for local CPPPATH/CPPDEFINES
         if (group_tree != None) and ('LOCAL_CPPPATH' in group or 'LOCAL_CCFLAGS' in group or 'LOCAL_CPPDEFINES' in group):
             GroupOption     = SubElement(group_tree,  'GroupOption')
-            if (rtconfig.PLATFORM=='gcc') :
+            if _template_is_gcc:
                 GroupArmAds     = SubElement(GroupOption, 'GroupArm')
                 Cads            = SubElement(GroupArmAds, 'Carm')
             else:
@@ -295,20 +306,20 @@ def MDK45Project(tree, target, script):
                         MDK4AddGroupForFN(ProjectFiles, groups, group['name'], lib_path, project_path)
 
     # write include path, definitions and link flags
-    if (rtconfig.PLATFORM=='gcc'):
+    if _template_is_gcc:
         IncludePath = tree.find('Targets/Target/TargetOption/TargetArm/Carm/VariousControls/IncludePath')
     else:
         IncludePath = tree.find('Targets/Target/TargetOption/TargetArmAds/Cads/VariousControls/IncludePath')
     IncludePath.text = ';'.join([_make_path_relative(project_path, os.path.normpath(i)) for i in CPPPATH])
 
-    if (rtconfig.PLATFORM=='gcc'):
+    if _template_is_gcc:
         Define = tree.find('Targets/Target/TargetOption/TargetArm/Carm/VariousControls/Define')
     else:
         Define = tree.find('Targets/Target/TargetOption/TargetArmAds/Cads/VariousControls/Define')
     Define.text = ', '.join(set(CPPDEFINES))
 
     # Add assembler flags in project setting
-    if (rtconfig.PLATFORM=='gcc'):
+    if _template_is_gcc:
         Misc = tree.find('Targets/Target/TargetOption/TargetArm/Aarm/VariousControls/MiscControls')
         print (Misc.text)
     else:
@@ -322,7 +333,7 @@ def MDK45Project(tree, target, script):
         else:
             Misc.text = CCFLAGS
 
-    if (rtconfig.PLATFORM=='gcc'):
+    if _template_is_gcc:
         Misc = tree.find('Targets/Target/TargetOption/TargetArm/LDarm/Misc')
     else:
         Misc = tree.find('Targets/Target/TargetOption/TargetArmAds/LDads/Misc')
@@ -330,14 +341,14 @@ def MDK45Project(tree, target, script):
         Misc.text = ''
     Misc.text += ' ' + LINKFLAGS
 
-    Target_name = tree.find('Targets/Target/TargetOption/TargetCommonOption/OutputName')        
+    Target_name = tree.find('Targets/Target/TargetOption/TargetCommonOption/OutputName')
     Target_name.text = rtconfig.TARGET_NAME
     try:
-        if (rtconfig.PLATFORM=='gcc'):
-            ScatterPath = tree.find('Targets/Target/TargetOption/TargetArm/LDarm/ScatterFile')        
+        if _template_is_gcc:
+            ScatterPath = tree.find('Targets/Target/TargetOption/TargetArm/LDarm/ScatterFile')
             ScatterPath.text = rtconfig.LINK_SCRIPT + '.lds'
         else:
-            ScatterPath = tree.find('Targets/Target/TargetOption/TargetArmAds/LDads/ScatterFile')        
+            ScatterPath = tree.find('Targets/Target/TargetOption/TargetArmAds/LDads/ScatterFile')
             ScatterPath.text = rtconfig.LINK_SCRIPT + '.sct'
     except:
         print("Warning: No scatter file defined")
