@@ -127,6 +127,39 @@ struct bmi2_sens_axes_data local_watch_gyro;
 
 static rt_mutex_t api_lock = RT_NULL;
 
+/* ===== HW wrist-wake tuning ===========================================
+   Override Bosch defaults to better match this watch's SW algorithm
+   behavior. All values are chip-scaled (2048 × trig(angle)).
+     - min_angle_*    : larger = more sensitive (smaller angle change triggers)
+     - max_tilt_*     : larger = more permissive (wider "looking" envelope)
+   Bosch defaults shown in /* default */ comments for reference. */
+
+/* Required attitude change to enter "looking at watch" state.
+   1856 = 2048 × cos(25°) — most sensitive allowed by spec, matches SW's
+   "should trigger on any deliberate raise" intent.
+   Range 1448-1856. */
+#define BMI270_WRIST_WAKE_MIN_ANGLE_NONFOCUS    1856  /* default 1774 ≈ 30° */
+
+/* Allowed attitude wobble while already in "looking" state without
+   dropping out. 1700 ≈ 33° — a bit looser than Bosch default (45°) so
+   small wrist twists don't cause re-fire.
+   Range 1024-1774. */
+#define BMI270_WRIST_WAKE_MIN_ANGLE_FOCUS       1700  /* default 1448 ≈ 45° */
+
+/* Max tilt of watch face right/left (landscape) while still "looking".
+   1024 = 30° (the spec ceiling); make both directions symmetric since
+   users may wear watch on either wrist.
+   Range 700-1024. */
+#define BMI270_WRIST_WAKE_MAX_TILT_LR           1024  /* default 1024 ≈ 30° */
+#define BMI270_WRIST_WAKE_MAX_TILT_LL           1024  /* default 700 ≈ 20° */
+
+/* Max tilt toward / away from body. PD is chip-hard-limited to 5° (179).
+   PU pushed to spec ceiling 1978 ≈ 75° to accept more "looking up at
+   watch" postures (e.g., sitting at desk, arm bent low).
+   Range PD 0-179, PU 1774-1978. */
+#define BMI270_WRIST_WAKE_MAX_TILT_PD           179   /* default 179 ≈ 5° */
+#define BMI270_WRIST_WAKE_MAX_TILT_PU           1978  /* default 1925 ≈ 70° */
+
 /******************************************************************************/
 /*!          Function Declaration                                     */
 static void bmi270_api_lock(void)
@@ -1457,13 +1490,11 @@ int bmi270_hw_wrist_wake_enable(int en)
 
     if (en)
     {
-        /* Load Bosch defaults for the wrist-wake feature, then re-apply.
-           Defaults are tuned per BMI270 datasheet 3.2.4:
-             min_angle_focus=1448, min_angle_nonfocus=1774,
-             max_tilt_lr=1024, max_tilt_ll=700,
-             max_tilt_pd=179, max_tilt_pu=1925
-           These can be retuned later if the wrist-orientation profile of the
-           watch case doesn't match Bosch's reference. */
+        /* Load defaults, override with our tuned values, re-apply.
+           Tuning rationale: see BMI270_WRIST_WAKE_* macros near the top
+           of this file. The intent is to approximate the SW algorithm's
+           "deliberate raise → wide looking-envelope" behaviour within the
+           bounds of what Bosch's algorithm allows. */
         struct bmi2_sens_config cfg;
         cfg.type = BMI2_WRIST_WEAR_WAKE_UP;
         rslt = bmi270_get_sensor_config(&cfg, 1, &bmi2_dev);
@@ -1472,6 +1503,12 @@ int bmi270_hw_wrist_wake_enable(int en)
             LOG_E("wrist-wake get_config failed: %d", rslt);
             goto out;
         }
+        cfg.cfg.wrist_wear_wake_up.min_angle_focus    = BMI270_WRIST_WAKE_MIN_ANGLE_FOCUS;
+        cfg.cfg.wrist_wear_wake_up.min_angle_nonfocus = BMI270_WRIST_WAKE_MIN_ANGLE_NONFOCUS;
+        cfg.cfg.wrist_wear_wake_up.max_tilt_lr        = BMI270_WRIST_WAKE_MAX_TILT_LR;
+        cfg.cfg.wrist_wear_wake_up.max_tilt_ll        = BMI270_WRIST_WAKE_MAX_TILT_LL;
+        cfg.cfg.wrist_wear_wake_up.max_tilt_pd        = BMI270_WRIST_WAKE_MAX_TILT_PD;
+        cfg.cfg.wrist_wear_wake_up.max_tilt_pu        = BMI270_WRIST_WAKE_MAX_TILT_PU;
         rslt = bmi270_set_sensor_config(&cfg, 1, &bmi2_dev);
         if (rslt != BMI2_OK)
         {
