@@ -84,7 +84,6 @@
 #include <rtdbg.h>
 
 LV_IMG_DECLARE(flow_hint);
-LV_IMG_DECLARE(small_img_logo);
 LV_IMG_DECLARE(ai_prompt_border_img_white);
 LV_IMG_DECLARE(ai_prompt_border_img_blue);
 LV_IMG_DECLARE(ripple_blue);
@@ -561,38 +560,6 @@ static void speech_user_interact_cb(lv_event_t *e)
     }
 }
 
-// static bool can_open_ai_hint = false;
-static uint16_t ai_hint_bg_pos_x = 0; // 用於記錄 ai_hint_bg 的位置
-void set_ai_hint_bg_pos(uint8_t x)
-{
-    // 固定位置在2，x: 0~100 -> 透明度: 0~255
-    // lv_obj_align(gui_app_get_gesture_indicator()->ai_hint_bg, LV_ALIGN_LEFT_MID, 2, 0);
-    LOG_D("set_ai_hint_bg_pos1: %d", x);
-    if (is_at_ai_interface() || ai_hint_bg_pos_x == x) // check_if_user_speaking_to_ai
-    {
-        // 如果正在與 AI 互動，則不改變位置
-        return;
-    }
-    ai_hint_bg_pos_x = x; // 更新位置
-    // LOG_D("set_ai_hint_bg_pos: %d", x);
-    lv_obj_t *ai_hint_icon = gui_app_get_gesture_indicator()->ai_icon_hint_bg;
-    lv_opa_t opa = (lv_opa_t)((x * 255) / 100);
-    uint8_t zoom = (x * 255 / 100); // 0~100 -> 256~384
-    if (ai_hint_icon)
-    {
-        lv_obj_set_style_img_opa(ai_hint_icon, opa, 0);
-        lv_img_set_zoom(ai_hint_icon, zoom); // 0~100 -> 256~384
-    }
-    // 保持 can_open_ai_hint 的語意，當透明度達到最大時觸發一次
-    // if (x >= 100 && !can_open_ai_hint) {
-    //     can_open_ai_hint = true;
-    //     lv_obj_set_style_border_width(gui_app_get_gesture_indicator()->ai_hint_bg, 2, LV_PART_MAIN);
-    // } else if (x < 100 && can_open_ai_hint) {
-    //     can_open_ai_hint = false;
-    //     lv_obj_set_style_border_width(gui_app_get_gesture_indicator()->ai_hint_bg, 0, LV_PART_MAIN);
-    // }
-}
-
 static bool is_on_speech_input_variable = false;
 void is_on_speech_input(bool is_speech)
 {
@@ -853,26 +820,6 @@ void voice_recognition_hint_builder(void *par, app_gesture_indicator_t *indicato
 
     open_ai_prompt_border(indicator, false);
     quick_ai_hint_hidden(indicator);
-}
-
-static void ai_icon_hint_bg_handler(lv_event_t *event)
-{
-    if (event->code == LV_EVENT_PRESSED)
-    {
-        LOG_D("ai_icon_hint_bg_handler clicked");
-    }
-}
-
-void ai_icon_hint_builder(void *par, app_gesture_indicator_t *indicator)
-{
-    lv_obj_t *ai_icon_hint_bg = lv_img_create(par);
-    lv_img_set_src(ai_icon_hint_bg, &small_img_logo);
-    lv_obj_align(ai_icon_hint_bg, LV_ALIGN_RIGHT_MID, 10, 0);
-    indicator->ai_icon_hint_bg = ai_icon_hint_bg;
-    lv_obj_set_style_img_opa(ai_icon_hint_bg, LV_OPA_0, 0);    // 初始透明度為0
-    lv_img_set_zoom(ai_icon_hint_bg, 256);                     // 初始縮放為100%
-    lv_obj_clear_flag(ai_icon_hint_bg, LV_OBJ_FLAG_CLICKABLE); // 確保不隱藏
-    lv_obj_add_event_cb(ai_icon_hint_bg, ai_icon_hint_bg_handler, LV_EVENT_CLICKED, NULL);
 }
 
 void open_ai_tap_hint_bg(bool open)
@@ -1284,7 +1231,6 @@ void voice_recognition_hint_create(app_gesture_indicator_t *indicator)
     //     lv_obj_update_layout(indicator->flow_panel);
     // }
     open_ai_tap_hint_bg(false);
-    set_ai_hint_bg_pos(0);
     is_on_speech_input_variable = false;
 
     // create_ai_prompt_border_anim(indicator);

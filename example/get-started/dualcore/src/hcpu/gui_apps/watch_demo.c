@@ -208,7 +208,6 @@ void ui_layer_top_builder(void)
 void ui_layer_system_builder(void)
 {
     lv_obj_clear_flag(lv_layer_sys(), LV_OBJ_FLAG_CLICKABLE);
-    ai_icon_hint_builder(lv_layer_sys(), gui_app_get_gesture_indicator());
 #ifdef SHOW_TAP_GESTURE_INDICATOR
     tap_indicator_builder(lv_layer_sys(), gui_app_get_gesture_indicator());
     ungrab_indicator_builder(lv_layer_sys(), gui_app_get_gesture_indicator());

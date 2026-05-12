@@ -171,7 +171,6 @@ LV_IMG_DECLARE(icon_sleep_mode);
 LV_IMG_DECLARE(notification_img);
 
 #define BTN_FLASHLIGHT btn_flashlight
-#define BG_LODING ((const void *)&bg_loading)
 #define IMG_FLASHLIGHT ((const void *)&img_flashlight)
 #define IMG_ACTIVITY ((const void *)&img_activity)
 #define IMG_ALARM_2 ((const void *)&img_alarm_2)

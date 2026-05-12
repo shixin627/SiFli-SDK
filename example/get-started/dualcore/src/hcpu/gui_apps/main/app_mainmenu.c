@@ -542,8 +542,6 @@ void check_is_at_home(void)
             setting_provider.set_power_save_mode(1);
             switch_watch_motion_control_mode(false, false);
             screen_rotate_back_to_original_direction();
-            extern void set_ai_hint_bg_pos(uint8_t x);
-            set_ai_hint_bg_pos(0);
             display_gesture_detect_objs(0, false);
             display_status_bar_area(2, true);
             display_status_bar_area(0, true);

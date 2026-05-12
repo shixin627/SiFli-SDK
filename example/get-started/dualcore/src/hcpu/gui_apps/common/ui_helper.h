@@ -135,19 +135,15 @@ extern "C"
         lv_obj_t *unknown_obj_right;
         lv_obj_t *unknown_obj_left;
         lv_obj_t *gesture_release_indicator;
-        // lv_obj_t *open_watch_hint;
         lv_obj_t *speech_indicator;
         lv_obj_t *speech_bg;
         lv_obj_t *ai_prompt_border_wight;
         lv_obj_t *ai_prompt_border_blue;
         lv_obj_t *speech_input;
-        // lv_obj_t *speech_interact_button;
         lv_obj_t *speech_skai_reply;
         lv_obj_t *speech_wait_indicator;
         lv_obj_t *ai_status_label;
         lv_obj_t *ai_tap_hint_bg;
-        lv_obj_t *ai_icon_hint_bg;
-        // lv_obj_t *flow_panel;
         lv_obj_t *ai_response_options;
         app_speech_ripple_t speech_ripple[4];
     } app_gesture_indicator_t;
@@ -163,7 +159,6 @@ extern "C"
     extern void refresh_ai_reply_message(char *new_text);
     extern void hidden_speech_indicator(void);
     extern void voice_recognition_hint_builder(void *par, app_gesture_indicator_t *indicator);
-    extern void ai_icon_hint_builder(void *par, app_gesture_indicator_t *indicator);
     extern void voice_recognition_hint_create(app_gesture_indicator_t *indicator);
     extern void quick_ai_hint_hidden(app_gesture_indicator_t *indicator);
     extern void show_speech_indicator(bool show);
