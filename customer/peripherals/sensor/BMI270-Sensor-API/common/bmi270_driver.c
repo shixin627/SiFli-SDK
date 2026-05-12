@@ -1023,6 +1023,36 @@ static void bmi270_int_msg_handler(void)
         bmi270_on_wrist_wake_detected();
     }
 
+    /* Wrist-gesture (flick_in/out, pivot_up etc.) shares INT1 with the
+       wear-wakeup feature when both are armed. Read which gesture fired
+       and dispatch the wake handler for motion-toward-watch gestures. */
+    if (hw_wrist_wake_armed && (status & BMI270_WRIST_GEST_STATUS_MASK))
+    {
+        struct bmi2_feat_sensor_data fdata = { .type = BMI2_WRIST_GESTURE };
+        if (bmi270_get_feature_data(&fdata, 1, &bmi2_dev) == BMI2_OK)
+        {
+            uint8_t g = fdata.sens_data.wrist_gesture_output;
+            static const char *names[6] = {
+                "unknown", "push_arm_down", "pivot_up",
+                "wrist_jiggle", "flick_in", "flick_out"
+            };
+            LOG_I("BMI270 wrist-gesture detected: %d (%s)",
+                  g, g < 6 ? names[g] : "?");
+            /* Dispatch wake on flick_in/out and pivot_up (motion bringing
+               watch toward viewer). Skip push_arm_down (opposite intent)
+               and wrist_jiggle (too easily false-triggered). */
+            if (g == 2 /*pivot_up*/ || g == 4 /*flick_in*/ || g == 5 /*flick_out*/)
+            {
+                bmi270_on_wrist_wake_detected();
+            }
+        }
+        else
+        {
+            LOG_W("BMI270 wrist-gesture fired but get_feature_data failed; dispatching anyway");
+            bmi270_on_wrist_wake_detected();
+        }
+    }
+
     /* Accel / gyro data-ready — same code path as before. */
     if (status & (BMI2_ACC_DRDY_INT_MASK | BMI2_GYR_DRDY_INT_MASK))
     {
@@ -1532,11 +1562,11 @@ int bmi270_hw_wrist_wake_enable(int en)
              4. Map the feature interrupt to INT1.
            Each step has its own log so we can tell which one fails. */
 
-        uint8_t sens_list[2] = { BMI2_ACCEL, BMI2_WRIST_WEAR_WAKE_UP };
-        rslt = bmi270_sensor_enable(sens_list, 2, &bmi2_dev);
+        uint8_t sens_list[3] = { BMI2_ACCEL, BMI2_WRIST_WEAR_WAKE_UP, BMI2_WRIST_GESTURE };
+        rslt = bmi270_sensor_enable(sens_list, 3, &bmi2_dev);
         if (rslt != BMI2_OK)
         {
-            LOG_E("wrist-wake step1 sensor_enable(ACCEL+WW) failed: %d", rslt);
+            LOG_E("wrist-wake step1 sensor_enable(ACCEL+WW+GEST) failed: %d", rslt);
             goto out;
         }
         /* Read accel config back to confirm sensor_enable didn't reset our
@@ -1658,28 +1688,55 @@ int bmi270_hw_wrist_wake_enable(int en)
         }
         LOG_I("wrist-wake step4: pin %d active-low push-pull non-latch", int_pin);
 
-        struct bmi2_sens_int_config sens_int = {
-            .type = BMI2_WRIST_WEAR_WAKE_UP, .hw_int_pin = int_pin };
-        rslt = bmi270_map_feat_int(&sens_int, 1, &bmi2_dev);
+        struct bmi2_sens_int_config sens_int[2] = {
+            { .type = BMI2_WRIST_WEAR_WAKE_UP, .hw_int_pin = int_pin },
+            { .type = BMI2_WRIST_GESTURE,      .hw_int_pin = int_pin },
+        };
+        rslt = bmi270_map_feat_int(sens_int, 2, &bmi2_dev);
         if (rslt != BMI2_OK)
         {
-            LOG_E("wrist-wake step5 map_feat_int failed: %d", rslt);
+            LOG_E("wrist-wake step5 map_feat_int(WW+GEST) failed: %d", rslt);
             goto out;
         }
-        LOG_I("wrist-wake step5: feat int mapped to pin %d", int_pin);
+        LOG_I("wrist-wake step5: WW+GEST feat int mapped to pin %d", int_pin);
+
+        /* Step 6 — wrist-gesture config (left arm by default; flip via
+           BMI270_WRIST_WEAR_ON_RIGHT_ARM=1 if user wears watch on right). */
+    #ifndef BMI270_WRIST_WEAR_ON_RIGHT_ARM
+        #define BMI270_WRIST_WEAR_ON_RIGHT_ARM 0
+    #endif
+        struct bmi2_sens_config gest_cfg = { .type = BMI2_WRIST_GESTURE };
+        rslt = bmi270_get_sensor_config(&gest_cfg, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("wrist-wake step6 gest get_config failed: %d", rslt);
+            goto out;
+        }
+        gest_cfg.cfg.wrist_gest.wearable_arm = BMI270_WRIST_WEAR_ON_RIGHT_ARM;
+        rslt = bmi270_set_sensor_config(&gest_cfg, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("wrist-wake step6 gest set_config failed: %d", rslt);
+            goto out;
+        }
+        LOG_I("wrist-wake step6: wrist-gesture armed (arm=%s, min_flick_peak=%u, min_flick_samples=%u, max_duration=%u)",
+              BMI270_WRIST_WEAR_ON_RIGHT_ARM ? "right" : "left",
+              gest_cfg.cfg.wrist_gest.min_flick_peak,
+              gest_cfg.cfg.wrist_gest.min_flick_samples,
+              gest_cfg.cfg.wrist_gest.max_duration);
 
         hw_wrist_wake_armed = true;
-        LOG_I("BMI270 HW wrist-wake armed");
+        LOG_I("BMI270 HW wrist-wake armed (WW + GEST)");
     }
     else
     {
-        /* Disable the feature. Don't disable accel here — other consumers
-           (SW hand_tracking) re-enable it when screen turns on, and the
-           transition would briefly drop accel power. Just turn off the
-           feature; the leftover INT mapping is harmless because the
-           feature engine won't fire. */
-        uint8_t sensors[] = { BMI2_WRIST_WEAR_WAKE_UP };
-        rslt = bmi270_sensor_disable(sensors, 1, &bmi2_dev);
+        /* Disable both wake features. Don't disable accel here — other
+           consumers (SW hand_tracking) re-enable it when screen turns on,
+           and the transition would briefly drop accel power. Just turn
+           off the feature engines; the leftover INT mapping is harmless
+           because the feature engines won't fire. */
+        uint8_t sensors[] = { BMI2_WRIST_WEAR_WAKE_UP, BMI2_WRIST_GESTURE };
+        rslt = bmi270_sensor_disable(sensors, 2, &bmi2_dev);
         if (rslt != BMI2_OK)
         {
             LOG_E("wrist-wake sensor_disable failed: %d", rslt);

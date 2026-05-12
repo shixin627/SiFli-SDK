@@ -44,9 +44,9 @@
  */
 /* Temporary PPG producer/consumer race instrumentation. Remove this line
  * (and the matching one in data_service.c) once verification is done. */
-#ifndef PPG_RACE_DEBUG
-    #define PPG_RACE_DEBUG 1
-#endif
+// #ifndef PPG_RACE_DEBUG
+//     #define PPG_RACE_DEBUG
+// #endif
 
 #include <rtthread.h>
 #include <rtdevice.h>
@@ -801,7 +801,7 @@ void process_ppg_sensor_data(uint8_t sample_num, uint32_t *data,
 
 #ifdef PPG_RACE_DEBUG
     {
-        static uint32_t s_prod_seq = 0;
+        // static uint32_t s_prod_seq = 0;
         static uint32_t s_prev_ts = 0;
         uint32_t v0 = (data && sample_num > 0) ? data[0] : 0;
         uint32_t v1 = (data && sample_num > 1) ? data[1] : 0;
