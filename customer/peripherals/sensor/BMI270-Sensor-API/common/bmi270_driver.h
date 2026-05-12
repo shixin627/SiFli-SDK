@@ -161,6 +161,22 @@ int bmi270_set_gyro_suspend(int suspend);
    wakes without losing the wake-from-sleep path. */
 int bmi270_set_drdy_int_routing(int en);
 
+/* Arm / disarm the BMI270 FIFO watermark interrupt for periodic batched
+   wakes during screen-off. When armed the chip enables header-mode FIFO
+   for accel+gyro, holds wm_bytes of samples before pulling INT1 low. The
+   int handler dispatches the drain path. The matching DRDY routing should
+   be off in this mode (otherwise per-sample DRDY also wakes LCPU).
+   wm_bytes: 13 bytes per accel+gyro frame in header mode; pick wm_bytes
+   close to (target_period_seconds * ODR * 13). Returns 0 / -1. */
+int bmi270_set_fifo_wm_int(int en, uint16_t wm_bytes);
+
+/* Read everything currently sitting in the BMI270 FIFO, replay every
+   accel+gyro pair through redirect_sensor_data() + imu_data_fetch() +
+   handle_imu_data() so the AHRS sees the same stream it would have seen
+   from per-sample DRDY. Safe to call from int context (sensor task).
+   Returns the number of frame pairs processed (negative on error). */
+int bmi270_drain_fifo_to_ahrs(void);
+
 int bmi270_gyro_read(int16_t *psX, int16_t *psY, int16_t *psZ);
 int bmi270_accel_read(int16_t *psX, int16_t *psY, int16_t *psZ);
 int bmi270_tempra_read(float *tempra);

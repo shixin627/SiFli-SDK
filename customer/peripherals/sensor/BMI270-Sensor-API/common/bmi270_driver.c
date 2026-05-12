@@ -140,10 +140,17 @@ static rt_mutex_t api_lock = RT_NULL;
    Range 1448-1856. */
 #define BMI270_WRIST_WAKE_MIN_ANGLE_NONFOCUS    1856  /* default 1774 ≈ 30° */
 
-/* Allowed attitude wobble while already in "looking" state without
-   dropping out. 1700 ≈ 33° — a bit looser than Bosch default (45°) so
-   small wrist twists don't cause re-fire.
-   Range 1024-1774. */
+/* Threshold for dropping OUT of "looking at watch" state.
+   Bosch wording: "minimum expected attitude change within 1 sec while in
+   focus position". Encoded as 2048 × cos(angle).
+     - Higher value (smaller threshold angle, e.g. 1774 ≈ 33°) → drops out
+       on smaller wrist movement → ENABLES quick re-fire when user lowers
+       and raises wrist again.
+     - Lower value (larger threshold angle, e.g. 1024 ≈ 60°) → stays in
+       focus state longer → fewer re-fires from wrist twists / fidgeting.
+   Note: this does NOT affect the *initial* trigger sensitivity — that is
+   controlled by min_angle_nonfocus.
+   Range 1024-1774. Set to upper end for fast re-fires. */
 #define BMI270_WRIST_WAKE_MIN_ANGLE_FOCUS       1700  /* default 1448 ≈ 45° */
 
 /* Max tilt of watch face right/left (landscape) while still "looking".
@@ -595,7 +602,11 @@ static int8_t configure_sensor_power_mode(struct bmi2_dev *dev)
     if (rslt != BMI2_OK)
         return rslt;
 
-    /* Set Output Data Rate */
+    /* Low-power screen-off config: accel at 25 Hz, gyro at 25 Hz, both in
+       power-opt filter mode. BMI270 wrist-wake and step counter features
+       are documented (datasheet 4.8.6 / 4.8.8) to work without specific
+       ODR requirements at this level — let chip's feature engine handle
+       its own sampling internally. */
     sens_cfg[ACCEL].cfg.acc.odr = BMI2_ACC_ODR_25HZ;
 
     sens_cfg[ACCEL].cfg.acc.range = BMI2_ACC_RANGE_4G;
@@ -1016,6 +1027,46 @@ static void bmi270_int_msg_handler(void)
         bmi270_on_wrist_wake_detected();
     }
 
+    /* Wrist-gesture (flick_in/out, pivot_up etc.) shares INT1 with the
+       wear-wakeup feature when both are armed. Read which gesture fired
+       and dispatch the wake handler for motion-toward-watch gestures. */
+    if (hw_wrist_wake_armed && (status & BMI270_WRIST_GEST_STATUS_MASK))
+    {
+        struct bmi2_feat_sensor_data fdata = { .type = BMI2_WRIST_GESTURE };
+        if (bmi270_get_feature_data(&fdata, 1, &bmi2_dev) == BMI2_OK)
+        {
+            uint8_t g = fdata.sens_data.wrist_gesture_output;
+            static const char *names[6] = {
+                "unknown", "push_arm_down", "pivot_up",
+                "wrist_jiggle", "flick_in", "flick_out"
+            };
+            LOG_I("BMI270 wrist-gesture detected: %d (%s)",
+                  g, g < 6 ? names[g] : "?");
+            /* Dispatch wake on flick_in/out and pivot_up (motion bringing
+               watch toward viewer). Skip push_arm_down (opposite intent)
+               and wrist_jiggle (too easily false-triggered). */
+            if (g == 2 /*pivot_up*/ || g == 4 /*flick_in*/ || g == 5 /*flick_out*/)
+            {
+                bmi270_on_wrist_wake_detected();
+            }
+        }
+        else
+        {
+            LOG_W("BMI270 wrist-gesture fired but get_feature_data failed; dispatching anyway");
+            bmi270_on_wrist_wake_detected();
+        }
+    }
+
+    /* FIFO watermark — screen-off path. The chip accumulates ~1 s of
+       accel+gyro samples; drain everything through the AHRS so the
+       quaternion stays converged for the next wrist-wake event. Process
+       before DRDY since DRDY shouldn't be routed in this mode anyway. */
+    if (status & (BMI2_FWM_INT_STATUS_MASK | BMI2_FFULL_INT_STATUS_MASK))
+    {
+        int n = bmi270_drain_fifo_to_ahrs();
+        LOG_I("BMI270 FIFO drain: %d frames (status=0x%04x)", n, status);
+    }
+
     /* Accel / gyro data-ready — same code path as before. */
     if (status & (BMI2_ACC_DRDY_INT_MASK | BMI2_GYR_DRDY_INT_MASK))
     {
@@ -1381,64 +1432,197 @@ int bmi270_fifo_disable(bmi270_fifo_func_t func)
 
 int bmi270_get_fifo_count(void)
 {
-    uint16_t value;
+    uint16_t value = 0;
+    if (accel_gyro_dev_info.open_flag == 0)
+        return 0;
+    bmi270_api_lock();
+    (void)bmi2_get_fifo_length(&value, &bmi2_dev);
+    bmi270_api_unlock();
     return (int)value;
 }
 
 int bmi270_read_fifo(uint8_t *buf, int len)
 {
-    int i;
-    if (buf == NULL || len == 0)
+    if (buf == NULL || len <= 0)
+        return 0;
+    if (accel_gyro_dev_info.open_flag == 0)
         return 0;
 
-    return len;
+    struct bmi2_fifo_frame f = { 0 };
+    f.data = buf;
+    f.length = (uint16_t)len;
+
+    bmi270_api_lock();
+    int8_t rslt = bmi2_read_fifo_data(&f, &bmi2_dev);
+    bmi270_api_unlock();
+
+    return (rslt == BMI2_OK) ? len : 0;
 }
 
 int bmi270_set_fifo_threshold(int thd)
 {
-    return 0;
+    if (accel_gyro_dev_info.open_flag == 0)
+        return -1;
+    bmi270_api_lock();
+    int8_t rslt = bmi2_set_fifo_wm((uint16_t)thd, &bmi2_dev);
+    bmi270_api_unlock();
+    return (rslt == BMI2_OK) ? 0 : -1;
 }
 
 int bmi270_get_waterm_status(void)
 {
-    uint8_t value;
-    return (int)value;
+    return 0;
 }
 
 int bmi270_get_overrun_status(void)
 {
-    uint8_t value;
-    return (int)value;
+    return 0;
 }
 
 int bmi270_get_fifo_full_status(void)
 {
-    uint8_t value;
-    return (int)value;
+    return 0;
 }
 
 int bmi270_get_fifo_empty_status(void)
 {
-    uint8_t value;
-    return (int)value;
+    return 0;
 }
 
 int bmi270_set_fifo_mode(uint8_t val)
 {
-    int32_t ret;
-    return ret;
+    return 0;
 }
 
 int bmi270_get_fifo_pattern(void)
 {
-    uint16_t value;
-    return (int)value;
+    return 0;
 }
 
 int bmi270_get_fifo_data_arr(void)
 {
-    uint16_t value;
-    return (int)value;
+    return 0;
+}
+
+/* ===== Periodic FIFO drain for screen-off mode =============================
+   While the screen is off LCPU is in LIGHT sleep. We can't run the SW AHRS
+   per DRDY sample (would defeat the sleep), but we don't want quaternion
+   drift either — when wrist-wake fires the next gesture-detect pass needs a
+   converged orientation immediately. Compromise: keep accel+gyro running at
+   25 Hz, route the BMI270 FIFO watermark to INT1 so the chip wakes us about
+   once a second, drain all accumulated frames through the same AHRS path
+   one shot, then go back to sleep.
+
+   bmi270_set_fifo_wm_int(en, wm_bytes):
+     en=1 — enable header-mode FIFO with accel+gyro, set watermark in BYTES,
+            route FWM to INT1.
+     en=0 — un-route FWM, disable FIFO data sources.
+     wm_bytes — frame size with header mode is 13 (1 hdr + 6 acc + 6 gyr).
+            ~1 s @ 25 Hz = 325 bytes; sized in the caller. */
+int bmi270_set_fifo_wm_int(int en, uint16_t wm_bytes)
+{
+    if (accel_gyro_dev_info.open_flag == 0)
+        return -1;
+
+    const uint16_t fifo_cfg = (uint16_t)(BMI2_FIFO_ACC_EN |
+                                          BMI2_FIFO_GYR_EN |
+                                          BMI2_FIFO_HEADER_EN);
+    int8_t rslt = BMI2_OK;
+    bmi270_api_lock();
+
+    if (en)
+    {
+        /* Set watermark first so the chip doesn't immediately fire FWM at
+           the default (low) threshold when FIFO comes online. */
+        rslt = bmi2_set_fifo_wm(wm_bytes, &bmi2_dev);
+        if (rslt != BMI2_OK)
+            goto unlock;
+        rslt = bmi2_set_fifo_config(fifo_cfg, BMI2_ENABLE, &bmi2_dev);
+        if (rslt != BMI2_OK)
+            goto unlock;
+        rslt = bmi2_map_data_int(BMI2_FWM_INT, BMI2_INT1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+            goto unlock;
+        LOG_I("BMI270 FIFO WM int armed: wm=%u bytes", wm_bytes);
+    }
+    else
+    {
+        (void)bmi2_map_data_int(BMI2_FWM_INT, BMI2_INT_NONE, &bmi2_dev);
+        rslt = bmi2_set_fifo_config(fifo_cfg, BMI2_DISABLE, &bmi2_dev);
+        LOG_I("BMI270 FIFO WM int disarmed");
+    }
+
+unlock:
+    bmi270_api_unlock();
+    return (rslt == BMI2_OK) ? 0 : -1;
+}
+
+/* Drain the BMI270 FIFO and replay every accel+gyro pair through the same
+   AHRS / gesture path that DRDY uses. Returns the number of frame pairs
+   processed (negative on error).
+
+   Buffer sized for ~2 s of headroom @ 25 Hz / 13 B per frame = 650 B; max
+   FIFO depth on BMI270 is ~2 KB so anything beyond is truncated and the
+   next watermark drains the rest. All scratch arrays are static — the
+   sensor task stack is only 1.25 KB. */
+int bmi270_drain_fifo_to_ahrs(void)
+{
+    if (accel_gyro_dev_info.open_flag == 0)
+        return -1;
+
+    static uint8_t fifo_buf[768];
+    static struct bmi2_sens_axes_data acc[60];
+    static struct bmi2_sens_axes_data gyr[60];
+    struct bmi2_fifo_frame f = { 0 };
+    uint16_t fifo_len = 0;
+    int8_t rslt;
+
+    bmi270_api_lock();
+
+    rslt = bmi2_get_fifo_length(&fifo_len, &bmi2_dev);
+    if (rslt != BMI2_OK || fifo_len == 0)
+    {
+        bmi270_api_unlock();
+        return (rslt == BMI2_OK) ? 0 : -1;
+    }
+    if (fifo_len > sizeof(fifo_buf))
+        fifo_len = sizeof(fifo_buf);
+
+    f.data = fifo_buf;
+    f.length = fifo_len;
+    rslt = bmi2_read_fifo_data(&f, &bmi2_dev);
+    if (rslt != BMI2_OK)
+    {
+        bmi270_api_unlock();
+        return -1;
+    }
+
+    uint16_t acc_cnt = sizeof(acc) / sizeof(acc[0]);
+    uint16_t gyr_cnt = sizeof(gyr) / sizeof(gyr[0]);
+    (void)bmi2_extract_accel(acc, &acc_cnt, &f, &bmi2_dev);
+    (void)bmi2_extract_gyro(gyr, &gyr_cnt, &f, &bmi2_dev);
+
+    bmi270_api_unlock();
+
+    uint16_t pairs = (acc_cnt < gyr_cnt) ? acc_cnt : gyr_cnt;
+    for (uint16_t i = 0; i < pairs; i++)
+    {
+        local_watch_accel = redirect_sensor_data(&acc[i]);
+        local_watch_gyro = redirect_sensor_data(&gyr[i]);
+        /* Update only the global Mahony quaternion — skip gravity / hand
+           tracking / health / sensor_q work that handle_imu_data() does
+           on the awake path. Goal here is solely to keep global_q from
+           drifting so wrist-wake → gesture-detect starts converged. */
+        if (imu_data_fetch(&watch_sensor.imu_data) == RT_EOK)
+        {
+    #ifdef BSP_USING_GESTURE_DETECT
+            update_global_attitude(&watch_sensor.imu_data.acce,
+                                   &watch_sensor.imu_data.gyro);
+    #endif
+        }
+    }
+
+    return (int)pairs;
 }
 
 // function for awt
@@ -1498,7 +1682,7 @@ int bmi270_hw_wrist_wake_is_enabled(void)
    defaults work but custom values don't, the tuning is too tight). Set 1
    once the basic gesture detection is confirmed working. */
 #ifndef BMI270_WRIST_WAKE_USE_CUSTOM_TUNING
-    #define BMI270_WRIST_WAKE_USE_CUSTOM_TUNING 0
+    #define BMI270_WRIST_WAKE_USE_CUSTOM_TUNING 1
 #endif
 
 int bmi270_hw_wrist_wake_enable(int en)
@@ -1525,11 +1709,11 @@ int bmi270_hw_wrist_wake_enable(int en)
              4. Map the feature interrupt to INT1.
            Each step has its own log so we can tell which one fails. */
 
-        uint8_t sens_list[2] = { BMI2_ACCEL, BMI2_WRIST_WEAR_WAKE_UP };
-        rslt = bmi270_sensor_enable(sens_list, 2, &bmi2_dev);
+        uint8_t sens_list[3] = { BMI2_ACCEL, BMI2_WRIST_WEAR_WAKE_UP, BMI2_WRIST_GESTURE };
+        rslt = bmi270_sensor_enable(sens_list, 3, &bmi2_dev);
         if (rslt != BMI2_OK)
         {
-            LOG_E("wrist-wake step1 sensor_enable(ACCEL+WW) failed: %d", rslt);
+            LOG_E("wrist-wake step1 sensor_enable(ACCEL+WW+GEST) failed: %d", rslt);
             goto out;
         }
         /* Read accel config back to confirm sensor_enable didn't reset our
@@ -1651,28 +1835,55 @@ int bmi270_hw_wrist_wake_enable(int en)
         }
         LOG_I("wrist-wake step4: pin %d active-low push-pull non-latch", int_pin);
 
-        struct bmi2_sens_int_config sens_int = {
-            .type = BMI2_WRIST_WEAR_WAKE_UP, .hw_int_pin = int_pin };
-        rslt = bmi270_map_feat_int(&sens_int, 1, &bmi2_dev);
+        struct bmi2_sens_int_config sens_int[2] = {
+            { .type = BMI2_WRIST_WEAR_WAKE_UP, .hw_int_pin = int_pin },
+            { .type = BMI2_WRIST_GESTURE,      .hw_int_pin = int_pin },
+        };
+        rslt = bmi270_map_feat_int(sens_int, 2, &bmi2_dev);
         if (rslt != BMI2_OK)
         {
-            LOG_E("wrist-wake step5 map_feat_int failed: %d", rslt);
+            LOG_E("wrist-wake step5 map_feat_int(WW+GEST) failed: %d", rslt);
             goto out;
         }
-        LOG_I("wrist-wake step5: feat int mapped to pin %d", int_pin);
+        LOG_I("wrist-wake step5: WW+GEST feat int mapped to pin %d", int_pin);
+
+        /* Step 6 — wrist-gesture config (left arm by default; flip via
+           BMI270_WRIST_WEAR_ON_RIGHT_ARM=1 if user wears watch on right). */
+    #ifndef BMI270_WRIST_WEAR_ON_RIGHT_ARM
+        #define BMI270_WRIST_WEAR_ON_RIGHT_ARM 0
+    #endif
+        struct bmi2_sens_config gest_cfg = { .type = BMI2_WRIST_GESTURE };
+        rslt = bmi270_get_sensor_config(&gest_cfg, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("wrist-wake step6 gest get_config failed: %d", rslt);
+            goto out;
+        }
+        gest_cfg.cfg.wrist_gest.wearable_arm = BMI270_WRIST_WEAR_ON_RIGHT_ARM;
+        rslt = bmi270_set_sensor_config(&gest_cfg, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("wrist-wake step6 gest set_config failed: %d", rslt);
+            goto out;
+        }
+        LOG_I("wrist-wake step6: wrist-gesture armed (arm=%s, min_flick_peak=%u, min_flick_samples=%u, max_duration=%u)",
+              BMI270_WRIST_WEAR_ON_RIGHT_ARM ? "right" : "left",
+              gest_cfg.cfg.wrist_gest.min_flick_peak,
+              gest_cfg.cfg.wrist_gest.min_flick_samples,
+              gest_cfg.cfg.wrist_gest.max_duration);
 
         hw_wrist_wake_armed = true;
-        LOG_I("BMI270 HW wrist-wake armed");
+        LOG_I("BMI270 HW wrist-wake armed (WW + GEST)");
     }
     else
     {
-        /* Disable the feature. Don't disable accel here — other consumers
-           (SW hand_tracking) re-enable it when screen turns on, and the
-           transition would briefly drop accel power. Just turn off the
-           feature; the leftover INT mapping is harmless because the
-           feature engine won't fire. */
-        uint8_t sensors[] = { BMI2_WRIST_WEAR_WAKE_UP };
-        rslt = bmi270_sensor_disable(sensors, 1, &bmi2_dev);
+        /* Disable both wake features. Don't disable accel here — other
+           consumers (SW hand_tracking) re-enable it when screen turns on,
+           and the transition would briefly drop accel power. Just turn
+           off the feature engines; the leftover INT mapping is harmless
+           because the feature engines won't fire. */
+        uint8_t sensors[] = { BMI2_WRIST_WEAR_WAKE_UP, BMI2_WRIST_GESTURE };
+        rslt = bmi270_sensor_disable(sensors, 2, &bmi2_dev);
         if (rslt != BMI2_OK)
         {
             LOG_E("wrist-wake sensor_disable failed: %d", rslt);
@@ -1697,25 +1908,49 @@ int bmi270_hw_step_counter_enable(int en)
     }
 
     int8_t rslt;
-    uint8_t sensors[] = {BMI2_STEP_COUNTER};
 
     bmi270_api_lock();
     if (en)
     {
-        rslt = bmi270_sensor_enable(sensors, 1, &bmi2_dev);
+        /* Mirror Bosch bmi270_examples/step_counter: enable ACCEL +
+           STEP_COUNTER in the same call. Without ACCEL in the list the
+           feature engine may not pick up samples (same pattern as wrist-
+           wake). */
+        uint8_t sens_list[2] = { BMI2_ACCEL, BMI2_STEP_COUNTER };
+        rslt = bmi270_sensor_enable(sens_list, 2, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("step counter enable(ACCEL+SC) failed: %d", rslt);
+            goto step_out;
+        }
+
+        /* watermark_level = 1 = chip updates step_counter_output every
+           20 steps (BMI270 minimum granularity). The 25-param wrist
+           algorithm tuning is loaded by the chip's firmware blob and
+           does not need host configuration. */
+        struct bmi2_sens_config cfg = { .type = BMI2_STEP_COUNTER };
+        rslt = bmi270_get_sensor_config(&cfg, 1, &bmi2_dev);
         if (rslt == BMI2_OK)
-            LOG_I("BMI270 HW step counter enabled");
-        else
-            LOG_E("step counter enable failed: %d", rslt);
+        {
+            cfg.cfg.step_counter.watermark_level = 1;
+            rslt = bmi270_set_sensor_config(&cfg, 1, &bmi2_dev);
+            if (rslt != BMI2_OK)
+            {
+                LOG_E("step counter set_config failed: %d", rslt);
+            }
+        }
+        LOG_I("BMI270 HW step counter enabled");
     }
     else
     {
+        uint8_t sensors[] = { BMI2_STEP_COUNTER };
         rslt = bmi270_sensor_disable(sensors, 1, &bmi2_dev);
         if (rslt == BMI2_OK)
             LOG_I("BMI270 HW step counter disabled");
         else
             LOG_E("step counter disable failed: %d", rslt);
     }
+step_out:
     bmi270_api_unlock();
     return (rslt == BMI2_OK) ? 0 : -1;
 }
@@ -1731,7 +1966,7 @@ int bmi270_hw_step_counter_read(uint32_t *steps)
     bmi270_api_unlock();
     if (rslt != BMI2_OK)
     {
-        LOG_W("step_counter_read failed: %d", rslt);
+        LOG_D("step_counter_read failed: %d", rslt);
         return -1;
     }
     *steps = fdata.sens_data.step_counter_output;

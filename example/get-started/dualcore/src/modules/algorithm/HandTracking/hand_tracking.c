@@ -52,7 +52,8 @@ extern uint16_t activity_metrics_prv_steps_per_minute(void);
 static bool is_user_walking_or_running(void)
 {
 #ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
-    return activity_metrics_prv_steps_per_minute() > HAND_TRACKING_WALK_SUPPRESS_SPM;
+    return activity_metrics_prv_steps_per_minute() >
+           HAND_TRACKING_WALK_SUPPRESS_SPM;
 #else
     return false;
 #endif
@@ -202,12 +203,6 @@ static void timer_check_watch_callback(void *param)
     sum_gyro_put_down_x = 0;
     gyro_y_check_watch = true;
     gesture_threshold_achieved = false;
-    // if (watchface_visible)
-    // {
-    //     LOG_I("Watchface visible, trigger lift2 event");
-    //     last_hand_lift_time = rt_tick_get();
-    //     trigger_lift2_event();
-    // }
 }
 
 static rt_timer_t timer_check_watch;
@@ -295,19 +290,19 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
         zero_velocity_buffer_index = 0;
     }
 
-    if (check_watch)
-    {
-        if (current_time - check_watch_start_time > 200)
-        {
-            check_watch = false;
-            if (if_watchface_visible)
-            {
-                LOG_I("Watchface visible, trigger lift2 event");
-                last_hand_lift_time = current_time;
-                trigger_lift2_event();
-            }
-        }
-    }
+    // if (check_watch)
+    // {
+    //     if (current_time - check_watch_start_time > 200)
+    //     {
+    //         check_watch = false;
+    //         if (if_watchface_visible)
+    //         {
+    //             LOG_I("Watchface visible, trigger lift2 event");
+    //             last_hand_lift_time = current_time;
+    //             trigger_lift2_event();
+    //         }
+    //     }
+    // }
 
     switch (state)
     {
@@ -420,21 +415,15 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
 #if USING_PUT_DOWN_TIMER
         stop_put_down_confirm_timer();
 #endif
-        // if (if_watchface_visible)
+        if (!hand_status ||
+            (current_time - last_hand_lift_time) > RT_TICK_PER_SECOND)
         {
-            // stop_check_watch_timer();
-            if (!hand_status ||
-                (current_time - last_hand_lift_time) > RT_TICK_PER_SECOND)
-            {
-                hand_status = true;
-                // trigger_lift2_event();
-                // last_hand_lift_time = current_time;
-                check_watch = true;
-                check_watch_start_time = current_time;
-            }
-            sum_gyro_put_down_x = 0;
-            state = 0;
+            hand_status = true;
+            check_watch = true;
+            check_watch_start_time = current_time;
         }
+        sum_gyro_put_down_x = 0;
+        state = 0;
         break;
     }
     case 2:
@@ -502,13 +491,7 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y,
     }
     else
     {
-        // if (if_watchface_visible)
-        {
-            // stop_check_watch_timer();
-            // trigger_lift2_event();
-            // last_hand_lift_time = current_time;
-            gyro_y_check_watch = true;
-        }
+        gyro_y_check_watch = true;
     }
 }
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF

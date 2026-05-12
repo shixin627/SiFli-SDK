@@ -1788,6 +1788,27 @@ uint8_t get_message_page_count(void)
     return page_count;
 }
 
+/* Notification storm debounce.
+   Why: when BLE reconnects, the phone dumps cached ANCS notifications in
+   tight bursts. Each one triggers a full refresh_notification_list, which
+   rebuilds 10 cards (lv_mem_alloc/free per label via replace_nbsp) plus
+   destroy+create of indicator dots. During the burst the FreeType cache
+   (app_ft_m, 600 KB) hits 75 % and lv_freetype_clean_cache fires repeatedly
+   while EPIC still has pending blits → heap magic corruption. Compressing
+   the burst to one head + one tail refresh keeps the rebuild from racing
+   with FT cache cleanup. */
+#define NOTIFICATION_REFRESH_DEBOUNCE_MS 200
+static lv_timer_t *refresh_debounce_timer = NULL;
+static rt_tick_t last_refresh_tick = 0;
+
+static void refresh_debounce_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    refresh_debounce_timer = NULL;
+    last_refresh_tick = rt_tick_get();
+    refresh_notification_list(NULL);
+}
+
 static void new_message_cb(void *param)
 {
     message_has_read = false;
@@ -1798,6 +1819,28 @@ static void new_message_cb(void *param)
     {
         dial_header_showing_notification = true;
     }
+
+    rt_tick_t now = rt_tick_get();
+    if (last_refresh_tick != 0 &&
+        (now - last_refresh_tick) <
+            rt_tick_from_millisecond(NOTIFICATION_REFRESH_DEBOUNCE_MS))
+    {
+        /* Within debounce window — defer to single trailing refresh. */
+        if (refresh_debounce_timer == NULL)
+        {
+            refresh_debounce_timer = lv_timer_create(
+                refresh_debounce_timer_cb,
+                NOTIFICATION_REFRESH_DEBOUNCE_MS, NULL);
+            if (refresh_debounce_timer)
+                lv_timer_set_repeat_count(refresh_debounce_timer, 1);
+        }
+        else
+        {
+            lv_timer_reset(refresh_debounce_timer);
+        }
+        return;
+    }
+    last_refresh_tick = now;
     refresh_notification_list(param);
 }
 
@@ -2646,7 +2689,9 @@ static void dial_header_shrink_timer_cb(lv_timer_t *timer)
 static void dial_header_show_notification(void)
 {
     if (!lv_obj_is_valid(dial_header_bg))
+    {
         return;
+    }
     /* Cancel any ongoing fadeout animation to prevent it from overriding the
      * opacity we set below */
     lv_anim_del(dial_header_bg, dial_header_fadeout_exec_cb);
@@ -2776,20 +2821,25 @@ static void dial_header_event_cb(lv_event_t *evt)
     }
 }
 
-static uint32_t dial_header_prev_notif_count = 0;
+/* Last-seen arrival seq from notification center. Count-based dedup fails
+   when the ring buffer is full (oldest is displaced, count stays at cap) —
+   comparing the monotonic arrival seq catches every genuine new
+   notification regardless of buffer state. */
+static uint32_t dial_header_prev_arrival_seq = 0;
 static void handle_dial_header_new_notification(void)
 {
     if (!lv_obj_is_valid(dial_header_bg))
-        return;
-    /* Only react when notification count actually increased
-       (skip refreshes triggered by music operations, etc.) */
-    uint32_t current_count = notification_center_get_info_count();
-    if (current_count <= dial_header_prev_notif_count)
     {
-        dial_header_prev_notif_count = current_count;
         return;
     }
-    dial_header_prev_notif_count = current_count;
+    /* Only react on genuinely new arrivals (skip refreshes triggered by
+       music operations, list rebuilds, etc.) */
+    uint32_t cur_seq = notification_center_get_arrival_seq();
+    if (cur_seq == dial_header_prev_arrival_seq)
+    {
+        return;
+    }
+    dial_header_prev_arrival_seq = cur_seq;
     /* User 已經在通知列表 → 新通知會直接出現在列表裡，不需要再彈 header。
        count 仍要更新（上面已做）才不會之後一次補彈。 */
     if (is_at_message())
@@ -3201,6 +3251,16 @@ rt_int32_t notification_on_deinit(void)
     /* Tear down indicator dots */
     destroy_msg_indicator_dots();
     msg_indicator_dots_parent = NULL;
+
+    /* Cancel any pending refresh debounce — its cb references
+       refresh_notification_list which early-returns on p_app_notification ==
+       NULL, but deleting the timer avoids a wasted callback after teardown. */
+    if (refresh_debounce_timer)
+    {
+        lv_timer_del(refresh_debounce_timer);
+        refresh_debounce_timer = NULL;
+    }
+    last_refresh_tick = 0;
 
     if (p_app_notification)
     {
