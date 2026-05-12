@@ -140,10 +140,17 @@ static rt_mutex_t api_lock = RT_NULL;
    Range 1448-1856. */
 #define BMI270_WRIST_WAKE_MIN_ANGLE_NONFOCUS    1856  /* default 1774 ≈ 30° */
 
-/* Allowed attitude wobble while already in "looking" state without
-   dropping out. 1700 ≈ 33° — a bit looser than Bosch default (45°) so
-   small wrist twists don't cause re-fire.
-   Range 1024-1774. */
+/* Threshold for dropping OUT of "looking at watch" state.
+   Bosch wording: "minimum expected attitude change within 1 sec while in
+   focus position". Encoded as 2048 × cos(angle).
+     - Higher value (smaller threshold angle, e.g. 1774 ≈ 33°) → drops out
+       on smaller wrist movement → ENABLES quick re-fire when user lowers
+       and raises wrist again.
+     - Lower value (larger threshold angle, e.g. 1024 ≈ 60°) → stays in
+       focus state longer → fewer re-fires from wrist twists / fidgeting.
+   Note: this does NOT affect the *initial* trigger sensitivity — that is
+   controlled by min_angle_nonfocus.
+   Range 1024-1774. Set to upper end for fast re-fires. */
 #define BMI270_WRIST_WAKE_MIN_ANGLE_FOCUS       1700  /* default 1448 ≈ 45° */
 
 /* Max tilt of watch face right/left (landscape) while still "looking".
@@ -1498,7 +1505,7 @@ int bmi270_hw_wrist_wake_is_enabled(void)
    defaults work but custom values don't, the tuning is too tight). Set 1
    once the basic gesture detection is confirmed working. */
 #ifndef BMI270_WRIST_WAKE_USE_CUSTOM_TUNING
-    #define BMI270_WRIST_WAKE_USE_CUSTOM_TUNING 0
+    #define BMI270_WRIST_WAKE_USE_CUSTOM_TUNING 1
 #endif
 
 int bmi270_hw_wrist_wake_enable(int en)
