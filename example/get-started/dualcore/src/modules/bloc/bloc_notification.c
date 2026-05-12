@@ -153,6 +153,18 @@ uint32_t notification_center_get_info_count(void)
     return notification_items_amount;
 }
 
+/* Monotonic arrival counter — incremented every time update_notification()
+   accepts a new item. Count-based dedup breaks when the ring buffer is full
+   (oldest is overwritten so count stays at ITEM_AMOUNT_NOTIFICATION),
+   callers that need "is this genuinely new?" should compare this seq
+   against their last-seen value. */
+static uint32_t notification_arrival_seq = 0;
+
+uint32_t notification_center_get_arrival_seq(void)
+{
+    return notification_arrival_seq;
+}
+
 /**
  * @brief Get pointer to the first notification in the list
  * @return Pointer to the first notification
@@ -245,6 +257,8 @@ static void update_notification(notification_t newNotification)
     {
         notification_items_amount++;
     }
+
+    notification_arrival_seq++;
 
     SkaiWatchSys.notification_number = notification_items_amount;
 }
