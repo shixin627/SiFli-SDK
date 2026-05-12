@@ -71,15 +71,6 @@
 #endif
 
 #define APP_ID "Demo"
-void create_demo_screen(lv_obj_t *scr)
-{
-    lv_obj_t *bg = lv_img_create(scr);
-    lv_img_set_src(bg, "/assets/images/common_background_blue.bin");
-    lv_obj_align(bg, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_t *img = lv_img_create(bg);
-    lv_img_set_src(img, IMG_LOGO);
-    lv_obj_center(img);
-}
 
 #if LV_USE_IMGFONT
 // LV_IMG_DECLARE(emoji_F617)
@@ -171,7 +162,6 @@ void test_emoji_ttf_display(void)
 
 static void on_start(lv_obj_t *scr)
 {
-    // create_demo_screen(scr);
     test_emoji_ttf_display();
 }
 

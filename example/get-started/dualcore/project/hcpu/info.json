@@ -1,6 +1,6 @@
 {
     "version": "1.1.48",
-    "description": "LightSleepMode下的抬腕量屏",
+    "description": "圖檔",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
