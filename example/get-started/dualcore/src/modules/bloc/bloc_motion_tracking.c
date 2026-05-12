@@ -888,7 +888,7 @@ static void report_air_mouse_data(air_plane_delta_movement_t *movement,
     {
         return;
     }
-    control_provider.ble_hid_mouse_move(movement->x, movement->y);
+    control_provider.ble_hid_mouse_move(-movement->x, -movement->y);
     movement->last_report_ts = ts;
     movement->x = 0;
     movement->y = 0;
