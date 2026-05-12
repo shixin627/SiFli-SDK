@@ -114,6 +114,20 @@ static Quaternion sensor_fusion_algorithm(sensor_fusion_param_t *param,
     return q;
 }
 
+/* Sleep-time AHRS-only update. Called once per FIFO frame by
+   bmi270_drain_fifo_to_ahrs() while the screen is off — just keep global_q
+   converged with the buffered samples so the moment wrist-wake fires the
+   next handle_imu_data() pass starts from a fresh orientation. No
+   gravity / hand-tracking / health / sensor_q work; that all runs only
+   when the screen is back on and DRDY resumes. */
+static Vector3 calculate_gravity(Quaternion *q);
+void update_global_attitude(Vector3 *accData, Vector3 *gyroData)
+{
+    if (!accData || !gyroData)
+        return;
+    global_q = sensor_fusion_algorithm(&sensor_fusion_param, accData, gyroData);
+}
+
 void reinitialize_ahrs_from_accel(int16_t raw_x, int16_t raw_y, int16_t raw_z)
 {
     float ax = (float)raw_x;
@@ -474,6 +488,7 @@ void handle_motion_data_in_25hz(rt_tick_t now, Vector3 *accData)
  * @return cost time in ms
  */
 
+static uint8_t log_count = 0;
 int handle_imu_data(float hz, Vector3 *accData, Vector3 *gyroData)
 {
     static float pre_freq = 0;
@@ -725,7 +740,6 @@ extern bool is_hcpu_wakeup_in_last_3s(void);
  * @brief Process raw PPG data for gesture detection
  * @param rawdata Raw PPG value
  */
-static uint8_t log_count = 0;
 void process_ppg_rawdata(uint32_t rawdata)
 {
 #ifdef BSP_USING_WEAR_DETECT

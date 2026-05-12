@@ -1053,6 +1053,16 @@ static void bmi270_int_msg_handler(void)
         }
     }
 
+    /* FIFO watermark — screen-off path. The chip accumulates ~1 s of
+       accel+gyro samples; drain everything through the AHRS so the
+       quaternion stays converged for the next wrist-wake event. Process
+       before DRDY since DRDY shouldn't be routed in this mode anyway. */
+    if (status & (BMI2_FWM_INT_STATUS_MASK | BMI2_FFULL_INT_STATUS_MASK))
+    {
+        int n = bmi270_drain_fifo_to_ahrs();
+        LOG_I("BMI270 FIFO drain: %d frames (status=0x%04x)", n, status);
+    }
+
     /* Accel / gyro data-ready — same code path as before. */
     if (status & (BMI2_ACC_DRDY_INT_MASK | BMI2_GYR_DRDY_INT_MASK))
     {
@@ -1418,64 +1428,197 @@ int bmi270_fifo_disable(bmi270_fifo_func_t func)
 
 int bmi270_get_fifo_count(void)
 {
-    uint16_t value;
+    uint16_t value = 0;
+    if (accel_gyro_dev_info.open_flag == 0)
+        return 0;
+    bmi270_api_lock();
+    (void)bmi2_get_fifo_length(&value, &bmi2_dev);
+    bmi270_api_unlock();
     return (int)value;
 }
 
 int bmi270_read_fifo(uint8_t *buf, int len)
 {
-    int i;
-    if (buf == NULL || len == 0)
+    if (buf == NULL || len <= 0)
+        return 0;
+    if (accel_gyro_dev_info.open_flag == 0)
         return 0;
 
-    return len;
+    struct bmi2_fifo_frame f = { 0 };
+    f.data = buf;
+    f.length = (uint16_t)len;
+
+    bmi270_api_lock();
+    int8_t rslt = bmi2_read_fifo_data(&f, &bmi2_dev);
+    bmi270_api_unlock();
+
+    return (rslt == BMI2_OK) ? len : 0;
 }
 
 int bmi270_set_fifo_threshold(int thd)
 {
-    return 0;
+    if (accel_gyro_dev_info.open_flag == 0)
+        return -1;
+    bmi270_api_lock();
+    int8_t rslt = bmi2_set_fifo_wm((uint16_t)thd, &bmi2_dev);
+    bmi270_api_unlock();
+    return (rslt == BMI2_OK) ? 0 : -1;
 }
 
 int bmi270_get_waterm_status(void)
 {
-    uint8_t value;
-    return (int)value;
+    return 0;
 }
 
 int bmi270_get_overrun_status(void)
 {
-    uint8_t value;
-    return (int)value;
+    return 0;
 }
 
 int bmi270_get_fifo_full_status(void)
 {
-    uint8_t value;
-    return (int)value;
+    return 0;
 }
 
 int bmi270_get_fifo_empty_status(void)
 {
-    uint8_t value;
-    return (int)value;
+    return 0;
 }
 
 int bmi270_set_fifo_mode(uint8_t val)
 {
-    int32_t ret;
-    return ret;
+    return 0;
 }
 
 int bmi270_get_fifo_pattern(void)
 {
-    uint16_t value;
-    return (int)value;
+    return 0;
 }
 
 int bmi270_get_fifo_data_arr(void)
 {
-    uint16_t value;
-    return (int)value;
+    return 0;
+}
+
+/* ===== Periodic FIFO drain for screen-off mode =============================
+   While the screen is off LCPU is in LIGHT sleep. We can't run the SW AHRS
+   per DRDY sample (would defeat the sleep), but we don't want quaternion
+   drift either — when wrist-wake fires the next gesture-detect pass needs a
+   converged orientation immediately. Compromise: keep accel+gyro running at
+   25 Hz, route the BMI270 FIFO watermark to INT1 so the chip wakes us about
+   once a second, drain all accumulated frames through the same AHRS path
+   one shot, then go back to sleep.
+
+   bmi270_set_fifo_wm_int(en, wm_bytes):
+     en=1 — enable header-mode FIFO with accel+gyro, set watermark in BYTES,
+            route FWM to INT1.
+     en=0 — un-route FWM, disable FIFO data sources.
+     wm_bytes — frame size with header mode is 13 (1 hdr + 6 acc + 6 gyr).
+            ~1 s @ 25 Hz = 325 bytes; sized in the caller. */
+int bmi270_set_fifo_wm_int(int en, uint16_t wm_bytes)
+{
+    if (accel_gyro_dev_info.open_flag == 0)
+        return -1;
+
+    const uint16_t fifo_cfg = (uint16_t)(BMI2_FIFO_ACC_EN |
+                                          BMI2_FIFO_GYR_EN |
+                                          BMI2_FIFO_HEADER_EN);
+    int8_t rslt = BMI2_OK;
+    bmi270_api_lock();
+
+    if (en)
+    {
+        /* Set watermark first so the chip doesn't immediately fire FWM at
+           the default (low) threshold when FIFO comes online. */
+        rslt = bmi2_set_fifo_wm(wm_bytes, &bmi2_dev);
+        if (rslt != BMI2_OK)
+            goto unlock;
+        rslt = bmi2_set_fifo_config(fifo_cfg, BMI2_ENABLE, &bmi2_dev);
+        if (rslt != BMI2_OK)
+            goto unlock;
+        rslt = bmi2_map_data_int(BMI2_FWM_INT, BMI2_INT1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+            goto unlock;
+        LOG_I("BMI270 FIFO WM int armed: wm=%u bytes", wm_bytes);
+    }
+    else
+    {
+        (void)bmi2_map_data_int(BMI2_FWM_INT, BMI2_INT_NONE, &bmi2_dev);
+        rslt = bmi2_set_fifo_config(fifo_cfg, BMI2_DISABLE, &bmi2_dev);
+        LOG_I("BMI270 FIFO WM int disarmed");
+    }
+
+unlock:
+    bmi270_api_unlock();
+    return (rslt == BMI2_OK) ? 0 : -1;
+}
+
+/* Drain the BMI270 FIFO and replay every accel+gyro pair through the same
+   AHRS / gesture path that DRDY uses. Returns the number of frame pairs
+   processed (negative on error).
+
+   Buffer sized for ~2 s of headroom @ 25 Hz / 13 B per frame = 650 B; max
+   FIFO depth on BMI270 is ~2 KB so anything beyond is truncated and the
+   next watermark drains the rest. All scratch arrays are static — the
+   sensor task stack is only 1.25 KB. */
+int bmi270_drain_fifo_to_ahrs(void)
+{
+    if (accel_gyro_dev_info.open_flag == 0)
+        return -1;
+
+    static uint8_t fifo_buf[768];
+    static struct bmi2_sens_axes_data acc[60];
+    static struct bmi2_sens_axes_data gyr[60];
+    struct bmi2_fifo_frame f = { 0 };
+    uint16_t fifo_len = 0;
+    int8_t rslt;
+
+    bmi270_api_lock();
+
+    rslt = bmi2_get_fifo_length(&fifo_len, &bmi2_dev);
+    if (rslt != BMI2_OK || fifo_len == 0)
+    {
+        bmi270_api_unlock();
+        return (rslt == BMI2_OK) ? 0 : -1;
+    }
+    if (fifo_len > sizeof(fifo_buf))
+        fifo_len = sizeof(fifo_buf);
+
+    f.data = fifo_buf;
+    f.length = fifo_len;
+    rslt = bmi2_read_fifo_data(&f, &bmi2_dev);
+    if (rslt != BMI2_OK)
+    {
+        bmi270_api_unlock();
+        return -1;
+    }
+
+    uint16_t acc_cnt = sizeof(acc) / sizeof(acc[0]);
+    uint16_t gyr_cnt = sizeof(gyr) / sizeof(gyr[0]);
+    (void)bmi2_extract_accel(acc, &acc_cnt, &f, &bmi2_dev);
+    (void)bmi2_extract_gyro(gyr, &gyr_cnt, &f, &bmi2_dev);
+
+    bmi270_api_unlock();
+
+    uint16_t pairs = (acc_cnt < gyr_cnt) ? acc_cnt : gyr_cnt;
+    for (uint16_t i = 0; i < pairs; i++)
+    {
+        local_watch_accel = redirect_sensor_data(&acc[i]);
+        local_watch_gyro = redirect_sensor_data(&gyr[i]);
+        /* Update only the global Mahony quaternion — skip gravity / hand
+           tracking / health / sensor_q work that handle_imu_data() does
+           on the awake path. Goal here is solely to keep global_q from
+           drifting so wrist-wake → gesture-detect starts converged. */
+        if (imu_data_fetch(&watch_sensor.imu_data) == RT_EOK)
+        {
+    #ifdef BSP_USING_GESTURE_DETECT
+            update_global_attitude(&watch_sensor.imu_data.acce,
+                                   &watch_sensor.imu_data.gyro);
+    #endif
+        }
+    }
+
+    return (int)pairs;
 }
 
 // function for awt

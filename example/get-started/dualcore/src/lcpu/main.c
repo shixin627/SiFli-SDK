@@ -129,6 +129,12 @@ INIT_APP_EXPORT(log_active_pm_policy);
 #endif
 
     #if USE_BMI270_HW_WRIST_WAKE
+/* DARK-mode FIFO watermark: ~1 second of accel+gyro samples per wake.
+   Header-mode frame = 1 (hdr) + 6 (acc) + 6 (gyr) = 13 bytes.
+   IMU_SLEEPING_SAMPLE_RATE (25 Hz on watch boards) × 13 = 325 B/s, pad a
+   little so the int fires marginally past the 1-second boundary. */
+        #define BMI270_DARK_FIFO_WM_BYTES   (uint16_t)(IMU_SLEEPING_SAMPLE_RATE * 13 + 8)
+
 /* HW-mode auto-switch driven by HCPU's screen state — two-mode design.
 
    ACTIVE (screen on):
@@ -137,23 +143,28 @@ INIT_APP_EXPORT(log_active_pm_policy);
      - SW hand_tracking ON for post-wake gestures (put-down / back /
        pronation / lift2).
      - HW wrist-wake feature OFF (we'd just fire redundant events).
+     - FIFO watermark int OFF (DRDY feeds AHRS every sample directly).
 
    DARK (screen off):
-     - accel 25 Hz low-power (already configured by acce_set_power(LOW)
-       that fires before this hook); gyro suspended on top of that.
-     - DRDY interrupt un-routed from INT1 at the chip — the GPIO IRQ stays
-       armed so wrist-wake can still wake the host, but per-sample DRDY no
-       longer fires every 40 ms. Step counter feature continues running
-       internally on the chip's own clock.
-     - SW hand_tracking OFF (no DRDY → no samples flowing anyway).
-     - HW wrist-wake feature ON. */
+     - accel + gyro 25 Hz low-power (configured by acce_set_power(LOW)
+       that fires before this hook). Gyro stays running so the FIFO
+       captures the gyro samples that the AHRS integrator needs to keep
+       the quaternion converged — without them the orientation drifts
+       and the first second of gesture detect after wake is unusable.
+     - Per-sample DRDY un-routed from INT1 so the chip doesn't pull LCPU
+       out of LIGHT sleep every 40 ms.
+     - FIFO watermark int armed instead: chip fires INT1 roughly once a
+       second once ~325 bytes have piled up. The int handler drains the
+       FIFO and replays every frame through the AHRS path in one batch.
+     - HW wrist-wake + wrist-gesture features ON (share INT1; the
+       handler dispatches based on int_status bits). */
 void on_lcpu_sleep_mode_changed(bool sleep)
 {
     if (sleep)
     {
         bmi270_hw_wrist_wake_enable(1);
-        bmi270_set_gyro_suspend(1);
         bmi270_set_drdy_int_routing(0);
+        bmi270_set_fifo_wm_int(1, BMI270_DARK_FIFO_WM_BYTES);
         #ifdef BSP_USING_HAND_TRACKING
         hand_tracking_set_enabled(false);
         #endif
@@ -163,7 +174,7 @@ void on_lcpu_sleep_mode_changed(bool sleep)
         #ifdef BSP_USING_HAND_TRACKING
         hand_tracking_set_enabled(true);
         #endif
-        bmi270_set_gyro_suspend(0);
+        bmi270_set_fifo_wm_int(0, 0);
         bmi270_set_drdy_int_routing(1);
         bmi270_hw_wrist_wake_enable(0);
     }
