@@ -120,45 +120,11 @@ static Quaternion sensor_fusion_algorithm(sensor_fusion_param_t *param,
    next handle_imu_data() pass starts from a fresh orientation. No
    gravity / hand-tracking / health / sensor_q work; that all runs only
    when the screen is back on and DRDY resumes. */
-static Vector3 calculate_gravity(Quaternion *q);
 void update_global_attitude(Vector3 *accData, Vector3 *gyroData)
 {
     if (!accData || !gyroData)
         return;
     global_q = sensor_fusion_algorithm(&sensor_fusion_param, accData, gyroData);
-}
-
-void reinitialize_ahrs_from_accel(int16_t raw_x, int16_t raw_y, int16_t raw_z)
-{
-    float ax = (float)raw_x;
-    float ay = (float)raw_y;
-    float az = (float)raw_z;
-
-    float norm = sqrtf(ax * ax + ay * ay + az * az);
-    if (norm < 0.01f)
-        return;
-    ax /= norm;
-    ay /= norm;
-    az /= norm;
-
-    float pitch = asinf(-ax);
-    float roll = atan2f(ay, az);
-
-    float cr = cosf(roll * 0.5f);
-    float sr = sinf(roll * 0.5f);
-    float cp = cosf(pitch * 0.5f);
-    float sp = sinf(pitch * 0.5f);
-
-    sensor_fusion_param.q0 = cr * cp;
-    sensor_fusion_param.q1 = sr * cp;
-    sensor_fusion_param.q2 = cr * sp;
-    sensor_fusion_param.q3 = -sr * sp;
-    sensor_fusion_param.integralFBx = 0.0f;
-    sensor_fusion_param.integralFBy = 0.0f;
-    sensor_fusion_param.integralFBz = 0.0f;
-
-    LOG_I("AHRS reinitialized from accel: pitch=%.2f, roll=%.2f",
-          pitch * 57.29577951f, roll * 57.29577951f);
 }
 
 #endif

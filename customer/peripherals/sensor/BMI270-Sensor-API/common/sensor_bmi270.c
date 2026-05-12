@@ -164,7 +164,6 @@ void bmi270_sensor_power_high_mode(void)
         int16_t rx = -ax, ry = ay;
 #endif
         int16_t rz = -az;
-        // reinitialize_ahrs_from_accel(rx, ry, rz);
     }
 #endif
     watch_sensor.imu_data.sample_rate = IMU_NOARMAL_SAMPLE_RATE;
