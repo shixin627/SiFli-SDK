@@ -106,6 +106,8 @@ typedef struct
     lv_obj_t *timer_label;            // 计时标签
     lv_obj_t *heart_rate_label;       // 心率标签(运动界面)
     lv_obj_t *title_heart_rate_label; // 心率标签(标题栏)
+    lv_obj_t *title_steps_label;      // 步数标签(主页心率正下方)
+    lv_timer_t *steps_refresh_timer;  // 1Hz polling 更新步数
     lv_obj_t *calories_label;         // 卡路里标签
     lv_obj_t *pause_button;           // 暂停按钮
     lv_obj_t *stop_button;            // 停止按钮
@@ -815,6 +817,17 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
     lv_obj_align_to(ui.title_heart_rate_label, heart_icon,
                     LV_ALIGN_OUT_RIGHT_MID, -5, 0);
 
+    /* 步數顯示 — 心率正下方，從 SkaiWatchSys.gPedoData.global_steps 讀
+       (由 LCPU step_poll_timer 透過 notify_health_info 更新)。 */
+    ui.title_steps_label = lv_label_create(list_container);
+    lv_label_set_text(ui.title_steps_label, "0 steps");
+    lv_obj_set_style_text_font(ui.title_steps_label,
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_color(ui.title_steps_label,
+                                lv_color_hex(0xFFFFFF), 0);
+    lv_obj_align_to(ui.title_steps_label, hr_container,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 4);
+
     /* 右側弧形觸控滾動 — 用共用模組 common/arc_scroll.h */
     arc_scroll_config_t arc_cfg = {
         .parent          = list_container,
@@ -947,6 +960,17 @@ static void scroll_list_to_index(int8_t page)
     lv_obj_scroll_to_view(target_item, LV_ANIM_ON);
 }
 
+static void steps_refresh_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    if (!ui.title_steps_label || !lv_obj_is_valid(ui.title_steps_label))
+    {
+        return;
+    }
+    uint32_t steps = SkaiWatchSys.gPedoData.global_steps;
+    lv_label_set_text_fmt(ui.title_steps_label, "%u steps", (unsigned)steps);
+}
+
 static void on_start(void)
 {
     // 初始化UI结构
@@ -967,6 +991,11 @@ static void on_start(void)
 
     ui.workout_screen = create_workout_screen(ui.bg);
     lv_obj_add_flag(ui.workout_screen, LV_OBJ_FLAG_HIDDEN);
+
+    /* 立刻填一次當前值，然後每秒更新（SkaiWatchSys.gPedoData.global_steps
+       由 LCPU 每秒推一次，這裡 polling 顯示） */
+    steps_refresh_timer_cb(NULL);
+    ui.steps_refresh_timer = lv_timer_create(steps_refresh_timer_cb, 1000, NULL);
 }
 
 static void on_resume(void)
@@ -1011,7 +1040,12 @@ static void on_pause(void)
 static void on_stop(void)
 {
     stop_exercise();
-    // 清理UI
+    if (ui.steps_refresh_timer)
+    {
+        lv_timer_del(ui.steps_refresh_timer);
+        ui.steps_refresh_timer = NULL;
+    }
+    // 清理UI（title_steps_label 是 list_container 的 child，跟著 ui.bg 一起刪）
     lv_obj_del(ui.bg);
 }
 

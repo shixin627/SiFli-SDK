@@ -602,7 +602,11 @@ static int8_t configure_sensor_power_mode(struct bmi2_dev *dev)
     if (rslt != BMI2_OK)
         return rslt;
 
-    /* Set Output Data Rate */
+    /* Low-power screen-off config: accel at 25 Hz, gyro at 25 Hz, both in
+       power-opt filter mode. BMI270 wrist-wake and step counter features
+       are documented (datasheet 4.8.6 / 4.8.8) to work without specific
+       ODR requirements at this level — let chip's feature engine handle
+       its own sampling internally. */
     sens_cfg[ACCEL].cfg.acc.odr = BMI2_ACC_ODR_25HZ;
 
     sens_cfg[ACCEL].cfg.acc.range = BMI2_ACC_RANGE_4G;
@@ -1904,25 +1908,49 @@ int bmi270_hw_step_counter_enable(int en)
     }
 
     int8_t rslt;
-    uint8_t sensors[] = {BMI2_STEP_COUNTER};
 
     bmi270_api_lock();
     if (en)
     {
-        rslt = bmi270_sensor_enable(sensors, 1, &bmi2_dev);
+        /* Mirror Bosch bmi270_examples/step_counter: enable ACCEL +
+           STEP_COUNTER in the same call. Without ACCEL in the list the
+           feature engine may not pick up samples (same pattern as wrist-
+           wake). */
+        uint8_t sens_list[2] = { BMI2_ACCEL, BMI2_STEP_COUNTER };
+        rslt = bmi270_sensor_enable(sens_list, 2, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("step counter enable(ACCEL+SC) failed: %d", rslt);
+            goto step_out;
+        }
+
+        /* watermark_level = 1 = chip updates step_counter_output every
+           20 steps (BMI270 minimum granularity). The 25-param wrist
+           algorithm tuning is loaded by the chip's firmware blob and
+           does not need host configuration. */
+        struct bmi2_sens_config cfg = { .type = BMI2_STEP_COUNTER };
+        rslt = bmi270_get_sensor_config(&cfg, 1, &bmi2_dev);
         if (rslt == BMI2_OK)
-            LOG_I("BMI270 HW step counter enabled");
-        else
-            LOG_E("step counter enable failed: %d", rslt);
+        {
+            cfg.cfg.step_counter.watermark_level = 1;
+            rslt = bmi270_set_sensor_config(&cfg, 1, &bmi2_dev);
+            if (rslt != BMI2_OK)
+            {
+                LOG_E("step counter set_config failed: %d", rslt);
+            }
+        }
+        LOG_I("BMI270 HW step counter enabled");
     }
     else
     {
+        uint8_t sensors[] = { BMI2_STEP_COUNTER };
         rslt = bmi270_sensor_disable(sensors, 1, &bmi2_dev);
         if (rslt == BMI2_OK)
             LOG_I("BMI270 HW step counter disabled");
         else
             LOG_E("step counter disable failed: %d", rslt);
     }
+step_out:
     bmi270_api_unlock();
     return (rslt == BMI2_OK) ? 0 : -1;
 }
@@ -1938,7 +1966,7 @@ int bmi270_hw_step_counter_read(uint32_t *steps)
     bmi270_api_unlock();
     if (rslt != BMI2_OK)
     {
-        LOG_W("step_counter_read failed: %d", rslt);
+        LOG_D("step_counter_read failed: %d", rslt);
         return -1;
     }
     *steps = fdata.sens_data.step_counter_output;

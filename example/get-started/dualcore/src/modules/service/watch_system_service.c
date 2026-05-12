@@ -22,6 +22,9 @@
     #include "activity.h"
     #include "activity_private.h"
 #endif
+#ifdef ACC_USING_BMI270
+    #include "bmi270_driver.h"  /* HW step counter API */
+#endif
 
 #define DBG_TAG "watch_sys"
 #define DBG_LVL DBG_INFO
@@ -179,11 +182,20 @@ static void notify_health_info(void)
     if (!can_send_message()) return;
 #endif
 
-#ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
+#ifdef ACC_USING_BMI270
+    /* Step count is read straight from the BMI270 on-chip step counter
+       (the SW Kraepelin path is disabled). Distance / calories are not
+       computed here yet — set to 0 until we plumb in stride-based
+       estimation. */
+    uint32_t hw_steps = 0;
+    if (bmi270_hw_step_counter_read(&hw_steps) != 0)
+    {
+        return; /* chip read failed; skip this push */
+    }
     watch_sys_heath_info_t data_ind = {
-        .steps    = activity_private_state()->step_data.steps,
-        .distance = activity_private_state()->distance_mm,
-        .calories = activity_private_state()->active_calories,
+        .steps    = hw_steps,
+        .distance = 0,
+        .calories = 0,
     };
     push_msg_to_hcpu(MSG_SERVICE_HEALTH_INFO_IND, &data_ind, sizeof(data_ind));
 #endif

@@ -38,6 +38,14 @@ static int32_t key1_button_handle;
 static rt_event_t main_event;
 static rt_timer_t wrist_wake_init_timer;
 
+/* Standalone polling of the BMI270 HW step counter. The SW activity
+   service / Kraepelin algorithm have been disabled in proj.conf, so this
+   timer is the sole step-count consumer on LCPU. Fires every 3 s; logs
+   only when the chip count increased so it doesn't spam when stationary. */
+static rt_timer_t step_poll_timer;
+static uint32_t step_poll_last = 0;
+static bool step_poll_first = true;
+
 /* ===== Raise-wrist source selection =====
    0 = software (existing hand_tracking.c state machine, gyro_x threshold).
        Lower latency, supports back-gesture / wrist-rotation; consumes IMU
@@ -181,6 +189,55 @@ void on_lcpu_sleep_mode_changed(bool sleep)
 }
     #endif /* USE_BMI270_HW_WRIST_WAKE */
 
+#include "watch_sys_service.h"  /* for watch_sys_sync.notify_health_info */
+
+#ifdef ACC_USING_BMI270
+static void step_poll_timer_cb(void *param)
+{
+    (void)param;
+    uint32_t now = 0;
+    if (bmi270_hw_step_counter_read(&now) != 0)
+    {
+        return;
+    }
+    if (step_poll_first)
+    {
+        step_poll_last = now;
+        step_poll_first = false;
+        return;
+    }
+    if (now > step_poll_last)
+    {
+        uint32_t delta = now - step_poll_last;
+        step_poll_last = now;
+        // rt_kprintf("[step] +%u (total=%u) -> push to HCPU+phone\n",
+        //            (unsigned)delta, (unsigned)now);
+        /* Push to HCPU so SkaiWatchSys.gPedoData.global_steps stays fresh.
+           HCPU then forwards via commu_send_sport_data() to the phone. */
+        if (watch_sys_sync.notify_health_info)
+        {
+            watch_sys_sync.notify_health_info();
+        }
+    }
+}
+
+/* MSH: `step` — manually read and print the current chip step counter.
+   Useful for spot-checking from the shell at any time. */
+static int msh_step(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    uint32_t now = 0;
+    if (bmi270_hw_step_counter_read(&now) != 0)
+    {
+        rt_kprintf("step: read failed (BMI270 not open)\n");
+        return -1;
+    }
+    rt_kprintf("step: chip raw=%u\n", (unsigned)now);
+    return 0;
+}
+MSH_CMD_EXPORT(msh_step, read BMI270 HW step counter);
+#endif /* ACC_USING_BMI270 */
+
 /* Open the BMI270 if the timer fires before any subscriber has done it,
    then sync to whatever screen state HCPU is currently in. In SW mode this
    is a one-shot log; in HW mode it primes the auto-switch. */
@@ -210,8 +267,29 @@ static void wrist_wake_init_apply(void *param)
                "screen-on (current: %s)\n",
                is_sleep_mode() ? "off" : "on");
     #else
+    /* SW wrist-wake mode — BMI270 isn't opened by main.c, but we still
+       want the step counter alive for the polling thread. Open + enable
+       step counter here. */
+    if (bmi270_open() == 0)
+    {
+        if (bmi270_hw_step_counter_enable(1) != 0)
+        {
+            rt_kprintf("[step] HW step counter enable failed in SW mode\n");
+        }
+    }
     rt_kprintf("[wrist-wake] SW mode (hand_tracking.c state machine)\n");
     #endif
+
+    /* Start the standalone step-poll timer regardless of wrist-wake mode.
+       BMI270 is open at this point (either via wrist-wake HW init above
+       or via SW-mode open just above). */
+    step_poll_timer = rt_timer_create("step_poll", step_poll_timer_cb, NULL,
+                                      rt_tick_from_millisecond(1000),
+                                      RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+    if (step_poll_timer)
+    {
+        rt_timer_start(step_poll_timer);
+    }
 }
 #endif /* ACC_USING_BMI270 */
 

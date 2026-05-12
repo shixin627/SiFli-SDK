@@ -55,6 +55,45 @@
 #include "bloc_battery.h"
 #endif
 
+/* Replace SW step counting with BMI270's on-chip step counter feature.
+   Kraepelin keeps running for minute-level VMC + sleep detection (which
+   we still need), but activity_algorithm_get_steps() returns the chip
+   reading instead of the SW accumulator.
+
+   Trade-offs:
+     + Chip runs on its own clock, so step counting survives screen-off
+       sleep with no host CPU cost.
+     + Significantly less CPU per accel sample (no kalg step detection
+       feeding the SW counter).
+     - HW counter counts ANY rhythmic motion, including in-sleep tossing
+       — Kraepelin's "subtract sleep-period steps" logic (line ~536) only
+       affects the SW counter and is now a no-op for the user-visible
+       value. May see slightly inflated step counts overnight.
+
+   Set ACTIVITY_USE_BMI270_HW_STEP_COUNTER=0 to revert to pure SW. */
+#ifndef ACTIVITY_USE_BMI270_HW_STEP_COUNTER
+    #define ACTIVITY_USE_BMI270_HW_STEP_COUNTER 1
+#endif
+#if ACTIVITY_USE_BMI270_HW_STEP_COUNTER
+#include "bmi270_driver.h"
+/* Step counting via chip is:  user_visible = hw_now - baseline.
+   Baseline is set so that at init time:
+     hw_now_at_init - baseline == persisted_steps_at_init
+   i.e.  baseline = hw_now_at_init - persisted_steps_at_init
+   That way the reported total starts at the persisted SW value (reboot
+   continuity) and increments 1-for-1 with chip's internal counter. */
+static uint32_t s_hw_step_baseline = 0;
+static bool s_hw_step_baseline_set = false;
+/* Last HW count read at minute boundary; for per-minute delta in
+   prv_fill_minute_record. Lazy-initialised on first read. */
+static uint32_t s_hw_step_at_last_minute = 0;
+static bool s_hw_step_minute_anchor_set = false;
+/* Last raw chip count we logged, for "step increment detected" trace.
+   Logs once per increment so we can confirm the HW counter is alive. */
+static uint32_t s_hw_step_last_logged = 0;
+static bool s_hw_step_last_logged_set = false;
+#endif
+
 #define DBG_TAG "activity.kraepelin"
 #define DBG_LVL DBG_LOG
 #include "rtdbg.h"
@@ -222,7 +261,9 @@ bool activity_algorithm_init(AccelSamplingRate *sampling_rate)
   // Init the algorithm state
   kalg_init(k_state, NULL);
 
-  // Reset all metrics
+  /* Reset all metrics — this also snapshots the HW step counter baseline
+     when ACTIVITY_USE_BMI270_HW_STEP_COUNTER is enabled. If BMI270 isn't
+     open yet (boot order), the getter does lazy init on first call. */
   activity_algorithm_metrics_changed_notification();
 
   // Return desired sampling rate
@@ -278,11 +319,19 @@ void activity_algorithm_handle_accel(AccelRawData *data, uint32_t num_samples,
   {
     return;
   }
+  /* kalg_analyze_samples still has to run — it accumulates VMC + still
+     detection state that kalg_minute_stats consumes (sleep tracking).
+     We just don't use its step count anymore: HW counter is the source
+     of truth (see activity_algorithm_get_steps). */
   uint32_t consumed_samples;
   uint16_t new_steps = kalg_analyze_samples(s_alg_state->k_state, data, num_samples,
                                             &consumed_samples);
+#if ACTIVITY_USE_BMI270_HW_STEP_COUNTER
+  (void)new_steps;  /* SW step accumulator is dead; HW counter authoritative */
+#else
   s_alg_state->steps += new_steps;
   s_alg_state->minute_steps += new_steps;
+#endif
 
   // Update our stepping rate if the algorithm just consumed samples
   if (consumed_samples != 0)
@@ -306,7 +355,28 @@ static uint32_t NOINLINE prv_fill_minute_record(time_t utc_sec, AlgMinuteDLSSamp
   kalg_minute_stats(s_alg_state->k_state, &m_rec->base.vmc,
                     &m_rec->base.orientation, &still);
 
+#if ACTIVITY_USE_BMI270_HW_STEP_COUNTER
+  /* Per-minute steps from HW counter delta. Replaces s_alg_state->minute_steps
+     which is no longer accumulated. */
+  uint32_t hw_now = 0;
+  uint16_t minute_steps_hw = 0;
+  if (bmi270_hw_step_counter_read(&hw_now) == 0)
+  {
+      if (!s_hw_step_minute_anchor_set)
+      {
+          s_hw_step_at_last_minute = hw_now;
+          s_hw_step_minute_anchor_set = true;
+      }
+      uint32_t delta = (hw_now >= s_hw_step_at_last_minute)
+                         ? (hw_now - s_hw_step_at_last_minute)
+                         : 0;
+      s_hw_step_at_last_minute = hw_now;
+      minute_steps_hw = (delta > UINT8_MAX) ? UINT8_MAX : (uint16_t)delta;
+  }
+  m_rec->base.steps = (uint8_t)minute_steps_hw;
+#else
   m_rec->base.steps = MIN(s_alg_state->minute_steps, UINT8_MAX);
+#endif
 
   // No light sensor available, set light level to 0
   m_rec->base.light = 0;
@@ -387,6 +457,30 @@ bool activity_algorithm_metrics_changed_notification(void)
   s_alg_state->prev_resting_calories = activity_metrics_prv_get_resting_calories();
   s_alg_state->prev_distance_mm = activity_metrics_prv_get_distance_mm();
   prv_unlock();
+
+#if ACTIVITY_USE_BMI270_HW_STEP_COUNTER
+  /* Called at boot AND on midnight rollover. Re-snap the chip-counter
+     baseline so user-visible total matches the (just-reloaded) persisted
+     SW count — at midnight persisted is reset to 0, so this effectively
+     zeroes the day's HW-counter delta as well. */
+  uint32_t hw_now = 0;
+  if (bmi270_hw_step_counter_read(&hw_now) == 0)
+  {
+      if (!prv_lock())
+      {
+          return false;
+      }
+      int32_t persisted = s_alg_state->steps;
+      if (persisted < 0) persisted = 0;
+      s_hw_step_baseline = (hw_now >= (uint32_t)persisted)
+                             ? (hw_now - (uint32_t)persisted)
+                             : 0;
+      s_hw_step_baseline_set = true;
+      prv_unlock();
+      LOG_I("HW step baseline re-snap: hw=%u persisted=%d baseline=%u",
+            (unsigned)hw_now, (int)persisted, (unsigned)s_hw_step_baseline);
+  }
+#endif
   return true;
 }
 
@@ -533,8 +627,14 @@ static void NOINLINE prv_set_dls_minute_record_entry(AlgMinuteDLSRecord *dls_rec
     // this minute
     LOG_D("Subtracting %d steps that occurred during sleep",
           dls_record->samples[sample_idx].base.steps);
+#if ACTIVITY_USE_BMI270_HW_STEP_COUNTER
+    /* HW counter can't be decremented at the chip — bump the baseline
+       forward instead, so user_visible = hw - baseline drops by N. */
+    s_hw_step_baseline += dls_record->samples[sample_idx].base.steps;
+#else
     s_alg_state->steps -= dls_record->samples[sample_idx].base.steps;
     s_alg_state->steps = MAX(0, s_alg_state->steps);
+#endif
     dls_record->samples[sample_idx].base.steps = 0;
     dls_record->samples[sample_idx].base.active = false;
     dls_record->samples[sample_idx].active_calories = 0;
@@ -732,6 +832,55 @@ void activity_algorithm_minute_handler(time_t utc_sec, AlgMinuteRecord *record_o
 // ------------------------------------------------------------------------------------
 bool activity_algorithm_get_steps(uint16_t *steps)
 {
+#if ACTIVITY_USE_BMI270_HW_STEP_COUNTER
+  uint32_t hw_now = 0;
+  if (bmi270_hw_step_counter_read(&hw_now) != 0)
+  {
+      /* Chip read failed — SW counter is no longer maintained, so we
+         have nothing meaningful to return. Caller keeps last known value. */
+      LOG_W("HW step read failed; caller keeps prev value");
+      return false;
+  }
+  /* Lazy baseline init for the boot-order race where activity init
+     ran before BMI270 was open. */
+  if (!s_hw_step_baseline_set)
+  {
+      if (!prv_lock())
+      {
+          return false;
+      }
+      int32_t persisted = s_alg_state->steps;
+      if (persisted < 0) persisted = 0;
+      s_hw_step_baseline = (hw_now >= (uint32_t)persisted)
+                             ? (hw_now - (uint32_t)persisted)
+                             : 0;
+      s_hw_step_baseline_set = true;
+      prv_unlock();
+      LOG_I("HW step baseline lazy: hw=%u persisted=%d baseline=%u",
+            (unsigned)hw_now, (int)persisted,
+            (unsigned)s_hw_step_baseline);
+  }
+  uint32_t total = (hw_now >= s_hw_step_baseline)
+                     ? (hw_now - s_hw_step_baseline)
+                     : 0;
+  /* Trace every chip-side step increment so user can confirm HW counter
+     is alive. Logs once per delta — not per query. */
+  if (!s_hw_step_last_logged_set)
+  {
+      s_hw_step_last_logged = hw_now;
+      s_hw_step_last_logged_set = true;
+  }
+  if (hw_now > s_hw_step_last_logged)
+  {
+      uint32_t delta = hw_now - s_hw_step_last_logged;
+      LOG_I("HW step +%u (chip raw=%u, today=%u)",
+            (unsigned)delta, (unsigned)hw_now, (unsigned)total);
+      s_hw_step_last_logged = hw_now;
+  }
+  if (total > UINT16_MAX) total = UINT16_MAX;
+  *steps = (uint16_t)total;
+  return true;
+#else
   if (!prv_lock())
   {
     return false;
@@ -739,6 +888,7 @@ bool activity_algorithm_get_steps(uint16_t *steps)
   *steps = s_alg_state->steps;
   prv_unlock();
   return true;
+#endif
 }
 
 // ------------------------------------------------------------------------------------
