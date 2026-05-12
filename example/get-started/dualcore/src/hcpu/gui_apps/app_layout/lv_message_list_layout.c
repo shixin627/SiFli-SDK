@@ -1788,6 +1788,27 @@ uint8_t get_message_page_count(void)
     return page_count;
 }
 
+/* Notification storm debounce.
+   Why: when BLE reconnects, the phone dumps cached ANCS notifications in
+   tight bursts. Each one triggers a full refresh_notification_list, which
+   rebuilds 10 cards (lv_mem_alloc/free per label via replace_nbsp) plus
+   destroy+create of indicator dots. During the burst the FreeType cache
+   (app_ft_m, 600 KB) hits 75 % and lv_freetype_clean_cache fires repeatedly
+   while EPIC still has pending blits → heap magic corruption. Compressing
+   the burst to one head + one tail refresh keeps the rebuild from racing
+   with FT cache cleanup. */
+#define NOTIFICATION_REFRESH_DEBOUNCE_MS 200
+static lv_timer_t *refresh_debounce_timer = NULL;
+static rt_tick_t last_refresh_tick = 0;
+
+static void refresh_debounce_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    refresh_debounce_timer = NULL;
+    last_refresh_tick = rt_tick_get();
+    refresh_notification_list(NULL);
+}
+
 static void new_message_cb(void *param)
 {
     message_has_read = false;
@@ -1798,6 +1819,28 @@ static void new_message_cb(void *param)
     {
         dial_header_showing_notification = true;
     }
+
+    rt_tick_t now = rt_tick_get();
+    if (last_refresh_tick != 0 &&
+        (now - last_refresh_tick) <
+            rt_tick_from_millisecond(NOTIFICATION_REFRESH_DEBOUNCE_MS))
+    {
+        /* Within debounce window — defer to single trailing refresh. */
+        if (refresh_debounce_timer == NULL)
+        {
+            refresh_debounce_timer = lv_timer_create(
+                refresh_debounce_timer_cb,
+                NOTIFICATION_REFRESH_DEBOUNCE_MS, NULL);
+            if (refresh_debounce_timer)
+                lv_timer_set_repeat_count(refresh_debounce_timer, 1);
+        }
+        else
+        {
+            lv_timer_reset(refresh_debounce_timer);
+        }
+        return;
+    }
+    last_refresh_tick = now;
     refresh_notification_list(param);
 }
 
@@ -3201,6 +3244,16 @@ rt_int32_t notification_on_deinit(void)
     /* Tear down indicator dots */
     destroy_msg_indicator_dots();
     msg_indicator_dots_parent = NULL;
+
+    /* Cancel any pending refresh debounce — its cb references
+       refresh_notification_list which early-returns on p_app_notification ==
+       NULL, but deleting the timer avoids a wasted callback after teardown. */
+    if (refresh_debounce_timer)
+    {
+        lv_timer_del(refresh_debounce_timer);
+        refresh_debounce_timer = NULL;
+    }
+    last_refresh_tick = 0;
 
     if (p_app_notification)
     {

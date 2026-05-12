@@ -194,6 +194,20 @@ void motor_pattern_calling(void)
 void motor_pattern_notification(void)
 {
     if (SkaiWatchSys.DNDMode.config.status) return; /* DND mode */
+
+    /* Burst guard: phone may dump several cached ANCS notifications in a
+       1-2 s window after BLE reconnect — limit haptic to one buzz per 2 s
+       so the wrist isn't pelted. Calling/alarm/timer patterns are exempt
+       (they have their own pacing). */
+    static rt_tick_t last_notif_tick = 0;
+    static bool seeded = false;
+    rt_tick_t now = rt_tick_get();
+    if (seeded &&
+        (now - last_notif_tick) < rt_tick_from_millisecond(2000))
+        return;
+    last_notif_tick = now;
+    seeded = true;
+
     motor_play_if_enabled(51, 50000, 2); /* 50ms × 2 */
 }
 
