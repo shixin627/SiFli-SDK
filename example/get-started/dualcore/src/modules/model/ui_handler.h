@@ -33,6 +33,7 @@ extern "C"
 #define APP_ID_INCOMING_CALL "incoming_call"
 #define APP_ID_BATTERY "battery"
 #define APP_ID_CAMERA "camera"
+#define APP_ID_SLEEP "sleep"
 // ----- Todo
 #define APP_ID_ALARM "alarm"
 // ----- Dev
@@ -63,6 +64,7 @@ extern "C"
         app_id_thirty,
         app_id_game_dinosaur,
         app_id_photo,
+        app_id_sleep,
     } watch_app_id_t;
 
     enum

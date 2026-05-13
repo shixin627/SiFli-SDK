@@ -24,6 +24,7 @@
 #define IMG_WORKOUT "/assets/icons/img_workout.bin"
 #define IMG_ITUNES "/assets/icons/img_itunes.bin"
 #define IMG_HEART_RATE "/assets/icons/img_heart_rate.bin"
+#define IMG_SLEEP "/assets/icons/icon_sleep_mode.bin"
 #define IMG_CALCULATOR "/assets/icons/img_calculator.bin"
 #define IMG_ALARM "/assets/icons/img_alarm.bin"
 #define IMG_SETTINGS "/assets/icons/img_settings.bin"
@@ -184,6 +185,7 @@ LV_IMG_DECLARE(notification_img);
 #define IMG_WORKOUT ((const void *)&img_workout)
 #define IMG_ITUNES ((const void *)&img_itunes)
 #define IMG_HEART_RATE ((const void *)&img_heart_rate)
+#define IMG_SLEEP ((const void *)&icon_sleep_mode)
 #define IMG_CALCULATOR ((const void *)&img_calculator)
 #define IMG_ALARM ((const void *)&img_alarm)
 #define IMG_SETTINGS ((const void *)&img_settings)

@@ -77,6 +77,7 @@
 #endif
 #ifdef BSP_USING_COMMUNICATE
     #include "communicate_protocol.h"
+    #include "communicate_task.h"  /* commu_send_sleep_data, ... */
 #endif
 #ifdef BSP_USING_PM
     #include "bf0_pm.h"
@@ -657,9 +658,21 @@ static void handle_app_management(INTERACT_Type type, void *pValue)
 void set_watch_sleep_state(const watch_sys_sleep_state_t *state)
 {
     SkaiWatchSys.sleep_state = *state;
-    LOG_D("[Sleep State]total_seconds=%d | total_restful_seconds=%d",
-          SkaiWatchSys.sleep_state.total_seconds,
-          SkaiWatchSys.sleep_state.total_restful_seconds);
+    LOG_I("[Sleep] mode=%u utc=%u total=%u D=%u R=%u L=%u WASO=%u hr=%u rhr=%u",
+          (unsigned)SkaiWatchSys.sleep_state.mode,
+          (unsigned)SkaiWatchSys.sleep_state.timestamp_utc,
+          (unsigned)SkaiWatchSys.sleep_state.total_sleep_min,
+          (unsigned)SkaiWatchSys.sleep_state.deep_min,
+          (unsigned)SkaiWatchSys.sleep_state.rem_min,
+          (unsigned)SkaiWatchSys.sleep_state.light_min,
+          (unsigned)SkaiWatchSys.sleep_state.awake_after_onset_min,
+          (unsigned)SkaiWatchSys.sleep_state.current_hr,
+          (unsigned)SkaiWatchSys.sleep_state.resting_hr);
+    /* Push to the phone if BLE is connected. commu_can_send() inside the
+       send helper gates on connection + non-DFU. */
+#ifdef BSP_USING_COMMUNICATE
+    commu_send_sleep_data();
+#endif
 }
 #endif
 

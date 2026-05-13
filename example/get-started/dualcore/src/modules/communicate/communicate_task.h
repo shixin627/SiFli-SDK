@@ -41,6 +41,10 @@ bool commu_send_dial_change(void);
 bool commu_send_sport_data(void);
 bool commu_send_heart_data(int hr);
 bool commu_send_heart_rate_series(const float *ppg, uint16_t count);
+/* Push current SkaiWatchSys.sleep_state to the phone via KEY_RETURN_SLEEP_DATA.
+   Called on every stage transition received from LCPU. The dart-side
+   parser must mirror the layout of watch_sys_sleep_state_t. */
+bool commu_send_sleep_data(void);
 
 /* Control */
 bool commu_send_phone_control_cmd(void);
