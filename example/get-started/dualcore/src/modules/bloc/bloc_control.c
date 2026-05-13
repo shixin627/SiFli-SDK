@@ -249,11 +249,13 @@ char *get_media_artist(void)
 extern void handle_media_widget_title(char *media_title_text);
 extern void handle_media_title(char *media_title_text);
 extern void handle_dial_header_media_title(char *media_title_text);
+extern void mouse_mode_handle_media_title(const char *title);
 static void notify_media_title(void)
 {
 	handle_media_title(get_media_title());
 	handle_media_widget_title(get_media_title());
 	handle_dial_header_media_title(get_media_title());
+	mouse_mode_handle_media_title(get_media_title());
 // #ifdef BSP_USING_UI_HANDLER
 // 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_TITLE,
 // 					  .data.media_data.title = get_media_title()};
@@ -349,12 +351,14 @@ static void bt_speaker_set_status(bool status)
 extern void handle_media_play_state(bool media_state);
 extern void handle_media_widget_play_state(bool media_state);
 extern void handle_dial_header_media_play_state(bool playing);
+extern void mouse_mode_handle_media_play_state(bool playing);
 static void notify_bt_speaker_media_status(bool status)
 {
 	bt_media_playing = status;
 	handle_media_widget_play_state(bt_media_playing);
     handle_media_play_state(bt_media_playing);
 	handle_dial_header_media_play_state(bt_media_playing);
+	mouse_mode_handle_media_play_state(bt_media_playing);
 // #ifdef BSP_USING_UI_HANDLER
 // 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_PLAY_STATE,
 // 					  .data.media_play_state = bt_media_playing};

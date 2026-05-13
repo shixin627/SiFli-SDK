@@ -111,6 +111,10 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* lv_instruction_list_layout.c */ void media_widget_tap_event_cb(void) {  }
 /* lv_instruction_list_layout.c */ void media_widget_trigger_drag_by_py(int p_y) {  }
 /* hid_mouse.c */ void mouse_apply_v2t_input(const char *text) {  }
+/* hid_mouse.c */ void mouse_list_set_items(const char *const *ids, const char *const *titles, uint8_t count) { (void)ids; (void)titles; (void)count; }
+/* hid_mouse.c */ void mouse_list_set_result_text(const char *text) { (void)text; }
+/* hid_mouse.c */ void mouse_mode_handle_media_title(const char *title) { (void)title; }
+/* hid_mouse.c */ void mouse_mode_handle_media_play_state(bool playing) { (void)playing; }
 /* lv_instruction_list_layout.c */ void open_skai_widget_ai(bool open) {  }
 /* hid_mouse.c */ void open_v2t_mic(void) {  }
 /* app_gesture.c */ bool pause_sleep_cause_of_imu_reson(void) { return false; }
