@@ -88,38 +88,41 @@ static void prv_update_labels(void)
         return;
     }
 
-    const watch_sys_sleep_state_t *s = &SkaiWatchSys.sleep_state;
+    /* SkaiWatchSys is packed — copy the substruct to an aligned local
+       instead of holding a pointer into the packed parent. */
+    watch_sys_sleep_state_t s;
+    memcpy(&s, (const void *)&SkaiWatchSys.sleep_state, sizeof(s));
     char buf[32];
 
-    uint16_t total = s->total_sleep_min;
+    uint16_t total = s.total_sleep_min;
     snprintf(buf, sizeof(buf), "%uh %02um", total / 60u, total % 60u);
     lv_label_set_text(p_app_sleep->total_label, buf);
 
-    snprintf(buf, sizeof(buf), "Deep   %u min", (unsigned)s->deep_min);
+    snprintf(buf, sizeof(buf), "Deep   %u min", (unsigned)s.deep_min);
     lv_label_set_text(p_app_sleep->deep_label, buf);
 
-    snprintf(buf, sizeof(buf), "REM    %u min", (unsigned)s->rem_min);
+    snprintf(buf, sizeof(buf), "REM    %u min", (unsigned)s.rem_min);
     lv_label_set_text(p_app_sleep->rem_label, buf);
 
-    snprintf(buf, sizeof(buf), "Light  %u min", (unsigned)s->light_min);
+    snprintf(buf, sizeof(buf), "Light  %u min", (unsigned)s.light_min);
     lv_label_set_text(p_app_sleep->light_label, buf);
 
-    snprintf(buf, sizeof(buf), "WASO   %u min", (unsigned)s->awake_after_onset_min);
+    snprintf(buf, sizeof(buf), "WASO   %u min", (unsigned)s.awake_after_onset_min);
     lv_label_set_text(p_app_sleep->waso_label, buf);
 
-    snprintf(buf, sizeof(buf), "Now: %s", prv_stage_name(s->mode));
+    snprintf(buf, sizeof(buf), "Now: %s", prv_stage_name(s.mode));
     lv_label_set_text(p_app_sleep->stage_banner, buf);
     lv_obj_set_style_bg_color(p_app_sleep->stage_banner,
-                              prv_stage_color(s->mode), 0);
+                              prv_stage_color(s.mode), 0);
 
-    if (s->current_hr > 0)
+    if (s.current_hr > 0)
     {
         snprintf(buf, sizeof(buf), "HR %u  (rest %u)",
-                 (unsigned)s->current_hr, (unsigned)s->resting_hr);
+                 (unsigned)s.current_hr, (unsigned)s.resting_hr);
     }
     else
     {
-        snprintf(buf, sizeof(buf), "HR --  (rest %u)", (unsigned)s->resting_hr);
+        snprintf(buf, sizeof(buf), "HR --  (rest %u)", (unsigned)s.resting_hr);
     }
     lv_label_set_text(p_app_sleep->hr_label, buf);
 }

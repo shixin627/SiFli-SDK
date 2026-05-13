@@ -29,6 +29,10 @@ menu "Select algorithm"
 		bool "Enable RTK Health Algorithm"
 		default n
 
+	config BSP_USING_SLEEP_FUSION
+		bool "Enable in-tree sleep fusion (Cole-Kripke + HR staging)"
+		default n
+
 	config BSP_USING_ACTIVITY_ALGO_KRAEPELIN
 			bool "Enable activity algorithm kraepelin"
 			default n
