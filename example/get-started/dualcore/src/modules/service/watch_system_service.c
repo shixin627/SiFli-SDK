@@ -25,6 +25,10 @@
 #ifdef ACC_USING_BMI270
     #include "bmi270_driver.h"  /* HW step counter API */
 #endif
+#ifdef BSP_USING_SLEEP_FUSION
+    #include "sleep_fusion.h"   /* daily aggregates filled into IND */
+    /* hr_service.h is already included above for hr_service_get_latest_bpm */
+#endif
 
 #define DBG_TAG "watch_sys"
 #define DBG_LVL DBG_INFO
@@ -199,6 +203,30 @@ static void notify_health_info(void)
     };
     push_msg_to_hcpu(MSG_SERVICE_HEALTH_INFO_IND, &data_ind, sizeof(data_ind));
 #endif
+}
+
+static void notify_sleep_state(uint8_t mode, uint32_t timestamp_utc)
+{
+    watch_sys_sleep_state_t data_ind;
+    memset(&data_ind, 0, sizeof(data_ind));
+    data_ind.mode = mode;
+    data_ind.timestamp_utc = timestamp_utc;
+#ifdef BSP_USING_SLEEP_FUSION
+    const sleep_fusion_output_t *out = sleep_fusion_current();
+    if (out)
+    {
+        data_ind.total_sleep_min       = out->total_sleep_min;
+        data_ind.deep_min              = out->deep_min;
+        data_ind.rem_min               = out->rem_min;
+        data_ind.light_min             = out->light_min;
+        data_ind.awake_after_onset_min = out->awake_after_onset_min;
+        data_ind.resting_hr            = out->last_hr_baseline_bpm;
+    }
+#ifdef BSP_USING_HR_SVC
+    data_ind.current_hr = hr_service_get_latest_bpm();
+#endif
+#endif
+    push_msg_to_hcpu(MSG_SERVICE_SLEEP_STATE_IND, &data_ind, sizeof(data_ind));
 }
 
 static void notify_minute_of_activity(time_t utc_now, uint8_t steps,
@@ -474,6 +502,7 @@ static void register_watch_sys_service_funs(void)
     watch_sys_sync.notify_gesture_event = notify_gesture_event;
     watch_sys_sync.notify_health_info = notify_health_info;
     watch_sys_sync.notify_minute_of_activity = notify_minute_of_activity;
+    watch_sys_sync.notify_sleep_state = notify_sleep_state;
     watch_sys_sync.notify_debug_log = notify_debug_log;
 }
 

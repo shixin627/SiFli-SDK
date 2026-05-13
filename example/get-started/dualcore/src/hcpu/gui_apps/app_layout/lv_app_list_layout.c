@@ -41,6 +41,9 @@ static const uint16_t APP_LIST_ITEMS[] = {
     app_id_recorder,
 #endif
     app_id_exercise,
+#ifdef APP_ID_SLEEP
+    app_id_sleep,
+#endif
 #ifdef APP_ID_CALCULATOR
     app_id_calculator,
 #endif
@@ -78,6 +81,9 @@ static const char *get_app_id_str(uint16_t app_id)
     case app_id_recorder:    return APP_ID_RECORDER;
 #endif
     case app_id_exercise:    return APP_ID_EXERCISE;
+#ifdef APP_ID_SLEEP
+    case app_id_sleep:       return APP_ID_SLEEP;
+#endif
 #ifdef APP_ID_CALCULATOR
     case app_id_calculator:  return APP_ID_CALCULATOR;
 #endif
@@ -121,6 +127,9 @@ static const char *get_app_list_icon(uint16_t app_id)
     case app_id_recorder:    return IMG_RECORDER;
 #endif
     case app_id_exercise:    return IMG_WORKOUT;
+#ifdef APP_ID_SLEEP
+    case app_id_sleep:       return IMG_SLEEP;
+#endif
 #ifdef APP_ID_CALCULATOR
     case app_id_calculator:  return IMG_CALCULATOR;
 #endif

@@ -98,6 +98,11 @@ extern void hr_set_power(uint8_t arg);
    (e.g. wear-detect) decide whether re-powering the PPG hardware has any
    consumer. Returns 0 if nothing is listening. */
 extern int hr_service_subscriber_count(void);
+/* Most recent valid HR reading the service has accepted, in BPM. Returns
+   0 if no sample has been seen since boot or HR is invalid. Safe to call
+   from any thread; reads a single u8 with no locking. Used by callers
+   that need a snapshot without subscribing (e.g. sleep_fusion). */
+extern uint8_t hr_service_get_latest_bpm(void);
 
 /// @} file
 

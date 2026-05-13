@@ -170,6 +170,11 @@ int hr_service_subscriber_count(void)
     return hr_service_env.ref_count;
 }
 
+uint8_t hr_service_get_latest_bpm(void)
+{
+    return last_hr_value;
+}
+
 void hr_set_power(uint8_t arg)
 {
     if (hr_service_env.is_ready == RT_FALSE)

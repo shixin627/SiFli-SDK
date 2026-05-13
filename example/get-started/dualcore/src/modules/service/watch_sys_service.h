@@ -123,10 +123,25 @@ extern "C"
         uint32_t calories;
     } watch_sys_heath_info_t;
 
+    /* Sleep state IND payload (LCPU -> HCPU).
+       `mode` is a T_SLEEP_STATUS-compatible value:
+         0x01 TSLEEP, 0x02 TDEEP_SLEEP, 0x03 TGET_UP, 0x04 TNOT_WEAR,
+         0x05 TREM_SLEEP (extension introduced by sleep_fusion).
+       Sent on each stage transition. Daily aggregates are included so
+       the HCPU receiver can render a summary without keeping its own
+       state machine. */
     typedef struct
     {
-        uint32_t total_seconds;
-        uint32_t total_restful_seconds;
+        uint8_t  mode;
+        uint8_t  reserved[3];
+        uint32_t timestamp_utc;        /* UTC second of this transition  */
+        uint16_t total_sleep_min;      /* light + deep + rem today       */
+        uint16_t deep_min;
+        uint16_t rem_min;
+        uint16_t light_min;
+        uint16_t awake_after_onset_min; /* WASO today                    */
+        uint8_t  current_hr;            /* 0 if unknown                  */
+        uint8_t  resting_hr;
     } watch_sys_sleep_state_t;
 
     typedef struct

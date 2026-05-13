@@ -211,6 +211,13 @@ bool commu_send_heart_data(int hr)
     return commu_send_status(HEALTH_DATA_COMMAND_ID, KEY_HEART_DATA_RETURN, (uint8_t)hr);
 }
 
+bool commu_send_sleep_data(void)
+{
+    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_RETURN_SLEEP_DATA,
+                           &SkaiWatchSys.sleep_state,
+                           (uint16_t)sizeof(watch_sys_sleep_state_t));
+}
+
 bool commu_send_heart_rate_series(const float *ppg, uint16_t count)
 {
     if (ppg == NULL) return false;
