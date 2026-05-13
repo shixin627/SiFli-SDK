@@ -27,9 +27,10 @@
 #include "common_widget.h"
 #include "app_mainmenu.h"
 #include "bloc_control.h"
-#include "bloc_motor.h"
+#include "bloc_setting.h"
 #include "bloc_peripheral.h"
 #include "bloc_filesystem.h"
+#include "communicate_protocol.h"
 #ifdef BSP_USING_MODEL_WATCH_GLOBAL_DATA
 #include "watch_global_data.h"
 #endif
@@ -928,6 +929,7 @@ void imu_raw_data_collection_sw_event_callback(lv_event_t *e)
             switch_watch_motion_control_mode(true, true);
             have_change_tap_hz = true;
         }
+        skaiwatch_ble_set_performance(BLE_PERF_FAST);
     }
     else
     {
@@ -936,6 +938,7 @@ void imu_raw_data_collection_sw_event_callback(lv_event_t *e)
             switch_watch_motion_control_mode(true, false);
             have_change_tap_hz = false;
         }
+        skaiwatch_ble_set_performance(BLE_PERF_SLOW);
     }
     watch_sys_sync.notify_imu_rawdata_collection(imu_raw_data_collection);
 }
@@ -1281,7 +1284,7 @@ static void on_start(void)
     update_combo_string();
     update_sync_status_display();
 
-    LOG_D("Gesture app started");
+    setting_provider.set_power_save_mode(0);
 }
 
 static void on_pause(void)
@@ -1312,6 +1315,8 @@ static void on_stop(void)
         lv_timer_del(spinner_repeat_timer);
         spinner_repeat_timer = NULL;
     }
+
+    setting_provider.set_power_save_mode(1);
 
     // Reset UI handler
 #ifdef BSP_USING_UI_HANDLER

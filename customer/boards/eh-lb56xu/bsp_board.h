@@ -99,7 +99,7 @@ extern int __bss_end;
 #define BOARD_VER_28 28
 #define BOARD_VER_29 29
 
-#define CUSTOMER_BOARD_VER BOARD_VER_29
+#define CUSTOMER_BOARD_VER BOARD_VER_28
 
 #define ENABLE_TAP_AND_HOLD 0
 #define MAX_RAWDATA_TIME_STEP 35
@@ -247,9 +247,9 @@ extern int __bss_end;
 // #define WATCH_DISPLAY_REVERSE_180
 // #define RELEASE_WATCH
 #define PWM_LRA_MOTOR // Linear Resonant Actuator (LRA) Driver IC
+#define REAL_TIME_IMU_DATA_COLLECTION
 
 #if !kReleaseMode
-#define REAL_TIME_IMU_DATA_COLLECTION
 #define SHOW_TAP_GESTURE_INDICATOR
 // #define SHOW_UNKNOWN_GESTURE_INDICATOR
 // #define SHOW_UNGRAB_ENABLFE_INDICATOR

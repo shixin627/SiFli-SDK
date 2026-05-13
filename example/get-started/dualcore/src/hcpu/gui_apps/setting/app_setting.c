@@ -718,84 +718,13 @@ static void btn_developer_event_callback(lv_event_t *e)
 }
 #endif
 
-static lv_obj_t *threshold_window = NULL;
-static lv_obj_t *threshold_slider = NULL;
-static lv_obj_t *threshold_value_label = NULL;
-static void threshold_slider_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t *slider = lv_event_get_target(e);
-    int value = (int)lv_slider_get_value(slider);
-
-    if (code == LV_EVENT_VALUE_CHANGED)
-    {
-        // Update value in real-time
-        set_gesture_recognition_threshold(value);
-        lv_label_set_text_fmt(threshold_value_label, "%d", value);
-    }
-    else if (code == LV_EVENT_RELEASED)
-    {
-        store_watch_prefs(WATCH_PREFS_KEY_GESTURE_THRESHOLD);
-        LOG_I("Gesture threshold saved to flash: %d", value);
-    }
-}
-static void close_threshold_window_cb(lv_event_t *e)
-{
-    if (threshold_window)
-    {
-        lv_obj_del(threshold_window);
-        threshold_window = NULL;
-        threshold_slider = NULL;
-        threshold_value_label = NULL;
-    }
-}
-static void create_gesture_threshold_window(void)
-{
-    if (threshold_window != NULL)
-    {
-        return;
-    }
-    threshold_window = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(threshold_window, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_set_style_bg_color(threshold_window, lv_color_hex(0x121212), 0);
-    lv_obj_align(threshold_window, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_clear_flag(threshold_window, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *title = lv_label_create(threshold_window);
-    lv_label_set_text(title, "Gesture Confidence");
-    lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 40);
-    threshold_value_label = lv_label_create(threshold_window);
-    int current_threshold = get_gesture_recognition_threshold();
-    lv_label_set_text_fmt(threshold_value_label, "%d", current_threshold);
-    lv_obj_set_style_text_font(threshold_value_label, LV_EXT_FONT_GET(get_system_font_size(2)), 0);
-    lv_obj_set_style_text_color(threshold_value_label, lv_color_hex(0x00FF00), 0);
-    lv_obj_align(threshold_value_label, LV_ALIGN_CENTER, 0, -30);
-    threshold_slider = lv_slider_create(threshold_window);
-    lv_slider_set_range(threshold_slider, 1, 100);
-    lv_slider_set_value(threshold_slider, current_threshold, LV_ANIM_OFF);
-    lv_obj_set_size(threshold_slider, 300, 20);
-    lv_obj_align(threshold_slider, LV_ALIGN_CENTER, 0, 30);
-    lv_obj_add_event_cb(threshold_slider, threshold_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(threshold_slider, threshold_slider_event_cb, LV_EVENT_RELEASED, NULL);
-    lv_obj_t *min_label = lv_label_create(threshold_window);
-    lv_label_set_text(min_label, "1");
-    lv_obj_set_style_text_color(min_label, lv_color_hex(0x888888), 0);
-    lv_obj_align_to(min_label, threshold_slider, LV_ALIGN_OUT_LEFT_MID, -10, 0);
-    lv_obj_t *max_label = lv_label_create(threshold_window);
-    lv_label_set_text(max_label, "100");
-    lv_obj_set_style_text_color(max_label, lv_color_hex(0x888888), 0);
-    lv_obj_align_to(max_label, threshold_slider, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
-    lv_obj_t *close_btn = common_text_button(threshold_window, "OK", NULL, 120, 50, close_threshold_window_cb);
-    lv_obj_align(close_btn, LV_ALIGN_BOTTOM_MID, 0, -40);
-    lv_obj_add_event_cb(threshold_window, close_threshold_window_cb, LV_EVENT_CLICKED, NULL);
-}
-static void btn_gesture_threshold_event_callback(lv_event_t *e)
+static void btn_gesture_event_callback(lv_event_t *e)
 {
     lv_event_code_t event = lv_event_get_code(e);
-    if (LV_EVENT_SHORT_CLICKED == event)
+    if (LV_EVENT_SHORT_CLICKED == event || LV_EVENT_CLICKED == event)
     {
-        create_gesture_threshold_window();
+        gui_app_goback();
+        gui_app_run(APP_ID_GESTURE);
     }
 }
 static void btn_test_app_event_callback(lv_event_t *e)
@@ -1332,11 +1261,11 @@ void app_setting_init(void *param)
      * Items that navigate to another page get a ">" arrow on the right. */
     lv_obj_t *list_btn;
 
-    // Gesture Threshold (opens threshold window)
+    // Gesture (launches gesture app)
     list_btn = create_capsule_item(settings_container, mouse_press_quick_btn,
                                    LV_EXT_IMG_GET(icon_release), "Gesture",
                                    true);
-    lv_obj_add_event_cb(list_btn, btn_gesture_threshold_event_callback,
+    lv_obj_add_event_cb(list_btn, btn_gesture_event_callback,
                         LV_EVENT_SHORT_CLICKED, NULL);
 
     // Language settings (opens sub-window)

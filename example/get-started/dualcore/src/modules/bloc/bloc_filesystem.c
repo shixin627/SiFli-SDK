@@ -424,7 +424,6 @@ static void file_system_entry(void *parameter)
 {
     file_system_msg_data_t msg_data;
     rt_err_t result;
-
     while (1)
     {
         // Wait for messages in the queue with timeout to check for receive
@@ -459,9 +458,9 @@ static void file_system_entry(void *parameter)
                 // lvgl_send_msg(ui_msg);
 
                 // Perform synchronization
-                skaiwatch_ble_set_performance(true);
+                skaiwatch_ble_set_performance(BLE_PERF_FAST);
                 sync_file_to_remote_client(msg_data.data.sync.file_path);
-                skaiwatch_ble_set_performance(false);
+                skaiwatch_ble_set_performance(BLE_PERF_SLOW);
                 // Delete file if requested
                 if (msg_data.data.sync.delete_after_sync)
                 {
@@ -508,7 +507,7 @@ static void file_system_entry(void *parameter)
                     if (!has_files)
                     {
                         has_files = true;
-                        skaiwatch_ble_set_performance(true);
+                        skaiwatch_ble_set_performance(BLE_PERF_FAST);
                     }
 
                     snprintf(file_path_buf, sizeof(file_path_buf), "%s/%s",
@@ -540,7 +539,7 @@ static void file_system_entry(void *parameter)
 
                 if (has_files)
                 {
-                    skaiwatch_ble_set_performance(false);
+                    skaiwatch_ble_set_performance(BLE_PERF_SLOW);
                 }
                 closedir(dir);
 
@@ -822,7 +821,7 @@ int bloc_start_receive_file(const char *file_path, uint32_t total_size)
     g_file_receive.last_receive_tick = rt_tick_get();
 
     LOG_I("Started receiving file: %s (%d bytes)", temp_file_path, total_size);
-    skaiwatch_ble_set_performance(true);
+    skaiwatch_ble_set_performance(BLE_PERF_FAST);
     return RT_EOK;
 }
 
@@ -934,7 +933,7 @@ int bloc_end_receive_file(void)
         received_file_handler(g_file_receive.file_path);
     }
 
-    skaiwatch_ble_set_performance(false);
+    skaiwatch_ble_set_performance(BLE_PERF_SLOW);
     g_file_receive.is_active = false;
     return RT_EOK;
 }

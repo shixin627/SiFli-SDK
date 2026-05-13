@@ -14,6 +14,7 @@
 #include "gui_app_pm.h"
 #include "bloc_v2t.h"
 #include "ble_hid.h"
+#include "communicate_protocol.h"
 
 /* bd_addr_t comes from BLE stack header that's not on PC; provide a stub. */
 typedef struct { uint8_t addr[6]; } bd_addr_t;
@@ -52,6 +53,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_task.h */ bool commu_send_battery_level(uint8_t level) { return false; }
 /* communicate_task.h */ bool commu_send_calendar_request(void) { return false; }
 /* communicate_task.h */ bool commu_send_charge_status(void) { return false; }
+/* communicate_task.h */ bool commu_send_sleep_data(void) { return false; }
 /* communicate_task.h */ bool commu_send_chat_with_ai(const char *json) { return false; }
 /* communicate_task.h */ bool commu_send_dial_change(void) { return false; }
 /* communicate_task.h */ bool commu_send_dismiss_notification(const char *id) { return false; }
@@ -136,7 +138,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* app_skai.c */ void set_skai_widget_processing_text(const char *text) {  }
 /* app_media.c */ void set_widget_vol_bar_value(uint8_t volume) {  }
 /* lv_instruction_list_layout.c */ bool skai_widget_has_ai_reply(void) { return false; }
-/* communicate_protocol.h */ void skaiwatch_ble_set_performance(bool status) {  }
+/* communicate_protocol.h */ void skaiwatch_ble_set_performance(ble_perf_level_t level) {  }
 /* app_mainmenu.c */ rt_int32_t speech_on_pause(void) { return 0; }
 /* app_mainmenu.c */ rt_int32_t speech_on_resume(void) { return 0; }
 /* bloc_v2t.h */ void start_voice_recognition(uint8_t intent) {  }

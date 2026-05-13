@@ -70,8 +70,23 @@ extern "C"
         ANDROID = 0x02,
     } PHONE_OS_VERSION;
 
+    /* BLE link performance tiers. Drives TX power + connection interval.
+         SLOW  — idle profile; TPC owns TX power, long interval (~100 ms).
+         FAST  — interactive transfers (V2T / file sync / HID): pinned to
+                 +10 dBm, 15-35 ms interval, Apple-compliant window.
+         ULTRA — OTA only. Pushes the interval below the Apple guideline
+                 (Min 7.5 ms, Max-Min < 20 ms) to maximize throughput; the
+                 peer may renegotiate. Avoid for non-OTA paths — iOS can
+                 reject the param update entirely. */
+    typedef enum
+    {
+        BLE_PERF_SLOW  = 0,
+        BLE_PERF_FAST  = 1,
+        BLE_PERF_ULTRA = 2,
+    } ble_perf_level_t;
+
     /******************* Function definition **********************************/
-    extern void skaiwatch_ble_set_performance(bool status);
+    extern void skaiwatch_ble_set_performance(ble_perf_level_t level);
 
     /* Send a payload as one logical L2 command. The function builds the L2
        header internally and splits the payload across multiple BLE writes if

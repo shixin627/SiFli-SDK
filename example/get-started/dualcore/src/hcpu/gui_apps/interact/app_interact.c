@@ -55,7 +55,6 @@
 #include "app_mainmenu.h"
 
 #ifdef BSP_USING_BLOC
-#include "bloc_motor.h"
 #include "bloc_setting.h"
 #include "bloc_peripheral.h"
 #include "bloc_v2t.h"

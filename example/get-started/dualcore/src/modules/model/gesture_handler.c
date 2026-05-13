@@ -393,7 +393,7 @@ static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
     set_gesture(current_time, gesture_wrist_pronation);
     if (!gui_app_is_actived(APP_ID_MAIN))
     {
-      gui_app_run("Main");
+      lvgl_set_global_keypad_esc_cmd();
     }
     else
     {

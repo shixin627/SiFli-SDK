@@ -93,8 +93,10 @@ static lv_obj_t *mode_select_container;
 static lv_obj_t *gif_test_obj;
 static lv_obj_t *gif_test_hint_label;
 
+    #if 0
 LV_IMG_DECLARE(test_gif_bulb);
 static void start_gif_test(void);
+    #endif
 
 // CPU intensive stress test functions
 static void cpu_stress_thread_entry(void *parameter)
@@ -330,14 +332,14 @@ typedef struct
  * - motor: control_motor goes through data_service IPC -> deeper call chain
  * Previously 1024/2048/4096 caused STKOF (UFSR=0x10) shortly after startup. */
 static const stress_thread_def_t stress_thread_defs[] = {
-    {&cpu_stress_thread,    "cpu_stress",    cpu_stress_thread_entry,    8192, 5},
-    {&amoled_thread,        "amoled_stress", amoled_stress_thread_entry, 4096, 15},
-    {&imu_thread,           "imu_stress",    imu_stress_thread_entry,    4096, 12},
-    {&ppg_thread,           "ppg_stress",    ppg_stress_thread_entry,    4096, 12},
-    {&motor_thread,         "motor_stress",  motor_stress_thread_entry,  2048, 20},
+    {&cpu_stress_thread, "cpu_stress", cpu_stress_thread_entry, 8192, 5},
+    {&amoled_thread, "amoled_stress", amoled_stress_thread_entry, 4096, 15},
+    {&imu_thread, "imu_stress", imu_stress_thread_entry, 4096, 12},
+    {&ppg_thread, "ppg_stress", ppg_stress_thread_entry, 4096, 12},
+    {&motor_thread, "motor_stress", motor_stress_thread_entry, 2048, 20},
 };
 
-    #define STRESS_THREAD_COUNT \
+    #define STRESS_THREAD_COUNT                                                \
         (sizeof(stress_thread_defs) / sizeof(stress_thread_defs[0]))
 
 static void start_stress_test(void)
@@ -389,7 +391,7 @@ static void stop_stress_test(void)
     stop_voice_recognition(V2T_INTENT_NOTHING);
     voice_provider.vad_deinit();
 }
-
+    #if 0
 static void start_gif_test(void)
 {
     LOG_I("Starting GIF test mode");
@@ -409,14 +411,14 @@ static void start_gif_test(void)
         lv_obj_add_flag(ppg_status_label, LV_OBJ_FLAG_HIDDEN);
     }
 
-#if LV_USE_GIF
+        #if LV_USE_GIF
     gif_test_obj = lv_gif_create(lv_scr_act());
     if (gif_test_obj != NULL)
     {
         lv_gif_set_src(gif_test_obj, &test_gif_bulb);
         lv_obj_align(gif_test_obj, LV_ALIGN_CENTER, 0, -30);
     }
-#endif
+        #endif
 
     gif_test_hint_label = lv_label_create(lv_scr_act());
     lv_label_set_text(gif_test_hint_label,
@@ -425,6 +427,7 @@ static void start_gif_test(void)
     lv_obj_set_style_text_align(gif_test_hint_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(gif_test_hint_label, LV_ALIGN_BOTTOM_MID, 0, -40);
 }
+    #endif
 
     #define REQUIRE_TOUCH_COUNT 3
 static uint8_t click_count = 0;
@@ -457,10 +460,12 @@ static void mode_button_event_handler(lv_event_t *e)
             {
                 start_stress_test();
             }
+    #if 0
             else if (test_mode == TEST_MODE_GIF)
             {
                 start_gif_test();
             }
+    #endif
         }
     }
 }
@@ -549,20 +554,15 @@ static void create_mode_selection_ui(lv_obj_t *parent)
     create_mode_button(mode_select_container, "Normal Test", -40,
                        LV_PALETTE_NONE, mode_button_event_handler,
                        &normal_mode);
-    create_mode_button(mode_select_container, "Stress Test", 40,
-                       LV_PALETTE_RED, mode_button_event_handler, &stress_mode);
+    create_mode_button(mode_select_container, "Stress Test", 40, LV_PALETTE_RED,
+                       mode_button_event_handler, &stress_mode);
     create_mode_button(mode_select_container, "Random Address", 120,
                        LV_PALETTE_BLUE, random_address_button_event_handler,
                        NULL);
+    #if 0
     create_mode_button(mode_select_container, "GIF Test", -120,
                        LV_PALETTE_GREEN, mode_button_event_handler, &gif_mode);
-
-    // Description
-    lv_obj_t *desc = lv_label_create(mode_select_container);
-    lv_label_set_text(desc, "Stress: All sensors + CPU load");
-    lv_obj_align(desc, LV_ALIGN_BOTTOM_MID, 0, -20);
-    lv_obj_set_style_text_font(desc, LV_EXT_FONT_GET(get_system_font_size(0)),
-                               0);
+    #endif
 }
 
 static lv_obj_t *on_start(lv_obj_t *parent)
@@ -708,8 +708,8 @@ static bool check_ppg_sensor()
             watch_sensor.ppg_data.raw_data[1] == 0)
         {
             // sensor_subscription.status = false;
-            // watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
-            // rt_thread_mdelay(100);
+            // watch_system_interact(WATCH_SENSOR_SUBSCRIBE,
+            // &sensor_subscription); rt_thread_mdelay(100);
             LOG_E("Heart rate sensor is invalid");
             return false;
         }

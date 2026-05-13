@@ -41,8 +41,8 @@
 #ifdef BSP_USING_PM
     #include "bf0_pm.h"
     #include "drv_gpio.h"
-#endif /* BSP_USING_PM */
-#include "gui_app_pm.h"  /* always — gui_is_active / gui_pm_fsm referenced unconditionally */
+#endif                  /* BSP_USING_PM */
+#include "gui_app_pm.h" /* always — gui_is_active / gui_pm_fsm referenced unconditionally */
 
 #include "data_service_subscriber.h"
 
@@ -99,7 +99,6 @@ static void handle_back_in_mainmenu(bool is_button)
         if (is_button)
         {
             LOG_D("handle_back_in_mainmenu: is_at_home");
-            // watch_system_interact(WATCH_SLEEP, NULL);
         }
     }
     else
@@ -162,14 +161,14 @@ static void handle_back_event(bool is_button)
         if (get_is_open_instruction_list_ai())
         {
             back_on_skai_widget();
-            LOG_D("ESC in instruction list with AI open => back_on_skai_widget");
+            LOG_D("ESC in instruction list with AI open");
         }
         else
         {
             clock_on_resume();
             animate_to_home_from_instruction_list();
             screen_rotate_back_to_original_direction();
-            LOG_D("ESC in instruction list => animate_to_home_from_instruction_list");
+            LOG_D("ESC in instruction list");
         }
     }
     else if (is_at_mouse_mode() || is_at_message())
@@ -841,14 +840,16 @@ void app_watch_entry(void *parameter)
     {
         int ms;
         if (loop_iter < 5)
-            LOG_I("watch_entry loop iter %d before lv_timer_handler", loop_iter);
+            LOG_I("watch_entry loop iter %d before lv_timer_handler",
+                  loop_iter);
 
         rt_pm_request(PM_SLEEP_MODE_IDLE);
         ms = lv_timer_handler();
         rt_pm_release(PM_SLEEP_MODE_IDLE);
 
         if (loop_iter < 5)
-            LOG_I("watch_entry loop iter %d after lv_timer_handler ms=%d", loop_iter, ms);
+            LOG_I("watch_entry loop iter %d after lv_timer_handler ms=%d",
+                  loop_iter, ms);
         loop_iter++;
 
 #ifdef BSP_USING_PM
@@ -903,8 +904,9 @@ void app_watch_entry(void *parameter)
             // EventStartB(0);
             /* Always yield at least 1ms — even when lv_timer_handler says 0ms.
              * On the PC simulator this thread runs at PRIORITY_MIDDLE and would
-             * otherwise busy-loop and starve lower-priority threads (notably the
-             * finsh shell at priority 20) so tshell never gets to read input. */
+             * otherwise busy-loop and starve lower-priority threads (notably
+             * the finsh shell at priority 20) so tshell never gets to read
+             * input. */
             rt_thread_mdelay(ms > 0 ? ms : 1);
             // EventStopB(0);
         }

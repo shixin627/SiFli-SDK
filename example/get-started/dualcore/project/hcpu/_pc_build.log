@@ -1,2 +1,22 @@
-'_pc_build.cmd' is not recognized as an internal or external command,
-operable program or batch file.
+scons: Reading SConscript files ...
+Board: pc_hcpu
+
+C:\work\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst x: /D  2>nul 
+
+C:\work\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst y: /D  2>nul 
+
+C:\work\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst l: /D  2>nul 
+
+C:\work\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst x: "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.16.27023" 
+
+C:\work\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst y: "C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0" 
+
+C:\work\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst l: "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0" 
+Simulator used
+Mkdir("src")
+Mkdir("resource/strings")
+scons: done reading SConscript files.
+scons: Building targets ...
+scons: building associated VariantDir targets: build_pc_hcpu .
+Building compilation database build_pc_hcpu\compile_commands.json
+scons: done building targets.

@@ -162,7 +162,8 @@ static int8_t   g_tpc_rssi_avg = -50;     /* EMA, dBm */
 static uint8_t  g_tpc_rssi_warmup = 0;    /* samples since reset */
 static uint8_t  g_tpc_tier = 0;           /* current tier index */
 static rt_tick_t g_tpc_last_change_tick = 0;
-static bool     g_ble_perf_is_fast = false; /* set by skaiwatch_ble_set_performance */
+static bool     g_ble_perf_is_fast = false; /* true while FAST or ULTRA — TPC yields */
+static ble_perf_level_t g_ble_perf_level = BLE_PERF_SLOW; /* current applied level, for dedupe */
 
 static void ble_tpc_reset(void)
 {
@@ -756,6 +757,7 @@ void skaiwalk_disconnected_ind(ble_gap_disconnected_ind_t *ind)
            reconnect, burning power before the first RSSI sample arrives. */
         ble_tpc_reset();
         g_ble_perf_is_fast = false;
+        g_ble_perf_level = BLE_PERF_SLOW;
     }
 }
 
@@ -790,17 +792,40 @@ void skaiwalk_ble_mtu_exchange_ind(sibles_mtu_exchange_ind_t *ind)
 
 /* blebredr_rf_power_set extern is declared at the top of this file (near
    the TPC block) so static helpers there can call it. */
-void skaiwatch_ble_set_performance(bool status)
+void skaiwatch_ble_set_performance(ble_perf_level_t level)
 {
     app_env_t *env = ble_app_get_env();
     if (env->is_power_on == false)
     {
         return;
     }
-    LOG_I("ble_set_performance %d", status);
-    g_ble_perf_is_fast = status;
-    if (status)
+    /* Dedupe: each call re-issues a LL_CONNECTION_PARAM_REQ over the air
+       even when the params don't change, which briefly stalls data flow.
+       Callers can invoke this freely (e.g. start of every received file)
+       and we collapse same-level requests into a no-op here. */
+    if (level == g_ble_perf_level)
     {
+        return;
+    }
+    LOG_I("ble_set_performance %d -> %d", g_ble_perf_level, level);
+    g_ble_perf_level = level;
+    g_ble_perf_is_fast = (level != BLE_PERF_SLOW);
+    switch (level)
+    {
+    case BLE_PERF_ULTRA:
+        /* Ultra profile (OTA only): same TX pin as FAST, but push the
+           connection interval below the Apple Accessory guideline to
+           maximize throughput during firmware update. iOS may clamp the
+           request up to its 15 ms floor — that's fine, the negotiated
+           value is still <= FAST's. Don't use outside OTA: the phone
+           may reject the update or fall back to default params, and the
+           tight window leaves no slack for other BLE traffic. */
+        blebredr_rf_power_set(0, 10);
+        // Ultra: Min=6 (7.5 ms), Max=12 (15 ms), latency=0, ST=5 s
+        skaiwalk_ble_app_update_conn_param(SkaiWatchSys.watch_conn_id, 6, 12,
+                                           0, 500);
+        break;
+    case BLE_PERF_FAST:
         /* Fast profile (V2T / file transfer / HID): hard-pin TX to +10 dBm
            regardless of TPC state — active operations can't afford a TX
            dip mid-transfer if RSSI happens to be good right then. TPC
@@ -812,9 +837,9 @@ void skaiwatch_ble_set_performance(bool status)
         // Fast: Min=12 (15 ms), Max=28 (35 ms), diff=20 ms, latency=0, ST=5 s
         skaiwalk_ble_app_update_conn_param(SkaiWatchSys.watch_conn_id, 12, 28,
                                            0, 500);
-    }
-    else
-    {
+        break;
+    case BLE_PERF_SLOW:
+    default:
         /* Slow profile (idle): return TX to whichever tier TPC currently
            prefers (0 dBm if signal is good, +3 / +10 if it has been
            ramping up). Without this we'd always drop to 0 dBm on exit
@@ -826,6 +851,7 @@ void skaiwatch_ble_set_performance(bool status)
         // ST > (latency+1) * max_intv * 2 = 10 * 120ms * 2 = 2400ms < 4000ms ✓
         skaiwalk_ble_app_update_conn_param(SkaiWatchSys.watch_conn_id, 80, 96,
                                            9, 400);
+        break;
     }
 }
 
@@ -970,7 +996,6 @@ static void audio_profile_service_init()
     }
 }
 
-#define BLE_AUDIO_RETRY_TIMES 0
 int audio_profile_send_voice_data(uint8_t *voice_data, uint16_t voice_data_len)
 {
     if (g_audio_profile_hdl)
@@ -995,31 +1020,10 @@ int audio_profile_send_voice_data(uint8_t *voice_data, uint16_t voice_data_len)
         value.len = voice_data_len;
         value.value = voice_data;
         int ret = sibles_write_value(target_conn_idx, &value);
-#if BLE_AUDIO_RETRY_TIMES
-        if (ret == 0 && !is_signal_bad())
-        {
-            int retry = MAX_RETRIES;
-            while (retry > 0)
-            {
-                retry--;
-                rt_thread_mdelay(50);
-                ret = sibles_write_value(target_conn_idx, &value);
-                if (ret == voice_data_len)
-                {
-                    break;
-                }
-            }
-        }
-        else
-        {
-            // LOG_D("send success %d", ret);
-        }
-#endif
-
-        if (is_signal_bad())
-        {
-            rt_thread_mdelay(50);
-        }
+        // if (is_signal_bad())
+        // {
+        //     rt_thread_mdelay(50);
+        // }
         return ret;
     }
     else

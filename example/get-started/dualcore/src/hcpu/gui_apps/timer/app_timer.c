@@ -63,7 +63,6 @@
 #include "ui_img_helper.h"
 #include "bloc_control.h"
 #include "bloc_motion_tracking.h"
-#include "bloc_motor.h"
 #include "lv_simplified_obj.h"
 #include "bloc_setting.h"
 #ifdef BSP_USING_MODEL_WATCH_GLOBAL_DATA

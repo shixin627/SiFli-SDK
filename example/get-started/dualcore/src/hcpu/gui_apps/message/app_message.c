@@ -18,7 +18,6 @@
 #include "custom_trans_anim.h"
 #include "app_message.h"
 #include "bloc_v2t.h"
-#include "bloc_motor.h"
 #include "bloc_setting.h"
 #include "app_speech.h"
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT

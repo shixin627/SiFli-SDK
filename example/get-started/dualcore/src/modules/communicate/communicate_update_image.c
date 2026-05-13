@@ -454,7 +454,7 @@ static void ble_dfu_flash_write()
 		LOG_E("Failed to create mailbox");
 		return;
 	}
-	skaiwatch_ble_set_performance(true);
+	skaiwatch_ble_set_performance(BLE_PERF_ULTRA);
 	peripheral_provider.subscribe_accelerometer_sensor(false);
 
 	LOG_I("ble_dfu_flash_write thread started");
@@ -591,7 +591,7 @@ static void ble_dfu_flash_write()
 		watch_image_mailbox = NULL;
 	}
 
-	skaiwatch_ble_set_performance(false);
+	skaiwatch_ble_set_performance(BLE_PERF_SLOW);
 	peripheral_provider.subscribe_accelerometer_sensor(true);
 	setting_provider.set_power_save_mode(1);
 }
