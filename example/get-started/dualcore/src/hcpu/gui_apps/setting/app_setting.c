@@ -103,6 +103,7 @@ static lv_obj_t *dnd_quick_btn = NULL;
 static lv_obj_t *time_format_quick_btn = NULL;
 static lv_obj_t *time_format_title_label = NULL;
 static lv_obj_t *time_format_badge_label = NULL;
+static lv_obj_t *mouse_press_quick_btn = NULL;
 
 extern void app_setting_sys_main(void);
 extern void app_developer_main(void);
@@ -486,6 +487,17 @@ static void time_format_switch_event_callback(lv_event_t *e)
 #endif
         update_time_format_title_label(new_format);
         LOG_I("Time format toggled: %s", (new_format == 0x01) ? "24h" : "12h");
+    }
+}
+
+static void mouse_press_switch_event_callback(lv_event_t *e)
+{
+    if (LV_EVENT_VALUE_CHANGED == lv_event_get_code(e))
+    {
+        lv_obj_t *sw = lv_event_get_target(e);
+        bool new_status = (lv_obj_get_state(sw) & LV_STATE_CHECKED) ? true : false;
+        SkaiWatchSys.flag_field.mouse_press_mode = new_status;
+        LOG_I("Mouse press mode toggled: %d", new_status);
     }
 }
 
@@ -1277,12 +1289,51 @@ void app_setting_init(void *param)
     lv_obj_add_event_cb(time_format_sw, time_format_switch_event_callback,
                         LV_EVENT_VALUE_CHANGED, NULL);
 
+    /* Mouse Press Mode wide widget — toggle FSR sampler behavior
+     * OFF: pressure<17000 → move, <10000 → also press left button (default)
+     * ON : always allow move, pressure<17000 → press left button */
+    const lv_coord_t mouse_press_btn_w = LV_HOR_RES * 80 / 100;
+    mouse_press_quick_btn = lv_obj_create(settings_container);
+    lv_obj_set_size(mouse_press_quick_btn, mouse_press_btn_w, 80);
+    lv_obj_align_to(mouse_press_quick_btn, time_format_quick_btn,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_set_style_radius(mouse_press_quick_btn, 40, 0);
+    lv_obj_set_style_bg_color(mouse_press_quick_btn, lv_color_hex(0xCECECE), 0);
+    lv_obj_set_style_bg_opa(mouse_press_quick_btn, LV_OPA_10, 0);
+    lv_obj_set_style_border_width(mouse_press_quick_btn, 0, 0);
+    lv_obj_set_style_pad_all(mouse_press_quick_btn, 0, 0);
+    lv_obj_clear_flag(mouse_press_quick_btn, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *mouse_press_icon = lv_img_create(mouse_press_quick_btn);
+    lv_img_set_src(mouse_press_icon, LV_EXT_IMG_GET(mouse_mode_icon));
+    lv_obj_align(mouse_press_icon, LV_ALIGN_LEFT_MID, 20, 0);
+    lv_obj_t *mouse_press_label = lv_label_create(mouse_press_quick_btn);
+    lv_label_set_text(mouse_press_label, "Mouse Press");
+    lv_obj_set_style_text_color(mouse_press_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(mouse_press_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align_to(mouse_press_label, mouse_press_icon,
+                    LV_ALIGN_OUT_RIGHT_MID, 20, 0);
+
+    lv_obj_t *mouse_press_sw = lv_switch_create(mouse_press_quick_btn);
+    lv_obj_set_size(mouse_press_sw, 80, 40);
+    lv_obj_align(mouse_press_sw, LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_set_style_bg_color(mouse_press_sw, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(mouse_press_sw, lv_color_hex(0x0078D7),
+                              LV_PART_INDICATOR | LV_STATE_CHECKED);
+    if (SkaiWatchSys.flag_field.mouse_press_mode)
+    {
+        lv_obj_add_state(mouse_press_sw, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(mouse_press_sw, mouse_press_switch_event_callback,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+
     /* Capsule list items (same style as the wide widgets above).
      * Items that navigate to another page get a ">" arrow on the right. */
     lv_obj_t *list_btn;
 
     // Gesture Threshold (opens threshold window)
-    list_btn = create_capsule_item(settings_container, time_format_quick_btn,
+    list_btn = create_capsule_item(settings_container, mouse_press_quick_btn,
                                    LV_EXT_IMG_GET(icon_release), "Gesture",
                                    true);
     lv_obj_add_event_cb(list_btn, btn_gesture_threshold_event_callback,
@@ -1412,6 +1463,7 @@ static void on_stop(void)
     time_format_quick_btn = NULL;
     time_format_title_label = NULL;
     time_format_badge_label = NULL;
+    mouse_press_quick_btn = NULL;
     /* The modal is parented to lv_scr_act() (and gets deleted with the screen),
      * but reset the static pointer so a stale reference isn't reused. */
     reset_modal = NULL;

@@ -33,10 +33,10 @@
 
 #define DBG_TAG "bloc.motion_tracking"
 #include "bsp_board.h"
-#define DBG_LVL BSP_DBG_LVL
+#define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-#include "gui_app_pm.h"  /* always — gui_is_active() gates the IMU consumer */
+#include "gui_app_pm.h" /* always — gui_is_active() gates the IMU consumer */
 
 // ============================================================================
 // Waveform Capture Configuration (migrated from LCPU gesture_detect.c)
@@ -399,16 +399,18 @@ void packMatrixToBuffer(uint8_t *targetArray, watch_sys_linear_acce_t *dataset,
     for (uint8_t i = 0; i < sample_len; i++)
     {
         uint8_t *p = &targetArray[i * BYTES_PER_SAMPLE];
-        memcpy(p +  0, &dataset[i].timestamp_s,   sizeof(dataset[i].timestamp_s));
-        memcpy(p +  4, &dataset[i].timestamp_ms,  sizeof(dataset[i].timestamp_ms));
-        memcpy(p +  6, &dataset[i].x,             sizeof(dataset[i].x));
-        memcpy(p +  8, &dataset[i].y,             sizeof(dataset[i].y));
-        memcpy(p + 10, &dataset[i].z,             sizeof(dataset[i].z));
-        memcpy(p + 12, &dataset[i].gravity_x,     sizeof(dataset[i].gravity_x));
-        memcpy(p + 14, &dataset[i].gravity_y,     sizeof(dataset[i].gravity_y));
-        memcpy(p + 16, &dataset[i].gravity_z,     sizeof(dataset[i].gravity_z));
-        memcpy(p + 18, &dataset[i].ppg_data,      sizeof(dataset[i].ppg_data));
-        memcpy(p + 20, &dataset[i].fsr_adc_value, sizeof(dataset[i].fsr_adc_value));
+        memcpy(p + 0, &dataset[i].timestamp_s, sizeof(dataset[i].timestamp_s));
+        memcpy(p + 4, &dataset[i].timestamp_ms,
+               sizeof(dataset[i].timestamp_ms));
+        memcpy(p + 6, &dataset[i].x, sizeof(dataset[i].x));
+        memcpy(p + 8, &dataset[i].y, sizeof(dataset[i].y));
+        memcpy(p + 10, &dataset[i].z, sizeof(dataset[i].z));
+        memcpy(p + 12, &dataset[i].gravity_x, sizeof(dataset[i].gravity_x));
+        memcpy(p + 14, &dataset[i].gravity_y, sizeof(dataset[i].gravity_y));
+        memcpy(p + 16, &dataset[i].gravity_z, sizeof(dataset[i].gravity_z));
+        memcpy(p + 18, &dataset[i].ppg_data, sizeof(dataset[i].ppg_data));
+        memcpy(p + 20, &dataset[i].fsr_adc_value,
+               sizeof(dataset[i].fsr_adc_value));
     }
 }
 
@@ -579,11 +581,11 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     get_ppg_count ^= 1;
     uint32_t ppg_rawdata = motion_data->ppg_raw_data.raw_data[get_ppg_count];
 
-#ifdef USING_FSR_ADC_SAMPLER
+    #ifdef USING_FSR_ADC_SAMPLER
     rt_uint32_t fsr_adc_value = bloc_control_fsr_adc_latest();
-#else
+    #else
     rt_uint32_t fsr_adc_value = 0;
-#endif
+    #endif
     // LOG_D("ppg_rawdata:%d, fsr_adc_value:%d", ppg_rawdata, fsr_adc_value);
 
     // Update hand position detection
@@ -594,7 +596,8 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
 
     // Update watchface visibility
     waveform_gesture_state.if_watchface_visible =
-        (gravity->y > -0.7 && gravity->z > -0.6) || app_control_get_mouse_mode();
+        (gravity->y > -0.7 && gravity->z > -0.6) ||
+        app_control_get_mouse_mode();
 
     // Calculate linear acceleration difference
     float linear_accel_resultant = total_acceleration_magnitude(
@@ -888,7 +891,7 @@ static void report_air_mouse_data(air_plane_delta_movement_t *movement,
     {
         return;
     }
-    control_provider.ble_hid_mouse_move(-movement->x, -movement->y);
+    control_provider.ble_hid_mouse_move(movement->x, movement->y);
     movement->last_report_ts = ts;
     movement->x = 0;
     movement->y = 0;
@@ -975,6 +978,13 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     {
         report_air_mouse_data(&delta_movement, ts);
     }
+    // else if (!mouse_movement_lock)
+    // {
+    //     LOG_D("Air mouse locked log: freehand_mode=%d, scroll_mode=%d,
+    //     handfree_mode=%d",
+    //           switch_freehand_mode, switch_mouse_scroll_mode,
+    //           get_hid_mouse_handfree_mode());
+    // }
 }
 #endif
 
@@ -1148,8 +1158,10 @@ static void app_control_interface(Vector3 *gyro, Vector3 *gravity)
         media_x_control = (uint16_t)(relative_x);
         media_y_control = (uint16_t)(relative_y);
 
-        if (media_x_control > 466) media_x_control = 466;
-        if (media_y_control > 466) media_y_control = 466;
+        if (media_x_control > 466)
+            media_x_control = 466;
+        if (media_y_control > 466)
+            media_y_control = 466;
     }
 
     if (abs(media_x_control - pevr_media_control[0]) > 5 ||
@@ -1361,6 +1373,7 @@ void set_stop_mouse_move(bool stop)
     stop_mouse_move = stop;
 }
 
+static uint8_t test_log_count = 0;
 extern uint8_t get_message_page_count(void);
 static euler_angle_t pevr_befor_switch_widget_delta_angle;
 static float prev_delta_roll = 0.0f;
@@ -1412,9 +1425,9 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
         air_mouse_process(motion_data->timestamp, &motion_data->global_q,
                           &prev_global_quat);
         prev_global_quat = motion_data->global_q;
-        switch_freehand_mode      = motion_data->gravity.z < -0.5f;
-        switch_mouse_scroll_mode  = motion_data->gravity.y < -0.7f;
-        scroll_up_mode            = motion_data->gravity.x >= 0;
+        switch_freehand_mode = motion_data->gravity.z < -0.5f;
+        switch_mouse_scroll_mode = motion_data->gravity.y < -0.7f;
+        scroll_up_mode = motion_data->gravity.x >= 0;
     }
 #endif
     else
@@ -1430,8 +1443,8 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
 
         if (!is_at_message() && !get_is_open_instruction_list_ai())
         {
-            set_paused_control_with_arm(
-                !(motion_data->gravity.x < 0.3 && motion_data->gravity.x > -0.3));
+            set_paused_control_with_arm(!(motion_data->gravity.x < 0.3 &&
+                                          motion_data->gravity.x > -0.3));
         }
 
         if (app_control_get_motion_tracking())
