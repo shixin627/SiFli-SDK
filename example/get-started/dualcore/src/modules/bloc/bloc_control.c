@@ -71,7 +71,7 @@
 
 #define DBG_TAG "bloc.control"
 #include "bsp_board.h"
-#define DBG_LVL BSP_DBG_LVL
+#define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
 enum
@@ -249,11 +249,13 @@ char *get_media_artist(void)
 extern void handle_media_widget_title(char *media_title_text);
 extern void handle_media_title(char *media_title_text);
 extern void handle_dial_header_media_title(char *media_title_text);
+extern void mouse_mode_handle_media_title(const char *title);
 static void notify_media_title(void)
 {
 	handle_media_title(get_media_title());
 	handle_media_widget_title(get_media_title());
 	handle_dial_header_media_title(get_media_title());
+	mouse_mode_handle_media_title(get_media_title());
 // #ifdef BSP_USING_UI_HANDLER
 // 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_TITLE,
 // 					  .data.media_data.title = get_media_title()};
@@ -349,12 +351,14 @@ static void bt_speaker_set_status(bool status)
 extern void handle_media_play_state(bool media_state);
 extern void handle_media_widget_play_state(bool media_state);
 extern void handle_dial_header_media_play_state(bool playing);
+extern void mouse_mode_handle_media_play_state(bool playing);
 static void notify_bt_speaker_media_status(bool status)
 {
 	bt_media_playing = status;
 	handle_media_widget_play_state(bt_media_playing);
     handle_media_play_state(bt_media_playing);
 	handle_dial_header_media_play_state(bt_media_playing);
+	mouse_mode_handle_media_play_state(bt_media_playing);
 // #ifdef BSP_USING_UI_HANDLER
 // 	lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_MEDIA_PLAY_STATE,
 // 					  .data.media_play_state = bt_media_playing};
@@ -911,23 +915,37 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 			continue;
 		}
 		g_fsr_adc_latest = fsr_adc_read_value();
+		// LOG_D("FSR ADC: %d", g_fsr_adc_latest);
 
-		/* 壓感 < 17000 → handfree on (自由滑鼠模式);否則 off */
-		bool want_handfree = (g_fsr_adc_latest < 17000);
+		bool press_mode = SkaiWatchSys.flag_field.mouse_press_mode;
+		bool want_handfree;
+		bool want_left_press;
+		if (press_mode)
+		{
+			/* Press mode: 一直可以移動,壓感 < 17000 即視為左鍵按下 */
+			want_handfree = true;
+			want_left_press = (g_fsr_adc_latest < 17000);
+		}
+		else
+		{
+			/* Default mode: 壓感 < 17000 才能移動;< 10000 額外按下左鍵 */
+			want_handfree = (g_fsr_adc_latest < 17000);
+			want_left_press = (g_fsr_adc_latest < 10000);
+		}
+
 		if (want_handfree != prev_handfree)
 		{
 			set_hid_mouse_handfree_mode_to(want_handfree);
 			prev_handfree = want_handfree;
 		}
 
-		/* 壓感 < 10000 → 左鍵按下;> 10000 → 左鍵放開 */
-		if (g_fsr_adc_latest < 10000 && !left_pressed)
+		if (want_left_press && !left_pressed)
 		{
 			if (control_provider.ble_hid_mouse_left_press)
 				control_provider.ble_hid_mouse_left_press();
 			left_pressed = true;
 		}
-		else if (g_fsr_adc_latest > 10000 && left_pressed)
+		else if (!want_left_press && left_pressed)
 		{
 			if (control_provider.ble_hid_mouse_left_release)
 				control_provider.ble_hid_mouse_left_release();

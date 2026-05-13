@@ -320,7 +320,30 @@ static bool mode_swipe_is_commit = false;
 // 每個 mode 用一個 480×480 透明容器包，切換時整組移動
 static lv_obj_t *mode_container[HID_MODE_COUNT] = {NULL};
 static void apply_hid_mode(hid_mode_t mode);
-static void mode_label_event_cb(lv_event_t *e);
+
+// mouse list / media center 前置宣告
+static void create_mouse_list_overlay(lv_obj_t *parent);
+static void mouse_list_show(void);
+static void mouse_list_hide(void);
+static void mouse_list_rebuild_items(void);
+static void mouse_list_update_nodes(void);
+static void mouse_list_sync_nodes_to_scroll(void);
+static void mouse_list_right_touch_cb(lv_event_t *e);
+static void mouse_list_container_scroll_cb(lv_event_t *e);
+static void mouse_list_item_event_cb(lv_event_t *e);
+static void mouse_list_overlay_event_cb(lv_event_t *e);
+
+static void create_media_center_panel(lv_obj_t *parent);
+static void media_center_set_open(bool open, bool animate);
+static void media_center_update_play_icon(bool playing);
+static void media_center_play_btn_cb(lv_event_t *e);
+static void media_center_prev_btn_cb(lv_event_t *e);
+static void media_center_next_btn_cb(lv_event_t *e);
+static void media_center_vol_up_btn_cb(lv_event_t *e);
+static void media_center_vol_down_btn_cb(lv_event_t *e);
+static void status_bar_area_up_cb(lv_event_t *e);
+static void media_tileview_event_cb(lv_event_t *e);
+static void hid_mode_toggle(void);
 
 // 判斷觸碰點是否在左側滾動觸發區域
 // UI 弧線寬度 30px、角度 150°~210°，但觸發範圍更大
@@ -446,6 +469,69 @@ static lv_obj_t *trackpad_mic_red_dot_x = NULL;
 // trackpad mode 中央的 V2T 結果顯示 panel（mic active 時顯示）
 static lv_obj_t *trackpad_v2t_panel = NULL;
 static lv_obj_t *trackpad_v2t_label = NULL;
+
+// =====================================================================
+// Trackpad mode：通用清單選擇器 overlay
+// =====================================================================
+//   - 點 bottom_swipe_area 開啟（取代原本的 mic V2T）
+//   - 內容由 PC/Phone 端透過 mouse_list_set_items() 餵進來
+//   - 中央 vertical scroll list 顯示 title；點擊 → cJSON {id,title} 經
+//     commu_send_update_instruction() 回傳給手機
+//   - 左側弧形 + 右側可拖曳弧形 scrollbar，左右兩條同步反映 scroll 位置
+//   - 下方固定 input box 顯示對端回傳的文字（mouse_list_set_result_text）
+    #define MOUSE_LIST_MAX_ITEMS 16
+    #define MOUSE_LIST_ITEM_ID_LEN 64
+    #define MOUSE_LIST_ITEM_TITLE_LEN 64
+    #define MOUSE_LIST_ITEM_HEIGHT 80
+    #define MOUSE_LIST_VIEW_WIDTH 380
+    // 沿用 trackpad 左側 arc 的節點樣式：節點數量 / 弧線範圍 / span
+    #define MOUSE_LIST_NODE_COUNT LEFT_SCROLL_NODE_COUNT
+    // 只畫右弧 -45~45°（畫法上等同 315~405°）
+    #define MOUSE_LIST_RIGHT_ARC_MIN_DEG -45.0f
+typedef struct
+{
+    char id[MOUSE_LIST_ITEM_ID_LEN];
+    char title[MOUSE_LIST_ITEM_TITLE_LEN];
+} mouse_list_item_t;
+
+static lv_obj_t *mouse_list_overlay = NULL;
+static lv_obj_t *mouse_list_container = NULL;
+// 右側弧形節點（仿 trackpad mode 左側 scroll bar 樣式；左側依需求不畫）
+static lv_obj_t *mouse_list_right_nodes[MOUSE_LIST_NODE_COUNT] = {NULL};
+static lv_point_t mouse_list_right_node_pts[MOUSE_LIST_NODE_COUNT][2];
+// 節點視覺偏移（度，wrap 在 [0, span) 內）。隨 list scroll 同步更新
+static float mouse_list_node_offset_deg = 0.0f;
+// 右側 arc 觸碰拖曳追蹤（仿 trackpad 左側 arc 的 finger theta 追蹤）
+static lv_obj_t *mouse_list_right_touch = NULL;
+static bool mouse_list_arc_dragging = false;
+static float mouse_list_arc_last_theta = 0.0f;
+static lv_obj_t *mouse_list_input_box = NULL;
+static lv_obj_t *mouse_list_input_label = NULL;
+static lv_obj_t *mouse_list_btns[MOUSE_LIST_MAX_ITEMS] = {NULL};
+static lv_obj_t *mouse_list_labels[MOUSE_LIST_MAX_ITEMS] = {NULL};
+static mouse_list_item_t mouse_list_items[MOUSE_LIST_MAX_ITEMS];
+static uint8_t mouse_list_count = 0;
+static bool mouse_list_visible = false;
+
+// =====================================================================
+// 媒體中心 pull-down（仿 app_clock_status_bar 的 tileview 模式）
+// =====================================================================
+//   - 頂部 status_bar_area_up 是個透明 hit zone：PRESS 時把 tileview 顯示出來
+//     並設到 home tile (0,0)；RELEASE（press 沒被 tileview 接走）時隱藏
+//     tileview，並執行 mode toggle（tap-to-switch）
+//   - tileview 兩格：home (0,0) 透明、media (0,1) 媒體中心內容
+//     LV_DIR_BOTTOM/TOP 讓使用者可以拖下去開、拖上去收
+//   - tileview value-changed：snap 回 home 時自動隱藏 tileview
+//   - title / play state 由 bloc_control notify_media_title 路由進來
+static lv_obj_t *status_bar_area_up = NULL;
+static lv_obj_t *media_tileview = NULL;
+static lv_obj_t *media_home_tile = NULL;
+static lv_obj_t *media_tile = NULL;
+static lv_obj_t *media_center_title_label = NULL;
+static lv_obj_t *media_center_play_btn = NULL;
+static lv_obj_t *media_center_play_img = NULL;
+static bool media_center_play_state = false;
+
 // trackpad mode 的 enter btn（樣式跟 keyboard input_enter_btn 一致）
 static lv_obj_t *trackpad_enter_btn = NULL;
 static void update_v2t_btn_appearance(bool mic_active);
@@ -3626,6 +3712,9 @@ void mouse_apply_v2t_input(const char *text)
     // 同步更新 trackpad mode 中央的 V2T 顯示 panel
     if (trackpad_v2t_label && lv_obj_is_valid(trackpad_v2t_label))
         lv_label_set_text(trackpad_v2t_label, input_buffer);
+    // 同步更新清單 overlay 下方的 V2T 輸入框
+    if (mouse_list_input_label && lv_obj_is_valid(mouse_list_input_label))
+        lv_label_set_text(mouse_list_input_label, input_buffer);
 
     // 字數超過上限 → 自動關麥克風 + 鎖定（直到 input 清空才能再開）
     if (text_len >= MOUSE_V2T_MAX_CHARS && !mouse_v2t_locked)
@@ -3870,12 +3959,13 @@ static void text_input_bar_cb(lv_event_t *e)
             if (max_move_y < 10 && !bottom_bar_gesture_timer_enabled &&
                 !is_bottom_bar_gesture_active)
             {
-                // 純點擊（沒明顯拖動）→ 觸發 mic 開/關（等同 keyboard 長按空白鍵）
-                LOG_D("Bottom bar tap → toggle V2T mic");
-                if (mouse_v2t_active)
-                    mouse_v2t_close_and_paste();
+                // 純點擊（沒明顯拖動）→ 開啟通用清單選擇器
+                // （取代原本的 mic 開/關，V2T 仍保留給 keyboard mode 用）
+                LOG_D("Bottom bar tap → open mouse list overlay");
+                if (mouse_list_visible)
+                    mouse_list_hide();
                 else
-                    mouse_v2t_open();
+                    mouse_list_show();
             }
     #if USING_EDGE_BOTTOM_DETECTION
             if (bottom_bar_gesture_timer_enabled)
@@ -4438,79 +4528,6 @@ static void mode_swipe_kill_timer(void)
     }
 }
 
-static void mode_label_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    lv_indev_t *indev = lv_indev_get_act();
-    if (!indev)
-        return;
-    lv_point_t pt;
-    lv_indev_get_point(indev, &pt);
-
-    if (code == LV_EVENT_PRESSED)
-    {
-        mode_swipe_kill_timer();
-        mode_swipe_start_x = pt.x;
-        mode_swipe_active = true;
-        mode_swipe_target =
-            (hid_mode_t)(((int)current_hid_mode + 1) % HID_MODE_COUNT);
-        mode_swipe_target_side = +1;
-        mode_set_visible(mode_swipe_target, true);
-        mode_set_translate_x(current_hid_mode, 0);
-        mode_set_translate_x(mode_swipe_target, LV_HOR_RES_MAX);
-    }
-    else if (code == LV_EVENT_PRESSING)
-    {
-        if (!mode_swipe_active)
-            return;
-        int16_t dx = pt.x - mode_swipe_start_x;
-        mode_swipe_target_side = (dx >= 0) ? -1 : +1;
-        mode_set_translate_x(current_hid_mode, dx);
-        int16_t target_offset =
-            mode_swipe_target_side * LV_HOR_RES_MAX + dx;
-        mode_set_translate_x(mode_swipe_target, target_offset);
-    }
-    else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
-    {
-        if (!mode_swipe_active)
-            return;
-        int16_t dx = pt.x - mode_swipe_start_x;
-        int abs_dx = abs(dx);
-
-        // 視為點擊（dx 很小）→ instant swap 沒動畫，避免 dx 符號 jitter
-        // 造成 target 進場方向不統一
-        if (abs_dx < 10)
-        {
-            mode_swipe_kill_timer();
-            hid_mode_t old_mode = current_hid_mode;
-            hid_mode_t new_mode = (hid_mode_t)(
-                ((int)current_hid_mode + 1) % HID_MODE_COUNT);
-            current_hid_mode = new_mode;
-            mode_set_visible(old_mode, false);
-            mode_set_visible(new_mode, true);
-            mode_set_translate_x(old_mode, 0);
-            mode_set_translate_x(new_mode, 0);
-            if (connected_device_label &&
-                lv_obj_is_valid(connected_device_label))
-                lv_label_set_text(connected_device_label,
-                                  next_mode_name(current_hid_mode));
-            keyboard_visible = (new_mode == HID_MODE_KEYBOARD);
-            mode_swipe_active = false;
-            LOG_D("mode tap -> %s", hid_mode_names[new_mode]);
-            return;
-        }
-
-        mode_swipe_is_commit = (abs_dx > MODE_SWIPE_COMMIT_THRESHOLD);
-        mode_swipe_from_dx = dx;
-        mode_swipe_to_dx = mode_swipe_is_commit
-                               ? -mode_swipe_target_side * LV_HOR_RES_MAX
-                               : 0;
-        mode_swipe_start_tick = lv_tick_get();
-        mode_swipe_kill_timer();
-        mode_swipe_timer = lv_timer_create(mode_swipe_timer_cb, 16, NULL);
-    }
-}
-
 /**
  * @brief 放開時把節點對齊到「某個節點正好落在 180° 中央」的位置
  *        snap 位置每 18° 一格、bias 9°（5 個合法值：9°, 27°, 45°, 63°, 81°）
@@ -4635,9 +4652,9 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     lv_img_set_src(trackpad_enter_img, &enter_icon);
     lv_obj_center(trackpad_enter_img);
 
-    // === Trackpad mode 的麥克風按鈕（純視覺指示）===
+    // === Trackpad mode 下方按鈕：通用清單選擇器入口（取代原本的麥克風）===
     // 點擊跟拖動都由下方擴大版的 bottom_swipe_area 統一處理：
-    //   點擊 → 觸發 mic 開/關；拖向上 → multitask hint
+    //   點擊 → 開啟清單 overlay；拖向上 → multitask hint
     trackpad_mic_btn = lv_obj_create(parent);
     lv_obj_set_size(trackpad_mic_btn, 50, 50);
     lv_obj_align(trackpad_mic_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
@@ -4648,13 +4665,14 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     // 不 CLICKABLE：事件穿透到下層 bottom_swipe_area 統一處理
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_CLICKABLE);
 
-    // 預設顯示：mic icon（保留既有 v2t_mic_img 變數）
+    // 預設顯示：mic icon 圖片（功能改為開清單，但視覺維持原本麥克風圖）
     v2t_mic_img = lv_img_create(trackpad_mic_btn);
     trackpad_mic_icon = v2t_mic_img;
     lv_img_set_src(v2t_mic_img, &icon_mic);
     lv_obj_center(v2t_mic_img);
 
-    // mic 啟動時顯示：藍色「確定」按鈕（與 keyboard space 確定鍵一致）
+    // 保留 mic_red_dot 物件以維持原有 V2T pipeline 引用，但 trackpad mode
+    // 不再走 V2T → 始終 hidden
     trackpad_mic_red_dot = lv_obj_create(trackpad_mic_btn);
     lv_obj_remove_style_all(trackpad_mic_red_dot);
     lv_obj_set_size(trackpad_mic_red_dot, 50, 50);
@@ -4814,6 +4832,752 @@ static void create_keyboard_mode_ui(lv_obj_t *parent)
         lv_obj_clear_flag(custom_keyboard, LV_OBJ_FLAG_HIDDEN);
 }
 
+// =====================================================================
+// Trackpad mode：通用清單選擇器 overlay 實作
+// =====================================================================
+
+extern bool commu_send_update_instruction(const char *json);
+
+/**
+ * @brief 重建清單按鈕視覺：以 mouse_list_items[] / mouse_list_count 為來源
+ *        重新填字到既有的 button label，沒用到的 button 隱藏
+ */
+static void mouse_list_rebuild_items(void)
+{
+    if (!mouse_list_container || !lv_obj_is_valid(mouse_list_container))
+        return;
+    for (uint8_t i = 0; i < MOUSE_LIST_MAX_ITEMS; i++)
+    {
+        if (!mouse_list_btns[i] || !lv_obj_is_valid(mouse_list_btns[i]))
+            continue;
+        if (i < mouse_list_count)
+        {
+            lv_obj_clear_flag(mouse_list_btns[i], LV_OBJ_FLAG_HIDDEN);
+            if (mouse_list_labels[i] &&
+                lv_obj_is_valid(mouse_list_labels[i]))
+            {
+                lv_label_set_text(mouse_list_labels[i],
+                                  mouse_list_items[i].title);
+            }
+        }
+        else
+        {
+            lv_obj_add_flag(mouse_list_btns[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    // scroll 回頂端
+    lv_obj_scroll_to_y(mouse_list_container, 0, LV_ANIM_OFF);
+    mouse_list_sync_nodes_to_scroll();
+}
+
+/**
+ * @brief 依目前 offset 重畫左右兩側弧形節點（用 lv_line 線段，仿 trackpad
+ *        模式左側 scroll bar 的視覺：徑向短線、中央亮兩端暗）
+ */
+static void mouse_list_update_nodes(void)
+{
+    if (mouse_list_right_nodes[0] == NULL)
+        return;
+
+    const float cx = LV_HOR_RES_MAX / 2.0f;
+    const float cy = LV_VER_RES_MAX / 2.0f;
+    const int32_t cur_arc_w = LEFT_SCROLL_ARC_W_ACTIVE;
+    const float mid_r = cx - (float)cur_arc_w * 0.5f;
+    const float span = LEFT_SCROLL_ARC_SPAN_DEG; // 90°
+    const float spacing = LEFT_SCROLL_NODE_SPACING_DEG; // 18°
+    const float base_anchor = MOUSE_LIST_RIGHT_ARC_MIN_DEG; // -45°
+
+    // 仿 trackpad mode 左 arc：節點亮度依目前位置距弧中心的距離算
+    //   - 右弧中心 = 0°，兩端 ±45°
+    //   - 中央最亮 0x4D，邊緣淡出朝黑 (≈ 0x0F)
+    //   - 節點旋轉時等於滑過固定的亮度漸層
+    // 計算放在迴圈內，跟著每個節點的 angle_deg 算
+
+    for (int i = 0; i < MOUSE_LIST_NODE_COUNT; i++)
+    {
+        lv_obj_t *node = mouse_list_right_nodes[i];
+        if (node == NULL) continue;
+
+        // 整組節點旋轉：node i 的角度 = base_anchor + i × spacing + offset
+        float base = base_anchor + spacing * (float)i;
+        float angle_deg = base + mouse_list_node_offset_deg;
+
+        // 包裹到 [base_anchor, base_anchor+span) 讓節點在弧線內循環
+        angle_deg = fmodf(angle_deg - base_anchor, span);
+        if (angle_deg < 0.0f) angle_deg += span;
+        angle_deg += base_anchor;
+
+        float rad = angle_deg * LEFT_SCROLL_PI / 180.0f;
+        int16_t px = (int16_t)(cx + mid_r * cosf(rad));
+        int16_t py = (int16_t)(cy + mid_r * sinf(rad));
+
+        float tick_len = 20.0f;
+        int16_t line_w = 6;
+        float ux = cosf(rad);
+        float uy = sinf(rad);
+        int16_t x0 = (int16_t)(px + ux * tick_len * 0.5f);
+        int16_t y0 = (int16_t)(py + uy * tick_len * 0.5f);
+        int16_t x1 = (int16_t)(px - ux * tick_len * 0.5f);
+        int16_t y1 = (int16_t)(py - uy * tick_len * 0.5f);
+        mouse_list_right_node_pts[i][0].x = x0;
+        mouse_list_right_node_pts[i][0].y = y0;
+        mouse_list_right_node_pts[i][1].x = x1;
+        mouse_list_right_node_pts[i][1].y = y1;
+
+        // 依當前 angle 算亮度（中央 0° 最亮）
+        float t = angle_deg / (span * 0.5f); // [-1, 1)
+        while (t > 1.0f) t -= 2.0f;
+        while (t < -1.0f) t += 2.0f;
+        float factor = cosf(t * LEFT_SCROLL_PI * 0.5f);
+        factor = factor * factor;
+        float blend = 0.2f + 0.8f * factor;
+        if (blend < 0.0f) blend = 0.0f;
+        if (blend > 1.0f) blend = 1.0f;
+        uint8_t cv = (uint8_t)((float)0x4D * blend);
+        lv_color_t node_color = lv_color_make(cv, cv, cv);
+
+        lv_line_set_points(node, mouse_list_right_node_pts[i], 2);
+        lv_obj_set_style_line_width(node, line_w, 0);
+        lv_obj_set_style_line_color(node, node_color, 0);
+    }
+}
+
+/**
+ * @brief 把 list scroll 位置同步到節點旋轉量
+ *        每換一個 item 旋轉一個 spacing（18°），head 會明顯滑到下一格
+ *        ；超過 span 由 fmod wrap（頭再從另一邊出現）
+ */
+static void mouse_list_sync_nodes_to_scroll(void)
+{
+    if (!mouse_list_container || !lv_obj_is_valid(mouse_list_container))
+        return;
+    lv_coord_t scroll_y = lv_obj_get_scroll_y(mouse_list_container);
+    lv_coord_t max_scroll = lv_obj_get_scroll_top(mouse_list_container) +
+                            lv_obj_get_scroll_bottom(mouse_list_container);
+    if (max_scroll < 1) max_scroll = 1;
+    float pct = (float)scroll_y / (float)max_scroll;
+    if (pct < 0.0f) pct = 0.0f;
+    if (pct > 1.0f) pct = 1.0f;
+    // 每個 item 對應 1 個 node spacing 的旋轉
+    float total_rotation = (mouse_list_count > 1)
+                               ? (float)(mouse_list_count - 1) *
+                                     LEFT_SCROLL_NODE_SPACING_DEG
+                               : LEFT_SCROLL_ARC_SPAN_DEG;
+    mouse_list_node_offset_deg = pct * total_rotation;
+    mouse_list_node_offset_deg =
+        fmodf(mouse_list_node_offset_deg, LEFT_SCROLL_ARC_SPAN_DEG);
+    if (mouse_list_node_offset_deg < 0.0f)
+        mouse_list_node_offset_deg += LEFT_SCROLL_ARC_SPAN_DEG;
+    mouse_list_update_nodes();
+}
+
+static void mouse_list_container_scroll_cb(lv_event_t *e)
+{
+    (void)e;
+    // 節點視覺一律以 scroll 位置為唯一來源（包含弧形拖曳期間 + snap 動畫期間）
+    mouse_list_sync_nodes_to_scroll();
+}
+
+/**
+ * @brief 右側弧形觸碰拖曳 → 轉成 list 垂直 scroll
+ *        仿 trackpad mode 的 left arc theta 追蹤：dθ × ARC_SPAN 映射成 scroll px
+ */
+static void mouse_list_right_touch_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t *indev = lv_indev_get_act();
+    if (!indev) return;
+    lv_point_t pt;
+    lv_indev_get_point(indev, &pt);
+
+    if (code == LV_EVENT_PRESSED)
+    {
+        mouse_list_arc_dragging = true;
+        mouse_list_arc_last_theta = left_scroll_finger_theta(&pt);
+    }
+    else if (code == LV_EVENT_PRESSING && mouse_list_arc_dragging)
+    {
+        if (!mouse_list_container || !lv_obj_is_valid(mouse_list_container))
+            return;
+        float theta = left_scroll_finger_theta(&pt);
+        float delta =
+            left_scroll_normalize_delta(theta - mouse_list_arc_last_theta);
+        mouse_list_arc_last_theta = theta;
+        if (fabsf(delta) < 0.001f) return;
+
+        // 直接 scroll list；節點視覺由 scroll cb 自動同步，
+        // 避免「累積角度旋轉」和「pct × 90° 反推」兩種算法不一致導致
+        // snap 動畫過程中節點跳動或不跟著動
+        lv_coord_t max_scroll =
+            lv_obj_get_scroll_top(mouse_list_container) +
+            lv_obj_get_scroll_bottom(mouse_list_container);
+        // 一個完整 ARC_SPAN 弧度（90° = π/2）對應 max_scroll
+        float scroll_per_rad =
+            (float)max_scroll * 2.0f / LEFT_SCROLL_PI;
+        lv_coord_t cur = lv_obj_get_scroll_y(mouse_list_container);
+        lv_coord_t target =
+            cur + (lv_coord_t)(delta * scroll_per_rad);
+        if (target < 0) target = 0;
+        if (target > max_scroll) target = max_scroll;
+        lv_obj_scroll_to_y(mouse_list_container, target, LV_ANIM_OFF);
+        // 兜底：scroll_to_y 與 cur 相等時 LVGL 不會 fire scroll event，
+        // 顯式 sync 一次保險（多呼一次是 idempotent）
+        mouse_list_sync_nodes_to_scroll();
+    }
+    else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+    {
+        mouse_list_arc_dragging = false;
+        // 放開時 snap 到最近的 item（弧形拖曳是用 scroll_to_y(LV_ANIM_OFF)
+        // 直接設位置，LVGL 不會自動 snap，這裡手動對齊）
+        if (mouse_list_container && lv_obj_is_valid(mouse_list_container))
+        {
+            lv_coord_t pitch = MOUSE_LIST_ITEM_HEIGHT + 10; // item + pad_row
+            lv_coord_t scroll_y = lv_obj_get_scroll_y(mouse_list_container);
+            lv_coord_t target = ((scroll_y + pitch / 2) / pitch) * pitch;
+            lv_coord_t max_scroll =
+                lv_obj_get_scroll_top(mouse_list_container) +
+                lv_obj_get_scroll_bottom(mouse_list_container);
+            if (target < 0) target = 0;
+            if (target > max_scroll) target = max_scroll;
+            lv_obj_scroll_to_y(mouse_list_container, target, LV_ANIM_ON);
+        }
+    }
+}
+
+/**
+ * @brief 點擊清單項目 → 透過 commu_send_update_instruction 把 {id,title}
+ *        送回手機（沿用 instruction list 的回傳格式）
+ */
+static void mouse_list_item_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED)
+        return;
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= mouse_list_count)
+        return;
+    mouse_list_item_t *item = &mouse_list_items[idx];
+    LOG_I("Mouse list item clicked: id=%s, title=%s", item->id, item->title);
+
+    // 組 {id,title} JSON，沿用 commu_send_update_instruction 通道
+    char json[MOUSE_LIST_ITEM_ID_LEN + MOUSE_LIST_ITEM_TITLE_LEN + 32];
+    rt_snprintf(json, sizeof(json), "{\"id\":\"%s\",\"title\":\"%s\"}",
+                item->id, item->title);
+    commu_send_update_instruction(json);
+    // 下方輸入框是 V2T 文字用，不顯示選項標題
+}
+
+/**
+ * @brief Overlay 背景被點 → 關閉 overlay（讓使用者退出）
+ *        item btn 自己會吃 CLICKED 事件，不會冒泡到這
+ */
+static void mouse_list_overlay_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED)
+        return;
+    // 只有點擊到 overlay 自己（背景空白處）才關閉
+    if (lv_event_get_target(e) == lv_event_get_current_target(e))
+        mouse_list_hide();
+}
+
+/**
+ * @brief 建立通用清單 overlay：左右弧形 + 中央 vertical scroll list + 下方輸入框
+ *        建立完先 hidden，由 mouse_list_show() 顯示
+ */
+static void create_mouse_list_overlay(lv_obj_t *parent)
+{
+    mouse_list_overlay = lv_obj_create(parent);
+    lv_obj_remove_style_all(mouse_list_overlay);
+    lv_obj_set_size(mouse_list_overlay, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_align(mouse_list_overlay, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(mouse_list_overlay, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(mouse_list_overlay, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(mouse_list_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(mouse_list_overlay, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(mouse_list_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(mouse_list_overlay, mouse_list_overlay_event_cb,
+                        LV_EVENT_CLICKED, NULL);
+
+    // 中央 vertical scroll list — 跨全螢幕高度，讓 item 可以滾過螢幕上下緣
+    // 而不會被容器邊界硬切（容器邊就是螢幕邊，圓形 panel 自然 mask）
+    mouse_list_container = lv_obj_create(mouse_list_overlay);
+    lv_obj_remove_style_all(mouse_list_container);
+    lv_obj_set_size(mouse_list_container, MOUSE_LIST_VIEW_WIDTH,
+                    LV_VER_RES_MAX);
+    lv_obj_align(mouse_list_container, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_flex_flow(mouse_list_container, LV_FLEX_FLOW_COLUMN);
+    // main_place = START：items 從 pad_top 那條線往下依序排，不要整體置中
+    // （CENTER 會把 items group 在容器中央對齊，配上 pad_top + 內容溢出時
+    //  items 實際座標會被往上推，導致前幾項 scroll_y 變負值被我 clamp 到 0）
+    lv_obj_set_flex_align(mouse_list_container, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_scroll_dir(mouse_list_container, LV_DIR_VER);
+    lv_obj_set_scroll_snap_y(mouse_list_container, LV_SCROLL_SNAP_CENTER);
+    lv_obj_set_scrollbar_mode(mouse_list_container, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_pad_row(mouse_list_container, 10, 0);
+    // 上下 padding 撐開 → 第一/最後一筆 item 都能 snap 到正中央
+    lv_obj_set_style_pad_top(mouse_list_container,
+                             LV_VER_RES_MAX / 2 - MOUSE_LIST_ITEM_HEIGHT / 2,
+                             0);
+    lv_obj_set_style_pad_bottom(mouse_list_container,
+                                LV_VER_RES_MAX / 2 -
+                                    MOUSE_LIST_ITEM_HEIGHT / 2,
+                                0);
+    lv_obj_add_event_cb(mouse_list_container, mouse_list_container_scroll_cb,
+                        LV_EVENT_SCROLL, NULL);
+
+    // === 右側弧形節點（樣式對齊 trackpad mode 左側 scroll bar；左側不畫）===
+    for (int i = 0; i < MOUSE_LIST_NODE_COUNT; i++)
+    {
+        lv_obj_t *line = lv_line_create(mouse_list_overlay);
+        lv_obj_remove_style_all(line);
+        lv_obj_set_pos(line, 0, 0);
+        lv_obj_set_style_line_color(line, lv_color_hex(0x4D4D4D), 0);
+        lv_obj_set_style_line_rounded(line, true, 0);
+        lv_obj_set_style_line_width(line, 6, 0);
+        lv_obj_set_style_line_opa(line, LV_OPA_COVER, 0);
+        lv_obj_clear_flag(line, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(line, LV_OBJ_FLAG_CLICKABLE);
+        mouse_list_right_nodes[i] = line;
+    }
+    mouse_list_node_offset_deg = 0.0f;
+    mouse_list_update_nodes();
+
+    // 右側透明觸碰區，吃右弧形拖曳手勢轉成 list scroll
+    // （左側不需要拖，純視覺；要拖也滑列表即可）
+    mouse_list_right_touch = lv_obj_create(mouse_list_overlay);
+    lv_obj_remove_style_all(mouse_list_right_touch);
+    lv_obj_set_size(mouse_list_right_touch, 80, LV_VER_RES_MAX);
+    lv_obj_align(mouse_list_right_touch, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_set_style_bg_opa(mouse_list_right_touch, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(mouse_list_right_touch, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(mouse_list_right_touch, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(mouse_list_right_touch, mouse_list_right_touch_cb,
+                        LV_EVENT_ALL, NULL);
+
+    // 預先建立 MAX 個 button，依 mouse_list_count 動態 show/hide
+    // 寬度 280 留出兩邊空間給左右弧形觸控區（特別是右側拖曳 scroll）
+    for (uint8_t i = 0; i < MOUSE_LIST_MAX_ITEMS; i++)
+    {
+        lv_obj_t *btn = lv_obj_create(mouse_list_container);
+        lv_obj_set_size(btn, 280, MOUSE_LIST_ITEM_HEIGHT);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(0x222222), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_color(btn, lv_color_hex(0xFFFFFF),
+                                      LV_PART_MAIN);
+        lv_obj_set_style_border_opa(btn, LV_OPA_30, LV_PART_MAIN);
+        lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(btn, 22, LV_PART_MAIN);
+        lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(btn, LV_OBJ_FLAG_EVENT_BUBBLE);
+        lv_obj_add_flag(btn, LV_OBJ_FLAG_HIDDEN);
+
+        lv_obj_t *lbl = lv_label_create(btn);
+        lv_label_set_text(lbl, "");
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(lbl, lv_pct(95));
+        lv_obj_center(lbl);
+
+        lv_obj_add_event_cb(btn, mouse_list_item_event_cb, LV_EVENT_CLICKED,
+                            (void *)(intptr_t)i);
+        mouse_list_btns[i] = btn;
+        mouse_list_labels[i] = lbl;
+    }
+
+    // 下方固定不動的輸入框（顯示對端回傳文字）
+    // 位置往上拉，避免靠近圓形畫面邊緣被切到
+    mouse_list_input_box = lv_obj_create(mouse_list_overlay);
+    lv_obj_set_size(mouse_list_input_box, 300, 50);
+    lv_obj_align(mouse_list_input_box, LV_ALIGN_BOTTOM_MID, 0, -80);
+    lv_obj_set_style_bg_color(mouse_list_input_box, lv_color_hex(0x1a1a1a),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(mouse_list_input_box, LV_OPA_90, LV_PART_MAIN);
+    lv_obj_set_style_border_color(mouse_list_input_box, lv_color_hex(0xFFFFFF),
+                                  LV_PART_MAIN);
+    lv_obj_set_style_border_opa(mouse_list_input_box, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_set_style_border_width(mouse_list_input_box, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(mouse_list_input_box, 25, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(mouse_list_input_box, 8, LV_PART_MAIN);
+    lv_obj_clear_flag(mouse_list_input_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(mouse_list_input_box, LV_OBJ_FLAG_CLICKABLE);
+
+    mouse_list_input_label = lv_label_create(mouse_list_input_box);
+    lv_label_set_text(mouse_list_input_label, "");
+    lv_obj_set_style_text_color(mouse_list_input_label, lv_color_hex(0xFFFFFF),
+                                0);
+    lv_obj_set_style_text_align(mouse_list_input_label, LV_TEXT_ALIGN_CENTER,
+                                0);
+    lv_label_set_long_mode(mouse_list_input_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(mouse_list_input_label, lv_pct(100));
+    lv_obj_center(mouse_list_input_label);
+
+    // 預設假資料（PC/Phone 端透過 mouse_list_set_items 覆蓋）
+    mouse_list_count = 4;
+    rt_strncpy(mouse_list_items[0].id, "demo_1",
+               MOUSE_LIST_ITEM_ID_LEN - 1);
+    rt_strncpy(mouse_list_items[0].title, "Demo Option 1",
+               MOUSE_LIST_ITEM_TITLE_LEN - 1);
+    rt_strncpy(mouse_list_items[1].id, "demo_2",
+               MOUSE_LIST_ITEM_ID_LEN - 1);
+    rt_strncpy(mouse_list_items[1].title, "Demo Option 2",
+               MOUSE_LIST_ITEM_TITLE_LEN - 1);
+    rt_strncpy(mouse_list_items[2].id, "demo_3",
+               MOUSE_LIST_ITEM_ID_LEN - 1);
+    rt_strncpy(mouse_list_items[2].title, "Demo Option 3",
+               MOUSE_LIST_ITEM_TITLE_LEN - 1);
+    rt_strncpy(mouse_list_items[3].id, "demo_4",
+               MOUSE_LIST_ITEM_ID_LEN - 1);
+    rt_strncpy(mouse_list_items[3].title, "Demo Option 4",
+               MOUSE_LIST_ITEM_TITLE_LEN - 1);
+    mouse_list_rebuild_items();
+}
+
+static void mouse_list_show(void)
+{
+    if (!mouse_list_overlay || !lv_obj_is_valid(mouse_list_overlay))
+        return;
+    mouse_list_rebuild_items();
+    lv_obj_clear_flag(mouse_list_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(mouse_list_overlay);
+    mouse_list_visible = true;
+}
+
+static void mouse_list_hide(void)
+{
+    if (!mouse_list_overlay || !lv_obj_is_valid(mouse_list_overlay))
+        return;
+    lv_obj_add_flag(mouse_list_overlay, LV_OBJ_FLAG_HIDDEN);
+    mouse_list_visible = false;
+}
+
+/**
+ * @brief 公開 API：手機/電腦端餵資料用
+ *        items 是 (id, title) pair 陣列、count 是數量（≤ MOUSE_LIST_MAX_ITEMS）
+ */
+void mouse_list_set_items(const char *const *ids, const char *const *titles,
+                          uint8_t count)
+{
+    if (count > MOUSE_LIST_MAX_ITEMS)
+        count = MOUSE_LIST_MAX_ITEMS;
+    for (uint8_t i = 0; i < count; i++)
+    {
+        rt_strncpy(mouse_list_items[i].id, ids[i] ? ids[i] : "",
+                   MOUSE_LIST_ITEM_ID_LEN - 1);
+        mouse_list_items[i].id[MOUSE_LIST_ITEM_ID_LEN - 1] = '\0';
+        rt_strncpy(mouse_list_items[i].title, titles[i] ? titles[i] : "",
+                   MOUSE_LIST_ITEM_TITLE_LEN - 1);
+        mouse_list_items[i].title[MOUSE_LIST_ITEM_TITLE_LEN - 1] = '\0';
+    }
+    mouse_list_count = count;
+    mouse_list_rebuild_items();
+}
+
+/**
+ * @brief 公開 API：手機/電腦端回傳文字顯示用
+ */
+void mouse_list_set_result_text(const char *text)
+{
+    if (!mouse_list_input_label || !lv_obj_is_valid(mouse_list_input_label))
+        return;
+    lv_label_set_text(mouse_list_input_label, text ? text : "");
+}
+
+// =====================================================================
+// 媒體中心 pull-down panel 實作
+// =====================================================================
+
+// 用 ble_hid.h 內現成的 consumer report 函式：
+extern void play_pause_through_hid(void);
+extern void play_next_through_hid(void);
+extern void play_prev_through_hid(void);
+extern void volume_up_through_hid(void);
+extern void volume_down_through_hid(void);
+extern char *get_media_title(void);
+
+LV_IMG_DECLARE(img_media_play);
+LV_IMG_DECLARE(img_media_pause);
+LV_IMG_DECLARE(img_media_previous);
+LV_IMG_DECLARE(img_media_next);
+LV_IMG_DECLARE(volume_up);
+LV_IMG_DECLARE(volume_down);
+
+static void media_center_update_play_icon(bool playing)
+{
+    media_center_play_state = playing;
+    if (!media_center_play_img || !lv_obj_is_valid(media_center_play_img))
+        return;
+    lv_img_set_src(media_center_play_img,
+                   playing ? &img_media_pause : &img_media_play);
+}
+
+static void media_center_play_btn_cb(lv_event_t *e)
+{
+    (void)e;
+    LOG_D("media center play/pause tap");
+    play_pause_through_hid();
+    media_center_update_play_icon(!media_center_play_state);
+}
+
+static void media_center_prev_btn_cb(lv_event_t *e)
+{
+    (void)e;
+    LOG_D("media center prev tap");
+    play_prev_through_hid();
+}
+
+static void media_center_next_btn_cb(lv_event_t *e)
+{
+    (void)e;
+    LOG_D("media center next tap");
+    play_next_through_hid();
+}
+
+static void media_center_vol_up_btn_cb(lv_event_t *e)
+{
+    (void)e;
+    LOG_D("media center vol up tap");
+    volume_up_through_hid();
+}
+
+static void media_center_vol_down_btn_cb(lv_event_t *e)
+{
+    (void)e;
+    LOG_D("media center vol down tap");
+    volume_down_through_hid();
+}
+
+static lv_obj_t *media_center_make_icon_btn(lv_obj_t *parent,
+                                            const lv_img_dsc_t *icon,
+                                            lv_event_cb_t cb,
+                                            uint16_t size)
+{
+    lv_obj_t *btn = lv_obj_create(parent);
+    lv_obj_remove_style_all(btn);
+    lv_obj_set_size(btn, size, size);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *img = lv_img_create(btn);
+    lv_img_set_src(img, icon);
+    // 圖檔原生尺寸 ~150px（沿用 app_media.c 在 116×80 btn 用 zoom=0.6 的比例）
+    // 依 btn size 線性縮放，讓 icon 約佔 btn 寬度的 ~70%
+    uint16_t zoom = (uint16_t)(((uint32_t)256 * size * 7) / (10 * 150));
+    lv_img_set_zoom(img, zoom);
+    lv_obj_center(img);
+    return btn;
+}
+
+/**
+ * @brief 建立媒體中心 tileview（仿 app_clock_status_bar）：
+ *        - tileview 全螢幕，預設 hidden，初始 tile = home (0,1)
+ *        - media tile (0,0)：媒體中心內容，geometric 在 home 上方
+ *          → 從 home 往下拉，scroll_y 減少，media 從畫面上方滑下來
+ *        - home tile (0,1)：透明，初始位置
+ *        拖曳/snap/動畫全交給 LVGL tileview 處理，不再自己算 y
+ */
+static void create_media_center_panel(lv_obj_t *parent)
+{
+    media_tileview = lv_tileview_create(parent);
+    lv_obj_set_size(media_tileview, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_align(media_tileview, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_scrollbar_mode(media_tileview, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_bg_opa(media_tileview, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(media_tileview, 0, 0);
+    lv_obj_set_style_pad_all(media_tileview, 0, 0);
+    lv_obj_add_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
+
+    // media (0,0)：geometric 上方，往下拖才滾到這裡
+    media_tile = lv_tileview_add_tile(media_tileview, 0, 0, LV_DIR_BOTTOM);
+    lv_obj_set_size(media_tile, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_set_style_bg_color(media_tile, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(media_tile, LV_OPA_80, 0);
+    lv_obj_set_style_border_width(media_tile, 0, 0);
+    lv_obj_set_style_radius(media_tile, 0, 0);
+    lv_obj_set_scrollbar_mode(media_tile, LV_SCROLLBAR_MODE_OFF);
+
+    // home (0,1)：geometric 下方，初始位置；只能往上滾去 media
+    media_home_tile = lv_tileview_add_tile(media_tileview, 0, 1, LV_DIR_TOP);
+    lv_obj_set_style_bg_opa(media_home_tile, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(media_home_tile, 0, 0);
+    lv_obj_set_size(media_home_tile, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_set_scrollbar_mode(media_home_tile, LV_SCROLLBAR_MODE_OFF);
+
+    // 曲名
+    media_center_title_label = lv_label_create(media_tile);
+    lv_label_set_text(media_center_title_label, "Media Title");
+    lv_obj_set_style_text_color(media_center_title_label,
+                                lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_align(media_center_title_label,
+                                LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(media_center_title_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(media_center_title_label, LV_HOR_RES_MAX - 80);
+    lv_obj_align(media_center_title_label, LV_ALIGN_TOP_MID, 0, 100);
+
+    // 控制列：上一首 / 播放 / 下一首（btn 與 icon 同步放大 1.5x）
+    lv_obj_t *btn_prev =
+        media_center_make_icon_btn(media_tile, &img_media_previous,
+                                   media_center_prev_btn_cb, 90);
+    lv_obj_align(btn_prev, LV_ALIGN_CENTER, -120, 0);
+
+    media_center_play_btn =
+        media_center_make_icon_btn(media_tile, &img_media_play,
+                                   media_center_play_btn_cb, 120);
+    lv_obj_align(media_center_play_btn, LV_ALIGN_CENTER, 0, 0);
+    media_center_play_img = lv_obj_get_child(media_center_play_btn, 0);
+
+    lv_obj_t *btn_next = media_center_make_icon_btn(media_tile,
+                                                    &img_media_next,
+                                                    media_center_next_btn_cb,
+                                                    90);
+    lv_obj_align(btn_next, LV_ALIGN_CENTER, 120, 0);
+
+    // 音量 -/+
+    lv_obj_t *btn_vol_down =
+        media_center_make_icon_btn(media_tile, &volume_down,
+                                   media_center_vol_down_btn_cb, 75);
+    lv_obj_align(btn_vol_down, LV_ALIGN_BOTTOM_MID, -90, -80);
+
+    lv_obj_t *btn_vol_up =
+        media_center_make_icon_btn(media_tile, &volume_up,
+                                   media_center_vol_up_btn_cb, 75);
+    lv_obj_align(btn_vol_up, LV_ALIGN_BOTTOM_MID, 90, -80);
+
+    // tileview value-changed：snap 回 home 時自動隱藏
+    lv_obj_add_event_cb(media_tileview, media_tileview_event_cb,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+
+    // 起始 tile 設 home (0,1)
+    lv_obj_set_tile_id(media_tileview, 0, 1, false);
+}
+
+/**
+ * @brief tileview value-changed cb：snap 完成後決定是否要收掉 tileview
+ *        - tile 在 home → tileview 收進 hidden（讓底下 mouse mode UI 可用）
+ *        - tile 在 media → 維持顯示
+ */
+static void media_tileview_event_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!media_tileview || !lv_obj_is_valid(media_tileview))
+        return;
+    lv_obj_t *act = lv_tileview_get_tile_act(media_tileview);
+    if (act == media_home_tile)
+    {
+        lv_obj_add_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+/**
+ * @brief 對外的開/收媒體中心：透過 lv_obj_set_tile_id 切換，
+ *        animate=true 時用 tileview 內建動畫
+ */
+static void media_center_set_open(bool open, bool animate)
+{
+    if (!media_tileview || !lv_obj_is_valid(media_tileview))
+        return;
+    if (open)
+    {
+        lv_obj_clear_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(media_tileview);
+        // 開啟 = 滾到 media tile (0,0)
+        lv_obj_set_tile_id(media_tileview, 0, 0, animate);
+        if (media_center_title_label &&
+            lv_obj_is_valid(media_center_title_label))
+        {
+            char *title = get_media_title();
+            lv_label_set_text(media_center_title_label,
+                              (title && title[0]) ? title : "Media Title");
+        }
+    }
+    else
+    {
+        // 收起 = 滾到 home tile (0,1)
+        lv_obj_set_tile_id(media_tileview, 0, 1, animate);
+        // value-changed 會在動畫結束後收 hidden；無動畫直接收
+        if (!animate)
+            lv_obj_add_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+/**
+ * @brief 切到下一個 hid mode（觸碰板 ↔ 鍵盤）
+ *        從原本 mode_label_event_cb 的「短拖視為 tap」分支抽出來共用
+ */
+static void hid_mode_toggle(void)
+{
+    mode_swipe_kill_timer();
+    hid_mode_t old_mode = current_hid_mode;
+    hid_mode_t new_mode =
+        (hid_mode_t)(((int)current_hid_mode + 1) % HID_MODE_COUNT);
+    current_hid_mode = new_mode;
+    mode_set_visible(old_mode, false);
+    mode_set_visible(new_mode, true);
+    mode_set_translate_x(old_mode, 0);
+    mode_set_translate_x(new_mode, 0);
+    if (connected_device_label && lv_obj_is_valid(connected_device_label))
+        lv_label_set_text(connected_device_label,
+                          next_mode_name(current_hid_mode));
+    keyboard_visible = (new_mode == HID_MODE_KEYBOARD);
+    mode_swipe_active = false;
+    LOG_D("mode tap -> %s", hid_mode_names[new_mode]);
+}
+
+/**
+ * @brief status_bar_area_up 事件 cb（仿 app_clock_status_bar 的
+ *        notification_status_bar_cb）
+ *        - PRESSED：把 tileview 顯示出來、tile 設成 home (0,0)
+ *          這樣使用者後續拖曳時 LVGL 會把 press 轉給 tileview，
+ *          由 tileview 原生處理拖曳/snap/動畫
+ *        - RELEASED：只在 press 沒被 tileview 接走時才會 fire
+ *          → 視為純點擊：收掉 tileview + 切換 mode
+ */
+static void status_bar_area_up_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSED)
+    {
+        if (!media_tileview || !lv_obj_is_valid(media_tileview))
+            return;
+        // 把 tileview 鎖在 home (0,1)；接下來使用者往下拖時 LVGL 把
+        // press 轉給 tileview，tileview 自己滾到 media (0,0)
+        lv_obj_set_tile_id(media_tileview, 0, 1, false);
+        lv_obj_clear_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(media_tileview);
+    }
+    else if (code == LV_EVENT_RELEASED)
+    {
+        // 沒被 tileview 接走 → tap → 收 tileview + 切換 mode
+        if (media_tileview && lv_obj_is_valid(media_tileview))
+        {
+            lv_obj_add_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
+        }
+        hid_mode_toggle();
+    }
+}
+
+/**
+ * @brief 對外暴露的更新介面：曲名/播放狀態變化時通知 mouse mode 媒體中心
+ *        bloc_control.c 的 notify_media_title 改成也呼叫這個
+ */
+void mouse_mode_handle_media_title(const char *title)
+{
+    if (!media_center_title_label ||
+        !lv_obj_is_valid(media_center_title_label))
+        return;
+    lv_label_set_text(media_center_title_label,
+                      (title && title[0]) ? title : "Media Title");
+}
+
+void mouse_mode_handle_media_play_state(bool playing)
+{
+    media_center_update_play_icon(playing);
+}
+
 /**
  * @brief Creates the mouse screen
  * @param scr Screen object
@@ -4931,7 +5695,7 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_t *switch_mode = lv_img_create(bg);
     lv_img_set_src(switch_mode, &switch_icon);
     lv_obj_align(switch_mode, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_add_event_cb(switch_mode, mode_label_event_cb, LV_EVENT_ALL, NULL);
+    // 純視覺，事件交給下面的 status_bar_area_up 統一處理
 
     // Connected device name label at top
     connected_device_label = lv_label_create(bg);
@@ -4943,11 +5707,23 @@ void lv_create_mouse_screen(lv_obj_t *scr)
                                 0);
     lv_label_set_long_mode(connected_device_label, LV_LABEL_LONG_DOT);
     lv_obj_align(connected_device_label, LV_ALIGN_TOP_MID, 0, 24);
-    // 改用作 mode label：可左右拖動切換模式
-    lv_obj_add_flag(connected_device_label, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(connected_device_label, mode_label_event_cb,
-                        LV_EVENT_ALL, NULL);
     lv_label_set_text(connected_device_label, next_mode_name(current_hid_mode));
+
+    // 頂部 status_bar_area_up：媒體中心 pull-down trigger（仿 clock 模式）
+    //   - PRESS 把 tileview 顯示出來，press 自動轉給 tileview 處理拖曳
+    //   - RELEASE 只在沒拖曳的 tap 情境會 fire → 收 tileview + 切 mode
+    //   - 故意「不」加 PRESS_LOCK，讓 press 在 tileview 顯示後可以轉移過去
+    status_bar_area_up = lv_obj_create(bg);
+    lv_obj_remove_style_all(status_bar_area_up);
+    lv_obj_set_size(status_bar_area_up, LV_HOR_RES_MAX, 80);
+    lv_obj_align(status_bar_area_up, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_opa(status_bar_area_up, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(status_bar_area_up, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(status_bar_area_up, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_add_flag(status_bar_area_up, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(status_bar_area_up, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_add_event_cb(status_bar_area_up, status_bar_area_up_cb,
+                        LV_EVENT_ALL, NULL);
 
     // Trackpad mode 下方 multitask hint 觸發區（跨 mode hit area）
     bottom_swipe_area = lv_obj_create(bg);
@@ -4961,6 +5737,14 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_flag(bottom_swipe_area, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(bottom_swipe_area, text_input_bar_cb, LV_EVENT_ALL,
                         NULL);
+
+    // === 通用清單選擇器 overlay（trackpad mode 下方按鈕觸發）===
+    // 建立在 bg 下方而非 mode_container 內，確保 overlay 跨 mode 都能用且
+    // 不會跟著 mode 切換動畫一起飄
+    create_mouse_list_overlay(bg);
+
+    // === 媒體中心 pull-down panel（從頂部模式切換條往下拉觸發）===
+    create_media_center_panel(bg);
 
     #if ENABLE_MENU_FEATURE
     menu_window(bg);
@@ -5135,6 +5919,35 @@ static void on_stop(void)
     scroll_last_theta = 0.0f;
     scroll_ui_level = 0;
     left_scroll_active = false;
+
+    // mouse list overlay 清理
+    mouse_list_overlay = NULL;
+    mouse_list_container = NULL;
+    mouse_list_input_box = NULL;
+    mouse_list_input_label = NULL;
+    mouse_list_right_touch = NULL;
+    for (int i = 0; i < MOUSE_LIST_NODE_COUNT; i++)
+    {
+        mouse_list_right_nodes[i] = NULL;
+    }
+    for (int i = 0; i < MOUSE_LIST_MAX_ITEMS; i++)
+    {
+        mouse_list_btns[i] = NULL;
+        mouse_list_labels[i] = NULL;
+    }
+    mouse_list_node_offset_deg = 0.0f;
+    mouse_list_arc_last_theta = 0.0f;
+    mouse_list_arc_dragging = false;
+    mouse_list_visible = false;
+
+    // 媒體中心清理
+    media_tileview = NULL;
+    media_home_tile = NULL;
+    media_tile = NULL;
+    media_center_title_label = NULL;
+    media_center_play_btn = NULL;
+    media_center_play_img = NULL;
+    status_bar_area_up = NULL;
 
     // Clean up file list
     file_list = NULL;
