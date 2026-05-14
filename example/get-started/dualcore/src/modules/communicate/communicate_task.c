@@ -91,11 +91,10 @@ static inline void l2_write_header(uint8_t *buf, uint8_t cmd_id, uint8_t key,
 /* Connection guard shared by all direct-send APIs. */
 static inline bool commu_can_send(void)
 {
-    return SkaiWatchSys.connected_to_phone && !is_ble_dfu_thread_running();
+    return SkaiWatchSys.connected_to_phone;
 }
 
-/* OTA path skips the DFU guard — by definition we report OTA status while
-   DFU may be running. */
+/* OTA path uses the same connection guard. */
 static inline bool commu_can_send_ota(void)
 {
     return SkaiWatchSys.gap_conn_state == GAP_CONN_STATE_CONNECTED &&

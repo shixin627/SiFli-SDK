@@ -88,7 +88,7 @@ static uint8_t _power_save_enable = 0;
 static int _gesture_detect_threshold = 15;
 
 /* Forward declarations -----------------------------------------------------*/
-static void set_language(char *language);
+static void set_language(const char *language);
 static void notify_language(void);
 static void set_dnd_status(uint8_t status);
 static void set_watch_face(T_CLOCK_MENU_TYPE watch_face);
@@ -108,7 +108,7 @@ static void notify_screen_time(void);
 static void notify_power_save_mode(void);
 static void notify_lift_switch_status(void);
 static void notify_user_profile(void);
-static uint8_t convert_string_to_language_code(char *str);
+static uint8_t convert_string_to_language_code(const char *str);
 
 /* Private function implementations -----------------------------------------*/
 /**
@@ -379,7 +379,7 @@ char *bloc_setting_get_language(void)
  * @param  str: Language string code ("en_us" or "zh_cn")
  * @retval Numeric language code
  */
-static uint8_t convert_string_to_language_code(char *str)
+static uint8_t convert_string_to_language_code(const char *str)
 {
     if (strcmp(str, "en_us") == 0)
     {
@@ -410,7 +410,7 @@ static void notify_language(void)
  * @param  language: Language string code ("en_us" or "zh_cn")
  * @retval None
  */
-static void set_language(char *language)
+static void set_language(const char *language)
 {
     uint8_t code = convert_string_to_language_code(language);
 

@@ -701,28 +701,12 @@ lv_obj_t *common_gradient_label(lv_obj_t *parent, const char *text)
 
 void handle_download_progress_update(int progress)
 {
-	if (!gui_app_is_actived(APP_ID_INTERACT))
+	/* Silent OTA: progress is tracked internally but no UI is launched. */
+	if (progress > 0 && progress <= 100)
 	{
-		AppIntent appIntent;
-		strcpy(appIntent.app_id, APP_ID_INTERACT);
-		strcpy(appIntent.intent, "ota_update");
-		watch_run_app_by_intent(&appIntent);
+		SkaiWatchSys.ota_progress = progress;
 	}
-	else
-	{
-		if (progress > 0 && progress <= 100)
-		{
-			SkaiWatchSys.ota_progress = progress;
-			lvgl_msg_t msg;
-			msg.type = LVGL_MSG_TYPE_OTA_UPDATE;
-			msg.data.ota_update = SkaiWatchSys.ota_progress;
-			lvgl_send_msg(msg);
-		}
-		else if (progress < 0)
-		{
-			gui_app_exit(APP_ID_INTERACT);
-		}
-	}
+	(void)progress;
 }
 
 

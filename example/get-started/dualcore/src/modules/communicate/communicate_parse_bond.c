@@ -51,7 +51,7 @@ void communicate_parse_init(void)
 /**
  * @brief   Resolve private bond commands from the phone.
  * @param   key      L2 key (one of BOND_KEY enums)
- * @param   pValue   payload pointer (may be borrowed by INTERACT_BONDED)
+ * @param   pValue   payload pointer (may be borrowed by interact_bonded)
  * @param   length   payload length
  */
 void resolve_private_bond_command(uint8_t key, const uint8_t *pValue, uint16_t length)
@@ -70,7 +70,7 @@ void resolve_private_bond_command(uint8_t key, const uint8_t *pValue, uint16_t l
         }
         LOG_I("[KEY_BOND_REQUEST]Bond Request");
         commu_send_bond_success();
-        watch_system_interact(INTERACT_BONDED, (void *)pValue);
+        interact_bonded(pValue);
     }
     break;
     case KEY_LOGIN_REQUEST:
@@ -83,12 +83,12 @@ void resolve_private_bond_command(uint8_t key, const uint8_t *pValue, uint16_t l
         LOG_I("[KEY_LOGIN_REQUEST]login request");
         set_main_phonepeer_addr();
         commu_send_login_success();
-        watch_system_interact(INTERACT_LOGIN, NULL);
+        SkaiWatchSys.flag_field.device_had_logged = true;
     }
     break;
     case KEY_UNBOND:
     {
-        watch_system_interact(INTERACT_CANCEL_BOND, NULL);
+        interact_cancel_bond();
         if (unbond_disc_timer != RT_NULL)
         {
             rt_timer_start(unbond_disc_timer);

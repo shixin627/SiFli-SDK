@@ -241,11 +241,8 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         }
         else if (status == 3) // 往內旋解鎖
         {
-            if (!is_ble_dfu_thread_running())
-            {
-                // watch_hcpu_resume_with_reason(WAKEUP_REASON_ROTATE_INWARD);
-                send_virtual_gesture_event(GESTURE_EVENT_WRIST_PRONATION);
-            }
+            // watch_hcpu_resume_with_reason(WAKEUP_REASON_ROTATE_INWARD);
+            send_virtual_gesture_event(GESTURE_EVENT_WRIST_PRONATION);
         }
         break;
     }
@@ -507,58 +504,6 @@ static int set_multi_gesture_mode(bool enable) { return send_sys_cmd_b1(MultiGes
 static int set_tap_and_hold_mode(bool enable)  { return send_sys_cmd_b1(TapAndHoldMode,    enable ? 1 : 0); }
 
 /**
- * @brief Control RGB LED with structured parameters
- *
- * This function sends RGB LED control parameters to the LCPU using the
- * watch_sys_rgb_led_params_t structure for better maintainability.
- *
- * Message format in msg.body:
- * [0]: RgbLedControl command
- * [1]: enable flag
- * [2]: red (0-255)
- * [3]: green (0-255)
- * [4]: blue (0-255)
- * [5]: brightness (0-100)
- * [6]: animation_mode
- * [7-10]: period_ms (uint32_t)
- * [11]: repeat_times
- *
- * @param params Pointer to RGB LED parameters structure
- * @return rt_err_t RT_EOK on success, error code otherwise
- */
-static int control_rgb_led(watch_sys_rgb_led_params_t *params)
-{
-    if (params == NULL)
-    {
-        LOG_E("RGB LED control: NULL parameters");
-        return -RT_ERROR;
-    }
-
-    LOG_D("RGB LED control: enable=%d, R=%d, G=%d, B=%d, brightness=%d, "
-          "mode=%d, period=%d, repeat=%d",
-          params->enable, params->red, params->green, params->blue,
-          params->brightness, params->animation_mode, params->period_ms,
-          params->repeat_times);
-
-    /* Disabled path matches legacy: only body[1]=enable is written. */
-    if (!params->enable)
-    {
-        return send_sys_cmd_b1(RgbLedControl, 0);
-    }
-    /* Enabled body layout: enable | r | g | b | brightness | mode | period_ms(2) | repeat(2) */
-    uint8_t b[10];
-    b[0] = 1;
-    b[1] = params->red;
-    b[2] = params->green;
-    b[3] = params->blue;
-    b[4] = params->brightness;
-    b[5] = params->animation_mode;
-    memcpy(b + 6, &params->period_ms,    sizeof(uint16_t));
-    memcpy(b + 8, &params->repeat_times, sizeof(uint16_t));
-    return send_sys_data_req(RgbLedControl, b, sizeof(b));
-}
-
-/**
  * @brief Register synchronization functions for the watch system
  *
  * This function sets up function pointers in the watch_sys_sync structure
@@ -587,7 +532,6 @@ static void register_watch_sys_sync_funs(void)
     watch_sys_sync.set_debug_mode = set_debug_mode;
     watch_sys_sync.set_multi_gesture_mode = set_multi_gesture_mode;
     watch_sys_sync.set_tap_and_hold_mode = set_tap_and_hold_mode;
-    watch_sys_sync.control_rgb_led = control_rgb_led;
 }
 
 /**

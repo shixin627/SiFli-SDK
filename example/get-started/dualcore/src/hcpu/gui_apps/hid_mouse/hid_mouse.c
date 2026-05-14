@@ -1186,10 +1186,9 @@ static void long_press_timer_callback(void *parameter)
 
 void open_v2t_mic(void)
 {
-    bool mic_listen_status = true;
     extern void set_voice_recognition_notified_from_mouse(bool status);
     set_voice_recognition_notified_from_mouse(true);
-    watch_system_interact(INTERACT_MIC_V2T_INPUT, &mic_listen_status);
+    interact_mic_v2t_input();
     // mic 啟動 → space btn 切成紅圓 X，按下會關 mic
     mouse_v2t_set_active(true);
 
@@ -3669,8 +3668,7 @@ static void mouse_v2t_open(void)
 // 關 mic + 送 Ctrl+V 貼上 + 清空 input bar（兩個 mode 共用）
 static void mouse_v2t_close_and_paste(void)
 {
-    bool status = false;
-    watch_system_interact(INTERACT_MIC_LISTEN, &status);
+    interact_mic_listen(false);
     mouse_v2t_set_active(false);
     if (control_provider.ble_hid_keyboard_paste)
     {
@@ -3720,8 +3718,7 @@ void mouse_apply_v2t_input(const char *text)
     if (text_len >= MOUSE_V2T_MAX_CHARS && !mouse_v2t_locked)
     {
         mouse_v2t_locked = true;
-        bool status = false;
-        watch_system_interact(INTERACT_MIC_LISTEN, &status);
+        interact_mic_listen(false);
         mouse_v2t_set_active(false); // 同步 space btn 視覺
         LOG_D("V2T input >= %d chars, mic auto-closed and locked",
               MOUSE_V2T_MAX_CHARS);

@@ -1382,10 +1382,6 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
 {
     static Quaternion prev_global_quat = {.w = 1, .x = 0, .y = 0, .z = 0};
     watch_sensor_motion_data = motion_data;
-    if (is_ble_dfu_thread_running())
-    {
-        return;
-    }
 #if ENABLE_WAVEFORM_CAPTURE
     // Process waveform capture for gesture recognition (migrated from LCPU)
     // This runs regardless of UI state to capture gestures consistently

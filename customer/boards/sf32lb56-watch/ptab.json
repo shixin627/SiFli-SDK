@@ -6,7 +6,7 @@
         "regions": [
             {
                 "offset": "0x00000000",
-                "max_size": "0x00400000",
+                "max_size": "0x00280000",
                 "name": "main",
                 "type": ["app_exec"],
                 "custom": {
@@ -22,8 +22,8 @@
                 "type": ["app_exec"]
             },
             {
-                "offset": "0x00400000",
-                "max_size": "0x00400000",
+                "offset": "0x00280000",
+                "max_size": "0x00580000",
                 "tags": [
                     "PSRAM_DATA"
                 ]
@@ -36,7 +36,7 @@
         "regions": [
             {
                 "offset": "0x00000000",
-                "max_size": "0x00400000",
+                "max_size": "0x00280000",
                 "tags": [
                     "HCPU_FLASH_CODE_LOAD_REGION"
                 ],
@@ -44,27 +44,27 @@
                 "type": ["app_img"]
             },
             {
-                "offset": "0x00400000",
-                "max_size": "0x06BF4000",
+                "offset": "0x00280000",
+                "max_size": "0x05780000",
                 "tags": ["FS_REGION"]
             },
             {
-                "offset": "0x06FF4000",
+                "offset": "0x05A00000",
                 "max_size": "0x00004000",
                 "tags": ["KVDB_DFU_REGION"]
             },
             {
-                "offset": "0x06FF8000",
+                "offset": "0x05A04000",
                 "max_size": "0x00004000",
                 "tags": ["KVDB_BLE_REGION"]
             },
             {
-                "offset": "0x06FFC000",
+                "offset": "0x05A08000",
                 "max_size": "0x00004000",
                 "tags": ["KVDB_PREFDB_REGION"]
             },
             {
-                "offset": "0x07000000",
+                "offset": "0x05A20000",
                 "max_size": "0x01000000",
                 "tags": ["BLE_OTA_REGION"]
             }

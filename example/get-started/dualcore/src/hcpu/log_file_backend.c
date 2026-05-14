@@ -367,14 +367,6 @@ static void flush_thread_entry(void *param)
         {
             continue;
         }
-        /* Pause disk writes during BLE DFU (OTA) to avoid contending with
-         * the firmware write path. Producer keeps filling the ring buffer;
-         * logs that overflow are counted in dropped_bytes and reported once
-         * OTA finishes. */
-        if (is_ble_dfu_thread_running())
-        {
-            continue;
-        }
         flush_once(&fsync_ctr);
     }
 }

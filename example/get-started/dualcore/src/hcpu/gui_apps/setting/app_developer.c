@@ -166,7 +166,7 @@ static void get_battery_voltage_btn_event_cb(lv_event_t *e)
 
     if (LV_EVENT_CLICKED == event)
     {
-        watch_system_interact(WATCH_REQUEST_BATTERY, NULL);
+        watch_sys_sync.request_battery_voltage();
     }
 }
 
@@ -175,7 +175,7 @@ static void get_battery_voltage_btn_event_cb(lv_event_t *e)
  */
 static void battery_request_timer_cb(lv_timer_t *timer)
 {
-    watch_system_interact(WATCH_REQUEST_BATTERY, NULL);
+    watch_sys_sync.request_battery_voltage();
 }
 
 /**
@@ -217,7 +217,7 @@ static void get_charge_status_btn_event_cb(lv_event_t *e)
 
     if (LV_EVENT_CLICKED == event)
     {
-        watch_system_interact(WATCH_REQUEST_CHARGE_STATUS, NULL);
+        watch_sys_sync.request_charge_status();
     }
 }
 
@@ -245,7 +245,7 @@ static void random_address_btn_event_callback(lv_event_t *e)
         extern void generate_random_public_address(uint8_t device_id);
         generate_random_public_address(0);
         rt_thread_mdelay(50);
-        watch_system_interact(WATCH_REBOOT, NULL);
+        peripheral_provider.hcpu_reboot();
     }
 }
 
@@ -694,7 +694,7 @@ static void restart_callback(lv_event_t *e)
     lv_obj_t *obj = lv_event_get_target(e);
     if (LV_EVENT_CLICKED == lv_event_get_code(e))
     {
-        watch_system_interact(WATCH_REBOOT, NULL);
+        peripheral_provider.hcpu_reboot();
     }
 }
 

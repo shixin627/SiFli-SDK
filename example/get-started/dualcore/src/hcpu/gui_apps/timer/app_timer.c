@@ -253,7 +253,7 @@ static void countdown_timer_cb(void *parameter)
         if (app_timer_data_ctx.remaining_time == 0)
         {
             _timeout = true;
-            watch_system_interact(INTERACT_TIMER_REMINDER, NULL);
+            interact_timer_reminder();
             LOG_D("Timer finished");
         }
         LOG_D("Remaining time: %d", app_timer_data_ctx.remaining_time);

@@ -12,7 +12,7 @@ extern "C"
 
     typedef struct
     {
-        void (*set_language)(char *language);            // 函數用於設置語言
+        void (*set_language)(const char *language);      // 函數用於設置語言
         void (*notify_language)(void);                   // 函數用於通知當前語言
         void (*set_dnd_status)(uint8_t status);          // 函數用於設置免打擾狀態
         void (*set_watch_face)(T_CLOCK_MENU_TYPE index); // 函數用於設置手錶面板

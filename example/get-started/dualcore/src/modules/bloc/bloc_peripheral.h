@@ -58,42 +58,6 @@ extern "C"
         int hr;
     } hr_sensor_data_t;
 
-    /**
-     * @brief RGB color structure
-     */
-    typedef struct
-    {
-        uint8_t green;
-        uint8_t red;
-        uint8_t blue;
-    } rgb_color_t;
-
-    /**
-     * @brief RGB animation modes
-     */
-    typedef enum
-    {
-        RGB_ANIM_STATIC = 0, // Static color, no animation
-        RGB_ANIM_BREATHING,  // Breathing effect (fade in/out)
-        RGB_ANIM_BLINK,      // Blink on/off
-        RGB_ANIM_RAINBOW,    // Rainbow color cycle
-        RGB_ANIM_FADE,       // Color fade transition
-        RGB_ANIM_MODE_COUNT
-    } rgb_animation_mode_t;
-
-    /**
-     * @brief RGB LED control parameters (for GUI/application layer)
-     * Note: This is different from watch_sys_rgb_led_params_t which is used
-     * for inter-core communication (HCPU <-> LCPU)
-     */
-    typedef struct
-    {
-        rgb_color_t color;
-        uint8_t brightness;
-        rgb_animation_mode_t animation_mode;
-        uint16_t period_ms;      // Period in milliseconds for each animation cycle
-        uint16_t repeat_times;    // Number of times to repeat (0 = infinite)
-    } rgb_led_params_t;
     typedef struct
     {
         uint32_t timestamp;
@@ -171,11 +135,6 @@ extern "C"
         void (*control_motor)(bool enable, motor_params_t *params);
         // audio
         void (*subscribe_audio_mic_sensor)(bool status);
-        // RGB LED control
-        void (*control_rgb_led)(bool enable, rgb_led_params_t *params);
-        void (*rgb_led_set_color)(rgb_color_t color, uint8_t brightness);
-        void (*rgb_led_set_animation)(rgb_animation_mode_t mode);
-        void (*rgb_led_off)(void);
         // save shared prefs
         void (*save_watch_shared_prefs)(watch_prefs_key key);
         void (*notify_battery_voltage)(uint16_t voltage_mv);
@@ -207,7 +166,6 @@ extern "C"
         POWER_MANAGE_IMU,
         POWER_MANAGE_HR,
         CONTROL_MOTOR,
-        CONTROL_RGB_LED,
         SAVE_SHARE_PREFS,
         NOTIFY_BATTERY_VOLTAGE,
         CHARGE_STATUS_CALLBACK,
@@ -226,17 +184,6 @@ extern "C"
             bool enable;
             motor_params_t params;
         } motor_control;
-        struct
-        {
-            bool enable;
-            rgb_led_params_t params;
-        } rgb_led_control;
-        struct
-        {
-            rgb_color_t color;
-            uint8_t brightness;
-        } rgb_led_color;
-        rgb_animation_mode_t rgb_animation_mode;
     } PeripheralArg;
     /// @brief peripheral message data
     typedef struct

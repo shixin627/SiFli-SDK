@@ -215,9 +215,7 @@ void motor_pattern_notification(void)
     motor_play_if_enabled(51, 50000, 2); /* 50ms × 2 */
 }
 
-// Extract sensor handling into a separate function
-static void
-handle_sensor_subscription(sensor_subscription_t sensor_subscription)
+void interact_sensor_subscription(sensor_subscription_t sensor_subscription)
 {
     switch (sensor_subscription.type)
     {
@@ -364,326 +362,213 @@ void motor_pattern_stop(void)
     peripheral_provider.control_motor(false, NULL);
 }
 
-#ifdef RGB_LED_CONTROL_PIN
-static void led_pattern_rgb_led_close(void)
+/* interact_*: thin glue when the action does more than a single provider
+   call. One-liners (LOG + single setter) belong at the call site. */
+
+void interact_find_watch(void)
 {
-    peripheral_provider.control_rgb_led(false, NULL);
-    LOG_D("led_pattern_rgb_led_close");
-    rgb_led_params_t params = {
-        .color = {.red = 0, .green = 0, .blue = 0},
-        .brightness = 0,
-        .animation_mode = RGB_ANIM_STATIC,
-        .period_ms = 500,
-        .repeat_times = 0, // infinite
-    };
-    peripheral_provider.control_rgb_led(true, &params);
+    AppIntent appIntent;
+    strcpy(appIntent.app_id, APP_ID_INTERACT);
+    strcpy(appIntent.intent, "find_me");
+    watch_run_app_by_intent(&appIntent);
 }
 
-static void led_pattern_rgb_led_open_write(uint8_t brightness)
+void interact_timer_reminder(void)
 {
-    peripheral_provider.control_rgb_led(false, NULL);
-    LOG_D("led_pattern_rgb_led_open_write");
-    rgb_led_params_t params = {
-        .color = {.red = 255, .green = 255, .blue = 255},
-        .brightness = brightness,
-        .animation_mode = RGB_ANIM_STATIC,
-        .period_ms = 500,
-        .repeat_times = 0, // infinite
-    };
-    peripheral_provider.control_rgb_led(true, &params);
-}
-
-static void led_pattern_rgb_led_breathing_blue(uint8_t brightness)
-{
-    rgb_led_params_t params = {
-        .color = {.red = 9, .green = 0, .blue = 255},
-        .brightness = brightness,
-        .animation_mode = RGB_ANIM_FADE,
-        .period_ms = 500,
-        .repeat_times = 1, // infinite
-    };
-    peripheral_provider.control_rgb_led(true, &params);
-}
-
-static void led_pattern_rgb_led_open_green(uint8_t brightness)
-{
-    peripheral_provider.control_rgb_led(false, NULL);
-    rgb_led_params_t params = {
-        .color = {.red = 0, .green = 255, .blue = 0},
-        .brightness = brightness,
-        .animation_mode = RGB_ANIM_STATIC,
-        .period_ms = 500,
-        .repeat_times = 0, // infinite
-    };
-    peripheral_provider.control_rgb_led(true, &params);
-}
-
-static void led_pattern_rgb_led_breathing_green(uint8_t brightness)
-{
-    rgb_led_params_t params = {
-        .color = {.red = 0, .green = 255, .blue = 0},
-        .brightness = brightness,
-        .animation_mode = RGB_ANIM_FADE,
-        .period_ms = 2000,
-        .repeat_times = 0, // infinite
-    };
-    peripheral_provider.control_rgb_led(true, &params);
-}
-
-static void led_pattern_rgb_led_fad_wight(uint8_t brightness)
-{
-    rgb_led_params_t params = {
-        .color = {.red = 255, .green = 255, .blue = 255},
-        .brightness = brightness,
-        .animation_mode = RGB_ANIM_FADE,
-        .period_ms = 1000,
-        .repeat_times = 1, // infinite
-    };
-    peripheral_provider.control_rgb_led(true, &params);
-}
-#endif // RGB_LED_CONTROL_PIN
-
-// Extract app management handling into a separate function
-static void handle_app_management(INTERACT_Type type, void *pValue)
-{
-    switch (type)
+    if (!gui_is_active())
     {
-    case INTERACT_FUNCTION_MENU_MAIN:
-        gui_app_run("Main");
-        break;
-
-    case INTERACT_BAT_LOW_LEVEL:
-    {
-        bool enable = *(bool *)pValue;
-        if (enable)
-        {
-            AppIntent appIntent;
-            strcpy(appIntent.app_id, APP_ID_INTERACT);
-            strcpy(appIntent.intent, "low_power_warning");
-            watch_run_app_by_intent(&appIntent);
-        }
-        else
-        {
-            watch_exit_app(APP_ID_INTERACT);
-        }
-        break;
+        gui_pm_fsm(GUI_PM_ACTION_BUTTON_CLICKED);
+        peripheral_provider.hcpu_resume();
+        rt_thread_mdelay(500);
     }
+    gui_app_run(APP_ID_TIMER);
+}
 
-    case INTERACT_TASK_LOADING:
-    {
-        bool loading = *(bool *)pValue;
-        lvgl_msg_t msg;
-        msg.type = LVGL_MSG_TYPE_LOADING;
-        msg.data.loading = loading;
-        lvgl_send_msg(msg);
-        break;
-    }
+void interact_mic_v2t_input(void)
+{
+    LOG_D("[interact_mic_v2t_input] Start voice recognition for V2T input");
+    voice_provider.vad_init();
+    start_voice_recognition(V2T_INTENT_MIC_INPUTE);
+}
 
-    case INTERACT_SHOW_QRCODE:
-    {
-        LOG_D("[INTERACT_SHOW_QRCODE] QRCODE:%s", pValue);
-        strcpy(qrcode_data, pValue);
-        AppIntent appIntent;
-        strcpy(appIntent.app_id, APP_ID_INTERACT);
-        strcpy(appIntent.intent, "show_qrcode");
-        watch_run_app_by_intent(&appIntent);
-        break;
-    }
+void interact_standby_wakeup(void)
+{
+    SkaiWatchSys.sys_power_status = 0;
+    sys_poweron_fsm(SYS_PWRON_EVT_BUTTON_LONG_PRESSED);
+}
 
-    case INTERACT_FIND_WATCH:
+void interact_bat_low_level(bool enable)
+{
+    if (enable)
     {
         AppIntent appIntent;
         strcpy(appIntent.app_id, APP_ID_INTERACT);
-        strcpy(appIntent.intent, "find_me");
+        strcpy(appIntent.intent, "low_power_warning");
         watch_run_app_by_intent(&appIntent);
-        break;
     }
-
-    case INTERACT_TIMER_REMINDER:
+    else
     {
-        // watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
-        if (!gui_is_active())
-        {
-            gui_pm_fsm(GUI_PM_ACTION_BUTTON_CLICKED);
-            peripheral_provider.hcpu_resume();
-            rt_thread_mdelay(500);
-        }
-        gui_app_run(APP_ID_TIMER);
-        break;
+        watch_exit_app(APP_ID_INTERACT);
     }
+}
 
-    case INTERACT_MIC_LISTEN:
-    {
-        bool enable = *(bool *)pValue;
-        if (enable)
-        {
-            LOG_D("[INTERACT_MIC_LISTEN] Start voice recognition");
-            voice_provider.vad_init();
-            start_voice_recognition(V2T_INTENT_CHAT);
-        }
-        else
-        {
-            LOG_D("[INTERACT_MIC_LISTEN] Stop voice recognition");
-            stop_voice_recognition(V2T_INTENT_MIC_INPUTE);
-            voice_provider.vad_deinit();
-        }
-        break;
-    }
+void interact_task_loading(bool loading)
+{
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_LOADING;
+    msg.data.loading = loading;
+    lvgl_send_msg(msg);
+}
 
-    case INTERACT_MIC_V2T_INPUT:
+void interact_show_qrcode(const char *qrcode)
+{
+    LOG_D("[interact_show_qrcode] QRCODE:%s", qrcode);
+    strcpy(qrcode_data, qrcode);
+    AppIntent appIntent;
+    strcpy(appIntent.app_id, APP_ID_INTERACT);
+    strcpy(appIntent.intent, "show_qrcode");
+    watch_run_app_by_intent(&appIntent);
+}
+
+void interact_mic_listen(bool enable)
+{
+    if (enable)
     {
-        LOG_D("[INTERACT_MIC_V2T_INPUT] Start voice recognition for V2T input");
+        LOG_D("[interact_mic_listen] Start voice recognition");
         voice_provider.vad_init();
-        start_voice_recognition(V2T_INTENT_MIC_INPUTE);
+        start_voice_recognition(V2T_INTENT_CHAT);
     }
-
-    case INTERACT_VOICE_RECOGNITION:
+    else
     {
-        app_gesture_indicator_t *gesture_indicator =
-            gui_app_get_gesture_indicator();
-        VOICE_RECOGNITION_PAYLOAD *msgData =
-            (VOICE_RECOGNITION_PAYLOAD *)pValue;
-        if (get_speech_coding() != msgData->header)
-        {
-            break;
-        }
-        if (gui_app_is_actived(APP_ID_SPEECH) ||
-            gui_app_is_actived(APP_ID_MESSAGE))
-        {
-            LOG_D("[INTERACT_VOICE_RECOGNITION]:%d, coding:%d", msgData->header,
-                  get_speech_coding());
-            handle_v2t_result(msgData);
-        }
-        else if (check_if_user_speaking_to_ai())
-        {
-            LOG_D("[INTERACT_VOICE_RECOGNITION]:%d, coding:%d, ai_coding:%d",
-                  msgData->header, get_speech_coding(), get_ai_coding());
-            handle_v2t_result(msgData);
-            lvgl_msg_t msg;
-            msg.type = LVGL_MSG_TYPE_SPEECH_SHOW_BG;
-            lvgl_send_msg(msg);
-            append_text_to_input_message();
-        }
-        else if (gui_app_is_actived(APP_ID_MOUSE))
-        {
-            handle_v2t_result(msgData);
-            append_text_to_mouse_input();
-        }
-        break;
+        LOG_D("[interact_mic_listen] Stop voice recognition");
+        stop_voice_recognition(V2T_INTENT_MIC_INPUTE);
+        voice_provider.vad_deinit();
     }
+}
 
-    case INTERACT_CHAT_RESULT:
+void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
+{
+    if (msgData == NULL)
+        return;
+    if (get_speech_coding() != msgData->header)
     {
-        LOG_D("[INTERACT_CHAT_RESULT] handle chat result");
-        MSG_DATA_PAYLOAD *msgData = (MSG_DATA_PAYLOAD *)pValue;
-        /* Accept reply if voice_recognition's speech_bg is shown OR the
-           instruction-list AI widget is open (speech_bg may be NULL in the
-           widget-integrated flow). */
-        lv_obj_t *sbg = gui_app_get_gesture_indicator()->speech_bg;
-        bool speech_bg_shown = sbg && lv_obj_is_valid(sbg) &&
-                               !lv_obj_has_flag(sbg, LV_OBJ_FLAG_HIDDEN);
-        if (speech_bg_shown || get_is_open_instruction_list_ai())
-        {
-            handle_skai_message("quick_ai", msgData);
-        }
-        else
-        {
-            LOG_E("Unknown app_id");
-        }
-        break;
+        return;
     }
-
-    case INTERACT_LOGIN:
+    if (gui_app_is_actived(APP_ID_SPEECH) ||
+        gui_app_is_actived(APP_ID_MESSAGE))
     {
-        LOG_D("[INTERACT_LOGIN]");
-        SkaiWatchSys.flag_field.device_had_logged = true;
+        LOG_D("[interact_voice_recognition]:%d, coding:%d", msgData->header,
+              get_speech_coding());
+        handle_v2t_result(msgData);
     }
-    break;
-
-    case INTERACT_CANCEL_BOND:
+    else if (check_if_user_speaking_to_ai())
     {
-        LOG_D("[INTERACT_CANCEL_BOND]");
-        SkaiWatchSys.flag_field.bond_state = false;
-        SkaiWatchSys.flag_field.device_had_logged = false;
+        LOG_D("[interact_voice_recognition]:%d, coding:%d, ai_coding:%d",
+              msgData->header, get_speech_coding(), get_ai_coding());
+        handle_v2t_result(msgData);
+        lvgl_msg_t msg;
+        msg.type = LVGL_MSG_TYPE_SPEECH_SHOW_BG;
+        lvgl_send_msg(msg);
+        append_text_to_input_message();
+    }
+    else if (gui_app_is_actived(APP_ID_MOUSE))
+    {
+        handle_v2t_result(msgData);
+        append_text_to_mouse_input();
+    }
+}
 
-        /*clear user data*/
-        SkaiWatchSys.gPedoData.global_steps = 0;
-        SkaiWatchSys.gPedoData.global_distance = 0;
-        SkaiWatchSys.gPedoData.global_calories = 0;
-        SkaiWatchSys.gPedoData.quarter_steps = 0;
-        SkaiWatchSys.gPedoData.quarter_distance = 0;
-        SkaiWatchSys.gPedoData.quarter_calories = 0;
+void interact_chat_result(MSG_DATA_PAYLOAD *msgData)
+{
+    LOG_D("[interact_chat_result] handle chat result");
+    if (msgData == NULL)
+        return;
+    /* Accept reply if voice_recognition's speech_bg is shown OR the
+       instruction-list AI widget is open (speech_bg may be NULL in the
+       widget-integrated flow). */
+    lv_obj_t *sbg = gui_app_get_gesture_indicator()->speech_bg;
+    bool speech_bg_shown = sbg && lv_obj_is_valid(sbg) &&
+                           !lv_obj_has_flag(sbg, LV_OBJ_FLAG_HIDDEN);
+    if (speech_bg_shown || get_is_open_instruction_list_ai())
+    {
+        handle_skai_message("quick_ai", msgData);
+    }
+    else
+    {
+        LOG_E("Unknown app_id");
+    }
+}
 
-        /*erase user id */
-        memset((void *)SkaiWatchSys.user_data.user_id, 0x00, USER_ID_LENGTH);
-        // reset phone os version
-        SkaiWatchSys.phone_os_version = NONE;
-        SkaiWatchSys.flag_field.auto_sync_enable = false;
+void interact_cancel_bond(void)
+{
+    LOG_D("[interact_cancel_bond]");
+    SkaiWatchSys.flag_field.bond_state = false;
+    SkaiWatchSys.flag_field.device_had_logged = false;
+
+    /*clear user data*/
+    SkaiWatchSys.gPedoData.global_steps = 0;
+    SkaiWatchSys.gPedoData.global_distance = 0;
+    SkaiWatchSys.gPedoData.global_calories = 0;
+    SkaiWatchSys.gPedoData.quarter_steps = 0;
+    SkaiWatchSys.gPedoData.quarter_distance = 0;
+    SkaiWatchSys.gPedoData.quarter_calories = 0;
+
+    /*erase user id */
+    memset((void *)SkaiWatchSys.user_data.user_id, 0x00, USER_ID_LENGTH);
+    // reset phone os version
+    SkaiWatchSys.phone_os_version = NONE;
+    SkaiWatchSys.flag_field.auto_sync_enable = false;
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
+    rt_thread_mdelay(300);
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_USER_DATA);
+}
+
+void interact_bonded(const uint8_t *user_id)
+{
+    if (SkaiWatchSys.flag_field.bond_state == false)
+    {
+        LOG_D("[interact_bonded] Just Bonded");
+        memcpy((void *)SkaiWatchSys.user_data.user_id, user_id, USER_ID_LENGTH);
+        // change bond status machine
+        SkaiWatchSys.flag_field.bond_state = true;
+        /*set current user state*/
+        SkaiWatchSys.user_data.user_profile.data = 0;
+        SkaiWatchSys.gPedoData.daily_step_target = 10000;
         peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
         rt_thread_mdelay(300);
         peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_USER_DATA);
     }
-    break;
-
-    case INTERACT_BONDED:
+    else
     {
-        if (SkaiWatchSys.flag_field.bond_state == false)
-        {
-            LOG_D("[INTERACT_BONDED] Just Bonded");
-            memcpy((void *)SkaiWatchSys.user_data.user_id, pValue,
-                   USER_ID_LENGTH);
-            // change bond status machine
-            SkaiWatchSys.flag_field.bond_state = true;
-            /*set current user state*/
-            SkaiWatchSys.user_data.user_profile.data = 0;
-            SkaiWatchSys.gPedoData.daily_step_target = 10000;
-            peripheral_provider.save_watch_shared_prefs(
-                WATCH_PREFS_KEY_FLAG_FIELD);
-            rt_thread_mdelay(300);
-            peripheral_provider.save_watch_shared_prefs(
-                WATCH_PREFS_KEY_USER_DATA);
-        }
-        else
-        {
-            LOG_D("[INTERACT_BONDED] Already bonded");
-        }
+        LOG_D("[interact_bonded] Already bonded");
     }
-    break;
+}
 
-    case INTERACT_PAIRING:
+void interact_pairing(bool enable)
+{
+    if (enable)
     {
-        bool enable = *(bool *)pValue;
-        if (enable)
-        {
-            AppIntent appIntent;
-            strcpy(appIntent.app_id, APP_ID_INTERACT);
-            strcpy(appIntent.intent, "ble_pairing");
-            watch_run_app_by_intent(&appIntent);
-        }
-        else
-        {
-            watch_exit_app(APP_ID_INTERACT);
-        }
+        AppIntent appIntent;
+        strcpy(appIntent.app_id, APP_ID_INTERACT);
+        strcpy(appIntent.intent, "ble_pairing");
+        watch_run_app_by_intent(&appIntent);
     }
-    break;
-
-    case INTERACT_CAMERA:
+    else
     {
-        uint8_t status = *(uint8_t *)pValue;
-        LOG_D("Camera status: %d", status);
-        if (status == 0x00)
-        {
-            SkaiWatchSys.flag_field.phone_camera_status = true;
-        }
-        else if (status == 0x01)
-        {
-            SkaiWatchSys.flag_field.phone_camera_status = false;
-        }
+        watch_exit_app(APP_ID_INTERACT);
     }
-    break;
+}
 
-    default:
-        break;
+void interact_camera(uint8_t status)
+{
+    LOG_D("Camera status: %d", status);
+    if (status == 0x00)
+    {
+        SkaiWatchSys.flag_field.phone_camera_status = true;
+    }
+    else if (status == 0x01)
+    {
+        SkaiWatchSys.flag_field.phone_camera_status = false;
     }
 }
 
@@ -709,141 +594,29 @@ void set_watch_sleep_state(const watch_sys_sleep_state_t *state)
 }
 #endif
 
-// Extract system control handling into a separate function
-static void handle_system_control(INTERACT_Type type, void *pValue)
-{
-    switch (type)
-    {
-#ifdef RGB_LED_CONTROL_PIN
-    case INTERACT_RGB_LED_OPEN_WRITE:
-    {
-        led_pattern_rgb_led_open_write(*(uint8_t *)pValue);
-        break;
-    }
-    case INTERACT_RGB_LED_OPEN_GREEN:
-    {
-        led_pattern_rgb_led_open_green(*(uint8_t *)pValue);
-        break;
-    }
-    case INTERACT_RGB_LED_OPEN_BLUE:
-    {
-        led_pattern_rgb_led_breathing_blue(*(uint8_t *)pValue);
-        break;
-    }
-    case INTERACT_RGB_LED_CLOSE:
-    {
-        led_pattern_rgb_led_close();
-        break;
-    }
-    case INTERACT_RGB_LED_BREATHING_GREEN:
-    {
-        led_pattern_rgb_led_breathing_green(*(uint8_t *)pValue);
-        break;
-    }
-    case INTERACT_RGB_LED_FADE_WIGHT:
-    {
-        led_pattern_rgb_led_fad_wight(*(uint8_t *)pValue);
-        break;
-    }
-#endif // RGB_LED_CONTROL_PIN
 #ifdef BSP_USING_BLOC_CONTROL
-    case INTERACT_SHOW_MEDIA_TITLE:
-    {
-        char *title = (char *)pValue;
-        control_provider.set_media_title(title);
-        break;
-    }
-
-    case INTERACT_SYNC_MEDIA_STATUS:
-    {
-        uint8_t status = *(uint8_t *)pValue;
-        if (status == 0x00)
-        {
-            LOG_D("[INTERACT_SYNC_MEDIA_STATUS]remote media pause");
-            control_provider.notify_bt_speaker_media_status(false);
-        }
-        else if (status == 0x01)
-        {
-            LOG_D("[INTERACT_SYNC_MEDIA_STATUS]remote media play");
-            control_provider.notify_bt_speaker_media_status(true);
-        }
-        break;
-    }
-
-#endif
-
-    default:
-        break;
-    }
-}
-
-// Extract system settings into a separate function
-static void handle_system_settings(INTERACT_Type type, void *pValue)
+void interact_sync_media_status(uint8_t status)
 {
-#ifdef BSP_USING_BLOC_SETTING
-
-    switch (type)
+    if (status == 0x00)
     {
-    case LANGUAGE_SET:
+        LOG_D("[interact_sync_media_status] remote media pause");
+        control_provider.notify_bt_speaker_media_status(false);
+    }
+    else if (status == 0x01)
     {
-        char *language = (char *)pValue;
-        LOG_D("[LANGUAGE_SET] Language:%s", language);
-        setting_provider.set_language(language);
-        load_instruction_list();
-        break;
+        LOG_D("[interact_sync_media_status] remote media play");
+        control_provider.notify_bt_speaker_media_status(true);
     }
-    case WATCH_WATCHFACE_SET:
-    {
-        T_CLOCK_MENU_TYPE index = *(uint8_t *)pValue;
-        LOG_D("Watchface index:%d", index);
-        setting_provider.set_watch_face(index);
-        break;
-    }
-    case WATCH_DND_MODE_SET:
-    {
-        uint8_t status = *(uint8_t *)pValue;
-        LOG_D("DND mode:%d", status);
-        setting_provider.set_dnd_status(status);
-        break;
-    }
-    case WATCH_ALARM_INIT:
-        subscribe_alarm_client();
-        break;
-    case WATCH_BRIGHTNESS_SET:
-    {
-        uint8_t brightness = *(uint8_t *)pValue;
-        LOG_D("[WATCH_BRIGHTNESS_SET] Brightness:%d", brightness);
-        gui_set_brightness(brightness, true);
-        break;
-    }
-    case TIME_FORMAT_SET:
-    {
-        uint8_t format = *(uint8_t *)pValue;
-        LOG_D("[TIME_FORMAT_SET] Time format:%d", format);
-        setting_provider.set_hour_format(format);
-        break;
-    }
-    case SCREEN_TIME_SET:
-    {
-        uint8_t time = *(uint8_t *)pValue;
-        LOG_D("[SCREEN_TIME_SET] Screen time:%d", time);
-        setting_provider.set_screen_time(time);
-        break;
-    }
-    case LIFT_WRIST_DETECT_SET:
-    {
-        bool status = *(bool *)pValue;
-        LOG_D("[LIFT_WRIST_DETECT_SET] Lift wrist detect:%d", status);
-        setting_provider.set_lift_switch_status(status);
-        break;
-    }
-
-    default:
-        break;
-    }
-
-#endif
 }
+#endif
+
+#ifdef BSP_USING_BLOC_SETTING
+void interact_language_set(const char *language)
+{
+    setting_provider.set_language(language);
+    load_instruction_list();
+}
+#endif
 
 void watch_system_wakeup(void)
 {
@@ -879,80 +652,6 @@ void watch_system_sleep(void)
     }
 }
 
-// Extract power management handling into a separate function
-static void handle_power_management(INTERACT_Type type, void *pValue)
-{
-    switch (type)
-    {
-    case WATCH_OPEN_DISPLAY_TO_APP_LIST:
-        set_user_want_to_open_display_to_instruction_list(true);
-        break;
-    case WATCH_GESTURE_UNLOCK:
-        handle_gesture_unlock();
-        break;
-    case WATCH_REBOOT:
-        peripheral_provider.hcpu_reboot();
-        break;
-    case STANDBY_WAKEUP:
-    {
-        SkaiWatchSys.sys_power_status = 0;
-        sys_poweron_fsm(SYS_PWRON_EVT_BUTTON_LONG_PRESSED);
-        break;
-    }
-#ifdef BSP_USING_WATCH_SYS_CLIENT
-    case WATCH_REQUEST_BATTERY:
-        watch_sys_sync.request_battery_voltage();
-        break;
-
-    case WATCH_REQUEST_CHARGE_STATUS:
-        watch_sys_sync.request_charge_status();
-        break;
-#endif
-    default:
-        break;
-    }
-}
-
-/// @brief
-/// @param type
-/// @param pValue
-/// @return pointer to the value
-void *watch_system_interact(INTERACT_Type type, void *pValue)
-{
-    if (is_ble_dfu_thread_running())
-    {
-        LOG_W("BLE DFU thread is running, cannot interact with the system");
-        return NULL;
-    }
-
-    if (type == SENSOR_INTERACT_TYPE)
-    {
-        sensor_subscription_t sensor_subscription =
-            *(sensor_subscription_t *)pValue;
-        handle_sensor_subscription(sensor_subscription);
-    }
-    else if (type >= APP_INTERACT_TYPE_BEGIN && type <= APP_INTERACT_TYPE_END)
-    {
-        handle_app_management(type, pValue);
-    }
-    else if (type >= CONTROL_INTERACT_TYPE_BEGIN &&
-             type <= CONTROL_INTERACT_TYPE_END)
-    {
-        handle_system_control(type, pValue);
-    }
-    else if (type >= SETTINGS_INTERACT_TYPE_BEGIN &&
-             type <= SETTINGS_INTERACT_TYPE_END)
-    {
-        handle_system_settings(type, pValue);
-    }
-    else if (type >= POWER_INTERACT_TYPE_BEGIN &&
-             type <= POWER_INTERACT_TYPE_END)
-    {
-        handle_power_management(type, pValue);
-    }
-    return NULL;
-}
-
 #if !kReleaseMode
 /// 系統設置
 static int set_watch_system(int argc, char *argv[])
@@ -967,7 +666,7 @@ static int set_watch_system(int argc, char *argv[])
         {
             if (argc == 3)
             {
-                watch_system_interact(LANGUAGE_SET, argv[2]);
+                interact_language_set(argv[2]);
             }
         }
         // 設定錶盤
@@ -979,7 +678,7 @@ static int set_watch_system(int argc, char *argv[])
                 uint8_t index = atoi(argv[2]);
                 if (index >= 0 && index <= 8)
                 {
-                    watch_system_interact(WATCH_WATCHFACE_SET, &index);
+                    setting_provider.set_watch_face((T_CLOCK_MENU_TYPE)index);
                 }
                 else
                 {
@@ -993,15 +692,13 @@ static int set_watch_system(int argc, char *argv[])
         {
             if (argc == 3)
             {
-                uint8_t status = 0;
                 if (strcmp(argv[2], "on") == 0)
                 {
-                    status = 1;
-                    watch_system_interact(WATCH_DND_MODE_SET, &status);
+                    setting_provider.set_dnd_status(1);
                 }
                 else if (strcmp(argv[2], "off") == 0)
                 {
-                    watch_system_interact(WATCH_DND_MODE_SET, &status);
+                    setting_provider.set_dnd_status(0);
                 }
             }
         }
@@ -1011,15 +708,13 @@ static int set_watch_system(int argc, char *argv[])
         {
             if (argc == 3)
             {
-                uint8_t format_code = 0;
                 if (strcmp(argv[2], "12") == 0)
                 {
-                    watch_system_interact(TIME_FORMAT_SET, &format_code);
+                    setting_provider.set_hour_format(0);
                 }
                 else if (strcmp(argv[2], "24") == 0)
                 {
-                    format_code = 1;
-                    watch_system_interact(TIME_FORMAT_SET, &format_code);
+                    setting_provider.set_hour_format(1);
                 }
             }
         }
@@ -1032,7 +727,7 @@ static int set_watch_system(int argc, char *argv[])
                 uint8_t brightness = atoi(argv[2]);
                 if (brightness >= 0 && brightness <= 100)
                 {
-                    watch_system_interact(WATCH_BRIGHTNESS_SET, &brightness);
+                    gui_set_brightness(brightness, true);
                 }
                 else
                 {
@@ -1049,7 +744,7 @@ static int set_watch_system(int argc, char *argv[])
                 uint8_t time = atoi(argv[2]);
                 if (time >= 5 && time <= 30)
                 {
-                    watch_system_interact(SCREEN_TIME_SET, &time);
+                    setting_provider.set_screen_time(time);
                 }
                 else
                 {
@@ -1064,21 +759,19 @@ static int set_watch_system(int argc, char *argv[])
         {
             if (argc == 3)
             {
-                bool status = false;
                 if (strcmp(argv[2], "on") == 0)
                 {
-                    status = true;
-                    watch_system_interact(LIFT_WRIST_DETECT_SET, &status);
+                    setting_provider.set_lift_switch_status(true);
                 }
                 else if (strcmp(argv[2], "off") == 0)
                 {
-                    watch_system_interact(LIFT_WRIST_DETECT_SET, &status);
+                    setting_provider.set_lift_switch_status(false);
                 }
             }
         }
         else if (strcmp(argv[1], "-reboot_hcpu") == 0)
         {
-            watch_system_interact(WATCH_REBOOT, NULL);
+            peripheral_provider.hcpu_reboot();
         }
         else if (strcmp(argv[1], "-sleep") == 0)
         {
@@ -1124,7 +817,7 @@ static int control_motor(int argc, char *argv[])
         }
         else if (strcmp(argv[1], "-find_watch") == 0)
         {
-            watch_system_interact(INTERACT_FIND_WATCH, NULL);
+            interact_find_watch();
         }
         else if (strcmp(argv[1], "-scrolling_app") == 0)
         {
@@ -1146,47 +839,6 @@ static int control_motor(int argc, char *argv[])
     return 0;
 }
 MSH_CMD_EXPORT(control_motor, "control_motor [OPTION] ...");
-
-    #ifdef RGB_LED_CONTROL_PIN
-static int control_led(int argc, char *argv[])
-{
-    if (argc >= 2)
-    {
-        if (strcmp(argv[1], "-close") == 0)
-        {
-            watch_system_interact(INTERACT_RGB_LED_CLOSE, NULL);
-        }
-        else if (strcmp(argv[1], "-open_write") == 0)
-        {
-            uint8_t led_brightness = 20;
-            watch_system_interact(INTERACT_RGB_LED_OPEN_WRITE, &led_brightness);
-        }
-        else if (strcmp(argv[1], "-open_green") == 0)
-        {
-            uint8_t led_brightness = 20;
-            watch_system_interact(INTERACT_RGB_LED_OPEN_GREEN, &led_brightness);
-        }
-        else if (strcmp(argv[1], "-breathing_green") == 0)
-        {
-            uint8_t led_brightness = 20;
-            watch_system_interact(INTERACT_RGB_LED_BREATHING_GREEN,
-                                  &led_brightness);
-        }
-        else if (strcmp(argv[1], "-fade_wight") == 0)
-        {
-            uint8_t led_brightness = 20;
-            watch_system_interact(INTERACT_RGB_LED_FADE_WIGHT, &led_brightness);
-        }
-        else if (strcmp(argv[1], "-breathing_blue") == 0)
-        {
-            uint8_t led_brightness = 20;
-            watch_system_interact(INTERACT_RGB_LED_OPEN_BLUE, &led_brightness);
-        }
-    }
-    return 0;
-}
-MSH_CMD_EXPORT(control_led, "control_led [OPTION] ...");
-    #endif // RGB_LED_CONTROL_PIN
 
 static int utest_user_speech_intent(int argc, char *argv[])
 {

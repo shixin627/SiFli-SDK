@@ -91,10 +91,6 @@ void watch_storage_api_unlock(void)
 
 static share_prefs_t *open_watch_prefs()
 {
-  if (is_ble_dfu_thread_running())
-  {
-    return NULL;
-  }
   watch_storage_api_lock();
   if (WatchPrefs.pref != NULL)
   {

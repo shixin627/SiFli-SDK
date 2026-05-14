@@ -307,7 +307,7 @@ void bloc_alarm_stop_ringing(bool snooze_5min)
 
    When the watch is asleep, peripheral power rails (including the motor PWM
    controller) are down. Just calling start_motor() returns silently because
-   the GPIO/PWM is unpowered. Mirror INTERACT_TIMER_REMINDER's wake pattern:
+   the GPIO/PWM is unpowered. Mirror interact_timer_reminder()'s wake pattern:
    trigger the PM FSM, resume HCPU peripherals, wait ~500ms for rails to
    stabilise, *then* vibrate and surface the alarm UI. */
 void bloc_alarm_on_fire(int32_t alarm_idx)
@@ -348,7 +348,7 @@ static int alarm_request(int argc, char *argv[])
     {
         if (strcmp(argv[1], "subscribe") == 0)
         {
-            watch_system_interact(WATCH_ALARM_INIT, NULL);
+            subscribe_alarm_client();
         }
         else if (strcmp(argv[1], "unsubscribe") == 0)
         {

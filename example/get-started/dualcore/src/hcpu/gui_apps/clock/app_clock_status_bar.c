@@ -136,11 +136,6 @@ static void notification_status_bar_cb(lv_event_t *event)
     }
     else if (LV_EVENT_PRESSED == event->code)
     {
-        if (is_ble_dfu_thread_running())
-        {
-            LOG_I("notification_status_bar_cb in ble dfu => return");
-            return;
-        }
         LOG_I("notification_status_bar_cb from area: %d", area_id);
         lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
         lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
@@ -166,11 +161,6 @@ static void device_change_bar_cb(lv_event_t *event)
         }
         else if (LV_EVENT_PRESSED == event->code)
         {
-            if (is_ble_dfu_thread_running())
-            {
-                LOG_I("app_clock_device_change_bar in ble dfu => return");
-                return;
-            }
             lv_obj_set_tile_id(app_clock_device_change_bar, 0, 0, false);
             lv_obj_clear_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(dev_change_gaus_bg, LV_OBJ_FLAG_HIDDEN);
@@ -190,11 +180,6 @@ static void ai_status_bar_cb(lv_event_t *event)
         }
         else if (LV_EVENT_PRESSED == event->code)
         {
-            if (is_ble_dfu_thread_running())
-            {
-                LOG_I("ai_status_bar_cb in ble dfu => return");
-                return;
-            }
             if (!get_bluetooth_connection_status())
             {
                 create_connection_tips();
@@ -620,7 +605,7 @@ static void set_dnd_mode(bool dnd_mode)
     {
         dndmode_enabled = dnd_mode;
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-        watch_system_interact(WATCH_DND_MODE_SET, &dndmode_enabled);
+        setting_provider.set_dnd_status(dndmode_enabled);
 #endif
         if (dnd_mode_btn != NULL)
         {

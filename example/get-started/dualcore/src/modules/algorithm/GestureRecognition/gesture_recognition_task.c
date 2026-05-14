@@ -403,7 +403,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                     else if (level_bar_is_flat())
                     {
                         LOG_D("Unlock gesture recognized, unlocking watch");
-                        watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
+                        handle_gesture_unlock();
                     }
                 }
             }
@@ -431,10 +431,7 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
             rt_tick_t cost_tick = tick_time_end - tick_time_start;
             if (release_recognition_score > gesture_recognition_threshold)
             {
-                watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
-                uint8_t led_brightness = 20;
-                watch_system_interact(INTERACT_RGB_LED_OPEN_BLUE,
-                                      &led_brightness);
+                handle_gesture_unlock();
                 LOG_D("recognize release gesture cost_tick:%d, score:%d",
                       cost_tick, release_recognition_score);
             }
@@ -505,11 +502,6 @@ static void gesture_recognition_thread_entry(void *parameter)
             }
         }
 
-        if (is_ble_dfu_thread_running())
-        {
-            continue;
-        }
-
         if (!is_user_touching_screen() && !get_motor_status())
         {
             gesture_recognition_algorithm(&watch_sensor.gesture_data);
@@ -549,7 +541,7 @@ static int utest_gesture(int argc, char *argv[])
     {
         if (strcmp(argv[1], "release") == 0)
         {
-            watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
+            handle_gesture_unlock();
         }
         else if (strcmp(argv[1], "tap") == 0)
         {

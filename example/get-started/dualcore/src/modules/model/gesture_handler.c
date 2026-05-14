@@ -287,7 +287,7 @@ static void handle_double_tap(rt_tick_t ts)
   set_gesture(ts, gesture_double_tap);
   control_provider.trigger_finger_event(0);
   peripheral_provider.set_tap_status(false);
-  watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
+  handle_gesture_unlock();
 }
 #endif
 
@@ -416,7 +416,7 @@ static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
     }
 
     set_gesture(current_time, gesture_hand_release);
-    watch_system_interact(WATCH_GESTURE_UNLOCK, NULL);
+    handle_gesture_unlock();
     break;
   }
 
@@ -438,11 +438,6 @@ static void virtual_gesture_processor(void *parameter)
     rt_event_recv(virtual_gesture_detect_event,
                   GESTURE_ALL_EVENTS, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &recv_set);
 
-    // Don't process gestures when BLE DFU is running
-    if (is_ble_dfu_thread_running())
-    {
-      continue;
-    }
     gesture_event_handler_hcpu(recv_set);
   }
 }

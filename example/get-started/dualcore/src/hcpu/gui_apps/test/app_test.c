@@ -48,38 +48,12 @@
 typedef enum
 {
     TEST_MODE_SELECT = 0,
-    TEST_MODE_NORMAL,
     TEST_MODE_STRESS,
-    TEST_MODE_GIF,
 } test_mode_t;
 
-typedef enum
-{
-    TEST_STATE_INIT = 0,
-    TEST_STATE_AMOLED,
-    TEST_STATE_TOUCH,
-    TEST_STATE_SENSOR_IMU,
-    TEST_STATE_SENSOR_PPG,
-    TEST_STATE_SOUND_RECORD,
-    TEST_STATE_SOUND_PLAY,
-    TEST_STATE_MOTOR,
-    TEST_STATE_OK,
-    TEST_STATE_EXIT,
-} test_state_t;
-
 static test_mode_t test_mode = TEST_MODE_SELECT;
-static test_state_t test_state = TEST_STATE_INIT;
 static volatile bool stress_test_running = false;
 
-static bool check_amoled();
-static bool wait_for_touch();
-static bool check_imu_sensor();
-static bool check_ppg_sensor();
-static bool record_with_mic(int seconds);
-static void send_ok_to_phone_and_exit();
-static void exit_app();
-
-static rt_thread_t test_thread = RT_NULL;
 static rt_thread_t cpu_stress_thread = RT_NULL;
 static rt_thread_t amoled_thread = RT_NULL;
 static rt_thread_t imu_thread = RT_NULL;
@@ -90,13 +64,6 @@ static lv_obj_t *test_label;
 static lv_obj_t *status_label;
 static lv_obj_t *ppg_status_label;
 static lv_obj_t *mode_select_container;
-static lv_obj_t *gif_test_obj;
-static lv_obj_t *gif_test_hint_label;
-
-    #if 0
-LV_IMG_DECLARE(test_gif_bulb);
-static void start_gif_test(void);
-    #endif
 
 // CPU intensive stress test functions
 static void cpu_stress_thread_entry(void *parameter)
@@ -198,24 +165,14 @@ static void imu_stress_thread_entry(void *parameter)
 
     while (stress_test_running)
     {
-        // Continuously read IMU data
-        if (fabs(watch_sensor.imu_data.acce.x) > 0 ||
-            fabs(watch_sensor.imu_data.acce.y) > 0 ||
-            fabs(watch_sensor.imu_data.acce.z) > 0)
+        char buf[96];
+        rt_sprintf(buf, "LinAcc: %.2f, %.2f, %.2f",
+                   watch_sensor.motion_data.linear_acce.x,
+                   watch_sensor.motion_data.linear_acce.y,
+                   watch_sensor.motion_data.linear_acce.z);
+        if (status_label != NULL)
         {
-            // Update status label with IMU data
-            char buf[128];
-            rt_sprintf(buf, "IMU: A(%ld,%ld,%ld) G(%ld,%ld,%ld)",
-                       (long)watch_sensor.imu_data.acce.x,
-                       (long)watch_sensor.imu_data.acce.y,
-                       (long)watch_sensor.imu_data.acce.z,
-                       (long)watch_sensor.imu_data.gyro.x,
-                       (long)watch_sensor.imu_data.gyro.y,
-                       (long)watch_sensor.imu_data.gyro.z);
-            if (status_label != NULL)
-            {
-                lv_label_set_text(status_label, buf);
-            }
+            lv_label_set_text(status_label, buf);
         }
         rt_thread_mdelay(100);
     }
@@ -262,58 +219,6 @@ static void motor_stress_thread_entry(void *parameter)
         }
     }
     LOG_D("Motor stress thread stopped");
-}
-
-static void test_thread_entry(void *parameter)
-{
-    lv_label_set_text(test_label, "[AMOLED] Changing color...");
-    if (!check_amoled())
-    {
-        goto EXIT;
-    }
-
-    lv_label_set_text(test_label, "[Touch] Waiting for click...(3 times!!!)");
-    if (!wait_for_touch())
-    {
-        goto EXIT;
-    }
-
-    lv_label_set_text(test_label, "[IMU] Checking sensor raw data...");
-    if (!check_imu_sensor())
-    {
-        goto EXIT;
-    }
-
-    lv_label_set_text(test_label, "[PPG] Checking sensor raw data...");
-    if (!check_ppg_sensor())
-    {
-        goto EXIT;
-    }
-
-    lv_label_set_text(test_label, "[Audio] record sound for 5 seconds...");
-    if (!record_with_mic(5))
-    {
-        goto EXIT;
-    }
-
-    send_ok_to_phone_and_exit();
-
-EXIT:
-    exit_app();
-}
-
-static void create_test_thread(void)
-{
-    /* 2048 bytes was insufficient and caused STKOF (UFSR=0x10) right after
-     * test mode 1 starts: test_thread_entry drives LVGL from a non-LVGL
-     * thread (lv_label_set_text + check_amoled's bg-color loop) and also
-     * calls vad_init / start_voice_recognition which have deep call chains. */
-    test_thread =
-        rt_thread_create("utest", test_thread_entry, RT_NULL, 8192, 10, 10);
-    if (test_thread != RT_NULL)
-    {
-        rt_thread_startup(test_thread);
-    }
 }
 
 typedef struct
@@ -391,46 +296,6 @@ static void stop_stress_test(void)
     stop_voice_recognition(V2T_INTENT_NOTHING);
     voice_provider.vad_deinit();
 }
-    #if 0
-static void start_gif_test(void)
-{
-    LOG_I("Starting GIF test mode");
-
-    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_black(), LV_PART_MAIN);
-
-    if (test_label != NULL)
-    {
-        lv_obj_add_flag(test_label, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (status_label != NULL)
-    {
-        lv_obj_add_flag(status_label, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (ppg_status_label != NULL)
-    {
-        lv_obj_add_flag(ppg_status_label, LV_OBJ_FLAG_HIDDEN);
-    }
-
-        #if LV_USE_GIF
-    gif_test_obj = lv_gif_create(lv_scr_act());
-    if (gif_test_obj != NULL)
-    {
-        lv_gif_set_src(gif_test_obj, &test_gif_bulb);
-        lv_obj_align(gif_test_obj, LV_ALIGN_CENTER, 0, -30);
-    }
-        #endif
-
-    gif_test_hint_label = lv_label_create(lv_scr_act());
-    lv_label_set_text(gif_test_hint_label,
-                      "GIF Test\nSwipe right to exit");
-    lv_obj_set_style_text_color(gif_test_hint_label, lv_color_white(), 0);
-    lv_obj_set_style_text_align(gif_test_hint_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(gif_test_hint_label, LV_ALIGN_BOTTOM_MID, 0, -40);
-}
-    #endif
-
-    #define REQUIRE_TOUCH_COUNT 3
-static uint8_t click_count = 0;
 
 static void mode_button_event_handler(lv_event_t *e)
 {
@@ -439,33 +304,17 @@ static void mode_button_event_handler(lv_event_t *e)
     {
         test_mode_t *mode = (test_mode_t *)lv_event_get_user_data(e);
 
-        if (mode != NULL)
+        if (mode != NULL && *mode == TEST_MODE_STRESS)
         {
             test_mode = *mode;
             LOG_I("Selected test mode: %d", test_mode);
 
-            // Hide mode selection UI
             if (mode_select_container != NULL)
             {
                 lv_obj_add_flag(mode_select_container, LV_OBJ_FLAG_HIDDEN);
             }
 
-            // Start appropriate test mode
-            if (test_mode == TEST_MODE_NORMAL)
-            {
-                lv_label_set_text(test_label, "Starting Normal Test...");
-                create_test_thread();
-            }
-            else if (test_mode == TEST_MODE_STRESS)
-            {
-                start_stress_test();
-            }
-    #if 0
-            else if (test_mode == TEST_MODE_GIF)
-            {
-                start_gif_test();
-            }
-    #endif
+            start_stress_test();
         }
     }
 }
@@ -478,7 +327,7 @@ static void random_address_button_event_handler(lv_event_t *e)
         extern void generate_random_public_address(uint8_t device_id);
         generate_random_public_address(0);
         rt_thread_mdelay(50);
-        watch_system_interact(WATCH_REBOOT, NULL);
+        peripheral_provider.hcpu_reboot();
     }
 }
 
@@ -490,25 +339,11 @@ static void screen_event_handler(lv_event_t *e)
         lv_dir_t g = lv_indev_get_gesture_dir(lv_indev_get_act());
         if (g == LV_DIR_RIGHT)
         {
-            /* Code to exit the screen */
             if (test_mode == TEST_MODE_STRESS)
             {
                 stop_stress_test();
             }
             gui_app_self_exit();
-        }
-    }
-    // detect click
-    else if (code == LV_EVENT_CLICKED)
-    {
-        if (test_state == TEST_STATE_TOUCH)
-        {
-            click_count++;
-            int remaining_clicks = REQUIRE_TOUCH_COUNT - click_count;
-            char buf[32];
-            rt_sprintf(buf, "Touch %d more times", remaining_clicks);
-            lv_label_set_text(test_label, buf);
-            motor_pattern_normal();
         }
     }
 }
@@ -534,9 +369,7 @@ static lv_obj_t *create_mode_button(lv_obj_t *parent, const char *text,
 
 static void create_mode_selection_ui(lv_obj_t *parent)
 {
-    static test_mode_t normal_mode = TEST_MODE_NORMAL;
     static test_mode_t stress_mode = TEST_MODE_STRESS;
-    static test_mode_t gif_mode = TEST_MODE_GIF;
 
     mode_select_container = lv_obj_create(parent);
     lv_obj_set_size(mode_select_container, LV_PCT(100), LV_PCT(100));
@@ -544,25 +377,17 @@ static void create_mode_selection_ui(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(mode_select_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(mode_select_container, 0, 0);
 
-    // Title label
     lv_obj_t *title = lv_label_create(mode_select_container);
     lv_label_set_text(title, "Select Test Mode");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
     lv_obj_set_style_text_font(title, LV_EXT_FONT_GET(get_system_font_size(1)),
                                0);
 
-    create_mode_button(mode_select_container, "Normal Test", -40,
-                       LV_PALETTE_NONE, mode_button_event_handler,
-                       &normal_mode);
-    create_mode_button(mode_select_container, "Stress Test", 40, LV_PALETTE_RED,
+    create_mode_button(mode_select_container, "Stress Test", 0, LV_PALETTE_RED,
                        mode_button_event_handler, &stress_mode);
-    create_mode_button(mode_select_container, "Random Address", 120,
+    create_mode_button(mode_select_container, "Random Address", 80,
                        LV_PALETTE_BLUE, random_address_button_event_handler,
                        NULL);
-    #if 0
-    create_mode_button(mode_select_container, "GIF Test", -120,
-                       LV_PALETTE_GREEN, mode_button_event_handler, &gif_mode);
-    #endif
 }
 
 static lv_obj_t *on_start(lv_obj_t *parent)
@@ -603,157 +428,11 @@ static void on_pause(void)
 
 static void on_stop(void)
 {
-    if (test_state == TEST_STATE_EXIT)
-    {
-        return;
-    }
-
-    // Stop stress test if running
     if (test_mode == TEST_MODE_STRESS && stress_test_running)
     {
         stop_stress_test();
     }
-
-    // Stop normal test thread if running
-    if (test_thread != RT_NULL)
-    {
-        rt_thread_delete(test_thread);
-        test_thread = RT_NULL;
-    }
 }
-static bool check_amoled()
-{
-    LOG_D("Testing AMOLED");
-    test_state = TEST_STATE_AMOLED;
-    lv_color_t colors[] = {
-        LV_COLOR_WHITE,  LV_COLOR_RED,    LV_COLOR_ORANGE,
-        LV_COLOR_YELLOW, LV_COLOR_GREEN,  LV_COLOR_BLUE,
-        LV_COLOR_NAVY,   LV_COLOR_PURPLE, LV_COLOR_BLACK,
-    };
-    int num_colors = sizeof(colors) / sizeof(colors[0]);
-
-    for (int i = 0; i < num_colors; i++)
-    {
-        lv_obj_set_style_bg_color(lv_scr_act(), colors[i % num_colors],
-                                  LV_PART_MAIN);
-        rt_thread_mdelay(300);
-    }
-    return true;
-}
-
-static bool wait_for_touch()
-{
-    LOG_D("Waiting for touch");
-    test_state = TEST_STATE_TOUCH;
-    click_count = 0;
-    while (click_count < REQUIRE_TOUCH_COUNT)
-    {
-        rt_thread_mdelay(100);
-    }
-    return true;
-}
-
-static bool check_imu_sensor()
-{
-    test_state = TEST_STATE_SENSOR_IMU;
-    watch_sensor.imu_data.acce.x = 0;
-    watch_sensor.imu_data.acce.y = 0;
-    watch_sensor.imu_data.acce.z = 0;
-    watch_sensor.imu_data.gyro.x = 0;
-    watch_sensor.imu_data.gyro.y = 0;
-    watch_sensor.imu_data.gyro.z = 0;
-    for (int i = 0; i < 10; i++)
-    {
-        rt_thread_mdelay(100);
-        if (fabs(watch_sensor.imu_data.acce.x) < 1 &&
-            fabs(watch_sensor.imu_data.acce.y) < 1 &&
-            fabs(watch_sensor.imu_data.acce.z) < 1)
-        {
-            LOG_E("IMU sensor acce is invalid");
-            return false;
-        }
-        if (fabs(watch_sensor.imu_data.gyro.x) == 0 &&
-            fabs(watch_sensor.imu_data.gyro.y) == 0 &&
-            fabs(watch_sensor.imu_data.gyro.z) == 0)
-        {
-            LOG_E("IMU sensor gyro is invalid");
-            return false;
-        }
-        // print out the sensor data
-        lv_label_set_text_fmt(test_label,
-                              "IMU: acce(%ld, %ld, %ld), gyro(%ld, %ld, %ld)",
-                              (long)watch_sensor.imu_data.acce.x,
-                              (long)watch_sensor.imu_data.acce.y,
-                              (long)watch_sensor.imu_data.acce.z,
-                              (long)watch_sensor.imu_data.gyro.x,
-                              (long)watch_sensor.imu_data.gyro.y,
-                              (long)watch_sensor.imu_data.gyro.z);
-    }
-
-    return true;
-}
-
-static bool check_ppg_sensor()
-{
-    test_state = TEST_STATE_SENSOR_PPG;
-    // sensor_subscription_t sensor_subscription;
-    // sensor_subscription.type = SENSOR_TYPE_PPG;
-    // sensor_subscription.thread_safe = true;
-    // sensor_subscription.status = true;
-    // watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
-    for (int i = 0; i < 10; i++)
-    {
-        rt_thread_mdelay(100);
-        if (watch_sensor.ppg_data.raw_data[0] == 0 &&
-            watch_sensor.ppg_data.raw_data[1] == 0)
-        {
-            // sensor_subscription.status = false;
-            // watch_system_interact(WATCH_SENSOR_SUBSCRIBE,
-            // &sensor_subscription); rt_thread_mdelay(100);
-            LOG_E("Heart rate sensor is invalid");
-            return false;
-        }
-        // print out the sensor data
-        lv_label_set_text_fmt(test_label, "PPG: raw_data(%d, %d)",
-                              watch_sensor.ppg_data.raw_data[0],
-                              watch_sensor.ppg_data.raw_data[1]);
-    }
-    // rt_thread_mdelay(200);
-    // sensor_subscription.status = false;
-    // watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
-    return true;
-}
-
-static bool record_with_mic(int seconds)
-{
-    test_state = TEST_STATE_SOUND_RECORD;
-    // start_voice_recording();
-    voice_provider.vad_init();
-    start_voice_recognition(V2T_INTENT_CHAT);
-    rt_thread_mdelay(seconds * 1000);
-    // stop_voice_recording();
-    return true;
-}
-
-static void send_ok_to_phone_and_exit()
-{
-    LOG_D("Sending OK to phone");
-    test_state = TEST_STATE_OK;
-    gui_app_exit(APP_ID);
-}
-
-static void exit_app()
-{
-    LOG_D("Exiting app");
-    stop_voice_recognition(V2T_INTENT_NOTHING);
-    voice_provider.vad_deinit();
-    test_state = TEST_STATE_EXIT;
-    gui_app_exit(APP_ID);
-}
-
-/// @brief
-/// @param msg
-/// @param param
 static void msg_handler(gui_app_msg_type_t msg, void *param)
 {
     switch (msg)

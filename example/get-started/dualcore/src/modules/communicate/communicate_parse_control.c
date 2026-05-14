@@ -43,7 +43,7 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
             uint8_t value = pValue[0];
             if (value == 0x01)
             {
-                watch_system_interact(INTERACT_FIND_WATCH, NULL);
+                interact_find_watch();
             }
             else
             {
@@ -82,7 +82,7 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
         if (length == 1)
         {
             uint8_t value = pValue[0];
-            watch_system_interact(INTERACT_SYNC_MEDIA_STATUS, &value);
+            interact_sync_media_status(value);
         }
         break;
     }
@@ -99,7 +99,7 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
     }
 
     case KEY_REBOOT:
-        watch_system_interact(WATCH_REBOOT, NULL);
+        peripheral_provider.hcpu_reboot();
         break;
 
     case KEY_SLEEP:

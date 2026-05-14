@@ -292,18 +292,6 @@ static void control_motor_vibration(bool enable, motor_params_t *params)
                          600);
 }
 
-static void control_rgb_led(bool enable, rgb_led_params_t *params)
-{
-    PeripheralMessageData data;
-    data.event = CONTROL_RGB_LED;
-    data.arg.rgb_led_control.enable = enable;
-    if (enable && params)
-    {
-        data.arg.rgb_led_control.params = *params;
-    }
-    send_peripheral_data(data);
-}
-
 static void save_watch_shared_prefs(watch_prefs_key key)
 {
     PeripheralMessageData data;
@@ -413,7 +401,6 @@ static int bloc_peripheral_register(void)
     peripheral_provider.subscribe_ppg_signal = subscribe_ppg_signal;
     peripheral_provider.control_motor = control_motor_vibration;
     peripheral_provider.subscribe_audio_mic_sensor = subscribe_audio_mic_sensor;
-    peripheral_provider.control_rgb_led = control_rgb_led;
     peripheral_provider.save_watch_shared_prefs = save_watch_shared_prefs;
     peripheral_provider.notify_battery_voltage = notify_battery_voltage;
     peripheral_provider.charge_status_callback = charge_status_callback;
@@ -575,50 +562,6 @@ static void peripheral_task_entry(void *parameter)
                 }
             }
             break;
-        #ifdef RGB_LED_CONTROL_PIN
-            case CONTROL_RGB_LED:
-            {
-                watch_sys_rgb_led_params_t params;
-                params.enable = data.arg.rgb_led_control.enable;
-
-                if (data.arg.rgb_led_control.enable)
-                {
-                    rgb_color_t color = data.arg.rgb_led_control.params.color;
-                    params.red = color.red;
-                    params.green = color.green;
-                    params.blue = color.blue;
-                    params.brightness =
-                        data.arg.rgb_led_control.params.brightness;
-                    params.animation_mode =
-                        data.arg.rgb_led_control.params.animation_mode;
-                    params.period_ms = data.arg.rgb_led_control.params
-                                           .period_ms; // Default period
-                    params.repeat_times =
-                        data.arg.rgb_led_control.params
-                            .repeat_times; // Infinite by default
-
-                    LOG_D("RGB LED control sent to LCPU: R=%d G=%d B=%d "
-                          "Brightness=%d Mode=%d Period=%d Repeat=%d",
-                          params.red, params.green, params.blue,
-                          params.brightness, params.animation_mode,
-                          params.period_ms, params.repeat_times);
-                }
-                else
-                {
-                    params.red = 0;
-                    params.green = 0;
-                    params.blue = 0;
-                    params.brightness = 0;
-                    params.animation_mode = 0;
-                    params.period_ms = 0;
-                    params.repeat_times = 0;
-                    LOG_D("RGB LED disable sent to LCPU");
-                }
-
-                watch_sys_sync.control_rgb_led(&params);
-            }
-            break;
-        #endif
     #endif
 
             case SAVE_SHARE_PREFS:
@@ -648,8 +591,7 @@ static void peripheral_task_entry(void *parameter)
                     {
                         low_power_warning = true;
                         LOG_W("Battery level is very low, please charge it.");
-                        watch_system_interact(INTERACT_BAT_LOW_LEVEL,
-                                              &low_power_warning);
+                        interact_bat_low_level(true);
                     }
                     else if (SkaiWatchSys.battery_level_value == 0)
                     {
@@ -661,7 +603,6 @@ static void peripheral_task_entry(void *parameter)
                         else
                         {
                             LOG_W("Battery level is 0, power off.");
-                            // watch_system_interact(INTERACT_POWEROFF, NULL);
                         }
                     }
                 }
@@ -670,8 +611,7 @@ static void peripheral_task_entry(void *parameter)
                     // Clear warning once battery is above critical level
                     low_power_warning = false;
                     LOG_I("Battery level is normal.");
-                    watch_system_interact(INTERACT_BAT_LOW_LEVEL,
-                                          &low_power_warning);
+                    interact_bat_low_level(false);
                 }
     #endif
                 break;

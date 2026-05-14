@@ -64,7 +64,6 @@ extern "C"
         DebugParamUpdate,
         MultiGestureMode,
         TapAndHoldMode,
-        RgbLedControl,
     } client_msg_t;
 
     typedef struct
@@ -158,22 +157,6 @@ extern "C"
         uint16_t vmc;
     } watch_sys_minute_activity_t;
 
-    /**
-     * @brief RGB LED control parameters for inter-core communication
-     * This structure is used to pass RGB LED control parameters between HCPU and LCPU
-     */
-    typedef struct
-    {
-        uint8_t enable;
-        uint8_t red;
-        uint8_t green;
-        uint8_t blue;
-        uint8_t brightness;
-        uint8_t animation_mode;
-        uint16_t period_ms;
-        uint16_t repeat_times;
-    } watch_sys_rgb_led_params_t;
-
     typedef struct
     {
 #if defined(SOC_BF0_HCPU)
@@ -198,7 +181,6 @@ extern "C"
         void (*set_debug_mode)(bool mode);
         int (*set_multi_gesture_mode)(bool enable);
         int (*set_tap_and_hold_mode)(bool enable);
-        int (*control_rgb_led)(watch_sys_rgb_led_params_t *params);
 #else
     // lcpu->hcpu notify functions
     void (*notify_battery_voltage)(uint32_t data);

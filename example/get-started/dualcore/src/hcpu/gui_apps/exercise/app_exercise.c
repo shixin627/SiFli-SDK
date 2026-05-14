@@ -1005,7 +1005,7 @@ static void on_resume(void)
         .type = SENSOR_TYPE_HEART_RATE,
         .status = true,
     };
-    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
+    interact_sensor_subscription(sensor_subscription);
     lvgl_msg_handler.handle_hr = ui_heart_rate_callback;
     set_scroll_segment_count(WORKOUT_COUNT);
     set_prev_sensor_quat(0);
@@ -1033,7 +1033,7 @@ static void on_pause(void)
         .type = SENSOR_TYPE_HEART_RATE,
         .status = false,
     };
-    watch_system_interact(WATCH_SENSOR_SUBSCRIBE, &sensor_subscription);
+    interact_sensor_subscription(sensor_subscription);
     LOG_D("Exercise app paused");
 }
 

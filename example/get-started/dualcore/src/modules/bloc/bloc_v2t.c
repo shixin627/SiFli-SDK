@@ -1179,8 +1179,7 @@ void voice_recognition_entry(void *parameter)
                 }
                 else if (is_at_mouse_mode())
                 {
-                    bool status = false;
-                    watch_system_interact(INTERACT_MIC_LISTEN, &status);
+                    interact_mic_listen(false);
                 }
                 else if (is_at_speech_interface() && get_selected_function() &&
                          !isTextEmpty())

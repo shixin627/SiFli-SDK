@@ -1,6 +1,6 @@
 # Skaiwalk Dualcore Watch — Project Guide
 
-SiFli SF32 系列雙核心智慧手錶韌體。HCPU 跑 LVGL GUI、BLE host、AI 推論;LCPU 常駐感測器、馬達、LED、充電。
+SiFli SF32 系列雙核心智慧手錶韌體。HCPU 跑 LVGL GUI、BLE host、AI 推論;LCPU 常駐感測器、馬達、充電。
 
 ## 目錄結構
 
@@ -37,7 +37,7 @@ example/get-started/dualcore/
 | BLE | Host + ANCS + 私有協定 | Controller |
 | AI | TFLite Micro 手勢/活動分類 | 抬腕、配戴偵測、AHRS |
 | 感測器 | 透過 `client/*` 訂閱 | 直接驅動 BMI270、GH3018 |
-| 馬達/LED | 呼叫 `bloc_peripheral` provider | 真正驅動 PWM4 / SK6812 |
+| 馬達 | 呼叫 `bloc_peripheral` provider | 真正驅動 PWM4 |
 | 檔案系統 | DFS + ELMFAT | 無 |
 
 **核心通道**:HCPU `client/*` ↔ LCPU `service/*`,透過 RT-Thread `data_service` (`CONFIG_BSP_USING_DATA_SVC`) + `RT_USING_HWMAILBOX`。
@@ -85,16 +85,6 @@ INIT_APP_EXPORT(bloc_control_provider_register);
 3. 若會送出,加/移 `commu_send_*` 函式 + 對應 caller
 4. 確認手機端 dart 也有對應 key
 
-## watch_system_interact dispatcher
-
-`modules/model/watch_system_interact.c` 是中央 dispatcher,以 `INTERACT_Type` enum 路由到馬達/LED/設定/電源/感測器:
-
-```c
-watch_system_interact(INTERACT_RGB_LED_OPEN_WRITE, &brightness);
-```
-
-入口會做 `is_ble_dfu_thread_running()` 守門。對於同模組內的單純呼叫,可直接用對外公開函式(例如 motor_pattern_alarm())跳過 dispatcher。
-
 ## GUI Apps (`hcpu/gui_apps/`)
 
 每個 app 一個目錄,含 `app_<name>.c`、`SConscript`,透過 `BUILTIN_APP_EXPORT(LV_EXT_STR_ID(name), IMG, APP_ID_NAME, app_main)` 註冊。`gui_apps/SConscript` 自動掃描所有有 SConscript 的子目錄。
@@ -111,12 +101,25 @@ watch_system_interact(INTERACT_RGB_LED_OPEN_WRITE, &brightness);
 - **MSH 命令**:`MSH_CMD_EXPORT(name, "help")` 註冊 shell 命令,大多在 `#if !kReleaseMode` 下
 - **新增送資料函式**:加在 `communicate_task.c`,**檢查 dart 端有對應 key**,否則資料會被手機忽略
 
+## Clean Code 精神(本專案維護原則)
+
+擷取自《Clean Code》中經得起時間考驗的部分,**不要過度設計**。書中爭議性大的規則(嚴格的行數上限、強制無 else、強制萃取每個小步驟成函式)請忽略。
+
+- **命名揭示意圖**:函式/變數的名字本身就要解釋它在做什麼,不需要旁邊的註解才看得懂。`watch_system_interact()` 這種「萬用入口」就是反例,改用 `interact_find_watch()`、`peripheral_provider.hcpu_reboot()` 之類具體的名字。
+- **不要多一層只為包**:如果函式內容只是 `LOG_D + 單一 provider 呼叫`,就刪掉它,讓 caller 直接呼叫 provider。**間接層必須對讀者有價值**——多步驟組合、命名重要的副作用、隱藏 magic string/cast——才值得保留。
+- **抽函式有門檻**:鼓勵抽出「同樣的多行 pattern」,但 rule of three——出現第三次再抽。三行相似的程式碼通常比一個過早泛化的抽象好讀。一次性的兩三行邏輯就留在原地。
+- **註解寫 Why,不寫 What**:程式碼自己會說它做了什麼。註解只在「為什麼這樣寫」非顯然時才寫——隱藏的硬體限制、踩過的雷、不變式、跟某個 bug 的 workaround。不寫「used by X」「added for Y」這種會 rot 的內容。
+- **單一職責但別教條化**:一個函式做一件事,但「一件事」是語意層次的判斷。`interact_cancel_bond()` 內含「清狀態 + 清資料 + 存 prefs」三步,這在語意上就是「解綁」一件事,不要硬拆。
+- **邊界才檢查**:`if (param == NULL) return;` 這種防禦在 module 邊界(從外部 BLE/UART/檔案進來)有意義,內部呼叫之間信任 caller。對內部 helper 加 NULL 檢查只是讓 bug 從崩潰變成靜默失效,更難 debug。
+- **刪除勝於註解**:過時的程式碼直接刪,git 會記得。`// TODO: maybe later`、`// removed XX`、commented-out 程式碼一律清掉。
+- **改一個東西就改乾淨**:如果你動了某個函式,順手把它附近顯而易見的死碼/重複/錯誤拼字也修了(Boy Scout Rule)。但**不要為了清理而開全新的 PR**——範圍跟著當前任務走。
+
 ## 常見任務速查
 
 - **加新的手機指令**:dart 加 key → watch parse_*.h 加 enum (照 hex 順序) → parse_*.c 加 case → 視需要加 commu_send_* 回應
 - **加新的 GUI app**:在 `hcpu/gui_apps/` 開目錄,參考 `flashlight/` 結構,在 board.h 定義 `APP_ID_*`,加進 `lv_app_list_layout.c` / `lv_instruction_list_layout.c` 的 enum
 - **加新的馬達**:在 `watch_system_interact.c` 加 `motor_pattern_*`,header 對外 extern,直接呼叫即可
-- **加感測器訂閱**:走 `peripheral_provider.subscribe_*` 或 `watch_system_interact(WATCH_SENSOR_SUBSCRIBE, ...)`(後者執行緒安全)
+- **加感測器訂閱**:走 `peripheral_provider.subscribe_*` 或 `interact_sensor_subscription({.type=..., .status=..., .thread_safe=1})`(後者執行緒安全)
 - **跨 thread 操作 UI**:`lvgl_send_msg({.type = LVGL_MSG_TYPE_*, .data = ...})`,handler 在 `ui_handler.c`
 
 ## 構建

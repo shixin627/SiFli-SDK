@@ -64,6 +64,8 @@
 #include "gesture_recognition_task.h"
 #include "watch_global_data.h"
 #include "bloc_control.h"
+#include "bloc_peripheral.h"
+#include "bloc_setting.h"
 #include <dfs_posix.h>
 #include <unistd.h>
 
@@ -132,7 +134,7 @@ static void lang_btn_event_handler(lv_event_t *e)
 
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
             // Update the system language
-            watch_system_interact(LANGUAGE_SET, (void *)lv_list_get_btn_text(NULL, obj));
+            interact_language_set(lv_list_get_btn_text(NULL, obj));
 #endif
         }
         else if ((p_app_setting->selected_lang == obj) && (0 == (LV_STATE_PRESSED & new_state)))
@@ -483,7 +485,7 @@ static void time_format_switch_event_callback(lv_event_t *e)
         uint8_t new_format = (lv_obj_get_state(sw) & LV_STATE_CHECKED) ? 0x01 : 0x00;
         SkaiWatchSys.flag_field.hour_format = new_format;
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-        watch_system_interact(TIME_FORMAT_SET, &new_format);
+        setting_provider.set_hour_format(new_format);
 #endif
         update_time_format_title_label(new_format);
         LOG_I("Time format toggled: %s", (new_format == 0x01) ? "24h" : "12h");
@@ -541,7 +543,7 @@ static void btn_restart_event_callback(lv_event_t *e)
 
     if (LV_EVENT_SHORT_CLICKED == event)
     {
-        watch_system_interact(WATCH_REBOOT, NULL);
+        peripheral_provider.hcpu_reboot();
     }
 }
 
@@ -766,7 +768,7 @@ static void dnd_switch_event_callback(lv_event_t *e)
         bool new_status = (lv_obj_get_state(sw) & LV_STATE_CHECKED) ? true : false;
         SkaiWatchSys.DNDMode.config.status = new_status;
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
-        watch_system_interact(WATCH_DND_MODE_SET, &new_status);
+        setting_provider.set_dnd_status(new_status);
 #endif
         LOG_I("DND mode toggled: %d", new_status);
     }

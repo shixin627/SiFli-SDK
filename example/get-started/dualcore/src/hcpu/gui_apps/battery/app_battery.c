@@ -101,7 +101,6 @@ static void set_zoom(void *img, int32_t v)
 static void on_screen_touch(lv_event_t *e)
 {
     gui_app_exit(APP_ID_BATTERY);
-    // watch_system_interact(INTERACT_FUNCTION_MENU_MAIN, NULL);
 }
 
 static lv_obj_t *on_start(lv_obj_t *parent)

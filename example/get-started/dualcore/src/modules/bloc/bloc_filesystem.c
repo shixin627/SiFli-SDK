@@ -759,19 +759,11 @@ int bloc_start_receive_file(const char *file_path, uint32_t total_size)
         LOG_I("File exists but size differs: %s (existing: %d, new: %d)",
               file_path, file_stat.st_size, total_size);
         send_file_compare_result(1); /* 1 = proceed with update */
-        if (is_ble_dfu_thread_running())
-        {
-            handle_download_progress_update(0);
-        }
     }
     else
     {
         LOG_I("File doesn't exist, proceed with update: %s", file_path);
         send_file_compare_result(1);
-        if (is_ble_dfu_thread_running())
-        {
-            handle_download_progress_update(0);
-        }
     }
 
     /* Normalize to .temp path */
@@ -862,10 +854,6 @@ int bloc_receive_file_data(const uint8_t *data, uint16_t length)
         g_file_receive.total_size > 0
             ? (g_file_receive.received_size * 100 / g_file_receive.total_size)
             : 0;
-    if (is_ble_dfu_thread_running())
-    {
-        handle_download_progress_update(progress);
-    }
 
     LOG_D("Received %d/%d bytes (%d%%)", g_file_receive.received_size,
           g_file_receive.total_size, progress);

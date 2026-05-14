@@ -143,7 +143,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         voice_recog_payload.header = pValue[0];
         voice_recog_payload.length = length - 1;
         voice_recog_payload.p_msg_value = pValue + 1;
-        watch_system_interact(INTERACT_VOICE_RECOGNITION, &voice_recog_payload);
+        interact_voice_recognition(&voice_recog_payload);
         LOG_D("KEY_VOICE_RECOGNITION_RESULT");
         break;
     }
@@ -179,7 +179,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         payload.header = pValue[0];
         payload.length = length - 1;
         payload.p_msg_value = pValue + 1;
-        watch_system_interact(INTERACT_CHAT_RESULT, &payload);
+        interact_chat_result(&payload);
         break;
     }
 
@@ -344,7 +344,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         char title_buf[128];
         ble_payload_to_cstr(title_buf, sizeof(title_buf), pValue, length);
         LOG_D("media title: %s", title_buf);
-        watch_system_interact(INTERACT_SHOW_MEDIA_TITLE, title_buf);
+        control_provider.set_media_title(title_buf);
         break;
     }
 

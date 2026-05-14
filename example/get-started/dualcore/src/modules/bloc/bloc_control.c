@@ -569,20 +569,6 @@ void notify_launcher_action(uint8_t action) { send_action_msg(LVGL_MSG_TYPE_LAUN
 static void trigger_finger_event(uint8_t finger_event)
 {
 	LOG_D("trigger_finger_event %d", finger_event);
-	bool is_tap = (finger_event == 1);
-#ifdef BSP_USING_UI_HANDLER
-	// lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_TAP_INDICATOR, .data.gesture = finger_event};
-	// lvgl_send_msg(msg);
-	if (is_tap)
-	{
-		uint8_t led_brightness = 20;
-		watch_system_interact(INTERACT_RGB_LED_OPEN_WRITE, &led_brightness);
-	}
-	else
-	{
-		watch_system_interact(INTERACT_RGB_LED_CLOSE, NULL);
-	}
-#endif
 	if (finger_event == 1)
 	{
 		if (!get_enable_tap_and_hold())

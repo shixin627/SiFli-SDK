@@ -101,97 +101,9 @@ extern void BLE_LOG_E(const char *format, ...);
         V2T_INTENT_MIC_INPUTE = 0x04,
     } V2T_INTENT;
 
-    /// @brief
-    typedef enum
-    {
-        /***** Menu *******/
-        INTERACT_BEGIN = 1,
-/**** All menu should place in this group ****/
-//////////
-/// App manage
-
-// App Management Types
-#define APP_INTERACT_TYPE_BEGIN INTERACT_FUNCTION_MENU_MAIN
-#define APP_INTERACT_TYPE_END INTERACT_CAMERA
-        INTERACT_FUNCTION_MENU_MAIN,
-        INTERACT_BAT_LOW_LEVEL,
-        INTERACT_TASK_LOADING,
-        INTERACT_SHOW_QRCODE,
-        INTERACT_FIND_WATCH,
-        INTERACT_TIMER_REMINDER,
-        INTERACT_MIC_LISTEN,
-        INTERACT_MIC_V2T_INPUT,
-        INTERACT_VOICE_RECOGNITION,
-        INTERACT_CHAT_RESULT,
-        INTERACT_LOGIN,
-        INTERACT_CANCEL_BOND,
-        INTERACT_BONDED,
-        INTERACT_PAIRING,
-        INTERACT_CAMERA,
-
-// System Control Types
-#define CONTROL_INTERACT_TYPE_BEGIN INTERACT_RGB_LED_OPEN_WRITE
-#define CONTROL_INTERACT_TYPE_END INTERACT_SYNC_MEDIA_STATUS
-
-        /*****  LED *******/
-        INTERACT_RGB_LED_OPEN_WRITE,
-        INTERACT_RGB_LED_OPEN_GREEN,
-        INTERACT_RGB_LED_OPEN_BLUE,
-        INTERACT_RGB_LED_CLOSE,
-        INTERACT_RGB_LED_BREATHING_GREEN,
-        INTERACT_RGB_LED_FADE_WIGHT,
-        /***** Media ******/
-        INTERACT_SHOW_MEDIA_TITLE,
-        INTERACT_SYNC_MEDIA_STATUS,
-///////////////////////////////
-/// Settings
-
-// System Settings Types
-#define SETTINGS_INTERACT_TYPE_BEGIN WATCH_WATCHFACE_SET
-#define SETTINGS_INTERACT_TYPE_END LIFT_WRIST_DETECT_SET
-
-        /***** Watchface *****/
-        WATCH_WATCHFACE_SET,
-        /***** DND mode *****/
-        WATCH_DND_MODE_SET,
-        /***** Alarm *****/
-        WATCH_ALARM_INIT,
-        /***** Brightness *****/
-        WATCH_BRIGHTNESS_SET,
-        /***** Time *****/
-        TIME_FORMAT_SET,
-        SCREEN_TIME_SET,
-        /***** Language *****/
-        LANGUAGE_SET,
-        /***** Interact *****/
-        LIFT_WRIST_DETECT_SET,
-///////////////////////
-/// Power
-
-// Power Management Types
-#define POWER_INTERACT_TYPE_BEGIN WATCH_OPEN_DISPLAY_TO_APP_LIST
-#define POWER_INTERACT_TYPE_END WATCH_REQUEST_CHARGE_STATUS
-        WATCH_OPEN_DISPLAY_TO_APP_LIST,
-        WATCH_GESTURE_UNLOCK,
-        WATCH_REBOOT,
-        STANDBY_WAKEUP,
-        WATCH_REQUEST_BATTERY,
-        WATCH_REQUEST_CHARGE_STATUS,
-/// Sensors
-
-// Sensor Types
-#define SENSOR_INTERACT_TYPE WATCH_SENSOR_SUBSCRIBE
-
-        WATCH_SENSOR_SUBSCRIBE,
-
-        INTERACT_END,
-
-    } INTERACT_Type; // include interact priority
-
     extern rt_sem_t go_to_sleep_sem;
     extern char qrcode_data[256];
 
-    extern void *watch_system_interact(INTERACT_Type type, void *pValue);
     extern void ble_app_advertising_start(bool mouse_mode, bool pairing_mode);
     extern void switch_watch_motion_control_mode(bool enable, bool animation);
     extern bool get_idle_state(void);
@@ -199,6 +111,39 @@ extern void BLE_LOG_E(const char *format, ...);
     extern bool is_user_touching_screen(void);
     extern void watch_system_wakeup(void);
     extern void watch_system_sleep(void);
+
+    /// Sensor subscription dispatch (formerly WATCH_SENSOR_SUBSCRIBE).
+    extern void interact_sensor_subscription(sensor_subscription_t sub);
+
+    /// Non-trivial app/control/settings/power interactions. Functions that
+    /// would be one-line wrappers around a provider call have been inlined at
+    /// their call sites — call `setting_provider.set_*`, `control_provider.*`,
+    /// `peripheral_provider.*`, `watch_sys_sync.*`, `handle_gesture_unlock()`,
+    /// or `subscribe_alarm_client()` directly for those.
+    extern void interact_bat_low_level(bool enable);
+    extern void interact_task_loading(bool loading);
+    extern void interact_show_qrcode(const char *qrcode);
+    extern void interact_find_watch(void);
+    extern void interact_timer_reminder(void);
+    extern void interact_mic_listen(bool enable);
+    extern void interact_mic_v2t_input(void);
+    extern void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData);
+    extern void interact_chat_result(MSG_DATA_PAYLOAD *msgData);
+    extern void interact_cancel_bond(void);
+    extern void interact_bonded(const uint8_t *user_id);
+    extern void interact_pairing(bool enable);
+    extern void interact_camera(uint8_t status);
+#ifdef BSP_USING_BLOC_CONTROL
+    extern void interact_sync_media_status(uint8_t status);
+#endif
+#ifdef BSP_USING_BLOC_SETTING
+    /* Bundles set_language with load_instruction_list (translation reload). */
+    extern void interact_language_set(const char *language);
+#endif
+    extern void interact_standby_wakeup(void);
+
+    extern void handle_gesture_unlock(void);
+
 #ifdef BSP_USING_WATCH_SYS_CLIENT
     extern void set_watch_sleep_state(const watch_sys_sleep_state_t *state);
 #endif

@@ -29,12 +29,6 @@
 #include "watch_system_interact.h"
 #include "bloc_peripheral.h"
 
-/* Set to 1 to enable the RGB control panel, 0 to disable */
-#define USE_RGB_CONTROL_PANEL 0
-
-#if USE_RGB_CONTROL_PANEL
-    #include "rgb_control_panel.h"
-#endif
 #ifdef BSP_USING_UI_HANDLER
     #include "ui_handler.h"
     #include "ui_img_helper.h"
@@ -52,18 +46,12 @@ typedef struct
 {
     lv_obj_t *main_window;
     datac_handle_t pwr_srv_hdl;
-    #if USE_RGB_CONTROL_PANEL
-    rgb_led_state_t *rgb_state;
-    #endif
 } app_flashlight_t;
 
 /* Forward declarations */
 static void toggle_flashlight_btn_event_cb(lv_event_t *e);
 static int powermgr_srv_callback(data_callback_arg_t *arg);
 static void set_amoled_brightness(uint8_t brightness);
-    #if USE_RGB_CONTROL_PANEL
-static void rgb_btn_event_cb(lv_event_t *e);
-    #endif
 
 /* Global variables */
 static app_flashlight_t *p_app_flashlight = NULL;
@@ -101,22 +89,6 @@ lv_obj_t *create_flashlight_screen(lv_obj_t *scr)
     lv_obj_t *image_flashlight = lv_img_create(button_flashlight);
     lv_img_set_src(image_flashlight, LV_EXT_IMG_GET(BTN_FLASHLIGHT));
     lv_obj_center(image_flashlight);
-
-    #if USE_RGB_CONTROL_PANEL
-    /* Create RGB LED control button */
-    lv_obj_t *rgb_btn = lv_btn_create(bg);
-    lv_obj_set_size(rgb_btn, 120, 50);
-    lv_obj_align(rgb_btn, LV_ALIGN_BOTTOM_MID, 0, -30);
-    lv_obj_set_style_radius(rgb_btn, 25, 0);
-    lv_obj_set_style_bg_color(rgb_btn, lv_color_hex(0x333333), 0);
-    lv_obj_set_style_bg_opa(rgb_btn, LV_OPA_70, 0);
-    lv_obj_add_event_cb(rgb_btn, rgb_btn_event_cb, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *rgb_label = lv_label_create(rgb_btn);
-    lv_label_set_text(rgb_label, "RGB LED");
-    lv_obj_set_style_text_color(rgb_label, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_center(rgb_label);
-    #endif
 
     return bg;
 }
@@ -209,24 +181,6 @@ static void set_amoled_brightness(uint8_t brightness)
     }
 }
 
-    #if USE_RGB_CONTROL_PANEL
-/**
- * @brief RGB button event callback
- */
-static void rgb_btn_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED && p_app_flashlight != NULL)
-    {
-        LOG_I("RGB button clicked");
-        if (!is_rgb_panel_open() && p_app_flashlight->rgb_state != NULL)
-        {
-            create_rgb_control_panel(lv_scr_act(), p_app_flashlight->rgb_state);
-        }
-    }
-}
-    #endif
-
 /**
  * @brief Initialize the app on start
  */
@@ -249,21 +203,6 @@ static lv_obj_t *on_start(lv_obj_t *scr)
     ui_datac_subscribe(p_app_flashlight->pwr_srv_hdl, "powermgr",
                        powermgr_srv_callback, 0);
 
-    #if USE_RGB_CONTROL_PANEL
-    /* Initialize RGB LED state */
-    p_app_flashlight->rgb_state =
-        (rgb_led_state_t *)lv_mem_alloc(sizeof(rgb_led_state_t));
-    if (p_app_flashlight->rgb_state != NULL)
-    {
-        rgb_led_state_init(p_app_flashlight->rgb_state);
-        LOG_I("RGB LED state initialized");
-    }
-    else
-    {
-        LOG_E("Failed to allocate memory for RGB state");
-    }
-    #endif
-
     cust_trans_anim_config(CUST_ANIM_TYPE_1, NULL);
     return p_app_flashlight->main_window;
 }
@@ -285,13 +224,6 @@ static void on_resume(void)
 static void on_pause(void)
 {
     setting_provider.set_power_save_mode(1);
-    #if USE_RGB_CONTROL_PANEL
-    /* Close RGB control panel if open */
-    if (is_rgb_panel_open())
-    {
-        close_rgb_control_panel();
-    }
-    #endif
 }
 
 /**
@@ -301,22 +233,6 @@ static void on_stop(void)
 {
     if (p_app_flashlight)
     {
-    #if USE_RGB_CONTROL_PANEL
-        /* Close RGB control panel if open */
-        if (is_rgb_panel_open())
-        {
-            close_rgb_control_panel();
-        }
-
-        /* Cleanup RGB LED state */
-        if (p_app_flashlight->rgb_state != NULL)
-        {
-            rgb_led_state_cleanup(p_app_flashlight->rgb_state);
-            lv_mem_free(p_app_flashlight->rgb_state);
-            p_app_flashlight->rgb_state = NULL;
-        }
-    #endif
-
         if (DATA_CLIENT_INVALID_HANDLE != p_app_flashlight->pwr_srv_hdl)
         {
             datac_close(p_app_flashlight->pwr_srv_hdl);

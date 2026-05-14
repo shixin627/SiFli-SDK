@@ -442,27 +442,6 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
             break;
         }
 
-        case RgbLedControl:
-        {
-            // Extract parameters from message body into structured format
-            watch_sys_rgb_led_params_t params;
-            params.enable = msg->body[1];
-            params.red = msg->body[2];
-            params.green = msg->body[3];
-            params.blue = msg->body[4];
-            params.brightness = msg->body[5];
-            params.animation_mode = msg->body[6];
-            params.period_ms = *(rt_uint16_t *)(msg->body + 7);
-            params.repeat_times = *(rt_uint16_t *)(msg->body + 9);
-
-            LOG_D("RgbLedControl: enable=%d, R=%d, G=%d, B=%d, brightness=%d, "
-                  "mode=%d, period=%d, repeat=%d",
-                  params.enable, params.red, params.green, params.blue,
-                  params.brightness, params.animation_mode, params.period_ms,
-                  params.repeat_times);
-            break;
-        }
-
         default:
             break;
         }

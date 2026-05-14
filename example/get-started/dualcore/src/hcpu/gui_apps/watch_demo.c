@@ -115,12 +115,7 @@ static void handle_back_event(bool is_button)
     {
         lv_disp_trig_activity(NULL);
     }
-    if (is_ble_dfu_thread_running())
-    {
-        LOG_I("ESC in ble dfu => return");
-        return;
-    }
-    else if (gui_app_is_actived(APP_ID_MESSAGE))
+    if (gui_app_is_actived(APP_ID_MESSAGE))
     {
         LOG_D("ESC => trigger_back_event in speech app");
         control_provider.trigger_back_event();
@@ -819,7 +814,7 @@ void app_watch_entry(void *parameter)
 
     ui_layer_system_builder();
     // ui_layer_top_builder();
-    watch_system_interact(WATCH_REQUEST_CHARGE_STATUS, NULL);
+    watch_sys_sync.request_charge_status();
 #if defined(GUI_APP_FRAMEWORK) && (!defined(APP_TRANS_ANIMATION_NONE))
     lvsf_gesture_init(lv_layer_top());
 #endif /* defined(GUI_APP_FRAMEWORK)&&(!defined (APP_TRANS_ANIMATION_NONE)) */

@@ -777,22 +777,10 @@ static void bloc_notify_charge_status(uint8_t status)
     #if CHARGE_INTERACT_ENABLE
     if (status > NoCharge)
     {
-        // uint8_t led_brightness = 20;
-        // if (status == InCharging)
-        // {
-        //     watch_system_interact(INTERACT_RGB_LED_BREATHING_GREEN,
-        //                           &led_brightness);
-        // }
-        // else if (status == ChargingComplete)
-        // {
-        //     watch_system_interact(INTERACT_RGB_LED_OPEN_GREEN,
-        //     &led_brightness);
-        // }
         gui_app_run(APP_ID_BATTERY);
     }
     else
     {
-        // watch_system_interact(INTERACT_RGB_LED_CLOSE, NULL);
         watch_exit_app(APP_ID_BATTERY);
     }
     #endif
