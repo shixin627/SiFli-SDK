@@ -1291,7 +1291,7 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
     uint8_t ret;
     // Local name
     // char local_name[] = DEFAULT_LOCAL_NAME;
-    char local_name[16] = {0};
+    char local_name[32] = {0};
 
 #if USING_ADV_MANUFACTURER_DATA
     // Manufaturer data
@@ -1301,8 +1301,10 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
     bd_addr_t addr;
     ret = ble_get_public_address(&addr);
     if (ret == HL_ERR_NO_ERROR)
-        rt_snprintf(local_name, 16, "SkaiWatch %x %x", addr.addr[1],
-                    addr.addr[0]);
+        rt_snprintf(local_name, sizeof(local_name),
+                    "SkaiWatch-%x-%x-%x-%x-%x-%x",
+                    addr.addr[0], addr.addr[1], addr.addr[2],
+                    addr.addr[3], addr.addr[4], addr.addr[5]);
     else
         memcpy(local_name, DEFAULT_LOCAL_NAME, sizeof(DEFAULT_LOCAL_NAME));
 
@@ -1327,40 +1329,21 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
 
     para.config.adv_mode = SIBLES_ADV_CONNECT_MODE;
     para.config.mode_config.conn_config.duration = 0x0;
-    /* Adv interval is in 0.625 ms units. Three-tier policy:
-       - Pairing mode UI: 200 ms (0x140) — user is actively trying to pair,
-         keep discovery snappy.
-       - No bonded device but not in pairing UI: 500 ms (0x320) — power
-         settle until the user opens the pairing flow.
-       - Bonded + waiting to reconnect: 1.28 s (0x800) — phone takes at
-         most ~1 extra second to find us when it comes back in range, but
-         we cut the radio-on duty by ~6× vs the 200 ms case. */
-    if (pairing_mode)
-    {
-        para.config.mode_config.conn_config.interval = 0x140;
-    }
-    else if (!is_bonded)
-    {
-        para.config.mode_config.conn_config.interval = 0x320;
-    }
-    else
-    {
-        para.config.mode_config.conn_config.interval = 0x800;
-    }
+    para.config.mode_config.conn_config.interval = 0x30;
     para.config.max_tx_pwr = 0x7F;
-
     // Enable restart after disconnected
     para.config.is_auto_restart = 1;
     // adv data and rsp data use same data
     // para.config.is_rsp_data_duplicate = 1;
 
-    /* Prepare name filed. Due to name is too long to put adv data, put it to
-     * rsp data.*/
-    para.adv_data.completed_name =
+    /* Prepare name field. Full name "SkaiWatch-xx-xx-xx-xx-xx-xx" (up to 27
+     * chars + 2-byte AD header) doesn't fit alongside flags/appearance/service
+     * UUID in the 31-byte adv packet, so put it in scan response data instead. */
+    para.rsp_data.completed_name =
         rt_malloc(rt_strlen(local_name) + sizeof(sibles_adv_type_name_t));
-    para.adv_data.completed_name->name_len = rt_strlen(local_name);
-    rt_memcpy(para.adv_data.completed_name->name, local_name,
-              para.adv_data.completed_name->name_len);
+    para.rsp_data.completed_name->name_len = rt_strlen(local_name);
+    rt_memcpy(para.rsp_data.completed_name->name, local_name,
+              para.rsp_data.completed_name->name_len);
 #ifdef GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE
     /* Prepare Appearance data filed .*/
     {
@@ -1368,11 +1351,9 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
         if (mouse_mode)
         {
             appearance = GAP_GATT_APPEARANCE_MOUSE;
-            // appearance = GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE;
         }
         else
         {
-            // appearance = GAP_GATT_APPEARANCE_MOUSE;
             appearance = GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE;
         }
         LOG_D("Appearance: %d", appearance);

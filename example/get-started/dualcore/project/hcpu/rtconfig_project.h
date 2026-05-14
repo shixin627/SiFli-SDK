@@ -1,6 +1,9 @@
 #ifndef RTCONFIG_PROJECT_H__
 #define RTCONFIG_PROJECT_H__
 
+/* Override the SDK default "SifliDemo" Classic-BT local-name prefix. */
+#define BT_LOCAL_NAME_PREFIX "SkaiWatch"
+
 #if defined(_MSC_VER)
     /* APP_TRANS_ANIMATION_OVERWRITE is now set via Kconfig (proj.conf), no
      * need to define it here. */

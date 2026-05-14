@@ -129,7 +129,7 @@ void mark_ota_started(void)
 {
 	LOG_I("[OTA]mark OTA start");
 	dfu_started_mark = true;
-	watch_system_interact(HCPU_WAKEUP, NULL);
+	watch_system_wakeup();
 	setting_provider.set_power_save_mode(0);
 }
 

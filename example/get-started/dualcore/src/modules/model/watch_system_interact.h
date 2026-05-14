@@ -169,10 +169,8 @@ extern void BLE_LOG_E(const char *format, ...);
 /// Power
 
 // Power Management Types
-#define POWER_INTERACT_TYPE_BEGIN WATCH_SLEEP
+#define POWER_INTERACT_TYPE_BEGIN WATCH_OPEN_DISPLAY_TO_APP_LIST
 #define POWER_INTERACT_TYPE_END WATCH_REQUEST_CHARGE_STATUS
-        WATCH_SLEEP,
-        HCPU_WAKEUP,
         WATCH_OPEN_DISPLAY_TO_APP_LIST,
         WATCH_GESTURE_UNLOCK,
         WATCH_REBOOT,
@@ -199,6 +197,8 @@ extern void BLE_LOG_E(const char *format, ...);
     extern bool get_idle_state(void);
     extern void set_idle_state(bool state);
     extern bool is_user_touching_screen(void);
+    extern void watch_system_wakeup(void);
+    extern void watch_system_sleep(void);
 #ifdef BSP_USING_WATCH_SYS_CLIENT
     extern void set_watch_sleep_state(const watch_sys_sleep_state_t *state);
 #endif

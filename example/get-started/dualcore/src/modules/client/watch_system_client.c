@@ -229,7 +229,7 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
             {
                 if (!is_sleep_mode())
                 {
-                    watch_system_interact(WATCH_SLEEP, NULL);
+                    watch_system_sleep();
                 }
             }
         }
@@ -237,7 +237,7 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         {
             // watch_hcpu_resume_with_reason(WAKEUP_REASON_OTHER);
             SkaiWatchSys.flag_field.is_wearing = true;
-            watch_system_interact(HCPU_WAKEUP, NULL);
+            watch_system_wakeup();
         }
         else if (status == 3) // 往內旋解鎖
         {

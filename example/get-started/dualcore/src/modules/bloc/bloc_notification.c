@@ -456,7 +456,7 @@ void interact_with_notification(notification_t *notification)
         return;
     }
 
-    watch_system_interact(HCPU_WAKEUP, NULL);
+    watch_system_wakeup();
 
     notify_provider.notification_refresh();
     while (is_hcpu_suspend())
@@ -486,7 +486,7 @@ void trigger_incoming_call_ui(notification_t *notification)
         return;
     }
 
-    watch_system_interact(HCPU_WAKEUP, NULL);
+    watch_system_wakeup();
     while (is_hcpu_suspend())
     {
         need_wakeup = true;

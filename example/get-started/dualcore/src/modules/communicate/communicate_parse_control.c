@@ -103,11 +103,11 @@ void resolve_Control_command(uint8_t key, const uint8_t *pValue,
         break;
 
     case KEY_SLEEP:
-        watch_system_interact(WATCH_SLEEP, NULL);
+        watch_system_sleep();
         break;
 
     case KEY_WAKEUP:
-        watch_system_interact(HCPU_WAKEUP, NULL);
+        watch_system_wakeup();
         break;
 
     case KEY_APP_RUN:

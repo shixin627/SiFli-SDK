@@ -91,7 +91,6 @@ INIT_APP_EXPORT(bloc_control_provider_register);
 
 ```c
 watch_system_interact(INTERACT_RGB_LED_OPEN_WRITE, &brightness);
-watch_system_interact(WATCH_SLEEP, NULL);
 ```
 
 入口會做 `is_ble_dfu_thread_running()` 守門。對於同模組內的單純呼叫,可直接用對外公開函式(例如 motor_pattern_alarm())跳過 dispatcher。

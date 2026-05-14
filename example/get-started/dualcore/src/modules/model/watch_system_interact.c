@@ -52,7 +52,7 @@
 #include "power_manager_service.h"
 #include "lv_ext_resource_manager.h"
 #ifdef RT_USING_BLUETOOTH
-#include "bf0_ble_common.h"
+    #include "bf0_ble_common.h"
 #endif
 #include "app_mainmenu.h"
 #include "ui_handler.h"
@@ -77,15 +77,15 @@
 #endif
 #ifdef BSP_USING_COMMUNICATE
     #include "communicate_protocol.h"
-    #include "communicate_task.h"  /* commu_send_sleep_data, ... */
+    #include "communicate_task.h" /* commu_send_sleep_data, ... */
 #endif
 #ifdef BSP_USING_PM
     #include "bf0_pm.h"
 #endif
-#include "gui_app_pm.h"  /* always — gui_pm_fsm/gui_is_active called unconditionally */
+#include "gui_app_pm.h" /* always — gui_pm_fsm/gui_is_active called unconditionally */
 #ifdef RT_USING_BLUETOOTH
-#include "bf0_sibles_internal.h"
-#include "bf0_ble_gap.h"
+    #include "bf0_sibles_internal.h"
+    #include "bf0_ble_gap.h"
 #endif
 
 #define DBG_TAG "watch.interact"
@@ -103,6 +103,8 @@ extern void append_text_to_input_message(void);
 extern void append_text_to_mouse_input(void);
 extern void load_instruction_list(void);
 extern int subscribe_alarm_client(void);
+extern void start_ble_rssi_checker(uint32_t period_ms);
+extern void stop_ble_rssi_checker(void);
 #if !kReleaseMode
 extern bool ppg_data_collection;
 extern void blebredr_rf_power_set(uint8_t type, int8_t txpwr);
@@ -176,12 +178,13 @@ void handle_gesture_unlock(void)
 /* Common haptic-fire path: respects the global motor-on-off switch and
    forwards to the peripheral provider. Period is in microseconds. */
 static void motor_play_if_enabled(uint8_t duty, uint32_t period_us,
-                                   uint8_t repeats)
+                                  uint8_t repeats)
 {
-    if (!get_motor_switch_state()) return;
+    if (!get_motor_switch_state())
+        return;
     motor_params_t params = {
-        .duty_cycle   = duty,
-        .period       = period_us,
+        .duty_cycle = duty,
+        .period = period_us,
         .repeat_times = repeats,
     };
     peripheral_provider.control_motor(true, &params);
@@ -194,7 +197,8 @@ void motor_pattern_calling(void)
 
 void motor_pattern_notification(void)
 {
-    if (SkaiWatchSys.DNDMode.config.status) return; /* DND mode */
+    if (SkaiWatchSys.DNDMode.config.status)
+        return; /* DND mode */
 
     /* Burst guard: phone may dump several cached ANCS notifications in a
        1-2 s window after BLE reconnect — limit haptic to one buzz per 2 s
@@ -203,8 +207,7 @@ void motor_pattern_notification(void)
     static rt_tick_t last_notif_tick = 0;
     static bool seeded = false;
     rt_tick_t now = rt_tick_get();
-    if (seeded &&
-        (now - last_notif_tick) < rt_tick_from_millisecond(2000))
+    if (seeded && (now - last_notif_tick) < rt_tick_from_millisecond(2000))
         return;
     last_notif_tick = now;
     seeded = true;
@@ -315,16 +318,46 @@ void set_motor_switch_state(uint8_t state)
    Period comments below match the actual µs values; the legacy comments on
    damping/tap/unlocked were stale (claimed 200ms / 30ms but values were
    9ms/9ms/25ms). Wire-equivalent: same params struct, same provider call. */
-void motor_pattern_wheel_scrolling(void)     { motor_play_if_enabled(100, 100000, 1); /* 100ms */ }
-void motor_pattern_scrolling_app(void)       { motor_play_if_enabled(100,  12000, 1); /*  12ms */ }
-void motor_pattern_touchpad_slide(void)      { motor_play_if_enabled(100,  10000, 1); /*  10ms */ }
-void motor_pattern_screen_on_longpress(void) { motor_play_if_enabled(100, 200000, 1); /* 200ms */ }
-void motor_pattern_damping(void)             { motor_play_if_enabled(100,   9000, 1); /*   9ms */ }
-void motor_pattern_tap(void)                 { motor_play_if_enabled(100,   9000, 1); /*   9ms */ }
-void motor_pattern_alarm(void)               { motor_play_if_enabled( 51, 500000, 30); /* 500ms × 30 */ }
-void motor_pattern_normal(void)              { motor_play_if_enabled( 51, 100000, 1); /* 100ms */ }
-void motor_pattern_timer_reminder(void)      { motor_play_if_enabled( 51, 500000, 10); /* 500ms × 10 */ }
-void motor_pattern_unlocked(void)            { motor_play_if_enabled(100,  25000, 1); /*  25ms */ }
+void motor_pattern_wheel_scrolling(void)
+{
+    motor_play_if_enabled(100, 100000, 1); /* 100ms */
+}
+void motor_pattern_scrolling_app(void)
+{
+    motor_play_if_enabled(100, 12000, 1); /*  12ms */
+}
+void motor_pattern_touchpad_slide(void)
+{
+    motor_play_if_enabled(100, 10000, 1); /*  10ms */
+}
+void motor_pattern_screen_on_longpress(void)
+{
+    motor_play_if_enabled(100, 200000, 1); /* 200ms */
+}
+void motor_pattern_damping(void)
+{
+    motor_play_if_enabled(100, 9000, 1); /*   9ms */
+}
+void motor_pattern_tap(void)
+{
+    motor_play_if_enabled(100, 9000, 1); /*   9ms */
+}
+void motor_pattern_alarm(void)
+{
+    motor_play_if_enabled(51, 500000, 30); /* 500ms × 30 */
+}
+void motor_pattern_normal(void)
+{
+    motor_play_if_enabled(51, 100000, 1); /* 100ms */
+}
+void motor_pattern_timer_reminder(void)
+{
+    motor_play_if_enabled(51, 500000, 10); /* 500ms × 10 */
+}
+void motor_pattern_unlocked(void)
+{
+    motor_play_if_enabled(100, 25000, 1); /*  25ms */
+}
 
 void motor_pattern_stop(void)
 {
@@ -670,9 +703,9 @@ void set_watch_sleep_state(const watch_sys_sleep_state_t *state)
           (unsigned)SkaiWatchSys.sleep_state.resting_hr);
     /* Push to the phone if BLE is connected. commu_can_send() inside the
        send helper gates on connection + non-DFU. */
-#ifdef BSP_USING_COMMUNICATE
+    #ifdef BSP_USING_COMMUNICATE
     commu_send_sleep_data();
-#endif
+    #endif
 }
 #endif
 
@@ -812,6 +845,40 @@ static void handle_system_settings(INTERACT_Type type, void *pValue)
 #endif
 }
 
+void watch_system_wakeup(void)
+{
+    if (!gui_is_active())
+    {
+        LOG_D("Exiting sleep mode");
+        gui_pm_fsm(GUI_PM_ACTION_BUTTON_CLICKED);
+        peripheral_provider.hcpu_resume();
+        if (SkaiWatchSys.gap_conn_state == GAP_CONN_STATE_CONNECTED)
+        {
+            start_ble_rssi_checker(10000);
+        }
+    }
+}
+
+#if !kReleaseMode
+extern bool pause_sleep_cause_of_dev_reson(void);
+#endif
+
+void watch_system_sleep(void)
+{
+    if (setting_provider.get_power_save_mode() &&
+#if !kReleaseMode
+        !pause_sleep_cause_of_dev_reson() &&
+#endif
+        !get_motor_status())
+    {
+        LOG_D("Entering sleep mode");
+        peripheral_provider.hcpu_suspend();
+        gui_pm_fsm(GUI_PM_ACTION_SLEEP);
+        skaiwatch_ble_set_performance(BLE_PERF_SLOW);
+        stop_ble_rssi_checker();
+    }
+}
+
 // Extract power management handling into a separate function
 static void handle_power_management(INTERACT_Type type, void *pValue)
 {
@@ -820,38 +887,12 @@ static void handle_power_management(INTERACT_Type type, void *pValue)
     case WATCH_OPEN_DISPLAY_TO_APP_LIST:
         set_user_want_to_open_display_to_instruction_list(true);
         break;
-    case HCPU_WAKEUP:
-    {
-        if (!gui_is_active())
-        {
-            gui_pm_fsm(GUI_PM_ACTION_BUTTON_CLICKED);
-            peripheral_provider.hcpu_resume();
-        }
-        break;
-    }
-    case WATCH_SLEEP:
-    {
-        if (!get_motor_status())
-        {
-            peripheral_provider.hcpu_suspend();
-            gui_pm_fsm(GUI_PM_ACTION_SLEEP);
-            /* Defense-in-depth: ensure BLE is in slow profile (~1.2 s
-               effective via slave_latency) once we go idle. V2T / file
-               transfer already restore slow on completion, but if the user
-               sleeps mid-transfer or before that path runs we'd otherwise
-               stay on fast (~30 ms) for nothing. */
-            skaiwatch_ble_set_performance(BLE_PERF_SLOW);
-        }
-        break;
-    }
     case WATCH_GESTURE_UNLOCK:
         handle_gesture_unlock();
         break;
-
     case WATCH_REBOOT:
         peripheral_provider.hcpu_reboot();
         break;
-
     case STANDBY_WAKEUP:
     {
         SkaiWatchSys.sys_power_status = 0;
@@ -1041,9 +1082,9 @@ static int set_watch_system(int argc, char *argv[])
         }
         else if (strcmp(argv[1], "-sleep") == 0)
         {
-            watch_system_interact(WATCH_SLEEP, NULL);
+            watch_system_sleep();
         }
-#ifdef RT_USING_BLUETOOTH
+    #ifdef RT_USING_BLUETOOTH
         // ----- Bluetooth
         else if (strcmp(argv[1], "-set_ble_rf") == 0)
         {
@@ -1057,7 +1098,7 @@ static int set_watch_system(int argc, char *argv[])
             uint8_t ret = ble_gap_get_remote_rssi(&rssi);
             LOG_D("ble_gap_get_remote_rssi ret:%d", ret);
         }
-#endif
+    #endif
         else if (strcmp(argv[1], "-chack_tile") == 0)
         {
             chack_tile_page();

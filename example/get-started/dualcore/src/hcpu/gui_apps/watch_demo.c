@@ -550,19 +550,9 @@ static void button_event_task_entry(struct _lv_timer_t *task)
         limit_time = SkaiWatchSys.oled_display_time * 1000;
     }
 
-    #if !kReleaseMode
-    extern bool pause_sleep_cause_of_dev_reson(void);
-    #endif
-
-    if (lv_disp_get_inactive_time(NULL) > limit_time &&
-        setting_provider.get_power_save_mode() &&
-    #if !kReleaseMode
-        !pause_sleep_cause_of_dev_reson() &&
-    #endif
-        !get_motor_status())
+    if (lv_disp_get_inactive_time(NULL) > limit_time)
     {
-        peripheral_provider.hcpu_suspend();
-        gui_pm_fsm(GUI_PM_ACTION_SLEEP);
+        watch_system_sleep();
     }
 
     err = rt_event_recv(&btn_event, BTN_EVT_ALL,

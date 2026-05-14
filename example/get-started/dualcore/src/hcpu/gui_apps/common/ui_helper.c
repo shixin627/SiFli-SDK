@@ -323,7 +323,7 @@ uint8_t get_system_font_size(int adjust)
 void watch_run_app_by_intent(AppIntent *appIntent)
 {
     LOG_I("Running app: ID=%s, Param=%s", appIntent->app_id, appIntent->intent);
-    watch_system_interact(HCPU_WAKEUP, NULL);
+    watch_system_wakeup();
     rt_thread_mdelay(200);
     if (appIntent == NULL)
     {
