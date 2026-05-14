@@ -333,9 +333,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>-Wno-builtin-macro-redefined </MiscControls>
-              <Define>HAL_TICK_PER_SECOND=1000, SIFLI_BUILD="dfd8cad6", SF32LB56X, RT_USING_ARM_LIBC, USE_HAL_DRIVER, SIFLI_VERSION=33882112, ROM_ENABLED, __FILE__=__FILE_NAME__, SOC_BF0_LCPU, ARM_MATH_LOOPUNROLL, LCPU_CONFIG_V1</Define>
+              <Define>HAL_TICK_PER_SECOND=1000, SOC_BF0_LCPU, RT_USING_ARM_LIBC, USE_HAL_DRIVER, LCPU_CONFIG_V1, __FILE__=__FILE_NAME__, ARM_MATH_LOOPUNROLL, SF32LB56X, ROM_ENABLED, SIFLI_VERSION=33882112, SIFLI_BUILD="f430fa7b"</Define>
               <Undefine />
-              <IncludePath>build_sf32lb56w-watch_lcpu;..\..\..\..\..\rtos\rtthread\include;..\..\src\lcpu;..\..\src\modules\algorithm\activity;..\..\src\modules\algorithm\activity\kraepelin;..\..\src\modules\algorithm\GestureDetect;..\..\src\modules\algorithm\HandTracking;..\..\src\modules\algorithm\MahonyAHRS;..\..\src\modules\algorithm\WearDetect;..\..\src\modules\bloc;..\..\src\modules\client;..\..\src\modules\communicate;..\..\src\modules\model;..\..\src\modules\service;..\..\src\modules\tests;..\..\src\modules\util\includes;..\..\..\..\..\customer\boards\common;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\..\..\..\customer\boards\eh-lb563;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56w-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\peripherals\charger;..\..\..\..\..\customer\peripherals\charger\simple_charge;..\..\..\..\..\customer\peripherals\motor;..\..\..\..\..\customer\peripherals\sensor\BMI270-Sensor-API;..\..\..\..\..\customer\peripherals\sensor\BMI270-Sensor-API\common;..\..\..\..\..\customer\peripherals\sensor\gh3018;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo\Basic\inc;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo\Basic\lib;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo\Basic\src;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\call\inc;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\call\src;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\common\inc;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\common\src;..\..\..\..\..\rtos\rtthread\bsp\sifli\drivers;..\..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\..\drivers\cmsis\Include;..\..\..\..\..\external\CMSIS\Include;..\..\..\..\..\drivers\Include;..\..\..\..\..\drivers\hal_epic_ex;..\..\..\..\..\external\helper_worker;..\..\..\..\..\external\Kraepelin\kraepelin_algorithm;..\..\..\..\..\external\Kraepelin\kraepelin_reference;..\..\..\..\..\middleware\include;..\..\..\..\..\middleware\button;..\..\..\..\..\middleware\context_backup;..\..\..\..\..\middleware\ipc_queue\common;..\..\..\..\..\middleware\ipc_queue\include;..\..\..\..\..\middleware\ipc_queue\porting\os;..\..\..\..\..\middleware\ipc_queue\porting\os\rtthread;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x\lcpu;..\..\..\..\..\middleware\audio;..\..\..\..\..\middleware\audio\include;..\..\..\..\..\middleware\audio\audio_bt_voice;..\..\..\..\..\middleware\audio\audio_port;..\..\..\..\..\middleware\audio\audio_speaker_mic;..\..\..\..\..\middleware\audio\audio_voice_proc;..\..\..\..\..\middleware\battery;..\..\..\..\..\middleware\bluetooth\service;..\..\..\..\..\middleware\bluetooth\service\internal;..\..\..\..\..\middleware\bluetooth\include;..\..\..\..\..\middleware\data_bus\public;..\..\..\..\..\middleware\data_bus\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\middleware\sifli_lib\lib;..\..\..\..\..\middleware\include;..\..\..\..\..\rtos\os_adaptor\src;..\..\..\..\..\rtos\os_adaptor\inc;..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33;..\..\..\..\..\rtos\rtthread\libcpu\arm\common;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\motor;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc;..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\include;..\..\..\..\..\rtos\rtthread\components\utilities\llt_mem;..\..\..\..\..\rtos\rtthread\components\utilities\ulog;..\..\..\..\..\rtos\rtthread\components\utilities\ulog\backend</IncludePath>
+              <IncludePath>build_sf32lb56w-watch_lcpu;..\..\..\..\..\rtos\rtthread\include;..\..\src\lcpu;..\..\src\modules\algorithm\GestureDetect;..\..\src\modules\algorithm\HandTracking;..\..\src\modules\algorithm\MahonyAHRS;..\..\src\modules\algorithm\WearDetect;..\..\src\modules\algorithm\health;..\..\src\modules\bloc;..\..\src\modules\client;..\..\src\modules\communicate;..\..\src\modules\model;..\..\src\modules\service;..\..\src\modules\tests;..\..\src\modules\util\includes;..\..\..\..\..\customer\boards\common;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\..\..\..\customer\boards\eh-lb563;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\sf32lb56w-watch;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\boards\eh-lb56xu;..\..\..\..\..\customer\boards\include;..\..\..\..\..\customer\peripherals\charger;..\..\..\..\..\customer\peripherals\charger\simple_charge;..\..\..\..\..\customer\peripherals\motor;..\..\..\..\..\customer\peripherals\sensor\BMI270-Sensor-API;..\..\..\..\..\customer\peripherals\sensor\BMI270-Sensor-API\common;..\..\..\..\..\customer\peripherals\sensor\gh3018;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo\Basic\inc;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo\Basic\lib;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo\Basic\src;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\call\inc;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\call\src;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\common\inc;..\..\..\..\..\customer\peripherals\sensor\gh30x_algo_demo\common\src;..\..\..\..\..\rtos\rtthread\bsp\sifli\drivers;..\..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\..\drivers\cmsis\Include;..\..\..\..\..\external\CMSIS\Include;..\..\..\..\..\drivers\Include;..\..\..\..\..\drivers\hal_epic_ex;..\..\..\..\..\middleware\include;..\..\..\..\..\middleware\button;..\..\..\..\..\middleware\context_backup;..\..\..\..\..\middleware\ipc_queue\common;..\..\..\..\..\middleware\ipc_queue\include;..\..\..\..\..\middleware\ipc_queue\porting\os;..\..\..\..\..\middleware\ipc_queue\porting\os\rtthread;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x;..\..\..\..\..\middleware\ipc_queue\porting\sf32lb56x\lcpu;..\..\..\..\..\middleware\audio;..\..\..\..\..\middleware\audio\include;..\..\..\..\..\middleware\audio\audio_bt_voice;..\..\..\..\..\middleware\audio\audio_port;..\..\..\..\..\middleware\audio\audio_speaker_mic;..\..\..\..\..\middleware\audio\audio_voice_proc;..\..\..\..\..\middleware\battery;..\..\..\..\..\middleware\bluetooth\service;..\..\..\..\..\middleware\bluetooth\service\internal;..\..\..\..\..\middleware\bluetooth\include;..\..\..\..\..\middleware\data_bus\public;..\..\..\..\..\middleware\data_bus\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\middleware\sifli_lib\lib;..\..\..\..\..\middleware\include;..\..\..\..\..\rtos\os_adaptor\src;..\..\..\..\..\rtos\os_adaptor\inc;..\..\..\..\..\rtos\rtthread\libcpu\arm\cortex-m33;..\..\..\..\..\rtos\rtthread\libcpu\arm\common;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\motor;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\drivers\sensors;..\..\..\..\..\rtos\rtthread\components\drivers\include;..\..\..\..\..\rtos\rtthread\components\libc\compilers\armlibc;..\..\..\..\..\rtos\rtthread\components\libc\compilers\common\include;..\..\..\..\..\rtos\rtthread\components\utilities\llt_mem;..\..\..\..\..\rtos\rtthread\components\utilities\ulog;..\..\..\..\..\rtos\rtthread\components\utilities\ulog\backend</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -369,7 +369,7 @@
             <ScatterFile>build_sf32lb56w-watch_lcpu/link.sct</ScatterFile>
             <IncludeLibs />
             <IncludeLibsPath />
-            <Misc>  --cpu=cortex-m33 --strict --scatter build_sf32lb56w-watch_lcpu/link.sct --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols --info sizes --info totals --info unused --info veneers --any_contingency  --list build_sf32lb56w-watch_lcpu/main.map  --symdefs=build_sf32lb56w-watch_lcpu/main.symdefs  --libpath=C:\Keil_v5/ARM/ARMCLANG/lib --diag_suppress=L6314 --diag_suppress=L6329 --predefine="-DSF32LB56X" --predefine="-DHAL_TICK_PER_SECOND=1000" --predefine="-DSIFLI_BUILD="dfd8cad6"" --predefine="-DSF32LB56X" --predefine="-DUSE_HAL_DRIVER" --predefine="-DSIFLI_VERSION=33882112" --predefine="-DROM_ENABLED" --predefine="-DSOC_BF0_LCPU" --predefine="-DARM_MATH_LOOPUNROLL" --predefine="-DLCPU_CONFIG_V1" --predefine="-DRT_USING_ARM_LIBC"</Misc>
+            <Misc>  --cpu=cortex-m33 --strict --scatter build_sf32lb56w-watch_lcpu/link.sct --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols --info sizes --info totals --info unused --info veneers --any_contingency  --list build_sf32lb56w-watch_lcpu/main.map  --symdefs=build_sf32lb56w-watch_lcpu/main.symdefs  --libpath=C:\Keil_v5/ARM/ARMCLANG/lib --diag_suppress=L6314 --diag_suppress=L6329 --predefine="-DSF32LB56X" --predefine="-DHAL_TICK_PER_SECOND=1000" --predefine="-DSOC_BF0_LCPU" --predefine="-DUSE_HAL_DRIVER" --predefine="-DLCPU_CONFIG_V1" --predefine="-DARM_MATH_LOOPUNROLL" --predefine="-DSF32LB56X" --predefine="-DROM_ENABLED" --predefine="-DSIFLI_VERSION=33882112" --predefine="-DSIFLI_BUILD="f430fa7b"" --predefine="-DRT_USING_ARM_LIBC"</Misc>
             <LinkerInputFile />
             <DisabledWarnings />
           </LDads>
@@ -509,44 +509,6 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>activity</GroupName>
-          <Files>
-            <File>
-              <FileName>activity_algorithm_kraepelin.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\src\modules\algorithm\activity\kraepelin\activity_algorithm_kraepelin.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>activity.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\src\modules\algorithm\activity\activity.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>activity_calculators.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\src\modules\algorithm\activity\activity_calculators.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>activity_metrics.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\src\modules\algorithm\activity\activity_metrics.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>activity_sessions.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\src\modules\algorithm\activity\activity_sessions.c</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
           <GroupName>Algorithm</GroupName>
           <Files>
             <File>
@@ -574,6 +536,16 @@
               <FileName>wear_detect.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\src\modules\algorithm\WearDetect\wear_detect.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Health</GroupName>
+          <Files>
+            <File>
+              <FileName>sleep_fusion.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\src\modules\algorithm\health\sleep_fusion.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -632,6 +604,13 @@
               <FileName>watch_system_service.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\src\modules\service\watch_system_service.c</FilePath>
+            </File>
+          </Files>
+          <Files>
+            <File>
+              <FileName>sleep_service.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\src\modules\service\sleep_service.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1639,86 +1618,6 @@
               <FilePath>..\..\..\..\..\drivers\hal_epic_ex\hal_epic_ex_rvds.lib</FilePath>
             </File>
           </Files>
-        </Group>
-        <Group>
-          <GroupName>helper_worker</GroupName>
-          <Files>
-            <File>
-              <FileName>helper_worker.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\external\helper_worker\helper_worker.c</FilePath>
-            </File>
-          </Files>
-          <GroupOption>
-            <GroupArmAds>
-              <Cads>
-                <VariousControls>
-                  <MiscControls />
-                  <Define> </Define>
-                  <Undefine> </Undefine>
-                  <IncludePath> </IncludePath>
-                </VariousControls>
-              </Cads>
-            </GroupArmAds>
-          </GroupOption>
-        </Group>
-        <Group>
-          <GroupName>kraepelin_algorithm</GroupName>
-          <Files>
-            <File>
-              <FileName>kraepelin_algorithm.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\external\Kraepelin\kraepelin_algorithm\kraepelin_algorithm.c</FilePath>
-            </File>
-          </Files>
-          <GroupOption>
-            <GroupArmAds>
-              <Cads>
-                <VariousControls>
-                  <MiscControls />
-                  <Define> </Define>
-                  <Undefine> </Undefine>
-                  <IncludePath> </IncludePath>
-                </VariousControls>
-              </Cads>
-            </GroupArmAds>
-          </GroupOption>
-        </Group>
-        <Group>
-          <GroupName>kraepelin_reference</GroupName>
-          <Files>
-            <File>
-              <FileName>ProjectK_worker.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\external\Kraepelin\kraepelin_reference\ProjectK_worker.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>fourier.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\external\Kraepelin\kraepelin_reference\fourier.c</FilePath>
-            </File>
-          </Files>
-          <Files>
-            <File>
-              <FileName>raw_stats.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\external\Kraepelin\kraepelin_reference\raw_stats.c</FilePath>
-            </File>
-          </Files>
-          <GroupOption>
-            <GroupArmAds>
-              <Cads>
-                <VariousControls>
-                  <MiscControls />
-                  <Define> </Define>
-                  <Undefine> </Undefine>
-                  <IncludePath> </IncludePath>
-                </VariousControls>
-              </Cads>
-            </GroupArmAds>
-          </GroupOption>
         </Group>
         <Group>
           <GroupName>middleware</GroupName>

@@ -1,6 +1,6 @@
 {
-    "version": "1.1.49",
-    "description": "新抬腕亮屏和計步器",
+    "version": "1.1.50",
+    "description": "新增睡眠算法(待測試),修復藍芽傳送數據問題",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",

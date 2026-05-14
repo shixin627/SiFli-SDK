@@ -57,7 +57,7 @@ struct sifli_adc
 
 static struct sifli_adc sifli_adc_obj[sizeof(adc_config) / sizeof(adc_config[0])];
 
-#define ADC_SW_AVRA_CNT         (3)
+#define ADC_SW_AVRA_CNT         (CUSTOM_ADC_SW_AVRA_CNT)
 
 static HAL_ADC_CalibContextTypeDef g_adc_calib_ctx;
 

@@ -1036,15 +1036,12 @@ static void bmi270_int_msg_handler(void)
         if (bmi270_get_feature_data(&fdata, 1, &bmi2_dev) == BMI2_OK)
         {
             uint8_t g = fdata.sens_data.wrist_gesture_output;
-            static const char *names[6] = {
-                "unknown", "push_arm_down", "pivot_up",
-                "wrist_jiggle", "flick_in", "flick_out"
-            };
-            LOG_I("BMI270 wrist-gesture detected: %d (%s)",
-                  g, g < 6 ? names[g] : "?");
-            /* Dispatch wake on flick_in/out and pivot_up (motion bringing
-               watch toward viewer). Skip push_arm_down (opposite intent)
-               and wrist_jiggle (too easily false-triggered). */
+            // static const char *names[6] = {
+            //     "unknown", "push_arm_down", "pivot_up",
+            //     "wrist_jiggle", "flick_in", "flick_out"
+            // };
+            // LOG_D("BMI270 wrist-gesture detected: %d (%s)",
+            //       g, g < 6 ? names[g] : "?");
             if (g == 2 /*pivot_up*/ || g == 4 /*flick_in*/ || g == 5 /*flick_out*/)
             {
                 bmi270_on_wrist_wake_detected();
