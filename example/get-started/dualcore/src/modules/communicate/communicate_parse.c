@@ -92,15 +92,29 @@ bool L2_frame_resolve(uint8_t *pData, uint16_t length)
 
     uint8_t *frag_payload = pData + L2_FIRST_VALUE_POS;
 
-    /* Fast path: standalone packet, no chain in progress. */
-    if (!more_frag && !s_l2_reass_active)
+    /* Single-fragment frame: dispatch directly without touching the chain
+       state UNLESS this frame is the final fragment of the in-progress chain
+       (same cmd+key). This is critical during OTA — a stream of single-frame
+       KEY_UPDATE_WATCH_* chunks must not clobber an unrelated fragmented
+       phone→watch command (e.g., a long notification text) that happens to
+       be in mid-reassembly. */
+    if (!more_frag)
     {
-        dispatch_l2_command(command_id, first_key, frag_payload, value_len);
-        return true;
+        bool is_chain_tail = s_l2_reass_active &&
+                             s_l2_reass_cmd == command_id &&
+                             s_l2_reass_key == first_key;
+        if (!is_chain_tail)
+        {
+            dispatch_l2_command(command_id, first_key, frag_payload, value_len);
+            return true;
+        }
+        /* Fall through to append + dispatch. */
     }
 
-    /* New chain, or (cmd, key) mismatch with the in-progress chain — drop the
-       stale chain and treat this fragment as the start of a new one. */
+    /* From here on we know this is either a continuation fragment or the
+       final tail of an existing chain. A continuation that doesn't match
+       the active chain replaces it (real interleaving of two fragmented
+       chains; rare — last-writer-wins, with a warning so we notice). */
     if (!s_l2_reass_active || s_l2_reass_cmd != command_id || s_l2_reass_key != first_key)
     {
         if (s_l2_reass_active)

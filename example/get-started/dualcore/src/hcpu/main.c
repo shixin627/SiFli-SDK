@@ -855,47 +855,47 @@ void skaiwatch_ble_set_performance(ble_perf_level_t level)
     }
 }
 
-#define BLE_DATA_SYNC_RETRIES_UNTIL_SUCCESS 1
+/* Bounded retry on TX-queue saturation. The original implementation looped
+   forever with 50 ms sleeps when sibles_write_value returned 0, which under
+   silent OTA can wedge the caller — and through the shared _tx_mutex, every
+   other commu_send_* caller — for tens of seconds while OTA progress acks
+   and regular notifications all compete for the same BLE controller credits.
+   1 s total wait is enough to ride out a normal congestion burst at MTU 247;
+   beyond that, surface the failure to the caller and let them decide. */
+#define BLE_NOTIFY_MAX_RETRIES        20
+#define BLE_NOTIFY_RETRY_INTERVAL_MS  50
 uint16_t skaiwalk_ble_app_notify(uint8_t *p_data, uint16_t data_length)
 {
-    if (g_sifli_test_ble_test_hdl)
-    {
-        app_env_t *env = ble_app_get_env();
-        sibles_value_t value;
-        value.hdl = g_sifli_test_ble_test_hdl;
-        value.idx = BLE_APP_RX_VALUE;
-        value.len = data_length;
-        value.value = p_data;
-
-        int ret;
-        ret = sibles_write_value(phone_device_idx, &value);
-
-#if BLE_DATA_SYNC_RETRIES_UNTIL_SUCCESS
-        if (ret == value.len)
-        {
-            // LOG_D("send success");
-        }
-        else if (ret == 0)
-        {
-            while (1)
-            {
-                rt_thread_mdelay(50);
-                ret = sibles_write_value(phone_device_idx, &value);
-                if (ret == value.len)
-                {
-                    LOG_D("send retry success");
-                    break;
-                }
-            }
-        }
-#endif
-        return ret;
-    }
-    else
+    if (!g_sifli_test_ble_test_hdl)
     {
         LOG_E("no service");
         return 0;
     }
+
+    sibles_value_t value;
+    value.hdl = g_sifli_test_ble_test_hdl;
+    value.idx = BLE_APP_RX_VALUE;
+    value.len = data_length;
+    value.value = p_data;
+
+    int ret = sibles_write_value(phone_device_idx, &value);
+    if (ret == value.len) return ret;
+
+    for (int attempt = 0; attempt < BLE_NOTIFY_MAX_RETRIES; attempt++)
+    {
+        rt_thread_mdelay(BLE_NOTIFY_RETRY_INTERVAL_MS);
+        ret = sibles_write_value(phone_device_idx, &value);
+        if (ret == value.len)
+        {
+            LOG_D("send retry success after %d attempts", attempt + 1);
+            return ret;
+        }
+    }
+    LOG_W("ble notify dropped after %d retries (%d ms), len=%u",
+          BLE_NOTIFY_MAX_RETRIES,
+          BLE_NOTIFY_MAX_RETRIES * BLE_NOTIFY_RETRY_INTERVAL_MS,
+          data_length);
+    return 0;
 }
 /********************** End of Skaiwalk BLE Application
  * *********************************/

@@ -194,13 +194,37 @@ static bool verify_binary_image(dfu_img_id_t id)
 	return flash_provider.check_image_write_address(watch_image_write_addr, watch_image_size, image_update_start_address, binary_image_size_max);
 }
 
+/* Chunked erase: a single flash_erase(binary_image_size_max) call holds the
+   SPI bus and blocks every other flash user (share_prefs, log backend, file
+   sync) for the whole duration. For the FS image region this can be many
+   seconds. Slicing into 1 MB batches with a yield between each lets the
+   peripheral task drain its queued SAVE_SHARE_PREFS / other events between
+   sub-erases. Correctness is identical — flash_erase is idempotent over
+   adjacent ranges. */
+#define DFU_ERASE_BATCH_BYTES (1024 * 1024)
+
+static void erase_image_region_chunked(uint32_t addr, uint32_t total_size)
+{
+	uint32_t erased = 0;
+	while (erased < total_size)
+	{
+		uint32_t this_chunk = total_size - erased;
+		if (this_chunk > DFU_ERASE_BATCH_BYTES) this_chunk = DFU_ERASE_BATCH_BYTES;
+		flash_provider.erase_sector(addr + erased, this_chunk);
+		erased += this_chunk;
+		/* Give the peripheral task / BLE rx thread a chance to run before
+		   we grab the SPI bus again for the next batch. */
+		rt_thread_yield();
+	}
+}
+
 static bool verify_ble_dfu_image(dfu_img_id_t id)
 {
 	bool isValid = verify_binary_image(id);
 	if (isValid)
 	{
 		LOG_I("Binary Image[%d]is valid, max image size: %d", id, binary_image_size_max);
-		flash_provider.erase_sector(watch_image_write_addr, binary_image_size_max);
+		erase_image_region_chunked(watch_image_write_addr, binary_image_size_max);
 		return true;
 	}
 	else
@@ -655,6 +679,15 @@ static uint8_t calculate_ota_progress(void)
 	return prograss;
 }
 
+/* Backpressure: if the DFU thread is behind (flash write slower than BLE rx),
+   wait up to this long for a mailbox slot before declaring failure. The BLE
+   stack's link-layer flow control then naturally throttles the phone — no
+   chunks dropped. Tuned long enough to cover one PAGE_SIZE flash_write
+   (≈250 µs on NAND, plus the SPI bus serializes against prefs writes that
+   can take tens of ms), short enough that a wedged DFU thread still aborts
+   the session via the 5 s inactivity timeout above. */
+#define DFU_MAILBOX_SEND_TIMEOUT_TICKS (rt_tick_from_millisecond(200))
+
 static bool send_dfu_flash_msg(uint8_t msg_type, uint32_t size, uint8_t *data)
 {
 	if (watch_image_mailbox == NULL)
@@ -689,7 +722,22 @@ static bool send_dfu_flash_msg(uint8_t msg_type, uint32_t size, uint8_t *data)
 		fwrite->data = NULL;
 	}
 
-	rt_mb_send(watch_image_mailbox, (rt_uint32_t)fwrite);
+	/* rt_mb_send is non-blocking; on -RT_EFULL the fwrite + data would leak
+	   AND the chunk would be silently dropped (then image verification fails
+	   without a clear cause). Use the _wait variant for real backpressure;
+	   on persistent failure, free everything and surface the error so the
+	   caller can terminate the DFU session cleanly. */
+	rt_err_t mb_ret = rt_mb_send_wait(watch_image_mailbox,
+	                                  (rt_uint32_t)fwrite,
+	                                  DFU_MAILBOX_SEND_TIMEOUT_TICKS);
+	if (mb_ret != RT_EOK)
+	{
+		LOG_E("[%s]mailbox full after timeout (ret=%d), drop msg_type=%d size=%u",
+		      __func__, mb_ret, msg_type, (unsigned)size);
+		if (fwrite->data) rt_free(fwrite->data);
+		rt_free(fwrite);
+		return false;
+	}
 	return true;
 }
 
