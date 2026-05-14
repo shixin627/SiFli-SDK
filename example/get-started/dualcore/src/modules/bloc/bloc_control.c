@@ -99,7 +99,10 @@ static void debounce_timer_kick(rt_timer_t *t, const char *name,
 {
 	if (!*t)
 	{
-		*t = rt_timer_create(name, cb, RT_NULL, period_ms, RT_TIMER_FLAG_ONE_SHOT);
+		/* SOFT_TIMER: brightness / display-time callbacks call into
+		   setting_provider which talks to LCPU via data_service (dserv mutex).
+		   Hard timers run in SysTick and cannot take mutexes. */
+		*t = rt_timer_create(name, cb, RT_NULL, period_ms, RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
 	}
 	else
 	{
@@ -406,7 +409,10 @@ static void smooth_volume_changed_timer_start(void)
 {
 	if (!smooth_volume_changed_timer)
 	{
-		smooth_volume_changed_timer = rt_timer_create("smooth_volume_changed_timer", smooth_volume_changed_timer_callback, RT_NULL, 200, RT_TIMER_FLAG_ONE_SHOT);
+		/* SOFT_TIMER: callback walks commu_send_* → skaiwatch_ble_notify which
+		   now takes _tx_mutex (commit 7e95e8658). Without SOFT_TIMER the
+		   one-shot fires from SysTick ISR and rt_mutex_take asserts. */
+		smooth_volume_changed_timer = rt_timer_create("smooth_volume_changed_timer", smooth_volume_changed_timer_callback, RT_NULL, 200, RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
 	}
 	else
 	{
