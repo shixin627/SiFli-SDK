@@ -153,18 +153,14 @@ void bmi270_sensor_power_high_mode(void)
     bmi270_high_performance_mode();
 #ifdef BSP_USING_MAHONY_AHRS
     setSampleFrequencyAHRS(IMU_NOARMAL_SAMPLE_RATE);
-    rt_thread_mdelay(200);
-    {
-        int16_t ax, ay, az;
-        bmi270_accel_read(&ax, &ay, &az);
-        /* Apply same axis remapping as redirect_sensor_data */
-#if (WATCH_IMU_REVERSE_180)
-        int16_t rx = ax, ry = -ay;
-#else
-        int16_t rx = -ax, ry = ay;
-#endif
-        int16_t rz = -az;
-    }
+    /* Removed: 200 ms mdelay + accel read + axis remap.
+       That block was added in 79bf29007 (2026-03-20) to feed
+       `reinitialize_ahrs_from_accel(rx, ry, rz)`, which 1edd7541
+       (2026-05-12) commented out, leaving the read result unused.
+       The mdelay masked BMI270 INT1 for 200 ms after every screen-on,
+       blocking immediate post-wake gestures (back / put-down / re-lift)
+       for that window. AHRS quaternion stays converged via FIFO drain
+       during DARK, so no AHRS reseed is needed on wake. */
 #endif
     watch_sensor.imu_data.sample_rate = IMU_NOARMAL_SAMPLE_RATE;
     rt_bmi270_irq_pin_enable(1);
