@@ -71,20 +71,34 @@ lv_obj_t * lv_qrcode_create(lv_obj_t * parent)
 lv_obj_t * lv_qrcode_setparam(lv_obj_t * obj, lv_coord_t size, lv_color_t dark_color, lv_color_t light_color)
 {
     lv_qrcode_t * qrcode=(lv_qrcode_t*)obj;
-    
+
     qrcode->size_param = size;
     qrcode->light_color_param = light_color;
     qrcode->dark_color_param = dark_color;
 
+#ifdef DRV_EPIC_NEW_API
+    /* EPIC GPU (new API) does not support LV_IMG_CF_INDEXED_1BIT and the
+     * software blend fallback is intentionally disabled, so an INDEXED_1BIT
+     * canvas would render as blank. Use TRUE_COLOR instead — it costs more
+     * RAM but is rendered directly by the GPU. */
+    uint32_t buf_size = LV_CANVAS_BUF_SIZE_TRUE_COLOR(size, size);
+    uint8_t * buf = lv_mem_alloc(buf_size);
+    LV_ASSERT_MALLOC(buf);
+    if(buf == NULL)
+        return NULL;
+
+    lv_canvas_set_buffer(obj, buf, size, size, LV_IMG_CF_TRUE_COLOR);
+#else
     uint32_t buf_size = LV_CANVAS_BUF_SIZE_INDEXED_1BIT(size, size);
     uint8_t * buf = lv_mem_alloc(buf_size);
     LV_ASSERT_MALLOC(buf);
-    if(buf == NULL) 
+    if(buf == NULL)
         return NULL;
 
     lv_canvas_set_buffer(obj, buf, size, size, LV_IMG_CF_INDEXED_1BIT);
     lv_canvas_set_palette(obj, 0, dark_color);
-    lv_canvas_set_palette(obj, 1, light_color);    
+    lv_canvas_set_palette(obj, 1, light_color);
+#endif
     return obj;
 }
 
@@ -97,6 +111,11 @@ lv_obj_t * lv_qrcode_setparam(lv_obj_t * obj, lv_coord_t size, lv_color_t dark_c
  */
 lv_res_t lv_qrcode_update(lv_obj_t * qrcode, const void * data, uint32_t data_len)
 {
+    lv_qrcode_t * qr = (lv_qrcode_t *)qrcode;
+
+#ifdef DRV_EPIC_NEW_API
+    lv_canvas_fill_bg(qrcode, qr->light_color_param, LV_OPA_COVER);
+#else
     lv_color_t c;
 #if LV_COLOR_DEPTH == 24
 	c.full.blue = 1;
@@ -106,6 +125,7 @@ lv_res_t lv_qrcode_update(lv_obj_t * qrcode, const void * data, uint32_t data_le
     c.full = 1;
 #endif
     lv_canvas_fill_bg(qrcode, c, LV_OPA_COVER);
+#endif
 
     if(data_len > qrcodegen_BUFFER_LEN_MAX) return LV_RES_INV;
 
@@ -148,6 +168,31 @@ lv_res_t lv_qrcode_update(lv_obj_t * qrcode, const void * data, uint32_t data_le
     scale = obj_w / qr_size;
     int scaled = qr_size * scale;
     int margin = (obj_w - scaled) / 2;
+
+#ifdef DRV_EPIC_NEW_API
+    /* TRUE_COLOR canvas: write dark color into the scaled module blocks.
+     * The light-color background was already painted by lv_canvas_fill_bg. */
+    lv_color_t * px_buf = (lv_color_t *)imgdsc->data;
+    lv_coord_t stride = imgdsc->header.w;
+    int my;
+    for(my = 0; my < qr_size; my++) {
+        int mx;
+        for(mx = 0; mx < qr_size; mx++) {
+            if(!qrcodegen_getModule(qr0, mx, my)) continue;
+            int x0 = margin + mx * scale;
+            int y0 = margin + my * scale;
+            int dy;
+            for(dy = 0; dy < scale; dy++) {
+                lv_color_t * row = px_buf + (y0 + dy) * stride + x0;
+                int dx;
+                for(dx = 0; dx < scale; dx++) {
+                    row[dx] = qr->dark_color_param;
+                }
+            }
+        }
+    }
+    lv_obj_invalidate(qrcode);
+#else
     uint8_t * buf_u8 = (uint8_t *)imgdsc->data + 8;    /*+8 skip the palette*/
 
     /* Copy the qr code canvas:
@@ -201,6 +246,7 @@ lv_res_t lv_qrcode_update(lv_obj_t * qrcode, const void * data, uint32_t data_le
             lv_memcpy((uint8_t *)buf_u8 + row_byte_cnt * (y + s), row_ori, row_byte_cnt);
         }
     }
+#endif
 
     lv_mem_free(qr0);
     lv_mem_free(data_tmp);
