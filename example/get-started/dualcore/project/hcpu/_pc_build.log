@@ -26,10 +26,5 @@ Mkdir("resource/strings")
 scons: done reading SConscript files.
 scons: Building targets ...
 scons: building associated VariantDir targets: build_pc_hcpu .
-CC build_pc_hcpu\modules\bloc\bloc_peripheral.obj
 Building compilation database build_pc_hcpu\compile_commands.json
-bloc_peripheral.c
-LINK build_pc_hcpu\main.exe
-   正在建立程式庫 build_pc_hcpu\main.lib 和物件 build_pc_hcpu\main.exp
-LINK : warning LNK4098: 預設的程式庫 'LIBCMTD' 與其他使用的程式庫衝突，請使用 /NODEFAULTLIB:library
 scons: done building targets.

@@ -1942,6 +1942,36 @@ void set_status_bar_area_right_state(bool state)
     }
 }
 
+// device_change_bar_area_right 是 lv_layer_top() 的子物件，跨 app 都吃
+// 右側 30×120 (RIGHT_MID) 觸碰。hid_mouse 等需要右側 arc 滾動的 app 進入時
+// 要 hide，離開時 show，否則 BLE HID 滑鼠的右側 arc 滾動會被擋掉
+void set_device_change_bar_area_right_state(bool state)
+{
+    if (!lv_obj_is_valid(device_change_bar_area_right)) return;
+    if (state)
+        lv_obj_clear_flag(device_change_bar_area_right, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_add_flag(device_change_bar_area_right, LV_OBJ_FLAG_HIDDEN);
+}
+
+// 取得右側 device-change bar，給 hid_mouse 用 ADV_HITTEST 過濾觸碰用
+lv_obj_t *get_device_change_bar_area_right(void)
+{
+    return device_change_bar_area_right;
+}
+
+// 程式化開啟 device-change 選單（不靠右側 hit-test）
+// hid_mouse 用：當右弧區的左滑被 touch_bg 接走時，這裡仍能叫出選單
+void app_clock_device_change_bar_open(void)
+{
+    if (!lv_obj_is_valid(app_clock_device_change_bar)) return;
+    lv_obj_set_tile_id(app_clock_device_change_bar, 0, 0, false);
+    lv_obj_clear_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
+    if (lv_obj_is_valid(dev_change_gaus_bg))
+        lv_obj_clear_flag(dev_change_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+    dev_change_refresh_device_list();
+}
+
 void set_status_bar_area_left_state(bool state)
 {
     if (lv_obj_is_valid(status_bar_area_left) == false)

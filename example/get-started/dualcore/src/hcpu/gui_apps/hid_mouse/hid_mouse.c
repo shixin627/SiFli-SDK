@@ -75,6 +75,7 @@
 
 #include "communicate_protocol.h"
 #include "communicate_task.h" // commu_send_skaibar_selected
+#include "app_clock_status_bar.h" // app_clock_device_change_bar_open / set_device_change_bar_area_right_state
 #include "ui_handler.h"
 #include <cJSON.h>
 #include "ui_helper.h"
@@ -208,6 +209,23 @@ static int16_t back_hint_drag_offset = 0;
 // 按下時是否落在弧形區：弧形按下整個 session 都跳過 BLE_HID_Mouse_Touch_*
 // 避免 deferred click（按弧形不該觸發點擊）
 static bool press_in_arc_zone = false;
+// 起手點是否落在「右」弧形觸碰區，給 device-change 選單左滑手勢用
+static bool press_in_right_arc_zone = false;
+
+// is_point_in_right_arc 真正定義在下面 (~line 400)；這裡 forward decl 給
+// device_change_bar_hit_test_cb 用
+static bool is_point_in_right_arc(const lv_point_t *p);
+
+// 右側 device-change bar 跟弧形滾動觸碰區重疊；用 HIT_TEST 過濾：
+// 點如果在弧形觸碰區就拒絕命中，press 落到 touch_bg 走 arc 滾動；
+// 點在 bar 範圍但不在弧形區（純邊緣）才命中 bar，跑原本左滑開選單流程
+static void device_change_bar_hit_test_cb(lv_event_t *e)
+{
+    lv_hit_test_info_t *info = lv_event_get_hit_test_info(e);
+    if (info->res == false) return; // 標準 hit 已 reject 就不用再判
+    if (is_point_in_right_arc(info->point))
+        info->res = false;
+}
 
 // === 向右返回 hint（仿 lvsf_gesture.c 的返回視覺/動畫流程）===
     #define BACK_HINT_LIMIT 80
@@ -2530,6 +2548,7 @@ static void handle_pressed_event(lv_indev_t *indev)
     bool in_center = is_point_in_center_scroll_zone(&start_point);
     bool in_arc = in_left_arc || in_right_arc;
     press_in_arc_zone = in_arc;
+    press_in_right_arc_zone = in_right_arc;
     if (in_arc || in_center)
     {
         center_zone_pending = true;
@@ -2710,6 +2729,17 @@ static void handle_pressing_event(lv_indev_t *indev,
                 back_hint_vibrated = false;
                 animate_scroll_ui_to(false); // 弧形 UI 淡回暗
                 LOG_D("scroll zone -> back hint");
+                return;
+            }
+            else if (press_in_right_arc_zone)
+            {
+                // 右弧區起手 + 往左拖 → 開 device-change 選單
+                // 弧形帶的左滑會被 bar ADV_HITTEST 拒絕落到 touch_bg，
+                // 在這裡 programmatic open 補上選單入口
+                animate_scroll_ui_to(false);
+                scrolling = true; // 避免放開時誤觸 click
+                app_clock_device_change_bar_open();
+                LOG_D("right-arc swipe left -> device-change menu");
                 return;
             }
             // 向左 → 退出 pending，UI 淡回，讓底下拖曳邏輯接手送 mouse_move
@@ -5711,6 +5741,15 @@ static void kbd_lower_swipe_event_cb(lv_event_t *e)
 
     if (code == LV_EVENT_PRESSED)
     {
+        // 起點若在左/右弧形滾動觸碰區（弧線在某些 y 會延伸進 mic_section
+        // 範圍），這次 press 不要走 swipe，避免弧形滾動曲線運動 dx>8 時
+        // 誤觸發 mic↔keyboard 切換動畫
+        if (is_point_in_left_arc(&pt) || is_point_in_right_arc(&pt))
+        {
+            kbd_lower_swipe_tracking = false;
+            kbd_lower_drag_engaged = false;
+            return;
+        }
         kbd_lower_swipe_start_x = pt.x;
         kbd_lower_swipe_tracking = true;
         kbd_lower_drag_engaged = false;
@@ -5851,6 +5890,10 @@ static void kbd_view_gesture_cb(lv_event_t *e)
 
     if (code == LV_EVENT_PRESSED)
     {
+        // keyboard_container 覆蓋下半圓 (x=7-473, y=180-480)，邊緣的 key 點
+        // 會落在 right/left arc 觸碰區內。之前在這裡拒絕 arc 區起手，
+        // 結果連邊緣 key 上的右滑都被誤殺；keyboard view 其實 arc 滾動
+        // 也不會走（touch_bg 接不到 press），所以這個拒絕拿掉
         kbd_key_swipe_start_x = pt.x;
         kbd_key_swipe_tracking = true;
         kbd_key_swipe_committed = false;
@@ -5859,7 +5902,8 @@ static void kbd_view_gesture_cb(lv_event_t *e)
              !kbd_key_swipe_committed)
     {
         int16_t dx = pt.x - kbd_key_swipe_start_x;
-        if (dx >= 50)
+        // 40px 比之前 50px 容易達到；key tap 不會 40px，仍能跟 tap 區分
+        if (dx >= 40)
         {
             // 偵測到右滑 → 切掉 proximity_input 的 key 觸發
             kbd_key_swipe_committed = true;
@@ -6431,6 +6475,18 @@ static void on_start(lv_obj_t *scr)
     set_status_bar_area_up_state(false);
     set_status_bar_area_down_state(false);
     set_status_bar_area_left_state(false);
+
+    // 右側 device-change bar 在 lv_layer_top()，原本會擋住右弧滾動。
+    // 加 ADV_HITTEST + 自訂 HIT_TEST cb：點在弧形觸碰區就拒絕命中，
+    // 觸碰會掉到底下的 touch_bg 走 arc 滾動；不在弧形區的（純從邊緣
+    // 左滑）才落到 bar 開選單
+    lv_obj_t *dc_bar = get_device_change_bar_area_right();
+    if (dc_bar && lv_obj_is_valid(dc_bar))
+    {
+        lv_obj_add_flag(dc_bar, LV_OBJ_FLAG_ADV_HITTEST);
+        lv_obj_add_event_cb(dc_bar, device_change_bar_hit_test_cb,
+                            LV_EVENT_HIT_TEST, NULL);
+    }
     display_gesture_detect_objs(0, false);
     RT_ASSERT(control_provider.trigger_finger_event);
     RT_ASSERT(control_provider.ble_hid_consumer_back);
@@ -6469,6 +6525,15 @@ static void on_pause(void)
 static void on_stop(void)
 {
     app_control_set_mouse_mode(false);
+
+    // 還原右側 device-change bar 的 ADV_HITTEST + 拿掉自訂 cb，
+    // 下個 app 看到的就是原本完整的 hit 行為
+    lv_obj_t *dc_bar = get_device_change_bar_area_right();
+    if (dc_bar && lv_obj_is_valid(dc_bar))
+    {
+        lv_obj_remove_event_cb(dc_bar, device_change_bar_hit_test_cb);
+        lv_obj_clear_flag(dc_bar, LV_OBJ_FLAG_ADV_HITTEST);
+    }
 
     // 停掉底部 bar 多工鍵 timer（如果還在走）
     if (bottom_bar_multitask_timer != NULL)
