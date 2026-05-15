@@ -246,7 +246,7 @@ void send_to_ai(void)
 
 static void send_to_note(void)
 {
-    handle_user_speech_intent(V2T_INTENT_NOTE_CREATING,
+    handle_user_speech_intent(V2T_INTENT_SKAIBAR,
                               lv_label_get_text(skai_widget_input_text));
     animate_to_home_from_notification_center();
 }

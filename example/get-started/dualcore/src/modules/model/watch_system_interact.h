@@ -97,7 +97,7 @@ extern void BLE_LOG_E(const char *format, ...);
         V2T_INTENT_NOTHING = 0x00,
         V2T_INTENT_CHAT = 0x01,
         V2T_INTENT_REMOTE_INPUT = 0x02,
-        V2T_INTENT_NOTE_CREATING = 0x03,
+        V2T_INTENT_SKAIBAR = 0x03,
         V2T_INTENT_MIC_INPUTE = 0x04,
     } V2T_INTENT;
 

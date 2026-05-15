@@ -683,10 +683,6 @@ void handle_user_speech_intent(uint8_t intent, char *message)
 #endif
         break;
     }
-    case V2T_INTENT_NOTE_CREATING:
-    {
-        break;
-    }
 
     default:
         LOG_E("Unknown user speech intent");

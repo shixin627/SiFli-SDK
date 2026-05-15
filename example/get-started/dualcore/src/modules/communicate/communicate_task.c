@@ -249,6 +249,7 @@ bool commu_send_chat_with_ai(const char *json)       { return commu_send_string(
 bool commu_send_battery_level(uint8_t level)         { return commu_send_status(NOTIFY_COMMAND_ID, KEY_BATTERY_LEVEL, level); }
 bool commu_send_update_instruction(const char *json) { return commu_send_string(NOTIFY_COMMAND_ID, KEY_SKAI_CREATION_INSTRUCTIONS, json); }
 bool commu_send_get_instruction_img(const char *id)  { return commu_send_string(NOTIFY_COMMAND_ID, KEY_SKAI_INSTRUCTION_IMAGE, id); }
+bool commu_send_skaibar_selected(uint8_t idx)        { return commu_send_status(NOTIFY_COMMAND_ID, KEY_SKAIBAR_SELECTED, idx); }
 
 /*============================================================================*
  *                              Sensor

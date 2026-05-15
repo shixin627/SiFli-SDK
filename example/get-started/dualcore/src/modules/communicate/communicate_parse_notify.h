@@ -83,6 +83,11 @@ extern "C"
 		KEY_SKAI_CREATION_INSTRUCTIONS = 0X65,
 		KEY_SKAI_INSTRUCTION_IMAGE = 0X66,
 		KEY_DISMISS_SKAI_INSTRUCTION = 0X67,
+		// skaibar (hid_mouse 長按 bar AI 模式) 選項列表：
+		//   PC → watch  : KEY_SKAIBAR_OPTIONS (JSON {"options":["a","b",...]})
+		//   watch → PC  : KEY_SKAIBAR_SELECTED (1 byte index, 0-based)
+		KEY_SKAIBAR_OPTIONS = 0X68,
+		KEY_SKAIBAR_SELECTED = 0X69,
 	} NOTIFY_KEY;
 
 	void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length);

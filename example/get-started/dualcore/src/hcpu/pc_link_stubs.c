@@ -148,6 +148,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* ble_hid.h */ void volume_up_through_hid(void) {  }
 /* hid_mouse.c */ void watch_system_mouse_pause(void) {  }
 /* hid_mouse.c */ void watch_system_mouse_resume(void) {  }
+/* hid_mouse.c */ void mouse_skaibar_set_options_json(const char *json) { (void)json; }
 
 /* Manually-stubbed symbols not found by genstub: */
 #include "lvgl/lvgl.h"
