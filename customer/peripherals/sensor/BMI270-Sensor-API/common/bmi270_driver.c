@@ -1857,6 +1857,17 @@ int bmi270_hw_wrist_wake_enable(int en)
             goto out;
         }
         gest_cfg.cfg.wrist_gest.wearable_arm = BMI270_WRIST_WEAR_ON_RIGHT_ARM;
+        /* Push GEST sensitivity to spec maximum. Bosch defaults are tuned
+           for low false-positive rate; we want the opposite — fire fast on
+           any plausible flick / pivot_up and let the LCPU-side pose filter
+           (is_in_viewing_pose) reject if not in watchface_visible envelope.
+           Ranges per bmi2_defs.h:2204-2222:
+             min_flick_peak    1448..1774  → 1448 (most sensitive)
+             min_flick_samples 3..5        → 3    (catches faster flicks)
+             max_duration      150..250    → 250  (allows slower motions) */
+        gest_cfg.cfg.wrist_gest.min_flick_peak    = 1448;
+        gest_cfg.cfg.wrist_gest.min_flick_samples = 3;
+        gest_cfg.cfg.wrist_gest.max_duration      = 250;
         rslt = bmi270_set_sensor_config(&gest_cfg, 1, &bmi2_dev);
         if (rslt != BMI2_OK)
         {

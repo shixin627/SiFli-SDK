@@ -127,6 +127,31 @@ void update_global_attitude(Vector3 *accData, Vector3 *gyroData)
     global_q = sensor_fusion_algorithm(&sensor_fusion_param, accData, gyroData);
 }
 
+/* Pose verification for HW wrist-wake INT. The BMI270 chip-side algorithm
+   accepts a wide attitude envelope (max_tilt_pu = 75°, tilt_lr = 30°), so
+   it can false-trigger when the wrist swings through any "looking at watch"
+   region briefly. This adds a stricter check by reusing the exact envelope
+   from the awake-path `watchface_visible` test (handle_imu_data, ~L475).
+
+   Source of truth (kept in sync):
+     watchface_visible = (fabs(g.x) < 0.4f && g.y > -0.7f && g.z > -0.6f);
+
+   Reads gravity from `global_q`, which the FIFO drain keeps converged at
+   25 Hz batches during screen-off. Worst-case quaternion staleness ≈ one
+   FIFO watermark interval; acceptable because the chip-side wrist-wake
+   already gated us on a stable 1-second attitude window before firing. */
+bool is_in_viewing_pose(void)
+{
+    /* Inline of calculate_gravity() — that helper is defined further down
+       in this file (static) so we duplicate the 3 lines here rather than
+       hoisting a forward declaration. Same formula. */
+    Quaternion *q = &global_q;
+    float gx = 2.0f * (q->x * q->z - q->w * q->y);
+    float gy = 2.0f * (q->w * q->x + q->y * q->z);
+    float gz = q->w * q->w - q->x * q->x - q->y * q->y + q->z * q->z;
+    return (fabsf(gx) < 0.4f && gy > -0.7f && gz > -0.6f);
+}
+
 #endif
 
 static void timer_zero_velocity_callback(void *param)

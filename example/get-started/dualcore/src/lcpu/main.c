@@ -24,6 +24,9 @@
 #ifdef BSP_USING_HAND_TRACKING
     #include "hand_tracking.h"
 #endif
+#ifdef BSP_USING_GESTURE_DETECT
+    #include "gesture_detect.h"  /* is_in_viewing_pose */
+#endif
 #ifdef BSP_USING_BLOC_PERIPHERAL
     #include "bloc_peripheral.h"  /* on_lcpu_sleep_mode_changed weak hook */
 #endif
@@ -95,13 +98,28 @@ void main_send_hand_lift_event(void)
 #ifdef ACC_USING_BMI270
 /* Override the weak default in bmi270_driver.c. The BMI270 fires this when
    its internal wrist-wake detector triggers; route it through the same
-   path the software algorithm uses. */
+   path the software algorithm uses.
+
+   Pose gate: the chip-side wrist-wake feature accepts a wide attitude
+   envelope (max_tilt_pu = 75°, tilt_lr = 30°). It can false-fire when the
+   wrist swings transiently through any "looking" angle. Before paying the
+   cost of waking HCPU + powering LCD (~10-30 mA × 5 s screen-on timeout =
+   significant battery for a non-look), verify with the same envelope the
+   awake-path SW algorithm uses for watchface_visible. Reject events that
+   don't pass; LCPU goes straight back to LIGHT sleep, no HCPU wake. */
 extern void hand_tracking_lift_callback(uint8_t lift);
 void bmi270_on_wrist_wake_detected(void)
 {
-    rt_kprintf("[wrist-wake] LCPU override fired tick=%u -> hand_lift event\n",
+#ifdef BSP_USING_GESTURE_DETECT
+    bool ok = is_in_viewing_pose();
+    rt_kprintf("[wrist-wake] tick=%u pose=%s\n",
+               (unsigned)rt_tick_get(), ok ? "ACCEPT" : "REJECT");
+    if (!ok)
+        return;
+#else
+    rt_kprintf("[wrist-wake] tick=%u (no pose filter)\n",
                (unsigned)rt_tick_get());
-    // main_send_hand_lift_event();
+#endif
     hand_tracking_lift_callback(2);
 }
 
