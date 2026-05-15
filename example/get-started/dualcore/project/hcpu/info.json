@@ -1,6 +1,6 @@
 {
-    "version": "1.1.50",
-    "description": "新增睡眠算法(待測試),修復藍芽傳送數據問題",
+    "version": "1.1.51",
+    "description": "優化藍芽通訊穩定性,手錶靜默更新(不跑條),飛鼠新UI",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",

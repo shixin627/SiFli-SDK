@@ -122,6 +122,13 @@ volatile bool is_end_addr_equal_to_last_writed_addr = false;
 volatile dfu_img_id_t watch_img_id;
 static uint32_t binary_image_size_max;
 static bool dfu_started_mark = false;
+
+/* Page-aligned write buffer for the flash storer. Moved to file scope so a
+   failed session can be aborted and the next session reset the offset cleanly
+   — when these were function-static, a mid-image terminate left stale partial
+   bytes that the next OTA attempt would write to the wrong flash address. */
+static uint8_t  s_write_buffer[PAGE_SIZE];
+static uint16_t s_write_buffer_count = 0;
 static uint8_t calculate_ota_progress(void);
 static bool watch_binary_image_update_handler(uint8_t *buf, uint16_t len);
 
@@ -369,23 +376,20 @@ static bool watch_compressed_image_update_handler(uint8_t *buf, uint16_t len)
 
 static bool watch_binary_image_update_handler(uint8_t *buf, uint16_t len)
 {
-	// LOG_D("updating image(address:%x)", watch_image_write_addr);
-	static uint8_t write_buffer[PAGE_SIZE];
-	static uint16_t write_buffer_count = 0;
 	// Copy data to write buffer
 	for (uint16_t i = 0; i < len; i++)
 	{
 		watch_image_cur_addr++;
-		write_buffer[write_buffer_count++] = buf[i];
+		s_write_buffer[s_write_buffer_count++] = buf[i];
 		// If write buffer is full, write to flash
-		if (write_buffer_count == PAGE_SIZE)
+		if (s_write_buffer_count == PAGE_SIZE)
 		{
-			if (!WristBandBinaryImageStore(write_buffer, PAGE_SIZE))
+			if (!WristBandBinaryImageStore(s_write_buffer, PAGE_SIZE))
 			{
 				LOG_E("Failed to write to flash");
 				return false;
 			}
-			write_buffer_count = 0;
+			s_write_buffer_count = 0;
 		}
 	}
 
@@ -393,19 +397,19 @@ static bool watch_binary_image_update_handler(uint8_t *buf, uint16_t len)
 	{
 		is_end_addr_equal_to_last_writed_addr = true;
 		LOG_I("Firmware image received completely");
-		if (write_buffer_count > 0)
+		if (s_write_buffer_count > 0)
 		{
 			LOG_D("Write remaining data");
-			if (write_buffer_count < PAGE_SIZE)
+			if (s_write_buffer_count < PAGE_SIZE)
 			{
-				memset(write_buffer + write_buffer_count, 0xFF, PAGE_SIZE - write_buffer_count);
+				memset(s_write_buffer + s_write_buffer_count, 0xFF, PAGE_SIZE - s_write_buffer_count);
 			}
-			if (!WristBandBinaryImageStore(write_buffer, PAGE_SIZE))
+			if (!WristBandBinaryImageStore(s_write_buffer, PAGE_SIZE))
 			{
 				LOG_E("Failed to write remaining data to flash");
 				return false;
 			}
-			write_buffer_count = 0;
+			s_write_buffer_count = 0;
 		}
 	}
 	else
@@ -430,7 +434,17 @@ static int dfu_completed_handler(void)
 	else
 	{
 		ret = -1;
-		LOG_E("firmware transmission failed");
+		/* Show how short the upload came so it's clear whether the phone sent
+		   END too early or our pipeline dropped bytes. Most often this is the
+		   phone-side OTA logic giving up — single-frame chunks arrive in order
+		   on this end, so missing bytes here means missing bytes on the wire. */
+		uint32_t received = watch_image_size -
+		                    (watch_image_end_addr - watch_image_cur_addr);
+		LOG_E("firmware transmission failed: id=%d got %u of %u bytes (%u%%)",
+		      watch_img_id,
+		      (unsigned)received,
+		      (unsigned)watch_image_size,
+		      watch_image_size ? (unsigned)(received * 100u / watch_image_size) : 0u);
 	}
 	return ret;
 }
@@ -454,16 +468,28 @@ static void notify_update_status_to_client(uint8_t status)
 
 static int ota_progress = -1;
 
+/* Abort the current DFU session and clean up all per-session state so the
+   next attempt starts from a known-good baseline. Does NOT reboot — for
+   silent OTA the user is using the watch and a reboot would interrupt
+   them. The partially-written flash region is the OTA target (separate from
+   the currently-running firmware), and ftab is only swapped on
+   DFU_FLASH_MSG_TYPE_VERIFY success, so the running image is unaffected
+   by an aborted upload. */
 static void terminate_ble_dfu_process(void)
 {
-	if (ble_dfu_thread_run)
-	{
-		notify_update_status_to_client(0);
-		set_ble_dfu_thread_run(0);
-		ota_progress = -1;
-		handle_download_progress_update(ota_progress);
-		drv_reboot();
-	}
+	if (!ble_dfu_thread_run) return;
+
+	notify_update_status_to_client(0);
+	set_ble_dfu_thread_run(0);
+	ota_progress = -1;
+	handle_download_progress_update(ota_progress);
+
+	/* Drop stale state so a retry can erase + write cleanly. */
+	s_write_buffer_count = 0;
+	is_end_addr_equal_to_last_writed_addr = false;
+#ifdef PKG_USING_LZ4
+	lz4_decompress_cleanup();
+#endif
 }
 
 #define DFU_INACTIVITY_TIMEOUT_TICKS (5 * RT_TICK_PER_SECOND)
@@ -652,6 +678,11 @@ void init_ble_dfu_thread(dfu_img_id_t id, uint32_t dest_addr, uint32_t size)
 	watch_image_size = size;
 	watch_image_end_addr = dest_addr + size;
 	ota_progress = -1;
+	/* Defensive reset: if a previous session aborted mid-image without going
+	   through terminate_ble_dfu_process (e.g., process crash before that ran),
+	   the page buffer could carry stale bytes that would land at the wrong
+	   address in the new image. Zeroing the count guarantees a clean start. */
+	s_write_buffer_count = 0;
 
 	/* verify_ble_dfu_image() is run later from the DFU thread on receipt of
 	   DFU_FLASH_MSG_TYPE_ENTER, not here — running it on the BLE rx thread
@@ -690,9 +721,15 @@ static uint8_t calculate_ota_progress(void)
 
 static bool send_dfu_flash_msg(uint8_t msg_type, uint32_t size, uint8_t *data)
 {
+	/* Mailbox NULL is now an expected state after the DFU thread tears down
+	   (no reboot path). The high-frequency caller, handle_ble_dfu_data, is
+	   gated separately so we should normally never reach here with NULL —
+	   but ENTER/EXIT/VERIFY can still arrive during the small window between
+	   thread startup creating the mailbox and the BLE rx producing those
+	   control messages. Log at debug only to avoid spamming the trace. */
 	if (watch_image_mailbox == NULL)
 	{
-		LOG_E("watch_image_mailbox is NULL");
+		LOG_D("dfu mailbox not ready, drop msg_type=%d", msg_type);
 		return false;
 	}
 
@@ -743,6 +780,13 @@ static bool send_dfu_flash_msg(uint8_t msg_type, uint32_t size, uint8_t *data)
 
 void handle_ble_dfu_data(uint8_t *buf, uint16_t len)
 {
+	/* Drop chunks that arrive after the DFU session has been torn down. The
+	   phone may still have packets in flight (or retry blindly) for a moment
+	   after we abort — without this gate, send_dfu_flash_msg below would fire
+	   a LOG_D per chunk and call terminate_ble_dfu_process repeatedly. Once
+	   the next SYNC_START arrives we'll re-init and start accepting again. */
+	if (!ble_dfu_thread_run) return;
+
 	if (len == 0 || buf == NULL)
 	{
 		LOG_E("[%s]size is 0 or data is NULL", __func__);
