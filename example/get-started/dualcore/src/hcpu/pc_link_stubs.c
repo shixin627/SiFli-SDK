@@ -173,4 +173,11 @@ VoiceProvider voice_provider = {0};
 /* bloc_v2t.h — referenced by watch_system_interact MSH_CMD handlers (now
  * pulled in by FINSH on PC sim), but bloc_v2t.c is excluded above. */
 void setVoice2Text(char *text) { (void)text; }
+
+/* BLE RSSI checker — real impl in main.c (HCPU firmware) which is excluded on
+ * PC sim; watch_system_interact.c calls these in wakeup/sleep paths so we need
+ * empty stubs to satisfy the linker. */
+#include <stdint.h>
+void start_ble_rssi_checker(uint32_t period_ms) { (void)period_ms; }
+void stop_ble_rssi_checker(void) { }
 void app_voice_set_voice2text_intent(uint8_t intent) { (void)intent; }
