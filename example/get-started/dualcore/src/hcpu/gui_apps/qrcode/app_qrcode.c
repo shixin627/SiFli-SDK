@@ -25,7 +25,7 @@ typedef struct {
 } bd_addr_t;
 extern uint8_t ble_get_public_address(bd_addr_t * addr);
 
-#define QR_URL_PREFIX "https://skaiwalk.com/watch_id="
+#define QR_URL_PREFIX "https://skaiwalk.com/download/id="
 
 static void qrcode_event_cb(lv_event_t *e)
 {
@@ -42,11 +42,11 @@ static void on_start(lv_obj_t *scr)
     bd_addr_t addr;
     char code[20] = {0};
     if (ble_get_public_address(&addr) == 0) {
-        // 轉成字串 (HEX)
-        snprintf(code, sizeof(code), "%02X%02X%02X%02X%02X%02X",
+        // 轉成字串 (lowercase hex, 不補零)
+        snprintf(code, sizeof(code), "%x-%x-%x-%x-%x-%x",
             addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3], addr.addr[4], addr.addr[5]);
     } else {
-        strcpy(code, "000000000000");
+        strcpy(code, "0-0-0-0-0-0");
     }
 
     // Step 2: 組合 URL
