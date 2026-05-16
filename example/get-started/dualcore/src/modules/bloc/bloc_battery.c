@@ -103,7 +103,14 @@ void bloc_battery_init(void)
 extern void main_send_read_charge_status_event(void);
 extern void main_send_read_voltage_event(void);
 
-#define CHARGING_VOLTAGE_READ_INTERVAL_MS 1000
+/* During charging, voltage rises slowly (0..100% over 1-2 hours = <0.05%
+ * per second). The EMA filter (80/20) + 20 mV hysteresis in
+ * battery_calculator already absorb high-frequency noise, so polling every
+ * second is wasteful -- 10 s is invisible to the user but cuts ADC enable
+ * / I2C charger reads ~10x. The plug-in event still triggers an immediate
+ * read (read_charge_status -> main_send_read_voltage_event) so the UI
+ * shows the current % the instant the cable is connected. */
+#define CHARGING_VOLTAGE_READ_INTERVAL_MS 10000
 
 static rt_timer_t s_charging_voltage_timer = RT_NULL;
 
