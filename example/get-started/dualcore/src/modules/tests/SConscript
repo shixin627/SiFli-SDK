@@ -17,6 +17,19 @@ if GetDepend('UNIT_TEST_MOTOR'):
 if GetDepend('UNIT_TEST_NNACC'):
     src+=['nn_test.c']
 
+# PC simulator touch injection: MSH commands (touch_tap/press/release/move/
+# swipe/status) that drive lv_touch_sim's scripted indev. Indev itself lives
+# in middleware/lvgl/lv_win32 (gated by LCD_WINDOWS); that group already
+# adds its own dir to CPPPATH so lv_touch_sim.h is reachable from here.
+if GetDepend('BSP_USING_PC_SIMULATOR'):
+    src += ['test_touch_sim.c']
+    # PC fake data: back gesture, fake bonded devices, fake notifications.
+    # Also supplies the real implementations of ble_dev_mgr_* that the
+    # device-list UI reads (replacing the no-op stubs in pc_link_stubs.c).
+    src += ['fake_ui_data.c']
+    # Programmatic UI navigation: goto_app / list_apps / app_exit / app_status.
+    src += ['dev_navigation.c']
+
 group = DefineGroup('Unit_tests', src, depend = [''], CPPPATH = path)
 
 Return('group')

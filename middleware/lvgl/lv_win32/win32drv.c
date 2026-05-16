@@ -241,6 +241,7 @@ EXTERN_C void lv_win32_add_all_input_devices_to_group(
 }
 
 extern void lv_indev_agent_init(lv_indev_drv_t *drv);
+extern void lv_touch_sim_init(void);
 
 EXTERN_C bool lv_win32_init(
     HINSTANCE instance_handle,
@@ -325,6 +326,11 @@ EXTERN_C bool lv_win32_init(
 #ifdef BSP_USING_LVGL_INPUT_AGENT
     lv_indev_agent_init(&encoder_driver);
 #endif
+
+    /* Register the scripted-touch indev so MSH commands (touch_tap/...) can
+     * drive the UI. Coexists with the real Win32 pointer registered above;
+     * LVGL routes events from whichever indev had the latest activity. */
+    lv_touch_sim_init();
 
     return true;
 }

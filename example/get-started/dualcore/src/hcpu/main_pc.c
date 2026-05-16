@@ -13,9 +13,16 @@
  */
 #include <rtthread.h>
 #include <rtdevice.h>
+#include <stdint.h>
 
 int app_main(void)
 {
     rt_kprintf("PC simulator app_main: HCPU stub\n");
     return RT_EOK;
 }
+
+/* BLE RSSI checker: defined in main.c (excluded from PC build). pc_link_stubs.c
+ * is auto-generated and hasn't picked these up yet — keep tiny no-op stubs
+ * here so watch_system_interact.c (kept on PC) links. */
+void start_ble_rssi_checker(uint32_t period_ms) { (void)period_ms; }
+void stop_ble_rssi_checker(void) { }

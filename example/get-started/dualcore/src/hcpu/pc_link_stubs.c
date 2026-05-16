@@ -1,7 +1,12 @@
-/* Auto-generated stubs for PC simulator (do not edit by hand).
- * Covers 124 symbols normally provided by ARM-only modules
+/* Auto-generated stubs for PC simulator (do not edit by hand, mostly).
+ * Covers symbols normally provided by ARM-only modules
  * (BLE stack, voice/skai/gesture apps, IPC peripherals, etc.).
- * Each function logs once and returns a sensible default. */
+ * Each function logs once and returns a sensible default.
+ *
+ * Manual hand-edit zone: ble_dev_mgr_* (8 entries) are removed below — real
+ * fake implementations live in modules/tests/fake_ui_data.c so the device-
+ * list UI shows something on PC. Symbols also removed from _syms_clean.txt
+ * so the next _genstub.py run does not re-add them. */
 
 #include <rtthread.h>
 #include <rtdevice.h>
@@ -33,17 +38,10 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* watch_demo.c */ void back_on_skai_widget(void) {  }
 /* watch_demo.c */ void back_tap_cb(void) {  }
 /* watch_system_interact.h */ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode) {  }
-/* ble_device_manager.h */ int ble_dev_mgr_clear_all(void) { return 0; }
-/* ble_device_manager.h */ int ble_dev_mgr_connect_device(uint8_t device_idx) { return 0; }
-/* ble_device_manager.h */ int ble_dev_mgr_disconnect_device(uint8_t device_idx) { return 0; }
-/* ble_device_manager.h */ int ble_dev_mgr_get_active_device(void) { return 0; }
-/* ble_device_manager.h */ int ble_dev_mgr_get_connected_count(void) { return 0; }
-/* ble_device_manager.h */ const bonded_devices_db_t * ble_dev_mgr_get_database(void) { return 0; }
-/* ble_device_manager.h */ int ble_dev_mgr_register_callback(dev_mgr_event_cb_t cb, void *user_data) { return 0; }
-/* ble_device_manager.h */ int ble_dev_mgr_remove_device(uint8_t device_idx) { return 0; }
-/* ble_device_manager.h */ int ble_dev_mgr_set_active_device(uint8_t device_idx) { return 0; }
+/* ble_device_manager.h: 8 ble_dev_mgr_* functions moved to
+ * modules/tests/fake_ui_data.c to back the UI device list. Only the timer
+ * helper (declared in main.c, not a database accessor) stays here. */
 /* main.c */ void ble_dev_mgr_start_main_phone_check_timer(uint32_t interval_ms) {  }
-/* ble_device_manager.h */ int ble_dev_mgr_switch_to_next_device(void) { return 0; }
 /* app_qrcode.c */ uint8_t ble_get_public_address(bd_addr_t * addr) { return 0; }
 /* ble_hid.h */ void ble_hid_set_conn_idx(uint8_t conn_idx) {  }
 /* bloc_v2t.h */ bool check_if_user_speaking_to_ai(void) { return false; }
@@ -51,6 +49,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* lv_message_list_layout.c */ void clear_media_widget(void) {  }
 /* lv_instruction_list_layout.c */ void clear_skai_widget_ai_reply(void) {  }
 /* communicate_task.h */ bool commu_send_battery_level(uint8_t level) { return false; }
+/* communicate_task.h */ bool commu_send_battery_voltage(uint16_t millivolts) { (void)millivolts; return false; }
 /* communicate_task.h */ bool commu_send_calendar_request(void) { return false; }
 /* communicate_task.h */ bool commu_send_charge_status(void) { return false; }
 /* communicate_task.h */ bool commu_send_sleep_data(void) { return false; }
