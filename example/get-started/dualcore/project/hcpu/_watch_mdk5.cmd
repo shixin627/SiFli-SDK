@@ -1,10 +1,15 @@
 @echo off
 REM Generate Keil MDK5 project (.uvprojx) for sf32lb56w-watch.
+REM
+REM Repo root auto-detected from %~dp0 (do not reintroduce hardcoded paths).
+REM
 REM Must run under Keil/armclang env because the project-local template.uvprojx
 REM is TargetArmAds/Cads (armclang) structure -- keil.py with PLATFORM=gcc would
 REM look for TargetArm/Carm and fail with AttributeError.
 REM
 REM Output: project.uvprojx (+ project.uvoptx) in this dir, open with Keil MDK 5.
+
+for %%I in ("%~dp0..\..\..\..\..") do set REPO_ROOT=%%~fI
 
 set ENV_ROOT=C:\dev\env_latest
 set ENV_VER=1.1.4
@@ -17,9 +22,9 @@ set PATH=%PYTHONHOME%;%PATH%
 set PATH=%PYTHONPATH%;%PATH%
 set PATH=%SCONS%;%PATH%
 
-call C:\work\SiFli-SDK\set_env.bat keil
+call "%REPO_ROOT%\set_env.bat" keil
 if errorlevel 1 exit /b %errorlevel%
 
-cd /d C:\work\SiFli-SDK\example\get-started\dualcore\project\hcpu
+cd /d "%~dp0"
 scons --board=sf32lb56w-watch_hcpu --target=mdk5 %* > _watch_mdk5.log 2>&1
 type _watch_mdk5.log

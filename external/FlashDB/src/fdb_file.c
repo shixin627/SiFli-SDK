@@ -287,7 +287,13 @@ fdb_err_t _fdb_file_read(fdb_db_t db, uint32_t addr, void *buf, size_t size)
     FILE *fp = open_db_file(db, addr, false);
     if (fp) {
         addr = addr % db->sec_size;
-        if ((fseek(fp, addr, SEEK_SET) != 0) || (fread(buf, size, 1, fp) != size))
+        /* Local fix vs upstream: fread(buf, size, 1, fp) returns the number of
+         * ELEMENTS read (0 or 1 when nmemb=1), not bytes. Comparing against
+         * `size` only happens to pass for size==1. For any larger blob (e.g.
+         * a 1.5 KB share_prefs entry) this silently turns into FDB_READ_ERR.
+         * Compare against 1 -- one element of `size` bytes -- to match fread
+         * semantics. Don't lose this on next FlashDB upstream merge. */
+        if ((fseek(fp, addr, SEEK_SET) != 0) || (fread(buf, size, 1, fp) != 1))
             result = FDB_READ_ERR;
     } else {
         result = FDB_READ_ERR;
@@ -301,7 +307,9 @@ fdb_err_t _fdb_file_write(fdb_db_t db, uint32_t addr, const void *buf, size_t si
     FILE *fp = open_db_file(db, addr, false);
     if (fp) {
         addr = addr % db->sec_size;
-        if ((fseek(fp, addr, SEEK_SET) != 0) || (fwrite(buf, size, 1, fp) != size))
+        /* Same upstream bug as in _fdb_file_read above -- fwrite returns
+         * elements written, not bytes. Compare against 1. */
+        if ((fseek(fp, addr, SEEK_SET) != 0) || (fwrite(buf, size, 1, fp) != 1))
             result = FDB_READ_ERR;
         if(sync) {
             fflush(fp);

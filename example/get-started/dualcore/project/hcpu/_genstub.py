@@ -1,14 +1,21 @@
 import re, os, glob, sys
 
+# Repo root auto-detected from this script's location:
+#   <repo>\example\get-started\dualcore\project\hcpu\_genstub.py
+# Do not reintroduce hardcoded C:\work paths — the SDK might be checked out
+# anywhere (C:\work\, C:\Users\<user>\GitHub\, etc.).
+_HCPU_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(_HCPU_DIR, '..', '..', '..', '..', '..'))
+
 SDK_DIRS = [
-    r'C:\work\SiFli-SDK\example\get-started\dualcore\src',
-    r'C:\work\SiFli-SDK\middleware\include',
-    r'C:\work\SiFli-SDK\middleware\system',
-    r'C:\work\SiFli-SDK\middleware\data_bus\public',
+    os.path.join(REPO_ROOT, 'example', 'get-started', 'dualcore', 'src'),
+    os.path.join(REPO_ROOT, 'middleware', 'include'),
+    os.path.join(REPO_ROOT, 'middleware', 'system'),
+    os.path.join(REPO_ROOT, 'middleware', 'data_bus', 'public'),
 ]
 
 syms = []
-with open(r'C:\work\SiFli-SDK\example\get-started\dualcore\project\hcpu\_syms_clean.txt') as f:
+with open(os.path.join(_HCPU_DIR, '_syms_clean.txt')) as f:
     for line in f:
         line = line.strip()
         if line.startswith('_'):
@@ -58,7 +65,9 @@ for sym in syms:
     args_norm = 'void' if not args else args
     stubs.append((sym, ret, args_norm, body, os.path.basename(src)))
 
-with open(r'C:\work\SiFli-SDK\example\get-started\dualcore\src\hcpu\pc_link_stubs.c', 'w', encoding='utf-8') as out:
+_STUBS_OUT = os.path.join(REPO_ROOT, 'example', 'get-started', 'dualcore',
+                          'src', 'hcpu', 'pc_link_stubs.c')
+with open(_STUBS_OUT, 'w', encoding='utf-8') as out:
     out.write('/* Auto-generated stubs for PC simulator (do not edit by hand).\n')
     out.write(f' * Covers {len(stubs)} symbols normally provided by ARM-only modules\n')
     out.write(' * (BLE stack, voice/skai/gesture apps, IPC peripherals, etc.).\n')
