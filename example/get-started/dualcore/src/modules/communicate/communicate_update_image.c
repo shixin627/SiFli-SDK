@@ -611,6 +611,13 @@ static void ble_dfu_flash_write()
 				}
 				if (ret2 == RT_EOK)
 				{
+					/* OTA verified -- about to reboot into the new image.
+					 * Flush the dismissed-notification ring so notifications
+					 * the user already dealt with don't re-pop after the
+					 * BLE reconnects post-reboot. We deliberately do NOT
+					 * call this on regular reboots / crashes -- the ring
+					 * staying RAM-only there is by design. */
+					bloc_notification_save_dismissed_to_flash();
 					drv_reboot();
 				}
 				break;

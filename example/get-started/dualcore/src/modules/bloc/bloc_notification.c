@@ -73,6 +73,7 @@
 #include "app_message.h"
 #include "app_clock_main.h"
 #include "ui_helper.h"
+#include "share_prefs.h"
 #include "gui_app_int.h"
 
 /* Utilities */
@@ -209,6 +210,16 @@ notification_t *get_cur_notification(void)
 
 static void update_notification(notification_t newNotification)
 {
+    /* If the user already dismissed this notification (within the persisted
+     * ring), drop it silently. Covers the BLE-reconnect re-sync case where
+     * the phone re-pushes ids we've already processed but locally removed. */
+    if (bloc_notification_is_dismissed(newNotification.id))
+    {
+        LOG_I("update_notification: id=%s previously dismissed, skipping",
+              newNotification.id);
+        return;
+    }
+
     // Dedup: if a notification with the same ID already exists, remove it first
     // so re-synced notifications don't create duplicates.
     // For Notify_Skaiwalk category, also dedup by type to keep only the latest
@@ -585,6 +596,8 @@ static void remote_input_to_notification(const char *id, const char *message)
     LOG_D("[%s]id:%s, message:%s", __func__, id, message);
     generate_json_for_remote_input(message, id);
     commu_send_remote_input(temp_send_json_string);
+    /* Reply implies user dealt with it -- block phone re-push after reconnect. */
+    bloc_notification_mark_dismissed(id);
     remove_notification(_notification_list, &notification_items_amount, id);
     notify_provider.notification_refresh();
 }
@@ -608,6 +621,12 @@ void remove_notification_by_id(const char *id)
 
     commu_send_dismiss_notification(temp_send_json_string);
 
+    /* Mark BEFORE remove so a hypothetical re-push that races our broadcast
+     * doesn't slip through. The send-to-phone above may not arrive if BLE
+     * is down/lossy -- the dismissed-ids ring is what actually blocks the
+     * re-pop on reconnect. */
+    bloc_notification_mark_dismissed(id);
+
     /* Remove locally */
     remove_notification(_notification_list, &notification_items_amount, id);
     SkaiWatchSys.notification_number = notification_items_amount;
@@ -627,6 +646,9 @@ void dismiss_notification_from_phone(const char *id)
         return;
     }
     LOG_I("[%s] phone dismiss → watch remove id:%s", __func__, id);
+    /* Same reason as remove_notification_by_id: persist the dismiss so a
+     * later reconnect re-push from the phone doesn't re-pop. */
+    bloc_notification_mark_dismissed(id);
     incoming_call_close_if_active(id);
     remove_notification(_notification_list, &notification_items_amount, id);
     SkaiWatchSys.notification_number = notification_items_amount;
@@ -753,6 +775,8 @@ static void bloc_notify_battery_voltage(uint16_t voltage)
     msg.type = LVGL_MSG_TYPE_BATTERY_VOLTAGE;
     msg.data.battery_voltage = voltage;
     lvgl_send_msg(msg);
+
+    commu_send_battery_voltage(voltage);
 }
 
 static void bloc_notify_battery_level(uint8_t level)
@@ -873,5 +897,151 @@ static int bloc_notification_test(int argc, char *argv[])
 MSH_CMD_EXPORT(bloc_notification_test, "bloc_notification_test [OPTION] ...");
 #endif
 #endif
+
+/* ===================================================================== */
+/*  Dismissed-ID ring (Bug 3 fix — see header comment for design)        */
+/* ===================================================================== */
+
+/* 32 * 48B = 1.5 KB. Held at 32 (vs 64) to leave headroom in the 16 KB
+ * "watch" share_prefs partition, which already carries flag_field,
+ * msg_switch, phone_os_version, alarms etc. and needs room for FDB's
+ * pre-write-then-delete cycle. 32 dismiss-ids covers typical "few
+ * dismissals between reboots" usage. */
+#define DISMISSED_RING_SIZE 32
+#define DISMISSED_PREFS_NAME "watch"
+#define DISMISSED_PREFS_KEY  "ntfdis"  /* short to keep KVDB key small */
+
+typedef struct {
+    uint32_t magic;     /* 0xD150D1D7 — validate flash blob */
+    uint8_t  head;      /* next slot to write */
+    uint8_t  count;     /* 0..DISMISSED_RING_SIZE */
+    uint8_t  reserved[2];
+    char     ids[DISMISSED_RING_SIZE][NOTIFICATION_ID_LEN];
+} dismissed_ring_t;
+
+#define DISMISSED_MAGIC 0xD150D1D7u
+
+static dismissed_ring_t s_dismissed;
+static bool             s_dismissed_loaded = false;
+static bool             s_dismissed_dirty  = false;
+
+static void dismissed_ensure_loaded(void)
+{
+    if (s_dismissed_loaded) return;
+    /* Default-init in case load skips or fails: empty ring, valid magic. */
+    memset(&s_dismissed, 0, sizeof(s_dismissed));
+    s_dismissed.magic = DISMISSED_MAGIC;
+    s_dismissed_loaded = true;
+}
+
+bool bloc_notification_is_dismissed(const char *id)
+{
+    if (!id || !id[0]) return false;
+    dismissed_ensure_loaded();
+    /* Linear scan over up to 64 entries — fine for a per-notification check. */
+    for (uint8_t i = 0; i < s_dismissed.count; i++)
+    {
+        if (strncmp(s_dismissed.ids[i], id, NOTIFICATION_ID_LEN) == 0)
+            return true;
+    }
+    return false;
+}
+
+void bloc_notification_mark_dismissed(const char *id)
+{
+    if (!id || !id[0]) return;
+    dismissed_ensure_loaded();
+    if (bloc_notification_is_dismissed(id)) return;   /* idempotent */
+
+    /* Write at head, overwriting the oldest entry when full. */
+    uint8_t slot = s_dismissed.head;
+    memset(s_dismissed.ids[slot], 0, NOTIFICATION_ID_LEN);
+    strncpy(s_dismissed.ids[slot], id, NOTIFICATION_ID_LEN - 1);
+    s_dismissed.head = (uint8_t)((slot + 1) % DISMISSED_RING_SIZE);
+    if (s_dismissed.count < DISMISSED_RING_SIZE) s_dismissed.count++;
+    s_dismissed_dirty = true;
+    LOG_D("dismissed id=%s slot=%u count=%u", id, slot, s_dismissed.count);
+}
+
+void bloc_notification_clear_dismissed(void)
+{
+    dismissed_ensure_loaded();
+    memset(s_dismissed.ids, 0, sizeof(s_dismissed.ids));
+    s_dismissed.head = 0;
+    s_dismissed.count = 0;
+    s_dismissed_dirty = true;
+}
+
+/* Called from watch_global_data.c during watch_config_struct_flash_read().
+ * The caller has already opened the shared "watch" prefs handle and pays
+ * the one-time fdb_kvdb_init cost on the NAND prefdb partition; we just
+ * read one block out of it. void* in the signature mirrors the .h forward
+ * decl so the public header doesn't need to pull share_prefs.h. */
+void bloc_notification_read_dismissed(void *pref_handle)
+{
+    share_prefs_t *pref = (share_prefs_t *)pref_handle;
+
+    /* Pre-seed defaults; flash read may overwrite or leave them alone. */
+    memset(&s_dismissed, 0, sizeof(s_dismissed));
+    s_dismissed.magic = DISMISSED_MAGIC;
+    s_dismissed_loaded = true;
+    s_dismissed_dirty  = false;
+
+    if (!pref) { LOG_W("dismissed: read called with NULL pref"); return; }
+
+    dismissed_ring_t tmp;
+    int32_t got = share_prefs_get_block(pref, DISMISSED_PREFS_KEY,
+                                        &tmp, (int32_t)sizeof(tmp));
+    if (got != (int32_t)sizeof(tmp) || tmp.magic != DISMISSED_MAGIC)
+    {
+        LOG_I("dismissed: no/invalid blob (got=%d expect=%u), starting empty",
+              got, (unsigned)sizeof(tmp));
+        return;
+    }
+    if (tmp.count > DISMISSED_RING_SIZE || tmp.head >= DISMISSED_RING_SIZE)
+    {
+        LOG_W("dismissed: corrupted indices (head=%u count=%u), discarding",
+              tmp.head, tmp.count);
+        return;
+    }
+    s_dismissed = tmp;
+    LOG_I("dismissed: loaded %u ids from flash", s_dismissed.count);
+}
+
+void bloc_notification_write_dismissed(void *pref_handle)
+{
+    share_prefs_t *pref = (share_prefs_t *)pref_handle;
+    if (!pref) { LOG_E("dismissed: write called with NULL pref"); return; }
+    rt_err_t r = share_prefs_set_block(pref, DISMISSED_PREFS_KEY,
+                                       &s_dismissed,
+                                       (int32_t)sizeof(s_dismissed));
+    if (r == RT_EOK)
+    {
+        s_dismissed_dirty = false;
+        LOG_I("dismissed: wrote %u ids to flash (blob=%u B)",
+              s_dismissed.count, (unsigned)sizeof(s_dismissed));
+    }
+    else
+    {
+        LOG_E("dismissed: write failed (r=%d, blob=%u B)",
+              (int)r, (unsigned)sizeof(s_dismissed));
+    }
+}
+
+/* OTA-time hook: skip if nothing changed, else delegate to the shared
+ * "watch" prefs path via store_watch_prefs(). That uses the cached pref
+ * handle from watch_global_data's open_watch_prefs() helper, so by the
+ * time OTA verify success runs we're not re-initializing FlashDB. */
+void bloc_notification_save_dismissed_to_flash(void)
+{
+    if (!s_dismissed_loaded || !s_dismissed_dirty)
+    {
+        LOG_D("dismissed: save skipped (loaded=%d dirty=%d)",
+              (int)s_dismissed_loaded, (int)s_dismissed_dirty);
+        return;
+    }
+    store_watch_prefs(WATCH_PREFS_KEY_DISMISSED_NOTIFICATIONS);
+}
+
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/

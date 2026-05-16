@@ -585,6 +585,7 @@ __attribute__((packed)) SkaiWatchSysType_t;
         WATCH_PREFS_KEY_SLEEP_DATA_SHOW,
         WATCH_PREFS_KEY_CLOCK_STATUS,
         WATCH_PREFS_KEY_GESTURE_THRESHOLD,
+        WATCH_PREFS_KEY_DISMISSED_NOTIFICATIONS, /* bloc_notification ring */
         WATCH_PREFS_NUM_KEYS, // This is used to get the number of fields in the
                               // enum
     } watch_prefs_key;
@@ -632,6 +633,12 @@ __attribute__((packed)) SkaiWatchSysType_t;
            the count and per-slot T_ALARM bit-packed payload. */
         void (*read_alarms)(share_prefs_t *pref);
         void (*write_alarms)(share_prefs_t *pref);
+        /* Dismissed-notification ring — see bloc_notification.h. Read here
+           so we share the single fdb_kvdb_init on the "watch" prefs (which
+           takes >8 s on first NAND boot — owning our own open at
+           INIT_APP_EXPORT trips WDT1). Written only on OTA reboot. */
+        void (*read_dismissed_notifications)(share_prefs_t *pref);
+        void (*write_dismissed_notifications)(share_prefs_t *pref);
     } WatchPrefs_t;
 
     extern SkaiWatchSysType_t SkaiWatchSys;

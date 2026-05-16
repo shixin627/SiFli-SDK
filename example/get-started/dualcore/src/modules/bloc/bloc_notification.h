@@ -81,6 +81,39 @@ extern "C"
 	/* flash storage */
 	extern void store_notifications_before_sw_shutdown(void);
 	extern void get_notifications_after_sw_reboot(void);
+
+	/* Dismissed-ID dedup across BLE reconnect.
+	 *
+	 * Problem: phone re-pushes its cached notification list on reconnect.
+	 * remove_notification() deletes the entry from _notification_list[] so
+	 * dedup-by-id in update_notification() finds nothing and re-adds the
+	 * notification as new (banner + vibration). The 2-second haptic guard
+	 * in motor_pattern_notification() suppresses the buzz but the cards
+	 * still re-appear.
+	 *
+	 * Fix: maintain a separate ring of recently-dismissed ids. update_notification
+	 * checks it first and skips silently. The ring lives in RAM at runtime;
+	 * bloc_notification_save_dismissed_to_flash() is called from the OTA
+	 * verify-success path (communicate_update_image.c) so an OTA reboot
+	 * preserves dismisses across the new image. Regular restarts / crashes
+	 * do NOT persist — same behavior as before.
+	 *
+	 * On real hardware the "prefdb" partition lives on NAND; a first-time
+	 * fdb_kvdb_init scans the whole 128 KB region and can run >8 s, longer
+	 * than WDT1. We piggy-back on watch_global_data's existing flash read
+	 * (which already pays that cost once for flag_field/msg_switch/etc.)
+	 * via read_dismissed_notifications and write_dismissed_notifications
+	 * function pointers on WatchPrefs_t. */
+	extern void bloc_notification_mark_dismissed(const char *id);
+	extern bool bloc_notification_is_dismissed(const char *id);
+	extern void bloc_notification_save_dismissed_to_flash(void);
+	extern void bloc_notification_clear_dismissed(void);
+
+	/* Internal -- called only by watch_global_data.c's read/write helpers,
+	 * which provide the already-open share_prefs handle (typed void* so
+	 * this header doesn't need to pull share_prefs.h). */
+	extern void bloc_notification_read_dismissed(void *pref);
+	extern void bloc_notification_write_dismissed(void *pref);
 	extern void handle_user_speech_intent(uint8_t intent, char *message);
 
 	/* NotifyProvider: unify notification related callbacks (similar to SettingProvider) */

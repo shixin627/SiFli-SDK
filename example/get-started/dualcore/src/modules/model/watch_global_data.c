@@ -473,6 +473,14 @@ static int watch_prefs_register(void)
   WatchPrefs.write_gesture_threshold = write_gesture_threshold;
   WatchPrefs.read_alarms = read_alarms;
   WatchPrefs.write_alarms = write_alarms;
+  /* Dismissed-notification ring lives in bloc_notification.c, exposed as
+   * void*-taking shims so this header doesn't need bloc_notification.h. */
+  extern void bloc_notification_read_dismissed(void *pref);
+  extern void bloc_notification_write_dismissed(void *pref);
+  WatchPrefs.read_dismissed_notifications =
+      (void (*)(share_prefs_t *))bloc_notification_read_dismissed;
+  WatchPrefs.write_dismissed_notifications =
+      (void (*)(share_prefs_t *))bloc_notification_write_dismissed;
   return 0;
 }
 INIT_APP_EXPORT(watch_prefs_register);
@@ -511,6 +519,7 @@ void watch_config_struct_flash_read(void)
   WatchPrefs.read_clock_status(pref);
   WatchPrefs.read_gesture_threshold(pref);
   WatchPrefs.read_alarms(pref);
+  WatchPrefs.read_dismissed_notifications(pref);
   close_watch_prefs(pref);
 
   /* Restore HW alarms in alarm_manager_service from the freshly-loaded
@@ -628,6 +637,9 @@ void store_watch_prefs(watch_prefs_key key)
     break;
   case WATCH_PREFS_KEY_GESTURE_THRESHOLD:
     WatchPrefs.write_gesture_threshold(pref);
+    break;
+  case WATCH_PREFS_KEY_DISMISSED_NOTIFICATIONS:
+    WatchPrefs.write_dismissed_notifications(pref);
     break;
   default:
     break;
