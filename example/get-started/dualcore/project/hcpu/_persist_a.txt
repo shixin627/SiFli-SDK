@@ -1,0 +1,7 @@
+# Part A: mark ids, flush to flash, exit
+notif_dismiss_clear
+notif_dismiss persist_test_001
+notif_dismiss persist_test_002
+notif_dismiss persist_test_003
+notif_check_dismissed persist_test_002
+notif_dismiss_save

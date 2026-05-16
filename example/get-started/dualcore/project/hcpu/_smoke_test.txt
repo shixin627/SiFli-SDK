@@ -1,0 +1,12 @@
+# Smoke test: run via `_dev_test.cmd -nobuild -script _smoke_test.txt`
+list_apps
+app_status
+goto_app weather
+app_status
+dev_add iPhone15 0 1
+battery_set 42
+hr_set 72
+notif_inject Slack Friday 9
+notif_list
+goto_app Main
+app_status

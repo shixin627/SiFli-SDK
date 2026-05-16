@@ -1,0 +1,4 @@
+ls /
+ls /assets
+ls /assets/fonts
+ls /assets/emoji

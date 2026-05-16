@@ -1,0 +1,12 @@
+# Bug 3 flash persistence:
+#   1. Mark 3 distinct ids
+#   2. Trigger save to flash (manually -- production path is OTA verify success)
+#   3. After restart we'd expect them to still be marked, but we cannot reboot
+#      mid-session; the meaningful check here is "save doesn't crash" + log says OK
+notif_dismiss_clear
+notif_dismiss apple_id_001
+notif_dismiss apple_id_002
+notif_dismiss apple_id_003
+notif_check_dismissed apple_id_002
+notif_dismiss_save
+notif_check_dismissed apple_id_002

@@ -1,0 +1,5 @@
+# Part B: after restart, ids should still be marked (loaded by INIT_APP_EXPORT)
+notif_check_dismissed persist_test_001
+notif_check_dismissed persist_test_002
+notif_check_dismissed persist_test_003
+notif_check_dismissed never_marked_999

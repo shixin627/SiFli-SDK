@@ -1,0 +1,10 @@
+# Bug 3 verification:
+#  1. Mark id "foo123" as dismissed
+#  2. Check it
+#  3. Check an unrelated id
+#  4. Clear, re-check
+notif_dismiss foo123
+notif_check_dismissed foo123
+notif_check_dismissed bar456
+notif_dismiss_clear
+notif_check_dismissed foo123
