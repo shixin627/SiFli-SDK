@@ -1,25 +1,23 @@
 scons: Reading SConscript files ...
 Board: pc_hcpu
-'git' is not recognized as an internal or external command,
-operable program or batch file.
 
-C:\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst x: /D  2>nul 
+C:\Users\lulu8\Documents\GitHub\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst x: /D  2>nul 
+Invalid parameter - X:
 
-C:\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst y: /D  2>nul 
+C:\Users\lulu8\Documents\GitHub\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst y: /D  2>nul 
+Invalid parameter - Y:
 
-C:\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst l: /D  2>nul 
+C:\Users\lulu8\Documents\GitHub\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst l: /D  2>nul 
+Invalid parameter - L:
 
-C:\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst x: "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.16.27023" 
-'subst' is not recognized as an internal or external command,
-operable program or batch file.
+C:\Users\lulu8\Documents\GitHub\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst x: "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.16.27023" 
+Path not found - C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.16.27023
 
-C:\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst y: "C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0" 
-'subst' is not recognized as an internal or external command,
-operable program or batch file.
+C:\Users\lulu8\Documents\GitHub\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst y: "C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0" 
+Path not found - C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0
 
-C:\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst l: "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0" 
-'subst' is not recognized as an internal or external command,
-operable program or batch file.
+C:\Users\lulu8\Documents\GitHub\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst l: "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0" 
+Path not found - C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0
 Simulator used
 Mkdir("src")
 Mkdir("resource/strings")

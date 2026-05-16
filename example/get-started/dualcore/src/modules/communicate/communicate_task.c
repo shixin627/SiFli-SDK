@@ -247,6 +247,16 @@ bool commu_send_dismiss_notification(const char *id) { return commu_send_string(
 bool commu_send_user_speaking_state(uint8_t s)       { return commu_send_status(NOTIFY_COMMAND_ID, KEY_USER_SPEAKING_STATE, s); }
 bool commu_send_chat_with_ai(const char *json)       { return commu_send_string(NOTIFY_COMMAND_ID, KEY_RETURN_CHAT_INTENT, json); }
 bool commu_send_battery_level(uint8_t level)         { return commu_send_status(NOTIFY_COMMAND_ID, KEY_BATTERY_LEVEL, level); }
+
+bool commu_send_battery_voltage(uint16_t millivolts)
+{
+    if (!commu_can_send()) return false;
+    uint8_t buf[L2_FIRST_VALUE_POS + 2];
+    l2_write_header(buf, NOTIFY_COMMAND_ID, KEY_BATTERY_VOLTAGE, 2);
+    buf[L2_FIRST_VALUE_POS]     = (uint8_t)(millivolts >> 8);
+    buf[L2_FIRST_VALUE_POS + 1] = (uint8_t)(millivolts & 0xFF);
+    return skaiwatch_ble_notify(buf, sizeof(buf));
+}
 bool commu_send_update_instruction(const char *json) { return commu_send_string(NOTIFY_COMMAND_ID, KEY_SKAI_CREATION_INSTRUCTIONS, json); }
 bool commu_send_get_instruction_img(const char *id)  { return commu_send_string(NOTIFY_COMMAND_ID, KEY_SKAI_INSTRUCTION_IMAGE, id); }
 

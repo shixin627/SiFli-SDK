@@ -83,6 +83,8 @@ extern "C"
 		KEY_SKAI_CREATION_INSTRUCTIONS = 0X65,
 		KEY_SKAI_INSTRUCTION_IMAGE = 0X66,
 		KEY_DISMISS_SKAI_INSTRUCTION = 0X67,
+		/* 0x68 / 0x69 reserved on phone side for Skaibar options/selected. */
+		KEY_BATTERY_VOLTAGE = 0X6A,
 	} NOTIFY_KEY;
 
 	void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length);

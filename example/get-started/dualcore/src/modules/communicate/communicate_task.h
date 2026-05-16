@@ -62,6 +62,10 @@ bool commu_send_dismiss_notification(const char *id);
 bool commu_send_user_speaking_state(uint8_t status);
 bool commu_send_chat_with_ai(const char *json);
 bool commu_send_battery_level(uint8_t level);
+/* Raw battery voltage in millivolts, sent as uint16 big-endian alongside the
+ * standard BAS level notify so the phone-side dev tooling can log the analog
+ * value at receive time. */
+bool commu_send_battery_voltage(uint16_t millivolts);
 bool commu_send_update_instruction(const char *json);
 bool commu_send_get_instruction_img(const char *id);
 

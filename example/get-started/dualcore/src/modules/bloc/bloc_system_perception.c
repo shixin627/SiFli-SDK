@@ -50,6 +50,9 @@
     #include "bloc_v2t.h"
     #include "bloc_filesystem.h"
 #endif
+#ifdef BSP_USING_WATCH_SYS_CLIENT
+    #include "watch_sys_service.h"
+#endif
 
 #define DBG_TAG "sys.perception"
 #include "bsp_board.h"
@@ -135,6 +138,10 @@ void app_periodic_task(void)
         check_and_sync_pending_recordings();
     }
     last_device_logged = current_logged;
+#endif
+
+#ifdef BSP_USING_WATCH_SYS_CLIENT
+    watch_sys_sync.request_battery_voltage();
 #endif
 }
 
