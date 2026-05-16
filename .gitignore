@@ -35,6 +35,7 @@ tools/mkfatimg/mkfatimg_nand/Release/
 # the unrelated "disk" folders under example/{dlmodule,lvgl_v8_ttf,...}.
 /disk/
 /prefdb/
+/pc_console.log
 # SifliTrace runtime captures (per-session .bin / .pcap / _ui.log etc.)
 tools/SifliTrace/log/
 # Per-user trace tool settings (port, baud, last-opened paths) — was committed
