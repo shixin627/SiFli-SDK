@@ -21,8 +21,6 @@ int app_main(void)
     return RT_EOK;
 }
 
-/* BLE RSSI checker: defined in main.c (excluded from PC build). pc_link_stubs.c
- * is auto-generated and hasn't picked these up yet — keep tiny no-op stubs
- * here so watch_system_interact.c (kept on PC) links. */
-void start_ble_rssi_checker(uint32_t period_ms) { (void)period_ms; }
-void stop_ble_rssi_checker(void) { }
+/* BLE RSSI checker: defined in main.c (excluded from PC build). Stubs now
+ * live in pc_link_stubs.c (auto-gen picked them up); we used to provide
+ * tiny no-ops here as a workaround before that ran. */

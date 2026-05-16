@@ -638,6 +638,18 @@ extern bool pause_sleep_cause_of_dev_reson(void);
 
 void watch_system_sleep(void)
 {
+    /* Idempotency: button_event_task_entry in watch_demo.c calls us
+     * every 30 ms while inactive_time exceeds the screen-off threshold,
+     * so without this guard we re-fire hcpu_suspend / IMU unsubscribe
+     * / BLE perf-slow / RSSI stop several times per sleep cycle (visible
+     * in logs as repeated "Entering sleep mode" + "Unsubscribed IMU
+     * failed" each ~1 s while hcpu_suspend's IPC handshake serializes).
+     * gui_is_active() returns false once gui_pm_fsm has moved the state
+     * to INACTIVE_PENDING, which happens on the first call -- so any
+     * subsequent call sees it false and exits early. */
+    if (!gui_is_active())
+        return;
+
     if (setting_provider.get_power_save_mode() &&
 #if !kReleaseMode
         !pause_sleep_cause_of_dev_reson() &&
