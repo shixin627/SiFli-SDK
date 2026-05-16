@@ -122,6 +122,80 @@ INIT_APP_EXPORT(bloc_control_provider_register);
 - **加感測器訂閱**:走 `peripheral_provider.subscribe_*` 或 `interact_sensor_subscription({.type=..., .status=..., .thread_safe=1})`(後者執行緒安全)
 - **跨 thread 操作 UI**:`lvgl_send_msg({.type = LVGL_MSG_TYPE_*, .data = ...})`,handler 在 `ui_handler.c`
 
+## PC 模擬器測試框架 (`BSP_USING_PC_SIMULATOR=y` 時生效)
+
+整套東西在 `src/modules/tests/` + `middleware/lvgl/lv_win32/lv_touch_sim.{c,h}`。Build gate 為 `BSP_USING_PC_SIMULATOR`,production build 不會被連進去。
+
+### 工作流
+
+```bash
+# 1) 編譯(_pc_build.cmd 已自動偵測 repo root,不再寫死 C:\work)
+cmd /c project\hcpu\_pc_build.cmd -j8
+
+# 2) 一鍵 rebuild + relaunch + 送單一指令 + 抓 console
+project\hcpu\_dev_test.cmd -cmd "list_apps"
+
+# 3) 跑多個指令:把它們寫成 newline-separated 的 .txt 然後 -script
+echo "list_apps" > _quick.txt
+echo "goto_app weather" >> _quick.txt
+echo "battery_set 80" >> _quick.txt
+project\hcpu\_dev_test.cmd -script _quick.txt
+
+# 4) 不重 build,只快測
+project\hcpu\_dev_test.cmd -nobuild -cmd "battery_set 42"
+
+# 5) 截圖一張
+project\hcpu\_dev_test.cmd -nobuild -screenshot foo.png
+
+# 6) 自動掃過所有 builtin app 各截一張
+project\hcpu\_dev_test.cmd -snapshot all     # 輸出在 _snapshots/all/
+```
+
+`_dev_test.ps1` 是底層腳本,`.cmd` 是 wrapper 處理 ExecutionPolicy。
+
+### MSH 指令集(都在 PC sim 的 tshell 用)
+
+**觸控注入** (`test_touch_sim.c` + `middleware/.../lv_touch_sim.c`):跟真實滑鼠並存的獨立 LVGL pointer indev
+- `touch_tap x y` / `touch_press x y` / `touch_release` / `touch_move x y`
+- `touch_swipe x1 y1 x2 y2 [ms]` -- 自動拆 steps,LVGL 32 ms 採樣
+- `touch_status` -- 印出當前 sim touch state
+
+**程式化導航** (`dev_navigation.c`):跳過 swipe/tap
+- `list_apps` -- 列出所有 `BUILTIN_APP_EXPORT` 註冊的 app id(跟 framework 內建 `list_app` 單數不同,單數那個只列 *running* app)
+- `goto_app <id>` -- `gui_app_run(id)` 包裝,mailbox 安全,FinSH thread OK
+- `app_status` -- 印當前 active app(避開 `gui_app_get_actived` 的 thread assert)
+- 另外 framework 內建:`app_run`/`app_exit`/`app_goback`/`app_cleanup`
+
+**Fake 資料** (`fake_ui_data.c`):
+- `back` (或 `gesture_back`) -- 觸發 `LVGL_MSG_TYPE_BACK_EVENT`
+- `dev_add <name> [type] [conn]` / `dev_connect <idx>` / `dev_disconnect <idx>` / `dev_clear` / `dev_list` -- 假的已配對裝置清單。Type:0=phone 1=computer 2=tablet 3=other
+- `notif_inject <title> <msg> [type]` / `notif_clear` / `notif_list` -- 假通知(資料注入到 `_notification_list[]`,UI 在 page open 時讀)
+- `battery_set 0..100` / `battery_volt_set <mv>` / `charge_set 0|1` / `hr_set <bpm>` -- 透過 `LVGL_MSG_TYPE_*` 走 ui_handler 分發,handler 都在 LVGL thread
+
+### 已知限制
+
+**通知抽屜不會 live refresh**:`LVGL_MSG_TYPE_NOTIFICATION` 的三個 handler chain 都走 `lv_img_set_src(icon, icon_list[notification->type])`。PC sim 的 icon resource (`resource/images/common/ezip/*.png` → eZIP 壓縮 .tmp.c)宣告為 `LV_IMG_CF_TRUE_COLOR_ALPHA` 但 byte 是 eZIP 編碼,LVGL 預設 decoder 讀錯 → crash。`notif_inject` 因此只注入資料,不觸發 refresh msg。要做 live refresh 需要先註冊 PC 用的 eZIP decoder(`middleware/lvgl/lv_win32/img_dec.c` 目前只支援 file-based,要加 variable-based)。
+
+**device list callback 不能即時 fire**:`app_setting_device_list.c:dev_mgr_event_cb` 直接做 LVGL ops,從 FinSH thread call 會 crash。`fake_ui_data.c:fire_cb` 因此 no-op。但裝置頁在 page open 時會重新讀 db,所以 `dev_add` 後切到 settings → bluetooth → devices 就看得到。
+
+### 開發新 fake fixture 的 pattern
+
+1. 找對應的 `LVGL_MSG_TYPE_*`(全部在 `modules/model/ui_handler.h`)
+2. 看 `ui_handler.c` 的 `process_lvgl_message` switch 確認:
+   - handler chain 走到哪些 `lvgl_msg_handler.handle_*`
+   - 那些 handler 是否會碰 `icon_list` / `lv_img_set_src` / 未 init 的 widget(會就 crash)
+3. 如果安全,在 `fake_ui_data.c` 加 `MSH_CMD_EXPORT` + `lvgl_send_msg({.type=..., .data.xxx=...})`
+4. 不安全的話,要嘛只注入資料、要嘛 null 掉危險 handler 再 send
+
+### Pre-existing 修補
+
+- `main_pc.c` 補了 `start/stop_ble_rssi_checker` no-op(因為 `main.c` 整個被 PC build 排除,而 `watch_system_interact.c` 還會 extern 引用它們)
+- `pc_link_stubs.c` 移除 8 個 `ble_dev_mgr_*` stub(改由 `fake_ui_data.c` 提供真實 fake impl);`_syms_clean.txt` 同步移除這 8 個符號避免 `_genstub.py` regen 時重複定義
+
+### 構建腳本路徑自動偵測
+
+`_pc_build.cmd` / `_watch_build.cmd` / `_watch_mdk5.cmd` / `_genstub.py` 都用 `%~dp0` / `os.path.dirname(__file__)` 偵測 repo root,不再 hardcode `C:\work\SiFli-SDK`。SDK 不論放在哪都能跑。Env 仍 hardcode `C:\dev\env_latest` 跟 `ENV_VER=1.1.4` -- env 升級才要動。
+
 ## 構建
 
 依板型分目錄:
@@ -245,5 +319,6 @@ sed -i 's|^extern GU32 goodix_hrv_init|extern goodix_hrv_ret goodix_hrv_init|' \
 - `customer/boards/{sf32lb56-watch,sf32lb56w-watch,eh-lb563}/SConscript` 的 active-board guard
 - `customer/peripherals/sensor/gh3018/SConscript` + `gh30x_gcc_stubs.c` + `gh30x_algo/Basic/lib/SConscript` 的 GCC 分支
 - Goodix `GS32` typedef 跨檔統一(5 檔)
+- **`external/FlashDB/src/fdb_file.c:290 + 304`** — LIBC mode 的 `fread/fwrite(buf, size, 1, fp) != size` 改成 `!= 1`。原 upstream 比較錯了(`fread` 第三參數是 count,return 是 element 數),任何 >1 byte 的 read/write 都會誤報 `FDB_READ_ERR`。**只影響 PC sim**(`PKG_FDB_USING_FILE_LIBC_MODE`),實機用 fal mode 沒事。upstream merge 後務必確認這 2 行還是 `!= 1`
 
 詳細的修復歷史看 [CHANGELOG.md](CHANGELOG.md)。
