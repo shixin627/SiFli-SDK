@@ -652,7 +652,9 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         // LOG_D("message_OBJ: %p",
         // obj->spec_attr->children[selected_message_index]);
         LOG_D("selected_message_index: %d", selected_message_index);
-        if ( open_shock)//!is_user_touching_screen() &&
+        /* Honor the global haptic-feedback toggle so the user setting
+         * actually affects this page (matches lv_instruction_list_layout.c:982). */
+        if (get_scrolling_motor_vibrate_status() && open_shock)
         {
             motor_pattern_scrolling_app();
         }
@@ -2345,7 +2347,16 @@ void scroll_message_list_to_index(int8_t page)
     {
         selected_message_index = (uint16_t)page;
         update_notification_card_visibility();
+        /* The arc-scroll snap path pre-syncs old_selected to the new index so
+         * the subsequent scroll_list() doesn't see a diff and bounce the
+         * selection back during animation. That pre-sync silenced the haptic
+         * trigger at line ~649 (it gates on old != selected). Fire the haptic
+         * here instead, where we know an actual page change just happened. */
         old_selected_message_index = selected_message_index;
+        if (get_scrolling_motor_vibrate_status() && open_shock)
+        {
+            motor_pattern_scrolling_app();
+        }
     }
 
     lv_obj_scroll_to_view(lv_obj_get_child(p_app_notification->list, page),
