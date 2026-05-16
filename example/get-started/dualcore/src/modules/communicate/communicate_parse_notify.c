@@ -523,6 +523,20 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         break;
     }
 
+    case KEY_SKAIBAR_OPTIONS:
+    {
+        // PC 在 watch 進入 skaibar 後送來的選項列表
+        // JSON: {"options":["opt1","opt2",...]} 或裸 array ["opt1",...]
+        if (length > 0)
+        {
+            char json_buf[512];
+            ble_payload_to_cstr(json_buf, sizeof(json_buf), pValue, length);
+            extern void mouse_skaibar_set_options_json(const char *json);
+            mouse_skaibar_set_options_json(json_buf);
+        }
+        break;
+    }
+
     default:
         break;
     }

@@ -68,6 +68,7 @@ bool commu_send_battery_level(uint8_t level);
 bool commu_send_battery_voltage(uint16_t millivolts);
 bool commu_send_update_instruction(const char *json);
 bool commu_send_get_instruction_img(const char *id);
+bool commu_send_skaibar_selected(uint8_t idx);
 
 /* Sensor */
 bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length);

@@ -66,6 +66,7 @@
     #include "custom_trans_anim.h"
     #include "bloc_setting.h"
     #include "bloc_peripheral.h"
+    #include "bloc_v2t.h" // start_voice_recognition + voice_provider (AI 路徑用)
 #endif
 
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
@@ -73,7 +74,10 @@
 #endif
 
 #include "communicate_protocol.h"
+#include "communicate_task.h" // commu_send_skaibar_selected
+#include "app_clock_status_bar.h" // app_clock_device_change_bar_open / set_device_change_bar_area_right_state
 #include "ui_handler.h"
+#include <cJSON.h>
 #include "ui_helper.h"
 #include "ui_img_helper.h"
 #include "lvsf_gesture.h"
@@ -141,11 +145,13 @@ LV_IMG_DECLARE(icon_mic);
 LV_IMG_DECLARE(space);
 LV_IMG_DECLARE(img_skai); // 160 * 160
 LV_IMG_DECLARE(erth);
-LV_IMG_DECLARE(img_left_arrow);
-LV_IMG_DECLARE(img_right_arrow);
+LV_IMG_DECLARE(img_left_arrow); // 還有給 back_hint_icon 用
 LV_IMG_DECLARE(Map_fill);
 LV_IMG_DECLARE(micro_icon);
+LV_IMG_DECLARE(micro_open_icon); // V2T active 時的 icon（淺藍麥克風）
 LV_IMG_DECLARE(switch_icon);
+LV_IMG_DECLARE(keyboard_icon);
+LV_IMG_DECLARE(down_arrow); // 輸入框下方收回按鈕
 
 static lv_point_t touchscreen_point;
 static lv_point_t start_point;
@@ -203,6 +209,23 @@ static int16_t back_hint_drag_offset = 0;
 // 按下時是否落在弧形區：弧形按下整個 session 都跳過 BLE_HID_Mouse_Touch_*
 // 避免 deferred click（按弧形不該觸發點擊）
 static bool press_in_arc_zone = false;
+// 起手點是否落在「右」弧形觸碰區，給 device-change 選單左滑手勢用
+static bool press_in_right_arc_zone = false;
+
+// is_point_in_right_arc 真正定義在下面 (~line 400)；這裡 forward decl 給
+// device_change_bar_hit_test_cb 用
+static bool is_point_in_right_arc(const lv_point_t *p);
+
+// 右側 device-change bar 跟弧形滾動觸碰區重疊；用 HIT_TEST 過濾：
+// 點如果在弧形觸碰區就拒絕命中，press 落到 touch_bg 走 arc 滾動；
+// 點在 bar 範圍但不在弧形區（純邊緣）才命中 bar，跑原本左滑開選單流程
+static void device_change_bar_hit_test_cb(lv_event_t *e)
+{
+    lv_hit_test_info_t *info = lv_event_get_hit_test_info(e);
+    if (info->res == false) return; // 標準 hit 已 reject 就不用再判
+    if (is_point_in_right_arc(info->point))
+        info->res = false;
+}
 
 // === 向右返回 hint（仿 lvsf_gesture.c 的返回視覺/動畫流程）===
     #define BACK_HINT_LIMIT 80
@@ -345,6 +368,8 @@ static void start_trackpad_to_kbd_expand_anim(void);
 static void text_input_bar_drag_event_cb(lv_event_t *e);
 static void start_kbd_to_trackpad_collapse_anim(int32_t from_progress,
                                                 bool commit);
+// 輸入框下方收回按鈕的 click handler
+static void input_bar_down_arrow_event_cb(lv_event_t *e);
 
 // media center 前置宣告
 static void create_media_center_panel(lv_obj_t *parent);
@@ -476,6 +501,7 @@ static lv_obj_t *input_content_container = NULL;
 static lv_obj_t *input_display_label = NULL;
 static lv_obj_t *input_cursor = NULL;
 static lv_obj_t *input_enter_btn = NULL;
+static lv_obj_t *input_bar_down_arrow = NULL; // 收回輸入模式的圓鈕
 static lv_timer_t *cursor_blink_timer = NULL;
 static char input_buffer[128] = {0};
 static int input_length = 0;
@@ -498,15 +524,17 @@ static lv_obj_t *trackpad_mic_btn = NULL;
 static lv_obj_t *trackpad_mic_icon = NULL;
 static lv_obj_t *trackpad_mic_red_dot = NULL;
 static lv_obj_t *trackpad_mic_red_dot_x = NULL;
-// trackpad mode 中央的 V2T 結果顯示 panel（mic active 時顯示）
-static lv_obj_t *trackpad_v2t_panel = NULL;
-static lv_obj_t *trackpad_v2t_label = NULL;
 
-// Keyboard mode 下半部 mic 區（mic + < > 箭頭，跟 keyboard 互換顯示）
+// Keyboard mode 下半部 mic 區（mic 按鈕 + 右側鍵盤按鈕，跟 keyboard 互換顯示）
 static lv_obj_t *kbd_mic_section = NULL;
 static lv_obj_t *kbd_mic_section_mic_btn = NULL;
-static lv_obj_t *kbd_mic_section_left_arrow = NULL;
+static lv_obj_t *kbd_mic_section_mic_img = NULL; // 中央 mic icon，V2T 開關時切圖
+static lv_obj_t *kbd_mic_section_mic_pulse = NULL; // V2T active 時的脈衝圓
 static lv_obj_t *kbd_mic_section_right_arrow = NULL;
+// micro_open_icon 是淺藍麥克風，脈衝色取相近的藍
+#define KBD_MIC_PULSE_COLOR 0x5DA8FF
+#define KBD_MIC_PULSE_MAX_SIZE 100
+#define KBD_MIC_PULSE_PERIOD_MS 1200
 static bool kbd_lower_is_keyboard = false; // false = mic 區顯示，true = 鍵盤顯示
 static int16_t kbd_lower_swipe_start_x = 0;
 static bool kbd_lower_swipe_tracking = false;
@@ -536,12 +564,29 @@ static lv_obj_t *media_center_play_btn = NULL;
 static lv_obj_t *media_center_play_img = NULL;
 static bool media_center_play_state = false;
 
-// trackpad mode 的 enter btn（樣式跟 keyboard input_enter_btn 一致）
-static lv_obj_t *trackpad_enter_btn = NULL;
 static void update_v2t_btn_appearance(bool mic_active);
 static void mouse_v2t_set_active(bool active);
 static void mouse_v2t_open(void);
+static void mouse_v2t_open_with_intent(uint8_t intent);
 static void mouse_v2t_close_and_paste(void);
+// 由 mouse_v2t_open_with_intent 設定，open_v2t_mic (LVGL msg handler)
+// 讀取以決定 start_voice_recognition 的 intent；handler 結束時 reset 回預設
+static uint8_t pending_v2t_intent = V2T_INTENT_MIC_INPUTE;
+// trackpad bar 長按是否已觸發 → 抑制 RELEASED 走短按的 expand 流程
+static bool bar_long_press_fired = false;
+
+// === skaibar 模式（V2T CHAT 開啟期間活躍）======================================
+//   PC 透過 KEY_SKAIBAR_OPTIONS 送 JSON 選項列表 (e.g. {"options":["a","b","c"]})
+//   使用者旋轉左/右 arc 時，輸入框文字改成當前選項、送 KEY_SKAIBAR_SELECTED(idx)
+    #define SKAIBAR_MAX_OPTIONS 16
+    #define SKAIBAR_MAX_OPTION_LEN 64
+static bool skaibar_active = false;
+static char skaibar_options[SKAIBAR_MAX_OPTIONS][SKAIBAR_MAX_OPTION_LEN];
+static uint8_t skaibar_options_count = 0;
+static int16_t skaibar_selected_idx = -1; // -1 = 還沒選任何選項
+static void skaibar_apply_selection_to_input_bar(void);
+static void skaibar_scroll_step(int steps);
+void mouse_skaibar_set_options_json(const char *json);
     #define MAX_DISPLAY_WIDTH 280 // 輸入框最大顯示寬度（縮短後）
 
 // File list variables
@@ -1192,12 +1237,25 @@ void open_v2t_mic(void)
 {
     extern void set_voice_recognition_notified_from_mouse(bool status);
     set_voice_recognition_notified_from_mouse(true);
-    interact_mic_v2t_input();
+    // 預設 intent (MIC_INPUTE) 走 interact_mic_v2t_input；其他 intent (e.g. CHAT)
+    // 直接呼叫 start_voice_recognition 帶該 intent，避開 interact 內 hardcode 的 0x04
+    if (pending_v2t_intent == V2T_INTENT_MIC_INPUTE)
+    {
+        interact_mic_v2t_input();
+    }
+    else
+    {
+        voice_provider.vad_init();
+        start_voice_recognition(pending_v2t_intent);
+    }
     // mic 啟動 → space btn 切成紅圓 X，按下會關 mic
     mouse_v2t_set_active(true);
 
     // 隱藏彈出框（如果有的話）
     hide_key_popup();
+
+    // 用完 reset 回預設，避免影響下一次 open
+    pending_v2t_intent = V2T_INTENT_MIC_INPUTE;
 }
 
 /**
@@ -2490,6 +2548,7 @@ static void handle_pressed_event(lv_indev_t *indev)
     bool in_center = is_point_in_center_scroll_zone(&start_point);
     bool in_arc = in_left_arc || in_right_arc;
     press_in_arc_zone = in_arc;
+    press_in_right_arc_zone = in_right_arc;
     if (in_arc || in_center)
     {
         center_zone_pending = true;
@@ -2609,6 +2668,14 @@ static void handle_pressing_event(lv_indev_t *indev,
         // 避免快速旋轉時把 BLE/motor queue 灌爆造成記憶體堆積
         if (steps != 0)
         {
+            // skaibar 模式（長按 bar 進入 + PC 已送選項）→ 滾動切選項，
+            // 不送 BLE HID wheel_scroll；保留 motor_pattern_damping 觸覺回饋
+            if (skaibar_active && skaibar_options_count > 0)
+            {
+                motor_pattern_damping();
+                skaibar_scroll_step(steps);
+                return;
+            }
             int scaled = steps * LEFT_SCROLL_STEP_MULTIPLIER;
             if (scaled > 127)
                 scaled = 127;
@@ -2662,6 +2729,17 @@ static void handle_pressing_event(lv_indev_t *indev,
                 back_hint_vibrated = false;
                 animate_scroll_ui_to(false); // 弧形 UI 淡回暗
                 LOG_D("scroll zone -> back hint");
+                return;
+            }
+            else if (press_in_right_arc_zone)
+            {
+                // 右弧區起手 + 往左拖 → 開 device-change 選單
+                // 弧形帶的左滑會被 bar ADV_HITTEST 拒絕落到 touch_bg，
+                // 在這裡 programmatic open 補上選單入口
+                animate_scroll_ui_to(false);
+                scrolling = true; // 避免放開時誤觸 click
+                app_clock_device_change_bar_open();
+                LOG_D("right-arc swipe left -> device-change menu");
                 return;
             }
             // 向左 → 退出 pending，UI 淡回，讓底下拖曳邏輯接手送 mouse_move
@@ -3562,6 +3640,58 @@ static lv_obj_t *menu_window(lv_obj_t *par)
  * 的選單切換後也能更新
  */
 
+// kbd_mic_section 中央 mic 按鈕的脈衝動畫：v ∈ [0,100] 同時驅動 size 跟 opa
+//   v=0   → size 0×0、bg_opa COVER（剛開始浮現）
+//   v=100 → size 40×40、bg_opa TRANSP（擴散到最大時透明）
+//   repeat infinite 形成循環脈衝
+static void kbd_mic_pulse_anim_cb(void *var, int32_t v)
+{
+    (void)var;
+    if (!kbd_mic_section_mic_pulse ||
+        !lv_obj_is_valid(kbd_mic_section_mic_pulse))
+        return;
+    lv_coord_t s = (lv_coord_t)(KBD_MIC_PULSE_MAX_SIZE * v / 100);
+    if (s < 2) s = 2; // LVGL 對 0/1 px obj 可能 skip render，保底 2px
+    lv_obj_set_size(kbd_mic_section_mic_pulse, s, s);
+    // align CENTER 在某些 LVGL 8 版本不會因 set_size 自動 re-center → 顯式 re-center
+    lv_obj_center(kbd_mic_section_mic_pulse);
+    lv_opa_t opa = (lv_opa_t)(LV_OPA_COVER - (LV_OPA_COVER * v / 100));
+    lv_obj_set_style_bg_opa(kbd_mic_section_mic_pulse, opa, LV_PART_MAIN);
+    lv_obj_invalidate(kbd_mic_section_mic_pulse);
+}
+
+static void kbd_mic_section_set_v2t_active(bool active)
+{
+    if (kbd_mic_section_mic_img &&
+        lv_obj_is_valid(kbd_mic_section_mic_img))
+    {
+        lv_img_set_src(kbd_mic_section_mic_img,
+                       active ? &micro_open_icon : &micro_icon);
+    }
+    if (!kbd_mic_section_mic_pulse ||
+        !lv_obj_is_valid(kbd_mic_section_mic_pulse))
+        return;
+    // 先 kill 舊的 anim 再切；不論開關都要清，避免關掉後脈衝還在跑
+    lv_anim_del(kbd_mic_section_mic_pulse, kbd_mic_pulse_anim_cb);
+    if (active)
+    {
+        lv_obj_clear_flag(kbd_mic_section_mic_pulse, LV_OBJ_FLAG_HIDDEN);
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, kbd_mic_section_mic_pulse);
+        lv_anim_set_values(&a, 0, 100);
+        lv_anim_set_time(&a, KBD_MIC_PULSE_PERIOD_MS);
+        lv_anim_set_exec_cb(&a, kbd_mic_pulse_anim_cb);
+        lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+        lv_anim_start(&a);
+    }
+    else
+    {
+        lv_obj_add_flag(kbd_mic_section_mic_pulse, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_size(kbd_mic_section_mic_pulse, 0, 0);
+    }
+}
+
 // 切換 V2T 按鈕（keyboard space btn + trackpad mic btn）內 child 的可見性：
 //   mic_active = true  → 隱藏 mic icon、顯示紅圓 X
 //   mic_active = false → 反之
@@ -3614,60 +3744,50 @@ static void update_v2t_btn_appearance(bool mic_active)
             lv_obj_add_flag(trackpad_mic_red_dot, LV_OBJ_FLAG_HIDDEN);
         }
     }
+    // Keyboard mode mic 區中央按鈕：換 icon + 啟停脈衝動畫
+    kbd_mic_section_set_v2t_active(mic_active);
 }
 
 // 集中設 V2T 啟動狀態 + 同步兩個 mode 的按鈕視覺 + trackpad 中央 panel
 static void mouse_v2t_set_active(bool active)
 {
     mouse_v2t_active = active;
+    // skaibar_active 由「怎麼進入輸入模式」決定（長按 / 短按），跟 V2T
+    // 開關獨立 —— V2T 關掉後使用者還能用鍵盤打字、滾 arc 切選項
     update_v2t_btn_appearance(active);
-    if (trackpad_v2t_panel && lv_obj_is_valid(trackpad_v2t_panel))
-    {
-        if (active)
-        {
-            lv_obj_clear_flag(trackpad_v2t_panel, LV_OBJ_FLAG_HIDDEN);
-        }
-        else
-        {
-            lv_obj_add_flag(trackpad_v2t_panel, LV_OBJ_FLAG_HIDDEN);
-            if (trackpad_v2t_label && lv_obj_is_valid(trackpad_v2t_label))
-                lv_label_set_text(trackpad_v2t_label, "");
-        }
-    }
-    if (trackpad_enter_btn && lv_obj_is_valid(trackpad_enter_btn))
-    {
-        if (active)
-            lv_obj_clear_flag(trackpad_enter_btn, LV_OBJ_FLAG_HIDDEN);
-        else
-            lv_obj_add_flag(trackpad_enter_btn, LV_OBJ_FLAG_HIDDEN);
-    }
 }
 
-// 開 mic：仿 long_press_timer_callback 觸發 V2T 的方式，給 trackpad mic btn 用
-static void mouse_v2t_open(void)
+// 開 mic with intent：
+//   V2T_INTENT_MIC_INPUTE → 純語音輸入（短按 mic / 鍵盤空白鍵長按等預設路徑）
+//   V2T_INTENT_SKAIBAR    → AI 對話 + 選項列表（trackpad bar 長按）
+// intent 暫存到 pending_v2t_intent，由 open_v2t_mic (LVGL msg handler) 讀取
+static void mouse_v2t_open_with_intent(uint8_t intent)
 {
     if (mouse_v2t_locked)
     {
         LOG_D("V2T locked, ignore open");
         return;
     }
+    pending_v2t_intent = intent;
     is_long_press_triggered = true;
     lvgl_msg_t msg;
     msg.type = LVGL_MSG_TYPE_MOUSE_OPEN_V2T;
     lvgl_send_msg(msg);
 }
 
-// 關 mic + 送 Ctrl+V 貼上 + 清空 input bar（兩個 mode 共用）
+// 預設：純語音輸入
+static void mouse_v2t_open(void)
+{
+    mouse_v2t_open_with_intent(V2T_INTENT_MIC_INPUTE);
+}
+
+// 關 mic（不清空 input bar、不貼上）
+// 清空只在使用者按 Enter 時做（input_enter_btn_event_cb / 鍵盤 Enter 鍵）
 static void mouse_v2t_close_and_paste(void)
 {
     interact_mic_listen(false);
     mouse_v2t_set_active(false);
-    if (control_provider.ble_hid_keyboard_paste)
-    {
-        control_provider.ble_hid_keyboard_paste();
-    }
-    clear_input_display();
-    LOG_D("V2T close + paste + clear");
+    LOG_D("V2T close (input bar preserved)");
 }
 
 // trackpad mic btn 點擊：根據當前狀態切換開/關
@@ -3699,9 +3819,6 @@ void mouse_apply_v2t_input(const char *text)
     input_length = (int)text_len;
     if (input_display_label != NULL)
         update_input_display();
-    // 同步更新 trackpad mode 中央的 V2T 顯示 panel
-    if (trackpad_v2t_label && lv_obj_is_valid(trackpad_v2t_label))
-        lv_label_set_text(trackpad_v2t_label, input_buffer);
 
     // 字數超過上限 → 自動關麥克風 + 鎖定（直到 input 清空才能再開）
     if (text_len >= MOUSE_V2T_MAX_CHARS && !mouse_v2t_locked)
@@ -3736,6 +3853,104 @@ static rt_tick_t text_input_bar_press_time = NULL;
 static uint16_t max_move_y = 0;
 static uint8_t test_count = 0;
 static float prev_elapsed = 0.0f;
+
+// === skaibar 選項 helpers ====================================================
+
+// 把目前選到的選項文字塞進 input bar（取代 V2T 流入的文字）
+static void skaibar_apply_selection_to_input_bar(void)
+{
+    if (skaibar_selected_idx < 0 ||
+        skaibar_selected_idx >= skaibar_options_count)
+        return;
+    const char *text = skaibar_options[skaibar_selected_idx];
+    size_t len = strlen(text);
+    if (len >= sizeof(input_buffer))
+        len = sizeof(input_buffer) - 1;
+    memset(input_buffer, 0, sizeof(input_buffer));
+    memcpy(input_buffer, text, len);
+    input_buffer[len] = '\0';
+    input_length = (int)len;
+    if (input_display_label != NULL)
+        update_input_display();
+}
+
+// 弧形滾動觸發：每個 step = 一個節點 = 一筆切換
+// 第一次滾動（idx==-1）：往哪邊都先跳到 idx=0；之後正常累加 / 累減 + clamp
+static void skaibar_scroll_step(int steps)
+{
+    if (skaibar_options_count == 0) return;
+    int16_t new_idx;
+    if (skaibar_selected_idx < 0)
+    {
+        new_idx = 0; // 第一次滾就秀第一個
+    }
+    else
+    {
+        new_idx = skaibar_selected_idx + steps;
+        if (new_idx < 0) new_idx = 0;
+        if (new_idx >= skaibar_options_count)
+            new_idx = skaibar_options_count - 1;
+    }
+    if (new_idx == skaibar_selected_idx) return; // 已在邊界，沒變
+    skaibar_selected_idx = new_idx;
+    skaibar_apply_selection_to_input_bar();
+    commu_send_skaibar_selected((uint8_t)skaibar_selected_idx);
+}
+
+// PC 透過 KEY_SKAIBAR_OPTIONS 送 JSON 進來
+// 期待格式：{"options":["opt1","opt2",...]} 或裸 array ["opt1","opt2",...]
+// 解析後存到 skaibar_options[][]；若使用者選到的 idx 超過新列表大小，clamp 到末
+void mouse_skaibar_set_options_json(const char *json)
+{
+    if (json == NULL) return;
+    cJSON *root = cJSON_Parse(json);
+    if (root == NULL)
+    {
+        LOG_W("skaibar: JSON parse failed");
+        return;
+    }
+    cJSON *arr = NULL;
+    if (cJSON_IsArray(root))
+    {
+        arr = root;
+    }
+    else
+    {
+        arr = cJSON_GetObjectItem(root, "options");
+    }
+    if (!cJSON_IsArray(arr))
+    {
+        LOG_W("skaibar: JSON has no array (key 'options' or bare array)");
+        cJSON_Delete(root);
+        return;
+    }
+
+    uint8_t n = 0;
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, arr)
+    {
+        if (n >= SKAIBAR_MAX_OPTIONS) break;
+        if (!cJSON_IsString(item)) continue;
+        strncpy(skaibar_options[n], item->valuestring,
+                SKAIBAR_MAX_OPTION_LEN - 1);
+        skaibar_options[n][SKAIBAR_MAX_OPTION_LEN - 1] = '\0';
+        n++;
+    }
+    skaibar_options_count = n;
+    cJSON_Delete(root);
+
+    // 若選到的 idx 已經超過新列表 → clamp + 同步 UI + 回報新 idx
+    if (skaibar_selected_idx >= skaibar_options_count)
+    {
+        skaibar_selected_idx =
+            skaibar_options_count > 0 ? skaibar_options_count - 1 : -1;
+        if (skaibar_selected_idx >= 0)
+        {
+            skaibar_apply_selection_to_input_bar();
+            commu_send_skaibar_selected((uint8_t)skaibar_selected_idx);
+        }
+    }
+}
 
     // 底部 bar 被上拉到某個視覺高度且停住後觸發多工鍵
     // 門檻看的是「bar 實際 UI 位置」，不是手指位移（bar 用 1:20 衰減）
@@ -3820,7 +4035,22 @@ static void text_input_bar_cb(lv_event_t *e)
         multitask_pending_active = false;
         multitask_hint_drag_offset = 0;
         multitask_hint_vibrated = false;
+        // 重置長按 flag，等下一次 LV_EVENT_LONG_PRESSED 觸發
+        bar_long_press_fired = false;
         // notify_provider.holding_displacement(0, 0, 0);
+        break;
+
+    case LV_EVENT_LONG_PRESSED:
+        // 長按 bar → expand 到 keyboard mode + 自動開 V2T (SKAIBAR intent)
+        // 跟短按差別：短按只 expand，要使用者再點 mic 才開 V2T (MIC_INPUTE)
+        // skaibar_active 由「怎麼進入」決定，跟之後 V2T 開關無關 —— 鍵盤打字
+        // 也能在 skaibar 模式下走，滾動 arc 一樣切選項
+        bar_long_press_fired = true;
+        skaibar_active = true;
+        skaibar_selected_idx = -1;
+        if (current_hid_mode != HID_MODE_KEYBOARD)
+            start_trackpad_to_kbd_expand_anim();
+        mouse_v2t_open_with_intent(V2T_INTENT_SKAIBAR);
         break;
 
     case LV_EVENT_PRESSING:
@@ -3943,10 +4173,14 @@ static void text_input_bar_cb(lv_event_t *e)
             }
 
             if (max_move_y < 10 && !bottom_bar_gesture_timer_enabled &&
-                !is_bottom_bar_gesture_active)
+                !is_bottom_bar_gesture_active && !bar_long_press_fired)
             {
-                // 純點擊（沒明顯拖動）→ 啟動 trackpad bar → keyboard mode 展開動畫
+                // 純點擊（沒明顯拖動、也沒長按）→ 啟動 trackpad bar → keyboard mode 展開動畫
                 LOG_D("Bottom bar tap → expand to keyboard mode");
+                // 短按進入：明確不是 skaibar 模式
+                skaibar_active = false;
+                skaibar_options_count = 0;
+                skaibar_selected_idx = -1;
                 if (current_hid_mode != HID_MODE_KEYBOARD)
                 {
                     start_trackpad_to_kbd_expand_anim();
@@ -4383,6 +4617,17 @@ static void mode_set_visible(hid_mode_t mode, bool visible)
         else
             lv_obj_clear_flag(bottom_swipe_area, LV_OBJ_FLAG_HIDDEN);
     }
+    // status_bar_area_up 同理：480×80 的頂部下拉感應區跟 input_enter_btn
+    // (y=10 h=45) 完全重疊，且 status_bar_area_up 是 bg 直接子物件 → z-order
+    // 在 mode_container 之上，Enter 的 press 永遠先被它吃掉
+    if (mode == HID_MODE_KEYBOARD && status_bar_area_up &&
+        lv_obj_is_valid(status_bar_area_up))
+    {
+        if (visible)
+            lv_obj_add_flag(status_bar_area_up, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_clear_flag(status_bar_area_up, LV_OBJ_FLAG_HIDDEN);
+    }
 
     // Keyboard mode 額外要 setup 鍵盤相關 UI（仿 toggle_keyboard_visibility 但無動畫）
     if (mode == HID_MODE_KEYBOARD)
@@ -4672,52 +4917,6 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     // 弧線上的節點指示點（左+右兩組都在 bg 內）
     create_left_scroll_nodes(arc_parent);
 
-    // === Trackpad mode 中央的 V2T 顯示 panel（樣式對齊 keyboard input bar）===
-    // 寬度縮一點讓出右邊空間給 enter btn
-    trackpad_v2t_panel = lv_obj_create(parent);
-    lv_obj_set_size(trackpad_v2t_panel, 290, 160);
-    lv_obj_align(trackpad_v2t_panel, LV_ALIGN_CENTER, -35, 0);
-    // 底色：深灰 + 90% 不透明（同 text_input_bar_bg open 狀態）
-    lv_obj_set_style_bg_color(trackpad_v2t_panel, lv_color_hex(0x1a1a1a),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(trackpad_v2t_panel, LV_OPA_90, LV_PART_MAIN);
-    // 邊框：白色 50%、寬度 2
-    lv_obj_set_style_border_color(trackpad_v2t_panel, lv_color_hex(0xFFFFFF),
-                                  LV_PART_MAIN);
-    lv_obj_set_style_border_width(trackpad_v2t_panel, 2, LV_PART_MAIN);
-    lv_obj_set_style_border_opa(trackpad_v2t_panel, LV_OPA_50, LV_PART_MAIN);
-    lv_obj_set_style_radius(trackpad_v2t_panel, 22, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(trackpad_v2t_panel, 12, LV_PART_MAIN);
-    lv_obj_clear_flag(trackpad_v2t_panel, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(trackpad_v2t_panel, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(trackpad_v2t_panel, LV_OBJ_FLAG_HIDDEN);
-
-    trackpad_v2t_label = lv_label_create(trackpad_v2t_panel);
-    lv_label_set_text(trackpad_v2t_label, "");
-    lv_obj_set_width(trackpad_v2t_label, lv_pct(100));
-    lv_label_set_long_mode(trackpad_v2t_label, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_color(trackpad_v2t_label, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_align(trackpad_v2t_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_center(trackpad_v2t_label);
-
-    // === Trackpad mode 的 enter btn（樣式同 keyboard input_enter_btn）===
-    trackpad_enter_btn = lv_obj_create(parent);
-    lv_obj_set_size(trackpad_enter_btn, 50, 45);
-    lv_obj_align(trackpad_enter_btn, LV_ALIGN_CENTER, 140, 0);
-    lv_obj_set_style_bg_color(trackpad_enter_btn, lv_color_hex(0x4a90e2),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(trackpad_enter_btn, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(trackpad_enter_btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(trackpad_enter_btn, 22, LV_PART_MAIN);
-    lv_obj_clear_flag(trackpad_enter_btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(trackpad_enter_btn, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(trackpad_enter_btn, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(trackpad_enter_btn, input_enter_btn_event_cb,
-                        LV_EVENT_CLICKED, NULL);
-    lv_obj_t *trackpad_enter_img = lv_img_create(trackpad_enter_btn);
-    lv_img_set_src(trackpad_enter_img, &enter_icon);
-    lv_obj_center(trackpad_enter_img);
-
     // === Trackpad mode 下方按鈕：通用清單選擇器入口（取代原本的麥克風）===
     // 點擊跟拖動都由下方擴大版的 bottom_swipe_area 統一處理：
     //   點擊 → 進入 keyboard mode（展開輸入介面）；拖向上 → multitask hint
@@ -4956,6 +5155,27 @@ static void create_kbd_mic_section(lv_obj_t *parent)
                         LV_EVENT_ALL, NULL);
 
     // 中央 mic btn — 放大到 130×130，置於螢幕中心 y=240
+    // 輸入框下方收回按鈕：放在 mic_section 內 → 切到 keyboard view 時跟著
+    // mic_section 一起被 hide / 左右滑動跟著走
+    // 螢幕目標位置 (215, 180)；mic_section 在 (50, 0, 380, 480)，所以相對 (165, 180)
+    input_bar_down_arrow = lv_obj_create(kbd_mic_section);
+    lv_obj_set_size(input_bar_down_arrow, 50, 50);
+    lv_obj_set_pos(input_bar_down_arrow, 165, 180);
+    lv_obj_set_style_bg_color(input_bar_down_arrow, lv_color_hex(0x333333),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(input_bar_down_arrow, LV_OPA_60, LV_PART_MAIN);
+    lv_obj_set_style_border_width(input_bar_down_arrow, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(input_bar_down_arrow, LV_RADIUS_CIRCLE,
+                            LV_PART_MAIN);
+    lv_obj_clear_flag(input_bar_down_arrow, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(input_bar_down_arrow, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(input_bar_down_arrow,
+                        input_bar_down_arrow_event_cb,
+                        LV_EVENT_CLICKED, NULL);
+    lv_obj_t *down_arrow_img = lv_img_create(input_bar_down_arrow);
+    lv_img_set_src(down_arrow_img, &down_arrow);
+    lv_obj_center(down_arrow_img);
+
     kbd_mic_section_mic_btn = lv_obj_create(kbd_mic_section);
     lv_obj_set_size(kbd_mic_section_mic_btn, 130, 130);
     lv_obj_align(kbd_mic_section_mic_btn, LV_ALIGN_CENTER, 0, 100);
@@ -4974,31 +5194,35 @@ static void create_kbd_mic_section(lv_obj_t *parent)
     lv_obj_add_flag(kbd_mic_section_mic_btn, LV_OBJ_FLAG_PRESS_LOCK);
     lv_obj_add_event_cb(kbd_mic_section_mic_btn, kbd_mic_btn_event_cb,
                         LV_EVENT_CLICKED, NULL);
-    lv_obj_t *mic_img = lv_img_create(kbd_mic_section_mic_btn);
-    lv_img_set_src(mic_img, &micro_icon);
-    lv_obj_center(mic_img);
 
-    // 左 / 右箭頭：放在 kbd_mic_section 內，跟著 mic 一起 swipe / hide
-    // 原圖 img_left/right_arrow 只有 9×17px，所以加圓形 container + zoom 2x
-    kbd_mic_section_left_arrow = lv_obj_create(kbd_mic_section);
-    lv_obj_remove_style_all(kbd_mic_section_left_arrow);
-    lv_obj_set_size(kbd_mic_section_left_arrow, 50, 50);
-    lv_obj_align(kbd_mic_section_left_arrow, LV_ALIGN_LEFT_MID, 50,
-                 0); // 跟 mic_btn 同 y；section 內 +50 → 螢幕 x≈100
-    lv_obj_set_style_bg_color(kbd_mic_section_left_arrow,
-                              lv_color_hex(0x333333), 0);
-    lv_obj_set_style_bg_opa(kbd_mic_section_left_arrow, LV_OPA_60, 0);
-    lv_obj_set_style_radius(kbd_mic_section_left_arrow, LV_RADIUS_CIRCLE, 0);
-    lv_obj_clear_flag(kbd_mic_section_left_arrow, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(kbd_mic_section_left_arrow, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(kbd_mic_section_left_arrow,
-                        kbd_lower_arrow_event_cb, LV_EVENT_CLICKED,
-                        (void *)(intptr_t)0); // 0 = 左箭頭
-    lv_obj_t *left_arrow_img = lv_img_create(kbd_mic_section_left_arrow);
-    lv_img_set_src(left_arrow_img, &img_left_arrow);
-    lv_img_set_zoom(left_arrow_img, 512); // 2x
-    lv_obj_center(left_arrow_img);
+    kbd_mic_section_mic_img = lv_img_create(kbd_mic_section_mic_btn);
+    lv_img_set_src(kbd_mic_section_mic_img, &micro_icon);
+    lv_obj_center(kbd_mic_section_mic_img);
 
+    // V2T 脈衝圓：放在 mic icon 之後 → z-order 在 icon 上面，這樣才看得到。
+    // opa 隨 size 漸減（COVER→TRANSP），中間幀是半透明，icon 還是看得到。
+    // 初始就給 valid size + hidden（從 0×0 起步 LVGL 可能 skip render）；
+    // V2T active 時開動畫 0→40 + opa COVER→TRANSP 循環
+    kbd_mic_section_mic_pulse = lv_obj_create(kbd_mic_section_mic_btn);
+    lv_obj_remove_style_all(kbd_mic_section_mic_pulse);
+    lv_obj_set_size(kbd_mic_section_mic_pulse,
+                    KBD_MIC_PULSE_MAX_SIZE, KBD_MIC_PULSE_MAX_SIZE);
+    lv_obj_center(kbd_mic_section_mic_pulse); // align CENTER：size 變動會自動 re-center
+    lv_obj_set_style_bg_color(kbd_mic_section_mic_pulse,
+                              lv_color_hex(KBD_MIC_PULSE_COLOR), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(kbd_mic_section_mic_pulse, LV_OPA_COVER,
+                            LV_PART_MAIN);
+    lv_obj_set_style_radius(kbd_mic_section_mic_pulse, LV_RADIUS_CIRCLE,
+                            LV_PART_MAIN);
+    lv_obj_set_style_border_width(kbd_mic_section_mic_pulse, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(kbd_mic_section_mic_pulse, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(kbd_mic_section_mic_pulse, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(kbd_mic_section_mic_pulse, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(kbd_mic_section_mic_pulse, LV_OBJ_FLAG_HIDDEN);
+
+    // 右側鍵盤按鈕：mic view 顯示，點擊切換到 keyboard view
+    // （左側不放按鈕：keyboard → mic 靠右滑手勢，原本的 left arrow 一直
+    //  hidden 沒實際用途）
     kbd_mic_section_right_arrow = lv_obj_create(kbd_mic_section);
     lv_obj_remove_style_all(kbd_mic_section_right_arrow);
     lv_obj_set_size(kbd_mic_section_right_arrow, 50, 50);
@@ -5011,25 +5235,19 @@ static void create_kbd_mic_section(lv_obj_t *parent)
     lv_obj_add_flag(kbd_mic_section_right_arrow, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(kbd_mic_section_right_arrow,
                         kbd_lower_arrow_event_cb, LV_EVENT_CLICKED,
-                        (void *)(intptr_t)1); // 1 = 右箭頭
+                        (void *)(intptr_t)1); // 1 = 切到 keyboard
     lv_obj_t *right_arrow_img = lv_img_create(kbd_mic_section_right_arrow);
-    lv_img_set_src(right_arrow_img, &img_right_arrow);
-    lv_img_set_zoom(right_arrow_img, 512); // 2x
+    lv_img_set_src(right_arrow_img, &keyboard_icon);
+    lv_img_set_zoom(right_arrow_img, 150); // 放大一點點
     lv_obj_center(right_arrow_img);
 
-    // 初始狀態：mic view → 只顯示右箭頭、隱藏左箭頭
+    // 初始狀態：mic view → 顯示鍵盤按鈕
     kbd_lower_update_arrows_visibility();
 }
 
 static void kbd_lower_update_arrows_visibility(void)
 {
-    // 箭頭跟著 mic：mic view 只顯示右箭頭（往右切到 keyboard）
-    //                keyboard view 兩個都隱藏（回 mic 靠右滑手勢）
-    if (kbd_mic_section_left_arrow &&
-        lv_obj_is_valid(kbd_mic_section_left_arrow))
-    {
-        lv_obj_add_flag(kbd_mic_section_left_arrow, LV_OBJ_FLAG_HIDDEN);
-    }
+    // mic view 才顯示鍵盤按鈕；keyboard view 隱藏（回 mic 靠右滑手勢）
     if (kbd_mic_section_right_arrow &&
         lv_obj_is_valid(kbd_mic_section_right_arrow))
     {
@@ -5108,6 +5326,50 @@ static void kbd_lower_update_arcs_visibility(void)
     }
 }
 
+// 跟 swipe RELEASED + commit 同一條路徑的動畫：
+//   to_keyboard=true  → mic 滑出左、keyboard 從右滑進來
+//   to_keyboard=false → mic 從左滑進來、keyboard 滑出右
+// dx 從 0 開始（沒有拖曳累積位移），所以是「完整一段」的滑動。
+static void kbd_lower_animate_switch(bool to_keyboard)
+{
+    if (!keyboard_container || !lv_obj_is_valid(keyboard_container)) return;
+    if (!kbd_mic_section || !lv_obj_is_valid(kbd_mic_section)) return;
+
+    // kill 還沒跑完的同類動畫，避免疊加
+    lv_anim_del(kbd_mic_section, kbd_lower_anim_x_cb);
+    lv_anim_del(keyboard_container, kbd_lower_anim_x_cb);
+
+    // 兩個 obj 都先 unhide（動畫期間都要看得到）並設好起點
+    lv_obj_clear_flag(kbd_mic_section, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
+
+    lv_coord_t mic_from = to_keyboard ? 0 : -LV_HOR_RES_MAX;
+    lv_coord_t mic_to   = to_keyboard ? -LV_HOR_RES_MAX : 0;
+    lv_coord_t kbd_from = to_keyboard ? LV_HOR_RES_MAX : 0;
+    lv_coord_t kbd_to   = to_keyboard ? 0 : LV_HOR_RES_MAX;
+
+    lv_obj_set_style_translate_x(kbd_mic_section, mic_from, 0);
+    lv_obj_set_style_translate_x(keyboard_container, kbd_from, 0);
+
+    kbd_lower_pending_commit = to_keyboard ? 1 : -1;
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, kbd_mic_section);
+    lv_anim_set_values(&a, mic_from, mic_to);
+    lv_anim_set_time(&a, 150);
+    lv_anim_set_exec_cb(&a, kbd_lower_anim_x_cb);
+    lv_anim_start(&a);
+
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, keyboard_container);
+    lv_anim_set_values(&a, kbd_from, kbd_to);
+    lv_anim_set_time(&a, 150);
+    lv_anim_set_exec_cb(&a, kbd_lower_anim_x_cb);
+    lv_anim_set_ready_cb(&a, kbd_lower_anim_done_cb);
+    lv_anim_start(&a);
+}
+
 static void kbd_lower_arrow_event_cb(lv_event_t *e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED)
@@ -5119,7 +5381,9 @@ static void kbd_lower_arrow_event_cb(lv_event_t *e)
     // 切到 keyboard 時若 V2T 還在錄就停掉
     if (to_kbd && mouse_v2t_active)
         mouse_v2t_close_and_paste();
-    kbd_lower_set_keyboard(to_kbd);
+    // 用 anim 切換，跟 swipe 手勢同一條路徑；之前是直接 set HIDDEN flag
+    // 所以從右邊滑進來的中間幀看不到
+    kbd_lower_animate_switch(to_kbd);
 }
 
 // anim exec wrapper：用 lv_anim 直接驅動 translate_x
@@ -5171,20 +5435,25 @@ static void kbd_lower_anim_done_cb(lv_anim_t *a)
 //   動畫結束後 hide trackpad mode container，trackpad bar 恢復 unhide
 //   讓回到 trackpad mode 時 bar 還在
     #define EXPAND_ANIM_TIME_MS 250
-// 起點 = trackpad_mic_btn 在 trackpad mode container (480×480 at 0,0) 內的位置/尺寸
-// 真正的 trackpad bar：size 100×16，align(BOTTOM_MID, 0, -20)
-//   x = (480 - 100) / 2 = 190
-//   y = 480 - 16 - 20 = 444
-    #define EXPAND_START_X 190
-    #define EXPAND_START_Y 444
-    #define EXPAND_START_W 100
-    #define EXPAND_START_H 16
+// 起點 = trackpad_mic_btn 的實際螢幕座標，在 expand 啟動時 snapshot
+//   理論值是 (190, 444, 100, 16)，但靠 lv_obj_get_coords 直接抓更可靠：
+//   align/set_pos 計算 + theme padding 可能產生 1~2 px 偏差，導致 collapse
+//   終點跟 trackpad bar 對不齊（visual flicker on commit）
+    #define EXPAND_FALLBACK_X 190
+    #define EXPAND_FALLBACK_Y 444
+    #define EXPAND_FALLBACK_W 100
+    #define EXPAND_FALLBACK_H 16
+static lv_coord_t expand_start_x = EXPAND_FALLBACK_X;
+static lv_coord_t expand_start_y = EXPAND_FALLBACK_Y;
+static lv_coord_t expand_start_w = EXPAND_FALLBACK_W;
+static lv_coord_t expand_start_h = EXPAND_FALLBACK_H;
 // 終點 = text_input_bar_bg 的 set_pos / set_size 預設值
 // （y=110, h=45 跟右邊的 input_enter_btn 對齊頂底；466 圓內 Enter 最高位置）
-    #define EXPAND_END_X ((LV_HOR_RES_MAX - 280) / 2)
-    #define EXPAND_END_Y 75
     #define EXPAND_END_W 300
     #define EXPAND_END_H 90
+    // X 跟 W 用同一個值算居中；之前 X 用 280 但 W 是 300 → 中心偏 10px
+    #define EXPAND_END_X ((LV_HOR_RES_MAX - EXPAND_END_W) / 2)
+    #define EXPAND_END_Y 75
     #define EXPAND_TRANSLATE_START 320 // 下方元件起始 translate_y（mic 中心 240 + 半徑 65 ≈ 305 → 320 確保完全 off-screen）
     #define EXPAND_ENTER_TRANSLATE_START (-80) // Enter btn 起始 translate_y（btn y=10 h=45 → -60 全飛出畫面，-80 留 buffer）
 
@@ -5200,11 +5469,11 @@ static void expand_anim_driver_cb(void *var, int32_t v)
     if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
     {
         lv_obj_set_pos(text_input_bar_bg,
-                       expand_lerp(EXPAND_START_X, EXPAND_END_X, v),
-                       expand_lerp(EXPAND_START_Y, EXPAND_END_Y, v));
+                       expand_lerp(expand_start_x, EXPAND_END_X, v),
+                       expand_lerp(expand_start_y, EXPAND_END_Y, v));
         lv_obj_set_size(text_input_bar_bg,
-                        expand_lerp(EXPAND_START_W, EXPAND_END_W, v),
-                        expand_lerp(EXPAND_START_H, EXPAND_END_H, v));
+                        expand_lerp(expand_start_w, EXPAND_END_W, v),
+                        expand_lerp(expand_start_h, EXPAND_END_H, v));
     }
     // 下方元件 translate_y 從 +EXPAND_TRANSLATE_START → 0
     //   mic view 時可見的是 kbd_mic_section
@@ -5215,6 +5484,8 @@ static void expand_anim_driver_cb(void *var, int32_t v)
         lv_obj_set_style_translate_y(kbd_mic_section, ty, 0);
     if (keyboard_container && lv_obj_is_valid(keyboard_container))
         lv_obj_set_style_translate_y(keyboard_container, ty, 0);
+    // (input_bar_down_arrow 是 kbd_mic_section 的 child，LVGL 自動 cascade
+    //  parent 的 translate_y，不要在這裡再 set 一次造成 double translate)
     // Enter btn 從上方往下進入：v=0 時 translate_y = EXPAND_ENTER_TRANSLATE_START
     // （飛出畫面上方），v=100 時 translate_y = 0（停在 y=10 原位）
     lv_coord_t ty_enter =
@@ -5238,6 +5509,21 @@ static void start_trackpad_to_kbd_expand_anim(void)
 {
     if (current_hid_mode == HID_MODE_KEYBOARD) return;
 
+    // 0. snapshot trackpad bar 實際螢幕座標當 expand 起點
+    //    必須在 hide 之前抓（hide 後 coords 仍 valid，但顯式 layout 才保險）
+    if (trackpad_mic_btn && lv_obj_is_valid(trackpad_mic_btn))
+    {
+        lv_obj_update_layout(trackpad_mic_btn);
+        lv_area_t c;
+        lv_obj_get_coords(trackpad_mic_btn, &c);
+        // text_input_bar_bg 的 parent (mode_container[KEYBOARD]) 也在 (0,0)
+        // 且 pad=0，所以 c.x1/y1 直接當 set_pos 值即可
+        expand_start_x = c.x1;
+        expand_start_y = c.y1;
+        expand_start_w = c.x2 - c.x1 + 1;
+        expand_start_h = c.y2 - c.y1 + 1;
+    }
+
     // 1. trackpad bar 視覺隱藏（輸入框接手繼續顯示「同一條」感）
     if (trackpad_mic_btn && lv_obj_is_valid(trackpad_mic_btn))
         lv_obj_add_flag(trackpad_mic_btn, LV_OBJ_FLAG_HIDDEN);
@@ -5246,6 +5532,21 @@ static void start_trackpad_to_kbd_expand_anim(void)
     mode_set_visible(HID_MODE_KEYBOARD, true);
     current_hid_mode = HID_MODE_KEYBOARD;
     keyboard_visible = true;
+
+    // 2.5 強制把 sub-view 設成 mic：每次 expand 都從語音輸入開始，
+    //     即使先前 collapse 時還在 keyboard view（或被別處改過 state）
+    kbd_lower_is_keyboard = false;
+    if (kbd_mic_section && lv_obj_is_valid(kbd_mic_section))
+    {
+        lv_obj_clear_flag(kbd_mic_section, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_translate_x(kbd_mic_section, 0, 0);
+    }
+    if (keyboard_container && lv_obj_is_valid(keyboard_container))
+    {
+        lv_obj_add_flag(keyboard_container, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_translate_x(keyboard_container, 0, 0);
+    }
+    kbd_lower_update_arrows_visibility();
 
 
     // 3. 強制把 input bar 設到起點（trackpad bar 同位置/同尺寸），
@@ -5302,6 +5603,8 @@ static void collapse_anim_done_cb(lv_anim_t *a)
         mode_set_visible(HID_MODE_KEYBOARD, false);
         current_hid_mode = HID_MODE_TRACKPAD;
         keyboard_visible = false;
+        // 收回 trackpad 一律 reset 成 mic view，下次 expand 重新從語音
+        // 輸入開始（即使先前在 keyboard view 才拉下也一樣）
         if (kbd_mic_section && lv_obj_is_valid(kbd_mic_section))
         {
             lv_obj_set_style_translate_y(kbd_mic_section, 0, 0);
@@ -5318,7 +5621,12 @@ static void collapse_anim_done_cb(lv_anim_t *a)
             lv_obj_set_style_translate_y(input_enter_btn, 0, 0);
         kbd_lower_is_keyboard = false;
         kbd_lower_update_arrows_visibility();
+        kbd_lower_update_arrows_visibility();
         kbd_lower_update_arcs_visibility();
+        // 完全退出輸入模式 → 清掉 skaibar 狀態
+        skaibar_active = false;
+        skaibar_options_count = 0;
+        skaibar_selected_idx = -1;
     }
     else
     {
@@ -5412,6 +5720,14 @@ static void text_input_bar_drag_event_cb(lv_event_t *e)
     }
 }
 
+// 輸入框下方的圓形 down-arrow 按鈕 → 點擊直接走完整收回動畫
+static void input_bar_down_arrow_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    // 跟「使用者拖到底放開」同一條路徑：從 progress=100 動畫到 0 + commit
+    start_kbd_to_trackpad_collapse_anim(100, true);
+}
+
 static void kbd_lower_swipe_event_cb(lv_event_t *e)
 {
     // 兩個方向都處理：
@@ -5425,6 +5741,15 @@ static void kbd_lower_swipe_event_cb(lv_event_t *e)
 
     if (code == LV_EVENT_PRESSED)
     {
+        // 起點若在左/右弧形滾動觸碰區（弧線在某些 y 會延伸進 mic_section
+        // 範圍），這次 press 不要走 swipe，避免弧形滾動曲線運動 dx>8 時
+        // 誤觸發 mic↔keyboard 切換動畫
+        if (is_point_in_left_arc(&pt) || is_point_in_right_arc(&pt))
+        {
+            kbd_lower_swipe_tracking = false;
+            kbd_lower_drag_engaged = false;
+            return;
+        }
         kbd_lower_swipe_start_x = pt.x;
         kbd_lower_swipe_tracking = true;
         kbd_lower_drag_engaged = false;
@@ -5565,6 +5890,10 @@ static void kbd_view_gesture_cb(lv_event_t *e)
 
     if (code == LV_EVENT_PRESSED)
     {
+        // keyboard_container 覆蓋下半圓 (x=7-473, y=180-480)，邊緣的 key 點
+        // 會落在 right/left arc 觸碰區內。之前在這裡拒絕 arc 區起手，
+        // 結果連邊緣 key 上的右滑都被誤殺；keyboard view 其實 arc 滾動
+        // 也不會走（touch_bg 接不到 press），所以這個拒絕拿掉
         kbd_key_swipe_start_x = pt.x;
         kbd_key_swipe_tracking = true;
         kbd_key_swipe_committed = false;
@@ -5573,7 +5902,8 @@ static void kbd_view_gesture_cb(lv_event_t *e)
              !kbd_key_swipe_committed)
     {
         int16_t dx = pt.x - kbd_key_swipe_start_x;
-        if (dx >= 50)
+        // 40px 比之前 50px 容易達到；key tap 不會 40px，仍能跟 tap 區分
+        if (dx >= 40)
         {
             // 偵測到右滑 → 切掉 proximity_input 的 key 觸發
             kbd_key_swipe_committed = true;
@@ -6145,6 +6475,18 @@ static void on_start(lv_obj_t *scr)
     set_status_bar_area_up_state(false);
     set_status_bar_area_down_state(false);
     set_status_bar_area_left_state(false);
+
+    // 右側 device-change bar 在 lv_layer_top()，原本會擋住右弧滾動。
+    // 加 ADV_HITTEST + 自訂 HIT_TEST cb：點在弧形觸碰區就拒絕命中，
+    // 觸碰會掉到底下的 touch_bg 走 arc 滾動；不在弧形區的（純從邊緣
+    // 左滑）才落到 bar 開選單
+    lv_obj_t *dc_bar = get_device_change_bar_area_right();
+    if (dc_bar && lv_obj_is_valid(dc_bar))
+    {
+        lv_obj_add_flag(dc_bar, LV_OBJ_FLAG_ADV_HITTEST);
+        lv_obj_add_event_cb(dc_bar, device_change_bar_hit_test_cb,
+                            LV_EVENT_HIT_TEST, NULL);
+    }
     display_gesture_detect_objs(0, false);
     RT_ASSERT(control_provider.trigger_finger_event);
     RT_ASSERT(control_provider.ble_hid_consumer_back);
@@ -6183,6 +6525,15 @@ static void on_pause(void)
 static void on_stop(void)
 {
     app_control_set_mouse_mode(false);
+
+    // 還原右側 device-change bar 的 ADV_HITTEST + 拿掉自訂 cb，
+    // 下個 app 看到的就是原本完整的 hit 行為
+    lv_obj_t *dc_bar = get_device_change_bar_area_right();
+    if (dc_bar && lv_obj_is_valid(dc_bar))
+    {
+        lv_obj_remove_event_cb(dc_bar, device_change_bar_hit_test_cb);
+        lv_obj_clear_flag(dc_bar, LV_OBJ_FLAG_ADV_HITTEST);
+    }
 
     // 停掉底部 bar 多工鍵 timer（如果還在走）
     if (bottom_bar_multitask_timer != NULL)
@@ -6257,7 +6608,8 @@ static void on_stop(void)
     // Keyboard mode 下半部 mic 區清理
     kbd_mic_section = NULL;
     kbd_mic_section_mic_btn = NULL;
-    kbd_mic_section_left_arrow = NULL;
+    kbd_mic_section_mic_img = NULL;
+    kbd_mic_section_mic_pulse = NULL;
     kbd_mic_section_right_arrow = NULL;
     kbd_lower_is_keyboard = false;
     kbd_lower_swipe_tracking = false;
@@ -6300,6 +6652,7 @@ static void on_stop(void)
     input_display_label = NULL;
     input_cursor = NULL;
     input_enter_btn = NULL;
+    input_bar_down_arrow = NULL;
     if (cursor_blink_timer != NULL)
     {
         lv_timer_del(cursor_blink_timer);

@@ -1019,18 +1019,10 @@ int audio_profile_send_voice_data(uint8_t *voice_data, uint16_t voice_data_len)
         value.idx = AUDIOPROFILE_AUDIO_VAL;
         value.len = voice_data_len;
         value.value = voice_data;
-        int ret = sibles_write_value(target_conn_idx, &value);
-        // if (is_signal_bad())
-        // {
-        //     rt_thread_mdelay(50);
-        // }
-        return ret;
+        return sibles_write_value(target_conn_idx, &value);
     }
-    else
-    {
-        LOG_E("no service");
-        return 0;
-    }
+    LOG_E("no service");
+    return 0;
 }
 /********************** End of Skaiwalk BLE Audio Application
  * *********************************/

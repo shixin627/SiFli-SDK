@@ -84,6 +84,11 @@ extern "C"
 		KEY_SKAI_INSTRUCTION_IMAGE = 0X66,
 		KEY_DISMISS_SKAI_INSTRUCTION = 0X67,
 		/* 0x68 / 0x69 reserved on phone side for Skaibar options/selected. */
+		// skaibar (hid_mouse 長按 bar AI 模式) 選項列表：
+		//   PC → watch  : KEY_SKAIBAR_OPTIONS (JSON {"options":["a","b",...]})
+		//   watch → PC  : KEY_SKAIBAR_SELECTED (1 byte index, 0-based)
+		KEY_SKAIBAR_OPTIONS = 0X68,
+		KEY_SKAIBAR_SELECTED = 0X69,
 		KEY_BATTERY_VOLTAGE = 0X6A,
 	} NOTIFY_KEY;
 
