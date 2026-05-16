@@ -29,3 +29,14 @@ tools/flash/**/flashdrv_version.h
 # Ignore build folder of mkfatimg
 tools/mkfatimg/mkfatimg/Release/
 tools/mkfatimg/mkfatimg_nand/Release/
+# PC simulator runtime artefacts (dualcore main.exe creates these in repo root
+# via middleware/simulator/mnt.c — disk = dfs_win32 backing + asset junctions,
+# prefdb = FlashDB share_prefs sector files). Leading slash so we don't catch
+# the unrelated "disk" folders under example/{dlmodule,lvgl_v8_ttf,...}.
+/disk/
+/prefdb/
+# SifliTrace runtime captures (per-session .bin / .pcap / _ui.log etc.)
+tools/SifliTrace/log/
+# Per-user trace tool settings (port, baud, last-opened paths) — was committed
+# historically; untracked via `git rm --cached` once and ignored thereafter.
+tools/SifliTrace/SifliTrace.ini
