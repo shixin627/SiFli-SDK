@@ -116,6 +116,11 @@ static rt_timer_t s_charging_voltage_timer = RT_NULL;
 
 static void charging_voltage_timer_callback(void *parameter)
 {
+    /* Re-poll charge status as a safety net: the unplug IRQ can be dropped
+     * by the 150-tick debounce in aw32001_input_handle when the connector
+     * bounces, leaving the UI stuck on "charging" forever. Polling here
+     * means staleness is bounded to one timer interval. */
+    main_send_read_charge_status_event();
     main_send_read_voltage_event();
 }
 

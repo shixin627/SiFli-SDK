@@ -1,6 +1,6 @@
 {
     "version": "1.1.52",
-    "description": "電池遠端電量偵測",
+    "description": "更新電池電量曲線,修復有時拔掉充電時沒偵測到的問題",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
