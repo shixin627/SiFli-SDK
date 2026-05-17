@@ -1,6 +1,6 @@
 {
-    "version": "1.1.51",
-    "description": "優化藍芽通訊穩定性,手錶靜默更新(不跑條),飛鼠新UI",
+    "version": "1.1.52",
+    "description": "電池遠端電量偵測",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
