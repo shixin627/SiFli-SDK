@@ -5111,7 +5111,11 @@ static void create_keyboard_mode_ui(lv_obj_t *parent)
     lv_obj_align(input_display_label, LV_ALIGN_LEFT_MID, 10, 0);
 
     // Blinking cursor
-    input_cursor = lv_obj_create(text_input_bar_bg);
+    // parent = input_content_container（跟 label 同一個），不能掛在 text_input_bar_bg：
+    //   bar 在 expand anim 期間會從 280×45 長到 300×90，container 跟 label 都用
+    //   LEFT_MID align 自動跟 bar 高度走，但 align_to 是 one-shot，cursor 掛在
+    //   bar 上會被釘在「創建當下的螢幕位置」不會跟著 label 走 → 偏到頂部
+    input_cursor = lv_obj_create(input_content_container);
     lv_obj_set_size(input_cursor, 2, 25);
     lv_obj_set_style_bg_color(input_cursor, lv_color_hex(0x4a90e2),
                               LV_PART_MAIN);
@@ -5389,6 +5393,8 @@ static void kbd_lower_arrow_event_cb(lv_event_t *e)
             lv_obj_set_style_translate_x(kbd_mic_section, 0, 0);
             lv_obj_add_flag(kbd_mic_section, LV_OBJ_FLAG_HIDDEN);
         }
+        // 進場：input bar 上移 + keyboard 升起都用 overshoot 帶彈性
+        // 退場（else 分支）維持 ease_out 比較乾脆
         if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
         {
             lv_anim_del(text_input_bar_bg, (lv_anim_exec_xcb_t)lv_obj_set_y);
@@ -5397,8 +5403,8 @@ static void kbd_lower_arrow_event_cb(lv_event_t *e)
             lv_anim_set_var(&a, text_input_bar_bg);
             lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_y);
             lv_anim_set_values(&a, EXPAND_END_Y, EXPAND_END_Y_KBD);
-            lv_anim_set_time(&a, 250);
-            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+            lv_anim_set_time(&a, 350);
+            lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
             lv_anim_start(&a);
         }
         if (keyboard_container && lv_obj_is_valid(keyboard_container))
@@ -5411,8 +5417,8 @@ static void kbd_lower_arrow_event_cb(lv_event_t *e)
             lv_anim_set_var(&a, keyboard_container);
             lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)anim_set_translate_y);
             lv_anim_set_values(&a, 300, 0);
-            lv_anim_set_time(&a, 250);
-            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+            lv_anim_set_time(&a, 350);
+            lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
             lv_anim_start(&a);
         }
         kbd_lower_is_keyboard = true;
@@ -5518,13 +5524,16 @@ static void expand_anim_driver_cb(void *var, int32_t v)
     //   - 視覺縮放：用 lv_img_set_zoom 直接縮 enter icon img（transform_zoom 套在
     //     parent obj 在這個 LVGL build 不會 cascade 到 child img）
     //   - 透明度：lv_obj_set_style_img_opa 設 img 本身的繪製透明度
+    // overshoot path 會讓 v 暫時超過 100，opa 必須 clamp，否則 uint8_t cast wrap
+    // 成接近 0 → enter icon 在彈跳峰值瞬間閃成透明
     if (input_enter_img && lv_obj_is_valid(input_enter_img))
     {
+        int32_t v_opa = v > 100 ? 100 : (v < 0 ? 0 : v);
         uint16_t zoom = (uint16_t)(256 * v / 100);
         if (zoom < 1) zoom = 1;
         lv_img_set_zoom(input_enter_img, zoom);
         lv_obj_set_style_img_opa(input_enter_img,
-                                 (lv_opa_t)(LV_OPA_COVER * v / 100),
+                                 (lv_opa_t)(LV_OPA_COVER * v_opa / 100),
                                  LV_PART_MAIN);
     }
     // 箭頭現在是 section 的子物件，自動跟 translate_y，不用單獨處理
@@ -5589,12 +5598,14 @@ static void start_trackpad_to_kbd_expand_anim(void)
     expand_anim_driver_cb(NULL, 0);
 
     // 4. 啟動 driver anim 0 → 100
+    //    overshoot path：bar 會先衝到目標位置/尺寸的「外側一點點」再彈回，
+    //    視覺上像有彈性而非單調 ease；time 拉到 350ms 給彈跳一點呼吸空間
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, text_input_bar_bg); // var 不重要，cb 內不使用
     lv_anim_set_values(&a, 0, 100);
-    lv_anim_set_time(&a, EXPAND_ANIM_TIME_MS);
-    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_time(&a, 350);
+    lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
     lv_anim_set_exec_cb(&a, expand_anim_driver_cb);
     lv_anim_set_ready_cb(&a, expand_anim_done_cb);
     lv_anim_start(&a);
