@@ -67,7 +67,7 @@ LVSF_FREETYPE_FONT_REGISTER({var})
 
    __attribute__((used)) is required because the only references to this
    function are weak externs in middleware. Without `used`, the ARM linker
-   dead-strips the symbol — the weak extern resolves to NULL, the safety
+   dead-strips the symbol -- the weak extern resolves to NULL, the safety
    check is bypassed, and the watch bricks anyway. Verified by grepping
    main.htm: pre-`used`, the symbol is missing from the linked image. */
 #ifdef _MSC_VER
@@ -86,14 +86,19 @@ __attribute__((used)) bool is_freetype_safe_to_init(void)
 #endif
 '''.format(var=var_name, name=font_name, path=fs_font_path)
 
+    # Binary compare on purpose: stale stubs from older runs may have been
+    # written in cp1252 / cp950 / mojibake, and decoding them as text crashes
+    # the configure step on Windows boxes (whichever codec is "default").
+    # Round-tripping bytes against utf-8-encoded stub_content sidesteps that.
+    stub_bytes = stub_content.encode('utf-8')
     write_needed = True
     if os.path.exists(stub_path):
-        with open(stub_path, 'r') as f:
-            if f.read() == stub_content:
+        with open(stub_path, 'rb') as f:
+            if f.read() == stub_bytes:
                 write_needed = False
     if write_needed:
-        with open(stub_path, 'w') as f:
-            f.write(stub_content)
+        with open(stub_path, 'wb') as f:
+            f.write(stub_bytes)
 
     # Drop the active TTF into <dualcore>/project/jsroot/assets/fonts/, the
     # same tree as jsroot/assets/emoji/ that's already pre-installed on the

@@ -26,7 +26,7 @@ LVSF_FREETYPE_FONT_REGISTER(tiny55_full)
 
    __attribute__((used)) is required because the only references to this
    function are weak externs in middleware. Without `used`, the ARM linker
-   dead-strips the symbol — the weak extern resolves to NULL, the safety
+   dead-strips the symbol -- the weak extern resolves to NULL, the safety
    check is bypassed, and the watch bricks anyway. Verified by grepping
    main.htm: pre-`used`, the symbol is missing from the linked image. */
 #ifdef _MSC_VER
