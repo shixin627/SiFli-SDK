@@ -495,7 +495,10 @@ static void draw_indic(lv_event_t * e)
         int16_t mask_indic_id = lv_draw_mask_add(&mask_indic_param, NULL);
 #endif
 
-        lv_draw_rect(draw_ctx, &draw_rect_dsc, &mask_indic_max_area);
+        /* EPIC GPU rect fill does not reliably honor draw_ctx->clip_area, so bound the
+         * rect to bar->indic_area directly — otherwise the indicator paints over the
+         * full trough regardless of value (#10413 regression). */
+        lv_draw_rect(draw_ctx, &draw_rect_dsc, &bar->indic_area);
         draw_rect_dsc.border_opa = border_opa;
         draw_rect_dsc.shadow_opa = shadow_opa;
 

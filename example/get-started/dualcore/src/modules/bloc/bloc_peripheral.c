@@ -288,8 +288,8 @@ static void control_motor_vibration(bool enable, motor_params_t *params)
     }
     send_peripheral_data(data);
     motor_on = true;
-    start_motor_on_timer(((params->period / 1000) * params->repeat_times) +
-                         600);
+    // start_motor_on_timer(((params->period / 1000) * params->repeat_times) +
+    //                      100);
 }
 
 static void save_watch_shared_prefs(watch_prefs_key key)
