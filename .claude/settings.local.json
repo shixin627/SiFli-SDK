@@ -53,7 +53,17 @@
       "Bash(powershell -Command \"\\(Get-Item 'C:\\\\dev\\\\SiFli_Trace_v2.3.3\\\\log\\\\窗口1_COM12_\\(2026-05-08-14-39-57\\)_ui.log'\\).Length\")",
       "Bash(git -C \"C:\\\\SiFli-SDK\" status --short --branch)",
       "Bash(Select-Object -First 20)",
-      "PowerShell($src = 'C:\\\\SiFli-SDK\\\\example\\\\get-started\\\\dualcore\\\\src\\\\modules\\\\communicate\\\\communicate_parse_notify.c'; $obj = 'C:\\\\SiFli-SDK\\\\example\\\\get-started\\\\dualcore\\\\project\\\\hcpu\\\\build_sf32lb56w-watch_hcpu\\\\modules\\\\communicate\\\\communicate_parse_notify.o'; $bin = 'C:\\\\SiFli-SDK\\\\example\\\\get-started\\\\dualcore\\\\project\\\\hcpu\\\\build_sf32lb56w-watch_hcpu\\\\main.bin'; \"SRC: $\\(\\(Get-Item $src\\).LastWriteTime\\)\"; \"OBJ: $\\(\\(Get-Item $obj\\).LastWriteTime\\)\"; \"BIN: $\\(\\(Get-Item $bin\\).LastWriteTime\\)\")"
+      "PowerShell($src = 'C:\\\\SiFli-SDK\\\\example\\\\get-started\\\\dualcore\\\\src\\\\modules\\\\communicate\\\\communicate_parse_notify.c'; $obj = 'C:\\\\SiFli-SDK\\\\example\\\\get-started\\\\dualcore\\\\project\\\\hcpu\\\\build_sf32lb56w-watch_hcpu\\\\modules\\\\communicate\\\\communicate_parse_notify.o'; $bin = 'C:\\\\SiFli-SDK\\\\example\\\\get-started\\\\dualcore\\\\project\\\\hcpu\\\\build_sf32lb56w-watch_hcpu\\\\main.bin'; \"SRC: $\\(\\(Get-Item $src\\).LastWriteTime\\)\"; \"OBJ: $\\(\\(Get-Item $obj\\).LastWriteTime\\)\"; \"BIN: $\\(\\(Get-Item $bin\\).LastWriteTime\\)\")",
+      "Bash(cmd.exe /c \"C:\\\\\\\\SiFli-SDK\\\\\\\\example\\\\\\\\get-started\\\\\\\\dualcore\\\\\\\\project\\\\\\\\hcpu\\\\\\\\_watch_build.cmd -j8\")",
+      "Bash(cmd.exe /c \"example\\\\\\\\get-started\\\\\\\\dualcore\\\\\\\\project\\\\\\\\hcpu\\\\\\\\_watch_build.cmd -j8\")",
+      "Bash(cd /c \"C:\\\\SiFli-SDK\\\\example\\\\get-started\\\\dualcore\")",
+      "Bash(cmd.exe /c \"project\\\\hcpu\\\\_watch_build.cmd -j8\")",
+      "Bash(cmd.exe /c \"project\\\\\\\\hcpu\\\\\\\\_watch_build.cmd -j8\")",
+      "Bash(echo \"exit=$?\")",
+      "Bash(grep -E \"\\( error:|undefined reference|cannot find|scons:.*\\\\\\\\*\\\\\\\\*\\\\\\\\*|done building\\)\" C:/Users/andre/build_out.log | tail -30)",
+      "PowerShell($env:Path += \";C:\\\\dev\\\\env_latest\\\\tools\"; cd \"C:\\\\SiFli-SDK\\\\example\\\\get-started\\\\dualcore\"; & cmd /c \"project\\\\hcpu\\\\_watch_build.cmd -j8\" 2>&1 | Tee-Object -FilePath C:\\\\Users\\\\andre\\\\build_out.log | Select-Object -Last 50)",
+      "Bash(ls \"C:/dev/env_latest/tools/python-3.11.9-amd64/\" 2>&1 | head -20)",
+      "Bash(ls \"C:/dev/\" 2>&1)"
     ]
   }
 }
