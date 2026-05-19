@@ -140,6 +140,10 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* app_mainmenu.c */ rt_int32_t speech_on_resume(void) { return 0; }
 /* bloc_v2t.h */ void start_voice_recognition(uint8_t intent) {  }
 /* bloc_v2t.h */ void stop_voice_recognition(uint8_t intent) {  }
+/* bloc_v2t.h */ void voice_set_pending_v2t_intent(uint8_t intent) {  }
+/* bloc_v2t.h */ void set_voice_recognition_started(bool started) {  }
+/* communicate_task.h */ bool commu_send_skaibar_selected(uint8_t idx) { return false; }
+/* communicate_task.h */ bool commu_send_skaibar_committed(uint8_t idx) { return false; }
 /* gui_app_pm.h */ void sys_poweron_fsm(sys_pwron_evt_t evt) {  }
 /* hid_mouse.c */ void toggle_keyboard_visibility(void) {  }
 /* gesture_model_loader.h */ int unload_release_model(void) { return 0; }

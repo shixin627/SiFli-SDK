@@ -1,33 +1,57 @@
 scons: Reading SConscript files ...
 Board: pc_hcpu
 
-C:\Users\lulu8\Documents\GitHub\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst x: /D  2>nul 
-Invalid parameter - X:
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst x: /D  2>nul 
 
-C:\Users\lulu8\Documents\GitHub\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst y: /D  2>nul 
-Invalid parameter - Y:
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst y: /D  2>nul 
 
-C:\Users\lulu8\Documents\GitHub\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst l: /D  2>nul 
-Invalid parameter - L:
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst l: /D  2>nul 
 
-C:\Users\lulu8\Documents\GitHub\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst x: "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.16.27023" 
-Path not found - C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.16.27023
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst x: "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.16.27023" 
 
-C:\Users\lulu8\Documents\GitHub\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst y: "C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0" 
-Path not found - C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst y: "C:\Program Files (x86)\Windows Kits\10\Include\10.0.22621.0" 
 
-C:\Users\lulu8\Documents\GitHub\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst l: "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0" 
-Path not found - C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst l: "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.22621.0" 
 Simulator used
 Mkdir("src")
 Mkdir("resource/strings")
 scons: done reading SConscript files.
 scons: Building targets ...
 scons: building associated VariantDir targets: build_pc_hcpu .
-CC build_pc_hcpu\src\main_pc.obj
+CC build_pc_hcpu\src\pc_link_stubs.obj
 Building compilation database build_pc_hcpu\compile_commands.json
-main_pc.c
+pc_link_stubs.c
+CC build_pc_hcpu\modules\bloc\bloc_control.obj
+bloc_control.c
+CC build_pc_hcpu\modules\bloc\bloc_calendar.obj
+CC build_pc_hcpu\modules\bloc\bloc_notification.obj
+CC build_pc_hcpu\modules\bloc\bloc_setting.obj
+CC build_pc_hcpu\modules\bloc\bloc_skaiwalk.obj
+bloc_calendar.c
+CC build_pc_hcpu\modules\bloc\bloc_peripheral.obj
+CC build_pc_hcpu\modules\bloc\bloc_weather.obj
+bloc_notification.c
+CC build_pc_hcpu\modules\bloc\bloc_motion_tracking.obj
+bloc_setting.c
+bloc_skaiwalk.c
+bloc_peripheral.c
+bloc_weather.c
+bloc_motion_tracking.c
+CC build_pc_hcpu\modules\bloc\bloc_filesystem.obj
+bloc_filesystem.c
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_motion_tracking.c(469): warning C4018: '<': signed/unsigned ¤£¬Û²ÅCC build_pc_hcpu\modules\client\watch_system_client.obj
+
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_motion_tracking.c(505): warning C4018: '>': signed/unsigned ¤£¬Û²Å
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_motion_tracking.c(508): warning C4018: '>': signed/unsigned ¤£¬Û²Å
+watch_system_client.c
+CC build_pc_hcpu\modules\model\watch_system_interact.obj
+watch_system_interact.c
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_filesystem.c(205): warning C4101: 'ui_msg': ¥¼°Ñ¦Òªº°Ï°ìÅÜ¼Æ
+CC build_pc_hcpu\src\gui_apps\app_layout\lv_instruction_list_layout.obj
+lv_instruction_list_layout.c
+CC build_pc_hcpu\src\gui_apps\test\app_test.obj
+app_test.c
 LINK build_pc_hcpu\main.exe
-  æ­£åœ¨åˆ›å»ºåº“ build_pc_hcpu\main.lib å’Œå¯¹è±¡ build_pc_hcpu\main.exp
-LINK : warning LNK4098: é»˜è®¤åº“â€œLIBCMTDâ€ä¸å…¶ä»–åº“çš„ä½¿ç”¨å†²çªï¼›è¯·ä½¿ç”¨ /NODEFAULTLIB:library
+   ¥¿¦b«Ø¥ßµ{¦¡®w build_pc_hcpu\main.lib ©Mª«¥ó build_pc_hcpu\main.exp
+LINK : warning LNK4098: ¹w³]ªºµ{¦¡®w 'LIBCMTD' »P¨ä¥L¨Ï¥Îªºµ{¦¡®w½Ä¬ğ¡A½Ğ¨Ï¥Î /NODEFAULTLIB:library
 scons: done building targets.

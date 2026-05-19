@@ -518,3 +518,58 @@ static int hr_set(int argc, char *argv[])
     return 0;
 }
 MSH_CMD_EXPORT(hr_set, hr_set bpm - fake heart rate value);
+
+/* ===================================================================== */
+/*  MSH commands — instruction-list AI widget (PC sim only)              */
+/*                                                                       */
+/*  On real hardware the AI widget opens via wrist-raise / mic-bar tap   */
+/*  with a live BLE connection. PC sim has no BT, so tap_on_ai_widget    */
+/*  short-circuits at the connection check. These helpers let us drive   */
+/*  the widget directly to verify layout / state behaviour.              */
+/* ===================================================================== */
+
+extern void set_is_open_instruction_list_ai(bool open);
+extern void open_skai_widget_ai(bool open);
+extern void refresh_ai_chat_input_message(char *text);
+
+static int sim_skai_open(int argc, char *argv[])
+{
+    (void)argc; (void)argv;
+    set_is_open_instruction_list_ai(true);
+    open_skai_widget_ai(true);
+    rt_kprintf("sim_skai_open: AI widget marked open\n");
+    return 0;
+}
+MSH_CMD_EXPORT(sim_skai_open, sim_skai_open - force open instruction-list AI widget);
+
+/* Persistent buffer — LVGL_MSG_TYPE_INPUT_MESSAGE carries the pointer, not a
+   copy, so it must outlive the dispatch. Static storage is fine since this
+   command is single-threaded from FinSH. */
+static char sim_voice_text_buf[256];
+
+static int sim_voice_say(int argc, char *argv[])
+{
+    if (argc < 2) {
+        rt_kprintf("usage: sim_voice_say <text>...\n");
+        return -1;
+    }
+    sim_voice_text_buf[0] = '\0';
+    for (int i = 1; i < argc; i++) {
+        if (i > 1) {
+            strncat(sim_voice_text_buf, " ",
+                       sizeof(sim_voice_text_buf) - strlen(sim_voice_text_buf) - 1);
+        }
+        strncat(sim_voice_text_buf, argv[i],
+                   sizeof(sim_voice_text_buf) - strlen(sim_voice_text_buf) - 1);
+    }
+    /* The handler is normally wired by start_voice_recognition; we set it
+       directly because we are bypassing v2t in PC sim. */
+    lvgl_msg_handler.handle_input_message = refresh_ai_chat_input_message;
+    lvgl_msg_t msg = { 0 };
+    msg.type = LVGL_MSG_TYPE_INPUT_MESSAGE;
+    msg.data.message = sim_voice_text_buf;
+    lvgl_send_msg(msg);
+    rt_kprintf("sim_voice_say sent: '%s'\n", sim_voice_text_buf);
+    return 0;
+}
+MSH_CMD_EXPORT(sim_voice_say, sim_voice_say <text>... - inject voice transcript into skai widget);

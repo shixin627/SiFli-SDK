@@ -77,6 +77,8 @@
 LV_IMG_DECLARE(voice_group);
 LV_IMG_DECLARE(menu_icon);
 LV_IMG_DECLARE(plus);
+LV_IMG_DECLARE(icon_mic);
+LV_IMG_DECLARE(message_widget_bg);
 
 #define DBG_TAG "instruction.list.layout"
 #define DBG_LVL DBG_INFO
@@ -214,6 +216,7 @@ typedef struct
     lv_obj_t *p_instruction_list_bg;
     lv_obj_t *p_instruction_list_ai_bg;
     lv_obj_t *p_instruction_list_ai_icon;
+    lv_obj_t *mic_bar; /* bottom mic-trigger bar; hidden when AI widget open */
     lv_obj_t *p_app_indicator_btn[MAX_LIST_ITEMS];
     lv_obj_t *indicator_dots[MAX_LIST_ITEMS];
     lv_obj_t *indicator_dots_bg[MAX_LIST_ITEMS];
@@ -349,6 +352,19 @@ lv_obj_t *app_icon_shadow[MAX_LIST_ITEMS];
 static bool is_indicator_dots_visible = true;
 static uint16_t selected_item_index = 0;
 static uint16_t last_zoom[MAX_LIST_ITEMS] = {0};
+
+/* SKAIBAR option-tracking session lifetime — decoupled from
+   is_open_instruction_list_ai. The voice/v2t session ends when the
+   pill fades (close_ai_widget), but founder direction 2026-05-19 is
+   that the phone-side SKAIBAR option highlight should keep following
+   the watch's scroll position even after the pill is gone. The
+   session ends only when the user leaves the instruction_list page
+   entirely (instruction_list_pause).
+   Set true inside tap_on_ai_widget (the moment the user invokes the
+   SKAIBAR flow); cleared inside instruction_list_pause. Declared up
+   here so scroll_list (line ~790) and tap_on_ai_widget /
+   instruction_list_pause (further down) all see the same storage. */
+static bool s_skaibar_tracking_active = false;
 
 /* arc-scroll detached / discrete 模式狀態 — 拖動時 arc 不動 list、由 drag_cb
  * 接管，到 page change 才 snap。完整定義在後面，scroll_list 要先 visible。
@@ -540,6 +556,27 @@ static bool is_open_ai_gesture = false;
 static lv_obj_t *ai_voice_btn = NULL;
 static lv_obj_t *ai_voice_send_icon = NULL;
 static lv_obj_t *ai_gaus_bg = NULL;
+/* Transcript label inside the styled skai_widget pill — shows the spoken
+   text after voice_say (PC sim) or real ASR (real hw). */
+static lv_obj_t *s_voice_transcript_label = NULL;
+/* Reference to the styled pill (lv_skai_widget_builder return value).
+   For scroll-fade we animate per-property opa on multiple objects (LVGL
+   lv_obj_set_style_opa does not cascade in this build — must use
+   _bg_opa / _border_opa / _text_opa / _img_opa explicitly). */
+static lv_obj_t *s_skai_widget = NULL;
+/* The voice-group image inside ai_voice_btn — needs img_opa fade. */
+static lv_obj_t *s_voice_img = NULL;
+/* The pill background image (message_widget_bg) — gives the pill its
+   border + shape on real-hw where the LVGL border style is invisible. */
+static lv_obj_t *s_pill_bg_img = NULL;
+
+void instruction_list_set_voice_transcript(const char *text)
+{
+    if (s_voice_transcript_label && lv_obj_is_valid(s_voice_transcript_label))
+    {
+        lv_label_set_text(s_voice_transcript_label, text ? text : "");
+    }
+}
 
 void set_indicator_dots_visible(bool visible)
 {
@@ -919,6 +956,29 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         {
             last_y_diff_on_selected = last_y_diff;
         }
+        /* SKAIBAR option-tracking: report the scrolled-into-focus custom
+           instruction as the current skaibar option, same wire format
+           as hid_mouse arc selection. Gated on s_skaibar_tracking_active
+           rather than is_open_instruction_list_ai so the phone-side
+           option highlight keeps following the watch's scroll even
+           after the user dismisses the input pill (founder direction
+           2026-05-19). Tracking is armed in tap_on_ai_widget and
+           cleared in instruction_list_pause. Only fires for custom
+           instructions (selected >= app_base_count); the app slots
+           before the custom list aren't part of the skaibar option
+           set. Dedup is the outer selected_item_index != old check,
+           so we don't spam the same idx on every scroll-list re-compute. */
+        if (s_skaibar_tracking_active &&
+            selected_item_index >= app_base_count)
+        {
+            uint8_t skaibar_idx =
+                (uint8_t)(selected_item_index - app_base_count);
+            commu_send_skaibar_selected(skaibar_idx);
+            LOG_D("[skaibar] sent selected idx=%u (raw=%u, base=%u)",
+                  (unsigned)skaibar_idx,
+                  (unsigned)selected_item_index,
+                  (unsigned)app_base_count);
+        }
         old_selected_item_index = selected_item_index;
         // LOG_D("selected_app_index: %d", selected_item_index);
 
@@ -1141,6 +1201,14 @@ static void selected_widget_timer_start(void)
     rt_timer_start(selected_widget_timer);
 }
 
+/* Forward decls — defined further down with the AI widget block. */
+static void ai_widget_fade_on_scroll(void);
+void close_ai_widget(void);
+/* Gate for ai_widget_fade_on_scroll: set true while refresh_custom_instructions
+   does programmatic scrolls. Declared here (not at refresh_* location) so
+   list_window_scroll_event_cb can read it. Actually defined below. */
+static bool s_in_refresh_scroll = false;
+
 static void list_window_scroll_event_cb(lv_event_t *evt)
 {
     lv_obj_t *obj = evt->target;
@@ -1159,6 +1227,17 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         }
         // 當開始滾動時停止所有動畫並復原狀態
         stop_all_animations_and_reset();
+        /* Modal-ish dismiss: scrolling the instruction list while the AI
+           widget is open fades it out (per office-hours doc Q4).
+           Gate on !s_in_refresh_scroll — programmatic scrolls inside
+           refresh_custom_instructions raise this flag, so only user
+           drags (LVGL direct scroll OR arc_scroll-driven scroll) get
+           through. This also works on PC sim (touch_sim drags reach
+           the list directly via LVGL pointer indev). */
+        if (!s_in_refresh_scroll)
+        {
+            ai_widget_fade_on_scroll();
+        }
         // LOG_D("APP LIST Scroll begin");
         break;
     }
@@ -1256,7 +1335,15 @@ static void skai_fade_in_anim_cb(void *var, int32_t value)
     set_skai_widget_opa((uint8_t)value);
 }
 
-/* Called from app_skai.c when speech text is updated */
+/* Called from app_skai.c when speech text is updated.
+ *
+ * Was Phase 2 of a three-element reveal: (a) show ai_gaus_bg Gaussian
+ * blur backdrop, (b) raise p_instruction_list_ai_bg bg_opa from 0→50
+ * (dark scrim), (c) fade skai_widget pill in. User direction
+ * 2026-05-19: the input pill should appear in isolation — no scrim,
+ * no blur backdrop, so the instruction list behind it stays readable.
+ * Only the pill fade-in (c) survives. send_icon stays revealed because
+ * it sits inside the pill, not as a separate backdrop element. */
 void instruction_ai_show_skai_widget(void)
 {
     if (!is_open_instruction_list_ai || !p_instruction_list_layout)
@@ -1264,18 +1351,10 @@ void instruction_ai_show_skai_widget(void)
     if (skai_widget_shown)
         return;
     skai_widget_shown = true;
-    /* Phase 2: text arrived — show gaus bg, send icon, raise bg, fade
-     * skai_widget in */
-    if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
-    {
-        lv_obj_clear_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
-    }
     if (ai_voice_send_icon && lv_obj_is_valid(ai_voice_send_icon))
     {
         lv_obj_clear_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
     }
-    lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
-                            LV_OPA_50, 0);
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, NULL);
@@ -1288,6 +1367,177 @@ void instruction_ai_show_skai_widget(void)
 
 static rt_tick_t last_ai_widget_open_time = 0;
 static bool ai_widget_opened_by_drag = false;
+/* Guard flag: when animate_open_ai_widget drives the tileview from tile 1 → 0
+   with LV_ANIM_ON, the resulting SCROLL_END fires VALUE_CHANGED with
+   active_pos=0. Without the guard, ai_tileview_event_cb would interpret that
+   as "user dismissed to home" and close the widget we just opened. */
+static bool s_programmatic_open_in_progress = false;
+
+/* Mock instruction-update timer — simulates phone/PC pushing list updates
+   while voice listening is active. Real backend wiring deferred per office-hours
+   doc §5 P2 (latency unverified). Cycles a small fake set. */
+static rt_timer_t mock_inst_update_timer = RT_NULL;
+static int mock_inst_cycle = 0;
+static const char *MOCK_INST_TITLES[] = {
+    "Set 5 min timer",
+    "Send 'on my way' to Mom",
+    "Play workout playlist",
+    "Add milk to grocery list",
+};
+static const char *MOCK_INST_IDS[] = {
+    "mock-timer-001",
+    "mock-msg-002",
+    "mock-music-003",
+    "mock-grocery-004",
+};
+#define MOCK_INST_COUNT (sizeof(MOCK_INST_IDS) / sizeof(MOCK_INST_IDS[0]))
+
+static void mock_inst_update_cb(void *param)
+{
+    int idx = mock_inst_cycle % MOCK_INST_COUNT;
+    add_or_update_custom_instruction(MOCK_INST_IDS[idx], MOCK_INST_TITLES[idx],
+                                     "once", 0, false, mock_inst_cycle + 1);
+    mock_inst_cycle++;
+    lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_INSTRUCTION_LIST};
+    lvgl_send_msg(msg);
+}
+
+static void start_mock_inst_update(void)
+{
+    if (mock_inst_update_timer == RT_NULL)
+    {
+        /* SOFT timer required: callback calls add_or_update_custom_instruction
+           (strncpy on shared array) + lvgl_send_msg. HARD timer = interrupt
+           context, unsafe for either. SOFT timer runs in dedicated timer
+           thread context, safe to call kernel APIs. */
+        mock_inst_update_timer = rt_timer_create(
+            "mock_inst_upd", mock_inst_update_cb, RT_NULL,
+            rt_tick_from_millisecond(1500),
+            RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+    }
+    if (mock_inst_update_timer != RT_NULL)
+    {
+        rt_timer_start(mock_inst_update_timer);
+        LOG_I("mock instruction update timer started");
+    }
+}
+
+static void stop_mock_inst_update(void)
+{
+    if (mock_inst_update_timer != RT_NULL)
+    {
+        rt_timer_stop(mock_inst_update_timer);
+        LOG_I("mock instruction update timer stopped");
+    }
+}
+
+/* Click handler for the bottom mic bar — re-uses the same flow that the
+   release IMU gesture takes (see gesture_recognition_task.c:401). */
+static void mic_bar_event_cb(lv_event_t *evt)
+{
+    if (evt->code == LV_EVENT_CLICKED)
+    {
+        LOG_I("Mic bar tapped — opening AI widget");
+        extern void animate_open_ai_widget(void);
+        animate_open_ai_widget();
+    }
+}
+
+/* Fade-out the AI widget when the user scrolls the instruction list while
+   the widget is open. Modal-ish dismiss model (per office-hours doc Q4):
+   scroll = explicit dismissal; user re-invokes via bar tap or release. */
+static bool ai_fade_anim_active = false;
+static void ai_fade_done_cb(lv_anim_t *a)
+{
+    ai_fade_anim_active = false;
+    if (is_open_instruction_list_ai)
+    {
+        close_ai_widget();
+    }
+}
+
+/* Baseline opacities for each animated property when fully visible.
+   Match the values set in lv_instruction_list_layout_create. */
+#define PILL_BG_IMG_BASELINE  LV_OPA_COVER
+#define TRANSCRIPT_BASELINE   LV_OPA_80
+#define VOICEBTN_BG_BASELINE  LV_OPA_10
+#define VOICEIMG_BASELINE     LV_OPA_COVER
+
+/* Apply a fade fraction (0..255) to all visual sub-parts of the pill.
+   value=255 → fully visible (each property = its baseline).
+   value=0   → fully invisible. LVGL's lv_obj_set_style_opa does NOT
+   cascade in this build, so each sub-part gets its own per-property
+   opa call: img_opa for images, text_opa for labels, bg_opa for solid
+   bg fills. */
+static void skai_widget_fade_anim_cb(void *var, int32_t value)
+{
+    (void)var;
+    lv_opa_t f = (lv_opa_t)value;  /* 0..255 fade factor */
+    if (s_pill_bg_img && lv_obj_is_valid(s_pill_bg_img))
+    {
+        lv_obj_set_style_img_opa(s_pill_bg_img, f, 0);
+    }
+    if (s_voice_transcript_label && lv_obj_is_valid(s_voice_transcript_label))
+    {
+        lv_obj_set_style_text_opa(s_voice_transcript_label,
+                                  (lv_opa_t)((TRANSCRIPT_BASELINE * f) / 255),
+                                  0);
+    }
+    if (ai_voice_btn && lv_obj_is_valid(ai_voice_btn))
+    {
+        lv_obj_set_style_bg_opa(ai_voice_btn,
+                                (lv_opa_t)((VOICEBTN_BG_BASELINE * f) / 255), 0);
+    }
+    if (s_voice_img && lv_obj_is_valid(s_voice_img))
+    {
+        lv_obj_set_style_img_opa(s_voice_img, f, 0);
+    }
+}
+
+static void ai_widget_fade_on_scroll(void)
+{
+    if (!is_open_instruction_list_ai || ai_fade_anim_active)
+        return;
+    if (!s_skai_widget || !lv_obj_is_valid(s_skai_widget))
+        return;
+    ai_fade_anim_active = true;
+    /* Single fade fraction drives all sub-parts. 255 → 0 over 600ms
+       ease-out gives a smooth dissolve that tracks the scroll motion. */
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_skai_widget);
+    lv_anim_set_values(&a, 255, 0);
+    lv_anim_set_time(&a, 600);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, skai_widget_fade_anim_cb);
+    lv_anim_set_ready_cb(&a, ai_fade_done_cb);
+    lv_anim_start(&a);
+}
+
+/* Reset all visual sub-parts to their baseline (fully-visible) opacities.
+   Called by animate_open_ai_widget so a prior fade doesn't leave the
+   pill stuck at low opacity. */
+static void skai_widget_restore_full_opa(void)
+{
+    if (s_pill_bg_img && lv_obj_is_valid(s_pill_bg_img))
+    {
+        lv_obj_set_style_img_opa(s_pill_bg_img, PILL_BG_IMG_BASELINE, 0);
+    }
+    if (s_voice_transcript_label && lv_obj_is_valid(s_voice_transcript_label))
+    {
+        lv_obj_set_style_text_opa(s_voice_transcript_label, TRANSCRIPT_BASELINE,
+                                  0);
+    }
+    if (ai_voice_btn && lv_obj_is_valid(ai_voice_btn))
+    {
+        lv_obj_set_style_bg_opa(ai_voice_btn, VOICEBTN_BG_BASELINE, 0);
+    }
+    if (s_voice_img && lv_obj_is_valid(s_voice_img))
+    {
+        lv_obj_set_style_img_opa(s_voice_img, VOICEIMG_BASELINE, 0);
+    }
+}
+
 void tap_on_ai_widget(void);
 void animate_open_ai_widget(void)
 {
@@ -1299,28 +1549,90 @@ void animate_open_ai_widget(void)
     }
     last_ai_widget_open_time = rt_tick_get();
     ai_widget_opened_by_drag = false;
-    /* Show ai_page instantly (no slide from left).
-       Call tap_on_ai_widget() BEFORE set_tile_id: the tile change fires
-       SCROLL_END → VALUE_CHANGED synchronously with LV_ANIM_OFF, and the
-       ai_tileview_event_cb would otherwise see
-       is_open_instruction_list_ai==false and run the drag-open branch, wrongly
-       setting ai_widget_opened_by_drag. */
+    /* Cancel any in-flight scroll-fade so the widget doesn't immediately
+       fade back out after the slide-in completes. */
+    if (ai_fade_anim_active)
+    {
+        if (s_skai_widget && lv_obj_is_valid(s_skai_widget))
+        {
+            lv_anim_del(s_skai_widget, skai_widget_fade_anim_cb);
+        }
+        ai_fade_anim_active = false;
+    }
+    /* Restore all sub-part opacities to their baselines (in case a prior
+       fade left them dim). */
+    skai_widget_restore_full_opa();
+    /* Slide-from-left animation: pre-position at tile 1 (home, x=466), then
+       animate to tile 0 (ai_page, x=0). The s_programmatic_open_in_progress
+       guard makes ai_tileview_event_cb skip its close branch when our
+       animated settle fires VALUE_CHANGED at active_pos=0. */
     lv_obj_clear_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                       LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(p_instruction_list_layout->p_instruction_list_ai_bg);
+    /* Hide the mic-trigger bar — AI widget is now active, its own voice
+       button handles further interaction. */
+    if (p_instruction_list_layout->mic_bar &&
+        lv_obj_is_valid(p_instruction_list_layout->mic_bar))
+    {
+        lv_obj_add_flag(p_instruction_list_layout->mic_bar,
+                        LV_OBJ_FLAG_HIDDEN);
+    }
+    s_programmatic_open_in_progress = true;
+    lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 1,
+                       0, LV_ANIM_OFF);
     tap_on_ai_widget();
     lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 0,
-                       0, LV_ANIM_OFF);
-    /* set_tile_id fires SCROLL events that drive bg_opa toward ~240 (dark)
-       based on scroll position. Reassert the Phase 1 light bg so wrist-raise
-       shows only the mic without blacking out the background. */
+                       0, LV_ANIM_ON);
+    /* set_tile_id fires SCROLL events that drive bg_opa via ai_tileview_event_cb.
+       Keep the OUTER strip transparent — only the styled skai_widget pill
+       inside should be visible, matching the Liquid Glass design language. */
     lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
-                            LV_OPA_30, 0);
+                            LV_OPA_0, 0);
+    /* Auto-cycling mock list updates DISABLED — the `voice_say <text>` MSH
+       command provides explicit, on-demand voice-input simulation instead.
+       Uncomment to re-enable the passive cycling demo. */
+    /* start_mock_inst_update(); */
+
+    /* PC sim only: wire VAD-status messages to the mic-flash animation.
+       On real hardware bloc_v2t.c sets this handler when voice_provider.start_v2t
+       runs; the PC sim stub is no-op so we need to wire it ourselves to make
+       LVGL_MSG_TYPE_VAD_STATUS (from MSH `voice_say`) light up the mic button. */
+#ifdef BSP_USING_PC_SIMULATOR
+    extern void handle_ai_voice_btn_vad(bool speaking);
+    lvgl_msg_handler.handle_vad_status = handle_ai_voice_btn_vad;
+#endif
 }
 
 void close_ai_widget(void)
 {
     extern void clear_skai_widget_ai_reply(void);
+    stop_mock_inst_update();
+    /* Restore the mic-trigger bar so user can re-invoke the AI widget. */
+    if (p_instruction_list_layout && p_instruction_list_layout->mic_bar &&
+        lv_obj_is_valid(p_instruction_list_layout->mic_bar))
+    {
+        lv_obj_clear_flag(p_instruction_list_layout->mic_bar,
+                          LV_OBJ_FLAG_HIDDEN);
+    }
+    /* Tear down v2t. Three calls because the event-driven STOP path in
+       voice_recognition_entry has a "skip if AI processing" early-return
+       that leaves voice_recognition_started=true — so the next mic-bar
+       tap's VOICE_RECOGNITION_START event short-circuits and the phone
+       never gets a fresh handshake. We hit all three teardown surfaces
+       directly so the dismiss is unconditional:
+         1. voice_provider.stop_v2t()  — fires the async STOP event
+            (which may or may not run cleanly depending on AI state)
+         2. stop_voice_recognition()  — sync: clears voice2TextStatus,
+            unsubscribes mic, sends user-speaking-end notify
+         3. set_voice_recognition_started(false)  — sync: clears the
+            re-entry gate the event handler normally clears. Without
+            this, the next tap can't restart v2t when AI is still
+            processing the prior utterance. */
+    voice_provider.stop_v2t();
+    stop_voice_recognition(V2T_INTENT_NOTHING);
+    set_voice_recognition_started(false);
+    set_paused_control_with_arm(false);
+    set_ai_open_mic(false);
     skai_widget_shown = false;
     ai_widget_opened_by_drag = false;
     is_open_instruction_list_ai = false;
@@ -1401,7 +1713,20 @@ void tap_on_ai_widget(void)
     set_skai_widget_input_text("");
     set_ai_open_mic(true);
     show_speech_indicator(true);
+    /* Founder direction 2026-05-19: instruction_list AI widget mic
+       routes spoken input to the skaibar / mouse-mode pipeline instead
+       of the chat pipeline. Setting the one-shot override before
+       start_v2t() makes voice_recognition_entry pass V2T_INTENT_SKAIBAR
+       (0x03) to start_voice_recognition + notify_user_speaking_intent
+       — the phone treats the resulting transcript as a skaibar command,
+       not a chat query. The override auto-resets to CHAT after the
+       START handler runs so no other callsite is affected. */
+    voice_set_pending_v2t_intent(V2T_INTENT_SKAIBAR);
     voice_provider.start_v2t();
+    /* Arm SKAIBAR option-tracking — scrolls will start reporting idx
+       to the phone via commu_send_skaibar_selected. Survives the
+       widget close (pill fade), cleared on instruction_list_pause. */
+    s_skaibar_tracking_active = true;
     // set_free_control_with_arm(false);
     set_paused_control_with_arm(true);
 }
@@ -1577,6 +1902,27 @@ static void list_item_click_event_cb(lv_event_t *evt)
     {
         LOG_I("Custom instruction tapped: id=%s, title=%s", item->id,
               item->title);
+        /* SKAIBAR commit — tap on a custom instruction while the
+           tracking session is alive (mic was opened at some point on
+           this page, page not yet paused). Send the option idx the
+           phone uses as its action trigger. Independent of the
+           AI-widget visibility, the existing send_instruction_update
+           flow below, and the toggle/flash visuals — phone may use
+           the COMMITTED notify alongside, e.g. to invoke a script. */
+        if (s_skaibar_tracking_active)
+        {
+            for (uint8_t j = 0; j < list_item_count; j++)
+            {
+                if (&list_items[j] == item && j >= app_base_count)
+                {
+                    commu_send_skaibar_committed(
+                        (uint8_t)(j - app_base_count));
+                    LOG_D("[skaibar] committed idx=%u (raw=%u)",
+                          (unsigned)(j - app_base_count), (unsigned)j);
+                    break;
+                }
+            }
+        }
         if (is_open_instruction_list_ai)
         {
             if (!isTextEmpty())
@@ -1620,6 +1966,19 @@ static void on_tap(void)
     if (item->is_instruction)
     {
         LOG_I("Custom instruction tapped via gesture: id=%s", item->id);
+        /* SKAIBAR commit — same rationale as list_item_click_event_cb,
+           parallel gesture path. selected_item_index is the raw
+           list_items index; subtract app_base_count for the 0-based
+           skaibar-option index the phone expects. */
+        if (s_skaibar_tracking_active &&
+            selected_item_index >= app_base_count)
+        {
+            commu_send_skaibar_committed(
+                (uint8_t)(selected_item_index - app_base_count));
+            LOG_D("[skaibar] committed via gesture idx=%u (raw=%u)",
+                  (unsigned)(selected_item_index - app_base_count),
+                  (unsigned)selected_item_index);
+        }
         if (is_open_instruction_list_ai)
         {
             if (!isTextEmpty())
@@ -2121,7 +2480,10 @@ static void ai_bar_event_cb(lv_event_t *evt)
         }
     }
 }
-static uint16_t ai_bg_opa = 240;
+/* Was 240 = dark backdrop frame around the AI widget. Set to 0 so the
+   styled skai_widget pill (Liquid Glass aesthetic) sits cleanly over the
+   list without a darker enclosing rectangle. */
+static uint16_t ai_bg_opa = 0;
 static void ai_tileview_event_cb(lv_event_t *evt)
 {
     lv_obj_t *obj = lv_event_get_target(evt);
@@ -2148,6 +2510,14 @@ static void ai_tileview_event_cb(lv_event_t *evt)
         rt_uint32_t active_pos = (rt_uint32_t)lv_event_get_param(evt);
         if (active_pos == 0)
         {
+            /* Skip close path if we're inside our own animated open —
+               this VALUE_CHANGED is the settle of animate_open_ai_widget's
+               tile 1→0 anim, not a user dismissal. */
+            if (s_programmatic_open_in_progress)
+            {
+                s_programmatic_open_in_progress = false;
+                break;
+            }
             // is_open_instruction_list_ai = false;
             voice_provider.stop_v2t();
             stop_voice_recognition(V2T_INTENT_NOTHING);
@@ -2512,6 +2882,24 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
 
 static rt_tick_t s_last_refresh_tick = 0;
 static lv_timer_t *s_pending_refresh_timer = NULL;
+/* s_in_refresh_scroll is declared earlier in the file (near the forward
+   decls for list_window_scroll_event_cb) so the scroll handler can read
+   it. It is set true for the duration of refresh_custom_instructions(). */
+/* Set by external callers (e.g. voice_say MSH demo) to make the next
+   refresh_custom_instructions auto-scroll to the newly added last item
+   so the user sees the addition without manually scrolling. */
+static bool s_force_scroll_to_last = false;
+/* When set, refresh_custom_instructions overrides the indicator-dot input
+   value so the dots span the BOTTOM half of the arc (angles 0..+72°) with
+   the newest item at angle +72°. Without this, the natural "selected=last"
+   layout places dots in the TOP half (angles -72..0°), which users
+   intuitively read as "scrolled to the top of the list". */
+static bool s_force_visual_at_bottom = false;
+void instruction_list_force_scroll_to_last(void)
+{
+    s_force_scroll_to_last = true;
+    s_force_visual_at_bottom = true;
+}
 
 static void deferred_refresh_cb(lv_timer_t *t)
 {
@@ -2529,6 +2917,21 @@ void refresh_custom_instructions(void)
     if (p_instruction_list_layout == NULL ||
         p_instruction_list_layout->list == NULL)
         return;
+
+    /* Gate scroll-to-fade: scroll events fired inside this function are
+       programmatic and must NOT dismiss the AI widget. */
+    s_in_refresh_scroll = true;
+
+    /* Founder direction 2026-05-19: every list update lands on the newest
+       (last) item. Previously the s_force_scroll_to_last gate had to be
+       opted in per-caller (instruction_list_force_scroll_to_last); now
+       refresh itself flips it so single-item upserts (0x65), batch
+       replace-all (0x6B), voice_say, and the mock cycler all converge
+       on the same UX — newest at the focus / centre. The other two
+       branches further down (saved_selected out of range, restore prior
+       position) become dead but I leave them so callers that DO want
+       to preserve position can clear the flag before refresh. */
+    s_force_scroll_to_last = true;
 
     LOG_I("Refreshing custom instructions...");
     /* Trailing-edge debounce: within 500ms, skip the immediate run but
@@ -2627,7 +3030,34 @@ void refresh_custom_instructions(void)
 
     /* Restore scroll position */
     old_selected_item_index = (uint16_t)-1;
-    if (saved_selected >= list_item_count && list_item_count > 0)
+    if (s_force_scroll_to_last && list_item_count > 0)
+    {
+        /* Voice-say flow: scroll so the LAST (newest) item becomes the
+           focused/centered one. LV_ANIM_OFF makes the scroll settle
+           synchronously — important because scroll_list() below reads
+           child coords, and with ANIM_ON the items would still be at
+           their pre-scroll positions, yielding wrong dot placement. */
+        s_force_scroll_to_last = false;
+        uint16_t target = list_item_count - 1;
+        app_scroll_target_item = target;
+        selected_item_index = target;
+        lv_obj_t *child = lv_obj_get_child(list, target);
+        if (child && lv_obj_is_valid(child))
+            lv_obj_scroll_to_view(child, LV_ANIM_OFF);
+        lv_obj_update_layout(list);
+        scroll_list(list, 0);
+        /* scroll_list() reassigns selected_item_index to whichever item is
+           closest to screen y-center; when the list scroll didn't land
+           exactly on the target (LVGL scroll-to-view doesn't always
+           perfectly center for short lists), the wrong item becomes
+           selected. Re-assert so the label/highlight points to the
+           newly-spoken item. */
+        selected_item_index = target;
+        app_scroll_target_item = target;
+        LOG_I("[VOICE] re-asserted selected_item_index=%u (list_item_count=%u)",
+              (unsigned)target, (unsigned)list_item_count);
+    }
+    else if (saved_selected >= list_item_count && list_item_count > 0)
     {
         /* Selected item was removed — scroll to new last item */
         uint16_t target = list_item_count - 1;
@@ -2648,7 +3078,13 @@ void refresh_custom_instructions(void)
     }
 
     /* Recalculate input_value for indicator dots based on current
-     * selected_item_index */
+     * selected_item_index. With selected=N-1 (last item after voice_say),
+     * input_val resolves to 37 → the new item sits at angle 0° (right-mid,
+     * y=233), naturally above the pill at y=296+. Older items appear at
+     * negative angles (above center). This is the "selected at center,
+     * older above" arc convention, which avoids hiding the new item
+     * behind the AI widget pill. */
+    s_force_visual_at_bottom = false; /* unused now; reset for safety */
     if (list_item_count > 0)
     {
         float total_range = 100.0f * list_item_count;
@@ -2670,6 +3106,7 @@ void refresh_custom_instructions(void)
                                   list_item_count);
     }
     LOG_D("refresh_custom_instructions: %d items total", list_item_count);
+    s_in_refresh_scroll = false;
 }
 
 void update_instruction_image(const char *id, const char *path)
@@ -3011,48 +3448,58 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     // lv_obj_add_flag(ai_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_clear_flag(ai_bar, LV_OBJ_FLAG_PRESS_LOCK);
 
-    /* Bottom-center "add instruction" button: 100x70 pill, plus icon, taps
-       phone-side create-instruction flow */
-    /* Bottom-center "add instruction" button: 50x35 pill, 32x32 plus icon,
-       taps phone-side create-instruction flow */
-    lv_obj_t *add_inst_btn = lv_obj_create(p_instruction_list_bg);
-    lv_obj_set_size(add_inst_btn, 70, 50);
-    lv_obj_set_style_radius(add_inst_btn, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(add_inst_btn, lv_color_hex(0xE3E3E3), 0);
-    lv_obj_set_style_bg_opa(add_inst_btn, LV_OPA_50, 0);
-    lv_obj_set_style_border_width(add_inst_btn, 0, 0);
-    lv_obj_set_style_pad_all(add_inst_btn, 0, 0);
-    lv_obj_align(add_inst_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
-    lv_obj_clear_flag(add_inst_btn, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(add_inst_btn, add_instruction_btn_event_cb,
-                        LV_EVENT_CLICKED, NULL);
-    lv_obj_t *add_inst_img = lv_img_create(add_inst_btn);
-    lv_img_set_src(add_inst_img, &plus);
-    lv_img_set_zoom(add_inst_img, 128); /* plus.png is 64x64 → render at 32x32 */
-    lv_obj_align(add_inst_img, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_clear_flag(add_inst_img, LV_OBJ_FLAG_CLICKABLE);
+    /* The bottom-center "+" add-instruction button has been removed — the
+       mic-bar voice trigger now owns the bottom-center affordance slot. The
+       phone-side create-instruction flow remains available; can be re-added
+       to a different location (e.g. settings) if user-facing entry is needed.
 
+    [removed: add_inst_btn block — see git blame for prior 70x50 plus pill] */
+
+    /* Bottom mic bar — permanent voice-input affordance. Click opens the AI
+       widget the same way the release IMU gesture does. Explicitly hidden
+       when AI widget is open (its trigger role is done; the AI widget's own
+       voice button takes over). */
+    lv_obj_t *mic_bar = lv_obj_create(p_instruction_list_bg);
+    p_instruction_list_layout->mic_bar = mic_bar;
+    lv_obj_set_size(mic_bar, 240, 50);
+    lv_obj_align(mic_bar, LV_ALIGN_BOTTOM_MID, 0, -75);
+    lv_obj_set_style_bg_color(mic_bar, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(mic_bar, LV_OPA_50, 0);
+    lv_obj_set_style_radius(mic_bar, 25, 0);
+    lv_obj_set_style_border_width(mic_bar, 0, 0);
+    lv_obj_set_style_pad_all(mic_bar, 0, 0);
+    lv_obj_clear_flag(mic_bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(mic_bar, mic_bar_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *mic_bar_icon = lv_img_create(mic_bar);
+    lv_img_set_src(mic_bar_icon, &icon_mic);
+    lv_obj_align(mic_bar_icon, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(mic_bar_icon, LV_OBJ_FLAG_CLICKABLE);
+
+    /* AI widget docks BELOW the instruction list — only occupies the bottom
+       strip. Sized to host the native message_widget_bg image (442x252)
+       which becomes the pill's visual border/background. */
+    #define AI_BG_STRIP_H 260
     p_instruction_list_layout->p_instruction_list_ai_bg =
         lv_tileview_create(p_instruction_list_bg);
     lv_obj_set_scrollbar_mode(
         p_instruction_list_layout->p_instruction_list_ai_bg,
         LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_size(p_instruction_list_layout->p_instruction_list_ai_bg,
-                    LV_HOR_RES, LV_VER_RES);
+                    LV_HOR_RES, AI_BG_STRIP_H);
     lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
                             LV_OPA_0, 0);
     lv_obj_align(p_instruction_list_layout->p_instruction_list_ai_bg,
-                 LV_ALIGN_CENTER, 0, 0);
+                 LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_t *home_page = lv_tileview_add_tile(
         p_instruction_list_layout->p_instruction_list_ai_bg, 1, 0, LV_DIR_HOR);
-    lv_obj_set_size(home_page, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_size(home_page, LV_HOR_RES, AI_BG_STRIP_H);
     // lv_obj_set_style_bg_color(home_page, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_bg_opa(home_page, LV_OPA_0, 0);
     lv_obj_add_event_cb(home_page, home_tileview_event_cb, LV_EVENT_RELEASED,
                         NULL);
     lv_obj_t *ai_page = lv_tileview_add_tile(
         p_instruction_list_layout->p_instruction_list_ai_bg, 0, 0, LV_DIR_HOR);
-    lv_obj_set_size(ai_page, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_size(ai_page, LV_HOR_RES, AI_BG_STRIP_H);
     lv_obj_set_style_bg_opa(ai_page, LV_OPA_0, 0);
     /* Stop vertical scroll from chaining up to the app_list_tileview
        (which would slide to the app grid). The AI widget should only scroll
@@ -3075,18 +3522,45 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 
     extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
     lv_obj_t *skai_widget = lv_skai_widget_builder(ai_page);
-    lv_obj_align(skai_widget, LV_ALIGN_CENTER, 0, 0);
+    s_skai_widget = skai_widget;
+    /* Pill structure: transparent container sized to the native
+       message_widget_bg image (442x252). The image child supplies the
+       visual border + rounded shape — matches the production Skaiwalk
+       look on real hardware, where LVGL's border-style stroke is too
+       thin to render. */
+    lv_obj_set_size(skai_widget, 442, 252);
+    lv_obj_align(skai_widget, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_obj_set_style_bg_opa(skai_widget, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(skai_widget, 0, 0);
+    lv_obj_set_style_pad_all(skai_widget, 0, 0);
+    /* Background image — gives the pill its visible border + shape. */
+    s_pill_bg_img = lv_img_create(skai_widget);
+    lv_obj_align(s_pill_bg_img, LV_ALIGN_CENTER, 0, 0);
+    lv_img_set_src(s_pill_bg_img, &message_widget_bg);
+    lv_obj_clear_flag(s_pill_bg_img, LV_OBJ_FLAG_CLICKABLE);
+    /* Transcript label — sits over the bg image, displays the spoken text. */
+    s_voice_transcript_label = lv_label_create(skai_widget);
+    lv_label_set_text(s_voice_transcript_label, "");
+    lv_obj_set_width(s_voice_transcript_label, 360);
+    lv_label_set_long_mode(s_voice_transcript_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(s_voice_transcript_label, lv_color_white(), 0);
+    lv_obj_set_style_text_opa(s_voice_transcript_label, LV_OPA_80, 0);
+    lv_obj_set_style_text_align(s_voice_transcript_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(s_voice_transcript_label, LV_ALIGN_TOP_MID, 0, 60);
 
-    /* Voice indicator button — replaces ai_hint at bottom center */
+    /* Voice indicator button — replaces ai_hint at bottom center.
+       Lifted up by 25px so it sits visually inside the wrapping skai_widget
+       pill instead of overhanging its bottom edge. */
     ai_voice_btn = lv_obj_create(ai_page);
     lv_obj_set_size(ai_voice_btn, 62, 62);
     lv_obj_set_style_radius(ai_voice_btn, 31, 0);
     lv_obj_set_style_bg_color(ai_voice_btn, lv_color_hex(0x00AAFF), 0);
     lv_obj_set_style_bg_opa(ai_voice_btn, LV_OPA_10, 0);
-    lv_obj_align(ai_voice_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_align(ai_voice_btn, LV_ALIGN_BOTTOM_MID, 0, -5);
     lv_obj_add_event_cb(ai_voice_btn, logo_click_event_cb, LV_EVENT_CLICKED,
                         NULL);
     lv_obj_t *ai_voice_img = lv_img_create(ai_voice_btn);
+    s_voice_img = ai_voice_img;
     lv_img_set_src(ai_voice_img, &voice_group);
     lv_obj_align(ai_voice_img, LV_ALIGN_CENTER, 0, 0);
     ai_voice_send_icon = lv_img_create(ai_voice_btn);
@@ -3353,6 +3827,10 @@ rt_int32_t instruction_list_pause(void)
     }
     pause_instruction_list = true;
     set_paused_control_with_arm(true);
+    /* Leaving the instruction_list page ends the SKAIBAR option-tracking
+       session. Phone-side highlight stops following watch scroll until
+       the user re-enters this page and taps the mic bar again. */
+    s_skaibar_tracking_active = false;
     LOG_I("instruction_list_pause");
     if (gui_app_is_actived("Main"))
     {

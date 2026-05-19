@@ -124,6 +124,17 @@ static struct rt_event voice_recog_event;
 static bool voice2TextStatus = false;
 static uint8_t voice2TextIntent = V2T_INTENT_NOTHING;
 
+/* One-shot override for the next VOICE_RECOGNITION_START handler. See
+   bloc_v2t.h doc. Default V2T_INTENT_CHAT matches the historical
+   hardcoded value, so existing call sites that don't set this behave
+   unchanged. */
+static uint8_t pending_v2t_start_intent = V2T_INTENT_CHAT;
+
+void voice_set_pending_v2t_intent(uint8_t intent)
+{
+    pending_v2t_start_intent = intent;
+}
+
 /* ========== 語音辨識自動停止邏輯區塊 ========== */
 static uint32_t last_vad_trigger_tick = 0;
 /* Debounce timer for checking if user is speaking */
@@ -1155,7 +1166,13 @@ void voice_recognition_entry(void *parameter)
                 lvgl_msg_handler.handle_vad_status = is_on_speech_input;
 
                 vad_init();
-                start_voice_recognition(V2T_INTENT_CHAT);
+                /* Use whatever pending_v2t_start_intent the caller set
+                   before voice_provider.start_v2t() (default CHAT).
+                   Reset to CHAT immediately so the next callsite that
+                   didn't override gets the historical default. */
+                uint8_t this_start_intent = pending_v2t_start_intent;
+                pending_v2t_start_intent = V2T_INTENT_CHAT;
+                start_voice_recognition(this_start_intent);
 
                 is_voice_recognition_notified = false;
                 last_vad_trigger_tick = rt_tick_get();

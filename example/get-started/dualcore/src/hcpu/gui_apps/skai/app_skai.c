@@ -282,7 +282,11 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
     lv_obj_clear_flag(skai_widget_bg, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
 
     skai_widget_input_text_bg = lv_obj_create(skai_widget_bg);
-    lv_obj_set_size(skai_widget_input_text_bg, 430, 250);
+    /* Was 250 — but reset_skai_widget_input_text() snaps to 150 on every
+       session reset, and the dynamic grow path that justified the larger
+       initial size has been retired. Start at 150 so the first reveal
+       matches every subsequent reset. */
+    lv_obj_set_size(skai_widget_input_text_bg, 430, 150);
     lv_obj_align(skai_widget_input_text_bg, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(skai_widget_input_text_bg, lv_color_hex(0xFFFFFF),
                               0);
@@ -301,7 +305,12 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
     lv_label_set_long_mode(skai_widget_input_text, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(skai_widget_input_text, 380);
     lv_obj_set_style_text_color(skai_widget_input_text, lv_color_white(), 0);
-    lv_obj_align(skai_widget_input_text, LV_ALIGN_CENTER, 0, 0);
+    /* Top-aligned per founder direction 2026-05-19: when transcribed text
+       grows from 1 line to multiple lines, top-anchor keeps the first line
+       fixed instead of centring (which would bounce the text upward each
+       new line). 10 px padding from the bg top so the label has breathing
+       room from the pill border. */
+    lv_obj_align(skai_widget_input_text, LV_ALIGN_TOP_MID, 0, 10);
 
     skai_widget_input_prompt = lv_label_create(skai_widget_input_text_bg);
     lv_label_set_text(skai_widget_input_prompt, "聽取中");
@@ -311,7 +320,9 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_0, 0);
     lv_obj_set_width(skai_widget_input_prompt, 380);
     lv_obj_set_style_text_color(skai_widget_input_prompt, lv_color_white(), 0);
-    lv_obj_align(skai_widget_input_prompt, LV_ALIGN_CENTER, 10, 0);
+    /* Match the user-text label's top-mid anchor so the placeholder and
+       the transcribed text share the same starting baseline. */
+    lv_obj_align(skai_widget_input_prompt, LV_ALIGN_TOP_MID, 10, 10);
 
     /* AI reply label — positioned below the input bg.
        Narrower width (340) so text fits in the visible area of the 466-circle
@@ -639,29 +650,14 @@ void set_skai_widget_input_text(const char *text)
         lv_obj_is_valid(skai_widget_input_text))
     {
         lv_label_set_text(skai_widget_input_text, text);
-        lv_obj_update_layout(skai_widget_input_text);
-        // 取得文字高度，並根據內容調整背景高度
-        lv_coord_t label_height = lv_obj_get_height(skai_widget_input_text);
-        lv_coord_t min_height = 150; // 最小高度
-        lv_coord_t padding = 20;     // 上下留白
-        lv_coord_t new_height = label_height + padding;
-        if (new_height < min_height)
-            new_height = min_height;
-        lv_obj_set_height(skai_widget_input_text_bg, new_height);
-
-        // 重新對齊按鈕位置
-        // if (skai_widget_note_button != NULL &&
-        // lv_obj_is_valid(skai_widget_note_button))
-        // {
-        //     lv_obj_align_to(skai_widget_note_button,
-        //     skai_widget_input_text_bg, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 10);
-        // }
-        // if (skai_widget_ai_button != NULL &&
-        // lv_obj_is_valid(skai_widget_ai_button))
-        // {
-        //     lv_obj_align_to(skai_widget_ai_button, skai_widget_input_text_bg,
-        //     LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 10);
-        // }
+        /* Dynamic bg-height resize retired: skai_widget_input_text_bg is
+           LV_ALIGN_CENTER inside its parent, so growing its height pushed
+           the bottom edge down (and the top up) every time the user spoke
+           a longer phrase — the input box visibly "ran down" the screen.
+           Keep height fixed at the initial 150 px and rely on
+           LV_LABEL_LONG_WRAP for multi-line text. Phrases longer than the
+           box clip; short voice inputs (the common case) sit cleanly in
+           a static frame. */
     }
 }
 
@@ -697,106 +693,40 @@ void reset_skai_widget_input_text(void)
    us show a placeholder that the first chunk replaces. */
 static bool skai_widget_awaiting_first_chunk = false;
 
-/* Update the placeholder text with the AI's current action (sent via
-   KEY_AI_PROCESS_TOOLKIT). Only affects the widget while we're waiting for
-   the first AI reply chunk; after real text starts arriving this is a no-op
-   so the streamed reply isn't overwritten. */
+/* AI-reply-in-pill feature retired: founder direction is that the
+   instruction-list AI widget only shows the user's spoken text, not the
+   AI's reply. The functions below stay as no-ops so existing call sites
+   (ui_handler.c streaming hook, KEY_AI_PROCESS_TOOLKIT toolkit-progress
+   pushes, lv_instruction_list_layout.c re-ask branch) compile and link
+   without a churn pass through every caller. The auto-scroll-to-bottom
+   in the old append went with it; with nothing being appended, the
+   scroller never moves. The skai_widget_ai_reply LVGL object is left
+   created in lv_skai_widget_builder but stays hidden + empty forever. */
 void set_skai_widget_processing_text(const char *text)
 {
-    if (text == NULL || skai_widget_ai_reply == NULL ||
-        !lv_obj_is_valid(skai_widget_ai_reply))
-    {
-        return;
-    }
-    if (!skai_widget_awaiting_first_chunk)
-    {
-        return;
-    }
-    lv_label_set_text(skai_widget_ai_reply, text);
-    if (lv_obj_has_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN))
-    {
-        lv_obj_clear_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
-    }
-    lv_obj_align_to(skai_widget_ai_reply, skai_widget_input_text_bg,
-                    LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-    lv_obj_update_layout(skai_widget_ai_reply);
+    (void)text;
 }
 
-/* Show "AI processing..." below the input box so the user gets immediate feedback
-   after tapping send. Replaced by the real reply on the first chunk. */
-void set_skai_widget_awaiting_ai(void)
-{
-    if (skai_widget_ai_reply == NULL ||
-        !lv_obj_is_valid(skai_widget_ai_reply))
-    {
-        return;
-    }
-    skai_widget_awaiting_first_chunk = true;
-    lv_label_set_text(skai_widget_ai_reply, "AI processing...");
-    if (lv_obj_has_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN))
-    {
-        lv_obj_clear_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
-    }
-    lv_obj_align_to(skai_widget_ai_reply, skai_widget_input_text_bg,
-                    LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-}
+void set_skai_widget_awaiting_ai(void) {}
 
-/* Append streamed AI reply text under the input box. */
 void append_skai_widget_ai_reply(const char *text)
 {
-    if (skai_widget_ai_reply == NULL ||
-        !lv_obj_is_valid(skai_widget_ai_reply) || text == NULL)
-    {
-        return;
-    }
-    if (lv_obj_has_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN))
-    {
-        lv_obj_clear_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
-    }
-    /* First real chunk replaces the "AI processing..." placeholder. */
-    if (skai_widget_awaiting_first_chunk)
-    {
-        lv_label_set_text(skai_widget_ai_reply, "");
-        skai_widget_awaiting_first_chunk = false;
-    }
-    const char *current = lv_label_get_text(skai_widget_ai_reply);
-    size_t cur_len = current ? strlen(current) : 0;
-    size_t combined_len = cur_len + strlen(text) + 1;
-    char *combined = (char *)rt_malloc(combined_len);
-    if (combined == NULL)
-        return;
-    if (cur_len > 0)
-        strcpy(combined, current);
-    else
-        combined[0] = '\0';
-    strcat(combined, text);
-    lv_label_set_text(skai_widget_ai_reply, combined);
-    rt_free(combined);
-
-    lv_obj_align_to(skai_widget_ai_reply, skai_widget_input_text_bg,
-                    LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-    lv_obj_update_layout(skai_widget_ai_reply);
-
-    /* Auto-scroll to the latest line like the old voice_recognition page
-       did (lv_obj_scroll_to_y on speech_bg with a large y). */
-    if (skai_widget_bg_scroller != NULL &&
-        lv_obj_is_valid(skai_widget_bg_scroller))
-    {
-        lv_obj_scroll_to_y(skai_widget_bg_scroller, 10000, LV_ANIM_ON);
-    }
+    (void)text;
 }
 
-/* Clear AI reply; called when user wants to ask again. */
+/* Still called from close_ai_widget / logo_click re-ask path. Keep the
+   placeholder-flag reset so the (now no-op) awaiting flag never lingers
+   true across sessions, and keep the scroll reset so any earlier scroll
+   from this session (e.g. user-driven) doesn't carry into the next. */
 void clear_skai_widget_ai_reply(void)
 {
     skai_widget_awaiting_first_chunk = false;
-    if (skai_widget_ai_reply == NULL ||
-        !lv_obj_is_valid(skai_widget_ai_reply))
+    if (skai_widget_ai_reply != NULL &&
+        lv_obj_is_valid(skai_widget_ai_reply))
     {
-        return;
+        lv_label_set_text(skai_widget_ai_reply, "");
+        lv_obj_add_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
     }
-    lv_label_set_text(skai_widget_ai_reply, "");
-    lv_obj_add_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
     if (skai_widget_bg_scroller != NULL &&
         lv_obj_is_valid(skai_widget_bg_scroller))
     {
@@ -804,18 +734,11 @@ void clear_skai_widget_ai_reply(void)
     }
 }
 
-bool skai_widget_has_ai_reply(void)
-{
-    if (skai_widget_ai_reply == NULL ||
-        !lv_obj_is_valid(skai_widget_ai_reply))
-    {
-        return false;
-    }
-    if (lv_obj_has_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN))
-        return false;
-    const char *current = lv_label_get_text(skai_widget_ai_reply);
-    return current != NULL && current[0] != '\0';
-}
+/* Always false now: there is no AI-reply state to be in. The re-ask
+   branch in logo_click_event_cb (lv_instruction_list_layout.c) becomes
+   unreachable, which matches the new flow — mic button always restarts
+   v2t, never resumes a prior reply. */
+bool skai_widget_has_ai_reply(void) { return false; }
 
 rt_int32_t speech_on_resume(void)
 {

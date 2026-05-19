@@ -1,0 +1,3 @@
+touch_swipe 50 233 400 233 250
+sim_skai_open
+sim_voice_say short test phrase

@@ -1,0 +1,3 @@
+touch_swipe 50 233 400 233 250
+sim_skai_open
+sim_voice_say this is a very long phrase that should wrap onto multiple lines and previously would have made the input box grow taller pushing its bottom edge further down on screen

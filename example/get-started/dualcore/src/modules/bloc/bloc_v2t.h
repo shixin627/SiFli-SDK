@@ -54,6 +54,23 @@ extern "C"
 
 	extern void start_voice_recognition(uint8_t intent);
 	extern void stop_voice_recognition(uint8_t intent);
+
+	/* One-shot override for the intent passed to start_voice_recognition()
+	   inside voice_recognition_entry's VOICE_RECOGNITION_START handler.
+	   The handler hardcodes V2T_INTENT_CHAT — callers that need a
+	   different intent (e.g. instruction_list AI widget wanting
+	   V2T_INTENT_SKAIBAR) set this before voice_provider.start_v2t().
+	   Resets to V2T_INTENT_CHAT after each START handler runs, so a
+	   subsequent caller that didn't override gets the default. */
+	extern void voice_set_pending_v2t_intent(uint8_t intent);
+
+	/* Re-entry gate for VOICE_RECOGNITION_START. Set true inside the
+	   event task's START handler, cleared inside AUTO_STOP / STOP. The
+	   STOP branch can be skipped if AI is still processing the prior
+	   utterance, so callers that force-close mid-AI-processing (e.g.
+	   close_ai_widget) must clear it directly to keep the next START
+	   tap from being short-circuited. */
+	extern void set_voice_recognition_started(bool started);
 	extern void reset_speech_coding(void);
 	extern uint8_t get_speech_coding(void);
 	extern void count_speech_coding(void);

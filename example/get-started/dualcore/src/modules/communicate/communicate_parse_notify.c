@@ -52,6 +52,77 @@ extern void request_instruction_image(const char *id);
 extern void update_instruction_image(const char *id, const char *path);
 extern void remove_custom_instruction(const char *id);
 
+/* Pull one instruction JSON object into the watch list and ensure the
+   image asset exists locally (requesting it from the phone if not). Used
+   by both the single-item 0x65 path and the batch 0x6B path; refactored
+   out so the two stay byte-for-byte consistent. Returns true if the
+   object had a usable id+title pair. */
+static bool apply_one_instruction_obj(cJSON *root)
+{
+    if (!root)
+        return false;
+
+    cJSON *j_id = cJSON_GetObjectItem(root, "id");
+    cJSON *j_title = cJSON_GetObjectItem(root, "title");
+    cJSON *j_trigger = cJSON_GetObjectItem(root, "trigger");
+
+    const char *id = cJSON_IsString(j_id) ? j_id->valuestring : "";
+    const char *title = cJSON_IsString(j_title) ? j_title->valuestring : "";
+    const char *trigger_type = "";
+    LOG_D("Applying instruction: id=%s, title=%s", id, title);
+    uint32_t interval_sec = 0;
+
+    if (j_trigger)
+    {
+        cJSON *j_type = cJSON_GetObjectItem(j_trigger, "type");
+        if (cJSON_IsString(j_type))
+        {
+            trigger_type = j_type->valuestring;
+            if (strcmp(trigger_type, "interval") == 0)
+            {
+                cJSON *j_sec = cJSON_GetObjectItem(j_trigger,
+                                                   "intervalSeconds");
+                if (cJSON_IsNumber(j_sec))
+                    interval_sec = (uint32_t)j_sec->valuedouble;
+            }
+        }
+    }
+
+    uint32_t version = 0;
+    cJSON *j_version = cJSON_GetObjectItem(root, "version");
+    if (cJSON_IsNumber(j_version))
+        version = (uint32_t)j_version->valuedouble;
+
+    bool enabled = false;
+    cJSON *j_enabled = cJSON_GetObjectItem(root, "enabled");
+    if (cJSON_IsBool(j_enabled))
+        enabled = cJSON_IsTrue(j_enabled);
+
+    add_or_update_custom_instruction(id, title, trigger_type,
+                                     interval_sec, enabled, version);
+
+    if (id[0] != '\0')
+    {
+        char id_prefix[64];
+        strncpy(id_prefix, id, sizeof(id_prefix) - 1);
+        id_prefix[sizeof(id_prefix) - 1] = '\0';
+        char *dash = strchr(id_prefix, '-');
+        if (dash)
+            *dash = '\0';
+
+        char img_path[128];
+        rt_snprintf(img_path, sizeof(img_path),
+                    "/assets/images/instruction/%s.bin", id_prefix);
+
+        struct stat st;
+        if (stat(img_path, &st) == 0)
+            update_instruction_image(id, img_path);
+        else
+            request_instruction_image(id);
+    }
+    return true;
+}
+
 /* Defer instruction-list rebuild to LVGL thread.
    This handler runs on KE_EVT2 (BLE kernel-event task, 4KB stack).
    Calling refresh_custom_instructions() directly from here blew the
@@ -439,76 +510,68 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
             cJSON *root = cJSON_Parse((const char *)pValue);
             if (root)
             {
-                cJSON *j_id = cJSON_GetObjectItem(root, "id");
-                cJSON *j_title = cJSON_GetObjectItem(root, "title");
-                cJSON *j_trigger = cJSON_GetObjectItem(root, "trigger");
-
-                const char *id = cJSON_IsString(j_id) ? j_id->valuestring : "";
-                const char *title = cJSON_IsString(j_title) ? j_title->valuestring : "";
-                const char *trigger_type = "";
-                uint32_t interval_sec = 0;
-
-                if (j_trigger)
-                {
-                    cJSON *j_type = cJSON_GetObjectItem(j_trigger, "type");
-                    if (cJSON_IsString(j_type))
-                    {
-                        trigger_type = j_type->valuestring;
-                        if (strcmp(trigger_type, "interval") == 0)
-                        {
-                            cJSON *j_sec = cJSON_GetObjectItem(j_trigger,
-                                                               "intervalSeconds");
-                            if (cJSON_IsNumber(j_sec))
-                                interval_sec = (uint32_t)j_sec->valuedouble;
-                        }
-                    }
-                }
-
-                uint32_t version = 0;
-                cJSON *j_version = cJSON_GetObjectItem(root, "version");
-                if (cJSON_IsNumber(j_version))
-                    version = (uint32_t)j_version->valuedouble;
-
-                bool enabled = false;
-                cJSON *j_enabled = cJSON_GetObjectItem(root, "enabled");
-                if (cJSON_IsBool(j_enabled))
-                    enabled = cJSON_IsTrue(j_enabled);
-
-                add_or_update_custom_instruction(id, title, trigger_type,
-                                                  interval_sec, enabled,
-                                                  version);
-
-                /* Check if instruction image exists, request from phone if not */
-                if (id[0] != '\0')
-                {
-                    char id_prefix[64];
-                    strncpy(id_prefix, id, sizeof(id_prefix) - 1);
-                    id_prefix[sizeof(id_prefix) - 1] = '\0';
-                    char *dash = strchr(id_prefix, '-');
-                    if (dash)
-                        *dash = '\0';
-
-                    char img_path[128];
-                    rt_snprintf(img_path, sizeof(img_path),
-                                "/assets/images/instruction/%s.bin", id_prefix);
-
-                    struct stat st;
-                    if (stat(img_path, &st) == 0)
-                    {
-                        /* Image already exists, set it on the instruction */
-                        update_instruction_image(id, img_path);
-                    }
-                    else
-                    {
-                        /* Image not found, request from phone */
-                        request_instruction_image(id);
-                    }
-                }
-
+                apply_one_instruction_obj(root);
                 defer_refresh_custom_instructions();
                 cJSON_Delete(root);
             }
         }
+        break;
+    }
+
+    case KEY_SKAI_CREATION_INSTRUCTIONS_BATCH:
+    {
+        if (length == 0)
+            break;
+        /* Heap-copy the payload: batch JSON can be several KB and we need
+           a NUL terminator for cJSON_Parse. Mirrors the safe-cstr pattern
+           used for KEY_LOCATION_DATA / KEY_SKAIBAR_OPTIONS but sized to
+           the actual incoming length (no fixed stack cap). */
+        char *json_buf = (char *)rt_malloc((size_t)length + 1);
+        if (json_buf == RT_NULL)
+        {
+            LOG_E("BATCH instructions: rt_malloc(%u) failed", length + 1);
+            break;
+        }
+        memcpy(json_buf, pValue, length);
+        json_buf[length] = '\0';
+
+        cJSON *root = cJSON_Parse(json_buf);
+        if (!root || !cJSON_IsArray(root))
+        {
+            LOG_W("BATCH instructions: payload is not a JSON array");
+            if (root)
+                cJSON_Delete(root);
+            rt_free(json_buf);
+            break;
+        }
+
+        int incoming = cJSON_GetArraySize(root);
+        LOG_I("BATCH instructions: replacing custom list with %d item(s)",
+              incoming);
+
+        /* Replace-all semantics: clear before appending so removed items
+           on the phone side actually disappear on the watch. App items
+           (clock / weather / ai / ...) at indices < app_base_count are
+           preserved by clear_custom_instructions(). */
+        clear_custom_instructions();
+
+        int applied = 0;
+        cJSON *item;
+        cJSON_ArrayForEach(item, root)
+        {
+            /* add_or_update_custom_instruction itself bounds-checks
+               against MAX_LIST_ITEMS, so excess items are silently
+               dropped per the agreed truncation policy. Log how many
+               we kept so the phone can correlate. */
+            if (apply_one_instruction_obj(item))
+                applied++;
+        }
+        LOG_I("BATCH instructions: %d of %d item(s) applied",
+              applied, incoming);
+
+        defer_refresh_custom_instructions();
+        cJSON_Delete(root);
+        rt_free(json_buf);
         break;
     }
 

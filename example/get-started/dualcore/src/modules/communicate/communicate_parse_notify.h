@@ -90,6 +90,22 @@ extern "C"
 		KEY_SKAIBAR_OPTIONS = 0X68,
 		KEY_SKAIBAR_SELECTED = 0X69,
 		KEY_BATTERY_VOLTAGE = 0X6A,
+		/* watch → PC: 1-byte 0-based index. Fires when the user TAPS an
+		   option (commit / confirm), distinct from KEY_SKAIBAR_SELECTED
+		   which only reports the currently-highlighted option as the
+		   wheel / list scrolls. Phone uses the commit signal to invoke
+		   the option's action; the prior SELECTED stream is just for
+		   keeping the panel highlight in sync. Founder direction
+		   2026-05-19. */
+		KEY_SKAIBAR_COMMITTED = 0X6C,
+		/* Phone → watch: full-list replace of custom instructions in one
+		   BLE message. Payload is a UTF-8 JSON array of the same per-item
+		   object 0x65 carries: [{id,title,trigger,enabled,version}, ...].
+		   Watch clears existing custom instructions, then appends up to
+		   MAX_LIST_ITEMS - app_base_count items (excess silently dropped),
+		   and fires a single deferred UI rebuild. Saves the per-item
+		   200 ms BLE pacing the old per-instruction loop required. */
+		KEY_SKAI_CREATION_INSTRUCTIONS_BATCH = 0X6B,
 	} NOTIFY_KEY;
 
 	void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length);
