@@ -650,18 +650,53 @@ void watch_system_sleep(void)
     if (!gui_is_active())
         return;
 
-    if (setting_provider.get_power_save_mode() &&
-#if !kReleaseMode
-        !pause_sleep_cause_of_dev_reson() &&
-#endif
-        !get_motor_status())
+    /* Each gate is its own early return so the log pinpoints exactly why
+     * we did not sleep. last_skip dedups the message: we are called every
+     * 30 ms (see idempotency note above), so without it a persistent
+     * reason -- e.g. power save off -- would spam the log continuously.
+     * Log only on the first call that hits a given reason. */
+    enum { SKIP_NONE, SKIP_POWER_SAVE, SKIP_DEV_PAUSE, SKIP_MOTOR };
+    static int last_skip = SKIP_NONE;
+
+    if (!setting_provider.get_power_save_mode())
     {
-        LOG_D("Entering sleep mode");
-        peripheral_provider.hcpu_suspend();
-        gui_pm_fsm(GUI_PM_ACTION_SLEEP);
-        skaiwatch_ble_set_performance(BLE_PERF_SLOW);
-        stop_ble_rssi_checker();
+        if (last_skip != SKIP_POWER_SAVE)
+        {
+            LOG_D("Sleep skipped: power save mode off");
+            last_skip = SKIP_POWER_SAVE;
+        }
+        return;
     }
+
+#if !kReleaseMode
+    if (pause_sleep_cause_of_dev_reson())
+    {
+        if (last_skip != SKIP_DEV_PAUSE)
+        {
+            LOG_D("Sleep skipped: paused for dev reason");
+            last_skip = SKIP_DEV_PAUSE;
+        }
+        return;
+    }
+#endif
+
+    if (get_motor_status())
+    {
+        if (last_skip != SKIP_MOTOR)
+        {
+            LOG_D("Sleep skipped: motor active");
+            last_skip = SKIP_MOTOR;
+        }
+        return;
+    }
+
+    last_skip = SKIP_NONE;
+
+    LOG_D("Entering sleep mode");
+    peripheral_provider.hcpu_suspend();
+    gui_pm_fsm(GUI_PM_ACTION_SLEEP);
+    skaiwatch_ble_set_performance(BLE_PERF_SLOW);
+    stop_ble_rssi_checker();
 }
 
 #if !kReleaseMode
