@@ -93,9 +93,16 @@ typedef struct
     bool        mouse_created;  /* hid_mouse_create has run (mouse mode active) */
     bool        dragging;       /* handle drag in progress */
     lv_coord_t  drag_start_y;   /* finger y at drag start */
+
+    /* skaibar voice input → peer-device options */
+    lv_obj_t   *skaibar_input;  /* bottom input box (shown on mic tap) */
+    lv_obj_t   *skaibar_label;  /* transcript text inside the input box */
+    bool        skaibar_active; /* input box open */
 } device_pager_t;
 
 static device_pager_t *p = NULL;
+
+static void mic_clicked_cb(lv_event_t *e); /* defined below (skaibar section) */
 
 /* Fake per-device items until real per-device instruction sets arrive. */
 static void fake_items(dev_page_t *d)
@@ -364,6 +371,8 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
     lv_obj_set_style_border_width(u->mic_bar, 0, 0);
     lv_obj_set_style_pad_all(u->mic_bar, 0, 0);
     lv_obj_clear_flag(u->mic_bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(u->mic_bar, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(u->mic_bar, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *mic_icon = lv_img_create(u->mic_bar);
     lv_img_set_src(mic_icon, &icon_mic);
     lv_obj_align(mic_icon, LV_ALIGN_CENTER, 0, 0);
@@ -448,6 +457,11 @@ static void mouse_layer_end(void)
 
 static void mouse_open(void)   /* snap fully open: panel off the bottom */
 {
+    if (p->skaibar_input)
+    {
+        lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+        p->skaibar_active = false;
+    }
     mouse_layer_begin();
     set_panel_offset(LV_VER_RES);
 }
@@ -501,6 +515,64 @@ static void handle_drag_cb(lv_event_t *e)
         if (dy >= MOUSE_OPEN_THRESHOLD) mouse_open();
         else                            mouse_close();
     }
+}
+
+/* ---- skaibar voice input -> peer-device options ---------------------- */
+/* Tapping the mic opens the skaibar input box. We deliberately DO NOT start
+   the watch's real voice recognition here (it hangs the PC sim); the
+   "voice -> text" transcript and the "device returned options" both arrive via
+   the pager_say / pager_options MSH commands (fake data). The returned options
+   replace the instruction titles shown above for the current device. */
+
+static void skaibar_open(void)
+{
+    if (!p || !p->skaibar_input) return;
+    lv_label_set_text(p->skaibar_label, "Listening...");
+    lv_obj_clear_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+    p->skaibar_active = true;
+    LOG_I("[pager] skaibar opened (mic) -- awaiting transcript (no real ASR)");
+}
+
+static void skaibar_close(void)
+{
+    if (!p || !p->skaibar_input) return;
+    lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+    p->skaibar_active = false;
+}
+
+static void mic_clicked_cb(lv_event_t *e)
+{
+    (void)e;
+    /* Mic = open skaibar input only. No voice-recognition trigger. */
+    if (p && p->skaibar_active) skaibar_close();
+    else                        skaibar_open();
+}
+
+/* Fake "voice -> text": show the transcript in the open input box. */
+void device_pager_skaibar_say(const char *text)
+{
+    if (!p) return;
+    if (!p->skaibar_active) skaibar_open();
+    lv_label_set_text(p->skaibar_label, text ? text : "");
+    LOG_I("[pager] skaibar transcript: \"%s\"", text ? text : "");
+}
+
+/* Fake "peer device returned options": replace the current device's instruction
+   items with these and refresh the titles shown above, then close the input. */
+void device_pager_skaibar_options(int n, const char *const opts[])
+{
+    if (!p || p->count == 0 || n <= 0) return;
+    if (n > MAX_TILE_ITEMS) n = MAX_TILE_ITEMS;
+    dev_page_t *d = &p->model[p->current];
+    d->item_count = (uint8_t)n;
+    for (int i = 0; i < n; i++)
+    {
+        strncpy(d->items[i], opts[i] ? opts[i] : "", sizeof(d->items[0]) - 1);
+        d->items[i][sizeof(d->items[0]) - 1] = '\0';
+    }
+    rebind_all();
+    skaibar_close();
+    LOG_I("[pager] skaibar options applied (%d) to %s", n, d->name);
 }
 
 /* Public: build the pager into a tileview tile (mirrors
@@ -558,6 +630,28 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_set_style_bg_color(grab, lv_color_hex(0x666666), 0);
     lv_obj_set_style_border_width(grab, 0, 0);
     lv_obj_clear_flag(grab, LV_OBJ_FLAG_CLICKABLE);
+
+    /* skaibar input box — shown on mic tap; displays the (fake) voice
+       transcript while the peer device's options are fetched. Hidden until the
+       mic is pressed. Sits above the carousel near the bottom. */
+    p->skaibar_input = lv_obj_create(parent);
+    lv_obj_set_size(p->skaibar_input, LV_PCT(92), 84);
+    lv_obj_align(p->skaibar_input, LV_ALIGN_BOTTOM_MID, 0, -110);
+    lv_obj_set_style_bg_color(p->skaibar_input, lv_color_hex(0x1E1E1E), 0);
+    lv_obj_set_style_bg_opa(p->skaibar_input, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(p->skaibar_input, 18, 0);
+    lv_obj_set_style_border_color(p->skaibar_input, lv_color_hex(0x00AAFF), 0);
+    lv_obj_set_style_border_width(p->skaibar_input, 2, 0);
+    lv_obj_set_style_pad_all(p->skaibar_input, 10, 0);
+    lv_obj_clear_flag(p->skaibar_input, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+    p->skaibar_label = lv_label_create(p->skaibar_input);
+    lv_obj_set_style_text_color(p->skaibar_label, lv_color_white(), 0);
+    lv_obj_set_style_text_align(p->skaibar_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(p->skaibar_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(p->skaibar_label, LV_PCT(100));
+    lv_obj_center(p->skaibar_label);
+    lv_label_set_text(p->skaibar_label, "");
 
     p->empty_label = lv_label_create(parent);
     lv_label_set_text(p->empty_label, "No devices");
