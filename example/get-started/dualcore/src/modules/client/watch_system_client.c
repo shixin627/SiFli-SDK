@@ -344,6 +344,15 @@ static rt_err_t send_watch_sys_msg_with_retry(data_msg_t *msg,
                                               uint32_t retry_delay_ms,
                                               uint8_t max_retries)
 {
+#ifdef BSP_USING_PC_SIMULATOR
+    /* PC sim has no LCPU peer, so every send to the watch-system service fails
+       and then blocks the caller through the mdelay retry loop. Spamming it
+       from gesture handlers (motor haptics on arc-scroll / bottom-bar) starves
+       the GUI thread and takes the sim down. Pretend success and skip the RPC
+       entirely — HCPU reads use cached globals (SkaiWatchSys.*), not replies. */
+    (void)msg; (void)retry_delay_ms; (void)max_retries;
+    return RT_EOK;
+#else
     if (watch_sys_client_handle == DATA_CLIENT_INVALID_HANDLE)
     {
         LOG_E("Watch system client handle is not initialized");
@@ -382,6 +391,7 @@ static rt_err_t send_watch_sys_msg_with_retry(data_msg_t *msg,
     // }
 
     return err;
+#endif /* BSP_USING_PC_SIMULATOR */
 }
 
 /* Build a SYS_DATA_REQ from {cmd, optional body bytes after body[0]} and send

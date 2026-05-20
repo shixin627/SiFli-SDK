@@ -6,7 +6,10 @@ cwd = GetCurrentDir()
 
 # init src and inc vars
 src = []
-inc = []
+# device_pager.c includes hid_mouse.h (sibling dir) for the hosted-mouse
+# component API, and ui_helper.h (../common) for the get_system_font_size /
+# LV_EXT_FONT_GET font idiom shared with lv_instruction_list_layout.
+inc = [cwd + '/../hid_mouse', cwd + '/../common']
 
 src = src + Glob('*.c')
 

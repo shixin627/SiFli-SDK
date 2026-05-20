@@ -96,11 +96,16 @@ void display_status_bar_area(uint32_t idx, bool display)
         LOG_E("Invalid index %d for status bar area", idx);
         return;
     }
+    /* idx 3 = right-edge handle. Repointed from the old device_change_bar zone
+       to status_bar_area_right so the watch-face right-edge pull reveals the
+       device_pager tile (mirrors idx 2 / left instruction_list). The old
+       device_change_bar_area_right stays hidden — hid_mouse still drives it
+       directly via set/get_device_change_bar_area_right_state(). */
     lv_obj_t *status_bar_area_objs[] = {
         status_bar_area_up,
         status_bar_area_down,
         status_bar_area_left,
-        device_change_bar_area_right,
+        status_bar_area_right,
     };
     if (lv_obj_is_valid(status_bar_area_objs[idx]))
     {
@@ -137,6 +142,15 @@ static void notification_status_bar_cb(lv_event_t *event)
     else if (LV_EVENT_PRESSED == event->code)
     {
         LOG_I("notification_status_bar_cb from area: %d", area_id);
+        if (area_id == STATUS_BAR_AREA_RIGHT)
+        {
+            /* Populate device_pager NOW, on touch — before the right tile is
+               dragged into view — so its content follows the finger instead of
+               popping in on release (VALUE_CHANGED only fires on scroll-settle).
+               Also re-reads the latest bonded set on every pull-out. */
+            extern void device_pager_refresh(void);
+            device_pager_refresh();
+        }
         lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
         lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
@@ -152,6 +166,8 @@ static void device_change_bar_cb(lv_event_t *event)
     if (lv_disp_get_rotation(NULL) != LV_DISP_ROT_90 &&
         lv_disp_get_rotation(NULL) != LV_DISP_ROT_270)
     {
+        /* T4: 右緣入口改由錶面 tileview 右 tile 的原生滑動處理；舊 bar 的觸碰區
+           在 init 時已設 HIDDEN，這個 cb 平時不會觸發。保留原邏輯以防被顯示。 */
         if (LV_EVENT_RELEASED == event->code)
         {
             lv_obj_add_flag(app_clock_device_change_bar, LV_OBJ_FLAG_HIDDEN);
@@ -314,6 +330,14 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         }
 
         middle_layer_tileview_index = active_pos;
+        if (active_pos == MAIN_PAGE_TYPE_RIGHT)
+        {
+            /* Right tile pulled into view → re-read the bonded-device set so
+               the device_pager reflects the latest devices (mirrors the LEFT
+               instruction_list refresh on reveal). */
+            extern void device_pager_refresh(void);
+            device_pager_refresh();
+        }
         if (gui_app_is_actived("Main"))
         {
             if (active_pos != 1)
@@ -968,7 +992,8 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     lv_obj_t *status_bar_area;
     // create a invisible object at top of parent, and shown status bar when
     // press it 上下狀態欄的拖動把手
-    for (i = 0; i < 3; i++)
+    // i<4 (was i<3): 加右緣 zone，鏡像左緣 → 右緣拖可拉出 device_pager 右 tile。
+    for (i = 0; i < 4; i++)
     {
         status_bar_area = lv_obj_create(status_bar_bg_main);
         lv_obj_set_scrollbar_mode(status_bar_area, LV_SCROLLBAR_MODE_OFF);
@@ -1009,6 +1034,18 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
             lv_obj_align(status_bar_area, LV_ALIGN_BOTTOM_MID, 0, 0);
             status_bar_area_down = status_bar_area;
         }
+        else if (STATUS_BAR_AREA_RIGHT == i)
+        {
+            /* 鏡像左緣 zone：右緣 58px 把手。press 顯示 tileview(home)，接著往左
+               拖 → 原生 finger-follow 滑到右 tile = device_pager。 */
+            lv_obj_set_size(status_bar_area, (LV_HOR_RES_MAX >> 3),
+                            LV_VER_RES_MAX);
+            lv_obj_set_user_data(status_bar_area, (void *)STATUS_BAR_AREA_RIGHT);
+            lv_obj_add_event_cb(status_bar_area, notification_status_bar_cb,
+                                LV_EVENT_ALL, NULL);
+            lv_obj_align(status_bar_area, LV_ALIGN_RIGHT_MID, 0, 0);
+            status_bar_area_right = status_bar_area;
+        }
     }
 
     app_clock_main_status_bar = lv_tileview_create(status_bar_bg_main);
@@ -1018,7 +1055,8 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     lv_obj_set_style_bg_opa(app_clock_main_status_bar, LV_OPA_TRANSP,
                             LV_PART_MAIN | LV_STATE_DEFAULT);
     // 0: down, 1: home, 2: up, 3: left, 4: right
-    for (i = 0; i < 4; i++)
+    // i<5 (was i<4): 也建右 tile (2,1) 給 device_pager（鏡像左側 instruction_list）。
+    for (i = 0; i < 5; i++)
     {
         if (i == MAIN_PAGE_TYPE_HOME)
         {
@@ -1062,8 +1100,11 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
             }
             else if (i == MAIN_PAGE_TYPE_RIGHT)
             {
+                /* 右 tile (2,1)：LV_DIR_LEFT = 從這裡往左滑回 home（修掉原本
+                   死碼的 LV_DIR_VER）。home 是 LV_DIR_ALL，所以從錶面往右滑
+                   就能拉出這個 device_pager tile（原生 finger-follow）。 */
                 pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 2, 1,
-                                                LV_DIR_VER);
+                                                LV_DIR_LEFT);
             }
             if (!test_mode)
             {
@@ -1111,6 +1152,11 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     LOG_I("clock_status_bar: before message_list_layout_create");
     lv_message_list_layout_create(pages[MESSAGE_PAGE_INDEX]);
     LOG_I("clock_status_bar: after message_list_layout_create");
+
+    /* T4: device_pager 內容放右 tile (2,1)，鏡像左側 instruction_list。
+       拉出靠原生 tileview 滑動。 */
+    extern lv_obj_t *device_pager_create(lv_obj_t * parent);
+    device_pager_create(pages[MAIN_PAGE_TYPE_RIGHT]);
 
     LOG_D("tileview set tile id to 1,1");
     myLancher[app_index_message].pagetileview = app_clock_main_status_bar;
@@ -1745,6 +1791,10 @@ void app_clock_device_change_bar_init(lv_obj_t *par)
     lv_obj_set_scrollbar_mode(status_bar_area, LV_SCROLLBAR_MODE_OFF);
     lv_obj_clear_flag(status_bar_area,
                       LV_OBJ_FLAG_PRESS_LOCK); // Allow press event to tileview
+    /* T4: 右緣入口改用錶面 tileview 右 tile（device_pager）。停用這個 lv_layer_top
+       上的舊右緣觸碰區，否則它會擋掉 tileview 的右滑。hid_mouse 的 device-change
+       仍可用 set_device_change_bar_area_right_state(true) 顯示它（mouse 自己的情境）。 */
+    lv_obj_add_flag(status_bar_area, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_bg_opa(status_bar_area, bar_opa,
                             LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_add_event_cb(status_bar_area, device_change_bar_cb, LV_EVENT_ALL,
@@ -1940,6 +1990,21 @@ void set_status_bar_area_right_state(bool state)
     {
         lv_obj_add_flag(status_bar_area_right, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+/* Return to the watch face from the device_pager (right tile). The pager's
+   horizontal carousel owns left/right swipes between devices, so it can't also
+   chain a swipe back to home; instead the pager calls this when the user drags
+   right past the first device (the inverse of the right-edge pull-out). Mirrors
+   the reset done at init: snap the main tileview to home and hide the overlay. */
+void app_clock_status_bar_return_home(void)
+{
+    if (!lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
+    lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+    if (lv_obj_is_valid(gaus_dial_bg))
+        lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
 }
 
 // device_change_bar_area_right 是 lv_layer_top() 的子物件，跨 app 都吃

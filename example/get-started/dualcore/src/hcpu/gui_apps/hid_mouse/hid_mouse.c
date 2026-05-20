@@ -3989,10 +3989,26 @@ static lv_point_t bottom_bar_multitask_anchor;
 // 延遲數百 ms 才 fire；rt_timer 跑在獨立 timer thread，不受 LVGL 佔用影響
 static rt_timer_t bottom_bar_multitask_timer = NULL;
 
+/* T4 (b): hosted-mode return hook. When device_pager hosts the mouse it
+   registers a back callback; the bottom-bar up gesture then returns to the
+   instruction layer instead of firing multitask. */
+static bool s_hosted = false;
+static void (*s_host_back_cb)(void) = NULL;
+void hid_mouse_set_host_back_cb(void (*cb)(void))
+{
+    s_host_back_cb = cb;
+    s_hosted = (cb != NULL);
+}
+
 static void bottom_bar_multitask_fire(void)
 {
     LOG_D("Bottom bar: multitask triggered");
     if (bottom_bar_multitask_fired)
+        return;
+    /* hosted: suppress the multitask send here (this can run on the rt_timer
+       thread — no LVGL calls). The actual return is driven on the LVGL thread
+       by the release handler below. */
+    if (s_hosted && s_host_back_cb)
         return;
     bottom_bar_multitask_fired = true;
     if (control_provider.ble_hid_keyboard_multitask != NULL)
@@ -4150,7 +4166,14 @@ static void text_input_bar_cb(lv_event_t *e)
                 multitask_hint_vibrated = false;
                 if (multitask_hint_drag_offset > MULTITASK_HINT_LIMIT)
                 {
-                    if (control_provider.ble_hid_keyboard_multitask)
+                    /* hosted (device_pager): bottom-bar up returns to the
+                       instruction layer instead of sending multitask. Safe to
+                       call here — this is the LVGL-thread release handler. */
+                    if (s_hosted && s_host_back_cb)
+                    {
+                        s_host_back_cb();
+                    }
+                    else if (control_provider.ble_hid_keyboard_multitask)
                     {
                         control_provider.ble_hid_keyboard_multitask(true);
                     }

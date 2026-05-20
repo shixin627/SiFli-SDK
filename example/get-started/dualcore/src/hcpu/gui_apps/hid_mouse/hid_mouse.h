@@ -34,6 +34,15 @@ void hid_mouse_create(lv_obj_t *host);
  */
 void hid_mouse_destroy(void);
 
+/**
+ * @brief Register a "return to host" callback (T4 (b)). When set, the mouse is
+ *        in hosted mode: the bottom-bar up gesture invokes @p cb (device_pager
+ *        slides the instruction layer back) instead of firing a multitask
+ *        command. Pass NULL to clear (back to standalone behavior).
+ *        The callback is invoked on the LVGL thread (input release handler).
+ */
+void hid_mouse_set_host_back_cb(void (*cb)(void));
+
 #ifdef __cplusplus
 }
 #endif
