@@ -6293,7 +6293,11 @@ bool app_hid_mouse_movement_lock(void)
    calls it with lv_scr_act(); device_pager (T4) calls it with its tile. */
 void hid_mouse_create(lv_obj_t *scr)
 {
-    cust_trans_anim_config(CUST_ANIM_TYPE_1, NULL);
+    /* Screen-level launch transition only when we own the screen. When hosted
+       in a container (T4 device_pager), skip it — the pager drives its own
+       reveal animation and the trans-anim would flash a blank overlay. */
+    if (scr == lv_scr_act())
+        cust_trans_anim_config(CUST_ANIM_TYPE_1, NULL);
     lv_create_mouse_screen(scr);
     app_control_set_mouse_mode(true);
 

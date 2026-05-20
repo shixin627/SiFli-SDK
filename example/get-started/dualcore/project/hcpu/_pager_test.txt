@@ -1,0 +1,7 @@
+# T3: 3 fake devices, open pager, swipe to next device, expect "[pager] -> device 2/3 (PC)"
+dev_add TV 0 1
+dev_add PC 0 1
+dev_add Speaker 0 1
+goto_app device_pager
+touch_swipe 400 233 60 233 400
+app_status

@@ -1,0 +1,5 @@
+# T0 proto: horizontal swipe in body should scroll-snap to next device (native PAGE),
+# NOT hit the top reveal strip (so NO INTENT log expected)
+goto_app proto_pager
+touch_swipe 400 233 60 233 400
+app_status

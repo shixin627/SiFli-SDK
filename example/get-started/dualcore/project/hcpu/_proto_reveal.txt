@@ -1,0 +1,4 @@
+# T0 proto: top-band downward drag should classify REVEAL and slide the mouse layer in
+goto_app proto_pager
+touch_swipe 233 8 233 245 400
+app_status
