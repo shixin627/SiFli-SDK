@@ -295,7 +295,28 @@ void *app_cache_alloc(size_t size, image_cache_t cache_type)
     return p + 4;
 }
 
-void app_cache_free(void *p)
+/*
+ * Deferred free for image-cache buffers.
+ *
+ * The EPIC GPU renders asynchronously via render lists, and an EZIP/image source
+ * buffer handed to app_cache_free() may still be referenced by a render list the
+ * epic_task has not finished (or one still being built by the LVGL thread).
+ * Returning the memory to the heap immediately lets a later allocation overwrite
+ * it; the EZIP engine then decodes corrupted data -> decode error -> EPIC stalls
+ * -> wait_gpu_done timeout -> crash.
+ *
+ * So we do not free here. We queue the buffer and free it later from
+ * app_cache_flush_deferred(), which lv_gpu_render_start() calls only when the GPU
+ * is idle (drv_epic_is_busy()==false). At that point every committed render list
+ * has completed, so nothing references these buffers, and no new list has started
+ * building yet -> the free is safe. On the (pathological) event that the queue is
+ * full we leak the buffer rather than risk a use-after-free.
+ */
+#define APP_CACHE_DEFER_MAX 64
+static void *s_cache_deferred[APP_CACHE_DEFER_MAX];
+static uint16_t s_cache_deferred_cnt = 0;
+
+static void app_cache_free_now(void *p)
 {
     uint8_t *temp_p = p;
 
@@ -308,10 +329,50 @@ void app_cache_free(void *p)
     {
         rt_free(temp_p);
     }
+}
+
+void app_cache_free(void *p)
+{
+    rt_enter_critical();
+    if (s_cache_deferred_cnt < APP_CACHE_DEFER_MAX)
+    {
+        s_cache_deferred[s_cache_deferred_cnt++] = p;
+        rt_exit_critical();
+    }
+    else
+    {
+        rt_exit_critical();
+        /* Queue full (pathological): leak this buffer rather than risk a UAF. */
+    }
 
 #ifdef RT_USING_FINSH
-    if (mem_log) rt_kprintf("app_cache_free: p %p. \n", p);
+    if (mem_log) rt_kprintf("app_cache_free(deferred): p %p. \n", p);
 #endif
+}
+
+/* Non-zero if there are buffers waiting to be freed. */
+int app_cache_has_deferred(void)
+{
+    return s_cache_deferred_cnt != 0;
+}
+
+/*
+ * Free everything queued by app_cache_free(). MUST be called only when the GPU is
+ * idle and no render list is being built (see lv_gpu_render_start()). Snapshot the
+ * queue under a short critical section, then free outside it.
+ */
+void app_cache_flush_deferred(void)
+{
+    void *local[APP_CACHE_DEFER_MAX];
+    uint16_t n;
+
+    rt_enter_critical();
+    n = s_cache_deferred_cnt;
+    for (uint16_t i = 0; i < n; i++) local[i] = s_cache_deferred[i];
+    s_cache_deferred_cnt = 0;
+    rt_exit_critical();
+
+    for (uint16_t i = 0; i < n; i++) app_cache_free_now(local[i]);
 }
 
 void *app_message_alloc(size_t size)

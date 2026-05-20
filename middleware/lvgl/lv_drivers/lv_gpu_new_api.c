@@ -1371,9 +1371,23 @@ static void draw_ctx_setup_gpu(lv_draw_ctx_t *p_draw_ctx, bool en)
 }
 
 
+/* Image-cache deferred-free (see app_mem.c). Freeing image buffers is deferred so
+ * the async EPIC render lists never read a buffer that was returned to the heap.
+ * Here, before building a new render list, is a safe point to actually free them:
+ * if the GPU is idle, every committed list has finished and nothing references the
+ * queued buffers, and the new list has not started referencing anything yet. */
+extern int app_cache_has_deferred(void);
+extern void app_cache_flush_deferred(void);
+
 uint32_t lv_gpu_render_start(lv_disp_drv_t *disp_drv)
 {
     uint32_t draw_buf_cf;
+
+    if (app_cache_has_deferred() && !drv_epic_is_busy())
+    {
+        app_cache_flush_deferred();
+    }
+
     if (set_px_cb_rgb565 == disp_drv->set_px_cb)
         draw_buf_cf = LV_IMG_CF_RGB565;
     else if (set_px_true_color_alpha == disp_drv->set_px_cb)

@@ -74,6 +74,17 @@ void *app_cache_realloc(void *memory, size_t new_size, image_cache_t cache_type)
 */
 void app_cache_free(void *p);
 
+/**
+@brief Non-zero if image-cache buffers are queued for deferred free.
+*/
+int app_cache_has_deferred(void);
+
+/**
+@brief Free all image-cache buffers queued by app_cache_free(). Call ONLY when the
+GPU is idle and no render list is being built (see lv_gpu_render_start).
+*/
+void app_cache_flush_deferred(void);
+
 static inline void *app_cache_calloc(size_t nmemb, size_t size, image_cache_t cache_type)
 {
     size_t total = nmemb * size;
