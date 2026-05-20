@@ -243,11 +243,15 @@ static void set_motor_off(void *param)
 }
 bool get_motor_status(void)
 {
-    // LOG_I("Motor status: %s", motor_on ? "ON" : "OFF");
     return motor_on;
 }
+// For marking the motor as on without actually sending a command, e.g. when the
+// haptic plays continuously, we use a timer to automatically turn it off after
+// a certain duration.
 static void start_motor_on_timer(uint32_t duration_ms)
 {
+    rt_tick_t ticks = rt_tick_from_millisecond(duration_ms);
+
     if (motor_on_timer)
     {
         rt_timer_stop(motor_on_timer);
@@ -256,11 +260,11 @@ static void start_motor_on_timer(uint32_t duration_ms)
     if (!motor_on_timer)
     {
         motor_on_timer = rt_timer_create("motor_off_timer", set_motor_off, NULL,
-                                         duration_ms, RT_TIMER_FLAG_ONE_SHOT);
+                                         ticks, RT_TIMER_FLAG_ONE_SHOT);
     }
     else
     {
-        rt_timer_control(motor_on_timer, RT_TIMER_CTRL_SET_TIME, &duration_ms);
+        rt_timer_control(motor_on_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
     }
 
     if (motor_on_timer)
@@ -287,9 +291,42 @@ static void control_motor_vibration(bool enable, motor_params_t *params)
         data.arg.motor_control.params = *params;
     }
     send_peripheral_data(data);
-    motor_on = true;
-    // start_motor_on_timer(((params->period / 1000) * params->repeat_times) +
-    //                      100);
+
+    /* Hold the sleep gate (get_motor_status) while the haptic plays, then
+       auto-clear. The LCPU motor task runs for roughly
+       (period / 1000) * repeat_times ms (see bloc_motor_vibrate); period is in
+       microseconds. Re-arming on every call means continuous scrolling keeps
+       extending the window, so motor_on drops ~100 ms after the last buzz.
+       Without this, motor_on latched true on the first vibration and HCPU
+       never slept again ("Sleep skipped: motor active"). */
+    if (enable && params)
+    {
+        motor_on = true;
+        if (params->repeat_times == 0)
+        {
+            /* Continuous vibration until an explicit stop: hold the flag and
+               rely on the disable branch below to clear it (no auto-off). */
+            if (motor_on_timer)
+            {
+                rt_timer_stop(motor_on_timer);
+            }
+        }
+        else
+        {
+            start_motor_on_timer(
+                (params->period / 1000) * params->repeat_times + 100);
+        }
+    }
+    else
+    {
+        /* Explicit stop (params == NULL): clear now so a stale auto-off timer
+           can't keep the watch awake. */
+        if (motor_on_timer)
+        {
+            rt_timer_stop(motor_on_timer);
+        }
+        motor_on = false;
+    }
 }
 
 static void save_watch_shared_prefs(watch_prefs_key key)
