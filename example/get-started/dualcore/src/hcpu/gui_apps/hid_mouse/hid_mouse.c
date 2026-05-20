@@ -84,8 +84,14 @@
 #include "ble_device_manager.h"
 #include "bloc_motion_tracking.h"
 #include "ble_hid.h"
+#ifndef BSP_USING_PC_SIMULATOR
+/* SiFli chip HAL headers — ARM-only, and currently unused in this TU (no
+   HAL_ or bf0_ calls in the body). Guarded so the UI layer compiles under
+   the PC simulator (T1 part 3: ARM seam). */
 #include "bf0_hal.h"
 #include "bf0_sys_cfg.h"
+#endif
+#include "hid_mouse.h" /* component API: hid_mouse_create / hid_mouse_destroy */
 
 #ifdef APP_ID_MOUSE
 
@@ -6282,7 +6288,10 @@ bool app_hid_mouse_movement_lock(void)
  * @brief Handles application start
  * @param scr Screen object
  */
-static void on_start(lv_obj_t *scr)
+/* T1 part 1 (host decouple): was static on_start(scr). Now the public
+   component entry — builds the mouse UI under any host. The gui_app glue
+   calls it with lv_scr_act(); device_pager (T4) calls it with its tile. */
+void hid_mouse_create(lv_obj_t *scr)
 {
     cust_trans_anim_config(CUST_ANIM_TYPE_1, NULL);
     lv_create_mouse_screen(scr);
@@ -6340,9 +6349,10 @@ static void on_pause(void)
 }
 
 /**
- * @brief Handles application stop
+ * @brief Tear down the mouse UI + deactivate control surface.
+ *        T1 part 1 (host decouple): was static on_stop(void).
  */
-static void on_stop(void)
+void hid_mouse_destroy(void)
 {
     app_control_set_mouse_mode(false);
 
@@ -6556,7 +6566,7 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
     case GUI_APP_MSG_ONSTART:
     {
         lv_obj_t *scr = lv_scr_act();
-        on_start(scr);
+        hid_mouse_create(scr);
         break;
     }
     case GUI_APP_MSG_ONRESUME:
@@ -6566,7 +6576,7 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
         watch_system_mouse_pause();
         break;
     case GUI_APP_MSG_ONSTOP:
-        on_stop();
+        hid_mouse_destroy();
         break;
     default:
         break;
