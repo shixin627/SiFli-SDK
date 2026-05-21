@@ -42,6 +42,8 @@
 #include "arc_scroll.h"                 /* right-band arc scroll (same as left list) */
 #include "ui_handler.h"                 /* lvgl_msg_handler (v2t transcript route) */
 #include "watch_system_interact.h"      /* V2T_INTENT_SKAIBAR */
+#include "watch_global_data.h"          /* ADR-0008 E7/E8: SkaiWatchSys.device_registry/status/name */
+#include "communicate_task.h"           /* ADR-0008 E7: commu_send_active_device (uplink) */
 #ifdef BSP_USING_BLOC
 #include "bloc_v2t.h"                   /* voice_provider.start_v2t (real ASR) */
 #endif
@@ -84,9 +86,11 @@ LV_IMG_DECLARE(img_flashlight); /* placeholder per-item icon (same look as left 
 typedef struct
 {
     uint32_t id;        /* device id reported by the connected peer (phone) */
+    char    id_str[SYNCED_DEVICE_ID_LEN]; /* ADR-0008 E7: real account device_id (UUID) for active-select routing */
     char    name[32];
     uint8_t dev_idx;
     uint8_t conn_idx;   /* BLE HID target for drill-down; 0xFF = not connected */
+    uint8_t status;     /* ADR-0008 E7: 0 off / 1 on / 2 primary (gray the header when off) */
     char    items[MAX_TILE_ITEMS][24];
     uint8_t item_count;
 } dev_page_t;
@@ -145,26 +149,42 @@ static void scroll_hides_skaibar_cb(lv_event_t *e)
     if (p && p->skaibar_active) skaibar_close();
 }
 
-/* Fake online-device list standing in for what the connected peer (phone) will
-   later stream in one device at a time (online device + id + its item options).
-   NOT sourced from the BLE bonded-device DB. 3 devices, random ids, 3 items each
-   (every item uses the flashlight placeholder icon). Seeded once at create. */
-static void seed_fake_devices(void)
+/* ADR-0008 E7: load the device pager model from the account device registry
+   (SkaiWatchSys.device_registry), which the phone (primary) streams in over the
+   SKAI_LINK BWPS group (communicate_parse_skailink.c) and which E8 persists to
+   flash. Replaces the throwaway fake seed. Each device's instruction-list items
+   come from its default_actions (the per-device actions synced from the phone).
+   conn_idx stays 0xFF: targets are network-routed via the primary (active
+   select uplink), not local BLE-HID. Re-callable; E7 calls it via
+   device_pager_refresh() / skai_device_ui_refresh() on every sync. */
+static void load_devices_from_registry(void)
 {
     p->count = 0;
-    for (int i = 0; i < 3; i++)
+    uint8_t n = SkaiWatchSys.device_registry.count;
+    if (n > MAX_DEVICES) n = MAX_DEVICES;
+    for (uint8_t i = 0; i < n; i++)
     {
+        const T_SYNCED_DEVICE *src =
+            (const T_SYNCED_DEVICE *)&SkaiWatchSys.device_registry.devices[i];
         dev_page_t *d = &p->model[p->count];
-        d->id       = (uint32_t)rand();
-        snprintf(d->name, sizeof(d->name), "Dev %08lX", (unsigned long)d->id);
-        d->dev_idx  = (uint8_t)i;
-        d->conn_idx = 0xFF;          /* not a real BLE HID target (fake data) */
-        d->item_count = 3;
-        for (int j = 0; j < 3; j++)
-            snprintf(d->items[j], sizeof(d->items[0]), "Item %d", j + 1);
+        memset(d, 0, sizeof(*d));
+        strncpy(d->id_str, src->id, sizeof(d->id_str) - 1);
+        strncpy(d->name, (const char *)SkaiWatchSys.device_name[i],
+                sizeof(d->name) - 1);
+        if (d->name[0] == '\0')
+            snprintf(d->name, sizeof(d->name), "Device %u", (unsigned)(i + 1));
+        d->status   = SkaiWatchSys.device_status[i];
+        d->dev_idx  = i;
+        d->conn_idx = 0xFF;
+        uint8_t ic = src->default_action_count;
+        if (ic > MAX_TILE_ITEMS) ic = MAX_TILE_ITEMS;
+        for (uint8_t j = 0; j < ic; j++)
+            strncpy(d->items[j], src->default_actions[j], sizeof(d->items[0]) - 1);
+        d->item_count = ic;
         p->count++;
     }
-    p->current = 0;
+    if (p->current >= p->count)
+        p->current = p->count > 0 ? p->count - 1 : 0;
 }
 
 /* Lay the item icons on a right-bulging vertical arc (same look as the left
@@ -329,6 +349,9 @@ static void pager_scroll_end_cb(lv_event_t *e)
     {
         p->current = want;
         rebind_all();
+        /* ADR-0008 E7: tell the phone the new active-target device so it routes
+           subsequent watch commands / recognized text there (network via primary). */
+        commu_send_active_device(p->model[p->current].id_str);
         LOG_I("[pager] -> device %d/%d (%s)", p->current + 1, p->count,
               p->model[p->current].name);
         if (p->mouse_created) mouse_retarget();
@@ -461,10 +484,21 @@ static void refresh(void)
     snap_to_center(LV_ANIM_OFF);
 }
 
-/* Public: rebind the (peer-reported) device list and refresh (called on reveal). */
+/* Public: re-load the (phone-streamed) device list from the registry and
+   refresh. Called on reveal AND by skai_device_ui_refresh() whenever E7 syncs a
+   new device list / status / per-device actions from the primary. */
 void device_pager_refresh(void)
 {
+    if (p) load_devices_from_registry();
     refresh();
+}
+
+/* ADR-0008 E7: weak hook invoked by communicate_parse_skailink.c after it
+   updates SkaiWatchSys.device_registry from a phone-streamed sync — resolves the
+   weak symbol so the pager re-renders live. */
+void skai_device_ui_refresh(void)
+{
+    device_pager_refresh();
 }
 
 /* Drill-down to the device currently shown. The fake list isn't BLE-bonded
@@ -787,7 +821,7 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
 
     lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* start on the LIST */
 
-    seed_fake_devices();   /* peer-reported list will replace this later */
+    load_devices_from_registry();   /* ADR-0008 E7: real phone-streamed device registry */
     refresh();
     LOG_I("[pager] built (overlay tileview + mouse base, %d devices)", p->count);
     return p->overlay;
