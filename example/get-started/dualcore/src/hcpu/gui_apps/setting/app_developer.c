@@ -77,6 +77,13 @@
 #include "watch_sys_service.h"
 #endif
 
+/* For FS_REGION_SIZE: lets the FS test compare the mounted FAT size against
+   the flash region the partition table provisions, so we can tell whether the
+   filesystem actually spans the whole partition. Not present on the PC sim. */
+#if !defined(WIN32) && !defined(BSP_USING_PC_SIMULATOR)
+#include "board.h"
+#endif
+
 #define DBG_TAG "app.developer"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
@@ -760,21 +767,44 @@ static void file_log_sw_event_callback(lv_event_t *e)
 static void fs_update_info_cb(lv_timer_t *timer)
 {
     struct statfs fs_stat;
-    char info_buf[128];
-    if (statfs("/", &fs_stat) == 0)
-    {
-        uint64_t total_size = (uint64_t)fs_stat.f_blocks * fs_stat.f_bsize;
-        uint64_t free_size = (uint64_t)fs_stat.f_bfree * fs_stat.f_bsize;
-        uint64_t used_size = total_size - free_size;
+    char info_buf[160];
 
-        snprintf(info_buf, sizeof(info_buf),
-                 "FS: %llu/%llu KB\nFiles: %d",
-                 used_size / 1024, total_size / 1024, fs_test_file_count);
-    }
-    else
+    if (statfs("/", &fs_stat) != 0)
     {
-        snprintf(info_buf, sizeof(info_buf), "FS: Error reading stats");
+        lv_label_set_text(fs_info_label, "FS: Error reading stats");
+        return;
     }
+
+    uint64_t total = (uint64_t)fs_stat.f_blocks * fs_stat.f_bsize;
+    uint64_t freeb = (uint64_t)fs_stat.f_bfree * fs_stat.f_bsize;
+    uint64_t used  = total - freeb;
+
+/* whole.tenths MB without floating point (printf %f is costly/absent here) */
+#define DEV_MB_INT(b)  ((unsigned long)((b) / (1024UL * 1024UL)))
+#define DEV_MB_FRAC(b) ((unsigned long)(((b) % (1024UL * 1024UL)) * 10UL / (1024UL * 1024UL)))
+
+    int n = snprintf(info_buf, sizeof(info_buf),
+                     "/ total %lu.%lu MB\nused %lu.%lu  free %lu.%lu MB\nfiles %d",
+                     DEV_MB_INT(total), DEV_MB_FRAC(total),
+                     DEV_MB_INT(used),  DEV_MB_FRAC(used),
+                     DEV_MB_INT(freeb), DEV_MB_FRAC(freeb),
+                     fs_test_file_count);
+    if (n < 0 || n >= (int)sizeof(info_buf))
+        n = 0;
+
+#ifdef FS_REGION_SIZE
+    /* Compare the mounted FAT against the region the partition table reserves.
+       If the FAT spans most of the region it grew correctly; if it's far
+       smaller the partition never expanded (the bug this verifies the fix for). */
+    uint64_t region = (uint64_t)FS_REGION_SIZE;
+    const char *verdict = (total >= region - region / 5) ? "GROWN" : "UNDERSIZED!";
+    snprintf(info_buf + n, sizeof(info_buf) - (size_t)n,
+             "\nregion %lu.%lu MB %s",
+             DEV_MB_INT(region), DEV_MB_FRAC(region), verdict);
+#endif
+
+#undef DEV_MB_INT
+#undef DEV_MB_FRAC
 
     lv_label_set_text(fs_info_label, info_buf);
 }
