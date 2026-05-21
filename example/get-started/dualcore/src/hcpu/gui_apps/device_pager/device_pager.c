@@ -125,9 +125,10 @@ typedef struct
     bool        recycling;
 
     /* skaibar voice input → peer-device options */
-    lv_obj_t   *mic_bar;         /* bottom mic trigger; hidden while skaibar open */
+    lv_obj_t   *mic_bar;         /* bottom mic trigger; morphs into the skaibar */
+    lv_obj_t   *mic_icon;        /* mic glyph (faded during the morph) */
     lv_obj_t   *skaibar_input;
-    lv_obj_t   *skaibar_frame;   /* message_widget_bg image (faded on dismiss) */
+    lv_obj_t   *skaibar_frame;   /* message_widget_bg image (faded during morph) */
     lv_obj_t   *skaibar_label;
     bool        skaibar_active;
 } device_pager_t;
@@ -607,47 +608,74 @@ void device_pager_set_active(bool on)
 }
 
 /* ---- skaibar voice input -> peer-device options ---------------------- */
-#define SKAIBAR_FADE_MS 600  /* dismiss fade — matches the left instruction_list */
+#define SKAIBAR_MORPH_MS 300   /* mic-button <-> input-box morph duration */
+#define MICB_W 240             /* mic button geometry (matches its creation) */
+#define MICB_H 50
+#define MICB_Y (-75)
+#define SKAIB_W 442            /* input-box geometry (matches skaibar_input) */
+#define SKAIB_H 252
+#define SKAIB_Y (-5)
 
-/* One 255→0 fraction drives the pill image + transcript opacity (this build's
-   lv_obj_set_style_opa doesn't cascade, so set each sub-part explicitly). */
-static void skaibar_fade_cb(void *var, int32_t v)
+/* One 0..255 fraction (0 = mic button, 255 = input box) morphs the two: the mic
+   bar grows + slides from the button geometry up to the box geometry while its
+   glyph fades out, and the box's frame image + transcript fade in (it sits at the
+   final box geometry the whole time). Reversed for dismiss. */
+static void skaibar_morph_cb(void *var, int32_t f)
 {
     (void)var;
     if (!p) return;
+    if (p->mic_bar && lv_obj_is_valid(p->mic_bar))
+    {
+        lv_obj_set_size(p->mic_bar, MICB_W + (SKAIB_W - MICB_W) * f / 255,
+                        MICB_H + (SKAIB_H - MICB_H) * f / 255);
+        lv_obj_align(p->mic_bar, LV_ALIGN_BOTTOM_MID, 0,
+                     MICB_Y + (SKAIB_Y - MICB_Y) * f / 255);
+    }
+    if (p->mic_icon && lv_obj_is_valid(p->mic_icon))
+        lv_obj_set_style_img_opa(p->mic_icon, (lv_opa_t)(255 - f), 0);
     if (p->skaibar_frame && lv_obj_is_valid(p->skaibar_frame))
-        lv_obj_set_style_img_opa(p->skaibar_frame, (lv_opa_t)v, 0);
+        lv_obj_set_style_img_opa(p->skaibar_frame, (lv_opa_t)f, 0);
     if (p->skaibar_label && lv_obj_is_valid(p->skaibar_label))
-        lv_obj_set_style_text_opa(p->skaibar_label, (lv_opa_t)(LV_OPA_80 * v / 255), 0);
+        lv_obj_set_style_text_opa(p->skaibar_label, (lv_opa_t)(LV_OPA_80 * f / 255), 0);
 }
 
-static void skaibar_set_full_opa(void)
-{
-    if (!p) return;
-    if (p->skaibar_frame && lv_obj_is_valid(p->skaibar_frame))
-        lv_obj_set_style_img_opa(p->skaibar_frame, LV_OPA_COVER, 0);
-    if (p->skaibar_label && lv_obj_is_valid(p->skaibar_label))
-        lv_obj_set_style_text_opa(p->skaibar_label, LV_OPA_80, 0);
-}
-
-static void skaibar_fade_done_cb(lv_anim_t *a)
+static void skaibar_morph_open_done_cb(lv_anim_t *a)
 {
     (void)a;
     if (!p) return;
-    lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
-    skaibar_set_full_opa();   /* restore for the next open */
+    /* Box fully shown — retire the (now box-sized) mic bar and reset it to the
+       button geometry for next time. */
+    lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_size(p->mic_bar, MICB_W, MICB_H);
+    lv_obj_align(p->mic_bar, LV_ALIGN_BOTTOM_MID, 0, MICB_Y);
+    lv_obj_set_style_img_opa(p->mic_icon, LV_OPA_COVER, 0);
+}
+
+static void skaibar_morph_close_done_cb(lv_anim_t *a)
+{
+    (void)a;
+    if (!p) return;
+    lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN); /* box gone, button stays */
 }
 
 static void skaibar_open(void)
 {
     if (!p || !p->skaibar_input) return;
-    lv_anim_del(p->skaibar_input, skaibar_fade_cb);  /* cancel any in-flight fade */
-    skaibar_set_full_opa();
+    lv_anim_del(p->skaibar_input, skaibar_morph_cb);   /* cancel any in-flight morph */
     lv_label_set_text(p->skaibar_label, "聽取中");
-    lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);     /* like the left list */
+    skaibar_morph_cb(NULL, 0);                          /* start at the button state */
+    lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
     p->skaibar_active = true;
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, p->skaibar_input);
+    lv_anim_set_values(&a, 0, 255);
+    lv_anim_set_time(&a, SKAIBAR_MORPH_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, skaibar_morph_cb);
+    lv_anim_set_ready_cb(&a, skaibar_morph_open_done_cb);
+    lv_anim_start(&a);
 #if defined(BSP_USING_BLOC) && !defined(BSP_USING_PC_SIMULATOR)
     /* Real hardware: same voice pipeline as the left mic — record audio, send to
        the phone for STT, the transcript returns via lvgl_msg_handler →
@@ -669,16 +697,17 @@ static void skaibar_close(void)
 #if defined(BSP_USING_BLOC) && !defined(BSP_USING_PC_SIMULATOR)
     voice_provider.stop_v2t();
 #endif
-    /* Fade the pill out (mirrors the left list's dissolve), then hide + restore
-       the mic bar in the ready callback. */
+    lv_anim_del(p->skaibar_input, skaibar_morph_cb);   /* cancel any in-flight morph */
+    skaibar_morph_cb(NULL, 255);                        /* start at the box state */
+    lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);  /* mic bar (box-sized) shrinks */
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, p->skaibar_input);
-    lv_anim_set_values(&a, LV_OPA_COVER, LV_OPA_TRANSP);
-    lv_anim_set_time(&a, SKAIBAR_FADE_MS);
-    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-    lv_anim_set_exec_cb(&a, skaibar_fade_cb);
-    lv_anim_set_ready_cb(&a, skaibar_fade_done_cb);
+    lv_anim_set_values(&a, 255, 0);
+    lv_anim_set_time(&a, SKAIBAR_MORPH_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
+    lv_anim_set_exec_cb(&a, skaibar_morph_cb);
+    lv_anim_set_ready_cb(&a, skaibar_morph_close_done_cb);
     lv_anim_start(&a);
 }
 
@@ -790,10 +819,10 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(p->mic_bar, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *mic_icon = lv_img_create(p->mic_bar);
-    lv_img_set_src(mic_icon, &icon_mic);
-    lv_obj_center(mic_icon);
-    lv_obj_clear_flag(mic_icon, LV_OBJ_FLAG_CLICKABLE);
+    p->mic_icon = lv_img_create(p->mic_bar);
+    lv_img_set_src(p->mic_icon, &icon_mic);
+    lv_obj_center(p->mic_icon);
+    lv_obj_clear_flag(p->mic_icon, LV_OBJ_FLAG_CLICKABLE);
 
     /* skaibar input box (shown on mic tap) — mirrors the left instruction_list's
        voice input pill (lv_instruction_list_layout.c): a BOTTOM-aligned container
@@ -801,8 +830,8 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
        is too thin, so the image (442x252) supplies the visible border + rounded
        shape. Tap it to dismiss. */
     p->skaibar_input = lv_obj_create(p->list_tile);
-    lv_obj_set_size(p->skaibar_input, 442, 252);
-    lv_obj_align(p->skaibar_input, LV_ALIGN_BOTTOM_MID, 0, 80);
+    lv_obj_set_size(p->skaibar_input, SKAIB_W, SKAIB_H);
+    lv_obj_align(p->skaibar_input, LV_ALIGN_BOTTOM_MID, 0, SKAIB_Y);
     lv_obj_set_style_bg_opa(p->skaibar_input, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(p->skaibar_input, 0, 0);
     lv_obj_set_style_pad_all(p->skaibar_input, 0, 0);
