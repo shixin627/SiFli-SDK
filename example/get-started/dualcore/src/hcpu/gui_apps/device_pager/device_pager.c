@@ -127,6 +127,7 @@ typedef struct
     /* skaibar voice input → peer-device options */
     lv_obj_t   *mic_bar;         /* bottom mic trigger; hidden while skaibar open */
     lv_obj_t   *skaibar_input;
+    lv_obj_t   *skaibar_frame;   /* message_widget_bg image (faded on dismiss) */
     lv_obj_t   *skaibar_label;
     bool        skaibar_active;
 } device_pager_t;
@@ -606,9 +607,43 @@ void device_pager_set_active(bool on)
 }
 
 /* ---- skaibar voice input -> peer-device options ---------------------- */
+#define SKAIBAR_FADE_MS 600  /* dismiss fade — matches the left instruction_list */
+
+/* One 255→0 fraction drives the pill image + transcript opacity (this build's
+   lv_obj_set_style_opa doesn't cascade, so set each sub-part explicitly). */
+static void skaibar_fade_cb(void *var, int32_t v)
+{
+    (void)var;
+    if (!p) return;
+    if (p->skaibar_frame && lv_obj_is_valid(p->skaibar_frame))
+        lv_obj_set_style_img_opa(p->skaibar_frame, (lv_opa_t)v, 0);
+    if (p->skaibar_label && lv_obj_is_valid(p->skaibar_label))
+        lv_obj_set_style_text_opa(p->skaibar_label, (lv_opa_t)(LV_OPA_80 * v / 255), 0);
+}
+
+static void skaibar_set_full_opa(void)
+{
+    if (!p) return;
+    if (p->skaibar_frame && lv_obj_is_valid(p->skaibar_frame))
+        lv_obj_set_style_img_opa(p->skaibar_frame, LV_OPA_COVER, 0);
+    if (p->skaibar_label && lv_obj_is_valid(p->skaibar_label))
+        lv_obj_set_style_text_opa(p->skaibar_label, LV_OPA_80, 0);
+}
+
+static void skaibar_fade_done_cb(lv_anim_t *a)
+{
+    (void)a;
+    if (!p) return;
+    lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    skaibar_set_full_opa();   /* restore for the next open */
+}
+
 static void skaibar_open(void)
 {
     if (!p || !p->skaibar_input) return;
+    lv_anim_del(p->skaibar_input, skaibar_fade_cb);  /* cancel any in-flight fade */
+    skaibar_set_full_opa();
     lv_label_set_text(p->skaibar_label, "聽取中");
     lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);     /* like the left list */
     lv_obj_clear_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
@@ -629,13 +664,22 @@ static void skaibar_open(void)
 
 static void skaibar_close(void)
 {
-    if (!p || !p->skaibar_input) return;
-    lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    if (!p || !p->skaibar_input || !p->skaibar_active) return; /* guard repeats */
     p->skaibar_active = false;
 #if defined(BSP_USING_BLOC) && !defined(BSP_USING_PC_SIMULATOR)
     voice_provider.stop_v2t();
 #endif
+    /* Fade the pill out (mirrors the left list's dissolve), then hide + restore
+       the mic bar in the ready callback. */
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, p->skaibar_input);
+    lv_anim_set_values(&a, LV_OPA_COVER, LV_OPA_TRANSP);
+    lv_anim_set_time(&a, SKAIBAR_FADE_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, skaibar_fade_cb);
+    lv_anim_set_ready_cb(&a, skaibar_fade_done_cb);
+    lv_anim_start(&a);
 }
 
 /* Public: is the device-page voice input box currently showing? The transcript
@@ -766,10 +810,10 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(p->skaibar_input, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_t *skaibar_frame = lv_img_create(p->skaibar_input);
-    lv_img_set_src(skaibar_frame, &message_widget_bg);
-    lv_obj_center(skaibar_frame);
-    lv_obj_clear_flag(skaibar_frame, LV_OBJ_FLAG_CLICKABLE);
+    p->skaibar_frame = lv_img_create(p->skaibar_input);
+    lv_img_set_src(p->skaibar_frame, &message_widget_bg);
+    lv_obj_center(p->skaibar_frame);
+    lv_obj_clear_flag(p->skaibar_frame, LV_OBJ_FLAG_CLICKABLE);
     p->skaibar_label = lv_label_create(p->skaibar_input);
     lv_obj_set_style_text_color(p->skaibar_label, lv_color_white(), 0);
     lv_obj_set_style_text_opa(p->skaibar_label, LV_OPA_80, 0);
