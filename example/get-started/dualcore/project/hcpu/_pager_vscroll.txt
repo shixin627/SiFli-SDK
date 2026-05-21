@@ -1,0 +1,9 @@
+# Reveal device 1/4 then vertical-scroll its instruction list to item #2
+# (start the vertical swipe well above the bottom mic bar)
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+dev_add iPad_Air 2 0
+dev_add Soundbar 3 0
+touch_swipe 458 233 30 233 700
+touch_swipe 233 300 233 110 500

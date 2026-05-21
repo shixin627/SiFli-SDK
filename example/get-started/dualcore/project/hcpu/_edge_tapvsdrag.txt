@@ -1,0 +1,6 @@
+dev_add TV 0 1
+dev_add PC 0 1
+touch_tap 460 233
+app_status
+touch_swipe 460 233 360 233 300
+app_status

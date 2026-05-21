@@ -36,6 +36,9 @@ tools/mkfatimg/mkfatimg_nand/Release/
 /disk/
 /prefdb/
 /pc_console.log
+# Dualcore disk assets + prefs DB (generated, not source — untracked deliberately)
+/example/get-started/dualcore/src/disk/
+/example/get-started/dualcore/prefdb/
 # SifliTrace runtime captures (per-session .bin / .pcap / _ui.log etc.)
 tools/SifliTrace/log/
 # Per-user trace tool settings (port, baud, last-opened paths) — was committed

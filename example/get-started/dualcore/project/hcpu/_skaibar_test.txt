@@ -1,0 +1,8 @@
+# reveal device page (LIST) -> tap mic -> inject transcript -> inject options
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+touch_swipe 458 233 30 233 700
+touch_tap 233 366
+pager_say Open Spotify and play music
+pager_options Play Pause Next Previous

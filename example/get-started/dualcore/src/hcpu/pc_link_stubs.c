@@ -6,7 +6,16 @@
  * Manual hand-edit zone: ble_dev_mgr_* (8 entries) are removed below — real
  * fake implementations live in modules/tests/fake_ui_data.c so the device-
  * list UI shows something on PC. Symbols also removed from _syms_clean.txt
- * so the next _genstub.py run does not re-add them. */
+ * so the next _genstub.py run does not re-add them.
+ *
+ * T1 part 3 (ARM seam): hid_mouse.c is no longer in gui_apps pc_skip, so its
+ * 10 own functions (append_text_to_mouse_input, open_v2t_mic, watch_system_
+ * mouse_pause/resume, ...) are now provided by the real TU and were removed
+ * from here (were LNK2005 duplicates). The 5 ARM-only symbols hid_mouse
+ * *calls* (BLE_HID_Mouse_Touch_*, air_mouse_movement_lock_reset,
+ * set_voice_recognition_notified_from_mouse) are stubbed in the manual zone
+ * below. TODO: add these to _syms_clean.txt handling so _genstub.py neither
+ * re-adds the 10 nor dueling-defines the 5. */
 
 #include <rtthread.h>
 #include <rtdevice.h>
@@ -32,7 +41,6 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* app_message.c */ lv_ex_data_t * app_speech_get_content_data(void) { return 0; }
 /* bloc_v2t.h */ bool app_voice_get_recording_status(void) { return false; }
 /* app_system_interface.c */ void append_skai_widget_ai_reply(const char *text) {  }
-/* hid_mouse.c */ void append_text_to_mouse_input(void) {  }
 /* bloc_peripheral.h */ void audio_subscribe(void) {  }
 /* bloc_peripheral.h */ void audio_unsubscribe(void) {  }
 /* watch_demo.c */ void back_on_skai_widget(void) {  }
@@ -79,7 +87,6 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* main.c */ bool get_bluetooth_broadcasting_status(void) { return false; }
 /* bloc_v2t.h */ char * get_combined_voice2text(void) { return 0; }
 /* gesture_recognition_task.h */ int get_gesture_recognition_threshold(void) { return 0; }
-/* hid_mouse.c */ bool get_hid_mouse_handfree_mode(void) { return false; }
 /* app_gesture.c */ bool get_imu_data_collection_status(void) { return false; }
 /* main.c */ uint8_t get_main_phonepeer_conn_idx(void) { return 0; }
 /* lv_instruction_list_layout.c */ bool get_skai_input_text_is_null(void) { return false; }
@@ -111,11 +118,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* lv_instruction_list_layout.c */ void media_widget_stop(void) {  }
 /* lv_instruction_list_layout.c */ void media_widget_tap_event_cb(void) {  }
 /* lv_instruction_list_layout.c */ void media_widget_trigger_drag_by_py(int p_y) {  }
-/* hid_mouse.c */ void mouse_apply_v2t_input(const char *text) {  }
-/* hid_mouse.c */ void mouse_mode_handle_media_title(const char *title) { (void)title; }
-/* hid_mouse.c */ void mouse_mode_handle_media_play_state(bool playing) { (void)playing; }
 /* lv_instruction_list_layout.c */ void open_skai_widget_ai(bool open) {  }
-/* hid_mouse.c */ void open_v2t_mic(void) {  }
 /* app_gesture.c */ bool pause_sleep_cause_of_imu_reson(void) { return false; }
 /* ble_hid.h */ void play_next_through_hid(void) {  }
 /* ble_hid.h */ void play_pause_through_hid(void) {  }
@@ -145,13 +148,9 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_task.h */ bool commu_send_skaibar_selected(uint8_t idx) { return false; }
 /* communicate_task.h */ bool commu_send_skaibar_committed(uint8_t idx) { return false; }
 /* gui_app_pm.h */ void sys_poweron_fsm(sys_pwron_evt_t evt) {  }
-/* hid_mouse.c */ void toggle_keyboard_visibility(void) {  }
 /* gesture_model_loader.h */ int unload_release_model(void) { return 0; }
 /* ble_hid.h */ void volume_down_through_hid(void) {  }
 /* ble_hid.h */ void volume_up_through_hid(void) {  }
-/* hid_mouse.c */ void watch_system_mouse_pause(void) {  }
-/* hid_mouse.c */ void watch_system_mouse_resume(void) {  }
-/* hid_mouse.c */ void mouse_skaibar_set_options_json(const char *json) { (void)json; }
 
 /* Manually-stubbed symbols not found by genstub: */
 #include "lvgl/lvgl.h"
@@ -185,3 +184,13 @@ void setVoice2Text(char *text) { (void)text; }
 void start_ble_rssi_checker(uint32_t period_ms) { (void)period_ms; }
 void stop_ble_rssi_checker(void) { }
 void app_voice_set_voice2text_intent(uint8_t intent) { (void)intent; }
+
+/* T1 part 3 (ARM seam): the 5 ARM-only symbols hid_mouse.c CALLS — BLE HID
+ * touch reports (ble_hid.c), air-mouse movement lock (bloc_motion_tracking.c),
+ * and the v2t-notified flag (bloc_v2t.c) — all excluded on PC sim. Empty
+ * stubs so the now-PC-compiled hid_mouse UI links. */
+void BLE_HID_Mouse_Touch_Press(uint16_t x, uint16_t y) { (void)x; (void)y; }
+void BLE_HID_Mouse_Touch_Move(uint16_t x, uint16_t y) { (void)x; (void)y; }
+bool BLE_HID_Mouse_Touch_Release(uint16_t x, uint16_t y) { (void)x; (void)y; return false; }
+void air_mouse_movement_lock_reset(void) { }
+void set_voice_recognition_notified_from_mouse(bool status) { (void)status; }

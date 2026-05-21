@@ -1,0 +1,2 @@
+# NO dev_add — the device list is now the built-in fake seed (3 devices)
+touch_swipe 458 233 30 233 700

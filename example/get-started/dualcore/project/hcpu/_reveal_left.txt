@@ -1,0 +1,2 @@
+# reveal the LEFT instruction_list tile (full-width slow left-edge pull)
+touch_swipe 8 233 458 233 800

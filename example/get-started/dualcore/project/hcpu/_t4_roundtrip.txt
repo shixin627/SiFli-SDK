@@ -1,0 +1,6 @@
+# T4 inc1 round-trip: drill into mouse, then tap return zone -> back to list
+dev_add TV 0 1
+dev_add PC 0 1
+goto_app device_pager
+touch_swipe 233 8 233 160 400
+touch_tap 233 20

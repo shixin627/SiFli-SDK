@@ -1581,8 +1581,10 @@ void animate_open_ai_widget(void)
     lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 1,
                        0, LV_ANIM_OFF);
     tap_on_ai_widget();
+    /* Appear directly (no slide-in from the left) — matches the right
+       device_pager skaibar's instant show. */
     lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 0,
-                       0, LV_ANIM_ON);
+                       0, LV_ANIM_OFF);
     /* set_tile_id fires SCROLL events that drive bg_opa via ai_tileview_event_cb.
        Keep the OUTER strip transparent — only the styled skai_widget pill
        inside should be visible, matching the Liquid Glass design language. */
@@ -3447,6 +3449,10 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_add_event_cb(ai_bar, ai_bar_event_cb, LV_EVENT_ALL, NULL);
     // lv_obj_add_flag(ai_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_clear_flag(ai_bar, LV_OBJ_FLAG_PRESS_LOCK);
+    /* Left-edge swipe-to-open DISABLED — the AI input box should only appear
+       directly via the mic (like the right device skaibar), not be dragged out
+       from the screen edge. */
+    lv_obj_add_flag(ai_bar, LV_OBJ_FLAG_HIDDEN);
 
     /* The bottom-center "+" add-instruction button has been removed — the
        mic-bar voice trigger now owns the bottom-center affordance slot. The
@@ -3513,12 +3519,16 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
                         ai_tileview_event_cb, LV_EVENT_ALL, NULL);
     lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                     LV_OBJ_FLAG_HIDDEN);
-    /* Gaus background to cover instruction list when widget shows */
-    ai_gaus_bg = lv_img_create(ai_page);
-    lv_img_set_src(ai_gaus_bg, GAUS_CLOCK1_BG);
-    lv_obj_align(ai_gaus_bg, LV_ALIGN_CENTER, 0, 0);
-    lv_img_set_zoom(ai_gaus_bg, 512);
-    lv_obj_add_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+    /* Gaus glow background DISABLED — the input box now sits cleanly over the
+       list (single image frame, like the right device_pager). Left as NULL; all
+       show/hide call-sites are guarded by `if (ai_gaus_bg && lv_obj_is_valid())`
+       so they no-op. Re-enable by restoring the four lines below. */
+    ai_gaus_bg = NULL;
+    /* ai_gaus_bg = lv_img_create(ai_page);
+       lv_img_set_src(ai_gaus_bg, GAUS_CLOCK1_BG);
+       lv_obj_align(ai_gaus_bg, LV_ALIGN_CENTER, 0, 0);
+       lv_img_set_zoom(ai_gaus_bg, 512);
+       lv_obj_add_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN); */
 
     extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
     lv_obj_t *skai_widget = lv_skai_widget_builder(ai_page);

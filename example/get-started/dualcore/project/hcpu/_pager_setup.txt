@@ -1,0 +1,9 @@
+# Load a few devices and sit at the watch face for interactive testing.
+# Pull from the RIGHT edge to reveal device_pager (other devices' lists);
+# pull from the LEFT edge for the phone instruction_list.
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+dev_add iPad_Air 2 0
+dev_add Soundbar 3 0
+dev_list

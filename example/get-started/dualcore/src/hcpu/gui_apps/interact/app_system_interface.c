@@ -734,6 +734,16 @@ extern bool get_is_open_instruction_list_ai(void);
 extern void set_skai_widget_input_text(const char *text);
 void refresh_ai_chat_input_message(char *text)
 {
+    /* Decide by current screen: if the right device page's skaibar is open, the
+       recognised text belongs there, not the left instruction_list widget. */
+    extern bool device_pager_skaibar_is_open(void);
+    extern void device_pager_skaibar_say(const char *text);
+    if (device_pager_skaibar_is_open())
+    {
+        if (text && text[0] != '\0' && strspn(text, " \t\n\r") < strlen(text))
+            device_pager_skaibar_say(text);
+        return;
+    }
     if (gesture_indicator.speech_input)
     {
         // 只有當文字不為空且不是純空白字符時才更新

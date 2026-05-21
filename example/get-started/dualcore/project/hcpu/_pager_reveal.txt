@@ -1,0 +1,8 @@
+# Reveal device_pager via continuous right-edge swipe; should land on right tile
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+dev_add iPad_Air 2 0
+dev_add Soundbar 3 0
+touch_swipe 458 233 30 233 700
+app_status

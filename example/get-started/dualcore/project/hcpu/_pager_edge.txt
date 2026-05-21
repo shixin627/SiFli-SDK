@@ -1,0 +1,8 @@
+# T3 edge: page TV->PC->Speaker then past the end (expect clamp log)
+dev_add TV 0 1
+dev_add PC 0 1
+dev_add Speaker 0 1
+goto_app device_pager
+touch_swipe 400 233 60 233 350
+touch_swipe 400 233 60 233 350
+touch_swipe 400 233 60 233 350
