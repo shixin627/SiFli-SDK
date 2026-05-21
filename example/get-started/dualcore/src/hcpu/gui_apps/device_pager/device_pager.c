@@ -615,11 +615,16 @@ void device_pager_set_active(bool on)
 #define SKAIB_W 442            /* input-box geometry (matches skaibar_input) */
 #define SKAIB_H 252
 #define SKAIB_Y (-5)
+#define MICB_RADIUS  25        /* mic button corner radius */
+#define SKAIB_RADIUS 80        /* matches message_widget_bg's rounded corners */
 
 /* One 0..255 fraction (0 = mic button, 255 = input box) morphs the two: the mic
-   bar grows + slides from the button geometry up to the box geometry while its
-   glyph fades out, and the box's frame image + transcript fade in (it sits at the
-   final box geometry the whole time). Reversed for dismiss. */
+   bar grows + slides from the button geometry up to the box geometry, its corner
+   radius opens from 25 to the image's 80 and its black fill deepens 50%→80% so it
+   becomes the box's background (the box frame image is too faint to be a fill on
+   its own). The mic glyph fades out; the frame image + transcript fade in. The
+   mic bar is NOT hidden at the end — it stays as the box backdrop. Reversed for
+   dismiss. */
 static void skaibar_morph_cb(void *var, int32_t f)
 {
     (void)var;
@@ -630,6 +635,10 @@ static void skaibar_morph_cb(void *var, int32_t f)
                         MICB_H + (SKAIB_H - MICB_H) * f / 255);
         lv_obj_align(p->mic_bar, LV_ALIGN_BOTTOM_MID, 0,
                      MICB_Y + (SKAIB_Y - MICB_Y) * f / 255);
+        lv_obj_set_style_radius(p->mic_bar,
+                                MICB_RADIUS + (SKAIB_RADIUS - MICB_RADIUS) * f / 255, 0);
+        lv_obj_set_style_bg_opa(p->mic_bar,
+                                (lv_opa_t)(LV_OPA_50 + (LV_OPA_80 - LV_OPA_50) * f / 255), 0);
     }
     if (p->mic_icon && lv_obj_is_valid(p->mic_icon))
         lv_obj_set_style_img_opa(p->mic_icon, (lv_opa_t)(255 - f), 0);
@@ -637,18 +646,6 @@ static void skaibar_morph_cb(void *var, int32_t f)
         lv_obj_set_style_img_opa(p->skaibar_frame, (lv_opa_t)f, 0);
     if (p->skaibar_label && lv_obj_is_valid(p->skaibar_label))
         lv_obj_set_style_text_opa(p->skaibar_label, (lv_opa_t)(LV_OPA_80 * f / 255), 0);
-}
-
-static void skaibar_morph_open_done_cb(lv_anim_t *a)
-{
-    (void)a;
-    if (!p) return;
-    /* Box fully shown — retire the (now box-sized) mic bar and reset it to the
-       button geometry for next time. */
-    lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_size(p->mic_bar, MICB_W, MICB_H);
-    lv_obj_align(p->mic_bar, LV_ALIGN_BOTTOM_MID, 0, MICB_Y);
-    lv_obj_set_style_img_opa(p->mic_icon, LV_OPA_COVER, 0);
 }
 
 static void skaibar_morph_close_done_cb(lv_anim_t *a)
@@ -674,7 +671,7 @@ static void skaibar_open(void)
     lv_anim_set_time(&a, SKAIBAR_MORPH_MS);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
     lv_anim_set_exec_cb(&a, skaibar_morph_cb);
-    lv_anim_set_ready_cb(&a, skaibar_morph_open_done_cb);
+    /* No ready_cb: the mic bar stays grown as the box backdrop. */
     lv_anim_start(&a);
 #if defined(BSP_USING_BLOC) && !defined(BSP_USING_PC_SIMULATOR)
     /* Real hardware: same voice pipeline as the left mic — record audio, send to
