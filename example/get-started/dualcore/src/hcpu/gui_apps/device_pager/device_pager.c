@@ -29,6 +29,10 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 #include "lvgl.h"
 #include "ble_device_manager.h"
 #include "ble_hid.h"                   /* ble_hid_set_conn_idx (drill-down target) */
@@ -47,10 +51,19 @@ LV_IMG_DECLARE(img_flashlight); /* placeholder per-item icon (same look as left 
 #define TILE_LEFT      0
 #define TILE_CENTER    1
 #define TILE_RIGHT     2
-#define MAX_TILE_ITEMS 8 /* pre-created row pool per tile (Issue 5) */
+#define MAX_TILE_ITEMS 10 /* pre-created icon pool per tile */
 
-#define ITEM_SLOT_H    150 /* per-item vertical slot height (px) */
 #define BAR_H          44  /* bottom re-summon handle thickness */
+
+/* Circular (arc) item layout — mirrors the left instruction_list / app_exercise
+   apply_circular_layout: icons ride a vertical arc bulging right, the centred
+   one zoomed big, neighbours shrink + fade, items past ±90° hidden. */
+#define ARC_RADIUS     175
+#define ARC_SLOT_DEG   36.0f       /* angle between adjacent items */
+#define ARC_CELL       120         /* per-icon cell (holds 80px icon + zoom headroom) */
+#define ARC_ZOOM_MIN   140         /* ~0.55x of the 80px icon */
+#define ARC_ZOOM_CTR   320         /* ~1.25x at the centre */
+#define ARC_OPA_MIN    LV_OPA_40
 
 typedef struct
 {
@@ -66,9 +79,10 @@ typedef struct
     lv_obj_t *tile;
     lv_obj_t *header;
     lv_obj_t *list;
-    lv_obj_t *item[MAX_TILE_ITEMS];
-    lv_obj_t *item_label[MAX_TILE_ITEMS];
+    lv_obj_t *item[MAX_TILE_ITEMS];       /* per-icon cells, positioned on the arc */
     lv_obj_t *item_icon[MAX_TILE_ITEMS];
+    lv_obj_t *name_label;                 /* single centred label = selected item's name */
+    int       sel;                        /* index currently at the arc centre */
 } tile_ui_t;
 
 typedef struct
@@ -114,7 +128,7 @@ static void scroll_hides_skaibar_cb(lv_event_t *e)
 /* Fake per-device items until real per-device instruction sets arrive. */
 static void fake_items(dev_page_t *d)
 {
-    uint8_t n = (uint8_t)(3 + (d->dev_idx % 5));
+    uint8_t n = (uint8_t)(7 + (d->dev_idx % 4));
     if (n > MAX_TILE_ITEMS) n = MAX_TILE_ITEMS;
     d->item_count = n;
     for (uint8_t i = 0; i < n; i++)
@@ -144,74 +158,43 @@ static void load_model(void)
     if (p->current >= p->count) p->current = p->count > 0 ? p->count - 1 : 0;
 }
 
-/* Only the item nearest the list's vertical centre shows its title; others fade. */
-static void emphasize_centered(tile_ui_t *u)
+/* Lay the item icons on a right-bulging vertical arc (same look as the left
+   instruction_list / app_exercise): item `sel` sits at the centre (3 o'clock,
+   zoomed big), neighbours curve up/down shrinking + fading, items past ±90°
+   hide. The single name_label shows the centred item's text. */
+static void apply_arc(tile_ui_t *u, dev_page_t *d)
 {
-    lv_area_t la;
-    lv_obj_get_coords(u->list, &la);
-    lv_coord_t list_cy = (la.y1 + la.y2) / 2;
+    const int   cx = LV_HOR_RES / 2;
+    const int   cy = LV_VER_RES / 2;
+    const float slot = ARC_SLOT_DEG * (float)M_PI / 180.0f;
+    int count = d ? d->item_count : 0;
 
     for (int i = 0; i < MAX_TILE_ITEMS; i++)
     {
-        if (lv_obj_has_flag(u->item[i], LV_OBJ_FLAG_HIDDEN))
+        if (i >= count) { lv_obj_add_flag(u->item[i], LV_OBJ_FLAG_HIDDEN); continue; }
+        float ang = (float)(i - u->sel) * slot;
+        float aa  = fabsf(ang);
+        if (aa > (float)M_PI / 2.0f)
+        {
+            lv_obj_add_flag(u->item[i], LV_OBJ_FLAG_HIDDEN);
             continue;
-        lv_area_t ia;
-        lv_obj_get_coords(u->item[i], &ia);
-        lv_coord_t item_cy = (ia.y1 + ia.y2) / 2;
-        int d = item_cy - list_cy;
-        if (d < 0) d = -d;
-        lv_opa_t opa = (d >= ITEM_SLOT_H) ? LV_OPA_0
-                       : (lv_opa_t)(LV_OPA_COVER -
-                                    (uint32_t)d * LV_OPA_COVER / ITEM_SLOT_H);
-        lv_obj_set_style_opa(u->item_label[i], opa, 0);
-        lv_obj_set_style_opa(u->item_icon[i], opa, 0);
+        }
+        lv_obj_clear_flag(u->item[i], LV_OBJ_FLAG_HIDDEN);
+        float c = cosf(aa);
+        uint16_t zoom = (uint16_t)(ARC_ZOOM_MIN + (ARC_ZOOM_CTR - ARC_ZOOM_MIN) * c);
+        lv_img_set_zoom(u->item_icon[i], zoom);
+        int sx = cx + (int)(ARC_RADIUS * cosf(ang));
+        int sy = cy + (int)(ARC_RADIUS * sinf(ang));
+        lv_obj_set_pos(u->item[i], sx - ARC_CELL / 2, sy - ARC_CELL / 2);
+        /* opa must be set on the image itself — lv_obj_set_style_opa does NOT
+           cascade to children in this build. */
+        lv_opa_t opa = (lv_opa_t)(ARC_OPA_MIN + (LV_OPA_COVER - ARC_OPA_MIN) * c);
+        lv_obj_set_style_img_opa(u->item_icon[i], opa, 0);
     }
-}
-
-static int nearest_item(tile_ui_t *u, lv_coord_t *out_delta)
-{
-    lv_area_t la;
-    lv_obj_get_coords(u->list, &la);
-    lv_coord_t list_cy = (la.y1 + la.y2) / 2;
-    int best = -1;
-    lv_coord_t bestd = LV_COORD_MAX, delta = 0;
-    for (int i = 0; i < MAX_TILE_ITEMS; i++)
-    {
-        if (lv_obj_has_flag(u->item[i], LV_OBJ_FLAG_HIDDEN)) continue;
-        lv_area_t ia;
-        lv_obj_get_coords(u->item[i], &ia);
-        lv_coord_t item_cy = (ia.y1 + ia.y2) / 2;
-        lv_coord_t dd = item_cy - list_cy;
-        if (dd < 0) dd = -dd;
-        if (dd < bestd) { bestd = dd; best = i; delta = list_cy - item_cy; }
-    }
-    if (out_delta) *out_delta = delta;
-    return best;
-}
-
-static bool s_recentering = false;
-static void center_nearest(tile_ui_t *u, lv_anim_enable_t anim)
-{
-    lv_coord_t delta = 0;
-    if (nearest_item(u, &delta) < 0 || delta == 0) return;
-    s_recentering = true;
-    lv_obj_scroll_by(u->list, 0, delta, anim);
-    s_recentering = false;
-}
-
-static void list_scroll_cb(lv_event_t *e)
-{
-    tile_ui_t *u = (tile_ui_t *)lv_event_get_user_data(e);
-    if (u) emphasize_centered(u);
-}
-
-static void list_scroll_end_cb(lv_event_t *e)
-{
-    if (s_recentering) return;
-    tile_ui_t *u = (tile_ui_t *)lv_event_get_user_data(e);
-    if (!u) return;
-    center_nearest(u, LV_ANIM_ON);
-    emphasize_centered(u);
+    if (u->sel >= 0 && u->sel < count)
+        lv_label_set_text(u->name_label, d->items[u->sel]);
+    else
+        lv_label_set_text(u->name_label, "");
 }
 
 static void bind_tile(int k)
@@ -222,28 +205,16 @@ static void bind_tile(int k)
     if (logical < 0 || logical >= p->count)
     {
         lv_label_set_text(u->header, "");
+        lv_label_set_text(u->name_label, "");
         for (int i = 0; i < MAX_TILE_ITEMS; i++)
             lv_obj_add_flag(u->item[i], LV_OBJ_FLAG_HIDDEN);
         return;
     }
     dev_page_t *d = &p->model[logical];
     lv_label_set_text_fmt(u->header, "%s   %d/%d", d->name, logical + 1, p->count);
-    for (int i = 0; i < MAX_TILE_ITEMS; i++)
-    {
-        if (i < d->item_count)
-        {
-            lv_label_set_text(u->item_label[i], d->items[i]);
-            lv_obj_clear_flag(u->item[i], LV_OBJ_FLAG_HIDDEN);
-        }
-        else
-        {
-            lv_obj_add_flag(u->item[i], LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-    lv_obj_update_layout(u->list);
-    lv_obj_scroll_to_y(u->list, 0, LV_ANIM_OFF);
-    center_nearest(u, LV_ANIM_OFF);
-    emphasize_centered(u);
+    /* Start with a middle item centred so several icons show on the arc. */
+    u->sel = d->item_count > 0 ? d->item_count / 2 : 0;
+    apply_arc(u, d);
 }
 
 static void rebind_all(void) { for (int k = 0; k < 3; k++) bind_tile(k); }
@@ -311,28 +282,21 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
     lv_obj_align(u->header, LV_ALIGN_TOP_MID, 0, 40);
     lv_label_set_text(u->header, "");
 
-    /* Non-scrollable: vertical drags belong to the overlay tileview. */
+    /* Icon layer — full-screen, non-scrollable; icons are placed manually on
+       the arc by apply_arc(). Vertical drags belong to the overlay tileview. */
     u->list = lv_obj_create(u->tile);
     lv_obj_set_size(u->list, LV_HOR_RES, LV_VER_RES);
-    lv_obj_align(u->list, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_pos(u->list, 0, 0);
     lv_obj_set_style_bg_opa(u->list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(u->list, 0, 0);
-    lv_obj_set_style_pad_left(u->list, 0, 0);
-    lv_obj_set_style_pad_right(u->list, 0, 0);
-    lv_obj_set_style_pad_top(u->list, (LV_VER_RES - ITEM_SLOT_H) / 2, 0);
-    lv_obj_set_style_pad_bottom(u->list, (LV_VER_RES - ITEM_SLOT_H) / 2, 0);
-    lv_obj_set_style_pad_row(u->list, 0, 0);
-    lv_obj_set_flex_flow(u->list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(u->list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(u->list, 0, 0);
     lv_obj_clear_flag(u->list, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(u->list, list_scroll_cb, LV_EVENT_SCROLL, u);
-    lv_obj_add_event_cb(u->list, list_scroll_end_cb, LV_EVENT_SCROLL_END, u);
 
     for (int i = 0; i < MAX_TILE_ITEMS; i++)
     {
+        /* Per-item cell holding the placeholder icon; positioned on the arc. */
         lv_obj_t *it = lv_obj_create(u->list);
-        lv_obj_set_size(it, LV_HOR_RES, ITEM_SLOT_H);
+        lv_obj_set_size(it, ARC_CELL, ARC_CELL);
         lv_obj_set_style_bg_opa(it, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(it, 0, 0);
         lv_obj_set_style_radius(it, 0, 0);
@@ -340,27 +304,30 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
         lv_obj_clear_flag(it, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_flag(it, LV_OBJ_FLAG_HIDDEN);
 
-        /* Per-item icon (placeholder img_flashlight) above the label — gives the
-           list the same icon+text look as the left instruction_list. */
         lv_obj_t *icon = lv_img_create(it);
-        lv_img_set_src(icon, &img_flashlight);  /* 80x80 */
-        lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 10);
+        lv_img_set_src(icon, &img_flashlight);  /* 80x80 placeholder */
+        lv_obj_center(icon);
         lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
-
-        lv_obj_t *lbl = lv_label_create(it);
-        lv_obj_set_style_text_font(lbl,
-                                   LV_EXT_FONT_GET(get_system_font_size(1)), 0);
-        lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
-        lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(lbl, LV_PCT(80));
-        lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_align(lbl, LV_ALIGN_BOTTOM_MID, 0, -12);
-        lv_label_set_text(lbl, "");
+        /* Required for zoom: scale around the icon centre and let the scaled
+           pixels draw beyond the 80x80 box (else the zoom clips to nothing). */
+        lv_img_set_pivot(icon, 40, 40);
+        lv_obj_add_flag(icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
 
         u->item[i] = it;
-        u->item_label[i] = lbl;
         u->item_icon[i] = icon;
     }
+
+    /* Single centred name label — shows the arc-centred item's text. */
+    u->name_label = lv_label_create(u->tile);
+    lv_obj_set_style_text_font(u->name_label,
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_color(u->name_label, lv_color_white(), 0);
+    lv_label_set_long_mode(u->name_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(u->name_label, 200);
+    lv_obj_set_style_text_align(u->name_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(u->name_label, LV_ALIGN_LEFT_MID, 24, 0);
+    lv_label_set_text(u->name_label, "");
+    u->sel = 0;
 }
 
 static void refresh(void)
