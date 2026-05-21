@@ -1,0 +1,4 @@
+# reveal -> long center drag DOWN at top item -> chain to overlay -> mouse?
+touch_swipe 458 233 30 233 700
+touch_swipe 200 120 200 330 900
+touch_swipe 200 120 200 330 900

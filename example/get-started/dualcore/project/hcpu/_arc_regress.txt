@@ -1,0 +1,3 @@
+# reveal -> CENTER vertical drag down (NOT the right band) -> should pull to mouse
+touch_swipe 458 233 30 233 700
+touch_swipe 200 150 200 450 700

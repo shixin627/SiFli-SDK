@@ -18,6 +18,7 @@ Mkdir("resource/strings")
 scons: done reading SConscript files.
 scons: Building targets ...
 scons: building associated VariantDir targets: build_pc_hcpu .
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\customer\boards\common\bsp_common.obj
 Building compilation database build_pc_hcpu\compile_commands.json
 bsp_common.c
@@ -1096,8 +1097,12 @@ app_alarm_edit.c
 app_alarm_edit_repeat.c
 app_alarm_edit_time.c
 lv_app_list_layout.c
+=======
+>>>>>>> origin/andrew_v28.50
 CC build_pc_hcpu\src\gui_apps\app_layout\lv_instruction_list_layout.obj
+Building compilation database build_pc_hcpu\compile_commands.json
 lv_instruction_list_layout.c
+<<<<<<< HEAD
 CC build_pc_hcpu\src\gui_apps\app_layout\lv_message_list_layout.obj
 lv_message_list_layout.c
 CC build_pc_hcpu\src\gui_apps\app_layout\lv_simplified_obj.obj
@@ -1233,6 +1238,8 @@ waitqueue.c
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\components\drivers\src\dataqueue.c(331): warning C4101: 'level': æœªåƒè€ƒçš„å€åŸŸè®Šæ•¸
 workqueue.c
 watchdog.c
+=======
+>>>>>>> origin/andrew_v28.50
 LINK build_pc_hcpu\main.exe
    ¥¿¦b«Ø¥ßµ{¦¡®w build_pc_hcpu\main.lib ©Mª«¥ó build_pc_hcpu\main.exp
 LINK : warning LNK4098: ¹w³]ªºµ{¦¡®w 'LIBCMTD' »P¨ä¥L¨Ï¥Îªºµ{¦¡®w½Ä¬ð¡A½Ð¨Ï¥Î /NODEFAULTLIB:library

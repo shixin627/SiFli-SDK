@@ -84,8 +84,14 @@
 #include "ble_device_manager.h"
 #include "bloc_motion_tracking.h"
 #include "ble_hid.h"
+#ifndef BSP_USING_PC_SIMULATOR
+/* SiFli chip HAL headers — ARM-only, and currently unused in this TU (no
+   HAL_ or bf0_ calls in the body). Guarded so the UI layer compiles under
+   the PC simulator (T1 part 3: ARM seam). */
 #include "bf0_hal.h"
 #include "bf0_sys_cfg.h"
+#endif
+#include "hid_mouse.h" /* component API: hid_mouse_create / hid_mouse_destroy */
 
 #ifdef APP_ID_MOUSE
 
@@ -3983,10 +3989,32 @@ static lv_point_t bottom_bar_multitask_anchor;
 // 延遲數百 ms 才 fire；rt_timer 跑在獨立 timer thread，不受 LVGL 佔用影響
 static rt_timer_t bottom_bar_multitask_timer = NULL;
 
+/* T4 (b): hosted-mode return hook. When device_pager hosts the mouse it
+   registers a back callback; the bottom-bar up gesture then returns to the
+   instruction layer instead of firing multitask. */
+static bool s_hosted = false;
+static void (*s_host_back_cb)(void) = NULL;
+static void (*s_host_pull_cb)(int up_px, int released) = NULL;
+void hid_mouse_set_host_back_cb(void (*cb)(void))
+{
+    s_host_back_cb = cb;
+    s_hosted = (cb != NULL || s_host_pull_cb != NULL);
+}
+void hid_mouse_set_host_pull_cb(void (*cb)(int up_px, int released))
+{
+    s_host_pull_cb = cb;
+    s_hosted = (cb != NULL || s_host_back_cb != NULL);
+}
+
 static void bottom_bar_multitask_fire(void)
 {
     LOG_D("Bottom bar: multitask triggered");
     if (bottom_bar_multitask_fired)
+        return;
+    /* hosted: suppress the multitask send here (this can run on the rt_timer
+       thread — no LVGL calls). The actual return is driven on the LVGL thread
+       by the release handler below. */
+    if (s_hosted && s_host_back_cb)
         return;
     bottom_bar_multitask_fired = true;
     if (control_provider.ble_hid_keyboard_multitask != NULL)
@@ -4092,6 +4120,15 @@ static void text_input_bar_cb(lv_event_t *e)
                 if (up_amount < 0) up_amount = 0;
                 multitask_hint_drag_offset = (int16_t)up_amount;
 
+                /* Hosted (device_pager): delegate the up-drag so the host
+                   finger-follows pulling its instruction panel back into view.
+                   Skip the mouse's own multitask hint entirely. */
+                if (s_host_pull_cb)
+                {
+                    s_host_pull_cb(up_amount, 0);
+                    break;
+                }
+
                 // drag 接近門檻且 hint 還隱藏 → 啟動 50ms 進場動畫
                 if (up_amount > MULTITASK_HINT_LIMIT - 10 && multitask_hint_hidden)
                 {
@@ -4142,9 +4179,25 @@ static void text_input_bar_cb(lv_event_t *e)
             {
                 multitask_pending_active = false;
                 multitask_hint_vibrated = false;
+                /* Hosted (device_pager): hand the release to the host, which
+                   decides commit (restore the instruction list) vs cancel
+                   (snap back to the mouse) from how far it was pulled up. No
+                   multitask hint was shown, so nothing to animate away. */
+                if (s_host_pull_cb)
+                {
+                    s_host_pull_cb(multitask_hint_drag_offset, 1);
+                    break;
+                }
                 if (multitask_hint_drag_offset > MULTITASK_HINT_LIMIT)
                 {
-                    if (control_provider.ble_hid_keyboard_multitask)
+                    /* hosted (device_pager): bottom-bar up returns to the
+                       instruction layer instead of sending multitask. Safe to
+                       call here — this is the LVGL-thread release handler. */
+                    if (s_hosted && s_host_back_cb)
+                    {
+                        s_host_back_cb();
+                    }
+                    else if (control_provider.ble_hid_keyboard_multitask)
                     {
                         control_provider.ble_hid_keyboard_multitask(true);
                     }
@@ -6282,9 +6335,16 @@ bool app_hid_mouse_movement_lock(void)
  * @brief Handles application start
  * @param scr Screen object
  */
-static void on_start(lv_obj_t *scr)
+/* T1 part 1 (host decouple): was static on_start(scr). Now the public
+   component entry — builds the mouse UI under any host. The gui_app glue
+   calls it with lv_scr_act(); device_pager (T4) calls it with its tile. */
+void hid_mouse_create(lv_obj_t *scr)
 {
-    cust_trans_anim_config(CUST_ANIM_TYPE_1, NULL);
+    /* Screen-level launch transition only when we own the screen. When hosted
+       in a container (T4 device_pager), skip it — the pager drives its own
+       reveal animation and the trans-anim would flash a blank overlay. */
+    if (scr == lv_scr_act())
+        cust_trans_anim_config(CUST_ANIM_TYPE_1, NULL);
     lv_create_mouse_screen(scr);
     app_control_set_mouse_mode(true);
 
@@ -6340,9 +6400,10 @@ static void on_pause(void)
 }
 
 /**
- * @brief Handles application stop
+ * @brief Tear down the mouse UI + deactivate control surface.
+ *        T1 part 1 (host decouple): was static on_stop(void).
  */
-static void on_stop(void)
+void hid_mouse_destroy(void)
 {
     app_control_set_mouse_mode(false);
 
@@ -6556,7 +6617,7 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
     case GUI_APP_MSG_ONSTART:
     {
         lv_obj_t *scr = lv_scr_act();
-        on_start(scr);
+        hid_mouse_create(scr);
         break;
     }
     case GUI_APP_MSG_ONRESUME:
@@ -6566,7 +6627,7 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
         watch_system_mouse_pause();
         break;
     case GUI_APP_MSG_ONSTOP:
-        on_stop();
+        hid_mouse_destroy();
         break;
     default:
         break;

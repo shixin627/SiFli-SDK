@@ -1,0 +1,10 @@
+# Phase 1: verify mouse interactions in the hosted (device_pager) context
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+touch_swipe 458 233 30 233 700
+touch_swipe 233 30 233 430 800
+touch_swipe 200 250 300 250 400
+touch_swipe 24 330 24 150 500
+touch_swipe 442 150 442 330 500
+touch_status

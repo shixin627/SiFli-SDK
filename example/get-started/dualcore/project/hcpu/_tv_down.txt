@@ -1,0 +1,6 @@
+# reveal device page (list), then native swipe DOWN to the mouse page (tileview)
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+touch_swipe 458 233 30 233 700
+touch_swipe 233 150 233 450 700

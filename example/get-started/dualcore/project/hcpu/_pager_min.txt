@@ -1,0 +1,3 @@
+# Minimal: single right-edge press, hold, screenshot. No devices, no moves.
+touch_press 458 233
+touch_status

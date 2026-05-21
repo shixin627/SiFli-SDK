@@ -1,0 +1,4 @@
+dev_add TV 0 1
+touch_swipe 458 233 340 233 400
+app_status
+app_status

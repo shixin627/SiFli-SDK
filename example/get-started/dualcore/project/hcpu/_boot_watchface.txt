@@ -1,0 +1,5 @@
+# boot, add fake devices, stay on the watch face (NO goto_app)
+dev_add TV 0 1
+dev_add PC 0 1
+dev_add Speaker 0 1
+app_status

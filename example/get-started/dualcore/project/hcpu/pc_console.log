@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 
  \ | /
 - SiFli Corporation
@@ -369,3 +370,8 @@ msh />[60314] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
 [961197] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
 [1021197] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
 [1021247] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+=======
+AssertAio- SiFli Corporation
+ / | \     build on May 21 2026, 2.5.0 build 152769d2
+ 2020 - 2022 Copyright by SiFli team
+>>>>>>> origin/andrew_v28.50

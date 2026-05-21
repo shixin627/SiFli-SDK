@@ -1,0 +1,12 @@
+# reveal -> mouse -> stepped up-drag in bottom_swipe_area to fire back gesture
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+touch_swipe 458 233 30 233 700
+touch_swipe 233 30 233 430 800
+touch_press 233 450
+touch_move 233 410
+touch_move 233 360
+touch_move 233 320
+touch_move 233 290
+touch_release

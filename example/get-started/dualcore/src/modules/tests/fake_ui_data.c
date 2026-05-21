@@ -573,3 +573,42 @@ static int sim_voice_say(int argc, char *argv[])
     return 0;
 }
 MSH_CMD_EXPORT(sim_voice_say, sim_voice_say <text>... - inject voice transcript into skai widget);
+
+/* ----- device_pager skaibar (right-side per-device) ------------------- */
+/* Fake the "voice -> text" transcript into the device_pager skaibar input box
+   (which the mic tap opens). No real ASR runs. */
+static char pager_say_buf[128];
+static int pager_say(int argc, char *argv[])
+{
+    if (argc < 2) { rt_kprintf("usage: pager_say <text>...\n"); return -1; }
+    pager_say_buf[0] = '\0';
+    for (int i = 1; i < argc; i++)
+    {
+        if (i > 1)
+            strncat(pager_say_buf, " ",
+                    sizeof(pager_say_buf) - strlen(pager_say_buf) - 1);
+        strncat(pager_say_buf, argv[i],
+                sizeof(pager_say_buf) - strlen(pager_say_buf) - 1);
+    }
+    extern void device_pager_skaibar_say(const char *text);
+    device_pager_skaibar_say(pager_say_buf);
+    rt_kprintf("pager_say: '%s'\n", pager_say_buf);
+    return 0;
+}
+MSH_CMD_EXPORT(pager_say, pager_say <text>... - fake voice transcript into device_pager skaibar);
+
+/* Fake the peer device returning skaibar options; they replace the instruction
+   titles shown for the current device page. */
+static int pager_options(int argc, char *argv[])
+{
+    if (argc < 2)
+    {
+        rt_kprintf("usage: pager_options <opt1> [opt2] ...\n");
+        return -1;
+    }
+    extern void device_pager_skaibar_options(int n, const char *const opts[]);
+    device_pager_skaibar_options(argc - 1, (const char *const *)&argv[1]);
+    rt_kprintf("pager_options: applied %d option(s)\n", argc - 1);
+    return 0;
+}
+MSH_CMD_EXPORT(pager_options, pager_options <opt1> [opt2]... - fake peer-device skaibar options);

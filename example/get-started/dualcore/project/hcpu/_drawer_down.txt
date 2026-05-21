@@ -1,0 +1,7 @@
+# reveal device page (list out), then pull the top handle DOWN to reveal mouse
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+dev_add iPad_Air 2 0
+touch_swipe 458 233 30 233 700
+touch_swipe 120 24 120 400 700
