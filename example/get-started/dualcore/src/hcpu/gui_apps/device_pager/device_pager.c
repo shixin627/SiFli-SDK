@@ -41,6 +41,7 @@
 #include <rtdbg.h>
 
 LV_IMG_DECLARE(icon_mic); /* shared mic/voice icon, same as instruction_list */
+LV_IMG_DECLARE(message_widget_bg); /* skaibar input pill frame (same as left list) */
 
 #define TILE_LEFT      0
 #define TILE_CENTER    1
@@ -88,6 +89,7 @@ typedef struct
     bool        recycling;
 
     /* skaibar voice input → peer-device options */
+    lv_obj_t   *mic_bar;         /* bottom mic trigger; hidden while skaibar open */
     lv_obj_t   *skaibar_input;
     lv_obj_t   *skaibar_label;
     bool        skaibar_active;
@@ -481,6 +483,7 @@ static void skaibar_open(void)
 {
     if (!p || !p->skaibar_input) return;
     lv_label_set_text(p->skaibar_label, "聽取中");
+    lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);     /* like the left list */
     lv_obj_clear_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
     p->skaibar_active = true;
     LOG_I("[pager] skaibar opened (mic) -- awaiting transcript (no real ASR)");
@@ -490,6 +493,7 @@ static void skaibar_close(void)
 {
     if (!p || !p->skaibar_input) return;
     lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
     p->skaibar_active = false;
 }
 
@@ -577,43 +581,50 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     for (int k = 0; k < 3; k++) make_tile(&p->t[k], p->pager);
 
     /* Bottom-centre mic / skaibar bar — matches the left instruction_list. */
-    lv_obj_t *mic_bar = lv_obj_create(p->list_tile);
-    lv_obj_set_size(mic_bar, 240, 50);
-    lv_obj_align(mic_bar, LV_ALIGN_BOTTOM_MID, 0, -75);
-    lv_obj_set_style_bg_color(mic_bar, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(mic_bar, LV_OPA_50, 0);
-    lv_obj_set_style_radius(mic_bar, 25, 0);
-    lv_obj_set_style_border_width(mic_bar, 0, 0);
-    lv_obj_set_style_pad_all(mic_bar, 0, 0);
-    lv_obj_clear_flag(mic_bar, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(mic_bar, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(mic_bar, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *mic_icon = lv_img_create(mic_bar);
+    p->mic_bar = lv_obj_create(p->list_tile);
+    lv_obj_set_size(p->mic_bar, 240, 50);
+    lv_obj_align(p->mic_bar, LV_ALIGN_BOTTOM_MID, 0, -75);
+    lv_obj_set_style_bg_color(p->mic_bar, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(p->mic_bar, LV_OPA_50, 0);
+    lv_obj_set_style_radius(p->mic_bar, 25, 0);
+    lv_obj_set_style_border_width(p->mic_bar, 0, 0);
+    lv_obj_set_style_pad_all(p->mic_bar, 0, 0);
+    lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(p->mic_bar, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *mic_icon = lv_img_create(p->mic_bar);
     lv_img_set_src(mic_icon, &icon_mic);
     lv_obj_center(mic_icon);
     lv_obj_clear_flag(mic_icon, LV_OBJ_FLAG_CLICKABLE);
 
     /* skaibar input box (shown on mic tap) — mirrors the left instruction_list's
-       skai widget input pill (app_skai.c: skai_widget_input_text_bg): a centred,
-       faint-white rounded pill with a thick translucent white border. */
+       voice input pill (lv_instruction_list_layout.c): a BOTTOM-aligned container
+       framed by the message_widget_bg image. On real hardware LVGL's drawn border
+       is too thin, so the image (442x252) supplies the visible border + rounded
+       shape. Tap it to dismiss. */
     p->skaibar_input = lv_obj_create(p->list_tile);
-    lv_obj_set_size(p->skaibar_input, 430, 150);
-    lv_obj_align(p->skaibar_input, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(p->skaibar_input, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_bg_opa(p->skaibar_input, 5, 0);
-    lv_obj_set_style_radius(p->skaibar_input, 75, 0);
-    lv_obj_set_style_border_color(p->skaibar_input, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_width(p->skaibar_input, 5, 0);
-    lv_obj_set_style_border_opa(p->skaibar_input, LV_OPA_50, 0);
+    lv_obj_set_size(p->skaibar_input, 442, 252);
+    lv_obj_align(p->skaibar_input, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_obj_set_style_bg_opa(p->skaibar_input, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(p->skaibar_input, 0, 0);
+    lv_obj_set_style_pad_all(p->skaibar_input, 0, 0);
     lv_obj_clear_flag(p->skaibar_input, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(p->skaibar_input, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_t *skaibar_frame = lv_img_create(p->skaibar_input);
+    lv_img_set_src(skaibar_frame, &message_widget_bg);
+    lv_obj_center(skaibar_frame);
+    lv_obj_clear_flag(skaibar_frame, LV_OBJ_FLAG_CLICKABLE);
     p->skaibar_label = lv_label_create(p->skaibar_input);
     lv_obj_set_style_text_color(p->skaibar_label, lv_color_white(), 0);
+    lv_obj_set_style_text_opa(p->skaibar_label, LV_OPA_80, 0);
     lv_obj_set_style_text_font(p->skaibar_label,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_align(p->skaibar_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(p->skaibar_label, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(p->skaibar_label, 380);
-    lv_obj_align(p->skaibar_label, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_set_width(p->skaibar_label, 360);
+    lv_obj_align(p->skaibar_label, LV_ALIGN_TOP_MID, 0, 60);
     lv_label_set_text(p->skaibar_label, "");
 
     p->empty_label = lv_label_create(p->list_tile);
