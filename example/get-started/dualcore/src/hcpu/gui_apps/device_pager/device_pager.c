@@ -42,6 +42,7 @@
 
 LV_IMG_DECLARE(icon_mic); /* shared mic/voice icon, same as instruction_list */
 LV_IMG_DECLARE(message_widget_bg); /* skaibar input pill frame (same as left list) */
+LV_IMG_DECLARE(img_flashlight); /* placeholder per-item icon (same look as left list) */
 
 #define TILE_LEFT      0
 #define TILE_CENTER    1
@@ -67,6 +68,7 @@ typedef struct
     lv_obj_t *list;
     lv_obj_t *item[MAX_TILE_ITEMS];
     lv_obj_t *item_label[MAX_TILE_ITEMS];
+    lv_obj_t *item_icon[MAX_TILE_ITEMS];
 } tile_ui_t;
 
 typedef struct
@@ -162,6 +164,7 @@ static void emphasize_centered(tile_ui_t *u)
                        : (lv_opa_t)(LV_OPA_COVER -
                                     (uint32_t)d * LV_OPA_COVER / ITEM_SLOT_H);
         lv_obj_set_style_opa(u->item_label[i], opa, 0);
+        lv_obj_set_style_opa(u->item_icon[i], opa, 0);
     }
 }
 
@@ -337,6 +340,13 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
         lv_obj_clear_flag(it, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_flag(it, LV_OBJ_FLAG_HIDDEN);
 
+        /* Per-item icon (placeholder img_flashlight) above the label — gives the
+           list the same icon+text look as the left instruction_list. */
+        lv_obj_t *icon = lv_img_create(it);
+        lv_img_set_src(icon, &img_flashlight);  /* 80x80 */
+        lv_obj_align(icon, LV_ALIGN_TOP_MID, 0, 10);
+        lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
+
         lv_obj_t *lbl = lv_label_create(it);
         lv_obj_set_style_text_font(lbl,
                                    LV_EXT_FONT_GET(get_system_font_size(1)), 0);
@@ -344,11 +354,12 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
         lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
         lv_obj_set_width(lbl, LV_PCT(80));
         lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_center(lbl);
+        lv_obj_align(lbl, LV_ALIGN_BOTTOM_MID, 0, -12);
         lv_label_set_text(lbl, "");
 
         u->item[i] = it;
         u->item_label[i] = lbl;
+        u->item_icon[i] = icon;
     }
 }
 
@@ -571,7 +582,7 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     p->list_tile = lv_tileview_add_tile(p->overlay, 0, 1, LV_DIR_TOP);
     lv_obj_set_style_bg_opa(p->home_tile, LV_OPA_TRANSP, 0); /* see mouse through */
     lv_obj_set_style_bg_color(p->list_tile, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(p->list_tile, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(p->list_tile, LV_OPA_50, 0); /* 50% — the mouse page shows through behind the list */
     lv_obj_clear_flag(p->list_tile, LV_OBJ_FLAG_SCROLLABLE);
 
     /* List carousel — horizontal device recycler, fills the list tile. */
