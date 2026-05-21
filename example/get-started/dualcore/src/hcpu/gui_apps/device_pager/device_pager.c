@@ -186,8 +186,10 @@ static void apply_arc(tile_ui_t *u)
     const int   cx   = LV_HOR_RES / 2;
     const int   cy   = LV_VER_RES / 2;
     const float aps  = ARC_SLOT_DEG * (float)M_PI / 180.0f;
-    const lv_coord_t lx1 = u->list->coords.x1;
-    const lv_coord_t ly1 = u->list->coords.y1;
+    /* Position icons in TILE-LOCAL coords (tile assumed at the viewport origin
+       when shown) — NOT the list's live screen coords. The 3-tile carousel
+       binds off-screen neighbours too; using live coords there placed their
+       floating icons wrong, so they were misaligned once paged into view. */
     const lv_coord_t pl  = lv_obj_get_style_pad_left(u->list, LV_PART_MAIN);
     const lv_coord_t pt  = lv_obj_get_style_pad_top(u->list, LV_PART_MAIN);
 
@@ -220,7 +222,7 @@ static void apply_arc(tile_ui_t *u)
         int sy = cy + (int)(ARC_RADIUS * sinf(ang));
         lv_coord_t iw = lv_obj_get_width(u->item_icon[i]);
         lv_coord_t ih = lv_obj_get_height(u->item_icon[i]);
-        lv_obj_set_pos(u->item_icon[i], sx - lx1 - pl - iw / 2, sy - ly1 - pt - ih / 2);
+        lv_obj_set_pos(u->item_icon[i], sx - pl - iw / 2, sy - pt - ih / 2);
         lv_opa_t opa = (lv_opa_t)(ARC_OPA_MIN + (LV_OPA_COVER - ARC_OPA_MIN) * c);
         lv_obj_set_style_img_opa(u->item_icon[i], opa, 0);
     }
