@@ -12,6 +12,7 @@
 #include <rtthread.h>
 #include "string.h"
 #include "communicate_parse.h"
+#include "communicate_parse_skailink.h"
 #include "communicate_protocol.h"
 
 #define DBG_TAG "communicate.parse"
@@ -57,6 +58,10 @@ static void dispatch_l2_command(uint8_t cmd_id, uint8_t key, uint8_t *payload, u
     case CONTROL_COMMAND_ID:
         LOG_D("CONTROL_COMMAND, KEY = 0x%x", key);
         resolve_Control_command(key, payload, length);
+        break;
+    case SKAI_LINK_COMMAND_ID:
+        LOG_D("SKAI_LINK_COMMAND, KEY = 0x%x", key);
+        resolve_skailink_command(key, payload, length);
         break;
     default:
         LOG_E("Unknown command id 0x%02x", cmd_id);

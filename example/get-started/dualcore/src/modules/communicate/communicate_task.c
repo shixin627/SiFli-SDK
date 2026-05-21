@@ -15,6 +15,7 @@
 #include <string.h>
 #include "communicate_protocol.h"
 #include "communicate_parse.h"
+#include "communicate_parse_skailink.h"
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
 #include "gesture_model_loader.h"
@@ -142,6 +143,18 @@ static bool commu_send_string(uint8_t cmd_id, uint8_t key, const char *s)
 {
     if (s == NULL) return false;
     return commu_send_blob(cmd_id, key, s, (uint16_t)strlen(s));
+}
+
+/* ADR-0008 E7: watch→phone active-target selection (sent on tileview page
+   change). UNVERIFIED — build-verify rt_snprintf is available (else use
+   rt_sprintf with a bounds guard). */
+bool commu_send_active_device(const char *device_id)
+{
+    if (device_id == NULL) return false;
+    char json[16 + SYNCED_DEVICE_ID_LEN];
+    int n = rt_snprintf(json, sizeof(json), "{\"device_id\":\"%s\"}", device_id);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_ACTIVE_SELECT, json);
 }
 
 /*============================================================================*

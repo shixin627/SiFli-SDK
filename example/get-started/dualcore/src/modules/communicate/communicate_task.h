@@ -24,6 +24,10 @@
  *  Returns true on success, false if disconnected or send failed.
  *============================================================================*/
 
+/* ADR-0008 E7: watch→phone uplink — the watch's active-target device selection
+   (sent on tileview page change). JSON {"device_id":"..."} over 0x20/0x05. */
+bool commu_send_active_device(const char *device_id);
+
 bool commu_send_bond_success(void);
 bool commu_send_bond_fail(void);
 bool commu_send_login_success(void);

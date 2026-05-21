@@ -317,6 +317,7 @@ extern "C"
 #define SYNCED_DEVICE_ID_LEN 40        /* UUID v4 (36) + null + pad */
 #define MAX_DEFAULT_ACTIONS 12
 #define DEFAULT_ACTION_LEN 32
+#define SYNCED_DEVICE_NAME_LEN 40      /* display name (RAM only, re-synced on connect) */
 #define DEVICE_REGISTRY_VERSION 1
 
     typedef struct
@@ -519,6 +520,7 @@ extern "C"
         volatile T_BBPRO_PAIRED_INFO paired_info;
         T_DEVICE_REGISTRY device_registry;                       // o (ADR-0008 E8: id + default actions)
         volatile uint8_t device_status[MAX_SYNCED_DEVICES];      // RAM only — reset to off (0) on boot
+        char device_name[MAX_SYNCED_DEVICES][SYNCED_DEVICE_NAME_LEN]; // RAM only (ADR-0008 E7: UI label)
         volatile T_GAP_DEV_STATE gap_dev_state;   /**< GAP device state */
         volatile T_GAP_CONN_STATE gap_conn_state; /**< GAP connection state */
         volatile T_CLOCK_MENU_TYPE clock_status;  // o

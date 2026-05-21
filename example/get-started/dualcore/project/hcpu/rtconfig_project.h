@@ -21,6 +21,7 @@
     #define BSP_USING_COMM_HEALTH
     #define BSP_USING_COMM_NOTIFY
     #define BSP_USING_COMM_SETTING
+    #define BSP_USING_COMM_SKAILINK
 
     #define RT_HEAP_SIZE   (680000)
     #define NORESOURCE  /* RT_VERSION in winuser.h */
