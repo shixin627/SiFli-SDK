@@ -4,20 +4,25 @@
  * @brief  Right-side per-device control page — content builder for the
  *         watch-face tileview's RIGHT tile.
  *
- *  Drawer = a real vertical lv_tileview (same native finger-follow mechanism the
- *  main face uses — NOT hand-computed offsets):
- *    (0,1) LIST  — the device's instruction list_items (a horizontal 3-tile
- *                  recycler so you can page between devices) + a bottom-centre
- *                  mic/skaibar bar (matches the left instruction_list). Start here.
- *    (0,0) MOUSE — the real hid_mouse, the page above. Swipe DOWN on the list to
- *                  reveal it (the tileview reveals the tile above on a down-swipe).
- *  Swipe up (or the mouse's bottom-bar "back") → back to the list page.
+ *  Mirrors the WATCH-FACE reveal mechanism:
+ *    - mouse_base  : the real hid_mouse, the always-present BASE (like the clock).
+ *    - overlay_tv  : a vertical lv_tileview, HIDDEN by default, with two tiles —
+ *        (0,0) HOME : transparent (you see the mouse base through it).
+ *        (0,1) LIST : the device's instruction list_items (+ a 3-tile horizontal
+ *                     recycler for device paging + a bottom-centre mic/skaibar).
+ *    - bar         : a bottom handle shown when the overlay is hidden (on the
+ *                    mouse), like the watch-face edge zone.
  *
- *  The mouse is created ONLY once the tileview settles on the mouse page and
- *  destroyed when it leaves — so it never processes touches (and never moves)
- *  while you are on the list page or mid-swipe. It is drill-down-targeted at the
- *  current device. list_items are per-device fake content; real per-device data
- *  + skaibar voice over BLE arrive later.
+ *  Flow (native finger-follow throughout; the mouse base never scrolls):
+ *    - Enter the device page → overlay shown on the LIST tile (list covers mouse).
+ *    - Pull the list DOWN → overlay scrolls to the transparent HOME tile, the
+ *      list slides down and you see the mouse through the transparent page.
+ *    - Release on HOME → overlay HIDES → the mouse base + the bottom BAR show.
+ *    - Touch the BAR → overlay re-shows on HOME → drag UP → the LIST slides back.
+ *
+ *  The mouse base is hosted on device_pager_set_active() and drill-down-targeted
+ *  at the current device. list_items are per-device fake content; real per-device
+ *  data + skaibar voice over BLE arrive later.
  ******************************************************************************
  */
 #include <rtthread.h>
@@ -29,7 +34,7 @@
 #include "ble_hid.h"                   /* ble_hid_set_conn_idx (drill-down target) */
 #include "ui_helper.h"                 /* get_system_font_size */
 #include "lv_ext_resource_manager.h"   /* LV_EXT_FONT_GET font idiom */
-#include "hid_mouse.h"                 /* mouse component, hosted in the mouse tile */
+#include "hid_mouse.h"                 /* mouse component, hosted as the base */
 
 #define DBG_TAG "device.pager"
 #define DBG_LVL DBG_LOG
@@ -43,6 +48,7 @@ LV_IMG_DECLARE(icon_mic); /* shared mic/voice icon, same as instruction_list */
 #define MAX_TILE_ITEMS 8 /* pre-created row pool per tile (Issue 5) */
 
 #define ITEM_SLOT_H    150 /* per-item vertical slot height (px) */
+#define BAR_H          44  /* bottom re-summon handle thickness */
 
 typedef struct
 {
@@ -65,13 +71,16 @@ typedef struct
 typedef struct
 {
     lv_obj_t   *parent;          /* the right tile we build into */
-    lv_obj_t   *drawer;          /* vertical tileview: list page + mouse page */
-    lv_obj_t   *list_tile;       /* (0,1) bottom — the instruction list page */
-    lv_obj_t   *mouse_tile;      /* (0,0) top — the hid_mouse page */
+    lv_obj_t   *mouse_base;      /* hid_mouse — the always-present base */
+    lv_obj_t   *overlay;         /* tileview overlay (hidden by default) */
+    lv_obj_t   *home_tile;       /* (0,0) transparent — see the mouse through it */
+    lv_obj_t   *list_tile;       /* (0,1) the instruction list page */
     lv_obj_t   *pager;           /* horizontal device carousel (inside list_tile) */
     tile_ui_t   t[3];            /* physical tiles: left / center / right */
+    lv_obj_t   *bar;             /* bottom re-summon handle (on the mouse) */
     lv_obj_t   *empty_label;
-    bool        mouse_created;   /* real hid_mouse hosted in the mouse tile */
+    bool        mouse_created;   /* real hid_mouse hosted in mouse_base */
+    bool        summoning;       /* bar press shown the overlay; awaiting drag/tap */
 
     dev_page_t  model[MAX_BONDED_DEVICES];
     int         count;
@@ -288,10 +297,7 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
     lv_obj_align(u->header, LV_ALIGN_TOP_MID, 0, 40);
     lv_label_set_text(u->header, "");
 
-    /* The vertical list does NOT capture vertical drags itself — those belong to
-       the drawer tileview (list <-> mouse). The centred item is the device's
-       instruction; item browsing rides the (future) arc-scroll like the left
-       list. So the list is non-scrollable here. */
+    /* Non-scrollable: vertical drags belong to the overlay tileview. */
     u->list = lv_obj_create(u->tile);
     lv_obj_set_size(u->list, LV_HOR_RES, LV_VER_RES);
     lv_obj_align(u->list, LV_ALIGN_CENTER, 0, 0);
@@ -374,64 +380,99 @@ static void mouse_retarget(void)
     LOG_I("[pager] mouse target -> %s (conn_idx=%d)", d->name, d->conn_idx);
 }
 
-/* Create / tear down the real mouse in the mouse tile. */
-static void mouse_layer_create(void)
-{
-    if (!p || p->mouse_created) return;
-    p->mouse_created = true; /* set first: hid_mouse_create can re-enter via layout */
-    hid_mouse_create(p->mouse_tile);
-    mouse_retarget();
-    LOG_I("[pager] mouse page settled — mouse hosted");
-}
+/* ---- overlay show / hide (watch-face style) -------------------------- */
 
-static void mouse_layer_destroy(void)
-{
-    if (!p || !p->mouse_created) return;
-    hid_mouse_destroy();
-    lv_obj_clean(p->mouse_tile);  /* hid_mouse_destroy only NULLs its pointers */
-    p->mouse_created = false;
-    LOG_I("[pager] left mouse page — mouse torn down");
-}
-
-/* Bring the list page back (mouse's bottom-bar "back" gesture, deferred so we
-   don't tear the mouse down from inside its own event handler). */
-static void back_to_list_async(void *unused)
-{
-    (void)unused;
-    if (p && p->drawer) lv_obj_set_tile_id(p->drawer, 0, 1, LV_ANIM_ON);
-}
-static void mouse_pull_cb(int up_px, int released)
-{
-    if (!p || !p->mouse_created) return;
-    if (!released) return;
-    if (up_px > 60) lv_async_call(back_to_list_async, NULL);
-}
-
-/* The tileview settled on a page → create the mouse on the mouse page, drop it
-   on the list page. Fired natively by lv_tileview's value-changed. */
-static void drawer_value_changed_cb(lv_event_t *e)
+/* Settled on a tile: HOME(transparent) → hide the overlay, reveal mouse + bar;
+   LIST → keep the overlay shown, hide the bar. */
+static void overlay_value_changed_cb(lv_event_t *e)
 {
     (void)e;
     if (!p) return;
-    lv_obj_t *act = lv_tileview_get_tile_act(p->drawer);
-    if (act == p->mouse_tile) mouse_layer_create();
-    else                      mouse_layer_destroy();
+    /* A scroll-settle resolves any in-flight bar summon. */
+    p->summoning = false;
+    lv_obj_t *act = lv_tileview_get_tile_act(p->overlay);
+    if (act == p->home_tile)
+    {
+        /* Settled on the transparent HOME → reveal the mouse + bar. */
+        lv_obj_add_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+        LOG_I("[pager] overlay hidden — mouse base + bar");
+    }
+    else
+    {
+        /* Settled on the LIST → hide the bar. */
+        lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+        LOG_I("[pager] overlay on LIST — bar hidden");
+    }
 }
 
-/* Public: called when the device page (right tile) is entered / left. */
+/* The bottom bar mirrors the watch-face edge zone (notification_status_bar_cb).
+   On PRESS it shows the overlay parked at the transparent HOME tile — the mouse
+   shows through it. Because the bar has PRESS_LOCK cleared, the instant the
+   finger drags up off the bar the press transfers to the now-topmost overlay,
+   which scrolls under the finger (native tileview finger-follow) and pulls the
+   LIST up from below. The mouse underneath stays put (the overlay is the
+   hit-test target). A tap that never leaves the bar doesn't transfer, so the
+   bar's RELEASED undoes the park (back to mouse + bar). A real drag is resolved
+   by the overlay's VALUE_CHANGED instead — RELEASED never fires on the bar
+   then, it gets PRESS_LOST when the gesture transfers. */
+static void bar_cb(lv_event_t *e)
+{
+    if (!p) return;
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSED)
+    {
+        p->summoning = true;
+        device_pager_refresh();
+        lv_obj_set_tile_id(p->overlay, 0, 0, LV_ANIM_OFF); /* park at HOME */
+        lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
+    }
+    else if (code == LV_EVENT_RELEASED)
+    {
+        if (p->summoning) /* tap, no drag → never transferred to the overlay */
+        {
+            p->summoning = false;
+            lv_obj_add_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+/* Public: host / tear down the real mouse base as the device page is
+   entered / left. */
 void device_pager_set_active(bool on)
 {
     if (!p) return;
     if (on)
     {
+        if (!p->mouse_created)
+        {
+            p->mouse_created = true; /* set first: hid_mouse_create can re-enter */
+            hid_mouse_create(p->mouse_base);
+            mouse_retarget();
+            /* hid_mouse_create populates mouse_base and disturbs our stack order;
+               re-assert it so the overlay sits above the mouse touch surface and
+               the bar sits on top of all (else the bar's presses leak through to
+               the trackpad — the bar must be the hit-test target at the bottom). */
+            lv_obj_move_foreground(p->overlay);
+            lv_obj_move_foreground(p->bar);
+            LOG_I("[pager] device page active — mouse base hosted");
+        }
         device_pager_refresh();
-        /* start on the list page; the mouse is only created once you swipe to it */
-        lv_obj_set_tile_id(p->drawer, 0, 1, LV_ANIM_OFF);
+        /* Enter on the LIST (covering the mouse); pull down to reveal the mouse. */
+        lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF);
+        lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
     }
-    else
+    else if (p->mouse_created)
     {
-        mouse_layer_destroy();
-        lv_obj_set_tile_id(p->drawer, 0, 1, LV_ANIM_OFF);
+        hid_mouse_destroy();
+        lv_obj_clean(p->mouse_base);
+        p->mouse_created = false;
+        lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* reset to LIST */
+        lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+        LOG_I("[pager] device page inactive — mouse base torn down");
     }
 }
 
@@ -487,26 +528,37 @@ void device_pager_skaibar_options(int n, const char *const opts[])
    app_clock_main_status_bar_init. */
 lv_obj_t *device_pager_create(lv_obj_t *parent)
 {
-    if (p) return p->drawer; /* singleton: one right tile */
+    if (p) return p->overlay; /* singleton: one right tile */
     p = (device_pager_t *)rt_calloc(1, sizeof(device_pager_t));
     if (!p) { LOG_E("device_pager alloc fail"); return NULL; }
     p->parent = parent;
 
-    /* Vertical tileview drawer — native finger-follow, same as the main face. */
-    p->drawer = lv_tileview_create(parent);
-    lv_obj_set_size(p->drawer, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_pos(p->drawer, 0, 0);
-    lv_obj_set_style_bg_opa(p->drawer, LV_OPA_TRANSP, 0);
-    lv_obj_set_scrollbar_mode(p->drawer, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_add_event_cb(p->drawer, drawer_value_changed_cb,
+    /* Mouse base — always-present page beneath everything (the "clock"). */
+    p->mouse_base = lv_obj_create(parent);
+    lv_obj_set_size(p->mouse_base, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(p->mouse_base, 0, 0);
+    lv_obj_set_style_radius(p->mouse_base, 0, 0);
+    lv_obj_set_style_border_width(p->mouse_base, 0, 0);
+    lv_obj_set_style_pad_all(p->mouse_base, 0, 0);
+    lv_obj_set_style_bg_color(p->mouse_base, lv_color_hex(0x101010), 0);
+    lv_obj_clear_flag(p->mouse_base, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* Overlay tileview — HOME(transparent) + LIST. Hidden until shown. */
+    p->overlay = lv_tileview_create(parent);
+    lv_obj_set_size(p->overlay, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(p->overlay, 0, 0);
+    lv_obj_set_style_bg_opa(p->overlay, LV_OPA_TRANSP, 0);
+    lv_obj_set_scrollbar_mode(p->overlay, LV_SCROLLBAR_MODE_OFF);
+    /* Don't let an over-long vertical drag chain past the overlay into the
+       watch-face tileview behind it (which would navigate to the app menu). */
+    lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+    lv_obj_add_event_cb(p->overlay, overlay_value_changed_cb,
                         LV_EVENT_VALUE_CHANGED, NULL);
-    /* Mouse is the TOP tile, list the BOTTOM tile, and we start on the list.
-       A swipe DOWN then reveals the mouse (tileview reveals the tile above when
-       you swipe down — matching "pull the list down to uncover the mouse"). */
-    p->mouse_tile = lv_tileview_add_tile(p->drawer, 0, 0, LV_DIR_BOTTOM);
-    p->list_tile  = lv_tileview_add_tile(p->drawer, 0, 1, LV_DIR_TOP);
-    lv_obj_set_style_bg_color(p->mouse_tile, lv_color_hex(0x101010), 0);
-    lv_obj_set_style_bg_opa(p->mouse_tile, LV_OPA_COVER, 0);
+    p->home_tile = lv_tileview_add_tile(p->overlay, 0, 0, LV_DIR_BOTTOM);
+    p->list_tile = lv_tileview_add_tile(p->overlay, 0, 1, LV_DIR_TOP);
+    lv_obj_set_style_bg_opa(p->home_tile, LV_OPA_TRANSP, 0); /* see mouse through */
+    lv_obj_set_style_bg_color(p->list_tile, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(p->list_tile, LV_OPA_COVER, 0);
 
     /* List carousel — horizontal device recycler, fills the list tile. */
     p->pager = lv_obj_create(p->list_tile);
@@ -515,7 +567,7 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_set_style_pad_all(p->pager, 0, 0);
     lv_obj_set_style_border_width(p->pager, 0, 0);
     lv_obj_set_style_radius(p->pager, 0, 0);
-    lv_obj_set_style_bg_color(p->pager, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(p->pager, LV_OPA_TRANSP, 0);
     lv_obj_set_flex_flow(p->pager, LV_FLEX_FLOW_ROW);
     lv_obj_set_scroll_dir(p->pager, LV_DIR_HOR);
     lv_obj_set_scroll_snap_x(p->pager, LV_SCROLL_SNAP_CENTER);
@@ -567,13 +619,33 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_set_style_text_align(p->empty_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(p->empty_label);
 
-    /* The mouse's bottom-bar "back" gesture returns to the list page. */
-    hid_mouse_set_host_pull_cb(mouse_pull_cb);
+    /* Bottom re-summon handle (on the mouse base). PRESS_LOCK cleared so the
+       continuing drag transfers to the overlay (watch-face edge-zone style). */
+    p->bar = lv_obj_create(parent);
+    lv_obj_set_size(p->bar, LV_HOR_RES, BAR_H);
+    lv_obj_align(p->bar, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(p->bar, lv_color_hex(0x202020), 0);
+    lv_obj_set_style_bg_opa(p->bar, LV_OPA_70, 0);
+    lv_obj_set_style_border_width(p->bar, 0, 0);
+    lv_obj_set_style_radius(p->bar, 0, 0);
+    lv_obj_set_style_pad_all(p->bar, 0, 0);
+    lv_obj_clear_flag(p->bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(p->bar, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_add_flag(p->bar, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(p->bar, bar_cb, LV_EVENT_ALL, NULL);
+    lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_t *grab = lv_obj_create(p->bar);
+    lv_obj_set_size(grab, 44, 5);
+    lv_obj_center(grab);
+    lv_obj_set_style_radius(grab, 3, 0);
+    lv_obj_set_style_bg_color(grab, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_border_width(grab, 0, 0);
+    lv_obj_clear_flag(grab, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_set_tile_id(p->drawer, 0, 1, LV_ANIM_OFF); /* start on the list */
+    lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* start on the LIST */
 
     ble_dev_mgr_register_callback(dev_mgr_cb, NULL);
     refresh();
-    LOG_I("[pager] built (tileview drawer, %d devices)", p->count);
-    return p->drawer;
+    LOG_I("[pager] built (overlay tileview + mouse base, %d devices)", p->count);
+    return p->overlay;
 }
