@@ -608,7 +608,8 @@ void device_pager_set_active(bool on)
 }
 
 /* ---- skaibar voice input -> peer-device options ---------------------- */
-#define SKAIBAR_MORPH_MS 300   /* mic-button <-> input-box morph duration */
+#define SKAIBAR_GROW_MS  220   /* phase 1: mic button grows into the box backdrop */
+#define SKAIBAR_FRAME_MS 160   /* phase 2: frame image + transcript fade */
 #define MICB_W 240             /* mic button geometry (matches its creation) */
 #define MICB_H 50
 #define MICB_Y (-75)
@@ -618,14 +619,19 @@ void device_pager_set_active(bool on)
 #define MICB_RADIUS  25        /* mic button corner radius */
 #define SKAIB_RADIUS 80        /* matches message_widget_bg's rounded corners */
 
-/* One 0..255 fraction (0 = mic button, 255 = input box) morphs the two: the mic
-   bar grows + slides from the button geometry up to the box geometry, its corner
-   radius opens from 25 to the image's 80 and its black fill deepens 50%→80% so it
-   becomes the box's background (the box frame image is too faint to be a fill on
-   its own). The mic glyph fades out; the frame image + transcript fade in. The
-   mic bar is NOT hidden at the end — it stays as the box backdrop. Reversed for
-   dismiss. */
-static void skaibar_morph_cb(void *var, int32_t f)
+/* The morph runs in two SEQUENCED phases driven by two separate 0..255 anims:
+
+     phase 1 (grow): the mic bar grows + slides from the button geometry up to the
+       box geometry, its corner radius opens 25→80 and its black fill deepens
+       50%→80% so it becomes the box's backdrop (the frame image is too faint to
+       be a fill on its own). The mic glyph fades out.
+     phase 2 (frame): the frame image + transcript label fade in.
+
+   OPEN runs grow → THEN frame (the border only appears once the button has
+   finished enlarging). CLOSE runs frame → THEN grow (the border disappears
+   first, then the button shrinks back). The mic bar is NOT hidden at the open
+   end — it stays as the box backdrop; on close only skaibar_input is hidden. */
+static void skaibar_grow_cb(void *var, int32_t f)
 {
     (void)var;
     if (!p) return;
@@ -642,36 +648,77 @@ static void skaibar_morph_cb(void *var, int32_t f)
     }
     if (p->mic_icon && lv_obj_is_valid(p->mic_icon))
         lv_obj_set_style_img_opa(p->mic_icon, (lv_opa_t)(255 - f), 0);
+}
+
+static void skaibar_frame_cb(void *var, int32_t f)
+{
+    (void)var;
+    if (!p) return;
     if (p->skaibar_frame && lv_obj_is_valid(p->skaibar_frame))
         lv_obj_set_style_img_opa(p->skaibar_frame, (lv_opa_t)f, 0);
     if (p->skaibar_label && lv_obj_is_valid(p->skaibar_label))
         lv_obj_set_style_text_opa(p->skaibar_label, (lv_opa_t)(LV_OPA_80 * f / 255), 0);
 }
 
-static void skaibar_morph_close_done_cb(lv_anim_t *a)
+/* close, last step: the button has shrunk back — hide the box (button stays). */
+static void skaibar_close_done_cb(lv_anim_t *a)
 {
     (void)a;
     if (!p) return;
-    lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN); /* box gone, button stays */
+    lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* close, after the frame faded out: shrink the button back down. */
+static void skaibar_close_grow_cb(lv_anim_t *a)
+{
+    (void)a;
+    if (!p || !p->skaibar_input) return;
+    lv_anim_t g;
+    lv_anim_init(&g);
+    lv_anim_set_var(&g, p->skaibar_input);
+    lv_anim_set_values(&g, 255, 0);
+    lv_anim_set_time(&g, SKAIBAR_GROW_MS);
+    lv_anim_set_path_cb(&g, lv_anim_path_ease_in);
+    lv_anim_set_exec_cb(&g, skaibar_grow_cb);
+    lv_anim_set_ready_cb(&g, skaibar_close_done_cb);
+    lv_anim_start(&g);
+}
+
+/* open, after the button finished enlarging: fade the frame image + label in. */
+static void skaibar_open_frame_cb(lv_anim_t *a)
+{
+    (void)a;
+    if (!p || !p->skaibar_input) return;
+    lv_anim_t fr;
+    lv_anim_init(&fr);
+    lv_anim_set_var(&fr, p->skaibar_input);
+    lv_anim_set_values(&fr, 0, 255);
+    lv_anim_set_time(&fr, SKAIBAR_FRAME_MS);
+    lv_anim_set_path_cb(&fr, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&fr, skaibar_frame_cb);
+    lv_anim_start(&fr);
 }
 
 static void skaibar_open(void)
 {
     if (!p || !p->skaibar_input) return;
-    lv_anim_del(p->skaibar_input, skaibar_morph_cb);   /* cancel any in-flight morph */
+    lv_anim_del(p->skaibar_input, skaibar_grow_cb);    /* cancel any in-flight morph */
+    lv_anim_del(p->skaibar_input, skaibar_frame_cb);
     lv_label_set_text(p->skaibar_label, "聽取中");
-    skaibar_morph_cb(NULL, 0);                          /* start at the button state */
+    skaibar_grow_cb(NULL, 0);                           /* button state */
+    skaibar_frame_cb(NULL, 0);                          /* frame fully hidden */
     lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
     p->skaibar_active = true;
+    /* phase 1: grow the button; phase 2 (frame fade-in) chains off its ready_cb. */
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, p->skaibar_input);
     lv_anim_set_values(&a, 0, 255);
-    lv_anim_set_time(&a, SKAIBAR_MORPH_MS);
+    lv_anim_set_time(&a, SKAIBAR_GROW_MS);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-    lv_anim_set_exec_cb(&a, skaibar_morph_cb);
-    /* No ready_cb: the mic bar stays grown as the box backdrop. */
+    lv_anim_set_exec_cb(&a, skaibar_grow_cb);
+    lv_anim_set_ready_cb(&a, skaibar_open_frame_cb);
     lv_anim_start(&a);
 #if defined(BSP_USING_BLOC) && !defined(BSP_USING_PC_SIMULATOR)
     /* Real hardware: same voice pipeline as the left mic — record audio, send to
@@ -694,17 +741,20 @@ static void skaibar_close(void)
 #if defined(BSP_USING_BLOC) && !defined(BSP_USING_PC_SIMULATOR)
     voice_provider.stop_v2t();
 #endif
-    lv_anim_del(p->skaibar_input, skaibar_morph_cb);   /* cancel any in-flight morph */
-    skaibar_morph_cb(NULL, 255);                        /* start at the box state */
-    lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);  /* mic bar (box-sized) shrinks */
+    lv_anim_del(p->skaibar_input, skaibar_grow_cb);    /* cancel any in-flight morph */
+    lv_anim_del(p->skaibar_input, skaibar_frame_cb);
+    skaibar_grow_cb(NULL, 255);                         /* box-sized backdrop */
+    skaibar_frame_cb(NULL, 255);                        /* frame fully shown */
+    lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    /* phase 1: fade the frame out; phase 2 (button shrink) chains off ready_cb. */
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, p->skaibar_input);
     lv_anim_set_values(&a, 255, 0);
-    lv_anim_set_time(&a, SKAIBAR_MORPH_MS);
+    lv_anim_set_time(&a, SKAIBAR_FRAME_MS);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
-    lv_anim_set_exec_cb(&a, skaibar_morph_cb);
-    lv_anim_set_ready_cb(&a, skaibar_morph_close_done_cb);
+    lv_anim_set_exec_cb(&a, skaibar_frame_cb);
+    lv_anim_set_ready_cb(&a, skaibar_close_grow_cb);
     lv_anim_start(&a);
 }
 
