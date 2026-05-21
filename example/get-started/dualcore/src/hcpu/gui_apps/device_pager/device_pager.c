@@ -40,6 +40,16 @@
 #include "lv_ext_resource_manager.h"   /* LV_EXT_FONT_GET font idiom */
 #include "hid_mouse.h"                 /* mouse component, hosted as the base */
 #include "arc_scroll.h"                 /* right-band arc scroll (same as left list) */
+#include "ui_handler.h"                 /* lvgl_msg_handler (v2t transcript route) */
+#include "watch_system_interact.h"      /* V2T_INTENT_SKAIBAR */
+#ifdef BSP_USING_BLOC
+#include "bloc_v2t.h"                   /* voice_provider.start_v2t (real ASR) */
+#endif
+
+/* Transcript-return router (app_system_interface.c) — on real hardware the v2t
+   pipeline calls this with the recognised text; it now branches to the device
+   skaibar when this page is the one showing (see device_pager_skaibar_is_open). */
+extern void refresh_ai_chat_input_message(char *text);
 
 #define DBG_TAG "device.pager"
 #define DBG_LVL DBG_LOG
@@ -578,7 +588,18 @@ static void skaibar_open(void)
     lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);     /* like the left list */
     lv_obj_clear_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
     p->skaibar_active = true;
-    LOG_I("[pager] skaibar opened (mic) -- awaiting transcript (no real ASR)");
+#if defined(BSP_USING_BLOC) && !defined(BSP_USING_PC_SIMULATOR)
+    /* Real hardware: same voice pipeline as the left mic — record audio, send to
+       the phone for STT, the transcript returns via lvgl_msg_handler →
+       refresh_ai_chat_input_message → (device branch) → device_pager_skaibar_say.
+       Disabled in the PC sim (hangs); the sim uses pager_say fake injection. */
+    lvgl_msg_handler.handle_input_message = refresh_ai_chat_input_message;
+    voice_set_pending_v2t_intent(V2T_INTENT_SKAIBAR);
+    voice_provider.start_v2t();
+    LOG_I("[pager] skaibar opened (mic) -- v2t started");
+#else
+    LOG_I("[pager] skaibar opened (mic) -- sim/no-BLOC, awaiting pager_say");
+#endif
 }
 
 static void skaibar_close(void)
@@ -587,6 +608,17 @@ static void skaibar_close(void)
     lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
     p->skaibar_active = false;
+#if defined(BSP_USING_BLOC) && !defined(BSP_USING_PC_SIMULATOR)
+    voice_provider.stop_v2t();
+#endif
+}
+
+/* Public: is the device-page voice input box currently showing? The transcript
+   router (refresh_ai_chat_input_message) uses this to decide that the recognised
+   text belongs here rather than the left instruction_list widget. */
+bool device_pager_skaibar_is_open(void)
+{
+    return p && p->skaibar_active;
 }
 
 static void mic_clicked_cb(lv_event_t *e)
