@@ -480,7 +480,7 @@ void device_pager_set_active(bool on)
 static void skaibar_open(void)
 {
     if (!p || !p->skaibar_input) return;
-    lv_label_set_text(p->skaibar_label, "Listening...");
+    lv_label_set_text(p->skaibar_label, "聽取中");
     lv_obj_clear_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
     p->skaibar_active = true;
     LOG_I("[pager] skaibar opened (mic) -- awaiting transcript (no real ASR)");
@@ -593,24 +593,27 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_center(mic_icon);
     lv_obj_clear_flag(mic_icon, LV_OBJ_FLAG_CLICKABLE);
 
-    /* skaibar input box (shown on mic tap). */
+    /* skaibar input box (shown on mic tap) — mirrors the left instruction_list's
+       skai widget input pill (app_skai.c: skai_widget_input_text_bg): a centred,
+       faint-white rounded pill with a thick translucent white border. */
     p->skaibar_input = lv_obj_create(p->list_tile);
-    lv_obj_set_size(p->skaibar_input, LV_PCT(92), 84);
-    lv_obj_align(p->skaibar_input, LV_ALIGN_BOTTOM_MID, 0, -130);
-    lv_obj_set_style_bg_color(p->skaibar_input, lv_color_hex(0x1E1E1E), 0);
-    lv_obj_set_style_bg_opa(p->skaibar_input, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(p->skaibar_input, 18, 0);
-    lv_obj_set_style_border_color(p->skaibar_input, lv_color_hex(0x00AAFF), 0);
-    lv_obj_set_style_border_width(p->skaibar_input, 2, 0);
-    lv_obj_set_style_pad_all(p->skaibar_input, 10, 0);
+    lv_obj_set_size(p->skaibar_input, 430, 150);
+    lv_obj_align(p->skaibar_input, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_color(p->skaibar_input, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_opa(p->skaibar_input, 5, 0);
+    lv_obj_set_style_radius(p->skaibar_input, 75, 0);
+    lv_obj_set_style_border_color(p->skaibar_input, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(p->skaibar_input, 5, 0);
+    lv_obj_set_style_border_opa(p->skaibar_input, LV_OPA_50, 0);
     lv_obj_clear_flag(p->skaibar_input, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
     p->skaibar_label = lv_label_create(p->skaibar_input);
     lv_obj_set_style_text_color(p->skaibar_label, lv_color_white(), 0);
-    lv_obj_set_style_text_align(p->skaibar_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(p->skaibar_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_label_set_long_mode(p->skaibar_label, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(p->skaibar_label, LV_PCT(100));
-    lv_obj_center(p->skaibar_label);
+    lv_obj_set_width(p->skaibar_label, 380);
+    lv_obj_align(p->skaibar_label, LV_ALIGN_TOP_MID, 0, 10);
     lv_label_set_text(p->skaibar_label, "");
 
     p->empty_label = lv_label_create(p->list_tile);
