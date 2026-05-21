@@ -52,6 +52,7 @@ LV_IMG_DECLARE(img_flashlight); /* placeholder per-item icon (same look as left 
 #define TILE_CENTER    1
 #define TILE_RIGHT     2
 #define MAX_TILE_ITEMS 10 /* pre-created icon pool per tile */
+#define MAX_DEVICES    8  /* online devices the peer (phone) can report */
 
 #define BAR_H          44  /* bottom re-summon handle thickness */
 
@@ -67,6 +68,7 @@ LV_IMG_DECLARE(img_flashlight); /* placeholder per-item icon (same look as left 
 
 typedef struct
 {
+    uint32_t id;        /* device id reported by the connected peer (phone) */
     char    name[32];
     uint8_t dev_idx;
     uint8_t conn_idx;   /* BLE HID target for drill-down; 0xFF = not connected */
@@ -99,7 +101,7 @@ typedef struct
     bool        mouse_created;   /* real hid_mouse hosted in mouse_base */
     bool        summoning;       /* bar press shown the overlay; awaiting drag/tap */
 
-    dev_page_t  model[MAX_BONDED_DEVICES];
+    dev_page_t  model[MAX_DEVICES];
     int         count;
     int         current;
     bool        recycling;
@@ -125,37 +127,26 @@ static void scroll_hides_skaibar_cb(lv_event_t *e)
     if (p && p->skaibar_active) skaibar_close();
 }
 
-/* Fake per-device items until real per-device instruction sets arrive. */
-static void fake_items(dev_page_t *d)
-{
-    uint8_t n = (uint8_t)(7 + (d->dev_idx % 4));
-    if (n > MAX_TILE_ITEMS) n = MAX_TILE_ITEMS;
-    d->item_count = n;
-    for (uint8_t i = 0; i < n; i++)
-        snprintf(d->items[i], sizeof(d->items[0]), "%s #%u", d->name, (unsigned)(i + 1));
-}
-
-static void load_model(void)
+/* Fake online-device list standing in for what the connected peer (phone) will
+   later stream in one device at a time (online device + id + its item options).
+   NOT sourced from the BLE bonded-device DB. 3 devices, random ids, 3 items each
+   (every item uses the flashlight placeholder icon). Seeded once at create. */
+static void seed_fake_devices(void)
 {
     p->count = 0;
-    const bonded_devices_db_t *db = ble_dev_mgr_get_database();
-    if (db)
+    for (int i = 0; i < 3; i++)
     {
-        for (int i = 0; i < MAX_BONDED_DEVICES; i++)
-        {
-            if (db->devices[i].is_valid)
-            {
-                dev_page_t *d = &p->model[p->count];
-                strncpy(d->name, db->devices[i].device_name, sizeof(d->name) - 1);
-                d->name[sizeof(d->name) - 1] = '\0';
-                d->dev_idx = (uint8_t)i;
-                d->conn_idx = db->devices[i].conn_idx;
-                fake_items(d);
-                p->count++;
-            }
-        }
+        dev_page_t *d = &p->model[p->count];
+        d->id       = (uint32_t)rand();
+        snprintf(d->name, sizeof(d->name), "Dev %08lX", (unsigned long)d->id);
+        d->dev_idx  = (uint8_t)i;
+        d->conn_idx = 0xFF;          /* not a real BLE HID target (fake data) */
+        d->item_count = 3;
+        for (int j = 0; j < 3; j++)
+            snprintf(d->items[j], sizeof(d->items[0]), "Item %d", j + 1);
+        p->count++;
     }
-    if (p->current >= p->count) p->current = p->count > 0 ? p->count - 1 : 0;
+    p->current = 0;
 }
 
 /* Lay the item icons on a right-bulging vertical arc (same look as the left
@@ -333,7 +324,6 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
 static void refresh(void)
 {
     if (!p) return;
-    load_model();
     if (p->count == 0)
     {
         lv_obj_add_flag(p->pager, LV_OBJ_FLAG_HIDDEN);
@@ -346,27 +336,25 @@ static void refresh(void)
     snap_to_center(LV_ANIM_OFF);
 }
 
-static void dev_mgr_cb(dev_mgr_event_t event, uint8_t device_idx, void *ud)
-{
-    (void)event; (void)device_idx; (void)ud;
-    refresh();
-}
-
-/* Public: re-read the device DB and rebind (called when the page is revealed). */
+/* Public: rebind the (peer-reported) device list and refresh (called on reveal). */
 void device_pager_refresh(void)
 {
     refresh();
 }
 
-/* Point BLE HID at the device currently shown (drill-down). */
+/* Drill-down to the device currently shown. The fake list isn't BLE-bonded
+   (conn_idx 0xFF), so HID retarget is skipped; the real peer-device target is
+   wired when the phone-streamed list replaces the fake seed. */
 static void mouse_retarget(void)
 {
     if (!p || p->count == 0) return;
     dev_page_t *d = &p->model[p->current];
-    ble_dev_mgr_set_active_device(d->dev_idx);
     if (d->conn_idx != 0xFF)
+    {
+        ble_dev_mgr_set_active_device(d->dev_idx);
         ble_hid_set_conn_idx(d->conn_idx);
-    LOG_I("[pager] mouse target -> %s (conn_idx=%d)", d->name, d->conn_idx);
+    }
+    LOG_I("[pager] target -> %s (id=%08lX)", d->name, (unsigned long)d->id);
 }
 
 /* ---- overlay show / hide (watch-face style) -------------------------- */
@@ -650,7 +638,7 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
 
     lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* start on the LIST */
 
-    ble_dev_mgr_register_callback(dev_mgr_cb, NULL);
+    seed_fake_devices();   /* peer-reported list will replace this later */
     refresh();
     LOG_I("[pager] built (overlay tileview + mouse base, %d devices)", p->count);
     return p->overlay;
