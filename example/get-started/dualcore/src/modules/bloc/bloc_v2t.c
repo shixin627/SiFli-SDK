@@ -107,6 +107,17 @@ static folder_t _recorder_folder = {0, NULL};
 static int rec_fd = -1;
 static uint32_t record_bytes;
 
+/* Set true by the audio thread (audio_record_*) when a write to the recording
+   file fails — almost always a full disk. The audio thread only raises the
+   flag and stops feeding; the UI thread (recorder's timer) owns the teardown
+   so the file/encoder are released exactly once. Reset at each start. */
+static volatile bool rec_disk_full = false;
+
+/* Minimum free space required to start a recording. ~128 KB is roughly 64 s
+   of 16 kbps opus, leaving headroom for logs and other writers so a fresh
+   recording doesn't die after a couple of seconds. */
+#define REC_MIN_FREE_BYTES (128 * 1024)
+
 /* Opus encoder for recording */
 #ifdef ENABLE_OPUS_ENCODER
 static OpusEncoder *rec_opus_encoder = NULL;
@@ -512,21 +523,108 @@ void copy_temp_file_to_recorder(void)
     close(fd_recorder);
 }
 
-void start_voice_recording(void)
+/* Free bytes available on the root filesystem (where /recorder lives). */
+static uint64_t fs_free_bytes(void)
+{
+    struct statfs st;
+    if (statfs("/", &st) != 0)
+    {
+        return 0;
+    }
+    return (uint64_t)st.f_bfree * st.f_bsize;
+}
+
+/* Delete the oldest recording in /recorder. Filenames are timestamped
+   (record_YYYYMMDD_HHMMSS.ext) so the lexicographically smallest name is the
+   oldest. Returns 0 if a file was deleted, -1 if none was found. */
+static int delete_oldest_recording(void)
+{
+    DIR *dir = opendir("/recorder");
+    if (dir == NULL)
+    {
+        return -1;
+    }
+
+    char oldest[MAX_RECORD_PATH_LEN] = {0};
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (entry->d_type != DT_REG)
+            continue;
+        if (strncmp(entry->d_name, "record", 6) != 0)
+            continue;
+        if (strstr(entry->d_name, ".opus") == NULL &&
+            strstr(entry->d_name, ".pcm") == NULL)
+            continue;
+        if (oldest[0] == '\0' || strcmp(entry->d_name, oldest) < 0)
+        {
+            strncpy(oldest, entry->d_name, sizeof(oldest) - 1);
+            oldest[sizeof(oldest) - 1] = '\0';
+        }
+    }
+    closedir(dir);
+
+    if (oldest[0] == '\0')
+    {
+        return -1;
+    }
+
+    char path[MAX_RECORD_PATH_LEN + 16];
+    snprintf(path, sizeof(path), "/recorder/%s", oldest);
+    if (unlink(path) != 0)
+    {
+        LOG_E("disk low: failed to delete %s", path);
+        return -1;
+    }
+    LOG_W("disk low: rotated out oldest recording %s", path);
+    return 0;
+}
+
+/* Ensure at least REC_MIN_FREE_BYTES is free before recording, rotating out
+   the oldest recordings if necessary. Returns 0 if space is available, -1 if
+   the disk is still full after deleting everything we can. */
+static int ensure_recording_space(void)
+{
+    while (fs_free_bytes() < REC_MIN_FREE_BYTES)
+    {
+        if (delete_oldest_recording() != 0)
+        {
+            return -1; /* nothing left to free */
+        }
+    }
+    return 0;
+}
+
+int start_voice_recording(void)
 {
     if (app_voice_get_recording_status() == true)
     {
-        return;
+        return 0;
     }
+
+    record_bytes = 0;
+    rec_disk_full = false;
+
+    if (access("/recorder", 0))
+    {
+        if (mkdir("/recorder", 0x777) != 0)
+        {
+            LOG_E("failed to create /recorder directory");
+            return -1;
+        }
+        LOG_D("created /recorder directory");
+    }
+
+    /* Pre-flight: make room before we touch the mic / allocate the encoder. */
+    if (ensure_recording_space() != 0)
+    {
+        LOG_E("storage full, cannot start recording");
+        return -1;
+    }
+
 #ifdef BSP_USING_BLOC_PERIPHERAL
     peripheral_provider.subscribe_audio_mic_sensor(true);
 #endif
-    record_bytes = 0;
-    if (access("/recorder", 0))
-    {
-        RT_ASSERT(mkdir("/recorder", 0x777) == 0)
-        LOG_D("canot find dir recorder, make it.\n");
-    }
 
     char file_path[MAX_RECORD_PATH_LEN];
     time_t now;
@@ -576,7 +674,21 @@ void start_voice_recording(void)
 
     LOG_D("[%s] %s\n", __FUNCTION__, file_path);
     rec_fd = open(file_path, O_RDWR | O_CREAT | O_TRUNC | O_BINARY);
-    RT_ASSERT(rec_fd >= 0);
+    if (rec_fd < 0)
+    {
+        LOG_E("failed to open recording file %s", file_path);
+#ifdef ENABLE_OPUS_ENCODER
+        if (rec_opus_encoder != NULL)
+        {
+            opus_encoder_destroy(rec_opus_encoder);
+            rec_opus_encoder = NULL;
+        }
+#endif
+#ifdef BSP_USING_BLOC_PERIPHERAL
+        peripheral_provider.subscribe_audio_mic_sensor(false);
+#endif
+        return -1;
+    }
 
     // Save current recording file path
     strncpy(current_recording_file, file_path, MAX_RECORD_PATH_LEN - 1);
@@ -584,6 +696,7 @@ void start_voice_recording(void)
 
     app_voice_set_listening_status(true);
     app_voice_set_recording_status(true);
+    return 0;
 }
 
 static uint8_t audio_buffer[AUDIO_REC_TEMP_SIZE];
@@ -637,12 +750,14 @@ static int audio_record_opus(const void *temp_buf, rt_uint32_t data_len)
                 uint16_t pkt_len = (uint16_t)encoded_len;
                 if (write(rec_fd, &pkt_len, sizeof(pkt_len)) != sizeof(pkt_len))
                 {
-                    LOG_E("audio_record_opus write length err\n");
+                    LOG_E("audio_record_opus write length err (disk full?)\n");
+                    rec_disk_full = true;
                     return -1;
                 }
                 if (write(rec_fd, rec_opus_output, encoded_len) != encoded_len)
                 {
-                    LOG_E("audio_record_opus write data err\n");
+                    LOG_E("audio_record_opus write data err (disk full?)\n");
+                    rec_disk_full = true;
                     return -1;
                 }
                 record_bytes += sizeof(pkt_len) + encoded_len;
@@ -659,12 +774,101 @@ static int audio_record_opus(const void *temp_buf, rt_uint32_t data_len)
 
     return 0;
 }
+
+
+// ── Real-time V2T Opus streaming (separate from the recording encoder) ──
+// Streaming config differs from recording: in-band FEC ON + packet-loss-perc,
+// because the BLE audio characteristic is fire-and-forget (silent drops). 20ms
+// frames halve the BLE notification rate vs the recording path's 10ms.
+// NOTE: authored without an on-device build — needs Keil compile + review.
+#define V2T_OPUS_FRAME_SIZE 320 // 20ms @ 16kHz
+static OpusEncoder *v2t_opus_encoder = NULL;
+static int16_t v2t_pcm_buf[V2T_OPUS_FRAME_SIZE];
+static uint16_t v2t_pcm_idx = 0;
+static uint8_t v2t_opus_seq = 0;
+// Wire frame: [0]=speaking index, [1]=8-bit seq (wraps), [2..]=opus packet.
+static uint8_t v2t_send_buf[2 + OPUS_REC_MAX_PACKET] __attribute__((aligned(4)));
+
+static int v2t_opus_lazy_init(void)
+{
+    if (v2t_opus_encoder != NULL)
+    {
+        return 0;
+    }
+    int err;
+    v2t_opus_encoder = opus_encoder_create(OPUS_REC_SAMPLE_RATE, OPUS_REC_CHANNELS,
+                                           OPUS_APPLICATION_VOIP, &err);
+    if (err != OPUS_OK || v2t_opus_encoder == NULL)
+    {
+        LOG_E("v2t opus create failed err=%d\n", err);
+        v2t_opus_encoder = NULL;
+        return -1;
+    }
+    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_EXPERT_FRAME_DURATION(OPUS_FRAMESIZE_20_MS));
+    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_VBR(1));
+    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_BITRATE(OPUS_REC_BITRATE));
+    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
+    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_COMPLEXITY(0));
+    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_LSB_DEPTH(16));
+    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
+    // Streaming-specific: in-band FEC + expected loss so a dropped BLE packet is
+    // recoverable on the phone (opus_stream_decoder.dart drives FEC/PLC).
+    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_INBAND_FEC(1));
+    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_PACKET_LOSS_PERC(10));
+    v2t_pcm_idx = 0;
+    v2t_opus_seq = 0;
+    return 0;
+}
+
+// Encode PCM16 (mono 16kHz) into 20ms Opus frames and stream each as one BLE
+// audio notification, framed [idx][seq][opus]. Mirrors audio_record_opus()'s
+// accumulation but sends over BLE instead of writing to a file. Dropped packets
+// are concealed phone-side via FEC/PLC keyed on the sequence number.
+void v2t_opus_stream_send(const int16_t *pcm, uint32_t samples)
+{
+    if (v2t_opus_lazy_init() != 0)
+    {
+        return;
+    }
+    uint32_t i = 0;
+    while (i < samples)
+    {
+        while (v2t_pcm_idx < V2T_OPUS_FRAME_SIZE && i < samples)
+        {
+            v2t_pcm_buf[v2t_pcm_idx++] = pcm[i++];
+        }
+        if (v2t_pcm_idx >= V2T_OPUS_FRAME_SIZE)
+        {
+            opus_int32 n = opus_encode(v2t_opus_encoder, v2t_pcm_buf,
+                                       V2T_OPUS_FRAME_SIZE,
+                                       v2t_send_buf + 2, OPUS_REC_MAX_PACKET);
+            v2t_pcm_idx = 0;
+            if (n > 0 && n <= OPUS_REC_MAX_PACKET)
+            {
+                v2t_send_buf[0] = get_speech_coding(); // speaking-sentence index
+                v2t_send_buf[1] = v2t_opus_seq++;      // 8-bit seq (wraps)
+                // Fire-and-forget; phone conceals any drop via FEC/PLC (seq gap).
+                skaiwatch_ble_audio_send(v2t_send_buf, (uint16_t)(n + 2));
+            }
+            else
+            {
+                LOG_E("v2t opus encode failed n=%d\n", n);
+            }
+        }
+    }
+}
 #endif
 
 int audio_record_pcm(const void *temp_buf, rt_uint32_t data_len)
 {
     if (app_voice_get_recording_status() == false)
     {
+        return -1;
+    }
+    if (rec_disk_full)
+    {
+        /* A prior write failed (disk full). Stop feeding; the recorder's UI
+           timer will tear the session down and tell the user. */
         return -1;
     }
 
@@ -688,7 +892,9 @@ int audio_record_pcm(const void *temp_buf, rt_uint32_t data_len)
             data_len > AUDIO_REC_TEMP_SIZE ? AUDIO_REC_TEMP_SIZE : data_len;
         if (write(rec_fd, buf_ptr, wrt_len) != wrt_len)
         {
-            LOG_E("audio_record_pcm write err\n");
+            LOG_E("audio_record_pcm write err (disk full?)\n");
+            rec_disk_full = true;
+            return -1;
         }
         data_len -= wrt_len;
         buf_ptr += wrt_len; // 增加指针以指向下一个要写入的数据块
@@ -748,6 +954,7 @@ void stop_voice_recording(void)
     LOG_D("recorded %d bytes to file: %s", record_bytes, current_recording_file);
     close(rec_fd);
     rec_fd = -1;
+    rec_disk_full = false;
 }
 
 const char* get_last_recording_file(void)
@@ -1087,6 +1294,7 @@ bool app_voice_get_recording_intent(void)       { return voiceRecordIntent; }
 void app_voice_set_recording_intent(bool i)     { voiceRecordIntent = i; }
 bool app_voice_get_recording_status(void)       { return isVoiceRecording; }
 void app_voice_set_recording_status(bool s)     { isVoiceRecording = s; }
+bool app_voice_recording_disk_full(void)        { return rec_disk_full; }
 uint32_t *app_voice_get_record_time(void)       { return &_voice_recording_time; }
 void app_voice_set_record_time(uint32_t t)      { _voice_recording_time = t; }
 

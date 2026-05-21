@@ -80,7 +80,7 @@ extern "C"
 	extern int free_recorder_folder(folder_t *folder);
 	extern void copy_temp_file_to_recorder(void);
 
-	extern void start_voice_recording(void);
+	extern int start_voice_recording(void);
 	extern int audio_record_pcm(const void *temp_buf, rt_uint32_t data_len);
 	extern void stop_voice_recording(void);
 	extern const char* get_last_recording_file(void);
@@ -108,6 +108,9 @@ extern "C"
 	extern void app_voice_set_recording_intent(bool intent);
 	extern bool app_voice_get_recording_status(void);
 	extern void app_voice_set_recording_status(bool status);
+	/* True once a write to the recording file failed (disk full). Set by the
+	   audio thread; consumed by the recorder UI to stop and warn the user. */
+	extern bool app_voice_recording_disk_full(void);
 	extern uint32_t *app_voice_get_record_time(void);
 	extern void app_voice_set_record_time(uint32_t time);
 	/*message*/

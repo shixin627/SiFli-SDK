@@ -629,16 +629,8 @@ int dfs_elm_write(struct dfs_fd *file, const void *buf, size_t len)
     file->pos  = fd->fptr;
     file->size = f_size(fd);
     if (result == FR_OK)
-    {
-        if (byte_write != len)
-        {
-            rt_kprintf("%s ret:%d\n", __func__, result);
-            RT_ASSERT(0);
-        }
         return byte_write;
-    }
-    rt_kprintf("%s ret:%d\n", __func__, result);
-    RT_ASSERT(0);
+
     return elm_result_to_dfs(result);
 }
 

@@ -133,6 +133,17 @@ static uint32_t current_milliseconds;
 /* Timer callback functions */
 static void update_record_time(lv_timer_t *timer)
 {
+    if (app_voice_recording_disk_full())
+    {
+        /* Disk filled mid-recording. The audio thread flagged it; tear the
+           session down here (the UI thread owns teardown) and warn the user. */
+        lv_timer_del(p_app_recorder->record_timer);
+        p_app_recorder->record_timer = NULL;
+        stop_voice_recording();
+        set_record_button_style(p_app_recorder->record_button, false);
+        lv_label_set_text(p_app_recorder->record_time_label, "storage full");
+        return;
+    }
     p_app_recorder->record_time++;
     time_t now;
     time(&now);
@@ -156,7 +167,13 @@ static void update_record_time(lv_timer_t *timer)
 /* Recording management functions */
 static void start_to_record_voice(void)
 {
-    start_voice_recording();
+    if (start_voice_recording() != 0)
+    {
+        /* Storage full or file error — don't enter the recording UI. */
+        set_record_button_style(p_app_recorder->record_button, false);
+        lv_label_set_text(p_app_recorder->record_time_label, "storage full");
+        return;
+    }
     set_record_button_style(p_app_recorder->record_button, true);
     p_app_recorder->record_time = 0;
     time(&p_app_recorder->record_start_time);
