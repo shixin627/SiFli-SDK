@@ -39,6 +39,7 @@
 #include "ui_helper.h"                 /* get_system_font_size */
 #include "lv_ext_resource_manager.h"   /* LV_EXT_FONT_GET font idiom */
 #include "hid_mouse.h"                 /* mouse component, hosted as the base */
+#include "arc_scroll.h"                 /* right-band arc scroll (same as left list) */
 
 #define DBG_TAG "device.pager"
 #define DBG_LVL DBG_LOG
@@ -58,13 +59,17 @@ LV_IMG_DECLARE(img_flashlight); /* placeholder per-item icon (same look as left 
 
 /* Circular (arc) item layout — mirrors the left instruction_list / app_exercise
    apply_circular_layout: icons ride a vertical arc bulging right, the centred
-   one zoomed big, neighbours shrink + fade, items past ±90° hidden. */
+   one zoomed big, neighbours shrink + fade, items past ±90° hidden. Scrolled by
+   the right-band arc_scroll (snap_targets give the scroll range; the floating
+   icons are positioned each scroll frame from scroll_y). */
 #define ARC_RADIUS     175
 #define ARC_SLOT_DEG   36.0f       /* angle between adjacent items */
-#define ARC_CELL       120         /* per-icon cell (holds 80px icon + zoom headroom) */
-#define ARC_ZOOM_MIN   140         /* ~0.55x of the 80px icon */
+#define ARC_ICON_SIZE  80          /* img_flashlight native size */
+#define ARC_SLOT_H     90          /* vertical scroll pitch per item */
+#define ARC_ZOOM_MIN   128         /* 0.5x at the edges */
 #define ARC_ZOOM_CTR   320         /* ~1.25x at the centre */
 #define ARC_OPA_MIN    LV_OPA_40
+#define ARC_PULL_MOUSE_PX 55       /* elastic over-pull past the top item → mouse */
 
 typedef struct
 {
@@ -80,10 +85,12 @@ typedef struct
 {
     lv_obj_t *tile;
     lv_obj_t *header;
-    lv_obj_t *list;
-    lv_obj_t *item[MAX_TILE_ITEMS];       /* per-icon cells, positioned on the arc */
-    lv_obj_t *item_icon[MAX_TILE_ITEMS];
+    lv_obj_t *list;                       /* scroll container (driven by arc_scroll) */
+    lv_obj_t *snap[MAX_TILE_ITEMS];       /* invisible scroll/snap anchors */
+    lv_obj_t *item_icon[MAX_TILE_ITEMS];  /* floating icons, positioned on the arc */
     lv_obj_t *name_label;                 /* single centred label = selected item's name */
+    arc_scroll_handle_t *arc;             /* right-band drag → scrolls this list */
+    dev_page_t *dev;                      /* device this tile currently shows */
     int       sel;                        /* index currently at the arc centre */
 } tile_ui_t;
 
@@ -100,6 +107,7 @@ typedef struct
     lv_obj_t   *empty_label;
     bool        mouse_created;   /* real hid_mouse hosted in mouse_base */
     bool        summoning;       /* bar press shown the overlay; awaiting drag/tap */
+    bool        pull_pending;    /* over-pull at the top item → going to mouse */
 
     dev_page_t  model[MAX_DEVICES];
     int         count;
@@ -153,39 +161,100 @@ static void seed_fake_devices(void)
    instruction_list / app_exercise): item `sel` sits at the centre (3 o'clock,
    zoomed big), neighbours curve up/down shrinking + fading, items past ±90°
    hide. The single name_label shows the centred item's text. */
-static void apply_arc(tile_ui_t *u, dev_page_t *d)
+/* scroll_y at which item 0 sits at the arc centre (mirrors app_exercise). */
+static int32_t arc_base_scroll(tile_ui_t *u)
 {
-    const int   cx = LV_HOR_RES / 2;
-    const int   cy = LV_VER_RES / 2;
-    const float slot = ARC_SLOT_DEG * (float)M_PI / 180.0f;
-    int count = d ? d->item_count : 0;
+    const lv_coord_t ly1 = u->list->coords.y1;
+    const lv_coord_t pt  = lv_obj_get_style_pad_top(u->list, LV_PART_MAIN);
+    return ly1 + pt + ARC_ICON_SIZE / 2 - LV_VER_RES / 2;
+}
 
+static void apply_arc(tile_ui_t *u)
+{
+    dev_page_t *d = u->dev;
+    int count = d ? d->item_count : 0;
+    const int   cx   = LV_HOR_RES / 2;
+    const int   cy   = LV_VER_RES / 2;
+    const float aps  = ARC_SLOT_DEG * (float)M_PI / 180.0f;
+    const lv_coord_t lx1 = u->list->coords.x1;
+    const lv_coord_t ly1 = u->list->coords.y1;
+    const lv_coord_t pl  = lv_obj_get_style_pad_left(u->list, LV_PART_MAIN);
+    const lv_coord_t pt  = lv_obj_get_style_pad_top(u->list, LV_PART_MAIN);
+
+    const int32_t base_scroll = arc_base_scroll(u);
+    lv_coord_t scroll_y = lv_obj_get_scroll_y(u->list);
+    const int32_t overshoot   = ARC_SLOT_H / 2;
+    const int32_t scroll_max  = base_scroll + (count > 0 ? (count - 1) : 0) * ARC_SLOT_H;
+    if (scroll_y < base_scroll - overshoot) scroll_y = base_scroll - overshoot;
+    if (scroll_y > scroll_max + overshoot)  scroll_y = scroll_max + overshoot;
+    const float offset_angle = (float)(scroll_y - base_scroll) / ARC_SLOT_H * aps;
+
+    int   closest = 0;
+    float min_abs = (float)M_PI;
     for (int i = 0; i < MAX_TILE_ITEMS; i++)
     {
-        if (i >= count) { lv_obj_add_flag(u->item[i], LV_OBJ_FLAG_HIDDEN); continue; }
-        float ang = (float)(i - u->sel) * slot;
+        if (i >= count) { lv_obj_add_flag(u->item_icon[i], LV_OBJ_FLAG_HIDDEN); continue; }
+        float ang = (float)i * aps - offset_angle;
         float aa  = fabsf(ang);
+        if (aa < min_abs) { min_abs = aa; closest = i; }
         if (aa > (float)M_PI / 2.0f)
         {
-            lv_obj_add_flag(u->item[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(u->item_icon[i], LV_OBJ_FLAG_HIDDEN);
             continue;
         }
-        lv_obj_clear_flag(u->item[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(u->item_icon[i], LV_OBJ_FLAG_HIDDEN);
         float c = cosf(aa);
         uint16_t zoom = (uint16_t)(ARC_ZOOM_MIN + (ARC_ZOOM_CTR - ARC_ZOOM_MIN) * c);
         lv_img_set_zoom(u->item_icon[i], zoom);
         int sx = cx + (int)(ARC_RADIUS * cosf(ang));
         int sy = cy + (int)(ARC_RADIUS * sinf(ang));
-        lv_obj_set_pos(u->item[i], sx - ARC_CELL / 2, sy - ARC_CELL / 2);
-        /* opa must be set on the image itself — lv_obj_set_style_opa does NOT
-           cascade to children in this build. */
+        lv_coord_t iw = lv_obj_get_width(u->item_icon[i]);
+        lv_coord_t ih = lv_obj_get_height(u->item_icon[i]);
+        lv_obj_set_pos(u->item_icon[i], sx - lx1 - pl - iw / 2, sy - ly1 - pt - ih / 2);
         lv_opa_t opa = (lv_opa_t)(ARC_OPA_MIN + (LV_OPA_COVER - ARC_OPA_MIN) * c);
         lv_obj_set_style_img_opa(u->item_icon[i], opa, 0);
     }
-    if (u->sel >= 0 && u->sel < count)
-        lv_label_set_text(u->name_label, d->items[u->sel]);
+    u->sel = closest;
+    if (count > 0 && min_abs <= (float)M_PI / 2.0f)
+        lv_label_set_text(u->name_label, d->items[closest]);
     else
         lv_label_set_text(u->name_label, "");
+}
+
+/* arc_scroll snap target: the invisible anchor for the centred item. */
+static lv_obj_t *arc_snap_cb(void *ctx)
+{
+    tile_ui_t *u = (tile_ui_t *)ctx;
+    if (!u || u->sel < 0 || u->sel >= MAX_TILE_ITEMS) return NULL;
+    return u->snap[u->sel];
+}
+
+/* Deferred: pulling the top item down far enough reveals the mouse — drive the
+   overlay back to its transparent HOME tile (its VALUE_CHANGED then hides the
+   overlay and shows the mouse + bar). Deferred so we don't retile mid-scroll. */
+static void pull_to_mouse_async(void *unused)
+{
+    (void)unused;
+    if (!p) return;
+    lv_obj_set_tile_id(p->overlay, 0, 0, LV_ANIM_ON);
+}
+
+static void list_scroll_cb(lv_event_t *e)
+{
+    tile_ui_t *u = (tile_ui_t *)lv_event_get_user_data(e);
+    if (!u || !u->dev) return;
+    apply_arc(u);
+    /* Over-pull past the first item (elastic overshoot below the top) → mouse. */
+    if (u == &p->t[TILE_CENTER] && !p->pull_pending)
+    {
+        lv_coord_t sy   = lv_obj_get_scroll_y(u->list);
+        int32_t    base = arc_base_scroll(u);
+        if (sy < base - ARC_PULL_MOUSE_PX)
+        {
+            p->pull_pending = true;
+            lv_async_call(pull_to_mouse_async, NULL);
+        }
+    }
 }
 
 static void bind_tile(int k)
@@ -195,17 +264,32 @@ static void bind_tile(int k)
 
     if (logical < 0 || logical >= p->count)
     {
+        u->dev = NULL;
         lv_label_set_text(u->header, "");
         lv_label_set_text(u->name_label, "");
         for (int i = 0; i < MAX_TILE_ITEMS; i++)
-            lv_obj_add_flag(u->item[i], LV_OBJ_FLAG_HIDDEN);
+        {
+            lv_obj_add_flag(u->item_icon[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        if (u->arc) arc_scroll_set_item_count(u->arc, 0);
         return;
     }
     dev_page_t *d = &p->model[logical];
+    u->dev = d;
     lv_label_set_text_fmt(u->header, "%s   %d/%d", d->name, logical + 1, p->count);
-    /* Start with a middle item centred so several icons show on the arc. */
-    u->sel = d->item_count > 0 ? d->item_count / 2 : 0;
-    apply_arc(u, d);
+    /* Show one snap anchor per item so the arc_scroll range matches item_count. */
+    for (int i = 0; i < MAX_TILE_ITEMS; i++)
+    {
+        if (i < d->item_count) lv_obj_clear_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
+        else                   lv_obj_add_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    if (u->arc) arc_scroll_set_item_count(u->arc, d->item_count);
+    /* Start at the first item; layout must be current for the scroll math. */
+    u->sel = 0;
+    lv_obj_update_layout(u->list);
+    lv_obj_scroll_to_y(u->list, arc_base_scroll(u), LV_ANIM_OFF);
+    apply_arc(u);
 }
 
 static void rebind_all(void) { for (int k = 0; k < 3; k++) bind_tile(k); }
@@ -273,38 +357,52 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
     lv_obj_align(u->header, LV_ALIGN_TOP_MID, 0, 40);
     lv_label_set_text(u->header, "");
 
-    /* Icon layer — full-screen, non-scrollable; icons are placed manually on
-       the arc by apply_arc(). Vertical drags belong to the overlay tileview. */
+    /* Scroll container — full-screen, vertically scrollable like the left list:
+       drag ANYWHERE scrolls the items; the right-band arc_scroll is an extra
+       one-handed affordance on the same list. scroll_dir VER means horizontal
+       drags chain to the device pager, and dragging down past the first item
+       chains to the overlay tileview (pull-to-mouse). */
     u->list = lv_obj_create(u->tile);
     lv_obj_set_size(u->list, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_pos(u->list, 0, 0);
+    lv_obj_align(u->list, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_opa(u->list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(u->list, 0, 0);
-    lv_obj_set_style_pad_all(u->list, 0, 0);
-    lv_obj_clear_flag(u->list, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_left(u->list, 0, 0);
+    lv_obj_set_style_pad_right(u->list, 0, 0);
+    lv_obj_set_style_pad_ver(u->list, LV_VER_RES / 2, 0);
+    lv_obj_set_scrollbar_mode(u->list, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scroll_dir(u->list, LV_DIR_VER);
+    lv_obj_set_scroll_snap_y(u->list, LV_SCROLL_SNAP_CENTER);
+    /* Vertical over-pull at the top item should rubber-band (so we can detect it
+       and reveal the mouse), NOT chain into the nested pager/overlay. Horizontal
+       still chains to the device pager. */
+    lv_obj_clear_flag(u->list, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
+    lv_obj_add_event_cb(u->list, list_scroll_cb, LV_EVENT_SCROLL, u);
 
     for (int i = 0; i < MAX_TILE_ITEMS; i++)
     {
-        /* Per-item cell holding the placeholder icon; positioned on the arc. */
-        lv_obj_t *it = lv_obj_create(u->list);
-        lv_obj_set_size(it, ARC_CELL, ARC_CELL);
-        lv_obj_set_style_bg_opa(it, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(it, 0, 0);
-        lv_obj_set_style_radius(it, 0, 0);
-        lv_obj_set_style_pad_all(it, 0, 0);
-        lv_obj_clear_flag(it, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(it, LV_OBJ_FLAG_HIDDEN);
+        /* Invisible snap/scroll anchor (non-floating → defines the scroll range
+           + arc_scroll's snap targets). */
+        lv_obj_t *sn = lv_obj_create(u->list);
+        lv_obj_set_size(sn, ARC_ICON_SIZE, ARC_ICON_SIZE);
+        lv_obj_set_pos(sn, 0, i * ARC_SLOT_H);
+        lv_obj_set_style_bg_opa(sn, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(sn, 0, 0);
+        lv_obj_set_style_pad_all(sn, 0, 0);
+        lv_obj_clear_flag(sn, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(sn, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(sn, LV_OBJ_FLAG_HIDDEN);
+        u->snap[i] = sn;
 
-        lv_obj_t *icon = lv_img_create(it);
+        /* Floating icon (doesn't affect scroll size); positioned on the arc by
+           apply_arc(). Pivot + OVERFLOW_VISIBLE so the zoom isn't clipped. */
+        lv_obj_t *icon = lv_img_create(u->list);
         lv_img_set_src(icon, &img_flashlight);  /* 80x80 placeholder */
-        lv_obj_center(icon);
-        lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
-        /* Required for zoom: scale around the icon centre and let the scaled
-           pixels draw beyond the 80x80 box (else the zoom clips to nothing). */
-        lv_img_set_pivot(icon, 40, 40);
+        lv_img_set_pivot(icon, ARC_ICON_SIZE / 2, ARC_ICON_SIZE / 2);
+        lv_obj_add_flag(icon, LV_OBJ_FLAG_FLOATING);
         lv_obj_add_flag(icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-
-        u->item[i] = it;
+        lv_obj_clear_flag(icon, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
         u->item_icon[i] = icon;
     }
 
@@ -319,6 +417,23 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
     lv_obj_align(u->name_label, LV_ALIGN_LEFT_MID, 24, 0);
     lv_label_set_text(u->name_label, "");
     u->sel = 0;
+
+    /* Right-band arc scroll — drag in the right arc band scrolls the items;
+       lock_ancestors keeps the overlay tileview from stealing the drag (this
+       page is a tileview child, like the left instruction_list). */
+    arc_scroll_config_t cfg = {
+        .parent          = u->tile,
+        .list            = u->list,
+        .slot_height_px  = ARC_SLOT_H,
+        .item_height_px  = ARC_ICON_SIZE,
+        .slot_angle_deg  = (uint16_t)ARC_SLOT_DEG,
+        .item_count      = 0,
+        .band_thickness  = 90,
+        .lock_ancestors  = true,
+        .snap_cb         = arc_snap_cb,
+        .ctx             = u,
+    };
+    u->arc = arc_scroll_create(&cfg);
 }
 
 static void refresh(void)
@@ -377,8 +492,9 @@ static void overlay_value_changed_cb(lv_event_t *e)
     }
     else
     {
-        /* Settled on the LIST → hide the bar. */
+        /* Settled on the LIST → hide the bar; allow a fresh over-pull. */
         lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+        p->pull_pending = false;
         LOG_I("[pager] overlay on LIST — bar hidden");
     }
 }
@@ -437,6 +553,7 @@ void device_pager_set_active(bool on)
         }
         device_pager_refresh();
         /* Enter on the LIST (covering the mouse); pull down to reveal the mouse. */
+        p->pull_pending = false;
         lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF);
         lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
