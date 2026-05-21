@@ -83,6 +83,7 @@ typedef struct
     lv_obj_t   *empty_label;
     lv_coord_t  offset;          /* how far the list is pulled down (0 = out) */
     bool        dragging;        /* handle drag in progress */
+    lv_coord_t  grab_dy;         /* finger offset within the bar at grab time */
     bool        mouse_created;   /* real hid_mouse hosted behind the list */
 
     dev_page_t  model[MAX_BONDED_DEVICES];
@@ -301,10 +302,12 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
     lv_obj_align(u->header, LV_ALIGN_TOP_MID, 0, BAR_H + 8);
     lv_label_set_text(u->header, "");
 
+    /* Bottom-centre mic / skaibar bar — same geometry as the left
+       instruction_list's mic_bar (240x50, BOTTOM_MID -75, radius 25). */
     lv_obj_t *mic = lv_obj_create(u->tile);
-    lv_obj_set_size(mic, 40, 40);
-    lv_obj_align(mic, LV_ALIGN_TOP_RIGHT, -16, BAR_H + 2);
-    lv_obj_set_style_radius(mic, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_size(mic, 240, 50);
+    lv_obj_align(mic, LV_ALIGN_BOTTOM_MID, 0, -75);
+    lv_obj_set_style_radius(mic, 25, 0);
     lv_obj_set_style_bg_color(mic, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(mic, LV_OPA_50, 0);
     lv_obj_set_style_border_width(mic, 0, 0);
@@ -373,6 +376,25 @@ static void set_offset(lv_coord_t y)
     lv_obj_set_y(p->handle, y);   /* handle rides the top edge of the list */
 }
 
+static void offset_anim_cb(void *var, int32_t v)
+{
+    (void)var;
+    set_offset((lv_coord_t)v);
+}
+
+/* Smooth snap to a target offset (release feel, like a tileview settle). */
+static void snap_offset(lv_coord_t target)
+{
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, p);
+    lv_anim_set_exec_cb(&a, offset_anim_cb);
+    lv_anim_set_values(&a, p->offset, target);
+    lv_anim_set_time(&a, 200);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+}
+
 static void handle_drag_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
@@ -383,21 +405,23 @@ static void handle_drag_cb(lv_event_t *e)
 
     if (code == LV_EVENT_PRESSED)
     {
+        lv_anim_del(p, offset_anim_cb); /* cancel any in-flight snap */
         p->dragging = true;
+        /* Remember where on the bar the finger landed so the bar tracks the
+           finger 1:1 from that point (no jump-to-centre). */
+        p->grab_dy = pt.y - p->offset;
     }
     else if (code == LV_EVENT_PRESSING && p->dragging)
     {
-        /* The handle rides the list's top edge, so the finger Y is the offset. */
-        set_offset(pt.y - BAR_H / 2);
+        set_offset(pt.y - p->grab_dy); /* exact finger-follow */
     }
     else if ((code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) &&
              p->dragging)
     {
         p->dragging = false;
-        /* Snap: pulled down past the threshold → reveal mouse (bar to bottom);
-           else → list back out. */
-        if (p->offset >= SNAP_OPEN_AT) set_offset(MAX_OFFSET);
-        else                          set_offset(0);
+        /* Snap (animated): pulled down past the threshold → reveal mouse (bar to
+           bottom); else → list back out. */
+        snap_offset(p->offset >= SNAP_OPEN_AT ? MAX_OFFSET : 0);
     }
 }
 
@@ -462,6 +486,7 @@ void device_pager_set_active(bool on)
            built so the host is empty for next time. */
         lv_obj_clean(p->mouse_base);
         p->mouse_created = false;
+        lv_anim_del(p, offset_anim_cb);
         set_offset(0); /* reset the drawer: list out for next entry */
         LOG_I("[pager] device page inactive — mouse torn down");
     }
