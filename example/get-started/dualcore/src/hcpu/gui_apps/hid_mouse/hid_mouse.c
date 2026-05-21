@@ -3994,10 +3994,16 @@ static rt_timer_t bottom_bar_multitask_timer = NULL;
    instruction layer instead of firing multitask. */
 static bool s_hosted = false;
 static void (*s_host_back_cb)(void) = NULL;
+static void (*s_host_pull_cb)(int up_px, int released) = NULL;
 void hid_mouse_set_host_back_cb(void (*cb)(void))
 {
     s_host_back_cb = cb;
-    s_hosted = (cb != NULL);
+    s_hosted = (cb != NULL || s_host_pull_cb != NULL);
+}
+void hid_mouse_set_host_pull_cb(void (*cb)(int up_px, int released))
+{
+    s_host_pull_cb = cb;
+    s_hosted = (cb != NULL || s_host_back_cb != NULL);
 }
 
 static void bottom_bar_multitask_fire(void)
@@ -4114,6 +4120,15 @@ static void text_input_bar_cb(lv_event_t *e)
                 if (up_amount < 0) up_amount = 0;
                 multitask_hint_drag_offset = (int16_t)up_amount;
 
+                /* Hosted (device_pager): delegate the up-drag so the host
+                   finger-follows pulling its instruction panel back into view.
+                   Skip the mouse's own multitask hint entirely. */
+                if (s_host_pull_cb)
+                {
+                    s_host_pull_cb(up_amount, 0);
+                    break;
+                }
+
                 // drag 接近門檻且 hint 還隱藏 → 啟動 50ms 進場動畫
                 if (up_amount > MULTITASK_HINT_LIMIT - 10 && multitask_hint_hidden)
                 {
@@ -4164,6 +4179,15 @@ static void text_input_bar_cb(lv_event_t *e)
             {
                 multitask_pending_active = false;
                 multitask_hint_vibrated = false;
+                /* Hosted (device_pager): hand the release to the host, which
+                   decides commit (restore the instruction list) vs cancel
+                   (snap back to the mouse) from how far it was pulled up. No
+                   multitask hint was shown, so nothing to animate away. */
+                if (s_host_pull_cb)
+                {
+                    s_host_pull_cb(multitask_hint_drag_offset, 1);
+                    break;
+                }
                 if (multitask_hint_drag_offset > MULTITASK_HINT_LIMIT)
                 {
                     /* hosted (device_pager): bottom-bar up returns to the

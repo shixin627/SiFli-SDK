@@ -43,6 +43,17 @@ void hid_mouse_destroy(void);
  */
 void hid_mouse_set_host_back_cb(void (*cb)(void));
 
+/**
+ * @brief Register a "host pull" callback for the hosted (device_pager) case.
+ *        When set, dragging UP on the bottom bar is delegated to the host so it
+ *        can finger-follow pull its panel back into view, instead of showing the
+ *        mouse's own multitask hint. Called on the LVGL thread:
+ *          phase 0 = dragging   (up_px = pixels dragged up so far)
+ *          phase 1 = released   (host decides commit vs cancel from up_px)
+ *        Takes precedence over the back cb. Pass NULL to clear.
+ */
+void hid_mouse_set_host_pull_cb(void (*cb)(int up_px, int released));
+
 #ifdef __cplusplus
 }
 #endif

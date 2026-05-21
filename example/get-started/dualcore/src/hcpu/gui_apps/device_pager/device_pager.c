@@ -472,18 +472,35 @@ static void mouse_close(void)  /* snap closed: instruction panel back */
     mouse_layer_end();
 }
 
-/* hid_mouse bottom-bar "back" gesture → restore the instruction list.
-   Deferred via lv_async_call: the callback fires from inside hid_mouse's own
-   release handler, so destroying the mouse synchronously would free the objects
-   being processed (use-after-free). Run it on the next LVGL tick instead. */
+/* Restoring the instruction list tears down the hosted mouse, but the trigger
+   fires from inside hid_mouse's own release handler — destroying synchronously
+   would free the objects being processed (use-after-free). Defer to the next
+   LVGL tick. */
 static void mouse_close_async(void *unused)
 {
     (void)unused;
     if (p) mouse_close();
 }
-static void mouse_back_cb(void)
+
+/* hid_mouse bottom-bar UP gesture, hosted. The mouse delegates the drag here so
+   the instruction panel finger-follows back up over the mouse (symmetric with
+   the down-drag that revealed it), instead of showing the multitask hint.
+     released==0 : dragging — pull the panel up by up_px.
+     released==1 : let go — commit (restore list) if pulled past the threshold,
+                   else snap back to the mouse. */
+static void mouse_pull_cb(int up_px, int released)
 {
-    lv_async_call(mouse_close_async, NULL);
+    if (!p || !p->mouse_created) return;
+    /* We don't finger-follow the panel during the drag: the panel comes up from
+       the bottom, exactly over the mouse's bottom bar (the gesture owner), which
+       would break the press before release. Instead we commit/cancel on release
+       — and crucially the mouse's multitask hint is suppressed (this cb is set),
+       so the up-drag reads as "return to the list", not "multitask". */
+    if (!released) return;
+    if (up_px >= MOUSE_OPEN_THRESHOLD)
+        lv_async_call(mouse_close_async, NULL); /* commit: restore the list */
+    else
+        set_panel_offset(LV_VER_RES);           /* cancel: stay in mouse mode */
 }
 
 static void handle_drag_cb(lv_event_t *e)
@@ -659,8 +676,9 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_set_style_text_align(p->empty_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(p->empty_label);
 
-    /* The mouse's bottom-bar back gesture slides the instruction panel back. */
-    hid_mouse_set_host_back_cb(mouse_back_cb);
+    /* Bottom-bar UP in mouse mode finger-follows the instruction panel back up
+       (no multitask hint) and commits/cancels on release. */
+    hid_mouse_set_host_pull_cb(mouse_pull_cb);
 
     ble_dev_mgr_register_callback(dev_mgr_cb, NULL);
     refresh();
