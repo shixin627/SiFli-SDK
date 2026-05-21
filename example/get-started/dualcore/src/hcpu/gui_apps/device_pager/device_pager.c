@@ -99,6 +99,15 @@ static device_pager_t *p = NULL;
 
 static void mic_clicked_cb(lv_event_t *e);   /* defined below (skaibar section) */
 static void mouse_retarget(void);            /* defined below */
+static void skaibar_close(void);             /* defined below (skaibar section) */
+
+/* Hide the skaibar input box as soon as a list scroll begins (mirrors the left
+   instruction_list, where scrolling dismisses the AI widget). */
+static void scroll_hides_skaibar_cb(lv_event_t *e)
+{
+    (void)e;
+    if (p && p->skaibar_active) skaibar_close();
+}
 
 /* Fake per-device items until real per-device instruction sets arrive. */
 static void fake_items(dev_page_t *d)
@@ -563,6 +572,7 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_set_style_bg_opa(p->home_tile, LV_OPA_TRANSP, 0); /* see mouse through */
     lv_obj_set_style_bg_color(p->list_tile, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(p->list_tile, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(p->list_tile, LV_OBJ_FLAG_SCROLLABLE);
 
     /* List carousel — horizontal device recycler, fills the list tile. */
     p->pager = lv_obj_create(p->list_tile);
@@ -577,6 +587,10 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_set_scroll_snap_x(p->pager, LV_SCROLL_SNAP_CENTER);
     lv_obj_set_scrollbar_mode(p->pager, LV_SCROLLBAR_MODE_OFF);
     lv_obj_add_event_cb(p->pager, pager_scroll_end_cb, LV_EVENT_SCROLL_END, NULL);
+    /* Start scrolling the device list (or pulling the overlay) → hide the
+       skaibar, like the left instruction_list dismisses on scroll. */
+    lv_obj_add_event_cb(p->pager, scroll_hides_skaibar_cb, LV_EVENT_SCROLL_BEGIN, NULL);
+    lv_obj_add_event_cb(p->overlay, scroll_hides_skaibar_cb, LV_EVENT_SCROLL_BEGIN, NULL);
 
     for (int k = 0; k < 3; k++) make_tile(&p->t[k], p->pager);
 
@@ -604,7 +618,7 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
        shape. Tap it to dismiss. */
     p->skaibar_input = lv_obj_create(p->list_tile);
     lv_obj_set_size(p->skaibar_input, 442, 252);
-    lv_obj_align(p->skaibar_input, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_obj_align(p->skaibar_input, LV_ALIGN_BOTTOM_MID, 0, 80);
     lv_obj_set_style_bg_opa(p->skaibar_input, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(p->skaibar_input, 0, 0);
     lv_obj_set_style_pad_all(p->skaibar_input, 0, 0);

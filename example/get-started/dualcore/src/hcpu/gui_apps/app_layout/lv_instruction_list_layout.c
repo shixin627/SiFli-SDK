@@ -3513,12 +3513,16 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
                         ai_tileview_event_cb, LV_EVENT_ALL, NULL);
     lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                     LV_OBJ_FLAG_HIDDEN);
-    /* Gaus background to cover instruction list when widget shows */
-    ai_gaus_bg = lv_img_create(ai_page);
-    lv_img_set_src(ai_gaus_bg, GAUS_CLOCK1_BG);
-    lv_obj_align(ai_gaus_bg, LV_ALIGN_CENTER, 0, 0);
-    lv_img_set_zoom(ai_gaus_bg, 512);
-    lv_obj_add_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
+    /* Gaus glow background DISABLED — the input box now sits cleanly over the
+       list (single image frame, like the right device_pager). Left as NULL; all
+       show/hide call-sites are guarded by `if (ai_gaus_bg && lv_obj_is_valid())`
+       so they no-op. Re-enable by restoring the four lines below. */
+    ai_gaus_bg = NULL;
+    /* ai_gaus_bg = lv_img_create(ai_page);
+       lv_img_set_src(ai_gaus_bg, GAUS_CLOCK1_BG);
+       lv_obj_align(ai_gaus_bg, LV_ALIGN_CENTER, 0, 0);
+       lv_img_set_zoom(ai_gaus_bg, 512);
+       lv_obj_add_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN); */
 
     extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
     lv_obj_t *skai_widget = lv_skai_widget_builder(ai_page);
