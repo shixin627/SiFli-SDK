@@ -1,0 +1,8 @@
+# isolate the bottom-bar gesture; trailing app_status gives the swipe time to flush
+dev_add TV 0 1
+dev_add PC 0 1
+goto_app device_pager
+touch_swipe 233 8 233 160 350
+touch_swipe 233 450 233 270 450
+app_status
+app_status

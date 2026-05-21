@@ -1,0 +1,6 @@
+dev_add TV 0 1
+dev_add PC 0 1
+dev_add Speaker 0 1
+touch_swipe 400 233 80 233 400
+app_status
+app_status

@@ -1,0 +1,6 @@
+# reveal device page (mouse hosted) -> drag right past first device -> return home
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+touch_swipe 458 233 30 233 700
+touch_swipe 60 233 440 233 700

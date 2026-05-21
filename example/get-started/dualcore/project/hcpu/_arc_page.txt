@@ -1,0 +1,3 @@
+# reveal -> horizontal swipe (centre) -> next device (paging unaffected by arc band)
+touch_swipe 458 233 30 233 700
+touch_swipe 300 233 60 233 600

@@ -1,0 +1,3 @@
+# reveal device page -> drag UP inside the right arc band (dist<=233 from centre)
+touch_swipe 458 233 30 233 700
+touch_swipe 440 320 440 150 800

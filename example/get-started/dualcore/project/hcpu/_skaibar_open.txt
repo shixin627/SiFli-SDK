@@ -1,0 +1,6 @@
+# reveal device page (LIST) -> tap mic -> skaibar opens (聽取中), stays open
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+touch_swipe 458 233 30 233 700
+touch_tap 233 366

@@ -1,7 +1,14 @@
-# T3: 3 fake devices, open pager, swipe to next device, expect "[pager] -> device 2/3 (PC)"
-dev_add TV 0 1
-dev_add PC 0 1
-dev_add Speaker 0 1
-goto_app device_pager
-touch_swipe 400 233 60 233 400
-app_status
+# Right-edge pull verification: should reveal device_pager (NOT old device-change bar)
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+dev_add iPad_Air 2 0
+dev_add Soundbar 3 0
+dev_list
+# Pull in from the right edge, finger-follow leftward, hold at the end (no release)
+touch_press 458 233
+touch_move 410 233
+touch_move 320 233
+touch_move 200 233
+touch_move 80 233
+touch_move 40 233

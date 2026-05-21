@@ -1,0 +1,6 @@
+# T4 (b): drill into mouse, then bottom-bar UP swipe -> hosted return to instruction
+dev_add TV 0 1
+dev_add PC 0 1
+goto_app device_pager
+touch_swipe 233 8 233 160 350
+touch_swipe 233 445 233 285 400

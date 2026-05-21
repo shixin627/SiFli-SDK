@@ -1,0 +1,162 @@
+
+ \ | /
+- SiFli Corporation
+ / | \     build on May 20 2026, 2.5.0 build beb0b0b3
+ 2020 - 2022 Copyright by SiFli team
+Hello RT-Thread!
+mount /dev sucess
+PC sim: created host dir ./disk
+PC sim: created host dir ./disk/assets
+PC sim: created host dir ./prefdb
+PC sim: junction .\disk\assets\emoji -> C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\jsroot\assets\emoji
+PC sim: junction .\disk\assets\fonts -> C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\jsroot\assets\fonts
+File System on root initialized!
+dfs already init.
+[341] E/DFS init: There is no space to register this file system (elm).
+proc_stack:014BB568,4096
+[gui_freetype_init] skipped: font file unavailable, falling back to LVGL theme fonts
+[360] D/DS init: data service subscribe (ANCS), service (0)
+PC simulator app_main: HCPU stub
+[474] I/tsim app_watc: lv_touch_sim registered (indev=02ECC800)
+[486] I/LVGL app_watc: [littlevgl2rtt] Welcome to the littlevgl2rtt lib.
+share_prefs_open: sector_size 4096 size 16384
+fdb_kvdb_init: prefdb
+[528] D/watch.global.data app_watc: open watch prefs success (1)
+[537] D/watch.global.data app_watc: read watch prefs
+[542] D/watch.global.data app_watc: Loaded OLED display time: -1
+[550] D/watch.global.data app_watc: Loaded brightness percent: -1
+[558] D/watch.global.data app_watc: Watch restart num: 0
+[565] D/watch.global.data app_watc: Read clock widget num: -1
+[570] I/watch.global.data app_watc: Using default gesture threshold: 70
+[577] I/watch.global.data app_watc: Loaded 0 alarms from prefs
+[588] D/watch.global.data app_watc: close watch prefs success (0)
+match lang
+[602] I/bloc.setting app_watc: bloc_setting_load_watch_system oled_display_time: 5, brightness: 100, font_size: 0
+[612] D/APP.FWK app_watc: send msg[GUI_APP_MSG_RUN_APP] [Main] to gui_app_mbx tick:612.
+[627] I/APP.FWK.INT app_watc: [Main]
+[630] D/DS app_watc: data service subscribe (WATCHSYS), service (0)
+[636] I/CLIENT.POWER app_watc: watch_sys_service_callback: msg_id=32768
+[643] D/CLIENT.POWER app_watc: Subscribe DualCoreSyncService
+
+[647] W/bloc.peripheral peripher: unknown peripheral event: 5
+msh />[659] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[713] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[757] E/CLIENT.POWER app_watc: send code [4]failed, retrying (1/1)
+[814] E/CLIENT.POWER app_watc: send code [4] failed after 1 retries
+[823] D/lvsf.gesture app_watc: lvsf_gesture_init: parent=02ECC4D0 hor=466 ver=466
+[832] I/NO_TAG app_watc: watch_entry: about to enter main loop
+[839] I/NO_TAG app_watc: watch_entry loop iter 0 before lv_timer_handler
+[846] D/APP.SCHE app_watc: ----------------app_schedule_task---------------start
+[854] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_RUN_APP] tick:612
+[862] I/APP.SCHE app_watc: app[Main] do LOAD, 2ec6778
+[870] I/APP.FWK app_watc: finding Main in builtin apps...
+[873] D/APP.SCHE app_watc: app[Main] tgt_state [LAUNCHED] -> [RUNNING]
+[880] I/APP.SCHE app_watc: app[Main] do START, 2ec6778
+[891] I/APP.FWK.INT app_watc: [Main]
+[898] D/APP.FWK app_watc: send msg[GUI_APP_MSG_OPEN_PAGE] [0x2ec6778] to gui_app_mbx tick:898.
+[906] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_OPEN_PAGE] tick:898
+[911] D/APP.SCHE app_watc: app[Main] create page[root] 2ece394
+[917] D/APP.SCHE app_watc: page[Main][root] tgt_state [CREATED] -> [RESUMED]
+[928] D/APP.SCHE app_watc: Stop all app, and return to main app
+[937] I/APP.SCHE app_watc: page[Main][root] do ONSTART, 2ece394
+[944] D/app.mainmenu app_watc: [mainmenu_on_start]
+[951] D/DS app_watc: data service subscribe (powermgr), service (2ec6a74)
+[959] D/DS app_watc: datac subscribe dev open
+[965] D/app.clock app_watc: service_reset_time:  126:4:21 - 0:19:28 - 4
+[979] D/bloc.control app_watc: get_media_title: title=
+[986] D/app.clock app_watc: gui_state_update_timer created
+[995] D/app.clock app_watc: Resuming clock id11=JW_wf1
+[1002] D/app.clock app_watc: clock_change_page: JW_wf1
+[1024] I/app_list.layout app_watc: App list created with 11 apps, 4 rows
+[1033] I/app.clock.status_bar app_watc: clock_status_bar: before instruction_list_layout_create
+[1043] I/instruction.list.layout app_watc: [CHECK_MEMORY]instruction_list_init(396 bytes)
+[1068] I/instruction.list.layout app_watc: instruction_list_init: before myLancher reset_list
+[1076] I/instruction.list.layout app_watc: instruction_list_init: before lv_event_send SCROLL
+[1087] I/instruction.list.layout app_watc: instruction_list_init: after lv_event_send SCROLL
+[1102] I/instruction.list.layout app_watc: instruction_list_init: returning
+[1110] I/app.clock.status_bar app_watc: clock_status_bar: after instruction_list_layout_create
+[1118] I/app.clock.status_bar app_watc: clock_status_bar: before message_list_layout_create
+[1130] I/app.notification app_watc: message_list_layout_create: enter
+[1139] I/app.notification app_watc: message_list_layout_create: alloc ok
+[1145] I/app.notification app_watc: message_list_layout_create: before create_background_blocks
+[1155] I/app.notification app_watc: message_list_layout_create: after create_background_blocks
+[1167] I/app.notification app_watc: message_list_layout_create: before card builder loop
+[1179] I/app.notification app_watc: card builder i=0
+[1185] I/app.notification app_watc: card builder i=1
+[1192] I/app.notification app_watc: card builder i=2
+[1198] I/app.notification app_watc: card builder i=3
+[1203] I/app.notification app_watc: card builder i=4
+[1211] I/app.notification app_watc: card builder i=5
+[1221] I/app.notification app_watc: card builder i=6
+[1225] I/app.notification app_watc: card builder i=7
+[1228] I/app.notification app_watc: card builder i=8
+[1232] I/app.notification app_watc: card builder i=9
+[1235] I/app.notification app_watc: message_list_layout_create: after card builder loop
+[1239] I/app.notification app_watc: message_list_layout_create: before refresh_notification_list
+[1242] D/bloc.control app_watc: get_media_title: title=
+[1245] D/app.notification app_watc: Created no_notifications_widget :02EDA760
+[1252] D/app.notification app_watc: selected_message_index: 0
+[1258] I/app.notification app_watc: message_list_layout_create: before lv_event_send SCROLL
+[1261] I/app.notification app_watc: message_list_layout_create: after lv_event_send SCROLL
+[1265] I/app.notification app_watc: message_list_layout_create: before arc_scroll_create
+[1270] I/app.notification app_watc: message_list_layout_create: after arc_scroll_create
+[1273] I/app.notification app_watc: message_list_layout_create: returning
+[1274] I/app.clock.status_bar app_watc: clock_status_bar: after message_list_layout_create
+[1290] I/device.pager app_watc: [pager] built on right tile (0 devices)
+[1292] D/app.clock.status_bar app_watc: tileview set tile id to 1,1
+[1294] I/app.mainmenu app_watc: is_at_message: 0
+[1300] D/app.clock.status_bar app_watc: app_clock_main_status_bar_init
+[1308] D/app.clock app_watc: refresh_time:0:0:0
+[1309] I/APP.SCHE app_watc: page[Main][root] do ONRESUME, 2ece394
+[1311] D/app.mainmenu app_watc: [mainmenu_on_resume] 0
+[1315] I/app.mainmenu app_watc: on_resume: before check_main_page
+[1316] I/app.mainmenu app_watc: is_at_message: 0
+[1319] I/app.mainmenu app_watc: is_at_home: 1
+[1320] I/app.mainmenu app_watc: on_resume: after check_main_page
+[1322] I/app.mainmenu app_watc: on_resume: after check_is_at_ai_interface
+[1323] I/app.mainmenu app_watc: on_resume: before screen_rotate_back
+[1324] I/app.mainmenu app_watc: on_resume: before clock_on_resume
+[1325] I/app.clock app_watc: clock_on_resume: enter
+[1326] I/app.clock app_watc: clock_on_resume: after bluetooth_connection
+[1327] I/app.clock app_watc: clock_on_resume: before dial_media_header_init
+[1329] I/app.clock app_watc: clock_on_resume: before app_clock_main_select
+[1332] D/app.clock app_watc: clock_on_resume
+[1334] I/app.mainmenu app_watc: on_resume: after clock_on_resume
+[1335] I/app.mainmenu app_watc: on_resume: before lvgl_send_msg
+[1336] I/app.mainmenu app_watc: on_resume: returning
+[1342] I/APP.SCHE app_watc: Try setup trans-anim
+[1343] I/APP.SCHE app_watc: Trans-anim is OFF, skip.
+[1344] D/APP.SCHE app_watc: app_schedule_task done.
+[1348] D/ui.handler app_watc: GUI Task: msg type: 69
+[1350] D/ui.handler app_watc: GUI Task: msg type: 43
+[1351] D/ui.handler app_watc: GUI Task: msg type: 64
+[1352] I/NO_TAG app_watc: watch_entry loop iter 0 after lv_timer_handler ms=0
+[1354] I/NO_TAG app_watc: watch_entry loop iter 1 before lv_timer_handler
+[1355] I/NO_TAG app_watc: watch_entry loop iter 1 after lv_timer_handler ms=0
+[1358] I/NO_TAG app_watc: watch_entry loop iter 2 before lv_timer_handler
+[1359] I/NO_TAG app_watc: watch_entry loop iter 2 after lv_timer_handler ms=0
+[1361] I/NO_TAG app_watc: watch_entry loop iter 3 before lv_timer_handler
+[1362] I/NO_TAG app_watc: watch_entry loop iter 3 after lv_timer_handler ms=0
+[1365] I/NO_TAG app_watc: watch_entry loop iter 4 before lv_timer_handler
+[1366] I/NO_TAG app_watc: watch_entry loop iter 4 after lv_timer_handler ms=0
+dev_clear
+all fake devices cleared
+msh />dev_add Pixel_Phone 0 1
+dev_add idx=0 name='Pixel_Phone' type=0 conn=1
+msh />dev_add Work_Laptop 1 0
+dev_add idx=1 name='Work_Laptop' type=1 conn=0
+msh />dev_add iPad_Air 2 0
+dev_add idx=2 name='iPad_Air' type=2 conn=0
+msh />dev_add Soundbar 3 0
+dev_add idx=3 name='Soundbar' type=3 conn=0
+msh />touch_swipe 458 233 30 233 700
+[13479] I/app.clock.status_bar app_watc: notification_status_bar_cb from area: 3
+touch_swipe (458,233)->(30,233) 700ms 35steps
+msh />[14432] I/app.mainmenu app_watc: is_at_message: 0
+touch_swipe 233 30 233 430 800
+[15541] D/hid.mouse app_watc: HID mode -> Trackpad
+[15545] D/app.clock.status_bar app_watc: set_status_bar_area_left_state 0
+[15551] I/device.pager app_watc: [pager] mouse layer -> Pixel_Phone (conn_idx=0)
+touch_swipe (233,30)->(233,430) 800ms 40steps
+msh />[60721] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[60774] E/CLIENT.POWER periodic: send code [3] failed after 1 retries

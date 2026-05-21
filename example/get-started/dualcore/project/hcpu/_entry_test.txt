@@ -1,0 +1,6 @@
+# verify right-edge gesture on clock face launches device_pager
+dev_add TV 0 1
+dev_add PC 0 1
+touch_swipe 462 233 320 233 350
+app_status
+app_status

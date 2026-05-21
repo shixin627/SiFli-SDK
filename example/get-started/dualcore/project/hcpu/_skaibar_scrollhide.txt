@@ -1,0 +1,7 @@
+# reveal -> open skaibar (mic) -> horizontal swipe device list -> skaibar should hide
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+touch_swipe 458 233 30 233 700
+touch_tap 233 366
+touch_swipe 360 150 100 150 600

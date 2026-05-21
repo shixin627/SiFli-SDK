@@ -1,0 +1,2 @@
+# force-open the left instruction-list skai widget to compare its input box
+sim_skai_open

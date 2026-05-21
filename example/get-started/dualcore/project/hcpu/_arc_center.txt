@@ -1,0 +1,3 @@
+# reveal -> CENTER drag up ABOVE the mic bar (should scroll items)
+touch_swipe 458 233 30 233 700
+touch_swipe 200 300 200 120 800

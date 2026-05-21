@@ -1,0 +1,7 @@
+# Stop after transcript so the input box is visible showing the text
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+touch_swipe 458 233 30 233 700
+touch_tap 233 391
+pager_say turn on the bedroom lights

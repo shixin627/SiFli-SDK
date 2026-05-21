@@ -1,0 +1,3 @@
+goto_app mouse
+touch_swipe 24 330 24 150 600
+touch_status

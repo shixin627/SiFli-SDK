@@ -1,0 +1,4 @@
+# reveal -> tap mic -> inject transcript (stays open, shows the received text)
+touch_swipe 458 233 30 233 700
+touch_tap 233 366
+pager_say Open Spotify and play my music

@@ -1,0 +1,5 @@
+# reveal device page only (enter on LIST) -> DIAG z-order prints
+dev_clear
+dev_add Pixel_Phone 0 1
+dev_add Work_Laptop 1 0
+touch_swipe 458 233 30 233 700
