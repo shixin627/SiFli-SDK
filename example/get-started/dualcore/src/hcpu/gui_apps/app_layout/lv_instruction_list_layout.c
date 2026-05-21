@@ -1581,8 +1581,10 @@ void animate_open_ai_widget(void)
     lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 1,
                        0, LV_ANIM_OFF);
     tap_on_ai_widget();
+    /* Appear directly (no slide-in from the left) — matches the right
+       device_pager skaibar's instant show. */
     lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 0,
-                       0, LV_ANIM_ON);
+                       0, LV_ANIM_OFF);
     /* set_tile_id fires SCROLL events that drive bg_opa via ai_tileview_event_cb.
        Keep the OUTER strip transparent — only the styled skai_widget pill
        inside should be visible, matching the Liquid Glass design language. */
