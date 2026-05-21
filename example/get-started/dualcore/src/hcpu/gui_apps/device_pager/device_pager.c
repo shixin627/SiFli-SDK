@@ -255,6 +255,10 @@ static void list_scroll_cb(lv_event_t *e)
 {
     tile_ui_t *u = (tile_ui_t *)lv_event_get_user_data(e);
     if (!u || !u->dev) return;
+    /* Scrolling/switching items dismisses the skaibar (mirrors the left list).
+       Handled here (not SCROLL_BEGIN) so the arc-band scroll, which fires only
+       LV_EVENT_SCROLL via scroll_by_raw, is covered too. */
+    if (p->skaibar_active) skaibar_close();
     apply_arc(u);
     /* Over-pull past the first item (elastic overshoot below the top) → mouse. */
     if (u == &p->t[TILE_CENTER] && !p->pull_pending)
