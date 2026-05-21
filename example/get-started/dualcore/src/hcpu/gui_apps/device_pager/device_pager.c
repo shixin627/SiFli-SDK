@@ -267,6 +267,24 @@ static void list_scroll_cb(lv_event_t *e)
     }
 }
 
+/* On release, settle on the nearest item (centre it). Covers both the native
+   centre-drag and the arc-band scroll — neither reliably centres on its own. */
+static void list_scroll_end_cb(lv_event_t *e)
+{
+    tile_ui_t *u = (tile_ui_t *)lv_event_get_user_data(e);
+    if (!u || !u->dev || p->pull_pending) return;
+    int count = u->dev->item_count;
+    if (count <= 0) return;
+    int32_t    base = arc_base_scroll(u);
+    lv_coord_t sy   = lv_obj_get_scroll_y(u->list);
+    int idx = (int)lroundf((float)(sy - base) / (float)ARC_SLOT_H);
+    if (idx < 0) idx = 0;
+    if (idx >= count) idx = count - 1;
+    lv_coord_t target = (lv_coord_t)(base + idx * ARC_SLOT_H);
+    if (abs((int)(sy - target)) > 2)            /* not already settled → snap */
+        lv_obj_scroll_to_y(u->list, target, LV_ANIM_ON);
+}
+
 static void bind_tile(int k)
 {
     tile_ui_t  *u = &p->t[k];
@@ -388,6 +406,7 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
        still chains to the device pager. */
     lv_obj_clear_flag(u->list, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
     lv_obj_add_event_cb(u->list, list_scroll_cb, LV_EVENT_SCROLL, u);
+    lv_obj_add_event_cb(u->list, list_scroll_end_cb, LV_EVENT_SCROLL_END, u);
 
     for (int i = 0; i < MAX_TILE_ITEMS; i++)
     {
