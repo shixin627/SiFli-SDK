@@ -3449,6 +3449,10 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_add_event_cb(ai_bar, ai_bar_event_cb, LV_EVENT_ALL, NULL);
     // lv_obj_add_flag(ai_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_clear_flag(ai_bar, LV_OBJ_FLAG_PRESS_LOCK);
+    /* Left-edge swipe-to-open DISABLED — the AI input box should only appear
+       directly via the mic (like the right device skaibar), not be dragged out
+       from the screen edge. */
+    lv_obj_add_flag(ai_bar, LV_OBJ_FLAG_HIDDEN);
 
     /* The bottom-center "+" add-instruction button has been removed — the
        mic-bar voice trigger now owns the bottom-center affordance slot. The
