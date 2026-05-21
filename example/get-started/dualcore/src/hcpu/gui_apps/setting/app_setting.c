@@ -786,8 +786,17 @@ static void btn_gesture_test_event_callback(lv_event_t *e)
 }
 #endif
 
+/* Dragging fires LV_EVENT_PRESSING every frame. Sending a power-mgr SET_REQ on
+ * each one floods the data-service callback queue and the SDK asserts on Qfull
+ * (datac_service_usrcbk). Coalesce sends to >= SETTING_BAR_THROTTLE_MS apart and
+ * skip unchanged values; always push the final value on release so the persisted
+ * state matches where the finger lifted. */
+#define SETTING_BAR_THROTTLE_MS 40
+
 static void brightness_bar_event_cb(lv_event_t *e)
 {
+    static int16_t last_sent = -1;
+    static uint32_t last_send_tick = 0;
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_PRESSING)
     {
@@ -811,10 +820,18 @@ static void brightness_bar_event_cb(lv_event_t *e)
             value = 5;
         lv_bar_set_value(bar, value, LV_ANIM_OFF);
         uint16_t brightness = lv_bar_get_value(bar);
-        gui_set_brightness(brightness, true);
+        if ((int16_t)brightness != last_sent &&
+            lv_tick_elaps(last_send_tick) >= SETTING_BAR_THROTTLE_MS)
+        {
+            gui_set_brightness(brightness, true);
+            last_sent = (int16_t)brightness;
+            last_send_tick = lv_tick_get();
+        }
     }
     else if (code == LV_EVENT_PRESSED)
     {
+        last_sent = -1;
+        last_send_tick = 0;
         if (p_app_setting && p_app_setting->list1)
         {
             lv_obj_clear_flag(p_app_setting->list1, LV_OBJ_FLAG_SCROLLABLE);
@@ -822,6 +839,13 @@ static void brightness_bar_event_cb(lv_event_t *e)
     }
     else if (code == LV_EVENT_RELEASED)
     {
+        lv_obj_t *bar = lv_event_get_target(e);
+        uint16_t brightness = lv_bar_get_value(bar);
+        if ((int16_t)brightness != last_sent)
+        {
+            gui_set_brightness(brightness, true);
+            last_sent = (int16_t)brightness;
+        }
         if (p_app_setting && p_app_setting->list1)
         {
             lv_obj_add_flag(p_app_setting->list1, LV_OBJ_FLAG_SCROLLABLE);
@@ -844,8 +868,23 @@ static void refresh_screen_time_label(uint8_t value)
     lv_label_set_text(p_app_setting->screen_time_label, buf);
 }
 
+/* Persist the new auto-off time via setting's own pwr handle so the SET_RSP comes
+ * back to setting_powermgr_srv_callback (which calls control_provider.screen_time_smoothly). */
+static void screen_time_send_set_req(uint16_t timeout)
+{
+    if (p_app_setting &&
+        DATA_CLIENT_INVALID_HANDLE != p_app_setting->pwr_srv_hdl)
+    {
+        datac_send_data(p_app_setting->pwr_srv_hdl,
+                        PWRMGR_MSG_LCD_AUTO_OFF_TIME_SET_REQ,
+                        (uint8_t *)&timeout, sizeof(uint16_t));
+    }
+}
+
 static void screen_time_bar_event_cb(lv_event_t *e)
 {
+    static int16_t last_sent = -1;
+    static uint32_t last_send_tick = 0;
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_PRESSING)
     {
@@ -869,20 +908,19 @@ static void screen_time_bar_event_cb(lv_event_t *e)
             value = 5;
         lv_bar_set_value(bar, value, LV_ANIM_OFF);
         uint16_t timeout = (uint16_t)lv_bar_get_value(bar);
-        /* Send SET_REQ via setting's own pwr handle so the SET_RSP comes back
-         * to setting_powermgr_srv_callback (which calls
-         * control_provider.screen_time_smoothly to persist the new value). */
-        if (p_app_setting &&
-            DATA_CLIENT_INVALID_HANDLE != p_app_setting->pwr_srv_hdl)
-        {
-            datac_send_data(p_app_setting->pwr_srv_hdl,
-                            PWRMGR_MSG_LCD_AUTO_OFF_TIME_SET_REQ,
-                            (uint8_t *)&timeout, sizeof(uint16_t));
-        }
         refresh_screen_time_label((uint8_t)timeout);
+        if ((int16_t)timeout != last_sent &&
+            lv_tick_elaps(last_send_tick) >= SETTING_BAR_THROTTLE_MS)
+        {
+            screen_time_send_set_req(timeout);
+            last_sent = (int16_t)timeout;
+            last_send_tick = lv_tick_get();
+        }
     }
     else if (code == LV_EVENT_PRESSED)
     {
+        last_sent = -1;
+        last_send_tick = 0;
         if (p_app_setting && p_app_setting->list1)
         {
             lv_obj_clear_flag(p_app_setting->list1, LV_OBJ_FLAG_SCROLLABLE);
@@ -890,6 +928,14 @@ static void screen_time_bar_event_cb(lv_event_t *e)
     }
     else if (code == LV_EVENT_RELEASED)
     {
+        lv_obj_t *bar = lv_event_get_target(e);
+        uint16_t timeout = (uint16_t)lv_bar_get_value(bar);
+        if ((int16_t)timeout != last_sent)
+        {
+            screen_time_send_set_req(timeout);
+            last_sent = (int16_t)timeout;
+        }
+        refresh_screen_time_label((uint8_t)timeout);
         if (p_app_setting && p_app_setting->list1)
         {
             lv_obj_add_flag(p_app_setting->list1, LV_OBJ_FLAG_SCROLLABLE);
@@ -1015,6 +1061,8 @@ void app_setting_init(void *param)
     lv_obj_align_to(brightness_bar, cont_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
     lv_obj_set_style_bg_color(brightness_bar, lv_color_hex(0xCECECE), LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(brightness_bar, lv_color_hex(0xCECECE), LV_PART_MAIN);
+    lv_obj_set_style_radius(brightness_bar, 40, LV_PART_MAIN);
+    lv_obj_set_style_radius(brightness_bar, 40, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(brightness_bar, LV_OPA_90, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(brightness_bar, LV_OPA_10, LV_PART_MAIN);
     lv_bar_set_value(brightness_bar, SkaiWatchSys.brightness, LV_ANIM_ON);
@@ -1032,6 +1080,8 @@ void app_setting_init(void *param)
     lv_obj_align_to(screen_time_bar, brightness_bar, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
     lv_obj_set_style_bg_color(screen_time_bar, lv_color_hex(0xCECECE), LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(screen_time_bar, lv_color_hex(0xCECECE), LV_PART_MAIN);
+    lv_obj_set_style_radius(screen_time_bar, 40, LV_PART_MAIN);
+    lv_obj_set_style_radius(screen_time_bar, 40, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(screen_time_bar, LV_OPA_90, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(screen_time_bar, LV_OPA_10, LV_PART_MAIN);
     /* Clamp before initial set — oled_display_time may be 255 ("never") which is
