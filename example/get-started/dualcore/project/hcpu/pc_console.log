@@ -1,0 +1,371 @@
+
+ \ | /
+- SiFli Corporation
+ / | \     build on May 21 2026, 2.5.0 build 7d366a16
+ 2020 - 2022 Copyright by SiFli team
+Hello RT-Thread!
+mount /dev sucess
+PC sim: created host dir ./disk
+PC sim: created host dir ./disk/assets
+PC sim: created host dir ./prefdb
+PC sim: junction .\disk\assets\emoji -> C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\jsroot\assets\emoji
+PC sim: junction .\disk\assets\fonts -> C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\jsroot\assets\fonts
+File System on root initialized!
+dfs already init.
+[155] E/DFS init: There is no space to register this file system (elm).
+proc_stack:009CE8A8,4096
+[gui_freetype_init] skipped: font file unavailable, falling back to LVGL theme fonts
+[164] D/DS init: data service subscribe (ANCS), service (0)
+PC simulator app_main: HCPU stub
+[187] I/tsim app_watc: lv_touch_sim registered (indev=0301D800)
+[193] I/LVGL app_watc: [littlevgl2rtt] Welcome to the littlevgl2rtt lib.
+share_prefs_open: sector_size 4096 size 16384
+fdb_kvdb_init: prefdb
+[214] D/watch.global.data app_watc: open watch prefs success (1)
+[217] D/watch.global.data app_watc: read watch prefs
+[218] D/watch.global.data app_watc: Loaded OLED display time: -1
+[221] D/watch.global.data app_watc: Loaded brightness percent: -1
+[224] D/watch.global.data app_watc: Watch restart num: 0
+[227] D/watch.global.data app_watc: Read clock widget num: -1
+[230] I/watch.global.data app_watc: Using default gesture threshold: 70
+[232] I/watch.global.data app_watc: Loaded 0 alarms from prefs
+[233] D/watch.global.data app_watc: close watch prefs success (0)
+match lang
+[240] I/bloc.setting app_watc: bloc_setting_load_watch_system oled_display_time: 5, brightness: 100, font_size: 0
+[245] D/APP.FWK app_watc: send msg[GUI_APP_MSG_RUN_APP] [Main] to gui_app_mbx tick:245.
+[250] I/APP.FWK.INT app_watc: [Main]
+[251] D/DS app_watc: data service subscribe (WATCHSYS), service (0)
+[253] I/CLIENT.POWER app_watc: watch_sys_service_callback: msg_id=32768
+[256] D/CLIENT.POWER app_watc: Subscribe DualCoreSyncService
+
+[258] W/bloc.peripheral peripher: unknown peripheral event: 5
+msh />[260] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[312] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[359] E/CLIENT.POWER app_watc: send code [4]failed, retrying (1/1)
+[411] E/CLIENT.POWER app_watc: send code [4] failed after 1 retries
+[413] D/lvsf.gesture app_watc: lvsf_gesture_init: parent=0301D4D0 hor=466 ver=466
+[415] I/NO_TAG app_watc: watch_entry: about to enter main loop
+[418] I/NO_TAG app_watc: watch_entry loop iter 0 before lv_timer_handler
+[420] D/APP.SCHE app_watc: ----------------app_schedule_task---------------start
+[422] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_RUN_APP] tick:245
+[424] I/APP.SCHE app_watc: app[Main] do LOAD, 3017778
+[426] I/APP.FWK app_watc: finding Main in builtin apps...
+[428] D/APP.SCHE app_watc: app[Main] tgt_state [LAUNCHED] -> [RUNNING]
+[430] I/APP.SCHE app_watc: app[Main] do START, 3017778
+[432] I/APP.FWK.INT app_watc: [Main]
+[433] D/APP.FWK app_watc: send msg[GUI_APP_MSG_OPEN_PAGE] [0x3017778] to gui_app_mbx tick:433.
+[436] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_OPEN_PAGE] tick:433
+[438] D/APP.SCHE app_watc: app[Main] create page[root] 301f394
+[441] D/APP.SCHE app_watc: page[Main][root] tgt_state [CREATED] -> [RESUMED]
+[444] D/APP.SCHE app_watc: Stop all app, and return to main app
+[446] I/APP.SCHE app_watc: page[Main][root] do ONSTART, 301f394
+[448] D/app.mainmenu app_watc: [mainmenu_on_start]
+[450] D/DS app_watc: data service subscribe (powermgr), service (3017a74)
+[452] D/DS app_watc: datac subscribe dev open
+[454] D/app.clock app_watc: service_reset_time:  126:4:21 - 10:33:26 - 4
+[458] D/bloc.control app_watc: get_media_title: title=
+[460] D/app.clock app_watc: gui_state_update_timer created
+[463] D/app.clock app_watc: Resuming clock id11=JW_wf1
+[465] D/app.clock app_watc: clock_change_page: JW_wf1
+[471] I/app_list.layout app_watc: App list created with 11 apps, 4 rows
+[475] I/app.clock.status_bar app_watc: clock_status_bar: before instruction_list_layout_create
+[479] I/instruction.list.layout app_watc: [CHECK_MEMORY]instruction_list_init(396 bytes)
+[486] I/instruction.list.layout app_watc: instruction_list_init: before myLancher reset_list
+[491] I/instruction.list.layout app_watc: instruction_list_init: before lv_event_send SCROLL
+[494] I/instruction.list.layout app_watc: instruction_list_init: after lv_event_send SCROLL
+[498] I/instruction.list.layout app_watc: instruction_list_init: returning
+[501] I/app.clock.status_bar app_watc: clock_status_bar: after instruction_list_layout_create
+[504] I/app.clock.status_bar app_watc: clock_status_bar: before message_list_layout_create
+[507] I/app.notification app_watc: message_list_layout_create: enter
+[509] I/app.notification app_watc: message_list_layout_create: alloc ok
+[511] I/app.notification app_watc: message_list_layout_create: before create_background_blocks
+[514] I/app.notification app_watc: message_list_layout_create: after create_background_blocks
+[518] I/app.notification app_watc: message_list_layout_create: before card builder loop
+[521] I/app.notification app_watc: card builder i=0
+[523] I/app.notification app_watc: card builder i=1
+[524] I/app.notification app_watc: card builder i=2
+[527] I/app.notification app_watc: card builder i=3
+[529] I/app.notification app_watc: card builder i=4
+[531] I/app.notification app_watc: card builder i=5
+[533] I/app.notification app_watc: card builder i=6
+[535] I/app.notification app_watc: card builder i=7
+[537] I/app.notification app_watc: card builder i=8
+[539] I/app.notification app_watc: card builder i=9
+[541] I/app.notification app_watc: message_list_layout_create: after card builder loop
+[543] I/app.notification app_watc: message_list_layout_create: before refresh_notification_list
+[547] D/bloc.control app_watc: get_media_title: title=
+[549] D/app.notification app_watc: Created no_notifications_widget :0302B4F4
+[553] D/app.notification app_watc: selected_message_index: 0
+[554] I/app.notification app_watc: message_list_layout_create: before lv_event_send SCROLL
+[557] I/app.notification app_watc: message_list_layout_create: after lv_event_send SCROLL
+[560] I/app.notification app_watc: message_list_layout_create: before arc_scroll_create
+[562] I/app.notification app_watc: message_list_layout_create: after arc_scroll_create
+[565] I/app.notification app_watc: message_list_layout_create: returning
+[568] I/app.clock.status_bar app_watc: clock_status_bar: after message_list_layout_create
+[570] D/app.clock.status_bar app_watc: tileview set tile id to 1,1
+[572] I/app.mainmenu app_watc: is_at_message: 0
+[574] D/app.clock.status_bar app_watc: app_clock_main_status_bar_init
+[580] D/app.clock app_watc: refresh_time:0:0:0
+[583] I/APP.SCHE app_watc: page[Main][root] do ONRESUME, 301f394
+[585] D/app.mainmenu app_watc: [mainmenu_on_resume] 0
+[587] I/app.mainmenu app_watc: on_resume: before check_main_page
+[588] I/app.mainmenu app_watc: is_at_message: 0
+[591] I/app.mainmenu app_watc: is_at_home: 1
+[592] I/app.mainmenu app_watc: on_resume: after check_main_page
+[594] I/app.mainmenu app_watc: on_resume: after check_is_at_ai_interface
+[596] I/app.mainmenu app_watc: on_resume: before screen_rotate_back
+[599] I/app.mainmenu app_watc: on_resume: before clock_on_resume
+[601] I/app.clock app_watc: clock_on_resume: enter
+[603] I/app.clock app_watc: clock_on_resume: after bluetooth_connection
+[605] I/app.clock app_watc: clock_on_resume: before dial_media_header_init
+[608] I/app.clock app_watc: clock_on_resume: before app_clock_main_select
+[610] D/app.clock app_watc: clock_on_resume
+[611] I/app.mainmenu app_watc: on_resume: after clock_on_resume
+[613] I/app.mainmenu app_watc: on_resume: before lvgl_send_msg
+[615] I/app.mainmenu app_watc: on_resume: returning
+[616] I/APP.SCHE app_watc: Try setup trans-anim
+[618] I/APP.SCHE app_watc: Trans-anim is OFF, skip.
+[620] D/APP.SCHE app_watc: app_schedule_task done.
+[624] D/ui.handler app_watc: GUI Task: msg type: 69
+[626] D/ui.handler app_watc: GUI Task: msg type: 43
+[628] D/ui.handler app_watc: GUI Task: msg type: 64
+[629] I/NO_TAG app_watc: watch_entry loop iter 0 after lv_timer_handler ms=0
+[633] I/NO_TAG app_watc: watch_entry loop iter 1 before lv_timer_handler
+[635] I/NO_TAG app_watc: watch_entry loop iter 1 after lv_timer_handler ms=0
+[639] I/NO_TAG app_watc: watch_entry loop iter 2 before lv_timer_handler
+[641] I/NO_TAG app_watc: watch_entry loop iter 2 after lv_timer_handler ms=0
+[644] I/NO_TAG app_watc: watch_entry loop iter 3 before lv_timer_handler
+[646] I/NO_TAG app_watc: watch_entry loop iter 3 after lv_timer_handler ms=0
+[651] I/NO_TAG app_watc: watch_entry loop iter 4 before lv_timer_handler
+[654] I/NO_TAG app_watc: watch_entry loop iter 4 after lv_timer_handler ms=0
+list_apps
+builtin apps:
+  alarm
+  battery
+  calculator
+  file_browser
+  flashlight
+  interact
+  Main
+  message
+  photo
+  qrcode
+  setting
+  sleep
+  test
+  timer
+  weather
+(15 apps)
+msh />[60314] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[60366] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[120369] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[120419] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[180419] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[180470] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[240470] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[240522] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[300525] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[300575] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[360576] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[360626] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[420627] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[420678] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[480679] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[480729] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[540729] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[540779] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[600780] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[600830] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[650704] I/app.clock.status_bar app_watc: notification_status_bar_cb from area: 2
+[651628] I/app.mainmenu app_watc: is_at_message: 0
+[651633] I/app.mainmenu app_watc: _at_control_center: 1
+[651643] I/app.mainmenu app_watc: is_at_home: 0
+[653549] I/app.mainmenu app_watc: is_at_message: 0
+[653554] I/app.mainmenu app_watc: _at_control_center: 0
+[653561] I/app.mainmenu app_watc: is_at_home: 1
+[654389] I/app.clock.status_bar app_watc: notification_status_bar_cb from area: 0
+[655170] I/app.mainmenu app_watc: is_at_message: 0
+[655222] I/app.mainmenu app_watc: DBG inst_list: before set_power_save_mode
+[655282] I/app.mainmenu app_watc: DBG inst_list: before sensor_quat
+[655296] D/bloc.motion_tracking app_watc: set_scroll_segment_count:3,100
+[655393] I/app.mainmenu app_watc: DBG inst_list: after scroll_seg_count
+[655603] I/app.mainmenu app_watc: DBG inst_list: before refersh_weather_icon
+[655659] I/app.mainmenu app_watc: DBG inst_list: before instruction_list_resume
+[655738] I/bloc.motion_tracking app_watc: set_free_control_with_arm:1
+[655810] I/instruction.list.layout app_watc: instruction_list_resume
+[655960] I/app.mainmenu app_watc: DBG inst_list: before display_status_bar_area
+[656075] I/app.mainmenu app_watc: DBG inst_list: before display_gesture_detect_objs
+[656221] I/app.mainmenu app_watc: DBG inst_list: enter-block done
+[656314] I/app.mainmenu app_watc: is_at_instruction_list: 1
+[656353] I/app.mainmenu app_watc: is_at_home: 0
+[656989] I/app.mainmenu app_watc: is_at_message: 0
+[657066] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:1
+[657187] I/instruction.list.layout app_watc: instruction_list_pause
+[657278] I/app.mainmenu app_watc: is_at_instruction_list: 0
+[657324] I/bloc.motion_tracking app_watc: set_free_control_with_arm:0
+[657411] I/app.mainmenu app_watc: is_at_home: 1
+[659128] I/app.clock.status_bar app_watc: notification_status_bar_cb from area: 0
+[660318] I/app.mainmenu app_watc: is_at_message: 0
+[660325] I/app.mainmenu app_watc: DBG inst_list: before set_power_save_mode
+[660333] I/app.mainmenu app_watc: DBG inst_list: before sensor_quat
+[660341] D/bloc.motion_tracking app_watc: set_scroll_segment_count:3,100
+[660345] I/app.mainmenu app_watc: DBG inst_list: after scroll_seg_count
+[660348] I/app.mainmenu app_watc: DBG inst_list: before refersh_weather_icon
+[660351] I/app.mainmenu app_watc: DBG inst_list: before instruction_list_resume
+[660356] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:0
+[660360] I/bloc.motion_tracking app_watc: set_free_control_with_arm:1
+[660363] I/instruction.list.layout app_watc: instruction_list_resume
+[660365] I/app.mainmenu app_watc: DBG inst_list: before display_status_bar_area
+[660367] I/app.mainmenu app_watc: DBG inst_list: before display_gesture_detect_objs
+[660369] I/app.mainmenu app_watc: DBG inst_list: enter-block done
+[660371] I/app.mainmenu app_watc: is_at_instruction_list: 1
+[660373] I/app.mainmenu app_watc: is_at_home: 0
+[660831] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[660857] I/bloc.peripheral app_watc: Control motor: ON, duty_cycle: 100, period: 12000, repeat_times: 1
+[660862] D/CLIENT.POWER peripher: MOTOR control duty_cycle: 100, period: 12000, repeat_times: 1
+[660866] E/CLIENT.POWER peripher: send code [12]failed, retrying (1/1)
+[660918] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[660920] E/CLIENT.POWER peripher: send code [12] failed after 1 retries
+[660980] I/bloc.peripheral app_watc: Control motor: ON, duty_cycle: 100, period: 12000, repeat_times: 1
+[660983] D/CLIENT.POWER peripher: MOTOR control duty_cycle: 100, period: 12000, repeat_times: 1
+[660986] E/CLIENT.POWER peripher: send code [12]failed, retrying (1/1)
+[661039] E/CLIENT.POWER peripher: send code [12] failed after 1 retries
+[661264] I/bloc.peripheral app_watc: Control motor: ON, duty_cycle: 100, period: 12000, repeat_times: 1
+[661271] D/CLIENT.POWER peripher: MOTOR control duty_cycle: 100, period: 12000, repeat_times: 1
+[661276] E/CLIENT.POWER peripher: send code [12]failed, retrying (1/1)
+[661328] E/CLIENT.POWER peripher: send code [12] failed after 1 retries
+[661373] I/bloc.peripheral app_watc: Control motor: ON, duty_cycle: 100, period: 12000, repeat_times: 1
+[661376] D/CLIENT.POWER peripher: MOTOR control duty_cycle: 100, period: 12000, repeat_times: 1
+[661380] E/CLIENT.POWER peripher: send code [12]failed, retrying (1/1)
+[661434] E/CLIENT.POWER peripher: send code [12] failed after 1 retries
+[662167] I/bloc.peripheral app_watc: Control motor: ON, duty_cycle: 100, period: 12000, repeat_times: 1
+[662169] D/CLIENT.POWER peripher: MOTOR control duty_cycle: 100, period: 12000, repeat_times: 1
+[662171] E/CLIENT.POWER peripher: send code [12]failed, retrying (1/1)
+[662225] E/CLIENT.POWER peripher: send code [12] failed after 1 retries
+[663185] D/APP.FWK app_watc: send msg[GUI_APP_MSG_RUN_APP] [flashlight] to gui_app_mbx tick:663185.
+[663190] I/APP.FWK.INT app_watc: [flashlight]
+[663208] D/APP.SCHE app_watc: ----------------app_schedule_task---------------start
+[663210] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_RUN_APP] tick:663185
+[663215] I/APP.SCHE app_watc: app[flashlight] do LOAD, 302da74
+[663217] I/APP.FWK app_watc: finding flashlight in builtin apps...
+[663223] D/APP.SCHE app_watc: app[flashlight] tgt_state [LAUNCHED] -> [RUNNING]
+[663227] I/APP.SCHE app_watc: app[flashlight] do START, 302da74
+[663229] I/APP.FWK.INT app_watc: [flashlight]
+[663230] D/APP.FWK app_watc: send msg[GUI_APP_MSG_OPEN_PAGE] [0x302da74] to gui_app_mbx tick:663230.
+[663238] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_OPEN_PAGE] tick:663230
+[663245] D/APP.SCHE app_watc: app[flashlight] create page[root] 3022cc0
+[663251] D/APP.SCHE app_watc: page[flashlight][root] tgt_state [CREATED] -> [RESUMED]
+[663258] D/APP.SCHE app_watc: Pause all app, and resume to flashlight app
+[663264] D/APP.SCHE app_watc: page[Main][root] tgt_state [RESUMED] -> [PAUSED]
+[663267] I/APP.SCHE app_watc: page[Main][root] do ONPAUSE, 301f394
+[663270] D/app.mainmenu app_watc: [mainmenu_on_pause]
+[663272] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:1
+[663276] I/instruction.list.layout app_watc: instruction_list_pause
+[663279] D/app.clock app_watc: Deiniting active clock id=JW_wf1
+[663281] D/app.clock app_watc: Deiniting clock id=JW_wf1
+[663284] D/app.clock app_watc: clock_on_pause
+[663286] I/APP.SCHE app_watc: page[flashlight][root] do ONSTART, 3022cc0
+[663293] D/DS app_watc: data service subscribe (powermgr), service (3017a74)
+[663296] D/DS app_watc: datac subscribe dev open
+[663298] I/APP.SCHE app_watc: page[flashlight][root] do ONRESUME, 3022cc0
+[663305] I/bloc.motion_tracking app_watc: set_free_control_with_arm:0
+[663315] D/app.flashlight app_watc: set_amoled_brightness :96
+[663329] D/app.flashlight app_watc: brightness:96
+[663336] I/APP.SCHE app_watc: Try setup trans-anim
+[663342] I/APP.ANI app_watc: app_trans_animation_obj_create = 302191c
+[663347] I/APP.ANI app_watc: app_trans_animation_obj_create = 3021ae0
+[663356] I/APP.ANI app_watc: Start free run animation
+[663359] I/APP.ANI app_watc: app_trans_animation_setup end, cost=17ms
+
+[663369] I/APP.SCHE app_watc: Trans-anim setup done.
+[663371] D/APP.SCHE app_watc: --Pause app_schedule_task--
+[663373] D/APP.SCHE app_watc: app_schedule_task done.
+[663375] D/app.flashlight app_watc: PWRMGR_MSG_LCD_BRIGHTNESS_SET_RSP cur=100[3,100]
+[663531] I/APP.ANI app_watc: free_run_ready 0 
+
+[663595] I/APP.ANI app_watc: wait_refr_task_cb 0
+
+[663617] I/APP.ANI app_watc: anim_free_run_ready 0 
+
+[663629] I/APP.ANI app_watc: app_trans_anim_free_run_clean
+
+[663656] I/APP.ANI app_watc: app_trans_animation_obj_destroy = 3021ae0
+[663696] I/APP.ANI app_watc: app_trans_animation_obj_destroy = 302191c
+[663705] I/APP.SCHE app_watc: Trans-anim finish, res=0
+[663730] D/APP.SCHE app_watc: --Resume app_schedule_task--
+[663746] I/app.mainmenu app_watc: is_at_message: 0
+[663809] I/bloc.motion_tracking app_watc: set_paused_control_with_arm:0
+[663829] I/app.mainmenu app_watc: is_at_instruction_list: 0
+[664333] D/APP.FWK app_watc: send msg[GUI_APP_MSG_EXIT_APP] [0x0] to gui_app_mbx tick:664333.
+[664406] D/APP.SCHE app_watc: ----------------app_schedule_task---------------start
+[664484] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_EXIT_APP] tick:664333
+[664496] I/APP.SCHE app_watc: Exit specified app[flashlight]
+[664506] D/APP.SCHE app_watc: app_exit [flashlight]
+[664527] D/APP.SCHE app_watc: app_destory [flashlight]
+[664564] D/APP.SCHE app_watc: page[flashlight][root] tgt_state [RESUMED] -> [STOPED]
+[664574] D/APP.SCHE app_watc: app[flashlight] tgt_state [RUNNING] -> [DESTORYED]
+[664645] D/APP.SCHE app_watc: page[Main][root] tgt_state [PAUSED] -> [RESUMED]
+[664734] I/APP.SCHE app_watc: page[flashlight][root] do ONPAUSE, 3022cc0
+[664800] D/app.flashlight app_watc: set_amoled_brightness :100
+[664816] D/app.flashlight app_watc: brightness:100
+[664847] I/APP.SCHE app_watc: page[Main][root] do ONRESUME, 301f394
+[664872] D/app.mainmenu app_watc: [mainmenu_on_resume] 0
+[664894] I/app.mainmenu app_watc: on_resume: before check_main_page
+[664917] I/app.mainmenu app_watc: is_at_message: 0
+[664939] I/app.mainmenu app_watc: is_at_home: 1
+[664946] I/app.mainmenu app_watc: on_resume: after check_main_page
+[664951] I/app.mainmenu app_watc: on_resume: after check_is_at_ai_interface
+[664983] I/app.mainmenu app_watc: on_resume: before screen_rotate_back
+[664989] I/app.mainmenu app_watc: on_resume: before clock_on_resume
+[665014] I/app.clock app_watc: clock_on_resume: enter
+[665024] I/app.clock app_watc: clock_on_resume: after bluetooth_connection
+[665030] I/app.clock app_watc: clock_on_resume: before dial_media_header_init
+[665042] I/app.clock app_watc: clock_on_resume: before app_clock_main_select
+[665114] D/app.clock app_watc: Resuming clock id11=JW_wf1
+[665238] D/app.clock app_watc: clock_change_page: JW_wf1
+[665279] D/app.clock app_watc: clock_on_resume
+[665368] I/app.mainmenu app_watc: on_resume: after clock_on_resume
+[665441] I/app.mainmenu app_watc: on_resume: before lvgl_send_msg
+[665447] I/app.mainmenu app_watc: on_resume: returning
+[665450] I/APP.SCHE app_watc: Try setup trans-anim
+[665457] I/APP.ANI app_watc: app_trans_animation_obj_create = 302e090
+[665500] I/APP.ANI app_watc: app_trans_animation_obj_create = 302e254
+[665513] I/APP.ANI app_watc: Start free run animation
+[665516] I/APP.ANI app_watc: app_trans_animation_setup end, cost=59ms
+
+[665538] I/APP.SCHE app_watc: Trans-anim setup done.
+[665555] D/APP.SCHE app_watc: --Pause app_schedule_task--
+[665562] D/APP.SCHE app_watc: app_schedule_task done.
+[665568] D/app.flashlight app_watc: PWRMGR_MSG_LCD_BRIGHTNESS_SET_RSP cur=100[3,100]
+[665589] D/ui.handler app_watc: GUI Task: msg type: 43
+[665626] D/ui.handler app_watc: GUI Task: msg type: 64
+[665821] I/APP.ANI app_watc: free_run_ready 0 
+
+[665858] I/APP.ANI app_watc: wait_refr_task_cb 0
+
+[665861] I/APP.ANI app_watc: anim_free_run_ready 0 
+
+[665879] I/APP.ANI app_watc: app_trans_anim_free_run_clean
+
+[665910] I/APP.ANI app_watc: app_trans_animation_obj_destroy = 302e254
+[665924] I/APP.ANI app_watc: app_trans_animation_obj_destroy = 302e090
+[665934] I/APP.SCHE app_watc: Trans-anim finish, res=0
+[665951] I/APP.SCHE app_watc: page[flashlight][root] do ONSTOP, 3022cc0
+[665974] D/APP.SCHE app_watc: app[flashlight] remove&free page[root] 3022cc0
+[666003] I/APP.SCHE app_watc: app[flashlight] do SUSPEND, 302da74
+[666015] D/APP.SCHE app_watc: --Resume app_schedule_task--
+[666017] D/APP.SCHE app_watc: ----------------app_schedule_task---------------start
+[666021] I/APP.SCHE app_watc: app[flashlight] do DESTROY, 302da74
+[666033] D/APP.SCHE app_watc: app_schedule_task done.
+[720944] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[720994] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[780995] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[781045] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[841046] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[841096] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[901097] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[901147] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[961147] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[961197] E/CLIENT.POWER periodic: send code [3] failed after 1 retries
+[1021197] E/CLIENT.POWER periodic: send code [3]failed, retrying (1/1)
+[1021247] E/CLIENT.POWER periodic: send code [3] failed after 1 retries

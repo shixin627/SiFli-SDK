@@ -939,7 +939,7 @@ struct attm_desc_128 audio_profile_att_db[] = {
     [AUDIOPROFILE_AUDIO_VAL] = {AUDIOPROFILE_AUDIO_UUID,
                                 PERM(RD, ENABLE) | PERM(NTF, ENABLE),
                                 PERM(UUID_LEN, UUID_128) | PERM(RI, ENABLE),
-                                256},
+                                512},
     [AUDIOPROFILE_AUDIO_CCCD] = {SERIAL_UUID_16(ATT_DESC_CLIENT_CHAR_CFG),
                                  PERM(RD, ENABLE) | PERM(WRITE_REQ, ENABLE),
                                  PERM(RI, ENABLE), 2},

@@ -81,6 +81,8 @@
 
 #define RINGBUFFER_SIZE 320 * 6      // 320 * 6 = 1920
 static uint8_t compressed_data[500]; //(RINGBUFFER_SIZE / 4) + 1
+// TEMP DIAGNOSTIC (Phase 1 voice-accuracy): count dropped BLE audio sends.
+static uint32_t audio_tx_drop_count = 0;
 #define READ_AUDIO_BUF_SIZE 320
 
 const rt_uint32_t audio_sample_rate[] = {8000, 16000};
@@ -548,6 +550,25 @@ static inline int clamp(int val, int min, int max)
     return val;
 }
 
+// Correct int16-SATURATING software gain for the mic capture path. The shared
+// middleware auido_gain_pcm() clamps to ±65535 then assigns to int16_t
+// (audio_server.c:3057-3065) → loud samples WRAP (sign-flip) instead of
+// saturating. We use a correct local version so raising gain never injects wrap
+// distortion. The real level lift is the analog PDM gain (g_pdm_volume); this
+// software shift stays conservative.
+static void gain_pcm_sat(int16_t *p, rt_size_t bytes, uint8_t shift)
+{
+    for (rt_size_t i = 0; i < bytes / 2; i++)
+    {
+        int v = ((int)p[i]) << shift;
+        if (v > 32767)
+            v = 32767;
+        else if (v < -32768)
+            v = -32768;
+        p[i] = (int16_t)v;
+    }
+}
+
 // ADPCM 编码函数
 uint8_t adpcm_encode(adpcm_state_t *state, int16_t sample)
 {
@@ -621,7 +642,24 @@ void compress_audio_and_send_via_ble(int16_t *audio_data, size_t len)
 {
     size_t compressed_len = (len + 1) / 2; // 每两个采样点压缩为一个字节
     compress_audio(audio_data, compressed_data + 1, len);
-    skaiwatch_ble_audio_send(compressed_data, compressed_len);
+    // Send length = 1-byte speaking-index header + ADPCM payload. Was sending
+    // only `compressed_len`, an off-by-one that dropped the final ADPCM byte
+    // (2 samples) every block — fixed to `compressed_len + 1`.
+    uint16_t send_len = (uint16_t)(compressed_len + 1);
+    // Honor the send result: skaiwatch_ble_audio_send returns false when the BLE
+    // notification is dropped (TX-queue saturation). This return was previously
+    // ignored, so dropped audio blocks vanished SILENTLY. Surface it, rate-limited
+    // so a congestion burst can't flood the log.
+    bool sent = skaiwatch_ble_audio_send(compressed_data, send_len);
+    if (!sent)
+    {
+        audio_tx_drop_count++;
+        if ((audio_tx_drop_count & 0x1F) == 1)
+        {
+            rt_kprintf("AUDIO: BLE audio TX drop (count=%u)\n",
+                       audio_tx_drop_count);
+        }
+    }
 }
 
 extern bool get_is_open_app_list_ai(void);
@@ -678,8 +716,14 @@ void audio_transfer_entry(void *parameter)
                                        READ_AUDIO_BUF_SIZE);
 
                 /*audio data alg process, gain dc ramp nr*/
-                auido_gain_pcm((int16_t *)audprc_adc_temp,
-                READ_AUDIO_BUF_SIZE, 3); // pcm data left shift 3 bits (8x gain)
+                // Phase 2 fix: software gain back to ×8 (shift 3) — the level is
+                // now raised at the ANALOG source via PDM gain (g_pdm_volume,
+                // drv_audprc.c:34, default 56 = 28 dB, max 90 = 45 dB). Tune it
+                // LIVE with the `pdm_gain <val>` MSH command (0.5 dB units), no
+                // reflash. Analog gain pre-ADC = better SNR than software shift.
+                // Saturating gain (not the wrap-prone middleware auido_gain_pcm).
+                gain_pcm_sat((int16_t *)audprc_adc_temp,
+                             READ_AUDIO_BUF_SIZE, 6); // ×64; analog does the lifting
 
                 // rt_kprintf("audprc_adc_temp[0]=%d, audprc_adc_temp[1]=%d\n",
                 // audprc_adc_temp[0], audprc_adc_temp[1]);
@@ -736,11 +780,21 @@ void audio_transfer_entry(void *parameter)
                                               (audio_input_buf[2 * i + 1]
                                                << 8));
                             }
+#if defined(V2T_USE_OPUS) && defined(ENABLE_OPUS_ENCODER)
+                            // Opus streaming (VOIP + in-band FEC). Each 20ms
+                            // frame is one BLE notification framed [idx][seq][opus];
+                            // phone opus_stream_decoder.dart conceals drops via
+                            // FEC/PLC. Wire format must match phone _useOpusAudio.
+                            extern void v2t_opus_stream_send(const int16_t *pcm,
+                                                             uint32_t samples);
+                            v2t_opus_stream_send(pcm_data, TEMP_PCM_BUF_SIZE);
+#else
                             // Add header: speaking sentence index
                             compressed_data[0] = get_speech_coding();
-                            // ADPCM encoding
+                            // ADPCM encoding (legacy real-time path)
                             compress_audio_and_send_via_ble(pcm_data,
                                                             TEMP_PCM_BUF_SIZE);
+#endif
                         }
                     }
                     else if (app_voice_get_recording_status())
@@ -817,7 +871,7 @@ MSH_CMD_EXPORT(audio_close_demo, audio_close_demo test);
 // Increased stack size for Opus encoder
 // Stack usage: opus_encode() ~6-8KB + local variables + RT-Thread
 // overhead ~2KB Total: ~10-12KB required for safe operation
-    #define AUDIO_STATION_STACK_SIZE (20 * 1024)
+    #define AUDIO_STATION_STACK_SIZE (24 * 1024)
     #define AUDIO_STATION_PRIORITY 16
     #define AUDIO_STATION_TICK 10
 static rt_thread_t tid_audio_station;

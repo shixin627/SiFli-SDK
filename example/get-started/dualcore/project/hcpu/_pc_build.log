@@ -2,13 +2,10 @@ scons: Reading SConscript files ...
 Board: pc_hcpu
 
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst x: /D  2>nul 
-Invalid parameter - X:
 
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst y: /D  2>nul 
-Invalid parameter - Y:
 
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst l: /D  2>nul 
-Invalid parameter - L:
 
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu>subst x: "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.16.27023" 
 
@@ -29,8 +26,8 @@ flash.c
 CC build_pc_hcpu\sifli_sdk\external\cJSON-1.7.17\cJSON.obj
 CC build_pc_hcpu\sifli_sdk\external\cJSON-1.7.17\cJSON_Utils.obj
 CC build_pc_hcpu\sifli_sdk\external\CMSIS\RTOS2\RT-Thread\cmsis_rtthread.obj
-cJSON.c
 CC build_pc_hcpu\sifli_sdk\external\CMSIS\RTOS2\RT-Thread\os_systick.obj
+cJSON.c
 cJSON_Utils.c
 cmsis_rtthread.c
 os_systick.c
@@ -52,20 +49,20 @@ CC build_pc_hcpu\sifli_sdk\external\FlashDB\src\fdb_utils.obj
 fdb.c
 fdb_file.c
 fdb_kvdb.c
-fdb_tsdb.c
 fdb_utils.c
+fdb_tsdb.c
 CC build_pc_hcpu\sifli_sdk\external\freetype\lib_interface\ftsystem.obj
 ftsystem.c
 C:\skaiwalk\SiFli-SDK\external\FlashDB\port\fal\src\fal_rtt.c(1258): warning C4018: '<': signed/unsigned 不相符
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_disp.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_event.obj
 lv_disp.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_event.obj
 lv_event.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_gesture.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_group.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_indev.obj
-lv_gesture.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_indev_scroll.obj
+lv_gesture.c
 lv_group.c
 lv_indev.c
 lv_indev_scroll.c
@@ -74,8 +71,8 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_class.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_draw.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_pos.obj
 lv_obj.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_scroll.obj
 lv_obj_class.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_scroll.obj
 lv_obj_draw.c
 lv_obj_pos.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_style.obj
@@ -91,11 +88,11 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_arc.obj
 lv_refr.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_img.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_label.obj
 lv_theme.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_label.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_layer.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_line.obj
 lv_draw.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_line.obj
 lv_draw_arc.c
 lv_draw_img.c
 lv_draw_label.c
@@ -104,8 +101,8 @@ lv_draw_line.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_mask.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_rect.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_transform.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_triangle.obj
 lv_draw_mask.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_triangle.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_img_buf.obj
 lv_draw_rect.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_img_cache.obj
@@ -124,15 +121,15 @@ lv_font.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_loader.obj
 lv_font_dejavu_16_persian_hebrew.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_10.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_12.obj
 lv_font_fmt_txt.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_12.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_12_subpx.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_14.obj
 lv_font_loader.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_14.obj
 lv_font_montserrat_10.c
 lv_font_montserrat_12.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_16.obj
 lv_font_montserrat_12_subpx.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_16.obj
 lv_font_montserrat_14.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_18.obj
 lv_font_montserrat_16.c
@@ -155,8 +152,8 @@ lv_font_montserrat_30.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_34.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_36.obj
 lv_font_montserrat_32.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_38.obj
 lv_font_montserrat_34.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_38.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_40.obj
 lv_font_montserrat_36.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_42.obj
@@ -166,12 +163,12 @@ lv_font_montserrat_40.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_46.obj
 lv_font_montserrat_42.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_48.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_8.obj
 lv_font_montserrat_44.c
 lv_font_montserrat_46.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_8.obj
 lv_font_montserrat_48.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_simsun_16_cjk.obj
 lv_font_montserrat_8.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_simsun_16_cjk.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_unscii_16.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_unscii_8.obj
 lv_font_simsun_16_cjk.c
@@ -180,40 +177,40 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\hal\lv_hal_disp.obj
 lv_font_unscii_8.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\hal\lv_hal_indev.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\hal\lv_hal_tick.obj
+lv_hal_disp.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_anim.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_anim_timeline.obj
-lv_hal_disp.c
 lv_hal_indev.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_area.obj
 lv_hal_tick.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_area.obj
 lv_anim.c
 lv_anim_timeline.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_async.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_bidi.obj
 lv_area.c
-lv_async.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_color.obj
+lv_async.c
 lv_bidi.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_fs.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_gc.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_ll.obj
 lv_color.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_ll.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_log.obj
 lv_fs.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_lru.obj
 lv_gc.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_math.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_mem.obj
 lv_ll.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_mem.obj
 lv_log.c
 lv_lru.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_printf.obj
 lv_math.c
 lv_mem.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_printf.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_style.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_style_gen.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_templ.obj
 lv_printf.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_templ.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_timer.obj
 lv_style.c
 lv_style_gen.c
@@ -221,33 +218,30 @@ lv_templ.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_tlsf.obj
 lv_timer.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_txt.obj
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\misc\lv_style.c(390): warning C4018: '<': signed/unsigned 不相符
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_txt_ap.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_utils.obj
-C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\misc\lv_style.c(390): warning C4018: '<': signed/unsigned 不相符
 lv_tlsf.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_arc.obj
 lv_txt.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_bar.obj
-lv_txt_ap.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_btn.obj
+lv_txt_ap.c
 lv_utils.c
 lv_arc.c
-lv_bar.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_btnmatrix.obj
-lv_btn.c
+lv_bar.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_canvas.obj
+lv_btn.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_checkbox.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_dropdown.obj
 lv_btnmatrix.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_img.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_dropdown.obj
 lv_canvas.c
 lv_checkbox.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_label.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_img.obj
 lv_dropdown.c
-lv_img.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_label.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_line.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_objx_templ.obj
-lv_label.c
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(192): warning C4018: '<': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(197): warning C4018: '<': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(240): warning C4018: '>': signed/unsigned 不相符
@@ -258,14 +252,17 @@ C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(368): warning C40
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(369): warning C4018: '>': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(411): warning C4018: '>': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(464): warning C4018: '>': signed/unsigned 不相符
-lv_line.c
-lv_objx_templ.c
+lv_img.c
+lv_label.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_objx_templ.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_roller.obj
+lv_line.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_slider.obj
+lv_objx_templ.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_switch.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_table.obj
-lv_roller.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_textarea.obj
+lv_roller.c
 lv_slider.c
 lv_switch.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\arm2d\lv_gpu_arm2d.obj
@@ -279,8 +276,8 @@ lv_gpu_nxp.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_arc.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_bg.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_composite.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_img.obj
 lv_draw_sdl.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_img.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_label.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_layer.obj
 lv_draw_sdl_arc.c
@@ -288,82 +285,82 @@ lv_draw_sdl_bg.c
 lv_draw_sdl_composite.c
 lv_draw_sdl_img.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_line.obj
-lv_draw_sdl_label.c
 lv_draw_sdl_layer.c
+lv_draw_sdl_label.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_mask.obj
 lv_draw_sdl_line.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_polygon.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_rect.obj
 lv_draw_sdl_mask.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_rect.obj
+lv_draw_sdl_polygon.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_stack_blur.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_texture_cache.obj
-lv_draw_sdl_polygon.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_utils.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\stm32_dma2d\lv_gpu_stm32_dma2d.obj
 lv_draw_sdl_rect.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\stm32_dma2d\lv_gpu_stm32_dma2d.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_arc.obj
 lv_draw_sdl_stack_blur.c
 lv_draw_sdl_texture_cache.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_arc.obj
 lv_draw_sdl_utils.c
 lv_gpu_stm32_dma2d.c
 lv_draw_sw.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_blend.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_dither.obj
 lv_draw_sw_arc.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_gradient.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_img.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_dither.obj
 lv_draw_sw_blend.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_layer.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_gradient.obj
 lv_draw_sw_dither.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_img.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_layer.obj
 lv_draw_sw_gradient.c
-lv_draw_sw_img.c
-lv_draw_sw_layer.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_letter.obj
+lv_draw_sw_img.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_line.obj
+lv_draw_sw_layer.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_polygon.obj
-lv_draw_sw_letter.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_rect.obj
+lv_draw_sw_letter.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_transform.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\swm341_dma2d\lv_gpu_swm341_dma2d.obj
 lv_draw_sw_line.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\pxp\lv_draw_pxp_blend.obj
 lv_draw_sw_polygon.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\pxp\lv_gpu_nxp_pxp.obj
 lv_draw_sw_rect.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\swm341_dma2d\lv_gpu_swm341_dma2d.obj
 lv_draw_sw_transform.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\pxp\lv_draw_pxp_blend.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\pxp\lv_gpu_nxp_pxp.obj
 lv_gpu_swm341_dma2d.c
 lv_draw_pxp_blend.c
 lv_gpu_nxp_pxp.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\pxp\lv_gpu_nxp_pxp_osa.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\vglite\lv_draw_vglite_arc.obj
-lv_gpu_nxp_pxp_osa.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\vglite\lv_draw_vglite_blend.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\vglite\lv_draw_vglite_rect.obj
+lv_gpu_nxp_pxp_osa.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\vglite\lv_gpu_nxp_vglite.obj
-lv_draw_vglite_arc.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\layouts\flex\lv_flex.obj
+lv_draw_vglite_arc.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\layouts\grid\lv_grid.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\bmp\lv_bmp.obj
 lv_draw_vglite_blend.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\bmp\lv_bmp.obj
 lv_draw_vglite_rect.c
 lv_gpu_nxp_vglite.c
 lv_flex.c
 lv_grid.c
 lv_bmp.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\ffmpeg\lv_ffmpeg.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\freetype\lv_freetype.obj
 lv_ffmpeg.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\freetype\lv_freetype.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\fsdrv\lv_fs_fatfs.obj
 lv_freetype.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\fsdrv\lv_fs_posix.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\fsdrv\lv_fs_stdio.obj
-lv_fs_fatfs.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\fsdrv\lv_fs_win32.obj
+lv_fs_fatfs.c
 lv_fs_posix.c
+lv_fs_stdio.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\gif\gifdec.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\gif\lv_gif.obj
-lv_fs_stdio.c
 lv_fs_win32.c
 gifdec.c
 lv_gif.c
@@ -373,35 +370,35 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\qrcode\lv_qrcode.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\qrcode\qrcodegen.obj
 lodepng.c
 lv_png.c
-lv_qrcode.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\rlottie\lv_rlottie.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\sjpg\lv_sjpg.obj
 qrcodegen.c
+lv_qrcode.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\sjpg\tjpgd.obj
 lv_rlottie.c
 lv_sjpg.c
-tjpgd.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\fragment\lv_fragment.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\fragment\lv_fragment_manager.obj
+tjpgd.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\gridnav\lv_gridnav.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\ime\lv_ime_pinyin.obj
 lv_fragment.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\ime\lv_ime_pinyin.obj
 lv_fragment_manager.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\imgfont\lv_imgfont.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\monkey\lv_monkey.obj
 lv_gridnav.c
 lv_ime_pinyin.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\msg\lv_msg.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.obj
 lv_imgfont.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.obj
 lv_monkey.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\themes\basic\lv_theme_basic.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\themes\default\lv_theme_default.obj
 lv_msg.c
 lv_snapshot.c
-lv_theme_basic.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\themes\mono\lv_theme_mono.obj
 lv_theme_default.c
+lv_theme_basic.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\animimg\lv_animimg.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\calendar\lv_calendar.obj
 lv_theme_mono.c
@@ -421,23 +418,23 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\colorwheel\lv_colo
 lv_calendar_header_dropdown.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\imgbtn\lv_imgbtn.obj
 lv_chart.c
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\widgets\calendar\lv_calendar.c(134): warning C4018: '<': signed/unsigned 不相符
 lv_colorwheel.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\keyboard\lv_keyboard.obj
-C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\widgets\calendar\lv_calendar.c(134): warning C4018: '<': signed/unsigned 不相符lv_imgbtn.c
-
+lv_imgbtn.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\led\lv_led.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\list\lv_list.obj
 lv_keyboard.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\menu\lv_menu.obj
 lv_led.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\meter\lv_meter.obj
+lv_list.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\msgbox\lv_msgbox.obj
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\widgets\imgbtn\lv_imgbtn.c(170): warning C4090: '函式': 不同的 'const' 限定詞
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\widgets\imgbtn\lv_imgbtn.c(171): warning C4090: '函式': 不同的 'const' 限定詞
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\widgets\imgbtn\lv_imgbtn.c(205): warning C4018: '>': signed/unsigned 不相符
-lv_list.c
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\msgbox\lv_msgbox.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\span\lv_span.obj
 lv_menu.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\span\lv_span.obj
 lv_meter.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\spinbox\lv_spinbox.obj
 lv_msgbox.c
@@ -445,64 +442,63 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\spinner\lv_spinner
 lv_span.c
 lv_spinbox.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\tabview\lv_tabview.obj
-CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\tileview\lv_tileview.obj
 lv_spinner.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\tileview\lv_tileview.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\win\lv_win.obj
 lv_tabview.c
 lv_tileview.c
 lv_win.c
-Generating langpack ...
-CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\intent.obj
-CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\gui_app_fwk.obj
-intent.c
-CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\gui_dl_app_fwk.obj
-CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\gui_app_trans_anim.obj
-CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\gui_app_test.obj
-CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\app_schedule_port.obj
 CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\app_schedule.obj
-gui_app_fwk.c
-gui_dl_app_fwk.c
-gui_app_trans_anim.c
-gui_app_test.c
-CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\reg_fwk\app_reg.obj
-app_schedule_port.c
 app_schedule.c
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\app_schedule_port.obj
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\gui_app_fwk.obj
+app_schedule_port.c
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\gui_app_test.obj
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\gui_app_trans_anim.obj
+gui_app_fwk.c
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\gui_dl_app_fwk.obj
+gui_app_test.c
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\intent.obj
+gui_app_trans_anim.c
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\reg_fwk\app_reg.obj
+gui_dl_app_fwk.c
+intent.c
 app_reg.c
 CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\lvgl_v8\app_trans_anim_port.obj
 app_trans_anim_port.c
 CC build_pc_hcpu\sifli_sdk\middleware\data_bus\public\data_service_main.obj
-data_service_main.c
 CC build_pc_hcpu\sifli_sdk\middleware\data_bus\public\data_service.obj
-data_service.c
+data_service_main.c
 CC build_pc_hcpu\sifli_sdk\middleware\data_bus\public\pin_service.obj
+data_service.c
 CC build_pc_hcpu\sifli_sdk\middleware\data_bus\public\power_manager_service.obj
-CC build_pc_hcpu\sifli_sdk\middleware\data_bus\public\ui_datasrv_subscriber.obj
 pin_service.c
-CC build_pc_hcpu\sifli_sdk\middleware\lvgl\littlevgl2rtt.obj
+CC build_pc_hcpu\sifli_sdk\middleware\data_bus\public\ui_datasrv_subscriber.obj
 power_manager_service.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\littlevgl2rtt.obj
 ui_datasrv_subscriber.c
-CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf_perf.obj
 littlevgl2rtt.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf_perf.obj
+lvsf_perf.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf_perf_v9.obj
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\app_mem.obj
-lvsf_perf.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\app_comm.obj
-CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\app_lang.obj
 lvsf_perf_v9.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\app_lang.obj
 app_mem.c
-app_comm.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\app_nvm_lang_compat.obj
+app_comm.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager.obj
 app_lang.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager_builtin.obj
 app_nvm_lang_compat.c
 lv_ext_resource_manager.c
-CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager_builtin.obj
-CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager_dl_impl.obj
 lv_ext_resource_manager_builtin.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager_dl_impl.obj
 lv_ext_resource_manager_dl_impl.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_win32\img_dec.obj
-CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_win32\lv_touch_sim.obj
 img_dec.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_win32\lv_touch_sim.obj
 lv_touch_sim.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_win32\win32drv.obj
 CC build_pc_hcpu\sifli_sdk\middleware\share_prefs\share_prefs_cmd.obj
@@ -512,9 +508,9 @@ CC build_pc_hcpu\sifli_sdk\middleware\sifli_lib\lib\agif.obj
 share_prefs_cmd.c
 CC build_pc_hcpu\sifli_sdk\middleware\sifli_lib\lib\dummy.obj
 share_prefs_flashdb.c
+CC build_pc_hcpu\sifli_sdk\middleware\simulator\application.obj
 agif.c
 dummy.c
-CC build_pc_hcpu\sifli_sdk\middleware\simulator\application.obj
 application.c
 CC build_pc_hcpu\sifli_sdk\middleware\simulator\liveimportinit.obj
 CC build_pc_hcpu\sifli_sdk\middleware\simulator\mnt.obj
@@ -525,1969 +521,385 @@ CC build_pc_hcpu\sifli_sdk\middleware\simulator\startup.obj
 platform.c
 CC build_pc_hcpu\sifli_sdk\middleware\system\bf0_common.obj
 startup.c
-CC build_pc_hcpu\sifli_sdk\rtos\os_adaptor\src\os_adaptor_rtthread.obj
 bf0_common.c
+CC build_pc_hcpu\sifli_sdk\rtos\os_adaptor\src\os_adaptor_rtthread.obj
 CC build_pc_hcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers_pc\board.obj
 os_adaptor_rtthread.c
-board.c
 CC build_pc_hcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers_pc\dfs_win32.obj
-CC build_pc_hcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers_pc\lcd_dummy.obj
+board.c
 dfs_win32.c
+CC build_pc_hcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers_pc\lcd_dummy.obj
 CC build_pc_hcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers_pc\sd_sim.obj
 lcd_dummy.c
 sd_sim.c
 CC build_pc_hcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers_pc\uart_console.obj
 CC build_pc_hcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers_pc\uart_pc.obj
-uart_console.c
 CC build_pc_hcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers_pc\uart_pc_ahi.obj
+uart_console.c
+CC C:\skaiwalk\SiFli-SDK\drivers\hal\bf0_hal_hlp.obj
 uart_pc.c
 uart_pc_ahi.c
-CC C:\skaiwalk\SiFli-SDK\drivers\hal\bf0_hal_hlp.obj
-CC build_pc_hcpu\src\main_pc.obj
 bf0_hal_hlp.c
+CC build_pc_hcpu\src\main_pc.obj
 main_pc.c
 CC build_pc_hcpu\src\pc_link_stubs.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\baro_arrow.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_dial_point_h.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_dial_point_m.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 pc_link_stubs.c
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_dial_point_s.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_hour.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_minute.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_dial_point_h.png color RGB565 -------------
-
-clock_dial_point_h.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\baro_arrow.png color RGB565 -------------
-
-baro_arrow.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_dial_point_s.png color RGB565 -------------
-
-clock_dial_point_s.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_dial_point_m.png color RGB565 -------------
-
-clock_dial_point_m.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_mickey_hand_hour.png color RGB565 -------------
-
-clock_mickey_hand_hour.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_mickey_hand_minute.png color RGB565 -------------
-
-clock_mickey_hand_minute.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\no_ezip\baro_arrow.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_hour.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_minute.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_dial_point_s.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_dial_point_m.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_dial_point_h.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_dial_point_m.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_dial_point_s.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_hour.tmp.obj
 baro_arrow.tmp.c
-clock_mickey_hand_hour.tmp.c
-clock_mickey_hand_minute.tmp.c
-clock_dial_point_s.tmp.c
+CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_mickey_hand_minute.tmp.obj
 clock_dial_point_m.tmp.c
 clock_dial_point_h.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_small.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_tiny.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_rotate_bg_bg.png color RGB565 -------------
-
-clock_rotate_bg_bg.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_hour_hand.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_minute_hand.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_rotate_bg_bg_small.png color RGB565 -------------
-
-clock_rotate_bg_bg_small.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+clock_dial_point_s.tmp.c
+clock_mickey_hand_hour.tmp.c
+clock_mickey_hand_minute.tmp.c
 CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_rotate_bg_hour_hand.png color RGB565 -------------
-
-clock_rotate_bg_hour_hand.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_simple_hour_hand.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_rotate_bg_minute_hand.png color RGB565 -------------
-
-clock_rotate_bg_minute_hand.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_rotate_bg_bg_tiny.png color RGB565 -------------
-
-clock_rotate_bg_bg_tiny.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_small.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_simple_minute_hand.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_hour_hand.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_minute_hand.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_simple_hour_hand.png color RGB565 -------------
-
-clock_simple_hour_hand.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 clock_rotate_bg_bg.tmp.c
+CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_small.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_bg_tiny.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\clock_simple_second_hand.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_simple_minute_hand.png color RGB565 -------------
-
-clock_simple_minute_hand.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_simple_hour_hand.tmp.obj
 clock_rotate_bg_bg_small.tmp.c
-CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_simple_minute_hand.tmp.obj
-clock_rotate_bg_hour_hand.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\clock_simple_second_hand.png color RGB565 -------------
-
-clock_simple_second_hand.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_hour_hand.tmp.obj
 clock_rotate_bg_bg_tiny.tmp.c
+CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_rotate_bg_minute_hand.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_simple_hour_hand.tmp.obj
+clock_rotate_bg_hour_hand.tmp.c
+CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_simple_minute_hand.tmp.obj
 clock_rotate_bg_minute_hand.tmp.c
-CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_simple_second_hand.tmp.obj
 clock_simple_hour_hand.tmp.c
+CC build_pc_hcpu\src\resource\images\common\no_ezip\clock_simple_second_hand.tmp.obj
 clock_simple_minute_hand.tmp.c
 clock_simple_second_hand.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\compass_arrow.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\d3d_rotate.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\fashion_hr.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\fashion_min.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\fashion_sec.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\hour_hand2.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\kaleidoscope.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\fashion_hr.png color RGB565 -------------
-
-fashion_hr.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\fashion_min.png color RGB565 -------------
-
-fashion_min.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+CC build_pc_hcpu\src\resource\images\common\no_ezip\compass_arrow.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\no_ezip\d3d_rotate.tmp.obj
+compass_arrow.tmp.c
 CC build_pc_hcpu\src\resource\images\common\no_ezip\fashion_hr.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\fashion_sec.png color RGB565 -------------
-
-fashion_sec.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\no_ezip\fashion_min.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\hour_hand2.png color RGB565 -------------
-
-hour_hand2.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+d3d_rotate.tmp.c
 CC build_pc_hcpu\src\resource\images\common\no_ezip\fashion_sec.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\compass_arrow.png color RGB565 -------------
-
-compass_arrow.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\minute_hand2.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\no_ezip\hour_hand2.tmp.obj
 fashion_hr.tmp.c
 fashion_min.tmp.c
-CC build_pc_hcpu\src\resource\images\common\no_ezip\compass_arrow.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\d3d_rotate.png color RGB565 -------------
-
-d3d_rotate.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-fashion_sec.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\minute_hand2.png color RGB565 -------------
-
-minute_hand2.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-hour_hand2.tmp.c
-CC build_pc_hcpu\src\resource\images\common\no_ezip\d3d_rotate.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\no_ezip\minute_hand2.tmp.obj
-compass_arrow.tmp.c
-d3d_rotate.tmp.c
-minute_hand2.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\no_ezip\second_hand2.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\kaleidoscope.png color RGB565 -------------
-
-kaleidoscope.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\Map_fill.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\airplane.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\no_ezip\second_hand2.png color RGB565 -------------
-
-second_hand2.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\no_ezip\kaleidoscope.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\Map_fill.png color RGB565 -------------
-
-Map_fill.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\airplane.png color RGB565 -------------
-
-airplane.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\app_elc_100.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+fashion_sec.tmp.c
+CC build_pc_hcpu\src\resource\images\common\no_ezip\minute_hand2.tmp.obj
+hour_hand2.tmp.c
+kaleidoscope.tmp.c
+minute_hand2.tmp.c
+CC build_pc_hcpu\src\resource\images\common\no_ezip\second_hand2.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\Map_fill.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\airplane.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\no_ezip\second_hand2.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\app_elc_100.png color RGB565 -------------
-
-app_elc_100.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-kaleidoscope.tmp.c
+second_hand2.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\app_elc_100.tmp.obj
 Map_fill.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\app_elc_20.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-airplane.tmp.c
-second_hand2.tmp.c
-app_elc_100.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\app_elc_20.png color RGB565 -------------
-
-app_elc_20.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\app_elc_20.tmp.obj
-app_elc_20.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\app_elc_40.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\app_elc_5.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\app_elc_60.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\app_elc_40.png color RGB565 -------------
-
-app_elc_40.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\app_elc_80.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\app_icon_frame.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\app_elc_5.png color RGB565 -------------
-
-app_elc_5.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+airplane.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\app_elc_40.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\app_elc_60.png color RGB565 -------------
-
-app_elc_60.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\ezip\app_elc_5.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\app_elc_80.png color RGB565 -------------
-
-app_elc_80.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\backspace_icon.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+app_elc_100.tmp.c
+app_elc_20.tmp.c
 app_elc_40.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\app_elc_5.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\app_elc_60.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\app_elc_80.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\app_icon_frame.png color RGB565 -------------
-
-app_icon_frame.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\btn_flashlight.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 app_elc_5.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\backspace_icon.png color RGB565 -------------
-
-backspace_icon.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\app_icon_frame.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\backspace_icon.tmp.obj
 app_elc_60.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\btn_flashlight.png color RGB565 -------------
-
-btn_flashlight.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-app_elc_80.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\btn_flashlight.tmp.obj
+app_elc_80.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\capital_icon.tmp.obj
 app_icon_frame.tmp.c
 backspace_icon.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\capital_icon.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\charge_icon.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-btn_flashlight.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\clock_40.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\capital_icon.png color RGB565 -------------
-
-capital_icon.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\charge_icon.png color RGB565 -------------
-
-charge_icon.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\ezip\capital_icon.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\charge_icon.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\clock_40.png color RGB565 -------------
-
-clock_40.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\control_background_img.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\ezip\clock_40.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\control_cursor_img.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\control_selection_bg.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+btn_flashlight.tmp.c
 capital_icon.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\clock_40.tmp.obj
 charge_icon.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\dn.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-clock_40.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\dn.png color RGB565 -------------
-
-dn.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\down_arrow.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\ezip\dn.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\control_selection_bg.png color RGB565 -------------
-
-control_selection_bg.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\ezip\control_selection_bg.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\down_arrow.png color RGB565 -------------
-
-down_arrow.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\control_background_img.png color RGB565 -------------
-
-control_background_img.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\ezip\down_arrow.tmp.obj
-dn.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\control_cursor_img.png color RGB565 -------------
-
-control_cursor_img.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\control_background_img.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\enter_icon.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-control_selection_bg.tmp.c
+clock_40.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\control_cursor_img.tmp.obj
-down_arrow.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\erth.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\find_phone.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\enter_icon.png color RGB565 -------------
-
-enter_icon.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+CC build_pc_hcpu\src\resource\images\common\ezip\control_selection_bg.tmp.obj
 control_background_img.tmp.c
-CC build_pc_hcpu\src\resource\images\common\ezip\enter_icon.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\erth.png color RGB565 -------------
-
-erth.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+CC build_pc_hcpu\src\resource\images\common\ezip\dn.tmp.obj
 control_cursor_img.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\down_arrow.tmp.obj
+control_selection_bg.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\enter_icon.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\erth.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\find_phone.png color RGB565 -------------
-
-find_phone.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+dn.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\find_phone.tmp.obj
+down_arrow.tmp.c
 enter_icon.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\flashlight_icon.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 erth.tmp.c
 find_phone.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\header_bg.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_apple_facetime.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\flashlight_icon.png color RGB565 -------------
-
-flashlight_icon.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\flashlight_icon.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_apple_facetime.png color RGB565 -------------
-
-icon_apple_facetime.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-flashlight_icon.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_apple_mail.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\header_bg.png color RGB565 -------------
-
-header_bg.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\ezip\icon_apple_facetime.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\header_bg.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_bluetooth_disconnection.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_delete.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_dingtalk.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-icon_apple_facetime.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_discord.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_bluetooth_disconnection.png color RGB565 -------------
-
-icon_bluetooth_disconnection.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_apple_mail.png color RGB565 -------------
-
-icon_apple_mail.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+CC build_pc_hcpu\src\resource\images\common\ezip\icon_apple_facetime.tmp.obj
+flashlight_icon.tmp.c
 header_bg.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_apple_mail.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_delete.png color RGB565 -------------
-
-icon_delete.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_bluetooth_disconnection.tmp.obj
+icon_apple_facetime.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_delete.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_dingtalk.png color RGB565 -------------
-
-icon_dingtalk.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_discord.png color RGB565 -------------
-
-icon_discord.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_dnd_mode.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_dingtalk.tmp.obj
-icon_apple_mail.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_discord.tmp.obj
+icon_apple_mail.tmp.c
 icon_bluetooth_disconnection.tmp.c
 icon_delete.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_dnd_mode.png color RGB565 -------------
-
-icon_dnd_mode.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\ezip\icon_dnd_mode.tmp.obj
-icon_discord.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_facebook.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 icon_dingtalk.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_gmail.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-icon_dnd_mode.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_facebook.png color RGB565 -------------
-
-icon_facebook.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_google_calendar.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+icon_discord.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\icon_dnd_mode.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_facebook.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_gmail.png color RGB565 -------------
-
-icon_gmail.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_google_chat.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_google_meet.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_gmail.tmp.obj
-icon_facebook.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_google_chat.png color RGB565 -------------
-
-icon_google_chat.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_google_calendar.png color RGB565 -------------
-
-icon_google_calendar.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_history.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_google_meet.png color RGB565 -------------
-
-icon_google_meet.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_instagram.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-icon_gmail.tmp.c
+icon_dnd_mode.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_google_calendar.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\ezip\icon_google_meet.tmp.obj
+icon_facebook.tmp.c
+icon_gmail.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_google_chat.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_history.png color RGB565 -------------
-
-icon_history.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_kakaotalk.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\ezip\icon_history.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_instagram.png color RGB565 -------------
-
-icon_instagram.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+CC build_pc_hcpu\src\resource\images\common\ezip\icon_google_meet.tmp.obj
 icon_google_calendar.tmp.c
-icon_google_meet.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\icon_history.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_instagram.tmp.obj
 icon_google_chat.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_kakaotalk.png color RGB565 -------------
-
-icon_kakaotalk.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-icon_history.tmp.c
+icon_google_meet.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_kakaotalk.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_lark.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+icon_history.tmp.c
 icon_instagram.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_line.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-icon_kakaotalk.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_line.png color RGB565 -------------
-
-icon_line.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_lark.png color RGB565 -------------
-
-icon_lark.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_linkedin.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_lark.tmp.obj
+icon_kakaotalk.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_line.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_messenger.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_mic.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_other.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_linkedin.png color RGB565 -------------
-
-icon_linkedin.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_prohibit.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 icon_lark.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_linkedin.tmp.obj
 icon_line.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_mic.png color RGB565 -------------
-
-icon_mic.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+CC build_pc_hcpu\src\resource\images\common\ezip\icon_messenger.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_mic.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_other.png color RGB565 -------------
-
-icon_other.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_prohibit.png color RGB565 -------------
-
-icon_prohibit.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_messenger.png color RGB565 -------------
-
-icon_messenger.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_qq.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\ezip\icon_prohibit.tmp.obj
 icon_linkedin.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_other.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\ezip\icon_messenger.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\ezip\icon_prohibit.tmp.obj
+icon_messenger.tmp.c
 icon_mic.tmp.c
 icon_other.tmp.c
-icon_prohibit.tmp.c
-icon_messenger.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_qrcode.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_qq.png color RGB565 -------------
-
-icon_qq.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_record.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_qq.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_reddit.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_record.png color RGB565 -------------
-
-icon_record.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_qrcode.png color RGB565 -------------
-
-icon_qrcode.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\ezip\icon_record.tmp.obj
+icon_prohibit.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_qrcode.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\ezip\icon_record.tmp.obj
 icon_qq.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_reddit.png color RGB565 -------------
-
-icon_reddit.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_release.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-icon_record.tmp.c
 icon_qrcode.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_reddit.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_send.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_skaiwalk.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_skype.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_release.png color RGB565 -------------
-
-icon_release.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_send.png color RGB565 -------------
-
-icon_send.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+icon_record.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_release.tmp.obj
-icon_reddit.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_send.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_skype.png color RGB565 -------------
-
-icon_skype.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_skaiwalk.png color RGB565 -------------
-
-icon_skaiwalk.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_slack.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+icon_reddit.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_skaiwalk.tmp.obj
 icon_release.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_skype.tmp.obj
 icon_send.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_sleep_mode.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_sms.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_slack.png color RGB565 -------------
-
-icon_slack.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 icon_skaiwalk.tmp.c
-icon_skype.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_sleep_mode.png color RGB565 -------------
-
-icon_sleep_mode.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_slack.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_sms.png color RGB565 -------------
-
-icon_sms.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+icon_skype.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_sleep_mode.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_snap.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_sms.tmp.obj
 icon_slack.tmp.c
 icon_sleep_mode.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_stop.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_telegram.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_snap.png color RGB565 -------------
-
-icon_snap.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 icon_sms.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_stop.png color RGB565 -------------
-
-icon_stop.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_snap.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_stop.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_tiktok.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_telegram.png color RGB565 -------------
-
-icon_telegram.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_trash.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_telegram.tmp.obj
 icon_snap.tmp.c
-icon_stop.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_trash.png color RGB565 -------------
-
-icon_trash.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_tiktok.png color RGB565 -------------
-
-icon_tiktok.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_twitch.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-icon_telegram.tmp.c
-CC build_pc_hcpu\src\resource\images\common\ezip\icon_trash.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_tiktok.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_twitter.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_wechat.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_twitch.png color RGB565 -------------
-
-icon_twitch.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-icon_trash.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\icon_trash.tmp.obj
+icon_stop.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_twitch.tmp.obj
-icon_tiktok.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_twitter.png color RGB565 -------------
-
-icon_twitter.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_wechat.png color RGB565 -------------
-
-icon_wechat.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_whatsapp.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+icon_telegram.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_twitter.tmp.obj
+icon_tiktok.tmp.c
+icon_trash.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_wechat.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_x.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 icon_twitch.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\icon_youtube.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_whatsapp.png color RGB565 -------------
-
-icon_whatsapp.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 icon_twitter.tmp.c
-CC build_pc_hcpu\src\resource\images\common\ezip\icon_whatsapp.tmp.obj
 icon_wechat.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_x.png color RGB565 -------------
-
-icon_x.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_activity.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\icon_youtube.png color RGB565 -------------
-
-icon_youtube.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+CC build_pc_hcpu\src\resource\images\common\ezip\icon_whatsapp.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_x.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\icon_youtube.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_alarm.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 icon_whatsapp.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_activity.png color RGB565 -------------
-
-img_activity.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\img_activity.tmp.obj
 icon_x.tmp.c
-icon_youtube.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_alarm.png color RGB565 -------------
-
-img_alarm.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_alarm_2.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\img_alarm.tmp.obj
-img_activity.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_barometer.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_calculator.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_alarm_2.png color RGB565 -------------
-
-img_alarm_2.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-img_alarm.tmp.c
+icon_youtube.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_alarm_2.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_barometer.png color RGB565 -------------
-
-img_barometer.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_calculator.png color RGB565 -------------
-
-img_calculator.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_calendar.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+img_activity.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_barometer.tmp.obj
+img_alarm.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_calculator.tmp.obj
 img_alarm_2.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_calories.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_charging.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_calendar.png color RGB565 -------------
-
-img_calendar.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 img_barometer.tmp.c
-CC build_pc_hcpu\src\resource\images\common\ezip\img_calendar.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_calories.png color RGB565 -------------
-
-img_calories.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_dinosaur.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 img_calculator.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\img_calendar.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\img_calories.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_enemy.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_charging.png color RGB565 -------------
-
-img_charging.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\img_charging.tmp.obj
 img_calendar.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_dinosaur.png color RGB565 -------------
-
-img_dinosaur.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\img_dinosaur.tmp.obj
 img_calories.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_enemy.png color RGB565 -------------
-
-img_enemy.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\img_enemy.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_flashlight.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 img_charging.tmp.c
-img_dinosaur.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_game.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_group.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-img_enemy.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_flashlight.png color RGB565 -------------
-
-img_flashlight.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\img_flashlight.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_heart_rate.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_game.png color RGB565 -------------
-
-img_game.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_group.png color RGB565 -------------
-
-img_group.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_itunes.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\ezip\img_group.tmp.obj
+img_dinosaur.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_game.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\ezip\img_group.tmp.obj
+img_enemy.tmp.c
 img_flashlight.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_heart_rate.png color RGB565 -------------
-
-img_heart_rate.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_left_arrow.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_itunes.png color RGB565 -------------
-
-img_itunes.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-img_group.tmp.c
-CC build_pc_hcpu\src\resource\images\common\ezip\img_heart_rate.tmp.obj
 img_game.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_logo.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_left_arrow.png color RGB565 -------------
-
-img_left_arrow.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+CC build_pc_hcpu\src\resource\images\common\ezip\img_heart_rate.tmp.obj
+img_group.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_itunes.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_low_power.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\ezip\img_left_arrow.tmp.obj
 img_heart_rate.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_logo.png color RGB565 -------------
-
-img_logo.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\ezip\img_logo.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\ezip\img_left_arrow.tmp.obj
 img_itunes.tmp.c
-img_left_arrow.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_mail.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_low_power.png color RGB565 -------------
-
-img_low_power.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+CC build_pc_hcpu\src\resource\images\common\ezip\img_logo.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\img_low_power.tmp.obj
-img_logo.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_media_next.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_media_pause.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_mail.png color RGB565 -------------
-
-img_mail.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-img_low_power.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_mail.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_media_next.png color RGB565 -------------
-
-img_media_next.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+img_left_arrow.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_media_next.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_media_pause.png color RGB565 -------------
-
-img_media_pause.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_media_play.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+img_logo.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_media_pause.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_media_previous.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_messages.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+img_low_power.tmp.c
 img_mail.tmp.c
 img_media_next.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_media_play.png color RGB565 -------------
-
-img_media_play.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_mouse.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\img_media_play.tmp.obj
 img_media_pause.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_messages.png color RGB565 -------------
-
-img_messages.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_media_previous.png color RGB565 -------------
-
-img_media_previous.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\img_media_previous.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\img_messages.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_note.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_mouse.png color RGB565 -------------
-
-img_mouse.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 img_media_play.tmp.c
-CC build_pc_hcpu\src\resource\images\common\ezip\img_mouse.tmp.obj
 img_media_previous.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\img_mouse.tmp.obj
 img_messages.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_photo.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_note.png color RGB565 -------------
-
-img_note.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_recorder.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-img_mouse.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_note.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_red_heart.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_photo.png color RGB565 -------------
-
-img_photo.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_recorder.png color RGB565 -------------
-
-img_recorder.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\img_photo.tmp.obj
-img_note.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_recorder.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_right_arrow.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_red_heart.png color RGB565 -------------
-
-img_red_heart.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_settings.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+img_mouse.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_red_heart.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_right_arrow.png color RGB565 -------------
-
-img_right_arrow.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+img_note.tmp.c
 img_photo.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_settings_app.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 img_recorder.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_right_arrow.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_workout.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_settings.png color RGB565 -------------
-
-img_settings.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 img_red_heart.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_settings.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_settings_app.png color RGB565 -------------
-
-img_settings_app.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-img_right_arrow.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_workout.png color RGB565 -------------
-
-img_workout.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\img_settings_app.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_workout_cycling.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\ezip\img_workout.tmp.obj
+img_right_arrow.tmp.c
 img_settings.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\img_workout.tmp.obj
 img_settings_app.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_workout_cycling.png color RGB565 -------------
-
-img_workout_cycling.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_workout_gym.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-img_workout.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_workout_hiking.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\img_workout_cycling.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_workout_running.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_workout_swimming.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_workout_gym.png color RGB565 -------------
-
-img_workout_gym.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_workout_hiking.png color RGB565 -------------
-
-img_workout_hiking.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\img_workout_gym.tmp.obj
+img_workout.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_workout_hiking.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_workout_running.png color RGB565 -------------
-
-img_workout_running.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 img_workout_cycling.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_workout_swimming.png color RGB565 -------------
-
-img_workout_swimming.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_workout_walking.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\img_workout_running.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\ezip\img_workout_swimming.tmp.obj
 img_workout_gym.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\img_workout_yoga.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+CC build_pc_hcpu\src\resource\images\common\ezip\img_workout_swimming.tmp.obj
 img_workout_hiking.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\keyboard_icon.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_workout_walking.png color RGB565 -------------
-
-img_workout_walking.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-img_workout_running.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_workout_walking.tmp.obj
-img_workout_swimming.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\img_workout_yoga.png color RGB565 -------------
-
-img_workout_yoga.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\keyboard_icon.png color RGB565 -------------
-
-keyboard_icon.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+img_workout_running.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\img_workout_yoga.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\ezip\keyboard_icon.tmp.obj
+img_workout_swimming.tmp.c
 img_workout_walking.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\language.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\language.png color RGB565 -------------
-
-language.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+CC build_pc_hcpu\src\resource\images\common\ezip\keyboard_icon.tmp.obj
 img_workout_yoga.tmp.c
-keyboard_icon.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\menu_icon.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\micro_icon.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\language.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\micro_open_icon.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\menu_icon.png color RGB565 -------------
-
-menu_icon.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\mouse_mode_icon.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\menu_icon.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\micro_icon.png color RGB565 -------------
-
-micro_icon.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\notification_img.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-language.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\micro_open_icon.png color RGB565 -------------
-
-micro_open_icon.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+keyboard_icon.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\micro_icon.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\micro_open_icon.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\notification_img.png color RGB565 -------------
-
-notification_img.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\mouse_mode_icon.png color RGB565 -------------
-
-mouse_mode_icon.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\ezip\notification_img.tmp.obj
+language.tmp.c
 menu_icon.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\phone_call.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\mouse_mode_icon.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\plus.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 micro_icon.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\notification_img.tmp.obj
 micro_open_icon.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\phone_call.png color RGB565 -------------
-
-phone_call.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-notification_img.tmp.c
-CC build_pc_hcpu\src\resource\images\common\ezip\phone_call.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\plus.png color RGB565 -------------
-
-plus.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\plus_button.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 mouse_mode_icon.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\phone_call.tmp.obj
+notification_img.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\plus.tmp.obj
 phone_call.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\service_hour.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\plus_button.png color RGB565 -------------
-
-plus_button.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\plus_button.tmp.obj
-plus.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\space.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\sun.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\service_hour.png color RGB565 -------------
-
-service_hour.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\switch_icon.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-plus_button.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\service_hour.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\space.png color RGB565 -------------
-
-space.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\tap_bg_left.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\switch_icon.png color RGB565 -------------
-
-switch_icon.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\ezip\space.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\sun.png color RGB565 -------------
-
-sun.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\ezip\switch_icon.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\ezip\sun.tmp.obj
+plus.tmp.c
+plus_button.tmp.c
 service_hour.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\tap_bg_right.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\tap_bg_left.png color RGB565 -------------
-
-tap_bg_left.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\unknown_bg_left.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+CC build_pc_hcpu\src\resource\images\common\ezip\space.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\ezip\sun.tmp.obj
 space.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\switch_icon.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\tap_bg_left.tmp.obj
-switch_icon.tmp.c
-sun.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\unknown_bg_right.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\tap_bg_right.png color RGB565 -------------
-
-tap_bg_right.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\tap_bg_right.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\unknown_bg_left.png color RGB565 -------------
-
-unknown_bg_left.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-tap_bg_left.tmp.c
+sun.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\unknown_bg_left.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\unknown_bg_right.png color RGB565 -------------
-
-unknown_bg_right.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\up_arrow.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
+switch_icon.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\unknown_bg_right.tmp.obj
+tap_bg_left.tmp.c
+CC build_pc_hcpu\src\resource\images\common\ezip\up_arrow.tmp.obj
 tap_bg_right.tmp.c
 unknown_bg_left.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\voice_group.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\up_arrow.png color RGB565 -------------
-
-up_arrow.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\volume_down.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\volume_up.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\ezip\up_arrow.tmp.obj
 unknown_bg_right.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\voice_group.png color RGB565 -------------
-
-voice_group.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\weather_clear.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\ezip\voice_group.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\volume_down.png color RGB565 -------------
-
-volume_down.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 up_arrow.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\volume_up.png color RGB565 -------------
-
-volume_up.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\weather_clear.png color RGB565 -------------
-
-weather_clear.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
+CC build_pc_hcpu\src\resource\images\common\ezip\voice_group.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\volume_down.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\weather_cloudy.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 voice_group.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\volume_up.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\ezip\weather_clear.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\weather_rain.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\weather_cloudy.png color RGB565 -------------
-
-weather_cloudy.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 volume_down.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\weather_sun.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\weather_cloudy.tmp.obj
-weather_clear.tmp.c
-volume_up.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\weather_rain.png color RGB565 -------------
-
-weather_rain.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\weather_thunder.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\weather_sun.png color RGB565 -------------
-
-weather_sun.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
 CC build_pc_hcpu\src\resource\images\common\ezip\weather_rain.tmp.obj
+volume_up.tmp.c
+weather_clear.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\weather_sun.tmp.obj
-weather_cloudy.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\ezip\weather_widget_bg.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\weather_thunder.png color RGB565 -------------
-
-weather_thunder.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-weather_rain.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\device_btn.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\ezip\weather_thunder.tmp.obj
+weather_cloudy.tmp.c
+weather_rain.tmp.c
 weather_sun.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_00.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_01.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 weather_thunder.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\device_btn.png color RGB565 -------------
-
-device_btn.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\large_ezip\device_btn.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\dig_1_00.png color RGB565 -------------
-
-dig_1_00.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\dig_1_01.png color RGB565 -------------
-
-dig_1_01.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_02.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_03.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_01.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_00.tmp.obj
-device_btn.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\ezip\weather_widget_bg.png color RGB565 -------------
-
-weather_widget_bg.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_04.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\dig_1_02.png color RGB565 -------------
-
-dig_1_02.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-dig_1_01.tmp.c
 CC build_pc_hcpu\src\resource\images\common\ezip\weather_widget_bg.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\dig_1_03.png color RGB565 -------------
-
-dig_1_03.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-dig_1_00.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_05.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_03.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_02.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\dig_1_04.png color RGB565 -------------
-
-dig_1_04.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_04.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\large_ezip\device_btn.tmp.obj
 weather_widget_bg.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\dig_1_05.png color RGB565 -------------
-
-dig_1_05.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-dig_1_03.tmp.c
-dig_1_02.tmp.c
+CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_00.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_01.tmp.obj
+device_btn.tmp.c
+CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_02.tmp.obj
+dig_1_00.tmp.c
+CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_03.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_04.tmp.obj
+dig_1_01.tmp.c
 CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_05.tmp.obj
+dig_1_02.tmp.c
+dig_1_03.tmp.c
 dig_1_04.tmp.c
 dig_1_05.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_06.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_07.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_08.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\dig_1_07.png color RGB565 -------------
-
-dig_1_07.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_09.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\dig_1_08.png color RGB565 -------------
-
-dig_1_08.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\dig_1_06.png color RGB565 -------------
-
-dig_1_06.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_07.tmp.obj
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\gaus_clock1_bg.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_06.tmp.obj
-dig_1_07.tmp.c
+CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_07.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_08.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\dig_1_09.png color RGB565 -------------
-
-dig_1_09.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\gaus_clock4_bg.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\gaus_default_picture.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 dig_1_06.tmp.c
 CC build_pc_hcpu\src\resource\images\common\large_ezip\dig_1_09.tmp.obj
+dig_1_07.tmp.c
+CC build_pc_hcpu\src\resource\images\common\large_ezip\gaus_clock1_bg.tmp.obj
 dig_1_08.tmp.c
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\img_earth_digital_bg.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\gaus_clock1_bg.png color RGB565 -------------
-
-gaus_clock1_bg.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\gaus_clock4_bg.png color RGB565 -------------
-
-gaus_clock4_bg.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\media_gaus_bg.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
 dig_1_09.tmp.c
 CC build_pc_hcpu\src\resource\images\common\large_ezip\gaus_clock4_bg.tmp.obj
-CC build_pc_hcpu\src\resource\images\common\large_ezip\gaus_clock1_bg.tmp.obj
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\gaus_default_picture.png color RGB565 -------------
-
-gaus_default_picture.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-GenImgFile build_pc_hcpu\src\resource\images\common\large_ezip\message_widget_bg.tmp.c
-ImgFileBuilder= -rgb565  -section ROM3_IMG  -cfile 1 -simu
-CC build_pc_hcpu\src\resource\images\common\large_ezip\gaus_default_picture.tmp.obj
-gaus_clock4_bg.tmp.c
 gaus_clock1_bg.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\img_earth_digital_bg.png color RGB565 -------------
-
-img_earth_digital_bg.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-gaus_default_picture.tmp.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\media_gaus_bg.png color RGB565 -------------
-
-media_gaus_bg.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-CC build_pc_hcpu\src\resource\fonts\freetype\font_partition_dsc.obj
-CC build_pc_hcpu\src\resource\images\common\large_ezip\media_gaus_bg.tmp.obj
+CC build_pc_hcpu\src\resource\images\common\large_ezip\gaus_default_picture.tmp.obj
 CC build_pc_hcpu\src\resource\images\common\large_ezip\img_earth_digital_bg.tmp.obj
+gaus_clock4_bg.tmp.c
+gaus_default_picture.tmp.c
+CC build_pc_hcpu\src\resource\images\common\large_ezip\media_gaus_bg.tmp.obj
+img_earth_digital_bg.tmp.c
+CC build_pc_hcpu\src\resource\images\common\large_ezip\message_widget_bg.tmp.obj
+media_gaus_bg.tmp.c
+CC build_pc_hcpu\src\resource\fonts\freetype\font_partition_dsc.obj
+message_widget_bg.tmp.c
 CC build_pc_hcpu\src\resource\strings\en_us.obj
 font_partition_dsc.c
-ezip version: 2.4.24_2026_01_19_h264_mp4
-
-------------- ezip convert begin: ezip -convert C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\resource\images\common\large_ezip\message_widget_bg.png color RGB565 -------------
-
-message_widget_bg.png converted!!!
-----------------------------------------  ezip convert end !!! --------------------------------------
-
-img_earth_digital_bg.tmp.c
-media_gaus_bg.tmp.c
-CC build_pc_hcpu\src\resource\images\common\large_ezip\message_widget_bg.tmp.obj
 en_us.c
-message_widget_bg.tmp.c
 CC build_pc_hcpu\src\resource\strings\zh_cn.obj
 CC build_pc_hcpu\src\resource\strings\lang_pack.obj
 zh_cn.c
@@ -2496,15 +908,15 @@ CC build_pc_hcpu\modules\bloc\bloc_control.obj
 CC build_pc_hcpu\modules\bloc\bloc_flash.obj
 bloc_control.c
 CC build_pc_hcpu\modules\bloc\bloc_calendar.obj
-bloc_flash.c
 CC build_pc_hcpu\modules\bloc\bloc_notification.obj
+bloc_flash.c
 bloc_calendar.c
 CC build_pc_hcpu\modules\bloc\bloc_setting.obj
 CC build_pc_hcpu\modules\bloc\bloc_skaiwalk.obj
 bloc_notification.c
 bloc_setting.c
-bloc_skaiwalk.c
 CC build_pc_hcpu\modules\bloc\bloc_peripheral.obj
+bloc_skaiwalk.c
 CC build_pc_hcpu\modules\bloc\bloc_weather.obj
 bloc_peripheral.c
 bloc_weather.c
@@ -2514,8 +926,8 @@ CC build_pc_hcpu\modules\bloc\bloc_filesystem.obj
 CC build_pc_hcpu\modules\bloc\bloc_system_perception.obj
 CC build_pc_hcpu\modules\bloc\bloc_exercise.obj
 bloc_filesystem.c
-CC build_pc_hcpu\modules\client\imu_client.obj
 bloc_system_perception.c
+CC build_pc_hcpu\modules\client\imu_client.obj
 bloc_exercise.c
 CC build_pc_hcpu\modules\client\hr_client.obj
 imu_client.c
@@ -2528,51 +940,51 @@ C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_motion_
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_motion_tracking.c(505): warning C4018: '>': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_motion_tracking.c(508): warning C4018: '>': signed/unsigned 不相符
 CC build_pc_hcpu\modules\model\watch_global_data.obj
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_exercise.c(100): warning C4305: '正在初始化': 從 'double' 轉換為 'float'，是由較大的類型轉換為較小的類型，可能導致資料遺失
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_filesystem.c(205): warning C4101: 'ui_msg': 未參考的區域變數C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_exercise.c(100): warning C4305: '正在初始化': 從 'double' 轉換為 'float'，是由較大的類型轉換為較小的類型，可能導致資料遺失
+
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_exercise.c(118): warning C4305: '正在初始化': 從 'double' 轉換為 'float'，是由較大的類型轉換為較小的類型，可能導致資料遺失
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_filesystem.c(205): warning C4101: 'ui_msg': 未參考的區域變數
 watch_global_data.c
 CC build_pc_hcpu\modules\model\watch_system_interact.obj
-CC build_pc_hcpu\modules\model\ui_handler.obj
 watch_system_interact.c
+CC build_pc_hcpu\modules\model\ui_handler.obj
 CC build_pc_hcpu\modules\model\gesture_handler.obj
 CC build_pc_hcpu\modules\model\touch_state_manager.obj
 CC build_pc_hcpu\modules\service\alarm_manager_service.obj
 ui_handler.c
-CC build_pc_hcpu\modules\tests\test_touch_sim.obj
 gesture_handler.c
-touch_state_manager.c
+CC build_pc_hcpu\modules\tests\test_touch_sim.obj
 CC build_pc_hcpu\modules\tests\fake_ui_data.obj
+touch_state_manager.c
 alarm_manager_service.c
-test_touch_sim.c
 fake_ui_data.c
+test_touch_sim.c
 CC build_pc_hcpu\modules\tests\dev_navigation.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\clock.obj
 dev_navigation.c
-clock.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\components.obj
-CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\cpu.obj
+clock.c
 components.c
+CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\cpu.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\device.obj
-CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\idle.obj
 cpu.c
+CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\idle.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\ipc.obj
-device.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\irq.obj
+device.c
 idle.c
-ipc.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\kservice.obj
-CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\mem.obj
+ipc.c
 irq.c
+CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\mem.obj
+kservice.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\memheap.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\memheap2.obj
-kservice.c
-CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\mempool.obj
 mem.c
+CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\mempool.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\object.obj
 memheap.c
-memheap2.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\scheduler.obj
+memheap2.c
 mempool.c
 object.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\signal.obj
@@ -2580,31 +992,31 @@ CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\thread.obj
 scheduler.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\src\timer.obj
 signal.c
-thread.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\libcpu\sim\win32\cpu_port.obj
-timer.c
+thread.c
 CXX build_pc_hcpu\sifli_sdk\rtos\kernel\components\cplusplus\cxx_crt.obj
+timer.c
 CXX build_pc_hcpu\sifli_sdk\rtos\kernel\components\cplusplus\cxx_mutex.obj
-CXX build_pc_hcpu\sifli_sdk\rtos\kernel\components\cplusplus\cxx_semaphore.obj
 cpu_port.c
+CXX build_pc_hcpu\sifli_sdk\rtos\kernel\components\cplusplus\cxx_semaphore.obj
 CXX build_pc_hcpu\sifli_sdk\rtos\kernel\components\cplusplus\cxx_thread.obj
-CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\cplusplus\cxx_crt_init.obj
 cxx_crt.cpp
+CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\cplusplus\cxx_crt_init.obj
 cxx_mutex.cpp
 cxx_semaphore.cpp
 cxx_thread.cpp
 cxx_crt_init.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\dfs\src\dfs.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\dfs\src\dfs_file.obj
-dfs.c
-dfs_file.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\dfs\src\dfs_fs.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\dfs\src\dfs_posix.obj
+dfs.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\dfs\filesystems\devfs\devfs.obj
-CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\dfs\filesystems\elmfat\dfs_elm.obj
+dfs_file.c
 dfs_fs.c
-CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\dfs\filesystems\elmfat\ff.obj
+CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\dfs\filesystems\elmfat\dfs_elm.obj
 dfs_posix.c
+CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\dfs\filesystems\elmfat\ff.obj
 devfs.c
 dfs_elm.c
 ff.c
@@ -2612,12 +1024,12 @@ CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\dfs\filesystems\elmfat\ffunico
 ffunicode.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\sensors\sensor.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\finsh\shell.obj
-sensor.c
-shell.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\finsh\symbol.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\finsh\cmd.obj
-symbol.c
+sensor.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\finsh\msh.obj
+shell.c
+symbol.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\finsh\msh_cmd.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\finsh\msh_file.obj
 cmd.c
@@ -2635,18 +1047,18 @@ CC build_pc_hcpu\sifli_sdk\external\lz4\lz4.obj
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lv_ex_data.obj
 console_be.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lv_freetype.obj
-CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_analogclk.obj
 lz4.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_analogclk.obj
 lv_ex_data.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_barcode.obj
 lv_freetype.c
 lvsf_analogclk.c
-CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_barcode.obj
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_comp.obj
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_composite.obj
 lvsf_barcode.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_corner.obj
-CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_curvetext.obj
 lvsf_comp.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_curvetext.obj
 lvsf_composite.c
 lvsf_corner.c
 lvsf_curvetext.c
@@ -2656,16 +1068,16 @@ CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_font.obj
 lvsf_emoji.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_gesture.obj
 lvsf_ezipa.c
-lvsf_font.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_header.obj
-lvsf_gesture.c
+lvsf_font.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_idximg.obj
+lvsf_gesture.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_input.obj
 lvsf_header.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_popup.obj
 lvsf_idximg.c
-CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_rlottie.obj
 lvsf_input.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_rlottie.obj
 lvsf_popup.c
 lvsf_rlottie.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_theme_1.obj
@@ -2679,8 +1091,8 @@ CC build_pc_hcpu\src\gui_apps\alarm\app_alarm_edit.obj
 CC build_pc_hcpu\src\gui_apps\alarm\app_alarm_edit_repeat.obj
 app_alarm.c
 CC build_pc_hcpu\src\gui_apps\alarm\app_alarm_edit_time.obj
-app_alarm_edit.c
 CC build_pc_hcpu\src\gui_apps\app_layout\lv_app_list_layout.obj
+app_alarm_edit.c
 app_alarm_edit_repeat.c
 app_alarm_edit_time.c
 lv_app_list_layout.c
@@ -2702,35 +1114,35 @@ CC build_pc_hcpu\src\gui_apps\common\arc_scroll.obj
 app_clock_main.c
 app_clock_status_bar.c
 arc_scroll.c
+CC build_pc_hcpu\src\gui_apps\common\common_bg.obj
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\app_layout\lv_message_list_layout.c(2333): warning C4047: '函式': 'uint16_t' 與 'void *' 間接取值的層級不同
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\app_layout\lv_message_list_layout.c(2333): warning C4024: 'set_scroll_anim_time': 型式和實質參數 2 不同的類型
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\app_layout\lv_message_list_layout.c(2364): warning C4047: '函式': 'uint16_t' 與 'void *' 間接取值的層級不同
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\app_layout\lv_message_list_layout.c(2364): warning C4024: 'set_scroll_anim_time': 型式和實質參數 2 不同的類型
-CC build_pc_hcpu\src\gui_apps\common\common_bg.obj
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\common\arc_scroll.c(218): warning C4305: '-=': 從 'double' 轉換為 'float'，是由較大的類型轉換為較小的類型，可能導致資料遺失
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\common\arc_scroll.c(219): warning C4305: '+=': 從 'double' 轉換為 'float'，是由較大的類型轉換為較小的類型，可能導致資料遺失
+common_bg.c
 CC build_pc_hcpu\src\gui_apps\common\common_button.obj
 CC build_pc_hcpu\src\gui_apps\common\common_icon.obj
-common_bg.c
 common_button.c
 common_icon.c
 CC build_pc_hcpu\src\gui_apps\common\ui_helper.obj
-CC build_pc_hcpu\src\gui_apps\file_browser\app_file_browser.obj
-ui_helper.c
-CC build_pc_hcpu\src\gui_apps\flashlight\app_flashlight.obj
-app_file_browser.c
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(559): warning C4047: '函式': 'uint16_t' 與 'void *' 間接取值的層級不同
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(559): warning C4024: 'set_scroll_anim_time': 型式和實質參數 2 不同的類型
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(574): warning C4047: '函式': 'uint16_t' 與 'void *' 間接取值的層級不同
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(574): warning C4024: 'set_scroll_anim_time': 型式和實質參數 2 不同的類型
+CC build_pc_hcpu\src\gui_apps\file_browser\app_file_browser.obj
+ui_helper.c
+CC build_pc_hcpu\src\gui_apps\flashlight\app_flashlight.obj
 CC build_pc_hcpu\src\gui_apps\interact\app_interact.obj
-app_flashlight.c
+app_file_browser.c
 CC build_pc_hcpu\src\gui_apps\interact\app_system_interface.obj
+app_flashlight.c
 app_interact.c
 app_system_interface.c
 CC build_pc_hcpu\src\gui_apps\loader\skaiwalk_demo.obj
-CC build_pc_hcpu\src\gui_apps\main\app_mainmenu.obj
 skaiwalk_demo.c
+CC build_pc_hcpu\src\gui_apps\main\app_mainmenu.obj
 CC build_pc_hcpu\src\gui_apps\message\app_message.obj
 app_mainmenu.c
 app_message.c
@@ -2739,8 +1151,8 @@ CC build_pc_hcpu\src\gui_apps\message\app_message_database.obj
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\interact\app_interact.c(243): warning C4047: '==': 'int' 與 'void *' 間接取值的層級不同
 
 CC build_pc_hcpu\src\gui_apps\photo\app_photo.obj
-CC build_pc_hcpu\src\gui_apps\qrcode\app_qrcode.obj
 app_message_database.c
+CC build_pc_hcpu\src\gui_apps\qrcode\app_qrcode.obj
 CC build_pc_hcpu\src\gui_apps\setting\app_developer.obj
 app_photo.c
 app_qrcode.c
@@ -2749,47 +1161,47 @@ app_developer.c
 app_setting.c
 CC build_pc_hcpu\src\gui_apps\setting\app_setting_device_list.obj
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\main\app_mainmenu.c(201): warning C4101: 'is_hidden': 未參考的區域變數
-app_setting_device_list.c
 CC build_pc_hcpu\src\gui_apps\setting\app_setting_display.obj
+app_setting_device_list.c
 CC build_pc_hcpu\src\gui_apps\setting\app_setting_sys_info.obj
 app_setting_display.c
 app_setting_sys_info.c
 CC build_pc_hcpu\src\gui_apps\sleep\app_sleep.obj
 app_sleep.c
 CC build_pc_hcpu\src\gui_apps\test\app_test.obj
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(280): warning C4047: '函式': 'uint8_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(280): warning C4024: 'common_text_button': 型式和實質參數 3 不同的類型
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(280): warning C4047: '函式': 'lv_coord_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(280): warning C4024: 'common_text_button': 型式和實質參數 4 不同的類型
-
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(280): warning C4024: 'common_text_button': 型式和實質參數 5 不同的類型
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(282): warning C4047: '函式': 'uint8_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(282): warning C4024: 'common_text_button': 型式和實質參數 3 不同的類型
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(282): warning C4047: '函式': 'lv_coord_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(282): warning C4024: 'common_text_button': 型式和實質參數 4 不同的類型
-
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(282): warning C4024: 'common_text_button': 型式和實質參數 5 不同的類型
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(286): warning C4047: '函式': 'uint8_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(286): warning C4024: 'common_text_button': 型式和實質參數 3 不同的類型
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(286): warning C4047: '函式': 'lv_coord_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(286): warning C4024: 'common_text_button': 型式和實質參數 4 不同的類型
-
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(286): warning C4024: 'common_text_button': 型式和實質參數 5 不同的類型
 CC build_pc_hcpu\src\gui_apps\test\test_gif_bulb.obj
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(287): warning C4047: '函式': 'uint8_t' 與 'void *' 間接取值的層級不同
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(287): warning C4024: 'common_text_button': 型式和實質參數 3 不同的類型
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(287): warning C4047: '函式': 'lv_coord_t' 與 'void *' 間接取值的層級不同
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(287): warning C4024: 'common_text_button': 型式和實質參數 4 不同的類型
+
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(287): warning C4024: 'common_text_button': 型式和實質參數 5 不同的類型
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(289): warning C4047: '函式': 'uint8_t' 與 'void *' 間接取值的層級不同
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(289): warning C4024: 'common_text_button': 型式和實質參數 3 不同的類型
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(289): warning C4047: '函式': 'lv_coord_t' 與 'void *' 間接取值的層級不同
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(289): warning C4024: 'common_text_button': 型式和實質參數 4 不同的類型
+
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(289): warning C4024: 'common_text_button': 型式和實質參數 5 不同的類型
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(293): warning C4047: '函式': 'uint8_t' 與 'void *' 間接取值的層級不同
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(293): warning C4024: 'common_text_button': 型式和實質參數 3 不同的類型
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(293): warning C4047: '函式': 'lv_coord_t' 與 'void *' 間接取值的層級不同
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(293): warning C4024: 'common_text_button': 型式和實質參數 4 不同的類型
+
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(293): warning C4024: 'common_text_button': 型式和實質參數 5 不同的類型
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_setting.c(385): warning C4090: '函式': 不同的 'const' 限定詞
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_setting.c(954): warning C4018: '<': signed/unsigned 不相符
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_setting.c(955): warning C4018: '>': signed/unsigned 不相符
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_setting.c(1000): warning C4018: '<': signed/unsigned 不相符
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_setting.c(1001): warning C4018: '>': signed/unsigned 不相符
 app_test.c
-CC build_pc_hcpu\src\gui_apps\timer\app_timer.obj
 test_gif_bulb.c
+CC build_pc_hcpu\src\gui_apps\timer\app_timer.obj
 CC build_pc_hcpu\src\gui_apps\utils\custom_trans_anim.obj
 app_timer.c
 custom_trans_anim.c
 CC build_pc_hcpu\src\gui_apps\weather\app_weather.obj
 CC build_pc_hcpu\src\gui_apps\onboarding\app_onboarding.obj
-app_weather.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\hwtimer\hwtimer.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\misc\pin.obj
+app_weather.c
 app_onboarding.c
 hwtimer.c
 pin.c
@@ -2798,29 +1210,29 @@ rtc.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\serial\serial.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\spi\spi_core.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\spi\spi_dev.obj
-serial.c
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\components\drivers\hwtimer\hwtimer.c(22): warning C4101: 'devi': 未參考的區域變數
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\components\drivers\hwtimer\hwtimer.c(268): warning C4018: '>': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\components\drivers\hwtimer\hwtimer.c(268): warning C4018: '<': signed/unsigned 不相符
+serial.c
 spi_core.c
 spi_dev.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\completion.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\dataqueue.obj
-CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\pipe.obj
 completion.c
-CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\ringblk_buf.obj
+CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\pipe.obj
 dataqueue.c
-pipe.c
+CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\ringblk_buf.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\ringbuffer.obj
+pipe.c
 ringblk_buf.c
 ringbuffer.c
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\waitqueue.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\workqueue.obj
 CC build_pc_hcpu\sifli_sdk\rtos\kernel\components\drivers\watchdog\watchdog.obj
 waitqueue.c
+C:\skaiwalk\SiFli-SDK\rtos\rtthread\components\drivers\src\dataqueue.c(331): warning C4101: 'level': 未參考的區域變數
 workqueue.c
 watchdog.c
-C:\skaiwalk\SiFli-SDK\rtos\rtthread\components\drivers\src\dataqueue.c(331): warning C4101: 'level': 未參考的區域變數
 LINK build_pc_hcpu\main.exe
    ���b�إߵ{���w build_pc_hcpu\main.lib �M���� build_pc_hcpu\main.exp
 LINK : warning LNK4098: �w�]���{���w 'LIBCMTD' �P��L�ϥΪ��{���w�Ĭ�A�Шϥ� /NODEFAULTLIB:library
