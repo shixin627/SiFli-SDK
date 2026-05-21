@@ -330,13 +330,16 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         }
 
         middle_layer_tileview_index = active_pos;
-        if (active_pos == MAIN_PAGE_TYPE_RIGHT)
         {
-            /* Right tile pulled into view → re-read the bonded-device set so
-               the device_pager reflects the latest devices (mirrors the LEFT
-               instruction_list refresh on reveal). */
+            /* Right tile = the device control page. Host the mouse behind the
+               list while we're on it; tear it down when we leave. Also re-read
+               the bonded-device set on entry. */
             extern void device_pager_refresh(void);
-            device_pager_refresh();
+            extern void device_pager_set_active(bool on);
+            bool on_device_page = (active_pos == MAIN_PAGE_TYPE_RIGHT);
+            device_pager_set_active(on_device_page);
+            if (on_device_page)
+                device_pager_refresh();
         }
         if (gui_app_is_actived("Main"))
         {
