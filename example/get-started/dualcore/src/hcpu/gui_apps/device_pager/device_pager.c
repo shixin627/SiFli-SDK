@@ -807,14 +807,17 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     if (!p) { LOG_E("device_pager alloc fail"); return NULL; }
     p->parent = parent;
 
-    /* Mouse base — always-present page beneath everything (the "clock"). */
+    /* Mouse base — always-present page beneath everything (the "clock"). Transparent
+       so the device page reveals only its elements over the watch-face fade-to-black
+       (gaus_dial_bg); no opaque panel slides in with the content. The hosted hid_mouse
+       trackpad then sits on that same black backdrop. */
     p->mouse_base = lv_obj_create(parent);
     lv_obj_set_size(p->mouse_base, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_pos(p->mouse_base, 0, 0);
     lv_obj_set_style_radius(p->mouse_base, 0, 0);
     lv_obj_set_style_border_width(p->mouse_base, 0, 0);
     lv_obj_set_style_pad_all(p->mouse_base, 0, 0);
-    lv_obj_set_style_bg_color(p->mouse_base, lv_color_hex(0x101010), 0);
+    lv_obj_set_style_bg_opa(p->mouse_base, LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(p->mouse_base, LV_OBJ_FLAG_SCROLLABLE);
 
     /* Overlay tileview — HOME(transparent) + LIST. Hidden until shown. */
@@ -831,8 +834,10 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     p->home_tile = lv_tileview_add_tile(p->overlay, 0, 0, LV_DIR_BOTTOM);
     p->list_tile = lv_tileview_add_tile(p->overlay, 0, 1, LV_DIR_TOP);
     lv_obj_set_style_bg_opa(p->home_tile, LV_OPA_TRANSP, 0); /* see mouse through */
-    lv_obj_set_style_bg_color(p->list_tile, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(p->list_tile, LV_OPA_50, 0); /* 50% — the mouse page shows through behind the list */
+    /* Transparent — the black backdrop is the watch-face gaus_dial_bg, faded to full
+       black by the right-tile reveal (app_clock_status_bar), so the whole face darkens
+       to black as the page is pulled out. */
+    lv_obj_set_style_bg_opa(p->list_tile, LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(p->list_tile, LV_OBJ_FLAG_SCROLLABLE);
 
     /* List carousel — horizontal device recycler, fills the list tile. */
