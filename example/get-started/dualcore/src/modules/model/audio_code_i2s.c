@@ -150,12 +150,13 @@ static uint8_t mic_prepared_count = 0;
    user can sweep on real hardware without reflashing. Starting values are
    ASR-oriented (see commit message) and expected to be tuned on-device.
 
-   mic_nsagc_enabled: master on/off. Default FALSE -> existing path runs.
+   mic_nsagc_enabled: master on/off. ON for HW bring-up (was FALSE); set false
+                      to fall back to the raw shift-6 path.
    mic_nsagc_shift  : software pre-shift used INSTEAD of the default 6 when the
                       stage is on. Reduced to 2 so AGC does the digital leveling
                       rather than a blunt ×64 shift (set to 0 to let AGC do it
                       all). When the stage is OFF, the original shift 6 is used. */
-static bool    mic_nsagc_enabled = false;
+static bool    mic_nsagc_enabled = true;    /* ON for HW bring-up (was false) */
 static uint8_t mic_nsagc_shift   = 2;       /* shift applied when stage ON */
 
     #if defined(WEBRTC_ANS_FIX)

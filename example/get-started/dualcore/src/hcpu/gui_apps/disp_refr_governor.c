@@ -74,9 +74,9 @@ extern lv_indev_t *touch_get_indev_handler(void);
 
 /* ---- runtime state ---- */
 
-static bool s_enabled = false;          /* master switch, default OFF      */
+static bool s_enabled = true;           /* master switch: ON for HW bring-up (was OFF) */
 static bool s_indev_throttle = false;   /* layer-2 sub-switch, default OFF */
-static bool s_dvfs = false;             /* layer-3 DVFS sub-switch, def OFF */
+static bool s_dvfs = true;              /* layer-3 DVFS: ON for HW bring-up (was OFF)   */
 static bool s_inited = false;
 
 static bool s_session_active = false;   /* the latch                       */
