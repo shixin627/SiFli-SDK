@@ -114,12 +114,13 @@ static Quaternion sensor_fusion_algorithm(sensor_fusion_param_t *param,
     return q;
 }
 
-/* Sleep-time AHRS-only update. Called once per FIFO frame by
-   bmi270_drain_fifo_to_ahrs() while the screen is off — just keep global_q
-   converged with the buffered samples so the moment wrist-wake fires the
-   next handle_imu_data() pass starts from a fresh orientation. No
-   gravity / hand-tracking / health / sensor_q work; that all runs only
-   when the screen is back on and DRDY resumes. */
+/* Legacy sleep-time AHRS-only update. Was called once per FIFO frame by
+   bmi270_drain_fifo_to_ahrs() to keep global_q converged during screen-off.
+   That path is no longer armed (gyro is suspended in DARK and the FIFO
+   watermark INT is disabled), so this is currently unreachable. Kept only
+   because bmi270_drain_fifo_to_ahrs() in the sensor driver still references
+   it; leaving the driver FIFO machinery in place avoids touching
+   customer/peripherals/sensor/ for a dead path. */
 void update_global_attitude(Vector3 *accData, Vector3 *gyroData)
 {
     if (!accData || !gyroData)
@@ -127,29 +128,44 @@ void update_global_attitude(Vector3 *accData, Vector3 *gyroData)
     global_q = sensor_fusion_algorithm(&sensor_fusion_param, accData, gyroData);
 }
 
-/* Pose verification for HW wrist-wake INT. The BMI270 chip-side algorithm
-   accepts a wide attitude envelope (max_tilt_pu = 75°, tilt_lr = 30°), so
-   it can false-trigger when the wrist swings through any "looking at watch"
-   region briefly. This adds a stricter check by reusing the exact envelope
-   from the awake-path `watchface_visible` test (handle_imu_data, ~L475).
+/* Pose verification for HW wrist-wake INT, evaluated from a SINGLE fresh
+   accel sample read at the firing instant (no gyro / AHRS history needed).
+
+   Why accel alone is enough: the BMI270 chip-side wrist-wake feature only
+   fires after confirming a ~1 s stable focus posture, so at the firing
+   instant linear acceleration is ~0 and the accelerometer points along
+   gravity directly. The accel vector here is in the SAME watch frame the
+   awake-path AHRS uses (imu_data_fetch output), so normalising it gives the
+   gravity DIRECTION that calculate_gravity() would have produced.
+
+   The BMI270 chip-side algorithm accepts a wide attitude envelope
+   (max_tilt_pu = 75 deg, tilt_lr = 30 deg) and can false-trigger when the
+   wrist swings through any "looking at watch" region briefly. This applies
+   a stricter check reusing the exact envelope from the awake-path
+   `watchface_visible` test (handle_imu_data, ~L475).
 
    Source of truth (kept in sync):
-     watchface_visible = (fabs(g.x) < 0.4f && g.y > -0.7f && g.z > -0.6f);
-
-   Reads gravity from `global_q`, which the FIFO drain keeps converged at
-   25 Hz batches during screen-off. Worst-case quaternion staleness ≈ one
-   FIFO watermark interval; acceptable because the chip-side wrist-wake
-   already gated us on a stable 1-second attitude window before firing. */
-bool is_in_viewing_pose(void)
+     watchface_visible = (fabs(g.x) < 0.4f && g.y > -0.7f && g.z > -0.6f); */
+bool is_in_viewing_pose_from_accel(float ax, float ay, float az)
 {
-    /* Inline of calculate_gravity() — that helper is defined further down
-       in this file (static) so we duplicate the 3 lines here rather than
-       hoisting a forward declaration. Same formula. */
-    Quaternion *q = &global_q;
-    float gx = 2.0f * (q->x * q->z - q->w * q->y);
-    float gy = 2.0f * (q->w * q->x + q->y * q->z);
-    float gz = q->w * q->w - q->x * q->x - q->y * q->y + q->z * q->z;
+    float n = sqrtf(ax * ax + ay * ay + az * az);
+    if (n < 1e-6f)
+        return false;
+    float gx = ax / n;
+    float gy = ay / n;
+    float gz = az / n;
     return (fabsf(gx) < 0.4f && gy > -0.7f && gz > -0.6f);
+}
+
+/* Seed the screen-on global AHRS from a single gravity-only accel sample so
+   that when the screen comes back the very first updateIMU() is already
+   converged, instead of the Mahony cold start taking ~3 s to settle.
+   `sensor_fusion_param` is the static used by handle_imu_data()'s global_q;
+   expose it only through this helper rather than the raw struct. The accel
+   must be in the watch frame (same as imu_data_fetch output). */
+void gesture_seed_attitude_from_accel(float ax, float ay, float az)
+{
+    seedAHRSFromAccel(&sensor_fusion_param, ax, ay, az);
 }
 
 #endif

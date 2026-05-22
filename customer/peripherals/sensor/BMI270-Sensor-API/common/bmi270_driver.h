@@ -179,6 +179,12 @@ int bmi270_drain_fifo_to_ahrs(void);
 
 int bmi270_gyro_read(int16_t *psX, int16_t *psY, int16_t *psZ);
 int bmi270_accel_read(int16_t *psX, int16_t *psY, int16_t *psZ);
+
+/* Read one fresh accel sample on demand in the watch frame (same axis
+   convention as the AHRS / imu_data_fetch). Does NOT gate on the DRDY
+   int-status bit -- safe to call from the wrist-wake handler. Values are
+   raw int16 counts; callers normalise. Returns 0 on success, -1 on error. */
+int bmi270_read_accel_now(int16_t *psX, int16_t *psY, int16_t *psZ);
 int bmi270_tempra_read(float *tempra);
 int bmi270_step_read(int32_t *step);
 
