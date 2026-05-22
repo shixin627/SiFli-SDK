@@ -610,13 +610,13 @@ void device_pager_set_active(bool on)
 /* ---- skaibar voice input -> peer-device options ---------------------- */
 #define SKAIBAR_GROW_MS  220   /* phase 1: mic button grows into the box backdrop */
 #define SKAIBAR_FRAME_MS 160   /* phase 2: frame image + transcript fade */
-#define MICB_W 240             /* mic button geometry (matches its creation) */
-#define MICB_H 50
-#define MICB_Y (-75)
+#define MICB_W 100             /* slim home-indicator pill (matches the trackpad's former bottom bar) */
+#define MICB_H 16
+#define MICB_Y (-20)
 #define SKAIB_W 442            /* input-box geometry (matches skaibar_input) */
 #define SKAIB_H 252
-#define SKAIB_Y (-5)
-#define MICB_RADIUS  25        /* mic button corner radius */
+#define SKAIB_Y (75)           /* open box sits 75px below bottom edge — bottom runs off-screen, only the top half shows */
+#define MICB_RADIUS  8         /* pill corner radius (matches the trackpad bar) */
 #define SKAIB_RADIUS 80        /* matches message_widget_bg's rounded corners */
 
 /* The morph runs in two SEQUENCED phases driven by two separate 0..255 anims:
@@ -644,10 +644,11 @@ static void skaibar_grow_cb(void *var, int32_t f)
         lv_obj_set_style_radius(p->mic_bar,
                                 MICB_RADIUS + (SKAIB_RADIUS - MICB_RADIUS) * f / 255, 0);
         lv_obj_set_style_bg_opa(p->mic_bar,
-                                (lv_opa_t)(LV_OPA_50 + (LV_OPA_80 - LV_OPA_50) * f / 255), 0);
+                                (lv_opa_t)(LV_OPA_90 + (LV_OPA_80 - LV_OPA_90) * f / 255), 0);
+        /* the slim pill's white border fades out as the box's frame image takes over */
+        lv_obj_set_style_border_opa(p->mic_bar,
+                                    (lv_opa_t)(LV_OPA_50 - LV_OPA_50 * f / 255), 0);
     }
-    if (p->mic_icon && lv_obj_is_valid(p->mic_icon))
-        lv_obj_set_style_img_opa(p->mic_icon, (lv_opa_t)(255 - f), 0);
 }
 
 static void skaibar_frame_cb(void *var, int32_t f)
@@ -854,22 +855,22 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
 
     for (int k = 0; k < 3; k++) make_tile(&p->t[k], p->pager);
 
-    /* Bottom-centre mic / skaibar bar — matches the left instruction_list. */
+    /* Bottom-centre voice-input bar — a slim home-indicator pill (matches the
+       trackpad's former bottom bar): dark fill, thin white border, no icon. A
+       tap morphs it into the skaibar input box. */
     p->mic_bar = lv_obj_create(p->list_tile);
-    lv_obj_set_size(p->mic_bar, 240, 50);
-    lv_obj_align(p->mic_bar, LV_ALIGN_BOTTOM_MID, 0, -75);
-    lv_obj_set_style_bg_color(p->mic_bar, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(p->mic_bar, LV_OPA_50, 0);
-    lv_obj_set_style_radius(p->mic_bar, 25, 0);
-    lv_obj_set_style_border_width(p->mic_bar, 0, 0);
+    lv_obj_set_size(p->mic_bar, MICB_W, MICB_H);
+    lv_obj_align(p->mic_bar, LV_ALIGN_BOTTOM_MID, 0, MICB_Y);
+    lv_obj_set_style_bg_color(p->mic_bar, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_bg_opa(p->mic_bar, LV_OPA_90, 0);
+    lv_obj_set_style_border_color(p->mic_bar, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(p->mic_bar, 2, 0);
+    lv_obj_set_style_border_opa(p->mic_bar, LV_OPA_50, 0);
+    lv_obj_set_style_radius(p->mic_bar, MICB_RADIUS, 0);
     lv_obj_set_style_pad_all(p->mic_bar, 0, 0);
     lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(p->mic_bar, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
-    p->mic_icon = lv_img_create(p->mic_bar);
-    lv_img_set_src(p->mic_icon, &icon_mic);
-    lv_obj_center(p->mic_icon);
-    lv_obj_clear_flag(p->mic_icon, LV_OBJ_FLAG_CLICKABLE);
 
     /* skaibar input box (shown on mic tap) — mirrors the left instruction_list's
        voice input pill (lv_instruction_list_layout.c): a BOTTOM-aligned container
@@ -907,13 +908,14 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_set_style_text_align(p->empty_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(p->empty_label);
 
-    /* Bottom re-summon handle (on the mouse base). PRESS_LOCK cleared so the
+    /* Bottom re-summon zone (on the mouse base). Invisible by design — like the
+       watch-face edge zones — so the trackpad stays clean; a swipe up from the
+       bottom still pulls the device list back. PRESS_LOCK cleared so the
        continuing drag transfers to the overlay (watch-face edge-zone style). */
     p->bar = lv_obj_create(parent);
     lv_obj_set_size(p->bar, LV_HOR_RES, BAR_H);
     lv_obj_align(p->bar, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_color(p->bar, lv_color_hex(0x202020), 0);
-    lv_obj_set_style_bg_opa(p->bar, LV_OPA_70, 0);
+    lv_obj_set_style_bg_opa(p->bar, LV_OPA_TRANSP, 0);   /* no visible dark bar */
     lv_obj_set_style_border_width(p->bar, 0, 0);
     lv_obj_set_style_radius(p->bar, 0, 0);
     lv_obj_set_style_pad_all(p->bar, 0, 0);
@@ -922,13 +924,6 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_add_flag(p->bar, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(p->bar, bar_cb, LV_EVENT_ALL, NULL);
     lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_t *grab = lv_obj_create(p->bar);
-    lv_obj_set_size(grab, 44, 5);
-    lv_obj_center(grab);
-    lv_obj_set_style_radius(grab, 3, 0);
-    lv_obj_set_style_bg_color(grab, lv_color_hex(0x888888), 0);
-    lv_obj_set_style_border_width(grab, 0, 0);
-    lv_obj_clear_flag(grab, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* start on the LIST */
 

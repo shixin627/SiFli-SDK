@@ -3995,6 +3995,13 @@ static rt_timer_t bottom_bar_multitask_timer = NULL;
 static bool s_hosted = false;
 static void (*s_host_back_cb)(void) = NULL;
 static void (*s_host_pull_cb)(int up_px, int released) = NULL;
+
+/* Trackpad = pure mouse control: the bottom bar's tap / long-press no longer
+   opens the voice / keyboard input (the device list page owns voice input now).
+   The bottom *up-drag* still works (multitask / host pull-back) — only the
+   tap/long-press → skaibar+V2T path is gated off here. Flip to false to bring
+   back the trackpad's own bottom voice/keyboard entry. */
+static bool s_bottom_input_disabled = true;
 void hid_mouse_set_host_back_cb(void (*cb)(void))
 {
     s_host_back_cb = cb;
@@ -4088,12 +4095,16 @@ static void text_input_bar_cb(lv_event_t *e)
     case LV_EVENT_LONG_PRESSED:
         // 長按 bar → 跟短按 release 同樣的路徑：進 skaibar 模式 + 開 V2T。
         // 差別只在時機 —— 長按不用等使用者放開，LONG_PRESS 觸發就立刻進場
-        bar_long_press_fired = true;
-        skaibar_active = true;
-        skaibar_selected_idx = -1;
-        if (current_hid_mode != HID_MODE_KEYBOARD)
-            start_trackpad_to_kbd_expand_anim();
-        mouse_v2t_open_with_intent(V2T_INTENT_SKAIBAR);
+        // 純滑鼠控制下停用（s_bottom_input_disabled）：底部不再開語音/鍵盤輸入。
+        if (!s_bottom_input_disabled)
+        {
+            bar_long_press_fired = true;
+            skaibar_active = true;
+            skaibar_selected_idx = -1;
+            if (current_hid_mode != HID_MODE_KEYBOARD)
+                start_trackpad_to_kbd_expand_anim();
+            mouse_v2t_open_with_intent(V2T_INTENT_SKAIBAR);
+        }
         break;
 
     case LV_EVENT_PRESSING:
@@ -4240,12 +4251,14 @@ static void text_input_bar_cb(lv_event_t *e)
                 break;
             }
 
-            if (max_move_y < 10 && !bottom_bar_gesture_timer_enabled &&
+            if (!s_bottom_input_disabled &&
+                max_move_y < 10 && !bottom_bar_gesture_timer_enabled &&
                 !is_bottom_bar_gesture_active && !bar_long_press_fired)
             {
                 // 純點擊（沒明顯拖動、也沒長按）：跟長按一樣進 skaibar 模式 +
                 // 自動開 V2T。差別只在進場時機（短按要等 release、長按 LONG_PRESS
                 // 觸發就立刻進，給長按一點即時反饋的優勢）
+                // 純滑鼠控制下停用（s_bottom_input_disabled）。
                 LOG_D("Bottom bar tap → expand to skaibar mode");
                 skaibar_active = true;
                 skaibar_selected_idx = -1;
@@ -5004,6 +5017,9 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_SCROLLABLE);
     // 不 CLICKABLE：事件穿透到下層 bottom_swipe_area 統一處理
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_CLICKABLE);
+    // 純滑鼠控制：底部不再有語音/輸入入口 → 這條 bar 隱藏（keyboard mode 已停用，
+    // 沒有 expand/collapse 路徑會把它 unhide）。物件保留，morph 引用仍安全。
+    lv_obj_add_flag(trackpad_mic_btn, LV_OBJ_FLAG_HIDDEN);
 
     // v2t_mic_img / trackpad_mic_icon 保留變數但不放任何視覺內容
     // （bar 本身就是視覺）
