@@ -129,6 +129,7 @@ typedef struct
     int         count;
     int         current;
     bool        recycling;
+    int         pager_anim_dir;  /* device-switch slide direction, recycled when the anim ends */
 
     /* skaibar voice input → peer-device options */
     lv_obj_t   *mic_bar;         /* bottom mic trigger; morphs into the skaibar */
@@ -385,38 +386,76 @@ static int centered_tile(void)
     return (int)((lv_obj_get_scroll_x(p->pager) + w / 2) / w);
 }
 
+/* Per-frame scroll setter for the settle animation. */
+static void pager_settle_exec_cb(void *obj, int32_t v)
+{
+    lv_obj_scroll_to_x((lv_obj_t *)obj, v, LV_ANIM_OFF);
+}
+
+/* Runs when the slide-to-centre animation finishes: recycle to the new current
+   device. rebind_all + snap_to_center happen in the SAME callback (no render in
+   between), so the instant re-centre is invisible — the centred device stays put. */
+static void pager_settle_ready_cb(lv_anim_t *a)
+{
+    (void)a;
+    if (!p) return;
+    /* p->recycling was set true when the slide started, guarding the SCROLL_END
+       that fires as the slide lands on the neighbour. */
+    int want = p->current + p->pager_anim_dir;
+    if (want >= 0 && want < p->count)
+    {
+        p->current = want;
+        rebind_all();
+        if (p->mouse_created) mouse_retarget();
+        LOG_I("[pager] -> device %d/%d (%s)", p->current + 1, p->count,
+              p->model[p->current].name);
+    }
+    snap_to_center(LV_ANIM_OFF);
+    p->recycling = false;
+}
+
 static void pager_scroll_end_cb(lv_event_t *e)
 {
     (void)e;
     if (!p || p->recycling) return;
     int c = centered_tile();
-    if (c == TILE_CENTER) return;
-    int dir = c - TILE_CENTER;
+    if (c == TILE_CENTER) return;            /* snapped back — LVGL animated it */
+    int dir  = c - TILE_CENTER;
     int want = p->current + dir;
-    p->recycling = true;
-    if (want >= 0 && want < p->count)
-    {
-        p->current = want;
-        rebind_all();
-        LOG_I("[pager] -> device %d/%d (%s)", p->current + 1, p->count,
-              p->model[p->current].name);
-        if (p->mouse_created) mouse_retarget();
-        snap_to_center(LV_ANIM_OFF);
-    }
-    else if (want < 0)
+    if (want < 0)                            /* swiped before the first → leave to watch face */
     {
         snap_to_center(LV_ANIM_OFF);
-        LOG_I("[pager] return to watch face");
         extern void device_pager_set_active(bool on);
         device_pager_set_active(false);
         extern void app_clock_status_bar_return_home(void);
         app_clock_status_bar_return_home();
+        return;
     }
-    else
+    if (want >= p->count)                    /* past the last → just animate back to centre */
     {
-        snap_to_center(LV_ANIM_OFF);
+        snap_to_center(LV_ANIM_ON);
+        return;
     }
-    p->recycling = false;
+    /* Slide the neighbour fully to centre with an animation, THEN recycle on
+       finish. Capture the target scroll_x via a momentary scroll-to-view (no
+       render happens between these synchronous calls, so it's invisible).
+       Guard re-entry now: a SCROLL_END fires again as the slide lands. */
+    p->pager_anim_dir = dir;
+    p->recycling = true;
+    lv_coord_t cur = lv_obj_get_scroll_x(p->pager);
+    lv_obj_scroll_to_view(p->t[c].tile, LV_ANIM_OFF);
+    lv_coord_t target = lv_obj_get_scroll_x(p->pager);
+    lv_obj_scroll_to_x(p->pager, cur, LV_ANIM_OFF);
+    if (target == cur) { pager_settle_ready_cb(NULL); return; } /* already there */
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, p->pager);
+    lv_anim_set_values(&a, cur, target);
+    lv_anim_set_time(&a, 200);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, pager_settle_exec_cb);
+    lv_anim_set_ready_cb(&a, pager_settle_ready_cb);
+    lv_anim_start(&a);
 }
 
 static void make_tile(tile_ui_t *u, lv_obj_t *parent)
