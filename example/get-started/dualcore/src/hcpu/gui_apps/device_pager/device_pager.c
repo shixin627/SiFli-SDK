@@ -113,11 +113,17 @@ typedef struct
     lv_obj_t   *list_tile;       /* (0,1) the instruction list page */
     lv_obj_t   *pager;           /* horizontal device carousel (inside list_tile) */
     tile_ui_t   t[3];            /* physical tiles: left / center / right */
-    lv_obj_t   *bar;             /* bottom re-summon handle (on the mouse) */
+    lv_obj_t   *bar;             /* bottom re-summon touch zone (invisible, on the mouse) */
+    lv_obj_t   *grabber;         /* visible drawer handle on lv_layer_top — rides up with the reveal */
     lv_obj_t   *empty_label;
     bool        mouse_created;   /* real hid_mouse hosted in mouse_base */
     bool        summoning;       /* bar press shown the overlay; awaiting drag/tap */
     bool        pull_pending;    /* over-pull at the top item → going to mouse */
+    bool        host_pulling;    /* bar/header drag is driving a live (bidirectional) reveal */
+    lv_coord_t  bar_press_y;     /* y where the drag started (for the reveal delta) */
+    lv_coord_t  host_scroll0;    /* overlay scroll_y at press (0 from the mouse bar, 466 from the list header) */
+    bool        bar_from_mouse;  /* this drag started on the mouse page (bottom bar), not the list header */
+    bool        bar_moved;       /* the finger moved enough to count as a drag, not a tap */
 
     dev_page_t  model[MAX_DEVICES];
     int         count;
@@ -138,6 +144,7 @@ static device_pager_t *p = NULL;
 static void mic_clicked_cb(lv_event_t *e);   /* defined below (skaibar section) */
 static void mouse_retarget(void);            /* defined below */
 static void skaibar_close(void);             /* defined below (skaibar section) */
+static void skaibar_open(void);              /* defined below (skaibar section) */
 
 /* Hide the skaibar input box as soon as a list scroll begins (mirrors the left
    instruction_list, where scrolling dismisses the AI widget). */
@@ -173,12 +180,25 @@ static void seed_fake_devices(void)
    instruction_list / app_exercise): item `sel` sits at the centre (3 o'clock,
    zoomed big), neighbours curve up/down shrinking + fading, items past ±90°
    hide. The single name_label shows the centred item's text. */
-/* scroll_y at which item 0 sits at the arc centre (mirrors app_exercise). */
+/* scroll_y at which item 0 sits at the arc centre. TILE-LOCAL (matches apply_arc,
+   which positions the icons assuming the tile is at the viewport origin) — i.e.
+   position-INDEPENDENT, so the anchor is correct even when the list_tile is still
+   off-screen (e.g. computed mid-reveal while pulling back from the mouse). When the
+   list IS on screen its coords.y1 is 0, so this is identical to the old value. */
 static int32_t arc_base_scroll(tile_ui_t *u)
 {
-    const lv_coord_t ly1 = u->list->coords.y1;
-    const lv_coord_t pt  = lv_obj_get_style_pad_top(u->list, LV_PART_MAIN);
-    return ly1 + pt + ARC_ICON_SIZE / 2 - LV_VER_RES / 2;
+    const lv_coord_t pt = lv_obj_get_style_pad_top(u->list, LV_PART_MAIN);
+    return pt + ARC_ICON_SIZE / 2 - LV_VER_RES / 2;
+}
+
+/* Centre name label: slide a freshly-selected item's text in from above, the way
+   the left instruction_list's labels scroll in (animate_label_vertical). The label
+   rests at LV_ALIGN_LEFT_MID +24; the anim drives its y offset -NAME_SLIDE_PX → 0. */
+#define NAME_SLIDE_PX 26
+#define NAME_SLIDE_MS 200
+static void name_label_set_y(lv_obj_t *obj, lv_coord_t y)
+{
+    lv_obj_align(obj, LV_ALIGN_LEFT_MID, 24, y);
 }
 
 static void apply_arc(tile_ui_t *u)
@@ -228,11 +248,33 @@ static void apply_arc(tile_ui_t *u)
         lv_opa_t opa = (lv_opa_t)(ARC_OPA_MIN + (LV_OPA_COVER - ARC_OPA_MIN) * c);
         lv_obj_set_style_img_opa(u->item_icon[i], opa, 0);
     }
+    int prev_sel = u->sel;
     u->sel = closest;
     if (count > 0 && min_abs <= (float)M_PI / 2.0f)
+    {
         lv_label_set_text(u->name_label, d->items[closest]);
+        if (closest != prev_sel) /* item changed → slide the new text in, matching scroll dir */
+        {
+            /* mirror the icon's motion: next item (index up) rose from BELOW → enter
+               from the bottom; previous item (index down) came from ABOVE → from the top. */
+            lv_coord_t from_y = (closest > prev_sel) ? NAME_SLIDE_PX : -NAME_SLIDE_PX;
+            lv_anim_del(u->name_label, (lv_anim_exec_xcb_t)name_label_set_y);
+            lv_anim_t a;
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, u->name_label);
+            lv_anim_set_values(&a, from_y, 0);
+            lv_anim_set_time(&a, NAME_SLIDE_MS);
+            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+            lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)name_label_set_y);
+            lv_anim_start(&a);
+        }
+    }
     else
+    {
+        lv_anim_del(u->name_label, (lv_anim_exec_xcb_t)name_label_set_y);
+        name_label_set_y(u->name_label, 0);
         lv_label_set_text(u->name_label, "");
+    }
 }
 
 /* arc_scroll snap target: the invisible anchor for the centred item. */
@@ -321,10 +363,11 @@ static void bind_tile(int k)
         else                   lv_obj_add_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
     }
     if (u->arc) arc_scroll_set_item_count(u->arc, d->item_count);
-    /* Start at the first item; layout must be current for the scroll math. */
-    u->sel = 0;
+    /* Start at the LAST (bottom-most) item; layout must be current for the math. */
+    int last = d->item_count > 0 ? d->item_count - 1 : 0;
+    u->sel = last;
     lv_obj_update_layout(u->list);
-    lv_obj_scroll_to_y(u->list, arc_base_scroll(u), LV_ANIM_OFF);
+    lv_obj_scroll_to_y(u->list, arc_base_scroll(u) + last * ARC_SLOT_H, LV_ANIM_OFF);
     apply_arc(u);
 }
 
@@ -511,60 +554,130 @@ static void mouse_retarget(void)
 
 /* ---- overlay show / hide (watch-face style) -------------------------- */
 
+#define GRABBER_REST_Y (-20)  /* visible handle's resting offset from the screen bottom */
+
+/* As the list is pulled in over the mouse (overlay scrolls HOME→LIST), ride the
+   visible grabber up with it. The grabber lives on lv_layer_top so it is never
+   covered by the trackpad or the rising list; p->bar (below) still drives the
+   actual finger-follow. overlay scroll_y is 0 at the mouse and grows as the list
+   rises, so the handle climbs from its resting spot toward the top. */
+static void bar_follow_reveal_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!p || !p->grabber || !lv_obj_is_valid(p->grabber)) return;
+    lv_coord_t sy = lv_obj_get_scroll_y(p->overlay);
+    if (sy < 0) sy = 0;
+    lv_obj_align(p->grabber, LV_ALIGN_BOTTOM_MID, 0, GRABBER_REST_Y - sy);
+}
+
 /* Settled on a tile: HOME(transparent) → hide the overlay, reveal mouse + bar;
    LIST → keep the overlay shown, hide the bar. */
 static void overlay_value_changed_cb(lv_event_t *e)
 {
     (void)e;
     if (!p) return;
+    if (p->host_pulling) return; /* mid live drag — don't settle yet */
     /* A scroll-settle resolves any in-flight bar summon. */
     p->summoning = false;
     lv_obj_t *act = lv_tileview_get_tile_act(p->overlay);
     if (act == p->home_tile)
     {
-        /* Settled on the transparent HOME → reveal the mouse + bar. */
+        /* Settled on the transparent HOME → reveal the mouse + bar + grabber. */
         lv_obj_add_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+        if (p->grabber)
+        {
+            lv_obj_align(p->grabber, LV_ALIGN_BOTTOM_MID, 0, GRABBER_REST_Y);
+            lv_obj_clear_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
+        }
         LOG_I("[pager] overlay hidden — mouse base + bar");
     }
     else
     {
-        /* Settled on the LIST → hide the bar; allow a fresh over-pull. */
+        /* Settled on the LIST → hide the bar + grabber; allow a fresh over-pull.
+           The list is already anchored to the last item by the rebind at reveal
+           start (bind_tile), so it arrives bottom-most without a settle-time jump. */
         lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+        if (p->grabber) lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
         p->pull_pending = false;
         LOG_I("[pager] overlay on LIST — bar hidden");
     }
 }
 
-/* The bottom bar mirrors the watch-face edge zone (notification_status_bar_cb).
-   On PRESS it shows the overlay parked at the transparent HOME tile — the mouse
-   shows through it. Because the bar has PRESS_LOCK cleared, the instant the
-   finger drags up off the bar the press transfers to the now-topmost overlay,
-   which scrolls under the finger (native tileview finger-follow) and pulls the
-   LIST up from below. The mouse underneath stays put (the overlay is the
-   hit-test target). A tap that never leaves the bar doesn't transfer, so the
-   bar's RELEASED undoes the park (back to mouse + bar). A real drag is resolved
-   by the overlay's VALUE_CHANGED instead — RELEASED never fires on the bar
-   then, it gets PRESS_LOST when the gesture transfers. */
+/* Live drawer drag, shared by the mouse-page bottom bar AND the list-page device-name
+   handle. It KEEPS its press (no PRESS_LOCK clear) and drives the overlay reveal
+   itself so the list finger-follows BOTH ways. PRESS records where the overlay was
+   (0 = parked at the mouse for the bottom bar; 466 = the list for the name handle);
+   PRESSING scrolls the overlay by how far the finger moved from the press point
+   (toward the list when dragging up, back toward the mouse when dragging down — live);
+   RELEASE snaps to whichever tile is nearer. The visible grabber rides along via
+   bar_follow_reveal_cb. The overlay's settle handler is suppressed mid-drag. */
 static void bar_cb(lv_event_t *e)
 {
     if (!p) return;
     lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t *indev = lv_indev_get_act();
     if (code == LV_EVENT_PRESSED)
     {
-        p->summoning = true;
-        device_pager_refresh();
-        lv_obj_set_tile_id(p->overlay, 0, 0, LV_ANIM_OFF); /* park at HOME */
-        lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
-    }
-    else if (code == LV_EVENT_RELEASED)
-    {
-        if (p->summoning) /* tap, no drag → never transferred to the overlay */
+        lv_point_t pt;
+        if (indev) lv_indev_get_point(indev, &pt); else pt.y = 0;
+        p->bar_press_y = pt.y;
+        p->host_pulling = true;
+        p->bar_moved = false;
+        if (lv_obj_has_flag(p->overlay, LV_OBJ_FLAG_HIDDEN))
         {
-            p->summoning = false;
-            lv_obj_add_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+            /* mouse page: park at HOME and reveal upward from 0 */
+            p->bar_from_mouse = true;
+            device_pager_refresh();
+            lv_obj_set_tile_id(p->overlay, 0, 0, LV_ANIM_OFF);
+            lv_obj_scroll_to_y(p->overlay, 0, LV_ANIM_OFF);
+            lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
+            p->host_scroll0 = 0;
         }
+        else
+        {
+            /* list page (name handle): start from the current reveal (≈ LIST) */
+            p->bar_from_mouse = false;
+            p->host_scroll0 = lv_obj_get_scroll_y(p->overlay);
+        }
+        /* Show the drawer handle right away so it rides in/out during the live drag
+           (from the list it starts off-screen above and slides down as we retract). */
+        if (p->grabber)
+        {
+            lv_obj_align(p->grabber, LV_ALIGN_BOTTOM_MID, 0,
+                         GRABBER_REST_Y - lv_obj_get_scroll_y(p->overlay));
+            lv_obj_clear_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    else if (code == LV_EVENT_PRESSING)
+    {
+        if (!p->host_pulling || !indev) return;
+        lv_point_t pt;
+        lv_indev_get_point(indev, &pt);
+        int dy = p->bar_press_y - pt.y;                     /* up = positive */
+        if (dy > 10 || dy < -10) p->bar_moved = true;       /* moved enough → a drag, not a tap */
+        int sy = p->host_scroll0 + dy;                      /* up → toward list, down → toward mouse */
+        if (sy < 0) sy = 0;
+        if (sy > LV_VER_RES) sy = LV_VER_RES;
+        lv_obj_scroll_to_y(p->overlay, sy, LV_ANIM_OFF);    /* live, both directions */
+    }
+    else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+    {
+        if (!p->host_pulling) return;
+        p->host_pulling = false;
+        if (p->bar_from_mouse && !p->bar_moved)
+        {
+            /* Plain TAP on the mouse-page bar (no drag): jump straight to the device
+               list AND open voice input. */
+            lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_ON);
+            skaibar_open();
+            return;
+        }
+        lv_coord_t sy = lv_obj_get_scroll_y(p->overlay);
+        if (sy > LV_VER_RES / 2)
+            lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_ON); /* nearer the LIST → commit */
+        else
+            lv_obj_set_tile_id(p->overlay, 0, 0, LV_ANIM_ON); /* nearer the mouse → snap back */
     }
 }
 
@@ -603,6 +716,7 @@ void device_pager_set_active(bool on)
         lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* reset to LIST */
         lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+        if (p->grabber) lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
         LOG_I("[pager] device page inactive — mouse base torn down");
     }
 }
@@ -831,6 +945,7 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
     lv_obj_add_event_cb(p->overlay, overlay_value_changed_cb,
                         LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(p->overlay, bar_follow_reveal_cb, LV_EVENT_SCROLL, NULL);
     p->home_tile = lv_tileview_add_tile(p->overlay, 0, 0, LV_DIR_BOTTOM);
     p->list_tile = lv_tileview_add_tile(p->overlay, 0, 1, LV_DIR_TOP);
     lv_obj_set_style_bg_opa(p->home_tile, LV_OPA_TRANSP, 0); /* see mouse through */
@@ -859,6 +974,22 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_add_event_cb(p->overlay, scroll_hides_skaibar_cb, LV_EVENT_SCROLL_BEGIN, NULL);
 
     for (int k = 0; k < 3; k++) make_tile(&p->t[k], p->pager);
+
+    /* Device-name drag handle: a transparent band over the top (device-name) row,
+       above the item lists, so dragging there pulls the WHOLE page up/down (the
+       overlay drawer, via bar_cb) instead of scrolling items — same feel as the
+       mouse-page bottom bar. Items below it still scroll normally. */
+    {
+        lv_obj_t *name_drag = lv_obj_create(p->list_tile);
+        lv_obj_set_size(name_drag, LV_HOR_RES, 76);
+        lv_obj_align(name_drag, LV_ALIGN_TOP_MID, 0, 0);
+        lv_obj_set_style_bg_opa(name_drag, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(name_drag, 0, 0);
+        lv_obj_set_style_pad_all(name_drag, 0, 0);
+        lv_obj_clear_flag(name_drag, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(name_drag, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(name_drag, bar_cb, LV_EVENT_ALL, NULL);
+    }
 
     /* Bottom-centre voice-input bar — a slim home-indicator pill (matches the
        trackpad's former bottom bar): dark fill, thin white border, no icon. A
@@ -925,10 +1056,29 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_set_style_radius(p->bar, 0, 0);
     lv_obj_set_style_pad_all(p->bar, 0, 0);
     lv_obj_clear_flag(p->bar, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(p->bar, LV_OBJ_FLAG_PRESS_LOCK);
+    /* keep PRESS_LOCK: the bar handles the whole drag itself (live bidirectional
+       reveal in bar_cb), it no longer transfers the press to the overlay. */
     lv_obj_add_flag(p->bar, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(p->bar, bar_cb, LV_EVENT_ALL, NULL);
     lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+
+    /* Visible drawer handle on the very top layer so neither the hosted trackpad nor
+       the rising list can cover it. Non-clickable: touches fall through to p->bar
+       (which drives the finger-follow); this grabber is purely the visual that rides
+       up with the list (bar_follow_reveal_cb). Shown only in mouse mode. */
+    p->grabber = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(p->grabber, 100, 16);                       /* match the list's mic_bar pill */
+    lv_obj_align(p->grabber, LV_ALIGN_BOTTOM_MID, 0, GRABBER_REST_Y);
+    lv_obj_set_style_bg_color(p->grabber, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_bg_opa(p->grabber, LV_OPA_90, 0);
+    lv_obj_set_style_border_color(p->grabber, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(p->grabber, 2, 0);
+    lv_obj_set_style_border_opa(p->grabber, LV_OPA_50, 0);
+    lv_obj_set_style_radius(p->grabber, 8, 0);
+    lv_obj_set_style_pad_all(p->grabber, 0, 0);
+    lv_obj_clear_flag(p->grabber, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(p->grabber, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* start on the LIST */
 
