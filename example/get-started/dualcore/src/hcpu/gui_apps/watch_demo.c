@@ -43,6 +43,7 @@
     #include "drv_gpio.h"
 #endif                  /* BSP_USING_PM */
 #include "gui_app_pm.h" /* always — gui_is_active / gui_pm_fsm referenced unconditionally */
+#include "disp_refr_governor.h"
 
 #include "data_service_subscriber.h"
 
@@ -638,6 +639,8 @@ static void pm_event_handler(gui_pm_event_type_t event)
         extern void lv_touch_arm_wake_suppression(void);
         dial_header_on_suspend();
         start_sleep_fade_out();
+        /* Governor: screen going off — clear the session latch. */
+        disp_gov_notify_screen_off();
         /* Arm wake-up touch suppression. Stays set through the fade-out
          * animation (LVGL still running, would otherwise let touches
          * trigger widgets) and the entire sleep period. RESUME's
@@ -650,6 +653,10 @@ static void pm_event_handler(gui_pm_event_type_t event)
         extern void lv_touch_set_wake_suppress_window(uint32_t window_ms);
         lv_timer_enable(true);
         dial_header_on_resume();
+        /* Governor: screen woke — reset latch + arm wake debounce so a
+         * wake-glance lands on home at 1 Hz and the wake-causing touch is
+         * not counted as an operate input. */
+        disp_gov_notify_screen_on();
         /* Hand off from the SUSPEND-time `armed` flag to a time window
          * that covers the post-wake event burst from the touch chip.
          * The chip is repowered after this handler runs (open_display in
@@ -802,6 +809,11 @@ void app_watch_entry(void *parameter)
 
     gui_app_run("Main");
     lv_disp_trig_activity(NULL);
+
+    /* Bind the refresh governor now that the default display + Main are up.
+     * Default OFF — does not alter the stock 60 Hz behavior until enabled
+     * (via the `disp_gov on` MSH command or disp_gov_set_enabled()). */
+    disp_gov_init();
 
     SkaiWatchSys.motion_control_lock = true;
     setting_provider.set_power_save_mode(1);
