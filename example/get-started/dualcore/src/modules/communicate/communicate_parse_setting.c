@@ -116,7 +116,7 @@ void resolve_settings_config_command(uint8_t key, const uint8_t *pValue,
 #endif
             /* Persist to share_prefs so SkaiWatchSys.alarms[] survives reboot.
                watch_config_struct_flash_read() loads them back on boot. */
-            watch_prefs_save_alarms();
+            watch_prefs_save_alarms_async();
         }
     }
     break;

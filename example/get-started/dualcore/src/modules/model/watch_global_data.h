@@ -682,6 +682,15 @@ __attribute__((packed)) SkaiWatchSysType_t;
        Call after the primary syncs / mutates the device list. */
     extern void watch_prefs_save_device_registry(void);
 
+    /* Async twins of the two save_* helpers above — post to the storage worker
+       thread and return immediately. Use these from the BLE event thread
+       (KE_EVT2) or any small-stack / latency-sensitive context: share_prefs is
+       opened only on the worker's generous stack (fixes the KE_EVT2 STKOF). */
+    extern void watch_prefs_save_alarms_async(void);
+    extern void watch_prefs_save_device_registry_async(void);
+    /* Off-thread twin of store_watch_prefs(key) — same worker, keyed save. */
+    extern void store_watch_prefs_async(watch_prefs_key key);
+
     typedef enum
     {
         Notify_calendar,

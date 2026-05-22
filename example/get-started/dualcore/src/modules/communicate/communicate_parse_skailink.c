@@ -26,6 +26,11 @@
 #include "communicate_parse.h"
 #include "communicate_task.h"
 #include "watch_global_data.h"
+#include "bsp_board.h"
+
+#define DBG_TAG "commu.parse.skailink"
+#define DBG_LVL BSP_DBG_LVL
+#include <rtdbg.h>
 
 /* UI refresh hook implemented by the watch device screen (LVGL piece). Weak so
    this module links before the UI exists; null-guarded at the call site. */
@@ -126,7 +131,9 @@ static void handle_device_list_batch(uint8_t *pValue, uint16_t length)
         }
     }
     cJSON_Delete(root);
-    watch_prefs_save_device_registry(); /* ids changed — persist */
+    LOG_I("Loaded %d devices from skailink batch", SkaiWatchSys.device_registry.count);
+    watch_prefs_save_device_registry_async(); /* ids changed — persist */
+    LOG_I("Device registry updated: count=%d", SkaiWatchSys.device_registry.count);
     ui_refresh();
 }
 
@@ -181,7 +188,7 @@ static void handle_device_actions_batch(uint8_t *pValue, uint16_t length)
                     d->default_action_count++;
                 }
             }
-            watch_prefs_save_device_registry(); /* default actions changed — persist */
+            watch_prefs_save_device_registry_async(); /* default actions changed — persist */
             ui_refresh();
         }
     }
@@ -211,7 +218,7 @@ static void handle_device_removed(uint8_t *pValue, uint16_t length)
                         SYNCED_DEVICE_NAME_LEN - 1);
             }
             SkaiWatchSys.device_registry.count = last;
-            watch_prefs_save_device_registry();
+            watch_prefs_save_device_registry_async();
             ui_refresh();
         }
     }

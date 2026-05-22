@@ -178,8 +178,13 @@ static void read_flag_field(share_prefs_t *pref)
   share_prefs_get_block(pref, "flag_field", (void *)(&SkaiWatchSys.flag_field), sizeof(T_FLAG_FIELD));
 }
 
+// ── DEBUG INSTRUMENTATION (temporary) ───────────────────────────────────────
+// Log every share_prefs write so the last line before a hang pinpoints the
+// culprit key. Added to chase crashes right after the share_prefs_open banner
+// "share_prefs_open: sector_size 2048 size 16384". Remove with: grep "prefs write".
 static void write_flag_field(share_prefs_t *pref)
 {
+  LOG_D("prefs write flag_field blk=%u", (unsigned)sizeof(T_FLAG_FIELD));
   share_prefs_set_block(pref, "flag_field", (void *)&SkaiWatchSys.flag_field, sizeof(T_FLAG_FIELD));
 }
 
@@ -236,6 +241,7 @@ static void write_device_registry(share_prefs_t *pref)
   r.version = DEVICE_REGISTRY_VERSION;
   if (r.count > MAX_SYNCED_DEVICES) r.count = MAX_SYNCED_DEVICES;
   r.crc = device_registry_crc32(&r);
+  LOG_D("prefs write dev_registry blk=%u count=%u", (unsigned)sizeof(r), (unsigned)r.count);
   share_prefs_set_block(pref, "dev_registry", (void *)&r, sizeof(r));
 }
 
@@ -246,6 +252,7 @@ static void read_msg_switch(share_prefs_t *pref)
 
 static void write_msg_switch(share_prefs_t *pref)
 {
+  LOG_D("prefs write msg_switch blk=%u", (unsigned)sizeof(T_MSG_SWITCH));
   share_prefs_set_block(pref, "msg_switch", (void *)&SkaiWatchSys.msg_switch, sizeof(T_MSG_SWITCH));
 }
 
@@ -261,6 +268,7 @@ static void read_phone_os_version(share_prefs_t *pref)
 static void write_phone_os_version(share_prefs_t *pref)
 {
   int32_t version = SkaiWatchSys.phone_os_version;
+  LOG_D("prefs write phone_os_version=%d", (int)version);
   share_prefs_set_int(pref, "phone_os_version", version);
 }
 
@@ -297,6 +305,7 @@ static void read_language(share_prefs_t *pref)
 static void write_language(share_prefs_t *pref)
 {
   int32_t language = SkaiWatchSys.language;
+  LOG_D("prefs write language=%d", (int)language);
   share_prefs_set_int(pref, "language", language);
 }
 
@@ -312,6 +321,7 @@ static void read_clock_screen_num(share_prefs_t *pref)
 static void write_clock_screen_num(share_prefs_t *pref)
 {
   int32_t clock_screen_num = SkaiWatchSys.clock_screen_num;
+  LOG_D("prefs write clock_screen_num=%d", (int)clock_screen_num);
   share_prefs_set_int(pref, "clock_screen_num", clock_screen_num);
 }
 
@@ -355,6 +365,7 @@ static void reset_watch_restart_num(share_prefs_t *pref)
 {
   SkaiWatchSys.watch_restart_num = 0;
   int32_t watch_restart_num = SkaiWatchSys.watch_restart_num;
+  LOG_D("prefs write watch_restart_num=%d (reset)", (int)watch_restart_num);
   share_prefs_set_int(pref, "watch_restart_num", watch_restart_num);
 }
 
@@ -375,6 +386,7 @@ static void read_brightness_percent(share_prefs_t *pref)
 static void write_brightness_percent(share_prefs_t *pref)
 {
   int32_t brightness_percent = SkaiWatchSys.brightness;
+  LOG_D("prefs write brightness=%d", (int)brightness_percent);
   share_prefs_set_int(pref, "brightness", brightness_percent);
 }
 
@@ -385,6 +397,7 @@ static void read_pedo_data(share_prefs_t *pref)
 
 static void write_pedo_data(share_prefs_t *pref)
 {
+  LOG_D("prefs write pedo_data blk=%u", (unsigned)sizeof(T_PEDO_DATA));
   share_prefs_set_block(pref, "pedo_data", (void *)&SkaiWatchSys.gPedoData, sizeof(T_PEDO_DATA));
 }
 
@@ -395,6 +408,7 @@ static void read_dnd_mode(share_prefs_t *pref)
 
 static void write_dnd_mode(share_prefs_t *pref)
 {
+  LOG_D("prefs write dnd_mode blk=%u", (unsigned)sizeof(T_DND_MODE));
   share_prefs_set_block(pref, "dnd_mode", (void *)&SkaiWatchSys.DNDMode, sizeof(T_DND_MODE));
 }
 
@@ -405,6 +419,7 @@ static void read_user_data(share_prefs_t *pref)
 
 static void write_user_data(share_prefs_t *pref)
 {
+  LOG_D("prefs write user_data blk=%u", (unsigned)sizeof(T_USER_DATA));
   share_prefs_set_block(pref, "user_data", (void *)&SkaiWatchSys.user_data, sizeof(T_USER_DATA));
 }
 
@@ -415,6 +430,7 @@ static void read_global_time(share_prefs_t *pref)
 
 static void write_global_time(share_prefs_t *pref)
 {
+  LOG_D("prefs write global_time blk=%u", (unsigned)sizeof(T_UTC_TIME));
   share_prefs_set_block(pref, "global_time", (void *)&SkaiWatchSys.Global_Time, sizeof(T_UTC_TIME));
 }
 
@@ -425,6 +441,7 @@ static void read_sleep_data(share_prefs_t *pref)
 
 static void write_sleep_data(share_prefs_t *pref)
 {
+  LOG_D("prefs write sleep_data_show blk=%u", (unsigned)sizeof(T_SLEEP_DATA));
   share_prefs_set_block(pref, "sleep_data_show", (void *)&SkaiWatchSys.sleep_data_show, sizeof(T_SLEEP_DATA));
 }
 
@@ -440,6 +457,7 @@ static void read_clock_status(share_prefs_t *pref)
 static void write_clock_status(share_prefs_t *pref)
 {
   int32_t clock_status = SkaiWatchSys.clock_status;
+  LOG_D("prefs write clock_status=%d", (int)clock_status);
   share_prefs_set_int(pref, "clock_status", clock_status);
 }
 static void read_gesture_threshold(share_prefs_t *pref)
@@ -459,6 +477,7 @@ static void read_gesture_threshold(share_prefs_t *pref)
 static void write_gesture_threshold(share_prefs_t *pref)
 {
   int32_t threshold = get_gesture_recognition_threshold();
+  LOG_D("prefs write gesture_threshold=%d", (int)threshold);
   share_prefs_set_int(pref, "gesture_threshold", threshold);
   LOG_I("Saved gesture threshold: %d", threshold);
 }
@@ -483,7 +502,9 @@ static void read_alarms(share_prefs_t *pref)
 
 static void write_alarms(share_prefs_t *pref)
 {
+  LOG_D("prefs write alarm_num=%d", (int)SkaiWatchSys.alarm_num);
   share_prefs_set_int(pref, "alarm_num", SkaiWatchSys.alarm_num);
+  LOG_D("prefs write alarms blk=%u", (unsigned)(sizeof(T_ALARM) * MAX_ALARM_NUM));
   share_prefs_set_block(pref, "alarms", (void *)&SkaiWatchSys.alarms,
                         sizeof(T_ALARM) * MAX_ALARM_NUM);
 }
@@ -555,6 +576,127 @@ void watch_prefs_save_device_registry(void)
   if (pref == NULL) { LOG_E("watch_prefs_save_device_registry: open failed"); return; }
   write_device_registry(pref);
   close_watch_prefs(pref);
+}
+
+/* ── Off-thread storage worker (STKOF fix) ───────────────────────────────────
+   share_prefs_open() runs fdb_kvdb_init + (file-mode) mkdir/fopen + the flash
+   driver — a deep, stack-hungry call chain. Driving it from the 4 KB BLE event
+   thread KE_EVT2 (already loaded with the cJSON parse + BLE frame) overflows the
+   stack: SCB_CFSR_UFSR STKOF usage fault, seen right after the "share_prefs_open:
+   sector_size 2048 size 16384" banner.
+
+   Fix: funnel persistence onto this one worker thread (generous stack). Callers
+   on KE_EVT2 post an op and return immediately — share_prefs is never opened on
+   their stack. Ops read live SkaiWatchSys at execution time; for the CRC-guarded,
+   cloud-authoritative device registry a momentarily torn snapshot is acceptable
+   (read_device_registry discards bad blocks on next boot). NOTE: synchronous
+   share_prefs callers still exist (boot read, OTA-reboot writes) on other
+   threads — full serialization would need USING_STORAGE_API_LOCK or routing
+   every caller through here; out of scope for this STKOF fix. */
+typedef enum
+{
+  STORAGE_OP_SAVE_DEVICE_REGISTRY = 0,
+  STORAGE_OP_SAVE_ALARMS,
+  STORAGE_OP_STORE_KEY, /* arg = watch_prefs_key */
+} storage_op_t;
+
+typedef struct
+{
+  uint16_t op;  /* storage_op_t */
+  uint16_t arg; /* STORAGE_OP_STORE_KEY: watch_prefs_key; else unused */
+} storage_msg_t;
+
+#define STORAGE_THREAD_STACK_SIZE 8192 /* fdb_kvdb_init is the stack hog; 2x margin */
+#define STORAGE_THREAD_PRIORITY 25
+#define STORAGE_THREAD_TIMESLICE 20
+#define STORAGE_MQ_DEPTH 8
+
+static rt_mq_t storage_mq = RT_NULL;
+
+static void storage_worker_entry(void *parameter)
+{
+  storage_msg_t msg;
+  while (1)
+  {
+    if (rt_mq_recv(storage_mq, &msg, sizeof(msg), RT_WAITING_FOREVER) != RT_EOK)
+    {
+      continue;
+    }
+    switch (msg.op)
+    {
+    case STORAGE_OP_SAVE_DEVICE_REGISTRY:
+      watch_prefs_save_device_registry();
+      break;
+    case STORAGE_OP_SAVE_ALARMS:
+      watch_prefs_save_alarms();
+      break;
+    case STORAGE_OP_STORE_KEY:
+      store_watch_prefs((watch_prefs_key)msg.arg);
+      break;
+    default:
+      LOG_W("storage worker: unknown op %u", (unsigned)msg.op);
+      break;
+    }
+  }
+}
+
+static int watch_storage_worker_init(void)
+{
+  storage_mq = rt_mq_create("watch_store", sizeof(storage_msg_t),
+                            STORAGE_MQ_DEPTH, RT_IPC_FLAG_FIFO);
+  if (storage_mq == RT_NULL)
+  {
+    LOG_E("storage worker: mq create failed");
+    return -RT_ERROR;
+  }
+  rt_thread_t tid =
+      rt_thread_create("watch_store", storage_worker_entry, RT_NULL,
+                       STORAGE_THREAD_STACK_SIZE, STORAGE_THREAD_PRIORITY,
+                       STORAGE_THREAD_TIMESLICE);
+  if (tid == RT_NULL)
+  {
+    LOG_E("storage worker: thread create failed");
+    rt_mq_delete(storage_mq);
+    storage_mq = RT_NULL;
+    return -RT_ERROR;
+  }
+  rt_thread_startup(tid);
+  LOG_I("storage worker started (stack=%d)", STORAGE_THREAD_STACK_SIZE);
+  return RT_EOK;
+}
+INIT_APP_EXPORT(watch_storage_worker_init);
+
+static void storage_post(storage_op_t op, uint16_t arg)
+{
+  if (storage_mq == RT_NULL)
+  {
+    LOG_E("storage worker not ready, dropping op %u", (unsigned)op);
+    return;
+  }
+  storage_msg_t msg = {.op = (uint16_t)op, .arg = arg};
+  if (rt_mq_send(storage_mq, &msg, sizeof(msg)) != RT_EOK)
+  {
+    /* Queue full: each op persists *current* state, so a coalesced drop only
+       defers — the next post writes the latest. Cloud stays source of truth. */
+    LOG_W("storage queue full, dropped op %u", (unsigned)op);
+  }
+}
+
+/* Async twins of the two synchronous save helpers above — safe to call from the
+   BLE event thread (KE_EVT2). They post to the storage worker and return. */
+void watch_prefs_save_device_registry_async(void)
+{
+  storage_post(STORAGE_OP_SAVE_DEVICE_REGISTRY, 0);
+}
+
+void watch_prefs_save_alarms_async(void)
+{
+  storage_post(STORAGE_OP_SAVE_ALARMS, 0);
+}
+
+void store_watch_prefs_async(watch_prefs_key key)
+{
+  storage_post(STORAGE_OP_STORE_KEY, (uint16_t)key);
 }
 
 void watch_config_struct_flash_read(void)
@@ -885,6 +1027,7 @@ int ble_dev_prefs_save(const bonded_devices_db_t *db)
     return -2;
   }
 
+  LOG_D("prefs write ble_dev.device_count=%d", (int)db->count);
   int ret = share_prefs_set_int(pref, "device_count", db->count);
   if (ret < 0)
   {
@@ -894,6 +1037,7 @@ int ble_dev_prefs_save(const bonded_devices_db_t *db)
     return -3;
   }
 
+  LOG_D("prefs write ble_dev.active_idx=%d", (int)db->active_device_idx);
   ret = share_prefs_set_int(pref, "active_idx", db->active_device_idx);
   if (ret < 0)
   {
@@ -903,6 +1047,7 @@ int ble_dev_prefs_save(const bonded_devices_db_t *db)
     return -4;
   }
 
+  LOG_D("prefs write ble_dev.devices blk=%u", (unsigned)sizeof(db->devices));
   ret = share_prefs_set_block(pref, "devices",
                               (void *)&db->devices,
                               sizeof(db->devices));

@@ -76,9 +76,9 @@ extern int __bss_end;
    0=ERROR, 1=WARNING, 2=INFO, 3=LOG). Release drops LOG_I/LOG_D so
    per-tick / per-packet noise doesn't cost CPU + UART bandwidth. */
 #if kReleaseMode
-#define BSP_DBG_LVL 1
+#define BSP_DBG_LVL DBG_WARNING
 #else
-#define BSP_DBG_LVL 3
+#define BSP_DBG_LVL DBG_LOG
 #endif
 
 #define BOARD_VER_11 11

@@ -216,185 +216,9 @@ static void ble_tpc_on_rssi_sample(int8_t rssi)
     }
 }
 
-// --------- GAP Info Reader (read remote Device Name & Appearance after connection) ---------
-typedef struct
-{
-    uint8_t conn_idx;
-    int8_t dev_idx;           // index in device manager
-    uint16_t remote_handle;
-    uint16_t name_value_hdl;
-    uint16_t appearance_hdl;  // Appearance characteristic (0x2A01)
-    uint16_t svc_start_hdl;
-    uint16_t svc_end_hdl;
-    uint8_t busy;
-} dev_name_reader_t;
-
-static dev_name_reader_t g_name_reader = {0};
-static int dev_name_gattc_callback(uint16_t event_id, uint8_t *data, uint16_t len);
-
-static ble_device_type_t appearance_to_device_type(uint16_t appearance)
-{
-    // BLE Appearance categories (high 10 bits = category)
-    uint16_t category = appearance >> 6;
-    switch (category)
-    {
-    case 1:  // Phone (0x0040-0x007F)
-        return DEVICE_TYPE_PHONE;
-    case 2:  // Computer (0x0080-0x00BF)
-        return DEVICE_TYPE_COMPUTER;
-    case 15: // HID (0x03C0-0x03FF) - tablets often report as HID
-        return DEVICE_TYPE_TABLET;
-    default:
-        return DEVICE_TYPE_OTHER;
-    }
-}
-
-static void gap_reader_cleanup(void)
-{
-    sibles_unregister_remote_svc(g_name_reader.conn_idx,
-                                 g_name_reader.svc_start_hdl,
-                                 g_name_reader.svc_end_hdl,
-                                 dev_name_gattc_callback);
-    g_name_reader.busy = 0;
-}
-
-static int dev_name_gattc_callback(uint16_t event_id, uint8_t *data, uint16_t len)
-{
-    switch (event_id)
-    {
-    case SIBLES_REGISTER_REMOTE_SVC_RSP:
-    {
-        sibles_register_remote_svc_rsp_t *rsp = (sibles_register_remote_svc_rsp_t *)data;
-        if (rsp->status != 0)
-        {
-            LOG_W("GAP service register failed, status=%d", rsp->status);
-            g_name_reader.busy = 0;
-            break;
-        }
-        LOG_I("GAP service registered, reading Device Name (hdl=0x%x)...",
-              g_name_reader.name_value_hdl);
-
-        // Read Device Name first
-        sibles_read_remote_value_req_t req;
-        req.read_type = SIBLES_READ;
-        req.handle = g_name_reader.name_value_hdl;
-        req.offset = 0;
-        req.length = 0;
-        int8_t ret = sibles_read_remote_value(g_name_reader.remote_handle,
-                                               g_name_reader.conn_idx, &req);
-        if (ret != 0)
-        {
-            LOG_W("Failed to read Device Name, ret=%d", ret);
-            g_name_reader.busy = 0;
-        }
-        break;
-    }
-    case SIBLES_READ_REMOTE_VALUE_RSP:
-    {
-        sibles_read_remote_value_rsp_t *rsp = (sibles_read_remote_value_rsp_t *)data;
-
-        LOG_I("GATT read rsp: handle=0x%x, length=%d", rsp->handle, rsp->length);
-
-        if (rsp->handle == g_name_reader.name_value_hdl)
-        {
-            // Device Name response
-            if (rsp->length > 0 && rsp->value)
-            {
-                char name_buf[DEVICE_NAME_MAX_LEN];
-                uint16_t copy_len = rsp->length < (DEVICE_NAME_MAX_LEN - 1)
-                                        ? rsp->length
-                                        : (DEVICE_NAME_MAX_LEN - 1);
-                memcpy(name_buf, rsp->value, copy_len);
-                name_buf[copy_len] = '\0';
-
-                LOG_I("Remote Device Name: \"%s\" (len=%d)", name_buf, rsp->length);
-
-                if (g_name_reader.dev_idx >= 0)
-                {
-                    ble_dev_mgr_update_device_name(g_name_reader.dev_idx, name_buf);
-                }
-            }
-            else
-            {
-                LOG_W("Device Name read returned empty");
-            }
-
-            // Now read Appearance if available
-            if (g_name_reader.appearance_hdl != 0)
-            {
-                LOG_I("Reading Appearance (hdl=0x%x)...", g_name_reader.appearance_hdl);
-                sibles_read_remote_value_req_t req;
-                req.read_type = SIBLES_READ;
-                req.handle = g_name_reader.appearance_hdl;
-                req.offset = 0;
-                req.length = 0;
-                int8_t ret = sibles_read_remote_value(g_name_reader.remote_handle,
-                                                       g_name_reader.conn_idx, &req);
-                if (ret != 0)
-                {
-                    LOG_W("Failed to read Appearance, ret=%d", ret);
-                    gap_reader_cleanup();
-                }
-            }
-            else
-            {
-                gap_reader_cleanup();
-            }
-        }
-        else if (rsp->handle == g_name_reader.appearance_hdl)
-        {
-            // Appearance response
-            if (rsp->length >= 2 && rsp->value)
-            {
-                uint16_t appearance = rsp->value[0] | (rsp->value[1] << 8);
-                ble_device_type_t dev_type = appearance_to_device_type(appearance);
-
-                LOG_I("Remote Appearance: 0x%04X -> type=%d", appearance, dev_type);
-
-                if (g_name_reader.dev_idx >= 0)
-                {
-                    ble_dev_mgr_update_device_type(g_name_reader.dev_idx, dev_type);
-                }
-            }
-            else
-            {
-                LOG_W("Appearance read returned empty (len=%d)", rsp->length);
-            }
-
-            gap_reader_cleanup();
-        }
-        else
-        {
-            LOG_W("Unexpected read rsp handle=0x%x", rsp->handle);
-        }
-        break;
-    }
-    default:
-        break;
-    }
-    return 0;
-}
-
-static void dev_name_start_search(uint8_t conn_idx, int8_t dev_idx)
-{
-    if (g_name_reader.busy)
-    {
-        LOG_W("Device name reader busy, skip");
-        return;
-    }
-    g_name_reader.conn_idx = conn_idx;
-    g_name_reader.dev_idx = dev_idx;
-    g_name_reader.busy = 1;
-
-    uint16_t gap_svc_uuid = ATT_UUID_16(0x1800); // Generic Access Service
-    int8_t ret = sibles_search_service(conn_idx, ATT_UUID_16_LEN,
-                                        (uint8_t *)&gap_svc_uuid);
-    if (ret != 0)
-    {
-        LOG_W("Failed to search GAP service, ret=%d", ret);
-        g_name_reader.busy = 0;
-    }
-}
+/* ADR-0008: the GAP device-name / appearance reader is removed. Device names
+   and types now arrive over SKAI_LINK (SkaiWatchSys.device_name and
+   device_registry), so the watch no longer reads them over GATT on connect. */
 
 static bool _rssi_signal_bad = false;
 bool is_signal_bad(void)
@@ -434,55 +258,10 @@ static uint8_t ble_app_get_bonded_device_addr(ble_gap_addr_t *addr)
         return 1;
     }
 
-    // Get bonded device database from device manager
-    const bonded_devices_db_t *db = ble_dev_mgr_get_database();
-    int active_idx = ble_dev_mgr_get_active_device();
-
-    if (!db)
-    {
-        LOG_E("Failed to get device database");
-        return 0;
-    }
-
-    // If there's an active device, use it
-    if (active_idx >= 0)
-    {
-        const bonded_device_t *dev = &db->devices[active_idx];
-        if (dev->is_valid)
-        {
-            memcpy(addr->addr.addr, dev->mac_addr, 6);
-            addr->addr_type = dev->addr_type;
-
-            // Cache the bonded device
-            memcpy(&g_target_device_addr, addr, sizeof(ble_gap_addr_t));
-            g_has_target_device = 1;
-
-            LOG_I("Found active device[%d] addr: " MAC_FMT " (type:%d)",
-                  active_idx, MAC_ARG(addr->addr.addr), addr->addr_type);
-            return 1;
-        }
-    }
-
-    // No active device, try to find any valid bonded device
-    for (int i = 0; i < db->count; i++)
-    {
-        const bonded_device_t *dev = &db->devices[i];
-        if (dev->is_valid)
-        {
-            memcpy(addr->addr.addr, dev->mac_addr, 6);
-            addr->addr_type = dev->addr_type;
-
-            // Cache the bonded device
-            memcpy(&g_target_device_addr, addr, sizeof(ble_gap_addr_t));
-            g_has_target_device = 1;
-
-            LOG_I("Found bonded device[%d] addr: " MAC_FMT " (type:%d)",
-                  i, MAC_ARG(addr->addr.addr), addr->addr_type);
-            return 1;
-        }
-    }
-
-    LOG_I("No bonded device found");
+    /* ADR-0008: no device-manager database anymore. The directed-advertising
+       target is cached on connect (ble_app_set_bonded_device_addr) and restored
+       from the last-primary pref at boot. No cache → fall back to undirected. */
+    LOG_I("No cached target device");
     return 0;
 }
 
@@ -1004,16 +783,11 @@ int audio_profile_send_voice_data(uint8_t *voice_data, uint16_t voice_data_len)
         {
             return 0;
         }
-        // Audio 跟著 HID active device 一起切目標（之前固定送 phone_device_idx，
-        // 現在改用 ble_dev_mgr 的 active device conn_idx）
+        // ADR-0008: single primary BLE link — audio always targets the primary
+        // phone's connection. (Multi-device active-target lived in the removed
+        // ble_device_manager; other devices are relayed by the primary, not
+        // directly connected to the watch.)
         uint8_t target_conn_idx = phone_device_idx;
-        const bonded_devices_db_t *db = ble_dev_mgr_get_database();
-        int active_idx = ble_dev_mgr_get_active_device();
-        if (db && active_idx >= 0 && active_idx < MAX_BONDED_DEVICES &&
-            db->devices[active_idx].conn_idx != 0xFF)
-        {
-            target_conn_idx = db->devices[active_idx].conn_idx;
-        }
         sibles_value_t value;
         value.hdl = g_audio_profile_hdl;
         value.idx = AUDIOPROFILE_AUDIO_VAL;
@@ -1165,7 +939,6 @@ bool get_bluetooth_broadcasting_status(void)
 {
     return bluetooth_broadcasting_status;
 }
-extern int check_main_phone_counterpart_connection(void);
 void ble_app_advertising_start(bool mouse_mode, bool pairing_mode);
 
 static lv_timer_t *main_phone_check_timer = NULL;
@@ -1180,8 +953,9 @@ check_main_phone_counterpart_connection_timer_callback(lv_timer_t *timer)
         // LOG_I("Advertising in progress, skipping main phone check");
         return;
     }
-    int device_idx = check_main_phone_counterpart_connection();
-    if (device_idx == -1)
+    /* ADR-0008: single primary link — "connected" is just the GAP connection
+       state; no device-manager DB lookup. */
+    if (SkaiWatchSys.gap_conn_state != GAP_CONN_STATE_CONNECTED)
     {
         LOG_I(
             "Main phone counterpart not connected, restarting advertising...");
@@ -1189,7 +963,6 @@ check_main_phone_counterpart_connection_timer_callback(lv_timer_t *timer)
     }
     else
     {
-        // LOG_I("Main phone counterpart is connected, no action needed");
         ble_dev_mgr_stop_main_phone_check_timer();
     }
 }
@@ -1646,27 +1419,17 @@ int ble_app_event_handler(uint16_t event_id, uint8_t *data, uint16_t len,
         LOG_I("Peer device(" MAC_FMT ") connected",
               MAC_ARG(env->conn_para.peer_addr.addr));
 
-        // Update device manager with connection
-        int dev_idx = ble_dev_mgr_find_device(env->conn_para.peer_addr.addr);
-        if (dev_idx < 0)
+        /* ADR-0008: the account device list is owned by the primary phone and
+           streamed over SKAI_LINK into SkaiWatchSys.device_registry — the watch
+           no longer keeps its own bonded-device table. Cache this peer as the
+           directed-advertising target so a drop reconnects fast; device name and
+           type now arrive over SKAI_LINK, so the GATT name reader is gone. */
         {
-            // New device, add it (assume phone type for now)
-            dev_idx = ble_dev_mgr_add_device(
-                env->conn_para.peer_addr.addr, env->conn_para.peer_addr_type,
-                NULL, // Name will be discovered later
-                DEVICE_TYPE_PHONE);
-        }
-        if (dev_idx >= 0)
-        {
-            ble_dev_mgr_update_connection(dev_idx, ind->conn_idx);
-            // Set as active device if it's the only one connected
-            if (ble_dev_mgr_get_active_device() < 0)
-            {
-                ble_dev_mgr_set_active_device(dev_idx);
-            }
-
-            // Read remote device name via GATT
-            dev_name_start_search(ind->conn_idx, dev_idx);
+            ble_gap_addr_t target = {0};
+            memcpy(target.addr.addr, env->conn_para.peer_addr.addr,
+                   sizeof(target.addr.addr));
+            target.addr_type = env->conn_para.peer_addr_type;
+            ble_app_set_bonded_device_addr(&target);
         }
 
         break;
@@ -1705,21 +1468,9 @@ int ble_app_event_handler(uint16_t event_id, uint8_t *data, uint16_t len,
 
         LOG_I("BLE_GAP_DISCONNECTED_IND reason:%d", ind->reason);
 
-        // Update device manager with disconnection
-        const bonded_devices_db_t *db = ble_dev_mgr_get_database();
-        if (db)
-        {
-            for (int i = 0; i < MAX_BONDED_DEVICES; i++)
-            {
-                if (db->devices[i].is_valid &&
-                    db->devices[i].conn_idx == ind->conn_idx)
-                {
-                    ble_dev_mgr_update_connection(i,
-                                                  0xFF); // Mark as disconnected
-                    break;
-                }
-            }
-        }
+        /* ADR-0008: device-manager DB removed. Primary-link disconnect state is
+           tracked in skaiwalk_disconnected_ind (SkaiWatchSys.gap_conn_state),
+           invoked above. */
 
         break;
     }
@@ -1729,75 +1480,6 @@ int ble_app_event_handler(uint16_t event_id, uint8_t *data, uint16_t len,
         LOG_D("BLE_GAP_REMOTE_RSSI_IND %d", ind->rssi);
         set_signal_bad(ind->rssi < -80);
         ble_tpc_on_rssi_sample(ind->rssi);
-        break;
-    }
-    case SIBLES_SEARCH_SVC_RSP:
-    {
-        sibles_svc_search_rsp_t *rsp = (sibles_svc_search_rsp_t *)data;
-
-        // Only handle if we initiated the search for GAP service
-        if (!g_name_reader.busy)
-            break;
-
-        uint16_t gap_svc_uuid = ATT_UUID_16(0x1800);
-        if (rsp->search_svc_len != ATT_UUID_16_LEN ||
-            memcmp(rsp->search_uuid, &gap_svc_uuid, ATT_UUID_16_LEN) != 0)
-            break;
-
-        if (rsp->result != 0 || !rsp->svc)
-        {
-            LOG_W("GAP service search failed, result=%d", rsp->result);
-            g_name_reader.busy = 0;
-            break;
-        }
-
-        // Find Device Name (0x2A00) and Appearance (0x2A01) characteristics
-        uint16_t dev_name_uuid = ATT_UUID_16(0x2A00);
-        uint16_t appearance_uuid = ATT_UUID_16(0x2A01);
-        sibles_svc_search_char_t *chara =
-            (sibles_svc_search_char_t *)rsp->svc->att_db;
-        bool found = false;
-        g_name_reader.appearance_hdl = 0;
-
-        for (uint8_t i = 0; i < rsp->svc->char_count; i++)
-        {
-            if (chara->uuid_len == ATT_UUID_16_LEN)
-            {
-                if (memcmp(chara->uuid, &dev_name_uuid, ATT_UUID_16_LEN) == 0)
-                {
-                    g_name_reader.name_value_hdl = chara->pointer_hdl;
-                    g_name_reader.svc_start_hdl = rsp->svc->hdl_start;
-                    g_name_reader.svc_end_hdl = rsp->svc->hdl_end;
-                    found = true;
-                    LOG_I("Found Device Name char, value_hdl=0x%x",
-                          chara->pointer_hdl);
-                }
-                else if (memcmp(chara->uuid, &appearance_uuid, ATT_UUID_16_LEN) == 0)
-                {
-                    g_name_reader.appearance_hdl = chara->pointer_hdl;
-                    LOG_I("Found Appearance char, value_hdl=0x%x",
-                          chara->pointer_hdl);
-                }
-            }
-            uint16_t offset = sizeof(sibles_svc_search_char_t) +
-                              chara->desc_count *
-                                  sizeof(struct sibles_disc_char_desc_ind);
-            chara = (sibles_svc_search_char_t *)((uint8_t *)chara + offset);
-        }
-
-        if (found)
-        {
-            g_name_reader.remote_handle = sibles_register_remote_svc(
-                rsp->conn_idx, rsp->svc->hdl_start, rsp->svc->hdl_end,
-                dev_name_gattc_callback);
-            LOG_I("Registered GAP service client, remote_handle=%d",
-                  g_name_reader.remote_handle);
-        }
-        else
-        {
-            LOG_W("Device Name characteristic not found");
-            g_name_reader.busy = 0;
-        }
         break;
     }
     default:

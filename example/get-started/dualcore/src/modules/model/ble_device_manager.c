@@ -644,21 +644,15 @@ int ble_dev_mgr_disconnect_device(uint8_t device_idx)
 
 int ble_dev_mgr_save_to_flash(void)
 {
-    if (!g_dev_mgr.initialized)
-    {
-        LOG_E("Device manager not initialized");
-        return -1;
-    }
-
-#ifdef BSP_SHARE_PREFS
-    dev_mgr_lock();
-    int ret = ble_dev_prefs_save(&g_dev_mgr.database);
-    dev_mgr_unlock();
-    return ret;
-#else
-    LOG_W("BSP_SHARE_PREFS not defined, Flash storage not available");
-    return -1;
-#endif
+    /* ADR-0008: bonded-device persistence is decommissioned. The account device
+       list is owned by the primary phone and synced via SKAI_LINK into
+       SkaiWatchSys.device_registry; this module is now RAM-only pending full
+       removal. Persisting here also ran FlashDB (share_prefs_open / fdb_kvdb_init)
+       on the BLE event thread (KE_EVT2, 4 KB stack) during the connection storm
+       — name read, appearance read, add, set-active each triggered a save — and
+       the deep FlashDB call stack overflowed it (usage fault, SCB_CFSR_UFSR STKOF).
+       No-op until the module is deleted. */
+    return 0;
 }
 
 int ble_dev_mgr_load_from_flash(void)

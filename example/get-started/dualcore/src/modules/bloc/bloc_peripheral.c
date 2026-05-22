@@ -605,7 +605,7 @@ static void peripheral_task_entry(void *parameter)
             {
     #ifndef BSP_USING_PC_SIMULATOR
                 watch_prefs_key local_key = (watch_prefs_key)data.arg.value;
-                store_watch_prefs(local_key);
+                store_watch_prefs_async(local_key);
     #endif
                 break;
             }
