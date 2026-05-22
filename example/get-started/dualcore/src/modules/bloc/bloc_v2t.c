@@ -118,12 +118,101 @@ static volatile bool rec_disk_full = false;
    recording doesn't die after a couple of seconds. */
 #define REC_MIN_FREE_BYTES (128 * 1024)
 
-/* Opus encoder for recording */
+/* ── Shared Opus encoder (recording ⇄ V2T streaming) ──────────────────────
+   Recording and V2T streaming never encode at the same time: the audio thread
+   picks ONE path per frame (V2T-priority else-if; see audio_code_i2s.c), and
+   each path refuses to (re)start while already active. So the two paths share
+   a SINGLE encoder instance — reconfigured for whichever path owns it — instead
+   of two simultaneous encoders. opus_encoder_create() sizes the allocation
+   exactly; an owner guard keeps the two paths from clobbering each other, and
+   release() destroys it (the old V2T encoder was created lazily and never
+   destroyed — a permanent ~10-12 KB leak that this removes). */
 #ifdef ENABLE_OPUS_ENCODER
-static OpusEncoder *rec_opus_encoder = NULL;
+typedef enum
+{
+    OPUS_OWNER_NONE = 0,
+    OPUS_OWNER_REC,  // file recording  (10 ms frames, no FEC)
+    OPUS_OWNER_V2T,  // BLE streaming   (20 ms frames, in-band FEC)
+} opus_owner_t;
+
+static OpusEncoder *shared_opus_encoder = NULL;  // non-NULL only while owned
+static opus_owner_t opus_enc_owner = OPUS_OWNER_NONE;
+
 static uint8_t rec_opus_output[OPUS_REC_MAX_PACKET] __attribute__((aligned(4)));
 static int16_t rec_pcm_buffer[OPUS_REC_FRAME_SIZE];
 static uint16_t rec_pcm_buffer_idx = 0;
+
+/* Acquire the shared encoder for `owner`, configured for that path's profile.
+   Returns the encoder, or NULL if the OTHER path already owns it (caller must
+   then skip encoding) or creation failed. Re-acquiring as the current owner
+   just returns the live encoder. */
+static OpusEncoder *opus_enc_acquire(opus_owner_t owner)
+{
+    if (opus_enc_owner != OPUS_OWNER_NONE && opus_enc_owner != owner)
+    {
+        LOG_W("opus encoder busy (owner=%d), request %d denied\n",
+              opus_enc_owner, owner);
+        return NULL;
+    }
+    if (shared_opus_encoder != NULL && opus_enc_owner == owner)
+    {
+        return shared_opus_encoder;
+    }
+
+    int err;
+    OpusEncoder *enc = opus_encoder_create(OPUS_REC_SAMPLE_RATE, OPUS_REC_CHANNELS,
+                                           OPUS_APPLICATION_VOIP, &err);
+    if (err != OPUS_OK || enc == NULL)
+    {
+        LOG_E("opus_encoder_create failed err=%d\n", err);
+        return NULL;
+    }
+
+    // Shared profile (identical in both original encoders).
+    opus_encoder_ctl(enc, OPUS_SET_VBR(1));
+    opus_encoder_ctl(enc, OPUS_SET_BITRATE(OPUS_REC_BITRATE));
+    opus_encoder_ctl(enc, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
+    opus_encoder_ctl(enc, OPUS_SET_COMPLEXITY(0));
+    opus_encoder_ctl(enc, OPUS_SET_LSB_DEPTH(16));
+    opus_encoder_ctl(enc, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
+
+    if (owner == OPUS_OWNER_REC)
+    {
+        // File recording: 10 ms frames, constrained VBR, no FEC/DTX.
+        opus_encoder_ctl(enc, OPUS_SET_EXPERT_FRAME_DURATION(OPUS_FRAMESIZE_10_MS));
+        opus_encoder_ctl(enc, OPUS_SET_VBR_CONSTRAINT(1));
+        opus_encoder_ctl(enc, OPUS_SET_DTX(0));
+        opus_encoder_ctl(enc, OPUS_SET_INBAND_FEC(0));
+        opus_encoder_ctl(enc, OPUS_SET_PACKET_LOSS_PERC(0));
+        opus_encoder_ctl(enc, OPUS_SET_PREDICTION_DISABLED(0));
+        opus_encoder_ctl(enc, OPUS_SET_BANDWIDTH(OPUS_AUTO));
+    }
+    else // OPUS_OWNER_V2T
+    {
+        // BLE streaming: 20 ms frames + in-band FEC so a silent drop is
+        // recoverable phone-side (opus_stream_decoder.dart drives FEC/PLC).
+        opus_encoder_ctl(enc, OPUS_SET_EXPERT_FRAME_DURATION(OPUS_FRAMESIZE_20_MS));
+        opus_encoder_ctl(enc, OPUS_SET_INBAND_FEC(1));
+        opus_encoder_ctl(enc, OPUS_SET_PACKET_LOSS_PERC(10));
+    }
+
+    shared_opus_encoder = enc;
+    opus_enc_owner = owner;
+    LOG_D("opus encoder acquired by owner=%d\n", owner);
+    return enc;
+}
+
+/* Release + destroy the shared encoder if `owner` holds it. Idempotent. */
+static void opus_enc_release(opus_owner_t owner)
+{
+    if (opus_enc_owner == owner && shared_opus_encoder != NULL)
+    {
+        opus_encoder_destroy(shared_opus_encoder);
+        shared_opus_encoder = NULL;
+        opus_enc_owner = OPUS_OWNER_NONE;
+        LOG_D("opus encoder released by owner=%d\n", owner);
+    }
+}
 #endif
 static uint32_t _voice_recording_time = 0;
 static char current_recording_file[MAX_RECORD_PATH_LEN] = {0};
@@ -394,6 +483,11 @@ void stop_voice_recognition(uint8_t intent)
     speaking_debounce_timer_stop();
     notify_user_speaking_intent(stop_intent);
     app_voice_set_voice2text_status(false);
+#ifdef ENABLE_OPUS_ENCODER
+    // V2T streaming ended — release the shared encoder. This path used to
+    // create it lazily and never destroy it; that ~10-12 KB leak is now gone.
+    opus_enc_release(OPUS_OWNER_V2T);
+#endif
     /* V2T ended — fall back from the 1 s UI-indicator cadence to the 10 s
        TPC cadence. Don't stop the checker entirely; it stays running for
        the whole connection lifetime and is only stopped on disconnect. */
@@ -634,32 +728,15 @@ int start_voice_recording(void)
     tm_info = localtime(&now);
 
 #ifdef ENABLE_OPUS_ENCODER
-    // Initialize Opus encoder for recording (same as opus example main.c)
-    int err;
-    rec_opus_encoder = opus_encoder_create(OPUS_REC_SAMPLE_RATE, OPUS_REC_CHANNELS,
-                                           OPUS_APPLICATION_VOIP, &err);
-    if (err != OPUS_OK || rec_opus_encoder == NULL)
+    // Acquire the shared Opus encoder for recording (profile set inside
+    // opus_enc_acquire). NULL ⇒ V2T owns it or create failed; recording then
+    // falls back to raw PCM via audio_record_pcm().
+    if (opus_enc_acquire(OPUS_OWNER_REC) == NULL)
     {
-        LOG_E("Failed to create Opus encoder, error=%d\n", err);
-        rec_opus_encoder = NULL;
+        LOG_E("Failed to acquire Opus encoder for recording\n");
     }
     else
     {
-        // Configure encoder (same settings as opus example)
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_EXPERT_FRAME_DURATION(OPUS_FRAMESIZE_10_MS));
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_VBR(1));
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_VBR_CONSTRAINT(1));
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_BITRATE(OPUS_REC_BITRATE));
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_COMPLEXITY(0));
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_LSB_DEPTH(16));
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_DTX(0));
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_INBAND_FEC(0));
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_PACKET_LOSS_PERC(0));
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_PREDICTION_DISABLED(0));
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
-        opus_encoder_ctl(rec_opus_encoder, OPUS_SET_BANDWIDTH(OPUS_AUTO));
-
         rec_pcm_buffer_idx = 0;
         LOG_D("Opus encoder initialized for recording\n");
     }
@@ -678,11 +755,7 @@ int start_voice_recording(void)
     {
         LOG_E("failed to open recording file %s", file_path);
 #ifdef ENABLE_OPUS_ENCODER
-        if (rec_opus_encoder != NULL)
-        {
-            opus_encoder_destroy(rec_opus_encoder);
-            rec_opus_encoder = NULL;
-        }
+        opus_enc_release(OPUS_OWNER_REC);
 #endif
 #ifdef BSP_USING_BLOC_PERIPHERAL
         peripheral_provider.subscribe_audio_mic_sensor(false);
@@ -715,7 +788,7 @@ static uint8_t audio_buffer[AUDIO_REC_TEMP_SIZE];
  */
 static int audio_record_opus(const void *temp_buf, rt_uint32_t data_len)
 {
-    if (rec_opus_encoder == NULL)
+    if (shared_opus_encoder == NULL)
     {
         LOG_E("Opus encoder not initialized\n");
         return -1;
@@ -738,7 +811,7 @@ static int audio_record_opus(const void *temp_buf, rt_uint32_t data_len)
         if (rec_pcm_buffer_idx >= OPUS_REC_FRAME_SIZE)
         {
             // Encode using opus_encode directly (same as opus example main.c)
-            opus_int32 encoded_len = opus_encode(rec_opus_encoder,
+            opus_int32 encoded_len = opus_encode(shared_opus_encoder,
                                                  rec_pcm_buffer,
                                                  OPUS_REC_FRAME_SIZE,
                                                  rec_opus_output,
@@ -776,13 +849,12 @@ static int audio_record_opus(const void *temp_buf, rt_uint32_t data_len)
 }
 
 
-// ── Real-time V2T Opus streaming (separate from the recording encoder) ──
+// ── Real-time V2T Opus streaming (shares the single encoder; see top) ──
 // Streaming config differs from recording: in-band FEC ON + packet-loss-perc,
 // because the BLE audio characteristic is fire-and-forget (silent drops). 20ms
 // frames halve the BLE notification rate vs the recording path's 10ms.
 // NOTE: authored without an on-device build — needs Keil compile + review.
 #define V2T_OPUS_FRAME_SIZE 320 // 20ms @ 16kHz
-static OpusEncoder *v2t_opus_encoder = NULL;
 static int16_t v2t_pcm_buf[V2T_OPUS_FRAME_SIZE];
 static uint16_t v2t_pcm_idx = 0;
 static uint8_t v2t_opus_seq = 0;
@@ -791,32 +863,20 @@ static uint8_t v2t_send_buf[2 + OPUS_REC_MAX_PACKET] __attribute__((aligned(4)))
 
 static int v2t_opus_lazy_init(void)
 {
-    if (v2t_opus_encoder != NULL)
+    // 20ms + FEC profile is applied inside opus_enc_acquire(); the encoder is
+    // shared with recording and owner-guarded there. Reset the frame/seq
+    // accumulators only on a fresh acquire (start of a V2T session), not on
+    // every per-frame call, so frame assembly survives across calls.
+    bool fresh = (opus_enc_owner != OPUS_OWNER_V2T);
+    if (opus_enc_acquire(OPUS_OWNER_V2T) == NULL)
     {
-        return 0;
-    }
-    int err;
-    v2t_opus_encoder = opus_encoder_create(OPUS_REC_SAMPLE_RATE, OPUS_REC_CHANNELS,
-                                           OPUS_APPLICATION_VOIP, &err);
-    if (err != OPUS_OK || v2t_opus_encoder == NULL)
-    {
-        LOG_E("v2t opus create failed err=%d\n", err);
-        v2t_opus_encoder = NULL;
         return -1;
     }
-    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_EXPERT_FRAME_DURATION(OPUS_FRAMESIZE_20_MS));
-    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_VBR(1));
-    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_BITRATE(OPUS_REC_BITRATE));
-    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
-    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_COMPLEXITY(0));
-    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_LSB_DEPTH(16));
-    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_MAX_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
-    // Streaming-specific: in-band FEC + expected loss so a dropped BLE packet is
-    // recoverable on the phone (opus_stream_decoder.dart drives FEC/PLC).
-    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_INBAND_FEC(1));
-    opus_encoder_ctl(v2t_opus_encoder, OPUS_SET_PACKET_LOSS_PERC(10));
-    v2t_pcm_idx = 0;
-    v2t_opus_seq = 0;
+    if (fresh)
+    {
+        v2t_pcm_idx = 0;
+        v2t_opus_seq = 0;
+    }
     return 0;
 }
 
@@ -839,7 +899,7 @@ void v2t_opus_stream_send(const int16_t *pcm, uint32_t samples)
         }
         if (v2t_pcm_idx >= V2T_OPUS_FRAME_SIZE)
         {
-            opus_int32 n = opus_encode(v2t_opus_encoder, v2t_pcm_buf,
+            opus_int32 n = opus_encode(shared_opus_encoder, v2t_pcm_buf,
                                        V2T_OPUS_FRAME_SIZE,
                                        v2t_send_buf + 2, OPUS_REC_MAX_PACKET);
             v2t_pcm_idx = 0;
@@ -873,8 +933,8 @@ int audio_record_pcm(const void *temp_buf, rt_uint32_t data_len)
     }
 
 #ifdef ENABLE_OPUS_ENCODER
-    // Use Opus encoding when available
-    if (rec_opus_encoder != NULL)
+    // Use Opus encoding when recording owns the shared encoder.
+    if (shared_opus_encoder != NULL && opus_enc_owner == OPUS_OWNER_REC)
     {
         return audio_record_opus(temp_buf, data_len);
     }
@@ -918,7 +978,7 @@ void stop_voice_recording(void)
 
 #ifdef ENABLE_OPUS_ENCODER
     // Flush remaining PCM samples if any (pad with zeros to complete last frame)
-    if (rec_opus_encoder != NULL && rec_pcm_buffer_idx > 0)
+    if (shared_opus_encoder != NULL && rec_pcm_buffer_idx > 0)
     {
         // Pad remaining buffer with zeros
         while (rec_pcm_buffer_idx < OPUS_REC_FRAME_SIZE)
@@ -927,7 +987,7 @@ void stop_voice_recording(void)
         }
 
         // Encode and write final frame
-        opus_int32 encoded_len = opus_encode(rec_opus_encoder,
+        opus_int32 encoded_len = opus_encode(shared_opus_encoder,
                                              rec_pcm_buffer,
                                              OPUS_REC_FRAME_SIZE,
                                              rec_opus_output,
@@ -941,14 +1001,9 @@ void stop_voice_recording(void)
         }
     }
 
-    // Destroy Opus encoder
-    if (rec_opus_encoder != NULL)
-    {
-        opus_encoder_destroy(rec_opus_encoder);
-        rec_opus_encoder = NULL;
-        rec_pcm_buffer_idx = 0;
-        LOG_D("Opus encoder destroyed\n");
-    }
+    // Release (destroy) the shared encoder.
+    opus_enc_release(OPUS_OWNER_REC);
+    rec_pcm_buffer_idx = 0;
 #endif
 
     LOG_D("recorded %d bytes to file: %s", record_bytes, current_recording_file);

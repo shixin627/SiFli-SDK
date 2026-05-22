@@ -123,17 +123,12 @@ CC build_sf32lb56w-watch_hcpu\bootloader\sifli_sdk\drivers\hal\bf0_sys_cfg.o
 CC build_sf32lb56w-watch_hcpu\bootloader\sifli_sdk\drivers\hal\flash_table.o
 CC build_sf32lb56w-watch_hcpu\bootloader\sifli_sdk\drivers\hal\nand_table.o
 CC build_sf32lb56w-watch_hcpu\bootloader\sifli_sdk\drivers\hal\sifli_bbm.o
+AR build_sf32lb56w-watch_hcpu\bootloader\sifli_sdk\drivers\hal\BF0_HAL.lib
 LINK build_sf32lb56w-watch_hcpu\bootloader\bootloader.axf
 Program Size: Code=19400 RO-data=8564 RW-data=7516 ZI-data=27108  
-<<<<<<< HEAD
-Generating build_sf32lb56w-watch_hcpu\bootloader\bootloader.hex ...
-Generating build_sf32lb56w-watch_hcpu\bootloader\bootloader.asm ...
-Generating build_sf32lb56w-watch_hcpu\bootloader\bootloader.bin ...
-=======
-Generating build_sf32lb56w-watch_hcpu\bootloader\bootloader.asm ...
 Generating build_sf32lb56w-watch_hcpu\bootloader\bootloader.bin ...
 Generating build_sf32lb56w-watch_hcpu\bootloader\bootloader.hex ...
->>>>>>> origin/andrew_v28.50
+Generating build_sf32lb56w-watch_hcpu\bootloader\bootloader.asm ...
 
 ========================================================================
 
@@ -191,13 +186,7 @@ static Vector3 accData, gyroData;
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\algorithm\GestureDetect\gesture_detect.c:482:16: warning: unused variable 'log_count' [-Wunused-variable]
 static uint8_t log_count = 0;
                ^
-<<<<<<< HEAD
 3 warnings generated.
-CC build_sf32lb56w-watch_hcpu\lcpu\modules\service\hr_service.o
-=======
-CC build_sf32lb56w-watch_hcpu\lcpu\modules\service\hr_service.o
-3 warnings generated.
->>>>>>> origin/andrew_v28.50
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_motor.c:473:22: warning: extra tokens at end of #ifdef directive [-Wextra-tokens]
 #ifdef MOTOR_ENABLED && (CUSTOMER_BOARD_VER != BOARD_VER_13)
                      ^
@@ -212,18 +201,12 @@ static uint8_t motor_control_io_pin_state = 0;
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_motor.c:93:16: warning: unused variable 'motor_power_io_pin_state' [-Wunused-variable]
 static uint8_t motor_power_io_pin_state = 0;
                ^
-<<<<<<< HEAD
+CC build_sf32lb56w-watch_hcpu\lcpu\modules\service\hr_service.o
 5 warnings generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\modules\service\acce_service.o
-CC build_sf32lb56w-watch_hcpu\lcpu\modules\service\watch_system_service.o
 4 warnings generated.
-=======
-CC build_sf32lb56w-watch_hcpu\lcpu\modules\service\acce_service.o
 CC build_sf32lb56w-watch_hcpu\lcpu\modules\service\watch_system_service.o
->>>>>>> origin/andrew_v28.50
 CC build_sf32lb56w-watch_hcpu\lcpu\modules\util\trig.o
-5 warnings generated.
-4 warnings generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\modules\util\list.o
 CC build_sf32lb56w-watch_hcpu\lcpu\modules\util\math_fixed.o
 CC build_sf32lb56w-watch_hcpu\lcpu\modules\util\platform.o
@@ -235,32 +218,22 @@ CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\boards\common\bsp_common.o
 1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\boards\common\flash.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\boards\eh-lb56xu\battery_table.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\boards\eh-lb56xu\bsp_init.o
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\util\includes\util\time\time.c:209:12: warning: unused variable 'ms' [-Wunused-variable]
   uint16_t ms;
            ^
-<<<<<<< HEAD
-=======
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\boards\eh-lb56xu\bsp_init.o
->>>>>>> origin/andrew_v28.50
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\util\includes\util\time\time.c:29:22: warning: unused variable 's_mon_lengths' [-Wunused-const-variable]
 static const uint8_t s_mon_lengths[2][MONTHS_PER_YEAR] = {
                      ^
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\util\includes\util\time\time.c:33:23: warning: unused variable 's_year_lengths' [-Wunused-const-variable]
 static const uint16_t s_year_lengths[2] = {
                       ^
-<<<<<<< HEAD
 3 warnings generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\boards\eh-lb56xu\bsp_lcd_tp.o
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\service\hr_service.c:763:21: warning: unused variable 'req' [-Wunused-variable]
-        data_req_t *req = (data_req_t *)data_service_get_msg_body(msg);
-                    ^
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\boards\eh-lb56xu\bsp_pinmux.o
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\boards\eh-lb56xu\bsp_power.o
-=======
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\service\hr_service.c:763:21: warning: unused variable 'req' [-Wunused-variable]
         data_req_t *req = (data_req_t *)data_service_get_msg_body(msg);
                     ^
->>>>>>> origin/andrew_v28.50
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\service\watch_system_service.c:175:9: warning: implicit declaration of function 'is_sleep_mode' is invalid in C99 [-Wimplicit-function-declaration]
     if (is_sleep_mode()) return;
         ^
@@ -285,44 +258,35 @@ C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\service\watch_sys
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\service\watch_system_service.c:441:13: warning: implicit declaration of function 'set_enable_tap_and_hold' is invalid in C99 [-Wimplicit-function-declaration]
             set_enable_tap_and_hold(mode == 1);
             ^
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\service\watch_system_service.c:108:13: warning: unused function 'notify_battery_voltage' [-Wunused-function]
-static void notify_battery_voltage(uint32_t data)
-            ^
-<<<<<<< HEAD
-1 warning generated.
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\charger\charge.o
-9 warnings generated.
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\charger\simple_charge\simple_charge.o
-=======
-3 warnings generated.
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\boards\eh-lb56xu\bsp_lcd_tp.o
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\boards\eh-lb56xu\bsp_pinmux.o
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\service\watch_system_service.c:512:36: warning: implicit declaration of function 'atoi' is invalid in C99 [-Wimplicit-function-declaration]
+            uint32_t loc_voltage = atoi(argv[2]);
+                                   ^
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\service\watch_system_service.c:520:36: warning: implicit declaration of function 'atoi' is invalid in C99 [-Wimplicit-function-declaration]
+            uint32_t loc_voltage = atoi(argv[2]);
+                                   ^
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\service\watch_system_service.c:500:12: warning: unused function 'test_watch_sys_service' [-Wunused-function]
+static int test_watch_sys_service(int argc,
+           ^
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\boards\eh-lb56xu\bsp_power.o
-9 warnings generated.
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\charger\charge.o
 1 warning generated.
->>>>>>> origin/andrew_v28.50
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\charger\charge.o
+11 warnings generated.
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\charger\simple_charge\simple_charge.o
 C:\skaiwalk\SiFli-SDK\customer\boards\common\flash.c:76:13: warning: unused function 'BSP_FLASH_PIN_Set' [-Wunused-function]
 static void BSP_FLASH_PIN_Set(int pin, int val, int is_porta)
             ^
 C:\skaiwalk\SiFli-SDK\customer\boards\common\flash.c:175:13: warning: unused function 'flash_lock2' [-Wunused-function]
 static void flash_lock2(uint32_t addr, uint32_t lock)
             ^
-<<<<<<< HEAD
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\motor\motor.o
-=======
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\charger\simple_charge\simple_charge.o
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\motor\motor.o
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\BMI270-Sensor-API\bmi2.o
->>>>>>> origin/andrew_v28.50
 2 warnings generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\BMI270-Sensor-API\bmi2.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\BMI270-Sensor-API\bmi270.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\BMI270-Sensor-API\bmi270_context.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\BMI270-Sensor-API\bmi270_legacy.o
 C:\skaiwalk\SiFli-SDK\customer\boards\eh-lb56xu\bsp_power.c:31:13: warning: unused function 'BSP_PBR_GPIO_Set' [-Wunused-function]
 static void BSP_PBR_GPIO_Set(int pin, uint8_t state)
             ^
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\BMI270-Sensor-API\bmi270_legacy.o
 1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\BMI270-Sensor-API\bmi270_maximum_fifo.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\BMI270-Sensor-API\bmi2_ois.o
@@ -331,17 +295,11 @@ CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\BMI270-
 C:\skaiwalk\SiFli-SDK\customer\peripherals\motor\motor.c:264:14: warning: unused variable 'ret' [-Wunused-variable]
     rt_err_t ret = RT_EOK;
              ^
-<<<<<<< HEAD
-=======
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\BMI270-Sensor-API\common\sensor_bmi270.o
-1 warning generated.
->>>>>>> origin/andrew_v28.50
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh3018.o
 1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_comm_pkg.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_ctrl.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_hook.o
-<<<<<<< HEAD
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_port.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_process.o
 C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\BMI270-Sensor-API\common\sensor_bmi270.c:129:17: warning: unused function '_bmi270_acc_set_mode' [-Wunused-function]
@@ -350,8 +308,7 @@ static rt_err_t _bmi270_acc_set_mode(rt_sensor_t sensor, rt_uint8_t mode)
 C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\BMI270-Sensor-API\common\sensor_bmi270.c:218:17: warning: unused function '_bmi270_self_test' [-Wunused-function]
 static rt_err_t _bmi270_self_test(rt_sensor_t sensor, rt_uint8_t mode)
                 ^
-=======
->>>>>>> origin/andrew_v28.50
+2 warnings generated.
 C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\BMI270-Sensor-API\common\bmi270_driver.c:950:17: warning: unused variable 'cost_time' [-Wunused-variable]
             int cost_time = handle_imu_data(watch_sensor.imu_data.sample_rate,
                 ^
@@ -361,78 +318,52 @@ C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\BMI270-Sensor-API\common\bmi27
 C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\BMI270-Sensor-API\common\bmi270_driver.c:1307:13: warning: unused variable 'rst' [-Wunused-variable]
     uint8_t rst;
             ^
-C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\BMI270-Sensor-API\common\sensor_bmi270.c:129:17: warning: unused function '_bmi270_acc_set_mode' [-Wunused-function]
-static rt_err_t _bmi270_acc_set_mode(rt_sensor_t sensor, rt_uint8_t mode)
-                ^
-C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\BMI270-Sensor-API\common\sensor_bmi270.c:218:17: warningC:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\BMI270-Sensor-API\common\bmi270_driver.c:1628:9: warning: unused variable 'res' [-Wunused-variable]
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_reg_array.o
+C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\BMI270-Sensor-API\common\bmi270_driver.c:1628:9: warning: unused variable 'res' [-Wunused-variable]
     int res;
         ^
-: unused function '_bmi270_self_test' [-Wunused-function]
-static rt_err_t _bmi270_self_test(rt_sensor_t sensor, rt_uint8_t mode)
-                ^
 C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\BMI270-Sensor-API\common\bmi270_driver.c:966:12: warning: unused function 'imuDataAvailable' [-Wunused-function]
 static int imuDataAvailable()
            ^
 C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\BMI270-Sensor-API\common\bmi270_driver.c:1129:13: warning: unused function 'bmi270_int2_handle' [-Wunused-function]
 static void bmi270_int2_handle(void *args)
             ^
-2 warnings generated.
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_example_reg_array.o
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_hbd_ctrl.o
-<<<<<<< HEAD
-=======
-6 warnings generated.
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\sensor_goodix_gh3018.o
->>>>>>> origin/andrew_v28.50
 C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\gh3018\gh30x_example_process.c:625:12: warning: unused variable 'hbd_ver' [-Wunused-variable]
     GCHAR *hbd_ver = Gh30xHBDVersionGet();
            ^
 C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\gh3018\gh30x_example_process.c:1887:26: warning: result of comparison of constant 255 with expression of type 'GS8' (aka 'signed char') is always false [-Wtautological-constant-out-of-range-compare]
     if (communicate_type == COMM_TYPE_INVALID_VAL)
         ~~~~~~~~~~~~~~~~ ^  ~~~~~~~~~~~~~~~~~~~~~
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\gh30x_hbd_ctrl.o
 6 warnings generated.
+2 warnings generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh3018\sensor_goodix_gh3018.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knBasicWeights.o
-2 warnings generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knConfNetWeights.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knSceneNetWeights.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knSceneSwitchWeights.o
 C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\gh3018\gh30x_example_hook.c:57:16: warning: unused variable 'log_count' [-Wunused-variable]
 static uint8_t log_count = 0;
                ^
-<<<<<<< HEAD
-=======
-1 warning generated.
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knSceneNetWeights.o
-2 warnings generated.
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knSceneSwitchWeights.o
->>>>>>> origin/andrew_v28.50
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knWeights.o
 1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\HRNet_knWeightsSmall.o
-<<<<<<< HEAD
-=======
-C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\gh3018\sensor_goodix_gh3018.c:137:9: warning: implicit declaration of function 'open_gh3018_low_power' is invalid in C99 [-Wimplicit-function-declaration]
-        open_gh3018_low_power();
-        ^
->>>>>>> origin/andrew_v28.50
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\heart_net_org_dll.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo\Basic\src\pre_v2.1.0_spo2_for_GH3011_N1_basic_730eb8.o
-1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\call\src\gh30x_demo_algo_call_adt.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\call\src\gh30x_demo_algo_call_hr.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\call\src\gh30x_demo_algo_call_hrv.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\call\src\gh30x_demo_algo_call_nadt.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\call\src\gh30x_demo_algo_call_spo2.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\common\src\gh30x_demo_algo_call.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\common\src\gh30x_demo_algo_config.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\common\src\gh30x_demo_algo_hook.o
 C:\skaiwalk\SiFli-SDK\customer\peripherals\sensor\gh3018\sensor_goodix_gh3018.c:137:9: warning: implicit declaration of function 'open_gh3018_low_power' is invalid in C99 [-Wimplicit-function-declaration]
         open_gh3018_low_power();
         ^
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\common\src\gh30x_demo_algo_config.o
-1 warning generated.
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\common\src\gh30x_demo_algo_hook.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\customer\peripherals\sensor\gh30x_algo_demo\common\src\gh30x_demo_algo_memory.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\cmsis\sf32lb56x\bf0_pin_const.o
+1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\cmsis\sf32lb56x\Templates\system_bf0_ap.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\cmsis\sf32lb56x\lcpu_config_type.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal.o
@@ -464,6 +395,8 @@ CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_lcdc.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_lcpu_config.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_lpaon.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_lpcomp.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_lptim.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_lrc_cal.o
 C:\skaiwalk\SiFli-SDK\drivers\hal\bf0_hal_i2c.c:5914:26: warning: unused function 'I2C_WaitOnTXISFlagUntilTimeout' [-Wunused-function]
 static HAL_StatusTypeDef I2C_WaitOnTXISFlagUntilTimeout(I2C_HandleTypeDef *hi2c, uint32_t Timeout, uint32_t Tickstart)
                          ^
@@ -476,18 +409,12 @@ static void I2C_TransferConfig(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uin
 C:\skaiwalk\SiFli-SDK\drivers\hal\bf0_hal_i2c.c:131:13: warning: unused function 'I2C_ConvertOtherXferOptions' [-Wunused-function]
 static void I2C_ConvertOtherXferOptions(I2C_HandleTypeDef *hi2c);
             ^
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_lptim.o
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_lrc_cal.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_mailbox.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_mpi.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_mpi_ex.o
-4 warnings generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_mpi_psram.o
-<<<<<<< HEAD
-=======
-4 warnings generated.
->>>>>>> origin/andrew_v28.50
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_nn_acc.o
+4 warnings generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_patch.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_pcd.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_pdm.o
@@ -498,20 +425,16 @@ CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_ptc.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_rcc.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_rng.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_rtc.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_sd_ex.o
 C:\skaiwalk\SiFli-SDK\drivers\hal\bf0_hal_pmu.c:64:23: warning: unused function 'PMU_RoundF_I16' [-Wunused-function]
 static inline int16_t PMU_RoundF_I16(float val)
                       ^
 C:\skaiwalk\SiFli-SDK\drivers\hal\bf0_hal_pmu.c:76:24: warning: unused function 'PMU_RoundF_U16' [-Wunused-function]
 static inline uint16_t PMU_RoundF_U16(float val)
                        ^
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_sd_ex.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_sdadc.o
-2 warnings generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_sdhci.o
-<<<<<<< HEAD
 2 warnings generated.
-=======
->>>>>>> origin/andrew_v28.50
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_sdmmc.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_secu.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\bf0_hal_spi.o
@@ -532,11 +455,8 @@ CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\audio\audio_voice_proc\a
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\battery\battery_calculator.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\bluetooth\porting\rtt\rw_rtt.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\bluetooth\service\bluetooth.o
-<<<<<<< HEAD
-AR build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\BF0_HAL.lib
-=======
->>>>>>> origin/andrew_v28.50
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\bluetooth\service\internal\bluetooth_config.o
+AR build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\drivers\hal\BF0_HAL.lib
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\bluetooth\service\internal\bluetooth_misc.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\bluetooth\lib\dummy.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\button\button.o
@@ -545,7 +465,6 @@ CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\data_bus\public\data_ser
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\data_bus\public\data_service.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\data_bus\public\pin_service.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\ipc_queue\common\circular_buf.o
-<<<<<<< HEAD
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\ipc_queue\common\ipc_hw.o
 C:\skaiwalk\SiFli-SDK\middleware\bluetooth\service\internal\bluetooth_config.c:2316:17: warning: 'MAX_BLE_ISO' macro redefined [-Wmacro-redefined]
         #define MAX_BLE_ISO 0
@@ -556,32 +475,16 @@ build_sf32lb56w-watch_hcpu\lcpu\rtconfig.h:84:9: note: previous definition is he
 C:\skaiwalk\SiFli-SDK\middleware\bluetooth\service\internal\bluetooth_config.c:548:17: warning: unused function 'uart_rx_ind' [-Wunused-function]
 static rt_err_t uart_rx_ind(struct uart_env_tag *env, rt_device_t dev, rt_size_t size)
                 ^
-=======
->>>>>>> origin/andrew_v28.50
 C:\skaiwalk\SiFli-SDK\middleware\button\button.c:734:10: warning: unused variable 'pressed' [-Wunused-variable]
     bool pressed;
          ^
 C:\skaiwalk\SiFli-SDK\middleware\button\button.c:152:20: warning: unused function 'get_group_pin_idx' [-Wunused-function]
 inline static void get_group_pin_idx(int pin, uint8_t *group_idx, uint8_t *pin_idx)
                    ^
-<<<<<<< HEAD
-=======
-C:\skaiwalk\SiFli-SDK\middleware\bluetooth\service\internal\bluetooth_config.c:2316:17: warning: 'MAX_BLE_ISO' macro redefined [-Wmacro-redefined]
-        #define MAX_BLE_ISO 0
-                ^
-build_sf32lb56w-watch_hcpu\lcpu\rtconfig.h:84:9: note: previous definition is here
-#define MAX_BLE_ISO 2
-        ^
-C:\skaiwalk\SiFli-SDK\middleware\bluetooth\service\internal\bluetooth_config.c:548:17: warning: unused function 'uart_rx_ind' [-Wunused-function]
-static rt_err_t uart_rx_ind(struct uart_env_tag *env, rt_device_t dev, rt_size_t size)
-                ^
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\ipc_queue\common\ipc_hw.o
-2 warnings generated.
->>>>>>> origin/andrew_v28.50
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\ipc_queue\common\ipc_queue.o
 2 warnings generated.
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\ipc_queue\porting\sf32lb56x\lcpu\ipc_hw_port.o
 2 warnings generated.
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\ipc_queue\porting\sf32lb56x\lcpu\ipc_hw_port.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\system\bf0_common.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\middleware\system\bf0_pm.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\os_adaptor\src\os_adaptor_rtthread.o
@@ -603,45 +506,28 @@ CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers\drv
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_i2c.c:1219:13: warning: unused function 'I2Cx_DMA_IRQHandler' [-Wunused-function]
 static void I2Cx_DMA_IRQHandler(uint32_t index)
             ^
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers\drv_psram.o
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_rtc.c:123:11: warning: unused variable 't' [-Wunused-variable]
     float t;
           ^
-<<<<<<< HEAD
+1 warning generated.
 1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers\drv_psram.o
-1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers\drv_mpi.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers\drv_common.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers\drv_dbg.o
+C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:120:9: warning: unused variable 'res' [-Wunused-variable]
+    int res = 0;
+        ^
+C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:270:10: warning: unused variable 'res' [-Wunused-variable]
+    bool res;
+         ^
+C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:271:23: warning: unused variable 'ret' [-Wunused-variable]
+    HAL_StatusTypeDef ret;
+                      ^
+C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:272:9: warning: unused variable 'level' [-Wunused-variable]
+    int level;
+        ^
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\clock.o
-C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:120:9: warning: unused variable 'res' [-Wunused-variable]
-    int res = 0;
-        ^
-C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:270:10: warning: unused variable 'res' [-Wunused-variable]
-    bool res;
-         ^
-C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:271:23: warning: unused variable 'ret' [-Wunused-variable]
-    HAL_StatusTypeDef ret;
-                      ^
-C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:272:9: warning: unused variable 'level' [-Wunused-variable]
-    int level;
-        ^
-=======
-C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:120:9: warning: unused variable 'res' [-Wunused-variable]
-    int res = 0;
-        ^
-C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:272:9: warning: unused variable 'level' [-Wunused-variable]
-    int level;
-        ^
-C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:271:23: warning: unused variable 'ret' [-Wunused-variable]
-    HAL_StatusTypeDef ret;
-                      ^
-C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:270:10: warning: unused variable 'res' [-Wunused-variable]
-    bool res;
-         ^
-1 warning generated.
->>>>>>> origin/andrew_v28.50
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:993:18: warning: unused variable 'base' [-Wunused-variable]
         uint32_t base = handle->base;
                  ^
@@ -654,26 +540,13 @@ C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:1002:22: w
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_spi_flash.c:1003:22: warning: unused variable 'offset' [-Wunused-variable]
             uint32_t offset = address - handle->base;
                      ^
-<<<<<<< HEAD
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_wdt.c:39:32: warning: unused variable 'hiwdt' [-Wunused-variable]
 static WDT_HandleTypeDef hwdt, hiwdt;
                                ^
 1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\components.o
-=======
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers\drv_mpi.o
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers\drv_common.o
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\rtthread\bsp\sifli\drivers\drv_dbg.o
-1 warning generated.
-C:\skaiwalk\SiFli-SDK\rtos\rtthread\bsp\sifli\drivers\drv_wdt.c:39:32: warning: unused variable 'hiwdt' [-Wunused-variable]
-static WDT_HandleTypeDef hwdt, hiwdt;
-                               ^
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\clock.o
-1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\cpu.o
->>>>>>> origin/andrew_v28.50
 8 warnings generated.
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\cpu.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\device.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\idle.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\ipc.o
@@ -685,24 +558,16 @@ CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\memheap2.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\mempool.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\object.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\scheduler.o
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\signal.o
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\src\mem.c:233:20: warning: unused function 'rt_mem_used_size' [-Wunused-function]
 static rt_uint32_t rt_mem_used_size(void)
                    ^
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\src\memheap.c:112:20: warning: unused function 'rt_memheap_used_size' [-Wunused-function]
 static rt_uint32_t rt_memheap_used_size(struct rt_memheap *heap)
                    ^
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\signal.o
-C:\skaiwalk\SiFli-SDK\rtos\rtthread\src\memheap.c:112:20: warning: unused function 'rt_memheap_used_size' [-Wunused-function]
-static rt_uint32_t rt_memheap_used_size(struct rt_memheap *heap)
-                   ^
+1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\thread.o
-<<<<<<< HEAD
-=======
-1 warning generated.
-1 warning generated.
->>>>>>> origin/andrew_v28.50
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\src\timer.o
-1 warning generated.
 1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\libcpu\arm\cortex-m33\cpuport.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\libcpu\arm\common\backtrace.o
@@ -732,19 +597,12 @@ CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\misc
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\motor\motor_device.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\pm\pm.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\rtc\rtc.o
-<<<<<<< HEAD
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\sensors\sensor.o
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\components\drivers\misc\pin.c:126:17: warning: unused function 'del_pin_mode' [-Wunused-function]
 static rt_err_t del_pin_mode(rt_device_t *dev, rt_base_t pin)
                 ^
-=======
-C:\skaiwalk\SiFli-SDK\rtos\rtthread\components\drivers\misc\pin.c:126:17: warning: unused function 'del_pin_mode' [-Wunused-function]
-static rt_err_t del_pin_mode(rt_device_t *dev, rt_base_t pin)
-                ^
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\sensors\sensor.o
->>>>>>> origin/andrew_v28.50
-CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\sensors\sensor_cmd.o
 1 warning generated.
+CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\sensors\sensor_cmd.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\serial\serial.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\src\completion.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\src\dataqueue.o
@@ -755,12 +613,9 @@ CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\src\
 C:\skaiwalk\SiFli-SDK\rtos\rtthread\components\drivers\src\dataqueue.c:331:16: warning: unused variable 'level' [-Wunused-variable]
     rt_ubase_t level;
                ^
-1 warning generated.
-<<<<<<< HEAD
-=======
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\src\workqueue.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\drivers\watchdog\watchdog.o
->>>>>>> origin/andrew_v28.50
+1 warning generated.
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\libc\compilers\armlibc\libc.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\libc\compilers\armlibc\mem_std.o
 CC build_sf32lb56w-watch_hcpu\lcpu\sifli_sdk\rtos\kernel\components\libc\compilers\armlibc\stubs.o
@@ -786,11 +641,7 @@ Warning: L6439W: Multiply defined Global Symbol HAL_UART_RxHalfCpltCallback defi
 Warning: L6439W: Multiply defined Global Symbol rt_hw_set_stack_limit defined in .text.rt_hw_set_stack_limit(cpuport.o) rejected in favor of Symbol defined in .text.rt_hw_set_stack_limit(thread.o).
 Warning: L6439W: Multiply defined Global Symbol HAL_UART_RxCpltCallback defined in .text.HAL_UART_RxCpltCallback(bf0_hal_uart.o) rejected in favor of Symbol defined in .text.HAL_UART_RxCpltCallback(drv_usart.o).
 Warning: L6439W: Multiply defined Global Symbol HAL_UART_ErrorCallback defined in .text.HAL_UART_ErrorCallback(bf0_hal_uart.o) rejected in favor of Symbol defined in .text.HAL_UART_ErrorCallback(drv_usart.o).
-<<<<<<< HEAD
-Program Size: Code=153694 RO-data=38750 RW-data=1476 ZI-data=20308  
-=======
-Program Size: Code=153662 RO-data=38714 RW-data=1476 ZI-data=20308  
->>>>>>> origin/andrew_v28.50
+Program Size: Code=154054 RO-data=38734 RW-data=1476 ZI-data=20308  
 Finished: 0 information, 4 warning and 0 error messages.
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\customer\peripherals\co5300\co5300.o
 Generating build_sf32lb56w-watch_hcpu\lcpu\lcpu.bin ...
@@ -800,10 +651,6 @@ CC build_sf32lb56w-watch_hcpu\sifli_sdk\customer\peripherals\cst820\cst820.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\customer\peripherals\cst820\cst820_update.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\customer\peripherals\ft3168\ft3168.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\drivers\cmsis\sf32lb56x\bf0_pin_const.o
-<<<<<<< HEAD
-=======
-CC build_sf32lb56w-watch_hcpu\sifli_sdk\drivers\cmsis\sf32lb56x\Templates\system_bf0_ap.o
->>>>>>> origin/andrew_v28.50
 
 ========================================================================
 
@@ -811,16 +658,10 @@ CC build_sf32lb56w-watch_hcpu\sifli_sdk\drivers\cmsis\sf32lb56x\Templates\system
 
       Code (inc. data)   RO Data    RW Data    ZI Data      Debug   Object Name
 
-<<<<<<< HEAD
-    153694      17706      38762       1476      20308    1370471   build_sf32lb56w-watch_hcpu\lcpu\lcpu.axf
+    154054      17974      38746       1476      20308    1370560   build_sf32lb56w-watch_hcpu\lcpu\lcpu.axf
          0          0         12          0          0          0   (incl. padding)
-    153694      17706      38762       1476          0          0   ROM Totals for build_sf32lb56w-watch_hcpu\lcpu\lcpu.axf
+    154054      17974      38746       1476          0          0   ROM Totals for build_sf32lb56w-watch_hcpu\lcpu\lcpu.axf
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\drivers\cmsis\sf32lb56x\Templates\system_bf0_ap.o
-=======
-    153662      17702      38726       1476      20308    1370435   build_sf32lb56w-watch_hcpu\lcpu\lcpu.axf
-         0          0         12          0          0          0   (incl. padding)
-    153662      17702      38726       1476          0          0   ROM Totals for build_sf32lb56w-watch_hcpu\lcpu\lcpu.axf
->>>>>>> origin/andrew_v28.50
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\drivers\cmsis\sf32lb56x\lcpu_config_type.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\drivers\cmsis\sf32lb56x\lcpu_patch.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\drivers\cmsis\sf32lb56x\bf0_lcpu_init.o
@@ -1244,6 +1085,7 @@ C:\skaiwalk\SiFli-SDK\external\TensorFlow-Lite-Micro\src\tensorflow/lite/experim
 <command line>:20:9: note: previous definition is here
 #define FIXED_POINT 1
         ^
+1 warning generated.
 In file included from C:\skaiwalk\SiFli-SDK\external\TensorFlow-Lite-Micro\src\tensorflow\lite\experimental\microfrontend\lib\fft_util.cpp:19:
 C:\skaiwalk\SiFli-SDK\external\TensorFlow-Lite-Micro\src\tensorflow/lite/experimental/microfrontend/lib/kiss_fft_int16.h:24:9: warning: 'FIXED_POINT' macro redefined [-Wmacro-redefined]
 #define FIXED_POINT 16
@@ -1251,11 +1093,7 @@ C:\skaiwalk\SiFli-SDK\external\TensorFlow-Lite-Micro\src\tensorflow/lite/experim
 <command line>:20:9: note: previous definition is here
 #define FIXED_POINT 1
         ^
-<<<<<<< HEAD
-1 warning generated.
 CXX C:\skaiwalk\SiFli-SDK\external\TensorFlow-Lite-Micro\src\tensorflow\lite\kernels\internal\reference\portable_tensor_utils.o
-=======
->>>>>>> origin/andrew_v28.50
 1 warning generated.
 CXX C:\skaiwalk\SiFli-SDK\external\TensorFlow-Lite-Micro\src\tensorflow\lite\micro\arena_allocator\non_persistent_arena_buffer_allocator.o
 C:\skaiwalk\SiFli-SDK\external\TensorFlow-Lite-Micro\src\tensorflow\lite\experimental\microfrontend\lib\kiss_fft_int16.cpp:5:9: warning: 'FIXED_POINT' macro redefined [-Wmacro-redefined]
@@ -1264,12 +1102,6 @@ C:\skaiwalk\SiFli-SDK\external\TensorFlow-Lite-Micro\src\tensorflow\lite\experim
 <command line>:20:9: note: previous definition is here
 #define FIXED_POINT 1
         ^
-<<<<<<< HEAD
-=======
-CXX C:\skaiwalk\SiFli-SDK\external\TensorFlow-Lite-Micro\src\tensorflow\lite\kernels\internal\reference\portable_tensor_utils.o
-1 warning generated.
-CXX C:\skaiwalk\SiFli-SDK\external\TensorFlow-Lite-Micro\src\tensorflow\lite\micro\arena_allocator\non_persistent_arena_buffer_allocator.o
->>>>>>> origin/andrew_v28.50
 1 warning generated.
 CXX C:\skaiwalk\SiFli-SDK\external\TensorFlow-Lite-Micro\src\tensorflow\lite\micro\arena_allocator\persistent_arena_buffer_allocator.o
 CXX C:\skaiwalk\SiFli-SDK\external\TensorFlow-Lite-Micro\src\tensorflow\lite\micro\arena_allocator\recording_single_arena_buffer_allocator.o
@@ -1779,14 +1611,10 @@ CC build_sf32lb56w-watch_hcpu\modules\util\includes\util\time\time.o
 Generating build_sf32lb56w-watch_hcpu\lcpu\lcpu.c ...
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\src\clock.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\src\components.o
-<<<<<<< HEAD
 CC build_sf32lb56w-watch_hcpu\lcpu\lcpu.o
-=======
->>>>>>> origin/andrew_v28.50
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\src\cpu.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\src\device.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\src\idle.o
-CC build_sf32lb56w-watch_hcpu\lcpu\lcpu.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\src\ipc.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\src\irq.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\src\kservice.o
@@ -2143,18 +1971,12 @@ Building compilation database build_sf32lb56w-watch_hcpu\ftab\compile_commands.j
 Building compilation database build_sf32lb56w-watch_hcpu\lcpu\compile_commands.json
 Generating build_sf32lb56w-watch_hcpu\lcpu\lcpu.asm ...
 LINK build_sf32lb56w-watch_hcpu\main.axf
-<<<<<<< HEAD
-"C:\Users\skaiwalk\AppData\Local\Temp\p8d08-3", line 45 (column 3): Warning: L6312W: Empty Execution region description for region RW_PSRAM1
+"C:\Users\skaiwalk\AppData\Local\Temp\p73bc-3", line 45 (column 3): Warning: L6312W: Empty Execution region description for region RW_PSRAM1
 Warning: L6439W: Multiply defined Global Symbol HAL_TIMEx_BreakCallback defined in .text.HAL_TIMEx_BreakCallback(bf0_hal_tim_ex.o) rejected in favor of Symbol defined in .text.HAL_TIMEx_BreakCallback(bf0_hal_tim.o).
-Program Size: Code=1525020 RO-data=890932 RW-data=12236 ZI-data=4254204  
-=======
-"C:\Users\andre\AppData\Local\Temp\p6dd4-3", line 45 (column 3): Warning: L6312W: Empty Execution region description for region RW_PSRAM1
-Warning: L6439W: Multiply defined Global Symbol HAL_TIMEx_BreakCallback defined in .text.HAL_TIMEx_BreakCallback(bf0_hal_tim_ex.o) rejected in favor of Symbol defined in .text.HAL_TIMEx_BreakCallback(bf0_hal_tim.o).
-Program Size: Code=1529524 RO-data=891064 RW-data=12232 ZI-data=4253948  
->>>>>>> origin/andrew_v28.50
+Program Size: Code=1552228 RO-data=896092 RW-data=12500 ZI-data=4274928  
 Finished: 0 information, 2 warning and 0 error messages.
-Generating build_sf32lb56w-watch_hcpu\main.hex ...
 Generating build_sf32lb56w-watch_hcpu\main.asm ...
+Generating build_sf32lb56w-watch_hcpu\main.hex ...
 Generating build_sf32lb56w-watch_hcpu\main.bin ...
 
 ========================================================================
@@ -2163,26 +1985,18 @@ Generating build_sf32lb56w-watch_hcpu\main.bin ...
 
       Code (inc. data)   RO Data    RW Data    ZI Data      Debug   Object Name
 
-<<<<<<< HEAD
-   1525020     160946     890932      12240    4254200   25019056   build_sf32lb56w-watch_hcpu\main.axf (uncompressed)
-   1525020     160946     890932       6944    4254200   25019056   build_sf32lb56w-watch_hcpu\main.axf (compressed)
-   1525020     160946     890932       6944          0          0   ROM Totals for build_sf32lb56w-watch_hcpu\main.axf
-=======
-   1529524     161720     891068      12240    4253940   25049436   build_sf32lb56w-watch_hcpu\main.axf (uncompressed)
-   1529524     161720     891068       6944    4253940   25049436   build_sf32lb56w-watch_hcpu\main.axf (compressed)
-         0          0          4          0          0          0   (incl. padding)
-   1529524     161720     891068       6944          0          0   ROM Totals for build_sf32lb56w-watch_hcpu\main.axf
->>>>>>> origin/andrew_v28.50
+   1552228     168440     896092      12512    4274916   25153816   build_sf32lb56w-watch_hcpu\main.axf (uncompressed)
+   1552228     168440     896092       6944    4274916   25153816   build_sf32lb56w-watch_hcpu\main.axf (compressed)
+   1552228     168440     896092       6944          0          0   ROM Totals for build_sf32lb56w-watch_hcpu\main.axf
 Generating build_sf32lb56w-watch_hcpu\ftab\board\ftab.c ...
 CC build_sf32lb56w-watch_hcpu\ftab\board\ftab.o
 LINK build_sf32lb56w-watch_hcpu\ftab\ftab.axf
 Warning: L6305W: Image does not have an entry point. (Not specified or not set due to multiple choices.)
 Program Size: Code=0 RO-data=11280 RW-data=0 ZI-data=0  
 Finished: 0 information, 1 warning and 0 error messages.
-Generating build_sf32lb56w-watch_hcpu\ftab\ftab.bin ...
 Generating build_sf32lb56w-watch_hcpu\ftab\ftab.asm ...
 Generating build_sf32lb56w-watch_hcpu\ftab\ftab.hex ...
-Generating build_sf32lb56w-watch_hcpu\ftab\ftab.asm ...
+Generating build_sf32lb56w-watch_hcpu\ftab\ftab.bin ...
 
 ========================================================================
 
