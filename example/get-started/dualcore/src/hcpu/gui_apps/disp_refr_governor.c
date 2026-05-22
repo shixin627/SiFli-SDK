@@ -43,6 +43,10 @@
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
+#ifdef RT_USING_PM
+#include <drivers/pm.h>   /* rt_pm_run_enter / PM_RUN_MODE_* (layer-3 DVFS) */
+#endif
+
 /* is_at_home() lives in app_mainmenu.c; declared here to avoid pulling the
  * whole app_mainmenu.h surface into this self-contained module. */
 extern bool is_at_home(void);
@@ -59,10 +63,20 @@ extern lv_indev_t *touch_get_indev_handler(void);
 #define GOV_WAKE_DEBOUNCE_MS 250U /* ignore touch as operate after wake    */
 #define GOV_INDEV_SLOW_MS 1000U  /* layer-2: slowed indev poll in 1 Hz    */
 
+/* layer-3 DVFS run modes coupled to the refresh state. 144 MHz is enough for
+ * 60 Hz partial-update GUI + the concurrent gesture-recognition load (display
+ * flush is QSPI-bandwidth-bound, not CPU-bound); idle 1 Hz home drops to
+ * 48 MHz. We deliberately never request HIGH_SPEED (240) here. */
+#ifdef RT_USING_PM
+#define GOV_RUN_MODE_FAST PM_RUN_MODE_NORMAL_SPEED /* 144 MHz */
+#define GOV_RUN_MODE_SLOW PM_RUN_MODE_MEDIUM_SPEED /* 48 MHz  */
+#endif
+
 /* ---- runtime state ---- */
 
 static bool s_enabled = false;          /* master switch, default OFF      */
 static bool s_indev_throttle = false;   /* layer-2 sub-switch, default OFF */
+static bool s_dvfs = false;             /* layer-3 DVFS sub-switch, def OFF */
 static bool s_inited = false;
 
 static bool s_session_active = false;   /* the latch                       */
@@ -120,12 +134,34 @@ static void gov_indev_set_slow(bool slow)
     }
 }
 
-/* Apply a refresh state to the LVGL refr_timer (and layer-2 indev). */
+/* Layer-3 DVFS: couple HCPU run mode to the refresh state. Only acts when the
+ * sub-switch is on and RT_USING_PM is present. An upclock (fast) applies
+ * immediately inside rt_pm_run_enter; a downclock (slow) is deferred by the PM
+ * framework until the system next idles — exactly what we want. Safe no-op if
+ * PM isn't initialized (rt_pm_run_enter returns -RT_EIO). */
+static void gov_set_run_mode(bool fast)
+{
+#ifdef RT_USING_PM
+    if (!s_dvfs)
+        return;
+    rt_pm_run_enter(fast ? GOV_RUN_MODE_FAST : GOV_RUN_MODE_SLOW);
+#else
+    LV_UNUSED(fast);
+#endif
+}
+
+/* Apply a refresh state to the LVGL refr_timer (and layer-2 indev + layer-3
+ * DVFS). Ordering matters for DVFS: when going fast we upclock BEFORE the
+ * first 60 Hz render; when going slow we downclock AFTER dropping to 1 Hz
+ * (the PM framework defers the downclock to idle anyway). */
 static void gov_apply(bool fast)
 {
     lv_timer_t *rt = gov_refr_timer();
     if (!rt)
         return;
+
+    if (fast)
+        gov_set_run_mode(true);
 
     lv_timer_set_period(rt, fast ? GOV_PERIOD_60HZ_MS : GOV_PERIOD_1HZ_MS);
     if (fast)
@@ -135,6 +171,9 @@ static void gov_apply(bool fast)
     }
 
     gov_indev_set_slow(!fast);
+
+    if (!fast)
+        gov_set_run_mode(false);
 
     if (s_is_fast != fast)
     {
@@ -245,6 +284,12 @@ void disp_gov_set_enabled(bool en)
         if (rt)
             lv_timer_set_period(rt, GOV_PERIOD_60HZ_MS);
         s_is_fast = true;
+#ifdef RT_USING_PM
+        /* Hand the clock back to stock (HIGH/240) so disabling the governor
+         * fully reverts DVFS too. */
+        if (s_dvfs)
+            rt_pm_run_enter(PM_RUN_MODE_HIGH_SPEED);
+#endif
     }
     LOG_I("governor %s", en ? "ENABLED" : "DISABLED");
 }
@@ -278,6 +323,31 @@ bool disp_gov_indev_throttle_enabled(void)
     return s_indev_throttle;
 }
 
+void disp_gov_set_dvfs(bool en)
+{
+    if (s_dvfs == en)
+        return;
+    s_dvfs = en;
+#ifdef RT_USING_PM
+    if (!en)
+    {
+        /* restore stock clock (HIGH/240) immediately */
+        rt_pm_run_enter(PM_RUN_MODE_HIGH_SPEED);
+    }
+    else if (s_enabled && s_inited)
+    {
+        /* apply the run mode matching the current refresh state now */
+        gov_set_run_mode(s_is_fast);
+    }
+#endif
+    LOG_I("dvfs %s", en ? "ON" : "OFF");
+}
+
+bool disp_gov_dvfs_enabled(void)
+{
+    return s_dvfs;
+}
+
 void disp_gov_notify_operate(void)
 {
     if (!s_enabled || !s_inited)
@@ -285,10 +355,18 @@ void disp_gov_notify_operate(void)
 
     s_session_active = true;
 
-    /* Proactive bump: 60 Hz now + force an immediate refresh so the first
-     * transition frame is not delayed by the next refr tick. */
+    /* Proactive bump to 60 Hz. gov_apply() only sets timer-period fields
+     * (cheap, low-risk). The heavy synchronous lv_refr_now() walks the display
+     * tree and MUST run on the LVGL thread — but this hook is also called off
+     * the LVGL thread (gesture_handler / handle_gesture_unlock run on the
+     * gesture-recognition thread). Only force the immediate refresh when we're
+     * on the LVGL thread (e.g. the touch indev read path); otherwise skip it —
+     * the period is now 16 ms so the next refr tick is <=16 ms away anyway, so
+     * the transition's first frame is not meaningfully delayed. */
     gov_apply(true);
-    lv_refr_now(lv_disp_get_default());
+    extern bool is_on_lvgl_thread(void);
+    if (is_on_lvgl_thread())
+        lv_refr_now(lv_disp_get_default());
 }
 
 void disp_gov_notify_screen_on(void)
@@ -365,6 +443,7 @@ static void disp_gov(int argc, char **argv)
         rt_kprintf("  on            - enable governor\n");
         rt_kprintf("  off           - disable (stock fixed-60Hz)\n");
         rt_kprintf("  indev on|off  - layer-2 touch indev throttle\n");
+        rt_kprintf("  dvfs on|off   - layer-3 DVFS (48MHz idle / 144MHz active)\n");
         rt_kprintf("  force 60|1|auto - pin refresh / let governor decide\n");
         rt_kprintf("  state         - print current state\n");
         return;
@@ -386,6 +465,15 @@ static void disp_gov(int argc, char **argv)
             return;
         }
         disp_gov_set_indev_throttle(rt_strcmp(argv[2], "on") == 0);
+    }
+    else if (rt_strcmp(argv[1], "dvfs") == 0)
+    {
+        if (argc < 3)
+        {
+            rt_kprintf("usage: disp_gov dvfs on|off\n");
+            return;
+        }
+        disp_gov_set_dvfs(rt_strcmp(argv[2], "on") == 0);
     }
     else if (rt_strcmp(argv[1], "force") == 0)
     {
@@ -409,6 +497,11 @@ static void disp_gov(int argc, char **argv)
         rt_kprintf("enabled        : %s\n", s_enabled ? "YES" : "NO");
         rt_kprintf("inited         : %s\n", s_inited ? "YES" : "NO");
         rt_kprintf("indev throttle : %s\n", s_indev_throttle ? "ON" : "OFF");
+        rt_kprintf("dvfs           : %s\n", s_dvfs ? "ON" : "OFF");
+#ifdef RT_USING_PM
+        rt_kprintf("run mode       : %u (0=240 1=144 2=48 3=24 MHz)\n",
+                   (unsigned)rt_pm_run_mode_get());
+#endif
         rt_kprintf("force          : %s\n",
                    s_force == DISP_GOV_FORCE_NONE ? "auto"
                    : s_force == DISP_GOV_FORCE_60HZ ? "60Hz"

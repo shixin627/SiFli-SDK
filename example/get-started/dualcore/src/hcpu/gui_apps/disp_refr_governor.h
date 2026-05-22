@@ -56,6 +56,13 @@ bool disp_gov_is_enabled(void);
 void disp_gov_set_indev_throttle(bool en);
 bool disp_gov_indev_throttle_enabled(void);
 
+/* ---- layer-3 sub-switch (DVFS: couple HCPU run mode to refresh, default OFF) ----
+ * Active/60 Hz -> NORMAL_SPEED (144 MHz); idle-home/1 Hz -> MEDIUM_SPEED
+ * (48 MHz). Never requests HIGH_SPEED (240) — no sustained scenario needs it.
+ * No-op when RT_USING_PM is absent. */
+void disp_gov_set_dvfs(bool en);
+bool disp_gov_dvfs_enabled(void);
+
 /* ---- event hooks (called from the various input / power paths) ---- */
 
 /** First "operate" input of a wake session: a touch PRESS while already
@@ -97,6 +104,8 @@ static inline void disp_gov_set_enabled(bool en) { (void)en; }
 static inline bool disp_gov_is_enabled(void) { return false; }
 static inline void disp_gov_set_indev_throttle(bool en) { (void)en; }
 static inline bool disp_gov_indev_throttle_enabled(void) { return false; }
+static inline void disp_gov_set_dvfs(bool en) { (void)en; }
+static inline bool disp_gov_dvfs_enabled(void) { return false; }
 static inline void disp_gov_notify_operate(void) {}
 static inline void disp_gov_notify_screen_on(void) {}
 static inline void disp_gov_notify_screen_off(void) {}
