@@ -308,6 +308,15 @@ static void bind_tile(int k)
     dev_page_t *d = &p->model[logical];
     u->dev = d;
     lv_label_set_text_fmt(u->header, "%s   %d/%d", d->name, logical + 1, p->count);
+    /* ADR-0008 E7: status-driven header tint (status = device_status[i], synced
+       by communicate_parse_skailink): 0 off -> gray, 1 on -> blue, 2 primary ->
+       lit accent so the device currently bridging the watch stands out. */
+    lv_obj_set_style_text_color(
+        u->header,
+        (d->status == 0)   ? lv_color_hex(0x666666)   /* off: dimmed     */
+        : (d->status == 2) ? lv_color_hex(0x4DE3A0)   /* primary: lit    */
+                           : lv_color_hex(0x00AAFF),  /* on: normal blue */
+        0);
     /* Show one snap anchor per item so the arc_scroll range matches item_count. */
     for (int i = 0; i < MAX_TILE_ITEMS; i++)
     {
