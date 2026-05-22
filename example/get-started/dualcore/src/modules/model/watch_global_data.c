@@ -183,6 +183,62 @@ static void write_flag_field(share_prefs_t *pref)
   share_prefs_set_block(pref, "flag_field", (void *)&SkaiWatchSys.flag_field, sizeof(T_FLAG_FIELD));
 }
 
+// ── Device registry (ADR-0008 § E8) ──────────────────────────────────
+// UNVERIFIED — written without an on-device build. Build-verify on the dev
+// machine: (1) `_watch_build.cmd -j8` compiles clean; (2) LOG_W exists (else
+// LOG_D); (3) rt_memset/rt_memcpy link; (4) first boot (no "dev_registry" key)
+// → version 0 ≠ 1 → resets to empty, no fault; (5) write then re-read round-trips.
+//
+// CRC32 (IEEE 802.3, reflected) over the registry minus its trailing crc field,
+// so a torn flash write or an old-schema/foreign block is detected and discarded
+// (flash is a cache; cloud-via-primary is the truth).
+static uint32_t device_registry_crc32(const T_DEVICE_REGISTRY *r)
+{
+  const uint8_t *p = (const uint8_t *)r;
+  uint32_t len = (uint32_t)(sizeof(T_DEVICE_REGISTRY) - sizeof(r->crc));
+  uint32_t crc = 0xFFFFFFFFu;
+  for (uint32_t i = 0; i < len; i++)
+  {
+    crc ^= p[i];
+    for (int b = 0; b < 8; b++)
+      crc = (crc & 1u) ? ((crc >> 1) ^ 0xEDB88320u) : (crc >> 1);
+  }
+  return ~crc;
+}
+
+static void read_device_registry(share_prefs_t *pref)
+{
+  T_DEVICE_REGISTRY r;
+  rt_memset(&r, 0, sizeof(r));
+  share_prefs_get_block(pref, "dev_registry", (void *)&r, sizeof(r));
+  // Discard a corrupt / torn / old-schema / absent block → start empty.
+  if (r.version != DEVICE_REGISTRY_VERSION ||
+      r.count > MAX_SYNCED_DEVICES ||
+      r.crc != device_registry_crc32(&r))
+  {
+    LOG_W("device registry: bad/old/absent block, resetting to empty");
+    rt_memset((void *)&SkaiWatchSys.device_registry, 0, sizeof(T_DEVICE_REGISTRY));
+    SkaiWatchSys.device_registry.version = DEVICE_REGISTRY_VERSION;
+  }
+  else
+  {
+    rt_memcpy((void *)&SkaiWatchSys.device_registry, &r, sizeof(T_DEVICE_REGISTRY));
+  }
+  // R11: per-device status is RAM-only — every device starts off (0) until the
+  // primary re-syncs the live states over BWPS.
+  rt_memset((void *)SkaiWatchSys.device_status, 0, sizeof(SkaiWatchSys.device_status));
+}
+
+static void write_device_registry(share_prefs_t *pref)
+{
+  T_DEVICE_REGISTRY r;
+  rt_memcpy(&r, (const void *)&SkaiWatchSys.device_registry, sizeof(r));
+  r.version = DEVICE_REGISTRY_VERSION;
+  if (r.count > MAX_SYNCED_DEVICES) r.count = MAX_SYNCED_DEVICES;
+  r.crc = device_registry_crc32(&r);
+  share_prefs_set_block(pref, "dev_registry", (void *)&r, sizeof(r));
+}
+
 static void read_msg_switch(share_prefs_t *pref)
 {
   share_prefs_get_block(pref, "msg_switch", (void *)&SkaiWatchSys.msg_switch, sizeof(T_MSG_SWITCH));
@@ -493,6 +549,14 @@ void watch_prefs_save_alarms(void)
   close_watch_prefs(pref);
 }
 
+void watch_prefs_save_device_registry(void)
+{
+  share_prefs_t *pref = open_watch_prefs();
+  if (pref == NULL) { LOG_E("watch_prefs_save_device_registry: open failed"); return; }
+  write_device_registry(pref);
+  close_watch_prefs(pref);
+}
+
 void watch_config_struct_flash_read(void)
 {
   share_prefs_t *pref = open_watch_prefs();
@@ -520,6 +584,7 @@ void watch_config_struct_flash_read(void)
   WatchPrefs.read_gesture_threshold(pref);
   WatchPrefs.read_alarms(pref);
   WatchPrefs.read_dismissed_notifications(pref);
+  read_device_registry(pref); // ADR-0008 E8: load id+default-actions; status→off
   close_watch_prefs(pref);
 
   /* Restore HW alarms in alarm_manager_service from the freshly-loaded

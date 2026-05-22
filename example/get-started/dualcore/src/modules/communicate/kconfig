@@ -25,6 +25,10 @@ menu "Select Communicatie"
 				bool "Enable setting resolver"
 				default n
 
+			config BSP_USING_COMM_SKAILINK
+				bool "Enable skailink device-sync resolver (ADR-0008)"
+				default n
+
 			config BSP_USING_COMM_DFU
 				bool "Enable DFU resolver"
 				default n

@@ -309,6 +309,32 @@ extern "C"
         volatile uint8_t newest_addr[8];
     } T_BBPRO_PAIRED_INFO;
 
+    /* ADR-0008 § E8: account device registry persisted to flash.
+       Reboot keeps device id + default actions ONLY; per-device status is
+       RAM (SkaiWatchSys.device_status), reset to off (0) on boot until the
+       primary re-syncs. Flash is a cache; cloud-via-primary is the truth. */
+#define MAX_SYNCED_DEVICES 8
+#define SYNCED_DEVICE_ID_LEN 40        /* UUID v4 (36) + null + pad */
+#define MAX_DEFAULT_ACTIONS 12
+#define DEFAULT_ACTION_LEN 32
+#define SYNCED_DEVICE_NAME_LEN 40      /* display name (RAM only, re-synced on connect) */
+#define DEVICE_REGISTRY_VERSION 1
+
+    typedef struct
+    {
+        char id[SYNCED_DEVICE_ID_LEN];                                 /* account device_id (UUID) — key */
+        char default_actions[MAX_DEFAULT_ACTIONS][DEFAULT_ACTION_LEN];  /* default Skaibar actions */
+        uint8_t default_action_count;
+    } T_SYNCED_DEVICE;
+
+    typedef struct
+    {
+        uint8_t version;                              /* = DEVICE_REGISTRY_VERSION */
+        uint8_t count;                                /* devices in use [0, MAX_SYNCED_DEVICES] */
+        T_SYNCED_DEVICE devices[MAX_SYNCED_DEVICES];
+        uint32_t crc;                                 /* CRC32 over {version,count,devices} */
+    } T_DEVICE_REGISTRY;
+
     // TODO: replace with ble sible struct
     /** @defgroup Gap_Msg_Exported_Types GAP Msg Exported Types
      * @{
@@ -492,6 +518,9 @@ extern "C"
         volatile T_BBPRO_LINK_STATE bbpro_hci_link_status;
         volatile EVENT_DEVICE_STATE bbpro_device_status; // 315/320
         volatile T_BBPRO_PAIRED_INFO paired_info;
+        T_DEVICE_REGISTRY device_registry;                       // o (ADR-0008 E8: id + default actions)
+        volatile uint8_t device_status[MAX_SYNCED_DEVICES];      // RAM only — reset to off (0) on boot
+        char device_name[MAX_SYNCED_DEVICES][SYNCED_DEVICE_NAME_LEN]; // RAM only (ADR-0008 E7: UI label)
         volatile T_GAP_DEV_STATE gap_dev_state;   /**< GAP device state */
         volatile T_GAP_CONN_STATE gap_conn_state; /**< GAP connection state */
         volatile T_CLOCK_MENU_TYPE clock_status;  // o
@@ -648,6 +677,10 @@ __attribute__((packed)) SkaiWatchSysType_t;
     /* Persist SkaiWatchSys.alarms[] + alarm_num to share_prefs immediately.
        Caller-friendly wrapper around open_watch_prefs / write_alarms / close. */
     extern void watch_prefs_save_alarms(void);
+
+    /* Persist SkaiWatchSys.device_registry to flash immediately (ADR-0008 E8).
+       Call after the primary syncs / mutates the device list. */
+    extern void watch_prefs_save_device_registry(void);
 
     typedef enum
     {
