@@ -187,6 +187,12 @@ extern "C"
            cascades through scroll events / scroll_list, blowing the 4KB
            BLE stack. */
         LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST,
+        /* Defer device_pager refresh to the LVGL thread (ADR-0008 E7).
+           communicate_parse_skailink runs on KE_EVT2 (4KB BLE stack);
+           device_pager_refresh() does load_devices_from_registry +
+           lv_obj layout — same too-stack-heavy + not-thread-safe hazard as the
+           instruction-list rebuild above. */
+        LVGL_MSG_TYPE_REFRESH_DEVICE_PAGER,
     };
 
     typedef struct

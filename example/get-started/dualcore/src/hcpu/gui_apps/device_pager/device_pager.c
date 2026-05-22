@@ -495,9 +495,22 @@ void device_pager_refresh(void)
 
 /* ADR-0008 E7: weak hook invoked by communicate_parse_skailink.c after it
    updates SkaiWatchSys.device_registry from a phone-streamed sync — resolves the
-   weak symbol so the pager re-renders live. */
+   weak symbol so the pager re-renders live.
+
+   communicate_parse_skailink runs on the BLE rx thread (KE_EVT2, 4KB stack).
+   device_pager_refresh() creates / lays out LVGL objects, which is too
+   stack-heavy AND not thread-safe to run there (LVGL is single-threaded). So
+   when called off the LVGL thread, defer to it — same pattern as the
+   instruction-list rebuild/reset (see ui_handler + lv_instruction_list_layout).
+   This is what fixes the KE_EVT2 stack-overflow LCPU crash on device sync. */
 void skai_device_ui_refresh(void)
 {
+    if (!is_on_lvgl_thread())
+    {
+        lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_DEVICE_PAGER};
+        lvgl_send_msg(msg);
+        return;
+    }
     device_pager_refresh();
 }
 

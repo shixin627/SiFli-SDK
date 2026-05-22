@@ -744,6 +744,15 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
     }
 
+    case LVGL_MSG_TYPE_REFRESH_DEVICE_PAGER:
+    {
+        /* ADR-0008 E7: re-render the device_pager on the LVGL thread after
+           communicate_parse_skailink updated SkaiWatchSys.device_registry. */
+        extern void device_pager_refresh(void);
+        device_pager_refresh();
+        break;
+    }
+
     default:
     {
         type = LVGL_MSG_TYPE_UNKNOWN;
