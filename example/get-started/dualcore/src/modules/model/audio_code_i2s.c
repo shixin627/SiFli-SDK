@@ -69,6 +69,34 @@
 
 #include "webrtc/common_audio/vad/include/webrtc_vad.h"
 
+/* ===== Optional WebRTC NS + AGC on the mic capture path (ASR pre-clean) =====
+   Inserts noise-suppression then auto-gain-control on each 10 ms mic frame,
+   right where the blunt gain_pcm_sat() shift sits. Default OFF: the existing
+   path (gain_pcm_sat shift 6) is unchanged unless explicitly enabled at runtime
+   via `mic_nsagc on`, so a buggy NS/AGC stage can never silently regress audio.
+
+   Build wiring: the WebRTC package (external/WebRTC_audio_processing) is already
+   compiled+linked into this build (CONFIG_PKG_USING_WEBRTC=y). Its Kconfig
+   defaults already select fixed-point NS (WEBRTC_ANS_FIX) and AGC
+   (WEBRTC_AGC_FIX), and the SConscript already puts the NS/AGC include dirs on
+   the global CPPPATH -- so we just call the APIs here, no SConscript / proj.conf
+   / external/ change needed. We use the *fixed-point* NS (WebRtcNsx_*) because
+   that is the variant the project already builds; switching to the float NS
+   (WebRtcNs_*) would require flipping the Kconfig NS choice. Both expose the
+   same 0/1/2 policy (Mild/Medium/Aggressive). */
+#define BSP_USING_MIC_NS_AGC  /* compile the NS+AGC stage in (runtime-gated below) */
+
+#ifdef BSP_USING_MIC_NS_AGC
+    #if defined(WEBRTC_ANS_FIX)
+        #include "webrtc/modules/audio_processing/ns/include/noise_suppression_x.h"
+    #elif defined(WEBRTC_ANS_FLOAT)
+        #include "webrtc/modules/audio_processing/ns/include/noise_suppression.h"
+    #endif
+    #ifdef WEBRTC_AGC_FIX
+        #include "webrtc/modules/audio_processing/agc/legacy/gain_control.h"
+    #endif
+#endif
+
 #define AUDIO_TRS_I2S_RX_EVENT (1 << 0)
 #define AUDIO_TRS_I2S_TX_EVENT (1 << 1)
 #define AUDIO_TRS_AUDPRC_ADC_EVENT (1 << 2)
@@ -116,6 +144,123 @@ static struct rt_ringbuffer audprc_ringbuffer;
 
 static bool mic_prepared = false;
 static uint8_t mic_prepared_count = 0;
+
+#ifdef BSP_USING_MIC_NS_AGC
+/* Runtime-tunable NS+AGC state. All knobs are live-adjustable via MSH so the
+   user can sweep on real hardware without reflashing. Starting values are
+   ASR-oriented (see commit message) and expected to be tuned on-device.
+
+   mic_nsagc_enabled: master on/off. Default FALSE -> existing path runs.
+   mic_nsagc_shift  : software pre-shift used INSTEAD of the default 6 when the
+                      stage is on. Reduced to 2 so AGC does the digital leveling
+                      rather than a blunt ×64 shift (set to 0 to let AGC do it
+                      all). When the stage is OFF, the original shift 6 is used. */
+static bool    mic_nsagc_enabled = false;
+static uint8_t mic_nsagc_shift   = 2;       /* shift applied when stage ON */
+
+    #if defined(WEBRTC_ANS_FIX)
+static NsxHandle *mic_ns_inst = NULL;       /* fixed-point NS instance (heap) */
+static int        mic_ns_mode = 1;          /* 0 Mild / 1 Medium / 2 Aggressive */
+    #endif
+    #ifdef WEBRTC_AGC_FIX
+static void *mic_agc_inst        = NULL;     /* AGC instance (heap) */
+static int   mic_agc_target_dbfs = 6;        /* targetLevelDbfs (lower = louder) */
+static int   mic_agc_gain_db     = 20;       /* compressionGaindB */
+static int   mic_agc_limiter     = 1;        /* limiterEnable */
+static int32_t mic_agc_mic_level = 0;        /* adaptive-digital feedback level */
+    #endif
+
+/* Tear down NS+AGC instances (idempotent). Called on mic-path close. */
+static void mic_nsagc_free(void)
+{
+    #if defined(WEBRTC_ANS_FIX)
+    if (mic_ns_inst)
+    {
+        WebRtcNsx_Free(mic_ns_inst);
+        mic_ns_inst = NULL;
+    }
+    #endif
+    #ifdef WEBRTC_AGC_FIX
+    if (mic_agc_inst)
+    {
+        WebRtcAgc_Free(mic_agc_inst);
+        mic_agc_inst = NULL;
+    }
+    #endif
+}
+
+/* Create + init NS+AGC instances on heap (their Create() allocs the big state,
+   keeping it off the 24 KB audio_station thread stack). Safe to call when the
+   stage is disabled -- instances just sit idle until `mic_nsagc on`. Frees and
+   recreates if already allocated so MSH retune-then-reinit is clean. */
+static void mic_nsagc_init(void)
+{
+    uint32_t fs = audio_sample_rate[AUDIO_STATION_SAMPLE_RATE_OPT]; /* 16000 */
+    mic_nsagc_free();
+    #if defined(WEBRTC_ANS_FIX)
+    mic_ns_inst = WebRtcNsx_Create();
+    if (mic_ns_inst)
+    {
+        WebRtcNsx_Init(mic_ns_inst, fs);
+        WebRtcNsx_set_policy(mic_ns_inst, mic_ns_mode);
+    }
+    else
+    {
+        rt_kprintf("[mic_nsagc] NS create failed (no mem)\n");
+    }
+    #endif
+    #ifdef WEBRTC_AGC_FIX
+    mic_agc_inst = WebRtcAgc_Create();
+    if (mic_agc_inst)
+    {
+        /* AdaptiveDigital: no real analog mic gain to ride; AGC applies digital
+           leveling. minLevel/maxLevel 0/255 per the vendor agc test. */
+        WebRtcAgc_Init(mic_agc_inst, 0, 255, kAgcModeAdaptiveDigital, fs);
+        WebRtcAgcConfig cfg;
+        cfg.targetLevelDbfs   = (int16_t)mic_agc_target_dbfs;
+        cfg.compressionGaindB = (int16_t)mic_agc_gain_db;
+        cfg.limiterEnable     = (uint8_t)mic_agc_limiter;
+        cfg.thrhold           = 0;
+        WebRtcAgc_set_config(mic_agc_inst, cfg);
+        mic_agc_mic_level = 0;
+    }
+    else
+    {
+        rt_kprintf("[mic_nsagc] AGC create failed (no mem)\n");
+    }
+    #endif
+}
+
+/* Run NS -> AGC in place on one 10 ms / 160-sample int16 frame. NS first
+   (clean), AGC second (level). No-ops gracefully if an instance is missing.
+   `samples` is 160 for 16 kHz / 10 ms (READ_AUDIO_BUF_SIZE/2). */
+static void mic_nsagc_process(int16_t *frame, size_t samples)
+{
+    #if defined(WEBRTC_ANS_FIX)
+    if (mic_ns_inst)
+    {
+        int16_t *in_p[1]  = { frame };
+        int16_t *out_p[1] = { frame }; /* in-place OK for fixed-point NS */
+        WebRtcNsx_Process(mic_ns_inst, (const int16_t *const *)in_p, 1, out_p);
+    }
+    #endif
+    #ifdef WEBRTC_AGC_FIX
+    if (mic_agc_inst)
+    {
+        int16_t *in_p[1]  = { frame };
+        int16_t *out_p[1] = { frame }; /* "May be the same vector as the input" */
+        int32_t level_out = 0;
+        uint8_t sat = 0;
+        if (WebRtcAgc_Process(mic_agc_inst, (const int16_t *const *)in_p, 1,
+                              samples, (int16_t *const *)out_p,
+                              mic_agc_mic_level, &level_out, 0, &sat) == 0)
+        {
+            mic_agc_mic_level = level_out;
+        }
+    }
+    #endif
+}
+#endif /* BSP_USING_MIC_NS_AGC */
 
 rt_uint8_t *get_audio_adc_buf(void)
 {
@@ -324,6 +469,12 @@ int audio_prc_open(void)
     stream |= ((1 << HAL_AUDPRC_TX_CH0) << 8);
     rt_device_control(g_audprc_dev, AUDIO_CTL_START, &stream);
 #endif
+#ifdef BSP_USING_MIC_NS_AGC
+    /* Allocate NS+AGC when the mic path opens (frees on close). Instances sit
+       idle unless `mic_nsagc on` has been issued -- creating them up front means
+       toggling on at runtime needs no allocation in the audio thread. */
+    mic_nsagc_init();
+#endif
     return 0;
 }
 
@@ -331,6 +482,9 @@ int audio_prc_close(void)
 {
     int ret = RT_EOK;
 
+#ifdef BSP_USING_MIC_NS_AGC
+    mic_nsagc_free();
+#endif
     if (g_audprc_dev)
     {
         ret = rt_device_close(g_audprc_dev);
@@ -722,8 +876,25 @@ void audio_transfer_entry(void *parameter)
                 // LIVE with the `pdm_gain <val>` MSH command (0.5 dB units), no
                 // reflash. Analog gain pre-ADC = better SNR than software shift.
                 // Saturating gain (not the wrap-prone middleware auido_gain_pcm).
-                gain_pcm_sat((int16_t *)audprc_adc_temp,
-                             READ_AUDIO_BUF_SIZE, 6); // ×64; analog does the lifting
+#ifdef BSP_USING_MIC_NS_AGC
+                if (mic_nsagc_enabled)
+                {
+                    /* NS -> AGC for ASR. Use a smaller software pre-shift
+                       (mic_nsagc_shift, default 2) since AGC does the digital
+                       leveling; then run NS (clean) -> AGC (level). 320 bytes =
+                       160 int16 samples = one 10 ms / 16 kHz frame, the exact
+                       NS/AGC frame size. */
+                    gain_pcm_sat((int16_t *)audprc_adc_temp,
+                                 READ_AUDIO_BUF_SIZE, mic_nsagc_shift);
+                    mic_nsagc_process((int16_t *)audprc_adc_temp,
+                                      READ_AUDIO_BUF_SIZE / 2);
+                }
+                else
+#endif
+                {
+                    gain_pcm_sat((int16_t *)audprc_adc_temp,
+                                 READ_AUDIO_BUF_SIZE, 6); // ×64; analog does the lifting
+                }
 
                 // rt_kprintf("audprc_adc_temp[0]=%d, audprc_adc_temp[1]=%d\n",
                 // audprc_adc_temp[0], audprc_adc_temp[1]);
@@ -848,6 +1019,112 @@ void audio_unsubscribe(void)
     audio_codec_close();
     audio_prc_close();
 }
+
+#ifdef BSP_USING_MIC_NS_AGC
+/* Live tuning of the optional NS+AGC mic stage, no reflash needed. Usage:
+     mic_nsagc                 -- print current settings
+     mic_nsagc on | off        -- enable / disable the whole NS+AGC stage
+     mic_nsagc shift <0..8>    -- software pre-shift used while stage ON
+     mic_nsagc ns <0|1|2>      -- NS policy: 0 Mild / 1 Medium / 2 Aggressive
+     mic_nsagc target <dbfs>   -- AGC targetLevelDbfs (lower = louder)
+     mic_nsagc gain <db>       -- AGC compressionGaindB
+     mic_nsagc limiter <0|1>   -- AGC limiterEnable
+   NS/AGC param changes apply immediately to the live instance (if the mic path
+   is open); otherwise they take effect at the next mic open. */
+static void mic_nsagc_print(void)
+{
+    rt_kprintf("[mic_nsagc] enabled=%d shift=%u", mic_nsagc_enabled,
+               (unsigned)mic_nsagc_shift);
+    #if defined(WEBRTC_ANS_FIX)
+    rt_kprintf(" ns_mode=%d(inst=%s)", mic_ns_mode, mic_ns_inst ? "y" : "n");
+    #endif
+    #ifdef WEBRTC_AGC_FIX
+    rt_kprintf(" agc[target=%d gain=%d limiter=%d](inst=%s)",
+               mic_agc_target_dbfs, mic_agc_gain_db, mic_agc_limiter,
+               mic_agc_inst ? "y" : "n");
+    #endif
+    rt_kprintf("\n");
+}
+
+    #ifdef WEBRTC_AGC_FIX
+/* Re-push AGC config to a live instance after an MSH param change. */
+static void mic_agc_apply_config(void)
+{
+    if (!mic_agc_inst)
+    {
+        return;
+    }
+    WebRtcAgcConfig cfg;
+    cfg.targetLevelDbfs   = (int16_t)mic_agc_target_dbfs;
+    cfg.compressionGaindB = (int16_t)mic_agc_gain_db;
+    cfg.limiterEnable     = (uint8_t)mic_agc_limiter;
+    cfg.thrhold           = 0;
+    WebRtcAgc_set_config(mic_agc_inst, cfg);
+}
+    #endif
+
+static void mic_nsagc(int argc, char **argv)
+{
+    if (argc < 2)
+    {
+        mic_nsagc_print();
+        return;
+    }
+    if (rt_strcmp(argv[1], "on") == 0)
+    {
+        mic_nsagc_enabled = true;
+    }
+    else if (rt_strcmp(argv[1], "off") == 0)
+    {
+        mic_nsagc_enabled = false;
+    }
+    else if (rt_strcmp(argv[1], "shift") == 0 && argc >= 3)
+    {
+        int v = atoi(argv[2]);
+        if (v < 0) v = 0;
+        if (v > 8) v = 8;
+        mic_nsagc_shift = (uint8_t)v;
+    }
+    #if defined(WEBRTC_ANS_FIX)
+    else if (rt_strcmp(argv[1], "ns") == 0 && argc >= 3)
+    {
+        int v = atoi(argv[2]);
+        if (v < 0) v = 0;
+        if (v > 2) v = 2;
+        mic_ns_mode = v;
+        if (mic_ns_inst)
+        {
+            WebRtcNsx_set_policy(mic_ns_inst, mic_ns_mode);
+        }
+    }
+    #endif
+    #ifdef WEBRTC_AGC_FIX
+    else if (rt_strcmp(argv[1], "target") == 0 && argc >= 3)
+    {
+        mic_agc_target_dbfs = atoi(argv[2]);
+        mic_agc_apply_config();
+    }
+    else if (rt_strcmp(argv[1], "gain") == 0 && argc >= 3)
+    {
+        mic_agc_gain_db = atoi(argv[2]);
+        mic_agc_apply_config();
+    }
+    else if (rt_strcmp(argv[1], "limiter") == 0 && argc >= 3)
+    {
+        mic_agc_limiter = atoi(argv[2]) ? 1 : 0;
+        mic_agc_apply_config();
+    }
+    #endif
+    else
+    {
+        rt_kprintf("usage: mic_nsagc [on|off|shift N|ns 0/1/2|target N|gain N|"
+                   "limiter 0/1]\n");
+        return;
+    }
+    mic_nsagc_print();
+}
+MSH_CMD_EXPORT(mic_nsagc, tune optional WebRTC NS+AGC mic stage);
+#endif /* BSP_USING_MIC_NS_AGC */
 
 #if !kReleaseMode
 static void audio_open_demo(uint8_t argc, char **argv)
