@@ -311,6 +311,9 @@ static float scroll_last_theta = 0.0f;      // 上次手指相對中心的角度
 static float scroll_accum_angle = 0.0f;     // 未觸發滾動的累積角度（弧度）
 static float scroll_node_offset_deg = 0.0f; // 節點視覺偏移（度，已正規化）
 static int32_t scroll_ui_level = 0;         // 0 = 暗/細，1000 = 亮/粗（動畫用）
+// 滾輪節點進場因子（0 = 全黑融入背景 ~ 1000 = 正常灰）。預設 1000：standalone
+// 不淡入；hosted（device_pager）建立後呼叫 hid_mouse_fade_in_scroll_wheel() 才從 0 淡。
+static int32_t s_node_entrance = 1000;
 
 // 左側滾動節點相關（實作在 mouse screen 建立處）
 static float left_scroll_finger_theta(const lv_point_t *p);
@@ -4394,7 +4397,9 @@ static void update_left_scroll_nodes(void)
         float blend = 0.2f + 0.8f * factor;
         if (blend < 0.0f) blend = 0.0f;
         if (blend > 1.0f) blend = 1.0f;
-        uint8_t cv = (uint8_t)((float)0x4D * blend);
+        // 進場淡入：cv 額外乘 s_node_entrance/1000，0 時純黑融入背景（用顏色淡，
+        // 不動 line_opa，避免 round-cap 殘色 / layer 開銷）
+        uint8_t cv = (uint8_t)((float)0x4D * blend * (float)s_node_entrance / 1000.0f);
         lv_color_t node_color = lv_color_make(cv, cv, cv);
 
         lv_line_set_points(left_scroll_nodes[i], left_scroll_node_pts[i], 2);
@@ -4444,13 +4449,41 @@ static void update_left_scroll_nodes(void)
         float blend = 0.2f + 0.8f * factor;
         if (blend < 0.0f) blend = 0.0f;
         if (blend > 1.0f) blend = 1.0f;
-        uint8_t cv = (uint8_t)((float)0x4D * blend);
+        uint8_t cv = (uint8_t)((float)0x4D * blend * (float)s_node_entrance / 1000.0f);
         lv_color_t node_color = lv_color_make(cv, cv, cv);
 
         lv_line_set_points(right_scroll_nodes[i], right_scroll_node_pts[i], 2);
         lv_obj_set_style_line_width(right_scroll_nodes[i], line_w, 0);
         lv_obj_set_style_line_color(right_scroll_nodes[i], node_color, 0);
     }
+}
+
+/* Scroll-wheel entrance fade (hosted/device_pager): the wheel is the gray tick
+   NODES (the arc itself is always transparent), drawn by COLOR not opacity, so
+   we fade them in by ramping s_node_entrance 0→1000 (black→gray) — no layer
+   opacity (too costly/fails on a full-screen object on the watch) and no
+   line_opa animation (round-cap residue). */
+static void node_entrance_anim_cb(void *var, int32_t v)
+{
+    (void)var;
+    s_node_entrance = v;
+    update_left_scroll_nodes();
+}
+
+void hid_mouse_fade_in_scroll_wheel(void)
+{
+    if (left_scroll_nodes[0] == NULL) return; /* nodes not built yet */
+    lv_anim_del(&s_node_entrance, node_entrance_anim_cb);
+    s_node_entrance = 0;
+    update_left_scroll_nodes();               /* start fully black (invisible) */
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, &s_node_entrance);
+    lv_anim_set_exec_cb(&a, node_entrance_anim_cb);
+    lv_anim_set_values(&a, 0, 1000);
+    lv_anim_set_time(&a, 400);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    lv_anim_start(&a);
 }
 
 /**
@@ -6147,7 +6180,10 @@ void lv_create_mouse_screen(lv_obj_t *scr)
 {
     lv_obj_t *bg = common_black_bg(scr);
     lv_obj_set_scrollbar_mode(bg, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
+    /* Standalone mouse app keeps its solid black backdrop; when hosted (device_pager,
+       scr != the active screen) keep the trackpad bg fully transparent so the page's
+       own backdrop / the watch face shows through instead of a black layer. */
+    lv_obj_set_style_bg_opa(bg, (scr == lv_scr_act()) ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     // 關掉 bg 的 scroll：拖 mode_label 時 scroll event 冒泡到 bg 會被 bg 攔截，
     // 導致 child 被偏移（看起來像動畫終點位置不對）
     lv_obj_clear_flag(bg, LV_OBJ_FLAG_SCROLLABLE);
@@ -6450,6 +6486,8 @@ void hid_mouse_destroy(void)
     menu_swipe_area = NULL;
     bottom_swipe_area = NULL;
     lv_anim_del(&scroll_ui_level, NULL); // 停掉 UI 過渡動畫
+    lv_anim_del(&s_node_entrance, node_entrance_anim_cb); // 停掉滾輪進場淡入
+    s_node_entrance = 1000; // 還原：下個（含 standalone）建立時節點為全顯示
     lv_anim_del(&scroll_node_offset_deg, NULL); // 停掉節點 snap 動畫
     lv_anim_del(&back_hint_anim, NULL);          // 停掉 back hint 進場動畫
     lv_anim_del(&back_hint_release_anim, NULL);  // 停掉 back hint 釋放動畫

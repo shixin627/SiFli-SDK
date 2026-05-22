@@ -76,8 +76,8 @@ LV_IMG_DECLARE(img_flashlight); /* placeholder per-item icon (same look as left 
 #define ARC_SLOT_DEG   36.0f       /* angle between adjacent items */
 #define ARC_ICON_SIZE  80          /* img_flashlight native size */
 #define ARC_SLOT_H     90          /* vertical scroll pitch per item */
-#define ARC_ZOOM_MIN   128         /* 0.5x at the edges */
-#define ARC_ZOOM_CTR   320         /* ~1.25x at the centre */
+#define ARC_ZOOM_MIN   102         /* 0.4x at the edges  (was 128 / 0.5x — shrunk to 80%) */
+#define ARC_ZOOM_CTR   256         /* 1.0x at the centre (was 320 / 1.25x — shrunk to 80%) */
 #define ARC_OPA_MIN    LV_OPA_40
 #define ARC_PULL_MOUSE_PX 55       /* elastic over-pull past the top item → mouse */
 
@@ -379,6 +379,26 @@ static void snap_to_center(lv_anim_enable_t anim)
     lv_obj_scroll_to_view(p->t[TILE_CENTER].tile, anim);
 }
 
+/* Limit the carousel's scroll directions so that swiping toward a non-existent
+   neighbour chains to the outer watch-face tileview instead of dead-scrolling:
+   on the FIRST device a right-swipe (toward "previous") chains back to the watch
+   face (whole page + mouse finger-follow out); on the LAST device a left-swipe
+   (toward "next") chains away too. Middle devices scroll both ways between devices. */
+static void update_pager_scroll_dir(void)
+{
+    if (!p || !p->pager) return;
+    lv_dir_t dir = LV_DIR_HOR;
+    bool first = (p->current <= 0);
+    bool last  = (p->current >= p->count - 1);
+    /* LV_DIR_RIGHT allows the left-swipe (→ next device) but blocks the right-swipe
+       (→ "previous"), so on the first device the right-swipe chains to the watch
+       face. LV_DIR_LEFT is the mirror for the last device. */
+    if (first && last)      dir = LV_DIR_RIGHT;         /* single device: only the home chain */
+    else if (first)         dir = LV_DIR_RIGHT;         /* block "previous" → chains to watch face */
+    else if (last)          dir = LV_DIR_LEFT;          /* block "next" */
+    lv_obj_set_scroll_dir(p->pager, dir);
+}
+
 static int centered_tile(void)
 {
     lv_coord_t w = lv_obj_get_width(p->t[TILE_CENTER].tile);
@@ -411,6 +431,7 @@ static void pager_settle_ready_cb(lv_anim_t *a)
               p->model[p->current].name);
     }
     snap_to_center(LV_ANIM_OFF);
+    update_pager_scroll_dir();
     p->recycling = false;
 }
 
@@ -424,9 +445,11 @@ static void pager_scroll_end_cb(lv_event_t *e)
     int want = p->current + dir;
     if (want < 0)                            /* swiped before the first → leave to watch face */
     {
+        /* Slide the whole page (the mouse base included) out to the watch face.
+           Don't tear the mouse down here — let it ride out with the slide; the main
+           tileview's settle (VALUE_CHANGED on the watch-face tile) calls
+           device_pager_set_active(false) once the page is gone. */
         snap_to_center(LV_ANIM_OFF);
-        extern void device_pager_set_active(bool on);
-        device_pager_set_active(false);
         extern void app_clock_status_bar_return_home(void);
         app_clock_status_bar_return_home();
         return;
@@ -568,6 +591,7 @@ static void refresh(void)
     lv_obj_add_flag(p->empty_label, LV_OBJ_FLAG_HIDDEN);
     rebind_all();
     snap_to_center(LV_ANIM_OFF);
+    update_pager_scroll_dir();
 }
 
 /* Public: rebind the (peer-reported) device list and refresh (called on reveal). */
@@ -633,9 +657,8 @@ static void overlay_value_changed_cb(lv_event_t *e)
     }
     else
     {
-        /* Settled on the LIST → hide the bar + grabber; allow a fresh over-pull.
-           The list is already anchored to the last item by the rebind at reveal
-           start (bind_tile), so it arrives bottom-most without a settle-time jump. */
+        /* Settled on the LIST → hide the bar + grabber; the mouse stays visible
+           behind the (transparent) list. */
         lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
         if (p->grabber) lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
         p->pull_pending = false;
@@ -721,7 +744,15 @@ static void bar_cb(lv_event_t *e)
 }
 
 /* Public: host / tear down the real mouse base as the device page is
-   entered / left. */
+   entered / left.
+
+   NOTE: the mouse is built HERE (at settle), not during the reveal drag.
+   Building hid_mouse mid-drag — even just its UI, even deferred via
+   lv_async_call — mutates the object tree enough to abort the main tileview's
+   active gesture, so the page snaps fully open instead of finger-following
+   (verified in the sim). And pre-building it permanently to dodge that would
+   collide with the standalone APP_ID_MOUSE app, which shares hid_mouse's
+   file-static singleton. So the mouse appears as the page settles. */
 void device_pager_set_active(bool on)
 {
     if (!p) return;
@@ -738,10 +769,16 @@ void device_pager_set_active(bool on)
                the trackpad — the bar must be the hit-test target at the bottom). */
             lv_obj_move_foreground(p->overlay);
             lv_obj_move_foreground(p->bar);
+            /* The mouse can't be built during the reveal drag (would abort
+               finger-follow), so soften its settle appearance: fade the scroll
+               wheel's tick nodes in from black via colour (hardware-safe, no
+               layer opacity). */
+            hid_mouse_fade_in_scroll_wheel();
             LOG_I("[pager] device page active — mouse base hosted");
         }
         device_pager_refresh();
-        /* Enter on the LIST (covering the mouse); pull down to reveal the mouse. */
+        /* Enter on the LIST (the mouse shows through behind it); pull down to reveal
+           the full mouse. */
         p->pull_pending = false;
         lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF);

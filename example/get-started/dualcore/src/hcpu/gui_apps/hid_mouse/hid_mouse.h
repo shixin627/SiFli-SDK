@@ -35,6 +35,15 @@ void hid_mouse_create(lv_obj_t *host);
 void hid_mouse_destroy(void);
 
 /**
+ * @brief Fade the trackpad scroll wheel (the gray tick nodes) in from the black
+ *        backdrop, by ramping their COLOR (not opacity). For hosts (device_pager)
+ *        that build the mouse at settle and want to soften the wheel's
+ *        appearance. Call right after hid_mouse_create(). No-op safe if the
+ *        wheel isn't built. Hardware-safe (no full-object layer opacity).
+ */
+void hid_mouse_fade_in_scroll_wheel(void);
+
+/**
  * @brief Register a "return to host" callback (T4 (b)). When set, the mouse is
  *        in hosted mode: the bottom-bar up gesture invokes @p cb (device_pager
  *        slides the instruction layer back) instead of firing a multitask

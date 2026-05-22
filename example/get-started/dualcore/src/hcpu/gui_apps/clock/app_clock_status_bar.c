@@ -405,6 +405,13 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             {
                 set_clock_main_status_opa(LV_OPA_100, true);
             }
+            else if (active_pos == MAIN_PAGE_TYPE_RIGHT)
+            {
+                /* device page wants a PURE BLACK backdrop (gaus_dial_bg at
+                   COVER), not the blurred dial — keep the blur image hidden so
+                   the settle doesn't re-reveal it after the drag faded to black. */
+                set_clock_main_status_opa(LV_OPA_0, false);
+            }
             else
             {
                 set_clock_main_status_opa(LV_OPA_100, false);
@@ -2028,10 +2035,12 @@ void app_clock_status_bar_return_home(void)
 {
     if (!lv_obj_is_valid(app_clock_main_status_bar))
         return;
-    lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
-    lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
-    if (lv_obj_is_valid(gaus_dial_bg))
-        lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    /* Animate the slide back to the watch face so the device page — and the mouse
+       base it hosts in the right tile — rides out with it (instead of jumping). The
+       tileview's VALUE_CHANGED on the home tile tears the device page down
+       (device_pager_set_active(false)) and hides this bar; gaus_dial_bg fades out
+       via the scroll handler as scroll_x returns to centre. */
+    lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, true);
 }
 
 // device_change_bar_area_right 是 lv_layer_top() 的子物件，跨 app 都吃

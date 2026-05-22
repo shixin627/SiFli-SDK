@@ -150,6 +150,10 @@ static lv_obj_t *switch_objs[MAX_LIST_ITEMS]; // toggle switches for any item
 #define DOT_SMOLL_PROPORTION (0.5)
 #define DOT_BIG_PROPORTION (1.3)
 #define DOT_BG_SIZE (100 * DOT_BIG_PROPORTION) + 2
+/* Icon-only shrink factor (1.0 = original). Applied to the dot zoom but NOT to
+ * DOT_BG_SIZE / arc positions, so the icon images shrink to 80% in place while
+ * the carousel spacing/layout stays identical. */
+#define DOT_ICON_SCALE 0.8f
 /* 縮放曲線指數：1.0 = 線性、2.0 = 平方（中央放大效果突出，邊緣下降快）、
  * 3.0 = 立方（更陡峭）。值越大，「中央 dot 顯著大、其他 dot 都很小」越明顯 */
 #define DOT_ZOOM_EXPONENT 2.0f
@@ -482,7 +486,7 @@ static void update_indicator_dots_position(int input_value)
          * 邊緣 dot 快速縮小，視覺上中央更突出 */
         float zoom_ratio = powf(ratio, DOT_ZOOM_EXPONENT);
         uint16_t zoom =
-            (uint16_t)(255 *
+            (uint16_t)(255 * DOT_ICON_SCALE *
                        (DOT_SMOLL_PROPORTION +
                         (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * zoom_ratio));
         if (abs((int)zoom - (int)last_zoom[i]) > 5)
