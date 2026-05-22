@@ -49,6 +49,18 @@ static rt_timer_t step_poll_timer;
 static uint32_t step_poll_last = 0;
 static bool step_poll_first = true;
 
+/* Step-poll period gated on screen state. ACTIVE: 1 s keeps step-count UI /
+   phone-push granularity fine while LCPU is already busy (100 Hz gesture
+   pipeline) -- no extra power cost. DARK: 7 s -- this 1 Hz wake is the main
+   residual LCPU wake while the screen is off (it also feeds the watchdog via
+   the idle hook on each wake). 7 s stays safely under the LCPU WDT reboot
+   deadline (~9 s: WDT_TIMEOUT=10 s RC10K-clocked, stage-1 WDT IRQ -> drv_reboot
+   at ~9 s), leaving ~2 s margin; 8 s would leave only ~1 s, too tight for a
+   SOFT_TIMER that BLE can delay. While DARK the chip accumulates steps
+   internally, so the per-push delta just grows -- total step count preserved. */
+#define STEP_POLL_PERIOD_ACTIVE_MS  1000
+#define STEP_POLL_PERIOD_DARK_MS    7000
+
 /* ===== Raise-wrist source selection =====
    0 = software (existing hand_tracking.c state machine, gyro_x threshold).
        Lower latency, supports back-gesture / wrist-rotation; consumes IMU
@@ -203,8 +215,30 @@ INIT_APP_EXPORT(log_active_pm_policy);
        AHRS so the awake path starts already converged (no ~3 s cold start).
      - HW wrist-wake + wrist-gesture features ON (share INT1; the
        handler dispatches based on int_status bits). */
+
+/* Retune the step-poll timer for the new screen state: slow to 7 s in DARK
+   (still under the ~9 s WDT reboot deadline; see STEP_POLL_PERIOD_* comment),
+   keep 1 s while ACTIVE. NULL-guarded: the timer is created by the 3 s one-shot
+   wrist_wake_init_apply(), which may not have fired yet on an early sleep
+   transition -- in that case wrist_wake_init_apply() will create it at the
+   then-current sleep state's period, so doing nothing here is correct. */
+static void step_poll_set_period(bool sleep)
+{
+    if (!step_poll_timer)
+    {
+        return;
+    }
+    rt_tick_t ticks = rt_tick_from_millisecond(
+        sleep ? STEP_POLL_PERIOD_DARK_MS : STEP_POLL_PERIOD_ACTIVE_MS);
+    rt_timer_stop(step_poll_timer);
+    rt_timer_control(step_poll_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
+    rt_timer_start(step_poll_timer);
+}
+
 void on_lcpu_sleep_mode_changed(bool sleep)
 {
+    step_poll_set_period(sleep);
+
     if (sleep)
     {
         bmi270_hw_wrist_wake_enable(1);
@@ -331,8 +365,13 @@ static void wrist_wake_init_apply(void *param)
     /* Start the standalone step-poll timer regardless of wrist-wake mode.
        BMI270 is open at this point (either via wrist-wake HW init above
        or via SW-mode open just above). */
+    /* Create at the period matching the current screen state: if HCPU already
+       moved us to DARK before this 3 s one-shot fired, start straight at 7 s
+       rather than 1 s then waiting for the next transition to slow it. */
+    uint32_t init_period_ms = is_sleep_mode() ? STEP_POLL_PERIOD_DARK_MS
+                                              : STEP_POLL_PERIOD_ACTIVE_MS;
     step_poll_timer = rt_timer_create("step_poll", step_poll_timer_cb, NULL,
-                                      rt_tick_from_millisecond(1000),
+                                      rt_tick_from_millisecond(init_period_ms),
                                       RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
     if (step_poll_timer)
     {
