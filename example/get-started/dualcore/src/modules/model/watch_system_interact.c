@@ -57,6 +57,7 @@
 #include "app_mainmenu.h"
 #include "ui_handler.h"
 #include "ui_helper.h"
+#include "disp_refr_governor.h"
 #ifdef BSP_USING_MAHONY_AHRS
     #include "sensor_fusion.h"
 #endif
@@ -165,6 +166,10 @@ void handle_gesture_unlock(void)
 
     if (is_at_home())
     {
+        /* Navigating motion gesture: pops the app/instruction list. Treat as
+         * an "operate" input so the governor latches 60 Hz + bumps an
+         * immediate refresh for the transition. */
+        disp_gov_notify_operate();
         switch_watch_motion_control_mode(true, false);
         set_open_scrolling_app_flag(true);
         animate_to_instruction_list();

@@ -25,7 +25,7 @@
     #include "hand_tracking.h"
 #endif
 #ifdef BSP_USING_GESTURE_DETECT
-    #include "gesture_detect.h"  /* is_in_viewing_pose */
+    #include "gesture_detect.h"  /* is_in_viewing_pose_from_accel, seed */
 #endif
 #ifdef BSP_USING_BLOC_PERIPHERAL
     #include "bloc_peripheral.h"  /* on_lcpu_sleep_mode_changed weak hook */
@@ -48,6 +48,18 @@ static rt_timer_t wrist_wake_init_timer;
 static rt_timer_t step_poll_timer;
 static uint32_t step_poll_last = 0;
 static bool step_poll_first = true;
+
+/* Step-poll period gated on screen state. ACTIVE: 1 s keeps step-count UI /
+   phone-push granularity fine while LCPU is already busy (100 Hz gesture
+   pipeline) -- no extra power cost. DARK: 7 s -- this 1 Hz wake is the main
+   residual LCPU wake while the screen is off (it also feeds the watchdog via
+   the idle hook on each wake). 7 s stays safely under the LCPU WDT reboot
+   deadline (~9 s: WDT_TIMEOUT=10 s RC10K-clocked, stage-1 WDT IRQ -> drv_reboot
+   at ~9 s), leaving ~2 s margin; 8 s would leave only ~1 s, too tight for a
+   SOFT_TIMER that BLE can delay. While DARK the chip accumulates steps
+   internally, so the per-push delta just grows -- total step count preserved. */
+#define STEP_POLL_PERIOD_ACTIVE_MS  1000
+#define STEP_POLL_PERIOD_DARK_MS    7000
 
 /* ===== Raise-wrist source selection =====
    0 = software (existing hand_tracking.c state machine, gyro_x threshold).
@@ -111,11 +123,34 @@ extern void hand_tracking_lift_callback(uint8_t lift);
 void bmi270_on_wrist_wake_detected(void)
 {
 #ifdef BSP_USING_GESTURE_DETECT
-    bool ok = is_in_viewing_pose();
+    /* Read ONE fresh accel sample at the firing instant. The chip-side
+       wrist-wake feature only fires after ~1 s of stable focus posture, so
+       linear acceleration is ~0 here and the accel points along gravity
+       directly -- no gyro / AHRS history needed for the pose gate. Gyro is
+       suspended in DARK so we read accel only.
+
+       bmi270_read_accel_now() returns a fresh sample in the watch frame the
+       AHRS uses (it applies the driver's axis remap and does NOT gate on the
+       DRDY int-status bit, which bmi270_int_msg_handler already consumed).
+       Scale is irrelevant -- both the gate and the seed normalise -- so the
+       raw int16 counts are fine. */
+    int16_t rx = 0, ry = 0, rz = 0;
+    bool have_accel = (bmi270_read_accel_now(&rx, &ry, &rz) == 0);
+    float ax = (float)rx;
+    float ay = (float)ry;
+    float az = (float)rz;
+
+    bool ok = have_accel && is_in_viewing_pose_from_accel(ax, ay, az);
     rt_kprintf("[wrist-wake] tick=%u pose=%s\n",
                (unsigned)rt_tick_get(), ok ? "ACCEPT" : "REJECT");
     if (!ok)
         return;
+
+    /* Pose accepted -- seed the screen-on AHRS from the SAME accel so the
+       first post-wake updateIMU() is already converged (no ~3 s Mahony cold
+       start). Gyro is resumed by on_lcpu_sleep_mode_changed() when HCPU turns
+       the screen on. */
+    gesture_seed_attitude_from_accel(ax, ay, az);
 #else
     rt_kprintf("[wrist-wake] tick=%u (no pose filter)\n",
                (unsigned)rt_tick_get());
@@ -155,13 +190,7 @@ INIT_APP_EXPORT(log_active_pm_policy);
 #endif
 
     #if USE_BMI270_HW_WRIST_WAKE
-/* DARK-mode FIFO watermark: ~1 second of accel+gyro samples per wake.
-   Header-mode frame = 1 (hdr) + 6 (acc) + 6 (gyr) = 13 bytes.
-   IMU_SLEEPING_SAMPLE_RATE (25 Hz on watch boards) × 13 = 325 B/s, pad a
-   little so the int fires marginally past the 1-second boundary. */
-        #define BMI270_DARK_FIFO_WM_BYTES   (uint16_t)(IMU_SLEEPING_SAMPLE_RATE * 13 + 8)
-
-/* HW-mode auto-switch driven by HCPU's screen state — two-mode design.
+/* HW-mode auto-switch driven by HCPU's screen state -- two-mode design.
 
    ACTIVE (screen on):
      - accel/gyro both 100 Hz, DRDY IRQ on (already configured by
@@ -169,37 +198,72 @@ INIT_APP_EXPORT(log_active_pm_policy);
      - SW hand_tracking ON for post-wake gestures (put-down / back /
        pronation / lift2).
      - HW wrist-wake feature OFF (we'd just fire redundant events).
-     - FIFO watermark int OFF (DRDY feeds AHRS every sample directly).
 
    DARK (screen off):
-     - accel + gyro 25 Hz low-power (configured by acce_set_power(LOW)
-       that fires before this hook). Gyro stays running so the FIFO
-       captures the gyro samples that the AHRS integrator needs to keep
-       the quaternion converged — without them the orientation drifts
-       and the first second of gesture detect after wake is unusable.
+     - accel 25 Hz low-power (configured by acce_set_power(LOW) that fires
+       before this hook). GYRO IS SUSPENDED: nothing consumes gyro while
+       the screen is off -- the chip-internal step counter and wrist-wake /
+       wrist-gesture features are all accel-only, hand_tracking is disabled,
+       and health/Kraepelin don't run (DRDY un-routed). The pose gate that
+       the wrist-wake handler applies needs only the gravity direction,
+       which the accelerometer gives directly at the firing instant.
      - Per-sample DRDY un-routed from INT1 so the chip doesn't pull LCPU
        out of LIGHT sleep every 40 ms.
-     - FIFO watermark int armed instead: chip fires INT1 roughly once a
-       second once ~325 bytes have piled up. The int handler drains the
-       FIFO and replays every frame through the AHRS path in one batch.
+     - No FIFO watermark int: there is no AHRS to keep converged during
+       DARK. Instead, when wrist-wake fires, bmi270_on_wrist_wake_detected()
+       reads one fresh accel sample to (a) gate the pose and (b) seed the
+       AHRS so the awake path starts already converged (no ~3 s cold start).
      - HW wrist-wake + wrist-gesture features ON (share INT1; the
        handler dispatches based on int_status bits). */
+
+/* Retune the step-poll timer for the new screen state: slow to 7 s in DARK
+   (still under the ~9 s WDT reboot deadline; see STEP_POLL_PERIOD_* comment),
+   keep 1 s while ACTIVE. NULL-guarded: the timer is created by the 3 s one-shot
+   wrist_wake_init_apply(), which may not have fired yet on an early sleep
+   transition -- in that case wrist_wake_init_apply() will create it at the
+   then-current sleep state's period, so doing nothing here is correct. */
+static void step_poll_set_period(bool sleep)
+{
+    if (!step_poll_timer)
+    {
+        return;
+    }
+    rt_tick_t ticks = rt_tick_from_millisecond(
+        sleep ? STEP_POLL_PERIOD_DARK_MS : STEP_POLL_PERIOD_ACTIVE_MS);
+    rt_timer_stop(step_poll_timer);
+    rt_timer_control(step_poll_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
+    rt_timer_start(step_poll_timer);
+}
+
 void on_lcpu_sleep_mode_changed(bool sleep)
 {
+    step_poll_set_period(sleep);
+
     if (sleep)
     {
         bmi270_hw_wrist_wake_enable(1);
         bmi270_set_drdy_int_routing(0);
-        bmi270_set_fifo_wm_int(1, BMI270_DARK_FIFO_WM_BYTES);
+        /* Gyro off for the whole DARK window -- nothing reads it. */
+        bmi270_set_gyro_suspend(1);
+        /* Make sure the legacy FIFO-drain wake source stays disarmed. */
+        bmi270_set_fifo_wm_int(0, 0);
         #ifdef BSP_USING_HAND_TRACKING
         hand_tracking_set_enabled(false);
         #endif
     }
     else
     {
+        /* Resume gyro before re-enabling DRDY / hand_tracking below.
+           acce_set_power(HIGH) ran just before this hook and already
+           re-enabled the gyro at 100 Hz (configure_sensor_performance_mode
+           enables accel+gyro together), so this is a redundant safety
+           re-enable that guarantees the gyro is running regardless of the
+           order HCPU drove the transition. */
+        bmi270_set_gyro_suspend(0);
         #ifdef BSP_USING_HAND_TRACKING
         hand_tracking_set_enabled(true);
         #endif
+        /* FIFO watermark stays disarmed in this design. */
         bmi270_set_fifo_wm_int(0, 0);
         bmi270_set_drdy_int_routing(1);
         bmi270_hw_wrist_wake_enable(0);
@@ -301,8 +365,13 @@ static void wrist_wake_init_apply(void *param)
     /* Start the standalone step-poll timer regardless of wrist-wake mode.
        BMI270 is open at this point (either via wrist-wake HW init above
        or via SW-mode open just above). */
+    /* Create at the period matching the current screen state: if HCPU already
+       moved us to DARK before this 3 s one-shot fired, start straight at 7 s
+       rather than 1 s then waiting for the next transition to slow it. */
+    uint32_t init_period_ms = is_sleep_mode() ? STEP_POLL_PERIOD_DARK_MS
+                                              : STEP_POLL_PERIOD_ACTIVE_MS;
     step_poll_timer = rt_timer_create("step_poll", step_poll_timer_cb, NULL,
-                                      rt_tick_from_millisecond(1000),
+                                      rt_tick_from_millisecond(init_period_ms),
                                       RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
     if (step_poll_timer)
     {

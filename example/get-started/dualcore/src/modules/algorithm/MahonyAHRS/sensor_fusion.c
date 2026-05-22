@@ -297,6 +297,44 @@ void resetAHRS(sensor_fusion_param_t *param)
     param->integralFBz = 0.0f;
 }
 
+// Seed the quaternion directly from a single (assumed gravity-only) accel
+// reading so the very first updateIMU() sample is already converged -- no
+// Mahony proportional-correction cold start (~3 s). The chosen quaternion
+// has zero yaw and rotates body +Z onto the measured gravity direction, so
+// calculate_gravity(q) reproduces the normalised input exactly (signs match
+// this codebase's calculate_gravity / updateIMU convention: gravity reads
+// +Z when the watch lies flat). Integral terms are cleared.
+void seedAHRSFromAccel(sensor_fusion_param_t *p, float ax, float ay, float az)
+{
+    float n = invSqrt(ax * ax + ay * ay + az * az);
+    ax *= n;
+    ay *= n;
+    az *= n;
+    if (az >= 0.9999f)
+    {
+        p->q0 = 1;
+        p->q1 = 0;
+        p->q2 = 0;
+        p->q3 = 0;
+    }
+    else if (az <= -0.9999f)
+    {
+        p->q0 = 0;
+        p->q1 = 1;
+        p->q2 = 0;
+        p->q3 = 0;
+    }
+    else
+    {
+        p->q0 = sqrtf((1.0f + az) * 0.5f);
+        float inv = 1.0f / (2.0f * p->q0);
+        p->q1 = ay * inv;
+        p->q2 = -ax * inv;
+        p->q3 = 0.0f;
+    }
+    p->integralFBx = p->integralFBy = p->integralFBz = 0.0f;
+}
+
 euler_angle_t QuaternionToEuler(Quaternion q)
 {
     euler_angle_t euler;

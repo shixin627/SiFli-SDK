@@ -9,7 +9,11 @@ objs = []
 
 if GetDepend('PKG_USING_LITTLEVGL2RTT'):
 	objs = Glob('*.c')
-	group = DefineGroup('App_watch_demo', objs, depend = ['PKG_USING_LITTLEVGL2RTT'], CPPPATH = [''], LOCAL_CCFLAGS = '')
+	# CPPPATH = [cwd] so headers placed directly in gui_apps/ (e.g.
+	# disp_refr_governor.h) are globally includable, matching how the
+	# subdir SConscripts add their own dirs. (The previous '' resolved to
+	# the build CWD via os.path.abspath('') and added nothing useful.)
+	group = DefineGroup('App_watch_demo', objs, depend = ['PKG_USING_LITTLEVGL2RTT'], CPPPATH = [cwd], LOCAL_CCFLAGS = '')
 	# PC simulator: skip apps that pull TFLite-Micro (gesture, dinosaur game),
 	# WebRTC VAD (speech, skai), audio HAL (recorder, camera), or otherwise
 	# tightly coupled to ARM-only peripherals. The rest of the app surface

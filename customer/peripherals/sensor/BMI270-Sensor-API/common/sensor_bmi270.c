@@ -159,8 +159,9 @@ void bmi270_sensor_power_high_mode(void)
        (2026-05-12) commented out, leaving the read result unused.
        The mdelay masked BMI270 INT1 for 200 ms after every screen-on,
        blocking immediate post-wake gestures (back / put-down / re-lift)
-       for that window. AHRS quaternion stays converged via FIFO drain
-       during DARK, so no AHRS reseed is needed on wake. */
+       for that window. No AHRS reseed is needed here: the wrist-wake
+       handler (bmi270_on_wrist_wake_detected) already seeds the AHRS from
+       a fresh accel sample at the firing instant, just before screen-on. */
 #endif
     watch_sensor.imu_data.sample_rate = IMU_NOARMAL_SAMPLE_RATE;
     rt_bmi270_irq_pin_enable(1);

@@ -8,6 +8,18 @@
 #include "lvgl.h"
 #include "board.h"
 #include "drv_touch.h"
+/* Optional: the dynamic display-refresh governor lives in the watch app
+ * layer. Other projects that share this driver may not ship the header — in
+ * that case the operate-press hook compiles out to a no-op. */
+#if defined(__has_include)
+    #if __has_include("disp_refr_governor.h")
+        #include "disp_refr_governor.h"
+        #define LV_TOUCH_HAS_REFR_GOVERNOR 1
+    #endif
+#endif
+#ifndef LV_TOUCH_HAS_REFR_GOVERNOR
+    #define disp_gov_notify_touch_press() ((void)0)
+#endif
 
 static lv_indev_drv_t indev_drv;
 static rt_device_t touch_device = NULL;
@@ -28,6 +40,10 @@ static rt_uint32_t touch_data_cnt = 0;
  * the sole gate. */
 static volatile bool s_wake_suppress_armed = false;
 static volatile uint32_t s_wake_suppress_until_tick = 0;
+
+/* Last reported indev state, for REL->PR rising-edge detection feeding the
+ * refresh governor's "operate touch press" hook. */
+static lv_indev_state_t s_last_indev_state = LV_INDEV_STATE_REL;
 
 void lv_touch_arm_wake_suppression(void)
 {
@@ -88,7 +104,19 @@ static void input_read(struct _lv_indev_drv_t *indev_drv, lv_indev_data_t *data)
                 data->state = LV_INDEV_STATE_REL;
                 break;
             }
+
+            /* Refresh governor: a touch press that survived wake suppression
+             * is an "operate" input on a wake session. Fire only on the
+             * REL->PR rising edge (not while held / moving). The governor
+             * applies its own post-wake debounce, so a wake-tap that races
+             * past suppression still won't latch. */
+            if (data->state == LV_INDEV_STATE_PR &&
+                s_last_indev_state != LV_INDEV_STATE_PR)
+            {
+                disp_gov_notify_touch_press();
+            }
         }
+        s_last_indev_state = data->state;
 
         data->point.x = touch_data.x;
         data->point.y = touch_data.y;

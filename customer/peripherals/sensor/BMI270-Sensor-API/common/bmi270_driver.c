@@ -870,6 +870,34 @@ struct bmi2_sens_axes_data *bmi270_get_gyro(void)
 }
 
 static struct bmi2_sens_axes_data
+redirect_sensor_data(struct bmi2_sens_axes_data *data);
+
+/* Read ONE fresh accel sample on demand, returning it in the watch frame
+   (same axis convention as imu_data_fetch / the AHRS). Unlike
+   bmi270_accel_read() this does NOT gate on the DRDY int-status bit, so it
+   is safe to call from the wrist-wake handler where that bit has already
+   been consumed by bmi270_int_msg_handler(). Scale is left in raw int16
+   counts (callers normalise). Returns 0 on success, -1 on failure. */
+int bmi270_read_accel_now(int16_t *px, int16_t *py, int16_t *pz)
+{
+    if (accel_gyro_dev_info.open_flag == 0 || !px || !py || !pz)
+        return -1;
+
+    struct bmi2_sens_data sensor_data = {{0}};
+    bmi270_api_lock();
+    int8_t rslt = bmi2_get_sensor_data(&sensor_data, &bmi2_dev);
+    bmi270_api_unlock();
+    if (rslt != BMI2_OK)
+        return -1;
+
+    struct bmi2_sens_axes_data acc = redirect_sensor_data(&sensor_data.acc);
+    *px = acc.x;
+    *py = acc.y;
+    *pz = acc.z;
+    return 0;
+}
+
+static struct bmi2_sens_axes_data
 redirect_sensor_data(struct bmi2_sens_axes_data *data)
 {
     struct bmi2_sens_axes_data dataRedirect;
@@ -1860,7 +1888,7 @@ int bmi270_hw_wrist_wake_enable(int en)
         /* Push GEST sensitivity to spec maximum. Bosch defaults are tuned
            for low false-positive rate; we want the opposite — fire fast on
            any plausible flick / pivot_up and let the LCPU-side pose filter
-           (is_in_viewing_pose) reject if not in watchface_visible envelope.
+           (is_in_viewing_pose_from_accel) reject if not in watchface_visible envelope.
            Ranges per bmi2_defs.h:2204-2222:
              min_flick_peak    1448..1774  → 1448 (most sensitive)
              min_flick_samples 3..5        → 3    (catches faster flicks)

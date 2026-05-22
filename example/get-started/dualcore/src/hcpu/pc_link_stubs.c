@@ -156,6 +156,12 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 #include "lvgl/lvgl.h"
 #include "bloc_v2t.h"
 
+/* disp_refr_governor.c (layer-2 indev throttle) queries the hardware touch
+   indev accessor from lv_touch.c. The PC sim uses lv_touch_sim instead, so
+   that symbol isn't linked here — return NULL (the governor null-checks it,
+   so layer-2 just no-ops in the sim). */
+lv_indev_t *touch_get_indev_handler(void) { return NULL; }
+
 /* gesture indicator on layer-top: real impl now lives in lvsf_gesture.c
  * (re-enabled by switching APP_TRANS_ANIMATION_NONE → OVERWRITE).
  * Don't stub here. */

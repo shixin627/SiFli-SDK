@@ -55,6 +55,7 @@
 #include "ui_handler.h"
 #include "watch_global_data.h"
 #include "watch_sys_service.h"
+#include "disp_refr_governor.h"
 
 #define DBG_TAG "gesture.handler"
 #define DBG_LVL DBG_LOG
@@ -391,6 +392,10 @@ static void gesture_event_handler_hcpu(rt_uint32_t recv_set)
     }
 
     set_gesture(current_time, gesture_wrist_pronation);
+    /* Navigating motion gesture: this pulls the notification/message center.
+     * Treat as an "operate" input so the governor latches 60 Hz + bumps an
+     * immediate refresh for a smooth transition. */
+    disp_gov_notify_operate();
     if (!gui_app_is_actived(APP_ID_MAIN))
     {
       lvgl_set_global_keypad_esc_cmd();
