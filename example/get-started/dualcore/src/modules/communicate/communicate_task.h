@@ -44,6 +44,10 @@ bool commu_send_dial_change(void);
 /* Health */
 bool commu_send_sport_data(void);
 bool commu_send_heart_data(int hr);
+/* Background daily HR-curve point: a timestamped ambient HR sample (taken
+   ~every 15 min by the LCPU sampler). Phone accumulates these into a daily
+   heart-rate curve. Distinct from commu_send_heart_data (live single value). */
+bool commu_send_heart_curve_sample(uint32_t timestamp, uint8_t bpm);
 bool commu_send_heart_rate_series(const float *ppg, uint16_t count);
 /* Push current SkaiWatchSys.sleep_state to the phone via KEY_RETURN_SLEEP_DATA.
    Called on every stage transition received from LCPU. The dart-side

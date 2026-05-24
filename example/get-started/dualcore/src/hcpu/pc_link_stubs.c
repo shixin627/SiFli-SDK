@@ -68,6 +68,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_task.h */ bool commu_send_file_compare_result(uint8_t result) { return false; }
 /* communicate_task.h */ bool commu_send_find_mobile(void) { return false; }
 /* communicate_task.h */ bool commu_send_get_instruction_img(const char *id) { return false; }
+/* communicate_task.h */ bool commu_send_heart_curve_sample(uint32_t timestamp, uint8_t bpm) { return false; }
 /* communicate_task.h */ bool commu_send_heart_data(int hr) { return false; }
 /* communicate_task.h */ bool commu_send_hour_format(void) { return false; }
 /* communicate_task.h */ bool commu_send_language(void) { return false; }

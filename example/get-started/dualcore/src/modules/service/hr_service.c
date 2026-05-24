@@ -972,6 +972,118 @@ static void ppg_timeout_ind(void *param)
 }
 #endif
 
+/* ===================== Background daily HR-curve sampler =====================
+   LCPU-autonomous: every BG_HR_PERIOD_MS, if worn and not on charger, power the
+   PPG LED for a short burst, read a representative BPM straight from the sensor
+   (independent of the data_service pub/sub path), and push it to HCPU -> phone
+   to build a daily heart-rate curve. SOFT rt_timers so it fires while the
+   screen is off (the whole point of a daily curve). If the Exercise app is
+   already measuring (ref_count>0) we don't start our own LED burst — we just
+   forward the latest value it produced. */
+#ifndef SOC_BF0_HCPU
+#include "wear_detect.h"
+#include "bloc_battery.h"
+
+#define BG_HR_PERIOD_MS (15 * 60 * 1000) /* sample every 15 min            */
+#define BG_HR_BURST_MS  (25 * 1000)      /* LED on this long: settle + lock */
+#define BG_HR_SAMPLE_MS (1000)           /* read cadence during the burst   */
+
+static rt_timer_t bg_hr_period_timer = RT_NULL;
+static rt_timer_t bg_hr_sample_timer = RT_NULL;
+static rt_bool_t bg_hr_bursting = RT_FALSE;
+static uint32_t bg_hr_burst_deadline_ms = 0;
+static uint8_t bg_hr_burst_best = 0;
+
+static rt_bool_t bg_hr_should_sample(void)
+{
+    if (hr_service_env.is_ready != RT_TRUE) return RT_FALSE;
+    if (battery_get_charge_state()->is_charging) return RT_FALSE; /* on charger */
+    if (!wear_detect_is_wearing()) return RT_FALSE;               /* off wrist  */
+    return RT_TRUE;
+}
+
+static void bg_hr_finish_burst(void)
+{
+    /* Forward the best BPM seen this burst, then power the LED back off. */
+    if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
+    {
+        watch_sys_sync.notify_hr_sample((uint32_t)time(NULL), bg_hr_burst_best);
+    }
+    if (bg_hr_sample_timer) rt_timer_stop(bg_hr_sample_timer);
+    /* Only power down if no foreground (Exercise app) subscriber needs PPG.
+       There is a tiny (two-statement) window where a subscribe on the ds_proc
+       thread could flip ref_count between this read and hr_set_power(0); the
+       impact is at worst a transient LED-off that the Exercise path re-powers,
+       and it is consistent with the pre-existing unsynchronized PPG-power model
+       (multiple writers gated only by ref_count). Not worth a cross-path lock. */
+    if (hr_service_env.ref_count == 0)
+    {
+        hr_set_power(0);
+    }
+    bg_hr_bursting = RT_FALSE;
+}
+
+static void bg_hr_sample_cb(void *param)
+{
+    (void)param;
+    /* Read one HR sample directly from the sensor (same call hr_service uses). */
+    struct rt_sensor_data sd;
+    if (hr_service_env.device &&
+        rt_device_read(hr_service_env.device, 0, &sd, 1) == 1)
+    {
+        if (sd.data.hr > 0)
+        {
+            bg_hr_burst_best = (uint8_t)sd.data.hr;
+        }
+    }
+    if (rt_tick_get_millisecond() >= bg_hr_burst_deadline_ms)
+    {
+        bg_hr_finish_burst();
+    }
+}
+
+static void bg_hr_period_cb(void *param)
+{
+    (void)param;
+    if (bg_hr_bursting) return;
+    if (!bg_hr_should_sample()) return;
+
+    /* Exercise app already measuring -> just forward its latest value, no
+       extra LED burst. */
+    if (hr_service_env.ref_count > 0)
+    {
+        uint8_t bpm = hr_service_get_latest_bpm();
+        if (bpm > 0 && watch_sys_sync.notify_hr_sample)
+            watch_sys_sync.notify_hr_sample((uint32_t)time(NULL), bpm);
+        return;
+    }
+
+    /* Start a fresh burst: power the LED, read at 1 Hz until the deadline.
+       Bail BEFORE powering on if the sample timer is missing (creation failed)
+       — otherwise the LED would turn on with nothing to ever finish the burst
+       (stuck-on power leak + sampler wedged). */
+    if (bg_hr_sample_timer == RT_NULL) return;
+    bg_hr_bursting = RT_TRUE;
+    bg_hr_burst_best = 0;
+    bg_hr_burst_deadline_ms = rt_tick_get_millisecond() + BG_HR_BURST_MS;
+    hr_set_power(1);
+    rt_timer_start(bg_hr_sample_timer);
+}
+
+static void bg_hr_init(void)
+{
+    bg_hr_period_timer = rt_timer_create(
+        "bghr_p", bg_hr_period_cb, RT_NULL,
+        rt_tick_from_millisecond(BG_HR_PERIOD_MS),
+        RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+    bg_hr_sample_timer = rt_timer_create(
+        "bghr_s", bg_hr_sample_cb, RT_NULL,
+        rt_tick_from_millisecond(BG_HR_SAMPLE_MS),
+        RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+    if (bg_hr_period_timer) rt_timer_start(bg_hr_period_timer);
+}
+#endif /* !SOC_BF0_HCPU */
+
 int hr_service_register(void)
 {
     struct rt_sensor_config cfg;
@@ -1072,6 +1184,9 @@ int hr_service_register(void)
 
     hr_service_env.is_ready = RT_TRUE;
     // peripheral_provider.hr_set_power = hr_set_power;
+#ifndef SOC_BF0_HCPU
+    bg_hr_init(); /* start the 15-min background daily-HR-curve sampler */
+#endif
     return 0;
 }
 

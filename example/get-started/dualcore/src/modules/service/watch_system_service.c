@@ -205,6 +205,19 @@ static void notify_health_info(void)
 #endif
 }
 
+static void notify_hr_sample(uint32_t timestamp, uint8_t bpm)
+{
+    /* Deliberately NOT gated by is_sleep_mode(): a daily HR curve is sampled
+       mostly while the screen is OFF, so we must forward background samples in
+       DARK too. The ~15 min cadence makes the HCPU wake negligible. */
+    if (bpm == 0) return;
+    watch_sys_hr_sample_t data_ind = {
+        .timestamp = timestamp,
+        .bpm = bpm,
+    };
+    push_msg_to_hcpu(MSG_SERVICE_HR_SAMPLE_IND, &data_ind, sizeof(data_ind));
+}
+
 static void notify_sleep_state(uint8_t mode, uint32_t timestamp_utc)
 {
     watch_sys_sleep_state_t data_ind;
@@ -480,6 +493,7 @@ static void register_watch_sys_service_funs(void)
     watch_sys_sync.soft_adt_status_callback = soft_adt_status_callback;
     watch_sys_sync.notify_gesture_event = notify_gesture_event;
     watch_sys_sync.notify_health_info = notify_health_info;
+    watch_sys_sync.notify_hr_sample = notify_hr_sample;
     watch_sys_sync.notify_minute_of_activity = notify_minute_of_activity;
     watch_sys_sync.notify_sleep_state = notify_sleep_state;
     watch_sys_sync.notify_debug_log = notify_debug_log;

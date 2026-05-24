@@ -300,6 +300,13 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         commu_send_sport_data();
         break;
     }
+    case MSG_SERVICE_HR_SAMPLE_IND:
+    {
+        UNPACK_DATA(arg, watch_sys_hr_sample_t, data_ind);
+        /* Background daily HR-curve point from LCPU -> forward to phone. */
+        commu_send_heart_curve_sample(data_ind->timestamp, data_ind->bpm);
+        break;
+    }
     case MSG_SERVICE_SLEEP_STATE_IND:
     {
         UNPACK_DATA(arg, watch_sys_sleep_state_t, data_ind);

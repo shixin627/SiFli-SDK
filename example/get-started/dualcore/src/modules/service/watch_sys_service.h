@@ -43,6 +43,8 @@ extern "C"
             ((MSG_SERVICE_SYS_DATA_REQ + 13) | RSP_MSG_TYPE),
         MSG_SERVICE_MINUTE_ACTIVITY_IND =
             ((MSG_SERVICE_SYS_DATA_REQ + 14) | RSP_MSG_TYPE),
+        MSG_SERVICE_HR_SAMPLE_IND =
+            ((MSG_SERVICE_SYS_DATA_REQ + 15) | RSP_MSG_TYPE),
     };
 
     typedef enum
@@ -157,6 +159,15 @@ extern "C"
         uint16_t vmc;
     } watch_sys_minute_activity_t;
 
+    /* Background daily HR-curve sample (LCPU -> HCPU). One timestamped ambient
+       HR reading taken ~every 15 min by the LCPU sampler; HCPU forwards it to
+       the phone via KEY_HEART_CURVE_SAMPLE to build a daily heart-rate curve. */
+    typedef struct
+    {
+        uint32_t timestamp; /* UTC second of the sample */
+        uint8_t  bpm;       /* heart rate; 0 = invalid  */
+    } watch_sys_hr_sample_t;
+
     typedef struct
     {
 #if defined(SOC_BF0_HCPU)
@@ -189,6 +200,7 @@ extern "C"
     void (*soft_adt_status_callback)(bool status);
     void (*notify_gesture_event)(uint32_t gesture);
     void (*notify_health_info)(void);
+    void (*notify_hr_sample)(uint32_t timestamp, uint8_t bpm);
     void (*notify_sleep_state)(uint8_t mode, uint32_t timestamp);
     void (*notify_minute_of_activity)(time_t utc_now, uint8_t steps,
                                       uint8_t orientation, uint16_t vmc);

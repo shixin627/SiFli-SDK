@@ -33,6 +33,11 @@ typedef enum
     KEY_LATEST_DATA_SYNC = 0x0A,
     KEY_REQUEST_HEART_DATA = 0x0D,
     KEY_HEART_DATA_RETURN = 0x0F,
+    /* Background daily HR-curve sample {timestamp:u32 LE, bpm:u8}. Distinct
+       from KEY_HEART_DATA_RETURN (0x0F, live single value during exercise):
+       this is the timestamped, sparse (~15 min) ambient HR that the phone
+       accumulates into a daily heart-rate curve. */
+    KEY_HEART_CURVE_SAMPLE = 0x10,
 } HEALTH_KEY;
 
 void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t length);

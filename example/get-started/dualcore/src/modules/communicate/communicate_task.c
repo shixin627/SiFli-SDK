@@ -223,6 +223,19 @@ bool commu_send_heart_data(int hr)
     return commu_send_status(HEALTH_DATA_COMMAND_ID, KEY_HEART_DATA_RETURN, (uint8_t)hr);
 }
 
+bool commu_send_heart_curve_sample(uint32_t timestamp, uint8_t bpm)
+{
+    /* Packed 5-byte wire payload {timestamp:u32 LE, bpm:u8} — explicit packing
+       so there is no struct padding on the wire (the dart parser reads 4+1). */
+    struct __attribute__((packed))
+    {
+        uint32_t timestamp;
+        uint8_t bpm;
+    } sample = {.timestamp = timestamp, .bpm = bpm};
+    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HEART_CURVE_SAMPLE,
+                           &sample, (uint16_t)sizeof(sample));
+}
+
 bool commu_send_sleep_data(void)
 {
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_RETURN_SLEEP_DATA,
