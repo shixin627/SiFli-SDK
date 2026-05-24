@@ -491,6 +491,43 @@ void skaiwalk_ble_app_update_conn_param(uint8_t conn_idx, uint16_t inv_max,
     LOG_D("ble_gap_update_conn_param result: %d", ret);
 }
 
+/* ---- Advertising-interval backoff ----
+   When disconnected, advertise FAST briefly for a quick reconnect, then back
+   off to SLOW to save radio power. Reset to FAST on (dis)connect. This only
+   touches the *advertising* interval while disconnected; once connected the
+   connection interval (and thus notification/data latency) is unaffected. */
+/* Three-tier backoff (units are 0.625ms for adv interval):
+   T0 FAST 200ms -> quick (re)connect right after boot or disconnect
+   T1 MID  1.2s  -> after FAST_WINDOW (10s); phone likely to return soon
+   T2 SLOW 2s    -> after MID_TOTAL (10min total); long absence / overnight
+   (FAST=200ms not 30ms: the phone's scan cadence bounds reconnect speed, so
+    200ms reconnects about as fast; and FAST only lasts 10s so its rate is
+    power-irrelevant vs the MID/SLOW hours.) */
+#define ADV_INTERVAL_FAST 0x140     /* 200 ms (320 units) */
+#define ADV_INTERVAL_MID  0x780     /* 1.2 s (1920 units) */
+#define ADV_INTERVAL_SLOW 0xC80     /* 2 s   (3200 units) */
+#define ADV_FAST_WINDOW_MS 10000UL  /* FAST -> MID after this long */
+#define ADV_MID_TOTAL_MS 600000UL   /* MID -> SLOW at this total elapsed (10 min) */
+static uint16_t s_adv_interval = ADV_INTERVAL_FAST;
+static uint8_t s_adv_tier = 0;      /* 0=FAST 1=MID 2=SLOW */
+/* rt_timer (NOT lv_timer): the backoff must (a) be safe to arm/stop from the
+   BLE host thread (connect/disconnect inds run there), and (b) keep advancing
+   while the screen is OFF — exactly the overnight case. LVGL v8 timers are
+   unlocked (data race from the BLE thread) AND frozen by lv_timer_enable(false)
+   on screen-off, so an lv_timer here would both race and never reach SLOW. A
+   SOFT one-shot rt_timer is kernel-safe from any context and fires regardless
+   of LVGL/screen state. Created once, then only stop/start/SET_TIME — never
+   deleted while live, so no use-after-free. */
+static rt_timer_t adv_backoff_timer = RT_NULL;
+/* Runtime-tunable copies (live MSH tuning). */
+static uint16_t s_adv_mid = ADV_INTERVAL_MID;
+static uint16_t s_adv_slow = ADV_INTERVAL_SLOW;
+static uint32_t s_adv_fast_window_ms = ADV_FAST_WINDOW_MS;
+static uint32_t s_adv_mid_total_ms = ADV_MID_TOTAL_MS;
+
+static void adv_backoff_start(void);
+static void adv_backoff_stop(void);
+
 void skaiwalk_ble_gap_connected_ind(ble_gap_connect_ind_t *ind)
 {
     if (phone_device_idx == ind->conn_idx)
@@ -506,6 +543,10 @@ void skaiwalk_ble_gap_connected_ind(ble_gap_connect_ind_t *ind)
         notify_provider.bluetooth_connection();
     }
     SkaiWatchSys.gap_conn_state = GAP_CONN_STATE_CONNECTED;
+    /* Connected — cancel any pending backoff and reset to FAST so the next
+       disconnect starts the quick-reconnect window again. */
+    adv_backoff_stop();
+    s_adv_interval = ADV_INTERVAL_FAST;
 }
 
 void skaiwalk_ble_gap_update_conn_param_ind(
@@ -537,6 +578,13 @@ void skaiwalk_disconnected_ind(ble_gap_disconnected_ind_t *ind)
         ble_tpc_reset();
         g_ble_perf_is_fast = false;
         g_ble_perf_level = BLE_PERF_SLOW;
+
+        /* Advertise FAST for a quick reconnect, then back off to SLOW after
+           ADV_FAST_WINDOW_MS to save radio power. Adv itself auto-restarts
+           (is_auto_restart=1 / main_phone_check) at the FAST interval; the
+           one-shot backoff timer flips it to SLOW. */
+        s_adv_interval = ADV_INTERVAL_FAST;
+        adv_backoff_start();
     }
 }
 
@@ -991,6 +1039,205 @@ void ble_dev_mgr_stop_main_phone_check_timer(void)
     }
 }
 
+/* SOFT one-shot rt_timer callback (runs in the timer thread, so the ~200ms
+   mdelay inside ble_app_advertising_start is allowed here). Advances the tier;
+   for FAST->MID it re-arms itself for the MID->SLOW phase, at SLOW it just
+   stops (one-shot). No delete/pause of itself → no use-after-free. */
+static void adv_backoff_timer_cb(void *param)
+{
+    (void)param;
+    if (SkaiWatchSys.gap_conn_state == GAP_CONN_STATE_CONNECTED)
+        return; /* connected — one-shot already expired; nothing to do */
+
+    if (s_adv_tier == 0)
+    {
+        /* FAST -> MID, then re-arm the one-shot for the MID->SLOW transition. */
+        s_adv_tier = 1;
+        s_adv_interval = s_adv_mid;
+        LOG_I("adv backoff -> MID (0x%x, %u ms)", s_adv_interval,
+              (unsigned)(s_adv_interval * 5 / 8));
+        ble_app_advertising_start(false, false);
+        uint32_t mid_phase =
+            (s_adv_mid_total_ms > s_adv_fast_window_ms)
+                ? (s_adv_mid_total_ms - s_adv_fast_window_ms)
+                : 1000UL;
+        rt_tick_t ticks = rt_tick_from_millisecond(mid_phase);
+        rt_timer_control(adv_backoff_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
+        rt_timer_start(adv_backoff_timer);
+    }
+    else
+    {
+        /* MID -> SLOW (final tier); one-shot stays stopped until re-arm. */
+        s_adv_tier = 2;
+        s_adv_interval = s_adv_slow;
+        LOG_I("adv backoff -> SLOW (0x%x, %u ms)", s_adv_interval,
+              (unsigned)(s_adv_interval * 5 / 8));
+        ble_app_advertising_start(false, false);
+    }
+}
+
+/* Create the backoff timer ONCE, at a single-threaded point (BLE power-on),
+   so adv_backoff_start — which can be called from the BLE host thread, the
+   ble_app thread, the LVGL thread and the soft-timer thread — never races on a
+   lazy check-then-create (which could double-create + leak). */
+static void adv_backoff_init(void)
+{
+    if (adv_backoff_timer != RT_NULL)
+        return;
+    adv_backoff_timer = rt_timer_create(
+        "advbk", adv_backoff_timer_cb, RT_NULL,
+        rt_tick_from_millisecond(s_adv_fast_window_ms),
+        RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
+}
+
+/* (Re)arm the backoff at FAST. Safe from any context — rt_timer stop/control/
+   start are kernel-safe. Does NOT create (see adv_backoff_init); a NULL handle
+   (pre-power-on) is a no-op. Re-armed via stop + SET_TIME + start. */
+static void adv_backoff_start(void)
+{
+    if (adv_backoff_timer == RT_NULL)
+        return;
+    s_adv_tier = 0;
+    s_adv_interval = ADV_INTERVAL_FAST;
+
+    rt_tick_t ticks = rt_tick_from_millisecond(s_adv_fast_window_ms);
+    rt_timer_stop(adv_backoff_timer);
+    rt_timer_control(adv_backoff_timer, RT_TIMER_CTRL_SET_TIME, &ticks);
+    rt_timer_start(adv_backoff_timer);
+}
+
+static void adv_backoff_stop(void)
+{
+    if (adv_backoff_timer != RT_NULL)
+        rt_timer_stop(adv_backoff_timer);
+    s_adv_tier = 0;
+}
+
+/* ---- MSH command: live tuning + observability for the adv backoff ---- */
+#if defined(RT_USING_FINSH) && !kReleaseMode
+#include <finsh.h>
+#include <stdlib.h>
+
+static void adv_backoff(int argc, char **argv)
+{
+    if (argc < 2)
+    {
+        rt_kprintf("adv_backoff <cmd>  (3-tier: FAST 200ms -> MID -> SLOW)\n");
+        rt_kprintf("  state        - print current backoff state\n");
+        rt_kprintf("  mid <ms>     - set MID adv interval (ms, 20..8192)\n");
+        rt_kprintf("  slow <ms>    - set SLOW adv interval (ms, 20..8192)\n");
+        rt_kprintf("  window <s>   - FAST->MID window (1..120 s)\n");
+        rt_kprintf("  long <s>     - total elapsed for MID->SLOW (5..3600 s)\n");
+        rt_kprintf("  now          - jump to SLOW immediately (test)\n");
+        return;
+    }
+
+    if (rt_strcmp(argv[1], "state") == 0)
+    {
+        rt_kprintf("=== adv backoff ===\n");
+        rt_kprintf("adv interval   : 0x%x (%u units, %u ms)\n",
+                   s_adv_interval, s_adv_interval,
+                   (unsigned)(s_adv_interval * 5 / 8));
+        rt_kprintf("gap conn state : %s\n",
+                   SkaiWatchSys.gap_conn_state == GAP_CONN_STATE_CONNECTED
+                       ? "CONNECTED"
+                       : "DISCONNECTED");
+        rt_kprintf("backoff timer  : %s\n",
+                   (adv_backoff_timer != RT_NULL &&
+                    (adv_backoff_timer->parent.flag & RT_TIMER_FLAG_ACTIVATED))
+                       ? "running"
+                       : "stopped");
+        rt_kprintf("tier           : %u (0=FAST 1=MID 2=SLOW)\n", s_adv_tier);
+        rt_kprintf("mid interval   : 0x%x (%u ms)\n", s_adv_mid,
+                   (unsigned)(s_adv_mid * 5 / 8));
+        rt_kprintf("slow interval  : 0x%x (%u ms)\n", s_adv_slow,
+                   (unsigned)(s_adv_slow * 5 / 8));
+        rt_kprintf("fast window    : %u ms\n", (unsigned)s_adv_fast_window_ms);
+        rt_kprintf("mid->slow at   : %u ms total\n",
+                   (unsigned)s_adv_mid_total_ms);
+    }
+    else if (rt_strcmp(argv[1], "mid") == 0)
+    {
+        if (argc < 3)
+        {
+            rt_kprintf("usage: adv_backoff mid <ms>\n");
+            return;
+        }
+        uint32_t units = (uint32_t)atoi(argv[2]) * 8 / 5;
+        if (units < 0x20)
+            units = 0x20;
+        if (units > 0x4000)
+            units = 0x4000;
+        s_adv_mid = (uint16_t)units;
+        rt_kprintf("mid interval -> 0x%x (%u ms)\n", s_adv_mid,
+                   (unsigned)(s_adv_mid * 5 / 8));
+    }
+    else if (rt_strcmp(argv[1], "long") == 0)
+    {
+        if (argc < 3)
+        {
+            rt_kprintf("usage: adv_backoff long <s>\n");
+            return;
+        }
+        int s = atoi(argv[2]);
+        if (s < 5)
+            s = 5;
+        if (s > 3600)
+            s = 3600;
+        s_adv_mid_total_ms = (uint32_t)s * 1000u;
+        rt_kprintf("mid->slow at -> %u ms total\n",
+                   (unsigned)s_adv_mid_total_ms);
+    }
+    else if (rt_strcmp(argv[1], "slow") == 0)
+    {
+        if (argc < 3)
+        {
+            rt_kprintf("usage: adv_backoff slow <ms>\n");
+            return;
+        }
+        /* ms -> units (0.625ms): ms * 8 / 5, bounded 0x20..0x4000 */
+        uint32_t units = (uint32_t)atoi(argv[2]) * 8 / 5;
+        if (units < 0x20)
+            units = 0x20;
+        if (units > 0x4000)
+            units = 0x4000;
+        s_adv_slow = (uint16_t)units;
+        rt_kprintf("slow interval -> 0x%x (%u ms)\n", s_adv_slow,
+                   (unsigned)(s_adv_slow * 5 / 8));
+    }
+    else if (rt_strcmp(argv[1], "window") == 0)
+    {
+        if (argc < 3)
+        {
+            rt_kprintf("usage: adv_backoff window <s>\n");
+            return;
+        }
+        int s = atoi(argv[2]);
+        if (s < 1)
+            s = 1;
+        if (s > 120)
+            s = 120;
+        s_adv_fast_window_ms = (uint32_t)s * 1000u;
+        rt_kprintf("fast window -> %u ms\n", (unsigned)s_adv_fast_window_ms);
+    }
+    else if (rt_strcmp(argv[1], "now") == 0)
+    {
+        s_adv_tier = 2;
+        s_adv_interval = s_adv_slow;
+        if (adv_backoff_timer != RT_NULL)
+            rt_timer_stop(adv_backoff_timer);
+        rt_kprintf("adv backoff -> slow (0x%x) now\n", s_adv_interval);
+        ble_app_advertising_start(false, false);
+    }
+    else
+    {
+        rt_kprintf("unknown cmd '%s'\n", argv[1]);
+    }
+}
+MSH_CMD_EXPORT(adv_backoff, BLE advertising interval backoff control);
+
+#endif /* RT_USING_FINSH && !kReleaseMode */
+
 static uint8_t ble_app_advertising_event(uint8_t event, void *context,
                                          void *data)
 {
@@ -1054,6 +1301,26 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
     }
     sibles_advertising_para_t para = {0};
     uint8_t ret;
+    /* Any explicitly user-initiated advertising wants fast discovery → FAST.
+       Two such flags reach here: pairing_mode, and mouse_mode (device-list
+       pairing passes the pairing flag in arg1/mouse_mode and leaves
+       pairing_mode=false — app_setting_device_list.c:295; app_mainmenu.c:390 /
+       hid_mouse.c also pass mouse_mode=true for genuine HID-mouse advertising).
+       FAST is desirable for all of them (quick connect, whether pairing or as a
+       mouse), so we deliberately treat EITHER flag as "connect now → FAST".
+       Only the effective interval for THIS start is forced. */
+    uint16_t adv_intv =
+        (mouse_mode || pairing_mode) ? ADV_INTERVAL_FAST : s_adv_interval;
+    /* ...and re-arm the backoff so this user-initiated session gets a full FAST
+       window (otherwise the 5s main_phone_check restart, which passes both flags
+       false, could drop it to MID mid-session). Safe — the backoff cb itself
+       calls this with mouse_mode=false, so no recursion. Side effect: entering
+       mouse mode also resets the disconnect backoff to FAST, which is fine
+       (you're actively trying to connect). */
+    if (mouse_mode || pairing_mode)
+    {
+        adv_backoff_start();
+    }
     // Local name
     // char local_name[] = DEFAULT_LOCAL_NAME;
     char local_name[32] = {0};
@@ -1094,7 +1361,7 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
 
     para.config.adv_mode = SIBLES_ADV_CONNECT_MODE;
     para.config.mode_config.conn_config.duration = 0x0;
-    para.config.mode_config.conn_config.interval = 0x30;
+    para.config.mode_config.conn_config.interval = adv_intv;
     para.config.max_tx_pwr = 0x7F;
     // Enable restart after disconnected
     para.config.is_auto_restart = 1;
@@ -1280,6 +1547,10 @@ void ble_app_entry(void *param)
             env->is_power_on = 1;
             env->conn_para.mtu = 23; /* Default value. */
             ble_app_advertising_start(false, false);
+            /* Boot also backs off: FAST for quick connect to the bonded phone,
+               then MID/SLOW if nothing connects (also covers an unbonded watch
+               left idle — it won't advertise fast to nobody forever). */
+            adv_backoff_start();
             ble_dev_mgr_start_main_phone_check_timer(5000);
         }
 #ifdef USING_BLE_SERIAL
