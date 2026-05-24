@@ -538,7 +538,7 @@ void bloc_setting_load_watch_system(void)
     }
     if (SkaiWatchSys.brightness == 0)
     {
-        SkaiWatchSys.brightness = 100; /* Default to 100% brightness if unset */
+        SkaiWatchSys.brightness = 50; /* Default to 50% brightness if unset (power) */
     }
     if (SkaiWatchSys.font_size == 0)
     {
