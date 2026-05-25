@@ -344,6 +344,8 @@ __ROM_USED void rt_system_heap_init(void *begin_addr, void *end_addr)
 __ROM_USED void *rt_malloc(rt_size_t size)
 {
     struct heap_mem *mem, *mem2;
+    rt_uint32_t _walk = 0;        /* DIAGNOSTIC: free-list walk cycle guard (see below) */
+    rt_uint32_t _walk_max;        /* set after size alignment, below */
     //static int assert_0 = 0;
 
     if (size == 0)
@@ -378,10 +380,46 @@ __ROM_USED void *rt_malloc(rt_size_t size)
     rt_sem_take(&heap_sem, RT_WAITING_FOREVER);
 
     //rt_kprintf("heap_ptr %x lfree %x - %x\n", lfree, heap_ptr, (rt_uint8_t *)lfree - heap_ptr);
+    /* DIAGNOSTIC: cycle guard. A heap overflow / double-free can corrupt a block's
+       next/prev so the free-list forms a ring; this walk then never reaches the end
+       threshold and spins forever WITHOUT tripping the magic RT_ASSERT below (the
+       cycle blocks keep valid magic). That silent spin starves the idle thread ->
+       HCPU WDT1 (observed as a hang inside rt_malloc on the GUI thread). Bound the
+       walk to more than the maximum possible block count; on overrun, dump the ring
+       (each block's alloc ret_addr via MEMTRACE -> map it to find the corruptor)
+       and assert instead of hanging. Never trips on a healthy heap. */
+    _walk_max = mem_size_aligned / MIN_SIZE_ALIGNED + 16;
     for (mem = lfree;
             mem < (struct heap_mem *)((rt_uint8_t *)heap_ptr + mem_size_aligned - size);
             mem = mem->next)
     {
+        if (++_walk > _walk_max)
+        {
+            struct heap_mem *m = mem;
+            int k;
+            rt_kprintf("HEAP CORRUPT: rt_malloc free-list cycle (walked %u > max %u)\n",
+                       (unsigned)_walk, (unsigned)_walk_max);
+            for (k = 0; k < 16; k++)
+            {
+                rt_kprintf("  blk=%p used=%d magic=%04x next=%p"
+#ifdef RT_USING_MEMTRACE
+                           " ret=%08x"
+#endif
+                           "\n",
+                           m, (int)m->used, (unsigned)m->magic, m->next
+#ifdef RT_USING_MEMTRACE
+                           , (unsigned)m->ret_addr
+#endif
+                          );
+                m = m->next;
+            }
+            RT_ASSERT(0);
+            /* If the assert handler returns instead of halting, fail the alloc
+               gracefully rather than re-entering the cycle (avoids a log flood /
+               re-hang while still holding the heap lock). */
+            rt_sem_release(&heap_sem);
+            return RT_NULL;
+        }
         RT_ASSERT(((MEM_UNUSE == mem->used) || (MEM_USED == mem->used)) && (HEAP_MAGIC == mem->magic) && (HEAP_MAGIC == mem->next->magic));
 
         if ((MEM_UNUSE == mem->used) && (rt_size_t)((rt_uint8_t *)mem->next - ((rt_uint8_t *)mem + SIZEOF_STRUCT_MEM)) >= size)

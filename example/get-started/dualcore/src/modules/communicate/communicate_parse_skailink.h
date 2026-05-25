@@ -27,8 +27,9 @@ extern "C"
         KEY_DEVICE_STATUS_DELTA = 0x02,  /* phone→watch: {id,status} one device's status */
         KEY_DEVICE_ACTIONS_BATCH = 0x03, /* phone→watch: {device_id,items:[...]} per-device actions */
         KEY_DEVICE_REMOVED = 0x04,       /* phone→watch: {id} device removed (logout) */
-        KEY_ACTIVE_SELECT = 0x05,        /* watch→phone (UPLINK): {device_id} active target */
-        KEY_ACTION_SELECT = 0x06,        /* watch→phone (UPLINK): {action} the device-list item name the user tapped */
+        KEY_ACTIVE_SELECT = 0x05,        /* watch→phone (UPLINK): {"device_id":"..."} active target ("" = none) */
+        KEY_ACTION_SELECT = 0x06,        /* watch→phone (UPLINK): {"index":N} option the user TAPPED (0-based) */
+        KEY_ACTION_FOCUS  = 0x07,        /* watch→phone (UPLINK): {"index":N} option SCROLLED to centre (0-based) */
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

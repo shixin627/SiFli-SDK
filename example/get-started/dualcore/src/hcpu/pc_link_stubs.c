@@ -149,7 +149,8 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* bloc_v2t.h */ void set_voice_recognition_started(bool started) {  }
 /* communicate_task.h */ bool commu_send_skaibar_selected(uint8_t idx) { return false; }
 /* communicate_task.h */ bool commu_send_skaibar_committed(uint8_t idx) { return false; }
-/* communicate_task.h */ bool commu_send_skaibar_action(const char *name) { (void)name; return false; }
+/* communicate_task.h */ bool commu_send_option_commit(uint8_t idx) { (void)idx; return false; }
+/* communicate_task.h */ bool commu_send_option_focus(uint8_t idx) { (void)idx; return false; }
 /* gui_app_pm.h */ void sys_poweron_fsm(sys_pwron_evt_t evt) {  }
 /* gesture_model_loader.h */ int unload_release_model(void) { return 0; }
 /* ble_hid.h */ void volume_down_through_hid(void) {  }

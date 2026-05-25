@@ -59,7 +59,13 @@ extern void refresh_ai_chat_input_message(char *text);
 
 LV_IMG_DECLARE(icon_mic); /* shared mic/voice icon, same as instruction_list */
 LV_IMG_DECLARE(message_widget_bg); /* skaibar input pill frame (same as left list) */
-LV_IMG_DECLARE(img_flashlight); /* placeholder per-item icon (same look as left list) */
+/* Per-action category icons (auto-built from the resource ezip image folder).
+   Selected per item by its DEV_ACTION_TYPE; replaces the old img_flashlight
+   placeholder. */
+LV_IMG_DECLARE(instruction_icon); /* type 0 */
+LV_IMG_DECLARE(application_icon); /* type 1 */
+LV_IMG_DECLARE(folder_icon);      /* type 2 */
+LV_IMG_DECLARE(img_logo);         /* type 3 (ai) */
 
 #define TILE_LEFT      0
 #define TILE_CENTER    1
@@ -92,6 +98,7 @@ typedef struct
     uint8_t conn_idx;   /* BLE HID target for drill-down; 0xFF = not connected */
     uint8_t status;     /* ADR-0008 E7: 0 off / 1 on / 2 primary (gray the header when off) */
     char    items[MAX_TILE_ITEMS][24];
+    uint8_t item_type[MAX_TILE_ITEMS]; /* DEV_ACTION_TYPE per item -> category icon */
     uint8_t item_count;
 } dev_page_t;
 
@@ -147,6 +154,37 @@ typedef struct
 
 static device_pager_t *p = NULL;
 
+/* Set while device_pager_refresh() does its programmatic rebind. The rebind
+   scrolls the list (lv_obj_scroll_to_y), which fires LV_EVENT_SCROLL ->
+   list_scroll_cb, whose default action closes the skaibar. Without this guard a
+   LIVE sync refresh (now that it actually fires) would kick the user out of
+   voice-input mode. A real finger scroll has this flag clear, so it still
+   dismisses the skaibar as before. */
+static bool s_suppress_skaibar_dismiss = false;
+
+/* De-duped active-target uplink. The phone must know which device (if any) the
+   watch is controlling: a real device id while on the device page, or "" (none)
+   on home/left. We (re)assert it on entry / switch / leave AND on every list
+   sync, so a freshly connected phone learns the current state instead of assuming
+   a stale device. Only sends when the value CHANGES, and only latches the sent
+   value when the send SUCCEEDS — so an attempt made while disconnected (e.g. the
+   boot-time refresh) is retried once the phone connects. */
+static char s_active_sent[SYNCED_DEVICE_ID_LEN];
+static bool s_active_sent_valid = false;
+static void pager_send_active(const char *id)
+{
+    if (id == NULL) id = "";
+    if (s_active_sent_valid &&
+        strncmp(s_active_sent, id, sizeof(s_active_sent)) == 0)
+        return; /* unchanged */
+    if (commu_send_active_device(id))
+    {
+        strncpy(s_active_sent, id, sizeof(s_active_sent) - 1);
+        s_active_sent[sizeof(s_active_sent) - 1] = '\0';
+        s_active_sent_valid = true;
+    }
+}
+
 static void mic_clicked_cb(lv_event_t *e);   /* defined below (skaibar section) */
 static void mouse_retarget(void);            /* defined below */
 static void skaibar_close(void);             /* defined below (skaibar section) */
@@ -191,7 +229,10 @@ static void load_devices_from_registry(void)
         uint8_t ic = src->default_action_count;
         if (ic > MAX_TILE_ITEMS) ic = MAX_TILE_ITEMS;
         for (uint8_t j = 0; j < ic; j++)
+        {
             strncpy(d->items[j], src->default_actions[j], sizeof(d->items[0]) - 1);
+            d->item_type[j] = src->default_action_types[j]; /* category -> icon */
+        }
         d->item_count = ic;
         p->count++;
     }
@@ -273,6 +314,16 @@ static void apply_arc(tile_ui_t *u)
     }
     int prev_sel = u->sel;
     u->sel = closest;
+    /* Tell the phone which option is now centred on the active device's tile, so
+       it can mirror the highlight. Only for the centre tile (the focused device),
+       only on an actual change, and NOT during a programmatic rebind (s_suppress
+       is set then) — otherwise a sync/refresh that re-centres would spam it. */
+    if (u == &p->t[TILE_CENTER] && count > 0 && closest != prev_sel &&
+        !s_suppress_skaibar_dismiss)
+    {
+        commu_send_option_focus((uint8_t)closest);
+        LOG_I("[pager] scrolled to option %d", closest);
+    }
     if (count > 0 && min_abs <= (float)M_PI / 2.0f)
     {
         lv_label_set_text(u->name_label, d->items[closest]);
@@ -319,10 +370,11 @@ static lv_obj_t *device_arc_tap_cb(lv_point_t pt, void *ctx)
     if (!u || !u->dev) return NULL;
     int idx = u->sel;
     if (idx < 0 || idx >= u->dev->item_count) return NULL;
-    const char *name = u->dev->items[idx];
-    if (name[0] == '\0') return NULL;
-    LOG_I("[pager] item tapped -> action '%s'", name);
-    commu_send_skaibar_action(name);
+    /* Send WHICH option (its index) was tapped, not the name. */
+    LOG_I("[pager] item tapped -> option %d", idx);
+    commu_send_option_commit((uint8_t)idx);
+    /* Command sent — the input/voice phase is done, so collapse the skaibar. */
+    if (p->skaibar_active) skaibar_close();
     return NULL;
 }
 
@@ -336,10 +388,11 @@ static void device_name_tap_cb(lv_event_t *e)
     if (!u || !u->dev) return;
     int idx = u->sel;
     if (idx < 0 || idx >= u->dev->item_count) return;
-    const char *name = u->dev->items[idx];
-    if (name[0] == '\0') return;
-    LOG_I("[pager] name tapped -> action '%s'", name);
-    commu_send_skaibar_action(name);
+    /* Send WHICH option (its index) was tapped, not the name. */
+    LOG_I("[pager] name tapped -> option %d", idx);
+    commu_send_option_commit((uint8_t)idx);
+    /* Command sent — the input/voice phase is done, so collapse the skaibar. */
+    if (p->skaibar_active) skaibar_close();
 }
 
 /* Deferred: pulling the top item down far enough reveals the mouse — drive the
@@ -358,8 +411,10 @@ static void list_scroll_cb(lv_event_t *e)
     if (!u || !u->dev) return;
     /* Scrolling/switching items dismisses the skaibar (mirrors the left list).
        Handled here (not SCROLL_BEGIN) so the arc-band scroll, which fires only
-       LV_EVENT_SCROLL via scroll_by_raw, is covered too. */
-    if (p->skaibar_active) skaibar_close();
+       LV_EVENT_SCROLL via scroll_by_raw, is covered too. Skipped during a
+       programmatic refresh rebind so a live phone sync doesn't kick the user out
+       of voice-input mode. */
+    if (p->skaibar_active && !s_suppress_skaibar_dismiss) skaibar_close();
     apply_arc(u);
     /* Over-pull past the first item (elastic overshoot below the top) → mouse. */
     if (u == &p->t[TILE_CENTER] && !p->pull_pending)
@@ -392,6 +447,20 @@ static void list_scroll_end_cb(lv_event_t *e)
         lv_obj_scroll_to_y(u->list, target, LV_ANIM_ON);
 }
 
+/* Map a device-list item's category (DEV_ACTION_TYPE) to its icon. Unknown
+   values fall back to the instruction icon. */
+static const lv_img_dsc_t *icon_for_item_type(uint8_t type)
+{
+    switch (type)
+    {
+    case DEV_ACTION_TYPE_APPLICATION: return &application_icon;
+    case DEV_ACTION_TYPE_FOLDER:      return &folder_icon;
+    case DEV_ACTION_TYPE_AI:          return &img_logo;
+    case DEV_ACTION_TYPE_INSTRUCTION:
+    default:                          return &instruction_icon;
+    }
+}
+
 static void bind_tile(int k)
 {
     tile_ui_t  *u = &p->t[k];
@@ -422,11 +491,25 @@ static void bind_tile(int k)
         : (d->status == 2) ? lv_color_hex(0x4DE3A0)   /* primary: lit    */
                            : lv_color_hex(0x00AAFF),  /* on: normal blue */
         0);
-    /* Show one snap anchor per item so the arc_scroll range matches item_count. */
+    /* Show one snap anchor per item so the arc_scroll range matches item_count,
+       and point each item icon at its category image (instruction/application/
+       folder). The icons are recycled across devices, so the src must be re-bound
+       here whenever a device is bound to this tile. */
     for (int i = 0; i < MAX_TILE_ITEMS; i++)
     {
-        if (i < d->item_count) lv_obj_clear_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
-        else                   lv_obj_add_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
+        if (i < d->item_count)
+        {
+            lv_obj_clear_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
+            const lv_img_dsc_t *dsc = icon_for_item_type(d->item_type[i]);
+            lv_img_set_src(u->item_icon[i], dsc);
+            /* re-center the zoom pivot for this icon's actual size (the category
+               icons need not all match img_flashlight's 80x80). */
+            lv_img_set_pivot(u->item_icon[i], dsc->header.w / 2, dsc->header.h / 2);
+        }
+        else
+        {
+            lv_obj_add_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
+        }
     }
     if (u->arc) arc_scroll_set_item_count(u->arc, d->item_count);
     /* Start at the LAST (bottom-most) item; layout must be current for the math. */
@@ -493,7 +576,7 @@ static void pager_settle_ready_cb(lv_anim_t *a)
         rebind_all();
         /* ADR-0008 E7: tell the phone the new active-target device so it routes
            subsequent watch commands / recognized text there (network via primary). */
-        commu_send_active_device(p->model[p->current].id_str);
+        pager_send_active(p->model[p->current].id_str);
         if (p->mouse_created) mouse_retarget();
         LOG_I("[pager] -> device %d/%d (%s)", p->current + 1, p->count,
               p->model[p->current].name);
@@ -607,7 +690,9 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
         /* Floating icon (doesn't affect scroll size); positioned on the arc by
            apply_arc(). Pivot + OVERFLOW_VISIBLE so the zoom isn't clipped. */
         lv_obj_t *icon = lv_img_create(u->list);
-        lv_img_set_src(icon, &img_flashlight);  /* 80x80 placeholder */
+        /* Initial src is the instruction icon; bind_tile() re-points it at the
+           per-item category icon (instruction/application/folder). */
+        lv_img_set_src(icon, &instruction_icon);
         lv_img_set_pivot(icon, ARC_ICON_SIZE / 2, ARC_ICON_SIZE / 2);
         lv_obj_add_flag(icon, LV_OBJ_FLAG_FLOATING);
         lv_obj_add_flag(icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
@@ -673,7 +758,29 @@ static void refresh(void)
 void device_pager_refresh(void)
 {
     if (p) load_devices_from_registry();
+    /* The rebind in refresh() programmatically scrolls the list, which would
+       otherwise fire list_scroll_cb -> skaibar_close. When a phone sync arrives
+       while the user is mid voice-input, that must NOT close the box; suppress the
+       scroll-driven dismiss for the duration of this programmatic rebind only. */
+    s_suppress_skaibar_dismiss = true;
     refresh();
+    s_suppress_skaibar_dismiss = false;
+
+    /* (Re)assert the active target. device_pager_refresh runs on every phone list
+       sync (skai_device_ui_refresh) and on page entry, so this is where a freshly
+       connected phone learns the watch's current target: the centred device while
+       we're actually ON the device page (mouse_created), else "" = no device. This
+       fixes "boot straight to the left page and the app still thinks a device is
+       active": the connect-time sync now tells it there is none. De-duped. */
+    if (p)
+    {
+        bool on_device_page = p->mouse_created;
+        const char *active = (on_device_page && p->count > 0 &&
+                              p->current < p->count)
+                                 ? p->model[p->current].id_str
+                                 : "";
+        pager_send_active(active);
+    }
 }
 
 /* ADR-0008 E7: weak hook invoked by communicate_parse_skailink.c after it
@@ -887,7 +994,7 @@ void device_pager_set_active(bool on)
            page never notified the app which device is now being controlled. */
         if (p->count > 0 && p->current < p->count)
         {
-            commu_send_active_device(p->model[p->current].id_str);
+            pager_send_active(p->model[p->current].id_str);
             LOG_I("[pager] page entered -> active device %d/%d (%s)",
                   p->current + 1, p->count, p->model[p->current].name);
         }
@@ -922,6 +1029,15 @@ void device_pager_set_active(bool on)
         }
         if (p->mouse_created)
         {
+            /* mouse_created is true only while we're hosted on the device page, so
+               this block is the genuine LEAVE transition (fires once, not on every
+               unrelated page change). Tell the phone there's no active control
+               target anymore: empty device_id on KEY_ACTIVE_SELECT = cleared.
+               (Mirror this on the dart side: treat empty/"" device_id as "no
+               active device".) */
+            pager_send_active("");
+            LOG_I("[pager] left device page -> active device cleared");
+
             hid_mouse_destroy();
             lv_obj_clean(p->mouse_base);
             p->mouse_created = false;

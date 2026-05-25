@@ -78,7 +78,9 @@ bool commu_send_update_instruction(const char *json);
 bool commu_send_get_instruction_img(const char *id);
 bool commu_send_skaibar_selected(uint8_t idx);
 bool commu_send_skaibar_committed(uint8_t idx);
-bool commu_send_skaibar_action(const char *name);   /* device-list item tapped: send its NAME (string) */
+/* device-list option uplink, SKAI_LINK group, by 0-based index */
+bool commu_send_option_commit(uint8_t idx);   /* option TAPPED   -> KEY_ACTION_SELECT (0x06) */
+bool commu_send_option_focus(uint8_t idx);    /* option SCROLLED -> KEY_ACTION_FOCUS  (0x07) */
 
 /* Sensor */
 bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length);

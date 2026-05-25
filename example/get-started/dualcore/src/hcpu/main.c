@@ -1783,7 +1783,64 @@ void rc10k_timeout_handler(void *parameter)
  */
 void wdt_store_exception_information(void)
 {
+    /* Keep this first line verbatim: log parsers / dev_console alerts match it. */
     rt_kprintf("HCPU WDT1 timeout occurs.\n");
+
+    /* WDT1 here is fed only by the idle-thread hook (rt_hw_watchdog_hook(1)),
+       so a timeout means idle never ran for WDT_TIMEOUT seconds -> some thread
+       monopolised the CPU (busy-spin) or the scheduler was locked. Dump enough
+       to name the culprit on the NEXT crash without walking the (possibly
+       mid-update) global thread list from this ISR:
+         - running thread: who held the CPU at the timeout instant = the spinner
+         - free_min: leading '#' fill still intact = min free stack ever; 0 (or
+           tiny) means a STACK OVERFLOW, which points at a different fix
+         - irq_nest:  >0 means we were stuck inside an ISR
+         - sched_lock:>0 means a thread spun while holding rt_enter_critical() */
+    rt_thread_t t = rt_thread_self();
+    rt_kprintf("  irq_nest=%d sched_lock=%d\n",
+               (int)rt_interrupt_get_nest(), (int)rt_critical_level());
+    if (t != RT_NULL)
+    {
+        const rt_uint8_t *base = (const rt_uint8_t *)t->stack_addr;
+        rt_uint32_t free_min = 0;
+        while (free_min < t->stack_size && base[free_min] == '#')
+            free_min++;
+        rt_kprintf("  running thread='%s' pri=%u stack=%p size=%u free_min=%u%s\n",
+                   t->name, (unsigned)t->current_priority, t->stack_addr,
+                   (unsigned)t->stack_size, (unsigned)free_min,
+                   (free_min == 0) ? "  <-- STACK OVERFLOW" : "");
+
+        /* irq_nest==0 means the WDT exception interrupted a THREAD (Thread mode,
+           running on PSP). The CPU pushed an 8-word exception frame onto PSP:
+           [R0 R1 R2 R3 R12 LR PC xPSR]. The stacked PC is where the thread was
+           spinning; LR is its return address (caller). Map PC/LR against the .map
+           / .axf to find the exact function/loop. Guarded so a bad PSP can't
+           fault inside this handler. */
+        if (rt_interrupt_get_nest() == 0)
+        {
+            uint32_t psp;
+            __asm volatile("MRS %0, psp" : "=r"(psp));
+            uint32_t lo = (uint32_t)t->stack_addr;
+            uint32_t hi = lo + t->stack_size;
+            if (psp >= lo && psp + 32u <= hi)
+            {
+                const uint32_t *frame = (const uint32_t *)psp;
+                rt_kprintf("  thread PC=%08x LR=%08x xPSR=%08x (psp=%08x)\n",
+                           (unsigned)frame[6], (unsigned)frame[5],
+                           (unsigned)frame[7], (unsigned)psp);
+            }
+            else
+            {
+                rt_kprintf("  psp=%08x outside thread stack, frame skipped\n",
+                           (unsigned)psp);
+            }
+        }
+    }
+    else
+    {
+        rt_kprintf("  running thread=<ISR / scheduler not started>\n");
+    }
+
     extern void drv_reboot(void);
     drv_reboot();
     return;
