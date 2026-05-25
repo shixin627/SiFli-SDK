@@ -56,6 +56,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* bloc_v2t.h */ void clearVoice2Text(void) {  }
 /* lv_message_list_layout.c */ void clear_media_widget(void) {  }
 /* lv_instruction_list_layout.c */ void clear_skai_widget_ai_reply(void) {  }
+/* communicate_task.h */ bool commu_send_active_device(const char *device_id) { (void)device_id; return false; }
 /* communicate_task.h */ bool commu_send_battery_level(uint8_t level) { return false; }
 /* communicate_task.h */ bool commu_send_battery_voltage(uint16_t millivolts) { (void)millivolts; return false; }
 /* communicate_task.h */ bool commu_send_calendar_request(void) { return false; }

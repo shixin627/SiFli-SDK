@@ -150,6 +150,7 @@ static void mic_clicked_cb(lv_event_t *e);   /* defined below (skaibar section) 
 static void mouse_retarget(void);            /* defined below */
 static void skaibar_close(void);             /* defined below (skaibar section) */
 static void skaibar_open(void);              /* defined below (skaibar section) */
+static void skaibar_grow_cb(void *var, int32_t f); /* morph step; defined below */
 
 /* Hide the skaibar input box as soon as a list scroll begins (mirrors the left
    instruction_list, where scrolling dismisses the AI widget). */
@@ -839,17 +840,47 @@ void device_pager_set_active(bool on)
         lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF);
         lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+        /* ADR-0008 E7: switching the main page ONTO the device list makes the
+           currently-centred device the active control target — tell the phone
+           so it routes commands to it. Previously only device-to-device scrolls
+           (pager_settle_ready_cb) sent this, so a left/right page switch onto the
+           page never notified the app which device is now being controlled. */
+        if (p->count > 0 && p->current < p->count)
+        {
+            commu_send_active_device(p->model[p->current].id_str);
+            LOG_I("[pager] page entered -> active device %d/%d (%s)",
+                  p->current + 1, p->count, p->model[p->current].name);
+        }
     }
-    else if (p->mouse_created)
+    else
     {
-        hid_mouse_destroy();
-        lv_obj_clean(p->mouse_base);
-        p->mouse_created = false;
-        lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* reset to LIST */
-        lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
-        if (p->grabber) lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
-        LOG_I("[pager] device page inactive — mouse base torn down");
+        /* Leaving the device page: clear the skaibar's open flag + reset its
+           visual so the transcript router (refresh_ai_chat_input_message, which
+           checks the right skaibar FIRST) stops sending voice here and the left
+           instruction_list box gets its text again.
+           IMPORTANT: do NOT call skaibar_close() here — its stop_v2t() cancels
+           the in-flight phone-side command, which kills the "list update" the
+           phone would otherwise send. Just drop the flag + hide the box; the
+           voice session ends naturally (VAD auto-stop / the left box's own
+           open-close). */
+        if (p->skaibar_active)
+        {
+            p->skaibar_active = false;
+            skaibar_grow_cb(NULL, 0); /* mic_bar back to the slim pill */
+            if (p->skaibar_input && lv_obj_is_valid(p->skaibar_input))
+                lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (p->mouse_created)
+        {
+            hid_mouse_destroy();
+            lv_obj_clean(p->mouse_base);
+            p->mouse_created = false;
+            lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* reset to LIST */
+            lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+            if (p->grabber) lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
+            LOG_I("[pager] device page inactive — mouse base torn down");
+        }
     }
 }
 
@@ -1016,8 +1047,15 @@ bool device_pager_skaibar_is_open(void)
 static void mic_clicked_cb(lv_event_t *e)
 {
     (void)e;
-    if (p && p->skaibar_active) skaibar_close();
-    else                        skaibar_open();
+    if (!p) return;
+    /* Toggle by the box's ACTUAL visibility, not the skaibar_active flag — the
+       flag can get stuck (e.g. cleared on page-leave without hiding), which
+       would make a tap take the close branch and do nothing instead of opening.
+       skaibar_input is HIDDEN when closed. */
+    bool box_visible = p->skaibar_input &&
+                       !lv_obj_has_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+    if (box_visible) skaibar_close();
+    else             skaibar_open();
 }
 
 void device_pager_skaibar_say(const char *text)
@@ -1139,6 +1177,25 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(p->mic_bar, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
+
+    /* Enlarged transparent hit area over the slim mic bar (the 100x16 pill is
+       hard to tap) — mirrors the left instruction_list's mic_hit. Routes taps to
+       mic_clicked_cb. Created AFTER mic_bar but BEFORE skaibar_input, so when the
+       box is open it sits on top and handles the toggle-close; when closed this
+       overlay is the top hit target. Transparent + non-scrollable so it never
+       obscures the list and drags still bubble through. */
+    {
+        lv_obj_t *mic_hit = lv_obj_create(p->list_tile);
+        lv_obj_set_size(mic_hit, 240, 90);
+        lv_obj_align(mic_hit, LV_ALIGN_BOTTOM_MID, 0, 0);
+        lv_obj_set_style_bg_opa(mic_hit, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(mic_hit, 0, 0);
+        lv_obj_set_style_pad_all(mic_hit, 0, 0);
+        lv_obj_set_style_radius(mic_hit, 0, 0);
+        lv_obj_clear_flag(mic_hit, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(mic_hit, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(mic_hit, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
+    }
 
     /* skaibar input box (shown on mic tap) — mirrors the left instruction_list's
        voice input pill (lv_instruction_list_layout.c): a BOTTOM-aligned container

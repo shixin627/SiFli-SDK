@@ -1460,24 +1460,50 @@ static void mic_bar_event_cb(lv_event_t *evt)
 {
     if (evt->code == LV_EVENT_CLICKED)
     {
-        LOG_I("Mic bar tapped — opening AI widget");
-        extern void animate_open_ai_widget(void);
-        animate_open_ai_widget();
+        /* Toggle by the box's ACTUAL visibility, not the is_open flag — the flag
+           can get stuck true (e.g. navigating away while open without a close),
+           which made a tap take the close branch and silently do nothing instead
+           of opening. The box (p_instruction_list_ai_bg) is HIDDEN when closed;
+           the hit overlay is only tappable in that state (the open box sits on
+           top of it). animate_open_ai_widget / close_ai_widget self-guard re-entry. */
+        bool box_visible =
+            p_instruction_list_layout &&
+            p_instruction_list_layout->p_instruction_list_ai_bg &&
+            !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
+                             LV_OBJ_FLAG_HIDDEN);
+        if (box_visible)
+        {
+            LOG_I("Mic bar tapped — closing AI widget");
+            close_ai_widget();
+        }
+        else
+        {
+            LOG_I("Mic bar tapped — opening AI widget (is_open flag=%d)",
+                  (int)is_open_instruction_list_ai);
+            extern void animate_open_ai_widget(void);
+            animate_open_ai_widget();
+        }
     }
 }
 
-/* Fade-out the AI widget when the user scrolls the instruction list while
-   the widget is open. Modal-ish dismiss model (per office-hours doc Q4):
-   scroll = explicit dismissal; user re-invokes via bar tap or release. */
-static bool ai_fade_anim_active = false;
-static void ai_fade_done_cb(lv_anim_t *a)
+/* The box is scrollable only to ABSORB swipes (so a left-swipe doesn't bubble to
+   the page nav and jump to the watchface). When the user actually starts a swipe
+   on the open box, dismiss it with the animated reverse morph — mirrors the
+   right device_pager's scroll_hides_skaibar_cb. */
+static void ai_box_scroll_dismiss_cb(lv_event_t *evt)
 {
-    ai_fade_anim_active = false;
+    (void)evt;
     if (is_open_instruction_list_ai)
-    {
         close_ai_widget();
-    }
 }
+
+/* Dismiss the AI widget when the user scrolls the instruction list while it is
+   open. Modal-ish dismiss model (per office-hours doc Q4): scroll = explicit
+   dismissal; user re-invokes via bar tap or release. Kept as a flag for the
+   open path to clear; the scroll dismiss itself now routes through
+   close_ai_widget (see ai_widget_fade_on_scroll) so every close shares one
+   animated reverse morph. */
+static bool ai_fade_anim_active = false;
 
 /* Baseline opacities for each animated property when fully visible.
    Match the values set in lv_instruction_list_layout_create. */
@@ -1519,22 +1545,14 @@ static void skai_widget_fade_anim_cb(void *var, int32_t value)
 
 static void ai_widget_fade_on_scroll(void)
 {
-    if (!is_open_instruction_list_ai || ai_fade_anim_active)
+    /* Scrolling the list dismisses the input box with the SAME animated reverse
+       morph as a tap-close, mirroring the right device_pager's
+       scroll_hides_skaibar_cb -> skaibar_close. (Previously this ran a separate
+       600ms cross-fade; now every dismiss path funnels through close_ai_widget
+       for one consistent close motion.) */
+    if (!is_open_instruction_list_ai)
         return;
-    if (!s_skai_widget || !lv_obj_is_valid(s_skai_widget))
-        return;
-    ai_fade_anim_active = true;
-    /* Single fade fraction drives all sub-parts. 255 → 0 over 600ms
-       ease-out gives a smooth dissolve that tracks the scroll motion. */
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, s_skai_widget);
-    lv_anim_set_values(&a, 255, 0);
-    lv_anim_set_time(&a, 600);
-    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-    lv_anim_set_exec_cb(&a, skai_widget_fade_anim_cb);
-    lv_anim_set_ready_cb(&a, ai_fade_done_cb);
-    lv_anim_start(&a);
+    close_ai_widget();
 }
 
 /* Reset all visual sub-parts to their baseline (fully-visible) opacities.
@@ -1571,6 +1589,10 @@ void tap_on_ai_widget(void);
 /* Guard: blocks a second trigger while the open morph is mid-flight (phase 1,
    before is_open_instruction_list_ai is set in tap_on_ai_widget). */
 static bool s_left_morph_busy = false;
+/* Guard: true while the reverse-morph close is animating shut (mirrors the right
+   skaibar's `skaibar_active` gating). Blocks re-opening mid-close and re-entrant
+   close calls. Cleared when the close finishes (finalize_close_ai_widget). */
+static bool s_left_closing = false;
 
 /* Interpolate the mic bar between its slim bar geometry (f=0) and the full
    input-box geometry (f=255); fade the mic glyph out as it grows. The bar is
@@ -1601,19 +1623,18 @@ static void lmic_open_reveal_cb(lv_anim_t *a)
     (void)a;
     s_left_morph_busy = false;
     if (!p_instruction_list_layout) return;
+    /* Show the box (now a plain container, not a tileview — no set_tile_id). */
     lv_obj_clear_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                       LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(p_instruction_list_layout->p_instruction_list_ai_bg);
-    s_programmatic_open_in_progress = true;
-    lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 1, 0,
-                       LV_ANIM_OFF);
     tap_on_ai_widget();
-    lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 0, 0,
-                       LV_ANIM_OFF);
-    /* Keep the OUTER strip transparent — only the styled pill shows. */
+    /* Keep the box container transparent — only the frame image + label show. */
     lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
                             LV_OPA_0, 0);
-    /* Fade the pill sub-parts in (the box "fills" with its content). */
+    /* Placeholder while listening, replaced by the transcript (mirrors
+       device_pager skaibar_open's "聽取中"). */
+    instruction_list_set_voice_transcript("聽取中");
+    /* Fade the frame + label in (the box "fills" with its content). */
     if (s_skai_widget && lv_obj_is_valid(s_skai_widget))
     {
         skai_widget_fade_anim_cb(NULL, 0); /* start invisible */
@@ -1636,21 +1657,21 @@ static void lmic_open_reveal_cb(lv_anim_t *a)
 
 void animate_open_ai_widget(void)
 {
-#ifndef BSP_USING_PC_SIMULATOR
-    /* Real hardware: voice input needs the phone connected. The PC sim has no
-       BLE link (and no voice pipeline), so skip the gate there — otherwise the
-       mic-bar morph can't be exercised in the sim. Mirrors the right
-       device_pager skaibar, which has no BT gate. */
-    if (!get_bluetooth_connection_status())
-    {
-        create_connection_tips();
-        LOG_D("Bluetooth is connected, ignoring voice recognition event");
-        return;
-    }
-#endif
-    /* Ignore re-triggers while the morph is opening or already open (would
-       restart the grow mid-flight and glitch). */
-    if (s_left_morph_busy || is_open_instruction_list_ai)
+    /* No Bluetooth gate — a single mic-bar tap opens the box regardless of
+       connection, matching the right device_pager skaibar's mic bar. The voice
+       pipeline (tap_on_ai_widget) only starts v2t on real hardware; without the
+       phone the box still opens, it just won't receive transcripts. */
+    /* Ignore re-triggers while the morph is opening, already shown, or animating
+       shut (would restart the grow mid-flight and glitch). Gate on the box's
+       ACTUAL visibility, not the is_open flag — a stuck-true flag would
+       otherwise block a legitimate open from a closed (hidden) box. During the
+       grow morph the box is still hidden, but s_left_morph_busy covers that. */
+    bool box_visible =
+        p_instruction_list_layout &&
+        p_instruction_list_layout->p_instruction_list_ai_bg &&
+        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
+                         LV_OBJ_FLAG_HIDDEN);
+    if (s_left_morph_busy || s_left_closing || box_visible)
         return;
     last_ai_widget_open_time = rt_tick_get();
     ai_widget_opened_by_drag = false;
@@ -1695,15 +1716,26 @@ void animate_open_ai_widget(void)
     }
 }
 
-void close_ai_widget(void)
+/* ---- reverse-morph close (mirrors the right device_pager skaibar_close) ----
+   The old close snapped the box-sized mic bar back to the slim pill instantly.
+   To match the right side, the close now animates in two sequenced phases:
+     phase 1 (frame): the pill's frame + transcript + voice button fade out.
+     phase 2 (grow):  the box-sized mic bar shrinks/slides back to the slim
+                      bottom pill.
+   The AI strip is hidden only once phase 2 finishes. close runs frame → THEN
+   grow (the inverse of the open's grow → THEN frame), exactly like the right's
+   skaibar_close. s_left_closing guards re-entry / re-open while it's in flight. */
+
+/* Synchronous teardown of the box container objects — hide the AI strip, reset
+   its tile + bg, restore the slim mic bar. Runs at the end of the close morph,
+   or immediately on the no-animation path. */
+static void finalize_close_ai_widget(void)
 {
-    extern void clear_skai_widget_ai_reply(void);
-    stop_mock_inst_update();
-    /* Undo the morph: cancel any in-flight grow and snap the box-sized mic bar
-       back to the slim bottom bar (mic glyph restored) so the user can
-       re-invoke the AI widget. */
+    s_left_closing = false;
     s_left_morph_busy = false;
-    if (p_instruction_list_layout && p_instruction_list_layout->mic_bar &&
+    if (!p_instruction_list_layout)
+        return;
+    if (p_instruction_list_layout->mic_bar &&
         lv_obj_is_valid(p_instruction_list_layout->mic_bar))
     {
         lv_anim_del(p_instruction_list_layout->mic_bar, lmic_grow_cb);
@@ -1711,30 +1743,6 @@ void close_ai_widget(void)
         lv_obj_clear_flag(p_instruction_list_layout->mic_bar,
                           LV_OBJ_FLAG_HIDDEN);
     }
-    /* Tear down v2t. Three calls because the event-driven STOP path in
-       voice_recognition_entry has a "skip if AI processing" early-return
-       that leaves voice_recognition_started=true — so the next mic-bar
-       tap's VOICE_RECOGNITION_START event short-circuits and the phone
-       never gets a fresh handshake. We hit all three teardown surfaces
-       directly so the dismiss is unconditional:
-         1. voice_provider.stop_v2t()  — fires the async STOP event
-            (which may or may not run cleanly depending on AI state)
-         2. stop_voice_recognition()  — sync: clears voice2TextStatus,
-            unsubscribes mic, sends user-speaking-end notify
-         3. set_voice_recognition_started(false)  — sync: clears the
-            re-entry gate the event handler normally clears. Without
-            this, the next tap can't restart v2t when AI is still
-            processing the prior utterance. */
-    voice_provider.stop_v2t();
-    stop_voice_recognition(V2T_INTENT_NOTHING);
-    set_voice_recognition_started(false);
-    set_paused_control_with_arm(false);
-    set_ai_open_mic(false);
-    skai_widget_shown = false;
-    ai_widget_opened_by_drag = false;
-    is_open_instruction_list_ai = false;
-    // lvgl_msg_handler.handle_vad_status = NULL;
-    clear_skai_widget_ai_reply();
     set_skai_widget_opa(0);
     if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
     {
@@ -1742,10 +1750,113 @@ void close_ai_widget(void)
     }
     lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
                             LV_OPA_0, 0);
-    lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 1,
-                       0, LV_ANIM_OFF);
+    /* Box is a plain container now (no tileview) — just hide it. */
     lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                     LV_OBJ_FLAG_HIDDEN);
+}
+
+/* close phase 2 done: the bar has shrunk back to the slim pill — hide the strip. */
+static void lmic_close_done_cb(lv_anim_t *a)
+{
+    (void)a;
+    finalize_close_ai_widget();
+}
+
+/* close phase 1 done (pill faded out): shrink the box-sized mic bar back down. */
+static void lmic_close_shrink_cb(lv_anim_t *a)
+{
+    (void)a;
+    lv_obj_t *bar = p_instruction_list_layout
+                        ? p_instruction_list_layout->mic_bar
+                        : NULL;
+    if (!bar || !lv_obj_is_valid(bar))
+    {
+        finalize_close_ai_widget();
+        return;
+    }
+    lv_anim_t g;
+    lv_anim_init(&g);
+    lv_anim_set_var(&g, bar);
+    lv_anim_set_values(&g, 255, 0);
+    lv_anim_set_time(&g, LMORPH_GROW_MS);
+    lv_anim_set_path_cb(&g, lv_anim_path_ease_in);
+    lv_anim_set_exec_cb(&g, lmic_grow_cb);
+    lv_anim_set_ready_cb(&g, lmic_close_done_cb);
+    lv_anim_start(&g);
+}
+
+void close_ai_widget(void)
+{
+    extern void clear_skai_widget_ai_reply(void);
+    if (s_left_closing)
+        return; /* already animating shut */
+    stop_mock_inst_update();
+    /* Voice / state teardown happens up-front (mirrors the right skaibar_close,
+       which stops v2t at the START of the close — not after the animation).
+       Three v2t calls because the event-driven STOP path in
+       voice_recognition_entry has a "skip if AI processing" early-return that
+       leaves voice_recognition_started=true — so the next mic-bar tap's
+       VOICE_RECOGNITION_START event short-circuits and the phone never gets a
+       fresh handshake. We hit all three teardown surfaces directly so the
+       dismiss is unconditional:
+         1. voice_provider.stop_v2t()  — fires the async STOP event
+         2. stop_voice_recognition()  — sync: clears voice2TextStatus,
+            unsubscribes mic, sends user-speaking-end notify
+         3. set_voice_recognition_started(false)  — sync: clears the
+            re-entry gate the event handler normally clears. */
+    voice_provider.stop_v2t();
+    stop_voice_recognition(V2T_INTENT_NOTHING);
+    set_voice_recognition_started(false);
+    set_paused_control_with_arm(false);
+    set_ai_open_mic(false);
+    skai_widget_shown = false;
+    ai_widget_opened_by_drag = false;
+    // lvgl_msg_handler.handle_vad_status = NULL;
+    clear_skai_widget_ai_reply();
+
+    bool was_open = is_open_instruction_list_ai;
+    is_open_instruction_list_ai = false;
+
+    /* Box not on screen (or layout gone): finish synchronously — nothing to
+       morph. Guards against a stray close while closed re-growing the slim bar. */
+    if (!was_open || !p_instruction_list_layout)
+    {
+        finalize_close_ai_widget();
+        return;
+    }
+
+    /* Cancel any in-flight open morph so the reverse morph starts clean. */
+    lv_obj_t *bar = p_instruction_list_layout->mic_bar;
+    if (bar && lv_obj_is_valid(bar))
+        lv_anim_del(bar, lmic_grow_cb);
+    if (s_skai_widget && lv_obj_is_valid(s_skai_widget))
+        lv_anim_del(s_skai_widget, skai_widget_fade_anim_cb);
+    ai_fade_anim_active = false;
+
+    /* Assert the box-open visual state as the morph's starting point
+       (mirrors skaibar_close's grow(255)/frame(255)). */
+    lmic_grow_cb(NULL, 255);        /* box-sized backdrop */
+    skai_widget_restore_full_opa(); /* pill fully visible */
+    if (bar && lv_obj_is_valid(bar))
+        lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
+
+    s_left_closing = true;
+
+    /* Phase 1: fade the pill out; phase 2 (bar shrink) chains off ready_cb. */
+    if (!s_skai_widget || !lv_obj_is_valid(s_skai_widget))
+    {
+        lmic_close_shrink_cb(NULL); /* no pill — go straight to the shrink */
+        return;
+    }
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_skai_widget);
+    lv_anim_set_values(&a, 255, 0);
+    lv_anim_set_time(&a, LMORPH_FRAME_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
+    lv_anim_set_exec_cb(&a, skai_widget_fade_anim_cb);
+    lv_anim_set_ready_cb(&a, lmic_close_shrink_cb);
+    lv_anim_start(&a);
 }
 
 void check_ai_widget_auto_close(void)
@@ -1768,12 +1879,10 @@ void check_ai_widget_auto_close(void)
 
 void tap_on_ai_widget(void)
 {
-    if (!get_bluetooth_connection_status())
-    {
-        create_connection_tips();
-        LOG_D("Bluetooth is connected, ignoring voice recognition event");
-        return;
-    }
+    /* No Bluetooth gate (matches the right device_pager skaibar): the box opens
+       on a single tap regardless of connection. The v2t start below is guarded
+       to real hardware, so no phone just means no transcript — the box still
+       opens. */
     // if (is_open_instruction_list_ai)
     // {
     //     extern void send_to_ai(void);
@@ -1808,18 +1917,23 @@ void tap_on_ai_widget(void)
     open_skai_widget_ai(true);
     // animate_to_ai_page();
     set_skai_widget_input_text("");
+    /* Voice pipeline — REAL HARDWARE ONLY. The PC sim has no mic/BLE/voice
+       infra; running this there (mic open, speech-indicator hint, v2t) sets up
+       voice state the close path then chokes on and crashes the sim. Guarding
+       the whole block lets the box still open on sim (is_open=true) without the
+       voice machinery. On hardware it runs regardless of BT connection — no
+       phone just means no transcript (the box still opens, matching the right
+       device_pager skaibar, which also has no BT gate).
+       Founder direction 2026-05-19: route spoken input to the skaibar pipeline
+       — voice_set_pending_v2t_intent(V2T_INTENT_SKAIBAR) before start_v2t()
+       makes the phone treat the transcript as a skaibar command, not a chat
+       query (auto-resets to CHAT after the START handler). */
+#ifndef BSP_USING_PC_SIMULATOR
     set_ai_open_mic(true);
     show_speech_indicator(true);
-    /* Founder direction 2026-05-19: instruction_list AI widget mic
-       routes spoken input to the skaibar / mouse-mode pipeline instead
-       of the chat pipeline. Setting the one-shot override before
-       start_v2t() makes voice_recognition_entry pass V2T_INTENT_SKAIBAR
-       (0x03) to start_voice_recognition + notify_user_speaking_intent
-       — the phone treats the resulting transcript as a skaibar command,
-       not a chat query. The override auto-resets to CHAT after the
-       START handler runs so no other callsite is affected. */
     voice_set_pending_v2t_intent(V2T_INTENT_SKAIBAR);
     voice_provider.start_v2t();
+#endif
     /* Arm SKAIBAR option-tracking — scrolls will start reporting idx
        to the phone via commu_send_skaibar_selected. Survives the
        widget close (pill fade), cleared on instruction_list_pause. */
@@ -3575,109 +3689,109 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_add_event_cb(mic_bar, mic_bar_event_cb, LV_EVENT_CLICKED, NULL);
     s_mic_bar_icon = NULL; /* slim pill has no glyph (matches the right bar) */
 
-    /* AI widget docks BELOW the instruction list — only occupies the bottom
-       strip. Sized to host the native message_widget_bg image (442x252)
-       which becomes the pill's visual border/background. */
-    #define AI_BG_STRIP_H 260
-    p_instruction_list_layout->p_instruction_list_ai_bg =
-        lv_tileview_create(p_instruction_list_bg);
-    lv_obj_set_scrollbar_mode(
-        p_instruction_list_layout->p_instruction_list_ai_bg,
-        LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_size(p_instruction_list_layout->p_instruction_list_ai_bg,
-                    LV_HOR_RES, AI_BG_STRIP_H);
-    lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
-                            LV_OPA_0, 0);
-    lv_obj_align(p_instruction_list_layout->p_instruction_list_ai_bg,
-                 LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_t *home_page = lv_tileview_add_tile(
-        p_instruction_list_layout->p_instruction_list_ai_bg, 1, 0, LV_DIR_HOR);
-    lv_obj_set_size(home_page, LV_HOR_RES, AI_BG_STRIP_H);
-    // lv_obj_set_style_bg_color(home_page, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_bg_opa(home_page, LV_OPA_0, 0);
-    lv_obj_add_event_cb(home_page, home_tileview_event_cb, LV_EVENT_RELEASED,
-                        NULL);
-    lv_obj_t *ai_page = lv_tileview_add_tile(
-        p_instruction_list_layout->p_instruction_list_ai_bg, 0, 0, LV_DIR_HOR);
-    lv_obj_set_size(ai_page, LV_HOR_RES, AI_BG_STRIP_H);
-    lv_obj_set_style_bg_opa(ai_page, LV_OPA_0, 0);
-    /* Stop vertical scroll from chaining up to the app_list_tileview
-       (which would slide to the app grid). The AI widget should only scroll
-       its own content. */
-    lv_obj_clear_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
-                      LV_OBJ_FLAG_SCROLL_CHAIN_VER);
-    lv_obj_clear_flag(ai_page, LV_OBJ_FLAG_SCROLL_CHAIN_VER);
-    lv_obj_set_tile_id(p_instruction_list_layout->p_instruction_list_ai_bg, 1,
-                       0, LV_ANIM_OFF);
-    lv_obj_add_event_cb(p_instruction_list_layout->p_instruction_list_ai_bg,
-                        ai_tileview_event_cb, LV_EVENT_ALL, NULL);
-    lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
-                    LV_OBJ_FLAG_HIDDEN);
-    /* Gaus glow background DISABLED — the input box now sits cleanly over the
-       list (single image frame, like the right device_pager). Left as NULL; all
-       show/hide call-sites are guarded by `if (ai_gaus_bg && lv_obj_is_valid())`
-       so they no-op. Re-enable by restoring the four lines below. */
-    ai_gaus_bg = NULL;
-    /* ai_gaus_bg = lv_img_create(ai_page);
-       lv_img_set_src(ai_gaus_bg, GAUS_CLOCK1_BG);
-       lv_obj_align(ai_gaus_bg, LV_ALIGN_CENTER, 0, 0);
-       lv_img_set_zoom(ai_gaus_bg, 512);
-       lv_obj_add_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN); */
+    /* Enlarged transparent hit area over the slim mic bar — the 100x16 pill is
+       too small to reliably tap, so this invisible 240x90 region at the bottom
+       centre catches taps and routes them to the same mic_bar_event_cb (open the
+       box). Created AFTER mic_bar so it sits on top of it, but BEFORE the box
+       (ai_box), so when the box is open the box is foreground and handles the
+       toggle-close; when closed this overlay is the top hit target. Transparent
+       + non-scrollable so it never obscures the list and drags still bubble
+       through to the list/arc scroll. */
+    {
+        lv_obj_t *mic_hit = lv_obj_create(p_instruction_list_bg);
+        lv_obj_set_size(mic_hit, 240, 90);
+        lv_obj_align(mic_hit, LV_ALIGN_BOTTOM_MID, 0, 0);
+        lv_obj_set_style_bg_opa(mic_hit, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(mic_hit, 0, 0);
+        lv_obj_set_style_pad_all(mic_hit, 0, 0);
+        lv_obj_set_style_radius(mic_hit, 0, 0);
+        lv_obj_clear_flag(mic_hit, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(mic_hit, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(mic_hit, mic_bar_event_cb, LV_EVENT_CLICKED, NULL);
+    }
 
+    /* The AI-chat builder (lv_skai_widget_builder) is retained but kept HIDDEN.
+       app_skai.c's shared globals (skai_widget_input_text_bg etc.) are
+       dereferenced WITHOUT null-guards by set_skai_widget_opa / the re-ask path
+       (also called from app_mainmenu), so the objects must exist — but we never
+       show it. The visible box below is a clean device_pager-style container,
+       so the builder's scrollable AI-reply area (the right-edge SCROLLBAR) and
+       the old 2-tile horizontal tileview (the LEFT-SWIPE-off) are both gone from
+       the UI. Builder is parented hidden; its globals stay valid. */
     extern lv_obj_t *lv_skai_widget_builder(lv_obj_t * parent);
-    lv_obj_t *skai_widget = lv_skai_widget_builder(ai_page);
-    lv_obj_clear_flag(skai_widget, LV_OBJ_FLAG_SCROLLABLE);
-    s_skai_widget = skai_widget;
-    /* Pill structure: transparent container sized to the native
-       message_widget_bg image (442x252). The image child supplies the
-       visual border + rounded shape — matches the production Skaiwalk
-       look on real hardware, where LVGL's border-style stroke is too
-       thin to render. */
-    lv_obj_set_size(skai_widget, 442, 252);
-    /* Match the right device_pager box: sit 75px below the bottom edge so only
-       the top half (frame + transcript) shows; the morph target (LBOX_Y) lands
-       the grown bar exactly here. */
-    lv_obj_align(skai_widget, LV_ALIGN_BOTTOM_MID, 0, LBOX_Y);
-    lv_obj_set_style_bg_opa(skai_widget, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(skai_widget, 0, 0);
-    lv_obj_set_style_pad_all(skai_widget, 0, 0);
-    /* Background image — gives the pill its visible border + shape. */
-    s_pill_bg_img = lv_img_create(skai_widget);
-    lv_obj_align(s_pill_bg_img, LV_ALIGN_CENTER, 0, 0);
+    /* Parent the builder inside a dedicated HIDDEN host so its whole subtree is
+       never shown — and so we never touch p_instruction_list_bg's own
+       visibility. (Earlier, hiding lv_obj_get_parent() of the builder's return
+       value hid the entire page, because the builder returns its outer
+       container, a direct child of p_instruction_list_bg.) */
+    lv_obj_t *skai_host = lv_obj_create(p_instruction_list_bg);
+    lv_obj_set_size(skai_host, 1, 1);
+    lv_obj_set_style_pad_all(skai_host, 0, 0);
+    lv_obj_set_style_border_width(skai_host, 0, 0);
+    lv_obj_set_style_bg_opa(skai_host, LV_OPA_TRANSP, 0);
+    lv_obj_add_flag(skai_host, LV_OBJ_FLAG_HIDDEN);
+    lv_skai_widget_builder(skai_host);
+
+    /* Visible AI voice-input box — mirrors the right device_pager skaibar
+       (device_pager.c:1148): a plain NON-scrollable container (no tileview)
+       holding the message_widget_bg frame + a transcript label. The bottom
+       mic_bar morphs into it (lmic_grow_cb); tapping the box toggles it closed;
+       scrolling the list dismisses it (animated reverse morph). Reuses the
+       p_instruction_list_ai_bg struct field so all open/close/teardown code
+       keeps a valid handle. */
+    p_instruction_list_layout->p_instruction_list_ai_bg =
+        lv_obj_create(p_instruction_list_bg);
+    lv_obj_t *ai_box = p_instruction_list_layout->p_instruction_list_ai_bg;
+    s_skai_widget = ai_box; /* animation key for the frame/label fade */
+    lv_obj_set_size(ai_box, LBOX_W, LBOX_H);
+    lv_obj_align(ai_box, LV_ALIGN_BOTTOM_MID, 0, LBOX_Y);
+    lv_obj_set_style_bg_opa(ai_box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(ai_box, 0, 0);
+    lv_obj_set_style_pad_all(ai_box, 0, 0);
+    lv_obj_set_scrollbar_mode(ai_box, LV_SCROLLBAR_MODE_OFF);
+    /* Keep the box SCROLLABLE (scrollbar hidden) AND clear SCROLL_CHAIN so it
+       ABSORBS swipes instead of passing them to the page navigation. The frame
+       fits the box exactly, so there is no scroll range (the drag rubber-bands,
+       nothing moves, no visible bar) and the swipe can no longer bubble up and
+       jump to the watchface. A swipe begin dismisses the box
+       (ai_box_scroll_dismiss_cb), mirroring device_pager's scroll_hides_skaibar_cb. */
+    lv_obj_clear_flag(ai_box, LV_OBJ_FLAG_SCROLL_CHAIN);
+    lv_obj_add_flag(ai_box, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(ai_box, mic_bar_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(ai_box, ai_box_scroll_dismiss_cb, LV_EVENT_SCROLL_BEGIN,
+                        NULL);
+    lv_obj_add_flag(ai_box, LV_OBJ_FLAG_HIDDEN);
+    ai_gaus_bg = NULL; /* gaus glow disabled — all call-sites are guarded no-ops */
+
+    /* Frame image — supplies the box's visible border + rounded shape (LVGL's
+       drawn border is too thin on real hw). Centered child of the box, so it
+       always tracks the box position. Mirrors device_pager's skaibar_frame. */
+    s_pill_bg_img = lv_img_create(ai_box);
     lv_img_set_src(s_pill_bg_img, &message_widget_bg);
+    lv_obj_center(s_pill_bg_img);
     lv_obj_clear_flag(s_pill_bg_img, LV_OBJ_FLAG_CLICKABLE);
-    /* Transcript label — sits over the bg image, displays the spoken text. */
-    s_voice_transcript_label = lv_label_create(skai_widget);
+
+    /* Transcript label — shows "聽取中" then the spoken text, over the frame.
+       Mirrors device_pager's skaibar_label. */
+    s_voice_transcript_label = lv_label_create(ai_box);
     lv_label_set_text(s_voice_transcript_label, "");
     lv_obj_set_width(s_voice_transcript_label, 360);
     lv_label_set_long_mode(s_voice_transcript_label, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_color(s_voice_transcript_label, lv_color_white(), 0);
     lv_obj_set_style_text_opa(s_voice_transcript_label, LV_OPA_80, 0);
+    /* CJK-capable font (mirrors device_pager skaibar_label) — the default
+       montserrat font renders 聽取中 as tofu boxes. */
+    lv_obj_set_style_text_font(s_voice_transcript_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_set_style_text_align(s_voice_transcript_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(s_voice_transcript_label, LV_ALIGN_TOP_MID, 0, 60);
 
-    /* Voice indicator button — replaces ai_hint at bottom center.
-       Lifted up by 25px so it sits visually inside the wrapping skai_widget
-       pill instead of overhanging its bottom edge. */
-    ai_voice_btn = lv_obj_create(ai_page);
-    lv_obj_set_size(ai_voice_btn, 62, 62);
-    lv_obj_set_style_radius(ai_voice_btn, 31, 0);
-    lv_obj_set_style_bg_color(ai_voice_btn, lv_color_hex(0x00AAFF), 0);
-    lv_obj_set_style_bg_opa(ai_voice_btn, LV_OPA_10, 0);
-    /* Ride with the box to its +75 (mostly off-screen) resting position — the
-       visible top half then shows just the frame + transcript, matching the
-       right device_pager box. */
-    lv_obj_align(ai_voice_btn, LV_ALIGN_BOTTOM_MID, 0, LBOX_Y);
-    lv_obj_add_event_cb(ai_voice_btn, logo_click_event_cb, LV_EVENT_CLICKED,
-                        NULL);
-    lv_obj_t *ai_voice_img = lv_img_create(ai_voice_btn);
-    s_voice_img = ai_voice_img;
-    lv_img_set_src(ai_voice_img, &voice_group);
-    lv_obj_align(ai_voice_img, LV_ALIGN_CENTER, 0, 0);
-    ai_voice_send_icon = lv_img_create(ai_voice_btn);
-    lv_img_set_src(ai_voice_send_icon, ICON_SAND);
-    lv_obj_align(ai_voice_send_icon, LV_ALIGN_CENTER, 2, 2);
-    lv_obj_add_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
+    /* No separate voice button — the box matches device_pager (frame + label
+       only). The VAD-pulse / re-ask handlers are all null-guarded, so leaving
+       these NULL makes them no-op. */
+    ai_voice_btn = NULL;
+    s_voice_img = NULL;
+    ai_voice_send_icon = NULL;
     // 創建可移動範圍圓弧線
     // create_movable_range_arc(p_instruction_list_bg);
     created = true;

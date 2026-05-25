@@ -132,6 +132,24 @@ static void handle_device_list_batch(uint8_t *pValue, uint16_t length)
     }
     cJSON_Delete(root);
     LOG_I("Loaded %d devices from skailink batch", SkaiWatchSys.device_registry.count);
+    /* Dump the received device list so its contents can be inspected on the
+       console (id / name / status + each device's item/action list). NOTE: the
+       items arrive in a SEPARATE message (handle_device_actions_batch, 0x03), so
+       items=0 here just means that device's actions haven't synced yet. */
+    for (uint8_t i = 0; i < SkaiWatchSys.device_registry.count; i++)
+    {
+        T_SYNCED_DEVICE *d =
+            (T_SYNCED_DEVICE *)&SkaiWatchSys.device_registry.devices[i];
+        LOG_I("  device[%u]: id=%s name=%s status=%u items=%u", (unsigned)i,
+              d->id,
+              (const char *)SkaiWatchSys.device_name[i],
+              (unsigned)SkaiWatchSys.device_status[i],
+              (unsigned)d->default_action_count);
+        for (uint8_t k = 0; k < d->default_action_count; k++)
+        {
+            LOG_I("      item[%u]: %s", (unsigned)k, d->default_actions[k]);
+        }
+    }
     watch_prefs_save_device_registry_async(); /* ids changed — persist */
     LOG_I("Device registry updated: count=%d", SkaiWatchSys.device_registry.count);
     ui_refresh();
@@ -188,8 +206,21 @@ static void handle_device_actions_batch(uint8_t *pValue, uint16_t length)
                     d->default_action_count++;
                 }
             }
+            /* Dump the device's item (action) list so it can be inspected. */
+            LOG_I("device actions for %s (name=%s): %u item(s)",
+                  j_dev->valuestring, (const char *)SkaiWatchSys.device_name[idx],
+                  (unsigned)d->default_action_count);
+            for (uint8_t k = 0; k < d->default_action_count; k++)
+            {
+                LOG_I("    item[%u]: %s", (unsigned)k, d->default_actions[k]);
+            }
             watch_prefs_save_device_registry_async(); /* default actions changed — persist */
             ui_refresh();
+        }
+        else
+        {
+            LOG_W("device actions: unknown device_id %s (not in registry)",
+                  j_dev->valuestring);
         }
     }
     cJSON_Delete(root);
