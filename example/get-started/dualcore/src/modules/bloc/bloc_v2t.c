@@ -384,9 +384,16 @@ static void notify_vad_status(bool status)
         lvgl_send_msg(msg);
         if (status)
         {
+            /* The right device_pager skaibar is also a "speaking-to-AI" surface —
+               without this, speaking there never sets is_user_speaking_to_ai, so
+               interact_voice_recognition drops the transcript (none of its
+               branches match the device page) and the text never reaches
+               device_pager_skaibar_say. (Previously it only worked if the flag
+               lingered from a prior left instruction_list session.) */
+            extern bool device_pager_skaibar_is_open(void);
             if (get_gravity_position() == GRAVITY_POSITION_AI ||
                 is_at_ai_interface() || is_at_instruction_list() ||
-                is_at_speech_interface())
+                is_at_speech_interface() || device_pager_skaibar_is_open())
             {
                 is_user_speaking_to_ai = true;
             }

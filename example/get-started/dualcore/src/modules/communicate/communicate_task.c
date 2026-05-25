@@ -287,6 +287,18 @@ bool commu_send_update_instruction(const char *json) { return commu_send_string(
 bool commu_send_get_instruction_img(const char *id)  { return commu_send_string(NOTIFY_COMMAND_ID, KEY_SKAI_INSTRUCTION_IMAGE, id); }
 bool commu_send_skaibar_selected(uint8_t idx)        { return commu_send_status(NOTIFY_COMMAND_ID, KEY_SKAIBAR_SELECTED, idx); }
 bool commu_send_skaibar_committed(uint8_t idx)       { return commu_send_status(NOTIFY_COMMAND_ID, KEY_SKAIBAR_COMMITTED, idx); }
+/* ADR-0008 E7: watch→phone — the device-list item/action NAME the user tapped.
+   SKAI_LINK group (like commu_send_active_device), JSON {"action":"<name>"}. */
+bool commu_send_skaibar_action(const char *name)
+{
+    if (name == NULL) return false;
+    char json[16 + 32]; /* {"action":"..."} + name (device items are <= 24 chars) */
+    int n = rt_snprintf(json, sizeof(json), "{\"action\":\"%s\"}", name);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_ACTION_SELECT, json);
+    LOG_I("send skaibar action title='%s' -> %s", name, ok ? "ok" : "FAILED");
+    return ok;
+}
 
 /*============================================================================*
  *                              Sensor

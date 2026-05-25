@@ -276,6 +276,10 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
         /* Uplink-only (watch→phone); never received here. */
         LOG_W("skailink: KEY_ACTIVE_SELECT is uplink-only");
         break;
+    case KEY_ACTION_SELECT:
+        /* Uplink-only (watch→phone); never received here. */
+        LOG_W("skailink: KEY_ACTION_SELECT is uplink-only");
+        break;
     default:
         LOG_W("skailink: unknown key 0x%02x", key);
         break;

@@ -563,6 +563,10 @@ static lv_obj_t *ai_gaus_bg = NULL;
 /* Transcript label inside the styled skai_widget pill — shows the spoken
    text after voice_say (PC sim) or real ASR (real hw). */
 static lv_obj_t *s_voice_transcript_label = NULL;
+/* Fixed-height (2 line-heights) clip that hosts the transcript label so only the
+   latest two wrapped rows show; older rows scroll up and can be pulled back down
+   manually. Mirrors device_pager's skaibar_clip. */
+static lv_obj_t *s_voice_transcript_clip = NULL;
 /* Reference to the styled pill (lv_skai_widget_builder return value).
    For scroll-fade we animate per-property opa on multiple objects (LVGL
    lv_obj_set_style_opa does not cascade in this build — must use
@@ -593,11 +597,27 @@ static lv_obj_t *s_mic_bar_icon = NULL;
 #define LMORPH_GROW_MS  220   /* phase 1: bar grows into the box backdrop */
 #define LMORPH_FRAME_MS 160   /* phase 2: skai_widget pill fades in */
 
+/* Pin the 2-row transcript window to its newest content: scroll the clip so the
+   last two wrapped rows are visible (older rows scroll up out of view; the user
+   can pull them back down manually). No-op when the text fits in two rows. */
+static void voice_transcript_scroll_to_bottom(void)
+{
+    if (!s_voice_transcript_clip || !lv_obj_is_valid(s_voice_transcript_clip))
+        return;
+    lv_obj_update_layout(s_voice_transcript_clip);
+    lv_coord_t bottom = lv_obj_get_scroll_bottom(s_voice_transcript_clip);
+    if (bottom > 0)
+        lv_obj_scroll_by(s_voice_transcript_clip, 0, -bottom, LV_ANIM_OFF);
+    else
+        lv_obj_scroll_to_y(s_voice_transcript_clip, 0, LV_ANIM_OFF);
+}
+
 void instruction_list_set_voice_transcript(const char *text)
 {
     if (s_voice_transcript_label && lv_obj_is_valid(s_voice_transcript_label))
     {
         lv_label_set_text(s_voice_transcript_label, text ? text : "");
+        voice_transcript_scroll_to_bottom();   /* keep the latest 2 rows in view */
     }
 }
 
@@ -1857,6 +1877,23 @@ void close_ai_widget(void)
     lv_anim_set_exec_cb(&a, skai_widget_fade_anim_cb);
     lv_anim_set_ready_cb(&a, lmic_close_shrink_cb);
     lv_anim_start(&a);
+}
+
+/* Auto-dismiss the voice input box when the user navigates away from the
+   instruction_list page (called by the page navigator in app_clock_status_bar).
+   Mirrors the device page closing its skaibar on leave: the box absorbs a swipe
+   that STARTS on it (ai_box_scroll_dismiss_cb), but an edge-back gesture or a
+   page switch that doesn't touch the box would otherwise leave it open. Gated on
+   the box's REAL visibility (not the is_open flag, which can get stuck). */
+void instruction_list_close_ai_on_leave(void)
+{
+    if (!p_instruction_list_layout)
+        return;
+    lv_obj_t *box = p_instruction_list_layout->p_instruction_list_ai_bg;
+    bool box_visible = box && lv_obj_is_valid(box) &&
+                       !lv_obj_has_flag(box, LV_OBJ_FLAG_HIDDEN);
+    if (box_visible)
+        close_ai_widget();
 }
 
 void check_ai_widget_auto_close(void)
@@ -3772,8 +3809,33 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_clear_flag(s_pill_bg_img, LV_OBJ_FLAG_CLICKABLE);
 
     /* Transcript label — shows "聽取中" then the spoken text, over the frame.
-       Mirrors device_pager's skaibar_label. */
-    s_voice_transcript_label = lv_label_create(ai_box);
+       Mirrors device_pager's skaibar_label. It lives inside a fixed-height clip
+       (exactly two rows tall) so only the latest two wrapped rows show; older rows
+       scroll up and can be pulled back down manually. LVGL text height for N rows
+       is N*line_height + (N-1)*line_space, so the clip is 2*lh + line_space tall.
+       The window is placed one row-pitch (lh + line_space) above the old
+       single-line top (y=60), so the newest line still lands at y=60 and the prior
+       line sits one row above it. */
+    const lv_font_t *vt_font = LV_EXT_FONT_GET(get_system_font_size(0));
+    s_voice_transcript_clip = lv_obj_create(ai_box);
+    lv_obj_set_style_bg_opa(s_voice_transcript_clip, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_voice_transcript_clip, 0, 0);
+    lv_obj_set_style_pad_all(s_voice_transcript_clip, 0, 0);
+    lv_obj_set_style_radius(s_voice_transcript_clip, 0, 0);
+    lv_obj_set_scrollbar_mode(s_voice_transcript_clip, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scroll_dir(s_voice_transcript_clip, LV_DIR_VER);
+    lv_obj_clear_flag(s_voice_transcript_clip, LV_OBJ_FLAG_SCROLL_CHAIN);
+    /* Clickable so a drag on the 2-row window scrolls THIS clip (the indev scroll
+       search starts at the pressed object and only walks up to parents — if the
+       clip weren't the press target the box would scroll instead, and the box has
+       no scroll range). A plain tap still toggles the box (own CLICKED handler);
+       SCROLL_CHAIN cleared keeps the scroll local so it never trips the box's
+       swipe-dismiss (ai_box_scroll_dismiss_cb). */
+    lv_obj_add_flag(s_voice_transcript_clip, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_voice_transcript_clip, mic_bar_event_cb, LV_EVENT_CLICKED,
+                        NULL);
+
+    s_voice_transcript_label = lv_label_create(s_voice_transcript_clip);
     lv_label_set_text(s_voice_transcript_label, "");
     lv_obj_set_width(s_voice_transcript_label, 360);
     lv_label_set_long_mode(s_voice_transcript_label, LV_LABEL_LONG_WRAP);
@@ -3781,10 +3843,18 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_set_style_text_opa(s_voice_transcript_label, LV_OPA_80, 0);
     /* CJK-capable font (mirrors device_pager skaibar_label) — the default
        montserrat font renders 聽取中 as tofu boxes. */
-    lv_obj_set_style_text_font(s_voice_transcript_label,
-                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_font(s_voice_transcript_label, vt_font, 0);
     lv_obj_set_style_text_align(s_voice_transcript_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(s_voice_transcript_label, LV_ALIGN_TOP_MID, 0, 60);
+    lv_obj_align(s_voice_transcript_label, LV_ALIGN_TOP_MID, 0, 0);
+
+    /* Size + place the clip now that the label's font/line-space are known. */
+    {
+        lv_coord_t lh = lv_font_get_line_height(vt_font);
+        lv_coord_t ls =
+            lv_obj_get_style_text_line_space(s_voice_transcript_label, LV_PART_MAIN);
+        lv_obj_set_size(s_voice_transcript_clip, 360, 2 * lh + ls);
+        lv_obj_align(s_voice_transcript_clip, LV_ALIGN_TOP_MID, 0, 60 - (lh + ls));
+    }
 
     /* No separate voice button — the box matches device_pager (frame + label
        only). The VAD-pulse / re-ask handlers are all null-guarded, so leaving

@@ -28,6 +28,7 @@ extern "C"
         KEY_DEVICE_ACTIONS_BATCH = 0x03, /* phone→watch: {device_id,items:[...]} per-device actions */
         KEY_DEVICE_REMOVED = 0x04,       /* phone→watch: {id} device removed (logout) */
         KEY_ACTIVE_SELECT = 0x05,        /* watch→phone (UPLINK): {device_id} active target */
+        KEY_ACTION_SELECT = 0x06,        /* watch→phone (UPLINK): {action} the device-list item name the user tapped */
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

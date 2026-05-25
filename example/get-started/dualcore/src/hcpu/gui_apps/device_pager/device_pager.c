@@ -140,6 +140,7 @@ typedef struct
     lv_obj_t   *mic_icon;        /* mic glyph (faded during the morph) */
     lv_obj_t   *skaibar_input;
     lv_obj_t   *skaibar_frame;   /* message_widget_bg image (faded during morph) */
+    lv_obj_t   *skaibar_clip;    /* 2-row clip window: only the latest 2 wrapped rows show */
     lv_obj_t   *skaibar_label;
     bool        skaibar_active;
 } device_pager_t;
@@ -305,6 +306,40 @@ static lv_obj_t *arc_snap_cb(void *ctx)
     tile_ui_t *u = (tile_ui_t *)ctx;
     if (!u || u->sel < 0 || u->sel >= MAX_TILE_ITEMS) return NULL;
     return u->snap[u->sel];
+}
+
+/* arc_scroll tap: tapping the item band selects the centred item — send its
+   NAME to the phone (SKAI_LINK KEY_ACTION_SELECT) so the app runs it. The items
+   are scroll-to-centre then tap-to-confirm; the centred one is u->sel, shown in
+   u->name_label. Returns NULL — handled here, nothing to forward. */
+static lv_obj_t *device_arc_tap_cb(lv_point_t pt, void *ctx)
+{
+    (void)pt;
+    tile_ui_t *u = (tile_ui_t *)ctx;
+    if (!u || !u->dev) return NULL;
+    int idx = u->sel;
+    if (idx < 0 || idx >= u->dev->item_count) return NULL;
+    const char *name = u->dev->items[idx];
+    if (name[0] == '\0') return NULL;
+    LOG_I("[pager] item tapped -> action '%s'", name);
+    commu_send_skaibar_action(name);
+    return NULL;
+}
+
+/* Tapping the centred item NAME text sends the same action as tapping the arc
+   band. The arc_scroll overlay only hit-tests its right-side icon band (see
+   point_in_band), so a tap on the left-aligned name label never reached
+   device_arc_tap_cb — the text needs its own CLICKED handler. */
+static void device_name_tap_cb(lv_event_t *e)
+{
+    tile_ui_t *u = (tile_ui_t *)lv_event_get_user_data(e);
+    if (!u || !u->dev) return;
+    int idx = u->sel;
+    if (idx < 0 || idx >= u->dev->item_count) return;
+    const char *name = u->dev->items[idx];
+    if (name[0] == '\0') return;
+    LOG_I("[pager] name tapped -> action '%s'", name);
+    commu_send_skaibar_action(name);
 }
 
 /* Deferred: pulling the top item down far enough reveals the mouse — drive the
@@ -591,6 +626,10 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
     lv_obj_set_style_text_align(u->name_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(u->name_label, LV_ALIGN_LEFT_MID, 24, 0);
     lv_label_set_text(u->name_label, "");
+    /* Make the visible item text itself tap-to-send (the arc band only covers the
+       right icon strip; users naturally tap the centred name on the left). */
+    lv_obj_add_flag(u->name_label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(u->name_label, device_name_tap_cb, LV_EVENT_CLICKED, u);
     u->sel = 0;
 
     /* Right-band arc scroll — drag in the right arc band scrolls the items;
@@ -606,6 +645,7 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
         .band_thickness  = 90,
         .lock_ancestors  = true,
         .snap_cb         = arc_snap_cb,
+        .tap_cb          = device_arc_tap_cb,
         .ctx             = u,
     };
     u->arc = arc_scroll_create(&cfg);
@@ -866,6 +906,16 @@ void device_pager_set_active(bool on)
         if (p->skaibar_active)
         {
             p->skaibar_active = false;
+#if defined(BSP_USING_BLOC) && !defined(BSP_USING_PC_SIMULATOR)
+            /* End the v2t session cleanly so a later skaibar-open isn't blocked
+               by a stuck voice_recognition_started gate (the symptom: re-entering
+               the device list, the input box shows no transcript because the mic
+               never restarts). Release the mic + clear the gate via the SYNC
+               teardown — NOT stop_v2t, whose async STOP cancel can drop the
+               in-flight phone-side command / list update. */
+            stop_voice_recognition(V2T_INTENT_NOTHING);
+            set_voice_recognition_started(false);
+#endif
             skaibar_grow_cb(NULL, 0); /* mic_bar back to the slim pill */
             if (p->skaibar_input && lv_obj_is_valid(p->skaibar_input))
                 lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
@@ -938,6 +988,20 @@ static void skaibar_frame_cb(void *var, int32_t f)
         lv_obj_set_style_text_opa(p->skaibar_label, (lv_opa_t)(LV_OPA_80 * f / 255), 0);
 }
 
+/* Pin the 2-row transcript window to its newest content: scroll the clip so the
+   last two wrapped rows are visible (older rows scroll up out of view; the user
+   can pull them back down manually). No-op when the text fits in two rows. */
+static void skaibar_scroll_to_bottom(void)
+{
+    if (!p || !p->skaibar_clip || !lv_obj_is_valid(p->skaibar_clip)) return;
+    lv_obj_update_layout(p->skaibar_clip);
+    lv_coord_t bottom = lv_obj_get_scroll_bottom(p->skaibar_clip);
+    if (bottom > 0)
+        lv_obj_scroll_by(p->skaibar_clip, 0, -bottom, LV_ANIM_OFF);
+    else
+        lv_obj_scroll_to_y(p->skaibar_clip, 0, LV_ANIM_OFF);
+}
+
 /* close, last step: the button has shrunk back — hide the box (button stays). */
 static void skaibar_close_done_cb(lv_anim_t *a)
 {
@@ -983,6 +1047,7 @@ static void skaibar_open(void)
     lv_anim_del(p->skaibar_input, skaibar_grow_cb);    /* cancel any in-flight morph */
     lv_anim_del(p->skaibar_input, skaibar_frame_cb);
     lv_label_set_text(p->skaibar_label, "聽取中");
+    skaibar_scroll_to_bottom();                         /* reset window to top */
     skaibar_grow_cb(NULL, 0);                           /* button state */
     skaibar_frame_cb(NULL, 0);                          /* frame fully hidden */
     lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
@@ -1018,6 +1083,10 @@ static void skaibar_close(void)
     p->skaibar_active = false;
 #if defined(BSP_USING_BLOC) && !defined(BSP_USING_PC_SIMULATOR)
     voice_provider.stop_v2t();
+    /* Clear the re-entry gate directly — the async STOP event can early-return
+       (AI processing) and leave voice_recognition_started=true, which would make
+       the NEXT skaibar-open's start_v2t short-circuit (no mic, no transcript). */
+    set_voice_recognition_started(false);
 #endif
     lv_anim_del(p->skaibar_input, skaibar_grow_cb);    /* cancel any in-flight morph */
     lv_anim_del(p->skaibar_input, skaibar_frame_cb);
@@ -1063,6 +1132,7 @@ void device_pager_skaibar_say(const char *text)
     if (!p) return;
     if (!p->skaibar_active) skaibar_open();
     lv_label_set_text(p->skaibar_label, text ? text : "");
+    skaibar_scroll_to_bottom();   /* keep the latest 2 rows in view */
     LOG_I("[pager] skaibar transcript: \"%s\"", text ? text : "");
 }
 
@@ -1216,16 +1286,48 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_img_set_src(p->skaibar_frame, &message_widget_bg);
     lv_obj_center(p->skaibar_frame);
     lv_obj_clear_flag(p->skaibar_frame, LV_OBJ_FLAG_CLICKABLE);
-    p->skaibar_label = lv_label_create(p->skaibar_input);
+    /* 2-row transcript window. The label lives inside a fixed-height clip (exactly
+       two rows tall) so only the latest two wrapped rows show; older rows scroll up
+       and can be pulled back down manually. LVGL text height for N rows is
+       N*line_height + (N-1)*line_space, so the clip is 2*lh + line_space tall. The
+       window is placed one row-pitch (lh + line_space) above the old single-line
+       top (y=60), so the newest line still lands at y=60 and the prior line sits
+       one row above it. */
+    const lv_font_t *sb_font = LV_EXT_FONT_GET(get_system_font_size(0));
+    p->skaibar_clip = lv_obj_create(p->skaibar_input);
+    lv_obj_set_style_bg_opa(p->skaibar_clip, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(p->skaibar_clip, 0, 0);
+    lv_obj_set_style_pad_all(p->skaibar_clip, 0, 0);
+    lv_obj_set_style_radius(p->skaibar_clip, 0, 0);
+    lv_obj_set_scrollbar_mode(p->skaibar_clip, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scroll_dir(p->skaibar_clip, LV_DIR_VER);
+    lv_obj_clear_flag(p->skaibar_clip, LV_OBJ_FLAG_SCROLL_CHAIN);
+    /* Clickable so a drag on the 2-row window scrolls THIS clip (the indev scroll
+       search starts at the pressed object and only walks up to parents — if the
+       clip weren't the press target the box would scroll instead, and the box has
+       no scroll range). A plain tap still toggles the box (own CLICKED handler);
+       SCROLL_CHAIN cleared keeps the scroll local so it never trips the box's
+       swipe-dismiss. */
+    lv_obj_add_flag(p->skaibar_clip, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(p->skaibar_clip, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
+
+    p->skaibar_label = lv_label_create(p->skaibar_clip);
     lv_obj_set_style_text_color(p->skaibar_label, lv_color_white(), 0);
     lv_obj_set_style_text_opa(p->skaibar_label, LV_OPA_80, 0);
-    lv_obj_set_style_text_font(p->skaibar_label,
-                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_font(p->skaibar_label, sb_font, 0);
     lv_obj_set_style_text_align(p->skaibar_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(p->skaibar_label, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(p->skaibar_label, 360);
-    lv_obj_align(p->skaibar_label, LV_ALIGN_TOP_MID, 0, 60);
+    lv_obj_align(p->skaibar_label, LV_ALIGN_TOP_MID, 0, 0);
     lv_label_set_text(p->skaibar_label, "");
+
+    /* Size + place the clip now that the label's font/line-space are known. */
+    {
+        lv_coord_t lh = lv_font_get_line_height(sb_font);
+        lv_coord_t ls = lv_obj_get_style_text_line_space(p->skaibar_label, LV_PART_MAIN);
+        lv_obj_set_size(p->skaibar_clip, 360, 2 * lh + ls);
+        lv_obj_align(p->skaibar_clip, LV_ALIGN_TOP_MID, 0, 60 - (lh + ls));
+    }
 
     p->empty_label = lv_label_create(p->list_tile);
     lv_label_set_text(p->empty_label, "No devices");
