@@ -1181,8 +1181,13 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
     switch (msg)
     {
     case GUI_APP_MSG_ONSTART:
+    {
+        /* app_run 直接開啟不經 Main 狀態機，左緣右滑返回 bar 仍隱藏，這裡補開 */
+        extern void display_gesture_detect_objs(uint32_t idx, bool display);
+        display_gesture_detect_objs(0, true);
         on_start();
         break;
+    }
 
     case GUI_APP_MSG_ONRESUME:
         on_resume();
