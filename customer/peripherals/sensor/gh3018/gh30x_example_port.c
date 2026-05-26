@@ -617,6 +617,7 @@ void handle_algo_result_update(GU32 function_id, GU16 value)
     switch (function_id)
     {
     case GH30X_FUNCTION_HR:
+        gh3018_set_hr(value); /* plumb computed BPM to gh3018_get_hr() */
         break;
 
     case GH30X_FUNCTION_HRV:
