@@ -879,18 +879,39 @@ static int fs_create_test_file(int index)
     return total;
 }
 
-static void fs_delete_all_test_files(void)
+/* Delete everything in FSTEST_DIR by enumerating the directory, not by walking
+   fs_test_file_count. After a crash/reboot the in-memory count is 0 while the
+   files are still on disk, so the old count-based loop deleted nothing
+   ("cleanup deleting 0 files") and left the volume full; a cleanup that itself
+   crashed partway could also leave a non-contiguous set an index walk would
+   miss. readdir sees whatever is actually there. The F%04d.DAT names are 8.3
+   (single dir slot, no LFN), so unlinking during the readdir walk is safe on
+   FatFs. Yields periodically so a large delete on this high-priority thread
+   does not starve the watchdog. Returns the number of files deleted. */
+static int fs_delete_all_test_files(void)
 {
     char filename[64];
-    int i;
+    struct dirent *entry;
+    int deleted = 0;
+    DIR *dir = opendir(FSTEST_DIR);
 
-    for (i = 0; i < fs_test_file_count; i++)
+    if (dir != NULL)
     {
-        snprintf(filename, sizeof(filename), FSTEST_DIR "/F%04d.DAT", i);
-        unlink(filename);
+        while ((entry = readdir(dir)) != NULL)
+        {
+            if (entry->d_type != DT_REG)
+                continue;
+            snprintf(filename, sizeof(filename), FSTEST_DIR "/%s", entry->d_name);
+            if (unlink(filename) == 0)
+                deleted++;
+            if (deleted && (deleted & 0x1F) == 0)
+                rt_thread_mdelay(1);   /* yield ~every 32 deletes; avoid WDT */
+        }
+        closedir(dir);
     }
     rmdir(FSTEST_DIR);
     fs_test_file_count = 0;
+    return deleted;
 }
 
 /* Capacity + integrity test:
@@ -1006,14 +1027,15 @@ static void fs_test_callback(lv_event_t *e)
 static void fs_clean_task(void *parameter)
 {
     struct statfs fs_stat;
+    int deleted;
 
-    LOG_I("FS Test: cleanup deleting %d files in %s", fs_test_file_count, FSTEST_DIR);
-    fs_delete_all_test_files();          /* removes F0000..F(n-1) + rmdir, resets count to 0 */
+    LOG_I("FS Test: cleanup scanning %s", FSTEST_DIR);
+    deleted = fs_delete_all_test_files();   /* enumerates dir + rmdir, reboot-safe, yields */
     fs_test_total_kb = 0;
     fs_test_last_err = 0;
     if (statfs("/", &fs_stat) == 0)
-        LOG_I("FS Test: cleanup done, free now %lu KB",
-              (unsigned long)((uint64_t)fs_stat.f_bfree * fs_stat.f_bsize / 1024));
+        LOG_I("FS Test: cleanup done, deleted %d files, free now %lu KB",
+              deleted, (unsigned long)((uint64_t)fs_stat.f_bfree * fs_stat.f_bsize / 1024));
 
     fs_test_running = false;
     lv_label_set_text(lv_obj_get_child(fs_clean_btn, 0), "FS Cleanup");
