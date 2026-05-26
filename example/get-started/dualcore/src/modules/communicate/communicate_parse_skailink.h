@@ -27,7 +27,18 @@ extern "C"
         KEY_DEVICE_STATUS_DELTA = 0x02,  /* phone→watch: {id,status} one device's status */
         KEY_DEVICE_ACTIONS_BATCH = 0x03, /* phone→watch: {device_id,items:[...]} per-device actions */
         KEY_DEVICE_REMOVED = 0x04,       /* phone→watch: {id} device removed (logout) */
-        KEY_ACTIVE_SELECT = 0x05,        /* watch→phone (UPLINK): {device_id} active target */
+        KEY_ACTIVE_SELECT = 0x05,        /* watch→phone (UPLINK): {"device_id":"..."} active target ("" = none) */
+        KEY_ACTION_SELECT = 0x06,        /* watch→phone (UPLINK): {"index":N} option the user TAPPED (0-based) */
+        KEY_ACTION_FOCUS  = 0x07,        /* watch→phone (UPLINK): {"index":N} option SCROLLED to centre (0-based) */
+        /* Device-page trackpad relay (UPLINK). The watch's right-side device page
+           hosts the hid_mouse trackpad; instead of driving BLE HID directly, those
+           events now stream to the phone, which actuates them on the active target
+           device (KEY_ACTIVE_SELECT). Only the device-page mouse routes here — the
+           standalone APP_ID_MOUSE app still talks BLE HID. */
+        KEY_MOUSE_MOVE    = 0x08,        /* watch→phone (UPLINK): {"dx":N,"dy":N} relative pointer move */
+        KEY_MOUSE_BUTTON  = 0x09,        /* watch→phone (UPLINK): {"btn":0|1,"act":0|1|2} btn 0=left 1=right; act 0=up 1=down 2=click */
+        KEY_MOUSE_SCROLL  = 0x0A,        /* watch→phone (UPLINK): {"dx":N,"dy":N} wheel=dy, pan=dx */
+        KEY_MOUSE_BACK    = 0x0B,        /* watch→phone (UPLINK): {} browser/navigation back */
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

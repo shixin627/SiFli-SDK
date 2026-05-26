@@ -59,7 +59,13 @@ extern void refresh_ai_chat_input_message(char *text);
 
 LV_IMG_DECLARE(icon_mic); /* shared mic/voice icon, same as instruction_list */
 LV_IMG_DECLARE(message_widget_bg); /* skaibar input pill frame (same as left list) */
-LV_IMG_DECLARE(img_flashlight); /* placeholder per-item icon (same look as left list) */
+/* Per-action category icons (auto-built from the resource ezip image folder).
+   Selected per item by its DEV_ACTION_TYPE; replaces the old img_flashlight
+   placeholder. */
+LV_IMG_DECLARE(instruction_icon); /* type 0 */
+LV_IMG_DECLARE(application_icon); /* type 1 */
+LV_IMG_DECLARE(folder_icon);      /* type 2 */
+LV_IMG_DECLARE(img_logo);         /* type 3 (ai) */
 
 #define TILE_LEFT      0
 #define TILE_CENTER    1
@@ -92,6 +98,7 @@ typedef struct
     uint8_t conn_idx;   /* BLE HID target for drill-down; 0xFF = not connected */
     uint8_t status;     /* ADR-0008 E7: 0 off / 1 on / 2 primary (gray the header when off) */
     char    items[MAX_TILE_ITEMS][24];
+    uint8_t item_type[MAX_TILE_ITEMS]; /* DEV_ACTION_TYPE per item -> category icon */
     uint8_t item_count;
 } dev_page_t;
 
@@ -103,6 +110,7 @@ typedef struct
     lv_obj_t *snap[MAX_TILE_ITEMS];       /* invisible scroll/snap anchors */
     lv_obj_t *item_icon[MAX_TILE_ITEMS];  /* floating icons, positioned on the arc */
     lv_obj_t *name_label;                 /* single centred label = selected item's name */
+    lv_obj_t *offline_label;              /* shown instead of the list when the device is offline */
     arc_scroll_handle_t *arc;             /* right-band drag → scrolls this list */
     dev_page_t *dev;                      /* device this tile currently shows */
     int       sel;                        /* index currently at the arc centre */
@@ -140,16 +148,51 @@ typedef struct
     lv_obj_t   *mic_icon;        /* mic glyph (faded during the morph) */
     lv_obj_t   *skaibar_input;
     lv_obj_t   *skaibar_frame;   /* message_widget_bg image (faded during morph) */
+    lv_obj_t   *skaibar_clip;    /* 2-row clip window: only the latest 2 wrapped rows show */
     lv_obj_t   *skaibar_label;
     bool        skaibar_active;
 } device_pager_t;
 
 static device_pager_t *p = NULL;
 
+/* Set while device_pager_refresh() does its programmatic rebind. The rebind
+   scrolls the list (lv_obj_scroll_to_y), which fires LV_EVENT_SCROLL ->
+   list_scroll_cb, whose default action closes the skaibar. Without this guard a
+   LIVE sync refresh (now that it actually fires) would kick the user out of
+   voice-input mode. A real finger scroll has this flag clear, so it still
+   dismisses the skaibar as before. */
+static bool s_suppress_skaibar_dismiss = false;
+
+/* De-duped active-target uplink. The phone must know which device (if any) the
+   watch is controlling: a real device id while on the device page, or "" (none)
+   on home/left. We (re)assert it on entry / switch / leave AND on every list
+   sync, so a freshly connected phone learns the current state instead of assuming
+   a stale device. Only sends when the value CHANGES, and only latches the sent
+   value when the send SUCCEEDS — so an attempt made while disconnected (e.g. the
+   boot-time refresh) is retried once the phone connects. */
+static char s_active_sent[SYNCED_DEVICE_ID_LEN];
+static bool s_active_sent_valid = false;
+static void pager_send_active(const char *id)
+{
+    if (id == NULL) id = "";
+    if (s_active_sent_valid &&
+        strncmp(s_active_sent, id, sizeof(s_active_sent)) == 0)
+        return; /* unchanged */
+    if (commu_send_active_device(id))
+    {
+        strncpy(s_active_sent, id, sizeof(s_active_sent) - 1);
+        s_active_sent[sizeof(s_active_sent) - 1] = '\0';
+        s_active_sent_valid = true;
+    }
+}
+
 static void mic_clicked_cb(lv_event_t *e);   /* defined below (skaibar section) */
 static void mouse_retarget(void);            /* defined below */
 static void skaibar_close(void);             /* defined below (skaibar section) */
 static void skaibar_open(void);              /* defined below (skaibar section) */
+static void skaibar_grow_cb(void *var, int32_t f); /* morph step; defined below */
+static bool current_device_offline(void);    /* defined below */
+static void sync_offline_page_chrome(void);   /* defined below */
 
 /* Hide the skaibar input box as soon as a list scroll begins (mirrors the left
    instruction_list, where scrolling dismisses the AI widget). */
@@ -189,7 +232,10 @@ static void load_devices_from_registry(void)
         uint8_t ic = src->default_action_count;
         if (ic > MAX_TILE_ITEMS) ic = MAX_TILE_ITEMS;
         for (uint8_t j = 0; j < ic; j++)
+        {
             strncpy(d->items[j], src->default_actions[j], sizeof(d->items[0]) - 1);
+            d->item_type[j] = src->default_action_types[j]; /* category -> icon */
+        }
         d->item_count = ic;
         p->count++;
     }
@@ -271,6 +317,16 @@ static void apply_arc(tile_ui_t *u)
     }
     int prev_sel = u->sel;
     u->sel = closest;
+    /* Tell the phone which option is now centred on the active device's tile, so
+       it can mirror the highlight. Only for the centre tile (the focused device),
+       only on an actual change, and NOT during a programmatic rebind (s_suppress
+       is set then) — otherwise a sync/refresh that re-centres would spam it. */
+    if (u == &p->t[TILE_CENTER] && count > 0 && closest != prev_sel &&
+        !s_suppress_skaibar_dismiss)
+    {
+        commu_send_option_focus((uint8_t)closest);
+        LOG_I("[pager] scrolled to option %d", closest);
+    }
     if (count > 0 && min_abs <= (float)M_PI / 2.0f)
     {
         lv_label_set_text(u->name_label, d->items[closest]);
@@ -306,6 +362,42 @@ static lv_obj_t *arc_snap_cb(void *ctx)
     return u->snap[u->sel];
 }
 
+/* arc_scroll tap: tapping the item band selects the centred item — send its
+   NAME to the phone (SKAI_LINK KEY_ACTION_SELECT) so the app runs it. The items
+   are scroll-to-centre then tap-to-confirm; the centred one is u->sel, shown in
+   u->name_label. Returns NULL — handled here, nothing to forward. */
+static lv_obj_t *device_arc_tap_cb(lv_point_t pt, void *ctx)
+{
+    (void)pt;
+    tile_ui_t *u = (tile_ui_t *)ctx;
+    if (!u || !u->dev) return NULL;
+    int idx = u->sel;
+    if (idx < 0 || idx >= u->dev->item_count) return NULL;
+    /* Send WHICH option (its index) was tapped, not the name. */
+    LOG_I("[pager] item tapped -> option %d", idx);
+    commu_send_option_commit((uint8_t)idx);
+    /* Command sent — the input/voice phase is done, so collapse the skaibar. */
+    if (p->skaibar_active) skaibar_close();
+    return NULL;
+}
+
+/* Tapping the centred item NAME text sends the same action as tapping the arc
+   band. The arc_scroll overlay only hit-tests its right-side icon band (see
+   point_in_band), so a tap on the left-aligned name label never reached
+   device_arc_tap_cb — the text needs its own CLICKED handler. */
+static void device_name_tap_cb(lv_event_t *e)
+{
+    tile_ui_t *u = (tile_ui_t *)lv_event_get_user_data(e);
+    if (!u || !u->dev) return;
+    int idx = u->sel;
+    if (idx < 0 || idx >= u->dev->item_count) return;
+    /* Send WHICH option (its index) was tapped, not the name. */
+    LOG_I("[pager] name tapped -> option %d", idx);
+    commu_send_option_commit((uint8_t)idx);
+    /* Command sent — the input/voice phase is done, so collapse the skaibar. */
+    if (p->skaibar_active) skaibar_close();
+}
+
 /* Deferred: pulling the top item down far enough reveals the mouse — drive the
    overlay back to its transparent HOME tile (its VALUE_CHANGED then hides the
    overlay and shows the mouse + bar). Deferred so we don't retile mid-scroll. */
@@ -322,8 +414,10 @@ static void list_scroll_cb(lv_event_t *e)
     if (!u || !u->dev) return;
     /* Scrolling/switching items dismisses the skaibar (mirrors the left list).
        Handled here (not SCROLL_BEGIN) so the arc-band scroll, which fires only
-       LV_EVENT_SCROLL via scroll_by_raw, is covered too. */
-    if (p->skaibar_active) skaibar_close();
+       LV_EVENT_SCROLL via scroll_by_raw, is covered too. Skipped during a
+       programmatic refresh rebind so a live phone sync doesn't kick the user out
+       of voice-input mode. */
+    if (p->skaibar_active && !s_suppress_skaibar_dismiss) skaibar_close();
     apply_arc(u);
     /* Over-pull past the first item (elastic overshoot below the top) → mouse. */
     if (u == &p->t[TILE_CENTER] && !p->pull_pending)
@@ -356,6 +450,20 @@ static void list_scroll_end_cb(lv_event_t *e)
         lv_obj_scroll_to_y(u->list, target, LV_ANIM_ON);
 }
 
+/* Map a device-list item's category (DEV_ACTION_TYPE) to its icon. Unknown
+   values fall back to the instruction icon. */
+static const lv_img_dsc_t *icon_for_item_type(uint8_t type)
+{
+    switch (type)
+    {
+    case DEV_ACTION_TYPE_APPLICATION: return &application_icon;
+    case DEV_ACTION_TYPE_FOLDER:      return &folder_icon;
+    case DEV_ACTION_TYPE_AI:          return &img_logo;
+    case DEV_ACTION_TYPE_INSTRUCTION:
+    default:                          return &instruction_icon;
+    }
+}
+
 static void bind_tile(int k)
 {
     tile_ui_t  *u = &p->t[k];
@@ -376,21 +484,61 @@ static void bind_tile(int k)
     }
     dev_page_t *d = &p->model[logical];
     u->dev = d;
+    bool offline = (d->status == 0);
     lv_label_set_text_fmt(u->header, "%s   %d/%d", d->name, logical + 1, p->count);
     /* ADR-0008 E7: status-driven header tint (status = device_status[i], synced
        by communicate_parse_skailink): 0 off -> gray, 1 on -> blue, 2 primary ->
        lit accent so the device currently bridging the watch stands out. */
     lv_obj_set_style_text_color(
         u->header,
-        (d->status == 0)   ? lv_color_hex(0x666666)   /* off: dimmed     */
+        offline            ? lv_color_hex(0x666666)   /* off: dimmed     */
         : (d->status == 2) ? lv_color_hex(0x4DE3A0)   /* primary: lit    */
                            : lv_color_hex(0x00AAFF),  /* on: normal blue */
         0);
-    /* Show one snap anchor per item so the arc_scroll range matches item_count. */
+
+    /* Offline device: lock the page — hide the action list + its name label,
+       show the OFFLINE placeholder, and make the list non-scrollable so nothing
+       on the page moves (nor can the trackpad be pulled in). The horizontal
+       device swipe still works: it chains through the non-scrollable list to the
+       pager, so the user can swipe to another (online) device. */
+    if (offline)
+    {
+        for (int i = 0; i < MAX_TILE_ITEMS; i++)
+        {
+            lv_obj_add_flag(u->item_icon[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        lv_obj_add_flag(u->name_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(u->offline_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(u->list, LV_OBJ_FLAG_SCROLLABLE);
+        if (u->arc) arc_scroll_set_item_count(u->arc, 0);
+        u->sel = -1;            /* no selectable item → taps/commits are no-ops */
+        return;
+    }
+    /* Online: restore the interactive list (offline placeholder hidden, list
+       scrollable again) before binding the items. */
+    lv_obj_add_flag(u->offline_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(u->name_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(u->list, LV_OBJ_FLAG_SCROLLABLE);
+    /* Show one snap anchor per item so the arc_scroll range matches item_count,
+       and point each item icon at its category image (instruction/application/
+       folder). The icons are recycled across devices, so the src must be re-bound
+       here whenever a device is bound to this tile. */
     for (int i = 0; i < MAX_TILE_ITEMS; i++)
     {
-        if (i < d->item_count) lv_obj_clear_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
-        else                   lv_obj_add_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
+        if (i < d->item_count)
+        {
+            lv_obj_clear_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
+            const lv_img_dsc_t *dsc = icon_for_item_type(d->item_type[i]);
+            lv_img_set_src(u->item_icon[i], dsc);
+            /* re-center the zoom pivot for this icon's actual size (the category
+               icons need not all match img_flashlight's 80x80). */
+            lv_img_set_pivot(u->item_icon[i], dsc->header.w / 2, dsc->header.h / 2);
+        }
+        else
+        {
+            lv_obj_add_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
+        }
     }
     if (u->arc) arc_scroll_set_item_count(u->arc, d->item_count);
     /* Start at the LAST (bottom-most) item; layout must be current for the math. */
@@ -457,13 +605,14 @@ static void pager_settle_ready_cb(lv_anim_t *a)
         rebind_all();
         /* ADR-0008 E7: tell the phone the new active-target device so it routes
            subsequent watch commands / recognized text there (network via primary). */
-        commu_send_active_device(p->model[p->current].id_str);
+        pager_send_active(p->model[p->current].id_str);
         if (p->mouse_created) mouse_retarget();
         LOG_I("[pager] -> device %d/%d (%s)", p->current + 1, p->count,
               p->model[p->current].name);
     }
     snap_to_center(LV_ANIM_OFF);
     update_pager_scroll_dir();
+    sync_offline_page_chrome();
     p->recycling = false;
 }
 
@@ -571,7 +720,9 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
         /* Floating icon (doesn't affect scroll size); positioned on the arc by
            apply_arc(). Pivot + OVERFLOW_VISIBLE so the zoom isn't clipped. */
         lv_obj_t *icon = lv_img_create(u->list);
-        lv_img_set_src(icon, &img_flashlight);  /* 80x80 placeholder */
+        /* Initial src is the instruction icon; bind_tile() re-points it at the
+           per-item category icon (instruction/application/folder). */
+        lv_img_set_src(icon, &instruction_icon);
         lv_img_set_pivot(icon, ARC_ICON_SIZE / 2, ARC_ICON_SIZE / 2);
         lv_obj_add_flag(icon, LV_OBJ_FLAG_FLOATING);
         lv_obj_add_flag(icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
@@ -590,7 +741,23 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
     lv_obj_set_style_text_align(u->name_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(u->name_label, LV_ALIGN_LEFT_MID, 24, 0);
     lv_label_set_text(u->name_label, "");
+    /* Make the visible item text itself tap-to-send (the arc band only covers the
+       right icon strip; users naturally tap the centred name on the left). */
+    lv_obj_add_flag(u->name_label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(u->name_label, device_name_tap_cb, LV_EVENT_CLICKED, u);
     u->sel = 0;
+
+    /* Offline placeholder — shown (instead of the action list) when this tile's
+       device is offline. Non-clickable; the list is also made non-scrollable in
+       bind_tile so the whole page is locked except the horizontal device swipe. */
+    u->offline_label = lv_label_create(u->tile);
+    lv_obj_set_style_text_font(u->offline_label,
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_color(u->offline_label, lv_color_hex(0x666666), 0);
+    lv_obj_set_style_text_align(u->offline_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(u->offline_label, "Offline");
+    lv_obj_center(u->offline_label);
+    lv_obj_add_flag(u->offline_label, LV_OBJ_FLAG_HIDDEN);
 
     /* Right-band arc scroll — drag in the right arc band scrolls the items;
        lock_ancestors keeps the overlay tileview from stealing the drag (this
@@ -605,9 +772,35 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
         .band_thickness  = 90,
         .lock_ancestors  = true,
         .snap_cb         = arc_snap_cb,
+        .tap_cb          = device_arc_tap_cb,
         .ctx             = u,
     };
     u->arc = arc_scroll_create(&cfg);
+}
+
+/* Is the CURRENT (centred) device offline (status 0)? Its page is locked. */
+static bool current_device_offline(void)
+{
+    return p && p->count > 0 && p->current < p->count &&
+           p->model[p->current].status == 0;
+}
+
+/* Page-level lock for an offline current device: hide the bottom voice (mic)
+   bar so its input can't be opened (the per-tile list is already hidden +
+   non-scrollable in bind_tile). Call whenever the current device or its status
+   may have changed (refresh / device switch). */
+static void sync_offline_page_chrome(void)
+{
+    if (!p || !p->mic_bar) return;
+    if (current_device_offline())
+    {
+        if (p->skaibar_active) skaibar_close();
+        lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    }
+    else
+    {
+        lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 static void refresh(void)
@@ -624,6 +817,7 @@ static void refresh(void)
     rebind_all();
     snap_to_center(LV_ANIM_OFF);
     update_pager_scroll_dir();
+    sync_offline_page_chrome();
 }
 
 /* Public: re-load the (phone-streamed) device list from the registry and
@@ -632,7 +826,29 @@ static void refresh(void)
 void device_pager_refresh(void)
 {
     if (p) load_devices_from_registry();
+    /* The rebind in refresh() programmatically scrolls the list, which would
+       otherwise fire list_scroll_cb -> skaibar_close. When a phone sync arrives
+       while the user is mid voice-input, that must NOT close the box; suppress the
+       scroll-driven dismiss for the duration of this programmatic rebind only. */
+    s_suppress_skaibar_dismiss = true;
     refresh();
+    s_suppress_skaibar_dismiss = false;
+
+    /* (Re)assert the active target. device_pager_refresh runs on every phone list
+       sync (skai_device_ui_refresh) and on page entry, so this is where a freshly
+       connected phone learns the watch's current target: the centred device while
+       we're actually ON the device page (mouse_created), else "" = no device. This
+       fixes "boot straight to the left page and the app still thinks a device is
+       active": the connect-time sync now tells it there is none. De-duped. */
+    if (p)
+    {
+        bool on_device_page = p->mouse_created;
+        const char *active = (on_device_page && p->count > 0 &&
+                              p->current < p->count)
+                                 ? p->model[p->current].id_str
+                                 : "";
+        pager_send_active(active);
+    }
 }
 
 /* ADR-0008 E7: weak hook invoked by communicate_parse_skailink.c after it
@@ -737,6 +953,12 @@ static void bar_cb(lv_event_t *e)
     lv_indev_t *indev = lv_indev_get_act();
     if (code == LV_EVENT_PRESSED)
     {
+        /* Offline current device: the list page is locked — don't let the
+           device-name handle pull the trackpad in. (Retract from the mouse page
+           is still allowed: overlay HIDDEN means we're already on the mouse.) */
+        if (current_device_offline() &&
+            !lv_obj_has_flag(p->overlay, LV_OBJ_FLAG_HIDDEN))
+            return;
         lv_point_t pt;
         if (indev) lv_indev_get_point(indev, &pt); else pt.y = 0;
         p->bar_press_y = pt.y;
@@ -832,6 +1054,12 @@ void device_pager_set_active(bool on)
             hid_mouse_fade_in_scroll_wheel();
             LOG_I("[pager] device page active — mouse base hosted");
         }
+        /* Route the hosted trackpad to the phone over SKAI_LINK (instead of BLE
+           HID): mouse move / click / scroll / back now stream to the app, which
+           actuates them on the active target device. Set on every entry (the
+           standalone APP_ID_MOUSE app clears it), not just first creation. */
+        ble_hid_mouse_set_app_route(true);
+        LOG_I("[pager] mouse app-route ON (trackpad -> SKAI_LINK)");
         device_pager_refresh();
         /* Enter on the LIST (the mouse shows through behind it); pull down to reveal
            the full mouse. */
@@ -839,17 +1067,70 @@ void device_pager_set_active(bool on)
         lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF);
         lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+        /* ADR-0008 E7: switching the main page ONTO the device list makes the
+           currently-centred device the active control target — tell the phone
+           so it routes commands to it. Previously only device-to-device scrolls
+           (pager_settle_ready_cb) sent this, so a left/right page switch onto the
+           page never notified the app which device is now being controlled. */
+        if (p->count > 0 && p->current < p->count)
+        {
+            pager_send_active(p->model[p->current].id_str);
+            LOG_I("[pager] page entered -> active device %d/%d (%s)",
+                  p->current + 1, p->count, p->model[p->current].name);
+        }
     }
-    else if (p->mouse_created)
+    else
     {
-        hid_mouse_destroy();
-        lv_obj_clean(p->mouse_base);
-        p->mouse_created = false;
-        lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* reset to LIST */
-        lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
-        if (p->grabber) lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
-        LOG_I("[pager] device page inactive — mouse base torn down");
+        /* Leaving the device page: clear the skaibar's open flag + reset its
+           visual so the transcript router (refresh_ai_chat_input_message, which
+           checks the right skaibar FIRST) stops sending voice here and the left
+           instruction_list box gets its text again.
+           IMPORTANT: do NOT call skaibar_close() here — its stop_v2t() cancels
+           the in-flight phone-side command, which kills the "list update" the
+           phone would otherwise send. Just drop the flag + hide the box; the
+           voice session ends naturally (VAD auto-stop / the left box's own
+           open-close). */
+        if (p->skaibar_active)
+        {
+            p->skaibar_active = false;
+#if defined(BSP_USING_BLOC) && !defined(BSP_USING_PC_SIMULATOR)
+            /* End the v2t session cleanly so a later skaibar-open isn't blocked
+               by a stuck voice_recognition_started gate (the symptom: re-entering
+               the device list, the input box shows no transcript because the mic
+               never restarts). Release the mic + clear the gate via the SYNC
+               teardown — NOT stop_v2t, whose async STOP cancel can drop the
+               in-flight phone-side command / list update. */
+            stop_voice_recognition(V2T_INTENT_NOTHING);
+            set_voice_recognition_started(false);
+#endif
+            skaibar_grow_cb(NULL, 0); /* mic_bar back to the slim pill */
+            if (p->skaibar_input && lv_obj_is_valid(p->skaibar_input))
+                lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (p->mouse_created)
+        {
+            /* mouse_created is true only while we're hosted on the device page, so
+               this block is the genuine LEAVE transition (fires once, not on every
+               unrelated page change). Tell the phone there's no active control
+               target anymore: empty device_id on KEY_ACTIVE_SELECT = cleared.
+               (Mirror this on the dart side: treat empty/"" device_id as "no
+               active device".) */
+            pager_send_active("");
+            LOG_I("[pager] left device page -> active device cleared");
+
+            /* Stop relaying the trackpad to the phone — back to BLE HID for any
+               standalone mouse use. */
+            ble_hid_mouse_set_app_route(false);
+            LOG_I("[pager] mouse app-route OFF");
+            hid_mouse_destroy();
+            lv_obj_clean(p->mouse_base);
+            p->mouse_created = false;
+            lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* reset to LIST */
+            lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+            if (p->grabber) lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
+            LOG_I("[pager] device page inactive — mouse base torn down");
+        }
     }
 }
 
@@ -907,6 +1188,20 @@ static void skaibar_frame_cb(void *var, int32_t f)
         lv_obj_set_style_text_opa(p->skaibar_label, (lv_opa_t)(LV_OPA_80 * f / 255), 0);
 }
 
+/* Pin the 2-row transcript window to its newest content: scroll the clip so the
+   last two wrapped rows are visible (older rows scroll up out of view; the user
+   can pull them back down manually). No-op when the text fits in two rows. */
+static void skaibar_scroll_to_bottom(void)
+{
+    if (!p || !p->skaibar_clip || !lv_obj_is_valid(p->skaibar_clip)) return;
+    lv_obj_update_layout(p->skaibar_clip);
+    lv_coord_t bottom = lv_obj_get_scroll_bottom(p->skaibar_clip);
+    if (bottom > 0)
+        lv_obj_scroll_by(p->skaibar_clip, 0, -bottom, LV_ANIM_OFF);
+    else
+        lv_obj_scroll_to_y(p->skaibar_clip, 0, LV_ANIM_OFF);
+}
+
 /* close, last step: the button has shrunk back — hide the box (button stays). */
 static void skaibar_close_done_cb(lv_anim_t *a)
 {
@@ -952,6 +1247,7 @@ static void skaibar_open(void)
     lv_anim_del(p->skaibar_input, skaibar_grow_cb);    /* cancel any in-flight morph */
     lv_anim_del(p->skaibar_input, skaibar_frame_cb);
     lv_label_set_text(p->skaibar_label, "聽取中");
+    skaibar_scroll_to_bottom();                         /* reset window to top */
     skaibar_grow_cb(NULL, 0);                           /* button state */
     skaibar_frame_cb(NULL, 0);                          /* frame fully hidden */
     lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
@@ -987,6 +1283,10 @@ static void skaibar_close(void)
     p->skaibar_active = false;
 #if defined(BSP_USING_BLOC) && !defined(BSP_USING_PC_SIMULATOR)
     voice_provider.stop_v2t();
+    /* Clear the re-entry gate directly — the async STOP event can early-return
+       (AI processing) and leave voice_recognition_started=true, which would make
+       the NEXT skaibar-open's start_v2t short-circuit (no mic, no transcript). */
+    set_voice_recognition_started(false);
 #endif
     lv_anim_del(p->skaibar_input, skaibar_grow_cb);    /* cancel any in-flight morph */
     lv_anim_del(p->skaibar_input, skaibar_frame_cb);
@@ -1016,8 +1316,17 @@ bool device_pager_skaibar_is_open(void)
 static void mic_clicked_cb(lv_event_t *e)
 {
     (void)e;
-    if (p && p->skaibar_active) skaibar_close();
-    else                        skaibar_open();
+    if (!p) return;
+    /* Offline device: the page is locked — no voice input. */
+    if (current_device_offline()) return;
+    /* Toggle by the box's ACTUAL visibility, not the skaibar_active flag — the
+       flag can get stuck (e.g. cleared on page-leave without hiding), which
+       would make a tap take the close branch and do nothing instead of opening.
+       skaibar_input is HIDDEN when closed. */
+    bool box_visible = p->skaibar_input &&
+                       !lv_obj_has_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+    if (box_visible) skaibar_close();
+    else             skaibar_open();
 }
 
 void device_pager_skaibar_say(const char *text)
@@ -1025,6 +1334,7 @@ void device_pager_skaibar_say(const char *text)
     if (!p) return;
     if (!p->skaibar_active) skaibar_open();
     lv_label_set_text(p->skaibar_label, text ? text : "");
+    skaibar_scroll_to_bottom();   /* keep the latest 2 rows in view */
     LOG_I("[pager] skaibar transcript: \"%s\"", text ? text : "");
 }
 
@@ -1140,6 +1450,25 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(p->mic_bar, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
 
+    /* Enlarged transparent hit area over the slim mic bar (the 100x16 pill is
+       hard to tap) — mirrors the left instruction_list's mic_hit. Routes taps to
+       mic_clicked_cb. Created AFTER mic_bar but BEFORE skaibar_input, so when the
+       box is open it sits on top and handles the toggle-close; when closed this
+       overlay is the top hit target. Transparent + non-scrollable so it never
+       obscures the list and drags still bubble through. */
+    {
+        lv_obj_t *mic_hit = lv_obj_create(p->list_tile);
+        lv_obj_set_size(mic_hit, 240, 90);
+        lv_obj_align(mic_hit, LV_ALIGN_BOTTOM_MID, 0, 0);
+        lv_obj_set_style_bg_opa(mic_hit, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(mic_hit, 0, 0);
+        lv_obj_set_style_pad_all(mic_hit, 0, 0);
+        lv_obj_set_style_radius(mic_hit, 0, 0);
+        lv_obj_clear_flag(mic_hit, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(mic_hit, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(mic_hit, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
+    }
+
     /* skaibar input box (shown on mic tap) — mirrors the left instruction_list's
        voice input pill (lv_instruction_list_layout.c): a BOTTOM-aligned container
        framed by the message_widget_bg image. On real hardware LVGL's drawn border
@@ -1159,16 +1488,48 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_img_set_src(p->skaibar_frame, &message_widget_bg);
     lv_obj_center(p->skaibar_frame);
     lv_obj_clear_flag(p->skaibar_frame, LV_OBJ_FLAG_CLICKABLE);
-    p->skaibar_label = lv_label_create(p->skaibar_input);
+    /* 2-row transcript window. The label lives inside a fixed-height clip (exactly
+       two rows tall) so only the latest two wrapped rows show; older rows scroll up
+       and can be pulled back down manually. LVGL text height for N rows is
+       N*line_height + (N-1)*line_space, so the clip is 2*lh + line_space tall. The
+       window is placed one row-pitch (lh + line_space) above the old single-line
+       top (y=60), so the newest line still lands at y=60 and the prior line sits
+       one row above it. */
+    const lv_font_t *sb_font = LV_EXT_FONT_GET(get_system_font_size(0));
+    p->skaibar_clip = lv_obj_create(p->skaibar_input);
+    lv_obj_set_style_bg_opa(p->skaibar_clip, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(p->skaibar_clip, 0, 0);
+    lv_obj_set_style_pad_all(p->skaibar_clip, 0, 0);
+    lv_obj_set_style_radius(p->skaibar_clip, 0, 0);
+    lv_obj_set_scrollbar_mode(p->skaibar_clip, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scroll_dir(p->skaibar_clip, LV_DIR_VER);
+    lv_obj_clear_flag(p->skaibar_clip, LV_OBJ_FLAG_SCROLL_CHAIN);
+    /* Clickable so a drag on the 2-row window scrolls THIS clip (the indev scroll
+       search starts at the pressed object and only walks up to parents — if the
+       clip weren't the press target the box would scroll instead, and the box has
+       no scroll range). A plain tap still toggles the box (own CLICKED handler);
+       SCROLL_CHAIN cleared keeps the scroll local so it never trips the box's
+       swipe-dismiss. */
+    lv_obj_add_flag(p->skaibar_clip, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(p->skaibar_clip, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
+
+    p->skaibar_label = lv_label_create(p->skaibar_clip);
     lv_obj_set_style_text_color(p->skaibar_label, lv_color_white(), 0);
     lv_obj_set_style_text_opa(p->skaibar_label, LV_OPA_80, 0);
-    lv_obj_set_style_text_font(p->skaibar_label,
-                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_font(p->skaibar_label, sb_font, 0);
     lv_obj_set_style_text_align(p->skaibar_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(p->skaibar_label, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(p->skaibar_label, 360);
-    lv_obj_align(p->skaibar_label, LV_ALIGN_TOP_MID, 0, 60);
+    lv_obj_align(p->skaibar_label, LV_ALIGN_TOP_MID, 0, 0);
     lv_label_set_text(p->skaibar_label, "");
+
+    /* Size + place the clip now that the label's font/line-space are known. */
+    {
+        lv_coord_t lh = lv_font_get_line_height(sb_font);
+        lv_coord_t ls = lv_obj_get_style_text_line_space(p->skaibar_label, LV_PART_MAIN);
+        lv_obj_set_size(p->skaibar_clip, 360, 2 * lh + ls);
+        lv_obj_align(p->skaibar_clip, LV_ALIGN_TOP_MID, 0, 60 - (lh + ls));
+    }
 
     p->empty_label = lv_label_create(p->list_tile);
     lv_label_set_text(p->empty_label, "No devices");

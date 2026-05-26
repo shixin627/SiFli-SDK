@@ -766,13 +766,20 @@ void refresh_ai_chat_input_message(char *text)
     if (get_is_open_instruction_list_ai()) // && get_is_open_instruction_list_ai() is_at_speech_interface() &&
     {
         LOG_D("refresh_ai_chat_input_message: %s", text);
+        /* The visible instruction_list box is now a device_pager-style box whose
+           text lives in s_voice_transcript_label (instruction_list_set_voice_transcript).
+           set_skai_widget_input_text still runs to keep the (now hidden) builder's
+           input_text_is_null state — the auto-close / send paths read it. */
+        extern void instruction_list_set_voice_transcript(const char *text);
         if (text && text[0] != '\0' && strspn(text, " \t\n\r") < strlen(text))
         {
             set_skai_widget_input_text(text);
+            instruction_list_set_voice_transcript(text);
         }
         else
         {
             set_skai_widget_input_text("");
+            instruction_list_set_voice_transcript("聽取中");
         }
     }
     if (gesture_indicator.speech_skai_reply)

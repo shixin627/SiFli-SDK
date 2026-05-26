@@ -318,12 +318,26 @@ extern "C"
 #define MAX_DEFAULT_ACTIONS 12
 #define DEFAULT_ACTION_LEN 32
 #define SYNCED_DEVICE_NAME_LEN 40      /* display name (RAM only, re-synced on connect) */
-#define DEVICE_REGISTRY_VERSION 1
+/* v2: added default_action_types[] (per-action category icon). Bumping the
+   version makes read_device_registry discard the old (smaller) persisted blob on
+   the next boot — it re-syncs from the phone, so no migration needed. */
+#define DEVICE_REGISTRY_VERSION 2
+
+    /* Per-action category — drives the device-list item icon. Keep in lockstep
+       with the dart side's "type" int in the actions batch. */
+    typedef enum
+    {
+        DEV_ACTION_TYPE_INSTRUCTION = 0, /* instruction_icon */
+        DEV_ACTION_TYPE_APPLICATION = 1, /* application_icon */
+        DEV_ACTION_TYPE_FOLDER      = 2, /* folder_icon */
+        DEV_ACTION_TYPE_AI          = 3, /* img_logo */
+    } DEV_ACTION_TYPE;
 
     typedef struct
     {
         char id[SYNCED_DEVICE_ID_LEN];                                 /* account device_id (UUID) — key */
         char default_actions[MAX_DEFAULT_ACTIONS][DEFAULT_ACTION_LEN];  /* default Skaibar actions */
+        uint8_t default_action_types[MAX_DEFAULT_ACTIONS];              /* DEV_ACTION_TYPE per action (icon) */
         uint8_t default_action_count;
     } T_SYNCED_DEVICE;
 

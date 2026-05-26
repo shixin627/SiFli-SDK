@@ -364,6 +364,16 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                     lv_obj_set_style_img_opa(gaus_dial_img, LV_OPA_0, 0);
                 device_pager_refresh();
             }
+            /* Left tile = the instruction_list voice page. Auto-dismiss its open
+               voice input box when we navigate away (mirrors the device page
+               closing its skaibar on leave); the box only self-dismisses on a
+               swipe that starts on it, so an edge-back / page switch would
+               otherwise leave it open. */
+            extern void instruction_list_close_ai_on_leave(void);
+            if (active_pos != MAIN_PAGE_TYPE_LEFT)
+            {
+                instruction_list_close_ai_on_leave();
+            }
         }
         if (gui_app_is_actived("Main"))
         {

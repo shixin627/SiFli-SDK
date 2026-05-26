@@ -84,6 +84,7 @@
 #include "ble_device_manager.h"
 #include "bloc_motion_tracking.h"
 #include "ble_hid.h"
+#include "communicate_task.h" /* commu_send_mouse_back — device-page trackpad relay */
 #ifndef BSP_USING_PC_SIMULATOR
 /* SiFli chip HAL headers — ARM-only, and currently unused in this TU (no
    HAL_ or bf0_ calls in the body). Guarded so the UI layer compiles under
@@ -2852,7 +2853,14 @@ static void handle_released_event(lv_indev_t *indev)
         if (back_hint_drag_offset > BACK_HINT_LIMIT)
         {
             // 過門檻 → 觸發 mouse back + 200ms opa 淡出
-            if (control_provider.ble_hid_mouse_back)
+            // 設備頁的 mouse 走 SKAI_LINK 轉送給 APP（back 是 consumer report，
+            // 不經 mouse_report_send，所以在呼叫點 route，不能改 GoBack 本體）；
+            // 獨立 mouse app 仍走 BLE HID 的 ble_hid_mouse_back。
+            if (ble_hid_mouse_app_route())
+            {
+                commu_send_mouse_back();
+            }
+            else if (control_provider.ble_hid_mouse_back)
             {
                 control_provider.ble_hid_mouse_back();
             }
@@ -6672,6 +6680,9 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
     {
         lv_obj_t *scr = lv_scr_act();
         hid_mouse_create(scr);
+        /* Standalone mouse app drives a bonded device over BLE HID directly —
+           make sure we didn't inherit the device-page's SKAI_LINK relay flag. */
+        ble_hid_mouse_set_app_route(false);
         break;
     }
     case GUI_APP_MSG_ONRESUME:

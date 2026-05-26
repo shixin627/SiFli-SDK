@@ -96,6 +96,8 @@ typedef struct
     lv_obj_t *selected_font_size;
     lv_obj_t *brightness_bar;
     lv_obj_t *screen_time_bar;
+    lv_obj_t *brightness_fill; /* self-drawn fill; floors at a circle so the bar can't shrink past it */
+    lv_obj_t *screen_time_fill;
     lv_obj_t *screen_time_label;
     datac_handle_t pwr_srv_hdl;
 } app_setting_t;
@@ -793,6 +795,32 @@ static void btn_gesture_test_event_callback(lv_event_t *e)
  * state matches where the finger lifted. */
 #define SETTING_BAR_THROTTLE_MS 40
 
+/* lv_bar collapses its own indicator to nothing at the minimum value, so instead
+ * of using it we draw the fill ourselves (a single rounded child). Its width
+ * tracks the value but never drops below SETTING_BAR_FILL_MIN_W, so dragging to
+ * the far left bottoms out at a fixed pill (icon-sized) rather than vanishing or
+ * needing a separate circle stacked on top. The underlying bar value/range is
+ * untouched — only the visual floor changes. */
+#define SETTING_BAR_FILL_MIN_W 90
+
+static void setting_bar_apply_fill(lv_obj_t *bar, lv_obj_t *fill)
+{
+    if (!bar || !fill || !lv_obj_is_valid(bar) || !lv_obj_is_valid(fill))
+        return;
+    lv_coord_t min = lv_bar_get_min_value(bar);
+    lv_coord_t max = lv_bar_get_max_value(bar);
+    lv_coord_t value = lv_bar_get_value(bar);
+    lv_coord_t barw = lv_obj_get_width(bar);
+    lv_coord_t w = SETTING_BAR_FILL_MIN_W;
+    if (max > min && barw > SETTING_BAR_FILL_MIN_W)
+        w += (lv_coord_t)((int32_t)(value - min) * (barw - SETTING_BAR_FILL_MIN_W) / (max - min));
+    if (w < SETTING_BAR_FILL_MIN_W)
+        w = SETTING_BAR_FILL_MIN_W;
+    if (w > barw)
+        w = barw;
+    lv_obj_set_width(fill, w);
+}
+
 static void brightness_bar_event_cb(lv_event_t *e)
 {
     static int16_t last_sent = -1;
@@ -819,6 +847,7 @@ static void brightness_bar_event_cb(lv_event_t *e)
         if (value < 5)
             value = 5;
         lv_bar_set_value(bar, value, LV_ANIM_OFF);
+        setting_bar_apply_fill(bar, p_app_setting ? p_app_setting->brightness_fill : NULL);
         uint16_t brightness = lv_bar_get_value(bar);
         if ((int16_t)brightness != last_sent &&
             lv_tick_elaps(last_send_tick) >= SETTING_BAR_THROTTLE_MS)
@@ -907,6 +936,7 @@ static void screen_time_bar_event_cb(lv_event_t *e)
         if (value < 5)
             value = 5;
         lv_bar_set_value(bar, value, LV_ANIM_OFF);
+        setting_bar_apply_fill(bar, p_app_setting ? p_app_setting->screen_time_fill : NULL);
         uint16_t timeout = (uint16_t)lv_bar_get_value(bar);
         refresh_screen_time_label((uint8_t)timeout);
         if ((int16_t)timeout != last_sent &&
@@ -982,6 +1012,7 @@ static int setting_powermgr_srv_callback(data_callback_arg_t *arg)
         {
             lv_bar_set_range(p_app_setting->brightness_bar, p_range->min, p_range->max);
             lv_bar_set_value(p_app_setting->brightness_bar, p_range->cur, LV_ANIM_ON);
+            setting_bar_apply_fill(p_app_setting->brightness_bar, p_app_setting->brightness_fill);
         }
     }
     break;
@@ -1000,6 +1031,7 @@ static int setting_powermgr_srv_callback(data_callback_arg_t *arg)
             if (bar_val < p_range->min) bar_val = p_range->min;
             if (bar_val > p_range->max) bar_val = p_range->max;
             lv_bar_set_value(p_app_setting->screen_time_bar, bar_val, LV_ANIM_ON);
+            setting_bar_apply_fill(p_app_setting->screen_time_bar, p_app_setting->screen_time_fill);
             refresh_screen_time_label(SkaiWatchSys.oled_display_time);
         }
     }
@@ -1061,16 +1093,35 @@ void app_setting_init(void *param)
     lv_obj_align_to(brightness_bar, cont_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
     lv_obj_set_style_bg_color(brightness_bar, lv_color_hex(0xCECECE), LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(brightness_bar, lv_color_hex(0xCECECE), LV_PART_MAIN);
-    lv_obj_set_style_radius(brightness_bar, 40, LV_PART_MAIN);
-    lv_obj_set_style_radius(brightness_bar, 40, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(brightness_bar, LV_OPA_90, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(brightness_bar, LV_OPA_10, LV_PART_MAIN);
+    /* MAIN radius 0 keeps lv_bar off the EPIC GPU indicator path (lv_bar.c:484,
+     * gated on bg_radius != 0), which on real hardware paints the indicator across
+     * the whole track regardless of value -> a stray full-width oval. MAIN is
+     * transparent so its radius has no visual effect; the indicator keeps its own. */
+    lv_obj_set_style_radius(brightness_bar, 0, LV_PART_MAIN);
+    /* lv_bar draws nothing itself: MAIN + INDICATOR are transparent. The visible
+     * fill is the child below, whose width we drive so it floors at a pill instead
+     * of collapsing to nothing at the minimum value. */
+    lv_obj_set_style_bg_opa(brightness_bar, LV_OPA_TRANSP, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(brightness_bar, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_bar_set_value(brightness_bar, SkaiWatchSys.brightness, LV_ANIM_ON);
     lv_obj_add_event_cb(brightness_bar, brightness_bar_event_cb, LV_EVENT_ALL, NULL);
+    /* The fill: one rounded child, left-anchored, width tracks the value (see
+     * setting_bar_apply_fill). Created before the icon so the icon stays on top. */
+    lv_obj_t *brightness_floor = lv_obj_create(brightness_bar);
+    lv_obj_set_height(brightness_floor, 80);
+    lv_obj_set_style_radius(brightness_floor, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(brightness_floor, lv_color_hex(0xCECECE), 0);
+    lv_obj_set_style_bg_opa(brightness_floor, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(brightness_floor, 0, 0);
+    lv_obj_clear_flag(brightness_floor, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(brightness_floor, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_t *brightness_icon = lv_img_create(brightness_bar);
     lv_img_set_src(brightness_icon, &sun);
     lv_obj_align(brightness_icon, LV_ALIGN_LEFT_MID, 20, 0);
     p_app_setting->brightness_bar = brightness_bar;
+    p_app_setting->brightness_fill = brightness_floor;
+    lv_obj_update_layout(brightness_bar); /* resolve width before the first fill calc */
+    setting_bar_apply_fill(brightness_bar, brightness_floor);
 
     /* Screen time bar directly below the brightness bar (range 5..60, never@>=60) */
     const lv_coord_t screen_time_bar_w = LV_HOR_RES * 80 / 100;
@@ -1080,10 +1131,10 @@ void app_setting_init(void *param)
     lv_obj_align_to(screen_time_bar, brightness_bar, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
     lv_obj_set_style_bg_color(screen_time_bar, lv_color_hex(0xCECECE), LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(screen_time_bar, lv_color_hex(0xCECECE), LV_PART_MAIN);
-    lv_obj_set_style_radius(screen_time_bar, 40, LV_PART_MAIN);
-    lv_obj_set_style_radius(screen_time_bar, 40, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(screen_time_bar, LV_OPA_90, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(screen_time_bar, LV_OPA_10, LV_PART_MAIN);
+    /* See brightness_bar: lv_bar draws nothing, the child fill below is the visual. */
+    lv_obj_set_style_radius(screen_time_bar, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(screen_time_bar, LV_OPA_TRANSP, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(screen_time_bar, LV_OPA_TRANSP, LV_PART_MAIN);
     /* Clamp before initial set — oled_display_time may be 255 ("never") which is
      * out of bar range and would visually fill the whole bar at first entry. */
     {
@@ -1094,10 +1145,22 @@ void app_setting_init(void *param)
         lv_bar_set_value(screen_time_bar, initial_val, LV_ANIM_OFF);
     }
     lv_obj_add_event_cb(screen_time_bar, screen_time_bar_event_cb, LV_EVENT_ALL, NULL);
+    /* The fill (see brightness_bar / setting_bar_apply_fill). */
+    lv_obj_t *screen_time_floor = lv_obj_create(screen_time_bar);
+    lv_obj_set_height(screen_time_floor, 80);
+    lv_obj_set_style_radius(screen_time_floor, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(screen_time_floor, lv_color_hex(0xCECECE), 0);
+    lv_obj_set_style_bg_opa(screen_time_floor, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(screen_time_floor, 0, 0);
+    lv_obj_clear_flag(screen_time_floor, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(screen_time_floor, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_t *screen_time_icon = lv_img_create(screen_time_bar);
     lv_img_set_src(screen_time_icon, ICON_SLEEP_MODE);
     lv_obj_align(screen_time_icon, LV_ALIGN_LEFT_MID, 20, 0);
     p_app_setting->screen_time_bar = screen_time_bar;
+    p_app_setting->screen_time_fill = screen_time_floor;
+    lv_obj_update_layout(screen_time_bar); /* resolve width before the first fill calc */
+    setting_bar_apply_fill(screen_time_bar, screen_time_floor);
 
     p_app_setting->screen_time_label = lv_label_create(screen_time_bar);
     lv_obj_set_style_text_color(p_app_setting->screen_time_label, lv_color_hex(0xFFFFFF), 0);
@@ -1461,6 +1524,9 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
     {
     case GUI_APP_MSG_ONSTART:
     {
+        /* app_run 直接開啟不經 Main 狀態機，左緣右滑返回 bar 仍隱藏，這裡補開 */
+        extern void display_gesture_detect_objs(uint32_t idx, bool display);
+        display_gesture_detect_objs(0, true);
         on_start(lv_scr_act());
     }
     break;

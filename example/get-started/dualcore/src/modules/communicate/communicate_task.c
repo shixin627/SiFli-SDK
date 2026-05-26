@@ -287,6 +287,66 @@ bool commu_send_update_instruction(const char *json) { return commu_send_string(
 bool commu_send_get_instruction_img(const char *id)  { return commu_send_string(NOTIFY_COMMAND_ID, KEY_SKAI_INSTRUCTION_IMAGE, id); }
 bool commu_send_skaibar_selected(uint8_t idx)        { return commu_send_status(NOTIFY_COMMAND_ID, KEY_SKAIBAR_SELECTED, idx); }
 bool commu_send_skaibar_committed(uint8_t idx)       { return commu_send_status(NOTIFY_COMMAND_ID, KEY_SKAIBAR_COMMITTED, idx); }
+/* watch→phone (SKAI_LINK): device-list option the user interacted with, BY INDEX
+   (0-based, matching the items[] order the phone sent in KEY_DEVICE_ACTIONS_BATCH).
+   commit = tapped/confirmed (KEY_ACTION_SELECT); focus = scrolled to centre
+   (KEY_ACTION_FOCUS). JSON {"index":N} to match the SKAI_LINK group's convention. */
+bool commu_send_option_commit(uint8_t idx)
+{
+    char json[20];
+    int n = rt_snprintf(json, sizeof(json), "{\"index\":%u}", (unsigned)idx);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_ACTION_SELECT, json);
+    LOG_I("send option commit idx=%u -> %s", (unsigned)idx, ok ? "ok" : "FAILED");
+    return ok;
+}
+bool commu_send_option_focus(uint8_t idx)
+{
+    char json[20];
+    int n = rt_snprintf(json, sizeof(json), "{\"index\":%u}", (unsigned)idx);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_ACTION_FOCUS, json);
+}
+
+/* watch→phone (SKAI_LINK): device-page trackpad relay. The right-side device
+   page hosts the hid_mouse trackpad; rather than emitting BLE HID reports, its
+   events stream here and the phone actuates them on the active target device.
+   JSON shapes match communicate_parse_skailink.h / the dart SkaiLinkKey doc. */
+bool commu_send_mouse_move(int dx, int dy)
+{
+    char json[28];
+    int n = rt_snprintf(json, sizeof(json), "{\"dx\":%d,\"dy\":%d}", dx, dy);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_MOVE, json);
+    LOG_D("send mouse move dx=%d dy=%d -> %s", dx, dy, ok ? "ok" : "FAIL");
+    return ok;
+}
+bool commu_send_mouse_button(uint8_t btn, uint8_t act)
+{
+    char json[28];
+    int n = rt_snprintf(json, sizeof(json), "{\"btn\":%u,\"act\":%u}",
+                        (unsigned)btn, (unsigned)act);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_BUTTON, json);
+    LOG_I("send mouse button btn=%u act=%u -> %s", (unsigned)btn, (unsigned)act,
+          ok ? "ok" : "FAIL");
+    return ok;
+}
+bool commu_send_mouse_scroll(int dx, int dy)
+{
+    char json[28];
+    int n = rt_snprintf(json, sizeof(json), "{\"dx\":%d,\"dy\":%d}", dx, dy);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_SCROLL, json);
+    LOG_D("send mouse scroll dx=%d dy=%d -> %s", dx, dy, ok ? "ok" : "FAIL");
+    return ok;
+}
+bool commu_send_mouse_back(void)
+{
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_BACK, "{}");
+    LOG_I("send mouse back -> %s", ok ? "ok" : "FAIL");
+    return ok;
+}
 
 /*============================================================================*
  *                              Sensor

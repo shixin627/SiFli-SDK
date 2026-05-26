@@ -14,8 +14,10 @@
  *   5. SkaiWatchSys.device_name[] exists (added to watch_global_data.h alongside
  *      device_status[]) — needed for the UI's per-device name label.
  *   6. status byte semantics: 0 off / 1 on / 2 primary (display-derived).
- *   7. skai_device_ui_refresh() is a weak symbol — null-guarded so this links
- *      before the LVGL UI piece exists.
+ *   7. skai_device_ui_refresh() is a STRONG reference (device_pager.c provides it
+ *      in both watch + PC-sim builds). It was weak once, but a weak-only
+ *      reference let armlink dead-strip the definition -> NULL -> live syncs
+ *      never refreshed the device page (only re-entry did). Keep it strong.
  */
 
 #include "communicate_parse_skailink.h"
@@ -32,16 +34,20 @@
 #define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
-/* UI refresh hook implemented by the watch device screen (LVGL piece). Weak so
-   this module links before the UI exists; null-guarded at the call site. */
-extern void skai_device_ui_refresh(void) __attribute__((weak));
+/* UI refresh hook implemented by device_pager.c (the LVGL device screen), which
+   is linked in BOTH the watch and PC-sim builds.
+   MUST be a STRONG reference: when this was declared __attribute__((weak)) and
+   null-guarded, the definition — referenced only weakly — got dead-stripped by
+   armlink, so the symbol resolved to NULL and ui_refresh() became a silent no-op.
+   The device page then only re-rendered on re-entry (device_pager_set_active ->
+   device_pager_refresh), never on a live phone sync: items arrived in the
+   registry but the on-screen list never refreshed. A strong reference keeps the
+   definition and actually delivers the refresh (LVGL_MSG_TYPE_REFRESH_DEVICE_PAGER). */
+extern void skai_device_ui_refresh(void);
 
 static void ui_refresh(void)
 {
-    if (skai_device_ui_refresh)
-    {
-        skai_device_ui_refresh();
-    }
+    skai_device_ui_refresh();
 }
 
 static int find_device_index(const char *id)
@@ -123,6 +129,7 @@ static void handle_device_list_batch(uint8_t *pValue, uint16_t length)
         {
             strncpy((char *)SkaiWatchSys.device_name[idx], j_name->valuestring,
                     SYNCED_DEVICE_NAME_LEN - 1);
+            SkaiWatchSys.device_name[idx][SYNCED_DEVICE_NAME_LEN - 1] = '\0';
         }
         cJSON *j_status = cJSON_GetObjectItem(item, "status");
         if (cJSON_IsNumber(j_status))
@@ -132,6 +139,24 @@ static void handle_device_list_batch(uint8_t *pValue, uint16_t length)
     }
     cJSON_Delete(root);
     LOG_I("Loaded %d devices from skailink batch", SkaiWatchSys.device_registry.count);
+    /* Dump the received device list so its contents can be inspected on the
+       console (id / name / status + each device's item/action list). NOTE: the
+       items arrive in a SEPARATE message (handle_device_actions_batch, 0x03), so
+       items=0 here just means that device's actions haven't synced yet. */
+    for (uint8_t i = 0; i < SkaiWatchSys.device_registry.count; i++)
+    {
+        T_SYNCED_DEVICE *d =
+            (T_SYNCED_DEVICE *)&SkaiWatchSys.device_registry.devices[i];
+        LOG_I("  device[%u]: id=%s name=%s status=%u items=%u", (unsigned)i,
+              d->id,
+              (const char *)SkaiWatchSys.device_name[i],
+              (unsigned)SkaiWatchSys.device_status[i],
+              (unsigned)d->default_action_count);
+        for (uint8_t k = 0; k < d->default_action_count; k++)
+        {
+            LOG_I("      item[%u]: %s", (unsigned)k, d->default_actions[k]);
+        }
+    }
     watch_prefs_save_device_registry_async(); /* ids changed — persist */
     LOG_I("Device registry updated: count=%d", SkaiWatchSys.device_registry.count);
     ui_refresh();
@@ -162,6 +187,11 @@ static void handle_device_actions_batch(uint8_t *pValue, uint16_t length)
     cJSON *root = parse_json(pValue, length);
     cJSON *j_dev = cJSON_GetObjectItem(root, "device_id");
     cJSON *j_items = cJSON_GetObjectItem(root, "items");
+    /* Phone payload: {device_id, items:[<name strings>], types:[<int per item>]}.
+       "types" is a SEPARATE array PARALLEL to "items" (same index), 0=instruction
+       1=application 2=folder 3=ai. We walk types in lockstep with items by
+       position (not by stored count) so a skipped item keeps the rest aligned. */
+    cJSON *j_types = cJSON_GetObjectItem(root, "types");
     if (cJSON_IsString(j_dev) && cJSON_IsArray(j_items))
     {
         int idx = find_device_index(j_dev->valuestring);
@@ -171,6 +201,7 @@ static void handle_device_actions_batch(uint8_t *pValue, uint16_t length)
                 (T_SYNCED_DEVICE *)&SkaiWatchSys.device_registry.devices[idx];
             d->default_action_count = 0;
             cJSON *it = NULL;
+            cJSON *jt = cJSON_IsArray(j_types) ? j_types->child : NULL;
             cJSON_ArrayForEach(it, j_items)
             {
                 if (d->default_action_count >= MAX_DEFAULT_ACTIONS)
@@ -183,13 +214,38 @@ static void handle_device_actions_batch(uint8_t *pValue, uint16_t length)
                                         : NULL;
                 if (title)
                 {
-                    strncpy(d->default_actions[d->default_action_count], title,
-                            DEFAULT_ACTION_LEN - 1);
+                    char *slot = d->default_actions[d->default_action_count];
+                    strncpy(slot, title, DEFAULT_ACTION_LEN - 1);
+                    /* strncpy does NOT null-terminate when the source is >= the
+                       limit; the buffer also isn't re-zeroed on a re-sync, so the
+                       terminator is mandatory. Without it, %s / strlen on this
+                       slot reads past the buffer into the next field (the garbled
+                       item logs that bled the device id + header string). */
+                    slot[DEFAULT_ACTION_LEN - 1] = '\0';
+                    /* category from the parallel types[] entry at this position. */
+                    d->default_action_types[d->default_action_count] =
+                        (jt && cJSON_IsNumber(jt)) ? (uint8_t)jt->valueint : 0;
                     d->default_action_count++;
                 }
+                /* advance types in lockstep with items (by position, every item) */
+                if (jt) jt = jt->next;
+            }
+            /* Dump the device's item (action) list so it can be inspected. */
+            LOG_I("device actions for %s (name=%s): %u item(s)",
+                  j_dev->valuestring, (const char *)SkaiWatchSys.device_name[idx],
+                  (unsigned)d->default_action_count);
+            for (uint8_t k = 0; k < d->default_action_count; k++)
+            {
+                LOG_I("    item[%u]: type=%u %s", (unsigned)k,
+                      (unsigned)d->default_action_types[k], d->default_actions[k]);
             }
             watch_prefs_save_device_registry_async(); /* default actions changed — persist */
             ui_refresh();
+        }
+        else
+        {
+            LOG_W("device actions: unknown device_id %s (not in registry)",
+                  j_dev->valuestring);
         }
     }
     cJSON_Delete(root);
@@ -216,6 +272,7 @@ static void handle_device_removed(uint8_t *pValue, uint16_t length)
                 strncpy((char *)SkaiWatchSys.device_name[idx],
                         (const char *)SkaiWatchSys.device_name[last],
                         SYNCED_DEVICE_NAME_LEN - 1);
+                SkaiWatchSys.device_name[idx][SYNCED_DEVICE_NAME_LEN - 1] = '\0';
             }
             SkaiWatchSys.device_registry.count = last;
             watch_prefs_save_device_registry_async();
@@ -244,6 +301,21 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_ACTIVE_SELECT:
         /* Uplink-only (watch→phone); never received here. */
         LOG_W("skailink: KEY_ACTIVE_SELECT is uplink-only");
+        break;
+    case KEY_ACTION_SELECT:
+        /* Uplink-only (watch→phone); never received here. */
+        LOG_W("skailink: KEY_ACTION_SELECT is uplink-only");
+        break;
+    case KEY_ACTION_FOCUS:
+        /* Uplink-only (watch→phone); never received here. */
+        LOG_W("skailink: KEY_ACTION_FOCUS is uplink-only");
+        break;
+    case KEY_MOUSE_MOVE:
+    case KEY_MOUSE_BUTTON:
+    case KEY_MOUSE_SCROLL:
+    case KEY_MOUSE_BACK:
+        /* Device-page trackpad relay — uplink-only (watch→phone); never received. */
+        LOG_W("skailink: mouse key 0x%02x is uplink-only", key);
         break;
     default:
         LOG_W("skailink: unknown key 0x%02x", key);

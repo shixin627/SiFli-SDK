@@ -8,6 +8,7 @@
 #include "bf0_ble_gap.h"
 #include "bloc_control.h"
 #include "watch_system_interact.h"
+#include "communicate_task.h"   /* commu_send_mouse_* — device-page trackpad relay */
 
 #define DBG_TAG "ble.hid"
 #define DBG_LVL DBG_LOG
@@ -83,6 +84,15 @@ static struct touch_state hid_touch_state;
 static uint8_t ctrl_point;
 static uint8_t g_conn_idx = 0;
 static ble_hid_data_t *g_hid_data = NULL;
+
+/* Device-page trackpad relay switch. When set, the BLE_HID_Mouse_* primitives
+   relay to the phone over SKAI_LINK (commu_send_mouse_*) instead of emitting a
+   BLE HID report — the phone then actuates the event on the active target
+   device. Toggled by device_pager for the device-page-hosted mouse ONLY; the
+   standalone APP_ID_MOUSE app leaves it false and keeps direct BLE HID.
+   Lives outside #ifdef HID_MOUSE so the setter is always linkable (device_pager
+   is built in the PC sim too, where the mouse primitives aren't registered). */
+static bool s_mouse_app_route = false;
 
 /**********************HID Report Map
  * ****************************************************/
@@ -1030,6 +1040,16 @@ uint8_t ble_hid_get_conn_idx(void)
     return g_conn_idx;
 }
 
+void ble_hid_mouse_set_app_route(bool on)
+{
+    s_mouse_app_route = on;
+}
+
+bool ble_hid_mouse_app_route(void)
+{
+    return s_mouse_app_route;
+}
+
 void ble_hid_reset_on_disconnect(void)
 {
     if (!g_hid_data)
@@ -1058,30 +1078,35 @@ void ble_hid_reset_on_disconnect(void)
 #ifdef HID_MOUSE
 void BLE_HID_Mouse_Move(int8_t dx, int8_t dy)
 {
+    if (s_mouse_app_route) { commu_send_mouse_move(dx, dy); return; }
     hid_mouse_state_set(hid_mouse_state.buttons, dx, dy, 0, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
 }
 
 void BLE_HID_Mouse_Wheel_Scroll(int8_t delta)
 {
+    if (s_mouse_app_route) { commu_send_mouse_scroll(0, delta); return; }
     hid_mouse_state_set(hid_mouse_state.buttons, 0, 0, delta, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
 }
 
 void BLE_HID_Mouse_Pan_Scroll(int8_t delta)
 {
+    if (s_mouse_app_route) { commu_send_mouse_scroll(delta, 0); return; }
     hid_mouse_state_set(hid_mouse_state.buttons, 0, 0, 0, delta);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
 }
 
 static void BLE_HID_Mouse_LeftPress(void)
 {
+    if (s_mouse_app_route) { commu_send_mouse_button(0, 1); return; }
     hid_mouse_state_set(1, 0, 0, 0, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
 }
 
 static void BLE_HID_Mouse_LeftRelease(void)
 {
+    if (s_mouse_app_route) { commu_send_mouse_button(0, 0); return; }
     hid_mouse_state_set(0, 0, 0, 0, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
     hid_mouse_state_clear();
@@ -1089,6 +1114,8 @@ static void BLE_HID_Mouse_LeftRelease(void)
 
 void BLE_HID_Mouse_LeftClick(void)
 {
+    /* Relay a single click event (no 200ms BLE hold) when routing to the app. */
+    if (s_mouse_app_route) { commu_send_mouse_button(0, 2); return; }
     BLE_HID_Mouse_LeftPress();
     rt_thread_mdelay(200);
     BLE_HID_Mouse_LeftRelease();
@@ -1096,6 +1123,7 @@ void BLE_HID_Mouse_LeftClick(void)
 
 static void BLE_HID_Mouse_RightPress(void)
 {
+    if (s_mouse_app_route) { commu_send_mouse_button(1, 1); return; }
     hid_mouse_state_set(2, 0, 0, 0, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
     hid_mouse_state_clear();
@@ -1103,6 +1131,7 @@ static void BLE_HID_Mouse_RightPress(void)
 
 static void BLE_HID_Mouse_RightRelease(void)
 {
+    if (s_mouse_app_route) { commu_send_mouse_button(1, 0); return; }
     hid_mouse_state_set(0, 0, 0, 0, 0);
     mouse_report_send((uint8_t *)&hid_mouse_state, sizeof(hid_mouse_state));
     hid_mouse_state_clear();
@@ -1110,6 +1139,7 @@ static void BLE_HID_Mouse_RightRelease(void)
 
 void BLE_HID_Mouse_RightClick(void)
 {
+    if (s_mouse_app_route) { commu_send_mouse_button(1, 2); return; }
     BLE_HID_Mouse_RightPress();
     rt_thread_mdelay(200);
     BLE_HID_Mouse_RightRelease();

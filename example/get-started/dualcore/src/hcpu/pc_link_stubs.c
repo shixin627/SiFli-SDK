@@ -56,6 +56,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* bloc_v2t.h */ void clearVoice2Text(void) {  }
 /* lv_message_list_layout.c */ void clear_media_widget(void) {  }
 /* lv_instruction_list_layout.c */ void clear_skai_widget_ai_reply(void) {  }
+/* communicate_task.h */ bool commu_send_active_device(const char *device_id) { (void)device_id; return false; }
 /* communicate_task.h */ bool commu_send_battery_level(uint8_t level) { return false; }
 /* communicate_task.h */ bool commu_send_battery_voltage(uint16_t millivolts) { (void)millivolts; return false; }
 /* communicate_task.h */ bool commu_send_calendar_request(void) { return false; }
@@ -148,6 +149,12 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* bloc_v2t.h */ void set_voice_recognition_started(bool started) {  }
 /* communicate_task.h */ bool commu_send_skaibar_selected(uint8_t idx) { return false; }
 /* communicate_task.h */ bool commu_send_skaibar_committed(uint8_t idx) { return false; }
+/* communicate_task.h */ bool commu_send_option_commit(uint8_t idx) { (void)idx; return false; }
+/* communicate_task.h */ bool commu_send_option_focus(uint8_t idx) { (void)idx; return false; }
+/* communicate_task.h */ bool commu_send_mouse_move(int dx, int dy) { (void)dx; (void)dy; return false; }
+/* communicate_task.h */ bool commu_send_mouse_button(uint8_t btn, uint8_t act) { (void)btn; (void)act; return false; }
+/* communicate_task.h */ bool commu_send_mouse_scroll(int dx, int dy) { (void)dx; (void)dy; return false; }
+/* communicate_task.h */ bool commu_send_mouse_back(void) { return false; }
 /* gui_app_pm.h */ void sys_poweron_fsm(sys_pwron_evt_t evt) {  }
 /* gesture_model_loader.h */ int unload_release_model(void) { return 0; }
 /* ble_hid.h */ void volume_down_through_hid(void) {  }
@@ -201,3 +208,7 @@ void BLE_HID_Mouse_Touch_Move(uint16_t x, uint16_t y) { (void)x; (void)y; }
 bool BLE_HID_Mouse_Touch_Release(uint16_t x, uint16_t y) { (void)x; (void)y; return false; }
 void air_mouse_movement_lock_reset(void) { }
 void set_voice_recognition_notified_from_mouse(bool status) { (void)status; }
+/* device-page trackpad → phone relay switch (ble_hid.c, excluded on PC sim).
+   Called by device_pager.c (set) and hid_mouse.c (get, back routing). */
+void ble_hid_mouse_set_app_route(bool on) { (void)on; }
+bool ble_hid_mouse_app_route(void) { return false; }
