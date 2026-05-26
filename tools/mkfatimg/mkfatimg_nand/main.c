@@ -231,13 +231,42 @@ int calc_dir_size(void)
 }
 
 
+/* Recursively count files and directories under *path* on the mounted FAT.
+   Used by -pack verify to confirm the re-mounted image holds every file. */
+static FRESULT count_tree (const char *path, UINT *files, UINT *dirs)
+{
+	DIR d;
+	FILINFO fno;
+	FRESULT r;
+	char child[600];
+
+	r = f_opendir(&d, path);
+	if (r != FR_OK) return r;
+	for (;;) {
+		r = f_readdir(&d, &fno);
+		if (r != FR_OK || fno.fname[0] == 0) break;
+		if (fno.fattrib & AM_DIR) {
+			(*dirs)++;
+			sprintf(child, "%s/%s", path, fno.fname);
+			r = count_tree(child, files, dirs);
+			if (r != FR_OK) break;
+		} else {
+			(*files)++;
+		}
+	}
+	f_closedir(&d);
+	return r;
+}
+
+
 int main (int argc, char* argv[])
 {
 	UINT csz;
 	HANDLE wh;
 	DWORD wb, szvol;
+	BYTE *pack_img = 0;
 	DIR dir;
-	int ai = 1, truncation = 0;
+	int ai = 1, truncation = 0, pack = 0;
 	const char *outfile;
 	int total_size;
 	DWORD free_clust, free_sect, total_sect;
@@ -254,6 +283,11 @@ int main (int argc, char* argv[])
 	while (argc >= 1 && *argv[ai] == '-') {
 		if (!strcmp(argv[ai], "-t")) {
 			truncation = 1;
+			ai++;
+			argc--;
+		}
+		else if (!strcmp(argv[ai], "-pack")) {
+			pack = 1;
 			ai++;
 			argc--;
 		}
@@ -302,7 +336,7 @@ int main (int argc, char* argv[])
 	}
 
 	if (argc < 3) {
-		printf("usage: mkfatimg [-t] [-gc val] [-blk blk_size] <source node> <output image> <image size> [<cluster size>]\n"
+		printf("usage: mkfatimg [-t] [-pack] [-gc val] [-blk blk_size] <source node> <output image> <image size> [<cluster size>]\n"
 				"    -t: Truncate unused area for read only volume.\n"
 				"    -gc: gc_ratio\n"
                 "    -blk: block size in KiB\n"
@@ -377,7 +411,32 @@ int main (int argc, char* argv[])
 	if (!szvol) szvol = ld_dword(RamDisk + BPB_TotSec32);
 	//f_gc(&FatFs);
 
-	if (truncation) {
+	/* --- Route B (-pack): re-pack the live FAT into a fresh dhara so the
+	   journal packs sequentially from page 0, then strip the 0xFF tail. GC
+	   alone does NOT relocate live pages -- after the build's rewrite churn
+	   they are scattered across the whole region, so a strip of the GC'd
+	   image still spans ~full size. Re-emitting each live sector once into a
+	   clean FTL is what actually compacts it; the FAT still declares the full
+	   region, so the device mounts the full volume.
+
+	     built:    [ d | . | d | . . . . . . . | d | 0xFF ]  ~5MB live, scattered
+	     re-pack:  [ d d d d ] 0xFF ......................   live packed at front
+	     strip:    [ d d d d ]   <- only this prefix is written / flashed
+	*/
+	if (pack) {
+		DWORD clen = 0;
+
+		disk_ioctl(0, CTRL_SYNC, 0);                 /* flush build writes */
+		if (disk_compact_to_front(&pack_img, &clen) != 0) {
+			printf("pack: compact-to-front failed\n");
+			return 6;
+		}
+		szvol = clen;                                /* write + verify use this */
+		printf("pack: compact+strip -> %u KiB image (full region %u KiB)\n",
+		       clen / 1024, RamDiskSize * FF_MIN_SS / 1024);
+	}
+
+	if (truncation && !pack) {
 		DWORD ent, nent;
 		DWORD szf, szfp, edf, edfp;
 		DWORD szd, szdp, edd, eddp;
@@ -451,10 +510,11 @@ int main (int argc, char* argv[])
 		printf("Failed to create output file.\n");
 		return 4;
 	}
-	szvol = RamDiskSize * FF_MIN_SS;
+	if (!pack) szvol = RamDiskSize * FF_MIN_SS;   /* pack set szvol=clen above */
 	
-	WriteFile(wh, RamDisk, szvol, &wb, 0);
+	WriteFile(wh, pack ? pack_img : RamDisk, szvol, &wb, 0);
 	CloseHandle(wh);
+	if (pack) VirtualFree(pack_img, 0, MEM_RELEASE);
 	if (szvol != wb) {
 		DeleteFile(outfile);
 		printf("Failed to write output file.\n");
@@ -462,6 +522,52 @@ int main (int argc, char* argv[])
 	}
 
     printf("%u files and %u directories in the %uKiB of FAT volume.\n", Files, Dirs, szvol / 1024);
+
+	/* --- -pack verify: simulate a device cold boot from the stripped image.
+	   Erase the NAND model to all-0xFF (a blank flash region), read back only
+	   the prefix we just wrote (what the device flashes), then re-run the
+	   dhara resume + FAT mount and walk the tree. If every file is present and
+	   the volume reads back at full-region size, Route B's on-device resume
+	   (ADR-0010 Open Q3) holds in this PC FTL model. */
+	if (pack) {
+		HANDLE rh;
+		DWORD rb = 0;
+		UINT vfiles = 0, vdirs = 0;
+
+		printf("\n--- verify: cold-boot re-mount of the stripped image ---\n");
+		FillMemory(RamDisk, RamDiskSize * FF_MIN_SS, 0xFF);   /* erased full region */
+		rh = CreateFile(outfile, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0);
+		if (rh == INVALID_HANDLE_VALUE) {
+			printf("VERIFY FAIL: cannot reopen image\n");
+			return 7;
+		}
+		ReadFile(rh, RamDisk, szvol, &rb, 0);
+		CloseHandle(rh);
+		if (rb != szvol) {
+			printf("VERIFY FAIL: short read-back %u/%u bytes\n", rb, szvol);
+			return 7;
+		}
+		if (disk_resume() != 0) {
+			printf("VERIFY FAIL: dhara_map_resume rejected the GC+stripped image\n");
+			return 7;
+		}
+		f_mount(&FatFs, "", 0);
+		if (FR_OK == f_getfree("0:", &free_clust, &fs)) {
+			printf("verify: volume total %u KiB (expect the full region, not the %u KiB image)\n",
+			       (fs->n_fatent - 2) * fs->csize * FF_MIN_SS / 1024, szvol / 1024);
+		}
+		if (count_tree("", &vfiles, &vdirs) != FR_OK) {
+			printf("VERIFY FAIL: directory walk error after re-mount\n");
+			return 7;
+		}
+		printf("verify: re-mounted image has %u files, %u dirs; build wrote %u files, %u dirs\n",
+		       vfiles, vdirs, Files, Dirs);
+		if (vfiles != Files || vdirs != Dirs) {
+			printf("VERIFY FAIL: file/dir count mismatch after GC+strip+resume\n");
+			return 7;
+		}
+		printf("VERIFY OK: dhara resumes from GC+stripped image; all %u files present; FAT = full region\n", vfiles);
+	}
 
 	return 0;
 }

@@ -115,8 +115,12 @@ extern void heart_rate_unsubscribe(void);
 // FS test related variables
 static bool fs_test_running = false;
 static int fs_test_file_count = 0;
+static uint32_t fs_test_total_kb = 0;   /* total KB written this run (shown on the dev page) */
+static int fs_test_last_err = 0;        /* errno of last create/write failure, 0 = none */
+static char fs_test_buf[1024];          /* reused write/verify buffer (kept off the test thread stack) */
 static lv_obj_t *fs_info_label;
 static lv_obj_t *fs_test_btn;
+static lv_obj_t *fs_clean_btn;
 static lv_timer_t *fs_update_timer;
 
 // Add these function prototypes
@@ -134,6 +138,7 @@ static void motor_switch_event_callback(lv_event_t *e);
 static void fps_cpu_load_switch_event_callback(lv_event_t *e);
 static void EPIC_switch_event_callback(lv_event_t *e);
 static void fs_test_callback(lv_event_t *e);
+static void fs_clean_callback(lv_event_t *e);
 static void fs_update_info_cb(lv_timer_t *timer);
 extern void imu_lock_sw_event_callback(lv_event_t *e);
 
@@ -551,8 +556,11 @@ static void lv_create_dev_screen(void)
     lv_obj_align_to(fs_info_label, fs_test_title, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
 
     /* FS test button */
-    fs_test_btn = common_text_button(cont, "Start FS Test", get_system_font_size(0), 366, 100, fs_test_callback);
+    fs_test_btn = common_text_button(cont, "FS Fill Test", get_system_font_size(0), 366, 100, fs_test_callback);
     lv_obj_align_to(fs_test_btn, fs_info_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+
+    fs_clean_btn = common_text_button(cont, "FS Cleanup", get_system_font_size(0), 366, 100, fs_clean_callback);
+    lv_obj_align_to(fs_clean_btn, fs_test_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
 
     // lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
 }
@@ -767,7 +775,7 @@ static void file_log_sw_event_callback(lv_event_t *e)
 static void fs_update_info_cb(lv_timer_t *timer)
 {
     struct statfs fs_stat;
-    char info_buf[160];
+    char info_buf[224];
 
     if (statfs("/", &fs_stat) != 0)
     {
@@ -792,12 +800,28 @@ static void fs_update_info_cb(lv_timer_t *timer)
     if (n < 0 || n >= (int)sizeof(info_buf))
         n = 0;
 
+    /* Append capacity-test progress/result so the dev page shows it live
+       (the UART console may be quiet). err 0 = pass, -2 = integrity fail. */
+    if (fs_test_total_kb || fs_test_last_err)
+    {
+        int m = snprintf(info_buf + n, sizeof(info_buf) - (size_t)n,
+                         "  wrote %lu.%lu MB err %d",
+                         (unsigned long)(fs_test_total_kb / 1024),
+                         (unsigned long)((fs_test_total_kb % 1024) * 10 / 1024),
+                         fs_test_last_err);
+        if (m > 0 && n + m < (int)sizeof(info_buf))
+            n += m;
+    }
+
 #ifdef FS_REGION_SIZE
     /* Compare the mounted FAT against the region the partition table reserves.
        If the FAT spans most of the region it grew correctly; if it's far
        smaller the partition never expanded (the bug this verifies the fix for). */
     uint64_t region = (uint64_t)FS_REGION_SIZE;
-    const char *verdict = (total >= region - region / 5) ? "GROWN" : "UNDERSIZED!";
+    /* GROWN if the FAT spans over half the partition. The "undersized" bug was
+       5.8 MB (6.6%); a fully-grown volume is ~65 MB (~75%, capped by dhara's GC
+       reserve + FAT overhead), so 80% was unreachable and always read UNDERSIZED. */
+    const char *verdict = (total >= region / 2) ? "GROWN" : "UNDERSIZED!";
     snprintf(info_buf + n, sizeof(info_buf) - (size_t)n,
              "\nregion %lu.%lu MB %s",
              DEV_MB_INT(region), DEV_MB_FRAC(region), verdict);
@@ -809,92 +833,144 @@ static void fs_update_info_cb(lv_timer_t *timer)
     lv_label_set_text(fs_info_label, info_buf);
 }
 
-static void fs_create_test_file(int index)
+#define FSTEST_DIR       "/FSTEST"
+#define FSTEST_FILE_SIZE (64 * 1024)   /* bytes per file; ~1000 files fill the 65 MB volume */
+
+/* Create one FSTEST_FILE_SIZE file filled with a per-file verifiable pattern,
+   inside a subdirectory. NOT in root: a FAT16 root dir has a fixed 512-entry
+   cap, which the old root-based test exhausted at ~169 LFN files regardless of
+   free space. Returns bytes written, or 0 on failure (errno in fs_test_last_err). */
+static int fs_create_test_file(int index)
 {
     char filename[64];
-    char data[256];
-    int fd;
+    int fd, total = 0, n, i;
 
-    snprintf(filename, sizeof(filename), "/test_file_%04d.txt", index);
-    snprintf(data, sizeof(data), "Test file %d - %s", index, "This is test data for file system testing. ");
-
-    // Expand data to make file larger
-    for (int i = 0; i < 5; i++)
-    {
-        strcat(data, "More test data. ");
-    }
-
+    snprintf(filename, sizeof(filename), FSTEST_DIR "/F%04d.DAT", index);
     fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, 0666);
-    if (fd >= 0)
+    if (fd < 0)
     {
-        write(fd, data, strlen(data));
-        close(fd);
-        fs_test_file_count++;
-        LOG_I("Created file %s (%d bytes)", filename, (int)strlen(data));
+        fs_test_last_err = errno;
+        LOG_E("FS Test: create %s failed: errno=%d (%s)", filename, errno, strerror(errno));
+        return 0;
     }
-    else
+
+    for (i = 0; i < (int)sizeof(fs_test_buf); i++)
+        fs_test_buf[i] = (char)(index * 31 + i);
+
+    while (total < FSTEST_FILE_SIZE)
     {
-        LOG_E("Failed to create file %s: %s", filename, strerror(errno));
+        n = write(fd, fs_test_buf, sizeof(fs_test_buf));
+        if (n != (int)sizeof(fs_test_buf))
+        {
+            fs_test_last_err = errno ? errno : -1;   /* short write == disk full */
+            LOG_E("FS Test: write %s @%d failed: ret=%d errno=%d (%s)",
+                  filename, total, n, errno, strerror(errno));
+            break;
+        }
+        total += n;
     }
+    close(fd);
+
+    if (total < FSTEST_FILE_SIZE)
+    {
+        unlink(filename);   /* drop the partial file so the volume is left clean */
+        return 0;
+    }
+    return total;
 }
 
 static void fs_delete_all_test_files(void)
 {
     char filename[64];
+    int i;
 
-    for (int i = 0; i < fs_test_file_count; i++)
+    for (i = 0; i < fs_test_file_count; i++)
     {
-        snprintf(filename, sizeof(filename), "/test_file_%04d.txt", i);
+        snprintf(filename, sizeof(filename), FSTEST_DIR "/F%04d.DAT", i);
         unlink(filename);
     }
+    rmdir(FSTEST_DIR);
     fs_test_file_count = 0;
 }
 
+/* Capacity + integrity test:
+     1. fill the volume with 64 KB files in a subdir until a write hits ENOSPC,
+     2. read file 0 back and verify its byte pattern (catch silent corruption),
+     3. delete everything and confirm free space returns.
+   Progress/results are published via globals and rendered by fs_update_info_cb
+   (runs in the LVGL timer context) so the on-screen dev page shows them even
+   when the UART console is quiet. */
 static void fs_test_task(void *parameter)
 {
-    int max_files = 1000; // Maximum files to try creating
+    const int max_files = 2000;          /* safety cap; the loop normally ends on ENOSPC */
     struct statfs fs_stat;
+    uint64_t free_before = 0, free_after = 0;
+    int i, integrity_ok = 0, fd;
 
-    LOG_I("FS Test: Starting file creation test");
+    fs_test_file_count = 0;
+    fs_test_total_kb = 0;
+    fs_test_last_err = 0;
 
-    // Phase 1: Create files until disk is full
-    for (int i = 0; i < max_files; i++)
+    LOG_I("FS Test: start (%dKB files into %s)", FSTEST_FILE_SIZE / 1024, FSTEST_DIR);
+
+    mkdir(FSTEST_DIR, 0777);              /* harmless if it already exists */
+    if (statfs("/", &fs_stat) == 0)
+        free_before = (uint64_t)fs_stat.f_bfree * fs_stat.f_bsize;
+
+    /* Phase 1: fill with real data until a write fails (disk full). */
+    for (i = 0; i < max_files; i++)
     {
+        int bytes;
         if (!fs_test_running)
             break;
-
-        fs_create_test_file(i);
-
-        // Check disk space every 10 files
-        if (i % 10 == 0)
-        {
-            if (statfs("/", &fs_stat) == 0)
-            {
-                uint64_t free_size = (uint64_t)fs_stat.f_bfree * fs_stat.f_bsize;
-                if (free_size < 10240) // Less than 10KB free
-                {
-                    LOG_I("FS Test: Disk nearly full, stopping creation");
-                    break;
-                }
-            }
-        }
-
-        rt_thread_mdelay(50); // Small delay
+        bytes = fs_create_test_file(i);
+        if (bytes <= 0)
+            break;                        /* ENOSPC or error -> done filling */
+        fs_test_file_count++;
+        fs_test_total_kb += (uint32_t)(bytes / 1024);
+        rt_thread_mdelay(5);
     }
 
-    LOG_I("FS Test: Created %d files", fs_test_file_count);
-    rt_thread_mdelay(2000); // Wait 2 seconds
+    if (statfs("/", &fs_stat) == 0)
+        free_after = (uint64_t)fs_stat.f_bfree * fs_stat.f_bsize;
 
-    // Phase 2: Delete all test files
-    if (fs_test_running)
+    LOG_I("FS Test: wrote %d files / %lu KB; free %lu KB -> %lu KB; last_err=%d",
+          fs_test_file_count, (unsigned long)fs_test_total_kb,
+          (unsigned long)(free_before / 1024), (unsigned long)(free_after / 1024),
+          fs_test_last_err);
+
+    /* Phase 2: read file 0 back and verify the per-file pattern. */
+    if (fs_test_running && fs_test_file_count > 0)
     {
-        LOG_I("FS Test: Starting file deletion");
-        fs_delete_all_test_files();
-        LOG_I("FS Test: All test files deleted");
+        char filename[64];
+        static char vbuf[1024];
+        int n, off = 0, bad = 0;
+
+        snprintf(filename, sizeof(filename), FSTEST_DIR "/F%04d.DAT", 0);
+        fd = open(filename, O_RDONLY);
+        if (fd >= 0)
+        {
+            while ((n = read(fd, vbuf, sizeof(vbuf))) > 0)
+            {
+                for (i = 0; i < n; i++)
+                    if (vbuf[i] != (char)((off + i) % (int)sizeof(fs_test_buf))) { bad = 1; break; }
+                if (bad) break;
+                off += n;
+            }
+            close(fd);
+            integrity_ok = (!bad && off == FSTEST_FILE_SIZE);
+        }
+        LOG_I("FS Test: integrity %s (verified %d bytes of %s)",
+              integrity_ok ? "OK" : "FAIL", off, filename);
+        if (!integrity_ok && !fs_test_last_err)
+            fs_test_last_err = -2;        /* surface a non-zero "integrity failed" code */
     }
+
+    LOG_I("FS Test: fill done, %d files (%lu KB) kept in %s; press Cleanup to delete",
+          fs_test_file_count, (unsigned long)fs_test_total_kb, FSTEST_DIR);
 
     fs_test_running = false;
-    lv_label_set_text(lv_obj_get_child(fs_test_btn, 0), "Start FS Test");
+    lv_label_set_text(lv_obj_get_child(fs_test_btn, 0), "FS Fill Test");
 }
 
 static void fs_test_callback(lv_event_t *e)
@@ -905,13 +981,13 @@ static void fs_test_callback(lv_event_t *e)
         if (!fs_test_running)
         {
             fs_test_running = true;
-            lv_label_set_text(lv_obj_get_child(obj, 0), "Stop FS Test");
+            lv_label_set_text(lv_obj_get_child(obj, 0), "Stop Fill");
 
             // Create test thread
             rt_thread_t thread = rt_thread_create("fs_test",
                                                   fs_test_task,
                                                   NULL,
-                                                  4096,
+                                                  8192,
                                                   RT_THREAD_PRIORITY_MAX - 2,
                                                   20);
             if (thread != RT_NULL)
@@ -922,7 +998,50 @@ static void fs_test_callback(lv_event_t *e)
         else
         {
             fs_test_running = false;
-            lv_label_set_text(lv_obj_get_child(obj, 0), "Start FS Test");
+            lv_label_set_text(lv_obj_get_child(obj, 0), "FS Fill Test");
+        }
+    }
+}
+
+static void fs_clean_task(void *parameter)
+{
+    struct statfs fs_stat;
+
+    LOG_I("FS Test: cleanup deleting %d files in %s", fs_test_file_count, FSTEST_DIR);
+    fs_delete_all_test_files();          /* removes F0000..F(n-1) + rmdir, resets count to 0 */
+    fs_test_total_kb = 0;
+    fs_test_last_err = 0;
+    if (statfs("/", &fs_stat) == 0)
+        LOG_I("FS Test: cleanup done, free now %lu KB",
+              (unsigned long)((uint64_t)fs_stat.f_bfree * fs_stat.f_bsize / 1024));
+
+    fs_test_running = false;
+    lv_label_set_text(lv_obj_get_child(fs_clean_btn, 0), "FS Cleanup");
+}
+
+static void fs_clean_callback(lv_event_t *e)
+{
+    lv_obj_t *obj = lv_event_get_target(e);
+    if (LV_EVENT_CLICKED == lv_event_get_code(e))
+    {
+        if (fs_test_running)
+            return;                       /* a fill or cleanup is already in progress */
+
+        fs_test_running = true;
+        lv_label_set_text(lv_obj_get_child(obj, 0), "Cleaning...");
+
+        rt_thread_t thread = rt_thread_create("fs_clean",
+                                              fs_clean_task,
+                                              NULL,
+                                              8192,
+                                              RT_THREAD_PRIORITY_MAX - 2,
+                                              20);
+        if (thread != RT_NULL)
+            rt_thread_startup(thread);
+        else
+        {
+            fs_test_running = false;
+            lv_label_set_text(lv_obj_get_child(obj, 0), "FS Cleanup");
         }
     }
 }

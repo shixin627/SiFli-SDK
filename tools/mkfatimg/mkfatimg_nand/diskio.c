@@ -212,6 +212,90 @@ DRESULT disk_write (
 
 
 /*-----------------------------------------------------------------------*/
+/* Re-run the FTL resume on the current RamDisk                          */
+/*-----------------------------------------------------------------------*/
+/* Rebuilds the dhara map and resumes from whatever is currently in RamDisk,
+   exactly as the device firmware does on cold boot. main.c's -pack verify
+   calls this after erasing the buffer and reading the stripped image back,
+   to prove dhara can resume from a GC'd + 0xFF-stripped image
+   (ADR-0010 Open Q3). Returns 0 on success, non-zero if resume rejects it. */
+
+int disk_resume (void)
+{
+	dhara_error_t err = DHARA_E_NONE;
+
+	if (!RamDisk) return -1;
+
+	dhara_map_init(&map, &nand, page_buffer, gc_ratio);
+	return dhara_map_resume(&map, &err);
+}
+
+
+/*-----------------------------------------------------------------------*/
+/* Re-pack live sectors into a fresh FTL at the front of a new buffer    */
+/*-----------------------------------------------------------------------*/
+/* dhara_map_gc_all() frees dead blocks but does NOT relocate live pages, so
+   after the build's rewrite churn the ~5 MB of live data is scattered across
+   the whole region and a strip of the GC'd image still spans ~full size.
+   Here we read every live logical sector out of the current map and write it
+   ONCE into a fresh dhara on a new buffer -- with no rewrites, that journal
+   packs sequentially from page 0, so the stripped image is small. Caller
+   VirtualFree()s *out_buf. Returns 0 on success. */
+
+int disk_compact_to_front (BYTE **out_buf, DWORD *out_len)
+{
+	static struct dhara_map map2;
+	static BYTE page_buffer2[8192];
+	static BYTE sector_tmp[8192];
+	struct dhara_nand nand2 = nand;          /* same geometry as the live device */
+	dhara_error_t err = DHARA_E_NONE;
+	BYTE *buf2;
+	DWORD total_bytes = RamDiskSize * FF_MIN_SS;
+	uint32_t page_size = (1 << nand.log2_page_size);
+	dhara_sector_t cap, s;
+	DWORD last;
+	uint32_t i;
+
+	if (!RamDisk) return -1;
+
+	buf2 = (BYTE *)VirtualAlloc(0, total_bytes, MEM_COMMIT, PAGE_READWRITE);
+	if (!buf2) return -1;
+	FillMemory(buf2, total_bytes, 0xFF);     /* erased NAND */
+	nand2.user_data = (void *)buf2;
+
+	/* Fresh, empty FTL on the new buffer. */
+	dhara_map_init(&map2, &nand2, page_buffer2, gc_ratio);
+	dhara_map_resume(&map2, &err);
+
+	cap = dhara_map_capacity(&map);
+	for (s = 0; s < cap; s++) {
+		int blank = 1;
+		if (dhara_map_read(&map, s, sector_tmp, &err) != 0)
+			continue;                        /* unmapped -> leave erased */
+		for (i = 0; i < page_size; i++) {
+			if (sector_tmp[i] != 0xFF) { blank = 0; break; }
+		}
+		if (blank) continue;                 /* all-0xFF reads back as 0xFF anyway */
+		if (dhara_map_write(&map2, s, sector_tmp, &err) != 0) {
+			VirtualFree(buf2, 0, MEM_RELEASE);
+			return -2;
+		}
+	}
+	dhara_map_sync(&map2, &err);
+
+	/* Strip the trailing 0xFF, rounded up to a whole erase block. */
+	last = total_bytes;
+	while (last > 0 && buf2[last - 1] == 0xFF) last--;
+	last = ((last + block_size - 1) / block_size) * block_size;
+	if (last == 0) last = block_size;
+
+	*out_buf = buf2;
+	*out_len = last;
+	return 0;
+}
+
+
+/*-----------------------------------------------------------------------*/
 /* Miscellaneous Functions                                               */
 /*-----------------------------------------------------------------------*/
 

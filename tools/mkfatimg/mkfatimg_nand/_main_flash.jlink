@@ -1,0 +1,4 @@
+loadbin "C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu\build_sf32lb56w-watch_hcpu\main.bin" 0x64000000
+r
+g
+exit

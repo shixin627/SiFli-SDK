@@ -37,6 +37,8 @@ DSTATUS disk_initialize (BYTE pdrv);
 DRESULT disk_read (BYTE pdrv, BYTE* buff, DWORD sector, UINT count);
 DRESULT disk_write (BYTE pdrv, const BYTE* buff, DWORD sector, UINT count);
 DRESULT disk_ioctl (BYTE pdrv, BYTE cmd, void* buff);
+int disk_resume (void);		/* Re-run dhara resume on current RamDisk (cold-boot sim). 0=ok */
+int disk_compact_to_front (BYTE **out_buf, DWORD *out_len);	/* re-pack live sectors from page 0 */
 DWORD get_fattime(void);
 
 
