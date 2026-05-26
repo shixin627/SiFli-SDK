@@ -104,6 +104,7 @@ extern void append_text_to_input_message(void);
 extern void append_text_to_mouse_input(void);
 extern void load_instruction_list(void);
 extern int subscribe_alarm_client(void);
+extern int32_t bloc_alarm_get_ringing_idx(void); /* >=0 while an alarm is ringing */
 extern void start_ble_rssi_checker(uint32_t period_ms);
 extern void stop_ble_rssi_checker(void);
 #if !kReleaseMode
@@ -660,7 +661,7 @@ void watch_system_sleep(void)
      * 30 ms (see idempotency note above), so without it a persistent
      * reason -- e.g. power save off -- would spam the log continuously.
      * Log only on the first call that hits a given reason. */
-    enum { SKIP_NONE, SKIP_POWER_SAVE, SKIP_DEV_PAUSE, SKIP_MOTOR };
+    enum { SKIP_NONE, SKIP_POWER_SAVE, SKIP_DEV_PAUSE, SKIP_MOTOR, SKIP_ALARM };
     static int last_skip = SKIP_NONE;
 
     if (!setting_provider.get_power_save_mode())
@@ -691,6 +692,20 @@ void watch_system_sleep(void)
         {
             LOG_D("Sleep skipped: motor active");
             last_skip = SKIP_MOTOR;
+        }
+        return;
+    }
+
+    /* Keep the watch awake while an alarm is ringing so the ringing screen
+     * stays lit (and the user can see/dismiss it) until they hit Stop/Snooze.
+     * bloc_alarm_stop_ringing() clears the ringing idx back to -1, after which
+     * the next idle tick falls through here and sleeps normally. */
+    if (bloc_alarm_get_ringing_idx() >= 0)
+    {
+        if (last_skip != SKIP_ALARM)
+        {
+            LOG_D("Sleep skipped: alarm ringing");
+            last_skip = SKIP_ALARM;
         }
         return;
     }

@@ -24,6 +24,21 @@
 #define RT_RTC_YEARS_MAX         137
 #define RT_ALARM_DELAY             0
 
+/* Wake-from-sleep tolerance for one-shot alarms (seconds).
+ *
+ * An RTC alarm interrupt does wake HCPU from light sleep, but NAND/flash
+ * re-init plus scheduler resume can delay alarm_wakeup() by 1-3s. With the
+ * 0-second RT_ALARM_DELAY match window the wall-clock second ticks past before
+ * the compare runs, so sec_now > sec_alarm and the alarm is silently missed and
+ * never re-fired (observed on sf32lb56w-watch: RTC wakeup logs WSR:0x2000 yet
+ * no "Alarm firing"). Allow a one-shot to still fire if we reach the compare
+ * within this many seconds of the set time. Safe against repeat fires: a
+ * one-shot clears RT_ALARM_STATE_START the first time it fires (see below), so
+ * any later alarm_wakeup() pass skips it. WEEKLY/DAILY are intentionally NOT
+ * widened here -- they stay armed and would need a separate "already fired"
+ * guard to avoid double-firing inside the window. */
+#define RT_ALARM_WAKEUP_TOLERANCE  30
+
 #define RT_ALARM_STATE_INITED   0x02
 #define RT_ALARM_STATE_START    0x01
 #define RT_ALARM_STATE_STOP     0x00
@@ -121,7 +136,7 @@ static void alarm_wakeup(struct rt_alarm *alarm, struct tm *now)
         {
             sec_alarm = mktime(&alarm->wktime);
             sec_now = mktime(now);
-            if (((sec_now - sec_alarm) <= RT_ALARM_DELAY) && (sec_now >= sec_alarm))
+            if (((sec_now - sec_alarm) <= RT_ALARM_WAKEUP_TOLERANCE) && (sec_now >= sec_alarm))
             {
                 /* stop alarm */
                 alarm->flag &= ~RT_ALARM_STATE_START;
