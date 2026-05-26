@@ -29,6 +29,9 @@
     #include "sleep_fusion.h"   /* daily aggregates filled into IND */
     /* hr_service.h is already included above for hr_service_get_latest_bpm */
 #endif
+#ifdef BSP_USING_SLEEP_VANHEES
+    #include "sleep_vanhees.h" /* accel-only sleep-period daily aggregates */
+#endif
 
 #define DBG_TAG "watch_sys"
 #define DBG_LVL DBG_INFO
@@ -238,6 +241,15 @@ static void notify_sleep_state(uint8_t mode, uint32_t timestamp_utc)
 #ifdef BSP_USING_HR_SVC
     data_ind.current_hr = hr_service_get_latest_bpm();
 #endif
+#endif
+#ifdef BSP_USING_SLEEP_VANHEES
+    const sleep_vanhees_output_t *vh = sleep_vanhees_current();
+    if (vh)
+    {
+        data_ind.total_sleep_min       = vh->total_sleep_min;
+        data_ind.light_min             = vh->total_sleep_min; /* undifferentiated: no Deep/REM */
+        data_ind.awake_after_onset_min = vh->awake_after_onset_min;
+    }
 #endif
     push_msg_to_hcpu(MSG_SERVICE_SLEEP_STATE_IND, &data_ind, sizeof(data_ind));
 }
