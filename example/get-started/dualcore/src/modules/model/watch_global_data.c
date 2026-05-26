@@ -723,11 +723,41 @@ static void storage_post(storage_op_t op, uint16_t arg)
   }
 }
 
+/* Debounce for the device-registry save. A device sync arrives as a BURST: a
+   0x01 list-batch rebuilds membership (which clears each device's actions),
+   then per-device 0x03 batches refill them — and reachability/poll re-push the
+   whole burst. Saving on every request would cycle the registry through several
+   states and hammer flash; each flash write stalls XIP and can starve the
+   GUI/EPIC thread (→ HCPU WDT reboot). Coalesce a burst into ONE deferred save;
+   combined with the skip-if-unchanged in the save itself, a burst that nets no
+   real change writes flash zero times. */
+static rt_timer_t s_dev_registry_save_timer;
+static void dev_registry_save_debounce_cb(void *param)
+{
+  (void)param;
+  storage_post(STORAGE_OP_SAVE_DEVICE_REGISTRY, 0);
+}
+
 /* Async twins of the two synchronous save helpers above — safe to call from the
    BLE event thread (KE_EVT2). They post to the storage worker and return. */
 void watch_prefs_save_device_registry_async(void)
 {
-  storage_post(STORAGE_OP_SAVE_DEVICE_REGISTRY, 0);
+  if (s_dev_registry_save_timer == RT_NULL)
+  {
+    s_dev_registry_save_timer = rt_timer_create(
+        "devreg_save", dev_registry_save_debounce_cb, RT_NULL,
+        rt_tick_from_millisecond(1500),
+        RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
+  }
+  if (s_dev_registry_save_timer != RT_NULL)
+  {
+    rt_timer_stop(s_dev_registry_save_timer);  /* restart → coalesce the burst */
+    rt_timer_start(s_dev_registry_save_timer);
+  }
+  else
+  {
+    storage_post(STORAGE_OP_SAVE_DEVICE_REGISTRY, 0); /* timer alloc failed — save now */
+  }
 }
 
 void watch_prefs_save_alarms_async(void)
