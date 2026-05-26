@@ -1,6 +1,6 @@
 {
-    "version": "1.1.54",
-    "description": "多設備action列表同步,優化手錶電量管理系統",
+    "version": "1.1.56",
+    "description": "多設備action列表同步",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
