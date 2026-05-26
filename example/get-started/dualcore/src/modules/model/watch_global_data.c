@@ -234,15 +234,32 @@ static void read_device_registry(share_prefs_t *pref)
   rt_memset((void *)SkaiWatchSys.device_status, 0, sizeof(SkaiWatchSys.device_status));
 }
 
+/* CRC of the last block actually written to flash — lets us skip a redundant
+   save when the persisted content is unchanged (see watch_prefs_save_device_
+   registry). Status is RAM-only, so online/offline churn never changes this. */
+static uint32_t s_last_saved_registry_crc;
+static bool     s_last_saved_registry_valid;
+
+/* Pack the registry block exactly as it would be persisted (version + clamp +
+   crc), without touching flash. Used both to write and to compute the
+   skip-if-unchanged CRC. */
+static uint32_t build_device_registry_block(T_DEVICE_REGISTRY *r)
+{
+  rt_memcpy(r, (const void *)&SkaiWatchSys.device_registry, sizeof(*r));
+  r->version = DEVICE_REGISTRY_VERSION;
+  if (r->count > MAX_SYNCED_DEVICES) r->count = MAX_SYNCED_DEVICES;
+  r->crc = device_registry_crc32(r);
+  return r->crc;
+}
+
 static void write_device_registry(share_prefs_t *pref)
 {
   T_DEVICE_REGISTRY r;
-  rt_memcpy(&r, (const void *)&SkaiWatchSys.device_registry, sizeof(r));
-  r.version = DEVICE_REGISTRY_VERSION;
-  if (r.count > MAX_SYNCED_DEVICES) r.count = MAX_SYNCED_DEVICES;
-  r.crc = device_registry_crc32(&r);
+  build_device_registry_block(&r);
   LOG_D("prefs write dev_registry blk=%u count=%u", (unsigned)sizeof(r), (unsigned)r.count);
   share_prefs_set_block(pref, "dev_registry", (void *)&r, sizeof(r));
+  s_last_saved_registry_crc = r.crc;
+  s_last_saved_registry_valid = true;
 }
 
 static void read_msg_switch(share_prefs_t *pref)
@@ -572,6 +589,21 @@ void watch_prefs_save_alarms(void)
 
 void watch_prefs_save_device_registry(void)
 {
+  /* Skip the whole flash open/write/close when the persisted content is
+     unchanged. The phone re-pushes device-list / actions frequently, but those
+     are mostly status-only (status is RAM-only) or identical re-pushes, so the
+     CRC is unchanged. On SiFli, code runs XIP from flash, so each flash write
+     stalls execution — a burst of no-op saves starves the GUI thread and trips
+     the HCPU watchdog (WDT1 timeout → reboot). The cheap CRC pre-check (RAM
+     only, no flash) avoids that thrash. */
+  T_DEVICE_REGISTRY probe;
+  uint32_t crc = build_device_registry_block(&probe);
+  if (s_last_saved_registry_valid && crc == s_last_saved_registry_crc)
+  {
+    LOG_D("dev_registry unchanged (crc=%08x) — skip flash save", (unsigned)crc);
+    return;
+  }
+
   share_prefs_t *pref = open_watch_prefs();
   if (pref == NULL) { LOG_E("watch_prefs_save_device_registry: open failed"); return; }
   write_device_registry(pref);
