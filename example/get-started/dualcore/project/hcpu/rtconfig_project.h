@@ -2,7 +2,10 @@
 #define RTCONFIG_PROJECT_H__
 
 /* Override the SDK default "SifliDemo" Classic-BT local-name prefix. */
-#define BT_LOCAL_NAME_PREFIX "SkaiWatch"
+#define BT_LOCAL_NAME_PREFIX "Skaiwalk Air"
+/* Use the prefix verbatim as the Classic-BT friendly name (no "-<mac>" suffix),
+   to match the unified BLE device name. Consumed in bts2_app_generic.c. */
+#define BT_LOCAL_NAME_NO_SUFFIX
 
 #if defined(_MSC_VER)
     /* APP_TRANS_ANIMATION_OVERWRITE is now set via Kconfig (proj.conf), no

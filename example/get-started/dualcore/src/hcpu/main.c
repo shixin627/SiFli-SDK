@@ -889,7 +889,7 @@ static void ble_app_bg_advertising_start(void)
     sibles_advertising_para_t para = {0};
     uint8_t ret;
 
-    char local_name[] = "SKAIWALK_BG_INFO";
+    char local_name[] = "Skaiwalk Air";
     uint8_t manu_additnal_data[] = {0x20, 0xC4, 0x00, 0x91};
     uint16_t manu_company_id = 0x01;
 
@@ -1287,7 +1287,7 @@ uint8_t sibles_advertising_disc_mode_get()
 
 #define USING_ADV_MANUFACTURER_DATA 0
 
-#define DEFAULT_LOCAL_NAME "SkaiWatch"
+#define DEFAULT_LOCAL_NAME "Skaiwalk Air"
 #define GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE 192
 #define GAP_GATT_APPEARANCE_MOUSE 962
 #define ENABLE_ADV_SERVICE_UUID 1
@@ -1330,15 +1330,8 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
     uint8_t manu_additnal_data[] = {0x20, 0xC4, 0x00, 0x91};
     uint16_t manu_company_id = 0x01;
 #endif
-    bd_addr_t addr;
-    ret = ble_get_public_address(&addr);
-    if (ret == HL_ERR_NO_ERROR)
-        rt_snprintf(local_name, sizeof(local_name),
-                    "SkaiWatch-%x-%x-%x-%x-%x-%x",
-                    addr.addr[0], addr.addr[1], addr.addr[2],
-                    addr.addr[3], addr.addr[4], addr.addr[5]);
-    else
-        memcpy(local_name, DEFAULT_LOCAL_NAME, sizeof(DEFAULT_LOCAL_NAME));
+    /* Fixed device name, no MAC suffix — unified to "Skaiwalk Air". */
+    memcpy(local_name, DEFAULT_LOCAL_NAME, sizeof(DEFAULT_LOCAL_NAME));
 
     // Set name to ble service
     ble_gap_dev_name_t *dev_name =
@@ -1368,9 +1361,8 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
     // adv data and rsp data use same data
     // para.config.is_rsp_data_duplicate = 1;
 
-    /* Prepare name field. Full name "SkaiWatch-xx-xx-xx-xx-xx-xx" (up to 27
-     * chars + 2-byte AD header) doesn't fit alongside flags/appearance/service
-     * UUID in the 31-byte adv packet, so put it in scan response data instead. */
+    /* Prepare name field — placed in scan-response data (not the 31-byte adv
+     * packet, which carries flags/appearance/service UUID). */
     para.rsp_data.completed_name =
         rt_malloc(rt_strlen(local_name) + sizeof(sibles_adv_type_name_t));
     para.rsp_data.completed_name->name_len = rt_strlen(local_name);
