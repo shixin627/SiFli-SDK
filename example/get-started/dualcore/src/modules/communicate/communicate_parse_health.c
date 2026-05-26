@@ -41,37 +41,13 @@ void resolve_HealthData_command(uint8_t key, const uint8_t *pValue,
     {
         if (length == 0)
         {
-            LOG_I("request today's exercise data");
-
-            time_t now;
-            struct tm *tm_info;
-            char file_path[40];
-
-            time(&now);
-            tm_info = localtime(&now);
-            snprintf(file_path, sizeof(file_path),
-                     "/exercise/%04d%02d%02d.json",
-                     tm_info->tm_year + 1900, tm_info->tm_mon + 1,
-                     tm_info->tm_mday);
-
-            struct stat st;
-            if (stat(file_path, &st) == 0)
-            {
-                int sync_ret =
-                    bloc_file_system.sync_file((char *)file_path, false);
-                if (sync_ret == 0)
-                {
-                    LOG_D("sync today's exercise: %s", file_path);
-                }
-                else
-                {
-                    LOG_E("failed to sync today's exercise: %s", file_path);
-                }
-            }
-            else
-            {
-                LOG_D("no exercise data today: %s", file_path);
-            }
+            /* Sync ALL un-synced exercise days (not just today) so a multi-day
+               offline period is not missed. delete_after_sync=false: the phone
+               dedupes per day, and today's file was already re-sent on every
+               request before this change, so re-receiving a day is idempotent
+               on the phone. */
+            LOG_I("request exercise data: sync all /exercise files");
+            bloc_file_system.sync_folder_files("/exercise", false);
         }
     }
     break;

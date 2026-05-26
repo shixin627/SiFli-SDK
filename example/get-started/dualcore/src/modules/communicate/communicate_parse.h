@@ -26,6 +26,7 @@ extern "C"
 #include "communicate_parse_control.h"
 #include "communicate_parse_health.h"
 #include "communicate_parse_notify.h"
+#include "communicate_parse_factory.h"
 
     /* Command ID */
     typedef enum

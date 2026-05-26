@@ -48,6 +48,7 @@
 #include <stdlib.h>
 #include <board.h>
 #include "watch_system_interact.h"
+#include "bloc_health.h"
 #include "data_service_subscriber.h"
 #include "power_manager_service.h"
 #include "lv_ext_resource_manager.h"
@@ -596,6 +597,11 @@ void set_watch_sleep_state(const watch_sys_sleep_state_t *state)
        send helper gates on connection + non-DFU. */
     #ifdef BSP_USING_COMMUNICATE
     commu_send_sleep_data();
+    #endif
+    /* Persist for store-and-forward so a disconnected sleep session is not
+       lost; synced to the phone on reconnect. */
+    #ifdef BSP_USING_BLOC_FILESYSTEM
+    health_store_sleep_async(state);
     #endif
 }
 #endif

@@ -57,13 +57,16 @@ static volatile bool stress_test_running = false;
 static rt_thread_t cpu_stress_thread = RT_NULL;
 static rt_thread_t amoled_thread = RT_NULL;
 static rt_thread_t imu_thread = RT_NULL;
-static rt_thread_t ppg_thread = RT_NULL;
 static rt_thread_t motor_thread = RT_NULL;
 
 static lv_obj_t *test_label;
-static lv_obj_t *status_label;
-static lv_obj_t *ppg_status_label;
+static lv_obj_t *sensor_label;
 static lv_obj_t *mode_select_container;
+
+/* Live microphone metrics, defined in audio_code_i2s.c. Declared inline here
+   following this file's existing extern style (see generate_random_public_address). */
+extern uint16_t mic_get_rms_level(void);
+extern bool mic_get_vad_active(void);
 
 // CPU intensive stress test functions
 static void cpu_stress_thread_entry(void *parameter)
@@ -159,42 +162,43 @@ static void amoled_stress_thread_entry(void *parameter)
     LOG_D("AMOLED stress thread stopped");
 }
 
+/* Reads every sensor (+ live mic level) and renders them in one centered,
+ * multi-line label so all values are readable at a glance during the test. */
 static void imu_stress_thread_entry(void *parameter)
 {
-    LOG_D("IMU stress thread started");
+    LOG_D("Sensor display thread started");
 
     while (stress_test_running)
     {
-        char buf[96];
-        rt_sprintf(buf, "LinAcc: %.2f, %.2f, %.2f",
-                   watch_sensor.motion_data.linear_acce.x,
-                   watch_sensor.motion_data.linear_acce.y,
-                   watch_sensor.motion_data.linear_acce.z);
-        if (status_label != NULL)
+        char buf[256];
+        rt_snprintf(buf, sizeof(buf),
+                    "ACC %.1f %.1f %.1f\n"
+                    "GYR %.1f %.1f %.1f\n"
+                    "MAG %.1f %.1f %.1f\n"
+                    "PPG %u %u\n"
+                    "HR %d\n"
+                    "MIC %u %s",
+                    watch_sensor.imu_data.acce.x,
+                    watch_sensor.imu_data.acce.y,
+                    watch_sensor.imu_data.acce.z,
+                    watch_sensor.imu_data.gyro.x,
+                    watch_sensor.imu_data.gyro.y,
+                    watch_sensor.imu_data.gyro.z,
+                    watch_sensor.imu_data.mag.x,
+                    watch_sensor.imu_data.mag.y,
+                    watch_sensor.imu_data.mag.z,
+                    watch_sensor.ppg_data.raw_data[0],
+                    watch_sensor.ppg_data.raw_data[1],
+                    watch_sensor.hr_data.hr,
+                    mic_get_rms_level(),
+                    mic_get_vad_active() ? "VAD" : "---");
+        if (sensor_label != NULL)
         {
-            lv_label_set_text(status_label, buf);
+            lv_label_set_text(sensor_label, buf);
         }
         rt_thread_mdelay(100);
     }
-    LOG_D("IMU stress thread stopped");
-}
-
-static void ppg_stress_thread_entry(void *parameter)
-{
-    LOG_D("PPG stress thread started");
-
-    while (stress_test_running)
-    {
-        char buf[64];
-        rt_sprintf(buf, "PPG: %d, %d", watch_sensor.ppg_data.raw_data[0],
-                   watch_sensor.ppg_data.raw_data[1]);
-        if (ppg_status_label != NULL)
-        {
-            lv_label_set_text(ppg_status_label, buf);
-        }
-        rt_thread_mdelay(100);
-    }
-    LOG_D("PPG stress thread stopped");
+    LOG_D("Sensor display thread stopped");
 }
 
 static void motor_stress_thread_entry(void *parameter)
@@ -240,7 +244,6 @@ static const stress_thread_def_t stress_thread_defs[] = {
     {&cpu_stress_thread, "cpu_stress", cpu_stress_thread_entry, 8192, 5},
     {&amoled_thread, "amoled_stress", amoled_stress_thread_entry, 4096, 15},
     {&imu_thread, "imu_stress", imu_stress_thread_entry, 4096, 12},
-    {&ppg_thread, "ppg_stress", ppg_stress_thread_entry, 4096, 12},
     {&motor_thread, "motor_stress", motor_stress_thread_entry, 2048, 20},
 };
 
@@ -395,20 +398,22 @@ static lv_obj_t *on_start(lv_obj_t *parent)
     lv_obj_add_event_cb(parent, screen_event_handler, LV_EVENT_ALL, NULL);
 
     test_label = lv_label_create(parent);
-    lv_obj_align(test_label, LV_ALIGN_CENTER, 0, -30);
+    lv_obj_align(test_label, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_set_style_text_align(test_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(test_label, "");
 
-    status_label = lv_label_create(parent);
-    lv_obj_align(status_label, LV_ALIGN_BOTTOM_MID, 0, -40);
-    lv_label_set_text(status_label, "");
-    lv_obj_set_style_text_font(status_label,
+    /* All sensor values + mic, centered for easy reading during the test. */
+    sensor_label = lv_label_create(parent);
+    lv_obj_align(sensor_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_text_align(sensor_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(sensor_label, "");
+    lv_obj_set_style_text_font(sensor_label,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-
-    ppg_status_label = lv_label_create(parent);
-    lv_obj_align(ppg_status_label, LV_ALIGN_BOTTOM_MID, 0, -10);
-    lv_label_set_text(ppg_status_label, "");
-    lv_obj_set_style_text_font(ppg_status_label,
-                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_color(sensor_label, lv_color_white(), 0);
+    lv_obj_set_style_bg_color(sensor_label, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(sensor_label, LV_OPA_50, 0);
+    lv_obj_set_style_pad_all(sensor_label, 6, 0);
+    lv_obj_set_style_radius(sensor_label, 0, 0);
 
     // Show mode selection UI
     create_mode_selection_ui(parent);

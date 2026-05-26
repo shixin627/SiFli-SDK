@@ -412,10 +412,24 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     //// Watch System Request (end) ////
     case KEY_MEDIA_TITLE:
     {
-        char title_buf[128];
-        ble_payload_to_cstr(title_buf, sizeof(title_buf), pValue, length);
-        LOG_D("media title: %s", title_buf);
-        control_provider.set_media_title(title_buf);
+        /* Payload is the whole JSON {"title":...,"artist":...}; set_media_title()
+           cJSON_Parses it. A fixed 128-byte buffer truncated long titles
+           mid-JSON, so cJSON_Parse failed and nothing was applied. Copy the
+           full payload (same pattern as KEY_AI_PROCESS_TOOLKIT below);
+           set_media_title copies the parsed fields into its own storage, so
+           freeing here is safe. */
+        if (length > 0 && pValue != NULL)
+        {
+            char *title_json = (char *)rt_malloc(length + 1);
+            if (title_json != NULL)
+            {
+                memcpy(title_json, pValue, length);
+                title_json[length] = '\0';
+                LOG_D("media title: %s", title_json);
+                control_provider.set_media_title(title_json);
+                rt_free(title_json);
+            }
+        }
         break;
     }
 

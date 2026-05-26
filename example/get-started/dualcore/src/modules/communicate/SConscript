@@ -13,6 +13,7 @@ if GetDepend('BSP_BLE_SIBLES'):
         src += Glob('communicate_protocol.c')
         src += Glob('communicate_task.c')
         src += Glob('communicate_parse.c')
+        src += Glob('communicate_parse_factory.c')
         if GetDepend('BSP_USING_COMM_BOND'):
             src += Glob('communicate_parse_bond.c')
         if GetDepend('BSP_USING_COMM_CONTROL'):

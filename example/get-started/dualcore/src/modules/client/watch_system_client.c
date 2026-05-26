@@ -61,6 +61,7 @@
 #include "power_manager_service.h"
 #include "littlevgl2rtt.h"
 #include "bloc_peripheral.h"
+#include "bloc_health.h"
 #ifdef BSP_USING_BLOC_NOTIFY
     #include "bloc_notification.h"
 #endif
@@ -305,6 +306,10 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         UNPACK_DATA(arg, watch_sys_hr_sample_t, data_ind);
         /* Background daily HR-curve point from LCPU -> forward to phone. */
         commu_send_heart_curve_sample(data_ind->timestamp, data_ind->bpm);
+#ifdef BSP_USING_BLOC_FILESYSTEM
+        /* Persist for store-and-forward (survives BLE disconnect). */
+        health_store_hr_async(data_ind->timestamp, data_ind->bpm);
+#endif
         break;
     }
     case MSG_SERVICE_SLEEP_STATE_IND:
