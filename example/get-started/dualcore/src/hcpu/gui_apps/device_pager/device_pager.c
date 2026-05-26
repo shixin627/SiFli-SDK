@@ -985,6 +985,7 @@ void device_pager_set_active(bool on)
            actuates them on the active target device. Set on every entry (the
            standalone APP_ID_MOUSE app clears it), not just first creation. */
         ble_hid_mouse_set_app_route(true);
+        LOG_I("[pager] mouse app-route ON (trackpad -> SKAI_LINK)");
         device_pager_refresh();
         /* Enter on the LIST (the mouse shows through behind it); pull down to reveal
            the full mouse. */
@@ -1046,6 +1047,7 @@ void device_pager_set_active(bool on)
             /* Stop relaying the trackpad to the phone — back to BLE HID for any
                standalone mouse use. */
             ble_hid_mouse_set_app_route(false);
+            LOG_I("[pager] mouse app-route OFF");
             hid_mouse_destroy();
             lv_obj_clean(p->mouse_base);
             p->mouse_created = false;

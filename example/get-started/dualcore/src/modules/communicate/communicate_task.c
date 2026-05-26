@@ -317,7 +317,9 @@ bool commu_send_mouse_move(int dx, int dy)
     char json[28];
     int n = rt_snprintf(json, sizeof(json), "{\"dx\":%d,\"dy\":%d}", dx, dy);
     if (n <= 0 || n >= (int)sizeof(json)) return false;
-    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_MOVE, json);
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_MOVE, json);
+    LOG_D("send mouse move dx=%d dy=%d -> %s", dx, dy, ok ? "ok" : "FAIL");
+    return ok;
 }
 bool commu_send_mouse_button(uint8_t btn, uint8_t act)
 {
@@ -325,18 +327,25 @@ bool commu_send_mouse_button(uint8_t btn, uint8_t act)
     int n = rt_snprintf(json, sizeof(json), "{\"btn\":%u,\"act\":%u}",
                         (unsigned)btn, (unsigned)act);
     if (n <= 0 || n >= (int)sizeof(json)) return false;
-    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_BUTTON, json);
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_BUTTON, json);
+    LOG_I("send mouse button btn=%u act=%u -> %s", (unsigned)btn, (unsigned)act,
+          ok ? "ok" : "FAIL");
+    return ok;
 }
 bool commu_send_mouse_scroll(int dx, int dy)
 {
     char json[28];
     int n = rt_snprintf(json, sizeof(json), "{\"dx\":%d,\"dy\":%d}", dx, dy);
     if (n <= 0 || n >= (int)sizeof(json)) return false;
-    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_SCROLL, json);
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_SCROLL, json);
+    LOG_D("send mouse scroll dx=%d dy=%d -> %s", dx, dy, ok ? "ok" : "FAIL");
+    return ok;
 }
 bool commu_send_mouse_back(void)
 {
-    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_BACK, "{}");
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_BACK, "{}");
+    LOG_I("send mouse back -> %s", ok ? "ok" : "FAIL");
+    return ok;
 }
 
 /*============================================================================*
