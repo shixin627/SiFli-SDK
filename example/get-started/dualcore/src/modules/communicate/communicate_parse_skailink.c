@@ -310,6 +310,13 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
         /* Uplink-only (watch→phone); never received here. */
         LOG_W("skailink: KEY_ACTION_FOCUS is uplink-only");
         break;
+    case KEY_MOUSE_MOVE:
+    case KEY_MOUSE_BUTTON:
+    case KEY_MOUSE_SCROLL:
+    case KEY_MOUSE_BACK:
+        /* Device-page trackpad relay — uplink-only (watch→phone); never received. */
+        LOG_W("skailink: mouse key 0x%02x is uplink-only", key);
+        break;
     default:
         LOG_W("skailink: unknown key 0x%02x", key);
         break;

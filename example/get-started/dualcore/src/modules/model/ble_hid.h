@@ -236,6 +236,20 @@ uint8_t ble_hid_get_conn_idx(void);
  */
 void ble_hid_reset_on_disconnect(void);
 
+/**
+ * @brief Route the mouse primitives to the phone (SKAI_LINK) instead of BLE HID.
+ *
+ * When enabled, BLE_HID_Mouse_Move / scroll / button stop emitting BLE HID
+ * reports and instead relay over SKAI_LINK (commu_send_mouse_*), so the phone
+ * actuates them on the active target device. Enabled by device_pager for the
+ * device-page-hosted trackpad only; the standalone APP_ID_MOUSE app keeps it
+ * disabled and talks BLE HID directly. Always linkable (not under HID_MOUSE).
+ */
+void ble_hid_mouse_set_app_route(bool on);
+
+/** @brief Is the device-page mouse→phone relay currently active? */
+bool ble_hid_mouse_app_route(void);
+
 #ifdef HID_MOUSE
 /* Mouse Control Functions */
 void BLE_HID_Mouse_Move(int8_t dx, int8_t dy);

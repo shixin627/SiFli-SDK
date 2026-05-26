@@ -82,6 +82,14 @@ bool commu_send_skaibar_committed(uint8_t idx);
 bool commu_send_option_commit(uint8_t idx);   /* option TAPPED   -> KEY_ACTION_SELECT (0x06) */
 bool commu_send_option_focus(uint8_t idx);    /* option SCROLLED -> KEY_ACTION_FOCUS  (0x07) */
 
+/* device-page trackpad relay uplink, SKAI_LINK group. Only the right-side device
+   page's hosted mouse routes here (the standalone APP_ID_MOUSE app keeps BLE HID);
+   the phone actuates these on the active target device. */
+bool commu_send_mouse_move(int dx, int dy);            /* -> KEY_MOUSE_MOVE   (0x08) */
+bool commu_send_mouse_button(uint8_t btn, uint8_t act);/* -> KEY_MOUSE_BUTTON (0x09) btn 0=L 1=R; act 0=up 1=down 2=click */
+bool commu_send_mouse_scroll(int dx, int dy);          /* -> KEY_MOUSE_SCROLL (0x0A) wheel=dy pan=dx */
+bool commu_send_mouse_back(void);                      /* -> KEY_MOUSE_BACK   (0x0B) */
+
 /* Sensor */
 bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length);
 

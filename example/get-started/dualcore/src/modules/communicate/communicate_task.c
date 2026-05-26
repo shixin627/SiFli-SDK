@@ -308,6 +308,37 @@ bool commu_send_option_focus(uint8_t idx)
     return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_ACTION_FOCUS, json);
 }
 
+/* watch→phone (SKAI_LINK): device-page trackpad relay. The right-side device
+   page hosts the hid_mouse trackpad; rather than emitting BLE HID reports, its
+   events stream here and the phone actuates them on the active target device.
+   JSON shapes match communicate_parse_skailink.h / the dart SkaiLinkKey doc. */
+bool commu_send_mouse_move(int dx, int dy)
+{
+    char json[28];
+    int n = rt_snprintf(json, sizeof(json), "{\"dx\":%d,\"dy\":%d}", dx, dy);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_MOVE, json);
+}
+bool commu_send_mouse_button(uint8_t btn, uint8_t act)
+{
+    char json[28];
+    int n = rt_snprintf(json, sizeof(json), "{\"btn\":%u,\"act\":%u}",
+                        (unsigned)btn, (unsigned)act);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_BUTTON, json);
+}
+bool commu_send_mouse_scroll(int dx, int dy)
+{
+    char json[28];
+    int n = rt_snprintf(json, sizeof(json), "{\"dx\":%d,\"dy\":%d}", dx, dy);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_SCROLL, json);
+}
+bool commu_send_mouse_back(void)
+{
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_BACK, "{}");
+}
+
 /*============================================================================*
  *                              Sensor
  *============================================================================*/

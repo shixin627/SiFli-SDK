@@ -980,6 +980,11 @@ void device_pager_set_active(bool on)
             hid_mouse_fade_in_scroll_wheel();
             LOG_I("[pager] device page active — mouse base hosted");
         }
+        /* Route the hosted trackpad to the phone over SKAI_LINK (instead of BLE
+           HID): mouse move / click / scroll / back now stream to the app, which
+           actuates them on the active target device. Set on every entry (the
+           standalone APP_ID_MOUSE app clears it), not just first creation. */
+        ble_hid_mouse_set_app_route(true);
         device_pager_refresh();
         /* Enter on the LIST (the mouse shows through behind it); pull down to reveal
            the full mouse. */
@@ -1038,6 +1043,9 @@ void device_pager_set_active(bool on)
             pager_send_active("");
             LOG_I("[pager] left device page -> active device cleared");
 
+            /* Stop relaying the trackpad to the phone — back to BLE HID for any
+               standalone mouse use. */
+            ble_hid_mouse_set_app_route(false);
             hid_mouse_destroy();
             lv_obj_clean(p->mouse_base);
             p->mouse_created = false;
