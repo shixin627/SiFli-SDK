@@ -19,6 +19,13 @@ elif GetDepend('BSP_USING_SLEEP_FUSION'):
     src += ['sleep_fusion.c']
     group = DefineGroup('Health', src, depend = ['BSP_USING_SLEEP_FUSION'],
                         CPPPATH = path)
+elif GetDepend('BSP_USING_SLEEP_VANHEES'):
+    # In-tree accel-only sleep-PERIOD detector (van Hees arm-angle SIB).
+    # Pure C, no external lib, no HR. Driver: modules/service/
+    # sleep_vanhees_service.c. Mutually exclusive with the two above.
+    src += ['sleep_vanhees.c']
+    group = DefineGroup('Health', src, depend = ['BSP_USING_SLEEP_VANHEES'],
+                        CPPPATH = path)
 else:
     group = DefineGroup('Health', [], depend = [''], CPPPATH = path)
 

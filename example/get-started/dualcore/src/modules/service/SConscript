@@ -46,6 +46,11 @@ if GetDepend('BSP_USING_SLEEP_FUSION'):
     # also gated on BSP_USING_SLEEP_FUSION, so keep both in sync.
     src += Glob('sleep_service.c')
 
+if GetDepend('BSP_USING_SLEEP_VANHEES'):
+    # LCPU driver for the accel-only van Hees sleep-period detector. Depends
+    # on algorithm/health/sleep_vanhees.{c,h} (also gated on the same flag).
+    src += Glob('sleep_vanhees_service.c')
+
 group = DefineGroup('Service', src, depend = [''], CPPPATH = path)
 
 Return('group')

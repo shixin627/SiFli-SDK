@@ -33,6 +33,10 @@ menu "Select algorithm"
 		bool "Enable in-tree sleep fusion (Cole-Kripke + HR staging)"
 		default n
 
+	config BSP_USING_SLEEP_VANHEES
+		bool "Enable in-tree van Hees accel-only sleep-period detector"
+		default n
+
 	config BSP_USING_ACTIVITY_ALGO_KRAEPELIN
 			bool "Enable activity algorithm kraepelin"
 			default n
