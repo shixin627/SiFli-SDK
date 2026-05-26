@@ -110,6 +110,7 @@ typedef struct
     lv_obj_t *snap[MAX_TILE_ITEMS];       /* invisible scroll/snap anchors */
     lv_obj_t *item_icon[MAX_TILE_ITEMS];  /* floating icons, positioned on the arc */
     lv_obj_t *name_label;                 /* single centred label = selected item's name */
+    lv_obj_t *offline_label;              /* shown instead of the list when the device is offline */
     arc_scroll_handle_t *arc;             /* right-band drag → scrolls this list */
     dev_page_t *dev;                      /* device this tile currently shows */
     int       sel;                        /* index currently at the arc centre */
@@ -190,6 +191,8 @@ static void mouse_retarget(void);            /* defined below */
 static void skaibar_close(void);             /* defined below (skaibar section) */
 static void skaibar_open(void);              /* defined below (skaibar section) */
 static void skaibar_grow_cb(void *var, int32_t f); /* morph step; defined below */
+static bool current_device_offline(void);    /* defined below */
+static void sync_offline_page_chrome(void);   /* defined below */
 
 /* Hide the skaibar input box as soon as a list scroll begins (mirrors the left
    instruction_list, where scrolling dismisses the AI widget). */
@@ -481,16 +484,42 @@ static void bind_tile(int k)
     }
     dev_page_t *d = &p->model[logical];
     u->dev = d;
+    bool offline = (d->status == 0);
     lv_label_set_text_fmt(u->header, "%s   %d/%d", d->name, logical + 1, p->count);
     /* ADR-0008 E7: status-driven header tint (status = device_status[i], synced
        by communicate_parse_skailink): 0 off -> gray, 1 on -> blue, 2 primary ->
        lit accent so the device currently bridging the watch stands out. */
     lv_obj_set_style_text_color(
         u->header,
-        (d->status == 0)   ? lv_color_hex(0x666666)   /* off: dimmed     */
+        offline            ? lv_color_hex(0x666666)   /* off: dimmed     */
         : (d->status == 2) ? lv_color_hex(0x4DE3A0)   /* primary: lit    */
                            : lv_color_hex(0x00AAFF),  /* on: normal blue */
         0);
+
+    /* Offline device: lock the page — hide the action list + its name label,
+       show the OFFLINE placeholder, and make the list non-scrollable so nothing
+       on the page moves (nor can the trackpad be pulled in). The horizontal
+       device swipe still works: it chains through the non-scrollable list to the
+       pager, so the user can swipe to another (online) device. */
+    if (offline)
+    {
+        for (int i = 0; i < MAX_TILE_ITEMS; i++)
+        {
+            lv_obj_add_flag(u->item_icon[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(u->snap[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        lv_obj_add_flag(u->name_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(u->offline_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(u->list, LV_OBJ_FLAG_SCROLLABLE);
+        if (u->arc) arc_scroll_set_item_count(u->arc, 0);
+        u->sel = -1;            /* no selectable item → taps/commits are no-ops */
+        return;
+    }
+    /* Online: restore the interactive list (offline placeholder hidden, list
+       scrollable again) before binding the items. */
+    lv_obj_add_flag(u->offline_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(u->name_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(u->list, LV_OBJ_FLAG_SCROLLABLE);
     /* Show one snap anchor per item so the arc_scroll range matches item_count,
        and point each item icon at its category image (instruction/application/
        folder). The icons are recycled across devices, so the src must be re-bound
@@ -583,6 +612,7 @@ static void pager_settle_ready_cb(lv_anim_t *a)
     }
     snap_to_center(LV_ANIM_OFF);
     update_pager_scroll_dir();
+    sync_offline_page_chrome();
     p->recycling = false;
 }
 
@@ -717,6 +747,18 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
     lv_obj_add_event_cb(u->name_label, device_name_tap_cb, LV_EVENT_CLICKED, u);
     u->sel = 0;
 
+    /* Offline placeholder — shown (instead of the action list) when this tile's
+       device is offline. Non-clickable; the list is also made non-scrollable in
+       bind_tile so the whole page is locked except the horizontal device swipe. */
+    u->offline_label = lv_label_create(u->tile);
+    lv_obj_set_style_text_font(u->offline_label,
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_color(u->offline_label, lv_color_hex(0x666666), 0);
+    lv_obj_set_style_text_align(u->offline_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(u->offline_label, "Offline");
+    lv_obj_center(u->offline_label);
+    lv_obj_add_flag(u->offline_label, LV_OBJ_FLAG_HIDDEN);
+
     /* Right-band arc scroll — drag in the right arc band scrolls the items;
        lock_ancestors keeps the overlay tileview from stealing the drag (this
        page is a tileview child, like the left instruction_list). */
@@ -736,6 +778,31 @@ static void make_tile(tile_ui_t *u, lv_obj_t *parent)
     u->arc = arc_scroll_create(&cfg);
 }
 
+/* Is the CURRENT (centred) device offline (status 0)? Its page is locked. */
+static bool current_device_offline(void)
+{
+    return p && p->count > 0 && p->current < p->count &&
+           p->model[p->current].status == 0;
+}
+
+/* Page-level lock for an offline current device: hide the bottom voice (mic)
+   bar so its input can't be opened (the per-tile list is already hidden +
+   non-scrollable in bind_tile). Call whenever the current device or its status
+   may have changed (refresh / device switch). */
+static void sync_offline_page_chrome(void)
+{
+    if (!p || !p->mic_bar) return;
+    if (current_device_offline())
+    {
+        if (p->skaibar_active) skaibar_close();
+        lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    }
+    else
+    {
+        lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 static void refresh(void)
 {
     if (!p) return;
@@ -750,6 +817,7 @@ static void refresh(void)
     rebind_all();
     snap_to_center(LV_ANIM_OFF);
     update_pager_scroll_dir();
+    sync_offline_page_chrome();
 }
 
 /* Public: re-load the (phone-streamed) device list from the registry and
@@ -885,6 +953,12 @@ static void bar_cb(lv_event_t *e)
     lv_indev_t *indev = lv_indev_get_act();
     if (code == LV_EVENT_PRESSED)
     {
+        /* Offline current device: the list page is locked — don't let the
+           device-name handle pull the trackpad in. (Retract from the mouse page
+           is still allowed: overlay HIDDEN means we're already on the mouse.) */
+        if (current_device_offline() &&
+            !lv_obj_has_flag(p->overlay, LV_OBJ_FLAG_HIDDEN))
+            return;
         lv_point_t pt;
         if (indev) lv_indev_get_point(indev, &pt); else pt.y = 0;
         p->bar_press_y = pt.y;
@@ -1243,6 +1317,8 @@ static void mic_clicked_cb(lv_event_t *e)
 {
     (void)e;
     if (!p) return;
+    /* Offline device: the page is locked — no voice input. */
+    if (current_device_offline()) return;
     /* Toggle by the box's ACTUAL visibility, not the skaibar_active flag — the
        flag can get stuck (e.g. cleared on page-leave without hiding), which
        would make a tap take the close branch and do nothing instead of opening.
