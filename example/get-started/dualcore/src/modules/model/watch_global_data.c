@@ -254,6 +254,9 @@ static uint32_t build_device_registry_block(T_DEVICE_REGISTRY *r)
 
 static void write_device_registry(share_prefs_t *pref)
 {
+  /* One T_DEVICE_REGISTRY on the stack, built here AFTER open returned (matches
+     the original footprint — the storage worker stack is only 8KB; a second
+     coexisting copy overflowed it, STKOF). */
   T_DEVICE_REGISTRY r;
   build_device_registry_block(&r);
   LOG_D("prefs write dev_registry blk=%u count=%u", (unsigned)sizeof(r), (unsigned)r.count);
@@ -590,14 +593,20 @@ void watch_prefs_save_alarms(void)
 void watch_prefs_save_device_registry(void)
 {
   /* Skip the whole flash open/write/close when the persisted content is
-     unchanged. The phone re-pushes device-list / actions frequently, but those
-     are mostly status-only (status is RAM-only) or identical re-pushes, so the
-     CRC is unchanged. On SiFli, code runs XIP from flash, so each flash write
-     stalls execution — a burst of no-op saves starves the GUI thread and trips
-     the HCPU watchdog (WDT1 timeout → reboot). The cheap CRC pre-check (RAM
-     only, no flash) avoids that thrash. */
-  T_DEVICE_REGISTRY probe;
-  uint32_t crc = build_device_registry_block(&probe);
+     unchanged. CRC the LIVE registry directly — no stack copy (a second
+     T_DEVICE_REGISTRY on the storage worker's 8KB stack overflowed it, STKOF).
+     device_registry_crc32 excludes the crc field, and the live version/count
+     already match what gets persisted, so this equals the saved block's CRC.
+     The phone re-pushes device-list / actions frequently, but those are mostly
+     status-only (status is RAM-only) or identical re-pushes → CRC unchanged. On
+     SiFli, code runs XIP from flash, so each flash write stalls execution — a
+     burst of no-op saves starves the GUI thread and trips the HCPU watchdog
+     (WDT1 timeout → reboot). This RAM-only check avoids that thrash. */
+  /* Cast through void* — SkaiWatchSysType_t is packed, so a direct typed
+     &device_registry trips -Waddress-of-packed-member (-Werror). crc32 only
+     does byte access, so alignment is irrelevant. */
+  const void *reg = (const void *)&SkaiWatchSys.device_registry;
+  uint32_t crc = device_registry_crc32(reg);
   if (s_last_saved_registry_valid && crc == s_last_saved_registry_crc)
   {
     LOG_D("dev_registry unchanged (crc=%08x) — skip flash save", (unsigned)crc);
