@@ -64,7 +64,7 @@
 static bool last_device_logged = false;
 
 /* RT-Thread thread handle and stack definition */
-#define PERIODIC_TASK_STACK_SIZE 1024
+#define PERIODIC_TASK_STACK_SIZE 4096
 #define PERIODIC_TASK_PRIORITY 27 // Adjust priority as needed
 #define PERIODIC_TASK_TICK (60 * RT_TICK_PER_SECOND) // Run every 1 minute
 
