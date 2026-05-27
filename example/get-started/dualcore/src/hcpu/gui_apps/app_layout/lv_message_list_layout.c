@@ -2869,6 +2869,15 @@ static void handle_dial_header_new_notification(void)
         lv_timer_create(dial_header_shrink_timer_cb,
                         dial_header_shrink_duration_ms, NULL);
     lv_timer_set_repeat_count(dial_header_shrink_timer, 1);
+    /* Header 開始顯示這則新通知 → 同步把(此刻隱藏的)列表停留位置移到最新那則
+       (child notification_count-1，音樂 widget 正上方)。這樣稍後不論點或滑進
+       列表，頁面一 render 就已經停在最新通知，不會先停在音樂 widget 再瞬跳。
+       此處 flag 剛設 true 且必為 !is_at_message()(上面已 early return)，reset_list
+       走 else 分支 → reset_count = notification_count-1。這步是關鍵：定位用的
+       refresh 可能在 flag 設 true 之前就跑過(把列表停在音樂)，所以要在 flag 確定
+       為 true 的此處主動 reset。 */
+    if (p_app_notification && p_app_notification->list)
+        reset_list(false);
 }
 
 void lv_dial_header_builder(lv_obj_t *parent)
@@ -3213,6 +3222,10 @@ rt_int32_t notification_on_resume(void)
         set_paused_control_with_arm(false);
     }
     LOG_D("notification_on_resume");
+    /* 進場前先快照「header 當下顯示的是不是通知」。列表落點要跟著 header 狀態
+       走（與點/滑無關）：header 在顯示通知（8 秒暫時窗）→ 停最新通知；header
+       已變回音樂 → 停音樂 widget。下面的清理會把這個旗標抹掉，所以先存起來。 */
+    bool header_showing_notification = dial_header_showing_notification;
     /* 進到通知列表 → header 不應該再顯示通知（例外：音樂一直要在）。
        同時把 shrink timer / 狀態清乾淨，避免回主畫面時還殘留通知 header。 */
     if (dial_header_shrink_timer)
@@ -3241,6 +3254,29 @@ rt_int32_t notification_on_resume(void)
     set_control_gravity_x_range(0.6f, -0.6f, false);
     lvgl_msg_handler.handle_widgets_control = button_selection;
     lvgl_msg_handler.handle_nav_bar_control = scroll_message_list_to_index;
+    /* 依進場當下的 header 狀態主動定位列表（兩分支都要主動 reset，否則 revert
+       回音樂後若沒移回去，會殘留在上次的通知位置——就是「滑上去卻停在通知」）。
+       此處 is_at_message() 已為 true（check_is_at_message 先把 _at_message 設
+       true 才呼叫本函式），reset_list 走 selected_message_index 分支。 */
+    if (p_app_notification && p_app_notification->list)
+    {
+        if (header_showing_notification && notification_count > 0)
+        {
+            /* header 在顯示通知 → 停最新那則。child i 顯示的是
+               get_notification(notification_count-i-1)，所以最新那則
+               (get_notification(0)，正是 header 顯示的) 在最後一張卡片＝
+               child notification_count-1（音樂 widget 的正上方），不是 child 0。 */
+            selected_message_index = notification_count - 1;
+            reset_list(false);
+        }
+        else if (have_media_widget)
+        {
+            /* header 已是音樂（或一直是音樂）→ 停音樂 widget（child 在所有通知
+               之後，index = notification_count）。 */
+            selected_message_index = notification_count;
+            reset_list(false);
+        }
+    }
     return RT_EOK;
 }
 
