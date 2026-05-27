@@ -354,6 +354,7 @@ void display_gesture_detect_objs(uint32_t idx, bool display)
 {
     if (idx < 4 && lv_obj_is_valid(gesture_detect_objs[idx]))
     {
+        LOG_D("display_gesture_detect_objs idx=%d display=%d", idx, display);
         if (display)
             lv_obj_clear_flag(gesture_detect_objs[idx], LV_OBJ_FLAG_HIDDEN);
         else
