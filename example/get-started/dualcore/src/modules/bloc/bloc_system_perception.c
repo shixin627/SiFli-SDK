@@ -64,7 +64,14 @@
 static bool last_device_logged = false;
 
 /* RT-Thread thread handle and stack definition */
-#define PERIODIC_TASK_STACK_SIZE 1024
+/* 4 KB, not 1 KB: app_periodic_task() reaches bloc_file_system.sync_folder_files()
+ * which walks /health and /recorder, reads each file, serialises JSON and pushes
+ * it over BLE — the same deep path the file_sys thread runs at 4 KB (~45% used).
+ * At 1 KB this thread overflowed (RT-Thread "thread:periodic stack overflow",
+ * dump showed periodic at 100%) whenever the per-minute tick coincided with a
+ * sleep-stage write + reconnect health flush. Keep it at least as large as
+ * file_sys/health_s. */
+#define PERIODIC_TASK_STACK_SIZE 4096
 #define PERIODIC_TASK_PRIORITY 27 // Adjust priority as needed
 #define PERIODIC_TASK_TICK (60 * RT_TICK_PER_SECOND) // Run every 1 minute
 
