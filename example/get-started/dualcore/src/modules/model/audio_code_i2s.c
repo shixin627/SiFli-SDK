@@ -639,6 +639,31 @@ int i2s_device_close(void)
 #define TEMP_PCM_BUF_SIZE (RINGBUFFER_SIZE / 2)
 static int16_t pcm_data[TEMP_PCM_BUF_SIZE];
 
+/* ---- Live microphone metrics for the factory stress-test screen ----
+ * Updated by the audio thread on every captured frame; polled by the test
+ * app UI thread. 16-bit / bool reads are atomic on Cortex-M33, so a display-
+ * only value needs no lock. */
+volatile uint16_t g_mic_rms_level = 0;
+volatile bool     g_mic_vad_active = false;
+
+uint16_t mic_get_rms_level(void)  { return g_mic_rms_level; }
+bool     mic_get_vad_active(void) { return g_mic_vad_active; }
+
+/* Integer sqrt so the RMS calc stays off the FPU in the audio thread. */
+static uint16_t mic_isqrt32(uint32_t x)
+{
+    uint32_t res = 0;
+    uint32_t bit = 1UL << 30;
+    while (bit > x) bit >>= 2;
+    while (bit)
+    {
+        if (x >= res + bit) { x -= res + bit; res = (res >> 1) + bit; }
+        else                {                 res >>= 1;             }
+        bit >>= 2;
+    }
+    return (uint16_t)res;
+}
+
 static bool voice_activity_detect(uint8_t *buf, uint16_t len)
 {
     bool vad_active = false;
@@ -941,6 +966,24 @@ void audio_transfer_entry(void *parameter)
                         bool active = voice_activity_detect(audio_input_buf,
                                                             RINGBUFFER_SIZE);
                         voice_provider.notify_vad_status(active);
+
+                        /* Factory test: live mic level (RMS over the frame),
+                           computed every frame regardless of VAD so the
+                           stress-test screen shows a continuous level. */
+                        {
+                            uint64_t sum_sq = 0;
+                            const uint16_t mic_n = RINGBUFFER_SIZE / 2;
+                            for (uint16_t mi = 0; mi < mic_n; mi++)
+                            {
+                                int16_t s =
+                                    (int16_t)(audio_input_buf[2 * mi] |
+                                              (audio_input_buf[2 * mi + 1] << 8));
+                                sum_sq += (uint64_t)((int32_t)s * (int32_t)s);
+                            }
+                            g_mic_rms_level =
+                                mic_isqrt32((uint32_t)(sum_sq / mic_n));
+                            g_mic_vad_active = active;
+                        }
                         // 有說話聲才傳送至手機辨識
                         if (active)
                         {

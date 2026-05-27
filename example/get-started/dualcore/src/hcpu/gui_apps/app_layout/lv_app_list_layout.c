@@ -11,6 +11,7 @@
 #include "app_mainmenu.h"
 #include "common_widget.h"
 #include "ui_handler.h"
+#include "bsp_board.h"   /* kReleaseMode */
 #include "ui_img_helper.h"
 #include "arc_scroll.h"
 #include <string.h>
@@ -65,8 +66,8 @@ static const uint16_t APP_LIST_ITEMS[] = {
 #ifdef APP_ID_PHOTO
     app_id_photo,
 #endif
-#ifdef APP_ID_GAME_DINOSAUR
-    app_id_game_dinosaur,
+#if defined(APP_ID_GAME_DINOSAUR) && !kReleaseMode
+    app_id_game_dinosaur, /* hidden from app drawer in release builds */
 #endif
 };
 

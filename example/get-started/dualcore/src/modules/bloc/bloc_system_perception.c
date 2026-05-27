@@ -49,6 +49,7 @@
 #ifdef BSP_USING_BLOC
     #include "bloc_v2t.h"
     #include "bloc_filesystem.h"
+    #include "bloc_health.h"
 #endif
 #ifdef BSP_USING_WATCH_SYS_CLIENT
     #include "watch_sys_service.h"
@@ -138,6 +139,28 @@ void app_periodic_task(void)
         check_and_sync_pending_recordings();
     }
     last_device_logged = current_logged;
+
+    /* Flush persisted health files once per reconnect (rising edge of the live
+       BLE link). delete_after_sync=false so a still-unsynced day survives until
+       it ages out — no loss even on a flaky link; the phone upserts each day
+       idempotently. The live push handles updates while already connected, so
+       we deliberately do NOT re-flush every tick (that would re-send every
+       retained day every minute). */
+    {
+        static bool s_last_connected = false;
+        bool connected = SkaiWatchSys.connected_to_phone;
+        if (connected && !s_last_connected)
+        {
+            sync_progress_t *progress = get_sync_progress();
+            if (!progress->sync_status)
+            {
+                LOG_D("Reconnect: flushing pending /health files");
+                bloc_file_system.sync_folder_files("/health", false);
+            }
+            health_cleanup_old_files();
+        }
+        s_last_connected = connected;
+    }
 #endif
 
 #ifdef BSP_USING_WATCH_SYS_CLIENT

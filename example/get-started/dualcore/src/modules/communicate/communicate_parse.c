@@ -51,6 +51,10 @@ static void dispatch_l2_command(uint8_t cmd_id, uint8_t key, uint8_t *payload, u
         LOG_D("HEALTH_DATA_COMMAND, KEY = 0x%x", key);
         resolve_HealthData_command(key, payload, length);
         break;
+    case FACTORY_TEST_COMMAND_ID:
+        LOG_D("FACTORY_TEST_COMMAND, KEY = 0x%x", key);
+        resolve_factory_test_command(key, payload, length);
+        break;
     case NOTIFY_COMMAND_ID:
         LOG_D("NOTIFY_COMMAND_ID, KEY = 0x%x", key);
         resolve_Notify_command(key, payload, length);

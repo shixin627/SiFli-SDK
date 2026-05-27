@@ -109,7 +109,6 @@ static lv_obj_t *time_format_title_label = NULL;
 static lv_obj_t *time_format_badge_label = NULL;
 static lv_obj_t *mouse_press_quick_btn = NULL;
 
-extern void app_setting_sys_main(void);
 extern void app_developer_main(void);
 
 static void lang_btn_event_handler(lv_event_t *e)
@@ -527,16 +526,6 @@ static void btn_font_size_event_callback(lv_event_t *e)
     }
 }
 
-static void btn_sysinfo_event_callback(lv_event_t *e)
-{
-    lv_obj_t *obj = lv_event_get_target(e);
-    lv_event_code_t event = lv_event_get_code(e);
-
-    if (LV_EVENT_SHORT_CLICKED == event)
-    {
-        app_setting_sys_main();
-    }
-}
 
 static void btn_restart_event_callback(lv_event_t *e)
 {
@@ -729,16 +718,6 @@ static void btn_gesture_event_callback(lv_event_t *e)
     {
         gui_app_goback();
         gui_app_run(APP_ID_GESTURE);
-    }
-}
-static void btn_test_app_event_callback(lv_event_t *e)
-{
-    lv_event_code_t event = lv_event_get_code(e);
-
-    if (LV_EVENT_SHORT_CLICKED == event)
-    {
-        gui_app_goback();
-        gui_app_run("test");
     }
 }
 
@@ -1399,20 +1378,6 @@ void app_setting_init(void *param)
     lv_obj_add_event_cb(list_btn, btn_font_size_event_callback,
                         LV_EVENT_SHORT_CLICKED, NULL);
 
-    // System Info (opens sub-page)
-    list_btn = create_capsule_item(settings_container, list_btn,
-                                   LV_EXT_IMG_GET(airplane),
-                                   LV_EXT_STR_GET_BY_KEY(system_info, "System Info"),
-                                   true);
-    lv_obj_add_event_cb(list_btn, btn_sysinfo_event_callback,
-                        LV_EVENT_SHORT_CLICKED, NULL);
-
-    // Test App (launches another app)
-    list_btn = create_capsule_item(settings_container, list_btn,
-                                   LV_EXT_IMG_GET(airplane), "Test App",
-                                   true);
-    lv_obj_add_event_cb(list_btn, btn_test_app_event_callback,
-                        LV_EVENT_SHORT_CLICKED, NULL);
 
     // Reset device (in-place msgbox, no arrow)
     list_btn = create_capsule_item(settings_container, list_btn,
