@@ -150,11 +150,28 @@ static bool commu_send_string(uint8_t cmd_id, uint8_t key, const char *s)
    rt_sprintf with a bounds guard). */
 bool commu_send_active_device(const char *device_id)
 {
-    if (device_id == NULL) return false;
+    if (device_id == NULL) device_id = "";
+    /* Shared active-target de-dup. Both the LEFT page (instruction_list, target
+       = the directly-connected primary) and the RIGHT page (device_pager, target
+       = the selected non-primary device) assert the active target; sending only
+       on an actual CHANGE keeps a single source of truth across both pages, so
+       switching pages re-asserts cleanly without spamming identical frames. */
+    static char s_last_active[SYNCED_DEVICE_ID_LEN];
+    static bool s_last_active_valid = false;
+    if (s_last_active_valid &&
+        strncmp(s_last_active, device_id, sizeof(s_last_active)) == 0)
+        return true; /* unchanged → no-op success */
     char json[16 + SYNCED_DEVICE_ID_LEN];
     int n = rt_snprintf(json, sizeof(json), "{\"device_id\":\"%s\"}", device_id);
     if (n <= 0 || n >= (int)sizeof(json)) return false;
-    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_ACTIVE_SELECT, json);
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_ACTIVE_SELECT, json);
+    if (ok)
+    {
+        strncpy(s_last_active, device_id, sizeof(s_last_active) - 1);
+        s_last_active[sizeof(s_last_active) - 1] = '\0';
+        s_last_active_valid = true;
+    }
+    return ok;
 }
 
 /*============================================================================*

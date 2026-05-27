@@ -181,27 +181,19 @@ LV_IMG_DECLARE(icon_release);
 LV_IMG_DECLARE(app_icon_frame);
 // LV_IMG_DECLARE(img_messages);
 
+/* LEFT instruction list = PURE custom-instruction list, mirroring the RIGHT
+   device_pager (SkaiLink left-list migration). The local utility apps
+   (timer / flashlight / recorder) and the Skai AI widget were removed, so this
+   definition is intentionally EMPTY → app_base_count == 0 and the list shows
+   only the phone-pushed instructions. All sites that walk this array are bounded
+   by ARRAY_SIZE / app_base_count, so a zero-length array degrades to no-ops. */
 uint16_t INSTRUCTION_LIST_ITEMS_DEFINITION[] = {
 #ifdef APP_ID_TIMER
-    app_id_timer,
+    // app_id_timer,   /* removed: local app off the left list */
 #endif
-    app_id_flashlight,
-#ifdef APP_ID_CALCULATOR
-// app_id_calculator,
-#endif
-    // app_id_exercise,
-    app_id_recorder,
-#ifdef APP_ID_PHOTO
-// app_id_photo,
-#endif
-// app_id_weather,
-#ifdef APP_ID_GAME_DINOSAUR
-// app_id_game_dinosaur,
-#endif
-#ifdef APP_ID_MEDIA
-// app_id_media,
-#endif
-    // app_id_ai,
+    // app_id_flashlight,  /* removed: local app off the left list */
+    // app_id_recorder,    /* removed: local app off the left list */
+    // app_id_ai,          /* no Skai input widget on the left list */
 };
 
 uint8_t return_app_count(void)
@@ -1002,13 +994,21 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
     }
     if (selected_item_index != old_selected_item_index)
     {
-        if (selected_item_index == INSTRUCTION_LIST_ITEMS_DEFINITION[app_id_ai])
+        /* is_at_ai_widget = the selection sits on the Skai AI widget, IF the
+           list has one. The list is a pure instruction list now (no AI widget),
+           so this stays false; computed as a position lookup so it self-corrects
+           if app_id_ai is ever re-added. (The old code indexed the array BY the
+           app_id_ai ENUM VALUE, reading a wrong/out-of-bounds slot — and would
+           read past the end now that the array is empty.) */
+        is_at_ai_widget = false;
+        for (uint8_t ai = 0;
+             ai < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION); ai++)
         {
-            is_at_ai_widget = true;
-        }
-        else
-        {
-            is_at_ai_widget = false;
+            if (INSTRUCTION_LIST_ITEMS_DEFINITION[ai] == app_id_ai)
+            {
+                is_at_ai_widget = (selected_item_index == ai);
+                break;
+            }
         }
         set_paused_control_with_arm(false);
         if (selected_item_index == child_cnt - 1)
