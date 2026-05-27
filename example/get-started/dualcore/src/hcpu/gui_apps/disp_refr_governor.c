@@ -60,6 +60,7 @@ extern lv_indev_t *touch_get_indev_handler(void);
 #define GOV_PERIOD_60HZ_MS 16U   /* fast: 60 Hz display refresh           */
 #define GOV_PERIOD_1HZ_MS 1000U  /* slow: 1 Hz on idle clock face         */
 #define GOV_RECHECK_MS 300U      /* settle delay before dropping to 1 Hz  */
+#define GOV_MONITOR_MS 300U      /* periodic anim-aware re-evaluation     */
 #define GOV_WAKE_DEBOUNCE_MS 250U /* ignore touch as operate after wake    */
 #define GOV_INDEV_SLOW_MS 1000U  /* layer-2: slowed indev poll in 1 Hz    */
 
@@ -86,6 +87,7 @@ static disp_gov_force_t s_force = DISP_GOV_FORCE_NONE;
 static uint32_t s_wake_debounce_until = 0; /* tick deadline (0 = inactive) */
 
 static lv_timer_t *s_recheck_timer = NULL; /* one-shot settle re-check     */
+static lv_timer_t *s_monitor_timer = NULL; /* periodic anim-aware re-check */
 static uint32_t s_indev_default_period = 0; /* saved indev read period     */
 
 /* ---- helpers ---- */
@@ -156,6 +158,14 @@ static void gov_set_run_mode(bool fast)
  * (the PM framework defers the downclock to idle anyway). */
 static void gov_apply(bool fast)
 {
+    /* No-op when already in the requested state. This is essential now that
+     * the periodic monitor (gov_monitor_cb) calls gov_evaluate() every
+     * GOV_MONITOR_MS: without this guard we'd re-set the refr_timer period,
+     * lv_timer_reset() it (jittering the 60 Hz cadence), and re-enter the PM
+     * run mode on every tick. */
+    if (fast == s_is_fast)
+        return;
+
     lv_timer_t *rt = gov_refr_timer();
     if (!rt)
         return;
@@ -175,11 +185,8 @@ static void gov_apply(bool fast)
     if (!fast)
         gov_set_run_mode(false);
 
-    if (s_is_fast != fast)
-    {
-        LOG_I("refresh -> %s", fast ? "60Hz" : "1Hz");
-        s_is_fast = fast;
-    }
+    LOG_I("refresh -> %s", fast ? "60Hz" : "1Hz");
+    s_is_fast = fast;
 }
 
 /* Should we be at the slow (1 Hz) state right now? */
@@ -234,6 +241,36 @@ static void gov_schedule_recheck(void)
         lv_timer_set_repeat_count(s_recheck_timer, 1); /* one-shot */
 }
 
+/* Periodic anim-aware monitor. The one-shot recheck only fires once after a
+ * wake; it cannot catch an animation that STARTS later while we're already at
+ * 1 Hz (e.g. a notification/media marquee scrolling on the idle clock face, a
+ * blinking colon, a fade). This timer re-evaluates every GOV_MONITOR_MS so any
+ * running lv_anim keeps us at 60 Hz, and we only settle to 1 Hz once nothing
+ * is animating. Cheap: gov_apply() is a no-op when the state is unchanged.
+ * Runs only while enabled; LVGL stops servicing lv_timers during sleep, so it
+ * adds no wakeups in the sleep state. */
+static void gov_monitor_cb(lv_timer_t *t)
+{
+    LV_UNUSED(t);
+    gov_evaluate();
+}
+
+static void gov_start_monitor(void)
+{
+    if (s_monitor_timer)
+        return;
+    s_monitor_timer = lv_timer_create(gov_monitor_cb, GOV_MONITOR_MS, NULL);
+}
+
+static void gov_stop_monitor(void)
+{
+    if (s_monitor_timer)
+    {
+        lv_timer_del(s_monitor_timer);
+        s_monitor_timer = NULL;
+    }
+}
+
 /* ---- public API ---- */
 
 void disp_gov_init(void)
@@ -259,7 +296,10 @@ void disp_gov_init(void)
           s_enabled, s_indev_throttle);
 
     if (s_enabled)
+    {
         gov_evaluate();
+        gov_start_monitor();
+    }
 }
 
 void disp_gov_set_enabled(bool en)
@@ -271,9 +311,11 @@ void disp_gov_set_enabled(bool en)
     if (en)
     {
         gov_evaluate();
+        gov_start_monitor();
     }
     else
     {
+        gov_stop_monitor();
         /* Restore stock fixed-60 Hz and any throttled indev. */
         bool saved_throttle = s_indev_throttle;
         s_indev_throttle = true;       /* force indev restore path */
@@ -507,6 +549,8 @@ static void disp_gov(int argc, char **argv)
                    : s_force == DISP_GOV_FORCE_60HZ ? "60Hz"
                                                     : "1Hz");
         rt_kprintf("applied state  : %s\n", gov_state_str(s_is_fast));
+        rt_kprintf("monitor        : %s (%u ms)\n",
+                   s_monitor_timer ? "ON" : "OFF", (unsigned)GOV_MONITOR_MS);
         rt_kprintf("refr period    : %u ms\n",
                    rt ? (unsigned)rt->period : 0u);
         rt_kprintf("session_active : %s\n", s_session_active ? "YES" : "NO");
