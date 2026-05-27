@@ -216,6 +216,12 @@ extern "C"
     int SubscribeDualCoreSyncService(void);
     int UnsubscribeDualCoreSyncService(void);
 
+    /* Implemented in the LCPU app entry (src/lcpu/main.c). sleep_service calls
+       this with true on accel-detected sleep onset and false on wake, so the
+       wrist-wake (lift-to-light-screen) feature is suppressed during tracked
+       sleep — rolling over no longer lights the screen and wastes power. */
+    extern void watch_sleep_tracking_set_active(bool active);
+
 #ifdef __cplusplus
 }
 #endif

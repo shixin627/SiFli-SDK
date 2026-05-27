@@ -62,6 +62,12 @@
 #define SLEEP_MINUTE_TICKS     60            /* samples per evaluation window */
 #define SLEEP_DEFAULT_RESTING_HR 65          /* fallback if we never see HR */
 
+/* How long to reuse a background PPG-burst HR window. While asleep the sampler
+   bursts every ~3 min (BG_HR_PERIOD_MS) with a ≥60 s window (dense enough for
+   valid HRV-proxy staging), so 4 min spans one gap plus slack and every minute
+   gets fresh HR features (mean + std) for Light/Deep/REM. */
+#define SLEEP_HR_WINDOW_MAX_AGE_MS (4 * 60 * 1000)
+
 typedef struct
 {
     rt_timer_t timer;
@@ -298,6 +304,8 @@ static void prv_minute_eval(uint32_t utc_now)
 
     if (s_env.hr_sample_count > 0)
     {
+        /* Foreground path: the Exercise app is measuring, so hr_service has
+           accepted live per-second BPM this minute. Use our own aggregation. */
         input.hr_mean_bpm = (uint8_t)(s_env.hr_sum / s_env.hr_sample_count);
         input.hr_std_bpm = prv_compute_hr_std(
             s_env.hr_sum, s_env.hr_sum_sq, s_env.hr_sample_count);
@@ -306,6 +314,23 @@ static void prv_minute_eval(uint32_t utc_now)
     {
         input.hr_mean_bpm = 0;
         input.hr_std_bpm = 0;
+#ifdef BSP_USING_HR_SVC
+        /* Background path (the usual overnight case): PPG is power-gated, so
+           hr_service_get_latest_bpm() is stale and we saw no per-second HR.
+           Fall back to the periodic PPG-burst window — a mean + std (HRV
+           proxy) over a ~25 s burst every ~15 min (the daily-HR-curve burst,
+           reused here for free). Hold it until it goes stale so a coarse
+           Light/Deep split is staged across the gaps between bursts rather
+           than collapsing to Light. */
+        uint8_t w_mean = 0, w_std = 0;
+        uint32_t w_age_ms = 0;
+        if (hr_service_get_hr_window(&w_mean, &w_std, &w_age_ms) &&
+            w_age_ms <= SLEEP_HR_WINDOW_MAX_AGE_MS && w_mean > 0)
+        {
+            input.hr_mean_bpm = w_mean;
+            input.hr_std_bpm = w_std;
+        }
+#endif
     }
 
     input.is_worn = prv_is_worn();
@@ -334,6 +359,19 @@ static void prv_minute_eval(uint32_t utc_now)
     }
 
     const sleep_fusion_output_t *out = sleep_fusion_update(utc_now, &input);
+
+    /* Sleep/wake above is accel-only, so once we're in a sleep stage drive the
+       sleep-mode power optimisations; revert on wake / not-worn:
+         (a) wrist-wake suppression — rolling over no longer lights the screen;
+         (b) dense PPG bursts (two-stage gate) so HR can stage Deep/REM. */
+    bool asleep = (out->stage == SLEEP_FUSION_STAGE_LIGHT ||
+                   out->stage == SLEEP_FUSION_STAGE_DEEP ||
+                   out->stage == SLEEP_FUSION_STAGE_REM);
+    watch_sleep_tracking_set_active(asleep);
+#ifdef BSP_USING_HR_SVC
+    hr_service_set_sleep_active(asleep);
+#endif
+
     prv_emit_stage(out, utc_now);
 
     /* Reset per-minute accumulators. */

@@ -235,13 +235,28 @@ static void step_poll_set_period(bool sleep)
     rt_timer_start(step_poll_timer);
 }
 
+/* Combined wrist-wake (lift-to-light-screen) gate. Enabled only when the screen
+   is off (DARK) AND the user is not currently tracked as asleep — during tracked
+   sleep we suppress it so rolling over / arm movement doesn't light the screen
+   and drain the battery. Both inputs are latched so either can change
+   independently (screen via on_lcpu_sleep_mode_changed, sleep via
+   watch_sleep_tracking_set_active) and we always re-derive the right state. */
+static bool s_screen_dark = false;
+static bool s_sleep_tracking = false;
+
+static void apply_wrist_wake(void)
+{
+    bmi270_hw_wrist_wake_enable((s_screen_dark && !s_sleep_tracking) ? 1 : 0);
+}
+
 void on_lcpu_sleep_mode_changed(bool sleep)
 {
     step_poll_set_period(sleep);
+    s_screen_dark = sleep;
 
     if (sleep)
     {
-        bmi270_hw_wrist_wake_enable(1);
+        apply_wrist_wake();   /* ON unless tracked-asleep */
         bmi270_set_drdy_int_routing(0);
         /* Gyro off for the whole DARK window -- nothing reads it. */
         bmi270_set_gyro_suspend(1);
@@ -266,10 +281,26 @@ void on_lcpu_sleep_mode_changed(bool sleep)
         /* FIFO watermark stays disarmed in this design. */
         bmi270_set_fifo_wm_int(0, 0);
         bmi270_set_drdy_int_routing(1);
-        bmi270_hw_wrist_wake_enable(0);
+        apply_wrist_wake();   /* OFF: screen is on */
     }
 }
     #endif /* USE_BMI270_HW_WRIST_WAKE */
+
+/* Called by sleep_service (LCPU) on accel-detected sleep onset / wake. Suppresses
+   wrist-wake during tracked sleep so rolling over doesn't light the screen. */
+void watch_sleep_tracking_set_active(bool active)
+{
+    #if USE_BMI270_HW_WRIST_WAKE
+    if (s_sleep_tracking == active)
+    {
+        return;
+    }
+    s_sleep_tracking = active;
+    apply_wrist_wake();
+    #else
+    (void)active;
+    #endif
+}
 
 #include "watch_sys_service.h"  /* for watch_sys_sync.notify_health_info */
 

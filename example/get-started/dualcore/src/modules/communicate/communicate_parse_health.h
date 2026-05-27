@@ -42,6 +42,14 @@ typedef enum
 
 void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t length);
 
+/* Persist today's sleep summary to /health/sleep_YYYYMMDD.json from the current
+   SkaiWatchSys.sleep_state. Called on each stage transition so the file is
+   always current; it is store-and-forwarded to the phone on reconnect (the
+   KEY_REQUEST_DATA handler), which is the only way overnight sleep survives a
+   BLE disconnect (the live KEY_RETURN_SLEEP_DATA push is dropped when offline).
+   No-op while no sleep has accumulated today. */
+void commu_health_save_sleep_file(void);
+
 
 
 #ifdef __cplusplus

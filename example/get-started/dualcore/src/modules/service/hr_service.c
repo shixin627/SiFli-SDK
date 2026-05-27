@@ -984,15 +984,85 @@ static void ppg_timeout_ind(void *param)
 #include "wear_detect.h"
 #include "bloc_battery.h"
 
-#define BG_HR_PERIOD_MS (15 * 60 * 1000) /* sample every 15 min            */
-#define BG_HR_BURST_MS  (25 * 1000)      /* LED on this long: settle + lock */
-#define BG_HR_SAMPLE_MS (1000)           /* read cadence during the burst   */
+/* Two-stage HR sampling (literature pattern: a low-power signal prescreens
+   sleep, PPG activates only when needed). The period timer ticks at the SLEEP
+   cadence; while AWAKE we actually burst only every BG_HR_AWAKE_SKIP ticks, so
+   the daily HR curve keeps its ~15 min rate and daytime PPG power is unchanged.
+   Once sleep_fusion reports asleep (accel-only decision), sleep_service flips
+   bg_hr_sleep_active and we burst every tick with a ≥60 s window so HR mean +
+   std (HRV proxy) are valid for Deep/REM staging. PPG stays OFF while awake. */
+#define BG_HR_PERIOD_MS      (3 * 60 * 1000) /* base tick = sleep-mode cadence    */
+#define BG_HR_AWAKE_SKIP     5               /* awake: burst every 5th tick ≈15min */
+#define BG_HR_BURST_MS_AWAKE (25 * 1000)     /* short burst: just lock one BPM     */
+#define BG_HR_BURST_MS_SLEEP (60 * 1000)     /* ≥60 s -> valid ultra-short HRV     */
+#define BG_HR_SAMPLE_MS      (1000)          /* read cadence during the burst      */
 
 static rt_timer_t bg_hr_period_timer = RT_NULL;
 static rt_timer_t bg_hr_sample_timer = RT_NULL;
 static rt_bool_t bg_hr_bursting = RT_FALSE;
 static uint32_t bg_hr_burst_deadline_ms = 0;
 static uint8_t bg_hr_burst_best = 0;
+
+/* Two-stage gate state. bg_hr_sleep_active is set by sleep_service when accel
+   says we're asleep -> dense bursts; cleared otherwise -> ~15 min curve rate. */
+static rt_bool_t bg_hr_sleep_active = RT_FALSE;
+static uint8_t   bg_hr_awake_ticks = 0;                    /* awake skip counter */
+static uint32_t  bg_hr_burst_ms = BG_HR_BURST_MS_AWAKE;    /* current burst len  */
+
+/* Per-burst HR accumulators (Σ, Σ², count) over the burst's 1 Hz reads, used
+   to publish a mean + std (HRV proxy) window for sleep_fusion. */
+static uint32_t bg_hr_burst_sum = 0;
+static uint32_t bg_hr_burst_sum_sq = 0;
+static uint16_t bg_hr_burst_cnt = 0;
+
+/* Last completed burst's HR window. bg_hr_win_tick_ms == 0 => none yet. */
+static uint8_t  bg_hr_win_mean = 0;
+static uint8_t  bg_hr_win_std = 0;
+static uint32_t bg_hr_win_tick_ms = 0;
+
+/* Integer std-dev from running Σx / Σx² (n ≤ ~25 keeps it inside uint32).
+   Mirrors sleep_service's prv_compute_hr_std so the HRV feed and the
+   classifier agree on the math. */
+static uint8_t bg_hr_std_from_sums(uint32_t sum, uint32_t sum_sq, uint16_t n)
+{
+    if (n < 2) return 0;
+    uint32_t mean = sum / n;
+    uint32_t mean_sq = mean * mean;
+    uint32_t mean_of_sq = sum_sq / n;
+    if (mean_of_sq <= mean_sq) return 0;
+    uint32_t var = mean_of_sq - mean_sq;
+    uint32_t r = var >> 1;
+    if (r == 0) r = 1;
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        uint32_t next = (r + var / r) >> 1;
+        if (next >= r) break;
+        r = next;
+    }
+    return (r > 0xFFu) ? (uint8_t)0xFFu : (uint8_t)r;
+}
+
+/* Snapshot of the most recent completed burst's HR window. See header. */
+bool hr_service_get_hr_window(uint8_t *mean_bpm, uint8_t *std_bpm, uint32_t *age_ms)
+{
+    if (bg_hr_win_tick_ms == 0) return false; /* no burst completed yet */
+    if (mean_bpm) *mean_bpm = bg_hr_win_mean;
+    if (std_bpm)  *std_bpm = bg_hr_win_std;
+    if (age_ms)
+    {
+        uint32_t now = rt_tick_get_millisecond();
+        *age_ms = (now >= bg_hr_win_tick_ms) ? (now - bg_hr_win_tick_ms) : 0;
+    }
+    return true;
+}
+
+/* Two-stage gate: sleep_service calls this when accel-detected sleep starts/ends
+   so we only burn dense PPG (60 s every 3 min) while actually asleep. */
+void hr_service_set_sleep_active(bool active)
+{
+    bg_hr_sleep_active = active ? RT_TRUE : RT_FALSE;
+    if (!active) bg_hr_awake_ticks = 0; /* re-arm the awake skip cadence */
+}
 
 static rt_bool_t bg_hr_should_sample(void)
 {
@@ -1008,6 +1078,15 @@ static void bg_hr_finish_burst(void)
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
     {
         watch_sys_sync.notify_hr_sample((uint32_t)time(NULL), bg_hr_burst_best);
+    }
+    /* Publish the burst's HR window (mean + std over its 1 Hz reads) for
+       sleep_fusion's Deep / REM staging. Need ≥2 samples for a meaningful std. */
+    if (bg_hr_burst_cnt >= 2)
+    {
+        bg_hr_win_mean = (uint8_t)(bg_hr_burst_sum / bg_hr_burst_cnt);
+        bg_hr_win_std = bg_hr_std_from_sums(bg_hr_burst_sum, bg_hr_burst_sum_sq,
+                                            bg_hr_burst_cnt);
+        bg_hr_win_tick_ms = rt_tick_get_millisecond();
     }
     if (bg_hr_sample_timer) rt_timer_stop(bg_hr_sample_timer);
     /* Only power down if no foreground (Exercise app) subscriber needs PPG.
@@ -1034,6 +1113,12 @@ static void bg_hr_sample_cb(void *param)
         if (sd.data.hr > 0)
         {
             bg_hr_burst_best = (uint8_t)sd.data.hr;
+            if (sd.data.hr < 240)
+            {
+                bg_hr_burst_sum += (uint32_t)sd.data.hr;
+                bg_hr_burst_sum_sq += (uint32_t)sd.data.hr * (uint32_t)sd.data.hr;
+                bg_hr_burst_cnt++;
+            }
         }
     }
     if (rt_tick_get_millisecond() >= bg_hr_burst_deadline_ms)
@@ -1058,6 +1143,14 @@ static void bg_hr_period_cb(void *param)
         return;
     }
 
+    /* Awake: throttle to the ~15 min daily-curve rate (burst every 5th tick).
+       Asleep: burst every tick for dense staging HR. */
+    if (!bg_hr_sleep_active)
+    {
+        if (++bg_hr_awake_ticks < BG_HR_AWAKE_SKIP) return;
+        bg_hr_awake_ticks = 0;
+    }
+
     /* Start a fresh burst: power the LED, read at 1 Hz until the deadline.
        Bail BEFORE powering on if the sample timer is missing (creation failed)
        — otherwise the LED would turn on with nothing to ever finish the burst
@@ -1065,7 +1158,11 @@ static void bg_hr_period_cb(void *param)
     if (bg_hr_sample_timer == RT_NULL) return;
     bg_hr_bursting = RT_TRUE;
     bg_hr_burst_best = 0;
-    bg_hr_burst_deadline_ms = rt_tick_get_millisecond() + BG_HR_BURST_MS;
+    bg_hr_burst_sum = 0;
+    bg_hr_burst_sum_sq = 0;
+    bg_hr_burst_cnt = 0;
+    bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
+    bg_hr_burst_deadline_ms = rt_tick_get_millisecond() + bg_hr_burst_ms;
     hr_set_power(1);
     rt_timer_start(bg_hr_sample_timer);
 }

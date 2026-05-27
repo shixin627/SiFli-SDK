@@ -104,6 +104,23 @@ extern int hr_service_subscriber_count(void);
    that need a snapshot without subscribing (e.g. sleep_fusion). */
 extern uint8_t hr_service_get_latest_bpm(void);
 
+/* Most recent background PPG-burst HR window: mean BPM + std (HRV proxy)
+   computed over the per-second readings of one LED burst. The background
+   daily-HR sampler keeps these stats so sleep_fusion can stage Deep / REM
+   overnight without holding the PPG powered continuously. Returns true and
+   fills any non-NULL out-params when at least one burst has completed since
+   boot; false otherwise. *age_ms = ms since that burst finished, so callers
+   can reject stale windows. LCPU-only (background sampler is LCPU). */
+extern bool hr_service_get_hr_window(uint8_t *mean_bpm, uint8_t *std_bpm,
+                                     uint32_t *age_ms);
+
+/* Two-stage power gate. sleep_service calls this with true once accel-only
+   detection says the user is asleep, so the background sampler switches from
+   the ~15 min daily-curve rate to dense bursts (60 s every 3 min) that give
+   valid HR mean + std for Deep/REM staging; false returns to the curve rate.
+   No effect on the foreground (Exercise) HR path. LCPU-only. */
+extern void hr_service_set_sleep_active(bool active);
+
 /// @} file
 
 #endif  /*HEART_RATE_SERVICE_H*/

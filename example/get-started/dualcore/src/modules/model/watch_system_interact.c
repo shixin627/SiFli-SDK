@@ -79,6 +79,7 @@
 #ifdef BSP_USING_COMMUNICATE
     #include "communicate_protocol.h"
     #include "communicate_task.h" /* commu_send_sleep_data, ... */
+    #include "communicate_parse_health.h" /* commu_health_save_sleep_file */
 #endif
 #ifdef BSP_USING_PM
     #include "bf0_pm.h"
@@ -592,9 +593,12 @@ void set_watch_sleep_state(const watch_sys_sleep_state_t *state)
           (unsigned)SkaiWatchSys.sleep_state.awake_after_onset_min,
           (unsigned)SkaiWatchSys.sleep_state.current_hr,
           (unsigned)SkaiWatchSys.sleep_state.resting_hr);
-    /* Push to the phone if BLE is connected. commu_can_send() inside the
-       send helper gates on connection + non-DFU. */
     #ifdef BSP_USING_COMMUNICATE
+    /* Persist today's summary to /health/sleep_*.json first (store-and-forward:
+       survives an overnight BLE disconnect, synced on reconnect), then push live
+       if currently connected. commu_can_send() inside the send helper gates on
+       connection + non-DFU. */
+    commu_health_save_sleep_file();
     commu_send_sleep_data();
     #endif
 }
