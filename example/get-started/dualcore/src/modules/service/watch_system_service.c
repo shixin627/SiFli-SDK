@@ -337,7 +337,10 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
         {
             LOG_I("System Wake up");
             last_hcpu_wakeup_time = rt_tick_get_millisecond();
-            bloc_battery_read_voltage();
+            /* Defer the battery sample: reading the GPADC the instant we wake,
+               before its analog front-end settles, occasionally returns an
+               implausibly low value that then sticks until the next sample. */
+            bloc_battery_read_voltage_after_settle();
             acce_set_power(RT_SENSOR_POWER_HIGH);
             set_sleep_mode(false);
         }

@@ -32,6 +32,17 @@
         #define BATTERY_VOLTAGE_RATIO_DEN 100
     #endif
 
+/* ADC glitch guard. The GPADC occasionally returns an implausible reading
+ * (field reports: ~1.9 V while the cell is actually ~3.7 V — about half),
+ * which clears only on reboot. The root cause is an intermittent analog-side
+ * fault we cannot reproduce on demand, so guard at the source: reject any
+ * reading outside the cell's physical operating window and reuse the last
+ * good value. After GLITCH_TOLERANCE consecutive out-of-range reads we accept
+ * the value anyway, so a genuinely depleted or failed cell is never masked. */
+#define BATTERY_VOLTAGE_MIN_PLAUSIBLE_01MV  30000   /* 3.0 V (0.1 mV units) */
+#define BATTERY_VOLTAGE_MAX_PLAUSIBLE_01MV  45000   /* 4.5 V (0.1 mV units) */
+#define BATTERY_VOLTAGE_GLITCH_TOLERANCE    5       /* consecutive reads */
+
 static battery_calculator_t s_calculator;
 static bool s_calculator_initialized = false;
 
@@ -64,6 +75,32 @@ static uint32_t read_battery_voltage(void)
     uint32_t battery_voltage = (value * BATTERY_VOLTAGE_RATIO_NUM) / BATTERY_VOLTAGE_RATIO_DEN;
 
     LOG_D("ADC raw: %d (0.1mV), battery: %d (0.1mV)", value, battery_voltage);
+
+    /* Reject implausible glitch readings (see note above the thresholds). */
+    static uint32_t s_last_valid_voltage = 0;   /* 0.1 mV; 0 = no valid sample yet */
+    static uint8_t  s_glitch_count = 0;
+    bool implausible = (battery_voltage < BATTERY_VOLTAGE_MIN_PLAUSIBLE_01MV) ||
+                       (battery_voltage > BATTERY_VOLTAGE_MAX_PLAUSIBLE_01MV);
+    if (implausible && s_last_valid_voltage != 0)
+    {
+        if (s_glitch_count < BATTERY_VOLTAGE_GLITCH_TOLERANCE)
+        {
+            s_glitch_count++;
+            LOG_W("Implausible battery voltage %d (0.1mV), raw %d; glitch #%d, reuse last %d",
+                  battery_voltage, value, s_glitch_count, s_last_valid_voltage);
+            return s_last_valid_voltage;
+        }
+        /* Out of range across many consecutive reads: accept it (fail loud,
+         * never permanently mask a real drop or a failing cell). */
+        LOG_E("Battery voltage out of range %d (0.1mV) for %d reads; accepting as real",
+              battery_voltage, s_glitch_count);
+    }
+    else
+    {
+        s_glitch_count = 0;
+    }
+    s_last_valid_voltage = battery_voltage;
+
     return battery_voltage;
 }
 
@@ -161,6 +198,39 @@ void bloc_battery_read_voltage(void)
     main_send_read_voltage_event();
 }
 
+/* On wake-from-sleep the GPADC analog front-end (LDO / reference) has not
+ * settled yet; sampling in the first instant occasionally yields an
+ * implausibly low reading that then gets cached and "sticks" (the phone shows
+ * it, unchanged on refresh) until the next sample — which, while discharging,
+ * may not come for a long time. Defer the wake-up sample by a short settle
+ * delay so the first post-wake reading is trustworthy. read_battery_voltage's
+ * range guard still backstops any glitch that slips through. */
+#define WAKEUP_VOLTAGE_SETTLE_MS 300
+
+static rt_timer_t s_wakeup_voltage_timer = RT_NULL;
+
+static void wakeup_voltage_timer_callback(void *parameter)
+{
+    main_send_read_voltage_event();
+}
+
+void bloc_battery_read_voltage_after_settle(void)
+{
+    if (s_wakeup_voltage_timer == RT_NULL)
+    {
+        s_wakeup_voltage_timer = rt_timer_create(
+            "bat_wake",
+            wakeup_voltage_timer_callback,
+            RT_NULL,
+            rt_tick_from_millisecond(WAKEUP_VOLTAGE_SETTLE_MS),
+            RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
+    }
+    if (s_wakeup_voltage_timer)
+    {
+        rt_timer_start(s_wakeup_voltage_timer);
+    }
+}
+
 BatteryChargeState battery_charge_state = {0};
 
 BatteryChargeState *battery_get_charge_state(void)
@@ -235,5 +305,34 @@ void bloc_battery_handle_voltage_event(void)
 {
     check_battery_voltage();
 }
+
+/* Periodic battery sampling so the reported voltage keeps refreshing while
+ * discharging. Without this, discharging only samples on wake-up or an
+ * explicit app request, so a stale (or once-glitched) value can sit frozen on
+ * the phone for a long time. Charging keeps its faster 10 s timer; this slow
+ * timer is a floor that also covers the discharge case. SOFT_TIMER means it
+ * naturally pauses in deep sleep (nobody is looking) and resumes when awake.
+ * Started at init so it does not depend on read_charge_status ever running
+ * (that only fires on a charge-state *change*). */
+#define BATTERY_VOLTAGE_POLL_INTERVAL_MS 60000
+
+static void battery_voltage_poll_callback(void *parameter)
+{
+    main_send_read_voltage_event();
+}
+
+static int bloc_battery_voltage_poll_init(void)
+{
+    rt_timer_t timer = rt_timer_create(
+        "bat_poll",
+        battery_voltage_poll_callback,
+        RT_NULL,
+        rt_tick_from_millisecond(BATTERY_VOLTAGE_POLL_INTERVAL_MS),
+        RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+    if (timer)
+        rt_timer_start(timer);
+    return 0;
+}
+INIT_APP_EXPORT(bloc_battery_voltage_poll_init);
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF *
  * FILE****/

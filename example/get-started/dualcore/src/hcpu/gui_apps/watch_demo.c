@@ -617,11 +617,17 @@ static void start_sleep_fade_out(void)
     sleep_fade_done = false;
     sleep_fading_out = true;
     create_sleep_wake_overlay();
-    lv_obj_set_style_bg_opa(sleep_wake_overlay, LV_OPA_TRANSP, LV_PART_MAIN);
+    /* Fade disabled: cover the screen black immediately instead of ramping
+     * opacity. Under the 1 Hz refresh governor a 150 ms opacity ramp only
+     * gets flushed once or twice, so it read as a stutter, not a fade. The
+     * timed overlay below is now a no-op anim (fully opaque start->end), kept
+     * solely so the existing ready_cb -> sleep_fade_done -> gui_suspend() gate
+     * timing is unchanged. */
+    lv_obj_set_style_bg_opa(sleep_wake_overlay, LV_OPA_COVER, LV_PART_MAIN);
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, sleep_wake_overlay);
-    lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
+    lv_anim_set_values(&a, LV_OPA_COVER, LV_OPA_COVER);
     lv_anim_set_time(&a, 150);
     lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)opa_anim);
     lv_anim_set_ready_cb(&a, sleep_fade_out_ready_cb);
@@ -863,20 +869,13 @@ void app_watch_entry(void *parameter)
                 /* reset activity timer */
                 lv_disp_trig_activity(NULL);
 
-                /* Manual wake fade-in: bypass lv_anim to avoid stale elapsed
-                 * time issues */
+                /* Wake fade-in disabled: flush one frame so the dial is
+                 * redrawn underneath, then drop the black overlay in one shot.
+                 * The previous 20-step manual ramp stuttered under the 1 Hz
+                 * refresh governor. */
                 lv_timer_handler(); /* warm-up: flush stale timer timestamps */
                 if (sleep_wake_overlay)
                 {
-                    for (int32_t step = 1; step <= 20; step++)
-                    {
-                        lv_opa_t opa =
-                            (lv_opa_t)(LV_OPA_COVER - LV_OPA_COVER * step / 20);
-                        lv_obj_set_style_bg_opa(sleep_wake_overlay, opa,
-                                                LV_PART_MAIN);
-                        lv_timer_handler();
-                        rt_thread_mdelay(10);
-                    }
                     lv_obj_del(sleep_wake_overlay);
                     sleep_wake_overlay = NULL;
                 }
