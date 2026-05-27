@@ -2120,7 +2120,7 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
     lv_obj_add_flag(space_red_dot, LV_OBJ_FLAG_HIDDEN);
 
     space_red_dot_x = lv_label_create(space_red_dot);
-    lv_label_set_text(space_red_dot_x, "確定");
+    lv_label_set_text(space_red_dot_x, LV_EXT_STR_GET_BY_KEY(ok, "OK"));
     lv_obj_set_style_text_color(space_red_dot_x, lv_color_hex(0xFFFFFF), 0);
     lv_obj_align(space_red_dot_x, LV_ALIGN_CENTER, 0, 0);
 
@@ -5081,7 +5081,7 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     lv_obj_add_flag(trackpad_mic_red_dot, LV_OBJ_FLAG_HIDDEN);
 
     trackpad_mic_red_dot_x = lv_label_create(trackpad_mic_red_dot);
-    lv_label_set_text(trackpad_mic_red_dot_x, "確定");
+    lv_label_set_text(trackpad_mic_red_dot_x, LV_EXT_STR_GET_BY_KEY(ok, "OK"));
     lv_obj_set_style_text_color(trackpad_mic_red_dot_x, lv_color_hex(0xFFFFFF),
                                 0);
     lv_obj_align(trackpad_mic_red_dot_x, LV_ALIGN_CENTER, 0, 0);

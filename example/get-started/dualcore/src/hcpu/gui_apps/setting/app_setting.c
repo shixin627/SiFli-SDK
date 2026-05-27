@@ -469,7 +469,7 @@ static void update_time_format_title_label(uint8_t hour_format)
     if (time_format_title_label && lv_obj_is_valid(time_format_title_label))
     {
         lv_label_set_text(time_format_title_label,
-                          (hour_format == 0x01) ? "24-hour" : "12-hour");
+                          (hour_format == 0x01) ? LV_EXT_STR_GET_BY_KEY(time_format_24, "24-hour") : LV_EXT_STR_GET_BY_KEY(time_format_12, "12-hour"));
     }
     if (time_format_badge_label && lv_obj_is_valid(time_format_badge_label))
     {
@@ -633,7 +633,7 @@ static void show_reset_modal(void)
 
     /* Title — white, centered, wraps */
     lv_obj_t *title = lv_label_create(reset_modal);
-    lv_label_set_text(title, "Erase all content\nand settings?");
+    lv_label_set_text(title, LV_EXT_STR_GET_BY_KEY(reset_confirm_title, "Erase all content\nand settings?"));
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(title,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
@@ -644,7 +644,7 @@ static void show_reset_modal(void)
 
     /* Description — smaller, gray, centered */
     lv_obj_t *desc = lv_label_create(reset_modal);
-    lv_label_set_text(desc, "This will reset the\ndevice to factory\ndefaults.");
+    lv_label_set_text(desc, LV_EXT_STR_GET_BY_KEY(reset_confirm_desc, "This will reset the\ndevice to factory\ndefaults."));
     lv_obj_set_style_text_color(desc, lv_color_hex(0xAAAAAA), 0);
     lv_obj_set_style_text_font(desc,
                                LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
@@ -665,7 +665,7 @@ static void show_reset_modal(void)
     lv_obj_add_event_cb(reset_btn, reset_modal_confirm_event_cb,
                         LV_EVENT_CLICKED, NULL);
     lv_obj_t *reset_label = lv_label_create(reset_btn);
-    lv_label_set_text(reset_label, "Reset");
+    lv_label_set_text(reset_label, LV_EXT_STR_GET_BY_KEY(reset, "Reset"));
     lv_obj_set_style_text_color(reset_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(reset_label,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
@@ -683,7 +683,7 @@ static void show_reset_modal(void)
     lv_obj_add_event_cb(cancel_btn, reset_modal_close_event_cb,
                         LV_EVENT_CLICKED, NULL);
     lv_obj_t *cancel_label = lv_label_create(cancel_btn);
-    lv_label_set_text(cancel_label, "Cancel");
+    lv_label_set_text(cancel_label, LV_EXT_STR_GET_BY_KEY(cancel, "Cancel"));
     lv_obj_set_style_text_color(cancel_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(cancel_label,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
@@ -870,9 +870,9 @@ static void refresh_screen_time_label(uint8_t value)
     }
     char buf[16];
     if (value >= 60)
-        snprintf(buf, sizeof(buf), "never");
+        snprintf(buf, sizeof(buf), "%s", LV_EXT_STR_GET_BY_KEY(screen_time_never, "Never"));
     else
-        snprintf(buf, sizeof(buf), "%d s", value);
+        snprintf(buf, sizeof(buf), LV_EXT_STR_GET_BY_KEY(screen_time_sec_fmt, "%d s"), value);
     lv_label_set_text(p_app_setting->screen_time_label, buf);
 }
 
@@ -1164,7 +1164,7 @@ void app_setting_init(void *param)
     lv_img_set_src(find_phone_icon, FIND_PHONE);
     lv_obj_align(find_phone_icon, LV_ALIGN_LEFT_MID, 20, 0);
     lv_obj_t *find_phone_label = lv_label_create(find_phone_btn);
-    lv_label_set_text(find_phone_label, "Find Phone");
+    lv_label_set_text(find_phone_label, LV_EXT_STR_GET_BY_KEY(find_phone, "Find Phone"));
     lv_obj_set_style_text_color(find_phone_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(find_phone_label,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
@@ -1186,7 +1186,7 @@ void app_setting_init(void *param)
     lv_img_set_src(qrcode_icon, ICON_QRCODE);
     lv_obj_align(qrcode_icon, LV_ALIGN_LEFT_MID, 20, 0);
     lv_obj_t *qrcode_label = lv_label_create(qrcode_btn);
-    lv_label_set_text(qrcode_label, "QR Code");
+    lv_label_set_text(qrcode_label, LV_EXT_STR_GET_BY_KEY(qr_code, "QR Code"));
     lv_obj_set_style_text_color(qrcode_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(qrcode_label,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
@@ -1239,7 +1239,7 @@ void app_setting_init(void *param)
     lv_img_set_src(dnd_icon, ICON_DND_MODE);
     lv_obj_align(dnd_icon, LV_ALIGN_LEFT_MID, 20, 0);
     lv_obj_t *dnd_label = lv_label_create(dnd_quick_btn);
-    lv_label_set_text(dnd_label, "DND");
+    lv_label_set_text(dnd_label, LV_EXT_STR_GET_BY_KEY(dnd, "DND"));
     lv_obj_set_style_text_color(dnd_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(dnd_label,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
@@ -1331,7 +1331,7 @@ void app_setting_init(void *param)
     lv_img_set_src(mouse_press_icon, LV_EXT_IMG_GET(mouse_mode_icon));
     lv_obj_align(mouse_press_icon, LV_ALIGN_LEFT_MID, 20, 0);
     lv_obj_t *mouse_press_label = lv_label_create(mouse_press_quick_btn);
-    lv_label_set_text(mouse_press_label, "Mouse Press");
+    lv_label_set_text(mouse_press_label, LV_EXT_STR_GET_BY_KEY(mouse_press, "Mouse Press"));
     lv_obj_set_style_text_color(mouse_press_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(mouse_press_label,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
@@ -1357,7 +1357,7 @@ void app_setting_init(void *param)
 
     // Gesture (launches gesture app)
     list_btn = create_capsule_item(settings_container, mouse_press_quick_btn,
-                                   LV_EXT_IMG_GET(icon_release), "Gesture",
+                                   LV_EXT_IMG_GET(icon_release), LV_EXT_STR_GET_BY_KEY(gesture, "Gesture"),
                                    true);
     lv_obj_add_event_cb(list_btn, btn_gesture_event_callback,
                         LV_EVENT_SHORT_CLICKED, NULL);
@@ -1381,7 +1381,7 @@ void app_setting_init(void *param)
 
     // Reset device (in-place msgbox, no arrow)
     list_btn = create_capsule_item(settings_container, list_btn,
-                                   LV_EXT_IMG_GET(airplane), "Reset device",
+                                   LV_EXT_IMG_GET(airplane), LV_EXT_STR_GET_BY_KEY(reset_device, "Reset device"),
                                    false);
     lv_obj_add_event_cb(list_btn, btn_clear_flash_event_callback,
                         LV_EVENT_SHORT_CLICKED, NULL);
@@ -1407,7 +1407,7 @@ void app_setting_init(void *param)
     /* Version footer at the very bottom of the settings page */
     lv_obj_t *version_label = lv_label_create(settings_container);
     char version_buf[32];
-    snprintf(version_buf, sizeof(version_buf), "Version %d.%d.%d",
+    snprintf(version_buf, sizeof(version_buf), LV_EXT_STR_GET_BY_KEY(version_fmt, "Version %d.%d.%d"),
              VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION);
     lv_label_set_text(version_label, version_buf);
     lv_obj_set_style_text_color(version_label, lv_color_hex(0x888888), 0);

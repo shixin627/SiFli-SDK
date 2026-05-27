@@ -729,7 +729,7 @@ static lv_obj_t *music_app_ui_build(lv_obj_t *parent)
     {
         lv_obj_add_flag(music_app_obj.btn_madia_img_mask, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(music_app_obj.btn_madia_img_bg, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(p_app_media->media_title, "Media Title");
+        lv_label_set_text(p_app_media->media_title, LV_EXT_STR_GET_BY_KEY(media_title_default, "Media Title"));
     }
     lv_obj_set_size(p_app_media->media_title, 350, 100);
     lv_label_set_long_mode(p_app_media->media_title, LV_LABEL_LONG_DOT);
@@ -1508,7 +1508,7 @@ static lv_obj_t *lv_create_media_screen(lv_obj_t *scr)
     }
     else
     {
-        lv_label_set_text(p_app_media->media_title, "Media Title");
+        lv_label_set_text(p_app_media->media_title, LV_EXT_STR_GET_BY_KEY(media_title_default, "Media Title"));
     }
     lv_obj_set_size(p_app_media->media_title, 300, 200);
     lv_label_set_long_mode(p_app_media->media_title, LV_LABEL_LONG_DOT);
@@ -1736,7 +1736,7 @@ void handle_media_title(char *media_title_text)
     }
     else
     {
-        lv_label_set_text(p_app_media->media_title, "Media Title");
+        lv_label_set_text(p_app_media->media_title, LV_EXT_STR_GET_BY_KEY(media_title_default, "Media Title"));
     }
 }
 
@@ -1797,7 +1797,7 @@ static void handle_media_widget_img(void *param)
 void build_media_contorll_widget(app_media_t *p_app_media, lv_obj_t *parent)
 {
     p_app_media->media_title = lv_label_create(parent);
-    lv_label_set_text(p_app_media->media_title, "Media Title");
+    lv_label_set_text(p_app_media->media_title, LV_EXT_STR_GET_BY_KEY(media_title_default, "Media Title"));
     lv_obj_set_size(p_app_media->media_title, 300, 100);
     lv_label_set_long_mode(p_app_media->media_title, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(p_app_media->media_title, LV_TEXT_ALIGN_CENTER,

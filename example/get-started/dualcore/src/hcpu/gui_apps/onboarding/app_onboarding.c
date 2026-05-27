@@ -34,6 +34,7 @@
 #include <rtthread.h>
 #include <string.h>
 #include "lvgl.h"
+#include "lv_ext_resource_manager.h"
 #include "app_mainmenu.h"
 #include "app_onboarding.h"
 
@@ -142,7 +143,7 @@ static void create_release_hint(void)
     lv_obj_clear_flag(_release_hint, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *lbl = lv_label_create(_release_hint);
-    lv_label_set_text(lbl, "向四方向滑動探索");
+    lv_label_set_text(lbl, LV_EXT_STR_GET_BY_KEY(swipe_explore, "Swipe in four directions to explore"));
     lv_obj_set_style_text_color(lbl, lv_color_make(0xFF, 0xFF, 0xFF), 0);
     lv_obj_align(lbl, LV_ALIGN_TOP_MID, 0, 12);
 
@@ -192,7 +193,7 @@ static void create_tap_hint(void)
     lv_obj_clear_flag(_tap_ring, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *lbl = lv_label_create(_tap_hint);
-    lv_label_set_text(lbl, "點擊執行,或再次滑動進入 AI");
+    lv_label_set_text(lbl, LV_EXT_STR_GET_BY_KEY(swipe_run_ai, "Tap to run, or swipe again for AI"));
     lv_obj_set_style_text_color(lbl, lv_color_make(0xFF, 0xFF, 0xFF), 0);
     lv_obj_align(lbl, LV_ALIGN_BOTTOM_MID, 0, -16);
 

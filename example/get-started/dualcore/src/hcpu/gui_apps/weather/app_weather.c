@@ -478,6 +478,20 @@ void create_forecast_widget(lv_obj_t *parent, lv_obj_t *base, int index,
                     LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
 }
 
+static const char *weekday_full_i18n(int wday)
+{
+    switch (wday) {
+        case 0: return LV_EXT_STR_GET_BY_KEY(Sun, "Sun");
+        case 1: return LV_EXT_STR_GET_BY_KEY(Mon, "Mon");
+        case 2: return LV_EXT_STR_GET_BY_KEY(Tue, "Tue");
+        case 3: return LV_EXT_STR_GET_BY_KEY(Wed, "Wed");
+        case 4: return LV_EXT_STR_GET_BY_KEY(Thu, "Thu");
+        case 5: return LV_EXT_STR_GET_BY_KEY(Fri, "Fri");
+        case 6: return LV_EXT_STR_GET_BY_KEY(Sat, "Sat");
+        default: return "";
+    }
+}
+
 void create_daily_forecast_widget(lv_obj_t *parent, lv_obj_t *base, int index,
                                   weather_t *data)
 {
@@ -487,8 +501,6 @@ void create_daily_forecast_widget(lv_obj_t *parent, lv_obj_t *base, int index,
         return;
     }
 
-    static const char *WEEKDAYS[] = {"週日", "週一", "週二", "週三",
-                                     "週四", "週五", "週六"};
     lv_color_t text_color = lv_color_make(0xCC, 0xCC, 0xCC);
     int y_offset = index * 80; // Reduced vertical spacing
 
@@ -500,7 +512,7 @@ void create_daily_forecast_widget(lv_obj_t *parent, lv_obj_t *base, int index,
     timeinfo.tm_mday = data->time.day;
     mktime(&timeinfo);
     lv_label_set_text(p_app_weather->daily_date[index],
-                      index == 0 ? "今天" : WEEKDAYS[timeinfo.tm_wday]);
+                      index == 0 ? LV_EXT_STR_GET_BY_KEY(today, "Today") : weekday_full_i18n(timeinfo.tm_wday));
     lv_obj_set_style_text_font(p_app_weather->daily_date[index],
                                LV_EXT_FONT_GET(get_system_font_size(-2)), 0);
     lv_obj_set_style_text_color(p_app_weather->daily_date[index], text_color,

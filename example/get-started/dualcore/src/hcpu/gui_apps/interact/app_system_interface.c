@@ -612,13 +612,13 @@ void voice_recognition_hint_builder(void *par, app_gesture_indicator_t *indicato
     // lv_obj_add_flag(ai_prompt_border_blue, LV_OBJ_FLAG_HIDDEN);
     // indicator->ai_prompt_border_blue = ai_prompt_border_blue;
 
-    lv_obj_t *ai_tap_hint_bg = common_text_button(par, "點擊繼續", get_system_font_size(0), 200, 100, speech_user_interact_cb);
+    lv_obj_t *ai_tap_hint_bg = common_text_button(par, LV_EXT_STR_GET_BY_KEY(tap_to_continue, "Tap to continue"), get_system_font_size(0), 200, 100, speech_user_interact_cb);
     lv_obj_align(ai_tap_hint_bg, LV_ALIGN_BOTTOM_MID, 0, -20);
     indicator->ai_tap_hint_bg = ai_tap_hint_bg;
 
     // Create input text
     lv_obj_t *input_text = lv_label_create(voice_recognition_hint_bg);
-    lv_label_set_text(input_text, "聽取中...");
+    lv_label_set_text(input_text, LV_EXT_STR_GET_BY_KEY(listening_dots, "Listening..."));
     lv_obj_set_style_text_opa(input_text, LV_OPA_90, 0);
     lv_obj_set_style_text_font(input_text, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_set_style_text_color(input_text, lv_color_hex(0x8E8E8E), 0);
@@ -756,7 +756,7 @@ void refresh_ai_chat_input_message(char *text)
         else
         {
             // 如果是空字符串或純空白字符，保持顯示「聽取中...」
-            lv_label_set_text(gesture_indicator.speech_input, "聽取中...");
+            lv_label_set_text(gesture_indicator.speech_input, LV_EXT_STR_GET_BY_KEY(listening_dots, "Listening..."));
             // 「聽取中...」使用50%透明度
             lv_obj_set_style_text_opa(gesture_indicator.speech_input, LV_OPA_90, 0);
         }
@@ -779,7 +779,7 @@ void refresh_ai_chat_input_message(char *text)
         else
         {
             set_skai_widget_input_text("");
-            instruction_list_set_voice_transcript("聽取中");
+            instruction_list_set_voice_transcript(LV_EXT_STR_GET_BY_KEY(listening, "Listening"));
         }
     }
     if (gesture_indicator.speech_skai_reply)
@@ -798,7 +798,7 @@ void refresh_ai_chat_input_message(char *text)
     LOG_D("Input message refreshed%d",get_is_open_instruction_list_ai());
 }
 
-static void update_ai_process_indicator(app_gesture_indicator_t *indicator, char *message, bool is_active)
+static void update_ai_process_indicator(app_gesture_indicator_t *indicator, const char *message, bool is_active)
 {
     // Show/hide AI status label with message
     if (indicator->ai_status_label && lv_obj_is_valid(indicator->ai_status_label))
@@ -811,7 +811,7 @@ static void update_ai_process_indicator(app_gesture_indicator_t *indicator, char
             }
             else
             {
-                lv_label_set_text(indicator->ai_status_label, "AI處理中...");
+                lv_label_set_text(indicator->ai_status_label, LV_EXT_STR_GET_BY_KEY(ai_processing, "AI Processing..."));
             }
             lv_obj_clear_flag(indicator->ai_status_label, LV_OBJ_FLAG_HIDDEN);
             lv_obj_update_layout(indicator->ai_status_label);
@@ -914,7 +914,7 @@ static void ai_thinking_timer_cb(lv_timer_t *timer)
         lv_obj_set_style_border_width(gesture_indicator.speech_bg, 6, LV_PART_MAIN);
     }
     open_ai_prompt_border(&gesture_indicator, true);
-    update_ai_process_indicator(&gesture_indicator, "思考中...", true);
+    update_ai_process_indicator(&gesture_indicator, LV_EXT_STR_GET_BY_KEY(ai_thinking, "Thinking..."), true);
 
     // Delete the timer as it's one-shot
     lv_timer_del(timer);
@@ -1034,7 +1034,7 @@ void voice_recognition_hint_create(app_gesture_indicator_t *indicator)
             lv_obj_clear_flag(indicator->speech_input, LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_style_text_opa(indicator->speech_input, LV_OPA_0, LV_PART_MAIN);
         }
-        lv_label_set_text(indicator->speech_input, "聽取中...");
+        lv_label_set_text(indicator->speech_input, LV_EXT_STR_GET_BY_KEY(listening_dots, "Listening..."));
         // LOG_D("voice_recognition_hint_create: set input text to 聽取中...");
         // 設置「聽取中...」的透明度為50%
         lv_obj_update_layout(indicator->speech_input);
@@ -1240,28 +1240,28 @@ static const char *get_tool_description(LangchainToolKey tool_key)
     switch (tool_key)
     {
     case WeatherTool:
-        return "正在查詢天氣資訊...";
+        return LV_EXT_STR_GET_BY_KEY(ai_querying_weather, "Querying weather...");
     case CalendarQueryTool:
-        return "正在查詢行程...";
+        return LV_EXT_STR_GET_BY_KEY(ai_querying_schedule, "Querying schedule...");
     case CalendarCreateTool:
-        return "正在建立行程...";
+        return LV_EXT_STR_GET_BY_KEY(ai_creating_schedule, "Creating schedule...");
     case CreateNoteTool:
-        return "正在建立備忘錄...";
+        return LV_EXT_STR_GET_BY_KEY(ai_creating_memo, "Creating memo...");
     case WebPageTool:
-        return "正在存取網頁...";
+        return LV_EXT_STR_GET_BY_KEY(ai_accessing_web, "Accessing web...");
     case WebSearchTool:
-        return "正在搜尋網路資訊...";
+        return LV_EXT_STR_GET_BY_KEY(ai_searching_web, "Searching the web...");
     case RagTool:
-        return "正在查詢知識庫...";
+        return LV_EXT_STR_GET_BY_KEY(ai_querying_kb, "Querying knowledge...");
     case FinanceTool:
-        return "正在查詢財經資訊...";
+        return LV_EXT_STR_GET_BY_KEY(ai_querying_finance, "Querying finance...");
     case CurrencyConversionTool:
-        return "正在進行匯率轉換...";
+        return LV_EXT_STR_GET_BY_KEY(ai_converting_currency, "Converting currency...");
     case ImageAnalyzeTool:
-        return "正在分析圖片...";
+        return LV_EXT_STR_GET_BY_KEY(ai_analyzing_image, "Analyzing image...");
     case UnknownTool:
     default:
-        return "AI處理中...";
+        return LV_EXT_STR_GET_BY_KEY(ai_processing, "AI Processing...");
     }
 }
 
@@ -1389,7 +1389,7 @@ lv_obj_t *lv_currency_conversion_object_builder(lv_obj_t *parent, void *data)
 
     // Title
     lv_obj_t *title_label = lv_label_create(cc_widget);
-    lv_label_set_text(title_label, "匯率轉換");
+    lv_label_set_text(title_label, LV_EXT_STR_GET_BY_KEY(exchange_rate, "Exchange Rate"));
     lv_obj_set_style_text_font(title_label, LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
     lv_obj_set_style_text_color(title_label, lv_color_make(0x40, 0x80, 0xFF), 0);
     lv_obj_align(title_label, LV_ALIGN_TOP_LEFT, 12, 8);

@@ -333,8 +333,9 @@ static void build_layout(void)
     /* Title — sits at the top in safe area. */
     lv_obj_t *title = lv_label_create(scr);
     lv_label_set_text(title,
-                      p_app_alarm_edit_time->alarm_idx >= 0 ? "Edit Time"
-                                                            : "New Alarm");
+                      p_app_alarm_edit_time->alarm_idx >= 0
+                          ? LV_EXT_STR_GET_BY_KEY(edit_time, "Edit Time")
+                          : LV_EXT_STR_GET_BY_KEY(new_alarm, "New Alarm"));
     lv_obj_set_style_text_font(
         title, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
     lv_obj_set_style_text_color(title, ALARM_COLOR_TEXT_PRIMARY, 0);
@@ -382,9 +383,9 @@ static void build_layout(void)
     p_app_alarm_edit_time->roller_minute = roller_m;
 
     /* Bottom buttons. */
-    lv_obj_t *cancel = create_action_btn(scr, "Cancel", false, cancel_event_cb);
+    lv_obj_t *cancel = create_action_btn(scr, LV_EXT_STR_GET_BY_KEY(cancel, "Cancel"), false, cancel_event_cb);
     lv_obj_align(cancel, LV_ALIGN_BOTTOM_MID, -70, -28);
-    lv_obj_t *set = create_action_btn(scr, "Set", true, set_event_cb);
+    lv_obj_t *set = create_action_btn(scr, LV_EXT_STR_GET_BY_KEY(set, "Set"), true, set_event_cb);
     lv_obj_align(set, LV_ALIGN_BOTTOM_MID, 70, -28);
 
     /* Pre-fill rollers with the current ctx so the user sees something

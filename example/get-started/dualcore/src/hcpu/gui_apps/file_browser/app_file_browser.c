@@ -200,29 +200,29 @@ static void send_btn_event_cb(lv_event_t *e)
 
     if (!SkaiWatchSys.connected_to_phone)
     {
-        ui_show_hint_toast("Phone not connected");
+        ui_show_hint_toast(LV_EXT_STR_GET_BY_KEY(phone_not_connected, "Phone not connected"));
         return;
     }
 
     if (bloc_file_system.sync_file == NULL)
     {
-        ui_show_hint_toast("Send not available");
+        ui_show_hint_toast(LV_EXT_STR_GET_BY_KEY(send_not_available, "Send not available"));
         return;
     }
 
     int ret = bloc_file_system.sync_file(selected_file_path, false);
     if (ret == RT_EOK)
     {
-        ui_show_hint_toast("Sending %s", base);
+        ui_show_hint_toast(LV_EXT_STR_GET_BY_KEY(sending_fmt, "Sending %s"), base);
         LOG_I("Start sync file: %s", selected_file_path);
     }
     else
     {
-        ui_show_hint_toast("Send failed");
+        ui_show_hint_toast(LV_EXT_STR_GET_BY_KEY(send_failed, "Send failed"));
         LOG_E("Failed to start sync: %s (ret=%d)", selected_file_path, ret);
     }
 #else
-    ui_show_hint_toast("Bloc filesystem disabled");
+    ui_show_hint_toast(LV_EXT_STR_GET_BY_KEY(bloc_fs_disabled, "Bloc filesystem disabled"));
 #endif
 }
 
@@ -370,7 +370,7 @@ static void refresh_file_list(void)
 
         lv_obj_t *up_label = lv_label_create(up_btn);
         lv_obj_set_style_text_color(up_label, lv_color_white(), 0);
-        lv_label_set_text(up_label, ".. (Back)");
+        lv_label_set_text(up_label, LV_EXT_STR_GET_BY_KEY(back_parent, ".. (Back)"));
         lv_obj_align(up_label, LV_ALIGN_LEFT_MID, 25, 0);
 
         lv_obj_add_event_cb(up_btn, go_up_event_cb, LV_EVENT_CLICKED, NULL);
@@ -380,7 +380,7 @@ static void refresh_file_list(void)
     if (dir == NULL)
     {
         LOG_E("Failed to open directory: %s", current_path);
-        lv_label_set_text(info_label, "Cannot open directory");
+        lv_label_set_text(info_label, LV_EXT_STR_GET_BY_KEY(cannot_open_dir, "Cannot open directory"));
         return;
     }
 
@@ -542,7 +542,7 @@ static lv_obj_t *on_start(lv_obj_t *parent)
     lv_obj_set_style_border_width(send_btn, 0, 0);
     lv_obj_t *send_label = lv_label_create(send_btn);
     lv_obj_set_style_text_color(send_label, lv_color_white(), 0);
-    lv_label_set_text(send_label, "Send to Phone");
+    lv_label_set_text(send_label, LV_EXT_STR_GET_BY_KEY(send_to_phone, "Send to Phone"));
     lv_obj_center(send_label);
     lv_obj_add_event_cb(send_btn, send_btn_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_flag(send_btn, LV_OBJ_FLAG_HIDDEN);

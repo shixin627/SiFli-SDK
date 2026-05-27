@@ -370,6 +370,22 @@ static uint16_t last_zoom[MAX_LIST_ITEMS] = {0};
    instruction_list_pause (further down) all see the same storage. */
 static bool s_skaibar_tracking_active = false;
 
+/* SKAI_LINK active target for the LEFT list = the watch's directly-connected
+   device (the primary = the phone itself). The primary is deliberately NOT in
+   the watch's device_registry (the phone excludes it from the device-list push;
+   its actions ARE this left list), so it has no id to assert here. Instead we
+   assert an EMPTY active target before each focus/commit: the phone reads "no
+   remote device active" as "the watch is on the left list → run locally on the
+   primary". This mirrors device_pager asserting a real device id for the right
+   page, and clears any stale remote target if the left list was entered without
+   passing through device_pager's leave path. De-duped inside
+   commu_send_active_device (shared with device_pager), so re-asserting on every
+   focus/commit only sends on an actual change. */
+static void instruction_list_assert_local_target(void)
+{
+    commu_send_active_device(""); /* "" = no remote target → primary/local */
+}
+
 /* arc-scroll detached / discrete 模式狀態 — 拖動時 arc 不動 list、由 drag_cb
  * 接管，到 page change 才 snap。完整定義在後面，scroll_list 要先 visible。
  * 用獨立 bool flag 而不是 input 的特殊值當「是否已初始化」 — elastic overshoot
@@ -1011,14 +1027,17 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
            before the custom list aren't part of the skaibar option
            set. Dedup is the outer selected_item_index != old check,
            so we don't spam the same idx on every scroll-list re-compute. */
-        if (s_skaibar_tracking_active &&
-            selected_item_index >= app_base_count)
+        if (selected_item_index >= app_base_count)
         {
-            uint8_t skaibar_idx =
+            uint8_t opt_idx =
                 (uint8_t)(selected_item_index - app_base_count);
-            commu_send_skaibar_selected(skaibar_idx);
-            LOG_D("[skaibar] sent selected idx=%u (raw=%u, base=%u)",
-                  (unsigned)skaibar_idx,
+            /* Mirror the right device_pager: report focus over SKAI_LINK,
+               targeting the watch's directly-connected device (primary). Always
+               sends on scroll (no skaibar-mode gate) for parity with the right. */
+            instruction_list_assert_local_target();
+            commu_send_option_focus(opt_idx);
+            LOG_D("[left] focus option idx=%u (raw=%u, base=%u)",
+                  (unsigned)opt_idx,
                   (unsigned)selected_item_index,
                   (unsigned)app_base_count);
         }
@@ -1653,7 +1672,7 @@ static void lmic_open_reveal_cb(lv_anim_t *a)
                             LV_OPA_0, 0);
     /* Placeholder while listening, replaced by the transcript (mirrors
        device_pager skaibar_open's "聽取中"). */
-    instruction_list_set_voice_transcript("聽取中");
+    instruction_list_set_voice_transcript(LV_EXT_STR_GET_BY_KEY(listening, "Listening"));
     /* Fade the frame + label in (the box "fills" with its content). */
     if (s_skai_widget && lv_obj_is_valid(s_skai_widget))
     {
@@ -2157,18 +2176,16 @@ static void list_item_click_event_cb(lv_event_t *evt)
            AI-widget visibility, the existing send_instruction_update
            flow below, and the toggle/flash visuals — phone may use
            the COMMITTED notify alongside, e.g. to invoke a script. */
-        if (s_skaibar_tracking_active)
+        for (uint8_t j = 0; j < list_item_count; j++)
         {
-            for (uint8_t j = 0; j < list_item_count; j++)
+            if (&list_items[j] == item && j >= app_base_count)
             {
-                if (&list_items[j] == item && j >= app_base_count)
-                {
-                    commu_send_skaibar_committed(
-                        (uint8_t)(j - app_base_count));
-                    LOG_D("[skaibar] committed idx=%u (raw=%u)",
-                          (unsigned)(j - app_base_count), (unsigned)j);
-                    break;
-                }
+                /* SKAI_LINK commit to the primary (same as right device_pager). */
+                instruction_list_assert_local_target();
+                commu_send_option_commit((uint8_t)(j - app_base_count));
+                LOG_D("[left] commit option idx=%u (raw=%u)",
+                      (unsigned)(j - app_base_count), (unsigned)j);
+                break;
             }
         }
         if (is_open_instruction_list_ai)
@@ -2218,12 +2235,13 @@ static void on_tap(void)
            parallel gesture path. selected_item_index is the raw
            list_items index; subtract app_base_count for the 0-based
            skaibar-option index the phone expects. */
-        if (s_skaibar_tracking_active &&
-            selected_item_index >= app_base_count)
+        if (selected_item_index >= app_base_count)
         {
-            commu_send_skaibar_committed(
+            /* SKAI_LINK commit to the primary (gesture path). */
+            instruction_list_assert_local_target();
+            commu_send_option_commit(
                 (uint8_t)(selected_item_index - app_base_count));
-            LOG_D("[skaibar] committed via gesture idx=%u (raw=%u)",
+            LOG_D("[left] commit option via gesture idx=%u (raw=%u)",
                   (unsigned)(selected_item_index - app_base_count),
                   (unsigned)selected_item_index);
         }
@@ -2646,7 +2664,7 @@ static void show_complete_on_phone_tip(void)
     lv_obj_clear_flag(complete_on_phone_tip_window, LV_OBJ_FLAG_CLICKABLE);
 
     complete_on_phone_tip_label = lv_label_create(complete_on_phone_tip_window);
-    lv_label_set_text(complete_on_phone_tip_label, "在手機上完成");
+    lv_label_set_text(complete_on_phone_tip_label, LV_EXT_STR_GET_BY_KEY(complete_on_phone, "Complete on phone"));
     lv_obj_set_style_text_color(complete_on_phone_tip_label, lv_color_white(),
                                 LV_PART_MAIN);
     lv_obj_set_style_text_font(complete_on_phone_tip_label,

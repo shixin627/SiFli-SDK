@@ -167,27 +167,14 @@ static device_pager_t *p = NULL;
    dismisses the skaibar as before. */
 static bool s_suppress_skaibar_dismiss = false;
 
-/* De-duped active-target uplink. The phone must know which device (if any) the
-   watch is controlling: a real device id while on the device page, or "" (none)
-   on home/left. We (re)assert it on entry / switch / leave AND on every list
-   sync, so a freshly connected phone learns the current state instead of assuming
-   a stale device. Only sends when the value CHANGES, and only latches the sent
-   value when the send SUCCEEDS — so an attempt made while disconnected (e.g. the
-   boot-time refresh) is retried once the phone connects. */
-static char s_active_sent[SYNCED_DEVICE_ID_LEN];
-static bool s_active_sent_valid = false;
+/* Active-target uplink for the RIGHT page (the selected non-primary device, or
+   "" on home). De-dup now lives in commu_send_active_device (SHARED with the
+   LEFT instruction_list, which asserts the primary as the target), so a local
+   dedup here would shadow it and skip a needed re-assert after switching pages.
+   Just forward; the shared dedup only sends on an actual change. */
 static void pager_send_active(const char *id)
 {
-    if (id == NULL) id = "";
-    if (s_active_sent_valid &&
-        strncmp(s_active_sent, id, sizeof(s_active_sent)) == 0)
-        return; /* unchanged */
-    if (commu_send_active_device(id))
-    {
-        strncpy(s_active_sent, id, sizeof(s_active_sent) - 1);
-        s_active_sent[sizeof(s_active_sent) - 1] = '\0';
-        s_active_sent_valid = true;
-    }
+    commu_send_active_device(id ? id : "");
 }
 
 static void mic_clicked_cb(lv_event_t *e);   /* defined below (skaibar section) */
@@ -1326,7 +1313,7 @@ static void skaibar_open(void)
     if (!p || !p->skaibar_input) return;
     lv_anim_del(p->skaibar_input, skaibar_grow_cb);    /* cancel any in-flight morph */
     lv_anim_del(p->skaibar_input, skaibar_frame_cb);
-    lv_label_set_text(p->skaibar_label, "聽取中");
+    lv_label_set_text(p->skaibar_label, LV_EXT_STR_GET_BY_KEY(listening, "Listening"));
     skaibar_scroll_to_bottom();                         /* reset window to top */
     skaibar_grow_cb(NULL, 0);                           /* button state */
     skaibar_frame_cb(NULL, 0);                          /* frame fully hidden */
@@ -1640,7 +1627,7 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_clear_flag(p->empty_qr_card, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *empty_hint = lv_label_create(p->empty_view);
-    lv_label_set_text(empty_hint, "掃描下載 App");
+    lv_label_set_text(empty_hint, LV_EXT_STR_GET_BY_KEY(scan_download_app, "Scan to download app"));
     lv_obj_set_style_text_font(empty_hint,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_set_style_text_color(empty_hint, lv_color_hex(0x888888), 0);
