@@ -321,7 +321,7 @@ void check_is_at_instruction_list(void)
         {
             myLancher[app_index_instruction_list].reset_list();
             instruction_list_pause();
-            // display_gesture_detect_objs(0, true);
+            display_gesture_detect_objs(0, true);
             open_skai_widget_ai(false);
             display_status_bar_area(3, true);
         }
