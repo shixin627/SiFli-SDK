@@ -80,7 +80,6 @@
 #ifdef BSP_USING_COMMUNICATE
     #include "communicate_protocol.h"
     #include "communicate_task.h" /* commu_send_sleep_data, ... */
-    #include "communicate_parse_health.h" /* commu_health_save_sleep_file */
 #endif
 #ifdef BSP_USING_PM
     #include "bf0_pm.h"
@@ -595,15 +594,14 @@ void set_watch_sleep_state(const watch_sys_sleep_state_t *state)
           (unsigned)SkaiWatchSys.sleep_state.current_hr,
           (unsigned)SkaiWatchSys.sleep_state.resting_hr);
     #ifdef BSP_USING_COMMUNICATE
-    /* Persist today's summary to /health/sleep_*.json first (store-and-forward:
-       survives an overnight BLE disconnect, synced on reconnect), then push live
-       if currently connected. commu_can_send() inside the send helper gates on
-       connection + non-DFU. */
-    commu_health_save_sleep_file();
+    /* Live push if currently connected. commu_can_send() inside the send helper
+       gates on connection + non-DFU. */
     commu_send_sleep_data();
     #endif
-    /* Persist for store-and-forward so a disconnected sleep session is not
-       lost; synced to the phone on reconnect. */
+    /* Store-and-forward: persist so a disconnected sleep session is not lost,
+       synced to the phone on reconnect (bloc_health async write + the /health
+       folder flush in bloc_system_perception.c). Async so this client-thread
+       callback never blocks on flash. */
     #ifdef BSP_USING_BLOC_FILESYSTEM
     health_store_sleep_async(state);
     #endif
