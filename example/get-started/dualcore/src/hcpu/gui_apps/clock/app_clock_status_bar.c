@@ -147,9 +147,11 @@ static void notification_status_bar_cb(lv_event_t *event)
             /* Populate device_pager NOW, on touch — before the right tile is
                dragged into view — so its content follows the finger instead of
                popping in on release (VALUE_CHANGED only fires on scroll-settle).
-               Also re-reads the latest bonded set on every pull-out. */
-            extern void device_pager_refresh(void);
-            device_pager_refresh();
+               Also re-reads the latest bonded set on every pull-out.
+               reveal_begin() additionally marks the page visible so the no-device
+               empty-state QR is built here too (else it pops in after settle). */
+            extern void device_pager_reveal_begin(void);
+            device_pager_reveal_begin();
         }
         lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
         lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
@@ -330,6 +332,15 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         if (abs(scroll_x) % 466 != 0 || abs(scroll_y) % 466 != 0)
         {
             break;
+        }
+        /* Settled on something other than the device page → free its empty-state
+           QR (big TRUE_COLOR buffer). Runs BEFORE the same-index early-return
+           below so a cancelled right-reveal (snaps back to the watch face without
+           a set_active(false)) still releases the heap for other apps. */
+        if (active_pos != MAIN_PAGE_TYPE_RIGHT)
+        {
+            extern void device_pager_release_qr(void);
+            device_pager_release_qr();
         }
         if (active_pos == 1 &&
             !lv_obj_has_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN) &&

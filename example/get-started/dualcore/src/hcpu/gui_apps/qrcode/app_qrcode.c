@@ -60,7 +60,21 @@ static void on_start(lv_obj_t *scr)
     lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
     lv_obj_center(bg);
     lv_obj_add_event_cb(bg, qrcode_event_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *qrcode = lv_qrcode_create(bg);
+
+    /* White rounded card behind the QR — matches the device-page empty-state look
+       (radius 16 / pad 12) and gives the QR a clean rounded quiet-zone. */
+    lv_obj_t *card = lv_obj_create(bg);
+    lv_obj_set_size(card, 224, 224);            /* 200 QR + 12 pad each side */
+    lv_obj_set_style_bg_color(card, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(card, 0, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_pad_all(card, 12, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_center(card);
+    lv_obj_add_event_cb(card, qrcode_event_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *qrcode = lv_qrcode_create(card);
     lv_qrcode_setparam(qrcode, 200, lv_color_black(), lv_color_white());
     lv_qrcode_update(qrcode, url, strlen(url));
     lv_obj_center(qrcode);
