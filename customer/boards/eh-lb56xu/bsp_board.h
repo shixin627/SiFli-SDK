@@ -99,7 +99,7 @@ extern int __bss_end;
 #define BOARD_VER_28 28
 #define BOARD_VER_29 29
 
-#define CUSTOMER_BOARD_VER BOARD_VER_28
+#define CUSTOMER_BOARD_VER BOARD_VER_29
 
 #define ENABLE_TAP_AND_HOLD 0
 #define MAX_RAWDATA_TIME_STEP 35
