@@ -69,6 +69,7 @@ extern "C"
 
     extern void bloc_battery_init(void);
     extern void bloc_battery_read_voltage(void);
+    extern void bloc_battery_read_voltage_after_settle(void);
     extern void bloc_battery_read_charge_status(void);
     extern void bloc_battery_handle_charging_event(void);
     extern void bloc_battery_handle_voltage_event(void);
