@@ -57,12 +57,26 @@ static app_alarm_edit_t *p_app_alarm_edit = NULL;
  *   STATIC HELPERS
  *********************/
 
+static const char *weekday_short_i18n(int idx) /* idx: 0=Sun .. 6=Sat */
+{
+    switch (idx) {
+        case 0: return LV_EXT_STR_GET_BY_KEY(Sun, "Sun");
+        case 1: return LV_EXT_STR_GET_BY_KEY(Mon, "Mon");
+        case 2: return LV_EXT_STR_GET_BY_KEY(Tue, "Tue");
+        case 3: return LV_EXT_STR_GET_BY_KEY(Wed, "Wed");
+        case 4: return LV_EXT_STR_GET_BY_KEY(Thu, "Thu");
+        case 5: return LV_EXT_STR_GET_BY_KEY(Fri, "Fri");
+        case 6: return LV_EXT_STR_GET_BY_KEY(Sat, "Sat");
+        default: return "";
+    }
+}
+
 static void format_repeat_label(uint8_t days, char *out, size_t out_size)
 {
-    if (days == 0x00) { rt_snprintf(out, out_size, "Once"); return; }
-    if (days == 0x7F) { rt_snprintf(out, out_size, "Every Day"); return; }
-    if (days == 0x3E) { rt_snprintf(out, out_size, "Weekdays"); return; }
-    if (days == 0x41) { rt_snprintf(out, out_size, "Weekends"); return; }
+    if (days == 0x00) { rt_snprintf(out, out_size, LV_EXT_STR_GET_BY_KEY(Once, "Once")); return; }
+    if (days == 0x7F) { rt_snprintf(out, out_size, LV_EXT_STR_GET_BY_KEY(alarm_every_day, "Every Day")); return; }
+    if (days == 0x3E) { rt_snprintf(out, out_size, LV_EXT_STR_GET_BY_KEY(alarm_weekdays, "Weekdays")); return; }
+    if (days == 0x41) { rt_snprintf(out, out_size, LV_EXT_STR_GET_BY_KEY(alarm_weekends, "Weekends")); return; }
 
     static const char *labels[7] = {"Sun", "Mon", "Tue", "Wed",
                                     "Thu", "Fri", "Sat"};
@@ -73,7 +87,7 @@ static void format_repeat_label(uint8_t days, char *out, size_t out_size)
         if ((days >> i) & 1)
         {
             int n = rt_snprintf(out + pos, out_size - pos,
-                                pos == 0 ? "%s" : ", %s", labels[i]);
+                                pos == 0 ? "%s" : ", %s", weekday_short_i18n(i));
             if (n <= 0 || (size_t)n >= out_size - pos) break;
             pos += n;
         }
@@ -124,7 +138,7 @@ static void delete_disarm(void)
     if (!p_app_alarm_edit) return;
     p_app_alarm_edit->delete_armed = false;
     if (p_app_alarm_edit->delete_lbl)
-        lv_label_set_text(p_app_alarm_edit->delete_lbl, "Delete Alarm");
+        lv_label_set_text(p_app_alarm_edit->delete_lbl, LV_EXT_STR_GET_BY_KEY(delete_alarm, "Delete Alarm"));
     if (p_app_alarm_edit->delete_reset_timer)
     {
         lv_timer_del(p_app_alarm_edit->delete_reset_timer);
@@ -148,7 +162,7 @@ static void delete_btn_event_cb(lv_event_t *e)
     if (!p_app_alarm_edit->delete_armed)
     {
         p_app_alarm_edit->delete_armed = true;
-        lv_label_set_text(p_app_alarm_edit->delete_lbl, "Tap again to confirm");
+        lv_label_set_text(p_app_alarm_edit->delete_lbl, LV_EXT_STR_GET_BY_KEY(tap_confirm, "Tap again to confirm"));
         p_app_alarm_edit->delete_reset_timer = lv_timer_create(
             delete_disarm_timer_cb, 2000, NULL);
         lv_timer_set_repeat_count(p_app_alarm_edit->delete_reset_timer, 1);
@@ -245,7 +259,7 @@ static void build_layout(void)
                         NULL);
 
     lv_obj_t *repeat_lbl = lv_label_create(repeat_card);
-    lv_label_set_text(repeat_lbl, "Repeat");
+    lv_label_set_text(repeat_lbl, LV_EXT_STR_GET_BY_KEY(alarm_repeat, "Repeat"));
     lv_obj_set_style_text_font(
         repeat_lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_set_style_text_color(repeat_lbl, ALARM_COLOR_TEXT_PRIMARY, 0);
@@ -259,7 +273,7 @@ static void build_layout(void)
     lv_obj_align(repeat_chevron, LV_ALIGN_RIGHT_MID, 0, 0);
 
     lv_obj_t *repeat_value = lv_label_create(repeat_card);
-    lv_label_set_text(repeat_value, "Once");
+    lv_label_set_text(repeat_value, LV_EXT_STR_GET_BY_KEY(Once, "Once"));
     lv_obj_set_style_text_color(repeat_value, ALARM_COLOR_TEXT_SECONDARY, 0);
     lv_obj_set_style_text_font(
         repeat_value, LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
@@ -270,7 +284,7 @@ static void build_layout(void)
     lv_obj_t *snooze_card = create_setting_card(root);
 
     lv_obj_t *snooze_lbl = lv_label_create(snooze_card);
-    lv_label_set_text(snooze_lbl, "Snooze");
+    lv_label_set_text(snooze_lbl, LV_EXT_STR_GET_BY_KEY(snooze, "Snooze"));
     lv_obj_set_style_text_font(
         snooze_lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_set_style_text_color(snooze_lbl, ALARM_COLOR_TEXT_PRIMARY, 0);
@@ -295,7 +309,7 @@ static void build_layout(void)
     p_app_alarm_edit->delete_btn = del_btn;
 
     lv_obj_t *del_lbl = lv_label_create(del_btn);
-    lv_label_set_text(del_lbl, "Delete Alarm");
+    lv_label_set_text(del_lbl, LV_EXT_STR_GET_BY_KEY(delete_alarm, "Delete Alarm"));
     lv_obj_set_style_text_color(del_lbl, ALARM_COLOR_TEXT_PRIMARY, 0);
     lv_obj_set_style_text_font(
         del_lbl, LV_EXT_FONT_GET(get_system_font_size(0)), 0);

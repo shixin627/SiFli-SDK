@@ -55,9 +55,14 @@ static test_mode_t test_mode = TEST_MODE_SELECT;
 static volatile bool stress_test_running = false;
 
 static rt_thread_t cpu_stress_thread = RT_NULL;
-static rt_thread_t amoled_thread = RT_NULL;
-static rt_thread_t imu_thread = RT_NULL;
 static rt_thread_t motor_thread = RT_NULL;
+
+/* AMOLED colour-cycling + sensor readout used to run on their own worker
+ * threads that called LVGL directly -> concurrent mutation of LVGL state
+ * against the GUI thread corrupted lv_mem and faulted (UFSR=0x100 UNALIGNED)
+ * the instant the test started. LVGL is single-threaded, so that work now runs
+ * in this lv_timer, which lv_timer_handler drives inside the GUI thread. */
+static lv_timer_t *stress_ui_timer = RT_NULL;
 
 static lv_obj_t *test_label;
 static lv_obj_t *sensor_label;
@@ -142,39 +147,35 @@ static void cpu_stress_thread_entry(void *parameter)
     LOG_D("CPU stress test thread stopped, iterations: %lu", counter);
 }
 
-static void amoled_stress_thread_entry(void *parameter)
+/* AMOLED colour cycling + live sensor/mic readout. Runs in the GUI thread
+ * (driven by lv_timer_handler), so this is the ONLY place it is safe to touch
+ * LVGL during the test. Called every 100 ms; the screen colour flips every
+ * ~500 ms (every 5th tick) to keep the AMOLED stress of the old amoled thread,
+ * and the label refreshes every tick like the old imu thread. The cpu/motor
+ * worker threads deliberately never call LVGL. */
+static void stress_ui_timer_cb(lv_timer_t *timer)
 {
-    LOG_D("AMOLED stress thread started");
+    /* Not static: LV_COLOR_* are not constant initialisers under MSVC (PC sim).
+     * 8 entries re-built each tick is negligible. */
     lv_color_t colors[] = {
         LV_COLOR_WHITE, LV_COLOR_RED,  LV_COLOR_ORANGE, LV_COLOR_YELLOW,
         LV_COLOR_GREEN, LV_COLOR_BLUE, LV_COLOR_NAVY,   LV_COLOR_PURPLE,
     };
-    int num_colors = sizeof(colors) / sizeof(colors[0]);
-    int idx = 0;
+    static uint32_t tick = 0;
 
-    while (stress_test_running)
+    if (tick % 5 == 0)
     {
-        lv_obj_set_style_bg_color(lv_scr_act(), colors[idx % num_colors],
-                                  LV_PART_MAIN);
-        idx++;
-        rt_thread_mdelay(500);
+        int num_colors = sizeof(colors) / sizeof(colors[0]);
+        lv_obj_set_style_bg_color(lv_scr_act(),
+                                  colors[(tick / 5) % num_colors], LV_PART_MAIN);
     }
-    LOG_D("AMOLED stress thread stopped");
-}
 
-/* Reads every sensor (+ live mic level) and renders them in one centered,
- * multi-line label so all values are readable at a glance during the test. */
-static void imu_stress_thread_entry(void *parameter)
-{
-    LOG_D("Sensor display thread started");
-
-    while (stress_test_running)
+    if (sensor_label != NULL)
     {
         char buf[256];
         rt_snprintf(buf, sizeof(buf),
                     "ACC %.1f %.1f %.1f\n"
                     "GYR %.1f %.1f %.1f\n"
-                    "MAG %.1f %.1f %.1f\n"
                     "PPG %u %u\n"
                     "HR %d\n"
                     "MIC %u %s",
@@ -184,21 +185,15 @@ static void imu_stress_thread_entry(void *parameter)
                     watch_sensor.imu_data.gyro.x,
                     watch_sensor.imu_data.gyro.y,
                     watch_sensor.imu_data.gyro.z,
-                    watch_sensor.imu_data.mag.x,
-                    watch_sensor.imu_data.mag.y,
-                    watch_sensor.imu_data.mag.z,
-                    watch_sensor.ppg_data.raw_data[0],
-                    watch_sensor.ppg_data.raw_data[1],
+                    watch_sensor.motion_data.ppg_raw_data.raw_data[0],
+                    watch_sensor.motion_data.ppg_raw_data.raw_data[1],
                     watch_sensor.hr_data.hr,
                     mic_get_rms_level(),
                     mic_get_vad_active() ? "VAD" : "---");
-        if (sensor_label != NULL)
-        {
-            lv_label_set_text(sensor_label, buf);
-        }
-        rt_thread_mdelay(100);
+        lv_label_set_text(sensor_label, buf);
     }
-    LOG_D("Sensor display thread stopped");
+
+    tick++;
 }
 
 static void motor_stress_thread_entry(void *parameter)
@@ -234,17 +229,28 @@ typedef struct
     rt_uint8_t priority;
 } stress_thread_def_t;
 
-/* Stack sizes intentionally generous:
+/* Priorities MUST stay below EVERY real system/GUI thread (i.e. a LARGER
+ * RT-Thread priority number == lower priority; 30 sits just above the idle
+ * thread at 31). Rationale: HCPU WDT1 is fed ONLY by the idle-thread hook
+ * (rt_hw_watchdog_hook), so any CPU-bound thread that outranks idle and
+ * busy-loops starves idle -> watchdog never pet -> WDT1 reboot. On 2026-05-27
+ * cpu_stress at priority 5 monopolised the HCPU and tripped "HCPU WDT1 timeout"
+ * ~10 s after start (the dump's free_min=7720 proved it was NOT a stack
+ * overflow). Keeping all four threads below every real thread lets touch/GUI
+ * stay responsive (swipe-right to exit keeps working) and lets idle run in the
+ * gaps to pet the watchdog. DO NOT raise these numbers.
+ *
+ * Only cpu and motor run as worker threads; neither touches LVGL. All screen
+ * work moved to stress_ui_timer_cb (GUI thread) to kill the cross-thread LVGL
+ * race (see stress_ui_timer above).
+ *
+ * Stack sizes intentionally generous (separate concern from priority):
  * - cpu_stress: heavy double-precision math (pow/sin/cos/sqrt/tan) + matrix
- * - amoled/imu/ppg: each iteration touches LVGL from non-LVGL thread (TODO:
- *   move to lvgl_send_msg per project convention) plus sprintf buffers
  * - motor: control_motor goes through data_service IPC -> deeper call chain
  * Previously 1024/2048/4096 caused STKOF (UFSR=0x10) shortly after startup. */
 static const stress_thread_def_t stress_thread_defs[] = {
-    {&cpu_stress_thread, "cpu_stress", cpu_stress_thread_entry, 8192, 5},
-    {&amoled_thread, "amoled_stress", amoled_stress_thread_entry, 4096, 15},
-    {&imu_thread, "imu_stress", imu_stress_thread_entry, 4096, 12},
-    {&motor_thread, "motor_stress", motor_stress_thread_entry, 2048, 20},
+    {&cpu_stress_thread, "cpu_stress", cpu_stress_thread_entry, 8192, 30},
+    {&motor_thread, "motor_stress", motor_stress_thread_entry, 2048, 30},
 };
 
     #define STRESS_THREAD_COUNT                                                \
@@ -269,6 +275,23 @@ static void start_stress_test(void)
     voice_provider.vad_init();
     start_voice_recognition(V2T_INTENT_CHAT);
 
+    /* subscribe_hr_sensor starts the HR service: it fills watch_sensor.hr_data.hr
+     * (needs a few seconds of on-wrist PPG before bpm goes non-zero) and keeps
+     * the PPG sensor sampling. Raw PPG is then read from the motion stream
+     * (watch_sensor.motion_data.ppg_raw_data) in stress_ui_timer_cb — the same
+     * channel gesture recognition uses (acce_service bundles ppg into every
+     * motion sample) — NOT the separate "PPG" data service, which isn't
+     * published in this build. */
+    peripheral_provider.subscribe_hr_sensor(true);
+
+    /* Drives all screen updates from the GUI thread (see stress_ui_timer_cb).
+     * start_stress_test() runs in an LVGL event callback, so creating the timer
+     * here is already on the GUI thread. */
+    if (stress_ui_timer == RT_NULL)
+    {
+        stress_ui_timer = lv_timer_create(stress_ui_timer_cb, 100, RT_NULL);
+    }
+
     lv_label_set_text(test_label, "STRESS TEST RUNNING\nSwipe right to exit");
 }
 
@@ -277,11 +300,19 @@ static void stop_stress_test(void)
     LOG_I("Stopping stress test mode");
     stress_test_running = false;
 
-    /* Wait for all stress threads to exit naturally. Worst-case latency:
+    /* Stop the screen updater first. stop_stress_test() runs in the GUI thread
+     * (gesture callback / ONSTOP), the same context that drives the timer, so
+     * deleting it here is safe and guarantees no further LVGL access. */
+    if (stress_ui_timer != RT_NULL)
+    {
+        lv_timer_del(stress_ui_timer);
+        stress_ui_timer = RT_NULL;
+    }
+
+    /* Wait for the worker threads to exit naturally. Worst-case latency:
      *   - cpu_stress finishes its current iteration (prime calc + FP +
      *     matrix + hash) which can take ~200ms on M33
      *   - motor_stress wakes from its 100ms poll
-     *   - others wake from their 100/500ms mdelay
      * 600ms covers everyone with slack.
      *
      * IMPORTANT: do NOT call rt_thread_delete() here. rt_thread_create()
@@ -298,6 +329,8 @@ static void stop_stress_test(void)
 
     stop_voice_recognition(V2T_INTENT_NOTHING);
     voice_provider.vad_deinit();
+
+    peripheral_provider.subscribe_hr_sensor(false);
 }
 
 static void mode_button_event_handler(lv_event_t *e)

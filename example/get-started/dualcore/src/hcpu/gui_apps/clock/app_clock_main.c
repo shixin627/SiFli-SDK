@@ -70,6 +70,7 @@
 #endif
 #include "bloc_peripheral.h"
 #include "bloc_weather.h"
+#include "lv_ext_resource_manager.h"
 
 #define DBG_TAG "app.clock"
 #define DBG_LVL DBG_LOG
@@ -954,7 +955,7 @@ void create_connection_tips(void)
     lv_obj_align(disconnect_icon, LV_ALIGN_LEFT_MID, 15, 0);
     // 創建提示文字
     tips_label = lv_label_create(connection_tips_window);
-    lv_label_set_text(tips_label, "disconnected");
+    lv_label_set_text(tips_label, LV_EXT_STR_GET_BY_KEY(disconnected, "disconnected"));
     lv_obj_set_style_text_color(tips_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(
         tips_label, LV_EXT_FONT_GET(get_system_font_size(0)), LV_PART_MAIN);

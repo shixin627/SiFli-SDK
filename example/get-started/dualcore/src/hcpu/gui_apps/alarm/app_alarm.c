@@ -79,26 +79,40 @@ static app_alarm_t *p_app_alarm = NULL;
  * Format the alarm repeat-day bitmask in iOS style. Bit layout matches the
  * runtime tm_wday convention: bit0=Sun, bit1=Mon, ..., bit6=Sat.
  */
+static const char *weekday_short_i18n(int idx) /* idx: 0=Sun .. 6=Sat */
+{
+    switch (idx) {
+        case 0: return LV_EXT_STR_GET_BY_KEY(Sun, "Sun");
+        case 1: return LV_EXT_STR_GET_BY_KEY(Mon, "Mon");
+        case 2: return LV_EXT_STR_GET_BY_KEY(Tue, "Tue");
+        case 3: return LV_EXT_STR_GET_BY_KEY(Wed, "Wed");
+        case 4: return LV_EXT_STR_GET_BY_KEY(Thu, "Thu");
+        case 5: return LV_EXT_STR_GET_BY_KEY(Fri, "Fri");
+        case 6: return LV_EXT_STR_GET_BY_KEY(Sat, "Sat");
+        default: return "";
+    }
+}
+
 static void format_repeat(uint8_t days, char *out, size_t out_size)
 {
     if (days == 0x00)
     {
-        rt_snprintf(out, out_size, "Once");
+        rt_snprintf(out, out_size, LV_EXT_STR_GET_BY_KEY(Once, "Once"));
         return;
     }
     if (days == 0x7F)
     {
-        rt_snprintf(out, out_size, "Every Day");
+        rt_snprintf(out, out_size, LV_EXT_STR_GET_BY_KEY(alarm_every_day, "Every Day"));
         return;
     }
     if (days == 0x3E) /* Mon-Fri = bits 1..5 */
     {
-        rt_snprintf(out, out_size, "Weekdays");
+        rt_snprintf(out, out_size, LV_EXT_STR_GET_BY_KEY(alarm_weekdays, "Weekdays"));
         return;
     }
     if (days == 0x41) /* Sun + Sat = bits 0,6 */
     {
-        rt_snprintf(out, out_size, "Weekends");
+        rt_snprintf(out, out_size, LV_EXT_STR_GET_BY_KEY(alarm_weekends, "Weekends"));
         return;
     }
 
@@ -111,7 +125,7 @@ static void format_repeat(uint8_t days, char *out, size_t out_size)
         if ((days >> i) & 1)
         {
             int n = rt_snprintf(out + pos, out_size - pos,
-                                pos == 0 ? "%s" : ", %s", labels[i]);
+                                pos == 0 ? "%s" : ", %s", weekday_short_i18n(i));
             if (n <= 0 || (size_t)n >= out_size - pos) break;
             pos += n;
         }
@@ -182,8 +196,10 @@ static void add_btn_event_cb(lv_event_t *e)
 
     if (p_app_alarm->alarm_num >= BSP_ALARM_MAX)
     {
-        lv_obj_t *msgbox = lv_msgbox_create(NULL, "Alarms",
-                                            "Maximum reached.", NULL, true);
+        lv_obj_t *msgbox = lv_msgbox_create(NULL,
+                                            LV_EXT_STR_GET_BY_KEY(alarm_max_title, "Alarms"),
+                                            LV_EXT_STR_GET_BY_KEY(alarm_max_reached, "Maximum reached."),
+                                            NULL, true);
         lv_obj_center(msgbox);
         return;
     }
@@ -367,7 +383,7 @@ static void build_ringing_view(lv_obj_t *parent)
 
     /* "Alarm" label at top, in accent orange. */
     lv_obj_t *kicker = lv_label_create(root);
-    lv_label_set_text(kicker, "Alarm");
+    lv_label_set_text(kicker, LV_EXT_STR_GET_BY_KEY(alarm, "Alarm"));
     lv_obj_set_style_text_color(kicker, ALARM_COLOR_ACCENT, 0);
     lv_obj_set_style_text_font(
         kicker, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
@@ -437,7 +453,7 @@ static void build_list_view(lv_obj_t *parent)
 
     /* Header: title only, centred — round screens clip the corners. */
     lv_obj_t *title = lv_label_create(root);
-    lv_label_set_text(title, "Alarm");
+    lv_label_set_text(title, LV_EXT_STR_GET_BY_KEY(alarm, "Alarm"));
     lv_obj_set_style_text_font(
         title, LV_EXT_FONT_GET(get_system_font_size(1)), 0);
     lv_obj_set_style_text_color(title, ALARM_COLOR_TEXT_PRIMARY, 0);
@@ -480,7 +496,7 @@ static void build_list_view(lv_obj_t *parent)
 
     /* "No Alarms" empty state — hidden until the list-load finishes empty. */
     lv_obj_t *empty = lv_label_create(root);
-    lv_label_set_text(empty, "No Alarms");
+    lv_label_set_text(empty, LV_EXT_STR_GET_BY_KEY(no_alarms, "No Alarms"));
     lv_obj_set_style_text_font(
         empty, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_set_style_text_color(empty, ALARM_COLOR_TEXT_SECONDARY, 0);

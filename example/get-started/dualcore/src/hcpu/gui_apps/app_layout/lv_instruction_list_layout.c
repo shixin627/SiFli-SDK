@@ -181,27 +181,19 @@ LV_IMG_DECLARE(icon_release);
 LV_IMG_DECLARE(app_icon_frame);
 // LV_IMG_DECLARE(img_messages);
 
+/* LEFT instruction list = PURE custom-instruction list, mirroring the RIGHT
+   device_pager (SkaiLink left-list migration). The local utility apps
+   (timer / flashlight / recorder) and the Skai AI widget were removed, so this
+   definition is intentionally EMPTY → app_base_count == 0 and the list shows
+   only the phone-pushed instructions. All sites that walk this array are bounded
+   by ARRAY_SIZE / app_base_count, so a zero-length array degrades to no-ops. */
 uint16_t INSTRUCTION_LIST_ITEMS_DEFINITION[] = {
 #ifdef APP_ID_TIMER
-    app_id_timer,
+    // app_id_timer,   /* removed: local app off the left list */
 #endif
-    app_id_flashlight,
-#ifdef APP_ID_CALCULATOR
-// app_id_calculator,
-#endif
-    // app_id_exercise,
-    app_id_recorder,
-#ifdef APP_ID_PHOTO
-// app_id_photo,
-#endif
-// app_id_weather,
-#ifdef APP_ID_GAME_DINOSAUR
-// app_id_game_dinosaur,
-#endif
-#ifdef APP_ID_MEDIA
-// app_id_media,
-#endif
-    // app_id_ai,
+    // app_id_flashlight,  /* removed: local app off the left list */
+    // app_id_recorder,    /* removed: local app off the left list */
+    // app_id_ai,          /* no Skai input widget on the left list */
 };
 
 uint8_t return_app_count(void)
@@ -369,6 +361,22 @@ static uint16_t last_zoom[MAX_LIST_ITEMS] = {0};
    here so scroll_list (line ~790) and tap_on_ai_widget /
    instruction_list_pause (further down) all see the same storage. */
 static bool s_skaibar_tracking_active = false;
+
+/* SKAI_LINK active target for the LEFT list = the watch's directly-connected
+   device (the primary = the phone itself). The primary is deliberately NOT in
+   the watch's device_registry (the phone excludes it from the device-list push;
+   its actions ARE this left list), so it has no id to assert here. Instead we
+   assert an EMPTY active target before each focus/commit: the phone reads "no
+   remote device active" as "the watch is on the left list → run locally on the
+   primary". This mirrors device_pager asserting a real device id for the right
+   page, and clears any stale remote target if the left list was entered without
+   passing through device_pager's leave path. De-duped inside
+   commu_send_active_device (shared with device_pager), so re-asserting on every
+   focus/commit only sends on an actual change. */
+static void instruction_list_assert_local_target(void)
+{
+    commu_send_active_device(""); /* "" = no remote target → primary/local */
+}
 
 /* arc-scroll detached / discrete 模式狀態 — 拖動時 arc 不動 list、由 drag_cb
  * 接管，到 page change 才 snap。完整定義在後面，scroll_list 要先 visible。
@@ -986,13 +994,21 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
     }
     if (selected_item_index != old_selected_item_index)
     {
-        if (selected_item_index == INSTRUCTION_LIST_ITEMS_DEFINITION[app_id_ai])
+        /* is_at_ai_widget = the selection sits on the Skai AI widget, IF the
+           list has one. The list is a pure instruction list now (no AI widget),
+           so this stays false; computed as a position lookup so it self-corrects
+           if app_id_ai is ever re-added. (The old code indexed the array BY the
+           app_id_ai ENUM VALUE, reading a wrong/out-of-bounds slot — and would
+           read past the end now that the array is empty.) */
+        is_at_ai_widget = false;
+        for (uint8_t ai = 0;
+             ai < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION); ai++)
         {
-            is_at_ai_widget = true;
-        }
-        else
-        {
-            is_at_ai_widget = false;
+            if (INSTRUCTION_LIST_ITEMS_DEFINITION[ai] == app_id_ai)
+            {
+                is_at_ai_widget = (selected_item_index == ai);
+                break;
+            }
         }
         set_paused_control_with_arm(false);
         if (selected_item_index == child_cnt - 1)
@@ -1011,14 +1027,17 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
            before the custom list aren't part of the skaibar option
            set. Dedup is the outer selected_item_index != old check,
            so we don't spam the same idx on every scroll-list re-compute. */
-        if (s_skaibar_tracking_active &&
-            selected_item_index >= app_base_count)
+        if (selected_item_index >= app_base_count)
         {
-            uint8_t skaibar_idx =
+            uint8_t opt_idx =
                 (uint8_t)(selected_item_index - app_base_count);
-            commu_send_skaibar_selected(skaibar_idx);
-            LOG_D("[skaibar] sent selected idx=%u (raw=%u, base=%u)",
-                  (unsigned)skaibar_idx,
+            /* Mirror the right device_pager: report focus over SKAI_LINK,
+               targeting the watch's directly-connected device (primary). Always
+               sends on scroll (no skaibar-mode gate) for parity with the right. */
+            instruction_list_assert_local_target();
+            commu_send_option_focus(opt_idx);
+            LOG_D("[left] focus option idx=%u (raw=%u, base=%u)",
+                  (unsigned)opt_idx,
                   (unsigned)selected_item_index,
                   (unsigned)app_base_count);
         }
@@ -1653,7 +1672,7 @@ static void lmic_open_reveal_cb(lv_anim_t *a)
                             LV_OPA_0, 0);
     /* Placeholder while listening, replaced by the transcript (mirrors
        device_pager skaibar_open's "聽取中"). */
-    instruction_list_set_voice_transcript("聽取中");
+    instruction_list_set_voice_transcript(LV_EXT_STR_GET_BY_KEY(listening, "Listening"));
     /* Fade the frame + label in (the box "fills" with its content). */
     if (s_skai_widget && lv_obj_is_valid(s_skai_widget))
     {
@@ -2157,18 +2176,16 @@ static void list_item_click_event_cb(lv_event_t *evt)
            AI-widget visibility, the existing send_instruction_update
            flow below, and the toggle/flash visuals — phone may use
            the COMMITTED notify alongside, e.g. to invoke a script. */
-        if (s_skaibar_tracking_active)
+        for (uint8_t j = 0; j < list_item_count; j++)
         {
-            for (uint8_t j = 0; j < list_item_count; j++)
+            if (&list_items[j] == item && j >= app_base_count)
             {
-                if (&list_items[j] == item && j >= app_base_count)
-                {
-                    commu_send_skaibar_committed(
-                        (uint8_t)(j - app_base_count));
-                    LOG_D("[skaibar] committed idx=%u (raw=%u)",
-                          (unsigned)(j - app_base_count), (unsigned)j);
-                    break;
-                }
+                /* SKAI_LINK commit to the primary (same as right device_pager). */
+                instruction_list_assert_local_target();
+                commu_send_option_commit((uint8_t)(j - app_base_count));
+                LOG_D("[left] commit option idx=%u (raw=%u)",
+                      (unsigned)(j - app_base_count), (unsigned)j);
+                break;
             }
         }
         if (is_open_instruction_list_ai)
@@ -2218,12 +2235,13 @@ static void on_tap(void)
            parallel gesture path. selected_item_index is the raw
            list_items index; subtract app_base_count for the 0-based
            skaibar-option index the phone expects. */
-        if (s_skaibar_tracking_active &&
-            selected_item_index >= app_base_count)
+        if (selected_item_index >= app_base_count)
         {
-            commu_send_skaibar_committed(
+            /* SKAI_LINK commit to the primary (gesture path). */
+            instruction_list_assert_local_target();
+            commu_send_option_commit(
                 (uint8_t)(selected_item_index - app_base_count));
-            LOG_D("[skaibar] committed via gesture idx=%u (raw=%u)",
+            LOG_D("[left] commit option via gesture idx=%u (raw=%u)",
                   (unsigned)(selected_item_index - app_base_count),
                   (unsigned)selected_item_index);
         }
@@ -2646,7 +2664,7 @@ static void show_complete_on_phone_tip(void)
     lv_obj_clear_flag(complete_on_phone_tip_window, LV_OBJ_FLAG_CLICKABLE);
 
     complete_on_phone_tip_label = lv_label_create(complete_on_phone_tip_window);
-    lv_label_set_text(complete_on_phone_tip_label, "在手機上完成");
+    lv_label_set_text(complete_on_phone_tip_label, LV_EXT_STR_GET_BY_KEY(complete_on_phone, "Complete on phone"));
     lv_obj_set_style_text_color(complete_on_phone_tip_label, lv_color_white(),
                                 LV_PART_MAIN);
     lv_obj_set_style_text_font(complete_on_phone_tip_label,

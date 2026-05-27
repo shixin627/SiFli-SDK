@@ -27,6 +27,7 @@
 #include "bloc_v2t.h"
 #include "ble_device_manager.h"
 #include "ble_hid.h"
+#include "lv_ext_resource_manager.h"
 
 extern void refresh_connected_device_label(void);
 #ifndef _MSC_VER
@@ -1317,13 +1318,16 @@ static void dev_change_connecting_timer_cb(lv_timer_t *t)
     }
 
     dev_change_connecting_dots = (dev_change_connecting_dots % 3) + 1;
-    static const char *const texts[] = {"Connecting.", "Connecting..",
-                                        "Connecting..."};
     if (dev_change_list_ui.connecting_label &&
         lv_obj_is_valid(dev_change_list_ui.connecting_label))
     {
-        lv_label_set_text(dev_change_list_ui.connecting_label,
-                          texts[dev_change_connecting_dots - 1]);
+        char cbuf[32];
+        lv_snprintf(cbuf, sizeof(cbuf), "%s", LV_EXT_STR_GET_BY_KEY(connecting, "Connecting"));
+        size_t cl = strlen(cbuf);
+        int dots = dev_change_connecting_dots; /* 1, 2, or 3 */
+        for (int k = 0; k < dots && cl + 1 < sizeof(cbuf); k++) cbuf[cl++] = '.';
+        cbuf[cl] = '\0';
+        lv_label_set_text(dev_change_list_ui.connecting_label, cbuf);
     }
 }
 
@@ -1416,7 +1420,7 @@ static void dev_change_delete_confirm_cb(lv_event_t *e)
 
     if (btn_txt)
     {
-        if (strcmp(btn_txt, "Yes") == 0)
+        if (strcmp(btn_txt, LV_EXT_STR_GET_BY_KEY(yes, "Yes")) == 0)
         {
             if (dev_change_pending_delete_idx != 0xFF)
             {
@@ -1458,13 +1462,15 @@ static void dev_change_show_delete_confirm(uint8_t device_idx)
     dev_change_pending_delete_idx = device_idx;
 
     static char msg_buf[128];
-    lv_snprintf(msg_buf, sizeof(msg_buf), "Delete device?\n%s",
+    lv_snprintf(msg_buf, sizeof(msg_buf), LV_EXT_STR_GET_BY_KEY(delete_device_fmt, "Delete device?\n%s"),
                 dev->device_name);
 
-    static const char *btns[] = {"Yes", "No", ""};
+    static const char *btns[] = {NULL, NULL, ""};
+    btns[0] = LV_EXT_STR_GET_BY_KEY(yes, "Yes");
+    btns[1] = LV_EXT_STR_GET_BY_KEY(no, "No");
 
     dev_change_delete_confirm_msgbox =
-        lv_msgbox_create(NULL, "Confirm Delete", msg_buf, btns, false);
+        lv_msgbox_create(NULL, LV_EXT_STR_GET_BY_KEY(confirm_delete_title, "Confirm Delete"), msg_buf, btns, false);
     lv_obj_set_style_bg_color(dev_change_delete_confirm_msgbox,
                               lv_color_hex(0x2A2A2A), 0);
     lv_obj_set_style_text_color(dev_change_delete_confirm_msgbox,
@@ -1718,7 +1724,7 @@ static void dev_change_refresh_device_list(void)
         lv_obj_set_style_shadow_spread(watch_led, 2, 0);
 
         lv_obj_t *watch_label = lv_label_create(watch_btn);
-        lv_label_set_text(watch_label, "Watch");
+        lv_label_set_text(watch_label, LV_EXT_STR_GET_BY_KEY(watch, "Watch"));
         lv_obj_set_style_text_color(watch_label, lv_color_hex(0xFFFFFF), 0);
         lv_obj_align(watch_label, LV_ALIGN_LEFT_MID, 18, 0);
         lv_obj_clear_flag(watch_label, LV_OBJ_FLAG_CLICKABLE);
@@ -1759,7 +1765,7 @@ static void dev_change_refresh_device_list(void)
         lv_obj_align(conn_bg, LV_ALIGN_CENTER, 0, 0);
 
         lv_obj_t *conn_label = lv_label_create(conn_btn);
-        lv_label_set_text(conn_label, "Connecting.");
+        lv_label_set_text(conn_label, LV_EXT_STR_GET_BY_KEY(connecting, "Connecting"));
         lv_obj_set_style_text_color(conn_label, lv_color_hex(0x9CB5FF), 0);
         lv_obj_center(conn_label);
         lv_obj_clear_flag(conn_label, LV_OBJ_FLAG_CLICKABLE);
@@ -1792,7 +1798,7 @@ static void dev_change_refresh_device_list(void)
         lv_obj_align(device_bg, LV_ALIGN_CENTER, 0, 0);
 
         lv_obj_t *add_label = lv_label_create(add_btn);
-        lv_label_set_text(add_label, "Add Device");
+        lv_label_set_text(add_label, LV_EXT_STR_GET_BY_KEY(add_device, "Add Device"));
         lv_obj_set_style_text_color(add_label, lv_color_hex(0x9CB5FF), 0);
         lv_obj_center(add_label);
     }
@@ -1967,7 +1973,7 @@ void app_clock_device_change_bar_init(lv_obj_t *par)
 
         // Empty state label
         lv_obj_t *empty_label = lv_label_create(content_area);
-        lv_label_set_text(empty_label, "No paired devices");
+        lv_label_set_text(empty_label, LV_EXT_STR_GET_BY_KEY(no_paired_devices, "No paired devices"));
         lv_obj_set_style_text_color(empty_label, lv_color_hex(0x888888), 0);
         lv_obj_add_flag(empty_label, LV_OBJ_FLAG_HIDDEN);
         dev_change_list_ui.empty_label = empty_label;

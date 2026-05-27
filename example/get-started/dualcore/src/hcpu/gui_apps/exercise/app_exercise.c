@@ -396,23 +396,23 @@ int stop_exercise(void)
                 LOG_E("Failed to store exercise data: %d", ret);
                 if (ret == EXERCISE_DATA_TOO_SHORT)
                 {
-                    ui_show_hint_toast("Exercise session too short");
+                    ui_show_hint_toast(LV_EXT_STR_GET_BY_KEY(exercise_too_short, "Exercise session too short"));
                 }
                 else if (ret == EXERCISE_NO_HRM_DATA)
                 {
-                    ui_show_hint_toast("No heart rate data recorded");
+                    ui_show_hint_toast(LV_EXT_STR_GET_BY_KEY(no_hr_data, "No heart rate data recorded"));
                 }
                 else if (ret == EXERCISE_NO_CALORIES_DATA)
                 {
-                    ui_show_hint_toast("No calories data recorded");
+                    ui_show_hint_toast(LV_EXT_STR_GET_BY_KEY(no_cal_data, "No calories data recorded"));
                 }
                 else if (ret == EXERCISE_FILE_OPEN_FAILED)
                 {
-                    ui_show_hint_toast("Failed to open file for writing");
+                    ui_show_hint_toast(LV_EXT_STR_GET_BY_KEY(file_write_fail, "Failed to open file for writing"));
                 }
                 else
                 {
-                    ui_show_hint_toast("Failed to store exercise data: %d",
+                    ui_show_hint_toast(LV_EXT_STR_GET_BY_KEY(store_fail_fmt, "Failed to store exercise data: %d"),
                                        ret);
                 }
             }
@@ -463,7 +463,7 @@ static void stop_button_event_cb(lv_event_t *e)
 {
     if (stop_exercise() != 0)
     {
-        ui_show_hint_toast("Failed to stop exercise session");
+        ui_show_hint_toast(LV_EXT_STR_GET_BY_KEY(stop_fail, "Failed to stop exercise session"));
     }
 }
 
@@ -702,6 +702,18 @@ static void list_scroll_event_cb(lv_event_t *evt)
     }
 }
 
+static const char *workout_name_i18n(const char *name)
+{
+    if (rt_strcmp(name, WORKOUT_RUNNING_TITLE) == 0)  return LV_EXT_STR_GET_BY_KEY(workout_running, "Running");
+    if (rt_strcmp(name, WORKOUT_WALKING_TITLE) == 0)  return LV_EXT_STR_GET_BY_KEY(workout_walking, "Walking");
+    if (rt_strcmp(name, WORKOUT_CYCLING_TITLE) == 0)  return LV_EXT_STR_GET_BY_KEY(workout_cycling, "Cycling");
+    if (rt_strcmp(name, WORKOUT_SWIMMING_TITLE) == 0) return LV_EXT_STR_GET_BY_KEY(workout_swimming, "Swimming");
+    if (rt_strcmp(name, WORKOUT_HIKING_TITLE) == 0)   return LV_EXT_STR_GET_BY_KEY(workout_hiking, "Hiking");
+    if (rt_strcmp(name, WORKOUT_YOGA_TITLE) == 0)     return LV_EXT_STR_GET_BY_KEY(workout_yoga, "Yoga");
+    if (rt_strcmp(name, WORKOUT_GYM_TITLE) == 0)      return LV_EXT_STR_GET_BY_KEY(workout_gym, "Gym");
+    return name;
+}
+
 static lv_obj_t *create_workout_list(lv_obj_t *parent)
 {
     lv_obj_t *list_container = lv_obj_create(parent);
@@ -766,7 +778,7 @@ static lv_obj_t *create_workout_list(lv_obj_t *parent)
          * 螢幕位置：對齊 LEFT_MID 偏 55px → 跟舊版「icon 在 angle=0 時 label 左
          * 邊在螢幕 x=55」對齊（cx + R - icon_w/2 - 338 = 55） */
         workout_name_labels[i] = lv_label_create(list_container);
-        lv_label_set_text(workout_name_labels[i], workout_list[i].name);
+        lv_label_set_text(workout_name_labels[i], workout_name_i18n(workout_list[i].name));
         lv_obj_set_style_text_color(workout_name_labels[i], lv_color_white(), 0);
         lv_obj_set_style_text_font(workout_name_labels[i],
                                    LV_EXT_FONT_GET(get_system_font_size(1)), 0);
@@ -934,7 +946,7 @@ static lv_obj_t *create_workout_screen(lv_obj_t *parent)
     lv_obj_set_style_bg_color(ui.stop_button, lv_color_hex(0x333333), 0);
     lv_obj_align(ui.stop_button, LV_ALIGN_TOP_LEFT, 40, 250);
     lv_obj_t *stop_label = lv_label_create(ui.stop_button);
-    lv_label_set_text(stop_label, "STOP");
+    lv_label_set_text(stop_label, LV_EXT_STR_GET_BY_KEY(stop, "STOP"));
     lv_obj_center(stop_label);
     lv_obj_add_event_cb(ui.stop_button, stop_button_event_cb, LV_EVENT_CLICKED,
                         NULL);

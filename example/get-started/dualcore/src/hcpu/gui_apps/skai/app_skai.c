@@ -313,7 +313,8 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
     lv_obj_align(skai_widget_input_text, LV_ALIGN_TOP_MID, 0, 10);
 
     skai_widget_input_prompt = lv_label_create(skai_widget_input_text_bg);
-    lv_label_set_text(skai_widget_input_prompt, "聽取中");
+    lv_label_set_text(skai_widget_input_prompt,
+                      LV_EXT_STR_GET_BY_KEY(listening, "Listening"));
     lv_obj_set_style_text_font(skai_widget_input_prompt,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_label_set_long_mode(skai_widget_input_prompt, LV_LABEL_LONG_WRAP);
@@ -444,7 +445,9 @@ static void listening_anim_cb(lv_timer_t *timer)
     if (skai_widget_input_prompt != NULL && skai_widget_input_text_bg != NULL &&
         lv_obj_is_valid(skai_widget_input_prompt))
     {
-        char buf[24] = "聽取中";
+        char buf[32];
+        lv_snprintf(buf, sizeof(buf), "%s",
+                    LV_EXT_STR_GET_BY_KEY(listening, "Listening"));
         for (uint8_t i = 0; i < listening_anim_dot; i++)
             strcat(buf, ".");
         if (skai_widget_open)
@@ -542,7 +545,8 @@ void open_skai_widget_ai(bool open)
             setting_provider.set_power_save_mode(1);
             stop_listening_animation();
             // listening_shadow_animation(false);
-            lv_label_set_text(skai_widget_input_prompt, "聽取中");
+            lv_label_set_text(skai_widget_input_prompt,
+                              LV_EXT_STR_GET_BY_KEY(listening, "Listening"));
             // lv_obj_set_style_text_opa(skai_widget_input_prompt, LV_OPA_50,
             // 0); lv_obj_set_style_outline_width(skai_widget_input_text_bg, 5,
             //                           LV_STATE_DEFAULT);

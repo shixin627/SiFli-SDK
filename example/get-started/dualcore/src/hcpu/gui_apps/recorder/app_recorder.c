@@ -121,7 +121,7 @@ lv_obj_t *create_record_view(lv_obj_t *parent)
     lv_obj_t *record_time_label = lv_label_create(container);
     lv_obj_set_style_text_font(record_time_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_set_style_text_color(record_time_label, lv_color_white(), 0);
-    lv_label_set_text(record_time_label, "tap to record");
+    lv_label_set_text(record_time_label, LV_EXT_STR_GET_BY_KEY(tap_to_record, "tap to record"));
     lv_obj_align(record_time_label, LV_ALIGN_BOTTOM_MID, 0, -70);
     p_app_recorder->record_time_label = record_time_label;
 
@@ -141,7 +141,7 @@ static void update_record_time(lv_timer_t *timer)
         p_app_recorder->record_timer = NULL;
         stop_voice_recording();
         set_record_button_style(p_app_recorder->record_button, false);
-        lv_label_set_text(p_app_recorder->record_time_label, "storage full");
+        lv_label_set_text(p_app_recorder->record_time_label, LV_EXT_STR_GET_BY_KEY(storage_full, "storage full"));
         return;
     }
     p_app_recorder->record_time++;
@@ -171,7 +171,7 @@ static void start_to_record_voice(void)
     {
         /* Storage full or file error — don't enter the recording UI. */
         set_record_button_style(p_app_recorder->record_button, false);
-        lv_label_set_text(p_app_recorder->record_time_label, "storage full");
+        lv_label_set_text(p_app_recorder->record_time_label, LV_EXT_STR_GET_BY_KEY(storage_full, "storage full"));
         return;
     }
     set_record_button_style(p_app_recorder->record_button, true);
@@ -191,7 +191,7 @@ static void stop_recording_voice(void)
         stop_voice_recording();
 
         set_record_button_style(p_app_recorder->record_button, false);
-        lv_label_set_text(p_app_recorder->record_time_label, "tap to record");
+        lv_label_set_text(p_app_recorder->record_time_label, LV_EXT_STR_GET_BY_KEY(tap_to_record, "tap to record"));
 
         const char *file_path = get_last_recording_file();
         if (file_path && strlen(file_path) > 0)

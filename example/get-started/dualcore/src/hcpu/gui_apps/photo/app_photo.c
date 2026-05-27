@@ -254,7 +254,7 @@ static void show_photo_action_sheet(lv_obj_t *img_container,
     lv_obj_set_size(btn_del, 100, 50);
     lv_obj_align(btn_del, LV_ALIGN_TOP_MID, 60, 0);
     lv_obj_t *label_del = lv_label_create(btn_del);
-    lv_label_set_text(label_del, "刪除選取");
+    lv_label_set_text(label_del, LV_EXT_STR_GET_BY_KEY(delete_selected, "Delete Selected"));
     lv_obj_center(label_del);
     lv_obj_set_style_bg_color(btn_del, lv_palette_main(LV_PALETTE_RED), 0);
     lv_obj_set_style_text_color(label_del, lv_color_white(), 0);
@@ -264,7 +264,7 @@ static void show_photo_action_sheet(lv_obj_t *img_container,
     lv_obj_set_size(btn_cancel, 100, 50);
     lv_obj_align(btn_cancel, LV_ALIGN_TOP_MID, -60, 0);
     lv_obj_t *label_cancel = lv_label_create(btn_cancel);
-    lv_label_set_text(label_cancel, "取消");
+    lv_label_set_text(label_cancel, LV_EXT_STR_GET_BY_KEY(cancel, "Cancel"));
     lv_obj_center(label_cancel);
 
     // 刪除事件，無需傳 file_path
