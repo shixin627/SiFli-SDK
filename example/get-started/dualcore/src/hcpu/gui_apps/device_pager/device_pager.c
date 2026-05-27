@@ -329,6 +329,11 @@ static void apply_arc(tile_ui_t *u)
         !s_suppress_skaibar_dismiss)
     {
         commu_send_option_focus((uint8_t)closest);
+        /* Haptic tick on each option switch, matching the left instruction_list
+           (motor_pattern_scrolling_app, gated internally by the global motor
+           switch). Fires only on a real user-scroll boundary crossing — the
+           s_suppress guard already excludes programmatic rebinds/device switches. */
+        motor_pattern_scrolling_app();
         LOG_I("[pager] scrolled to option %d", closest);
     }
     if (count > 0 && min_abs <= (float)M_PI / 2.0f)
