@@ -1696,6 +1696,26 @@ void refresh_notification_list(void *param)
         lv_label_set_text(label, LV_EXT_STR_GET_BY_KEY(no_notifications, "No notifications"));
         lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
     }
+    else if (!have_media_widget &&
+             p_app_notification->no_notifications_widget != NULL &&
+             lv_obj_is_valid(p_app_notification->no_notifications_widget))
+    {
+        /* Widget already built — refresh the label text only.
+           Triggered by language switch: the else-if above only creates when NULL,
+           so we must find the existing label and update it here. */
+        uint32_t n = lv_obj_get_child_cnt(p_app_notification->no_notifications_widget);
+        for (uint32_t i = 0; i < n; i++)
+        {
+            lv_obj_t *c = lv_obj_get_child(p_app_notification->no_notifications_widget,
+                                           (int32_t)i);
+            if (lv_obj_check_type(c, &lv_label_class))
+            {
+                lv_label_set_text(c, LV_EXT_STR_GET_BY_KEY(no_notifications,
+                                                            "No notifications"));
+                break;
+            }
+        }
+    }
     if (p_app_notification->media_widget == NULL && have_media_widget)
     {
         extern lv_obj_t *lv_media_widget_builder(lv_obj_t * parent);
