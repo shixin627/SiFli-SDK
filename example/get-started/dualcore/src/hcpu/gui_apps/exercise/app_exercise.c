@@ -682,7 +682,12 @@ static void scroll_list(lv_obj_t *obj)
 {
     /* apply_circular_layout 已經依 scroll_y 算出 closest_i，更新
      * selected_exercise_index，並切換 label 顯示 */
+    uint16_t prev_index = selected_exercise_index;
     apply_circular_layout(obj);
+    /* 置中項目改變才震一下（仿 lv_instruction_list_layout 的滾動震動）。
+     * 只有使用者滑動造成的切換會進到這裡，create 時的初始 apply 不走此路徑 */
+    if (selected_exercise_index != prev_index && get_scrolling_motor_vibrate_status())
+        motor_pattern_scrolling_app();
 }
 
 static void list_scroll_event_cb(lv_event_t *evt)
