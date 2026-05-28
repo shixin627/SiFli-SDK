@@ -9,6 +9,7 @@
 #include "common_widget.h"
 #include "watch_system_interact.h"
 #include "ui_helper.h"
+#include "lv_ext_resource_manager.h"
 
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
@@ -36,6 +37,7 @@ typedef struct
     lv_timer_t *redraw_task;
     app_clock_time_t last_redraw_time;
     lv_obj_t *earth_img;
+    lv_obj_t *ampm_label; /* AM/PM tag, filled in 12h mode, empty in 24h */
 } app_clock_earth_digital_t;
 
 static app_clock_earth_digital_t *p_clk_earth_digital = NULL;
@@ -50,9 +52,12 @@ static void app_clock_earth_digital_redraw(lv_timer_t *task)
     hours = current_time.h;
     minutes = current_time.m;
 
+    // Respect the 12/24-hour preference before splitting into digit images.
+    rt_uint8_t disp_hours = ui_time_display_hour(hours);
+
     // Update hour display with images
-    int hour_0 = hours / 10;
-    int hour_1 = hours % 10;
+    int hour_0 = disp_hours / 10;
+    int hour_1 = disp_hours % 10;
     int min_0 = minutes / 10;
     int min_1 = minutes % 10;
 
@@ -65,6 +70,12 @@ static void app_clock_earth_digital_redraw(lv_timer_t *task)
     lv_img_set_src(p_clk_earth_digital->hour_1_img, dig_img[hour_1]);
     lv_img_set_src(p_clk_earth_digital->minute_0_img, dig_img[min_0]);
     lv_img_set_src(p_clk_earth_digital->minute_1_img, dig_img[min_1]);
+
+    if (lv_obj_is_valid(p_clk_earth_digital->ampm_label))
+    {
+        const char *ampm = ui_time_ampm(hours);
+        lv_label_set_text(p_clk_earth_digital->ampm_label, ampm ? ampm : "");
+    }
 
     memcpy(&p_clk_earth_digital->last_redraw_time, &current_time,
            sizeof(app_clock_time_t));
@@ -159,6 +170,17 @@ lv_obj_t *lv_earth_digital_layout_create(lv_obj_t *parent)
     p_clk_earth_digital->earth_img = lv_img_create(p_clk_earth_digital->bg);
     lv_img_set_src(p_clk_earth_digital->earth_img, &img_earth_digital_bg);
     lv_obj_align(p_clk_earth_digital->earth_img, LV_ALIGN_BOTTOM_MID, 0, -30);
+
+    /* AM/PM tag below the time digits, horizontally centred between the hour
+       and minute groups — shown only in 12-hour mode; the redraw task fills
+       it in / clears it based on hour_format. */
+    p_clk_earth_digital->ampm_label = lv_label_create(p_clk_earth_digital->bg);
+    lv_obj_set_style_text_font(p_clk_earth_digital->ampm_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_color(p_clk_earth_digital->ampm_label,
+                                lv_color_white(), 0);
+    lv_label_set_text(p_clk_earth_digital->ampm_label, "");
+    lv_obj_align(p_clk_earth_digital->ampm_label, LV_ALIGN_CENTER, 0, 70);
 
     p_clk_earth_digital->redraw_task = NULL;
 

@@ -391,20 +391,6 @@ static void build_layout(void)
     lv_obj_add_event_cb(roller_h, roller_tap_step_cb, LV_EVENT_RELEASED, NULL);
     p_app_alarm_edit_time->roller_hour = roller_h;
 
-    /* AM/PM tag at the hour roller's bottom-right — only in 12-hour mode.
-       Layered on top of the roller (parent = scr) so it stays visible above
-       the dimmed non-selected rows. */
-    if (!is_24h)
-    {
-        lv_obj_t *ampm = lv_label_create(scr);
-        lv_obj_set_style_text_font(
-            ampm, LV_EXT_FONT_GET(get_system_font_size(-2)), 0);
-        lv_obj_set_style_text_color(ampm, ALARM_COLOR_TEXT_PRIMARY, 0);
-        lv_label_set_text(ampm, "AM");
-        lv_obj_align_to(ampm, roller_h, LV_ALIGN_BOTTOM_RIGHT, -4, -6);
-        p_app_alarm_edit_time->hour_ampm_tag = ampm;
-    }
-
     /* Colon between rollers. */
     lv_obj_t *colon = lv_label_create(scr);
     lv_label_set_text(colon, ":");
@@ -425,6 +411,21 @@ static void build_layout(void)
     lv_obj_add_event_cb(roller_m, roller_tap_step_cb, LV_EVENT_PRESSED, NULL);
     lv_obj_add_event_cb(roller_m, roller_tap_step_cb, LV_EVENT_RELEASED, NULL);
     p_app_alarm_edit_time->roller_minute = roller_m;
+
+    /* AM/PM tag at the minute roller's bottom-right — only in 12-hour mode.
+       Layered on top of the roller (parent = scr) so it stays visible above
+       the dimmed non-selected rows. The hour value still drives AM/PM; this
+       just lives next to the minutes per the requested layout. */
+    if (!is_24h)
+    {
+        lv_obj_t *ampm = lv_label_create(scr);
+        lv_obj_set_style_text_font(
+            ampm, LV_EXT_FONT_GET(get_system_font_size(-2)), 0);
+        lv_obj_set_style_text_color(ampm, ALARM_COLOR_TEXT_PRIMARY, 0);
+        lv_label_set_text(ampm, "AM");
+        lv_obj_align_to(ampm, roller_m, LV_ALIGN_BOTTOM_RIGHT, -4, -6);
+        p_app_alarm_edit_time->hour_ampm_tag = ampm;
+    }
 
     /* Bottom buttons. */
     lv_obj_t *cancel = create_action_btn(scr, LV_EXT_STR_GET_BY_KEY(cancel, "Cancel"), false, cancel_event_cb);
