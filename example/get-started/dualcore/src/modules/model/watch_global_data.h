@@ -13,7 +13,7 @@ extern "C"
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 1
-#define VERSION_REVISION 57
+#define VERSION_REVISION 58
 #define VERSION_DEV 1
 
 #define MAX_GESTURE_SAMPLES 76

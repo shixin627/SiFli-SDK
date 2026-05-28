@@ -360,14 +360,15 @@ static void prv_minute_eval(uint32_t utc_now)
 
     const sleep_fusion_output_t *out = sleep_fusion_update(utc_now, &input);
 
-    /* Sleep/wake above is accel-only, so once we're in a sleep stage drive the
-       sleep-mode power optimisations; revert on wake / not-worn:
-         (a) wrist-wake suppression — rolling over no longer lights the screen;
-         (b) dense PPG bursts (two-stage gate) so HR can stage Deep/REM. */
+    /* Sleep/wake above is accel-only. When in a sleep stage, drive dense PPG
+       bursts (two-stage gate) so HR can stage Deep/REM; revert on wake/not-worn.
+       NOTE: wrist-wake suppression was intentionally removed -- gating HW
+       wrist-wake on this accel-only "asleep" signal could lock lift-to-wake on a
+       false positive, with no reliable accel-driven release while the screen is
+       dark (regressed lift-to-wake; reverted to screen-state-only gating). */
     bool asleep = (out->stage == SLEEP_FUSION_STAGE_LIGHT ||
                    out->stage == SLEEP_FUSION_STAGE_DEEP ||
                    out->stage == SLEEP_FUSION_STAGE_REM);
-    watch_sleep_tracking_set_active(asleep);
 #ifdef BSP_USING_HR_SVC
     hr_service_set_sleep_active(asleep);
 #endif
