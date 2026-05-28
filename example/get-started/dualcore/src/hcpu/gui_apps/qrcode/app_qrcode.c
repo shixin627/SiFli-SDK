@@ -64,7 +64,7 @@ static void on_start(lv_obj_t *scr)
     /* White rounded card behind the QR — matches the device-page empty-state look
        (radius 16 / pad 12) and gives the QR a clean rounded quiet-zone. */
     lv_obj_t *card = lv_obj_create(bg);
-    lv_obj_set_size(card, 224, 224);            /* 200 QR + 12 pad each side */
+    lv_obj_set_size(card, 172, 172);            /* 148 QR + 12 pad each side */
     lv_obj_set_style_bg_color(card, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(card, 0, 0);
@@ -74,8 +74,11 @@ static void on_start(lv_obj_t *scr)
     lv_obj_center(card);
     lv_obj_add_event_cb(card, qrcode_event_cb, LV_EVENT_CLICKED, NULL);
 
+    /* 148px (not 200) keeps the TRUE_COLOR canvas DRV_EPIC_NEW_API forces down to
+       ~44KB instead of ~80KB — the 200px alloc was failing under heap pressure
+       (lv_qrcode.c:86 malloc assert). Still ≥4px/module for this URL's QR. */
     lv_obj_t *qrcode = lv_qrcode_create(card);
-    lv_qrcode_setparam(qrcode, 200, lv_color_black(), lv_color_white());
+    lv_qrcode_setparam(qrcode, 148, lv_color_black(), lv_color_white());
     lv_qrcode_update(qrcode, url, strlen(url));
     lv_obj_center(qrcode);
     lv_obj_add_event_cb(qrcode, qrcode_event_cb, LV_EVENT_CLICKED, NULL);

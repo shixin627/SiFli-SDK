@@ -34,7 +34,6 @@
 #define M_PI 3.14159265358979323846
 #endif
 #include "lvgl.h"
-#include "lv_qrcode.h"                  /* no-device empty state: download-page QR (same widget as app_qrcode.c) */
 #include "ble_device_manager.h"
 #include "ble_hid.h"                   /* ble_hid_set_conn_idx (drill-down target) */
 #include "ui_helper.h"                 /* get_system_font_size */
@@ -60,6 +59,7 @@ extern void refresh_ai_chat_input_message(char *text);
 
 LV_IMG_DECLARE(icon_mic); /* shared mic/voice icon, same as instruction_list */
 LV_IMG_DECLARE(message_widget_bg); /* skaibar input pill frame (same as left list) */
+LV_IMG_DECLARE(qr_download); /* no-device empty state: prebuilt QR for skaiwalk.com/download (large_ezip resource) */
 /* Per-action category icons (auto-built from the resource ezip image folder).
    Selected per item by its DEV_ACTION_TYPE; replaces the old img_flashlight
    placeholder. */
@@ -128,10 +128,8 @@ typedef struct
     tile_ui_t   t[3];            /* physical tiles: left / center / right */
     lv_obj_t   *bar;             /* bottom re-summon touch zone (invisible, on the mouse) */
     lv_obj_t   *grabber;         /* visible drawer handle on lv_layer_top — rides up with the reveal */
-    lv_obj_t   *empty_view;      /* no-device empty state: download-page QR + hint (shown when count == 0) */
-    lv_obj_t   *empty_qr_card;   /* white card that parents the lazily-built QR */
-    lv_obj_t   *empty_qr;        /* lv_qrcode — lazily built on entry, freed on leave (big TRUE_COLOR buf) */
-    bool        page_visible;    /* device page is on screen (from reveal-press until leave) — gates empty_qr build */
+    lv_obj_t   *empty_view;      /* no-device empty state: download QR image + hint (shown when count == 0) */
+    lv_obj_t   *empty_qr_card;   /* white rounded card that holds the static QR image */
     bool        mouse_created;   /* real hid_mouse hosted in mouse_base */
     bool        summoning;       /* bar press shown the overlay; awaiting drag/tap */
     bool        pull_pending;    /* over-pull at the top item → going to mouse */
@@ -799,29 +797,6 @@ static void sync_offline_page_chrome(void)
     }
 }
 
-/* The empty-state QR is a TRUE_COLOR canvas (DRV_EPIC_NEW_API can't use
-   INDEXED_1BIT) — ~60KB of LVGL heap at 176px. The watch-face device page is
-   resident for the whole session, so holding that buffer permanently starved the
-   standalone qrcode app of the heap it needs for its own 200px QR (lv_qrcode_-
-   setparam's malloc assert at lv_qrcode.c:86 → crash). So build the QR only while
-   the empty device page is actually on screen, and free it the moment we leave. */
-static void empty_qr_show(void)
-{
-    if (!p || p->empty_qr || !p->empty_qr_card) return;
-    p->empty_qr = lv_qrcode_create(p->empty_qr_card);
-    lv_qrcode_setparam(p->empty_qr, 176, lv_color_black(), lv_color_white());
-    static const char EMPTY_QR_URL[] = "https://skaiwalk.com/download";
-    lv_qrcode_update(p->empty_qr, EMPTY_QR_URL, sizeof(EMPTY_QR_URL) - 1);
-    lv_obj_center(p->empty_qr);
-}
-
-static void empty_qr_free(void)
-{
-    if (!p || !p->empty_qr) return;
-    lv_obj_del(p->empty_qr);   /* releases the ~60KB canvas buffer */
-    p->empty_qr = NULL;
-}
-
 static void refresh(void)
 {
     if (!p) return;
@@ -829,13 +804,6 @@ static void refresh(void)
     {
         lv_obj_add_flag(p->pager, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(p->empty_view, LV_OBJ_FLAG_HIDDEN);
-        /* Build the QR only when the page is on screen (page_visible — set from
-           the reveal-press, so the QR follows the finger in instead of popping in
-           after settle). A phone sync can call refresh() while we're elsewhere,
-           and at boot device_pager_create() calls refresh() before any entry —
-           neither should allocate the big QR buffer. */
-        if (p->page_visible) empty_qr_show();
-        else                 empty_qr_free();
         /* No device → the trackpad has nothing to control, so the pull-down that
            reveals the mouse base makes no sense. Lock the overlay on the LIST
            tile (the QR empty state): pin it to LIST and clear SCROLLABLE so a
@@ -845,9 +813,7 @@ static void refresh(void)
         lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_SCROLLABLE);
         return;
     }
-    /* Device(s) present → drop the empty-state QR buffer + restore the
-       pull-down-to-mouse gesture. */
-    empty_qr_free();
+    /* Device(s) present → restore the pull-down-to-mouse gesture. */
     lv_obj_add_flag(p->overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(p->pager, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(p->empty_view, LV_OBJ_FLAG_HIDDEN);
@@ -886,30 +852,6 @@ void device_pager_refresh(void)
                                  : "";
         pager_send_active(active);
     }
-}
-
-/* Called by the watch face on the right-edge PRESS, before the device page is
-   dragged into view (app_clock_status_bar). Marks the page visible so refresh()
-   builds the empty-state QR NOW — it then follows the finger in instead of
-   popping in after the scroll settles. Mirrors the existing on-press
-   device_pager_refresh() that pre-populates the device list for the same reason. */
-void device_pager_reveal_begin(void)
-{
-    if (!p) return;
-    p->page_visible = true;
-    device_pager_refresh();
-}
-
-/* Called by the watch face whenever it settles on a tile that ISN'T the device
-   page (app_clock_status_bar VALUE_CHANGED). Frees the empty-state QR's big
-   TRUE_COLOR buffer so other apps (the standalone qrcode app) get the heap back.
-   Covers a cancelled right-reveal, which snaps back to the watch face without
-   ever calling device_pager_set_active(false). */
-void device_pager_release_qr(void)
-{
-    if (!p) return;
-    p->page_visible = false;
-    empty_qr_free();
 }
 
 /* ADR-0008 E7: weak hook invoked by communicate_parse_skailink.c after it
@@ -1097,7 +1039,6 @@ void device_pager_set_active(bool on)
     if (!p) return;
     if (on)
     {
-        p->page_visible = true;  /* settled on the device page — keep the empty QR built */
         if (!p->mouse_created)
         {
             p->mouse_created = true; /* set first: hid_mouse_create can re-enter */
@@ -1191,11 +1132,6 @@ void device_pager_set_active(bool on)
             lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* reset to LIST */
             lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
             if (p->grabber) lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
-            /* Release the empty-state QR's big TRUE_COLOR buffer now we're off the
-               page, so other apps (notably the standalone qrcode app) get the heap
-               back. Rebuilt on the next entry if still device-less (refresh). */
-            p->page_visible = false;
-            empty_qr_free();
             LOG_I("[pager] device page inactive — mouse base torn down");
         }
     }
@@ -1598,11 +1534,10 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
         lv_obj_align(p->skaibar_clip, LV_ALIGN_TOP_MID, 0, 60 - (lh + ls));
     }
 
-    /* No-device empty state: a QR to the download page + a hint, replacing the
-       old plain "No devices" text. Same lv_qrcode idiom as app_qrcode.c. The QR
-       card and hint live in one content-sized flex column so refresh() shows /
-       hides the group as a unit (same toggle the old empty_label used) and the
-       wrapper only covers the group — it never blocks the mouse base / mic bar. */
+    /* No-device empty state: a prebuilt download-page QR image + a hint,
+       replacing the old plain "No devices" text. The card and hint live in one
+       content-sized flex column so refresh() shows / hides the group as a unit,
+       and the wrapper only covers the group — it never blocks the mouse / mic bar. */
     p->empty_view = lv_obj_create(p->list_tile);
     lv_obj_remove_style_all(p->empty_view);
     lv_obj_set_size(p->empty_view, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
@@ -1614,20 +1549,28 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_clear_flag(p->empty_view, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_center(p->empty_view);
 
-    /* White card behind the QR = the quiet-zone margin a scanner needs, and it
-       reads cleanly against the dark device page. The QR canvas itself is built
-       lazily (empty_qr_show) only while this page is shown — see refresh(). */
+    /* White rounded card behind the QR — gives the square QR image rounded
+       corners + a clean quiet-zone margin against the dark device page. */
     p->empty_qr_card = lv_obj_create(p->empty_view);
-    lv_obj_set_size(p->empty_qr_card, 200, 200);
+    lv_obj_set_size(p->empty_qr_card, 181, 181);   /* hug the 165px QR — small white border */
     lv_obj_set_style_bg_color(p->empty_qr_card, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(p->empty_qr_card, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(p->empty_qr_card, 0, 0);
     lv_obj_set_style_radius(p->empty_qr_card, 16, 0);
-    lv_obj_set_style_pad_all(p->empty_qr_card, 12, 0);
+    lv_obj_set_style_pad_all(p->empty_qr_card, 8, 0);
     lv_obj_clear_flag(p->empty_qr_card, LV_OBJ_FLAG_SCROLLABLE);
 
+    /* Prebuilt QR image (skaiwalk.com/download) instead of a runtime lv_qrcode:
+       on this hardware (DRV_EPIC_NEW_API) lv_qrcode forces a full TRUE_COLOR
+       canvas (~80KB persistent) that exhausted the LVGL heap and crashed. A
+       static ezip image is decompressed on-draw by EPIC like any icon — no big
+       resident buffer. Resident but only drawn while the empty state shows. */
+    lv_obj_t *qr_img = lv_img_create(p->empty_qr_card);
+    lv_img_set_src(qr_img, &qr_download);
+    lv_obj_center(qr_img);
+
     lv_obj_t *empty_hint = lv_label_create(p->empty_view);
-    lv_label_set_text(empty_hint, LV_EXT_STR_GET_BY_KEY(scan_download_app, "Scan to download app"));
+    lv_label_set_text(empty_hint, LV_EXT_STR_GET_BY_KEY(scan_download_app, "Download at Skaiwalk.com"));
     lv_obj_set_style_text_font(empty_hint,
                                LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_set_style_text_color(empty_hint, lv_color_hex(0x888888), 0);
