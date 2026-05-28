@@ -1034,8 +1034,23 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             /* Mirror the right device_pager: report focus over SKAI_LINK,
                targeting the watch's directly-connected device (primary). Always
                sends on scroll (no skaibar-mode gate) for parity with the right. */
-            instruction_list_assert_local_target();
-            commu_send_option_focus(opt_idx);
+            /* …EXCEPT while the user is actually on the RIGHT device_pager with its
+               skaibar open (controlling a remote device). When the phone app is
+               foregrounded, its own Skaibar launcher mirrors "問 AI：<transcript>"
+               into THIS left list as an instruction batch; the resulting
+               programmatic SCROLL would otherwise fire assert_local_target() →
+               commu_send_active_device("") and clear the active remote device
+               MID-DICTATION (then the phone drops the relay to the device and the
+               rest of the dictation leaks to the phone's own launcher; option
+               commit/focus stop reaching the device). The left list is background
+               here, not the controlled surface, so it must not touch the active
+               target. (Confirmed via paired phone+watch logs 2026-05-29.) */
+            extern bool device_pager_skaibar_is_open(void);
+            if (!device_pager_skaibar_is_open())
+            {
+                instruction_list_assert_local_target();
+                commu_send_option_focus(opt_idx);
+            }
             LOG_D("[left] focus option idx=%u (raw=%u, base=%u)",
                   (unsigned)opt_idx,
                   (unsigned)selected_item_index,
