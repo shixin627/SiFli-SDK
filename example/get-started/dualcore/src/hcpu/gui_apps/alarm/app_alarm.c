@@ -244,9 +244,9 @@ static void create_alarm_card(lv_obj_t *parent, const alarm_msg_t *alarm)
     lv_obj_add_event_cb(card, card_event_cb, LV_EVENT_CLICKED, NULL);
 
     /* Time label — large, dim when disabled. */
-    char time_buf[8];
-    rt_snprintf(time_buf, sizeof(time_buf), "%02d:%02d",
-                alarm->ctx.hour, alarm->ctx.minute);
+    char time_buf[12]; /* fits "12:30 PM" + NUL in 12-hour mode */
+    ui_time_format_hhmm(time_buf, sizeof(time_buf),
+                        alarm->ctx.hour, alarm->ctx.minute);
     lv_obj_t *time_lbl = lv_label_create(card);
     lv_label_set_text(time_lbl, time_buf);
     lv_obj_set_style_text_font(
@@ -511,14 +511,14 @@ static void build_list_view(lv_obj_t *parent)
 
 static void enter_ringing_view(int32_t idx)
 {
-    char buf[8];
+    char buf[12]; /* fits "12:30 PM" + NUL in 12-hour mode */
     /* Read time from the manager's stored alarm via SkaiWatchSys.alarms[]
        isn't reliable for snoozes; fetch from the request the user just made
        isn't easy either. Show wall-clock current time as a fallback — the
        alarm just fired, so this is the moment that matters. */
-    rt_snprintf(buf, sizeof(buf), "%02d:%02d",
-                SkaiWatchSys.Global_Time.hour,
-                SkaiWatchSys.Global_Time.minutes);
+    ui_time_format_hhmm(buf, sizeof(buf),
+                        SkaiWatchSys.Global_Time.hour,
+                        SkaiWatchSys.Global_Time.minutes);
     lv_label_set_text(p_app_alarm->ringing_time_lbl, buf);
     show_view(ALARM_VIEW_RINGING);
     (void)idx;

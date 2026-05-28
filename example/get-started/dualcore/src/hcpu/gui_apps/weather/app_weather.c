@@ -245,8 +245,8 @@ lv_obj_t *create_weather_obj(lv_obj_t *parent, weather_data_t *children,
     lv_obj_set_style_text_font(time, LV_EXT_FONT_GET(get_system_font_size(-1)),
                                0);
     lv_obj_set_style_text_color(time, lv_color_white(), 0);
-    snprintf(buffer, sizeof(buffer), "%02d:%02d", weather->time.hour,
-             weather->time.minutes);
+    ui_time_format_hhmm(buffer, sizeof(buffer), weather->time.hour,
+                        weather->time.minutes);
     lv_label_set_text(time, buffer);
     lv_obj_align(time, LV_ALIGN_TOP_MID, 0, -10);
     lv_obj_set_style_text_opa(time, LV_OPA_70, 0);
@@ -314,11 +314,12 @@ lv_obj_t *create_dial_weather_obj(lv_obj_t *parent, weather_data_t *children,
     lv_obj_set_style_text_font(time, LV_EXT_FONT_GET(get_system_font_size(-2)),
                                0);
     lv_obj_set_style_text_color(time, lv_color_white(), 0);
-    int hour_12 = weather->time.hour % 12;
-    if (hour_12 == 0)
-        hour_12 = 12;
-    snprintf(buffer, sizeof(buffer), "%d %s", hour_12,
-             weather->time.hour < 12 ? "AM" : "PM");
+    const char *ampm = ui_time_ampm(weather->time.hour);
+    if (ampm)
+        snprintf(buffer, sizeof(buffer), "%d %s",
+                 ui_time_display_hour(weather->time.hour), ampm);
+    else
+        snprintf(buffer, sizeof(buffer), "%02d:00", weather->time.hour);
     lv_label_set_text(time, buffer);
     lv_obj_align(time, LV_ALIGN_BOTTOM_MID, 0, -25);
     lv_obj_set_style_text_opa(time, LV_OPA_70, 0);
@@ -361,11 +362,12 @@ static void update_dial_weather_obj(weather_data_t *children,
         return;
     }
 
-    int hour_12 = weather->time.hour % 12;
-    if (hour_12 == 0)
-        hour_12 = 12;
-    snprintf(buffer, sizeof(buffer), "%d %s", hour_12,
-             weather->time.hour < 12 ? "AM" : "PM");
+    const char *ampm = ui_time_ampm(weather->time.hour);
+    if (ampm)
+        snprintf(buffer, sizeof(buffer), "%d %s",
+                 ui_time_display_hour(weather->time.hour), ampm);
+    else
+        snprintf(buffer, sizeof(buffer), "%02d:00", weather->time.hour);
     if (lv_obj_is_valid(children->time))
     {
         lv_label_set_text(children->time, buffer);
@@ -394,8 +396,8 @@ static void update_weather_obj(weather_data_t *children, weather_t *weather)
         return;
     }
 
-    snprintf(buffer, sizeof(buffer), "%02d:%02d", weather->time.hour,
-             weather->time.minutes);
+    ui_time_format_hhmm(buffer, sizeof(buffer), weather->time.hour,
+                        weather->time.minutes);
 
     if (lv_obj_is_valid(children->time))
     {
@@ -448,8 +450,8 @@ void create_forecast_widget(lv_obj_t *parent, lv_obj_t *base, int index,
 
     // Create date label
     p_app_weather->future_date[index] = lv_label_create(parent);
-    snprintf(buffer, sizeof(buffer), "%02d:%02d", data->time.hour,
-             data->time.minutes);
+    ui_time_format_hhmm(buffer, sizeof(buffer), data->time.hour,
+                        data->time.minutes);
     lv_label_set_text(p_app_weather->future_date[index], buffer);
     lv_obj_set_style_text_font(p_app_weather->future_date[index],
                                LV_EXT_FONT_GET(get_system_font_size(-2)), 0);
@@ -1161,8 +1163,8 @@ void weather_layout_update(void)
         }
 
         // Update time
-        snprintf(buffer, sizeof(buffer), "%02d:%02d", forecast->time.hour,
-                 forecast->time.minutes);
+        ui_time_format_hhmm(buffer, sizeof(buffer), forecast->time.hour,
+                            forecast->time.minutes);
         lv_label_set_text(p_app_weather->future_date[i], buffer);
 
         // Update icon

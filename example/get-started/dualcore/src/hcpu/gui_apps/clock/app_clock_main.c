@@ -128,6 +128,7 @@ typedef struct
     lv_obj_t *instruction_list_time_h;
     lv_obj_t *instruction_list_time_m;
     lv_obj_t *instruction_list_time_symbol;
+    lv_obj_t *instruction_list_time_ampm;
     lv_obj_t *instruction_list_time_bg;
     lv_obj_t *instruction_list_weather_icon;
     lv_obj_t *instruction_list_bluetooth_disconnection;
@@ -159,6 +160,12 @@ void set_instruction_list_time_opa(uint8_t opa)
                               opa, 0);
     lv_obj_set_style_img_opa(p_app_clock_main->instruction_list_weather_icon,
                              opa, 0);
+    /* AM/PM tag fades with the rest of the time row; empty (24h) is harmless. */
+    if (lv_obj_is_valid(p_app_clock_main->instruction_list_time_ampm))
+    {
+        lv_obj_set_style_text_opa(p_app_clock_main->instruction_list_time_ampm,
+                                  opa, 0);
+    }
 }
 
 static lv_obj_t *charge_icon_obj = NULL;
@@ -772,10 +779,23 @@ static void refresh_time(T_UTC_TIME *current_time)
     if (lv_obj_is_valid(p_app_clock_main->instruction_list_time_h) &&
         lv_obj_is_valid(p_app_clock_main->instruction_list_time_m))
     {
-        rt_snprintf(time_str, 3, "%02d", current_time->hour);
+        rt_snprintf(time_str, 3, "%02d",
+                    ui_time_display_hour(current_time->hour));
         lv_label_set_text(p_app_clock_main->instruction_list_time_h, time_str);
         rt_snprintf(time_str, 3, "%02d", current_time->minutes);
         lv_label_set_text(p_app_clock_main->instruction_list_time_m, time_str);
+        if (lv_obj_is_valid(p_app_clock_main->instruction_list_time_ampm) &&
+            lv_obj_is_valid(p_app_clock_main->instruction_list_weather_icon))
+        {
+            const char *ampm = ui_time_ampm(current_time->hour);
+            lv_label_set_text(p_app_clock_main->instruction_list_time_ampm,
+                              ampm ? ampm : "");
+            /* AM/PM tag sits to the RIGHT of the weather icon. Re-aligned here
+               (not just at create) so it tracks the icon once sizes settle. */
+            lv_obj_align_to(p_app_clock_main->instruction_list_time_ampm,
+                            p_app_clock_main->instruction_list_weather_icon,
+                            LV_ALIGN_OUT_RIGHT_BOTTOM, 2, 0);
+        }
     }
     else
     {
@@ -1104,7 +1124,7 @@ void top_digital_time_builder(lv_obj_t *parent)
                             LV_OPA_0, 0);
     lv_obj_set_size(p_app_clock_main->instruction_list_time_bg, 466, 50);
     lv_obj_align(p_app_clock_main->instruction_list_time_bg, LV_ALIGN_TOP_MID,
-                 -10, 0);
+                 -24, 0);
     lv_obj_clear_flag(p_app_clock_main->instruction_list_time_bg,
                       LV_OBJ_FLAG_CLICKABLE);
 
@@ -1129,23 +1149,43 @@ void top_digital_time_builder(lv_obj_t *parent)
     lv_obj_set_style_text_font(instruction_list_time_symbol,
                                LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
     lv_obj_align(instruction_list_time_symbol, LV_ALIGN_CENTER, 0, -1);
+    /* AM/PM tag goes to the RIGHT of the weather icon (12h only; empty in
+       24h). Created here but aligned after the icon exists; refresh_time
+       re-aligns it on every update once sizes are settled. */
+    lv_obj_t *instruction_list_time_ampm =
+        lv_label_create(p_app_clock_main->instruction_list_time_bg);
+    lv_obj_set_style_text_font(instruction_list_time_ampm,
+                               LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
+    /* FONT_SMALL (level 0) is the smallest registered font. transform_zoom was
+       tried for an extra shrink but FreeType labels don't render under it on
+       this EPIC build (text vanished), so we stay at FONT_SMALL. A smaller
+       AM/PM would need a dedicated bitmap glyph. */
+    lv_label_set_text(instruction_list_time_ampm, "");
     lv_obj_t *instruction_list_weather_icon =
         lv_img_create(p_app_clock_main->instruction_list_time_bg);
     weather_t *get_weather_data = get_weather(WEATHER_TODAT_ITEM_AMOUNT - 1);
     lv_img_set_src(instruction_list_weather_icon,
                    weather_icon_get(get_weather_data->description));
     lv_img_set_zoom(instruction_list_weather_icon, 128); // zoom 80%
+    /* Weather icon sits right after the minutes; the AM/PM tag (12h) goes to
+       its right, so the icon's position is fixed regardless of 12/24. */
     lv_obj_align(instruction_list_weather_icon, LV_ALIGN_CENTER, 58, 0);
     p_app_clock_main->instruction_list_weather_icon =
         instruction_list_weather_icon;
+    lv_obj_align_to(instruction_list_time_ampm, instruction_list_weather_icon,
+                    LV_ALIGN_OUT_RIGHT_BOTTOM, 2, 0);
     uint8_t minutes = SkaiWatchSys.Global_Time.minutes;
     uint8_t hour = SkaiWatchSys.Global_Time.hour;
     char time_str[3];
-    rt_snprintf(time_str, 3, "%02d", hour); // hh
+    rt_snprintf(time_str, 3, "%02d", ui_time_display_hour(hour)); // hh
     lv_label_set_text(instruction_list_time_h, time_str);
     rt_snprintf(time_str, 3, "%02d", minutes); // mm
     lv_label_set_text(instruction_list_time_m, time_str);
     lv_label_set_text(instruction_list_time_symbol, ":");
+    {
+        const char *ampm = ui_time_ampm(hour);
+        lv_label_set_text(instruction_list_time_ampm, ampm ? ampm : "");
+    }
 
     lv_obj_set_style_text_opa(instruction_list_time_h, LV_OPA_TRANSP, 0);
     p_app_clock_main->instruction_list_time_h = instruction_list_time_h;
@@ -1154,6 +1194,8 @@ void top_digital_time_builder(lv_obj_t *parent)
     lv_obj_set_style_text_opa(instruction_list_time_symbol, LV_OPA_TRANSP, 0);
     p_app_clock_main->instruction_list_time_symbol =
         instruction_list_time_symbol;
+    lv_obj_set_style_text_opa(instruction_list_time_ampm, LV_OPA_TRANSP, 0);
+    p_app_clock_main->instruction_list_time_ampm = instruction_list_time_ampm;
     lv_obj_set_style_img_opa(instruction_list_weather_icon, LV_OPA_TRANSP, 0);
     p_app_clock_main->instruction_list_weather_icon =
         instruction_list_weather_icon;
@@ -1503,6 +1545,7 @@ void clock_on_stop(void)
         SAFE_OBJ_DEL(p_app_clock_main->instruction_list_time_h);
         SAFE_OBJ_DEL(p_app_clock_main->instruction_list_time_m);
         SAFE_OBJ_DEL(p_app_clock_main->instruction_list_time_symbol);
+        SAFE_OBJ_DEL(p_app_clock_main->instruction_list_time_ampm);
         SAFE_OBJ_DEL(p_app_clock_main->instruction_list_weather_icon);
         SAFE_OBJ_DEL(p_app_clock_main->instruction_list_bluetooth_disconnection);
         SAFE_OBJ_DEL(p_app_clock_main->instruction_list_battery);

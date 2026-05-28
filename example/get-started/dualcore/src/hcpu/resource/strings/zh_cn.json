@@ -108,7 +108,7 @@
   "ai_converting_currency": "正在進行匯率轉換...",
   "ai_analyzing_image": "正在分析圖片...",
 
-  "scan_download_app": "掃描下載 App",
+  "scan_download_app": "在 Skaiwalk.com 下載",
   "complete_on_phone": "在手機上完成",
 
   "reset_confirm_title": "清除所有內容\\n與設定?",
@@ -176,5 +176,6 @@
   "today": "今天",
   "delete_selected": "刪除選取",
   "swipe_explore": "向四方向滑動探索",
-  "swipe_run_ai": "點擊執行,或再次滑動進入 AI"
+  "swipe_run_ai": "點擊執行,或再次滑動進入 AI",
+  "no_notifications": "沒有通知"
 }

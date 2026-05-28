@@ -325,9 +325,9 @@ static void sync_ui_from_ctx(void)
 {
     char buf[48];
 
-    rt_snprintf(buf, sizeof(buf), "%02d:%02d",
-                p_app_alarm_edit->alarm_ctx.hour,
-                p_app_alarm_edit->alarm_ctx.minute);
+    ui_time_format_hhmm(buf, sizeof(buf),
+                        p_app_alarm_edit->alarm_ctx.hour,
+                        p_app_alarm_edit->alarm_ctx.minute);
     lv_label_set_text(p_app_alarm_edit->time_lbl, buf);
 
     format_repeat_label(p_app_alarm_edit->alarm_ctx.days, buf, sizeof(buf));

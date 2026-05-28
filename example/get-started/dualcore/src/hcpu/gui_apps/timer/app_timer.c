@@ -673,7 +673,12 @@ static void apply_circular_layout(lv_obj_t *list)
 
 static void scroll_timer_list(lv_obj_t *list)
 {
+    int16_t prev_index = selected_timer_index;
     apply_circular_layout(list);
+    /* 置中項目改變才震一下（仿 lv_instruction_list_layout 的滾動震動）。
+     * 只有使用者滑動造成的切換會進到這裡，create 時的初始 apply 不走此路徑 */
+    if (selected_timer_index != prev_index && get_scrolling_motor_vibrate_status())
+        motor_pattern_scrolling_app();
 }
 
 // timer列表滾動事件處理

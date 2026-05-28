@@ -760,6 +760,24 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
     }
 
+    case LVGL_MSG_TYPE_REFRESH_LANGUAGE:
+    {
+        /* 語言切換後重建所有「常駐、不重進」的離家視圖，讓 label 重新依新語言
+           取字串。各 refresh 本來就被 BLE/通知事件呼叫，可重複觸發、會用當前
+           資料+新語言重建 UI。集中在這裡，新增常駐畫面只需在此加一行。 */
+        extern void refresh_custom_instructions(void);
+        refresh_custom_instructions();
+        extern void device_pager_refresh(void);
+        device_pager_refresh();
+        extern void refresh_notification_list(void *param);
+        refresh_notification_list(NULL);
+        extern void notification_widget_refresh_language(void);
+        notification_widget_refresh_language();
+        extern void app_clock_status_bar_refresh_device_change_bar(void);
+        app_clock_status_bar_refresh_device_change_bar();
+        break;
+    }
+
     default:
     {
         type = LVGL_MSG_TYPE_UNKNOWN;

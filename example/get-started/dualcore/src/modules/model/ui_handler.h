@@ -198,6 +198,11 @@ extern "C"
            lv_obj layout — same too-stack-heavy + not-thread-safe hazard as the
            instruction-list rebuild above. */
         LVGL_MSG_TYPE_REFRESH_DEVICE_PAGER,
+        /* Language switch: rebuild all persistent off-home views (instruction
+           list, device pager, notification list, status-bar device-change bar)
+           so their labels pick up the new locale. Sent from bloc_setting.c
+           notify_language(). */
+        LVGL_MSG_TYPE_REFRESH_LANGUAGE,
     };
 
     typedef struct

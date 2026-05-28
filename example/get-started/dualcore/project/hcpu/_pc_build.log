@@ -28,18 +28,32 @@ CC build_pc_hcpu\sifli_sdk\customer\boards\common\flash.obj
 flash.c
 CC build_pc_hcpu\sifli_sdk\external\cJSON-1.7.17\cJSON.obj
 CC build_pc_hcpu\sifli_sdk\external\cJSON-1.7.17\cJSON_Utils.obj
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\CMSIS\RTOS2\RT-Thread\cmsis_rtthread.obj
 cJSON.c
 CC build_pc_hcpu\sifli_sdk\external\CMSIS\RTOS2\RT-Thread\os_systick.obj
 cJSON_Utils.c
+=======
+cJSON.c
+cJSON_Utils.c
+CC build_pc_hcpu\sifli_sdk\external\CMSIS\RTOS2\RT-Thread\cmsis_rtthread.obj
+CC build_pc_hcpu\sifli_sdk\external\CMSIS\RTOS2\RT-Thread\os_systick.obj
+>>>>>>> origin/andrew_v28.53
 cmsis_rtthread.c
 os_systick.c
 CC build_pc_hcpu\sifli_sdk\external\FlashDB\port\fal\src\fal.obj
 CC build_pc_hcpu\sifli_sdk\external\FlashDB\port\fal\src\fal_flash.obj
+<<<<<<< HEAD
 fal.c
 fal_flash.c
 CC build_pc_hcpu\sifli_sdk\external\FlashDB\port\fal\src\fal_flash_sifli_simu.obj
 CC build_pc_hcpu\sifli_sdk\external\FlashDB\port\fal\src\fal_partition.obj
+=======
+CC build_pc_hcpu\sifli_sdk\external\FlashDB\port\fal\src\fal_flash_sifli_simu.obj
+fal.c
+CC build_pc_hcpu\sifli_sdk\external\FlashDB\port\fal\src\fal_partition.obj
+fal_flash.c
+>>>>>>> origin/andrew_v28.53
 fal_flash_sifli_simu.c
 fal_partition.c
 CC build_pc_hcpu\sifli_sdk\external\FlashDB\port\fal\src\fal_rtt.obj
@@ -48,12 +62,18 @@ CC build_pc_hcpu\sifli_sdk\external\FlashDB\src\fdb.obj
 CC build_pc_hcpu\sifli_sdk\external\FlashDB\src\fdb_file.obj
 CC build_pc_hcpu\sifli_sdk\external\FlashDB\src\fdb_kvdb.obj
 CC build_pc_hcpu\sifli_sdk\external\FlashDB\src\fdb_tsdb.obj
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\FlashDB\src\fdb_utils.obj
 fdb.c
+=======
+fdb.c
+CC build_pc_hcpu\sifli_sdk\external\FlashDB\src\fdb_utils.obj
+>>>>>>> origin/andrew_v28.53
 fdb_file.c
 fdb_kvdb.c
 fdb_tsdb.c
 fdb_utils.c
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\freetype\lib_interface\ftsystem.obj
 ftsystem.c
 C:\skaiwalk\SiFli-SDK\external\FlashDB\port\fal\src\fal_rtt.c(1258): warning C4018: '<': signed/unsigned 不相符
@@ -66,11 +86,26 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_group.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_indev.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_indev_scroll.obj
 lv_gesture.c
+=======
+C:\skaiwalk\SiFli-SDK\external\FlashDB\port\fal\src\fal_rtt.c(1258): warning C4018: '<': signed/unsigned 不相符
+CC build_pc_hcpu\sifli_sdk\external\freetype\lib_interface\ftsystem.obj
+ftsystem.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_disp.obj
+lv_disp.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_event.obj
+lv_event.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_gesture.obj
+lv_gesture.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_group.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_indev.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_indev_scroll.obj
+>>>>>>> origin/andrew_v28.53
 lv_group.c
 lv_indev.c
 lv_indev_scroll.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_class.obj
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_draw.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_pos.obj
 lv_obj.c
@@ -133,10 +168,75 @@ lv_font_montserrat_10.c
 lv_font_montserrat_12.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_16.obj
 lv_font_montserrat_12_subpx.c
+=======
+lv_obj.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_draw.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_pos.obj
+lv_obj_class.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_scroll.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_style.obj
+lv_obj_draw.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_style_gen.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_obj_tree.obj
+lv_obj_pos.c
+lv_obj_scroll.c
+lv_obj_tree.c
+lv_obj_style.c
+lv_obj_style_gen.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_refr.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\core\lv_theme.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw.obj
+lv_refr.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_arc.obj
+lv_draw.c
+lv_theme.c
+lv_draw_arc.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_img.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_label.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_layer.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_line.obj
+lv_draw_img.c
+lv_draw_label.c
+lv_draw_line.c
+lv_draw_layer.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_mask.obj
+lv_draw_mask.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_rect.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_transform.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_draw_triangle.obj
+lv_draw_rect.c
+lv_draw_transform.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_img_buf.obj
+lv_draw_triangle.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_img_cache.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\lv_img_decoder.obj
+lv_img_buf.c
+lv_img_cache.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\lv_extra.obj
+lv_img_decoder.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font.obj
+lv_extra.c
+lv_font.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_dejavu_16_persian_hebrew.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_fmt_txt.obj
+lv_font_dejavu_16_persian_hebrew.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_loader.obj
+lv_font_fmt_txt.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_10.obj
+lv_font_loader.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_12.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_12_subpx.obj
+lv_font_montserrat_10.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_14.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_16.obj
+lv_font_montserrat_12_subpx.c
+lv_font_montserrat_12.c
+>>>>>>> origin/andrew_v28.53
 lv_font_montserrat_14.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_18.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_20.obj
 lv_font_montserrat_16.c
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_22.obj
 lv_font_montserrat_18.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_24.obj
@@ -161,11 +261,38 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_40.obj
 lv_font_montserrat_36.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_42.obj
 lv_font_montserrat_38.c
+=======
+lv_font_montserrat_18.c
+lv_font_montserrat_20.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_22.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_24.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_26.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_28.obj
+lv_font_montserrat_22.c
+lv_font_montserrat_24.c
+lv_font_montserrat_26.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_28_compressed.obj
+lv_font_montserrat_28.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_30.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_32.obj
+lv_font_montserrat_28_compressed.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_34.obj
+lv_font_montserrat_30.c
+lv_font_montserrat_32.c
+lv_font_montserrat_34.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_36.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_38.obj
+lv_font_montserrat_36.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_40.obj
+lv_font_montserrat_38.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_42.obj
+>>>>>>> origin/andrew_v28.53
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_44.obj
 lv_font_montserrat_40.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_46.obj
 lv_font_montserrat_42.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_48.obj
+<<<<<<< HEAD
 lv_font_montserrat_44.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_8.obj
 lv_font_montserrat_46.c
@@ -234,6 +361,76 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_btnmatrix.obj
 lv_utils.c
 lv_arc.c
 lv_bar.c
+=======
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_montserrat_8.obj
+lv_font_montserrat_44.c
+lv_font_montserrat_46.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_simsun_16_cjk.obj
+lv_font_montserrat_8.c
+lv_font_montserrat_48.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_unscii_16.obj
+lv_font_simsun_16_cjk.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\font\lv_font_unscii_8.obj
+lv_font_unscii_16.c
+lv_font_unscii_8.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\hal\lv_hal_disp.obj
+lv_hal_disp.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\hal\lv_hal_indev.obj
+lv_hal_indev.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\hal\lv_hal_tick.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_anim.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_anim_timeline.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_area.obj
+lv_hal_tick.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_async.obj
+lv_anim.c
+lv_area.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_bidi.obj
+lv_anim_timeline.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_color.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_fs.obj
+lv_async.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_gc.obj
+lv_color.c
+lv_bidi.c
+lv_fs.c
+lv_gc.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_ll.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_log.obj
+lv_ll.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_lru.obj
+lv_log.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_math.obj
+lv_lru.c
+lv_math.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_mem.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_printf.obj
+lv_mem.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_style.obj
+lv_printf.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_style_gen.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_templ.obj
+lv_style.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_timer.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_tlsf.obj
+lv_style_gen.c
+lv_templ.c
+lv_timer.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_txt.obj
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\misc\lv_style.c(390): warning C4018: '<': signed/unsigned 不相符
+lv_tlsf.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_txt_ap.obj
+lv_txt.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\misc\lv_utils.obj
+lv_txt_ap.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_arc.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_bar.obj
+lv_utils.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_btn.obj
+lv_arc.c
+lv_bar.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_btnmatrix.obj
+>>>>>>> origin/andrew_v28.53
 lv_btn.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_canvas.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_checkbox.obj
@@ -242,11 +439,21 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_dropdown.obj
 lv_canvas.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_img.obj
 lv_checkbox.c
+<<<<<<< HEAD
 lv_dropdown.c
 lv_img.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_label.obj
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(192): warning C4018: '<': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(197): warning C4018: '<': signed/unsigned 不相符
+=======
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_label.obj
+lv_dropdown.c
+lv_img.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_line.obj
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(192): warning C4018: '<': signed/unsigned 不相符
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(197): warning C4018: '<': signed/unsigned 不相符
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_objx_templ.obj
+>>>>>>> origin/andrew_v28.53
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(240): warning C4018: '>': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(241): warning C4018: '>': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(285): warning C4018: '>': signed/unsigned 不相符
@@ -255,6 +462,7 @@ C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(368): warning C40
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(369): warning C4018: '>': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(411): warning C4018: '>': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_canvas.c(464): warning C4018: '>': signed/unsigned 不相符
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_line.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_objx_templ.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_roller.obj
@@ -272,11 +480,29 @@ lv_table.c
 lv_textarea.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\arm2d\lv_gpu_arm2d.obj
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_roller.c(172): warning C4018: '>': signed/unsigned 不相符
+=======
+lv_label.c
+lv_line.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_roller.obj
+lv_objx_templ.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_slider.obj
+lv_roller.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_switch.obj
+lv_slider.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_table.obj
+lv_switch.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\widgets\lv_textarea.obj
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\widgets\lv_roller.c(172): warning C4018: '>': signed/unsigned 不相符
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\arm2d\lv_gpu_arm2d.obj
+lv_table.c
+lv_textarea.c
+>>>>>>> origin/andrew_v28.53
 lv_gpu_arm2d.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\lv_gpu_nxp.obj
 lv_gpu_nxp.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_arc.obj
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_bg.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_composite.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_img.obj
@@ -306,6 +532,37 @@ lv_draw_sdl_stack_blur.c
 lv_draw_sdl_texture_cache.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_arc.obj
 lv_draw_sdl_utils.c
+=======
+lv_draw_sdl.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_bg.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_composite.obj
+lv_draw_sdl_arc.c
+lv_draw_sdl_bg.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_img.obj
+lv_draw_sdl_composite.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_label.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_layer.obj
+lv_draw_sdl_img.c
+lv_draw_sdl_label.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_line.obj
+lv_draw_sdl_layer.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_mask.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_polygon.obj
+lv_draw_sdl_line.c
+lv_draw_sdl_mask.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_rect.obj
+lv_draw_sdl_polygon.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_stack_blur.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_texture_cache.obj
+lv_draw_sdl_rect.c
+lv_draw_sdl_stack_blur.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sdl\lv_draw_sdl_utils.obj
+lv_draw_sdl_texture_cache.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\stm32_dma2d\lv_gpu_stm32_dma2d.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw.obj
+lv_draw_sdl_utils.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_arc.obj
+>>>>>>> origin/andrew_v28.53
 lv_gpu_stm32_dma2d.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_blend.obj
 lv_draw_sw.c
@@ -313,6 +570,7 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_dither.obj
 lv_draw_sw_arc.c
 lv_draw_sw_blend.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_gradient.obj
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_img.obj
 lv_draw_sw_dither.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_layer.obj
@@ -333,12 +591,35 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\pxp\lv_draw_pxp_blend.o
 lv_draw_sw_transform.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\pxp\lv_gpu_nxp_pxp.obj
 lv_gpu_swm341_dma2d.c
+=======
+lv_draw_sw_dither.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_img.obj
+lv_draw_sw_gradient.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_layer.obj
+lv_draw_sw_img.c
+lv_draw_sw_layer.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_letter.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_line.obj
+lv_draw_sw_letter.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_polygon.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_rect.obj
+lv_draw_sw_line.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\sw\lv_draw_sw_transform.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\swm341_dma2d\lv_gpu_swm341_dma2d.obj
+lv_draw_sw_polygon.c
+lv_draw_sw_rect.c
+lv_draw_sw_transform.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\pxp\lv_draw_pxp_blend.obj
+lv_gpu_swm341_dma2d.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\pxp\lv_gpu_nxp_pxp.obj
+>>>>>>> origin/andrew_v28.53
 lv_draw_pxp_blend.c
 lv_gpu_nxp_pxp.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\pxp\lv_gpu_nxp_pxp_osa.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\vglite\lv_draw_vglite_arc.obj
 lv_gpu_nxp_pxp_osa.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\vglite\lv_draw_vglite_blend.obj
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\vglite\lv_draw_vglite_rect.obj
 lv_draw_vglite_arc.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\vglite\lv_gpu_nxp_vglite.obj
@@ -356,11 +637,31 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\freetype\lv_freetype.
 lv_ffmpeg.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\fsdrv\lv_fs_fatfs.obj
 lv_freetype.c
+=======
+lv_draw_vglite_arc.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\vglite\lv_draw_vglite_rect.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\draw\nxp\vglite\lv_gpu_nxp_vglite.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\layouts\flex\lv_flex.obj
+lv_draw_vglite_rect.c
+lv_draw_vglite_blend.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\layouts\grid\lv_grid.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\bmp\lv_bmp.obj
+lv_gpu_nxp_vglite.c
+lv_flex.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\ffmpeg\lv_ffmpeg.obj
+lv_bmp.c
+lv_grid.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\freetype\lv_freetype.obj
+lv_ffmpeg.c
+lv_freetype.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\fsdrv\lv_fs_fatfs.obj
+>>>>>>> origin/andrew_v28.53
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\fsdrv\lv_fs_posix.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\fsdrv\lv_fs_stdio.obj
 lv_fs_fatfs.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\fsdrv\lv_fs_win32.obj
 lv_fs_posix.c
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\gif\gifdec.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\gif\lv_gif.obj
 lv_fs_stdio.c
@@ -381,10 +682,33 @@ qrcodegen.c
 lv_rlottie.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\fragment\lv_fragment.obj
 lv_sjpg.c
+=======
+lv_fs_stdio.c
+lv_fs_win32.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\gif\gifdec.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\gif\lv_gif.obj
+gifdec.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\png\lodepng.obj
+lv_gif.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\png\lv_png.obj
+lodepng.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\qrcode\lv_qrcode.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\qrcode\qrcodegen.obj
+lv_png.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\rlottie\lv_rlottie.obj
+lv_qrcode.c
+qrcodegen.c
+lv_rlottie.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\sjpg\lv_sjpg.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\libs\sjpg\tjpgd.obj
+lv_sjpg.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\fragment\lv_fragment.obj
+>>>>>>> origin/andrew_v28.53
 tjpgd.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\fragment\lv_fragment_manager.obj
 lv_fragment.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\gridnav\lv_gridnav.obj
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\ime\lv_ime_pinyin.obj
 lv_fragment_manager.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\imgfont\lv_imgfont.obj
@@ -412,10 +736,40 @@ C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.c(3
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.c(384): warning C4018: '<': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.c(396): warning C4018: '<': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.c(407): warning C4018: '<': signed/unsigned 不相符
+=======
+lv_fragment_manager.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\ime\lv_ime_pinyin.obj
+lv_gridnav.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\imgfont\lv_imgfont.obj
+lv_ime_pinyin.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\monkey\lv_monkey.obj
+lv_imgfont.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\msg\lv_msg.obj
+lv_monkey.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\themes\basic\lv_theme_basic.obj
+lv_msg.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\themes\default\lv_theme_default.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\themes\mono\lv_theme_mono.obj
+lv_snapshot.c
+lv_theme_basic.c
+lv_theme_default.c
+lv_theme_mono.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\animimg\lv_animimg.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\calendar\lv_calendar.obj
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.c(376): warning C4018: '<': signed/unsigned 不相符
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\calendar\lv_calendar_header_arrow.obj
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.c(384): warning C4018: '<': signed/unsigned 不相符
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\calendar\lv_calendar_header_dropdown.obj
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.c(396): warning C4018: '<': signed/unsigned 不相符
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.c(407): warning C4018: '<': signed/unsigned 不相符
+lv_animimg.c
+>>>>>>> origin/andrew_v28.53
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.c(740): warning C4018: '<': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\others\snapshot\lv_snapshot.c(763): warning C4018: '>': signed/unsigned 不相符
 lv_calendar.c
 lv_calendar_header_arrow.c
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\chart\lv_chart.obj
 lv_calendar_header_dropdown.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\colorwheel\lv_colorwheel.obj
@@ -439,18 +793,50 @@ CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\msgbox\lv_msgbox.o
 lv_menu.c
 lv_meter.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\span\lv_span.obj
+=======
+lv_calendar_header_dropdown.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\chart\lv_chart.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\colorwheel\lv_colorwheel.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\imgbtn\lv_imgbtn.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\keyboard\lv_keyboard.obj
+lv_chart.c
+lv_colorwheel.c
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\widgets\calendar\lv_calendar.c(134): warning C4018: '<': signed/unsigned 不相符
+lv_imgbtn.c
+lv_keyboard.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\led\lv_led.obj
+lv_led.c
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\widgets\imgbtn\lv_imgbtn.c(170): warning C4090: '函式': 不同的 'const' 限定詞
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\widgets\imgbtn\lv_imgbtn.c(171): warning C4090: '函式': 不同的 'const' 限定詞
+C:\skaiwalk\SiFli-SDK\external\lvgl_v8\src\extra\widgets\imgbtn\lv_imgbtn.c(205): warning C4018: '>': signed/unsigned 不相符
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\list\lv_list.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\menu\lv_menu.obj
+lv_list.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\meter\lv_meter.obj
+lv_menu.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\msgbox\lv_msgbox.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\span\lv_span.obj
+lv_meter.c
+>>>>>>> origin/andrew_v28.53
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\spinbox\lv_spinbox.obj
 lv_msgbox.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\spinner\lv_spinner.obj
 lv_span.c
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\tabview\lv_tabview.obj
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\tileview\lv_tileview.obj
 lv_spinbox.c
+=======
+lv_spinbox.c
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\tabview\lv_tabview.obj
+CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\tileview\lv_tileview.obj
+>>>>>>> origin/andrew_v28.53
 lv_spinner.c
 CC build_pc_hcpu\sifli_sdk\external\lvgl_v8\src\extra\widgets\win\lv_win.obj
 lv_tabview.c
 lv_tileview.c
 lv_win.c
+<<<<<<< HEAD
 Generating langpack ...
 CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\intent.obj
 CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\app_schedule.obj
@@ -467,12 +853,34 @@ gui_app_fwk.c
 CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\reg_fwk\app_reg.obj
 gui_dl_app_fwk.c
 app_schedule_port.c
+=======
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\app_schedule.obj
+app_schedule.c
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\app_schedule_port.obj
+app_schedule_port.c
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\gui_app_fwk.obj
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\gui_app_test.obj
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\gui_app_trans_anim.obj
+gui_app_fwk.c
+gui_app_test.c
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\gui_dl_app_fwk.obj
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\intent.obj
+gui_app_trans_anim.c
+gui_dl_app_fwk.c
+intent.c
+CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\reg_fwk\app_reg.obj
+>>>>>>> origin/andrew_v28.53
 app_reg.c
 CC build_pc_hcpu\sifli_sdk\middleware\app_fwk\lvgl_v8\app_trans_anim_port.obj
 app_trans_anim_port.c
 CC build_pc_hcpu\sifli_sdk\middleware\data_bus\public\data_service_main.obj
+<<<<<<< HEAD
 data_service_main.c
 CC build_pc_hcpu\sifli_sdk\middleware\data_bus\public\data_service.obj
+=======
+CC build_pc_hcpu\sifli_sdk\middleware\data_bus\public\data_service.obj
+data_service_main.c
+>>>>>>> origin/andrew_v28.53
 data_service.c
 CC build_pc_hcpu\sifli_sdk\middleware\data_bus\public\pin_service.obj
 CC build_pc_hcpu\sifli_sdk\middleware\data_bus\public\power_manager_service.obj
@@ -481,6 +889,7 @@ CC build_pc_hcpu\sifli_sdk\middleware\data_bus\public\ui_datasrv_subscriber.obj
 power_manager_service.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\littlevgl2rtt.obj
 ui_datasrv_subscriber.c
+<<<<<<< HEAD
 littlevgl2rtt.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf_perf.obj
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf_perf_v9.obj
@@ -498,6 +907,25 @@ app_nvm_lang_compat.c
 lv_ext_resource_manager.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager_builtin.obj
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager_dl_impl.obj
+=======
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf_perf.obj
+littlevgl2rtt.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lvsf_perf_v9.obj
+lvsf_perf.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\app_mem.obj
+lvsf_perf_v9.c
+app_mem.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\app_comm.obj
+app_comm.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\app_lang.obj
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\app_nvm_lang_compat.obj
+app_lang.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager.obj
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager_builtin.obj
+app_nvm_lang_compat.c
+CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_ext_resouce\lv_ext_resource_manager_dl_impl.obj
+lv_ext_resource_manager.c
+>>>>>>> origin/andrew_v28.53
 lv_ext_resource_manager_builtin.c
 lv_ext_resource_manager_dl_impl.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_win32\img_dec.obj
@@ -505,6 +933,7 @@ CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_win32\lv_touch_sim.obj
 img_dec.c
 lv_touch_sim.c
 CC build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_win32\win32drv.obj
+<<<<<<< HEAD
 CC build_pc_hcpu\sifli_sdk\middleware\share_prefs\share_prefs_cmd.obj
 CC build_pc_hcpu\sifli_sdk\middleware\share_prefs\share_prefs_flashdb.obj
 win32drv.c
@@ -512,12 +941,22 @@ CC build_pc_hcpu\sifli_sdk\middleware\sifli_lib\lib\agif.obj
 CC build_pc_hcpu\sifli_sdk\middleware\sifli_lib\lib\dummy.obj
 share_prefs_cmd.c
 share_prefs_flashdb.c
+=======
+win32drv.c
+CC build_pc_hcpu\sifli_sdk\middleware\share_prefs\share_prefs_cmd.obj
+CC build_pc_hcpu\sifli_sdk\middleware\share_prefs\share_prefs_flashdb.obj
+share_prefs_cmd.c
+CC build_pc_hcpu\sifli_sdk\middleware\sifli_lib\lib\agif.obj
+share_prefs_flashdb.c
+CC build_pc_hcpu\sifli_sdk\middleware\sifli_lib\lib\dummy.obj
+>>>>>>> origin/andrew_v28.53
 CC build_pc_hcpu\sifli_sdk\middleware\simulator\application.obj
 agif.c
 dummy.c
 application.c
 CC build_pc_hcpu\sifli_sdk\middleware\simulator\liveimportinit.obj
 CC build_pc_hcpu\sifli_sdk\middleware\simulator\mnt.obj
+<<<<<<< HEAD
 liveimportinit.c
 mnt.c
 CC build_pc_hcpu\sifli_sdk\middleware\simulator\platform.obj
@@ -1147,4 +1586,12 @@ C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_c
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(639): warning C4024: 'set_scroll_anim_time': 型式和實質參數 2 不同的類型
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(654): warning C4047: '函式': 'uint16_t' 與 'void *' 間接取值的層級不同
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(654): warning C4024: 'set_scroll_anim_time': 型式和實質參數 2 不同的類型
+=======
+scons: *** [build_pc_hcpu\sifli_sdk\middleware\simulator\application.obj] Error 4294967295
+scons: *** [build_pc_hcpu\sifli_sdk\middleware\share_prefs\share_prefs_flashdb.obj] Error 4294967295
+scons: *** [build_pc_hcpu\sifli_sdk\middleware\lvgl\lv_win32\win32drv.obj] Error 4294967295
+liveimportinit.c
+scons: *** [build_pc_hcpu\sifli_sdk\middleware\sifli_lib\lib\agif.obj] Error 4294967295
+mnt.c
+>>>>>>> origin/andrew_v28.53
 scons: building terminated because of errors.

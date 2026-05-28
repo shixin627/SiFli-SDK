@@ -78,9 +78,12 @@ static bool step_poll_first = true;
 #define MAIN_EVENT_BATTERY_CHARGING (1 << 0)
 #define MAIN_EVENT_BATTERY_VOLTAGE (1 << 1)
 #define MAIN_EVENT_HAND_LIFT (1 << 2)
+/* Periodic discharge poll: refresh reported voltage only, do not move the
+ * percentage gauge (see refresh_battery_voltage_only in bloc_battery.c). */
+#define MAIN_EVENT_BATTERY_VOLTAGE_POLL (1 << 3)
 #define MAIN_EVENT_ALL                                                         \
     (MAIN_EVENT_BATTERY_CHARGING | MAIN_EVENT_BATTERY_VOLTAGE |                \
-     MAIN_EVENT_HAND_LIFT)
+     MAIN_EVENT_HAND_LIFT | MAIN_EVENT_BATTERY_VOLTAGE_POLL)
 
 void main_send_read_charge_status_event(void)
 {
@@ -95,6 +98,14 @@ void main_send_read_voltage_event(void)
     if (main_event)
     {
         rt_event_send(main_event, MAIN_EVENT_BATTERY_VOLTAGE);
+    }
+}
+
+void main_send_read_voltage_poll_event(void)
+{
+    if (main_event)
+    {
+        rt_event_send(main_event, MAIN_EVENT_BATTERY_VOLTAGE_POLL);
     }
 }
 
@@ -567,6 +578,11 @@ int main(void)
             if (recv_set & MAIN_EVENT_BATTERY_VOLTAGE)
             {
                 bloc_battery_handle_voltage_event();
+            }
+
+            if (recv_set & MAIN_EVENT_BATTERY_VOLTAGE_POLL)
+            {
+                bloc_battery_handle_voltage_poll_event();
             }
 
             if (recv_set & MAIN_EVENT_HAND_LIFT)

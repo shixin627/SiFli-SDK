@@ -139,6 +139,7 @@ void bloc_battery_init(void)
 /// ************** Charging Detect ************** ///
 extern void main_send_read_charge_status_event(void);
 extern void main_send_read_voltage_event(void);
+extern void main_send_read_voltage_poll_event(void);
 
 /* During charging, voltage rises slowly (0..100% over 1-2 hours = <0.05%
  * per second). The EMA filter (80/20) + 20 mV hysteresis in
@@ -267,6 +268,23 @@ static void read_charge_status(void)
     }
 }
 
+#ifdef BSP_USING_ADC
+/* Set once the gauge has been computed at least once from a real sample, so the
+ * voltage-only refresh has a valid percentage to reuse instead of a stale 0%. */
+static bool s_percent_valid = false;
+
+/* Report (voltage, percentage) up to the HCPU. The phone shows the raw mV; the
+ * watch UI shows the percentage. */
+static void report_battery(uint32_t battery_voltage, uint8_t percentage)
+{
+    uint32_t battery_mv = battery_voltage / 10;   // 0.1mV -> mV
+    uint32_t data = (battery_mv << 16) | (percentage & 0xFFFF);
+    battery_charge_state.charge_percent = percentage;
+    if (watch_sys_sync.notify_battery_voltage)
+        watch_sys_sync.notify_battery_voltage(data);
+}
+#endif
+
 static void check_battery_voltage(void)
 {
 #ifdef BSP_USING_ADC
@@ -281,18 +299,44 @@ static void check_battery_voltage(void)
         return;
 
     uint8_t percentage = battery_calculator_get_percent(&s_calculator, battery_voltage);
-
-    // Convert 0.1mV to mV for reporting
-    uint32_t battery_mv = battery_voltage / 10;
+    s_percent_valid = true;
 
     LOG_D("[%s] %d mV, display=%d%%, charging=%d",
-          __func__, battery_mv, percentage,
+          __func__, battery_voltage / 10, percentage,
           battery_charge_state.is_charging);
 
-    uint32_t data = (battery_mv << 16) | (percentage & 0xFFFF);
-    battery_charge_state.charge_percent = percentage;
-    if (watch_sys_sync.notify_battery_voltage)
-        watch_sys_sync.notify_battery_voltage(data);
+    report_battery(battery_voltage, percentage);
+#endif
+}
+
+/* Voltage-only refresh for the periodic discharge poll. It keeps the reported
+ * mV fresh on the phone (so it never freezes) but deliberately does NOT move
+ * the percentage gauge. The discharge curve is OCV-based, so a sample taken
+ * while the watch is under load (AI / BLE / haptics) reads low and -- via the
+ * "discharge can only decrease" rule in battery_calculator -- would latch the
+ * gauge down with no way back up until reboot. Recomputing the gauge every poll
+ * is exactly what made the displayed % drift down on its own; instead the gauge
+ * is recomputed only on the trustworthy triggers (wake-after-settle / app
+ * request / charging), as it was before the poll existed. */
+static void refresh_battery_voltage_only(void)
+{
+#ifdef BSP_USING_ADC
+    /* Bootstrap: if the watch sat idle past the first poll before any wake-up,
+     * compute the gauge once here so we never report a stale 0%. */
+    if (!s_percent_valid)
+    {
+        check_battery_voltage();
+        return;
+    }
+
+    uint32_t battery_voltage = read_battery_voltage();
+    if (battery_voltage == 0)
+        return;
+
+    LOG_D("[%s] %d mV, keep display=%d%% (voltage-only)",
+          __func__, battery_voltage / 10, battery_charge_state.charge_percent);
+
+    report_battery(battery_voltage, battery_charge_state.charge_percent);
 #endif
 }
 
@@ -304,6 +348,11 @@ void bloc_battery_handle_charging_event(void)
 void bloc_battery_handle_voltage_event(void)
 {
     check_battery_voltage();
+}
+
+void bloc_battery_handle_voltage_poll_event(void)
+{
+    refresh_battery_voltage_only();
 }
 
 /* Periodic battery sampling so the reported voltage keeps refreshing while
@@ -318,7 +367,9 @@ void bloc_battery_handle_voltage_event(void)
 
 static void battery_voltage_poll_callback(void *parameter)
 {
-    main_send_read_voltage_event();
+    /* Voltage-only: refresh the reported mV without moving the percentage gauge
+     * (see refresh_battery_voltage_only for why). */
+    main_send_read_voltage_poll_event();
 }
 
 static int bloc_battery_voltage_poll_init(void)

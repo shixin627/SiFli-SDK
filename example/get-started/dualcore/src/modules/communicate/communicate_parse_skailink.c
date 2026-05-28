@@ -157,7 +157,6 @@ static void handle_device_list_batch(uint8_t *pValue, uint16_t length)
             LOG_I("      item[%u]: %s", (unsigned)k, d->default_actions[k]);
         }
     }
-    watch_prefs_save_device_registry_async(); /* ids changed — persist */
     LOG_I("Device registry updated: count=%d", SkaiWatchSys.device_registry.count);
     ui_refresh();
 }
@@ -239,7 +238,6 @@ static void handle_device_actions_batch(uint8_t *pValue, uint16_t length)
                 LOG_I("    item[%u]: type=%u %s", (unsigned)k,
                       (unsigned)d->default_action_types[k], d->default_actions[k]);
             }
-            watch_prefs_save_device_registry_async(); /* default actions changed — persist */
             ui_refresh();
         }
         else
@@ -275,7 +273,6 @@ static void handle_device_removed(uint8_t *pValue, uint16_t length)
                 SkaiWatchSys.device_name[idx][SYNCED_DEVICE_NAME_LEN - 1] = '\0';
             }
             SkaiWatchSys.device_registry.count = last;
-            watch_prefs_save_device_registry_async();
             ui_refresh();
         }
     }

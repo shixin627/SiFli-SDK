@@ -402,6 +402,15 @@ static void notify_language(void)
     commu_send_language();
 
     lv_ext_set_locale(NULL, bloc_setting_get_language());
+
+    /* 常駐、不重進的離家視圖（指令列表、裝置頁、通知列表、狀態列裝置 bar）開機
+       建立後一直存在，切語言不會自動重繪。廣播 REFRESH_LANGUAGE 由 ui_handler
+       在 LVGL 執行緒一次刷新所有這類視圖（各 refresh 內部會重取新語言字串）。 */
+#ifdef BSP_USING_UI_HANDLER
+    lvgl_msg_t lang_refr_msg = {.type = LVGL_MSG_TYPE_REFRESH_LANGUAGE};
+    lvgl_send_msg(lang_refr_msg);
+#endif
+
     peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_LANGUAGE);
 }
 

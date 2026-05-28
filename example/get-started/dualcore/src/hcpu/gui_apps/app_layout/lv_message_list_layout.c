@@ -1693,8 +1693,28 @@ void refresh_notification_list(void *param)
         lv_obj_set_style_text_font(label,
                                    LV_EXT_FONT_GET(get_system_font_size(0)), 0);
         lv_obj_set_style_text_color(label, lv_color_white(), 0);
-        lv_label_set_text(label, "No notifications");
+        lv_label_set_text(label, LV_EXT_STR_GET_BY_KEY(no_notifications, "No notifications"));
         lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+    }
+    else if (!have_media_widget &&
+             p_app_notification->no_notifications_widget != NULL &&
+             lv_obj_is_valid(p_app_notification->no_notifications_widget))
+    {
+        /* Widget already built — refresh the label text only.
+           Triggered by language switch: the else-if above only creates when NULL,
+           so we must find the existing label and update it here. */
+        uint32_t n = lv_obj_get_child_cnt(p_app_notification->no_notifications_widget);
+        for (uint32_t i = 0; i < n; i++)
+        {
+            lv_obj_t *c = lv_obj_get_child(p_app_notification->no_notifications_widget,
+                                           (int32_t)i);
+            if (lv_obj_check_type(c, &lv_label_class))
+            {
+                lv_label_set_text(c, LV_EXT_STR_GET_BY_KEY(no_notifications,
+                                                            "No notifications"));
+                break;
+            }
+        }
     }
     if (p_app_notification->media_widget == NULL && have_media_widget)
     {
@@ -2465,13 +2485,30 @@ bool is_have_message_now(void)
 }
 static void handle_dial_header_new_notification(void);
 static notification_widget_t new_notification_widgets;
+
+static void refresh_new_message_widget(void);
+
+/* Public wrapper for ui_handler 的語言切換廣播 — 刷新錶盤主畫面上常駐的通知小卡
+   (new_notification_widgets) 讓其 title label 重取當前語言字串。原 static 函式
+   保持不動其 linkage；這是唯一對外入口。 */
+void notification_widget_refresh_language(void)
+{
+    /* widget 尚未建立時 title 為 NULL，refresh_new_message_widget 第一步就會
+       對 title set_text，先擋掉避免空指標。 */
+    if (new_notification_widgets.title != NULL &&
+        lv_obj_is_valid(new_notification_widgets.title))
+    {
+        refresh_new_message_widget();
+    }
+}
+
 static void refresh_new_message_widget(void)
 {
     notification_t *notification =
         get_notification(0); // notification_center_get_info_count()
     if (notification_center_get_info_count() <= 0)
     {
-        lv_label_set_text(new_notification_widgets.title, "No notifications");
+        lv_label_set_text(new_notification_widgets.title, LV_EXT_STR_GET_BY_KEY(no_notifications, "No notifications"));
         lv_label_set_text(new_notification_widgets.content, "");
         lv_obj_add_flag(new_notification_widgets.icon, LV_OBJ_FLAG_HIDDEN);
         lv_img_set_src(new_notification_widgets.icon, ICON_OTHER);
@@ -2533,7 +2570,7 @@ lv_obj_t *lv_message_widget_builder(lv_obj_t *parent)
     new_notification_widgets.title = label;
     if (notification_center_get_info_count() <= 0)
     {
-        lv_label_set_text(label, "No notifications");
+        lv_label_set_text(label, LV_EXT_STR_GET_BY_KEY(no_notifications, "No notifications"));
         have_message_now = false;
     }
     else
