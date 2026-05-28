@@ -180,6 +180,11 @@ extern "C"
            BLE notify handlers run on KE_EVT2 (4KB stack) and the rebuild
            is too stack-heavy (FreeType + 10+ lv_obj_create) to run there. */
         LVGL_MSG_TYPE_REFRESH_INSTRUCTION_LIST,
+        /* Apply a phone-pushed instruction batch (0x6B) on the LVGL thread.
+           KE_EVT2 only heap-copies the JSON and posts this; the LVGL side
+           parses + clears + applies + refreshes, so list_items[] has a single
+           owner (fixes the KE_EVT2-vs-LVGL data race / wild-pointer crash). */
+        LVGL_MSG_TYPE_APPLY_INSTRUCTION_BATCH,
         /* Defer instruction-list reset (scroll-to-end + dot reposition) to
            the LVGL thread. bloc_notification's interact_with_notification
            calls myLancher[...].reset_list() from KE_EVT2 when a phone

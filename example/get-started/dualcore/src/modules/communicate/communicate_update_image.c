@@ -53,6 +53,7 @@
 #include "bloc_flash.h"
 #include "bloc_peripheral.h"
 #include "bloc_notification.h"
+#include "bloc_v2t.h"   /* app_voice_get_voice2text_status() — DFU yields to voice */
 
 #ifdef PKG_USING_LZ4
 #include "lz4.h"
@@ -635,6 +636,17 @@ static void ble_dfu_flash_write()
 		}
 		else
 		{
+			/* Mid voice-recognition: the BLE link + CPU are busy with audio
+			   and DFU data legitimately pauses. Keep the session alive (the
+			   OTA guard in skaiwatch_ble_set_performance holds the link at
+			   ULTRA, blocking voice's SLOW) so OTA resumes when voice ends.
+			   Self-bounding: when voice2text clears, the next idle gap
+			   terminates normally. */
+			if (app_voice_get_voice2text_status())
+			{
+				LOG_W("DFU inactivity during voice recognition, holding");
+				continue;
+			}
 			/* Timeout (no DFU command) */
 			LOG_W("DFU inactivity >5s, terminating");
 			terminate_ble_dfu_process();

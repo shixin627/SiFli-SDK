@@ -993,14 +993,20 @@ static void ppg_timeout_ind(void *param)
    std (HRV proxy) are valid for Deep/REM staging. PPG stays OFF while awake. */
 #define BG_HR_PERIOD_MS      (3 * 60 * 1000) /* base tick = sleep-mode cadence    */
 #define BG_HR_AWAKE_SKIP     5               /* awake: burst every 5th tick ≈15min */
-#define BG_HR_BURST_MS_AWAKE (25 * 1000)     /* short burst: just lock one BPM     */
-#define BG_HR_BURST_MS_SLEEP (60 * 1000)     /* ≥60 s -> valid ultra-short HRV     */
+/* The HBA algo restarts cold each burst and needs ~30 s to lock (hba_out_flag
+   stays 0 until then); before that gh3018_get_hr() still returns the PREVIOUS
+   burst's stale value. Drop that warm-up window from the HR stats, and keep
+   every burst longer than it. */
+#define BG_HR_WARMUP_MS      (30 * 1000)     /* algo lock time; earlier reads dropped */
+#define BG_HR_BURST_MS_AWAKE (40 * 1000)     /* warm-up + ~10 s to lock one BPM    */
+#define BG_HR_BURST_MS_SLEEP (60 * 1000)     /* warm-up + ~30 s stable for HR std  */
 #define BG_HR_SAMPLE_MS      (1000)          /* read cadence during the burst      */
 
 static rt_timer_t bg_hr_period_timer = RT_NULL;
 static rt_timer_t bg_hr_sample_timer = RT_NULL;
 static rt_bool_t bg_hr_bursting = RT_FALSE;
 static uint32_t bg_hr_burst_deadline_ms = 0;
+static uint32_t bg_hr_burst_accept_ms = 0;   /* reads before this tick are warm-up */
 static uint8_t bg_hr_burst_best = 0;
 
 /* Two-stage gate state. bg_hr_sleep_active is set by sleep_service when accel
@@ -1110,7 +1116,10 @@ static void bg_hr_sample_cb(void *param)
     if (hr_service_env.device &&
         rt_device_read(hr_service_env.device, 0, &sd, 1) == 1)
     {
-        if (sd.data.hr > 0)
+        /* Ignore the warm-up window: until the algo locks, gh3018_get_hr()
+           returns the previous burst's stale value, which would bias the mean
+           and deflate the std sleep_fusion uses for Deep/REM staging. */
+        if (sd.data.hr > 0 && rt_tick_get_millisecond() >= bg_hr_burst_accept_ms)
         {
             bg_hr_burst_best = (uint8_t)sd.data.hr;
             if (sd.data.hr < 240)
@@ -1162,8 +1171,13 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_sum_sq = 0;
     bg_hr_burst_cnt = 0;
     bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
-    bg_hr_burst_deadline_ms = rt_tick_get_millisecond() + bg_hr_burst_ms;
-    hr_set_power(1);
+    uint32_t bg_now_ms = rt_tick_get_millisecond();
+    bg_hr_burst_accept_ms = bg_now_ms + BG_HR_WARMUP_MS; /* skip algo warm-up */
+    bg_hr_burst_deadline_ms = bg_now_ms + bg_hr_burst_ms;
+    /* Open in HR mode (GH30X_FUNCTION_HR), the same path the foreground HR
+       subscribe uses; hr_set_power(1) would open NORMAL = HRV, which never
+       yields a BPM for gh3018_get_hr(). Power-down at burst end stays hr_set_power(0). */
+    hr_control_mode(RT_SENSOR_POWER_HIGH);
     rt_timer_start(bg_hr_sample_timer);
 }
 

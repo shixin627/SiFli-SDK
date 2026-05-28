@@ -40,6 +40,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* app_speech.h */ void app_speech_data_init(void) {  }
 /* app_message.c */ lv_ex_data_t * app_speech_get_content_data(void) { return 0; }
 /* bloc_v2t.h */ bool app_voice_get_recording_status(void) { return false; }
+/* bloc_v2t.h */ bool app_voice_get_voice2text_status(void) { return false; }
 /* app_system_interface.c */ void append_skai_widget_ai_reply(const char *text) {  }
 /* bloc_peripheral.h */ void audio_subscribe(void) {  }
 /* bloc_peripheral.h */ void audio_unsubscribe(void) {  }

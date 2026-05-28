@@ -1,6 +1,6 @@
 {
-    "version": "1.1.58",
-    "description": "睡眠算法測試(可能導致無法抬手亮屏,已嘗試修復待測試)",
+    "version": "1.1.59",
+    "description": "修復無法抬手亮屏",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",

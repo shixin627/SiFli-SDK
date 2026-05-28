@@ -619,10 +619,25 @@ void skaiwalk_ble_mtu_exchange_ind(sibles_mtu_exchange_ind_t *ind)
 
 /* blebredr_rf_power_set extern is declared at the top of this file (near
    the TPC block) so static helpers there can call it. */
+/* OTA pins the link at ULTRA; declared locally to avoid pulling
+   communicate_update_image.h into main.c (matches the drv_reboot pattern). */
+extern bool is_ble_dfu_thread_running(void);
+
 void skaiwatch_ble_set_performance(ble_perf_level_t level)
 {
     app_env_t *env = ble_app_get_env();
     if (env->is_power_on == false)
+    {
+        return;
+    }
+    /* While a BLE DFU (OTA) is in flight, pin the link at ULTRA: ignore any
+       request to drop below it. Voice (FAST/SLOW), file transfer and gesture
+       set lower levels for their own latency needs, but SLOW (slave latency=9,
+       ~1.2 s effective wake) starves the OTA stream and trips the DFU 5 s
+       inactivity terminate. The OTA's own ULTRA request passes (not below
+       ULTRA); its SLOW on exit runs after the DFU thread loop ends, when
+       is_ble_dfu_thread_running() is already false, so it isn't blocked. */
+    if (level < BLE_PERF_ULTRA && is_ble_dfu_thread_running())
     {
         return;
     }

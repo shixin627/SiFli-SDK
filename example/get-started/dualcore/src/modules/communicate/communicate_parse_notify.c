@@ -51,6 +51,8 @@ extern bool get_is_open_instruction_list_ai(void);
 extern void request_instruction_image(const char *id);
 extern void update_instruction_image(const char *id, const char *path);
 extern void remove_custom_instruction(const char *id);
+extern void clear_custom_instructions(void);
+extern void refresh_custom_instructions(void);
 
 /* Pull one instruction JSON object into the watch list and ensure the
    image asset exists locally (requesting it from the phone if not). Used
@@ -123,15 +125,179 @@ static bool apply_one_instruction_obj(cJSON *root)
     return true;
 }
 
-/* Defer instruction-list rebuild to LVGL thread.
-   This handler runs on KE_EVT2 (BLE kernel-event task, 4KB stack).
-   Calling refresh_custom_instructions() directly from here blew the
-   stack (creates 10+ lv_obj with FreeType labels) — see the STKOF
-   usage-fault crash in 2026-05-08 ui.log. */
-static inline void defer_refresh_custom_instructions(void)
+/* ── Single-thread ownership fix (intermittent left-list DACCVIOL, 2026-05-28)
+   ──────────────────────────────────────────────────────────────────────────
+   list_items[] / list_item_count were mutated on KE_EVT2 (BLE task) by the
+   instruction handlers — batch (0x6B clear+apply), single (0x65 upsert),
+   dismiss (0x67 remove) — and by update_instruction_image() on the file-receive
+   thread, while refresh_custom_instructions() rebuilds the UI from the same
+   arrays on the LVGL/app_watc thread. No lock → cross-thread data race; the
+   skaibar batch storm during voice makes them overlap → corrupted list_items[]
+   → wild-pointer DACCVIOL.
+
+   Fix: NO list_items[] mutation off the LVGL thread. Every mutator heap-copies
+   its payload and enqueues an op; the LVGL thread drains the queue (single
+   owner), applying each op in order, then rebuilds the UI once. cJSON_Parse
+   also moves off KE_EVT2's near-full 4KB stack as a bonus. */
+typedef enum
 {
-    lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_INSTRUCTION_LIST};
+    INST_OP_BATCH,  /* a = JSON array string  — replace-all   */
+    INST_OP_SINGLE, /* a = JSON object string — upsert one    */
+    INST_OP_REMOVE, /* a = id string          — remove one    */
+    INST_OP_IMAGE,  /* a = id string, b = image path          */
+} inst_op_kind_t;
+
+typedef struct
+{
+    inst_op_kind_t kind;
+    char *a;
+    char *b;
+} inst_op_t;
+
+/* FIFO of pending ops. Heap-copied payloads are owned by the queue until
+   drained. Sized for the worst realistic burst (one replace-all batch + an
+   image op per skaibar option, <=16). Drop-oldest on overflow bounds memory. */
+#define INST_OP_Q_LEN 24
+static inst_op_t s_inst_op_q[INST_OP_Q_LEN];
+static uint8_t s_inst_op_head = 0; /* next to drain  */
+static uint8_t s_inst_op_tail = 0; /* next free slot */
+
+static char *inst_strdup(const char *s)
+{
+    if (!s)
+        return RT_NULL;
+    size_t n = strlen(s) + 1;
+    char *p = (char *)rt_malloc(n);
+    if (p)
+        memcpy(p, s, n);
+    return p;
+}
+
+static void inst_op_free(inst_op_t *op)
+{
+    if (op->a)
+        rt_free(op->a);
+    if (op->b)
+        rt_free(op->b);
+    op->a = op->b = RT_NULL;
+}
+
+/* Transfers ownership of heap-allocated a / b (either may be NULL). Safe from
+   any thread; the LVGL thread drains via apply_pending_instruction_batch(). */
+static void inst_op_enqueue(inst_op_kind_t kind, char *a, char *b)
+{
+    rt_enter_critical();
+    uint8_t next = (uint8_t)((s_inst_op_tail + 1) % INST_OP_Q_LEN);
+    if (next == s_inst_op_head)
+    {
+        /* Full — drop oldest so a storm can't grow memory unboundedly. */
+        inst_op_free(&s_inst_op_q[s_inst_op_head]);
+        s_inst_op_head = (uint8_t)((s_inst_op_head + 1) % INST_OP_Q_LEN);
+        LOG_W("instruction op queue full, dropped oldest");
+    }
+    s_inst_op_q[s_inst_op_tail].kind = kind;
+    s_inst_op_q[s_inst_op_tail].a = a;
+    s_inst_op_q[s_inst_op_tail].b = b;
+    s_inst_op_tail = next;
+    rt_exit_critical();
+
+    lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_APPLY_INSTRUCTION_BATCH};
     lvgl_send_msg(msg);
+}
+
+/* Exposed for the layout's update_instruction_image(), which is also called on
+   the file-receive thread when an icon download completes. */
+void instruction_op_enqueue_image(const char *id, const char *path)
+{
+    char *id_copy = inst_strdup(id);
+    char *path_copy = inst_strdup(path);
+    if (!id_copy || !path_copy)
+    {
+        if (id_copy)
+            rt_free(id_copy);
+        if (path_copy)
+            rt_free(path_copy);
+        LOG_E("instruction image op: alloc failed");
+        return;
+    }
+    inst_op_enqueue(INST_OP_IMAGE, id_copy, path_copy);
+}
+
+/* LVGL thread only — dispatched from process_lvgl_message() on
+   LVGL_MSG_TYPE_APPLY_INSTRUCTION_BATCH. Drains every queued op (so list_items[]
+   is only ever mutated here) then rebuilds the UI once. */
+void apply_pending_instruction_batch(void)
+{
+    bool applied_any = false;
+    for (;;)
+    {
+        inst_op_t op;
+        rt_enter_critical();
+        if (s_inst_op_head == s_inst_op_tail)
+        {
+            rt_exit_critical();
+            break;
+        }
+        op = s_inst_op_q[s_inst_op_head];
+        s_inst_op_q[s_inst_op_head].a = RT_NULL;
+        s_inst_op_q[s_inst_op_head].b = RT_NULL;
+        s_inst_op_head = (uint8_t)((s_inst_op_head + 1) % INST_OP_Q_LEN);
+        rt_exit_critical();
+        applied_any = true;
+
+        switch (op.kind)
+        {
+        case INST_OP_BATCH:
+        {
+            cJSON *root = op.a ? cJSON_Parse(op.a) : RT_NULL;
+            if (root && cJSON_IsArray(root))
+            {
+                int incoming = cJSON_GetArraySize(root);
+                int n = 0;
+                /* Replace-all: clear before appending so phone-side deletions
+                   take effect. App items < app_base_count are preserved. */
+                clear_custom_instructions();
+                cJSON *item;
+                cJSON_ArrayForEach(item, root)
+                {
+                    if (apply_one_instruction_obj(item))
+                        n++;
+                }
+                LOG_I("BATCH instructions: %d of %d item(s) applied", n,
+                      incoming);
+            }
+            else
+            {
+                LOG_W("BATCH instructions: payload is not a JSON array");
+            }
+            if (root)
+                cJSON_Delete(root);
+            break;
+        }
+        case INST_OP_SINGLE:
+        {
+            cJSON *root = op.a ? cJSON_Parse(op.a) : RT_NULL;
+            if (root)
+            {
+                apply_one_instruction_obj(root);
+                cJSON_Delete(root);
+            }
+            break;
+        }
+        case INST_OP_REMOVE:
+            if (op.a)
+                remove_custom_instruction(op.a);
+            break;
+        case INST_OP_IMAGE:
+            if (op.a && op.b)
+                update_instruction_image(op.a, op.b);
+            break;
+        }
+        inst_op_free(&op);
+    }
+
+    if (applied_any)
+        refresh_custom_instructions();
 }
 
 extern void parse_chat_item(cJSON *item, chat_t *note);
@@ -520,13 +686,19 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     {
         if (length > 0)
         {
-            LOG_I("Received instruction: %s", pValue);
-            cJSON *root = cJSON_Parse((const char *)pValue);
-            if (root)
+            /* Hand off to the LVGL thread (single owner of list_items[]).
+               Heap-copy with a NUL terminator — pValue is not guaranteed
+               NUL-terminated. */
+            char *json = (char *)rt_malloc((size_t)length + 1);
+            if (json != RT_NULL)
             {
-                apply_one_instruction_obj(root);
-                defer_refresh_custom_instructions();
-                cJSON_Delete(root);
+                memcpy(json, pValue, length);
+                json[length] = '\0';
+                inst_op_enqueue(INST_OP_SINGLE, json, RT_NULL);
+            }
+            else
+            {
+                LOG_E("instruction single: rt_malloc(%u) failed", length + 1);
             }
         }
         break;
@@ -549,43 +721,10 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         memcpy(json_buf, pValue, length);
         json_buf[length] = '\0';
 
-        cJSON *root = cJSON_Parse(json_buf);
-        if (!root || !cJSON_IsArray(root))
-        {
-            LOG_W("BATCH instructions: payload is not a JSON array");
-            if (root)
-                cJSON_Delete(root);
-            rt_free(json_buf);
-            break;
-        }
-
-        int incoming = cJSON_GetArraySize(root);
-        LOG_I("BATCH instructions: replacing custom list with %d item(s)",
-              incoming);
-
-        /* Replace-all semantics: clear before appending so removed items
-           on the phone side actually disappear on the watch. App items
-           (clock / weather / ai / ...) at indices < app_base_count are
-           preserved by clear_custom_instructions(). */
-        clear_custom_instructions();
-
-        int applied = 0;
-        cJSON *item;
-        cJSON_ArrayForEach(item, root)
-        {
-            /* add_or_update_custom_instruction itself bounds-checks
-               against MAX_LIST_ITEMS, so excess items are silently
-               dropped per the agreed truncation policy. Log how many
-               we kept so the phone can correlate. */
-            if (apply_one_instruction_obj(item))
-                applied++;
-        }
-        LOG_I("BATCH instructions: %d of %d item(s) applied",
-              applied, incoming);
-
-        defer_refresh_custom_instructions();
-        cJSON_Delete(root);
-        rt_free(json_buf);
+        /* Single-thread ownership: do NOT parse/apply here (KE_EVT2). Hand the
+           raw JSON to the LVGL thread, which clears + applies + refreshes
+           list_items[] from one owner. See apply_pending_instruction_batch(). */
+        inst_op_enqueue(INST_OP_BATCH, json_buf, RT_NULL);
         break;
     }
 
@@ -593,9 +732,20 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     {
         if (length > 0)
         {
-            LOG_I("Dismiss instruction: %s", pValue);
-            remove_custom_instruction((const char *)pValue);
-            defer_refresh_custom_instructions();
+            /* Hand off to the LVGL thread (single owner of list_items[]).
+               Heap-copy the id with a NUL terminator — pValue is not
+               guaranteed NUL-terminated. */
+            char *id = (char *)rt_malloc((size_t)length + 1);
+            if (id != RT_NULL)
+            {
+                memcpy(id, pValue, length);
+                id[length] = '\0';
+                inst_op_enqueue(INST_OP_REMOVE, id, RT_NULL);
+            }
+            else
+            {
+                LOG_E("dismiss instruction: rt_malloc(%u) failed", length + 1);
+            }
         }
         break;
     }

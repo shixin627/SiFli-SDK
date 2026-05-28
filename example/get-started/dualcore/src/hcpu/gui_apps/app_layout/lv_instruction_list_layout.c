@@ -3377,6 +3377,19 @@ void refresh_custom_instructions(void)
 
 void update_instruction_image(const char *id, const char *path)
 {
+    /* list_items[] is owned by the LVGL thread. If a non-LVGL caller (the
+       file-receive thread, when an icon download completes) lands here, defer
+       the whole op so the find + img_path write happen on the LVGL thread too —
+       otherwise they race refresh_custom_instructions(). The batch/single drain
+       calls this already on the LVGL thread, so it runs inline there. */
+    if (!is_on_lvgl_thread())
+    {
+        extern void instruction_op_enqueue_image(const char *id,
+                                                 const char *path);
+        instruction_op_enqueue_image(id, path);
+        return;
+    }
+
     int idx = find_instruction_by_id(id);
     if (idx < 0)
     {

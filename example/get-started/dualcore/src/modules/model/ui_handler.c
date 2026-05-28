@@ -737,6 +737,13 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
     }
 
+    case LVGL_MSG_TYPE_APPLY_INSTRUCTION_BATCH:
+    {
+        extern void apply_pending_instruction_batch(void);
+        apply_pending_instruction_batch();
+        break;
+    }
+
     case LVGL_MSG_TYPE_RESET_INSTRUCTION_LIST:
     {
         extern void apply_instruction_list_reset_on_lvgl_thread(void);
