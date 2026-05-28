@@ -75,6 +75,12 @@ static void app_clock_earth_digital_redraw(lv_timer_t *task)
     {
         const char *ampm = ui_time_ampm(hours);
         lv_label_set_text(p_clk_earth_digital->ampm_label, ampm ? ampm : "");
+        /* Re-align here (not just at create): by now the minute image has its
+           real size, so OUT_BOTTOM_RIGHT actually lands below the digit. The
+           create-time align ran before the image size settled. */
+        lv_obj_align_to(p_clk_earth_digital->ampm_label,
+                        p_clk_earth_digital->minute_1_img,
+                        LV_ALIGN_OUT_BOTTOM_RIGHT, -10, 0);
     }
 
     memcpy(&p_clk_earth_digital->last_redraw_time, &current_time,
@@ -171,16 +177,22 @@ lv_obj_t *lv_earth_digital_layout_create(lv_obj_t *parent)
     lv_img_set_src(p_clk_earth_digital->earth_img, &img_earth_digital_bg);
     lv_obj_align(p_clk_earth_digital->earth_img, LV_ALIGN_BOTTOM_MID, 0, -30);
 
-    /* AM/PM tag below the time digits, horizontally centred between the hour
-       and minute groups — shown only in 12-hour mode; the redraw task fills
-       it in / clears it based on hour_format. */
+    /* AM/PM tag at the bottom-right corner of the minutes — small and
+       half-transparent so it reads as a tag, not a digit. Shown only in
+       12-hour mode; the redraw task fills it in / clears it based on
+       hour_format. */
     p_clk_earth_digital->ampm_label = lv_label_create(p_clk_earth_digital->bg);
     lv_obj_set_style_text_font(p_clk_earth_digital->ampm_label,
-                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+                               LV_EXT_FONT_GET(get_system_font_size(-2)), 0);
     lv_obj_set_style_text_color(p_clk_earth_digital->ampm_label,
                                 lv_color_white(), 0);
+    lv_obj_set_style_text_opa(p_clk_earth_digital->ampm_label, LV_OPA_50, 0);
     lv_label_set_text(p_clk_earth_digital->ampm_label, "");
-    lv_obj_align(p_clk_earth_digital->ampm_label, LV_ALIGN_CENTER, 0, 70);
+    /* Below the minute DIGIT, right edge aligned to the minute's right edge
+       (-10 trims the digit image's transparent right margin). */
+    lv_obj_align_to(p_clk_earth_digital->ampm_label,
+                    p_clk_earth_digital->minute_1_img,
+                    LV_ALIGN_OUT_BOTTOM_RIGHT, -10, 0);
 
     p_clk_earth_digital->redraw_task = NULL;
 

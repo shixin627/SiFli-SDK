@@ -502,6 +502,14 @@ static void time_format_switch_event_callback(lv_event_t *e)
         setting_provider.set_hour_format(new_format);
 #endif
         update_time_format_title_label(new_format);
+        /* The always-on time bar's 1Hz timer only refreshes on minute change,
+           so push the new format to it now — otherwise the instruction-list
+           time keeps the old format (and old layout) until the next minute.
+           The watchface redraws every 30ms so it already updates instantly. */
+        if (lvgl_msg_handler.handle_time_text)
+        {
+            lvgl_msg_handler.handle_time_text();
+        }
         LOG_I("Time format toggled: %s", (new_format == 0x01) ? "24h" : "12h");
     }
 }

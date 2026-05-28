@@ -789,6 +789,19 @@ static void refresh_time(T_UTC_TIME *current_time)
             const char *ampm = ui_time_ampm(current_time->hour);
             lv_label_set_text(p_app_clock_main->instruction_list_time_ampm,
                               ampm ? ampm : "");
+            /* Re-align now that time_m has its text (hence real width); the
+               create-time align ran while time_m was still empty (width 0),
+               so it landed wrong and ignored the offset. */
+            lv_obj_align_to(p_app_clock_main->instruction_list_time_ampm,
+                            p_app_clock_main->instruction_list_time_m,
+                            LV_ALIGN_OUT_RIGHT_BOTTOM, 2, 0);
+        }
+        if (lv_obj_is_valid(p_app_clock_main->instruction_list_weather_icon))
+        {
+            /* 24h has no AM/PM tag → tuck the weather icon back in tight; 12h
+               pushes it right to leave room for the tag beside the minutes. */
+            lv_obj_align(p_app_clock_main->instruction_list_weather_icon,
+                         LV_ALIGN_CENTER, ui_time_is_24h() ? 58 : 82, 0);
         }
     }
     else
@@ -1118,7 +1131,7 @@ void top_digital_time_builder(lv_obj_t *parent)
                             LV_OPA_0, 0);
     lv_obj_set_size(p_app_clock_main->instruction_list_time_bg, 466, 50);
     lv_obj_align(p_app_clock_main->instruction_list_time_bg, LV_ALIGN_TOP_MID,
-                 -10, 0);
+                 -24, 0);
     lv_obj_clear_flag(p_app_clock_main->instruction_list_time_bg,
                       LV_OBJ_FLAG_CLICKABLE);
 
@@ -1143,22 +1156,31 @@ void top_digital_time_builder(lv_obj_t *parent)
     lv_obj_set_style_text_font(instruction_list_time_symbol,
                                LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
     lv_obj_align(instruction_list_time_symbol, LV_ALIGN_CENTER, 0, -1);
-    /* AM/PM tag tucked at the bottom-right of the minutes label (12h only;
-       empty string in 24h mode so it takes no visible space). */
+    /* AM/PM tag just to the RIGHT of the minutes, bottom-aligned (12h only;
+       empty in 24h). OUT_RIGHT_BOTTOM sits it beside the digits (not on top
+       of them) in the gap before the weather icon. Re-aligned in refresh_time
+       once time_m has its real width. */
     lv_obj_t *instruction_list_time_ampm =
         lv_label_create(p_app_clock_main->instruction_list_time_bg);
     lv_obj_set_style_text_font(instruction_list_time_ampm,
                                LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
+    /* FONT_SMALL (level 0) is the smallest registered font. transform_zoom was
+       tried for an extra shrink but FreeType labels don't render under it on
+       this EPIC build (text vanished), so we stay at FONT_SMALL. A smaller
+       AM/PM would need a dedicated bitmap glyph. */
     lv_label_set_text(instruction_list_time_ampm, "");
     lv_obj_align_to(instruction_list_time_ampm, instruction_list_time_m,
-                    LV_ALIGN_OUT_BOTTOM_RIGHT, 0, -2);
+                    LV_ALIGN_OUT_RIGHT_BOTTOM, 2, 0);
     lv_obj_t *instruction_list_weather_icon =
         lv_img_create(p_app_clock_main->instruction_list_time_bg);
     weather_t *get_weather_data = get_weather(WEATHER_TODAT_ITEM_AMOUNT - 1);
     lv_img_set_src(instruction_list_weather_icon,
                    weather_icon_get(get_weather_data->description));
     lv_img_set_zoom(instruction_list_weather_icon, 128); // zoom 80%
-    lv_obj_align(instruction_list_weather_icon, LV_ALIGN_CENTER, 58, 0);
+    /* 24h packs tight at 58; 12h shifts right to 82 to clear the AM/PM tag.
+       refresh_time keeps this in sync on every update / format switch. */
+    lv_obj_align(instruction_list_weather_icon, LV_ALIGN_CENTER,
+                 ui_time_is_24h() ? 58 : 82, 0);
     p_app_clock_main->instruction_list_weather_icon =
         instruction_list_weather_icon;
     uint8_t minutes = SkaiWatchSys.Global_Time.minutes;
