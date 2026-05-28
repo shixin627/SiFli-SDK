@@ -52,6 +52,14 @@ extern "C"
 
     extern void set_scroll_anim_time(bool init, uint16_t time);
     extern uint8_t get_system_font_size(int adjust);
+
+    /* 12/24-hour clock formatting — single source of truth for the user's
+       hour_format preference. See ui_helper.c for the contract. */
+    extern bool ui_time_is_24h(void);
+    extern uint8_t ui_time_display_hour(uint8_t hour_24);
+    extern const char *ui_time_ampm(uint8_t hour_24);
+    extern int ui_time_format_hhmm(char *buf, rt_size_t buf_len,
+                                   uint8_t hour_24, uint8_t minute);
     extern void calibrate_reverse_rotation(int16_t *x, int16_t *y);
 
     extern rt_int32_t clock_on_resume(void);

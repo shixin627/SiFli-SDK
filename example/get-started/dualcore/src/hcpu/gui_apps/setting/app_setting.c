@@ -111,6 +111,11 @@ static lv_obj_t *mouse_press_quick_btn = NULL;
 
 extern void app_developer_main(void);
 
+/* 切語言後重建設定主頁用：語言選單內選了新語言時標記，離開選單時 async 重建，
+   讓主頁的 label 重新依新語言取字串（LVGL label 存的是字串副本，不會自動更新）。 */
+static bool s_setting_lang_changed = false;
+static void app_setting_rebuild_main_cb(void *p);
+
 static void lang_btn_event_handler(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target(e);
@@ -136,6 +141,7 @@ static void lang_btn_event_handler(lv_event_t *e)
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
             // Update the system language
             interact_language_set(lv_list_get_btn_text(NULL, obj));
+            s_setting_lang_changed = true;
 #endif
         }
         else if ((p_app_setting->selected_lang == obj) && (0 == (LV_STATE_PRESSED & new_state)))
@@ -162,6 +168,13 @@ static void lang_setting_win_back_event_handler(lv_event_t *e)
     {
         lv_obj_del(obj->parent);
         p_app_setting->selected_lang = NULL;
+        /* 語言若在選單內被改過，離開選單時重建設定主頁，使其依新語言重繪。
+           async 延到事件處理完才執行，避免在事件中銷毀物件。 */
+        if (s_setting_lang_changed)
+        {
+            s_setting_lang_changed = false;
+            lv_async_call(app_setting_rebuild_main_cb, NULL);
+        }
     }
 }
 
@@ -1476,6 +1489,35 @@ static void on_stop(void)
     /* The modal is parented to lv_scr_act() (and gets deleted with the screen),
      * but reset the static pointer so a stale reference isn't reused. */
     reset_modal = NULL;
+}
+
+/* 語言切換後重建設定主頁。比照 on_stop 釋放（datac 交給 app_setting_init 重開、
+   靜態指標重新賦值），但保留 p_app_setting 本體，重建後停在設定主頁顯示新語言。 */
+static void app_setting_rebuild_main_cb(void *p)
+{
+    LV_UNUSED(p);
+    if (NULL == p_app_setting)
+        return;
+    if (DATA_CLIENT_INVALID_HANDLE != p_app_setting->pwr_srv_hdl)
+    {
+        datac_close(p_app_setting->pwr_srv_hdl);
+        p_app_setting->pwr_srv_hdl = DATA_CLIENT_INVALID_HANDLE;
+    }
+    if (p_app_setting->main_window)
+    {
+        lv_obj_del(p_app_setting->main_window);
+        p_app_setting->main_window = NULL;
+    }
+    dnd_quick_btn = NULL;
+    time_format_quick_btn = NULL;
+    time_format_title_label = NULL;
+    time_format_badge_label = NULL;
+    mouse_press_quick_btn = NULL;
+    reset_modal = NULL;
+    /* 比照 on_start：在乾淨的 struct 上重建，避免殘留欄位指向已刪物件。
+       datac 已於上方 close，app_setting_init 結尾會重新 open。 */
+    memset(p_app_setting, 0, sizeof(*p_app_setting));
+    app_setting_init(NULL);
 }
 
 static void back_to_main_menu(void)

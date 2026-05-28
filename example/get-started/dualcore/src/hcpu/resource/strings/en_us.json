@@ -176,5 +176,6 @@
   "today": "Today",
   "delete_selected": "Delete Selected",
   "swipe_explore": "Swipe in four directions to explore",
-  "swipe_run_ai": "Tap to run, or swipe again for AI"
+  "swipe_run_ai": "Tap to run, or swipe again for AI",
+  "no_notifications": "No notifications"
 }

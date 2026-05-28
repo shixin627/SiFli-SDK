@@ -1307,6 +1307,13 @@ static void dev_change_stop_connecting_timer(void)
 
 static void dev_change_refresh_device_list(void);
 
+/* Public wrapper for cross-module callers — currently ui_handler 的語言切換廣播。
+   dev_change_refresh_device_list 保持 static 不動其 linkage，此為唯一對外入口。 */
+void app_clock_status_bar_refresh_device_change_bar(void)
+{
+    dev_change_refresh_device_list();
+}
+
 static void dev_change_connecting_timer_cb(lv_timer_t *t)
 {
     (void)t;

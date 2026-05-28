@@ -2453,7 +2453,8 @@ static void update_time_display(void)
     {
         T_UTC_TIME current_time = SkaiWatchSys.Global_Time;
         char time_str[3];
-        rt_snprintf(time_str, 3, "%02d", current_time.hour);
+        rt_snprintf(time_str, 3, "%02d",
+                    ui_time_display_hour(current_time.hour));
         lv_label_set_text(status_bar_time_h, time_str);
         rt_snprintf(time_str, 3, "%02d", current_time.minutes);
         lv_label_set_text(status_bar_time_m, time_str);

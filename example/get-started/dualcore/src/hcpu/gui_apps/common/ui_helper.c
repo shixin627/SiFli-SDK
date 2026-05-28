@@ -311,6 +311,56 @@ uint8_t get_system_font_size(int adjust)
     }
     return (uint8_t)font_size;
 }
+
+/**
+ * @brief 12/24-hour clock formatting helpers.
+ *
+ * Single source of truth for the user's hour_format preference
+ * (SkaiWatchSys.flag_field.hour_format, written by the settings app).
+ * Every place that renders a wall-clock time MUST go through these so the
+ * 12/24-hour toggle actually takes effect everywhere — not just where it was
+ * remembered to be wired up. hour_format: 0 = 12-hour, 1 = 24-hour.
+ *
+ * Durations (stopwatch / timer / exercise elapsed) are NOT wall-clock times
+ * and must keep their own HH:MM:SS formatting — don't route them here.
+ */
+bool ui_time_is_24h(void)
+{
+    return SkaiWatchSys.flag_field.hour_format == 1;
+}
+
+uint8_t ui_time_display_hour(uint8_t hour_24)
+{
+    if (ui_time_is_24h())
+    {
+        return hour_24;
+    }
+    uint8_t h = hour_24 % 12;
+    return (h == 0) ? 12 : h;
+}
+
+const char *ui_time_ampm(uint8_t hour_24)
+{
+    if (ui_time_is_24h())
+    {
+        return RT_NULL;
+    }
+    return (hour_24 < 12) ? "AM" : "PM";
+}
+
+int ui_time_format_hhmm(char *buf, rt_size_t buf_len, uint8_t hour_24,
+                        uint8_t minute)
+{
+    if (ui_time_is_24h())
+    {
+        return rt_snprintf(buf, buf_len, "%02d:%02d", hour_24, minute);
+    }
+    /* 12-hour: no leading zero on the hour, trailing AM/PM. */
+    return rt_snprintf(buf, buf_len, "%d:%02d %s",
+                       ui_time_display_hour(hour_24), minute,
+                       (hour_24 < 12) ? "AM" : "PM");
+}
+
 /**
  * @brief Run an application with intent parameters
  *

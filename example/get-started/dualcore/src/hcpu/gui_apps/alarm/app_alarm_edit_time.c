@@ -11,6 +11,7 @@
 #include "ui_datasrv_subscriber.h"
 #include "ui_helper.h"
 #include "app_alarm_style.h"
+#include <stdbool.h>
 
 #define DBG_TAG "APP.ALARM.ET"
 #define DBG_LVL DBG_LOG
@@ -24,6 +25,14 @@
 #define HOURS_ROLLER_STR \
     "00\n01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n11\n12\n" \
     "13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23"
+/* 12-hour mode: still 24 rows so the option index continues to equal
+   ctx.hour (0-23) and every read/write path stays untouched. The displayed
+   digits are 12-hour, repeated for AM (rows 0-11) and PM (rows 12-23);
+   the AM/PM tag at the bottom-right of the roller resolves which half
+   the selected row belongs to. */
+#define HOURS_ROLLER_STR_12 \
+    "12\n01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n11\n" \
+    "12\n01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n11"
 #define MINUTE_ROLLER_STR \
     "00\n01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n11\n12\n" \
     "13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n" \
@@ -47,6 +56,9 @@ typedef struct
 {
     lv_obj_t *roller_hour;
     lv_obj_t *roller_minute;
+    lv_obj_t *hour_ampm_tag; /* small AM/PM badge anchored to roller_hour
+                                bottom-right; created only in 12-hour mode,
+                                NULL in 24-hour mode. */
 
     int32_t alarm_idx; /* >=0: edit existing, -1: add new */
     alarm_contxt_t alarm_ctx;
@@ -86,11 +98,23 @@ static void set_event_cb(lv_event_t *e)
     datac_send_msg(p_app_alarm_edit_time->srv_handle, &msg);
 }
 
+/* Sync the small AM/PM badge to whatever 0-23 hour is currently selected.
+   No-op in 24h mode (tag is NULL). */
+static void update_hour_ampm_tag(uint8_t hour_24)
+{
+    if (!p_app_alarm_edit_time ||
+        !lv_obj_is_valid(p_app_alarm_edit_time->hour_ampm_tag))
+        return;
+    lv_label_set_text(p_app_alarm_edit_time->hour_ampm_tag,
+                      (hour_24 < 12) ? "AM" : "PM");
+}
+
 static void hour_roller_event_cb(lv_event_t *e)
 {
     if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
-    p_app_alarm_edit_time->alarm_ctx.hour =
-        lv_roller_get_selected(lv_event_get_target(e));
+    uint16_t sel = lv_roller_get_selected(lv_event_get_target(e));
+    p_app_alarm_edit_time->alarm_ctx.hour = sel;
+    update_hour_ampm_tag((uint8_t)sel);
 }
 
 static void minute_roller_event_cb(lv_event_t *e)
@@ -232,6 +256,7 @@ static int srv_msg_handler(data_callback_arg_t *arg)
                                    data->ctx.hour, LV_ANIM_OFF);
             lv_roller_set_selected(p_app_alarm_edit_time->roller_minute,
                                    data->ctx.minute, LV_ANIM_OFF);
+            update_hour_ampm_tag(data->ctx.hour);
         }
         break;
     }
@@ -351,7 +376,12 @@ static void build_layout(void)
        end of the list just bounce, which matches iOS picker UX. */
     lv_obj_t *roller_h = lv_roller_create(scr);
     style_dark_roller(roller_h);
-    lv_roller_set_options(roller_h, HOURS_ROLLER_STR, LV_ROLLER_MODE_NORMAL);
+    const bool is_24h = ui_time_is_24h();
+    /* Same row count either way — only the displayed digits change so the
+       option index continues to equal ctx.hour (0-23). */
+    lv_roller_set_options(roller_h,
+                          is_24h ? HOURS_ROLLER_STR : HOURS_ROLLER_STR_12,
+                          LV_ROLLER_MODE_NORMAL);
     lv_roller_set_visible_row_count(roller_h, 3);
     lv_obj_set_width(roller_h, 110);
     lv_obj_align(roller_h, LV_ALIGN_CENTER, -70, -10);
@@ -360,6 +390,20 @@ static void build_layout(void)
     lv_obj_add_event_cb(roller_h, roller_tap_step_cb, LV_EVENT_PRESSED, NULL);
     lv_obj_add_event_cb(roller_h, roller_tap_step_cb, LV_EVENT_RELEASED, NULL);
     p_app_alarm_edit_time->roller_hour = roller_h;
+
+    /* AM/PM tag at the hour roller's bottom-right — only in 12-hour mode.
+       Layered on top of the roller (parent = scr) so it stays visible above
+       the dimmed non-selected rows. */
+    if (!is_24h)
+    {
+        lv_obj_t *ampm = lv_label_create(scr);
+        lv_obj_set_style_text_font(
+            ampm, LV_EXT_FONT_GET(get_system_font_size(-2)), 0);
+        lv_obj_set_style_text_color(ampm, ALARM_COLOR_TEXT_PRIMARY, 0);
+        lv_label_set_text(ampm, "AM");
+        lv_obj_align_to(ampm, roller_h, LV_ALIGN_BOTTOM_RIGHT, -4, -6);
+        p_app_alarm_edit_time->hour_ampm_tag = ampm;
+    }
 
     /* Colon between rollers. */
     lv_obj_t *colon = lv_label_create(scr);
@@ -394,6 +438,7 @@ static void build_layout(void)
                            LV_ANIM_OFF);
     lv_roller_set_selected(roller_m, p_app_alarm_edit_time->alarm_ctx.minute,
                            LV_ANIM_OFF);
+    update_hour_ampm_tag(p_app_alarm_edit_time->alarm_ctx.hour);
 }
 
 /*********************

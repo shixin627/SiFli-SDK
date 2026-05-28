@@ -128,6 +128,7 @@ typedef struct
     lv_obj_t *instruction_list_time_h;
     lv_obj_t *instruction_list_time_m;
     lv_obj_t *instruction_list_time_symbol;
+    lv_obj_t *instruction_list_time_ampm;
     lv_obj_t *instruction_list_time_bg;
     lv_obj_t *instruction_list_weather_icon;
     lv_obj_t *instruction_list_bluetooth_disconnection;
@@ -159,6 +160,12 @@ void set_instruction_list_time_opa(uint8_t opa)
                               opa, 0);
     lv_obj_set_style_img_opa(p_app_clock_main->instruction_list_weather_icon,
                              opa, 0);
+    /* AM/PM tag fades with the rest of the time row; empty (24h) is harmless. */
+    if (lv_obj_is_valid(p_app_clock_main->instruction_list_time_ampm))
+    {
+        lv_obj_set_style_text_opa(p_app_clock_main->instruction_list_time_ampm,
+                                  opa, 0);
+    }
 }
 
 static lv_obj_t *charge_icon_obj = NULL;
@@ -772,10 +779,17 @@ static void refresh_time(T_UTC_TIME *current_time)
     if (lv_obj_is_valid(p_app_clock_main->instruction_list_time_h) &&
         lv_obj_is_valid(p_app_clock_main->instruction_list_time_m))
     {
-        rt_snprintf(time_str, 3, "%02d", current_time->hour);
+        rt_snprintf(time_str, 3, "%02d",
+                    ui_time_display_hour(current_time->hour));
         lv_label_set_text(p_app_clock_main->instruction_list_time_h, time_str);
         rt_snprintf(time_str, 3, "%02d", current_time->minutes);
         lv_label_set_text(p_app_clock_main->instruction_list_time_m, time_str);
+        if (lv_obj_is_valid(p_app_clock_main->instruction_list_time_ampm))
+        {
+            const char *ampm = ui_time_ampm(current_time->hour);
+            lv_label_set_text(p_app_clock_main->instruction_list_time_ampm,
+                              ampm ? ampm : "");
+        }
     }
     else
     {
@@ -1129,6 +1143,15 @@ void top_digital_time_builder(lv_obj_t *parent)
     lv_obj_set_style_text_font(instruction_list_time_symbol,
                                LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
     lv_obj_align(instruction_list_time_symbol, LV_ALIGN_CENTER, 0, -1);
+    /* AM/PM tag tucked at the bottom-right of the minutes label (12h only;
+       empty string in 24h mode so it takes no visible space). */
+    lv_obj_t *instruction_list_time_ampm =
+        lv_label_create(p_app_clock_main->instruction_list_time_bg);
+    lv_obj_set_style_text_font(instruction_list_time_ampm,
+                               LV_EXT_FONT_GET(get_system_font_size(-3)), 0);
+    lv_label_set_text(instruction_list_time_ampm, "");
+    lv_obj_align_to(instruction_list_time_ampm, instruction_list_time_m,
+                    LV_ALIGN_OUT_BOTTOM_RIGHT, 0, -2);
     lv_obj_t *instruction_list_weather_icon =
         lv_img_create(p_app_clock_main->instruction_list_time_bg);
     weather_t *get_weather_data = get_weather(WEATHER_TODAT_ITEM_AMOUNT - 1);
@@ -1141,11 +1164,15 @@ void top_digital_time_builder(lv_obj_t *parent)
     uint8_t minutes = SkaiWatchSys.Global_Time.minutes;
     uint8_t hour = SkaiWatchSys.Global_Time.hour;
     char time_str[3];
-    rt_snprintf(time_str, 3, "%02d", hour); // hh
+    rt_snprintf(time_str, 3, "%02d", ui_time_display_hour(hour)); // hh
     lv_label_set_text(instruction_list_time_h, time_str);
     rt_snprintf(time_str, 3, "%02d", minutes); // mm
     lv_label_set_text(instruction_list_time_m, time_str);
     lv_label_set_text(instruction_list_time_symbol, ":");
+    {
+        const char *ampm = ui_time_ampm(hour);
+        lv_label_set_text(instruction_list_time_ampm, ampm ? ampm : "");
+    }
 
     lv_obj_set_style_text_opa(instruction_list_time_h, LV_OPA_TRANSP, 0);
     p_app_clock_main->instruction_list_time_h = instruction_list_time_h;
@@ -1154,6 +1181,8 @@ void top_digital_time_builder(lv_obj_t *parent)
     lv_obj_set_style_text_opa(instruction_list_time_symbol, LV_OPA_TRANSP, 0);
     p_app_clock_main->instruction_list_time_symbol =
         instruction_list_time_symbol;
+    lv_obj_set_style_text_opa(instruction_list_time_ampm, LV_OPA_TRANSP, 0);
+    p_app_clock_main->instruction_list_time_ampm = instruction_list_time_ampm;
     lv_obj_set_style_img_opa(instruction_list_weather_icon, LV_OPA_TRANSP, 0);
     p_app_clock_main->instruction_list_weather_icon =
         instruction_list_weather_icon;
@@ -1503,6 +1532,7 @@ void clock_on_stop(void)
         SAFE_OBJ_DEL(p_app_clock_main->instruction_list_time_h);
         SAFE_OBJ_DEL(p_app_clock_main->instruction_list_time_m);
         SAFE_OBJ_DEL(p_app_clock_main->instruction_list_time_symbol);
+        SAFE_OBJ_DEL(p_app_clock_main->instruction_list_time_ampm);
         SAFE_OBJ_DEL(p_app_clock_main->instruction_list_weather_icon);
         SAFE_OBJ_DEL(p_app_clock_main->instruction_list_bluetooth_disconnection);
         SAFE_OBJ_DEL(p_app_clock_main->instruction_list_battery);
