@@ -318,9 +318,10 @@ extern "C"
 #define MAX_DEFAULT_ACTIONS 12
 #define DEFAULT_ACTION_LEN 32
 #define SYNCED_DEVICE_NAME_LEN 40      /* display name (RAM only, re-synced on connect) */
-/* v2: added default_action_types[] (per-action category icon). Bumping the
-   version makes read_device_registry discard the old (smaller) persisted blob on
-   the next boot — it re-syncs from the phone, so no migration needed. */
+/* version/crc are vestigial: the registry is no longer persisted to flash —
+   it is RAM-only and re-synced from the phone on every connect (see the device
+   registry note in watch_global_data.c). The fields stay only to avoid churning
+   this struct's layout, which is referenced across the UI / communicate paths. */
 #define DEVICE_REGISTRY_VERSION 2
 
     /* Per-action category — drives the device-list item icon. Keep in lockstep
@@ -692,16 +693,11 @@ __attribute__((packed)) SkaiWatchSysType_t;
        Caller-friendly wrapper around open_watch_prefs / write_alarms / close. */
     extern void watch_prefs_save_alarms(void);
 
-    /* Persist SkaiWatchSys.device_registry to flash immediately (ADR-0008 E8).
-       Call after the primary syncs / mutates the device list. */
-    extern void watch_prefs_save_device_registry(void);
-
-    /* Async twins of the two save_* helpers above — post to the storage worker
-       thread and return immediately. Use these from the BLE event thread
-       (KE_EVT2) or any small-stack / latency-sensitive context: share_prefs is
-       opened only on the worker's generous stack (fixes the KE_EVT2 STKOF). */
+    /* Async twin of watch_prefs_save_alarms above — posts to the storage worker
+       thread and returns immediately. Use from the BLE event thread (KE_EVT2)
+       or any small-stack / latency-sensitive context: share_prefs is opened
+       only on the worker's generous stack (fixes the KE_EVT2 STKOF). */
     extern void watch_prefs_save_alarms_async(void);
-    extern void watch_prefs_save_device_registry_async(void);
     /* Off-thread twin of store_watch_prefs(key) — same worker, keyed save. */
     extern void store_watch_prefs_async(watch_prefs_key key);
 

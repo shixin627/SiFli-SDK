@@ -189,81 +189,12 @@ static void write_flag_field(share_prefs_t *pref)
 }
 
 // ── Device registry (ADR-0008 § E8) ──────────────────────────────────
-// UNVERIFIED — written without an on-device build. Build-verify on the dev
-// machine: (1) `_watch_build.cmd -j8` compiles clean; (2) LOG_W exists (else
-// LOG_D); (3) rt_memset/rt_memcpy link; (4) first boot (no "dev_registry" key)
-// → version 0 ≠ 1 → resets to empty, no fault; (5) write then re-read round-trips.
-//
-// CRC32 (IEEE 802.3, reflected) over the registry minus its trailing crc field,
-// so a torn flash write or an old-schema/foreign block is detected and discarded
-// (flash is a cache; cloud-via-primary is the truth).
-static uint32_t device_registry_crc32(const T_DEVICE_REGISTRY *r)
-{
-  const uint8_t *p = (const uint8_t *)r;
-  uint32_t len = (uint32_t)(sizeof(T_DEVICE_REGISTRY) - sizeof(r->crc));
-  uint32_t crc = 0xFFFFFFFFu;
-  for (uint32_t i = 0; i < len; i++)
-  {
-    crc ^= p[i];
-    for (int b = 0; b < 8; b++)
-      crc = (crc & 1u) ? ((crc >> 1) ^ 0xEDB88320u) : (crc >> 1);
-  }
-  return ~crc;
-}
-
-static void read_device_registry(share_prefs_t *pref)
-{
-  T_DEVICE_REGISTRY r;
-  rt_memset(&r, 0, sizeof(r));
-  share_prefs_get_block(pref, "dev_registry", (void *)&r, sizeof(r));
-  // Discard a corrupt / torn / old-schema / absent block → start empty.
-  if (r.version != DEVICE_REGISTRY_VERSION ||
-      r.count > MAX_SYNCED_DEVICES ||
-      r.crc != device_registry_crc32(&r))
-  {
-    LOG_W("device registry: bad/old/absent block, resetting to empty");
-    rt_memset((void *)&SkaiWatchSys.device_registry, 0, sizeof(T_DEVICE_REGISTRY));
-    SkaiWatchSys.device_registry.version = DEVICE_REGISTRY_VERSION;
-  }
-  else
-  {
-    rt_memcpy((void *)&SkaiWatchSys.device_registry, &r, sizeof(T_DEVICE_REGISTRY));
-  }
-  // R11: per-device status is RAM-only — every device starts off (0) until the
-  // primary re-syncs the live states over BWPS.
-  rt_memset((void *)SkaiWatchSys.device_status, 0, sizeof(SkaiWatchSys.device_status));
-}
-
-/* CRC of the last block actually written to flash — lets us skip a redundant
-   save when the persisted content is unchanged (see watch_prefs_save_device_
-   registry). Status is RAM-only, so online/offline churn never changes this. */
-static uint32_t s_last_saved_registry_crc;
-static bool     s_last_saved_registry_valid;
-
-/* Pack the registry block exactly as it would be persisted (version + clamp +
-   crc), without touching flash. Used both to write and to compute the
-   skip-if-unchanged CRC. */
-static uint32_t build_device_registry_block(T_DEVICE_REGISTRY *r)
-{
-  rt_memcpy(r, (const void *)&SkaiWatchSys.device_registry, sizeof(*r));
-  r->version = DEVICE_REGISTRY_VERSION;
-  if (r->count > MAX_SYNCED_DEVICES) r->count = MAX_SYNCED_DEVICES;
-  r->crc = device_registry_crc32(r);
-  return r->crc;
-}
-
-static void write_device_registry(share_prefs_t *pref)
-{
-  /* One T_DEVICE_REGISTRY on the stack, built here AFTER open returned (matches
-     the original footprint — the storage worker stack is only 8KB; a second
-     coexisting copy overflowed it, STKOF). */
-  T_DEVICE_REGISTRY r;
-  build_device_registry_block(&r);
-  LOG_D("prefs write dev_registry blk=%u count=%u", (unsigned)sizeof(r), (unsigned)r.count);
-  share_prefs_set_block(pref, "dev_registry", (void *)&r, sizeof(r));
-  s_last_saved_registry_crc = r.crc;
-  s_last_saved_registry_valid = true;
-}
+// RAM-only / cloud-driven: the primary (phone) re-pushes the full device list
+// on every connect, so the registry is no longer persisted to flash. It boots
+// empty (SkaiWatchSys.device_registry is zero-init BSS) and is filled by the
+// 0x01/0x03/0x04 skailink syncs; per-device status is RAM-only too. Flash
+// persistence was dropped to stop XIP-stall flash churn from device-sync bursts
+// (the struct's version/crc fields are now vestigial).
 
 static void read_msg_switch(share_prefs_t *pref)
 {
@@ -590,35 +521,6 @@ void watch_prefs_save_alarms(void)
   close_watch_prefs(pref);
 }
 
-void watch_prefs_save_device_registry(void)
-{
-  /* Skip the whole flash open/write/close when the persisted content is
-     unchanged. CRC the LIVE registry directly — no stack copy (a second
-     T_DEVICE_REGISTRY on the storage worker's 8KB stack overflowed it, STKOF).
-     device_registry_crc32 excludes the crc field, and the live version/count
-     already match what gets persisted, so this equals the saved block's CRC.
-     The phone re-pushes device-list / actions frequently, but those are mostly
-     status-only (status is RAM-only) or identical re-pushes → CRC unchanged. On
-     SiFli, code runs XIP from flash, so each flash write stalls execution — a
-     burst of no-op saves starves the GUI thread and trips the HCPU watchdog
-     (WDT1 timeout → reboot). This RAM-only check avoids that thrash. */
-  /* Cast through void* — SkaiWatchSysType_t is packed, so a direct typed
-     &device_registry trips -Waddress-of-packed-member (-Werror). crc32 only
-     does byte access, so alignment is irrelevant. */
-  const void *reg = (const void *)&SkaiWatchSys.device_registry;
-  uint32_t crc = device_registry_crc32(reg);
-  if (s_last_saved_registry_valid && crc == s_last_saved_registry_crc)
-  {
-    LOG_D("dev_registry unchanged (crc=%08x) — skip flash save", (unsigned)crc);
-    return;
-  }
-
-  share_prefs_t *pref = open_watch_prefs();
-  if (pref == NULL) { LOG_E("watch_prefs_save_device_registry: open failed"); return; }
-  write_device_registry(pref);
-  close_watch_prefs(pref);
-}
-
 /* ── Off-thread storage worker (STKOF fix) ───────────────────────────────────
    share_prefs_open() runs fdb_kvdb_init + (file-mode) mkdir/fopen + the flash
    driver — a deep, stack-hungry call chain. Driving it from the 4 KB BLE event
@@ -628,16 +530,13 @@ void watch_prefs_save_device_registry(void)
 
    Fix: funnel persistence onto this one worker thread (generous stack). Callers
    on KE_EVT2 post an op and return immediately — share_prefs is never opened on
-   their stack. Ops read live SkaiWatchSys at execution time; for the CRC-guarded,
-   cloud-authoritative device registry a momentarily torn snapshot is acceptable
-   (read_device_registry discards bad blocks on next boot). NOTE: synchronous
+   their stack. Ops read live SkaiWatchSys at execution time. NOTE: synchronous
    share_prefs callers still exist (boot read, OTA-reboot writes) on other
    threads — full serialization would need USING_STORAGE_API_LOCK or routing
    every caller through here; out of scope for this STKOF fix. */
 typedef enum
 {
-  STORAGE_OP_SAVE_DEVICE_REGISTRY = 0,
-  STORAGE_OP_SAVE_ALARMS,
+  STORAGE_OP_SAVE_ALARMS = 0,
   STORAGE_OP_STORE_KEY, /* arg = watch_prefs_key */
 } storage_op_t;
 
@@ -665,9 +564,6 @@ static void storage_worker_entry(void *parameter)
     }
     switch (msg.op)
     {
-    case STORAGE_OP_SAVE_DEVICE_REGISTRY:
-      watch_prefs_save_device_registry();
-      break;
     case STORAGE_OP_SAVE_ALARMS:
       watch_prefs_save_alarms();
       break;
@@ -723,43 +619,8 @@ static void storage_post(storage_op_t op, uint16_t arg)
   }
 }
 
-/* Debounce for the device-registry save. A device sync arrives as a BURST: a
-   0x01 list-batch rebuilds membership (which clears each device's actions),
-   then per-device 0x03 batches refill them — and reachability/poll re-push the
-   whole burst. Saving on every request would cycle the registry through several
-   states and hammer flash; each flash write stalls XIP and can starve the
-   GUI/EPIC thread (→ HCPU WDT reboot). Coalesce a burst into ONE deferred save;
-   combined with the skip-if-unchanged in the save itself, a burst that nets no
-   real change writes flash zero times. */
-static rt_timer_t s_dev_registry_save_timer;
-static void dev_registry_save_debounce_cb(void *param)
-{
-  (void)param;
-  storage_post(STORAGE_OP_SAVE_DEVICE_REGISTRY, 0);
-}
-
-/* Async twins of the two synchronous save helpers above — safe to call from the
-   BLE event thread (KE_EVT2). They post to the storage worker and return. */
-void watch_prefs_save_device_registry_async(void)
-{
-  if (s_dev_registry_save_timer == RT_NULL)
-  {
-    s_dev_registry_save_timer = rt_timer_create(
-        "devreg_save", dev_registry_save_debounce_cb, RT_NULL,
-        rt_tick_from_millisecond(1500),
-        RT_TIMER_FLAG_ONE_SHOT | RT_TIMER_FLAG_SOFT_TIMER);
-  }
-  if (s_dev_registry_save_timer != RT_NULL)
-  {
-    rt_timer_stop(s_dev_registry_save_timer);  /* restart → coalesce the burst */
-    rt_timer_start(s_dev_registry_save_timer);
-  }
-  else
-  {
-    storage_post(STORAGE_OP_SAVE_DEVICE_REGISTRY, 0); /* timer alloc failed — save now */
-  }
-}
-
+/* Async twin of watch_prefs_save_alarms — safe to call from the BLE event
+   thread (KE_EVT2). Posts to the storage worker and returns. */
 void watch_prefs_save_alarms_async(void)
 {
   storage_post(STORAGE_OP_SAVE_ALARMS, 0);
@@ -797,7 +658,6 @@ void watch_config_struct_flash_read(void)
   WatchPrefs.read_gesture_threshold(pref);
   WatchPrefs.read_alarms(pref);
   WatchPrefs.read_dismissed_notifications(pref);
-  read_device_registry(pref); // ADR-0008 E8: load id+default-actions; status→off
   close_watch_prefs(pref);
 
   /* Restore HW alarms in alarm_manager_service from the freshly-loaded
