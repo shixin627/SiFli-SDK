@@ -1551,6 +1551,8 @@ uint8_t get_ai_coding(void)
 
 void back_tap_cb(void)
 {
+    LOG_I("[backdbg] back_tap_cb: textEmpty=%d voiceStarted=%d",
+          (int)isTextEmpty(), (int)get_voice_recognition_started());
     if (isTextEmpty())
     {
         voice_provider.stop_v2t();
@@ -1558,15 +1560,20 @@ void back_tap_cb(void)
     }
     else
     {
+        /* Text present -> BACK clears the input box. This is the 1st press of
+           the two-step back (clear + keep the widget open; a later back with the
+           box now empty closes it). The clear must NOT be gated on voice still
+           running: once VAD auto-stops, the old code fell into the branch that
+           only hid the speech indicator and left the transcript on screen, so
+           the first back appeared to do nothing (the regressed "back clears the
+           AI widget" behaviour). */
+        LOG_I("[backdbg] back_tap_cb: clearing input box");
+        count_speech_coding();
+        clearVoice2Text();
+        refresh_ai_chat_input_message("");
         if (!get_voice_recognition_started())
         {
             show_speech_indicator(false);
-        }
-        else
-        {
-            count_speech_coding();
-            clearVoice2Text();
-            refresh_ai_chat_input_message("");
         }
     }
 }

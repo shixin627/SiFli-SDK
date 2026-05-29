@@ -789,11 +789,23 @@ INIT_BOARD_EXPORT(sifli_adc_init);
 #ifdef RT_USING_PM
 static int rt_adc_freq_chg(const struct rt_device *device, uint8_t mode)
 {
+    (void)device;
+    (void)mode;
+#ifdef SF32LB52X
+    /* Only 52x retunes the GPADC to a fixed 240 kHz on every system frequency
+     * change (mirrors the init-time call, which is likewise #ifdef SF32LB52X).
+     * On 56x/58x the GPADC keeps its board-configured fixed sample/conv widths
+     * (adc_config.h: sample_width=22) and is intentionally NOT retuned at init,
+     * so it must NOT be retuned here either. Retuning recomputed sample_width
+     * from the (PM-lowered) PCLK -- HAL_ADC_SetFreq, VERSION 2 path -- and in
+     * low-power modes shrank the sample window far below the board value, so
+     * the high-impedance VBAT divider (470K/1M) was under-sampled and read
+     * ~half. Symptom: battery voltage intermittently ~halved, correlated with
+     * PM activity. Gate the retune to the chip that actually needs it. */
     uint32_t adc_freq = 240000; // use 240k for 52x to meet ATE setting
     if (sizeof(sifli_adc_obj) > 0)
         HAL_ADC_SetFreq(&sifli_adc_obj[0].ADC_Handler, adc_freq);
-    //rt_kprintf("OP changed with adc freq update : data_samp_delay %d, conv_width %d, sample_width %d\n",
-    //sifli_adc_obj[0].ADC_Handler.Init.data_samp_delay , sifli_adc_obj[0].ADC_Handler.Init.conv_width, sifli_adc_obj[0].ADC_Handler.Init.sample_width);
+#endif
     return 0;
 }
 

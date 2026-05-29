@@ -33,15 +33,25 @@
     #endif
 
 /* ADC glitch guard. The GPADC occasionally returns an implausible reading
- * (field reports: ~1.9 V while the cell is actually ~3.7 V — about half),
- * which clears only on reboot. The root cause is an intermittent analog-side
- * fault we cannot reproduce on demand, so guard at the source: reject any
- * reading outside the cell's physical operating window and reuse the last
- * good value. After GLITCH_TOLERANCE consecutive out-of-range reads we accept
- * the value anyway, so a genuinely depleted or failed cell is never masked. */
+ * (field reports: ~1.9 V while the cell is actually ~3.7 V — about half).
+ * The root cause is an intermittent analog-side fault we cannot reproduce on
+ * demand, so guard at the reported value with two rules:
+ *   1. reject anything outside the cell's physical operating window, and
+ *   2. reject any sudden drop of >0.5 V from the last good value — a real cell
+ *      cannot fall that fast between samples, so such a step is a glitch (or a
+ *      transient load sag, which an OCV-based gauge should ignore anyway).
+ * On either condition we FREEZE: keep reporting the last good value and do not
+ * advance the baseline, until a reading recovers (back in range AND within the
+ * drop threshold). There is deliberately NO consecutive-read tolerance — a
+ * sustained glitch must never leak through, because the discharge curve is
+ * monotonic-down and a single bad sample latches the displayed % low until a
+ * reboot/charge (the "shows 4% while the cell is 3.9 V" field bug). Trade-off,
+ * accepted by product: a permanently failed ADC freezes the voltage at the
+ * last good value until reboot; we log loudly on freeze and recovery so the
+ * condition is never silent. */
 #define BATTERY_VOLTAGE_MIN_PLAUSIBLE_01MV  30000   /* 3.0 V (0.1 mV units) */
 #define BATTERY_VOLTAGE_MAX_PLAUSIBLE_01MV  45000   /* 4.5 V (0.1 mV units) */
-#define BATTERY_VOLTAGE_GLITCH_TOLERANCE    5       /* consecutive reads */
+#define BATTERY_VOLTAGE_GLITCH_DROP_01MV     5000   /* 0.5 V sudden drop = glitch */
 
 static battery_calculator_t s_calculator;
 static bool s_calculator_initialized = false;
@@ -76,28 +86,44 @@ static uint32_t read_battery_voltage(void)
 
     LOG_D("ADC raw: %d (0.1mV), battery: %d (0.1mV)", value, battery_voltage);
 
-    /* Reject implausible glitch readings (see note above the thresholds). */
+    /* Reject glitch readings (see note above the thresholds). */
     static uint32_t s_last_valid_voltage = 0;   /* 0.1 mV; 0 = no valid sample yet */
-    static uint8_t  s_glitch_count = 0;
-    bool implausible = (battery_voltage < BATTERY_VOLTAGE_MIN_PLAUSIBLE_01MV) ||
-                       (battery_voltage > BATTERY_VOLTAGE_MAX_PLAUSIBLE_01MV);
-    if (implausible && s_last_valid_voltage != 0)
+    static bool     s_frozen = false;
+
+    bool out_of_range = (battery_voltage < BATTERY_VOLTAGE_MIN_PLAUSIBLE_01MV) ||
+                        (battery_voltage > BATTERY_VOLTAGE_MAX_PLAUSIBLE_01MV);
+
+    if (s_last_valid_voltage == 0)
     {
-        if (s_glitch_count < BATTERY_VOLTAGE_GLITCH_TOLERANCE)
+        /* No baseline yet: only a physically plausible sample may seed it, so a
+         * power-on glitch can't anchor the drop comparison to a bad value. */
+        if (out_of_range)
         {
-            s_glitch_count++;
-            LOG_W("Implausible battery voltage %d (0.1mV), raw %d; glitch #%d, reuse last %d",
-                  battery_voltage, value, s_glitch_count, s_last_valid_voltage);
-            return s_last_valid_voltage;
+            LOG_W("First battery voltage %d (0.1mV), raw %d out of range; not seeding baseline",
+                  battery_voltage, value);
+            return 0;   /* caller treats 0 as "no sample" and skips */
         }
-        /* Out of range across many consecutive reads: accept it (fail loud,
-         * never permanently mask a real drop or a failing cell). */
-        LOG_E("Battery voltage out of range %d (0.1mV) for %d reads; accepting as real",
-              battery_voltage, s_glitch_count);
+        s_last_valid_voltage = battery_voltage;
+        return battery_voltage;
     }
-    else
+
+    bool sudden_drop = (battery_voltage + BATTERY_VOLTAGE_GLITCH_DROP_01MV) < s_last_valid_voltage;
+
+    if (out_of_range || sudden_drop)
     {
-        s_glitch_count = 0;
+        if (!s_frozen)
+        {
+            s_frozen = true;
+            LOG_W("Battery voltage glitch %d->%d (0.1mV, raw %d); freezing at last good until recovery",
+                  s_last_valid_voltage, battery_voltage, value);
+        }
+        return s_last_valid_voltage;   /* hold last good; do not advance baseline */
+    }
+
+    if (s_frozen)
+    {
+        s_frozen = false;
+        LOG_W("Battery voltage recovered to %d (0.1mV); resuming updates", battery_voltage);
     }
     s_last_valid_voltage = battery_voltage;
 
@@ -359,11 +385,14 @@ void bloc_battery_handle_voltage_poll_event(void)
  * discharging. Without this, discharging only samples on wake-up or an
  * explicit app request, so a stale (or once-glitched) value can sit frozen on
  * the phone for a long time. Charging keeps its faster 10 s timer; this slow
- * timer is a floor that also covers the discharge case. SOFT_TIMER means it
- * naturally pauses in deep sleep (nobody is looking) and resumes when awake.
- * Started at init so it does not depend on read_charge_status ever running
- * (that only fires on a charge-state *change*). */
-#define BATTERY_VOLTAGE_POLL_INTERVAL_MS 60000
+ * timer is a floor that also covers the discharge case. SOFT_TIMER: it fires
+ * while the screen is off at this multi-minute cadence (same mechanism the
+ * background HR-curve sampler relies on, hr_service.c) and only pauses in the
+ * very deepest CPU-clock-stopped sleep — a state in which BLE is typically
+ * down and the phone would not receive an update anyway. Started at init so it
+ * does not depend on read_charge_status ever running (that only fires on a
+ * charge-state *change*). */
+#define BATTERY_VOLTAGE_POLL_INTERVAL_MS 300000   /* 5 min */
 
 static void battery_voltage_poll_callback(void *parameter)
 {

@@ -98,7 +98,15 @@ static cJSON *parse_json(uint8_t *pValue, uint16_t length)
     return cJSON_ParseWithLength((const char *)pValue, length);
 }
 
-/* 0x01 — authoritative full list: rebuild membership + names + status. */
+/* 0x01 - authoritative full list: reconcile membership + names + status, and
+   PRESERVE each surviving device's default_actions. Actions are owned by the
+   0x03 batch (handle_device_actions_batch), NOT this one. The old code did
+   count=0 + ensure_device, whose memset wiped every device's actions, so any
+   0x01 (a status flip, the primary's ~60s membership poll, ...) blanked the
+   device_pager's action list until a 0x03 refilled it - and the primary's 0x03
+   forward is de-duped, so outside connect-time it often didn't, leaving the
+   page's default options empty. Now: match by id (keep actions), append only
+   genuinely-new devices (empty until their own 0x03), drop ids absent here. */
 static void handle_device_list_batch(uint8_t *pValue, uint16_t length)
 {
     cJSON *root = parse_json(pValue, length);
@@ -108,8 +116,11 @@ static void handle_device_list_batch(uint8_t *pValue, uint16_t length)
         cJSON_Delete(root);
         return;
     }
-    SkaiWatchSys.device_registry.count = 0;
-    rt_memset((void *)SkaiWatchSys.device_status, 0, sizeof(SkaiWatchSys.device_status));
+
+    /* Registry slots that appear in this authoritative list. ensure_device only
+       ever appends, so slot indices stay stable across the loop. */
+    uint8_t seen[MAX_SYNCED_DEVICES];
+    rt_memset(seen, 0, sizeof(seen));
 
     cJSON *item = NULL;
     cJSON_ArrayForEach(item, root)
@@ -119,11 +130,12 @@ static void handle_device_list_batch(uint8_t *pValue, uint16_t length)
         {
             continue;
         }
-        int idx = ensure_device(j_id->valuestring);
+        int idx = ensure_device(j_id->valuestring); /* existing keeps actions; new is appended */
         if (idx < 0)
         {
             break;
         }
+        seen[idx] = 1;
         cJSON *j_name = cJSON_GetObjectItem(item, "name");
         if (cJSON_IsString(j_name))
         {
@@ -132,11 +144,34 @@ static void handle_device_list_batch(uint8_t *pValue, uint16_t length)
             SkaiWatchSys.device_name[idx][SYNCED_DEVICE_NAME_LEN - 1] = '\0';
         }
         cJSON *j_status = cJSON_GetObjectItem(item, "status");
-        if (cJSON_IsNumber(j_status))
-        {
-            SkaiWatchSys.device_status[idx] = (uint8_t)j_status->valueint;
-        }
+        SkaiWatchSys.device_status[idx] =
+            cJSON_IsNumber(j_status) ? (uint8_t)j_status->valueint : 0;
     }
+
+    /* Forward-compact: drop registry slots absent from this authoritative list,
+       keeping survivors (with their default_actions) in order. w <= r always, so
+       each source slot is read before any later write can reach it. */
+    uint8_t w = 0;
+    for (uint8_t r = 0; r < SkaiWatchSys.device_registry.count; r++)
+    {
+        if (!seen[r])
+        {
+            continue;
+        }
+        if (w != r)
+        {
+            rt_memcpy((void *)&SkaiWatchSys.device_registry.devices[w],
+                      (const void *)&SkaiWatchSys.device_registry.devices[r],
+                      sizeof(T_SYNCED_DEVICE));
+            SkaiWatchSys.device_status[w] = SkaiWatchSys.device_status[r];
+            strncpy((char *)SkaiWatchSys.device_name[w],
+                    (const char *)SkaiWatchSys.device_name[r],
+                    SYNCED_DEVICE_NAME_LEN - 1);
+            SkaiWatchSys.device_name[w][SYNCED_DEVICE_NAME_LEN - 1] = '\0';
+        }
+        w++;
+    }
+    SkaiWatchSys.device_registry.count = w;
     cJSON_Delete(root);
     LOG_I("Loaded %d devices from skailink batch", SkaiWatchSys.device_registry.count);
     /* Dump the received device list so its contents can be inspected on the
