@@ -578,8 +578,16 @@ void back_on_skai_widget(void)
         lv_obj_is_valid(skai_widget_input_text))
     {
         const char *text = lv_label_get_text(skai_widget_input_text);
-        if (text && strlen(text) > 0 && !input_text_is_null &&
-            get_voice_recognition_started())
+        LOG_I("[backdbg] back_on_skai_widget: textLen=%d voiceStarted=%d openAI=%d",
+              (int)(text ? (int)strlen(text) : -1),
+              (int)get_voice_recognition_started(),
+              (int)get_is_open_instruction_list_ai());
+        /* Drop the voice-started gate so back ALWAYS clears the input first when
+           there is text: 2-step back = 1st press clears + keeps the widget open,
+           2nd press (now empty) closes. The gate broke this once voice auto-stops
+           before the user backs — back fell straight through to close without
+           clearing (the regressed "back clears the AI widget" behaviour). */
+        if (text && strlen(text) > 0 && !input_text_is_null)
         {
             count_speech_coding();
             reset_skai_widget_input_text();
@@ -674,6 +682,16 @@ void reset_skai_widget_input_text(void)
         // lv_label_set_text(skai_widget_input_text, "");
         clearVoice2Text();
         set_skai_widget_input_text("");
+        /* The VISIBLE transcript moved to the instruction_list's own label
+           (s_voice_transcript_label) when the AI widget became the device_pager-
+           style input box; set_skai_widget_input_text above only clears the
+           now-hidden builder label. Clear the visible one too (to the "Listening"
+           placeholder, matching refresh_ai_chat_input_message's empty path) — else
+           back/reset cleared the data (textLen->0) but left the spoken text on
+           screen. */
+        extern void instruction_list_set_voice_transcript(const char *text);
+        instruction_list_set_voice_transcript(
+            LV_EXT_STR_GET_BY_KEY(listening, "Listening"));
         lv_obj_update_layout(skai_widget_input_text);
         lv_obj_set_height(skai_widget_input_text_bg, 150);
 

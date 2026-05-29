@@ -144,9 +144,9 @@ static void handle_back_event(bool is_button)
     }
     else if (is_at_ai_interface())
     {
+        LOG_I("[backdbg] route=AI_interface -> back_tap_cb");
         extern void back_tap_cb(void);
         back_tap_cb();
-        LOG_D("ESC in AI interface => quick_ai_hint_hidden");
     }
     else if (is_at_control_center())
     {
@@ -156,8 +156,8 @@ static void handle_back_event(bool is_button)
     {
         if (get_is_open_instruction_list_ai())
         {
+            LOG_I("[backdbg] route=instruction_list_AI -> back_on_skai_widget");
             back_on_skai_widget();
-            LOG_D("ESC in instruction list with AI open");
         }
         else
         {
