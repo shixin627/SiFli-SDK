@@ -51,6 +51,18 @@ except Exception:  # pragma: no cover
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CRED_FILE = os.path.join(SCRIPT_DIR, "oss_credentials.json")
 
+# SiFli-SDK repo root is 5 dirs up from hcpu (.../example/get-started/dualcore/
+# project/hcpu). SkaiLink is normally a sibling repo next to SiFli-SDK.
+_REPO_ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, *([".."] * 5)))
+_GITHUB_DIR = os.path.dirname(_REPO_ROOT)
+
+# Candidate SkaiLink .env.json locations, tried in order when no local creds
+# file / env vars are set. Lets the GUI "just work" without copying secrets.
+SKAILINK_ENV_CANDIDATES = [
+    os.path.join(_GITHUB_DIR, "SkaiLink", ".env.json"),
+    r"C:\work\SkaiLink\.env.json",
+]
+
 # Maps our internal field -> the credential key name (matches SkaiLink .env.json).
 CRED_KEYS = {
     "endpoint": "OSS_ENDPOINT",
@@ -67,22 +79,56 @@ class OssError(Exception):
 
 # --- credential loading --------------------------------------------------
 
-def load_credentials():
-    """Return dict endpoint/bucket/access_key_id/access_key_secret/security_token.
-    File first (default oss_credentials.json or OSS_CREDENTIALS_FILE), then env
-    vars override. Raises OssError if the required four are missing."""
+def _candidate_files():
+    """Ordered list of credential files to try, with a label for messages."""
+    files = []
+    env_file = os.environ.get("OSS_CREDENTIALS_FILE", "").strip()
+    if env_file:
+        files.append((env_file, "OSS_CREDENTIALS_FILE"))
+    files.append((DEFAULT_CRED_FILE, "oss_credentials.json"))
+    for p in SKAILINK_ENV_CANDIDATES:
+        files.append((p, "SkaiLink .env.json"))
+    return files
+
+
+def _load_from_file(path):
     creds = {}
-    cred_file = os.environ.get("OSS_CREDENTIALS_FILE", DEFAULT_CRED_FILE)
-    if os.path.exists(cred_file):
-        with io.open(cred_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        for field, name in CRED_KEYS.items():
-            if name in data and str(data[name]).strip():
-                creds[field] = str(data[name]).strip()
+    with io.open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    for field, name in CRED_KEYS.items():
+        if name in data and str(data[name]).strip():
+            creds[field] = str(data[name]).strip()
+    return creds
+
+
+def load_credentials():
+    """Return dict endpoint/bucket/access_key_id/access_key_secret/security_token
+    plus a '_source' note. Resolution order:
+      1) OSS_CREDENTIALS_FILE (if set)   2) local oss_credentials.json
+      3) sibling SkaiLink/.env.json (auto-discovered)
+    Environment variables override any file value. Raises OssError if the
+    required four are still missing."""
+    creds = {}
+    source = None
+    for path, label in _candidate_files():
+        if os.path.exists(path):
+            found = _load_from_file(path)
+            # Only adopt this file if it actually supplies the required keys.
+            if all(found.get(k) for k in ("endpoint", "bucket",
+                                          "access_key_id", "access_key_secret")):
+                creds = found
+                source = "%s (%s)" % (label, path)
+                break
+
+    # env vars override individual values (and can fill in on their own)
+    env_used = False
     for field, name in CRED_KEYS.items():
         v = os.environ.get(name, "").strip()
         if v:
             creds[field] = v
+            env_used = True
+    if env_used and not source:
+        source = "環境變數"
 
     # endpoint may carry an https:// prefix in .env.json — strip it.
     if creds.get("endpoint"):
@@ -91,10 +137,13 @@ def load_credentials():
     missing = [CRED_KEYS[f] for f in ("endpoint", "bucket", "access_key_id",
                                       "access_key_secret") if not creds.get(f)]
     if missing:
+        tried = "\n".join("  - %s" % p for p, _ in _candidate_files())
         raise OssError(
-            "缺少 OSS 認證: %s。請設定環境變數,或建立 %s(可直接複製 SkaiLink 的 .env.json)。"
-            % (", ".join(missing), DEFAULT_CRED_FILE))
+            "缺少 OSS 認證: %s。\n已嘗試以下位置(皆無或不完整):\n%s\n"
+            "請建立 oss_credentials.json、設定環境變數,或確認 SkaiLink 的 .env.json 存在。"
+            % (", ".join(missing), tried))
     creds.setdefault("security_token", "")
+    creds["_source"] = source or "(未知)"
     return creds
 
 
@@ -235,6 +284,7 @@ def selftest():
 def _check():
     try:
         c = load_credentials()
+        print("來源     = %s" % c.get("_source"))
         print("endpoint = %s" % c["endpoint"])
         print("bucket   = %s" % c["bucket"])
         print("key_id   = %s***" % c["access_key_id"][:4])
