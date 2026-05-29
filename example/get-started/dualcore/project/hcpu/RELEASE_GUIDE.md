@@ -40,10 +40,12 @@ make_release.bat
 | 步驟 | 動作 | 會問你 |
 |---|---|---|
 | 1 | 切換成 **發布(release) 參數** + 版號 +1 | — |
-| 2 | （可選）開 notepad 編 `info.json` 的發布介紹 | `Edit release notes? (y/N)` |
-| 3 | 編譯 hcpu + lcpu（Keil 正式版） | — |
+| 2 | 編譯 hcpu + lcpu（Keil 正式版） | — |
+| 3 | （可選）開 notepad 編 `info.json` 的發布介紹 | `Edit release notes? (y/N)` |
 | 4 | 打包 bin 到 `watchOS\sys\` | `Include watchface? (y/N)` |
 | 5 | 把版號 + 檔案清單寫進 `info.json` | — |
+
+> **先編譯、再碰 watchOS**：所有會動到 `info.json` / `watchOS\` 的步驟（3~5）都排在「編譯成功之後」。編譯失敗就直接停在第 2 步，不會留下半寫的發布介紹或過時的 bin。版號 +1（第 1 步）必須在編譯前，因為版號會被編進韌體。
 
 ### 那 3 個問題怎麼回答
 

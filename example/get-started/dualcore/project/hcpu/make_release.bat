@@ -3,10 +3,15 @@ REM ==========================================================================
 REM One-key RELEASE builder for the Skaiwalk dualcore watch.
 REM
 REM   [1] set_build_mode.py release  - flip dev->release knobs + bump version
-REM   [2] edit release notes         - optional, opens info.json in notepad
-REM   [3] _watch_build.cmd           - build hcpu + lcpu (Keil / production)
+REM   [2] _watch_build.cmd           - build hcpu + lcpu (Keil / production)
+REM   [3] edit release notes         - optional, opens info.json in notepad
 REM   [4] package_watch_firmware.py  - copy bins into watchOS/sys
 REM   [5] update_info.py             - sync version + fileList into info.json
+REM
+REM Order matters: the version bump (step 1) must precede the build because the
+REM version is compiled into the firmware. Everything that touches info.json /
+REM the watchOS folder (steps 3-5) runs only AFTER a successful build, so a
+REM failed build never leaves half-written release notes or stale bins.
 REM
 REM After flashing/packaging, return to dev with:  python set_build_mode.py dev
 REM ==========================================================================
@@ -14,7 +19,7 @@ REM ==========================================================================
 setlocal
 
 echo ============================================================
-echo Step 1: Switching to RELEASE profile...
+echo Step 1: Switching to RELEASE profile (bumps version)...
 echo ============================================================
 python "%~dp0set_build_mode.py" release
 if errorlevel 1 (
@@ -25,15 +30,8 @@ if errorlevel 1 (
 )
 
 echo.
-set /p "EDIT_DESC=Edit release notes (info.json description) now? (y/N): "
-if /i "%EDIT_DESC%"=="y" (
-    echo Opening info.json - edit the "description" field, save, then close the editor.
-    start /wait notepad "%~dp0info.json"
-)
-
-echo.
 echo ============================================================
-echo Step 3: Building firmware (hcpu + lcpu)...
+echo Step 2: Building firmware (hcpu + lcpu)...
 echo ============================================================
 call "%~dp0_watch_build.cmd" -j8
 
@@ -52,6 +50,14 @@ if not errorlevel 1 (
 )
 
 echo.
+echo Build OK. Now packaging the release.
+set /p "EDIT_DESC=Step 3: Edit release notes (info.json description) now? (y/N): "
+if /i "%EDIT_DESC%"=="y" (
+    echo Opening info.json - edit the "description" field, save, then close the editor.
+    start /wait notepad "%~dp0info.json"
+)
+
+echo.
 set "WATCHFACE_FLAG="
 set /p "INCLUDE_WF=Include watchface folder in package? (y/N): "
 if /i "%INCLUDE_WF%"=="y" (
@@ -63,7 +69,7 @@ if /i "%INCLUDE_WF%"=="y" (
 
 echo.
 echo ============================================================
-echo Step 4: Packaging watch firmware...
+echo Step 4: Packaging watch firmware into watchOS\sys...
 echo ============================================================
 python "%~dp0package_watch_firmware.py" %WATCHFACE_FLAG%
 if errorlevel 1 (
