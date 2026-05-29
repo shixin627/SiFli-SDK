@@ -48,6 +48,28 @@ except Exception:  # pragma: no cover
     _urlreq = None
     _urlerr = None
 
+
+def _force_utf8_console():
+    """Make stdout/stdin handle CJK on Windows regardless of console code page.
+    Same guard as set_build_mode.py — this machine's console is cp1252, so
+    printing the Chinese messages below would otherwise raise UnicodeEncodeError
+    when run directly from cmd (the GUI pipes through a UTF-8 stream and is fine)."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+            ctypes.windll.kernel32.SetConsoleCP(65001)
+        except Exception:
+            pass
+    for stream in (sys.stdout, sys.stdin, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")  # Python 3.7+
+        except Exception:
+            pass
+
+
+_force_utf8_console()
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CRED_FILE = os.path.join(SCRIPT_DIR, "oss_credentials.json")
 
