@@ -2203,11 +2203,17 @@ static void list_item_click_event_cb(lv_event_t *evt)
                 break;
             }
         }
+        /* Input box (AI widget) open: a tap on a concrete instruction option
+           should RUN that option and CLOSE the box (founder direction
+           2026-05-29) — NOT redirect to "ask AI". The old early return here ran
+           tap_on_ai_hint() and returned BEFORE send_instruction_update (the
+           id-based commit the phone actually executes via onWatchCommitted), so
+           options were dead while the box was open. Close the box, then fall
+           through to the normal run path below. (commu_send_option_commit above
+           already fired; the run below is what reaches the phone's executor.) */
         if (is_open_instruction_list_ai)
         {
-            if (!isTextEmpty())
-                tap_on_ai_hint();
-            return;
+            close_ai_widget();
         }
         /* Find index in list_items */
         for (uint8_t j = 0; j < list_item_count; j++)
@@ -3627,6 +3633,18 @@ static lv_obj_t *list_arc_tap_cb(lv_point_t pt, void *ctx)
                 return dot_bg;
             }
         }
+        /* Bottom mic-bar zone: the band's bottom-right overlaps the mic bar /
+           input-box footprint, and the arc overlay (brought to front on rebuild)
+           sits above the mic_hit there — so a tap in that strip never reaches the
+           bar. Forward it to the mic_bar (its CLICKED handler opens / toggles the
+           input box), so tapping the bar's right half works like the left half.
+           Checked AFTER the dots so a bottom dot still selects its item. */
+        if (pt.y >= LV_VER_RES - 90 &&
+            p_instruction_list_layout->mic_bar != NULL &&
+            lv_obj_is_valid(p_instruction_list_layout->mic_bar))
+        {
+            return p_instruction_list_layout->mic_bar;
+        }
     }
     if (selected_item_index >= list_item_count) return NULL;
     if (touch_obj[selected_item_index] == NULL) return NULL;
@@ -3781,8 +3799,16 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
        + non-scrollable so it never obscures the list and drags still bubble
        through to the list/arc scroll. */
     {
+        /* Width = the OPEN box footprint (LBOX_W), not the old 240, so the whole
+           bottom strip opens the bar. This hit area handles taps OUTSIDE the
+           arc band (the band is right-side only). Taps INSIDE the band (bottom-
+           right) can't reach here — the arc overlay is brought to the front on
+           every rebuild (arc_scroll_bring_to_front) and is hittable in the band —
+           so those are forwarded to the bar from list_arc_tap_cb instead.
+           NOT scrollable: a real DRAG bubbles to the list and scrolls; only a
+           stationary TAP opens the bar. */
         lv_obj_t *mic_hit = lv_obj_create(p_instruction_list_bg);
-        lv_obj_set_size(mic_hit, 240, 90);
+        lv_obj_set_size(mic_hit, LBOX_W, 90);
         lv_obj_align(mic_hit, LV_ALIGN_BOTTOM_MID, 0, 0);
         lv_obj_set_style_bg_opa(mic_hit, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(mic_hit, 0, 0);

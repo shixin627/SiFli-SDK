@@ -578,10 +578,6 @@ void back_on_skai_widget(void)
         lv_obj_is_valid(skai_widget_input_text))
     {
         const char *text = lv_label_get_text(skai_widget_input_text);
-        LOG_I("[backdbg] back_on_skai_widget: textLen=%d voiceStarted=%d openAI=%d",
-              (int)(text ? (int)strlen(text) : -1),
-              (int)get_voice_recognition_started(),
-              (int)get_is_open_instruction_list_ai());
         /* Drop the voice-started gate so back ALWAYS clears the input first when
            there is text: 2-step back = 1st press clears + keeps the widget open,
            2nd press (now empty) closes. The gate broke this once voice auto-stops

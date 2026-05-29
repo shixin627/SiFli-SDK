@@ -1551,8 +1551,6 @@ uint8_t get_ai_coding(void)
 
 void back_tap_cb(void)
 {
-    LOG_I("[backdbg] back_tap_cb: textEmpty=%d voiceStarted=%d",
-          (int)isTextEmpty(), (int)get_voice_recognition_started());
     if (isTextEmpty())
     {
         voice_provider.stop_v2t();
@@ -1567,7 +1565,6 @@ void back_tap_cb(void)
            only hid the speech indicator and left the transcript on screen, so
            the first back appeared to do nothing (the regressed "back clears the
            AI widget" behaviour). */
-        LOG_I("[backdbg] back_tap_cb: clearing input box");
         count_speech_coding();
         clearVoice2Text();
         refresh_ai_chat_input_message("");
