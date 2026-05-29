@@ -6,6 +6,22 @@
 
 ---
 
+## 0. 最簡單：用中文圖形介面 (推薦)
+
+不想記指令、或覺得命令列中文顯示怪怪的，直接**雙擊 `release_gui.bat`**（或 `python release_gui.py`）。會跳出一個中文視窗，一站完成：
+
+- **切換到發布模式**（輸入版號）/ **切換回開發模式**
+- **編譯 + 打包**（含產生 `watchOS.zip`、填發布介紹、選要不要含錶面）
+- **上傳到雲端（阿里雲 OSS）** —— 一鍵上傳 `info.json` + `watchOS.zip`
+
+所有操作的進度都顯示在視窗下方。圖形介面用系統字型畫中文，不受命令列編碼影響，是最穩的方式。
+
+> 上傳功能要先設定 OSS 認證 —— 見 **第 10 節**。
+>
+> 後面第 1~9 節是命令列做法（給想自動化 / 不想開視窗的人）。
+
+---
+
 ## 1. 這份工具解決什麼問題
 
 以前每次發版，要手動去四個檔案改 7~8 個散落各處的值（版號、板號、release 旗標、FINSH、虛擬串口、心率/IMU 電源腳位…）。漏改一個就會編出「半開發半發布」的韌體 —— 實際上已經發生過好幾次（lcpu 的電源腳位常被忘記切回來）。
@@ -172,4 +188,55 @@ Current build profile: DEV
 
 ---
 
-*工具位置：`example/get-started/dualcore/project/hcpu/{make_release.bat, set_build_mode.py}`*
+## 10. 上傳到雲端（阿里雲 OSS）
+
+編好、打包好之後，可以把 `info.json` 和 `watchOS.zip` 上傳到阿里雲 OSS。最簡單是用圖形介面（第 0 節）按「上傳到雲端」；命令列則用 `oss_upload.py`。
+
+### 上傳到哪裡（物件路徑）
+
+| 檔案 | OSS 路徑 |
+|---|---|
+| `info.json` | `skaiwatch/<板號>/info.json` 例：`skaiwatch/29/info.json` |
+| `watchOS.zip` | `skaiwatch/<板號>/<版號>/watchOS.zip` 例：`skaiwatch/29/1.1.60/watchOS.zip` |
+
+板號取自 `CUSTOMER_BOARD_VER`（例如 BOARD_VER_29 → `29`），版號取自 `watch_global_data.h`。GUI 會自動帶入,你不用手算。
+
+### 先設定認證（只需做一次）
+
+OSS 金鑰**絕對不會寫進程式碼**,從以下其一讀取（檔案優先,環境變數可覆蓋）：
+
+1. 在這個資料夾建立 `oss_credentials.json`（已被 `.gitignore` 排除,不會進版控）：
+
+   ```json
+   {
+     "OSS_ENDPOINT": "oss-cn-xxxx.aliyuncs.com",
+     "OSS_BUCKET": "你的-bucket",
+     "ALIYUN_ACCESS_KEY_ID": "...",
+     "ALIYUN_ACCESS_KEY_SECRET": "..."
+   }
+   ```
+
+   > 鍵名跟 SkaiLink 的 `.env.json` 完全一樣,所以你也可以設環境變數 `OSS_CREDENTIALS_FILE` 直接指向 `C:\...\SkaiLink\.env.json`,免得重複貼金鑰。
+
+2. 或設環境變數 `OSS_ENDPOINT` / `OSS_BUCKET` / `ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET`。
+
+設定好後可驗證：
+
+```cmd
+python oss_upload.py --check       REM 顯示讀到的 endpoint / bucket(不顯示密鑰)
+python oss_upload.py --selftest    REM 驗證簽章演算法(與手機端 SkaiLink 一致)
+```
+
+### 命令列上傳
+
+```cmd
+REM 上傳單一檔案到指定路徑
+python oss_upload.py put info.json  skaiwatch/29/info.json
+python oss_upload.py put watchOS.zip skaiwatch/29/1.1.60/watchOS.zip
+```
+
+> 簽章方式刻意與 SkaiLink 的 `aliyun_oss_service.dart` **完全一致**(同樣不含 canonicalized-headers),所以手機端與這支工具上傳結果相容。
+
+---
+
+*工具位置：`example/get-started/dualcore/project/hcpu/{release_gui.bat, release_gui.py, make_release.bat, set_build_mode.py, oss_upload.py}`*
