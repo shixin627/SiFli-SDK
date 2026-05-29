@@ -9,6 +9,15 @@
  *        decides asleep / awake. Hysteresis on top: 3 consecutive sleep
  *        minutes to enter sleep, 2 consecutive wake minutes to exit. This
  *        suppresses single-epoch flips that confuse a naive cutoff.
+ *        A still wrist alone is NOT enough: if HR is available and sits
+ *        more than a fixed offset above a SELF-LEARNED resting baseline
+ *        (sedentary wake — a train, a desk, reading) the minute votes wake
+ *        regardless of how low the activity score is. Without this veto,
+ *        smooth low-motion transit reads as hours of phantom sleep. The
+ *        baseline is learned online (adopt lows fast, leak up slowly, freeze
+ *        while elevated) so it fits the wearer and can't drift up to a long
+ *        sedentary HR; the veto is held a few minutes past the last elevated
+ *        reading to bridge the sparse gaps between background PPG bursts.
  *    (2) When asleep, HR features distinguish Deep / Light / REM:
  *          Deep — activity ~0  AND  HR < resting * 0.95
  *          REM  — low activity AND  HR near resting AND HR std > 3 bpm
@@ -57,6 +66,39 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
 /* Any nonzero step count in the minute hard-forces wake. */
 #define SF_STEPS_FORCE_WAKE      1u
 
+/* HR wake-veto. A still wrist with HR well above the *learned* resting
+   baseline is sedentary wake (a train, a desk, reading), not sleep — when HR
+   is present and this elevated, the minute votes wake no matter how low the
+   activity score is. The threshold is an ABSOLUTE bpm offset above a learned
+   resting estimate (see below), validated on the Walch 2019 PSG set: a fixed
+   percent of a fixed resting HR either kills real sleep for higher-HR
+   sleepers (too tight) or misses the train (too loose), whereas
+   learned-resting + ~20 bpm separates clear daytime elevation from real sleep
+   without sacrificing sleep sensitivity. */
+#define SF_WAKE_HR_OFFSET_BPM    20   /* HR > learned_rhr + 20 => awake */
+
+/* Online resting-HR learner. The firmware has no per-user resting HR yet
+   (the seed is a fixed fallback), and real sleeping HR varies far too much
+   between people for a fixed anchor to work. So we learn it: adopt new lows
+   immediately (a fraction of the gap — robust to a single artefact low), and
+   leak the estimate upward only SLOWLY while HR sits mildly above it. Crucial
+   bit: once HR is elevated past the veto threshold the upward leak FREEZES,
+   so a long sedentary-but-awake stretch (a 2 h train) can never drag the
+   baseline up to its own HR and silently disarm the veto. Resting HR is thus
+   learned from calm periods only. */
+#define SF_RHR_DOWN_SHIFT        3    /* est -= (est - hr) >> 3  (~1/8 gap) */
+#define SF_RHR_LEAK_PERIOD_MIN   4    /* minutes mildly-above per +1 bpm up */
+#define SF_RHR_MIN               40u  /* clamp — implausibly low resting    */
+#define SF_RHR_MAX              110u  /* clamp — implausibly high resting   */
+
+/* Background PPG is sparse while awake (one ~15-min curve burst, held a few
+   minutes), so most awake minutes carry no HR at all. Hold the wake-veto this
+   many minutes to bridge those HR-ABSENT gaps so a still wrist cannot creep
+   into "sleep" between bursts. The hold counts down only while HR is missing;
+   a present, non-elevated reading clears it immediately (positive sleep
+   evidence), so a lone sleep-time spike can't snowball into false wake. */
+#define SF_WAKE_HR_HOLD_MIN      12u
+
 /* Hysteresis — minutes of agreement to enter / exit sleep. */
 #define SF_ENTER_SLEEP_MIN       3
 #define SF_EXIT_SLEEP_MIN        2
@@ -79,7 +121,9 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
 
 typedef struct
 {
-    uint8_t resting_hr_bpm; /* 0 if HR staging disabled */
+    uint8_t resting_hr_bpm; /* configured seed / enable (0 disables HR) */
+    uint8_t learned_rhr_bpm; /* online resting-HR estimate (seeded from above) */
+    uint8_t rhr_leak_acc;    /* minutes counted toward the slow upward leak */
 
     /* Activity ring buffer (last SF_WINDOW_MIN minutes). Index points
        to the slot that will be overwritten next — i.e. "oldest". */
@@ -95,6 +139,11 @@ typedef struct
     /* Hysteresis counters. */
     uint8_t consec_sleep_candidate; /* minutes voting sleep in a row */
     uint8_t consec_wake_candidate;  /* minutes voting wake in a row */
+
+    /* HR wake-veto hold. Set to SF_WAKE_HR_HOLD_MIN on an elevated-HR
+       minute, decremented otherwise; while nonzero the minute votes wake.
+       Bridges the HR-absent gaps between sparse background PPG bursts. */
+    uint8_t wake_hr_hold_min;
 
     /* Output snapshot. */
     sleep_fusion_output_t out;
@@ -185,6 +234,63 @@ static uint8_t prv_hr_baseline(void)
         tmp[j] = v;
     }
     return tmp[n / 2];
+}
+
+/* Online resting-HR learner + "is this minute's HR elevated?" test, the core
+   of the wake-veto. Returns true when HR is present and sits more than
+   SF_WAKE_HR_OFFSET_BPM above the learned resting estimate (=> sedentary
+   wake). Side effect: updates learned_rhr_bpm — adopt new lows fast, leak up
+   slowly, and FREEZE the upward leak while elevated so a long awake-but-still
+   stretch (a train) cannot pull the baseline up to itself and disarm the
+   veto. No-op returning false when HR is absent or HR staging is disabled. */
+static bool prv_hr_elevated_and_learn(uint8_t hr_bpm)
+{
+    if (hr_bpm == 0 || s_sf.resting_hr_bpm == 0)
+    {
+        return false; /* no HR this minute, or HR veto disabled */
+    }
+
+    uint8_t rhr = s_sf.learned_rhr_bpm;
+    /* Decide elevation against the established baseline (pre-update). */
+    bool elevated = ((uint32_t)hr_bpm > (uint32_t)rhr + SF_WAKE_HR_OFFSET_BPM);
+
+    if (hr_bpm < rhr)
+    {
+        /* New low — adopt a fraction of the gap (robust to artefact lows). */
+        uint8_t step = (uint8_t)((rhr - hr_bpm) >> SF_RHR_DOWN_SHIFT);
+        if (step == 0)
+        {
+            step = 1;
+        }
+        rhr = (uint8_t)(rhr - step);
+        s_sf.rhr_leak_acc = 0;
+    }
+    else if (!elevated)
+    {
+        /* Mildly above — leak the estimate up slowly. */
+        if (++s_sf.rhr_leak_acc >= SF_RHR_LEAK_PERIOD_MIN)
+        {
+            rhr++;
+            s_sf.rhr_leak_acc = 0;
+        }
+    }
+    else
+    {
+        /* Elevated (veto firing) — freeze the upward leak. */
+        s_sf.rhr_leak_acc = 0;
+    }
+
+    if (rhr < SF_RHR_MIN)
+    {
+        rhr = (uint8_t)SF_RHR_MIN;
+    }
+    if (rhr > SF_RHR_MAX)
+    {
+        rhr = (uint8_t)SF_RHR_MAX;
+    }
+    s_sf.learned_rhr_bpm = rhr;
+
+    return elevated;
 }
 
 /* Classify the in-sleep stage given current minute's accel + HR features
@@ -296,12 +402,19 @@ void sleep_fusion_init(uint8_t resting_hr_bpm)
 {
     memset(&s_sf, 0, sizeof(s_sf));
     s_sf.resting_hr_bpm = resting_hr_bpm;
+    s_sf.learned_rhr_bpm = resting_hr_bpm; /* seed the online estimate */
     s_sf.out.stage = SLEEP_FUSION_STAGE_AWAKE;
 }
 
 void sleep_fusion_set_resting_hr(uint8_t resting_hr_bpm)
 {
     s_sf.resting_hr_bpm = resting_hr_bpm;
+    /* Seed the learned estimate the first time HR is enabled; after that the
+       online learner owns it — don't clobber what it has adapted to. */
+    if (s_sf.learned_rhr_bpm == 0)
+    {
+        s_sf.learned_rhr_bpm = resting_hr_bpm;
+    }
 }
 
 void sleep_fusion_midnight_reset(void)
@@ -321,6 +434,7 @@ void sleep_fusion_reset(void)
     uint8_t saved_resting = s_sf.resting_hr_bpm;
     memset(&s_sf, 0, sizeof(s_sf));
     s_sf.resting_hr_bpm = saved_resting;
+    s_sf.learned_rhr_bpm = saved_resting; /* re-seed the online estimate */
     s_sf.out.stage = SLEEP_FUSION_STAGE_AWAKE;
 }
 
@@ -335,9 +449,12 @@ const sleep_fusion_output_t *sleep_fusion_update(
     {
         s_sf.consec_sleep_candidate = 0;
         s_sf.consec_wake_candidate = 0;
+        s_sf.wake_hr_hold_min = 0;
         prv_apply_stage_transition(utc_sec, prev_stage, SLEEP_FUSION_STAGE_NOT_WORN);
         s_sf.out.last_cole_kripke_score = 0;
         s_sf.out.last_hr_baseline_bpm = 0;
+        s_sf.out.learned_rhr_bpm = s_sf.learned_rhr_bpm;
+        s_sf.out.hr_wake_veto_active = false;
         return &s_sf.out;
     }
 
@@ -350,9 +467,40 @@ const sleep_fusion_output_t *sleep_fusion_update(
     s_sf.out.last_cole_kripke_score = score;
     s_sf.out.last_hr_baseline_bpm = baseline;
 
-    /* Sleep-vs-wake vote for this minute. */
+    /* HR wake-veto: positive evidence of wake from a pulse sitting well above
+       the learned resting baseline on a still wrist. prv_hr_elevated_and_learn
+       also advances the online resting-HR estimate (and freezes it while
+       elevated, so a long sedentary stretch can't disarm the veto). Only fires
+       when HR is actually present, so the overnight HR-absent case is
+       untouched and degrades to accel-only exactly as before. The hold carries
+       the veto across the sparse gaps between background PPG bursts. */
+    bool hr_says_awake = prv_hr_elevated_and_learn(input->hr_mean_bpm);
+    if (hr_says_awake)
+    {
+        s_sf.wake_hr_hold_min = SF_WAKE_HR_HOLD_MIN;
+    }
+    else if (input->hr_mean_bpm > 0)
+    {
+        /* HR present and NOT elevated — positive, sleep-consistent evidence.
+           Clear the veto at once. The hold exists only to bridge HR-ABSENT
+           gaps; without this, a single sleep-time HR spike would arm the hold
+           and stretch into ~12 min of false wake (it cost real sleep on the
+           denser-HR PSG validation set). A real elevation re-arms every minute
+           it persists, so sustained wake is unaffected. */
+        s_sf.wake_hr_hold_min = 0;
+    }
+    else if (s_sf.wake_hr_hold_min > 0)
+    {
+        s_sf.wake_hr_hold_min--; /* HR absent — bridge the gap */
+    }
+    s_sf.out.hr_wake_veto_active = (s_sf.wake_hr_hold_min > 0);
+    s_sf.out.learned_rhr_bpm = s_sf.learned_rhr_bpm;
+
+    /* Sleep-vs-wake vote for this minute. A still wrist (low score, no
+       steps) only counts as sleep when the HR veto is not active. */
     bool vote_sleep = (score < SF_SLEEP_SCORE_THRESH) &&
-                      (input->step_count < SF_STEPS_FORCE_WAKE);
+                      (input->step_count < SF_STEPS_FORCE_WAKE) &&
+                      (s_sf.wake_hr_hold_min == 0);
 
     if (vote_sleep)
     {

@@ -7,7 +7,10 @@
  *         build for PC sim and for the watch LCPU.
  *
  *  Algorithm: Cole-Kripke style weighted activity score for wake/sleep
- *  decision, followed by HR-based staging into Wake / Light / Deep / REM.
+ *  decision (with an HR wake-veto so a still-but-awake wrist on a train or
+ *  at a desk is not scored as sleep — HR more than a fixed offset above a
+ *  self-learned resting baseline votes wake), followed by HR-based staging
+ *  into Wake / Light / Deep / REM. Validated against the Walch 2019 PSG set.
  *  References:
  *    Cole RJ et al. 1992  — actigraphy sleep/wake scoring
  *    Walch O et al. 2019  — accel + PPG sleep staging (Stanford)
@@ -87,6 +90,8 @@ extern "C"
         /* Diagnostics — useful for logging and tuning. */
         uint32_t last_cole_kripke_score;
         uint8_t  last_hr_baseline_bpm;
+        uint8_t  learned_rhr_bpm;       /* online resting-HR estimate, veto anchor */
+        bool     hr_wake_veto_active;   /* HR held this minute out of sleep */
     } sleep_fusion_output_t;
 
     /* Initialize internal state. resting_hr_bpm is used as the HR baseline

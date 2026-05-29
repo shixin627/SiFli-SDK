@@ -1,0 +1,3 @@
+# PhysioNet sleep-accel raw data (Walch 2019, ODC-BY) — large (~50 MB/subject),
+# downloaded on demand by the validation scripts. Not committed.
+data/

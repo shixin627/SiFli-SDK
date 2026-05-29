@@ -1,6 +1,6 @@
 {
-    "version": "1.1.59",
-    "description": "修復無法抬手亮屏",
+    "version": "1.1.60",
+    "description": "測試發布",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",

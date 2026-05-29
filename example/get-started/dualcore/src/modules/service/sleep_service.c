@@ -335,8 +335,11 @@ static void prv_minute_eval(uint32_t utc_now)
 
     input.is_worn = prv_is_worn();
 
-    /* Refresh resting HR estimate in case user prefs changed. */
-    sleep_fusion_set_resting_hr(prv_resting_hr_estimate());
+    /* NB: resting HR is now learned ONLINE inside sleep_fusion from the per-
+       minute HR stream (it only needs the seed passed at init). We no longer
+       re-seed it every minute — that would just overwrite the seed with the
+       same constant. If a real per-user RHR ever lands in hr_service, push it
+       once here via sleep_fusion_set_resting_hr(). */
 
     /* Local-midnight reset of the daily aggregates. */
     {
@@ -446,9 +449,11 @@ static int msh_sleep_status(int argc, char **argv)
                (unsigned)out->rem_min,
                (unsigned)out->light_min,
                (unsigned)out->awake_after_onset_min);
-    rt_kprintf("  ck_score=%u hr_baseline=%u onset_utc=%u last_wake_utc=%u\n",
+    rt_kprintf("  ck_score=%u hr_baseline=%u learned_rhr=%u hr_wake_veto=%u onset_utc=%u last_wake_utc=%u\n",
                (unsigned)out->last_cole_kripke_score,
                (unsigned)out->last_hr_baseline_bpm,
+               (unsigned)out->learned_rhr_bpm,
+               (unsigned)out->hr_wake_veto_active,
                (unsigned)out->sleep_onset_utc,
                (unsigned)out->last_wake_utc);
     return 0;
