@@ -1,0 +1,6 @@
+# Local release-tooling artifacts that must never be committed.
+# OSS credentials (Aliyun keys) — secrets; provide locally, never commit.
+oss_credentials.json
+# Self-test scratch output from set_build_mode/release_gui/oss_upload.
+_gui_selftest.txt
+_oss_selftest.txt

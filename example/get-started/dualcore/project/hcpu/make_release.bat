@@ -18,6 +18,14 @@ REM ==========================================================================
 
 setlocal
 
+REM Force the console to UTF-8 BEFORE Python starts so set_build_mode.py's
+REM Chinese prompts render in a plain console. (The GUI front-end
+REM release_gui.py avoids this issue entirely; this is only for CLI use.)
+REM These directives are ASCII, so the .cmd ASCII rule still holds.
+chcp 65001 >nul
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
+
 echo ============================================================
 echo Step 1: Switching to RELEASE profile (you'll be asked for the version)...
 echo ============================================================
