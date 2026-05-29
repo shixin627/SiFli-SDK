@@ -18,16 +18,15 @@ Profile delta (derived from release commit dd100ed74):
                              BSP_USING_VIRTUAL_CONSOLE   commented out  =y
                              BSP_PM_DEBUG                =y             # is not set
                              RT_USING_MEMTRACE           =y             # is not set
-                             BT_FINSH                    =y             # is not set
   lcpu/proj.conf             GH3018_POW_PIN              161            0
                              BMI270_POW_PIN              118            0
                              RT_USING_MEMTRACE           =y             # is not set
                              RT_USING_FINSH              off  (fixed both profiles)
                              BSP_USING_VIRTUAL_CONSOLE   on   (fixed both profiles)
 
-BSP_PM_DEBUG / MEMTRACE / BT_FINSH are pure dev/debug overhead in a release
-build (per-wake rt_kprintf, per-alloc tracking, BT shell cmds) — dropped in
-release, kept in dev.
+BSP_PM_DEBUG / MEMTRACE are pure dev/debug overhead in a release build
+(per-wake rt_kprintf, per-alloc tracking) — dropped in release, kept in dev.
+NOTE: BT_FINSH is deliberately left ON in both profiles — see HCPU_BOOLS.
 
 Only customer/boards/eh-lb56xu/bsp_board.h is touched: the production build
 (scons --board=sf32lb56w-watch) pulls that board's drivers via
@@ -83,7 +82,12 @@ HCPU_BOOLS = [
     ("BSP_USING_VIRTUAL_CONSOLE", False, True),   # route console over virtual port
     ("BSP_PM_DEBUG",              True,  False),  # per-wake rt_kprintf (DBG_LVL can't mute it)
     ("RT_USING_MEMTRACE",         True,  False),  # per-alloc tracking overhead
-    ("BT_FINSH",                  True,  False),  # BT shell cmds, useless without FINSH
+    # BT_FINSH is intentionally NOT toggled. Despite the name it isn't just a
+    # BT shell: middleware/bluetooth/service/bt/bt_finsh/ also holds the only
+    # definitions of the HFP-HF call control (bt_hfp_hf_answer_call_send /
+    # _hangup_call_send) that app_incoming_call.c links against. Disabling it
+    # breaks the release link ("Undefined symbol bt_hfp_hf_answer_call_send").
+    # Must stay =y in both profiles.
 ]
 LCPU_BOOLS = [
     ("RT_USING_FINSH",            False, False),  # fixed: lcpu has no shell

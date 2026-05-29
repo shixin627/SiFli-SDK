@@ -77,12 +77,13 @@ make_release.bat
 | | `BSP_USING_VIRTUAL_CONSOLE` | 關 | 開 | console 走虛擬串口 |
 | | `BSP_PM_DEBUG` | 開 | 關 | 拿掉每次睡/醒的 log |
 | | `RT_USING_MEMTRACE` | 開 | 關 | 拿掉每次配置記憶體的追蹤開銷 |
-| | `BT_FINSH` | 開 | 關 | 拿掉藍牙 shell 指令 |
 | `project/lcpu/proj.conf` | `GH3018_POW_PIN` | `161` | `0` | 量產板沒有心率電源開關腳位 |
 | | `BMI270_POW_PIN` | `118` | `0` | 量產板沒有 IMU 電源開關腳位 |
 | | `RT_USING_MEMTRACE` | 開 | 關 | 同上 |
 
 > **info.json 的版號是自動的** —— 由 `update_info.py` 直接讀 `watch_global_data.h` 寫入，你不用手改。唯一要手動的是 `description`（發布介紹）。
+
+> **`BT_FINSH` 看似 debug 但不能關**：它的名字像是「藍牙 shell」，但 `middleware/bluetooth/service/bt/bt_finsh/` 同時是 HFP 免持通話（接聽 / 掛斷，`bt_hfp_hf_answer_call_send` 等）的唯一實作來源，`app_incoming_call.c` 會連結到它。關掉會導致發布版 link 失敗（`Undefined symbol bt_hfp_hf_answer_call_send`）。所以 dev / release 兩邊都保持 `=y`，腳本不碰它。
 
 ---
 
