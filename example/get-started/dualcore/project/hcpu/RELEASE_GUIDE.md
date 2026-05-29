@@ -35,28 +35,33 @@
 make_release.bat
 ```
 
-它會依序做 5 件事，過程中問你 3 個問題：
+它會依序做 5 件事，過程中問你 4 個問題：
 
 | 步驟 | 動作 | 會問你 |
 |---|---|---|
-| 1 | 切換成 **發布(release) 參數** + 版號 +1 | — |
+| 1 | 切換成 **發布(release) 參數** + **輸入版號** | `Enter release version X.Y.Z [預設]` |
 | 2 | 編譯 hcpu + lcpu（Keil 正式版） | — |
 | 3 | （可選）開 notepad 編 `info.json` 的發布介紹 | `Edit release notes? (y/N)` |
 | 4 | 打包 bin 到 `watchOS\sys\` | `Include watchface? (y/N)` |
 | 5 | 把版號 + 檔案清單寫進 `info.json` | — |
 
-> **先編譯、再碰 watchOS**：所有會動到 `info.json` / `watchOS\` 的步驟（3~5）都排在「編譯成功之後」。編譯失敗就直接停在第 2 步，不會留下半寫的發布介紹或過時的 bin。版號 +1（第 1 步）必須在編譯前，因為版號會被編進韌體。
+> **先編譯、再碰 watchOS**：所有會動到 `info.json` / `watchOS\` 的步驟（3~5）都排在「編譯成功之後」。編譯失敗就直接停在第 2 步，不會留下半寫的發布介紹或過時的 bin。版號（第 1 步）必須在編譯前輸入，因為版號會被編進韌體。
 
-### 那 3 個問題怎麼回答
+### 那幾個問題怎麼回答
 
-1. **`Edit release notes (info.json description) now? (y/N)`**
+1. **`Enter release version X.Y.Z [預設]`**（第 1 步）
+   - 想用顯示的預設版號（目前版號 +1）→ 直接按 `Enter`。
+   - 想指定版號（含跨大版號，例如 `1.2.0`）→ 直接輸入 `X.Y.Z` 再 Enter。
+   - 格式不對會請你重打。版號會寫進韌體與 `info.json`。
+
+2. **`Edit release notes (info.json description) now? (y/N)`**（第 3 步）
    - 按 `y` → 跳出 notepad，改 `"description"` 欄位（這就是「發布介紹」，會顯示給 App / OTA），存檔後關掉視窗，腳本才會繼續。
    - 按 `N`（或直接 Enter）→ 沿用現有介紹。
 
-2. **`Include watchface folder in package? (y/N)`**
+3. **`Include watchface folder in package? (y/N)`**（第 4 步）
    - 要不要把錶面（jsroot）一起打包進去。不確定就按 `N`。
 
-3. 編完會印 **`RELEASE BUILD DONE`**，產物在 `watchOS\sys\` + `info.json`。
+4. 編完會印 **`RELEASE BUILD DONE`**，產物在 `watchOS\sys\` + `info.json`。
 
 ### 編譯失敗會怎樣
 
@@ -107,11 +112,14 @@ python set_build_mode.py dev
 REM 看目前是 開發 還是 發布,以及版號 (不改任何檔)
 python set_build_mode.py status
 
-REM 預覽切到發布會改什麼,但「不」真的寫檔
+REM 預覽切到發布會改什麼,但「不」真的寫檔 (顯示預設版號,不會問你)
 python set_build_mode.py release --dry-run
 
-REM 真的切到發布參數
+REM 真的切到發布參數 (會互動詢問版號,Enter = 預設目前版號+1)
 python set_build_mode.py release
+
+REM 直接指定版號,不互動詢問 (適合自動化 / 批次)
+python set_build_mode.py release --version 1.2.0
 
 REM 切回開發參數
 python set_build_mode.py dev
@@ -133,9 +141,12 @@ Current build profile: DEV
 ## 7. 版號規則
 
 - 版號 = `VERSION_MAJOR.VERSION_MINOR.VERSION_REVISION`（定義在 `watch_global_data.h`）。
-- 每次 **dev → release** 轉換時，腳本自動把 `VERSION_REVISION` **+1**。
-- 同一個 release 狀態重跑 `release` **不會**再加（避免重複跳號）。
-- 要改 major / minor，或想指定特定版號：先手動編輯 `watch_global_data.h`，再跑腳本。
+- 切到 release 時腳本會**互動詢問版號**：
+  - 直接按 `Enter` → 用預設值（目前版號 **+1**，例如 1.1.59 → 1.1.60）。
+  - 輸入 `X.Y.Z` → 設成你打的版號，**可跨 major / minor**（例如 1.1.59 → 1.2.0）。
+  - 想跳過詢問（自動化）→ 用 `--version X.Y.Z`。
+- 預設值的算法：從 **dev** 切過來 = 目前版號 +1；若**已經在 release** 狀態重跑，預設 = 目前版號（不變，避免重複跳號），但你仍可手動輸入新版號覆蓋。
+- 版號只在 **release** 時會被改；切回 `dev` 不會動版號（也不會退回）。
 
 ---
 
@@ -144,7 +155,7 @@ Current build profile: DEV
 | 症狀 | 原因 / 處理 |
 |---|---|
 | `make_release.bat` 印 `BUILD FAILED` | 編譯錯誤。看 `_watch_build.log`。修好後重跑；想先回開發就 `python set_build_mode.py dev`。 |
-| 版號跳了好幾號 | 多跑了幾次 `release`（每次 dev→release 都會 +1）。檢查 `status` 確認目前版號，必要時手動改 `watch_global_data.h`。 |
+| 版號不對 / 想重設 | 切 release 時是你自己輸入的（Enter 才用預設 +1）。重跑 `release` 直接輸入正確的 `X.Y.Z` 即可覆蓋；或 `--version X.Y.Z` 指定。`status` 可查目前版號。 |
 | 開發時心率/IMU 沒反應 | 可能停在發布參數（POW_PIN=0）。跑 `python set_build_mode.py dev` 切回（會還原 161 / 118）。 |
 | `info.json` 的中文介紹變亂碼 | 用 notepad（腳本內建那個流程）或 VS Code 以 **UTF-8** 存檔，不要用會轉成其他編碼的編輯器。 |
 | 想確認沒有改錯 | `python set_build_mode.py status` + `git diff` 檢查實際變更。 |

@@ -13,7 +13,7 @@ Profile delta (derived from release commit dd100ed74):
   -------------------------  --------------------------  -------------  -------------
   eh-lb56xu/bsp_board.h      kReleaseMode                0              1
                              CUSTOMER_BOARD_VER          BOARD_VER_28   BOARD_VER_29
-  watch_global_data.h        VERSION_REVISION            (untouched)    +1 on dev->release
+  watch_global_data.h        VERSION                     (untouched)    user-entered (default +1)
   hcpu/proj.conf             RT_USING_FINSH              =y             # is not set
                              BSP_USING_VIRTUAL_CONSOLE   commented out  =y
                              BSP_PM_DEBUG                =y             # is not set
@@ -35,9 +35,12 @@ sf32lb56-watch_base headers are separate targets with their own board versions
 and are intentionally left alone.
 
 Usage:
-    python set_build_mode.py status              # show current mode, no changes
-    python set_build_mode.py release [--dry-run]  # switch to RELEASE (+ bump on transition)
-    python set_build_mode.py dev     [--dry-run]  # switch back to DEV
+    python set_build_mode.py status                          # show current mode, no changes
+    python set_build_mode.py release [--version X.Y.Z] [--dry-run]
+                                                             # switch to RELEASE; prompts for the
+                                                             # version (Enter = current +1), or pass
+                                                             # --version to set it non-interactively
+    python set_build_mode.py dev     [--dry-run]             # switch back to DEV
 """
 
 import os
@@ -128,16 +131,41 @@ def read_define(text, name):
     return m.group(1) if m else None
 
 
-def bump_revision(text, path):
-    """VERSION_REVISION += 1."""
-    pattern = re.compile(r"(#define\s+VERSION_REVISION\s+)(\d+)")
-    m = pattern.search(text)
-    if not m:
-        raise EditError(f"#define VERSION_REVISION not found in {path}")
-    old = int(m.group(2))
-    new = old + 1
-    new_text = pattern.sub(lambda mm: mm.group(1) + str(new), text, count=1)
-    return new_text, str(old), str(new)
+def parse_version(text):
+    """Return (major, minor, revision) strings from the header."""
+    return (read_define(text, "VERSION_MAJOR"),
+            read_define(text, "VERSION_MINOR"),
+            read_define(text, "VERSION_REVISION"))
+
+
+def set_version(text, version_str, path):
+    """Set VERSION_MAJOR/MINOR/REVISION from an 'X.Y.Z' string.
+    Returns (new_text, old_version_str, new_version_str)."""
+    parts = version_str.split(".")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        raise EditError("invalid version '%s' (expected X.Y.Z, integers)" % version_str)
+    old = "%s.%s.%s" % parse_version(text)
+    out = text
+    for name, val in zip(("VERSION_MAJOR", "VERSION_MINOR", "VERSION_REVISION"), parts):
+        out, _, _ = set_define(out, name, val, path)
+    return out, old, version_str
+
+
+def _prompt_version(default_ver, cur_ver):
+    """Ask the user for the release version. Empty input keeps the default."""
+    print("")
+    print("  Current version : %s" % cur_ver)
+    print("  Default (Enter) : %s" % default_ver)
+    while True:
+        try:
+            raw = input("  Enter release version X.Y.Z [%s]: " % default_ver).strip()
+        except EOFError:
+            return default_ver
+        if raw == "":
+            return default_ver
+        if re.match(r"^\d+\.\d+\.\d+$", raw):
+            return raw
+        print("  Invalid format. Use X.Y.Z (e.g. %s), or press Enter." % default_ver)
 
 
 def _kconfig_line_re(key):
@@ -228,7 +256,7 @@ def show_status():
     print("  version            = %s.%s.%s" % (major, minor, rev))
 
 
-def apply_profile(mode, dry_run):
+def apply_profile(mode, dry_run, cli_version=None):
     if mode not in VALID_MODES:
         raise EditError("unknown mode: %s" % mode)
     is_release = (mode == "release")
@@ -240,16 +268,30 @@ def apply_profile(mode, dry_run):
         bsp, o, n = set_define(bsp, name, value, BSP_BOARD_H)
         record(BSP_BOARD_H, name, o, n)
 
-    # 2) watch_global_data.h: bump VERSION_REVISION only on dev -> release
+    # 2) watch_global_data.h: set VERSION on release (dev never touches it).
+    #    The user types the version; default (Enter) is current +1 on a fresh
+    #    dev->release switch, or the current version if already in release.
     hdr = _read(HEADER_FILE)
-    do_bump = (is_release and cur_release != "1")
-    if do_bump:
-        hdr, o, n = bump_revision(hdr, HEADER_FILE)
-        record(HEADER_FILE, "VERSION_REVISION", o, n)
+    if is_release:
+        maj, minr, rev = parse_version(hdr)
+        cur_ver = "%s.%s.%s" % (maj, minr, rev)
+        if cur_release != "1":
+            default_ver = "%s.%s.%d" % (maj, minr, int(rev) + 1)
+        else:
+            default_ver = cur_ver  # already release: keep unless overridden
+        if cli_version:
+            hdr, o, n = set_version(hdr, cli_version, HEADER_FILE)
+            record(HEADER_FILE, "VERSION (--version)", o, n)
+        elif dry_run:
+            hdr, o, n = set_version(hdr, default_ver, HEADER_FILE)
+            record(HEADER_FILE, "VERSION (default; will prompt when run)", o, n)
+        else:
+            target_ver = _prompt_version(default_ver, cur_ver)
+            hdr, o, n = set_version(hdr, target_ver, HEADER_FILE)
+            record(HEADER_FILE, "VERSION", o, n)
     else:
-        rev = read_define(hdr, "VERSION_REVISION")
-        note = "already release - not re-bumped" if is_release else "dev - untouched"
-        record(HEADER_FILE, "VERSION_REVISION (%s)" % note, rev, rev)
+        cur_ver = "%s.%s.%s" % parse_version(hdr)
+        record(HEADER_FILE, "VERSION (dev - untouched)", cur_ver, cur_ver)
 
     # 3) hcpu/proj.conf: profile-dependent Kconfig bools
     hcpu_text = _read(HCPU_CONF)
@@ -285,16 +327,41 @@ def apply_profile(mode, dry_run):
             print("Resume dev work later with:  python set_build_mode.py dev")
 
 
+def _opt_value(argv, name):
+    """Return the value of `--name VALUE` or `--name=VALUE`, else None."""
+    for i, a in enumerate(argv):
+        if a == name:
+            return argv[i + 1] if i + 1 < len(argv) else None
+        if a.startswith(name + "="):
+            return a.split("=", 1)[1]
+    return None
+
+
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    dry_run = "--dry-run" in sys.argv
+    argv = sys.argv[1:]
+    dry_run = "--dry-run" in argv
+    cli_version = _opt_value(argv, "--version")
+
+    # Positional command = first bare token, skipping flags and the --version value.
+    args = []
+    skip = False
+    for a in argv:
+        if skip:
+            skip = False
+            continue
+        if a == "--version":
+            skip = True  # next token is its value, not a positional
+            continue
+        if a.startswith("-"):
+            continue
+        args.append(a)
 
     cmd = args[0] if args else None
     try:
         if cmd == "status":
             show_status()
         elif cmd in ("dev", "release"):
-            apply_profile(cmd, dry_run)
+            apply_profile(cmd, dry_run, cli_version)
         else:
             print(__doc__)
             print("ERROR: expected one of: status | dev | release")

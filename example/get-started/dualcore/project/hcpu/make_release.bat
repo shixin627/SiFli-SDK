@@ -2,13 +2,13 @@
 REM ==========================================================================
 REM One-key RELEASE builder for the Skaiwalk dualcore watch.
 REM
-REM   [1] set_build_mode.py release  - flip dev->release knobs + bump version
+REM   [1] set_build_mode.py release  - flip dev->release knobs + ask for version
 REM   [2] _watch_build.cmd           - build hcpu + lcpu (Keil / production)
 REM   [3] edit release notes         - optional, opens info.json in notepad
 REM   [4] package_watch_firmware.py  - copy bins into watchOS/sys
 REM   [5] update_info.py             - sync version + fileList into info.json
 REM
-REM Order matters: the version bump (step 1) must precede the build because the
+REM Order matters: the version entry (step 1) must precede the build because the
 REM version is compiled into the firmware. Everything that touches info.json /
 REM the watchOS folder (steps 3-5) runs only AFTER a successful build, so a
 REM failed build never leaves half-written release notes or stale bins.
@@ -19,7 +19,7 @@ REM ==========================================================================
 setlocal
 
 echo ============================================================
-echo Step 1: Switching to RELEASE profile (bumps version)...
+echo Step 1: Switching to RELEASE profile (you'll be asked for the version)...
 echo ============================================================
 python "%~dp0set_build_mode.py" release
 if errorlevel 1 (
