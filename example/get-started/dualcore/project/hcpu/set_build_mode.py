@@ -7,6 +7,9 @@ A "release" flips several knobs scattered across four files. Doing it by hand
 is error-prone (e.g. lcpu power pins were repeatedly left in release state).
 This script is the single source of truth for the dev <-> release delta.
 
+User-facing messages are in Traditional Chinese (the team's language). Code,
+comments, and the Kconfig/#define identifiers stay ASCII.
+
 Profile delta (derived from release commit dd100ed74):
 
   file                       key                         DEV            RELEASE
@@ -25,8 +28,8 @@ Profile delta (derived from release commit dd100ed74):
                              BSP_USING_VIRTUAL_CONSOLE   on   (fixed both profiles)
 
 BSP_PM_DEBUG / MEMTRACE are pure dev/debug overhead in a release build
-(per-wake rt_kprintf, per-alloc tracking) — dropped in release, kept in dev.
-NOTE: BT_FINSH is deliberately left ON in both profiles — see HCPU_BOOLS.
+(per-wake rt_kprintf, per-alloc tracking) -- dropped in release, kept in dev.
+NOTE: BT_FINSH is deliberately left ON in both profiles -- see HCPU_BOOLS.
 
 Only customer/boards/eh-lb56xu/bsp_board.h is touched: the production build
 (scons --board=sf32lb56w-watch) pulls that board's drivers via
@@ -47,6 +50,30 @@ import os
 import re
 import sys
 
+
+def _force_utf8_console():
+    """Make stdout/stdin handle CJK on Windows regardless of console code page.
+
+    This machine's console is a Western (cp1252) code page, so naive printing
+    of Chinese would turn into '?'/mojibake or raise UnicodeEncodeError. Switch
+    the console to UTF-8 (65001) and reconfigure the Python streams to match.
+    """
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+            ctypes.windll.kernel32.SetConsoleCP(65001)
+        except Exception:
+            pass
+    for stream in (sys.stdout, sys.stdin, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")  # Python 3.7+
+        except Exception:
+            pass
+
+
+_force_utf8_console()
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # SCRIPT_DIR = .../example/get-started/dualcore/project/hcpu
@@ -63,7 +90,7 @@ LCPU_CONF = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "lcpu", "proj.conf")
 VALID_MODES = ("dev", "release")
 
 # bsp_board.h #define values per profile.
-# CUSTOMER_BOARD_VER: dev=28, release=29. Verified against history — every commit
+# CUSTOMER_BOARD_VER: dev=28, release=29. Verified against history -- every commit
 # that set kReleaseMode=1 (a real release build) also carried BOARD_VER_29, e.g.
 # 02c41a14d (1.1.52) and 1f3fe6331 (1.1.49). The dev tips (kReleaseMode=0) sit on
 # BOARD_VER_28. The "andrew_v28.x" branch names are just version labels, not the
@@ -120,7 +147,7 @@ def set_define(text, name, value, path):
     pattern = re.compile(r"(#define\s+" + re.escape(name) + r"\s+)(\S+)")
     m = pattern.search(text)
     if not m:
-        raise EditError(f"#define {name} not found in {path}")
+        raise EditError("在 %s 找不到 #define %s" % (path, name))
     old = m.group(2)
     new_text = pattern.sub(lambda mm: mm.group(1) + value, text, count=1)
     return new_text, old, value
@@ -143,7 +170,7 @@ def set_version(text, version_str, path):
     Returns (new_text, old_version_str, new_version_str)."""
     parts = version_str.split(".")
     if len(parts) != 3 or not all(p.isdigit() for p in parts):
-        raise EditError("invalid version '%s' (expected X.Y.Z, integers)" % version_str)
+        raise EditError("版號格式錯誤 '%s'(需要 X.Y.Z,三段整數)" % version_str)
     old = "%s.%s.%s" % parse_version(text)
     out = text
     for name, val in zip(("VERSION_MAJOR", "VERSION_MINOR", "VERSION_REVISION"), parts):
@@ -154,18 +181,18 @@ def set_version(text, version_str, path):
 def _prompt_version(default_ver, cur_ver):
     """Ask the user for the release version. Empty input keeps the default."""
     print("")
-    print("  Current version : %s" % cur_ver)
-    print("  Default (Enter) : %s" % default_ver)
+    print("  目前版號      : %s" % cur_ver)
+    print("  預設(按 Enter): %s" % default_ver)
     while True:
         try:
-            raw = input("  Enter release version X.Y.Z [%s]: " % default_ver).strip()
+            raw = input("  請輸入發布版號 X.Y.Z [%s]: " % default_ver).strip()
         except EOFError:
             return default_ver
         if raw == "":
             return default_ver
         if re.match(r"^\d+\.\d+\.\d+$", raw):
             return raw
-        print("  Invalid format. Use X.Y.Z (e.g. %s), or press Enter." % default_ver)
+        print("  格式不對。請用 X.Y.Z(例如 %s),或直接按 Enter 用預設。" % default_ver)
 
 
 def _kconfig_line_re(key):
@@ -185,7 +212,7 @@ def set_kconfig_bool(lines, key, enabled):
     # not present -> insert just after the first line (matches release-commit placement)
     insert_at = 1 if len(lines) >= 1 else 0
     lines.insert(insert_at, target)
-    return lines, "(absent)", target
+    return lines, "(無此行)", target
 
 
 def set_kconfig_value(lines, key, value):
@@ -198,7 +225,7 @@ def set_kconfig_value(lines, key, value):
             lines[i] = target
             return lines, old, target
     lines.append(target)
-    return lines, "(absent)", target
+    return lines, "(無此行)", target
 
 
 def _split_lines(text):
@@ -224,13 +251,13 @@ _changes = []
 
 def record(path, key, old, new):
     rel = os.path.relpath(path, SCRIPT_DIR)
-    changed = "" if str(old) == str(new) else "  <-- changed"
+    changed = "" if str(old) == str(new) else "  <-- 已變更"
     _changes.append((rel, key, old, new, changed))
 
 
 def print_changes(dry_run):
     if not _changes:
-        print("  (nothing to change)")
+        print("  (沒有需要變更的項目)")
         return
     width_file = max(len(c[0]) for c in _changes)
     width_key = max(len(c[1]) for c in _changes)
@@ -238,7 +265,7 @@ def print_changes(dry_run):
         print("  %-*s  %-*s  %s -> %s%s"
               % (width_file, rel, width_key, key, old, new, changed))
     if dry_run:
-        print("\n  [dry-run] no files were written.")
+        print("\n  [預覽模式] 沒有寫入任何檔案。")
 
 
 # --- main operations -----------------------------------------------------
@@ -246,20 +273,21 @@ def print_changes(dry_run):
 def show_status():
     bsp = _read(BSP_BOARD_H)
     hdr = _read(HEADER_FILE)
-    mode = "RELEASE" if read_define(bsp, "kReleaseMode") == "1" else "DEV"
+    mode = "RELEASE(發布)" if read_define(bsp, "kReleaseMode") == "1" else "DEV(開發)"
     major = read_define(hdr, "VERSION_MAJOR")
     minor = read_define(hdr, "VERSION_MINOR")
     rev = read_define(hdr, "VERSION_REVISION")
-    print("Current build profile: %s" % mode)
+    print("目前建置模式: %s" % mode)
     print("  kReleaseMode       = %s" % read_define(bsp, "kReleaseMode"))
     print("  CUSTOMER_BOARD_VER = %s" % read_define(bsp, "CUSTOMER_BOARD_VER"))
-    print("  version            = %s.%s.%s" % (major, minor, rev))
+    print("  版號               = %s.%s.%s" % (major, minor, rev))
 
 
 def apply_profile(mode, dry_run, cli_version=None):
     if mode not in VALID_MODES:
-        raise EditError("unknown mode: %s" % mode)
+        raise EditError("未知模式: %s" % mode)
     is_release = (mode == "release")
+    mode_label = "RELEASE(發布)" if is_release else "DEV(開發)"
 
     # 1) bsp_board.h: kReleaseMode + CUSTOMER_BOARD_VER
     bsp = _read(BSP_BOARD_H)
@@ -284,14 +312,14 @@ def apply_profile(mode, dry_run, cli_version=None):
             record(HEADER_FILE, "VERSION (--version)", o, n)
         elif dry_run:
             hdr, o, n = set_version(hdr, default_ver, HEADER_FILE)
-            record(HEADER_FILE, "VERSION (default; will prompt when run)", o, n)
+            record(HEADER_FILE, "VERSION (預設值;實際執行時會詢問)", o, n)
         else:
             target_ver = _prompt_version(default_ver, cur_ver)
             hdr, o, n = set_version(hdr, target_ver, HEADER_FILE)
             record(HEADER_FILE, "VERSION", o, n)
     else:
         cur_ver = "%s.%s.%s" % parse_version(hdr)
-        record(HEADER_FILE, "VERSION (dev - untouched)", cur_ver, cur_ver)
+        record(HEADER_FILE, "VERSION (dev - 不變動)", cur_ver, cur_ver)
 
     # 3) hcpu/proj.conf: profile-dependent Kconfig bools
     hcpu_text = _read(HCPU_CONF)
@@ -312,7 +340,7 @@ def apply_profile(mode, dry_run, cli_version=None):
         record(LCPU_CONF, key, o, n)
     lcpu_out = _join_lines(llines, l_nl)
 
-    print("Switching to %s profile:" % mode.upper())
+    print("切換到 %s 模式:" % mode_label)
     print_changes(dry_run)
 
     if not dry_run:
@@ -320,11 +348,11 @@ def apply_profile(mode, dry_run, cli_version=None):
         _write(HEADER_FILE, hdr)
         _write(HCPU_CONF, hcpu_out)
         _write(LCPU_CONF, lcpu_out)
-        print("\nDone. Profile is now %s." % mode.upper())
-        if mode == "release":
-            print("Build with _watch_build.cmd, then package with update_info.bat")
-            print("(or just run make_release.bat to do everything).")
-            print("Resume dev work later with:  python set_build_mode.py dev")
+        print("\n完成。目前模式為 %s。" % mode_label)
+        if is_release:
+            print("接著用 _watch_build.cmd 編譯,再用 update_info.bat 打包")
+            print("(或直接跑 make_release.bat 一次做完)。")
+            print("之後要回到開發,執行:  python set_build_mode.py dev")
 
 
 def _opt_value(argv, name):
@@ -364,13 +392,13 @@ def main():
             apply_profile(cmd, dry_run, cli_version)
         else:
             print(__doc__)
-            print("ERROR: expected one of: status | dev | release")
+            print("錯誤: 指令需為 status | dev | release 其中之一")
             return 2
     except EditError as e:
-        print("ERROR: %s" % e)
+        print("錯誤: %s" % e)
         return 1
     except FileNotFoundError as e:
-        print("ERROR: file not found: %s" % e)
+        print("錯誤: 找不到檔案: %s" % e)
         return 1
     return 0
 
