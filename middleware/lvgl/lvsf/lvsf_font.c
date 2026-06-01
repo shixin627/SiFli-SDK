@@ -131,6 +131,17 @@ static void ft_clean_cache_cb(void)
 
     if (alloc_size >= ft_get_cache_size())
     {
+#ifdef BSP_USING_EPIC
+        /* EPIC GPU 以非同步批次方式混合 label 的每個 glyph（cont_blend 排隊、
+         * 直到該行字結束的 drv_epic_cont_blend_reset() 才真正 flush）。若在這裡做
+         * FT_CACHE_WHOLE_CLEAN，會把所有已快取的 glyph bitmap 一次釋放；當 GPU 還在
+         * 讀同一行稍早排隊的 glyph 時，就會讀到已釋放/被覆寫的記憶體 → 整串文字變亂碼
+         * （中英共用同一 face，故英數也一起壞）。GPU 還忙時先跳過整批清，等之後某次
+         * glyph miss（GPU 在 frame 之間 idle）再清。FTC 自身的 LRU 仍會把超量節點淘汰，
+         * 不會無限成長。對齊既有 app_cache deferred-free 的同類非同步保護設計。 */
+        extern bool drv_epic_is_busy(void);
+        if (drv_epic_is_busy()) return;
+#endif
         rt_kprintf("lv_freetype_clean_cache %d,%d\n", alloc_size, FT_CACHE_SIZE);
         lv_freetype_clean_cache(FT_CACHE_WHOLE_CLEAN);
     }
