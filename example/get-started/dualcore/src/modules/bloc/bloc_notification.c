@@ -225,9 +225,24 @@ static void update_notification(notification_t newNotification)
     // For Notify_Skaiwalk category, also dedup by type to keep only the latest
     // one.
     bool dup = false;
+    /* Set when the phone re-pushes a notification we already hold verbatim
+       (same id + same title + message). This happens on every BLE reconnect:
+       the phone's _syncActiveNotifications() re-sends its whole active list.
+       It is NOT a new arrival, so we must not bump notification_arrival_seq —
+       otherwise the dial-header seq gate (handle_dial_header_new_notification)
+       treats it as new and re-pops + buzzes a notification the user already
+       saw. Covers the "viewed but not dismissed" case the dismissed-id ring
+       does not (those entries are still in _notification_list[]). */
+    bool identical_repush = false;
     for (int i = notification_items_amount - 1; i >= 0; i--)
     {
         dup = (strcmp(_notification_list[i].id, newNotification.id) == 0);
+        if (dup &&
+            strcmp(_notification_list[i].title, newNotification.title) == 0 &&
+            strcmp(_notification_list[i].message, newNotification.message) == 0)
+        {
+            identical_repush = true;
+        }
         if (!dup && newNotification.type == Notify_Skaiwalk &&
             _notification_list[i].type == Notify_Skaiwalk)
         {
@@ -269,7 +284,13 @@ static void update_notification(notification_t newNotification)
         notification_items_amount++;
     }
 
-    notification_arrival_seq++;
+    /* Only a genuinely new arrival advances the seq (and so pops the dial
+       header + buzzes). An identical reconnect re-push refreshes the list
+       silently — no banner, no haptic. */
+    if (!identical_repush)
+    {
+        notification_arrival_seq++;
+    }
 
     SkaiWatchSys.notification_number = notification_items_amount;
 }
