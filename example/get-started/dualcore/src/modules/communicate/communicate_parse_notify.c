@@ -100,8 +100,17 @@ static bool apply_one_instruction_obj(cJSON *root)
     if (cJSON_IsBool(j_enabled))
         enabled = cJSON_IsTrue(j_enabled);
 
+    /* openApp: phone marks a "just open this watch app" instruction so the
+       tap runs locally with no phone relay (works while disconnected).
+       Absent for normal instructions → NULL keeps the relay behaviour. */
+    const char *open_app = NULL;
+    cJSON *j_open_app = cJSON_GetObjectItem(root, "openApp");
+    if (cJSON_IsString(j_open_app) && j_open_app->valuestring[0] != '\0')
+        open_app = j_open_app->valuestring;
+
     add_or_update_custom_instruction(id, title, trigger_type,
-                                     interval_sec, enabled, version);
+                                     interval_sec, enabled, version,
+                                     open_app);
 
     if (id[0] != '\0')
     {

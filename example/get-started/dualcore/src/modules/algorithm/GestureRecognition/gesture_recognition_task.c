@@ -586,7 +586,7 @@ static int utest_gesture(int argc, char *argv[])
                 "\"trigger\":{\"type\":\"interval\",\"intervalSeconds\":60}}";
             add_or_update_custom_instruction(
                 "dc396755-43ce-4fdb-ade4-d1ad683140c3", "每分鐘提醒走動",
-                "interval", 60, true, 1);
+                "interval", 60, true, 1, NULL);
             /* MSH commands run on tshell thread; defer the rebuild to the
                LVGL thread (same reason as the BLE notify path). */
             lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_INSTRUCTION_LIST};

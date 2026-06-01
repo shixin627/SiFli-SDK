@@ -73,7 +73,8 @@ extern "C"
     extern void add_or_update_custom_instruction(const char *id, const char *title,
                                                   const char *trigger_type,
                                                   uint32_t interval_sec,
-                                                  bool enabled, uint32_t version);
+                                                  bool enabled, uint32_t version,
+                                                  const char *open_app);
     extern void clear_custom_instructions(void);
     extern uint8_t get_custom_instruction_count(void);
     extern void set_custom_instruction_tap_cb(void (*cb)(const char *id, bool enabled));

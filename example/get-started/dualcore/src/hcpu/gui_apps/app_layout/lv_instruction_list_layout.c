@@ -108,6 +108,8 @@ typedef struct
     uint32_t interval_sec; // intervalSeconds
     char trigger_type[32]; // e.g. "interval", "once", etc.
     uint32_t version;      // version from server
+    char open_app[32];     // non-empty = tap opens this watch app locally
+                           // (offline, no phone relay); see openApp in 0x65/0x6B
 } list_item_t;
 
 static list_item_t list_items[MAX_LIST_ITEMS];
@@ -1473,7 +1475,7 @@ static void mock_inst_update_cb(void *param)
 {
     int idx = mock_inst_cycle % MOCK_INST_COUNT;
     add_or_update_custom_instruction(MOCK_INST_IDS[idx], MOCK_INST_TITLES[idx],
-                                     "once", 0, false, mock_inst_cycle + 1);
+                                     "once", 0, false, mock_inst_cycle + 1, NULL);
     mock_inst_cycle++;
     lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_INSTRUCTION_LIST};
     lvgl_send_msg(msg);
@@ -2184,6 +2186,25 @@ static void list_item_click_event_cb(lv_event_t *evt)
     {
         LOG_I("Custom instruction tapped: id=%s, title=%s", item->id,
               item->title);
+        /* Offline "open a watch app" instruction: the phone marked this
+           item with an openApp target, so run it entirely on the watch —
+           no SKAIBAR commit, no send_instruction_update, no phone relay.
+           This is the one instruction kind that works with the phone
+           disconnected. gui_app_run returns non-RT_EOK for an unknown app
+           name (e.g. a phone-only app), so we guard and stay put. */
+        if (item->open_app[0] != '\0')
+        {
+            LOG_I("[left] local open app (offline): %s", item->open_app);
+            if (is_open_instruction_list_ai)
+                close_ai_widget();
+            rt_err_t r = gui_app_run(item->open_app);
+            if (r != RT_EOK)
+                LOG_E("[left] gui_app_run('%s') failed (%d) — staying",
+                      item->open_app, (int)r);
+            else
+                animate_to_home_from_instruction_list();
+            return;
+        }
         /* SKAIBAR commit — tap on a custom instruction while the
            tracking session is alive (mic was opened at some point on
            this page, page not yet paused). Send the option idx the
@@ -2942,7 +2963,7 @@ void remove_custom_instruction(const char *id)
 void add_or_update_custom_instruction(const char *id, const char *title,
                                       const char *trigger_type,
                                       uint32_t interval_sec, bool enabled,
-                                      uint32_t version)
+                                      uint32_t version, const char *open_app)
 {
     bool is_interval = (trigger_type && strcmp(trigger_type, "interval") == 0);
     int idx = find_instruction_by_id(id);
@@ -2960,6 +2981,14 @@ void add_or_update_custom_instruction(const char *id, const char *title,
             strncpy(list_items[idx].trigger_type, trigger_type, 31);
             list_items[idx].trigger_type[31] = '\0';
         }
+        /* open_app may flip from set to unset across edits — always rewrite */
+        if (open_app)
+        {
+            strncpy(list_items[idx].open_app, open_app, 31);
+            list_items[idx].open_app[31] = '\0';
+        }
+        else
+            list_items[idx].open_app[0] = '\0';
         LOG_I("Updated id=%s, enabled=%d", id, enabled);
         return;
     }
@@ -2985,6 +3014,11 @@ void add_or_update_custom_instruction(const char *id, const char *title,
     instr->enabled = enabled;
     instr->interval_sec = interval_sec;
     instr->version = version;
+    if (open_app)
+    {
+        strncpy(instr->open_app, open_app, 31);
+        instr->open_app[31] = '\0';
+    }
     list_item_count++;
 }
 
