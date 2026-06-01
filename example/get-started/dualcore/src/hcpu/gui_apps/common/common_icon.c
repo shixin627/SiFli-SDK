@@ -105,7 +105,6 @@ void trigger_voice_ripple(app_speech_ripple_t *ripple, bool start)
             lv_anim_del(ripple[i].widget, (lv_anim_exec_xcb_t)lv_obj_set_height);
         }
     }
-    rt_kprintf("trigger_voice_ripple %d\n", start);
 }
 
 static lv_obj_t *create_point(app_speech_ripple_t *point, lv_coord_t init_y, lv_obj_t *par, lv_obj_t *ref_obj, uint8_t index)

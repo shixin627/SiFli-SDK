@@ -611,6 +611,23 @@ void hal_gsensor_int1_init(void)
 }
 
 #if (__USE_GOODIX_APP__)
+/* ============================ LIVE HR PATH — READ THIS ============================
+   This switch is the ACTUAL production HR sink (per commit b0400d1a7, the fix that
+   made HR read nonzero by adding the gh3018_set_hr() call below). The chain is:
+       hr_service  ->  rt_device_read  ->  data.hr = gh3018_get_hr()
+                                                     ^-- loc_hb_value
+                                                     ^-- written ONLY by gh3018_set_hr()
+                                                     ^-- called ONLY from the HR case below.
+   It runs only when __USE_GOODIX_APP__ is set; that b0400d1a7 works confirms it IS set
+   in this build (GOODIX_DEMO_PLANFORM comes from a build -D, NOT any header here -- a
+   header/rtconfig grep will wrongly suggest it is 0).
+   Do NOT be misled by:
+     - common.h's `ble_module_send_heartrate` macros  -> the __USE_GOODIX_APP__==0
+       branch, NOT live here.
+     - handle_hb_mode_result(&stHbRes) in process.c   -> body is not in source.
+     - the gh3011/ folder                             -> different part, not compiled
+                                                         (we build HR_USING_GH3018).
+   ================================================================================ */
 /// handle algo status update
 void handle_algo_result_update(GU32 function_id, GU16 value)
 {
@@ -621,6 +638,8 @@ void handle_algo_result_update(GU32 function_id, GU16 value)
         break;
 
     case GH30X_FUNCTION_HRV:
+        /* HRV/RR is computed by the algo but DROPPED here (empty). This is the
+           wire-in point if HRV is ever surfaced -- mirror the HR case above. */
         break;
 
     case GH30X_FUNCTION_SPO2:
@@ -1036,6 +1055,10 @@ int gh3018_self_check(void)
     return 0;
 }
 
+/* loc_hb_value's ONLY writer is gh3018_set_hr() below, called solely from
+   handle_algo_result_update()'s HR case (see the "LIVE HR PATH" note there +
+   commit b0400d1a7). If gh3018_get_hr() ever returns 0 across the whole system,
+   suspect that plumbing -- not the callers. */
 uint32_t gh3018_get_hr(void)
 {
     return (uint32_t)loc_hb_value;

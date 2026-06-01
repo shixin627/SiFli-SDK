@@ -112,6 +112,14 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
 #define SF_DEEP_HR_DROP_PCT      5    /* HR < resting * 0.95 */
 #define SF_REM_HR_NEAR_PCT       8    /* |HR - resting| < 8% */
 
+/* HRV (RMSSD) gate separating Deep from REM. RMSSD rises in deep sleep (vagal
+   tone) and is lower in REM (sympathetic) — the OPPOSITE of hr_std, which
+   tracks REM's erratic HR. Compared against the night's learned RMSSD baseline
+   (prv_rmssd_baseline). Applied ONLY when RR intervals are fed
+   (input.hr_rmssd_ms > 0); otherwise staging is unchanged. Literature starting
+   point (Walch 2019) — tune on real nights. */
+#define SF_DEEP_RMSSD_RISE_PCT  20u   /* Deep: RMSSD >= baseline * 1.20 */
+
 /* Bounds on returned aggregate counters (clamp at uint16 max). */
 #define SF_MIN_CLAMP(x) ((x) > 0xFFFFu ? 0xFFFFu : (x))
 
@@ -135,6 +143,12 @@ typedef struct
     uint8_t hr_hist[SF_HR_HISTORY_MIN];
     uint8_t hr_hist_idx;
     uint8_t hr_hist_filled;
+
+    /* RMSSD (HRV) rolling history — same window as HR. Stays empty until RR
+       intervals are fed via input.hr_rmssd_ms (0 = HRV disabled). */
+    uint8_t rmssd_hist[SF_HR_HISTORY_MIN];
+    uint8_t rmssd_hist_idx;
+    uint8_t rmssd_hist_filled;
 
     /* Hysteresis counters. */
     uint8_t consec_sleep_candidate; /* minutes voting sleep in a row */
@@ -225,6 +239,46 @@ static uint8_t prv_hr_baseline(void)
     for (uint8_t i = 0; i < n; i++)
     {
         uint8_t v = s_sf.hr_hist[i];
+        uint8_t j = i;
+        while (j > 0 && tmp[j - 1] > v)
+        {
+            tmp[j] = tmp[j - 1];
+            j--;
+        }
+        tmp[j] = v;
+    }
+    return tmp[n / 2];
+}
+
+static void prv_push_rmssd(uint8_t rmssd_ms)
+{
+    if (rmssd_ms == 0)
+    {
+        return; /* skip invalid / HRV unavailable this minute */
+    }
+    s_sf.rmssd_hist[s_sf.rmssd_hist_idx] = rmssd_ms;
+    s_sf.rmssd_hist_idx = (uint8_t)((s_sf.rmssd_hist_idx + 1) % SF_HR_HISTORY_MIN);
+    if (s_sf.rmssd_hist_filled < SF_HR_HISTORY_MIN)
+    {
+        s_sf.rmssd_hist_filled++;
+    }
+}
+
+/* Median of recent RMSSD samples — the night's RMSSD baseline. Returns 0 when
+   no RMSSD has been seen yet, which makes the classifier ignore RMSSD entirely
+   (graceful fall-back to HR-std-only staging). Median for the same artefact
+   robustness as prv_hr_baseline. */
+static uint8_t prv_rmssd_baseline(void)
+{
+    if (s_sf.rmssd_hist_filled == 0)
+    {
+        return 0;
+    }
+    uint8_t tmp[SF_HR_HISTORY_MIN];
+    uint8_t n = s_sf.rmssd_hist_filled;
+    for (uint8_t i = 0; i < n; i++)
+    {
+        uint8_t v = s_sf.rmssd_hist[i];
         uint8_t j = i;
         while (j > 0 && tmp[j - 1] > v)
         {
@@ -461,6 +515,7 @@ const sleep_fusion_output_t *sleep_fusion_update(
     /* Push current minute into history first so the score includes it. */
     prv_push_activity(input->activity_count);
     prv_push_hr(input->hr_mean_bpm);
+    prv_push_rmssd(input->hr_rmssd_ms); /* no-op until RR plumbing feeds it */
 
     uint32_t score = prv_cole_kripke_score();
     uint8_t baseline = prv_hr_baseline();

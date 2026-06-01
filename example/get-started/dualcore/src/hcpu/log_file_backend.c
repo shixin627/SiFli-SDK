@@ -118,7 +118,11 @@ static void prune_log_dir(const char *keep_path)
         time_t mtime;
         off_t size;
     };
-    struct entry_info entries[LOG_DIR_SCAN_MAX];
+    /* Static, not on-stack: LOG_DIR_SCAN_MAX entries (~80 B each) is ~2.5 KB,
+       which overflows the flush thread's LOG_FLUSH_STACK (2048 B) when a
+       rotation triggers a prune. Pruning only runs on the flush thread (and
+       rare shell rotate), so a single shared buffer is safe. */
+    static struct entry_info entries[LOG_DIR_SCAN_MAX];
     int count = 0;
 
     DIR *dir = opendir(LOG_DIR);

@@ -731,9 +731,48 @@ static void on_touch_gesture(touch_gesture_t gesture, uint16_t x, uint16_t y)
     }
 }
 
+/* Boot profiling: per-step elapsed time on the boot-to-first-frame path.
+   Set BOOT_PROFILE 0 to remove. Output: [boot] <step> +<delta>ms (total). */
+#ifndef BOOT_PROFILE
+    #define BOOT_PROFILE 1
+#endif
+#if BOOT_PROFILE
+    #define BOOT_TS(lbl) do { \
+        rt_uint32_t _n = rt_tick_get_millisecond(); \
+        rt_kprintf("[boot] %-26s +%lums (total %lums)\n", (lbl), \
+                   (unsigned long)(_n - _boot_tp), (unsigned long)(_n - _boot_t0)); \
+        _boot_tp = _n; \
+    } while (0)
+#else
+    #define BOOT_TS(lbl) do {} while (0)
+#endif
+
+/* Fast first frame: paint the watch face (background + image digits) BEFORE
+   loading FreeType, so the screen lights up immediately and text labels
+   (AM/PM, status bar) fill in ~one redraw later once the font faces load.
+   Safe: lv_ext_font_get() falls back to LV_FONT_THEME_DEFAULT when a size's
+   FreeType font isn't ready (it never returns NULL), so no font assert.
+   Set BOOT_FAST_FIRST_FRAME 0 to revert to the original ordering. */
+#ifndef BOOT_FAST_FIRST_FRAME
+    #define BOOT_FAST_FIRST_FRAME 1
+#endif
+
+#if LV_USING_FREETYPE_ENGINE
+static void boot_open_freetype(void)
+{
+    extern bool g_lvsf_freetype_skipped;
+    if (!g_lvsf_freetype_skipped)
+        lv_freetype_open_font(true); /* open freetype font faces (NAND read) */
+}
+#endif
+
 void app_watch_entry(void *parameter)
 {
     uint8_t first_loop = 1;
+#if BOOT_PROFILE
+    rt_uint32_t _boot_t0 = rt_tick_get_millisecond();
+    rt_uint32_t _boot_tp = _boot_t0;
+#endif
 #ifdef _MSC_VER
     {
         extern int wait_platform_init_done(void);
@@ -774,31 +813,37 @@ void app_watch_entry(void *parameter)
     gui_pm_init(lcd_device, pm_event_handler);
 #endif /* BSP_USING_PM */
 
+    BOOT_TS("init_pin + pm/touch");
+
     /* init littlevGL */
     {
         rt_err_t r = littlevgl2rtt_init(LCD_DEVICE_NAME);
         RT_ASSERT(RT_EOK == r);
     }
+    BOOT_TS("littlevgl2rtt_init");
 
     lv_ex_data_pool_init();
     resource_init();
+    BOOT_TS("resource_init");
     watch_config_struct_flash_read();
-#if LV_USING_FREETYPE_ENGINE
+    BOOT_TS("watch_config_flash_read");
+#if LV_USING_FREETYPE_ENGINE && !BOOT_FAST_FIRST_FRAME
     /* gui_freetype_init() (INIT_ENV) already opened freetype with init=false
        and flipped g_lvsf_freetype_skipped if the ttf wasn't on the FS. The
        (init=true) call here re-runs lvsf_font_inital, which would assert if
        we already skipped at boot. Honour the same flag so this fallback
-       path stays alive when fonts are missing. */
-    {
-        extern bool g_lvsf_freetype_skipped;
-        if (!g_lvsf_freetype_skipped)
-            lv_freetype_open_font(true); /* open freetype */
-    }
+       path stays alive when fonts are missing.
+       With BOOT_FAST_FIRST_FRAME set, this is deferred until after the watch
+       face paints (see below gui_app_run) so the screen lights up sooner. */
+    boot_open_freetype();
 #endif
+    BOOT_TS("freetype_open_font");
     gui_app_init();
+    BOOT_TS("gui_app_init");
     ui_datac_init();
     app_message_data_init();
     app_speech_data_init();
+    BOOT_TS("ui_datac + msg/speech data");
     // #ifdef BSP_USING_PC_SIMULATOR
     //     extern void get_notification_list_from_template(void);
     //     get_notification_list_from_template();
@@ -807,6 +852,7 @@ void app_watch_entry(void *parameter)
     // #endif
     bloc_setting_load_watch_system();
     bloc_system_schedule_init();
+    BOOT_TS("bloc_setting + schedule");
 
 #ifdef BSP_USING_PM
     button_event_task = lv_timer_create(button_event_task_entry, 30, 0);
@@ -814,6 +860,17 @@ void app_watch_entry(void *parameter)
     keypad_default_handler_register(default_keypad_handler);
 
     gui_app_run("Main");
+    BOOT_TS("gui_app_run(Main) = FIRST FRAME");
+#if BOOT_FAST_FIRST_FRAME && LV_USING_FREETYPE_ENGINE
+    /* Flush the watch face NOW — background + image digits need no FreeType, so
+       the screen lights up here. Then load the font faces and invalidate so the
+       text labels (AM/PM, status bar) repaint with real glyphs next frame.
+       Until then lv_ext_font_get() returns LV_FONT_THEME_DEFAULT (no crash). */
+    lv_refr_now(lv_disp_get_default());
+    boot_open_freetype();
+    lv_obj_invalidate(lv_scr_act());
+    BOOT_TS("deferred freetype + reflow");
+#endif
     lv_disp_trig_activity(NULL);
 
     /* Bind the refresh governor now that the default display + Main are up.

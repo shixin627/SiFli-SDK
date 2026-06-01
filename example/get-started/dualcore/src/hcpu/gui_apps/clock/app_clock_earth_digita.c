@@ -52,6 +52,18 @@ static void app_clock_earth_digital_redraw(lv_timer_t *task)
     hours = current_time.h;
     minutes = current_time.m;
 
+    /* Skip the per-tick image churn when the displayed minute hasn't changed.
+       The 30 ms redraw task otherwise re-issues 4x lv_img_set_src (+ AM/PM
+       label work) ~33 times/second on the always-visible watchface even
+       though the digits only change once a minute. task == NULL is the forced
+       first paint from resume_callback: always draw then. */
+    if (task != NULL &&
+        hours == p_clk_earth_digital->last_redraw_time.h &&
+        minutes == p_clk_earth_digital->last_redraw_time.m)
+    {
+        return;
+    }
+
     // Respect the 12/24-hour preference before splitting into digit images.
     rt_uint8_t disp_hours = ui_time_display_hour(hours);
 

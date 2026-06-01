@@ -390,6 +390,29 @@ static void prv_minute_eval(uint32_t utc_now)
 static void prv_timer_cb(void *param)
 {
     (void)param;
+
+    /* Off-wrist: suspend sleep detection entirely until the watch is worn
+       again. wear_detect re-arms to WEARING on IMU motion, which resumes this
+       automatically next tick. Keep the soft timer ticking (negligible) but do
+       no sampling or staging, release the dense-HR sleep gate so HR stays
+       powered down, and drop any partial-minute data + re-seed the accel/step
+       baselines so the first minute after re-wear starts clean. */
+    if (!prv_is_worn())
+    {
+#ifdef BSP_USING_HR_SVC
+        hr_service_set_sleep_active(false);
+#endif
+        s_env.accel_activity_sum = 0;
+        s_env.accel_sample_count = 0;
+        s_env.hr_sum = 0;
+        s_env.hr_sum_sq = 0;
+        s_env.hr_sample_count = 0;
+        s_env.ticks_this_minute = 0;
+        s_env.prev_accel_valid = false;
+        s_env.last_step_count_valid = false;
+        return;
+    }
+
     prv_sample_once();
     s_env.ticks_this_minute++;
     if (s_env.ticks_this_minute >= SLEEP_MINUTE_TICKS)

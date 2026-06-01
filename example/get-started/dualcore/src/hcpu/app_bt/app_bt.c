@@ -9,9 +9,6 @@
 #define DBG_LVL               DBG_INFO
 #include <rtdbg.h>
 
-uint8_t app_bg_thread_stack[2048];
-
-
 static rt_device_t bt_device = RT_NULL;
 
 static bt_err_t app_bt_state_check(bt_state_t state)
@@ -21,7 +18,6 @@ static bt_err_t app_bt_state_check(bt_state_t state)
     ret = app_bt_query_state(&cur_state);
     if (BT_EOK == ret)
     {
-        rt_kprintf("app_bt_state_check cur_state %d state %d\n", cur_state, state);
         if (cur_state != state)
         {
             return BT_ERROR_STATE;

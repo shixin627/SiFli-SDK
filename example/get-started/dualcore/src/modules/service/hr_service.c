@@ -48,6 +48,7 @@
 #include "sensor.h"
 #include "bloc_peripheral.h"
 #include "watch_sys_service.h"
+#include "bsp_board.h"          /* CUSTOMER_BOARD_VER / BOARD_VER_29 */
 
 #define DBG_TAG "DS.HR"
 #define DBG_LVL DBG_INFO
@@ -1073,7 +1074,14 @@ void hr_service_set_sleep_active(bool active)
 static rt_bool_t bg_hr_should_sample(void)
 {
     if (hr_service_env.is_ready != RT_TRUE) return RT_FALSE;
+#if (CUSTOMER_BOARD_VER == BOARD_VER_29)
+    /* Production (v29): on the charger means off-wrist, so skip PPG entirely.
+       Dev boards (v28) deliberately keep sampling while charging so wear
+       detection stays live for bench use. NOTE: charging current can inject
+       noise into the optical ADC, so DC/PI read while charging may be less
+       reliable -- accepted dev-only trade-off. */
     if (battery_get_charge_state()->is_charging) return RT_FALSE; /* on charger */
+#endif
     if (!wear_detect_is_wearing()) return RT_FALSE;               /* off wrist  */
     return RT_TRUE;
 }
@@ -1111,7 +1119,11 @@ static void bg_hr_finish_burst(void)
 static void bg_hr_sample_cb(void *param)
 {
     (void)param;
-    /* Read one HR sample directly from the sensor (same call hr_service uses). */
+    /* Read one HR sample directly from the sensor (same call hr_service uses).
+       DATA-FLOW (easy to mis-trace): sd.data.hr <- gh3018_get_hr() <- loc_hb_value
+       <- gh3018_set_hr(), wired in the GH3018 driver's handle_algo_result_update()
+       (see commit b0400d1a7 + the "LIVE HR PATH" note there). If HR reads 0
+       system-wide, suspect that plumbing, not this sampler. */
     struct rt_sensor_data sd;
     if (hr_service_env.device &&
         rt_device_read(hr_service_env.device, 0, &sd, 1) == 1)

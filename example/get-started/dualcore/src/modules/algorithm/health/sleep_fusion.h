@@ -63,6 +63,13 @@ extern "C"
         /* HR std-dev in BPM. Proxy for HRV — elevated during REM. */
         uint8_t hr_std_bpm;
 
+        /* Beat-to-beat RMSSD in ms (true HRV) over the minute, or 0 when no
+           RR intervals were available this minute. Used to separate Deep
+           (high RMSSD) from REM (lower RMSSD). The classifier IGNORES it when
+           0, so it is safe to leave unset until the PPG RR plumbing lands —
+           staging then behaves exactly as the HR-std-only version. */
+        uint8_t hr_rmssd_ms;
+
         /* From wear_detect.c. When false the classifier emits
            NOT_WORN regardless of accel/HR.                        */
         bool is_worn;

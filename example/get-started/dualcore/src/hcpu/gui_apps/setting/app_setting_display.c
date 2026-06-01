@@ -338,10 +338,10 @@ static void on_stop(void)
             p_display->pwr_srv_hdl = DATA_CLIENT_INVALID_HANDLE;
         }
 
-        // Clean up UI elements
-        lv_obj_del(p_display->brightness);
-        lv_obj_del(p_display->rotate);
-
+        /* The page screen and every widget on it (incl. brightness/rotate)
+           are cascade-deleted by the app framework on stop — deleting these
+           children here is redundant and risks touching framework-managed
+           objects. Only the heap context is ours to free. */
         lv_mem_free(p_display);
         p_display = NULL;
     }

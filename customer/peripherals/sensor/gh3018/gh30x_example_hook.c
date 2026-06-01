@@ -14,6 +14,9 @@
 #include "gh30x_demo_algo_call.h"
 #include "gh30x_demo_algo_config.h"
 #include "bloc_peripheral.h"
+#ifdef BSP_USING_GESTURE_DETECT
+    #include "gesture_detect.h"   /* process_ppg_rawdata -> wear_detect_feed_ppg */
+#endif
 
 #if (__ALGO_LOG_CONFIG__)
 #define EXAMPLE_DEBUG_LOG_L1_HOOK EXAMPLE_DEBUG_LOG_L1
@@ -90,6 +93,17 @@ void Gh30xGetRawdataHookFunc(GU32 *read_buffer_ptr, GU16 length)
     }
 
     process_ppg_sensor_data(sample_num, buffer, buffer2);
+
+#ifdef BSP_USING_GESTURE_DETECT
+    /* Feed channel-0 (green) raw PPG into wear detection, symmetric to the IMU
+       path (bmi270_driver -> handle_imu_data). Without this the wear detector
+       never receives PPG, so it can only ever vote ON and never detects
+       off-wrist. process_ppg_rawdata() is a no-op unless BSP_USING_WEAR_DETECT. */
+    for (uint8_t j = 0; j < sample_num; j++)
+    {
+        process_ppg_rawdata(buffer[j]);
+    }
+#endif
 }
 
 /**

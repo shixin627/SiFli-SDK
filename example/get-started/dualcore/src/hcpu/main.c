@@ -1454,7 +1454,9 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
 
     g_app_advertising_context->conn_idx = curr_conn_idx;
 
-    rt_free(para.adv_data.completed_name);
+    /* Name was allocated into rsp_data (scan-response), not adv_data — free the
+       block we actually malloc'd or it leaks on every advertising restart. */
+    rt_free(para.rsp_data.completed_name);
 #if ENABLE_ADV_SERVICE_UUID
     rt_free(para.adv_data.completed_uuid);
 #endif
