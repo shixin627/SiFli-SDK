@@ -68,6 +68,7 @@
 #include "bloc_setting.h"
 #include <dfs_posix.h>
 #include <unistd.h>
+#include "fal.h"
 
 #ifdef APP_ID_SETTING
 
@@ -599,7 +600,7 @@ static void clear_flash_do(void)
     static const char *dirs_to_clear[] = {
         "/assets/icons",
         "/assets/images",
-        "/prefdb",
+        "/prefdb",   /* PC sim: file-mode prefs dir. Real hw: no-op (prefdb is a NOR partition, erased below). */
         "/recorder",
         "/note_list",
         "/photo",
@@ -610,7 +611,33 @@ static void clear_flash_do(void)
         LOG_I("Deleting: %s", dirs_to_clear[i]);
         recursive_delete(dirs_to_clear[i]);
     }
+
+    /* On real hardware the watch/ble_dev preferences live in the "prefdb"
+       FlashDB partition on NOR flash, not on the NAND filesystem, so the
+       recursive_delete above never touches them. Erase the raw partition to
+       truly reset all settings. The "ble" partition (BT host bonding / peer
+       address) is intentionally left untouched so this watch stays paired. */
+    const struct fal_partition *prefdb = fal_partition_find("prefdb");
+    if (prefdb)
+    {
+        int er = fal_partition_erase_all(prefdb);
+        if (er < 0)
+            LOG_E("prefdb partition erase failed: %d", er);
+        else
+            LOG_I("prefdb partition erased");
+    }
+
     LOG_I("Flash data cleared.");
+
+#ifndef BSP_USING_PC_SIMULATOR
+    /* The in-RAM SkaiWatchSys still holds the old values, and any later
+       store_watch_prefs would write them straight back into the just-erased
+       prefdb. Reboot so the firmware re-reads an empty prefdb and applies
+       factory defaults. */
+    LOG_I("Rebooting to apply reset...");
+    extern void drv_reboot(void);
+    drv_reboot();
+#endif
 }
 
 static lv_obj_t *reset_modal = NULL;
