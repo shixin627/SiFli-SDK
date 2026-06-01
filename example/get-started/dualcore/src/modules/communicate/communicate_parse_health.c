@@ -75,6 +75,11 @@ void resolve_HealthData_command(uint8_t key, const uint8_t *pValue,
             /* NB: sleep + HR store-and-forward is handled by bloc_health
                (async write) + the /health folder flush on reconnect in
                bloc_system_perception.c — not here. */
+
+            /* Push today's live step count immediately so the phone sees
+               the current tally on reconnect without waiting for the next
+               step-poll push (which only fires when steps actually increase). */
+            commu_send_sport_data();
         }
     }
     break;
