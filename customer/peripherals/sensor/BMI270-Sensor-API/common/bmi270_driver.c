@@ -116,6 +116,9 @@ static uint16_t _int_status;
 /* Set by bmi270_hw_wrist_wake_enable(); checked in the int handler to
    decide whether to dispatch the wrist-wake feature interrupt. */
 static bool hw_wrist_wake_armed = false;
+/* Set by bmi270_any_motion_enable(); checked in the int handler to dispatch
+   the any_motion feature interrupt as an additional fast wake trigger. */
+static bool any_motion_armed = false;
 /*! Variable that holds the I2C device address or SPI chip selection */
 static uint8_t dev_addr;
 
@@ -1082,6 +1085,15 @@ static void bmi270_int_msg_handler(void)
         }
     }
 
+    /* any_motion — additional FAST wake trigger. Fires on ANY motion within
+       tens of ms (vs wrist-wake's ~1 s). The host-side handler MUST pose-filter
+       before waking the screen, else walking lights it up. */
+    if (any_motion_armed && (status & BMI270_ANY_MOT_STATUS_MASK))
+    {
+        LOG_I("BMI270 any-motion detected -> dispatching handler");
+        bmi270_on_any_motion_detected();
+    }
+
     /* FIFO watermark — screen-off path. The chip accumulates ~1 s of
        accel+gyro samples; drain everything through the AHRS so the
        quaternion stays converged for the next wrist-wake event. Process
@@ -1698,6 +1710,17 @@ RT_WEAK void bmi270_on_wrist_wake_detected(void)
           (unsigned)rt_tick_get());
 }
 
+RT_WEAK void bmi270_on_any_motion_detected(void)
+{
+    LOG_I("BMI270 any-motion (default handler, override me) tick=%u",
+          (unsigned)rt_tick_get());
+}
+
+int bmi270_any_motion_is_enabled(void)
+{
+    return any_motion_armed ? 1 : 0;
+}
+
 int bmi270_hw_wrist_wake_is_enabled(void)
 {
     return hw_wrist_wake_armed ? 1 : 0;
@@ -1708,6 +1731,14 @@ int bmi270_hw_wrist_wake_is_enabled(void)
    once the basic gesture detection is confirmed working. */
 #ifndef BMI270_WRIST_WAKE_USE_CUSTOM_TUNING
     #define BMI270_WRIST_WAKE_USE_CUSTOM_TUNING 1
+#endif
+
+/* The raise-wrist WAKE feature (BMI2_WRIST_WEAR_WAKE_UP, the chip's ~1 s lift
+   detector) is superseded by the host any_motion path — set 0 to disable it.
+   The WRIST_GESTURE feature (flick / pivot / jiggle) is kept regardless. Set 1
+   to restore the original WW + GEST behaviour. */
+#ifndef BMI270_ENABLE_WRIST_WEAR_WAKEUP
+    #define BMI270_ENABLE_WRIST_WEAR_WAKEUP 0
 #endif
 
 int bmi270_hw_wrist_wake_enable(int en)
@@ -1734,11 +1765,16 @@ int bmi270_hw_wrist_wake_enable(int en)
              4. Map the feature interrupt to INT1.
            Each step has its own log so we can tell which one fails. */
 
+    #if BMI270_ENABLE_WRIST_WEAR_WAKEUP
         uint8_t sens_list[3] = { BMI2_ACCEL, BMI2_WRIST_WEAR_WAKE_UP, BMI2_WRIST_GESTURE };
         rslt = bmi270_sensor_enable(sens_list, 3, &bmi2_dev);
+    #else
+        uint8_t sens_list[2] = { BMI2_ACCEL, BMI2_WRIST_GESTURE };
+        rslt = bmi270_sensor_enable(sens_list, 2, &bmi2_dev);
+    #endif
         if (rslt != BMI2_OK)
         {
-            LOG_E("wrist-wake step1 sensor_enable(ACCEL+WW+GEST) failed: %d", rslt);
+            LOG_E("wrist-wake step1 sensor_enable failed: %d", rslt);
             goto out;
         }
         /* Read accel config back to confirm sensor_enable didn't reset our
@@ -1793,6 +1829,7 @@ int bmi270_hw_wrist_wake_enable(int en)
                   remap_after.x, remap_after.y, remap_after.z);
         }
 
+    #if BMI270_ENABLE_WRIST_WEAR_WAKEUP
         struct bmi2_sens_config cfg = { .type = BMI2_WRIST_WEAR_WAKE_UP };
         rslt = bmi270_get_sensor_config(&cfg, 1, &bmi2_dev);
         if (rslt != BMI2_OK)
@@ -1824,6 +1861,7 @@ int bmi270_hw_wrist_wake_enable(int en)
         }
         LOG_I("wrist-wake step3 config set (custom_tuning=%d)",
               BMI270_WRIST_WAKE_USE_CUSTOM_TUNING);
+    #endif /* BMI270_ENABLE_WRIST_WEAR_WAKEUP */
 
         /* Explicit INT pin re-config — defensive against any earlier path
            (drdy un-routing, gyro suspend etc.) that may have left the pin
@@ -1860,17 +1898,24 @@ int bmi270_hw_wrist_wake_enable(int en)
         }
         LOG_I("wrist-wake step4: pin %d active-low push-pull non-latch", int_pin);
 
+    #if BMI270_ENABLE_WRIST_WEAR_WAKEUP
         struct bmi2_sens_int_config sens_int[2] = {
             { .type = BMI2_WRIST_WEAR_WAKE_UP, .hw_int_pin = int_pin },
             { .type = BMI2_WRIST_GESTURE,      .hw_int_pin = int_pin },
         };
         rslt = bmi270_map_feat_int(sens_int, 2, &bmi2_dev);
+    #else
+        struct bmi2_sens_int_config sens_int[1] = {
+            { .type = BMI2_WRIST_GESTURE, .hw_int_pin = int_pin },
+        };
+        rslt = bmi270_map_feat_int(sens_int, 1, &bmi2_dev);
+    #endif
         if (rslt != BMI2_OK)
         {
-            LOG_E("wrist-wake step5 map_feat_int(WW+GEST) failed: %d", rslt);
+            LOG_E("wrist-wake step5 map_feat_int failed: %d", rslt);
             goto out;
         }
-        LOG_I("wrist-wake step5: WW+GEST feat int mapped to pin %d", int_pin);
+        LOG_I("wrist-wake step5: feat int mapped to pin %d", int_pin);
 
         /* Step 6 — wrist-gesture config (left arm by default; flip via
            BMI270_WRIST_WEAR_ON_RIGHT_ARM=1 if user wears watch on right). */
@@ -1909,7 +1954,8 @@ int bmi270_hw_wrist_wake_enable(int en)
               gest_cfg.cfg.wrist_gest.max_duration);
 
         hw_wrist_wake_armed = true;
-        LOG_I("BMI270 HW wrist-wake armed (WW + GEST)");
+        LOG_I("BMI270 HW gesture armed (WEAR_WAKEUP=%d, GESTURE=1)",
+              BMI270_ENABLE_WRIST_WEAR_WAKEUP);
     }
     else
     {
@@ -1918,8 +1964,13 @@ int bmi270_hw_wrist_wake_enable(int en)
            and the transition would briefly drop accel power. Just turn
            off the feature engines; the leftover INT mapping is harmless
            because the feature engines won't fire. */
+    #if BMI270_ENABLE_WRIST_WEAR_WAKEUP
         uint8_t sensors[] = { BMI2_WRIST_WEAR_WAKE_UP, BMI2_WRIST_GESTURE };
         rslt = bmi270_sensor_disable(sensors, 2, &bmi2_dev);
+    #else
+        uint8_t sensors[] = { BMI2_WRIST_GESTURE };
+        rslt = bmi270_sensor_disable(sensors, 1, &bmi2_dev);
+    #endif
         if (rslt != BMI2_OK)
         {
             LOG_E("wrist-wake sensor_disable failed: %d", rslt);
@@ -1927,6 +1978,116 @@ int bmi270_hw_wrist_wake_enable(int en)
         }
         hw_wrist_wake_armed = false;
         LOG_I("BMI270 HW wrist-wake disarmed");
+    }
+
+out:
+    bmi270_api_unlock();
+    return (rslt == BMI2_OK) ? 0 : -1;
+}
+
+/* any_motion duration: how long the slope must stay above threshold before the
+   interrupt fires. Per the Bosch API doc (bmi270.c:771 "expressed in 50 Hz
+   samples (20 msec)"), 1 LSB = a FIXED 20 ms — it tracks the feature engine's
+   internal 50 Hz clock, NOT the 25 Hz screen-off accel ODR. So 5 = ~100 ms
+   regardless of the accel ODR (the engine samples internally, see :608). */
+#ifndef BMI270_ANY_MOT_DURATION
+    #define BMI270_ANY_MOT_DURATION  10   /* 5 x 25 ms = ~125 ms */
+#endif
+
+/* Enable BMI2_ANY_MOTION as an ADDITIONAL fast wake trigger alongside
+   wrist-wake. Additive — does not touch the wrist-wake feature. Order follows
+   the Bosch reference: configure the feature, map its interrupt, THEN enable
+   it last. Accel is already enabled+configured by the wrist-wake path, so it
+   is deliberately NOT re-enabled here (avoids disturbing its ODR / perf).
+   Arm in the screen-off path next to bmi270_hw_wrist_wake_enable(1). */
+int bmi270_any_motion_enable(int en)
+{
+    if (accel_gyro_dev_info.open_flag == 0)
+    {
+        LOG_W("any_motion_enable: bmi270 not open");
+        return -1;
+    }
+
+    int8_t rslt;
+    bmi270_api_lock();
+
+    if (en)
+    {
+        /* 1. Get current (Bosch default) config. */
+        struct bmi2_sens_config cfg = { .type = BMI2_ANY_MOTION };
+        rslt = bmi270_get_sensor_config(&cfg, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("any_motion step1 get_config failed: %d", rslt);
+            goto out;
+        }
+        LOG_I("any_motion defaults: dur=%u thr=%u x=%u y=%u z=%u",
+              cfg.cfg.any_motion.duration, cfg.cfg.any_motion.threshold,
+              cfg.cfg.any_motion.select_x, cfg.cfg.any_motion.select_y,
+              cfg.cfg.any_motion.select_z);
+
+        /* 2. Override duration and restrict slope detection to the Y axis only
+           (raise-wrist motion is dominantly on Y). Keep the Bosch default
+           threshold. NOTE: axes are in the feature-engine frame AFTER the
+           wrist-wake remap (bmi270_hw_wrist_wake_enable runs first), so "Y"
+           here is the watch Y. */
+        cfg.cfg.any_motion.duration = BMI270_ANY_MOT_DURATION;
+        cfg.cfg.any_motion.select_x = 0;
+        cfg.cfg.any_motion.select_y = 0;
+        cfg.cfg.any_motion.select_z = 1;
+        rslt = bmi270_set_sensor_config(&cfg, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("any_motion step2 set_config failed: %d", rslt);
+            goto out;
+        }
+        LOG_I("any_motion set: dur=%u (~%u ms) thr=%u sel x=%u y=%u z=%u",
+              cfg.cfg.any_motion.duration,
+              (unsigned)(BMI270_ANY_MOT_DURATION * 20),
+              cfg.cfg.any_motion.threshold,
+              cfg.cfg.any_motion.select_x, cfg.cfg.any_motion.select_y,
+              cfg.cfg.any_motion.select_z);
+
+        /* 3. Map the feature interrupt to the same pin wrist-wake uses (its
+           electrical config is already applied by the wrist-wake path). */
+    #if BMI270_USE_INT1
+        const enum bmi2_hw_int_pin int_pin = BMI2_INT1;
+    #else
+        const enum bmi2_hw_int_pin int_pin = BMI2_INT2;
+    #endif
+        struct bmi2_sens_int_config sens_int[1] = {
+            { .type = BMI2_ANY_MOTION, .hw_int_pin = int_pin },
+        };
+        rslt = bmi270_map_feat_int(sens_int, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("any_motion step3 map_feat_int failed: %d", rslt);
+            goto out;
+        }
+
+        /* 4. Enable the feature LAST (Bosch order). ANY_MOTION only — accel
+           stays as the wrist-wake path left it. */
+        uint8_t sens_list[1] = { BMI2_ANY_MOTION };
+        rslt = bmi270_sensor_enable(sens_list, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("any_motion step4 sensor_enable failed: %d", rslt);
+            goto out;
+        }
+        any_motion_armed = true;
+        LOG_I("BMI270 any-motion armed (pin %d)", int_pin);
+    }
+    else
+    {
+        uint8_t sensors[1] = { BMI2_ANY_MOTION };
+        rslt = bmi270_sensor_disable(sensors, 1, &bmi2_dev);
+        if (rslt != BMI2_OK)
+        {
+            LOG_E("any_motion sensor_disable failed: %d", rslt);
+            goto out;
+        }
+        any_motion_armed = false;
+        LOG_I("BMI270 any-motion disarmed");
     }
 
 out:

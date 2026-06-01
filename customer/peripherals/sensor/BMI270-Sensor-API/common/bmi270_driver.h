@@ -133,6 +133,16 @@ int bmi270_hw_wrist_wake_enable(int en);
 int bmi270_hw_wrist_wake_is_enabled(void);
 void bmi270_on_wrist_wake_detected(void);
 
+/* Hardware any-motion feature (BMI2_ANY_MOTION) — an ADDITIONAL fast wake
+   trigger alongside wrist-wake. Fires INT within tens of ms when the accel
+   slope exceeds a threshold for a short duration — much faster than
+   wrist-wake's ~1 s, but fires on ANY motion (walking, arm swing). The
+   application overrides bmi270_on_any_motion_detected() and MUST pose-filter
+   there before waking the screen. Returns 0 on success, negative on failure. */
+int bmi270_any_motion_enable(int en);
+int bmi270_any_motion_is_enabled(void);
+void bmi270_on_any_motion_detected(void);
+
 /* Hardware step counter feature (BMI2_STEP_COUNTER). The chip maintains a
    running step total internally; the host just reads it periodically. This
    lets the host stop processing DRDY samples for step counting (Kraepelin

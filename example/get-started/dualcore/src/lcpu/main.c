@@ -75,6 +75,24 @@ static bool step_poll_first = true;
     #define USE_BMI270_HW_WRIST_WAKE 1
 #endif
 
+/* ===== EXPERIMENTAL wake-latency switch — REVERT BEFORE SHIP =====
+   Trades battery (more false wakes) for a looser/faster raise-to-wake.
+   1 = accept EVERY chip wrist-wake INT, skipping the viewing-pose gate
+       (is_in_viewing_pose_from_accel). Removes the case where a real raise
+       was rejected and you had to re-raise. Cost: any transient wrist swing
+       that trips the chip now lights the screen -> standby battery drops.
+   0 = production behaviour (pose-gated). */
+#ifndef WAKE_EXP_BYPASS_POSE_GATE
+    #define WAKE_EXP_BYPASS_POSE_GATE 1
+#endif
+
+/* Additional fast wake trigger: BMI270 any_motion (fires in tens of ms vs
+   wrist-wake's ~1 s), gated by a MANDATORY host pose check. Runs ALONGSIDE the
+   HW wrist-wake feature (both armed in screen-off). Set 0 to disable. */
+#ifndef USE_BMI270_ANY_MOTION_WAKE
+    #define USE_BMI270_ANY_MOTION_WAKE 1
+#endif
+
 #define MAIN_EVENT_BATTERY_CHARGING (1 << 0)
 #define MAIN_EVENT_BATTERY_VOLTAGE (1 << 1)
 #define MAIN_EVENT_HAND_LIFT (1 << 2)
@@ -152,6 +170,11 @@ void bmi270_on_wrist_wake_detected(void)
     float az = (float)rz;
 
     bool ok = have_accel && is_in_viewing_pose_from_accel(ax, ay, az);
+#if WAKE_EXP_BYPASS_POSE_GATE
+    /* EXPERIMENTAL: accept any pose. Still require a fresh accel sample so the
+       AHRS seed below stays valid. */
+    ok = have_accel;
+#endif
     rt_kprintf("[wrist-wake] tick=%u pose=%s\n",
                (unsigned)rt_tick_get(), ok ? "ACCEPT" : "REJECT");
     if (!ok)
@@ -168,6 +191,77 @@ void bmi270_on_wrist_wake_detected(void)
 #endif
     hand_tracking_lift_callback(2);
 }
+
+#if USE_BMI270_ANY_MOTION_WAKE
+/* Observation window after any_motion. any_motion fires DURING motion, so a
+   single accel sample is unreliable (accel != gravity while moving). Poll accel
+   until the motion SETTLES (magnitude stops changing => linear accel ~0, so
+   accel ~= gravity), then apply the viewing-pose envelope:
+     - settles in a viewing pose  -> wake the screen (lift_callback)
+     - never settles in pose within the window -> return = sleep back.
+   The pose gate is MANDATORY here (NOT bypassable by WAKE_EXP_BYPASS_POSE_GATE)
+   so walking / arm-swing does not light the screen. Compares magnitude-squared
+   to avoid sqrt; is_in_viewing_pose_from_accel() normalises internally. */
+#ifndef ANY_MOT_OBSERVE_MAX_POLLS
+    #define ANY_MOT_OBSERVE_MAX_POLLS 6      /* x POLL_MS = max observation */
+#endif
+#ifndef ANY_MOT_OBSERVE_POLL_MS
+    #define ANY_MOT_OBSERVE_POLL_MS   25     /* ~ one 40ms accel sample apart */
+#endif
+#ifndef ANY_MOT_SETTLE_FRAC2
+    #define ANY_MOT_SETTLE_FRAC2      0.12f  /* |d(mag^2)|/mag^2 below = settled */
+#endif
+
+void bmi270_on_any_motion_detected(void)
+{
+#ifdef BSP_USING_GESTURE_DETECT
+    int16_t rx = 0, ry = 0, rz = 0;
+    float ax = 0.0f, ay = 0.0f, az = 0.0f;
+    float prev_mag2 = -1.0f;
+    bool have_accel = false;
+    bool settled = false;
+
+    for (int i = 0; i < ANY_MOT_OBSERVE_MAX_POLLS; i++)
+    {
+        if (bmi270_read_accel_now(&rx, &ry, &rz) == 0)
+        {
+            have_accel = true;
+            ax = (float)rx;
+            ay = (float)ry;
+            az = (float)rz;
+            float mag2 = ax * ax + ay * ay + az * az;
+            if (prev_mag2 > 0.0f && mag2 > 0.0f)
+            {
+                float d = mag2 - prev_mag2;
+                if (d < 0.0f)
+                    d = -d;
+                if (d < prev_mag2 * ANY_MOT_SETTLE_FRAC2)
+                {
+                    settled = true; /* ax/ay/az ~= gravity now */
+                    break;
+                }
+            }
+            prev_mag2 = mag2;
+        }
+        rt_thread_mdelay(ANY_MOT_OBSERVE_POLL_MS);
+    }
+
+    bool ok = have_accel && settled &&
+              is_in_viewing_pose_from_accel(ax, ay, az);
+    rt_kprintf("[any-motion] tick=%u settled=%d pose=%s\n",
+               (unsigned)rt_tick_get(), settled ? 1 : 0,
+               ok ? "ACCEPT" : "REJECT");
+    if (!ok)
+        return;
+
+    gesture_seed_attitude_from_accel(ax, ay, az);
+#else
+    rt_kprintf("[any-motion] tick=%u (no pose filter)\n",
+               (unsigned)rt_tick_get());
+#endif
+    hand_tracking_lift_callback(2);
+}
+#endif /* USE_BMI270_ANY_MOTION_WAKE */
 
 /* === LCPU PM policy override =============================================
    The middleware default in bf0_pm.c (RT_WEAK pm_policy[]) picks STANDBY
@@ -253,6 +347,9 @@ void on_lcpu_sleep_mode_changed(bool sleep)
     if (sleep)
     {
         bmi270_hw_wrist_wake_enable(1);
+#if USE_BMI270_ANY_MOTION_WAKE
+        bmi270_any_motion_enable(1); /* fast additional trigger, pose-gated */
+#endif
         bmi270_set_drdy_int_routing(0);
         /* Gyro off for the whole DARK window -- nothing reads it. */
         bmi270_set_gyro_suspend(1);
@@ -278,6 +375,9 @@ void on_lcpu_sleep_mode_changed(bool sleep)
         bmi270_set_fifo_wm_int(0, 0);
         bmi270_set_drdy_int_routing(1);
         bmi270_hw_wrist_wake_enable(0);
+#if USE_BMI270_ANY_MOTION_WAKE
+        bmi270_any_motion_enable(0);
+#endif
     }
 }
     #endif /* USE_BMI270_HW_WRIST_WAKE */

@@ -63,6 +63,7 @@ extern lv_indev_t *touch_get_indev_handler(void);
 #define GOV_MONITOR_MS 300U      /* periodic anim-aware re-evaluation     */
 #define GOV_WAKE_DEBOUNCE_MS 250U /* ignore touch as operate after wake    */
 #define GOV_INDEV_SLOW_MS 1000U  /* layer-2: slowed indev poll in 1 Hz    */
+#define GOV_FAST_HOLD_MS 300U    /* hold 60 Hz this long after wake/activity */
 
 /* layer-3 DVFS run modes coupled to the refresh state. 144 MHz is enough for
  * 60 Hz partial-update GUI + the concurrent gesture-recognition load (display
@@ -83,6 +84,11 @@ static bool s_inited = false;
 static bool s_session_active = false;   /* the latch                       */
 static bool s_is_fast = true;           /* current applied state (60 Hz)   */
 static disp_gov_force_t s_force = DISP_GOV_FORCE_NONE;
+
+/* Tick deadline: while lv_tick_get() < this, stay at 60 Hz regardless of idle.
+   Set on every wake / operate to GOV_FAST_HOLD_MS ahead, giving a fresh wake or
+   interaction a smooth 60 Hz window before the drop to 1 Hz. */
+static uint32_t s_fast_until = 0;
 
 static uint32_t s_wake_debounce_until = 0; /* tick deadline (0 = inactive) */
 
@@ -196,6 +202,11 @@ static bool gov_should_be_slow(void)
         return false;
     if (s_force == DISP_GOV_FORCE_1HZ)
         return true;
+
+    /* Hold 60 Hz for GOV_FAST_HOLD_MS after the last wake / activity, so a
+       fresh wake stays smooth before we drop to 1 Hz. */
+    if ((int32_t)(s_fast_until - lv_tick_get()) > 0)
+        return false;
 
     /* All three conditions must hold to drop to 1 Hz. */
     if (s_session_active)
@@ -396,6 +407,7 @@ void disp_gov_notify_operate(void)
         return;
 
     s_session_active = true;
+    s_fast_until = lv_tick_get() + GOV_FAST_HOLD_MS;
 
     /* Proactive bump to 60 Hz. gov_apply() only sets timer-period fields
      * (cheap, low-risk). The heavy synchronous lv_refr_now() walks the display
@@ -422,10 +434,22 @@ void disp_gov_notify_screen_on(void)
      * so a glance stays at 1 Hz. */
     s_session_active = false;
     s_wake_debounce_until = lv_tick_get() + GOV_WAKE_DEBOUNCE_MS;
+    /* Hold 60 Hz for ~1 s after wake so the wake frame + any immediate
+       interaction stay smooth; the monitor drops to 1 Hz once it expires. */
+    s_fast_until = lv_tick_get() + GOV_FAST_HOLD_MS;
 
     /* Land fast for the wake fade-in; the settle re-check will drop us to
      * 1 Hz once we're idle on home. */
     gov_apply(true);
+    /* Force an immediate synchronous paint so the wake frame shows NOW instead
+     * of waiting up to ~1 s for the next refr tick at 1 Hz — this is THE wake-
+     * latency fix. Same guard as disp_gov_notify_operate(): lv_refr_now() must
+     * run on the LVGL thread, and the RESUME event handler runs there. */
+    {
+        extern bool is_on_lvgl_thread(void);
+        if (is_on_lvgl_thread())
+            lv_refr_now(lv_disp_get_default());
+    }
     gov_schedule_recheck();
 }
 
@@ -436,7 +460,12 @@ void disp_gov_notify_screen_off(void)
 
     s_session_active = false;
     s_wake_debounce_until = 0;
-    /* Leave the period as-is; the panel is off. RESUME will re-apply. */
+    /* Pre-arm 60 Hz for the NEXT wake. lv_timers are frozen while the panel is
+       off so this costs nothing until resume, but the wake then inherits a 60 Hz
+       refr period — the slow part was waking up still at 1 Hz. The fade-out anim
+       keeps gov_should_be_slow() false until the timers freeze, so the monitor
+       cannot undo this before sleep. */
+    gov_apply(true);
 }
 
 bool disp_gov_notify_touch_press(void)
