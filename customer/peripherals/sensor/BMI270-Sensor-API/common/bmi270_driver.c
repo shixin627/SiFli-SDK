@@ -1054,7 +1054,6 @@ static void bmi270_int_msg_handler(void)
        solely for the gesture without any DRDY bit set. */
     if (hw_wrist_wake_armed && wrist_bit)
     {
-        rt_kprintf("[wake-src] WEAR_WAKEUP\n");
         bmi270_on_wrist_wake_detected();
     }
 
@@ -1073,19 +1072,12 @@ static void bmi270_int_msg_handler(void)
             };
             if (g == 2 /*pivot_up*/ || g == 4 /*flick_in*/ || g == 5 /*flick_out*/)
             {
-                rt_kprintf("[wake-src] GESTURE g=%d (%s)\n",
-                           g, g < 6 ? names[g] : "?");
                 bmi270_on_wrist_wake_detected();
-            }
-            else
-            {
-                rt_kprintf("[wake-src] GESTURE g=%d (%s) -> no wake\n",
-                           g, g < 6 ? names[g] : "?");
             }
         }
         else
         {
-            rt_kprintf("[wake-src] GESTURE (readback failed, dispatching)\n");
+            LOG_W("BMI270 wrist-gesture fired but get_feature_data failed; dispatching anyway");
             bmi270_on_wrist_wake_detected();
         }
     }
@@ -1095,7 +1087,6 @@ static void bmi270_int_msg_handler(void)
        before waking the screen, else walking lights it up. */
     if (any_motion_armed && (status & BMI270_ANY_MOT_STATUS_MASK))
     {
-        rt_kprintf("[wake-src] ANY_MOTION\n");
         bmi270_on_any_motion_detected();
     }
 
@@ -2026,10 +2017,10 @@ int bmi270_any_motion_enable(int en)
             LOG_E("any_motion step1 get_config failed: %d", rslt);
             goto out;
         }
-        rt_kprintf("[any-motion] Bosch defaults: dur=%u thr=%u x=%u y=%u z=%u\n",
-                   cfg.cfg.any_motion.duration, cfg.cfg.any_motion.threshold,
-                   cfg.cfg.any_motion.select_x, cfg.cfg.any_motion.select_y,
-                   cfg.cfg.any_motion.select_z);
+        LOG_D("any_motion defaults: dur=%u thr=%u x=%u y=%u z=%u",
+              cfg.cfg.any_motion.duration, cfg.cfg.any_motion.threshold,
+              cfg.cfg.any_motion.select_x, cfg.cfg.any_motion.select_y,
+              cfg.cfg.any_motion.select_z);
 
         /* 2. Override duration and restrict slope detection to the Y axis only
            (raise-wrist motion is dominantly on Y). Keep the Bosch default
@@ -2081,9 +2072,9 @@ int bmi270_any_motion_enable(int en)
             goto out;
         }
         any_motion_armed = true;
-        rt_kprintf("[any-motion] ARMED ok (pin %d, dur=%u, thr=%u)\n",
-                   int_pin, BMI270_ANY_MOT_DURATION,
-                   (unsigned)cfg.cfg.any_motion.threshold);
+        LOG_I("BMI270 any-motion armed (pin %d, dur=%u, thr=%u)",
+              int_pin, BMI270_ANY_MOT_DURATION,
+              (unsigned)cfg.cfg.any_motion.threshold);
     }
     else
     {
