@@ -1054,7 +1054,7 @@ static void bmi270_int_msg_handler(void)
        solely for the gesture without any DRDY bit set. */
     if (hw_wrist_wake_armed && wrist_bit)
     {
-        LOG_I("BMI270 wrist-wake detected -> dispatching handler");
+        rt_kprintf("[wake-src] WEAR_WAKEUP\n");
         bmi270_on_wrist_wake_detected();
     }
 
@@ -1067,20 +1067,25 @@ static void bmi270_int_msg_handler(void)
         if (bmi270_get_feature_data(&fdata, 1, &bmi2_dev) == BMI2_OK)
         {
             uint8_t g = fdata.sens_data.wrist_gesture_output;
-            // static const char *names[6] = {
-            //     "unknown", "push_arm_down", "pivot_up",
-            //     "wrist_jiggle", "flick_in", "flick_out"
-            // };
-            // LOG_D("BMI270 wrist-gesture detected: %d (%s)",
-            //       g, g < 6 ? names[g] : "?");
+            static const char *names[6] = {
+                "unknown", "push_arm_down", "pivot_up",
+                "wrist_jiggle", "flick_in", "flick_out"
+            };
             if (g == 2 /*pivot_up*/ || g == 4 /*flick_in*/ || g == 5 /*flick_out*/)
             {
+                rt_kprintf("[wake-src] GESTURE g=%d (%s)\n",
+                           g, g < 6 ? names[g] : "?");
                 bmi270_on_wrist_wake_detected();
+            }
+            else
+            {
+                rt_kprintf("[wake-src] GESTURE g=%d (%s) -> no wake\n",
+                           g, g < 6 ? names[g] : "?");
             }
         }
         else
         {
-            LOG_W("BMI270 wrist-gesture fired but get_feature_data failed; dispatching anyway");
+            rt_kprintf("[wake-src] GESTURE (readback failed, dispatching)\n");
             bmi270_on_wrist_wake_detected();
         }
     }
@@ -1090,7 +1095,7 @@ static void bmi270_int_msg_handler(void)
        before waking the screen, else walking lights it up. */
     if (any_motion_armed && (status & BMI270_ANY_MOT_STATUS_MASK))
     {
-        LOG_I("BMI270 any-motion detected -> dispatching handler");
+        rt_kprintf("[wake-src] ANY_MOTION\n");
         bmi270_on_any_motion_detected();
     }
 
@@ -1991,7 +1996,7 @@ out:
    internal 50 Hz clock, NOT the 25 Hz screen-off accel ODR. So 5 = ~100 ms
    regardless of the accel ODR (the engine samples internally, see :608). */
 #ifndef BMI270_ANY_MOT_DURATION
-    #define BMI270_ANY_MOT_DURATION  10   /* 5 x 25 ms = ~125 ms */
+    #define BMI270_ANY_MOT_DURATION  10   /* MAX (13-bit); 8191 x 20ms = ~163 s */
 #endif
 
 /* Enable BMI2_ANY_MOTION as an ADDITIONAL fast wake trigger alongside
@@ -2021,10 +2026,10 @@ int bmi270_any_motion_enable(int en)
             LOG_E("any_motion step1 get_config failed: %d", rslt);
             goto out;
         }
-        LOG_I("any_motion defaults: dur=%u thr=%u x=%u y=%u z=%u",
-              cfg.cfg.any_motion.duration, cfg.cfg.any_motion.threshold,
-              cfg.cfg.any_motion.select_x, cfg.cfg.any_motion.select_y,
-              cfg.cfg.any_motion.select_z);
+        rt_kprintf("[any-motion] Bosch defaults: dur=%u thr=%u x=%u y=%u z=%u\n",
+                   cfg.cfg.any_motion.duration, cfg.cfg.any_motion.threshold,
+                   cfg.cfg.any_motion.select_x, cfg.cfg.any_motion.select_y,
+                   cfg.cfg.any_motion.select_z);
 
         /* 2. Override duration and restrict slope detection to the Y axis only
            (raise-wrist motion is dominantly on Y). Keep the Bosch default
@@ -2035,6 +2040,7 @@ int bmi270_any_motion_enable(int en)
         cfg.cfg.any_motion.select_x = 0;
         cfg.cfg.any_motion.select_y = 0;
         cfg.cfg.any_motion.select_z = 1;
+        cfg.cfg.any_motion.threshold = 250; /* Bosch default=170; 2x to reduce false wakes */
         rslt = bmi270_set_sensor_config(&cfg, 1, &bmi2_dev);
         if (rslt != BMI2_OK)
         {
@@ -2075,7 +2081,9 @@ int bmi270_any_motion_enable(int en)
             goto out;
         }
         any_motion_armed = true;
-        LOG_I("BMI270 any-motion armed (pin %d)", int_pin);
+        rt_kprintf("[any-motion] ARMED ok (pin %d, dur=%u, thr=%u)\n",
+                   int_pin, BMI270_ANY_MOT_DURATION,
+                   (unsigned)cfg.cfg.any_motion.threshold);
     }
     else
     {
