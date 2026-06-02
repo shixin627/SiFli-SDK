@@ -1470,6 +1470,12 @@ rt_int32_t clock_on_resume(void)
     if (pause_clock == false)
         return -RT_EOK;
     pause_clock = false;
+    /* Back on the watch face → restore the global input bar (per-page
+       VALUE_CHANGED keeps it in sync on later in-app navigation). */
+    {
+        extern void instruction_list_bar_set_visible(bool visible);
+        instruction_list_bar_set_visible(true);
+    }
 
     LOG_I("clock_on_resume: before dial_media_header_init");
     dial_media_header_init();
@@ -1488,6 +1494,12 @@ rt_int32_t clock_on_pause(void)
     }
     rt_list_t *pos;
     pause_clock = true;
+    /* Leaving the watch-face app → hide the global input bar; it lives on
+       lv_layer_top() which would otherwise keep floating it over the next app. */
+    {
+        extern void instruction_list_bar_set_visible(bool visible);
+        instruction_list_bar_set_visible(false);
+    }
     dial_media_header_deinit();
     rt_list_for_each(pos, (&p_app_clock_main->list))
     {
@@ -1503,6 +1515,10 @@ void clock_on_stop(void)
 {
     rt_list_t *pos;
     pause_clock = true;
+    {
+        extern void instruction_list_bar_set_visible(bool visible);
+        instruction_list_bar_set_visible(false);
+    }
     rt_list_for_each(pos, (&p_app_clock_main->list))
     {
         app_clock_desc_t *clk_desc;
@@ -1613,6 +1629,12 @@ lv_obj_t *build_home_view(lv_obj_t *parent)
 
     battery_status_indicator_builder(lv_layer_top());
     wear_status_indicator_builder(lv_layer_top());
+    /* Boot lands on the watch face (HOME) → show the global input bar now; the
+       per-page VALUE_CHANGED handler keeps it in sync on later navigation. */
+    {
+        extern void instruction_list_bar_set_visible(bool visible);
+        instruction_list_bar_set_visible(true);
+    }
     refresh_bluetooth_disconnection(SkaiWatchSys.gap_conn_state ==
                                     GAP_CONN_STATE_CONNECTED);
     instruction_list_main_time_update();

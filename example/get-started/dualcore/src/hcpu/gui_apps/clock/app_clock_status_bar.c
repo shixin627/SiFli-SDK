@@ -346,6 +346,17 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         }
 
         middle_layer_tileview_index = active_pos;
+        /* Global input bar (lv_layer_top): show on the watch face (HOME), the
+           transient instruction_list LEFT tile, AND the mouse page (RIGHT) — a tap
+           floats the shared list in place on every one. Hidden on message (UP) /
+           control-center (DOWN). (R3 stage 2: the mouse page now uses THIS bar,
+           not device_pager's own — its bar is kept hidden in device_pager_set_active.) */
+        {
+            extern void instruction_list_bar_set_visible(bool visible);
+            instruction_list_bar_set_visible(active_pos == MAIN_PAGE_TYPE_HOME ||
+                                             active_pos == MAIN_PAGE_TYPE_LEFT ||
+                                             active_pos == MAIN_PAGE_TYPE_RIGHT);
+        }
         {
             /* Right tile = the device control page. Host the mouse behind the
                list while we're on it; tear it down when we leave. Also re-read
@@ -354,6 +365,14 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             extern void device_pager_set_active(bool on);
             bool on_device_page = (active_pos == MAIN_PAGE_TYPE_RIGHT);
             device_pager_set_active(on_device_page);
+            /* Hide the top battery indicator on the mouse/device page (user
+               request); show it again on every other page. Its per-page content
+               opacity still governs whether it actually appears there, so showing
+               the container on a page that keeps it transparent is harmless. */
+            {
+                extern void show_battery(bool show);
+                show_battery(!on_device_page);
+            }
             /* settle: full-screen black backdrop on the device page (gaus_dial_bg),
                cleared for the left/down/up reveals so their blur shows instead */
             if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
@@ -641,6 +660,42 @@ void animate_to_message_list(void)
                            LV_ANIM_ON);
     }
     set_scroll_anim_time(false, NULL);
+}
+
+/* ---- Floating instruction-list backdrop (R3 refactor) ----------------------
+   The instruction list now floats on lv_layer_top instead of occupying the LEFT
+   tile, so tapping the bar no longer scrolls to a tile that fades the blurred
+   dial in. instruction_list_bar_set_blur(true) shows the SAME gaus_dial_bg the
+   LEFT reveal used (transparent black layer + blurred dial image, not the device
+   page's full-black COVER). It is gated by s_bar_blur_active so set_blur(false)
+   only clears a blur WE turned on — never the tile-scroll-driven blur of another
+   page. */
+static bool s_bar_blur_active = false;
+void instruction_list_bar_set_blur(bool on)
+{
+    if (!gaus_dial_bg || !lv_obj_is_valid(gaus_dial_bg)) return;
+    if (on)
+    {
+        s_bar_blur_active = true;
+        lv_obj_set_style_bg_opa(gaus_dial_bg, LV_OPA_TRANSP, 0);
+        set_clock_main_status_opa(LV_OPA_100, false); /* blurred dial image in */
+        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    }
+    else
+    {
+        if (!s_bar_blur_active) return; /* not ours — leave any tile-reveal blur */
+        s_bar_blur_active = false;
+        set_clock_main_status_opa(LV_OPA_0, false);
+        lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+/* True when the watch face (HOME) is the current main page. The floating list's
+   open path uses this to blur the dial in place (no tile switch) on the watch
+   face, while other pages keep the legacy tile path for now. */
+bool clock_main_page_is_home(void)
+{
+    return middle_layer_tileview_index == MAIN_PAGE_TYPE_HOME;
 }
 
 void chack_tile_page(void)
@@ -1105,8 +1160,16 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     {
         if (i == MAIN_PAGE_TYPE_HOME)
         {
+            /* R3 stage 3: HOME no longer scrolls LEFT — the old left-edge
+               swipe-right into the instruction_list tile is removed (the list
+               floats from a bar tap now, on every page). The LEFT tile (0,1) is
+               still built but UNREACHABLE: no gesture reaches it and no live
+               set_tile_id targets it (animate_to_instruction_list /
+               animate_to_notification_center are now dead). UP / DOWN / RIGHT
+               navigation is unchanged. */
             pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 1, i,
-                                            LV_DIR_ALL);
+                                            LV_DIR_TOP | LV_DIR_BOTTOM |
+                                                LV_DIR_RIGHT);
             app_clock_main_status_bar_down = pages[i];
             lv_obj_set_style_bg_color(pages[i], LV_COLOR_RED,
                                       LV_PART_MAIN | LV_STATE_DEFAULT);

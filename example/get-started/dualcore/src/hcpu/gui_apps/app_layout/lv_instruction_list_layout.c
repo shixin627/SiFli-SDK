@@ -535,14 +535,23 @@ static void create_indicator_dots(lv_obj_t *parent)
         lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(dot_bg, list_item_click_event_cb,
                             LV_EVENT_CLICKED, (void *)&list_items[i]);
+        /* R3: bubble presses on a dot (the right-side indicator icon) up to
+           p_instruction_list_bg, where the horizontal drawer-drag handler ALSO
+           lives — dot_bg is a SIBLING of the scrollable list, so without this a
+           drag that starts on a dot never reaches the drag handler (only text,
+           which lands on the item's touch_obj inside the list, worked). The img
+           children bubble too in case they are hit targets. */
+        lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_EVENT_BUBBLE);
 
         app_icon_shadow[i] = lv_img_create(dot_bg);
         lv_img_set_src(app_icon_shadow[i], &app_icon_frame);
         lv_obj_align(app_icon_shadow[i], LV_ALIGN_CENTER, 0, 0);
         lv_obj_add_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(app_icon_shadow[i], LV_OBJ_FLAG_EVENT_BUBBLE);
 
         lv_obj_t *dot = lv_img_create(dot_bg);
         lv_obj_center(dot);
+        lv_obj_add_flag(dot, LV_OBJ_FLAG_EVENT_BUBBLE);
         if (list_items[i].img_path[0] != '\0')
         {
             lv_img_set_src(dot, list_items[i].img_path);
@@ -582,6 +591,12 @@ static lv_obj_t *s_voice_transcript_clip = NULL;
    lv_obj_set_style_opa does not cascade in this build — must use
    _bg_opa / _border_opa / _text_opa / _img_opa explicitly). */
 static lv_obj_t *s_skai_widget = NULL;
+/* Global persistent input-bar layer on lv_layer_top(): the mic_bar + hit area +
+   ai_box live HERE, not inside the LEFT-tile content, so the bar floats above
+   every page and stays put (doesn't slide away with tile transitions). The whole
+   layer is shown/hidden per page via instruction_list_bar_set_visible(). It is
+   full-screen but NON-clickable so non-bar touches fall through to the page. */
+static lv_obj_t *s_global_bar_layer = NULL;
 /* The voice-group image inside ai_voice_btn — needs img_opa fade. */
 static lv_obj_t *s_voice_img = NULL;
 /* The pill background image (message_widget_bg) — gives the pill its
@@ -606,6 +621,10 @@ static lv_obj_t *s_mic_bar_icon = NULL;
 #define LBOX_RADIUS   80
 #define LMORPH_GROW_MS  220   /* phase 1: bar grows into the box backdrop */
 #define LMORPH_FRAME_MS 160   /* phase 2: skai_widget pill fades in */
+#define LSLIDE_MS       200   /* R3: list slides in/out from the left edge.
+                                 Kept < the shortest close morph (220ms shrink) so
+                                 the list parks off-screen before
+                                 finalize_close_ai_widget flips its HIDDEN flag. */
 
 /* Pin the 2-row transcript window to its newest content: scroll the clip so the
    last two wrapped rows are visible (older rows scroll up out of view; the user
@@ -811,6 +830,32 @@ static bool is_open_instruction_list_ai = false;
 bool get_is_open_instruction_list_ai(void)
 {
     return is_open_instruction_list_ai;
+}
+
+/* Show / hide the global persistent input bar (lv_layer_top). Called per page by
+   app_clock (watch face + instruction_list show it; message / control-center hide
+   it) and by device_pager for the mouse page (R2). No-ops until the bar exists. */
+void instruction_list_bar_set_visible(bool visible)
+{
+    if (!s_global_bar_layer || !lv_obj_is_valid(s_global_bar_layer)) return;
+    if (visible)
+    {
+        lv_obj_clear_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+    }
+    else
+    {
+        /* Hiding the bar layer (message / control-center / app switch): close the
+           floating list so neither it NOR its watch-face blur lingers.
+           close_on_leave runs the animated close (no-op when the box isn't open);
+           we ALSO drop the blur SYNCHRONOUSLY here so a page that shows its own
+           gaus_dial_bg backdrop next isn't clobbered by the async close's
+           finalize. Both set_blur(false) calls self-guard on s_bar_blur_active. */
+        extern void instruction_list_close_ai_on_leave(void);
+        extern void instruction_list_bar_set_blur(bool on);
+        instruction_list_close_ai_on_leave();
+        instruction_list_bar_set_blur(false);
+        lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 void set_is_open_instruction_list_ai(bool open)
 {
@@ -1179,6 +1224,14 @@ void open_selected_widget(bool need_widget_img_anima)
     {
         lv_obj_t *app_widget_img =
             lv_img_create(p_instruction_list_layout->p_instruction_list_bg);
+        /* The selected-item snapshot image sits on p_instruction_list_bg — a
+           SIBLING of the scrollable list, NOT inside it — so a press on it would
+           bubble to the bg, never reaching the list's drawer-drag handler (only
+           text-area presses, which land on the item's touch_obj inside the list,
+           worked). Clear CLICKABLE so the press falls THROUGH to the centred
+           item's touch_obj below → horizontal drag-to-close + tap-to-open both
+           work on the image. (lv_obj is clickable by default here.) */
+        lv_obj_clear_flag(app_widget_img, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_style_radius(app_widget_img, 50, LV_STATE_DEFAULT);
         lv_img_dsc_t *img_desc =
             create_widget_snapshot_img(app_widget[selected_item_index]);
@@ -1283,10 +1336,25 @@ static void selected_widget_timer_start(void)
 /* Forward decls — defined further down with the AI widget block. */
 static void ai_widget_fade_on_scroll(void);
 void close_ai_widget(void);
+/* Slide-drawer anim exec — used by the horizontal finger-drag in
+   list_window_scroll_event_cb; defined further down by the open/close morph. */
+static void inst_list_slide_anim_cb(void *var, int32_t v);
 /* Gate for ai_widget_fade_on_scroll: set true while refresh_custom_instructions
    does programmatic scrolls. Declared here (not at refresh_* location) so
    list_window_scroll_event_cb can read it. Actually defined below. */
 static bool s_in_refresh_scroll = false;
+/* Latched true when a horizontal drag (the left-to-close drawer) is detected on
+   the list, so the item CLICKED LVGL also raises on the release — the VER-scroll
+   list never loses the press on a horizontal drag — is ignored: a swipe must not
+   select an item. Set while finger-dragging (PRESSING) and by the GESTURE flick;
+   reset on the next PRESSED. */
+static bool s_list_horiz_swipe = false;
+/* Horizontal finger-following drawer drag (drag the whole list left to close).
+   s_hdrag_active latches once a press is judged horizontal; the start point lets
+   PRESSING compute the live offset. */
+static bool s_hdrag_active = false;
+static lv_coord_t s_hdrag_start_x = 0;
+static lv_coord_t s_hdrag_start_y = 0;
 
 static void list_window_scroll_event_cb(lv_event_t *evt)
 {
@@ -1306,13 +1374,11 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         }
         // 當開始滾動時停止所有動畫並復原狀態
         stop_all_animations_and_reset();
-        /* Modal-ish dismiss: scrolling the instruction list while the AI
-           widget is open fades it out (per office-hours doc Q4).
-           Gate on !s_in_refresh_scroll — programmatic scrolls inside
-           refresh_custom_instructions raise this flag, so only user
-           drags (LVGL direct scroll OR arc_scroll-driven scroll) get
-           through. This also works on PC sim (touch_sim drags reach
-           the list directly via LVGL pointer indev). */
+        /* R3: a list scroll = switch to manual browse — collapse the voice box
+           back to the bar but KEEP the list up (ai_widget_fade_on_scroll). It does
+           NOT slide the whole list out; that's the full close (swipe-left / tap /
+           leave). Gated on !s_in_refresh_scroll so the programmatic scrolls
+           refresh_custom_instructions makes don't collapse the box. */
         if (!s_in_refresh_scroll)
         {
             ai_widget_fade_on_scroll();
@@ -1346,6 +1412,98 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         // LOG_D("APP LIST Scroll ended :%d", touching_screen);
         break;
     }
+    case LV_EVENT_PRESSED:
+    {
+        /* Fresh touch: clear the swipe latch + drag state, record the start point
+           for the horizontal drawer drag below. */
+        s_list_horiz_swipe = false;
+        s_hdrag_active = false;
+        lv_indev_t *indev = lv_indev_get_act();
+        if (indev)
+        {
+            lv_point_t pt;
+            lv_indev_get_point(indev, &pt);
+            s_hdrag_start_x = pt.x;
+            s_hdrag_start_y = pt.y;
+        }
+        break;
+    }
+    case LV_EVENT_PRESSING:
+    {
+        /* Horizontal finger-following drawer: once a press is clearly horizontal,
+           the WHOLE list tracks the finger leftward (and the item CLICKED is
+           suppressed). A vertical drag is left to the list's own scroll, so we
+           never translate then — the |dx|>|dy| test picks the axis. */
+        lv_indev_t *indev = lv_indev_get_act();
+        if (!indev) break;
+        lv_point_t pt;
+        lv_indev_get_point(indev, &pt);
+        lv_coord_t dx = pt.x - s_hdrag_start_x;
+        lv_coord_t dy = pt.y - s_hdrag_start_y;
+        if (!s_hdrag_active && LV_ABS(dx) > 10 && LV_ABS(dx) > LV_ABS(dy))
+            s_hdrag_active = true;
+        if (s_hdrag_active)
+        {
+            s_list_horiz_swipe = true;
+            lv_coord_t tx = dx;
+            if (tx > 0) tx = 0;                       /* drawer only opens left */
+            if (tx < -LV_HOR_RES) tx = -LV_HOR_RES;
+            lv_obj_t *bg = p_instruction_list_layout
+                               ? p_instruction_list_layout->p_instruction_list_bg
+                               : NULL;
+            if (bg && lv_obj_is_valid(bg))
+            {
+                lv_anim_del(bg, inst_list_slide_anim_cb);
+                lv_obj_set_style_translate_x(bg, tx, 0);
+            }
+        }
+        break;
+    }
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+    {
+        if (!s_hdrag_active) break;
+        s_hdrag_active = false;
+        lv_obj_t *bg = p_instruction_list_layout
+                           ? p_instruction_list_layout->p_instruction_list_bg
+                           : NULL;
+        if (!bg || !lv_obj_is_valid(bg)) break;
+        lv_coord_t tx = lv_obj_get_style_translate_x(bg, 0);
+        lv_indev_t *indev = lv_indev_get_act();
+        lv_point_t v = {0, 0};
+        if (indev) lv_indev_get_vect(indev, &v);
+        /* Past a quarter-screen OR flung left fast → finish the close (close_ai_widget
+           slides the rest out from the current offset). Otherwise snap back open. */
+        if (!lv_obj_has_flag(bg, LV_OBJ_FLAG_HIDDEN) &&
+            (tx <= -LV_HOR_RES / 4 || v.x < -6))
+        {
+            close_ai_widget();
+        }
+        else
+        {
+            lv_anim_del(bg, inst_list_slide_anim_cb);
+            lv_anim_t sl;
+            lv_anim_init(&sl);
+            lv_anim_set_var(&sl, bg);
+            lv_anim_set_values(&sl, tx, 0);
+            lv_anim_set_time(&sl, 150);
+            lv_anim_set_path_cb(&sl, lv_anim_path_ease_out);
+            lv_anim_set_exec_cb(&sl, inst_list_slide_anim_cb);
+            lv_anim_start(&sl);
+        }
+        break;
+    }
+    case LV_EVENT_GESTURE:
+        /* Belt-and-suspenders: LVGL's own horizontal flick also latches the swipe
+           so the item CLICKED is suppressed even if the press was too quick for
+           the PRESSING drag to accumulate. The close itself is the drawer drag
+           above (PRESSING / RELEASED). */
+        {
+            lv_dir_t gdir = lv_indev_get_gesture_dir(lv_indev_get_act());
+            if (gdir == LV_DIR_LEFT || gdir == LV_DIR_RIGHT)
+                s_list_horiz_swipe = true;
+        }
+        break;
     default:
         break;
     }
@@ -1510,35 +1668,48 @@ static void stop_mock_inst_update(void)
     }
 }
 
-/* Click handler for the bottom mic bar — re-uses the same flow that the
-   release IMU gesture takes (see gesture_recognition_task.c:401). */
+/* Click handler for the bottom mic bar — re-uses the same flow that the release
+   IMU gesture takes (see gesture_recognition_task.c:401). Only TAPs arrive here:
+   mic_bar has PRESS_LOCK cleared, so a DRAG transfers the press down to the
+   bottom status_bar_area (which finger-follows the watch-face bottom-up = app
+   list gesture); only a stationary tap fires LV_EVENT_CLICKED. */
 static void mic_bar_event_cb(lv_event_t *evt)
 {
-    if (evt->code == LV_EVENT_CLICKED)
+    if (evt->code != LV_EVENT_CLICKED) return;
+    /* Toggle by the box's ACTUAL visibility, not the is_open flag — the flag can
+       get stuck true (e.g. navigating away while open without a close), which made
+       a tap take the close branch and silently do nothing instead of opening. The
+       box (p_instruction_list_ai_bg) is HIDDEN when closed. animate_open_ai_widget
+       / close_ai_widget self-guard re-entry. */
+    bool box_visible =
+        p_instruction_list_layout &&
+        p_instruction_list_layout->p_instruction_list_ai_bg &&
+        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
+                         LV_OBJ_FLAG_HIDDEN);
+    if (box_visible)
     {
-        /* Toggle by the box's ACTUAL visibility, not the is_open flag — the flag
-           can get stuck true (e.g. navigating away while open without a close),
-           which made a tap take the close branch and silently do nothing instead
-           of opening. The box (p_instruction_list_ai_bg) is HIDDEN when closed;
-           the hit overlay is only tappable in that state (the open box sits on
-           top of it). animate_open_ai_widget / close_ai_widget self-guard re-entry. */
-        bool box_visible =
-            p_instruction_list_layout &&
-            p_instruction_list_layout->p_instruction_list_ai_bg &&
-            !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
-                             LV_OBJ_FLAG_HIDDEN);
-        if (box_visible)
-        {
-            LOG_I("Mic bar tapped — closing AI widget");
-            close_ai_widget();
-        }
-        else
-        {
-            LOG_I("Mic bar tapped — opening AI widget (is_open flag=%d)",
-                  (int)is_open_instruction_list_ai);
-            extern void animate_open_ai_widget(void);
-            animate_open_ai_widget();
-        }
+        LOG_I("Mic bar tapped — closing AI widget");
+        close_ai_widget();
+    }
+    else
+    {
+        LOG_I("Mic bar tapped — opening AI widget (is_open flag=%d)",
+              (int)is_open_instruction_list_ai);
+        /* The global bar floats above the watch face (HOME) and the transient
+           LEFT tile. R3: on the watch face the list floats IN PLACE over a
+           blurred dial — NO tile switch (the list now lives on
+           s_global_bar_layer). Other pages keep the legacy tile-switch path until
+           they are migrated. animate_open_ai_widget reveals the floating list +
+           morphs the bar; the blur is turned on here only for the watch face. */
+        extern void animate_open_ai_widget(void);
+        extern bool clock_main_page_is_home(void);
+        extern void instruction_list_bar_set_blur(bool on);
+        /* The list floats in place on EVERY page now — never switch tiles. The
+           watch face (HOME) blurs the dial behind it; the mouse page (RIGHT) and
+           the transient LEFT tile float it transparently, no blur. */
+        if (clock_main_page_is_home())
+            instruction_list_bar_set_blur(true);
+        animate_open_ai_widget();
     }
 }
 
@@ -1599,15 +1770,21 @@ static void skai_widget_fade_anim_cb(void *var, int32_t value)
     }
 }
 
+/* Set by ai_widget_fade_on_scroll: THIS close should collapse the voice box back
+   to the slim bar but KEEP the floating list up (browse / switch options).
+   Consumed at the top of close_ai_widget; every other close path slides the whole
+   list out. */
+static bool s_scroll_keep_list = false;
+
 static void ai_widget_fade_on_scroll(void)
 {
-    /* Scrolling the list dismisses the input box with the SAME animated reverse
-       morph as a tap-close, mirroring the right device_pager's
-       scroll_hides_skaibar_cb -> skaibar_close. (Previously this ran a separate
-       600ms cross-fade; now every dismiss path funnels through close_ai_widget
-       for one consistent close motion.) */
+    /* Scrolling the list = switch to manual browse: collapse the voice input box
+       back to the slim bar (stops v2t) but KEEP the list up so you can scroll and
+       pick an option. A full close (swipe-left / tap-close / page-leave) slides
+       the whole list out instead. No-op when the box isn't open. */
     if (!is_open_instruction_list_ai)
         return;
+    s_scroll_keep_list = true;
     close_ai_widget();
 }
 
@@ -1711,6 +1888,35 @@ static void lmic_open_reveal_cb(lv_anim_t *a)
 #endif
 }
 
+/* Slide the floating instruction list horizontally via translate_x (R3 left
+   drawer). A draw-only offset — no layout/scroll recalculation and no layer
+   buffer — so it's cheap on EPIC. Translating X leaves the list's vertical
+   snap-scroll math (which reads y1) untouched. */
+static void inst_list_slide_anim_cb(void *var, int32_t v)
+{
+    if (lv_obj_is_valid((lv_obj_t *)var))
+        lv_obj_set_style_translate_x((lv_obj_t *)var, (lv_coord_t)v, 0);
+}
+
+/* Full-close slide-out finished: the list has parked off-screen left — hide it
+   and drop the watch-face blur (set_blur self-guards on other pages). The hide
+   lives HERE (not in finalize_close_ai_widget) so a full close that runs when the
+   box is ALREADY collapsed — e.g. swipe-left from the browse state — still slides
+   the whole list out, instead of finalize snapping it hidden mid-slide. */
+static void inst_list_slide_out_done_cb(lv_anim_t *a)
+{
+    (void)a;
+    if (p_instruction_list_layout &&
+        p_instruction_list_layout->p_instruction_list_bg &&
+        lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
+        lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_bg,
+                        LV_OBJ_FLAG_HIDDEN);
+    {
+        extern void instruction_list_bar_set_blur(bool on);
+        instruction_list_bar_set_blur(false);
+    }
+}
+
 void animate_open_ai_widget(void)
 {
     /* No Bluetooth gate — a single mic-bar tap opens the box regardless of
@@ -1744,6 +1950,46 @@ void animate_open_ai_widget(void)
     /* Restore all sub-part opacities to their baselines (in case a prior
        fade left them dim). */
     skai_widget_restore_full_opa();
+
+    /* Reveal the floating instruction list (on s_global_bar_layer / lv_layer_top)
+       behind the morphing input box, SLIDING it in from the left edge (R3 left
+       drawer). Slid back out + hidden by the close path. The watch-face blur
+       backdrop is turned on by the caller (mic_bar_event_cb) via
+       instruction_list_bar_set_blur. */
+    {
+        lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+        if (list_bg && lv_obj_is_valid(list_bg))
+        {
+            /* Slide in only on a FRESH open (the list was hidden). If it's already
+               up — the box was collapsed by a scroll but the list kept open — just
+               re-open the box over it, with no re-slide. */
+            bool was_hidden = lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
+            /* Backdrop behind the list: transparent on the watch face (the blurred
+               dial shows through gaus_dial_bg), but slightly dark on other pages —
+               the mouse page has no blur, so a light scrim makes the list stand
+               out over the bright trackpad. */
+            {
+                extern bool clock_main_page_is_home(void);
+                lv_obj_set_style_bg_color(list_bg, lv_color_black(), 0);
+                lv_obj_set_style_bg_opa(
+                    list_bg, clock_main_page_is_home() ? LV_OPA_0 : LV_OPA_40, 0);
+            }
+            if (was_hidden)
+            {
+                lv_anim_del(list_bg, inst_list_slide_anim_cb);
+                lv_obj_set_style_translate_x(list_bg, -LV_HOR_RES, 0);
+                lv_anim_t sl;
+                lv_anim_init(&sl);
+                lv_anim_set_var(&sl, list_bg);
+                lv_anim_set_values(&sl, -LV_HOR_RES, 0);
+                lv_anim_set_time(&sl, LSLIDE_MS);
+                lv_anim_set_path_cb(&sl, lv_anim_path_ease_out);
+                lv_anim_set_exec_cb(&sl, inst_list_slide_anim_cb);
+                lv_anim_start(&sl);
+            }
+        }
+    }
 
     /* MORPH phase 1: grow the slim bottom mic bar up into the input box; phase 2
        (lmic_open_reveal_cb) fades the skai_widget pill in over it. */
@@ -1809,6 +2055,10 @@ static void finalize_close_ai_widget(void)
     /* Box is a plain container now (no tileview) — just hide it. */
     lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                     LV_OBJ_FLAG_HIDDEN);
+    /* finalize tears the BOX down only. The floating list + its blur are left
+       alone here: a full close hides the list via the slide-out's ready_cb
+       (inst_list_slide_out_done_cb); a scroll box-collapse keeps the list up.
+       Decoupling the two is what lets a scroll dismiss just the voice box. */
 }
 
 /* close phase 2 done: the bar has shrunk back to the slim pill — hide the strip. */
@@ -1844,6 +2094,11 @@ static void lmic_close_shrink_cb(lv_anim_t *a)
 void close_ai_widget(void)
 {
     extern void clear_skai_widget_ai_reply(void);
+    /* A scroll collapses just the box (keep the list up); every other close path
+       slides the whole list out. Consume the one-shot flag FIRST so it can't leak
+       into a later close even if this call early-returns while already closing. */
+    bool keep_list = s_scroll_keep_list;
+    s_scroll_keep_list = false;
     if (s_left_closing)
         return; /* already animating shut */
     stop_mock_inst_update();
@@ -1872,6 +2127,40 @@ void close_ai_widget(void)
 
     bool was_open = is_open_instruction_list_ai;
     is_open_instruction_list_ai = false;
+
+    /* FULL close (not a scroll box-collapse): slide the whole floating list out to
+       the left; the slide's ready_cb hides it + drops the blur. The hide lives in
+       the ready_cb (not finalize) so this still works when the box is ALREADY
+       collapsed (swipe-left from the browse state) — there was_open is false and
+       finalize runs synchronously, which would otherwise snap the list hidden
+       mid-slide. A scroll box-collapse (keep_list) leaves the list untouched. */
+    if (!keep_list)
+    {
+        lv_obj_t *list_bg = p_instruction_list_layout
+                                ? p_instruction_list_layout->p_instruction_list_bg
+                                : NULL;
+        if (list_bg && lv_obj_is_valid(list_bg) &&
+            !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
+        {
+            lv_anim_del(list_bg, inst_list_slide_anim_cb);
+            lv_anim_t sl;
+            lv_anim_init(&sl);
+            lv_anim_set_var(&sl, list_bg);
+            lv_anim_set_values(&sl, lv_obj_get_style_translate_x(list_bg, 0),
+                               -LV_HOR_RES);
+            lv_anim_set_time(&sl, LSLIDE_MS);
+            lv_anim_set_path_cb(&sl, lv_anim_path_ease_in);
+            lv_anim_set_exec_cb(&sl, inst_list_slide_anim_cb);
+            lv_anim_set_ready_cb(&sl, inst_list_slide_out_done_cb);
+            lv_anim_start(&sl);
+        }
+        else
+        {
+            /* List already hidden — nothing to slide; just drop any blur we own. */
+            extern void instruction_list_bar_set_blur(bool on);
+            instruction_list_bar_set_blur(false);
+        }
+    }
 
     /* Box not on screen (or layout gone): finish synchronously — nothing to
        morph. Guards against a stray close while closed re-growing the slim bar. */
@@ -1925,10 +2214,13 @@ void instruction_list_close_ai_on_leave(void)
 {
     if (!p_instruction_list_layout)
         return;
-    lv_obj_t *box = p_instruction_list_layout->p_instruction_list_ai_bg;
-    bool box_visible = box && lv_obj_is_valid(box) &&
-                       !lv_obj_has_flag(box, LV_OBJ_FLAG_HIDDEN);
-    if (box_visible)
+    /* Close on leave whenever the LIST is up (voice OR browse state) — not just
+       when the box is open — so navigating away always tears the floating panel
+       down (full close = slide it out + hide). */
+    lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+    bool list_shown = list_bg && lv_obj_is_valid(list_bg) &&
+                      !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
+    if (list_shown)
         close_ai_widget();
 }
 
@@ -2180,6 +2472,15 @@ static void list_item_click_event_cb(lv_event_t *evt)
 {
     list_item_t *item = (list_item_t *)evt->user_data;
     lv_obj_t *obj = evt->target;
+    /* A horizontal swipe (the left-to-close flick, or a right flick) also lands a
+       CLICKED on the item: the list scrolls vertically only, so a horizontal drag
+       never "loses" the press and LVGL fires CLICKED on release. The list's
+       GESTURE handler latches s_list_horiz_swipe for exactly this — ignore the
+       click so swipe-left-to-close doesn't ALSO select the item. (A flag, not
+       lv_indev_get_gesture_dir, because gesture_dir lingers after the swipe and
+       would then wrongly suppress the NEXT genuine tap.) */
+    if (s_list_horiz_swipe)
+        return;
     LOG_D("ID: %s,obj:%p", item->id, obj);
 
     if (item->is_instruction)
@@ -3050,6 +3351,11 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
         lv_obj_t *widget = NULL;
         lv_obj_t *item = lv_simplified_obj_create(list);
         lv_obj_clear_flag(item, LV_OBJ_FLAG_CLICKABLE);
+        /* R3: bubble events up to the list so a LEFT-swipe that lands on an item
+           (items fill most of the panel) still reaches the list's GESTURE handler
+           = swipe-left-to-close. The list handler ignores non-gesture events, so
+           taps/scroll are unaffected. */
+        lv_obj_add_flag(item, LV_OBJ_FLAG_EVENT_BUBBLE);
         lv_obj_set_size(item, 466, LIST_ITEM_WIDGET_HEIGHT);
         if (i == 0)
         {
@@ -3109,6 +3415,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
                         LIST_ITEM_WIDGET_HEIGHT);
         lv_obj_set_style_bg_opa(touch_obj[i], LV_OPA_0, 0);
         lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(touch_obj[i], LV_OBJ_FLAG_EVENT_BUBBLE); /* R3: see item above */
         lv_obj_align(touch_obj[i], LV_ALIGN_CENTER, 0, 0);
         lv_obj_add_event_cb(touch_obj[i], list_item_click_event_cb,
                             LV_EVENT_CLICKED, (void *)&list_items[i]);
@@ -3133,6 +3440,10 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
         app_icon[i] = p_instruction_list_layout->p_app_indicator_btn[i];
         lv_obj_add_event_cb(app_icon[i], list_item_click_event_cb,
                             LV_EVENT_CLICKED, (void *)&list_items[i]);
+        /* R3: bubble so a horizontal drag that LANDS ON THE ICON IMAGE still
+           reaches the list's drawer-drag handler (without this only text-area
+           drags worked — the icon is a separate clickable hit target). */
+        lv_obj_add_flag(app_icon[i], LV_OBJ_FLAG_EVENT_BUBBLE);
         lv_obj_add_flag(app_icon[i], LV_OBJ_FLAG_HIDDEN);
         if (list_items[i].icon == NULL && list_items[i].img_path[0] == '\0')
         {
@@ -3757,12 +4068,44 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 
     load_instruction_list();
 
-    lv_obj_t *p_instruction_list_bg = lv_obj_create(parent);
+    /* Global persistent bar layer (lv_layer_top) — hosts the WHOLE instruction
+       list (p_instruction_list_bg) plus the mic_bar / ai_box below, so they all
+       float above every page. Full-screen but NON-clickable, so only its
+       bar/list children take touches and everything else falls through. The
+       layer is hidden by default and shown per page by
+       instruction_list_bar_set_visible. Created BEFORE the list so the list is at
+       the back and the bar/box (added later) stack in front of it. */
+    if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
+        lv_obj_del(s_global_bar_layer);
+    s_global_bar_layer = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_global_bar_layer);
+    lv_obj_set_size(s_global_bar_layer, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(s_global_bar_layer, 0, 0);
+    lv_obj_clear_flag(s_global_bar_layer, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(s_global_bar_layer, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+
+    /* R3: the list content now lives ON the global bar layer (was the LEFT tile
+       in `parent`), so it FLOATS over the current page instead of being a tile
+       you scroll to. It starts HIDDEN — a bar tap reveals it
+       (animate_open_ai_widget) and the close path hides it again. `parent` (the
+       LEFT tile, whose y1 stays 0) is still tracked as instruction_list_page for
+       the list's scroll-snap correction; it just no longer hosts the list. */
+    lv_obj_t *p_instruction_list_bg = lv_obj_create(s_global_bar_layer);
     p_instruction_list_layout->p_instruction_list_bg = p_instruction_list_bg;
     lv_obj_set_style_bg_opa(p_instruction_list_bg, LV_OPA_0, 0);
     lv_obj_set_size(p_instruction_list_bg, LV_HOR_RES, LV_VER_RES);
     lv_obj_align(p_instruction_list_bg, LV_ALIGN_CENTER, 0, 0);
     lv_obj_clear_flag(p_instruction_list_bg, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(p_instruction_list_bg, LV_OBJ_FLAG_HIDDEN);
+    /* The horizontal drawer-drag handler ALSO lives on the bg (not only the
+       scrollable list) so a drag that starts on a SIBLING-of-the-list element
+       parented here — the right-side indicator dots, the centred snapshot image —
+       still reaches it (those bubble to this bg, never into the list). The list
+       keeps its own copy for presses inside it; the two never double-fire because
+       the list doesn't bubble to the bg (only GESTURE does, which is idempotent). */
+    lv_obj_add_event_cb(p_instruction_list_bg, list_window_scroll_event_cb,
+                        LV_EVENT_ALL, NULL);
 
     lv_obj_t *p_instruction_list = lv_obj_create(p_instruction_list_bg);
     p_instruction_list_layout->list = p_instruction_list;
@@ -3828,7 +4171,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
        device_pager skaibar's bar (100x16 dark fill + white hairline border, no
        glyph). Tap morphs it into the input box. Hidden role passes to the
        widget's own voice button once open. */
-    lv_obj_t *mic_bar = lv_obj_create(p_instruction_list_bg);
+    lv_obj_t *mic_bar = lv_obj_create(s_global_bar_layer);
     p_instruction_list_layout->mic_bar = mic_bar;
     lv_obj_set_size(mic_bar, LMIC_W, LMIC_H);
     lv_obj_align(mic_bar, LV_ALIGN_BOTTOM_MID, 0, LMIC_Y);
@@ -3840,37 +4183,22 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_set_style_radius(mic_bar, LMIC_RADIUS, 0);
     lv_obj_set_style_pad_all(mic_bar, 0, 0);
     lv_obj_clear_flag(mic_bar, LV_OBJ_FLAG_SCROLLABLE);
+    /* Like the watch-face status_bar_area edge zones (which clear PRESS_LOCK so a
+       drag transfers to the tileview): a stationary TAP opens the box (CLICKED),
+       but a DRAG that leaves the slim pill hands the press DOWN to the bottom
+       status_bar_area underneath (which reveals the hidden tileview and
+       finger-follows the up-swipe = app list). Without this the bar — being on
+       layer_top — would swallow the watch-face bottom-up gesture. */
+    lv_obj_clear_flag(mic_bar, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_add_flag(mic_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_add_event_cb(mic_bar, mic_bar_event_cb, LV_EVENT_CLICKED, NULL);
     s_mic_bar_icon = NULL; /* slim pill has no glyph (matches the right bar) */
 
-    /* Enlarged transparent hit area over the slim mic bar — the 100x16 pill is
-       too small to reliably tap, so this invisible 240x90 region at the bottom
-       centre catches taps and routes them to the same mic_bar_event_cb (open the
-       box). Created AFTER mic_bar so it sits on top of it, but BEFORE the box
-       (ai_box), so when the box is open the box is foreground and handles the
-       toggle-close; when closed this overlay is the top hit target. Transparent
-       + non-scrollable so it never obscures the list and drags still bubble
-       through to the list/arc scroll. */
-    {
-        /* Width = the OPEN box footprint (LBOX_W), not the old 240, so the whole
-           bottom strip opens the bar. This hit area handles taps OUTSIDE the
-           arc band (the band is right-side only). Taps INSIDE the band (bottom-
-           right) can't reach here — the arc overlay is brought to the front on
-           every rebuild (arc_scroll_bring_to_front) and is hittable in the band —
-           so those are forwarded to the bar from list_arc_tap_cb instead.
-           NOT scrollable: a real DRAG bubbles to the list and scrolls; only a
-           stationary TAP opens the bar. */
-        lv_obj_t *mic_hit = lv_obj_create(p_instruction_list_bg);
-        lv_obj_set_size(mic_hit, LBOX_W, 90);
-        lv_obj_align(mic_hit, LV_ALIGN_BOTTOM_MID, 0, 0);
-        lv_obj_set_style_bg_opa(mic_hit, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(mic_hit, 0, 0);
-        lv_obj_set_style_pad_all(mic_hit, 0, 0);
-        lv_obj_set_style_radius(mic_hit, 0, 0);
-        lv_obj_clear_flag(mic_hit, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(mic_hit, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(mic_hit, mic_bar_event_cb, LV_EVENT_CLICKED, NULL);
-    }
+    /* NO enlarged hit area here (the old 240x90 / LBOX_W one was removed): on
+       layer_top it covered the whole bottom strip — including the
+       status_bar_area_down zone — and swallowed the watch-face "swipe up from the
+       bottom" (app list) gesture. The slim mic_bar alone takes taps; a drag falls
+       through (PRESS_LOCK cleared above) to the bottom status_bar_area. */
 
     /* The AI-chat builder (lv_skai_widget_builder) is retained but kept HIDDEN.
        app_skai.c's shared globals (skai_widget_input_text_bg etc.) are
@@ -3902,7 +4230,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
        p_instruction_list_ai_bg struct field so all open/close/teardown code
        keeps a valid handle. */
     p_instruction_list_layout->p_instruction_list_ai_bg =
-        lv_obj_create(p_instruction_list_bg);
+        lv_obj_create(s_global_bar_layer);
     lv_obj_t *ai_box = p_instruction_list_layout->p_instruction_list_ai_bg;
     s_skai_widget = ai_box; /* animation key for the frame/label fade */
     lv_obj_set_size(ai_box, LBOX_W, LBOX_H);
@@ -4361,6 +4689,15 @@ rt_int32_t instruction_list_deinit(void)
             lv_obj_del(p_instruction_list_layout->list);
             p_instruction_list_layout->list = NULL;
         }
+        /* Global bar layer (lv_layer_top): chain-deletes the mic_bar / hit area /
+           ai_box hosted in it, so the bar doesn't linger on layer_top after the
+           page is torn down. Done before the ai_bg block below (whose individual
+           del then no-ops via lv_obj_is_valid, the object already gone). */
+        if (s_global_bar_layer != NULL && lv_obj_is_valid(s_global_bar_layer))
+        {
+            lv_obj_del(s_global_bar_layer);
+        }
+        s_global_bar_layer = NULL;
         if (p_instruction_list_layout->p_instruction_list_bg != NULL &&
             lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
         {

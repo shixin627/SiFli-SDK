@@ -153,6 +153,12 @@ typedef struct
     lv_obj_t   *skaibar_clip;    /* 2-row clip window: only the latest 2 wrapped rows show */
     lv_obj_t   *skaibar_label;
     bool        skaibar_active;
+
+    /* mouse-page top device-name strip: a horizontal drag scrubs through devices
+       (drag farther / hold and keep moving = step through several at once, so a
+       distant device is reached without flicking one-by-one). */
+    lv_obj_t   *dev_name_bar;
+    lv_obj_t   *dev_name_label;
 } device_pager_t;
 
 static device_pager_t *p = NULL;
@@ -177,6 +183,9 @@ static void pager_send_active(const char *id)
 
 static void mic_clicked_cb(lv_event_t *e);   /* defined below (skaibar section) */
 static void mouse_retarget(void);            /* defined below */
+static void dev_name_bar_update(void);       /* defined below */
+static void pager_set_current(int idx);      /* defined below */
+static lv_coord_t s_name_press_x = 0;        /* device-name strip drag anchor */
 static void skaibar_close(void);             /* defined below (skaibar section) */
 static void skaibar_open(void);              /* defined below (skaibar section) */
 static void skaibar_grow_cb(void *var, int32_t f); /* morph step; defined below */
@@ -607,7 +616,42 @@ static void pager_settle_ready_cb(lv_anim_t *a)
     snap_to_center(LV_ANIM_OFF);
     update_pager_scroll_dir();
     sync_offline_page_chrome();
+    dev_name_bar_update();
     p->recycling = false;
+}
+
+/* Update the mouse-page device-name strip to the current device (or a no-device
+   placeholder). Safe any time; no-ops until the strip is built. */
+static void dev_name_bar_update(void)
+{
+    if (!p || !p->dev_name_label || !lv_obj_is_valid(p->dev_name_label)) return;
+    if (p->count > 0 && p->current < p->count)
+        lv_label_set_text(p->dev_name_label, p->model[p->current].name);
+    else
+        lv_label_set_text(p->dev_name_label, "No device");
+    lv_obj_center(p->dev_name_label);
+}
+
+/* Jump the active device to an absolute index and run the SAME settle work the
+   carousel-swipe path does (rebind, uplink active target, retarget the hosted
+   mouse, recentre, offline chrome, name-strip). Shared by the mouse-page name
+   strip so there is one switch path, not two. */
+static void pager_set_current(int idx)
+{
+    if (!p || p->count == 0) return;
+    if (idx < 0) idx = 0;
+    if (idx >= p->count) idx = p->count - 1;
+    if (idx == p->current) return;
+    p->current = idx;
+    rebind_all();
+    pager_send_active(p->model[p->current].id_str);
+    if (p->mouse_created) mouse_retarget();
+    snap_to_center(LV_ANIM_OFF);
+    update_pager_scroll_dir();
+    sync_offline_page_chrome();
+    dev_name_bar_update();
+    LOG_I("[pager] name-strip -> device %d/%d (%s)", p->current + 1, p->count,
+          p->model[p->current].name);
 }
 
 static void pager_scroll_end_cb(lv_event_t *e)
@@ -928,6 +972,11 @@ static void overlay_value_changed_cb(lv_event_t *e)
             lv_obj_align(p->grabber, LV_ALIGN_BOTTOM_MID, 0, GRABBER_REST_Y);
             lv_obj_clear_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
         }
+        if (p->dev_name_bar)
+        {
+            dev_name_bar_update();
+            lv_obj_clear_flag(p->dev_name_bar, LV_OBJ_FLAG_HIDDEN);
+        }
         LOG_I("[pager] overlay hidden — mouse base + bar");
     }
     else
@@ -936,6 +985,7 @@ static void overlay_value_changed_cb(lv_event_t *e)
            behind the (transparent) list. */
         lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
         if (p->grabber) lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
+        if (p->dev_name_bar) lv_obj_add_flag(p->dev_name_bar, LV_OBJ_FLAG_HIDDEN);
         p->pull_pending = false;
         LOG_I("[pager] overlay on LIST — bar hidden");
     }
@@ -1010,10 +1060,17 @@ static void bar_cb(lv_event_t *e)
         p->host_pulling = false;
         if (p->bar_from_mouse && !p->bar_moved)
         {
-            /* Plain TAP on the mouse-page bar (no drag): jump straight to the device
-               list AND open voice input. */
-            lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_ON);
-            skaibar_open();
+            /* Plain TAP on the mouse-page bar (no drag): open the SHARED
+               instruction_list input box (req C: ONE common list across the watch
+               face and every device page) — same as tapping the global bar on the
+               watch face: navigate to the instruction_list page + morph it open.
+               A DRAG still pulls the device list up (the bar_moved path above).
+               TODO(real-hw): two-way skaibar sync watch<->device + filter the
+               instruction_list by the active device's online status. */
+            extern void animate_to_instruction_list(void);
+            extern void animate_open_ai_widget(void);
+            animate_to_instruction_list();
+            animate_open_ai_widget();
             return;
         }
         lv_coord_t sy = lv_obj_get_scroll_y(p->overlay);
@@ -1021,6 +1078,38 @@ static void bar_cb(lv_event_t *e)
             lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_ON); /* nearer the LIST → commit */
         else
             lv_obj_set_tile_id(p->overlay, 0, 0, LV_ANIM_ON); /* nearer the mouse → snap back */
+    }
+}
+
+/* Mouse-page device-name strip drag: scrub through devices. Every NAME_STEP_PX
+   of horizontal travel switches one device, and the anchor advances by that
+   step so HOLDING and dragging farther keeps stepping — a distant device is
+   reached in one continuous motion (the "switch several at once" ask) instead of
+   flicking one-by-one. Drag RIGHT → previous device, LEFT → next (matches the
+   carousel: content swiped left advances). A stationary tap does nothing. */
+#define NAME_STEP_PX 60
+static void dev_name_bar_cb(lv_event_t *e)
+{
+    if (!p) return;
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t *indev = lv_indev_get_act();
+    if (code == LV_EVENT_PRESSED)
+    {
+        lv_point_t pt;
+        if (indev) lv_indev_get_point(indev, &pt); else pt.x = 0;
+        s_name_press_x = pt.x;
+    }
+    else if (code == LV_EVENT_PRESSING)
+    {
+        if (!indev) return;
+        lv_point_t pt;
+        lv_indev_get_point(indev, &pt);
+        int steps = (int)((pt.x - s_name_press_x) / NAME_STEP_PX);
+        if (steps != 0)
+        {
+            pager_set_current(p->current - steps);
+            s_name_press_x += steps * NAME_STEP_PX; /* keep remainder for smooth continuous stepping */
+        }
     }
 }
 
@@ -1039,10 +1128,62 @@ void device_pager_set_active(bool on)
     if (!p) return;
     if (on)
     {
+        /* Load the device list FIRST so we know whether to host the trackpad or
+           show the no-device download QR. refresh() sets p->count and lays the
+           overlay out per count (count==0 → LIST tile + empty_view QR, overlay
+           non-scrollable; count>0 → device carousel). */
+        device_pager_refresh();
+
+        if (p->count == 0)
+        {
+            /* No device → show the download-QR empty state right here on the device
+               page; there's nothing to control, so DON'T host the trackpad. With no
+               trackpad capturing touches and the overlay non-scrollable + the QR
+               card / hint non-clickable, a right-swipe falls straight through to
+               the main tileview = leave the device page. Tear the mouse down if a
+               device vanished while we were on the page. */
+            if (p->mouse_created)
+            {
+                ble_hid_mouse_set_app_route(false);
+                hid_mouse_set_hosted(false);
+                hid_mouse_destroy();
+                lv_obj_clean(p->mouse_base);
+                p->mouse_created = false;
+            }
+            lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* LIST tile = QR */
+            lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+            if (p->grabber)
+                lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
+            if (p->dev_name_bar)
+                lv_obj_add_flag(p->dev_name_bar, LV_OBJ_FLAG_HIDDEN);
+            /* Hide the device's OWN list-tile chrome so ONLY the QR shows on the
+               tile — its slim voice pill (p->mic_bar, bottom-centre) + input box
+               would otherwise sit right below the QR. The carousel tile is dead
+               since R3 stage 2; we reveal it now only for this QR empty state. */
+            if (p->mic_bar)
+                lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
+            if (p->skaibar_input)
+                lv_obj_add_flag(p->skaibar_input, LV_OBJ_FLAG_HIDDEN);
+            /* And the GLOBAL instruction-list bar (shown on the device page from
+               R3 stage 2): no device = nothing to control, so keep the QR
+               "download the app" page clean. It comes back on every other page via
+               the status-bar VALUE_CHANGED. */
+            {
+                extern void instruction_list_bar_set_visible(bool visible);
+                instruction_list_bar_set_visible(false);
+            }
+            pager_send_active("");
+            LOG_I("[pager] device page active — no device, showing download QR");
+            return;
+        }
+
+        /* Device(s) present → host the real trackpad. */
         if (!p->mouse_created)
         {
             p->mouse_created = true; /* set first: hid_mouse_create can re-enter */
             hid_mouse_create(p->mouse_base);
+            hid_mouse_set_hosted(true); /* pager owns the edges; suppress the media pull-down */
             mouse_retarget();
             /* hid_mouse_create populates mouse_base and disturbs our stack order;
                re-assert it so the overlay sits above the mouse touch surface and
@@ -1063,13 +1204,27 @@ void device_pager_set_active(bool on)
            standalone APP_ID_MOUSE app clears it), not just first creation. */
         ble_hid_mouse_set_app_route(true);
         LOG_I("[pager] mouse app-route ON (trackpad -> SKAI_LINK)");
-        device_pager_refresh();
-        /* Enter on the LIST (the mouse shows through behind it); pull down to reveal
-           the full mouse. */
+        /* Enter on the MOUSE: the real trackpad shows directly (overlay hidden).
+           The shared instruction list is reached by tapping the GLOBAL bar (R3
+           stage 2), not by pulling the device carousel up — so the overlay's own
+           bar + grabber stay hidden (below). */
         p->pull_pending = false;
-        lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF);
+        lv_obj_set_tile_id(p->overlay, 0, 0, LV_ANIM_OFF);
+        lv_obj_add_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
+        /* R3 stage 2: the mouse page no longer has its OWN bottom bar / drawer.
+           The global instruction-list bar (s_global_bar_layer, shown on RIGHT via
+           instruction_list_bar_set_visible) floats the shared list in place on a
+           tap. Keep p->bar + grabber HIDDEN so (a) the two bars don't overlap and
+           (b) the old drag-up device carousel is gone — bar_cb only fires from
+           p->bar and the (now never-revealed) list_tile name strip. */
         lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
+        if (p->grabber)
+            lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
+        if (p->dev_name_bar)
+        {
+            dev_name_bar_update();
+            lv_obj_clear_flag(p->dev_name_bar, LV_OBJ_FLAG_HIDDEN);
+        }
         /* ADR-0008 E7: switching the main page ONTO the device list makes the
            currently-centred device the active control target — tell the phone
            so it routes commands to it. Previously only device-to-device scrolls
@@ -1125,13 +1280,15 @@ void device_pager_set_active(bool on)
                standalone mouse use. */
             ble_hid_mouse_set_app_route(false);
             LOG_I("[pager] mouse app-route OFF");
+            hid_mouse_set_hosted(false);
             hid_mouse_destroy();
             lv_obj_clean(p->mouse_base);
             p->mouse_created = false;
-            lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* reset to LIST */
+            lv_obj_set_tile_id(p->overlay, 0, 0, LV_ANIM_OFF); /* reset to MOUSE */
+            lv_obj_add_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
             if (p->grabber) lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
+            if (p->dev_name_bar) lv_obj_add_flag(p->dev_name_bar, LV_OBJ_FLAG_HIDDEN);
             LOG_I("[pager] device page inactive — mouse base torn down");
         }
     }
@@ -1611,6 +1768,36 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_clear_flag(p->grabber, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(p->grabber, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
+
+    /* Mouse-page top device-name strip — the active device's name, with a
+       horizontal drag to scrub through devices (dev_name_bar_cb). Parented on
+       `parent` (NOT mouse_base, which set_active lv_obj_cleans) and built last so
+       it stays hittable above the trackpad. Shown only on the mouse page (toggled
+       in device_pager_set_active + overlay_value_changed_cb). */
+    p->dev_name_bar = lv_obj_create(parent);
+    lv_obj_set_size(p->dev_name_bar, LV_HOR_RES, 70);
+    lv_obj_align(p->dev_name_bar, LV_ALIGN_TOP_MID, 0, 0); /* top edge: a vertical drag leaving the bottom lands on hid_mouse's media pull-down zone */
+    lv_obj_set_style_bg_opa(p->dev_name_bar, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(p->dev_name_bar, 0, 0);
+    lv_obj_set_style_pad_all(p->dev_name_bar, 0, 0);
+    lv_obj_set_style_radius(p->dev_name_bar, 0, 0);
+    lv_obj_clear_flag(p->dev_name_bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(p->dev_name_bar, LV_OBJ_FLAG_CLICKABLE);
+    /* Horizontal drag scrubs devices (dev_name_bar_cb); a VERTICAL drag must reach
+       the mouse page's media pull-down underneath. Clear PRESS_LOCK + bubble so a
+       drag that leaves the strip hands the press down to hid_mouse's top
+       status_bar_area (media) — "media 下滑、設備左右" don't fight. */
+    lv_obj_clear_flag(p->dev_name_bar, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_add_flag(p->dev_name_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_add_event_cb(p->dev_name_bar, dev_name_bar_cb, LV_EVENT_ALL, NULL);
+    lv_obj_add_flag(p->dev_name_bar, LV_OBJ_FLAG_HIDDEN); /* shown on the mouse page */
+
+    p->dev_name_label = lv_label_create(p->dev_name_bar);
+    lv_obj_set_style_text_font(p->dev_name_label,
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_color(p->dev_name_label, lv_color_hex(0x00AAFF), 0);
+    lv_label_set_text(p->dev_name_label, "");
+    lv_obj_center(p->dev_name_label);
 
     lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* start on the LIST */
 
