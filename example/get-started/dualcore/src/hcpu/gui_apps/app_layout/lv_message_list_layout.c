@@ -860,6 +860,20 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
     }
     switch (evt->code)
     {
+    case LV_EVENT_PRESSED:
+        /* 手指實際壓在中央列表上 — 右側 arc overlay 的 hit_test 在 band 外會回
+           false，press 才會穿透到 p_window，所以收到這個事件在物理上就證明此刻
+           沒有 arc 弧形拖動在進行。s_msg_arc_drag_active 的唯一清除路徑是 arc
+           overlay 的 release callback；一旦某次拖動的 release 沒以 active 正常
+           送達（拖動途中 animate_to_home 換頁、或 LV_ANIM 程式化捲動重設 indev
+           等），旗標會卡在 true，永久 gate 掉這條用 touch-scroll 更新 indicator
+           dots 的路徑（scroll_list 的 !s_msg_arc_drag_active 判斷）→ dots 凍結、
+           翻頁中央卡片也不再跟著動。在這裡自癒清掉殘留旗標。 */
+        if (s_msg_arc_drag_active)
+        {
+            message_arc_reset_drag_state();
+        }
+        break;
     case LV_EVENT_SCROLL_BEGIN:
         /* Cancel any pending delayed reset from a previous scroll. */
         stop_touching_screen_timer();
@@ -2079,6 +2093,10 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
     p_app_notification =
         (app_notification_t *)lv_mem_alloc(sizeof(app_notification_t));
     memset(p_app_notification, 0, sizeof(app_notification_t));
+    /* 防呆：清掉上一輪可能殘留的 arc-drag 旗標。它是 file-static，reset_list /
+       重新開 app 都不會碰到，若上次弧形拖動異常結束卡在 true，會讓本次新開的
+       通知列表一進來 indicator dots 就無法被 touch-scroll 更新。 */
+    message_arc_reset_drag_state();
     message_page = parent;
     LOG_I("message_list_layout_create: alloc ok");
 
