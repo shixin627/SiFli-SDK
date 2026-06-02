@@ -1,6 +1,6 @@
 {
-    "version": "1.1.61",
-    "description": "測試發布",
+    "version": "1.1.62",
+    "description": "調整SKAIBAR邏輯只有UI)，心率測試",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",

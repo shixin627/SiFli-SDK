@@ -6082,6 +6082,13 @@ static void media_tileview_event_cb(lv_event_t *e)
  * @brief 對外的開/收媒體中心：透過 lv_obj_set_tile_id 切換，
  *        animate=true 時用 tileview 內建動畫
  */
+/* When the device-pager hosts this trackpad, the pager owns the top + bottom
+   edges (its device-name strip + bottom input bar). Suppress the mouse page's
+   own media-center pull-down so the two don't fight. Set from
+   device_pager_set_active via hid_mouse_set_hosted. */
+static bool s_hosted_by_pager = false;
+void hid_mouse_set_hosted(bool hosted) { s_hosted_by_pager = hosted; }
+
 static void media_center_set_open(bool open, bool animate)
 {
     if (!media_tileview || !lv_obj_is_valid(media_tileview))

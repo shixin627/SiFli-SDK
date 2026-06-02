@@ -33,6 +33,7 @@
 #include "ble_device_manager.h"
 #include "bloc_notification.h"
 #include "ui_handler.h"
+#include "watch_global_data.h"  /* ADR-0008 E7: SkaiWatchSys.device_registry seed (sim) */
 
 #define DBG_TAG "fake_ui"
 #define DBG_LVL DBG_LOG
@@ -612,3 +613,49 @@ static int pager_options(int argc, char *argv[])
     return 0;
 }
 MSH_CMD_EXPORT(pager_options, pager_options <opt1> [opt2]... - fake peer-device skaibar options);
+
+/* Seed the account device registry (SkaiWatchSys.device_registry) so device_pager
+   has devices to show in the PC sim — no phone streams the real registry here, so
+   it is otherwise always empty (the QR empty state). Builds N devices (default 3)
+   with ASCII placeholder names (the sim has no CJK glyphs) + a few fake actions
+   each; the LAST device is left offline (status 0) so the offline branch is
+   exercisable. Ends with device_pager_refresh() to re-render. */
+static int pager_seed(int argc, char *argv[])
+{
+    int n = (argc > 1) ? atoi(argv[1]) : 3;
+    if (n < 1) n = 1;
+    if (n > MAX_SYNCED_DEVICES) n = MAX_SYNCED_DEVICES;
+
+    static const char *const names[MAX_SYNCED_DEVICES] = {
+        "Mac", "iPhone", "PC", "iPad", "Linux Box", "Work PC", "Tablet", "Server"
+    };
+    static const char *const acts[] = { "Open file", "Play music", "Lock screen" };
+    const int nacts = (int)(sizeof(acts) / sizeof(acts[0]));
+
+    T_DEVICE_REGISTRY *reg = &SkaiWatchSys.device_registry;
+    memset(reg, 0, sizeof(*reg));
+    reg->count = (uint8_t)n;
+    for (int i = 0; i < n; i++)
+    {
+        T_SYNCED_DEVICE *d = &reg->devices[i];
+        rt_snprintf(d->id, sizeof(d->id), "fake-device-%04d", i + 1);
+        uint8_t ac = (uint8_t)nacts;
+        if (ac > MAX_DEFAULT_ACTIONS) ac = MAX_DEFAULT_ACTIONS;
+        for (uint8_t j = 0; j < ac; j++)
+        {
+            rt_strncpy(d->default_actions[j], acts[j],
+                       sizeof(d->default_actions[0]) - 1);
+            d->default_action_types[j] = (uint8_t)(j % 4); /* spread the category icons */
+        }
+        d->default_action_count = ac;
+
+        rt_strncpy(SkaiWatchSys.device_name[i], names[i], SYNCED_DEVICE_NAME_LEN - 1);
+        SkaiWatchSys.device_status[i] = (i == n - 1) ? 0 : 1; /* last device offline */
+    }
+
+    extern void device_pager_refresh(void);
+    device_pager_refresh();
+    rt_kprintf("pager_seed: %d fake device(s); last offline\n", n);
+    return 0;
+}
+MSH_CMD_EXPORT(pager_seed, pager_seed [N] - seed N fake devices into device_pager (sim));

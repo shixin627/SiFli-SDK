@@ -63,6 +63,14 @@ void hid_mouse_set_host_back_cb(void (*cb)(void));
  */
 void hid_mouse_set_host_pull_cb(void (*cb)(int up_px, int released));
 
+/**
+ * @brief Mark the trackpad as hosted by device_pager (true) or standalone
+ *        (false). While hosted, the pager owns the top + bottom screen edges
+ *        (its device-name strip + bottom input bar), so the mouse page's own
+ *        media-center pull-down is suppressed. Set from device_pager_set_active.
+ */
+void hid_mouse_set_hosted(bool hosted);
+
 #ifdef __cplusplus
 }
 #endif

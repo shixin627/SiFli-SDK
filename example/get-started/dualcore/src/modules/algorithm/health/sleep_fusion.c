@@ -363,19 +363,34 @@ static sleep_fusion_stage_t prv_classify_sleep_stage(
        Avoid floating point: pct = (hr - baseline) * 100 / baseline. */
     int32_t hr_delta_pct =
         ((int32_t)in->hr_mean_bpm - (int32_t)hr_baseline) * 100 / (int32_t)hr_baseline;
+    int32_t abs_pct = hr_delta_pct < 0 ? -hr_delta_pct : hr_delta_pct;
 
-    /* Deep: minimal motion + HR meaningfully below baseline. */
+    /* HRV (RMSSD) evidence — used ONLY when present. RMSSD peaks in deep sleep
+       (vagal tone) and drops in REM, so it CONFIRMS Deep and argues AGAINST
+       REM. Compare to the night's learned RMSSD baseline. When RMSSD is
+       unavailable (rmssd==0 or no baseline yet) both rmssd terms below are
+       neutral and staging is identical to the HR-std-only version. */
+    uint8_t rmssd_base = prv_rmssd_baseline();
+    bool rmssd_ok   = (in->hr_rmssd_ms > 0 && rmssd_base > 0);
+    bool rmssd_high = rmssd_ok &&
+        ((uint32_t)in->hr_rmssd_ms * 100u >=
+         (uint32_t)rmssd_base * (100u + SF_DEEP_RMSSD_RISE_PCT));
+
+    /* Deep: minimal motion + HR meaningfully below baseline + (when HRV is
+       available) RMSSD elevated above the night's baseline. */
     if (in->activity_count <= SF_DEEP_ACTIVITY_MAX &&
-        hr_delta_pct <= -(int32_t)SF_DEEP_HR_DROP_PCT)
+        hr_delta_pct <= -(int32_t)SF_DEEP_HR_DROP_PCT &&
+        (!rmssd_ok || rmssd_high))
     {
         return SLEEP_FUSION_STAGE_DEEP;
     }
 
-    /* REM: low motion, HR near baseline, HR variability elevated. */
-    int32_t abs_pct = hr_delta_pct < 0 ? -hr_delta_pct : hr_delta_pct;
+    /* REM: low motion, HR near baseline, HR variability (erratic) elevated,
+       and — when HRV is available — RMSSD NOT in the deep-sleep range. */
     if (in->activity_count <= SF_REM_ACTIVITY_MAX &&
         abs_pct <= (int32_t)SF_REM_HR_NEAR_PCT &&
-        in->hr_std_bpm >= SF_REM_HR_STD_MIN)
+        in->hr_std_bpm >= SF_REM_HR_STD_MIN &&
+        (!rmssd_ok || !rmssd_high))
     {
         return SLEEP_FUSION_STAGE_REM;
     }
