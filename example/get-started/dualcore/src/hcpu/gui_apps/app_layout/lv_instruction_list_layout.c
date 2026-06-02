@@ -2273,6 +2273,25 @@ static void on_tap(void)
     if (item->is_instruction)
     {
         LOG_I("Custom instruction tapped via gesture: id=%s", item->id);
+        /* Offline "open a watch app" instruction — run locally on the watch
+           with no phone relay, same as list_item_click_event_cb's open_app
+           branch. This gesture/ENTER path is the one users hit most (raise-
+           wrist tap), so it must honour openApp too or the offline-open
+           feature only works via touch. gui_app_run guards unknown names. */
+        if (item->open_app[0] != '\0')
+        {
+            LOG_I("[left] local open app via gesture (offline): %s",
+                  item->open_app);
+            if (is_open_instruction_list_ai)
+                close_ai_widget();
+            rt_err_t r = gui_app_run(item->open_app);
+            if (r != RT_EOK)
+                LOG_E("[left] gui_app_run('%s') failed (%d) — staying",
+                      item->open_app, (int)r);
+            else
+                animate_to_home_from_instruction_list();
+            return;
+        }
         /* SKAIBAR commit — same rationale as list_item_click_event_cb,
            parallel gesture path. selected_item_index is the raw
            list_items index; subtract app_base_count for the 0-based
