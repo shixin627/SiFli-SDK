@@ -1021,6 +1021,11 @@ static uint32_t  bg_hr_burst_ms = BG_HR_BURST_MS_AWAKE;    /* current burst len 
 static uint32_t bg_hr_burst_sum = 0;
 static uint32_t bg_hr_burst_sum_sq = 0;
 static uint16_t bg_hr_burst_cnt = 0;
+/* Per-burst sensor-read health: if EVERY read fails the cause is HW/I2C, not a
+   weak optical signal -- lets bg_hr_finish_burst attribute SENSOR_FAULT vs
+   NO_LOCK instead of lumping both as "no point". */
+static uint16_t bg_hr_burst_reads = 0;
+static uint16_t bg_hr_burst_readfail = 0;
 
 /* Last completed burst's HR window. bg_hr_win_tick_ms == 0 => none yet. */
 static uint8_t  bg_hr_win_mean = 0;
@@ -1071,19 +1076,125 @@ void hr_service_set_sleep_active(bool active)
     if (!active) bg_hr_awake_ticks = 0; /* re-arm the awake skip cadence */
 }
 
-static rt_bool_t bg_hr_should_sample(void)
+/* ===== Skip-reason instrumentation ==================================
+   Every period tick the sampler either emits one HR point (OK_SENT) or
+   bails for one specific reason. Counting each outcome lets a full night
+   be classified after the fact instead of guessed: NOT_WORN => fit /
+   wear-detect, NO_LOCK => PPG signal / algorithm, CHARGING => on charger,
+   THROTTLE => normal daytime ~15 min rate. Read by stage A's 5-min bucket
+   flush for the 0x40 uplink (phone-only; the watch can't be tethered). */
+enum
 {
-    if (hr_service_env.is_ready != RT_TRUE) return RT_FALSE;
+    BGHR_OK = 0,    /* one HR point forwarded to phone                 */
+    BGHR_NO_LOCK,   /* burst completed but PPG never locked a BPM      */
+    BGHR_NOT_WORN,  /* wear_detect says off-wrist                      */
+    BGHR_CHARGING,  /* on charger (v29 = off-wrist proxy)              */
+    BGHR_NOT_READY, /* PPG sensor not initialised                      */
+    BGHR_BUSY,      /* previous burst still running                    */
+    BGHR_NO_TIMER,  /* sample timer missing (creation failed)          */
+    BGHR_FWD_ZERO,  /* Exercise app subscribed but reported 0 bpm      */
+    BGHR_THROTTLE,    /* awake skip -- normal ~15 min daytime cadence  */
+    BGHR_SENSOR_FAULT,/* every sensor read this burst failed (I2C / HW) */
+    BGHR_REASON_CNT
+};
+/* ---- 5-min bucket accumulator (stage A) -------------------------------
+   The phone bins the HR curve into 5-min buckets. We tally each tick outcome
+   PER bucket; when the wall-clock bucket rolls over (detected in
+   bg_hr_period_cb) we flush: if the bucket produced >=1 HR point the curve
+   already covers it (no skip); else uplink ONE skip with the bucket's dominant
+   non-OK reason. Counters are per-bucket, reset on every flush. */
+#define BG_HR_BUCKET_SEC     (5 * 60)            /* phone gap-bucket width = 5 min */
+static uint32_t  bg_hr_bucket_id = 0;            /* time()/BG_HR_BUCKET_SEC, 0=unset */
+static rt_bool_t bg_hr_bucket_had_point = RT_FALSE;
+static uint16_t  bg_hr_bucket_reason[BGHR_REASON_CNT];
+
+static void bg_hr_note(int reason)
+{
+    if (reason < 0 || reason >= BGHR_REASON_CNT) return;
+    if (reason == BGHR_OK)
+        bg_hr_bucket_had_point = RT_TRUE;        /* curve covers this bucket */
+    else
+        bg_hr_bucket_reason[reason]++;
+}
+
+/* Wire reason codes — FROZEN contract (ADR-0011 D2), decoupled from the
+   internal BGHR_* enum order so refactors here never shift the wire values. */
+enum
+{
+    BGHR_WIRE_OK = 0,            /* never sent */
+    BGHR_WIRE_NOT_WORN = 1,
+    BGHR_WIRE_NO_LOCK = 2,
+    BGHR_WIRE_CHARGING = 3,
+    BGHR_WIRE_NOT_READY = 4,
+    BGHR_WIRE_SENSOR_FAULT = 5,
+    BGHR_WIRE_POWER_SAVE = 6,
+    BGHR_WIRE_OTHER = 7,
+};
+
+static uint8_t bg_hr_reason_to_wire(int r)
+{
+    switch (r)
+    {
+    case BGHR_NOT_WORN:     return BGHR_WIRE_NOT_WORN;
+    case BGHR_NO_LOCK:      return BGHR_WIRE_NO_LOCK;
+    case BGHR_CHARGING:     return BGHR_WIRE_CHARGING;
+    case BGHR_NOT_READY:    return BGHR_WIRE_NOT_READY;
+    case BGHR_SENSOR_FAULT: return BGHR_WIRE_SENSOR_FAULT;
+    case BGHR_THROTTLE:     return BGHR_WIRE_POWER_SAVE;
+    case BGHR_BUSY:
+    case BGHR_NO_TIMER:
+    case BGHR_FWD_ZERO:     return BGHR_WIRE_OTHER;
+    default:                return BGHR_WIRE_OK;  /* OK/unknown -> don't send */
+    }
+}
+
+/* Most frequent non-OK reason this bucket (ties: lowest enum index wins). */
+static int bg_hr_bucket_dominant(void)
+{
+    int best = BGHR_OK;
+    uint16_t best_n = 0;
+    for (int i = 1; i < BGHR_REASON_CNT; i++)    /* i=0 is OK, skip */
+    {
+        if (bg_hr_bucket_reason[i] > best_n)
+        {
+            best_n = bg_hr_bucket_reason[i];
+            best = i;
+        }
+    }
+    return best;
+}
+
+/* Flush the bucket that just ended. Emit one skip iff it produced no HR point.
+   bucket_start_ts is the bucket's first second (watch wall-clock-as-UTC, same
+   convention as the HR-curve 0x10 samples, so the phone lines them up on one
+   axis via watchEpochToLocal). */
+static void bg_hr_flush_bucket(uint32_t bucket_start_ts)
+{
+    if (!bg_hr_bucket_had_point)
+    {
+        uint8_t wire = bg_hr_reason_to_wire(bg_hr_bucket_dominant());
+        if (wire != BGHR_WIRE_OK && watch_sys_sync.notify_hr_skip)
+            watch_sys_sync.notify_hr_skip(bucket_start_ts, wire);
+    }
+    bg_hr_bucket_had_point = RT_FALSE;
+    for (int i = 0; i < BGHR_REASON_CNT; i++) bg_hr_bucket_reason[i] = 0;
+}
+
+/* Same gate as before, but returns the SPECIFIC reason instead of a bool so
+   the instrumentation can attribute every skipped tick. BGHR_OK => sample. */
+static int bg_hr_skip_reason(void)
+{
+    if (hr_service_env.is_ready != RT_TRUE) return BGHR_NOT_READY;
 #if (CUSTOMER_BOARD_VER == BOARD_VER_29)
     /* Production (v29): on the charger means off-wrist, so skip PPG entirely.
        Dev boards (v28) deliberately keep sampling while charging so wear
        detection stays live for bench use. NOTE: charging current can inject
        noise into the optical ADC, so DC/PI read while charging may be less
        reliable -- accepted dev-only trade-off. */
-    if (battery_get_charge_state()->is_charging) return RT_FALSE; /* on charger */
+    if (battery_get_charge_state()->is_charging) return BGHR_CHARGING; /* on charger */
 #endif
-    if (!wear_detect_is_wearing()) return RT_FALSE;               /* off wrist  */
-    return RT_TRUE;
+    if (!wear_detect_is_wearing()) return BGHR_NOT_WORN;               /* off wrist  */
+    return BGHR_OK;
 }
 
 static void bg_hr_finish_burst(void)
@@ -1092,6 +1203,20 @@ static void bg_hr_finish_burst(void)
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
     {
         watch_sys_sync.notify_hr_sample((uint32_t)time(NULL), bg_hr_burst_best);
+        bg_hr_note(BGHR_OK);
+    }
+    else if (bg_hr_burst_reads > 0 && bg_hr_burst_readfail == bg_hr_burst_reads)
+    {
+        /* Every sensor read this burst failed (device gone / I2C / HW) --
+           a hardware fault, distinct from a clean signal that never locked. */
+        bg_hr_note(BGHR_SENSOR_FAULT);
+    }
+    else
+    {
+        /* Burst ran to completion but PPG never locked a valid BPM (best==0).
+           This is the single most common "missing HR point" cause during
+           sleep: motion artefact / loose fit / poor optical contact. */
+        bg_hr_note(BGHR_NO_LOCK);
     }
     /* Publish the burst's HR window (mean + std over its 1 Hz reads) for
        sleep_fusion's Deep / REM staging. Need ≥2 samples for a meaningful std. */
@@ -1125,8 +1250,11 @@ static void bg_hr_sample_cb(void *param)
        (see commit b0400d1a7 + the "LIVE HR PATH" note there). If HR reads 0
        system-wide, suspect that plumbing, not this sampler. */
     struct rt_sensor_data sd;
-    if (hr_service_env.device &&
-        rt_device_read(hr_service_env.device, 0, &sd, 1) == 1)
+    int rd = (hr_service_env.device)
+                 ? rt_device_read(hr_service_env.device, 0, &sd, 1) : 0;
+    bg_hr_burst_reads++;
+    if (rd != 1) bg_hr_burst_readfail++;  /* device gone or I2C/HW read failed */
+    if (rd == 1)
     {
         /* Ignore the warm-up window: until the algo locks, gh3018_get_hr()
            returns the previous burst's stale value, which would bias the mean
@@ -1151,8 +1279,24 @@ static void bg_hr_sample_cb(void *param)
 static void bg_hr_period_cb(void *param)
 {
     (void)param;
-    if (bg_hr_bursting) return;
-    if (!bg_hr_should_sample()) return;
+
+    /* Roll the wall-clock 5-min bucket BEFORE any early-return below, so every
+       tick is attributed and a rollover is never missed. period tick (3 min) <
+       bucket (5 min) guarantees each bucket is visited at least once. While the
+       RTC is unset time() stays tiny -> bucket_now small, no bogus uplink. */
+    uint32_t bucket_now = (uint32_t)time(NULL) / BG_HR_BUCKET_SEC;
+    if (bg_hr_bucket_id == 0)
+        bg_hr_bucket_id = bucket_now;                 /* first run: no flush */
+    else if (bucket_now != bg_hr_bucket_id)
+    {
+        bg_hr_flush_bucket(bg_hr_bucket_id * BG_HR_BUCKET_SEC);
+        bg_hr_bucket_id = bucket_now;
+    }
+
+    if (bg_hr_bursting) { bg_hr_note(BGHR_BUSY); return; }
+
+    int reason = bg_hr_skip_reason();
+    if (reason != BGHR_OK) { bg_hr_note(reason); return; }
 
     /* Exercise app already measuring -> just forward its latest value, no
        extra LED burst. */
@@ -1160,7 +1304,14 @@ static void bg_hr_period_cb(void *param)
     {
         uint8_t bpm = hr_service_get_latest_bpm();
         if (bpm > 0 && watch_sys_sync.notify_hr_sample)
+        {
             watch_sys_sync.notify_hr_sample((uint32_t)time(NULL), bpm);
+            bg_hr_note(BGHR_OK);
+        }
+        else
+        {
+            bg_hr_note(BGHR_FWD_ZERO);
+        }
         return;
     }
 
@@ -1168,7 +1319,7 @@ static void bg_hr_period_cb(void *param)
        Asleep: burst every tick for dense staging HR. */
     if (!bg_hr_sleep_active)
     {
-        if (++bg_hr_awake_ticks < BG_HR_AWAKE_SKIP) return;
+        if (++bg_hr_awake_ticks < BG_HR_AWAKE_SKIP) { bg_hr_note(BGHR_THROTTLE); return; }
         bg_hr_awake_ticks = 0;
     }
 
@@ -1176,12 +1327,14 @@ static void bg_hr_period_cb(void *param)
        Bail BEFORE powering on if the sample timer is missing (creation failed)
        — otherwise the LED would turn on with nothing to ever finish the burst
        (stuck-on power leak + sampler wedged). */
-    if (bg_hr_sample_timer == RT_NULL) return;
+    if (bg_hr_sample_timer == RT_NULL) { bg_hr_note(BGHR_NO_TIMER); return; }
     bg_hr_bursting = RT_TRUE;
     bg_hr_burst_best = 0;
     bg_hr_burst_sum = 0;
     bg_hr_burst_sum_sq = 0;
     bg_hr_burst_cnt = 0;
+    bg_hr_burst_reads = 0;
+    bg_hr_burst_readfail = 0;
     bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
     uint32_t bg_now_ms = rt_tick_get_millisecond();
     bg_hr_burst_accept_ms = bg_now_ms + BG_HR_WARMUP_MS; /* skip algo warm-up */

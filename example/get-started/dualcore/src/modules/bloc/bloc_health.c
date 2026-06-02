@@ -135,7 +135,7 @@ void store_sleep_data(const watch_sys_sleep_state_t *state)
     watch_storage_api_unlock();
 }
 
-void store_hr_sample(uint32_t timestamp_utc, uint8_t bpm)
+void store_hr_sample(uint32_t timestamp_utc, uint8_t bpm, uint8_t reason)
 {
     watch_storage_api_lock();
 
@@ -171,6 +171,10 @@ void store_hr_sample(uint32_t timestamp_utc, uint8_t bpm)
     cJSON *item = cJSON_CreateObject();
     cJSON_AddNumberToObject(item, "ts", (double)timestamp_utc);
     cJSON_AddNumberToObject(item, "bpm", bpm);
+    /* reason>0 marks a 5-min bucket with NO HR point (bpm is 0); the phone
+       draws it as a coloured gap label. reason==0 is a normal HR sample. */
+    if (reason != 0)
+        cJSON_AddNumberToObject(item, "reason", reason);
     cJSON_AddItemToArray(samples, item);
 
     if (write_json_file(filename, root) != 0)
@@ -203,6 +207,7 @@ typedef struct
         {
             uint32_t ts;
             uint8_t bpm;
+            uint8_t reason; /* 0 = real HR sample; >0 = gap reason (bpm unused) */
         } hr;
     } data;
 } health_msg_t;
@@ -228,7 +233,7 @@ static void health_worker_entry(void *parameter)
             store_sleep_data(&msg.data.sleep);
             break;
         case HEALTH_MSG_HR:
-            store_hr_sample(msg.data.hr.ts, msg.data.hr.bpm);
+            store_hr_sample(msg.data.hr.ts, msg.data.hr.bpm, msg.data.hr.reason);
             break;
         default:
             break;
@@ -263,9 +268,31 @@ void health_store_hr_async(uint32_t timestamp_utc, uint8_t bpm)
     msg.type = HEALTH_MSG_HR;
     msg.data.hr.ts = timestamp_utc;
     msg.data.hr.bpm = bpm;
+    msg.data.hr.reason = 0;
     if (rt_mq_send(health_mq, &msg, sizeof(msg)) != RT_EOK)
     {
         LOG_W("health_mq full; hr sample dropped");
+    }
+}
+
+void health_store_hr_skip_async(uint32_t timestamp_utc, uint8_t reason)
+{
+    if (health_mq == RT_NULL)
+    {
+        return;
+    }
+
+    /* A 5-min bucket that produced no HR point, persisted as {ts,bpm:0,reason}
+       so the gap reason survives BLE disconnect (e.g. a night's sleep) and
+       syncs alongside the HR samples it sits between. */
+    health_msg_t msg;
+    msg.type = HEALTH_MSG_HR;
+    msg.data.hr.ts = timestamp_utc;
+    msg.data.hr.bpm = 0;
+    msg.data.hr.reason = reason;
+    if (rt_mq_send(health_mq, &msg, sizeof(msg)) != RT_EOK)
+    {
+        LOG_W("health_mq full; hr skip dropped");
     }
 }
 

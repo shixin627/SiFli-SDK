@@ -45,6 +45,8 @@ extern "C"
             ((MSG_SERVICE_SYS_DATA_REQ + 14) | RSP_MSG_TYPE),
         MSG_SERVICE_HR_SAMPLE_IND =
             ((MSG_SERVICE_SYS_DATA_REQ + 15) | RSP_MSG_TYPE),
+        MSG_SERVICE_HR_SKIP_IND =
+            ((MSG_SERVICE_SYS_DATA_REQ + 16) | RSP_MSG_TYPE),
     };
 
     typedef enum
@@ -168,6 +170,15 @@ extern "C"
         uint8_t  bpm;       /* heart rate; 0 = invalid  */
     } watch_sys_hr_sample_t;
 
+    /* Background HR-curve GAP reason (LCPU -> HCPU). Emitted once per 5-min
+       bucket that produced no HR point; HCPU forwards via KEY_HEART_CURVE_SKIP
+       and persists it so sleep gaps survive BLE disconnect. */
+    typedef struct
+    {
+        uint32_t timestamp; /* UTC second of the 5-min bucket start */
+        uint8_t  reason;    /* wire reason code 1..7; see ADR-0011 D2 */
+    } watch_sys_hr_skip_t;
+
     typedef struct
     {
 #if defined(SOC_BF0_HCPU)
@@ -201,6 +212,7 @@ extern "C"
     void (*notify_gesture_event)(uint32_t gesture);
     void (*notify_health_info)(void);
     void (*notify_hr_sample)(uint32_t timestamp, uint8_t bpm);
+    void (*notify_hr_skip)(uint32_t timestamp, uint8_t reason);
     void (*notify_sleep_state)(uint8_t mode, uint32_t timestamp);
     void (*notify_minute_of_activity)(time_t utc_now, uint8_t steps,
                                       uint8_t orientation, uint16_t vmc);

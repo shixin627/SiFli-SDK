@@ -28,9 +28,12 @@ extern "C"
    upserts idempotently by day, the watch ages files out by retention):
      /health/sleep_YYYYMMDD.json : {ts_utc,stage,total_min,deep_min,rem_min,
                                     light_min,waso_min,hr,rhr}   (overwritten)
-     /health/hr_YYYYMMDD.json    : {samples:[{ts,bpm},...]}       (appended) */
+     /health/hr_YYYYMMDD.json    : {samples:[{ts,bpm[,reason]},...]} (appended)
+                                    reason>0 = gap, bpm:0; codes per ADR-0011 D2 */
 void store_sleep_data(const watch_sys_sleep_state_t *state);
-void store_hr_sample(uint32_t timestamp_utc, uint8_t bpm);
+/* reason==0: a normal HR point {ts,bpm}. reason>0: a 5-min bucket where no HR
+   was recorded, stored as {ts,bpm:0,reason} so the phone can label the gap. */
+void store_hr_sample(uint32_t timestamp_utc, uint8_t bpm, uint8_t reason);
 
 /* Thread-safe enqueue: copies the record and hands it to the health worker
    thread for persistence. SAFE to call from the BLE/RPC threads (non-blocking
@@ -38,6 +41,9 @@ void store_hr_sample(uint32_t timestamp_utc, uint8_t bpm);
    not the store_* functions, from communicate_* / data_service handlers. */
 void health_store_sleep_async(const watch_sys_sleep_state_t *state);
 void health_store_hr_async(uint32_t timestamp_utc, uint8_t bpm);
+/* Persist a 5-min gap (no HR point) with its reason; same store-and-forward
+   path as health_store_hr_async. Safe to call from BLE/RPC threads. */
+void health_store_hr_skip_async(uint32_t timestamp_utc, uint8_t reason);
 
 /* Delete /health files older than the retention window so flash doesn't grow
    unbounded. Takes watch_storage_api_lock(); call from a normal thread, not a

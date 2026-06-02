@@ -48,6 +48,10 @@ bool commu_send_heart_data(int hr);
    ~every 15 min by the LCPU sampler). Phone accumulates these into a daily
    heart-rate curve. Distinct from commu_send_heart_data (live single value). */
 bool commu_send_heart_curve_sample(uint32_t timestamp, uint8_t bpm);
+/* Why an HR point was NOT recorded for a 5-min bucket (timestamp + reason code).
+   Mirrors commu_send_heart_curve_sample; phone draws it as a coloured gap on
+   the HR curve. Reason codes frozen in ADR-0011 D2. */
+bool commu_send_heart_curve_skip(uint32_t timestamp, uint8_t reason);
 bool commu_send_heart_rate_series(const float *ppg, uint16_t count);
 /* Push current SkaiWatchSys.sleep_state to the phone via KEY_RETURN_SLEEP_DATA.
    Called on every stage transition received from LCPU. The dart-side

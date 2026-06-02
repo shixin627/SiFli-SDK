@@ -312,6 +312,17 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
 #endif
         break;
     }
+    case MSG_SERVICE_HR_SKIP_IND:
+    {
+        UNPACK_DATA(arg, watch_sys_hr_skip_t, data_ind);
+        /* Background HR-curve gap reason from LCPU -> forward to phone. */
+        commu_send_heart_curve_skip(data_ind->timestamp, data_ind->reason);
+#ifdef BSP_USING_BLOC_FILESYSTEM
+        /* Persist so sleep gaps survive BLE disconnect (mirrors HR-sample). */
+        health_store_hr_skip_async(data_ind->timestamp, data_ind->reason);
+#endif
+        break;
+    }
     case MSG_SERVICE_SLEEP_STATE_IND:
     {
         UNPACK_DATA(arg, watch_sys_sleep_state_t, data_ind);

@@ -38,6 +38,11 @@ typedef enum
        this is the timestamped, sparse (~15 min) ambient HR that the phone
        accumulates into a daily heart-rate curve. */
     KEY_HEART_CURVE_SAMPLE = 0x10,
+    /* Why an HR point was NOT recorded for a 5-min bucket {timestamp:u32 LE,
+       reason:u8}. Same command group + persistence path as 0x10; the phone
+       draws it as a coloured gap label on the HR curve. Reason wire codes
+       1..7 are frozen in ADR-0011 D2 (do not reorder). */
+    KEY_HEART_CURVE_SKIP = 0x11,
 } HEALTH_KEY;
 
 void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t length);

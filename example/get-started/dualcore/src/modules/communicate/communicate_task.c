@@ -253,6 +253,20 @@ bool commu_send_heart_curve_sample(uint32_t timestamp, uint8_t bpm)
                            &sample, (uint16_t)sizeof(sample));
 }
 
+bool commu_send_heart_curve_skip(uint32_t timestamp, uint8_t reason)
+{
+    /* Packed 5-byte wire payload {timestamp:u32 LE, reason:u8} — byte-identical
+       shape to commu_send_heart_curve_sample so the dart parser reads 4+1 the
+       same way. Marks a 5-min bucket that produced no HR point, with why. */
+    struct __attribute__((packed))
+    {
+        uint32_t timestamp;
+        uint8_t reason;
+    } skip = {.timestamp = timestamp, .reason = reason};
+    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HEART_CURVE_SKIP,
+                           &skip, (uint16_t)sizeof(skip));
+}
+
 bool commu_send_sleep_data(void)
 {
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_RETURN_SLEEP_DATA,
