@@ -377,6 +377,13 @@ static bool s_skaibar_tracking_active = false;
    focus/commit only sends on an actual change. */
 static void instruction_list_assert_local_target(void)
 {
+    /* R3: on the device page the floating list shows the ACTIVE remote device's
+       options and IS its controlled surface; asserting the local/primary target
+       here would clear that active device (active="") mid focus/commit, so the
+       phone falls back to its own launcher and mirrors the WRONG options onto the
+       watch. Only assert local when we are NOT controlling a device. */
+    extern bool device_pager_is_on_page(void);
+    if (device_pager_is_on_page()) return;
     commu_send_active_device(""); /* "" = no remote target → primary/local */
 }
 
@@ -1686,9 +1693,24 @@ static void mic_bar_event_cb(lv_event_t *evt)
         p_instruction_list_layout->p_instruction_list_ai_bg &&
         !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                          LV_OBJ_FLAG_HIDDEN);
-    if (box_visible)
+    /* R3 #5: the floating list (p_instruction_list_bg) stays up after an A2 scroll
+       collapses the voice box (browse state). A SHOWN list captures touches across
+       the WHOLE screen (translate_x is draw-only — even a slid-out-but-not-HIDDEN
+       list still hit-tests at its on-screen rect), so on the device/mouse page it
+       covers the trackpad and the mouse is untouchable until the list is HIDDEN.
+       Treat a bar tap while the drawer is up (open box OR browse-state) as "dismiss
+       the whole drawer": the always-visible bottom bar then reliably returns the
+       user to the page underneath (the mouse). Previously a browse-state tap merely
+       re-opened the box, leaving the list covering the trackpad. */
+    bool list_shown =
+        p_instruction_list_layout &&
+        p_instruction_list_layout->p_instruction_list_bg &&
+        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
+                         LV_OBJ_FLAG_HIDDEN);
+    if (box_visible || list_shown)
     {
-        LOG_I("Mic bar tapped — closing AI widget");
+        LOG_I("Mic bar tapped — dismissing AI widget (box=%d list=%d)",
+              (int)box_visible, (int)list_shown);
         close_ai_widget();
     }
     else

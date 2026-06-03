@@ -391,9 +391,18 @@ static void notify_vad_status(bool status)
                device_pager_skaibar_say. (Previously it only worked if the flag
                lingered from a prior left instruction_list session.) */
             extern bool device_pager_skaibar_is_open(void);
+            /* R3: the shared floating instruction-list box is now the device-page
+               voice surface too — opened IN PLACE over the mouse page, NOT on the
+               LEFT instruction_list tile, so is_at_instruction_list() is false
+               there. Recognise the box being open so the VAD gate still arms
+               is_user_speaking_to_ai on the device/mouse page; otherwise the
+               transcript is dropped here and only the phone-relayed copy reaches
+               the Mac, never the watch's own floating box. */
+            extern bool get_is_open_instruction_list_ai(void);
             if (get_gravity_position() == GRAVITY_POSITION_AI ||
                 is_at_ai_interface() || is_at_instruction_list() ||
-                is_at_speech_interface() || device_pager_skaibar_is_open())
+                is_at_speech_interface() || device_pager_skaibar_is_open() ||
+                get_is_open_instruction_list_ai())
             {
                 is_user_speaking_to_ai = true;
             }

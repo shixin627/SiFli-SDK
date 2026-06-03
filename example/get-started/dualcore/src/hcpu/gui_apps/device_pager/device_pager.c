@@ -867,6 +867,38 @@ static void refresh(void)
     sync_offline_page_chrome();
 }
 
+/* R3 unified UI: the device page's own carousel is gone — the shared floating
+   instruction list (lv_instruction_list_layout) is the single options surface.
+   Mirror the ACTIVE device's options (d->items: streamed from the phone via
+   handle_device_actions_batch -> registry -> load_devices_from_registry) into
+   that list so it shows THIS device's skaibar options, updating live as the phone
+   streams them. Same order the phone sent and app_base_count==0, so the list's
+   tap commit (commu_send_option_commit(index) = KEY_ACTION_SELECT) resolves on
+   the phone by that same index against its _lastSentDeviceActions -> runs the
+   action on the device. open_app=NULL keeps a tap on the SKAIBAR-commit (phone
+   relay) path, not a local watch app. LVGL-thread only (callers: device_pager_
+   set_active and device_pager_refresh; the E7 path defers to the LVGL thread). */
+static void feed_active_device_options_to_list(void)
+{
+    if (!p || p->count == 0 || p->current >= p->count) return;
+    extern void clear_custom_instructions(void);
+    extern void add_or_update_custom_instruction(const char *id,
+            const char *title, const char *trigger_type, uint32_t interval_sec,
+            bool enabled, uint32_t version, const char *open_app);
+    extern void refresh_custom_instructions(void);
+    static uint32_t s_dev_opt_ver = 0;
+    dev_page_t *d = &p->model[p->current];
+    s_dev_opt_ver++;
+    clear_custom_instructions();
+    for (uint8_t i = 0; i < d->item_count; i++)
+    {
+        if (d->items[i][0] == '\0') continue;
+        add_or_update_custom_instruction(d->items[i], d->items[i], "once", 0,
+                                         true, s_dev_opt_ver, NULL);
+    }
+    refresh_custom_instructions();
+}
+
 /* Public: re-load the (phone-streamed) device list from the registry and
    refresh. Called on reveal AND by skai_device_ui_refresh() whenever E7 syncs a
    new device list / status / per-device actions from the primary. */
@@ -895,6 +927,11 @@ void device_pager_refresh(void)
                                  ? p->model[p->current].id_str
                                  : "";
         pager_send_active(active);
+        /* R3: keep the shared floating list mirroring THIS device's options as
+           the phone streams live skaibar updates — only while we're on the
+           device page (else we'd clobber the watch-face instruction list). */
+        if (on_device_page)
+            feed_active_device_options_to_list();
     }
 }
 
@@ -1236,6 +1273,10 @@ void device_pager_set_active(bool on)
             LOG_I("[pager] page entered -> active device %d/%d (%s)",
                   p->current + 1, p->count, p->model[p->current].name);
         }
+        /* R3: on entry, show THIS device's options in the shared floating list
+           (mouse_created is now true, so device_pager_refresh's own feed gates
+           in for subsequent live E7 updates). */
+        feed_active_device_options_to_list();
     }
     else
     {
@@ -1471,6 +1512,17 @@ static void skaibar_close(void)
 bool device_pager_skaibar_is_open(void)
 {
     return p && p->skaibar_active;
+}
+
+/* Public: is the watch ON the device page hosting the trackpad (= actively
+   controlling a remote device)? R3: the shared floating instruction list shows
+   THIS device's options and is its controlled surface, so it uses this to avoid
+   asserting the local/primary target — which would clear the active remote device
+   (active="") mid focus/commit and make the phone fall back to its own launcher
+   (the wrong options would then mirror onto the watch). */
+bool device_pager_is_on_page(void)
+{
+    return p && p->mouse_created;
 }
 
 static void mic_clicked_cb(lv_event_t *e)
