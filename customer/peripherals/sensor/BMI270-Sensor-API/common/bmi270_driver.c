@@ -1734,7 +1734,7 @@ int bmi270_hw_wrist_wake_is_enabled(void)
    The WRIST_GESTURE feature (flick / pivot / jiggle) is kept regardless. Set 1
    to restore the original WW + GEST behaviour. */
 #ifndef BMI270_ENABLE_WRIST_WEAR_WAKEUP
-    #define BMI270_ENABLE_WRIST_WEAR_WAKEUP 0
+    #define BMI270_ENABLE_WRIST_WEAR_WAKEUP 1
 #endif
 
 int bmi270_hw_wrist_wake_enable(int en)

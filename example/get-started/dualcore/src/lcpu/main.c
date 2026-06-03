@@ -90,7 +90,7 @@ static bool step_poll_first = true;
    wrist-wake's ~1 s), gated by a MANDATORY host pose check. Runs ALONGSIDE the
    HW wrist-wake feature (both armed in screen-off). Set 0 to disable. */
 #ifndef USE_BMI270_ANY_MOTION_WAKE
-    #define USE_BMI270_ANY_MOTION_WAKE 1
+    #define USE_BMI270_ANY_MOTION_WAKE 0
 #endif
 
 #define MAIN_EVENT_BATTERY_CHARGING (1 << 0)
