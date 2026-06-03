@@ -1800,3 +1800,213 @@ CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\silk\fixed\residual_en
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\silk\fixed\residual_energy_FIX.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\silk\fixed\schur64_FIX.o
 CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\silk\fixed\schur_FIX.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\silk\fixed\vector_ops_FIX.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\silk\fixed\warped_autocorrelation_FIX.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\analysis.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\mapping_matrix.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\mlp.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\mlp_data.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\opus.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\opus_decoder.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\opus_encoder.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\opus_multistream.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\opus_multistream_decoder.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\opus_multistream_encoder.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\opus_projection_decoder.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\opus_projection_encoder.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\opus_test.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\opus-1.4\src\repacketizer.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\fft4g.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\ring_buffer.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\vad\signal_processing_library.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\vad\vad_core.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\vad\vad_filterbank.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\vad\vad_gmm.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\vad\vad_sp.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\vad\webrtc_vad.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\auto_corr_to_refl_coef.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\auto_correlation.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\complex_bit_reverse.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\complex_fft.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\copy_set_operations.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\cross_correlation.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\division_operations.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\dot_product_with_scale.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\downsample_fast.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\energy.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\filter_ar.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\filter_ar_fast_q12.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\filter_ma_fast_q12.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\get_hanning_window.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\get_scaling_square.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\ilbc_specific_functions.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\levinson_durbin.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\lpc_to_refl_coef.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\min_max_operations.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\randomization_functions.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\real_fft.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\refl_coef_to_lpc.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\resample.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\resample_48khz.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\resample_by_2.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\resample_by_2_internal.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\resample_fractional.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\spl_init.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\spl_sqrt.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\spl_sqrt_floor.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\splitting_filter.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\sqrt_of_one_minus_x_squared.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\common_audio\signal_processing\vector_scaling_operations.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns\noise_suppression_x.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns\nsx_core.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ns\nsx_core_c.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\agc\legacy\analog_agc.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\agc\legacy\digital_agc.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm\aecm_core.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm\aecm_core_c.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\aecm\echo_control_mobile.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\utility\delay_estimator.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\utility\delay_estimator_wrapper.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\dc_correction\dc_correction.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_in\ramp_in.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc\modules\audio_processing\ramp_out\ramp_out.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\external\WebRTC_audio_processing\webrtc_vad_test.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lv_ex_data.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lv_freetype.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_analogclk.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_barcode.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_comp.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_composite.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_corner.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_curvetext.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_emoji.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_ezipa.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_font.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_gesture.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_header.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_idximg.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_input.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_popup.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_rlottie.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_theme_1.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\middleware\lvgl\lvsf\lvsf_utils.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\disp_refr_governor.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\watch_demo.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\alarm\app_alarm.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\alarm\app_alarm_edit.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\alarm\app_alarm_edit_repeat.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\alarm\app_alarm_edit_time.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\app_layout\lv_app_list_layout.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\app_layout\lv_instruction_list_layout.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\app_layout\lv_message_list_layout.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\app_layout\lv_simplified_obj.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\battery\app_battery.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\calculator\app_calculator.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\camera\app_camera.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\clock\app_clock_earth_digita.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\clock\app_clock_main.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\clock\app_clock_status_bar.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\common\arc_scroll.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\common\common_bg.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\common\common_button.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\common\common_icon.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\common\ui_helper.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\device_pager\device_pager.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\device_pager\proto_pager.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\exercise\app_exercise.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\file_browser\app_file_browser.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\flashlight\app_flashlight.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\game\app_game_dinosaur.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\gesture\app_gesture.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\hid_mouse\hid_mouse.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\interact\app_interact.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\interact\app_system_interface.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\loader\skaiwalk_demo.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\main\app_mainmenu.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\media\app_media.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\message\app_message.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\message\app_message_database.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\photo\app_photo.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\qrcode\app_qrcode.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\recorder\app_recorder.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\setting\app_developer.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\setting\app_setting.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\setting\app_setting_device_list.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\setting\app_setting_display.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\skai\app_skai.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\sleep\app_sleep.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\speech\app_speech.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\speech\app_speech_provider.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\test\app_test.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\test\test_gif_bulb.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\timer\app_timer.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\utils\custom_trans_anim.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\weather\app_weather.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\incoming_call\app_incoming_call.o
+CC build_sf32lb56w-watch_hcpu\src\gui_apps\onboarding\app_onboarding.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\audio\audio.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\audio\audio_pipe.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\hwmailbox\hwmailbox.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\hwtimer\hwtimer.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\i2c\i2c_core.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\i2c\i2c_dev.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\misc\pin.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\misc\adc.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\misc\rt_drv_pwm.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\mtd\mtd_nand.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\pm\pm.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\rtc\rtc.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\rtc\alarm.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\serial\serial.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\spi\spi_core.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\spi\spi_dev.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\completion.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\dataqueue.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\pipe.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\ringblk_buf.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\ringbuffer.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\waitqueue.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\src\workqueue.o
+CC build_sf32lb56w-watch_hcpu\sifli_sdk\rtos\kernel\components\drivers\watchdog\watchdog.o
+Building compilation database build_sf32lb56w-watch_hcpu\ftab\compile_commands.json
+Building compilation database build_sf32lb56w-watch_hcpu\lcpu\compile_commands.json
+Generating build_sf32lb56w-watch_hcpu\lcpu\lcpu.asm ...
+LINK build_sf32lb56w-watch_hcpu\main.axf
+"C:\Users\andre\AppData\Local\Temp\p216c-3", line 45 (column 3): Warning: L6312W: Empty Execution region description for region RW_PSRAM1
+Warning: L6439W: Multiply defined Global Symbol HAL_TIMEx_BreakCallback defined in .text.HAL_TIMEx_BreakCallback(bf0_hal_tim_ex.o) rejected in favor of Symbol defined in .text.HAL_TIMEx_BreakCallback(bf0_hal_tim.o).
+Program Size: Code=1494016 RO-data=893904 RW-data=12248 ZI-data=4359232  
+Finished: 0 information, 2 warning and 0 error messages.
+Generating build_sf32lb56w-watch_hcpu\main.bin ...
+Generating build_sf32lb56w-watch_hcpu\main.asm ...
+Generating build_sf32lb56w-watch_hcpu\main.hex ...
+
+========================================================================
+
+** Object/Image Component Sizes
+
+      Code (inc. data)   RO Data    RW Data    ZI Data      Debug   Object Name
+
+   1494016     151760     893904      12256    4359224   24976828   build_sf32lb56w-watch_hcpu\main.axf (uncompressed)
+   1494016     151760     893904       6944    4359224   24976828   build_sf32lb56w-watch_hcpu\main.axf (compressed)
+   1494016     151760     893904       6944          0          0   ROM Totals for build_sf32lb56w-watch_hcpu\main.axf
+Generating build_sf32lb56w-watch_hcpu\ftab\board\ftab.c ...
+CC build_sf32lb56w-watch_hcpu\ftab\board\ftab.o
+LINK build_sf32lb56w-watch_hcpu\ftab\ftab.axf
+Warning: L6305W: Image does not have an entry point. (Not specified or not set due to multiple choices.)
+Program Size: Code=0 RO-data=11280 RW-data=0 ZI-data=0  
+Finished: 0 information, 1 warning and 0 error messages.
+Generating build_sf32lb56w-watch_hcpu\ftab\ftab.bin ...
+Generating build_sf32lb56w-watch_hcpu\ftab\ftab.asm ...
+Generating build_sf32lb56w-watch_hcpu\ftab\ftab.hex ...
+
+========================================================================
+
+** Object/Image Component Sizes
+
+      Code (inc. data)   RO Data    RW Data    ZI Data      Debug   Object Name
+
+         0          0      11280          0          0       1269   build_sf32lb56w-watch_hcpu\ftab\ftab.axf
+         0          0      11280          0          0          0   ROM Totals for build_sf32lb56w-watch_hcpu\ftab\ftab.axf
+Generating build_sf32lb56w-watch_hcpu\download.bat ...
+Generated sftool param: build_sf32lb56w-watch_hcpu/sftool_param.json
+scons: done building targets.
