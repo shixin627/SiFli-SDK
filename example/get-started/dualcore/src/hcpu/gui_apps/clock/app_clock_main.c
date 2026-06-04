@@ -1493,18 +1493,22 @@ rt_int32_t clock_on_resume(void)
 extern void dial_media_header_deinit(void);
 rt_int32_t clock_on_pause(void)
 {
+    /* Leaving the watch-face app → hide the global input bar; it lives on
+       lv_layer_top() which would otherwise keep floating it over the next
+       screen. Hidden BEFORE the already-paused early-return below so the bar is
+       cleared even when pause_clock was already true (boot state, or a pause not
+       paired with a resume) — that gap leaked the bar onto other screens
+       (notification reply, etc.). */
+    {
+        extern void instruction_list_bar_set_visible(bool visible);
+        instruction_list_bar_set_visible(false);
+    }
     if (pause_clock == true)
     {
         return -RT_EOK;
     }
     rt_list_t *pos;
     pause_clock = true;
-    /* Leaving the watch-face app → hide the global input bar; it lives on
-       lv_layer_top() which would otherwise keep floating it over the next app. */
-    {
-        extern void instruction_list_bar_set_visible(bool visible);
-        instruction_list_bar_set_visible(false);
-    }
     dial_media_header_deinit();
     rt_list_for_each(pos, (&p_app_clock_main->list))
     {

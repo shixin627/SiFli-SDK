@@ -354,16 +354,22 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         }
 
         middle_layer_tileview_index = active_pos;
-        /* Global input bar (lv_layer_top): show on the watch face (HOME), the
-           transient instruction_list LEFT tile, AND the mouse page (RIGHT) — a tap
-           floats the shared list in place on every one. Hidden on message (UP) /
-           control-center (DOWN). (R3 stage 2: the mouse page now uses THIS bar,
-           not device_pager's own — its bar is kept hidden in device_pager_set_active.) */
+        /* Global input bar (lv_layer_top): show ONLY on the watch face (HOME) and
+           the mouse page (RIGHT) — a tap floats the shared list in place. Hidden on
+           the (empty post-R3) instruction_list LEFT tile, message (UP) and
+           control-center (DOWN). The gui_app_is_actived("Main") gate matters when an
+           app is layered over the watch face (e.g. notification detail / voice reply
+           opened from the message list — animate_to_home_from_notification_center
+           slides THIS tileview back to HOME): that settle fires VALUE_CHANGED with
+           active_pos==HOME while Main is paused, which without the gate re-shows the
+           bar on top of that app. With the gate it stays hidden. (R3 stage 2: the
+           mouse page uses THIS bar, not device_pager's own — kept hidden in
+           device_pager_set_active.) */
         {
             extern void instruction_list_bar_set_visible(bool visible);
-            instruction_list_bar_set_visible(active_pos == MAIN_PAGE_TYPE_HOME ||
-                                             active_pos == MAIN_PAGE_TYPE_LEFT ||
-                                             active_pos == MAIN_PAGE_TYPE_RIGHT);
+            instruction_list_bar_set_visible((active_pos == MAIN_PAGE_TYPE_HOME ||
+                                              active_pos == MAIN_PAGE_TYPE_RIGHT) &&
+                                             gui_app_is_actived("Main"));
         }
         {
             /* Right tile = the device control page. Host the mouse behind the
