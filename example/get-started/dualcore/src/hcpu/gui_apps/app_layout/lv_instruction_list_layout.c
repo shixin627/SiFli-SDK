@@ -122,7 +122,33 @@ static bool s_close_is_cancel = false;
 static uint8_t list_item_count =
     0; // total count of all items (app + instructions)
 static uint8_t app_base_count =
-    0; // number of app items loaded from INSTRUCTION_LIST_ITEMS_DEFINITION
+    0; // pinned prefix protected from clear (index 0 = Settings). 0 until the
+       // first load_instruction_list(), then 1.
+
+/* Phone-coupled list mode (founder direction 2026-06-04):
+   DEFAULT_APPS — no phone list yet (boot / never-connected): body [1..] holds the
+                  watch's built-in apps, treated as default "instructions".
+   PHONE        — the phone pushed its own list (0x65/0x6B): the default apps were
+                  replaced; body [1..] holds the phone instructions. Only a watch
+                  reboot returns to DEFAULT_APPS (RAM-only, no flash). */
+typedef enum
+{
+    LIST_MODE_DEFAULT_APPS = 0,
+    LIST_MODE_PHONE,
+} list_mode_t;
+static list_mode_t s_list_mode = LIST_MODE_DEFAULT_APPS;
+
+/* Phone link state mirrored from the BT connection hook. Only meaningful in
+   PHONE mode: when disconnected we render the phone list filtered to the items
+   the watch can complete on its own (apps + openApp instructions), hiding the
+   phone-relay ones — without dropping them, so reconnect restores the full list
+   even if the phone does NOT re-push. */
+static bool s_phone_connected = false;
+/* Full PHONE-mode list snapshot, held only while disconnect-filtered. Heap-backed
+   (rt_malloc'd, freed on reconnect / fresh push) to avoid a permanent duplicate,
+   same idiom as instruction_list_save_base. NULL = not currently filtered. */
+static list_item_t *s_disc_backup = NULL;
+static uint8_t s_disc_backup_count = 0;
 
 /* Callback: tapped or toggled. Receives id string and enabled state. */
 static void (*instruction_tap_cb)(const char *id, bool enabled) = NULL;
@@ -1087,7 +1113,11 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
            before the custom list aren't part of the skaibar option
            set. Dedup is the outer selected_item_index != old check,
            so we don't spam the same idx on every scroll-list re-compute. */
-        if (selected_item_index >= app_base_count)
+        /* Phone instructions only: the pinned Settings and the DEFAULT_APPS body
+           are local apps (is_instruction == false), not skaibar options. */
+        if (selected_item_index >= app_base_count &&
+            selected_item_index < list_item_count &&
+            list_items[selected_item_index].is_instruction)
         {
             uint8_t opt_idx =
                 (uint8_t)(selected_item_index - app_base_count);
@@ -1139,7 +1169,8 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                     if (app_label[i] != NULL && lv_obj_is_valid(app_label[i]))
                         lv_obj_clear_flag(app_label[i], LV_OBJ_FLAG_HIDDEN);
                 }
-                if ((i < app_base_count || list_items[i].img_path[0] != '\0') &&
+                if ((list_items[i].icon != NULL ||
+                     list_items[i].img_path[0] != '\0') &&
                     app_icon_shadow[i] != NULL &&
                     lv_obj_is_valid(app_icon_shadow[i]))
                     lv_obj_clear_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
@@ -1148,7 +1179,8 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             }
             else
             {
-                if ((i < app_base_count || list_items[i].img_path[0] != '\0') &&
+                if ((list_items[i].icon != NULL ||
+                     list_items[i].img_path[0] != '\0') &&
                     app_icon_shadow[i] != NULL &&
                     lv_obj_is_valid(app_icon_shadow[i]))
                     lv_obj_add_flag(app_icon_shadow[i], LV_OBJ_FLAG_HIDDEN);
@@ -2718,7 +2750,8 @@ static int16_t find_app_index_by_id(uint16_t app_id)
             return i;
         }
     }
-    return app_base_count - 1; // 未找到
+    return -1; // 未找到 — 必須是不可能的 index 哨兵（不能用 app_base_count-1：
+               // 設定釘在 index 0 後 app_base_count==1，回 0 會誤判 index 0 命中）
 }
 
 extern char *get_media_title(void);
@@ -3318,7 +3351,17 @@ uint8_t get_custom_instruction_count(void)
 
 void clear_custom_instructions(void)
 {
+    /* BATCH replace (0x6B) clears here before re-appending. A clear is always a
+       phone push, so enter PHONE mode and treat the link as connected; any stale
+       disconnect-filter snapshot is now superseded by the incoming list. */
     list_item_count = app_base_count;
+    s_list_mode = LIST_MODE_PHONE;
+    s_phone_connected = true;
+    if (s_disc_backup)
+    {
+        rt_free(s_disc_backup);
+        s_disc_backup = NULL;
+    }
 }
 
 /* 根據 id 找到已有的指令，回傳 index，找不到回傳 -1 */
@@ -3358,11 +3401,77 @@ void remove_custom_instruction(const char *id)
     LOG_I("Removed instruction: id=%s", id);
 }
 
+/* openApp name (an APP_ID_* string the phone sends) → app_id enum, so an openApp
+   instruction can borrow the matching built-in app icon via get_app_icon() and
+   render like a real app. Returns 0xFF for names with no local app — get_app_icon
+   then yields the generic IMG_LOGO, which is also the correct icon for camera
+   (its own BUILTIN_APP_EXPORT icon IS IMG_LOGO). flashlight / exercise are always
+   defined (mirrors get_app_id_str); the rest are #ifdef-gated by board config. */
+static uint8_t app_id_from_name(const char *name)
+{
+    if (!name || !name[0])
+        return 0xFF;
+    if (strcmp(name, APP_ID_FLASHLIGHT) == 0)
+        return app_id_flashlight;
+    if (strcmp(name, APP_ID_EXERCISE) == 0)
+        return app_id_exercise;
+#ifdef APP_ID_TIMER
+    if (strcmp(name, APP_ID_TIMER) == 0)
+        return app_id_timer;
+#endif
+#ifdef APP_ID_RECORDER
+    if (strcmp(name, APP_ID_RECORDER) == 0)
+        return app_id_recorder;
+#endif
+#ifdef APP_ID_WEATHER
+    if (strcmp(name, APP_ID_WEATHER) == 0)
+        return app_id_weather;
+#endif
+#ifdef APP_ID_CALCULATOR
+    if (strcmp(name, APP_ID_CALCULATOR) == 0)
+        return app_id_calculator;
+#endif
+#ifdef APP_ID_ALARM
+    if (strcmp(name, APP_ID_ALARM) == 0)
+        return app_id_alarm;
+#endif
+#ifdef APP_ID_SETTING
+    if (strcmp(name, APP_ID_SETTING) == 0)
+        return app_id_setting;
+#endif
+#ifdef APP_ID_PHOTO
+    if (strcmp(name, APP_ID_PHOTO) == 0)
+        return app_id_photo;
+#endif
+    return 0xFF;
+}
+
 void add_or_update_custom_instruction(const char *id, const char *title,
                                       const char *trigger_type,
                                       uint32_t interval_sec, bool enabled,
                                       uint32_t version, const char *open_app)
 {
+    /* If a disconnect-filter snapshot is live, a push means the link is back —
+       restore the full PHONE list first so updates resolve against every item
+       (including the previously hidden phone-relay ones), not the filtered view. */
+    if (s_disc_backup)
+    {
+        memcpy(list_items, s_disc_backup, sizeof(list_items));
+        list_item_count = s_disc_backup_count;
+        rt_free(s_disc_backup);
+        s_disc_backup = NULL;
+    }
+    /* First phone instruction while still showing the built-in apps (a 0x65 single
+       arriving without a preceding 0x6B clear): drop the default apps — keeping
+       only the pinned Settings prefix — and switch to PHONE mode before
+       appending. */
+    if (s_list_mode == LIST_MODE_DEFAULT_APPS)
+    {
+        list_item_count = app_base_count;
+        s_list_mode = LIST_MODE_PHONE;
+    }
+    s_phone_connected = true;
+
     bool is_interval = (trigger_type && strcmp(trigger_type, "interval") == 0);
     int idx = find_instruction_by_id(id);
     if (idx >= 0)
@@ -3387,6 +3496,12 @@ void add_or_update_custom_instruction(const char *id, const char *title,
         }
         else
             list_items[idx].open_app[0] = '\0';
+        /* Borrow the matching built-in app icon for openApp items so they look
+           like apps on the watch (same glyph as the default app list). */
+        list_items[idx].icon =
+            (list_items[idx].open_app[0] != '\0')
+                ? get_app_icon(app_id_from_name(list_items[idx].open_app))
+                : NULL;
         LOG_I("Updated id=%s, enabled=%d", id, enabled);
         return;
     }
@@ -3405,7 +3520,10 @@ void add_or_update_custom_instruction(const char *id, const char *title,
         strncpy(instr->trigger_type, trigger_type, 31);
         instr->trigger_type[31] = '\0';
     }
-    instr->icon = NULL;
+    /* openApp items borrow the matching built-in app icon (see update path). */
+    instr->icon = (open_app && open_app[0] != '\0')
+                      ? get_app_icon(app_id_from_name(open_app))
+                      : NULL;
     instr->widget = NULL;
     instr->is_instruction = true;
     instr->is_interval = is_interval;
@@ -3650,6 +3768,9 @@ static void deferred_refresh_cb(lv_timer_t *t)
 static list_item_t *s_base_items = NULL;
 static uint8_t s_base_item_count;
 static uint8_t s_base_app_count;
+static list_mode_t s_base_list_mode; /* snapshot s_list_mode too: the device-page
+   feed calls clear_custom_instructions (→ PHONE mode), which would otherwise leak
+   back to the watch face and mix the next phone push into the default-app body. */
 
 void instruction_list_save_base(void)
 {
@@ -3659,6 +3780,7 @@ void instruction_list_save_base(void)
     memcpy(s_base_items, list_items, sizeof(list_items));
     s_base_item_count = list_item_count;
     s_base_app_count = app_base_count;
+    s_base_list_mode = s_list_mode;
 }
 
 void instruction_list_restore_base(void)
@@ -3667,6 +3789,7 @@ void instruction_list_restore_base(void)
     memcpy(list_items, s_base_items, sizeof(list_items));
     list_item_count = s_base_item_count;
     app_base_count = s_base_app_count;
+    s_list_mode = s_base_list_mode;
     rt_free(s_base_items);
     s_base_items = NULL;
     refresh_custom_instructions();
@@ -4630,39 +4753,140 @@ static void map_app_id(uint8_t app_id, list_item_t *item)
     item->icon = icon;
 }
 
+/* Built-in apps shown as the watch's default "instructions" before any phone
+   list arrives. Mirrors APP_LIST_ITEMS in lv_app_list_layout.c (same #ifdef
+   guards) — that file's swipe-down control-center grid was removed, so this is
+   now the canonical home of the built-in app list. Settings is intentionally
+   absent: it is pinned separately at index 0. The debug-only dinosaur game is
+   omitted (it needs kReleaseMode, not included here, and is not a real app). */
+static const uint16_t DEFAULT_APP_ITEMS[] = {
+#ifdef APP_ID_TIMER
+    app_id_timer,
+#endif
+    app_id_flashlight,
+#ifdef APP_ID_RECORDER
+    app_id_recorder,
+#endif
+    app_id_exercise,
+#ifdef APP_ID_SLEEP
+    app_id_sleep,
+#endif
+#ifdef APP_ID_CALCULATOR
+    app_id_calculator,
+#endif
+#ifdef APP_ID_WEATHER
+    app_id_weather,
+#endif
+#ifdef APP_ID_ALARM
+    app_id_alarm,
+#endif
+#ifdef APP_ID_PHOTO
+    app_id_photo,
+#endif
+};
+
+/* Fill [app_base_count ..] with the built-in default apps and enter DEFAULT_APPS
+   mode. Index 0 (Settings) is set up by load_instruction_list, not here. */
+static void load_default_apps(void)
+{
+    uint8_t slot = app_base_count; /* == 1: right after the pinned Settings */
+    for (uint8_t i = 0; i < ARRAY_SIZE(DEFAULT_APP_ITEMS); i++)
+    {
+        if (slot >= MAX_LIST_ITEMS)
+            break;
+        map_app_id(DEFAULT_APP_ITEMS[i], &list_items[slot]);
+        slot++;
+    }
+    list_item_count = slot;
+    s_list_mode = LIST_MODE_DEFAULT_APPS;
+}
+
+/* An item the watch can act on with no phone: a built-in app (Settings / default
+   apps, is_instruction == false) or an "open watch app" instruction (openApp
+   set). The rest are phone-relay instructions, hidden while disconnected. */
+static bool item_is_standalone(const list_item_t *it)
+{
+    return (!it->is_instruction) || (it->open_app[0] != '\0');
+}
+
 void load_instruction_list(void)
 {
-    uint8_t n = ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION);
-    uint8_t custom_count = (list_item_count > app_base_count)
-                               ? list_item_count - app_base_count
-                               : 0;
+    /* Index 0 is always the pinned Settings entry. Re-mapping it here means a
+       language change (load_instruction_list is the translation-reload hook)
+       re-translates its title. Tapping it opens the system Settings app via
+       on_item_tap → gui_app_run(item->id == APP_ID_SETTING). */
+    map_app_id(app_id_setting, &list_items[0]);
+    app_base_count = 1;
 
-    /* App slot count changed → shift custom items so they line up after the
-       new app block. Walk the right direction to avoid clobbering on overlap. */
-    if (custom_count > 0 && app_base_count != n)
+    /* DEFAULT_APPS: (re)build the built-in app body so a language change picks up
+       new translations. PHONE: items [1..] are phone instructions carrying their
+       own titles — leave them so a reload does not clobber the phone's list. */
+    if (s_list_mode == LIST_MODE_DEFAULT_APPS)
+        load_default_apps();
+}
+
+/* Device page bracket: device_pager reuses this shared list (save_base → feed →
+   restore_base) to show a REMOTE device's options, which are 0-based with no
+   pinned Settings entry. It calls this right after save_base to drop the pinned
+   prefix for that view; restore_base brings app_base_count (and the Settings item
+   at index 0) back for the watch face. Keeps the device page identical to before
+   the watch-face Settings pin was added. */
+void instruction_list_drop_pinned_for_device(void)
+{
+    app_base_count = 0;
+}
+
+/* Mirror the BT link state into the list (called from the connection hook on the
+   LVGL thread). Only PHONE mode reacts: on disconnect we snapshot the full list
+   and re-pack to the standalone items the watch can run alone (apps + openApp
+   instructions), hiding the phone-relay ones; on reconnect we restore the full
+   list from the snapshot — no dependency on the phone re-pushing. App mode never
+   filters (every built-in app runs offline). */
+void instruction_list_set_phone_connected(bool connected)
+{
+    if (connected == s_phone_connected)
+        return;
+    s_phone_connected = connected;
+
+    if (s_list_mode != LIST_MODE_PHONE)
+        return;
+
+    if (!connected)
     {
-        if (n > app_base_count)
+        if (s_disc_backup == NULL)
         {
-            for (int i = custom_count - 1; i >= 0; i--)
-                memcpy(&list_items[n + i],
-                       &list_items[app_base_count + i], sizeof(list_item_t));
+            s_disc_backup = rt_malloc(sizeof(list_items));
+            if (s_disc_backup)
+            {
+                memcpy(s_disc_backup, list_items, sizeof(list_items));
+                s_disc_backup_count = list_item_count;
+            }
         }
-        else
+        /* Re-pack in place: keep the pinned prefix + standalone items, in order. */
+        uint8_t w = 0;
+        for (uint8_t r = 0; r < list_item_count; r++)
         {
-            for (uint8_t i = 0; i < custom_count; i++)
-                memcpy(&list_items[n + i],
-                       &list_items[app_base_count + i], sizeof(list_item_t));
+            if (r < app_base_count || item_is_standalone(&list_items[r]))
+            {
+                if (w != r)
+                    memcpy(&list_items[w], &list_items[r], sizeof(list_item_t));
+                w++;
+            }
         }
+        list_item_count = w;
+    }
+    else if (s_disc_backup)
+    {
+        memcpy(list_items, s_disc_backup, sizeof(list_items));
+        list_item_count = s_disc_backup_count;
+        rt_free(s_disc_backup);
+        s_disc_backup = NULL;
     }
 
-    for (uint8_t i = 0; i < n; i++)
-    {
-        map_app_id(INSTRUCTION_LIST_ITEMS_DEFINITION[i], &list_items[i]);
-        LOG_D("App %d: ID=%s, Title=%s", i, list_items[i].id,
-              list_items[i].title);
-    }
-    app_base_count = n;
-    list_item_count = n + custom_count;
+    if (selected_item_index >= list_item_count)
+        selected_item_index = list_item_count ? (list_item_count - 1) : 0;
+
+    refresh_custom_instructions();
 }
 
 static rt_int32_t init(lv_obj_t *parent)

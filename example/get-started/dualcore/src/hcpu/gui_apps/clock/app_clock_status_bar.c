@@ -945,30 +945,11 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     lv_obj_set_style_border_width(control_center_window, 0, 0);
     lv_obj_set_style_pad_all(control_center_window, 0, 0);
 
-    /* App list grid (full size, scrollable) */
-    extern lv_obj_t *lv_app_list_layout_create(lv_obj_t * parent);
-    lv_obj_t *app_list = lv_app_list_layout_create(control_center_window);
-    control_center_app_list = app_list;
-
-    /* Invisible bottom spacer so the last app row isn't clipped at scroll end */
-    lv_coord_t max_bottom = 0;
-    uint32_t total_children = lv_obj_get_child_cnt(app_list);
-    for (uint32_t i = 0; i < total_children; i++)
-    {
-        lv_obj_t *child = lv_obj_get_child(app_list, i);
-        lv_coord_t child_bottom = lv_obj_get_y(child) + lv_obj_get_height(child);
-        if (child_bottom > max_bottom)
-        {
-            max_bottom = child_bottom;
-        }
-    }
-    lv_obj_t *bottom_spacer = lv_obj_create(app_list);
-    lv_obj_set_size(bottom_spacer, 1, 200);
-    lv_obj_set_pos(bottom_spacer, 0, max_bottom);
-    lv_obj_set_style_bg_opa(bottom_spacer, LV_OPA_0, 0);
-    lv_obj_set_style_border_width(bottom_spacer, 0, 0);
-    lv_obj_clear_flag(bottom_spacer, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(bottom_spacer, LV_OBJ_FLAG_SCROLLABLE);
+    /* 2026-06-04: the swipe-down app grid was removed — the built-in apps moved
+       into the floating instruction list. This page is now empty and unreachable
+       (HOME dropped LV_DIR_BOTTOM); the window is still created so the page object
+       and the control_center_on_resume/pause hooks stay valid. */
+    control_center_app_list = NULL;
 
     return control_center_window;
 }
@@ -1165,11 +1146,14 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
                floats from a bar tap now, on every page). The LEFT tile (0,1) is
                still built but UNREACHABLE: no gesture reaches it and no live
                set_tile_id targets it (animate_to_instruction_list /
-               animate_to_notification_center are now dead). UP / DOWN / RIGHT
-               navigation is unchanged. */
+               animate_to_notification_center are now dead).
+               2026-06-04: DOWN (control center / app grid) is also removed —
+               the built-in apps now live in the floating instruction list, so
+               the swipe-down app drawer is gone. LV_DIR_BOTTOM dropped; the DOWN
+               tile (1,2) is still built but UNREACHABLE and empty. UP (messages)
+               and RIGHT (device_pager) are unchanged. */
             pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 1, i,
-                                            LV_DIR_TOP | LV_DIR_BOTTOM |
-                                                LV_DIR_RIGHT);
+                                            LV_DIR_TOP | LV_DIR_RIGHT);
             app_clock_main_status_bar_down = pages[i];
             lv_obj_set_style_bg_color(pages[i], LV_COLOR_RED,
                                       LV_PART_MAIN | LV_STATE_DEFAULT);

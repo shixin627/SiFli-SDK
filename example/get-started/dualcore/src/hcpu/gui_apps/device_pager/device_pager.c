@@ -893,6 +893,11 @@ static void feed_active_device_options_to_list(void)
        device's options, so leaving the device page can restore it (guarded: only
        the first feed of a visit actually snapshots). */
     instruction_list_save_base();
+    /* Device options are 0-based with no pinned Settings entry — drop the
+       watch-face Settings pin so they fill from index 0 (restore_base re-pins it
+       on the way out). */
+    extern void instruction_list_drop_pinned_for_device(void);
+    instruction_list_drop_pinned_for_device();
     s_dev_opt_ver++;
     clear_custom_instructions();
     for (uint8_t i = 0; i < d->item_count; i++)
