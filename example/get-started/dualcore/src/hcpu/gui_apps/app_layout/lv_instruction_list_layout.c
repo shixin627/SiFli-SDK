@@ -2334,6 +2334,31 @@ void instruction_list_close_ai_on_leave(void)
         close_ai_widget();
 }
 
+/* Instant, animation-free collapse of the floating list to the closed state
+   (parked off-screen + HIDDEN). close_ai_widget slides the list out and only sets
+   HIDDEN in the slide's ready_cb (async), so a caller mid page-swipe would just
+   see it ride out. This hides it NOW. Used on mouse-page entry: a list opened on
+   the watch face (animate_open is the only show path) is never closed on a
+   HOME->RIGHT switch — both keep the bar visible, so set_visible(false)'s close
+   never runs — so without this it rides in with the page. */
+void instruction_list_hide_now(void)
+{
+    if (!p_instruction_list_layout)
+        return;
+    lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+    if (list_bg && lv_obj_is_valid(list_bg))
+    {
+        lv_anim_del(list_bg, inst_list_slide_anim_cb); /* kill any in-flight slide */
+        lv_obj_set_style_translate_x(list_bg, -LV_HOR_RES, 0); /* park off-screen, as a finished slide-out leaves it */
+        lv_obj_add_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
+    }
+    is_open_instruction_list_ai = false;
+    {
+        extern void instruction_list_bar_set_blur(bool on);
+        instruction_list_bar_set_blur(false);
+    }
+}
+
 void check_ai_widget_auto_close(void)
 {
     extern bool get_skai_input_text_is_null(void);

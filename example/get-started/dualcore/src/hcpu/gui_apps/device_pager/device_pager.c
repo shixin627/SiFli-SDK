@@ -859,6 +859,14 @@ static void refresh(void)
     }
     /* Device(s) present → restore the pull-down-to-mouse gesture. */
     lv_obj_add_flag(p->overlay, LV_OBJ_FLAG_SCROLLABLE);
+    /* R3 stage 2: the old drag-up device carousel (this overlay's list_tile) is
+       superseded by the shared floating list. Keep the overlay HIDDEN whenever
+       there are devices, so the pre-merge per-page list can't ride into the mouse
+       page on the first right-pull — it is BUILT shown, and set_active only hides
+       it at the swipe midpoint, so without this it slides in with the RIGHT tile.
+       The mouse-page entry shows the trackpad directly; the count == 0 branch above
+       keeps its own empty_view / QR path (this only runs when count > 0). */
+    lv_obj_add_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(p->pager, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(p->empty_view, LV_OBJ_FLAG_HIDDEN);
     rebind_all();
@@ -1282,6 +1290,16 @@ void device_pager_set_active(bool on)
             pager_send_active(p->model[p->current].id_str);
             LOG_I("[pager] page entered -> active device %d/%d (%s)",
                   p->current + 1, p->count, p->model[p->current].name);
+        }
+        /* R3 fix: a floating list opened on the watch face (animate_open is the
+           only show path) is NOT closed on a HOME->RIGHT switch — both pages keep
+           the bar visible, so set_visible(false)'s close never fires — so it rides
+           in with the mouse page. Hide it INSTANTLY here (close_ai_on_leave's
+           slide-out is async and would just be seen riding out). The feed below
+           then refills the now-hidden list for a later bar tap. */
+        {
+            extern void instruction_list_hide_now(void);
+            instruction_list_hide_now();
         }
         /* R3: on entry, show THIS device's options in the shared floating list
            (mouse_created is now true, so device_pager_refresh's own feed gates
