@@ -113,6 +113,12 @@ typedef struct
 } list_item_t;
 
 static list_item_t list_items[MAX_LIST_ITEMS];
+/* R3: set by the explicit CANCEL-close paths (bar tap / swipe-left) right before
+   they call close_ai_widget, so close_ai_widget tells the phone to dismiss the
+   active skaibar. A COMMIT close (tapping an option) leaves this false, so the
+   phone keeps its normal "run action + return to list" flow. Consumed (reset) at
+   the top of close_ai_widget. */
+static bool s_close_is_cancel = false;
 static uint8_t list_item_count =
     0; // total count of all items (app + instructions)
 static uint8_t app_base_count =
@@ -1484,6 +1490,7 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         if (!lv_obj_has_flag(bg, LV_OBJ_FLAG_HIDDEN) &&
             (tx <= -LV_HOR_RES / 4 || v.x < -6))
         {
+            s_close_is_cancel = true; /* swipe-left close = user cancel */
             close_ai_widget();
         }
         else
@@ -1711,6 +1718,7 @@ static void mic_bar_event_cb(lv_event_t *evt)
     {
         LOG_I("Mic bar tapped — dismissing AI widget (box=%d list=%d)",
               (int)box_visible, (int)list_shown);
+        s_close_is_cancel = true; /* bar-tap close = user cancel, not a commit */
         close_ai_widget();
     }
     else
@@ -1958,6 +1966,14 @@ void animate_open_ai_widget(void)
     if (s_left_morph_busy || s_left_closing || box_visible)
         return;
     last_ai_widget_open_time = rt_tick_get();
+    /* R3: snapshot the current instruction list before in-session options (voice
+       suggestions on the watch face / device options on the device page) overwrite
+       it, so a close can restore it. Guarded — one snapshot per session (device-
+       page entry may already have taken it). */
+    {
+        extern void instruction_list_save_base(void);
+        instruction_list_save_base();
+    }
     ai_widget_opened_by_drag = false;
     /* Cancel any in-flight scroll-fade so the widget doesn't immediately
        fade back out after the morph completes. */
@@ -2121,8 +2137,36 @@ void close_ai_widget(void)
        into a later close even if this call early-returns while already closing. */
     bool keep_list = s_scroll_keep_list;
     s_scroll_keep_list = false;
+    bool is_cancel = s_close_is_cancel;
+    s_close_is_cancel = false;
     if (s_left_closing)
         return; /* already animating shut */
+    /* R3: an explicit CANCEL full-close (left-swipe / bar tap, not a commit and
+       not a scroll box-collapse) tells the phone to dismiss the active skaibar so
+       its option list reverts. The phone treats the v2t stop as a pause (not a
+       close), so without this the device's / launcher's skaibar stays open and the
+       watch list keeps the in-session options. */
+    if (!keep_list)
+    {
+        /* Watch face: reset our own list to the snapshot taken on open — the phone
+           launcher's in-session options overwrote it (both a cancel and a commit
+           end back on the instruction list). Device page: skip — s_base is the
+           watch-face list kept for the page-leave restore, and the dismissed device
+           re-streams its default options which we re-feed. */
+        extern bool clock_main_page_is_home(void);
+        if (clock_main_page_is_home())
+        {
+            extern void instruction_list_restore_base(void);
+            instruction_list_restore_base();
+        }
+        /* Any explicit CANCEL close (not a commit) tells the phone to dismiss the
+           active skaibar so the device's / launcher's panel closes too. */
+        if (is_cancel)
+        {
+            extern bool commu_send_skaibar_dismiss(void);
+            commu_send_skaibar_dismiss();
+        }
+    }
     stop_mock_inst_update();
     /* Voice / state teardown happens up-front (mirrors the right skaibar_close,
        which stops v2t at the START of the close — not after the animation).
@@ -3581,6 +3625,38 @@ static void deferred_refresh_cb(lv_timer_t *t)
        (e.g. multiple instructions added in rapid succession) is rebuilt. */
     s_last_refresh_tick = 0;
     lv_timer_del(t);
+    refresh_custom_instructions();
+}
+
+/* R3 device-page overlay: snapshot / restore of the watch-face instruction list.
+   feed_active_device_options_to_list (device_pager) overwrites this shared list
+   with the active device's options while on the device page; we snapshot the
+   watch-face list on the way in and restore it on the way out, so reopening the
+   watch-face skaibar shows the user's own instructions again instead of the last
+   device's options — the phone does NOT re-push them on return. Heap-backed
+   (held only while on the device page) to avoid a permanent duplicate array. */
+static list_item_t *s_base_items = NULL;
+static uint8_t s_base_item_count;
+static uint8_t s_base_app_count;
+
+void instruction_list_save_base(void)
+{
+    if (s_base_items) return; /* one snapshot per device-page visit */
+    s_base_items = rt_malloc(sizeof(list_items));
+    if (!s_base_items) return; /* OOM: skip — restore no-ops, list just stays */
+    memcpy(s_base_items, list_items, sizeof(list_items));
+    s_base_item_count = list_item_count;
+    s_base_app_count = app_base_count;
+}
+
+void instruction_list_restore_base(void)
+{
+    if (!s_base_items) return;
+    memcpy(list_items, s_base_items, sizeof(list_items));
+    list_item_count = s_base_item_count;
+    app_base_count = s_base_app_count;
+    rt_free(s_base_items);
+    s_base_items = NULL;
     refresh_custom_instructions();
 }
 

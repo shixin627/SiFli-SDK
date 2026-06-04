@@ -39,6 +39,13 @@ extern "C"
         KEY_MOUSE_BUTTON  = 0x09,        /* watch→phone (UPLINK): {"btn":0|1,"act":0|1|2} btn 0=left 1=right; act 0=up 1=down 2=click */
         KEY_MOUSE_SCROLL  = 0x0A,        /* watch→phone (UPLINK): {"dx":N,"dy":N} wheel=dy, pan=dx */
         KEY_MOUSE_BACK    = 0x0B,        /* watch→phone (UPLINK): {} browser/navigation back */
+        /* watch→phone (UPLINK): {} the user CANCEL-closed the floating skaibar
+           (left-swipe / bar tap) WITHOUT committing an option. The phone treats a
+           v2t stop as a pause (not a close), so without this it leaves the active
+           skaibar open + its option list stale. On receipt the phone dismisses the
+           active target's skaibar (device page → that device's skaibar; watch face
+           → the phone launcher) and lets its list revert to the default. */
+        KEY_SKAIBAR_DISMISS = 0x0C,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

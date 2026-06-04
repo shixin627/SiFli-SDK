@@ -378,6 +378,12 @@ bool commu_send_mouse_back(void)
     LOG_I("send mouse back -> %s", ok ? "ok" : "FAIL");
     return ok;
 }
+bool commu_send_skaibar_dismiss(void)
+{
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIBAR_DISMISS, "{}");
+    LOG_I("send skaibar dismiss -> %s", ok ? "ok" : "FAIL");
+    return ok;
+}
 
 /*============================================================================*
  *                              Sensor

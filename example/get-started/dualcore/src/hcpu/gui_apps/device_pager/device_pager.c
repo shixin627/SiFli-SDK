@@ -886,8 +886,13 @@ static void feed_active_device_options_to_list(void)
             const char *title, const char *trigger_type, uint32_t interval_sec,
             bool enabled, uint32_t version, const char *open_app);
     extern void refresh_custom_instructions(void);
+    extern void instruction_list_save_base(void);
     static uint32_t s_dev_opt_ver = 0;
     dev_page_t *d = &p->model[p->current];
+    /* snapshot the watch-face instruction list before we overwrite it with this
+       device's options, so leaving the device page can restore it (guarded: only
+       the first feed of a visit actually snapshots). */
+    instruction_list_save_base();
     s_dev_opt_ver++;
     clear_custom_instructions();
     for (uint8_t i = 0; i < d->item_count; i++)
@@ -1280,6 +1285,13 @@ void device_pager_set_active(bool on)
     }
     else
     {
+        /* R3: restore the watch-face instruction list snapshotted on entry, so the
+           watch-face skaibar shows the user's own instructions again, not the last
+           device's options. No-op if we never overlaid (guarded inside). */
+        {
+            extern void instruction_list_restore_base(void);
+            instruction_list_restore_base();
+        }
         /* Leaving the device page: clear the skaibar's open flag + reset its
            visual so the transcript router (refresh_ai_chat_input_message, which
            checks the right skaibar FIRST) stops sending voice here and the left

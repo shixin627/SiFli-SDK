@@ -93,6 +93,7 @@ bool commu_send_mouse_move(int dx, int dy);            /* -> KEY_MOUSE_MOVE   (0
 bool commu_send_mouse_button(uint8_t btn, uint8_t act);/* -> KEY_MOUSE_BUTTON (0x09) btn 0=L 1=R; act 0=up 1=down 2=click */
 bool commu_send_mouse_scroll(int dx, int dy);          /* -> KEY_MOUSE_SCROLL (0x0A) wheel=dy pan=dx */
 bool commu_send_mouse_back(void);                      /* -> KEY_MOUSE_BACK   (0x0B) */
+bool commu_send_skaibar_dismiss(void);                 /* -> KEY_SKAIBAR_DISMISS (0x0C) cancel-close, no commit */
 
 /* Sensor */
 bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length);
