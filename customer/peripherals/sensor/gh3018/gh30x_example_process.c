@@ -1639,8 +1639,8 @@ void gh30x_fifo_evt_handler(void)
         GU16 usGsensorNum = 0;
         GU8 uchAutoLedFail = 0;
 
-        gsensor_drv_get_fifo_data(g_UNGh30xRawdataBuf.stRawdataBuf.stGsensorBuf, &usGsensorNum, GSENSOR_SOFT_FIFO_BUFFER_MAX_LEN);
-        Gh30xNormalizeGsensorSensitivity(g_UNGh30xRawdataBuf.stRawdataBuf.stGsensorBuf, usGsensorNum);
+        /* accel read moved below -- after Gh30xGetFifoRawdata, so the PPG frame
+           count is known and the accel count can be matched (step ~1). */
 // #if (__ALGO_CALC_WITH_DBG_DATA__)
 #if 0
         GU16 current = 0;
@@ -1679,6 +1679,17 @@ void gh30x_fifo_evt_handler(void)
 #endif
         }
 
+        /* Read accel sized to THIS PPG batch's frame count so the algo pairs each
+           PPG frame with its contemporaneous accel sample (GH30xCalGsensorStep ~1).
+           Was hardcoded to the full 25-sample ring -> step ~6 -> accel time-warped
+           ~6x -> the GH30x built-in motion comp could not cancel wrist-motion
+           artefacts. Must run after Gh30xGetFifoRawdata so usFifoSamplePointNum
+           (hence the frame count) is known. Feeds HR + HRV identically; the raw
+           PPG stream (unPpgRawdataBuf) is untouched. */
+        GU16 usGsFrameNum = GH30xGetFrameNum((GU8 *)(g_UNGh30xRawdataBuf.stRawdataBuf.unPpgRawdataBuf), usFifoSamplePointNum);
+        gsensor_drv_get_fifo_data(g_UNGh30xRawdataBuf.stRawdataBuf.stGsensorBuf, &usGsensorNum,
+                                  (usGsFrameNum > 0) ? usGsFrameNum : 1);
+        Gh30xNormalizeGsensorSensitivity(g_UNGh30xRawdataBuf.stRawdataBuf.stGsensorBuf, usGsensorNum);
         Gh30xDemoFunctionProcess((GU8 *)(g_UNGh30xRawdataBuf.stRawdataBuf.unPpgRawdataBuf), usFifoSamplePointNum,
                                  g_UNGh30xRawdataBuf.stRawdataBuf.stGsensorBuf, usGsensorNum);
     }

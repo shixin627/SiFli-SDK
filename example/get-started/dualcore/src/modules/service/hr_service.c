@@ -984,6 +984,9 @@ static void ppg_timeout_ind(void *param)
 #ifndef SOC_BF0_HCPU
 #include "wear_detect.h"
 #include "bloc_battery.h"
+#ifdef ACC_USING_BMI270
+#include "bmi270_driver.h"   /* bmi270_accel_read() for the HR motion gate */
+#endif
 
 /* Two-stage HR sampling (literature pattern: a low-power signal prescreens
    sleep, PPG activates only when needed). The period timer ticks at the SLEEP
@@ -1002,6 +1005,13 @@ static void ppg_timeout_ind(void *param)
 #define BG_HR_BURST_MS_AWAKE (40 * 1000)     /* warm-up + ~10 s to lock one BPM    */
 #define BG_HR_BURST_MS_SLEEP (60 * 1000)     /* warm-up + ~30 s stable for HR std  */
 #define BG_HR_SAMPLE_MS      (1000)          /* read cadence during the burst      */
+/* HR output motion gate: each 1 Hz read also samples BMI270 accel; if the wrist
+   moved this second (or within the guard window after), drop that HR read from
+   both the published best and the mean/std window. Suppresses the PPG motion-
+   artefact spikes the GH30x built-in comp lets through (its accel feed is time-
+   warped ~6x -- see plan). HR-only: does not touch PPG raw or the algo feed. */
+#define BG_HR_MOTION_DELTA_THRESH  6     /* >>10 LSB delta; ~0.4g between 1 Hz reads */
+#define BG_HR_MOTION_GUARD_MS      3000  /* keep rejecting this long after motion    */
 
 static rt_timer_t bg_hr_period_timer = RT_NULL;
 static rt_timer_t bg_hr_sample_timer = RT_NULL;
@@ -1031,6 +1041,41 @@ static uint16_t bg_hr_burst_readfail = 0;
 static uint8_t  bg_hr_win_mean = 0;
 static uint8_t  bg_hr_win_std = 0;
 static uint32_t bg_hr_win_tick_ms = 0;
+
+/* HR output motion-gate state (see BG_HR_MOTION_* above). bghr_accel_delta()
+   mirrors sleep_service.c prv_accel_delta_activity: read BMI270 accel and return
+   the L1 delta vs the previous read in >>10 LSB units (±2g => ~16384 LSB/g, so a
+   1g single-axis jerk ~= 16). Clearing bghr_prev_accel_valid at burst start
+   re-seeds the delta so consecutive bursts don't cross-contaminate. */
+static bool     bghr_prev_accel_valid = false;
+static uint32_t bghr_last_motion_ms = 0;
+static uint16_t bg_hr_burst_motion_rej = 0;   /* HR reads dropped for motion, per burst */
+
+static uint32_t bghr_accel_delta(void)   /* 0 = read failed / first sample of burst */
+{
+#ifdef ACC_USING_BMI270
+    static int16_t prev_ax = 0, prev_ay = 0, prev_az = 0;
+    int16_t ax = 0, ay = 0, az = 0;
+    if (bmi270_accel_read(&ax, &ay, &az) != 0)
+        return 0;
+    if (!bghr_prev_accel_valid)
+    {
+        prev_ax = ax; prev_ay = ay; prev_az = az;
+        bghr_prev_accel_valid = true;
+        return 0;
+    }
+    int32_t dx = (int32_t)ax - prev_ax;
+    int32_t dy = (int32_t)ay - prev_ay;
+    int32_t dz = (int32_t)az - prev_az;
+    prev_ax = ax; prev_ay = ay; prev_az = az;
+    uint32_t adx = (uint32_t)(dx >= 0 ? dx : -dx);
+    uint32_t ady = (uint32_t)(dy >= 0 ? dy : -dy);
+    uint32_t adz = (uint32_t)(dz >= 0 ? dz : -dz);
+    return (adx + ady + adz) >> 10;
+#else
+    return 0;
+#endif
+}
 
 /* Integer std-dev from running Σx / Σx² (n ≤ ~25 keeps it inside uint32).
    Mirrors sleep_service's prv_compute_hr_std so the HRV feed and the
@@ -1199,6 +1244,10 @@ static int bg_hr_skip_reason(void)
 
 static void bg_hr_finish_burst(void)
 {
+    /* Burst summary for on-wrist tuning of BG_HR_MOTION_* (LCPU console / uart4). */
+    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u best=%u",
+          (unsigned)bg_hr_burst_reads, (unsigned)bg_hr_burst_cnt,
+          (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_best);
     /* Forward the best BPM seen this burst, then power the LED back off. */
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
     {
@@ -1254,23 +1303,41 @@ static void bg_hr_sample_cb(void *param)
                  ? rt_device_read(hr_service_env.device, 0, &sd, 1) : 0;
     bg_hr_burst_reads++;
     if (rd != 1) bg_hr_burst_readfail++;  /* device gone or I2C/HW read failed */
+
+    /* Sample wrist motion every tick (keeps the accel delta chain continuous). */
+    uint32_t bghr_mv = bghr_accel_delta();
+    uint32_t bghr_now_ms = rt_tick_get_millisecond();
+    if (bghr_mv >= BG_HR_MOTION_DELTA_THRESH) bghr_last_motion_ms = bghr_now_ms;
+    bool bghr_motion = bghr_prev_accel_valid &&
+                       (bghr_now_ms - bghr_last_motion_ms) < BG_HR_MOTION_GUARD_MS;
+
     if (rd == 1)
     {
         /* Ignore the warm-up window: until the algo locks, gh3018_get_hr()
            returns the previous burst's stale value, which would bias the mean
            and deflate the std sleep_fusion uses for Deep/REM staging. */
-        if (sd.data.hr > 0 && rt_tick_get_millisecond() >= bg_hr_burst_accept_ms)
+        if (sd.data.hr > 0 && bghr_now_ms >= bg_hr_burst_accept_ms)
         {
-            bg_hr_burst_best = (uint8_t)sd.data.hr;
-            if (sd.data.hr < 240)
+            /* Drop reads taken while the wrist is moving: the PPG motion artefact
+               would spike this BPM (the GH30x built-in comp can't cancel it --
+               its accel feed is time-warped). Hold best, keep the window clean. */
+            if (bghr_motion)
             {
-                bg_hr_burst_sum += (uint32_t)sd.data.hr;
-                bg_hr_burst_sum_sq += (uint32_t)sd.data.hr * (uint32_t)sd.data.hr;
-                bg_hr_burst_cnt++;
+                bg_hr_burst_motion_rej++;
+            }
+            else
+            {
+                bg_hr_burst_best = (uint8_t)sd.data.hr;
+                if (sd.data.hr < 240)
+                {
+                    bg_hr_burst_sum += (uint32_t)sd.data.hr;
+                    bg_hr_burst_sum_sq += (uint32_t)sd.data.hr * (uint32_t)sd.data.hr;
+                    bg_hr_burst_cnt++;
+                }
             }
         }
     }
-    if (rt_tick_get_millisecond() >= bg_hr_burst_deadline_ms)
+    if (bghr_now_ms >= bg_hr_burst_deadline_ms)
     {
         bg_hr_finish_burst();
     }
@@ -1335,6 +1402,9 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_cnt = 0;
     bg_hr_burst_reads = 0;
     bg_hr_burst_readfail = 0;
+    bg_hr_burst_motion_rej = 0;
+    bghr_prev_accel_valid = false;   /* re-seed accel delta for this burst */
+    bghr_last_motion_ms = 0;
     bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
     uint32_t bg_now_ms = rt_tick_get_millisecond();
     bg_hr_burst_accept_ms = bg_now_ms + BG_HR_WARMUP_MS; /* skip algo warm-up */

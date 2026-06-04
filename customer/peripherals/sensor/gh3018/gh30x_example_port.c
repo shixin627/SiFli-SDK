@@ -372,15 +372,27 @@ void gsensor_drv_get_fifo_data(ST_GS_DATA_TYPE gsensor_buffer[],
     // code implement by user
     // EXAMPLE_DEBUG_LOG_L1("gsensor_drv_get_fifo_data");
 #ifdef BSP_USING_BLOC_PERIPHERAL
-    for (uint16_t i = 0; i < gsensor_max_len; i++)
+    /* Return the NEWEST `gsensor_max_len` accel samples in chronological order, so
+       the count matches THIS PPG batch's frame count and GH30xCalGsensorStep()
+       yields ~1 (each PPG frame pairs with its contemporaneous accel sample).
+       Previously this copied the whole 25-sample ring regardless of PPG count ->
+       step ~6 -> the accel feed was time-warped ~6x and the GH30x built-in motion
+       compensation could not cancel wrist-motion artefacts. The gesture module
+       stays the buffer's sole writer; this is a non-destructive read (the write
+       head gsensor_fifo_buffer_index is only read, never modified, here). */
+    uint16_t gs_count = gsensor_max_len;
+    if (gs_count > GSENSOR_FIFO_BUFFER_SIZE)
+        gs_count = GSENSOR_FIFO_BUFFER_SIZE;
+    uint16_t gs_start =
+        (gsensor_fifo_buffer_index + GSENSOR_FIFO_BUFFER_SIZE - gs_count) % GSENSOR_FIFO_BUFFER_SIZE;
+    for (uint16_t i = 0; i < gs_count; i++)
     {
-        uint16_t origin_buf_index =
-            (gsensor_fifo_buffer_index + i) % gsensor_max_len;
+        uint16_t origin_buf_index = (gs_start + i) % GSENSOR_FIFO_BUFFER_SIZE;
         gsensor_buffer[i].sXAxisVal = gsensor_fifo_buffer[origin_buf_index][0];
         gsensor_buffer[i].sYAxisVal = gsensor_fifo_buffer[origin_buf_index][1];
         gsensor_buffer[i].sZAxisVal = gsensor_fifo_buffer[origin_buf_index][2];
     }
-    *gsensor_buffer_index = gsensor_max_len;
+    *gsensor_buffer_index = gs_count;
 #endif
     /**************************** WARNNING: DO NOT REMOVE OR MODIFY THIS CODE
      * ---START***************************************************/
