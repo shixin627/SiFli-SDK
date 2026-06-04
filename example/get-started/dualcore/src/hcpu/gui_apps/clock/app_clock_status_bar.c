@@ -290,13 +290,21 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                     shady_transparency > 0)
                 {
                     set_instruction_list_time_opa(shady_transparency);
+                    /* Fade the top battery out together with the time as we pull
+                       toward the device page (RIGHT) — it's hidden there anyway
+                       (show_battery(false) on settle), so without this it rides
+                       along the whole slide and only pops out on release. Same
+                       HOME->RIGHT scroll-x branch. Per the user: turn the battery
+                       fully OFF (0) the moment the rightward slide starts, not a
+                       gradual fade, so it never shows on the way to the mouse. */
+                    set_instruction_list_battery_opa(LV_OPA_TRANSP);
                 }
             }
-            else
-            {
-                shady_transparency = -scroll_second_x;
-                set_instruction_list_battery_opa(shady_transparency);
-            }
+            // else
+            // {
+            //     shady_transparency = -scroll_second_x;
+            //     set_instruction_list_battery_opa(shady_transparency);
+            // }
         }
         else
         {
@@ -688,6 +696,19 @@ void instruction_list_bar_set_blur(bool on)
         set_clock_main_status_opa(LV_OPA_0, false);
         lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+/* Same gaus_dial_bg blur as instruction_list_bar_set_blur, but at an arbitrary
+   strength so the left reveal can fade it in WITH the pull (finger-follow),
+   mirroring app_clock_device_change_bar_event_cb's scroll→opa ramp. Turn it back
+   OFF with instruction_list_bar_set_blur(false). */
+void instruction_list_bar_set_blur_amount(uint8_t opa)
+{
+    if (!gaus_dial_bg || !lv_obj_is_valid(gaus_dial_bg)) return;
+    s_bar_blur_active = true;
+    lv_obj_set_style_bg_opa(gaus_dial_bg, LV_OPA_TRANSP, 0);
+    set_clock_main_status_opa(opa, false);
+    lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
 }
 
 /* True when the watch face (HOME) is the current main page. The floating list's

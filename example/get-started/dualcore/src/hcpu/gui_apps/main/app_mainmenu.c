@@ -535,6 +535,10 @@ void check_is_at_home(void)
     if (yes != _at_home)
     {
         _at_home = yes;
+        /* R3 stage3: the left-edge right-pull reveal overlay is live only on the
+           watch face — enable on entry, disable on every leave. Mirror gate to the
+           legacy left-edge back gesture below (off on the face, on elsewhere). */
+        extern void instruction_list_reveal_overlay_set_enabled(bool enabled);
         if (_at_home)
         {
             need_open_gesture_control = false;
@@ -543,6 +547,7 @@ void check_is_at_home(void)
             switch_watch_motion_control_mode(false, false);
             screen_rotate_back_to_original_direction();
             display_gesture_detect_objs(0, false);
+            instruction_list_reveal_overlay_set_enabled(true);
             display_status_bar_area(2, true);
             display_status_bar_area(0, true);
             display_status_bar_area(1, true);
@@ -552,6 +557,7 @@ void check_is_at_home(void)
         }
         else
         {
+            instruction_list_reveal_overlay_set_enabled(false);
             if (!_at_mouse_mode && !_at_instruction_list &&
                 !gui_app_is_actived(APP_ID_MOUSE))
             {
