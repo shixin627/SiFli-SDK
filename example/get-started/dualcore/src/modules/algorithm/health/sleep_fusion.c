@@ -9,15 +9,18 @@
  *        decides asleep / awake. Hysteresis on top: 3 consecutive sleep
  *        minutes to enter sleep, 2 consecutive wake minutes to exit. This
  *        suppresses single-epoch flips that confuse a naive cutoff.
- *        A still wrist alone is NOT enough: if HR is available and sits
- *        more than a fixed offset above a SELF-LEARNED resting baseline
+ *        A still wrist alone is NOT enough: if HR sits more than a fixed offset
+ *        above a SELF-LEARNED resting baseline for SEVERAL consecutive readings
  *        (sedentary wake — a train, a desk, reading) the minute votes wake
- *        regardless of how low the activity score is. Without this veto,
- *        smooth low-motion transit reads as hours of phantom sleep. The
- *        baseline is learned online (adopt lows fast, leak up slowly, freeze
- *        while elevated) so it fits the wearer and can't drift up to a long
- *        sedentary HR; the veto is held a few minutes past the last elevated
- *        reading to bridge the sparse gaps between background PPG bursts.
+ *        regardless of how low the activity score is. A LONE elevated burst —
+ *        a brief REM/arousal spike or a PPG artefact — does NOT veto, and an
+ *        implausibly high burst is dropped outright, so the veto no longer
+ *        clips normal REM or fires on garbage HR. The baseline is learned
+ *        online (adopt lows fast, leak up slowly, freeze while elevated) so it
+ *        fits the wearer and can't drift up to a long sedentary HR; the veto is
+ *        held a few minutes to bridge the sparse gaps between PPG bursts.
+ *        Steps never veto on their own (a wrist pedometer false-counts at rest)
+ *        — they force wake only when the activity score also shows motion.
  *    (2) When asleep, HR features distinguish Deep / Light / REM:
  *          Deep — activity ~0  AND  HR < resting * 0.95
  *          REM  — low activity AND  HR near resting AND HR std > 3 bpm
@@ -63,8 +66,16 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
    sleep, lower to be stricter. */
 #define SF_SLEEP_SCORE_THRESH    400u
 
-/* Any nonzero step count in the minute hard-forces wake. */
+/* Step threshold. A wrist-worn pedometer false-counts at rest (breathing,
+   heartbeat, micro-movement), so a bare step count is NOT trusted on its own:
+   steps force wake only when the activity score ALSO shows motion (see the vote
+   logic). This keeps real walking awake while stopping phantom overnight steps
+   from blocking sleep onset (they arrive with score ~0). */
 #define SF_STEPS_FORCE_WAKE      1u
+/* Steps only force wake when the minute's activity score is at least this —
+   i.e. corroborated by real accelerometer motion, not a still-wrist phantom
+   step. Sits above a still wrist (~0) and below the sleep threshold (400). */
+#define SF_STEP_CORROB_SCORE     100u
 
 /* HR wake-veto. A still wrist with HR well above the *learned* resting
    baseline is sedentary wake (a train, a desk, reading), not sleep — when HR
@@ -76,6 +87,21 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
    learned-resting + ~20 bpm separates clear daytime elevation from real sleep
    without sacrificing sleep sensitivity. */
 #define SF_WAKE_HR_OFFSET_BPM    20   /* HR > learned_rhr + 20 => awake */
+
+/* Implausibility ceiling. A still or sleeping wrist physiologically sits well
+   under this; sleeping HR is ~40-70 bpm and even REM/arousals rarely pass ~90.
+   A burst above this is a PPG motion artefact (poor optical lock), not a real
+   pulse, so it is dropped from the wake-veto, the resting-HR learner, and the
+   staging baseline — a garbage-high burst (e.g. an overnight 126 bpm spike on
+   a motionless wrist) can then neither fire the veto nor corrupt the baseline. */
+#define SF_HR_ARTEFACT_MAX      120u
+
+/* Sustained-elevation requirement for the wake-veto. A LONE elevated burst is a
+   brief REM/arousal spike (HR legitimately rises toward resting in REM) or an
+   artefact — not sedentary wake. Only this many consecutive elevated readings
+   (a train, a desk) arm the hold, so the veto stops clipping normal REM while
+   still catching genuinely sustained awake-but-still stretches. */
+#define SF_WAKE_HR_CONSEC_MIN     2u
 
 /* Online resting-HR learner. The firmware has no per-user resting HR yet
    (the seed is a fixed fallback), and real sleeping HR varies far too much
@@ -158,6 +184,11 @@ typedef struct
        minute, decremented otherwise; while nonzero the minute votes wake.
        Bridges the HR-absent gaps between sparse background PPG bursts. */
     uint8_t wake_hr_hold_min;
+
+    /* Consecutive elevated-HR readings seen, for the sustained-elevation gate.
+       Incremented on each elevated reading, reset by any present non-elevated
+       (sleep-consistent) reading. The veto arms only at SF_WAKE_HR_CONSEC_MIN. */
+    uint8_t hr_elev_consec;
 
     /* Output snapshot. */
     sleep_fusion_output_t out;
@@ -519,6 +550,7 @@ const sleep_fusion_output_t *sleep_fusion_update(
         s_sf.consec_sleep_candidate = 0;
         s_sf.consec_wake_candidate = 0;
         s_sf.wake_hr_hold_min = 0;
+        s_sf.hr_elev_consec = 0;
         prv_apply_stage_transition(utc_sec, prev_stage, SLEEP_FUSION_STAGE_NOT_WORN);
         s_sf.out.last_cole_kripke_score = 0;
         s_sf.out.last_hr_baseline_bpm = 0;
@@ -527,9 +559,15 @@ const sleep_fusion_output_t *sleep_fusion_update(
         return &s_sf.out;
     }
 
+    /* Sanitize HR once: drop an implausibly high burst as a PPG motion artefact
+       so it can neither fire the wake-veto nor corrupt the learned baseline.
+       Sleeping HR never reaches SF_HR_ARTEFACT_MAX on a still wrist. */
+    uint8_t hr_clean = (input->hr_mean_bpm > SF_HR_ARTEFACT_MAX)
+                           ? 0u : input->hr_mean_bpm;
+
     /* Push current minute into history first so the score includes it. */
     prv_push_activity(input->activity_count);
-    prv_push_hr(input->hr_mean_bpm);
+    prv_push_hr(hr_clean);
     prv_push_rmssd(input->hr_rmssd_ms); /* no-op until RR plumbing feeds it */
 
     uint32_t score = prv_cole_kripke_score();
@@ -544,32 +582,52 @@ const sleep_fusion_output_t *sleep_fusion_update(
        when HR is actually present, so the overnight HR-absent case is
        untouched and degrades to accel-only exactly as before. The hold carries
        the veto across the sparse gaps between background PPG bursts. */
-    bool hr_says_awake = prv_hr_elevated_and_learn(input->hr_mean_bpm);
-    if (hr_says_awake)
+    bool hr_elevated = prv_hr_elevated_and_learn(hr_clean);
+    if (hr_clean == 0)
     {
-        s_sf.wake_hr_hold_min = SF_WAKE_HR_HOLD_MIN;
+        /* HR absent this minute (or artefact-rejected) — bridge the gap. Leave
+           hr_elev_consec untouched: a sparse run of elevated bursts across the
+           HR-absent gaps still counts as sustained (a train), and only a present
+           low reading breaks the run below. */
+        if (s_sf.wake_hr_hold_min > 0)
+        {
+            s_sf.wake_hr_hold_min--;
+        }
     }
-    else if (input->hr_mean_bpm > 0)
+    else if (hr_elevated)
+    {
+        /* Elevated, real reading. Require SUSTAINED elevation before vetoing
+           sleep: a lone elevated burst is a brief REM/arousal spike or an
+           artefact, NOT sedentary wake, so it must not arm the hold (that was
+           clipping real REM and firing on garbage-high bursts). Only a run of
+           SF_WAKE_HR_CONSEC_MIN elevated readings (a train, a desk) arms it. */
+        if (s_sf.hr_elev_consec < 0xFF)
+        {
+            s_sf.hr_elev_consec++;
+        }
+        if (s_sf.hr_elev_consec >= SF_WAKE_HR_CONSEC_MIN)
+        {
+            s_sf.wake_hr_hold_min = SF_WAKE_HR_HOLD_MIN;
+        }
+    }
+    else
     {
         /* HR present and NOT elevated — positive, sleep-consistent evidence.
-           Clear the veto at once. The hold exists only to bridge HR-ABSENT
-           gaps; without this, a single sleep-time HR spike would arm the hold
-           and stretch into ~12 min of false wake (it cost real sleep on the
-           denser-HR PSG validation set). A real elevation re-arms every minute
-           it persists, so sustained wake is unaffected. */
+           Clear the veto and the elevation run at once. */
+        s_sf.hr_elev_consec = 0;
         s_sf.wake_hr_hold_min = 0;
-    }
-    else if (s_sf.wake_hr_hold_min > 0)
-    {
-        s_sf.wake_hr_hold_min--; /* HR absent — bridge the gap */
     }
     s_sf.out.hr_wake_veto_active = (s_sf.wake_hr_hold_min > 0);
     s_sf.out.learned_rhr_bpm = s_sf.learned_rhr_bpm;
 
-    /* Sleep-vs-wake vote for this minute. A still wrist (low score, no
-       steps) only counts as sleep when the HR veto is not active. */
+    /* Sleep-vs-wake vote for this minute. A still wrist counts as sleep unless
+       the HR veto is active OR there is CORROBORATED ambulation — steps backed
+       by real accelerometer motion. A bare pedometer count is untrusted: it
+       false-fires at rest, which was blocking sleep onset all night. */
+    bool steps_with_motion = (input->step_count >= SF_STEPS_FORCE_WAKE) &&
+                             (score >= SF_STEP_CORROB_SCORE);
     bool vote_sleep = (score < SF_SLEEP_SCORE_THRESH) &&
-                      (input->step_count < SF_STEPS_FORCE_WAKE) &&
+                      !steps_with_motion &&
                       (s_sf.wake_hr_hold_min == 0);
 
     if (vote_sleep)

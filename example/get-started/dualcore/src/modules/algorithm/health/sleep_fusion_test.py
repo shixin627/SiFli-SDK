@@ -15,7 +15,10 @@ SF_HR_HISTORY_MIN = 10
 SF_CK_WEIGHTS_Q10 = [40, 60, 100, 160, 260, 420, 1024]
 SF_SLEEP_SCORE_THRESH = 400
 SF_STEPS_FORCE_WAKE = 1
+SF_STEP_CORROB_SCORE = 100     # steps only force wake if score >= this (real motion)
 SF_WAKE_HR_OFFSET_BPM = 20      # HR > learned_rhr + 20 => awake
+SF_HR_ARTEFACT_MAX = 120       # bursts above this are PPG artefact -> dropped
+SF_WAKE_HR_CONSEC_MIN = 2      # consecutive elevated readings needed to arm veto
 SF_RHR_DOWN_SHIFT = 3          # est -= (est - hr) >> 3  (~1/8 of the gap)
 SF_RHR_LEAK_PERIOD_MIN = 4     # minutes mildly-above per +1 bpm upward leak
 SF_RHR_MIN = 40
@@ -57,6 +60,7 @@ class State:
     consec_sleep: int = 0
     consec_wake: int = 0
     wake_hr_hold: int = 0
+    hr_elev_consec: int = 0
     stage: Stage = Stage.AWAKE
     in_stage: int = 0
     total: int = 0
@@ -136,17 +140,21 @@ def update(state, utc, inp):
     if not inp.is_worn:
         state.consec_sleep = state.consec_wake = 0
         state.wake_hr_hold = 0
+        state.hr_elev_consec = 0
         state.stage = Stage.NOT_WORN
         state.in_stage = 1 if prev != Stage.NOT_WORN else state.in_stage + 1
         state.ck_score = 0
         state.hr_baseline = 0
         return
 
+    # Drop an implausibly high burst as a PPG artefact (mirror hr_clean in C).
+    hr_clean = 0 if inp.hr_mean_bpm > SF_HR_ARTEFACT_MAX else inp.hr_mean_bpm
+
     state.activity_hist.append(inp.activity_count)
     if len(state.activity_hist) > SF_WINDOW_MIN:
         state.activity_hist.pop(0)
-    if inp.hr_mean_bpm:
-        state.hr_hist.append(inp.hr_mean_bpm)
+    if hr_clean:
+        state.hr_hist.append(hr_clean)
         if len(state.hr_hist) > SF_HR_HISTORY_MIN:
             state.hr_hist.pop(0)
 
@@ -156,16 +164,28 @@ def update(state, utc, inp):
     # HR wake-veto: pulse > offset above the self-learned resting baseline on
     # a still wrist => sedentary wake, not sleep. Gated on HR being present,
     # held a few minutes to bridge sparse background-PPG gaps.
-    hr_says_awake = hr_elevated_and_learn(state, inp.hr_mean_bpm)
-    if hr_says_awake:
-        state.wake_hr_hold = SF_WAKE_HR_HOLD_MIN
-    elif inp.hr_mean_bpm > 0:
-        state.wake_hr_hold = 0          # present, non-elevated HR clears the veto
-    elif state.wake_hr_hold > 0:
-        state.wake_hr_hold -= 1         # HR absent — bridge the gap
+    hr_elevated = hr_elevated_and_learn(state, hr_clean)
+    if hr_clean == 0:
+        # HR absent / artefact-rejected — bridge the gap; leave the run intact.
+        if state.wake_hr_hold > 0:
+            state.wake_hr_hold -= 1
+    elif hr_elevated:
+        # Sustained elevation only: a lone spike (REM/arousal/artefact) must not
+        # veto. Arm the hold once SF_WAKE_HR_CONSEC_MIN elevated readings stack.
+        state.hr_elev_consec = min(0xFF, state.hr_elev_consec + 1)
+        if state.hr_elev_consec >= SF_WAKE_HR_CONSEC_MIN:
+            state.wake_hr_hold = SF_WAKE_HR_HOLD_MIN
+    else:
+        # present, non-elevated HR clears both the run and the veto
+        state.hr_elev_consec = 0
+        state.wake_hr_hold = 0
 
+    # Steps force wake only when corroborated by accelerometer motion; a bare
+    # pedometer count (false-fires at rest) no longer blocks sleep onset.
+    steps_with_motion = (inp.step_count >= SF_STEPS_FORCE_WAKE
+                         and state.ck_score >= SF_STEP_CORROB_SCORE)
     vote_sleep = (state.ck_score < SF_SLEEP_SCORE_THRESH
-                  and inp.step_count < SF_STEPS_FORCE_WAKE
+                  and not steps_with_motion
                   and state.wake_hr_hold == 0)
     if vote_sleep:
         state.consec_sleep += 1
@@ -274,6 +294,35 @@ slip_then_rescue = [
     MinuteInput(activity_count=30, hr_mean_bpm=88, hr_std_bpm=2) for _ in range(5)  # HR rescues
 ]
 
+# 7) Phantom overnight steps: dead-still wrist (score ~0), low sleeping HR, but
+#    the pedometer false-counts 1 step every minute. THIS is the reported bug —
+#    the old `any step => wake` gate kept the whole night AWAKE. With step
+#    corroboration (steps must be backed by real accel motion) it must sleep.
+phantom_steps = [
+    MinuteInput(activity_count=20, step_count=1, hr_mean_bpm=58, hr_std_bpm=1)
+    for _ in range(12)
+]
+
+# 8) Lone HR spike during sleep — a brief REM/arousal bump or PPG artefact. One
+#    elevated burst in an otherwise calm night must NOT wake the sleeper; only
+#    SUSTAINED elevation does. (Old single-burst veto clipped real REM here.)
+lone_spike = [
+    MinuteInput(activity_count=20, hr_mean_bpm=58, hr_std_bpm=1) for _ in range(6)
+] + [
+    MinuteInput(activity_count=20, hr_mean_bpm=88, hr_std_bpm=2)  # single elevated minute
+] + [
+    MinuteInput(activity_count=20, hr_mean_bpm=58, hr_std_bpm=1) for _ in range(6)
+]
+
+# 9) Artefact-high burst: a still wrist reading 126 bpm is physiologically
+#    impossible — it's PPG motion artefact, must be dropped, and must neither
+#    veto sleep nor pollute the learned baseline.
+artefact = [
+    MinuteInput(activity_count=20, hr_mean_bpm=58, hr_std_bpm=1) for _ in range(6)
+] + [
+    MinuteInput(activity_count=20, hr_mean_bpm=126, hr_std_bpm=2) for _ in range(4)
+]
+
 
 def check(name, cond):
     print(f"  [{'PASS' if cond else 'FAIL'}] {name}")
@@ -290,6 +339,9 @@ if __name__ == "__main__":
     trace("Not worn -> reset", not_worn)
     s_train = trace("Train ride (still + elevated HR)", train)
     s_rescue = trace("Slip into sleep then HR rescue", slip_then_rescue)
+    s_phantom = trace("Phantom overnight steps (still wrist)", phantom_steps)
+    s_spike = trace("Lone HR spike during sleep", lone_spike)
+    s_artefact = trace("Artefact-high burst (126 bpm, still)", artefact)
 
     # -------- Assertions ----------------------------------------------
     print("\n=== Assertions ===")
@@ -323,5 +375,21 @@ if __name__ == "__main__":
     check("HR rescue woke after HR returned", wake_minute is not None)
     check("HR rescue is prompt (<= SF_EXIT_SLEEP_MIN min after HR returns)",
           wake_minute is not None and (wake_minute - hr_return) <= SF_EXIT_SLEEP_MIN)
+
+    # The reported bug: phantom pedometer steps on a still wrist must NOT block
+    # sleep onset. A bare step count is no longer trusted without accel motion.
+    check("phantom steps still fall asleep (total > 0)", s_phantom.total > 0)
+
+    # A single elevated burst (REM/arousal spike or artefact) must not wake the
+    # sleeper — only sustained elevation vetoes.
+    check("lone HR spike does not wake the sleeper",
+          s_spike.stage in (Stage.LIGHT, Stage.DEEP, Stage.REM))
+
+    # An artefact-high burst is dropped: it neither wakes the sleeper nor drags
+    # the learned baseline up toward the garbage value.
+    check("artefact-high burst does not wake the sleeper",
+          s_artefact.stage in (Stage.LIGHT, Stage.DEEP, Stage.REM))
+    check("artefact-high burst left baseline near real sleeping HR",
+          s_artefact.hr_baseline <= 70)
 
     print("\nAll assertions passed.")
