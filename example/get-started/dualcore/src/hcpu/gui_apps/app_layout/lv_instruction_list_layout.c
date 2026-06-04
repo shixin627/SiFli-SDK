@@ -1743,6 +1743,18 @@ static void mic_bar_event_cb(lv_event_t *evt)
     }
 }
 
+/* Forwarder for the upward tap-helper band (mic_hit). Forwards a TAP to
+   mic_bar_event_cb ONLY while the bar is actually shown — so this off-bar helper
+   stays inert wherever the bar is hidden (another app / AI widget open) without
+   having to sync its own HIDDEN flag. */
+static void mic_hit_event_cb(lv_event_t *evt)
+{
+    if (!p_instruction_list_layout || !p_instruction_list_layout->mic_bar ||
+        lv_obj_has_flag(p_instruction_list_layout->mic_bar, LV_OBJ_FLAG_HIDDEN))
+        return;
+    mic_bar_event_cb(evt);
+}
+
 /* The box is scrollable only to ABSORB swipes (so a left-swipe doesn't bubble to
    the page nav and jump to the watchface). When the user actually starts a swipe
    on the open box, dismiss it with the animated reverse morph — mirrors the
@@ -4292,7 +4304,27 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_add_event_cb(mic_bar, mic_bar_event_cb, LV_EVENT_CLICKED, NULL);
     s_mic_bar_icon = NULL; /* slim pill has no glyph (matches the right bar) */
 
-    /* NO enlarged hit area here (the old 240x90 / LBOX_W one was removed): on
+    /* UPWARD-ONLY tap helper for the slim 100x16 pill (hard to hit). A transparent
+       sibling band glued to the bar's TOP and growing UP only — its bottom is at
+       the bar's top (~36px above the screen bottom), so it never reaches the bottom
+       edge where the app-list swipe-up presses down. That is the whole point: a
+       symmetric ext_click_area (and the removed 240x90 overlay) grew DOWNWARD into
+       that edge and swallowed the swipe-up; this can't, and the bar's own 20-36px
+       band keeps its existing tap-vs-drag split untouched. mic_hit_event_cb opens
+       only while the bar is shown; PRESS_LOCK cleared so a drag still transfers
+       down. Created BEFORE ai_box so the open box covers it (z-order). Child of
+       s_global_bar_layer -> chain-deleted with the bar. */
+    lv_obj_t *mic_hit = lv_obj_create(s_global_bar_layer);
+    lv_obj_remove_style_all(mic_hit);
+    lv_obj_set_size(mic_hit, LMIC_W + 40, 40);
+    lv_obj_align(mic_hit, LV_ALIGN_BOTTOM_MID, 0, LMIC_Y - LMIC_H); /* bottom = bar TOP; grows up to ~76px */
+    lv_obj_add_flag(mic_hit, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(mic_hit, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(mic_hit, LV_OBJ_FLAG_PRESS_LOCK); /* drag transfers down to the swipe-up */
+    lv_obj_add_event_cb(mic_hit, mic_hit_event_cb, LV_EVENT_CLICKED, NULL);
+
+    /* (The above mic_hit grows UPWARD only. The old SEPARATE 240x90 / LBOX_W
+       hit-area object, by contrast, was removed: on
        layer_top it covered the whole bottom strip — including the
        status_bar_area_down zone — and swallowed the watch-face "swipe up from the
        bottom" (app list) gesture. The slim mic_bar alone takes taps; a drag falls
