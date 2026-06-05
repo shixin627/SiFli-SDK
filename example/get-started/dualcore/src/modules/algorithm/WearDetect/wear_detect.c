@@ -49,9 +49,12 @@
 #define EVAL_PERIOD_MS          1500
 
 /* PPG DC threshold: below this → nothing touching the sensor (suspended in air).
- * Measured data: air DC ~= 40000-41000, contact (wrist/table) DC >= 48000.
- * Set between these ranges for immediate OFF detection. */
-#define PPG_DC_LOW_THD          45000
+ * REAL measured data (this sensor, HRV probe): air ~40k, WRIST ~43-44k (skin
+ * absorbs light, so a worn wrist reads LOWER than a reflective table ~50k!).
+ * The old 48000 assumption was wrong and rejected a worn wrist (DC 44k<45k).
+ * Threshold now sits just under the wrist value; a table (high DC) is rejected
+ * later by the pulse check, not here. ⚠ narrow margin -- needs per-unit calib. */
+#define PPG_DC_LOW_THD          42000
 
 /* Perfusion Index threshold (AC_pp / DC_mean).
  * Asymmetric (Schmitt trigger) to prevent oscillation on static surfaces:
@@ -76,6 +79,12 @@
 #define PI_HISTORY_LEN          5
 #define PI_RANGE_THD            0.0003f
 
+/* Upper bound on PI variability for OFF->ON. A real heartbeat's PI range is
+ * modest; a motion artefact (e.g. setting the watch down on a table) makes PI
+ * swing wildly and can fake a pulse. Reject OFF->ON when range is implausibly
+ * large. Measured: worn ~0.03-0.05, table set-down artefact ~0.27. */
+#define PI_RANGE_MAX            0.15f
+
 /* PPG freshness: if no new PPG sample arrives within this many
  * milliseconds, consider PPG data stale (sensor likely powered off). */
 #define PPG_STALE_MS            5000
@@ -90,6 +99,11 @@
  * Require N consecutive IMU-motion evaluations before voting ON. */
 #define IMU_RETRIGGER_COUNT     2
 #define IMU_RETRIGGER_THD       0.05f
+
+/* [DC-led] After motion while off-wrist, hold PPG powered for this long so the
+ * pulse can confirm a real wrist even if the user then stays still. If no wrist
+ * is confirmed within the window, PPG is powered back down until next motion. */
+#define PROBE_WINDOW_MS         (3 * 60 * 1000)
 
 /* PPG ring buffer size: at ~25 Hz, 75 samples = 3 seconds */
 #define PPG_WINDOW_SIZE         75
@@ -140,6 +154,12 @@ typedef struct
 } wear_detect_ctx_t;
 
 static wear_detect_ctx_t ctx;
+
+/* [DC-led] Motion-triggered PPG probe window. PPG power lives in hr_service;
+ * wear_detect asks it to power up (probe) and back down when nothing is worn. */
+extern void hr_set_power(uint8_t arg);
+static bool s_probe_active = false;
+static uint32_t s_probe_until_ms = 0;
 
 /* -------------------- Helpers -------------------- */
 
@@ -219,6 +239,7 @@ static void set_status(wear_status_t new_status)
 
     if (new_status == WEAR_STATUS_WEARING)
     {
+        s_probe_active = false; /* probe confirmed a wrist; hand PPG to hr_service/bg_hr */
         LOG_I("Wear detected: ON WRIST");
         notify_wear_status(true);
     }
@@ -247,23 +268,30 @@ static int evaluate_imu_only(void)
 
     if (imu_var >= IMU_RETRIGGER_THD)
     {
-        ctx.imu_retrigger_cnt++;
-        LOG_I("Eval: PPG stale, IMU_var=%.5f (motion %u/%u)",
-              imu_var, ctx.imu_retrigger_cnt, IMU_RETRIGGER_COUNT);
-
-        if (ctx.imu_retrigger_cnt >= IMU_RETRIGGER_COUNT)
+        /* Motion while off-wrist + PPG asleep: power PPG up and (re)start the
+         * probe window, so the next few minutes of PPG can confirm a real wrist
+         * even if the user then stays still. We never vote ON from IMU alone --
+         * only a live PPG pulse (in evaluate_once) confirms wear. */
+        if (!s_probe_active)
         {
-            ctx.imu_retrigger_cnt = 0;
-            return 1; /* vote ON to trigger PPG restart */
+            hr_set_power(1);
+            /* Ignore the first few seconds after powering PPG up: the signal is
+             * unstable and PI spikes during warm-up (this fakes a pulse on a
+             * table). Arm the settle gate so evaluate_once drops those reads. */
+            ctx.ppg_settling = true;
+            ctx.ppg_restart_ms = rt_tick_get_millisecond();
+            LOG_I("Wear: motion (var=%.4f) -> open PPG probe window (settling %ums)",
+                  imu_var, PPG_SETTLE_MS);
         }
+        s_probe_active = true;
+        s_probe_until_ms = rt_tick_get_millisecond() + PROBE_WINDOW_MS;
     }
     else
     {
-        ctx.imu_retrigger_cnt = 0;
-        LOG_D("Eval: PPG stale, IMU_var=%.5f (no motion)", imu_var);
+        LOG_D("Eval: off-wrist, IMU_var=%.5f (no motion)", imu_var);
     }
 
-    return 0;
+    return 0; /* PPG pulse confirms wear, not IMU */
 }
 
 /**
@@ -284,9 +312,18 @@ static int evaluate_once(uint32_t now)
     /* --- Check PPG freshness first --- */
     if (is_ppg_stale(now))
     {
-        /* PPG sensor is off. Only IMU can re-trigger. */
+        /* Off-wrist + PPG asleep: motion opens a PPG probe window (below). If a
+         * probe window already expired without confirming a wrist (e.g. PPG
+         * never produced data), power PPG back down here too. */
         if (ctx.status == WEAR_STATUS_NOT_WEARING)
         {
+            if (s_probe_active && now >= s_probe_until_ms)
+            {
+                hr_set_power(0);
+                s_probe_active = false;
+                LOG_I("Wear: probe expired (no PPG data) -> close PPG, wait for motion");
+                return 0;
+            }
             return evaluate_imu_only();
         }
         /* If currently ON but PPG went stale, don't change state yet */
@@ -338,56 +375,60 @@ static int evaluate_once(uint32_t now)
         pi_range = pi_max - pi_min;
     }
 
-    /* --- Indicator 1: DC level (contact) --- */
+    /* === DC-led contact detection (industry standard: reflectance DC == skin
+     * contact; off-body == DC collapse). The accelerometer is deliberately NOT
+     * used to decide wear -- it only marks PPG reliability -- so a motionless
+     * worn wrist during sleep stays ON instead of being mistaken for off-wrist
+     * (root cause A2). PI variability is used ONLY to confirm OFF->ON, never to
+     * drop an already-worn state (root cause A1). === */
     if (dc_mean < (float)PPG_DC_LOW_THD)
     {
-        LOG_I("Eval: DC=%.0f (< %u) -> no contact -> OFF", dc_mean, PPG_DC_LOW_THD);
+        LOG_I("Eval: DC=%.0f (< %u) -> contact lost -> OFF", dc_mean, PPG_DC_LOW_THD);
         return -1;
     }
 
-    /* --- Indicator 2: Perfusion Index (heartbeat) --- */
-    /* Asymmetric threshold (Schmitt trigger): require stronger PI to go
-     * OFF->ON than to stay ON.  This prevents oscillation on static
-     * surfaces where PI occasionally spikes above the low threshold. */
-    float pi_thd = (ctx.status == WEAR_STATUS_WEARING)
-                       ? PI_THD_KEEP_ON : PI_THD_TO_ON;
-
-    if (pi >= pi_thd)
+    /* DC is in the contact range. */
+    if (ctx.status == WEAR_STATUS_WEARING)
     {
-        /* Check PI variability: real heartbeat causes PI to fluctuate.
-         * Constant PI (noise/static surface) should be rejected. */
-        if (ctx.pi_hist_count >= PI_HISTORY_LEN && pi_range < PI_RANGE_THD)
-        {
-            LOG_I("Eval: DC=%.0f, AC_pp=%.0f, PI=%.5f, pi_range=%.5f (constant -> noise) -> OFF",
-                  dc_mean, ac_pp, pi, pi_range);
-            return -1;
-        }
-
-        LOG_I("Eval: DC=%.0f, AC_pp=%.0f, PI=%.5f, pi_range=%.5f, thd=%.4f -> ON",
-              dc_mean, ac_pp, pi, pi_range, pi_thd);
+        /* Already worn: hold ON as long as DC stays high. Ignore PI/IMU so a
+         * flat, low-variability sleep pulse never flips us OFF. Only the DC
+         * collapse above takes us off-wrist. */
+        LOG_I("Eval: DC=%.0f, PI=%.5f (worn; DC held) -> ON", dc_mean, pi);
         return 1;
     }
 
-    /* --- Indicator 3: IMU variance (supplementary) --- */
-    uint16_t imu_len = (ctx.imu_count < IMU_WINDOW_SIZE)
-                           ? ctx.imu_count : IMU_WINDOW_SIZE;
-    if (imu_len > 0)
+    /* Currently OFF. The PPG running now was opened by a motion probe window;
+     * if that window expired without a live pulse, power PPG back down and wait
+     * for the next motion (saves LED current when nothing is worn). */
+    if (s_probe_active && now >= s_probe_until_ms)
     {
-        float imu_var = compute_imu_variance(ctx.acce_mag, imu_len);
-        LOG_I("Eval: DC=%.0f, PI=%.5f (< %.4f), pi_range=%.5f, IMU_var=%.5f",
-              dc_mean, pi, pi_thd, pi_range, imu_var);
-
-        if (imu_var >= IMU_VARIANCE_THD)
-        {
-            return 0; /* uncertain */
-        }
-        else
-        {
-            return -1; /* static object → OFF */
-        }
+        hr_set_power(0);
+        s_probe_active = false;
+        ctx.ppg_count = 0;
+        ctx.ppg_idx = 0;
+        LOG_I("Wear: probe window expired, no wrist -> close PPG, wait for motion");
+        return 0;
     }
 
-    return 0; /* not enough data */
+    /* Require a *live* pulse (PI above the ON bar AND varying) to confirm a real
+     * wrist, so a watch resting on a table (high DC, no pulse) is not worn. */
+    if (pi >= PI_THD_TO_ON && pi_range <= PI_RANGE_MAX &&
+        (ctx.pi_hist_count < PI_HISTORY_LEN || pi_range >= PI_RANGE_THD))
+    {
+        LOG_I("Eval: DC=%.0f, AC_pp=%.0f, PI=%.5f, range=%.5f -> live wrist -> ON",
+              dc_mean, ac_pp, pi, pi_range);
+        return 1;
+    }
+    if (pi >= PI_THD_TO_ON && pi_range > PI_RANGE_MAX)
+    {
+        LOG_I("Eval: DC=%.0f, PI=%.5f, range=%.5f (too wild -> motion artefact, not a pulse) -> hold",
+              dc_mean, pi, pi_range);
+        return 0;
+    }
+
+    LOG_I("Eval: DC=%.0f, PI=%.5f, range=%.5f (high DC, no live pulse yet) -> hold",
+          dc_mean, pi, pi_range);
+    return 0; /* high DC but pulse unconfirmed -> wait, do NOT flip OFF */
 }
 
 /**
@@ -403,6 +444,17 @@ static void try_evaluate(void)
     /* Need minimum data before evaluating (PPG or IMU) */
     if (ctx.ppg_count < 20 && ctx.imu_count < 20)
         return;
+
+    /* [DC-led] Broadcast the initial wear state once. Boot now defaults to
+     * NOT_WEARING and may legitimately stay there (e.g. resting on a table),
+     * which is no state *change* -> set_status() never fires -> the UI's
+     * "not worn" indicator would never be told at boot. Push it once here. */
+    static bool initial_notified = false;
+    if (!initial_notified)
+    {
+        initial_notified = true;
+        notify_wear_status(ctx.status == WEAR_STATUS_WEARING);
+    }
 
 #ifdef PPG_RACE_DEBUG
     uint32_t eval_t0 = rt_tick_get_millisecond();
@@ -463,7 +515,7 @@ static void try_evaluate(void)
 void wear_detect_init(void)
 {
     memset(&ctx, 0, sizeof(ctx));
-    ctx.status = WEAR_STATUS_WEARING; /* default: assume wearing at boot */
+    ctx.status = WEAR_STATUS_NOT_WEARING; /* [DC-led] start OFF; require DC + a live pulse to confirm worn, so booting/resting on a table is never latched as worn */
     ctx.last_eval_ms = rt_tick_get_millisecond();
     ctx.initialized = true;
     LOG_I("Wear detection initialized (PI-based, eval every %u ms)", EVAL_PERIOD_MS);

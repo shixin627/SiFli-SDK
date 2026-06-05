@@ -32,9 +32,16 @@ goodix_hba_ret goodix_hba_init_func(GU32 fs)
     stHbCfg.scence = HBA_SCENES_DEFAULT;
     stHbCfg.fs = fs;
     stHbCfg.valid_channel_num = 1;
-    stHbCfg.back_track_len = 0;
+    stHbCfg.back_track_len = 0;    /* keep 0: a longer window starved the 40s awake burst's output rate; not the jump root cause anyway (reverted 2026-06-05) */
     stHbCfg.hba_latest_output_time = 0;
     stHbCfg.hba_earliest_output_time = 0;
+    /* Still-HR stability tune (2026-06-05): withhold low-confidence HR so the algo
+       stops emitting the 100<->40 garbage jumps seen while sitting still. The FIELD
+       is official (goodix_hba.h:102); the VALUE 30 is an EXPERIMENTAL start point on
+       the valid_score 0-100 scale, NOT a Goodix-published number. Tune via the bg_hr
+       "qmin=" LCPU log: drop to ~20 if HR goes blank too often, raise to 50-60 if it
+       still jumps. Set 0 to restore original (no withholding) behaviour. */
+    stHbCfg.hba_lowerest_confidence = 30;
 
     GH30X_ALGO_LOG_PARAM("[%s]:params = %d,%d,%d,%d,%d,%d,%d,\r\n", __FUNCTION__,
                          stHbCfg.mode,
@@ -139,6 +146,8 @@ GS8 GH30xHrAlgoExe(const STGh30xFrameInfo *const pstFrameInfo)
                                  (int)pstFrameInfo->pstAlgoResult->snResult[0], (int)pstFrameInfo->pstAlgoResult->uchUpdateFlag);
             extern void gh3018_set_hr(uint32_t hr);
             gh3018_set_hr(pstFrameInfo->pstAlgoResult->snResult[0]);
+            extern void gh3018_set_hr_quality(uint32_t valid_score, uint32_t valid_level);
+            gh3018_set_hr_quality((uint32_t)stResult.valid_score, (uint32_t)stResult.valid_level);
             pstFrameInfo->pstAlgoResult->usResultBit = 0x3F;
             pstFrameInfo->pstAlgoResult->uchResultNum = GH30x_BitCount(pstFrameInfo->pstAlgoResult->usResultBit);
 #if __GH30X_HR_OUTPUT_VALUE_STRATEGY_EN__

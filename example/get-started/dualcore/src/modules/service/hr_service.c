@@ -987,6 +987,14 @@ static void ppg_timeout_ind(void *param)
 #ifdef ACC_USING_BMI270
 #include "bmi270_driver.h"   /* bmi270_accel_read() for the HR motion gate */
 #endif
+/* PPG-HR per-reading quality from the Goodix algo, plumbed via the gh3018 port
+   (valid_score = confidence, valid_level = quality level). Diagnostics now; the
+   output-quality gate (Apple-style "withhold on low signal quality") builds on
+   it later. */
+extern void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level);
+/* Monotonic count of locked algo HR outputs; bg_hr snapshots it at burst start and
+   ends warm-up the moment it moves (= algo locked this burst). See gh3018 port. */
+extern uint32_t gh3018_get_hr_update_seq(void);
 
 /* Two-stage HR sampling (literature pattern: a low-power signal prescreens
    sleep, PPG activates only when needed). The period timer ticks at the SLEEP
@@ -1001,7 +1009,7 @@ static void ppg_timeout_ind(void *param)
    stays 0 until then); before that gh3018_get_hr() still returns the PREVIOUS
    burst's stale value. Drop that warm-up window from the HR stats, and keep
    every burst longer than it. */
-#define BG_HR_WARMUP_MS      (30 * 1000)     /* algo lock time; earlier reads dropped */
+#define BG_HR_WARMUP_MS      (30 * 1000)     /* warm-up FALLBACK cap; dynamic warm-up (HR update-seq) accepts earlier on real lock */
 #define BG_HR_BURST_MS_AWAKE (40 * 1000)     /* warm-up + ~10 s to lock one BPM    */
 #define BG_HR_BURST_MS_SLEEP (60 * 1000)     /* warm-up + ~30 s stable for HR std  */
 #define BG_HR_SAMPLE_MS      (1000)          /* read cadence during the burst      */
@@ -1017,7 +1025,8 @@ static rt_timer_t bg_hr_period_timer = RT_NULL;
 static rt_timer_t bg_hr_sample_timer = RT_NULL;
 static rt_bool_t bg_hr_bursting = RT_FALSE;
 static uint32_t bg_hr_burst_deadline_ms = 0;
-static uint32_t bg_hr_burst_accept_ms = 0;   /* reads before this tick are warm-up */
+static uint32_t bg_hr_burst_accept_ms = 0;   /* reads before this tick are warm-up (fallback cap) */
+static uint32_t bg_hr_burst_start_seq = 0;   /* gh3018 HR-update seq at burst start; dynamic warm-up baseline */
 static uint8_t bg_hr_burst_best = 0;
 
 /* Two-stage gate state. bg_hr_sleep_active is set by sleep_service when accel
@@ -1076,6 +1085,39 @@ static uint32_t bghr_accel_delta(void)   /* 0 = read failed / first sample of bu
     return 0;
 #endif
 }
+
+/* Rolling median-of-N over accepted bg-HR reads. Rejects isolated PPG spikes
+   (poor-contact / signal-quality artefacts that are NOT wrist motion -- the
+   sleep case the accel motion-gate cannot catch) with no magic threshold: a
+   lone 115 among ~55s does not move the median. We publish AND accumulate the
+   median (Apple-style smoothed, outlier-rejected output) instead of the raw
+   read. Reset per burst. */
+#define BGHR_MED_WIN 5
+static uint8_t bghr_med_buf[BGHR_MED_WIN];
+static uint8_t bghr_med_cnt = 0;
+static uint8_t bghr_med_idx = 0;
+
+static uint8_t bghr_median_push(uint8_t v)
+{
+    bghr_med_buf[bghr_med_idx] = v;
+    bghr_med_idx = (uint8_t)((bghr_med_idx + 1) % BGHR_MED_WIN);
+    if (bghr_med_cnt < BGHR_MED_WIN) bghr_med_cnt++;
+    uint8_t s[BGHR_MED_WIN];
+    for (uint8_t i = 0; i < bghr_med_cnt; i++) s[i] = bghr_med_buf[i];
+    for (uint8_t i = 1; i < bghr_med_cnt; i++)   /* insertion sort, <=5 elems */
+    {
+        uint8_t k = s[i];
+        int j = (int)i - 1;
+        while (j >= 0 && s[j] > k) { s[j + 1] = s[j]; j--; }
+        s[j + 1] = k;
+    }
+    return s[bghr_med_cnt / 2];
+}
+
+/* Per-burst PPG-HR quality (min confidence + last level) for the burst log /
+   future quality gate. */
+static uint32_t bg_hr_burst_qscore_min = 0xFFFFFFFFu;
+static uint32_t bg_hr_burst_qlevel = 0;
 
 /* Integer std-dev from running Σx / Σx² (n ≤ ~25 keeps it inside uint32).
    Mirrors sleep_service's prv_compute_hr_std so the HRV feed and the
@@ -1244,10 +1286,13 @@ static int bg_hr_skip_reason(void)
 
 static void bg_hr_finish_burst(void)
 {
-    /* Burst summary for on-wrist tuning of BG_HR_MOTION_* (LCPU console / uart4). */
-    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u best=%u",
+    /* Burst summary for on-wrist tuning (LCPU console / uart4). qmin = lowest
+       Goodix valid_score this burst; correlate low qmin with spiky bursts to
+       calibrate a future signal-quality gate. */
+    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u best=%u qmin=%u qlvl=%u",
           (unsigned)bg_hr_burst_reads, (unsigned)bg_hr_burst_cnt,
-          (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_best);
+          (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_best,
+          (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel);
     /* Forward the best BPM seen this burst, then power the LED back off. */
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
     {
@@ -1313,27 +1358,41 @@ static void bg_hr_sample_cb(void *param)
 
     if (rd == 1)
     {
-        /* Ignore the warm-up window: until the algo locks, gh3018_get_hr()
-           returns the previous burst's stale value, which would bias the mean
-           and deflate the std sleep_fusion uses for Deep/REM staging. */
-        if (sd.data.hr > 0 && bghr_now_ms >= bg_hr_burst_accept_ms)
+        /* Dynamic warm-up: accept as soon as the algo emits a FRESH locked value
+           this burst (gh3018 HR update-seq moved past the burst-start baseline) --
+           typically well under the old fixed 30s. The fixed accept_ms is kept ONLY
+           as a fallback, so behaviour is never worse than before if the seq never
+           moves (algo never locked this burst). Until one of those holds,
+           gh3018_get_hr() returns the previous burst's stale value -- must not accept. */
+        bool bghr_algo_locked = (gh3018_get_hr_update_seq() != bg_hr_burst_start_seq);
+        if (sd.data.hr > 0 && (bghr_algo_locked || bghr_now_ms >= bg_hr_burst_accept_ms))
         {
-            /* Drop reads taken while the wrist is moving: the PPG motion artefact
-               would spike this BPM (the GH30x built-in comp can't cancel it --
-               its accel feed is time-warped). Hold best, keep the window clean. */
+            /* step->1 (the accel-feed alignment fix, already on main) restored the
+               GH30x built-in motion compensation, so this external motion-gate's
+               ROOT CAUSE is gone. Demoted REJECT -> diagnostic-only: still count
+               motion reads, but no longer drop them -- over-rejecting while sitting
+               still starved the 5-tap median window and made the daily curve jumpy.
+               The median below still suppresses isolated motion spikes. Re-add a
+               looser reject (higher delta thresh) only if dynamic over-read returns. */
             if (bghr_motion)
             {
                 bg_hr_burst_motion_rej++;
             }
-            else
+            if (sd.data.hr < 240)
             {
-                bg_hr_burst_best = (uint8_t)sd.data.hr;
-                if (sd.data.hr < 240)
-                {
-                    bg_hr_burst_sum += (uint32_t)sd.data.hr;
-                    bg_hr_burst_sum_sq += (uint32_t)sd.data.hr * (uint32_t)sd.data.hr;
-                    bg_hr_burst_cnt++;
-                }
+                /* Median-filter the accepted read: suppress isolated quality
+                   spikes (the sleep case) before they reach best / mean / std,
+                   and record this read's Goodix quality. Publish AND accumulate
+                   the MEDIAN, not the raw value. */
+                uint32_t qscore = 0, qlevel = 0;
+                gh3018_get_hr_quality(&qscore, &qlevel);
+                if (qscore < bg_hr_burst_qscore_min) bg_hr_burst_qscore_min = qscore;
+                bg_hr_burst_qlevel = qlevel;
+                uint8_t med = bghr_median_push((uint8_t)sd.data.hr);
+                bg_hr_burst_best = med;
+                bg_hr_burst_sum += (uint32_t)med;
+                bg_hr_burst_sum_sq += (uint32_t)med * (uint32_t)med;
+                bg_hr_burst_cnt++;
             }
         }
     }
@@ -1405,9 +1464,14 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_motion_rej = 0;
     bghr_prev_accel_valid = false;   /* re-seed accel delta for this burst */
     bghr_last_motion_ms = 0;
+    bghr_med_cnt = 0;                 /* reset median window for this burst */
+    bghr_med_idx = 0;
+    bg_hr_burst_qscore_min = 0xFFFFFFFFu;
+    bg_hr_burst_qlevel = 0;
     bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
     uint32_t bg_now_ms = rt_tick_get_millisecond();
-    bg_hr_burst_accept_ms = bg_now_ms + BG_HR_WARMUP_MS; /* skip algo warm-up */
+    bg_hr_burst_accept_ms = bg_now_ms + BG_HR_WARMUP_MS; /* fixed warm-up fallback cap */
+    bg_hr_burst_start_seq = gh3018_get_hr_update_seq();  /* dynamic warm-up: accept once the algo emits a NEW locked value past this */
     bg_hr_burst_deadline_ms = bg_now_ms + bg_hr_burst_ms;
     /* Open in HR mode (GH30X_FUNCTION_HR), the same path the foreground HR
        subscribe uses; hr_set_power(1) would open NORMAL = HRV, which never

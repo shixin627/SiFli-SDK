@@ -60,6 +60,9 @@ extern void refresh_ai_chat_input_message(char *text);
 LV_IMG_DECLARE(icon_mic); /* shared mic/voice icon, same as instruction_list */
 LV_IMG_DECLARE(message_widget_bg); /* skaibar input pill frame (same as left list) */
 LV_IMG_DECLARE(qr_download); /* no-device empty state: prebuilt QR for skaiwalk.com/download (large_ezip resource) */
+LV_IMG_DECLARE(img_left_arrow);  /* 9x17  — device-name strip: previous-device arrow */
+LV_IMG_DECLARE(img_right_arrow); /* 9x17  — device-name strip: next-device arrow */
+LV_IMG_DECLARE(logout);          /* 16x16 — replaces the left arrow on the first device (tap = exit) */
 /* Per-action category icons (auto-built from the resource ezip image folder).
    Selected per item by its DEV_ACTION_TYPE; replaces the old img_flashlight
    placeholder. */
@@ -159,6 +162,8 @@ typedef struct
        distant device is reached without flicking one-by-one). */
     lv_obj_t   *dev_name_bar;
     lv_obj_t   *dev_name_label;
+    lv_obj_t   *dev_left_icon;   /* img_left_arrow (prev) — swaps to `logout` on the first device (tap = exit) */
+    lv_obj_t   *dev_right_icon;  /* img_right_arrow (next) */
 } device_pager_t;
 
 static device_pager_t *p = NULL;
@@ -185,7 +190,6 @@ static void mic_clicked_cb(lv_event_t *e);   /* defined below (skaibar section) 
 static void mouse_retarget(void);            /* defined below */
 static void dev_name_bar_update(void);       /* defined below */
 static void pager_set_current(int idx);      /* defined below */
-static lv_coord_t s_name_press_x = 0;        /* device-name strip drag anchor */
 static void skaibar_close(void);             /* defined below (skaibar section) */
 static void skaibar_open(void);              /* defined below (skaibar section) */
 static void skaibar_grow_cb(void *var, int32_t f); /* morph step; defined below */
@@ -630,6 +634,21 @@ static void dev_name_bar_update(void)
     else
         lv_label_set_text(p->dev_name_label, "No device");
     lv_obj_center(p->dev_name_label);
+    /* Left icon: the previous-device arrow normally, but the `logout` glyph on the
+       FIRST device — there's no previous device, so its tap exits mouse mode instead
+       (handled by dev_left_icon_cb, which checks current<=0). */
+    if (p->dev_left_icon && lv_obj_is_valid(p->dev_left_icon))
+        lv_img_set_src(p->dev_left_icon,
+                       (p->current <= 0) ? &logout : &img_left_arrow);
+    /* Right icon: hide on the LAST device (and the 0/1-device cases) — there's no
+       next device to switch to. */
+    if (p->dev_right_icon && lv_obj_is_valid(p->dev_right_icon))
+    {
+        if (p->count > 0 && p->current + 1 < p->count)
+            lv_obj_clear_flag(p->dev_right_icon, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(p->dev_right_icon, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 /* Jump the active device to an absolute index and run the SAME settle work the
@@ -1165,16 +1184,50 @@ static void bar_cb(lv_event_t *e)
     }
 }
 
-/* Mouse-page device-name strip drag: scrub through devices. Every NAME_STEP_PX
-   of horizontal travel switches one device, and the anchor advances by that
-   step so HOLDING and dragging farther keeps stepping — a distant device is
-   reached in one continuous motion (the "switch several at once" ask) instead of
-   flicking one-by-one. Drag RIGHT → previous device, LEFT → next (matches the
-   carousel: content swiped left advances). A stationary tap does nothing. */
-#define NAME_STEP_PX 60
+/* Mouse-page device-name strip: switch by tapping the side arrow icons, or by
+   dragging the strip left/right — the name finger-follows and a release past a
+   threshold commits one device in the drag direction (dev_name_bar_cb below). */
+
+/* Tap the LEFT icon: previous device — OR, on the first device (where the icon shows
+   `logout` instead of the left arrow), exit mouse mode to the watch face (the SAME
+   exit the carousel boundary uses). */
+static void dev_left_icon_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!p) return;
+    if (p->current <= 0)
+    {
+        extern void app_clock_status_bar_return_home(void);
+        app_clock_status_bar_return_home();
+    }
+    else
+    {
+        pager_set_current(p->current - 1);
+    }
+}
+/* Tap the RIGHT icon: next device (pager_set_current clamps at the last). */
+static void dev_right_icon_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!p) return;
+    pager_set_current(p->current + 1);
+}
+
+/* --- drag-to-switch on the name strip. Finger-follows the name (translate_x) so the
+   drag is visible, then commits one device on release (no next-device preview). ----- */
+#define NAME_DRAG_SWITCH_PX 40   /* drag at least this far before release → switch one */
+static lv_coord_t s_name_press_x   = 0;
+static lv_coord_t s_name_drag_dx   = 0;
+static lv_obj_t  *s_name_locked_tv = NULL; /* main tileview we cleared SCROLLABLE on */
+/* Animate the name label's drag-follow translate back to 0. */
+static void name_slide_anim_cb(void *var, int32_t v)
+{
+    if (var && lv_obj_is_valid((lv_obj_t *)var))
+        lv_obj_set_style_translate_x((lv_obj_t *)var, (lv_coord_t)v, 0);
+}
 static void dev_name_bar_cb(lv_event_t *e)
 {
-    if (!p) return;
+    if (!p || !p->dev_name_label || !lv_obj_is_valid(p->dev_name_label)) return;
     lv_event_code_t code = lv_event_get_code(e);
     lv_indev_t *indev = lv_indev_get_act();
     if (code == LV_EVENT_PRESSED)
@@ -1182,18 +1235,67 @@ static void dev_name_bar_cb(lv_event_t *e)
         lv_point_t pt;
         if (indev) lv_indev_get_point(indev, &pt); else pt.x = 0;
         s_name_press_x = pt.x;
+        s_name_drag_dx = 0;
+        lv_anim_del(p->dev_name_label, name_slide_anim_cb); /* cancel a running snap-back */
+        lv_obj_set_style_translate_x(p->dev_name_label, 0, 0);
+        /* Lock the main tileview so a horizontal drag follows the NAME instead of
+           escaping to the RIGHT-tile page-nav (= back to the watch face). Restored on
+           release. The strip is on the RIGHT tile, whose parent is the tileview. */
+        lv_obj_t *tile = lv_obj_get_parent(p->dev_name_bar);
+        lv_obj_t *tv = tile ? lv_obj_get_parent(tile) : NULL;
+        if (tv && lv_obj_has_flag(tv, LV_OBJ_FLAG_SCROLLABLE))
+        {
+            lv_obj_clear_flag(tv, LV_OBJ_FLAG_SCROLLABLE);
+            s_name_locked_tv = tv;
+        }
     }
     else if (code == LV_EVENT_PRESSING)
     {
         if (!indev) return;
         lv_point_t pt;
         lv_indev_get_point(indev, &pt);
-        int steps = (int)((pt.x - s_name_press_x) / NAME_STEP_PX);
-        if (steps != 0)
+        s_name_drag_dx = pt.x - s_name_press_x;
+        /* Finger-follow, clamped so the name doesn't fly off behind the arrows. */
+        lv_coord_t t = s_name_drag_dx;
+        if (t > 55) t = 55; else if (t < -55) t = -55;
+        lv_obj_set_style_translate_x(p->dev_name_label, t, 0);
+    }
+    else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+    {
+        if (s_name_locked_tv)
         {
-            pager_set_current(p->current - steps);
-            s_name_press_x += steps * NAME_STEP_PX; /* keep remainder for smooth continuous stepping */
+            lv_obj_add_flag(s_name_locked_tv, LV_OBJ_FLAG_SCROLLABLE);
+            s_name_locked_tv = NULL;
         }
+        /* Commit by drag direction: RIGHT → previous device (or, on the first device,
+           exit mouse mode); LEFT → next device. */
+        if (s_name_drag_dx >= NAME_DRAG_SWITCH_PX)
+        {
+            if (p->current <= 0)
+            {
+                /* First device → exit. Reset translate FIRST so re-entering the page
+                   centres the name (else it comes back stuck at the drag offset). */
+                lv_obj_set_style_translate_x(p->dev_name_label, 0, 0);
+                extern void app_clock_status_bar_return_home(void);
+                app_clock_status_bar_return_home();
+                return;
+            }
+            pager_set_current(p->current - 1);
+        }
+        else if (s_name_drag_dx <= -NAME_DRAG_SWITCH_PX)
+        {
+            pager_set_current(p->current + 1);
+        }
+        /* Slide the (possibly new) name back to centre from wherever the drag left it. */
+        lv_coord_t cur = lv_obj_get_style_translate_x(p->dev_name_label, 0);
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, p->dev_name_label);
+        lv_anim_set_values(&a, cur, 0);
+        lv_anim_set_time(&a, 140);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_set_exec_cb(&a, name_slide_anim_cb);
+        lv_anim_start(&a);
     }
 }
 
@@ -1913,24 +2015,24 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_clear_flag(p->grabber, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
 
-    /* Mouse-page top device-name strip — the active device's name, with a
-       horizontal drag to scrub through devices (dev_name_bar_cb). Parented on
-       `parent` (NOT mouse_base, which set_active lv_obj_cleans) and built last so
-       it stays hittable above the trackpad. Shown only on the mouse page (toggled
-       in device_pager_set_active + overlay_value_changed_cb). */
+    /* Mouse-page top device-name strip — the active device's name flanked by the
+       prev/next arrow icons (tap to switch). Parented on `parent` (NOT mouse_base,
+       which set_active lv_obj_cleans) and built last so it stays hittable above the
+       trackpad. Shown only on the mouse page (toggled in device_pager_set_active +
+       overlay_value_changed_cb). */
     p->dev_name_bar = lv_obj_create(parent);
     lv_obj_set_size(p->dev_name_bar, LV_HOR_RES, 70);
-    lv_obj_align(p->dev_name_bar, LV_ALIGN_TOP_MID, 0, 0); /* top edge: a vertical drag leaving the bottom lands on hid_mouse's media pull-down zone */
+    lv_obj_align(p->dev_name_bar, LV_ALIGN_TOP_MID, 0, 5); /* nudged 5px down from the top edge */
     lv_obj_set_style_bg_opa(p->dev_name_bar, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(p->dev_name_bar, 0, 0);
     lv_obj_set_style_pad_all(p->dev_name_bar, 0, 0);
     lv_obj_set_style_radius(p->dev_name_bar, 0, 0);
     lv_obj_clear_flag(p->dev_name_bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(p->dev_name_bar, LV_OBJ_FLAG_CLICKABLE);
-    /* Horizontal drag scrubs devices (dev_name_bar_cb); a VERTICAL drag must reach
-       the mouse page's media pull-down underneath. Clear PRESS_LOCK + bubble so a
-       drag that leaves the strip hands the press down to hid_mouse's top
-       status_bar_area (media) — "media 下滑、設備左右" don't fight. */
+    /* Switch by tapping the side arrows OR dragging the strip (dev_name_bar_cb finger-
+       follows the name + commits on release). CLICKABLE so a tap on the NAME is
+       absorbed (not passed to the trackpad as a cursor move); PRESS_LOCK cleared +
+       EVENT_BUBBLE so a VERTICAL drag still reaches hid_mouse's top media pull-down. */
     lv_obj_clear_flag(p->dev_name_bar, LV_OBJ_FLAG_PRESS_LOCK);
     lv_obj_add_flag(p->dev_name_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_add_event_cb(p->dev_name_bar, dev_name_bar_cb, LV_EVENT_ALL, NULL);
@@ -1940,8 +2042,42 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_set_style_text_font(p->dev_name_label,
                                LV_EXT_FONT_GET(get_system_font_size(1)), 0);
     lv_obj_set_style_text_color(p->dev_name_label, lv_color_hex(0x00AAFF), 0);
+    /* Cap the visible name at 200px; a longer name gets an ellipsis. Centered text
+       so a short name still sits mid-strip between the two switch arrows. */
+    lv_obj_set_width(p->dev_name_label, 200);
+    lv_label_set_long_mode(p->dev_name_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(p->dev_name_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(p->dev_name_label, "");
     lv_obj_center(p->dev_name_label);
+
+    /* Switch arrows flanking the name. Tappable (CLICKED → switch); a DRAG still
+       bubbles to the strip's scrub. Left = previous device, and on the FIRST device
+       it swaps to the `logout` glyph + exits (src set in dev_name_bar_update). Right
+       = next. ext_click_area pads the tiny 9x17 glyphs out to a ~44pt touch target
+       (Skaiwalk_UI §3.1). */
+    /* Bottom-align the side icons with the name's BASELINE (its visible bottom), not
+       the full line-box bottom: a line height has `base_line` of descent space below
+       the glyphs, so aligning to the box bottom sat the icons that much too low.
+       icon_y (drop from the strip's vertical centre) = (line-height − icon height)/2
+       − base_line. Font metrics only — no dependency on the label's computed layout. */
+    const lv_font_t *name_font = LV_EXT_FONT_GET(get_system_font_size(1));
+    lv_coord_t name_lh = lv_font_get_line_height(name_font);
+    lv_coord_t icon_y = (name_lh - 17) / 2 - name_font->base_line; /* 17 = arrow height */
+    p->dev_left_icon = lv_img_create(p->dev_name_bar);
+    lv_img_set_src(p->dev_left_icon, &img_left_arrow);
+    lv_obj_align(p->dev_left_icon, LV_ALIGN_CENTER, -117, icon_y); /* flank 200-wide name, bottom-aligned to text */
+    lv_obj_add_flag(p->dev_left_icon, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(p->dev_left_icon, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_set_ext_click_area(p->dev_left_icon, 20);
+    lv_obj_add_event_cb(p->dev_left_icon, dev_left_icon_cb, LV_EVENT_CLICKED, NULL);
+
+    p->dev_right_icon = lv_img_create(p->dev_name_bar);
+    lv_img_set_src(p->dev_right_icon, &img_right_arrow);
+    lv_obj_align(p->dev_right_icon, LV_ALIGN_CENTER, 117, icon_y); /* flank 200-wide name, bottom-aligned to text */
+    lv_obj_add_flag(p->dev_right_icon, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(p->dev_right_icon, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_set_ext_click_area(p->dev_right_icon, 20);
+    lv_obj_add_event_cb(p->dev_right_icon, dev_right_icon_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* start on the LIST */
 

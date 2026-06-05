@@ -1076,12 +1076,48 @@ uint32_t gh3018_get_hr(void)
     return (uint32_t)loc_hb_value;
 }
 
+/* Monotonic count of locked algo HR outputs. gh3018_set_hr is the single sink for
+   every algo HR result (called only when the algo actually reports a value, i.e.
+   hba_out_flag==1), so this counter advancing == "the algo emitted a fresh locked
+   BPM this moment". bg_hr reads it via gh3018_get_hr_update_seq() to end its warm-up
+   the instant the algo locks, instead of blindly waiting a fixed 30s. Bumped BEFORE
+   the value-change guard below so a re-lock to the SAME bpm (stable resting HR) still
+   counts as a fresh output. uint32 aligned -> atomic single-word R/W on Cortex-M;
+   single writer (algo thread), single reader (bg_hr timer thread) => volatile is
+   enough, no lock (same concurrency model as loc_hb_value). */
+static volatile uint32_t loc_hb_update_seq = 0;
+
+uint32_t gh3018_get_hr_update_seq(void)
+{
+    return loc_hb_update_seq;
+}
+
 void gh3018_set_hr(uint32_t hr)
 {
+    loc_hb_update_seq++;
     if (hr != loc_hb_value)
     {
         loc_hb_value = hr;
     }
+}
+
+/* Per-reading PPG-HR quality from the Goodix algo (valid_score = confidence,
+   valid_level = quality level). Same LCPU-global pattern as loc_hb_value: the
+   HR-output layer (hr_service.c bg_hr) reads these to log / later gate on
+   signal quality. Informational only -- does NOT change the HR value. */
+static uint32_t loc_hb_valid_score = 0;
+static uint32_t loc_hb_valid_level = 0;
+
+void gh3018_set_hr_quality(uint32_t valid_score, uint32_t valid_level)
+{
+    loc_hb_valid_score = valid_score;
+    loc_hb_valid_level = valid_level;
+}
+
+void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level)
+{
+    if (valid_score) *valid_score = loc_hb_valid_score;
+    if (valid_level) *valid_level = loc_hb_valid_level;
 }
 
 uint32_t *gh3018_get_ppg(void)

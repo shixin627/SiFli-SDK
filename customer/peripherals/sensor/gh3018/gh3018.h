@@ -62,6 +62,10 @@ extern "C"
 
     extern void gh3018_set_hr(uint32_t hr);
 
+    extern void gh3018_set_hr_quality(uint32_t valid_score, uint32_t valid_level);
+    extern void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level);
+    extern uint32_t gh3018_get_hr_update_seq(void); /* bumped on every locked algo HR output; bg_hr uses it for dynamic warm-up */
+
     extern uint32_t *gh3018_get_ppg(void);
     extern uint32_t *gh3018_get_ppg2(void);
 
