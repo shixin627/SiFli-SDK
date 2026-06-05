@@ -79,6 +79,7 @@ LV_IMG_DECLARE(menu_icon);
 LV_IMG_DECLARE(plus);
 LV_IMG_DECLARE(icon_mic);
 LV_IMG_DECLARE(message_widget_bg);
+LV_IMG_DECLARE(skaibar_img); /* 176x31 — the bottom mic bar's resting look (ezip, auto-built) */
 
 #define DBG_TAG "instruction.list.layout"
 #define DBG_LVL DBG_INFO
@@ -650,8 +651,8 @@ static lv_obj_t *s_mic_bar_icon = NULL;
    THEN the skai_widget pill (frame + transcript + voice button) fades in on top.
    Bar geometry matches the mic_bar created in the layout; box geometry matches
    the skai_widget pill (BOTTOM_MID, -5). */
-#define LMIC_W        100    /* slim pill — matches device_pager MICB_* exactly */
-#define LMIC_H        16
+#define LMIC_W        176    /* resting bar = skaibar_img native size (176x31) */
+#define LMIC_H        31
 #define LMIC_Y        (-20)
 #define LMIC_RADIUS   8
 #define LBOX_W        442
@@ -1928,10 +1929,10 @@ static void lmic_grow_cb(void *var, int32_t f)
                     LMIC_H + (LBOX_H - LMIC_H) * f / 255);
     lv_obj_align(bar, LV_ALIGN_BOTTOM_MID, 0, LMIC_Y + (LBOX_Y - LMIC_Y) * f / 255);
     lv_obj_set_style_radius(bar, LMIC_RADIUS + (LBOX_RADIUS - LMIC_RADIUS) * f / 255, 0);
-    /* deepen the fill + fade the hairline border out as the box's frame image
-       takes over (mirrors device_pager skaibar_grow_cb). */
-    lv_obj_set_style_bg_opa(bar, (lv_opa_t)(LV_OPA_90 + (LV_OPA_80 - LV_OPA_90) * f / 255), 0);
-    lv_obj_set_style_border_opa(bar, (lv_opa_t)(LV_OPA_50 - LV_OPA_50 * f / 255), 0);
+    /* Rest transparent (the skaibar_img child shows instead) → box backdrop dark@80
+       as it grows; crossfades with the image (s_mic_bar_icon) fading out below.
+       Border stays 0 (set at creation); the box frame image is the open border. */
+    lv_obj_set_style_bg_opa(bar, (lv_opa_t)(LV_OPA_80 * f / 255), 0);
     if (s_mic_bar_icon && lv_obj_is_valid(s_mic_bar_icon))
         lv_obj_set_style_img_opa(s_mic_bar_icon, (lv_opa_t)(255 - f), 0);
 }
@@ -4761,10 +4762,12 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_set_size(mic_bar, LMIC_W, LMIC_H);
     lv_obj_align(mic_bar, LV_ALIGN_BOTTOM_MID, 0, LMIC_Y);
     lv_obj_set_style_bg_color(mic_bar, lv_color_hex(0x1a1a1a), 0);
-    lv_obj_set_style_bg_opa(mic_bar, LV_OPA_90, 0);
-    lv_obj_set_style_border_color(mic_bar, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_border_width(mic_bar, 2, 0);
-    lv_obj_set_style_border_opa(mic_bar, LV_OPA_50, 0);
+    /* Transparent at rest — the skaibar_img child IS the resting look; the dark fill
+       only ramps in (lmic_grow_cb) as the bar morphs into the box backdrop. No
+       hairline border now: the image supplies the bar's shape; the box's own frame
+       image (message_widget_bg) supplies the open-state border. */
+    lv_obj_set_style_bg_opa(mic_bar, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(mic_bar, 0, 0);
     lv_obj_set_style_radius(mic_bar, LMIC_RADIUS, 0);
     lv_obj_set_style_pad_all(mic_bar, 0, 0);
     lv_obj_clear_flag(mic_bar, LV_OBJ_FLAG_SCROLLABLE);
@@ -4777,7 +4780,14 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_clear_flag(mic_bar, LV_OBJ_FLAG_PRESS_LOCK);
     lv_obj_add_flag(mic_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_add_event_cb(mic_bar, mic_bar_event_cb, LV_EVENT_CLICKED, NULL);
-    s_mic_bar_icon = NULL; /* slim pill has no glyph (matches the right bar) */
+    /* The bar's resting look IS the skaibar_img image (176x31, = the bar size).
+       Reuses the s_mic_bar_icon slot so lmic_grow_cb's existing 255->0 opacity fade
+       dissolves it as the bar morphs into the input box. Non-clickable so taps fall
+       through to mic_bar / mic_hit (which open the box). */
+    s_mic_bar_icon = lv_img_create(mic_bar);
+    lv_img_set_src(s_mic_bar_icon, &skaibar_img);
+    lv_obj_center(s_mic_bar_icon);
+    lv_obj_clear_flag(s_mic_bar_icon, LV_OBJ_FLAG_CLICKABLE);
 
     /* UPWARD-ONLY tap helper for the slim 100x16 pill (hard to hit). A transparent
        sibling band glued to the bar's TOP and growing UP only — its bottom is at
