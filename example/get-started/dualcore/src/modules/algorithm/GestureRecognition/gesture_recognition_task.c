@@ -396,7 +396,12 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                     {
                         LOG_D("Unlock gesture recognized at instruction list, "
                               "unlocking watch and open AI widget");
-                        motor_pattern_unlocked();
+                        /* Haptic = "successfully triggered". When disconnected the
+                           box won't open (animate_open_ai_widget just shows the
+                           not-connected tip) — so skip the buzz. */
+                        extern bool get_bluetooth_connection_status(void);
+                        if (get_bluetooth_connection_status())
+                            motor_pattern_unlocked();
                         extern void animate_open_ai_widget(void);
                         animate_open_ai_widget();
                     }

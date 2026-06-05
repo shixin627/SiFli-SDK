@@ -2156,6 +2156,63 @@ void instruction_list_reveal_drag_end(lv_coord_t dx, lv_coord_t vx)
     lv_anim_start(&sl);
 }
 
+/* One-shot open to the browse state — no finger drag. The watch-face IMU release
+   gesture (handle_gesture_unlock) uses this to bring the floating list in (list
+   only, the box stays shut), replacing the pre-R3 animate_to_instruction_list tile
+   nav — the LEFT tile is empty post-R3. Reuses the reveal begin (un-hide + park +
+   backdrop) then runs the SAME settle-open animation the drag-release uses, so the
+   dial blur ramps through and it lands in browse via reveal_settle_browse_done_cb. */
+void instruction_list_open_browse(void)
+{
+    if (!p_instruction_list_layout)
+        return;
+    lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+    if (!list_bg || !lv_obj_is_valid(list_bg))
+        return;
+    /* Only when parked & hidden — already up (browse/open) or sliding shut: leave it. */
+    if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
+        return;
+    instruction_list_reveal_drag_begin(); /* un-hide + park at -LV_HOR_RES + backdrop */
+    s_reveal_drag_active = false;         /* gesture-triggered, not a finger drag */
+    lv_coord_t tx = lv_obj_get_style_translate_x(list_bg, 0);
+    lv_anim_del(list_bg, inst_list_slide_anim_cb);
+    lv_anim_del(list_bg, reveal_settle_anim_cb);
+    lv_anim_t sl;
+    lv_anim_init(&sl);
+    lv_anim_set_var(&sl, list_bg);
+    lv_anim_set_exec_cb(&sl, reveal_settle_anim_cb);
+    lv_anim_set_values(&sl, tx, 0);
+    lv_anim_set_time(&sl, LSLIDE_MS);
+    lv_anim_set_path_cb(&sl, lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&sl, reveal_settle_browse_done_cb);
+    lv_anim_start(&sl);
+    /* Arm the Main state machine NOW rather than wait up to 1s for the
+       gui_state_update poll: the list bg was un-hidden synchronously in
+       reveal_drag_begin above, so instruction_list_is_visible() already reads true.
+       check_main_page flips _at_instruction_list true (instruction_list_resume =>
+       scroll/tap armed) and, in the same pass, _at_home false. */
+    extern void check_main_page(void);
+    check_main_page();
+}
+
+/* True whenever the floating list is shown on screen as the instruction-list
+   surface — AI input box open OR closed. The Main state machine
+   (check_is_at_instruction_list) keys off this so scroll/tap/back drive the floating
+   list instead of the now-empty LEFT tile. It deliberately does NOT exclude the
+   box-open case: is_at_instruction_list() must stay true while the voice box is up,
+   or back can't route to back_on_skai_widget (watch_demo handle_back_event) and the
+   watch lands in no recognised state. The box-open vs browse distinction is made
+   separately via get_is_open_instruction_list_ai(). Exposed as a query so
+   app_mainmenu need not reach into our internals. */
+bool instruction_list_is_visible(void)
+{
+    return p_instruction_list_layout &&
+           p_instruction_list_layout->p_instruction_list_bg &&
+           lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg) &&
+           !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
+                            LV_OBJ_FLAG_HIDDEN);
+}
+
 /* ---- left-edge reveal overlay: the input source for the reveal API above ----
    A thin (LREVEAL_EDGE_W) clickable strip pinned to the screen's left edge on
    s_global_bar_layer, kept in front of the list. On the watch face it's enabled
@@ -2241,10 +2298,30 @@ void instruction_list_reveal_overlay_set_enabled(bool enabled)
 
 void animate_open_ai_widget(void)
 {
-    /* No Bluetooth gate — a single mic-bar tap opens the box regardless of
-       connection, matching the right device_pager skaibar's mic bar. The voice
-       pipeline (tap_on_ai_widget) only starts v2t on real hardware; without the
-       phone the box still opens, it just won't receive transcripts. */
+    /* Bluetooth gate (founder 2026-06-05): the input box is the voice→text entry,
+       which needs the phone — so when disconnected, don't open it; surface the
+       not-connected tip instead. This reverses the earlier always-open policy. It's
+       the single funnel for EVERY box-open path (bar tap, 2nd release gesture,
+       gravity-AI), so the gate lives here once. The browse LIST stays reachable
+       offline via the release gesture (it self-filters to standalone items per
+       item_is_standalone) — only the box is gated. */
+    extern bool get_bluetooth_connection_status(void);
+    extern void create_connection_tips(void);
+    if (!get_bluetooth_connection_status())
+    {
+        create_connection_tips();
+        /* The bar-tap caller (mic_bar_event_cb) turns the dial blur ON before it
+           calls us, expecting a box to float over it. We're refusing the open, so
+           undo that blur — UNLESS the browse list is already up (then the blur is
+           the list's, keep it). instruction_list_is_visible() tells the two apart;
+           the release/gravity callers set no blur, so this is a no-op for them. */
+        extern void instruction_list_bar_set_blur(bool on);
+        if (!instruction_list_is_visible())
+            instruction_list_bar_set_blur(false);
+        LOG_I("animate_open_ai_widget: phone disconnected — showing tips, not "
+              "opening box");
+        return;
+    }
     /* Ignore re-triggers while the morph is opening, already shown, or animating
        shut (would restart the grow mid-flight and glitch). Gate on the box's
        ACTUAL visibility, not the is_open flag — a stuck-true flag would

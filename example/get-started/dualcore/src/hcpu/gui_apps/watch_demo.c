@@ -161,10 +161,16 @@ static void handle_back_event(bool is_button)
         }
         else
         {
+            /* R3 stage3+: the list is the lv_layer_top floating browse, not the LEFT
+               tile — close it by sliding the overlay out (close_ai_widget) instead
+               of the old tile nav (animate_to_home_from_instruction_list, a no-op now
+               the LEFT tile is empty). The next check_is_at_instruction_list poll
+               sees the list hidden and tears the list-mode handlers down. */
             clock_on_resume();
-            animate_to_home_from_instruction_list();
+            extern void close_ai_widget(void);
+            close_ai_widget();
             screen_rotate_back_to_original_direction();
-            LOG_D("ESC in instruction list");
+            LOG_D("ESC in instruction list (close floating browse)");
         }
     }
     else if (is_at_mouse_mode() || is_at_message())

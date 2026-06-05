@@ -1696,6 +1696,12 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_clear_flag(p->mic_bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(p->mic_bar, mic_clicked_cb, LV_EVENT_CLICKED, NULL);
+    /* Default HIDDEN (mirrors p->grabber below). It lives on p->list_tile right next
+       to the QR empty_view, so a visible-at-creation pill rides in with the tile on
+       the FIRST swipe to the (no-device) mouse page — before device_pager_set_active
+       hides it at settle. That's the "bar under the QR" flash. The dynamic show/hide
+       (sync_offline_page_chrome) clears this whenever a device is actually present. */
+    lv_obj_add_flag(p->mic_bar, LV_OBJ_FLAG_HIDDEN);
 
     /* Enlarged transparent hit area over the slim mic bar (the 100x16 pill is
        hard to tap) — mirrors the left instruction_list's mic_hit. Routes taps to

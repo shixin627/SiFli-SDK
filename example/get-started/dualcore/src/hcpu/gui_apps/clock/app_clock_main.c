@@ -1048,6 +1048,15 @@ static void gui_state_update_timer_callback(lv_timer_t *timer)
         instruction_list_main_time_update();
     }
     refresh_wear_status_indicator();
+    /* R3 stage3+: the instruction list is now an lv_layer_top floating overlay, no
+       longer a tileview page armed by tile-scroll callbacks — so it must be POLLED
+       here alongside home/control_center (it was previously absent because the LEFT
+       tile path set _at_instruction_list via scroll events). Kept BEFORE
+       check_is_at_home so the latter's !_at_instruction_list guard reads the fresh
+       value and the two stay mutually exclusive (browse up => home false). Backstops
+       every open/close edge within one tick, so _at_instruction_list can't stick. */
+    extern void check_is_at_instruction_list(void);
+    check_is_at_instruction_list();
     check_is_at_control_center();
     check_is_at_home();
 #endif

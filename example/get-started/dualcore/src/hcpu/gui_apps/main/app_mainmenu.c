@@ -283,11 +283,25 @@ extern bool get_app_list_tileview_page(void);
 extern void open_skai_widget_ai(bool open);
 void check_is_at_instruction_list(void)
 {
-    bool yes = gui_app_is_actived(APP_ID_MAIN) &&
-               !lv_obj_has_flag(myLancher[app_index_message].pagetileview,
-                                LV_OBJ_FLAG_HIDDEN) &&
-               !_at_ai_interface && get_app_list_tileview_page() &&
-               get_middle_layer_tileview_index() == INSTRUCTION_LIST_PAGE_INDEX;
+    /* R3 stage3+: TWO distinct surfaces can be "the instruction list":
+       - LEGACY LEFT tile: needs the middle-layer status-bar overlay showing
+         (message.pagetileview not HIDDEN) AND the tileview parked on the LEFT index.
+         That overlay is HIDDEN on the resting watch face — fine for the tile path,
+         since you only reach LEFT by dragging the overlay into view first.
+       - FLOATING browse (post-R3): the IMU gesture / bar tap floats it straight over
+         the RESTING face, where the status-bar overlay is still HIDDEN — so that
+         overlay must NOT gate this path (it did, which is why _at_instruction_list
+         never flipped and scroll/tap/back stayed dead). The list's own visibility
+         (instruction_list_is_visible) is the surface signal here — box open OR
+         closed, so is_at_instruction_list() stays true while the voice box is up. */
+    extern bool instruction_list_is_visible(void);
+    bool tile_at_left =
+        !lv_obj_has_flag(myLancher[app_index_message].pagetileview,
+                         LV_OBJ_FLAG_HIDDEN) &&
+        get_app_list_tileview_page() &&
+        get_middle_layer_tileview_index() == INSTRUCTION_LIST_PAGE_INDEX;
+    bool yes = gui_app_is_actived(APP_ID_MAIN) && !_at_ai_interface &&
+               (tile_at_left || instruction_list_is_visible());
     if (yes != _at_instruction_list)
     {
         _at_instruction_list = yes;
@@ -302,7 +316,11 @@ void check_is_at_instruction_list(void)
             set_prev_sensor_quat(get_gesture_starting_value());
             set_scroll_segment_count(return_total_list_count());
             LOG_I("DBG inst_list: after scroll_seg_count");
-            // lvgl_msg_handler.handle_tap_indicator = on_tap_wrapper;
+            /* Floating browse never crosses the tileview-settle (app_main_Clock_
+               view_event_cb), which is where tap is otherwise wired — so bind the
+               tap handler here, on the surface the list actually entered through.
+               instruction_list_pause (entered via the else-branch below) clears it. */
+            lvgl_msg_handler.handle_tap_indicator = on_tap_wrapper;
             extern void set_arc_stripe_external_offset(int16_t offset_degrees);
             lvgl_msg_handler.handle_set_arc_stripe_external_offset =
                 set_arc_stripe_external_offset;

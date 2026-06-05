@@ -174,7 +174,11 @@ void handle_gesture_unlock(void)
         disp_gov_notify_operate();
         switch_watch_motion_control_mode(true, false);
         set_open_scrolling_app_flag(true);
-        animate_to_instruction_list();
+        /* R3: the LEFT instruction_list tile is empty now — bring the floating list
+           up in the browse state (list only, no input box) instead of navigating to
+           the (empty) tile via animate_to_instruction_list. */
+        extern void instruction_list_open_browse(void);
+        instruction_list_open_browse();
     }
     else
     {

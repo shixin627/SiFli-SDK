@@ -1219,7 +1219,12 @@ void set_gravity_position(int position)
         !SkaiWatchSys.motion_control_lock && !is_at_ai_interface() &&
         is_at_instruction_list())
     {
-        motor_pattern_unlocked();
+        /* Haptic = "successfully triggered". When disconnected the box won't open
+           (animate_open_ai_widget shows the not-connected tip instead) — skip the
+           buzz. */
+        extern bool get_bluetooth_connection_status(void);
+        if (get_bluetooth_connection_status())
+            motor_pattern_unlocked();
         extern void animate_open_ai_widget(void);
         animate_open_ai_widget();
     }
