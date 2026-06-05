@@ -931,6 +931,35 @@ void device_pager_refresh(void)
     refresh();
     s_suppress_skaibar_dismiss = false;
 
+    /* R3 persist: device gone → free the KEPT (off-page) trackpad UI now, on the
+       disconnect sync, rather than lazily on the next device-page visit (heap). Host-
+       guarded so we never touch the standalone APP_ID_MOUSE app's own UI; off-page
+       only (!mouse_created) — an on-page disconnect is handled by the set_active QR
+       path which shows the download QR. */
+    if (p && p->count == 0 && !p->mouse_created &&
+        hid_mouse_ui_host() == p->mouse_base)
+    {
+        hid_mouse_destroy();
+        lv_obj_clean(p->mouse_base);
+    }
+
+    /* R3 persist: build the trackpad UI as soon as a device is present (this sync
+       runs on the LVGL thread) so it's already on p->mouse_base BEFORE the first
+       swipe — no black settle even the FIRST time. Guard on host==NULL: build only
+       when NOBODY owns the singleton UI, so we never clobber an active standalone
+       APP_ID_MOUSE app (which sets the host to its own screen). enter_mode stays
+       deferred to device_pager_set_active, so this inert off-page UI doesn't put the
+       watch into mouse mode. */
+    if (p && p->count > 0 && hid_mouse_ui_host() == NULL)
+    {
+        /* host==NULL can still leave orphaned objects on our tile: if the standalone
+           app stole the globals (its build re-pointed them) then quit (destroy NULLs
+           them but cleans ITS screen, not ours). Clean before rebuilding so we don't
+           stack a second UI on top. No-op on a truly empty tile. */
+        lv_obj_clean(p->mouse_base);
+        hid_mouse_build_ui(p->mouse_base);
+    }
+
     /* (Re)assert the active target. device_pager_refresh runs on every phone list
        sync (skai_device_ui_refresh) and on page entry, so this is where a freshly
        connected phone learns the watch's current target: the centred device while
@@ -1201,9 +1230,17 @@ void device_pager_set_active(bool on)
             {
                 ble_hid_mouse_set_app_route(false);
                 hid_mouse_set_hosted(false);
+                p->mouse_created = false;
+            }
+            /* R3 persist: the trackpad UI may be KEPT on p->mouse_base even when
+               off-page (built on a prior entry, mode exited on leave). No device now
+               → free its RAM. hid_mouse_destroy also clears mouse mode + the
+               singleton host (idempotent if we were already off-page). Keyed off the
+               UI host, not mouse_created, so a persisted-but-inactive UI is freed. */
+            if (hid_mouse_ui_host() == p->mouse_base)
+            {
                 hid_mouse_destroy();
                 lv_obj_clean(p->mouse_base);
-                p->mouse_created = false;
             }
             lv_obj_set_tile_id(p->overlay, 0, 1, LV_ANIM_OFF); /* LIST tile = QR */
             lv_obj_clear_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
@@ -1233,25 +1270,37 @@ void device_pager_set_active(bool on)
             return;
         }
 
-        /* Device(s) present → host the real trackpad. */
+        /* Device(s) present → host the real trackpad. R3 persist: the UI is built
+           ONCE and KEPT on p->mouse_base across page leaves, so it's already on the
+           tile when the page slides back in — no black settle, no build-during-drag
+           jank. Rebuild only when it isn't ours: the first time, or after the
+           standalone APP_ID_MOUSE app stole the shared singleton globals
+           (hid_mouse_ui_host() then points at its screen / NULL). Entry can't race
+           that app (different screens), so the host check alone is enough here. */
+        bool fresh_ui = false;
+        if (hid_mouse_ui_host() != p->mouse_base)
+        {
+            lv_obj_clean(p->mouse_base); /* drop orphaned objects from a prior build */
+            hid_mouse_build_ui(p->mouse_base);
+            fresh_ui = true;
+        }
         if (!p->mouse_created)
         {
-            p->mouse_created = true; /* set first: hid_mouse_create can re-enter */
-            hid_mouse_create(p->mouse_base);
+            p->mouse_created = true;
+            hid_mouse_enter_mode();
             hid_mouse_set_hosted(true); /* pager owns the edges; suppress the media pull-down */
             mouse_retarget();
-            /* hid_mouse_create populates mouse_base and disturbs our stack order;
-               re-assert it so the overlay sits above the mouse touch surface and
-               the bar sits on top of all (else the bar's presses leak through to
-               the trackpad — the bar must be the hit-test target at the bottom). */
+            /* build_ui / re-entry disturbs our stack order; re-assert it so the
+               overlay sits above the mouse touch surface and the bar on top of all
+               (else the bar's presses leak through to the trackpad). */
             lv_obj_move_foreground(p->overlay);
             lv_obj_move_foreground(p->bar);
-            /* The mouse can't be built during the reveal drag (would abort
-               finger-follow), so soften its settle appearance: fade the scroll
-               wheel's tick nodes in from black via colour (hardware-safe, no
-               layer opacity). */
-            hid_mouse_fade_in_scroll_wheel();
-            LOG_I("[pager] device page active — mouse base hosted");
+            /* Soften the wheel only on a FRESH build — a persisted UI is already on
+               screen during the swipe, so re-fading it would flicker. */
+            if (fresh_ui)
+                hid_mouse_fade_in_scroll_wheel();
+            LOG_I("[pager] device page active — mouse mode entered (ui %s)",
+                  fresh_ui ? "built" : "persisted");
         }
         /* Route the hosted trackpad to the phone over SKAI_LINK (instead of BLE
            HID): mouse move / click / scroll / back now stream to the app, which
@@ -1357,15 +1406,17 @@ void device_pager_set_active(bool on)
             ble_hid_mouse_set_app_route(false);
             LOG_I("[pager] mouse app-route OFF");
             hid_mouse_set_hosted(false);
-            hid_mouse_destroy();
-            lv_obj_clean(p->mouse_base);
+            /* R3 persist: exit mouse mode but KEEP the trackpad UI on p->mouse_base
+               so the next swipe in shows it instantly (no rebuild). The UI is torn
+               down only when the device count drops to 0 (no-device branch above). */
+            hid_mouse_exit_mode();
             p->mouse_created = false;
             lv_obj_set_tile_id(p->overlay, 0, 0, LV_ANIM_OFF); /* reset to MOUSE */
             lv_obj_add_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(p->bar, LV_OBJ_FLAG_HIDDEN);
             if (p->grabber) lv_obj_add_flag(p->grabber, LV_OBJ_FLAG_HIDDEN);
             if (p->dev_name_bar) lv_obj_add_flag(p->dev_name_bar, LV_OBJ_FLAG_HIDDEN);
-            LOG_I("[pager] device page inactive — mouse base torn down");
+            LOG_I("[pager] device page inactive — mouse mode exited, UI kept");
         }
     }
 }

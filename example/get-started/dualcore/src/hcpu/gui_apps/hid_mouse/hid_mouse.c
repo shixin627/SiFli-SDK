@@ -6406,7 +6406,17 @@ bool app_hid_mouse_movement_lock(void)
 /* T1 part 1 (host decouple): was static on_start(scr). Now the public
    component entry — builds the mouse UI under any host. The gui_app glue
    calls it with lv_scr_act(); device_pager (T4) calls it with its tile. */
-void hid_mouse_create(lv_obj_t *scr)
+/* The host the mouse UI (its file-static object globals) was last built on. The
+   UI is a SINGLETON — device_pager and the standalone APP_ID_MOUSE app take turns
+   building it. device_pager persists its copy and uses this to detect when the
+   standalone app stole the globals (host != its tile) so it can rebuild. NULL when
+   no UI is built (after hid_mouse_destroy). */
+static lv_obj_t *s_ui_host = NULL;
+lv_obj_t *hid_mouse_ui_host(void) { return s_ui_host; }
+
+/* Pure UI build — no global state. Persist-friendly: device_pager calls this once
+   per host so the trackpad is already on its tile when the page slides in. */
+void hid_mouse_build_ui(lv_obj_t *scr)
 {
     /* Screen-level launch transition only when we own the screen. When hosted
        in a container (T4 device_pager), skip it — the pager drives its own
@@ -6414,6 +6424,15 @@ void hid_mouse_create(lv_obj_t *scr)
     if (scr == lv_scr_act())
         cust_trans_anim_config(CUST_ANIM_TYPE_1, NULL);
     lv_create_mouse_screen(scr);
+    s_ui_host = scr;
+}
+
+/* The global "enter mouse mode" side effects (mouse-mode flag, status-bar gesture
+   zones off, device-change-bar hit-test, gesture detect off). Toggled per page
+   entry so a persisted UI can sit inert off-page without the watch stuck in mouse
+   mode. */
+void hid_mouse_enter_mode(void)
+{
     app_control_set_mouse_mode(true);
 
     extern void set_status_bar_area_up_state(bool state);
@@ -6440,6 +6459,33 @@ void hid_mouse_create(lv_obj_t *scr)
     RT_ASSERT(control_provider.ble_hid_consumer_back);
     // ble_app_advertising_start(SkaiWatchSys.gap_conn_state ==
     // GAP_CONN_STATE_DISCONNECTED, true, false);
+}
+
+/* Reverse of hid_mouse_enter_mode WITHOUT tearing the UI down — device_pager calls
+   this on page-leave so the persisted trackpad UI survives for the next swipe.
+   (hid_mouse_destroy still does this PLUS the full UI teardown for app stop / the
+   no-device case.) Mirrors the mode-related lines of hid_mouse_destroy. */
+void hid_mouse_exit_mode(void)
+{
+    app_control_set_mouse_mode(false);
+    lv_obj_t *dc_bar = get_device_change_bar_area_right();
+    if (dc_bar && lv_obj_is_valid(dc_bar))
+    {
+        lv_obj_remove_event_cb(dc_bar, device_change_bar_hit_test_cb);
+        lv_obj_clear_flag(dc_bar, LV_OBJ_FLAG_ADV_HITTEST);
+    }
+    extern void set_status_bar_area_up_state(bool state);
+    extern void set_status_bar_area_down_state(bool state);
+    extern void set_status_bar_area_left_state(bool state);
+    set_status_bar_area_up_state(true);
+    set_status_bar_area_down_state(true);
+    set_status_bar_area_left_state(true);
+}
+
+void hid_mouse_create(lv_obj_t *scr)
+{
+    hid_mouse_build_ui(scr);
+    hid_mouse_enter_mode();
 }
 
 /**
@@ -6534,6 +6580,7 @@ void hid_mouse_destroy(void)
     mode_swipe_active = false;
     for (int i = 0; i < HID_MODE_COUNT; i++)
         mode_container[i] = NULL;
+    s_ui_host = NULL; /* UI torn down — device_pager will rebuild on next entry */
     left_scroll_bar = NULL;
     right_scroll_bar = NULL;
     for (int i = 0; i < LEFT_SCROLL_NODE_COUNT; i++)

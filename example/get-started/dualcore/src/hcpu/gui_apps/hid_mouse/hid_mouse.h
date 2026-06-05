@@ -35,6 +35,31 @@ void hid_mouse_create(lv_obj_t *host);
 void hid_mouse_destroy(void);
 
 /**
+ * @brief Split of hid_mouse_create for hosts that want the UI built ONCE and
+ *        persisted (device_pager: trackpad visible mid-swipe) but the global
+ *        "mouse mode" side effects toggled per page entry/leave:
+ *          hid_mouse_build_ui  — pure UI (no global state); call once per host.
+ *          hid_mouse_enter_mode — mouse-mode flag + status-bar gesture zones +
+ *                                 device-change-bar hit-test + gesture detect.
+ *          hid_mouse_exit_mode  — reverse of enter_mode, WITHOUT tearing the UI
+ *                                 down (the persisted UI survives for next entry).
+ *        hid_mouse_create == build_ui + enter_mode and hid_mouse_destroy still does
+ *        exit_mode + full UI teardown, so the standalone APP_ID_MOUSE path is
+ *        unchanged.
+ */
+void hid_mouse_build_ui(lv_obj_t *host);
+void hid_mouse_enter_mode(void);
+void hid_mouse_exit_mode(void);
+
+/**
+ * @brief The host object the (singleton) mouse UI is currently built on, or NULL
+ *        if none. device_pager persists its hosted UI and checks this to detect the
+ *        standalone APP_ID_MOUSE app having rebuilt the shared globals elsewhere
+ *        (host != its tile) — in which case it cleans its tile and rebuilds.
+ */
+lv_obj_t *hid_mouse_ui_host(void);
+
+/**
  * @brief Fade the trackpad scroll wheel (the gray tick nodes) in from the black
  *        backdrop, by ramping their COLOR (not opacity). For hosts (device_pager)
  *        that build the mouse at settle and want to soften the wheel's
