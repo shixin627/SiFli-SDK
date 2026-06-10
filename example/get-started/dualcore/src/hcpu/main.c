@@ -1300,7 +1300,7 @@ uint8_t sibles_advertising_disc_mode_get()
     return GAPM_ADV_MODE_GEN_DISC;
 }
 
-#define USING_ADV_MANUFACTURER_DATA 0
+#define USING_ADV_MANUFACTURER_DATA 1
 
 #define DEFAULT_LOCAL_NAME "Skaiwalk Air"
 #define GAP_GATT_APPEARANCE_HUMAN_INTERFACE_DEVICE 192
@@ -1341,8 +1341,16 @@ void ble_app_advertising_start(bool mouse_mode, bool pairing_mode)
     char local_name[32] = {0};
 
 #if USING_ADV_MANUFACTURER_DATA
-    // Manufaturer data
-    uint8_t manu_additnal_data[] = {0x20, 0xC4, 0x00, 0x91};
+    /* Manufacturer Specific Data — carries this watch's 6 BLE MAC bytes so iOS
+       (which never exposes a peripheral's MAC) can match the QR-encoded id when
+       scanning to pair. forward addr[0..5] order, same bytes the QR id is built
+       from in app_qrcode.c; iOS matches in any order. Pure additive AD field:
+       name / service / MAC are untouched, so Android pairing is unaffected.
+       Spec: watch-ble-advertising-id-spec.md 方案 A. */
+    bd_addr_t adv_mac = {0};
+    ble_get_public_address(&adv_mac);
+    uint8_t manu_additnal_data[6];
+    memcpy(manu_additnal_data, adv_mac.addr, sizeof(adv_mac.addr));
     uint16_t manu_company_id = 0x01;
 #endif
     /* Fixed device name, no MAC suffix — unified to "Skaiwalk Air". */
