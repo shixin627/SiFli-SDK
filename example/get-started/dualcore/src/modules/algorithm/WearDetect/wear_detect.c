@@ -68,8 +68,15 @@
 /* IMU variance threshold (m/s^2)^2 for supplementary motion check */
 #define IMU_VARIANCE_THD        0.03f
 
-/* Hysteresis: consecutive evaluations needed to change state */
-#define HYSTERESIS_ON           3   /* OFF→ON:  3 consecutive ON  (~4.5s) */
+/* Hysteresis: votes needed to change state.
+ * OFF→ON is WINDOWED, not consecutive: HYSTERESIS_ON votes within the last
+ * 8 evaluations (~12 s). Measured 2026-06 (worn wrist + charging cable):
+ * PI hovers 0.0005-0.0014, crossing the 0.0010 bar on only ~30% of evals,
+ * so requiring 3 *consecutive* crossings left the watch stuck OFF for 20+
+ * minutes. A table never crosses the bar at all (noise tops ~0.0008), so
+ * windowed density keeps the same false-positive rejection.
+ * ON→OFF stays consecutive: DC collapse votes are deterministic. */
+#define HYSTERESIS_ON           3   /* OFF→ON:  3 ON votes in last 8 evals */
 #define HYSTERESIS_OFF          3   /* ON→OFF:  3 consecutive OFF (~4.5s) */
 
 /* PI variability check: real heartbeat causes PI to fluctuate across
@@ -144,8 +151,8 @@ typedef struct
     /* Timing for periodic evaluation */
     uint32_t last_eval_ms;
 
-    /* Hysteresis counters */
-    int8_t on_counter;      /* counts consecutive ON  evaluations */
+    /* Hysteresis state */
+    uint8_t on_vote_window; /* bitmask of last 8 eval votes, bit set = ON vote */
     int8_t off_counter;     /* counts consecutive OFF evaluations */
 
     /* Current output */
@@ -162,6 +169,17 @@ static bool s_probe_active = false;
 static uint32_t s_probe_until_ms = 0;
 
 /* -------------------- Helpers -------------------- */
+
+static uint8_t on_votes_in_window(uint8_t w)
+{
+    uint8_t n = 0;
+    while (w)
+    {
+        n += w & 1u;
+        w >>= 1;
+    }
+    return n;
+}
 
 static float compute_imu_variance(const float *buf, uint16_t len)
 {
@@ -321,6 +339,7 @@ static int evaluate_once(uint32_t now)
             {
                 hr_set_power(0);
                 s_probe_active = false;
+                ctx.on_vote_window = 0;
                 LOG_I("Wear: probe expired (no PPG data) -> close PPG, wait for motion");
                 return 0;
             }
@@ -348,6 +367,7 @@ static int evaluate_once(uint32_t now)
         ctx.ppg_idx = 0;
         ctx.pi_hist_count = 0;
         ctx.pi_hist_idx = 0;
+        ctx.on_vote_window = 0;
         LOG_I("PPG settle complete, cleared buffers");
         return 0; /* wait for fresh data next eval */
     }
@@ -406,6 +426,7 @@ static int evaluate_once(uint32_t now)
         s_probe_active = false;
         ctx.ppg_count = 0;
         ctx.ppg_idx = 0;
+        ctx.on_vote_window = 0;
         LOG_I("Wear: probe window expired, no wrist -> close PPG, wait for motion");
         return 0;
     }
@@ -472,15 +493,19 @@ static void try_evaluate(void)
     }
 #endif
 
+    /* Slide the ON-vote window every evaluation (bit set = ON vote). ON votes
+     * age out after 8 evals instead of being erased by a single hold, so a
+     * marginal pulse that crosses the PI bar intermittently can still
+     * accumulate HYSTERESIS_ON votes (see comment at HYSTERESIS_ON). */
+    ctx.on_vote_window = (uint8_t)((ctx.on_vote_window << 1) | ((vote > 0) ? 1u : 0u));
+
     if (vote > 0)
     {
         /* Vote ON */
         ctx.off_counter = 0;
-        ctx.on_counter++;
-        if (ctx.on_counter > HYSTERESIS_ON)
-            ctx.on_counter = HYSTERESIS_ON;
 
-        if (ctx.status != WEAR_STATUS_WEARING && ctx.on_counter >= HYSTERESIS_ON)
+        if (ctx.status != WEAR_STATUS_WEARING &&
+            on_votes_in_window(ctx.on_vote_window) >= HYSTERESIS_ON)
         {
             /* Reset PI history and PPG buffer on state change so fresh
              * PPG data will be evaluated after sensor restarts. */
@@ -491,8 +516,8 @@ static void try_evaluate(void)
     }
     else if (vote < 0)
     {
-        /* Vote OFF */
-        ctx.on_counter = 0;
+        /* Vote OFF: contact lost invalidates any accumulated ON votes */
+        ctx.on_vote_window = 0;
         ctx.off_counter++;
         if (ctx.off_counter > HYSTERESIS_OFF)
             ctx.off_counter = HYSTERESIS_OFF;
@@ -504,8 +529,7 @@ static void try_evaluate(void)
     }
     else
     {
-        /* Uncertain: decay both counters slowly */
-        if (ctx.on_counter > 0) ctx.on_counter--;
+        /* Uncertain: decay OFF counter; ON votes age out of the window */
         if (ctx.off_counter > 0) ctx.off_counter--;
     }
 }
