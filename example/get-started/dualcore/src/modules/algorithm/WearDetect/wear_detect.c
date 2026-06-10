@@ -112,6 +112,23 @@
  * is confirmed within the window, PPG is powered back down until next motion. */
 #define PROBE_WINDOW_MS         (3 * 60 * 1000)
 
+/* Contact-break re-confirmation: taking the watch off reads as a DC collapse
+ * WITH motion, but if it lands on a table within the OFF hysteresis (~4.5s)
+ * the table's DC can match skin (measured 2026-06-10: table 46.9k vs wrist
+ * 46.2k) and DC-held would latch ON forever. After such a break, suspend
+ * DC-held and demand a live pulse (same windowed gate as OFF→ON); no pulse
+ * after this many *usable* evaluations → vote OFF.
+ *
+ * The countdown ticks ONLY on evaluations where a pulse could actually be
+ * seen: PPG fresh AND wrist still. It freezes while PPG is duty-cycled off
+ * by bg_hr (sleep: 60s on / 120s off; awake: ~40s per ~15min — wall-clock
+ * grace would expire inside a gap and force OFF even on a perfect wrist)
+ * and while moving (motion artefacts block the pulse gate; a moving surface
+ * is not a table). 60 clean looks with no pulse = not a wrist.
+ * Sleep-time DC dips without motion never arm this path, so the
+ * motionless-sleep DC-held guarantee is preserved. */
+#define RECONFIRM_LIVE_EVALS    60
+
 /* PPG ring buffer size: at ~25 Hz, 75 samples = 3 seconds */
 #define PPG_WINDOW_SIZE         75
 
@@ -154,6 +171,10 @@ typedef struct
     /* Hysteresis state */
     uint8_t on_vote_window; /* bitmask of last 8 eval votes, bit set = ON vote */
     int8_t off_counter;     /* counts consecutive OFF evaluations */
+
+    /* Contact-break re-confirmation (take-off detection) */
+    bool contact_break_pending;     /* DC collapsed while moving; DC-held suspended */
+    uint8_t reconfirm_evals_left;   /* usable (fresh-PPG, still) evals left to re-confirm */
 
     /* Current output */
     wear_status_t status;
@@ -254,6 +275,7 @@ static void set_status(wear_status_t new_status)
         return;
 
     ctx.status = new_status;
+    ctx.contact_break_pending = false;
 
     if (new_status == WEAR_STATUS_WEARING)
     {
@@ -403,6 +425,26 @@ static int evaluate_once(uint32_t now)
      * drop an already-worn state (root cause A1). === */
     if (dc_mean < (float)PPG_DC_LOW_THD)
     {
+        /* Worn + DC collapse + motion = take-off signature. Arm the
+         * re-confirmation gate in case the watch lands on a skin-like DC
+         * surface before the OFF hysteresis completes. A motionless dip
+         * (loose strap during sleep) deliberately does NOT arm it. */
+        if (ctx.status == WEAR_STATUS_WEARING && !ctx.contact_break_pending)
+        {
+            uint16_t imu_len = (ctx.imu_count < IMU_WINDOW_SIZE)
+                                   ? ctx.imu_count : IMU_WINDOW_SIZE;
+            float imu_var = (imu_len > 0)
+                                ? compute_imu_variance(ctx.acce_mag, imu_len) : 0.0f;
+            if (imu_var >= IMU_VARIANCE_THD)
+            {
+                /* counter first, flag last: a racing reader that sees the
+                 * flag must also see a valid countdown */
+                ctx.reconfirm_evals_left = RECONFIRM_LIVE_EVALS;
+                ctx.contact_break_pending = true;
+                LOG_I("Wear: contact break + motion (var=%.3f) -> require pulse re-confirm within %u live evals",
+                      imu_var, RECONFIRM_LIVE_EVALS);
+            }
+        }
         LOG_I("Eval: DC=%.0f (< %u) -> contact lost -> OFF", dc_mean, PPG_DC_LOW_THD);
         return -1;
     }
@@ -410,11 +452,41 @@ static int evaluate_once(uint32_t now)
     /* DC is in the contact range. */
     if (ctx.status == WEAR_STATUS_WEARING)
     {
-        /* Already worn: hold ON as long as DC stays high. Ignore PI/IMU so a
-         * flat, low-variability sleep pulse never flips us OFF. Only the DC
-         * collapse above takes us off-wrist. */
-        LOG_I("Eval: DC=%.0f, PI=%.5f (worn; DC held) -> ON", dc_mean, pi);
-        return 1;
+        if (!ctx.contact_break_pending)
+        {
+            /* Already worn: hold ON as long as DC stays high. Ignore PI/IMU so a
+             * flat, low-variability sleep pulse never flips us OFF. Only the DC
+             * collapse above takes us off-wrist. */
+            LOG_I("Eval: DC=%.0f, PI=%.5f (worn; DC held) -> ON", dc_mean, pi);
+            return 1;
+        }
+
+        /* Contact broke while moving: DC alone no longer proves a wrist (the
+         * sensor may now rest on a table whose DC matches skin). Fall through
+         * to the live-pulse gate; try_evaluate lifts the suspension once the
+         * vote window re-confirms. Once the countdown of usable evals is
+         * spent without a pulse, vote OFF. */
+        if (ctx.reconfirm_evals_left == 0)
+        {
+            LOG_I("Eval: contact break unconfirmed (no pulse in %u live evals) -> OFF",
+                  RECONFIRM_LIVE_EVALS);
+            return -1;
+        }
+
+        /* Tick the countdown only while still: motion artefacts block the
+         * pulse gate anyway, and a moving surface is not a table. Stale
+         * evals return earlier, so PPG-off gaps freeze the countdown.
+         * (bg_hr burst restarts during WEARING skip the settle gate, so a
+         * few warm-up evals do burn ticks — ~4-9 per restart, budgeted in
+         * RECONFIRM_LIVE_EVALS.) */
+        {
+            uint16_t imu_len = (ctx.imu_count < IMU_WINDOW_SIZE)
+                                   ? ctx.imu_count : IMU_WINDOW_SIZE;
+            float imu_var = (imu_len > 0)
+                                ? compute_imu_variance(ctx.acce_mag, imu_len) : 0.0f;
+            if (imu_var < IMU_VARIANCE_THD)
+                ctx.reconfirm_evals_left--;
+        }
     }
 
     /* Currently OFF. The PPG running now was opened by a motion probe window;
@@ -504,14 +576,20 @@ static void try_evaluate(void)
         /* Vote ON */
         ctx.off_counter = 0;
 
-        if (ctx.status != WEAR_STATUS_WEARING &&
-            on_votes_in_window(ctx.on_vote_window) >= HYSTERESIS_ON)
+        uint8_t on_votes = on_votes_in_window(ctx.on_vote_window);
+        if (ctx.status != WEAR_STATUS_WEARING && on_votes >= HYSTERESIS_ON)
         {
             /* Reset PI history and PPG buffer on state change so fresh
              * PPG data will be evaluated after sensor restarts. */
             ctx.pi_hist_count = 0;
             ctx.pi_hist_idx = 0;
             set_status(WEAR_STATUS_WEARING);
+        }
+        else if (ctx.status == WEAR_STATUS_WEARING && ctx.contact_break_pending &&
+                 on_votes >= HYSTERESIS_ON)
+        {
+            ctx.contact_break_pending = false;
+            LOG_I("Wear: pulse re-confirmed after contact break -> resume DC-held");
         }
     }
     else if (vote < 0)
