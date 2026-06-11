@@ -31,6 +31,12 @@
 #define AI_PAGE_INDEX MAIN_PAGE_TYPE_RIGHT
 // #define ENABLE_INSTRUCTION_LIST
 
+/* NOTE: these names are LOGICAL page ids (= tile add-order index used as
+   active_pos), NOT physical screen sides. After the L/R entry swap the
+   _RIGHT page (device_pager / trackpad) physically sits on the LEFT tile
+   (0,1) and the _LEFT placeholder on the RIGHT (2,1) — see the tileview
+   build in app_clock_status_bar.c. Renaming would ripple everywhere, so the
+   ids stay; trust the comments at each tile. */
 typedef enum
 {
     MAIN_PAGE_TYPE_DOWN = 0,

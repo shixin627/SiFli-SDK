@@ -114,7 +114,7 @@ typedef struct
 } list_item_t;
 
 static list_item_t list_items[MAX_LIST_ITEMS];
-/* R3: set by the explicit CANCEL-close paths (bar tap / swipe-left) right before
+/* R3: set by the explicit CANCEL-close paths (bar tap / swipe-right) right before
    they call close_ai_widget, so close_ai_widget tells the phone to dismiss the
    active skaibar. A COMMIT close (tapping an option) leaves this false, so the
    phone keeps its normal "run action + return to list" flow. Consumed (reset) at
@@ -661,7 +661,7 @@ static lv_obj_t *s_mic_bar_icon = NULL;
 #define LBOX_RADIUS   80
 #define LMORPH_GROW_MS  220   /* phase 1: bar grows into the box backdrop */
 #define LMORPH_FRAME_MS 160   /* phase 2: skai_widget pill fades in */
-#define LSLIDE_MS       200   /* R3: list slides in/out from the left edge.
+#define LSLIDE_MS       200   /* R3: list slides in/out from the right edge.
                                  Kept < the shortest close morph (220ms shrink) so
                                  the list parks off-screen before
                                  finalize_close_ai_widget flips its HIDDEN flag. */
@@ -1427,7 +1427,7 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         stop_all_animations_and_reset();
         /* R3: a list scroll = switch to manual browse — collapse the voice box
            back to the bar but KEEP the list up (ai_widget_fade_on_scroll). It does
-           NOT slide the whole list out; that's the full close (swipe-left / tap /
+           NOT slide the whole list out; that's the full close (swipe-right / tap /
            leave). Gated on !s_in_refresh_scroll so the programmatic scrolls
            refresh_custom_instructions makes don't collapse the box. */
         if (!s_in_refresh_scroll)
@@ -1482,9 +1482,10 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
     case LV_EVENT_PRESSING:
     {
         /* Horizontal finger-following drawer: once a press is clearly horizontal,
-           the WHOLE list tracks the finger leftward (and the item CLICKED is
+           the WHOLE list tracks the finger rightward (and the item CLICKED is
            suppressed). A vertical drag is left to the list's own scroll, so we
-           never translate then — the |dx|>|dy| test picks the axis. */
+           never translate then — the |dx|>|dy| test picks the axis. RIGHT drawer:
+           the list rests at 0 and closes by dragging out to the right (+HOR). */
         lv_indev_t *indev = lv_indev_get_act();
         if (!indev) break;
         lv_point_t pt;
@@ -1497,8 +1498,8 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         {
             s_list_horiz_swipe = true;
             lv_coord_t tx = dx;
-            if (tx > 0) tx = 0;                       /* drawer only opens left */
-            if (tx < -LV_HOR_RES) tx = -LV_HOR_RES;
+            if (tx < 0) tx = 0;                       /* drawer only closes right */
+            if (tx > LV_HOR_RES) tx = LV_HOR_RES;
             lv_obj_t *bg = p_instruction_list_layout
                                ? p_instruction_list_layout->p_instruction_list_bg
                                : NULL;
@@ -1507,7 +1508,7 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
                 lv_anim_del(bg, inst_list_slide_anim_cb);
                 lv_anim_del(bg, reveal_settle_anim_cb);
                 lv_obj_set_style_translate_x(bg, tx, 0);
-                dial_blur_track(tx); /* finger-follow blur fade-out as it drags left */
+                dial_blur_track(tx); /* finger-follow blur fade-out as it drags right */
             }
         }
         break;
@@ -1525,12 +1526,12 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         lv_indev_t *indev = lv_indev_get_act();
         lv_point_t v = {0, 0};
         if (indev) lv_indev_get_vect(indev, &v);
-        /* Past a quarter-screen OR flung left fast → finish the close (close_ai_widget
+        /* Past a quarter-screen OR flung right fast → finish the close (close_ai_widget
            slides the rest out from the current offset). Otherwise snap back open. */
         if (!lv_obj_has_flag(bg, LV_OBJ_FLAG_HIDDEN) &&
-            (tx <= -LV_HOR_RES / 4 || v.x < -6))
+            (tx >= LV_HOR_RES / 4 || v.x > 6))
         {
-            s_close_is_cancel = true; /* swipe-left close = user cancel */
+            s_close_is_cancel = true; /* swipe-right close = user cancel */
             close_ai_widget();
         }
         else
@@ -1870,7 +1871,7 @@ static void ai_widget_fade_on_scroll(void)
 {
     /* Scrolling the list = switch to manual browse: collapse the voice input box
        back to the slim bar (stops v2t) but KEEP the list up so you can scroll and
-       pick an option. A full close (swipe-left / tap-close / page-leave) slides
+       pick an option. A full close (swipe-right / tap-close / page-leave) slides
        the whole list out instead. No-op when the box isn't open. */
     if (!is_open_instruction_list_ai)
         return;
@@ -1988,10 +1989,10 @@ static void inst_list_slide_anim_cb(void *var, int32_t v)
         lv_obj_set_style_translate_x((lv_obj_t *)var, (lv_coord_t)v, 0);
 }
 
-/* Full-close slide-out finished: the list has parked off-screen left — hide it
+/* Full-close slide-out finished: the list has parked off-screen right — hide it
    and drop the watch-face blur (set_blur self-guards on other pages). The hide
    lives HERE (not in finalize_close_ai_widget) so a full close that runs when the
-   box is ALREADY collapsed — e.g. swipe-left from the browse state — still slides
+   box is ALREADY collapsed — e.g. swipe-right from the browse state — still slides
    the whole list out, instead of finalize snapping it hidden mid-slide. */
 static void inst_list_slide_out_done_cb(lv_anim_t *a)
 {
@@ -2007,11 +2008,11 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
     }
 }
 
-/* ---- R3 stage3: watch-face left-edge right-pull → finger-reveal the list ----
+/* ---- watch-face right-edge left-pull → finger-reveal the list (L/R swap) ----
    Mirror of the list_window_scroll_event_cb hdrag (which finger-drags the list
-   OUT to the left to close). The dial's left-edge overlay (created below) drives
+   OUT to the right to close). The dial's right-edge overlay (created below) drives
    these: begin/update/end translate the SAME p_instruction_list_bg from its
-   parked -LV_HOR_RES toward 0, finger-following. A far/fast release settles into
+   parked +LV_HOR_RES toward 0, finger-following. A far/fast release settles into
    the existing BROWSE state (list shown, voice box NOT opened — we deliberately
    skip animate_open_ai_widget / tap_on_ai_widget); a short release slides it back
    out + hides it (inst_list_slide_out_done_cb). */
@@ -2040,15 +2041,16 @@ static void reveal_settle_browse_done_cb(lv_anim_t *a)
 }
 
 /* Watch-face dial blur as a function of the list's translate_x: full at 0 (list
-   all the way in), none at -LV_HOR_RES (parked). No-op off the watch face, so the
-   shared hdrag/close paths leave other pages' backdrops alone. Shared by the reveal
-   (overlay) and the left-drag close so the blur tracks the list both ways. */
+   all the way in), none at +LV_HOR_RES (parked off-screen right). No-op off the
+   watch face, so the shared hdrag/close paths leave other pages' backdrops alone.
+   Shared by the reveal (overlay) and the right-drag close so the blur tracks the
+   list both ways. */
 static void dial_blur_track(lv_coord_t tx)
 {
     extern bool clock_main_page_is_home(void);
     if (!clock_main_page_is_home())
         return;
-    lv_coord_t pulled = tx + LV_HOR_RES; /* 0 .. LV_HOR_RES */
+    lv_coord_t pulled = LV_HOR_RES - tx; /* 0 .. LV_HOR_RES */
     if (pulled < 0) pulled = 0;
     if (pulled > LV_HOR_RES) pulled = LV_HOR_RES;
     {
@@ -2086,7 +2088,7 @@ void instruction_list_reveal_drag_begin(void)
     instruction_list_bar_set_visible(true); /* idempotent on HOME */
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
     lv_obj_clear_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_translate_x(list_bg, -LV_HOR_RES, 0); /* park; update tracks */
+    lv_obj_set_style_translate_x(list_bg, LV_HOR_RES, 0); /* park off-screen right; update tracks */
     reset_list_internal(); /* every reveal opens at the list's bottom item (R3) */
     /* Backdrop behind the list: transparent on the watch face (blurred dial shows
        through), light scrim elsewhere — same rule as animate_open_ai_widget. */
@@ -2101,8 +2103,9 @@ void instruction_list_reveal_drag_begin(void)
     s_reveal_drag_active = true;
 }
 
-/* Finger-follow: dx = how far right the finger has pulled from the press point.
-   Drives the parked list from -LV_HOR_RES toward 0 (mirror of the hdrag clamp). */
+/* Finger-follow: dx = how far LEFT the finger has pulled from the press point
+   (negative for a leftward pull). Drives the parked list from +LV_HOR_RES toward 0
+   (mirror of the hdrag clamp). */
 void instruction_list_reveal_drag_update(lv_coord_t dx)
 {
     if (!s_reveal_drag_active || !p_instruction_list_layout)
@@ -2110,17 +2113,17 @@ void instruction_list_reveal_drag_update(lv_coord_t dx)
     lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
     if (!list_bg || !lv_obj_is_valid(list_bg))
         return;
-    lv_coord_t tx = -LV_HOR_RES + dx;
-    if (tx > 0) tx = 0;
-    if (tx < -LV_HOR_RES) tx = -LV_HOR_RES;
+    lv_coord_t tx = LV_HOR_RES + dx;
+    if (tx < 0) tx = 0;
+    if (tx > LV_HOR_RES) tx = LV_HOR_RES;
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
     lv_obj_set_style_translate_x(list_bg, tx, 0);
     dial_blur_track(tx); /* finger-follow blur: fade in with the pull */
 }
 
-/* Release: settle by the live offset. Revealed past a quarter OR flung right fast
-   → finish into browse (slide to 0); else slide back out + hide. Mirror of the
-   hdrag close threshold (tx <= -LV_HOR_RES/4 || v.x < -6). */
+/* Release: settle by the live offset. Revealed past a quarter OR flung left fast
+   → finish into browse (slide to 0); else slide back out + hide. RIGHT drawer:
+   parked at +LV_HOR_RES, pulled in toward 0. */
 void instruction_list_reveal_drag_end(lv_coord_t dx, lv_coord_t vx)
 {
     (void)dx;
@@ -2133,7 +2136,7 @@ void instruction_list_reveal_drag_end(lv_coord_t dx, lv_coord_t vx)
     if (!list_bg || !lv_obj_is_valid(list_bg))
         return;
     lv_coord_t tx = lv_obj_get_style_translate_x(list_bg, 0);
-    bool open_it = (tx >= -LV_HOR_RES * 3 / 4) || (vx > 6);
+    bool open_it = (tx <= LV_HOR_RES * 3 / 4) || (vx < -6);
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
     lv_anim_del(list_bg, reveal_settle_anim_cb);
     lv_anim_t sl;
@@ -2149,7 +2152,7 @@ void instruction_list_reveal_drag_end(lv_coord_t dx, lv_coord_t vx)
     }
     else
     {
-        lv_anim_set_values(&sl, tx, -LV_HOR_RES);
+        lv_anim_set_values(&sl, tx, LV_HOR_RES);
         lv_anim_set_time(&sl, 150);
         lv_anim_set_path_cb(&sl, lv_anim_path_ease_in);
         lv_anim_set_ready_cb(&sl, inst_list_slide_out_done_cb);
@@ -2173,7 +2176,7 @@ void instruction_list_open_browse(void)
     /* Only when parked & hidden — already up (browse/open) or sliding shut: leave it. */
     if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
         return;
-    instruction_list_reveal_drag_begin(); /* un-hide + park at -LV_HOR_RES + backdrop */
+    instruction_list_reveal_drag_begin(); /* un-hide + park at +LV_HOR_RES + backdrop */
     s_reveal_drag_active = false;         /* gesture-triggered, not a finger drag */
     lv_coord_t tx = lv_obj_get_style_translate_x(list_bg, 0);
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
@@ -2214,12 +2217,12 @@ bool instruction_list_is_visible(void)
                             LV_OBJ_FLAG_HIDDEN);
 }
 
-/* ---- left-edge reveal overlay: the input source for the reveal API above ----
-   A thin (LREVEAL_EDGE_W) clickable strip pinned to the screen's left edge on
+/* ---- right-edge reveal overlay: the input source for the reveal API above ----
+   A thin (LREVEAL_EDGE_W) clickable strip pinned to the screen's right edge on
    s_global_bar_layer, kept in front of the list. On the watch face it's enabled
    (instruction_list_reveal_overlay_set_enabled, driven by check_is_at_home); a
-   rightward pull from the edge finger-reveals the list. The handler mirrors the
-   list_window_scroll_event_cb hdrag — only rightward, feeding the reveal API. */
+   leftward pull from the edge finger-reveals the list. The handler mirrors the
+   list_window_scroll_event_cb hdrag — only leftward, feeding the reveal API. */
 #define LREVEAL_EDGE_W 20
 static lv_obj_t *s_reveal_edge_overlay = NULL;
 static lv_coord_t s_reveal_start_x = 0;
@@ -2248,9 +2251,10 @@ static void reveal_edge_overlay_event_cb(lv_event_t *e)
         lv_indev_get_point(indev, &pt);
         lv_coord_t dx = pt.x - s_reveal_start_x;
         lv_coord_t dy = pt.y - s_reveal_start_y;
-        /* Lock onto a clearly-rightward pull only (mirror of the hdrag axis test,
-           one-directional). A vertical drag never locks, so it can't reveal. */
-        if (!s_reveal_axis_locked && dx > 10 && dx > LV_ABS(dy))
+        /* Lock onto a clearly-leftward pull only (right-edge drawer: a leftward
+           pull from the right edge reveals the list). A vertical drag never locks,
+           so it can't reveal. */
+        if (!s_reveal_axis_locked && dx < -10 && (-dx) > LV_ABS(dy))
         {
             s_reveal_axis_locked = true;
             instruction_list_reveal_drag_begin();
@@ -2283,10 +2287,10 @@ static void reveal_edge_overlay_event_cb(lv_event_t *e)
     }
 }
 
-/* Enable (show) / disable (hide) the left-edge reveal overlay. A hidden overlay
+/* Enable (show) / disable (hide) the right-edge reveal overlay. A hidden overlay
    gets no input, so this gates the gesture. Driven by check_is_at_home: live on
-   the watch face, off everywhere else (the legacy left-edge back gesture / tile
-   nav owns the edge there). No-op until the overlay exists. */
+   the watch face, off everywhere else (tile nav / page gestures own the edge
+   there). No-op until the overlay exists. */
 void instruction_list_reveal_overlay_set_enabled(bool enabled)
 {
     if (!s_reveal_edge_overlay || !lv_obj_is_valid(s_reveal_edge_overlay))
@@ -2360,7 +2364,7 @@ void animate_open_ai_widget(void)
     skai_widget_restore_full_opa();
 
     /* Reveal the floating instruction list (on s_global_bar_layer / lv_layer_top)
-       behind the morphing input box, SLIDING it in from the left edge (R3 left
+       behind the morphing input box, SLIDING it in from the right edge (right
        drawer). Slid back out + hidden by the close path. The watch-face blur
        backdrop is turned on by the caller (mic_bar_event_cb) via
        instruction_list_bar_set_blur. */
@@ -2386,11 +2390,11 @@ void animate_open_ai_widget(void)
             if (was_hidden)
             {
                 lv_anim_del(list_bg, inst_list_slide_anim_cb);
-                lv_obj_set_style_translate_x(list_bg, -LV_HOR_RES, 0);
+                lv_obj_set_style_translate_x(list_bg, LV_HOR_RES, 0);
                 lv_anim_t sl;
                 lv_anim_init(&sl);
                 lv_anim_set_var(&sl, list_bg);
-                lv_anim_set_values(&sl, -LV_HOR_RES, 0);
+                lv_anim_set_values(&sl, LV_HOR_RES, 0);
                 lv_anim_set_time(&sl, LSLIDE_MS);
                 lv_anim_set_path_cb(&sl, lv_anim_path_ease_out);
                 lv_anim_set_exec_cb(&sl, inst_list_slide_anim_cb);
@@ -2565,9 +2569,9 @@ void close_ai_widget(void)
     is_open_instruction_list_ai = false;
 
     /* FULL close (not a scroll box-collapse): slide the whole floating list out to
-       the left; the slide's ready_cb hides it + drops the blur. The hide lives in
+       the right; the slide's ready_cb hides it + drops the blur. The hide lives in
        the ready_cb (not finalize) so this still works when the box is ALREADY
-       collapsed (swipe-left from the browse state) — there was_open is false and
+       collapsed (swipe-right from the browse state) — there was_open is false and
        finalize runs synchronously, which would otherwise snap the list hidden
        mid-slide. A scroll box-collapse (keep_list) leaves the list untouched. */
     if (!keep_list)
@@ -2584,7 +2588,7 @@ void close_ai_widget(void)
             lv_anim_init(&sl);
             lv_anim_set_var(&sl, list_bg);
             lv_anim_set_values(&sl, lv_obj_get_style_translate_x(list_bg, 0),
-                               -LV_HOR_RES);
+                               LV_HOR_RES);
             lv_anim_set_time(&sl, LSLIDE_MS);
             lv_anim_set_path_cb(&sl, lv_anim_path_ease_in);
             lv_anim_set_exec_cb(&sl, reveal_settle_anim_cb);
@@ -2677,7 +2681,7 @@ void instruction_list_hide_now(void)
     {
         lv_anim_del(list_bg, inst_list_slide_anim_cb); /* kill any in-flight slide */
         lv_anim_del(list_bg, reveal_settle_anim_cb);
-        lv_obj_set_style_translate_x(list_bg, -LV_HOR_RES, 0); /* park off-screen, as a finished slide-out leaves it */
+        lv_obj_set_style_translate_x(list_bg, LV_HOR_RES, 0); /* park off-screen right, as a finished slide-out leaves it */
         lv_obj_add_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
     }
     is_open_instruction_list_ai = false;
@@ -2939,7 +2943,7 @@ static void list_item_click_event_cb(lv_event_t *evt)
        CLICKED on the item: the list scrolls vertically only, so a horizontal drag
        never "loses" the press and LVGL fires CLICKED on release. The list's
        GESTURE handler latches s_list_horiz_swipe for exactly this — ignore the
-       click so swipe-left-to-close doesn't ALSO select the item. (A flag, not
+       click so swipe-right-to-close doesn't ALSO select the item. (A flag, not
        lv_indev_get_gesture_dir, because gesture_dir lingers after the swipe and
        would then wrongly suppress the NEXT genuine tap.) */
     if (s_list_horiz_swipe)
@@ -3900,9 +3904,9 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
         lv_obj_t *widget = NULL;
         lv_obj_t *item = lv_simplified_obj_create(list);
         lv_obj_clear_flag(item, LV_OBJ_FLAG_CLICKABLE);
-        /* R3: bubble events up to the list so a LEFT-swipe that lands on an item
+        /* R3: bubble events up to the list so a RIGHT-swipe that lands on an item
            (items fill most of the panel) still reaches the list's GESTURE handler
-           = swipe-left-to-close. The list handler ignores non-gesture events, so
+           = swipe-right-to-close. The list handler ignores non-gesture events, so
            taps/scroll are unaffected. */
         lv_obj_add_flag(item, LV_OBJ_FLAG_EVENT_BUBBLE);
         lv_obj_set_size(item, 466, LIST_ITEM_WIDGET_HEIGHT);
@@ -4933,15 +4937,15 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     // 創建可移動範圍圓弧線
     // create_movable_range_arc(p_instruction_list_bg);
 
-    /* Left-edge reveal overlay (R3 stage3): a thin clickable strip on the screen's
-       left edge, in front of the list, that finger-reveals the floating list on a
-       rightward pull (watch face only; gated by check_is_at_home). Child of
+    /* Right-edge reveal overlay (L/R swap): a thin clickable strip on the screen's
+       right edge, in front of the list, that finger-reveals the floating list on a
+       leftward pull (watch face only; gated by check_is_at_home). Child of
        s_global_bar_layer so it chain-deletes with the bar. Created LAST so it sits
        in front; move_foreground is belt-and-suspenders. Starts hidden (disabled). */
     s_reveal_edge_overlay = lv_obj_create(s_global_bar_layer);
     lv_obj_remove_style_all(s_reveal_edge_overlay);
     lv_obj_set_size(s_reveal_edge_overlay, LREVEAL_EDGE_W, LV_VER_RES);
-    lv_obj_align(s_reveal_edge_overlay, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_align(s_reveal_edge_overlay, LV_ALIGN_RIGHT_MID, 0, 0);
     lv_obj_clear_flag(s_reveal_edge_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_reveal_edge_overlay, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(s_reveal_edge_overlay, LV_OBJ_FLAG_HIDDEN);

@@ -1,8 +1,9 @@
 /**
  ******************************************************************************
  * @file   device_pager.c
- * @brief  Right-side per-device control page — content builder for the
- *         watch-face tileview's RIGHT tile.
+ * @brief  Per-device control page — content builder for the watch-face
+ *         tileview's LEFT tile (0,1); home is (1,1), so the page slides
+ *         out to the LEFT (finger-left swipe) to return to the watch face.
  *
  *  Mirrors the WATCH-FACE reveal mechanism:
  *    - mouse_base  : the real hid_mouse, the always-present BASE (like the clock).
@@ -565,21 +566,23 @@ static void snap_to_center(lv_anim_enable_t anim)
 
 /* Limit the carousel's scroll directions so that swiping toward a non-existent
    neighbour chains to the outer watch-face tileview instead of dead-scrolling:
-   on the FIRST device a right-swipe (toward "previous") chains back to the watch
-   face (whole page + mouse finger-follow out); on the LAST device a left-swipe
-   (toward "next") chains away too. Middle devices scroll both ways between devices. */
+   the page lives on the LEFT tile (0,1) with home to its grid-right, so on the
+   LAST device a left-swipe (toward "next") chains back to the watch face (whole
+   page + mouse finger-follow out). On the FIRST device the right-swipe (toward
+   "previous") is blocked too — there is no tile left of (0,1), so it just dead-
+   stops. Middle devices scroll both ways between devices. */
 static void update_pager_scroll_dir(void)
 {
     if (!p || !p->pager) return;
     lv_dir_t dir = LV_DIR_HOR;
     bool first = (p->current <= 0);
     bool last  = (p->current >= p->count - 1);
-    /* LV_DIR_RIGHT allows the left-swipe (→ next device) but blocks the right-swipe
-       (→ "previous"), so on the first device the right-swipe chains to the watch
-       face. LV_DIR_LEFT is the mirror for the last device. */
-    if (first && last)      dir = LV_DIR_RIGHT;         /* single device: only the home chain */
-    else if (first)         dir = LV_DIR_RIGHT;         /* block "previous" → chains to watch face */
-    else if (last)          dir = LV_DIR_LEFT;          /* block "next" */
+    /* LV_DIR_LEFT allows the right-swipe (→ previous device) but blocks the
+       left-swipe (→ "next"), so on the last device the left-swipe chains to the
+       watch face. LV_DIR_RIGHT is the mirror for the first device. */
+    if (first && last)      dir = LV_DIR_LEFT;          /* single device: only the home chain */
+    else if (first)         dir = LV_DIR_RIGHT;         /* block "previous" (nothing past it) */
+    else if (last)          dir = LV_DIR_LEFT;          /* block "next" → chains to watch face */
     lv_obj_set_scroll_dir(p->pager, dir);
 }
 
@@ -634,20 +637,34 @@ static void dev_name_bar_update(void)
     else
         lv_label_set_text(p->dev_name_label, "No device");
     lv_obj_center(p->dev_name_label);
-    /* Left icon: the previous-device arrow normally, but the `logout` glyph on the
-       FIRST device — there's no previous device, so its tap exits mouse mode instead
-       (handled by dev_left_icon_cb, which checks current<=0). */
+    /* Left icon = NEXT-device arrow; hidden on the LAST device (no next device). */
     if (p->dev_left_icon && lv_obj_is_valid(p->dev_left_icon))
-        lv_img_set_src(p->dev_left_icon,
-                       (p->current <= 0) ? &logout : &img_left_arrow);
-    /* Right icon: hide on the LAST device (and the 0/1-device cases) — there's no
-       next device to switch to. */
+    {
+        lv_img_set_src(p->dev_left_icon, &img_left_arrow);
+        if (p->current < p->count - 1)
+            lv_obj_clear_flag(p->dev_left_icon, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(p->dev_left_icon, LV_OBJ_FLAG_HIDDEN);
+    }
+    /* Right icon = exit-to-watch-face (`logout`) on the LAST device — home is to the
+       grid-right, so the EXIT sits on the RIGHT (user request); PREVIOUS-device arrow
+       on middle devices; hidden on the FIRST device (no previous, no exit-here). */
     if (p->dev_right_icon && lv_obj_is_valid(p->dev_right_icon))
     {
-        if (p->count > 0 && p->current + 1 < p->count)
+        if (p->current >= p->count - 1)
+        {
+            lv_img_set_src(p->dev_right_icon, &logout);
             lv_obj_clear_flag(p->dev_right_icon, LV_OBJ_FLAG_HIDDEN);
+        }
+        else if (p->current > 0)
+        {
+            lv_img_set_src(p->dev_right_icon, &img_right_arrow);
+            lv_obj_clear_flag(p->dev_right_icon, LV_OBJ_FLAG_HIDDEN);
+        }
         else
+        {
             lv_obj_add_flag(p->dev_right_icon, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 }
 
@@ -681,18 +698,21 @@ static void pager_scroll_end_cb(lv_event_t *e)
     if (c == TILE_CENTER) return;            /* snapped back — LVGL animated it */
     int dir  = c - TILE_CENTER;
     int want = p->current + dir;
-    if (want < 0)                            /* swiped before the first → leave to watch face */
+    if (want >= p->count)                    /* swiped past the last → leave to watch face */
     {
-        /* Slide the whole page (the mouse base included) out to the watch face.
-           Don't tear the mouse down here — let it ride out with the slide; the main
-           tileview's settle (VALUE_CHANGED on the watch-face tile) calls
+        /* Fallback only: update_pager_scroll_dir blocks the left-swipe on the last
+           device so it normally CHAINS to the main tileview (native finger-follow
+           slide-out home) and never overshoots here. If it does, slide the whole
+           page (the mouse base included) out to the watch face. Don't tear the
+           mouse down here — let it ride out with the slide; the main tileview's
+           settle (VALUE_CHANGED on the watch-face tile) calls
            device_pager_set_active(false) once the page is gone. */
         snap_to_center(LV_ANIM_OFF);
         extern void app_clock_status_bar_return_home(void);
         app_clock_status_bar_return_home();
         return;
     }
-    if (want >= p->count)                    /* past the last → just animate back to centre */
+    if (want < 0)                            /* before the first → just animate back to centre */
     {
         snap_to_center(LV_ANIM_ON);
         return;
@@ -881,8 +901,8 @@ static void refresh(void)
     /* R3 stage 2: the old drag-up device carousel (this overlay's list_tile) is
        superseded by the shared floating list. Keep the overlay HIDDEN whenever
        there are devices, so the pre-merge per-page list can't ride into the mouse
-       page on the first right-pull — it is BUILT shown, and set_active only hides
-       it at the swipe midpoint, so without this it slides in with the RIGHT tile.
+       page on the first pull-in — it is BUILT shown, and set_active only hides
+       it at the swipe midpoint, so without this it slides in with the device tile.
        The mouse-page entry shows the trackpad directly; the count == 0 branch above
        keeps its own empty_view / QR path (this only runs when count > 0). */
     lv_obj_add_flag(p->overlay, LV_OBJ_FLAG_HIDDEN);
@@ -1188,14 +1208,25 @@ static void bar_cb(lv_event_t *e)
    dragging the strip left/right — the name finger-follows and a release past a
    threshold commits one device in the drag direction (dev_name_bar_cb below). */
 
-/* Tap the LEFT icon: previous device — OR, on the first device (where the icon shows
-   `logout` instead of the left arrow), exit mouse mode to the watch face (the SAME
-   exit the carousel boundary uses). */
+/* L/R mirror: tap the LEFT icon → NEXT device. Hidden on the LAST device (no next),
+   so this only fires when a next device exists. Switch direction matches the
+   already-mirrored drag (drag-left = next) and carousel. */
 static void dev_left_icon_cb(lv_event_t *e)
 {
     (void)e;
     if (!p) return;
-    if (p->current <= 0)
+    pager_set_current(p->current + 1);
+}
+/* Tap the RIGHT icon: exit to the watch face on the LAST device (shows the `logout`
+   glyph — home is to the grid-right, so the EXIT affordance sits on the RIGHT, per
+   the user's request), else PREVIOUS device. Hidden on the first device (no
+   previous). The swipe/drag exit stays leftward (geometry: home is the right tile,
+   pulled in by a leftward swipe); this tap is the on-the-right shortcut. */
+static void dev_right_icon_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!p) return;
+    if (p->current >= p->count - 1)
     {
         extern void app_clock_status_bar_return_home(void);
         app_clock_status_bar_return_home();
@@ -1204,13 +1235,6 @@ static void dev_left_icon_cb(lv_event_t *e)
     {
         pager_set_current(p->current - 1);
     }
-}
-/* Tap the RIGHT icon: next device (pager_set_current clamps at the last). */
-static void dev_right_icon_cb(lv_event_t *e)
-{
-    (void)e;
-    if (!p) return;
-    pager_set_current(p->current + 1);
 }
 
 /* --- drag-to-switch on the name strip. Finger-follows the name (translate_x) so the
@@ -1239,8 +1263,8 @@ static void dev_name_bar_cb(lv_event_t *e)
         lv_anim_del(p->dev_name_label, name_slide_anim_cb); /* cancel a running snap-back */
         lv_obj_set_style_translate_x(p->dev_name_label, 0, 0);
         /* Lock the main tileview so a horizontal drag follows the NAME instead of
-           escaping to the RIGHT-tile page-nav (= back to the watch face). Restored on
-           release. The strip is on the RIGHT tile, whose parent is the tileview. */
+           escaping to the page-nav (= back to the watch face). Restored on
+           release. The strip is on the LEFT tile (0,1), whose parent is the tileview. */
         lv_obj_t *tile = lv_obj_get_parent(p->dev_name_bar);
         lv_obj_t *tv = tile ? lv_obj_get_parent(tile) : NULL;
         if (tv && lv_obj_has_flag(tv, LV_OBJ_FLAG_SCROLLABLE))
@@ -1267,23 +1291,25 @@ static void dev_name_bar_cb(lv_event_t *e)
             lv_obj_add_flag(s_name_locked_tv, LV_OBJ_FLAG_SCROLLABLE);
             s_name_locked_tv = NULL;
         }
-        /* Commit by drag direction: RIGHT → previous device (or, on the first device,
-           exit mouse mode); LEFT → next device. */
+        /* Commit by drag direction: RIGHT → previous device (clamped at the first);
+           LEFT → next device (or, on the last device, exit mouse mode — home is to
+           the grid-right of this LEFT tile, so the page slides out LEFTWARD, the
+           same direction as the drag). */
         if (s_name_drag_dx >= NAME_DRAG_SWITCH_PX)
         {
-            if (p->current <= 0)
+            pager_set_current(p->current - 1);
+        }
+        else if (s_name_drag_dx <= -NAME_DRAG_SWITCH_PX)
+        {
+            if (p->current >= p->count - 1)
             {
-                /* First device → exit. Reset translate FIRST so re-entering the page
+                /* Last device → exit. Reset translate FIRST so re-entering the page
                    centres the name (else it comes back stuck at the drag offset). */
                 lv_obj_set_style_translate_x(p->dev_name_label, 0, 0);
                 extern void app_clock_status_bar_return_home(void);
                 app_clock_status_bar_return_home();
                 return;
             }
-            pager_set_current(p->current - 1);
-        }
-        else if (s_name_drag_dx <= -NAME_DRAG_SWITCH_PX)
-        {
             pager_set_current(p->current + 1);
         }
         /* Slide the (possibly new) name back to centre from wherever the drag left it. */
@@ -1325,7 +1351,7 @@ void device_pager_set_active(bool on)
             /* No device → show the download-QR empty state right here on the device
                page; there's nothing to control, so DON'T host the trackpad. With no
                trackpad capturing touches and the overlay non-scrollable + the QR
-               card / hint non-clickable, a right-swipe falls straight through to
+               card / hint non-clickable, a left-swipe falls straight through to
                the main tileview = leave the device page. Tear the mouse down if a
                device vanished while we were on the page. */
             if (p->mouse_created)
@@ -2051,10 +2077,11 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
     lv_obj_center(p->dev_name_label);
 
     /* Switch arrows flanking the name. Tappable (CLICKED → switch); a DRAG still
-       bubbles to the strip's scrub. Left = previous device, and on the FIRST device
-       it swaps to the `logout` glyph + exits (src set in dev_name_bar_update). Right
-       = next. ext_click_area pads the tiny 9x17 glyphs out to a ~44pt touch target
-       (Skaiwalk_UI §3.1). */
+       bubbles to the strip's scrub. L/R mirror: Left = NEXT device (hidden on the
+       last device). Right = PREVIOUS device, but the `logout` glyph + EXIT on the
+       LAST device — home is to the grid-right, so the exit affordance sits on the
+       RIGHT (src/visibility set in dev_name_bar_update). ext_click_area pads the
+       tiny 9x17 glyphs out to a ~44pt touch target (Skaiwalk_UI §3.1). */
     /* Bottom-align the side icons with the name's BASELINE (its visible bottom), not
        the full line-box bottom: a line height has `base_line` of descent space below
        the glyphs, so aligning to the box bottom sat the icons that much too low.

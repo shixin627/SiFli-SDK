@@ -75,7 +75,7 @@
 
 #include "communicate_protocol.h"
 #include "communicate_task.h" // commu_send_skaibar_selected
-#include "app_clock_status_bar.h" // app_clock_device_change_bar_open / set_device_change_bar_area_right_state
+#include "app_clock_status_bar.h" // app_clock_device_change_bar_open
 #include "ui_handler.h"
 #include <cJSON.h>
 #include "ui_helper.h"
@@ -216,23 +216,18 @@ static int16_t back_hint_drag_offset = 0;
 // 按下時是否落在弧形區：弧形按下整個 session 都跳過 BLE_HID_Mouse_Touch_*
 // 避免 deferred click（按弧形不該觸發點擊）
 static bool press_in_arc_zone = false;
-// 起手點是否落在「右」弧形觸碰區，給 device-change 選單左滑手勢用
+// 起手點是否落在「右」弧形觸碰區：hosted（pager 掛載）左拖=滑鼠頁滑走
+// 回錶盤；standalone 左拖=開 device-change 選單（standalone 唯一退出口）
 static bool press_in_right_arc_zone = false;
-
-// is_point_in_right_arc 真正定義在下面 (~line 400)；這裡 forward decl 給
-// device_change_bar_hit_test_cb 用
-static bool is_point_in_right_arc(const lv_point_t *p);
-
-// 右側 device-change bar 跟弧形滾動觸碰區重疊；用 HIT_TEST 過濾：
-// 點如果在弧形觸碰區就拒絕命中，press 落到 touch_bg 走 arc 滾動；
-// 點在 bar 範圍但不在弧形區（純邊緣）才命中 bar，跑原本左滑開選單流程
-static void device_change_bar_hit_test_cb(lv_event_t *e)
-{
-    lv_hit_test_info_t *info = lv_event_get_hit_test_info(e);
-    if (info->res == false) return; // 標準 hit 已 reject 就不用再判
-    if (is_point_in_right_arc(info->point))
-        info->res = false;
-}
+// 右弧左拖 finger-follow 回錶盤中：本次 press 剩餘的 PRESSING 拿來驅動主
+// tileview 跟手(不送滑鼠移動),放開才 commit/snap。改成 finger-follow(而非
+// 過門檻直接播動畫)順便消掉「手指還按著、settle 把 HID 路由翻成真 BLE report
+// 而動到手機實體游標」的窗口——teardown 延到放開後才發生。
+static bool home_pull_active = false;
+static int  home_pull_prog = 0; // 0..100;放開時 >=50 → commit 回錶盤,否則 snap 回
+// 真正定義在 media tileview 區（hid_mouse_set_hosted）；tentative fwd decl
+// 給右弧左拖的 hosted vs standalone 分流用
+static bool s_hosted_by_pager;
 
 // === 向右返回 hint（仿 lvsf_gesture.c 的返回視覺/動畫流程）===
     #define BACK_HINT_LIMIT 80
@@ -2548,13 +2543,15 @@ static void handle_pressed_event(lv_indev_t *indev)
     scrolling = false;
     moving = false;
 
-    // 左側滾動範圍（弧形 + 中間態）統一走方向判定：
+    // 滾動範圍（左右弧形 + 中間態）統一走方向判定：
     //   上下→升級為角度滾動（left_scroll_active）
     //   向右→觸發 ble_hid_mouse_back（瀏覽器後退鍵）
-    //   向左→退出 pending，走原本拖曳/滑鼠移動
+    //   向左（右弧起手）→ 滑鼠頁滑走回錶盤（L/R swap：home 在右）
+    //   向左（其他）→退出 pending，走原本拖曳/滑鼠移動
     left_scroll_active = false;
     center_zone_pending = false;
     back_pending_active = false;
+    home_pull_active = false;
     back_hint_drag_offset = 0;
     bool in_left_arc = is_point_in_left_arc(&start_point);
     bool in_right_arc = is_point_in_right_arc(&start_point);
@@ -2611,6 +2608,13 @@ static void handle_pressed_event(lv_indev_t *indev)
 static void handle_pressing_event(lv_indev_t *indev,
                                   const lv_point_t *current_point)
 {
+    if (home_pull_active)
+    {
+        // finger-follow:拖多遠 = watch face 進來多少,放開才定案(見右弧左拖分支)
+        home_pull_prog =
+            app_clock_status_bar_pull_home(current_point->x - start_point.x);
+        return;
+    }
     if (!press_in_arc_zone && !left_scroll_active)
     {
         BLE_HID_Mouse_Touch_Move((uint16_t)current_point->x,
@@ -2708,7 +2712,8 @@ static void handle_pressing_event(lv_indev_t *indev,
     int16_t delta_x = current_point->x - last_point.x;
     int16_t delta_y = current_point->y - last_point.y;
 
-    // 左側滾動區方向判定：上下→升級滾動；向右→mouse back；向左→走拖曳
+    // 滾動區方向判定：上下→升級滾動；向右→mouse back；
+    // 向左+右弧→回錶盤；向左其他→走拖曳
     if (center_zone_pending)
     {
         int16_t dx_from_start = current_point->x - start_point.x;
@@ -2746,13 +2751,30 @@ static void handle_pressing_event(lv_indev_t *indev,
             }
             else if (press_in_right_arc_zone)
             {
-                // 右弧區起手 + 往左拖 → 開 device-change 選單
-                // 弧形帶的左滑會被 bar ADV_HITTEST 拒絕落到 touch_bg，
-                // 在這裡 programmatic open 補上選單入口
                 animate_scroll_ui_to(false);
                 scrolling = true; // 避免放開時誤觸 click
-                app_clock_device_change_bar_open();
-                LOG_D("right-arc swipe left -> device-change menu");
+                if (s_hosted_by_pager)
+                {
+                    // L/R swap：右弧區起手 + 往左拖 → finger-follow 把滑鼠頁往左
+                    // 拖出、watch face 跟著手指滑進來(主 tileview 左 tile，home 在
+                    // 右邊)。放開才 commit/snap(handle_released_event)。原本這手勢
+                    // 開 device-change 選單;裝置切換已由名稱條拖曳/輪播/箭頭取代，
+                    // hosted 下選單入口讓位給回家手勢。
+                    home_pull_active = true;
+                    home_pull_prog = app_clock_status_bar_pull_home(
+                        current_point->x - start_point.x);
+                    LOG_D("right-arc swipe left -> pull home (finger-follow)");
+                }
+                else
+                {
+                    // standalone APP_ID_MOUSE（通知中心 / 媒體入口進來）：主
+                    // tileview 不在這個 screen 上，回錶盤是 no-op；保留原
+                    // device-change 選單（建在 lv_layer_top 蓋得上來），它是
+                    // standalone 唯一的退出 / 切裝置入口。
+                    app_clock_device_change_bar_open();
+                    LOG_D("right-arc swipe left -> device-change menu "
+                          "(standalone)");
+                }
                 return;
             }
             // 向左 → 退出 pending，UI 淡回，讓底下拖曳邏輯接手送 mouse_move
@@ -2832,6 +2854,19 @@ static void handle_released_event(lv_indev_t *indev)
     {
         _long_press_ended = BLE_HID_Mouse_Touch_Release(
             (uint16_t)_release_pt.x, (uint16_t)_release_pt.y);
+    }
+
+    // 右弧左拖 finger-follow 回錶盤放手：拖過半 → commit 滑回 home(settle 時
+    // 拆 device 頁);沒過半 → snap 回裝置頁。teardown 在這裡(放開後)才發生。
+    if (home_pull_active)
+    {
+        home_pull_active = false;
+        app_clock_status_bar_pull_home_release(home_pull_prog >= 50);
+        animate_scroll_ui_to(false);
+        press_in_arc_zone = false;
+        LOG_D("home pull released: %s",
+              home_pull_prog >= 50 ? "commit -> watch face" : "snap back");
+        return;
     }
 
     // 左側滾動弧線放手
@@ -6428,9 +6463,8 @@ void hid_mouse_build_ui(lv_obj_t *scr)
 }
 
 /* The global "enter mouse mode" side effects (mouse-mode flag, status-bar gesture
-   zones off, device-change-bar hit-test, gesture detect off). Toggled per page
-   entry so a persisted UI can sit inert off-page without the watch stuck in mouse
-   mode. */
+   zones off, gesture detect off). Toggled per page entry so a persisted UI can
+   sit inert off-page without the watch stuck in mouse mode. */
 void hid_mouse_enter_mode(void)
 {
     app_control_set_mouse_mode(true);
@@ -6443,17 +6477,6 @@ void hid_mouse_enter_mode(void)
     set_status_bar_area_down_state(false);
     set_status_bar_area_left_state(false);
 
-    // 右側 device-change bar 在 lv_layer_top()，原本會擋住右弧滾動。
-    // 加 ADV_HITTEST + 自訂 HIT_TEST cb：點在弧形觸碰區就拒絕命中，
-    // 觸碰會掉到底下的 touch_bg 走 arc 滾動；不在弧形區的（純從邊緣
-    // 左滑）才落到 bar 開選單
-    lv_obj_t *dc_bar = get_device_change_bar_area_right();
-    if (dc_bar && lv_obj_is_valid(dc_bar))
-    {
-        lv_obj_add_flag(dc_bar, LV_OBJ_FLAG_ADV_HITTEST);
-        lv_obj_add_event_cb(dc_bar, device_change_bar_hit_test_cb,
-                            LV_EVENT_HIT_TEST, NULL);
-    }
     display_gesture_detect_objs(0, false);
     RT_ASSERT(control_provider.trigger_finger_event);
     RT_ASSERT(control_provider.ble_hid_consumer_back);
@@ -6468,12 +6491,6 @@ void hid_mouse_enter_mode(void)
 void hid_mouse_exit_mode(void)
 {
     app_control_set_mouse_mode(false);
-    lv_obj_t *dc_bar = get_device_change_bar_area_right();
-    if (dc_bar && lv_obj_is_valid(dc_bar))
-    {
-        lv_obj_remove_event_cb(dc_bar, device_change_bar_hit_test_cb);
-        lv_obj_clear_flag(dc_bar, LV_OBJ_FLAG_ADV_HITTEST);
-    }
     extern void set_status_bar_area_up_state(bool state);
     extern void set_status_bar_area_down_state(bool state);
     extern void set_status_bar_area_left_state(bool state);
@@ -6520,15 +6537,6 @@ static void on_pause(void)
 void hid_mouse_destroy(void)
 {
     app_control_set_mouse_mode(false);
-
-    // 還原右側 device-change bar 的 ADV_HITTEST + 拿掉自訂 cb，
-    // 下個 app 看到的就是原本完整的 hit 行為
-    lv_obj_t *dc_bar = get_device_change_bar_area_right();
-    if (dc_bar && lv_obj_is_valid(dc_bar))
-    {
-        lv_obj_remove_event_cb(dc_bar, device_change_bar_hit_test_cb);
-        lv_obj_clear_flag(dc_bar, LV_OBJ_FLAG_ADV_HITTEST);
-    }
 
     // 停掉底部 bar 多工鍵 timer（如果還在走）
     if (bottom_bar_multitask_timer != NULL)

@@ -546,10 +546,23 @@ bool is_at_home(void)
 
 void check_is_at_home(void)
 {
+    /* L/R swap fix: the device / trackpad page (logical index MAIN_PAGE_TYPE_RIGHT)
+       is NOT the watch face. check_main_page — the settle-time driver — only polls
+       message / instruction_list / control_center / home, never check_is_at_mouse_mode
+       or check_is_at_speech_interface, so on the device page none of the negative
+       flags below catch it and _at_home would latch TRUE. That kept the right-edge
+       reveal overlay live on the device page, where (post L/R swap) it sits on the
+       very edge the hosted trackpad uses to swipe back to the watch face — stealing
+       that gesture and pulling the Action list instead. Exclude the device page so
+       _at_home transitions correctly (face<->device), which disables the reveal on
+       entry and re-enables it on return. */
+    extern uint8_t get_middle_layer_tileview_index(void);
+    bool on_device_page =
+        (get_middle_layer_tileview_index() == MAIN_PAGE_TYPE_RIGHT);
     bool yes = gui_app_is_actived(APP_ID_MAIN) && !_at_instruction_list &&
                !_at_message && !_at_control_center && !_at_mouse_mode &&
                !_at_ai_interface &&
-               !_at_speech_interface;
+               !_at_speech_interface && !on_device_page;
     if (yes != _at_home)
     {
         _at_home = yes;
@@ -576,8 +589,12 @@ void check_is_at_home(void)
         else
         {
             instruction_list_reveal_overlay_set_enabled(false);
+            /* ...but NOT on the device page: hid_mouse_enter_mode already hid the
+               gesture-detect objects for the trackpad, and this runs after it on a
+               face->device settle — re-showing them would put air-mouse UI over the
+               trackpad. (on_device_page is computed above.) */
             if (!_at_mouse_mode && !_at_instruction_list &&
-                !gui_app_is_actived(APP_ID_MOUSE))
+                !gui_app_is_actived(APP_ID_MOUSE) && !on_device_page)
             {
                 display_gesture_detect_objs(0, true);
             }

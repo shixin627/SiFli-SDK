@@ -82,7 +82,6 @@ static lv_obj_t *app_clock_main_status_bar;
 static lv_obj_t *app_clock_main_status_bar_down;
 static lv_obj_t *app_clock_ai_status_bar;
 static lv_obj_t *app_clock_device_change_bar;
-static lv_obj_t *device_change_bar_area_right;
 static lv_obj_t *status_bar_area_up;
 static lv_obj_t *status_bar_area_down;
 static lv_obj_t *status_bar_area_left;
@@ -100,8 +99,7 @@ void display_status_bar_area(uint32_t idx, bool display)
     /* idx 3 = right-edge handle. Repointed from the old device_change_bar zone
        to status_bar_area_right so the watch-face right-edge pull reveals the
        device_pager tile (mirrors idx 2 / left instruction_list). The old
-       device_change_bar_area_right stays hidden — hid_mouse still drives it
-       directly via set/get_device_change_bar_area_right_state(). */
+       right-edge zone stays permanently hidden. */
     lv_obj_t *status_bar_area_objs[] = {
         status_bar_area_up,
         status_bar_area_down,
@@ -143,12 +141,13 @@ static void notification_status_bar_cb(lv_event_t *event)
     else if (LV_EVENT_PRESSED == event->code)
     {
         LOG_I("notification_status_bar_cb from area: %d", area_id);
-        if (area_id == STATUS_BAR_AREA_RIGHT)
+        if (area_id == STATUS_BAR_AREA_LEFT)
         {
-            /* Populate device_pager NOW, on touch — before the right tile is
-               dragged into view — so its content follows the finger instead of
-               popping in on release (VALUE_CHANGED only fires on scroll-settle).
-               Also re-reads the latest bonded set on every pull-out. */
+            /* L/R swap: device_pager is now the LEFT tile. Populate it NOW, on
+               touch — before the left tile is dragged into view — so its content
+               follows the finger instead of popping in on release (VALUE_CHANGED
+               only fires on scroll-settle). Also re-reads the latest bonded set
+               on every pull-out. */
             extern void device_pager_refresh(void);
             device_pager_refresh();
         }
@@ -227,13 +226,13 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
     {
     case LV_EVENT_SCROLL:
     {
-        /* Right tile (device_pager) reveal: darken the whole watch face to black as
-           the page is pulled out — a full-screen fade-to-black on gaus_dial_bg (the
-           same backdrop element the left reveal fades its blur image on). Home sits
-           at scroll_x == 466; pulling right raises it toward 932. ropa is 0 at
-           home/left, so the left reveal keeps its transparent bg and shows the blur. */
+        /* Left tile (device_pager) reveal: darken the whole watch face to black as
+           the page is pulled out — a full-screen fade-to-black on gaus_dial_bg.
+           Home sits at scroll_x == 466; pulling LEFT toward the device tile (now the
+           (0,1) tile) lowers it toward 0, so rx = 466 - scroll_x rises with the pull.
+           ropa is 0 at home, so an idle home keeps its transparent bg / blur. */
         {
-            lv_coord_t rx = lv_obj_get_scroll_x(obj) - 466;
+            lv_coord_t rx = 466 - lv_obj_get_scroll_x(obj);
             if (rx < 0) rx = 0;
             lv_coord_t ropa = rx * 255 / 350;
             if (ropa > 255) ropa = 255;
@@ -1168,19 +1167,19 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     {
         if (i == MAIN_PAGE_TYPE_HOME)
         {
-            /* R3 stage 3: HOME no longer scrolls LEFT — the old left-edge
-               swipe-right into the instruction_list tile is removed (the list
-               floats from a bar tap now, on every page). The LEFT tile (0,1) is
-               still built but UNREACHABLE: no gesture reaches it and no live
-               set_tile_id targets it (animate_to_instruction_list /
-               animate_to_notification_center are now dead).
-               2026-06-04: DOWN (control center / app grid) is also removed —
-               the built-in apps now live in the floating instruction list, so
-               the swipe-down app drawer is gone. LV_DIR_BOTTOM dropped; the DOWN
-               tile (1,2) is still built but UNREACHABLE and empty. UP (messages)
-               and RIGHT (device_pager) are unchanged. */
+            /* L/R swap: HOME scrolls TOP (messages) and LEFT (device_pager /
+               trackpad, now the (0,1) tile) — the trackpad enters from the LEFT
+               edge. It no longer scrolls RIGHT: the old right tile is now the
+               (unreachable) instruction_list placeholder at (2,1); the Action
+               list floats in from the RIGHT edge via the reveal overlay, not a
+               tile. The floating list lives on lv_layer_top; no live set_tile_id
+               targets the placeholder (animate_to_instruction_list /
+               animate_to_notification_center are dead).
+               2026-06-04: DOWN (control center / app grid) stays removed — the
+               built-in apps live in the floating instruction list. LV_DIR_BOTTOM
+               dropped; the DOWN tile (1,2) is built but UNREACHABLE and empty. */
             pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 1, i,
-                                            LV_DIR_TOP | LV_DIR_RIGHT);
+                                            LV_DIR_TOP | LV_DIR_LEFT);
             app_clock_main_status_bar_down = pages[i];
             lv_obj_set_style_bg_color(pages[i], LV_COLOR_RED,
                                       LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1209,8 +1208,11 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
             }
             else if (i == MAIN_PAGE_TYPE_LEFT)
             {
-                pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 0, 1,
-                                                LV_DIR_RIGHT);
+                /* L/R swap: the (unreachable) instruction_list placeholder moves
+                   to the RIGHT (2,1). The Action list reveals from the right edge
+                   as a floating overlay now, not via this tile. */
+                pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 2, 1,
+                                                LV_DIR_LEFT);
             }
             else if (i == MAIN_PAGE_TYPE_UP)
             {
@@ -1219,11 +1221,14 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
             }
             else if (i == MAIN_PAGE_TYPE_RIGHT)
             {
-                /* 右 tile (2,1)：LV_DIR_LEFT = 從這裡往左滑回 home（修掉原本
-                   死碼的 LV_DIR_VER）。home 是 LV_DIR_ALL，所以從錶面往右滑
-                   就能拉出這個 device_pager tile（原生 finger-follow）。 */
-                pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 2, 1,
-                                                LV_DIR_LEFT);
+                /* L/R swap: 左 tile (0,1) = device_pager / 觸控板。
+                   LV_DIR_RIGHT = 從這裡往右滑回 home。home 開了 LV_DIR_LEFT，
+                   所以從錶面往右滑(內容往右移、露出左 tile)就能把觸控板從左側
+                   拉進來(原生 finger-follow)。入口從右改左，與右緣的 Action
+                   列表 reveal 浮層左右對調。注意:此頁的邏輯頁號仍是
+                   MAIN_PAGE_TYPE_RIGHT(active_pos 用 tile 加入順序，非欄位)。 */
+                pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 0, 1,
+                                                LV_DIR_RIGHT);
             }
             if (!test_mode)
             {
@@ -1923,15 +1928,13 @@ void app_clock_device_change_bar_init(lv_obj_t *par)
     lv_obj_clear_flag(status_bar_area,
                       LV_OBJ_FLAG_PRESS_LOCK); // Allow press event to tileview
     /* T4: 右緣入口改用錶面 tileview 右 tile（device_pager）。停用這個 lv_layer_top
-       上的舊右緣觸碰區，否則它會擋掉 tileview 的右滑。hid_mouse 的 device-change
-       仍可用 set_device_change_bar_area_right_state(true) 顯示它（mouse 自己的情境）。 */
+       上的舊右緣觸碰區，否則它會擋掉 tileview 的右滑。永久隱藏，沒有 un-hide 路徑。 */
     lv_obj_add_flag(status_bar_area, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_bg_opa(status_bar_area, bar_opa,
                             LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_add_event_cb(status_bar_area, device_change_bar_cb, LV_EVENT_ALL,
                         NULL);
     lv_obj_align(status_bar_area, LV_ALIGN_RIGHT_MID, 0, 0);
-    device_change_bar_area_right = status_bar_area;
 
     app_clock_device_change_bar = lv_tileview_create(status_bar_device_bg);
     lv_obj_set_scrollbar_mode(app_clock_device_change_bar,
@@ -2123,39 +2126,53 @@ void set_status_bar_area_right_state(bool state)
     }
 }
 
-/* Return to the watch face from the device_pager (right tile). The pager's
+/* Return to the watch face from the device_pager (left tile (0,1)). The pager's
    horizontal carousel owns left/right swipes between devices, so it can't also
    chain a swipe back to home; instead the pager calls this when the user drags
-   right past the first device (the inverse of the right-edge pull-out). Mirrors
+   left past the last device (the inverse of the left-edge pull-in). Mirrors
    the reset done at init: snap the main tileview to home and hide the overlay. */
 void app_clock_status_bar_return_home(void)
 {
     if (!lv_obj_is_valid(app_clock_main_status_bar))
         return;
     /* Animate the slide back to the watch face so the device page — and the mouse
-       base it hosts in the right tile — rides out with it (instead of jumping). The
+       base it hosts in the left tile — rides out with it (instead of jumping). The
        tileview's VALUE_CHANGED on the home tile tears the device page down
        (device_pager_set_active(false)) and hides this bar; gaus_dial_bg fades out
        via the scroll handler as scroll_x returns to centre. */
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, true);
 }
 
-// device_change_bar_area_right 是 lv_layer_top() 的子物件，跨 app 都吃
-// 右側 30×120 (RIGHT_MID) 觸碰。hid_mouse 等需要右側 arc 滾動的 app 進入時
-// 要 hide，離開時 show，否則 BLE HID 滑鼠的右側 arc 滾動會被擋掉
-void set_device_change_bar_area_right_state(bool state)
+/* Finger-follow return to the watch face for the hosted trackpad (hid_mouse's
+   right-arc left-drag). The device page is the LEFT tile (scroll_x 0); home is one
+   content-width to its grid-right. dx = finger delta from the press (leftward
+   negative) → scroll the tileview proportionally so the watch face slides in under
+   the finger. Returns progress 0..100 so the caller can threshold on release.
+   Driving scroll directly (vs return_home's animate-on-threshold) keeps it under
+   the finger AND defers the device-page teardown to release — no teardown while the
+   finger is still down. */
+int app_clock_status_bar_pull_home(int16_t dx)
 {
-    if (!lv_obj_is_valid(device_change_bar_area_right)) return;
-    if (state)
-        lv_obj_clear_flag(device_change_bar_area_right, LV_OBJ_FLAG_HIDDEN);
-    else
-        lv_obj_add_flag(device_change_bar_area_right, LV_OBJ_FLAG_HIDDEN);
+    if (!lv_obj_is_valid(app_clock_main_status_bar))
+        return 0;
+    lv_coord_t home_x = lv_obj_get_content_width(app_clock_main_status_bar);
+    if (home_x <= 0)
+        return 0;
+    lv_coord_t sx = (lv_coord_t)(-dx);
+    if (sx < 0) sx = 0;
+    if (sx > home_x) sx = home_x;
+    lv_obj_scroll_to_x(app_clock_main_status_bar, sx, LV_ANIM_OFF);
+    return (int)((int32_t)sx * 100 / home_x);
 }
 
-// 取得右側 device-change bar，給 hid_mouse 用 ADV_HITTEST 過濾觸碰用
-lv_obj_t *get_device_change_bar_area_right(void)
+/* Settle the finger-follow on release: commit slides the rest of the way to home
+   (the home-tile VALUE_CHANGED then tears the device page down); else snap back to
+   the device tile (0,1). */
+void app_clock_status_bar_pull_home_release(bool commit)
 {
-    return device_change_bar_area_right;
+    if (!lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    lv_obj_set_tile_id(app_clock_main_status_bar, commit ? 1 : 0, 1, true);
 }
 
 // 程式化開啟 device-change 選單（不靠右側 hit-test）

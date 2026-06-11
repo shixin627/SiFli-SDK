@@ -68,6 +68,13 @@
 #ifdef AUDIO_USING_MANAGER
 #include "audio_server.h"
 #endif
+#ifdef BSP_BLE_AMS
+/* iOS cross-app media goes through Apple Media Service (the SDK exposes it as
+   the "AMS" data service). The phone app can't read Spotify/Apple Music on iOS,
+   so the 0x46/0x04 path below is Android-only. */
+#include "data_service_subscriber.h"
+#include "ams_service.h"
+#endif
 
 #define DBG_TAG "bloc.control"
 #include "bsp_board.h"
@@ -441,9 +448,140 @@ void bt_speaker_set_volumn_smoothly(uint8_t percent, bool notify)
 	}
 }
 
+#ifdef BSP_BLE_AMS
+/*===========================================================================*
+ *        iOS media — Apple Media Service (AMS) consumer + control
+ *===========================================================================*
+ * Mirrors the ANCS pattern (gui_apps/message): subscribe to the SDK "AMS"
+ * data service, feed now-playing into the same UI the Android 0x46 path uses,
+ * and send transport commands the iPhone honours for ANY active app (Spotify,
+ * Apple Music, Podcasts...). Active only when the peer is iOS; Android never
+ * exposes AMS so this stays silent there and 0x04 keeps working unchanged. */
+static datac_handle_t s_ams_handle = DATA_CLIENT_INVALID_HANDLE;
+/* Last play/paused state applied from AMS PlaybackInfo (-1 = unknown). Used to
+   de-bounce the streaming PlaybackInfo updates so the play/pause icon only
+   moves on a real state flip. */
+static int s_ams_play_state = -1;
+
+/* Watch's internal AUDIO_CMD_* -> AMS RemoteCommandID. -1 = no mapping. */
+static int ams_cmd_from_audio_cmd(uint8_t audio_cmd)
+{
+	switch (audio_cmd)
+	{
+	case AUDIO_CMD_PLAY:        return BLE_AMS_CMD_PLAY;
+	case AUDIO_CMD_PAUSE:       return BLE_AMS_CMD_PAUSE;
+	case AUDIO_CMD_NEXT:        return BLE_AMS_CMD_NEXT;
+	case AUDIO_CMD_PREVIOUS:    return BLE_AMS_CMD_PREV;
+	case AUDIO_CMD_VOLUME_UP:   return BLE_AMS_CMD_VOL_UP;
+	case AUDIO_CMD_VOLUME_DOWN: return BLE_AMS_CMD_VOL_DOWN;
+	default:                    return -1;
+	}
+}
+
+/* Route a media command to AMS when on iOS. Returns true if handled (caller
+   then skips the Android 0x04 send), false to fall through to 0x04. */
+static bool ams_try_send_media_cmd(uint8_t audio_cmd)
+{
+	if (IOS != SkaiWatchSys.phone_os_version)
+		return false;
+	if (DATA_CLIENT_INVALID_HANDLE == s_ams_handle)
+		return false;
+	int cmd = ams_cmd_from_audio_cmd(audio_cmd);
+	if (cmd < 0)
+		return false;
+	ams_service_config_t config;
+	memset(&config, 0, sizeof(config));
+	config.command = AMS_SERVICE_SEND_REMOTE_COMMAND;
+	config.data.remote_cmd = (ble_ams_cmd_t)cmd;
+	datac_config(s_ams_handle, sizeof(config), (uint8_t *)&config);
+	return true;
+}
+
+/* AMS Entity Update -> now-playing UI. Title/Artist arrive as separate
+   notifications; we update the matching field and refresh. PlaybackInfo is
+   "state,rate,elapsed" with state 1 = Playing. */
+static int ams_data_callback(data_callback_arg_t *arg)
+{
+	if (MSG_SERVICE_DATA_NTF_IND != arg->msg_id)
+		return 0;
+	ble_ams_entity_attr_value_t *v = (ble_ams_entity_attr_value_t *)arg->data;
+	if (v == NULL)
+		return 0;
+
+	bool track_changed = false;
+	if (v->entity_id == BLE_AMS_ENTITY_ID_TRACK &&
+		v->attr_id == BLE_AMS_TRACK_ATTR_ID_TILTE)
+	{
+		uint16_t n = v->len < sizeof(current_media_object.title)
+						 ? v->len : sizeof(current_media_object.title) - 1;
+		rt_memcpy(current_media_object.title, v->value, n);
+		current_media_object.title[n] = '\0';
+		track_changed = true;
+	}
+	else if (v->entity_id == BLE_AMS_ENTITY_ID_TRACK &&
+			 v->attr_id == BLE_AMS_TRACK_ATTR_ID_ARTIST)
+	{
+		uint16_t n = v->len < sizeof(current_media_object.artist)
+						 ? v->len : sizeof(current_media_object.artist) - 1;
+		rt_memcpy(current_media_object.artist, v->value, n);
+		current_media_object.artist[n] = '\0';
+		track_changed = true;
+	}
+	else if (v->entity_id == BLE_AMS_ENTITY_ID_PLAYER &&
+			 v->attr_id == BLE_AMS_PLAYER_ATTR_ID_PB_INFO)
+	{
+		/* PlaybackInfo = "state,rate,elapsed" and streams on every elapsed
+		   tick; only react when the play/paused state actually flips, else
+		   buffered updates around a pause/resume bounce the icon. */
+		char buf[8];
+		uint16_t n = v->len < sizeof(buf) ? v->len : sizeof(buf) - 1;
+		rt_memcpy(buf, v->value, n);
+		buf[n] = '\0';
+		int playing = (atoi(buf) == 1);
+		if (playing != s_ams_play_state)
+		{
+			s_ams_play_state = playing;
+			notify_bt_speaker_media_status(playing);
+		}
+	}
+
+	if (track_changed)
+	{
+		/* Mirror set_media_title()'s full fan-out: live labels (dial header /
+		   media app) AND rebuild the message-list media widget via
+		   notification_refresh(), so now-playing shows in the notification
+		   list too, not only the header. */
+		current_media_object.state = true;
+		notify_media_title();
+		notify_provider.notification_refresh();
+		if (myLancher[app_index_instruction_list].reset_list != NULL &&
+			!is_at_instruction_list())
+		{
+			myLancher[app_index_instruction_list].reset_list();
+		}
+	}
+	return 0;
+}
+
+static int bloc_media_ams_init(void)
+{
+	s_ams_handle = datac_open();
+	RT_ASSERT(DATA_CLIENT_INVALID_HANDLE != s_ams_handle);
+	datac_subscribe(s_ams_handle, "AMS", ams_data_callback, 0);
+	return 0;
+}
+INIT_APP_EXPORT(bloc_media_ams_init);
+#endif /* BSP_BLE_AMS */
+
 static void bt_send_media_cmd(uint8_t cmd)
 {
 	app_audio_set_control_command(cmd);
+#ifdef BSP_BLE_AMS
+	/* iOS: send via Apple Media Service. Only fall through to the Android
+	   0x04 path when not on iOS (or AMS not ready yet). */
+	if (ams_try_send_media_cmd(cmd))
+		return;
+#endif
 	commu_send_media_control();
 }
 

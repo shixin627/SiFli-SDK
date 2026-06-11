@@ -2217,7 +2217,12 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
         .item_height_px  = LIST_MESSAGE_HEIGHT,
         .slot_angle_deg  = 36,
         .item_count      = page_count,
-        .band_thickness  = 90,
+        /* 90 → 40: the right-edge arc band (right half, outer ring of
+           thickness px) overlapped the media widget's right-hand "next"
+           button, so taps on that icon were captured by the arc overlay
+           instead of the button. 40 pulls the band's inner edge out past the
+           next button (its far edge sits ~40px in from the screen rim). */
+        .band_thickness  = 40,
         .lock_ancestors  = true,
         .tap_cb          = message_arc_tap_cb,
         .snap_cb         = message_arc_snap_cb,
