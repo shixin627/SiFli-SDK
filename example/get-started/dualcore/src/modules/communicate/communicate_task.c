@@ -267,6 +267,28 @@ bool commu_send_heart_curve_skip(uint32_t timestamp, uint8_t reason)
                            &skip, (uint16_t)sizeof(skip));
 }
 
+bool commu_send_wear_diag(uint32_t ts, uint8_t evt, uint8_t status,
+                          uint16_t dc_q4, uint16_t pi_e6,
+                          uint16_t pi_range_e6, uint16_t imu_var_e4)
+{
+    /* Packed 14-byte wire payload — explicit packing so there is no struct
+       padding on the wire (the dart parser reads 4+1+1+2+2+2+2 LE). */
+    struct __attribute__((packed))
+    {
+        uint32_t ts;
+        uint8_t evt;
+        uint8_t status;
+        uint16_t dc_q4;
+        uint16_t pi_e6;
+        uint16_t pi_range_e6;
+        uint16_t imu_var_e4;
+    } rec = {.ts = ts, .evt = evt, .status = status, .dc_q4 = dc_q4,
+             .pi_e6 = pi_e6, .pi_range_e6 = pi_range_e6,
+             .imu_var_e4 = imu_var_e4};
+    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_WEAR_DIAG,
+                           &rec, (uint16_t)sizeof(rec));
+}
+
 bool commu_send_sleep_data(void)
 {
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_RETURN_SLEEP_DATA,

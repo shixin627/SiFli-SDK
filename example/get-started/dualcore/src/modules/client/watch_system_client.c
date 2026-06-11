@@ -323,6 +323,17 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
 #endif
         break;
     }
+    case MSG_SERVICE_WEAR_DIAG_IND:
+    {
+        UNPACK_DATA(arg, watch_sys_wear_diag_t, data_ind);
+        /* Wear-detect diagnostic record from LCPU -> forward to phone (the
+           phone appends to a daily CSV). Live-push only: records lost while
+           BLE is down are acceptable for a diagnostic stream. */
+        commu_send_wear_diag(data_ind->ts, data_ind->evt, data_ind->status,
+                             data_ind->dc_q4, data_ind->pi_e6,
+                             data_ind->pi_range_e6, data_ind->imu_var_e4);
+        break;
+    }
     case MSG_SERVICE_SLEEP_STATE_IND:
     {
         UNPACK_DATA(arg, watch_sys_sleep_state_t, data_ind);

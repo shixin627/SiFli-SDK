@@ -33,6 +33,7 @@
 #include <rtthread.h>
 #include <math.h>
 #include <string.h>
+#include <time.h>
 #include "bsp_board.h"
 #include "wear_detect.h"
 #include "bloc_peripheral.h"
@@ -176,6 +177,14 @@ typedef struct
     bool contact_break_pending;     /* DC collapsed while moving; DC-held suspended */
     uint8_t reconfirm_evals_left;   /* usable (fresh-PPG, still) evals left to re-confirm */
 
+    /* Diagnostic uplink: last computed metrics (events fire outside the
+       eval scope) + sample-rate limiter */
+    float last_dc;
+    float last_pi;
+    float last_pi_range;
+    float last_imu_var;
+    uint32_t last_diag_sample_ms;
+
     /* Current output */
     wear_status_t status;
     bool initialized;
@@ -269,6 +278,44 @@ static void notify_wear_status(bool wearing)
     }
 }
 
+/* -------------------- Diagnostic uplink --------------------
+ * Cable-less units have no serial console; these records (forwarded to the
+ * phone as a daily CSV) are the only window into nightly wear-detect
+ * internals for per-unit threshold analysis. ~1 record/min + transitions:
+ * negligible BLE / cross-core load. */
+
+static uint16_t diag_clamp_u16(float v)
+{
+    if (v < 0.0f) return 0;
+    if (v > 65535.0f) return 65535;
+    return (uint16_t)v;
+}
+
+static void diag_emit(uint8_t evt, float dc, float pi, float pi_range,
+                      float imu_var)
+{
+    if (!watch_sys_sync.notify_wear_diag)
+        return;
+
+    watch_sys_wear_diag_t rec;
+    rec.ts = (uint32_t)time(RT_NULL);
+    rec.evt = evt;
+    rec.status = (ctx.status == WEAR_STATUS_WEARING) ? 1 : 0;
+    rec.dc_q4 = diag_clamp_u16(dc * 0.25f);
+    rec.pi_e6 = diag_clamp_u16(pi * 1e6f);
+    rec.pi_range_e6 = diag_clamp_u16(pi_range * 1e6f);
+    rec.imu_var_e4 = diag_clamp_u16(imu_var * 1e4f);
+    watch_sys_sync.notify_wear_diag(&rec);
+}
+
+/* Emit with the last metrics computed by evaluate_once (for events that fire
+ * where dc/pi are out of scope, e.g. state transitions in try_evaluate). */
+static void diag_emit_last(uint8_t evt)
+{
+    diag_emit(evt, ctx.last_dc, ctx.last_pi, ctx.last_pi_range,
+              ctx.last_imu_var);
+}
+
 static void set_status(wear_status_t new_status)
 {
     if (ctx.status == new_status)
@@ -282,11 +329,13 @@ static void set_status(wear_status_t new_status)
         s_probe_active = false; /* probe confirmed a wrist; hand PPG to hr_service/bg_hr */
         LOG_I("Wear detected: ON WRIST");
         notify_wear_status(true);
+        diag_emit_last(WEAR_DIAG_EVT_ON);
     }
     else
     {
         LOG_I("Wear detected: OFF WRIST");
         notify_wear_status(false);
+        diag_emit_last(WEAR_DIAG_EVT_OFF);
     }
 }
 
@@ -322,6 +371,8 @@ static int evaluate_imu_only(void)
             ctx.ppg_restart_ms = rt_tick_get_millisecond();
             LOG_I("Wear: motion (var=%.4f) -> open PPG probe window (settling %ums)",
                   imu_var, PPG_SETTLE_MS);
+            ctx.last_imu_var = imu_var;
+            diag_emit_last(WEAR_DIAG_EVT_PROBE_OPEN);
         }
         s_probe_active = true;
         s_probe_until_ms = rt_tick_get_millisecond() + PROBE_WINDOW_MS;
@@ -363,6 +414,7 @@ static int evaluate_once(uint32_t now)
                 s_probe_active = false;
                 ctx.on_vote_window = 0;
                 LOG_I("Wear: probe expired (no PPG data) -> close PPG, wait for motion");
+                diag_emit_last(WEAR_DIAG_EVT_PROBE_EXPIRE);
                 return 0;
             }
             return evaluate_imu_only();
@@ -417,6 +469,24 @@ static int evaluate_once(uint32_t now)
         pi_range = pi_max - pi_min;
     }
 
+    /* Keep the latest metrics for out-of-scope diagnostic events, and emit a
+     * rate-limited snapshot so the nightly CSV shows the analog levels even
+     * when no event fires (the whole point for cable-less units). */
+    ctx.last_dc = dc_mean;
+    ctx.last_pi = pi;
+    ctx.last_pi_range = pi_range;
+    if (now - ctx.last_diag_sample_ms >= 60000)
+    {
+        ctx.last_diag_sample_ms = now;
+        uint16_t imu_len = (ctx.imu_count < IMU_WINDOW_SIZE)
+                               ? ctx.imu_count : IMU_WINDOW_SIZE;
+        ctx.last_imu_var = (imu_len > 0)
+                               ? compute_imu_variance(ctx.acce_mag, imu_len)
+                               : 0.0f;
+        diag_emit(WEAR_DIAG_EVT_SAMPLE, dc_mean, pi, pi_range,
+                  ctx.last_imu_var);
+    }
+
     /* === DC-led contact detection (industry standard: reflectance DC == skin
      * contact; off-body == DC collapse). The accelerometer is deliberately NOT
      * used to decide wear -- it only marks PPG reliability -- so a motionless
@@ -443,6 +513,9 @@ static int evaluate_once(uint32_t now)
                 ctx.contact_break_pending = true;
                 LOG_I("Wear: contact break + motion (var=%.3f) -> require pulse re-confirm within %u live evals",
                       imu_var, RECONFIRM_LIVE_EVALS);
+                ctx.last_imu_var = imu_var;
+                diag_emit(WEAR_DIAG_EVT_BREAK_ARM, dc_mean, pi, pi_range,
+                          imu_var);
             }
         }
         LOG_I("Eval: DC=%.0f (< %u) -> contact lost -> OFF", dc_mean, PPG_DC_LOW_THD);
@@ -470,6 +543,8 @@ static int evaluate_once(uint32_t now)
         {
             LOG_I("Eval: contact break unconfirmed (no pulse in %u live evals) -> OFF",
                   RECONFIRM_LIVE_EVALS);
+            diag_emit(WEAR_DIAG_EVT_BREAK_TIMEOUT, dc_mean, pi, pi_range,
+                      ctx.last_imu_var);
             return -1;
         }
 
@@ -500,6 +575,7 @@ static int evaluate_once(uint32_t now)
         ctx.ppg_idx = 0;
         ctx.on_vote_window = 0;
         LOG_I("Wear: probe window expired, no wrist -> close PPG, wait for motion");
+        diag_emit_last(WEAR_DIAG_EVT_PROBE_EXPIRE);
         return 0;
     }
 
@@ -590,6 +666,7 @@ static void try_evaluate(void)
         {
             ctx.contact_break_pending = false;
             LOG_I("Wear: pulse re-confirmed after contact break -> resume DC-held");
+            diag_emit_last(WEAR_DIAG_EVT_BREAK_CONFIRM);
         }
     }
     else if (vote < 0)

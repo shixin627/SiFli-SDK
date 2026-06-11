@@ -52,6 +52,12 @@ bool commu_send_heart_curve_sample(uint32_t timestamp, uint8_t bpm);
    Mirrors commu_send_heart_curve_sample; phone draws it as a coloured gap on
    the HR curve. Reason codes frozen in ADR-0011 D2. */
 bool commu_send_heart_curve_skip(uint32_t timestamp, uint8_t reason);
+/* Wear-detect diagnostic record (KEY_WEAR_DIAG 0x12, 14B LE). Cable-less units
+   have no serial console; the phone appends these to a daily CSV for offline
+   night-time threshold analysis. evt codes 1..8 frozen (watch_sys_service.h). */
+bool commu_send_wear_diag(uint32_t ts, uint8_t evt, uint8_t status,
+                          uint16_t dc_q4, uint16_t pi_e6,
+                          uint16_t pi_range_e6, uint16_t imu_var_e4);
 bool commu_send_heart_rate_series(const float *ppg, uint16_t count);
 /* Push current SkaiWatchSys.sleep_state to the phone via KEY_RETURN_SLEEP_DATA.
    Called on every stage transition received from LCPU. The dart-side

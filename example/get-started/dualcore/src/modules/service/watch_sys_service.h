@@ -47,6 +47,8 @@ extern "C"
             ((MSG_SERVICE_SYS_DATA_REQ + 15) | RSP_MSG_TYPE),
         MSG_SERVICE_HR_SKIP_IND =
             ((MSG_SERVICE_SYS_DATA_REQ + 16) | RSP_MSG_TYPE),
+        MSG_SERVICE_WEAR_DIAG_IND =
+            ((MSG_SERVICE_SYS_DATA_REQ + 17) | RSP_MSG_TYPE),
     };
 
     typedef enum
@@ -179,6 +181,34 @@ extern "C"
         uint8_t  reason;    /* wire reason code 1..7; see ADR-0011 D2 */
     } watch_sys_hr_skip_t;
 
+    /* Wear-detect diagnostic event codes (LCPU -> HCPU -> phone, frozen —
+       the dart CSV writer names them; do not reorder). */
+    typedef enum
+    {
+        WEAR_DIAG_EVT_ON = 1,            /* wear state -> WEARING            */
+        WEAR_DIAG_EVT_OFF = 2,           /* wear state -> NOT_WEARING        */
+        WEAR_DIAG_EVT_SAMPLE = 3,        /* periodic eval snapshot (~60s)    */
+        WEAR_DIAG_EVT_PROBE_OPEN = 4,    /* motion opened PPG probe window   */
+        WEAR_DIAG_EVT_PROBE_EXPIRE = 5,  /* probe expired without a wrist    */
+        WEAR_DIAG_EVT_BREAK_ARM = 6,     /* contact break + motion armed     */
+        WEAR_DIAG_EVT_BREAK_CONFIRM = 7, /* pulse re-confirmed after break   */
+        WEAR_DIAG_EVT_BREAK_TIMEOUT = 8, /* re-confirm ran out of live evals */
+    } watch_sys_wear_diag_evt_t;
+
+    /* Wear-detect diagnostic record (LCPU -> HCPU). HCPU forwards it via
+       KEY_WEAR_DIAG; cable-less units have no serial console so this is the
+       only window into nightly wear-detect internals. */
+    typedef struct
+    {
+        uint32_t ts;           /* UTC second of the event                  */
+        uint8_t  evt;          /* watch_sys_wear_diag_evt_t                */
+        uint8_t  status;       /* wear status at emit time (0 off / 1 on)  */
+        uint16_t dc_q4;        /* PPG DC mean / 4                          */
+        uint16_t pi_e6;        /* PI * 1e6, clamped to 65535               */
+        uint16_t pi_range_e6;  /* PI range * 1e6, clamped                  */
+        uint16_t imu_var_e4;   /* IMU variance * 1e4, clamped              */
+    } watch_sys_wear_diag_t;
+
     typedef struct
     {
 #if defined(SOC_BF0_HCPU)
@@ -213,6 +243,7 @@ extern "C"
     void (*notify_health_info)(void);
     void (*notify_hr_sample)(uint32_t timestamp, uint8_t bpm);
     void (*notify_hr_skip)(uint32_t timestamp, uint8_t reason);
+    void (*notify_wear_diag)(const watch_sys_wear_diag_t *rec);
     void (*notify_sleep_state)(uint8_t mode, uint32_t timestamp);
     void (*notify_minute_of_activity)(time_t utc_now, uint8_t steps,
                                       uint8_t orientation, uint16_t vmc);

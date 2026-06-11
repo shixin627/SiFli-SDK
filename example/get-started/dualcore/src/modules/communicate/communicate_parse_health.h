@@ -43,6 +43,12 @@ typedef enum
        draws it as a coloured gap label on the HR curve. Reason wire codes
        1..7 are frozen in ADR-0011 D2 (do not reorder). */
     KEY_HEART_CURVE_SKIP = 0x11,
+    /* Wear-detect diagnostic record (watch -> phone), 14 bytes LE:
+       {ts:u32, evt:u8, status:u8, dc/4:u16, PI*1e6:u16, PIrange*1e6:u16,
+       IMUvar*1e4:u16}. evt codes 1..8 frozen (see watch_sys_wear_diag_evt_t).
+       Cable-less units have no serial console; this is their only way to
+       expose nightly wear-detect internals (phone appends to a daily CSV). */
+    KEY_WEAR_DIAG = 0x12,
 } HEALTH_KEY;
 
 void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t length);
