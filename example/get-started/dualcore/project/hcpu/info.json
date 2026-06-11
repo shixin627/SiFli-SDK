@@ -1,6 +1,6 @@
 {
-    "version": "1.1.70",
-    "description": "發布測試",
+    "version": "1.1.72",
+    "description": "配戴偵測暫時開關",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
