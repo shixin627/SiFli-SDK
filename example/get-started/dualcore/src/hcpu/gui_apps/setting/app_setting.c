@@ -109,6 +109,7 @@ static lv_obj_t *time_format_quick_btn = NULL;
 static lv_obj_t *time_format_title_label = NULL;
 static lv_obj_t *time_format_badge_label = NULL;
 static lv_obj_t *mouse_press_quick_btn = NULL;
+static lv_obj_t *wear_detect_quick_btn = NULL;
 
 extern void app_developer_main(void);
 
@@ -523,6 +524,23 @@ static void mouse_press_switch_event_callback(lv_event_t *e)
         bool new_status = (lv_obj_get_state(sw) & LV_STATE_CHECKED) ? true : false;
         SkaiWatchSys.flag_field.mouse_press_mode = new_status;
         LOG_I("Mouse press mode toggled: %d", new_status);
+    }
+}
+
+/* "佩戴偵測" toggle. Checked = normal wear detection. Unchecked = disable
+ * detection (force worn unless on charger) — a diagnostic override so HR /
+ * sleep can be verified without the contact algorithm flipping to off-wrist.
+ * The provider persists the bit and pushes the live state to LCPU. */
+static void wear_detect_switch_event_callback(lv_event_t *e)
+{
+    if (LV_EVENT_VALUE_CHANGED == lv_event_get_code(e))
+    {
+        lv_obj_t *sw = lv_event_get_target(e);
+        bool detection_on = (lv_obj_get_state(sw) & LV_STATE_CHECKED) ? true : false;
+#ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
+        setting_provider.set_wear_detect_off(!detection_on);
+#endif
+        LOG_I("Wear detection toggled: %s", detection_on ? "ON" : "OFF (force worn)");
     }
 }
 
@@ -1399,12 +1417,54 @@ void app_setting_init(void *param)
     lv_obj_add_event_cb(mouse_press_sw, mouse_press_switch_event_callback,
                         LV_EVENT_VALUE_CHANGED, NULL);
 
+    /* Wear Detection wide widget — diagnostic override.
+     * ON  (checked): normal contact-based wear detection (default)
+     * OFF: force worn unless on charger, so HR/sleep run regardless of the
+     *      contact algorithm while per-unit thresholds are diagnosed. */
+    const lv_coord_t wear_detect_btn_w = LV_HOR_RES * 80 / 100;
+    wear_detect_quick_btn = lv_obj_create(settings_container);
+    lv_obj_set_size(wear_detect_quick_btn, wear_detect_btn_w, 80);
+    lv_obj_align_to(wear_detect_quick_btn, mouse_press_quick_btn,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_set_style_radius(wear_detect_quick_btn, 40, 0);
+    lv_obj_set_style_bg_color(wear_detect_quick_btn, lv_color_hex(0xCECECE), 0);
+    lv_obj_set_style_bg_opa(wear_detect_quick_btn, LV_OPA_10, 0);
+    lv_obj_set_style_border_width(wear_detect_quick_btn, 0, 0);
+    lv_obj_set_style_pad_all(wear_detect_quick_btn, 0, 0);
+    lv_obj_clear_flag(wear_detect_quick_btn, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *wear_detect_icon = lv_img_create(wear_detect_quick_btn);
+    lv_img_set_src(wear_detect_icon, LV_EXT_IMG_GET(icon_release));
+    lv_obj_align(wear_detect_icon, LV_ALIGN_LEFT_MID, 20, 0);
+    lv_obj_t *wear_detect_label = lv_label_create(wear_detect_quick_btn);
+    lv_label_set_text(wear_detect_label,
+                      LV_EXT_STR_GET_BY_KEY(wear_detect, "Wear Detection"));
+    lv_obj_set_style_text_color(wear_detect_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(wear_detect_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align_to(wear_detect_label, wear_detect_icon,
+                    LV_ALIGN_OUT_RIGHT_MID, 20, 0);
+
+    lv_obj_t *wear_detect_sw = lv_switch_create(wear_detect_quick_btn);
+    lv_obj_set_size(wear_detect_sw, 80, 40);
+    lv_obj_align(wear_detect_sw, LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_set_style_bg_color(wear_detect_sw, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(wear_detect_sw, lv_color_hex(0x0078D7),
+                              LV_PART_INDICATOR | LV_STATE_CHECKED);
+    /* Checked = detection ON. wear_detect_off==1 means the user disabled it. */
+    if (!SkaiWatchSys.flag_field.wear_detect_off)
+    {
+        lv_obj_add_state(wear_detect_sw, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(wear_detect_sw, wear_detect_switch_event_callback,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+
     /* Capsule list items (same style as the wide widgets above).
      * Items that navigate to another page get a ">" arrow on the right. */
     lv_obj_t *list_btn;
 
     // Gesture (launches gesture app)
-    list_btn = create_capsule_item(settings_container, mouse_press_quick_btn,
+    list_btn = create_capsule_item(settings_container, wear_detect_quick_btn,
                                    LV_EXT_IMG_GET(icon_release), LV_EXT_STR_GET_BY_KEY(gesture, "Gesture"),
                                    true);
     lv_obj_add_event_cb(list_btn, btn_gesture_event_callback,
@@ -1521,6 +1581,7 @@ static void on_stop(void)
     time_format_title_label = NULL;
     time_format_badge_label = NULL;
     mouse_press_quick_btn = NULL;
+    wear_detect_quick_btn = NULL;
     /* The modal is parented to lv_scr_act() (and gets deleted with the screen),
      * but reset the static pointer so a stale reference isn't reused. */
     reset_modal = NULL;
@@ -1548,6 +1609,7 @@ static void app_setting_rebuild_main_cb(void *p)
     time_format_title_label = NULL;
     time_format_badge_label = NULL;
     mouse_press_quick_btn = NULL;
+    wear_detect_quick_btn = NULL;
     reset_modal = NULL;
     /* 比照 on_start：在乾淨的 struct 上重建，避免殘留欄位指向已刪物件。
        datac 已於上方 close，app_setting_init 結尾會重新 open。 */

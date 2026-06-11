@@ -165,6 +165,14 @@ void app_periodic_task(void)
 
 #ifdef BSP_USING_WATCH_SYS_CLIENT
     watch_sys_sync.request_battery_voltage();
+    /* Re-assert the wear-detection override to LCPU every tick. The flag lives
+       in HCPU prefs; a silent LCPU reboot would otherwise reset it to the
+       default (detection on) and silently re-break an overnight diagnostic
+       session. Idempotent — converges LCPU within one period after any reboot. */
+    if (watch_sys_sync.set_wear_detect_enable)
+    {
+        watch_sys_sync.set_wear_detect_enable(!SkaiWatchSys.flag_field.wear_detect_off);
+    }
 #endif
 }
 

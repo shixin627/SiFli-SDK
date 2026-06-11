@@ -13,7 +13,7 @@ extern "C"
 
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 1
-#define VERSION_REVISION 70
+#define VERSION_REVISION 71
 #define VERSION_DEV 1
 
 #define MAX_GESTURE_SAMPLES 76
@@ -416,7 +416,8 @@ extern "C"
         uint64_t countdown_popopen : 1;
         uint64_t debug_mode : 1;
         uint64_t mouse_press_mode : 1; /* 0: pressure<17000=move & <10000=click; 1: always-move & pressure<17000=click */
-        uint64_t reserved : 24;
+        uint64_t wear_detect_off : 1;  /* 1: disable wear detection (force worn unless on charger) — diagnostic override */
+        uint64_t reserved : 23;
     } T_FLAG_FIELD;
 
     /*Do not disturb mode configuration */

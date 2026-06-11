@@ -354,6 +354,28 @@ static void set_lift_switch_status(bool status)
     notify_lift_switch_status();
 }
 
+/**
+ * @brief  Enable/disable wear detection (diagnostic override).
+ * @param  off: true = disable wear detection (force worn unless on charger);
+ *              false = normal detection.
+ * @retval None
+ *
+ * Persists the bit (survives reboot) AND pushes the live state to LCPU now so
+ * the override takes effect immediately. The periodic perception task re-pushes
+ * it every minute, so a silent LCPU reboot self-heals back to this state.
+ */
+static void set_wear_detect_off(bool off)
+{
+    SkaiWatchSys.flag_field.wear_detect_off = off ? 1 : 0;
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
+    if (watch_sys_sync.set_wear_detect_enable)
+    {
+        watch_sys_sync.set_wear_detect_enable(!off);
+    }
+    LOG_I("[UI]Wear detection %s", off ? "DISABLED (force worn unless charging)"
+                                       : "ENABLED");
+}
+
 /* Language functions --------------------------------------------------------*/
 
 /**
@@ -520,6 +542,7 @@ static int bloc_setting_provider_register(void)
     setting_provider.set_hour_format = set_hour_format;
     setting_provider.set_watch_time = set_watch_time;
     setting_provider.set_lift_switch_status = set_lift_switch_status;
+    setting_provider.set_wear_detect_off = set_wear_detect_off;
     setting_provider.set_brightness = set_brightness;
     setting_provider.set_screen_time = set_screen_time;
     setting_provider.get_power_save_mode = get_power_save_mode;

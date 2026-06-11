@@ -57,6 +57,15 @@ extern "C"
      */
     bool wear_detect_is_wearing(void);
 
+    /**
+     * @brief Enable/disable the wear-detection algorithm (diagnostic override).
+     *        When disabled, the watch is forced WORN unless it is on the
+     *        charger — lets HR/sleep run regardless of the contact algorithm
+     *        while per-unit thresholds are being diagnosed. Default: enabled.
+     * @param enabled true = normal detection, false = force worn (unless charging)
+     */
+    void wear_detect_set_enabled(bool enabled);
+
 #ifdef __cplusplus
 }
 #endif

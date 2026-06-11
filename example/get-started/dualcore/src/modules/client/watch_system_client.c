@@ -546,6 +546,7 @@ static void set_debug_mode(bool enable)
 
 static int set_multi_gesture_mode(bool enable) { return send_sys_cmd_b1(MultiGestureMode,  enable ? 1 : 0); }
 static int set_tap_and_hold_mode(bool enable)  { return send_sys_cmd_b1(TapAndHoldMode,    enable ? 1 : 0); }
+static int set_wear_detect_enable(bool enable) { return send_sys_cmd_b1(WearDetectEnable,  enable ? 1 : 0); }
 
 /**
  * @brief Register synchronization functions for the watch system
@@ -576,6 +577,7 @@ static void register_watch_sys_sync_funs(void)
     watch_sys_sync.set_debug_mode = set_debug_mode;
     watch_sys_sync.set_multi_gesture_mode = set_multi_gesture_mode;
     watch_sys_sync.set_tap_and_hold_mode = set_tap_and_hold_mode;
+    watch_sys_sync.set_wear_detect_enable = set_wear_detect_enable;
 }
 
 /**

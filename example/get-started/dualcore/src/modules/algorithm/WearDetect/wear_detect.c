@@ -198,6 +198,10 @@ extern void hr_set_power(uint8_t arg);
 static bool s_probe_active = false;
 static uint32_t s_probe_until_ms = 0;
 
+/* Diagnostic override (settings toggle "佩戴偵測"): when false, the contact
+ * algorithm is bypassed and the watch is forced WORN unless on the charger. */
+static bool s_detect_enabled = true;
+
 /* -------------------- Helpers -------------------- */
 
 static uint8_t on_votes_in_window(uint8_t w)
@@ -610,6 +614,17 @@ static void try_evaluate(void)
         return;
     ctx.last_eval_ms = now;
 
+    /* Diagnostic override: wear detection disabled by the user. Force WORN
+     * unless on the charger, so HR/sleep run regardless of the contact
+     * algorithm. set_status() no-ops when unchanged and drives the UI
+     * indicator + bg_hr gating + sleep on transition. */
+    if (!s_detect_enabled)
+    {
+        bool on_charger = battery_get_charge_state()->is_plugged;
+        set_status(on_charger ? WEAR_STATUS_NOT_WEARING : WEAR_STATUS_WEARING);
+        return;
+    }
+
     /* Need minimum data before evaluating (PPG or IMU) */
     if (ctx.ppg_count < 20 && ctx.imu_count < 20)
         return;
@@ -745,4 +760,16 @@ wear_status_t wear_detect_get_status(void)
 bool wear_detect_is_wearing(void)
 {
     return ctx.status == WEAR_STATUS_WEARING;
+}
+
+void wear_detect_set_enabled(bool enabled)
+{
+    if (s_detect_enabled == enabled)
+        return;
+    s_detect_enabled = enabled;
+    LOG_I("Wear detection %s", enabled ? "ENABLED (normal)"
+                                       : "DISABLED (force worn unless charging)");
+    /* Re-evaluate promptly on the next IMU/PPG feed instead of waiting out
+     * the throttle, so the override takes effect within one eval period. */
+    ctx.last_eval_ms = 0;
 }

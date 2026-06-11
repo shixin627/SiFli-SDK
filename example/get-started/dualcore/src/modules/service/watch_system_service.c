@@ -32,6 +32,9 @@
 #ifdef BSP_USING_SLEEP_VANHEES
     #include "sleep_vanhees.h" /* accel-only sleep-period daily aggregates */
 #endif
+#ifdef BSP_USING_WEAR_DETECT
+    #include "wear_detect.h"   /* wear_detect_set_enabled (diagnostic override) */
+#endif
 
 #define DBG_TAG "watch_sys"
 #define DBG_LVL DBG_INFO
@@ -488,6 +491,14 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
         {
             uint8_t mode = msg->body[1];
             set_enable_tap_and_hold(mode == 1);
+            break;
+        }
+
+        case WearDetectEnable:
+        {
+#ifdef BSP_USING_WEAR_DETECT
+            wear_detect_set_enabled(msg->body[1] == 1);
+#endif
             break;
         }
 

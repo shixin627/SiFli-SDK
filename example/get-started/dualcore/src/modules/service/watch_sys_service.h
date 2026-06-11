@@ -70,6 +70,7 @@ extern "C"
         DebugParamUpdate,
         MultiGestureMode,
         TapAndHoldMode,
+        WearDetectEnable,
     } client_msg_t;
 
     typedef struct
@@ -233,6 +234,7 @@ extern "C"
         void (*set_debug_mode)(bool mode);
         int (*set_multi_gesture_mode)(bool enable);
         int (*set_tap_and_hold_mode)(bool enable);
+        int (*set_wear_detect_enable)(bool enable);
 #else
     // lcpu->hcpu notify functions
     void (*notify_battery_voltage)(uint32_t data);
