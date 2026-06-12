@@ -2,27 +2,39 @@
  ******************************************************************************
  * @file   wear_detect.c
  * @author Skaiwalk software development team
- * @brief  Wear detection algorithm combining IMU and PPG sensor signals.
+ * @brief  Wear detection — DC-session-led (v2, industry-standard shape).
  *
- *         Detection principle (continuous, multi-indicator fusion):
+ *         Principle (matches mainstream wearables): the PULSE is only ever
+ *         required to confirm the FIRST wear of a session ("cold entry").
+ *         After that, staying worn and re-becoming worn are decided purely
+ *         by CONTACT evidence — the PPG DC level measured against a
+ *         per-session learned baseline — because deep-sleep perfusion is
+ *         too weak to demand a pulse (overnight CSV 2026-06-11: 82% of the
+ *         night falsely OFF, 5.5 h stuck, 48 probes all failing the pulse
+ *         gate while DC sat solidly in the worn band).
  *
- *         Four indicators are evaluated every EVAL_PERIOD_MS:
+ *         State machine:
+ *         - COLD OFF→ON: windowed pulse gate (PI ≥ threshold + variability,
+ *           3-of-8 evals). Seeds worn_dc_base = current DC.
+ *         - WARM OFF→ON: DC back inside [0.88, 1.15] × worn_dc_base for
+ *           3-of-8 evals → ON, no pulse. This is what makes every wrong OFF
+ *           cheap (seconds) instead of catastrophic (hours).
+ *         - ON hold: DC above max(0.80 × base, DC_ABS_FLOOR). Baseline EMA
+ *           adapts slowly while in-band (per-unit / per-fit calibration —
+ *           measured worn DC differs >4k between our two units).
+ *         - ON→OFF: sustained sub-threshold DC — fast (~12 s) when the dip
+ *           came with motion (take-off signature), slow (~30 s) when still
+ *           (protects sleep dips). Charger (is_plugged) blocks WARM entry
+ *           and freezes the EMA, so a charging cradle can't be learned or
+ *           warm-recovered into.
  *
- *         1. PPG freshness: if PPG sensor is off (no new samples),
- *            fall back to IMU-only re-trigger to wake PPG up.
- *
- *         2. PPG DC Level (contact detection):
- *            - DC < threshold → nothing touching → NOT wearing.
- *
- *         3. Perfusion Index (PI = AC / DC) + variability:
- *            - PI > threshold AND varying → heartbeat → WEARING.
- *            - PI > threshold BUT constant → noise → NOT wearing.
- *
- *         4. IMU Variance (supplementary):
- *            - Used to disambiguate when PI is low but DC is high.
- *            - Also used as sole re-trigger when PPG data is stale.
- *
- *         State transitions use hysteresis counters to prevent oscillation.
+ *         Known accepted trade-off: a surface whose DC coincides with the
+ *         learned worn band can warm-recover to a false ON (single green
+ *         channel cannot separate skin from such a surface without a pulse;
+ *         mainstream solves this with IR-ratio or capacitive hardware we
+ *         don't have). Product priority is sleep continuity > table
+ *         rejection; sessions are bounded by charging and the settings
+ *         toggle exists as an escape hatch. See ADR 0015.
  ******************************************************************************
  */
 /* Temporary PPG stall diagnostic instrumentation. Remove once done. */
@@ -49,48 +61,58 @@
 /* Evaluation period in milliseconds (continuous, not event-driven) */
 #define EVAL_PERIOD_MS          1500
 
-/* PPG DC threshold: below this → nothing touching the sensor (suspended in air).
- * REAL measured data (this sensor, HRV probe): air ~40k, WRIST ~43-44k (skin
- * absorbs light, so a worn wrist reads LOWER than a reflective table ~50k!).
- * The old 48000 assumption was wrong and rejected a worn wrist (DC 44k<45k).
- * Threshold now sits just under the wrist value; a table (high DC) is rejected
- * later by the pulse check, not here. ⚠ narrow margin -- needs per-unit calib. */
-#define PPG_DC_LOW_THD          42000
+/* Absolute DC floor: below this, nothing skin-like touches the sensor.
+ * Overnight CSV (sleep unit, 2026-06-11): off-wrist surfaces read 30.5k-35.5k,
+ * worn sleep dips bottom out at 36.4k, worn band 39k-44k. The floor sits in
+ * the 35.5k-36.4k gap. It is only a safety net / cold-entry sanity check —
+ * the working ON/OFF decisions use the per-session learned baseline below. */
+#define DC_ABS_FLOOR            36000
 
-/* Perfusion Index threshold (AC_pp / DC_mean).
- * Asymmetric (Schmitt trigger) to prevent oscillation on static surfaces:
- *   - PI_THD_TO_ON:   stricter bar for OFF→ON  (real heartbeat is clearly > this).
- *   - PI_THD_KEEP_ON: looser bar to maintain ON state.
- * Measured data: wearing PI spikes > 0.001, table PI occasionally spikes to
- * ~0.0005-0.0008 from noise. */
+/* Per-session DC baseline (learned, replaces any fixed worn threshold —
+ * measured worn DC differs >4k between units and with strap fit):
+ * - Seeded by the first pulse-confirmed ON of a session.
+ * - EMA-adapts while ON and in-band (alpha 1/64 per 1.5s eval ≈ 96s to 63%).
+ * - WORN_BAND: DC within [LO,HI]×base counts as wrist contact (hold + warm
+ *   re-entry). Night data: worn dips reach 0.90×base, so LO=0.88 keeps them.
+ * - OFF_THR: DC below OFF_THR×base (clamped up to DC_ABS_FLOOR) votes OFF. */
+#define WORN_BAND_LO            0.88f
+#define WORN_BAND_HI            1.15f
+#define OFF_THR_FACTOR          0.80f
+/* Asymmetric EMA: learn DOWN (loosening fit) at 1/64 per eval, UP at only
+ * 1/256 — a pressed-sensor episode (DC 45k+) must not inflate the base and
+ * drag off_thr above the 36.4k sleep-dip floor margin. */
+#define BASE_EMA_SHIFT          6       /* down: base += (dc-base)/64  */
+#define BASE_EMA_UP_SHIFT       8       /* up:   base += (dc-base)/256 */
+
+/* Perfusion Index threshold (AC_pp / DC_mean) — COLD ENTRY ONLY. A live
+ * pulse is required just once per session, to prove the first contact is a
+ * wrist and not a table. It is never required to stay ON or to re-enter ON
+ * (deep-sleep perfusion cannot deliver it; see file header).
+ * Measured: wearing PI spikes > 0.001, table noise tops ~0.0005-0.0008. */
 #define PI_THD_TO_ON            0.0010f
-#define PI_THD_KEEP_ON          0.0004f
 
-/* IMU variance threshold (m/s^2)^2 for supplementary motion check */
+/* IMU variance threshold (m/s^2)^2: "the wrist is moving" marker, used to
+ * pick the fast OFF hysteresis on take-off-shaped DC drops. */
 #define IMU_VARIANCE_THD        0.03f
 
-/* Hysteresis: votes needed to change state.
- * OFF→ON is WINDOWED, not consecutive: HYSTERESIS_ON votes within the last
- * 8 evaluations (~12 s). Measured 2026-06 (worn wrist + charging cable):
- * PI hovers 0.0005-0.0014, crossing the 0.0010 bar on only ~30% of evals,
- * so requiring 3 *consecutive* crossings left the watch stuck OFF for 20+
- * minutes. A table never crosses the bar at all (noise tops ~0.0008), so
- * windowed density keeps the same false-positive rejection.
- * ON→OFF stays consecutive: DC collapse votes are deterministic. */
-#define HYSTERESIS_ON           3   /* OFF→ON:  3 ON votes in last 8 evals */
-#define HYSTERESIS_OFF          3   /* ON→OFF:  3 consecutive OFF (~4.5s) */
+/* ON-vote accumulation: HYSTERESIS_ON votes within the last 8 evaluations
+ * (~12 s window, not consecutive — a marginal signal that crosses its bar
+ * intermittently still accumulates; measured crossing rate can be ~30%). */
+#define HYSTERESIS_ON           3
 
-/* PI variability check: real heartbeat causes PI to fluctuate across
- * evaluations.  Constant PI (noise/static surface) should be rejected.
- * Track the last PI_HISTORY_LEN evaluations and require the range
- * (max - min) to exceed PI_RANGE_THD before accepting PI as heartbeat. */
+/* OFF hysteresis (consecutive sub-threshold evals):
+ * - with motion in the streak (take-off signature): fast, ~12 s.
+ * - still (loose strap / sleep dips): slow, ~30 s — a sleeping wrist's DC
+ *   dip is transient, a removed watch's is not. Wrong OFFs are cheap now
+ *   anyway: warm re-entry restores ON within seconds of DC returning. */
+#define OFF_EVALS_MOTION        8
+#define OFF_EVALS_STILL         20
+
+/* PI variability check (cold entry): real heartbeat fluctuates; constant PI
+ * (noise/static surface) is rejected, wildly swinging PI (set-down motion
+ * artefact, measured ~0.27) is rejected by PI_RANGE_MAX. */
 #define PI_HISTORY_LEN          5
 #define PI_RANGE_THD            0.0003f
-
-/* Upper bound on PI variability for OFF->ON. A real heartbeat's PI range is
- * modest; a motion artefact (e.g. setting the watch down on a table) makes PI
- * swing wildly and can fake a pulse. Reject OFF->ON when range is implausibly
- * large. Measured: worn ~0.03-0.05, table set-down artefact ~0.27. */
 #define PI_RANGE_MAX            0.15f
 
 /* PPG freshness: if no new PPG sample arrives within this many
@@ -102,33 +124,14 @@
  * data during this settle period. */
 #define PPG_SETTLE_MS           6000
 
-/* When PPG is stale and device is OFF-wrist, use IMU motion to
- * re-trigger ON (which causes system to restart PPG sensor).
- * Require N consecutive IMU-motion evaluations before voting ON. */
-#define IMU_RETRIGGER_COUNT     2
+/* When PPG is stale and device is OFF-wrist, IMU motion powers PPG up for a
+ * probe window so contact (warm) or pulse (cold) can confirm a wrist. */
 #define IMU_RETRIGGER_THD       0.05f
 
-/* [DC-led] After motion while off-wrist, hold PPG powered for this long so the
- * pulse can confirm a real wrist even if the user then stays still. If no wrist
- * is confirmed within the window, PPG is powered back down until next motion. */
+/* [DC-led] After motion while off-wrist, hold PPG powered for this long so
+ * the wrist can confirm even if the user then stays still. If nothing
+ * confirms within the window, PPG is powered back down until next motion. */
 #define PROBE_WINDOW_MS         (3 * 60 * 1000)
-
-/* Contact-break re-confirmation: taking the watch off reads as a DC collapse
- * WITH motion, but if it lands on a table within the OFF hysteresis (~4.5s)
- * the table's DC can match skin (measured 2026-06-10: table 46.9k vs wrist
- * 46.2k) and DC-held would latch ON forever. After such a break, suspend
- * DC-held and demand a live pulse (same windowed gate as OFF→ON); no pulse
- * after this many *usable* evaluations → vote OFF.
- *
- * The countdown ticks ONLY on evaluations where a pulse could actually be
- * seen: PPG fresh AND wrist still. It freezes while PPG is duty-cycled off
- * by bg_hr (sleep: 60s on / 120s off; awake: ~40s per ~15min — wall-clock
- * grace would expire inside a gap and force OFF even on a perfect wrist)
- * and while moving (motion artefacts block the pulse gate; a moving surface
- * is not a table). 60 clean looks with no pulse = not a wrist.
- * Sleep-time DC dips without motion never arm this path, so the
- * motionless-sleep DC-held guarantee is preserved. */
-#define RECONFIRM_LIVE_EVALS    60
 
 /* PPG ring buffer size: at ~25 Hz, 75 samples = 3 seconds */
 #define PPG_WINDOW_SIZE         75
@@ -163,19 +166,23 @@ typedef struct
     uint32_t ppg_restart_ms;
     bool ppg_settling;          /* true during settle period after restart */
 
-    /* IMU re-trigger counter (for stale PPG + OFF state) */
-    uint8_t imu_retrigger_cnt;
-
     /* Timing for periodic evaluation */
     uint32_t last_eval_ms;
 
     /* Hysteresis state */
     uint8_t on_vote_window; /* bitmask of last 8 eval votes, bit set = ON vote */
     int8_t off_counter;     /* counts consecutive OFF evaluations */
+    bool off_streak_motion; /* motion seen during the current OFF-vote streak
+                               (take-off signature -> fast hysteresis) */
 
-    /* Contact-break re-confirmation (take-off detection) */
-    bool contact_break_pending;     /* DC collapsed while moving; DC-held suspended */
-    uint8_t reconfirm_evals_left;   /* usable (fresh-PPG, still) evals left to re-confirm */
+    /* Per-session worn-DC baseline. 0 = invalid (cold: no wear confirmed
+     * since boot / since charging while off-wrist ended the session).
+     * (Re)seeded by EVERY pulse-confirmed ON; EMA-adapted while the current
+     * ON stretch is pulse-anchored; survives OFF periods so warm re-entry
+     * works at night. */
+    float worn_dc_base;
+    bool last_vote_pulse;   /* the most recent +1 vote came from the pulse gate */
+    bool on_anchor_pulse;   /* current ON stretch was entered via pulse (EMA gate) */
 
     /* Diagnostic uplink: last computed metrics (events fire outside the
        eval scope) + sample-rate limiter */
@@ -326,7 +333,6 @@ static void set_status(wear_status_t new_status)
         return;
 
     ctx.status = new_status;
-    ctx.contact_break_pending = false;
 
     if (new_status == WEAR_STATUS_WEARING)
     {
@@ -404,6 +410,18 @@ static int evaluate_once(uint32_t now)
     }
 #endif
 
+    /* Charging while OFF ends the wear session: the baseline must not
+     * survive onto the charger (a base poisoned by a band-coincident surface
+     * dies here — this implements the "sessions are bounded by charging"
+     * contract in the file header). Runs before the stale gate so it works
+     * with PPG powered down on the cradle. */
+    if (ctx.status == WEAR_STATUS_NOT_WEARING && ctx.worn_dc_base > 0.0f &&
+        battery_get_charge_state()->is_plugged)
+    {
+        ctx.worn_dc_base = 0.0f;
+        LOG_I("Wear: charger while off-wrist -> session baseline cleared");
+    }
+
     /* --- Check PPG freshness first --- */
     if (is_ppg_stale(now))
     {
@@ -426,9 +444,6 @@ static int evaluate_once(uint32_t now)
         /* If currently ON but PPG went stale, don't change state yet */
         return 0;
     }
-
-    /* Reset IMU retrigger counter since PPG is active */
-    ctx.imu_retrigger_cnt = 0;
 
     /* --- Check PPG settle period after sensor restart --- */
     if (ctx.ppg_settling)
@@ -491,86 +506,62 @@ static int evaluate_once(uint32_t now)
                   ctx.last_imu_var);
     }
 
-    /* === DC-led contact detection (industry standard: reflectance DC == skin
-     * contact; off-body == DC collapse). The accelerometer is deliberately NOT
-     * used to decide wear -- it only marks PPG reliability -- so a motionless
-     * worn wrist during sleep stays ON instead of being mistaken for off-wrist
-     * (root cause A2). PI variability is used ONLY to confirm OFF->ON, never to
-     * drop an already-worn state (root cause A1). === */
-    if (dc_mean < (float)PPG_DC_LOW_THD)
+    /* === DC-session-led decision (see file header). Pulse is consulted only
+     * for cold entry; everything else is contact evidence vs the learned
+     * per-session baseline. === */
+    bool plugged = battery_get_charge_state()->is_plugged;
+
+    if (ctx.status == WEAR_STATUS_WEARING)
     {
-        /* Worn + DC collapse + motion = take-off signature. Arm the
-         * re-confirmation gate in case the watch lands on a skin-like DC
-         * surface before the OFF hysteresis completes. A motionless dip
-         * (loose strap during sleep) deliberately does NOT arm it. */
-        if (ctx.status == WEAR_STATUS_WEARING && !ctx.contact_break_pending)
+        /* OFF threshold: relative collapse below the worn baseline, never
+         * below the absolute floor (protects against a stale/低 baseline). */
+        float off_thr = (float)DC_ABS_FLOOR;
+        if (ctx.worn_dc_base > 0.0f &&
+            ctx.worn_dc_base * OFF_THR_FACTOR > off_thr)
         {
+            off_thr = ctx.worn_dc_base * OFF_THR_FACTOR;
+        }
+
+        if (dc_mean < off_thr)
+        {
+            /* Sub-threshold: vote OFF. Motion during the streak marks a
+             * take-off signature -> try_evaluate uses the fast hysteresis. */
             uint16_t imu_len = (ctx.imu_count < IMU_WINDOW_SIZE)
                                    ? ctx.imu_count : IMU_WINDOW_SIZE;
             float imu_var = (imu_len > 0)
                                 ? compute_imu_variance(ctx.acce_mag, imu_len) : 0.0f;
             if (imu_var >= IMU_VARIANCE_THD)
-            {
-                /* counter first, flag last: a racing reader that sees the
-                 * flag must also see a valid countdown */
-                ctx.reconfirm_evals_left = RECONFIRM_LIVE_EVALS;
-                ctx.contact_break_pending = true;
-                LOG_I("Wear: contact break + motion (var=%.3f) -> require pulse re-confirm within %u live evals",
-                      imu_var, RECONFIRM_LIVE_EVALS);
-                ctx.last_imu_var = imu_var;
-                diag_emit(WEAR_DIAG_EVT_BREAK_ARM, dc_mean, pi, pi_range,
-                          imu_var);
-            }
-        }
-        LOG_I("Eval: DC=%.0f (< %u) -> contact lost -> OFF", dc_mean, PPG_DC_LOW_THD);
-        return -1;
-    }
-
-    /* DC is in the contact range. */
-    if (ctx.status == WEAR_STATUS_WEARING)
-    {
-        if (!ctx.contact_break_pending)
-        {
-            /* Already worn: hold ON as long as DC stays high. Ignore PI/IMU so a
-             * flat, low-variability sleep pulse never flips us OFF. Only the DC
-             * collapse above takes us off-wrist. */
-            LOG_I("Eval: DC=%.0f, PI=%.5f (worn; DC held) -> ON", dc_mean, pi);
-            return 1;
-        }
-
-        /* Contact broke while moving: DC alone no longer proves a wrist (the
-         * sensor may now rest on a table whose DC matches skin). Fall through
-         * to the live-pulse gate; try_evaluate lifts the suspension once the
-         * vote window re-confirms. Once the countdown of usable evals is
-         * spent without a pulse, vote OFF. */
-        if (ctx.reconfirm_evals_left == 0)
-        {
-            LOG_I("Eval: contact break unconfirmed (no pulse in %u live evals) -> OFF",
-                  RECONFIRM_LIVE_EVALS);
-            diag_emit(WEAR_DIAG_EVT_BREAK_TIMEOUT, dc_mean, pi, pi_range,
-                      ctx.last_imu_var);
+                ctx.off_streak_motion = true;
+            ctx.last_imu_var = imu_var;
+            LOG_I("Eval: DC=%.0f (< %.0f) -> contact lost -> OFF vote (%s)",
+                  dc_mean, off_thr,
+                  ctx.off_streak_motion ? "moving" : "still");
             return -1;
         }
 
-        /* Tick the countdown only while still: motion artefacts block the
-         * pulse gate anyway, and a moving surface is not a table. Stale
-         * evals return earlier, so PPG-off gaps freeze the countdown.
-         * (bg_hr burst restarts during WEARING skip the settle gate, so a
-         * few warm-up evals do burn ticks — ~4-9 per restart, budgeted in
-         * RECONFIRM_LIVE_EVALS.) */
+        /* Contact holds: stay ON regardless of PI (sleep perfusion may be
+         * flat). Adapt the baseline slowly, but ONLY while this ON stretch
+         * is pulse-anchored — a warm re-entry might be a band-coincident
+         * surface, and learning from it would drag the band onto the
+         * surface (review finding: morning table walked base 43.5k→39.1k).
+         * Frozen while charging (charger couples noise into the ADC). */
+        if (!plugged && ctx.on_anchor_pulse && ctx.worn_dc_base > 0.0f &&
+            dc_mean >= ctx.worn_dc_base * WORN_BAND_LO &&
+            dc_mean <= ctx.worn_dc_base * WORN_BAND_HI)
         {
-            uint16_t imu_len = (ctx.imu_count < IMU_WINDOW_SIZE)
-                                   ? ctx.imu_count : IMU_WINDOW_SIZE;
-            float imu_var = (imu_len > 0)
-                                ? compute_imu_variance(ctx.acce_mag, imu_len) : 0.0f;
-            if (imu_var < IMU_VARIANCE_THD)
-                ctx.reconfirm_evals_left--;
+            float delta = dc_mean - ctx.worn_dc_base;
+            ctx.worn_dc_base += delta / (float)(1 << ((delta > 0.0f)
+                                                          ? BASE_EMA_UP_SHIFT
+                                                          : BASE_EMA_SHIFT));
         }
+        LOG_I("Eval: DC=%.0f (base=%.0f) -> worn, contact held -> ON",
+              dc_mean, ctx.worn_dc_base);
+        return 1;
     }
 
     /* Currently OFF. The PPG running now was opened by a motion probe window;
-     * if that window expired without a live pulse, power PPG back down and wait
-     * for the next motion (saves LED current when nothing is worn). */
+     * if that window expired without confirming a wrist, power PPG back down
+     * and wait for the next motion (saves LED current when nothing is worn). */
     if (s_probe_active && now >= s_probe_until_ms)
     {
         hr_set_power(0);
@@ -583,13 +574,33 @@ static int evaluate_once(uint32_t now)
         return 0;
     }
 
-    /* Require a *live* pulse (PI above the ON bar AND varying) to confirm a real
-     * wrist, so a watch resting on a table (high DC, no pulse) is not worn. */
-    if (pi >= PI_THD_TO_ON && pi_range <= PI_RANGE_MAX &&
+    /* WARM re-entry: this session already proved a wrist once (pulse-seeded
+     * baseline). DC back inside the worn band IS the wrist returning — no
+     * pulse demanded, deep sleep cannot deliver one. Blocked while charging
+     * so a cradle is never warm-recovered into. The DC_ABS_FLOOR clamp keeps
+     * the entry set a subset of the hold set (entry below the hold
+     * threshold would oscillate ON/OFF deterministically). */
+    if (!plugged && ctx.worn_dc_base > 0.0f &&
+        dc_mean >= (float)DC_ABS_FLOOR &&
+        dc_mean >= ctx.worn_dc_base * WORN_BAND_LO &&
+        dc_mean <= ctx.worn_dc_base * WORN_BAND_HI)
+    {
+        LOG_I("Eval: DC=%.0f in worn band [%.0f..%.0f] -> warm re-entry -> ON",
+              dc_mean, ctx.worn_dc_base * WORN_BAND_LO,
+              ctx.worn_dc_base * WORN_BAND_HI);
+        ctx.last_vote_pulse = false;
+        return 1;
+    }
+
+    /* COLD entry: no session evidence (or DC outside the learned band) —
+     * require a live pulse so a table is never confirmed as a wrist. */
+    if (dc_mean >= (float)DC_ABS_FLOOR &&
+        pi >= PI_THD_TO_ON && pi_range <= PI_RANGE_MAX &&
         (ctx.pi_hist_count < PI_HISTORY_LEN || pi_range >= PI_RANGE_THD))
     {
         LOG_I("Eval: DC=%.0f, AC_pp=%.0f, PI=%.5f, range=%.5f -> live wrist -> ON",
               dc_mean, ac_pp, pi, pi_range);
+        ctx.last_vote_pulse = true;
         return 1;
     }
     if (pi >= PI_THD_TO_ON && pi_range > PI_RANGE_MAX)
@@ -599,9 +610,9 @@ static int evaluate_once(uint32_t now)
         return 0;
     }
 
-    LOG_I("Eval: DC=%.0f, PI=%.5f, range=%.5f (high DC, no live pulse yet) -> hold",
+    LOG_I("Eval: DC=%.0f, PI=%.5f, range=%.5f (no contact evidence yet) -> hold",
           dc_mean, pi, pi_range);
-    return 0; /* high DC but pulse unconfirmed -> wait, do NOT flip OFF */
+    return 0; /* unconfirmed -> wait */
 }
 
 /**
@@ -666,41 +677,58 @@ static void try_evaluate(void)
     {
         /* Vote ON */
         ctx.off_counter = 0;
+        ctx.off_streak_motion = false;
 
-        uint8_t on_votes = on_votes_in_window(ctx.on_vote_window);
-        if (ctx.status != WEAR_STATUS_WEARING && on_votes >= HYSTERESIS_ON)
+        if (ctx.status != WEAR_STATUS_WEARING &&
+            on_votes_in_window(ctx.on_vote_window) >= HYSTERESIS_ON)
         {
-            /* Reset PI history and PPG buffer on state change so fresh
-             * PPG data will be evaluated after sensor restarts. */
+            if (ctx.last_vote_pulse)
+            {
+                /* Pulse is the highest-trust evidence: ALWAYS (re)seed the
+                 * baseline from it. This corrects a base poisoned by an
+                 * artefact-inflated earlier seed (review: put-on artefact
+                 * seeded 56.9k and locked the real 43.4k wrist out), and
+                 * keeps entry ⊆ hold monotonic (off_thr becomes 0.8×this
+                 * DC, so a fresh pulse confirm can never oscillate). */
+                ctx.worn_dc_base = ctx.last_dc;
+                LOG_I("Wear: session baseline (re)seeded at DC=%.0f",
+                      ctx.worn_dc_base);
+            }
+            /* Warm re-entry keeps the existing pulse-seeded baseline; the
+             * anchor flag gates EMA learning to pulse-proven stretches. */
+            ctx.on_anchor_pulse = ctx.last_vote_pulse;
+            /* Reset PI history on state change so fresh PPG data will be
+             * evaluated after sensor restarts. */
             ctx.pi_hist_count = 0;
             ctx.pi_hist_idx = 0;
             set_status(WEAR_STATUS_WEARING);
         }
-        else if (ctx.status == WEAR_STATUS_WEARING && ctx.contact_break_pending &&
-                 on_votes >= HYSTERESIS_ON)
-        {
-            ctx.contact_break_pending = false;
-            LOG_I("Wear: pulse re-confirmed after contact break -> resume DC-held");
-            diag_emit_last(WEAR_DIAG_EVT_BREAK_CONFIRM);
-        }
     }
     else if (vote < 0)
     {
-        /* Vote OFF: contact lost invalidates any accumulated ON votes */
+        /* Vote OFF: contact lost invalidates any accumulated ON votes.
+         * Dual-speed hysteresis: a take-off (motion in the streak) confirms
+         * fast; a still dip (loose strap during sleep) must persist ~30 s —
+         * and even a wrong OFF is recovered in seconds by warm re-entry. */
         ctx.on_vote_window = 0;
         ctx.off_counter++;
-        if (ctx.off_counter > HYSTERESIS_OFF)
-            ctx.off_counter = HYSTERESIS_OFF;
+        if (ctx.off_counter > OFF_EVALS_STILL)
+            ctx.off_counter = OFF_EVALS_STILL;
 
-        if (ctx.status != WEAR_STATUS_NOT_WEARING && ctx.off_counter >= HYSTERESIS_OFF)
+        int8_t needed = ctx.off_streak_motion ? OFF_EVALS_MOTION
+                                              : OFF_EVALS_STILL;
+        if (ctx.status != WEAR_STATUS_NOT_WEARING && ctx.off_counter >= needed)
         {
             set_status(WEAR_STATUS_NOT_WEARING);
+            ctx.off_streak_motion = false;
         }
     }
     else
     {
         /* Uncertain: decay OFF counter; ON votes age out of the window */
         if (ctx.off_counter > 0) ctx.off_counter--;
+        if (ctx.off_counter == 0)
+            ctx.off_streak_motion = false;
     }
 }
 
@@ -709,10 +737,10 @@ static void try_evaluate(void)
 void wear_detect_init(void)
 {
     memset(&ctx, 0, sizeof(ctx));
-    ctx.status = WEAR_STATUS_NOT_WEARING; /* [DC-led] start OFF; require DC + a live pulse to confirm worn, so booting/resting on a table is never latched as worn */
+    ctx.status = WEAR_STATUS_NOT_WEARING; /* start OFF (cold): the first wear of a session must be pulse-confirmed, so booting/resting on a table is never latched as worn */
     ctx.last_eval_ms = rt_tick_get_millisecond();
     ctx.initialized = true;
-    LOG_I("Wear detection initialized (PI-based, eval every %u ms)", EVAL_PERIOD_MS);
+    LOG_I("Wear detection initialized (DC-session-led v2, eval every %u ms)", EVAL_PERIOD_MS);
 }
 
 void wear_detect_feed_imu(Vector3 *acce, float sample_rate)
@@ -769,7 +797,11 @@ void wear_detect_set_enabled(bool enabled)
     s_detect_enabled = enabled;
     LOG_I("Wear detection %s", enabled ? "ENABLED (normal)"
                                        : "DISABLED (force worn unless charging)");
-    /* Re-evaluate promptly on the next IMU/PPG feed instead of waiting out
-     * the throttle, so the override takes effect within one eval period. */
+    /* Votes/counters frozen during bypass are stale evidence — clear them
+     * so re-enabling starts from a clean slate, and re-evaluate promptly on
+     * the next feed instead of waiting out the throttle. */
+    ctx.on_vote_window = 0;
+    ctx.off_counter = 0;
+    ctx.off_streak_motion = false;
     ctx.last_eval_ms = 0;
 }
