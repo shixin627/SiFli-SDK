@@ -1306,6 +1306,27 @@ static void bg_hr_finish_burst(void)
           (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_qual_rej,
           (unsigned)bg_hr_burst_best,
           (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel);
+
+    /* TEMPORARY: forward this burst's quality summary to the phone CSV via the
+       wear-diag pipe so BGHR_MIN_QLEVEL can be tuned from real on-wrist data
+       (the sleep unit has no serial). Repurposed fields — see
+       WEAR_DIAG_EVT_HR_BURST in watch_sys_service.h. Remove with the gate
+       tuning. Only when something was actually read this burst. */
+    if (watch_sys_sync.notify_wear_diag && bg_hr_burst_reads > 0)
+    {
+        uint32_t qmin = (bg_hr_burst_qscore_min == 0xFFFFFFFFu)
+                            ? 0 : bg_hr_burst_qscore_min;
+        watch_sys_wear_diag_t hd;
+        hd.ts = (uint32_t)time(NULL);
+        hd.evt = WEAR_DIAG_EVT_HR_BURST;
+        hd.status = (uint8_t)(bg_hr_burst_qlevel > 0xFF ? 0xFF : bg_hr_burst_qlevel);
+        hd.dc_q4 = (bg_hr_burst_reads > 0xFFFF) ? 0xFFFF : (uint16_t)bg_hr_burst_reads;
+        hd.pi_e6 = (bg_hr_burst_cnt > 0xFFFF) ? 0xFFFF : (uint16_t)bg_hr_burst_cnt;
+        hd.pi_range_e6 = (bg_hr_burst_qual_rej > 0xFFFF) ? 0xFFFF
+                                                         : (uint16_t)bg_hr_burst_qual_rej;
+        hd.imu_var_e4 = (qmin > 0xFFFF) ? 0xFFFF : (uint16_t)qmin;
+        watch_sys_sync.notify_wear_diag(&hd);
+    }
     /* Forward the best BPM seen this burst, then power the LED back off. */
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
     {

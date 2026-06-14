@@ -194,6 +194,14 @@ extern "C"
         WEAR_DIAG_EVT_BREAK_ARM = 6,     /* contact break + motion armed     */
         WEAR_DIAG_EVT_BREAK_CONFIRM = 7, /* pulse re-confirmed after break   */
         WEAR_DIAG_EVT_BREAK_TIMEOUT = 8, /* re-confirm ran out of live evals */
+        /* HR-burst quality summary (emitted by hr_service per bg_hr burst).
+           TEMPORARY instrumentation to tune BGHR_MIN_QLEVEL from real on-wrist
+           data without serial. Reuses the 14-byte wire with REPURPOSED fields
+           (no scaling): status=last qlevel(0..2), dc_q4=reads, pi_e6=accepted,
+           pi_range_e6=qual_rejected, imu_var_e4=min valid_score(0..100). When
+           read from the phone CSV: reads=dc/4, acc=pi*1e6, qrej=pi_range*1e6,
+           qmin=imu_var*1e4, qlevel=status. Remove with the gate tuning. */
+        WEAR_DIAG_EVT_HR_BURST = 9,
     } watch_sys_wear_diag_evt_t;
 
     /* Wear-detect diagnostic record (LCPU -> HCPU). HCPU forwards it via
