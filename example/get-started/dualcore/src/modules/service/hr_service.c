@@ -1115,9 +1115,21 @@ static uint8_t bghr_median_push(uint8_t v)
 }
 
 /* Per-burst PPG-HR quality (min confidence + last level) for the burst log /
-   future quality gate. */
+   the quality gate below. */
 static uint32_t bg_hr_burst_qscore_min = 0xFFFFFFFFu;
 static uint32_t bg_hr_burst_qlevel = 0;
+static uint16_t bg_hr_burst_qual_rej = 0;  /* reads dropped by the quality gate, per burst */
+
+/* Signal-quality gate (Apple-style "withhold low-confidence readings").
+   The Goodix algo grades every output: valid_level 0->1->2 (higher = more
+   reliable) and valid_score 0..100. Weak/loose/motion-contaminated sleep PPG
+   yields level-0 outputs that the algo itself flags as unreliable; plotting
+   them produces the jagged 50<->130 sleep curve. Drop reads below this bar so
+   a burst emits a clean median or, if nothing qualifies, nothing at all
+   (-> BGHR_NO_LOCK -> phone draws a "weak signal" gap instead of garbage).
+   Conservative first cut: reject only level 0. Tune from the burst log's
+   qual_rej / acc counts (bench) or the phone's gap rate (sleep unit). */
+#define BGHR_MIN_QLEVEL 1
 
 /* Integer std-dev from running Σx / Σx² (n ≤ ~25 keeps it inside uint32).
    Mirrors sleep_service's prv_compute_hr_std so the HRV feed and the
@@ -1289,9 +1301,10 @@ static void bg_hr_finish_burst(void)
     /* Burst summary for on-wrist tuning (LCPU console / uart4). qmin = lowest
        Goodix valid_score this burst; correlate low qmin with spiky bursts to
        calibrate a future signal-quality gate. */
-    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u best=%u qmin=%u qlvl=%u",
+    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u qual_rej=%u best=%u qmin=%u qlvl=%u",
           (unsigned)bg_hr_burst_reads, (unsigned)bg_hr_burst_cnt,
-          (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_best,
+          (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_qual_rej,
+          (unsigned)bg_hr_burst_best,
           (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel);
     /* Forward the best BPM seen this burst, then power the LED back off. */
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
@@ -1380,19 +1393,33 @@ static void bg_hr_sample_cb(void *param)
             }
             if (sd.data.hr < 240)
             {
-                /* Median-filter the accepted read: suppress isolated quality
-                   spikes (the sleep case) before they reach best / mean / std,
-                   and record this read's Goodix quality. Publish AND accumulate
-                   the MEDIAN, not the raw value. */
+                /* Record this read's Goodix quality for the burst log (min
+                   score + last level) -- done for every in-range read so the
+                   log reflects the true signal, gated or not. */
                 uint32_t qscore = 0, qlevel = 0;
                 gh3018_get_hr_quality(&qscore, &qlevel);
                 if (qscore < bg_hr_burst_qscore_min) bg_hr_burst_qscore_min = qscore;
                 bg_hr_burst_qlevel = qlevel;
-                uint8_t med = bghr_median_push((uint8_t)sd.data.hr);
-                bg_hr_burst_best = med;
-                bg_hr_burst_sum += (uint32_t)med;
-                bg_hr_burst_sum_sq += (uint32_t)med * (uint32_t)med;
-                bg_hr_burst_cnt++;
+
+                /* Quality gate: the algo itself flags low-confidence outputs.
+                   Drop them BEFORE the median so a loose/weak/moving wrist
+                   can't paint a confident-looking spike. An all-dropped burst
+                   becomes BGHR_NO_LOCK (honest "weak signal" gap). */
+                if (qlevel < BGHR_MIN_QLEVEL)
+                {
+                    bg_hr_burst_qual_rej++;
+                }
+                else
+                {
+                    /* Median-filter the accepted read: suppress isolated
+                       spikes before they reach best / mean / std. Publish AND
+                       accumulate the MEDIAN, not the raw value. */
+                    uint8_t med = bghr_median_push((uint8_t)sd.data.hr);
+                    bg_hr_burst_best = med;
+                    bg_hr_burst_sum += (uint32_t)med;
+                    bg_hr_burst_sum_sq += (uint32_t)med * (uint32_t)med;
+                    bg_hr_burst_cnt++;
+                }
             }
         }
     }
@@ -1468,6 +1495,7 @@ static void bg_hr_period_cb(void *param)
     bghr_med_idx = 0;
     bg_hr_burst_qscore_min = 0xFFFFFFFFu;
     bg_hr_burst_qlevel = 0;
+    bg_hr_burst_qual_rej = 0;
     bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
     uint32_t bg_now_ms = rt_tick_get_millisecond();
     bg_hr_burst_accept_ms = bg_now_ms + BG_HR_WARMUP_MS; /* fixed warm-up fallback cap */
