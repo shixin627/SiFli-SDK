@@ -1,9 +1,32 @@
-# 0016 — HR 品質閘停用:Goodix 信心欄位實測恆為 0
+# 0016 — HR 品質閘移除:Goodix 信心欄位(全部)實測恆為 0,lib 未實作
 
 日期:2026-06-16
-狀態:Accepted(品質閘停用;真修法待定)
-相關檔案:`src/modules/service/hr_service.c`、
+狀態:Accepted(品質閘**整套移除**,回到加閘前的中位數 pipeline)
+相關檔案:`src/modules/service/hr_service.c`、`watch_sys_service.h`、
+`customer/peripherals/sensor/gh3018/gh30x_example_port.c`、
 `customer/peripherals/sensor/gh30x_algo_demo/call/src/gh30x_demo_algo_call_hr.c`
+
+## 最終結論(2026-06-16 收尾)
+
+量測定案:**Goodix 這版 algo lib 四個信心欄位全部恆 0、且 lib 沒實作信心**,
+不是參數設錯。已把品質閘 + 全部臨時量測儀器**整套移除**(checkout 回
+加閘前的 `4cd8e395c`),HR 回到「中位數濾波、不做信心判定」。
+
+- 加測 `hba_confi`/`hba_snr`(bench,evt=9 走 CSV / burst log):
+  `reads=40 acc=26 best=81 qlvl=0 qmin=0 confiX100=0 snrX100=0` ——
+  **演算法鎖到 81 bpm,但四個信心欄位的最大值仍全 0**。
+- 根因:`hba_lowerest_confidence=30` 確實設了且是活的(`=0` 那份被
+  `__HBD_ALGORITHM_EXTERNANL_CONFIG_ENABLE__=0` 編譯掉),config 結構也
+  沒有「信心輸出致能」欄位。但信心 0 < 門檻 30 卻照樣出值 → **lib 二進位
+  根本沒理會門檻、也沒填信心欄位**。標頭(`goodix_hba.h`)宣告了欄位,
+  連結的 `.lib` 沒實作 → 讀到初始 0。**不是設定問題,是 lib 版本/實作問題。**
+- 公開文檔(含 GH301 datasheet 全文、官方社區、中英文搜尋)**無任何信心
+  欄位語意說明** —— 在 NDA 後的演算法移植指南裡。
+- 真要做信心:(B) 不靠 vendor、自製跳變離群濾波(模仿 Apple withhold);
+  或拿 lib 版本號(`goodix_hba_version`)找 Goodix 要「會吐信心」的 lib。
+
+---
+## (以下為當初停用時的記錄,保留)
 
 ## 背景
 

@@ -194,18 +194,6 @@ extern "C"
         WEAR_DIAG_EVT_BREAK_ARM = 6,     /* contact break + motion armed     */
         WEAR_DIAG_EVT_BREAK_CONFIRM = 7, /* pulse re-confirmed after break   */
         WEAR_DIAG_EVT_BREAK_TIMEOUT = 8, /* re-confirm ran out of live evals */
-        /* HR-burst quality summary (emitted by hr_service per bg_hr burst).
-           TEMPORARY instrumentation (ADR 0016) to settle, without serial,
-           whether the algo's hba_confi/hba_snr hold data while valid_* read 0.
-           Reuses the 14-byte wire with REPURPOSED fields (no scaling):
-             status      = valid_level (0..2)
-             dc_q4       = reads
-             pi_e6       = accepted reads
-             pi_range_e6 = hba_confi x100   (was qual_rej; gate off so it's 0)
-             imu_var_e4  = hba_snr   x100   (was valid_score; known 0)
-           Read from the phone CSV: reads=dc/4, acc=pi*1e6, qlvl=status,
-           hba_confi=(pi_range*1e6)/100, hba_snr=(imu_var*1e4)/100. Remove after. */
-        WEAR_DIAG_EVT_HR_BURST = 9,
     } watch_sys_wear_diag_evt_t;
 
     /* Wear-detect diagnostic record (LCPU -> HCPU). HCPU forwards it via

@@ -148,14 +148,6 @@ GS8 GH30xHrAlgoExe(const STGh30xFrameInfo *const pstFrameInfo)
             gh3018_set_hr(pstFrameInfo->pstAlgoResult->snResult[0]);
             extern void gh3018_set_hr_quality(uint32_t valid_score, uint32_t valid_level);
             gh3018_set_hr_quality((uint32_t)stResult.valid_score, (uint32_t)stResult.valid_level);
-            /* TEMPORARY (ADR 0016): also carry the algo's float confidence fields
-               so the bench log can show whether they hold data while valid_*=0. */
-            {
-                extern void gh3018_set_hr_confi(uint32_t confi_x100, uint32_t snr_x100);
-                GF32 c = stResult.hba_confi;  if (c < 0) c = 0;
-                GF32 s = stResult.hba_snr;    if (s < 0) s = 0;
-                gh3018_set_hr_confi((uint32_t)(c * 100.0f), (uint32_t)(s * 100.0f));
-            }
             pstFrameInfo->pstAlgoResult->usResultBit = 0x3F;
             pstFrameInfo->pstAlgoResult->uchResultNum = GH30x_BitCount(pstFrameInfo->pstAlgoResult->usResultBit);
 #if __GH30X_HR_OUTPUT_VALUE_STRATEGY_EN__

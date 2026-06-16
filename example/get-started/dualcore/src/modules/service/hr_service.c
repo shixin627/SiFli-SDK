@@ -992,9 +992,6 @@ static void ppg_timeout_ind(void *param)
    output-quality gate (Apple-style "withhold on low signal quality") builds on
    it later. */
 extern void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level);
-/* TEMPORARY (ADR 0016): algo's other confidence fields (hba_confi/hba_snr x100)
-   to settle whether they hold data while valid_* read 0. Remove after measuring. */
-extern void gh3018_get_hr_confi(uint32_t *confi_x100, uint32_t *snr_x100);
 /* Monotonic count of locked algo HR outputs; bg_hr snapshots it at burst start and
    ends warm-up the moment it moves (= algo locked this burst). See gh3018 port. */
 extern uint32_t gh3018_get_hr_update_seq(void);
@@ -1118,24 +1115,9 @@ static uint8_t bghr_median_push(uint8_t v)
 }
 
 /* Per-burst PPG-HR quality (min confidence + last level) for the burst log /
-   the quality gate below. */
+   future quality gate. */
 static uint32_t bg_hr_burst_qscore_min = 0xFFFFFFFFu;
 static uint32_t bg_hr_burst_qlevel = 0;
-static uint16_t bg_hr_burst_qual_rej = 0;  /* reads dropped by the quality gate, per burst */
-static uint32_t bg_hr_burst_confi_max = 0; /* TEMP (ADR 0016): max hba_confi x100 this burst */
-static uint32_t bg_hr_burst_snr_max = 0;   /* TEMP (ADR 0016): max hba_snr x100 this burst */
-
-/* Signal-quality gate (Apple-style "withhold low-confidence readings").
-   The Goodix algo is SUPPOSED to grade every output (valid_level 0..2,
-   valid_score 0..100), but on this integration that plumbing is dead:
-   two nights of per-burst diagnostics (234 bursts) read valid_level == 0 and
-   valid_score == 0 with ZERO variance -- gh3018_set_hr_quality is never wired,
-   so gh3018_get_hr_quality returns a constant 0. A gate at level>=1 therefore
-   dropped EVERY read (acc==0 every burst) -> total HR blackout -> the phone
-   showed an all-"weak signal" night and sleep staging starved.
-   DISABLED (threshold 0 = accept all) until the quality plumbing is fixed or a
-   confidence-free outlier filter replaces it. See ADR 0016. */
-#define BGHR_MIN_QLEVEL 0
 
 /* Integer std-dev from running Σx / Σx² (n ≤ ~25 keeps it inside uint32).
    Mirrors sleep_service's prv_compute_hr_std so the HRV feed and the
@@ -1307,40 +1289,10 @@ static void bg_hr_finish_burst(void)
     /* Burst summary for on-wrist tuning (LCPU console / uart4). qmin = lowest
        Goodix valid_score this burst; correlate low qmin with spiky bursts to
        calibrate a future signal-quality gate. */
-    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u qual_rej=%u best=%u qmin=%u qlvl=%u confiX100=%u snrX100=%u",
+    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u best=%u qmin=%u qlvl=%u",
           (unsigned)bg_hr_burst_reads, (unsigned)bg_hr_burst_cnt,
-          (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_qual_rej,
-          (unsigned)bg_hr_burst_best,
-          (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel,
-          (unsigned)bg_hr_burst_confi_max, (unsigned)bg_hr_burst_snr_max);
-
-    /* TEMPORARY: forward this burst's quality summary to the phone CSV via the
-       wear-diag pipe so BGHR_MIN_QLEVEL can be tuned from real on-wrist data
-       (the sleep unit has no serial). Repurposed fields — see
-       WEAR_DIAG_EVT_HR_BURST in watch_sys_service.h. Remove with the gate
-       tuning. Only when something was actually read this burst. */
-    if (watch_sys_sync.notify_wear_diag && bg_hr_burst_reads > 0)
-    {
-        uint32_t qmin = (bg_hr_burst_qscore_min == 0xFFFFFFFFu)
-                            ? 0 : bg_hr_burst_qscore_min;
-        watch_sys_wear_diag_t hd;
-        hd.ts = (uint32_t)time(NULL);
-        hd.evt = WEAR_DIAG_EVT_HR_BURST;
-        hd.status = (uint8_t)(bg_hr_burst_qlevel > 0xFF ? 0xFF : bg_hr_burst_qlevel);
-        hd.dc_q4 = (bg_hr_burst_reads > 0xFFFF) ? 0xFFFF : (uint16_t)bg_hr_burst_reads;
-        hd.pi_e6 = (bg_hr_burst_cnt > 0xFFFF) ? 0xFFFF : (uint16_t)bg_hr_burst_cnt;
-        /* TEMP (ADR 0016): gate is off so qual_rej is always 0 and valid_score is
-           known-0 (234 bursts) -- repurpose those two slots to ship the algo's
-           OTHER confidence fields instead, to settle "wrong field" vs "dead
-           signal". pi_range_e6 = hba_confi x100, imu_var_e4 = hba_snr x100.
-           (void)qmin -- no longer shipped; status=qlvl is the live valid_* check. */
-        (void)qmin;
-        hd.pi_range_e6 = (bg_hr_burst_confi_max > 0xFFFF) ? 0xFFFF
-                                                          : (uint16_t)bg_hr_burst_confi_max;
-        hd.imu_var_e4 = (bg_hr_burst_snr_max > 0xFFFF) ? 0xFFFF
-                                                       : (uint16_t)bg_hr_burst_snr_max;
-        watch_sys_sync.notify_wear_diag(&hd);
-    }
+          (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_best,
+          (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel);
     /* Forward the best BPM seen this burst, then power the LED back off. */
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
     {
@@ -1428,40 +1380,19 @@ static void bg_hr_sample_cb(void *param)
             }
             if (sd.data.hr < 240)
             {
-                /* Record this read's Goodix quality for the burst log (min
-                   score + last level) -- done for every in-range read so the
-                   log reflects the true signal, gated or not. */
+                /* Median-filter the accepted read: suppress isolated quality
+                   spikes (the sleep case) before they reach best / mean / std,
+                   and record this read's Goodix quality. Publish AND accumulate
+                   the MEDIAN, not the raw value. */
                 uint32_t qscore = 0, qlevel = 0;
                 gh3018_get_hr_quality(&qscore, &qlevel);
                 if (qscore < bg_hr_burst_qscore_min) bg_hr_burst_qscore_min = qscore;
                 bg_hr_burst_qlevel = qlevel;
-                /* TEMPORARY (ADR 0016): track the algo's other confidence fields. */
-                {
-                    uint32_t c = 0, s = 0;
-                    gh3018_get_hr_confi(&c, &s);
-                    if (c > bg_hr_burst_confi_max) bg_hr_burst_confi_max = c;
-                    if (s > bg_hr_burst_snr_max) bg_hr_burst_snr_max = s;
-                }
-
-                /* Quality gate: the algo itself flags low-confidence outputs.
-                   Drop them BEFORE the median so a loose/weak/moving wrist
-                   can't paint a confident-looking spike. An all-dropped burst
-                   becomes BGHR_NO_LOCK (honest "weak signal" gap). */
-                if (qlevel < BGHR_MIN_QLEVEL)
-                {
-                    bg_hr_burst_qual_rej++;
-                }
-                else
-                {
-                    /* Median-filter the accepted read: suppress isolated
-                       spikes before they reach best / mean / std. Publish AND
-                       accumulate the MEDIAN, not the raw value. */
-                    uint8_t med = bghr_median_push((uint8_t)sd.data.hr);
-                    bg_hr_burst_best = med;
-                    bg_hr_burst_sum += (uint32_t)med;
-                    bg_hr_burst_sum_sq += (uint32_t)med * (uint32_t)med;
-                    bg_hr_burst_cnt++;
-                }
+                uint8_t med = bghr_median_push((uint8_t)sd.data.hr);
+                bg_hr_burst_best = med;
+                bg_hr_burst_sum += (uint32_t)med;
+                bg_hr_burst_sum_sq += (uint32_t)med * (uint32_t)med;
+                bg_hr_burst_cnt++;
             }
         }
     }
@@ -1537,9 +1468,6 @@ static void bg_hr_period_cb(void *param)
     bghr_med_idx = 0;
     bg_hr_burst_qscore_min = 0xFFFFFFFFu;
     bg_hr_burst_qlevel = 0;
-    bg_hr_burst_qual_rej = 0;
-    bg_hr_burst_confi_max = 0;   /* TEMP (ADR 0016) */
-    bg_hr_burst_snr_max = 0;     /* TEMP (ADR 0016) */
     bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
     uint32_t bg_now_ms = rt_tick_get_millisecond();
     bg_hr_burst_accept_ms = bg_now_ms + BG_HR_WARMUP_MS; /* fixed warm-up fallback cap */
