@@ -1120,6 +1120,26 @@ void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level)
     if (valid_level) *valid_level = loc_hb_valid_level;
 }
 
+/* TEMPORARY measurement (ADR 0016): the algo's OTHER confidence fields
+   (hba_confi / hba_snr) carried alongside valid_score/valid_level, scaled x100
+   to stay integer. Lets hr_service log them next to valid_* on the bench to
+   settle whether hba_confi has real data while valid_level reads 0 (= wrong
+   field) or is also 0 (= signal genuinely ungradeable). Remove after. */
+static uint32_t loc_hb_confi_x100 = 0;
+static uint32_t loc_hb_snr_x100 = 0;
+
+void gh3018_set_hr_confi(uint32_t confi_x100, uint32_t snr_x100)
+{
+    loc_hb_confi_x100 = confi_x100;
+    loc_hb_snr_x100 = snr_x100;
+}
+
+void gh3018_get_hr_confi(uint32_t *confi_x100, uint32_t *snr_x100)
+{
+    if (confi_x100) *confi_x100 = loc_hb_confi_x100;
+    if (snr_x100) *snr_x100 = loc_hb_snr_x100;
+}
+
 uint32_t *gh3018_get_ppg(void)
 {
     return loc_ppg_buf;

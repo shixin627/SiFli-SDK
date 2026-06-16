@@ -992,6 +992,9 @@ static void ppg_timeout_ind(void *param)
    output-quality gate (Apple-style "withhold on low signal quality") builds on
    it later. */
 extern void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level);
+/* TEMPORARY (ADR 0016): algo's other confidence fields (hba_confi/hba_snr x100)
+   to settle whether they hold data while valid_* read 0. Remove after measuring. */
+extern void gh3018_get_hr_confi(uint32_t *confi_x100, uint32_t *snr_x100);
 /* Monotonic count of locked algo HR outputs; bg_hr snapshots it at burst start and
    ends warm-up the moment it moves (= algo locked this burst). See gh3018 port. */
 extern uint32_t gh3018_get_hr_update_seq(void);
@@ -1119,6 +1122,8 @@ static uint8_t bghr_median_push(uint8_t v)
 static uint32_t bg_hr_burst_qscore_min = 0xFFFFFFFFu;
 static uint32_t bg_hr_burst_qlevel = 0;
 static uint16_t bg_hr_burst_qual_rej = 0;  /* reads dropped by the quality gate, per burst */
+static uint32_t bg_hr_burst_confi_max = 0; /* TEMP (ADR 0016): max hba_confi x100 this burst */
+static uint32_t bg_hr_burst_snr_max = 0;   /* TEMP (ADR 0016): max hba_snr x100 this burst */
 
 /* Signal-quality gate (Apple-style "withhold low-confidence readings").
    The Goodix algo is SUPPOSED to grade every output (valid_level 0..2,
@@ -1302,11 +1307,12 @@ static void bg_hr_finish_burst(void)
     /* Burst summary for on-wrist tuning (LCPU console / uart4). qmin = lowest
        Goodix valid_score this burst; correlate low qmin with spiky bursts to
        calibrate a future signal-quality gate. */
-    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u qual_rej=%u best=%u qmin=%u qlvl=%u",
+    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u qual_rej=%u best=%u qmin=%u qlvl=%u confiX100=%u snrX100=%u",
           (unsigned)bg_hr_burst_reads, (unsigned)bg_hr_burst_cnt,
           (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_qual_rej,
           (unsigned)bg_hr_burst_best,
-          (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel);
+          (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel,
+          (unsigned)bg_hr_burst_confi_max, (unsigned)bg_hr_burst_snr_max);
 
     /* TEMPORARY: forward this burst's quality summary to the phone CSV via the
        wear-diag pipe so BGHR_MIN_QLEVEL can be tuned from real on-wrist data
@@ -1323,9 +1329,16 @@ static void bg_hr_finish_burst(void)
         hd.status = (uint8_t)(bg_hr_burst_qlevel > 0xFF ? 0xFF : bg_hr_burst_qlevel);
         hd.dc_q4 = (bg_hr_burst_reads > 0xFFFF) ? 0xFFFF : (uint16_t)bg_hr_burst_reads;
         hd.pi_e6 = (bg_hr_burst_cnt > 0xFFFF) ? 0xFFFF : (uint16_t)bg_hr_burst_cnt;
-        hd.pi_range_e6 = (bg_hr_burst_qual_rej > 0xFFFF) ? 0xFFFF
-                                                         : (uint16_t)bg_hr_burst_qual_rej;
-        hd.imu_var_e4 = (qmin > 0xFFFF) ? 0xFFFF : (uint16_t)qmin;
+        /* TEMP (ADR 0016): gate is off so qual_rej is always 0 and valid_score is
+           known-0 (234 bursts) -- repurpose those two slots to ship the algo's
+           OTHER confidence fields instead, to settle "wrong field" vs "dead
+           signal". pi_range_e6 = hba_confi x100, imu_var_e4 = hba_snr x100.
+           (void)qmin -- no longer shipped; status=qlvl is the live valid_* check. */
+        (void)qmin;
+        hd.pi_range_e6 = (bg_hr_burst_confi_max > 0xFFFF) ? 0xFFFF
+                                                          : (uint16_t)bg_hr_burst_confi_max;
+        hd.imu_var_e4 = (bg_hr_burst_snr_max > 0xFFFF) ? 0xFFFF
+                                                       : (uint16_t)bg_hr_burst_snr_max;
         watch_sys_sync.notify_wear_diag(&hd);
     }
     /* Forward the best BPM seen this burst, then power the LED back off. */
@@ -1422,6 +1435,13 @@ static void bg_hr_sample_cb(void *param)
                 gh3018_get_hr_quality(&qscore, &qlevel);
                 if (qscore < bg_hr_burst_qscore_min) bg_hr_burst_qscore_min = qscore;
                 bg_hr_burst_qlevel = qlevel;
+                /* TEMPORARY (ADR 0016): track the algo's other confidence fields. */
+                {
+                    uint32_t c = 0, s = 0;
+                    gh3018_get_hr_confi(&c, &s);
+                    if (c > bg_hr_burst_confi_max) bg_hr_burst_confi_max = c;
+                    if (s > bg_hr_burst_snr_max) bg_hr_burst_snr_max = s;
+                }
 
                 /* Quality gate: the algo itself flags low-confidence outputs.
                    Drop them BEFORE the median so a loose/weak/moving wrist
@@ -1518,6 +1538,8 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_qscore_min = 0xFFFFFFFFu;
     bg_hr_burst_qlevel = 0;
     bg_hr_burst_qual_rej = 0;
+    bg_hr_burst_confi_max = 0;   /* TEMP (ADR 0016) */
+    bg_hr_burst_snr_max = 0;     /* TEMP (ADR 0016) */
     bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
     uint32_t bg_now_ms = rt_tick_get_millisecond();
     bg_hr_burst_accept_ms = bg_now_ms + BG_HR_WARMUP_MS; /* fixed warm-up fallback cap */
