@@ -108,9 +108,18 @@ static bool apply_one_instruction_obj(cJSON *root)
     if (cJSON_IsString(j_open_app) && j_open_app->valuestring[0] != '\0')
         open_app = j_open_app->valuestring;
 
+    /* cat: '@' = chat option, '/' = action option (cross-device skaibar
+       filtered views). Absent → untagged; the watch shows it in the "all"
+       view and treats it as an action in the "/" view. */
+    char category = 0;
+    cJSON *j_cat = cJSON_GetObjectItem(root, "cat");
+    if (cJSON_IsString(j_cat) && j_cat->valuestring[0] != '\0')
+        category = j_cat->valuestring[0];
+
     add_or_update_custom_instruction(id, title, trigger_type,
                                      interval_sec, enabled, version,
                                      open_app);
+    set_instruction_category(id, category);
 
     if (id[0] != '\0')
     {

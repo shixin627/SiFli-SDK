@@ -1178,8 +1178,13 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
                2026-06-04: DOWN (control center / app grid) stays removed — the
                built-in apps live in the floating instruction list. LV_DIR_BOTTOM
                dropped; the DOWN tile (1,2) is built but UNREACHABLE and empty. */
+            /* P3: LV_DIR_LEFT removed — the device_pager / trackpad no longer
+               swipes in from the left (a left-edge drag pulled it out and fought
+               the @-list reveal). It is now launched as a list app (app_id_mouse
+               in DEFAULT_APP_ITEMS); the left edge is the @-list reveal, the right
+               edge the /-list reveal. HOME still scrolls TOP (messages). */
             pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 1, i,
-                                            LV_DIR_TOP | LV_DIR_LEFT);
+                                            LV_DIR_TOP);
             app_clock_main_status_bar_down = pages[i];
             lv_obj_set_style_bg_color(pages[i], LV_COLOR_RED,
                                       LV_PART_MAIN | LV_STATE_DEFAULT);

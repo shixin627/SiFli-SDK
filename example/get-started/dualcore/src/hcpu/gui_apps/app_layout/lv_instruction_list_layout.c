@@ -111,6 +111,11 @@ typedef struct
     uint32_t version;      // version from server
     char open_app[32];     // non-empty = tap opens this watch app locally
                            // (offline, no phone relay); see openApp in 0x65/0x6B
+    char category;         // '@'=chat / '/'=action / 0=untagged. Drives the
+                           // left(@) / right(/) / bottom(all) filtered list
+                           // views. Set only via the phone-push "cat" field
+                           // (0x65/0x6B); built-in apps & device_pager items
+                           // stay untagged (treated as action in the "/" view).
 } list_item_t;
 
 static list_item_t list_items[MAX_LIST_ITEMS];
@@ -150,6 +155,29 @@ static bool s_phone_connected = false;
    same idiom as instruction_list_save_base. NULL = not currently filtered. */
 static list_item_t *s_disc_backup = NULL;
 static uint8_t s_disc_backup_count = 0;
+
+/* P2 S2 — transient @-chat / /-action view filter. Same compaction idiom as the
+   disconnect filter above (list_items[] is BOTH source and displayed list, and
+   create_list_items_ui / create_indicator_dots index it by position — a subset
+   view must be a contiguous re-pack; a render-time skip would leave layout gaps).
+   TRANSIENT: live only while a filtered browse view is up, dropped by any
+   structural op (phone push / disconnect change) and re-derived on the next open.
+   s_cat_filter: 0 = all, '@' = chat, '/' = action (untagged counts as action). */
+static char s_cat_filter = 0;
+static list_item_t *s_cat_backup = NULL;
+static uint8_t s_cat_backup_count = 0;
+/* Which filter the in-flight reveal will land in, applied once at settle
+   (reveal_settle_browse_done_cb). Set per entry: bar / IMU browse = 0 (all),
+   right-edge pull = '/', left-edge pull = '@'. */
+static char s_pending_reveal_filter = 0;
+/* Which side the in-flight reveal drag parks on: true = left edge (@ list, parked
+   at -HOR_RES, finger-follows rightward toward 0), false = right edge (/ list, or
+   the programmatic bar/IMU open, parked at +HOR_RES). Set at PRESSED by each edge
+   overlay; consulted by reveal_drag_begin/update/end + dial_blur_track so the same
+   list object mirrors in from either edge. */
+static bool s_reveal_from_left = false;
+static void cat_filter_restore_full(void);
+static void instruction_list_set_category_filter(char cat);
 
 /* Callback: tapped or toggled. Receives id string and enabled state. */
 static void (*instruction_tap_cb)(const char *id, bool enabled) = NULL;
@@ -1497,9 +1525,19 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         if (s_hdrag_active)
         {
             s_list_horiz_swipe = true;
+            /* Drawer closes back toward its entry edge: a right-revealed list drags
+               out right (tx 0..+HOR); a left-revealed one drags out left (tx 0..-HOR). */
             lv_coord_t tx = dx;
-            if (tx < 0) tx = 0;                       /* drawer only closes right */
-            if (tx > LV_HOR_RES) tx = LV_HOR_RES;
+            if (s_reveal_from_left)
+            {
+                if (tx > 0) tx = 0;
+                if (tx < -LV_HOR_RES) tx = -LV_HOR_RES;
+            }
+            else
+            {
+                if (tx < 0) tx = 0;
+                if (tx > LV_HOR_RES) tx = LV_HOR_RES;
+            }
             lv_obj_t *bg = p_instruction_list_layout
                                ? p_instruction_list_layout->p_instruction_list_bg
                                : NULL;
@@ -1528,10 +1566,13 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         if (indev) lv_indev_get_vect(indev, &v);
         /* Past a quarter-screen OR flung right fast → finish the close (close_ai_widget
            slides the rest out from the current offset). Otherwise snap back open. */
-        if (!lv_obj_has_flag(bg, LV_OBJ_FLAG_HIDDEN) &&
-            (tx >= LV_HOR_RES / 4 || v.x > 6))
+        /* Dragged out past ~a quarter toward the entry edge, or flung that way →
+           finish the close; else snap back open. Mirror per side. */
+        bool past_close = s_reveal_from_left ? (tx <= -LV_HOR_RES / 4 || v.x < -6)
+                                             : (tx >= LV_HOR_RES / 4 || v.x > 6);
+        if (!lv_obj_has_flag(bg, LV_OBJ_FLAG_HIDDEN) && past_close)
         {
-            s_close_is_cancel = true; /* swipe-right close = user cancel */
+            s_close_is_cancel = true; /* swipe-to-close = user cancel */
             close_ai_widget();
         }
         else
@@ -1783,12 +1824,21 @@ static void mic_bar_event_cb(lv_event_t *evt)
            box open over it (its was_hidden check skips a re-slide). */
         extern void animate_open_ai_widget(void);
         extern void instruction_list_bar_set_blur(bool on);
+        extern void instruction_list_open_browse(void);
         /* The list floats in place on EVERY page now — never switch tiles. The
            watch face (HOME) blurs the dial behind it; the mouse page (RIGHT) and
            the transient LEFT tile float it transparently, no blur. */
         if (clock_main_page_is_home())
             instruction_list_bar_set_blur(true);
-        animate_open_ai_widget();
+        /* P2 S1 — two-stage bar on the watch face: the 1st tap (nothing shown
+           yet) floats the full list in to the BROWSE state — mic affordance, NO
+           input box; a 2nd tap (list already shown) morphs the box open. Off the
+           watch face the bar still opens the box directly (its drawer-dismiss
+           case is handled in the close branch above). */
+        if (clock_main_page_is_home() && !list_shown)
+            instruction_list_open_browse();
+        else
+            animate_open_ai_widget();
     }
 }
 
@@ -2006,6 +2056,9 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
         extern void instruction_list_bar_set_blur(bool on);
         instruction_list_bar_set_blur(false);
     }
+    /* P2 S2 — list is gone; drop the transient category view so the real (full /
+       disconnect-filtered) list_items[] is what everything else sees. */
+    cat_filter_restore_full();
 }
 
 /* ---- watch-face right-edge left-pull → finger-reveal the list (L/R swap) ----
@@ -2038,6 +2091,9 @@ static void reveal_settle_browse_done_cb(lv_anim_t *a)
         lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_ai_bg))
         lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
                         LV_OBJ_FLAG_HIDDEN);
+    /* P2 S2 — the view filter is applied at reveal start (drag_begin), not here, so
+       the list shows the right content during the finger-drag. Nothing to do on
+       settle now. */
 }
 
 /* Watch-face dial blur as a function of the list's translate_x: full at 0 (list
@@ -2050,7 +2106,7 @@ static void dial_blur_track(lv_coord_t tx)
     extern bool clock_main_page_is_home(void);
     if (!clock_main_page_is_home())
         return;
-    lv_coord_t pulled = LV_HOR_RES - tx; /* 0 .. LV_HOR_RES */
+    lv_coord_t pulled = LV_HOR_RES - LV_ABS(tx); /* 0 .. LV_HOR_RES, either edge */
     if (pulled < 0) pulled = 0;
     if (pulled > LV_HOR_RES) pulled = LV_HOR_RES;
     {
@@ -2088,7 +2144,9 @@ void instruction_list_reveal_drag_begin(void)
     instruction_list_bar_set_visible(true); /* idempotent on HOME */
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
     lv_obj_clear_flag(list_bg, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_translate_x(list_bg, LV_HOR_RES, 0); /* park off-screen right; update tracks */
+    /* Park off-screen on the entry edge; drag_update finger-tracks it toward 0. */
+    lv_obj_set_style_translate_x(list_bg,
+                                 s_reveal_from_left ? -LV_HOR_RES : LV_HOR_RES, 0);
     reset_list_internal(); /* every reveal opens at the list's bottom item (R3) */
     /* Backdrop behind the list: transparent on the watch face (blurred dial shows
        through), light scrim elsewhere — same rule as animate_open_ai_widget. */
@@ -2100,6 +2158,12 @@ void instruction_list_reveal_drag_begin(void)
     }
     /* The watch-face blur is faded in by the drag updates (finger-follow), not
        switched on here — see instruction_list_reveal_drag_update. */
+    /* Apply this reveal's view filter NOW — the list is un-hidden but parked
+       off-screen, so the rebuild happens before it slides in and the finger-drag
+       shows the CORRECT content. (Previously applied at settle, which left the
+       prior reveal's content visible during the whole pull.) s_pending_reveal_filter
+       was set by the caller — the edge overlay at lock, or open_browse to 0 (all). */
+    instruction_list_set_category_filter(s_pending_reveal_filter);
     s_reveal_drag_active = true;
 }
 
@@ -2113,9 +2177,20 @@ void instruction_list_reveal_drag_update(lv_coord_t dx)
     lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
     if (!list_bg || !lv_obj_is_valid(list_bg))
         return;
-    lv_coord_t tx = LV_HOR_RES + dx;
-    if (tx < 0) tx = 0;
-    if (tx > LV_HOR_RES) tx = LV_HOR_RES;
+    /* Right edge parks at +HOR_RES (dx<0 leftward pull → tx toward 0); left edge
+       parks at -HOR_RES (dx>0 rightward pull → tx toward 0). Mirror the clamp. */
+    lv_coord_t park = s_reveal_from_left ? -LV_HOR_RES : LV_HOR_RES;
+    lv_coord_t tx = park + dx;
+    if (s_reveal_from_left)
+    {
+        if (tx < -LV_HOR_RES) tx = -LV_HOR_RES;
+        if (tx > 0) tx = 0;
+    }
+    else
+    {
+        if (tx < 0) tx = 0;
+        if (tx > LV_HOR_RES) tx = LV_HOR_RES;
+    }
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
     lv_obj_set_style_translate_x(list_bg, tx, 0);
     dial_blur_track(tx); /* finger-follow blur: fade in with the pull */
@@ -2136,7 +2211,12 @@ void instruction_list_reveal_drag_end(lv_coord_t dx, lv_coord_t vx)
     if (!list_bg || !lv_obj_is_valid(list_bg))
         return;
     lv_coord_t tx = lv_obj_get_style_translate_x(list_bg, 0);
-    bool open_it = (tx <= LV_HOR_RES * 3 / 4) || (vx < -6);
+    /* Reveal committed if pulled in past ~a quarter or flung toward 0 — mirror the
+       thresholds per entry edge (right: tx ≤ ¾·HOR or leftward fling; left:
+       tx ≥ -¾·HOR or rightward fling). */
+    bool open_it = s_reveal_from_left
+                       ? ((tx >= -LV_HOR_RES * 3 / 4) || (vx > 6))
+                       : ((tx <= LV_HOR_RES * 3 / 4) || (vx < -6));
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
     lv_anim_del(list_bg, reveal_settle_anim_cb);
     lv_anim_t sl;
@@ -2176,7 +2256,9 @@ void instruction_list_open_browse(void)
     /* Only when parked & hidden — already up (browse/open) or sliding shut: leave it. */
     if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
         return;
-    instruction_list_reveal_drag_begin(); /* un-hide + park at +LV_HOR_RES + backdrop */
+    s_pending_reveal_filter = 0; /* bar / IMU browse → all (@ + /) view */
+    s_reveal_from_left = false;  /* programmatic open parks on the right edge */
+    instruction_list_reveal_drag_begin(); /* un-hide + park + backdrop */
     s_reveal_drag_active = false;         /* gesture-triggered, not a finger drag */
     lv_coord_t tx = lv_obj_get_style_translate_x(list_bg, 0);
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
@@ -2225,6 +2307,7 @@ bool instruction_list_is_visible(void)
    list_window_scroll_event_cb hdrag — only leftward, feeding the reveal API. */
 #define LREVEAL_EDGE_W 20
 static lv_obj_t *s_reveal_edge_overlay = NULL;
+static lv_obj_t *s_reveal_edge_overlay_left = NULL; /* P2 S3: left-edge @ pull */
 static lv_coord_t s_reveal_start_x = 0;
 static lv_coord_t s_reveal_start_y = 0;
 static bool s_reveal_axis_locked = false;
@@ -2235,6 +2318,7 @@ static void reveal_edge_overlay_event_cb(lv_event_t *e)
     switch (e->code)
     {
     case LV_EVENT_PRESSED:
+        s_reveal_from_left = false; /* right-edge drag parks the list on the RIGHT */
         s_reveal_axis_locked = false;
         if (indev)
         {
@@ -2257,6 +2341,73 @@ static void reveal_edge_overlay_event_cb(lv_event_t *e)
         if (!s_reveal_axis_locked && dx < -10 && (-dx) > LV_ABS(dy))
         {
             s_reveal_axis_locked = true;
+            s_pending_reveal_filter = '/'; /* right-edge pull → action (/) view */
+            instruction_list_reveal_drag_begin();
+        }
+        if (s_reveal_axis_locked)
+            instruction_list_reveal_drag_update(dx);
+        break;
+    }
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+    {
+        if (!s_reveal_axis_locked) break;
+        s_reveal_axis_locked = false;
+        lv_coord_t dx = 0;
+        lv_coord_t vx = 0;
+        if (indev)
+        {
+            lv_point_t pt;
+            lv_indev_get_point(indev, &pt);
+            dx = pt.x - s_reveal_start_x;
+            lv_point_t v = {0, 0};
+            lv_indev_get_vect(indev, &v);
+            vx = v.x;
+        }
+        instruction_list_reveal_drag_end(dx, vx);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+/* P2 S3 — left-edge RIGHTWARD pull → reveal the @-chat list. Unlike the right
+   edge (finger-following leftward pull into the right-parked list), the left edge
+   fires the programmatic open once the pull locks: the reveal geometry parks the
+   list on the right, so a left finger-follow would move opposite the list. A short
+   rightward flick from the left edge opens the @ browse view. Shares the right
+   edge's start/lock state (only one edge can be pressed at a time). */
+static void reveal_edge_overlay_left_event_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_get_act();
+    switch (e->code)
+    {
+    case LV_EVENT_PRESSED:
+        s_reveal_from_left = true; /* left-edge drag parks the list on the LEFT */
+        s_reveal_axis_locked = false;
+        if (indev)
+        {
+            lv_point_t pt;
+            lv_indev_get_point(indev, &pt);
+            s_reveal_start_x = pt.x;
+            s_reveal_start_y = pt.y;
+        }
+        break;
+    case LV_EVENT_PRESSING:
+    {
+        if (!indev) break;
+        lv_point_t pt;
+        lv_indev_get_point(indev, &pt);
+        lv_coord_t dx = pt.x - s_reveal_start_x;
+        lv_coord_t dy = pt.y - s_reveal_start_y;
+        /* Lock onto a clearly-rightward pull (mirror of the right edge's leftward
+           lock): the @ list, parked off-screen LEFT, finger-follows toward 0 — so
+           it tracks the finger in from the left edge the instant the pull begins. */
+        if (!s_reveal_axis_locked && dx > 10 && dx > LV_ABS(dy))
+        {
+            s_reveal_axis_locked = true;
+            s_pending_reveal_filter = '@'; /* left-edge pull → chat (@) view */
             instruction_list_reveal_drag_begin();
         }
         if (s_reveal_axis_locked)
@@ -2293,12 +2444,21 @@ static void reveal_edge_overlay_event_cb(lv_event_t *e)
    there). No-op until the overlay exists. */
 void instruction_list_reveal_overlay_set_enabled(bool enabled)
 {
-    if (!s_reveal_edge_overlay || !lv_obj_is_valid(s_reveal_edge_overlay))
-        return;
-    if (enabled)
-        lv_obj_clear_flag(s_reveal_edge_overlay, LV_OBJ_FLAG_HIDDEN);
-    else
-        lv_obj_add_flag(s_reveal_edge_overlay, LV_OBJ_FLAG_HIDDEN);
+    if (s_reveal_edge_overlay && lv_obj_is_valid(s_reveal_edge_overlay))
+    {
+        if (enabled)
+            lv_obj_clear_flag(s_reveal_edge_overlay, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(s_reveal_edge_overlay, LV_OBJ_FLAG_HIDDEN);
+    }
+    /* P2 S3 — the left-edge (@) overlay shares the same watch-face gating. */
+    if (s_reveal_edge_overlay_left && lv_obj_is_valid(s_reveal_edge_overlay_left))
+    {
+        if (enabled)
+            lv_obj_clear_flag(s_reveal_edge_overlay_left, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(s_reveal_edge_overlay_left, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 void animate_open_ai_widget(void)
@@ -2588,7 +2748,7 @@ void close_ai_widget(void)
             lv_anim_init(&sl);
             lv_anim_set_var(&sl, list_bg);
             lv_anim_set_values(&sl, lv_obj_get_style_translate_x(list_bg, 0),
-                               LV_HOR_RES);
+                               s_reveal_from_left ? -LV_HOR_RES : LV_HOR_RES);
             lv_anim_set_time(&sl, LSLIDE_MS);
             lv_anim_set_path_cb(&sl, lv_anim_path_ease_in);
             lv_anim_set_exec_cb(&sl, reveal_settle_anim_cb);
@@ -3808,6 +3968,10 @@ void add_or_update_custom_instruction(const char *id, const char *title,
                                       uint32_t interval_sec, bool enabled,
                                       uint32_t version, const char *open_app)
 {
+    /* A transient category view filter (@ / /) re-packs list_items[] too — lift it
+       first so the push resolves against the real list (the disconnect restore
+       below then unwinds the outer layer). */
+    cat_filter_restore_full();
     /* If a disconnect-filter snapshot is live, a push means the link is back —
        restore the full PHONE list first so updates resolve against every item
        (including the previously hidden phone-relay ones), not the filtered view. */
@@ -3893,6 +4057,20 @@ void add_or_update_custom_instruction(const char *id, const char *title,
         instr->open_app[31] = '\0';
     }
     list_item_count++;
+}
+
+/* P1 cross-device skaibar: tag an already-applied item's @-chat / /-action
+   category for the filtered list views. Called right after
+   add_or_update_custom_instruction from the phone-push path (0x65/0x6B "cat").
+   Re-finds by id so add_or_update_custom_instruction's signature (and its four
+   other callers) stay untouched. cat 0 = leave untagged. */
+void set_instruction_category(const char *id, char cat)
+{
+    if (cat == 0)
+        return;
+    int idx = find_instruction_by_id(id);
+    if (idx >= 0)
+        list_items[idx].category = cat;
 }
 
 /* Helper: create list item UI objects for items in [start_idx, end_idx) */
@@ -4953,6 +5131,20 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
                         LV_EVENT_ALL, NULL);
     lv_obj_move_foreground(s_reveal_edge_overlay);
 
+    /* P2 S3 — left-edge reveal overlay (mirror of the right): a rightward pull from
+       the left edge opens the @-chat filtered browse view. Same gating as the right
+       (check_is_at_home → instruction_list_reveal_overlay_set_enabled). */
+    s_reveal_edge_overlay_left = lv_obj_create(s_global_bar_layer);
+    lv_obj_remove_style_all(s_reveal_edge_overlay_left);
+    lv_obj_set_size(s_reveal_edge_overlay_left, LREVEAL_EDGE_W, LV_VER_RES);
+    lv_obj_align(s_reveal_edge_overlay_left, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_clear_flag(s_reveal_edge_overlay_left, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_reveal_edge_overlay_left, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_reveal_edge_overlay_left, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(s_reveal_edge_overlay_left,
+                        reveal_edge_overlay_left_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_move_foreground(s_reveal_edge_overlay_left);
+
     created = true;
     LOG_I("instruction_list_init: before myLancher reset_list");
     myLancher[app_index_instruction_list].reset_list = reset_list;
@@ -5166,6 +5358,12 @@ static const uint16_t DEFAULT_APP_ITEMS[] = {
 #ifdef APP_ID_PHOTO
     app_id_photo,
 #endif
+#ifdef APP_ID_MOUSE
+    /* P3: mouse / trackpad is now opened as a list app (its left-swipe tile entry
+       was removed so the left edge can host the @-list reveal). map_app_id maps
+       app_id_mouse → APP_ID_MOUSE; tap runs it locally via gui_app_run. */
+    app_id_mouse,
+#endif
 };
 
 /* Fill [app_base_count ..] with the built-in default apps and enter DEFAULT_APPS
@@ -5190,6 +5388,72 @@ static void load_default_apps(void)
 static bool item_is_standalone(const list_item_t *it)
 {
     return (!it->is_instruction) || (it->open_app[0] != '\0');
+}
+
+/* True if item passes the active category view filter. Untagged items (category
+   0 — built-in apps / device_pager rows / pre-P4 phone scripts) count as actions:
+   they show in the '/' and all views, never in the '@' (chat) view. */
+static bool item_matches_cat(const list_item_t *it, char cat)
+{
+    if (cat == 0)
+        return true;
+    if (cat == '/')
+        return it->category == '/' || it->category == 0;
+    return it->category == cat; /* '@' is strict */
+}
+
+/* Restore the full list if a category view filter is active (no refresh — the
+   caller refreshes, or the list is hidden). cat filter is the INNER layer: this
+   runs before the disconnect-filter restore so the nesting unwinds correctly. */
+static void cat_filter_restore_full(void)
+{
+    if (s_cat_backup)
+    {
+        memcpy(list_items, s_cat_backup, sizeof(list_items));
+        list_item_count = s_cat_backup_count;
+        rt_free(s_cat_backup);
+        s_cat_backup = NULL;
+    }
+    s_cat_filter = 0;
+}
+
+/* Apply (cat '@'/'/') or clear (cat 0) the view filter and rebuild the UI.
+   Re-packs list_items[] to the matching subset over a full-list snapshot, keeping
+   the pinned prefix — mirrors instruction_list_set_phone_connected so scroll /
+   tap / indicator-dots keep working on the shorter contiguous array unchanged. */
+static void instruction_list_set_category_filter(char cat)
+{
+    /* Always re-apply + rebuild (no early-return on an unchanged filter): a close
+       restores list_items[] WITHOUT refreshing the UI, so the widgets can be stale
+       even when s_cat_filter already matches. Called once per reveal (drag_begin),
+       so the redundant rebuild is not a hot path. */
+    cat_filter_restore_full(); /* lift any current filter back to the full list */
+    s_cat_filter = cat;
+    if (cat != 0)
+    {
+        s_cat_backup = rt_malloc(sizeof(list_items));
+        if (s_cat_backup)
+        {
+            memcpy(s_cat_backup, list_items, sizeof(list_items));
+            s_cat_backup_count = list_item_count;
+            uint8_t w = 0;
+            for (uint8_t r = 0; r < list_item_count; r++)
+            {
+                if (r < app_base_count ||
+                    item_matches_cat(&list_items[r], cat))
+                {
+                    if (w != r)
+                        memcpy(&list_items[w], &list_items[r],
+                               sizeof(list_item_t));
+                    w++;
+                }
+            }
+            list_item_count = w;
+        }
+    }
+    if (selected_item_index >= list_item_count)
+        selected_item_index = list_item_count ? (list_item_count - 1) : 0;
+    refresh_custom_instructions();
 }
 
 void load_instruction_list(void)
@@ -5230,6 +5494,10 @@ void instruction_list_set_phone_connected(bool connected)
     if (connected == s_phone_connected)
         return;
     s_phone_connected = connected;
+
+    /* Drop any transient category view first so the (dis)connect re-pack below
+       operates on the real list; the view is re-derived on the next open. */
+    cat_filter_restore_full();
 
     if (s_list_mode != LIST_MODE_PHONE)
         return;
@@ -5436,6 +5704,7 @@ rt_int32_t instruction_list_deinit(void)
         }
         s_global_bar_layer = NULL;
         s_reveal_edge_overlay = NULL; /* chain-deleted with the bar layer above */
+        s_reveal_edge_overlay_left = NULL; /* P2 S3: same — chain-deleted */
         if (p_instruction_list_layout->p_instruction_list_bg != NULL &&
             lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
         {

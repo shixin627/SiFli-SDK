@@ -75,6 +75,9 @@ extern "C"
                                                   uint32_t interval_sec,
                                                   bool enabled, uint32_t version,
                                                   const char *open_app);
+    /* P1 cross-device skaibar: tag an item's @-chat / /-action category for the
+       filtered list views (called after add_or_update on the phone-push path). */
+    extern void set_instruction_category(const char *id, char category);
     extern void clear_custom_instructions(void);
     extern uint8_t get_custom_instruction_count(void);
     extern void set_custom_instruction_tap_cb(void (*cb)(const char *id, bool enabled));
