@@ -1121,15 +1121,16 @@ static uint32_t bg_hr_burst_qlevel = 0;
 static uint16_t bg_hr_burst_qual_rej = 0;  /* reads dropped by the quality gate, per burst */
 
 /* Signal-quality gate (Apple-style "withhold low-confidence readings").
-   The Goodix algo grades every output: valid_level 0->1->2 (higher = more
-   reliable) and valid_score 0..100. Weak/loose/motion-contaminated sleep PPG
-   yields level-0 outputs that the algo itself flags as unreliable; plotting
-   them produces the jagged 50<->130 sleep curve. Drop reads below this bar so
-   a burst emits a clean median or, if nothing qualifies, nothing at all
-   (-> BGHR_NO_LOCK -> phone draws a "weak signal" gap instead of garbage).
-   Conservative first cut: reject only level 0. Tune from the burst log's
-   qual_rej / acc counts (bench) or the phone's gap rate (sleep unit). */
-#define BGHR_MIN_QLEVEL 1
+   The Goodix algo is SUPPOSED to grade every output (valid_level 0..2,
+   valid_score 0..100), but on this integration that plumbing is dead:
+   two nights of per-burst diagnostics (234 bursts) read valid_level == 0 and
+   valid_score == 0 with ZERO variance -- gh3018_set_hr_quality is never wired,
+   so gh3018_get_hr_quality returns a constant 0. A gate at level>=1 therefore
+   dropped EVERY read (acc==0 every burst) -> total HR blackout -> the phone
+   showed an all-"weak signal" night and sleep staging starved.
+   DISABLED (threshold 0 = accept all) until the quality plumbing is fixed or a
+   confidence-free outlier filter replaces it. See ADR 0016. */
+#define BGHR_MIN_QLEVEL 0
 
 /* Integer std-dev from running Σx / Σx² (n ≤ ~25 keeps it inside uint32).
    Mirrors sleep_service's prv_compute_hr_std so the HRV feed and the
