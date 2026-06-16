@@ -164,8 +164,22 @@ static uint8_t s_disc_backup_count = 0;
    structural op (phone push / disconnect change) and re-derived on the next open.
    s_cat_filter: 0 = all, '@' = chat, '/' = action (untagged counts as action). */
 static char s_cat_filter = 0;
-static list_item_t *s_cat_backup = NULL;
+/* Pre-filter full-list backup. WAS rt_malloc'd per reveal (sizeof(list_items) ≈ 8KB);
+   under heap pressure that allocation could FAIL, and the old code then silently
+   skipped the re-pack — so the @ / and main views all showed the SAME full list (the
+   "no filtering at all" bug). A fixed BSS buffer makes the filter deterministic: it
+   never hinges on a large transient malloc succeeding. s_cat_backup_valid replaces the
+   old "s_cat_backup != NULL" filtered-state flag. */
+static list_item_t s_cat_backup[MAX_LIST_ITEMS];
 static uint8_t s_cat_backup_count = 0;
+static bool s_cat_backup_valid = false;
+/* The @/-view the user is CURRENTLY looking at ('@' / '/' / 0=all). Distinct from
+   s_cat_filter (the filter physically applied to list_items[] right now, which a phone
+   push transiently lifts to 0 via cat_filter_restore_full). s_view_cat PERSISTS across a
+   push so apply_pending_instruction_batch can re-apply the view afterwards — fixing "a
+   push that lands while the @/-list is open reverts it to all". Set on reveal (every
+   set_category_filter), cleared when the list slides shut. */
+static char s_view_cat = 0;
 /* Which filter the in-flight reveal will land in, applied once at settle
    (reveal_settle_browse_done_cb). Set per entry: bar / IMU browse = 0 (all),
    right-edge pull = '/', left-edge pull = '@'. */
@@ -2057,8 +2071,10 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
         instruction_list_bar_set_blur(false);
     }
     /* P2 S2 — list is gone; drop the transient category view so the real (full /
-       disconnect-filtered) list_items[] is what everything else sees. */
+       disconnect-filtered) list_items[] is what everything else sees. s_view_cat is
+       cleared too: the list closed, so a later push has no open view to re-apply. */
     cat_filter_restore_full();
+    s_view_cat = 0;
 }
 
 /* ---- watch-face right-edge left-pull → finger-reveal the list (L/R swap) ----
@@ -5407,12 +5423,11 @@ static bool item_matches_cat(const list_item_t *it, char cat)
    runs before the disconnect-filter restore so the nesting unwinds correctly. */
 static void cat_filter_restore_full(void)
 {
-    if (s_cat_backup)
+    if (s_cat_backup_valid)
     {
         memcpy(list_items, s_cat_backup, sizeof(list_items));
         list_item_count = s_cat_backup_count;
-        rt_free(s_cat_backup);
-        s_cat_backup = NULL;
+        s_cat_backup_valid = false;
     }
     s_cat_filter = 0;
 }
@@ -5429,31 +5444,49 @@ static void instruction_list_set_category_filter(char cat)
        so the redundant rebuild is not a hot path. */
     cat_filter_restore_full(); /* lift any current filter back to the full list */
     s_cat_filter = cat;
+    s_view_cat = cat; /* remember the view across phone pushes (see instruction_list_reapply_view_filter) */
     if (cat != 0)
     {
-        s_cat_backup = rt_malloc(sizeof(list_items));
-        if (s_cat_backup)
+        /* Snapshot the full list into the static backup, then re-pack list_items[] to
+           the matching subset. No malloc — the filter always runs (see the buffer's
+           declaration note: the old per-reveal rt_malloc could fail and silently skip
+           filtering, leaving every view full). */
+        memcpy(s_cat_backup, list_items, sizeof(list_items));
+        s_cat_backup_count = list_item_count;
+        s_cat_backup_valid = true;
+        uint8_t w = 0;
+        for (uint8_t r = 0; r < list_item_count; r++)
         {
-            memcpy(s_cat_backup, list_items, sizeof(list_items));
-            s_cat_backup_count = list_item_count;
-            uint8_t w = 0;
-            for (uint8_t r = 0; r < list_item_count; r++)
+            if (r < app_base_count ||
+                item_matches_cat(&list_items[r], cat))
             {
-                if (r < app_base_count ||
-                    item_matches_cat(&list_items[r], cat))
-                {
-                    if (w != r)
-                        memcpy(&list_items[w], &list_items[r],
-                               sizeof(list_item_t));
-                    w++;
-                }
+                if (w != r)
+                    memcpy(&list_items[w], &list_items[r],
+                           sizeof(list_item_t));
+                w++;
             }
-            list_item_count = w;
         }
+        list_item_count = w;
     }
     if (selected_item_index >= list_item_count)
         selected_item_index = list_item_count ? (list_item_count - 1) : 0;
     refresh_custom_instructions();
+}
+
+/* Re-apply the user's current @/-view after a phone push lifted the filter. The push
+   path (add_or_update_custom_instruction → cat_filter_restore_full) clears s_cat_filter so
+   updates resolve against the full list; without re-applying, a push that arrives while a
+   filtered (@ / /) list is OPEN leaves the full list on screen. apply_pending_instruction_batch
+   calls this once after draining the op queue. No-op (returns false) when no filtered view is
+   open — the caller then does its own plain refresh. */
+bool instruction_list_reapply_view_filter(void)
+{
+    if (s_view_cat != 0 && instruction_list_is_visible())
+    {
+        instruction_list_set_category_filter(s_view_cat); /* re-packs + refreshes */
+        return true;
+    }
+    return false;
 }
 
 void load_instruction_list(void)

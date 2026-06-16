@@ -315,7 +315,14 @@ void apply_pending_instruction_batch(void)
     }
 
     if (applied_any)
-        refresh_custom_instructions();
+    {
+        /* If a filtered (@ / /) browse list is open, re-apply that view — the ops above
+           lifted the filter to the full list (so id-based updates resolved against it).
+           Without this, a push landing while the @/-list is open reverts it to "all".
+           reapply re-packs + refreshes itself; only refresh plainly when no view is open. */
+        if (!instruction_list_reapply_view_filter())
+            refresh_custom_instructions();
+    }
 }
 
 extern void parse_chat_item(cJSON *item, chat_t *note);

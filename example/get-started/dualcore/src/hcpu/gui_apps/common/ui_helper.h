@@ -82,6 +82,11 @@ extern "C"
     extern uint8_t get_custom_instruction_count(void);
     extern void set_custom_instruction_tap_cb(void (*cb)(const char *id, bool enabled));
     extern void refresh_custom_instructions(void);
+    /* After a phone push restored the full list (each add_or_update lifts the transient
+       @/-view filter), re-apply the view the user is CURRENTLY looking at if a filtered
+       list is open — so a push landing while the @ / / list is up doesn't revert it to
+       "all". Returns true if it re-applied + refreshed (caller then skips its refresh). */
+    extern bool instruction_list_reapply_view_filter(void);
     extern rt_int32_t notification_on_resume(void);
     extern rt_int32_t notification_on_pause(void);
     extern rt_int32_t notification_on_deinit(void);
