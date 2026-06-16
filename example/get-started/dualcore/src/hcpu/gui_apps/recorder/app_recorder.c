@@ -56,6 +56,7 @@ typedef struct
     lv_timer_t *record_timer;
     uint32_t record_time;
     time_t record_start_time;
+    bool auto_started;          /* 一次性旗標:自動開啟錄音只在第一次 resume 觸發 */
 } app_recorder_t;
 
 /* Static variables */
@@ -261,7 +262,8 @@ lv_obj_t *recorder_on_start(lv_obj_t *scr)
     create_record_view(p_app_recorder->bg);
 
     setting_provider.set_power_save_mode(0);
-    start_to_record_voice();
+    /* 自動開啟錄音移到 recorder_on_resume 末端:ONSTART 階段 app 尚未完全
+       前景、音訊 codec 還在非同步開啟,在這裡開第一段會錄到空檔。 */
     return p_app_recorder->bg;
 }
 
@@ -273,6 +275,15 @@ void recorder_on_resume(void)
     lvgl_msg_handler.handle_vad_status = handle_vad_status;
     lvgl_msg_handler.handle_tap_indicator = handle_tap_event;
 #endif
+
+    /* 等 app 完全前景、handler 都接上後,才自動開啟第一段錄音。auto_started
+       一次性旗標確保暫停/恢復循環(錄音中拉通知再回來)不會重複觸發,避免
+       start_to_record_voice() 後半重建 lv_timer 造成洩漏與計時亂跳。 */
+    if (p_app_recorder && !p_app_recorder->auto_started)
+    {
+        p_app_recorder->auto_started = true;
+        start_to_record_voice();
+    }
 }
 
 void recorder_on_pause(void)

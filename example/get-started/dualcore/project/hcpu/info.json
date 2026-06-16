@@ -1,6 +1,6 @@
 {
-    "version": "1.1.72",
-    "description": "配戴偵測暫時開關",
+    "version": "1.1.76",
+    "description": "測試心率",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
