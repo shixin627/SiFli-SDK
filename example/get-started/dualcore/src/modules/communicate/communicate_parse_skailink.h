@@ -46,6 +46,12 @@ extern "C"
            active target's skaibar (device page → that device's skaibar; watch face
            → the phone launcher) and lets its list revert to the default. */
         KEY_SKAIBAR_DISMISS = 0x0C,
+        /* watch→phone (UPLINK): {"cat":"@"|"/"|""} the skaibar VIEW the user just opened
+           (ADR-0024 round-trip): left drawer = "@", right drawer = "/", middle bar = "".
+           The phone fans the matching query to EVERY device so each view is its own
+           per-device result list (@ destinations / recents / actions), not a filter of
+           one shared 16-item list. Sent once when a view settles open. */
+        KEY_SKAIBAR_VIEW_CHANGE = 0x0D,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

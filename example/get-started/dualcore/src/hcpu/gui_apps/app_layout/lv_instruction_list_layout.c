@@ -2110,6 +2110,15 @@ static void reveal_settle_browse_done_cb(lv_anim_t *a)
     /* P2 S2 — the view filter is applied at reveal start (drag_begin), not here, so
        the list shows the right content during the finger-drag. Nothing to do on
        settle now. */
+    /* ADR-0024 round-trip: a view just settled open (s_view_cat was set at drag_begin:
+       '@' left / '/' right / 0 bar). Tell the phone so it fans the matching query to
+       every device and pushes THAT view's per-device result list (not a filter of one
+       shared 16-item list). The client cat filter above still shows an instant subset of
+       the prior list until the re-queried list arrives. */
+    {
+        extern bool commu_send_skaibar_view(char cat);
+        commu_send_skaibar_view(s_view_cat);
+    }
 }
 
 /* Watch-face dial blur as a function of the list's translate_x: full at 0 (list
@@ -5406,16 +5415,19 @@ static bool item_is_standalone(const list_item_t *it)
     return (!it->is_instruction) || (it->open_app[0] != '\0');
 }
 
-/* True if item passes the active category view filter. Untagged items (category
-   0 — built-in apps / device_pager rows / pre-P4 phone scripts) count as actions:
-   they show in the '/' and all views, never in the '@' (chat) view. */
+/* True if item passes the active category view filter (ADR-0024). The three views show
+   DIFFERENT content, not one list filtered loosely:
+     - '@' (left)  : STRICT chat — the @ destinations / chat services (@gpt / @google …).
+     - '/' (right) : STRICT actions — saved scripts / device actions only.
+     - 'all' (bar) : the EXECUTION HISTORY + actions — untagged (recents: apps / urls /
+                     calc / files) and '/' actions, but NOT the '@' chat destinations
+                     (those are reached only via the '@' drawer; the bar is "what I ran",
+                     not the @ service menu). So 'all' = everything EXCEPT '@'. */
 static bool item_matches_cat(const list_item_t *it, char cat)
 {
     if (cat == 0)
-        return true;
-    if (cat == '/')
-        return it->category == '/' || it->category == 0;
-    return it->category == cat; /* '@' is strict */
+        return it->category != '@'; /* 'all' bar = history + actions, NOT @ destinations */
+    return it->category == cat;     /* '@' and '/' are both strict */
 }
 
 /* Restore the full list if a category view filter is active (no refresh — the

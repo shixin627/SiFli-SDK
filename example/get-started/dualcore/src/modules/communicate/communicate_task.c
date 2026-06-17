@@ -406,6 +406,20 @@ bool commu_send_skaibar_dismiss(void)
     LOG_I("send skaibar dismiss -> %s", ok ? "ok" : "FAIL");
     return ok;
 }
+bool commu_send_skaibar_view(char cat)
+{
+    /* ADR-0024 round-trip: tell the phone which skaibar view just opened so it fans the
+       matching query to every device. '@' / '/' pass through; anything else (the middle
+       bar / "all" view) sends an EMPTY cat. */
+    char c[2];
+    c[0] = (cat == '@' || cat == '/') ? cat : '\0';
+    c[1] = '\0';
+    char json[16];
+    rt_snprintf(json, sizeof(json), "{\"cat\":\"%s\"}", c);
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIBAR_VIEW_CHANGE, json);
+    LOG_I("send skaibar view %s -> %s", json, ok ? "ok" : "FAIL");
+    return ok;
+}
 
 /*============================================================================*
  *                              Sensor
