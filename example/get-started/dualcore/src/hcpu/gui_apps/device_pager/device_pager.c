@@ -1012,7 +1012,12 @@ void device_pager_refresh(void)
                               p->current < p->count)
                                  ? p->model[p->current].id_str
                                  : "";
-        pager_send_active(active);
+        /* standalone APP_ID_MOUSE app 開著且已選設備時，它擁有 active relay 目標；
+           這個 refresh 每次手機 E7 同步都跑，不可把它清回 "" — 否則選完設備約 60s
+           (下次同步)就把 relay 目標洗掉、控制中斷。只在那情況跳過清 ""。 */
+        extern bool hid_mouse_owns_active_target(void);
+        if (!(active[0] == '\0' && hid_mouse_owns_active_target()))
+            pager_send_active(active);
         /* R3: keep the shared floating list mirroring THIS device's options as
            the phone streams live skaibar updates — only while we're on the
            device page (else we'd clobber the watch-face instruction list). */
