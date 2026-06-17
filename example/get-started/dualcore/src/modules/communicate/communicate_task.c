@@ -420,6 +420,16 @@ bool commu_send_skaibar_view(char cat)
     LOG_I("send skaibar view %s -> %s", json, ok ? "ok" : "FAIL");
     return ok;
 }
+bool commu_send_skaibar_open_device(void)
+{
+    /* Standalone mouse app (APP_ID_MOUSE) bar tap1: tell the phone to open the SINGLE
+       controlled device's skaibar (single-target summon, NOT the aggregated broadcast of
+       commu_send_skaibar_view). The phone routes summonSkaibar to the active device + latches
+       single-device mode so the following voice transcript fills that device's panel too. */
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIBAR_OPEN_DEVICE, "{}");
+    LOG_I("send skaibar open-device -> %s", ok ? "ok" : "FAIL");
+    return ok;
+}
 
 /*============================================================================*
  *                              Sensor

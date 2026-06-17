@@ -52,6 +52,13 @@ extern "C"
            per-device result list (@ destinations / recents / actions), not a filter of
            one shared 16-item list. Sent once when a view settles open. */
         KEY_SKAIBAR_VIEW_CHANGE = 0x0D,
+        /* watch→phone (UPLINK): {} the STANDALONE mouse app (APP_ID_MOUSE) opened the
+           SINGLE controlled device's skaibar (bar tap1). Single-target: the phone summons
+           that one device's skaibar panel + (on the following voice) fills it — the
+           pre-ADR-0024-P5 single-active-target behaviour, kept ONLY for the mouse app's
+           single-device control context. Distinct from KEY_SKAIBAR_VIEW_CHANGE (0x0D),
+           which is the watch-face bar's aggregated broadcast to EVERY device. */
+        KEY_SKAIBAR_OPEN_DEVICE = 0x0E,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

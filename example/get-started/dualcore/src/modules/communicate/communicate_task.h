@@ -101,6 +101,7 @@ bool commu_send_mouse_scroll(int dx, int dy);          /* -> KEY_MOUSE_SCROLL (0
 bool commu_send_mouse_back(void);                      /* -> KEY_MOUSE_BACK   (0x0B) */
 bool commu_send_skaibar_dismiss(void);                 /* -> KEY_SKAIBAR_DISMISS (0x0C) cancel-close, no commit */
 bool commu_send_skaibar_view(char cat);                /* -> KEY_SKAIBAR_VIEW_CHANGE (0x0D) view opened: '@'/'/'/0=bar */
+bool commu_send_skaibar_open_device(void);             /* -> KEY_SKAIBAR_OPEN_DEVICE (0x0E) mouse app: open single controlled device's skaibar */
 
 /* Sensor */
 bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length);

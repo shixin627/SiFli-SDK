@@ -180,6 +180,13 @@ static bool s_cat_backup_valid = false;
    push that lands while the @/-list is open reverts it to all". Set on reveal (every
    set_category_filter), cleared when the list slides shut. */
 static char s_view_cat = 0;
+/* SINGLE-DEVICE skaibar mode for the STANDALONE mouse app (APP_ID_MOUSE). Set by
+   instruction_list_bar_tap_device(): the list shows ONE controlled device's options (fed
+   from the E7 registry, not the watch-face / aggregated list) and the round-trip is
+   single-target (settle sends commu_send_skaibar_open_device, NOT the aggregated
+   commu_send_skaibar_view broadcast). Cleared + watch-face list restored when the list
+   slides shut (inst_list_slide_out_done_cb) or the mouse app dismisses it on exit. */
+static bool s_bar_single_device = false;
 /* Which filter the in-flight reveal will land in, applied once at settle
    (reveal_settle_browse_done_cb). Set per entry: bar / IMU browse = 0 (all),
    right-edge pull = '/', left-edge pull = '@'. */
@@ -459,6 +466,15 @@ static void instruction_list_assert_local_target(void)
        watch. Only assert local when we are NOT controlling a device. */
     extern bool device_pager_is_on_page(void);
     if (device_pager_is_on_page()) return;
+    /* STANDALONE 滑鼠 app 正控制一台設備時(app active + 已選設備),清掉 active(="")會斷掉
+       relay 目標 → scroll/focus/commit 跑回 primary、且下次 bar summon 因無 target 而 no-op
+       (電腦不開)、選項退回聚合(電腦+actions)。用 hid_mouse_owns_active_target 比只看
+       s_bar_single_device 穩 —— 後者只在 bar 列表開著時為真,列表收掉(commit 後)仍在控制,
+       這時一個 scroll/focus 就會把目標清掉。focus/commit 仍照送(scroll→那台 highlight、
+       tap→那台執行),只是不送 active="". */
+    extern bool hid_mouse_owns_active_target(void);
+    if (hid_mouse_owns_active_target()) return;
+    if (s_bar_single_device) return;
     commu_send_active_device(""); /* "" = no remote target → primary/local */
 }
 
@@ -1164,6 +1180,14 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         {
             uint8_t opt_idx =
                 (uint8_t)(selected_item_index - app_base_count);
+            /* 滑鼠 app 單設備:手機把清單反轉送來(讓手錶 bottom-up 渲染對齊電腦 top-down),所以
+               手錶看到的第 opt_idx 個 = 電腦第 (N-1-opt_idx) 列。送給電腦 highlight 的序號要翻回去,
+               否則 highlight/執行會對到鏡像的另一列。N = 設備選項數。 */
+            if (s_bar_single_device)
+            {
+                uint8_t n = (uint8_t)(list_item_count - app_base_count);
+                if (n > 0 && opt_idx < n) opt_idx = (uint8_t)(n - 1 - opt_idx);
+            }
             /* Mirror the right device_pager: report focus over SKAI_LINK,
                targeting the watch's directly-connected device (primary). Always
                sends on scroll (no skaibar-mode gate) for parity with the right. */
@@ -1856,6 +1880,176 @@ static void mic_bar_event_cb(lv_event_t *evt)
     }
 }
 
+/* 公開 bar-tap 入口：給其他 app（standalone APP_ID_MOUSE 滑鼠 app）驅動「跟錶盤底部
+   bar 完全同一套」的兩段式 skaibar——**同一個元件**，故列表 / 輸入框的樣式與行為一致。
+   1st tap：列表從右浮入(browse 態、無輸入框) + open_browse 的 settle 會 commu_send_
+   skaibar_view 通知 active 設備開它的 skaibar、選項同步；2nd tap(列表已開)：morph 輸入
+   框 + 語音；已開輸入框則收掉。永遠 browse-first、不模糊背景(呼叫者非錶盤)。 */
+void instruction_list_bar_tap(void)
+{
+    if (!p_instruction_list_layout)
+        return;
+    bool box_visible =
+        p_instruction_list_layout->p_instruction_list_ai_bg &&
+        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
+                         LV_OBJ_FLAG_HIDDEN);
+    bool list_shown =
+        p_instruction_list_layout->p_instruction_list_bg &&
+        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
+                         LV_OBJ_FLAG_HIDDEN);
+    extern void animate_open_ai_widget(void);
+    extern void instruction_list_open_browse(void);
+    extern void instruction_list_bar_set_blur(bool on);
+    if (box_visible)
+    {
+        s_close_is_cancel = true; /* bar-tap close = user cancel */
+        close_ai_widget();
+    }
+    else if (list_shown)
+    {
+        animate_open_ai_widget(); /* 2nd tap → 輸入框 + 語音 */
+    }
+    else
+    {
+        instruction_list_bar_set_blur(false); /* 非錶盤、不模糊 */
+        instruction_list_open_browse();       /* 1st tap → 列表浮入 + 通知電腦開 skaibar */
+    }
+}
+
+/* 把 E7 registry 裡 device_id 那台的 default_actions 餵進共享浮層清單 —— 與 device_pager
+   的 feed_active_device_options_to_list 同一套 API(save_base 快照錶盤清單→drop_pinned 去掉
+   Settings pin→clear→逐筆 add_or_update→refresh)，差別只是直接用 device_id 反查 registry,
+   不靠 device_pager 的 p->model(滑鼠 app 沒有 device_pager 模型)。讓滑鼠 app 的 bar 清單顯示
+   「正在控制那一台」的選項,而非錶盤的混合清單。LVGL 執行緒呼叫(bar tap)。 */
+static void feed_single_device_options(const char *device_id)
+{
+    /* These are defined later in this file (no header prototype); declare locally —
+       same convention the device-page restore/save call sites use above. */
+    extern void instruction_list_save_base(void);
+    extern void instruction_list_drop_pinned_for_device(void);
+    extern void clear_custom_instructions(void);
+    extern void add_or_update_custom_instruction(const char *id, const char *title,
+            const char *trigger_type, uint32_t interval_sec, bool enabled,
+            uint32_t version, const char *open_app);
+    extern void refresh_custom_instructions(void);
+    if (device_id == NULL || device_id[0] == '\0')
+        return;
+    const T_SYNCED_DEVICE *dev = NULL;
+    uint8_t n = SkaiWatchSys.device_registry.count;
+    if (n > MAX_SYNCED_DEVICES) n = MAX_SYNCED_DEVICES;
+    for (uint8_t i = 0; i < n; i++)
+    {
+        if (strncmp(SkaiWatchSys.device_registry.devices[i].id, device_id,
+                    SYNCED_DEVICE_ID_LEN) == 0)
+        {
+            dev = &SkaiWatchSys.device_registry.devices[i];
+            break;
+        }
+    }
+    if (dev == NULL)
+    {
+        LOG_I("[bar_dev] device id not in registry (count=%u) -> keep current list",
+              (unsigned)SkaiWatchSys.device_registry.count);
+        return;
+    }
+    uint8_t ic = dev->default_action_count;
+    if (ic > MAX_DEFAULT_ACTIONS) ic = MAX_DEFAULT_ACTIONS;
+    /* 先數可用選項:0 個就不 feed —— 空清單會讓 open_browse 的 reset_list_internal 捲到
+       不存在的 child。保留現有(錶盤)清單(≥1 項、含 Settings pin)、不 save_base/drop_pinned,
+       電腦端 skaibar 仍會 summon(settle 送 open_device);restore_base 因沒 save 而 no-op。 */
+    uint8_t usable = 0;
+    for (uint8_t i = 0; i < ic; i++)
+        if (dev->default_actions[i][0] != '\0') usable++;
+    LOG_I("[bar_dev] device found, usable options=%u", (unsigned)usable);
+    if (usable == 0)
+        return;
+    instruction_list_save_base();              /* 快照錶盤清單(每段只快照一次,離開時還原) */
+    instruction_list_drop_pinned_for_device(); /* 設備選項 0-based、無 Settings pin */
+    static uint32_t s_dev_opt_ver = 0;
+    s_dev_opt_ver++;
+    clear_custom_instructions();
+    for (uint8_t i = 0; i < ic; i++)
+    {
+        if (dev->default_actions[i][0] == '\0') continue;
+        add_or_update_custom_instruction(dev->default_actions[i],
+                                         dev->default_actions[i], "once", 0, true,
+                                         s_dev_opt_ver, NULL);
+    }
+    refresh_custom_instructions();
+}
+
+/* 公開：給 STANDALONE 滑鼠 app(APP_ID_MOUSE)用的「單一控制設備」版 bar-tap。與
+   instruction_list_bar_tap 同一個兩段式狀態機 + 同一個元件(列表/輸入框樣式必然一致),差別:
+   1st tap 餵「控制中那台」的選項(非混合清單)、進單設備模式(settle 改送 commu_send_skaibar_
+   open_device 叫那台電腦開它的 skaibar、非廣播)。2nd tap / 收掉與錶盤完全相同。device_id 為空
+   時退回一般 bar(沒有控制目標就沒有單一電腦可開)。 */
+void instruction_list_bar_tap_device(const char *device_id)
+{
+    LOG_I("[bar_dev] tap device_id=\"%s\"", (device_id && device_id[0]) ? device_id : "(EMPTY)");
+    if (!p_instruction_list_layout)
+        return;
+    if (device_id == NULL || device_id[0] == '\0')
+    {
+        LOG_I("[bar_dev] EMPTY id -> fallback to generic broadcast bar");
+        instruction_list_bar_tap(); /* 沒有控制目標 → 一般(廣播)bar */
+        return;
+    }
+    bool box_visible =
+        p_instruction_list_layout->p_instruction_list_ai_bg &&
+        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
+                         LV_OBJ_FLAG_HIDDEN);
+    bool list_shown =
+        p_instruction_list_layout->p_instruction_list_bg &&
+        !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
+                         LV_OBJ_FLAG_HIDDEN);
+    extern void animate_open_ai_widget(void);
+    extern void instruction_list_bar_set_blur(bool on);
+    extern void instruction_list_open_browse(void);
+    if (box_visible)
+    {
+        s_close_is_cancel = true; /* bar-tap close = user cancel → 送 dismiss */
+        close_ai_widget();
+    }
+    else if (list_shown)
+    {
+        /* 2nd tap → 輸入框 + 語音(同錶盤)。開語音前重送 open_device 重新 latch 手機端單設備
+           模式 —— 中間的 box-close 會送 dismiss(0x0C) 清掉手機 flag,不重 latch 的話這次語音
+           transcript 會誤走廣播而非那一台。idempotent(電腦 skaibar 已開則維持)。 */
+        extern bool commu_send_skaibar_open_device(void);
+        commu_send_skaibar_open_device();
+        animate_open_ai_widget();
+    }
+    else
+    {
+        s_bar_single_device = true;            /* 收合時 restore、scroll/commit 不清 active */
+        /* 立刻送 0x0E(不等 settle)叫「控制中那台」電腦 summon 它的 skaibar。先餵 registry 的
+           default_actions 當即時 placeholder;之後手機把電腦的即時選項 push 過來會直接套上
+           (即時更新)。 */
+        extern bool commu_send_skaibar_open_device(void);
+        commu_send_skaibar_open_device();
+        feed_single_device_options(device_id); /* placeholder:手機即時 push 一到就替換成電腦選項 */
+        instruction_list_bar_set_blur(false);  /* 非錶盤、不模糊 */
+        instruction_list_open_browse();        /* 列表浮入 */
+    }
+}
+
+/* 公開：滑鼠 app 離開(destroy / Exit)時呼叫 —— 若還在單設備模式,把共享清單還原成錶盤清單、
+   通知電腦收掉它的 skaibar、清旗標,避免設備選項殘留在下次錶盤底部 bar。idempotent。 */
+void instruction_list_bar_device_dismiss(void)
+{
+    if (!s_bar_single_device)
+        return;
+    s_bar_single_device = false;
+    extern bool commu_send_skaibar_dismiss(void);
+    extern void instruction_list_restore_base(void);
+    commu_send_skaibar_dismiss();
+    instruction_list_restore_base();
+    /* 收掉全域 bar overlay(同 inst_list_slide_out_done_cb 的理由),避免滑鼠 app 離開後它殘留
+       蓋住別頁。錶盤狀態機之後會重新顯示。 */
+    if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
+        lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+}
+
 /* Forwarder for the upward tap-helper band (mic_hit). Forwards a TAP to
    mic_bar_event_cb ONLY while the bar is actually shown — so this off-bar helper
    stays inert wherever the bar is hidden (another app / AI widget open) without
@@ -2075,6 +2269,21 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
        cleared too: the list closed, so a later push has no open view to re-apply. */
     cat_filter_restore_full();
     s_view_cat = 0;
+    /* 滑鼠 app 單設備模式:列表完全收掉 → 把共享清單還原成錶盤清單、退出單設備模式,
+       否則設備選項會殘留到下次錶盤底部 bar。錶盤 / device_pager 路徑 flag 為 false,無影響。 */
+    if (s_bar_single_device)
+    {
+        s_bar_single_device = false;
+        extern void instruction_list_restore_base(void);
+        instruction_list_restore_base();
+        /* 關鍵:把整個全域 bar overlay(s_global_bar_layer,layer_top 全螢幕)一起隱藏。滑鼠 app
+           開清單時 open_browse 顯示了它,但滑鼠 app 不歸錶盤狀態機管、沒人收 → 它底部的全域
+           mic_bar 會蓋住滑鼠 app 自己的 bar,害「第二次點 bar」點到全域 bar(走錶盤廣播、不送
+           0x0E,電腦不再開)。收掉它,滑鼠 app 自己的 bar 才能再被點、下一次 tap 才走單設備 0x0E。
+           錶盤路徑 s_bar_single_device=false 不會進這裡,全域 bar 仍由狀態機常駐。 */
+        if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
+            lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 /* ---- watch-face right-edge left-pull → finger-reveal the list (L/R swap) ----
@@ -2115,6 +2324,10 @@ static void reveal_settle_browse_done_cb(lv_anim_t *a)
        every device and pushes THAT view's per-device result list (not a filter of one
        shared 16-item list). The client cat filter above still shows an instant subset of
        the prior list until the re-queried list arrives. */
+    /* 滑鼠 app 單設備模式:0x0E 已在 bar tap1 當下送出(見 instruction_list_bar_tap_device),
+       這裡不再送 view 廣播 —— 否則會把手機踢出單設備模式、推回聚合清單。只有錶盤/一般路徑
+       (非單設備)才在 settle 送 view 廣播。 */
+    if (!s_bar_single_device)
     {
         extern bool commu_send_skaibar_view(char cat);
         commu_send_skaibar_view(s_view_cat);
@@ -3177,6 +3390,16 @@ static void list_item_click_event_cb(lv_event_t *evt)
                 break;
             }
         }
+        /* 滑鼠 app 單設備:選項已送去那台電腦執行(電腦 skaibar 執行完自己關) → 只把手錶浮層清單
+           收回去(滑出+隱藏)、回到滑鼠 trackpad。**不送 0x0C dismiss**:否則 dismiss 會跟你「第二
+           次點 bar」的 summon 打架,害電腦 skaibar 不再開。保持單設備模式,第二次點 bar 直接重新
+           summon。close_ai_widget(非 cancel)的滑出 ready_cb 會 restore_base + 清 s_bar_single_device。 */
+        if (s_bar_single_device)
+        {
+            s_close_is_cancel = false;
+            close_ai_widget();
+            return;
+        }
         /* Input box (AI widget) open: a tap on a concrete instruction option
            should RUN that option and CLOSE the box (founder direction
            2026-05-29) — NOT redirect to "ask AI". The old early return here ran
@@ -3258,6 +3481,14 @@ static void on_tap(void)
             LOG_D("[left] commit option via gesture idx=%u (raw=%u)",
                   (unsigned)(selected_item_index - app_base_count),
                   (unsigned)selected_item_index);
+        }
+        /* 滑鼠 app 單設備:選項已送去那台電腦執行 → 收回手錶浮層清單(同 list_item_click_event_cb,
+           不送 0x0C,避免跟第二次 summon 打架)。 */
+        if (s_bar_single_device)
+        {
+            s_close_is_cancel = false;
+            close_ai_widget();
+            return;
         }
         if (is_open_instruction_list_ai)
         {

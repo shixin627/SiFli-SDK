@@ -338,7 +338,8 @@ static void dev_drawer_pull_release(void);
 static void dev_drawer_close(void);
 static void dev_drawer_animate_close(void);
 static void update_ctrl_dev_label(void); // 依 s_dev_active_id 更新頂部控制中設備名
-LV_IMG_DECLARE(device_btn); // 設備鈕藥丸圖（與舊 device-change bar 共用同一資源）
+LV_IMG_DECLARE(device_btn);  // 設備鈕藥丸圖（與舊 device-change bar 共用同一資源）
+LV_IMG_DECLARE(skaibar_img); // 底部 skaibar bar 靜態外觀（176x31，與錶盤底部那條共用）
 
 // === HID 模式切換（上方 label 左右拖動切換）===
 typedef enum
@@ -4077,12 +4078,11 @@ static bool s_hosted = false;
 static void (*s_host_back_cb)(void) = NULL;
 static void (*s_host_pull_cb)(int up_px, int released) = NULL;
 
-/* Trackpad = pure mouse control: the bottom bar's tap / long-press no longer
-   opens the voice / keyboard input (the device list page owns voice input now).
-   The bottom *up-drag* still works (multitask / host pull-back) — only the
-   tap/long-press → skaibar+V2T path is gated off here. Flip to false to bring
-   back the trackpad's own bottom voice/keyboard entry. */
-static bool s_bottom_input_disabled = true;
+/* Trackpad bottom bar: tap → 開「控制中設備」的 skaibar（AI 對話 + 該設備選項，選項由
+   active 設備經 KEY_SKAIBAR_OPTIONS 送來）。設備選擇已搬進滑鼠 app 自己的右拉抽屜，
+   故這條 bar 重新啟用（先前因「device 頁擁有語音輸入」暫時關閉）。up-drag 仍是
+   multitask / host pull-back。 */
+static bool s_bottom_input_disabled = false;
 void hid_mouse_set_host_back_cb(void (*cb)(void))
 {
     s_host_back_cb = cb;
@@ -4174,17 +4174,14 @@ static void text_input_bar_cb(lv_event_t *e)
         break;
 
     case LV_EVENT_LONG_PRESSED:
-        // 長按 bar → 跟短按 release 同樣的路徑：進 skaibar 模式 + 開 V2T。
-        // 差別只在時機 —— 長按不用等使用者放開，LONG_PRESS 觸發就立刻進場
-        // 純滑鼠控制下停用（s_bottom_input_disabled）：底部不再開語音/鍵盤輸入。
+        // 長按 bar → 跟短按同一入口：開全域 instruction-list skaibar(同錶盤底部 bar)。
+        // 差別只在時機 —— 長按不用等放開，LONG_PRESS 觸發就立刻進。bar_long_press_fired
+        // 讓 release 不再重複觸發。
         if (!s_bottom_input_disabled)
         {
             bar_long_press_fired = true;
-            skaibar_active = true;
-            skaibar_selected_idx = -1;
-            if (current_hid_mode != HID_MODE_KEYBOARD)
-                start_trackpad_to_kbd_expand_anim();
-            mouse_v2t_open_with_intent(V2T_INTENT_SKAIBAR);
+            extern void instruction_list_bar_tap_device(const char *device_id);
+            instruction_list_bar_tap_device(s_dev_active_id);
         }
         break;
 
@@ -4336,16 +4333,13 @@ static void text_input_bar_cb(lv_event_t *e)
                 max_move_y < 10 && !bottom_bar_gesture_timer_enabled &&
                 !is_bottom_bar_gesture_active && !bar_long_press_fired)
             {
-                // 純點擊（沒明顯拖動、也沒長按）：跟長按一樣進 skaibar 模式 +
-                // 自動開 V2T。差別只在進場時機（短按要等 release、長按 LONG_PRESS
-                // 觸發就立刻進，給長按一點即時反饋的優勢）
-                // 純滑鼠控制下停用（s_bottom_input_disabled）。
-                LOG_D("Bottom bar tap → expand to skaibar mode");
-                skaibar_active = true;
-                skaibar_selected_idx = -1;
-                if (current_hid_mode != HID_MODE_KEYBOARD)
-                    start_trackpad_to_kbd_expand_anim();
-                mouse_v2t_open_with_intent(V2T_INTENT_SKAIBAR);
+                // 純點擊：開「跟錶盤底部 bar 同一套」的全域 instruction-list skaibar
+                // (同一個元件 → 列表/輸入框樣式一致、兩段式)。1st tap 列表浮入(只放「控制中
+                // 那台」的選項)+ 叫那台電腦開它的 skaibar；2nd tap morph 輸入框+語音→那台。
+                // 取代滑鼠自己的 V2T skaibar。device_id 為空時 _device 內部退回一般 bar。
+                LOG_D("Bottom bar tap → instruction_list_bar_tap_device (單設備 skaibar)");
+                extern void instruction_list_bar_tap_device(const char *device_id);
+                instruction_list_bar_tap_device(s_dev_active_id);
             }
     #if USING_EDGE_BOTTOM_DETECTION
             if (bottom_bar_gesture_timer_enabled)
@@ -5113,24 +5107,23 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     //   點擊 → 進入 keyboard mode（展開輸入介面）；拖向上 → multitask hint
     // bar 樣式：270×16 圓角橫條，看起來像 home indicator / pill
     trackpad_mic_btn = lv_obj_create(parent);
-    lv_obj_set_size(trackpad_mic_btn, 100, 16);
-    lv_obj_align(trackpad_mic_btn, LV_ALIGN_BOTTOM_MID, 0, -20);
-    // dark style 跟 keyboard mode 的 text_input_bar_bg 一致；collapse 縮到
-    // 同位置時兩者外觀相同 → 切換 mode 看起來像同一條 bar 沒有色差跳動
-    lv_obj_set_style_bg_color(trackpad_mic_btn, lv_color_hex(0x1a1a1a),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(trackpad_mic_btn, LV_OPA_90, LV_PART_MAIN);
-    lv_obj_set_style_border_color(trackpad_mic_btn, lv_color_hex(0xFFFFFF),
-                                  LV_PART_MAIN);
-    lv_obj_set_style_border_width(trackpad_mic_btn, 2, LV_PART_MAIN);
-    lv_obj_set_style_border_opa(trackpad_mic_btn, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_set_size(trackpad_mic_btn, 176, 31); // = 錶盤底部 skaibar bar (LMIC_W x LMIC_H)
+    lv_obj_align(trackpad_mic_btn, LV_ALIGN_BOTTOM_MID, 0, -20); // 同 LMIC_Y
+    // 跟錶盤底部那條一樣：bar 本身透明、無框，靜態外觀靠下面的 skaibar_img 子圖
+    lv_obj_set_style_bg_opa(trackpad_mic_btn, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(trackpad_mic_btn, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(trackpad_mic_btn, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(trackpad_mic_btn, 0, LV_PART_MAIN);
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_SCROLLABLE);
-    // 不 CLICKABLE：事件穿透到下層 bottom_swipe_area 統一處理
+    // 不 CLICKABLE：事件穿透到下層 bottom_swipe_area 統一處理（tap → 開 skaibar）
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_CLICKABLE);
-    // 純滑鼠控制：底部不再有語音/輸入入口 → 這條 bar 隱藏（keyboard mode 已停用，
-    // 沒有 expand/collapse 路徑會把它 unhide）。物件保留，morph 引用仍安全。
-    lv_obj_add_flag(trackpad_mic_btn, LV_OBJ_FLAG_HIDDEN);
+    // 顯示：滑鼠模式底部常駐這條 bar，點它開控制中設備的 skaibar（選項=該設備的）。
+    lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_HIDDEN);
+    // 靜態外觀 = skaibar_img（176x31 置中），與錶盤底部 skaibar bar 完全一致
+    lv_obj_t *trackpad_skaibar_icon = lv_img_create(trackpad_mic_btn);
+    lv_img_set_src(trackpad_skaibar_icon, &skaibar_img);
+    lv_obj_center(trackpad_skaibar_icon);
+    lv_obj_clear_flag(trackpad_skaibar_icon, LV_OBJ_FLAG_CLICKABLE);
 
     // v2t_mic_img / trackpad_mic_icon 保留變數但不放任何視覺內容
     // （bar 本身就是視覺）
@@ -6955,6 +6948,14 @@ static void on_pause(void)
 void hid_mouse_destroy(void)
 {
     app_control_set_mouse_mode(false);
+
+    /* 離開滑鼠 app：若 bar 還在單設備 skaibar 模式,把共享浮層清單還原成錶盤清單 + 通知
+       電腦收掉它的 skaibar,避免設備選項殘留到錶盤底部 bar。idempotent —— 非單設備模式
+       (含 device_pager 內嵌 trackpad 的 teardown)直接 no-op。 */
+    {
+        extern void instruction_list_bar_device_dismiss(void);
+        instruction_list_bar_device_dismiss();
+    }
 
     // 停掉底部 bar 多工鍵 timer（如果還在走）
     if (bottom_bar_multitask_timer != NULL)
