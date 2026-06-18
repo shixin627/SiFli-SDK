@@ -7172,6 +7172,16 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
     {
         lv_obj_t *scr = lv_scr_act();
         hid_mouse_create(scr);
+        /* P3 麥克風 OOM 修復:standalone 滑鼠 app 進來時把恆駐的錶盤(Main app)整個拆掉,釋放
+           ~111K SRAM(實機驗 337K→226K used)給麥克風 WebRtcNsx(需一塊連續 ~13.3K)。用明確
+           gui_app_exit(乾淨走框架 app_destory),**刻意不碰 instruction_list** —— 碰它會害 Main
+           的 subpage 停不掉、拆不乾淨(踩過)。錶盤被拆後它建的 instruction_list 單例也沒了 →
+           滑鼠 skaibar 改在 bar tap 時 lazy 自建(見 instruction_list_bar_tap_device)。離開滑鼠
+           app 時框架自動重跑 Main 重建錶盤。device_pager 內嵌路徑不走本 standalone msg_handler。 */
+        {
+            extern int gui_app_exit(const char *id);
+            gui_app_exit(APP_ID_MAIN);
+        }
         /* 丙：記住上次控制的設備 — 重入時若它還在 registry 就自動接回 relay 控制；
            否則(沒記憶/設備已不在)回到 BLE HID 直連。s_dev_active_id 跨 app 重入保留
            (destroy 不清)，reboot 才隨 static 歸零。 */
@@ -7194,7 +7204,16 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
         watch_system_mouse_pause();
         break;
     case GUI_APP_MSG_ONSTOP:
-        hid_mouse_destroy();
+        /* P3:standalone 滑鼠 app 退出 → 框架會重跑 Main 重建錶盤(連同它自己的 instruction_list +
+           overlay)。所以這裡【絕對不要】碰共享 instruction_list —— deinit / restore_base / hide
+           overlay 都會打到 Main 剛重建好的新清單(實測:晚到的 deinit 拆掉 Main 新清單 → bar 消失
+           + 後續觸控 i2c err → HCPU WDT1 凍結重開)。滑鼠 lazy 那份由 Main 重跑 create 時 idempotent
+           清掉。這裡只通知電腦收 skaibar(0x0C)+ 清單設備旗標。 */
+        {
+            extern void instruction_list_skaibar_dismiss_notify_only(void);
+            instruction_list_skaibar_dismiss_notify_only();
+        }
+        hid_mouse_destroy(); /* 旗標已清 → 其內 instruction_list_bar_device_dismiss 變 no-op,不碰共享清單 */
         break;
     default:
         break;

@@ -961,6 +961,19 @@ static void feed_active_device_options_to_list(void)
    new device list / status / per-device actions from the primary. */
 void device_pager_refresh(void)
 {
+    /* P3 麥克風 OOM 修復:standalone 滑鼠 app 進來時錶盤(Main app)被 gui_app_exit 整個拆掉,
+       device_pager 的 lv_objs(建在 Main 的 tile 上)隨之釋放,但本檔 static `p` 不會被設 NULL →
+       此後 refresh()/load_devices_from_registry 碰 p 的 child 物件是野指標(實測 0x03
+       device-actions → ui_refresh → 這裡 → UNALIGNED UsageFault、WDT 重開)。此情境改成只重餵
+       滑鼠 skaibar 清單(讀 registry、完全不碰 device_pager UI)。本函式已在 LVGL 執行緒
+       (skai_device_ui_refresh 有 defer)。embedded device_pager(Main 活著)走原路、不受影響。 */
+    extern bool gui_app_is_actived(char *id);
+    if (gui_app_is_actived(APP_ID_MOUSE))
+    {
+        extern void instruction_list_refeed_single_device(void);
+        instruction_list_refeed_single_device();
+        return;
+    }
     if (p) load_devices_from_registry();
     /* The rebind in refresh() programmatically scrolls the list, which would
        otherwise fire list_scroll_cb -> skaibar_close. When a phone sync arrives
@@ -1787,6 +1800,23 @@ void device_pager_skaibar_options(int n, const char *const opts[])
 
 /* Public: build the page into a tileview tile. Called from
    app_clock_main_status_bar_init. */
+/* P3:device_pager 的 lv_objs 建在宿主(Main app)的 tile 上,而 static `p` 是 singleton
+   (create 開頭 `if(p) return`)。standalone 滑鼠 app 進來時 gui_app_exit 把 Main 整個 destroy →
+   這些 lv_objs 全被釋放、但 `p` 從不被設 NULL → 下次 Main 重建時 create 的 `if(p) return` 會回傳
+   已釋放的 overlay、且 p 的所有 lv_obj 欄位全懸空 → 之後 device_pager_refresh 碰它就 DACCVIOL /
+   UNALIGNED 崩(實機 0x03 device-actions 一來必中)。解:掛 root 物件(mouse_base)的 DELETE 事件,
+   被刪(=宿主 destroy)時 free p + 設 NULL,讓重建時 create 重新 alloc 一份乾淨的。device_pager
+   所有函式都有 `if(!p)` guard,p 為 NULL 期間安全 no-op。 */
+static void device_pager_root_deleted_cb(lv_event_t *e)
+{
+    (void)e;
+    if (p)
+    {
+        rt_free(p);
+        p = NULL;
+    }
+}
+
 lv_obj_t *device_pager_create(lv_obj_t *parent)
 {
     if (p) return p->overlay; /* singleton: one right tile */
@@ -1799,6 +1829,8 @@ lv_obj_t *device_pager_create(lv_obj_t *parent)
        (gaus_dial_bg); no opaque panel slides in with the content. The hosted hid_mouse
        trackpad then sits on that same black backdrop. */
     p->mouse_base = lv_obj_create(parent);
+    /* P3:宿主(Main)被 destroy → mouse_base 被刪 → free+NULL singleton p(見 cb 註解)。 */
+    lv_obj_add_event_cb(p->mouse_base, device_pager_root_deleted_cb, LV_EVENT_DELETE, NULL);
     lv_obj_set_size(p->mouse_base, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_pos(p->mouse_base, 0, 0);
     lv_obj_set_style_radius(p->mouse_base, 0, 0);

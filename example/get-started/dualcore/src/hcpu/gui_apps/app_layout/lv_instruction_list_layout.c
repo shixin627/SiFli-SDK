@@ -1921,6 +1921,11 @@ void instruction_list_bar_tap(void)
    Settings pin→clear→逐筆 add_or_update→refresh)，差別只是直接用 device_id 反查 registry,
    不靠 device_pager 的 p->model(滑鼠 app 沒有 device_pager 模型)。讓滑鼠 app 的 bar 清單顯示
    「正在控制那一台」的選項,而非錶盤的混合清單。LVGL 執行緒呼叫(bar tap)。 */
+/* P3:記住目前單設備 skaibar 控制的那台 id。bar tap 是非同步的(tap→送 0x0E→電腦回 0x03
+   選項要 ~1s),所以 0x03 一定晚到、要靠它更新後重餵清單。standalone 滑鼠 app 把錶盤拆了、
+   device_pager UI 沒了,device_pager_refresh 改呼叫 instruction_list_refeed_single_device。 */
+static char s_single_device_id[SYNCED_DEVICE_ID_LEN] = {0};
+
 static void feed_single_device_options(const char *device_id)
 {
     /* These are defined later in this file (no header prototype); declare locally —
@@ -1934,6 +1939,9 @@ static void feed_single_device_options(const char *device_id)
     extern void refresh_custom_instructions(void);
     if (device_id == NULL || device_id[0] == '\0')
         return;
+    /* 記住這台(即使下面因 usable==0 早退):0x03 晚到時 refeed 用得到。 */
+    strncpy(s_single_device_id, device_id, sizeof(s_single_device_id) - 1);
+    s_single_device_id[sizeof(s_single_device_id) - 1] = '\0';
     const T_SYNCED_DEVICE *dev = NULL;
     uint8_t n = SkaiWatchSys.device_registry.count;
     if (n > MAX_SYNCED_DEVICES) n = MAX_SYNCED_DEVICES;
@@ -1968,7 +1976,11 @@ static void feed_single_device_options(const char *device_id)
     static uint32_t s_dev_opt_ver = 0;
     s_dev_opt_ver++;
     clear_custom_instructions();
-    for (uint8_t i = 0; i < ic; i++)
+    /* 反轉加入:手錶清單 bottom-up 渲染(option 0 在最下),電腦 skaibar 是 top-down。倒著加 →
+       option 0(最下)= registry 最後一筆 = 電腦最下那列;最上 = registry 第一筆 = 電腦最上那列
+       → 顯示與電腦對齊(不倒反)。commit 的 focus 翻轉(N-1-opt_idx,本檔 ~1188)正是為此反轉設計、
+       兩者一致 → 點選也對到正確的電腦列。registry(0x03 device_actions)本身是電腦 top-down 原序。 */
+    for (int i = (int)ic - 1; i >= 0; i--)
     {
         if (dev->default_actions[i][0] == '\0') continue;
         add_or_update_custom_instruction(dev->default_actions[i],
@@ -1976,6 +1988,17 @@ static void feed_single_device_options(const char *device_id)
                                          s_dev_opt_ver, NULL);
     }
     refresh_custom_instructions();
+}
+
+/* P3 公開:device-sync(0x03 等)更新 registry 後重餵 standalone 滑鼠 skaibar 清單。給
+   device_pager_refresh 在「滑鼠 app active(錶盤已被 gui_app_exit 拆掉、device_pager UI 是
+   野指標)」時改呼叫,取代會 UNALIGNED 崩的 device_pager refresh()。只在單設備模式 + 有記住的
+   設備時動作。必須在 LVGL 執行緒呼叫(device_pager_refresh 已是,skai_device_ui_refresh 有 defer)。 */
+void instruction_list_refeed_single_device(void)
+{
+    if (!s_bar_single_device || s_single_device_id[0] == '\0')
+        return;
+    feed_single_device_options(s_single_device_id);
 }
 
 /* 公開：給 STANDALONE 滑鼠 app(APP_ID_MOUSE)用的「單一控制設備」版 bar-tap。與
@@ -1987,7 +2010,17 @@ void instruction_list_bar_tap_device(const char *device_id)
 {
     LOG_I("[bar_dev] tap device_id=\"%s\"", (device_id && device_id[0]) ? device_id : "(EMPTY)");
     if (!p_instruction_list_layout)
-        return;
+    {
+        /* P3 麥克風 OOM 修復:進 standalone 滑鼠 app 時錶盤(Main app)已被 gui_app_exit 整個拆掉,
+           它建的 instruction_list 單例也跟著釋放(p 變 NULL)。滑鼠 skaibar 要用 → 這裡 lazy 自建
+           一份,掛在滑鼠 app 自己的 active screen。Main 已 destroy、不會再有它的 on_stop 來誤拆
+           這份;滑鼠 app 離開(ONSTOP)時自己 deinit。錶盤情境(Main 活著)p 永遠非 NULL,不會進來。 */
+        extern lv_obj_t *lv_instruction_list_layout_create(lv_obj_t * parent);
+        LOG_I("[bar_dev] no singleton (錶盤已拆) -> lazy create for mouse app");
+        lv_instruction_list_layout_create(lv_scr_act());
+        if (!p_instruction_list_layout)
+            return; /* 建失敗才放棄 */
+    }
     if (device_id == NULL || device_id[0] == '\0')
     {
         LOG_I("[bar_dev] EMPTY id -> fallback to generic broadcast bar");
@@ -2048,6 +2081,21 @@ void instruction_list_bar_device_dismiss(void)
        蓋住別頁。錶盤狀態機之後會重新顯示。 */
     if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
         lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* P3 公開:給 STANDALONE 滑鼠 app(把錶盤 gui_app_exit 拆掉那種)退出用。只通知電腦收 skaibar
+   (0x0C)+ 清單設備旗標 + 忘掉記住的設備 id,【不】做 restore_base / hide overlay —— 因為
+   standalone 退出時框架會重建錶盤(Main)自己的 instruction_list + overlay,任何對共享清單的
+   操作都會打到 Main 的新清單(bar 消失 + WDT 凍結)。embedded device_pager 路徑(Main 活著、清單
+   不重建)仍走完整的 instruction_list_bar_device_dismiss(restore_base + hide)。 */
+void instruction_list_skaibar_dismiss_notify_only(void)
+{
+    if (!s_bar_single_device)
+        return;
+    s_bar_single_device = false;
+    s_single_device_id[0] = '\0';
+    extern bool commu_send_skaibar_dismiss(void);
+    commu_send_skaibar_dismiss();
 }
 
 /* Forwarder for the upward tap-helper band (mic_hit). Forwards a TAP to
@@ -5905,6 +5953,22 @@ rt_int32_t instruction_list_deinit(void)
     }
     // 停止所有動畫並重置狀態
     stop_all_animations_and_reset();
+
+    /* P3:list_items 的 malloc 快照(s_base_items=device-page save_base、s_disc_backup=手機斷線
+       snapshot)都是「當前清單的副本(含指標)」。清單被拆(deinit)時這些快照必然懸空 —— 必須一併
+       丟掉,否則重建後對應的 restore(restore_base / 重連 restore)會把舊快照 memcpy 回新清單 →
+       refresh 時 deref 野指標 bus fault(實機:滑鼠 app cycle 後回錶盤拉左 @ 列表崩,即 s_base_items)。
+       原本只有各自的 restore 路徑釋放,但 standalone 退出走 notify-only / Main 重建會跳過 → 在此兜底。 */
+    if (s_base_items)
+    {
+        rt_free(s_base_items);
+        s_base_items = NULL;
+    }
+    if (s_disc_backup)
+    {
+        rt_free(s_disc_backup);
+        s_disc_backup = NULL;
+    }
 
     if (p_instruction_list_layout)
     {
