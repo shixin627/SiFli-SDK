@@ -27,6 +27,11 @@ set PATH=%SCONS%;%PATH%
 call "%REPO_ROOT%\set_env.bat" keil
 if errorlevel 1 exit /b %errorlevel%
 
+REM Board defaults to sf32lb56w-watch (sf32lb563w, dev machines) for manual /
+REM make_release.bat use. release_gui.py overrides WATCH_BOARD to build the
+REM production chip (sf32lb563 = sf32lb56-watch).
+if "%WATCH_BOARD%"=="" set WATCH_BOARD=sf32lb56w-watch
+
 cd /d "%~dp0"
-scons --board=sf32lb56w-watch %* > _watch_build.log 2>&1
+scons --board=%WATCH_BOARD% %* > _watch_build.log 2>&1
 type _watch_build.log

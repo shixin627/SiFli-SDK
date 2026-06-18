@@ -12,11 +12,30 @@ import shutil
 # Get the directory where this script is located
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Default board (sf32lb563w, dev machines). release_gui.py passes --board to
+# select the production chip (sf32lb563 = sf32lb56-watch). The build output dir
+# is named build_<board>_hcpu, so the board picks which bins we package.
+DEFAULT_BOARD = "sf32lb56w-watch"
+
 # Define paths relative to script directory
-BUILD_PATH = os.path.join(SCRIPT_DIR, "build_sf32lb56w-watch_hcpu")
 SYS_DIR = os.path.join(SCRIPT_DIR, "watchOS", "sys")
 WATCHFACE_DIR = os.path.join(SCRIPT_DIR, "watchOS", "watchface")
 JSROOT_DIR = os.path.join(SCRIPT_DIR, "..", "jsroot")
+
+
+def build_path_for(board):
+    """Directory scons writes the watch firmware into for a given board."""
+    return os.path.join(SCRIPT_DIR, "build_%s_hcpu" % board)
+
+
+def parse_board(argv):
+    """Read --board <name> / --board=<name> from argv, else DEFAULT_BOARD."""
+    for i, arg in enumerate(argv):
+        if arg == "--board" and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith("--board="):
+            return arg.split("=", 1)[1]
+    return DEFAULT_BOARD
 
 
 def print_color(message, color="white"):
@@ -35,19 +54,22 @@ def print_color(message, color="white"):
     print(f"{colors.get(color, '')}{message}{colors['reset']}")
 
 
-def package_firmware():
+def package_firmware(build_path):
     """Copy watch firmware bin files to watchOS/sys directory"""
 
     print_color("Starting watch firmware packaging...", "green")
 
     # Define source paths
-    main_bin = os.path.join(BUILD_PATH, "main.bin")
-    ftab_bin = os.path.join(BUILD_PATH, "ftab", "ftab.bin")
-    lcpu_bin = os.path.join(BUILD_PATH, "lcpu", "lcpu.bin", "ER_IROM2.bin")
-    lcpu_patch_bin = os.path.join(BUILD_PATH, "lcpu_patch", "lcpu_rom_patch_copy_hex2bin.bin")
-    bootloader_bin = os.path.join(BUILD_PATH, "bootloader", "bootloader.bin")
+    main_bin = os.path.join(build_path, "main.bin")
+    ftab_bin = os.path.join(build_path, "ftab", "ftab.bin")
+    lcpu_bin = os.path.join(build_path, "lcpu", "lcpu.bin", "ER_IROM2.bin")
+    # The build generates lcpu_rom_patch_copy.bin (verified byte-identical to the
+    # old lcpu_rom_patch_copy_hex2bin.bin, which was a stale manual copy that only
+    # existed on the dev board's build dir -- not produced by any build rule).
+    lcpu_patch_bin = os.path.join(build_path, "lcpu_patch", "lcpu_rom_patch_copy.bin")
+    bootloader_bin = os.path.join(build_path, "bootloader", "bootloader.bin")
 
-    print_color(f"Build path: {BUILD_PATH}", "cyan")
+    print_color(f"Build path: {build_path}", "cyan")
     print_color(f"Output path: {SYS_DIR}", "cyan")
 
     # Files to copy: (source_path, destination_name, description)
@@ -55,7 +77,7 @@ def package_firmware():
         (main_bin, "hcpu.bin", "main.bin -> hcpu.bin"),
         (ftab_bin, "ftab.bin", "ftab.bin copied"),
         (lcpu_bin, "lcpu.bin", "ER_IROM2.bin -> lcpu.bin"),
-        (lcpu_patch_bin, "lcpu_patch.bin", "lcpu_rom_patch_copy_hex2bin.bin -> lcpu_patch.bin"),
+        (lcpu_patch_bin, "lcpu_patch.bin", "lcpu_rom_patch_copy.bin -> lcpu_patch.bin"),
         (bootloader_bin, "bootloader.bin", "bootloader.bin copied"),
     ]
 
@@ -133,9 +155,12 @@ def main():
     success = True
 
     include_watchface = "--with-watchface" in sys.argv
+    board = parse_board(sys.argv)
+    build_path = build_path_for(board)
+    print_color(f"Board: {board}", "cyan")
 
     # Step 1: Copy firmware bin files
-    if not package_firmware():
+    if not package_firmware(build_path):
         success = False
 
     print()

@@ -1300,6 +1300,7 @@ int bmi270_initialized(void)
         }
         goto err_deinit;
     }
+    LOG_I("BMI270 chip id = %d", bmi270_get_dev_id());
 
     res = configure_sensor_interrupt(&bmi2_dev);
     if (res != BMI2_OK)

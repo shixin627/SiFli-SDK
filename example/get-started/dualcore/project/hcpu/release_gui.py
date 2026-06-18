@@ -38,6 +38,16 @@ WATCH_BUILD_CMD = os.path.join(SCRIPT_DIR, "_watch_build.cmd")
 WATCHOS_DIR = os.path.join(SCRIPT_DIR, "watchOS")
 WATCHOS_ZIP = os.path.join(SCRIPT_DIR, "watchOS.zip")
 
+# Chip / scons board choices. The board name is both the scons --board value
+# (via WATCH_BOARD for _watch_build.cmd) and the build-output dir suffix that
+# package_watch_firmware.py reads (build_<board>_hcpu). Production first so it
+# is the default selection.
+BOARD_CHOICES = (
+    ("量產機 — sf32lb563 (sf32lb56-watch)", "sf32lb56-watch"),
+    ("開發機 — sf32lb563w (sf32lb56w-watch)", "sf32lb56w-watch"),
+)
+DEFAULT_BOARD = "sf32lb56-watch"  # 量產正式機
+
 
 def read_board():
     """Return the board number as a string, e.g. '29', from CUSTOMER_BOARD_VER
@@ -157,6 +167,15 @@ def selftest():
     add("version_regex_ok: %s / %s" % (bool(VER_RE.match("1.2.3")),
                                        bool(VER_RE.match("1.2"))))
 
+    # Chip/board selector: default must be the production board, and every
+    # choice should have its scons build-output dir present (build_<board>_hcpu).
+    boards = [b for _, b in BOARD_CHOICES]
+    add("default_board: %s (production=%s)" % (
+        DEFAULT_BOARD, DEFAULT_BOARD == "sf32lb56-watch" and DEFAULT_BOARD in boards))
+    for b in boards:
+        add("board_build_dir[%s]: %s" % (
+            b, os.path.isdir(os.path.join(SCRIPT_DIR, "build_%s_hcpu" % b))))
+
     add("watchOS_dir_present: %s" % os.path.isdir(WATCHOS_DIR))
     if "--zip" in sys.argv:
         try:
@@ -245,6 +264,18 @@ def run_gui():
             self.btn_dev.pack(side="left", padx=6, pady=6)
             ttk.Label(dev, text="(還原 shell / log / 心率‧IMU 電源腳位;版號不動)",
                       font=UI_FONT, foreground="#666").pack(side="left", padx=6)
+
+            # --- chip / board row ---
+            chip = ttk.LabelFrame(root, text="晶片型號(芯片)")
+            chip.pack(fill="x", **pad)
+            self.board_var = tk.StringVar(value=DEFAULT_BOARD)
+            for i, (label, board) in enumerate(BOARD_CHOICES):
+                ttk.Radiobutton(chip, text=label, value=board,
+                                variable=self.board_var).grid(
+                    row=0, column=i, sticky="w", padx=6, pady=6)
+            ttk.Label(chip, text="(量產正式機請選 sf32lb56-watch;sf32lb56w-watch 只在開發機用)",
+                      font=UI_FONT, foreground="#666").grid(
+                row=1, column=0, columnspan=2, sticky="w", padx=6)
 
             # --- build row ---
             bld = ttk.LabelFrame(root, text="編譯並打包(發布版)")
@@ -339,12 +370,15 @@ def run_gui():
         def _emit(self, text):
             self.q.put((SIG_LOG, text))
 
-        def _stream(self, cmd, cwd=None):
+        def _stream(self, cmd, cwd=None, extra_env=None):
             """Run cmd, push each output line to the log. Returns exit code."""
             self._emit("$ " + " ".join(cmd))
+            env = _child_env()
+            if extra_env:
+                env.update(extra_env)
             try:
                 p = subprocess.Popen(
-                    cmd, cwd=cwd or SCRIPT_DIR, env=_child_env(),
+                    cmd, cwd=cwd or SCRIPT_DIR, env=env,
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, encoding="utf-8", errors="replace", bufsize=1)
             except Exception as e:
@@ -395,9 +429,10 @@ def run_gui():
                     return
             with_wf = self.wf_var.get()
             notes = self.notes_var.get().strip()
-            self._start(lambda: self._w_build(with_wf, notes))
+            board = self.board_var.get()
+            self._start(lambda: self._w_build(with_wf, notes, board))
 
-        def _w_build(self, with_wf, notes):
+        def _w_build(self, with_wf, notes, board):
             try:
                 if notes:
                     write_description(notes)
@@ -405,8 +440,9 @@ def run_gui():
             except Exception as e:
                 self._emit("更新發布介紹失敗: %r" % e)
 
-            self._emit("=== 編譯韌體(hcpu + lcpu),請稍候… ===")
-            self._stream(["cmd", "/c", "_watch_build.cmd", "-j8"])
+            self._emit("=== 編譯韌體(hcpu + lcpu),晶片 %s,請稍候… ===" % board)
+            self._stream(["cmd", "/c", "_watch_build.cmd", "-j8"],
+                         extra_env={"WATCH_BOARD": board})
             if build_failed():
                 self._emit("!! 編譯失敗,請查看 _watch_build.log。發布參數仍維持,"
                            "修正後可重試,或切回開發模式。")
@@ -416,7 +452,7 @@ def run_gui():
 
             wf = ["--with-watchface"] if with_wf else []
             self._emit("=== 打包韌體到 watchOS\\sys ===")
-            if self._stream([PY, "package_watch_firmware.py"] + wf) != 0:
+            if self._stream([PY, "package_watch_firmware.py", "--board", board] + wf) != 0:
                 self._emit("!! 打包失敗。")
                 self.q.put((SIG_DONE, None))
                 return
