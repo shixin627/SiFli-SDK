@@ -1052,15 +1052,17 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 		bool want_left_press;
 		if (press_mode)
 		{
-			/* Press mode: 一直可以移動,壓感 < 17000 即視為左鍵按下 */
+			/* Press mode: 一直可以移動,壓感 < 4700 即視為左鍵按下
+			   (本錶 FSR 沒按 ~5000;舊錶沒按 ~18000、門檻 17000,等比例 5000/18000 → 4700) */
 			want_handfree = true;
-			want_left_press = (g_fsr_adc_latest < 17000);
+			want_left_press = (g_fsr_adc_latest < 4700);
 		}
 		else
 		{
-			/* Default mode: 壓感 < 17000 才能移動;< 10000 額外按下左鍵 */
-			want_handfree = (g_fsr_adc_latest < 17000);
-			want_left_press = (g_fsr_adc_latest < 10000);
+			/* Default mode: 壓感 < 4700 才能移動;< 2800 額外按下左鍵
+			   (舊錶門檻 17000/10000,沒按基準 18000→5000 等比例縮到 4700/2800) */
+			want_handfree = (g_fsr_adc_latest < 4700);
+			want_left_press = (g_fsr_adc_latest < 2800);
 		}
 
 		if (want_handfree != prev_handfree)

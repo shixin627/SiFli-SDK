@@ -415,7 +415,7 @@ extern "C"
         uint64_t incoming_call_ready_accept : 1;
         uint64_t countdown_popopen : 1;
         uint64_t debug_mode : 1;
-        uint64_t mouse_press_mode : 1; /* 0: pressure<17000=move & <10000=click; 1: always-move & pressure<17000=click */
+        uint64_t mouse_press_mode : 1; /* 0: pressure<4700=move & <2800=click; 1: always-move & pressure<4700=click */
         uint64_t wear_detect_off : 1;  /* 1: disable wear detection (force worn unless on charger) — diagnostic override */
         uint64_t reserved : 23;
     } T_FLAG_FIELD;

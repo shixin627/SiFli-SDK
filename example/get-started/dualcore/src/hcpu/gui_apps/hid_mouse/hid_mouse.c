@@ -153,6 +153,7 @@ LV_IMG_DECLARE(space);
 LV_IMG_DECLARE(img_skai); // 160 * 160
 LV_IMG_DECLARE(erth);
 LV_IMG_DECLARE(img_left_arrow); // 還有給 back_hint_icon 用
+LV_IMG_DECLARE(img_right_arrow); // 頂部設備切換右箭頭
 LV_IMG_DECLARE(Map_fill);
 LV_IMG_DECLARE(micro_icon);
 LV_IMG_DECLARE(micro_open_icon); // V2T active 時的 icon（淺藍麥克風）
@@ -320,24 +321,12 @@ static void animate_scroll_ui_to(bool active);
 static void scroll_node_snap_anim_cb(void *var, int32_t v);
 static void snap_scroll_nodes(void);
 
-// 設備清單抽屜（ADR-0024 P3：右弧左拖 finger-follow 拉出 E7 電腦清單，選了走手機 relay）
-// state 宣告在此（handler 在面板實作之前就要參照 s_dev_drawer_pulling）
-static lv_obj_t *s_dev_drawer = NULL;        // 抽屜根（全螢幕暗底）
-static lv_obj_t *s_dev_drawer_panel = NULL;  // 右側面板（跟手指滑入）
-static lv_coord_t s_dev_drawer_w = 0;        // 面板寬 = 全開滑入距離
-static int32_t s_dev_drawer_reveal = 0;      // 目前滑入量 0(離屏)~w(全開)
-static bool s_dev_drawer_pulling = false;    // finger-follow 進行中（拉開）
-static lv_coord_t s_dev_drawer_close_x0 = 0; // 開啟後往右拖收的起點 x
-static bool s_dev_drawer_closing_drag = false; // 開啟後正在往右拖收
-static bool s_dev_drawer_suppress_click = false; // 拖收後抑制緊接的選取 click
+// 頂部設備切換器：trackpad 頂部設備名 label 兩側箭頭切換設備（取代舊右側抽屜）
 static char s_dev_active_id[SYNCED_DEVICE_ID_LEN] = {0}; // 目前選中控制的設備 id（高亮 + 頂部標籤用）
 static lv_obj_t *s_ctrl_dev_label = NULL;    // trackpad 頂部「控制中設備」名稱常駐標籤
-static void dev_drawer_pull_begin(void);
-static void dev_drawer_pull_update(lv_coord_t dx_from_start);
-static void dev_drawer_pull_release(void);
-static void dev_drawer_close(void);
-static void dev_drawer_animate_close(void);
-static void update_ctrl_dev_label(void); // 依 s_dev_active_id 更新頂部控制中設備名
+static lv_obj_t *s_dev_left_arrow = NULL;    // 設備名左側「上一台」箭頭（循環）
+static lv_obj_t *s_dev_right_arrow = NULL;   // 設備名右側「下一台」箭頭（循環）
+static void update_ctrl_dev_label(void); // 依 s_dev_active_id 更新頂部控制中設備名 + 箭頭可見性
 LV_IMG_DECLARE(device_btn);  // 設備鈕藥丸圖（與舊 device-change bar 共用同一資源）
 LV_IMG_DECLARE(skaibar_img); // 底部 skaibar bar 靜態外觀（176x31，與錶盤底部那條共用）
 
@@ -555,6 +544,7 @@ static lv_obj_t *trackpad_mic_btn = NULL;
 static lv_obj_t *trackpad_mic_icon = NULL;
 static lv_obj_t *trackpad_mic_red_dot = NULL;
 static lv_obj_t *trackpad_mic_red_dot_x = NULL;
+static void bar_ai_on_tap(void); /* fwd：tap 當下立刻收自有底部 bar（定義在 lv_create 前） */
 
 // Keyboard mode 下半部 mic 區（mic 按鈕 + 右側鍵盤按鈕，跟 keyboard 互換顯示）
 static lv_obj_t *kbd_mic_section = NULL;
@@ -2636,12 +2626,6 @@ static void handle_pressing_event(lv_indev_t *indev,
             app_clock_status_bar_pull_home(current_point->x - start_point.x);
         return;
     }
-    if (s_dev_drawer_pulling)
-    {
-        // finger-follow:設備抽屜跟著手指滑入,放開才 commit/snap
-        dev_drawer_pull_update(current_point->x - start_point.x);
-        return;
-    }
     if (!press_in_arc_zone && !left_scroll_active)
     {
         BLE_HID_Mouse_Touch_Move((uint16_t)current_point->x,
@@ -2794,12 +2778,9 @@ static void handle_pressing_event(lv_indev_t *indev,
                 }
                 else
                 {
-                    // standalone APP_ID_MOUSE：右弧左拖 → finger-follow 拉出 E7 電腦
-                    // 清單抽屜（ADR-0024 P3，取代舊的 ble_dev_mgr device-change bar）。
-                    // 跟手指滑入、放開才 commit/snap（見 handle_pressing/released）。
-                    dev_drawer_pull_begin();
-                    dev_drawer_pull_update(current_point->x - start_point.x);
-                    LOG_D("right-arc swipe left -> device drawer pull (standalone)");
+                    // standalone APP_ID_MOUSE：設備切換已移到頂部設備名兩側箭頭，
+                    // 右弧左拖不再開抽屜（消費此手勢、不做事）。
+                    LOG_D("right-arc swipe left -> (standalone) switch moved to top arrows");
                 }
                 return;
             }
@@ -2892,15 +2873,6 @@ static void handle_released_event(lv_indev_t *indev)
         press_in_arc_zone = false;
         LOG_D("home pull released: %s",
               home_pull_prog >= 50 ? "commit -> watch face" : "snap back");
-        return;
-    }
-
-    // 設備抽屜 finger-follow 放手：過半補完開啟、沒過半收回（teardown 在收回動畫尾）
-    if (s_dev_drawer_pulling)
-    {
-        dev_drawer_pull_release();
-        animate_scroll_ui_to(false);
-        press_in_arc_zone = false;
         return;
     }
 
@@ -4182,6 +4154,7 @@ static void text_input_bar_cb(lv_event_t *e)
             bar_long_press_fired = true;
             extern void instruction_list_bar_tap_device(const char *device_id);
             instruction_list_bar_tap_device(s_dev_active_id);
+            bar_ai_on_tap(); /* 列表/浮層 bar 一進來就立刻收自有 bar，避免重疊 */
         }
         break;
 
@@ -4340,6 +4313,7 @@ static void text_input_bar_cb(lv_event_t *e)
                 LOG_D("Bottom bar tap → instruction_list_bar_tap_device (單設備 skaibar)");
                 extern void instruction_list_bar_tap_device(const char *device_id);
                 instruction_list_bar_tap_device(s_dev_active_id);
+                bar_ai_on_tap(); /* 列表/浮層 bar 一進來就立刻收自有 bar，避免重疊 */
             }
     #if USING_EDGE_BOTTOM_DETECTION
             if (bottom_bar_gesture_timer_enabled)
@@ -5102,52 +5076,23 @@ static void create_trackpad_mode_ui(lv_obj_t *parent)
     // 弧線上的節點指示點（左+右兩組都在 bg 內）
     create_left_scroll_nodes(arc_parent);
 
-    // === Trackpad mode 下方按鈕：通用清單選擇器入口（取代原本的麥克風）===
-    // 點擊跟拖動都由下方擴大版的 bottom_swipe_area 統一處理：
-    //   點擊 → 進入 keyboard mode（展開輸入介面）；拖向上 → multitask hint
-    // bar 樣式：270×16 圓角橫條，看起來像 home indicator / pill
+    // 滑鼠模式底部常駐的 skaibar 視覺 bar（只放那張圖）。non-clickable，點擊穿透到
+    // bottom_swipe_area 開 skaibar。由 poll 查 instruction_list_floating_bar_visible() 同步：
+    // 共用浮層 bar 一現就收它、一收就還原它，frame 對齊兩條的交接，避免重疊/閃/空窗。
     trackpad_mic_btn = lv_obj_create(parent);
-    lv_obj_set_size(trackpad_mic_btn, 176, 31); // = 錶盤底部 skaibar bar (LMIC_W x LMIC_H)
-    lv_obj_align(trackpad_mic_btn, LV_ALIGN_BOTTOM_MID, 0, -20); // 同 LMIC_Y
-    // 跟錶盤底部那條一樣：bar 本身透明、無框，靜態外觀靠下面的 skaibar_img 子圖
+    lv_obj_set_size(trackpad_mic_btn, 176, 31);
+    lv_obj_align(trackpad_mic_btn, LV_ALIGN_BOTTOM_MID, 0, -20);
     lv_obj_set_style_bg_opa(trackpad_mic_btn, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(trackpad_mic_btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(trackpad_mic_btn, 8, LV_PART_MAIN);
     lv_obj_set_style_pad_all(trackpad_mic_btn, 0, LV_PART_MAIN);
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_SCROLLABLE);
-    // 不 CLICKABLE：事件穿透到下層 bottom_swipe_area 統一處理（tap → 開 skaibar）
     lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_CLICKABLE);
-    // 顯示：滑鼠模式底部常駐這條 bar，點它開控制中設備的 skaibar（選項=該設備的）。
-    lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_HIDDEN);
-    // 靜態外觀 = skaibar_img（176x31 置中），與錶盤底部 skaibar bar 完全一致
-    lv_obj_t *trackpad_skaibar_icon = lv_img_create(trackpad_mic_btn);
-    lv_img_set_src(trackpad_skaibar_icon, &skaibar_img);
-    lv_obj_center(trackpad_skaibar_icon);
-    lv_obj_clear_flag(trackpad_skaibar_icon, LV_OBJ_FLAG_CLICKABLE);
-
-    // v2t_mic_img / trackpad_mic_icon 保留變數但不放任何視覺內容
-    // （bar 本身就是視覺）
-    v2t_mic_img = trackpad_mic_btn;
-    trackpad_mic_icon = trackpad_mic_btn;
-
-    // 保留 mic_red_dot 物件以維持原有 V2T pipeline 引用，但 trackpad mode
-    // 不再走 V2T → 始終 hidden
-    trackpad_mic_red_dot = lv_obj_create(trackpad_mic_btn);
-    lv_obj_remove_style_all(trackpad_mic_red_dot);
-    lv_obj_set_size(trackpad_mic_red_dot, 50, 50);
-    lv_obj_align(trackpad_mic_red_dot, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(trackpad_mic_red_dot, lv_color_hex(0x4A83FF), 0);
-    lv_obj_set_style_bg_opa(trackpad_mic_red_dot, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(trackpad_mic_red_dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_clear_flag(trackpad_mic_red_dot, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(trackpad_mic_red_dot, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(trackpad_mic_red_dot, LV_OBJ_FLAG_HIDDEN);
-
-    trackpad_mic_red_dot_x = lv_label_create(trackpad_mic_red_dot);
-    lv_label_set_text(trackpad_mic_red_dot_x, LV_EXT_STR_GET_BY_KEY(ok, "OK"));
-    lv_obj_set_style_text_color(trackpad_mic_red_dot_x, lv_color_hex(0xFFFFFF),
-                                0);
-    lv_obj_align(trackpad_mic_red_dot_x, LV_ALIGN_CENTER, 0, 0);
+    {
+        lv_obj_t *trackpad_skaibar_icon = lv_img_create(trackpad_mic_btn);
+        lv_img_set_src(trackpad_skaibar_icon, &skaibar_img);
+        lv_obj_center(trackpad_skaibar_icon);
+        lv_obj_clear_flag(trackpad_skaibar_icon, LV_OBJ_FLAG_CLICKABLE);
+    }
 
     #if SHOW_SCROLL_ZONE_DEBUG
     {
@@ -5715,11 +5660,10 @@ static void expand_anim_driver_cb(void *var, int32_t v)
 static void expand_anim_done_cb(lv_anim_t *a)
 {
     (void)a;
-    // 完成後正式收掉 trackpad mode
+    // 完成後正式收掉 trackpad mode。bar 的顯示已由 mode_set_visible 連動（TRACKPAD
+    // 隱藏→bar 隱藏），不在此 un-hide：否則 keyboard mode 期間 bar 的 HIDDEN 被清掉，
+    // 第二次開輸入框時會殘留在畫面底部。回 trackpad 由 collapse 的 mode_set_visible 還原。
     mode_set_visible(HID_MODE_TRACKPAD, false);
-    // bar 還原 unhide 讓下次回 trackpad 時看得到
-    if (trackpad_mic_btn && lv_obj_is_valid(trackpad_mic_btn))
-        lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void start_trackpad_to_kbd_expand_anim(void)
@@ -6040,6 +5984,19 @@ static lv_obj_t *media_center_make_icon_btn(lv_obj_t *parent,
     return btn;
 }
 
+/* 離開滑鼠 App：延後到事件處理結束才拆畫面，避免在自身 event cb 內同步拆畫面 UAF。
+   （從舊右側抽屜的 exit 鈕移來，現掛在媒體頁。） */
+static void media_exit_async_cb(void *p)
+{
+    (void)p;
+    gui_app_exit(APP_ID_MOUSE);
+}
+static void media_exit_btn_cb(lv_event_t *e)
+{
+    (void)e;
+    lv_async_call(media_exit_async_cb, NULL);
+}
+
 /**
  * @brief 建立媒體中心 tileview（仿 app_clock_status_bar）：
  *        - tileview 全螢幕，預設 hidden，初始 tile = home (0,1)
@@ -6114,6 +6071,23 @@ static void create_media_center_panel(lv_obj_t *parent)
         media_center_make_icon_btn(media_tile, &volume_up,
                                    media_center_vol_up_btn_cb, 75);
     lv_obj_align(btn_vol_up, LV_ALIGN_BOTTOM_MID, 90, -80);
+
+    // 離開 App：紅色 Exit 鈕（從舊右側抽屜移來），放媒體頁最底
+    lv_obj_t *media_exit_btn = lv_btn_create(media_tile);
+    lv_obj_set_size(media_exit_btn, 160, 56);
+    lv_obj_set_style_radius(media_exit_btn, 28, 0);
+    lv_obj_set_style_bg_color(media_exit_btn, lv_color_hex(0xFF3B30), 0);
+    lv_obj_set_style_bg_color(media_exit_btn, lv_color_hex(0xD9342B),
+                              LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(media_exit_btn, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(media_exit_btn, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_align(media_exit_btn, LV_ALIGN_BOTTOM_MID, 0, -24);
+    lv_obj_add_event_cb(media_exit_btn, media_exit_btn_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *media_exit_lbl = lv_label_create(media_exit_btn);
+    lv_label_set_text(media_exit_lbl, "Exit");
+    lv_obj_set_style_text_color(media_exit_lbl, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_center(media_exit_lbl);
+    lv_obj_clear_flag(media_exit_lbl, LV_OBJ_FLAG_CLICKABLE);
 
     // tileview value-changed：snap 回 home 時自動隱藏
     lv_obj_add_event_cb(media_tileview, media_tileview_event_cb,
@@ -6254,335 +6228,91 @@ void mouse_mode_handle_media_play_state(bool playing)
  * @brief Creates the mouse screen
  * @param scr Screen object
  */
-/* === 設備清單抽屜 ============================================================
-   ADR-0024 P3：滑鼠頁右弧左拖 → finger-follow 拉出「手機註冊的電腦」清單
-   （E7 device_registry），選了之後走手機 relay 控制（commu_send_active_device +
-   ble_hid_mouse_set_app_route）。取代舊的 ble_dev_mgr device-change bar。
-   蓋在 lv_scr_act() 最上層（在 touch_bg 之上）→ 自然攔截 trackpad 觸控；開啟時
-   set_stop_mouse_move(true) 凍結體感游標，關閉復原。面板跟手指從右緣滑入
-   （pull_begin/update/release，仿 home_pull）；放開過半補完、否則收回。
-   Step 1：只列清單 + 線上點 + log；選取接線（relay）在 Step 2。
-   (s_dev_drawer / panel / w / reveal / pulling 宣告在檔案上方 forward-decl 區) */
+/* === 頂部設備切換器 =========================================================
+   取代舊的右側設備清單抽屜：trackpad 頂部設備名 label 兩側各一個箭頭，點擊切到
+   相鄰設備（循環）。選了之後一樣走手機 relay（commu_send_active_device +
+   ble_hid_mouse_set_app_route）。設備資料來自 E7 device_registry。 */
 
-static void dev_drawer_close(void)
+/* 在 registry 找目前 s_dev_active_id 的 index；不在/未選回 -1。 */
+static int active_device_index(void)
 {
-    s_dev_drawer_pulling = false;
-    if (s_dev_drawer && lv_obj_is_valid(s_dev_drawer))
-        lv_obj_del(s_dev_drawer);
-    s_dev_drawer = NULL;
-    s_dev_drawer_panel = NULL;
-    s_dev_drawer_reveal = 0;
-    set_stop_mouse_move(false);
+    if (s_dev_active_id[0] == '\0')
+        return -1;
+    uint8_t n = SkaiWatchSys.device_registry.count;
+    if (n > MAX_SYNCED_DEVICES)
+        n = MAX_SYNCED_DEVICES;
+    for (uint8_t i = 0; i < n; i++)
+        if (strncmp((const char *)SkaiWatchSys.device_registry.devices[i].id,
+                    s_dev_active_id, SYNCED_DEVICE_ID_LEN) == 0)
+            return (int)i;
+    return -1;
 }
 
-static void dev_drawer_bg_click_cb(lv_event_t *e)
+/* 進入滑鼠頁的預設設備 index：主要(status 2) → 第一個在線(1) → 清單第一個；
+   registry 空回 -1。 */
+static int pick_default_device(void)
 {
-    (void)e;
-    dev_drawer_close(); /* 點左側暗區 → 收回 */
-}
-
-static void dev_drawer_item_click_cb(lv_event_t *e)
-{
-    if (s_dev_drawer_suppress_click)
-    {
-        s_dev_drawer_suppress_click = false; /* 這個 click 來自往右拖收，不選取 */
-        return;
-    }
-    const char *id = (const char *)lv_event_get_user_data(e);
-    /* Step 2：選設備 → 告訴手機 active 設備（KEY_ACTIVE_SELECT），並把滑鼠移動/
-       按鍵切到 SKAI_LINK relay（手機→該電腦），再關閉抽屜。E7 設備走網路 relay，
-       不鑽 BLE conn_idx（device_pager 同樣 conn_idx=0xFF）。 */
-    LOG_I("[dev_drawer] pick device id=%s -> relay", (id && id[0]) ? id : "(empty)");
-    if (id && id[0])
-    {
-        commu_send_active_device(id);
-        ble_hid_mouse_set_app_route(true);
-        strncpy(s_dev_active_id, id, sizeof(s_dev_active_id) - 1);
-        s_dev_active_id[sizeof(s_dev_active_id) - 1] = '\0';
-        update_ctrl_dev_label(); /* 更新 trackpad 頂部「控制中」標籤 */
-    }
-    dev_drawer_animate_close(); /* 跟往右拖收一樣，面板往右滑出再拆（非瞬間消失） */
-}
-
-/* 離開 App：延後到事件處理結束才真正拆掉滑鼠 app 畫面，避免在自身畫面的 event
-   cb 內同步拆畫面造成 UAF（舊 Watch 鈕在 layer_top 上才能直接 exit）。 */
-static void dev_drawer_exit_async_cb(void *p)
-{
-    (void)p;
-    gui_app_exit(APP_ID_MOUSE);
-}
-
-static void dev_drawer_exit_click_cb(lv_event_t *e)
-{
-    (void)e;
-    if (s_dev_drawer_suppress_click)
-    {
-        s_dev_drawer_suppress_click = false; /* 來自往右拖收，不離開 */
-        return;
-    }
-    lv_async_call(dev_drawer_exit_async_cb, NULL);
-}
-
-/* reveal = 0(面板離屏右) ~ s_dev_drawer_w(面板全開)。設備頁本身是黑 70% 半透明
-   (panel 固定 bg_opa)，這裡只負責左右滑動位置，不再 ramp 背景透明度。 */
-static void dev_drawer_apply_reveal(int32_t reveal)
-{
-    if (!s_dev_drawer || !lv_obj_is_valid(s_dev_drawer))
-        return;
-    if (reveal < 0)
-        reveal = 0;
-    if (reveal > s_dev_drawer_w)
-        reveal = s_dev_drawer_w;
-    s_dev_drawer_reveal = reveal;
-    lv_obj_align(s_dev_drawer_panel, LV_ALIGN_RIGHT_MID,
-                 s_dev_drawer_w - reveal, 0);
-}
-
-static void dev_drawer_reveal_anim_cb(void *var, int32_t v)
-{
-    (void)var;
-    dev_drawer_apply_reveal(v);
-}
-
-static void dev_drawer_snap_close_ready_cb(lv_anim_t *a)
-{
-    (void)a;
-    dev_drawer_close(); /* 收回動畫尾才真正拆掉 */
-}
-
-/* 開啟狀態下往右滑掉：面板滑回右緣離屏 + 暗底淡出，動畫尾拆掉 */
-static void dev_drawer_animate_close(void)
-{
-    if (!s_dev_drawer || !lv_obj_is_valid(s_dev_drawer))
-        return;
-    s_dev_drawer_pulling = false;
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, s_dev_drawer);
-    lv_anim_set_exec_cb(&a, dev_drawer_reveal_anim_cb);
-    lv_anim_set_values(&a, s_dev_drawer_reveal, 0);
-    lv_anim_set_time(&a, 160);
-    lv_anim_set_ready_cb(&a, dev_drawer_snap_close_ready_cb);
-    lv_anim_start(&a);
-}
-
-/* 開啟後往右拖 → 跟手指把面板往右滑出（與拉開對稱，非 flick gesture，慢拖也行）。
-   放開拖超過 1/4 → 收掉；不足 → 彈回全開。掛在面板 + 每顆設備鈕（LV_EVENT_ALL）。 */
-static void dev_drawer_drag_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    lv_indev_t *indev = lv_indev_get_act();
-    if (!indev)
-        return;
-    lv_point_t pt;
-    lv_indev_get_point(indev, &pt);
-
-    if (code == LV_EVENT_PRESSED)
-    {
-        s_dev_drawer_close_x0 = pt.x;
-        s_dev_drawer_closing_drag = false;
-        s_dev_drawer_suppress_click = false;
-    }
-    else if (code == LV_EVENT_PRESSING)
-    {
-        lv_coord_t dx = pt.x - s_dev_drawer_close_x0;
-        if (dx > 12) /* 確定往右拖（非點擊/微動） */
-        {
-            s_dev_drawer_closing_drag = true;
-            s_dev_drawer_suppress_click = true; /* 之後緊接的 click 視為拖、不選取 */
-        }
-        if (s_dev_drawer_closing_drag)
-            dev_drawer_apply_reveal(s_dev_drawer_w - dx); /* 往右拖 → 面板滑出 */
-    }
-    else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
-    {
-        if (!s_dev_drawer_closing_drag)
-            return; /* 沒拖 → 當點擊，交給 item click cb */
-        s_dev_drawer_closing_drag = false;
-        if (s_dev_drawer_reveal <= s_dev_drawer_w * 3 / 4) /* 右拖超過 1/4 → 收掉 */
-        {
-            dev_drawer_animate_close();
-        }
-        else /* 收不足 → 彈回全開 */
-        {
-            lv_anim_t a;
-            lv_anim_init(&a);
-            lv_anim_set_var(&a, s_dev_drawer);
-            lv_anim_set_exec_cb(&a, dev_drawer_reveal_anim_cb);
-            lv_anim_set_values(&a, s_dev_drawer_reveal, s_dev_drawer_w);
-            lv_anim_set_time(&a, 140);
-            lv_anim_start(&a);
-        }
-    }
-}
-
-/* 建抽屜（全寬置中面板 + E7 清單）。面板本身黑 70% 半透明、起始離屏右；左右位置由
-   dev_drawer_apply_reveal 控制。呼叫者負責 set_stop_mouse_move 與起始 reveal。 */
-static void dev_drawer_build(void)
-{
-    s_dev_drawer = lv_obj_create(lv_scr_act());
-    lv_obj_remove_style_all(s_dev_drawer);
-    lv_obj_set_size(s_dev_drawer, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_pos(s_dev_drawer, 0, 0);
-    lv_obj_set_style_bg_color(s_dev_drawer, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(s_dev_drawer, LV_OPA_TRANSP, 0); /* 容器透明；黑70%在 panel */
-    lv_obj_clear_flag(s_dev_drawer, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_dev_drawer, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(s_dev_drawer, dev_drawer_bg_click_cb, LV_EVENT_CLICKED,
-                        NULL);
-
-    /* 全寬置中面板：直列清單螢幕置中（像舊設備頁），自身可點吸收非按鈕點擊 */
-    s_dev_drawer_w = LV_HOR_RES;
-    lv_obj_t *panel = lv_obj_create(s_dev_drawer);
-    s_dev_drawer_panel = panel;
-    lv_obj_remove_style_all(panel);
-    lv_obj_set_size(panel, s_dev_drawer_w, LV_VER_RES);
-    lv_obj_align(panel, LV_ALIGN_RIGHT_MID, s_dev_drawer_w, 0); /* 起始離屏右 */
-    lv_obj_set_style_bg_color(panel, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_70, 0); /* 設備頁：黑 70% 半透明（透出底下） */
-    lv_obj_add_flag(panel, LV_OBJ_FLAG_CLICKABLE);
-    /* 開啟後往右拖 → 跟手指收回（面板空白處） */
-    lv_obj_add_event_cb(panel, dev_drawer_drag_cb, LV_EVENT_ALL, NULL);
-    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(panel, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(panel, 10, 0);
-    lv_obj_set_style_pad_all(panel, 16, 0);
-    lv_obj_set_scrollbar_mode(panel, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_scroll_dir(panel, LV_DIR_VER);
-
-    /* 清單最上面：紅色「Exit」離開 App 按鈕（無論有無設備都顯示） */
-    lv_obj_t *exit_btn = lv_btn_create(panel);
-    lv_obj_set_size(exit_btn, 202, 64);
-    lv_obj_set_style_radius(exit_btn, 32, 0);
-    lv_obj_set_style_bg_color(exit_btn, lv_color_hex(0xFF3B30), 0); /* 紅 */
-    lv_obj_set_style_bg_color(exit_btn, lv_color_hex(0xD9342B), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(exit_btn, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(exit_btn, LV_OBJ_FLAG_PRESS_LOCK);
-    lv_obj_add_event_cb(exit_btn, dev_drawer_exit_click_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_event_cb(exit_btn, dev_drawer_drag_cb, LV_EVENT_ALL, NULL);
-
-    lv_obj_t *exit_lbl = lv_label_create(exit_btn);
-    lv_label_set_text(exit_lbl, "Exit");
-    lv_obj_set_style_text_color(exit_lbl, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_center(exit_lbl);
-    lv_obj_clear_flag(exit_lbl, LV_OBJ_FLAG_CLICKABLE);
-
     uint8_t n = SkaiWatchSys.device_registry.count;
     if (n > MAX_SYNCED_DEVICES)
         n = MAX_SYNCED_DEVICES;
     if (n == 0)
-    {
-        lv_obj_t *empty = lv_label_create(panel);
-        lv_label_set_text(empty,
-                          LV_EXT_STR_GET_BY_KEY(no_paired_devices, "No devices"));
-        lv_obj_set_style_text_color(empty, lv_color_hex(0x888888), 0);
-        return;
-    }
+        return -1;
+    int first_online = -1;
     for (uint8_t i = 0; i < n; i++)
     {
-        const char *id   = SkaiWatchSys.device_registry.devices[i].id;
-        const char *name = (const char *)SkaiWatchSys.device_name[i];
-        uint8_t status   = SkaiWatchSys.device_status[i]; /* 0 off / 1 on / 2 primary */
-
-        /* 樣式比照舊 device-change bar 的設備鈕：device_btn 藥丸圖 + 左燈 + 名稱 */
-        lv_obj_t *btn = lv_btn_create(panel);
-        lv_obj_set_size(btn, 202, 102); /* 同舊 DEV_CHANGE_BUTTON 尺寸 */
-        lv_obj_set_style_radius(btn, 80, 0);
-        lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0); /* 顯示靠 device_btn 圖 */
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x2A2A2A), 0);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x3A3A3A), LV_STATE_PRESSED);
-        lv_obj_set_style_pad_all(btn, 6, 0);
-        lv_obj_clear_flag(btn, LV_OBJ_FLAG_PRESS_LOCK);
-        /* 離線設備(status==0)顯示但不可選（不能切過去）→ 不掛選取 cb */
-        if (status != 0)
-            lv_obj_add_event_cb(btn, dev_drawer_item_click_cb, LV_EVENT_CLICKED,
-                                (void *)id);
-        /* 在設備鈕上往右拖也能收回（事件只送到被按物件、不冒泡，故每顆都掛） */
-        lv_obj_add_event_cb(btn, dev_drawer_drag_cb, LV_EVENT_ALL, NULL);
-        /* 目前正在控制的那台 → 藍色外框 */
-        if (s_dev_active_id[0] && id && strcmp(s_dev_active_id, id) == 0)
-        {
-            lv_obj_set_style_border_width(btn, 3, 0);
-            lv_obj_set_style_border_color(btn, lv_color_hex(0x00AAFF), 0);
-            lv_obj_set_style_border_opa(btn, LV_OPA_COVER, 0);
-        }
-
-        lv_obj_t *device_bg = lv_img_create(btn);
-        lv_img_set_src(device_bg, &device_btn);
-        lv_obj_align(device_bg, LV_ALIGN_CENTER, 0, 0);
-        if (status == 0) /* 離線 → 圖示變淡，提示不可選 */
-            lv_obj_set_style_img_opa(device_bg, LV_OPA_40, 0);
-
-        /* 線上狀態燈：on/primary 綠(帶光暈)、off 灰（比照舊 conn LED） */
-        lv_obj_t *led = lv_obj_create(btn);
-        lv_obj_set_size(led, 12, 12);
-        lv_obj_set_style_radius(led, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_border_width(led, 0, 0);
-        lv_obj_set_style_pad_all(led, 0, 0);
-        lv_obj_set_style_bg_opa(led, LV_OPA_COVER, 0);
-        lv_obj_align(led, LV_ALIGN_LEFT_MID, 0, 0);
-        lv_obj_clear_flag(led, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-        if (status)
-        {
-            lv_obj_set_style_bg_color(led, lv_color_hex(0x00FF00), 0);
-            lv_obj_set_style_shadow_color(led, lv_color_hex(0x00FF00), 0);
-            lv_obj_set_style_shadow_width(led, 8, 0);
-            lv_obj_set_style_shadow_spread(led, 2, 0);
-        }
-        else
-        {
-            lv_obj_set_style_bg_color(led, lv_color_hex(0x666666), 0);
-        }
-
-        lv_obj_t *name_label = lv_label_create(btn);
-        if (name && name[0])
-            lv_label_set_text(name_label, name);
-        else
-            lv_label_set_text_fmt(name_label, "Device %u", (unsigned)(i + 1));
-        lv_obj_set_style_text_color(
-            name_label, status ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x777777),
-            0); /* 離線 → 灰字 */
-        lv_label_set_long_mode(name_label, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(name_label, LV_PCT(80));
-        lv_obj_align(name_label, LV_ALIGN_LEFT_MID, 18, 0);
-        lv_obj_clear_flag(name_label, LV_OBJ_FLAG_CLICKABLE);
+        uint8_t st = SkaiWatchSys.device_status[i];
+        if (st == 2)
+            return (int)i;
+        if (st == 1 && first_online < 0)
+            first_online = (int)i;
     }
+    return (first_online >= 0) ? first_online : 0;
 }
 
-/* 右弧左拖起手：建抽屜（離屏），之後 update 跟手指、release 定案 commit/snap */
-static void dev_drawer_pull_begin(void)
+/* 把第 idx 台設為 active：更新 id、走手機 relay 控制、刷新頂部名稱。idx 無效則忽略。 */
+static void set_active_device_by_index(int idx)
 {
-    if (s_dev_drawer && lv_obj_is_valid(s_dev_drawer))
-        return; /* 已開/已在拉 */
-    set_stop_mouse_move(true);
-    dev_drawer_build();
-    s_dev_drawer_pulling = true;
-    dev_drawer_apply_reveal(0);
-}
-
-static void dev_drawer_pull_update(lv_coord_t dx_from_start)
-{
-    if (!s_dev_drawer_pulling)
+    uint8_t n = SkaiWatchSys.device_registry.count;
+    if (n > MAX_SYNCED_DEVICES)
+        n = MAX_SYNCED_DEVICES;
+    if (idx < 0 || idx >= (int)n)
         return;
-    dev_drawer_apply_reveal(-dx_from_start); /* 往左拖 dx<0 → reveal>0 */
+    const char *id = (const char *)SkaiWatchSys.device_registry.devices[idx].id;
+    if (!id || !id[0])
+        return;
+    commu_send_active_device(id);
+    ble_hid_mouse_set_app_route(true);
+    strncpy(s_dev_active_id, id, sizeof(s_dev_active_id) - 1);
+    s_dev_active_id[sizeof(s_dev_active_id) - 1] = '\0';
+    update_ctrl_dev_label();
+    LOG_I("[dev_switch] active -> idx=%d/%d id=%s", idx, (int)n, id);
 }
 
-static void dev_drawer_pull_release(void)
+/* 切到相鄰設備（dir=-1 上一台 / +1 下一台），到頭循環。<2 台則無動作。 */
+static void switch_active_device(int dir)
 {
-    if (!s_dev_drawer_pulling)
+    uint8_t n = SkaiWatchSys.device_registry.count;
+    if (n > MAX_SYNCED_DEVICES)
+        n = MAX_SYNCED_DEVICES;
+    if (n < 2)
         return;
-    s_dev_drawer_pulling = false;
-    bool commit = s_dev_drawer_reveal >= s_dev_drawer_w / 2; /* 過半補完開啟 */
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, s_dev_drawer);
-    lv_anim_set_exec_cb(&a, dev_drawer_reveal_anim_cb);
-    lv_anim_set_values(&a, s_dev_drawer_reveal, commit ? s_dev_drawer_w : 0);
-    lv_anim_set_time(&a, 160);
-    if (!commit)
-        lv_anim_set_ready_cb(&a, dev_drawer_snap_close_ready_cb);
-    lv_anim_start(&a);
+    int cur = active_device_index();
+    if (cur < 0)
+        cur = 0;
+    int next = (cur + dir + (int)n) % (int)n;
+    set_active_device_by_index(next);
+}
+
+static void dev_arrow_prev_cb(lv_event_t *e)
+{
+    (void)e;
+    switch_active_device(-1);
+}
+
+static void dev_arrow_next_cb(lv_event_t *e)
+{
+    (void)e;
+    switch_active_device(+1);
 }
 
 /* 由 s_dev_active_id 在 E7 registry 反查目前控制設備的名稱；id 不在 registry(已移除/
@@ -6616,6 +6346,27 @@ static void update_ctrl_dev_label(void)
     {
         lv_obj_add_flag(s_ctrl_dev_label, LV_OBJ_FLAG_HIDDEN);
     }
+    /* 箭頭：有設備就顯示（1 台時 inert，無別台可切）；無設備才隱藏 */
+    {
+        uint8_t cnt = SkaiWatchSys.device_registry.count;
+        if (cnt > MAX_SYNCED_DEVICES)
+            cnt = MAX_SYNCED_DEVICES;
+        bool show_arrows = (cnt >= 1);
+        if (s_dev_left_arrow && lv_obj_is_valid(s_dev_left_arrow))
+        {
+            if (show_arrows)
+                lv_obj_clear_flag(s_dev_left_arrow, LV_OBJ_FLAG_HIDDEN);
+            else
+                lv_obj_add_flag(s_dev_left_arrow, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (s_dev_right_arrow && lv_obj_is_valid(s_dev_right_arrow))
+        {
+            if (show_arrows)
+                lv_obj_clear_flag(s_dev_right_arrow, LV_OBJ_FLAG_HIDDEN);
+            else
+                lv_obj_add_flag(s_dev_right_arrow, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }
 
 /* device_pager_refresh(跑在每次手機 E7 同步)會把 active 清成 ""；當 standalone 滑鼠
@@ -6623,6 +6374,47 @@ static void update_ctrl_dev_label(void)
 bool hid_mouse_owns_active_target(void)
 {
     return gui_app_is_actived(APP_ID_MOUSE) && s_dev_active_id[0] != '\0';
+}
+
+/* 自有底部 bar(trackpad_mic_btn,只放 skaibar 圖)的隱藏邏輯：instruction_list 浮層 bar/
+   清單一出現就收掉它,避免兩條重疊。第一次 tap(列表浮入)立刻收(bar_ai_on_tap),整段顯示期間
+   由 poll(instruction_list_is_visible)維持隱藏,關閉後還原。全在 hid_mouse 內、不碰共用元件。 */
+extern bool instruction_list_floating_bar_visible(void); /* 浮層 bar(s_global_bar_layer)實際可見 */
+static lv_timer_t *s_bar_ai_sync_timer = NULL;
+static rt_tick_t s_last_bar_tap_tick = 0;
+#define BAR_TAP_MORPH_GRACE_MS 300 /* tap→浮層 bar 出現的橋接窗，立刻收後撐到 getter 轉 true */
+static void bar_ai_sync_set_hidden(bool hide)
+{
+    if (!trackpad_mic_btn || !lv_obj_is_valid(trackpad_mic_btn))
+        return;
+    bool hidden = lv_obj_has_flag(trackpad_mic_btn, LV_OBJ_FLAG_HIDDEN);
+    if (hide && !hidden)
+        lv_obj_add_flag(trackpad_mic_btn, LV_OBJ_FLAG_HIDDEN);
+    else if (!hide && hidden)
+        lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_HIDDEN);
+}
+static void bar_ai_on_tap(void)
+{
+    s_last_bar_tap_tick = rt_tick_get();
+    bar_ai_sync_set_hidden(true); /* 立刻收，不等 poll → 第一次 tap 就不會看到兩條 */
+}
+/* 給 instruction_list 在「切換浮層 bar 顯示/隱藏的當幀」同步呼叫 → frame-perfect 交接，
+   消除 poll 40ms 延遲造成的那一閃/空窗。off-mouse(trackpad_mic_btn NULL)為 no-op、錶盤不受影響。 */
+void hid_mouse_set_own_bar_hidden(bool hide)
+{
+    if (!hide)
+        s_last_bar_tap_tick = 0; /* 顯示時清 tap-grace，避免 poll 又把它壓回去 */
+    bar_ai_sync_set_hidden(hide);
+}
+static void bar_ai_sync_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    /* 直接對齊「那條浮層 bar」的實際可見性(不是清單)：它一現就收自有 bar、一收就還原。
+       tap_grace 只橋接「點下到浮層 bar 出現」那短短一段(立刻收後撐住,避免 getter 還沒 true)。 */
+    bool engaged = instruction_list_floating_bar_visible();
+    bool tap_grace = (rt_tick_get() - s_last_bar_tap_tick) <
+                     rt_tick_from_millisecond(BAR_TAP_MORPH_GRACE_MS);
+    bar_ai_sync_set_hidden(engaged || tap_grace);
 }
 
 void lv_create_mouse_screen(lv_obj_t *scr)
@@ -6760,15 +6552,35 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     // 頂部常駐「控制中設備」名稱：選了哪台電腦(relay)就顯示哪台。非 clickable → 觸控
     // 穿透到上方 status_bar_area_up（媒體下拉）不打架；沒選設備則隱藏。
     s_ctrl_dev_label = lv_label_create(bg);
-    lv_obj_set_width(s_ctrl_dev_label, 240);
+    lv_obj_set_width(s_ctrl_dev_label, 200);
     lv_label_set_long_mode(s_ctrl_dev_label, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(s_ctrl_dev_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(s_ctrl_dev_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_opa(s_ctrl_dev_label, LV_OPA_80, 0);
-    lv_obj_align(s_ctrl_dev_label, LV_ALIGN_TOP_MID, 0, 18);
+    lv_obj_align(s_ctrl_dev_label, LV_ALIGN_TOP_MID, 0, 40);
     lv_obj_clear_flag(s_ctrl_dev_label, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(s_ctrl_dev_label, LV_OBJ_FLAG_SCROLLABLE);
-    update_ctrl_dev_label(); // 依目前 active 設備設定文字/顯示
+
+    /* 設備名兩側切換箭頭：點左=上一台、點右=下一台（循環）。label 寬 200 置中於 y≈40
+       可視區（y=20 太靠上會被圓角螢幕切掉看不到）；箭頭可點（label 本身不可點，讓媒體
+       下拉觸控穿透）。無設備時由 update_ctrl_dev_label 隱藏。 */
+    s_dev_left_arrow = lv_img_create(bg);
+    lv_img_set_src(s_dev_left_arrow, &img_left_arrow);
+    lv_obj_align(s_dev_left_arrow, LV_ALIGN_TOP_MID, -117, 42);
+    lv_obj_add_flag(s_dev_left_arrow, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_dev_left_arrow, 24);
+    lv_obj_add_event_cb(s_dev_left_arrow, dev_arrow_prev_cb, LV_EVENT_CLICKED,
+                        NULL);
+
+    s_dev_right_arrow = lv_img_create(bg);
+    lv_img_set_src(s_dev_right_arrow, &img_right_arrow);
+    lv_obj_align(s_dev_right_arrow, LV_ALIGN_TOP_MID, 117, 42);
+    lv_obj_add_flag(s_dev_right_arrow, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_dev_right_arrow, 24);
+    lv_obj_add_event_cb(s_dev_right_arrow, dev_arrow_next_cb, LV_EVENT_CLICKED,
+                        NULL);
+
+    update_ctrl_dev_label(); // 依目前 active 設備設定文字/顯示 + 箭頭可見性
 
     // Trackpad mode 下方 multitask hint 觸發區（跨 mode hit area）
     bottom_swipe_area = lv_obj_create(bg);
@@ -6785,6 +6597,11 @@ void lv_create_mouse_screen(lv_obj_t *scr)
 
     // === 媒體中心 pull-down panel（從頂部模式切換條往下拉觸發）===
     create_media_center_panel(bg);
+
+    // 啟動自有底部 bar 的隱藏同步 poll（instruction_list 浮層 bar 顯示時收掉它）
+    if (s_bar_ai_sync_timer == NULL)
+        s_bar_ai_sync_timer = lv_timer_create(bar_ai_sync_timer_cb, 40, NULL);
+
 
     #if ENABLE_MENU_FEATURE
     menu_window(bg);
@@ -7008,16 +6825,11 @@ void hid_mouse_destroy(void)
     for (int i = 0; i < HID_MODE_COUNT; i++)
         mode_container[i] = NULL;
     s_ui_host = NULL; /* UI torn down — device_pager will rebuild on next entry */
-    /* 抽屜是 scr 的子物件，screen teardown 會一併釋放，這裡只清指標/狀態避免懸空 */
-    s_dev_drawer = NULL;
-    s_dev_drawer_panel = NULL;
-    s_dev_drawer_pulling = false;
-    s_dev_drawer_reveal = 0;
-    s_dev_drawer_closing_drag = false;
-    s_dev_drawer_suppress_click = false;
     /* 丙：s_dev_active_id 不在這裡清 — 保留「上次控制的設備」，重入時 ONSTART 自動
        接回(見 GUI_APP_MSG_ONSTART)；reboot 才隨 static 歸零。 */
     s_ctrl_dev_label = NULL;   /* 標籤是 scr 子物件、screen teardown 一併釋放，清指標 */
+    s_dev_left_arrow = NULL;   /* 箭頭同為 scr 子物件、teardown 一併釋放，清指標 */
+    s_dev_right_arrow = NULL;
     left_scroll_bar = NULL;
     right_scroll_bar = NULL;
     for (int i = 0; i < LEFT_SCROLL_NODE_COUNT; i++)
@@ -7091,6 +6903,11 @@ void hid_mouse_destroy(void)
     {
         lv_timer_del(cursor_blink_timer);
         cursor_blink_timer = NULL;
+    }
+    if (s_bar_ai_sync_timer != NULL)
+    {
+        lv_timer_del(s_bar_ai_sync_timer);
+        s_bar_ai_sync_timer = NULL;
     }
     clear_input_display();
 
@@ -7187,13 +7004,23 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
            (destroy 不清)，reboot 才隨 static 歸零。 */
         if (active_device_name() != NULL)
         {
+            /* 上次控制的設備還在 → 接回 relay 控制 */
             commu_send_active_device(s_dev_active_id);
             ble_hid_mouse_set_app_route(true);
         }
         else
         {
-            s_dev_active_id[0] = '\0'; /* 記憶的設備已不在 → 忘掉、回 BLE 直連 */
-            ble_hid_mouse_set_app_route(false);
+            /* 沒記憶/設備已不在 → 預設選一台（主要→第一個在線→清單第一個），不再空狀態 */
+            int def = pick_default_device();
+            if (def >= 0)
+            {
+                set_active_device_by_index(def);
+            }
+            else
+            {
+                s_dev_active_id[0] = '\0'; /* registry 真的空 → 才回 BLE 直連 */
+                ble_hid_mouse_set_app_route(false);
+            }
         }
         break;
     }

@@ -939,6 +939,7 @@ void instruction_list_bar_set_visible(bool visible)
     if (visible)
     {
         lv_obj_clear_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+        { extern void hid_mouse_set_own_bar_hidden(bool); hid_mouse_set_own_bar_hidden(true); } /* 浮層 bar 現→當幀收滑鼠自有 bar */
     }
     else
     {
@@ -953,6 +954,7 @@ void instruction_list_bar_set_visible(bool visible)
         instruction_list_close_ai_on_leave();
         instruction_list_bar_set_blur(false);
         lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+        { extern void hid_mouse_set_own_bar_hidden(bool); hid_mouse_set_own_bar_hidden(false); } /* 浮層 bar 收→當幀還原滑鼠自有 bar */
     }
 }
 void set_is_open_instruction_list_ai(bool open)
@@ -2081,6 +2083,7 @@ void instruction_list_bar_device_dismiss(void)
        蓋住別頁。錶盤狀態機之後會重新顯示。 */
     if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
         lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+    { extern void hid_mouse_set_own_bar_hidden(bool); hid_mouse_set_own_bar_hidden(false); } /* 浮層 bar 收→當幀還原滑鼠自有 bar */
 }
 
 /* P3 公開:給 STANDALONE 滑鼠 app(把錶盤 gui_app_exit 拆掉那種)退出用。只通知電腦收 skaibar
@@ -2331,6 +2334,7 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
            錶盤路徑 s_bar_single_device=false 不會進這裡,全域 bar 仍由狀態機常駐。 */
         if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
             lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+        { extern void hid_mouse_set_own_bar_hidden(bool); hid_mouse_set_own_bar_hidden(false); } /* 浮層 bar 收→當幀還原滑鼠自有 bar */
     }
 }
 
@@ -2583,6 +2587,15 @@ bool instruction_list_is_visible(void)
            lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg) &&
            !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_bg,
                             LV_OBJ_FLAG_HIDDEN);
+}
+
+/* 浮層 bar 容器(s_global_bar_layer)實際是否可見 —— 滑鼠 app 用來 frame-對齊它自有底部 bar
+   的隱藏(浮層 bar 一現就收自有 bar、一收就還原)。純唯讀查詢、不改任何顯示行為,故錶盤完全
+   不受影響。注意這查的是「整條浮層 bar 層」,不像 instruction_list_is_visible() 只看清單。 */
+bool instruction_list_floating_bar_visible(void)
+{
+    return s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer) &&
+           !lv_obj_has_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
 }
 
 /* ---- right-edge reveal overlay: the input source for the reveal API above ----

@@ -1379,8 +1379,8 @@ void app_setting_init(void *param)
                         LV_EVENT_VALUE_CHANGED, NULL);
 
     /* Mouse Press Mode wide widget — toggle FSR sampler behavior
-     * OFF: pressure<17000 → move, <10000 → also press left button (default)
-     * ON : always allow move, pressure<17000 → press left button */
+     * OFF: pressure<4700 → move, <2800 → also press left button (default)
+     * ON : always allow move, pressure<4700 → press left button */
     const lv_coord_t mouse_press_btn_w = LV_HOR_RES * 80 / 100;
     mouse_press_quick_btn = lv_obj_create(settings_container);
     lv_obj_set_size(mouse_press_quick_btn, mouse_press_btn_w, 80);
