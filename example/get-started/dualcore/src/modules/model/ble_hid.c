@@ -964,7 +964,9 @@ static void mouse_report_send(uint8_t *key_val, uint16_t key_val_len)
     value.len = key_val_len;
     value.value = key_val;
     int ret = sibles_write_value(g_conn_idx, &value);
-    LOG_D("mouse report send retry:%d", g_conn_idx);
+    /* per-move log 靜音:每次移動都會呼叫(且非真 retry,訊息誤導);
+       本檔 DBG_LVL 寫死 DBG_LOG,不靜音則 PC 直連模式必洗版 */
+    // LOG_D("mouse report send retry:%d", g_conn_idx);
 
     if (ret == 0)
     {

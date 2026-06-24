@@ -371,7 +371,8 @@ bool commu_send_mouse_move(int dx, int dy)
     int n = rt_snprintf(json, sizeof(json), "{\"dx\":%d,\"dy\":%d}", dx, dy);
     if (n <= 0 || n >= (int)sizeof(json)) return false;
     bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_MOVE, json);
-    LOG_D("send mouse move dx=%d dy=%d -> %s", dx, dy, ok ? "ok" : "FAIL");
+    /* per-move log 靜音:air-mouse 以 ~125Hz 取樣,每次移動印一行會洗版 log */
+    // LOG_D("send mouse move dx=%d dy=%d -> %s", dx, dy, ok ? "ok" : "FAIL");
     return ok;
 }
 bool commu_send_mouse_button(uint8_t btn, uint8_t act)
@@ -391,7 +392,8 @@ bool commu_send_mouse_scroll(int dx, int dy)
     int n = rt_snprintf(json, sizeof(json), "{\"dx\":%d,\"dy\":%d}", dx, dy);
     if (n <= 0 || n >= (int)sizeof(json)) return false;
     bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MOUSE_SCROLL, json);
-    LOG_D("send mouse scroll dx=%d dy=%d -> %s", dx, dy, ok ? "ok" : "FAIL");
+    /* per-move log 靜音:同 mouse move,捲動連續觸發會洗版 */
+    // LOG_D("send mouse scroll dx=%d dy=%d -> %s", dx, dy, ok ? "ok" : "FAIL");
     return ok;
 }
 bool commu_send_mouse_back(void)
