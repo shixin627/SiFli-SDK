@@ -1,6 +1,6 @@
 {
-    "version": "1.1.77",
-    "description": "量產版本測試",
+    "version": "1.1.78",
+    "description": "mouse app UI",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
