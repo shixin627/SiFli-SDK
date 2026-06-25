@@ -64,6 +64,7 @@ typedef enum
 
 LV_IMG_DECLARE(sun);
 LV_IMG_DECLARE(mouse_mode_icon);
+LV_IMG_DECLARE(micro_icon); /* recorder glyph for the quick-settings panel */
 LV_IMG_DECLARE(device_btn);
 
 #define NOTIFICATION_ITEM_WIDTH 360
@@ -151,11 +152,60 @@ static void notification_status_bar_cb(lv_event_t *event)
             extern void device_pager_refresh(void);
             device_pager_refresh();
         }
+        else if (area_id == STATUS_BAR_AREA_RIGHT)
+        {
+            /* Reset the App List (col 2) to its top row before it slides in — it's
+               still off-screen here, so the reset is invisible — so re-entering the
+               page always starts at the top instead of its last scroll position. */
+            extern void lv_app_list_layout_reset_scroll(void);
+            lv_app_list_layout_reset_scroll();
+        }
         lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
         lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
         set_clock_main_status_opa(0, false);
     }
+}
+
+/* ---- App List finger-follow from a full-screen face swipe ------------------ *
+ * The watch-face swipe catcher (app_clock_main.c) calls these on a LEFTWARD pull to
+ * drive the App List (col-2 tile) in from the right, finger-following — the same
+ * result the 58px right edge zone gives, but the catcher (not the tileview) owns the
+ * press, so we forward the scroll ourselves (sole writer → no jitter) and commit/
+ * abort with set_tile_id on release; the VALUE_CHANGED settle then re-hides on a
+ * land-back-HOME or wires up the App List page state. */
+void clock_main_applist_follow_begin(void)
+{
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    extern void lv_app_list_layout_reset_scroll(void);
+    lv_app_list_layout_reset_scroll();          /* enter at the top row */
+    lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false); /* snap HOME, no anim */
+    lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    set_clock_main_status_opa(0, false);
+}
+
+void clock_main_applist_follow_update(lv_coord_t dx)
+{
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    /* dx < 0 = leftward pull. HOME sits at scroll_x == LV_HOR_RES (466); the App List
+       (col 2) at 2*LV_HOR_RES. Pull the scroll from HOME toward the App List. */
+    lv_coord_t sx = LV_HOR_RES - dx; /* dx<0 -> sx>466 toward 932 */
+    if (sx < LV_HOR_RES) sx = LV_HOR_RES;
+    if (sx > 2 * LV_HOR_RES) sx = 2 * LV_HOR_RES;
+    lv_obj_scroll_to_x(app_clock_main_status_bar, sx, LV_ANIM_OFF);
+}
+
+void clock_main_applist_follow_end(lv_coord_t dx, lv_coord_t vx)
+{
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    /* Commit to the App List if pulled past a quarter screen OR flung left fast;
+       else animate back HOME (the settle handler re-hides the tileview there). */
+    bool open_it = (dx <= -LV_HOR_RES / 4) || (vx < -6);
+    lv_obj_set_tile_id(app_clock_main_status_bar, open_it ? 2 : 1, 1, true);
 }
 
 static void dev_change_refresh_device_list(void);
@@ -226,6 +276,27 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
     {
     case LV_EVENT_SCROLL:
     {
+        /* App List tile (col 2) reveal: home sits at scroll_x==466; pulling RIGHT
+           toward the App List raises scroll_x toward 932. Finger-follow the SAME
+           blurred-dial + top time/weather fade-in the left mixed-list reveal uses,
+           so the App List slides in with the dial gradually blurring and the time
+           fading IN — not popping straight to the settled state. Historically col 2
+           was an unreachable placeholder, so only the leftward/vertical reveals had a
+           finger-follow fade. The settle (VALUE_CHANGED, MAIN_PAGE_TYPE_LEFT) already
+           lands on this same blurred-dial + OPA_100 time state. */
+        {
+            lv_coord_t sx = lv_obj_get_scroll_x(obj);
+            if (sx > 466)
+            {
+                extern void instruction_list_bar_set_blur_amount(uint8_t opa);
+                lv_coord_t pull = sx - 466; /* 0..466 */
+                lv_coord_t opa = pull * 255 / 466;
+                if (opa > 255) opa = 255;
+                instruction_list_bar_set_blur_amount((uint8_t)opa);
+                set_instruction_list_time_opa((uint8_t)opa);
+                break;
+            }
+        }
         /* Left tile (device_pager) reveal: darken the whole watch face to black as
            the page is pulled out — a full-screen fade-to-black on gaus_dial_bg.
            Home sits at scroll_x == 466; pulling LEFT toward the device tile (now the
@@ -956,6 +1027,50 @@ void gui_set_screen_rotation(uint8_t rotation)
 extern void build_media_contorll_widget(app_media_t *p_app_media,
                                         lv_obj_t *parent);
 extern lv_obj_t *lv_media_widget_builder(lv_obj_t *parent);
+
+/* Brightness slider handler for the quick-settings panel. Restored 2026-06-25
+   alongside control_center_layout_create (was removed when the page was gutted).
+   Drag maps touch-x → brightness; press/release toggles tileview scroll so a
+   horizontal drag on the bar doesn't slide the page. */
+static void bar_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSING)
+    {
+        lv_obj_t *bar = lv_event_get_target(e);
+
+        lv_point_t p;
+        lv_indev_get_point(lv_indev_get_act(), &p);
+
+        lv_coord_t min = lv_bar_get_min_value(bar);
+        lv_coord_t max = lv_bar_get_max_value(bar);
+
+        lv_coord_t w = lv_obj_get_width(bar);
+        lv_coord_t rel_x = p.x - lv_obj_get_x(bar);
+        if (rel_x < 0)
+            rel_x = 0;
+        if (rel_x > w)
+            rel_x = w;
+
+        lv_coord_t value = w ? (rel_x * (max - min)) / w + min : min;
+        if (value < 5)
+            value = 5;
+        lv_bar_set_value(bar, value, LV_ANIM_OFF);
+        uint16_t brightness = lv_bar_get_value(bar);
+        gui_set_brightness(brightness, true);
+    }
+    else if (code == LV_EVENT_PRESSED)
+    {
+        lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
+                          LV_OBJ_FLAG_SCROLLABLE);
+    }
+    else if (code == LV_EVENT_RELEASED)
+    {
+        lv_obj_add_flag(myLancher[app_index_message].pagetileview,
+                        LV_OBJ_FLAG_SCROLLABLE);
+    }
+}
+
 static lv_obj_t *control_center_window;
 static lv_obj_t *control_center_app_list = NULL;
 static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
@@ -970,12 +1085,92 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
                             LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(control_center_window, 0, 0);
     lv_obj_set_style_pad_all(control_center_window, 0, 0);
+    lv_obj_add_flag(control_center_window, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(control_center_window, LV_DIR_VER);
 
-    /* 2026-06-04: the swipe-down app grid was removed — the built-in apps moved
-       into the floating instruction list. This page is now empty and unreachable
-       (HOME dropped LV_DIR_BOTTOM); the window is still created so the page object
-       and the control_center_on_resume/pause hooks stay valid. */
+    /* 2026-06-25: restored the quick-settings panel (brightness + tool buttons)
+       on the swipe-up-from-bottom page. The app grid moved to the right-swipe
+       App List tile; quick settings live here again. Mouse-mode button dropped
+       (the trackpad is reached from the left mixed list / app launch now). */
     control_center_app_list = NULL;
+
+    /* Brightness slider (top) with a sun glyph on its left edge. */
+    lv_obj_t *bar = lv_bar_create(control_center_window);
+    lv_bar_set_range(bar, 0, 100);
+    lv_obj_set_width(bar, LV_PCT(70));
+    lv_obj_set_height(bar, 80);
+    lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 100);
+    lv_obj_set_style_bg_color(bar, APP_MAIN_COLOR, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(bar, APP_MAIN_COLOR, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_90, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_10, LV_PART_MAIN);
+    lv_bar_set_value(bar, SkaiWatchSys.brightness, LV_ANIM_ON);
+    lv_obj_add_event_cb(bar, bar_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_t *sun_icon = lv_img_create(bar);
+    lv_img_set_src(sun_icon, &sun);
+    lv_obj_align(sun_icon, LV_ALIGN_LEFT_MID, 20, 0);
+    brightness_bar = bar;
+
+    /* Tool-button grid below the slider. */
+    lv_obj_t *cc_bottom = lv_obj_create(control_center_window);
+    lv_obj_set_size(cc_bottom, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_bg_opa(cc_bottom, LV_OPA_0, 0);
+    lv_obj_set_style_border_width(cc_bottom, 0, 0);
+    lv_obj_clear_flag(cc_bottom, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align_to(cc_bottom, bar, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+
+    /* Row 1: calculator / flashlight / recorder */
+    /* calculator_icon = the dedicated control-center calculator glyph the user
+       supplied (2026-06-25). CALCULATOR_ICON resolves to &calculator_icon; the
+       ezip resource now exists so the symbol links on watch + PC. */
+    lv_obj_t *calculator_btn = common_image_button(
+        cc_bottom, CALCULATOR_ICON, 100, 100, calculator_btn_event_cb);
+    lv_obj_set_style_bg_opa(calculator_btn, LV_OPA_10, 0);
+    lv_obj_align(calculator_btn, LV_ALIGN_TOP_LEFT, 70, 0);
+
+    lv_obj_t *flishlight_btn = common_image_button(
+        cc_bottom, FLISHLIGHT_ICON, 100, 100, flishlight_icon_event_cb);
+    lv_obj_align(flishlight_btn, LV_ALIGN_TOP_MID, 0, 0);
+
+    lv_obj_t *recorder_btn = common_image_button(
+        cc_bottom, &micro_icon, 100, 100, recorder_btn_event_cb);
+    lv_obj_align(recorder_btn, LV_ALIGN_TOP_RIGHT, -70, 0);
+
+    /* Row 2: setting / qrcode / do-not-disturb */
+    lv_obj_t *setting_icon = common_image_button(
+        cc_bottom, IMG_SETTINGS, 100, 100, setting_icon_event_cb);
+    lv_obj_align_to(setting_icon, calculator_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
+    lv_obj_set_style_bg_opa(setting_icon, LV_OPA_10, 0);
+    lv_obj_set_style_bg_color(setting_icon, lv_color_hex(0xFFFFFF), 0);
+
+    lv_obj_t *qrcode_btn = common_image_button(
+        cc_bottom, &icon_qrcode, 100, 100, qrcode_btn_event_cb);
+    lv_obj_align_to(qrcode_btn, flishlight_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
+
+    dndmode_enabled = SkaiWatchSys.DNDMode.config.status;
+    dnd_mode_btn = common_image_button(cc_bottom, &icon_dnd_mode, 100, 100,
+                                       dnd_mode_btn_event_cb);
+    lv_obj_align_to(dnd_mode_btn, recorder_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
+    if (dndmode_enabled)
+    {
+        lv_obj_set_style_bg_opa(dnd_mode_btn, LV_OPA_90, 0);
+        lv_obj_set_style_bg_color(dnd_mode_btn, APP_MAIN_COLOR, 0);
+    }
+    else
+    {
+        lv_obj_set_style_bg_opa(dnd_mode_btn, LV_OPA_10, 0);
+        lv_obj_set_style_bg_color(dnd_mode_btn, lv_color_hex(0xFFFFFF), 0);
+    }
+
+    /* Row 3: find-phone (+ gesture-test in debug builds) */
+    lv_obj_t *find_phone_btn = common_image_button(
+        cc_bottom, FIND_PHONE, 100, 100, find_phone_btn_event_cb);
+    lv_obj_align_to(find_phone_btn, setting_icon, LV_ALIGN_OUT_BOTTOM_MID, 0, 35);
+#if !kReleaseMode
+    lv_obj_t *gesture_test_btn = common_image_button(
+        cc_bottom, IMG_LOGO, 100, 100, gesture_test_btn_event_cb);
+    lv_obj_align_to(gesture_test_btn, qrcode_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 35);
+#endif
 
     return control_center_window;
 }
@@ -1183,8 +1378,15 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
                the @-list reveal). It is now launched as a list app (app_id_mouse
                in DEFAULT_APP_ITEMS); the left edge is the @-list reveal, the right
                edge the /-list reveal. HOME still scrolls TOP (messages). */
+            /* 2026-06-25: re-enabled LV_DIR_BOTTOM so the quick-settings page
+               (control center, DOWN tile at (1,2)) is reachable again by
+               pulling up from the bottom edge, and LV_DIR_RIGHT so the App List
+               tile (col 2 = MAIN_PAGE_TYPE_LEFT) swipes in from the right edge.
+               HOME still scrolls TOP to the message list. The left edge stays the
+               mixed-list reveal overlay (no LV_DIR_LEFT). */
             pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 1, i,
-                                            LV_DIR_TOP);
+                                            LV_DIR_TOP | LV_DIR_BOTTOM |
+                                                LV_DIR_RIGHT);
             app_clock_main_status_bar_down = pages[i];
             lv_obj_set_style_bg_color(pages[i], LV_COLOR_RED,
                                       LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1277,6 +1479,15 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     LOG_I("clock_status_bar: before instruction_list_layout_create");
     lv_instruction_list_layout_create(pages[INSTRUCTION_LIST_PAGE_INDEX]);
     LOG_I("clock_status_bar: after instruction_list_layout_create");
+
+    /* 2026-06-25: the right-swipe tile (col 2 = INSTRUCTION_LIST_PAGE_INDEX) now
+       hosts the App List grid. instruction_list_layout_create above floats its
+       content on lv_layer_top and only tracks this tile as instruction_list_page
+       (read-only, for scroll-snap), so the tile itself is free to render the app
+       grid that swipes in from the right edge. The left mixed list keeps using
+       the left-edge reveal overlay. */
+    extern lv_obj_t *lv_app_list_layout_create(lv_obj_t * parent);
+    lv_app_list_layout_create(pages[INSTRUCTION_LIST_PAGE_INDEX]);
     extern lv_obj_t *lv_message_list_layout_create(lv_obj_t * parent);
     LOG_I("clock_status_bar: before message_list_layout_create");
     lv_message_list_layout_create(pages[MESSAGE_PAGE_INDEX]);

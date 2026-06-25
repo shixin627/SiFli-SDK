@@ -27,10 +27,12 @@ set PATH=%SCONS%;%PATH%
 call "%REPO_ROOT%\set_env.bat" keil
 if errorlevel 1 exit /b %errorlevel%
 
-REM Board defaults to sf32lb56w-watch (sf32lb563w, dev machines) for manual /
-REM make_release.bat use. release_gui.py overrides WATCH_BOARD to build the
-REM production chip (sf32lb563 = sf32lb56-watch).
-if "%WATCH_BOARD%"=="" set WATCH_BOARD=sf32lb56w-watch
+REM Board defaults to sf32lb56-watch (sf32lb563 production chip = the eh-lb56xu
+REM watch this repo targets). Build output: build_sf32lb56-watch_hcpu\; flash it
+REM with that dir's uart_download.bat (UART download, COM port = the watch's
+REM ImgDownUart channel). Override WATCH_BOARD before calling to build a different
+REM chip (e.g. the older sf32lb56w-watch dev board, or release_gui.py's target).
+if "%WATCH_BOARD%"=="" set WATCH_BOARD=sf32lb56-watch
 
 cd /d "%~dp0"
 scons --board=%WATCH_BOARD% %* > _watch_build.log 2>&1

@@ -213,3 +213,21 @@ void set_voice_recognition_notified_from_mouse(bool status) { (void)status; }
    Called by device_pager.c (set) and hid_mouse.c (get, back routing). */
 void ble_hid_mouse_set_app_route(bool on) { (void)on; }
 bool ble_hid_mouse_app_route(void) { return false; }
+
+/* ---- 2026-06-25: symbols added by recent WIP whose owning TUs are excluded
+   from the PC sim (BLE communicate send-path, audio mic HAL, instruction-op
+   queue, pending-instruction batch). No-op stubs keep the linker happy; the
+   sim verifies UI layout, not these data paths. Signatures mirror
+   communicate_task.h / the mic + instruction-op decls. */
+/* communicate_task.h */ bool commu_send_heart_curve_skip(uint32_t timestamp, uint8_t reason) { (void)timestamp; (void)reason; return false; }
+/* communicate_task.h */ bool commu_send_wear_diag(uint32_t ts, uint8_t evt, uint8_t status, uint16_t dc_q4, uint16_t pi_e6, uint16_t pi_range_e6, uint16_t imu_var_e4) { (void)ts; (void)evt; (void)status; (void)dc_q4; (void)pi_e6; (void)pi_range_e6; (void)imu_var_e4; return false; }
+/* communicate_task.h */ bool commu_send_conv_close(void) { return false; }
+/* communicate_task.h */ bool commu_send_conv_open(const char *title, const char *id, uint8_t index) { (void)title; (void)id; (void)index; return false; }
+/* communicate_task.h */ bool commu_send_conv_send(const char *text) { (void)text; return false; }
+/* communicate_task.h */ bool commu_send_skaibar_dismiss(void) { return false; }
+/* communicate_task.h */ bool commu_send_skaibar_view(char cat) { (void)cat; return false; }
+/* communicate_task.h */ bool commu_send_skaibar_open_device(void) { return false; }
+/* ui_handler batch apply — owning TU excluded on PC */ void apply_pending_instruction_batch(void) { }
+/* instruction-op queue — owning TU excluded on PC */ void instruction_op_enqueue_image(const char *id, const char *path) { (void)id; (void)path; }
+/* mic/audio HAL — excluded on PC */ uint16_t mic_get_rms_level(void) { return 0; }
+/* mic/audio HAL — excluded on PC */ bool mic_get_vad_active(void) { return false; }

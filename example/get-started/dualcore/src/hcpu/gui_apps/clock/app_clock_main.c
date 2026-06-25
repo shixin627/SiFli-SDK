@@ -530,7 +530,11 @@ static void dial_widget_select_event_cb(lv_event_t *e)
                     lv_obj_is_valid(clk_desc->parent))
                 {
 
-                    lv_obj_del(dial_widget);
+                    if (lv_obj_is_valid(dial_widget))
+                    {
+                        lv_obj_del(dial_widget);
+                        dial_widget = NULL;
+                    }
                     break;
                 }
             }
@@ -717,6 +721,15 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
     p_clock->state = new_state;
 }
 
+/* Full-screen watch-face horizontal swipe catcher state (handler/create defined
+   further below near app_clock_main_init; declared here so app_clock_main_select can
+   keep the catcher foreground over the freshly-built face). */
+static lv_obj_t *s_face_swipe_catcher = NULL;
+static lv_coord_t s_face_swipe_start_x;
+static lv_coord_t s_face_swipe_start_y;
+static bool s_face_swipe_locked;
+static int s_face_swipe_route; /* 0 none, 1 skaibar(rightward), 2 app list(leftward) */
+
 static void app_clock_main_select(uint16_t clock_idx)
 {
     rt_uint16_t i;
@@ -755,6 +768,10 @@ static void app_clock_main_select(uint16_t clock_idx)
     }
 
     last_active_clock = clock_idx;
+    /* Keep the swipe catcher on top of the freshly-built face (the face bg is added
+       to clock_container after the catcher was created). */
+    if (s_face_swipe_catcher && lv_obj_is_valid(s_face_swipe_catcher))
+        lv_obj_move_foreground(s_face_swipe_catcher);
 #ifdef BSP_USING_BLOC_SETTING
     setting_provider.set_watch_face(last_active_clock);
 #endif
@@ -1301,6 +1318,104 @@ static void battery_status_indicator_builder(lv_obj_t *parent)
         instruction_list_bluetooth_disconnection;
 }
 
+/* ---- Full-screen watch-face horizontal swipe ------------------------------ *
+ * A transparent catcher kept on top of the bare dial INSIDE clock_container, so it
+ * sits BELOW the dial complication (on scr), the status-bar edge zones and
+ * lv_layer_top — it therefore claims only CENTER face presses and never the dial-
+ * widget tap or the up/down edge handles. It acts on a horizontal axis-lock only:
+ * a rightward pull finger-follows the skaibar mixed list in (the exact API the left
+ * edge strip uses); a leftward pull drives the App List in from the right. Taps and
+ * vertical drags never lock, so they fall through harmlessly. This makes the L/R
+ * reveals triggerable from anywhere on the face while up/down stay edge-only.
+ * (state vars declared above app_clock_main_select so it can keep the catcher
+ *  foreground after rebuilding the face). */
+
+static void face_swipe_catcher_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t *indev = lv_indev_get_act();
+    if (!indev)
+        return;
+    lv_point_t pt;
+    lv_indev_get_point(indev, &pt);
+
+    if (code == LV_EVENT_PRESSED)
+    {
+        s_face_swipe_start_x = pt.x;
+        s_face_swipe_start_y = pt.y;
+        s_face_swipe_locked = false;
+        s_face_swipe_route = 0;
+    }
+    else if (code == LV_EVENT_PRESSING)
+    {
+        lv_coord_t dx = pt.x - s_face_swipe_start_x;
+        lv_coord_t dy = pt.y - s_face_swipe_start_y;
+        if (!s_face_swipe_locked && LV_ABS(dx) > 10 && LV_ABS(dx) > LV_ABS(dy))
+        {
+            /* Clearly-horizontal pull → claim it.
+               rightward = skaibar mixed list; leftward = App List. */
+            if (dx > 0)
+            {
+                extern void instruction_list_reveal_drag_begin_ex(bool, char);
+                s_face_swipe_locked = true;
+                s_face_swipe_route = 1;
+                instruction_list_reveal_drag_begin_ex(true, 0);
+            }
+            else
+            {
+                extern void clock_main_applist_follow_begin(void);
+                s_face_swipe_locked = true;
+                s_face_swipe_route = 2;
+                clock_main_applist_follow_begin();
+            }
+        }
+        if (s_face_swipe_locked && s_face_swipe_route == 1)
+        {
+            extern void instruction_list_reveal_drag_update(lv_coord_t);
+            instruction_list_reveal_drag_update(dx);
+        }
+        else if (s_face_swipe_locked && s_face_swipe_route == 2)
+        {
+            extern void clock_main_applist_follow_update(lv_coord_t);
+            clock_main_applist_follow_update(dx);
+        }
+    }
+    else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+    {
+        if (s_face_swipe_locked && s_face_swipe_route == 1)
+        {
+            lv_coord_t dx = pt.x - s_face_swipe_start_x;
+            lv_point_t v;
+            lv_indev_get_vect(indev, &v);
+            extern void instruction_list_reveal_drag_end(lv_coord_t, lv_coord_t);
+            instruction_list_reveal_drag_end(dx, v.x);
+        }
+        else if (s_face_swipe_locked && s_face_swipe_route == 2)
+        {
+            lv_coord_t dx = pt.x - s_face_swipe_start_x;
+            lv_point_t v;
+            lv_indev_get_vect(indev, &v);
+            extern void clock_main_applist_follow_end(lv_coord_t, lv_coord_t);
+            clock_main_applist_follow_end(dx, v.x);
+        }
+        s_face_swipe_locked = false;
+        s_face_swipe_route = 0;
+    }
+}
+
+static void face_swipe_catcher_create(lv_obj_t *parent)
+{
+    s_face_swipe_catcher = lv_obj_create(parent);
+    lv_obj_remove_style_all(s_face_swipe_catcher);
+    lv_obj_set_size(s_face_swipe_catcher, LV_HOR_RES, LV_VER_RES);
+    lv_obj_align(s_face_swipe_catcher, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_bg_opa(s_face_swipe_catcher, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(s_face_swipe_catcher, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_face_swipe_catcher, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_face_swipe_catcher, face_swipe_catcher_cb, LV_EVENT_ALL,
+                        NULL);
+}
+
 static void app_clock_main_init(lv_obj_t *scr)
 {
     lv_coord_t scr_hor_res, scr_ver_res;
@@ -1321,6 +1436,11 @@ static void app_clock_main_init(lv_obj_t *scr)
                              LV_PART_MAIN);
     lv_obj_clear_flag(p_app_clock_main->clock_container,
                       LV_OBJ_FLAG_SCROLLABLE);
+
+    /* Full-screen horizontal swipe catcher (above the face digits, below the dial
+       complication / edge zones / layer_top). Kept foreground after each face select
+       so a center swipe can reveal the lists. */
+    face_swipe_catcher_create(p_app_clock_main->clock_container);
 
     // Set all clocks to use the same parent
     rt_list_t *pos;
@@ -1452,6 +1572,8 @@ lv_obj_t *lv_home_listview_layout_create(lv_obj_t *parent)
 {
     p_app_clock_main =
         (app_clock_main_t *)lv_mem_alloc(sizeof(app_clock_main_t));
+    if (p_app_clock_main == NULL)
+        return parent;
     memset(p_app_clock_main, 0, sizeof(app_clock_main_t));
     rt_list_init(&p_app_clock_main->list);
 
@@ -1613,6 +1735,8 @@ int32_t app_clock_register(const char *id, const app_clock_ops_t *operations)
         return RT_EINVAL;
 
     new_clock = (app_clock_desc_t *)lv_mem_alloc(sizeof(app_clock_desc_t));
+    if (new_clock == NULL)
+        return RT_ENOMEM;
 
     id_len = strlen(id);
     if (id_len > APP_CLOCK_ID_MAX_LEN)

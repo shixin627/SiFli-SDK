@@ -601,6 +601,12 @@ void check_is_at_home(void)
         }
         LOG_I("is_at_home: %d", _at_home);
     }
+    /* Keep the bottom mic pill correct on every poll, independent of page-change
+       transitions: it shows only while the mixed list is revealed/open (or on the
+       mouse page) and hides on the bare watch face — the bar lives in the left
+       mixed-list page now, not on the face. */
+    extern void instruction_list_refresh_home_bar(void);
+    instruction_list_refresh_home_bar();
 }
 
 static void clear_check_flags(void)
