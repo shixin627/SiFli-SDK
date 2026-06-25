@@ -70,7 +70,7 @@ extern int __bss_end;
 // #define INT16_to_UT (3.3333f)
 
 #define SkaiwalkWatchOS 26
-#define kReleaseMode 1
+#define kReleaseMode 0
 
 /* Default DBG_LVL for project modules (numeric per rtdbg.h:
    0=ERROR, 1=WARNING, 2=INFO, 3=LOG). Release drops LOG_I/LOG_D so
@@ -241,6 +241,9 @@ extern int __bss_end;
 #define MOTOR_POWER_EN_PIN (5)     // PA05
 #define USING_LINEAR_MOTOR_0619
 #define WATCH_IMU_REVERSE_180 (1)
+#if !kReleaseMode
+#define USING_FSR_ADC_SAMPLER
+#endif
 #endif
 
 // #define FRAME_BUFFER_IN_PSRAM
