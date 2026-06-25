@@ -116,6 +116,23 @@ static void handle_back_event(bool is_button)
     {
         lv_disp_trig_activity(NULL);
     }
+    /* The @-conversation chat room (lv_chat_page) is a lv_layer_top overlay ABOVE the instruction
+       list — a back gesture/ESC must close IT first. Otherwise this falls through to the
+       is_at_instruction_list arm below and closes the list UNDER the still-visible chat panel, so the
+       chat looks "stuck" (founder 2026-06-25). The watch's native left-edge back (display_gesture_
+       detect_objs → ESC) drives this, the same path every other surface uses. */
+    {
+        extern bool chat_page_is_open(void);
+        extern void chat_page_close(void);
+        extern bool commu_send_conv_close(void);
+        if (chat_page_is_open())
+        {
+            commu_send_conv_close();
+            chat_page_close();
+            LOG_I("ESC in chat page => close chat room");
+            return;
+        }
+    }
     if (gui_app_is_actived(APP_ID_MESSAGE))
     {
         LOG_D("ESC => trigger_back_event in speech app");

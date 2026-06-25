@@ -760,6 +760,15 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
     }
 
+    case LVGL_MSG_TYPE_REFRESH_CHAT:
+    {
+        /* Render the @-conversation chat room on the LVGL thread from the pending
+           conv-state skai_chat_on_conv_state parsed off the 4KB BLE stack. */
+        extern void chat_page_apply_pending_state(void);
+        chat_page_apply_pending_state();
+        break;
+    }
+
     case LVGL_MSG_TYPE_REFRESH_LANGUAGE:
     {
         /* 語言切換後重建所有「常駐、不重進」的離家視圖，讓 label 重新依新語言

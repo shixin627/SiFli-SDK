@@ -362,6 +362,22 @@ void display_gesture_detect_objs(uint32_t idx, bool display)
     }
 }
 
+void lvsf_gesture_bring_to_front(void)
+{
+    /* Raise the edge-back detector bars AND the drag hint to the FRONT of their parent
+       (lv_layer_top). A later full-screen lv_layer_top overlay (e.g. the @-conversation chat
+       room) is created ABOVE them, so without this the overlay covers the detector (the swipe
+       never reaches it) and the hint (the user can't see it follow their finger). The hint is
+       raised first so the (transparent) detector stays topmost for input. */
+    if (gesture_detect_hint_obj && lv_obj_is_valid(gesture_detect_hint_obj))
+        lv_obj_move_foreground(gesture_detect_hint_obj);
+    for (int i = 0; i < 4; i++)
+    {
+        if (gesture_detect_objs[i] && lv_obj_is_valid(gesture_detect_objs[i]))
+            lv_obj_move_foreground(gesture_detect_objs[i]);
+    }
+}
+
 void lvsf_gesture_disable(void)
 {
     gesture_is_enabled = false;

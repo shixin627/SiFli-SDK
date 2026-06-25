@@ -465,6 +465,18 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
     {
         return;
     }
+    {
+        /* The @-conversation chat room (lv_chat_page) is a floating overlay, not an app — when it's up,
+           its mic drives V2T, so accumulate the transcript HERE (the chat page sends it via
+           commu_send_conv_send on the mic-stop tap). Checked FIRST so the chat captures the voice
+           regardless of any lingering AI-widget speaking state on the surface underneath. */
+        extern bool chat_page_is_open(void);
+        if (chat_page_is_open())
+        {
+            handle_v2t_result(msgData);
+            return;
+        }
+    }
     if (gui_app_is_actived(APP_ID_SPEECH) ||
         gui_app_is_actived(APP_ID_MESSAGE))
     {

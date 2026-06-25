@@ -103,6 +103,11 @@ bool commu_send_skaibar_dismiss(void);                 /* -> KEY_SKAIBAR_DISMISS
 bool commu_send_skaibar_view(char cat);                /* -> KEY_SKAIBAR_VIEW_CHANGE (0x0D) view opened: '@'/'/'/0=bar */
 bool commu_send_skaibar_open_device(void);             /* -> KEY_SKAIBAR_OPEN_DEVICE (0x0E) mouse app: open single controlled device's skaibar */
 
+/* @-conversation chat-room uplink, SKAI_LINK group (P5 "run @ chat on the watch"). */
+bool commu_send_conv_open(const char *title, const char *id, uint8_t index); /* -> KEY_CONV_OPEN  (0x0F) open the tapped @-contact's chat room */
+bool commu_send_conv_send(const char *text);                                 /* -> KEY_CONV_SEND  (0x10) send one turn (mic→V2T transcript) */
+bool commu_send_conv_close(void);                                            /* -> KEY_CONV_CLOSE (0x11) leave the chat room (back) */
+
 /* Sensor */
 bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length);
 
