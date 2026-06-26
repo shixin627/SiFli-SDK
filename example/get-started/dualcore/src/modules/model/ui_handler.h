@@ -203,6 +203,10 @@ extern "C"
            so their labels pick up the new locale. Sent from bloc_setting.c
            notify_language(). */
         LVGL_MSG_TYPE_REFRESH_LANGUAGE,
+        /* Defer the @-conversation chat-room render to the LVGL thread:
+           skai_chat_on_conv_state parses the BLE conv-state on KE_EVT2 (4KB BLE
+           stack) into a pending buffer, then triggers this to rebuild the bubbles. */
+        LVGL_MSG_TYPE_REFRESH_CHAT,
     };
 
     typedef struct
@@ -398,8 +402,6 @@ extern "C"
     extern void bad_signal_indicator_builder(void *par);
     extern void reset_lvgl_msg_handler(void);
 
-    extern void open_message_app(const char *notification_id);
-    extern void close_message_app(void);
     extern void change_flashlight_switch(bool state);
 
     extern bool get_scrolling_motor_vibrate_status(void);

@@ -54,6 +54,7 @@
 #include <math.h>
 #include "ui_helper.h"
 #include "ui_img_helper.h"
+#include "lv_chat_page.h"
 
 #ifndef M_PI
     #define M_PI 3.14159265358979323846
@@ -278,7 +279,24 @@ uint16_t INSTRUCTION_LIST_ITEMS_DEFINITION[] = {
     // app_id_flashlight,  /* removed: local app off the left list */
     // app_id_recorder,    /* removed: local app off the left list */
     // app_id_ai,          /* no Skai input widget on the left list */
+#ifdef _MSC_VER
+    /* MSVC (PC simulator) rejects the empty `{}` initializer that GCC/Keil accept
+       as a zero-length-array extension. This single sentinel slot is never read:
+       every loop is bounded by INSTRUCTION_LIST_ITEMS_DEF_COUNT (0), not by
+       ARRAY_SIZE of this array. Real firmware (GCC/Keil) keeps the empty list. */
+    0xFFFFu,
+#endif
 };
+
+/* Loop bound for INSTRUCTION_LIST_ITEMS_DEFINITION. The list is intentionally
+   empty (app_base_count stays 0); under MSVC the array carries one sentinel slot
+   to satisfy the C initializer rule, so pin the count to 0 there explicitly. */
+#ifdef _MSC_VER
+#define INSTRUCTION_LIST_ITEMS_DEF_COUNT 0u
+#else
+#define INSTRUCTION_LIST_ITEMS_DEF_COUNT \
+    ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION)
+#endif
 
 uint8_t return_app_count(void)
 {
@@ -961,6 +979,43 @@ void set_is_open_instruction_list_ai(bool open)
 {
     is_open_instruction_list_ai = open;
 }
+
+/* 2026-06-25: the bottom mic pill now belongs to the left mixed-list page, not the
+   bare watch face. Show it only while the floating list is revealed/open (it sits
+   at the list's bottom) or on the mouse page (which uses the bar as its own
+   trigger); hide it on the bare home face. s_global_bar_layer itself stays shown on
+   home so the left-edge reveal overlay keeps receiving touches — only the pill (and
+   its skaibar_img child) is hidden. */
+void instruction_list_refresh_home_bar(void)
+{
+    if (!p_instruction_list_layout || !p_instruction_list_layout->mic_bar ||
+        !lv_obj_is_valid(p_instruction_list_layout->mic_bar))
+        return;
+    extern bool clock_main_page_is_home(void);
+    lv_obj_t *bar = p_instruction_list_layout->mic_bar;
+    lv_obj_t *bg = p_instruction_list_layout->p_instruction_list_bg;
+    bool list_shown = bg && lv_obj_is_valid(bg) &&
+                      !lv_obj_has_flag(bg, LV_OBJ_FLAG_HIDDEN);
+    bool hide_pill = clock_main_page_is_home() && !list_shown;
+    /* Idempotent: lv_obj_add_flag/clear_flag invalidate unconditionally (LVGL v8
+       does not short-circuit when the flag is unchanged), and this runs every
+       check_is_at_home poll while the watch face is up — only touch the flag when
+       the state actually changes, so we don't redraw the pill every tick. */
+    bool currently_hidden = lv_obj_has_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    if (hide_pill == currently_hidden)
+        return;
+    if (hide_pill)
+    {
+        lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
+        /* Reset the skaibar image to full opacity for the next show — the left-edge
+           reveal drives its img_opa 0→255 via bar_reveal_opa_track, so an abandoned
+           reveal must not leave the next (e.g. mouse-page) standalone show dim. */
+        if (s_mic_bar_icon && lv_obj_is_valid(s_mic_bar_icon))
+            lv_obj_set_style_img_opa(s_mic_bar_icon, LV_OPA_COVER, 0);
+    }
+    else
+        lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
+}
 static bool is_at_ai_widget = false;
 static bool scroll_initialized = false;
 static bool touching_screen = false;
@@ -1149,7 +1204,7 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
            read past the end now that the array is empty.) */
         is_at_ai_widget = false;
         for (uint8_t ai = 0;
-             ai < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION); ai++)
+             ai < INSTRUCTION_LIST_ITEMS_DEF_COUNT; ai++)
         {
             if (INSTRUCTION_LIST_ITEMS_DEFINITION[ai] == app_id_ai)
             {
@@ -2406,6 +2461,29 @@ static void dial_blur_track(lv_coord_t tx)
     }
 }
 
+/* Fade the bottom mic pill in WITH the watch-face left-edge reveal (finger-follow):
+   opacity tracks how far the list has slid in, mirroring dial_blur_track. Without
+   this the pill popped to full opacity the instant the reveal began. ONLY the
+   left-edge reveal (s_reveal_from_left) fades it — programmatic opens (the mouse
+   page's bar tap → open_browse, which parks on the right) keep the bar opaque so the
+   bar you just tapped doesn't blink back from transparent. */
+static void bar_reveal_opa_track(lv_coord_t tx)
+{
+    if (!s_reveal_from_left)
+        return;
+    if (!s_mic_bar_icon || !lv_obj_is_valid(s_mic_bar_icon))
+        return;
+    lv_coord_t pulled = LV_HOR_RES - LV_ABS(tx);
+    if (pulled < 0) pulled = 0;
+    if (pulled > LV_HOR_RES) pulled = LV_HOR_RES;
+    /* Fade the skaibar IMAGE itself (img_opa) — the same property lmic_grow_cb uses
+       to dissolve it. A parent LV_STYLE_OPA on mic_bar did NOT visibly fade the
+       child image during the finger drag (the pill stayed invisible until the
+       settle, so it looked like it popped in at the end). */
+    lv_obj_set_style_img_opa(s_mic_bar_icon,
+                             (lv_opa_t)((pulled * LV_OPA_COVER) / LV_HOR_RES), 0);
+}
+
 /* Settle-animation exec: drive the list translate AND keep the finger-followed
    blur tracking it, so the dial blur ramps smoothly THROUGH the release animation
    instead of jumping at its end (plain inst_list_slide_anim_cb moves only X). */
@@ -2416,12 +2494,26 @@ static void reveal_settle_anim_cb(void *var, int32_t v)
         return;
     lv_obj_set_style_translate_x(list_bg, (lv_coord_t)v, 0);
     dial_blur_track((lv_coord_t)v);
+    bar_reveal_opa_track((lv_coord_t)v); /* ramp the bottom mic pill THROUGH the settle */
 }
 
 /* Start a finger-reveal: un-hide the parked list and turn the watch-face blur on
    (finger-follow: it fades in as you pull). No-op if a close is animating or the
    list is already up (browse / open) — the reveal is only for pulling a hidden
    list back in. Does NOT touch is_open / start v2t / morph the box. */
+/* External driver entry for the full-screen face swipe detector: pick the entry edge
+   + view filter atomically, then run the standard finger-follow begin. The edge-strip
+   handlers set these two file-private statics inline before begin(); this exposes the
+   same setup so a caller outside this file (the watch-face catcher) can start an
+   identical reveal. from_left=true + filter=0 == the left-edge mixed-list reveal. */
+void instruction_list_reveal_drag_begin(void); /* defined just below */
+void instruction_list_reveal_drag_begin_ex(bool from_left, char filter)
+{
+    s_reveal_from_left = from_left;
+    s_pending_reveal_filter = filter;
+    instruction_list_reveal_drag_begin();
+}
+
 void instruction_list_reveal_drag_begin(void)
 {
     if (!p_instruction_list_layout)
@@ -2455,6 +2547,13 @@ void instruction_list_reveal_drag_begin(void)
        was set by the caller — the edge overlay at lock, or open_browse to 0 (all). */
     instruction_list_set_category_filter(s_pending_reveal_filter);
     s_reveal_drag_active = true;
+    /* The list is now shown — surface the bottom mic pill with it (the bar that
+       used to sit on the bare watch face). */
+    instruction_list_refresh_home_bar();
+    /* Start the pill transparent for the left-edge reveal so it fades in WITH the
+       list; drag_update / reveal_settle_anim_cb ramp it to full as the list slides
+       in. No-op for programmatic (non-left) opens, which keep the bar opaque. */
+    bar_reveal_opa_track(s_reveal_from_left ? -LV_HOR_RES : LV_HOR_RES);
 }
 
 /* Finger-follow: dx = how far LEFT the finger has pulled from the press point
@@ -2484,6 +2583,7 @@ void instruction_list_reveal_drag_update(lv_coord_t dx)
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
     lv_obj_set_style_translate_x(list_bg, tx, 0);
     dial_blur_track(tx); /* finger-follow blur: fade in with the pull */
+    bar_reveal_opa_track(tx); /* finger-follow: fade the bottom mic pill in too */
 }
 
 /* Release: settle by the live offset. Revealed past a quarter OR flung left fast
@@ -2706,7 +2806,10 @@ static void reveal_edge_overlay_left_event_cb(lv_event_t *e)
         if (!s_reveal_axis_locked && dx > 10 && dx > LV_ABS(dy))
         {
             s_reveal_axis_locked = true;
-            s_pending_reveal_filter = '@'; /* left-edge pull → chat (@) view */
+            /* 2026-06-25: left-edge pull now reveals the MIXED list (all
+               categories), not the @-only chat view. The @ / / split is gone on
+               the watch; one combined list slides in from the left. */
+            s_pending_reveal_filter = 0; /* left-edge pull → mixed (all) view */
             instruction_list_reveal_drag_begin();
         }
         if (s_reveal_axis_locked)
@@ -2743,14 +2846,15 @@ static void reveal_edge_overlay_left_event_cb(lv_event_t *e)
    there). No-op until the overlay exists. */
 void instruction_list_reveal_overlay_set_enabled(bool enabled)
 {
+    /* 2026-06-25: the RIGHT-edge reveal is retired — the right edge now swipes to
+       the App List tile (HOME LV_DIR_RIGHT). Keep its overlay permanently hidden
+       so it never intercepts that swipe. Only the LEFT-edge overlay (now the
+       mixed list) stays gated by the watch-face `enabled` flag. */
     if (s_reveal_edge_overlay && lv_obj_is_valid(s_reveal_edge_overlay))
     {
-        if (enabled)
-            lv_obj_clear_flag(s_reveal_edge_overlay, LV_OBJ_FLAG_HIDDEN);
-        else
-            lv_obj_add_flag(s_reveal_edge_overlay, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_reveal_edge_overlay, LV_OBJ_FLAG_HIDDEN);
     }
-    /* P2 S3 — the left-edge (@) overlay shares the same watch-face gating. */
+    /* The left-edge (mixed-list) overlay follows the watch-face gating. */
     if (s_reveal_edge_overlay_left && lv_obj_is_valid(s_reveal_edge_overlay_left))
     {
         if (enabled)
@@ -3409,6 +3513,22 @@ static void list_item_click_event_cb(lv_event_t *evt)
         return;
     LOG_D("ID: %s,obj:%p", item->id, obj);
 
+    /* A tapped @-contact opens the in-watch chat room (mirror the desktop @-contact
+       tap). The merged mixed list has no separate @ view, so this keys off the tapped
+       item's OWN category, not the page filter — @ rows open the conversation, '/' and
+       untagged rows fall through to the action/app split below. Guarded off while the AI
+       input widget is up. The phone resolves the route from {index,title,id} and streams
+       the chat state back via KEY_CONV_STATE. */
+    if (item->category == '@' && !is_open_instruction_list_ai)
+    {
+        int conv_idx = (int)(item - &list_items[0]);
+        if (conv_idx < 0 || conv_idx >= MAX_LIST_ITEMS)
+            conv_idx = 0;
+        commu_send_conv_open(item->title, item->id, (uint8_t)conv_idx);
+        chat_page_open(item->title);
+        return;
+    }
+
     if (item->is_instruction)
     {
         LOG_I("Custom instruction tapped: id=%s, title=%s", item->id,
@@ -3507,6 +3627,17 @@ static void on_tap(void)
         return;
 
     list_item_t *item = &list_items[selected_item_index];
+
+    /* A tapped @-contact opens the in-watch chat room — the raise-wrist gesture path,
+       mirror of list_item_click_event_cb. Keys off the item's own category (the merged
+       mixed list has no separate @ view). */
+    if (item->category == '@' && !is_open_instruction_list_ai)
+    {
+        commu_send_conv_open(item->title, item->id, (uint8_t)selected_item_index);
+        chat_page_open(item->title);
+        return;
+    }
+
     if (item->is_instruction)
     {
         LOG_I("Custom instruction tapped via gesture: id=%s", item->id);
@@ -3577,7 +3708,7 @@ static void on_tap(void)
 
 static int16_t find_app_index_by_id(uint16_t app_id)
 {
-    for (int i = 0; i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION); i++)
+    for (int i = 0; i < INSTRUCTION_LIST_ITEMS_DEF_COUNT; i++)
     {
         if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id)
         {
@@ -4021,7 +4152,8 @@ static void logo_click_event_cb(lv_event_t *evt)
     if (!isTextEmpty())
     {
         tap_on_ai_hint();
-        lv_obj_add_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
+        if (ai_voice_send_icon && lv_obj_is_valid(ai_voice_send_icon))
+            lv_obj_add_flag(ai_voice_send_icon, LV_OBJ_FLAG_HIDDEN);
     }
 }
 static void ai_bar_event_cb(lv_event_t *evt)
@@ -4421,7 +4553,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
         if (!list_items[i].is_instruction)
         {
             /* App items: check for special widgets */
-            if (i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION))
+            if (i < INSTRUCTION_LIST_ITEMS_DEF_COUNT)
             {
                 if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai)
                 {
@@ -4436,7 +4568,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
         {
             lv_obj_set_size(widget, LIST_ITEM_WIDGET_WIDTH,
                             LIST_ITEM_WIDGET_HEIGHT);
-            if (i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION) &&
+            if (i < INSTRUCTION_LIST_ITEMS_DEF_COUNT &&
                 INSTRUCTION_LIST_ITEMS_DEFINITION[i] != app_id_ai)
             {
                 lv_obj_set_style_clip_corner(widget, true, 0);
@@ -4445,7 +4577,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
             {
                 lv_obj_add_flag(widget, LV_OBJ_FLAG_SCROLLABLE);
             }
-            if (i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION) &&
+            if (i < INSTRUCTION_LIST_ITEMS_DEF_COUNT &&
                 INSTRUCTION_LIST_ITEMS_DEFINITION[i] != app_id_ai)
             {
                 lv_obj_set_style_border_color(widget, lv_color_hex(0xFFFFFF),
@@ -4550,7 +4682,7 @@ static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
 
         /* Hide labels for ai apps */
         if (!list_items[i].is_instruction &&
-            i < ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION))
+            i < INSTRUCTION_LIST_ITEMS_DEF_COUNT)
         {
             if (INSTRUCTION_LIST_ITEMS_DEFINITION[i] == app_id_ai)
             {

@@ -28,6 +28,13 @@
 #define APP_LIST_SLOT_ANGLE_DEG 30 /* 弧形滑過 30° = 一行 */
 #define APP_LIST_BAND_THICKNESS 90
 #define APP_LIST_EXTRA_SCROLL APP_LIST_CELL_H /* 拉到底之後可再往下一個 cell */
+/* 466x466 round display: the LAST grid row settles with its bottom at this screen Y
+   at scroll-end. Tuned so the bottom row's icons (80px source @129% ≈ 103px, r≈52)
+   sit fully inside the circle — for col0/col2 that means the row centre stays within
+   ~[106,360] of the display centre. 415 puts the last row centre at ~351 (≈9px inside
+   the limit) while keeping the empty band below it small (~51px); lower values cut the
+   corner icon, much higher values leave too big a gap under the grid. */
+#define APP_LIST_BOTTOM_VISIBLE 415
 
 /*******************************************************************************
  * Configure which apps to show in the grid.
@@ -72,6 +79,10 @@ static const uint16_t APP_LIST_ITEMS[] = {
 };
 
 #define APP_LIST_COUNT (sizeof(APP_LIST_ITEMS) / sizeof(APP_LIST_ITEMS[0]))
+
+/* The scrollable grid container, kept so the page can be reset to its top row on
+   re-entry (lv_app_list_layout_reset_scroll). */
+static lv_obj_t *s_app_list_container = NULL;
 
 static const char *get_app_id_str(uint16_t app_id)
 {
@@ -194,18 +205,13 @@ static lv_obj_t *app_list_arc_tap_cb(lv_point_t press_point, void *ctx)
     return find_cell_at_point((lv_obj_t *)ctx, press_point);
 }
 
-static lv_coord_t app_list_max_scroll(lv_obj_t *container)
+/* Bottom edge (natural inner Y) of the lowest interactive cell = the grid's content
+ * height. Only CLICKABLE children count — cells carry that flag, spacers/non-widgets
+ * don't. lv_obj_get_y already folds in scroll compensation (see lv_obj_pos.c), so this
+ * is the true inner Y; don't add scroll_y. */
+static lv_coord_t app_list_content_bottom(lv_obj_t *container)
 {
-    /* 走 children 抓最底邊（natural inner y），讓 caller 可以在 layout_create
-     * 之後 set_y 把 cell 推下去、加 brightness bar 之類，arc-scroll 也能算對。
-     * 只看 CLICKABLE 的 child — cell 都會掛這個 flag，bottom_spacer 之類非
-     * 互動 widget 排除掉。lv_obj_get_y 已經內含 scroll 補償（見 lv_obj_pos.c），
-     * 回傳的就是 natural inner y，不要再加 scroll_y。
-     * 多塞一個 APP_LIST_EXTRA_SCROLL 當尾端緩衝，讓 user 可以把最後一行拉過
-     * 螢幕底邊一段，elastic 才有空間表現出「拉到底還能再多一點」 */
     if (container == NULL || !lv_obj_is_valid(container)) return 0;
-    lv_coord_t pad_top = lv_obj_get_style_pad_top(container, LV_PART_MAIN);
-    lv_coord_t pad_bottom = lv_obj_get_style_pad_bottom(container, LV_PART_MAIN);
     lv_coord_t max_bottom = 0;
     uint32_t cnt = lv_obj_get_child_cnt(container);
     for (uint32_t i = 0; i < cnt; i++)
@@ -217,18 +223,25 @@ static lv_coord_t app_list_max_scroll(lv_obj_t *container)
         lv_coord_t bottom = lv_obj_get_y(c) + lv_obj_get_height(c);
         if (bottom > max_bottom) max_bottom = bottom;
     }
-    lv_coord_t inner_viewport =
-        lv_obj_get_height(container) - pad_top - pad_bottom;
-    lv_coord_t base = (max_bottom > inner_viewport)
-                          ? (max_bottom - inner_viewport)
-                          : 0;
-    return base + APP_LIST_EXTRA_SCROLL;
+    return max_bottom;
+}
+
+static lv_coord_t app_list_max_scroll(lv_obj_t *container)
+{
+    /* Cap the scroll so that at the scroll-end the bottom row's bottom edge rests at
+       APP_LIST_BOTTOM_VISIBLE on the round screen — clear of the bottom-corner curve
+       that was cutting the rightmost icon. snap_cb pairs with this: it pulls the last
+       row up to here the instant the row scrolls fully into view (see below). */
+    lv_coord_t max_bottom = app_list_content_bottom(container);
+    if (max_bottom <= APP_LIST_BOTTOM_VISIBLE) return 0;
+    return max_bottom - APP_LIST_BOTTOM_VISIBLE;
 }
 
 static lv_obj_t *app_list_arc_snap_cb(void *ctx)
 {
-    /* grid 沒有 selected item 概念，只負責把 overshoot 拉回 [0, max]。snap_cb
-     * 直接呼叫 lv_obj_scroll_to_y 處理動畫，回傳 NULL 讓 released_cb 不再做事 */
+    /* grid 沒有 selected item 概念：把 overshoot 拉回 [0, max]，並在最後一行整個
+     * 滑進畫面底部時 snap 到 max，避免它停在被圓角削掉的最底。直接呼叫
+     * lv_obj_scroll_to_y、回傳 NULL 讓 released_cb 不再動 */
     lv_obj_t *container = (lv_obj_t *)ctx;
     if (container == NULL || !lv_obj_is_valid(container)) return NULL;
     lv_coord_t cur = lv_obj_get_scroll_y(container);
@@ -239,6 +252,17 @@ static lv_obj_t *app_list_arc_snap_cb(void *ctx)
     }
     else if (cur > max_scroll)
     {
+        lv_obj_scroll_to_y(container, max_scroll, LV_ANIM_ON);
+    }
+    else if (max_scroll > 0 && cur < max_scroll &&
+             (app_list_content_bottom(container) - cur) <= LV_VER_RES)
+    {
+        /* 466x466 round display: the instant the LAST row's bottom edge has scrolled
+           fully onto the screen (content_bottom - cur <= screen height) it is still
+           sitting LOW in the clipped bottom corner — the user stops here thinking it's
+           the bottom and never reaches the cleared max. So snap fully to max: the last
+           row lands with its bottom at APP_LIST_BOTTOM_VISIBLE, well inside the circle.
+           The upper view (last row still partly below the screen) doesn't trigger. */
         lv_obj_scroll_to_y(container, max_scroll, LV_ANIM_ON);
     }
     return NULL;
@@ -271,6 +295,15 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     lv_obj_set_scroll_dir(container, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(container, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_pad_top(container, APP_LIST_PAD_TOP, 0);
+    /* CRITICAL for the round display: the container is natively SCROLLABLE, so LVGL
+       clamps lv_obj_scroll_to_y() to [0, content_height - viewport]. Without this the
+       scroll bottoms out with the last grid row sitting at the very screen edge, where
+       the round corner cuts the rightmost icon — and our snap-to-cleared-position is
+       clamped straight back, so nothing moves. Extend the scrollable area by exactly
+       (screen - APP_LIST_BOTTOM_VISIBLE) so the native bottom == app_list_max_scroll:
+       scrolling to the bottom then lands with the last row's bottom edge at
+       APP_LIST_BOTTOM_VISIBLE, clear of the corner. */
+    lv_obj_set_style_pad_bottom(container, LV_VER_RES - APP_LIST_BOTTOM_VISIBLE, 0);
 
     uint8_t count = APP_LIST_COUNT;
     uint8_t rows = (count + APP_LIST_COLS - 1) / APP_LIST_COLS;
@@ -320,6 +353,16 @@ lv_obj_t *lv_app_list_layout_create(lv_obj_t *parent)
     arc_cfg.ctx = container;
     arc_scroll_create(&arc_cfg);
 
+    s_app_list_container = container;
     LOG_I("App list created with %d apps, %d rows", count, rows);
     return container;
+}
+
+/* Reset the app grid back to its top row. Called when the App List page is about
+   to be revealed (the right-edge pull) so re-entering it always starts at the top
+   instead of wherever the last visit left it scrolled. */
+void lv_app_list_layout_reset_scroll(void)
+{
+    if (s_app_list_container && lv_obj_is_valid(s_app_list_container))
+        lv_obj_scroll_to_y(s_app_list_container, 0, LV_ANIM_OFF);
 }

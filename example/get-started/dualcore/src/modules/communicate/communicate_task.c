@@ -361,6 +361,41 @@ bool commu_send_option_focus(uint8_t idx)
     return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_ACTION_FOCUS, json);
 }
 
+/* watch→phone (SKAI_LINK): @-conversation chat room (P5 "run @ chat on the watch").
+   open over-provides identity (index/title/id) so the phone resolves the conversation
+   route however its aggregation prefers. NOTE: title/id are interpolated RAW into the
+   JSON (no escape helper on-device) — a contact name with a literal '"' would break the
+   phone-side parse and the open is then dropped fail-safe; contact/app titles virtually
+   never contain quotes, matching the rest of this group's raw-%s convention. */
+bool commu_send_conv_open(const char *title, const char *id, uint8_t index)
+{
+    char json[256];
+    int n = rt_snprintf(json, sizeof(json),
+                        "{\"index\":%u,\"title\":\"%s\",\"id\":\"%s\"}",
+                        (unsigned)index, title ? title : "", id ? id : "");
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_OPEN, json);
+    LOG_I("send conv open idx=%u title=%s -> %s", (unsigned)index,
+          title ? title : "", ok ? "ok" : "FAILED");
+    return ok;
+}
+bool commu_send_conv_send(const char *text)
+{
+    if (text == NULL || text[0] == '\0') return false;
+    char json[300];
+    int n = rt_snprintf(json, sizeof(json), "{\"text\":\"%s\"}", text);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_SEND, json);
+    LOG_I("send conv send len=%u -> %s", (unsigned)strlen(text), ok ? "ok" : "FAILED");
+    return ok;
+}
+bool commu_send_conv_close(void)
+{
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_CLOSE, "{}");
+    LOG_I("send conv close -> %s", ok ? "ok" : "FAILED");
+    return ok;
+}
+
 /* watch→phone (SKAI_LINK): device-page trackpad relay. The right-side device
    page hosts the hid_mouse trackpad; rather than emitting BLE HID reports, its
    events stream here and the phone actuates them on the active target device.

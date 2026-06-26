@@ -314,6 +314,23 @@ static void handle_device_removed(uint8_t *pValue, uint16_t length)
     cJSON_Delete(root);
 }
 
+/* 0x12 — {title, sending, messages:[{role,text}]}: the folded chat state for the
+   currently-open @-conversation. Forwarded VERBATIM to the chat-room GUI
+   (lv_chat_page.c), which parses + renders it on the LVGL thread (this runs on the
+   BLE parse thread). Strong extern — same rule as skai_device_ui_refresh: a weak ref
+   gets dead-stripped by armlink → the symbol resolves NULL → a silent no-op. */
+extern void skai_chat_on_conv_state(const uint8_t *pValue, uint16_t length);
+
+static void handle_conv_state(uint8_t *pValue, uint16_t length)
+{
+    if (pValue == NULL || length == 0)
+    {
+        LOG_W("conv_state: empty payload");
+        return;
+    }
+    skai_chat_on_conv_state(pValue, length);
+}
+
 void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
 {
     switch ((SKAI_LINK_KEY)key)
@@ -348,6 +365,16 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_MOUSE_BACK:
         /* Device-page trackpad relay — uplink-only (watch→phone); never received. */
         LOG_W("skailink: mouse key 0x%02x is uplink-only", key);
+        break;
+    case KEY_CONV_STATE:
+        /* phone→watch (DOWNLINK): folded chat state for the open @-conversation. */
+        handle_conv_state(pValue, length);
+        break;
+    case KEY_CONV_OPEN:
+    case KEY_CONV_SEND:
+    case KEY_CONV_CLOSE:
+        /* @-conversation control — uplink-only (watch→phone); never received here. */
+        LOG_W("skailink: conv key 0x%02x is uplink-only", key);
         break;
     default:
         LOG_W("skailink: unknown key 0x%02x", key);

@@ -59,6 +59,27 @@ extern "C"
            single-device control context. Distinct from KEY_SKAIBAR_VIEW_CHANGE (0x0D),
            which is the watch-face bar's aggregated broadcast to EVERY device. */
         KEY_SKAIBAR_OPEN_DEVICE = 0x0E,
+        /* ── @-conversation chat room (P5 "run @ chat on the watch") ──
+           The watch taps a left-@ contact row and opens an in-watch chat room that
+           MIRRORS the desktop conversation: the phone-primary routes the open to the
+           owning desktop (km-relay convOpen), the desktop runs it headless + streams
+           turns back, and the phone pushes the folded chat state DOWN to the watch.
+           Keep in lockstep with the phone WatchProtocol (android/ios) conv handling. */
+        /* watch→phone (UPLINK): {"index":N,"title":"...","id":"..."} the left-@ row the
+           user tapped. Over-provides identity (index/title/id) so the phone resolves the
+           conversation route however its aggregation prefers (id if a conv:<svc>:<handle>,
+           else title, else index). Opens the chat room. */
+        KEY_CONV_OPEN = 0x0F,
+        /* watch→phone (UPLINK): {"text":"..."} send one turn into the open conversation
+           (the watch's mic→V2T transcript). */
+        KEY_CONV_SEND = 0x10,
+        /* watch→phone (UPLINK): {} the user left the chat room (back gesture). The phone
+           stops observing + unbinds (km-relay convStop). */
+        KEY_CONV_CLOSE = 0x11,
+        /* phone→watch (DOWNLINK): {"title":"...","sending":bool,"messages":[{"role":"...",
+           "text":"..."}]} the folded chat state the watch renders. role ∈ incoming/outgoing/
+           user/assistant. Pushed on every convEvent the phone folds. */
+        KEY_CONV_STATE = 0x12,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

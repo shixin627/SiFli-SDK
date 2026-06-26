@@ -62,6 +62,7 @@
 #include "bloc_peripheral.h"
 #include "ui_handler.h"
 #include "ui_helper.h"
+#include "app_mem.h"
 #include "webrtc/common_audio/vad/include/webrtc_vad.h"
 
 #ifdef ENABLE_OPUS_ENCODER
@@ -137,6 +138,46 @@ typedef enum
 
 static OpusEncoder *shared_opus_encoder = NULL;  // non-NULL only while owned
 static opus_owner_t opus_enc_owner = OPUS_OWNER_NONE;
+
+/* ── Opus heap backend → PSRAM ─────────────────────────────────────────────
+   opus.c defines opus_heap_malloc/opus_heap_free as RT_WEAK (rt_malloc, i.e. the
+   SRAM system heap). This STRONG override wins at link time and routes opus's
+   persistent allocations — chiefly the ~24 KB encoder state — to the PSRAM image
+   pool instead. The SRAM heap runs ~99 % full during voice, so once the 1st
+   session fragments it the 2nd session's 24 KB *contiguous* alloc failed
+   ("opus_encoder_create failed err=-7") and that voice turn produced no audio; the
+   PSRAM pool has >1.8 MB free. The encoder state is CPU-only (no DMA), so cached
+   PSRAM is safe, and opus's per-frame scratch uses alloca (USE_ALLOCA), not this
+   backend — the hot encode path stays on-stack.
+
+   Alignment: app_cache_alloc() returns (heap base + 4) → only 4-byte aligned, but
+   the OpusEncoder state needs 8-byte alignment (armclang emits LDRD/STRD against
+   it; a 4-byte base HardFaults — that was the "voice keeps crashing/rebooting").
+   So we over-allocate, align the result up to 8, and stash the real app_cache
+   pointer in the word just below the aligned address for opus_heap_free(). */
+#define OPUS_PSRAM_ALIGN 8u
+void *opus_heap_malloc(uint32_t size)
+{
+    uint8_t *base = (uint8_t *)app_cache_alloc(size + OPUS_PSRAM_ALIGN + sizeof(void *),
+                                               IMAGE_CACHE_PSRAM);
+    if (!base)
+    {
+        return NULL;
+    }
+    /* leave room (>= sizeof(void*)) below the aligned address for the back-pointer */
+    uintptr_t aligned = ((uintptr_t)base + sizeof(void *) + (OPUS_PSRAM_ALIGN - 1))
+                        & ~(uintptr_t)(OPUS_PSRAM_ALIGN - 1);
+    ((void **)aligned)[-1] = base;
+    return (void *)aligned;
+}
+
+void opus_heap_free(void *p)
+{
+    if (p)
+    {
+        app_cache_free(((void **)p)[-1]);
+    }
+}
 
 static uint8_t rec_opus_output[OPUS_REC_MAX_PACKET] __attribute__((aligned(4)));
 static int16_t rec_pcm_buffer[OPUS_REC_FRAME_SIZE];
@@ -1204,7 +1245,8 @@ void setVoice2Text(char *text)
 {
     if (text != NULL)
     {
-        strcpy(_v2t_result.text, text);
+        strncpy(_v2t_result.text, text, sizeof(_v2t_result.text) - 1);
+        _v2t_result.text[sizeof(_v2t_result.text) - 1] = '\0';
         notifyVoice2Text();
     }
 }
@@ -1246,7 +1288,12 @@ static void appendVoice2Text(char *buffer, uint16_t len)
 
 static void insertVoiceText(char *buffer)
 {
-    strcpy(_v2t_result_temp.text, buffer);
+    if (buffer == NULL)
+    {
+        return;
+    }
+    strncpy(_v2t_result_temp.text, buffer, sizeof(_v2t_result_temp.text) - 1);
+    _v2t_result_temp.text[sizeof(_v2t_result_temp.text) - 1] = '\0';
     notifyVoice2Text();
 }
 
