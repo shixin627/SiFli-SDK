@@ -46,17 +46,12 @@ typedef struct
     lv_obj_t *main_window;
 } app_message_t;
 
-LV_IMG_DECLARE(icon_reply);
 LV_IMG_DECLARE(message_widget_bg);
 LV_IMG_DECLARE(gaus_clock1_bg);
 LV_IMG_DECLARE(voice_group);
 
 static app_message_ctx_t *p_app_message_ctx = NULL;
 static app_message_t *p_app_message = NULL;
-
-void cont_event_callback(lv_event_t *event)
-{
-}
 
 static lv_obj_t *lbl_content;
 static lv_obj_t *lbl_title;
@@ -67,32 +62,6 @@ static bool open_from_message_list = false;
 void app_message_set_open_from_message_list(bool open)
 {
     open_from_message_list = open;
-}
-
-static void navigate_to_reply(void)
-{
-    strcpy(notification.title, p_app_message_ctx->title->value.s);
-    notify_provider.navigate_to_reply(&notification);
-    if (!open_from_message_list)
-    {
-        gui_app_exit(APP_ID_MESSAGE);
-    }
-}
-static void reply_btn_event_callback(lv_event_t *event)
-{
-    if (LV_EVENT_CLICKED == event->code)
-    {
-        LOG_D("reply_btn_event_callback");
-        navigate_to_reply();
-    }
-}
-
-static void ingore_btn_event_callback(lv_event_t *event)
-{
-    if (LV_EVENT_CLICKED == event->code)
-    {
-        gui_app_self_exit();
-    }
 }
 
 /* Voice reply UI elements */
@@ -284,16 +253,10 @@ static void start_selected_timer(void)
 }
 
 static bool messagr_can_reply = false;
-static bool reply_lock = true;
 
 static lv_obj_t *icon_standby = NULL;
 
 extern char *replace_nbsp(const char *str);
-static void label_set_text(lv_obj_t *obj, const char *text)
-{
-    char *out_text = replace_nbsp(text);
-    lv_label_set_text(obj, out_text);
-}
 
 static lv_obj_t *app_icon_builder(lv_obj_t *parent, uint8_t app_index)
 {
@@ -686,7 +649,8 @@ static int app_message_main(intent_t i)
         const char *id = intent_get_string(i, "noti_id");
         if (id)
         {
-            strncpy(notification.id, id, NOTIFICATION_ID_LEN);
+            strncpy(notification.id, id, NOTIFICATION_ID_LEN - 1);
+            notification.id[NOTIFICATION_ID_LEN - 1] = '\0';
         }
         LOG_D("temp_noti_id %s", notification.id);
         gui_app_create_page("main", main_msg_handler);
@@ -697,20 +661,6 @@ static int app_message_main(intent_t i)
         }
     }
     return 0;
-}
-
-void open_message_app(const char *notification_id)
-{
-    strncpy(notification.id, notification_id, NOTIFICATION_ID_LEN);
-    LOG_D("temp_noti_id %s", notification.id);
-    on_start();
-    on_resume();
-}
-
-void close_message_app(void)
-{
-    on_pause();
-    on_stop();
 }
 
 void app_message_data_init(void)

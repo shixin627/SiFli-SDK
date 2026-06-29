@@ -115,6 +115,7 @@ static void sleep_algo_cb(gsa_sleep_stt_e stt, uint32 offset)
     {
     case GSA_SLEEP_OFF: // band not wear TODO:add state corresponding actions
         LOG_I("\n [%s]sleep off \n", ctime(&now));
+        break;
     case GSA_SLEEP_WAKE: //  Wake->Sleep
     {
         LOG_I("\n [%s]sleep wake \n", ctime(&now));

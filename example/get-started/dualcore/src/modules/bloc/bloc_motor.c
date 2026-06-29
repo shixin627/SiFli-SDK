@@ -470,7 +470,7 @@ static void MotorVibrateStart(motor_params_t *vibration_params)
     return;
 #endif
 
-#ifdef MOTOR_ENABLED && (CUSTOMER_BOARD_VER != BOARD_VER_13)
+#if defined(MOTOR_ENABLED) && (CUSTOMER_BOARD_VER != BOARD_VER_13)
     motor_vibrate_start(vibration_params);
 #endif
 }
@@ -482,7 +482,7 @@ static void MotorVibrateStop(void)
     return;
 #endif
 
-#ifdef MOTOR_ENABLED && (CUSTOMER_BOARD_VER != BOARD_VER_13)
+#if defined(MOTOR_ENABLED) && (CUSTOMER_BOARD_VER != BOARD_VER_13)
     motor_vibrate_stop();
 #endif
 }

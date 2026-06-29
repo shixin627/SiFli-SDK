@@ -99,22 +99,31 @@ function Screenshot($outPath) {
     Add-Type -AssemblyName System.Drawing
     $u = Add-Type -Name UD -Namespace W -PassThru -MemberDefinition '
 [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out R r);
-[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);
-[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+[DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
 [StructLayout(LayoutKind.Sequential)] public struct R { public int L,T,Ri,B; }'
-    $proc = Get-Process -Name 'main' -ErrorAction SilentlyContinue
-    if (-not $proc) { throw 'sim not running' }
-    [W.UD]::ShowWindow($proc.MainWindowHandle, 9) | Out-Null
-    Start-Sleep -Milliseconds 300
+    # Pick the sim process that actually owns a top-level window. A bare
+    # Get-Process -Name 'main' returns an array when leftover sims linger,
+    # which used to blow up the handle calls below.
+    $proc = @(Get-Process -Name 'main' -ErrorAction SilentlyContinue |
+              Where-Object { $_.MainWindowHandle -ne 0 })[0]
+    if (-not $proc) { throw 'sim not running (no main.exe window)' }
+    $hwnd = $proc.MainWindowHandle
     $r = New-Object W.UD+R
-    [W.UD]::GetWindowRect($proc.MainWindowHandle, [ref]$r) | Out-Null
+    [W.UD]::GetWindowRect($hwnd, [ref]$r) | Out-Null
     $w = $r.Ri - $r.L; $h = $r.B - $r.T
     $bmp = New-Object System.Drawing.Bitmap $w, $h
     $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($r.L, $r.T, 0, 0, $bmp.Size)
+    $hdc = $g.GetHdc()
+    # PrintWindow + PW_RENDERFULLCONTENT(2): grab the window's own pixels even
+    # when it's covered or off-screen. CopyFromScreen grabbed whatever desktop
+    # region overlapped it (e.g. the editor on top), so headless/agent runs got
+    # the wrong window.
+    $ok = [W.UD]::PrintWindow($hwnd, $hdc, 2)
+    $g.ReleaseHdc($hdc)
     $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
     $g.Dispose(); $bmp.Dispose()
-    Write-Host "[screenshot] $outPath" -ForegroundColor Green
+    if ($ok) { Write-Host "[screenshot] $outPath" -ForegroundColor Green }
+    else     { Write-Host "[screenshot] PrintWindow returned false -> $outPath" -ForegroundColor Yellow }
 }
 
 # ---------------------------------------------------------------- main

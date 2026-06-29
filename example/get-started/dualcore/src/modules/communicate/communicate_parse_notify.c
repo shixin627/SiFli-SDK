@@ -355,16 +355,25 @@ static inline void ble_payload_to_cstr(char *dst, size_t dst_size,
    only differ in img_id and download address. Payload layout:
    [0..3] size (BE32), [4..7] compressed_size (BE32, optional),
    [8] compression_type (optional). */
-static void ota_sync_start(uint8_t img_id, uint32_t addr, const uint8_t *pValue)
+static void ota_sync_start(uint8_t img_id, uint32_t addr, const uint8_t *pValue,
+                           uint16_t length)
 {
+    if (length < 4)
+    {
+        LOG_E("[OTA] sync-start payload too short: %u", length);
+        return;
+    }
     uint32_t size = read_be32(&pValue[0]);
     #ifdef PKG_USING_LZ4
-    uint32_t compressed_size = read_be32(&pValue[4]);
-    uint8_t compression_type = pValue[8];
-    if (compression_type == 1)
+    if (length >= 9)
     {
-        init_ble_dfu_thread_compressed(img_id, addr, size, compressed_size);
-        return;
+        uint32_t compressed_size = read_be32(&pValue[4]);
+        uint8_t compression_type = pValue[8];
+        if (compression_type == 1)
+        {
+            init_ble_dfu_thread_compressed(img_id, addr, size, compressed_size);
+            return;
+        }
     }
     #endif
     init_ble_dfu_thread(img_id, addr, size);
@@ -412,6 +421,11 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
 
     case KEY_VOICE_RECOGNITION_RESULT:
     {
+        if (length < 1)
+        {
+            LOG_E("KEY_VOICE_RECOGNITION_RESULT empty payload");
+            break;
+        }
         voice_recog_payload.header = pValue[0];
         voice_recog_payload.length = length - 1;
         voice_recog_payload.p_msg_value = pValue + 1;
@@ -422,6 +436,8 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
 
     case KEY_VOICE_RECOGNITION_END:
     {
+        if (length < 1)
+            break;
         LOG_D("KEY_VOICE_RECOGNITION_END: %d", pValue[0]);
         if (pValue[0])
         {
@@ -448,6 +464,11 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_CHAT_RESULT:
     {
         LOG_D("KEY_CHAT_RESULT");
+        if (length < 1)
+        {
+            LOG_E("KEY_CHAT_RESULT empty payload");
+            break;
+        }
         payload.header = pValue[0];
         payload.length = length - 1;
         payload.p_msg_value = pValue + 1;
@@ -465,7 +486,21 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_UPDATE_WEATHER:
     {
         LOG_D("KEY_UPDATE_WEATHER: %d", weather_data_updata_count);
-        handle_weather((char *)pValue);
+        if (length == 0)
+            break;
+        /* pValue is not guaranteed NUL-terminated; heap-copy + NUL so
+           cJSON_Parse inside handle_weather doesn't over-read the L1 buffer.
+           Mirrors the safe-cstr pattern used for KEY_LOCATION_DATA. */
+        char *weather_json = (char *)rt_malloc((size_t)length + 1);
+        if (weather_json == RT_NULL)
+        {
+            LOG_E("KEY_UPDATE_WEATHER: rt_malloc(%u) failed", length + 1);
+            break;
+        }
+        memcpy(weather_json, pValue, length);
+        weather_json[length] = '\0';
+        handle_weather(weather_json);
+        rt_free(weather_json);
         weather_data_updata_count++;
         SkaiWatchSys.weather_moment_count = weather_data_updata_count;
         break;
@@ -474,6 +509,8 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     //// OTA (start)
     case KEY_OTA_SYNC_STATUS:
     {
+        if (length < 1)
+            break;
         uint8_t status = pValue[0];
         if (status == 0x00)
         {
@@ -495,7 +532,8 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_WATCH_IMAGE_SYNC_START:
     {
 #ifndef BSP_USING_PC_SIMULATOR
-        ota_sync_start(DFU_IMG_ID_NAND_IMAGE, FS_START_DOWNLOAD_ADDRESS, pValue);
+        ota_sync_start(DFU_IMG_ID_NAND_IMAGE, FS_START_DOWNLOAD_ADDRESS, pValue,
+                       length);
 #endif
     }
     break;
@@ -513,7 +551,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     {
 #ifndef BSP_USING_PC_SIMULATOR
         ota_sync_start(DFU_IMG_ID_NAND_LCPU,
-                       LCPU_CODE_DOWNLOAD_START_ADDRESS, pValue);
+                       LCPU_CODE_DOWNLOAD_START_ADDRESS, pValue, length);
 #endif
     }
     break;
@@ -531,7 +569,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     {
 #ifndef BSP_USING_PC_SIMULATOR
         ota_sync_start(DFU_IMG_ID_NAND_HCPU,
-                       HCPU_CODE_DOWNLOAD_START_ADDRESS, pValue);
+                       HCPU_CODE_DOWNLOAD_START_ADDRESS, pValue, length);
 #endif
     }
     break;
@@ -549,7 +587,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     {
 #ifndef BSP_USING_PC_SIMULATOR
         ota_sync_start(DFU_IMG_ID_NAND_FTAB, FTAB_START_DOWNLOAD_ADDRESS,
-                       pValue);
+                       pValue, length);
 #endif
     }
     break;
@@ -567,7 +605,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     {
 #ifndef BSP_USING_PC_SIMULATOR
         ota_sync_start(DFU_IMG_ID_NAND_BOOTLOADER,
-                       BOOTLOADER_DOWNLOAD_START_ADDRESS, pValue);
+                       BOOTLOADER_DOWNLOAD_START_ADDRESS, pValue, length);
 #endif
     }
     break;
@@ -585,7 +623,7 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     {
 #ifndef BSP_USING_PC_SIMULATOR
         ota_sync_start(DFU_IMG_ID_NAND_LCPU_PATCH,
-                       LCPU_PATCH_DOWNLOAD_START_ADDRESS, pValue);
+                       LCPU_PATCH_DOWNLOAD_START_ADDRESS, pValue, length);
 #endif
     }
     break;
@@ -666,6 +704,11 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         if (length < (1 + path_len + 4))
         {
             LOG_E("Invalid KEY_START_SYNC_FILE packet length");
+            break;
+        }
+        if (path_len >= FILE_PATH_MAX_LEN)
+        {
+            LOG_E("KEY_START_SYNC_FILE path too long: %u", path_len);
             break;
         }
 

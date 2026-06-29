@@ -69,7 +69,7 @@ static int hr_callback(data_callback_arg_t *arg)
             struct rt_sensor_data object = *(struct rt_sensor_data *)buffer;
             if (len != sizeof(object))
             {
-                return RT_ERROR;
+                return -RT_ERROR;
             }
             process_hr_sensor_data(&object);
         }

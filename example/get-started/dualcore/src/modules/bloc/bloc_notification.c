@@ -597,11 +597,21 @@ static void remove_notification(notification_t *notifications, uint8_t *size,
 
 static void generate_json_for_remote_input(const char *message, const char *id)
 {
-    strcpy(temp_send_json_string, "");
+    temp_send_json_string[0] = '\0';
     cJSON *obj = cJSON_CreateObject();
+    if (!obj)
+    {
+        return;
+    }
     cJSON_AddStringToObject(obj, "id", id);
     cJSON_AddStringToObject(obj, "m", message);
-    strcpy(temp_send_json_string, cJSON_PrintUnformatted(obj));
+    char *json = cJSON_PrintUnformatted(obj);
+    if (json)
+    {
+        strncpy(temp_send_json_string, json, sizeof(temp_send_json_string) - 1);
+        temp_send_json_string[sizeof(temp_send_json_string) - 1] = '\0';
+        cJSON_free(json);
+    }
     cJSON_Delete(obj);
 }
 
@@ -681,10 +691,20 @@ void dismiss_notification_from_phone(const char *id)
 
 static void generate_json_for_gpt_message(const char *message)
 {
-    strcpy(temp_send_json_string, "");
+    temp_send_json_string[0] = '\0';
     cJSON *obj = cJSON_CreateObject();
+    if (!obj)
+    {
+        return;
+    }
     cJSON_AddStringToObject(obj, "input", message);
-    strcpy(temp_send_json_string, cJSON_PrintUnformatted(obj));
+    char *json = cJSON_PrintUnformatted(obj);
+    if (json)
+    {
+        strncpy(temp_send_json_string, json, sizeof(temp_send_json_string) - 1);
+        temp_send_json_string[sizeof(temp_send_json_string) - 1] = '\0';
+        cJSON_free(json);
+    }
     cJSON_Delete(obj);
 }
 
@@ -700,7 +720,8 @@ static void send_message_to_chatgpt(const char *message)
 
 static void set_user_speech_text(char *text)
 {
-    strcpy(temp_speech_text, text);
+    strncpy(temp_speech_text, text, sizeof(temp_speech_text) - 1);
+    temp_speech_text[sizeof(temp_speech_text) - 1] = '\0';
 }
 
 void handle_user_speech_intent(uint8_t intent, char *message)

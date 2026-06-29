@@ -213,6 +213,16 @@ const char *const icon_list[NOTIFICATION_APP_QUANTITY] = {
     ICON_SKAIWALK,
 };
 
+/* Bound-guard icon_list[] against an out-of-range notification type pushed
+   from the phone. Valid indices are 0..NOTIFICATION_APP_QUANTITY-1; anything
+   else falls back to the default icon instead of reading past the array. */
+static const char *notif_icon_src(uint8_t type)
+{
+    if (type >= NOTIFICATION_APP_QUANTITY)
+        type = Notify_others;
+    return icon_list[type];
+}
+
 static bool dial_header_music_hidden_by_pause = false;
 static lv_timer_t *dial_header_shrink_timer = NULL;
 static bool dial_header_music_active = false;
@@ -430,7 +440,7 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
                index i (display 0 = newest). */
             notification_t *notif = get_notification_in_reversed_ui(i);
             uint8_t type = Notify_others;
-            if (notif != NULL && notif->type <= NOTIFICATION_APP_QUANTITY)
+            if (notif != NULL && notif->type < NOTIFICATION_APP_QUANTITY)
                 type = notif->type;
             lv_img_set_src(dot, icon_list[type]);
             /* dot 直接可點：tap → 開該 notification 詳細頁 */
@@ -1519,7 +1529,7 @@ static void refresh_list(uint8_t new_item_count)
                 lv_label_set_text(notification_widgets[i].content,
                                   clean_message);
                 lv_mem_free(clean_message);
-                if (notification->type > NOTIFICATION_APP_QUANTITY)
+                if (notification->type >= NOTIFICATION_APP_QUANTITY)
                 {
                     LOG_W(
                         "Notification type %d exceeds max, using default icon",
@@ -2546,7 +2556,7 @@ static void refresh_new_message_widget(void)
         lv_label_set_text(new_notification_widgets.content, clean_message);
         lv_mem_free(clean_message);
         lv_img_set_src(new_notification_widgets.icon,
-                       icon_list[notification->type]);
+                       notif_icon_src(notification->type));
         lv_obj_clear_flag(new_notification_widgets.icon, LV_OBJ_FLAG_HIDDEN);
         have_message_now = true;
     }
@@ -2579,7 +2589,7 @@ lv_obj_t *lv_message_widget_builder(lv_obj_t *parent)
     }
     else
     {
-        lv_img_set_src(icon, icon_list[notification->type]);
+        lv_img_set_src(icon, notif_icon_src(notification->type));
     }
     lv_img_set_zoom(icon, 152); // (60/100)*255
     new_notification_widgets.icon = icon;
@@ -2783,7 +2793,7 @@ static void dial_header_show_notification(void)
                an empty message is already an empty C string. */
             lv_label_set_text(dial_header_title, notification->title);
             lv_label_set_text(dial_header_content, notification->message);
-            lv_img_set_src(dial_header_img, icon_list[notification->type]);
+            lv_img_set_src(dial_header_img, notif_icon_src(notification->type));
             lv_obj_set_size(dial_header_img, 100, 100);
             lv_img_set_zoom(dial_header_img, 254);
             lv_obj_clear_flag(dial_header_img, LV_OBJ_FLAG_HIDDEN);

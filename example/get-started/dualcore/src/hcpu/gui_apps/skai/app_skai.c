@@ -89,7 +89,6 @@ extern void app_speech_bind_title(lv_obj_t *target);
 extern void app_speech_bind_content(lv_obj_t *target);
 extern void app_speech_set_content(const uint8_t *title);
 extern void unbind_app_speech_data(void);
-static void display_chat_history(lv_obj_t *list);
 
     #define LIST_SKAI_WIDTH (360)
     #define LIST_SKAI_HEIGHT (100)
@@ -130,94 +129,6 @@ static bool open_action_flag = true;
 static bool left_hand_mode = true;
 static uint16_t selected_message_index = 0;
 static lv_obj_t *first_open_ai_window;
-static app_speech_ripple_t app_speech_point[3];
-static lv_coord_t single_line_height = 0;
-static int bottom_of_previous_window = 0;
-
-static void scroll_list(lv_obj_t *obj, int16_t drift)
-{
-}
-
-static void list_window_scroll_event_cb(lv_event_t *evt)
-{
-    lv_obj_t *obj = evt->target;
-
-    if (obj == NULL)
-    {
-        return;
-    }
-    scroll_list(obj, 0);
-}
-
-static void list_message_click_event_cb(lv_event_t *evt)
-{
-    // LOG_D("list_message_click_event_cb %d");
-}
-
-static lv_coord_t total_height = 0;
-static lv_obj_t *create_message_widget(lv_obj_t *list, chat_t *message,
-                                       int selected_message_index, bool last)
-{
-    int offset = 0;
-    if (message->is_self)
-    {
-        offset = 20;
-    }
-    else
-    {
-        offset = -20;
-    }
-    lv_obj_t *message_widget =
-        common_list_widget(list, (lv_style_t *)&LIST_SKAI_STYLE,
-                           (LV_HOR_RES_MAX - LIST_SKAI_WIDTH) / 2 + offset,
-                           bottom_of_previous_window);
-    lv_obj_add_flag(message_widget, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(message_widget, list_message_click_event_cb,
-                        LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *content = lv_label_create(message_widget);
-    lv_obj_set_style_text_font(content,
-                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_style_text_color(content, lv_color_white(), 0);
-    lv_label_set_long_mode(content, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(content, LIST_SKAI_WIDTH - 20);
-    lv_label_set_text(content, message->message);
-    if (last)
-    {
-        create_animate_points(app_speech_point, message_widget);
-        wait_for_message(app_speech_point, true);
-    }
-
-    lv_obj_align(content, LV_ALIGN_CENTER, 0, 0);
-
-    if (message->is_self)
-    {
-        lv_obj_set_style_bg_color(message_widget, lv_color_hex(0x97CBFF), 0);
-        lv_obj_set_style_bg_opa(message_widget, LV_OPA_10, 0);
-    }
-    else
-    {
-        lv_obj_set_style_bg_color(message_widget, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_bg_opa(message_widget, LV_OPA_10, 0);
-    }
-
-    lv_obj_set_style_radius(message_widget, 50, LV_PART_MAIN);
-
-    lv_obj_update_layout(content);
-
-    lv_coord_t label_height = lv_obj_get_height(content);
-    lv_coord_t padding = 10;
-    total_height = label_height + 2 * padding;
-    lv_obj_set_height(message_widget, total_height);
-
-    // lv_coord_t text_width = lv_label_get_text_width(content);
-    // lv_coord_t total_width = text_width + 20;
-    // lv_obj_set_width(message_widget, total_width);
-
-    bottom_of_previous_window =
-        bottom_of_previous_window + total_height + LIST_SKAI_SPACING;
-    return message_widget;
-}
 
 void open_skai_widget_ai(bool open);
 void set_skai_widget_input_text(const char *text);

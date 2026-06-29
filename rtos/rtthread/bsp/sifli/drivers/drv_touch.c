@@ -1064,6 +1064,33 @@ static rt_err_t tp_ctrl(int argc, char **argv)
             touch_event_callback(TOUCH_EVENT_UP, x2, y2);
         }
     }
+    else if (strcmp(argv[1], "swipe") == 0)
+    {
+        if (argc < 6)
+        {
+            LOG_I("Too less param, e.g: tp_ctrl swipe <x1> <y1> <x2> <y2>");
+            return RT_EOK;
+        }
+
+        int x1 = strtol(argv[2], 0, 10);
+        int y1 = strtol(argv[3], 0, 10);
+        int x2 = strtol(argv[4], 0, 10);
+        int y2 = strtol(argv[5], 0, 10);
+        int steps = 16;
+        int i;
+
+        LOG_I("Swipe(smooth) %d,%d --> %d,%d in %d steps", x1, y1, x2, y2, steps);
+        touch_write_more(TOUCH_EVENT_DOWN, (rt_uint16_t)x1, (rt_uint16_t)y1);
+        rt_thread_delay(rt_tick_from_millisecond(30));
+        for (i = 1; i <= steps; i++)
+        {
+            rt_uint16_t x = (rt_uint16_t)(x1 + (x2 - x1) * i / steps);
+            rt_uint16_t y = (rt_uint16_t)(y1 + (y2 - y1) * i / steps);
+            touch_write_more(TOUCH_EVENT_MOVE, x, y);
+            rt_thread_delay(rt_tick_from_millisecond(30));
+        }
+        touch_write_more(TOUCH_EVENT_UP, (rt_uint16_t)x2, (rt_uint16_t)y2);
+    }
 
 
     return RT_EOK;

@@ -284,6 +284,7 @@ static data_req_t *hr_service_get_max_min(datas_handle_t service, uint16_t len)
     if (r != NULL)
     {
         r->len = len;
+        memset(r->data, 0, len); // never push uninitialised heap on bad len
         if (len == HRS_MAX_MIN_LEN) // just return max , min , current rhr for test
         {
             uint8_t maxmin[HRS_MAX_MIN_LEN];
@@ -305,12 +306,13 @@ static data_req_t *hr_service_get_day_table(datas_handle_t service, uint16_t len
     r = rt_malloc(len + sizeof(data_req_t));
     if (r != NULL)
     {
+        r->len = len;
+        memset(r->data, 0, len); // never push uninitialised heap on bad len
         if (len == HRS_DAY_TABLE_LEN) // get day value : 24 hour
         {
             uint8_t today[HRS_DAY_TABLE_LEN];
             int i;
 
-            r->len = len;
             for (i = 0; i < HRS_DAY_TABLE_LEN; i++)
                 today[i] = env->env.hour[i].hr_value;
             memcpy(r->data, today, len);
@@ -328,6 +330,7 @@ static data_req_t *hr_service_get_mon_table(datas_handle_t service, uint16_t len
     if (r != NULL)
     {
         r->len = len;
+        memset(r->data, 0, len); // never push uninitialised heap on bad len
         if (len == HRS_MON_TABLE_LEN) // get rhr: 30 days
         {
             uint8_t mon[HRS_MON_TABLE_LEN];
@@ -349,6 +352,7 @@ static data_req_t *hr_service_get_region(datas_handle_t service, uint16_t len)
     if (r != NULL)
     {
         r->len = len;
+        memset(r->data, 0, len); // never push uninitialised heap on bad len
         if (len == HRS_REGION_LEN) // get region, ul, ana, aer, hiit, warmup
         {
             uint8_t region[HRS_REGION_LEN];
@@ -370,6 +374,7 @@ static data_req_t *hr_service_get_hist_rhr(datas_handle_t service, uint16_t len)
     if (r != NULL)
     {
         r->len = len;
+        memset(r->data, 0, len); // never push uninitialised heap on bad len
         if (len == HRS_RHR_HIST_LEN) // get max rhr, min rhr, average rhr
         {
             uint8_t rhr[HRS_RHR_HIST_LEN];
