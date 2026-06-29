@@ -81,6 +81,7 @@ LV_IMG_DECLARE(plus);
 LV_IMG_DECLARE(icon_mic);
 LV_IMG_DECLARE(message_widget_bg);
 LV_IMG_DECLARE(skaibar_img); /* 176x31 — the bottom mic bar's resting look (ezip, auto-built) */
+LV_IMG_DECLARE(micro_icon);  /* shared mic glyph — the bottom trigger's NEW resting look (matches the chat page) */
 
 #define DBG_TAG "instruction.list.layout"
 #define DBG_LVL DBG_INFO
@@ -328,6 +329,26 @@ static instruction_list_layout_t *p_instruction_list_layout;
 static bool created = false;
 
 static bool pause_instruction_list = true;
+
+/* Map an @-conversation row's SERVICE (pushed by the phone as the "svc" field — e.g. "messenger" /
+   "whatsapp", derived from the conv id) to its bundled logo so the right-side indicator dot shows the
+   service glyph instead of the empty app_icon_frame placeholder (founder 2026-06-29). The watch list
+   push only carries the title (NOT the conv id), so the service must arrive over the wire. */
+static const char *service_icon(const char *svc)
+{
+    if (svc == NULL || svc[0] == '\0')
+        return NULL;
+    if (strcmp(svc, "whatsapp") == 0)  return ICON_WHATSAPP;
+    if (strcmp(svc, "messenger") == 0) return ICON_MESSENGER;
+    if (strcmp(svc, "instagram") == 0) return ICON_INSTAGRAM;
+    if (strcmp(svc, "discord") == 0)   return ICON_DISCORD;
+    if (strcmp(svc, "telegram") == 0)  return ICON_TELEGRAM;
+    if (strcmp(svc, "line") == 0)      return ICON_LINE;
+    if (strcmp(svc, "facebook") == 0)  return ICON_FACEBOOK;
+    if (strcmp(svc, "slack") == 0)     return ICON_SLACK;
+    if (strcmp(svc, "gmail") == 0)     return ICON_GMAIL;
+    return NULL;
+}
 
 const char *get_app_icon(uint8_t app_id)
 {
@@ -3525,7 +3546,7 @@ static void list_item_click_event_cb(lv_event_t *evt)
         if (conv_idx < 0 || conv_idx >= MAX_LIST_ITEMS)
             conv_idx = 0;
         commu_send_conv_open(item->title, item->id, (uint8_t)conv_idx);
-        chat_page_open(item->title);
+        chat_page_open(item->title, item->icon);
         return;
     }
 
@@ -3634,7 +3655,7 @@ static void on_tap(void)
     if (item->category == '@' && !is_open_instruction_list_ai)
     {
         commu_send_conv_open(item->title, item->id, (uint8_t)selected_item_index);
-        chat_page_open(item->title);
+        chat_page_open(item->title, item->icon);
         return;
     }
 
@@ -4471,7 +4492,7 @@ void add_or_update_custom_instruction(const char *id, const char *title,
         list_items[idx].icon =
             (list_items[idx].open_app[0] != '\0')
                 ? get_app_icon(app_id_from_name(list_items[idx].open_app))
-                : NULL;
+                : NULL; /* @-contact service logo is applied later via set_instruction_service_icon */
         LOG_I("Updated id=%s, enabled=%d", id, enabled);
         return;
     }
@@ -4493,7 +4514,7 @@ void add_or_update_custom_instruction(const char *id, const char *title,
     /* openApp items borrow the matching built-in app icon (see update path). */
     instr->icon = (open_app && open_app[0] != '\0')
                       ? get_app_icon(app_id_from_name(open_app))
-                      : NULL;
+                      : NULL; /* @-contact service logo is applied later via set_instruction_service_icon */
     instr->widget = NULL;
     instr->is_instruction = true;
     instr->is_interval = is_interval;
@@ -4520,6 +4541,20 @@ void set_instruction_category(const char *id, char cat)
     int idx = find_instruction_by_id(id);
     if (idx >= 0)
         list_items[idx].category = cat;
+}
+
+/* Apply an @-contact row's service logo to its right-side indicator dot, mirroring
+   set_instruction_category: re-find by id (so add_or_update_custom_instruction's signature stays
+   untouched) and set the icon from the phone-pushed "svc" field. NULL/unknown service ⇒ leave the
+   default frame (founder 2026-06-29). */
+void set_instruction_service_icon(const char *id, const char *svc)
+{
+    const char *icon = service_icon(svc);
+    if (icon == NULL)
+        return;
+    int idx = find_instruction_by_id(id);
+    if (idx >= 0)
+        list_items[idx].icon = icon;
 }
 
 /* Helper: create list item UI objects for items in [start_idx, end_idx) */
@@ -5411,12 +5446,18 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_clear_flag(mic_bar, LV_OBJ_FLAG_PRESS_LOCK);
     lv_obj_add_flag(mic_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_add_event_cb(mic_bar, mic_bar_event_cb, LV_EVENT_CLICKED, NULL);
-    /* The bar's resting look IS the skaibar_img image (176x31, = the bar size).
-       Reuses the s_mic_bar_icon slot so lmic_grow_cb's existing 255->0 opacity fade
-       dissolves it as the bar morphs into the input box. Non-clickable so taps fall
-       through to mic_bar / mic_hit (which open the box). */
+    /* The bar's resting look is now the MIC GLYPH (micro_icon), not the slim skaibar_img bar — matching
+       the in-chat voice trigger (founder 2026-06-29). Half-size it (zoom 128) with a CENTRE pivot +
+       OVERFLOW_VISIBLE on BOTH the glyph and the bar, so the ezip bitmap scales cleanly and isn't
+       clipped to the 31px bar height (a set_size would clip it). Still the s_mic_bar_icon slot, so
+       lmic_grow_cb's existing 255->0 img-opa fade dissolves the glyph as the bar morphs into the box.
+       Non-clickable so taps fall through to mic_bar / mic_hit (which open the box). */
+    lv_obj_add_flag(mic_bar, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
     s_mic_bar_icon = lv_img_create(mic_bar);
-    lv_img_set_src(s_mic_bar_icon, &skaibar_img);
+    lv_img_set_src(s_mic_bar_icon, &micro_icon);
+    lv_img_set_pivot(s_mic_bar_icon, micro_icon.header.w / 2, micro_icon.header.h / 2);
+    lv_obj_add_flag(s_mic_bar_icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_img_set_zoom(s_mic_bar_icon, 128);
     lv_obj_center(s_mic_bar_icon);
     lv_obj_clear_flag(s_mic_bar_icon, LV_OBJ_FLAG_CLICKABLE);
 

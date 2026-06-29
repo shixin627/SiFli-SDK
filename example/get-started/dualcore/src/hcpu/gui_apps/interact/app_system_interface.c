@@ -734,6 +734,16 @@ extern bool get_is_open_instruction_list_ai(void);
 extern void set_skai_widget_input_text(const char *text);
 void refresh_ai_chat_input_message(char *text)
 {
+    /* The @-conversation chat room's mic owns the transcript when it's up — show the live partial in
+       its (transparent) input box and stop here, so it never bleeds into the launcher widgets
+       (founder 2026-06-29). */
+    extern bool chat_page_is_open(void);
+    extern void chat_page_set_transcript(const char *text);
+    if (chat_page_is_open())
+    {
+        chat_page_set_transcript(text);
+        return;
+    }
     /* Decide by current screen: if the right device page's skaibar is open, the
        recognised text belongs there, not the left instruction_list widget. */
     extern bool device_pager_skaibar_is_open(void);

@@ -22,8 +22,9 @@ extern "C"
 #endif
 
     /* Open the chat room for a tapped @-contact. Builds a fresh full-screen panel on
-       lv_layer_top (over the @-list). Must be called on the LVGL thread (the tap cb is). */
-    void chat_page_open(const char *title);
+       lv_layer_top (over the @-list). [icon_src] is the row's service logo (an lv_img_dsc_t* cast to
+       const char*, or NULL) shown small before the name in the header. LVGL thread (the tap cb is). */
+    void chat_page_open(const char *title, const char *icon_src);
 
     /* Tear the chat panel down (revealing the @-list underneath). Idempotent. LVGL thread. */
     void chat_page_close(void);
@@ -40,6 +41,10 @@ extern "C"
     /* LVGL-thread render of the pending conv-state (called from ui_handler's
        LVGL_MSG_TYPE_REFRESH_CHAT, which skai_chat_on_conv_state triggers). */
     void chat_page_apply_pending_state(void);
+
+    /* LVGL-thread update of the live mic transcript box — called from the shared voice router
+       (refresh_ai_chat_input_message's chat branch), with the running partial transcript. */
+    void chat_page_set_transcript(const char *text);
 
 #ifdef __cplusplus
 }

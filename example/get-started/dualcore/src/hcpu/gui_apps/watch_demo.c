@@ -128,8 +128,17 @@ static void handle_back_event(bool is_button)
         if (chat_page_is_open())
         {
             commu_send_conv_close();
+            /* The @-list deliberately stays OPEN underneath the chat for the whole session: that keeps
+               Main in the "instruction list" state, which is the ONLY state that keeps the left-edge
+               back gesture armed (check_is_at_instruction_list in app_mainmenu.c gates the detector;
+               dropping to bare-home DISABLES it, so hiding the list at open time killed the chat's own
+               back). The list is fully covered by the opaque chat panel, so it's never visible. On back:
+               instant-hide the list FIRST (behind the still-up panel, no slide/flash), THEN close the
+               chat so it reveals the WATCH FACE directly, not the list (founder 2026-06-29). */
+            extern void instruction_list_hide_now(void);
+            instruction_list_hide_now();
             chat_page_close();
-            LOG_I("ESC in chat page => close chat room");
+            LOG_I("ESC in chat page => hide list + close chat => home");
             return;
         }
     }

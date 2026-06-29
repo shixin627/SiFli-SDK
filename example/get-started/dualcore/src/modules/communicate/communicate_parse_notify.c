@@ -116,10 +116,20 @@ static bool apply_one_instruction_obj(cJSON *root)
     if (cJSON_IsString(j_cat) && j_cat->valuestring[0] != '\0')
         category = j_cat->valuestring[0];
 
+    /* svc: the @-contact's messaging service (e.g. "messenger" / "whatsapp"), so the watch can show
+       the service logo on the row's right-side indicator dot. The list push only carries the title
+       (not the conv id), so the service rides over the wire. Absent for non-@ rows → no service icon. */
+    const char *svc = NULL;
+    cJSON *j_svc = cJSON_GetObjectItem(root, "svc");
+    if (cJSON_IsString(j_svc) && j_svc->valuestring[0] != '\0')
+        svc = j_svc->valuestring;
+
     add_or_update_custom_instruction(id, title, trigger_type,
                                      interval_sec, enabled, version,
                                      open_app);
     set_instruction_category(id, category);
+    extern void set_instruction_service_icon(const char *id, const char *svc);
+    set_instruction_service_icon(id, svc);
 
     if (id[0] != '\0')
     {
