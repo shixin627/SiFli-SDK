@@ -64,6 +64,8 @@
 #include "bloc_v2t.h"
 #ifdef BSP_USING_UI_HANDLER
 #include "ui_handler.h"
+#include "gui_app_fwk.h"
+#include "gui_app_int.h"   /* gui_runing_app_t + app_schedule_get_active() (thread-safe active-app read) */
 #endif
 #ifdef AUDIO_USING_MANAGER
 #include "audio_server.h"
@@ -1024,6 +1026,18 @@ INIT_APP_EXPORT(bloc_control_provider_register);
  */
 extern void set_hid_mouse_handfree_mode_to(bool v);
 
+/* True only while the STANDALONE mouse app (APP_ID_MOUSE) is in the foreground.
+   Runs on the fsr_smp thread, NOT the gui scheduler, so gui_app_is_actived()
+   (which asserts caller == gui thread) would crash here. Read the active-app
+   pointer directly instead — worst case a one-tick-stale snapshot. The
+   device-page-hosted trackpad runs under APP_ID_MAIN, so it is intentionally
+   excluded. */
+static bool fsr_mouse_app_is_foreground(void)
+{
+	gui_runing_app_t *cur = app_schedule_get_active();
+	return cur != RT_NULL && strcmp(cur->id, APP_ID_MOUSE) == 0;
+}
+
 static volatile rt_uint32_t g_fsr_adc_latest = 0;
 static rt_thread_t fsr_adc_sampler_thread = RT_NULL;
 
@@ -1052,17 +1066,27 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 		bool want_left_press;
 		if (press_mode)
 		{
-			/* Press mode: 一直可以移動,壓感 < 4700 即視為左鍵按下
-			   (本錶 FSR 沒按 ~5000;舊錶沒按 ~18000、門檻 17000,等比例 5000/18000 → 4700) */
+			/* Press mode: 一直可以移動,壓感 < 17000 即視為左鍵按下
+			   (本錶 FSR 沒按 ~18000) */
 			want_handfree = true;
-			want_left_press = (g_fsr_adc_latest < 4700);
+			want_left_press = (g_fsr_adc_latest < 17000);
 		}
 		else
 		{
-			/* Default mode: 壓感 < 4700 才能移動;< 2800 額外按下左鍵
-			   (舊錶門檻 17000/10000,沒按基準 18000→5000 等比例縮到 4700/2800) */
-			want_handfree = (g_fsr_adc_latest < 4700);
-			want_left_press = (g_fsr_adc_latest < 2800);
+			/* Default mode: 壓感 < 17000 才能移動;< 10000 額外按下左鍵
+			   (本錶 FSR 沒按 ~18000) */
+			want_handfree = (g_fsr_adc_latest < 17000);
+			want_left_press = (g_fsr_adc_latest < 10000);
+		}
+
+		/* Squeeze only drives the air-mouse while the standalone mouse app is
+		   open. Outside it a squeeze must not leak a BLE HID click. Forcing
+		   want_* false here lets the edge-triggered release below clean up a
+		   press/handfree that was live when the app closed mid-squeeze. */
+		if (!fsr_mouse_app_is_foreground())
+		{
+			want_handfree = false;
+			want_left_press = false;
 		}
 
 		if (want_handfree != prev_handfree)
