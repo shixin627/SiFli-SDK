@@ -1272,12 +1272,14 @@ static void bg_hr_flush_bucket(uint32_t bucket_start_ts)
 static int bg_hr_skip_reason(void)
 {
     if (hr_service_env.is_ready != RT_TRUE) return BGHR_NOT_READY;
-#if (CUSTOMER_BOARD_VER == BOARD_VER_29)
-    /* Production (v29): on the charger means off-wrist, so skip PPG entirely.
-       Dev boards (v28) deliberately keep sampling while charging so wear
-       detection stays live for bench use. NOTE: charging current can inject
-       noise into the optical ADC, so DC/PI read while charging may be less
-       reliable -- accepted dev-only trade-off. */
+#if kReleaseMode
+    /* Release: on the charger means off-wrist, so skip PPG entirely.
+       Dev builds deliberately keep sampling while charging so wear detection
+       stays live for bench use. Dev and release now share the same physical
+       board (VER_29), so this is keyed on kReleaseMode rather than the board
+       version. NOTE: charging current can inject noise into the optical ADC,
+       so DC/PI read while charging may be less reliable -- accepted dev-only
+       trade-off. */
     if (battery_get_charge_state()->is_charging) return BGHR_CHARGING; /* on charger */
 #endif
     if (!wear_detect_is_wearing()) return BGHR_NOT_WORN;               /* off wrist  */

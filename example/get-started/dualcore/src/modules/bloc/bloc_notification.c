@@ -84,7 +84,10 @@
 #define DBG_LVL BSP_DBG_LVL
 #include <rtdbg.h>
 
-#if CUSTOMER_BOARD_VER > BOARD_VER_28
+/* Auto-pop the charge screen only in release builds. Dev and release now share
+   the same physical board (VER_29), so the dev-vs-release split is keyed on
+   kReleaseMode rather than the board version. */
+#if kReleaseMode
     #define CHARGE_INTERACT_ENABLE 1
 #else
     #define CHARGE_INTERACT_ENABLE 0
