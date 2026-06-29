@@ -17,11 +17,16 @@
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
+/* Bottom voice control uses the shared mic glyph image (resource/images/.../micro_icon.png) — the
+   same asset the recorder quick-setting + hid_mouse space-bar use. Icon-only, no button chrome. */
+LV_IMG_DECLARE(micro_icon);
+
 /* The floating chat-room panel on lv_layer_top (above the @-list layer), or NULL when
    closed. A FRESH panel is built per open + torn down on close (no reuse). */
 static lv_obj_t *s_chat_panel = NULL;
 static lv_obj_t *s_title_label = NULL;
-static lv_obj_t *s_msg_list = NULL; /* scrollable flex column the messages render into */
+static lv_obj_t *s_msg_list = NULL;      /* scrollable flex column the messages render into */
+static lv_obj_t *s_loading_label = NULL; /* "載入中…" centered on the panel, shown while empty */
 
 /* Pending conv-state: parsed off the BLE thread (skai_chat_on_conv_state) into bounded STATIC
    buffers (no heap on the 4KB BLE stack), then rendered on the LVGL thread
@@ -61,16 +66,19 @@ bool chat_page_is_open(void)
    encoding pipeline isn't set up, so the phone gets no usable audio → an EMPTY transcript. */
 #define CHAT_V2T_INTENT 2 /* V2T_INTENT_REMOTE_INPUT — "chat reply" (watch_system_interact.h) */
 
-static lv_obj_t *s_mic_btn = NULL;
-static lv_obj_t *s_mic_label = NULL;
+static lv_obj_t *s_mic_btn = NULL; /* the clickable mic glyph (== s_mic_img) */
+static lv_obj_t *s_mic_img = NULL;
 static bool s_recording = false;
 
 static void chat_set_mic_visual(bool recording)
 {
-    if (s_mic_btn != NULL && lv_obj_is_valid(s_mic_btn))
-        lv_obj_set_style_bg_color(s_mic_btn, recording ? lv_color_hex(0xE0245E) : lv_color_hex(0x0A84FF), 0);
-    if (s_mic_label != NULL && lv_obj_is_valid(s_mic_label))
-        lv_label_set_text(s_mic_label, recording ? "錄音中·點送出" : "說話");
+    /* Icon-only mic — NO solid background to block the chat. Recording = tint the glyph red;
+       idle = the glyph's own colors. */
+    if (s_mic_img != NULL && lv_obj_is_valid(s_mic_img))
+    {
+        lv_obj_set_style_img_recolor(s_mic_img, lv_color_hex(0xE0245E), 0);
+        lv_obj_set_style_img_recolor_opa(s_mic_img, recording ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    }
 }
 
 static void chat_stop_recording_and_send(void)
@@ -139,37 +147,46 @@ void chat_page_open(const char *title)
     lv_obj_align(title_lbl, LV_ALIGN_TOP_MID, 0, 20);
     s_title_label = title_lbl;
 
-    /* Scrollable message column. Sits between the title and the bottom mic button. */
+    /* Scrollable message column. Extends almost to the BOTTOM of the screen (the mic is now a small
+       floating glyph, not a solid bar) so the conversation isn't cut short by a black band (founder
+       2026-06-29). Wide (13px side margin) so bubbles reach close to the screen edge; pad_bottom
+       reserves the bottom band for the floating mic so the newest message scrolls up clear of it. The
+       round display's dead corners only bite the top/bottom-most rows, which scroll through the
+       readable middle band. */
     lv_obj_t *list = lv_obj_create(panel);
-    lv_obj_set_size(list, LV_HOR_RES - 120, LV_VER_RES - 150);
+    lv_obj_set_size(list, LV_HOR_RES - 26, LV_VER_RES - 64);
     lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 52);
     lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(list, 0, 0);
     lv_obj_set_scroll_dir(list, LV_DIR_VER);
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(list, 6, 0);
-    lv_obj_set_style_pad_all(list, 4, 0);
+    lv_obj_set_style_pad_hor(list, 2, 0);
+    lv_obj_set_style_pad_top(list, 4, 0);
+    lv_obj_set_style_pad_bottom(list, 84, 0);
     s_msg_list = list;
 
-    /* Placeholder until the first conv-state lands. */
-    lv_obj_t *hint = lv_label_create(list);
-    lv_label_set_text(hint, "連線中…");
-    lv_obj_set_style_text_color(hint, lv_color_hex(0x888888), 0);
+    /* "Loading" placeholder, CENTERED on the screen (not in the list, which would push it to the top-
+       left). Shown until the first message arrives — the Matrix backlog can take many seconds for a
+       cold room (founder 2026-06-29). Toggled by chat_page_apply_pending_state. */
+    lv_obj_t *loading = lv_label_create(panel);
+    lv_label_set_text(loading, "載入中…");
+    lv_obj_set_style_text_color(loading, lv_color_hex(0x888888), 0);
+    lv_obj_align(loading, LV_ALIGN_CENTER, 0, 0);
+    s_loading_label = loading;
 
-    /* Mic / voice-input button (bottom-center, inside the round display) — tap to record, tap again
-       to send. Drives V2T (chat_mic_btn_cb). The left-edge swipe-back is unaffected (it's at x≈0). */
-    lv_obj_t *mic = lv_btn_create(panel);
-    lv_obj_set_size(mic, 160, 58);
-    lv_obj_align(mic, LV_ALIGN_BOTTOM_MID, 0, -14);
-    lv_obj_set_style_radius(mic, 29, 0);
-    lv_obj_set_style_bg_color(mic, lv_color_hex(0x0A84FF), 0);
+    /* Mic / voice-input — a CLICKABLE GLYPH (micro_icon), bottom-center, FLOATING over the transcript
+       with NO button background so it doesn't block the chat behind it (founder 2026-06-29). Tap to
+       record, tap again to send (chat_mic_btn_cb); recording tints it red. ext_click_area widens the
+       tap target around the glyph. The left-edge swipe-back is unaffected (it's at x≈0). */
+    lv_obj_t *mic = lv_img_create(panel);
+    lv_img_set_src(mic, &micro_icon);
+    lv_obj_align(mic, LV_ALIGN_BOTTOM_MID, 0, -8);
+    lv_obj_add_flag(mic, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(mic, 20);
     lv_obj_add_event_cb(mic, chat_mic_btn_cb, LV_EVENT_CLICKED, NULL);
     s_mic_btn = mic;
-    lv_obj_t *mic_lbl = lv_label_create(mic);
-    lv_label_set_text(mic_lbl, "說話");
-    lv_obj_set_style_text_color(mic_lbl, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_center(mic_lbl);
-    s_mic_label = mic_lbl;
+    s_mic_img = mic;
     s_recording = false;
 
     s_chat_panel = panel;
@@ -204,8 +221,9 @@ void chat_page_close(void)
     s_chat_panel = NULL;
     s_title_label = NULL;
     s_msg_list = NULL;
+    s_loading_label = NULL;
     s_mic_btn = NULL;
-    s_mic_label = NULL;
+    s_mic_img = NULL;
     LOG_I("chat page closed");
 }
 
@@ -242,13 +260,27 @@ void skai_chat_on_conv_state(const uint8_t *json, uint16_t length)
     if (cJSON_IsArray(j_msgs))
     {
         cJSON *m = NULL;
+        /* Keep the LAST CHAT_MAX_MSGS valid messages, not the first: when a full backlog already fills
+           the cap, a freshly-sent message is the NEWEST and was being dropped (founder 2026-06-29: sent
+           message didn't appear). Count valid (non-empty) messages first, then skip the oldest overflow. */
+        int valid_total = 0;
         cJSON_ArrayForEach(m, j_msgs)
         {
-            if (count >= CHAT_MAX_MSGS)
-                break;
+            cJSON *jt = cJSON_GetObjectItem(m, "text");
+            if (cJSON_IsString(jt) && jt->valuestring[0] != '\0')
+                valid_total++;
+        }
+        int skip = (valid_total > CHAT_MAX_MSGS) ? (valid_total - CHAT_MAX_MSGS) : 0;
+        int seen = 0;
+        cJSON_ArrayForEach(m, j_msgs)
+        {
             cJSON *j_text = cJSON_GetObjectItem(m, "text");
             if (!cJSON_IsString(j_text) || j_text->valuestring[0] == '\0')
                 continue;
+            if (seen++ < skip)
+                continue; /* drop the oldest beyond the cap so the newest always survives */
+            if (count >= CHAT_MAX_MSGS)
+                break;
             cJSON *j_role = cJSON_GetObjectItem(m, "role");
             const char *role = cJSON_IsString(j_role) ? j_role->valuestring : "";
             strncpy(s_pending_msgs[count].role, role, sizeof(s_pending_msgs[count].role) - 1);
@@ -282,6 +314,19 @@ void chat_page_apply_pending_state(void)
     int count = s_pending_msg_count;
     if (count > CHAT_MAX_MSGS)
         count = CHAT_MAX_MSGS;
+
+    /* Toggle the centered "載入中…" placeholder: shown while the transcript is still empty (the Matrix
+       backlog can take many seconds for a cold room), hidden once any message has arrived. */
+    if (s_loading_label != NULL && lv_obj_is_valid(s_loading_label))
+    {
+        if (count == 0)
+            lv_obj_clear_flag(s_loading_label, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(s_loading_label, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (count == 0)
+        return; /* nothing to render yet — the centered placeholder is up */
+
     for (int i = 0; i < count; i++)
     {
         chat_msg_t *cm = &s_pending_msgs[i];
@@ -299,16 +344,35 @@ void chat_page_apply_pending_state(void)
         lv_obj_t *bubble = lv_obj_create(row);
         lv_obj_set_width(bubble, LV_SIZE_CONTENT);
         lv_obj_set_height(bubble, LV_SIZE_CONTENT);
-        lv_obj_set_style_pad_all(bubble, 8, 0);
-        lv_obj_set_style_radius(bubble, 12, 0);
+        /* Desktop ConversationWindow parity (founder 2026-06-29): bubble = pad 11×7; mine = Skaiwalk
+           sky-accent-deep #5C9CB8 (a MUTED brand sky-blue, NOT iOS systemBlue — the desktop's
+           SkSkyAccentDeep token), theirs = systemGray5 #2C2C2E.
+           Radius 21 (not the desktop's 14): the watch body font is taller than the desktop's 14px, so
+           the same 14px radius read as squarer on the taller bubble — bumped so the perceived
+           roundness (radius÷height) matches the desktop; founder tuned 14→18→21 by eye (2026-06-29). */
+        lv_obj_set_style_pad_hor(bubble, 11, 0);
+        lv_obj_set_style_pad_ver(bubble, 7, 0);
+        lv_obj_set_style_radius(bubble, 21, 0);
         lv_obj_set_style_border_width(bubble, 0, 0);
-        lv_obj_set_style_bg_color(bubble, mine ? lv_color_hex(0x0A84FF) : lv_color_hex(0x333333), 0);
+        lv_obj_set_style_bg_color(bubble, mine ? lv_color_hex(0x5C9CB8) : lv_color_hex(0x2C2C2E), 0);
         lv_obj_clear_flag(bubble, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_align(bubble, mine ? LV_ALIGN_TOP_RIGHT : LV_ALIGN_TOP_LEFT, 0, 0);
 
         lv_obj_t *lbl = lv_label_create(bubble);
         lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(lbl, LV_HOR_RES / 2); /* fixed wrap width inside the SIZE_CONTENT bubble */
+        /* Content-sized bubble: hug short text, but WRAP (not clip) once it would exceed ~72% of the
+           screen. LVGL's max_width on a SIZE_CONTENT label CLIPS instead of re-wrapping (founder
+           2026-06-29: long messages were cut off) — so measure the text's natural width and pin the
+           label to the cap ONLY when it overflows; otherwise let it shrink to content. */
+        {
+            const lv_font_t *fnt = lv_obj_get_style_text_font(lbl, LV_PART_MAIN);
+            lv_coord_t lsp = lv_obj_get_style_text_letter_space(lbl, LV_PART_MAIN);
+            lv_coord_t lnsp = lv_obj_get_style_text_line_space(lbl, LV_PART_MAIN);
+            lv_point_t tsz;
+            lv_txt_get_size(&tsz, cm->text, fnt, lsp, lnsp, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+            lv_coord_t cap = (LV_HOR_RES * 72) / 100;
+            lv_obj_set_width(lbl, tsz.x > cap ? cap : LV_SIZE_CONTENT);
+        }
         lv_label_set_text(lbl, cm->text);
         lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
     }
