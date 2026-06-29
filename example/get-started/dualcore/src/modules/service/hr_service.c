@@ -284,6 +284,7 @@ static data_req_t *hr_service_get_max_min(datas_handle_t service, uint16_t len)
     if (r != NULL)
     {
         r->len = len;
+        memset(r->data, 0, len); // never push uninitialised heap on bad len
         if (len == HRS_MAX_MIN_LEN) // just return max , min , current rhr for test
         {
             uint8_t maxmin[HRS_MAX_MIN_LEN];
@@ -305,12 +306,13 @@ static data_req_t *hr_service_get_day_table(datas_handle_t service, uint16_t len
     r = rt_malloc(len + sizeof(data_req_t));
     if (r != NULL)
     {
+        r->len = len;
+        memset(r->data, 0, len); // never push uninitialised heap on bad len
         if (len == HRS_DAY_TABLE_LEN) // get day value : 24 hour
         {
             uint8_t today[HRS_DAY_TABLE_LEN];
             int i;
 
-            r->len = len;
             for (i = 0; i < HRS_DAY_TABLE_LEN; i++)
                 today[i] = env->env.hour[i].hr_value;
             memcpy(r->data, today, len);
@@ -328,6 +330,7 @@ static data_req_t *hr_service_get_mon_table(datas_handle_t service, uint16_t len
     if (r != NULL)
     {
         r->len = len;
+        memset(r->data, 0, len); // never push uninitialised heap on bad len
         if (len == HRS_MON_TABLE_LEN) // get rhr: 30 days
         {
             uint8_t mon[HRS_MON_TABLE_LEN];
@@ -349,6 +352,7 @@ static data_req_t *hr_service_get_region(datas_handle_t service, uint16_t len)
     if (r != NULL)
     {
         r->len = len;
+        memset(r->data, 0, len); // never push uninitialised heap on bad len
         if (len == HRS_REGION_LEN) // get region, ul, ana, aer, hiit, warmup
         {
             uint8_t region[HRS_REGION_LEN];
@@ -370,6 +374,7 @@ static data_req_t *hr_service_get_hist_rhr(datas_handle_t service, uint16_t len)
     if (r != NULL)
     {
         r->len = len;
+        memset(r->data, 0, len); // never push uninitialised heap on bad len
         if (len == HRS_RHR_HIST_LEN) // get max rhr, min rhr, average rhr
         {
             uint8_t rhr[HRS_RHR_HIST_LEN];
@@ -1272,12 +1277,14 @@ static void bg_hr_flush_bucket(uint32_t bucket_start_ts)
 static int bg_hr_skip_reason(void)
 {
     if (hr_service_env.is_ready != RT_TRUE) return BGHR_NOT_READY;
-#if (CUSTOMER_BOARD_VER == BOARD_VER_29)
-    /* Production (v29): on the charger means off-wrist, so skip PPG entirely.
-       Dev boards (v28) deliberately keep sampling while charging so wear
-       detection stays live for bench use. NOTE: charging current can inject
-       noise into the optical ADC, so DC/PI read while charging may be less
-       reliable -- accepted dev-only trade-off. */
+#if kReleaseMode
+    /* Release: on the charger means off-wrist, so skip PPG entirely.
+       Dev builds deliberately keep sampling while charging so wear detection
+       stays live for bench use. Dev and release now share the same physical
+       board (VER_29), so this is keyed on kReleaseMode rather than the board
+       version. NOTE: charging current can inject noise into the optical ADC,
+       so DC/PI read while charging may be less reliable -- accepted dev-only
+       trade-off. */
     if (battery_get_charge_state()->is_charging) return BGHR_CHARGING; /* on charger */
 #endif
     if (!wear_detect_is_wearing()) return BGHR_NOT_WORN;               /* off wrist  */

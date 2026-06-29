@@ -474,6 +474,10 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
         if (chat_page_is_open())
         {
             handle_v2t_result(msgData);
+            /* Route the live PARTIAL transcript to the chat's input box via the SHARED voice router
+               (append_text_to_input_message → refresh_ai_chat_input_message → its chat branch), the same
+               path the watch-face skaibar voice box uses. */
+            append_text_to_input_message();
             return;
         }
     }

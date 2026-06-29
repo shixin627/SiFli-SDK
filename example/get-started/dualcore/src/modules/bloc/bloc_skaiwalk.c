@@ -516,14 +516,6 @@ static void set_skai_message(chat_t *chat_list, chat_t message, int index)
 	chat_list[index] = message;
 }
 
-static void append_message_content(chat_t *chat_list, int index, char *message)
-{
-	// Preserve the original timestamp
-	time_t original_timestamp = chat_list[index].timestamp;
-	strcat(chat_list[index].message, message);
-	chat_list[index].timestamp = original_timestamp;
-}
-
 void clear_skai_message_list(chat_t *list, uint16_t *items_amount_ptr)
 {
 	// clear message list
@@ -740,7 +732,8 @@ void handle_skai_message(char *app_id, MSG_DATA_PAYLOAD *msgData)
 	{
 		temp_message.is_self = false;
 		temp_message.state = true;
-		strncpy(temp_message.message, accumulated_text, sizeof(temp_message.message));
+		strncpy(temp_message.message, accumulated_text, sizeof(temp_message.message) - 1);
+		temp_message.message[sizeof(temp_message.message) - 1] = '\0';
 		temp_message.timestamp = time(NULL);
 		bloc_notify_skai_message_stream(temp_message.message);
 

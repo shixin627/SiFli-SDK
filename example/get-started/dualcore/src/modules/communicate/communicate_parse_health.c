@@ -85,6 +85,8 @@ void resolve_HealthData_command(uint8_t key, const uint8_t *pValue,
     break;
     case KEY_DAILY_DATA_SYNC:
     {
+        if (length < 12)
+            break;
         uint32_t daily_step = read_be32(&pValue[0]);
         uint32_t daily_distance = read_be32(&pValue[4]);
         uint32_t daily_calory = read_be32(&pValue[8]);
@@ -104,6 +106,8 @@ void resolve_HealthData_command(uint8_t key, const uint8_t *pValue,
 
     case KEY_LATEST_DATA_SYNC:
     {
+        if (length < 10)
+            break;
         uint32_t calories = read_be32(&pValue[2]);
         uint16_t steps = read_be16(&pValue[6]);
         uint16_t distance = read_be16(&pValue[8]);

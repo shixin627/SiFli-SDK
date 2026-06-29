@@ -769,6 +769,7 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
     }
 
+
     case LVGL_MSG_TYPE_REFRESH_LANGUAGE:
     {
         /* 語言切換後重建所有「常駐、不重進」的離家視圖，讓 label 重新依新語言

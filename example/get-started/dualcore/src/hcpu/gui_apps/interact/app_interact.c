@@ -138,13 +138,6 @@ static void init_ui_components(void)
 }
 
 /**
- * @brief Clean up UI components and free resources
- */
-static void cleanup_ui_components(void)
-{
-}
-
-/**
  * @brief Get hint label component
  * @return Pointer to hint label or NULL if not created
  */
@@ -440,8 +433,7 @@ static void on_stop(void)
         break;
     }
 
-    /* Clean up UI components and reset state */
-    cleanup_ui_components();
+    /* Reset interact state */
     interact_state = TEST_STATE_UNKNOWN;
     ui_helper_set_interact_mode(false);
 }

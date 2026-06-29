@@ -84,8 +84,6 @@
 #include <rtdbg.h>
 
 LV_IMG_DECLARE(flow_hint);
-LV_IMG_DECLARE(ai_prompt_border_img_white);
-LV_IMG_DECLARE(ai_prompt_border_img_blue);
 LV_IMG_DECLARE(ripple_blue);
 
 static app_gesture_indicator_t gesture_indicator;
@@ -113,7 +111,8 @@ app_gesture_indicator_t *gui_app_get_gesture_indicator(void)
 }
 bool is_ai_interface_active(void)
 {
-    return !lv_obj_has_flag(gui_app_get_gesture_indicator()->speech_bg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_t *bg = gui_app_get_gesture_indicator()->speech_bg;
+    return bg && !lv_obj_has_flag(bg, LV_OBJ_FLAG_HIDDEN);
 }
 static const char *get_tool_description(LangchainToolKey tool_key);
 /* ============== Indicator Management ============== */
@@ -431,113 +430,6 @@ void is_on_speech_input(bool is_speech)
     }
 }
 
-static void ai_prompt_border_white_anim_cb(void *var, int32_t value)
-{
-    lv_obj_t *obj_white = gui_app_get_gesture_indicator()->ai_prompt_border_wight;
-
-    int32_t opa_value;
-    if (value > 500)
-    {
-        opa_value = value - 500;
-    }
-    else
-    {
-        opa_value = value;
-    }
-    // 設置白色邊框透明度
-    lv_opa_t opacity;
-    if (is_on_speech_input_variable)
-    {
-        // opacity = LV_OPA_100; // 如果正在語音輸入，保持不透明
-        opacity = (lv_opa_t)((value * (LV_OPA_60 - LV_OPA_40)) / 1000 + LV_OPA_40);
-    }
-    else
-    {
-        opacity = (lv_opa_t)((value * (LV_OPA_30 - LV_OPA_10)) / 1000 + LV_OPA_10);
-    }
-    lv_obj_set_style_img_opa(obj_white, opacity, LV_PART_MAIN);
-
-    // 計算白色邊框圓形移動的位置
-    // value 範圍 0-1000，對應一個完整的圓
-    float angle = (value * 360.0f) / 1000.0f * (3.14159f / 180.0f); // 轉換為弧度
-    int radius = 5;                                                 // 繞中心移動的半徑（像素）
-
-    int offset_x = (int)(radius * cos(angle));
-    int offset_y = (int)(radius * sin(angle));
-
-    // 應用白色邊框位置偏移
-    lv_obj_align(obj_white, LV_ALIGN_CENTER, offset_x, offset_y);
-}
-
-static void ai_prompt_border_blue_anim_cb(void *var, int32_t value)
-{
-    lv_obj_t *obj_blue = gui_app_get_gesture_indicator()->ai_prompt_border_blue;
-
-    int32_t opa_value;
-    if (value > 500)
-    {
-        opa_value = value - 500;
-    }
-    else
-    {
-        opa_value = value;
-    }
-    // 設置藍色邊框透明度
-    lv_opa_t opacity;
-    if (is_on_speech_input_variable)
-    {
-        // opacity = LV_OPA_100; // 如果正在語音輸入，保持不透明
-        opacity = (lv_opa_t)((value * (LV_OPA_60 - LV_OPA_40)) / 1000 + LV_OPA_40);
-    }
-    else
-    {
-        opacity = (lv_opa_t)((value * (LV_OPA_30 - LV_OPA_10)) / 1000 + LV_OPA_10);
-    }
-    lv_obj_set_style_img_opa(obj_blue, opacity, LV_PART_MAIN);
-
-    // 計算藍色邊框圓形移動的位置（與白色相差180度）
-    // value 範圍 0-1000，加180度偏移讓藍色與白色不同步
-    float angle = ((value + 500) % 1000 * 360.0f) / 1000.0f * (3.14159f / 180.0f); // 轉換為弧度，加500相當於180度偏移
-    int radius = 5;                                                                // 繞中心移動的半徑（像素）
-
-    int offset_x = (int)(radius * cos(angle));
-    int offset_y = (int)(radius * sin(angle));
-
-    // 應用藍色邊框位置偏移
-    lv_obj_align(obj_blue, LV_ALIGN_CENTER, offset_x, offset_y);
-}
-
-void create_ai_prompt_border_anim(app_gesture_indicator_t *indicator)
-{
-    if (indicator->ai_prompt_border_wight && lv_obj_is_valid(indicator->ai_prompt_border_wight) &&
-        indicator->ai_prompt_border_blue && lv_obj_is_valid(indicator->ai_prompt_border_blue))
-    {
-        // 創建白色邊框動畫
-        lv_anim_t white_border_anim;
-        lv_anim_init(&white_border_anim);
-        lv_anim_set_var(&white_border_anim, indicator->ai_prompt_border_wight);
-        lv_anim_set_exec_cb(&white_border_anim, ai_prompt_border_white_anim_cb);
-        lv_anim_set_values(&white_border_anim, 0, 1000);              // 0-1000 來同時控制透明度和位置
-        lv_anim_set_time(&white_border_anim, 3000);                   // 3秒完成一個圓形軌跡
-        lv_anim_set_playback_time(&white_border_anim, 3000);          // 3秒完成一個圓形軌跡
-        lv_anim_set_path_cb(&white_border_anim, lv_anim_path_linear); // 使用線性路徑讓圓形移動更均勻
-        lv_anim_set_repeat_count(&white_border_anim, LV_ANIM_REPEAT_INFINITE);
-        lv_anim_start(&white_border_anim);
-
-        // 創建藍色邊框動畫
-        lv_anim_t blue_border_anim;
-        lv_anim_init(&blue_border_anim);
-        lv_anim_set_var(&blue_border_anim, indicator->ai_prompt_border_blue);
-        lv_anim_set_exec_cb(&blue_border_anim, ai_prompt_border_blue_anim_cb);
-        lv_anim_set_values(&blue_border_anim, 0, 1000);              // 0-1000 來同時控制透明度和位置
-        lv_anim_set_time(&blue_border_anim, 3000);                   // 3秒完成一個圓形軌跡
-        lv_anim_set_playback_time(&blue_border_anim, 3000);          // 3秒完成一個圓形軌跡
-        lv_anim_set_path_cb(&blue_border_anim, lv_anim_path_linear); // 使用線性路徑讓圓形移動更均勻
-        lv_anim_set_repeat_count(&blue_border_anim, LV_ANIM_REPEAT_INFINITE);
-        lv_anim_start(&blue_border_anim);
-    }
-}
-
 static void open_ai_prompt_border(app_gesture_indicator_t *indicator, bool open)
 {
     if (open && is_ai_interface_active())
@@ -734,6 +626,16 @@ extern bool get_is_open_instruction_list_ai(void);
 extern void set_skai_widget_input_text(const char *text);
 void refresh_ai_chat_input_message(char *text)
 {
+    /* The @-conversation chat room's mic owns the transcript when it's up — show the live partial in
+       its (transparent) input box and stop here, so it never bleeds into the launcher widgets
+       (founder 2026-06-29). */
+    extern bool chat_page_is_open(void);
+    extern void chat_page_set_transcript(const char *text);
+    if (chat_page_is_open())
+    {
+        chat_page_set_transcript(text);
+        return;
+    }
     /* Decide by current screen: if the right device page's skaibar is open, the
        recognised text belongs there, not the left instruction_list widget. */
     extern bool device_pager_skaibar_is_open(void);

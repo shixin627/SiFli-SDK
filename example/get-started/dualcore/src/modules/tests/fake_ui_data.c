@@ -543,6 +543,19 @@ static int sim_skai_open(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(sim_skai_open, sim_skai_open - force open instruction-list AI widget);
 
+/* Open the floating mixed list in browse mode (no input box, all categories) —
+   the same surface the left-edge reveal pulls in, but driven programmatically so
+   the PC sim (no BLE gesture path) can screenshot it. */
+static int sim_open_list(int argc, char *argv[])
+{
+    (void)argc; (void)argv;
+    extern void instruction_list_open_browse(void);
+    instruction_list_open_browse();
+    rt_kprintf("sim_open_list: browse list opened\n");
+    return 0;
+}
+MSH_CMD_EXPORT(sim_open_list, sim_open_list - open the mixed browse list (sim));
+
 /* Persistent buffer — LVGL_MSG_TYPE_INPUT_MESSAGE carries the pointer, not a
    copy, so it must outlive the dispatch. Static storage is fine since this
    command is single-threaded from FinSH. */
