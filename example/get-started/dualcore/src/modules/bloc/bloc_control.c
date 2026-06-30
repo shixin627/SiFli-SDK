@@ -1041,6 +1041,33 @@ static bool fsr_mouse_app_is_foreground(void)
 static volatile rt_uint32_t g_fsr_adc_latest = 0;
 static rt_thread_t fsr_adc_sampler_thread = RT_NULL;
 
+/* Press detection is RELATIVE to an auto-captured resting baseline, as a
+   PERCENTAGE drop — not an absolute ADC delta. The FSR's press swing scales with
+   the baseline (a press from 18000→17000 is −5.6%, the same press from 4000→3777
+   is also −5.6%, i.e. only −223 absolute), so a fixed delta would mis-fire once
+   the baseline drifts. A ratio is the invariant. FSR-402 wiring: pressing LOWERS
+   the reading. Baseline = resting (finger-off) value, captured once at boot and
+   re-capturable on demand via the `fsr_recal` MSH command.
+   NOTE: at a very low baseline the absolute swing shrinks toward the ADC noise
+   floor, so detection there is inherently marginal — restore the sensor baseline
+   (mechanical preload / moisture / damage), no threshold model can fix lost range. */
+#define FSR_BASELINE_DEFAULT 18000  /* fallback baseline until first calibration */
+#define FSR_BASELINE_MIN      6000  /* readings below this look pressed/faulty — don't calibrate to them */
+#define FSR_CAL_SAMPLES          8  /* average this many resting samples (~0.8s @10Hz) for the baseline */
+/* Thresholds are PERMILLE of the baseline, with hysteresis: an ON threshold to
+   ENTER the state (drop below) and a higher OFF threshold to LEAVE it (rise
+   above). The gap stops a press from dropping out on a small force change — which
+   near a hard press is a BIG ADC swing because the FSR is very non-linear there
+   (e.g. v jumps 3882→11556 for what feels like a slight relax). OFF must stay
+   below baseline so a genuine finger-off (v→baseline) always releases. */
+#define FSR_LIGHT_ON_PERMILLE  944  /* < 94.4% of baseline → move / handfree ON   (was 17000/18000) */
+#define FSR_LIGHT_OFF_PERMILLE 970  /* > 97.0% → handfree OFF */
+#define FSR_HEAVY_ON_PERMILLE  556  /* < 55.6% of baseline → left-button PRESS     (was 10000/18000) */
+#define FSR_HEAVY_OFF_PERMILLE 780  /* > 78.0% → left-button RELEASE (sticky hold band) */
+
+static rt_uint32_t g_fsr_baseline = FSR_BASELINE_DEFAULT;
+static volatile bool g_fsr_recal_request = true;  /* true → (re)capture baseline at next opportunity */
+
 rt_uint32_t bloc_control_fsr_adc_latest(void)
 {
 	return g_fsr_adc_latest;
@@ -1059,25 +1086,57 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 			continue;
 		}
 		g_fsr_adc_latest = fsr_adc_read_value();
-		// LOG_D("FSR ADC: %d", g_fsr_adc_latest);
+		// LOG_D("FSR ADC: %d (baseline %d)", g_fsr_adc_latest, g_fsr_baseline);
 
+		/* Baseline calibration (boot / on-demand): average a few resting samples,
+		   assuming the FSR is NOT pressed. A reading below FSR_BASELINE_MIN looks
+		   pressed/faulty, so it restarts the window instead of poisoning the
+		   baseline. While calibrating we don't drive press/handfree. */
+		if (g_fsr_recal_request)
+		{
+			static rt_uint32_t cal_acc = 0;
+			static rt_uint8_t  cal_cnt = 0;
+			if (g_fsr_adc_latest >= FSR_BASELINE_MIN)
+			{
+				cal_acc += g_fsr_adc_latest;
+				if (++cal_cnt >= FSR_CAL_SAMPLES)
+				{
+					g_fsr_baseline = cal_acc / cal_cnt;
+					cal_acc = 0;
+					cal_cnt = 0;
+					g_fsr_recal_request = false;
+					LOG_I("FSR baseline calibrated: %d", g_fsr_baseline);
+				}
+			}
+			else
+			{
+				cal_acc = 0;
+				cal_cnt = 0;
+			}
+			rt_thread_mdelay(100);
+			continue;
+		}
+
+		/* Thresholds are a PERCENTAGE of the baseline (so the same physical press
+		   triggers regardless of where the baseline sits) WITH hysteresis: pick the
+		   ON threshold while in the released state, the higher OFF threshold while
+		   held. (baseline*permille max ~18000*970 fits int32 with room to spare.) */
+		rt_int32_t v = (rt_int32_t)g_fsr_adc_latest;
+		rt_int32_t base = (rt_int32_t)g_fsr_baseline;
+		rt_int32_t light_on  = base * FSR_LIGHT_ON_PERMILLE  / 1000;
+		rt_int32_t light_off = base * FSR_LIGHT_OFF_PERMILLE / 1000;
+		/* Press mode clicks on the light (move) threshold; default mode on the
+		   heavy (deeper) threshold. */
 		bool press_mode = SkaiWatchSys.flag_field.mouse_press_mode;
-		bool want_handfree;
-		bool want_left_press;
+		rt_int32_t click_on  = base * (press_mode ? FSR_LIGHT_ON_PERMILLE  : FSR_HEAVY_ON_PERMILLE)  / 1000;
+		rt_int32_t click_off = base * (press_mode ? FSR_LIGHT_OFF_PERMILLE : FSR_HEAVY_OFF_PERMILLE) / 1000;
+
+		/* Hysteresis: released → press only below *_on; held → release only above
+		   *_off. Between the two it keeps its current state (sticky). */
+		bool want_handfree = prev_handfree ? (v < light_off) : (v < light_on);
 		if (press_mode)
-		{
-			/* Press mode: 一直可以移動,壓感 < 17000 即視為左鍵按下
-			   (本錶 FSR 沒按 ~18000) */
-			want_handfree = true;
-			want_left_press = (g_fsr_adc_latest < 17000);
-		}
-		else
-		{
-			/* Default mode: 壓感 < 17000 才能移動;< 10000 額外按下左鍵
-			   (本錶 FSR 沒按 ~18000) */
-			want_handfree = (g_fsr_adc_latest < 17000);
-			want_left_press = (g_fsr_adc_latest < 10000);
-		}
+			want_handfree = true;  /* press mode: always free to move */
+		bool want_left_press = left_pressed ? (v < click_off) : (v < click_on);
 
 		/* Squeeze only drives the air-mouse while the standalone mouse app is
 		   open. Outside it a squeeze must not leak a BLE HID click. Forcing
@@ -1089,20 +1148,26 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 			want_left_press = false;
 		}
 
+		/* Edge-only logs: print just the press/release transitions (not every tick)
+		   so the press判定 can be eyeballed. v / baseline / threshold included. */
 		if (want_handfree != prev_handfree)
 		{
+			LOG_I("FSR handfree %s  v=%d base=%d on=%d off=%d", want_handfree ? "ON" : "OFF",
+			      v, g_fsr_baseline, light_on, light_off);
 			set_hid_mouse_handfree_mode_to(want_handfree);
 			prev_handfree = want_handfree;
 		}
 
 		if (want_left_press && !left_pressed)
 		{
+			LOG_I("FSR LEFT PRESS    v=%d base=%d on=%d off=%d", v, g_fsr_baseline, click_on, click_off);
 			if (control_provider.ble_hid_mouse_left_press)
 				control_provider.ble_hid_mouse_left_press();
 			left_pressed = true;
 		}
 		else if (!want_left_press && left_pressed)
 		{
+			LOG_I("FSR LEFT RELEASE  v=%d base=%d on=%d off=%d", v, g_fsr_baseline, click_on, click_off);
 			if (control_provider.ble_hid_mouse_left_release)
 				control_provider.ble_hid_mouse_left_release();
 			left_pressed = false;
@@ -1124,6 +1189,16 @@ static int fsr_adc_sampler_thread_init(void)
 	return 0;
 }
 INIT_APP_EXPORT(fsr_adc_sampler_thread_init);
+
+/* Re-capture the FSR resting baseline. Run with the FSR untouched; the sampler
+   averages the next FSR_CAL_SAMPLES resting samples into the new baseline. */
+static int fsr_recal(int argc, char **argv)
+{
+	g_fsr_recal_request = true;
+	rt_kprintf("FSR baseline recalibration requested — keep finger OFF\n");
+	return 0;
+}
+MSH_CMD_EXPORT(fsr_recal, "recapture FSR mouse resting baseline (keep finger off)");
 #endif // USING_FSR_ADC_SAMPLER
 
 #if !kReleaseMode

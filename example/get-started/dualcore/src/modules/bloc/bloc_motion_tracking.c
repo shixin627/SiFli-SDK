@@ -618,7 +618,8 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
 
     #ifdef REAL_TIME_IMU_DATA_COLLECTION
     extern bool imu_raw_data_collection;
-    if (imu_raw_data_collection)
+    extern bool imu_mouse_data_collection;
+    if (imu_raw_data_collection || imu_mouse_data_collection)
     {
         // LOG_D("Collecting IMU raw data: ppg:%d, fsr_adc:%d", ppg_rawdata,
         //       fsr_adc_value);
@@ -970,8 +971,23 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
         mouse_movement_lock = false;
     }
 
+    extern bool imu_mouse_data_collection;
+    if (imu_mouse_data_collection)
+    {
+        /* Data-collection mode: always relay the cursor delta to the phone via
+         * the 0x08 uplink (not BLE-HID), regardless of FSR/handfree — the game
+         * cursor needs continuous motion; clicks are judged phone-side from the
+         * fsr_adc already carried in the 0x50 raw stream. */
+        if (delta_movement.x != 0 || delta_movement.y != 0)
+        {
+            extern bool commu_send_mouse_move(int dx, int dy);
+            commu_send_mouse_move(delta_movement.x, delta_movement.y);
+            delta_movement.x = 0;
+            delta_movement.y = 0;
+        }
+    }
     // 按住面板才可體感移動，且移動鎖已解除
-    if (!mouse_movement_lock && get_hid_mouse_handfree_mode() &&
+    else if (!mouse_movement_lock && get_hid_mouse_handfree_mode() &&
         !switch_freehand_mode &&
         !switch_mouse_scroll_mode) //! stop_mouse_move &&
                                    //! is_skai_touch_enabled() &&
@@ -1420,8 +1436,11 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
     }
 
 #ifdef BSP_USING_AIR_MOUSE
-    if (app_control_get_mouse_mode() || is_at_mouse_mode() ||
-        gui_app_is_actived(APP_ID_MOUSE))
+    extern bool imu_mouse_data_collection;
+    /* imu_mouse_data_collection first so the short-circuit skips the
+     * gui_app_is_actived() call (asserts on the GUI thread) while collecting. */
+    if (imu_mouse_data_collection || app_control_get_mouse_mode() ||
+        is_at_mouse_mode() || gui_app_is_actived(APP_ID_MOUSE))
     {
         air_mouse_process(motion_data->timestamp, &motion_data->global_q,
                           &prev_global_quat);

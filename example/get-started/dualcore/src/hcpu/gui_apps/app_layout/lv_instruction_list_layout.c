@@ -1533,6 +1533,9 @@ static void inst_list_slide_anim_cb(void *var, int32_t v);
    close (hdrag) so the dial blur tracks the list both ways. Defined with the
    reveal block below. */
 static void dial_blur_track(lv_coord_t tx);
+/* Finger-follow page dim for the mouse-page list — shared by the reveal/settle and
+   the manual left-drag close so the dim tracks the list both ways. Defined below. */
+static void page_dim_track(lv_coord_t tx);
 static void reveal_settle_anim_cb(void *var, int32_t v);
 /* Gate for ai_widget_fade_on_scroll: set true while refresh_custom_instructions
    does programmatic scrolls. Declared here (not at refresh_* location) so
@@ -1663,6 +1666,7 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
                 lv_anim_del(bg, reveal_settle_anim_cb);
                 lv_obj_set_style_translate_x(bg, tx, 0);
                 dial_blur_track(tx); /* finger-follow blur fade-out as it drags right */
+                page_dim_track(tx);  /* finger-follow page dim: lighten back as it drags out */
             }
         }
         break;
@@ -2076,6 +2080,14 @@ void instruction_list_refeed_single_device(void)
 {
     if (!s_bar_single_device || s_single_device_id[0] == '\0')
         return;
+    /* 手機 push 的即時選項(帶 @-contact service logo)優先於 registry placeholder。registry 的
+       default_actions 不帶 svc,一旦 refeed 就把 push 設好的 service icon clear+rebuild 成預設框
+       (真機 log 2026-06-30 證實:set_svc 設好 icon → 隨後的 refeed 把 icon 歸零 → logo 消失)。
+       所以清單只要已顯示帶 logo 的 @ 列,就保留 push 版、不用 registry 覆蓋。push 會持續帶來電腦
+       skaibar 的即時更新,不需要 registry placeholder 再蓋一次。 */
+    for (uint8_t i = 0; i < list_item_count; i++)
+        if (list_items[i].icon != NULL && list_items[i].category == '@')
+            return;
     feed_single_device_options(s_single_device_id);
 }
 
@@ -2387,6 +2399,8 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
         lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
         lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_bg,
                         LV_OBJ_FLAG_HIDDEN);
+    if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
+        lv_obj_set_style_bg_opa(s_global_bar_layer, LV_OPA_0, 0);
     {
         extern void instruction_list_bar_set_blur(bool on);
         instruction_list_bar_set_blur(false);
@@ -2482,6 +2496,28 @@ static void dial_blur_track(lv_coord_t tx)
     }
 }
 
+/* Full-screen page dim for the mouse-page list. Sets the s_global_bar_layer bg
+   to BLACK every frame (remove_style_all leaves it white otherwise) and ramps
+   opa with how far the list slid in. invalidate forces a whole-screen redraw so
+   the entire trackpad darkens, not just the strip the list slides over. */
+static void page_dim_track(lv_coord_t tx)
+{
+    if (!s_global_bar_layer || !lv_obj_is_valid(s_global_bar_layer))
+        return;
+    if (!s_bar_single_device)
+    {
+        lv_obj_set_style_bg_opa(s_global_bar_layer, LV_OPA_0, 0);
+        return;
+    }
+    lv_coord_t pulled = LV_HOR_RES - LV_ABS(tx);
+    if (pulled < 0) pulled = 0;
+    if (pulled > LV_HOR_RES) pulled = LV_HOR_RES;
+    lv_obj_set_style_bg_color(s_global_bar_layer, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_global_bar_layer,
+                            (lv_opa_t)((pulled * LV_OPA_80) / LV_HOR_RES), 0);
+    lv_obj_invalidate(s_global_bar_layer);
+}
+
 /* Fade the bottom mic pill in WITH the watch-face left-edge reveal (finger-follow):
    opacity tracks how far the list has slid in, mirroring dial_blur_track. Without
    this the pill popped to full opacity the instant the reveal began. ONLY the
@@ -2515,6 +2551,7 @@ static void reveal_settle_anim_cb(void *var, int32_t v)
         return;
     lv_obj_set_style_translate_x(list_bg, (lv_coord_t)v, 0);
     dial_blur_track((lv_coord_t)v);
+    page_dim_track((lv_coord_t)v);
     bar_reveal_opa_track((lv_coord_t)v); /* ramp the bottom mic pill THROUGH the settle */
 }
 
@@ -2554,10 +2591,9 @@ void instruction_list_reveal_drag_begin(void)
     /* Backdrop behind the list: transparent on the watch face (blurred dial shows
        through), light scrim elsewhere — same rule as animate_open_ai_widget. */
     {
-        extern bool clock_main_page_is_home(void);
-        lv_obj_set_style_bg_color(list_bg, lv_color_black(), 0);
-        lv_obj_set_style_bg_opa(
-            list_bg, clock_main_page_is_home() ? LV_OPA_0 : LV_OPA_40, 0);
+        lv_obj_set_style_bg_opa(list_bg, LV_OPA_0, 0);
+        if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))
+            lv_obj_set_style_bg_opa(s_global_bar_layer, LV_OPA_0, 0);
     }
     /* The watch-face blur is faded in by the drag updates (finger-follow), not
        switched on here — see instruction_list_reveal_drag_update. */
@@ -2604,6 +2640,7 @@ void instruction_list_reveal_drag_update(lv_coord_t dx)
     lv_anim_del(list_bg, inst_list_slide_anim_cb);
     lv_obj_set_style_translate_x(list_bg, tx, 0);
     dial_blur_track(tx); /* finger-follow blur: fade in with the pull */
+    page_dim_track(tx);
     bar_reveal_opa_track(tx); /* finger-follow: fade the bottom mic pill in too */
 }
 
@@ -2668,7 +2705,8 @@ void instruction_list_open_browse(void)
     if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
         return;
     s_pending_reveal_filter = 0; /* bar / IMU browse → all (@ + /) view */
-    s_reveal_from_left = false;  /* programmatic open parks on the right edge */
+    s_reveal_from_left = true;   /* IMU release brings the LEFT list in (the right-edge
+                                    drawer is legacy); park on the left, slide to 0 */
     instruction_list_reveal_drag_begin(); /* un-hide + park + backdrop */
     s_reveal_drag_active = false;         /* gesture-triggered, not a finger drag */
     lv_coord_t tx = lv_obj_get_style_translate_x(list_bg, 0);
@@ -2966,10 +3004,7 @@ void animate_open_ai_widget(void)
                the mouse page has no blur, so a light scrim makes the list stand
                out over the bright trackpad. */
             {
-                extern bool clock_main_page_is_home(void);
-                lv_obj_set_style_bg_color(list_bg, lv_color_black(), 0);
-                lv_obj_set_style_bg_opa(
-                    list_bg, clock_main_page_is_home() ? LV_OPA_0 : LV_OPA_40, 0);
+                lv_obj_set_style_bg_opa(list_bg, LV_OPA_0, 0);
             }
             if (was_hidden)
             {
@@ -5336,6 +5371,8 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_clear_flag(s_global_bar_layer, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(s_global_bar_layer, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_bg_color(s_global_bar_layer, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_global_bar_layer, LV_OPA_0, 0);
 
     /* R3: the list content now lives ON the global bar layer (was the LEFT tile
        in `parent`), so it FLOATS over the current page instead of being a tile
@@ -5848,12 +5885,10 @@ static const uint16_t DEFAULT_APP_ITEMS[] = {
 #ifdef APP_ID_PHOTO
     app_id_photo,
 #endif
-#ifdef APP_ID_MOUSE
     /* P3: mouse / trackpad is now opened as a list app (its left-swipe tile entry
        was removed so the left edge can host the @-list reveal). map_app_id maps
        app_id_mouse → APP_ID_MOUSE; tap runs it locally via gui_app_run. */
     app_id_mouse,
-#endif
 };
 
 /* Fill [app_base_count ..] with the built-in default apps and enter DEFAULT_APPS

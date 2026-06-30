@@ -56,10 +56,14 @@
 bool imu_data_collection_error = false;
 bool imu_data_collection = false;
 bool imu_raw_data_collection = false;
+/* MOUSE collection: same raw IMU stream (0x50) as RAW, plus the air-mouse
+ * delta (0x08) so the phone mouse-data-collection page gets both at once. */
+bool imu_mouse_data_collection = false;
 
 bool pause_sleep_cause_of_imu_reson(void)
 {
-    return imu_data_collection || imu_raw_data_collection;
+    return imu_data_collection || imu_raw_data_collection ||
+           imu_mouse_data_collection;
 }
 bool get_imu_data_collection_status(void)
 {
@@ -940,7 +944,41 @@ void imu_raw_data_collection_sw_event_callback(lv_event_t *e)
         }
         skaiwatch_ble_set_performance(BLE_PERF_SLOW);
     }
-    watch_sys_sync.notify_imu_rawdata_collection(imu_raw_data_collection);
+    /* The raw gsensor stream stays on while EITHER collection mode wants it,
+     * so toggling one button never kills the other's stream. */
+    watch_sys_sync.notify_imu_rawdata_collection(imu_raw_data_collection ||
+                                                 imu_mouse_data_collection);
+}
+
+/* MOUSE collection button — mirrors RAW (raw gsensor stream + BLE FAST), and
+ * additionally drives the air-mouse delta uplink (see air_mouse_process in
+ * bloc_motion_tracking.c, gated on imu_mouse_data_collection). */
+void imu_mouse_data_collection_sw_event_callback(lv_event_t *e)
+{
+    lv_obj_t *obj = lv_event_get_target(e);
+    imu_mouse_data_collection = !imu_mouse_data_collection;
+    lv_obj_set_style_bg_color(obj, imu_mouse_data_collection ? lv_color_make(0, 150, 0) : lv_color_make(60, 60, 60), LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    if (imu_mouse_data_collection)
+    {
+        if (gesture_tap_hz)
+        {
+            switch_watch_motion_control_mode(true, true);
+            have_change_tap_hz = true;
+        }
+        skaiwatch_ble_set_performance(BLE_PERF_FAST);
+    }
+    else
+    {
+        if (have_change_tap_hz)
+        {
+            switch_watch_motion_control_mode(true, false);
+            have_change_tap_hz = false;
+        }
+        skaiwatch_ble_set_performance(BLE_PERF_SLOW);
+    }
+    watch_sys_sync.notify_imu_rawdata_collection(imu_raw_data_collection ||
+                                                 imu_mouse_data_collection);
 }
 
 void imu_lock_sw_event_callback(lv_event_t *e)
@@ -1182,6 +1220,19 @@ static lv_obj_t *create_gesture_screen(lv_obj_t *parent)
     lv_obj_set_style_text_font(imu_raw_data_collection_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
     lv_obj_set_style_text_color(imu_raw_data_collection_label, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_center(imu_raw_data_collection_label);
+
+    /* MOUSE data — RAW stream + air-mouse delta (phone mouse-collection page) */
+    lv_obj_t *imu_mouse_container = lv_btn_create(imu_row2);
+    lv_obj_set_size(imu_mouse_container, LV_PCT(30), 60);
+    lv_obj_set_style_bg_color(imu_mouse_container, imu_mouse_data_collection ? lv_color_make(0, 150, 0) : lv_color_make(60, 60, 60), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(imu_mouse_container, 8, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_add_event_cb(imu_mouse_container, imu_mouse_data_collection_sw_event_callback, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *imu_mouse_data_collection_label = lv_label_create(imu_mouse_container);
+    lv_label_set_text(imu_mouse_data_collection_label, "MOUSE");
+    lv_obj_set_style_text_font(imu_mouse_data_collection_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_color(imu_mouse_data_collection_label, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_center(imu_mouse_data_collection_label);
 
     /* Gesture collection row */
     lv_obj_t *collect_row = lv_obj_create(ui.main_container);

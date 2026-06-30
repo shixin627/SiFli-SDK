@@ -787,6 +787,20 @@ void instruction_list_bar_set_blur_amount(uint8_t opa)
     lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
 }
 
+/* True only when our dial blur is ACTUALLY on screen behind the floating list.
+   The bare s_bar_blur_active flag isn't enough: set_blur() early-returns when
+   gaus_dial_bg is gone (the standalone mouse app tears the watch face down),
+   leaving the flag stale. The instruction-list scrim keys off this instead of
+   clock_main_page_is_home() — the latter reads middle_layer_tileview_index,
+   which the mouse app never updates, so it falsely reports HOME and suppresses
+   the scrim. Blur really showing -> no scrim (OPA_0); no blur behind the list
+   (mouse page, dial torn down) -> dark scrim (OPA_40). */
+bool instruction_list_bar_blur_is_active(void)
+{
+    return s_bar_blur_active && gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg) &&
+           !lv_obj_has_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+}
+
 /* True when the watch face (HOME) is the current main page. The floating list's
    open path uses this to blur the dial in place (no tile switch) on the watch
    face, while other pages keep the legacy tile path for now. */
@@ -902,6 +916,37 @@ static void gesture_test_btn_event_cb(lv_event_t *e)
 
 static datac_handle_t pwr_srv_hdl = DATA_CLIENT_INVALID_HANDLE;
 static lv_obj_t *brightness_bar;
+static lv_obj_t *brightness_fill; /* self-drawn fill pill; see cc_bar_apply_fill */
+
+/* Coalesce PRESSING sends so the data-service queue can't overflow. */
+#define CC_BAR_THROTTLE_MS 40
+/* The fill never shrinks below this width, so dragging to the far left bottoms
+ * out at a fixed icon-sized pill instead of vanishing. */
+#define CC_BAR_FILL_MIN_W 90
+
+/* Copied from app_setting.c (setting_bar_apply_fill). After the LVGL update,
+ * lv_bar on real hardware takes the EPIC GPU indicator path whenever
+ * bg_radius != 0 (lv_bar.c:484) and paints the indicator across the WHOLE track
+ * regardless of value -> a stray full-width oval, i.e. "no layering". The fix:
+ * make MAIN/INDICATOR transparent + MAIN radius 0 (off the GPU path) and draw
+ * the fill ourselves as a single rounded child whose width tracks the value. */
+static void cc_bar_apply_fill(lv_obj_t *bar, lv_obj_t *fill)
+{
+    if (!bar || !fill || !lv_obj_is_valid(bar) || !lv_obj_is_valid(fill))
+        return;
+    lv_coord_t min = lv_bar_get_min_value(bar);
+    lv_coord_t max = lv_bar_get_max_value(bar);
+    lv_coord_t value = lv_bar_get_value(bar);
+    lv_coord_t barw = lv_obj_get_width(bar);
+    lv_coord_t w = CC_BAR_FILL_MIN_W;
+    if (max > min && barw > CC_BAR_FILL_MIN_W)
+        w += (lv_coord_t)((int32_t)(value - min) * (barw - CC_BAR_FILL_MIN_W) / (max - min));
+    if (w < CC_BAR_FILL_MIN_W)
+        w = CC_BAR_FILL_MIN_W;
+    if (w > barw)
+        w = barw;
+    lv_obj_set_width(fill, w);
+}
 
 static int powermgr_srv_callback(data_callback_arg_t *arg)
 {
@@ -937,6 +982,7 @@ static int powermgr_srv_callback(data_callback_arg_t *arg)
               p_range->min, p_range->max);
         lv_bar_set_range(brightness_bar, p_range->min, p_range->max);
         lv_bar_set_value(brightness_bar, p_range->cur, LV_ANIM_ON);
+        cc_bar_apply_fill(brightness_bar, brightness_fill);
     }
     break;
     case PWRMGR_MSG_LCD_BRIGHTNESS_SET_RSP:
@@ -1034,6 +1080,8 @@ extern lv_obj_t *lv_media_widget_builder(lv_obj_t *parent);
    horizontal drag on the bar doesn't slide the page. */
 static void bar_event_cb(lv_event_t *e)
 {
+    static int16_t last_sent = -1;
+    static uint32_t last_send_tick = 0;
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_PRESSING)
     {
@@ -1056,16 +1104,32 @@ static void bar_event_cb(lv_event_t *e)
         if (value < 5)
             value = 5;
         lv_bar_set_value(bar, value, LV_ANIM_OFF);
+        cc_bar_apply_fill(bar, brightness_fill);
         uint16_t brightness = lv_bar_get_value(bar);
-        gui_set_brightness(brightness, true);
+        if ((int16_t)brightness != last_sent &&
+            lv_tick_elaps(last_send_tick) >= CC_BAR_THROTTLE_MS)
+        {
+            gui_set_brightness(brightness, true);
+            last_sent = (int16_t)brightness;
+            last_send_tick = lv_tick_get();
+        }
     }
     else if (code == LV_EVENT_PRESSED)
     {
+        last_sent = -1;
+        last_send_tick = 0;
         lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
                           LV_OBJ_FLAG_SCROLLABLE);
     }
     else if (code == LV_EVENT_RELEASED)
     {
+        lv_obj_t *bar = lv_event_get_target(e);
+        uint16_t brightness = lv_bar_get_value(bar);
+        if ((int16_t)brightness != last_sent)
+        {
+            gui_set_brightness(brightness, true);
+            last_sent = (int16_t)brightness;
+        }
         lv_obj_add_flag(myLancher[app_index_message].pagetileview,
                         LV_OBJ_FLAG_SCROLLABLE);
     }
@@ -1094,22 +1158,47 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
        (the trackpad is reached from the left mixed list / app launch now). */
     control_center_app_list = NULL;
 
-    /* Brightness slider (top) with a sun glyph on its left edge. */
+    /* Brightness slider (top) with a sun glyph on its left edge.
+       2026-06-30: full structure copied from the Settings display page
+       (app_setting_display.c). The bar there lives inside a 0x1E1E1E dark
+       card (`item`); the bar alone on the transparent control-center window
+       had no dark backing, so the fill/track split was invisible. Recreate
+       that card here verbatim — same container + bar + sun icon. */
+    // lv_obj_t *item = lv_obj_create(control_center_window);
+    // lv_obj_set_size(item, LV_PCT(90), 100);
+    // lv_obj_align(item, LV_ALIGN_TOP_MID, 0, 90);
+    // lv_obj_set_style_bg_color(item, lv_color_hex(0x1E1E1E), 0);
     lv_obj_t *bar = lv_bar_create(control_center_window);
-    lv_bar_set_range(bar, 0, 100);
-    lv_obj_set_width(bar, LV_PCT(70));
-    lv_obj_set_height(bar, 80);
-    lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 100);
-    lv_obj_set_style_bg_color(bar, APP_MAIN_COLOR, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(bar, APP_MAIN_COLOR, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(bar, LV_OPA_90, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(bar, LV_OPA_10, LV_PART_MAIN);
+    lv_bar_set_range(bar, 5, 100);
+    lv_obj_set_size(bar, LV_PCT(70), 80);
+    lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 90);
+    lv_obj_set_style_bg_color(bar, lv_color_hex(0xE5E5EA), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(bar, lv_color_hex(0xE5E5EA), LV_PART_MAIN);
+    lv_obj_set_style_radius(bar, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_TRANSP, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_bar_set_value(bar, SkaiWatchSys.brightness, LV_ANIM_ON);
     lv_obj_add_event_cb(bar, bar_event_cb, LV_EVENT_ALL, NULL);
+    /* Self-drawn fill: one rounded child, left-anchored, width tracks the
+       value (see cc_bar_apply_fill). lv_bar's own indicator is unusable here
+       (EPIC GPU path paints it full-width on real hw, and it collapses at the
+       minimum), which is why MAIN/INDICATOR above are transparent. Created
+       before the icon so the sun glyph stays on top. */
+    lv_obj_t *brightness_floor = lv_obj_create(bar);
+    lv_obj_set_height(brightness_floor, 80);
+    lv_obj_set_style_radius(brightness_floor, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(brightness_floor, lv_color_hex(0xE5E5EA), 0);
+    lv_obj_set_style_bg_opa(brightness_floor, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(brightness_floor, 0, 0);
+    lv_obj_clear_flag(brightness_floor, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(brightness_floor, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_t *sun_icon = lv_img_create(bar);
     lv_img_set_src(sun_icon, &sun);
     lv_obj_align(sun_icon, LV_ALIGN_LEFT_MID, 20, 0);
     brightness_bar = bar;
+    brightness_fill = brightness_floor;
+    lv_obj_update_layout(bar); /* resolve width before the first fill calc */
+    cc_bar_apply_fill(bar, brightness_floor);
 
     /* Tool-button grid below the slider. */
     lv_obj_t *cc_bottom = lv_obj_create(control_center_window);
@@ -1496,7 +1585,7 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     /* T4: device_pager 內容放右 tile (2,1)，鏡像左側 instruction_list。
        拉出靠原生 tileview 滑動。 */
     extern lv_obj_t *device_pager_create(lv_obj_t * parent);
-    device_pager_create(pages[MAIN_PAGE_TYPE_RIGHT]);
+    // device_pager_create(pages[MAIN_PAGE_TYPE_RIGHT]); // 2026-06-30: removed; left (0,1) slot will host the instruction list (static tile)
 
     LOG_D("tileview set tile id to 1,1");
     myLancher[app_index_message].pagetileview = app_clock_main_status_bar;
