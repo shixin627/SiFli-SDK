@@ -18,9 +18,13 @@ Mkdir("resource/strings")
 scons: done reading SConscript files.
 scons: Building targets ...
 scons: building associated VariantDir targets: build_pc_hcpu .
-CC build_pc_hcpu\src\pc_link_stubs.obj
+CC build_pc_hcpu\src\gui_apps\clock\app_clock_status_bar.obj
 Building compilation database build_pc_hcpu\compile_commands.json
-pc_link_stubs.c
+app_clock_status_bar.c
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(731): warning C4047: '函式': 'uint16_t' 與 'void *' 間接取值的層級不同
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(731): warning C4024: 'set_scroll_anim_time': 型式和實質參數 2 不同的類型
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(746): warning C4047: '函式': 'uint16_t' 與 'void *' 間接取值的層級不同
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(746): warning C4024: 'set_scroll_anim_time': 型式和實質參數 2 不同的類型
 LINK build_pc_hcpu\main.exe
    正在建立程式庫 build_pc_hcpu\main.lib 和物件 build_pc_hcpu\main.exp
 LINK : warning LNK4098: 預設的程式庫 'LIBCMTD' 與其他使用的程式庫衝突，請使用 /NODEFAULTLIB:library

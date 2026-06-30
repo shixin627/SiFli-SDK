@@ -2668,7 +2668,8 @@ void instruction_list_open_browse(void)
     if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
         return;
     s_pending_reveal_filter = 0; /* bar / IMU browse → all (@ + /) view */
-    s_reveal_from_left = false;  /* programmatic open parks on the right edge */
+    s_reveal_from_left = true;   /* IMU release brings the LEFT list in (the right-edge
+                                    drawer is legacy); park on the left, slide to 0 */
     instruction_list_reveal_drag_begin(); /* un-hide + park + backdrop */
     s_reveal_drag_active = false;         /* gesture-triggered, not a finger drag */
     lv_coord_t tx = lv_obj_get_style_translate_x(list_bg, 0);
