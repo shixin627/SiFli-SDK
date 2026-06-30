@@ -104,6 +104,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* bloc_v2t.h */ void handle_v2t_result(VOICE_RECOGNITION_PAYLOAD *msgData) {  }
 /* app_gesture.c */ void imu_lock_sw_event_callback(lv_event_t *e) {  }
 /* app_gesture.c */ void imu_raw_data_collection_sw_event_callback(lv_event_t *e) {  }
+/* app_gesture.c */ void imu_mouse_data_collection_sw_event_callback(lv_event_t *e) {  }
 /* app_incoming_call.h */ void incoming_call_close_if_active(const char *id) {  }
 /* app_incoming_call.h */ void incoming_call_set_caller(const char *title, const char *id, uint8_t type) {  }
 /* main_functions.h */ void init_gesture_recognition_release_model(void) {  }
@@ -178,6 +179,7 @@ lv_indev_t *touch_get_indev_handler(void) { return NULL; }
 /* IMU collection state globals — gesture/exercise app provides them on ARM */
 bool imu_data_collection = false;
 bool imu_raw_data_collection = false;
+bool imu_mouse_data_collection = false;
 
 /* LVGL image referenced by interact app (mobile icon). Empty descriptor. */
 const lv_img_dsc_t mobile = {0};

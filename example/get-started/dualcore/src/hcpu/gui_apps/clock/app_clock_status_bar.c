@@ -787,6 +787,20 @@ void instruction_list_bar_set_blur_amount(uint8_t opa)
     lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
 }
 
+/* True only when our dial blur is ACTUALLY on screen behind the floating list.
+   The bare s_bar_blur_active flag isn't enough: set_blur() early-returns when
+   gaus_dial_bg is gone (the standalone mouse app tears the watch face down),
+   leaving the flag stale. The instruction-list scrim keys off this instead of
+   clock_main_page_is_home() — the latter reads middle_layer_tileview_index,
+   which the mouse app never updates, so it falsely reports HOME and suppresses
+   the scrim. Blur really showing -> no scrim (OPA_0); no blur behind the list
+   (mouse page, dial torn down) -> dark scrim (OPA_40). */
+bool instruction_list_bar_blur_is_active(void)
+{
+    return s_bar_blur_active && gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg) &&
+           !lv_obj_has_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+}
+
 /* True when the watch face (HOME) is the current main page. The floating list's
    open path uses this to blur the dial in place (no tile switch) on the watch
    face, while other pages keep the legacy tile path for now. */
