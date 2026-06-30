@@ -2080,6 +2080,14 @@ void instruction_list_refeed_single_device(void)
 {
     if (!s_bar_single_device || s_single_device_id[0] == '\0')
         return;
+    /* 手機 push 的即時選項(帶 @-contact service logo)優先於 registry placeholder。registry 的
+       default_actions 不帶 svc,一旦 refeed 就把 push 設好的 service icon clear+rebuild 成預設框
+       (真機 log 2026-06-30 證實:set_svc 設好 icon → 隨後的 refeed 把 icon 歸零 → logo 消失)。
+       所以清單只要已顯示帶 logo 的 @ 列,就保留 push 版、不用 registry 覆蓋。push 會持續帶來電腦
+       skaibar 的即時更新,不需要 registry placeholder 再蓋一次。 */
+    for (uint8_t i = 0; i < list_item_count; i++)
+        if (list_items[i].icon != NULL && list_items[i].category == '@')
+            return;
     feed_single_device_options(s_single_device_id);
 }
 

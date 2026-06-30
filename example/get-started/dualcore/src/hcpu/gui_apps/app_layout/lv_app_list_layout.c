@@ -68,13 +68,10 @@ static const uint16_t APP_LIST_ITEMS[] = {
     app_id_setting,
 #endif
 #ifdef APP_ID_MOUSE
-    // app_id_mouse,
+    app_id_mouse,
 #endif
 #ifdef APP_ID_PHOTO
     app_id_photo,
-#endif
-#if defined(APP_ID_GAME_DINOSAUR) && !kReleaseMode
-    app_id_game_dinosaur, /* hidden from app drawer in release builds */
 #endif
 };
 
