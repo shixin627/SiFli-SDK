@@ -275,7 +275,17 @@ static int32_t default_keypad_handler(lv_key_t key, lv_indev_state_t event)
         else if ((LV_INDEV_STATE_PR == event) && (LV_KEY_ENTER == key))
         {
             LOG_I("ENTER key event was %d", event);
-            if (is_at_ai_interface())
+            extern bool chat_page_is_open(void);
+            if (chat_page_is_open())
+            {
+                /* Chat panel sits on top of the @-list (kept open underneath for the
+                   back-gesture — see is_at_instruction_list() note below), so that check
+                   would also match here. Chat must win: route the tap to its own mic
+                   toggle (stop + send while recording) instead of the list's on_tap(). */
+                extern void chat_page_start_voice_input(void);
+                chat_page_start_voice_input();
+            }
+            else if (is_at_ai_interface())
             {
                 extern void ai_tap_cb(void);
                 ai_tap_cb();

@@ -320,10 +320,8 @@ static void chat_scrim_cb(lv_event_t *e)
         chat_cancel_recording();
 }
 
-static void chat_mic_btn_cb(lv_event_t *e)
+static void chat_mic_toggle(void)
 {
-    if (lv_event_get_code(e) != LV_EVENT_CLICKED)
-        return;
     if (!s_recording)
     {
         clearVoice2Text();
@@ -341,6 +339,25 @@ static void chat_mic_btn_cb(lv_event_t *e)
         LOG_I("chat mic: stop + send");
         chat_stop_recording_and_send();
     }
+}
+
+static void chat_mic_btn_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED)
+        return;
+    chat_mic_toggle();
+}
+
+/* Global RELEASE gesture hook (gesture_recognition_task.c): the @-list stays "open" underneath
+   the chat panel for the whole session (back-gesture needs it — see chat_page_is_open() note
+   above), so the release-gesture dispatcher's is_at_instruction_list() check can't tell chat
+   apart from the list. Callers must check chat_page_is_open() FIRST and route here instead of
+   animate_open_ai_widget(), or release silently opens the (hidden, covered) list AI widget. */
+void chat_page_start_voice_input(void)
+{
+    if (!chat_page_is_open())
+        return;
+    chat_mic_toggle();
 }
 
 void chat_page_open(const char *title, const char *icon_src)

@@ -392,7 +392,21 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                 }
                 else
                 {
-                    if (is_at_instruction_list())
+                    extern bool chat_page_is_open(void);
+                    if (chat_page_is_open())
+                    {
+                        /* Chat panel is on top of the @-list (kept open underneath for the
+                           back-gesture), so is_at_instruction_list() below would also match —
+                           check chat FIRST or release silently opens the hidden list AI widget
+                           instead of the chat mic. */
+                        LOG_D("Unlock gesture recognized at chat page, opening chat mic");
+                        extern bool get_bluetooth_connection_status(void);
+                        if (get_bluetooth_connection_status())
+                            motor_pattern_unlocked();
+                        extern void chat_page_start_voice_input(void);
+                        chat_page_start_voice_input();
+                    }
+                    else if (is_at_instruction_list())
                     {
                         LOG_D("Unlock gesture recognized at instruction list, "
                               "unlocking watch and open AI widget");

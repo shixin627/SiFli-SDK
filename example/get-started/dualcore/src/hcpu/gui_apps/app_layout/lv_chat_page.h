@@ -46,6 +46,12 @@ extern "C"
        (refresh_ai_chat_input_message's chat branch), with the running partial transcript. */
     void chat_page_set_transcript(const char *text);
 
+    /* Global RELEASE gesture hook: starts (or stops+sends, if already recording) the chat mic,
+       mirroring chat_mic_btn_cb's tap toggle. No-op if the chat panel isn't open. Called from
+       gesture_recognition_task.c BEFORE the is_at_instruction_list() branch — the @-list stays
+       open underneath chat, so that check alone can't distinguish the two screens. */
+    void chat_page_start_voice_input(void);
+
 #ifdef __cplusplus
 }
 #endif
