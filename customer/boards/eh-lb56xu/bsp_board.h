@@ -70,7 +70,7 @@ extern int __bss_end;
 // #define INT16_to_UT (3.3333f)
 
 #define SkaiwalkWatchOS 26
-#define kReleaseMode 0
+#define kReleaseMode 1
 
 /* Default DBG_LVL for project modules (numeric per rtdbg.h:
    0=ERROR, 1=WARNING, 2=INFO, 3=LOG). Release drops LOG_I/LOG_D so
