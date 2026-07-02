@@ -383,6 +383,9 @@ static void start_kbd_to_trackpad_collapse_anim(int32_t from_progress,
 
 // media center 前置宣告
 static void create_media_center_panel(lv_obj_t *parent);
+// 設備切換箭頭 cb(定義在後段;媒體頁頂部設備名區用)
+static void dev_arrow_prev_cb(lv_event_t *e);
+static void dev_arrow_next_cb(lv_event_t *e);
 static void media_center_set_open(bool open, bool animate);
 static void media_center_update_play_icon(bool playing);
 static void media_center_play_btn_cb(lv_event_t *e);
@@ -394,8 +397,12 @@ static void status_bar_area_up_cb(lv_event_t *e);
 static void media_tileview_event_cb(lv_event_t *e);
 static void hid_mode_toggle(void);
 
+// 左右滾動弧的「觸發帶」厚度(px,貼外緣往內算)。原 50(比 UI 弧 30px 寬),
+// 2026-07-02 使用者要求減半到 25 — 觸發帶維持貼邊,只變薄,誤觸率降低。
+#define ARC_TOUCH_BAND_PX 25.0f
+
 // 判斷觸碰點是否在左側滾動觸發區域
-// UI 弧線寬度 30px、角度 150°~210°，但觸發範圍更大
+// UI 弧線寬度 30px、角度 150°~210°
 static bool is_point_in_left_arc(const lv_point_t *p)
 {
     float cx = LV_HOR_RES_MAX / 2.0f;
@@ -404,7 +411,7 @@ static bool is_point_in_left_arc(const lv_point_t *p)
     float dy = p->y - cy;
     float dist = sqrtf(dx * dx + dy * dy);
     float outer_r = cx;
-    float inner_r = outer_r - 50.0f; // 觸發範圍比 UI（30px）更寬
+    float inner_r = outer_r - ARC_TOUCH_BAND_PX;
     if (dist < inner_r || dist > outer_r)
         return false;
     // 只接受左側（x < 中心）
@@ -424,7 +431,7 @@ static bool is_point_in_right_arc(const lv_point_t *p)
     float dy = p->y - cy;
     float dist = sqrtf(dx * dx + dy * dy);
     float outer_r = cx;
-    float inner_r = outer_r - 50.0f;
+    float inner_r = outer_r - ARC_TOUCH_BAND_PX;
     if (dist < inner_r || dist > outer_r)
         return false;
     // 只接受右側（x > 中心）
@@ -435,8 +442,9 @@ static bool is_point_in_right_arc(const lv_point_t *p)
 }
 
 // 判斷觸碰點是否在中間滾動觸發區
-// 幾何：弧形觸發區（dist = outer_r-50 ~ outer_r）的內緣，再往內延 THICKNESS px，
-// 角度範圍跟 is_point_in_left_arc 相同（左半 ±55°），兩塊接成完整的左側弧帶
+// 幾何：弧形觸發區（dist = outer_r-ARC_TOUCH_BAND_PX ~ outer_r）的內緣，再往內
+// 延 THICKNESS px，角度範圍跟 is_point_in_left_arc 相同（左半 ±55°），
+// 兩塊接成完整的左側弧帶
 static bool is_point_in_center_scroll_zone(const lv_point_t *p)
 {
     float cx = LV_HOR_RES_MAX / 2.0f;
@@ -445,7 +453,7 @@ static bool is_point_in_center_scroll_zone(const lv_point_t *p)
     float dy = p->y - cy;
     float dist = sqrtf(dx * dx + dy * dy);
     float outer_r = cx;
-    float zone_outer = outer_r - 50.0f; // 接弧形觸發區的內緣
+    float zone_outer = outer_r - ARC_TOUCH_BAND_PX; // 接弧形觸發區的內緣
     float zone_inner = zone_outer - (float)CENTER_SCROLL_ZONE_THICKNESS;
     if (dist < zone_inner || dist > zone_outer)
         return false;
@@ -2508,7 +2516,7 @@ static void handle_pressed_event(lv_indev_t *indev)
 
     // 滾動範圍（左右弧形 + 中間態）統一走方向判定：
     //   上下→升級為角度滾動（left_scroll_active）
-    //   向右→觸發 ble_hid_mouse_back（瀏覽器後退鍵）
+    //   向右→(back 手勢已停用)退出 pending，走拖曳/滑鼠移動
     //   向左（右弧起手）→ 滑鼠頁滑走回錶盤（L/R swap：home 在右）
     //   向左（其他）→退出 pending，走原本拖曳/滑鼠移動
     left_scroll_active = false;
@@ -2701,16 +2709,12 @@ static void handle_pressing_event(lv_indev_t *indev,
             }
             else if (dx_from_start > 0)
             {
-                // 向右 → 進入 back-hint 流程（hint 動畫追蹤拖曳，release 時才觸發）
-                BLE_HID_Mouse_Touch_Move((uint16_t)(start_point.x + 100),
-                                         (uint16_t)start_point.y);
-                scrolling = true;          // 避免放開時誤觸 click
-                back_pending_active = true;
-                back_hint_drag_offset = dx_from_start;
-                back_hint_vibrated = false;
-                animate_scroll_ui_to(false); // 弧形 UI 淡回暗
-                LOG_D("scroll zone -> back hint");
-                return;
+                /* 向右 → back(上一頁)手勢已停用(2026-07-02 使用者要求:
+                   誤觸+攔截游標)。不進 back-hint、不消費手勢 — UI 淡回後
+                   fall through 讓底下拖曳邏輯接手送 mouse_move。要復原改回
+                   back_pending_active 流程(見 git history)。 */
+                animate_scroll_ui_to(false);
+                LOG_D("scroll zone -> rightward: back disabled, fall to drag");
             }
             else if (press_in_right_arc_zone)
             {
@@ -4120,9 +4124,11 @@ static void text_input_bar_cb(lv_event_t *e)
         if (move_y > max_move_y)
             max_move_y = move_y;
 
-        // 向上拖（dy < 0）→ 進入 multitask hint 流程，更新 hint 寬度
-        // 不再做 bar 視覺位移 / scale 縮放
-        if (dy < 0)
+        // 向上拖（dy < 0）→ multitask hint 流程已停用(2026-07-02 使用者要求:
+        // 誤觸多頁面指令)。dy<0 不再進 pending — 不出 hint、不 fire multitask;
+        // hit area 也已縮半(bottom_swipe_area),縮小攔截範圍。tap/長按開
+        // skaibar 不受影響。要復原把條件改回 (dy < 0)。
+        if (0)
         {
             if (!multitask_pending_active && move_y >= 5)
             {
@@ -5984,6 +5990,37 @@ static void create_media_center_panel(lv_obj_t *parent)
     lv_obj_set_size(media_home_tile, LV_HOR_RES_MAX, LV_VER_RES_MAX);
     lv_obj_set_scrollbar_mode(media_home_tile, LV_SCROLLBAR_MODE_OFF);
 
+    /* 媒體頁頂部:「控制中設備」名稱+左右切換箭頭(2026-07-02 從 trackpad
+       頂部搬來 — 使用者要求)。同座標系(tile 全屏),沿用原 y40/42 位置;
+       label 非 clickable、箭頭可點;無設備時 update_ctrl_dev_label 隱藏。 */
+    s_ctrl_dev_label = lv_label_create(media_tile);
+    lv_obj_set_width(s_ctrl_dev_label, 200);
+    lv_label_set_long_mode(s_ctrl_dev_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(s_ctrl_dev_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(s_ctrl_dev_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_opa(s_ctrl_dev_label, LV_OPA_80, 0);
+    lv_obj_align(s_ctrl_dev_label, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_clear_flag(s_ctrl_dev_label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(s_ctrl_dev_label, LV_OBJ_FLAG_SCROLLABLE);
+
+    s_dev_left_arrow = lv_img_create(media_tile);
+    lv_img_set_src(s_dev_left_arrow, &img_left_arrow);
+    lv_obj_align(s_dev_left_arrow, LV_ALIGN_TOP_MID, -117, 42);
+    lv_obj_add_flag(s_dev_left_arrow, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_dev_left_arrow, 24);
+    lv_obj_add_event_cb(s_dev_left_arrow, dev_arrow_prev_cb, LV_EVENT_CLICKED,
+                        NULL);
+
+    s_dev_right_arrow = lv_img_create(media_tile);
+    lv_img_set_src(s_dev_right_arrow, &img_right_arrow);
+    lv_obj_align(s_dev_right_arrow, LV_ALIGN_TOP_MID, 117, 42);
+    lv_obj_add_flag(s_dev_right_arrow, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_dev_right_arrow, 24);
+    lv_obj_add_event_cb(s_dev_right_arrow, dev_arrow_next_cb, LV_EVENT_CLICKED,
+                        NULL);
+
+    update_ctrl_dev_label(); // 依目前 active 設備設定文字/顯示 + 箭頭可見性
+
     // 曲名
     media_center_title_label = lv_label_create(media_tile);
     lv_label_set_text(media_center_title_label, "Media Title");
@@ -6501,46 +6538,18 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_event_cb(status_bar_area_up, status_bar_area_up_cb,
                         LV_EVENT_ALL, NULL);
 
-    // 頂部常駐「控制中設備」名稱：選了哪台電腦(relay)就顯示哪台。非 clickable → 觸控
-    // 穿透到上方 status_bar_area_up（媒體下拉）不打架；沒選設備則隱藏。
-    s_ctrl_dev_label = lv_label_create(bg);
-    lv_obj_set_width(s_ctrl_dev_label, 200);
-    lv_label_set_long_mode(s_ctrl_dev_label, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_text_align(s_ctrl_dev_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(s_ctrl_dev_label, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_opa(s_ctrl_dev_label, LV_OPA_80, 0);
-    lv_obj_align(s_ctrl_dev_label, LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_clear_flag(s_ctrl_dev_label, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(s_ctrl_dev_label, LV_OBJ_FLAG_SCROLLABLE);
+    /* 「控制中設備」名稱+切換箭頭已搬進媒體下拉頁頂部
+       (create_media_center_panel,2026-07-02 使用者要求) — trackpad 頂部
+       不再放常駐設備名。 */
 
-    /* 設備名兩側切換箭頭：點左=上一台、點右=下一台（循環）。label 寬 200 置中於 y≈40
-       可視區（y=20 太靠上會被圓角螢幕切掉看不到）；箭頭可點（label 本身不可點，讓媒體
-       下拉觸控穿透）。無設備時由 update_ctrl_dev_label 隱藏。 */
-    s_dev_left_arrow = lv_img_create(bg);
-    lv_img_set_src(s_dev_left_arrow, &img_left_arrow);
-    lv_obj_align(s_dev_left_arrow, LV_ALIGN_TOP_MID, -117, 42);
-    lv_obj_add_flag(s_dev_left_arrow, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(s_dev_left_arrow, 24);
-    lv_obj_add_event_cb(s_dev_left_arrow, dev_arrow_prev_cb, LV_EVENT_CLICKED,
-                        NULL);
-
-    s_dev_right_arrow = lv_img_create(bg);
-    lv_img_set_src(s_dev_right_arrow, &img_right_arrow);
-    lv_obj_align(s_dev_right_arrow, LV_ALIGN_TOP_MID, 117, 42);
-    lv_obj_add_flag(s_dev_right_arrow, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(s_dev_right_arrow, 24);
-    lv_obj_add_event_cb(s_dev_right_arrow, dev_arrow_next_cb, LV_EVENT_CLICKED,
-                        NULL);
-
-    update_ctrl_dev_label(); // 依目前 active 設備設定文字/顯示 + 箭頭可見性
-
-    // Trackpad mode 下方 multitask hint 觸發區（跨 mode hit area）
+    // Trackpad mode 下方 bar 觸控區（跨 mode hit area:tap/長按開 skaibar）
     bottom_swipe_area = lv_obj_create(bg);
     lv_obj_remove_style_all(bottom_swipe_area);
-    // 擴大範圍覆蓋 trackpad mic btn 跟周圍，整個下方區域都接收觸碰
-    lv_obj_set_size(bottom_swipe_area, 280, 100);
+    // 高度 100→50(2026-07-02):multitask 上拉手勢停用後,這區只剩 tap/長按,
+    // 縮到 bar 本體附近,上方 50px 還給 trackpad 游標,不再攔截拖曳
+    lv_obj_set_size(bottom_swipe_area, 280, 50);
     lv_obj_set_pos(bottom_swipe_area, (LV_HOR_RES_MAX - 280) / 2,
-                   LV_VER_RES_MAX - 100);
+                   LV_VER_RES_MAX - 50);
     lv_obj_set_style_bg_opa(bottom_swipe_area, LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(bottom_swipe_area, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(bottom_swipe_area, LV_OBJ_FLAG_CLICKABLE);
