@@ -677,6 +677,13 @@ static void app_clock_change_state(app_clock_desc_t *p_clock, uint8_t new_state)
    further below near app_clock_main_init; declared here so app_clock_main_select can
    keep the catcher foreground over the freshly-built face). */
 static lv_obj_t *s_face_swipe_catcher = NULL;
+/* Keepalive timer handle — MUST be deleted in clock_on_stop. The 2026-07-02
+   mouse-app LCPU-crash marathon traced to this timer being created handle-less
+   on every clock build and never deleted: after the mouse app destroyed the
+   Main/clock UI, the orphan timer kept poking the freed catcher pointer every
+   400 ms (use-after-free; with heap reuse lv_obj_is_valid can false-positive),
+   crashing the system 1-2 s after mouse-app entry. */
+static lv_timer_t *s_face_swipe_keepalive = NULL;
 static lv_coord_t s_face_swipe_start_x;
 static lv_coord_t s_face_swipe_start_y;
 static bool s_face_swipe_locked;
@@ -1457,7 +1464,9 @@ static void app_clock_main_init(lv_obj_t *scr)
        without ever invalidating it — never pinned down exactly what re-orders it,
        so belt-and-suspenders: a low-frequency timer keeps re-asserting the z-order
        regardless of the cause, instead of chasing every path that could disturb it. */
-    lv_timer_create(face_swipe_catcher_keepalive_timer_cb, 400, NULL);
+    if (s_face_swipe_keepalive == NULL)
+        s_face_swipe_keepalive =
+            lv_timer_create(face_swipe_catcher_keepalive_timer_cb, 400, NULL);
 
     // Set all clocks to use the same parent
     rt_list_t *pos;
@@ -1672,6 +1681,15 @@ void clock_on_stop(void)
 {
     rt_list_t *pos;
     pause_clock = true;
+    /* The clock UI (and the swipe catcher inside it) is about to be torn
+       down — kill the keepalive timer and drop the catcher pointer NOW so
+       nothing pokes freed objects after this app stops. */
+    if (s_face_swipe_keepalive)
+    {
+        lv_timer_del(s_face_swipe_keepalive);
+        s_face_swipe_keepalive = NULL;
+    }
+    s_face_swipe_catcher = NULL;
     {
         extern void instruction_list_bar_set_visible(bool visible);
         instruction_list_bar_set_visible(false);

@@ -641,11 +641,14 @@ void skaiwatch_ble_set_performance(ble_perf_level_t level)
     {
         return;
     }
-    /* Same protection for mouse mode: unrelated modules (e.g. v2t session
-       teardown ~2 s after app entry) would otherwise yank the link back to
-       SLOW right after the mouse app pinned it. Exit paths clear the mouse
-       flag before requesting SLOW, so their own drop passes. */
-    if (level < BLE_PERF_ULTRA && app_control_get_mouse_mode())
+    /* Mouse mode: block DOWNGRADES only. Any conn-param switch while the
+       LCPU is idle or mid-transition (mouse-entry IMU spin-up, pointer-idle
+       lull) reproducibly crashes its BLE controller (BFAR 0x4068004C,
+       2026-07-02 ×4 — watch- and phone-initiated alike), so unrelated
+       modules (e.g. v2t teardown) must not inject switches mid-mouse.
+       Raises pass: the mouse app's own delayed FAST arrives with the flag
+       already set. Exit paths clear the flag before their SLOW drop. */
+    if (level < g_ble_perf_level && app_control_get_mouse_mode())
     {
         return;
     }

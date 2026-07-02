@@ -6640,16 +6640,15 @@ void hid_mouse_build_ui(lv_obj_t *scr)
    sit inert off-page without the watch stuck in mouse mode. */
 void hid_mouse_enter_mode(void)
 {
-    /* Do NOT request a faster conn interval here: a watch-initiated param
-       update on this entry path reproducibly kills the LCPU BLE controller
-       (bus fault BFAR 0x4068004C; 3/3 crashes 2026-07-02 with ULTRA and
-       FAST, legal params or not), most likely colliding with the IMU/motion
-       stream this path spins up on the LCPU. The same FAST request from
-       file_sys negotiates fine. The phone raises the link speed instead
-       (requestConnectionPriority on mouse-stream start); the mouse flag +
-       main.c guard keep other modules (e.g. v2t teardown) from dragging
-       that back down while we're in mouse mode. Exit paths clear the flag,
-       then drop to SLOW — the downgrade direction is verified safe. */
+    /* Pin the link FAST (15-35 ms) for the pointer uplink — with the param
+       fix, idle SLOW now really applies (100-120 ms, latency 9), far too
+       slow for a cursor. Request BEFORE raising the mouse flag: the flag
+       makes the main.c guard reject sub-ULTRA changes, which would swallow
+       this very request. Exit paths clear the flag first, then drop SLOW.
+       (The 2026-07-02 "entry request crashes the LCPU" episodes were NOT
+       this call — root cause was a use-after-free in the then-uncommitted
+       watchface swipe-catcher WIP that rode along in the same builds.) */
+    skaiwatch_ble_set_performance(BLE_PERF_FAST);
     app_control_set_mouse_mode(true);
 
     extern void set_status_bar_area_up_state(bool state);
