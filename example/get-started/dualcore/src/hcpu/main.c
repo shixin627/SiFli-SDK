@@ -465,17 +465,21 @@ static void skaiwalk_ble_service_init()
 }
 
 static uint8_t phone_device_idx = 0xFF;
-void skaiwalk_ble_app_update_conn_param(uint8_t conn_idx, uint16_t inv_max,
-                                        uint16_t inv_min, uint16_t latency,
+/* Callers pass (min, max) — the old signature had the parameter names swapped
+   (inv_max first), so every request went out with intv_min > intv_max, which
+   the host rejects (GAPC op 9 ret 162): no perf level ever actually applied.
+   Two such requests back-to-back took the LCPU BLE controller down (bus fault
+   + DBG_Trigger assert, 2026-07-02 mouse-app ULTRA crash). */
+void skaiwalk_ble_app_update_conn_param(uint8_t conn_idx, uint16_t inv_min,
+                                        uint16_t inv_max, uint16_t latency,
                                         uint16_t timeout)
 {
-    ble_gap_update_conn_param_t conn_para;
+    /* Zero-init: ce_len_min/max are sent to the controller; stack garbage
+       here is an invalid connection-event duration. 0 = let controller pick. */
+    ble_gap_update_conn_param_t conn_para = {0};
     conn_para.conn_idx = conn_idx;
     conn_para.intv_max = inv_max;
     conn_para.intv_min = inv_min;
-    /* value = argv * 1.25 */
-    // conn_para.ce_len_max = 0x100;
-    // conn_para.ce_len_min = 0x1;
     conn_para.latency = latency;
     conn_para.time_out = timeout;
 
@@ -634,6 +638,14 @@ void skaiwatch_ble_set_performance(ble_perf_level_t level)
        ULTRA); its SLOW on exit runs after the DFU thread loop ends, when
        is_ble_dfu_thread_running() is already false, so it isn't blocked. */
     if (level < BLE_PERF_ULTRA && is_ble_dfu_thread_running())
+    {
+        return;
+    }
+    /* Same protection for mouse mode: unrelated modules (e.g. v2t session
+       teardown ~2 s after app entry) would otherwise yank the link back to
+       SLOW right after the mouse app pinned it. Exit paths clear the mouse
+       flag before requesting SLOW, so their own drop passes. */
+    if (level < BLE_PERF_ULTRA && app_control_get_mouse_mode())
     {
         return;
     }

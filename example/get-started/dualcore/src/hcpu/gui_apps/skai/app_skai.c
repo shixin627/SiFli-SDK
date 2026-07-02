@@ -293,14 +293,22 @@ void set_skai_widget_opa(uint8_t opa)
 {
 
     uint8_t bg_opa = 20 * opa / LV_OPA_COVER;
-    lv_obj_set_style_bg_opa(skai_widget_input_text_bg, bg_opa, 0);
-
-    uint8_t border_opa = LV_OPA_50 * opa / LV_OPA_COVER;
-    lv_obj_set_style_border_opa(skai_widget_input_text_bg, border_opa, 0);
+    if (skai_widget_input_text_bg != NULL && lv_obj_is_valid(skai_widget_input_text_bg))
+    {
+        lv_obj_set_style_bg_opa(skai_widget_input_text_bg, bg_opa, 0);
+        uint8_t border_opa = LV_OPA_50 * opa / LV_OPA_COVER;
+        lv_obj_set_style_border_opa(skai_widget_input_text_bg, border_opa, 0);
+    }
     uint8_t text_opa = LV_OPA_COVER * opa / LV_OPA_COVER;
-    lv_obj_set_style_text_opa(skai_widget_input_text, text_opa, 0);
+    if (skai_widget_input_text != NULL && lv_obj_is_valid(skai_widget_input_text))
+    {
+        lv_obj_set_style_text_opa(skai_widget_input_text, text_opa, 0);
+    }
     uint8_t prompt_opa = LV_OPA_60 * opa / LV_OPA_COVER;
-    lv_obj_set_style_text_opa(skai_widget_input_prompt, prompt_opa, 0);
+    if (skai_widget_input_prompt != NULL && lv_obj_is_valid(skai_widget_input_prompt))
+    {
+        lv_obj_set_style_text_opa(skai_widget_input_prompt, prompt_opa, 0);
+    }
     if (skai_widget_ai_reply != NULL && lv_obj_is_valid(skai_widget_ai_reply))
     {
         lv_obj_set_style_text_opa(skai_widget_ai_reply, text_opa, 0);

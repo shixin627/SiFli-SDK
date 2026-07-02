@@ -194,7 +194,8 @@ void clock_main_applist_follow_begin(void)
     lv_app_list_layout_reset_scroll();          /* enter at the top row */
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false); /* snap HOME, no anim */
     lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
     set_clock_main_status_opa(0, false);
 }
 
@@ -218,6 +219,55 @@ void clock_main_applist_follow_end(lv_coord_t dx, lv_coord_t vx)
        else animate back HOME (the settle handler re-hides the tileview there). */
     bool open_it = (dx <= -LV_HOR_RES / 4) || (vx < -6);
     lv_obj_set_tile_id(app_clock_main_status_bar, open_it ? 2 : 1, 1, true);
+}
+
+/* ---- Notification / control-center finger-follow from the same full-screen face
+   swipe catcher ---------------------------------------------------------------- *
+   Mirrors clock_main_applist_follow_* on the Y axis: HOME (row 1) already has both
+   LV_DIR_TOP and LV_DIR_BOTTOM registered (see the tile add call below), so unlike
+   the App List column this direction never needed the mid-drag retreat fix — a
+   live reversal already scrolls back cleanly either way. A downward pull (dy>0)
+   reveals the message/notification tile (row 0, scroll_y toward 0); an upward pull
+   (dy<0) reveals control-center (row 2, scroll_y toward 2*LV_VER_RES). */
+void clock_main_notify_follow_begin(void)
+{
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false); /* snap HOME, no anim */
+    lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+    if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+    set_clock_main_status_opa(0, false);
+}
+
+void clock_main_notify_follow_update(lv_coord_t dy)
+{
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    lv_coord_t sy = LV_VER_RES - dy; /* dy>0 (down) -> sy<466 toward 0 (notification) */
+    if (sy < 0) sy = 0;
+    if (sy > 2 * LV_VER_RES) sy = 2 * LV_VER_RES;
+    lv_obj_scroll_to_y(app_clock_main_status_bar, sy, LV_ANIM_OFF);
+}
+
+void clock_main_notify_follow_end(lv_coord_t dy, lv_coord_t vy)
+{
+    (void)dy;
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    /* Commit by the LIVE scroll position, not the raw cumulative dy from the press
+       point — unlike the App List (a single one-sided reveal), this axis has two
+       opposite targets, so a big enough reversal (drag down past the threshold,
+       then swipe back up past it) could cross the OPPOSITE side's raw-dy threshold
+       and launch control-center when the user was just trying to cancel back out
+       of notifications. Read the actual scroll_y (mirrors how
+       instruction_list_reveal_drag_end reads the live translate_x) so only where
+       you ACTUALLY let go decides which tile wins. */
+    lv_coord_t sy = lv_obj_get_scroll_y(app_clock_main_status_bar);
+    bool open_notify = (sy <= LV_VER_RES - LV_VER_RES / 4) || (vy > 6);
+    bool open_control = (sy >= LV_VER_RES + LV_VER_RES / 4) || (vy < -6);
+    uint32_t row = open_notify ? 0 : (open_control ? 2 : 1);
+    lv_obj_set_tile_id(app_clock_main_status_bar, 1, row, true);
 }
 
 static void dev_change_refresh_device_list(void);
@@ -451,6 +501,25 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 466)
         {
             lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (active_pos == 1)
+        {
+            /* Landing back at HOME — including a CANCELLED reveal, which settles
+               here with active_pos unchanged from before the gesture (1), so this
+               must run ahead of the middle_layer_tileview_index early-return below,
+               not only in the "moved to a new tile" path further down. Without it:
+               1) the full-screen swipe catcher can end up covered and only an edge
+                  touch (a different object) would re-foreground it;
+               2) worse, gaus_dial_bg — full-screen, CLICKABLE by lv_obj_create's
+                  default, un-hidden by clock_main_notify_follow_begin for the
+                  finger-follow blur — never gets re-hidden on a cancel (that only
+                  happened in the "moved to a new tile" branch further down), so it
+                  sits on top intercepting every touch afterward even though nothing
+                  LOOKS different, since the scroll position is back at home. */
+            extern void clock_main_face_swipe_catcher_foreground(void);
+            clock_main_face_swipe_catcher_foreground();
+            if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+                lv_obj_add_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
         }
         if (middle_layer_tileview_index == active_pos)
         {

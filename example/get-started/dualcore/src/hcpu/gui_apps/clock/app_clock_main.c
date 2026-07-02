@@ -680,7 +680,27 @@ static lv_obj_t *s_face_swipe_catcher = NULL;
 static lv_coord_t s_face_swipe_start_x;
 static lv_coord_t s_face_swipe_start_y;
 static bool s_face_swipe_locked;
-static int s_face_swipe_route; /* 0 none, 1 skaibar(rightward), 2 app list(leftward) */
+static int s_face_swipe_route; /* 0 none, 1 skaibar(rightward), 2 app list(leftward), 3 vertical */
+static void face_swipe_catcher_create(lv_obj_t *parent); /* defined further below */
+
+/* Public re-assert of the catcher's z-order. app_clock_main_select already does this
+   after building a face, but that only runs on a face SWITCH / app resume — a
+   center-swipe reveal that settles back at HOME (cancelled, or any committed reveal
+   closing back to home) rebuilds/reflows sibling objects in clock_container without
+   going through a face switch, which can leave something newer sitting above the
+   catcher. Call this from that settle path so the catcher stays reachable for the
+   NEXT center swipe instead of requiring an edge touch to "fix" it. */
+void clock_main_face_swipe_catcher_foreground(void)
+{
+    if (s_face_swipe_catcher && lv_obj_is_valid(s_face_swipe_catcher))
+        lv_obj_move_foreground(s_face_swipe_catcher);
+}
+
+static void face_swipe_catcher_keepalive_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    clock_main_face_swipe_catcher_foreground();
+}
 
 static void app_clock_main_select(uint16_t clock_idx)
 {
@@ -721,8 +741,19 @@ static void app_clock_main_select(uint16_t clock_idx)
 
     last_active_clock = clock_idx;
     /* Keep the swipe catcher on top of the freshly-built face (the face bg is added
-       to clock_container after the catcher was created). */
-    if (s_face_swipe_catcher && lv_obj_is_valid(s_face_swipe_catcher))
+       to clock_container after the catcher was created).
+       2026-07-02: every clock descriptor's parent IS clock_container (same object
+       the catcher lives in as a sibling) — app_clock_change_state's STATE_DEINIT
+       path does lv_obj_clean(parent) when switching away from a face, which wipes
+       every child of clock_container, catcher included. Foregrounding a catcher
+       that clean() already deleted is a silent no-op (the is_valid guard just skips
+       it), and nothing else ever re-created it, so every subsequent center swipe
+       missed entirely until the user happened to touch an edge zone (a separate
+       object tree). Recreate it here whenever it's gone instead of only trying to
+       raise it. */
+    if (!s_face_swipe_catcher || !lv_obj_is_valid(s_face_swipe_catcher))
+        face_swipe_catcher_create(p_app_clock_main->clock_container);
+    else
         lv_obj_move_foreground(s_face_swipe_catcher);
 #ifdef BSP_USING_BLOC_SETTING
     setting_provider.set_watch_face(last_active_clock);
@@ -1270,15 +1301,20 @@ static void battery_status_indicator_builder(lv_obj_t *parent)
         instruction_list_bluetooth_disconnection;
 }
 
-/* ---- Full-screen watch-face horizontal swipe ------------------------------ *
+/* ---- Full-screen watch-face 4-direction swipe ------------------------------ *
  * A transparent catcher kept on top of the bare dial INSIDE clock_container, so it
  * sits BELOW the dial complication (on scr), the status-bar edge zones and
  * lv_layer_top — it therefore claims only CENTER face presses and never the dial-
- * widget tap or the up/down edge handles. It acts on a horizontal axis-lock only:
- * a rightward pull finger-follows the skaibar mixed list in (the exact API the left
- * edge strip uses); a leftward pull drives the App List in from the right. Taps and
- * vertical drags never lock, so they fall through harmlessly. This makes the L/R
- * reveals triggerable from anywhere on the face while up/down stay edge-only.
+ * widget tap or the up/down edge handles (those still work standalone, tapped
+ * directly). Whichever axis moves first past the 10px slop wins the whole
+ * gesture: rightward finger-follows the skaibar mixed list in (route 1, the exact
+ * API the left edge strip uses); leftward drives the App List in from the right
+ * (route 2); vertical (route 3) drives the SAME notify/control-center follow either
+ * way — a downward pull reveals notifications, an upward pull control-center.
+ * Taps never lock, so they fall through harmlessly. This makes all four reveals
+ * triggerable from anywhere on the face, not just from the four edge strips.
+ * 2026-07-02: added route 3 (vertical) — L/R already worked from anywhere, only
+ * up/down were edge-only before this.
  * (state vars declared above app_clock_main_select so it can keep the catcher
  *  foreground after rebuilding the face). */
 
@@ -1321,6 +1357,15 @@ static void face_swipe_catcher_cb(lv_event_t *e)
                 clock_main_applist_follow_begin();
             }
         }
+        else if (!s_face_swipe_locked && LV_ABS(dy) > 10 && LV_ABS(dy) > LV_ABS(dx))
+        {
+            /* Clearly-vertical pull → claim it. Both routes drive the same Y
+               follow, which side effects reveal is dy's sign at release time. */
+            extern void clock_main_notify_follow_begin(void);
+            s_face_swipe_locked = true;
+            s_face_swipe_route = 3;
+            clock_main_notify_follow_begin();
+        }
         if (s_face_swipe_locked && s_face_swipe_route == 1)
         {
             extern void instruction_list_reveal_drag_update(lv_coord_t);
@@ -1330,6 +1375,11 @@ static void face_swipe_catcher_cb(lv_event_t *e)
         {
             extern void clock_main_applist_follow_update(lv_coord_t);
             clock_main_applist_follow_update(dx);
+        }
+        else if (s_face_swipe_locked && s_face_swipe_route == 3)
+        {
+            extern void clock_main_notify_follow_update(lv_coord_t);
+            clock_main_notify_follow_update(dy);
         }
     }
     else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
@@ -1349,6 +1399,14 @@ static void face_swipe_catcher_cb(lv_event_t *e)
             lv_indev_get_vect(indev, &v);
             extern void clock_main_applist_follow_end(lv_coord_t, lv_coord_t);
             clock_main_applist_follow_end(dx, v.x);
+        }
+        else if (s_face_swipe_locked && s_face_swipe_route == 3)
+        {
+            lv_coord_t dy = pt.y - s_face_swipe_start_y;
+            lv_point_t v;
+            lv_indev_get_vect(indev, &v);
+            extern void clock_main_notify_follow_end(lv_coord_t, lv_coord_t);
+            clock_main_notify_follow_end(dy, v.y);
         }
         s_face_swipe_locked = false;
         s_face_swipe_route = 0;
@@ -1393,6 +1451,13 @@ static void app_clock_main_init(lv_obj_t *scr)
        complication / edge zones / layer_top). Kept foreground after each face select
        so a center swipe can reveal the lists. */
     face_swipe_catcher_create(p_app_clock_main->clock_container);
+    /* 2026-07-02: app_clock_main_select re-foregrounds/recreates the catcher on a
+       face switch or app resume, but a plain center-swipe cancel (same face, no
+       switch) has been observed to leave SOMETHING covering the catcher again
+       without ever invalidating it — never pinned down exactly what re-orders it,
+       so belt-and-suspenders: a low-frequency timer keeps re-asserting the z-order
+       regardless of the cause, instead of chasing every path that could disturb it. */
+    lv_timer_create(face_swipe_catcher_keepalive_timer_cb, 400, NULL);
 
     // Set all clocks to use the same parent
     rt_list_t *pos;

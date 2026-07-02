@@ -3071,11 +3071,15 @@ static void finalize_close_ai_widget(void)
     {
         lv_obj_add_flag(ai_gaus_bg, LV_OBJ_FLAG_HIDDEN);
     }
-    lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
-                            LV_OPA_0, 0);
-    /* Box is a plain container now (no tileview) — just hide it. */
-    lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
-                    LV_OBJ_FLAG_HIDDEN);
+    if (p_instruction_list_layout->p_instruction_list_ai_bg &&
+        lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_ai_bg))
+    {
+        lv_obj_set_style_bg_opa(p_instruction_list_layout->p_instruction_list_ai_bg,
+                                LV_OPA_0, 0);
+        /* Box is a plain container now (no tileview) — just hide it. */
+        lv_obj_add_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
+                        LV_OBJ_FLAG_HIDDEN);
+    }
     /* finalize tears the BOX down only. The floating list + its blur are left
        alone here: a full close hides the list via the slide-out's ready_cb
        (inst_list_slide_out_done_cb); a scroll box-collapse keeps the list up.
