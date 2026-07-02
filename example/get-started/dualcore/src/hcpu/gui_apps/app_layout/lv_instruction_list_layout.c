@@ -2670,7 +2670,7 @@ void instruction_list_reveal_drag_end(lv_coord_t dx, lv_coord_t vx)
     }
     else
     {
-        lv_anim_set_values(&sl, tx, LV_HOR_RES);
+        lv_anim_set_values(&sl, tx, s_reveal_from_left ? -LV_HOR_RES : LV_HOR_RES);
         lv_anim_set_time(&sl, 150);
         lv_anim_set_path_cb(&sl, lv_anim_path_ease_in);
         lv_anim_set_ready_cb(&sl, inst_list_slide_out_done_cb);
@@ -5626,11 +5626,17 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_move_foreground(s_reveal_edge_overlay);
 
     /* P2 S3 — left-edge reveal overlay (mirror of the right): a rightward pull from
-       the left edge opens the @-chat filtered browse view. Same gating as the right
-       (check_is_at_home → instruction_list_reveal_overlay_set_enabled). */
+       the left edge opens the mixed-list browse view. Same gating as the right
+       (check_is_at_home → instruction_list_reveal_overlay_set_enabled).
+       2026-07-02: widened from LREVEAL_EDGE_W (20px) to the full 58px the left
+       device_pager tileview handle (status_bar_area_left) used to own — that handle
+       is dead now (device_pager launches as an app-list item, not a drag-out tile,
+       per the P3 note above), so the 20-58px band was just an unresponsive dead
+       strip. Only the LEFT overlay grows; the right stays LREVEAL_EDGE_W since its
+       58px band still belongs to the live App List tileview handle. */
     s_reveal_edge_overlay_left = lv_obj_create(s_global_bar_layer);
     lv_obj_remove_style_all(s_reveal_edge_overlay_left);
-    lv_obj_set_size(s_reveal_edge_overlay_left, LREVEAL_EDGE_W, LV_VER_RES);
+    lv_obj_set_size(s_reveal_edge_overlay_left, LV_HOR_RES >> 3, LV_VER_RES);
     lv_obj_align(s_reveal_edge_overlay_left, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_clear_flag(s_reveal_edge_overlay_left, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_reveal_edge_overlay_left, LV_OBJ_FLAG_CLICKABLE);

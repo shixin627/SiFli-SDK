@@ -141,29 +141,41 @@ static void notification_status_bar_cb(lv_event_t *event)
     }
     else if (LV_EVENT_PRESSED == event->code)
     {
-        LOG_I("notification_status_bar_cb from area: %d", area_id);
-        if (area_id == STATUS_BAR_AREA_LEFT)
+        /* Guard against a re-PRESSED mid-drag: PRESS_LOCK is cleared on these edge
+           handles so the touch hands off to the tileview once the finger crosses
+           into it (see the creation loop below) — but on a LEFT/RIGHT pull, undoing
+           the pull brings the finger back across this same full-height/full-width
+           edge strip, which re-fires PRESSED here and used to unconditionally
+           snap_tile_id back to HOME + re-show, discarding the live drag and making
+           the reveal impossible to cancel by reversing mid-gesture (only forward
+           progress ever stuck). Skip the reset once the tileview is already
+           visible — that means this is a hand-back mid-drag, not a fresh press. */
+        if (lv_obj_has_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN))
         {
-            /* L/R swap: device_pager is now the LEFT tile. Populate it NOW, on
-               touch — before the left tile is dragged into view — so its content
-               follows the finger instead of popping in on release (VALUE_CHANGED
-               only fires on scroll-settle). Also re-reads the latest bonded set
-               on every pull-out. */
-            extern void device_pager_refresh(void);
-            device_pager_refresh();
+            LOG_I("notification_status_bar_cb from area: %d", area_id);
+            if (area_id == STATUS_BAR_AREA_LEFT)
+            {
+                /* L/R swap: device_pager is now the LEFT tile. Populate it NOW, on
+                   touch — before the left tile is dragged into view — so its content
+                   follows the finger instead of popping in on release (VALUE_CHANGED
+                   only fires on scroll-settle). Also re-reads the latest bonded set
+                   on every pull-out. */
+                extern void device_pager_refresh(void);
+                device_pager_refresh();
+            }
+            else if (area_id == STATUS_BAR_AREA_RIGHT)
+            {
+                /* Reset the App List (col 2) to its top row before it slides in — it's
+                   still off-screen here, so the reset is invisible — so re-entering the
+                   page always starts at the top instead of its last scroll position. */
+                extern void lv_app_list_layout_reset_scroll(void);
+                lv_app_list_layout_reset_scroll();
+            }
+            lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
+            lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+            set_clock_main_status_opa(0, false);
         }
-        else if (area_id == STATUS_BAR_AREA_RIGHT)
-        {
-            /* Reset the App List (col 2) to its top row before it slides in — it's
-               still off-screen here, so the reset is invisible — so re-entering the
-               page always starts at the top instead of its last scroll position. */
-            extern void lv_app_list_layout_reset_scroll(void);
-            lv_app_list_layout_reset_scroll();
-        }
-        lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
-        lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-        set_clock_main_status_opa(0, false);
     }
 }
 
@@ -286,6 +298,29 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
            lands on this same blurred-dial + OPA_100 time state. */
         {
             lv_coord_t sx = lv_obj_get_scroll_x(obj);
+            /* HOME's registered tile dir (LV_DIR_TOP|BOTTOM|RIGHT, no LEFT — see the
+               tile add call below) is what lv_tileview locks lv_obj_set_scroll_dir to
+               for the WHOLE press: LV_EVENT_SCROLL_END only re-applies a tile's dir
+               when the indev is no longer pressed (lv_tileview.c tileview_event_cb),
+               so mid-drag the missing LEFT makes retreating from a partial App List
+               pull impossible — scroll_x can only climb, forcing a full commit on
+               release no matter which way you're dragging when you let go. Punch a
+               temporary LEFT hole in only while sx is past HOME (mid pull-out) so the
+               live drag can retreat; drop it the instant sx is back at HOME so this
+               can't also open the old device_pager-vs-@-list conflict (P3) that got
+               LEFT permanently removed from HOME's own registration. */
+            static bool s_applist_retreat_open = false;
+            if (sx > 466 && !s_applist_retreat_open)
+            {
+                s_applist_retreat_open = true;
+                lv_obj_set_scroll_dir(obj, LV_DIR_TOP | LV_DIR_BOTTOM | LV_DIR_RIGHT |
+                                               LV_DIR_LEFT);
+            }
+            else if (sx <= 466 && s_applist_retreat_open)
+            {
+                s_applist_retreat_open = false;
+                lv_obj_set_scroll_dir(obj, LV_DIR_TOP | LV_DIR_BOTTOM | LV_DIR_RIGHT);
+            }
             if (sx > 466)
             {
                 extern void instruction_list_bar_set_blur_amount(uint8_t opa);
