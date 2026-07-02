@@ -21,6 +21,7 @@ Profile delta (derived from release commit dd100ed74):
                              BSP_USING_VIRTUAL_CONSOLE   commented out  =y
                              BSP_PM_DEBUG                =y             # is not set
                              RT_USING_MEMTRACE           =y             # is not set
+                             ULOG_OUTPUT_LVL_W           # is not set   =y  (strip D/I strings)
   lcpu/proj.conf             GH3018_POW_PIN              161            0
                              BMI270_POW_PIN              118            0
                              RT_USING_MEMTRACE           =y             # is not set
@@ -112,6 +113,11 @@ HCPU_BOOLS = [
     ("BSP_USING_VIRTUAL_CONSOLE", False, True),   # route console over virtual port
     ("BSP_PM_DEBUG",              True,  False),  # per-wake rt_kprintf (DBG_LVL can't mute it)
     ("RT_USING_MEMTRACE",         True,  False),  # per-alloc tracking overhead
+    # ULOG static level: dev keeps the Kconfig default (Debug); release picks
+    # Warning, which strips every LOG_D/LOG_I format string + call site out of
+    # ROM at compile time (~60-80 KB). Release units therefore only emit W/E
+    # over COM12 -- flash a dev build when I/D-level tracing is needed.
+    ("ULOG_OUTPUT_LVL_W",         False, True),
     # BT_FINSH is intentionally NOT toggled. Despite the name it isn't just a
     # BT shell: middleware/bluetooth/service/bt/bt_finsh/ also holds the only
     # definitions of the HFP-HF call control (bt_hfp_hf_answer_call_send /
