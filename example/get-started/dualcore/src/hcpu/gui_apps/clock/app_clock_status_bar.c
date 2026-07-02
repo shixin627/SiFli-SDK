@@ -64,7 +64,6 @@ typedef enum
 
 LV_IMG_DECLARE(sun);
 LV_IMG_DECLARE(mouse_mode_icon);
-LV_IMG_DECLARE(micro_icon); /* recorder glyph for the quick-settings panel */
 LV_IMG_DECLARE(device_btn);
 
 #define NOTIFICATION_ITEM_WIDTH 360
@@ -976,12 +975,6 @@ static void flishlight_icon_event_cb(lv_event_t *e)
     animate_to_home_from_notification_center();
 }
 
-static void recorder_btn_event_cb(lv_event_t *e)
-{
-    gui_app_run(APP_ID_RECORDER);
-    animate_to_home_from_notification_center();
-}
-
 static void find_phone_btn_event_cb(lv_event_t *e)
 {
     control_provider.find_phone();
@@ -1289,7 +1282,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     lv_obj_clear_flag(cc_bottom, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align_to(cc_bottom, bar, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
 
-    /* Row 1: calculator / flashlight / recorder */
+    /* Row 1: calculator / flashlight / mouse */
     /* calculator_icon = the dedicated control-center calculator glyph the user
        supplied (2026-06-25). CALCULATOR_ICON resolves to &calculator_icon; the
        ezip resource now exists so the symbol links on watch + PC. */
@@ -1302,9 +1295,11 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
         cc_bottom, FLISHLIGHT_ICON, 100, 100, flishlight_icon_event_cb);
     lv_obj_align(flishlight_btn, LV_ALIGN_TOP_MID, 0, 0);
 
-    lv_obj_t *recorder_btn = common_image_button(
-        cc_bottom, &micro_icon, 100, 100, recorder_btn_event_cb);
-    lv_obj_align(recorder_btn, LV_ALIGN_TOP_RIGHT, -70, 0);
+    /* Mouse replaced the recorder here (founder direction 2026-07-02); the
+       recorder app stays reachable from the App List. */
+    lv_obj_t *mouse_btn = common_image_button(
+        cc_bottom, MOUSE_MODE_ICON, 100, 100, mouse_mode_icon_event_cb);
+    lv_obj_align(mouse_btn, LV_ALIGN_TOP_RIGHT, -70, 0);
 
     /* Row 2: setting / qrcode / do-not-disturb */
     lv_obj_t *setting_icon = common_image_button(
@@ -1320,7 +1315,7 @@ static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
     dndmode_enabled = SkaiWatchSys.DNDMode.config.status;
     dnd_mode_btn = common_image_button(cc_bottom, &icon_dnd_mode, 100, 100,
                                        dnd_mode_btn_event_cb);
-    lv_obj_align_to(dnd_mode_btn, recorder_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
+    lv_obj_align_to(dnd_mode_btn, mouse_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 15);
     if (dndmode_enabled)
     {
         lv_obj_set_style_bg_opa(dnd_mode_btn, LV_OPA_90, 0);

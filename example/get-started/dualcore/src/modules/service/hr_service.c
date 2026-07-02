@@ -183,6 +183,19 @@ void hr_set_power(uint8_t arg)
         LOG_W("PPG sensor not ready");
         return;
     }
+    /* Raw-data collection holds the sensor unconditionally. Power-DOWN
+     * (wear-detect OFF, bg_hr burst end, suspend, charger) would freeze the
+     * raw stream on the sensor's last latched value; a redundant power-ON
+     * (e.g. HCPU_RESUME after standby) is just as harmful -- the driver has
+     * no same-mode guard, so it deinit/reinits the running sensor and rips a
+     * hole in the stream. Veto BOTH while collecting; collection itself
+     * powers on before raising the flag (see set_imu_rawdata_collection). */
+    extern bool imu_rawdata_collection_active(void);
+    if (imu_rawdata_collection_active())
+    {
+        LOG_I("PPG power request (%d) vetoed: raw collection active", arg);
+        return;
+    }
 #ifdef RT_USING_PM
     rt_pm_request(PM_SLEEP_MODE_IDLE);
 #endif /* RT_USING_PM */
@@ -1427,6 +1440,13 @@ static void bg_hr_period_cb(void *param)
     }
 
     if (bg_hr_bursting) { bg_hr_note(BGHR_BUSY); return; }
+
+    /* Raw collection owns the sensor: a burst's switch into HIGH/HR-algo mode
+     * re-inits the GH3018 mid-stream (visible LED flicker + a step in the raw
+     * data). Skip bursts entirely; collection already holds the LED on via
+     * the hr_set_power veto, so no HR is lost that anyone is reading. */
+    extern bool imu_rawdata_collection_active(void);
+    if (imu_rawdata_collection_active()) { bg_hr_note(BGHR_BUSY); return; }
 
     int reason = bg_hr_skip_reason();
     if (reason != BGHR_OK) { bg_hr_note(reason); return; }

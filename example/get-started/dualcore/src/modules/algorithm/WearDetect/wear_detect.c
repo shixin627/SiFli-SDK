@@ -119,6 +119,13 @@
  * milliseconds, consider PPG data stale (sensor likely powered off). */
 #define PPG_STALE_MS            5000
 
+/* If PPG stays stale this long WHILE WORN, the sensor has likely wedged
+ * (not just a normal gap) -- power-cycle it. Must sit ABOVE the awake bg_hr
+ * duty cycle (a burst every ~15 min with the LED deliberately off in
+ * between), or every normal inter-burst gap gets misread as a wedge and the
+ * LED blinks in a restart loop. */
+#define PPG_STALE_RESTART_MS    (20 * 60 * 1000)
+
 /* PPG settle time: after PPG sensor restarts, the first few seconds
  * produce wildly inaccurate readings (huge PI spikes).  Ignore PPG
  * data during this settle period. */
@@ -132,6 +139,22 @@
  * the wrist can confirm even if the user then stays still. If nothing
  * confirms within the window, PPG is powered back down until next motion. */
 #define PROBE_WINDOW_MS         (3 * 60 * 1000)
+
+/* While OFF with no motion, still open a probe at this interval so a
+ * wrongly-voted OFF on a resting wrist can warm re-enter (see the fallback
+ * comment in evaluate_imu_only). The fallback window is much shorter than
+ * the motion one: settle (6s) + a few evals is enough to warm re-enter a
+ * still wrist, and a watch resting on a desk must not strobe its LED 30% of
+ * the time (3min/10min) forever. */
+#define PROBE_FALLBACK_MS       (10 * 60 * 1000)
+#define PROBE_FALLBACK_WINDOW_MS (30 * 1000)
+
+/* Detection-disabled bypass: hold "on charger" for this long after the
+ * charge IC last reported charging. A topping-off battery cycles
+ * charging<->full every few seconds to minutes; without this latch the
+ * bypass flips WEARING<->NOT_WEARING on every cycle and the PPG LED
+ * blinks on the cradle all morning (seen in wear_diag 2026-07-02). */
+#define PLUGGED_HOLD_MS         (90 * 1000)
 
 /* PPG ring buffer size: at ~25 Hz, 75 samples = 3 seconds */
 #define PPG_WINDOW_SIZE         75
@@ -165,6 +188,11 @@ typedef struct
     /* PPG settle: timestamp when PPG resumed after a stale gap */
     uint32_t ppg_restart_ms;
     bool ppg_settling;          /* true during settle period after restart */
+
+    /* Timestamp (0 = not tracking) when PPG first went stale while worn.
+     * Reset the instant a fresh PPG sample arrives; if it grows past
+     * PPG_STALE_RESTART_MS the sensor is power-cycled (see evaluate_once). */
+    uint32_t on_stale_since_ms;
 
     /* Timing for periodic evaluation */
     uint32_t last_eval_ms;
@@ -204,6 +232,7 @@ static wear_detect_ctx_t ctx;
 extern void hr_set_power(uint8_t arg);
 static bool s_probe_active = false;
 static uint32_t s_probe_until_ms = 0;
+static uint32_t s_last_probe_open_ms = 0;
 
 /* Diagnostic override (settings toggle "佩戴偵測"): when false, the contact
  * algorithm is bypassed and the watch is forced WORN unless on the charger. */
@@ -365,7 +394,18 @@ static int evaluate_imu_only(void)
 
     float imu_var = compute_imu_variance(ctx.acce_mag, imu_len);
 
-    if (imu_var >= IMU_RETRIGGER_THD)
+    /* Fallback re-probe: a wrongly-voted OFF on a STILL wrist (sleep dip /
+     * loose strap) is otherwise a deadlock -- warm re-entry needs PPG data
+     * but PPG is powered down, and a resting wrist never crosses the motion
+     * threshold. Without this, only the sleep/wake path's forced power-up
+     * ever recovers. Blocked while plugged: a charging watch is off-wrist by
+     * contract, don't waste LED current probing the cradle. */
+    bool fallback_probe =
+        !s_probe_active &&
+        !battery_get_charge_state()->is_plugged &&
+        (rt_tick_get_millisecond() - s_last_probe_open_ms >= PROBE_FALLBACK_MS);
+
+    if (imu_var >= IMU_RETRIGGER_THD || fallback_probe)
     {
         /* Motion while off-wrist + PPG asleep: power PPG up and (re)start the
          * probe window, so the next few minutes of PPG can confirm a real wrist
@@ -379,13 +419,17 @@ static int evaluate_imu_only(void)
              * table). Arm the settle gate so evaluate_once drops those reads. */
             ctx.ppg_settling = true;
             ctx.ppg_restart_ms = rt_tick_get_millisecond();
-            LOG_I("Wear: motion (var=%.4f) -> open PPG probe window (settling %ums)",
+            s_last_probe_open_ms = rt_tick_get_millisecond();
+            LOG_I("Wear: %s (var=%.4f) -> open PPG probe window (settling %ums)",
+                  fallback_probe ? "fallback re-probe" : "motion",
                   imu_var, PPG_SETTLE_MS);
             ctx.last_imu_var = imu_var;
             diag_emit_last(WEAR_DIAG_EVT_PROBE_OPEN);
         }
         s_probe_active = true;
-        s_probe_until_ms = rt_tick_get_millisecond() + PROBE_WINDOW_MS;
+        s_probe_until_ms = rt_tick_get_millisecond() +
+                           ((imu_var >= IMU_RETRIGGER_THD) ? PROBE_WINDOW_MS
+                                                           : PROBE_FALLBACK_WINDOW_MS);
     }
     else
     {
@@ -441,7 +485,29 @@ static int evaluate_once(uint32_t now)
             }
             return evaluate_imu_only();
         }
-        /* If currently ON but PPG went stale, don't change state yet */
+
+        /* Currently ON but PPG went stale: give it a grace period (a normal
+         * gap self-heals within PPG_STALE_MS..PPG_STALE_RESTART_MS as new
+         * samples keep landing, which resets on_stale_since_ms in
+         * wear_detect_feed_ppg). If it stays stale past the grace period the
+         * sensor has likely wedged -- nothing else in this file ever calls
+         * hr_set_power(1) while WEARING, so without this the watch would
+         * stay dark until the next sleep/wake cycle re-initializes the
+         * state machine and stumbles into evaluate_imu_only(). */
+        if (ctx.on_stale_since_ms == 0)
+        {
+            ctx.on_stale_since_ms = now;
+        }
+        else if (now - ctx.on_stale_since_ms >= PPG_STALE_RESTART_MS)
+        {
+            LOG_W("Wear: PPG stale %ums while worn -> power-cycle sensor",
+                  now - ctx.on_stale_since_ms);
+            hr_set_power(0);
+            hr_set_power(1);
+            ctx.ppg_settling = true;
+            ctx.ppg_restart_ms = now;
+            ctx.on_stale_since_ms = 0;
+        }
         return 0;
     }
 
@@ -631,7 +697,14 @@ static void try_evaluate(void)
      * indicator + bg_hr gating + sleep on transition. */
     if (!s_detect_enabled)
     {
-        bool on_charger = battery_get_charge_state()->is_plugged;
+        /* Latch "plugged": is_plugged mirrors the charge IC's charging bit
+         * (bloc_battery read_charge_status), which cycles while topping off.
+         * Raw use here means a status flip + LED power flip per cycle. */
+        static uint32_t last_plugged_ms = 0;
+        if (battery_get_charge_state()->is_plugged)
+            last_plugged_ms = now;
+        bool on_charger = (last_plugged_ms != 0) &&
+                          (now - last_plugged_ms < PLUGGED_HOLD_MS);
         set_status(on_charger ? WEAR_STATUS_NOT_WEARING : WEAR_STATUS_WEARING);
         return;
     }
@@ -769,6 +842,7 @@ void wear_detect_feed_ppg(uint32_t ppg_raw, uint32_t ppg_raw2)
     /* Update PPG freshness timestamp */
     ctx.last_ppg_ms = rt_tick_get_millisecond();
     ctx.ppg_ever_received = true;
+    ctx.on_stale_since_ms = 0;
 
     /* Store PPG sample into ring buffer */
     ctx.ppg_buf[ctx.ppg_idx] = ppg_raw;

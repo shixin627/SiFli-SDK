@@ -1,183 +1,293 @@
 
  \ | /
 - SiFli Corporation
- / | \     build on May 28 2026, 2.5.0 build 0c8621da
+ / | \     build on Jul  2 2026, 2.5.0 build 3464e89b
  2020 - 2022 Copyright by SiFli team
 Hello RT-Thread!
 mount /dev sucess
 File System on root initialized!
 dfs already init.
-[5] E/DFS init: There is no space to register this file system (elm).
-proc_stack:01586C48,4096
+[93] E/DFS init: There is no space to register this file system (elm).
+proc_stack:00AEAE48,4096
 [gui_freetype_init] skipped: font file unavailable, falling back to LVGL theme fonts
-[16] I/watch.global.data init: storage worker started (stack=8192)
-[20] D/DS init: data service subscribe (ANCS), service (0)
+[133] I/watch.global.data init: storage worker started (stack=8192)
+[146] D/DS init: data service subscribe (ANCS), service (0)
 PC simulator app_main: HCPU stub
-[232] I/tsim app_watc: lv_touch_sim registered (indev=024BAC30)
-[244] I/LVGL app_watc: [littlevgl2rtt] Welcome to the littlevgl2rtt lib.
+[boot] init_pin + pm/touch        +0ms (total 0ms)
+[256] I/tsim app_watc: lv_touch_sim registered (indev=01A13C30)
+[286] I/LVGL app_watc: [littlevgl2rtt] Welcome to the littlevgl2rtt lib.
+[boot] littlevgl2rtt_init         +143ms (total 143ms)
+[boot] resource_init              +9ms (total 152ms)
 share_prefs_open: sector_size 4096 size 16384
 fdb_kvdb_init: prefdb
-[277] D/watch.global.data app_watc: open watch prefs success (1)
-[290] D/watch.global.data app_watc: read watch prefs
-[298] D/watch.global.data app_watc: Loaded OLED display time: -1
-[310] D/watch.global.data app_watc: Loaded brightness percent: -1
-[317] D/watch.global.data app_watc: Watch restart num: 2
-[322] D/watch.global.data app_watc: Read clock widget num: -1
-[326] I/watch.global.data app_watc: Using default gesture threshold: 70
-[331] I/watch.global.data app_watc: Loaded 0 alarms from prefs
-[337] W/watch.global.data app_watc: device registry: bad/old/absent block, resetting to empty
-[344] D/watch.global.data app_watc: close watch prefs success (0)
+[353] D/watch.global.data app_watc: open watch prefs success (1)
+[366] D/watch.global.data app_watc: read watch prefs
+[387] D/watch.global.data app_watc: Loaded OLED display time: -1
+[407] D/watch.global.data app_watc: Loaded brightness percent: -1
+[420] D/watch.global.data app_watc: Watch restart num: 21
+[437] D/watch.global.data app_watc: Read clock widget num: -1
+[463] I/watch.global.data app_watc: Using default gesture threshold: 70
+[473] I/watch.global.data app_watc: Loaded 0 alarms from prefs
+[486] D/watch.global.data app_watc: close watch prefs success (0)
+[boot] watch_config_flash_read    +184ms (total 336ms)
+[boot] freetype_open_font         +8ms (total 344ms)
+[boot] gui_app_init               +50ms (total 394ms)
+[boot] ui_datac + msg/speech data +10ms (total 404ms)
 match lang
-[353] I/bloc.setting app_watc: bloc_setting_load_watch_system oled_display_time: 5, brightness: 100, font_size: 0
-[364] D/APP.FWK app_watc: send msg[GUI_APP_MSG_RUN_APP] [Main] to gui_app_mbx tick:364.
-[371] I/APP.FWK.INT app_watc: [Main]
-[374] W/disp.gov app_watc: no default display refr_timer yet; init deferred
-[383] D/DS app_watc: data service subscribe (WATCHSYS), service (0)
-[389] I/CLIENT.POWER app_watc: watch_sys_service_callback: msg_id=32768
-[399] D/CLIENT.POWER app_watc: Subscribe DualCoreSyncService
+[571] I/bloc.setting app_watc: bloc_setting_load_watch_system oled_display_time: 5, brightness: 100, font_size: 0
+[boot] bloc_setting + schedule    +17ms (total 421ms)
+[590] D/APP.FWK app_watc: send msg[GUI_APP_MSG_RUN_APP] [Main] to gui_app_mbx tick:590.
+[614] I/APP.FWK.INT app_watc: [Main]
+[boot] gui_app_run(Main) = FIRST FRAME +43ms (total 464ms)
+[boot] deferred freetype + reflow +14ms (total 478ms)
+[649] W/disp.gov app_watc: no default display refr_timer yet; init deferred
+[661] D/DS app_watc: data service subscribe (WATCHSYS), service (0)
+[674] I/CLIENT.POWER app_watc: watch_sys_service_callback: msg_id=32768
+[689] D/CLIENT.POWER app_watc: Subscribe DualCoreSyncService
 
-[404] W/bloc.peripheral peripher: unknown peripheral event: 5
-msh />[512] D/lvsf.gesture app_watc: lvsf_gesture_init: parent=024BA900 hor=466 ver=466
-[522] I/NO_TAG app_watc: watch_entry: about to enter main loop
-[530] I/NO_TAG app_watc: watch_entry loop iter 0 before lv_timer_handler
-[538] D/APP.SCHE app_watc: ----------------app_schedule_task---------------start
-[544] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_RUN_APP] tick:364
-[551] I/APP.SCHE app_watc: app[Main] do LOAD, 24b1778
-[554] I/APP.FWK app_watc: finding Main in builtin apps...
-[559] D/APP.SCHE app_watc: app[Main] tgt_state [LAUNCHED] -> [RUNNING]
-[568] I/APP.SCHE app_watc: app[Main] do START, 24b1778
-[574] I/APP.FWK.INT app_watc: [Main]
-[580] D/APP.FWK app_watc: send msg[GUI_APP_MSG_OPEN_PAGE] [0x24b1778] to gui_app_mbx tick:580.
-[589] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_OPEN_PAGE] tick:580
-[595] D/APP.SCHE app_watc: app[Main] create page[root] 24bd3c4
-[600] D/APP.SCHE app_watc: page[Main][root] tgt_state [CREATED] -> [RESUMED]
-[605] D/APP.SCHE app_watc: Stop all app, and return to main app
-[609] I/APP.SCHE app_watc: page[Main][root] do ONSTART, 24bd3c4
-[614] D/app.mainmenu app_watc: [mainmenu_on_start]
-[617] D/DS app_watc: data service subscribe (powermgr), service (24b1a74)
-[621] D/DS app_watc: datac subscribe dev open
-[626] D/app.clock app_watc: service_reset_time:  126:4:28 - 16:15:29 - 4
-[636] D/bloc.control app_watc: get_media_title: title=
-[643] D/app.clock app_watc: gui_state_update_timer created
-[650] D/app.clock app_watc: Resuming clock id11=JW_wf1
-[656] D/app.clock app_watc: clock_change_page: JW_wf1
-[674] I/app_list.layout app_watc: App list created with 10 apps, 4 rows
-[679] I/app.clock.status_bar app_watc: clock_status_bar: before instruction_list_layout_create
-[687] I/instruction.list.layout app_watc: [CHECK_MEMORY]instruction_list_init(396 bytes)
-[697] I/instruction.list.layout app_watc: instruction_list_init: before myLancher reset_list
-[706] I/instruction.list.layout app_watc: instruction_list_init: before lv_event_send SCROLL
-[716] I/instruction.list.layout app_watc: instruction_list_init: after lv_event_send SCROLL
-[726] I/instruction.list.layout app_watc: instruction_list_init: returning
-[735] I/app.clock.status_bar app_watc: clock_status_bar: after instruction_list_layout_create
-[750] I/app.clock.status_bar app_watc: clock_status_bar: before message_list_layout_create
-[759] I/app.notification app_watc: message_list_layout_create: enter
-[765] I/app.notification app_watc: message_list_layout_create: alloc ok
-[774] I/app.notification app_watc: message_list_layout_create: before create_background_blocks
-[783] I/app.notification app_watc: message_list_layout_create: after create_background_blocks
-[794] I/app.notification app_watc: message_list_layout_create: before card builder loop
-[805] I/app.notification app_watc: card builder i=0
-[810] I/app.notification app_watc: card builder i=1
-[820] I/app.notification app_watc: card builder i=2
-[829] I/app.notification app_watc: card builder i=3
-[834] I/app.notification app_watc: card builder i=4
-[842] I/app.notification app_watc: card builder i=5
-[848] I/app.notification app_watc: card builder i=6
-[855] I/app.notification app_watc: card builder i=7
-[863] I/app.notification app_watc: card builder i=8
-[869] I/app.notification app_watc: card builder i=9
-[878] I/app.notification app_watc: message_list_layout_create: after card builder loop
-[886] I/app.notification app_watc: message_list_layout_create: before refresh_notification_list
-[896] D/bloc.control app_watc: get_media_title: title=
-[905] D/app.notification app_watc: Created no_notifications_widget :024C8160
-[919] D/app.notification app_watc: selected_message_index: 0
-[926] I/app.notification app_watc: message_list_layout_create: before lv_event_send SCROLL
-[936] I/app.notification app_watc: message_list_layout_create: after lv_event_send SCROLL
-[946] I/app.notification app_watc: message_list_layout_create: before arc_scroll_create
-[955] I/app.notification app_watc: message_list_layout_create: after arc_scroll_create
-[965] I/app.notification app_watc: message_list_layout_create: returning
-[970] I/app.clock.status_bar app_watc: clock_status_bar: after message_list_layout_create
-[1019] I/device.pager app_watc: [pager] overlay on LIST — bar hidden
-[1029] I/device.pager app_watc: [pager] built (overlay tileview + mouse base, 0 devices)
-[1038] D/app.clock.status_bar app_watc: tileview set tile id to 1,1
-[1046] I/app.mainmenu app_watc: is_at_message: 0
-[1050] D/app.clock.status_bar app_watc: app_clock_main_status_bar_init
-[1071] D/app.clock app_watc: refresh_time:0:0:0
-[1077] I/APP.SCHE app_watc: page[Main][root] do ONRESUME, 24bd3c4
-[1081] D/app.mainmenu app_watc: [mainmenu_on_resume] 0
-[1089] I/app.mainmenu app_watc: on_resume: before check_main_page
-[1095] I/app.mainmenu app_watc: is_at_message: 0
-[1099] D/lvsf.gesture app_watc: display_gesture_detect_objs idx=0 display=0
-[1108] I/app.mainmenu app_watc: is_at_home: 1
-[1111] I/app.mainmenu app_watc: on_resume: after check_main_page
-[1119] I/app.mainmenu app_watc: on_resume: after check_is_at_ai_interface
-[1126] I/app.mainmenu app_watc: on_resume: before screen_rotate_back
-[1134] I/app.mainmenu app_watc: on_resume: before clock_on_resume
-[1139] I/app.clock app_watc: clock_on_resume: enter
-[1145] I/app.clock app_watc: clock_on_resume: after bluetooth_connection
-[1151] I/app.clock app_watc: clock_on_resume: before dial_media_header_init
-[1158] I/app.clock app_watc: clock_on_resume: before app_clock_main_select
-[1167] D/app.clock app_watc: clock_on_resume
-[1171] I/app.mainmenu app_watc: on_resume: after clock_on_resume
-[1177] I/app.mainmenu app_watc: on_resume: before lvgl_send_msg
-[1183] I/app.mainmenu app_watc: on_resume: returning
-[1188] I/APP.SCHE app_watc: Try setup trans-anim
-[1192] I/APP.SCHE app_watc: Trans-anim is OFF, skip.
-[1198] D/APP.SCHE app_watc: app_schedule_task done.
-[1207] D/ui.handler app_watc: GUI Task: msg type: 69
-[1212] D/ui.handler app_watc: GUI Task: msg type: 43
-[1218] D/ui.handler app_watc: GUI Task: msg type: 64
-[1223] I/NO_TAG app_watc: watch_entry loop iter 0 after lv_timer_handler ms=0
-[1230] I/NO_TAG app_watc: watch_entry loop iter 1 before lv_timer_handler
-[1239] I/NO_TAG app_watc: watch_entry loop iter 1 after lv_timer_handler ms=0
-[1248] I/NO_TAG app_watc: watch_entry loop iter 2 before lv_timer_handler
-[1254] I/NO_TAG app_watc: watch_entry loop iter 2 after lv_timer_handler ms=0
-[1263] I/NO_TAG app_watc: watch_entry loop iter 3 before lv_timer_handler
-[1270] I/NO_TAG app_watc: watch_entry loop iter 3 after lv_timer_handler ms=0
-[1278] I/NO_TAG app_watc: watch_entry loop iter 4 before lv_timer_handler
-[1285] I/NO_TAG app_watc: watch_entry loop iter 4 after lv_timer_handler ms=0
-goto_app qrcode
-[5795] D/APP.FWK tshell: send msg[GUI_APP_MSG_RUN_APP] [qrcode] to gui_app_mbx tick:5795.
-[5801] I/APP.FWK.INT tshell: [qrcode]
-goto_app: launched 'qrcode'
-msh />[5818] D/APP.SCHE app_watc: ----------------app_schedule_task---------------start
-[5822] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_RUN_APP] tick:5795
-[5825] I/APP.SCHE app_watc: app[qrcode] do LOAD, 24c10a0
-[5828] I/APP.FWK app_watc: finding qrcode in builtin apps...
-[5833] D/APP.SCHE app_watc: app[qrcode] tgt_state [LAUNCHED] -> [RUNNING]
-[5837] I/APP.SCHE app_watc: app[qrcode] do START, 24c10a0
-[5840] I/APP.FWK.INT app_watc: [qrcode]
-[5842] D/APP.FWK app_watc: send msg[GUI_APP_MSG_OPEN_PAGE] [0x24c10a0] to gui_app_mbx tick:5842.
-[5847] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_OPEN_PAGE] tick:5842
-[5853] D/APP.SCHE app_watc: app[qrcode] create page[root] 24c1004
-[5857] D/APP.SCHE app_watc: page[qrcode][root] tgt_state [CREATED] -> [RESUMED]
-[5861] D/APP.SCHE app_watc: Pause all app, and resume to qrcode app
-[5868] D/APP.SCHE app_watc: page[Main][root] tgt_state [RESUMED] -> [PAUSED]
-[5873] I/APP.SCHE app_watc: page[Main][root] do ONPAUSE, 24bd3c4
-[5879] D/app.mainmenu app_watc: [mainmenu_on_pause]
-[5882] D/app.clock app_watc: Deiniting active clock id=JW_wf1
-[5885] D/app.clock app_watc: Deiniting clock id=JW_wf1
-[5887] D/app.clock app_watc: clock_on_pause
-[5894] I/APP.SCHE app_watc: page[qrcode][root] do ONSTART, 24c1004
-[5898] D/lvsf.gesture app_watc: display_gesture_detect_objs idx=0 display=1
-[5906] I/APP.SCHE app_watc: page[qrcode][root] do ONRESUME, 24c1004
-[5911] I/APP.SCHE app_watc: Try setup trans-anim
-[5916] I/APP.ANI app_watc: app_trans_animation_obj_create = 24bf944
-[5919] I/APP.ANI app_watc: app_trans_animation_obj_create = 24bfb40
-[5922] I/APP.ANI app_watc: Start free run animation
-[5928] I/APP.ANI app_watc: app_trans_animation_setup end, cost=13ms
-
-[5931] I/APP.SCHE app_watc: Trans-anim setup done.
-[5934] D/APP.SCHE app_watc: --Pause app_schedule_task--
-[5937] D/APP.SCHE app_watc: app_schedule_task done.
-[6231] I/APP.ANI app_watc: free_run_ready 0 
-
-[6265] I/APP.ANI app_watc: wait_refr_task_cb 0
-
-[6267] I/APP.ANI app_watc: anim_free_run_ready 0 
-
-[6270] I/APP.ANI app_watc: app_trans_anim_free_run_clean
-
-[6273] I/APP.ANI app_watc: app_trans_animation_obj_destroy = 24bfb40
-[6278] I/APP.ANI app_watc: app_trans_animation_obj_destroy = 24bf944
-[6282] I/APP.SCHE app_watc: Trans-anim finish, res=0
-[6285] D/APP.SCHE app_watc: --Resume app_schedule_task--
+[699] W/bloc.peripheral peripher: unknown peripheral event: 5
+msh />[809] D/lvsf.gesture app_watc: lvsf_gesture_init: parent=01A13900 hor=466 ver=466
+[820] I/NO_TAG app_watc: watch_entry: about to enter main loop
+[830] I/NO_TAG app_watc: watch_entry loop iter 0 before lv_timer_handler
+[843] D/APP.SCHE app_watc: ----------------app_schedule_task---------------start
+[879] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_RUN_APP] tick:590
+[891] I/APP.SCHE app_watc: app[Main] do LOAD, 1a0a778
+[899] I/APP.FWK app_watc: finding Main in builtin apps...
+[908] D/APP.SCHE app_watc: app[Main] tgt_state [LAUNCHED] -> [RUNNING]
+[920] I/APP.SCHE app_watc: app[Main] do START, 1a0a778
+[931] I/APP.FWK.INT app_watc: [Main]
+[935] D/APP.FWK app_watc: send msg[GUI_APP_MSG_OPEN_PAGE] [0x1a0a778] to gui_app_mbx tick:935.
+[941] I/APP.SCHE app_watc: >>Execute msg[GUI_APP_MSG_OPEN_PAGE] tick:935
+[947] D/APP.SCHE app_watc: app[Main] create page[root] 1a163c4
+[951] D/APP.SCHE app_watc: page[Main][root] tgt_state [CREATED] -> [RESUMED]
+[956] D/APP.SCHE app_watc: Stop all app, and return to main app
+[962] I/APP.SCHE app_watc: page[Main][root] do ONSTART, 1a163c4
+[968] D/app.mainmenu app_watc: [mainmenu_on_start]
+[973] D/DS app_watc: data service subscribe (powermgr), service (1a0aa74)
+[978] D/DS app_watc: datac subscribe dev open
+[981] D/app.clock app_watc: service_reset_time:  126:6:2 - 15:45:18 - 4
+[987] D/bloc.control app_watc: get_media_title: title=
+[991] D/app.clock app_watc: gui_state_update_timer created
+[999] D/app.clock app_watc: Resuming clock id11=JW_wf1
+[1001] D/app.clock app_watc: clock_change_page: JW_wf1
+[1013] I/app.clock.status_bar app_watc: clock_status_bar: before instruction_list_layout_create
+[1017] I/instruction.list.layout app_watc: [CHECK_MEMORY]instruction_list_init(396 bytes)
+[1039] I/instruction.list.layout app_watc: instruction_list_init: before myLancher reset_list
+[1043] I/instruction.list.layout app_watc: instruction_list_init: before lv_event_send SCROLL
+[1048] I/instruction.list.layout app_watc: instruction_list_init: after lv_event_send SCROLL
+[1055] I/instruction.list.layout app_watc: instruction_list_init: returning
+[1062] I/app.clock.status_bar app_watc: clock_status_bar: after instruction_list_layout_create
+[1073] I/app_list.layout app_watc: App list created with 10 apps, 4 rows
+[1078] I/app.clock.status_bar app_watc: clock_status_bar: before message_list_layout_create
+[1085] I/app.notification app_watc: message_list_layout_create: enter
+[1089] I/app.notification app_watc: message_list_layout_create: alloc ok
+[1102] I/app.notification app_watc: message_list_layout_create: before create_background_blocks
+[1114] I/app.notification app_watc: message_list_layout_create: after create_background_blocks
+[1141] I/app.notification app_watc: message_list_layout_create: before card builder loop
+[1151] I/app.notification app_watc: card builder i=0
+[1158] I/app.notification app_watc: card builder i=1
+[1164] I/app.notification app_watc: card builder i=2
+[1170] I/app.notification app_watc: card builder i=3
+[1179] I/app.notification app_watc: card builder i=4
+[1185] I/app.notification app_watc: card builder i=5
+[1189] I/app.notification app_watc: card builder i=6
+[1193] I/app.notification app_watc: card builder i=7
+[1203] I/app.notification app_watc: card builder i=8
+[1214] I/app.notification app_watc: card builder i=9
+[1218] I/app.notification app_watc: message_list_layout_create: after card builder loop
+[1226] I/app.notification app_watc: message_list_layout_create: before refresh_notification_list
+[1233] D/bloc.control app_watc: get_media_title: title=
+[1238] D/app.notification app_watc: Created no_notifications_widget :01A27BC4
+[1244] D/app.notification app_watc: selected_message_index: 0
+[1256] I/app.notification app_watc: message_list_layout_create: before lv_event_send SCROLL
+[1265] I/app.notification app_watc: message_list_layout_create: after lv_event_send SCROLL
+[1285] I/app.notification app_watc: message_list_layout_create: before arc_scroll_create
+[1297] I/app.notification app_watc: message_list_layout_create: after arc_scroll_create
+[1310] I/app.notification app_watc: message_list_layout_create: returning
+[1318] I/app.clock.status_bar app_watc: clock_status_bar: after message_list_layout_create
+[1346] D/app.clock.status_bar app_watc: tileview set tile id to 1,1
+[1353] I/app.mainmenu app_watc: is_at_message: 0
+[1359] D/app.clock.status_bar app_watc: app_clock_main_status_bar_init
+[1381] D/app.clock app_watc: refresh_time:0:0:0
+[1388] I/APP.SCHE app_watc: page[Main][root] do ONRESUME, 1a163c4
+[1398] D/app.mainmenu app_watc: [mainmenu_on_resume] 0
+[1403] I/app.mainmenu app_watc: on_resume: before check_main_page
+[1414] I/app.mainmenu app_watc: is_at_message: 0
+[1418] D/lvsf.gesture app_watc: display_gesture_detect_objs idx=0 display=0
+[1423] I/app.mainmenu app_watc: is_at_home: 1
+[1429] I/app.mainmenu app_watc: on_resume: after check_main_page
+[1434] I/app.mainmenu app_watc: on_resume: after check_is_at_ai_interface
+[1442] I/app.mainmenu app_watc: on_resume: before screen_rotate_back
+[1446] I/app.mainmenu app_watc: on_resume: before clock_on_resume
+[1452] I/app.clock app_watc: clock_on_resume: enter
+[1456] I/app.clock app_watc: clock_on_resume: after bluetooth_connection
+[1463] I/app.clock app_watc: clock_on_resume: before dial_media_header_init
+[1473] I/app.clock app_watc: clock_on_resume: before app_clock_main_select
+[1477] D/app.clock app_watc: clock_on_resume
+[1480] I/app.mainmenu app_watc: on_resume: after clock_on_resume
+[1483] I/app.mainmenu app_watc: on_resume: before lvgl_send_msg
+[1490] I/app.mainmenu app_watc: on_resume: returning
+[1493] I/APP.SCHE app_watc: Try setup trans-anim
+[1496] I/APP.SCHE app_watc: Trans-anim is OFF, skip.
+[1499] D/APP.SCHE app_watc: app_schedule_task done.
+[1504] I/app.clock app_watc: DBG catcher keepalive valid change -1 -> 1 ptr=01A176B4
+[1511] D/app.clock.status_bar app_watc: PWRMGR_MSG_LCD_BRIGHTNESS_SET_RSP cur=100[3,100]
+[1521] D/app.clock.status_bar app_watc: PWRMGR_MSG_LCD_BRIGHTNESS_SET_RSP cur=100[3,100]
+[1541] D/ui.handler app_watc: GUI Task: msg type: 70
+[1545] D/ui.handler app_watc: GUI Task: msg type: 43
+[1549] D/ui.handler app_watc: GUI Task: msg type: 64
+[1553] I/NO_TAG app_watc: watch_entry loop iter 0 after lv_timer_handler ms=0
+[1560] I/NO_TAG app_watc: watch_entry loop iter 1 before lv_timer_handler
+[1567] I/NO_TAG app_watc: watch_entry loop iter 1 after lv_timer_handler ms=0
+[1580] I/NO_TAG app_watc: watch_entry loop iter 2 before lv_timer_handler
+[1586] I/NO_TAG app_watc: watch_entry loop iter 2 after lv_timer_handler ms=0
+[1594] I/NO_TAG app_watc: watch_entry loop iter 3 before lv_timer_handler
+[1599] I/NO_TAG app_watc: watch_entry loop iter 3 after lv_timer_handler ms=0
+[1606] I/NO_TAG app_watc: watch_entry loop iter 4 before lv_timer_handler
+[1613] I/NO_TAG app_watc: watch_entry loop iter 4 after lv_timer_handler ms=0
+touch_swipe 233 200 233 260 300
+[4114] I/app.clock app_watc: DBG face_swipe PRESSED
+touch_swipe (233,200)->(233,260) 300ms 15steps
+msh />[4798] I/app.mainmenu app_watc: is_at_message: 0
+app_status
+app_status: id='Main' state=2 flag=0x00 ticks=534
+msh />touch_swipe 233 200 233 260 300
+[7697] I/app.clock app_watc: DBG face_swipe PRESSED
+touch_swipe (233,200)->(233,260) 300ms 15steps
+msh />[8336] I/app.mainmenu app_watc: is_at_message: 0
+app_status
+app_status: id='Main' state=2 flag=0x00 ticks=534
+msh />touch_swipe 233 260 233 200 300
+[10921] I/app.clock app_watc: DBG face_swipe PRESSED
+touch_swipe (233,260)->(233,200) 300ms 15steps
+msh />[11629] I/app.mainmenu app_watc: is_at_message: 0
+app_status
+app_status: id='Main' state=2 flag=0x00 ticks=534
+msh />touch_swipe 233 150 233 350 300
+[14343] I/app.clock app_watc: DBG face_swipe PRESSED
+touch_swipe (233,150)->(233,350) 300ms 15steps
+msh />[15060] I/bloc.motion_tracking app_watc: set_open_control_options:1
+[15064] I/bloc.motion_tracking app_watc: set_free_control_with_arm:1
+[15066] D/bloc.motion_tracking app_watc: set_scroll_segment_count:1,100
+[15077] D/app.notification app_watc: notification_on_resume
+[15079] D/bloc.motion_tracking app_watc: set_scroll_segment_count:1,100
+[15081] I/app.mainmenu app_watc: is_at_message: 1
+[15084] D/lvsf.gesture app_watc: display_gesture_detect_objs idx=0 display=1
+[15087] I/app.mainmenu app_watc: is_at_home: 0
+app_status
+app_status: id='Main' state=2 flag=0x00 ticks=534
+msh />touch_swipe 233 350 233 150 300
+touch_swipe (233,350)->(233,150) 300ms 15steps
+msh />app_status
+app_status: id='Main' state=2 flag=0x00 ticks=534
+msh />touch_swipe 233 150 233 350 300
+touch_swipe (233,150)->(233,350) 300ms 15steps
+msh />app_status
+app_status: id='Main' state=2 flag=0x00 ticks=534
+msh />[102791] I/lvsf.gesture app_watc: left_bar_event_handler event 1
+[102796] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[102807] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[102823] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[102839] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[102855] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[102871] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[102887] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[102909] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[102937] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[102953] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[102978] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[102997] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[103040] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[103063] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[103098] I/lvsf.gesture app_watc: left_bar_event_handler event 8
+[103107] I/lvsf.gesture app_watc: left_bar_event_handler event 7
+[104161] I/lvsf.gesture app_watc: left_bar_event_handler event 1
+[104167] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104177] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104194] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104210] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104226] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104243] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104259] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104276] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104291] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104309] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104324] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104343] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104360] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104376] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104392] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104408] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[104424] I/lvsf.gesture app_watc: left_bar_event_handler event 8
+[104429] I/lvsf.gesture app_watc: left_bar_event_handler event 7
+[110005] I/lvsf.gesture app_watc: left_bar_event_handler event 1
+[110008] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110021] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110037] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110053] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110069] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110085] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110101] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110117] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110133] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110149] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110165] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110181] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110197] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110213] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110229] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110245] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110261] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110277] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110294] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110310] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110327] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110343] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110359] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110381] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110399] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110415] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110431] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110447] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[110463] I/lvsf.gesture app_watc: left_bar_event_handler event 8
+[110469] I/lvsf.gesture app_watc: left_bar_event_handler event 7
+[111064] I/lvsf.gesture app_watc: left_bar_event_handler event 1
+[111080] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111086] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111102] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111118] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111134] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111150] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111166] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111182] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111198] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111215] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111231] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111247] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111263] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111279] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111295] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[111312] I/lvsf.gesture app_watc: left_bar_event_handler event 8
+[111318] I/lvsf.gesture app_watc: left_bar_event_handler event 7
+[112905] I/lvsf.gesture app_watc: left_bar_event_handler event 1
+[112909] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[112921] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[112937] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[112953] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[112969] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[112985] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113001] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113017] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113033] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113049] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113065] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113081] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113097] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113113] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113129] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113145] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113161] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113177] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113193] I/lvsf.gesture app_watc: left_bar_event_handler event 2
+[113209] I/lvsf.gesture app_watc: left_bar_event_handler event 8
+[113213] I/lvsf.gesture app_watc: left_bar_event_handler event 7

@@ -804,7 +804,33 @@ void set_imu_data_collection(bool enable)
 void set_imu_rawdata_collection(bool enable)
 {
     LOG_D("Set IMU raw data collection: %d", enable);
-    imu_rawdata_collection = enable;
+    extern void hr_set_power(uint8_t arg);
+    extern int hr_service_subscriber_count(void);
+    bool was = imu_rawdata_collection;
+    /* Collection needs a live raw-PPG stream (it rides on the acce service
+     * via watch_sensor.ppg_data): force the sensor ON for the whole session
+     * — every other hr_set_power request is vetoed while the flag is set —
+     * and hand power management back when the session ends. Ordering vs the
+     * flag is load-bearing both ways: power-on must run BEFORE the flag is
+     * raised and power-off AFTER it is cleared, or the veto blocks us. */
+    if (enable && !was)
+    {
+        hr_set_power(1);
+        imu_rawdata_collection = true;
+    }
+    else if (!enable && was)
+    {
+        imu_rawdata_collection = false;
+        if (hr_service_subscriber_count() == 0)
+        {
+            hr_set_power(0);
+        }
+    }
+}
+
+bool imu_rawdata_collection_active(void)
+{
+    return imu_rawdata_collection;
 }
 
 #endif // #ifndef SOC_BF0_LCPU

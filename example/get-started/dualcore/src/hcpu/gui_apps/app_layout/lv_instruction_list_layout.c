@@ -130,8 +130,9 @@ static bool s_close_is_cancel = false;
 static uint8_t list_item_count =
     0; // total count of all items (app + instructions)
 static uint8_t app_base_count =
-    0; // pinned prefix protected from clear (index 0 = Settings). 0 until the
-       // first load_instruction_list(), then 1.
+    0; // pinned prefix protected from clear. Stays 0 since the index-0 Settings
+       // pin was removed (2026-07-02); the prefix machinery is kept for the
+       // device_pager save/feed/restore bracket.
 
 /* Phone-coupled list mode (founder direction 2026-06-04):
    DEFAULT_APPS — no phone list yet (boot / never-connected): body [1..] holds the
@@ -3765,8 +3766,8 @@ static int16_t find_app_index_by_id(uint16_t app_id)
             return i;
         }
     }
-    return -1; // 未找到 — 必須是不可能的 index 哨兵（不能用 app_base_count-1：
-               // 設定釘在 index 0 後 app_base_count==1，回 0 會誤判 index 0 命中）
+    return -1; // 未找到 — 必須是不可能的 index 哨兵（不能回任何可能命中的
+               // index：app_base_count-1 在有 pinned 前綴的年代會誤判命中）
 }
 
 extern char *get_media_title(void);
@@ -5836,7 +5837,8 @@ static void map_app_id(uint8_t app_id, list_item_t *item)
    list arrives. Mirrors APP_LIST_ITEMS in lv_app_list_layout.c (same #ifdef
    guards) — that file's swipe-down control-center grid was removed, so this is
    now the canonical home of the built-in app list. Settings is intentionally
-   absent: it is pinned separately at index 0. The debug-only dinosaur game is
+   absent: it lives in the right-swipe App List (its index-0 pin here was
+   removed 2026-07-02). The debug-only dinosaur game is
    omitted (it needs kReleaseMode, not included here, and is not a real app). */
 static const uint16_t DEFAULT_APP_ITEMS[] = {
 #ifdef APP_ID_TIMER
@@ -5869,10 +5871,10 @@ static const uint16_t DEFAULT_APP_ITEMS[] = {
 };
 
 /* Fill [app_base_count ..] with the built-in default apps and enter DEFAULT_APPS
-   mode. Index 0 (Settings) is set up by load_instruction_list, not here. */
+   mode. */
 static void load_default_apps(void)
 {
-    uint8_t slot = app_base_count; /* == 1: right after the pinned Settings */
+    uint8_t slot = app_base_count; /* == 0: no pinned prefix */
     for (uint8_t i = 0; i < ARRAY_SIZE(DEFAULT_APP_ITEMS); i++)
     {
         if (slot >= MAX_LIST_ITEMS)
@@ -5980,26 +5982,25 @@ bool instruction_list_reapply_view_filter(void)
 
 void load_instruction_list(void)
 {
-    /* Index 0 is always the pinned Settings entry. Re-mapping it here means a
-       language change (load_instruction_list is the translation-reload hook)
-       re-translates its title. Tapping it opens the system Settings app via
-       on_item_tap → gui_app_run(item->id == APP_ID_SETTING). */
-    map_app_id(app_id_setting, &list_items[0]);
-    app_base_count = 1;
+    /* No pinned prefix: the Settings pin at index 0 was removed (founder
+       direction 2026-07-02 — the left list should not always lead with
+       Settings; it stays reachable from the right-swipe App List). Every
+       "r < app_base_count" pinned-prefix guard degrades to a no-op at 0. */
+    app_base_count = 0;
 
     /* DEFAULT_APPS: (re)build the built-in app body so a language change picks up
-       new translations. PHONE: items [1..] are phone instructions carrying their
-       own titles — leave them so a reload does not clobber the phone's list. */
+       new translations (load_instruction_list is the translation-reload hook).
+       PHONE: items are phone instructions carrying their own titles — leave them
+       so a reload does not clobber the phone's list. */
     if (s_list_mode == LIST_MODE_DEFAULT_APPS)
         load_default_apps();
 }
 
 /* Device page bracket: device_pager reuses this shared list (save_base → feed →
    restore_base) to show a REMOTE device's options, which are 0-based with no
-   pinned Settings entry. It calls this right after save_base to drop the pinned
-   prefix for that view; restore_base brings app_base_count (and the Settings item
-   at index 0) back for the watch face. Keeps the device page identical to before
-   the watch-face Settings pin was added. */
+   pinned prefix. A no-op since the watch-face Settings pin was removed
+   (app_base_count is already 0); kept so the device-page bracket stays explicit
+   about the zero-prefix invariant it needs. */
 void instruction_list_drop_pinned_for_device(void)
 {
     app_base_count = 0;
