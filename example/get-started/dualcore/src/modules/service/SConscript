@@ -9,33 +9,14 @@ cwd = GetCurrentDir()
 src = []
 path = [cwd]
 
-if GetDepend('BSP_USING_WEA_SVC'):
-    src += Glob('weather_service.c')
-
 if GetDepend('BSP_USING_HR_SVC'):
     src += Glob('hr_service.c')
-
-if GetDepend('BSP_USING_BARO_SVC'):
-    src += Glob('baro_service.c')
 
 if GetDepend('BSP_USING_ACCE_SVC'):
     src += Glob('acce_service.c')
 
-if GetDepend('BSP_USING_STEP_SVC'):
-    src += Glob('step_service.c')
-
-if GetDepend('BSP_USING_GPS_SVC'):   
-    src += Glob('gps_service.c')
-    
-   
-if GetDepend('BSP_USING_TELEPHONE_SVC'):   
-    src += Glob('telephone_service.c')  
-
 if GetDepend('BSP_USING_ALARM_MANAGER_SVC'):
     src += Glob('alarm_manager_service.c')
-
-if GetDepend('BSP_USING_TEST_SVC'):   
-    src += ['test/tc_datasvc.c', 'test/test_service.c']
 
 if GetDepend('BSP_USING_WATCHSYS_SVC'):
     src += Glob('watch_system_service.c')

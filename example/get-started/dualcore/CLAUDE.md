@@ -103,15 +103,15 @@ example/get-started/dualcore/
 │   └── resource/                          fonts / images / Lottie / .arb
 ├── src/lcpu/main.c                        sensor / motor / charger driver entry
 └── src/modules/
-    ├── algorithm/  AI + DSP (TFLite Micro, Mahony, Kraepelin, WebRTC VAD)
+    ├── algorithm/  AI + DSP (TFLite Micro, Mahony, sleep_fusion, WearDetect)
     ├── bloc/       Business Logic Component (provider struct pattern, § below)
     ├── client/     HCPU→LCPU RPC via data_service
     ├── communicate/ 私有 BLE 協定 (L1+L2)
     ├── model/      跨 module interface (ui_handler, ble_*, watch_global_data)
-    ├── service/    HCPU services (alarm_manager, telephone, weather)
+    ├── service/    HCPU services (alarm_manager, hr, watch_system)
     ├── system/     boot_rollback (OTA trial-mode, silent rollback infra)
     ├── tests/      MSH 測試命令 (#if BSP_USING_PC_SIMULATOR)
-    └── util/       hash / crc / math
+    └── util/       trig / list / math_fixed / platform / time
 ```
 
 HCPU vs LCPU 職責表 + cross-CPU channel + BLOC pattern + L1/L2 protocol + code-level conventions(`kReleaseMode` / `#ifdef APP_ID_*` / `MSH_CMD_EXPORT` / `lvgl_send_msg` / sensor subscribe)→ [`docs/architecture.md`](docs/architecture.md).

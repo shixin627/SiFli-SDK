@@ -21,14 +21,6 @@ menu "Select algorithm"
 			default n
 	endif
 
-	config BSP_USING_WEBRTC_VAD
-		bool "Enable WebRTC Voice Activity Detection"
-		default n
-		
-	config BSP_USING_HEALTH_ALGO
-		bool "Enable RTK Health Algorithm"
-		default n
-
 	config BSP_USING_SLEEP_FUSION
 		bool "Enable in-tree sleep fusion (Cole-Kripke + HR staging)"
 		default n
@@ -36,10 +28,6 @@ menu "Select algorithm"
 	config BSP_USING_SLEEP_VANHEES
 		bool "Enable in-tree van Hees accel-only sleep-period detector"
 		default n
-
-	config BSP_USING_ACTIVITY_ALGO_KRAEPELIN
-			bool "Enable activity algorithm kraepelin"
-			default n
 
 	config BSP_USING_WEAR_DETECT
 		bool "Enable wear detection (IMU + PPG)"

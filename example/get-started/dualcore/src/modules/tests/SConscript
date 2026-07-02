@@ -6,17 +6,6 @@ cwd = GetCurrentDir()
 src = []
 path = [cwd]
 
-if GetDepend('UNIT_TEST_FS'):
-    src+=['test_fs.c']
-if GetDepend('UNIT_TEST_SHARE_PREFS'):
-    src+=['test_share_prefs.c']
-if GetDepend('UNIT_TEST_ADC'):
-    src+=['test_adc.c']
-if GetDepend('UNIT_TEST_MOTOR'):
-    src+=['test_motor.c']
-if GetDepend('UNIT_TEST_NNACC'):
-    src+=['nn_test.c']
-
 # PC simulator touch injection: MSH commands (touch_tap/press/release/move/
 # swipe/status) that drive lv_touch_sim's scripted indev. Indev itself lives
 # in middleware/lvgl/lv_win32 (gated by LCD_WINDOWS); that group already

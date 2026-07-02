@@ -4,16 +4,7 @@ cwd = GetCurrentDir()
 src = []
 path = [cwd]
 
-if GetDepend('BSP_USING_HEALTH_ALGO'):
-    # Legacy vendor health algorithm (Realtek GSA). Pulls in the closed
-    # health_algorithm_3.8.14 static lib. Mutually exclusive with
-    # BSP_USING_SLEEP_FUSION (the new in-tree pure-C sleep classifier),
-    # though they share the public T_SLEEP_STATUS wire enum.
-    src += Glob('health_algo.c')
-    lib = ['health_algorithm_3.8.14']
-    group = DefineGroup('Health', src, depend = ['BSP_USING_HEALTH_ALGO'],
-                        LIBS = lib, CPPPATH = path, LIBPATH = path)
-elif GetDepend('BSP_USING_SLEEP_FUSION'):
+if GetDepend('BSP_USING_SLEEP_FUSION'):
     # In-tree sleep classifier (Cole-Kripke + HR staging). Pure C, no
     # external lib. The driver lives in modules/service/sleep_service.c.
     src += ['sleep_fusion.c']
@@ -22,7 +13,7 @@ elif GetDepend('BSP_USING_SLEEP_FUSION'):
 elif GetDepend('BSP_USING_SLEEP_VANHEES'):
     # In-tree accel-only sleep-PERIOD detector (van Hees arm-angle SIB).
     # Pure C, no external lib, no HR. Driver: modules/service/
-    # sleep_vanhees_service.c. Mutually exclusive with the two above.
+    # sleep_vanhees_service.c. Mutually exclusive with sleep_fusion above.
     src += ['sleep_vanhees.c']
     group = DefineGroup('Health', src, depend = ['BSP_USING_SLEEP_VANHEES'],
                         CPPPATH = path)
