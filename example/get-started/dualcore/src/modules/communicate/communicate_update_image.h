@@ -63,7 +63,6 @@ extern "C"
 #ifdef PKG_USING_LZ4
     // LZ4 compression related functions
     extern void init_ble_dfu_thread_compressed(dfu_img_id_t id, uint32_t dest_addr, uint32_t original_size, uint32_t compressed_size);
-    extern bool is_lz4_compression_enabled(void);
 #endif
 
 #ifdef __cplusplus

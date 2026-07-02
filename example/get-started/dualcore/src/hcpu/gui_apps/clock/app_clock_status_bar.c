@@ -700,15 +700,6 @@ static void app_clock_main_device_change_bar_event_cb(lv_event_t *event)
     }
 }
 
-void animate_to_notification_center(void)
-{
-    lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
-                      LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_tile_id(myLancher[app_index_message].pagetileview, 0, 1,
-                       LV_ANIM_ON);
-}
-
 void animate_to_home_from_notification_center(void)
 {
     if (lv_obj_is_valid(myLancher[app_index_message].pagetileview))
@@ -785,20 +776,6 @@ void instruction_list_bar_set_blur_amount(uint8_t opa)
     lv_obj_set_style_bg_opa(gaus_dial_bg, LV_OPA_TRANSP, 0);
     set_clock_main_status_opa(opa, false);
     lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
-}
-
-/* True only when our dial blur is ACTUALLY on screen behind the floating list.
-   The bare s_bar_blur_active flag isn't enough: set_blur() early-returns when
-   gaus_dial_bg is gone (the standalone mouse app tears the watch face down),
-   leaving the flag stale. The instruction-list scrim keys off this instead of
-   clock_main_page_is_home() — the latter reads middle_layer_tileview_index,
-   which the mouse app never updates, so it falsely reports HOME and suppresses
-   the scrim. Blur really showing -> no scrim (OPA_0); no blur behind the list
-   (mouse page, dial torn down) -> dark scrim (OPA_40). */
-bool instruction_list_bar_blur_is_active(void)
-{
-    return s_bar_blur_active && gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg) &&
-           !lv_obj_has_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
 }
 
 /* True when the watch face (HOME) is the current main page. The floating list's
@@ -2411,23 +2388,6 @@ void set_status_bar_area_up_state(bool state)
     else
     {
         lv_obj_add_flag(status_bar_area_up, LV_OBJ_FLAG_HIDDEN);
-    }
-}
-
-void set_status_bar_area_right_state(bool state)
-{
-    if (lv_obj_is_valid(status_bar_area_right) == false)
-    {
-        return;
-    }
-    LOG_D("set_status_bar_area_ai_state %d", state);
-    if (state)
-    {
-        lv_obj_clear_flag(status_bar_area_right, LV_OBJ_FLAG_HIDDEN);
-    }
-    else
-    {
-        lv_obj_add_flag(status_bar_area_right, LV_OBJ_FLAG_HIDDEN);
     }
 }
 

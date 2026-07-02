@@ -197,19 +197,6 @@ void unknown_indicator_hidden(app_gesture_indicator_t *indicator)
     }
 }
 
-void unknown_indicator_destroy(app_gesture_indicator_t *indicator)
-{
-#ifndef BSP_USING_PC_SIMULATOR
-    if (indicator->unknown_obj_right == NULL || indicator->unknown_obj_left == NULL)
-    {
-        return;
-    }
-    lv_obj_del(indicator->unknown_obj_right);
-    lv_obj_del(indicator->unknown_obj_left);
-    indicator->unknown_obj_right = NULL;
-    indicator->unknown_obj_left = NULL;
-#endif
-}
 #endif
 #ifdef SHOW_TAP_GESTURE_INDICATOR
 LV_IMG_DECLARE(tap_bg_right);
@@ -380,19 +367,6 @@ void tap_indicator_builder(void *par, app_gesture_indicator_t *indicator)
     indicator->tap_obj_left = tap_bg_left_img;
     lv_obj_add_flag(indicator->tap_obj_left, LV_OBJ_FLAG_HIDDEN);
 }
-void tap_indicator_destroy(app_gesture_indicator_t *indicator)
-{
-#ifndef BSP_USING_PC_SIMULATOR
-    if (indicator->tap_obj_right == NULL || indicator->tap_obj_left == NULL)
-    {
-        return;
-    }
-    lv_obj_del(indicator->tap_obj_right);
-    lv_obj_del(indicator->tap_obj_left);
-    indicator->tap_obj_right = NULL;
-    indicator->tap_obj_left = NULL;
-#endif
-}
 void toggle_tap_indicator(app_gesture_indicator_t *indicator, uint8_t gesture)
 {
     if (gesture == 0) // release
@@ -407,16 +381,6 @@ void toggle_tap_indicator(app_gesture_indicator_t *indicator, uint8_t gesture)
 #endif
 #define USE_SPEECH_RECOGNITION_HINT
 #ifdef USE_SPEECH_RECOGNITION_HINT
-
-static void speech_user_interact_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t *obj = lv_event_get_target(e);
-    if (code == LV_EVENT_CLICKED)
-    {
-        voice_provider.start_v2t();
-    }
-}
 
 static bool is_on_speech_input_variable = false;
 void is_on_speech_input(bool is_speech)
@@ -466,111 +430,6 @@ static void open_ai_prompt_border(app_gesture_indicator_t *indicator, bool open)
             lv_obj_update_layout(indicator->ai_prompt_border_blue);
         }
     }
-}
-
-static void send_msg_to_ai(lv_event_t *e)
-{
-    extern void ai_tap_cb(void);
-    ai_tap_cb();
-}
-
-void voice_recognition_hint_builder(void *par, app_gesture_indicator_t *indicator)
-{
-    if (indicator->speech_bg)
-    {
-        return;
-    }
-    // Create background
-    lv_obj_t *voice_recognition_hint_bg = lv_obj_create(par);
-    lv_obj_set_size(voice_recognition_hint_bg, LV_HOR_RES_MAX, LV_VER_RES_MAX);
-    lv_obj_set_style_radius(voice_recognition_hint_bg, LV_RADIUS_CIRCLE, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(voice_recognition_hint_bg, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(voice_recognition_hint_bg, LV_OPA_90, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_width(voice_recognition_hint_bg, 6, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_color(voice_recognition_hint_bg, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_opa(voice_recognition_hint_bg, LV_OPA_60, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(voice_recognition_hint_bg, LV_ALIGN_CENTER, 0, 0);
-    indicator->speech_bg = voice_recognition_hint_bg;
-
-    // lv_obj_t *ai_prompt_border_wight = lv_img_create(par);
-    // lv_img_set_src(ai_prompt_border_wight, &ai_prompt_border_img_white);
-    // lv_obj_align(ai_prompt_border_wight, LV_ALIGN_CENTER, 0, 0);
-    // lv_obj_add_flag(ai_prompt_border_wight, LV_OBJ_FLAG_HIDDEN);
-    // indicator->ai_prompt_border_wight = ai_prompt_border_wight;
-
-    // lv_obj_t *ai_prompt_border_blue = lv_img_create(par);
-    // lv_img_set_src(ai_prompt_border_blue, &ai_prompt_border_img_blue);
-    // lv_obj_align(ai_prompt_border_blue, LV_ALIGN_CENTER, 0, 0);
-    // lv_obj_add_flag(ai_prompt_border_blue, LV_OBJ_FLAG_HIDDEN);
-    // indicator->ai_prompt_border_blue = ai_prompt_border_blue;
-
-    lv_obj_t *ai_tap_hint_bg = common_text_button(par, LV_EXT_STR_GET_BY_KEY(tap_to_continue, "Tap to continue"), get_system_font_size(0), 200, 100, speech_user_interact_cb);
-    lv_obj_align(ai_tap_hint_bg, LV_ALIGN_BOTTOM_MID, 0, -20);
-    indicator->ai_tap_hint_bg = ai_tap_hint_bg;
-
-    // Create input text
-    lv_obj_t *input_text = lv_label_create(voice_recognition_hint_bg);
-    lv_label_set_text(input_text, LV_EXT_STR_GET_BY_KEY(listening_dots, "Listening..."));
-    lv_obj_set_style_text_opa(input_text, LV_OPA_90, 0);
-    lv_obj_set_style_text_font(input_text, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_style_text_color(input_text, lv_color_hex(0x8E8E8E), 0);
-    lv_label_set_long_mode(input_text, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(input_text, 320);
-    lv_obj_align(input_text, LV_ALIGN_CENTER, 0, 0);
-    indicator->speech_input = input_text;
-    lv_obj_t *spinner = lv_spinner_create(voice_recognition_hint_bg, 2000, 60);
-    lv_obj_set_size(spinner, 466, 466);
-    lv_obj_align(spinner, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_arc_width(spinner, 10, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(spinner, 0, LV_PART_MAIN);
-    lv_obj_add_flag(spinner, LV_OBJ_FLAG_FLOATING);
-    indicator->speech_wait_indicator = spinner;
-
-    lv_obj_add_flag(gesture_indicator.speech_wait_indicator, LV_OBJ_FLAG_HIDDEN);
-
-    // Create AI status label
-    lv_obj_t *ai_status_label = lv_label_create(voice_recognition_hint_bg);
-    lv_label_set_text(ai_status_label, "");
-    lv_obj_set_style_text_font(ai_status_label, LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
-    lv_obj_set_style_text_color(ai_status_label, lv_color_hex(0x8E8E8E), 0);
-    lv_label_set_long_mode(ai_status_label, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(ai_status_label, 300);
-    // lv_obj_align(ai_status_label, LV_ALIGN_BOTTOM_MID, 0, -10);
-    lv_obj_align_to(ai_status_label, input_text, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 30);
-    lv_obj_add_flag(ai_status_label, LV_OBJ_FLAG_HIDDEN);
-    indicator->ai_status_label = ai_status_label;
-
-    // Create speech indicator
-    // lv_obj_t *speech_indicator = lv_img_create(par);
-    // lv_img_set_src(speech_indicator, LV_EXT_IMG_GET(ripple_blue));
-    // lv_obj_align(speech_indicator, LV_ALIGN_CENTER, 0, 0);
-    // lv_obj_set_style_shadow_width(speech_indicator, 30, 0);
-    // lv_obj_set_style_shadow_color(speech_indicator, lv_color_hex(0xFFFFFF), 0);
-    // lv_obj_set_style_shadow_opa(speech_indicator, LV_OPA_100, 0);
-    lv_obj_t *speech_indicator = lv_obj_create(voice_recognition_hint_bg);
-    lv_obj_set_size(speech_indicator, 57, 57);
-    lv_obj_set_style_bg_opa(speech_indicator, LV_OPA_0, LV_PART_MAIN);
-    lv_obj_set_style_radius(speech_indicator, 50, 0);
-    lv_obj_add_flag(speech_indicator, LV_OBJ_FLAG_FLOATING);
-    lv_obj_add_event_cb(speech_indicator, send_msg_to_ai, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *ripples = create_animate_ripples(gesture_indicator.speech_ripple, speech_indicator, 3);
-    lv_obj_align(speech_indicator, LV_ALIGN_BOTTOM_MID, 0, -20);
-    indicator->speech_indicator = speech_indicator;
-
-    // Create AI reply text
-    lv_obj_t *ai_reply_text = lv_label_create(voice_recognition_hint_bg);
-    lv_label_set_text(ai_reply_text, "");
-    lv_obj_set_style_text_font(ai_reply_text, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_style_text_color(ai_reply_text, lv_color_hex(0xF0F0F0), 0);
-    lv_label_set_long_mode(ai_reply_text, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(ai_reply_text, 320);
-    lv_obj_align_to(ai_reply_text, input_text, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 20);
-    indicator->speech_skai_reply = ai_reply_text;
-
-    // Initially hide everything
-
-    open_ai_prompt_border(indicator, false);
-    quick_ai_hint_hidden(indicator);
 }
 
 void open_ai_tap_hint_bg(bool open)
@@ -1053,20 +912,6 @@ void quick_ai_hint_hidden(app_gesture_indicator_t *indicator)
         lv_obj_update_layout(indicator->speech_input);
     }
     update_ai_process_indicator(indicator, NULL, false);
-    // if (indicator->flow_panel && lv_obj_is_valid(indicator->flow_panel) &&
-    //     !lv_obj_has_flag(indicator->flow_panel, LV_OBJ_FLAG_HIDDEN))
-    // {
-    //     LOG_D("quick_ai_hint_hidden: hiding flow panel");
-    //     lv_obj_add_flag(indicator->flow_panel, LV_OBJ_FLAG_HIDDEN);
-    //     lv_obj_update_layout(indicator->flow_panel);
-    // }
-    // Hide speech button
-    // if (indicator->speech_interact_button && lv_obj_is_valid(indicator->speech_interact_button) &&
-    //     !lv_obj_has_flag(indicator->speech_interact_button, LV_OBJ_FLAG_HIDDEN))
-    // {
-    //   lv_obj_add_flag(indicator->speech_interact_button, LV_OBJ_FLAG_HIDDEN);
-    //   lv_obj_update_layout(indicator->speech_interact_button);
-    // }
     // Hide reply text
     if (indicator->speech_skai_reply && lv_obj_is_valid(indicator->speech_skai_reply) &&
         !lv_obj_has_flag(indicator->speech_skai_reply, LV_OBJ_FLAG_HIDDEN))
@@ -1122,17 +967,6 @@ void voice_recognition_hint_bg_show(app_gesture_indicator_t *indicator)
         lv_obj_set_style_text_opa(indicator->speech_skai_reply, LV_OPA_100, LV_PART_MAIN);
         lv_obj_update_layout(indicator->speech_skai_reply);
     }
-}
-void voice_recognition_hint_destroy(app_gesture_indicator_t *indicator)
-{
-#ifndef BSP_USING_PC_SIMULATOR
-    if (indicator->speech_indicator == NULL)
-    {
-        return;
-    }
-    lv_obj_del(indicator->speech_indicator);
-    indicator->speech_indicator = NULL;
-#endif
 }
 #endif
 

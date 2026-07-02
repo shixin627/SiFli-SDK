@@ -58,7 +58,6 @@ bool commu_send_heart_curve_skip(uint32_t timestamp, uint8_t reason);
 bool commu_send_wear_diag(uint32_t ts, uint8_t evt, uint8_t status,
                           uint16_t dc_q4, uint16_t pi_e6,
                           uint16_t pi_range_e6, uint16_t imu_var_e4);
-bool commu_send_heart_rate_series(const float *ppg, uint16_t count);
 /* Push current SkaiWatchSys.sleep_state to the phone via KEY_RETURN_SLEEP_DATA.
    Called on every stage transition received from LCPU. The dart-side
    parser must mirror the layout of watch_sys_sleep_state_t. */
@@ -74,7 +73,6 @@ bool commu_send_volume_percentage(uint8_t volume);
 bool commu_send_charge_status(void);
 bool commu_send_weather_request(void);
 bool commu_send_calendar_request(void);
-bool commu_send_gesture_detect(uint8_t label);
 bool commu_send_remote_input(const char *json);
 bool commu_send_dismiss_notification(const char *id);
 bool commu_send_user_speaking_state(uint8_t status);

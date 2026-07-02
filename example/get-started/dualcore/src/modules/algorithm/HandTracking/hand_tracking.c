@@ -36,27 +36,9 @@
 #define WRIST_PRONATION_THRESHOLD 700
 #define GESTURE_BACK_DURATION 500
 
-/* Steps-per-minute threshold above which raise-wrist detection is suppressed.
-   Walking is typically 80-120 spm, running 150+. Below 60 we treat it as
-   idle/casual movement and keep detection active. */
-#define HAND_TRACKING_WALK_SUPPRESS_SPM 60
-
-#ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
-/* Kraepelin metric — declared extern to avoid pulling in the full activity
-   header. Safe pre-init: the underlying state is a file-static zero-
-   initialised struct, so this returns 0 before Kraepelin starts producing
-   estimates. */
-extern uint16_t activity_metrics_prv_steps_per_minute(void);
-#endif
-
 static bool is_user_walking_or_running(void)
 {
-#ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
-    return activity_metrics_prv_steps_per_minute() >
-           HAND_TRACKING_WALK_SUPPRESS_SPM;
-#else
     return false;
-#endif
 }
 
 static float max_pronation_gyro_x = 0;
@@ -99,11 +81,6 @@ static bool sw_hand_tracking_enabled = true;
 void hand_tracking_set_enabled(bool enabled)
 {
     sw_hand_tracking_enabled = enabled;
-}
-
-bool hand_tracking_is_enabled(void)
-{
-    return sw_hand_tracking_enabled;
 }
 
 void hand_tracking_init(void (*lift_callback)(uint8_t lift),
@@ -187,11 +164,6 @@ static void trigger_back_event(void)
             hand_tracking.back_callback();
         }
     }
-}
-
-void back_event(void)
-{
-    hand_tracking.back_callback();
 }
 
 static bool watchface_visible = false;

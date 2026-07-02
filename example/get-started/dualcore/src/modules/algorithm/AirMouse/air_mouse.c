@@ -74,12 +74,6 @@ static float apply_acceleration(float value)
     return (value > 0.0f ? 1.0f : -1.0f) * accelerated;
 }
 
-void air_mouse_reset(void)
-{
-    last_smoothed_x = 0.0f;
-    last_smoothed_z = 0.0f;
-}
-
 /**
  * @brief Gyro-based air mouse algorithm (ported from GyroService).
  *

@@ -124,16 +124,6 @@ void clear_all_handlers(void)
     memset(&lvgl_msg_handler, 0, sizeof(lvgl_msg_handler_t));
 }
 /**
- * @brief Get the timestamp of the last screen refresh
- *
- * @return rt_tick_t Last refresh timestamp
- */
-rt_tick_t get_last_refresh_tick(void)
-{
-    return last_refresh_tick;
-}
-
-/**
  * @brief Trigger screen refresh with rate limiting
  *
  * Prevents excessive screen refreshes by limiting refresh frequency

@@ -126,10 +126,6 @@ extern "C"
     // 函数声明
     float calculate_calories(float base_calories, uint32_t duration_seconds, uint16_t heart_rate_minutes);
     int store_exercise_data(workout_session_t *session);
-    workout_history_t *get_workout_history(void);
-    void free_workout_history(workout_history_t *history);
-    void format_date_string(time_t timestamp, char *buffer, size_t buffer_size);
-    extern workout_session_t *get_current_workout_session(void);
     extern const char *get_last_exercise_file(void);
 
 #ifdef __cplusplus

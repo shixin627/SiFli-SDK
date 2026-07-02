@@ -70,7 +70,6 @@
 #define SKAI_AI_ID "skai_ai" // skai_speech
 
 /* Forward declarations */
-static void add_mask_event_cb(lv_event_t *e);
 
 static bool anim_time_init;
 static uint16_t anim_time_time = 300;
@@ -86,6 +85,7 @@ void set_scroll_anim_time(bool init, uint16_t time)
         anim_time_time = time;
     }
 }
+/* Called from vendored LVGL (external/lvgl_v8 lv_obj_scroll.c, #ifdef SkaiwalkWatchOS) */
 bool is_scroll_anim_time_init(void)
 {
     return anim_time_init;
@@ -126,21 +126,6 @@ lv_img_dsc_t *create_widget_snapshot_img(lv_obj_t *target_obj)
     lv_snapshot_take_to_buf(
         target_obj, screenshot_img_desc->header.cf, screenshot_img_desc,
         (uint8_t *)screenshot_img_desc->data, screenshot_img_desc->data_size);
-    // 建立一個 img 物件顯示 snapshot
-    // lv_obj_t *img_obj = lv_img_create(parent_obj);
-    // lv_img_set_src(img_obj, img_desc);
-    // lv_obj_update_layout(img_obj);
-    // // lv_obj_set_size(img_obj, 200, 200);
-    // int img_h = lv_obj_get_height(img_obj);
-    // if (img_h > 175)
-    // {
-    //     uint16_t zoom = (175 * 256) / img_h; // 256 = LV_IMG_ZOOM_NONE
-    //     lv_img_set_zoom(img_obj, zoom);
-    // }
-    // lv_obj_update_layout(img_obj);
-    // LOG_D("create_widget_snapshot_img: img_obj=%p, w=%d, h=%d",
-    // img_obj, lv_obj_get_width(img_obj), lv_obj_get_height(img_obj));
-    // lv_obj_align(img_obj, LV_ALIGN_CENTER, 0, 0);
     return screenshot_img_desc;
 }
 
@@ -160,64 +145,6 @@ void disable_scrolling_motor_vibrate(void)
 {
     scrolling_motor_vibrate = false;
 }
-/**
- * @brief Navigate to the Skai AI chat page
- *
- * Launches the Skai AI application with "chat" intent if it's not already
- * active. This function provides a convenient way to access the AI chat
- * functionality from other parts of the application.
- */
-void goto_skai_ai_page(void)
-{
-    if (!gui_app_is_actived(SKAI_AI_ID))
-    {
-        LOG_D("Opening Skai AI chat page");
-        intent_t intent = intent_init(SKAI_AI_ID);
-        if (intent == NULL)
-        {
-            LOG_E("Failed to initialize intent for Skai AI");
-            return;
-        }
-        intent_set_string(intent, "intent", "chat");
-        intent_runapp(intent);
-    }
-    else
-    {
-        LOG_D("Skai AI app is already active");
-    }
-}
-
-/**
- * @brief Check if speech interaction is currently active
- *
- * Determines whether any speech-related functionality is currently being used,
- * including recorder, speech recognition, or message display.
- *
- * @return true if recorder, speech or message page is active
- * @return false otherwise
- */
-bool check_if_speech_interact(void)
-{
-    bool recorder_active = gui_app_is_actived(APP_ID_RECORDER);
-    bool speech_active = gui_app_is_actived(APP_ID_SPEECH);
-    bool message_visible = false;
-
-    if (myLancher[app_index_message].pagetileview == NULL)
-    {
-        LOG_D("Message page tileview is NULL");
-    }
-    else
-    {
-        message_visible = !lv_obj_has_flag(
-            myLancher[app_index_message].pagetileview, LV_OBJ_FLAG_HIDDEN);
-    }
-
-    LOG_D("Speech interaction check: recorder=%d, speech=%d, message=%d",
-          recorder_active, speech_active, message_visible);
-
-    return recorder_active || speech_active || message_visible;
-}
-
 /**
  * @brief Show or hide the speech indicator
  *
@@ -254,16 +181,6 @@ void hidden_speech_indicator(void)
 
 /* Interact mode management */
 static bool _isInteractMode = false;
-
-/**
- * @brief Get the current interact mode state
- *
- * @return true if interact mode is enabled, false otherwise
- */
-bool ui_helper_get_interact_mode(void)
-{
-    return _isInteractMode;
-}
 
 /**
  * @brief Set the interact mode state
@@ -462,16 +379,6 @@ void exit_testing_app(void)
 static rt_tick_t last_refresh_input_message_tick = 0;
 
 /**
- * @brief Get the timestamp of the last input message refresh
- *
- * @return rt_tick_t Timestamp value of the last input message refresh
- */
-rt_tick_t get_last_refresh_input_message_tick(void)
-{
-    return last_refresh_input_message_tick;
-}
-
-/**
  * @brief Update the timestamp for input message refresh
  *
  * @param tick New timestamp value for input message refresh
@@ -482,16 +389,6 @@ void set_last_refresh_input_message_tick(rt_tick_t tick)
 }
 
 static rt_tick_t last_refresh_ai_reply_message_tick = 0;
-
-/**
- * @brief Get the timestamp of the last AI reply message refresh
- *
- * @return rt_tick_t Timestamp value of the last AI reply message refresh
- */
-rt_tick_t get_last_refresh_ai_reply_message_tick(void)
-{
-    return last_refresh_ai_reply_message_tick;
-}
 
 /**
  * @brief Update the timestamp for AI reply message refresh
@@ -536,42 +433,6 @@ void ui_show_hint_toast(const char *hint, ...)
     strcpy(msg.data.app_message, text);
     lvgl_send_msg(msg);
 #endif
-}
-
-/**
- * @brief Animate to the previous column page
- *
- * Navigates to the previous page in a tileview with animation.
- *
- * @param tv Pointer to the tileview object
- * @param current_page Pointer to the current page index
- */
-void animate_to_prev_col_page(lv_obj_t *tv, uint8_t *current_page)
-{
-    if (*current_page > 0)
-    {
-        (*current_page)--;
-        lv_obj_set_tile_id(tv, *current_page, 0, LV_ANIM_ON);
-    }
-}
-
-/**
- * @brief Animate to the next column page
- *
- * Navigates to the next page in a tileview with animation.
- *
- * @param tv Pointer to the tileview object
- * @param current_page Pointer to the current page index
- * @param max_page Maximum number of pages
- */
-void animate_to_next_col_page(lv_obj_t *tv, uint8_t *current_page,
-                              uint8_t max_page)
-{
-    if (*current_page < max_page - 1)
-    {
-        (*current_page)++;
-        lv_obj_set_tile_id(tv, *current_page, 0, LV_ANIM_ON);
-    }
 }
 
 void datac_send_data(datac_handle_t handle, uint16_t msg_id, uint8_t *data, uint16_t data_len)
@@ -626,128 +487,6 @@ void screen_rotate_back_to_original_direction(void)
     }
 #endif
 }
-
-/**
- * @brief Log touch sample rate
- *
- * Monitors and logs the touch input sampling rate for debugging purposes.
- * This function tracks touch events and reports the frequency once per second.
- */
-void log_touch_sample_rate(void)
-{
-    static uint32_t sample_count = 0;
-    static uint32_t last_log_time = 0;
-
-    sample_count++;
-    uint32_t now = rt_tick_get() / RT_TICK_PER_SECOND;
-    if (now != last_log_time)
-    {
-        LOG_I("Touch sample rate: %lu Hz", sample_count);
-        sample_count = 0;
-        last_log_time = now;
-    }
-}
-
-/* Gradient label support - only enabled on specific platforms */
-#ifndef SF32LB55X
-    #if (LV_USE_LABEL && LV_USE_CANVAS && LV_DRAW_COMPLEX) &&                  \
-        defined(BSP_USING_PSRAM)
-        #define ENABLE_GRADIENT_LABEL
-    #endif
-#endif /* SF32LB55X */
-
-#ifdef ENABLE_GRADIENT_LABEL
-    /*
-     * Pull up hidden control panel with gradient text effect
-     */
-    #define MASK_WIDTH 200
-    #define MASK_HEIGHT 45
-
-/**
- * @brief Event callback for gradient label mask
- *
- * Handles the drawing events for the gradient label mask effect.
- * This function manages the mask creation, application, and cleanup.
- *
- * @param e Pointer to the LVGL event structure
- */
-static void add_mask_event_cb(lv_event_t *e)
-{
-    static lv_draw_mask_map_param_t m;
-    static int16_t mask_id;
-
-    lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t *obj = lv_event_get_target(e);
-    lv_opa_t *mask_map = lv_event_get_user_data(e);
-
-    if (code == LV_EVENT_COVER_CHECK)
-    {
-        lv_event_set_cover_res(e, LV_COVER_RES_MASKED);
-    }
-    else if (code == LV_EVENT_DRAW_MAIN_BEGIN)
-    {
-        lv_draw_mask_map_init(&m, &obj->coords, mask_map);
-        mask_id = lv_draw_mask_add(&m, NULL);
-    }
-    else if (code == LV_EVENT_DRAW_MAIN_END)
-    {
-        lv_draw_mask_free_param(&m);
-        lv_draw_mask_remove_id(mask_id);
-    }
-    else if (code == LV_EVENT_DELETE)
-    {
-        app_cache_free(mask_map);
-    }
-}
-
-/**
- * @brief Create a gradient label with text mask effect
- *
- * Creates a label with gradient background that shows text through a mask.
- * This creates a visually appealing gradient text effect.
- *
- * @param parent Parent object for the gradient label
- * @param text Text to display in the gradient label
- * @return lv_obj_t* Pointer to the created gradient label object
- */
-lv_obj_t *common_gradient_label(lv_obj_t *parent, const char *text)
-{
-    /* Create the mask of a text by drawing it to a canvas */
-    lv_opa_t *mask_map =
-        app_cache_alloc(MASK_WIDTH * MASK_HEIGHT, IMAGE_CACHE_PSRAM);
-
-    LV_ASSERT(mask_map);
-
-    /* Create a "8 bit alpha" canvas and clear it */
-    lv_obj_t *canvas = lv_canvas_create(parent);
-    lv_canvas_set_buffer(canvas, mask_map, MASK_WIDTH, MASK_HEIGHT,
-                         LV_IMG_CF_ALPHA_8BIT);
-    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_TRANSP);
-
-    /* Draw a label to the canvas. The result "image" will be used as mask */
-    lv_draw_label_dsc_t label_dsc;
-    lv_draw_label_dsc_init(&label_dsc);
-    label_dsc.color = lv_color_white();
-    label_dsc.align = LV_TEXT_ALIGN_CENTER;
-    lv_canvas_draw_text(canvas, 5, 5, MASK_WIDTH, &label_dsc, text);
-
-    /* The mask is ready, canvas is not required anymore */
-    lv_obj_del(canvas);
-
-    /* Create an object from where the text will be masked out.
-     * Now it's a rectangle with a gradient but it could be an image too */
-    lv_obj_t *grad = lv_obj_create(parent);
-    lv_obj_set_size(grad, MASK_WIDTH, MASK_HEIGHT);
-    lv_obj_center(grad);
-    lv_obj_set_style_bg_color(grad, lv_color_hex(0xff0000), 0);
-    lv_obj_set_style_bg_grad_color(grad, lv_color_hex(0x0000ff), 0);
-    lv_obj_set_style_bg_grad_dir(grad, LV_GRAD_DIR_HOR, 0);
-    lv_obj_set_style_radius(grad, 0, 0);
-    lv_obj_add_event_cb(grad, add_mask_event_cb, LV_EVENT_ALL, mask_map);
-
-    return grad;
-}
-#endif /* ENABLE_GRADIENT_LABEL */
 
 void handle_download_progress_update(int progress)
 {

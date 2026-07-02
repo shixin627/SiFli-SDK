@@ -212,26 +212,6 @@ static void handle_back_event(bool is_button)
     }
 }
 
-void ui_layer_top_builder(void)
-{
-#ifdef SHOW_UNKNOWN_GESTURE_INDICATOR
-    unknown_indicator_builder(lv_layer_top(), gui_app_get_gesture_indicator());
-#endif
-
-#ifdef SHOW_UNGRAB_ENABLE_INDICATOR
-    gesture_release_indicator_builder(lv_layer_top(),
-                                      gui_app_get_gesture_indicator());
-#endif
-
-#ifdef SHOW_OPEN_WATCH_HINT_LIGHT
-    open_watch_hint_builder(lv_layer_top(), gui_app_get_gesture_indicator());
-#endif
-
-#ifdef SHOW_BAD_SIGNAL_INDICATOR
-    bad_signal_indicator_builder(lv_layer_top());
-#endif
-}
-
 void ui_layer_system_builder(void)
 {
     lv_obj_clear_flag(lv_layer_sys(), LV_OBJ_FLAG_CLICKABLE);
@@ -930,7 +910,6 @@ void app_watch_entry(void *parameter)
     rt_thread_mdelay(100);
 
     ui_layer_system_builder();
-    // ui_layer_top_builder();
     watch_sys_sync.request_charge_status();
 #if defined(GUI_APP_FRAMEWORK) && (!defined(APP_TRANS_ANIMATION_NONE))
     lvsf_gesture_init(lv_layer_top());
@@ -1017,10 +996,6 @@ void app_watch_entry(void *parameter)
             first_loop = 0;
         }
     }
-}
-
-void app_register(void)
-{
 }
 
 int app_watch_init(void)

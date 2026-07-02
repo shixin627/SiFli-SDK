@@ -458,9 +458,6 @@ static lv_obj_t *control_page = NULL;
 static lv_obj_t *status_bar_area = NULL;
 static lv_obj_t *crosshair_line1 = NULL;
 static lv_obj_t *crosshair_line2 = NULL;
-static lv_obj_t *status_bar_time_h = NULL;
-static lv_obj_t *status_bar_time_m = NULL;
-static lv_obj_t *status_bar_time_symbol = NULL;
 static lv_obj_t *text_input_bar = NULL;
 static lv_obj_t *text_input_bar_bg = NULL;
 // 跨 mode 的下方拖動 hit area（trackpad mode 觸發 multitask hint）
@@ -470,7 +467,6 @@ static lv_obj_t *bottom_swipe_area = NULL;
 static uint8_t *text_input_open_value = NULL;
 static lv_timer_t *text_input_bar_timer = NULL;
 // static lv_timer_t *colon_blink_timer = NULL;
-static bool colon_visible = true;
 
 // Keyboard related variables
 static lv_obj_t *keyboard = NULL;
@@ -2259,9 +2255,6 @@ static void create_custom_keyboard(lv_obj_t *parent)
     lv_obj_add_flag(custom_keyboard, LV_OBJ_FLAG_HIDDEN);
 }
 
-// static void colon_blink_timer_cb(lv_timer_t *timer);
-static void update_time_display(void);
-
 /**
  * @brief Maps screen coordinates to HID touchscreen coordinates
  * @param point Pointer to the point to be mapped
@@ -2425,47 +2418,6 @@ static void handle_touchscreen_scrolling(const lv_point_t *current_point)
     }
 }
     #endif
-
-/**
- * @brief Timer callback for blinking colon in time display
- * @param timer Pointer to the timer
- */
-static void update_time_symbol(void);
-
-/**
- * @brief Update time display with or without colon
- */
-static void update_time_symbol(void)
-{
-    if (lv_obj_is_valid(status_bar_time_symbol))
-    {
-        char time_str[6];
-        if (colon_visible)
-        {
-            rt_snprintf(time_str, 6, ":");
-        }
-        else
-        {
-            rt_snprintf(time_str, 6, " ");
-        }
-        lv_label_set_text(status_bar_time_symbol, time_str);
-    }
-}
-
-static void update_time_display(void)
-{
-    if (lv_obj_is_valid(status_bar_time_h) &&
-        lv_obj_is_valid(status_bar_time_m))
-    {
-        T_UTC_TIME current_time = SkaiWatchSys.Global_Time;
-        char time_str[3];
-        rt_snprintf(time_str, 3, "%02d",
-                    ui_time_display_hour(current_time.hour));
-        lv_label_set_text(status_bar_time_h, time_str);
-        rt_snprintf(time_str, 3, "%02d", current_time.minutes);
-        lv_label_set_text(status_bar_time_m, time_str);
-    }
-}
 
     #if USING_EDGE_BOTTOM_DETECTION
 /**
@@ -6622,13 +6574,6 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     apply_hid_mode(current_hid_mode);
 }
 
-void refersh_mouse_status_bar_time(void)
-{
-    T_UTC_TIME current_time = SkaiWatchSys.Global_Time;
-    // Just call update_time_display to refresh with current colon state
-    update_time_display();
-}
-
 /*********************
  *  PUBLIC FUNCTIONS
  *********************/
@@ -6951,29 +6896,6 @@ void watch_system_mouse_pause(void)
     app_control_set_mouse_mode(false);
     switch_watch_motion_control_mode(false, false);
     setting_provider.set_power_save_mode(1);
-}
-
-/**
- * @brief Clear all files from the mouse file list
- */
-void hid_mouse_clear_files(void)
-{
-    file_items_count = 0;
-
-    // Clear visual list if it exists
-    if (file_list)
-    {
-        // Remove all file item children (keep handheld and calibrate which
-        // are the first two)
-        lv_obj_t *child =
-            lv_obj_get_child(file_list, 2); // Start from third child
-        while (child)
-        {
-            lv_obj_t *next_child = lv_obj_get_child(file_list, 2);
-            lv_obj_del(child);
-            child = next_child;
-        }
-    }
 }
 
 /**

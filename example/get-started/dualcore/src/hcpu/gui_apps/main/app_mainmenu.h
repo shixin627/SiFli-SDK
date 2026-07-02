@@ -95,24 +95,9 @@ extern void dial_widget_event(lv_event_t *e);
  */
 char *app_change_context(void);
 
-#if 0
-    /**
-    * duplicate an image to SRAM to improve drawn performance
-    * \n
-    *
-    * @return
-    * @param copy
-    * \n
-    * @see
-    */
-    lv_img_dsc_t *app_img_cache_malloc(const void *copy);
-
-    void app_img_cache_free(lv_img_dsc_t *p_img);
-#endif
 extern lv_obj_t *standby_page;
 extern void handle_tap_event_in_mainmenu(void);
 extern void get_calendar_list_from_template(void);
-extern void animate_to_notification_center(void);
 extern void animate_to_instruction_list(void);
 extern void animate_to_message_list(void);
 extern void animate_to_ai_page(void);

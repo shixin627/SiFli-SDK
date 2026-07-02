@@ -255,21 +255,6 @@ lv_obj_t *lv_skai_widget_builder(lv_obj_t *parent)
                     LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
     lv_obj_add_flag(skai_widget_ai_reply, LV_OBJ_FLAG_HIDDEN);
 
-    // 創建筆記按鈕（左邊）
-    // skai_widget_note_button = lv_obj_create(parent);
-    // lv_obj_set_size(skai_widget_note_button, 100, 70);
-    // lv_obj_align_to(skai_widget_note_button, skai_widget_input_text_bg,
-    // LV_ALIGN_OUT_BOTTOM_LEFT, 0, 10);
-    // lv_obj_set_style_bg_color(skai_widget_note_button,
-    // lv_color_hex(0x000000), 0);
-    // lv_obj_set_style_bg_opa(skai_widget_note_button, LV_OPA_80, 0);
-    // lv_obj_set_style_radius(skai_widget_note_button, 20, 0);
-    // lv_obj_set_style_border_width(skai_widget_note_button, 1, 0);
-    // lv_obj_set_style_border_color(skai_widget_note_button,
-    // lv_color_hex(0xFFFFFF), 0);
-    // lv_obj_set_style_border_opa(skai_widget_note_button, LV_OPA_30, 0);
-    // lv_obj_add_event_cb(skai_widget_note_button,
-    // skai_widget_note_button_event_cb, LV_EVENT_CLICKED, NULL);
 
     // lv_obj_t *note_label = lv_label_create(skai_widget_note_button);
     // lv_label_set_text(note_label, "筆記");
@@ -518,34 +503,6 @@ void back_on_skai_widget(void)
 
 static void button_selection(gesture_position_t gesture_position)
 {
-    // const int p_y = gesture_position.gesture_position_y;
-    // // LOG_D("p_y=%d", p_y);
-    // if (p_y > 233) // 上半區
-    // {
-    //     if (selected_function)
-    //         selected_function = false;
-    //     lv_obj_set_style_border_opa(skai_widget_ai_button, LV_OPA_20,
-    //     LV_STATE_DEFAULT);
-    //     lv_obj_set_style_border_width(skai_widget_ai_button, 1,
-    //     LV_STATE_DEFAULT);
-    //     lv_obj_set_style_border_opa(skai_widget_note_button, LV_OPA_50,
-    //     LV_STATE_DEFAULT);
-    //     lv_obj_set_style_border_width(skai_widget_note_button, 2,
-    //     LV_STATE_DEFAULT);
-    // }
-    // else if (p_y < 233) // 下半區
-    // {
-    //     if (!selected_function)
-    //         selected_function = true;
-    //     lv_obj_set_style_border_opa(skai_widget_ai_button, LV_OPA_50,
-    //     LV_STATE_DEFAULT);
-    //     lv_obj_set_style_border_width(skai_widget_ai_button, 2,
-    //     LV_STATE_DEFAULT);
-    //     lv_obj_set_style_border_opa(skai_widget_note_button, LV_OPA_20,
-    //     LV_STATE_DEFAULT);
-    //     lv_obj_set_style_border_width(skai_widget_note_button, 1,
-    //     LV_STATE_DEFAULT);
-    // }
 }
 
 extern void show_send_icon(void);

@@ -194,40 +194,9 @@ lv_obj_t *get_instruction_list_time_bg(void)
     return p_app_clock_main->instruction_list_time_bg;
 }
 
-void set_instruction_list_time_bg_opa(uint8_t opa)
-{
-    if (lv_obj_is_valid(get_instruction_list_time_bg()))
-    {
-        lv_obj_set_style_bg_opa(get_instruction_list_time_bg(), opa, 0);
-    }
-}
-
-lv_obj_t *get_instruction_list_bluetooth_disconnection(void)
-{
-    return p_app_clock_main->instruction_list_bluetooth_disconnection;
-}
-
-lv_obj_t *get_instruction_list_battery(void)
-{
-    return p_app_clock_main->instruction_list_battery;
-}
-
-lv_obj_t *get_instruction_list_battery_label(void)
-{
-    return p_app_clock_main->instruction_list_battery_label;
-}
-
 lv_obj_t *get_instruction_list_battery_bg(void)
 {
     return p_app_clock_main->instruction_list_battery_bg;
-}
-
-void set_instruction_list_battery_bg_opa(uint8_t opa)
-{
-    if (lv_obj_is_valid(get_instruction_list_battery_bg()))
-    {
-        lv_obj_set_style_bg_opa(get_instruction_list_battery_bg(), opa, 0);
-    }
 }
 
 void show_battery(bool show)
@@ -319,10 +288,6 @@ static void set_battery_image(lv_obj_t *img, uint8_t battery_level)
 static rt_uint32_t total_milliseconds = 0;
 static clock_t latched_clock;
 static uint16_t last_active_clock = 0;
-uint8_t get_last_active_clock(void)
-{
-    return last_active_clock + 1;
-}
 
 void app_clock_main_get_current_time(app_clock_time_t *t)
 {
@@ -564,19 +529,6 @@ static void show_dial_widget_select_list(lv_obj_t *parent)
         lv_list_add_btn(dial_widget_select_list, NULL, "Weather");
     lv_obj_add_event_cb(btn_weather, dial_widget_select_event_cb,
                         LV_EVENT_CLICKED, (void *)app_id_weather);
-}
-
-extern void set_dial_media_widget_opa(uint8_t opa);
-void set_dial_widget_opa(uint8_t opa)
-{
-    if (lv_obj_is_valid(dial_widget))
-    {
-        if (lv_obj_is_valid(dial_widget_img_bg))
-        {
-            lv_obj_set_style_img_opa(dial_widget_img_bg, opa, 0);
-        }
-    }
-    set_dial_media_widget_opa(opa);
 }
 
 static void get_clock_main_status_img_path(char *clk_id)

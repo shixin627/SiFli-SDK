@@ -872,15 +872,6 @@ void init_ble_dfu_thread_compressed(dfu_img_id_t id, uint32_t dest_addr, uint32_
 	// Initialize LZ4 decompression context
 	lz4_decompress_init(original_size, compressed_size);
 }
-
-/**
- * @brief Check if LZ4 compression is enabled
- * @return true if LZ4 is enabled, false otherwise
- */
-bool is_lz4_compression_enabled(void)
-{
-	return g_lz4_ctx.enabled;
-}
 #endif
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

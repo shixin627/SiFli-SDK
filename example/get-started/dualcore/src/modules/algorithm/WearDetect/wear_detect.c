@@ -780,11 +780,6 @@ void wear_detect_feed_ppg(uint32_t ppg_raw, uint32_t ppg_raw2)
     try_evaluate();
 }
 
-wear_status_t wear_detect_get_status(void)
-{
-    return ctx.status;
-}
-
 bool wear_detect_is_wearing(void)
 {
     return ctx.status == WEAR_STATUS_WEARING;

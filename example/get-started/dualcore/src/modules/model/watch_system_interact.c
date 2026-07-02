@@ -119,11 +119,6 @@ bool get_idle_state(void)
     return SkaiWatchSys.idle_state;
 }
 
-void set_idle_state(bool state)
-{
-    SkaiWatchSys.idle_state = state;
-}
-
 void switch_watch_motion_control_mode(bool enable, bool animation)
 {
     if (SkaiWatchSys.motion_control_lock == !enable)
@@ -327,10 +322,6 @@ void set_motor_switch_state(uint8_t state)
    Period comments below match the actual µs values; the legacy comments on
    damping/tap/unlocked were stale (claimed 200ms / 30ms but values were
    9ms/9ms/25ms). Wire-equivalent: same params struct, same provider call. */
-void motor_pattern_wheel_scrolling(void)
-{
-    motor_play_if_enabled(100, 100000, 1); /* 100ms */
-}
 void motor_pattern_scrolling_app(void)
 {
     motor_play_if_enabled(100, 12000, 1); /*  12ms */
@@ -354,10 +345,6 @@ void motor_pattern_tap(void)
 void motor_pattern_alarm(void)
 {
     motor_play_if_enabled(51, 500000, 30); /* 500ms × 30 */
-}
-void motor_pattern_normal(void)
-{
-    motor_play_if_enabled(51, 100000, 1); /* 100ms */
 }
 void motor_pattern_timer_reminder(void)
 {
@@ -402,12 +389,6 @@ void interact_mic_v2t_input(void)
     start_voice_recognition(V2T_INTENT_MIC_INPUTE);
 }
 
-void interact_standby_wakeup(void)
-{
-    SkaiWatchSys.sys_power_status = 0;
-    sys_poweron_fsm(SYS_PWRON_EVT_BUTTON_LONG_PRESSED);
-}
-
 void interact_bat_low_level(bool enable)
 {
     if (enable)
@@ -421,14 +402,6 @@ void interact_bat_low_level(bool enable)
     {
         watch_exit_app(APP_ID_INTERACT);
     }
-}
-
-void interact_task_loading(bool loading)
-{
-    lvgl_msg_t msg;
-    msg.type = LVGL_MSG_TYPE_LOADING;
-    msg.data.loading = loading;
-    lvgl_send_msg(msg);
 }
 
 void interact_show_qrcode(const char *qrcode)
@@ -568,34 +541,6 @@ void interact_bonded(const uint8_t *user_id)
     else
     {
         LOG_D("[interact_bonded] Already bonded");
-    }
-}
-
-void interact_pairing(bool enable)
-{
-    if (enable)
-    {
-        AppIntent appIntent;
-        strcpy(appIntent.app_id, APP_ID_INTERACT);
-        strcpy(appIntent.intent, "ble_pairing");
-        watch_run_app_by_intent(&appIntent);
-    }
-    else
-    {
-        watch_exit_app(APP_ID_INTERACT);
-    }
-}
-
-void interact_camera(uint8_t status)
-{
-    LOG_D("Camera status: %d", status);
-    if (status == 0x00)
-    {
-        SkaiWatchSys.flag_field.phone_camera_status = true;
-    }
-    else if (status == 0x01)
-    {
-        SkaiWatchSys.flag_field.phone_camera_status = false;
     }
 }
 

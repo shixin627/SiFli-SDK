@@ -55,10 +55,8 @@ extern "C"
 	} notification_ui_t;
 
 	extern char replying_notification_id[NOTIFICATION_ID_LEN];
-	extern void init_notification_items(void);
 	extern uint32_t notification_center_get_info_count(void);
 	extern uint32_t notification_center_get_arrival_seq(void);
-	extern notification_t *notification_center_get_header(void);
 	extern uint8_t notification_items_amount;
 	extern uint8_t selected_notification_index;
 	extern notification_t *get_notification(int index);

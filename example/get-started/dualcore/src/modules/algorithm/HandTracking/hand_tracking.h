@@ -26,6 +26,5 @@ void hand_tracking_data_update(float freq, float gyro_x, float gyro_y, bool open
    hand control over to the BMI270 hardware wrist-wake feature
    (bmi270_hw_wrist_wake_enable()) without recompiling. */
 void hand_tracking_set_enabled(bool enabled);
-bool hand_tracking_is_enabled(void);
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

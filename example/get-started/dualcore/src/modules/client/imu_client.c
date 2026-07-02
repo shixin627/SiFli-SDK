@@ -117,18 +117,6 @@ static int imu_callback(data_callback_arg_t *arg)
     return RT_EOK;
 }
 
-bool check_imu_sensor(void)
-{
-#ifdef BSP_USING_WATCH_SYS_CLIENT
-    if (!watch_sys_sync.is_imu_enabled())
-    {
-        LOG_E("imu sensor is not enabled\n");
-        return false;
-    }
-#endif
-    return true;
-}
-
 bool accel_service_subscribed(void)
 {
     return (accel_service_handle != DATA_CLIENT_INVALID_HANDLE) && (watch_sensor.imu_client_num > 0);

@@ -404,21 +404,6 @@ const unsigned char *get_release_model_data(void)
     return release_model.data;
 }
 
-/**
- * @brief Get the release model data size
- * @return Size of release model data
- */
-uint32_t get_release_model_size(void)
-{
-    /* Load model if not already loaded */
-    if (!release_model.is_loaded)
-    {
-        load_release_model(&release_model);
-    }
-
-    return release_model.size;
-}
-
 int unload_release_model(void)
 {
     return unload_model(&release_model);

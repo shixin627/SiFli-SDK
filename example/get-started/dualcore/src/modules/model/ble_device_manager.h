@@ -157,21 +157,6 @@ extern "C"
     const bonded_devices_db_t *ble_dev_mgr_get_database(void);
 
     /**
-     * @brief Find device by MAC address
-     * @param mac_addr Device MAC address
-     * @return Device index if found, -1 if not found
-     */
-    int ble_dev_mgr_find_device(const uint8_t *mac_addr);
-
-    /**
-     * @brief Update device connection state
-     * @param device_idx Device index
-     * @param conn_idx Connection index (0xFF if disconnected)
-     * @return 0 on success, negative on error
-     */
-    int ble_dev_mgr_update_connection(uint8_t device_idx, uint8_t conn_idx);
-
-    /**
      * @brief Set active device (for audio output)
      * @param device_idx Device index to set as active
      * @return 0 on success, negative on error
@@ -229,29 +214,6 @@ extern "C"
      * @return 0 on success, negative on error
      */
     int ble_dev_prefs_load(bonded_devices_db_t *db);
-
-    /**
-     * @brief Get device connection state
-     * @param device_idx Device index
-     * @return Connection state @see ble_device_state_t, negative on error
-     */
-    int ble_dev_mgr_get_device_state(uint8_t device_idx);
-
-    /**
-     * @brief Update device name
-     * @param device_idx Device index
-     * @param device_name New device name
-     * @return 0 on success, negative on error
-     */
-    int ble_dev_mgr_update_device_name(uint8_t device_idx, const char *device_name);
-
-    /**
-     * @brief Update device type
-     * @param device_idx Device index
-     * @param device_type New device type
-     * @return 0 on success, negative on error
-     */
-    int ble_dev_mgr_update_device_type(uint8_t device_idx, ble_device_type_t device_type);
 
     /**
      * @brief Switch to next connected device (cycle through connected devices)

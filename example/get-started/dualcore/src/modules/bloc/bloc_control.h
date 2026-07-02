@@ -155,23 +155,11 @@ extern "C"
         void (*screen_time_smoothly)(uint16_t time);
     } ControlProvider;
     extern ControlProvider control_provider;
-    extern music_press_flags music_press_flag;
-    extern void reset_audio_processing_flag(void);
 
     extern void sys_media_event_set(uint32_t event);
-    extern uint8_t get_volume_control_value(void);
 
     extern int movement_threshold;
-    /* gesture mode variables */
-    extern bool app_control_get_gesture_mode(void);
-    extern void app_control_set_gesture_mode(bool mode);
 
-    extern coordinate_t *getCoordinate(void);
-    extern void setCoordinateX(int value);
-    extern void setCoordinateY(int value);
-    extern void setCoordinateZ(int value);
-
-    extern gesture_t *getGesture(void);
     extern void setGestureIndex(int index);
 
     /* audio */
@@ -179,9 +167,6 @@ extern "C"
     extern void app_audio_set_control_command(uint8_t command);
     extern uint8_t *app_audio_get_volume_percent(void);
 
-    /* hid */
-    extern void app_control_set_hid_event_flag(bool flag);
-    extern bool app_control_get_hid_event_flag(void);
     /* mouse */
     extern bool app_control_get_mouse_mode(void);
     extern void app_control_set_mouse_mode(bool flag);
@@ -192,12 +177,6 @@ extern "C"
     extern void app_control_set_motion_tracking(bool flag);
     /* hid control */
     extern void setSelectIndexOfApp(uint8_t index);
-    /* unit test */
-    extern void set_Unicode(uint16_t unicode);
-    extern uint16_t get_Unicode(void);
-    /* gui status */
-    extern bool bloc_control_get_gui_interactive_mode(void);
-    extern void bloc_control_set_gui_interactive_mode(bool flag);
     extern void notify_pageview_action(uint8_t action);
     extern void refresh_ble_mode_btn(void);
 

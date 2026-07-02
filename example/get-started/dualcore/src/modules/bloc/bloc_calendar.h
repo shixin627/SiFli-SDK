@@ -84,21 +84,17 @@ extern "C"
 		lv_obj_t *event_category;
 	} calendar_model_t;
 
-	extern calendar_event_t *get_calendar_event(int day, int index);
 	extern calendar_t *get_calendar_day(int day);
 	extern void calendar_today_refresh(void);
 	extern uint8_t calendar_items_amount;
 	extern int selected_calendar_index;
 	extern void notify_calendar(void);
-	extern uint8_t get_calendar_day_sync_amout(uint8_t day);
 	extern void parse_calendar(const char *json_str, calendar_event_t *calendar_event);
 	extern void handle_calendar(char *json, uint8_t day);
 	extern calendar_event_t empty_calendar_event(void);
 	extern calendar_t *create_calendar_day(uint16_t event_count);
 	extern void free_calendar_day(calendar_t *calendar_day);
 	extern int add_calendar_event(calendar_t *calendar_day, const char *id, const char *summary, const char *description, const char *location, T_UTC_TIME start_time, T_UTC_TIME end_time);
-	extern void request_calendar_on_mobile(bool active_call);
-	extern void cleanup_all_calendars(void);
 
 #ifdef __cplusplus
 }

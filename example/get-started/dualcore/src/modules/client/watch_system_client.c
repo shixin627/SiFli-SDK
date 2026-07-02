@@ -115,20 +115,6 @@ bool is_imu_enabled(void)
 }
 #endif
 
-#if ENABLE_MAG_SENSOR
-static bool _is_mag_sensor_enabled = false;
-
-void set_mag_sensor_enabled(bool enabled)
-{
-    _is_mag_sensor_enabled = enabled;
-}
-
-bool is_mag_sensor_enabled(void)
-{
-    return _is_mag_sensor_enabled;
-}
-#endif
-
 #if ENABLE_PPG_SENSOR
 static bool _is_ppg_sensor_enabled = false;
 

@@ -55,12 +55,6 @@ typedef void (*touch_gesture_callback_t)(touch_gesture_t gesture, uint16_t x, ui
 int touch_state_manager_init(void);
 
 /**
- * @brief Deinitialize touch state manager
- * @return RT_EOK on success, error code otherwise
- */
-int touch_state_manager_deinit(void);
-
-/**
  * @brief Update touch state (called by touch driver)
  * @param event Touch event type (TOUCH_EVENT_UP/DOWN/MOVE/NONE)
  * @param x X coordinate
@@ -75,81 +69,11 @@ void touch_state_update(uint8_t event, uint16_t x, uint16_t y);
 bool is_user_touching_screen(void);
 
 /**
- * @brief Get the last touch event information
- * @param info Pointer to store touch information
- * @return true if valid touch info available, false otherwise
- */
-bool touch_state_get_last_event(touch_info_t *info);
-
-/**
- * @brief Get the time (in ticks) when last touch down occurred
- * @return Last touch down tick, 0 if never touched
- */
-rt_tick_t touch_state_get_last_down_tick(void);
-
-/**
- * @brief Get the time (in ticks) when last touch up occurred
- * @return Last touch up tick, 0 if never released
- */
-rt_tick_t touch_state_get_last_up_tick(void);
-
-/**
- * @brief Get the current touch press duration
- * @return Duration in ticks, 0 if not currently pressed
- */
-rt_tick_t touch_state_get_press_duration(void);
-
-/**
- * @brief Get the last detected gesture
- * @return Last gesture type
- */
-touch_gesture_t touch_state_get_last_gesture(void);
-
-/**
- * @brief Register a callback for touch state changes
- * @param callback Callback function to be called on touch events
- * @return RT_EOK on success, error code otherwise
- */
-int touch_state_register_callback(touch_state_callback_t callback);
-
-/**
- * @brief Unregister touch state callback
- * @param callback Callback function to unregister
- * @return RT_EOK on success, error code otherwise
- */
-int touch_state_unregister_callback(touch_state_callback_t callback);
-
-/**
  * @brief Register a callback for gesture detection
  * @param callback Callback function to be called on gesture detected
  * @return RT_EOK on success, error code otherwise
  */
 int touch_gesture_register_callback(touch_gesture_callback_t callback);
-
-/**
- * @brief Unregister gesture callback
- * @param callback Callback function to unregister
- * @return RT_EOK on success, error code otherwise
- */
-int touch_gesture_unregister_callback(touch_gesture_callback_t callback);
-
-/**
- * @brief Configure gesture detection thresholds
- * @param long_press_ms Long press threshold in milliseconds (default: 1000)
- * @return RT_EOK on success, error code otherwise
- */
-int touch_gesture_set_thresholds(uint32_t long_press_ms);
-
-/**
- * @brief Configure maximum movement distance for click detection
- * @param max_distance Maximum movement in pixels to still be considered a click (default: 30)
- *
- * If the touch point moves more than this distance between DOWN and UP,
- * it will not be recognized as a click/press gesture (likely a swipe).
- *
- * @return RT_EOK on success, error code otherwise
- */
-int touch_gesture_set_max_move_distance(uint32_t max_distance);
 
 #ifdef __cplusplus
 }

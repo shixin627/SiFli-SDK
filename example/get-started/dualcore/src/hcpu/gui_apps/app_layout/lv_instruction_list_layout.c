@@ -205,11 +205,6 @@ static void instruction_list_set_category_filter(char cat);
 /* Callback: tapped or toggled. Receives id string and enabled state. */
 static void (*instruction_tap_cb)(const char *id, bool enabled) = NULL;
 
-void set_custom_instruction_tap_cb(void (*cb)(const char *id, bool enabled))
-{
-    instruction_tap_cb = cb;
-}
-
 static lv_obj_t *switch_objs[MAX_LIST_ITEMS]; // toggle switches for any item
 
 #define LIST_ITEM_WIDTH (80)
@@ -298,11 +293,6 @@ uint16_t INSTRUCTION_LIST_ITEMS_DEFINITION[] = {
 #define INSTRUCTION_LIST_ITEMS_DEF_COUNT \
     ARRAY_SIZE(INSTRUCTION_LIST_ITEMS_DEFINITION)
 #endif
-
-uint8_t return_app_count(void)
-{
-    return app_base_count;
-}
 
 uint8_t return_total_list_count(void)
 {
@@ -4039,22 +4029,6 @@ void start_indicator_dots_animation_test(void)
     lv_anim_start(&indicator_test_anim);
 }
 
-// 停止動畫測試
-void stop_indicator_dots_animation_test(void)
-{
-    if (!indicator_test_running)
-    {
-        LOG_D("Animation test not running");
-        return;
-    }
-
-    LOG_D("Stopping indicator dots animation test");
-    indicator_test_running = false;
-    lv_anim_del(&indicator_test_anim, indicator_test_anim_exec_cb);
-
-    // 重置到中間位置
-    set_instruction_list_indicator_dots_position(500);
-}
 #endif
 
 static bool send_to_ai_again = false;
@@ -4363,13 +4337,6 @@ static void home_tileview_event_cb(lv_event_t *evt)
 /*******************************************************************************
  * Custom Instruction API
  ******************************************************************************/
-
-uint8_t get_custom_instruction_count(void)
-{
-    if (list_item_count > app_base_count)
-        return list_item_count - app_base_count;
-    return 0;
-}
 
 void clear_custom_instructions(void)
 {
@@ -6318,42 +6285,5 @@ rt_int32_t instruction_list_deinit(void)
     return RT_EOK;
 }
 
-#if 0
-static void msg_handler(gui_app_msg_type_t msg, void *param)
-{
-	switch (msg)
-	{
-	case GUI_APP_MSG_ONSTART:
-	{
-		lv_obj_t *scr = lv_scr_act();
-		init(scr);
-	}
-	break;
-
-	case GUI_APP_MSG_ONRESUME:
-		instruction_list_resume();
-		break;
-
-	case GUI_APP_MSG_ONPAUSE:
-		instruction_list_pause();
-		break;
-
-	case GUI_APP_MSG_ONSTOP:
-		instruction_list_deinit();
-		break;
-	default:
-		break;
-	}
-}
-
-static int app_main(intent_t i)
-{
-	gui_app_regist_msg_handler(APP_ID, msg_handler);
-
-	return 0;
-}
-LV_IMG_DECLARE(skaiwalkicon);
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(instruction_list), LV_EXT_IMG_GET(skaiwalkicon), APP_ID, app_main);
-#endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/

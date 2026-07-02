@@ -187,12 +187,6 @@ static void set_test_obj_opa(void *_, int32_t opa)
     set_middle_layer_bg_opa(opa);
 }
 
-static bool close_instruction_list_opa_set = false;
-void set_close_instruction_list_opa_set(bool set)
-{
-    close_instruction_list_opa_set = set;
-}
-
 void handle_tap_event_in_mainmenu(void)
 {
     LOG_D("handle_tap_event_in_mainmenu, row_app_index:%d", row_app_index);
@@ -347,7 +341,6 @@ void check_is_at_instruction_list(void)
     }
 }
 
-extern void ai_widget_start(void);
 static bool _at_speech_interface;
 
 bool is_at_speech_interface(void)
@@ -355,77 +348,11 @@ bool is_at_speech_interface(void)
     return _at_speech_interface;
 }
 
-extern rt_int32_t speech_on_resume(void);
-extern rt_int32_t speech_on_pause(void);
-void check_is_at_speech_interface(void)
-{
-    bool yes = gui_app_is_actived(APP_ID_MAIN) &&
-               !lv_obj_has_flag(myLancher[app_index_message].pagetileview,
-                                LV_OBJ_FLAG_HIDDEN) &&
-               !_at_ai_interface && get_middle_layer_tileview_index() == 4;
-    if (yes != _at_speech_interface)
-    {
-        _at_speech_interface = yes;
-        if (_at_speech_interface)
-        {
-            ai_widget_start();
-            // switch_watch_motion_control_mode(true, true);
-            speech_on_resume();
-            set_open_control_options(true);
-            display_status_bar_area(0, false);
-            display_status_bar_area(1, false);
-            display_status_bar_area(2, false);
-            display_status_bar_area(3, false);
-        }
-        else
-        {
-            open_skai_widget_ai(false);
-            speech_on_pause();
-            set_open_control_options(false);
-        }
-        LOG_I("is_at_speech_interface: %d", _at_speech_interface);
-    }
-}
-
 static bool _at_mouse_mode = false;
 
 bool is_at_mouse_mode(void)
 {
     return _at_mouse_mode;
-}
-
-void check_is_at_mouse_mode(void)
-{
-    bool yes = gui_app_is_actived(APP_ID_MAIN) &&
-               !lv_obj_has_flag(myLancher[app_index_message].pagetileview,
-                                LV_OBJ_FLAG_HIDDEN) &&
-               !_at_ai_interface && get_middle_layer_tileview_index() == 3;
-    if (yes != _at_mouse_mode)
-    {
-        _at_mouse_mode = yes;
-        if (_at_mouse_mode)
-        {
-            ble_app_advertising_start(true, false);
-            // switch_watch_motion_control_mode(true, true);
-            display_gesture_detect_objs(0, false);
-            // display_status_bar_area(3, false);
-            extern void watch_system_mouse_resume(void);
-            watch_system_mouse_resume();
-            lv_obj_clear_flag(myLancher[app_index_message].pagetileview,
-                              LV_OBJ_FLAG_SCROLLABLE);
-        }
-        else
-        {
-            ble_app_advertising_start(false, false);
-            // display_gesture_detect_objs(0, true);
-            // display_status_bar_area(3, true);
-            extern void watch_system_mouse_pause(void);
-            watch_system_mouse_pause();
-            lv_obj_add_flag(myLancher[app_index_message].pagetileview,
-                            LV_OBJ_FLAG_SCROLLABLE);
-        }
-        LOG_I("is_at_mouse_mode: %d", _at_mouse_mode);
-    }
 }
 
 static bool _at_message = false;
@@ -626,20 +553,6 @@ static bool open_scrolling_app_flag = true;
 void set_open_scrolling_app_flag(bool flag)
 {
     open_scrolling_app_flag = flag;
-}
-void open_control_instruction_list(lv_anim_t *a)
-{
-    if (open_scrolling_app_flag)
-    {
-        lvgl_msg_handler.handle_tap_indicator = on_tap_wrapper;
-        LOG_D("handle_tap_indicator =%p", on_tap_wrapper);
-
-    #if ENABLE_VIRTUAL_TOUCH
-        scrolling_object(true);
-    #endif
-        open_scrolling_app_flag = false;
-    }
-    clock_on_pause();
 }
 
 // extern void instruction_list_scroll_to_app(bool up);

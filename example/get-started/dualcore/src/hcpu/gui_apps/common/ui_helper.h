@@ -51,6 +51,9 @@ extern "C"
 #endif
 
     extern void set_scroll_anim_time(bool init, uint16_t time);
+    /* Consumed by vendored LVGL (external/lvgl_v8 lv_obj_scroll.c) */
+    extern bool is_scroll_anim_time_init(void);
+    extern uint16_t get_scroll_anim_time(void);
     extern uint8_t get_system_font_size(int adjust);
 
     /* 12/24-hour clock formatting — single source of truth for the user's
@@ -79,8 +82,6 @@ extern "C"
        filtered list views (called after add_or_update on the phone-push path). */
     extern void set_instruction_category(const char *id, char category);
     extern void clear_custom_instructions(void);
-    extern uint8_t get_custom_instruction_count(void);
-    extern void set_custom_instruction_tap_cb(void (*cb)(const char *id, bool enabled));
     extern void refresh_custom_instructions(void);
     /* After a phone push restored the full list (each add_or_update lifts the transient
        @/-view filter), re-apply the view the user is CURRENTLY looking at if a filtered
@@ -90,8 +91,6 @@ extern "C"
     extern rt_int32_t notification_on_resume(void);
     extern rt_int32_t notification_on_pause(void);
     extern rt_int32_t notification_on_deinit(void);
-    extern bool check_if_speech_interact(void);
-    extern bool ui_helper_get_interact_mode(void);
     extern void ui_helper_set_interact_mode(bool flag);
     extern void watch_run_app_by_intent(AppIntent *appIntent);
     extern void watch_exit_app(char *app_id);
@@ -104,16 +103,12 @@ extern "C"
     extern bool is_at_widget(void);
     extern bool is_at_speech_interface(void);
     extern void check_is_at_instruction_list(void);
-    extern void check_is_at_speech_interface(void);
-    extern void check_is_at_mouse_mode(void);
     extern void check_is_at_message(void);
     extern void check_is_at_control_center(void);
     extern void check_is_at_home(void);
     extern void check_is_at_ai_interface(void);
     extern void check_is_at_widget(void);
-    extern rt_tick_t get_last_refresh_input_message_tick(void);
     extern void set_last_refresh_input_message_tick(rt_tick_t tick);
-    extern rt_tick_t get_last_refresh_ai_reply_message_tick(void);
     extern void set_last_refresh_ai_reply_message_tick(rt_tick_t tick);
 
     // ----- Widget builder -----
@@ -133,14 +128,11 @@ extern "C"
 
     extern void ui_show_hint_toast(const char *hint, ...);
 
-    void animate_to_prev_col_page(lv_obj_t *tv, uint8_t *current_page);
-    void animate_to_next_col_page(lv_obj_t *tv, uint8_t *current_page, uint8_t max_page);
 
     extern void datac_send_data(datac_handle_t handle, uint16_t msg_id, uint8_t *data, uint16_t data_len);
     extern void screen_rotate_to_90_degree(void);
     extern void screen_rotate_back_to_original_direction(void);
 
-    extern void log_touch_sample_rate(void);
 
     extern void display_status_bar_area(uint32_t idx, bool display);
 
@@ -175,7 +167,6 @@ extern "C"
     extern void voice_recognition_hint_hidden(app_gesture_indicator_t *indicator);
     extern void refresh_ai_reply_message(char *new_text);
     extern void hidden_speech_indicator(void);
-    extern void voice_recognition_hint_builder(void *par, app_gesture_indicator_t *indicator);
     extern void voice_recognition_hint_create(app_gesture_indicator_t *indicator);
     extern void quick_ai_hint_hidden(app_gesture_indicator_t *indicator);
     extern void show_speech_indicator(bool show);

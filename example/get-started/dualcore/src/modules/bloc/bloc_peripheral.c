@@ -378,15 +378,6 @@ void fsr_adc_init(void)
     }
 }
 
-void fsr_adc_deinit(void)
-{
-    if (fsr_adc_dev != NULL)
-    {
-        rt_adc_disable((rt_adc_device_t)fsr_adc_dev, FSR_ADC_CHANNEL);
-        fsr_adc_dev = NULL;
-    }
-}
-
 rt_uint32_t fsr_adc_read_value(void)
 {
     if (fsr_adc_dev == NULL)
@@ -730,26 +721,6 @@ void motion_data_fetch(motion_data_t *data)
     // LOG_D("[T:%d]motion_data_fetch", data->timestamp);
 }
 
-bool check_if_imu_sensor_data_is_normal(void)
-{
-    static Vector3 prevAccData, prevGyroData;
-
-    // Check if both accelerometer and gyroscope data have changed since last
-    // check
-    bool hasChanged = (prevAccData.x != watch_sensor.imu_data.acce.x ||
-                       prevAccData.y != watch_sensor.imu_data.acce.y ||
-                       prevAccData.z != watch_sensor.imu_data.acce.z ||
-                       prevGyroData.x != watch_sensor.imu_data.gyro.x ||
-                       prevGyroData.y != watch_sensor.imu_data.gyro.y ||
-                       prevGyroData.z != watch_sensor.imu_data.gyro.z);
-
-    // Update previous values
-    prevAccData = watch_sensor.imu_data.acce;
-    prevGyroData = watch_sensor.imu_data.gyro;
-
-    return hasChanged;
-}
-
 void process_ppg_sensor_data(uint8_t sample_num, uint32_t *data,
                              uint32_t *data2)
 {
@@ -804,17 +775,6 @@ void process_ppg_sensor_data(uint8_t sample_num, uint32_t *data,
        and has been removed. */
 }
 
-bool check_if_ppg_sensor_data_is_normal(void)
-{
-    static uint32_t ppgData;
-    if (ppgData == watch_sensor.ppg_data.raw_data[0])
-    {
-        return false;
-    }
-    ppgData = watch_sensor.ppg_data.raw_data[0];
-    return true;
-}
-
 #ifndef SOC_BF0_LCPU
 
 void hr_data_handler(hr_sensor_data_t *data)
@@ -837,11 +797,6 @@ void set_imu_data_collection(bool enable)
     imu_data_collection_mode = enable;
 }
 
-bool is_imu_data_collection(void)
-{
-    return imu_data_collection_mode;
-}
-
 /**
  * @brief Enable or disable IMU raw data collection
  * @param enable true to enable collection, false to disable
@@ -850,10 +805,6 @@ void set_imu_rawdata_collection(bool enable)
 {
     LOG_D("Set IMU raw data collection: %d", enable);
     imu_rawdata_collection = enable;
-}
-bool is_imu_rawdata_collection(void)
-{
-    return imu_rawdata_collection;
 }
 
 #endif // #ifndef SOC_BF0_LCPU

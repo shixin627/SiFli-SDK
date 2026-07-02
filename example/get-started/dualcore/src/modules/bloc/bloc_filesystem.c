@@ -156,11 +156,6 @@ typedef struct file_system_msg_data
 
 static file_receive_state_t g_file_receive = {0};
 
-file_receive_state_t *get_file_receive_state(void)
-{
-    return &g_file_receive;
-}
-
 /* Global variables */
 static sync_progress_t sync_progress = {0};
 static rt_mq_t file_system_mq = RT_NULL;
@@ -924,31 +919,6 @@ int bloc_end_receive_file(void)
     skaiwatch_ble_set_performance(BLE_PERF_SLOW);
     g_file_receive.is_active = false;
     return RT_EOK;
-}
-
-/**
- * @brief Cancel file receive (post message to queue)
- * @return 0 on success
- */
-int bloc_cancel_receive_file(void)
-{
-    if (g_file_receive.is_active)
-    {
-        close(g_file_receive.fd);
-        remove(g_file_receive.file_path);
-        g_file_receive.is_active = false;
-        LOG_I("Cancel file receive for: %s", g_file_receive.file_path);
-    }
-    return RT_EOK;
-}
-
-/**
- * @brief Get current file receive progress
- * @return Pointer to receive state (or NULL if not active)
- */
-const file_receive_state_t *bloc_get_receive_progress(void)
-{
-    return g_file_receive.is_active ? &g_file_receive : NULL;
 }
 
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF

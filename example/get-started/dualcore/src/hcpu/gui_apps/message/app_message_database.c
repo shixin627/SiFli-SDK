@@ -161,21 +161,6 @@ static int app_ble_callback(data_callback_arg_t *arg)
     return 0;
 }
 
-#if 0
-void send_a_sms(int argc, char **argv)
-{
-    app_message_set_app_name((const uint8_t *)"test_app");    
-    app_message_set_title((const uint8_t *)"Hello");
-    app_message_set_content((const uint8_t *)"World");
-    
-    intent_t i = intent_init("message");
-    intent_set_string(i, "newfrom", "1234567");
-    intent_runapp(i);
-    intent_deinit(i);    
-}
-MSH_CMD_EXPORT_ALIAS(send_a_sms, sms, sms [length] [title] [content]);
-#endif
-
 int app_message_database_init(void)
 {
     message_service_handle = datac_open();

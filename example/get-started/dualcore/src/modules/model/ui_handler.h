@@ -371,7 +371,6 @@ extern "C"
 
     extern lvgl_msg_handler_t lvgl_msg_handler;
     extern void lvgl_send_msg(lvgl_msg_t msg);
-    extern rt_tick_t get_last_refresh_tick(void);
 
     /* True if called from the LVGL/UI thread (where lv_timer_handler runs).
        Cross-thread callers (BLE notify on KE_EVT2, file-receive callback)
@@ -388,10 +387,6 @@ extern "C"
                                       app_gesture_indicator_t *indicator);
     extern void open_watch_hint_builder(void *par,
                                         app_gesture_indicator_t *indicator);
-    extern void
-    voice_recognition_hint_builder(void *par,
-                                   app_gesture_indicator_t *indicator);
-    extern void tap_indicator_destroy(app_gesture_indicator_t *indicator);
     extern void unknown_indicator_builder(void *par,
                                           app_gesture_indicator_t *indicator);
     extern void ungrab_indicator_builder(void *par,

@@ -295,34 +295,6 @@ static void parse_currency_conversion(const char *json_str, currency_conversion_
 	cJSON_Delete(root);
 }
 
-//  ********  Temporary Data Access Functions ********  //
-/**
- * @brief Get pointer to temporary finance data
- * @return Pointer to temporary finance structure
- */
-void *get_temp_finance(void)
-{
-	return (void *)&temp_finance;
-}
-
-/**
- * @brief Get pointer to temporary currency conversion data
- * @return Pointer to temporary currency conversion structure
- */
-void *get_temp_currency_conversion(void)
-{
-	return (void *)&temp_currency_conversion;
-}
-
-/**
- * @brief Get pointer to temporary calendar event data
- * @return Pointer to temporary calendar event structure
- */
-void *get_temp_calendar(void)
-{
-	return (void *)&temp_calendar_event;
-}
-
 void handle_ai_reply_calendar(char *json, uint8_t action, lv_obj_t *parent)
 {
 	if (!json)
@@ -392,92 +364,6 @@ void handle_ai_reply_hint(char *json)
 	cJSON_Delete(root);
 }
 
-void parse_ai_reply_data(uint8_t *data, uint16_t len, lv_obj_t *parent)
-{
-	if (len < 1)
-	{
-		LOG_E("ai reply command length is less than 1");
-		return;
-	}
-	switch (data[0])
-	{
-	case WeatherTool:
-	{
-		if (len < 2)
-		{
-			LOG_E("ai reply command length is less than 2");
-			return;
-		}
-
-		handle_ai_reply_weather((char *)&data[1], parent);
-		break;
-	}
-
-	case CalendarQueryTool:
-	{
-		handle_ai_reply_calendar((char *)&data[1], CalendarQueryTool, parent);
-		break;
-	}
-
-	case CalendarCreateTool:
-	{
-		handle_ai_reply_calendar((char *)&data[1], CalendarCreateTool, parent);
-		break;
-	}
-
-		// case CreateNoteTool:
-		// {
-		// 	handle_ai_reply_create_note((char *)&data[1]);
-		// 	break;
-		// }
-
-		// case WebPageTool:
-		// {
-		// 	handle_ai_reply_web_page((char *)&data[1]);
-		// 	break;
-		// }
-
-		// case WebSearchTool:
-		// {
-		// 	handle_ai_reply_web_search((char *)&data[1]);
-		// 	break;
-		// }
-
-		// case RagTool:
-		// {
-		// 	handle_ai_reply_rag((char *)&data[1]);
-		// 	break;
-		// }
-
-	case FinanceTool:
-	{
-		handle_ai_reply_finance((char *)&data[1], parent);
-		break;
-	}
-
-	case CurrencyConversionTool:
-	{
-		handle_ai_reply_currency_conversion((char *)&data[1], parent);
-		break;
-	}
-
-		// case ImageAnalyzeTool:
-		// {
-		// 	handle_ai_reply_image_analyze((char *)&data[1]);
-		// 	break;
-		// }
-
-	case HintTool:
-	{
-		handle_ai_reply_hint((char *)&data[1]);
-		break;
-	}
-
-	default:
-		break;
-	}
-}
-
 static void bloc_notify_skai_input_message()
 {
 	char *text = get_combined_voice2text();
@@ -497,10 +383,6 @@ chat_t *get_message_list()
 }
 
 static uint16_t message_items_amount = 0;
-uint16_t *skai_message_count_ptr(void)
-{
-	return &message_items_amount;
-}
 
 chat_t *get_skai_message(chat_t *chat_list, uint16_t items_amount, int index, bool is_reverse)
 {
@@ -514,13 +396,6 @@ chat_t *get_skai_message(chat_t *chat_list, uint16_t items_amount, int index, bo
 static void set_skai_message(chat_t *chat_list, chat_t message, int index)
 {
 	chat_list[index] = message;
-}
-
-void clear_skai_message_list(chat_t *list, uint16_t *items_amount_ptr)
-{
-	// clear message list
-	memset(list, 0, sizeof(chat_t) * ITEM_AMOUNT);
-	*items_amount_ptr = 0;
 }
 
 void update_skai_message(chat_t *chat_list, uint16_t *items_amount_ptr, chat_t new_message)
@@ -543,20 +418,6 @@ void update_skai_message(chat_t *chat_list, uint16_t *items_amount_ptr, chat_t n
 	{
 		(*items_amount_ptr)++;
 	}
-}
-
-void delete_skai_message(chat_t *chat_list, uint16_t *items_amount_ptr, uint8_t index)
-{
-	if (index < *items_amount_ptr)
-	{
-		for (uint8_t i = index; i < *items_amount_ptr - 1; i++)
-		{
-			chat_t prev_message = *get_skai_message(chat_list, *items_amount_ptr, i + 1, false);
-			set_skai_message(chat_list, prev_message, i);
-		}
-		(*items_amount_ptr)--;
-	}
-	bloc_notify_skai_message();
 }
 
 void append_text_to_latest_message(chat_t *chat_list, uint16_t *items_amount_ptr, char *text)

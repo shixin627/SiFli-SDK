@@ -188,43 +188,8 @@ static void set_screen_time_smoothly(uint16_t time)
 }
 
 int movement_threshold = 55;
-/* gesture mode variables */
-bool isGestureMode = false;
-bool app_control_get_gesture_mode(void)
-{
-	return isGestureMode;
-}
-void app_control_set_gesture_mode(bool mode)
-{
-	if (isGestureMode != mode)
-	{
-		isGestureMode = mode;
-	}
-}
-
-static coordinate_t _virtualPlane = {.x = 0, .y = 0, .z = 0, .state = true};
-coordinate_t *getCoordinate(void)
-{
-	return &_virtualPlane;
-}
-
-static inline void coord_axis_set(int *axis, int value)
-{
-	if (*axis != value)
-	{
-		*axis = value;
-		_virtualPlane.state = true;
-	}
-}
-void setCoordinateX(int value) { coord_axis_set(&_virtualPlane.x, value); }
-void setCoordinateY(int value) { coord_axis_set(&_virtualPlane.y, value); }
-void setCoordinateZ(int value) { coord_axis_set(&_virtualPlane.z, value); }
 
 static gesture_t _gesture = {.index = -1, .state = true};
-gesture_t *getGesture(void)
-{
-	return &_gesture;
-}
 
 static void notifyGesture()
 {
@@ -238,12 +203,6 @@ void setGestureIndex(int index)
 		_gesture.index = index;
 		notifyGesture();
 	}
-}
-
-music_press_flags music_press_flag;
-void reset_audio_processing_flag(void)
-{
-	music_press_flag.touch_flags = 0;
 }
 
 /* Media Title */
@@ -433,11 +392,6 @@ void notify_volume_changed(void)
 {
 	smooth_volume_changed_timer_start();
 }
-void app_audio_volume_unmute(void)
-{
-	smooth_volume_changed_timer_start();
-	volume_percent = 8;
-}
 void bt_speaker_set_volumn_smoothly(uint8_t percent, bool notify)
 {
 	if (volume_percent != percent)
@@ -618,16 +572,6 @@ static void bt_speaker_media_pause(void)
 static void bt_speaker_media_next(void) { LOG_D("Next Audio");     bt_send_media_cmd(AUDIO_CMD_NEXT); }
 static void bt_speaker_media_prev(void) { LOG_D("Previous Audio"); bt_send_media_cmd(AUDIO_CMD_PREVIOUS); }
 
-static bool hid_event_flag = true;
-void app_control_set_hid_event_flag(bool flag)
-{
-	hid_event_flag = flag;
-}
-bool app_control_get_hid_event_flag(void)
-{
-	return hid_event_flag;
-}
-
 /* Mouse */
 static bool isMouseMode = false;
 bool app_control_get_mouse_mode(void)
@@ -665,31 +609,6 @@ void app_control_set_motion_tracking(bool flag)
 	}
 }
 
-/* unit test */
-
-uint16_t UnitTest_Unicode = 0x0000;
-void set_Unicode(uint16_t unicode)
-{
-	UnitTest_Unicode = unicode;
-}
-uint16_t get_Unicode(void)
-{
-	return UnitTest_Unicode;
-}
-
-static bool _gui_interactive_mode = false;
-bool bloc_control_get_gui_interactive_mode(void)
-{
-	return _gui_interactive_mode;
-}
-void bloc_control_set_gui_interactive_mode(bool flag)
-{
-	if (_gui_interactive_mode != flag)
-	{
-		_gui_interactive_mode = flag;
-	}
-}
-
 /* Send a {.type, .data.action} LVGL message; no-op if UI handler disabled. */
 static void send_action_msg(uint8_t msg_type, uint8_t action)
 {
@@ -699,7 +618,6 @@ static void send_action_msg(uint8_t msg_type, uint8_t action)
 #endif
 }
 void notify_pageview_action(uint8_t action) { send_action_msg(LVGL_MSG_TYPE_PAGEVIEW_ACTION, action); }
-void notify_launcher_action(uint8_t action) { send_action_msg(LVGL_MSG_TYPE_LAUNCHER_ACTION, action); }
 
 /*Tap indicator*/
 // 0: press

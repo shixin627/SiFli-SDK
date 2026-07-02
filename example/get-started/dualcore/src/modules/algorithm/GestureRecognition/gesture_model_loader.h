@@ -82,12 +82,6 @@ extern "C"
      */
     const unsigned char *get_release_model_data(void);
 
-    /**
-     * @brief Get the release model data size
-     * @return Size of release model data
-     */
-    uint32_t get_release_model_size(void);
-
     int unload_release_model(void);
 
     /**

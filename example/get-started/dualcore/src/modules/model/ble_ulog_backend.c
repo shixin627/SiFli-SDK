@@ -69,12 +69,6 @@ __ROM_USED int ble_ulog_backend_register(void)
 
 INIT_APP_EXPORT(ble_ulog_backend_register);
 
-// BLE backend 解除註冊
-void ble_ulog_backend_unregister(void)
-{
-    ulog_backend_unregister(&ble_ulog_backend);
-}
-
 #endif /* !kReleaseMode */
 
 #endif /* RT_USING_ULOG */

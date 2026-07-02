@@ -16,7 +16,6 @@
 
 // Forward declarations for BLE app functions
 extern void ble_app_set_bonded_device_addr(ble_gap_addr_t *addr);
-extern void get_main_phonepeer_addr(uint8_t *addr);
 
 /* MAC address printf helper. mac_addr stores the address byte-reversed
    (LSB at index 0); print high-to-low to get the canonical XX:XX:XX:XX:XX:XX
@@ -132,29 +131,6 @@ int ble_dev_mgr_register_callback(dev_mgr_event_cb_t cb, void *user_data)
     dev_mgr_unlock();
 
     return 0;
-}
-
-int ble_dev_mgr_find_device(const uint8_t *mac_addr)
-{
-    if (!g_dev_mgr.initialized || !mac_addr)
-    {
-        return -1;
-    }
-
-    dev_mgr_lock();
-
-    for (int i = 0; i < MAX_BONDED_DEVICES; i++)
-    {
-        if (g_dev_mgr.database.devices[i].is_valid &&
-            memcmp(g_dev_mgr.database.devices[i].mac_addr, mac_addr, 6) == 0)
-        {
-            dev_mgr_unlock();
-            return i;
-        }
-    }
-
-    dev_mgr_unlock();
-    return -1;
 }
 
 int ble_dev_mgr_add_device(const uint8_t *mac_addr, uint8_t addr_type,
@@ -327,80 +303,6 @@ const bonded_devices_db_t *ble_dev_mgr_get_database(void)
         return NULL;
     }
     return &g_dev_mgr.database;
-}
-
-int ble_dev_mgr_update_connection(uint8_t device_idx, uint8_t conn_idx)
-{
-    if (!g_dev_mgr.initialized || device_idx >= MAX_BONDED_DEVICES)
-    {
-        return -1;
-    }
-
-    dev_mgr_lock();
-
-    bonded_device_t *dev = &g_dev_mgr.database.devices[device_idx];
-
-    if (!dev->is_valid)
-    {
-        dev_mgr_unlock();
-        return -2;
-    }
-
-    uint8_t was_connected = (dev->conn_idx != 0xFF);
-    uint8_t is_connected = (conn_idx != 0xFF);
-
-    dev->conn_idx = conn_idx;
-
-    if (is_connected && !was_connected)
-    {
-        dev->last_connected_time = (uint32_t)time(NULL);
-        LOG_I("Device [%d] connected: %s (conn_idx=%d)", device_idx,
-              dev->device_name, conn_idx);
-        dev_mgr_notify_event(DEV_MGR_EVT_DEVICE_CONNECTED, device_idx);
-    }
-    else if (!is_connected && was_connected)
-    {
-        LOG_I("Device [%d] disconnected: %s", device_idx, dev->device_name);
-
-        // If the disconnected device was the active device, switch to another
-        // connected device
-        if (g_dev_mgr.database.active_device_idx == device_idx)
-        {
-            LOG_I("Active device disconnected, switching to another device...");
-
-            // Find another connected device to set as active
-            int new_active = -1;
-            for (int i = 0; i < MAX_BONDED_DEVICES; i++)
-            {
-                if (i != device_idx && g_dev_mgr.database.devices[i].is_valid &&
-                    g_dev_mgr.database.devices[i].conn_idx != 0xFF)
-                {
-                    new_active = i;
-                    break;
-                }
-            }
-
-            if (new_active >= 0)
-            {
-                g_dev_mgr.database.active_device_idx = new_active;
-                LOG_I("Switched active device to [%d]: %s", new_active,
-                      g_dev_mgr.database.devices[new_active].device_name);
-                dev_mgr_notify_event(DEV_MGR_EVT_ACTIVE_DEVICE_CHANGED,
-                                     new_active);
-            }
-            else
-            {
-                g_dev_mgr.database.active_device_idx = 0xFF;
-                LOG_I("No other connected devices, clearing active device");
-            }
-        }
-
-        dev_mgr_notify_event(DEV_MGR_EVT_DEVICE_DISCONNECTED, device_idx);
-    }
-
-    dev_mgr_unlock();
-
-    return 0;
 }
 
 int ble_dev_mgr_set_active_device(uint8_t device_idx)
@@ -744,91 +646,6 @@ int ble_dev_mgr_load_from_flash(void)
 #endif
 }
 
-int ble_dev_mgr_get_device_state(uint8_t device_idx)
-{
-    if (!g_dev_mgr.initialized || device_idx >= MAX_BONDED_DEVICES)
-    {
-        return -1;
-    }
-
-    dev_mgr_lock();
-
-    bonded_device_t *dev = &g_dev_mgr.database.devices[device_idx];
-
-    if (!dev->is_valid)
-    {
-        dev_mgr_unlock();
-        return -2;
-    }
-
-    int state = (dev->conn_idx != 0xFF) ? DEVICE_STATE_CONNECTED
-                                        : DEVICE_STATE_DISCONNECTED;
-
-    dev_mgr_unlock();
-
-    return state;
-}
-
-int ble_dev_mgr_update_device_name(uint8_t device_idx, const char *device_name)
-{
-    if (!g_dev_mgr.initialized || device_idx >= MAX_BONDED_DEVICES ||
-        !device_name)
-    {
-        return -1;
-    }
-
-    dev_mgr_lock();
-
-    bonded_device_t *dev = &g_dev_mgr.database.devices[device_idx];
-
-    if (!dev->is_valid)
-    {
-        dev_mgr_unlock();
-        return -2;
-    }
-
-    strncpy(dev->device_name, device_name, DEVICE_NAME_MAX_LEN - 1);
-    dev->device_name[DEVICE_NAME_MAX_LEN - 1] = '\0';
-
-    LOG_I("Updated device [%d] name to: %s", device_idx, device_name);
-
-    dev_mgr_unlock();
-
-    // Save to Flash
-    ble_dev_mgr_save_to_flash();
-
-    return 0;
-}
-
-int ble_dev_mgr_update_device_type(uint8_t device_idx, ble_device_type_t device_type)
-{
-    if (!g_dev_mgr.initialized || device_idx >= MAX_BONDED_DEVICES)
-    {
-        return -1;
-    }
-
-    dev_mgr_lock();
-
-    bonded_device_t *dev = &g_dev_mgr.database.devices[device_idx];
-
-    if (!dev->is_valid)
-    {
-        dev_mgr_unlock();
-        return -2;
-    }
-
-    dev->device_type = device_type;
-
-    LOG_I("Updated device [%d] type to: %d", device_idx, device_type);
-
-    dev_mgr_unlock();
-
-    // Save to Flash
-    ble_dev_mgr_save_to_flash();
-
-    return 0;
-}
-
 int ble_dev_mgr_switch_to_next_device(void)
 {
     if (!g_dev_mgr.initialized)
@@ -913,54 +730,4 @@ int ble_dev_mgr_switch_to_next_device(void)
 
     dev_mgr_unlock();
     return -3;
-}
-
-static uint8_t main_addr[6] = {0};
-
-/**
- * @brief Check if main phone counterpart device is connected
- * @return device index if connected, -1 if not found or not connected
- */
-int check_main_phone_counterpart_connection(void)
-{
-    get_main_phonepeer_addr(main_addr);
-
-    // Check if main_addr is all zeros (invalid)
-    bool is_valid = false;
-    for (int i = 0; i < 6; i++)
-    {
-        if (main_addr[i] != 0)
-        {
-            is_valid = true;
-            break;
-        }
-    }
-
-    if (!is_valid)
-    {
-        return -1;
-    }
-    // Search through all connected devices
-    dev_mgr_lock();
-
-    for (int i = 0; i < MAX_BONDED_DEVICES; i++)
-    {
-        if (g_dev_mgr.database.devices[i].is_valid &&
-            g_dev_mgr.database.devices[i].conn_idx != 0xFF)
-        {
-            // Device is valid and connected, check MAC address
-            if (memcmp(g_dev_mgr.database.devices[i].mac_addr, main_addr, 6) ==
-                0)
-            {
-                LOG_I("Main phone found and connected: device[%d] %s", i,
-                      g_dev_mgr.database.devices[i].device_name);
-                dev_mgr_unlock();
-                return i;
-            }
-        }
-    }
-
-    dev_mgr_unlock();
-
-    return -1;
 }

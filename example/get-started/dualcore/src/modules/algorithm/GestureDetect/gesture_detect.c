@@ -28,12 +28,6 @@ extern void hal_gsensor_drv_int1_handler(void);
 #ifdef BSP_USING_GESTURE_HANDLER
     #include "gesture_handler.h"
 #endif
-#ifdef BSP_USING_HEALTH_ALGO
-    #include "health_algo.h"
-#endif
-#ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
-    #include "activity.h"
-#endif
 #ifdef BSP_USING_WEAR_DETECT
     #include "wear_detect.h"
 #endif
@@ -378,46 +372,6 @@ static bool judge_if_moving_by_gyro(float gyro_y)
 
 // Constants for algorithm ratio conversion
 #define HEALTH_ALGO_RATIO 512.0 / GRAVITY    // 512 LSB/g
-#define ACTIVITY_ALGO_RATIO 1000.0 / GRAVITY // 1000 LSB/g
-
-#ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
-/**
- * @brief Create ring buffer for accelerometer raw data
- */
-static struct rt_ringbuffer *accel_rawdata_rb;
-static void create_accel_rawdata_rb(void)
-{
-    accel_rawdata_rb = rt_ringbuffer_create(sizeof(AccelRawData) * 125);
-    if (accel_rawdata_rb == RT_NULL)
-    {
-        LOG_E("create accel_rawdata_rb failed");
-    }
-}
-
-extern AccelRawData *activity_get_accel_rawdata(void);
-extern void notify_activity_algorithm(void);
-
-/**
- * @brief Handle accelerometer data in ring buffer
- * @param data New accelerometer data
- */
-static void handle_accel_rawdata_rb(AccelRawData *data)
-{
-    if (rt_ringbuffer_space_len(accel_rawdata_rb) < sizeof(AccelRawData))
-    {
-        AccelRawData *global_rawdata = activity_get_accel_rawdata();
-        rt_ringbuffer_get(accel_rawdata_rb, (rt_uint8_t *)global_rawdata,
-                          sizeof(AccelRawData) * 125);
-        notify_activity_algorithm();
-    }
-
-    int ret = rt_ringbuffer_put(accel_rawdata_rb, (const rt_uint8_t *)data, sizeof(AccelRawData));
-    if (ret != sizeof(AccelRawData))
-    {
-        LOG_E("Failed to put data into accel_rawdata_rb, ret: %d", ret);
-    }
-}
-#endif
 
 /**
  * @brief Add data to G-sensor FIFO buffer
@@ -473,18 +427,6 @@ void handle_motion_data_in_25hz(rt_tick_t now, Vector3 *accData)
 
     add_to_gsensor_fifo(accRawData);
     motion_detection_process(accRawData);
-
-#ifdef BSP_USING_HEALTH_ALGO
-    rtk_gsa_fsm(accRawData);
-#endif
-
-#ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
-    AccelRawData rawdata;
-    rawdata.x = accData->x * ACTIVITY_ALGO_RATIO;
-    rawdata.y = accData->y * ACTIVITY_ALGO_RATIO;
-    rawdata.z = accData->z * ACTIVITY_ALGO_RATIO;
-    handle_accel_rawdata_rb(&rawdata);
-#endif
 }
 
 /**
@@ -668,9 +610,6 @@ static int gesture_imu_thread_init(void)
 {
     calibrate_global_attitude();
     calibrate_sensor_attitude();
-#ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
-    create_accel_rawdata_rb();
-#endif
 
 // Initialize feature modules
 #ifdef BSP_USING_WEAR_DETECT

@@ -343,13 +343,11 @@ static void set_lift_switch_status(bool status)
     {
         SkaiWatchSys.flag_field.lift_switch_status = 1;
         LOG_D("Lift switch on");
-        /* TODO: rtk_gsa_act_switch(GSA_ACT_LIFT, true); */
     }
     else
     {
         SkaiWatchSys.flag_field.lift_switch_status = 0;
         LOG_D("Lift switch off");
-        /* TODO: rtk_gsa_act_switch(GSA_ACT_LIFT, false); */
     }
     notify_lift_switch_status();
 }

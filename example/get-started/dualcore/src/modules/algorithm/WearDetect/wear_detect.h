@@ -46,12 +46,6 @@ extern "C"
     void wear_detect_feed_ppg(uint32_t ppg_raw, uint32_t ppg_raw2);
 
     /**
-     * @brief Get current wear detection status
-     * @return Current wear status
-     */
-    wear_status_t wear_detect_get_status(void);
-
-    /**
      * @brief Check if user is currently wearing the watch
      * @return true if wearing, false otherwise
      */

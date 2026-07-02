@@ -151,18 +151,9 @@ const workout_info_t workout_list[WORKOUT_COUNT] = {
     [WORKOUT_YOGA] = {WORKOUT_YOGA_TITLE, &img_workout_yoga, 4.0f},
     [WORKOUT_GYM] = {WORKOUT_GYM_TITLE, &img_workout_gym, 9.0f}};
 
-const workout_info_t *get_workout_list(void)
-{
-    return workout_list;
-}
-
 // 全局UI和会话数据
 static workout_ui_t ui;
 static workout_session_t current_session;
-workout_session_t *get_current_workout_session(void)
-{
-    return &current_session;
-}
 static void show_workout_view();
 static lv_obj_t *create_workout_list(lv_obj_t *parent);
 static void refresh_session_pause_button(void);

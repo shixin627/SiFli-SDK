@@ -82,14 +82,10 @@ extern "C"
 		lv_obj_t *chance_of_rain;
 	} weather_data_t;
 
-	extern weather_t *current_weather_list(void);
 	extern weather_t *get_weather(int index);
-	extern weather_t *get_weather_week(int index);
 	extern void weather_layout_update(void);
-	extern void init_weather_list(void);
 	extern void handle_weather(char *json);
 	extern weather_t empty_weather(void);
-	extern void *get_temp_weather(void);
 	extern void handle_ai_reply_weather(char *json, lv_obj_t *parent);
 	extern void request_weather_within_six_hours(bool active_call);
 	extern weather_t *current_weather_week_list(void);

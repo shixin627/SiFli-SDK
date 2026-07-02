@@ -18,10 +18,6 @@
 #include "data_service_provider.h"
 #include "watch_sys_service.h"
 #include "bloc_battery.h"
-#ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
-    #include "activity.h"
-    #include "activity_private.h"
-#endif
 #ifdef ACC_USING_BMI270
     #include "bmi270_driver.h"  /* HW step counter API */
 #endif
@@ -81,16 +77,7 @@ static data_service_config_t watch_sys_service_cb = {
 };
 
 static bool gesture_lock = true;
-bool get_locked_status(void)
-{
-    return gesture_lock;
-}
-
 static bool _multi_gesture_mode = false;
-bool is_multi_gesture_mode(void)
-{
-    return _multi_gesture_mode;
-}
 
 /* Push an arbitrary blob as a service IND message. No-op if service is not
    yet registered; asserts on push failure (queue full / wrong cb). */
@@ -429,12 +416,6 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
         case UserProfileUpdate:
         {
             LOG_I("User Profile Update");
-#ifdef BSP_USING_ACTIVITY_ALGO_KRAEPELIN
-            activity_prefs_set_gender(msg->body[1]);
-            activity_prefs_set_age_years(msg->body[2]);
-            activity_prefs_set_height_mm(msg->body[3] * 10);
-            activity_prefs_set_weight_dag(msg->body[4] * 100);
-#endif
             break;
         }
 

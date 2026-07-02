@@ -104,7 +104,6 @@ VoiceProvider voice_provider;
 
 /* Static variables */
 static bool _vad_status = false;
-static folder_t _recorder_folder = {0, NULL};
 static int rec_fd = -1;
 static uint32_t record_bytes;
 
@@ -287,37 +286,9 @@ static bool is_voice_recognition_notified_from_mouse = false;
 
 static bool voiceRecordIntent = false;
 static bool isVoiceRecording = false;
-static chat_message_t chat_message_list[10];
-static uint8_t chat_message_count = 0;
-void add_chat_message(bool is_me, const char *text)
-{
-    if (chat_message_count >= 10)
-    {
-        return;
-    }
-    chat_message_list[chat_message_count].from_me = is_me;
-    strcpy(chat_message_list[chat_message_count].content, text);
-    chat_message_count++;
-}
-
 void set_voice_recognition_notified_from_mouse(bool status)
 {
     is_voice_recognition_notified_from_mouse = status;
-}
-
-void clear_chat_message(void)
-{
-    chat_message_count = 0;
-}
-
-chat_message_t *get_chat_message_list(void)
-{
-    return chat_message_list;
-}
-
-uint8_t get_chat_message_count(void)
-{
-    return chat_message_count;
 }
 
 /*************** Voice ***************/
@@ -553,125 +524,6 @@ void stop_voice_recognition(uint8_t intent)
     // 重置語音辨識狀態標記
     is_voice_recognition_notified = false;
     _vad_status = false;
-}
-
-int free_recorder_folder(folder_t *folder)
-{
-    if (folder->files != NULL)
-    {
-        // Free each file name buffer first
-        for (uint8_t i = 0; i < folder->file_num; i++)
-        {
-            if (folder->files[i].name != NULL)
-            {
-                free(folder->files[i].name);
-                folder->files[i].name = NULL;
-            }
-        }
-
-        free(folder->files);
-        folder->files = NULL;
-        folder->file_num = 0;
-        return 0;
-    }
-    return -1; // 没有内存需要释放
-}
-
-folder_t *list_files_in_recorder(void)
-{
-    DIR *dir;
-    struct dirent *entry;
-    const int filename_max_length = 64; // Increased from 20 to 64 bytes
-
-    // Open the /recorder directory
-    dir = opendir("/recorder");
-    if (dir == NULL)
-    {
-        perror("opendir");
-        return NULL;
-    }
-
-    free_recorder_folder(&_recorder_folder);
-
-    // Read and print all files in the directory
-    while ((entry = readdir(dir)) != NULL)
-    {
-        if (entry->d_type == DT_REG) // Check if the entry is a regular file
-        {
-            // only show the pcm file with the name of "record"
-            if (strncmp(entry->d_name, "record", 6) == 0 &&
-                (strstr(entry->d_name, ".pcm") != NULL || 
-                 strstr(entry->d_name, ".opus") != NULL))
-            {
-                LOG_D("File: %s", entry->d_name);
-                _recorder_folder.file_num++;
-                _recorder_folder.files = (file_t *)realloc(
-                    _recorder_folder.files,
-                    _recorder_folder.file_num * sizeof(file_t));
-
-                uint16_t name_len = strlen(entry->d_name) + 1;
-                _recorder_folder.files[_recorder_folder.file_num - 1].name =
-                    (char *)malloc(name_len);
-                strcpy(
-                    _recorder_folder.files[_recorder_folder.file_num - 1].name,
-                    entry->d_name);
-                _recorder_folder.files[_recorder_folder.file_num - 1]
-                    .name_length = name_len - 1;
-            }
-        }
-    }
-
-    // Close the directory
-    closedir(dir);
-
-    return &_recorder_folder;
-}
-
-void copy_temp_file_to_recorder(void)
-{
-    LOG_D("%s", __FUNCTION__);
-    char *temp_file = "/recorder/temp.pcm";
-    char recorder_file[MAX_RECORD_PATH_LEN];
-
-    time_t now;
-    struct tm *tm_info;
-
-    // Get current time
-    time(&now);
-    tm_info = localtime(&now);
-
-    // Create timestamp filename
-    snprintf(recorder_file, sizeof(recorder_file),
-             "/recorder/record_%04d%02d%02d_%02d%02d%02d.pcm",
-             tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday,
-             tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
-
-    int fd_temp = open(temp_file, O_RDONLY | O_BINARY);
-    RT_ASSERT(fd_temp >= 0);
-
-    if (access(recorder_file, 0) == 0)
-    {
-        LOG_D("recorder_file already exists, delete it first.");
-        unlink(recorder_file);
-    }
-    LOG_D("create the new recorder_file: %s", recorder_file);
-    int fd_recorder =
-        open(recorder_file, O_RDWR | O_CREAT | O_TRUNC | O_BINARY);
-    RT_ASSERT(fd_recorder >= 0);
-
-    char buf[1024];
-    int read_bytes;
-    while ((read_bytes = read(fd_temp, buf, sizeof(buf))) > 0)
-    {
-        if (write(fd_recorder, buf, read_bytes) != read_bytes)
-        {
-            LOG_E("write file error");
-            break;
-        }
-    }
-
-    close(fd_temp);
-    close(fd_recorder);
 }
 
 /* Free bytes available on the root filesystem (where /recorder lives). */
@@ -1074,134 +926,6 @@ const char* get_last_recording_file(void)
     return current_recording_file;
 }
 
-#ifdef ENABLE_OPUS_ENCODER
-/**
- * @brief Decode Opus file to PCM file
- *
- * This function reads an Opus file and decodes it to a PCM file.
- * The output PCM file will have the same name but with .pcm extension.
- *
- * @param opus_file_path Path to the input Opus file
- * @param pcm_file_path Output buffer for the decoded PCM file path (must be at least MAX_RECORD_PATH_LEN)
- * @return 0 on success, -1 on failure
- */
-int opus_decode_to_pcm(const char *opus_file_path, char *pcm_file_path)
-{
-    if (opus_file_path == NULL || pcm_file_path == NULL)
-    {
-        LOG_E("Invalid parameters\n");
-        return -1;
-    }
-
-    // Generate PCM output file path (replace .opus with .pcm)
-    strncpy(pcm_file_path, opus_file_path, MAX_RECORD_PATH_LEN - 1);
-    pcm_file_path[MAX_RECORD_PATH_LEN - 1] = '\0';
-
-    char *ext = strstr(pcm_file_path, ".opus");
-    if (ext != NULL)
-    {
-        strcpy(ext, ".pcm");
-    }
-    else
-    {
-        // If no .opus extension, just append .pcm
-        strncat(pcm_file_path, ".pcm", MAX_RECORD_PATH_LEN - strlen(pcm_file_path) - 1);
-    }
-
-    // Open input Opus file
-    int opus_fd = open(opus_file_path, O_RDONLY | O_BINARY);
-    if (opus_fd < 0)
-    {
-        LOG_E("Failed to open Opus file: %s\n", opus_file_path);
-        return -1;
-    }
-
-    // Open output PCM file
-    int pcm_fd = open(pcm_file_path, O_RDWR | O_CREAT | O_TRUNC | O_BINARY);
-    if (pcm_fd < 0)
-    {
-        LOG_E("Failed to create PCM file: %s\n", pcm_file_path);
-        close(opus_fd);
-        return -1;
-    }
-
-    // Create Opus decoder
-    int err;
-    OpusDecoder *decoder = opus_decoder_create(OPUS_REC_SAMPLE_RATE, OPUS_REC_CHANNELS, &err);
-    if (err != OPUS_OK || decoder == NULL)
-    {
-        LOG_E("Failed to create Opus decoder, error=%d\n", err);
-        close(opus_fd);
-        close(pcm_fd);
-        return -1;
-    }
-
-    LOG_D("Decoding %s to %s\n", opus_file_path, pcm_file_path);
-
-    // Buffers for decoding
-    uint8_t opus_packet[OPUS_REC_MAX_PACKET];
-    int16_t pcm_output[OPUS_REC_FRAME_SIZE];
-    uint32_t total_frames = 0;
-    uint32_t total_pcm_bytes = 0;
-
-    // Read and decode each packet
-    while (1)
-    {
-        // Read packet length (2 bytes)
-        uint16_t pkt_len;
-        if (read(opus_fd, &pkt_len, sizeof(pkt_len)) != sizeof(pkt_len))
-        {
-            // End of file
-            break;
-        }
-
-        // Validate packet length
-        if (pkt_len == 0 || pkt_len > OPUS_REC_MAX_PACKET)
-        {
-            LOG_E("Invalid packet length: %d\n", pkt_len);
-            break;
-        }
-
-        // Read Opus packet data
-        if (read(opus_fd, opus_packet, pkt_len) != pkt_len)
-        {
-            LOG_E("Failed to read Opus packet\n");
-            break;
-        }
-
-        // Decode Opus packet to PCM
-        opus_int32 decoded_samples = opus_decode(decoder, opus_packet, pkt_len,
-                                                  pcm_output, OPUS_REC_FRAME_SIZE, 0);
-
-        if (decoded_samples > 0)
-        {
-            // Write PCM data to file
-            int pcm_bytes = decoded_samples * sizeof(int16_t);
-            if (write(pcm_fd, pcm_output, pcm_bytes) != pcm_bytes)
-            {
-                LOG_E("Failed to write PCM data\n");
-                break;
-            }
-            total_pcm_bytes += pcm_bytes;
-            total_frames++;
-        }
-        else
-        {
-            LOG_E("Opus decode failed, ret=%d\n", decoded_samples);
-        }
-    }
-
-    // Cleanup
-    opus_decoder_destroy(decoder);
-    close(opus_fd);
-    close(pcm_fd);
-
-    LOG_D("Decoded %d frames, total PCM bytes: %d\n", total_frames, total_pcm_bytes);
-
-    return 0;
-}
-#endif
-
 void start_sync_voice_recording(void)
 {
     app_voice_set_recording_intent(true);
@@ -1221,11 +945,6 @@ char *get_combined_voice2text(void)
     snprintf(combined_text, sizeof(combined_text), "%s%s", _v2t_result.text,
              _v2t_result_temp.text);
     return combined_text;
-}
-
-void setVoice2TextState(bool state)
-{
-    _v2t_result.state = state;
 }
 
 static void notifyVoice2Text()
@@ -1406,15 +1125,11 @@ static void vad_deinit(void)
 /* ========== voice/recording state accessors ========== */
 bool app_voice_get_voice2text_status(void)      { return voice2TextStatus; }
 void app_voice_set_voice2text_status(bool s)    { voice2TextStatus = s; }
-uint8_t app_voice_get_voice2text_intent(void)   { return voice2TextIntent; }
 void app_voice_set_voice2text_intent(uint8_t i) { voice2TextIntent = i; }
-bool app_voice_get_recording_intent(void)       { return voiceRecordIntent; }
 void app_voice_set_recording_intent(bool i)     { voiceRecordIntent = i; }
 bool app_voice_get_recording_status(void)       { return isVoiceRecording; }
 void app_voice_set_recording_status(bool s)     { isVoiceRecording = s; }
 bool app_voice_recording_disk_full(void)        { return rec_disk_full; }
-uint32_t *app_voice_get_record_time(void)       { return &_voice_recording_time; }
-void app_voice_set_record_time(uint32_t t)      { _voice_recording_time = t; }
 
 static bool voice_recognition_started = false;
 void set_voice_recognition_started(bool started)

@@ -673,23 +673,6 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
            the bg parent remain visible because they are not touched here. */
         update_notification_card_visibility();
 
-        // if (selected_message_index == 0)
-        // {
-        // 	lv_obj_set_style_img_opa(page_up, LV_OPA_10, 0);
-        // 	button_selection_index = 1;
-        // }
-        // else if (selected_message_index == notification_count - 1 &&
-        // !have_media_widget)
-        // {
-        // 	lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
-        // 	button_selection_index = 1;
-        // }
-        // else if (selected_message_index == notification_count &&
-        // have_media_widget)
-        // {
-        // 	lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
-        // 	button_selection_index = 1;
-        // }
     }
 #ifdef MESSAGE_NEED_MEDIA_WIDGET
     if (p_app_notification->media_widget != NULL)
@@ -1778,31 +1761,6 @@ void refresh_notification_list(void *param)
         }
     }
 
-    // 更新應用列表按鈕位置 - 放在最後一個項目下方
-    // if (p_app_notification->app_list_btn != NULL)
-    // {
-    // 	lv_coord_t btn_y_pos;
-    // 	if (have_media_widget)
-    // 	{
-    // 		// 如果有 media widget，按鈕放在 media widget 下方
-    // 		btn_y_pos = (LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING) *
-    // (notification_count + 1) + 20;
-    // 	}
-    // 	else if (notification_count > 0)
-    // 	{
-    // 		// 如果只有通知，按鈕放在最後一個通知下方
-    // 		btn_y_pos = (LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING) *
-    // notification_count + 20;
-    // 	}
-    // 	else
-    // 	{
-    // 		// 如果沒有任何內容，按鈕放在 no_notifications_widget 下方
-    // 		btn_y_pos = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING + 20;
-    // 	}
-    // 	lv_obj_set_pos(p_app_notification->app_list_btn, (LV_HOR_RES - 200) / 2,
-    // btn_y_pos);
-    // }
-
     if (lv_obj_is_valid(clear_all_btn))
     {
         if (notification_count > 0)
@@ -1822,11 +1780,6 @@ void refresh_notification_list(void *param)
     {
         arc_scroll_set_item_count(p_app_notification->arc_handle, page_count);
     }
-}
-
-uint16_t get_message_gesture_starting_value(void)
-{
-    return message_gesture_starting_value;
 }
 
 uint8_t get_message_page_count(void)
@@ -2171,22 +2124,6 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
     // lv_img_set_src(page_down, DOWN_ARROW);
     // lv_obj_set_style_img_opa(page_down, LV_OPA_10, 0);
 
-    // 創建應用列表按鈕 (添加到可滾動的列表容器中)
-    // p_app_notification->app_list_btn = lv_btn_create(p_window);
-    // lv_obj_set_size(p_app_notification->app_list_btn, 200, 50);
-    // // 初始位置將在 refresh_notification_list 中設置
-    // lv_obj_set_pos(p_app_notification->app_list_btn, (LV_HOR_RES - 200) / 2,
-    // LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING + 20);
-    // lv_obj_set_style_radius(p_app_notification->app_list_btn, 25,
-    // LV_PART_MAIN);
-    // lv_obj_set_style_bg_color(p_app_notification->app_list_btn,
-    // lv_color_hex(0x676767), LV_PART_MAIN);
-    // lv_obj_set_style_bg_opa(p_app_notification->app_list_btn, LV_OPA_COVER,
-    // LV_PART_MAIN);
-    // lv_obj_set_style_border_width(p_app_notification->app_list_btn, 1,
-    // LV_PART_MAIN);
-    // lv_obj_set_style_border_color(p_app_notification->app_list_btn,
-    // lv_color_hex(0x808080), LV_PART_MAIN);
 
     // // 按鈕文字標籤
     // lv_obj_t *btn_label = lv_label_create(p_app_notification->app_list_btn);
@@ -2299,60 +2236,6 @@ static void button_selection(gesture_position_t gesture_position)
     // }
     // const int p_x = gesture_position.gesture_position_x;
 
-    // int category = 1;
-    // if (get_gesture_control_state() != 1 ||
-    // get_media_widget_selection_index() != 1)
-    // {
-    // 	category = 1;
-    // }
-    // else if (p_x > 300)
-    // {
-    // 	category = 2;
-    // }
-    // else if (p_x < 166)
-    // {
-    // 	category = 0;
-    // }
-    // else
-    // {
-    // 	category = 1;
-    // }
-    // // LOG_D("btn_selec:%d,%d,%d,%d,%d,%d,%d,", button_selection_index,
-    // category, selected_message_index, notification_count, is_at_media_widget,
-    // p_x, p_y); if (button_selection_index == category)
-    // {
-    // 	return;
-    // }
-    // if (((category == 0 && selected_message_index == 0) ||
-    // 	 (category == 2 && selected_message_index == notification_count - 1)) &&
-    // 	!have_media_widget)
-    // {
-    // 	return; // 如果已經在第一頁，則不允許向上滾動
-    // }
-    // else if (((category == 0 && selected_message_index == 0) ||
-    // 		 (category == 2 && is_at_media_widget)) && have_media_widget)
-    // {
-    // 	return; // 如果已經在第一頁，則不允許向上滾動
-    // }
-    // button_selection_index = category;
-    // motor_pattern_scrolling_app();
-    // // LOG_D("button_selection_index: %d", button_selection_index);
-    // reset_button_selection();
-    // if (category == 0)
-    // {
-    // 	lv_obj_set_style_img_opa(page_up, LV_OPA_80, 0);
-    // }
-    // else if (category == 2)
-    // {
-    // 	lv_obj_set_style_img_opa(page_down, LV_OPA_80, 0);
-    // }
-    // else if (category == 1 && lv_obj_is_valid(selected_message))
-    // {
-    // 	// lv_obj_set_style_bg_opa(selected_message, LV_OPA_80, LV_PART_MAIN);
-    // 	lv_obj_set_style_border_width(selected_message, 2, LV_PART_MAIN);
-    // 	lv_obj_set_style_border_color(selected_message, lv_color_hex(0x4F4F4F),
-    // LV_PART_MAIN);
-    // }
 }
 
 #if !kReleaseMode
@@ -2563,79 +2446,6 @@ static void refresh_new_message_widget(void)
     /* handle_dial_header_new_notification is called directly by ui_handler
        via LVGL_MSG_TYPE_NOTIFICATION; it has its own count check to filter
        out refreshes that are not truly new notifications. */
-}
-
-lv_obj_t *lv_message_widget_builder(lv_obj_t *parent)
-{
-    lv_obj_t *widget = common_widget_container(parent);
-    lv_obj_set_size(widget, 400, 230);
-    lv_obj_set_style_bg_color(widget, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(widget, LV_OPA_70, 0);
-
-    notification_t *notification =
-        get_notification(notification_center_get_info_count() - 1);
-    lv_obj_t *icon_bg = lv_obj_create(widget);
-    lv_obj_align(icon_bg, LV_ALIGN_TOP_LEFT, 35, 20);
-    lv_obj_set_size(icon_bg, 60, 60);
-    lv_obj_clear_flag(icon_bg, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(icon_bg, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_opa(icon_bg, LV_OPA_0, 0);
-    lv_obj_t *icon = lv_img_create(icon_bg);
-    lv_obj_align(icon, LV_ALIGN_CENTER, 0, 0);
-    if (notification_center_get_info_count() <= 0)
-    {
-        lv_img_set_src(icon, ICON_OTHER);
-        lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
-    }
-    else
-    {
-        lv_img_set_src(icon, notif_icon_src(notification->type));
-    }
-    lv_img_set_zoom(icon, 152); // (60/100)*255
-    new_notification_widgets.icon = icon;
-
-    lv_obj_t *label = lv_label_create(widget);
-    lv_obj_set_height(label, 40);
-    lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(-1)),
-                               0);
-    lv_obj_set_style_text_color(label, lv_color_white(), 0);
-    lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 10);
-    new_notification_widgets.title = label;
-    if (notification_center_get_info_count() <= 0)
-    {
-        lv_label_set_text(label, LV_EXT_STR_GET_BY_KEY(no_notifications, "No notifications"));
-        have_message_now = false;
-    }
-    else
-    {
-        have_message_now = true;
-        char *clean_title = replace_nbsp(notification->title);
-        lv_label_set_text(label, clean_title);
-        lv_mem_free(clean_title);
-    }
-
-    lv_obj_t *content = lv_label_create(widget);
-    lv_label_set_long_mode(content, LV_LABEL_LONG_WRAP);
-    lv_obj_set_height(content, 100);
-    lv_obj_set_width(content, 300);
-    lv_obj_set_style_text_font(content,
-                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
-    lv_obj_set_style_text_color(content, lv_color_white(), 0);
-    lv_obj_align_to(content, icon_bg, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 10);
-    new_notification_widgets.content = content;
-    if (notification_center_get_info_count() <= 0)
-    {
-        lv_label_set_text(content, "");
-    }
-    else
-    {
-        char *clean_message = replace_nbsp(notification->message);
-        lv_label_set_text(content, clean_message);
-        lv_mem_free(clean_message);
-    }
-    lv_obj_clear_flag(widget, LV_OBJ_FLAG_SCROLLABLE);
-
-    return widget;
 }
 
 /*******************************************************************************
@@ -3235,11 +3045,6 @@ void dial_media_header_deinit(void)
     // if (lvgl_msg_handler.handle_dial_media_play_state ==
     //     handle_dial_header_media_play_state)
     //     lvgl_msg_handler.handle_dial_media_play_state = NULL;
-}
-
-void message_widget_start(void)
-{
-    lvgl_msg_handler.handle_new_notification = refresh_new_message_widget;
 }
 
 void message_widget_stop(void)

@@ -1055,20 +1055,4 @@ int ble_dev_prefs_load(bonded_devices_db_t *db)
 }
 #endif
 
-// Task for shared preference
-
-uint8_t reboot_reason;
-
-/* Diagnostic-dump and wristband-reboot stubs preserved as no-ops for symbol
-   compatibility. The original ftl-based reboot-reason / config-flash flow
-   was rewritten on top of share_prefs and these entry points have no live
-   callers in the example tree; left as empty bodies so they don't get
-   stripped if any out-of-tree code still extern-decls them. */
-void show_SkaiWatchSys_info(void) {}
-void wristband_config_data_init(void) {}
-void wristband_config_struct_flash_reset(void) {}
-void wristband_hw_reboot_handle(void) {}
-void wristband_sw_reboot_handle(void) {}
-uint8_t wristband_get_reboot_reason(void) { return 0; }
-
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

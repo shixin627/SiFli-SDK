@@ -48,7 +48,6 @@ extern "C"
 	extern int bloc_start_receive_file(const char *file_path, uint32_t total_size);
 	extern int bloc_receive_file_data(const uint8_t *data, uint16_t length);
 	extern int bloc_end_receive_file(void);
-	extern int bloc_cancel_receive_file(void);
 	extern void received_file_handler(const char *path);
 
 	typedef struct
@@ -60,9 +59,6 @@ extern "C"
 		bool is_active;
 		uint32_t last_receive_tick;  /* Timestamp of last data received */
 	} file_receive_state_t;
-
-	extern const file_receive_state_t *bloc_get_receive_progress(void);
-	extern file_receive_state_t *get_file_receive_state(void);
 
 	/* Instruction image request tracking */
 	extern void set_pending_instruction_img_id(const char *id);

@@ -136,5 +136,4 @@ typedef void (*AccelRawDataHandler__deprecated)(AccelRawData *data, uint32_t num
 //! Allows operation on AccelRawData data, which is the same as the previous version of AccelData.
 void accel_data_service_subscribe__deprecated(uint32_t samples_per_update, AccelRawDataHandler__deprecated handler);
 
-extern bool is_acce_service_ready(void);
 extern void acce_set_power(uint32_t power_mode);

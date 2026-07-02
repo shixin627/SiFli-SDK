@@ -221,10 +221,6 @@ static void ble_tpc_on_rssi_sample(int8_t rssi)
    device_registry), so the watch no longer reads them over GATT on connect. */
 
 static bool _rssi_signal_bad = false;
-bool is_signal_bad(void)
-{
-    return _rssi_signal_bad;
-}
 void set_signal_bad(bool bad)
 {
     if (bad != _rssi_signal_bad)

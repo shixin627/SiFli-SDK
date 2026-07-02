@@ -214,12 +214,6 @@ enum
 void ble_hid_service_init(ble_hid_data_t *hid_data);
 
 /**
- * @brief Get HID data structure pointer
- * @return Pointer to HID data structure
- */
-ble_hid_data_t* ble_hid_get_data(void);
-
-/**
  * @brief Set connection index for HID service
  * @param conn_idx Connection index
  */
@@ -306,12 +300,6 @@ void volume_up_through_hid(void);
 void volume_down_through_hid(void);
 void HID_CONSUMER_GoBack(void);
 void HID_CONSUMER_GoHome(void);
-#endif
-
-#ifdef HID_TELEPHONY
-/* Telephony Control Functions */
-void hang_up_through_hid(void);
-void hook_switch_through_hid(void);
 #endif
 
 #ifdef HID_TOUCHSCREEN

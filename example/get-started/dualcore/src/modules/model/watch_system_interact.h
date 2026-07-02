@@ -107,7 +107,6 @@ extern void BLE_LOG_E(const char *format, ...);
     extern void ble_app_advertising_start(bool mouse_mode, bool pairing_mode);
     extern void switch_watch_motion_control_mode(bool enable, bool animation);
     extern bool get_idle_state(void);
-    extern void set_idle_state(bool state);
     extern bool is_user_touching_screen(void);
     extern void watch_system_wakeup(void);
     extern void watch_system_sleep(void);
@@ -121,7 +120,6 @@ extern void BLE_LOG_E(const char *format, ...);
     /// `peripheral_provider.*`, `watch_sys_sync.*`, `handle_gesture_unlock()`,
     /// or `subscribe_alarm_client()` directly for those.
     extern void interact_bat_low_level(bool enable);
-    extern void interact_task_loading(bool loading);
     extern void interact_show_qrcode(const char *qrcode);
     extern void interact_find_watch(void);
     extern void interact_timer_reminder(void);
@@ -131,8 +129,6 @@ extern void BLE_LOG_E(const char *format, ...);
     extern void interact_chat_result(MSG_DATA_PAYLOAD *msgData);
     extern void interact_cancel_bond(void);
     extern void interact_bonded(const uint8_t *user_id);
-    extern void interact_pairing(bool enable);
-    extern void interact_camera(uint8_t status);
 #ifdef BSP_USING_BLOC_CONTROL
     extern void interact_sync_media_status(uint8_t status);
 #endif
@@ -140,8 +136,6 @@ extern void BLE_LOG_E(const char *format, ...);
     /* Bundles set_language with load_instruction_list (translation reload). */
     extern void interact_language_set(const char *language);
 #endif
-    extern void interact_standby_wakeup(void);
-
     extern void handle_gesture_unlock(void);
 
 #ifdef BSP_USING_WATCH_SYS_CLIENT
@@ -154,9 +148,7 @@ extern void BLE_LOG_E(const char *format, ...);
     extern void motor_pattern_alarm(void);
     extern void motor_pattern_calling(void);
     extern void motor_pattern_notification(void);
-    extern void motor_pattern_normal(void);
     extern void motor_pattern_scrolling_app(void);
-    extern void motor_pattern_wheel_scrolling(void);
     extern void motor_pattern_screen_on_longpress(void);
     extern void motor_pattern_timer_reminder(void);
     extern void motor_pattern_unlocked(void);

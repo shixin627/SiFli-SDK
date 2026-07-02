@@ -22,13 +22,10 @@ typedef struct
 //-------------------------------------------------------------------------------------------
 // Function declarations
 extern void setSampleFrequencyAHRS(float freq);
-extern Quaternion get_attitude(void);
-extern Quaternion updateAHRS(sensor_fusion_param_t *param, float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz);
 extern Quaternion updateIMU(sensor_fusion_param_t *param, float gx, float gy, float gz, float ax, float ay, float az);
 extern void resetAHRS(sensor_fusion_param_t *param);
 /* Seed the quaternion from a single gravity-only accel reading so the first
    updateIMU() is already converged (skips the ~3 s Mahony cold start). */
 extern void seedAHRSFromAccel(sensor_fusion_param_t *param, float ax, float ay, float az);
-extern euler_angle_t QuaternionToEuler(Quaternion q);
 
 #endif

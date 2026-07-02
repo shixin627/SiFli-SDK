@@ -123,7 +123,6 @@ static app_weather_data_ctx_t app_weather_data_ctx = {0};
 static app_weather_t *p_app_weather = NULL;
 static char buffer[32];
 static weather_data_t weather_data[3] = {0};
-static weather_data_t daily_weather_data[4] = {0};
 
 LV_IMG_DECLARE(weather_widget_bg);
 /*
@@ -295,97 +294,6 @@ lv_obj_t *create_weather_obj(lv_obj_t *parent, weather_data_t *children,
     }
 
     return weather_widget;
-}
-
-lv_obj_t *create_dial_weather_obj(lv_obj_t *parent, weather_data_t *children,
-                                  weather_t *weather)
-{
-    if (!parent || !children || !weather)
-    {
-        LOG_E("Invalid parameters in create_dial_weather_obj");
-        return NULL;
-    }
-    lv_obj_t *weather_widget = lv_obj_create(parent);
-    lv_obj_set_size(weather_widget, 90, 140);
-    lv_obj_set_style_bg_opa(weather_widget, LV_OPA_TRANSP, 0);
-    // Create time label
-    lv_obj_t *time = lv_label_create(weather_widget);
-    children->time = time;
-    lv_obj_set_style_text_font(time, LV_EXT_FONT_GET(get_system_font_size(-2)),
-                               0);
-    lv_obj_set_style_text_color(time, lv_color_white(), 0);
-    const char *ampm = ui_time_ampm(weather->time.hour);
-    if (ampm)
-        snprintf(buffer, sizeof(buffer), "%d %s",
-                 ui_time_display_hour(weather->time.hour), ampm);
-    else
-        snprintf(buffer, sizeof(buffer), "%02d:00", weather->time.hour);
-    lv_label_set_text(time, buffer);
-    lv_obj_align(time, LV_ALIGN_BOTTOM_MID, 0, -25);
-    lv_obj_set_style_text_opa(time, LV_OPA_70, 0);
-
-    LOG_D("Creating dial weather object for time %02d", weather->time.hour);
-    // Create weather icon
-    lv_obj_t *img = lv_img_create(weather_widget);
-    children->img = img;
-    lv_img_set_src(img, weather_icon_get(weather->description));
-    lv_obj_align_to(img, time, LV_ALIGN_OUT_TOP_MID, -20, 0);
-    lv_img_set_zoom(img, 256 * 0.6); // zoom 80%
-
-    // Create temperature label
-    lv_obj_t *temperature = lv_label_create(weather_widget);
-    children->temperature = temperature;
-    lv_obj_set_style_text_font(temperature,
-                               LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
-    lv_obj_set_style_text_color(temperature, lv_color_white(), 0);
-    snprintf(buffer, sizeof(buffer), "%0.f", round(weather->temperature));
-    lv_label_set_text(temperature, buffer);
-    lv_obj_align_to(temperature, time, LV_ALIGN_OUT_TOP_MID, 12, -5);
-
-    lv_obj_t *degree = lv_label_create(weather_widget);
-    lv_obj_set_style_text_font(degree,
-                               LV_EXT_FONT_GET(get_system_font_size(-1)), 0);
-    lv_obj_set_style_text_color(degree, lv_color_white(), 0);
-    lv_label_set_text(degree, "°");
-    lv_obj_align_to(degree, temperature, LV_ALIGN_OUT_RIGHT_MID, 0, 0);
-    children->degree = degree;
-
-    return weather_widget;
-}
-
-static void update_dial_weather_obj(weather_data_t *children,
-                                    weather_t *weather)
-{
-    if (!children || !weather)
-    {
-        LOG_E("Invalid parameters in update_weather_obj");
-        return;
-    }
-
-    const char *ampm = ui_time_ampm(weather->time.hour);
-    if (ampm)
-        snprintf(buffer, sizeof(buffer), "%d %s",
-                 ui_time_display_hour(weather->time.hour), ampm);
-    else
-        snprintf(buffer, sizeof(buffer), "%02d:00", weather->time.hour);
-    if (lv_obj_is_valid(children->time))
-    {
-        lv_label_set_text(children->time, buffer);
-    }
-    if (lv_obj_is_valid(children->temperature))
-    {
-        snprintf(buffer, sizeof(buffer), "%0.f", round(weather->temperature));
-        lv_label_set_text(children->temperature, buffer);
-        lv_obj_align_to(children->temperature, children->time,
-                        LV_ALIGN_OUT_TOP_MID, 12, -5);
-        lv_obj_align_to(children->degree, children->temperature,
-                        LV_ALIGN_OUT_RIGHT_MID, 0, 0);
-    }
-    if (lv_obj_is_valid(children->img))
-    {
-        lv_img_set_src(children->img, weather_icon_get(weather->description));
-    }
-    weather->notified = true;
 }
 
 static void update_weather_obj(weather_data_t *children, weather_t *weather)
@@ -750,53 +658,6 @@ lv_obj_t *lv_weather_object_builder(lv_obj_t *parent, void *data)
     return weather_widget;
 }
 
-static void dial_weather_widget_layout_update(void);
-void lv_dial_weather_widget_builder(lv_obj_t *parent)
-{
-    if (!parent)
-    {
-        LOG_E("Invalid parent in lv_weather_widget_builder");
-        return;
-    }
-    for (int i = 0; i < 3; i++)
-    {
-        weather_t *get_weather_data =
-            get_weather(WEATHER_TODAT_ITEM_AMOUNT - 1 - i);
-        if (!get_weather_data)
-        {
-            continue;
-        }
-        lv_obj_t *weather_widget = create_dial_weather_obj(
-            parent, &daily_weather_data[i], get_weather_data);
-        if (i == 0 && lv_obj_is_valid(daily_weather_data[i].time))
-        {
-            lv_label_set_text(daily_weather_data[i].time, "Now");
-        }
-        if (weather_widget)
-        {
-            lv_obj_align(weather_widget, LV_ALIGN_LEFT_MID, 12 + i * 105, 0);
-        }
-        // Add separator line between weather items
-        if (i < 2)
-        {
-            lv_obj_t *line = lv_obj_create(parent);
-            lv_obj_set_size(line, 1, 130);
-            lv_obj_align_to(line, weather_widget, LV_ALIGN_OUT_RIGHT_TOP, 7, 0);
-            lv_obj_set_style_bg_color(line, LV_COLOR_WHITE, 0);
-            lv_obj_set_style_bg_opa(line, LV_OPA_30, 0);
-        }
-    }
-    lvgl_msg_handler.handle_refresh_dial_weather_widget =
-        dial_weather_widget_layout_update;
-    dial_weather_widget_layout_update();
-    lv_obj_t *widget_touch_area = lv_obj_create(parent);
-    lv_obj_set_size(widget_touch_area, 330, 150);
-    lv_obj_align(widget_touch_area, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_event_cb(widget_touch_area, dial_widget_event, LV_EVENT_ALL,
-                        NULL);
-    lv_obj_set_style_bg_opa(widget_touch_area, LV_OPA_0, 0);
-}
-
 lv_obj_t *lv_weather_widget_builder(lv_obj_t *parent)
 {
     if (!parent)
@@ -1045,44 +906,11 @@ static void weather_widget_layout_update(void)
         weather_widget_layout_update;
 }
 
-void weather_widget_start(void)
-{
-    lvgl_msg_handler.handle_refresh_weather_widget =
-        weather_widget_layout_update;
-}
 void weather_widget_stop(void)
 {
     if (lvgl_msg_handler.handle_refresh_weather_widget ==
         weather_widget_layout_update)
         lvgl_msg_handler.handle_refresh_weather_widget = NULL;
-}
-
-static void dial_weather_widget_layout_update(void)
-{
-    for (int i = 0; i < 3; i++)
-    {
-        weather_t *get_weather_data =
-            get_weather(WEATHER_TODAT_ITEM_AMOUNT - 1 - i);
-        if (!get_weather_data)
-        {
-            continue;
-        }
-
-        update_dial_weather_obj(&daily_weather_data[i], get_weather_data);
-
-        // Set "Now" for the current time
-        if (i == 0 && lv_obj_is_valid(daily_weather_data[i].time))
-        {
-            lv_label_set_text(daily_weather_data[i].time, "Now");
-        }
-    }
-}
-
-void dial_weather_widget_deinit(void)
-{
-    if (lvgl_msg_handler.handle_refresh_dial_weather_widget ==
-        dial_weather_widget_layout_update)
-        lvgl_msg_handler.handle_refresh_dial_weather_widget = NULL;
 }
 
 void weather_layout_update(void)

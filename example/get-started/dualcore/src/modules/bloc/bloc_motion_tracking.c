@@ -1004,17 +1004,6 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
 }
 #endif
 
-static float standard_gravity_components[3] = {0.0f, 0.0f, 0.0f};
-void set_standard_value_of_gravity_components(void)
-{
-    motion_data_t motion_data = watch_sensor.motion_data;
-    Vector3 gravity = motion_data.gravity;
-    standard_gravity_components[0] = gravity.x;
-    standard_gravity_components[1] = gravity.y;
-    standard_gravity_components[2] = gravity.z;
-    LOG_D("standard_gravity_components[0]:%f", standard_gravity_components[0]);
-}
-
 static uint16_t threshold = 3000;
 static float gyro_z_count = 2600;
 static float gyro_y_count = 2600; // 新增Y軸陀螺儀計數器
@@ -1029,19 +1018,6 @@ static float movement_scale_ratio =
 void set_media_control_threshold(uint16_t threshold_value)
 {
     threshold = threshold_value;
-}
-
-void set_movement_scale_ratio(float ratio)
-{
-    if (ratio > 0.0f && ratio <= 3.0f) // 限制比例範圍在0.1到2.0之間
-    {
-        movement_scale_ratio = ratio;
-    }
-}
-
-float get_movement_scale_ratio(void)
-{
-    return movement_scale_ratio;
 }
 
 void reset_control_pos(void)
@@ -1196,12 +1172,6 @@ static void app_control_interface(Vector3 *gyro, Vector3 *gravity)
     }
 }
 
-static bool is_hand_lifting = false; // Track the current state
-bool check_hand_lifting(void)
-{
-    return is_hand_lifting;
-}
-
 static int gravity_position = GRAVITY_POSITION_OTHER;
 
 int get_gravity_position(void)
@@ -1322,11 +1292,6 @@ static void calculate_gravity_position(Vector3 *gravity)
     //     extern void check_ai_widget_auto_close(void);
     //     check_ai_widget_auto_close();
     // }
-}
-
-void widget_ai_open(bool is_open)
-{
-    is_hand_lifting = is_open;
 }
 
 static Quaternion tap_state_q;

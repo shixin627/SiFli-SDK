@@ -47,9 +47,6 @@
    directly so the fragmenter handles splitting. */
 #define MAX_PACKET_PAYLOAD_SIZE 507
 
-/* Phone-side cap on PPG sample buffer per command. */
-#define HEART_RATE_SERIES_MAX_BYTES 256
-
 #define BOND_SUCCESS  0x00
 #define BOND_FAIL     0x01
 #define LOGIN_SUCCESS 0x00
@@ -296,14 +293,6 @@ bool commu_send_sleep_data(void)
                            (uint16_t)sizeof(watch_sys_sleep_state_t));
 }
 
-bool commu_send_heart_rate_series(const float *ppg, uint16_t count)
-{
-    if (ppg == NULL) return false;
-    uint16_t bytes = (uint16_t)(count * sizeof(float));
-    if (bytes > HEART_RATE_SERIES_MAX_BYTES) return false;
-    return commu_send_blob(NOTIFY_COMMAND_ID, KEY_HEART_RATE_SENSOR_SAMPLE, ppg, bytes);
-}
-
 /*============================================================================*
  *                              Control
  *============================================================================*/
@@ -320,7 +309,6 @@ bool commu_send_volume_percentage(uint8_t v)   { return commu_send_status(CONTRO
 bool commu_send_charge_status(void)                  { return commu_send_status(NOTIFY_COMMAND_ID, KEY_BATTERY_CHARGE_STATUS, SkaiWatchSys.charger_status); }
 bool commu_send_weather_request(void)                { return commu_send_empty (NOTIFY_COMMAND_ID, KEY_REQUEST_WEATHER); }
 bool commu_send_calendar_request(void)               { return commu_send_empty (NOTIFY_COMMAND_ID, KEY_REQUEST_CALENDAR); }
-bool commu_send_gesture_detect(uint8_t label)        { return commu_send_status(NOTIFY_COMMAND_ID, KEY_GESTURE_DETECT, label); }
 bool commu_send_remote_input(const char *json)       { return commu_send_string(NOTIFY_COMMAND_ID, KEY_REMOTE_INPUT, json); }
 bool commu_send_dismiss_notification(const char *id) { return commu_send_string(NOTIFY_COMMAND_ID, KEY_DISMISS_NOTIFICATION, id); }
 bool commu_send_user_speaking_state(uint8_t s)       { return commu_send_status(NOTIFY_COMMAND_ID, KEY_USER_SPEAKING_STATE, s); }

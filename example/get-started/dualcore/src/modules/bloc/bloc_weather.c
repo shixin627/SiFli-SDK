@@ -78,15 +78,6 @@ static weather_t week_weather_list[WEATHER_DAILY_ITEM_AMOUNT];
 static weather_t temp_weather;
 static char current_location[48] = {0};
 
-/**
- * @brief Get pointer to the weather list array
- * @return Pointer to the weather list
- */
-weather_t *current_weather_list(void)
-{
-	return today_weather_list;
-}
-
 weather_t *current_weather_week_list(void)
 {
 	return week_weather_list;
@@ -120,11 +111,6 @@ weather_t *get_weather(int index)
 	return &today_weather_list[index];
 }
 
-weather_t *get_weather_week(int index)
-{
-	return &week_weather_list[index];
-}
-
 /**
  * @brief Set weather data at specified index
  * @param weather Weather data to store
@@ -134,21 +120,6 @@ void set_cur_weather(weather_t weather, int index)
 {
 	// LOG_D("weather description: %s", weather.description);
 	today_weather_list[index] = weather;
-}
-
-void set_cur_weather_week(weather_t weather, int index)
-{
-	// LOG_D("weather description: %s", weather.description);
-	week_weather_list[index] = weather;
-}
-
-/**
- * @brief Initialize the weather list with default data
- */
-void init_weather_list(void)
-{
-	weather_items_amount = 1;
-	set_cur_weather(DEFAULT_WEATHER, 0);
 }
 
 /**
@@ -318,15 +289,6 @@ void handle_weather(char *json)
 		update_weather(weather);
 	}
 	notify_weather();
-}
-
-/**
- * @brief Get pointer to temporary weather data
- * @return Pointer to temporary weather data
- */
-void *get_temp_weather(void)
-{
-	return (void *)&temp_weather;
 }
 
 /**

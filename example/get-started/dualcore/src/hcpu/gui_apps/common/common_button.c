@@ -145,33 +145,6 @@ lv_obj_t *common_icon_button(lv_obj_t *par, const void *img_src, lv_event_cb_t e
     return icon;
 }
 
-lv_obj_t *common_angle_icon_button(lv_obj_t *par, const void *img_src, lv_event_cb_t event_cb, uint16_t angle)
-{
-    lv_obj_t *icon = common_flex_button(par, false, 0);
-    lv_obj_t *img = lv_img_create(icon);
-    lv_img_set_angle(img, angle);
-    lv_obj_align(img, LV_ALIGN_CENTER, 0, 0);
-    lv_img_set_src(img, img_src);
-    lv_obj_add_event_cb(icon, event_cb, LV_EVENT_CLICKED, NULL);
-    return icon;
-}
-
-/**
- * @brief Create a button with an icon and background
- * @param par Parent object
- * @param img_src Image source for the icon
- * @param event_cb Event callback function
- * @return Created button object
- */
-lv_obj_t *common_icon_button_with_bg(lv_obj_t *par, const void *img_src, lv_event_cb_t event_cb)
-{
-    lv_obj_t *icon = common_flex_button(par, true, LV_RADIUS_CIRCLE);
-    lv_obj_t *img = lv_img_create(icon);
-    lv_img_set_src(img, img_src);
-    lv_obj_add_event_cb(icon, event_cb, LV_EVENT_CLICKED, NULL);
-    return icon;
-}
-
 /**
  * @brief Create a button with a background image
  * @param par Parent object
@@ -237,50 +210,6 @@ lv_obj_t *common_text_button(lv_obj_t *par, const char *text, uint8_t font_size,
 
     lv_obj_center(label);
     return button;
-}
-
-// Helper function to create dark theme list item
-lv_obj_t *create_setting_list_item(lv_obj_t *parent, const void *icon, const char *text, uint8_t font_size, bool show_divider, uint8_t icon_scale)
-{
-    lv_obj_t *item = lv_btn_create(parent);
-    lv_obj_set_size(item, LV_PCT(100), BUTTON_HEIGHT);          // Larger height for better touch targets
-    lv_obj_set_style_bg_color(item, lv_color_hex(0x1E1E1E), 0); // Dark gray
-    lv_obj_set_style_border_width(item, 0, 0);
-    lv_obj_set_style_pad_left(item, 20, 0);
-    lv_obj_set_style_pad_right(item, 20, 0);
-    lv_obj_set_style_radius(item, 12, 0); // Rounded corners for items
-
-    // Add icon if provided
-    if (icon)
-    {
-        lv_obj_t *img = lv_img_create(item);
-        lv_img_set_src(img, icon);
-        lv_obj_align(img, LV_ALIGN_LEFT_MID, 5, 0);
-        if (icon_scale > 0 && icon_scale != 100)
-        {
-            lv_img_set_zoom(img, icon_scale * 256 / 100); // Scale image
-        }
-
-        lv_obj_t *label = lv_label_create(item);
-        lv_label_set_text(label, text);
-        lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), 0); // White text
-        lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(font_size), 0);
-        lv_obj_align_to(label, img, LV_ALIGN_OUT_RIGHT_MID, 20, 0);
-    }
-    else
-    {
-        lv_obj_t *label = lv_label_create(item);
-        lv_label_set_text(label, text);
-        lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), 0); // White text
-        lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(font_size), 0);
-        lv_obj_align(label, LV_ALIGN_LEFT_MID, 5, 0);
-    }
-
-    if (show_divider)
-    {
-        lv_obj_t *divider = create_divider_line(parent);
-    }
-    return item;
 }
 
 // For toggle switches, we need a special create function with dark theme styling

@@ -61,9 +61,6 @@
 #ifdef BSP_USING_HAND_TRACKING
     #include "hand_tracking.h"
 #endif
-#ifdef BSP_USING_HEALTH_ALGO
-    #include "health_algo.h"
-#endif
 
 /* Hardware specific includes */
 #ifdef ACC_USING_BMI270
@@ -394,15 +391,6 @@ static void timeout_ind(void *param)
 }
 
 /**
- * @brief Check if accelerometer service is ready
- * @return Initialization status
- */
-bool is_acce_service_ready(void)
-{
-    return acce_service_env.is_ready;
-}
-
-/**
  * @brief Initialize and register accelerometer service
  * @return Operation result
  */
@@ -488,10 +476,6 @@ int acce_service_register(void)
 
     // Register with peripheral provider
     // peripheral_provider.imu_set_power = acce_set_power;
-
-#ifdef BSP_USING_HEALTH_ALGO
-    health_algo_init();
-#endif
 
     env->is_ready = true;
     LOG_I("Accelerometer service initialized successfully");

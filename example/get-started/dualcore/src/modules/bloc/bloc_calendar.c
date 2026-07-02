@@ -196,19 +196,6 @@ calendar_event_t empty_calendar_event(void)
 	return temp;
 }
 
-calendar_event_t *get_calendar_event(int day, int index)
-{
-	if (day < 0 || day >= DAYS_PER_WEEK || calendar_days[day] == NULL) {
-		return NULL;
-	}
-	
-	if (index < 0 || index >= calendar_days[day]->event_count) {
-		return NULL;
-	}
-	
-	return &calendar_days[day]->events[index];
-}
-
 calendar_t *get_calendar_day(int day)
 {
 	if (day < 0 || day >= DAYS_PER_WEEK) {
@@ -412,69 +399,4 @@ void handle_calendar(char *json, uint8_t day)
 	}
 }
 
-uint8_t get_calendar_day_sync_amout(uint8_t day)
-{
-	if (day >= DAYS_PER_WEEK)
-	{
-		LOG_E("Invalid day index: %d", day);
-		return 0;
-	}
-
-	calendar_t *calendar_day = get_calendar_day(day);
-	if (calendar_day == NULL)
-	{
-		return 0;
-	}
-
-	return calendar_day->event_count;
-}
-
-/**
- * @brief Request calendar with rate limiting, allowing one request every 30 seconds.
- * * @param active_call Indicates if the request is active or not.
- */
-
-#define CALENDAR_REQUEST_COOLDOWN_SEC 30
-
-static uint32_t last_calendar_request_time = 0;
-
-void request_calendar_on_mobile(bool active_call)
-{
-	if (SkaiWatchSys.connected_to_phone == false)
-	{
-		LOG_D("Request calendar skipped - not connected to phone");
-		return;
-	}
-
-	uint32_t current_time = (uint32_t)time(NULL);
-	bool has_request = (current_time - last_calendar_request_time < 5); // 5 seconds
-	if (has_request)
-	{
-		LOG_D("Calendar request cooldown active, skipping request");
-		return;
-	}
-	bool has_synchronized_recently = (current_time - SkaiWatchSys.calendar_sync_time < 30); // 30 seconds
-	if (active_call || !has_synchronized_recently)
-	{
-		LOG_D("Requesting calendar");
-		commu_send_calendar_request();
-
-		// Update last request timestamp
-		last_calendar_request_time = current_time;
-	}
-}
-
-/**
- * 清理所有日曆記憶體
- */
-void cleanup_all_calendars(void)
-{
-	for (int i = 0; i < DAYS_PER_WEEK; i++) {
-		if (calendar_days[i] != NULL) {
-			free_calendar_day(calendar_days[i]);
-			calendar_days[i] = NULL;
-		}
-	}
-	LOG_D("All calendar memory cleaned up");
-}
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

@@ -70,7 +70,6 @@ static struct hids_report input_telephony = {
     .id = REPORT_ID_TELEPHONY,
     .type = HIDS_INPUT,
 };
-static struct telephony_key_state hid_telephony_state;
 #endif
 
 #ifdef HID_TOUCHSCREEN
@@ -779,28 +778,6 @@ static int hid_consume_state_key_clear_bit(uint8_t key)
 }
 #endif
 
-#ifdef HID_TELEPHONY
-static int hid_telephony_state_key_set_bit(uint8_t key)
-{
-    if ((hid_telephony_state.key_state & (1 << key)) == 0)
-    {
-        hid_telephony_state.key_state |= 1 << key;
-        return 0;
-    }
-    return -EBUSY;
-}
-
-static int hid_telephony_state_key_clear_bit(uint8_t key)
-{
-    if ((hid_telephony_state.key_state & (1 << key)) != 0)
-    {
-        hid_telephony_state.key_state &= ~(1 << key);
-        return 0;
-    }
-    return -EBUSY;
-}
-#endif
-
 #ifdef HID_MOUSE
 static int hid_mouse_state_set(uint8_t buttons, int8_t x, int8_t y,
                                int8_t wheel, int8_t pan)
@@ -844,41 +821,6 @@ static int hid_touch_state_clear(void)
 
 /**********************HID Report Send Functions
  * ****************************************************/
-
-#ifdef HID_TELEPHONY
-static void telephony_report_send(uint8_t *key_val, uint16_t key_val_len)
-{
-    if (!g_hid_data || !g_hid_data->is_telephony_config_on)
-        return;
-
-    sibles_value_t value;
-    value.hdl = g_hid_data->srv_handle;
-    value.idx = HIDS_TELEPHONY_IDX_REPORT_VAL;
-    value.len = key_val_len;
-    value.value = key_val;
-    int ret = sibles_write_value(g_conn_idx, &value);
-    LOG_D("telephony report send retry:%d", g_conn_idx);
-    if (ret == 0)
-    {
-        int retry = 20;
-        while (retry > 0)
-        {
-            retry--;
-            rt_thread_mdelay(50);
-            ret = sibles_write_value(g_conn_idx, &value);
-            if (ret == key_val_len)
-            {
-                LOG_I("telephony send retry success : %d", key_val[0]);
-                return;
-            }
-        }
-    }
-    else
-    {
-        LOG_I("telephony send success : %d", key_val[0]);
-    }
-}
-#endif
 
 #ifdef HID_CONSUMER
 static void consumer_report_send(uint8_t *key_val, uint16_t key_val_len)
@@ -1025,11 +967,6 @@ void ble_hid_service_init(ble_hid_data_t *hid_data)
     {
         LOG_E("HID service registration failed");
     }
-}
-
-ble_hid_data_t *ble_hid_get_data(void)
-{
-    return g_hid_data;
 }
 
 void ble_hid_set_conn_idx(uint8_t conn_idx)
@@ -1482,31 +1419,6 @@ void HID_CONSUMER_GoBack(void)
     rt_thread_mdelay(200);
     BLE_HID_Mouse_BackRelease();
 }
-
-#ifdef HID_TELEPHONY
-static void hid_telephony_press_release(uint16_t key, uint32_t delay_ms)
-{
-    hid_telephony_state_key_set_bit(key);
-    telephony_report_send((uint8_t *)&hid_telephony_state,
-                          sizeof(hid_telephony_state));
-    rt_thread_mdelay(delay_ms);
-    hid_telephony_state_key_clear_bit(key);
-    telephony_report_send((uint8_t *)&hid_telephony_state,
-                          sizeof(hid_telephony_state));
-}
-
-void hang_up_through_hid(void)
-{
-    LOG_I("HID telephony: drop");
-    hid_telephony_press_release(HIDS_TEL_DROP, 200);
-}
-
-void hook_switch_through_hid(void)
-{
-    LOG_I("HID telephony: hook switch");
-    hid_telephony_press_release(HIDS_TEL_HOOK_SWITCH, 200);
-}
-#endif
 
 void HID_CONSUMER_GoHome(void)
 {

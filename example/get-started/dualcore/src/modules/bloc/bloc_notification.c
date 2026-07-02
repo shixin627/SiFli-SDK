@@ -170,15 +170,6 @@ uint32_t notification_center_get_arrival_seq(void)
 }
 
 /**
- * @brief Get pointer to the first notification in the list
- * @return Pointer to the first notification
- */
-notification_t *notification_center_get_header(void)
-{
-    return &_notification_list[0];
-}
-
-/**
  * @brief Get notification at specified index
  * @param index Index of the notification
  * @return Pointer to the notification
@@ -546,18 +537,6 @@ void handle_notification(uint8_t notify_id, char *json_string)
     temp_notification.state = true;
     // app_message_set_from_temp(&temp_notification);
     interact_with_notification(&temp_notification);
-}
-
-void init_notification_items(void)
-{
-    for (uint8_t i = 0; i < SkaiWatchSys.notification_number; i++)
-    {
-        if (get_notification(i)->index != 0)
-        {
-            notification_items_amount++;
-            notifyNotification(i);
-        }
-    }
 }
 
 void get_notification_list_from_template(void)

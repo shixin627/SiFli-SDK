@@ -117,8 +117,6 @@ extern "C"
     extern void motion_data_fetch(motion_data_t *data);
     extern void process_ppg_sensor_data(uint8_t sample_num, uint32_t *data,
                                         uint32_t *data2);
-    extern bool check_if_imu_sensor_data_is_normal(void);
-    extern bool check_if_ppg_sensor_data_is_normal(void);
 
     typedef struct
     {
@@ -212,9 +210,7 @@ extern "C"
 
 #ifdef SOC_BF0_LCPU
 
-    bool is_imu_data_collection(void);
     void set_imu_data_collection(bool enable);
-    bool is_imu_rawdata_collection(void);
     void set_imu_rawdata_collection(bool enable);
 
     #define GSENSOR_FIFO_BUFFER_SIZE 25
@@ -240,7 +236,6 @@ extern void drv_reboot(void);
      * bloc_peripheral.c; sampling thread that consumes these lives in
      * bloc_control.c. */
     void fsr_adc_init(void);
-    void fsr_adc_deinit(void);
     rt_uint32_t fsr_adc_read_value(void);
 #endif
 #endif
