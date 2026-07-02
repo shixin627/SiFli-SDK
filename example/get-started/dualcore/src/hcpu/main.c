@@ -1672,11 +1672,6 @@ uint8_t get_main_phonepeer_conn_idx(void)
     return phone_device_idx;
 }
 
-void get_main_phonepeer_addr(uint8_t *addr)
-{
-    rt_memcpy(addr, peer_addr, 6);
-}
-
 int ble_app_event_handler(uint16_t event_id, uint8_t *data, uint16_t len,
                           uint32_t context)
 {

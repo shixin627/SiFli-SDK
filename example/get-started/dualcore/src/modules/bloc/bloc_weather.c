@@ -75,7 +75,6 @@ static uint8_t weather_items_amount_week = 0;
 static weather_t today_weather_list[WEATHER_TODAT_ITEM_AMOUNT];
 // summary daily weather
 static weather_t week_weather_list[WEATHER_DAILY_ITEM_AMOUNT];
-static weather_t temp_weather;
 static char current_location[48] = {0};
 
 weather_t *current_weather_week_list(void)
@@ -109,17 +108,6 @@ weather_t empty_weather(void)
 weather_t *get_weather(int index)
 {
 	return &today_weather_list[index];
-}
-
-/**
- * @brief Set weather data at specified index
- * @param weather Weather data to store
- * @param index Target index for storage
- */
-void set_cur_weather(weather_t weather, int index)
-{
-	// LOG_D("weather description: %s", weather.description);
-	today_weather_list[index] = weather;
 }
 
 /**
@@ -289,24 +277,6 @@ void handle_weather(char *json)
 		update_weather(weather);
 	}
 	notify_weather();
-}
-
-/**
- * @brief Handle AI reply with weather information
- * @param json JSON string with weather data from AI
- */
-void handle_ai_reply_weather(char *json, lv_obj_t *parent)
-{
-	if (!json)
-	{
-		LOG_E("Null JSON string in handle_ai_reply_weather");
-		return;
-	}
-
-	temp_weather = empty_weather();
-	parse_weather(json, &temp_weather);
-
-	lv_weather_object_builder(parent, (void *)&temp_weather);
 }
 
 /**

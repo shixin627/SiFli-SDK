@@ -72,7 +72,6 @@ bool commu_send_volume_percentage(uint8_t volume);
 /* Notification */
 bool commu_send_charge_status(void);
 bool commu_send_weather_request(void);
-bool commu_send_calendar_request(void);
 bool commu_send_remote_input(const char *json);
 bool commu_send_dismiss_notification(const char *id);
 bool commu_send_user_speaking_state(uint8_t status);

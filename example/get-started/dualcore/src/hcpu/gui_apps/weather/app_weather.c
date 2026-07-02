@@ -906,13 +906,6 @@ static void weather_widget_layout_update(void)
         weather_widget_layout_update;
 }
 
-void weather_widget_stop(void)
-{
-    if (lvgl_msg_handler.handle_refresh_weather_widget ==
-        weather_widget_layout_update)
-        lvgl_msg_handler.handle_refresh_weather_widget = NULL;
-}
-
 void weather_layout_update(void)
 {
     // Check if UI is initialized

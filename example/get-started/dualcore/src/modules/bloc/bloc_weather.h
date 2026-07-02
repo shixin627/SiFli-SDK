@@ -86,7 +86,6 @@ extern "C"
 	extern void weather_layout_update(void);
 	extern void handle_weather(char *json);
 	extern weather_t empty_weather(void);
-	extern void handle_ai_reply_weather(char *json, lv_obj_t *parent);
 	extern void request_weather_within_six_hours(bool active_call);
 	extern weather_t *current_weather_week_list(void);
 	extern void handle_location_data(char *json);

@@ -308,7 +308,6 @@ bool commu_send_volume_percentage(uint8_t v)   { return commu_send_status(CONTRO
 
 bool commu_send_charge_status(void)                  { return commu_send_status(NOTIFY_COMMAND_ID, KEY_BATTERY_CHARGE_STATUS, SkaiWatchSys.charger_status); }
 bool commu_send_weather_request(void)                { return commu_send_empty (NOTIFY_COMMAND_ID, KEY_REQUEST_WEATHER); }
-bool commu_send_calendar_request(void)               { return commu_send_empty (NOTIFY_COMMAND_ID, KEY_REQUEST_CALENDAR); }
 bool commu_send_remote_input(const char *json)       { return commu_send_string(NOTIFY_COMMAND_ID, KEY_REMOTE_INPUT, json); }
 bool commu_send_dismiss_notification(const char *id) { return commu_send_string(NOTIFY_COMMAND_ID, KEY_DISMISS_NOTIFICATION, id); }
 bool commu_send_user_speaking_state(uint8_t s)       { return commu_send_status(NOTIFY_COMMAND_ID, KEY_USER_SPEAKING_STATE, s); }

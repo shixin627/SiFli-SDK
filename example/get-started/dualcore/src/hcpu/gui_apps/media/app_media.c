@@ -1058,17 +1058,6 @@ lv_obj_t *media_play_pause_btn_create(lv_obj_t *parent)
     return btn_play_pause_bg;
 }
 
-static void title_btn_event_cb(lv_event_t *e)
-{
-    lv_event_code_t event = lv_event_get_code(e);
-
-    if (LV_EVENT_CLICKED == event)
-    {
-        LOG_D("title_btn_event_cb");
-        gui_app_run(APP_ID_MEDIA);
-    }
-}
-
 extern void dial_widget_event(lv_event_t *e);
 
 static lv_obj_t *dial_widget_btn_prev_bg = NULL;
@@ -1076,33 +1065,6 @@ static lv_obj_t *dial_widget_btn_next_bg = NULL;
 static lv_obj_t *dial_widget_btn_play_pause = NULL;
 static lv_obj_t *dial_widget_btn_play_pause_icon = NULL;
 
-void set_dial_media_widget_opa(uint8_t opa)
-{
-    if (lv_obj_is_valid(dial_widget_btn_prev_bg))
-    {
-        lv_obj_set_style_img_opa(
-            lv_obj_get_child(lv_obj_get_child(dial_widget_btn_prev_bg, 0), 0),
-            opa, 0);
-    }
-    if (lv_obj_is_valid(dial_widget_btn_play_pause))
-    {
-        lv_obj_set_style_img_opa(
-            lv_obj_get_child(dial_widget_btn_play_pause_icon, 0), opa, 0);
-    }
-    if (lv_obj_is_valid(dial_widget_btn_next_bg))
-    {
-        lv_obj_set_style_img_opa(
-            lv_obj_get_child(lv_obj_get_child(dial_widget_btn_next_bg, 0), 0),
-            opa, 0);
-    }
-    if (lv_obj_is_valid(dial_widget_vol_icon_btn))
-    {
-        lv_obj_set_style_img_opa(lv_obj_get_child(dial_widget_vol_icon_btn, 0),
-                                 opa, 0);
-        uint8_t btn_opa = opa * 20 / LV_OPA_COVER;
-        lv_obj_set_style_bg_opa(dial_widget_vol_icon_btn, btn_opa, 0);
-    }
-}
 
 /* dial_media_header moved to lv_message_list_layout.c */
 
@@ -1256,13 +1218,6 @@ static void stop_highlight_timer(void)
     {
         rt_timer_stop(highlight_timer);
     }
-}
-
-static void set_volume_control_value(uint8_t value)
-{
-    // 更新進度條和音量設置
-    lv_bar_set_value(music_app_obj.volume_bar, value, LV_ANIM_ON);
-    control_provider.bt_speaker_set_volume(value, true);
 }
 
 // 修改 handle_tap_event 函數
@@ -1478,7 +1433,6 @@ void media_on_resume(void)
     {
         // lvgl_msg_handler.handle_tap_indicator = handle_finger_event;
         // lvgl_msg_handler.handle_media_control = button_selection;
-        // lvgl_msg_handler.handle_volume_control = set_volume_control_value;
     }
 #endif
 }

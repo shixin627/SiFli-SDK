@@ -60,7 +60,6 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_task.h */ bool commu_send_active_device(const char *device_id) { (void)device_id; return false; }
 /* communicate_task.h */ bool commu_send_battery_level(uint8_t level) { return false; }
 /* communicate_task.h */ bool commu_send_battery_voltage(uint16_t millivolts) { (void)millivolts; return false; }
-/* communicate_task.h */ bool commu_send_calendar_request(void) { return false; }
 /* communicate_task.h */ bool commu_send_charge_status(void) { return false; }
 /* communicate_task.h */ bool commu_send_sleep_data(void) { return false; }
 /* communicate_task.h */ bool commu_send_chat_with_ai(const char *json) { return false; }
@@ -134,7 +133,6 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* bloc_v2t.h */ void reset_user_speaking_to_ai(void) {  }
 /* lv_instruction_list_layout.c */ void send_to_ai(void) {  }
 /* app_media.c */ void set_app_vol_bar_value(uint8_t volume) {  }
-/* app_clock_main.c */ void set_dial_media_widget_opa(uint8_t opa) {  }
 /* gesture_recognition_task.h */ void set_gesture_recognition_threshold(int threshold) {  }
 /* lv_instruction_list_layout.c */ void set_skai_widget_awaiting_ai(void) {  }
 /* lv_instruction_list_layout.c */ void set_skai_widget_input_text(const char *text) {  }

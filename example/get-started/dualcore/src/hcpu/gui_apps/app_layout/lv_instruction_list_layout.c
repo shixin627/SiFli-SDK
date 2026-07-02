@@ -6275,8 +6275,6 @@ rt_int32_t instruction_list_deinit(void)
     // message_widget_stop();
     // extern void calendar_widget_stop(void);
     // calendar_widget_stop();
-    // extern void weather_widget_stop(void);
-    // weather_widget_stop();
     // extern void note_widget_stop(void);
     // note_widget_stop();
 
