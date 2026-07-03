@@ -907,6 +907,9 @@ static uint8_t log_count = 0;
     #define AIR_MOUSE_SENSITIVITY 20.0f
     // 移動鎖：觸碰面板後累積移動量超過此閾值才解鎖
     #define GYRO_MOVE_CANCEL_THRESHOLD 30.0f
+    // Roll-compensation sign for data-collection air-mouse (see air_mouse_process).
+    // Flip to -1.0f on device if roll compensation goes the WRONG way.
+    #define AIR_MOUSE_COLLECT_ROLL_SIGN 1.0f
 
 static bool mouse_movement_lock = false;
 static float gyro_movement_distance = 0.0f;
@@ -951,8 +954,49 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     float gyro_y =
         watch_sensor.imu_data.gyro.y * DPS_TO_RADS; // 新增Y軸陀螺儀數據
 
-    delta_movement =
-        air_mouse_algorithm(-gyro_y, gyro_z, AIR_MOUSE_SENSITIVITY);
+    extern bool imu_mouse_data_collection;
+    /* Roll-compensation reference (DATA-COLLECTION MODE ONLY). Captured at the
+     * START of a session = the user's holding posture, so the mapping is IDENTITY
+     * there (== the raw mapping the real mouse app uses, correct at a normal
+     * posture). RELATIVE to this reference — no assumption about which body axis is
+     * "up" — so normal posture is always right; only wrist ROLL away from it is
+     * compensated, keeping left/right & up/down consistent. */
+    static Vector3 collect_gref = {0.0f, 0.0f, 0.0f};
+    static bool collect_gref_valid = false;
+    if (imu_mouse_data_collection)
+    {
+        Vector3 g = watch_sensor.motion_data.gravity;
+        if (!collect_gref_valid)
+        {
+            collect_gref = g;
+            collect_gref_valid = true;
+        }
+        float refh = sqrtf(collect_gref.y * collect_gref.y + collect_gref.z * collect_gref.z);
+        float curh = sqrtf(g.y * g.y + g.z * g.z);
+        if (refh > 0.2f && curh > 0.2f) /* both well-defined in the y-z plane */
+        {
+            /* signed roll from the reference to the current gravity, in the y-z plane */
+            float cross = collect_gref.y * g.z - collect_gref.z * g.y;
+            float dot = collect_gref.y * g.y + collect_gref.z * g.z;
+            float roll = AIR_MOUSE_COLLECT_ROLL_SIGN * atan2f(cross, dot);
+            float cr = cosf(roll);
+            float sr = sinf(roll);
+            float h = gyro_z * cr + gyro_y * sr;  /* roll-consistent horizontal rate */
+            float v = -gyro_z * sr + gyro_y * cr; /* roll-consistent vertical rate */
+            delta_movement = air_mouse_algorithm(-v, h, AIR_MOUSE_SENSITIVITY);
+        }
+        else
+        {
+            delta_movement =
+                air_mouse_algorithm(-gyro_y, gyro_z, AIR_MOUSE_SENSITIVITY);
+        }
+    }
+    else
+    {
+        collect_gref_valid = false; /* recapture the start posture next session */
+        delta_movement =
+            air_mouse_algorithm(-gyro_y, gyro_z, AIR_MOUSE_SENSITIVITY);
+    }
 
     if (abs(delta_movement.x) >= 3 || abs(delta_movement.y) >= 3)
     {
@@ -971,7 +1015,6 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
         mouse_movement_lock = false;
     }
 
-    extern bool imu_mouse_data_collection;
     if (imu_mouse_data_collection)
     {
         /* Data-collection mode: always relay the cursor delta to the phone via
