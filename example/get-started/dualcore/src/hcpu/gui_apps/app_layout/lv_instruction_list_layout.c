@@ -5894,19 +5894,14 @@ static bool item_is_standalone(const list_item_t *it)
     return (!it->is_instruction) || (it->open_app[0] != '\0');
 }
 
-/* True if item passes the active category view filter (ADR-0024). The three views show
-   DIFFERENT content, not one list filtered loosely:
-     - '@' (left)  : STRICT chat — the @ destinations / chat services (@gpt / @google …).
-     - '/' (right) : STRICT actions — saved scripts / device actions only.
-     - 'all' (bar) : the EXECUTION HISTORY + actions — untagged (recents: apps / urls /
-                     calc / files) and '/' actions, but NOT the '@' chat destinations
-                     (those are reached only via the '@' drawer; the bar is "what I ran",
-                     not the @ service menu). So 'all' = everything EXCEPT '@'. */
+/* True if item passes a STRICT category view filter — only ever called for
+   cat == '@' or cat == '/' (instruction_list_set_category_filter guards cat==0
+   out before reaching this). 'all' (cat==0) shows the full unfiltered list,
+   @ items included — the left-swipe skaibar reveal from the bare watch face
+   is this mixed list. */
 static bool item_matches_cat(const list_item_t *it, char cat)
 {
-    if (cat == 0)
-        return it->category != '@'; /* 'all' bar = history + actions, NOT @ destinations */
-    return it->category == cat;     /* '@' and '/' are both strict */
+    return it->category == cat;
 }
 
 /* Restore the full list if a category view filter is active (no refresh — the

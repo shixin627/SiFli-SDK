@@ -914,6 +914,12 @@ static uint8_t log_count = 0;
 static bool mouse_movement_lock = false;
 static float gyro_movement_distance = 0.0f;
 
+/* Data-collection air-mouse roll reference (file scope so the always-run motion
+ * handler can invalidate it when collection ends — air_mouse_process itself only
+ * runs in mouse modes and can't reliably see the off state). */
+static Vector3 s_collect_gref = {0};
+static bool s_collect_gref_valid = false;
+
 void air_mouse_movement_lock_reset(void)
 {
     mouse_movement_lock = true;
@@ -961,23 +967,21 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
      * posture). RELATIVE to this reference — no assumption about which body axis is
      * "up" — so normal posture is always right; only wrist ROLL away from it is
      * compensated, keeping left/right & up/down consistent. */
-    static Vector3 collect_gref = {0.0f, 0.0f, 0.0f};
-    static bool collect_gref_valid = false;
     if (imu_mouse_data_collection)
     {
         Vector3 g = watch_sensor.motion_data.gravity;
-        if (!collect_gref_valid)
+        if (!s_collect_gref_valid)
         {
-            collect_gref = g;
-            collect_gref_valid = true;
+            s_collect_gref = g;
+            s_collect_gref_valid = true;
         }
-        float refh = sqrtf(collect_gref.y * collect_gref.y + collect_gref.z * collect_gref.z);
+        float refh = sqrtf(s_collect_gref.y * s_collect_gref.y + s_collect_gref.z * s_collect_gref.z);
         float curh = sqrtf(g.y * g.y + g.z * g.z);
         if (refh > 0.2f && curh > 0.2f) /* both well-defined in the y-z plane */
         {
             /* signed roll from the reference to the current gravity, in the y-z plane */
-            float cross = collect_gref.y * g.z - collect_gref.z * g.y;
-            float dot = collect_gref.y * g.y + collect_gref.z * g.z;
+            float cross = s_collect_gref.y * g.z - s_collect_gref.z * g.y;
+            float dot = s_collect_gref.y * g.y + s_collect_gref.z * g.z;
             float roll = AIR_MOUSE_COLLECT_ROLL_SIGN * atan2f(cross, dot);
             float cr = cosf(roll);
             float sr = sinf(roll);
@@ -993,7 +997,7 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     }
     else
     {
-        collect_gref_valid = false; /* recapture the start posture next session */
+        s_collect_gref_valid = false; /* recapture the start posture next session */
         delta_movement =
             air_mouse_algorithm(-gyro_y, gyro_z, AIR_MOUSE_SENSITIVITY);
     }
@@ -1445,6 +1449,15 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
 
 #ifdef BSP_USING_AIR_MOUSE
     extern bool imu_mouse_data_collection;
+    /* Invalidate the collection roll reference whenever collection is OFF, so every
+     * session recaptures a FRESH start posture. This handler runs every frame;
+     * air_mouse_process does NOT when the gesture app is foreground with collection
+     * off, so it can't reset the reference itself — a stale reference from the
+     * previous session is exactly why the direction "reversed again" next game. */
+    if (!imu_mouse_data_collection)
+    {
+        s_collect_gref_valid = false;
+    }
     /* imu_mouse_data_collection first so the short-circuit skips the
      * gui_app_is_actived() call (asserts on the GUI thread) while collecting. */
     if (imu_mouse_data_collection || app_control_get_mouse_mode() ||
