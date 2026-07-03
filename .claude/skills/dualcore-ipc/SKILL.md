@@ -7,8 +7,6 @@ description: >
   or sending HCPU commands to LCPU peripherals/algorithms.
   Signs: #include of an LCPU-only header in HCPU code (or vice versa),
   direct function calls across core boundaries, or user says "pass X between cores".
-globs:
-  - example/get-started/dualcore/**
 ---
 
 # Dual-Core IPC: HCPU ↔ LCPU Communication via data_service

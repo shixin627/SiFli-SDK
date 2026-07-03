@@ -1,0 +1,4 @@
+# Claude Code machine-local — local semantics, not tracked (audit 2026-07-03)
+settings.local.json
+scheduled_tasks.lock
+worktrees/

@@ -9,8 +9,6 @@ description: >
   TRIGGERS: developing a new gui_app on PC, fixing a sim-only crash, adding
   a NULL guard for a stub fn pointer, regenerating pc_link_stubs.c after
   enabling a new module, or just "let me see this on sim".
-globs:
-  - example/get-started/dualcore/**
 ---
 
 # PC Simulator Development for Dualcore Watch
