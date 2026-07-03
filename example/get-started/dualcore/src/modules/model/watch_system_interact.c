@@ -389,6 +389,18 @@ void interact_mic_v2t_input(void)
     start_voice_recognition(V2T_INTENT_MIC_INPUTE);
 }
 
+/* SkaiApp memo 🎤 (ADR-0037): create the VAD instance (the mic-audio-send gate
+   `vad_inst && voice2text_status` needs it — start_voice_recognition alone does
+   NOT create it), mark the intent, and start streaming. Called from
+   skaiapp_render's memo voice button after it uplinks the target memo. */
+void interact_memo_v2t_input(void)
+{
+    LOG_D("[interact_memo_v2t_input] Start voice recognition for memo fill");
+    voice_provider.vad_init();
+    voice_set_pending_v2t_intent(V2T_INTENT_MEMO);
+    start_voice_recognition(V2T_INTENT_MEMO);
+}
+
 void interact_bat_low_level(bool enable)
 {
     if (enable)

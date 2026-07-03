@@ -80,6 +80,23 @@ extern "C"
            "text":"..."}]} the folded chat state the watch renders. role ∈ incoming/outgoing/
            user/assistant. Pushed on every convEvent the phone folds. */
         KEY_CONV_STATE = 0x12,
+        /* ── SkaiApp: AI-generated declarative mini-apps (SkaiLink ADR-0037).
+           Keep in lockstep with the phone WatchProtocol (android/ios). ── */
+        /* phone→watch (DOWNLINK): {"id","seq","n","crc"(seq 0 only),"chunk"} —
+           one package pushed as ≤3 KB-raw base64 chunks; CRC32 over the whole
+           raw JSON; reassembled + installed by gui_apps/skaiapp/skaiapp_proto.c */
+        KEY_SKAIAPP_PUSH = 0x13,
+        /* phone→watch (DOWNLINK): {"id"} uninstall one mini-app */
+        KEY_SKAIAPP_REMOVE = 0x14,
+        /* watch→phone (UPLINK): {"id","code"} install/remove result —
+           0 ok / 1 crc / 2 parse / 3 unsupported / 4 storage / 5 limit */
+        KEY_SKAIAPP_ACK = 0x15,
+        /* watch→phone (UPLINK): {"id":"<appId>","memo":"<memoId>"} — the user tapped
+           the memo's 🎤 on the watch to voice-fill it (ADR-0037). Sent right before
+           the watch starts streaming mic audio with V2T_INTENT_MEMO; the phone
+           remembers this target, runs STT on the audio, and writes the transcript
+           back with SkaiappController.setMemoText (which re-pushes the package). */
+        KEY_SKAIAPP_VOICE = 0x16,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

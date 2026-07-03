@@ -321,6 +321,13 @@ static void handle_device_removed(uint8_t *pValue, uint16_t length)
    gets dead-stripped by armlink → the symbol resolves NULL → a silent no-op. */
 extern void skai_chat_on_conv_state(const uint8_t *pValue, uint16_t length);
 
+/* 0x13/0x14 — SkaiApp package install path (gui_apps/skaiapp/skaiapp_proto.c).
+   Runs here on the BLE parse thread by design (chunk reassembly + FS write +
+   engine reseed); acks back over KEY_SKAIAPP_ACK. Strong externs, same
+   dead-strip rule as above. */
+extern void skaiapp_on_push_chunk(const uint8_t *pValue, uint16_t length);
+extern void skaiapp_on_remove(const uint8_t *pValue, uint16_t length);
+
 static void handle_conv_state(uint8_t *pValue, uint16_t length)
 {
     if (pValue == NULL || length == 0)
@@ -375,6 +382,22 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_CONV_CLOSE:
         /* @-conversation control — uplink-only (watch→phone); never received here. */
         LOG_W("skailink: conv key 0x%02x is uplink-only", key);
+        break;
+    case KEY_SKAIAPP_PUSH:
+        /* phone→watch (DOWNLINK): chunked AI mini-app package (ADR-0037). */
+        skaiapp_on_push_chunk(pValue, length);
+        break;
+    case KEY_SKAIAPP_REMOVE:
+        /* phone→watch (DOWNLINK): uninstall one AI mini-app. */
+        skaiapp_on_remove(pValue, length);
+        break;
+    case KEY_SKAIAPP_ACK:
+        /* Uplink-only (watch→phone); never received here. */
+        LOG_W("skailink: KEY_SKAIAPP_ACK is uplink-only");
+        break;
+    case KEY_SKAIAPP_VOICE:
+        /* Uplink-only (watch→phone); never received here. */
+        LOG_W("skailink: KEY_SKAIAPP_VOICE is uplink-only");
         break;
     default:
         LOG_W("skailink: unknown key 0x%02x", key);

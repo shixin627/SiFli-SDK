@@ -99,6 +99,9 @@ extern void BLE_LOG_E(const char *format, ...);
         V2T_INTENT_REMOTE_INPUT = 0x02,
         V2T_INTENT_SKAIBAR = 0x03,
         V2T_INTENT_MIC_INPUTE = 0x04,
+        V2T_INTENT_MEMO = 0x05,     /* SkaiApp memo voice fill (ADR-0037): the phone
+                                       routes the transcript to setMemoText for the
+                                       memo named in the preceding KEY_SKAIAPP_VOICE. */
     } V2T_INTENT;
 
     extern rt_sem_t go_to_sleep_sem;
@@ -125,6 +128,7 @@ extern void BLE_LOG_E(const char *format, ...);
     extern void interact_timer_reminder(void);
     extern void interact_mic_listen(bool enable);
     extern void interact_mic_v2t_input(void);
+    extern void interact_memo_v2t_input(void);  /* SkaiApp memo 🎤 voice fill (ADR-0037) */
     extern void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData);
     extern void interact_chat_result(MSG_DATA_PAYLOAD *msgData);
     extern void interact_cancel_bond(void);

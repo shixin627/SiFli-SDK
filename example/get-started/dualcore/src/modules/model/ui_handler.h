@@ -36,6 +36,8 @@ extern "C"
 // #define APP_ID_SLEEP "sleep"   /* Sleep UI app removed; sleep data still uploaded via commu_send_sleep_data() */
 // ----- Todo
 #define APP_ID_ALARM "alarm"
+/* SkaiApp host — AI-generated declarative mini-apps (SkaiLink ADR-0037) */
+#define APP_ID_SKAIAPP "skaiapp"
 // ----- Dev
 #define APP_ID_GESTURE "gesture"
 #define APP_ID_GAME_DINOSAUR "game_dinosaur"
@@ -65,6 +67,7 @@ extern "C"
         app_id_game_dinosaur,
         app_id_photo,
         app_id_sleep,
+        app_id_skaiapp,
     } watch_app_id_t;
 
     enum

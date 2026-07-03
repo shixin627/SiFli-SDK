@@ -383,6 +383,35 @@ bool commu_send_conv_close(void)
     return ok;
 }
 
+/* watch→phone (SKAI_LINK): SkaiApp install/remove result (ADR-0037).
+   id is charset-whitelisted upstream ([a-z0-9-]) so raw %s is quote-safe. */
+bool commu_send_skaiapp_ack(const char *id, int code)
+{
+    if (id == NULL || id[0] == '\0') return false;
+    char json[64];
+    int n = rt_snprintf(json, sizeof(json), "{\"id\":\"%s\",\"code\":%d}", id, code);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIAPP_ACK, json);
+    LOG_I("send skaiapp ack id=%s code=%d -> %s", id, code, ok ? "ok" : "FAILED");
+    return ok;
+}
+
+/* watch→phone (SKAI_LINK): the user tapped a memo's 🎤 to voice-fill it (ADR-0037).
+   app_id/memo_id are charset-whitelisted ([a-z0-9-]) so raw %s is quote-safe. The
+   phone remembers this target and routes the next STT transcript to setMemoText. */
+bool commu_send_skaiapp_voice(const char *app_id, const char *memo_id)
+{
+    if (app_id == NULL || app_id[0] == '\0' || memo_id == NULL || memo_id[0] == '\0')
+        return false;
+    char json[80];
+    int n = rt_snprintf(json, sizeof(json), "{\"id\":\"%s\",\"memo\":\"%s\"}",
+                        app_id, memo_id);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIAPP_VOICE, json);
+    LOG_I("send skaiapp voice app=%s memo=%s -> %s", app_id, memo_id, ok ? "ok" : "FAILED");
+    return ok;
+}
+
 /* watch→phone (SKAI_LINK): device-page trackpad relay. The right-side device
    page hosts the hid_mouse trackpad; rather than emitting BLE HID reports, its
    events stream here and the phone actuates them on the active target device.

@@ -1,0 +1,13 @@
+# SkaiApp smoke: run via `_dev_test.cmd -nobuild -script _skaiapp_test.txt -screenshot _skaiapp_sim.png`
+# Installs the three embedded samples through the REAL install path
+# (parse -> FS -> engine), lists them, then opens the host app.
+skaiapp_seed 1
+skaiapp_seed 2
+skaiapp_seed 3
+skaiapp_ls
+battery_set 42
+hr_set 72
+goto_app skaiapp
+app_status
+app_status
+app_status

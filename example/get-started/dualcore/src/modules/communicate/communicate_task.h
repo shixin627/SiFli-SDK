@@ -105,6 +105,10 @@ bool commu_send_conv_open(const char *title, const char *id, uint8_t index); /* 
 bool commu_send_conv_send(const char *text);                                 /* -> KEY_CONV_SEND  (0x10) send one turn (mic→V2T transcript) */
 bool commu_send_conv_close(void);                                            /* -> KEY_CONV_CLOSE (0x11) leave the chat room (back) */
 
+/* SkaiApp AI-generated mini-apps (SkaiLink ADR-0037). */
+bool commu_send_skaiapp_ack(const char *id, int code);                       /* -> KEY_SKAIAPP_ACK (0x15) install/remove result */
+bool commu_send_skaiapp_voice(const char *app_id, const char *memo_id);      /* -> KEY_SKAIAPP_VOICE (0x16) 🎤 voice-fill a memo */
+
 /* Sensor */
 bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length);
 

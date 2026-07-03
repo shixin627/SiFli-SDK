@@ -78,6 +78,8 @@
   "recorder": "Recorder",
   "touchpad": "Touchpad",
   "timer": "Timer",
+  "skaiapp": "AI Apps",
+  "skaiapp_empty": "No mini apps yet.\\nCreate one with AI in SkaiLink.",
   "exercise": "Exercise",
   "gesture": "Gesture",
   "log": "Log",
