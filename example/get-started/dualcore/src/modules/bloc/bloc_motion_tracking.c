@@ -959,6 +959,9 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     float gyro_z = watch_sensor.imu_data.gyro.z * DPS_TO_RADS;
     float gyro_y =
         watch_sensor.imu_data.gyro.y * DPS_TO_RADS; // 新增Y軸陀螺儀數據
+    /* 上下擺腕是繞 x（螢幕橫軸）——y 沿前臂方向是翻腕 roll，
+       2026-07-06 logo 飛鼠實機驗出「上下抓錯軸」 */
+    float gyro_x = watch_sensor.imu_data.gyro.x * DPS_TO_RADS;
 
     extern bool imu_mouse_data_collection;
     /* Roll-compensation reference (DATA-COLLECTION MODE ONLY). Captured at the
@@ -998,8 +1001,11 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     else
     {
         s_collect_gref_valid = false; /* recapture the start posture next session */
+        /* 垂直=繞 x（上下擺腕，正號＝實機兩輪驗出的方向）、水平=繞 z：
+           gyro_y 是翻腕 roll 軸、對不上上下（2026-07-06 logo 飛鼠）。
+           data-collection 分支有自己的 roll 補償映射，不隨動。 */
         delta_movement =
-            air_mouse_algorithm(-gyro_y, gyro_z, AIR_MOUSE_SENSITIVITY);
+            air_mouse_algorithm(gyro_x, gyro_z, AIR_MOUSE_SENSITIVITY);
     }
 
     if (abs(delta_movement.x) >= 3 || abs(delta_movement.y) >= 3)

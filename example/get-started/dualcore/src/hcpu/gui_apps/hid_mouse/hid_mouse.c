@@ -2980,30 +2980,6 @@ static void handle_released_event(lv_indev_t *indev)
     gesture_timer_enabled = false;
     #endif
 }
-static void top_logo_event_cb(lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-
-    switch (code)
-    {
-    case LV_EVENT_PRESSED:
-        user_touching = true;
-        break;
-
-    case LV_EVENT_PRESSING:
-        break;
-
-    case LV_EVENT_RELEASED:
-        user_touching = false;
-        break;
-
-    case LV_EVENT_CLICKED:
-        break;
-
-    default:
-        break;
-    }
-}
 /**
  * @brief Main event callback for touch events
  * @param e Pointer to the event
@@ -6173,31 +6149,124 @@ static void hid_mode_toggle(void)
     LOG_D("mode tap -> %s", hid_mode_names[new_mode]);
 }
 
+/* === 頂部區手勢分流：按住不動=飛鼠 / 下拉=媒體中心 / 快 tap=收合 ==========
+   按下先照舊亮出 media tileview 保住下拉路徑，同時開 hold 計時器：
+   - 手指往下拖離頂部區 → press 轉給 tileview（PRESS_LOST）→ 取消 hold，
+     媒體下拉行為與從前完全相同
+   - 位移累積超過閾值（慢速拖，還沒出區）→ 也取消 hold，讓拖曳走媒體
+   - 按滿 TOP_HOLD_TO_FLY_MS 沒動 → 進飛鼠（handfree，同 FSR 捏壓開關），
+     動態加 PRESS_LOCK 鎖住 press，之後手指小滑不會誤斷；放開即回 trackpad */
+#define TOP_HOLD_TO_FLY_MS 250
+/* 拖曳判定＝離按下起點的曼哈頓距離（不是每幀位移累積——真機手指按住
+   自帶 ±1-2px/幀抖動，累積必超標、hold 永遠 fire 不了，2026-07-06 踩過） */
+#define TOP_HOLD_DRIFT_CANCEL_PX 18
+
+void set_hid_mouse_handfree_mode_to(bool v); // 定義在本檔後段
+static lv_timer_t *s_top_hold_timer = NULL;
+static bool s_top_fly_active = false;
+static lv_point_t s_top_press_start;
+
+static void top_hold_cancel(void)
+{
+    if (s_top_hold_timer)
+    {
+        lv_timer_del(s_top_hold_timer);
+        s_top_hold_timer = NULL;
+    }
+}
+
+/* 結束飛鼠（如果在飛）並還原 press 鎖。冪等。 */
+static void top_fly_end(const char *why)
+{
+    if (s_top_fly_active)
+    {
+        s_top_fly_active = false;
+        LOG_I("[logo-fly] top %s -> handfree OFF", why);
+        set_hid_mouse_handfree_mode_to(false);
+    }
+    if (status_bar_area_up && lv_obj_is_valid(status_bar_area_up))
+        lv_obj_clear_flag(status_bar_area_up, LV_OBJ_FLAG_PRESS_LOCK);
+}
+
+static void top_hold_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    s_top_hold_timer = NULL; // repeat_count=1 跑完自刪，只清指標
+    s_top_fly_active = true;
+    // 鎖住 press：飛鼠期間手指移動不觸發重新 hit-test（會 PRESS_LOST 誤關）
+    if (status_bar_area_up && lv_obj_is_valid(status_bar_area_up))
+        lv_obj_add_flag(status_bar_area_up, LV_OBJ_FLAG_PRESS_LOCK);
+    LOG_I("[logo-fly] top hold %dms -> handfree ON", TOP_HOLD_TO_FLY_MS);
+    set_hid_mouse_handfree_mode_to(true);
+}
+
 /**
  * @brief status_bar_area_up 事件 cb（仿 app_clock_status_bar 的
  *        notification_status_bar_cb）
- *        - PRESSED：把 tileview 顯示出來、tile 設成 home (0,0)
+ *        - PRESSED：把 tileview 顯示出來、tile 設成 home (0,1)
  *          這樣使用者後續拖曳時 LVGL 會把 press 轉給 tileview，
- *          由 tileview 原生處理拖曳/snap/動畫
+ *          由 tileview 原生處理拖曳/snap/動畫；同時開 hold 計時器
+ *        - PRESSING：位移累積過大 → 取消 hold（拖曳意圖，走媒體）
+ *        - PRESS_LOST：press 被 tileview 接走 → 取消 hold / 結束飛鼠
  *        - RELEASED：只在 press 沒被 tileview 接走時才會 fire
- *          → 視為純點擊：收掉 tileview + 切換 mode
+ *          → tap 或飛鼠放開：收掉 tileview + 結束飛鼠
  */
 static void status_bar_area_up_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_PRESSED)
     {
-        if (!media_tileview || !lv_obj_is_valid(media_tileview))
-            return;
-        // 把 tileview 鎖在 home (0,1)；接下來使用者往下拖時 LVGL 把
-        // press 轉給 tileview，tileview 自己滾到 media (0,0)
-        lv_obj_set_tile_id(media_tileview, 0, 1, false);
-        lv_obj_clear_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(media_tileview);
+        /* 這裡「不能」先亮 media tileview —— LVGL 無 PRESS_LOCK 時每 tick
+           重新 hit-test，全螢幕 tileview 一亮 press 下一 tick 就被它搶走
+           (PRESS_LOST)，hold 永遠 fire 不了（2026-07-06 真機踩過）。
+           tileview 延到 PRESSING 確認拖曳意圖時才亮。 */
+        {
+            lv_indev_t *indev = lv_indev_get_act();
+            if (indev)
+                lv_indev_get_point(indev, &s_top_press_start);
+        }
+        top_hold_cancel();
+        s_top_hold_timer = lv_timer_create(top_hold_timer_cb,
+                                           TOP_HOLD_TO_FLY_MS, NULL);
+        lv_timer_set_repeat_count(s_top_hold_timer, 1);
+    }
+    else if (code == LV_EVENT_PRESSING)
+    {
+        if (s_top_hold_timer)
+        {
+            lv_indev_t *indev = lv_indev_get_act();
+            if (indev)
+            {
+                lv_point_t now;
+                lv_indev_get_point(indev, &now);
+                lv_coord_t dx = now.x - s_top_press_start.x;
+                lv_coord_t dy = now.y - s_top_press_start.y;
+                if (LV_ABS(dx) + LV_ABS(dy) > TOP_HOLD_DRIFT_CANCEL_PX)
+                {
+                    // 離起點夠遠 → 拖曳意圖：取消 hold，這時才亮 tileview。
+                    // press 下一 tick 被它接走（就是原本的媒體下拉機制）
+                    top_hold_cancel();
+                    if (media_tileview && lv_obj_is_valid(media_tileview))
+                    {
+                        lv_obj_set_tile_id(media_tileview, 0, 1, false);
+                        lv_obj_clear_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
+                        lv_obj_move_foreground(media_tileview);
+                    }
+                }
+            }
+        }
+    }
+    else if (code == LV_EVENT_PRESS_LOST)
+    {
+        // press 被 tileview 接走（媒體下拉路徑）
+        top_hold_cancel();
+        top_fly_end("PRESS_LOST");
     }
     else if (code == LV_EVENT_RELEASED)
     {
-        // 沒被 tileview 接走 → tap → 收 tileview
+        top_hold_cancel();
+        top_fly_end("RELEASED");
+        // tap（沒拖沒 hold）或飛鼠放開 → 收 tileview
         // （之前在這裡會 hid_mode_toggle，現在改用底部 bar 切換 mode）
         if (media_tileview && lv_obj_is_valid(media_tileview))
         {
@@ -6568,8 +6637,9 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_event_cb(status_bar_area_up, status_bar_area_up_cb,
                         LV_EVENT_ALL, NULL);
 
-    // 區中央放 img_logo 當下拉提示。lv_img 預設 non-clickable，press 穿透
-    // 給 status_bar_area_up，下拉/tap 行為不變；keyboard mode 隨父物件一起藏
+    // 區中央放 img_logo（純視覺，non-clickable → press 穿透給
+    // status_bar_area_up 統一做手勢分流：按住不動=飛鼠/下拉=媒體/tap）。
+    // keyboard mode 隨父物件一起藏。
     lv_obj_t *top_logo = lv_img_create(status_bar_area_up);
     lv_img_set_src(top_logo, &img_logo);
     // 原生 80×80 縮到 ~56px，佔 80px 高觸發區 ~70%（同媒體鈕 icon 比例）
@@ -6639,9 +6709,11 @@ void set_hid_mouse_handfree_mode(void)
     handfree = !handfree;
 }
 
-// 直接設定 handfree state（不 toggle），給 fsr 壓感 sampler 用
+// 直接設定 handfree state（不 toggle），給 fsr 壓感 sampler / 頂部 logo 用
 void set_hid_mouse_handfree_mode_to(bool v)
 {
+    if (handfree != v)
+        LOG_I("[logo-fly] handfree -> %d", v);
     handfree = v;
 }
 
@@ -6854,6 +6926,11 @@ void hid_mouse_destroy(void)
     media_center_play_btn = NULL;
     media_center_play_img = NULL;
     status_bar_area_up = NULL;
+    // 頂部按住進的飛鼠模式：app 被拆時可能收不到 RELEASED，static 殘留
+    // true 會讓下次進 app 直接是飛鼠 → 拆除時一律歸位
+    top_hold_cancel();
+    s_top_fly_active = false;
+    handfree = false;
 
     // Keyboard mode 下半部 mic 區清理
     kbd_mic_section = NULL;
