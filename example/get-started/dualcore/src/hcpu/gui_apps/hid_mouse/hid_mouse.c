@@ -3814,6 +3814,17 @@ static void mouse_v2t_open(void)
     mouse_v2t_open_with_intent(V2T_INTENT_MIC_INPUTE);
 }
 
+// 由「錶面立起正對臉」姿態偵測 (bloc_motion_tracking, motion thread) 跨層觸發：
+// 發 LVGL msg 轉到 LVGL thread 的 open_skaibar_from_pose，複製「點底部 bar」帶出
+// 單設備 skaibar 列表 (instruction_list_bar_tap_device)，非開 v2t 錄音。
+// thread-safe：只發 msg，實際開 skaibar 在 LVGL thread。
+void hid_mouse_trigger_skaibar_from_pose(void)
+{
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR;
+    lvgl_send_msg(msg);
+}
+
 // 關 mic（不清空 input bar、不貼上）
 // 清空只在使用者按 Enter 時做（input_enter_btn_event_cb / 鍵盤 Enter 鍵）
 static void mouse_v2t_close_and_paste(void)
@@ -6386,6 +6397,19 @@ static void bar_ai_on_tap(void)
 {
     s_last_bar_tap_tick = rt_tick_get();
     bar_ai_sync_set_hidden(true); /* 立刻收，不等 poll → 第一次 tap 就不會看到兩條 */
+}
+
+// 「錶面立起正對臉」姿態觸發：在 LVGL thread 複製「純 tap 底部 bar」的行為 —— 帶出
+// 單設備 skaibar 列表 + 叫該設備開 skaibar（等同 text_input_bar_cb 的 tap 分支，
+// 見該函式「純點擊」段）。由 motion thread 的 hid_mouse_trigger_skaibar_from_pose
+// 發 LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR 轉進來，故此處已在 LVGL thread、可直接碰 UI。
+void open_skaibar_from_pose(void)
+{
+    if (s_bottom_input_disabled)
+        return;
+    extern void instruction_list_bar_tap_device(const char *device_id);
+    instruction_list_bar_tap_device(s_dev_active_id);
+    bar_ai_on_tap(); /* 列表一進來就立刻收自有 bar，避免重疊（同 tap 路徑） */
 }
 /* 給 instruction_list 在「切換浮層 bar 顯示/隱藏的當幀」同步呼叫 → frame-perfect 交接，
    消除 poll 40ms 延遲造成的那一閃/空窗。off-mouse(trackpad_mic_btn NULL)為 no-op、錶盤不受影響。 */

@@ -96,6 +96,14 @@ void hid_mouse_set_host_pull_cb(void (*cb)(int up_px, int released));
  */
 void hid_mouse_set_hosted(bool hosted);
 
+/**
+ * @brief 由「錶面立起正對臉」姿態偵測跨層觸發：帶出單設備 skaibar 列表
+ *        (等同使用者點擊底部 bar)。僅在滑鼠 app 前景由 bloc_motion_tracking
+ *        的 set_gravity_position(GRAVITY_POSITION_VERTICAL) 呼叫。
+ *        內部發 LVGL msg，實際開 skaibar 在 LVGL thread (open_skaibar_from_pose)。
+ */
+void hid_mouse_trigger_skaibar_from_pose(void);
+
 #ifdef __cplusplus
 }
 #endif

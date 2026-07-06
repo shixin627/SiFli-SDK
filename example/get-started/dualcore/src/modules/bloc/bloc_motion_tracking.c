@@ -1221,6 +1221,22 @@ static void app_control_interface(Vector3 *gyro, Vector3 *gravity)
 
 static int gravity_position = GRAVITY_POSITION_OTHER;
 
+/* ── 「錶面立起正對臉」姿態 (GRAVITY_POSITION_VERTICAL) 觸發滑鼠 app 麥克風 ──
+ * gravity.z = 錶面法線 (switch_freehand_mode = gravity.z < -0.5 = 錶面朝下)。
+ * 真機 [POSE-CAL] 校準 (2026-07-06)：
+ *   平放錶面朝上 → g≈(0, 0.05, +0.99)
+ *   立起正對臉   → g≈(-0.05, +0.96, +0.22)  ← gravity.y 正向主導 (12點朝上)、z 由 1 降下
+ * 故判定＝gravity.y 高 + gravity.z 低。y 為「正」向，與既有 SIDE (gravity.y < -0.7)
+ * 反向、不相撞；亦與 HORIZONTAL (fabs(gravity.y) < 0.5) 互斥。
+ * 去抖：幾何條件連續穩定 ~300ms 才算數，避免滑鼠操作中手腕晃動掃過豎直角就誤觸。*/
+#define GRAVITY_VERTICAL_Y_MIN 0.85f  /* gravity.y > 此值 = 錶身直立、12點朝上 (實測 0.92-0.97) */
+#define GRAVITY_VERTICAL_Z_MAX 0.50f  /* gravity.z < 此值 = 錶面法線離開朝天 (實測立起 0.20-0.37) */
+/* 去抖用「時間」不用「幀數」：motion 更新率會浮動 (實測平放靜止約 3Hz、
+ * 動作時更高)，固定幀數的保持時間不可預期 (30 幀 @ 3Hz ≈ 10s 太久)。
+ * 記錄進入姿態的 tick，vertical_geom 持續此毫秒數才承認 VERTICAL。*/
+#define GRAVITY_VERTICAL_STABLE_MS 300
+static rt_tick_t s_vertical_geom_since = 0; /* 0 = 目前不在 vertical_geom 姿態 */
+
 int get_gravity_position(void)
 {
     return gravity_position;
@@ -1260,6 +1276,17 @@ void set_gravity_position(int position)
             motor_pattern_unlocked();
         extern void animate_open_ai_widget(void);
         animate_open_ai_widget();
+    }
+    /* 「錶面立起正對臉」→ 滑鼠 app 前景時帶出單設備 skaibar (等同點底部 bar)。
+       gui_app_is_actived() 會 assert GUI thread，此處在 motion thread，故只用
+       is_at_mouse_mode / app_control_get_mouse_mode 判前景 (兩者皆不 assert)。
+       gravity_position 為邊緣觸發 (同 state 早 return)，保持豎直不動不會重觸；
+       放平回 OTHER/HORIZONTAL 後再立起才會再觸發。 */
+    if (gravity_position == GRAVITY_POSITION_VERTICAL &&
+        (is_at_mouse_mode() || app_control_get_mouse_mode()))
+    {
+        extern void hid_mouse_trigger_skaibar_from_pose(void);
+        hid_mouse_trigger_skaibar_from_pose();
     }
 #ifdef SHOW_UNGRAB_ENABLE_INDICATOR
     uint8_t app_id = app_id_mainmenu;
@@ -1318,14 +1345,35 @@ static void calculate_gravity_position(Vector3 *gravity)
             (int16_t)(gravity->x *
                       -100)); // Update level bar based on gravity x-axis
     }
+    /* 「錶面立起正對臉」時間去抖：vertical_geom 幾何條件要「持續」
+       GRAVITY_VERTICAL_STABLE_MS 毫秒才承認為 VERTICAL，避免滑鼠操作中手腕瞬間
+       掃過豎直角度就誤觸 mic。用 wall-clock tick 不用幀數 — motion 更新率浮動，
+       固定幀數保持時間不可預期。其他姿態 (SIDE/HORIZONTAL) 維持即時切換不變。 */
+    bool vertical_geom = (gravity->y > GRAVITY_VERTICAL_Y_MIN &&
+                          gravity->z < GRAVITY_VERTICAL_Z_MAX);
+    if (vertical_geom)
+    {
+        if (s_vertical_geom_since == 0)
+            s_vertical_geom_since = rt_tick_get();
+    }
+    else
+    {
+        s_vertical_geom_since = 0;
+    }
+    rt_tick_t vertical_held =
+        (s_vertical_geom_since == 0) ? 0 : (rt_tick_get() - s_vertical_geom_since);
+    bool vertical_stable =
+        vertical_geom &&
+        (vertical_held >= rt_tick_from_millisecond(GRAVITY_VERTICAL_STABLE_MS));
+
     if (gravity->y < -0.7 && gravity->z < 0.3)
     {
         set_gravity_position(GRAVITY_POSITION_SIDE);
     }
-    // else if (gravity->x > 0.5 && can_open_ai_interface())
-    // {
-    //     set_gravity_position(GRAVITY_POSITION_AI);
-    // }
+    else if (vertical_stable)
+    {
+        set_gravity_position(GRAVITY_POSITION_VERTICAL);
+    }
     else if ((gravity->x < 0.5 && gravity->x > -0.3) && fabs(gravity->y) < 0.5)
     {
         set_gravity_position(GRAVITY_POSITION_HORIZONTAL);
