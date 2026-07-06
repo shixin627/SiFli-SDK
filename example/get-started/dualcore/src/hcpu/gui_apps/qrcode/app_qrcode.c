@@ -74,12 +74,16 @@ static void on_start(lv_obj_t *scr)
     lv_obj_center(card);
     lv_obj_add_event_cb(card, qrcode_event_cb, LV_EVENT_CLICKED, NULL);
 
-    /* 148px (not 200) keeps the TRUE_COLOR canvas DRV_EPIC_NEW_API forces down to
-       ~44KB instead of ~80KB — the 200px alloc was failing under heap pressure
-       (lv_qrcode.c:86 malloc assert). Still ≥4px/module for this URL's QR. */
+    /* 148px fills the 172px card minus its 12px padding, ≥4px/module for this
+       URL. The TRUE_COLOR canvas buffer comes from the PSRAM image-cache heap
+       (lv_qrcode_setparam) — the system heap fragments after long uptime and a
+       ~44KB rt_malloc there used to assert-crash the watch on the 4th open.
+       setparam returns NULL if even that alloc fails; skip update, keep the
+       code label so the page still shows something useful. */
     lv_obj_t *qrcode = lv_qrcode_create(card);
-    lv_qrcode_setparam(qrcode, 148, lv_color_black(), lv_color_white());
-    lv_qrcode_update(qrcode, url, strlen(url));
+    if (lv_qrcode_setparam(qrcode, 148, lv_color_black(), lv_color_white()) != NULL) {
+        lv_qrcode_update(qrcode, url, strlen(url));
+    }
     lv_obj_center(qrcode);
     lv_obj_add_event_cb(qrcode, qrcode_event_cb, LV_EVENT_CLICKED, NULL);
 

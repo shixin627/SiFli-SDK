@@ -11,6 +11,10 @@
 
 #include "qrcodegen.h"
 
+#ifdef DRV_EPIC_NEW_API
+    #include "app_mem.h"
+#endif
+
 /*********************
  *      DEFINES
  *********************/
@@ -80,12 +84,19 @@ lv_obj_t * lv_qrcode_setparam(lv_obj_t * obj, lv_coord_t size, lv_color_t dark_c
     /* EPIC GPU (new API) does not support LV_IMG_CF_INDEXED_1BIT and the
      * software blend fallback is intentionally disabled, so an INDEXED_1BIT
      * canvas would render as blank. Use TRUE_COLOR instead — it costs more
-     * RAM but is rendered directly by the GPU. */
+     * RAM but is rendered directly by the GPU.
+     *
+     * The TRUE_COLOR buffer (~43KB at 148px) is too large for the LVGL/system
+     * heap once it fragments after long uptime, so take it from the
+     * image-cache heap (PSRAM first, system heap fallback) like the lvsf
+     * curvetext/corner canvases do. On alloc failure return NULL instead of
+     * asserting: a missing QR must not take the watch down. */
     uint32_t buf_size = LV_CANVAS_BUF_SIZE_TRUE_COLOR(size, size);
-    uint8_t * buf = lv_mem_alloc(buf_size);
-    LV_ASSERT_MALLOC(buf);
-    if(buf == NULL)
+    uint8_t * buf = app_canvas_mem_alloc(buf_size);
+    if(buf == NULL) {
+        LV_LOG_ERROR("qrcode canvas buffer alloc failed");
         return NULL;
+    }
 
     lv_canvas_set_buffer(obj, buf, size, size, LV_IMG_CF_TRUE_COLOR);
 #else
@@ -113,6 +124,9 @@ lv_res_t lv_qrcode_update(lv_obj_t * qrcode, const void * data, uint32_t data_le
 {
     lv_qrcode_t * qr = (lv_qrcode_t *)qrcode;
 
+    lv_img_dsc_t * imgdsc = lv_canvas_get_img(qrcode);
+    if(imgdsc->data == NULL) return LV_RES_INV; /* lv_qrcode_setparam failed or was never called */
+
 #ifdef DRV_EPIC_NEW_API
     lv_canvas_fill_bg(qrcode, qr->light_color_param, LV_OPA_COVER);
 #else
@@ -128,8 +142,6 @@ lv_res_t lv_qrcode_update(lv_obj_t * qrcode, const void * data, uint32_t data_le
 #endif
 
     if(data_len > qrcodegen_BUFFER_LEN_MAX) return LV_RES_INV;
-
-    lv_img_dsc_t * imgdsc = lv_canvas_get_img(qrcode);
 
     int32_t qr_version = qrcodegen_getMinFitVersion(qrcodegen_Ecc_MEDIUM, data_len);
     if(qr_version <= 0) return LV_RES_INV;
@@ -278,7 +290,14 @@ static void lv_qrcode_destructor(const lv_obj_class_t * class_p, lv_obj_t * obj)
 
     lv_img_dsc_t * img = lv_canvas_get_img(obj);
     lv_img_cache_invalidate_src(img);
+#ifdef DRV_EPIC_NEW_API
+    /* Must pair with app_canvas_mem_alloc in lv_qrcode_setparam. app_cache_free
+     * defers the actual free until the EPIC GPU is idle, so a render list still
+     * referencing this canvas cannot use freed memory. */
+    if(img->data) app_canvas_mem_free((void *)img->data);
+#else
     lv_mem_free((void *)img->data);
+#endif
     img->data = NULL;
 }
 

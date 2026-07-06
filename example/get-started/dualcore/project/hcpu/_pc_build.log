@@ -18,116 +18,16 @@ Mkdir("resource/strings")
 scons: done reading SConscript files.
 scons: Building targets ...
 scons: building associated VariantDir targets: build_pc_hcpu .
-CC build_pc_hcpu\modules\bloc\bloc_control.obj
-Building compilation database build_pc_hcpu\compile_commands.json
-bloc_control.c
-CC build_pc_hcpu\modules\bloc\bloc_notification.obj
-CC build_pc_hcpu\modules\bloc\bloc_setting.obj
-CC build_pc_hcpu\modules\bloc\bloc_skaiwalk.obj
-CC build_pc_hcpu\modules\bloc\bloc_peripheral.obj
-bloc_notification.c
-bloc_setting.c
-bloc_skaiwalk.c
 CC build_pc_hcpu\modules\bloc\bloc_motion_tracking.obj
-bloc_peripheral.c
-CC build_pc_hcpu\modules\bloc\bloc_filesystem.obj
+Building compilation database build_pc_hcpu\compile_commands.json
 bloc_motion_tracking.c
-CC build_pc_hcpu\modules\client\imu_client.obj
-bloc_filesystem.c
-imu_client.c
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_filesystem.c(200): warning C4101: 'ui_msg': 未參考的區域變數
-CC build_pc_hcpu\modules\client\hr_client.obj
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_motion_tracking.c(469): warning C4018: '<': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_motion_tracking.c(505): warning C4018: '>': signed/unsigned 不相符
 C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\modules\bloc\bloc_motion_tracking.c(508): warning C4018: '>': signed/unsigned 不相符
-CC build_pc_hcpu\modules\client\watch_system_client.obj
-hr_client.c
-CC build_pc_hcpu\modules\client\alarm_client.obj
-watch_system_client.c
-alarm_client.c
-CC build_pc_hcpu\modules\model\watch_system_interact.obj
-CC build_pc_hcpu\modules\model\ui_handler.obj
-CC build_pc_hcpu\modules\model\gesture_handler.obj
-watch_system_interact.c
-ui_handler.c
-gesture_handler.c
-CC build_pc_hcpu\src\gui_apps\watch_demo.obj
-watch_demo.c
-CC build_pc_hcpu\src\gui_apps\app_layout\lv_instruction_list_layout.obj
-CC build_pc_hcpu\src\gui_apps\app_layout\lv_message_list_layout.obj
-CC build_pc_hcpu\src\gui_apps\battery\app_battery.obj
-lv_instruction_list_layout.c
-lv_message_list_layout.c
-CC build_pc_hcpu\src\gui_apps\clock\app_clock_earth_digita.obj
-app_battery.c
-CC build_pc_hcpu\src\gui_apps\clock\app_clock_main.obj
-CC build_pc_hcpu\src\gui_apps\clock\app_clock_status_bar.obj
-app_clock_earth_digita.c
-app_clock_main.c
-app_clock_status_bar.c
-CC build_pc_hcpu\src\gui_apps\common\ui_helper.obj
-ui_helper.c
-CC build_pc_hcpu\src\gui_apps\device_pager\device_pager.obj
-device_pager.c
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\app_layout\lv_message_list_layout.c(2269): warning C4047: '函式': 'uint16_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\app_layout\lv_message_list_layout.c(2269): warning C4024: 'set_scroll_anim_time': 型式和實質參數 2 不同的類型
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\app_layout\lv_message_list_layout.c(2300): warning C4047: '函式': 'uint16_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\app_layout\lv_message_list_layout.c(2300): warning C4024: 'set_scroll_anim_time': 型式和實質參數 2 不同的類型
-CC build_pc_hcpu\src\gui_apps\flashlight\app_flashlight.obj
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(825): warning C4047: '函式': 'uint16_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(825): warning C4024: 'set_scroll_anim_time': 型式和實質參數 2 不同的類型
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(840): warning C4047: '函式': 'uint16_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\clock\app_clock_status_bar.c(840): warning C4024: 'set_scroll_anim_time': 型式和實質參數 2 不同的類型
-app_flashlight.c
 CC build_pc_hcpu\src\gui_apps\hid_mouse\hid_mouse.obj
-CC build_pc_hcpu\src\gui_apps\interact\app_interact.obj
 hid_mouse.c
-CC build_pc_hcpu\src\gui_apps\interact\app_system_interface.obj
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\common\ui_helper.c(79): warning C4047: '==': 'int' 與 'void *' 間接取值的層級不同
-app_interact.c
-CC build_pc_hcpu\src\gui_apps\main\app_mainmenu.obj
-app_system_interface.c
-CC build_pc_hcpu\src\gui_apps\message\app_message.obj
-app_mainmenu.c
-app_message.c
-CC build_pc_hcpu\src\gui_apps\setting\app_developer.obj
-app_developer.c
-CC build_pc_hcpu\src\gui_apps\setting\app_setting.obj
-app_setting.c
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\hid_mouse\hid_mouse.c(3884): warning C4047: '正在初始化': 'rt_tick_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\hid_mouse\hid_mouse.c(3885): warning C4047: '正在初始化': 'rt_tick_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\interact\app_interact.c(236): warning C4047: '==': 'int' 與 'void *' 間接取值的層級不同
-
-CC build_pc_hcpu\src\gui_apps\skaiapp\skaiapp_engine.obj
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\main\app_mainmenu.c(195): warning C4101: 'is_hidden': 未參考的區域變數
-CC build_pc_hcpu\src\gui_apps\skaiapp\skaiapp_render.obj
-skaiapp_engine.c
-skaiapp_render.c
-CC build_pc_hcpu\src\gui_apps\test\app_test.obj
-CC build_pc_hcpu\src\gui_apps\timer\app_timer.obj
-app_test.c
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(292): warning C4047: '函式': 'uint8_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(292): warning C4024: 'common_text_button': 型式和實質參數 3 不同的類型
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(292): warning C4047: '函式': 'lv_coord_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(292): warning C4024: 'common_text_button': 型式和實質參數 4 不同的類型
-
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(292): warning C4024: 'common_text_button': 型式和實質參數 5 不同的類型
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(294): warning C4047: '函式': 'uint8_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(294): warning C4024: 'common_text_button': 型式和實質參數 3 不同的類型
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(294): warning C4047: '函式': 'lv_coord_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(294): warning C4024: 'common_text_button': 型式和實質參數 4 不同的類型
-
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(294): warning C4024: 'common_text_button': 型式和實質參數 5 不同的類型
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(298): warning C4047: '函式': 'uint8_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(298): warning C4024: 'common_text_button': 型式和實質參數 3 不同的類型
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(298): warning C4047: '函式': 'lv_coord_t' 與 'void *' 間接取值的層級不同
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(298): warning C4024: 'common_text_button': 型式和實質參數 4 不同的類型
-
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_developer.c(298): warning C4024: 'common_text_button': 型式和實質參數 5 不同的類型
-app_timer.c
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_setting.c(401): warning C4090: '函式': 不同的 'const' 限定詞
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_setting.c(1076): warning C4018: '<': signed/unsigned 不相符
-C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\setting\app_setting.c(1077): warning C4018: '>': signed/unsigned 不相符
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\hid_mouse\hid_mouse.c(3871): warning C4047: '正在初始化': 'rt_tick_t' 與 'void *' 間接取值的層級不同
+C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\src\hcpu\gui_apps\hid_mouse\hid_mouse.c(3872): warning C4047: '正在初始化': 'rt_tick_t' 與 'void *' 間接取值的層級不同
 LINK build_pc_hcpu\main.exe
    ���b�إߵ{���w build_pc_hcpu\main.lib �M���� build_pc_hcpu\main.exp
 LINK : warning LNK4098: �w�]���{���w 'LIBCMTD' �P��L�ϥΪ��{���w�Ĭ�A�Шϥ� /NODEFAULTLIB:library
