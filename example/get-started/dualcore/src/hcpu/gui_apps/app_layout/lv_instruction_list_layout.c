@@ -1895,9 +1895,11 @@ static bool s_bar_voice_active = false; /* bar 長按語音進行中 */
 static lv_obj_t *s_mic_ripple = NULL;   /* 藍圈脈衝(mic_bar 子物件,隨層鏈刪) */
 
 #define LMIC_RIPPLE_COLOR 0x5DA8FF
-#define LMIC_RIPPLE_MIN_D 24
-#define LMIC_RIPPLE_MAX_D 96
+#define LMIC_RIPPLE_MIN_D 48
+#define LMIC_RIPPLE_MAX_D 176
 #define LMIC_RIPPLE_PERIOD_MS 1200
+/* 圖示與藍圈圓心的垂直偏移(64px 原生大小置中即可,不會被底緣切到) */
+#define LMIC_ICON_Y_OFS 0
 
 /* v: 0..256 — 直徑 MIN→MAX、邊框 opa COVER→0,結束跳回中心重播(不回放)。 */
 static void mic_ripple_anim_cb(void *var, int32_t v)
@@ -1908,7 +1910,7 @@ static void mic_ripple_anim_cb(void *var, int32_t v)
     lv_coord_t d = LMIC_RIPPLE_MIN_D +
                    (lv_coord_t)((LMIC_RIPPLE_MAX_D - LMIC_RIPPLE_MIN_D) * v / 256);
     lv_obj_set_size(ring, d, d);
-    lv_obj_align(ring, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_align(ring, LV_ALIGN_CENTER, 0, LMIC_ICON_Y_OFS); /* 圓心對齊上移後的圖示 */
     lv_obj_set_style_border_opa(ring, LV_OPA_COVER - (LV_OPA_COVER * v / 256), 0);
 }
 
@@ -1965,12 +1967,10 @@ static void mic_bar_voice_start(void)
     extern bool get_bluetooth_connection_status(void);
     if (!get_bluetooth_connection_status())
         return;
-    /* 重 latch 單設備模式(同 2nd-tap 分支理由:中間任何 dismiss 都會清掉手機
-       flag,不重 latch 這次 transcript 會誤走廣播而非控制中那台)。 */
-    {
-        extern bool commu_send_skaibar_open_device(void);
-        commu_send_skaibar_open_device();
-    }
+    /* 不重送 0x0E:hold 流程從列表開啟(已 latch 單設備)到按住之間沒有任何中途
+       dismiss,再送一次只會讓電腦端 re-summon + 重新置中 → 面板跳位(founder
+       2026-07-06 實測)。2nd-tap 分支需要重 latch 是因它中間夾了 box-close 的
+       dismiss;這裡沒有。 */
     set_ai_open_mic(true);
     voice_set_pending_v2t_intent(V2T_INTENT_SKAIBAR);
     voice_provider.start_v2t();
@@ -5630,24 +5630,24 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_img_set_src(s_mic_bar_icon, &micro_icon);
     lv_img_set_pivot(s_mic_bar_icon, micro_icon.header.w / 2, micro_icon.header.h / 2);
     lv_obj_add_flag(s_mic_bar_icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-    lv_img_set_zoom(s_mic_bar_icon, 128);
-    lv_obj_center(s_mic_bar_icon);
+    lv_img_set_zoom(s_mic_bar_icon, 256); /* 64px 原生 1:1(founder 2026-07-06 定案:64) */
+    lv_obj_align(s_mic_bar_icon, LV_ALIGN_CENTER, 0, LMIC_ICON_Y_OFS); /* 上移避免被底緣切到 */
     lv_obj_clear_flag(s_mic_bar_icon, LV_OBJ_FLAG_CLICKABLE);
 
-    /* UPWARD-ONLY tap helper for the slim 100x16 pill (hard to hit). A transparent
-       sibling band glued to the bar's TOP and growing UP only — its bottom is at
-       the bar's top (~36px above the screen bottom), so it never reaches the bottom
-       edge where the app-list swipe-up presses down. That is the whole point: a
-       symmetric ext_click_area (and the removed 240x90 overlay) grew DOWNWARD into
-       that edge and swallowed the swipe-up; this can't, and the bar's own 20-36px
-       band keeps its existing tap-vs-drag split untouched. mic_hit_event_cb opens
-       only while the bar is shown; PRESS_LOCK cleared so a drag still transfers
-       down. Created BEFORE ai_box so the open box covers it (z-order). Child of
-       s_global_bar_layer -> chain-deleted with the bar. */
+    /* ONE-PIECE tap helper covering the bar + the zone above it (founder 2026-07-06:
+       可按區太小 — 長按尤其難:PRESS_LOCK 已清,手指飄出物件就把 press 交出去而中斷;
+       舊的「bar 本體 + 上方 40px band」兩件式在交界一跨就斷)。單一 240 x (LMIC_H+56)
+       的透明大片、底部對齊 bar 的 BOTTOM(LMIC_Y)向上長 — 仍然不往下進螢幕底緣那
+       20px:app-list swipe-up 帶完全保留(這正是當年拆掉對稱 ext_click_area 的原因)。
+       蓋住 bar 之後所有 tap/長按都走 mic_hit(CLICKED forward 進 mic_bar_event_cb、
+       長按語音 cb 同掛),行為與點 bar 本體一致。PRESS_LOCK cleared so a drag still
+       transfers down. Created BEFORE ai_box so the open box covers it (z-order).
+       Child of s_global_bar_layer -> chain-deleted with the bar. */
     lv_obj_t *mic_hit = lv_obj_create(s_global_bar_layer);
     lv_obj_remove_style_all(mic_hit);
-    lv_obj_set_size(mic_hit, LMIC_W + 40, 40);
-    lv_obj_align(mic_hit, LV_ALIGN_BOTTOM_MID, 0, LMIC_Y - LMIC_H); /* bottom = bar TOP; grows up to ~76px */
+    /* founder 2026-07-06 定案:可觸發範圍=原本(216x71 兩件式)的 1.5 倍 → 324x106。 */
+    lv_obj_set_size(mic_hit, 324, LMIC_H + 75);
+    lv_obj_align(mic_hit, LV_ALIGN_BOTTOM_MID, 0, LMIC_Y); /* bottom = bar BOTTOM;向上長,不進底緣帶 */
     lv_obj_add_flag(mic_hit, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(mic_hit, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(mic_hit, LV_OBJ_FLAG_PRESS_LOCK); /* drag transfers down to the swipe-up */
