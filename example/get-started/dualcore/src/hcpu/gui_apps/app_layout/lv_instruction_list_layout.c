@@ -81,7 +81,8 @@ LV_IMG_DECLARE(plus);
 LV_IMG_DECLARE(icon_mic);
 LV_IMG_DECLARE(message_widget_bg);
 LV_IMG_DECLARE(skaibar_img); /* 176x31 — the bottom mic bar's resting look (ezip, auto-built) */
-LV_IMG_DECLARE(micro_icon);  /* shared mic glyph — the bottom trigger's NEW resting look (matches the chat page) */
+LV_IMG_DECLARE(micro_icon);
+LV_IMG_DECLARE(micro_open_icon); /* bar 長按語音進行中的淺藍 mic(同 hid_mouse V2T active) */  /* shared mic glyph — the bottom trigger's NEW resting look (matches the chat page) */
 
 #define DBG_TAG "instruction.list.layout"
 #define DBG_LVL DBG_INFO
@@ -1881,9 +1882,163 @@ static void stop_mock_inst_update(void)
    mic_bar has PRESS_LOCK cleared, so a DRAG transfers the press down to the
    bottom status_bar_area (which finger-follows the watch-face bottom-up = app
    list gesture); only a stationary tap fires LV_EVENT_CLICKED. */
+/* ── 舉起帶出的 skaibar:底部 bar 長按 = 對講機語音 ─────────────────────────
+   滑鼠 app「錶面立起」帶出 browse 列表後,按住底部 bar 直接啟動 V2T_INTENT_SKAIBAR
+   語音(不 morph 輸入框),放開即停 — 轉錄經手機以單設備模式送到電腦 skaibar,電腦端
+   完全等於某個已存 action 標題就直接執行。視覺:micro_icon → micro_open_icon +
+   同色(0x5DA8FF,同 hid_mouse KBD_MIC_PULSE_COLOR,取自 micro_open_icon 的淺藍)
+   藍圈從 icon 中心放大漸淡、循環重播。只在「舉起」帶出的 session 生效
+   (s_opened_by_lift) — 手動 tap 的流程維持原兩段式(2nd tap 開 box+語音)。 */
+static bool s_opened_by_lift = false;   /* 本次 drawer session 由舉起手勢帶出 */
+static bool s_mic_lp_consumed = false;  /* 長按已處理→吃掉隨後的 CLICKED */
+static bool s_bar_voice_active = false; /* bar 長按語音進行中 */
+static lv_obj_t *s_mic_ripple = NULL;   /* 藍圈脈衝(mic_bar 子物件,隨層鏈刪) */
+
+#define LMIC_RIPPLE_COLOR 0x5DA8FF
+#define LMIC_RIPPLE_MIN_D 24
+#define LMIC_RIPPLE_MAX_D 96
+#define LMIC_RIPPLE_PERIOD_MS 1200
+
+/* v: 0..256 — 直徑 MIN→MAX、邊框 opa COVER→0,結束跳回中心重播(不回放)。 */
+static void mic_ripple_anim_cb(void *var, int32_t v)
+{
+    lv_obj_t *ring = (lv_obj_t *)var;
+    if (!ring || !lv_obj_is_valid(ring))
+        return;
+    lv_coord_t d = LMIC_RIPPLE_MIN_D +
+                   (lv_coord_t)((LMIC_RIPPLE_MAX_D - LMIC_RIPPLE_MIN_D) * v / 256);
+    lv_obj_set_size(ring, d, d);
+    lv_obj_align(ring, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_border_opa(ring, LV_OPA_COVER - (LV_OPA_COVER * v / 256), 0);
+}
+
+static void mic_bar_voice_visual(bool on)
+{
+    if (s_mic_bar_icon && lv_obj_is_valid(s_mic_bar_icon))
+        lv_img_set_src(s_mic_bar_icon, on ? &micro_open_icon : &micro_icon);
+    if (on)
+    {
+        if ((!s_mic_ripple || !lv_obj_is_valid(s_mic_ripple)) &&
+            p_instruction_list_layout && p_instruction_list_layout->mic_bar &&
+            lv_obj_is_valid(p_instruction_list_layout->mic_bar))
+        {
+            s_mic_ripple = lv_obj_create(p_instruction_list_layout->mic_bar);
+            lv_obj_remove_style_all(s_mic_ripple);
+            lv_obj_set_style_border_color(s_mic_ripple,
+                                          lv_color_hex(LMIC_RIPPLE_COLOR), 0);
+            lv_obj_set_style_border_width(s_mic_ripple, 3, 0);
+            lv_obj_set_style_radius(s_mic_ripple, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_opa(s_mic_ripple, LV_OPA_TRANSP, 0);
+            lv_obj_add_flag(s_mic_ripple, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+            /* 圈只是視覺 — 不可吃掉按住/放開的指標事件 */
+            lv_obj_clear_flag(s_mic_ripple, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(s_mic_ripple, LV_OBJ_FLAG_SCROLLABLE);
+        }
+        if (s_mic_ripple && lv_obj_is_valid(s_mic_ripple))
+        {
+            lv_obj_clear_flag(s_mic_ripple, LV_OBJ_FLAG_HIDDEN);
+            lv_anim_del(s_mic_ripple, mic_ripple_anim_cb);
+            lv_anim_t a;
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, s_mic_ripple);
+            lv_anim_set_values(&a, 0, 256);
+            lv_anim_set_time(&a, LMIC_RIPPLE_PERIOD_MS);
+            lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+            lv_anim_set_exec_cb(&a, mic_ripple_anim_cb);
+            lv_anim_start(&a);
+        }
+    }
+    else if (s_mic_ripple && lv_obj_is_valid(s_mic_ripple))
+    {
+        lv_anim_del(s_mic_ripple, mic_ripple_anim_cb);
+        lv_obj_add_flag(s_mic_ripple, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void mic_bar_voice_start(void)
+{
+    if (s_bar_voice_active)
+        return;
+#ifndef BSP_USING_PC_SIMULATOR
+    /* 沒手機=沒轉錄:不進聽音狀態(同 animate_open_ai_widget 的 BT gate 精神) */
+    extern bool get_bluetooth_connection_status(void);
+    if (!get_bluetooth_connection_status())
+        return;
+    /* 重 latch 單設備模式(同 2nd-tap 分支理由:中間任何 dismiss 都會清掉手機
+       flag,不重 latch 這次 transcript 會誤走廣播而非控制中那台)。 */
+    {
+        extern bool commu_send_skaibar_open_device(void);
+        commu_send_skaibar_open_device();
+    }
+    set_ai_open_mic(true);
+    voice_set_pending_v2t_intent(V2T_INTENT_SKAIBAR);
+    voice_provider.start_v2t();
+#endif
+    s_bar_voice_active = true;
+    mic_bar_voice_visual(true);
+    LOG_I("[bar_voice] hold-to-talk START (lift session)");
+}
+
+static void mic_bar_voice_stop(void)
+{
+    if (!s_bar_voice_active)
+        return;
+    s_bar_voice_active = false;
+#ifndef BSP_USING_PC_SIMULATOR
+    /* 同 box 關閉的停止配對:async STOP 事件 + sync 清 voice2TextStatus */
+    voice_provider.stop_v2t();
+    stop_voice_recognition(V2T_INTENT_NOTHING);
+#endif
+    mic_bar_voice_visual(false);
+    LOG_I("[bar_voice] hold-to-talk STOP");
+}
+
+static void mic_bar_voice_event_cb(lv_event_t *evt)
+{
+    switch (lv_event_get_code(evt))
+    {
+    case LV_EVENT_LONG_PRESSED:
+    {
+        if (!s_opened_by_lift)
+            return; /* 只在舉起帶出的 skaibar session 生效 */
+        /* box 已開(有自己的語音管線)不重入 */
+        bool box_visible =
+            p_instruction_list_layout &&
+            p_instruction_list_layout->p_instruction_list_ai_bg &&
+            !lv_obj_has_flag(p_instruction_list_layout->p_instruction_list_ai_bg,
+                             LV_OBJ_FLAG_HIDDEN);
+        if (box_visible)
+            return;
+        s_mic_lp_consumed = true; /* 放開時的 CLICKED 不要 toggle 列表 */
+        mic_bar_voice_start();
+        break;
+    }
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        mic_bar_voice_stop(); /* 未啟動時是 no-op */
+        break;
+    default:
+        break;
+    }
+}
+
+/* 舉起手勢帶出 skaibar 後由 hid_mouse 標記 — 讓 bar 長按語音只在此情境生效。 */
+void instruction_list_mark_opened_by_lift(void)
+{
+    s_opened_by_lift = true;
+}
+
 static void mic_bar_event_cb(lv_event_t *evt)
 {
     if (evt->code != LV_EVENT_CLICKED) return;
+    /* 長按語音剛結束 → 這顆 CLICKED 是同一次按壓的放開,吃掉(mic_hit 轉呼叫
+       也一併被擋,它 forward 進來)。 */
+    if (s_mic_lp_consumed)
+    {
+        s_mic_lp_consumed = false;
+        return;
+    }
     /* Toggle by the box's ACTUAL visibility, not the is_open flag — the flag can
        get stuck true (e.g. navigating away while open without a close), which made
        a tap take the close branch and silently do nothing instead of opening. The
@@ -2090,6 +2245,9 @@ void instruction_list_refeed_single_device(void)
 void instruction_list_bar_tap_device(const char *device_id)
 {
     LOG_I("[bar_dev] tap device_id=\"%s\"", (device_id && device_id[0]) ? device_id : "(EMPTY)");
+    /* 每次進入先重置「舉起帶出」旗標 — 舉起路徑(open_skaibar_from_pose)呼叫完會
+       再標回 true;手動 tap 維持 false(bar 長按語音不生效,保留原兩段式)。 */
+    s_opened_by_lift = false;
     if (!p_instruction_list_layout)
     {
         /* P3 麥克風 OOM 修復:進 standalone 滑鼠 app 時錶盤(Main app)已被 gui_app_exit 整個拆掉,
@@ -2154,6 +2312,8 @@ void instruction_list_bar_device_dismiss(void)
     if (!s_bar_single_device)
         return;
     s_bar_single_device = false;
+    s_opened_by_lift = false;   /* drawer session 結束 */
+    mic_bar_voice_stop();       /* 聽音中被收掉 → 停乾淨(no-op if idle) */
     extern bool commu_send_skaibar_dismiss(void);
     extern void instruction_list_restore_base(void);
     commu_send_skaibar_dismiss();
@@ -5455,6 +5615,10 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_clear_flag(mic_bar, LV_OBJ_FLAG_PRESS_LOCK);
     lv_obj_add_flag(mic_bar, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_add_event_cb(mic_bar, mic_bar_event_cb, LV_EVENT_CLICKED, NULL);
+    /* 舉起帶出的 session:按住=語音(對講機),放開/滑出=停 */
+    lv_obj_add_event_cb(mic_bar, mic_bar_voice_event_cb, LV_EVENT_LONG_PRESSED, NULL);
+    lv_obj_add_event_cb(mic_bar, mic_bar_voice_event_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(mic_bar, mic_bar_voice_event_cb, LV_EVENT_PRESS_LOST, NULL);
     /* The bar's resting look is now the MIC GLYPH (micro_icon), not the slim skaibar_img bar — matching
        the in-chat voice trigger (founder 2026-06-29). Half-size it (zoom 128) with a CENTRE pivot +
        OVERFLOW_VISIBLE on BOTH the glyph and the bar, so the ezip bitmap scales cleanly and isn't
@@ -5488,6 +5652,11 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_obj_clear_flag(mic_hit, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(mic_hit, LV_OBJ_FLAG_PRESS_LOCK); /* drag transfers down to the swipe-up */
     lv_obj_add_event_cb(mic_hit, mic_hit_event_cb, LV_EVENT_CLICKED, NULL);
+    /* 長按語音在放大的 hit 帶上也要作用(slim bar 難按同理);CLICKED 抑制由
+       mic_bar_event_cb 統一處理(mic_hit_event_cb forward 進去)。 */
+    lv_obj_add_event_cb(mic_hit, mic_bar_voice_event_cb, LV_EVENT_LONG_PRESSED, NULL);
+    lv_obj_add_event_cb(mic_hit, mic_bar_voice_event_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(mic_hit, mic_bar_voice_event_cb, LV_EVENT_PRESS_LOST, NULL);
 
     /* (The above mic_hit grows UPWARD only. The old SEPARATE 240x90 / LBOX_W
        hit-area object, by contrast, was removed: on
@@ -6232,6 +6401,10 @@ rt_int32_t instruction_list_deinit(void)
            ai_box hosted in it, so the bar doesn't linger on layer_top after the
            page is torn down. Done before the ai_bg block below (whose individual
            del then no-ops via lv_obj_is_valid, the object already gone). */
+        /* bar 長按語音若還在跑,先停乾淨(mic/BLE/v2t 狀態),再拆 UI。 */
+        mic_bar_voice_stop();
+        s_opened_by_lift = false;
+        s_mic_lp_consumed = false;
         if (s_global_bar_layer != NULL && lv_obj_is_valid(s_global_bar_layer))
         {
             lv_obj_del(s_global_bar_layer);
@@ -6239,6 +6412,7 @@ rt_int32_t instruction_list_deinit(void)
         s_global_bar_layer = NULL;
         s_reveal_edge_overlay = NULL; /* chain-deleted with the bar layer above */
         s_reveal_edge_overlay_left = NULL; /* P2 S3: same — chain-deleted */
+        s_mic_ripple = NULL; /* mic_bar 子物件,已隨層鏈刪 */
         if (p_instruction_list_layout->p_instruction_list_bg != NULL &&
             lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
         {

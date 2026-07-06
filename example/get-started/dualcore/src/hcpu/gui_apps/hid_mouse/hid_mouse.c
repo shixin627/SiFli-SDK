@@ -6410,6 +6410,12 @@ void open_skaibar_from_pose(void)
     extern void instruction_list_bar_tap_device(const char *device_id);
     instruction_list_bar_tap_device(s_dev_active_id);
     bar_ai_on_tap(); /* 列表一進來就立刻收自有 bar，避免重疊（同 tap 路徑） */
+    /* 標記「這個 skaibar session 是舉起帶出的」→ 浮層 bar 的長按=對講機語音
+       (V2T_INTENT_SKAIBAR)只在此情境生效;手動 tap 維持原兩段式。 */
+    {
+        extern void instruction_list_mark_opened_by_lift(void);
+        instruction_list_mark_opened_by_lift();
+    }
 }
 /* 給 instruction_list 在「切換浮層 bar 顯示/隱藏的當幀」同步呼叫 → frame-perfect 交接，
    消除 poll 40ms 延遲造成的那一閃/空窗。off-mouse(trackpad_mic_btn NULL)為 no-op、錶盤不受影響。 */
