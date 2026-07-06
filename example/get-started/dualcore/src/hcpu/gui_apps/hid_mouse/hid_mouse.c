@@ -6568,6 +6568,14 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_event_cb(status_bar_area_up, status_bar_area_up_cb,
                         LV_EVENT_ALL, NULL);
 
+    // 區中央放 img_logo 當下拉提示。lv_img 預設 non-clickable，press 穿透
+    // 給 status_bar_area_up，下拉/tap 行為不變；keyboard mode 隨父物件一起藏
+    lv_obj_t *top_logo = lv_img_create(status_bar_area_up);
+    lv_img_set_src(top_logo, &img_logo);
+    // 原生 80×80 縮到 ~56px，佔 80px 高觸發區 ~70%（同媒體鈕 icon 比例）
+    lv_img_set_zoom(top_logo, 256 * 7 / 10);
+    lv_obj_center(top_logo);
+
     /* 「控制中設備」名稱+切換箭頭已搬進媒體下拉頁頂部
        (create_media_center_panel,2026-07-02 使用者要求) — trackpad 頂部
        不再放常駐設備名。 */
