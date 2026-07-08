@@ -112,6 +112,8 @@
 
   "scan_download_app": "Download at Skaiwalk.com",
   "complete_on_phone": "Complete on phone",
+  "add_on_phone": "Add on your phone",
+  "scan_to_connect_phone": "Scan to connect",
 
   "reset_confirm_title": "Erase all content\\nand settings?",
   "reset_confirm_desc": "This will reset the\\ndevice to factory\\ndefaults.",

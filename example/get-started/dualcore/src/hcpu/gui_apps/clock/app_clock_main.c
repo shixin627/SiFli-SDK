@@ -1666,6 +1666,21 @@ rt_int32_t clock_on_pause(void)
     }
     rt_list_t *pos;
     pause_clock = true;
+    /* The STATE_DEINIT loop below tears down the active clock face, freeing
+       the swipe catcher (a child of clock_container) — same as clock_on_stop,
+       just for a PAUSE (opening any other app) instead of a full stop. The
+       2026-07-02 fix only deleted the keepalive timer + nulled the catcher
+       pointer in clock_on_stop, so THIS path (hit on every single app-open,
+       not just app removal) left the timer running: 400ms later it pokes the
+       now-freed catcher pointer (use-after-free; lv_obj_is_valid can
+       false-positive on heap reuse) → the same bus fault at a fixed BFAR.
+       Same cleanup, same reasoning, just also here. */
+    if (s_face_swipe_keepalive)
+    {
+        lv_timer_del(s_face_swipe_keepalive);
+        s_face_swipe_keepalive = NULL;
+    }
+    s_face_swipe_catcher = NULL;
     dial_media_header_deinit();
     rt_list_for_each(pos, (&p_app_clock_main->list))
     {

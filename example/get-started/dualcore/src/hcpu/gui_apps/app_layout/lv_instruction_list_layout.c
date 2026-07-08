@@ -44,6 +44,7 @@
  */
 
 #include "lvgl.h"
+#include "lv_qrcode.h"
 #include "lv_simplified_obj.h"
 #include "lv_ext_resource_manager.h"
 #include "app_mainmenu.h"
@@ -316,6 +317,9 @@ typedef struct
         *app_list_tileview;  // vertical tileview: instruction list + app grid
     lv_obj_t *app_list_tile; // tile 1: app grid page
     arc_scroll_handle_t *arc_handle; // 共用 arc-scroll 模組 instance
+    lv_obj_t *empty_view;       // list_item_count==0 placeholder (hint text or QR)
+    lv_obj_t *empty_qr_card;    // white QR card inside empty_view, shown only when disconnected
+    lv_obj_t *empty_hint_label; // caption under/instead of the QR
 } instruction_list_layout_t;
 static instruction_list_layout_t *p_instruction_list_layout;
 static bool created = false;
@@ -982,8 +986,10 @@ void instruction_list_bar_set_visible(bool visible)
            finalize. Both set_blur(false) calls self-guard on s_bar_blur_active. */
         extern void instruction_list_close_ai_on_leave(void);
         extern void instruction_list_bar_set_blur(bool on);
+        extern void instruction_list_teardown_empty_qr(void);
         instruction_list_close_ai_on_leave();
         instruction_list_bar_set_blur(false);
+        instruction_list_teardown_empty_qr(); /* list closing: don't leave the dynamic QR resident */
         lv_obj_add_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
         { extern void hid_mouse_set_own_bar_hidden(bool); hid_mouse_set_own_bar_hidden(false); } /* 浮層 bar 收→當幀還原滑鼠自有 bar */
     }
@@ -3946,16 +3952,24 @@ static void reset_list_internal(void)
     scroll_initialized = false;
     uint8_t scroll_to_index;
     {
-        /* 滾到列表最下面那個項目 */
-        scroll_to_index = list_item_count - 1;
+        /* 滾到列表最下面那個項目。list_item_count is uint8_t — with the empty-list
+           placeholder (load_default_apps() can now leave list_item_count==0, unlike
+           before when the built-in app prefix guaranteed count>0), `count - 1`
+           wraps to 255. lv_obj_get_child(list, 255) then returns NULL (out of
+           range), and the unconditional lv_obj_scroll_to_view(NULL, ...) below
+           faulted on it — unlike the two guarded call sites elsewhere in this file
+           that check `if (child && lv_obj_is_valid(child))` first. */
+        scroll_to_index = list_item_count > 0 ? list_item_count - 1 : 0;
         app_scroll_target_item = scroll_to_index;
     }
     gesture_starting_value = 37;
     selected_item_index = app_scroll_target_item;
     prev_app_scroll_target_item = app_scroll_target_item;
-    lv_obj_t *child =
-        lv_obj_get_child(p_instruction_list_layout->list, scroll_to_index);
-    lv_obj_scroll_to_view(child, LV_ANIM_OFF);
+    lv_obj_t *child = list_item_count > 0
+        ? lv_obj_get_child(p_instruction_list_layout->list, scroll_to_index)
+        : NULL;
+    if (child && lv_obj_is_valid(child))
+        lv_obj_scroll_to_view(child, LV_ANIM_OFF);
     if (!scroll_initialized)
     {
         scroll_list(p_instruction_list_layout->list, 0);
@@ -4725,6 +4739,104 @@ void set_instruction_service_icon(const char *id, const char *svc)
 }
 
 /* Helper: create list item UI objects for items in [start_idx, end_idx) */
+/* list_item_count==0 placeholder: already paired but nothing added yet →
+   "請在手機上新增" hint; not connected → the SAME pairing QR the Control
+   Center's QR Code button shows (app_qrcode.c: BLE public MAC embedded in
+   https://skaiwalk.com/download/id=<mac>, dynamic lv_qrcode) — not the
+   generic static download QR device_pager.c uses elsewhere; this one is
+   per-device so the scanned page can pair with THIS watch.
+
+   The lv_qrcode itself is created lazily and deleted the moment it's not
+   needed (leaving the disconnected+empty state, or the list closing via
+   instruction_list_bar_set_visible(false)) — never left resident. A
+   real-hw lesson recorded in this codebase: a resident TRUE_COLOR QR
+   canvas (~60KB for a 148-176px code) has starved the LVGL heap before.
+   app_qrcode.c gets this for free (bounded app-open/close lifetime); this
+   widget lives inside the persistent instruction-list layout, so it has
+   to manage that lifetime itself. */
+static void destroy_empty_qr(void)
+{
+    if (p_instruction_list_layout == NULL ||
+        p_instruction_list_layout->empty_qr_card == NULL)
+        return;
+    lv_obj_clean(p_instruction_list_layout->empty_qr_card);
+}
+
+static void ensure_empty_qr_created(void)
+{
+    if (p_instruction_list_layout == NULL ||
+        p_instruction_list_layout->empty_qr_card == NULL)
+        return;
+    if (lv_obj_get_child_cnt(p_instruction_list_layout->empty_qr_card) > 0)
+        return; /* already built */
+
+    typedef struct { uint8_t addr[6]; } bd_addr_t;
+    extern uint8_t ble_get_public_address(bd_addr_t *addr);
+    bd_addr_t addr;
+    char code[20] = {0};
+    if (ble_get_public_address(&addr) == 0)
+    {
+        snprintf(code, sizeof(code), "%x-%x-%x-%x-%x-%x", addr.addr[0],
+                 addr.addr[1], addr.addr[2], addr.addr[3], addr.addr[4],
+                 addr.addr[5]);
+    }
+    else
+    {
+        strcpy(code, "0-0-0-0-0-0");
+    }
+    char url[128];
+    snprintf(url, sizeof(url), "https://skaiwalk.com/download/id=%s", code);
+
+    lv_obj_t *qrcode =
+        lv_qrcode_create(p_instruction_list_layout->empty_qr_card);
+    if (lv_qrcode_setparam(qrcode, 148, lv_color_black(), lv_color_white()) !=
+        NULL)
+    {
+        lv_qrcode_update(qrcode, url, strlen(url));
+    }
+    lv_obj_center(qrcode);
+}
+
+void instruction_list_teardown_empty_qr(void)
+{
+    destroy_empty_qr();
+}
+
+static void update_list_empty_state(void)
+{
+    if (p_instruction_list_layout == NULL ||
+        p_instruction_list_layout->empty_view == NULL)
+        return;
+
+    if (list_item_count > 0)
+    {
+        lv_obj_add_flag(p_instruction_list_layout->empty_view,
+                        LV_OBJ_FLAG_HIDDEN);
+        destroy_empty_qr();
+        return;
+    }
+
+    lv_obj_clear_flag(p_instruction_list_layout->empty_view, LV_OBJ_FLAG_HIDDEN);
+    if (s_phone_connected)
+    {
+        lv_obj_add_flag(p_instruction_list_layout->empty_qr_card,
+                        LV_OBJ_FLAG_HIDDEN);
+        destroy_empty_qr();
+        lv_label_set_text(p_instruction_list_layout->empty_hint_label,
+                          LV_EXT_STR_GET_BY_KEY(add_on_phone,
+                                                "Add on your phone"));
+    }
+    else
+    {
+        lv_obj_clear_flag(p_instruction_list_layout->empty_qr_card,
+                          LV_OBJ_FLAG_HIDDEN);
+        ensure_empty_qr_created();
+        lv_label_set_text(p_instruction_list_layout->empty_hint_label,
+                          LV_EXT_STR_GET_BY_KEY(scan_to_connect_phone,
+                                                "Scan to connect"));
+    }
+}
+
 static void create_list_items_ui(lv_obj_t *list, uint8_t start_idx,
                                  uint8_t end_idx)
 {
@@ -5077,6 +5189,7 @@ void refresh_custom_instructions(void)
 
     /* Recreate all list item UI */
     create_list_items_ui(list, 0, list_item_count);
+    update_list_empty_state();
 
     /* 重建指示點 */
     create_indicator_dots(bg);
@@ -5545,6 +5658,48 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     /* Create all list item UI objects (apps + any pre-existing instructions) */
     create_list_items_ui(p_instruction_list, 0, list_item_count);
 
+    /* list_item_count==0 placeholder — the view + white QR card are built once
+       and resident (cheap: plain rects, no image data); the actual QR code
+       inside the card is created/destroyed lazily by update_list_empty_state()
+       (see its comment). Not clickable/scrollable so the swipe-to-close
+       gesture on p_instruction_list_bg still fires through it. */
+    lv_obj_t *empty_view = lv_obj_create(p_instruction_list_bg);
+    lv_obj_remove_style_all(empty_view);
+    lv_obj_set_size(empty_view, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(empty_view, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(empty_view, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(empty_view, 16, 0);
+    lv_obj_clear_flag(empty_view, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(empty_view, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_center(empty_view);
+    p_instruction_list_layout->empty_view = empty_view;
+
+    lv_obj_t *empty_qr_card = lv_obj_create(empty_view);
+    lv_obj_set_size(empty_qr_card, 181, 181);
+    lv_obj_set_style_bg_color(empty_qr_card, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(empty_qr_card, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(empty_qr_card, 0, 0);
+    lv_obj_set_style_radius(empty_qr_card, 16, 0);
+    lv_obj_set_style_pad_all(empty_qr_card, 8, 0);
+    lv_obj_clear_flag(empty_qr_card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(empty_qr_card, LV_OBJ_FLAG_CLICKABLE);
+    p_instruction_list_layout->empty_qr_card = empty_qr_card;
+    /* Child lv_qrcode created lazily by ensure_empty_qr_created() — left empty here. */
+
+    lv_obj_t *empty_hint_label = lv_label_create(empty_view);
+    lv_obj_set_style_text_font(empty_hint_label,
+                               LV_EXT_FONT_GET(get_system_font_size(1)), 0);
+    lv_obj_set_style_text_color(empty_hint_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_align(empty_hint_label, LV_TEXT_ALIGN_CENTER, 0);
+    /* English strings (e.g. "Scan to connect your phone") run wider than the
+       screen at this font size — wrap instead of overflowing off-screen. */
+    lv_obj_set_width(empty_hint_label, 300);
+    lv_label_set_long_mode(empty_hint_label, LV_LABEL_LONG_WRAP);
+    p_instruction_list_layout->empty_hint_label = empty_hint_label;
+
+    update_list_empty_state();
+
     // 創建指示點
     create_indicator_dots(p_instruction_list_bg);
 
@@ -5891,167 +6046,16 @@ static void instruction_list_scroll_to_app(int8_t action)
     }
 }
 
-/* map_app_id fills a list_item_t from an app_id enum value */
-static void map_app_id(uint8_t app_id, list_item_t *item)
-{
-    memset(item, 0, sizeof(list_item_t));
-    item->is_instruction = false;
-    item->is_interval = false;
-    item->enabled = false;
-    item->interval_sec = 0;
-    item->widget = NULL;
-
-    const char *title = "Unknown";
-    const char *icon = IMG_LOGO;
-    const char *id_str = APP_ID_MAIN;
-
-    switch (app_id)
-    {
-#ifdef APP_ID_RECORDER
-    case app_id_recorder:
-        title = LV_EXT_STR_GET_BY_KEY(recorder, "Recorder");
-        icon = IMG_RECORDER;
-        id_str = APP_ID_RECORDER;
-        break;
-#endif
-#ifdef APP_ID_WEATHER
-    case app_id_weather:
-        title = LV_EXT_STR_GET_BY_KEY(weather, "Weather");
-        icon = IMG_GROUP;
-        id_str = APP_ID_WEATHER;
-        break;
-#endif
-#ifdef APP_ID_EXERCISE
-    case app_id_exercise:
-        title = LV_EXT_STR_GET_BY_KEY(exercise, "Exercise");
-        icon = IMG_WORKOUT;
-        id_str = APP_ID_EXERCISE;
-        break;
-#endif
-#ifdef APP_ID_FLASHLIGHT
-    case app_id_flashlight:
-        title = LV_EXT_STR_GET_BY_KEY(flashlight, "Flashlight");
-        icon = IMG_FLASHLIGHT;
-        id_str = APP_ID_FLASHLIGHT;
-        break;
-#endif
-#ifdef APP_ID_MEDIA
-    case app_id_media:
-        title = LV_EXT_STR_GET_BY_KEY(media, "Media");
-        icon = IMG_ITUNES;
-        id_str = APP_ID_MEDIA;
-        break;
-#endif
-#ifdef APP_ID_PHOTO
-    case app_id_photo:
-        title = LV_EXT_STR_GET_BY_KEY(photo, "Photo");
-        icon = IMG_PHOTO;
-        id_str = APP_ID_PHOTO;
-        break;
-#endif
-#ifdef APP_ID_GAME_DINOSAUR
-    case app_id_game_dinosaur:
-        title = LV_EXT_STR_GET_BY_KEY(game, "Game");
-        icon = IMG_GAME;
-        id_str = APP_ID_GAME_DINOSAUR;
-        break;
-#endif
-#ifdef APP_ID_CALCULATOR
-    case app_id_calculator:
-        title = LV_EXT_STR_GET_BY_KEY(calculator, "Calculator");
-        icon = IMG_CALCULATOR;
-        id_str = APP_ID_CALCULATOR;
-        break;
-#endif
-#ifdef APP_ID_TIMER
-    case app_id_timer:
-        title = LV_EXT_STR_GET_BY_KEY(timer, "Timer");
-        icon = IMG_ALARM_2;
-        id_str = APP_ID_TIMER;
-        break;
-#endif
-#ifdef APP_ID_ALARM
-    case app_id_alarm:
-        title = LV_EXT_STR_GET_BY_KEY(alarm, "Alarm");
-        icon = IMG_ALARM;
-        id_str = APP_ID_ALARM;
-        break;
-#endif
-#ifdef APP_ID_SETTING
-    case app_id_setting:
-        title = LV_EXT_STR_GET_BY_KEY(setting, "Setting");
-        icon = IMG_SETTINGS;
-        id_str = APP_ID_SETTING;
-        break;
-#endif
-#ifdef APP_ID_MOUSE
-    case app_id_mouse:
-        title = LV_EXT_STR_GET_BY_KEY(mouse, "Mouse");
-        icon = IMG_MOUSE;
-        id_str = APP_ID_MOUSE;
-        break;
-#endif
-    default:
-        break;
-    }
-
-    strncpy(item->id, id_str, LIST_ITEM_ID_LEN - 1);
-    item->id[LIST_ITEM_ID_LEN - 1] = '\0';
-    strncpy(item->title, title, LIST_ITEM_TITLE_LEN - 1);
-    item->title[LIST_ITEM_TITLE_LEN - 1] = '\0';
-    item->icon = icon;
-}
-
-/* Built-in apps shown as the watch's default "instructions" before any phone
-   list arrives. Mirrors APP_LIST_ITEMS in lv_app_list_layout.c (same #ifdef
-   guards) — that file's swipe-down control-center grid was removed, so this is
-   now the canonical home of the built-in app list. Settings is intentionally
-   absent: it lives in the right-swipe App List (its index-0 pin here was
-   removed 2026-07-02). The debug-only dinosaur game is
-   omitted (it needs kReleaseMode, not included here, and is not a real app). */
-static const uint16_t DEFAULT_APP_ITEMS[] = {
-#ifdef APP_ID_TIMER
-    app_id_timer,
-#endif
-    app_id_flashlight,
-#ifdef APP_ID_RECORDER
-    app_id_recorder,
-#endif
-    app_id_exercise,
-#ifdef APP_ID_SLEEP
-    app_id_sleep,
-#endif
-#ifdef APP_ID_CALCULATOR
-    app_id_calculator,
-#endif
-#ifdef APP_ID_WEATHER
-    app_id_weather,
-#endif
-#ifdef APP_ID_ALARM
-    app_id_alarm,
-#endif
-#ifdef APP_ID_PHOTO
-    app_id_photo,
-#endif
-    /* P3: mouse / trackpad is now opened as a list app (its left-swipe tile entry
-       was removed so the left edge can host the @-list reveal). map_app_id maps
-       app_id_mouse → APP_ID_MOUSE; tap runs it locally via gui_app_run. */
-    app_id_mouse,
-};
-
-/* Fill [app_base_count ..] with the built-in default apps and enter DEFAULT_APPS
-   mode. */
+/* Before any phone list arrives, the left mixed list shows NO items (founder
+   direction: the built-in apps this used to fall back to — timer / flashlight
+   / recorder / exercise / sleep / calculator / weather / alarm / photo / mouse
+   — are all also in APP_LIST_ITEMS (lv_app_list_layout.c, the right-swipe App
+   List), so this was a pure duplicate entry point). Leaving list_items[] empty
+   here makes list_item_count==0, which drives update_list_empty_state()'s "add
+   on phone" hint / pairing QR — replacing the old app-list fallback. */
 static void load_default_apps(void)
 {
-    uint8_t slot = app_base_count; /* == 0: no pinned prefix */
-    for (uint8_t i = 0; i < ARRAY_SIZE(DEFAULT_APP_ITEMS); i++)
-    {
-        if (slot >= MAX_LIST_ITEMS)
-            break;
-        map_app_id(DEFAULT_APP_ITEMS[i], &list_items[slot]);
-        slot++;
-    }
-    list_item_count = slot;
+    list_item_count = app_base_count; /* == 0: no pinned prefix */
     s_list_mode = LIST_MODE_DEFAULT_APPS;
 }
 
@@ -6187,7 +6191,13 @@ void instruction_list_set_phone_connected(bool connected)
     cat_filter_restore_full();
 
     if (s_list_mode != LIST_MODE_PHONE)
+    {
+        /* DEFAULT_APPS mode has no phone-pushed list to re-pack, but a
+           list_item_count==0 screen still needs to flip between the
+           "add on phone" hint and the pairing QR as the link comes up/down. */
+        update_list_empty_state();
         return;
+    }
 
     if (!connected)
     {
