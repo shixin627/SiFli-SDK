@@ -106,6 +106,15 @@ extern "C"
 		   and fires a single deferred UI rebuild. Saves the per-item
 		   200 ms BLE pacing the old per-instruction loop required. */
 		KEY_SKAI_CREATION_INSTRUCTIONS_BATCH = 0X6B,
+		/* watch -> phone: 1-byte ack sent after KEY_END_SYNC_FILE finishes
+		   writing the phone-pushed file (1 = written OK, 0 = size mismatch /
+		   write error). The generic file-sync protocol (0x52/0x53/0x54) had
+		   no completion signal at all -- unlike OTA's KEY_OTA_STATUS -- so
+		   the phone had no way to know when the watch actually finished,
+		   and declared "done" the instant it queued its last BLE write
+		   locally. Mirrors send_file_compare_result's shape
+		   (commu_send_status). */
+		KEY_FILE_SYNC_RESULT = 0X6D,
 	} NOTIFY_KEY;
 
 	void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length);

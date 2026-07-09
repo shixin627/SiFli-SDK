@@ -740,10 +740,12 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
         if (ret == RT_EOK)
         {
             LOG_I("File receive completed successfully");
+            commu_send_file_sync_result(1);
         }
         else
         {
             LOG_E("File receive failed");
+            commu_send_file_sync_result(0);
         }
         break;
     }

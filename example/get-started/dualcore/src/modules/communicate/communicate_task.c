@@ -525,6 +525,7 @@ bool commu_send_sync_file(const uint8_t *chunk, uint16_t length)
 
 bool commu_send_end_sync_file(void)             { return commu_send_empty (NOTIFY_COMMAND_ID, KEY_END_SYNC_FILE); }
 bool commu_send_file_compare_result(uint8_t r)  { return commu_send_status(NOTIFY_COMMAND_ID, KEY_FILE_COMPARE_RESULT, r); }
+bool commu_send_file_sync_result(uint8_t r)     { return commu_send_status(NOTIFY_COMMAND_ID, KEY_FILE_SYNC_RESULT, r); }
 
 /*============================================================================*
  *                              Other

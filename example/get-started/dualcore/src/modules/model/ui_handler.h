@@ -211,6 +211,13 @@ extern "C"
            skai_chat_on_conv_state parses the BLE conv-state on KE_EVT2 (4KB BLE
            stack) into a pending buffer, then triggers this to rebuild the bubbles. */
         LVGL_MSG_TYPE_REFRESH_CHAT,
+        /* Defer photo-album list refresh to the LVGL thread: bloc_filesystem's
+           received_file_handler runs on the BLE parse thread (KE_EVT2, 4KB
+           stack) when a phone-pushed photo finishes writing — rebuilding the
+           list (image decode + lv_obj_create per thumbnail) is too
+           stack-heavy and not thread-safe to run there. Same pattern as
+           LVGL_MSG_TYPE_REFRESH_DEVICE_PAGER. */
+        LVGL_MSG_TYPE_REFRESH_PHOTO_LIST,
     };
 
     typedef struct

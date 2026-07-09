@@ -504,6 +504,39 @@ static void load_photo_list(lv_obj_t *parent)
 }
 
 /**
+ * @brief Rebuild the photo list from /photo. Must run on the LVGL thread
+ * (creates/deletes lv_obj_t). No-op if the album isn't currently open.
+ * Exposed so photo_app_refresh_list() can force a re-scan after a
+ * phone-pushed photo finishes writing.
+ */
+void photo_app_do_refresh_list(void)
+{
+    if (p_app_photo && p_app_photo->photo_list)
+    {
+        lv_obj_clean(p_app_photo->photo_list);
+        load_photo_list(p_app_photo->photo_list);
+    }
+}
+
+/**
+ * @brief Request a photo-list refresh from any thread. bloc_filesystem's
+ * received_file_handler calls this after a phone-pushed photo finishes
+ * writing; that runs on the BLE parse thread (KE_EVT2, 4KB stack), where
+ * rebuilding the list is too stack-heavy and not thread-safe — defer to the
+ * LVGL thread, same pattern as skai_device_ui_refresh().
+ */
+void photo_app_refresh_list(void)
+{
+    if (!is_on_lvgl_thread())
+    {
+        lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_REFRESH_PHOTO_LIST};
+        lvgl_send_msg(msg);
+        return;
+    }
+    photo_app_do_refresh_list();
+}
+
+/**
  * @brief Creates the photo screen with scrollable photo list
  *
  * @param scr Parent screen object

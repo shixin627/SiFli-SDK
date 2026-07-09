@@ -764,6 +764,18 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
     }
 
+    case LVGL_MSG_TYPE_REFRESH_PHOTO_LIST:
+    {
+#ifdef APP_ID_PHOTO
+        /* Rebuild the (already-open) photo list — bloc_filesystem's
+           received_file_handler deferred here because it runs on the BLE
+           parse thread. No-op if the album app isn't currently open. */
+        extern void photo_app_do_refresh_list(void);
+        photo_app_do_refresh_list();
+#endif
+        break;
+    }
+
 
     case LVGL_MSG_TYPE_REFRESH_LANGUAGE:
     {

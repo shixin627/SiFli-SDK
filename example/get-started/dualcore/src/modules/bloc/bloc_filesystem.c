@@ -405,6 +405,19 @@ void received_file_handler(const char *path)
             LOG_W("Received file is not recognized: %s", path);
         }
     }
+    else if (strncmp(path, "/photo/", 7) == 0)
+    {
+        /* Phone-pushed photo-album file. The app_photo screen only rebuilds
+           its list from a fresh opendir("/photo") on GUI_APP_MSG_ONSTART, so
+           a photo landing while the album is already open would otherwise
+           not show up until the user backs out and re-enters. Ping it to
+           refresh if it's currently open (no-op otherwise). */
+        LOG_I("Received photo file: %s", path);
+#ifdef APP_ID_PHOTO
+        extern void photo_app_refresh_list(void);
+        photo_app_refresh_list();
+#endif
+    }
     else
     {
         LOG_W("Received file is not recognized: %s", path);

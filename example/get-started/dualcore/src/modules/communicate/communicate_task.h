@@ -117,6 +117,7 @@ bool commu_send_start_sync_file(uint32_t total_size);
 bool commu_send_sync_file(const uint8_t *chunk, uint16_t length);
 bool commu_send_end_sync_file(void);
 bool commu_send_file_compare_result(uint8_t result);
+bool commu_send_file_sync_result(uint8_t result); /* watch -> phone: 1 = file written OK, 0 = failed */
 
 /* Other */
 bool commu_send_bluetooth_log(const char *log);
