@@ -920,6 +920,14 @@ static float gyro_movement_distance = 0.0f;
 static Vector3 s_collect_gref = {0};
 static bool s_collect_gref_valid = false;
 
+/* Phone-game (data-collection) air-mouse mapping selector (2026-07-10). true =
+ * the desktop mouse app's PROVEN mapping (gyro_x = up/down tilt, gyro_z =
+ * left/right) — that path never reverses. false = the old roll-compensated gyro_y
+ * path (kept live below as a fallback), which intermittently reversed (roll wrapped
+ * past ±90°, or the y-z fallback went raw body-frame). Flip to false + rebuild if
+ * the new mapping still reverses on device, so the game stays usable either way. */
+static bool s_collect_use_mouse_app_map = true;
+
 void air_mouse_movement_lock_reset(void)
 {
     mouse_movement_lock = true;
@@ -972,30 +980,45 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
      * compensated, keeping left/right & up/down consistent. */
     if (imu_mouse_data_collection)
     {
-        Vector3 g = watch_sensor.motion_data.gravity;
-        if (!s_collect_gref_valid)
+        if (s_collect_use_mouse_app_map)
         {
-            s_collect_gref = g;
-            s_collect_gref_valid = true;
-        }
-        float refh = sqrtf(s_collect_gref.y * s_collect_gref.y + s_collect_gref.z * s_collect_gref.z);
-        float curh = sqrtf(g.y * g.y + g.z * g.z);
-        if (refh > 0.2f && curh > 0.2f) /* both well-defined in the y-z plane */
-        {
-            /* signed roll from the reference to the current gravity, in the y-z plane */
-            float cross = s_collect_gref.y * g.z - s_collect_gref.z * g.y;
-            float dot = s_collect_gref.y * g.y + s_collect_gref.z * g.z;
-            float roll = AIR_MOUSE_COLLECT_ROLL_SIGN * atan2f(cross, dot);
-            float cr = cosf(roll);
-            float sr = sinf(roll);
-            float h = gyro_z * cr + gyro_y * sr;  /* roll-consistent horizontal rate */
-            float v = -gyro_z * sr + gyro_y * cr; /* roll-consistent vertical rate */
-            delta_movement = air_mouse_algorithm(-v, h, AIR_MOUSE_SENSITIVITY);
+            /* 2026-07-10 fix: drive the phone game with the SAME proven mapping the
+             * desktop mouse app uses (gyro_x =繞螢幕橫軸=上下擺腕, gyro_z = 左右).
+             * That mapping never reverses; the roll-compensated gyro_y path below
+             * intermittently did. Kept switchable via s_collect_use_mouse_app_map. */
+            s_collect_gref_valid = false; /* stale ref shouldn't linger if we switch back */
+            delta_movement = air_mouse_algorithm(gyro_x, gyro_z, AIR_MOUSE_SENSITIVITY);
         }
         else
         {
-            delta_movement =
-                air_mouse_algorithm(-gyro_y, gyro_z, AIR_MOUSE_SENSITIVITY);
+            /* OLD roll-compensated path — PRESERVED as a fallback (see the selector
+             * s_collect_use_mouse_app_map). Uses gyro_y (翻腕 roll 軸) rotated by the
+             * gravity-roll relative to the session-start posture. */
+            Vector3 g = watch_sensor.motion_data.gravity;
+            if (!s_collect_gref_valid)
+            {
+                s_collect_gref = g;
+                s_collect_gref_valid = true;
+            }
+            float refh = sqrtf(s_collect_gref.y * s_collect_gref.y + s_collect_gref.z * s_collect_gref.z);
+            float curh = sqrtf(g.y * g.y + g.z * g.z);
+            if (refh > 0.2f && curh > 0.2f) /* both well-defined in the y-z plane */
+            {
+                /* signed roll from the reference to the current gravity, in the y-z plane */
+                float cross = s_collect_gref.y * g.z - s_collect_gref.z * g.y;
+                float dot = s_collect_gref.y * g.y + s_collect_gref.z * g.z;
+                float roll = AIR_MOUSE_COLLECT_ROLL_SIGN * atan2f(cross, dot);
+                float cr = cosf(roll);
+                float sr = sinf(roll);
+                float h = gyro_z * cr + gyro_y * sr;  /* roll-consistent horizontal rate */
+                float v = -gyro_z * sr + gyro_y * cr; /* roll-consistent vertical rate */
+                delta_movement = air_mouse_algorithm(-v, h, AIR_MOUSE_SENSITIVITY);
+            }
+            else
+            {
+                delta_movement =
+                    air_mouse_algorithm(-gyro_y, gyro_z, AIR_MOUSE_SENSITIVITY);
+            }
         }
     }
     else
