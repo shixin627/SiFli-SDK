@@ -568,8 +568,9 @@ static void update_indicator_dots_position(int input_value)
 
     for (int i = 0; i < total_dots; i++)
     {
-        if (p_instruction_list_layout->indicator_dots[i] == NULL)
-            continue;
+        if (p_instruction_list_layout->indicator_dots[i] == NULL ||
+            !lv_obj_is_valid(p_instruction_list_layout->indicator_dots[i]))
+            continue; /* skip freed dots: a rebuild can re-enter here mid-teardown */
 
         float base_angle = i * angle_per_dot;
         /* 不做 [0,360) normalize — 留 signed angle，方便用 |angle| > 90 一刀
@@ -5342,6 +5343,16 @@ void refresh_custom_instructions(void)
         {
             lv_obj_del(p_instruction_list_layout->indicator_dots_bg[i]);
         }
+        /* NULL the dot handles IMMEDIATELY after freeing the bg (app_icon_shadow
+           and the dot img are its children, freed with it). lv_obj_del and the
+           lv_obj_clean below dispatch DELETE/SCROLL events synchronously, which
+           re-enter update_indicator_dots_position via the list scroll handler
+           (scroll_list -> update_indicator_dots_position). Leaving these pointing
+           at freed objects until the reset loop further down faulted there
+           (DACCVIOL @ ~0x7E9). Clearing here closes the free->NULL window. */
+        p_instruction_list_layout->indicator_dots_bg[i] = NULL;
+        p_instruction_list_layout->indicator_dots[i] = NULL;
+        app_icon_shadow[i] = NULL;
     }
 
     /* Save current scroll position and selected index */
