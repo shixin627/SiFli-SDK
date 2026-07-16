@@ -1369,6 +1369,37 @@ bool BLE_HID_Mouse_Touch_Release(uint16_t x, uint16_t y)
     return false;
 }
 
+/* dial 方向盤手勢用（hid_mouse.c）：進 dial 圓盤時清掉觸控板的 tap / long-press /
+   edge-pan 狀態機。dial 靠「手指按住不動」觸發，跟原本的 500ms long-press 撞在同一
+   個動作上——不清掉的話，圓盤期間到 500ms 會誤按左鍵（dial 若 >500ms 放開更會
+   press+release 誤點）。與 Touch_Release 的差別：不排 pending click。已在 long-press
+   （左鍵按著）則先放開。 */
+void ble_hid_mouse_cancel_touch(void)
+{
+    long_press_timer_cancel();
+    pending_click_timer_cancel();
+    edge_pan_stop();
+    if (s_touch_state == MOUSE_TOUCH_LONG_PRESSING)
+        mouse_exit_long_press();
+    s_touch_state = MOUSE_TOUCH_IDLE;
+}
+
+/* dial 方向盤手勢用（hid_mouse.c）：dial 圓盤中手指開始移動 → 退出圓盤、改走「原本
+   的點著左鍵拖移物件」。直接進 long-press（按下左鍵），之後 Touch_Move 就走 edge_pan
+   拖曳、Touch_Release 會 mouse_exit_long_press 放開左鍵——與原本長按拖曳同一條路。 */
+void ble_hid_mouse_begin_drag(void)
+{
+    mouse_enter_long_press();
+}
+
+/* dial 手勢用（hid_mouse.c）：按下時就禁用原本 500ms long-press（dial 用自己的 500ms timer
+   接管「長按」語意，兩個 500ms timer 並存會 race 誤按左鍵）。只停 timer、不動 touch state，
+   所以 tap→click 的判斷不受影響。 */
+void ble_hid_mouse_disable_longpress(void)
+{
+    long_press_timer_cancel();
+}
+
 static int init_ble_mouse_func(void)
 {
     control_provider.ble_hid_mouse_move = BLE_HID_Mouse_Move;

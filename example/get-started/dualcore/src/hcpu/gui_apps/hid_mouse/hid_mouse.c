@@ -2987,13 +2987,26 @@ static void handle_released_event(lv_indev_t *indev)
    的 mouse_dial_*），放開即以當下方向 commit。手指一旦滑動超過門檻就取消 dial、讓路給
    正常觸控板游標控制；只在非弧形/滾動區起手才啟用，避免跟左右弧滾動打架。
    ───────────────────────────────────────────────────────────────────────── */
-#define DIAL_HOLD_TO_START_MS     250 /* 同頂部飛鼠：按住不動這麼久 → 開方向盤 */
-#define DIAL_HOLD_DRIFT_CANCEL_PX  18 /* 離起點曼哈頓距離超過 → 判定滑動，取消 dial */
+#define DIAL_HOLD_TO_START_MS     500 /* 按住不動滿 500ms（＝原本長按門檻）才開方向盤；
+                                         500ms 內手指移動＝一般移動滑鼠、不叫圓盤 */
+#define DIAL_HOLD_DRIFT_CANCEL_PX  18 /* dial 開「之前」：離起點超過就別進 dial（判定為滑動）*/
+#define DIAL_DRAG_SPEED_PX         12 /* dial 開「之後」：手指「單幀移動」超過這麼多＝主動快速滑動，
+                                         才退出圓盤改拖曳。用速度、非離起點累積——按著比方向時真機
+                                         手指自帶漂移會單調累積，用累積距離會漂到門檻就誤觸拖曳、
+                                         害圓盤過一陣子消失（2026-07-16 founder 回報）；漂移單幀慢、
+                                         主動滑動單幀快 */
 extern void mouse_dial_start(void);
 extern void mouse_dial_end(void);
+extern void mouse_dial_cancel(void);
 extern bool mouse_dial_active(void);
+extern void ble_hid_mouse_cancel_touch(void);
+extern void ble_hid_mouse_begin_drag(void);
+extern void ble_hid_mouse_disable_longpress(void);
 static lv_timer_t *s_dial_hold_timer = NULL;
 static lv_point_t s_dial_press_start;
+static bool s_dial_drag = false;    /* 拖曳物件中：1:1 相對移動 + 左鍵按著 */
+static lv_point_t s_dial_drag_last; /* 拖曳中上一幀手指位置，算 1:1 相對移動量 */
+static lv_point_t s_dial_prev;      /* 方向盤中上一幀手指位置，算單幀速度判是否主動滑動→拖曳 */
 
 static void dial_hold_cancel(void)
 {
@@ -3009,7 +3022,11 @@ static void dial_hold_timer_cb(lv_timer_t *t)
     (void)t;
     s_dial_hold_timer = NULL; /* repeat_count=1 跑完自刪，只清指標 */
     LOG_I("[dial] trackpad hold %dms -> dial ON", DIAL_HOLD_TO_START_MS);
+    /* 清掉觸控板 tap/long-press 狀態機：dial 期間手指按著不動，不能讓原本 500ms
+       long-press 誤觸發左鍵（手指移動時才由 begin_drag 主動進拖曳）。 */
+    ble_hid_mouse_cancel_touch();
     motor_pattern_tap();      /* 觸覺回饋：方向盤已開 */
+    s_dial_prev = s_dial_press_start; /* 速度判定基準：dial 進入時的手指位置 */
     mouse_dial_start();
 }
 
@@ -3022,21 +3039,25 @@ static void dial_hold_on_pressed(lv_indev_t *indev)
         return; /* 弧形滾動起手不開方向盤 */
     if (indev)
         lv_indev_get_point(indev, &s_dial_press_start);
+    /* 禁用原本的 500ms long-press：dial 用自己的 500ms timer 接管「長按」語意，
+       兩個 500ms timer 並存會 race 誤按左鍵。只停 timer、不動 touch state，tap→click 不受影響。 */
+    ble_hid_mouse_disable_longpress();
     s_dial_hold_timer = lv_timer_create(dial_hold_timer_cb,
                                         DIAL_HOLD_TO_START_MS, NULL);
     lv_timer_set_repeat_count(s_dial_hold_timer, 1);
 }
 
-/* PRESSING：手指離起點夠遠 = 滑動意圖 → 取消 hold（正常游標控制接手）。用「離起點
-   距離」非逐幀累積：真機按住自帶 ±1-2px/幀抖動，逐幀累積必超標（頂部飛鼠同款教訓）。 */
-static void dial_hold_on_pressing(const lv_point_t *now)
+/* 進入 1:1 拖曳物件：清掉觸控板 tap/long-press 狀態機、按下左鍵，之後手指移多少游標移
+   多少。比原本 edge_pan（邊緣平移，手指在中心區域游標不動）直覺——中心也能拖，修
+   founder 2026-07-16 回報的「按下去後一開始的拖動電腦端沒反應」。 */
+static void dial_drag_begin(const lv_point_t *now)
 {
-    if (!s_dial_hold_timer)
-        return;
-    lv_coord_t dx = now->x - s_dial_press_start.x;
-    lv_coord_t dy = now->y - s_dial_press_start.y;
-    if (LV_ABS(dx) + LV_ABS(dy) > DIAL_HOLD_DRIFT_CANCEL_PX)
-        dial_hold_cancel();
+    ble_hid_mouse_cancel_touch();
+    if (control_provider.ble_hid_mouse_left_press)
+        control_provider.ble_hid_mouse_left_press();
+    s_dial_drag = true;
+    s_dial_drag_last = *now;
+    motor_pattern_tap();
 }
 
 /**
@@ -3063,24 +3084,65 @@ static void plain_event_cb(lv_event_t *e)
     {
         lv_point_t now_point;
         lv_indev_get_point(indev, &now_point);
-        if (mouse_dial_active())
+
+        /* (1) 已在拖曳物件：手指移多少游標移多少（1:1 相對移動，左鍵按著）。 */
+        if (s_dial_drag)
         {
-            /* 方向盤已開：手指按著不控游標，方向改由手腕體感決定
-               （air_mouse_process → mouse_dial_accumulate）。 */
+            int mdx = now_point.x - s_dial_drag_last.x;
+            int mdy = now_point.y - s_dial_drag_last.y;
+            s_dial_drag_last = now_point;
+            if (mdx > 127) mdx = 127; else if (mdx < -127) mdx = -127;
+            if (mdy > 127) mdy = 127; else if (mdy < -127) mdy = -127;
+            if ((mdx || mdy) && control_provider.ble_hid_mouse_move)
+                control_provider.ble_hid_mouse_move((int8_t)mdx, (int8_t)mdy);
             break;
         }
-        dial_hold_on_pressing(&now_point);
+
+        lv_coord_t dx = now_point.x - s_dial_press_start.x;
+        lv_coord_t dy = now_point.y - s_dial_press_start.y;
+
+        /* (2) 方向盤已開：手指不動＝手腕比方向；手指「主動快速滑動」（單幀速度超過門檻）才
+           退出改拖曳。用速度、非離起點累積——按著比方向時手指自帶漂移會單調累積，用累積距離
+           會漂到門檻就誤觸拖曳、害圓盤過一陣子消失（founder 2026-07-16）。 */
+        if (mouse_dial_active())
+        {
+            int svx = now_point.x - s_dial_prev.x;
+            int svy = now_point.y - s_dial_prev.y;
+            s_dial_prev = now_point;
+            if (LV_ABS(svx) + LV_ABS(svy) > DIAL_DRAG_SPEED_PX)
+            {
+                mouse_dial_cancel();        /* 圓盤消失，不 commit 方向 */
+                dial_drag_begin(&now_point);
+            }
+            break; /* 慢/不動：手腕比方向，不控游標 */
+        }
+
+        /* (3) 圓盤還沒開，手指移動 = 一般移動滑鼠（原本 handle_pressing_event 的
+           scrolling→ble_hid_mouse_move 1.5x 移游標），並取消 dial（手指移動＝不是要比方向）。
+           按住不動滿 500ms 才進 dial；500ms 後手指移動改走 (2) 的拖曳。手指沒動時一樣走
+           handle_pressing_event（tap 判斷）。 */
+        if (s_dial_hold_timer && LV_ABS(dx) + LV_ABS(dy) > DIAL_HOLD_DRIFT_CANCEL_PX)
+            dial_hold_cancel();
         handle_pressing_event(indev, &now_point);
         break;
     }
 
     case LV_EVENT_RELEASED:
         dial_hold_cancel();
+        if (s_dial_drag)
+        {
+            /* 拖曳物件放開：放開左鍵。 */
+            s_dial_drag = false;
+            if (control_provider.ble_hid_mouse_left_release)
+                control_provider.ble_hid_mouse_left_release();
+            user_touching = false;
+            break;
+        }
         if (mouse_dial_active())
         {
-            /* 方向盤放開：以當下方向 commit（mouse_dial_end 送 end frame）。手動清 BLE
-               HID 觸控態（進 dial 前 handle_pressed_event 已 Touch_Press，dial 保證非弧形
-               起手），並跳過 handle_released_event 以免超時前放開誤觸 left_click。 */
+            /* 方向盤放開：以當下方向 commit（mouse_dial_end 送 end frame）。手動清 BLE HID
+               觸控態（進 dial 前已 Touch_Press，dial 保證非弧形起手），並跳過
+               handle_released_event 以免超時前放開誤觸 left_click。 */
             lv_point_t rp;
             lv_indev_get_point(indev, &rp);
             mouse_dial_end();
@@ -3089,6 +3151,22 @@ static void plain_event_cb(lv_event_t *e)
             break;
         }
         handle_released_event(indev);
+        break;
+
+    case LV_EVENT_PRESS_LOST:
+        /* press 被搶（上層 UI 亮出 / 手指滑出）→ 沒有 RELEASED，必須在這裡收尾，否則
+           s_dial_active / s_dial_drag 殘留：dial 殘留會讓 air_mouse_process 每幀走 dial 分支
+           return，之後「頂部區按住＝飛鼠」的 handfree gate 永遠碰不到（founder 2026-07-16）。 */
+        dial_hold_cancel();
+        if (s_dial_drag)
+        {
+            s_dial_drag = false;
+            if (control_provider.ble_hid_mouse_left_release)
+                control_provider.ble_hid_mouse_left_release();
+        }
+        if (mouse_dial_active())
+            mouse_dial_cancel(); /* 清 s_dial_active + 桌面 hide 圓盤（不 commit 方向）*/
+        user_touching = false;
         break;
 
     case LV_EVENT_CLICKED:

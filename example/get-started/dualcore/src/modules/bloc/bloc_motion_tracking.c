@@ -892,7 +892,10 @@ static void report_air_mouse_data(air_plane_delta_movement_t *movement,
     {
         return;
     }
-    control_provider.ble_hid_mouse_move(movement->x, movement->y);
+    /* 取負校正：這組 air-mouse delta 跟 dial 圓盤同源，dial 累積時已取負把方向校正對
+       （手腕上下左右對應正確）；頂部飛鼠若送原始 delta 就會跟 dial 相反（founder
+       2026-07-16 真機驗出），這裡一併反向。 */
+    control_provider.ble_hid_mouse_move((int8_t)(-movement->x), (int8_t)(-movement->y));
     movement->last_report_ts = ts;
     movement->x = 0;
     movement->y = 0;
@@ -1004,8 +1007,10 @@ static void mouse_dial_accumulate(float dx, float dy)
         s_dial_cur_dir = -1; s_dial_cur_mag = 0;
         s_dial_reset_pending = false;
     }
-    s_dial_ax += dx;
-    s_dial_ay += dy;
+    /* 取負校正：air_mouse_algorithm 的 delta 用於「移游標」時方向正確，但當成「方向盤
+       指向向量」累積時，上下左右皆與手腕實際指向相反（2026-07-16 真機驗出），故取負。 */
+    s_dial_ax -= dx;
+    s_dial_ay -= dy;
     /* clamp 累積向量長度，避免長按久了積分無限增長、放開後方向遲鈍 */
     float len = sqrtf(s_dial_ax * s_dial_ax + s_dial_ay * s_dial_ay);
     if (len > DIAL_MAX_UNITS)
@@ -1041,6 +1046,14 @@ void mouse_dial_end(void)
     s_dial_active = false;
     extern bool commu_send_dial_dir(const char *phase, int dir, int mag);
     commu_send_dial_dir("end", s_dial_cur_dir, s_dial_cur_mag);
+}
+/* 取消 dial（不 commit 方向）——手指改成拖曳物件時用：桌面收 dir=-1 就 hide 圓盤。 */
+void mouse_dial_cancel(void)
+{
+    if (!s_dial_active) return;
+    s_dial_active = false;
+    extern bool commu_send_dial_dir(const char *phase, int dir, int mag);
+    commu_send_dial_dir("end", -1, 0);
 }
 bool mouse_dial_active(void) { return s_dial_active; }
 
@@ -1130,9 +1143,14 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     /* ── 主觸控板長按方向盤 (dial)：手指按住不動時 air-mouse 位移不移游標，改累積
        成方向向量→8 向+力度上傳 0x1a（桌面畫圓盤）。dial 期間 handfree 為 false，
        下面的游標 report gate 本就不觸發；這裡提早 return 略過 moving-state/lock。 ── */
-    if (mouse_dial_active())
+    /* handfree（頂部區按住＝飛鼠）優先於 dial：兩者互斥（不同觸發區），但若 dial 因異常
+       路徑（如 press 被搶沒收到 release）殘留 s_dial_active，這個 !handfree 守衛保證頂部
+       飛鼠一按下就能用，不會被殘留的 dial 分支 return 擋掉（founder 2026-07-16「頂部飛鼠
+       沒回來」）。 */
+    if (mouse_dial_active() && !get_hid_mouse_handfree_mode())
     {
         mouse_dial_accumulate((float)delta_movement.x, (float)delta_movement.y);
+        mouse_movement_lock = false; /* dial 分支提早 return、跳過下面 lock 累積解鎖，補上 */
         return;
     }
 
@@ -1167,11 +1185,10 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
             delta_movement.y = 0;
         }
     }
-    // 按住面板才可體感移動，且移動鎖已解除
-    else if (!mouse_movement_lock && get_hid_mouse_handfree_mode() &&
-        !switch_freehand_mode &&
-        !switch_mouse_scroll_mode) //! stop_mouse_move &&
-                                   //! is_skai_touch_enabled() &&
+    // 頂部區按住＝飛鼠（handfree）：明確要飛鼠，就不受姿態 switch（錶面朝上=scroll/朝下=
+    // freehand）擋——飛鼠靠傾斜手腕，傾斜本來就會讓 gravity 進入 freehand/scroll 姿態區間，
+    // 用姿態擋會讓飛鼠斷掉（founder 2026-07-16 真機驗出 fh=1 sc=1 擋住頂部飛鼠）。移動鎖仍保留。
+    else if (!mouse_movement_lock && get_hid_mouse_handfree_mode())
     {
         report_air_mouse_data(&delta_movement, ts);
     }
