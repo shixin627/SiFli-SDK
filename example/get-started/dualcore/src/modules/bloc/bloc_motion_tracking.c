@@ -910,6 +910,11 @@ static uint8_t log_count = 0;
     // Roll-compensation sign for data-collection air-mouse (see air_mouse_process).
     // Flip to -1.0f on device if roll compensation goes the WRONG way.
     #define AIR_MOUSE_COLLECT_ROLL_SIGN 1.0f
+    // Vertical-axis sign for the collection air-mouse's gyro_y mapping (2026-07-16:
+    // gyro_x read ~0 for up/down in the collection hold posture — real device
+    // testing found gyro_y is the responsive axis there). Flip to +1.0f on device
+    // if up/down comes out reversed.
+    #define AIR_MOUSE_COLLECT_V_SIGN -1.0f
 
 static bool mouse_movement_lock = false;
 static float gyro_movement_distance = 0.0f;
@@ -982,12 +987,14 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     {
         if (s_collect_use_mouse_app_map)
         {
-            /* 2026-07-10 fix: drive the phone game with the SAME proven mapping the
-             * desktop mouse app uses (gyro_x =繞螢幕橫軸=上下擺腕, gyro_z = 左右).
-             * That mapping never reverses; the roll-compensated gyro_y path below
-             * intermittently did. Kept switchable via s_collect_use_mouse_app_map. */
+            /* 2026-07-16: collection-mode hold posture reads ~0 on gyro_x for real
+             * up/down wrist motion (confirmed on device) — unlike the desktop
+             * mouse app's posture, where gyro_x is the responsive vertical axis.
+             * Use gyro_y (sign-flippable via AIR_MOUSE_COLLECT_V_SIGN) instead;
+             * horizontal stays on gyro_z, unaffected. */
             s_collect_gref_valid = false; /* stale ref shouldn't linger if we switch back */
-            delta_movement = air_mouse_algorithm(gyro_x, gyro_z, AIR_MOUSE_SENSITIVITY);
+            delta_movement = air_mouse_algorithm(
+                AIR_MOUSE_COLLECT_V_SIGN * gyro_y, gyro_z, AIR_MOUSE_SENSITIVITY);
         }
         else
         {
