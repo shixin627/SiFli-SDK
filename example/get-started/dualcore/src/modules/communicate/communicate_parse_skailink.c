@@ -338,6 +338,26 @@ static void handle_conv_state(uint8_t *pValue, uint16_t length)
     skai_chat_on_conv_state(pValue, length);
 }
 
+/* 0x17: {"focused":bool} — the box the standalone mouse app is controlling just gained/lost a
+   focused native text input. Feeds instruction_list_set_remote_target_focus() so
+   instruction_list_bar_tap_device() (lv_instruction_list_layout.c) knows whether the next bar-tap
+   should skip straight to the input box or show the option list first. */
+static void handle_remote_text_focus(uint8_t *pValue, uint16_t length)
+{
+    cJSON *root = parse_json(pValue, length);
+    if (root == NULL)
+    {
+        LOG_W("skailink: remote_text_focus empty/malformed payload");
+        return;
+    }
+    bool focused = cJSON_IsTrue(cJSON_GetObjectItem(root, "focused"));
+    cJSON_Delete(root);
+
+    LOG_I("skailink: remote_text_focus -> %s", focused ? "true" : "false");
+    extern void instruction_list_set_remote_target_focus(bool focused);
+    instruction_list_set_remote_target_focus(focused);
+}
+
 void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
 {
     switch ((SKAI_LINK_KEY)key)
@@ -398,6 +418,10 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_SKAIAPP_VOICE:
         /* Uplink-only (watch→phone); never received here. */
         LOG_W("skailink: KEY_SKAIAPP_VOICE is uplink-only");
+        break;
+    case KEY_REMOTE_TEXT_FOCUS:
+        /* phone→watch (DOWNLINK): controlled box's focused-text-input state changed. */
+        handle_remote_text_focus(pValue, length);
         break;
     default:
         LOG_W("skailink: unknown key 0x%02x", key);

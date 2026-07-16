@@ -704,6 +704,18 @@ void watch_system_sleep(void)
     stop_ble_rssi_checker();
 }
 
+void watch_system_ble_on_screen(bool screen_on)
+{
+    /* Only meaningful on a live phone link — otherwise set_performance would
+       just log a failed conn-param request. MEDIUM is the screen-on idle tier;
+       SLOW the screen-off idle tier. (main.c additionally remaps any
+       op-completion SLOW to MEDIUM while the screen is on, so this only has to
+       cover the bare wake/sleep edges with no transfer in flight.) */
+    if (SkaiWatchSys.gap_conn_state != GAP_CONN_STATE_CONNECTED)
+        return;
+    skaiwatch_ble_set_performance(screen_on ? BLE_PERF_MEDIUM : BLE_PERF_SLOW);
+}
+
 #if !kReleaseMode
 /// 系統設置
 static int set_watch_system(int argc, char *argv[])

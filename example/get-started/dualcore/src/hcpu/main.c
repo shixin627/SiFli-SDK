@@ -34,6 +34,7 @@
 #include "bloc_setting.h"
 #include "bloc_notification.h"
 #include "watch_system_interact.h"
+#include "gui_app_pm.h" /* gui_is_active() — screen-state gate for BLE perf */
 #ifdef BSP_USING_UI_HANDLER
     #include "ui_handler.h"
 #endif
@@ -135,35 +136,39 @@ void stop_ble_rssi_checker(void)
 extern void blebredr_rf_power_set(uint8_t type, int8_t txpwr);
 
 /* ===== TX Power Control (TPC) ==========================================
-   Two-tier dynamic TX power adjustment driven by remote RSSI:
+   Three-tier dynamic TX power adjustment driven by remote RSSI:
      - Tier 0 (LOW):  0 dBm   — close to phone, save power
      - Tier 1 (MID):  +3 dBm  — moderate distance, gentle boost
+     - Tier 2 (HIGH): +10 dBm — link genuinely marginal (body-blocked /
+                                across the room); spend current to hold it
 
-   +10 dBm is intentionally NOT in this list — that level is reserved for
-   fast profile (V2T / file / DFU) where the watch is doing a real-time
-   bulk operation and reliability matters more than power. For slow
-   profile we prefer to give up the link at the edge of range and let
-   the user reconnect when closer, rather than burn current to maintain
-   marginal coverage.
+   Tier 2 exists so idle links don't stutter/drop the moment RSSI goes bad
+   (phone in the far pocket with a body in between easily hits -80 dBm). The
+   +10 dBm cost only kicks in at that edge — average power is unaffected in
+   normal proximity. This reverses the old "give up at the edge of range"
+   idle behaviour: hold the link instead of dropping it.
 
-   Only active while in slow profile (idle). Fast profile hard-pins
-   +10 dBm and pauses TPC. Hysteresis prevents ping-pong:
-     0 → 1  when avg RSSI < -75 dBm
-     1 → 0  when avg RSSI > -55 dBm (20 dB margin from upgrade)
+   Only active while in an idle profile (SLOW / MEDIUM). FAST / ULTRA hard-pin
+   +10 dBm and pause TPC. Hysteresis prevents ping-pong (one step per call):
+     0 → 1  when avg RSSI < -75 dBm     1 → 0  when avg RSSI > -55 dBm
+     1 → 2  when avg RSSI < -80 dBm     2 → 1  when avg RSSI > -65 dBm
    Plus a 30 s minimum interval between any two changes. */
 
 #define TPC_UPGRADE_LOW_TO_MID    -75
 #define TPC_DOWNGRADE_MID_TO_LOW  -55
+#define TPC_UPGRADE_MID_TO_HIGH   -80
+#define TPC_DOWNGRADE_HIGH_TO_MID -65
 #define TPC_MIN_CHANGE_INTERVAL_MS 30000
 
-#define TPC_TIER_COUNT 2
-static const int8_t TPC_TIER_DBM[TPC_TIER_COUNT] = {0, 3};
+#define TPC_TIER_COUNT 3
+static const int8_t TPC_TIER_DBM[TPC_TIER_COUNT] = {0, 3, 10};
 static int8_t   g_tpc_rssi_avg = -50;     /* EMA, dBm */
 static uint8_t  g_tpc_rssi_warmup = 0;    /* samples since reset */
 static uint8_t  g_tpc_tier = 0;           /* current tier index */
 static rt_tick_t g_tpc_last_change_tick = 0;
 static bool     g_ble_perf_is_fast = false; /* true while FAST or ULTRA — TPC yields */
 static ble_perf_level_t g_ble_perf_level = BLE_PERF_SLOW; /* current applied level, for dedupe */
+static bool     g_phy_2m = false;           /* current link PHY: false=1M true=2M (D) */
 
 static void ble_tpc_reset(void)
 {
@@ -186,8 +191,8 @@ static void ble_tpc_on_rssi_sample(int8_t rssi)
     /* EMA: alpha = 0.3, integer math with rounding. */
     g_tpc_rssi_avg = (int8_t)((g_tpc_rssi_avg * 7 + (int)rssi * 3 + 5) / 10);
 
-    /* TPC only owns TX power in slow profile. Fast profile callers are
-       intentionally aggressive — don't fight them. */
+    /* TPC only owns TX power in the idle profiles (SLOW / MEDIUM). FAST /
+       ULTRA callers are intentionally aggressive — don't fight them. */
     if (g_ble_perf_is_fast)
     {
         return;
@@ -203,8 +208,12 @@ static void ble_tpc_on_rssi_sample(int8_t rssi)
     uint8_t target = g_tpc_tier;
     if (g_tpc_tier == 0 && g_tpc_rssi_avg < TPC_UPGRADE_LOW_TO_MID)
         target = 1;
+    else if (g_tpc_tier == 1 && g_tpc_rssi_avg < TPC_UPGRADE_MID_TO_HIGH)
+        target = 2;
     else if (g_tpc_tier == 1 && g_tpc_rssi_avg > TPC_DOWNGRADE_MID_TO_LOW)
         target = 0;
+    else if (g_tpc_tier == 2 && g_tpc_rssi_avg > TPC_DOWNGRADE_HIGH_TO_MID)
+        target = 1;
 
     if (target != g_tpc_tier)
     {
@@ -578,6 +587,7 @@ void skaiwalk_disconnected_ind(ble_gap_disconnected_ind_t *ind)
         ble_tpc_reset();
         g_ble_perf_is_fast = false;
         g_ble_perf_level = BLE_PERF_SLOW;
+        g_phy_2m = false; /* a fresh link starts at 1M (D) */
 
         /* Advertise FAST for a quick reconnect, then back off to SLOW after
            ADV_FAST_WINDOW_MS to save radio power. Adv itself auto-restarts
@@ -592,22 +602,10 @@ void skaiwalk_ble_mtu_exchange_ind(sibles_mtu_exchange_ind_t *ind)
 {
     SkaiWatchSys.watch_mtu = ind->mtu;
 
-    /* Upgrade link PHY to LE 2M now that MTU exchange has completed —
-       initial negotiations are done, link is stable. 2M PHY halves the
-       radio-active time per packet (same data, half the airtime) for
-       roughly 50% less BLE radio energy. TX power is unchanged so the
-       link budget loses ~3 dB sensitivity vs 1M; in normal proximity
-       use this is invisible, only edge-of-range scenarios may notice.
-       If the phone doesn't support 2M PHY the request is ignored and
-       the link stays at 1M — no functional impact. */
-    ble_gap_update_phy_t phy = {
-        .conn_idx = ind->conn_idx,
-        .tx_phy   = GAP_PHY_LE_2MBPS,
-        .rx_phy   = GAP_PHY_LE_2MBPS,
-        .phy_opt  = 0,
-    };
-    uint8_t ret = ble_gap_update_phy(&phy);
-    LOG_I("Request LE 2M PHY for conn %d: ret=%d", ind->conn_idx, ret);
+    /* PHY is no longer forced to 2M here (D). A fresh link is 1M, which is
+       exactly what the idle profile wants for margin; skaiwatch_ble_set_
+       performance() now drives the PHY per tier — 2M only for FAST / ULTRA
+       bulk transfer, 1M for the SLOW / MEDIUM idle tiers. */
 
     /* Kick off TX-power control: sample remote RSSI every 10 s while
        connected, feed ble_tpc_on_rssi_sample() to ramp TX power
@@ -623,12 +621,48 @@ void skaiwalk_ble_mtu_exchange_ind(sibles_mtu_exchange_ind_t *ind)
    communicate_update_image.h into main.c (matches the drv_reboot pattern). */
 extern bool is_ble_dfu_thread_running(void);
 
+/* ---- Link PHY control (D) ----
+   2M PHY halves per-packet airtime (~50% less radio energy) but costs ~3 dB
+   receiver sensitivity. That trade only pays off while pushing data, so 2M is
+   pinned for the active tiers (FAST / ULTRA) and dropped back to 1M for the
+   idle tiers (SLOW / MEDIUM): the tiny keep-alive packets save almost nothing
+   at 2M, while the 3 dB margin meaningfully cuts edge-of-range stutter/drops.
+   Deduped — only issues an LL_PHY_REQ when the PHY actually changes. If the
+   peer doesn't support 2M the request is ignored and the link stays 1M. */
+static void ble_app_set_phy(uint8_t conn_idx, bool use_2m)
+{
+    if (use_2m == g_phy_2m)
+        return;
+    uint8_t p = use_2m ? GAP_PHY_LE_2MBPS : GAP_PHY_LE_1MBPS;
+    ble_gap_update_phy_t phy = {
+        .conn_idx = conn_idx,
+        .tx_phy   = p,
+        .rx_phy   = p,
+        .phy_opt  = 0,
+    };
+    uint8_t ret = ble_gap_update_phy(&phy);
+    LOG_I("Request %s PHY for conn %d: ret=%d", use_2m ? "LE 2M" : "LE 1M",
+          conn_idx, ret);
+    g_phy_2m = use_2m; /* fire-and-forget; peer confirms via LE_PHY_UPDATE_IND */
+}
+
 void skaiwatch_ble_set_performance(ble_perf_level_t level)
 {
     app_env_t *env = ble_app_get_env();
     if (env->is_power_on == false)
     {
         return;
+    }
+    /* Screen-aware idle (A): a SLOW request means "return to idle". While the
+       screen is on, idle is MEDIUM — the panel dominates power, so there is no
+       reason to accept SLOW's ~1.2 s latency. This single remap makes every
+       op-completion set_performance(SLOW) (V2T / file / gesture / mouse / OTA
+       exit) resolve correctly without threading screen state through each
+       caller. Screen off → gui_is_active() false → stays SLOW. Done first so
+       the guards and dedupe below all see the true intended level. */
+    if (level == BLE_PERF_SLOW && gui_is_active())
+    {
+        level = BLE_PERF_MEDIUM;
     }
     /* While a BLE DFU (OTA) is in flight, pin the link at ULTRA: ignore any
        request to drop below it. Voice (FAST/SLOW), file transfer and gesture
@@ -662,7 +696,7 @@ void skaiwatch_ble_set_performance(ble_perf_level_t level)
     }
     LOG_I("ble_set_performance %d -> %d", g_ble_perf_level, level);
     g_ble_perf_level = level;
-    g_ble_perf_is_fast = (level != BLE_PERF_SLOW);
+    g_ble_perf_is_fast = (level >= BLE_PERF_FAST); /* TPC yields only to FAST/ULTRA */
     switch (level)
     {
     case BLE_PERF_ULTRA:
@@ -691,12 +725,24 @@ void skaiwatch_ble_set_performance(ble_perf_level_t level)
         skaiwalk_ble_app_update_conn_param(SkaiWatchSys.watch_conn_id, 12, 28,
                                            0, 500);
         break;
+    case BLE_PERF_MEDIUM:
+        /* Medium profile (screen-on idle): responsive but not aggressive. TX
+           stays TPC-managed like SLOW — with the display on, the panel (not
+           the radio) dominates power, so a tighter interval is effectively
+           free while killing SLOW's ~1.2 s latency. */
+        blebredr_rf_power_set(0, TPC_TIER_DBM[g_tpc_tier]);
+        // Medium: Min=24 (30 ms), Max=40 (50 ms), diff=20 ms (Apple-compliant),
+        //   latency=2, effective wake ~150 ms, ST=400 (4 s).
+        // ST > (latency+1) * max_intv * 2 = 3 * 50ms * 2 = 300ms < 4000ms ✓
+        skaiwalk_ble_app_update_conn_param(SkaiWatchSys.watch_conn_id, 24, 40,
+                                           2, 400);
+        break;
     case BLE_PERF_SLOW:
     default:
-        /* Slow profile (idle): return TX to whichever tier TPC currently
-           prefers (0 dBm if signal is good, +3 / +10 if it has been
-           ramping up). Without this we'd always drop to 0 dBm on exit
-           from fast, undoing TPC's escalation. */
+        /* Slow profile (screen-off idle): return TX to whichever tier TPC
+           currently prefers (0 dBm if signal is good, +3 / +10 if it has been
+           ramping up). Without this we'd always drop to 0 dBm on exit from
+           fast, undoing TPC's escalation. */
         blebredr_rf_power_set(0, TPC_TIER_DBM[g_tpc_tier]);
         // Slow (idle): Min=80 (100 ms), Max=96 (120 ms), latency=9,
         //   effective wake ~1.2 s when idle, ST=400 (4 s).
@@ -706,6 +752,10 @@ void skaiwatch_ble_set_performance(ble_perf_level_t level)
                                            9, 400);
         break;
     }
+    /* PHY follows the tier: 2M for the active bulk tiers (FAST / ULTRA), 1M for
+       the idle tiers (SLOW / MEDIUM) to recover ~3 dB margin. Deduped in the
+       helper — no LL_PHY_REQ when the PHY already matches. */
+    ble_app_set_phy(SkaiWatchSys.watch_conn_id, level >= BLE_PERF_FAST);
 }
 
 /* Bounded retry on TX-queue saturation. The original implementation looped

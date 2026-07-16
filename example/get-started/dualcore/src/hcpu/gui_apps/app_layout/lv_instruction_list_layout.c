@@ -192,6 +192,16 @@ static char s_view_cat = 0;
    commu_send_skaibar_view broadcast). Cleared + watch-face list restored when the list
    slides shut (inst_list_slide_out_done_cb) or the mouse app dismisses it on exit. */
 static bool s_bar_single_device = false;
+/* Does the box the standalone mouse app (APP_ID_MOUSE) is controlling RIGHT NOW have a
+   genuinely focused native text input? Pushed down by the phone (KEY_REMOTE_TEXT_FOCUS 0x17,
+   see communicate_parse_skailink.c) edge-triggered after every relayed click, so this is a
+   cached "last known" value — a bar-tap reads it with zero round-trip latency, never queries
+   on demand. Consumed only by instruction_list_bar_tap_device(): true skips the option list
+   and opens the input box directly (the user almost certainly just clicked into that field);
+   false (the default) keeps the original list-first two-tap flow. Reset on
+   instruction_list_bar_device_dismiss() so a stale true never leaks into the next
+   device/session — see instruction_list_set_remote_target_focus(). */
+static bool s_remote_target_has_focus = false;
 /* Which filter the in-flight reveal will land in, applied once at settle
    (reveal_settle_browse_done_cb). Set per entry: bar / IMU browse = 0 (all),
    right-edge pull = '/', left-edge pull = '@'. */
@@ -2243,11 +2253,20 @@ void instruction_list_refeed_single_device(void)
     feed_single_device_options(s_single_device_id);
 }
 
+/* 公開：phone 下行 KEY_REMOTE_TEXT_FOCUS(0x17)呼叫 —— 更新「控制中那台設備目前有沒有聚焦
+   輸入框」的快取旗標。單純存值,不觸發任何 UI;下一次 instruction_list_bar_tap_device() 的
+   第一下 tap 才會讀它決定要不要跳過選項清單。LVGL/通訊執行緒皆可呼叫,單一 bool 寫入無需鎖。 */
+void instruction_list_set_remote_target_focus(bool focused)
+{
+    s_remote_target_has_focus = focused;
+}
+
 /* 公開：給 STANDALONE 滑鼠 app(APP_ID_MOUSE)用的「單一控制設備」版 bar-tap。與
    instruction_list_bar_tap 同一個兩段式狀態機 + 同一個元件(列表/輸入框樣式必然一致),差別:
-   1st tap 餵「控制中那台」的選項(非混合清單)、進單設備模式(settle 改送 commu_send_skaibar_
-   open_device 叫那台電腦開它的 skaibar、非廣播)。2nd tap / 收掉與錶盤完全相同。device_id 為空
-   時退回一般 bar(沒有控制目標就沒有單一電腦可開)。 */
+   1st tap 依 s_remote_target_has_focus 二選一——有聚焦輸入框(使用者八成剛點進那格)直接跳過
+   選項清單開輸入框;沒有就跟原本一樣先餵「控制中那台」的選項(非混合清單)、進單設備模式
+   (settle 改送 commu_send_skaibar_open_device 叫那台電腦開它的 skaibar、非廣播)。2nd tap /
+   收掉與錶盤完全相同。device_id 為空時退回一般 bar(沒有控制目標就沒有單一電腦可開)。 */
 void instruction_list_bar_tap_device(const char *device_id)
 {
     LOG_I("[bar_dev] tap device_id=\"%s\"", (device_id && device_id[0]) ? device_id : "(EMPTY)");
@@ -2285,8 +2304,21 @@ void instruction_list_bar_tap_device(const char *device_id)
     extern void instruction_list_open_browse(void);
     if (box_visible)
     {
-        s_close_is_cancel = true; /* bar-tap close = user cancel → 送 dismiss */
-        close_ai_widget();
+        /* 防手指誤觸自關:單擊直接開框(s_remote_target_has_focus 分支)讓「開框」跟「這下
+           tap 的手指放開」發生在同一次觸控循環裡 —— 剛長出來的輸入框長到手指底下,LVGL
+           把放開誤判成對新物件的一次點擊,馬上又觸發這裡的 box_visible 關閉,真機驗證過:
+           兩次 [bar_dev] tap log 只相隔 127ms,人不可能故意連按這麼快。剛開框(見
+           animate_open_ai_widget 設的 last_ai_widget_open_time)的極短時間窗內忽略這次
+           tap,視為同一次觸控的雜訊,不當作使用者真的要關。 */
+        if (rt_tick_get() - last_ai_widget_open_time < rt_tick_from_millisecond(400))
+        {
+            LOG_I("[bar_dev] tap ignored — too soon after open (debounce)");
+        }
+        else
+        {
+            s_close_is_cancel = true; /* bar-tap close = user cancel → 送 dismiss */
+            close_ai_widget();
+        }
     }
     else if (list_shown)
     {
@@ -2296,6 +2328,46 @@ void instruction_list_bar_tap_device(const char *device_id)
         extern bool commu_send_skaibar_open_device(void);
         commu_send_skaibar_open_device();
         animate_open_ai_widget();
+    }
+    else if (s_remote_target_has_focus)
+    {
+        /* 控制中那台目前有聚焦輸入框(剛剛才點過)——跳過選項清單「顯示」,直接開輸入框,同 2nd
+           tap 的開框動作。桌面端(SkaibarRelayController/RemoteFocusedTextInputRouter)本來就會
+           把文字直接注入該聚焦框、不開它自己的 Skaibar 視窗,這裡只是讓手錶畫面跟著跳過中繼清單。
+           仍要呼叫 feed_single_device_options() 把底層清單餵好資料(只是不呼叫
+           instruction_list_open_browse() 讓它真的浮出來)——animate_open_ai_widget() 共用同一份
+           p_instruction_list_bg,一份空清單會讓它內部的捲動/定位邏輯撞到不存在的 child(見
+           feed_single_device_options 的註解),真機驗證過:漏了這步會閃一下就沒反應。
+           真機再驗證一輪抓到第二個雷:s_global_bar_layer(整個浮層容器,含 list 跟 ai_box)
+           預設是 HIDDEN,原本只有 instruction_list_open_browse()→instruction_list_reveal_
+           drag_begin() 這條路徑會呼叫 instruction_list_bar_set_visible(true) 讓它現形——本分支
+           跳過 open_browse,所以容器永遠沒現形,animate_open_ai_widget() 把 ai_box 自己的
+           HIDDEN 拿掉也沒用(母層還是 HIDDEN,LVGL 子物件跟著不可見)。邏輯上「開著」但畫面
+           什麼都看不到,像「閃一下」——真機驗證:log 顯示輸入框開著超過 5 分鐘都沒被關閉,證實
+           是純顯示層問題。直接呼叫 instruction_list_bar_set_visible(true) 現形容器。
+           第三個雷(真機驗證抓到,兩輪修法):animate_open_ai_widget() 內部無條件把
+           p_instruction_list_bg 的 HIDDEN 拿掉 + 播放 slide-in 動畫(它假設呼叫時清單早已
+           開著,這裡卻是它自己第一次讓清單現形)——連清單都跟著滑出來,使用者只想要輸入框。
+           第一輪修法直接把 list_bg 重新標 HIDDEN,結果連帶弄壞 instruction_list_is_visible()
+           ——那個查詢函式的官方註解明講:「must stay true while the voice box is up,否則
+           back 沒辦法路由到 back_on_skai_widget,状態機會落入無法識別的狀態」,真機驗證:語音
+           輸入直接壞掉。正確修法:HIDDEN 旗標維持不動(滿足狀態機),只把清單內容平移到畫面外
+           (translate_x = LV_HOR_RES,跟建立時的停放位置一樣)、砍掉 slide-in 動畫 ——邏輯上
+           「未隱藏」,視覺上完全在螢幕外,不會被看到。list_bg 跟 ai_box 是 s_global_bar_layer
+           下兩個獨立 sibling(非父子),平移 list_bg 不影響 ai_box 的可見性/位置。 */
+        s_bar_single_device = true;
+        extern bool commu_send_skaibar_open_device(void);
+        commu_send_skaibar_open_device();
+        feed_single_device_options(device_id);
+        instruction_list_bar_set_visible(true);
+        animate_open_ai_widget();
+        if (p_instruction_list_layout->p_instruction_list_bg &&
+            lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
+        {
+            lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+            lv_anim_del(list_bg, inst_list_slide_anim_cb);
+            lv_obj_set_style_translate_x(list_bg, LV_HOR_RES, 0); /* 停在畫面外,旗標仍未隱藏 */
+        }
     }
     else
     {
@@ -2318,12 +2390,25 @@ void instruction_list_bar_device_dismiss(void)
     if (!s_bar_single_device)
         return;
     s_bar_single_device = false;
+    s_remote_target_has_focus = false; /* 離開單設備模式 → 快取旗標歸零,別讓下一台/下一次殘留 */
     s_opened_by_lift = false;   /* drawer session 結束 */
     mic_bar_voice_stop();       /* 聽音中被收掉 → 停乾淨(no-op if idle) */
     extern bool commu_send_skaibar_dismiss(void);
     extern void instruction_list_restore_base(void);
     commu_send_skaibar_dismiss();
     instruction_list_restore_base();
+    /* s_remote_target_has_focus 分支(instruction_list_bar_tap_device)會把 list_bg 平移到
+       畫面外(translate_x=LV_HOR_RES)且刻意不清 HIDDEN 旗標,讓語音狀態機不受影響。但
+       p_instruction_list_layout/list_bg 是共用單例,不保證離開滑鼠 app 時會被重建——如果沒有,
+       殘留的 translate_x 會跟著漏進錶盤自己的清單,真機驗證過:波及錶盤本身的語音輸入(完全
+       不相關的路徑也壞掉)。這裡歸零,確保離開時 list_bg 回到乾淨的靜止位置。 */
+    if (p_instruction_list_layout && p_instruction_list_layout->p_instruction_list_bg &&
+        lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
+    {
+        lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
+        lv_anim_del(list_bg, inst_list_slide_anim_cb);
+        lv_obj_set_style_translate_x(list_bg, 0, 0);
+    }
     /* 收掉全域 bar overlay(同 inst_list_slide_out_done_cb 的理由),避免滑鼠 app 離開後它殘留
        蓋住別頁。錶盤狀態機之後會重新顯示。 */
     if (s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer))

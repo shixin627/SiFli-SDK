@@ -114,6 +114,11 @@ extern void BLE_LOG_E(const char *format, ...);
     extern void watch_system_wakeup(void);
     extern void watch_system_sleep(void);
 
+    /// Drive the BLE link profile from screen state: screen on -> MEDIUM
+    /// (responsive), screen off -> SLOW (power). Call from the GUI PM
+    /// resume/suspend handler so every wake path is covered.
+    extern void watch_system_ble_on_screen(bool screen_on);
+
     /// Sensor subscription dispatch (formerly WATCH_SENSOR_SUBSCRIBE).
     extern void interact_sensor_subscription(sensor_subscription_t sub);
 

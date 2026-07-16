@@ -70,19 +70,28 @@ extern "C"
         ANDROID = 0x02,
     } PHONE_OS_VERSION;
 
-    /* BLE link performance tiers. Drives TX power + connection interval.
-         SLOW  — idle profile; TPC owns TX power, long interval (~100 ms).
-         FAST  — interactive transfers (V2T / file sync / HID): pinned to
-                 +10 dBm, 15-35 ms interval, Apple-compliant window.
-         ULTRA — OTA only. Pushes the interval below the Apple guideline
-                 (Min 7.5 ms, Max-Min < 20 ms) to maximize throughput; the
-                 peer may renegotiate. Avoid for non-OTA paths — iOS can
-                 reject the param update entirely. */
+    /* BLE link performance tiers. Drives TX power + connection interval + PHY.
+       Ordered by aggressiveness (SLOW < MEDIUM < FAST < ULTRA) — the guards in
+       skaiwatch_ble_set_performance compare with '<', so keep them monotonic.
+         SLOW   — screen-off idle; TPC owns TX power, 100-120 ms interval,
+                  latency 9 (~1.2 s effective wake), 1M PHY (best margin).
+         MEDIUM — screen-on idle; TPC owns TX power, 30-50 ms interval,
+                  latency 2 (~150 ms effective wake), 1M PHY. Responsive while
+                  the display is on, where BLE current is dwarfed by the panel.
+                  Callers never request this directly: set_performance remaps a
+                  SLOW request to MEDIUM whenever the screen is on.
+         FAST   — interactive transfers (V2T / file sync / HID): pinned to
+                  +10 dBm, 15-35 ms interval, 2M PHY, Apple-compliant window.
+         ULTRA  — OTA only. Pushes the interval below the Apple guideline
+                  (Min 7.5 ms, Max-Min < 20 ms) + 2M PHY to maximize throughput;
+                  the peer may renegotiate. Avoid for non-OTA paths — iOS can
+                  reject the param update entirely. */
     typedef enum
     {
-        BLE_PERF_SLOW  = 0,
-        BLE_PERF_FAST  = 1,
-        BLE_PERF_ULTRA = 2,
+        BLE_PERF_SLOW   = 0,
+        BLE_PERF_MEDIUM = 1,
+        BLE_PERF_FAST   = 2,
+        BLE_PERF_ULTRA  = 3,
     } ble_perf_level_t;
 
     /******************* Function definition **********************************/

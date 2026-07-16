@@ -667,6 +667,10 @@ static void pm_event_handler(gui_pm_event_type_t event)
         extern void lv_touch_arm_wake_suppression(void);
         dial_header_on_suspend();
         start_sleep_fade_out();
+        /* BLE: screen off → drop the link to SLOW idle for standby power.
+           Covers every sleep path (button-click or inactivity), since the FSM
+           fires SUSPEND here regardless of which action triggered it. */
+        watch_system_ble_on_screen(false);
         /* Governor: screen going off — clear the session latch. */
         disp_gov_notify_screen_off();
         /* Arm wake-up touch suppression. Stays set through the fade-out
@@ -681,6 +685,11 @@ static void pm_event_handler(gui_pm_event_type_t event)
         extern void lv_touch_set_wake_suppress_window(uint32_t window_ms);
         lv_timer_enable(true);
         dial_header_on_resume();
+        /* BLE: screen on → raise the link to MEDIUM (responsive idle) so
+           notifications / SKAI_LINK don't crawl at SLOW's ~1.2 s latency while
+           the user is looking at the watch. Every wake path funnels through
+           this RESUME, so hooking here (not each wake caller) covers them all. */
+        watch_system_ble_on_screen(true);
         /* Governor: screen woke — reset latch + arm wake debounce so a
          * wake-glance lands on home at 1 Hz and the wake-causing touch is
          * not counted as an operate input. */

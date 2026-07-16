@@ -97,6 +97,18 @@ extern "C"
            remembers this target, runs STT on the audio, and writes the transcript
            back with SkaiappController.setMemoText (which re-pushes the package). */
         KEY_SKAIAPP_VOICE = 0x16,
+        /* phone→watch (DOWNLINK): {"focused":bool} — the box the watch's standalone mouse app
+           (APP_ID_MOUSE) is currently controlling just gained/lost a genuinely focused native
+           text input (Windows WindowsFocusedTextInput.HasActiveExternalTextInput / Mac
+           RemoteFocusProbe.hasActiveExternalTextInput, re-checked after every relayed click and
+           pushed down edge-triggered — see the air-mouse focusGained/focusLost group in
+           bridge/schema/air-mouse-protocol.schema.json). Cached by
+           instruction_list_set_remote_target_focus() in lv_instruction_list_layout.c and read by
+           instruction_list_bar_tap_device(): true → the bar-tap skips straight to the text/voice
+           input box; false (the default) → it shows the device's option list first, unchanged
+           from the original behaviour. Reset to false on instruction_list_bar_device_dismiss()
+           so a stale true never leaks into the next device/session. */
+        KEY_REMOTE_TEXT_FOCUS = 0x17,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.
