@@ -155,6 +155,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_task.h */ bool commu_send_mouse_button(uint8_t btn, uint8_t act) { (void)btn; (void)act; return false; }
 /* communicate_task.h */ bool commu_send_mouse_scroll(int dx, int dy) { (void)dx; (void)dy; return false; }
 /* communicate_task.h */ bool commu_send_mouse_back(void) { return false; }
+/* communicate_task.h */ bool commu_send_media_relay(const char *cmd) { (void)cmd; return false; }
 /* gui_app_pm.h */ void sys_poweron_fsm(sys_pwron_evt_t evt) {  }
 /* gesture_model_loader.h */ int unload_release_model(void) { return 0; }
 /* ble_hid.h */ void volume_down_through_hid(void) {  }

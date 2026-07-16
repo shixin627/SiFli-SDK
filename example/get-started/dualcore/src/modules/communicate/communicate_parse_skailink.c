@@ -358,6 +358,36 @@ static void handle_remote_text_focus(uint8_t *pValue, uint16_t length)
     instruction_list_set_remote_target_focus(focused);
 }
 
+/* 0x19: {"device_id","title","artist","playing"} — the active target device's
+   now-playing, pushed by the phone for the mouse app's media centre ONLY. The
+   watch face's own media widget keeps using NOTIFY_KEY_MEDIA_TITLE (0x46, the
+   phone's own session). hid_mouse filters by device_id against the current active
+   selection so a late frame for a just-deselected device can't clobber the UI. */
+static void handle_media_state(uint8_t *pValue, uint16_t length)
+{
+    cJSON *root = parse_json(pValue, length);
+    if (root == NULL)
+    {
+        LOG_W("skailink: media_state empty/malformed payload");
+        return;
+    }
+    cJSON *j_id     = cJSON_GetObjectItem(root, "device_id");
+    cJSON *j_title  = cJSON_GetObjectItem(root, "title");
+    cJSON *j_artist = cJSON_GetObjectItem(root, "artist");
+    cJSON *j_play   = cJSON_GetObjectItem(root, "playing");
+    const char *id     = cJSON_IsString(j_id)     ? j_id->valuestring     : "";
+    const char *title  = cJSON_IsString(j_title)  ? j_title->valuestring  : "";
+    const char *artist = cJSON_IsString(j_artist) ? j_artist->valuestring : "";
+    bool playing = cJSON_IsTrue(j_play);
+
+    extern void mouse_mode_handle_remote_media_state(const char *device_id,
+                                                     const char *title,
+                                                     const char *artist,
+                                                     bool playing);
+    mouse_mode_handle_remote_media_state(id, title, artist, playing);
+    cJSON_Delete(root);
+}
+
 void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
 {
     switch ((SKAI_LINK_KEY)key)
@@ -422,6 +452,14 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_REMOTE_TEXT_FOCUS:
         /* phone→watch (DOWNLINK): controlled box's focused-text-input state changed. */
         handle_remote_text_focus(pValue, length);
+        break;
+    case KEY_MEDIA_CONTROL:
+        /* Uplink-only (watch→phone); never received here. */
+        LOG_W("skailink: KEY_MEDIA_CONTROL is uplink-only");
+        break;
+    case KEY_MEDIA_STATE:
+        /* phone→watch (DOWNLINK): active target device's now-playing (mouse app). */
+        handle_media_state(pValue, length);
         break;
     default:
         LOG_W("skailink: unknown key 0x%02x", key);

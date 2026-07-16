@@ -96,6 +96,10 @@ bool commu_send_mouse_move(int dx, int dy);            /* -> KEY_MOUSE_MOVE   (0
 bool commu_send_mouse_button(uint8_t btn, uint8_t act);/* -> KEY_MOUSE_BUTTON (0x09) btn 0=L 1=R; act 0=up 1=down 2=click */
 bool commu_send_mouse_scroll(int dx, int dy);          /* -> KEY_MOUSE_SCROLL (0x0A) wheel=dy pan=dx */
 bool commu_send_mouse_back(void);                      /* -> KEY_MOUSE_BACK   (0x0B) */
+/* Media transport relay to the active target device (mouse app media centre).
+   cmd ∈ playPause|next|previous|volumeUp|volumeDown — air-mouse mediaControl verbs.
+   Distinct from commu_send_media_control() above, which drives the phone's own media. */
+bool commu_send_media_relay(const char *cmd);          /* -> KEY_MEDIA_CONTROL (0x18) */
 bool commu_send_skaibar_dismiss(void);                 /* -> KEY_SKAIBAR_DISMISS (0x0C) cancel-close, no commit */
 bool commu_send_skaibar_view(char cat);                /* -> KEY_SKAIBAR_VIEW_CHANGE (0x0D) view opened: '@'/'/'/0=bar */
 bool commu_send_skaibar_open_device(void);             /* -> KEY_SKAIBAR_OPEN_DEVICE (0x0E) mouse app: open single controlled device's skaibar */

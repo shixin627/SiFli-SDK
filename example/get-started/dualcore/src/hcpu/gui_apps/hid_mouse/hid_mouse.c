@@ -391,8 +391,7 @@ static void media_center_update_play_icon(bool playing);
 static void media_center_play_btn_cb(lv_event_t *e);
 static void media_center_prev_btn_cb(lv_event_t *e);
 static void media_center_next_btn_cb(lv_event_t *e);
-static void media_center_vol_up_btn_cb(lv_event_t *e);
-static void media_center_vol_down_btn_cb(lv_event_t *e);
+static void media_center_vol_hold_cb(lv_event_t *e);
 static void status_bar_area_up_cb(lv_event_t *e);
 static void media_tileview_event_cb(lv_event_t *e);
 static void hid_mode_toggle(void);
@@ -5886,11 +5885,18 @@ static void media_center_update_play_icon(bool playing)
                    playing ? &img_media_pause : &img_media_play);
 }
 
+/* Media transport buttons. When an active remote target is selected
+   (ble_hid_mouse_app_route()), relay the command to it via SKAI_LINK 0x18 (cmd
+   strings match the air-mouse mediaControl verbs); otherwise keep driving the
+   phone's own media over BLE HID consumer report, unchanged. */
 static void media_center_play_btn_cb(lv_event_t *e)
 {
     (void)e;
     LOG_D("media center play/pause tap");
-    play_pause_through_hid();
+    if (ble_hid_mouse_app_route())
+        commu_send_media_relay("playPause");
+    else
+        play_pause_through_hid();
     media_center_update_play_icon(!media_center_play_state);
 }
 
@@ -5898,28 +5904,85 @@ static void media_center_prev_btn_cb(lv_event_t *e)
 {
     (void)e;
     LOG_D("media center prev tap");
-    play_prev_through_hid();
+    if (ble_hid_mouse_app_route())
+        commu_send_media_relay("previous");
+    else
+        play_prev_through_hid();
 }
 
 static void media_center_next_btn_cb(lv_event_t *e)
 {
     (void)e;
     LOG_D("media center next tap");
-    play_next_through_hid();
+    if (ble_hid_mouse_app_route())
+        commu_send_media_relay("next");
+    else
+        play_next_through_hid();
 }
 
-static void media_center_vol_up_btn_cb(lv_event_t *e)
+/* ─── 音量鍵長按連續 ───────────────────────────────────────────────────────
+   按住 >0.5s 起每 100ms 送一次 volumeUp/Down（持續調整），放開停；短按（<0.5s）只送
+   一次。play/prev/next 維持點一次的 CLICKED、不受影響。timer 在放開 + screen teardown
+   （media_center_vol_cancel_repeat）都會清，避免 timer UAF 死當。 */
+static lv_timer_t *s_vol_repeat_timer = NULL;
+static uint32_t s_vol_press_tick = 0;
+static int s_vol_dir = 0; /* +1 加 / -1 減 */
+static bool s_vol_repeated = false;
+
+static void media_center_vol_send(int dir)
 {
-    (void)e;
-    LOG_D("media center vol up tap");
-    volume_up_through_hid();
+    if (dir > 0)
+    {
+        if (ble_hid_mouse_app_route()) commu_send_media_relay("volumeUp");
+        else volume_up_through_hid();
+    }
+    else
+    {
+        if (ble_hid_mouse_app_route()) commu_send_media_relay("volumeDown");
+        else volume_down_through_hid();
+    }
 }
 
-static void media_center_vol_down_btn_cb(lv_event_t *e)
+static void media_center_vol_cancel_repeat(void)
 {
-    (void)e;
-    LOG_D("media center vol down tap");
-    volume_down_through_hid();
+    if (s_vol_repeat_timer)
+    {
+        lv_timer_del(s_vol_repeat_timer);
+        s_vol_repeat_timer = NULL;
+    }
+}
+
+static void media_center_vol_repeat_cb(lv_timer_t *t)
+{
+    (void)t;
+    /* 按住滿 0.5s 才開始連續送；前 0.5s 內的 tick 不送（短按由放開時處理）。 */
+    if (lv_tick_elaps(s_vol_press_tick) >= 500)
+    {
+        media_center_vol_send(s_vol_dir);
+        s_vol_repeated = true;
+    }
+}
+
+/* 音量鍵事件（綁 LV_EVENT_ALL，只處理 PRESSED / RELEASED / PRESS_LOST）。
+   user_data = 方向（+1 加 / -1 減）。 */
+static void media_center_vol_hold_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    int dir = (int)(intptr_t)lv_event_get_user_data(e);
+    if (code == LV_EVENT_PRESSED)
+    {
+        s_vol_dir = dir;
+        s_vol_press_tick = lv_tick_get();
+        s_vol_repeated = false;
+        media_center_vol_cancel_repeat();
+        s_vol_repeat_timer =
+            lv_timer_create(media_center_vol_repeat_cb, 100, NULL);
+    }
+    else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+    {
+        media_center_vol_cancel_repeat();
+        if (!s_vol_repeated) media_center_vol_send(s_vol_dir); /* 短按：只送一次 */
+    }
 }
 
 static lv_obj_t *media_center_make_icon_btn(lv_obj_t *parent,
@@ -5935,7 +5998,7 @@ static lv_obj_t *media_center_make_icon_btn(lv_obj_t *parent,
     lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
+    if (cb) lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *img = lv_img_create(btn);
     lv_img_set_src(img, icon);
     // 圖檔原生尺寸 ~150px（沿用 app_media.c 在 116×80 btn 用 zoom=0.6 的比例）
@@ -6055,15 +6118,19 @@ static void create_media_center_panel(lv_obj_t *parent)
     lv_obj_align(btn_next, LV_ALIGN_CENTER, 120, 0);
 
     // 音量 -/+
+    // 音量鍵不走 make_icon_btn 的 CLICKED（傳 NULL），改綁 hold cb：長按 >0.5s 連續調整。
+    // user_data = 方向（-1 減 / +1 加）。
     lv_obj_t *btn_vol_down =
-        media_center_make_icon_btn(media_tile, &volume_down,
-                                   media_center_vol_down_btn_cb, 75);
+        media_center_make_icon_btn(media_tile, &volume_down, NULL, 75);
     lv_obj_align(btn_vol_down, LV_ALIGN_BOTTOM_MID, -90, -80);
+    lv_obj_add_event_cb(btn_vol_down, media_center_vol_hold_cb, LV_EVENT_ALL,
+                        (void *)(intptr_t)-1);
 
     lv_obj_t *btn_vol_up =
-        media_center_make_icon_btn(media_tile, &volume_up,
-                                   media_center_vol_up_btn_cb, 75);
+        media_center_make_icon_btn(media_tile, &volume_up, NULL, 75);
     lv_obj_align(btn_vol_up, LV_ALIGN_BOTTOM_MID, 90, -80);
+    lv_obj_add_event_cb(btn_vol_up, media_center_vol_hold_cb, LV_EVENT_ALL,
+                        (void *)(intptr_t)1);
 
     // 離開 App：紅色 Exit 鈕（從舊右側抽屜移來），放媒體頁最底
     lv_obj_t *media_exit_btn = lv_btn_create(media_tile);
@@ -6128,8 +6195,12 @@ static void media_center_set_open(bool open, bool animate)
         lv_obj_move_foreground(media_tileview);
         // 開啟 = 滾到 media tile (0,0)
         lv_obj_set_tile_id(media_tileview, 0, 0, animate);
+        /* Seed the title. Use the phone's own media (0x46) ONLY when not routing
+           to a remote target; for an active remote target leave whatever the last
+           0x19 wrote, so opening the centre doesn't flash the phone's own song. */
         if (media_center_title_label &&
-            lv_obj_is_valid(media_center_title_label))
+            lv_obj_is_valid(media_center_title_label) &&
+            !ble_hid_mouse_app_route())
         {
             char *title = get_media_title();
             lv_label_set_text(media_center_title_label,
@@ -6301,8 +6372,32 @@ void mouse_mode_handle_media_title(const char *title)
     if (!media_center_title_label ||
         !lv_obj_is_valid(media_center_title_label))
         return;
+    /* This is the phone's OWN media (NOTIFY 0x46). When a remote target is the
+       active selection, the media centre shows that device's now-playing instead
+       (mouse_mode_handle_remote_media_state / 0x19); ignore the phone's own here. */
+    if (ble_hid_mouse_app_route())
+        return;
     lv_label_set_text(media_center_title_label,
                       (title && title[0]) ? title : "Media Title");
+}
+
+/* SKAI_LINK 0x19 downlink: the ACTIVE remote target device's now-playing, routed
+   from communicate_parse_skailink.c::handle_media_state. Filtered by device_id
+   against the current active selection so a late frame for a just-deselected
+   device can't clobber the UI. Drives ONLY the mouse app's media centre — the
+   watch-face media widget keeps using the phone's own 0x46. */
+void mouse_mode_handle_remote_media_state(const char *device_id, const char *title,
+                                          const char *artist, bool playing)
+{
+    (void)artist; /* media centre shows title only for now */
+    if (!media_center_title_label || !lv_obj_is_valid(media_center_title_label))
+        return;
+    if (device_id == NULL || s_dev_active_id[0] == '\0' ||
+        strncmp(device_id, s_dev_active_id, SYNCED_DEVICE_ID_LEN) != 0)
+        return;
+    lv_label_set_text(media_center_title_label,
+                      (title && title[0]) ? title : "Media Title");
+    media_center_update_play_icon(playing);
 }
 
 void mouse_mode_handle_media_play_state(bool playing)
@@ -6371,6 +6466,11 @@ static void set_active_device_by_index(int idx)
     strncpy(s_dev_active_id, id, sizeof(s_dev_active_id) - 1);
     s_dev_active_id[sizeof(s_dev_active_id) - 1] = '\0';
     update_ctrl_dev_label();
+    /* Switched target: reset the media title to the placeholder until this
+       device's now-playing arrives (the phone re-pushes 0x19 on active-select),
+       so the previous device's title doesn't linger as if it were this one's. */
+    if (media_center_title_label && lv_obj_is_valid(media_center_title_label))
+        lv_label_set_text(media_center_title_label, "Media Title");
     LOG_I("[dev_switch] active -> idx=%d/%d id=%s", idx, (int)n, id);
 }
 
@@ -6936,6 +7036,7 @@ void hid_mouse_destroy(void)
     left_scroll_active = false;
 
     // 媒體中心清理
+    media_center_vol_cancel_repeat(); // 停音量長按 repeat timer，避免 screen teardown 後 timer UAF
     media_tileview = NULL;
     media_home_tile = NULL;
     media_tile = NULL;

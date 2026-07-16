@@ -171,6 +171,21 @@ bool commu_send_active_device(const char *device_id)
     return ok;
 }
 
+/* watch→phone: relay a media transport command to the active target device
+   (KEY_ACTIVE_SELECT). cmd ∈ playPause|next|previous|volumeUp|volumeDown — the
+   air-mouse mediaControl verbs, forwarded by the phone without a mapping. Used by
+   the mouse app's media centre when a remote target is active (otherwise the
+   buttons keep driving the phone's own media over BLE HID, unchanged). Distinct
+   from the legacy commu_send_media_control() which drives the phone's own media. */
+bool commu_send_media_relay(const char *cmd)
+{
+    if (cmd == NULL) return false;
+    char json[24]; /* {"cmd":"volumeDown"} = 20 chars + NUL */
+    int n = rt_snprintf(json, sizeof(json), "{\"cmd\":\"%s\"}", cmd);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MEDIA_CONTROL, json);
+}
+
 /*============================================================================*
  *                              Bond / Login
  *============================================================================*/

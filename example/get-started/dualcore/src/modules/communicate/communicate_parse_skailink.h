@@ -109,6 +109,20 @@ extern "C"
            from the original behaviour. Reset to false on instruction_list_bar_device_dismiss()
            so a stale true never leaks into the next device/session. */
         KEY_REMOTE_TEXT_FOCUS = 0x17,
+        /* watch→phone (UPLINK): {"cmd":"playPause|next|previous|volumeUp|volumeDown"} —
+           the standalone mouse app's (APP_ID_MOUSE) media-centre transport buttons,
+           relayed to the active target device (KEY_ACTIVE_SELECT) instead of the watch's
+           own BLE HID consumer report. cmd strings match the air-mouse mediaControl verbs
+           so the phone forwards them without a mapping. Only sent when an active remote
+           target is selected (ble_hid_mouse_app_route()); otherwise the buttons keep
+           driving the phone's own media over HID, unchanged. */
+        KEY_MEDIA_CONTROL = 0x18,
+        /* phone→watch (DOWNLINK): {"device_id":"...","title":"...","artist":"...","playing":bool}
+           — the ACTIVE target device's now-playing, for the mouse app's media centre ONLY.
+           Kept SEPARATE from the phone's own media title (NOTIFY_KEY_MEDIA_TITLE 0x46), which
+           still feeds the watch-face media widget / dial header. The watch filters by device_id
+           so a late frame for a just-deselected device can't overwrite the current UI. */
+        KEY_MEDIA_STATE = 0x19,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.
