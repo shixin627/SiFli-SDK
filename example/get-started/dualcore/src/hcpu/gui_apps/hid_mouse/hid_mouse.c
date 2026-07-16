@@ -2979,6 +2979,66 @@ static void handle_released_event(lv_indev_t *indev)
     gesture_timer_enabled = false;
     #endif
 }
+/* ─────────────────────────────────────────────────────────────────────────
+   主觸控板長按 → 方向盤 (dial) 手勢
+   頂部 logo「按住不動=飛鼠」的姊妹手勢，但觸發區是主觸控板、效果是「以電腦游標為
+   中心開一個 8 向方向盤」：按住主觸控板不動 ~250ms（期間沒滑走）→ 進 dial，之後手腕
+   上下左右傾斜選方向（air_mouse_process 把 gyro 位移累積成向量 → bloc_motion_tracking.c
+   的 mouse_dial_*），放開即以當下方向 commit。手指一旦滑動超過門檻就取消 dial、讓路給
+   正常觸控板游標控制；只在非弧形/滾動區起手才啟用，避免跟左右弧滾動打架。
+   ───────────────────────────────────────────────────────────────────────── */
+#define DIAL_HOLD_TO_START_MS     250 /* 同頂部飛鼠：按住不動這麼久 → 開方向盤 */
+#define DIAL_HOLD_DRIFT_CANCEL_PX  18 /* 離起點曼哈頓距離超過 → 判定滑動，取消 dial */
+extern void mouse_dial_start(void);
+extern void mouse_dial_end(void);
+extern bool mouse_dial_active(void);
+static lv_timer_t *s_dial_hold_timer = NULL;
+static lv_point_t s_dial_press_start;
+
+static void dial_hold_cancel(void)
+{
+    if (s_dial_hold_timer)
+    {
+        lv_timer_del(s_dial_hold_timer);
+        s_dial_hold_timer = NULL;
+    }
+}
+
+static void dial_hold_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    s_dial_hold_timer = NULL; /* repeat_count=1 跑完自刪，只清指標 */
+    LOG_I("[dial] trackpad hold %dms -> dial ON", DIAL_HOLD_TO_START_MS);
+    motor_pattern_tap();      /* 觸覺回饋：方向盤已開 */
+    mouse_dial_start();
+}
+
+/* PRESSED：只在中央觸控板（非弧形/滾動起手）武裝 hold 計時器。press_in_arc_zone
+   由 handle_pressed_event 先算好，故本函式必須排在它之後呼叫。 */
+static void dial_hold_on_pressed(lv_indev_t *indev)
+{
+    dial_hold_cancel();
+    if (press_in_arc_zone)
+        return; /* 弧形滾動起手不開方向盤 */
+    if (indev)
+        lv_indev_get_point(indev, &s_dial_press_start);
+    s_dial_hold_timer = lv_timer_create(dial_hold_timer_cb,
+                                        DIAL_HOLD_TO_START_MS, NULL);
+    lv_timer_set_repeat_count(s_dial_hold_timer, 1);
+}
+
+/* PRESSING：手指離起點夠遠 = 滑動意圖 → 取消 hold（正常游標控制接手）。用「離起點
+   距離」非逐幀累積：真機按住自帶 ±1-2px/幀抖動，逐幀累積必超標（頂部飛鼠同款教訓）。 */
+static void dial_hold_on_pressing(const lv_point_t *now)
+{
+    if (!s_dial_hold_timer)
+        return;
+    lv_coord_t dx = now->x - s_dial_press_start.x;
+    lv_coord_t dy = now->y - s_dial_press_start.y;
+    if (LV_ABS(dx) + LV_ABS(dy) > DIAL_HOLD_DRIFT_CANCEL_PX)
+        dial_hold_cancel();
+}
+
 /**
  * @brief Main event callback for touch events
  * @param e Pointer to the event
@@ -2996,17 +3056,38 @@ static void plain_event_cb(lv_event_t *e)
     case LV_EVENT_PRESSED:
     {
         handle_pressed_event(indev);
+        dial_hold_on_pressed(indev); /* 主觸控板長按→方向盤：武裝 hold 計時器 */
         break;
     }
     case LV_EVENT_PRESSING:
     {
         lv_point_t now_point;
         lv_indev_get_point(indev, &now_point);
+        if (mouse_dial_active())
+        {
+            /* 方向盤已開：手指按著不控游標，方向改由手腕體感決定
+               （air_mouse_process → mouse_dial_accumulate）。 */
+            break;
+        }
+        dial_hold_on_pressing(&now_point);
         handle_pressing_event(indev, &now_point);
         break;
     }
 
     case LV_EVENT_RELEASED:
+        dial_hold_cancel();
+        if (mouse_dial_active())
+        {
+            /* 方向盤放開：以當下方向 commit（mouse_dial_end 送 end frame）。手動清 BLE
+               HID 觸控態（進 dial 前 handle_pressed_event 已 Touch_Press，dial 保證非弧形
+               起手），並跳過 handle_released_event 以免超時前放開誤觸 left_click。 */
+            lv_point_t rp;
+            lv_indev_get_point(indev, &rp);
+            mouse_dial_end();
+            BLE_HID_Mouse_Touch_Release((uint16_t)rp.x, (uint16_t)rp.y);
+            user_touching = false;
+            break;
+        }
         handle_released_event(indev);
         break;
 

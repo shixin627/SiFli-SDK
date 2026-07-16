@@ -209,6 +209,11 @@ void BLE_HID_Mouse_Touch_Press(uint16_t x, uint16_t y) { (void)x; (void)y; }
 void BLE_HID_Mouse_Touch_Move(uint16_t x, uint16_t y) { (void)x; (void)y; }
 bool BLE_HID_Mouse_Touch_Release(uint16_t x, uint16_t y) { (void)x; (void)y; return false; }
 void air_mouse_movement_lock_reset(void) { }
+/* trackpad-hold radial dial (bloc_motion_tracking.c, excluded on PC sim) — the dial
+   integrates live gyro so it only runs on real hardware; UI-only sim no-ops it. */
+void mouse_dial_start(void) { }
+void mouse_dial_end(void) { }
+bool mouse_dial_active(void) { return false; }
 void set_voice_recognition_notified_from_mouse(bool status) { (void)status; }
 /* device-page trackpad → phone relay switch (ble_hid.c, excluded on PC sim).
    Called by device_pager.c (set) and hid_mouse.c (get, back routing). */

@@ -468,6 +468,19 @@ bool commu_send_mouse_back(void)
     LOG_I("send mouse back -> %s", ok ? "ok" : "FAIL");
     return ok;
 }
+/* watch→phone (SKAI_LINK): trackpad-hold radial dial (see KEY_DIAL_DIR contract).
+   phase is one of the three fixed literals start|update|end so raw %s is quote-safe;
+   dir -1..7, mag 0..1000. Throttled by the caller (air_mouse_process) — no per-frame
+   log so the ~update stream can't flood the console (same reason as mouse move). */
+bool commu_send_dial_dir(const char *phase, int dir, int mag)
+{
+    if (phase == NULL) return false;
+    char json[56]; /* {"phase":"update","dir":-1,"mag":1000} = ~40 chars + NUL */
+    int n = rt_snprintf(json, sizeof(json),
+                        "{\"phase\":\"%s\",\"dir\":%d,\"mag\":%d}", phase, dir, mag);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_DIAL_DIR, json);
+}
 bool commu_send_skaibar_dismiss(void)
 {
     bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIBAR_DISMISS, "{}");

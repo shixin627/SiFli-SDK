@@ -123,6 +123,19 @@ extern "C"
            still feeds the watch-face media widget / dial header. The watch filters by device_id
            so a late frame for a just-deselected device can't overwrite the current UI. */
         KEY_MEDIA_STATE = 0x19,
+        /* watch→phone (UPLINK): {"phase":"start|update|end","dir":-1..7,"mag":0..1000}
+           — the standalone mouse app's (APP_ID_MOUSE) TRACKPAD-HOLD radial dial. Holding
+           the main trackpad still (~250 ms, no drift) arms a wrist-tilt direction pad: the
+           watch integrates the air-mouse delta into a vector and reports its 8-way sector +
+           magnitude, throttled. dir 0=up then CLOCKWISE (1=up-right 2=right 3=down-right
+           4=down 5=down-left 6=left 7=up-left); dir=-1 = inside the centre dead-zone (no
+           selection). mag 0..1000 = distance/force from centre (0 at the dead-zone edge,
+           1000 at full deflection). phase start = dial opened; update = live sector while
+           held; end = finger released, dir carries the COMMITTED sector (-1 = released in
+           the dead-zone, cancelled). The phone forwards each frame to the active target as
+           the air-mouse `dialDirection` verb; the desktop draws a cursor-centred radial
+           overlay and (this round) only logs the committed direction — no action bound yet. */
+        KEY_DIAL_DIR = 0x1a,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

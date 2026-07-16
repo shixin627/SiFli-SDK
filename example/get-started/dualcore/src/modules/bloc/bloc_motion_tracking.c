@@ -955,6 +955,95 @@ bool get_scroll_up_mode(void)
     return scroll_up_mode;
 }
 extern bool get_hid_mouse_handfree_mode(void);
+
+/* ─────────────────────────────────────────────────────────────────────────
+   主觸控板長按方向盤 (dial) —— 頂部 logo「按住=飛鼠」的姊妹功能。
+   手指按住主觸控板不動 ~250ms（hid_mouse.c 的手勢狀態機開啟）後，air-mouse 的
+   位移 delta 不再移動游標，而是「累積成一個向量」：向量角度 → 8 向 sector、
+   向量長度 → 力度 mag。節流上傳 KEY_DIAL_DIR(0x1a)，桌面以游標為中心畫圓盤、
+   對應扇形高亮。放開時以當下 sector commit。
+   dir 0=上，順時針 1=右上 2=右 3=右下 4=下 5=左下 6=左 7=左上；len<deadzone → -1。
+   ───────────────────────────────────────────────────────────────────────── */
+#define DIAL_DEADZONE_UNITS   40.0f  /* 累積向量長度 < 此 = 中心 deadzone（不選）*/
+#define DIAL_MAX_UNITS       260.0f  /* 向量長度上限（mag=1000）；超過 clamp。真機再調 */
+#define DIAL_SEND_INTERVAL_MS   33   /* update 節流 ~30Hz，避免洗版 BLE/log */
+
+static volatile bool s_dial_active = false;
+static bool  s_dial_reset_pending = false;
+static float s_dial_ax = 0.0f, s_dial_ay = 0.0f; /* 累積向量：螢幕座標 x 右+ / y 下+ */
+static int   s_dial_cur_dir = -1;
+static int   s_dial_cur_mag = 0;
+static rt_tick_t s_dial_last_send = 0;
+
+/* 累積向量 (ax,ay)（螢幕座標）→ 8 向 sector + mag(0..1000)。桌面圓盤扇形用同一 dir。 */
+static int dial_vector_to_sector(float ax, float ay, int *mag_out)
+{
+    float len = sqrtf(ax * ax + ay * ay);
+    if (len < DIAL_DEADZONE_UNITS)
+    {
+        *mag_out = 0;
+        return -1;
+    }
+    float clamped = (len > DIAL_MAX_UNITS) ? DIAL_MAX_UNITS : len;
+    float m = (clamped - DIAL_DEADZONE_UNITS) / (DIAL_MAX_UNITS - DIAL_DEADZONE_UNITS);
+    int mag = (int)(m * 1000.0f + 0.5f);
+    *mag_out = (mag > 1000) ? 1000 : (mag < 0 ? 0 : mag);
+    /* atan2(y,x) 螢幕座標：0=右 +90=下 ±180=左 -90=上。轉「0=上、順時針」：
+       sector = round((deg+90)/45) mod 8。 */
+    float deg = atan2f(ay, ax) * 57.29577951f;
+    int sector = (int)floorf((deg + 90.0f) / 45.0f + 0.5f);
+    return ((sector % 8) + 8) % 8;
+}
+
+/* air_mouse_process 每幀在 dial 模式呼叫：累積 delta、更新當前 sector、節流送 update。 */
+static void mouse_dial_accumulate(float dx, float dy)
+{
+    if (s_dial_reset_pending)
+    {
+        s_dial_ax = 0.0f; s_dial_ay = 0.0f;
+        s_dial_cur_dir = -1; s_dial_cur_mag = 0;
+        s_dial_reset_pending = false;
+    }
+    s_dial_ax += dx;
+    s_dial_ay += dy;
+    /* clamp 累積向量長度，避免長按久了積分無限增長、放開後方向遲鈍 */
+    float len = sqrtf(s_dial_ax * s_dial_ax + s_dial_ay * s_dial_ay);
+    if (len > DIAL_MAX_UNITS)
+    {
+        float k = DIAL_MAX_UNITS / len;
+        s_dial_ax *= k; s_dial_ay *= k;
+    }
+    int mag = 0;
+    s_dial_cur_dir = dial_vector_to_sector(s_dial_ax, s_dial_ay, &mag);
+    s_dial_cur_mag = mag;
+
+    rt_tick_t now = rt_tick_get();
+    if (now - s_dial_last_send >= rt_tick_from_millisecond(DIAL_SEND_INTERVAL_MS))
+    {
+        extern bool commu_send_dial_dir(const char *phase, int dir, int mag);
+        commu_send_dial_dir("update", s_dial_cur_dir, s_dial_cur_mag);
+        s_dial_last_send = now;
+    }
+}
+
+/* hid_mouse.c 的觸控板長按狀態機呼叫這三個（extern）。 */
+void mouse_dial_start(void)
+{
+    s_dial_reset_pending = true;
+    s_dial_active = true;
+    s_dial_last_send = 0; /* 讓開場那一幀的 update 立即送出 */
+    extern bool commu_send_dial_dir(const char *phase, int dir, int mag);
+    commu_send_dial_dir("start", -1, 0);
+}
+void mouse_dial_end(void)
+{
+    if (!s_dial_active) return;
+    s_dial_active = false;
+    extern bool commu_send_dial_dir(const char *phase, int dir, int mag);
+    commu_send_dial_dir("end", s_dial_cur_dir, s_dial_cur_mag);
+}
+bool mouse_dial_active(void) { return s_dial_active; }
+
 static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                               Quaternion *prev_quat)
 {
@@ -1036,6 +1125,15 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
            data-collection 分支有自己的 roll 補償映射，不隨動。 */
         delta_movement =
             air_mouse_algorithm(gyro_x, gyro_z, AIR_MOUSE_SENSITIVITY);
+    }
+
+    /* ── 主觸控板長按方向盤 (dial)：手指按住不動時 air-mouse 位移不移游標，改累積
+       成方向向量→8 向+力度上傳 0x1a（桌面畫圓盤）。dial 期間 handfree 為 false，
+       下面的游標 report gate 本就不觸發；這裡提早 return 略過 moving-state/lock。 ── */
+    if (mouse_dial_active())
+    {
+        mouse_dial_accumulate((float)delta_movement.x, (float)delta_movement.y);
+        return;
     }
 
     if (abs(delta_movement.x) >= 3 || abs(delta_movement.y) >= 3)
