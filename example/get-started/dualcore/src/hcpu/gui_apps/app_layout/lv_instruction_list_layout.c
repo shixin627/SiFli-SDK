@@ -644,8 +644,18 @@ static void update_indicator_dots_position(int input_value)
                         (DOT_BIG_PROPORTION - DOT_SMOLL_PROPORTION) * zoom_ratio));
         if (abs((int)zoom - (int)last_zoom[i]) > 5)
         {
-            lv_img_set_zoom(app_icon_shadow[i], zoom);
-            lv_img_set_zoom(p_instruction_list_layout->indicator_dots[i], zoom);
+            /* Guard both handles: a reveal-triggered rebuild (reset_list +
+             * refresh_custom_instructions) recreates the dots while last_zoom[]
+             * persists (static, not reset), so this branch fires on the first
+             * frame after the rebuild. An unguarded lv_img_set_zoom on a stale
+             * app_icon_shadow[i] faulted here (mem manage DACCVIOL, ~0x7E9 on
+             * img->zoom). Mirror the NULL+valid checks used at the other dot
+             * call sites (see the show/hide block above). */
+            if (app_icon_shadow[i] != NULL && lv_obj_is_valid(app_icon_shadow[i]))
+                lv_img_set_zoom(app_icon_shadow[i], zoom);
+            if (p_instruction_list_layout->indicator_dots[i] != NULL &&
+                lv_obj_is_valid(p_instruction_list_layout->indicator_dots[i]))
+                lv_img_set_zoom(p_instruction_list_layout->indicator_dots[i], zoom);
             last_zoom[i] = zoom;
         }
         lv_obj_center(p_instruction_list_layout->indicator_dots[i]);
@@ -2361,12 +2371,40 @@ void instruction_list_bar_tap_device(const char *device_id)
         feed_single_device_options(device_id);
         instruction_list_bar_set_visible(true);
         animate_open_ai_widget();
+        /* animate_open_ai_widget()'s bar-grow morph always resets to "slim-bar
+           geometry, glyph visible" as its frame-0 starting state (lmic_grow_cb(NULL,
+           0)) before growing into the box shape — in the normal two-tap flow the bar
+           has already been sitting visible on screen for a while by the time this
+           runs, so that reset is imperceptible. Here the WHOLE layer just went from
+           fully hidden to visible in this same tap (instruction_list_bar_set_visible
+           right above), so that frame-0 glyph is the very first thing rendered — a
+           visible flash of the resting mic icon before it morphs. Re-hide it right
+           after (grow's own opacity animation was heading it toward invisible
+           anyway, see the crossfade in lmic_grow_cb) so the box just grows in
+           directly with no glyph flash. */
+        if (s_mic_bar_icon && lv_obj_is_valid(s_mic_bar_icon))
+            lv_obj_add_flag(s_mic_bar_icon, LV_OBJ_FLAG_HIDDEN);
         if (p_instruction_list_layout->p_instruction_list_bg &&
             lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
         {
             lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
             lv_anim_del(list_bg, inst_list_slide_anim_cb);
             lv_obj_set_style_translate_x(list_bg, LV_HOR_RES, 0); /* 停在畫面外,旗標仍未隱藏 */
+            /* Force the reveal side to match where we just parked it (right). Real-hw
+               found: whatever stray value s_reveal_from_left held here (left over from
+               an unrelated left-reveal gesture elsewhere) decides close_ai_widget()'s
+               later slide-out TARGET — if it doesn't match this +LV_HOR_RES parked
+               START, the eventual tap-outside-to-cancel close (instruction_list_cancel_
+               ai_widget in hid_mouse.c's touch_bg handler) visibly sweeps the list
+               across the full screen before exiting. Pinning it here means start==
+               target, so the slide is a no-op visually (list stays off-screen the whole
+               time) while still running its full duration and firing inst_list_slide_
+               out_done_cb normally — that ready_cb is what restores the mouse app's own
+               bottom bar (hid_mouse_set_own_bar_hidden) and resets s_bar_single_device /
+               the base list, so it must NOT be skipped (an earlier attempt pre-hid
+               list_bg to dodge the sweep, which skipped close_ai_widget()'s slide branch
+               — and therefore this ready_cb — entirely, leaving the mic icon stuck). */
+            s_reveal_from_left = false;
         }
     }
     else
@@ -3318,6 +3356,12 @@ static void finalize_close_ai_widget(void)
         lv_obj_clear_flag(p_instruction_list_layout->mic_bar,
                           LV_OBJ_FLAG_HIDDEN);
     }
+    /* Same undo as the one in close_ai_widget() above (see its comment) — this is
+       the function that ACTUALLY runs on every close (both the animated-morph path
+       and the early-return no-animation path), so this is the real single point of
+       restoration; the other one is belt-and-suspenders for the animated path. */
+    if (s_mic_bar_icon && lv_obj_is_valid(s_mic_bar_icon))
+        lv_obj_clear_flag(s_mic_bar_icon, LV_OBJ_FLAG_HIDDEN);
     set_skai_widget_opa(0);
     if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
     {
@@ -3490,6 +3534,19 @@ void close_ai_widget(void)
     skai_widget_restore_full_opa(); /* pill fully visible */
     if (bar && lv_obj_is_valid(bar))
         lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    /* Undo instruction_list_bar_tap_device's remote-focus-branch flash suppression
+       (which HIDES s_mic_bar_icon outright, not just fades it, to dodge a same-frame
+       glyph flash on that one-shot open — see its comment). That HIDDEN flag doesn't
+       self-clear on its own; if left set, the RESTING bar would show no glyph at all
+       the next time the user just glances at it (not necessarily via a fresh
+       animate_open_ai_widget() open, which is the only other place that clears it).
+       Every close funnels through here, so clearing it unconditionally is safe — the
+       shrink-back animation below drives the icon's OPACITY from 0 back to 255 via
+       the same lmic_grow_cb crossfade this line just reset to f=255/opa=0, so
+       clearing HIDDEN now just lets that existing, already-smooth fade-in render
+       instead of silently doing nothing. */
+    if (s_mic_bar_icon && lv_obj_is_valid(s_mic_bar_icon))
+        lv_obj_clear_flag(s_mic_bar_icon, LV_OBJ_FLAG_HIDDEN);
 
     s_left_closing = true;
 
@@ -3508,6 +3565,42 @@ void close_ai_widget(void)
     lv_anim_set_exec_cb(&a, skai_widget_fade_anim_cb);
     lv_anim_set_ready_cb(&a, lmic_close_shrink_cb);
     lv_anim_start(&a);
+}
+
+/* Public "tap outside the widget = user cancel" entry point for callers OUTSIDE
+   this file that own their own full-screen touch surface — currently
+   hid_mouse.c's plain_event_cb (the mouse app's trackpad background), which
+   sits UNDER s_global_bar_layer in LVGL's input search order and only ever
+   sees a tap when the top-layer search finds nothing there first. That
+   happens for the s_remote_target_has_focus flow (instruction_list_bar_tap_
+   device): p_instruction_list_bg is parked off-screen via translate_x, and in
+   this LVGL v8 build translate_x is folded into the object's real x/y by
+   lv_obj_refr_pos (NOT a draw-only transform, despite older comments in this
+   file assuming so) — so its hit-test rect is genuinely off-screen too, and a
+   tap on the visible screen falls through to whatever real on-screen object is
+   underneath instead of ever reaching list_window_scroll_event_cb. Exposing
+   close as a tiny cancel-flagged wrapper (mirroring every other tap-outside
+   path's s_close_is_cancel = true; close_ai_widget();) lets the trackpad's own
+   click handler be the one that notices "the widget is open" and closes it,
+   rather than trying to out-compete touch_bg in hit-test order.
+
+   Deliberately does NOT touch list_bg's position/HIDDEN flag itself (two
+   earlier attempts did, both wrong): forcing HIDDEN before calling
+   close_ai_widget() makes its `!lv_obj_has_flag(list_bg, HIDDEN)` check false,
+   so it SKIPS the slide-out branch entirely — which means its ready_cb
+   (inst_list_slide_out_done_cb) never runs, and THAT callback is what restores
+   the mouse app's own bottom bar (hid_mouse_set_own_bar_hidden) and resets
+   s_bar_single_device/the base list, so skipping it left the mic icon stuck.
+   The actual fix for the visible full-screen sweep this was chasing lives at
+   the OPEN side instead: instruction_list_bar_tap_device's remote-focus branch
+   now pins s_reveal_from_left = false alongside the +LV_HOR_RES park, so
+   close_ai_widget()'s slide start/target match (list stays off-screen,
+   ready_cb still fires normally) — this function can just be the same
+   `s_close_is_cancel = true; close_ai_widget();` every other cancel path uses. */
+void instruction_list_cancel_ai_widget(void)
+{
+    s_close_is_cancel = true;
+    close_ai_widget();
 }
 
 /* Auto-dismiss the voice input box when the user navigates away from the
@@ -5273,11 +5366,15 @@ void refresh_custom_instructions(void)
     }
 
     /* Recreate all list item UI */
+    LOG_I("[RCK] A before create_list_items_ui n=%d", (int)list_item_count);
     create_list_items_ui(list, 0, list_item_count);
+    LOG_I("[RCK] B after create_list_items_ui");
     update_list_empty_state();
 
     /* 重建指示點 */
+    LOG_I("[RCK] C before create_indicator_dots");
     create_indicator_dots(bg);
+    LOG_I("[RCK] D after create_indicator_dots");
 
     /* 新建的 dots 是 bg 的 child，appended 在尾端 → 預設 z-order 在 arc_zone
      * 上面，導致 dots 把 press 從 arc_zone 搶走。先把 arc_zone 拉回最上層，
@@ -5363,6 +5460,7 @@ void refresh_custom_instructions(void)
         update_indicator_dots_position(gesture_starting_value);
     }
     open_scroll_motor = true;
+    LOG_I("[RCK] E before is_at/reset");
     if (!is_at_instruction_list())
     {
         reset_list();
@@ -5373,6 +5471,7 @@ void refresh_custom_instructions(void)
         arc_scroll_set_item_count(p_instruction_list_layout->arc_handle,
                                   list_item_count);
     }
+    LOG_I("[RCK] F refresh tail reached (done)");
     LOG_D("refresh_custom_instructions: %d items total", list_item_count);
     s_in_refresh_scroll = false;
 }

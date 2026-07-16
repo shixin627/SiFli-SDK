@@ -3012,7 +3012,24 @@ static void plain_event_cb(lv_event_t *e)
         break;
 
     case LV_EVENT_CLICKED:
-        // Handle click event if needed
+        /* Tap-outside-to-cancel for the AI input box opened via instruction_list_
+           bar_tap_device's remote-focus flow: that flow parks p_instruction_list_bg
+           off-screen with translate_x, which in this LVGL v8 build moves the
+           object's real hit-test rect (lv_obj_refr_pos folds translate into x/y,
+           it is NOT a draw-only transform) — so a tap on the visible screen never
+           reaches list_window_scroll_event_cb and falls through to touch_bg (this
+           object) instead. Only closes when the box is actually open
+           (get_is_open_instruction_list_ai); the NORMAL browse-list flow keeps its
+           list on-screen, so its taps are already caught by the top-layer search
+           before ever reaching touch_bg — this branch is a no-op for that case. */
+        {
+            extern bool get_is_open_instruction_list_ai(void);
+            if (get_is_open_instruction_list_ai())
+            {
+                extern void instruction_list_cancel_ai_widget(void);
+                instruction_list_cancel_ai_widget();
+            }
+        }
         break;
 
     default:
