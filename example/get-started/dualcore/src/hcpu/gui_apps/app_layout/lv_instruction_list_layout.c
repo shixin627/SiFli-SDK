@@ -2056,6 +2056,235 @@ void instruction_list_mark_opened_by_lift(void)
     s_opened_by_lift = true;
 }
 
+/* ── 2026-07-16 founder 改版：舉起手勢固定為「直接語音輸入」大麥克風畫面 ──────────
+   原本舉起手勢帶出的是單設備 skaibar 選項清單，founder 改成：只有控制中那台設備目前
+   有聚焦輸入框(s_remote_target_has_focus)才生效，畫面上不出清單、不出輸入框，只有
+   螢幕正中央一個大麥克風圖示；按下開始語音、放開停止；手腕放下(離開立起姿態)整個
+   畫面自動收掉。全新一組物件(NOT 重用 mic_bar/s_mic_bar_icon/s_mic_ripple)——那組是
+   底部小 bar 的長期共用單例，牽動既有 morph/位置狀態機，這裡改成獨立、可整組顯示/
+   隱藏的 overlay，降低跟既有 bar 邏輯互相干擾的風險。語音管線呼叫(voice_provider/
+   set_ai_open_mic/V2T_INTENT_SKAIBAR)沿用跟 mic_bar_voice_start/stop 完全相同的
+   後端 API，只是驅動的是這組新物件的視覺。 */
+static lv_obj_t *s_lift_mic_view = NULL;   /* 全螢幕 overlay 容器,s_global_bar_layer 子物件 */
+static lv_obj_t *s_lift_mic_icon = NULL;   /* 置中大麥克風圖 */
+static lv_obj_t *s_lift_mic_ripple = NULL; /* 置中藍圈脈衝 */
+static bool s_lift_mic_voice_active = false;
+
+#define LIFT_MIC_RIPPLE_MIN_D 100
+#define LIFT_MIC_RIPPLE_MAX_D 320
+#define LIFT_MIC_ICON_ZOOM 512 /* 2x 原生(64px→128px)——螢幕正中央的大圖示 */
+
+/* v: 0..256 — 直徑 MIN→MAX、邊框 opa COVER→0,結束跳回中心重播(不回放)。與
+   mic_ripple_anim_cb 同一套公式,獨立一份是因為尺寸常數不同(置中大圈 vs 底部小圈)。 */
+static void lift_mic_ripple_anim_cb(void *var, int32_t v)
+{
+    lv_obj_t *ring = (lv_obj_t *)var;
+    if (!ring || !lv_obj_is_valid(ring))
+        return;
+    lv_coord_t d = LIFT_MIC_RIPPLE_MIN_D +
+                   (lv_coord_t)((LIFT_MIC_RIPPLE_MAX_D - LIFT_MIC_RIPPLE_MIN_D) * v / 256);
+    lv_obj_set_size(ring, d, d);
+    lv_obj_align(ring, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_border_opa(ring, LV_OPA_COVER - (LV_OPA_COVER * v / 256), 0);
+}
+
+static void lift_mic_voice_visual(bool on)
+{
+    if (s_lift_mic_icon && lv_obj_is_valid(s_lift_mic_icon))
+        lv_img_set_src(s_lift_mic_icon, on ? &micro_open_icon : &micro_icon);
+    if (on)
+    {
+        if (s_lift_mic_ripple && lv_obj_is_valid(s_lift_mic_ripple))
+        {
+            lv_obj_clear_flag(s_lift_mic_ripple, LV_OBJ_FLAG_HIDDEN);
+            lv_anim_del(s_lift_mic_ripple, lift_mic_ripple_anim_cb);
+            lv_anim_t a;
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, s_lift_mic_ripple);
+            lv_anim_set_values(&a, 0, 256);
+            lv_anim_set_time(&a, LMIC_RIPPLE_PERIOD_MS);
+            lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+            lv_anim_set_exec_cb(&a, lift_mic_ripple_anim_cb);
+            lv_anim_start(&a);
+        }
+    }
+    else if (s_lift_mic_ripple && lv_obj_is_valid(s_lift_mic_ripple))
+    {
+        lv_anim_del(s_lift_mic_ripple, lift_mic_ripple_anim_cb);
+        lv_obj_add_flag(s_lift_mic_ripple, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void lift_mic_voice_start(void)
+{
+    if (s_lift_mic_voice_active)
+        return;
+#ifndef BSP_USING_PC_SIMULATOR
+    extern bool get_bluetooth_connection_status(void);
+    if (!get_bluetooth_connection_status())
+        return;
+    set_ai_open_mic(true);
+    voice_set_pending_v2t_intent(V2T_INTENT_SKAIBAR);
+    voice_provider.start_v2t();
+#endif
+    s_lift_mic_voice_active = true;
+    lift_mic_voice_visual(true);
+    LOG_I("[lift_mic] voice START");
+}
+
+static void lift_mic_voice_stop(void)
+{
+    if (!s_lift_mic_voice_active)
+        return;
+    s_lift_mic_voice_active = false;
+#ifndef BSP_USING_PC_SIMULATOR
+    voice_provider.stop_v2t();
+    stop_voice_recognition(V2T_INTENT_NOTHING);
+#endif
+    lift_mic_voice_visual(false);
+    LOG_I("[lift_mic] voice STOP");
+}
+
+static void lift_mic_view_event_cb(lv_event_t *evt)
+{
+    switch (lv_event_get_code(evt))
+    {
+    case LV_EVENT_PRESSED:
+        lift_mic_voice_start();
+        break;
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        lift_mic_voice_stop();
+        break;
+    default:
+        break;
+    }
+}
+
+static void ensure_lift_mic_view(void)
+{
+    if (s_lift_mic_view && lv_obj_is_valid(s_lift_mic_view))
+        return;
+    if (!s_global_bar_layer || !lv_obj_is_valid(s_global_bar_layer))
+        return;
+
+    s_lift_mic_view = lv_obj_create(s_global_bar_layer);
+    lv_obj_remove_style_all(s_lift_mic_view);
+    lv_obj_set_size(s_lift_mic_view, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(s_lift_mic_view, 0, 0);
+    lv_obj_clear_flag(s_lift_mic_view, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_lift_mic_view, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(s_lift_mic_view, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_lift_mic_view, LV_OPA_40, 0);
+    lv_obj_add_flag(s_lift_mic_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(s_lift_mic_view, lift_mic_view_event_cb, LV_EVENT_ALL, NULL);
+
+    s_lift_mic_icon = lv_img_create(s_lift_mic_view);
+    lv_img_set_src(s_lift_mic_icon, &micro_icon);
+    lv_img_set_pivot(s_lift_mic_icon, micro_icon.header.w / 2, micro_icon.header.h / 2);
+    lv_obj_add_flag(s_lift_mic_icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_img_set_zoom(s_lift_mic_icon, LIFT_MIC_ICON_ZOOM);
+    lv_obj_align(s_lift_mic_icon, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(s_lift_mic_icon, LV_OBJ_FLAG_CLICKABLE);
+
+    s_lift_mic_ripple = lv_obj_create(s_lift_mic_view);
+    lv_obj_remove_style_all(s_lift_mic_ripple);
+    lv_obj_set_style_border_color(s_lift_mic_ripple, lv_color_hex(LMIC_RIPPLE_COLOR), 0);
+    lv_obj_set_style_border_width(s_lift_mic_ripple, 3, 0);
+    lv_obj_set_style_radius(s_lift_mic_ripple, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(s_lift_mic_ripple, LV_OPA_TRANSP, 0);
+    lv_obj_add_flag(s_lift_mic_ripple, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_obj_clear_flag(s_lift_mic_ripple, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(s_lift_mic_ripple, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_lift_mic_ripple, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* Forward decls — both are defined further down this file, after this point. */
+static void feed_single_device_options(const char *device_id);
+void instruction_list_bar_device_dismiss(void);
+
+/* 公開：舉起手勢(motion thread→hid_mouse→這裡)呼叫。只有控制中那台設備目前有聚焦
+   輸入框才開這個大麥克風畫面；沒有就直接 return false、畫面上什麼都不變(呼叫端據此
+   決定要不要動自己的 bar)。跟 instruction_list_bar_tap_device 的 s_remote_target_
+   has_focus 分支共用同一套後端狀態設置(單設備模式 + 通知電腦開它的 skaibar，語音
+   轉錄才會正確路由到那一台)，但完全不觸碰清單/輸入框 UI。 */
+bool instruction_list_open_lift_mic_view(const char *device_id)
+{
+    if (!s_remote_target_has_focus)
+        return false; /* 控制中那台沒有聚焦輸入框 → 什麼都不做 */
+    if (device_id == NULL || device_id[0] == '\0')
+        return false; /* 沒有控制目標 */
+    if (!p_instruction_list_layout)
+    {
+        extern lv_obj_t *lv_instruction_list_layout_create(lv_obj_t * parent);
+        lv_instruction_list_layout_create(lv_scr_act());
+        if (!p_instruction_list_layout)
+            return false;
+    }
+    s_bar_single_device = true;
+    extern bool commu_send_skaibar_open_device(bool force_open);
+    /* forceOpen=false — the lift-gesture direct voice-input flow must NOT pop the desktop's
+       Skaibar window; the desktop defers to its already-focused external text input instead. */
+    commu_send_skaibar_open_device(false);
+    feed_single_device_options(device_id);
+    instruction_list_bar_set_visible(true);
+    /* 2026-07-17 founder：底部要維持滑鼠 app 自己那條 bar(trackpad_mic_btn,skaibar_img
+       長相)原樣不動，不要變成 mic glyph。instruction_list_bar_set_visible(true) 會連帶
+       露出這個共用層上的 mic_bar(它平時就是 mic glyph look，跟這次改動無關的既有設計)，
+       跟自有 bar 疊在同個位置——所以這裡把 mic_bar 整個藏起來，只留大麥克風 overlay。
+       同時 instruction_list_floating_bar_visible() 已改成在「只有大麥克風開著」時回報
+       false，讓滑鼠 app 自己的 bar 不會被既有的 overlap-avoidance sync 收掉。 */
+    if (p_instruction_list_layout && p_instruction_list_layout->mic_bar &&
+        lv_obj_is_valid(p_instruction_list_layout->mic_bar))
+        lv_obj_add_flag(p_instruction_list_layout->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    ensure_lift_mic_view();
+    if (s_lift_mic_view && lv_obj_is_valid(s_lift_mic_view))
+    {
+        lv_obj_clear_flag(s_lift_mic_view, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_lift_mic_view);
+    }
+    instruction_list_mark_opened_by_lift();
+    return true;
+}
+
+/* 公開：大麥克風畫面目前是否開著。bloc_motion_tracking.c 的 air_mouse_process 用這個
+   gate 在畫面開著時跳過 report_air_mouse_data —— 純防禦：語音輸入期間手腕動作不該
+   兼職當游標(若 handfree/頂部飛鼠恰好是開的,舉腕講話會讓游標亂飄)。註:當初懷疑這
+   是「聚焦被搶走」的原因,後來證實真兇是手機端 voice-START re-summon 沒帶 forceOpen
+   (BleWatchConnection.kt),此 gate 非該 bug 的修法、留著當行為保險。 */
+bool instruction_list_lift_mic_view_open(void)
+{
+    return s_lift_mic_view && lv_obj_is_valid(s_lift_mic_view) &&
+           !lv_obj_has_flag(s_lift_mic_view, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* 公開：舉起姿態結束(手腕放下)呼叫。只有這個 session 是舉起帶出的才動作
+   (s_opened_by_lift)，手動點 bar 開的清單/輸入框不受影響——同一個 wrist-drop
+   事件，如果使用者中途已經手動點開別的東西，這裡不該連帶關掉它。 */
+void instruction_list_close_lift_mic_view(void)
+{
+    if (!s_opened_by_lift)
+        return;
+    lift_mic_voice_stop();
+    if (s_lift_mic_view && lv_obj_is_valid(s_lift_mic_view))
+        lv_obj_add_flag(s_lift_mic_view, LV_OBJ_FLAG_HIDDEN);
+    if (p_instruction_list_layout && p_instruction_list_layout->mic_bar &&
+        lv_obj_is_valid(p_instruction_list_layout->mic_bar))
+        lv_obj_clear_flag(p_instruction_list_layout->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    /* instruction_list_bar_device_dismiss() resets s_remote_target_has_focus = false as a
+       side effect meant for the OLD tap-triggered flow. That flag must track the DESKTOP's
+       live focus state (set by phone-relayed KEY_REMOTE_TEXT_FOCUS BLE frames whenever it
+       actually changes there) — it must NOT get wiped just because we closed our local view.
+       Real-hw found: without restoring it here, lifting the wrist a second time while the
+       desktop field is STILL genuinely focused silently fails instruction_list_open_lift_
+       mic_view's check until the next spontaneous focus-change broadcast happens to flip it
+       back — "mic worked once, never again" even though nothing changed on the desktop. */
+    bool focus_before_dismiss = s_remote_target_has_focus;
+    instruction_list_bar_device_dismiss();
+    s_remote_target_has_focus = focus_before_dismiss;
+}
+
 static void mic_bar_event_cb(lv_event_t *evt)
 {
     if (evt->code != LV_EVENT_CLICKED) return;
@@ -2315,7 +2544,7 @@ void instruction_list_bar_tap_device(const char *device_id)
     extern void instruction_list_open_browse(void);
     if (box_visible)
     {
-        /* 防手指誤觸自關:單擊直接開框(s_remote_target_has_focus 分支)讓「開框」跟「這下
+        /* 防手指誤觸自關:單擊直接開框讓「開框」跟「這下
            tap 的手指放開」發生在同一次觸控循環裡 —— 剛長出來的輸入框長到手指底下,LVGL
            把放開誤判成對新物件的一次點擊,馬上又觸發這裡的 box_visible 關閉,真機驗證過:
            兩次 [bar_dev] tap log 只相隔 127ms,人不可能故意連按這麼快。剛開框(見
@@ -2336,77 +2565,9 @@ void instruction_list_bar_tap_device(const char *device_id)
         /* 2nd tap → 輸入框 + 語音(同錶盤)。開語音前重送 open_device 重新 latch 手機端單設備
            模式 —— 中間的 box-close 會送 dismiss(0x0C) 清掉手機 flag,不重 latch 的話這次語音
            transcript 會誤走廣播而非那一台。idempotent(電腦 skaibar 已開則維持)。 */
-        extern bool commu_send_skaibar_open_device(void);
-        commu_send_skaibar_open_device();
+        extern bool commu_send_skaibar_open_device(bool force_open);
+        commu_send_skaibar_open_device(true); /* manual tap — always show the desktop panel */
         animate_open_ai_widget();
-    }
-    else if (s_remote_target_has_focus)
-    {
-        /* 控制中那台目前有聚焦輸入框(剛剛才點過)——跳過選項清單「顯示」,直接開輸入框,同 2nd
-           tap 的開框動作。桌面端(SkaibarRelayController/RemoteFocusedTextInputRouter)本來就會
-           把文字直接注入該聚焦框、不開它自己的 Skaibar 視窗,這裡只是讓手錶畫面跟著跳過中繼清單。
-           仍要呼叫 feed_single_device_options() 把底層清單餵好資料(只是不呼叫
-           instruction_list_open_browse() 讓它真的浮出來)——animate_open_ai_widget() 共用同一份
-           p_instruction_list_bg,一份空清單會讓它內部的捲動/定位邏輯撞到不存在的 child(見
-           feed_single_device_options 的註解),真機驗證過:漏了這步會閃一下就沒反應。
-           真機再驗證一輪抓到第二個雷:s_global_bar_layer(整個浮層容器,含 list 跟 ai_box)
-           預設是 HIDDEN,原本只有 instruction_list_open_browse()→instruction_list_reveal_
-           drag_begin() 這條路徑會呼叫 instruction_list_bar_set_visible(true) 讓它現形——本分支
-           跳過 open_browse,所以容器永遠沒現形,animate_open_ai_widget() 把 ai_box 自己的
-           HIDDEN 拿掉也沒用(母層還是 HIDDEN,LVGL 子物件跟著不可見)。邏輯上「開著」但畫面
-           什麼都看不到,像「閃一下」——真機驗證:log 顯示輸入框開著超過 5 分鐘都沒被關閉,證實
-           是純顯示層問題。直接呼叫 instruction_list_bar_set_visible(true) 現形容器。
-           第三個雷(真機驗證抓到,兩輪修法):animate_open_ai_widget() 內部無條件把
-           p_instruction_list_bg 的 HIDDEN 拿掉 + 播放 slide-in 動畫(它假設呼叫時清單早已
-           開著,這裡卻是它自己第一次讓清單現形)——連清單都跟著滑出來,使用者只想要輸入框。
-           第一輪修法直接把 list_bg 重新標 HIDDEN,結果連帶弄壞 instruction_list_is_visible()
-           ——那個查詢函式的官方註解明講:「must stay true while the voice box is up,否則
-           back 沒辦法路由到 back_on_skai_widget,状態機會落入無法識別的狀態」,真機驗證:語音
-           輸入直接壞掉。正確修法:HIDDEN 旗標維持不動(滿足狀態機),只把清單內容平移到畫面外
-           (translate_x = LV_HOR_RES,跟建立時的停放位置一樣)、砍掉 slide-in 動畫 ——邏輯上
-           「未隱藏」,視覺上完全在螢幕外,不會被看到。list_bg 跟 ai_box 是 s_global_bar_layer
-           下兩個獨立 sibling(非父子),平移 list_bg 不影響 ai_box 的可見性/位置。 */
-        s_bar_single_device = true;
-        extern bool commu_send_skaibar_open_device(void);
-        commu_send_skaibar_open_device();
-        feed_single_device_options(device_id);
-        instruction_list_bar_set_visible(true);
-        animate_open_ai_widget();
-        /* animate_open_ai_widget()'s bar-grow morph always resets to "slim-bar
-           geometry, glyph visible" as its frame-0 starting state (lmic_grow_cb(NULL,
-           0)) before growing into the box shape — in the normal two-tap flow the bar
-           has already been sitting visible on screen for a while by the time this
-           runs, so that reset is imperceptible. Here the WHOLE layer just went from
-           fully hidden to visible in this same tap (instruction_list_bar_set_visible
-           right above), so that frame-0 glyph is the very first thing rendered — a
-           visible flash of the resting mic icon before it morphs. Re-hide it right
-           after (grow's own opacity animation was heading it toward invisible
-           anyway, see the crossfade in lmic_grow_cb) so the box just grows in
-           directly with no glyph flash. */
-        if (s_mic_bar_icon && lv_obj_is_valid(s_mic_bar_icon))
-            lv_obj_add_flag(s_mic_bar_icon, LV_OBJ_FLAG_HIDDEN);
-        if (p_instruction_list_layout->p_instruction_list_bg &&
-            lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
-        {
-            lv_obj_t *list_bg = p_instruction_list_layout->p_instruction_list_bg;
-            lv_anim_del(list_bg, inst_list_slide_anim_cb);
-            lv_obj_set_style_translate_x(list_bg, LV_HOR_RES, 0); /* 停在畫面外,旗標仍未隱藏 */
-            /* Force the reveal side to match where we just parked it (right). Real-hw
-               found: whatever stray value s_reveal_from_left held here (left over from
-               an unrelated left-reveal gesture elsewhere) decides close_ai_widget()'s
-               later slide-out TARGET — if it doesn't match this +LV_HOR_RES parked
-               START, the eventual tap-outside-to-cancel close (instruction_list_cancel_
-               ai_widget in hid_mouse.c's touch_bg handler) visibly sweeps the list
-               across the full screen before exiting. Pinning it here means start==
-               target, so the slide is a no-op visually (list stays off-screen the whole
-               time) while still running its full duration and firing inst_list_slide_
-               out_done_cb normally — that ready_cb is what restores the mouse app's own
-               bottom bar (hid_mouse_set_own_bar_hidden) and resets s_bar_single_device /
-               the base list, so it must NOT be skipped (an earlier attempt pre-hid
-               list_bg to dodge the sweep, which skipped close_ai_widget()'s slide branch
-               — and therefore this ready_cb — entirely, leaving the mic icon stuck). */
-            s_reveal_from_left = false;
-        }
     }
     else
     {
@@ -2414,8 +2575,8 @@ void instruction_list_bar_tap_device(const char *device_id)
         /* 立刻送 0x0E(不等 settle)叫「控制中那台」電腦 summon 它的 skaibar。先餵 registry 的
            default_actions 當即時 placeholder;之後手機把電腦的即時選項 push 過來會直接套上
            (即時更新)。 */
-        extern bool commu_send_skaibar_open_device(void);
-        commu_send_skaibar_open_device();
+        extern bool commu_send_skaibar_open_device(bool force_open);
+        commu_send_skaibar_open_device(true); /* manual tap — always show the desktop panel */
         feed_single_device_options(device_id); /* placeholder:手機即時 push 一到就替換成電腦選項 */
         instruction_list_bar_set_blur(false);  /* 非錶盤、不模糊 */
         instruction_list_open_browse();        /* 列表浮入 */
@@ -2436,11 +2597,9 @@ void instruction_list_bar_device_dismiss(void)
     extern void instruction_list_restore_base(void);
     commu_send_skaibar_dismiss();
     instruction_list_restore_base();
-    /* s_remote_target_has_focus 分支(instruction_list_bar_tap_device)會把 list_bg 平移到
-       畫面外(translate_x=LV_HOR_RES)且刻意不清 HIDDEN 旗標,讓語音狀態機不受影響。但
-       p_instruction_list_layout/list_bg 是共用單例,不保證離開滑鼠 app 時會被重建——如果沒有,
-       殘留的 translate_x 會跟著漏進錶盤自己的清單,真機驗證過:波及錶盤本身的語音輸入(完全
-       不相關的路徑也壞掉)。這裡歸零,確保離開時 list_bg 回到乾淨的靜止位置。 */
+    /* p_instruction_list_layout/list_bg 是共用單例,不保證離開滑鼠 app 時會被重建——保險
+       歸零 translate_x,確保離開時 list_bg 回到乾淨的靜止位置(舊版 s_remote_target_has_
+       focus 分支曾把它平移到畫面外且不清 HIDDEN,該分支已拿掉,這裡留著當防呆)。 */
     if (p_instruction_list_layout && p_instruction_list_layout->p_instruction_list_bg &&
         lv_obj_is_valid(p_instruction_list_layout->p_instruction_list_bg))
     {
@@ -3051,8 +3210,16 @@ bool instruction_list_is_visible(void)
    不受影響。注意這查的是「整條浮層 bar 層」,不像 instruction_list_is_visible() 只看清單。 */
 bool instruction_list_floating_bar_visible(void)
 {
-    return s_global_bar_layer && lv_obj_is_valid(s_global_bar_layer) &&
-           !lv_obj_has_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN);
+    if (!s_global_bar_layer || !lv_obj_is_valid(s_global_bar_layer) ||
+        lv_obj_has_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN))
+        return false;
+    /* 舉起帶出的大麥克風畫面單獨顯示時不算「浮層 bar 已出現」——這個情境下
+       mic_bar 本身是隱藏的(見 instruction_list_open_lift_mic_view)，滑鼠 app
+       自有的底部 bar(skaibar_img)應該維持原樣顯示，不被這裡的 sync 誤收掉。 */
+    if (s_opened_by_lift && s_lift_mic_view && lv_obj_is_valid(s_lift_mic_view) &&
+        !lv_obj_has_flag(s_lift_mic_view, LV_OBJ_FLAG_HIDDEN))
+        return false;
+    return true;
 }
 
 /* ---- right-edge reveal overlay: the input source for the reveal API above ----
@@ -3374,12 +3541,6 @@ static void finalize_close_ai_widget(void)
         lv_obj_clear_flag(p_instruction_list_layout->mic_bar,
                           LV_OBJ_FLAG_HIDDEN);
     }
-    /* Same undo as the one in close_ai_widget() above (see its comment) — this is
-       the function that ACTUALLY runs on every close (both the animated-morph path
-       and the early-return no-animation path), so this is the real single point of
-       restoration; the other one is belt-and-suspenders for the animated path. */
-    if (s_mic_bar_icon && lv_obj_is_valid(s_mic_bar_icon))
-        lv_obj_clear_flag(s_mic_bar_icon, LV_OBJ_FLAG_HIDDEN);
     set_skai_widget_opa(0);
     if (ai_gaus_bg && lv_obj_is_valid(ai_gaus_bg))
     {
@@ -3552,19 +3713,6 @@ void close_ai_widget(void)
     skai_widget_restore_full_opa(); /* pill fully visible */
     if (bar && lv_obj_is_valid(bar))
         lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
-    /* Undo instruction_list_bar_tap_device's remote-focus-branch flash suppression
-       (which HIDES s_mic_bar_icon outright, not just fades it, to dodge a same-frame
-       glyph flash on that one-shot open — see its comment). That HIDDEN flag doesn't
-       self-clear on its own; if left set, the RESTING bar would show no glyph at all
-       the next time the user just glances at it (not necessarily via a fresh
-       animate_open_ai_widget() open, which is the only other place that clears it).
-       Every close funnels through here, so clearing it unconditionally is safe — the
-       shrink-back animation below drives the icon's OPACITY from 0 back to 255 via
-       the same lmic_grow_cb crossfade this line just reset to f=255/opa=0, so
-       clearing HIDDEN now just lets that existing, already-smooth fade-in render
-       instead of silently doing nothing. */
-    if (s_mic_bar_icon && lv_obj_is_valid(s_mic_bar_icon))
-        lv_obj_clear_flag(s_mic_bar_icon, LV_OBJ_FLAG_HIDDEN);
 
     s_left_closing = true;
 

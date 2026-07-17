@@ -232,7 +232,7 @@ bool ble_hid_mouse_app_route(void) { return false; }
 /* communicate_task.h */ bool commu_send_conv_send(const char *text) { (void)text; return false; }
 /* communicate_task.h */ bool commu_send_skaibar_dismiss(void) { return false; }
 /* communicate_task.h */ bool commu_send_skaibar_view(char cat) { (void)cat; return false; }
-/* communicate_task.h */ bool commu_send_skaibar_open_device(void) { return false; }
+/* communicate_task.h */ bool commu_send_skaibar_open_device(bool force_open) { (void)force_open; return false; }
 /* communicate_task.h */ bool commu_send_skaiapp_ack(const char *id, int code) { (void)id; (void)code; return false; }
 /* communicate_task.h */ bool commu_send_skaiapp_voice(const char *app_id, const char *memo_id) { (void)app_id; (void)memo_id; return false; }
 /* ui_handler batch apply — owning TU excluded on PC */ void apply_pending_instruction_batch(void) { }

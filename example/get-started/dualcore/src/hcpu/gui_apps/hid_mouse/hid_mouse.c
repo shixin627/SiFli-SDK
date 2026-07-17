@@ -6821,18 +6821,16 @@ static void bar_ai_on_tap(void)
 // LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR 轉進來，故此處已在 LVGL thread、可直接碰 UI。
 void open_skaibar_from_pose(void)
 {
-    LOG_I("[lift_mic_diag] open_skaibar_from_pose ENTER disabled=%d dev_id=\"%s\"",
-          (int)s_bottom_input_disabled,
-          (s_dev_active_id[0] ? s_dev_active_id : "(EMPTY)"));
     if (s_bottom_input_disabled)
-        return;
-    extern bool instruction_list_open_lift_mic_view(const char *device_id);
-    bool opened = instruction_list_open_lift_mic_view(s_dev_active_id);
-    LOG_I("[lift_mic_diag] instruction_list_open_lift_mic_view returned %d", (int)opened);
-    if (opened)
     {
-        bar_ai_on_tap(); /* 大麥克風畫面一進來就立刻收自有 bar，避免重疊（同 tap 路徑） */
+        return;
     }
+    extern bool instruction_list_open_lift_mic_view(const char *device_id);
+    instruction_list_open_lift_mic_view(s_dev_active_id);
+    /* 2026-07-17 founder：這條流程底部要維持自有 bar(skaibar_img)原樣，不收起來換成
+       mic glyph。舊的 bar_ai_on_tap() 是給「浮層清單/輸入框」流程用的 avoid-overlap
+       收法，這裡不再呼叫；instruction_list_floating_bar_visible() 也已改成在單獨顯示
+       大麥克風時回報 false，所以 poll sync(bar_ai_sync_timer_cb)不會把它收掉。 */
 }
 
 // 「錶面立起」姿態結束(手腕放下)觸發：收掉大麥克風畫面 + 收掉整個單設備 session。只有

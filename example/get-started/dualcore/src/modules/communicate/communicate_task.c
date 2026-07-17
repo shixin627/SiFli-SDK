@@ -501,14 +501,20 @@ bool commu_send_skaibar_view(char cat)
     LOG_I("send skaibar view %s -> %s", json, ok ? "ok" : "FAIL");
     return ok;
 }
-bool commu_send_skaibar_open_device(void)
+bool commu_send_skaibar_open_device(bool force_open)
 {
     /* Standalone mouse app (APP_ID_MOUSE) bar tap1: tell the phone to open the SINGLE
        controlled device's skaibar (single-target summon, NOT the aggregated broadcast of
        commu_send_skaibar_view). The phone routes summonSkaibar to the active device + latches
-       single-device mode so the following voice transcript fills that device's panel too. */
-    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIBAR_OPEN_DEVICE, "{}");
-    LOG_I("send skaibar open-device -> %s", ok ? "ok" : "FAIL");
+       single-device mode so the following voice transcript fills that device's panel too.
+       force_open=true (manual bar-tap) always makes the desktop show its panel; false (the
+       lift-gesture direct voice-input flow) lets the desktop defer to an already-focused
+       external text input instead of popping the panel — see
+       instruction_list_open_lift_mic_view's only caller of force_open=false. */
+    char json[24];
+    rt_snprintf(json, sizeof(json), "{\"forceOpen\":%s}", force_open ? "true" : "false");
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIBAR_OPEN_DEVICE, json);
+    LOG_I("send skaibar open-device forceOpen=%d -> %s", (int)force_open, ok ? "ok" : "FAIL");
     return ok;
 }
 

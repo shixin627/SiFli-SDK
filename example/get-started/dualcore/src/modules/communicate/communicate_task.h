@@ -105,7 +105,7 @@ bool commu_send_dial_dir(const char *phase, int dir, int mag); /* -> KEY_DIAL_DI
 bool commu_send_media_relay(const char *cmd);          /* -> KEY_MEDIA_CONTROL (0x18) */
 bool commu_send_skaibar_dismiss(void);                 /* -> KEY_SKAIBAR_DISMISS (0x0C) cancel-close, no commit */
 bool commu_send_skaibar_view(char cat);                /* -> KEY_SKAIBAR_VIEW_CHANGE (0x0D) view opened: '@'/'/'/0=bar */
-bool commu_send_skaibar_open_device(void);             /* -> KEY_SKAIBAR_OPEN_DEVICE (0x0E) mouse app: open single controlled device's skaibar */
+bool commu_send_skaibar_open_device(bool force_open);  /* -> KEY_SKAIBAR_OPEN_DEVICE (0x0E) {"forceOpen":bool} mouse app: open single controlled device's skaibar; force_open=false is the lift-gesture direct voice-input flow (desktop may defer to a focused external text input) */
 
 /* @-conversation chat-room uplink, SKAI_LINK group (P5 "run @ chat on the watch"). */
 bool commu_send_conv_open(const char *title, const char *id, uint8_t index); /* -> KEY_CONV_OPEN  (0x0F) open the tapped @-contact's chat room */

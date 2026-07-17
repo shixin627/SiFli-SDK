@@ -83,6 +83,7 @@ LV_IMG_DECLARE(instagram);
    message cases. Kept here rather than inline-extern'd in each case body. */
 extern void open_v2t_mic(void);
 extern void open_skaibar_from_pose(void);
+extern void close_lift_mic_from_pose(void);
 extern void update_ai_process_indicator_text(app_gesture_indicator_t *indicator,
                                               const char *message,
                                               bool is_active);
@@ -530,6 +531,10 @@ static void process_lvgl_message(lvgl_msg_t *msg)
 
     case LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR:
         open_skaibar_from_pose();
+        break;
+
+    case LVGL_MSG_TYPE_MOUSE_CLOSE_LIFT_MIC:
+        close_lift_mic_from_pose();
         break;
 
     case LVGL_MSG_TYPE_MOUSE_INPUT_TEXT:

@@ -129,6 +129,7 @@ extern "C"
         /***** Mouse mode ******/
         LVGL_MSG_TYPE_MOUSE_OPEN_V2T,
         LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR, /* 立起姿態→帶出單設備 skaibar (等同點底部 bar) */
+        LVGL_MSG_TYPE_MOUSE_CLOSE_LIFT_MIC, /* 放下手腕(離開立起姿態)→收掉大麥克風畫面 */
         LVGL_MSG_TYPE_MOUSE_OPEN_KEYBOARD,
         LVGL_MSG_TYPE_MOUSE_INPUT_TEXT,
         /***** Loading ******/

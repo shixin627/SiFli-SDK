@@ -1248,7 +1248,11 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
              (hid_mouse_top_fly_active() ||
               (!switch_freehand_mode && !switch_mouse_scroll_mode)))
     {
-        report_air_mouse_data(&delta_movement, ts);
+        /* 舉起手勢的大麥克風畫面開著時不送游標——語音輸入期間手腕動作不該兼職當游標
+           (防禦性 gate,非聚焦被搶 bug 的修法,見 instruction_list_lift_mic_view_open 註解)。 */
+        extern bool instruction_list_lift_mic_view_open(void);
+        if (!instruction_list_lift_mic_view_open())
+            report_air_mouse_data(&delta_movement, ts);
     }
     // else if (!mouse_movement_lock)
     // {
@@ -1471,7 +1475,7 @@ void set_gravity_position(int position)
     {
         return;
     }
-    LOG_I("[lift_mic_diag] gravity_position: %d -> %d", gravity_position, position);
+    LOG_D("gravity_position: %d -> %d", gravity_position, position);
     int prev_gravity_position = gravity_position;
     gravity_position = position;
     /* 2026-07-16 founder 改版：離開「立起」姿態(手腕放下)→收掉大麥克風畫面。跟下面
@@ -1507,14 +1511,6 @@ void set_gravity_position(int position)
         {
             extern void hid_mouse_trigger_skaibar_from_pose(void);
             hid_mouse_trigger_skaibar_from_pose();
-        }
-        else
-        {
-            /* DIAG: reached VERTICAL but NOT in the mouse app foreground — the
-               most common silent-stop point once gravity/focus both check out. */
-            LOG_I("[lift_mic_diag] VERTICAL reached but NOT triggering — not in mouse "
-                  "app foreground (is_at_mouse_mode=%d app_control_get_mouse_mode=%d)",
-                  (int)is_at_mouse_mode(), (int)app_control_get_mouse_mode());
         }
     }
 #ifdef SHOW_UNGRAB_ENABLE_INDICATOR
@@ -1567,24 +1563,6 @@ extern void level_bar_update(int16_t value);
 static uint8_t pevr_ai_hint_bg_pos = 0;
 static void calculate_gravity_position(Vector3 *gravity)
 {
-    /* DIAG (founder requested — leave in for now, remove once the whole chain is verified
-       stable): raw values, throttled to ~150ms so it doesn't flood the log at the motion
-       thread's update rate. */
-    {
-        static rt_tick_t s_diag_last = 0;
-        rt_tick_t now = rt_tick_get();
-        if (s_diag_last == 0 || now - s_diag_last >= rt_tick_from_millisecond(150))
-        {
-            s_diag_last = now;
-            int gx1000 = (int)(gravity->x * 1000.0f);
-            int gy1000 = (int)(gravity->y * 1000.0f);
-            int gz1000 = (int)(gravity->z * 1000.0f);
-            LOG_I("[lift_mic_diag] gravity x=%d.%03d y=%d.%03d z=%d.%03d (need y>850 z<500 for VERTICAL)",
-                  gx1000 / 1000, (gx1000 < 0 ? -gx1000 : gx1000) % 1000,
-                  gy1000 / 1000, (gy1000 < 0 ? -gy1000 : gy1000) % 1000,
-                  gz1000 / 1000, (gz1000 < 0 ? -gz1000 : gz1000) % 1000);
-        }
-    }
     if (gravity->x > -1 && gravity->x < 1 && is_at_home())
     {
         level_bar_update(
@@ -1613,28 +1591,6 @@ static void calculate_gravity_position(Vector3 *gravity)
         vertical_geom &&
         (vertical_held >= rt_tick_from_millisecond(GRAVITY_VERTICAL_STABLE_MS));
 
-    /* DIAG: throttled to ~150ms, same gate as the raw-value diag above. */
-    {
-        static rt_tick_t s_diag2_last = 0;
-        rt_tick_t now2 = rt_tick_get();
-        if (s_diag2_last == 0 || now2 - s_diag2_last >= rt_tick_from_millisecond(150))
-        {
-            s_diag2_last = now2;
-            LOG_I("[lift_mic_diag] geom=%d held=%u need=%u stable=%d cur_pos=%d",
-                  (int)vertical_geom, (unsigned)vertical_held,
-                  (unsigned)rt_tick_from_millisecond(GRAVITY_VERTICAL_STABLE_MS),
-                  (int)vertical_stable, gravity_position);
-        }
-    }
-
-    /* Decide first, log the EXACT sample the decision used, THEN call
-       set_gravity_position() — so the raw x/y/z printed always corresponds to the
-       transition it caused. The separate raw-value diag above is throttled to
-       150ms and can print a DIFFERENT, nearby-in-time sample than the one that
-       actually triggered a transition, which is confusing side-by-side (founder
-       hit exactly this: saw y=0.991 printed, then a SIDE transition logged right
-       after — that transition was decided by a later, unprinted sample, not the
-       one shown). */
     int decided_position;
     if (gravity->y < -0.7 && gravity->z < 0.3)
     {
@@ -1651,17 +1607,6 @@ static void calculate_gravity_position(Vector3 *gravity)
     else
     {
         decided_position = GRAVITY_POSITION_OTHER;
-    }
-    if (decided_position != gravity_position)
-    {
-        int gx1000 = (int)(gravity->x * 1000.0f);
-        int gy1000 = (int)(gravity->y * 1000.0f);
-        int gz1000 = (int)(gravity->z * 1000.0f);
-        LOG_I("[lift_mic_diag] DECISION gravity x=%d.%03d y=%d.%03d z=%d.%03d -> position %d -> %d",
-              gx1000 / 1000, (gx1000 < 0 ? -gx1000 : gx1000) % 1000,
-              gy1000 / 1000, (gy1000 < 0 ? -gy1000 : gy1000) % 1000,
-              gz1000 / 1000, (gz1000 < 0 ? -gz1000 : gz1000) % 1000,
-              gravity_position, decided_position);
     }
     set_gravity_position(decided_position);
     // if (gravity->x < 0.5 && get_is_open_instruction_list_ai())
