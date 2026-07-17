@@ -2243,6 +2243,10 @@ bool instruction_list_open_lift_mic_view(const char *device_id)
     {
         lv_obj_clear_flag(s_lift_mic_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_move_foreground(s_lift_mic_view);
+        /* 語音輸入已就緒(麥克風圖示現形)的觸覺回饋——立起手勢沒有視線外的確認手段，
+           短震讓使用者不用盯著錶就知道可以開始按住講話(同 AI 姿態觸發用的 25ms pattern)。 */
+        extern void motor_pattern_unlocked(void);
+        motor_pattern_unlocked();
     }
     instruction_list_mark_opened_by_lift();
     return true;
