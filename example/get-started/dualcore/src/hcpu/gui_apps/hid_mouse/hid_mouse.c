@@ -2990,23 +2990,33 @@ static void handle_released_event(lv_indev_t *indev)
 #define DIAL_HOLD_TO_START_MS     500 /* 按住不動滿 500ms（＝原本長按門檻）才開方向盤；
                                          500ms 內手指移動＝一般移動滑鼠、不叫圓盤 */
 #define DIAL_HOLD_DRIFT_CANCEL_PX  18 /* dial 開「之前」：離起點超過就別進 dial（判定為滑動）*/
-#define DIAL_DRAG_SPEED_PX         12 /* dial 開「之後」：手指「單幀移動」超過這麼多＝主動快速滑動，
-                                         才退出圓盤改拖曳。用速度、非離起點累積——按著比方向時真機
-                                         手指自帶漂移會單調累積，用累積距離會漂到門檻就誤觸拖曳、
-                                         害圓盤過一陣子消失（2026-07-16 founder 回報）；漂移單幀慢、
-                                         主動滑動單幀快 */
+#define DIAL_DRAG_DIST_PX           8 /* dial 開「之後」、未鎖圓盤：手指離「基準點」累積移動超過＝主動
+                                         滑動→進拖曳。手腕在轉(mouse_dial_wrist_moving)時基準「慢跟隨」
+                                         手指(追一半)、連動/漂移慢會被追上不累積、主動滑快追不上照累積;
+                                         手腕靜止時完全不跟隨、手指一滑就累積。故門檻可小、慢速滑也觸發
+                                         (founder 2026-07-17 拖曳要滑很遠才判斷→改慢跟隨+降門檻)。 */
+#define DIAL_DRAG_UNLOCK_PX        30 /* dial 已鎖圓盤(手腕轉出方向)後：手指要滑這麼遠才「取消圓盤、改
+                                         拖曳」。比 DIAL_DRAG_DIST_PX 大很多——手腕比方向會帶動手指小幅
+                                         連動,小門檻會誤切;只有手指明顯主動滑一大段=真想改拖曳才切
+                                         (founder 2026-07-17:圓盤後不砍掉滑動判定、滑夠遠就取消圓盤)。 */
 extern void mouse_dial_start(void);
 extern void mouse_dial_end(void);
 extern void mouse_dial_cancel(void);
 extern bool mouse_dial_active(void);
+extern bool mouse_dial_wrist_moving(void);
+extern bool mouse_dial_has_direction(void);
 extern void ble_hid_mouse_cancel_touch(void);
 extern void ble_hid_mouse_begin_drag(void);
 extern void ble_hid_mouse_disable_longpress(void);
+extern bool ble_hid_mouse_drag_edge_pan(uint16_t x, uint16_t y);
+extern void ble_hid_mouse_drag_edge_pan_stop(void);
 static lv_timer_t *s_dial_hold_timer = NULL;
 static lv_point_t s_dial_press_start;
 static bool s_dial_drag = false;    /* 拖曳物件中：1:1 相對移動 + 左鍵按著 */
 static lv_point_t s_dial_drag_last; /* 拖曳中上一幀手指位置，算 1:1 相對移動量 */
-static lv_point_t s_dial_prev;      /* 方向盤中上一幀手指位置，算單幀速度判是否主動滑動→拖曳 */
+static lv_point_t s_dial_drag_ref;  /* 方向盤中拖曳判定基準：手指離此累積位移超門檻＝主動滑→拖曳；
+                                       手腕在轉(比方向)時跟隨當前位置，讓手指連動不累積、圓盤穩定 */
+static bool s_dial_locked_dial = false; /* 本次長按已鎖圓盤(手腕轉出方向)：之後不再切拖曳 */
 
 static void dial_hold_cancel(void)
 {
@@ -3026,7 +3036,8 @@ static void dial_hold_timer_cb(lv_timer_t *t)
        long-press 誤觸發左鍵（手指移動時才由 begin_drag 主動進拖曳）。 */
     ble_hid_mouse_cancel_touch();
     motor_pattern_tap();      /* 觸覺回饋：方向盤已開 */
-    s_dial_prev = s_dial_press_start; /* 速度判定基準：dial 進入時的手指位置 */
+    s_dial_drag_ref = s_dial_press_start; /* 拖曳累積位移基準：起手＝dial 進入位置 */
+    s_dial_locked_dial = false;           /* 新一次長按：圓盤鎖尚未觸發 */
     mouse_dial_start();
 }
 
@@ -3060,6 +3071,25 @@ static void dial_drag_begin(const lv_point_t *now)
     motor_pattern_tap();
 }
 
+/* 清 dial 方向盤 / 拖曳 / edge-pan / long-press timer 的殘留狀態機。離開或暫停滑鼠 app 時
+   呼叫——否則拖曳中或圓盤中切走 app,這些狀態帶到下次進 app 會卡(s_dial_drag 殘留→PRESSING
+   一直走拖曳、s_dial_active 殘留→air_mouse dial 分支永遠 return、lv_timer 殘留→UAF)。冪等，
+   可安全重複呼叫(founder 2026-07-17 卡住根因)。 */
+static void dial_drag_state_reset(void)
+{
+    dial_hold_cancel();
+    if (mouse_dial_active())
+        mouse_dial_cancel();              /* 清 s_dial_active + 桌面 hide 圓盤 */
+    if (s_dial_drag)
+    {
+        s_dial_drag = false;
+        ble_hid_mouse_drag_edge_pan_stop();
+        if (control_provider.ble_hid_mouse_left_release)
+            control_provider.ble_hid_mouse_left_release();
+    }
+    s_dial_locked_dial = false;
+}
+
 /**
  * @brief Main event callback for touch events
  * @param e Pointer to the event
@@ -3088,33 +3118,52 @@ static void plain_event_cb(lv_event_t *e)
         /* (1) 已在拖曳物件：手指移多少游標移多少（1:1 相對移動，左鍵按著）。 */
         if (s_dial_drag)
         {
-            int mdx = now_point.x - s_dial_drag_last.x;
-            int mdy = now_point.y - s_dial_drag_last.y;
+            /* 手指到觸控板邊緣→edge_pan 持續往該方向平移(手指沒空間了還想繼續移,founder
+               2026-07-17);中心 band→1:1 相對移動。互斥:在邊緣就不送 1:1、讓 pan timer 接手。 */
+            bool at_edge = ble_hid_mouse_drag_edge_pan(now_point.x, now_point.y);
+            if (!at_edge)
+            {
+                int mdx = now_point.x - s_dial_drag_last.x;
+                int mdy = now_point.y - s_dial_drag_last.y;
+                if (mdx > 127) mdx = 127; else if (mdx < -127) mdx = -127;
+                if (mdy > 127) mdy = 127; else if (mdy < -127) mdy = -127;
+                if ((mdx || mdy) && control_provider.ble_hid_mouse_move)
+                    control_provider.ble_hid_mouse_move((int8_t)mdx, (int8_t)mdy);
+            }
             s_dial_drag_last = now_point;
-            if (mdx > 127) mdx = 127; else if (mdx < -127) mdx = -127;
-            if (mdy > 127) mdy = 127; else if (mdy < -127) mdy = -127;
-            if ((mdx || mdy) && control_provider.ble_hid_mouse_move)
-                control_provider.ble_hid_mouse_move((int8_t)mdx, (int8_t)mdy);
             break;
         }
 
         lv_coord_t dx = now_point.x - s_dial_press_start.x;
         lv_coord_t dy = now_point.y - s_dial_press_start.y;
 
-        /* (2) 方向盤已開：手指不動＝手腕比方向；手指「主動快速滑動」（單幀速度超過門檻）才
-           退出改拖曳。用速度、非離起點累積——按著比方向時手指自帶漂移會單調累積，用累積距離
-           會漂到門檻就誤觸拖曳、害圓盤過一陣子消失（founder 2026-07-16）。 */
+        /* (2) 方向盤已開：手腕比方向 vs 手指拖曳靠 gyro 區分（founder 2026-07-17）──手指位移單
+           一信號分不開「手指主動滑」與「手腕動時手指連動」（兩者單幀都 2~5px，調 touch 門檻東
+           修西壞）。手腕在轉（mouse_dial_wrist_moving，air_mouse delta 大）時把基準跟著手指移、
+           不累積，手指連動就不誤觸拖曳→圓盤穩；手腕靜止才把手指離基準的累積位移當主動滑，超門
+           檻進拖曳（門檻可小、慢速滑也算，因為手腕連動已被 gyro 擋在外）。 */
         if (mouse_dial_active())
         {
-            int svx = now_point.x - s_dial_prev.x;
-            int svy = now_point.y - s_dial_prev.y;
-            s_dial_prev = now_point;
-            if (LV_ABS(svx) + LV_ABS(svy) > DIAL_DRAG_SPEED_PX)
+            /* 圓盤累積出明確方向(手腕轉出扇形)＝鎖圓盤：之後不砍掉滑動判定,但門檻放大到
+               DIAL_DRAG_UNLOCK_PX——手指明顯滑一大段才「取消圓盤、改拖曳」,比方向時的小幅手指
+               連動不會誤切(founder 2026-07-17)。未鎖圓盤＝小門檻,直接滑手指好進拖曳。 */
+            if (mouse_dial_has_direction())
+                s_dial_locked_dial = true;
+            /* 手腕在轉時基準「慢跟隨」(追一半)濾掉連動/漂移;手腕靜止時完全不跟隨、手指一滑就累積。 */
+            if (mouse_dial_wrist_moving())
             {
-                mouse_dial_cancel();        /* 圓盤消失，不 commit 方向 */
+                s_dial_drag_ref.x += (now_point.x - s_dial_drag_ref.x) / 2;
+                s_dial_drag_ref.y += (now_point.y - s_dial_drag_ref.y) / 2;
+            }
+            int rdx = now_point.x - s_dial_drag_ref.x;
+            int rdy = now_point.y - s_dial_drag_ref.y;
+            int thresh = s_dial_locked_dial ? DIAL_DRAG_UNLOCK_PX : DIAL_DRAG_DIST_PX;
+            if (LV_ABS(rdx) + LV_ABS(rdy) > thresh)
+            {
+                mouse_dial_cancel();    /* 圓盤消失,不 commit 方向 */
                 dial_drag_begin(&now_point);
             }
-            break; /* 慢/不動：手腕比方向，不控游標 */
+            break; /* 未進拖曳：手腕比方向，不控游標 */
         }
 
         /* (3) 圓盤還沒開，手指移動 = 一般移動滑鼠（原本 handle_pressing_event 的
@@ -3131,8 +3180,9 @@ static void plain_event_cb(lv_event_t *e)
         dial_hold_cancel();
         if (s_dial_drag)
         {
-            /* 拖曳物件放開：放開左鍵。 */
+            /* 拖曳物件放開：停邊緣平移 + 放開左鍵。 */
             s_dial_drag = false;
+            ble_hid_mouse_drag_edge_pan_stop();
             if (control_provider.ble_hid_mouse_left_release)
                 control_provider.ble_hid_mouse_left_release();
             user_touching = false;
@@ -3161,6 +3211,7 @@ static void plain_event_cb(lv_event_t *e)
         if (s_dial_drag)
         {
             s_dial_drag = false;
+            ble_hid_mouse_drag_edge_pan_stop();
             if (control_provider.ble_hid_mouse_left_release)
                 control_provider.ble_hid_mouse_left_release();
         }
@@ -3973,6 +4024,16 @@ void hid_mouse_trigger_skaibar_from_pose(void)
 {
     lvgl_msg_t msg;
     msg.type = LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR;
+    lvgl_send_msg(msg);
+}
+
+// 2026-07-16 founder 改版：舉起手勢離開「立起」姿態(手腕放下)→跨層觸發收掉大麥克風
+// 畫面。同一套 motion-thread→LVGL-thread msg 轉發模式，見上面 hid_mouse_trigger_
+// skaibar_from_pose 的註解。
+void hid_mouse_trigger_close_lift_mic_from_pose(void)
+{
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_MOUSE_CLOSE_LIFT_MIC;
     lvgl_send_msg(msg);
 }
 
@@ -6435,6 +6496,14 @@ static void top_fly_end(const char *why)
         lv_obj_clear_flag(status_bar_area_up, LV_OBJ_FLAG_PRESS_LOCK);
 }
 
+/* 頂部區按住＝飛鼠（明確要飛鼠）時 true；供 air_mouse_process 判斷要不要忽略姿態 switch：
+   頂部飛鼠忽略姿態（傾斜手腕不該被擋），但 FSR 壓感觸發的 handfree（bloc_control.c，手臂/
+   袖子壓到手錶）保留姿態保護，免得舉手腕時誤壓 FSR 就亂飛（founder 2026-07-16）。 */
+bool hid_mouse_top_fly_active(void)
+{
+    return s_top_fly_active;
+}
+
 static void top_hold_timer_cb(lv_timer_t *t)
 {
     (void)t;
@@ -6744,23 +6813,37 @@ static void bar_ai_on_tap(void)
     bar_ai_sync_set_hidden(true); /* 立刻收，不等 poll → 第一次 tap 就不會看到兩條 */
 }
 
-// 「錶面立起正對臉」姿態觸發：在 LVGL thread 複製「純 tap 底部 bar」的行為 —— 帶出
-// 單設備 skaibar 列表 + 叫該設備開 skaibar（等同 text_input_bar_cb 的 tap 分支，
-// 見該函式「純點擊」段）。由 motion thread 的 hid_mouse_trigger_skaibar_from_pose
-// 發 LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR 轉進來，故此處已在 LVGL thread、可直接碰 UI。
+// 「錶面立起正對臉」姿態觸發：在 LVGL thread 開啟固定的「直接語音輸入」大麥克風畫面
+// （2026-07-16 founder 改版，取代原本帶出單設備 skaibar 選項清單的行為）。ONLY 在控制中
+// 那台設備目前有聚焦輸入框(s_remote_target_has_focus)時才生效 —— 沒有就完全不做任何事
+// (連自有 bar 都不收，畫面上什麼都不會變)，由 instruction_list_open_lift_mic_view 內部
+// 判斷並回傳是否真的開了。由 motion thread 的 hid_mouse_trigger_skaibar_from_pose 發
+// LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR 轉進來，故此處已在 LVGL thread、可直接碰 UI。
 void open_skaibar_from_pose(void)
 {
+    LOG_I("[lift_mic_diag] open_skaibar_from_pose ENTER disabled=%d dev_id=\"%s\"",
+          (int)s_bottom_input_disabled,
+          (s_dev_active_id[0] ? s_dev_active_id : "(EMPTY)"));
     if (s_bottom_input_disabled)
         return;
-    extern void instruction_list_bar_tap_device(const char *device_id);
-    instruction_list_bar_tap_device(s_dev_active_id);
-    bar_ai_on_tap(); /* 列表一進來就立刻收自有 bar，避免重疊（同 tap 路徑） */
-    /* 標記「這個 skaibar session 是舉起帶出的」→ 浮層 bar 的長按=對講機語音
-       (V2T_INTENT_SKAIBAR)只在此情境生效;手動 tap 維持原兩段式。 */
+    extern bool instruction_list_open_lift_mic_view(const char *device_id);
+    bool opened = instruction_list_open_lift_mic_view(s_dev_active_id);
+    LOG_I("[lift_mic_diag] instruction_list_open_lift_mic_view returned %d", (int)opened);
+    if (opened)
     {
-        extern void instruction_list_mark_opened_by_lift(void);
-        instruction_list_mark_opened_by_lift();
+        bar_ai_on_tap(); /* 大麥克風畫面一進來就立刻收自有 bar，避免重疊（同 tap 路徑） */
     }
+}
+
+// 「錶面立起」姿態結束(手腕放下)觸發：收掉大麥克風畫面 + 收掉整個單設備 session。只有
+// 這個 session 是舉起帶出的才會動作(instruction_list_close_lift_mic_view 內部用
+// s_opened_by_lift 判斷)，手動點 bar 開的清單/輸入框不受影響。由 motion thread 的
+// hid_mouse_trigger_close_lift_mic_from_pose 發 LVGL_MSG_TYPE_MOUSE_CLOSE_LIFT_MIC
+// 轉進來。
+void close_lift_mic_from_pose(void)
+{
+    extern void instruction_list_close_lift_mic_view(void);
+    instruction_list_close_lift_mic_view();
 }
 /* 給 instruction_list 在「切換浮層 bar 顯示/隱藏的當幀」同步呼叫 → frame-perfect 交接，
    消除 poll 40ms 延遲造成的那一閃/空窗。off-mouse(trackpad_mic_btn NULL)為 no-op、錶盤不受影響。 */
@@ -7104,6 +7187,7 @@ static void on_resume(void)
  */
 static void on_pause(void)
 {
+    dial_drag_state_reset(); /* 暫停 app 先清 dial/拖曳殘留,免恢復後卡 */
     setting_provider.set_power_save_mode(1);
     switch_watch_motion_control_mode(false, false);
 }
@@ -7114,6 +7198,7 @@ static void on_pause(void)
  */
 void hid_mouse_destroy(void)
 {
+    dial_drag_state_reset(); /* 離開 app 先清 dial/拖曳/timer 殘留(founder 2026-07-17 卡住根因) */
     app_control_set_mouse_mode(false);
     skaiwatch_ble_set_performance(BLE_PERF_SLOW);
 

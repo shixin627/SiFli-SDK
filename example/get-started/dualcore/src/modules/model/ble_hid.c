@@ -1216,8 +1216,11 @@ static void pending_click_timer_cancel(void)
 static void edge_pan_timer_cb(void *parameter)
 {
     (void)parameter;
-    if (s_touch_state != MOUSE_TOUCH_LONG_PRESSING)
-        return;
+    /* 不再 gate s_touch_state==LONG_PRESSING：dial 拖曳(dial_drag_begin 走 cancel_touch→
+       s_touch_state=IDLE、自管 s_dial_drag)也要 edge_pan，那時 state 不是 LONG_PRESSING。timer
+       生命週期已由 edge_pan_start/stop 精確管(手指在 edge band 才 running、拖曳結束必 stop)，
+       這個 state gate 反而擋掉 dial 拖曳的邊緣續移(founder 2026-07-17「之前有、現在沒」)。
+       BLE_HID_Mouse_Move 本身 route-aware(relay 模式→commu_send_mouse_move 到桌面)。 */
     if (s_edge_pan_dx == 0 && s_edge_pan_dy == 0)
         return;
     BLE_HID_Mouse_Move(s_edge_pan_dx, s_edge_pan_dy);
@@ -1256,7 +1259,8 @@ static int approx_len(int dx, int dy)
     return (a > b) ? (a + (b >> 1)) : (b + (a >> 1));
 }
 
-static void edge_pan_update(uint16_t x, uint16_t y)
+/* 回傳 true＝手指在邊緣 band（已啟動 edge_pan 持續平移）、false＝在中心（已停）。 */
+static bool edge_pan_update(uint16_t x, uint16_t y)
 {
     int dx = (int)x - WATCH_CENTER_PX;
     int dy = (int)y - WATCH_CENTER_PX;
@@ -1265,14 +1269,14 @@ static void edge_pan_update(uint16_t x, uint16_t y)
     if (mouse_sq_dist(dx, dy) <= inner * inner)
     {
         edge_pan_stop();
-        return;
+        return false;
     }
 
     int len = approx_len(dx, dy);
     if (len == 0)
     {
         edge_pan_stop();
-        return;
+        return false;
     }
 
     int depth = len - inner;                      /* 0..margin (or beyond) */
@@ -1283,6 +1287,7 @@ static void edge_pan_update(uint16_t x, uint16_t y)
     s_edge_pan_dx = (int8_t)((dx * intensity) / len);
     s_edge_pan_dy = (int8_t)((dy * intensity) / len);
     edge_pan_start();
+    return true;
 }
 
 void BLE_HID_Mouse_Touch_Press(uint16_t x, uint16_t y)
@@ -1390,6 +1395,19 @@ void ble_hid_mouse_cancel_touch(void)
 void ble_hid_mouse_begin_drag(void)
 {
     mouse_enter_long_press();
+}
+
+/* dial 拖曳用（hid_mouse.c case1）：手指到觸控板邊緣→啟動 edge_pan 持續往該方向平移，回傳
+   是否在邊緣 band（在→呼叫端別再送中心 1:1、讓 pan timer 接手；不在→呼叫端做 1:1）。dial 的
+   1:1 拖曳自送 move、不走原生 long-press 的 Touch_Move，故 edge_pan 要另外 expose 給它。
+   founder 2026-07-17：拖曳到手錶邊緣停住要繼續往那方向移。 */
+bool ble_hid_mouse_drag_edge_pan(uint16_t x, uint16_t y)
+{
+    return edge_pan_update(x, y);
+}
+void ble_hid_mouse_drag_edge_pan_stop(void)
+{
+    edge_pan_stop();
 }
 
 /* dial 手勢用（hid_mouse.c）：按下時就禁用原本 500ms long-press（dial 用自己的 500ms timer

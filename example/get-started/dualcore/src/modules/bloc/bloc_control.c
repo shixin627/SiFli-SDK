@@ -1056,6 +1056,13 @@ static void fsr_adc_sampler_thread_entry(void *parameter)
 			want_handfree = true;  /* press mode: always free to move */
 		bool want_left_press = left_pressed ? (v < click_off) : (v < click_on);
 
+		/* founder 2026-07-17: FSR squeeze mouse-control disabled for now — lifting the
+		   wrist (arm / sleeve pressing the pad) kept mis-triggering handfree fly + clicks.
+		   ADC keeps sampling (g_fsr_adc_latest still readable, fsr_recal still calibrates);
+		   we just stop driving handfree + the left button. Remove these two lines to restore. */
+		want_handfree = false;
+		want_left_press = false;
+
 		/* Squeeze only drives the air-mouse while the standalone mouse app is
 		   open. Outside it a squeeze must not leak a BLE HID click. Forcing
 		   want_* false here lets the edge-triggered release below clean up a

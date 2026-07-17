@@ -966,6 +966,7 @@ bool get_scroll_up_mode(void)
     return scroll_up_mode;
 }
 extern bool get_hid_mouse_handfree_mode(void);
+extern bool hid_mouse_top_fly_active(void);
 
 /* ─────────────────────────────────────────────────────────────────────────
    主觸控板長按方向盤 (dial) —— 頂部 logo「按住=飛鼠」的姊妹功能。
@@ -978,8 +979,14 @@ extern bool get_hid_mouse_handfree_mode(void);
 #define DIAL_DEADZONE_UNITS   40.0f  /* 累積向量長度 < 此 = 中心 deadzone（不選）*/
 #define DIAL_MAX_UNITS       260.0f  /* 向量長度上限（mag=1000）；超過 clamp。真機再調 */
 #define DIAL_SEND_INTERVAL_MS   33   /* update 節流 ~30Hz，避免洗版 BLE/log */
+#define DIAL_WRIST_MOVE_UNITS  3.0f  /* air_mouse 每幀 delta(|dx|+|dy|) >= 此＝手腕在轉(比方向)，
+                                        非手指滑。hid_mouse 拖曳判定用它區分「手腕動 vs 手指動」──
+                                        手腕動時手指的連動位移不算拖曳，圓盤才穩(founder 2026-07-17)*/
+#define DIAL_WRIST_HOLD_MS      200  /* 手腕停止後仍視為「比方向中」這麼久，涵蓋手指慣性殘留位移，
+                                        免得手腕轉到定位剛停的瞬間被手指殘留誤判成拖曳 */
 
 static volatile bool s_dial_active = false;
+static volatile rt_tick_t s_dial_wrist_last_move = 0; /* 最後一次手腕明顯轉動的 tick(gyro 判定用) */
 static bool  s_dial_reset_pending = false;
 static float s_dial_ax = 0.0f, s_dial_ay = 0.0f; /* 累積向量：螢幕座標 x 右+ / y 下+ */
 static int   s_dial_cur_dir = -1;
@@ -1009,6 +1016,10 @@ static int dial_vector_to_sector(float ax, float ay, int *mag_out)
 /* air_mouse_process 每幀在 dial 模式呼叫：累積 delta、更新當前 sector、節流送 update。 */
 static void mouse_dial_accumulate(float dx, float dy)
 {
+    /* 手腕角速度(air_mouse delta)夠大＝正在比方向；記時刻，供 hid_mouse 拖曳判定以 gyro
+       區分手腕/手指(取大小、與下面取負校正無關)。 */
+    if (fabsf(dx) + fabsf(dy) >= DIAL_WRIST_MOVE_UNITS)
+        s_dial_wrist_last_move = rt_tick_get();
     if (s_dial_reset_pending)
     {
         s_dial_ax = 0.0f; s_dial_ay = 0.0f;
@@ -1044,6 +1055,8 @@ void mouse_dial_start(void)
 {
     s_dial_reset_pending = true;
     s_dial_active = true;
+    s_dial_cur_dir = -1;        /* 立即清方向,免 mouse_dial_has_direction 讀到上次殘留(鎖圓盤判定用) */
+    s_dial_wrist_last_move = 0; /* 重置手腕活動，開場先當靜止(手指還沒滑、圓盤基準在起點) */
     s_dial_last_send = 0; /* 讓開場那一幀的 update 立即送出 */
     extern bool commu_send_dial_dir(const char *phase, int dir, int mag);
     commu_send_dial_dir("start", -1, 0);
@@ -1064,6 +1077,22 @@ void mouse_dial_cancel(void)
     commu_send_dial_dir("end", -1, 0);
 }
 bool mouse_dial_active(void) { return s_dial_active; }
+
+/* hid_mouse.c 拖曳判定用：手腕最近 DIAL_WRIST_HOLD_MS 內是否在轉(比方向)。手腕在轉時手指的
+   連動位移不該當成拖曳(圓盤才穩)，手腕靜止才把手指主動滑視為拖曳──gyro 是唯一能區分「手腕動
+   vs 手指動」的信號(founder 2026-07-17 圓盤被手指連動誤觸消失)。 */
+bool mouse_dial_wrist_moving(void)
+{
+    return (rt_tick_get() - s_dial_wrist_last_move)
+           < rt_tick_from_millisecond(DIAL_WRIST_HOLD_MS);
+}
+
+/* hid_mouse.c 鎖定用：圓盤是否已累積出明確方向(非中心 deadzone)。手腕一轉出方向就鎖圓盤，
+   本次長按之後手指連動/漂移再多也不誤切拖曳(founder 2026-07-17 只動手腕叫圓盤卻變長按)。 */
+bool mouse_dial_has_direction(void)
+{
+    return s_dial_cur_dir >= 0;
+}
 
 static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                               Quaternion *prev_quat)
@@ -1193,10 +1222,14 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
             delta_movement.y = 0;
         }
     }
-    // 頂部區按住＝飛鼠（handfree）：明確要飛鼠，就不受姿態 switch（錶面朝上=scroll/朝下=
-    // freehand）擋——飛鼠靠傾斜手腕，傾斜本來就會讓 gravity 進入 freehand/scroll 姿態區間，
-    // 用姿態擋會讓飛鼠斷掉（founder 2026-07-16 真機驗出 fh=1 sc=1 擋住頂部飛鼠）。移動鎖仍保留。
-    else if (!mouse_movement_lock && get_hid_mouse_handfree_mode())
+    // handfree 飛鼠的姿態 gate 分兩種來源：①頂部區按住（`hid_mouse_top_fly_active`，明確要
+    // 飛鼠）→ 忽略姿態 switch，因為飛鼠靠傾斜手腕、傾斜本來就會讓 gravity 進 freehand/scroll
+    // 區間，用姿態擋會讓頂部飛鼠斷掉（founder 2026-07-16 fh=1 sc=1 擋住）；②FSR 壓感觸發的
+    // handfree（`bloc_control.c`，手臂/袖子壓到手錶）→ 保留姿態 switch，免得舉手腕時誤壓 FSR
+    // 就在極端姿態亂飛（founder 2026-07-16「沒按頂部、舉到角度就變自由模式」）。移動鎖都保留。
+    else if (!mouse_movement_lock && get_hid_mouse_handfree_mode() &&
+             (hid_mouse_top_fly_active() ||
+              (!switch_freehand_mode && !switch_mouse_scroll_mode)))
     {
         report_air_mouse_data(&delta_movement, ts);
     }
@@ -1421,8 +1454,18 @@ void set_gravity_position(int position)
     {
         return;
     }
-    LOG_D("gravity_position:%d", position);
+    LOG_I("[lift_mic_diag] gravity_position: %d -> %d", gravity_position, position);
+    int prev_gravity_position = gravity_position;
     gravity_position = position;
+    /* 2026-07-16 founder 改版：離開「立起」姿態(手腕放下)→收掉大麥克風畫面。跟下面
+       「進入立起」的觸發是同一組邊緣事件的兩端，必須在 gravity_position 被上面那行改寫
+       之前先存舊值，才能判斷「剛剛離開」。 */
+    if (prev_gravity_position == GRAVITY_POSITION_VERTICAL &&
+        gravity_position != GRAVITY_POSITION_VERTICAL)
+    {
+        extern void hid_mouse_trigger_close_lift_mic_from_pose(void);
+        hid_mouse_trigger_close_lift_mic_from_pose();
+    }
     if (gravity_position == GRAVITY_POSITION_AI &&
         !SkaiWatchSys.motion_control_lock && !is_at_ai_interface() &&
         is_at_instruction_list())
@@ -1441,6 +1484,11 @@ void set_gravity_position(int position)
        is_at_mouse_mode / app_control_get_mouse_mode 判前景 (兩者皆不 assert)。
        gravity_position 為邊緣觸發 (同 state 早 return)，保持豎直不動不會重觸；
        放平回 OTHER/HORIZONTAL 後再立起才會再觸發。 */
+    if (gravity_position == GRAVITY_POSITION_VERTICAL)
+    {
+        LOG_I("[lift_mic_diag] VERTICAL reached, is_at_mouse_mode=%d app_control_mouse=%d",
+              (int)is_at_mouse_mode(), (int)app_control_get_mouse_mode());
+    }
     if (gravity_position == GRAVITY_POSITION_VERTICAL &&
         (is_at_mouse_mode() || app_control_get_mouse_mode()))
     {
