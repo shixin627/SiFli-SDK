@@ -123,10 +123,13 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
 #endif
 
 static float total_yaw_energy = 0;
+/* 體感滾動：每格固定 6 度（與列表長度無關）。control_angle 隨 count 等比
+ * 放大到 6×count，使每格角度 = control_angle / count = DEGREES_PER_SLOT。 */
+#define DEGREES_PER_SLOT 6
 static uint8_t scroll_segment_count = 1;
 static uint16_t page_range = 100; // 每個頁面的範圍
 static float total_moving_distance = 1100.0f;
-static uint8_t control_angle = 60; // 預設控制角度為30度
+static uint8_t control_angle = 60; // 進任何列表前的 fallback；進場後由 set_scroll_segment_count 覆寫為 6×count
 float get_total_moving_distance(void)
 {
     return total_moving_distance;
@@ -140,6 +143,11 @@ void set_scroll_segment_count(uint8_t count)
         total_moving_distance = scroll_segment_count * page_range;
         // 每個頁面的範圍
         // page_range = 125;
+        /* 固定 6 度/格：control_angle 是「yaw 角度→energy」換算的分母
+         * (total_yaw_energy_uint = -yaw × total_moving_distance / control_angle)，
+         * 隨 count 等比放大後每格角度 = control_angle / count = 6 度，不隨列表長度變。
+         * count ≤ 11（上面的 gate）→ 6×count ≤ 66，不超出 uint8_t。 */
+        control_angle = DEGREES_PER_SLOT * count;
     }
     LOG_D("set_scroll_segment_count:%d,%d", scroll_segment_count, page_range);
 }
