@@ -1173,6 +1173,23 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
         /* 垂直=繞 x（上下擺腕，正號＝實機兩輪驗出的方向）、水平=繞 z：
            gyro_y 是翻腕 roll 軸、對不上上下（2026-07-06 logo 飛鼠）。
            data-collection 分支有自己的 roll 補償映射，不隨動。 */
+        /* IMU 座標系翻轉「兜底」防禦（非主要修法）：dial/飛鼠方向偶發全反的根因已治本——
+           以前 BMI270 晶片 remap 只在第一次螢幕睡眠時寫入,開機到那之前是出廠軸=全反窗口;
+           2026-07-17 改為 redirect_sensor_data 軟體層固定翻轉、晶片恆 identity(bmi270_driver.c),
+           時機問題消除。此段保留當第二道保險:萬一未知來源再讓座標系整組翻(gravity.z 戴姿
+           恆 −0.98,變 +0.98=翻了),自動對 gyro_x/z 取負。遲滯 ±0.3 防手腕傾斜抖動;正常
+           情況永不觸發。 */
+        {
+            static bool s_imu_frame_flipped = false;
+            float gz_now = watch_sensor.motion_data.gravity.z;
+            if (gz_now > 0.3f)       s_imu_frame_flipped = true;
+            else if (gz_now < -0.3f) s_imu_frame_flipped = false;
+            if (s_imu_frame_flipped)
+            {
+                gyro_x = -gyro_x;
+                gyro_z = -gyro_z;
+            }
+        }
         delta_movement =
             air_mouse_algorithm(gyro_x, gyro_z, AIR_MOUSE_SENSITIVITY);
     }
@@ -1486,14 +1503,19 @@ void set_gravity_position(int position)
        放平回 OTHER/HORIZONTAL 後再立起才會再觸發。 */
     if (gravity_position == GRAVITY_POSITION_VERTICAL)
     {
-        LOG_I("[lift_mic_diag] VERTICAL reached, is_at_mouse_mode=%d app_control_mouse=%d",
-              (int)is_at_mouse_mode(), (int)app_control_get_mouse_mode());
-    }
-    if (gravity_position == GRAVITY_POSITION_VERTICAL &&
-        (is_at_mouse_mode() || app_control_get_mouse_mode()))
-    {
-        extern void hid_mouse_trigger_skaibar_from_pose(void);
-        hid_mouse_trigger_skaibar_from_pose();
+        if (is_at_mouse_mode() || app_control_get_mouse_mode())
+        {
+            extern void hid_mouse_trigger_skaibar_from_pose(void);
+            hid_mouse_trigger_skaibar_from_pose();
+        }
+        else
+        {
+            /* DIAG: reached VERTICAL but NOT in the mouse app foreground — the
+               most common silent-stop point once gravity/focus both check out. */
+            LOG_I("[lift_mic_diag] VERTICAL reached but NOT triggering — not in mouse "
+                  "app foreground (is_at_mouse_mode=%d app_control_get_mouse_mode=%d)",
+                  (int)is_at_mouse_mode(), (int)app_control_get_mouse_mode());
+        }
     }
 #ifdef SHOW_UNGRAB_ENABLE_INDICATOR
     uint8_t app_id = app_id_mainmenu;
@@ -1545,7 +1567,24 @@ extern void level_bar_update(int16_t value);
 static uint8_t pevr_ai_hint_bg_pos = 0;
 static void calculate_gravity_position(Vector3 *gravity)
 {
-    // LOG_D("gravity x:%f,y:%f,z:%f", gravity->x, gravity->y, gravity->z);
+    /* DIAG (founder requested — leave in for now, remove once the whole chain is verified
+       stable): raw values, throttled to ~150ms so it doesn't flood the log at the motion
+       thread's update rate. */
+    {
+        static rt_tick_t s_diag_last = 0;
+        rt_tick_t now = rt_tick_get();
+        if (s_diag_last == 0 || now - s_diag_last >= rt_tick_from_millisecond(150))
+        {
+            s_diag_last = now;
+            int gx1000 = (int)(gravity->x * 1000.0f);
+            int gy1000 = (int)(gravity->y * 1000.0f);
+            int gz1000 = (int)(gravity->z * 1000.0f);
+            LOG_I("[lift_mic_diag] gravity x=%d.%03d y=%d.%03d z=%d.%03d (need y>850 z<500 for VERTICAL)",
+                  gx1000 / 1000, (gx1000 < 0 ? -gx1000 : gx1000) % 1000,
+                  gy1000 / 1000, (gy1000 < 0 ? -gy1000 : gy1000) % 1000,
+                  gz1000 / 1000, (gz1000 < 0 ? -gz1000 : gz1000) % 1000);
+        }
+    }
     if (gravity->x > -1 && gravity->x < 1 && is_at_home())
     {
         level_bar_update(
@@ -1555,7 +1594,8 @@ static void calculate_gravity_position(Vector3 *gravity)
     /* 「錶面立起正對臉」時間去抖：vertical_geom 幾何條件要「持續」
        GRAVITY_VERTICAL_STABLE_MS 毫秒才承認為 VERTICAL，避免滑鼠操作中手腕瞬間
        掃過豎直角度就誤觸 mic。用 wall-clock tick 不用幀數 — motion 更新率浮動，
-       固定幀數保持時間不可預期。其他姿態 (SIDE/HORIZONTAL) 維持即時切換不變。 */
+       固定幀數保持時間不可預期。其他姿態 (SIDE/HORIZONTAL) 維持即時切換不變。
+       2026-07-17：founder 要求先還原這版本自己驗證，之前拿掉去抖動的版本先不用。 */
     bool vertical_geom = (gravity->y > GRAVITY_VERTICAL_Y_MIN &&
                           gravity->z < GRAVITY_VERTICAL_Z_MAX);
     if (vertical_geom)
@@ -1573,22 +1613,57 @@ static void calculate_gravity_position(Vector3 *gravity)
         vertical_geom &&
         (vertical_held >= rt_tick_from_millisecond(GRAVITY_VERTICAL_STABLE_MS));
 
+    /* DIAG: throttled to ~150ms, same gate as the raw-value diag above. */
+    {
+        static rt_tick_t s_diag2_last = 0;
+        rt_tick_t now2 = rt_tick_get();
+        if (s_diag2_last == 0 || now2 - s_diag2_last >= rt_tick_from_millisecond(150))
+        {
+            s_diag2_last = now2;
+            LOG_I("[lift_mic_diag] geom=%d held=%u need=%u stable=%d cur_pos=%d",
+                  (int)vertical_geom, (unsigned)vertical_held,
+                  (unsigned)rt_tick_from_millisecond(GRAVITY_VERTICAL_STABLE_MS),
+                  (int)vertical_stable, gravity_position);
+        }
+    }
+
+    /* Decide first, log the EXACT sample the decision used, THEN call
+       set_gravity_position() — so the raw x/y/z printed always corresponds to the
+       transition it caused. The separate raw-value diag above is throttled to
+       150ms and can print a DIFFERENT, nearby-in-time sample than the one that
+       actually triggered a transition, which is confusing side-by-side (founder
+       hit exactly this: saw y=0.991 printed, then a SIDE transition logged right
+       after — that transition was decided by a later, unprinted sample, not the
+       one shown). */
+    int decided_position;
     if (gravity->y < -0.7 && gravity->z < 0.3)
     {
-        set_gravity_position(GRAVITY_POSITION_SIDE);
+        decided_position = GRAVITY_POSITION_SIDE;
     }
     else if (vertical_stable)
     {
-        set_gravity_position(GRAVITY_POSITION_VERTICAL);
+        decided_position = GRAVITY_POSITION_VERTICAL;
     }
     else if ((gravity->x < 0.5 && gravity->x > -0.3) && fabs(gravity->y) < 0.5)
     {
-        set_gravity_position(GRAVITY_POSITION_HORIZONTAL);
+        decided_position = GRAVITY_POSITION_HORIZONTAL;
     }
     else
     {
-        set_gravity_position(GRAVITY_POSITION_OTHER);
+        decided_position = GRAVITY_POSITION_OTHER;
     }
+    if (decided_position != gravity_position)
+    {
+        int gx1000 = (int)(gravity->x * 1000.0f);
+        int gy1000 = (int)(gravity->y * 1000.0f);
+        int gz1000 = (int)(gravity->z * 1000.0f);
+        LOG_I("[lift_mic_diag] DECISION gravity x=%d.%03d y=%d.%03d z=%d.%03d -> position %d -> %d",
+              gx1000 / 1000, (gx1000 < 0 ? -gx1000 : gx1000) % 1000,
+              gy1000 / 1000, (gy1000 < 0 ? -gy1000 : gy1000) % 1000,
+              gz1000 / 1000, (gz1000 < 0 ? -gz1000 : gz1000) % 1000,
+              gravity_position, decided_position);
+    }
+    set_gravity_position(decided_position);
     // if (gravity->x < 0.5 && get_is_open_instruction_list_ai())
     // {
     //     extern void check_ai_widget_auto_close(void);

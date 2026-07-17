@@ -906,13 +906,13 @@ redirect_sensor_data(struct bmi2_sens_axes_data *data)
     struct bmi2_sens_axes_data dataRedirect;
     dataRedirect.virt_sens_time = data->virt_sens_time;
     #if (WATCH_IMU_REVERSE_180)
-    dataRedirect.x = -data->x;
-    dataRedirect.y = data->y;
-    #else
     dataRedirect.x = data->x;
     dataRedirect.y = -data->y;
+    #else
+    dataRedirect.x = -data->x;
+    dataRedirect.y = data->y;
     #endif
-    dataRedirect.z = data->z;
+    dataRedirect.z = -data->z;
     return dataRedirect;
 }
 
@@ -1310,6 +1310,13 @@ int bmi270_initialized(void)
     LOG_D("configure sensor rslt = %d", res);
     if (res != BMI2_OK)
         goto err_deinit;
+
+    /* 2026-07-17 dial/air-mouse 方向偶發全反的根因處置:改採 founder 的軟體層方案——
+       redirect_sensor_data 直接做三軸翻轉、晶片 remap 永遠保持出廠 identity(wrist-wake
+       step 1.5 的 set_remap_axes 已註解)。軟體翻沒有「晶片寫入時機/失敗」的 failure mode,
+       開機任何時刻讀值框架一致(舊方案 remap 只在第一次螢幕睡眠寫入,開機到第一次睡眠之間
+       是 identity 軸→方向全反,剛刷機馬上用必中)。勿在此重新加晶片 remap 寫入——會與軟體
+       翻疊成雙重翻轉。 */
 
     #if defined(GSENSOR_UES_FIFO)
     // set fifo
@@ -1802,29 +1809,29 @@ int bmi270_hw_wrist_wake_enable(int en)
            feeding the feature engine.
 
            Logged before/after so we can confirm what's stored. */
-        struct bmi2_remap remap_before = { 0 };
-        if (bmi2_get_remap_axes(&remap_before, &bmi2_dev) == BMI2_OK)
-        {
-            LOG_I("wrist-wake step1.5 remap before: x=0x%02x y=0x%02x z=0x%02x",
-                  remap_before.x, remap_before.y, remap_before.z);
-        }
-        struct bmi2_remap remap_want = {
-            .x = BMI2_NEG_X,  /* watch X = -chip X (flipped) */
-            .y = BMI2_NEG_Y,      /* watch Y = +chip Y (same) */
-            .z = BMI2_NEG_Z,  /* watch Z = -chip Z (flipped) */
-        };
-        rslt = bmi2_set_remap_axes(&remap_want, &bmi2_dev);
-        if (rslt != BMI2_OK)
-        {
-            LOG_E("wrist-wake step1.5 set_remap_axes failed: %d", rslt);
-            goto out;
-        }
-        struct bmi2_remap remap_after = { 0 };
-        if (bmi2_get_remap_axes(&remap_after, &bmi2_dev) == BMI2_OK)
-        {
-            LOG_I("wrist-wake step1.5 remap after:  x=0x%02x y=0x%02x z=0x%02x",
-                  remap_after.x, remap_after.y, remap_after.z);
-        }
+        // struct bmi2_remap remap_before = { 0 };
+        // if (bmi2_get_remap_axes(&remap_before, &bmi2_dev) == BMI2_OK)
+        // {
+        //     LOG_I("wrist-wake step1.5 remap before: x=0x%02x y=0x%02x z=0x%02x",
+        //           remap_before.x, remap_before.y, remap_before.z);
+        // }
+        // struct bmi2_remap remap_want = {
+        //     .x = BMI2_NEG_X,  /* watch X = -chip X (flipped) */
+        //     .y = BMI2_NEG_Y,      /* watch Y = +chip Y (same) */
+        //     .z = BMI2_NEG_Z,  /* watch Z = -chip Z (flipped) */
+        // };
+        // rslt = bmi2_set_remap_axes(&remap_want, &bmi2_dev);
+        // if (rslt != BMI2_OK)
+        // {
+        //     LOG_E("wrist-wake step1.5 set_remap_axes failed: %d", rslt);
+        //     goto out;
+        // }
+        // struct bmi2_remap remap_after = { 0 };
+        // if (bmi2_get_remap_axes(&remap_after, &bmi2_dev) == BMI2_OK)
+        // {
+        //     LOG_I("wrist-wake step1.5 remap after:  x=0x%02x y=0x%02x z=0x%02x",
+        //           remap_after.x, remap_after.y, remap_after.z);
+        // }
 
     #if BMI270_ENABLE_WRIST_WEAR_WAKEUP
         struct bmi2_sens_config cfg = { .type = BMI2_WRIST_WEAR_WAKE_UP };
