@@ -354,7 +354,11 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
                     motor_pattern_scrolling_app();
                     if (get_switch_freehand_mode())
                     {
-                        set_hid_mouse_handfree_mode();
+                        /* 2026-07-17 founder 要求關閉「tap 手勢 toggle 飛鼠」:正常戴姿(freehand
+                           姿態區)tap 誤辨識會偷偷開飛鼠,又被 air_mouse 的姿態 gate 擋住不顯形,
+                           直到顛倒手錶(姿態離開 gate 區間)才突然開始飛。滑鼠 app 的飛鼠只留
+                           「頂部按住」一條明確路徑。恢復=取消註解下行。
+                        set_hid_mouse_handfree_mode(); */
                     }
                     else if (get_switch_mouse_scroll_mode())
                     {
