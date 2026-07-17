@@ -2954,6 +2954,15 @@ void instruction_list_reveal_drag_end(lv_coord_t dx, lv_coord_t vx)
     lv_anim_set_exec_cb(&sl, reveal_settle_anim_cb);
     if (open_it)
     {
+        /* Haptic at the release instant: the pull crossed the open threshold,
+           so buzz the moment the finger lifts — not when the settle animation
+           lands. Gated on the global toggle; the sister IMU/bar-tap path buzzes
+           in instruction_list_open_browse. (A release that falls short and
+           springs shut takes the else branch, so no buzz there.) */
+        if (get_scrolling_motor_vibrate_status())
+        {
+            motor_pattern_scrolling_app();
+        }
         lv_anim_set_values(&sl, tx, 0);
         lv_anim_set_time(&sl, LSLIDE_MS);
         lv_anim_set_path_cb(&sl, lv_anim_path_ease_out);
@@ -2985,6 +2994,14 @@ void instruction_list_open_browse(void)
     /* Only when parked & hidden — already up (browse/open) or sliding shut: leave it. */
     if (s_left_closing || !lv_obj_has_flag(list_bg, LV_OBJ_FLAG_HIDDEN))
         return;
+    /* Haptic at the trigger instant: the IMU release gesture (handle_gesture_
+       unlock) or the bar tap just fired and cleared the guards, so the list is
+       committed to opening — buzz now, not on settle. Mirrors the drag-release
+       path in instruction_list_reveal_drag_end. */
+    if (get_scrolling_motor_vibrate_status())
+    {
+        motor_pattern_scrolling_app();
+    }
     s_pending_reveal_filter = 0; /* bar / IMU browse → all (@ + /) view */
     s_reveal_from_left = true;   /* IMU release brings the LEFT list in (the right-edge
                                     drawer is legacy); park on the left, slide to 0 */
