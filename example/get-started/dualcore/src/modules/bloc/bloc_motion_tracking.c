@@ -1108,8 +1108,8 @@ bool mouse_dial_has_direction(void)
    ───────────────────────────────────────────────────────────────────────── */
 #define HW_GAIN            18.0f  /* rad/s(每 sample)→畫布 px;同 AIR_MOUSE_SENSITIVITY 量級,真機再調 */
 #define HW_DEADZONE_RADS   0.02f  /* 靜置 gyro 雜訊死區,防筆尖漂移 */
-#define HW_SIGN_X          (-1.0f) /* 水平筆劃符號(戴法相關),真機驗後鎖定 */
-#define HW_SIGN_Y          (-1.0f) /* 鉛直筆劃符號,同上 */
+#define HW_SIGN_X          (-1.0f) /* 水平筆劃符號(2026-07-18 founder 真機驗:左右正確) */
+#define HW_SIGN_Y          (+1.0f) /* 鉛直筆劃符號(2026-07-18 founder 真機驗:-1 上下相反→翻正) */
 #define HW_FLUSH_MS        40     /* 筆點批次上傳節流(~25Hz) */
 #define HW_BATCH_MAX       6
 #define HW_HOVER_MS        120    /* 提筆時筆尖位置低頻上傳(桌面畫 hover 點) */

@@ -4049,6 +4049,12 @@ void hid_mouse_trigger_close_lift_mic_from_pose(void)
 #define HW_TRACE_STROKES 8   /* 本地軌跡最多保留筆畫數(超出沿用最後一條;桌面端不受此限) */
 #define HW_TRACE_PTS 120     /* 每筆最多點數(30ms 取樣 ≈ 3.6s 長筆畫) */
 #define HW_TRACE_POLL_MS 30
+/* 虛擬畫布(=0x1b start 的 w/h,非螢幕解析度):2026-07-18 founder 真機回饋「可書寫區域
+   太小」→ 拉成寬幅 1200×500(同一手勢涵蓋畫布比例變小=體感空間變大,且橫向夠寫多字);
+   桌面面板/ML Kit WritingArea 都吃這組。本地軌跡用 letterbox 縮放映射回螢幕。
+   Keep in lockstep with WatchHandwritingSession.DEFAULT_W/H. */
+#define HW_CANVAS_W 1200
+#define HW_CANVAS_H 500
 
 extern lv_obj_t *hid_mouse_ui_host(void);
 extern void motor_pattern_unlocked(void);
@@ -4104,6 +4110,14 @@ static void hw_trace_timer_cb(lv_timer_t *t)
     bool pen = false;
     if (!bloc_handwrite_get_point(&x, &y, &pen))
         return;
+    /* 畫布(寬幅 HW_CANVAS_W×H)→螢幕 letterbox 映射;等比縮放置中,本地軌跡只是輔助顯示 */
+    {
+        float sc_x = (float)LV_HOR_RES / (float)HW_CANVAS_W;
+        float sc_y = (float)LV_VER_RES / (float)HW_CANVAS_H;
+        float sc = (sc_x < sc_y) ? sc_x : sc_y;
+        x = (int)((LV_HOR_RES - HW_CANVAS_W * sc) / 2.0f) + (int)(x * sc);
+        y = (int)((LV_VER_RES - HW_CANVAS_H * sc) / 2.0f) + (int)(y * sc);
+    }
     if (pen)
     {
         if (!s_hw_local_pen_prev)
@@ -4194,7 +4208,7 @@ void open_handwrite_from_pose(void)
     if (s_hw_trace_timer == NULL)
         s_hw_trace_timer = lv_timer_create(hw_trace_timer_cb, HW_TRACE_POLL_MS, NULL);
     s_hw_view_active = true;
-    bloc_handwrite_begin(LV_HOR_RES, LV_VER_RES); /* 送 0x1b start(畫布=螢幕尺寸) */
+    bloc_handwrite_begin(HW_CANVAS_W, HW_CANVAS_H); /* 送 0x1b start(寬幅虛擬畫布) */
     motor_pattern_unlocked(); /* 短震=手寫就緒(同舉起語音的觸覺回饋) */
     LOG_I("[handwrite] open view canvas=%dx%d", (int)LV_HOR_RES, (int)LV_VER_RES);
 }
