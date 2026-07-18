@@ -4049,12 +4049,12 @@ void hid_mouse_trigger_close_lift_mic_from_pose(void)
 #define HW_TRACE_STROKES 8   /* 本地軌跡最多保留筆畫數(超出沿用最後一條;桌面端不受此限) */
 #define HW_TRACE_PTS 120     /* 每筆最多點數(30ms 取樣 ≈ 3.6s 長筆畫) */
 #define HW_TRACE_POLL_MS 30
-/* 虛擬畫布(=0x1b start 的 w/h,非螢幕解析度):2026-07-18 founder 真機回饋「可書寫區域
-   太小」→ 拉成寬幅 1200×500(同一手勢涵蓋畫布比例變小=體感空間變大,且橫向夠寫多字);
-   桌面面板/ML Kit WritingArea 都吃這組。本地軌跡用 letterbox 縮放映射回螢幕。
-   Keep in lockstep with WatchHandwritingSession.DEFAULT_W/H. */
-#define HW_CANVAS_W 1200
-#define HW_CANVAS_H 500
+/* 虛擬畫布(=0x1b start 的 w/h,非螢幕解析度):2026-07-18 founder 兩輪定調——寬幅給橫寫
+   空間,但別太扁(1200×500 塞進 720 寬的 bar 內建書寫區後高度只剩 ~280px「區塊有點小」)
+   → 1000×600,顯示面積約放大一倍;桌面區塊/ML Kit WritingArea 都吃這組。本地軌跡用
+   letterbox 縮放映射回螢幕。Keep in lockstep with WatchHandwritingSession.DEFAULT_W/H. */
+#define HW_CANVAS_W 1000
+#define HW_CANVAS_H 600
 
 extern lv_obj_t *hid_mouse_ui_host(void);
 extern void motor_pattern_unlocked(void);
