@@ -75,6 +75,10 @@ extern "C"
         LVGL_MSG_TYPE_UNKNOWN = 0,
         /***** Media event ******/
         LVGL_MSG_TYPE_MEDIA_TITLE,
+        /* KE_EVT2→GUI 媒體轉送(2026-07-18 STKOF 治本):raw payload 在單槽,GUI 端
+           media_title_apply_pending()/media_state_apply_pending() 消化。 */
+        LVGL_MSG_TYPE_MEDIA_TITLE_RAW,
+        LVGL_MSG_TYPE_MEDIA_STATE_RAW,
         LVGL_MSG_TYPE_MEDIA_IMG,
         LVGL_MSG_TYPE_MEDIA_HEADER_IMG,
         LVGL_MSG_TYPE_MEDIA_VOLUME,

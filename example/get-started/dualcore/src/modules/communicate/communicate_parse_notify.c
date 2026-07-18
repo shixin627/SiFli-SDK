@@ -651,23 +651,16 @@ void resolve_Notify_command(uint8_t key, uint8_t *pValue, uint16_t length)
     //// Watch System Request (end) ////
     case KEY_MEDIA_TITLE:
     {
-        /* Payload is the whole JSON {"title":...,"artist":...}; set_media_title()
-           cJSON_Parses it. A fixed 128-byte buffer truncated long titles
-           mid-JSON, so cJSON_Parse failed and nothing was applied. Copy the
-           full payload (same pattern as KEY_AI_PROCESS_TOOLKIT below);
-           set_media_title copies the parsed fields into its own storage, so
-           freeing here is safe. */
+        /* Payload is the whole JSON {"title":...,"artist":...}. 2026-07-18 STKOF
+           boot-loop 治本:此 handler 跑在 KE_EVT2(BLE host 事件緒,4KB stack 常態
+           99% 深),以前在這裡直接 set_media_title(cJSON parse + notify fanout +
+           notification_refresh + reset_list 整串 UI)——長 CJK 標題一到就爆棧。
+           改為 defer:KE_EVT2 只 malloc+memcpy,GUI thread 再跑整串
+           (bloc_control.c media_title_defer_to_gui / media_title_apply_pending)。 */
         if (length > 0 && pValue != NULL)
         {
-            char *title_json = (char *)rt_malloc(length + 1);
-            if (title_json != NULL)
-            {
-                memcpy(title_json, pValue, length);
-                title_json[length] = '\0';
-                LOG_D("media title: %s", title_json);
-                control_provider.set_media_title(title_json);
-                rt_free(title_json);
-            }
+            extern void media_title_defer_to_gui(const uint8_t *payload, uint16_t length);
+            media_title_defer_to_gui(pValue, length);
         }
         break;
     }

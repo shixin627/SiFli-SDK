@@ -306,6 +306,42 @@ static void set_media_title(char *title)
 	}
 }
 
+/* ── KE_EVT2 → GUI 轉送槽（2026-07-18 真機 STKOF boot-loop 治本）──
+   0x46 媒體標題以前直接在 BLE host 事件緒(KE_EVT2,4KB stack、常態 99% 深)上跑
+   set_media_title:cJSON parse + notify fanout + notification_refresh + reset_list
+   整串 UI 工作疊上去,長 CJK 標題(如 YouTube 影片名)一到就 SCB_CFSR_UFSR STKOF。
+   改為:KE_EVT2 只 malloc+memcpy 原始 payload 到單槽(last-writer-wins,標題語意
+   本就是最新蓋舊)、發 LVGL_MSG_TYPE_MEDIA_TITLE_RAW;GUI thread 再跑原本整串。 */
+static char *volatile s_media_title_pending = NULL;
+
+void media_title_defer_to_gui(const uint8_t *payload, uint16_t length)
+{
+	char *buf = (char *)rt_malloc((rt_size_t)length + 1);
+	if (buf == NULL) return;
+	memcpy(buf, payload, length);
+	buf[length] = '\0';
+	rt_base_t level = rt_hw_interrupt_disable();
+	char *old = s_media_title_pending;
+	s_media_title_pending = buf;
+	rt_hw_interrupt_enable(level);
+	if (old != NULL) rt_free(old); /* GUI 還沒消化的舊標題直接淘汰 */
+	lvgl_msg_t msg;
+	msg.type = LVGL_MSG_TYPE_MEDIA_TITLE_RAW;
+	lvgl_send_msg(msg);
+}
+
+/* GUI thread(ui_handler LVGL_MSG_TYPE_MEDIA_TITLE_RAW)。槽空=較新 msg 已先消化,no-op。 */
+void media_title_apply_pending(void)
+{
+	rt_base_t level = rt_hw_interrupt_disable();
+	char *buf = s_media_title_pending;
+	s_media_title_pending = NULL;
+	rt_hw_interrupt_enable(level);
+	if (buf == NULL) return;
+	set_media_title(buf);
+	rt_free(buf);
+}
+
 /* Media Status */
 static bool bt_media_playing = false;
 static uint8_t media_control_command = 0;

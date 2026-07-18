@@ -27,6 +27,8 @@
 
 #include "communicate_parse.h"
 #include "communicate_task.h"
+#include <rtthread.h>   /* rt_malloc / rt_hw_interrupt_* (media_state KE_EVT2→GUI 轉送) */
+#include "ui_handler.h" /* lvgl_send_msg(LVGL_MSG_TYPE_MEDIA_STATE_RAW) */
 #include "watch_global_data.h"
 #include "bsp_board.h"
 
@@ -363,12 +365,41 @@ static void handle_remote_text_focus(uint8_t *pValue, uint16_t length)
    watch face's own media widget keeps using NOTIFY_KEY_MEDIA_TITLE (0x46, the
    phone's own session). hid_mouse filters by device_id against the current active
    selection so a late frame for a just-deselected device can't clobber the UI. */
+/* 2026-07-18 STKOF 治本(同 KEY_MEDIA_TITLE):KE_EVT2 上不做 cJSON parse+UI 更新,
+   原始 payload 進單槽(last-writer-wins)、發 msg 由 GUI thread 跑
+   media_state_apply_pending()(原本的 parse+fanout 搬進去)。 */
+static char *volatile s_media_state_pending = NULL;
+
 static void handle_media_state(uint8_t *pValue, uint16_t length)
 {
-    cJSON *root = parse_json(pValue, length);
+    if (pValue == NULL || length == 0) return;
+    char *buf = (char *)rt_malloc((rt_size_t)length + 1);
+    if (buf == NULL) return;
+    memcpy(buf, pValue, length);
+    buf[length] = '\0';
+    rt_base_t level = rt_hw_interrupt_disable();
+    char *old = s_media_state_pending;
+    s_media_state_pending = buf;
+    rt_hw_interrupt_enable(level);
+    if (old != NULL) rt_free(old); /* GUI 還沒消化的舊 state 直接淘汰 */
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_MEDIA_STATE_RAW;
+    lvgl_send_msg(msg);
+}
+
+/* GUI thread(ui_handler LVGL_MSG_TYPE_MEDIA_STATE_RAW)。槽空=較新 msg 已先消化,no-op。 */
+void media_state_apply_pending(void)
+{
+    rt_base_t level = rt_hw_interrupt_disable();
+    char *buf = s_media_state_pending;
+    s_media_state_pending = NULL;
+    rt_hw_interrupt_enable(level);
+    if (buf == NULL) return;
+    cJSON *root = cJSON_Parse(buf);
     if (root == NULL)
     {
         LOG_W("skailink: media_state empty/malformed payload");
+        rt_free(buf);
         return;
     }
     cJSON *j_id     = cJSON_GetObjectItem(root, "device_id");
@@ -386,6 +417,7 @@ static void handle_media_state(uint8_t *pValue, uint16_t length)
                                                      bool playing);
     mouse_mode_handle_remote_media_state(id, title, artist, playing);
     cJSON_Delete(root);
+    rt_free(buf);
 }
 
 void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
