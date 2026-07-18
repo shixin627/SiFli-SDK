@@ -1318,7 +1318,11 @@ static void handle_media_img(void *param)
 
 void handle_media_widget_title(char *media_title_text)
 {
-    if (lv_obj_is_valid(p_widget_media->media_title) == false)
+    /* p_widget_media NULL 守衛:錶盤被拆(如 standalone 滑鼠 app 前景)時媒體標題經
+       GUI queue 進來,直接 no-op — 少了這條會 NULL deref(2026-07-18 媒體改走
+       LVGL msg 後此時窗成為常態,外部輸入不可撞壞 UI)。 */
+    if (p_widget_media == NULL ||
+        lv_obj_is_valid(p_widget_media->media_title) == false)
     {
         return;
     }
@@ -1376,8 +1380,24 @@ static void media_page_control(gesture_position_t control)
 void media_widget_start(void)
 {
     // screen_rotate_to_90_degree();
-    RT_ASSERT(NULL == p_widget_media);
+    /* 2026-07-18 退出滑鼠 app 死當真因(founder 真機 dump:app_watc assert 此行):
+       媒體標題改走 GUI queue 後,「set_media_title→notification_refresh」與「錶盤
+       重建 message_list」的先後不再保證,雙方都可能先把 widget start 起來 — 二次
+       start 從 RT_ASSERT 改為容忍重用(歸零 struct,caller 的 builder 隨後重灌 lv
+       指標;handle_* 端有 is_valid 守衛,stale 指標不會被摸)。 */
+    if (p_widget_media != NULL)
+    {
+        LOG_W("media_widget_start: already started — reuse");
+        memset(p_widget_media, 0, sizeof(app_media_t));
+        lvgl_msg_handler.handle_app_media_img = handle_media_widget_img;
+        return;
+    }
     p_widget_media = (app_media_t *)rt_malloc(sizeof(app_media_t));
+    if (p_widget_media == NULL)
+    {
+        LOG_W("media_widget_start: OOM");
+        return;
+    }
     memset(p_widget_media, 0, sizeof(app_media_t));
     // music_app_ui_build(scr);
     // set_open_control_options(true);
