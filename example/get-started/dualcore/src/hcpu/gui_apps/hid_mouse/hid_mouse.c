@@ -4049,6 +4049,12 @@ void hid_mouse_trigger_close_lift_mic_from_pose(void)
 #define HW_TRACE_STROKES 8   /* 本地軌跡最多保留筆畫數(超出沿用最後一條;桌面端不受此限) */
 #define HW_TRACE_PTS 120     /* 每筆最多點數(30ms 取樣 ≈ 3.6s 長筆畫) */
 #define HW_TRACE_POLL_MS 30
+#define HW_ICON_ZOOM 512     /* 中央 ✍ 圖示 2x 原生(64→128px) —— 同 LIFT_MIC_ICON_ZOOM 量級 */
+
+/* ✍ 寫字的手 —— 手寫模式中央圖示(founder:像大麥克風那樣)。資產=resource/images/
+   common/ezip/handwrite_icon.png(64×64 白色透明底,Segoe UI Emoji U+270D 渲染;emoji_*
+   的 LV_IMG_DECLARE 只有宣告沒有連結物,不能用)。 */
+LV_IMG_DECLARE(handwrite_icon);
 /* 虛擬畫布(=0x1b start 的 w/h,非螢幕解析度):2026-07-18 founder 兩輪定調——寬幅給橫寫
    空間,但別太扁(1200×500 塞進 720 寬的 bar 內建書寫區後高度只剩 ~280px「區塊有點小」)
    → 1000×600,顯示面積約放大一倍;桌面區塊/ML Kit WritingArea 都吃這組。本地軌跡用
@@ -4063,6 +4069,7 @@ extern bool app_control_get_mouse_mode(void);
 
 static lv_obj_t *s_hw_view = NULL;
 static lv_obj_t *s_hw_label = NULL;
+static lv_obj_t *s_hw_icon = NULL;
 static lv_obj_t *s_hw_hover_dot = NULL;
 static lv_obj_t *s_hw_lines[HW_TRACE_STROKES];
 static lv_point_t s_hw_line_pts[HW_TRACE_STROKES][HW_TRACE_PTS];
@@ -4173,6 +4180,17 @@ static void ensure_hw_view(void)
     lv_obj_set_style_text_color(s_hw_label, lv_color_white(), 0);
     lv_obj_set_style_text_opa(s_hw_label, LV_OPA_60, 0);
     lv_obj_align(s_hw_label, LV_ALIGN_TOP_MID, 0, 24);
+
+    /* 中央 ✍ 圖示(founder:像舉起語音的大麥克風那樣中間放圖)。照 ensure_lift_mic_view
+       的 zoom 慣例:pivot+OVERFLOW_VISIBLE 缺一不可(lv_img zoom 的裁切雷)。建立在軌跡
+       線之前 → 筆跡畫在圖示上層。 */
+    s_hw_icon = lv_img_create(s_hw_view);
+    lv_img_set_src(s_hw_icon, &handwrite_icon);
+    lv_img_set_pivot(s_hw_icon, handwrite_icon.header.w / 2, handwrite_icon.header.h / 2);
+    lv_obj_add_flag(s_hw_icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_img_set_zoom(s_hw_icon, HW_ICON_ZOOM);
+    lv_obj_align(s_hw_icon, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(s_hw_icon, LV_OBJ_FLAG_CLICKABLE);
 
     for (int i = 0; i < HW_TRACE_STROKES; i++)
     {
@@ -7415,6 +7433,7 @@ void hid_mouse_destroy(void)
     /* view 是 scr 子物件、screen teardown 一併釋放——只清指標,下次 ensure 重建 */
     s_hw_view = NULL;
     s_hw_label = NULL;
+    s_hw_icon = NULL;
     s_hw_hover_dot = NULL;
     for (int i = 0; i < HW_TRACE_STROKES; i++)
         s_hw_lines[i] = NULL;
