@@ -4037,6 +4037,200 @@ void hid_mouse_trigger_close_lift_mic_from_pose(void)
     lvgl_send_msg(msg);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   側立手寫模式 (face-side handwriting) —— 滑鼠 app 內把錶面轉向側邊(重力 ±X 穩定
+   ~300ms,bloc_motion_tracking 姿勢機)進入:按住錶面=下筆、手腕在空中寫(筆尖由
+   bloc 的 gyro 積分器維護,0x1b 串流到手機 ML Kit 辨識+桌面軌跡 overlay)、放開=
+   提筆;轉回錶面朝上(gravity.z 高持續)結束,桌面自動送出辨識文字。
+   全螢幕 CLICKABLE overlay 天然攔掉主觸控板的 dial/拖曳/edge_pan/一般游標;
+   gyro→游標 report 由 air_mouse_process 的手寫分支 early-return 擋。
+   view 建一次、show/hide 復用(同 lift-mic pattern)。
+   ═══════════════════════════════════════════════════════════════════════════ */
+#define HW_TRACE_STROKES 8   /* 本地軌跡最多保留筆畫數(超出沿用最後一條;桌面端不受此限) */
+#define HW_TRACE_PTS 120     /* 每筆最多點數(30ms 取樣 ≈ 3.6s 長筆畫) */
+#define HW_TRACE_POLL_MS 30
+
+extern lv_obj_t *hid_mouse_ui_host(void);
+extern void motor_pattern_unlocked(void);
+extern bool is_at_mouse_mode(void);
+extern bool app_control_get_mouse_mode(void);
+
+static lv_obj_t *s_hw_view = NULL;
+static lv_obj_t *s_hw_label = NULL;
+static lv_obj_t *s_hw_hover_dot = NULL;
+static lv_obj_t *s_hw_lines[HW_TRACE_STROKES];
+static lv_point_t s_hw_line_pts[HW_TRACE_STROKES][HW_TRACE_PTS];
+static uint16_t s_hw_line_n[HW_TRACE_STROKES];
+static int s_hw_stroke_idx = -1;
+static bool s_hw_local_pen_prev = false;
+static lv_timer_t *s_hw_trace_timer = NULL;
+static volatile bool s_hw_view_active = false; /* motion thread 讀(姿勢保險收斂) */
+
+bool hid_mouse_handwrite_active(void)
+{
+    return s_hw_view_active;
+}
+
+static void hw_trace_clear(void)
+{
+    for (int i = 0; i < HW_TRACE_STROKES; i++)
+    {
+        s_hw_line_n[i] = 0;
+        if (s_hw_lines[i])
+            lv_line_set_points(s_hw_lines[i], s_hw_line_pts[i], 0);
+    }
+    s_hw_stroke_idx = -1;
+    s_hw_local_pen_prev = false;
+    if (s_hw_hover_dot)
+        lv_obj_add_flag(s_hw_hover_dot, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void hw_view_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    /* PRESSED+PRESSING 都當下筆:LVGL 無 PRESS_LOCK、press 每 tick 重 hit-test——
+       從主觸控板按著滑進 overlay 只會收到 PRESSING(無 PRESSED),漏接會「按著卻沒在寫」。 */
+    if (code == LV_EVENT_PRESSED || code == LV_EVENT_PRESSING)
+        bloc_handwrite_set_pen(true);
+    else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+        bloc_handwrite_set_pen(false);
+}
+
+/* GUI thread 30ms:跟繪本地軌跡(lv_line)與 hover 點,資料源=bloc 積分器。 */
+static void hw_trace_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    int x = 0, y = 0;
+    bool pen = false;
+    if (!bloc_handwrite_get_point(&x, &y, &pen))
+        return;
+    if (pen)
+    {
+        if (!s_hw_local_pen_prev)
+        {
+            if (s_hw_stroke_idx < HW_TRACE_STROKES - 1)
+                s_hw_stroke_idx++;
+            s_hw_line_n[s_hw_stroke_idx] = 0;
+        }
+        int idx = s_hw_stroke_idx;
+        uint16_t n = s_hw_line_n[idx];
+        if (n < HW_TRACE_PTS &&
+            (n == 0 || s_hw_line_pts[idx][n - 1].x != x ||
+             s_hw_line_pts[idx][n - 1].y != y))
+        {
+            s_hw_line_pts[idx][n].x = (lv_coord_t)x;
+            s_hw_line_pts[idx][n].y = (lv_coord_t)y;
+            s_hw_line_n[idx] = (uint16_t)(n + 1);
+            if (s_hw_lines[idx])
+                lv_line_set_points(s_hw_lines[idx], s_hw_line_pts[idx],
+                                   s_hw_line_n[idx]);
+        }
+        if (s_hw_hover_dot)
+            lv_obj_add_flag(s_hw_hover_dot, LV_OBJ_FLAG_HIDDEN);
+    }
+    else if (s_hw_hover_dot)
+    {
+        lv_obj_clear_flag(s_hw_hover_dot, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_pos(s_hw_hover_dot, (lv_coord_t)(x - 5), (lv_coord_t)(y - 5));
+    }
+    s_hw_local_pen_prev = pen;
+}
+
+static void ensure_hw_view(void)
+{
+    if (s_hw_view != NULL)
+        return;
+    lv_obj_t *host = hid_mouse_ui_host();
+    if (host == NULL)
+        host = lv_scr_act();
+    s_hw_view = lv_obj_create(host);
+    lv_obj_remove_style_all(s_hw_view);
+    lv_obj_set_size(s_hw_view, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(s_hw_view, 0, 0);
+    lv_obj_set_style_bg_color(s_hw_view, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_hw_view, LV_OPA_90, 0);
+    lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(s_hw_view, hw_view_event_cb, LV_EVENT_ALL, NULL);
+
+    s_hw_label = lv_label_create(s_hw_view);
+    lv_label_set_text(s_hw_label, LV_EXT_STR_GET_BY_KEY(handwrite, "Write"));
+    lv_obj_set_style_text_color(s_hw_label, lv_color_white(), 0);
+    lv_obj_set_style_text_opa(s_hw_label, LV_OPA_60, 0);
+    lv_obj_align(s_hw_label, LV_ALIGN_TOP_MID, 0, 24);
+
+    for (int i = 0; i < HW_TRACE_STROKES; i++)
+    {
+        s_hw_lines[i] = lv_line_create(s_hw_view);
+        lv_obj_set_style_line_width(s_hw_lines[i], 4, 0);
+        lv_obj_set_style_line_color(s_hw_lines[i], lv_color_hex(0xA6D3E6), 0);
+        lv_obj_set_style_line_rounded(s_hw_lines[i], true, 0);
+    }
+    s_hw_hover_dot = lv_obj_create(s_hw_view);
+    lv_obj_remove_style_all(s_hw_hover_dot);
+    lv_obj_set_size(s_hw_hover_dot, 10, 10);
+    lv_obj_set_style_radius(s_hw_hover_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(s_hw_hover_dot, lv_color_hex(0xA6D3E6), 0);
+    lv_obj_set_style_bg_opa(s_hw_hover_dot, LV_OPA_70, 0);
+    lv_obj_add_flag(s_hw_hover_dot, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* GUI thread(LVGL msg 轉入):進入手寫模式。 */
+void open_handwrite_from_pose(void)
+{
+    if (s_hw_view_active)
+        return;
+    if (!(is_at_mouse_mode() || app_control_get_mouse_mode()))
+        return;
+    extern bool instruction_list_lift_mic_view_open(void);
+    if (instruction_list_lift_mic_view_open())
+        return; /* 語音輸入中不搶 */
+    dial_drag_state_reset(); /* 清可能 pending 的 dial timer/拖曳殘留 */
+    ensure_hw_view();
+    hw_trace_clear();
+    lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(s_hw_view);
+    if (s_hw_trace_timer == NULL)
+        s_hw_trace_timer = lv_timer_create(hw_trace_timer_cb, HW_TRACE_POLL_MS, NULL);
+    s_hw_view_active = true;
+    bloc_handwrite_begin(LV_HOR_RES, LV_VER_RES); /* 送 0x1b start(畫布=螢幕尺寸) */
+    motor_pattern_unlocked(); /* 短震=手寫就緒(同舉起語音的觸覺回饋) */
+    LOG_I("[handwrite] open view canvas=%dx%d", (int)LV_HOR_RES, (int)LV_VER_RES);
+}
+
+/* GUI thread:結束手寫模式(轉回朝上/保險姿態/離開 app 清殘留)。冪等。 */
+void close_handwrite_from_pose(void)
+{
+    if (!s_hw_view_active)
+        return;
+    s_hw_view_active = false;
+    bloc_handwrite_end(); /* 送 pending "u"+"end"(桌面收 overlay、手機 commit 辨識) */
+    if (s_hw_trace_timer)
+    {
+        lv_timer_del(s_hw_trace_timer);
+        s_hw_trace_timer = NULL;
+    }
+    if (s_hw_view)
+        lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
+    LOG_I("[handwrite] close view");
+}
+
+/* motion thread → LVGL thread 轉發(同 lift-mic trigger pattern)。 */
+void hid_mouse_trigger_open_handwrite_from_pose(void)
+{
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_MOUSE_OPEN_HANDWRITE;
+    lvgl_send_msg(msg);
+}
+
+void hid_mouse_trigger_close_handwrite_from_pose(void)
+{
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_MOUSE_CLOSE_HANDWRITE;
+    lvgl_send_msg(msg);
+}
+
 // 關 mic（不清空 input bar、不貼上）
 // 清空只在使用者按 Enter 時做（input_enter_btn_event_cb / 鍵盤 Enter 鍵）
 static void mouse_v2t_close_and_paste(void)
@@ -6825,6 +7019,12 @@ void open_skaibar_from_pose(void)
     {
         return;
     }
+    if (s_hw_view_active)
+    {
+        /* 側立手寫進行中不疊大麥克風——姿勢從側立轉到立起時,close-handwrite 保險
+           (set_gravity_position VERTICAL 邊緣)會先收掉手寫,下一次再立起才開語音。 */
+        return;
+    }
     extern bool instruction_list_open_lift_mic_view(const char *device_id);
     instruction_list_open_lift_mic_view(s_dev_active_id);
     /* 2026-07-17 founder：這條流程底部要維持自有 bar(skaibar_img)原樣，不收起來換成
@@ -7185,6 +7385,7 @@ static void on_resume(void)
  */
 static void on_pause(void)
 {
+    close_handwrite_from_pose(); /* 側立手寫殘留:送 end 收桌面 overlay(冪等) */
     dial_drag_state_reset(); /* 暫停 app 先清 dial/拖曳殘留,免恢復後卡 */
     setting_provider.set_power_save_mode(1);
     switch_watch_motion_control_mode(false, false);
@@ -7196,6 +7397,13 @@ static void on_pause(void)
  */
 void hid_mouse_destroy(void)
 {
+    close_handwrite_from_pose(); /* 側立手寫殘留:送 end 收桌面 overlay(離開 app 清殘留) */
+    /* view 是 scr 子物件、screen teardown 一併釋放——只清指標,下次 ensure 重建 */
+    s_hw_view = NULL;
+    s_hw_label = NULL;
+    s_hw_hover_dot = NULL;
+    for (int i = 0; i < HW_TRACE_STROKES; i++)
+        s_hw_lines[i] = NULL;
     dial_drag_state_reset(); /* 離開 app 先清 dial/拖曳/timer 殘留(founder 2026-07-17 卡住根因) */
     app_control_set_mouse_mode(false);
     skaiwatch_ble_set_performance(BLE_PERF_SLOW);

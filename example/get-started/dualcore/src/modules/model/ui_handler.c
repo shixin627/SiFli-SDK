@@ -84,6 +84,8 @@ LV_IMG_DECLARE(instagram);
 extern void open_v2t_mic(void);
 extern void open_skaibar_from_pose(void);
 extern void close_lift_mic_from_pose(void);
+extern void open_handwrite_from_pose(void);
+extern void close_handwrite_from_pose(void);
 extern void update_ai_process_indicator_text(app_gesture_indicator_t *indicator,
                                               const char *message,
                                               bool is_active);
@@ -535,6 +537,14 @@ static void process_lvgl_message(lvgl_msg_t *msg)
 
     case LVGL_MSG_TYPE_MOUSE_CLOSE_LIFT_MIC:
         close_lift_mic_from_pose();
+        break;
+
+    case LVGL_MSG_TYPE_MOUSE_OPEN_HANDWRITE:
+        open_handwrite_from_pose();
+        break;
+
+    case LVGL_MSG_TYPE_MOUSE_CLOSE_HANDWRITE:
+        close_handwrite_from_pose();
         break;
 
     case LVGL_MSG_TYPE_MOUSE_INPUT_TEXT:

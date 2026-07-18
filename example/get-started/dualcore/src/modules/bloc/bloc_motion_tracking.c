@@ -1094,6 +1094,218 @@ bool mouse_dial_has_direction(void)
     return s_dial_cur_dir >= 0;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   側立手寫 (face-side handwriting)：滑鼠 app 內錶面轉向側邊(重力 ±X 穩定 ~300ms)
+   進入(姿勢機邊緣觸發→hid_mouse 開 view→bloc_handwrite_begin)。按住錶面=下筆
+   (hid_mouse 觸控 cb 餵 set_pen)、手腕空中寫:gyro 線性積分成虛擬畫布筆尖(無游標
+   加速曲線——加速會扭曲字形),0x1b 串流:下筆"d"/筆點"m"批次/提筆"u"/懸浮"h"低頻。
+   軸向:側立時水平筆劃=繞 X(此姿勢的鉛直軸)、鉛直筆劃=繞 Z(面法線,現為水平橫軸)
+   —— 與飛鼠 (x=上下、z=左右) 對調。HW_SIGN_* 正負號待真機鎖定(founder 測一次,
+   [handwrite] log 印 gyro/pos 對出方向後改常數)。
+   退出:gravity.z > HW_EXIT_FACE_UP_G 持續 HW_EXIT_FACE_UP_MS(=轉回朝上)。不能用
+   「離開側立幾何」當退出——空中寫字手臂大幅擺動,重力向量會短暫掃過各種角度,
+   中途就把模式砍掉;「明確回到朝上且穩定」才是使用者要結束的訊號(spec 亦如此)。
+   ───────────────────────────────────────────────────────────────────────── */
+#define HW_GAIN            18.0f  /* rad/s(每 sample)→畫布 px;同 AIR_MOUSE_SENSITIVITY 量級,真機再調 */
+#define HW_DEADZONE_RADS   0.02f  /* 靜置 gyro 雜訊死區,防筆尖漂移 */
+#define HW_SIGN_X          (-1.0f) /* 水平筆劃符號(戴法相關),真機驗後鎖定 */
+#define HW_SIGN_Y          (-1.0f) /* 鉛直筆劃符號,同上 */
+#define HW_FLUSH_MS        40     /* 筆點批次上傳節流(~25Hz) */
+#define HW_BATCH_MAX       6
+#define HW_HOVER_MS        120    /* 提筆時筆尖位置低頻上傳(桌面畫 hover 點) */
+#define HW_EXIT_FACE_UP_G  0.80f
+#define HW_EXIT_FACE_UP_MS 400
+
+static volatile bool s_hw_active = false;
+static volatile bool s_hw_pen_down = false; /* GUI thread 寫(觸控),motion thread 讀 */
+static bool s_hw_prev_pen = false;
+static float s_hw_x = 0, s_hw_y = 0;
+static int s_hw_w = 466, s_hw_h = 466;
+static int s_hw_last_sent_x = -1, s_hw_last_sent_y = -1;
+static int s_hw_hover_x = -1, s_hw_hover_y = -1;
+static int16_t s_hw_batch[HW_BATCH_MAX][2];
+static int s_hw_batch_n = 0;
+static rt_tick_t s_hw_last_flush = 0, s_hw_last_hover = 0, s_hw_last_dbg = 0;
+static rt_tick_t s_hw_faceup_since = 0;
+
+bool bloc_handwrite_active(void)
+{
+    return s_hw_active;
+}
+
+void bloc_handwrite_set_pen(bool down)
+{
+    s_hw_pen_down = down;
+}
+
+/* GUI thread 本地軌跡跟繪用:回傳當前筆尖(畫布=螢幕座標)與下筆狀態。 */
+bool bloc_handwrite_get_point(int *x, int *y, bool *pen_down)
+{
+    if (!s_hw_active) return false;
+    if (x) *x = (int)s_hw_x;
+    if (y) *y = (int)s_hw_y;
+    if (pen_down) *pen_down = s_hw_pen_down;
+    return true;
+}
+
+void bloc_handwrite_begin(int canvas_w, int canvas_h)
+{
+    s_hw_w = (canvas_w > 0) ? canvas_w : 466;
+    s_hw_h = (canvas_h > 0) ? canvas_h : 466;
+    s_hw_x = s_hw_w / 2.0f;
+    s_hw_y = s_hw_h / 2.0f;
+    s_hw_pen_down = false;
+    s_hw_prev_pen = false;
+    s_hw_batch_n = 0;
+    s_hw_last_sent_x = s_hw_last_sent_y = -1;
+    s_hw_hover_x = s_hw_hover_y = -1;
+    s_hw_faceup_since = 0;
+    s_hw_last_flush = s_hw_last_hover = s_hw_last_dbg = rt_tick_get();
+    char json[48];
+    rt_snprintf(json, sizeof(json), "{\"ph\":\"start\",\"w\":%d,\"h\":%d}", s_hw_w, s_hw_h);
+    extern bool commu_send_handwrite(const char *json);
+    commu_send_handwrite(json);
+    /* gx100:進入當下的 gravity.x×100 —— founder 真機測一次即可從 log 鎖定「朝左」
+       是正還是負,再把姿勢判定收斂到單側符號。 */
+    LOG_I("[handwrite] begin %dx%d gx100=%d", s_hw_w, s_hw_h,
+          (int)(watch_sensor.motion_data.gravity.x * 100.0f));
+    s_hw_active = true; /* 最後才開:motion thread 看到 active 時上面狀態已就緒 */
+}
+
+static void hw_batch_flush(const char *ph)
+{
+    if (s_hw_batch_n <= 0) return;
+    char json[24 + HW_BATCH_MAX * 14];
+    int off = rt_snprintf(json, sizeof(json), "{\"ph\":\"%s\",\"p\":[", ph);
+    for (int i = 0; i < s_hw_batch_n && off > 0 && off < (int)sizeof(json); i++)
+        off += rt_snprintf(json + off, sizeof(json) - off, "%s[%d,%d]",
+                           i ? "," : "", (int)s_hw_batch[i][0], (int)s_hw_batch[i][1]);
+    if (off > 0 && off < (int)sizeof(json) - 2)
+    {
+        off += rt_snprintf(json + off, sizeof(json) - off, "]}");
+        extern bool commu_send_handwrite(const char *json);
+        commu_send_handwrite(json);
+    }
+    s_hw_batch_n = 0;
+}
+
+static void hw_batch_push(void)
+{
+    int x = (int)s_hw_x, y = (int)s_hw_y;
+    if (x == s_hw_last_sent_x && y == s_hw_last_sent_y) return; /* 沒動不重複推 */
+    if (s_hw_batch_n >= HW_BATCH_MAX) return;
+    s_hw_batch[s_hw_batch_n][0] = (int16_t)x;
+    s_hw_batch[s_hw_batch_n][1] = (int16_t)y;
+    s_hw_batch_n++;
+    s_hw_last_sent_x = x;
+    s_hw_last_sent_y = y;
+}
+
+void bloc_handwrite_end(void)
+{
+    if (!s_hw_active) return;
+    s_hw_active = false; /* 先關:motion thread 停止積分/送點(殘一筆遲到 m 手機/桌面容忍) */
+    extern bool commu_send_handwrite(const char *json);
+    if (s_hw_prev_pen)
+    {
+        hw_batch_flush("m");
+        commu_send_handwrite("{\"ph\":\"u\"}");
+    }
+    s_hw_prev_pen = false;
+    s_hw_pen_down = false;
+    commu_send_handwrite("{\"ph\":\"end\"}");
+    LOG_I("[handwrite] end");
+}
+
+/* motion thread(air_mouse_process 每 sample 轉入):積分筆尖+串流+退出判定。 */
+static void handwrite_motion_process(float gyro_x, float gyro_z)
+{
+    rt_tick_t now = rt_tick_get();
+    /* 退出:轉回朝上且穩定 */
+    float gz = watch_sensor.motion_data.gravity.z;
+    if (gz > HW_EXIT_FACE_UP_G)
+    {
+        if (s_hw_faceup_since == 0)
+        {
+            s_hw_faceup_since = now;
+        }
+        else if (now - s_hw_faceup_since >=
+                 rt_tick_from_millisecond(HW_EXIT_FACE_UP_MS))
+        {
+            s_hw_faceup_since = 0;
+            extern void hid_mouse_trigger_close_handwrite_from_pose(void);
+            hid_mouse_trigger_close_handwrite_from_pose();
+            return;
+        }
+    }
+    else
+    {
+        s_hw_faceup_since = 0;
+    }
+
+    float rx = (fabsf(gyro_x) < HW_DEADZONE_RADS) ? 0.0f : gyro_x;
+    float rz = (fabsf(gyro_z) < HW_DEADZONE_RADS) ? 0.0f : gyro_z;
+    s_hw_x += HW_SIGN_X * rx * HW_GAIN;
+    s_hw_y += HW_SIGN_Y * rz * HW_GAIN;
+    if (s_hw_x < 0) s_hw_x = 0;
+    if (s_hw_x > (float)s_hw_w) s_hw_x = (float)s_hw_w;
+    if (s_hw_y < 0) s_hw_y = 0;
+    if (s_hw_y > (float)s_hw_h) s_hw_y = (float)s_hw_h;
+
+    bool pen = s_hw_pen_down;
+    if (pen && !s_hw_prev_pen)
+    {
+        /* 下筆:批次重啟、先送 "d" 帶第一點 */
+        s_hw_batch_n = 0;
+        s_hw_last_sent_x = s_hw_last_sent_y = -1;
+        hw_batch_push();
+        hw_batch_flush("d");
+        s_hw_last_flush = now;
+    }
+    else if (pen)
+    {
+        hw_batch_push();
+        if (s_hw_batch_n >= HW_BATCH_MAX ||
+            (s_hw_batch_n > 0 &&
+             now - s_hw_last_flush >= rt_tick_from_millisecond(HW_FLUSH_MS)))
+        {
+            hw_batch_flush("m");
+            s_hw_last_flush = now;
+        }
+    }
+    else
+    {
+        if (s_hw_prev_pen)
+        {
+            hw_batch_flush("m"); /* 殘批先送,筆畫尾端完整 */
+            extern bool commu_send_handwrite(const char *json);
+            commu_send_handwrite("{\"ph\":\"u\"}");
+        }
+        int hx = (int)s_hw_x, hy = (int)s_hw_y;
+        if ((hx != s_hw_hover_x || hy != s_hw_hover_y) &&
+            now - s_hw_last_hover >= rt_tick_from_millisecond(HW_HOVER_MS))
+        {
+            char json[40];
+            rt_snprintf(json, sizeof(json), "{\"ph\":\"h\",\"p\":[[%d,%d]]}", hx, hy);
+            extern bool commu_send_handwrite(const char *json);
+            commu_send_handwrite(json);
+            s_hw_hover_x = hx;
+            s_hw_hover_y = hy;
+            s_hw_last_hover = now;
+        }
+    }
+    /* 軸向/符號真機定調用:~1Hz 印筆尖與角速度(mrad/s),founder 各方向劃一筆即可對出
+       HW_SIGN_X/HW_SIGN_Y 與軸對調是否正確。 */
+    if (now - s_hw_last_dbg >= rt_tick_from_millisecond(1000))
+    {
+        LOG_I("[handwrite] pen=%d p=(%d,%d) gx=%d gz=%d mrad/s", (int)pen,
+              (int)s_hw_x, (int)s_hw_y, (int)(gyro_x * 1000.0f),
+              (int)(gyro_z * 1000.0f));
+        s_hw_last_dbg = now;
+    }
+    s_hw_prev_pen = pen;
+}
+
 static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                               Quaternion *prev_quat)
 {
@@ -1114,6 +1326,15 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     /* 上下擺腕是繞 x（螢幕橫軸）——y 沿前臂方向是翻腕 roll，
        2026-07-06 logo 飛鼠實機驗出「上下抓錯軸」 */
     float gyro_x = watch_sensor.imu_data.gyro.x * DPS_TO_RADS;
+
+    /* ── 側立手寫模式：gyro 直接積分成虛擬畫布筆尖(0x1b 串流),不進游標 pipeline。
+       置於一切分支之前——手寫期間 dial/資料收集/游標 report/moving-state 全不動作。
+       (IMU 座標系翻轉兜底防禦在下面 else 分支,正常永不觸發,手寫分支不重複。) ── */
+    if (s_hw_active)
+    {
+        handwrite_motion_process(gyro_x, gyro_z);
+        return;
+    }
 
     extern bool imu_mouse_data_collection;
     /* Roll-compensation reference (DATA-COLLECTION MODE ONLY). Captured at the
@@ -1444,11 +1665,19 @@ static int gravity_position = GRAVITY_POSITION_OTHER;
  * 去抖：幾何條件連續穩定 ~300ms 才算數，避免滑鼠操作中手腕晃動掃過豎直角就誤觸。*/
 #define GRAVITY_VERTICAL_Y_MIN 0.85f  /* gravity.y > 此值 = 錶身直立、12點朝上 (實測 0.92-0.97) */
 #define GRAVITY_VERTICAL_Z_MAX 0.50f  /* gravity.z < 此值 = 錶面法線離開朝天 (實測立起 0.20-0.37) */
+/* 「錶面轉向側邊」(側立手寫姿,滑鼠 app):重力落在 ±X 主導、面法線離開朝天。與 VERTICAL
+   (y 主導)/SIDE(y 負主導)/HORIZONTAL(x 介於 -0.3..0.5)天然互斥。兩側符號先都接受
+   (戴法/朝向差異),真機 log([handwrite] begin 的 gx100)鎖定「朝左」符號後再收斂單側。
+   去抖同 VERTICAL:幾何連續穩定 ~300ms 才算數,防滑鼠操作中掃過側立角誤觸。 */
+#define GRAVITY_FACE_SIDE_X_MIN 0.85f  /* |gravity.x| > 此值 = 錶面轉向側邊 */
+#define GRAVITY_FACE_SIDE_Z_MAX 0.50f  /* |gravity.z| < 此值 = 面法線離開鉛直 */
+#define GRAVITY_FACE_SIDE_STABLE_MS 300
 /* 去抖用「時間」不用「幀數」：motion 更新率會浮動 (實測平放靜止約 3Hz、
  * 動作時更高)，固定幀數的保持時間不可預期 (30 幀 @ 3Hz ≈ 10s 太久)。
  * 記錄進入姿態的 tick，vertical_geom 持續此毫秒數才承認 VERTICAL。*/
 #define GRAVITY_VERTICAL_STABLE_MS 300
 static rt_tick_t s_vertical_geom_since = 0; /* 0 = 目前不在 vertical_geom 姿態 */
+static rt_tick_t s_faceside_geom_since = 0; /* 0 = 目前不在 faceside_geom(側立手寫)姿態 */
 
 int get_gravity_position(void)
 {
@@ -1511,6 +1740,30 @@ void set_gravity_position(int position)
         {
             extern void hid_mouse_trigger_skaibar_from_pose(void);
             hid_mouse_trigger_skaibar_from_pose();
+        }
+    }
+    /* 「錶面轉向側邊」→ 滑鼠 app 前景時進入側立手寫模式。同 VERTICAL 的邊緣觸發
+       (同 state 早 return);實際開啟在 GUI thread(open_handwrite_from_pose,內含
+       大麥克風開著等 gate)。 */
+    if (gravity_position == GRAVITY_POSITION_FACE_SIDE)
+    {
+        if (is_at_mouse_mode() || app_control_get_mouse_mode())
+        {
+            extern void hid_mouse_trigger_open_handwrite_from_pose(void);
+            hid_mouse_trigger_open_handwrite_from_pose();
+        }
+    }
+    /* 手寫模式收斂保險:明確進入「立起」或「手臂垂下」姿態=顯然不在寫了,收掉手寫。
+       主要退出路徑是 handwrite_motion_process 的「轉回朝上持續 400ms」判定——這裡只
+       兜「一直不朝上也不寫了」的殘留(例如寫完直接把手垂下)。 */
+    if (gravity_position == GRAVITY_POSITION_VERTICAL ||
+        gravity_position == GRAVITY_POSITION_SIDE)
+    {
+        extern bool hid_mouse_handwrite_active(void);
+        if (hid_mouse_handwrite_active())
+        {
+            extern void hid_mouse_trigger_close_handwrite_from_pose(void);
+            hid_mouse_trigger_close_handwrite_from_pose();
         }
     }
 #ifdef SHOW_UNGRAB_ENABLE_INDICATOR
@@ -1591,6 +1844,23 @@ static void calculate_gravity_position(Vector3 *gravity)
         vertical_geom &&
         (vertical_held >= rt_tick_from_millisecond(GRAVITY_VERTICAL_STABLE_MS));
 
+    /* 「錶面轉向側邊」(側立手寫姿) 幾何+去抖,同 vertical 的 wall-clock 模式。 */
+    bool faceside_geom = (fabsf(gravity->x) > GRAVITY_FACE_SIDE_X_MIN &&
+                          fabsf(gravity->z) < GRAVITY_FACE_SIDE_Z_MAX);
+    if (faceside_geom)
+    {
+        if (s_faceside_geom_since == 0)
+            s_faceside_geom_since = rt_tick_get();
+    }
+    else
+    {
+        s_faceside_geom_since = 0;
+    }
+    bool faceside_stable =
+        faceside_geom && (s_faceside_geom_since != 0) &&
+        ((rt_tick_get() - s_faceside_geom_since) >=
+         rt_tick_from_millisecond(GRAVITY_FACE_SIDE_STABLE_MS));
+
     int decided_position;
     if (gravity->y < -0.7 && gravity->z < 0.3)
     {
@@ -1599,6 +1869,10 @@ static void calculate_gravity_position(Vector3 *gravity)
     else if (vertical_stable)
     {
         decided_position = GRAVITY_POSITION_VERTICAL;
+    }
+    else if (faceside_stable)
+    {
+        decided_position = GRAVITY_POSITION_FACE_SIDE;
     }
     else if ((gravity->x < 0.5 && gravity->x > -0.3) && fabs(gravity->y) < 0.5)
     {

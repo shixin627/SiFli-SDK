@@ -481,6 +481,14 @@ bool commu_send_dial_dir(const char *phase, int dir, int mag)
     if (n <= 0 || n >= (int)sizeof(json)) return false;
     return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_DIAL_DIR, json);
 }
+/* watch→phone (SKAI_LINK): 側立手寫 ink 串流 (see KEY_HANDWRITE contract)。點批次是
+   變長度陣列,固定欄位 builder 不合用 — caller (bloc_motion_tracking / hid_mouse) 自組
+   JSON。上傳由 caller 節流(~25Hz);無 per-frame log,同 mouse move / dial 防洗版。 */
+bool commu_send_handwrite(const char *json)
+{
+    if (json == NULL) return false;
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_HANDWRITE, json);
+}
 bool commu_send_skaibar_dismiss(void)
 {
     bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIBAR_DISMISS, "{}");

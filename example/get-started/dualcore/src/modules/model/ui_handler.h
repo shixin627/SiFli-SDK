@@ -130,6 +130,8 @@ extern "C"
         LVGL_MSG_TYPE_MOUSE_OPEN_V2T,
         LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR, /* 立起姿態→帶出單設備 skaibar (等同點底部 bar) */
         LVGL_MSG_TYPE_MOUSE_CLOSE_LIFT_MIC, /* 放下手腕(離開立起姿態)→收掉大麥克風畫面 */
+        LVGL_MSG_TYPE_MOUSE_OPEN_HANDWRITE,  /* 側立(錶面轉向側邊)→進入手寫模式 */
+        LVGL_MSG_TYPE_MOUSE_CLOSE_HANDWRITE, /* 轉回朝上(或保險姿態)→結束手寫模式 */
         LVGL_MSG_TYPE_MOUSE_OPEN_KEYBOARD,
         LVGL_MSG_TYPE_MOUSE_INPUT_TEXT,
         /***** Loading ******/

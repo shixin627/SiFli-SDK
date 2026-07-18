@@ -136,6 +136,21 @@ extern "C"
            the air-mouse `dialDirection` verb; the desktop draws a cursor-centred radial
            overlay and (this round) only logs the committed direction — no action bound yet. */
         KEY_DIAL_DIR = 0x1a,
+        /* watch→phone (UPLINK): 側立手寫 ink 串流 — 滑鼠 app (APP_ID_MOUSE) 內把錶面
+           轉向側邊(重力落在 ±X、穩定 ~300ms)進入手寫模式:按住錶面=下筆、手腕在空中寫
+           (gyro 積分成虛擬畫布筆尖)、放開=提筆,轉回錶面朝上(gravity.z 高持續 ~400ms)
+           結束。payload:
+             {"ph":"start","w":W,"h":H}  進入(虛擬畫布尺寸=螢幕解析度)
+             {"ph":"d","p":[[x,y]]}      下筆(第一點)
+             {"ph":"m","p":[[x,y],...]}  筆點批次(~25Hz 節流,order=筆畫形狀)
+             {"ph":"h","p":[[x,y]]}      提筆懸浮位置(低頻,桌面畫「筆尖將落在哪」)
+             {"ph":"u"}                  提筆
+             {"ph":"end"}                結束
+           手機轉發整串給 active 桌面畫軌跡(air-mouse `handwriting` verb),同時跑 ML Kit
+           digital-ink 辨識(zh-Hant):每筆 u 後即時 setSkaibarText、end 時
+           runSkaibar{submit:true} 自動送出。Keep in lockstep with
+           WatchProtocol.kt SKAILINK_KEY_HANDWRITE. */
+        KEY_HANDWRITE = 0x1b,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

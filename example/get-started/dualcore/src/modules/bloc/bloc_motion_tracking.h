@@ -58,10 +58,19 @@ extern "C"
         GRAVITY_POSITION_SIDE,
         GRAVITY_POSITION_HORIZONTAL,
         GRAVITY_POSITION_VERTICAL,
-        GRAVITY_POSITION_AI
+        GRAVITY_POSITION_AI,
+        /* 錶面轉向側邊(重力 ±X 主導):滑鼠 app 的側立手寫姿。附加在 enum 尾端,
+           不動既有值(SHOW_UNGRAB_ENABLE_INDICATOR 分支有裸數字比較)。 */
+        GRAVITY_POSITION_FACE_SIDE
     } gravity_position_t;
 
     #define MOTION_TRACKING_PARAMETER 2000
+    /* 側立手寫 (hid_mouse 手寫 view ↔ motion thread gyro 積分器;0x1b 串流) */
+    extern void bloc_handwrite_begin(int canvas_w, int canvas_h);
+    extern void bloc_handwrite_end(void);
+    extern bool bloc_handwrite_active(void);
+    extern void bloc_handwrite_set_pen(bool down);
+    extern bool bloc_handwrite_get_point(int *x, int *y, bool *pen_down);
     extern bool has_user_started_controlling_with_arm(void);
     extern int get_gravity_position(void);
     extern void set_free_control_with_arm(bool flag);

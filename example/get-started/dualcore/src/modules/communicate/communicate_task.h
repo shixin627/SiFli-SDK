@@ -99,6 +99,9 @@ bool commu_send_mouse_back(void);                      /* -> KEY_MOUSE_BACK   (0
 /* Trackpad-hold radial dial uplink (standalone mouse app). phase ∈ start|update|end;
    dir -1..7 (0=up CW, -1=centre dead-zone); mag 0..1000. Full contract at KEY_DIAL_DIR. */
 bool commu_send_dial_dir(const char *phase, int dir, int mag); /* -> KEY_DIAL_DIR (0x1a) */
+/* 側立手寫 ink 串流:caller 自組 JSON({"ph":"start|d|m|h|u|end",...},變長點批次)。
+   Full contract at KEY_HANDWRITE. */
+bool commu_send_handwrite(const char *json); /* -> KEY_HANDWRITE (0x1b) */
 /* Media transport relay to the active target device (mouse app media centre).
    cmd ∈ playPause|next|previous|volumeUp|volumeDown — air-mouse mediaControl verbs.
    Distinct from commu_send_media_control() above, which drives the phone's own media. */
