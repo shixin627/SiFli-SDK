@@ -70,7 +70,6 @@ extern "C"
     extern void bloc_handwrite_end(void);
     extern bool bloc_handwrite_active(void);
     extern void bloc_handwrite_set_pen(bool down);
-    extern bool bloc_handwrite_get_point(int *x, int *y, bool *pen_down);
     extern bool has_user_started_controlling_with_arm(void);
     extern int get_gravity_position(void);
     extern void set_free_control_with_arm(bool flag);

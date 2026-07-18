@@ -1139,16 +1139,6 @@ void bloc_handwrite_set_pen(bool down)
     s_hw_pen_down = down;
 }
 
-/* GUI thread 本地軌跡跟繪用:回傳當前筆尖(畫布=螢幕座標)與下筆狀態。 */
-bool bloc_handwrite_get_point(int *x, int *y, bool *pen_down)
-{
-    if (!s_hw_active) return false;
-    if (x) *x = (int)s_hw_x;
-    if (y) *y = (int)s_hw_y;
-    if (pen_down) *pen_down = s_hw_pen_down;
-    return true;
-}
-
 void bloc_handwrite_begin(int canvas_w, int canvas_h)
 {
     s_hw_w = (canvas_w > 0) ? canvas_w : 466;
