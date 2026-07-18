@@ -1106,7 +1106,8 @@ bool mouse_dial_has_direction(void)
    「離開側立幾何」當退出——空中寫字手臂大幅擺動,重力向量會短暫掃過各種角度,
    中途就把模式砍掉;「明確回到朝上且穩定」才是使用者要結束的訊號(spec 亦如此)。
    ───────────────────────────────────────────────────────────────────────── */
-#define HW_GAIN            18.0f  /* rad/s(每 sample)→畫布 px;同 AIR_MOUSE_SENSITIVITY 量級,真機再調 */
+#define HW_GAIN            7.0f   /* rad/s(每 sample)→畫布 px。18 太快(founder 2026-07-18:
+                                     「移動一點點畫布上就很遠」)→降至 7;再調就動這個常數 */
 #define HW_DEADZONE_RADS   0.02f  /* 靜置 gyro 雜訊死區,防筆尖漂移 */
 #define HW_SIGN_X          (-1.0f) /* 水平筆劃符號(2026-07-18 founder 真機驗:左右正確) */
 #define HW_SIGN_Y          (+1.0f) /* 鉛直筆劃符號(2026-07-18 founder 真機驗:-1 上下相反→翻正) */
