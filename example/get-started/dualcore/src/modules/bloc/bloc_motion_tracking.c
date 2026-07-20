@@ -984,6 +984,9 @@ extern bool hid_mouse_top_fly_active(void);
                                         手腕動時手指的連動位移不算拖曳，圓盤才穩(founder 2026-07-17)*/
 #define DIAL_WRIST_HOLD_MS      200  /* 手腕停止後仍視為「比方向中」這麼久，涵蓋手指慣性殘留位移，
                                         免得手腕轉到定位剛停的瞬間被手指殘留誤判成拖曳 */
+#define DIAL_WRIST_ACCUM_UNITS 40.0f /* 進入「體感拖曳」:大震後手錶移動的**累積總量**過此門檻
+                                        (founder 2026-07-20:瞬間速度判定慢慢拖不會動→改總距離,
+                                        慢動作也會累積觸發;雜訊被 air_mouse deadzone 濾掉不累積) */
 
 /* 側立圓盤軸向:gyro(rad/s)直接線性累積(無游標加速曲線),gain=7 沿用空中手寫時代手感。
    符號=側立手寫 pen 映射同款(x←-gx / y←+gz)——2026-07-20 founder 真機:「上下左右都反」
@@ -997,7 +1000,11 @@ extern bool hid_mouse_top_fly_active(void);
 
 static volatile bool s_dial_active = false;
 static volatile bool s_dial_pose_active = false; /* 側立圓盤 session(motion thread 姿勢機開關) */
+static volatile bool s_motion_drag_active = false; /* 體感拖曳(GUI 長按狀態機開關,gyro→游標+左鍵按住) */
+static volatile bool s_press_free_move = false;    /* 按住觸控板期間(1s 內)gyro→游標,無左鍵(founder:
+                                                      按下馬上動手錶游標就要動) */
 static volatile rt_tick_t s_dial_wrist_last_move = 0; /* 最後一次手腕明顯轉動的 tick(gyro 判定用) */
+static volatile float s_wrist_accum = 0.0f; /* 大震後手錶移動累積量(體感拖曳進入判定;arm 時歸零) */
 static bool  s_dial_reset_pending = false;
 static float s_dial_ax = 0.0f, s_dial_ay = 0.0f; /* 累積向量：螢幕座標 x 右+ / y 下+ */
 static int   s_dial_cur_dir = -1;
@@ -1085,6 +1092,12 @@ void mouse_dial_cancel(void)
 }
 bool mouse_dial_active(void) { return s_dial_active; }
 
+/* 體感拖曳開關(hid_mouse 長按狀態機呼叫,GUI thread;volatile bool 單字寫入安全)。 */
+void bloc_motion_drag_set(bool on) { s_motion_drag_active = on; }
+
+/* 按住期間自由移動開關(PRESSED 開/進拖曳或放開關):gyro 驅動游標但不含左鍵。 */
+void bloc_press_free_move_set(bool on) { s_press_free_move = on; }
+
 /* hid_mouse.c 拖曳判定用：手腕最近 DIAL_WRIST_HOLD_MS 內是否在轉(比方向)。手腕在轉時手指的
    連動位移不該當成拖曳(圓盤才穩)，手腕靜止才把手指主動滑視為拖曳──gyro 是唯一能區分「手腕動
    vs 手指動」的信號(founder 2026-07-17 圓盤被手指連動誤觸消失)。 */
@@ -1092,6 +1105,19 @@ bool mouse_dial_wrist_moving(void)
 {
     return (rt_tick_get() - s_dial_wrist_last_move)
            < rt_tick_from_millisecond(DIAL_WRIST_HOLD_MS);
+}
+
+/* 體感拖曳進入判定:大震後手錶移動累積總量過門檻(慢動作也會累積到)。 */
+bool mouse_wrist_accum_triggered(void)
+{
+    return s_wrist_accum >= DIAL_WRIST_ACCUM_UNITS;
+}
+
+/* 歸零累積量(hid 在大震時呼叫):大震**之前**的瞄準/前奏動作不算,只累積之後的
+   移動(founder:選字後拖曳變重新框選——前奏動作把游標帶跑+瞬間誤觸發)。 */
+void bloc_wrist_accum_reset(void)
+{
+    s_wrist_accum = 0.0f;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -1529,12 +1555,15 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
             air_mouse_algorithm(gyro_x, gyro_z, AIR_MOUSE_SENSITIVITY);
     }
 
-    /* 手腕活動追蹤(hid_mouse 長按 armed 的「寫字 vs 拖曳」判定用):原在觸控圓盤的
-       accumulate 內更新,2026-07-20 觸發對調後 armed 階段沒有 active session,移到
-       主路徑常時更新。 */
-    if (fabsf((float)delta_movement.x) + fabsf((float)delta_movement.y) >=
-        DIAL_WRIST_MOVE_UNITS)
-        s_dial_wrist_last_move = rt_tick_get();
+    /* 手腕活動追蹤(hid_mouse 長按 armed 判定用):弱門檻=慢跟隨/連動過濾、
+       累積量=體感拖曳進入(大震後總移動距離,慢動作也累積)。主路徑常時更新。 */
+    {
+        float wrist_mag = fabsf((float)delta_movement.x) +
+                          fabsf((float)delta_movement.y);
+        if (wrist_mag >= DIAL_WRIST_MOVE_UNITS)
+            s_dial_wrist_last_move = rt_tick_get();
+        s_wrist_accum += wrist_mag; /* deadzone 已濾雜訊,靜置時 ≈0 不累積 */
+    }
 
     if (abs(delta_movement.x) >= 3 || abs(delta_movement.y) >= 3)
     {
@@ -1566,6 +1595,13 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
             delta_movement.x = 0;
             delta_movement.y = 0;
         }
+    }
+    /* 體感拖曳(長按滿1s後手腕先動=左鍵按住+gyro 驅動游標)與「按住期間自由移動」
+       (按下即動手錶=游標直接動,無左鍵;founder 2026-07-20)。report 慣例同飛鼠;
+       左鍵狀態由 hid_mouse 管,這裡只負責游標。 */
+    else if ((s_motion_drag_active || s_press_free_move) && !mouse_movement_lock)
+    {
+        report_air_mouse_data(&delta_movement, ts);
     }
     // handfree 飛鼠的姿態 gate 分兩種來源：①頂部區按住（`hid_mouse_top_fly_active`，明確要
     // 飛鼠）→ 忽略姿態 switch，因為飛鼠靠傾斜手腕、傾斜本來就會讓 gravity 進 freehand/scroll

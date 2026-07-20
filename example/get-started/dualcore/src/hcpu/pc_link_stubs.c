@@ -215,6 +215,7 @@ void air_mouse_movement_lock_reset(void) { }
 void mouse_dial_cancel(void) { }
 bool mouse_dial_active(void) { return false; }
 bool mouse_dial_wrist_moving(void) { return false; }
+bool mouse_wrist_accum_triggered(void) { return false; }
 void bloc_handwrite_begin(int canvas_w, int canvas_h) { (void)canvas_w; (void)canvas_h; }
 void bloc_handwrite_end(void) { }
 void bloc_handwrite_set_pen(bool down) { (void)down; }
@@ -223,6 +224,9 @@ void bloc_handwrite_next_char(void) { }
 void bloc_handwrite_cancel(void) { }
 void bloc_handwrite_clear(void) { }
 void bloc_handwrite_backspace(void) { }
+void bloc_motion_drag_set(bool on) { (void)on; }
+void bloc_press_free_move_set(bool on) { (void)on; }
+void bloc_wrist_accum_reset(void) { }
 /* 拖曳/長按的 BLE HID 觸控輔助 (ble_hid.c, excluded on PC sim) — 2026-07-16/17 dial/
    拖曳輪加的 extern,一直缺 stub;compile 段修通後 link 才曝出來,一併補齊。 */
 void ble_hid_mouse_cancel_touch(void) { }

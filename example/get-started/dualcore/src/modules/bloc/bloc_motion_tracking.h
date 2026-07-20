@@ -75,6 +75,9 @@ extern "C"
     extern void bloc_handwrite_cancel(void);
     extern void bloc_handwrite_clear(void);
     extern void bloc_handwrite_backspace(void);
+    extern void bloc_motion_drag_set(bool on);
+    extern void bloc_press_free_move_set(bool on);
+    extern void bloc_wrist_accum_reset(void);
     extern bool has_user_started_controlling_with_arm(void);
     extern int get_gravity_position(void);
     extern void set_free_control_with_arm(bool flag);

@@ -2980,14 +2980,19 @@ static void handle_released_event(lv_indev_t *indev)
     #endif
 }
 /* ─────────────────────────────────────────────────────────────────────────
-   主觸控板 長按=拖曳 / 右緣左拉=手寫(2026-07-20 founder 三改定案)。
-   - 按住不動 500ms = arm(觸覺 tap),之後手指主動滑 → 1:1 拖曳。慢跟隨/gyro 區分
-     邏輯沿用圓盤時代(founder 2026-07-17 調校)。只在非弧形/滾動區起手才 arm。
+   主觸控板 長按=拖曳(二模式) / 右緣左拉=手寫(2026-07-20 founder 定案)。
+   - 按下=小震;按住不動滿 1s = arm(大震),之後二選一**先到先贏**:
+     手指主動滑 → 觸控 1:1 拖曳;手腕/手錶動(gyro) → 體感拖曳(左鍵按住+gyro 驅動
+     游標,bloc s_motion_drag_active report)。1s 內手指移動=一般移動(無左鍵)。
+     慢跟隨/gyro 區分邏輯沿用圓盤時代(founder 2026-07-17 調校)。只在非弧形/滾動
+     區起手才 arm。
    - press 起手在右緣(HW_EDGE_ZONE_W)且向左拉超過 HW_EDGE_PULL_PX(水平主導)
      → 進手寫(hw_view 接管,直接在錶面上寫)。
    - 側立(FACE_SIDE)時按住畫面 → 側立圓盤(bloc pose-dial),放開=執行。
    ───────────────────────────────────────────────────────────────────────── */
-#define DIAL_HOLD_TO_START_MS     500 /* 按住不動滿 500ms 才 arm；500ms 內手指移動＝一般移動滑鼠 */
+#define DIAL_HOLD_TO_START_MS     700 /* 按住不動滿 0.7s 才 arm(founder 2026-07-20:按下小震、
+                                         滿門檻大震進長按;1s 太久改 0.7s);門檻內手指移動＝
+                                         一般移動滑鼠(無左鍵)、動手錶=gyro 自由移動 */
 #define DIAL_HOLD_DRIFT_CANCEL_PX  18 /* arm「之前」：離起點超過就別 arm（判定為滑動）*/
 #define DIAL_DRAG_DIST_PX           8 /* arm「之後」：手指離「基準點」累積移動超過＝主動
                                          滑動→進拖曳。手腕在動(mouse_dial_wrist_moving)時基準「慢跟隨」
@@ -2997,6 +3002,8 @@ static void handle_released_event(lv_indev_t *indev)
 extern void mouse_dial_cancel(void);
 extern bool mouse_dial_active(void);
 extern bool mouse_dial_wrist_moving(void);
+extern bool mouse_wrist_accum_triggered(void); /* 體感拖曳進入判定(大震後累積移動量) */
+extern void bloc_wrist_accum_reset(void);
 /* 側立圓盤(bloc_motion_tracking.c):側立中按住畫面=開、放開=執行(founder 2026-07-20 二改) */
 extern bool bloc_dial_pose_touch_ready(void);
 extern void mouse_dial_pose_begin(void);
@@ -3015,7 +3022,8 @@ static void hw_pull_cancel(void);
 static lv_timer_t *s_dial_hold_timer = NULL;
 static lv_point_t s_dial_press_start;
 static bool s_pose_dial_touch = false; /* 側立圓盤按住中:PRESSED 開 session、RELEASED commit */
-static bool s_hw_hold_armed = false; /* 長按已滿 500ms,等「手指滑=拖曳」判定(2026-07-20 三改後只剩拖曳) */
+static bool s_hw_hold_armed = false; /* 長按已滿 1s,等「手指滑=觸控拖曳/手腕動=體感拖曳」判定(先到先贏) */
+static bool s_motion_drag = false;   /* 體感拖曳中:左鍵按住,游標由 gyro 驅動(bloc report) */
 /* 右緣向左拉出=進手寫(founder 2026-07-20 三改) */
 #define HW_EDGE_ZONE_W   60 /* 右緣起手區寬度(px) */
 #define HW_EDGE_PULL_PX  10 /* 向左拉超過此距離(且水平主導)=view 現形開始跟手 */
@@ -3041,10 +3049,15 @@ static void dial_hold_timer_cb(lv_timer_t *t)
     (void)t;
     s_dial_hold_timer = NULL; /* repeat_count=1 跑完自刪，只清指標 */
     LOG_I("[drag] trackpad hold %dms -> armed", DIAL_HOLD_TO_START_MS);
-    /* 清掉觸控板 tap/long-press 狀態機：armed 期間手指按著不動，不能讓原本 500ms
-       long-press 誤觸發左鍵（手指移動時才由 begin_drag 主動進拖曳）。 */
+    /* 清掉觸控板 tap/long-press 狀態機：armed 期間手指按著不動，不能讓原本
+       long-press 誤觸發左鍵（進拖曳時才主動按左鍵）。 */
     ble_hid_mouse_cancel_touch();
-    motor_pattern_tap();      /* 觸覺回饋：拖曳待命 */
+    motor_pattern_unlocked(); /* 大震:進入長按(founder:按下小震、滿門檻大震) */
+    /* 大震瞬間凍結游標+清甩動記錄(founder:選字後體感拖曳變重新框選——大震前的
+       自由移動/甩動前奏把游標帶離選取區,左鍵才按下去=從新位置開始框選。凍結後
+       左鍵會按在使用者瞄準的位置,大震後的新甩動才開始拖)。 */
+    bloc_press_free_move_set(false);
+    bloc_wrist_accum_reset();
     s_dial_drag_ref = s_dial_press_start; /* 拖曳累積位移基準：起手＝arm 位置 */
     s_hw_hold_armed = true;
 }
@@ -3057,6 +3070,9 @@ static void dial_hold_on_pressed(lv_indev_t *indev)
     s_hw_hold_armed = false; /* 新一次按下:清上次殘留(正常已在 RELEASED/PRESS_LOST 清過) */
     if (press_in_arc_zone)
         return; /* 弧形滾動起手不 arm */
+    motor_pattern_tap(); /* 小震:按下回饋(founder 2026-07-20) */
+    bloc_press_free_move_set(true); /* 按住期間動手錶=游標直接動(無左鍵) */
+    bloc_wrist_accum_reset(); /* 從按下起算:門檻內手錶動夠多=取消長按(對稱手指的 drift-cancel) */
     if (indev)
         lv_indev_get_point(indev, &s_dial_press_start);
     /* 禁用原本的 500ms long-press：dial 用自己的 500ms timer 接管「長按」語意，
@@ -3073,11 +3089,36 @@ static void dial_hold_on_pressed(lv_indev_t *indev)
 static void dial_drag_begin(const lv_point_t *now)
 {
     ble_hid_mouse_cancel_touch();
+    bloc_press_free_move_set(false); /* 觸控拖曳=手指驅動,關掉 gyro 自由移動 */
     if (control_provider.ble_hid_mouse_left_press)
         control_provider.ble_hid_mouse_left_press();
     s_dial_drag = true;
     s_dial_drag_last = *now;
     motor_pattern_tap();
+}
+
+/* 進入體感拖曳(founder 2026-07-20:長按滿1s後「移動整個手錶」=左鍵按住+gyro 驅動
+   游標)。與觸控 1:1 拖曳互斥、先到先贏。 */
+static void motion_drag_begin(void)
+{
+    ble_hid_mouse_cancel_touch();
+    bloc_press_free_move_set(false); /* 換成拖曳通道(左鍵按住) */
+    if (control_provider.ble_hid_mouse_left_press)
+        control_provider.ble_hid_mouse_left_press();
+    s_motion_drag = true;
+    bloc_motion_drag_set(true); /* bloc 開始把 gyro delta 打進游標(同飛鼠 report) */
+    motor_pattern_tap();
+}
+
+/* 收體感拖曳:停 gyro 驅動+放左鍵。冪等。 */
+static void motion_drag_end(void)
+{
+    if (!s_motion_drag)
+        return;
+    s_motion_drag = false;
+    bloc_motion_drag_set(false);
+    if (control_provider.ble_hid_mouse_left_release)
+        control_provider.ble_hid_mouse_left_release();
 }
 
 /* 清 手寫 arm / 側立圓盤 / 拖曳 / edge-pan / long-press timer 的殘留狀態機。離開或暫停
@@ -3090,6 +3131,8 @@ static void dial_drag_state_reset(void)
     s_hw_hold_armed = false;
     s_pose_dial_touch = false;
     s_edge_swipe_armed = false;
+    motion_drag_end(); /* 體感拖曳殘留(冪等) */
+    bloc_press_free_move_set(false);
     if (mouse_dial_active())
         mouse_dial_cancel();              /* 清側立圓盤(含 pose 旗標)+桌面 hide 圓盤 */
     if (s_dial_drag)
@@ -3193,9 +3236,10 @@ static void plain_event_cb(lv_event_t *e)
         lv_coord_t dx = now_point.x - s_dial_press_start.x;
         lv_coord_t dy = now_point.y - s_dial_press_start.y;
 
-        /* (2) 長按已 arm(2026-07-20 三改後只剩拖曳):手指主動滑離基準超門檻=拖曳。
-           手腕在動（mouse_dial_wrist_moving，air_mouse delta 大）時基準「慢跟隨」(追一半)
-           濾掉手腕連動的手指位移,免誤觸拖曳(沿用圓盤時代調校,founder 2026-07-17)。 */
+        /* (2) 長按已 arm(1s,大震後):二選一先到先贏(founder 2026-07-20)——
+           手指主動滑離基準超門檻=觸控 1:1 拖曳;手腕/手錶在動(gyro)=體感拖曳。
+           手腕在動時基準「慢跟隨」(追一半)濾掉手腕連動的手指位移,手指判定
+           先看(明確滑動優先),沒過門檻才輪到手腕(沿用圓盤時代調校)。 */
         if (s_hw_hold_armed)
         {
             if (mouse_dial_wrist_moving())
@@ -3209,22 +3253,37 @@ static void plain_event_cb(lv_event_t *e)
             {
                 s_hw_hold_armed = false;
                 dial_drag_begin(&now_point);
+                break;
             }
-            break; /* 未進拖曳：按住等待，不控游標 */
+            if (mouse_wrist_accum_triggered())
+            {
+                /* 大震後手錶移動累積量過門檻=進體感拖曳(慢慢動也會累積到) */
+                s_hw_hold_armed = false;
+                motion_drag_begin();
+            }
+            break; /* 未判定：按住等待，不控游標 */
         }
+
+        /* (2b) 體感拖曳中:游標由 gyro(bloc report),手指不做任何游標事。 */
+        if (s_motion_drag)
+            break;
 
         /* (3) 還沒 arm，手指移動 = 一般移動滑鼠（原本 handle_pressing_event 的
            scrolling→ble_hid_mouse_move 1.5x 移游標），並取消 arm 計時（手指移動＝不是長按）。
            按住不動滿 500ms 才 arm；500ms 後手指移動改走 (2) 的拖曳。手指沒動時一樣走
            handle_pressing_event（tap 判斷）。 */
-        if (s_dial_hold_timer && LV_ABS(dx) + LV_ABS(dy) > DIAL_HOLD_DRIFT_CANCEL_PX)
-            dial_hold_cancel();
+        if (s_dial_hold_timer &&
+            (LV_ABS(dx) + LV_ABS(dy) > DIAL_HOLD_DRIFT_CANCEL_PX ||
+             mouse_wrist_accum_triggered()))
+            dial_hold_cancel(); /* 門檻內手指滑「或」手錶動=一般移動,取消長按
+                                   (founder:按下直接動手錶,後面不能又按左鍵) */
         handle_pressing_event(indev, &now_point);
         break;
     }
 
     case LV_EVENT_RELEASED:
         s_edge_swipe_armed = false;
+        bloc_press_free_move_set(false); /* 放開=停按住期間的 gyro 自由移動 */
         if (s_hw_pull_active)
         {
             /* 拉出放開:commit 判定交給 follow_end(距離/快甩),跳過 click 判定 */
@@ -3253,9 +3312,16 @@ static void plain_event_cb(lv_event_t *e)
             user_touching = false;
             break;
         }
+        if (s_motion_drag)
+        {
+            /* 體感拖曳放開:放左鍵、停 gyro 驅動。 */
+            motion_drag_end();
+            user_touching = false;
+            break;
+        }
         if (s_hw_hold_armed)
         {
-            /* 長按沒寫也沒拖就放開：視為無事。清遠端觸控態（arm 前已 Touch_Press），
+            /* 長按沒拖就放開：視為無事。清遠端觸控態（arm 前已 Touch_Press），
                跳過 handle_released_event 以免誤觸 left_click。 */
             lv_point_t rp;
             lv_indev_get_point(indev, &rp);
@@ -3278,6 +3344,8 @@ static void plain_event_cb(lv_event_t *e)
             s_pose_dial_touch = false;
             mouse_dial_pose_cancel(); /* press 被搶=不 commit,桌面收圓盤 */
         }
+        motion_drag_end(); /* 體感拖曳被搶=放左鍵停驅動(冪等) */
+        bloc_press_free_move_set(false);
         dial_hold_cancel();
         s_hw_hold_armed = false;
         s_edge_swipe_armed = false;
