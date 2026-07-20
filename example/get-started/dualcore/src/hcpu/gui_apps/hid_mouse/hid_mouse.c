@@ -2980,12 +2980,12 @@ static void handle_released_event(lv_indev_t *indev)
     #endif
 }
 /* ─────────────────────────────────────────────────────────────────────────
-   主觸控板長按 → 手寫 / 拖曳 手勢(2026-07-20 founder 對調:長按原本開方向盤,
-   現在開手寫;方向盤改側立姿勢觸發,整段在 bloc_motion_tracking.c 的 pose-dial)。
-   按住主觸控板不動 500ms(期間沒滑走)= arm(觸覺 tap 提示),之後:
-   手腕開始動(mouse_dial_wrist_moving,gyro 判定)→ 開手寫(全螢幕 view 接管,手指
-   仍按著=直接繼續第一筆);手指主動滑 → 1:1 拖曳(原樣)。慢跟隨/gyro 區分邏輯
-   沿用圓盤時代(founder 2026-07-17 調校)。只在非弧形/滾動區起手才啟用。
+   主觸控板 長按=拖曳 / 右緣左拉=手寫(2026-07-20 founder 三改定案)。
+   - 按住不動 500ms = arm(觸覺 tap),之後手指主動滑 → 1:1 拖曳。慢跟隨/gyro 區分
+     邏輯沿用圓盤時代(founder 2026-07-17 調校)。只在非弧形/滾動區起手才 arm。
+   - press 起手在右緣(HW_EDGE_ZONE_W)且向左拉超過 HW_EDGE_PULL_PX(水平主導)
+     → 進手寫(hw_view 接管,直接在錶面上寫)。
+   - 側立(FACE_SIDE)時按住畫面 → 側立圓盤(bloc pose-dial),放開=執行。
    ───────────────────────────────────────────────────────────────────────── */
 #define DIAL_HOLD_TO_START_MS     500 /* 按住不動滿 500ms 才 arm；500ms 內手指移動＝一般移動滑鼠 */
 #define DIAL_HOLD_DRIFT_CANCEL_PX  18 /* arm「之前」：離起點超過就別 arm（判定為滑動）*/
@@ -2997,15 +2997,31 @@ static void handle_released_event(lv_indev_t *indev)
 extern void mouse_dial_cancel(void);
 extern bool mouse_dial_active(void);
 extern bool mouse_dial_wrist_moving(void);
+/* 側立圓盤(bloc_motion_tracking.c):側立中按住畫面=開、放開=執行(founder 2026-07-20 二改) */
+extern bool bloc_dial_pose_touch_ready(void);
+extern void mouse_dial_pose_begin(void);
+extern void mouse_dial_pose_commit(void);
+extern void mouse_dial_pose_cancel(void);
 extern void ble_hid_mouse_cancel_touch(void);
 extern void ble_hid_mouse_begin_drag(void);
 extern void ble_hid_mouse_disable_longpress(void);
 extern bool ble_hid_mouse_drag_edge_pan(uint16_t x, uint16_t y);
 extern void ble_hid_mouse_drag_edge_pan_stop(void);
-static void open_handwrite_session(void); /* 定義在下方手寫段 */
+/* 右緣拉出跟手三段式(定義在下方手寫段;press 由本觸控機持有並轉發) */
+static void hw_pull_begin(lv_coord_t dx0, lv_coord_t finger_x);
+static void hw_pull_follow_update(lv_coord_t dx, lv_coord_t finger_x);
+static void hw_pull_follow_end(lv_coord_t dx);
+static void hw_pull_cancel(void);
 static lv_timer_t *s_dial_hold_timer = NULL;
 static lv_point_t s_dial_press_start;
-static bool s_hw_hold_armed = false; /* 長按已滿 500ms,等「手腕動=寫字 / 手指滑=拖曳」判定 */
+static bool s_pose_dial_touch = false; /* 側立圓盤按住中:PRESSED 開 session、RELEASED commit */
+static bool s_hw_hold_armed = false; /* 長按已滿 500ms,等「手指滑=拖曳」判定(2026-07-20 三改後只剩拖曳) */
+/* 右緣向左拉出=進手寫(founder 2026-07-20 三改) */
+#define HW_EDGE_ZONE_W   60 /* 右緣起手區寬度(px) */
+#define HW_EDGE_PULL_PX  10 /* 向左拉超過此距離(且水平主導)=view 現形開始跟手 */
+static bool s_edge_swipe_armed = false; /* press 起手在右緣,等左拉判定 */
+static lv_point_t s_edge_start;
+static bool s_hw_pull_active = false; /* 右緣拉出跟手中(press 由本觸控機持有並轉發位移) */
 static bool s_dial_drag = false;    /* 拖曳物件中：1:1 相對移動 + 左鍵按著 */
 static lv_point_t s_dial_drag_last; /* 拖曳中上一幀手指位置，算 1:1 相對移動量 */
 static lv_point_t s_dial_drag_ref;  /* 拖曳判定基準：手指離此累積位移超門檻＝主動滑→拖曳；
@@ -3024,11 +3040,11 @@ static void dial_hold_timer_cb(lv_timer_t *t)
 {
     (void)t;
     s_dial_hold_timer = NULL; /* repeat_count=1 跑完自刪，只清指標 */
-    LOG_I("[handwrite] trackpad hold %dms -> armed", DIAL_HOLD_TO_START_MS);
+    LOG_I("[drag] trackpad hold %dms -> armed", DIAL_HOLD_TO_START_MS);
     /* 清掉觸控板 tap/long-press 狀態機：armed 期間手指按著不動，不能讓原本 500ms
        long-press 誤觸發左鍵（手指移動時才由 begin_drag 主動進拖曳）。 */
     ble_hid_mouse_cancel_touch();
-    motor_pattern_tap();      /* 觸覺回饋：進入「手腕寫字/手指拖曳」待判定 */
+    motor_pattern_tap();      /* 觸覺回饋：拖曳待命 */
     s_dial_drag_ref = s_dial_press_start; /* 拖曳累積位移基準：起手＝arm 位置 */
     s_hw_hold_armed = true;
 }
@@ -3072,6 +3088,8 @@ static void dial_drag_state_reset(void)
 {
     dial_hold_cancel();
     s_hw_hold_armed = false;
+    s_pose_dial_touch = false;
+    s_edge_swipe_armed = false;
     if (mouse_dial_active())
         mouse_dial_cancel();              /* 清側立圓盤(含 pose 旗標)+桌面 hide 圓盤 */
     if (s_dial_drag)
@@ -3099,14 +3117,59 @@ static void plain_event_cb(lv_event_t *e)
     {
     case LV_EVENT_PRESSED:
     {
+        /* 側立中按下畫面=開側立圓盤(founder 2026-07-20 二改:按住=桌面圓盤現形、
+           手腕比方向、放開=執行)。跳過一般 press 機制——不送 BLE HID touch、
+           不 arm 手寫、不進 click 判定,這個 press 從頭到尾屬於圓盤。 */
+        if (bloc_dial_pose_touch_ready())
+        {
+            s_pose_dial_touch = true;
+            mouse_dial_pose_begin();
+            break;
+        }
         handle_pressed_event(indev);
-        dial_hold_on_pressed(indev); /* 主觸控板長按→方向盤：武裝 hold 計時器 */
+        dial_hold_on_pressed(indev); /* 主觸控板長按→拖曳 arm：武裝 hold 計時器 */
+        /* 右緣起手→武裝「向左拉出=手寫」判定(拉夠遠才觸發,期間一般行為照舊) */
+        if (indev)
+        {
+            lv_indev_get_point(indev, &s_edge_start);
+            s_edge_swipe_armed = (s_edge_start.x >= LV_HOR_RES - HW_EDGE_ZONE_W);
+        }
         break;
     }
     case LV_EVENT_PRESSING:
     {
+        if (s_pose_dial_touch)
+            break; /* 側立圓盤按住中:方向由手腕(bloc 積分),手指不做任何游標事 */
+
         lv_point_t now_point;
         lv_indev_get_point(indev, &now_point);
+
+        /* (0a) 右緣拉出跟手中:本狀態機持有 press,轉發累積位移給手寫 view(參考
+           app_clock_status_bar 的 follow_update;view 不可點,press 不會被搶走)。 */
+        if (s_hw_pull_active)
+        {
+            hw_pull_follow_update(now_point.x - s_edge_start.x, now_point.x);
+            break;
+        }
+
+        /* (0) 右緣向左拉出起手=手寫 view 現形、開始跟手(founder 2026-07-20:畫面要
+           跟著手指從右邊進來;體感照 app_clock_status_bar 通知列表)。 */
+        if (s_edge_swipe_armed && !s_dial_drag)
+        {
+            int edx = s_edge_start.x - now_point.x; /* 向左為正 */
+            int edy = LV_ABS(now_point.y - s_edge_start.y);
+            if (edx > HW_EDGE_PULL_PX && edx > edy)
+            {
+                s_edge_swipe_armed = false;
+                dial_hold_cancel();
+                s_hw_hold_armed = false;
+                BLE_HID_Mouse_Touch_Release((uint16_t)now_point.x,
+                                            (uint16_t)now_point.y);
+                user_touching = false;
+                hw_pull_begin(now_point.x - s_edge_start.x, now_point.x);
+                break;
+            }
+        }
 
         /* (1) 已在拖曳物件：手指移多少游標移多少（1:1 相對移動，左鍵按著）。 */
         if (s_dial_drag)
@@ -3130,12 +3193,9 @@ static void plain_event_cb(lv_event_t *e)
         lv_coord_t dx = now_point.x - s_dial_press_start.x;
         lv_coord_t dy = now_point.y - s_dial_press_start.y;
 
-        /* (2) 長按已 arm：手腕寫字 vs 手指拖曳靠 gyro 區分（沿用圓盤時代邏輯,founder
-           2026-07-17）──手指位移單一信號分不開「手指主動滑」與「手腕動時手指連動」（兩者
-           單幀都 2~5px）。手腕在動（mouse_dial_wrist_moving，air_mouse delta 大）時把基準
-           跟著手指移(追一半)、連動不累積;手指主動滑離基準超門檻=拖曳(先判,拖曳意圖常帶
-           手腕連動,讓位移門檻先裁);手指原地+手腕在動=開手寫(全螢幕 view 接管,之後
-           PRESSING 由 hw_view 餵 pen,本狀態機不再進來)。 */
+        /* (2) 長按已 arm(2026-07-20 三改後只剩拖曳):手指主動滑離基準超門檻=拖曳。
+           手腕在動（mouse_dial_wrist_moving，air_mouse delta 大）時基準「慢跟隨」(追一半)
+           濾掉手腕連動的手指位移,免誤觸拖曳(沿用圓盤時代調校,founder 2026-07-17)。 */
         if (s_hw_hold_armed)
         {
             if (mouse_dial_wrist_moving())
@@ -3149,20 +3209,8 @@ static void plain_event_cb(lv_event_t *e)
             {
                 s_hw_hold_armed = false;
                 dial_drag_begin(&now_point);
-                break;
             }
-            if (mouse_dial_wrist_moving())
-            {
-                /* 手腕開始動=要寫字。先放掉遠端觸控態(arm 前已 Touch_Press,不放會
-                   卡「按住」),再開手寫;手指仍按著,view 接管後 PRESSING 變 pen down
-                   接著寫第一筆。 */
-                s_hw_hold_armed = false;
-                BLE_HID_Mouse_Touch_Release((uint16_t)now_point.x,
-                                            (uint16_t)now_point.y);
-                user_touching = false;
-                open_handwrite_session();
-            }
-            break; /* 未判定：按住等待，不控游標 */
+            break; /* 未進拖曳：按住等待，不控游標 */
         }
 
         /* (3) 還沒 arm，手指移動 = 一般移動滑鼠（原本 handle_pressing_event 的
@@ -3176,6 +3224,24 @@ static void plain_event_cb(lv_event_t *e)
     }
 
     case LV_EVENT_RELEASED:
+        s_edge_swipe_armed = false;
+        if (s_hw_pull_active)
+        {
+            /* 拉出放開:commit 判定交給 follow_end(距離/快甩),跳過 click 判定 */
+            lv_point_t rp;
+            lv_indev_get_point(indev, &rp);
+            hw_pull_follow_end(rp.x - s_edge_start.x);
+            user_touching = false;
+            break;
+        }
+        if (s_pose_dial_touch)
+        {
+            /* 側立圓盤放開=以當下方向 commit(桌面執行);跳過 handle_released 免誤 click */
+            s_pose_dial_touch = false;
+            mouse_dial_pose_commit();
+            user_touching = false;
+            break;
+        }
         dial_hold_cancel();
         if (s_dial_drag)
         {
@@ -3205,8 +3271,16 @@ static void plain_event_cb(lv_event_t *e)
         /* press 被搶（上層 UI 亮出 / 手指滑出）→ 沒有 RELEASED，必須在這裡收尾，否則
            s_hw_hold_armed / s_dial_drag 殘留會讓下次 PRESSING 走錯分支（founder 2026-07-16
            同型教訓）。 */
+        if (s_hw_pull_active)
+            hw_pull_cancel(); /* press 被搶=縮回不開 */
+        if (s_pose_dial_touch)
+        {
+            s_pose_dial_touch = false;
+            mouse_dial_pose_cancel(); /* press 被搶=不 commit,桌面收圓盤 */
+        }
         dial_hold_cancel();
         s_hw_hold_armed = false;
+        s_edge_swipe_armed = false;
         if (s_dial_drag)
         {
             s_dial_drag = false;
@@ -4035,27 +4109,19 @@ void hid_mouse_trigger_close_lift_mic_from_pose(void)
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   手寫模式 (handwriting) —— 2026-07-20 founder 對調:改由「主觸控板按住 500ms 不動
-   + 手腕開始動」進入(上面長按狀態機 arm→open_handwrite_session;原本的側立姿勢
-   讓給圓盤)。進入時手指仍按著=直接繼續第一筆:按住錶面=下筆、手腕在空中寫(筆尖
-   由 bloc 的 gyro 積分器維護,朝上姿軸向,0x1b 串流到手機 ML Kit 辨識+桌面軌跡)、
-   放開=提筆;提筆後 idle(HW_IDLE_END_MS)沒再下筆=寫完,桌面自動送出辨識文字。
+   手寫模式 (handwriting) —— 2026-07-20 founder 三改定案:
+   進入=「畫面右緣向左拉出」:view 跟著手指從右滑進來(觸控機 (0) 分支→hw_pull_begin,
+   之後 hw_view cb 跟手),放開拉超過 1/3 → snap 展開並 commit(送 0x1b start),
+   不足 → snap 縮回(不開)。體感照 app_clock_status_bar 通知列表的拉出(founder 指定)。
+   輸入=**直接在錶面上寫**(hw_view 觸控 cb 把指尖座標餵 bloc_handwrite_feed_point、
+   按=下筆/放=提筆+本地 lv_line 軌跡即畫,畫布=錶面解析度,0x1b 串流到手機 ML Kit
+   辨識+桌面軌跡);結束=提筆後 idle(HW_IDLE_END_MS)沒再下筆,桌面自動送出辨識文字。
    全螢幕 CLICKABLE overlay 天然攔掉主觸控板的拖曳/edge_pan/一般游標;
    gyro→游標 report 由 air_mouse_process 的手寫分支 early-return 擋。
    view 建一次、show/hide 復用(同 lift-mic pattern)。
    ═══════════════════════════════════════════════════════════════════════════ */
-#define HW_ICON_ZOOM 512     /* 中央 ✍ 圖示 2x 原生(64→128px) —— 同 LIFT_MIC_ICON_ZOOM 量級 */
-
-/* ✍ 寫字的手 —— 手寫模式中央圖示(founder:像大麥克風那樣)。資產=resource/images/
-   common/ezip/handwrite_icon.png(64×64 白色透明底,Segoe UI Emoji U+270D 渲染;emoji_*
-   的 LV_IMG_DECLARE 只有宣告沒有連結物,不能用)。 */
-LV_IMG_DECLARE(handwrite_icon);
-/* 虛擬畫布(=0x1b start 的 w/h,非螢幕解析度):2026-07-18 founder 兩輪定調——寬幅給橫寫
-   空間,但別太扁(1200×500 塞進 720 寬的 bar 內建書寫區後高度只剩 ~280px「區塊有點小」)
-   → 1000×600,顯示面積約放大一倍;桌面區塊/ML Kit WritingArea 都吃這組(手錶端只顯示
-   圖示不畫軌跡)。Keep in lockstep with WatchHandwritingSession.DEFAULT_W/H. */
-#define HW_CANVAS_W 1000
-#define HW_CANVAS_H 600
+/* 畫布=錶面解析度(2026-07-20 三改:直接在錶面上寫,觸控座標=筆跡座標;0x1b start
+   帶 LV_HOR_RES×LV_VER_RES,手機 ML Kit WritingArea/桌面書寫區都吃 start 的 w/h 自動適配)。 */
 
 extern lv_obj_t *hid_mouse_ui_host(void);
 extern void motor_pattern_unlocked(void);
@@ -4063,8 +4129,33 @@ extern bool is_at_mouse_mode(void);
 extern bool app_control_get_mouse_mode(void);
 
 static lv_obj_t *s_hw_view = NULL;
-static lv_obj_t *s_hw_icon = NULL;
+static lv_obj_t *s_hw_btn_exit = NULL;  /* 頂部:退出(取消不送出,founder 2026-07-20) */
+static lv_obj_t *s_hw_btn_clear = NULL; /* 底部左:情境鍵——板上有字=清空/沒字=刪除(backspace) */
+static lv_obj_t *s_hw_btn_clear_lbl = NULL; /* 情境鍵的 label(依板況換字) */
+static lv_obj_t *s_hw_btn_next = NULL;  /* 底部中:下個字(定稿+清板) */
+static lv_obj_t *s_hw_btn_enter = NULL; /* 底部右:輸入(送出) */
 static volatile bool s_hw_view_active = false; /* motion thread 讀(姿勢保險收斂) */
+static lv_coord_t s_hw_pull_vx = 0;     /* 最近一 tick 的水平步進(放開 fling 判定,參考 vx<-6) */
+static lv_coord_t s_hw_pull_prev_x = 0;
+
+/* 本地軌跡(2026-07-20 三改加回:手指直寫要看得到筆跡;觸控座標=螢幕座標零映射)。
+   池=每「字」的筆畫(按「下個字」清板重來):20 筆 × 80 點,複雜中文字(15-20+ 筆)
+   不再吃掉前面的筆畫(founder:「筆畫會不見」=舊 8 筆池互吃)。80 點@觸控率足夠
+   單筆 1-2 秒;靜態 RAM 20×80×4B=6.4KB。 */
+#define HW_TRACE_STROKES 20
+#define HW_TRACE_PTS     80
+static lv_obj_t *s_hw_lines[HW_TRACE_STROKES];
+static lv_point_t s_hw_line_pts[HW_TRACE_STROKES][HW_TRACE_PTS];
+static uint16_t s_hw_line_n[HW_TRACE_STROKES];
+static int8_t s_hw_stroke_idx = -1;
+static bool s_hw_local_pen = false;
+
+static void hw_ink_append(const lv_point_t *p);
+static void hw_ink_clear(void);
+static void hw_pull_snap(bool open);
+static void hw_open_commit(void);
+static void close_handwrite_from_pose(void); /* 定義在本段尾:輸入鈕=送出 */
+static void hw_cancel_session(void);         /* 定義在本段尾:退出鈕/離開 app=取消 */
 
 bool hid_mouse_handwrite_active(void)
 {
@@ -4074,12 +4165,115 @@ bool hid_mouse_handwrite_active(void)
 static void hw_view_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
-    /* PRESSED+PRESSING 都當下筆:LVGL 無 PRESS_LOCK、press 每 tick 重 hit-test——
-       從主觸控板按著滑進 overlay 只會收到 PRESSING(無 PRESSED),漏接會「按著卻沒在寫」。 */
+    lv_indev_t *indev = lv_indev_get_act();
+    lv_point_t p = {0, 0};
+    if (indev)
+        lv_indev_get_point(indev, &p);
+
+    /* 直接在錶面上寫(founder 2026-07-20 三改):觸控座標=筆跡,同步畫本地軌跡。
+       PRESSED+PRESSING 都算下筆:LVGL 無 PRESS_LOCK、press 每 tick 重 hit-test。
+       (拉出跟手階段 view 不可點,事件到不了這裡——commit 後才開 CLICKABLE。) */
     if (code == LV_EVENT_PRESSED || code == LV_EVENT_PRESSING)
+    {
+        bloc_handwrite_feed_point((int)p.x, (int)p.y);
         bloc_handwrite_set_pen(true);
+        hw_ink_append(&p);
+    }
     else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+    {
         bloc_handwrite_set_pen(false);
+        s_hw_local_pen = false; /* 下次按下=新一筆 */
+    }
+}
+
+/* 按鈕(founder 2026-07-20:不要自動輸入):頂部退出=取消(不送出);底部下個字=
+   手機定稿當前字+全端清板;底部輸入=結束送出(close 走既有 end 路徑)。
+   按鈕不 bubble,不會誤餵筆跡。 */
+static void hw_btn_next_cb(lv_event_t *e)
+{
+    (void)e;
+    bloc_handwrite_next_char(); /* 送 "n":手機定稿進前綴、桌面清板 */
+    hw_ink_clear();             /* 錶面清板,寫下一個字 */
+}
+
+/* 情境鍵 label:板上有字=「清空」、沒字=「刪除」(founder 2026-07-20 合併)。 */
+static void hw_btn_clear_refresh_label(void)
+{
+    if (s_hw_btn_clear_lbl == NULL)
+        return;
+    lv_label_set_text(s_hw_btn_clear_lbl,
+                      (s_hw_stroke_idx < 0)
+                          ? LV_EXT_STR_GET_BY_KEY(handwrite_delete, "Del")
+                          : LV_EXT_STR_GET_BY_KEY(handwrite_clear, "Clear"));
+}
+
+/* 情境鍵:板上有字=清空(擦掉當前字重寫,送 "c");沒字=刪除(backspace 已定稿
+   最後一字,送 "b")。 */
+static void hw_btn_clear_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_hw_stroke_idx < 0)
+    {
+        bloc_handwrite_backspace();
+    }
+    else
+    {
+        bloc_handwrite_clear();
+        hw_ink_clear();
+    }
+}
+
+static void hw_btn_enter_cb(lv_event_t *e)
+{
+    (void)e;
+    close_handwrite_from_pose(); /* 送 end → 手機 commit → 桌面送出 */
+}
+
+/* 退出=取消 session(不送出),詳 hw_cancel_session。 */
+static void hw_btn_exit_cb(lv_event_t *e)
+{
+    (void)e;
+    hw_cancel_session();
+}
+
+/* 本地軌跡:清空全部筆畫。 */
+static void hw_ink_clear(void)
+{
+    for (int i = 0; i < HW_TRACE_STROKES; i++)
+    {
+        s_hw_line_n[i] = 0;
+        if (s_hw_lines[i])
+            lv_line_set_points(s_hw_lines[i], s_hw_line_pts[i], 0);
+    }
+    s_hw_stroke_idx = -1;
+    s_hw_local_pen = false;
+    hw_btn_clear_refresh_label(); /* 板空了→情境鍵變「刪除」 */
+}
+
+/* 本地軌跡:追加一點(觸控座標=螢幕座標,無需映射)。 */
+static void hw_ink_append(const lv_point_t *p)
+{
+    if (!s_hw_local_pen)
+    {
+        bool was_empty = (s_hw_stroke_idx < 0);
+        if (s_hw_stroke_idx < HW_TRACE_STROKES - 1)
+            s_hw_stroke_idx++;
+        s_hw_line_n[s_hw_stroke_idx] = 0;
+        s_hw_local_pen = true;
+        if (was_empty)
+            hw_btn_clear_refresh_label(); /* 開始寫字→情境鍵變「清空」 */
+    }
+    int idx = s_hw_stroke_idx;
+    uint16_t n = s_hw_line_n[idx];
+    if (n < HW_TRACE_PTS &&
+        (n == 0 || s_hw_line_pts[idx][n - 1].x != p->x ||
+         s_hw_line_pts[idx][n - 1].y != p->y))
+    {
+        s_hw_line_pts[idx][n] = *p;
+        s_hw_line_n[idx] = (uint16_t)(n + 1);
+        if (s_hw_lines[idx])
+            lv_line_set_points(s_hw_lines[idx], s_hw_line_pts[idx], s_hw_line_n[idx]);
+    }
 }
 
 static void ensure_hw_view(void)
@@ -4093,30 +4287,109 @@ static void ensure_hw_view(void)
     lv_obj_remove_style_all(s_hw_view);
     lv_obj_set_size(s_hw_view, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_pos(s_hw_view, 0, 0);
-    /* founder 定稿:手錶端不畫本地軌跡/圓點,跟舉起語音同款 — 背景變暗+中央圖示就好
-       (軌跡在桌面看)。bg 調成與 lift-mic 相同的 LV_OPA_40。 */
+    /* 暗背景+中央圖示(lift-mic 同款);2026-07-20 三改起加回本地軌跡(真手指書寫,
+       要看得到自己寫什麼)。用不透明黑:view 會跟手滑動,半透明疊在滑鼠 UI 上會透出。 */
     lv_obj_set_style_bg_color(s_hw_view, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(s_hw_view, LV_OPA_40, 0);
+    lv_obj_set_style_bg_opa(s_hw_view, LV_OPA_COVER, 0);
     lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_event_cb(s_hw_view, hw_view_event_cb, LV_EVENT_ALL, NULL);
 
-    /* 中央 ✍ 圖示。照 ensure_lift_mic_view 的 zoom 慣例:pivot+OVERFLOW_VISIBLE
-       缺一不可(lv_img zoom 的裁切雷)。 */
-    s_hw_icon = lv_img_create(s_hw_view);
-    lv_img_set_src(s_hw_icon, &handwrite_icon);
-    lv_img_set_pivot(s_hw_icon, handwrite_icon.header.w / 2, handwrite_icon.header.h / 2);
-    lv_obj_add_flag(s_hw_icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-    lv_img_set_zoom(s_hw_icon, HW_ICON_ZOOM);
-    lv_obj_align(s_hw_icon, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_clear_flag(s_hw_icon, LV_OBJ_FLAG_CLICKABLE);
+    /* 頂部退出鈕(取消不送出) */
+    s_hw_btn_exit = lv_btn_create(s_hw_view);
+    lv_obj_set_size(s_hw_btn_exit, 110, 44);
+    lv_obj_align(s_hw_btn_exit, LV_ALIGN_TOP_MID, 0, 14);
+    lv_obj_add_event_cb(s_hw_btn_exit, hw_btn_exit_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *lbl_exit = lv_label_create(s_hw_btn_exit);
+    lv_label_set_text(lbl_exit, LV_EXT_STR_GET_BY_KEY(handwrite_exit, "Exit"));
+    lv_obj_center(lbl_exit);
+
+    /* 本地軌跡線(建立在字樣之後=畫在其上層) */
+    for (int i = 0; i < HW_TRACE_STROKES; i++)
+    {
+        s_hw_lines[i] = lv_line_create(s_hw_view);
+        lv_obj_set_style_line_width(s_hw_lines[i], 4, 0);
+        lv_obj_set_style_line_color(s_hw_lines[i], lv_color_hex(0xA6D3E6), 0);
+        lv_obj_set_style_line_rounded(s_hw_lines[i], true, 0);
+    }
+
+    /* 底部按鈕列:清空|下個字|輸入(founder:不要自動輸入+可擦掉重寫)。三顆 96 寬
+       要上移到 y≈-36(圓螢幕該高度弦寬~312px 才放得下)。按鈕自己吃 press,
+       不會 bubble 進筆跡。 */
+    s_hw_btn_clear = lv_btn_create(s_hw_view);
+    lv_obj_set_size(s_hw_btn_clear, 96, 48);
+    lv_obj_align(s_hw_btn_clear, LV_ALIGN_BOTTOM_MID, -102, -36);
+    lv_obj_add_event_cb(s_hw_btn_clear, hw_btn_clear_cb, LV_EVENT_CLICKED, NULL);
+    s_hw_btn_clear_lbl = lv_label_create(s_hw_btn_clear);
+    hw_btn_clear_refresh_label(); /* 板上有字=清空/沒字=刪除 */
+    lv_obj_center(s_hw_btn_clear_lbl);
+
+    s_hw_btn_next = lv_btn_create(s_hw_view);
+    lv_obj_set_size(s_hw_btn_next, 96, 48);
+    lv_obj_align(s_hw_btn_next, LV_ALIGN_BOTTOM_MID, 0, -36);
+    lv_obj_add_event_cb(s_hw_btn_next, hw_btn_next_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *lbl_next = lv_label_create(s_hw_btn_next);
+    lv_label_set_text(lbl_next, LV_EXT_STR_GET_BY_KEY(handwrite_next, "Next"));
+    lv_obj_center(lbl_next);
+
+    s_hw_btn_enter = lv_btn_create(s_hw_view);
+    lv_obj_set_size(s_hw_btn_enter, 96, 48);
+    lv_obj_align(s_hw_btn_enter, LV_ALIGN_BOTTOM_MID, 102, -36);
+    lv_obj_add_event_cb(s_hw_btn_enter, hw_btn_enter_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *lbl_enter = lv_label_create(s_hw_btn_enter);
+    lv_label_set_text(lbl_enter, LV_EXT_STR_GET_BY_KEY(handwrite_enter, "Enter"));
+    lv_obj_center(lbl_enter);
 }
 
-/* GUI thread(觸控狀態機的 armed 分支呼叫):進入手寫模式。 */
-static void open_handwrite_session(void)
+/* snap 動畫完成:展開→正式開啟 session。 */
+static void hw_pull_anim_open_done(lv_anim_t *a)
 {
-    if (s_hw_view_active)
+    (void)a;
+    hw_open_commit();
+}
+
+static void hw_pull_anim_cancel_done(lv_anim_t *a)
+{
+    (void)a;
+    if (s_hw_view)
+    {
+        lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_x(s_hw_view, 0);
+    }
+}
+
+static void hw_pull_anim_exec(void *obj, int32_t v)
+{
+    lv_obj_set_x((lv_obj_t *)obj, (lv_coord_t)v);
+}
+
+/* 放開後 snap:open=滑到 0 並 commit、!open=滑回右緣並藏。 */
+static void hw_pull_snap(bool open)
+{
+    if (s_hw_view == NULL)
+        return;
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_hw_view);
+    lv_anim_set_exec_cb(&a, hw_pull_anim_exec);
+    lv_anim_set_values(&a, lv_obj_get_x(s_hw_view), open ? 0 : LV_HOR_RES);
+    lv_anim_set_time(&a, 200);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_ready_cb(&a, open ? hw_pull_anim_open_done
+                                  : hw_pull_anim_cancel_done);
+    lv_anim_start(&a);
+}
+
+/* ── 右緣拉出跟手三段式(照 app_clock_status_bar 的 clock_main_*_follow_begin/
+   update/end,founder 指定體感,方向改右→左):press 由觸控機持有並轉發位移
+   (sole writer 無抖動;view 拉出期間不可點,press 不會被 hit-test 搶走),放開以
+   「拉過 1/4 螢幕 或 快甩(vx≤-6/tick)」commit,set-tile 的 snap 用 lv_anim 等價。 ── */
+
+/* begin:view 於右緣現形(關 CLICKABLE)並定位到當下已拉距離。尚未 commit(不送 start)。 */
+static void hw_pull_begin(lv_coord_t dx0, lv_coord_t finger_x)
+{
+    if (s_hw_view_active || s_hw_pull_active)
         return;
     if (!(is_at_mouse_mode() || app_control_get_mouse_mode()))
         return;
@@ -4125,33 +4398,106 @@ static void open_handwrite_session(void)
         return; /* 語音輸入中不搶 */
     dial_drag_state_reset(); /* 清 hold timer/拖曳/側立圓盤殘留 */
     ensure_hw_view();
+    lv_anim_del(s_hw_view, NULL); /* 殘留 snap 動畫 */
+    hw_ink_clear();
+    lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_CLICKABLE); /* 拉出期間 press 留在觸控板 */
+    lv_coord_t x = LV_HOR_RES + dx0; /* dx0<0(向左拉)→x<466 */
+    if (x < 0) x = 0;
+    if (x > LV_HOR_RES) x = LV_HOR_RES;
+    lv_obj_set_x(s_hw_view, x);
     lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(s_hw_view);
+    s_hw_pull_vx = 0;
+    s_hw_pull_prev_x = finger_x;
+    s_hw_pull_active = true;
+}
+
+/* update:每 PRESSING 轉發累積位移(dx<0=向左),並記單 tick 步進當 fling 依據。 */
+static void hw_pull_follow_update(lv_coord_t dx, lv_coord_t finger_x)
+{
+    if (!s_hw_pull_active || s_hw_view == NULL)
+        return;
+    s_hw_pull_vx = finger_x - s_hw_pull_prev_x;
+    s_hw_pull_prev_x = finger_x;
+    lv_coord_t x = LV_HOR_RES + dx;
+    if (x < 0) x = 0;
+    if (x > LV_HOR_RES) x = LV_HOR_RES;
+    lv_obj_set_x(s_hw_view, x);
+}
+
+/* end:放開 commit 判定=拉過 1/4 螢幕 或 快甩(參考 applist_follow_end 的 dx≤-1/4 || vx<-6)。 */
+static void hw_pull_follow_end(lv_coord_t dx)
+{
+    if (!s_hw_pull_active)
+        return;
+    s_hw_pull_active = false;
+    hw_pull_snap(dx <= -(LV_HOR_RES / 4) || s_hw_pull_vx <= -6);
+}
+
+/* press 被搶(PRESS_LOST):縮回不 commit。 */
+static void hw_pull_cancel(void)
+{
+    if (!s_hw_pull_active)
+        return;
+    s_hw_pull_active = false;
+    hw_pull_snap(false);
+}
+
+/* snap 展開完成:正式開啟(開 CLICKABLE 接筆跡、送 0x1b start,桌面書寫區現形)。 */
+static void hw_open_commit(void)
+{
+    if (s_hw_view_active)
+        return;
+    lv_obj_set_x(s_hw_view, 0);
+    lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_CLICKABLE);
     s_hw_view_active = true;
-    bloc_handwrite_begin(HW_CANVAS_W, HW_CANVAS_H); /* 送 0x1b start(寬幅虛擬畫布) */
-    motor_pattern_unlocked(); /* 短震=手寫就緒(同舉起語音的觸覺回饋) */
+    bloc_handwrite_begin(LV_HOR_RES, LV_VER_RES); /* 送 0x1b start(畫布=錶面解析度) */
+    motor_pattern_unlocked(); /* 短震=手寫就緒 */
     LOG_I("[handwrite] open view canvas=%dx%d", (int)LV_HOR_RES, (int)LV_VER_RES);
 }
 
-/* GUI thread:結束手寫模式(轉回朝上/保險姿態/離開 app 清殘留)。冪等。 */
-void close_handwrite_from_pose(void)
+/* GUI thread:「輸入」鈕=送出並收掉手寫。冪等。
+   (2026-07-20:姿勢保險已拆,這裡只剩送出這一個入口——不會再有自動執行。) */
+static void close_handwrite_from_pose(void)
 {
     if (!s_hw_view_active)
         return;
     s_hw_view_active = false;
-    bloc_handwrite_end(); /* 送 pending "u"+"end"(桌面收 overlay、手機 commit 辨識) */
+    bloc_handwrite_end(); /* 旗標交 motion thread 送 pending "u"+"end"(手機 commit 辨識) */
     if (s_hw_view)
+    {
+        lv_anim_del(s_hw_view, NULL);
         lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
-    LOG_I("[handwrite] close view");
+        lv_obj_set_x(s_hw_view, 0);
+    }
+    LOG_I("[handwrite] close view (submit)");
 }
 
-/* motion thread → LVGL thread 轉發(同 lift-mic trigger pattern)。
-   close 來源:bloc idle 判定、姿勢保險(VERTICAL/SIDE/FACE_SIDE)。 */
-void hid_mouse_trigger_close_handwrite_from_pose(void)
+/* GUI thread:取消收掉手寫(退出鈕/離開或暫停 app 清殘留)。**不送出**。冪等。 */
+static void hw_cancel_session(void)
 {
-    lvgl_msg_t msg;
-    msg.type = LVGL_MSG_TYPE_MOUSE_CLOSE_HANDWRITE;
-    lvgl_send_msg(msg);
+    if (s_hw_pull_active)
+    {
+        /* 拉到一半被收:直接取消,不送任何 frame(session 未開) */
+        s_hw_pull_active = false;
+        if (s_hw_view)
+        {
+            lv_anim_del(s_hw_view, NULL);
+            lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_x(s_hw_view, 0);
+        }
+    }
+    if (!s_hw_view_active)
+        return;
+    s_hw_view_active = false;
+    bloc_handwrite_cancel(); /* 旗標交 motion thread 送 "x"(手機清狀態+收 skaibar) */
+    if (s_hw_view)
+    {
+        lv_anim_del(s_hw_view, NULL);
+        lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_x(s_hw_view, 0);
+    }
+    LOG_I("[handwrite] close view (cancel)");
 }
 
 // 關 mic（不清空 input bar、不貼上）
@@ -7308,7 +7654,7 @@ static void on_resume(void)
  */
 static void on_pause(void)
 {
-    close_handwrite_from_pose(); /* 手寫殘留:送 end 收桌面 overlay(冪等) */
+    hw_cancel_session(); /* 手寫殘留:取消(不送出)收乾淨(冪等) */
     dial_drag_state_reset(); /* 暫停 app 先清 dial/拖曳殘留,免恢復後卡 */
     setting_provider.set_power_save_mode(1);
     switch_watch_motion_control_mode(false, false);
@@ -7320,10 +7666,16 @@ static void on_pause(void)
  */
 void hid_mouse_destroy(void)
 {
-    close_handwrite_from_pose(); /* 手寫殘留:送 end 收桌面 overlay(離開 app 清殘留) */
+    hw_cancel_session(); /* 手寫殘留:取消(不送出)收乾淨(離開 app 清殘留) */
     /* view 是 scr 子物件、screen teardown 一併釋放——只清指標,下次 ensure 重建 */
     s_hw_view = NULL;
-    s_hw_icon = NULL;
+    s_hw_btn_exit = NULL;
+    s_hw_btn_clear = NULL;
+    s_hw_btn_clear_lbl = NULL;
+    s_hw_btn_next = NULL;
+    s_hw_btn_enter = NULL;
+    for (int i = 0; i < HW_TRACE_STROKES; i++)
+        s_hw_lines[i] = NULL;
     dial_drag_state_reset(); /* 離開 app 先清 dial/拖曳/timer 殘留(founder 2026-07-17 卡住根因) */
     app_control_set_mouse_mode(false);
     skaiwatch_ble_set_performance(BLE_PERF_SLOW);

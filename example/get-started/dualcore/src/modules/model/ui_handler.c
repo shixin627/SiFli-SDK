@@ -84,7 +84,6 @@ LV_IMG_DECLARE(instagram);
 extern void open_v2t_mic(void);
 extern void open_skaibar_from_pose(void);
 extern void close_lift_mic_from_pose(void);
-extern void close_handwrite_from_pose(void);
 extern void media_title_apply_pending(void);
 extern void media_state_apply_pending(void);
 extern void update_ai_process_indicator_text(app_gesture_indicator_t *indicator,
@@ -540,9 +539,6 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         close_lift_mic_from_pose();
         break;
 
-    case LVGL_MSG_TYPE_MOUSE_CLOSE_HANDWRITE:
-        close_handwrite_from_pose();
-        break;
 
     /* KE_EVT2→GUI 媒體轉送(STKOF 治本):在 GUI thread 消化單槽 raw payload。 */
     case LVGL_MSG_TYPE_MEDIA_TITLE_RAW:
