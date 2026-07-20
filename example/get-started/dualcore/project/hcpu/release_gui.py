@@ -9,8 +9,9 @@ renders Unicode via system fonts and ignores the console code page entirely, so
 this side-steps the whole encoding problem.
 
 It is a thin front-end: all *writes* still go through set_build_mode.py (the
-single source of truth) via subprocess, so the GUI and CLI can never disagree.
-Reads (current mode / version) reuse set_build_mode's helpers directly.
+single source of truth). The GUI's DEV action keeps the production hardware
+pin/board values while applying the rest of the DEV profile. Reads (current
+mode / version) reuse set_build_mode's helpers directly.
 
 Run:  python release_gui.py        (or double-click release_gui.bat)
 Self-test (headless):  python release_gui.py --selftest
@@ -131,6 +132,21 @@ def _child_env():
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     return env
+
+
+def apply_gui_dev_profile():
+    """Apply DEV settings without reverting production hardware values."""
+    original_bsp = sbm.BSP_DEFINES["dev"]
+    original_pins = sbm.LCPU_PINS["dev"]
+    sbm.BSP_DEFINES["dev"] = dict(
+        original_bsp, CUSTOMER_BOARD_VER="BOARD_VER_29")
+    sbm.LCPU_PINS["dev"] = dict(
+        original_pins, GH3018_POW_PIN="0", BMI270_POW_PIN="0")
+    try:
+        sbm.apply_profile("dev", dry_run=False)
+    finally:
+        sbm.BSP_DEFINES["dev"] = original_bsp
+        sbm.LCPU_PINS["dev"] = original_pins
 
 
 # --- self-test (headless, no Tk window) ---------------------------------
@@ -262,7 +278,7 @@ def run_gui():
             dev.pack(fill="x", **pad)
             self.btn_dev = ttk.Button(dev, text="切換到開發模式", command=self.do_dev)
             self.btn_dev.pack(side="left", padx=6, pady=6)
-            ttk.Label(dev, text="(還原 shell / log / 心率‧IMU 電源腳位;版號不動)",
+            ttk.Label(dev, text="(還原 shell / log；心率‧IMU 電源腳位與板號維持量產設定)",
                       font=UI_FONT, foreground="#666").pack(side="left", padx=6)
 
             # --- chip / board row ---
@@ -415,7 +431,7 @@ def run_gui():
 
         def _w_dev(self):
             self._emit("=== 切換回開發模式 ===")
-            rc = self._stream([PY, "set_build_mode.py", "dev"])
+            rc = self._stream([PY, "release_gui.py", "--apply-dev-profile"])
             self._emit("完成。" if rc == 0 else "切換失敗(結束碼 %d)。" % rc)
             self.q.put((SIG_REFRESH, None))
             self.q.put((SIG_DONE, None))
@@ -536,6 +552,13 @@ def run_gui():
 
 
 def main():
+    if "--apply-dev-profile" in sys.argv:
+        try:
+            apply_gui_dev_profile()
+        except (sbm.EditError, FileNotFoundError) as e:
+            sys.stderr.write("切換開發模式失敗: %s\n" % e)
+            return 1
+        return 0
     if "--selftest" in sys.argv:
         return selftest()
     try:
