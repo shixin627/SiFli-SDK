@@ -969,11 +969,11 @@ extern bool get_hid_mouse_handfree_mode(void);
 extern bool hid_mouse_top_fly_active(void);
 
 /* ─────────────────────────────────────────────────────────────────────────
-   主觸控板長按方向盤 (dial) —— 頂部 logo「按住=飛鼠」的姊妹功能。
-   手指按住主觸控板不動 ~250ms（hid_mouse.c 的手勢狀態機開啟）後，air-mouse 的
-   位移 delta 不再移動游標，而是「累積成一個向量」：向量角度 → 8 向 sector、
-   向量長度 → 力度 mag。節流上傳 KEY_DIAL_DIR(0x1a)，桌面以游標為中心畫圓盤、
-   對應扇形高亮。放開時以當下 sector commit。
+   側立方向盤 (pose-dial) —— 2026-07-20 founder 對調:圓盤改由「側立手錶」(錶面轉向
+   側邊,原本手寫的姿勢)觸發;主觸控板長按讓給手寫。無手錶 UI:手腕比劃方向(側立
+   軸向),向量角度 → 8 向 sector、向量長度 → 力度 mag,節流上傳 KEY_DIAL_DIR(0x1a),
+   桌面以游標為中心畫圓盤、對應扇形高亮。「轉回朝上」穩定=以當下 sector commit;
+   立起/垂下=取消。wire (start/update/end{dir,mag}) 與觸控時代完全相同,桌面零改動。
    dir 0=上，順時針 1=右上 2=右 3=右下 4=下 5=左下 6=左 7=左上；len<deadzone → -1。
    ───────────────────────────────────────────────────────────────────────── */
 #define DIAL_DEADZONE_UNITS   40.0f  /* 累積向量長度 < 此 = 中心 deadzone（不選）*/
@@ -985,13 +985,26 @@ extern bool hid_mouse_top_fly_active(void);
 #define DIAL_WRIST_HOLD_MS      200  /* 手腕停止後仍視為「比方向中」這麼久，涵蓋手指慣性殘留位移，
                                         免得手腕轉到定位剛停的瞬間被手指殘留誤判成拖曳 */
 
+/* 側立圓盤軸向:gyro(rad/s)直接線性累積(無游標加速曲線),量級沿用 HW_GAIN 手感。
+   符號=側立手寫 pen 映射(x←-gx / y←+gz,founder 真機定調)再整組取負——朝上圓盤實測
+   「pointing 與游標移動相反」(mouse_dial_accumulate 的取負校正),側立沿用同慣例。
+   反了就翻這兩個 SIGN(戴錶看 [dial-pose] 1Hz log 對方向)。 */
+#define DIAL_POSE_GAIN      7.0f
+#define DIAL_POSE_SIGN_X  (+1.0f)  /* 對 gyro_x → ax(螢幕 x 右+) */
+#define DIAL_POSE_SIGN_Y  (-1.0f)  /* 對 gyro_z → ay(螢幕 y 下+) */
+#define DIAL_POSE_FREEZE_GX 0.60f  /* |gravity.x| 掉出此值=正在離開側立→凍結向量,
+                                      退出旋轉的過渡角速度不污染已比好的方向 */
+
 static volatile bool s_dial_active = false;
+static volatile bool s_dial_pose_active = false; /* 側立圓盤 session(motion thread 姿勢機開關) */
 static volatile rt_tick_t s_dial_wrist_last_move = 0; /* 最後一次手腕明顯轉動的 tick(gyro 判定用) */
 static bool  s_dial_reset_pending = false;
 static float s_dial_ax = 0.0f, s_dial_ay = 0.0f; /* 累積向量：螢幕座標 x 右+ / y 下+ */
 static int   s_dial_cur_dir = -1;
 static int   s_dial_cur_mag = 0;
 static rt_tick_t s_dial_last_send = 0;
+static rt_tick_t s_dial_pose_faceup_since = 0;
+static rt_tick_t s_dial_pose_last_dbg = 0;
 
 /* 累積向量 (ax,ay)（螢幕座標）→ 8 向 sector + mag(0..1000)。桌面圓盤扇形用同一 dir。 */
 static int dial_vector_to_sector(float ax, float ay, int *mag_out)
@@ -1013,24 +1026,16 @@ static int dial_vector_to_sector(float ax, float ay, int *mag_out)
     return ((sector % 8) + 8) % 8;
 }
 
-/* air_mouse_process 每幀在 dial 模式呼叫：累積 delta、更新當前 sector、節流送 update。 */
-static void mouse_dial_accumulate(float dx, float dy)
+/* 累積向量 → clamp + sector 更新 + 節流送 update。側立累積路徑用。 */
+static void mouse_dial_vector_refresh(void)
 {
-    /* 手腕角速度(air_mouse delta)夠大＝正在比方向；記時刻，供 hid_mouse 拖曳判定以 gyro
-       區分手腕/手指(取大小、與下面取負校正無關)。 */
-    if (fabsf(dx) + fabsf(dy) >= DIAL_WRIST_MOVE_UNITS)
-        s_dial_wrist_last_move = rt_tick_get();
     if (s_dial_reset_pending)
     {
         s_dial_ax = 0.0f; s_dial_ay = 0.0f;
         s_dial_cur_dir = -1; s_dial_cur_mag = 0;
         s_dial_reset_pending = false;
     }
-    /* 取負校正：air_mouse_algorithm 的 delta 用於「移游標」時方向正確，但當成「方向盤
-       指向向量」累積時，上下左右皆與手腕實際指向相反（2026-07-16 真機驗出），故取負。 */
-    s_dial_ax -= dx;
-    s_dial_ay -= dy;
-    /* clamp 累積向量長度，避免長按久了積分無限增長、放開後方向遲鈍 */
+    /* clamp 累積向量長度，避免比劃久了積分無限增長、commit 時方向遲鈍 */
     float len = sqrtf(s_dial_ax * s_dial_ax + s_dial_ay * s_dial_ay);
     if (len > DIAL_MAX_UNITS)
     {
@@ -1050,13 +1055,14 @@ static void mouse_dial_accumulate(float dx, float dy)
     }
 }
 
-/* hid_mouse.c 的觸控板長按狀態機呼叫這三個（extern）。 */
+/* start/end/cancel:桌面 wire 的三個階段。start 由側立姿勢機(mouse_dial_pose_begin)呼叫;
+   end/cancel 也給 hid_mouse.c 的殘留清理(dial_drag_state_reset)用(extern)。 */
 void mouse_dial_start(void)
 {
     s_dial_reset_pending = true;
     s_dial_active = true;
-    s_dial_cur_dir = -1;        /* 立即清方向,免 mouse_dial_has_direction 讀到上次殘留(鎖圓盤判定用) */
-    s_dial_wrist_last_move = 0; /* 重置手腕活動，開場先當靜止(手指還沒滑、圓盤基準在起點) */
+    s_dial_cur_dir = -1;
+    s_dial_wrist_last_move = 0; /* 重置手腕活動,開場先當靜止 */
     s_dial_last_send = 0; /* 讓開場那一幀的 update 立即送出 */
     extern bool commu_send_dial_dir(const char *phase, int dir, int mag);
     commu_send_dial_dir("start", -1, 0);
@@ -1065,14 +1071,16 @@ void mouse_dial_end(void)
 {
     if (!s_dial_active) return;
     s_dial_active = false;
+    s_dial_pose_active = false;
     extern bool commu_send_dial_dir(const char *phase, int dir, int mag);
     commu_send_dial_dir("end", s_dial_cur_dir, s_dial_cur_mag);
 }
-/* 取消 dial（不 commit 方向）——手指改成拖曳物件時用：桌面收 dir=-1 就 hide 圓盤。 */
+/* 取消 dial（不 commit 方向）：桌面收 dir=-1 就 hide 圓盤。 */
 void mouse_dial_cancel(void)
 {
     if (!s_dial_active) return;
     s_dial_active = false;
+    s_dial_pose_active = false;
     extern bool commu_send_dial_dir(const char *phase, int dir, int mag);
     commu_send_dial_dir("end", -1, 0);
 }
@@ -1087,34 +1095,27 @@ bool mouse_dial_wrist_moving(void)
            < rt_tick_from_millisecond(DIAL_WRIST_HOLD_MS);
 }
 
-/* hid_mouse.c 鎖定用：圓盤是否已累積出明確方向(非中心 deadzone)。手腕一轉出方向就鎖圓盤，
-   本次長按之後手指連動/漂移再多也不誤切拖曳(founder 2026-07-17 只動手腕叫圓盤卻變長按)。 */
-bool mouse_dial_has_direction(void)
-{
-    return s_dial_cur_dir >= 0;
-}
-
 /* ─────────────────────────────────────────────────────────────────────────
-   側立手寫 (face-side handwriting)：滑鼠 app 內錶面轉向側邊(重力 ±X 穩定 ~300ms)
-   進入(姿勢機邊緣觸發→hid_mouse 開 view→bloc_handwrite_begin)。按住錶面=下筆
+   手寫 (handwriting) —— 2026-07-20 founder 對調:改由「主觸控板按住 500ms 不動+手腕
+   開始動」觸發(原本圓盤的長按;側立姿勢讓給圓盤),寫字姿=正常戴姿(錶面朝上)。
+   進入(hid_mouse 觸控狀態機 arm→開 view→bloc_handwrite_begin)。按住錶面=下筆
    (hid_mouse 觸控 cb 餵 set_pen)、手腕空中寫:gyro 線性積分成虛擬畫布筆尖(無游標
    加速曲線——加速會扭曲字形),0x1b 串流:下筆"d"/筆點"m"批次/提筆"u"/懸浮"h"低頻。
-   軸向:側立時水平筆劃=繞 X(此姿勢的鉛直軸)、鉛直筆劃=繞 Z(面法線,現為水平橫軸)
-   —— 與飛鼠 (x=上下、z=左右) 對調。HW_SIGN_* 正負號待真機鎖定(founder 測一次,
-   [handwrite] log 印 gyro/pos 對出方向後改常數)。
-   退出:gravity.z > HW_EXIT_FACE_UP_G 持續 HW_EXIT_FACE_UP_MS(=轉回朝上)。不能用
-   「離開側立幾何」當退出——空中寫字手臂大幅擺動,重力向量會短暫掃過各種角度,
-   中途就把模式砍掉;「明確回到朝上且穩定」才是使用者要結束的訊號(spec 亦如此)。
+   軸向:朝上姿與游標同款(air_mouse_algorithm deltaX=-gz、deltaY=-gx)——筆往游標
+   會動的方向走,水平=繞 Z、鉛直=繞 X,皆取負。
+   結束:提筆後 HW_IDLE_END_MS 沒再下筆=寫完→自動收掉送出(寫字姿已是朝上,原
+   「轉回朝上」退出不再適用);另有 VERTICAL/SIDE/FACE_SIDE 姿勢保險收斂。
    ───────────────────────────────────────────────────────────────────────── */
 #define HW_GAIN            7.0f   /* rad/s(每 sample)→畫布 px。18 太快(founder 2026-07-18:
                                      「移動一點點畫布上就很遠」)→降至 7;再調就動這個常數 */
 #define HW_DEADZONE_RADS   0.02f  /* 靜置 gyro 雜訊死區,防筆尖漂移 */
-#define HW_SIGN_X          (-1.0f) /* 水平筆劃符號(2026-07-18 founder 真機驗:左右正確) */
-#define HW_SIGN_Y          (+1.0f) /* 鉛直筆劃符號(2026-07-18 founder 真機驗:-1 上下相反→翻正) */
+#define HW_SIGN_X          (-1.0f) /* 對 gyro_z(水平筆劃)。游標映射同款取負(2026-07-20 對調) */
+#define HW_SIGN_Y          (-1.0f) /* 對 gyro_x(鉛直筆劃)。同上;反了翻常數看 [handwrite] log */
 #define HW_FLUSH_MS        40     /* 筆點批次上傳節流(~25Hz) */
 #define HW_BATCH_MAX       6
 #define HW_HOVER_MS        120    /* 提筆時筆尖位置低頻上傳(桌面畫 hover 點) */
-#define HW_EXIT_FACE_UP_G  0.80f
+#define HW_IDLE_END_MS     2500   /* 提筆後這麼久沒再下筆=寫完(founder 真機再調) */
+#define HW_EXIT_FACE_UP_G  0.80f  /* 「轉回朝上」判定——現由側立圓盤 commit 沿用(手寫已改 idle 結束) */
 #define HW_EXIT_FACE_UP_MS 400
 
 static volatile bool s_hw_active = false;
@@ -1127,7 +1128,8 @@ static int s_hw_hover_x = -1, s_hw_hover_y = -1;
 static int16_t s_hw_batch[HW_BATCH_MAX][2];
 static int s_hw_batch_n = 0;
 static rt_tick_t s_hw_last_flush = 0, s_hw_last_hover = 0, s_hw_last_dbg = 0;
-static rt_tick_t s_hw_faceup_since = 0;
+static rt_tick_t s_hw_last_pen_activity = 0; /* 最後一次 pen down 的 tick(idle 結束判定) */
+static bool s_hw_had_stroke = false;         /* 本 session 是否寫過至少一筆 */
 
 bool bloc_handwrite_active(void)
 {
@@ -1150,16 +1152,14 @@ void bloc_handwrite_begin(int canvas_w, int canvas_h)
     s_hw_batch_n = 0;
     s_hw_last_sent_x = s_hw_last_sent_y = -1;
     s_hw_hover_x = s_hw_hover_y = -1;
-    s_hw_faceup_since = 0;
+    s_hw_had_stroke = false;
+    s_hw_last_pen_activity = rt_tick_get();
     s_hw_last_flush = s_hw_last_hover = s_hw_last_dbg = rt_tick_get();
     char json[48];
     rt_snprintf(json, sizeof(json), "{\"ph\":\"start\",\"w\":%d,\"h\":%d}", s_hw_w, s_hw_h);
     extern bool commu_send_handwrite(const char *json);
     commu_send_handwrite(json);
-    /* gx100:進入當下的 gravity.x×100 —— founder 真機測一次即可從 log 鎖定「朝左」
-       是正還是負,再把姿勢判定收斂到單側符號。 */
-    LOG_I("[handwrite] begin %dx%d gx100=%d", s_hw_w, s_hw_h,
-          (int)(watch_sensor.motion_data.gravity.x * 100.0f));
+    LOG_I("[handwrite] begin %dx%d", s_hw_w, s_hw_h);
     s_hw_active = true; /* 最後才開:motion thread 看到 active 時上面狀態已就緒 */
 }
 
@@ -1208,36 +1208,32 @@ void bloc_handwrite_end(void)
     LOG_I("[handwrite] end");
 }
 
-/* motion thread(air_mouse_process 每 sample 轉入):積分筆尖+串流+退出判定。 */
+/* motion thread(air_mouse_process 每 sample 轉入):積分筆尖+串流+idle 結束判定。 */
 static void handwrite_motion_process(float gyro_x, float gyro_z)
 {
     rt_tick_t now = rt_tick_get();
-    /* 退出:轉回朝上且穩定 */
-    float gz = watch_sensor.motion_data.gravity.z;
-    if (gz > HW_EXIT_FACE_UP_G)
+    /* 結束:寫過至少一筆且提筆後 HW_IDLE_END_MS 沒再下筆=寫完。close 走 GUI msg,
+       抵達前這裡還會被叫幾個 sample——清 had_stroke 當 latch 防重複觸發。 */
+    if (s_hw_pen_down)
     {
-        if (s_hw_faceup_since == 0)
-        {
-            s_hw_faceup_since = now;
-        }
-        else if (now - s_hw_faceup_since >=
-                 rt_tick_from_millisecond(HW_EXIT_FACE_UP_MS))
-        {
-            s_hw_faceup_since = 0;
-            extern void hid_mouse_trigger_close_handwrite_from_pose(void);
-            hid_mouse_trigger_close_handwrite_from_pose();
-            return;
-        }
+        s_hw_last_pen_activity = now;
+        s_hw_had_stroke = true;
     }
-    else
+    else if (s_hw_had_stroke &&
+             now - s_hw_last_pen_activity >=
+                 rt_tick_from_millisecond(HW_IDLE_END_MS))
     {
-        s_hw_faceup_since = 0;
+        s_hw_had_stroke = false;
+        extern void hid_mouse_trigger_close_handwrite_from_pose(void);
+        hid_mouse_trigger_close_handwrite_from_pose();
+        return;
     }
 
+    /* 朝上姿軸向:x=繞z、y=繞x(游標映射同款,皆取負——HW_SIGN 常數) */
     float rx = (fabsf(gyro_x) < HW_DEADZONE_RADS) ? 0.0f : gyro_x;
     float rz = (fabsf(gyro_z) < HW_DEADZONE_RADS) ? 0.0f : gyro_z;
-    s_hw_x += HW_SIGN_X * rx * HW_GAIN;
-    s_hw_y += HW_SIGN_Y * rz * HW_GAIN;
+    s_hw_x += HW_SIGN_X * rz * HW_GAIN;
+    s_hw_y += HW_SIGN_Y * rx * HW_GAIN;
     if (s_hw_x < 0) s_hw_x = 0;
     if (s_hw_x > (float)s_hw_w) s_hw_x = (float)s_hw_w;
     if (s_hw_y < 0) s_hw_y = 0;
@@ -1297,6 +1293,81 @@ static void handwrite_motion_process(float gyro_x, float gyro_z)
     s_hw_prev_pen = pen;
 }
 
+/* ── 側立圓盤 session(motion thread;set_gravity_position 姿勢邊緣呼叫;全檔內私有) ── */
+static void mouse_dial_pose_begin(void)
+{
+    if (s_dial_pose_active || s_hw_active)
+        return;
+    mouse_dial_start(); /* 送 start(桌面圓盤現形)+清向量(reset_pending) */
+    s_dial_pose_active = true;
+    s_dial_pose_faceup_since = 0;
+    s_dial_pose_last_dbg = rt_tick_get();
+    motor_pattern_unlocked(); /* 短震=圓盤就緒(側立無手錶 UI,觸覺當回饋) */
+    LOG_I("[dial-pose] begin gx100=%d",
+          (int)(watch_sensor.motion_data.gravity.x * 100.0f));
+}
+
+/* 取消(不 commit):立起/垂下保險姿態。冪等。 */
+static void mouse_dial_pose_cancel(void)
+{
+    if (!s_dial_pose_active)
+        return;
+    mouse_dial_cancel(); /* 內含清 s_dial_pose_active */
+    LOG_I("[dial-pose] cancel");
+}
+
+static bool mouse_dial_pose_active(void)
+{
+    return s_dial_pose_active;
+}
+
+/* motion thread(air_mouse_process 每 sample 轉入):手腕比方向、轉回朝上 commit。 */
+static void dial_pose_motion_process(float gyro_x, float gyro_z)
+{
+    rt_tick_t now = rt_tick_get();
+    Vector3 g = watch_sensor.motion_data.gravity;
+    /* commit:轉回朝上且穩定(沿用手寫時代的退出參數,同一個肌肉記憶) */
+    if (g.z > HW_EXIT_FACE_UP_G)
+    {
+        if (s_dial_pose_faceup_since == 0)
+        {
+            s_dial_pose_faceup_since = now;
+        }
+        else if (now - s_dial_pose_faceup_since >=
+                 rt_tick_from_millisecond(HW_EXIT_FACE_UP_MS))
+        {
+            s_dial_pose_faceup_since = 0;
+            LOG_I("[dial-pose] commit dir=%d mag=%d", s_dial_cur_dir, s_dial_cur_mag);
+            mouse_dial_end(); /* 以當下 sector commit(內含清 s_dial_pose_active) */
+            return;
+        }
+    }
+    else
+    {
+        s_dial_pose_faceup_since = 0;
+    }
+
+    /* 側立幾何還在才累積:開始離開側立(轉回朝上的過渡)就凍結向量,旋轉的角速度
+       不污染已比好的方向。 */
+    if (fabsf(g.x) > DIAL_POSE_FREEZE_GX)
+    {
+        float rx = (fabsf(gyro_x) < HW_DEADZONE_RADS) ? 0.0f : gyro_x;
+        float rz = (fabsf(gyro_z) < HW_DEADZONE_RADS) ? 0.0f : gyro_z;
+        s_dial_ax += DIAL_POSE_SIGN_X * rx * DIAL_POSE_GAIN;
+        s_dial_ay += DIAL_POSE_SIGN_Y * rz * DIAL_POSE_GAIN;
+        mouse_dial_vector_refresh();
+    }
+
+    /* 軸向/符號真機定調用:~1Hz。founder 各方向比一下即可對出 DIAL_POSE_SIGN_*。 */
+    if (now - s_dial_pose_last_dbg >= rt_tick_from_millisecond(1000))
+    {
+        LOG_I("[dial-pose] dir=%d mag=%d ax=%d ay=%d gx=%d gz=%d mrad/s",
+              s_dial_cur_dir, s_dial_cur_mag, (int)s_dial_ax, (int)s_dial_ay,
+              (int)(gyro_x * 1000.0f), (int)(gyro_z * 1000.0f));
+        s_dial_pose_last_dbg = now;
+    }
+}
+
 static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                               Quaternion *prev_quat)
 {
@@ -1318,9 +1389,15 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
        2026-07-06 logo 飛鼠實機驗出「上下抓錯軸」 */
     float gyro_x = watch_sensor.imu_data.gyro.x * DPS_TO_RADS;
 
-    /* ── 側立手寫模式：gyro 直接積分成虛擬畫布筆尖(0x1b 串流),不進游標 pipeline。
-       置於一切分支之前——手寫期間 dial/資料收集/游標 report/moving-state 全不動作。
-       (IMU 座標系翻轉兜底防禦在下面 else 分支,正常永不觸發,手寫分支不重複。) ── */
+    /* ── 側立圓盤/手寫:gyro 直接餵各自的積分器,不進游標 pipeline。置於一切分支
+       之前——期間資料收集/游標 report/moving-state 全不動作。兩者互斥(pose_begin
+       gate s_hw_active;手寫 arm 需要按著觸控板,側立時不會)。
+       (IMU 座標系翻轉兜底防禦在下面 else 分支,正常永不觸發,這兩個分支不重複。) ── */
+    if (s_dial_pose_active)
+    {
+        dial_pose_motion_process(gyro_x, gyro_z);
+        return;
+    }
     if (s_hw_active)
     {
         handwrite_motion_process(gyro_x, gyro_z);
@@ -1406,19 +1483,12 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
             air_mouse_algorithm(gyro_x, gyro_z, AIR_MOUSE_SENSITIVITY);
     }
 
-    /* ── 主觸控板長按方向盤 (dial)：手指按住不動時 air-mouse 位移不移游標，改累積
-       成方向向量→8 向+力度上傳 0x1a（桌面畫圓盤）。dial 期間 handfree 為 false，
-       下面的游標 report gate 本就不觸發；這裡提早 return 略過 moving-state/lock。 ── */
-    /* handfree（頂部區按住＝飛鼠）優先於 dial：兩者互斥（不同觸發區），但若 dial 因異常
-       路徑（如 press 被搶沒收到 release）殘留 s_dial_active，這個 !handfree 守衛保證頂部
-       飛鼠一按下就能用，不會被殘留的 dial 分支 return 擋掉（founder 2026-07-16「頂部飛鼠
-       沒回來」）。 */
-    if (mouse_dial_active() && !get_hid_mouse_handfree_mode())
-    {
-        mouse_dial_accumulate((float)delta_movement.x, (float)delta_movement.y);
-        mouse_movement_lock = false; /* dial 分支提早 return、跳過下面 lock 累積解鎖，補上 */
-        return;
-    }
+    /* 手腕活動追蹤(hid_mouse 長按 armed 的「寫字 vs 拖曳」判定用):原在觸控圓盤的
+       accumulate 內更新,2026-07-20 觸發對調後 armed 階段沒有 active session,移到
+       主路徑常時更新。 */
+    if (fabsf((float)delta_movement.x) + fabsf((float)delta_movement.y) >=
+        DIAL_WRIST_MOVE_UNITS)
+        s_dial_wrist_last_move = rt_tick_get();
 
     if (abs(delta_movement.x) >= 3 || abs(delta_movement.y) >= 3)
     {
@@ -1474,6 +1544,11 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     //           get_hid_mouse_handfree_mode());
     // }
 }
+#else  /* !BSP_USING_AIR_MOUSE(PC sim 等無 IMU 平台):set_gravity_position 照編,
+          側立圓盤 session 給 no-op(真機的實作在上面 gate 內)。 */
+static void mouse_dial_pose_begin(void) {}
+static void mouse_dial_pose_cancel(void) {}
+static bool mouse_dial_pose_active(void) { return false; }
 #endif
 
 static uint16_t threshold = 3000;
@@ -1727,26 +1802,37 @@ void set_gravity_position(int position)
        放平回 OTHER/HORIZONTAL 後再立起才會再觸發。 */
     if (gravity_position == GRAVITY_POSITION_VERTICAL)
     {
-        if (is_at_mouse_mode() || app_control_get_mouse_mode())
+        /* 側立圓盤進行中不疊 skaibar(此邊緣只做下面的保險 cancel,再立一次才召喚) */
+        if ((is_at_mouse_mode() || app_control_get_mouse_mode()) &&
+            !mouse_dial_pose_active())
         {
             extern void hid_mouse_trigger_skaibar_from_pose(void);
             hid_mouse_trigger_skaibar_from_pose();
         }
     }
-    /* 「錶面轉向側邊」→ 滑鼠 app 前景時進入側立手寫模式。同 VERTICAL 的邊緣觸發
-       (同 state 早 return);實際開啟在 GUI thread(open_handwrite_from_pose,內含
-       大麥克風開著等 gate)。 */
+    /* 「錶面轉向側邊」→ 滑鼠 app 前景時開側立圓盤(2026-07-20 founder 對調:原本開
+       手寫)。同 VERTICAL 的邊緣觸發(同 state 早 return)。寫字寫到一半轉側=先收手寫
+       (自動送出),本次邊緣不開圓盤——要再側立一次才開。 */
     if (gravity_position == GRAVITY_POSITION_FACE_SIDE)
     {
         if (is_at_mouse_mode() || app_control_get_mouse_mode())
         {
-            extern void hid_mouse_trigger_open_handwrite_from_pose(void);
-            hid_mouse_trigger_open_handwrite_from_pose();
+            /* 用 GUI 側的 view-active(hid_mouse.c,sim 也有編)判手寫中——本函式在
+               AIR_MOUSE gate 外,不能碰 gate 內的 bloc_handwrite_active。 */
+            extern bool hid_mouse_handwrite_active(void);
+            if (hid_mouse_handwrite_active())
+            {
+                extern void hid_mouse_trigger_close_handwrite_from_pose(void);
+                hid_mouse_trigger_close_handwrite_from_pose();
+            }
+            else
+            {
+                mouse_dial_pose_begin();
+            }
         }
     }
-    /* 手寫模式收斂保險:明確進入「立起」或「手臂垂下」姿態=顯然不在寫了,收掉手寫。
-       主要退出路徑是 handwrite_motion_process 的「轉回朝上持續 400ms」判定——這裡只
-       兜「一直不朝上也不寫了」的殘留(例如寫完直接把手垂下)。 */
+    /* 手寫收斂保險:明確進入「立起」或「手臂垂下」姿態=顯然不在寫了,收掉手寫。
+       主要結束路徑是 handwrite_motion_process 的 idle 判定——這裡兜殘留。 */
     if (gravity_position == GRAVITY_POSITION_VERTICAL ||
         gravity_position == GRAVITY_POSITION_SIDE)
     {
@@ -1756,6 +1842,10 @@ void set_gravity_position(int position)
             extern void hid_mouse_trigger_close_handwrite_from_pose(void);
             hid_mouse_trigger_close_handwrite_from_pose();
         }
+        /* 側立圓盤收斂保險:立起/垂下=顯然不比了,取消(不 commit)。commit 只走
+           dial_pose_motion_process 的「轉回朝上」。放在上面 skaibar 分支之後:
+           同一次 VERTICAL 邊緣先被 gate 擋掉召喚、這裡才清旗標。 */
+        mouse_dial_pose_cancel();
     }
 #ifdef SHOW_UNGRAB_ENABLE_INDICATOR
     uint8_t app_id = app_id_mainmenu;

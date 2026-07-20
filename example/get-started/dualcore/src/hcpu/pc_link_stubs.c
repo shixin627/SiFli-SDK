@@ -209,11 +209,24 @@ void BLE_HID_Mouse_Touch_Press(uint16_t x, uint16_t y) { (void)x; (void)y; }
 void BLE_HID_Mouse_Touch_Move(uint16_t x, uint16_t y) { (void)x; (void)y; }
 bool BLE_HID_Mouse_Touch_Release(uint16_t x, uint16_t y) { (void)x; (void)y; return false; }
 void air_mouse_movement_lock_reset(void) { }
-/* trackpad-hold radial dial (bloc_motion_tracking.c, excluded on PC sim) — the dial
-   integrates live gyro so it only runs on real hardware; UI-only sim no-ops it. */
-void mouse_dial_start(void) { }
-void mouse_dial_end(void) { }
+/* 長按手寫 arm / 側立圓盤 / 手寫積分器 (bloc_motion_tracking.c 的 AIR_MOUSE gate 區,
+   PC sim 不編) — 都吃 live gyro 只在真機跑;UI-only sim no-op。2026-07-20 觸發對調後
+   hid_mouse 的 extern 面 = cancel/active/wrist_moving + bloc_handwrite_begin/end/set_pen。 */
+void mouse_dial_cancel(void) { }
 bool mouse_dial_active(void) { return false; }
+bool mouse_dial_wrist_moving(void) { return false; }
+void bloc_handwrite_begin(int canvas_w, int canvas_h) { (void)canvas_w; (void)canvas_h; }
+void bloc_handwrite_end(void) { }
+void bloc_handwrite_set_pen(bool down) { (void)down; }
+/* 拖曳/長按的 BLE HID 觸控輔助 (ble_hid.c, excluded on PC sim) — 2026-07-16/17 dial/
+   拖曳輪加的 extern,一直缺 stub;compile 段修通後 link 才曝出來,一併補齊。 */
+void ble_hid_mouse_cancel_touch(void) { }
+void ble_hid_mouse_disable_longpress(void) { }
+bool ble_hid_mouse_drag_edge_pan(uint16_t x, uint16_t y) { (void)x; (void)y; return false; }
+void ble_hid_mouse_drag_edge_pan_stop(void) { }
+/* 媒體 raw 轉送的 GUI 消化端 (communicate_parse_skailink.c, excluded on PC sim) —
+   ui_handler 的 LVGL_MSG_TYPE_MEDIA_STATE_RAW case 引用。 */
+void media_state_apply_pending(void) { }
 void set_voice_recognition_notified_from_mouse(bool status) { (void)status; }
 /* device-page trackpad → phone relay switch (ble_hid.c, excluded on PC sim).
    Called by device_pager.c (set) and hid_mouse.c (get, back routing). */

@@ -42,6 +42,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <rtthread.h>
+#include <rthw.h> /* rt_hw_interrupt_disable/enable(media_title KE_EVT2→GUI 轉送);
+                     PC sim 的 MSVC 鏈不會從 rtthread.h 連帶宣告到,要明 include */
 #include <math.h>
 #include <cJSON.h>
 #include "rtdevice.h"
