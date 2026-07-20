@@ -900,19 +900,43 @@ int bmi270_read_accel_now(int16_t *px, int16_t *py, int16_t *pz)
     return 0;
 }
 
+/* 晶片全域 remap 目前是否為 NEG/NEG/NEG(睡眠中給抬腕 feature engine 用)。跟隨「實際寫入
+   成功的晶片狀態」,由 wrist-wake enable/disable 維護。redirect_sensor_data 據此互斥:晶片
+   已翻→軟體直通、晶片 identity→軟體翻——總框架(watch frame)任何時刻恆定。2026-07-17:
+   方向反根因修成軟體翻+晶片恆 identity 後,抬腕 HW 演算法(吃晶片軸)軸向錯了(founder
+   回報);故睡眠中臨時把晶片 remap 寫回 NEG 餵 feature engine、醒來還原,讀值靠本 flag 聯動
+   保持一致。 */
+static volatile bool s_chip_remap_neg = false;
+
 static struct bmi2_sens_axes_data
 redirect_sensor_data(struct bmi2_sens_axes_data *data)
 {
     struct bmi2_sens_axes_data dataRedirect;
     dataRedirect.virt_sens_time = data->virt_sens_time;
-    #if (WATCH_IMU_REVERSE_180)
-    dataRedirect.x = data->x;
-    dataRedirect.y = -data->y;
-    #else
-    dataRedirect.x = -data->x;
-    dataRedirect.y = data->y;
-    #endif
-    dataRedirect.z = -data->z;
+    if (s_chip_remap_neg)
+    {
+        /* 晶片已三軸取負(舊框架)→ 軟體做「舊翻法」補回同一 watch frame(z 不再翻)。 */
+        #if (WATCH_IMU_REVERSE_180)
+        dataRedirect.x = -data->x;
+        dataRedirect.y = data->y;
+        #else
+        dataRedirect.x = data->x;
+        dataRedirect.y = -data->y;
+        #endif
+        dataRedirect.z = data->z;
+    }
+    else
+    {
+        /* 晶片 identity(開機/清醒預設)→ 軟體全責翻轉(founder 2026-07-17 方向反根因修法)。 */
+        #if (WATCH_IMU_REVERSE_180)
+        dataRedirect.x = data->x;
+        dataRedirect.y = -data->y;
+        #else
+        dataRedirect.x = -data->x;
+        dataRedirect.y = data->y;
+        #endif
+        dataRedirect.z = -data->z;
+    }
     return dataRedirect;
 }
 
@@ -1311,12 +1335,11 @@ int bmi270_initialized(void)
     if (res != BMI2_OK)
         goto err_deinit;
 
-    /* 2026-07-17 dial/air-mouse 方向偶發全反的根因處置:改採 founder 的軟體層方案——
-       redirect_sensor_data 直接做三軸翻轉、晶片 remap 永遠保持出廠 identity(wrist-wake
-       step 1.5 的 set_remap_axes 已註解)。軟體翻沒有「晶片寫入時機/失敗」的 failure mode,
-       開機任何時刻讀值框架一致(舊方案 remap 只在第一次螢幕睡眠寫入,開機到第一次睡眠之間
-       是 identity 軸→方向全反,剛刷機馬上用必中)。勿在此重新加晶片 remap 寫入——會與軟體
-       翻疊成雙重翻轉。 */
+    /* 2026-07-17 dial/air-mouse 方向偶發全反的根因處置:清醒時晶片 remap 保持出廠 identity、
+       redirect_sensor_data 軟體層負責翻轉(舊方案 remap 只在第一次螢幕睡眠寫入,開機到那
+       之前是 identity 軸→方向全反,剛刷機馬上用必中)。睡眠中 wrist-wake enable 會臨時把
+       晶片 remap 寫成 NEG 餵抬腕 feature engine(它吃晶片軸),醒來還原;讀值一致性由
+       s_chip_remap_neg 聯動 redirect_sensor_data 保證。勿在 init 這裡寫晶片 remap。 */
 
     #if defined(GSENSOR_UES_FIFO)
     // set fifo
@@ -1809,29 +1832,36 @@ int bmi270_hw_wrist_wake_enable(int en)
            feeding the feature engine.
 
            Logged before/after so we can confirm what's stored. */
-        // struct bmi2_remap remap_before = { 0 };
-        // if (bmi2_get_remap_axes(&remap_before, &bmi2_dev) == BMI2_OK)
-        // {
-        //     LOG_I("wrist-wake step1.5 remap before: x=0x%02x y=0x%02x z=0x%02x",
-        //           remap_before.x, remap_before.y, remap_before.z);
-        // }
-        // struct bmi2_remap remap_want = {
-        //     .x = BMI2_NEG_X,  /* watch X = -chip X (flipped) */
-        //     .y = BMI2_NEG_Y,      /* watch Y = +chip Y (same) */
-        //     .z = BMI2_NEG_Z,  /* watch Z = -chip Z (flipped) */
-        // };
-        // rslt = bmi2_set_remap_axes(&remap_want, &bmi2_dev);
-        // if (rslt != BMI2_OK)
-        // {
-        //     LOG_E("wrist-wake step1.5 set_remap_axes failed: %d", rslt);
-        //     goto out;
-        // }
-        // struct bmi2_remap remap_after = { 0 };
-        // if (bmi2_get_remap_axes(&remap_after, &bmi2_dev) == BMI2_OK)
-        // {
-        //     LOG_I("wrist-wake step1.5 remap after:  x=0x%02x y=0x%02x z=0x%02x",
-        //           remap_after.x, remap_after.y, remap_after.z);
-        // }
+        /* Step 1.5 — 睡眠中臨時把晶片 remap 寫成 NEG/NEG/NEG:抬腕/腕勢 feature engine 吃
+           晶片內部軸,identity 下軸向錯、手勢永遠不 fire(founder 2026-07-17 回報抬腕壞)。
+           只在螢幕暗的睡眠窗口生效,醒來 disable 時還原 identity(見 else 分支);讀值一致性
+           由 s_chip_remap_neg 聯動 redirect_sensor_data 保證(晶片翻→軟體直通)。寫失敗
+           fail-safe:flag 不設、晶片留 identity→讀值仍對,只是該晚抬腕失靈+LOG_E。 */
+        {
+            const struct bmi2_remap remap_neg = {
+                .x = BMI2_NEG_X, .y = BMI2_NEG_Y, .z = BMI2_NEG_Z,
+            };
+            rslt = bmi2_set_remap_axes(&remap_neg, &bmi2_dev);
+            if (rslt == BMI2_OK)
+            {
+                struct bmi2_remap chk = { 0 };
+                if (bmi2_get_remap_axes(&chk, &bmi2_dev) == BMI2_OK &&
+                    chk.x == remap_neg.x && chk.y == remap_neg.y && chk.z == remap_neg.z)
+                {
+                    s_chip_remap_neg = true;
+                    LOG_I("wrist-wake step1.5: chip remap -> NEG (feature frame), sw redirect passthrough");
+                }
+                else
+                {
+                    LOG_E("wrist-wake step1.5 remap verify mismatch — chip frame unknown, keeping sw flip");
+                }
+            }
+            else
+            {
+                LOG_E("wrist-wake step1.5 set_remap_axes failed: %d — wrist-wake axes wrong tonight", rslt);
+            }
+            rslt = BMI2_OK; /* remap 失敗不擋整個 enable(accel/INT 部分照常武裝) */
+        }
 
     #if BMI270_ENABLE_WRIST_WEAR_WAKEUP
         struct bmi2_sens_config cfg = { .type = BMI2_WRIST_WEAR_WAKE_UP };
@@ -1979,6 +2009,24 @@ int bmi270_hw_wrist_wake_enable(int en)
         {
             LOG_E("wrist-wake sensor_disable failed: %d", rslt);
             goto out;
+        }
+        /* 醒來:晶片 remap 還原 identity(清醒時軟體全責翻轉,見 redirect_sensor_data)。
+           失敗時 flag 保持 true(跟隨實際晶片狀態→軟體維持直通,讀值框架仍對)+ retry 一次。 */
+        if (s_chip_remap_neg)
+        {
+            const struct bmi2_remap remap_id = { .x = BMI2_X, .y = BMI2_Y, .z = BMI2_Z };
+            int8_t r2 = bmi2_set_remap_axes(&remap_id, &bmi2_dev);
+            if (r2 != BMI2_OK)
+                r2 = bmi2_set_remap_axes(&remap_id, &bmi2_dev);
+            if (r2 == BMI2_OK)
+            {
+                s_chip_remap_neg = false;
+                LOG_I("wrist-wake disarm: chip remap -> identity, sw flip active");
+            }
+            else
+            {
+                LOG_E("wrist-wake disarm: remap restore FAILED (%d) — chip stays NEG, sw passthrough keeps frame", r2);
+            }
         }
         hw_wrist_wake_armed = false;
         LOG_I("BMI270 HW wrist-wake disarmed");
