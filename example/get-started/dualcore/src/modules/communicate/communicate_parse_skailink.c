@@ -420,6 +420,63 @@ void media_state_apply_pending(void)
     rt_free(buf);
 }
 
+/* ── 0x1c: 手寫候選字(phone→watch) ─────────────────────────────────────────
+   media_state 同款單槽交接:BLE thread 收 raw payload 進槽+發 LVGL msg,GUI thread
+   handwrite_cand_apply_pending() 消化(槽空=較新 msg 已先消化,no-op)。 */
+static char *s_hw_cand_pending = NULL;
+
+static void handle_handwrite_cand(uint8_t *pValue, uint16_t length)
+{
+    if (pValue == NULL || length == 0) return;
+    char *buf = (char *)rt_malloc((rt_size_t)length + 1);
+    if (buf == NULL) return;
+    memcpy(buf, pValue, length);
+    buf[length] = '\0';
+    rt_base_t level = rt_hw_interrupt_disable();
+    char *old = s_hw_cand_pending;
+    s_hw_cand_pending = buf;
+    rt_hw_interrupt_enable(level);
+    if (old != NULL) rt_free(old);
+    lvgl_msg_t msg;
+    msg.type = LVGL_MSG_TYPE_HANDWRITE_CAND_RAW;
+    lvgl_send_msg(msg);
+}
+
+/* GUI thread(ui_handler LVGL_MSG_TYPE_HANDWRITE_CAND_RAW)。 */
+void handwrite_cand_apply_pending(void)
+{
+    rt_base_t level = rt_hw_interrupt_disable();
+    char *buf = s_hw_cand_pending;
+    s_hw_cand_pending = NULL;
+    rt_hw_interrupt_enable(level);
+    if (buf == NULL) return;
+
+    extern void mouse_handwrite_candidates(const char *const *texts, int count);
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL)
+    {
+        LOG_W("skailink: handwrite_cand malformed payload");
+        rt_free(buf);
+        return;
+    }
+    const char *texts[5];
+    int count = 0;
+    cJSON *arr = cJSON_GetObjectItem(root, "c");
+    if (cJSON_IsArray(arr))
+    {
+        cJSON *it = NULL;
+        cJSON_ArrayForEach(it, arr)
+        {
+            if (count >= 5) break;
+            if (cJSON_IsString(it) && it->valuestring[0] != '\0')
+                texts[count++] = it->valuestring;
+        }
+    }
+    mouse_handwrite_candidates(texts, count); /* count=0 亦要送=清空候選列 */
+    cJSON_Delete(root);
+    rt_free(buf);
+}
+
 void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
 {
     switch ((SKAI_LINK_KEY)key)
@@ -492,6 +549,10 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_MEDIA_STATE:
         /* phone→watch (DOWNLINK): active target device's now-playing (mouse app). */
         handle_media_state(pValue, length);
+        break;
+    case KEY_HANDWRITE_CAND:
+        /* phone→watch (DOWNLINK): 手寫當前字的辨識候選(ML Kit top-5)。 */
+        handle_handwrite_cand(pValue, length);
         break;
     default:
         LOG_W("skailink: unknown key 0x%02x", key);

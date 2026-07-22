@@ -1152,6 +1152,9 @@ static volatile bool s_hw_req_cancel = false;
 static volatile bool s_hw_req_next = false;
 static volatile bool s_hw_req_clear = false;
 static volatile bool s_hw_req_backspace = false;
+/* 按候選字定稿(founder 2026-07-20 晚):-1=無(取 top-1),>=0=候選 index。
+   先寫 pick 再立 next 旗標,motion thread 反序讀,無鎖交接。 */
+static volatile int s_hw_req_next_pick = -1;
 
 bool bloc_handwrite_active(void)
 {
@@ -1188,6 +1191,7 @@ void bloc_handwrite_begin(int canvas_w, int canvas_h)
     s_hw_hover_x = s_hw_hover_y = -1;
     s_hw_req_end = s_hw_req_cancel = s_hw_req_next = false;
     s_hw_req_clear = s_hw_req_backspace = false;
+    s_hw_req_next_pick = -1;
     s_hw_last_flush = s_hw_last_hover = s_hw_last_dbg = rt_tick_get();
     char json[48];
     rt_snprintf(json, sizeof(json), "{\"ph\":\"start\",\"w\":%d,\"h\":%d}", s_hw_w, s_hw_h);
@@ -1251,6 +1255,15 @@ void bloc_handwrite_next_char(void)
     if (s_hw_active) s_hw_req_next = true;
 }
 
+/* 按候選清單第 idx 個=用該候選定稿+換下個字(= next 帶 pick)。 */
+void bloc_handwrite_next_pick(int idx)
+{
+    if (!s_hw_active || idx < 0)
+        return;
+    s_hw_req_next_pick = idx; /* 先 pick 後旗標(見宣告處) */
+    s_hw_req_next = true;
+}
+
 void bloc_handwrite_end(void)
 {
     if (s_hw_active) s_hw_req_end = true;
@@ -1274,6 +1287,7 @@ static void handwrite_motion_process(void)
         s_hw_req_next = false;
         s_hw_req_clear = false;
         s_hw_req_backspace = false;
+        s_hw_req_next_pick = -1;
         if (s_hw_prev_pen)
         {
             hw_batch_flush("m");
@@ -1289,8 +1303,10 @@ static void handwrite_motion_process(void)
     if (s_hw_req_next || s_hw_req_clear)
     {
         bool next = s_hw_req_next;
+        int pick = s_hw_req_next_pick;
         s_hw_req_next = false;
         s_hw_req_clear = false;
+        s_hw_req_next_pick = -1;
         if (s_hw_prev_pen)
         {
             hw_batch_flush("m");
@@ -1302,8 +1318,18 @@ static void handwrite_motion_process(void)
         {
             hw_batch_flush("m");
         }
-        commu_send_handwrite(next ? "{\"ph\":\"n\"}" : "{\"ph\":\"c\"}");
-        LOG_I("[handwrite] %s", next ? "next-char" : "clear");
+        if (next && pick >= 0)
+        {
+            /* 候選定稿:i=候選 index,手機用 candidates[i] 取代 top-1 */
+            char json[32];
+            rt_snprintf(json, sizeof(json), "{\"ph\":\"n\",\"i\":%d}", pick);
+            commu_send_handwrite(json);
+        }
+        else
+        {
+            commu_send_handwrite(next ? "{\"ph\":\"n\"}" : "{\"ph\":\"c\"}");
+        }
+        LOG_I("[handwrite] %s pick=%d", next ? "next-char" : "clear", pick);
     }
     if (s_hw_req_backspace)
     {

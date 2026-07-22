@@ -72,6 +72,7 @@ extern "C"
     extern void bloc_handwrite_set_pen(bool down);
     extern void bloc_handwrite_feed_point(int x, int y);
     extern void bloc_handwrite_next_char(void);
+    extern void bloc_handwrite_next_pick(int idx);
     extern void bloc_handwrite_cancel(void);
     extern void bloc_handwrite_clear(void);
     extern void bloc_handwrite_backspace(void);

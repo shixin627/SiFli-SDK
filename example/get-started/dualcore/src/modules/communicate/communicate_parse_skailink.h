@@ -151,6 +151,13 @@ extern "C"
            runSkaibar{submit:true} 自動送出。Keep in lockstep with
            WatchProtocol.kt SKAILINK_KEY_HANDWRITE. */
         KEY_HANDWRITE = 0x1b,
+        /* phone→watch (DOWNLINK): {"c":["候","選","字",...]} — 手寫當前字的辨識候選
+           (ML Kit top-5,founder 2026-07-20 晚)。每次辨識更新即推;空陣列=清單清空
+           (字已定稿/板已清)。手錶在手寫 view 退出鈕下方顯示候選列:按候選=送
+           {"ph":"n","i":idx}(KEY_HANDWRITE)用該候選定稿+換下個字;候選非空時
+           「輸入」鈕隱藏(先定稿才能送出)。Keep in lockstep with
+           WatchProtocol.kt SKAILINK_KEY_HANDWRITE_CAND. */
+        KEY_HANDWRITE_CAND = 0x1c,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.
