@@ -221,6 +221,7 @@ void bloc_handwrite_end(void) { }
 void bloc_handwrite_set_pen(bool down) { (void)down; }
 void bloc_handwrite_feed_point(int x, int y) { (void)x; (void)y; }
 void bloc_handwrite_next_char(void) { }
+void bloc_handwrite_next_pick(int idx) { (void)idx; }
 void bloc_handwrite_cancel(void) { }
 void bloc_handwrite_clear(void) { }
 void bloc_handwrite_backspace(void) { }
@@ -236,6 +237,8 @@ void ble_hid_mouse_drag_edge_pan_stop(void) { }
 /* 媒體 raw 轉送的 GUI 消化端 (communicate_parse_skailink.c, excluded on PC sim) —
    ui_handler 的 LVGL_MSG_TYPE_MEDIA_STATE_RAW case 引用。 */
 void media_state_apply_pending(void) { }
+/* 手寫候選字 0x1c 的 GUI 消化端(同上,communicate_parse_skailink.c excluded)。 */
+void handwrite_cand_apply_pending(void) { }
 void set_voice_recognition_notified_from_mouse(bool status) { (void)status; }
 /* device-page trackpad → phone relay switch (ble_hid.c, excluded on PC sim).
    Called by device_pager.c (set) and hid_mouse.c (get, back routing). */

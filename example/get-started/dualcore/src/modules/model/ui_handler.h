@@ -79,6 +79,8 @@ extern "C"
            media_title_apply_pending()/media_state_apply_pending() 消化。 */
         LVGL_MSG_TYPE_MEDIA_TITLE_RAW,
         LVGL_MSG_TYPE_MEDIA_STATE_RAW,
+        /* 手寫候選字(0x1c)下行:同上單槽 raw,GUI 端 handwrite_cand_apply_pending()。 */
+        LVGL_MSG_TYPE_HANDWRITE_CAND_RAW,
         LVGL_MSG_TYPE_MEDIA_IMG,
         LVGL_MSG_TYPE_MEDIA_HEADER_IMG,
         LVGL_MSG_TYPE_MEDIA_VOLUME,

@@ -86,6 +86,7 @@ extern void open_skaibar_from_pose(void);
 extern void close_lift_mic_from_pose(void);
 extern void media_title_apply_pending(void);
 extern void media_state_apply_pending(void);
+extern void handwrite_cand_apply_pending(void);
 extern void update_ai_process_indicator_text(app_gesture_indicator_t *indicator,
                                               const char *message,
                                               bool is_active);
@@ -547,6 +548,10 @@ static void process_lvgl_message(lvgl_msg_t *msg)
 
     case LVGL_MSG_TYPE_MEDIA_STATE_RAW:
         media_state_apply_pending();
+        break;
+
+    case LVGL_MSG_TYPE_HANDWRITE_CAND_RAW:
+        handwrite_cand_apply_pending();
         break;
 
     case LVGL_MSG_TYPE_MOUSE_INPUT_TEXT:

@@ -78,6 +78,8 @@
 #include "app_clock_status_bar.h" // app_clock_device_change_bar_open
 #include "ui_handler.h"
 #include <cJSON.h>
+#include "pinyin_dict.h" /* 中文拼音字典(founder 2026-07-22) */
+#include "en_words.h"    /* 英文常用字表(單字推薦,founder 2026-07-22) */
 #include "ui_helper.h"
 #include "ui_img_helper.h"
 #include "lvsf_gesture.h"
@@ -144,6 +146,7 @@ typedef enum
  *  STATIC VARIABLES
  *********************/
 LV_IMG_DECLARE(img_mouse);
+LV_IMG_DECLARE(mouse_mode_icon);
 LV_IMG_DECLARE(plus_button);
 LV_IMG_DECLARE(enter_icon);
 LV_IMG_DECLARE(capital_icon);
@@ -324,6 +327,11 @@ static void snap_scroll_nodes(void);
 // 頂部設備切換器：trackpad 頂部設備名 label 兩側箭頭切換設備（取代舊右側抽屜）
 static char s_dev_active_id[SYNCED_DEVICE_ID_LEN] = {0}; // 目前選中控制的設備 id（高亮 + 頂部標籤用）
 static lv_obj_t *s_ctrl_dev_label = NULL;    // trackpad 頂部「控制中設備」名稱常駐標籤
+static lv_obj_t *s_dev_offline_overlay = NULL; /* active 設備斷線=觸碰板區灰+「斷線」
+                                                  (founder 2026-07-22 二改:蓋 y80 以下
+                                                  +吃 press 擋操作;頂部留給媒體下拉) */
+static lv_obj_t *s_dev_status_dot = NULL; /* 媒體頁設備名上方在線燈號(綠/紅) */
+static bool dev_active_offline(void); /* 定義在 overlay sync 旁 */
 static lv_obj_t *s_dev_left_arrow = NULL;    // 設備名左側「上一台」箭頭（循環）
 static lv_obj_t *s_dev_right_arrow = NULL;   // 設備名右側「下一台」箭頭（循環）
 static void update_ctrl_dev_label(void); // 依 s_dev_active_id 更新頂部控制中設備名 + 箭頭可見性
@@ -368,6 +376,7 @@ static void apply_hid_mode(hid_mode_t mode);
 // keyboard mode 下半部 mic 區前置宣告
 static void create_kbd_mic_section(lv_obj_t *parent);
 static void kbd_lower_set_keyboard(bool show_kbd);
+static void expand_anim_driver_cb(void *var, int32_t v);
 static void kbd_lower_arrow_event_cb(lv_event_t *e);
 static void kbd_mic_btn_event_cb(lv_event_t *e);
 static void kbd_lower_update_arrows_visibility(void);
@@ -488,7 +497,10 @@ static uint8_t keyboard_text_size = 1;
 typedef enum
 {
     KEYBOARD_MODE_LETTERS = 0,
-    KEYBOARD_MODE_NUMBERS
+    KEYBOARD_MODE_NUMBERS,
+    /* 中文拼音(founder 2026-07-22):字母布局同 LETTERS,按鍵進拼音緩衝,
+       輸入框下方選字列挑字上屏(字典=pinyin_dict.c,錶上離線)。 */
+    KEYBOARD_MODE_CHINESE
 } keyboard_mode_t;
 
 static keyboard_mode_t current_keyboard_mode = KEYBOARD_MODE_LETTERS;
@@ -498,6 +510,41 @@ static bool is_uppercase = false;
 static lv_obj_t *caps_btn = NULL;
 static lv_obj_t *mode_btn = NULL;
 static lv_obj_t *del_img = NULL;
+/* 鍵盤 Mode 第三站=手寫(founder 2026-07-22 英文→數字→手寫循環);定義在手寫段。 */
+static void hw_open_from_mode_switch(void);
+/* 鍵盤頂部退出鈕(founder 2026-07-22:同手寫版):收鍵盤回觸碰板。掛跨 mode bg,
+   顯藏由 mode_set_visible(KEYBOARD) 特例+swipe commit 的 extras sync 管。 */
+static lv_obj_t *kbd_exit_btn = NULL;
+static void kbd_exit_btn_event_cb(lv_event_t *e);
+
+/* ── 中文拼音狀態(founder 2026-07-22) ── */
+#define KBD_CAND_MAX 20 /* 候選上限;列可左右滑看更多(founder 2026-07-22) */
+static lv_obj_t *s_kbd_cand_row = NULL; /* 輸入框下方選字列(pill 同款) */
+static lv_obj_t *s_kbd_py_lbl = NULL;   /* 列左端:目前拼音緩衝 */
+static lv_obj_t *s_kbd_cand_btns[KBD_CAND_MAX];
+static lv_obj_t *s_kbd_cand_lbls[KBD_CAND_MAX];
+static char s_kbd_cand_texts[KBD_CAND_MAX][8]; /* 候選字 UTF-8(按下時上屏用) */
+static int s_kbd_cand_count = 0;
+static char s_py_buf[16] = {0}; /* 注音緩衝(UTF-8,最多 4 符號×3B;founder 改注音) */
+static int s_py_len = 0;
+/* 英文模式:目前單字緩衝(推薦用;空白/Enter/換模式重置)。founder 2026-07-22:
+   英文也要數字列+單字推薦。 */
+static char s_en_word[24] = {0};
+static int s_en_len = 0;
+/* 列目前顯示的內容種類(commit 行為依此分流) */
+enum
+{
+    KBD_ROW_NONE = 0,
+    KBD_ROW_DIGITS,  /* 數字 1~9:上屏該數字 */
+    KBD_ROW_ZH_CAND, /* 注音候選:上屏整字 */
+    KBD_ROW_EN_SUGG, /* 英文推薦:補完(只送尚未打的字尾) */
+};
+static uint8_t s_kbd_row_kind = KBD_ROW_NONE;
+static void kbd_cand_refresh(void);
+static void kbd_pinyin_clear(void);
+static void kbd_cand_commit(int idx);
+struct zy_map_s; /* 注音表(定義在組字區);按鍵 handler 只當存在性判斷用 */
+static const struct zy_map_s *zy_find(const char *sym);
 
 // Key popup variables
 static lv_obj_t *key_popup = NULL;
@@ -576,6 +623,9 @@ static bool collapse_anim_running = false;
 //   - tileview value-changed：snap 回 home 時自動隱藏 tileview
 //   - title / play state 由 bloc_control notify_media_title 路由進來
 static lv_obj_t *status_bar_area_up = NULL;
+static lv_obj_t *s_top_logo = NULL; /* 頂部滑鼠圖(左拉進手寫時跟手位移;宣告提前
+                                       到此=手寫段 hw_open_commit 也要歸位它) */
+static void top_logo_tx_anim_exec(void *obj, int32_t v); /* 定義在 status_bar 段 */
 static lv_obj_t *media_tileview = NULL;
 static lv_obj_t *media_home_tile = NULL;
 static lv_obj_t *media_tile = NULL;
@@ -966,8 +1016,9 @@ void toggle_keyboard_visibility(void)
         lv_obj_set_style_translate_y(keyboard_container, 300, 0);
 
         // Target positions for open state
-        int32_t open_x = (LV_HOR_RES_MAX - 310) / 2 - 35;
-        int32_t open_y = LV_VER_RES_MAX - 305 - 45;
+        int32_t open_x = (LV_HOR_RES_MAX - 310) / 2; /* 置中(founder 2026-07-22;
+            舊 -35 偏移=歷史殘留,在 y64 會讓左端超出圓弧) */
+        int32_t open_y = 64; /* =手寫候選欄同高(founder 2026-07-22:兩模式共用一條輸入列) */
 
         // Animate bar x: closed -> open
         lv_anim_init(&a);
@@ -1657,28 +1708,43 @@ static void handle_proximity_input(lv_event_t *e)
                 // 處理功能按鍵
                 if (strcmp(closest_key_text, "Close") == 0)
                 {
-                    toggle_keyboard_visibility();
+                    /* 舊鍵盤「點空白/下箭頭=收鍵盤」殘留,founder 2026-07-22 拔除:
+                       proximity 找鍵無距離上限,點空白會誤中它;退出只走頂部
+                       退出鈕與 bar 下拉。 */
                 }
                 else if (strcmp(closest_key_text, "Mode") == 0)
                 {
-                    // 切換鍵盤模式
-                    switch (current_keyboard_mode)
+                    /* 輸入法循環:英文→中文→數字→手寫→英文(founder 2026-07-22
+                       加中文拼音)。 */
+                    bool to_handwrite = false;
+                    if (current_keyboard_mode == KEYBOARD_MODE_LETTERS)
                     {
-                    case KEYBOARD_MODE_LETTERS:
-                        current_keyboard_mode = KEYBOARD_MODE_NUMBERS;
-                        break;
-                    case KEYBOARD_MODE_NUMBERS:
-                        current_keyboard_mode = KEYBOARD_MODE_LETTERS;
-                        break;
+                        current_keyboard_mode = KEYBOARD_MODE_CHINESE;
                     }
-
-                    // 重新建立鍵盤佈局
-                    if (keyboard_container != NULL)
+                    else if (current_keyboard_mode == KEYBOARD_MODE_CHINESE)
                     {
+                        kbd_pinyin_clear();
+                        current_keyboard_mode = KEYBOARD_MODE_NUMBERS;
+                    }
+                    else
+                    {
+                        to_handwrite = true;
+                    }
+                    if (to_handwrite)
+                    {
+                        /* 數字→手寫:收鍵盤+開手寫 view。mode 變數不動(維持=已建
+                           布局);「回英文」由手寫 erth 鈕錨定,循環閉合。 */
+                        if (keyboard_visible)
+                            toggle_keyboard_visibility();
+                        hw_open_from_mode_switch();
+                    }
+                    else if (keyboard_container != NULL)
+                    {
+                        // 重新建立鍵盤佈局
                         lv_obj_t *parent =
                             lv_obj_get_parent(keyboard_container);
-                        bool was_visible = !lv_obj_has_flag(keyboard_container,
-                                                            LV_OBJ_FLAG_HIDDEN);
+                        bool was_visible = !lv_obj_has_flag(
+                            keyboard_container, LV_OBJ_FLAG_HIDDEN);
 
                         lv_obj_del(keyboard_container);
                         create_circular_keyboard_layout(parent);
@@ -1690,6 +1756,7 @@ static void handle_proximity_input(lv_event_t *e)
                             update_input_display();
                             start_cursor_blink();
                         }
+                        kbd_cand_refresh(); /* 切進中文=數字快捷列/切走=藏 */
                     }
                 }
                 else if (strcmp(closest_key_text, "Caps") == 0)
@@ -1722,14 +1789,37 @@ static void handle_proximity_input(lv_event_t *e)
                 else if (strcmp(closest_key_text, "Enter") == 0)
                 {
                     LOG_D("Enter key pressed");
+                    kbd_pinyin_clear(); /* 殘留拼音丟棄(不自動上屏) */
+                    kbd_cand_refresh(); /* 中文模式回數字快捷列 */
                     control_provider.ble_hid_keyboard_input("\n");
                     clear_input_display(); // 按下 Enter 清除輸入
                 }
                 else if (strcmp(closest_key_text, "Del") == 0)
                 {
                     LOG_D("Delete key pressed");
-                    control_provider.ble_hid_keyboard_input("\b");
-                    remove_from_input_buffer(); // 從顯示中刪除字符
+                    if (current_keyboard_mode == KEYBOARD_MODE_CHINESE &&
+                        s_py_len > 0)
+                    {
+                        /* 組字中:刪最後一個注音符號(UTF-8 尾刪),不動已上屏文字 */
+                        while (s_py_len > 0 &&
+                               ((uint8_t)s_py_buf[s_py_len - 1] & 0xC0) == 0x80)
+                            s_py_len--;
+                        if (s_py_len > 0)
+                            s_py_len--;
+                        s_py_buf[s_py_len] = '\0';
+                        kbd_cand_refresh();
+                    }
+                    else
+                    {
+                        control_provider.ble_hid_keyboard_input("\b");
+                        remove_from_input_buffer(); // 從顯示中刪除字符
+                        if (current_keyboard_mode == KEYBOARD_MODE_LETTERS &&
+                            s_en_len > 0)
+                        {
+                            s_en_word[--s_en_len] = '\0'; /* 單字同步退格 */
+                        }
+                        kbd_cand_refresh();
+                    }
                 }
                 else if (strcmp(closest_key_text, "Space") == 0)
                 {
@@ -1737,12 +1827,37 @@ static void handle_proximity_input(lv_event_t *e)
                     {
                         mouse_v2t_close_and_paste();
                     }
+                    else if (current_keyboard_mode == KEYBOARD_MODE_CHINESE &&
+                             s_py_len > 0 && s_kbd_cand_count > 0)
+                    {
+                        /* 組字中才取首選(數字快捷列狀態的空白=一般空白) */
+                        kbd_cand_commit(0);
+                    }
                     else
                     {
                         LOG_D("Space key pressed");
                         control_provider.ble_hid_keyboard_input(" ");
                         add_to_input_buffer(" "); // 添加空格到顯示
+                        s_en_len = 0; /* 單字結束→推薦列回數字列 */
+                        s_en_word[0] = '\0';
+                        kbd_cand_refresh();
                     }
+                }
+                else if (current_keyboard_mode == KEYBOARD_MODE_CHINESE &&
+                         (strlen(closest_key_text) == 2 ||
+                          strlen(closest_key_text) == 3) &&
+                         zy_find(closest_key_text) != NULL)
+                {
+                    /* 注音模式:符號進組字緩衝(不上屏),選字列即時刷新。
+                       聲調=2 bytes、其餘=3 bytes。 */
+                    size_t zl = strlen(closest_key_text);
+                    if (s_py_len <= (int)(sizeof(s_py_buf) - 1 - zl))
+                    {
+                        memcpy(&s_py_buf[s_py_len], closest_key_text, zl);
+                        s_py_len += (int)zl;
+                        s_py_buf[s_py_len] = '\0';
+                    }
+                    kbd_cand_refresh();
                 }
                 else
                 {
@@ -1788,6 +1903,13 @@ static void handle_proximity_input(lv_event_t *e)
                         output_char[1] = '\0';
                         control_provider.ble_hid_keyboard_input(output_char);
                         add_to_input_buffer(output_char); // 添加到輸入顯示
+                        /* 單字緩衝+推薦更新(founder 2026-07-22 英文推薦) */
+                        if (s_en_len < (int)sizeof(s_en_word) - 1)
+                        {
+                            s_en_word[s_en_len++] = (char)(output_char[0] | 32);
+                            s_en_word[s_en_len] = '\0';
+                        }
+                        kbd_cand_refresh();
                     }
                     else
                     {
@@ -1804,6 +1926,350 @@ static void handle_proximity_input(lv_event_t *e)
         closest_btn = NULL;
         closest_key_text = NULL;
     }
+}
+
+/* ── 中文拼音引擎(founder 2026-07-22):錶上離線,字典=pinyin_dict.c ── */
+
+/* 候選查找:exact 音節優先;**只有無精確命中**(音節未完成,如 ㄋ 單獨=「n」)
+   才做 prefix 擴充(founder 2026-07-22:ㄘㄜ 完整音節被 ceng 的「曾」污染)。
+   每候選=一個 UTF-8 字。回傳候選數。 */
+static int kbd_pinyin_lookup(const char *buf, char out[][8], int max)
+{
+    int n = 0;
+    if (buf[0] == '\0')
+        return 0;
+    size_t blen = strlen(buf);
+    for (int pass = 0; pass < 2 && n < max; pass++)
+    {
+        if (pass == 1 && n > 0)
+            break; /* 有精確命中=音節完整,不做 prefix 擴充 */
+        for (int i = 0; i < g_pinyin_dict_count && n < max; i++)
+        {
+            const pinyin_dict_entry_t *e = &g_pinyin_dict[i];
+            bool exact = (strcmp(e->py, buf) == 0);
+            bool prefix = (!exact && strncmp(e->py, buf, blen) == 0);
+            if ((pass == 0 && !exact) || (pass == 1 && !prefix))
+                continue;
+            const char *p = e->py_mb;
+            while (*p && n < max)
+            {
+                uint8_t c0 = (uint8_t)*p;
+                int cl = (c0 >= 0xF0) ? 4 : (c0 >= 0xE0) ? 3
+                         : (c0 >= 0xC0)                  ? 2
+                                                         : 1;
+                memcpy(out[n], p, (size_t)cl);
+                out[n][cl] = '\0';
+                n++;
+                p += cl;
+            }
+        }
+    }
+    return n;
+}
+
+/* ── 注音→拼音組字(founder 2026-07-22 改注音;字典仍是拼音表,音節一一對應) ── */
+typedef struct zy_map_s
+{
+    const char *zy; /* 注音符號(UTF-8 3B) */
+    const char *py; /* 拼音片段 */
+    uint8_t kind;   /* 0=聲母 1=介音 2=韻母 */
+} zy_map_t;
+
+static const zy_map_t s_zy_map[] = {
+    {"ㄅ", "b", 0},  {"ㄆ", "p", 0},  {"ㄇ", "m", 0},  {"ㄈ", "f", 0},
+    {"ㄉ", "d", 0},  {"ㄊ", "t", 0},  {"ㄋ", "n", 0},  {"ㄌ", "l", 0},
+    {"ㄍ", "g", 0},  {"ㄎ", "k", 0},  {"ㄏ", "h", 0},  {"ㄐ", "j", 0},
+    {"ㄑ", "q", 0},  {"ㄒ", "x", 0},  {"ㄓ", "zh", 0}, {"ㄔ", "ch", 0},
+    {"ㄕ", "sh", 0}, {"ㄖ", "r", 0},  {"ㄗ", "z", 0},  {"ㄘ", "c", 0},
+    {"ㄙ", "s", 0},  {"ㄧ", "i", 1},  {"一", "i", 1},  /* 一=ㄧ 鍵帽替身
+        (U+3127 這套字型是直書形立著,founder 2026-07-22;鍵帽顯示「一」) */
+    {"ㄨ", "u", 1},  {"ㄩ", "v", 1},
+    {"ㄚ", "a", 2},  {"ㄛ", "o", 2},  {"ㄜ", "e", 2},  {"ㄝ", "e", 2},
+    {"ㄞ", "ai", 2}, {"ㄟ", "ei", 2}, {"ㄠ", "ao", 2}, {"ㄡ", "ou", 2},
+    {"ㄢ", "an", 2}, {"ㄣ", "en", 2}, {"ㄤ", "ang", 2}, {"ㄥ", "eng", 2},
+    {"ㄦ", "er", 2},
+    /* 聲調(kind 3):進緩衝顯示、組音忽略(字典不分調;founder 2026-07-22 要標準
+       鍵盤位含聲調)。注意:UTF-8 2 bytes(其餘符號 3 bytes)。 */
+    {"ˊ", "", 3}, {"ˇ", "", 3}, {"ˋ", "", 3}, {"˙", "", 3},
+};
+
+static const zy_map_t *zy_find(const char *sym)
+{
+    for (unsigned i = 0; i < sizeof(s_zy_map) / sizeof(s_zy_map[0]); i++)
+    {
+        size_t zl = strlen(s_zy_map[i].zy);
+        if (strncmp(s_zy_map[i].zy, sym, zl) == 0)
+            return &s_zy_map[i];
+    }
+    return NULL;
+}
+
+/* 韻母(帶介音時)的拼音寫法。key=韻母拼音片段。 */
+static const char *zy_rime(const char med, const char *fin, bool zero_init,
+                           const char *init)
+{
+    /* 回傳「介音+韻母」段;zero_init=零聲母(整音節寫法變 y/w 開頭)。 */
+    static char rime[8];
+    rime[0] = '\0';
+    if (med == 'i')
+    {
+        if (!fin)            strcpy(rime, zero_init ? "yi" : "i");
+        else if (!strcmp(fin, "a"))   strcpy(rime, zero_init ? "ya" : "ia");
+        else if (!strcmp(fin, "o"))   strcpy(rime, zero_init ? "yo" : "io");
+        else if (!strcmp(fin, "e"))   strcpy(rime, zero_init ? "ye" : "ie");
+        else if (!strcmp(fin, "ao"))  strcpy(rime, zero_init ? "yao" : "iao");
+        else if (!strcmp(fin, "ou"))  strcpy(rime, zero_init ? "you" : "iu");
+        else if (!strcmp(fin, "an"))  strcpy(rime, zero_init ? "yan" : "ian");
+        else if (!strcmp(fin, "en"))  strcpy(rime, zero_init ? "yin" : "in");
+        else if (!strcmp(fin, "ang")) strcpy(rime, zero_init ? "yang" : "iang");
+        else if (!strcmp(fin, "eng")) strcpy(rime, zero_init ? "ying" : "ing");
+    }
+    else if (med == 'u')
+    {
+        if (!fin)            strcpy(rime, zero_init ? "wu" : "u");
+        else if (!strcmp(fin, "a"))   strcpy(rime, zero_init ? "wa" : "ua");
+        else if (!strcmp(fin, "o"))   strcpy(rime, zero_init ? "wo" : "uo");
+        else if (!strcmp(fin, "ai"))  strcpy(rime, zero_init ? "wai" : "uai");
+        else if (!strcmp(fin, "ei"))  strcpy(rime, zero_init ? "wei" : "ui");
+        else if (!strcmp(fin, "an"))  strcpy(rime, zero_init ? "wan" : "uan");
+        else if (!strcmp(fin, "en"))  strcpy(rime, zero_init ? "wen" : "un");
+        else if (!strcmp(fin, "ang")) strcpy(rime, zero_init ? "wang" : "uang");
+        else if (!strcmp(fin, "eng")) strcpy(rime, zero_init ? "weng" : "ong");
+    }
+    else if (med == 'v')
+    {
+        bool jqx = (init && (init[0] == 'j' || init[0] == 'q' || init[0] == 'x'));
+        if (!fin)            strcpy(rime, zero_init ? "yu" : (jqx ? "u" : "v"));
+        else if (!strcmp(fin, "e"))   strcpy(rime, zero_init ? "yue" : "ue");
+        else if (!strcmp(fin, "an"))  strcpy(rime, zero_init ? "yuan" : "uan");
+        else if (!strcmp(fin, "en"))  strcpy(rime, zero_init ? "yun" : "un");
+        else if (!strcmp(fin, "eng")) strcpy(rime, zero_init ? "yong" : "iong");
+    }
+    else if (fin)
+    {
+        strcpy(rime, fin); /* 無介音:韻母直寫 */
+    }
+    return rime;
+}
+
+/* 注音緩衝→拼音音節(供 kbd_pinyin_lookup;不合法組合→空字串=查無)。 */
+static void zhuyin_compose(const char *zy, char *out, size_t outsz)
+{
+    const char *init = NULL;
+    char med = 0;
+    const char *fin = NULL;
+    out[0] = '\0';
+    const char *p = zy;
+    while (*p)
+    {
+        const zy_map_t *m = zy_find(p);
+        if (m == NULL)
+            return;
+        if (m->kind == 3)
+        {
+            /* 聲調:忽略(字典不分調,只留在緩衝顯示) */
+        }
+        else if (m->kind == 0 && init == NULL && med == 0 && fin == NULL)
+            init = m->py;
+        else if (m->kind == 1 && med == 0 && fin == NULL)
+            med = m->py[0];
+        else if (m->kind == 2 && fin == NULL)
+            fin = m->py;
+        else
+            return; /* 順序不合法 */
+        p += strlen(m->zy);
+    }
+    if (init == NULL && med == 0 && fin == NULL)
+        return;
+    const char *rime = zy_rime(med, fin, init == NULL, init);
+    if (init == NULL)
+    {
+        /* 零聲母:有介音走 y/w 寫法;純韻母直寫(ㄚ=a、ㄦ=er…) */
+        rt_snprintf(out, outsz, "%s", (med != 0) ? rime : (fin ? fin : ""));
+    }
+    else if (med == 0 && fin == NULL)
+    {
+        /* 聲母單獨:捲舌/平舌=整音節(zhi/zi…),其他=prefix 查找 */
+        if (!strcmp(init, "zh") || !strcmp(init, "ch") || !strcmp(init, "sh") ||
+            !strcmp(init, "r") || !strcmp(init, "z") || !strcmp(init, "c") ||
+            !strcmp(init, "s"))
+            rt_snprintf(out, outsz, "%si", init);
+        else
+            rt_snprintf(out, outsz, "%s", init);
+    }
+    else
+    {
+        rt_snprintf(out, outsz, "%s%s", init, rime);
+    }
+}
+
+static void kbd_pinyin_clear(void)
+{
+    s_py_len = 0;
+    s_py_buf[0] = '\0';
+    s_en_len = 0;
+    s_en_word[0] = '\0';
+    s_kbd_cand_count = 0;
+    s_kbd_row_kind = KBD_ROW_NONE;
+    if (s_kbd_cand_row && lv_obj_is_valid(s_kbd_cand_row))
+        lv_obj_add_flag(s_kbd_cand_row, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* 選字列刷新:中文/英文模式=常駐一條——組字/打單字中顯示候選或英文推薦,
+   否則數字快捷列 1~9(founder 2026-07-22);數字模式藏(布局本身有數字)。 */
+static void kbd_cand_refresh(void)
+{
+    if (s_kbd_cand_row == NULL || !lv_obj_is_valid(s_kbd_cand_row))
+        return;
+    if (current_keyboard_mode == KEYBOARD_MODE_NUMBERS)
+    {
+        s_kbd_cand_count = 0;
+        s_kbd_row_kind = KBD_ROW_NONE;
+        lv_obj_add_flag(s_kbd_cand_row, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    /* 英文模式:打了 >=2 個字母就找推薦;找得到=推薦列,找不到=數字列 */
+    if (current_keyboard_mode == KEYBOARD_MODE_LETTERS && s_en_len >= 2)
+    {
+        int n = 0;
+        for (int i = 0; i < g_en_words_count && n < KBD_CAND_MAX; i++)
+        {
+            if (strncmp(g_en_words[i], s_en_word, (size_t)s_en_len) == 0 &&
+                (int)strlen(g_en_words[i]) > s_en_len)
+            {
+                strncpy(s_kbd_cand_texts[n], g_en_words[i],
+                        sizeof(s_kbd_cand_texts[0]) - 1);
+                s_kbd_cand_texts[n][sizeof(s_kbd_cand_texts[0]) - 1] = '\0';
+                n++;
+            }
+        }
+        if (n > 0)
+        {
+            s_kbd_row_kind = KBD_ROW_EN_SUGG;
+            s_kbd_cand_count = n;
+            if (s_kbd_py_lbl)
+                lv_obj_add_flag(s_kbd_py_lbl, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_pad_left(s_kbd_cand_row, 36, LV_PART_MAIN);
+            lv_obj_set_style_pad_right(s_kbd_cand_row, 36, LV_PART_MAIN);
+            lv_obj_set_style_pad_column(s_kbd_cand_row, 10, LV_PART_MAIN);
+            lv_obj_set_flex_align(s_kbd_cand_row, LV_FLEX_ALIGN_START,
+                                  LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+            for (int i = 0; i < KBD_CAND_MAX; i++)
+            {
+                if (i < n)
+                {
+                    lv_obj_set_width(s_kbd_cand_btns[i], LV_SIZE_CONTENT);
+                    lv_obj_set_style_pad_hor(s_kbd_cand_btns[i], 8,
+                                             LV_PART_MAIN);
+                    lv_label_set_text(s_kbd_cand_lbls[i],
+                                      s_kbd_cand_texts[i]);
+                    lv_obj_clear_flag(s_kbd_cand_btns[i], LV_OBJ_FLAG_HIDDEN);
+                }
+                else
+                {
+                    lv_obj_add_flag(s_kbd_cand_btns[i], LV_OBJ_FLAG_HIDDEN);
+                }
+            }
+            lv_obj_clear_flag(s_kbd_cand_row, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_scroll_to_x(s_kbd_cand_row, 0, LV_ANIM_OFF);
+            lv_obj_move_foreground(s_kbd_cand_row);
+            return;
+        }
+        /* 無推薦 → 落到數字列 */
+    }
+    if (current_keyboard_mode == KEYBOARD_MODE_LETTERS || s_py_len == 0)
+    {
+        /* 空狀態=數字快捷列(按=直接上屏該數字,走同 commit 路)。
+           均分置中(founder 2026-07-22:組字模式的左 pad 36 在這像超大第一格,
+           且靠左排把 9 推進圓弧被切)。 */
+        if (s_kbd_py_lbl)
+            lv_obj_add_flag(s_kbd_py_lbl, LV_OBJ_FLAG_HIDDEN);
+        /* 零間隙+鈕寬=線距(450/9=50):數字在「線到線」正中(founder 2026-07-22:
+           間隙讓數字看起來靠右)。 */
+        lv_obj_set_style_pad_left(s_kbd_cand_row, 8, LV_PART_MAIN);
+        lv_obj_set_style_pad_right(s_kbd_cand_row, 8, LV_PART_MAIN);
+        lv_obj_set_style_pad_column(s_kbd_cand_row, 0, LV_PART_MAIN);
+        lv_obj_set_flex_align(s_kbd_cand_row, LV_FLEX_ALIGN_START,
+                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        s_kbd_row_kind = KBD_ROW_DIGITS;
+        s_kbd_cand_count = 9;
+        for (int i = 0; i < KBD_CAND_MAX; i++)
+        {
+            if (i < 9)
+            {
+                s_kbd_cand_texts[i][0] = (char)('1' + i);
+                s_kbd_cand_texts[i][1] = '\0';
+                lv_obj_set_width(s_kbd_cand_btns[i], 50);
+                lv_obj_set_style_pad_hor(s_kbd_cand_btns[i], 0, LV_PART_MAIN);
+                lv_label_set_text(s_kbd_cand_lbls[i], s_kbd_cand_texts[i]);
+                lv_obj_clear_flag(s_kbd_cand_btns[i], LV_OBJ_FLAG_HIDDEN);
+            }
+            else
+            {
+                lv_obj_add_flag(s_kbd_cand_btns[i], LV_OBJ_FLAG_HIDDEN);
+            }
+        }
+        lv_obj_clear_flag(s_kbd_cand_row, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_scroll_to_x(s_kbd_cand_row, 0, LV_ANIM_OFF);
+        lv_obj_move_foreground(s_kbd_cand_row);
+        return;
+    }
+    if (s_kbd_py_lbl)
+        lv_obj_clear_flag(s_kbd_py_lbl, LV_OBJ_FLAG_HIDDEN);
+    /* 組字模式:還原起始排列+安全 pad(左 36 避圓弧)+鈕寬/間隙(數字模式改過) */
+    lv_obj_set_style_pad_left(s_kbd_cand_row, 36, LV_PART_MAIN);
+    lv_obj_set_style_pad_right(s_kbd_cand_row, 36, LV_PART_MAIN);
+    lv_obj_set_style_pad_column(s_kbd_cand_row, 6, LV_PART_MAIN);
+    lv_obj_set_flex_align(s_kbd_cand_row, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_label_set_text(s_kbd_py_lbl, s_py_buf); /* 顯示注音符號串 */
+    char py[12];
+    zhuyin_compose(s_py_buf, py, sizeof(py));
+    s_kbd_cand_count =
+        py[0] ? kbd_pinyin_lookup(py, s_kbd_cand_texts, KBD_CAND_MAX) : 0;
+    s_kbd_row_kind = KBD_ROW_ZH_CAND;
+    for (int i = 0; i < KBD_CAND_MAX; i++)
+    {
+        if (i < s_kbd_cand_count)
+        {
+            lv_obj_set_width(s_kbd_cand_btns[i], 42); /* 還原(數字模式撐 50) */
+            lv_obj_set_style_pad_hor(s_kbd_cand_btns[i], 0, LV_PART_MAIN);
+            lv_label_set_text(s_kbd_cand_lbls[i], s_kbd_cand_texts[i]);
+            lv_obj_clear_flag(s_kbd_cand_btns[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        else
+        {
+            lv_obj_add_flag(s_kbd_cand_btns[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    lv_obj_clear_flag(s_kbd_cand_row, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_scroll_to_x(s_kbd_cand_row, 0, LV_ANIM_OFF); /* 新一輪候選捲回開頭 */
+    lv_obj_move_foreground(s_kbd_cand_row);
+}
+
+/* 候選上屏:送遠端(文字注入,V2T 同路)+本地輸入列。英文推薦=補完(只送
+   尚未打的字尾,前綴已即時上屏);其餘=送整字/數字。 */
+static void kbd_cand_commit(int idx)
+{
+    if (idx < 0 || idx >= s_kbd_cand_count)
+        return;
+    const char *send = s_kbd_cand_texts[idx];
+    if (s_kbd_row_kind == KBD_ROW_EN_SUGG)
+    {
+        if ((int)strlen(send) <= s_en_len)
+            return;
+        send += s_en_len; /* 補完字尾 */
+    }
+    if (control_provider.ble_hid_keyboard_input)
+        control_provider.ble_hid_keyboard_input((char *)send);
+    add_to_input_buffer(send);
+    kbd_pinyin_clear();
+    kbd_cand_refresh(); /* 回到空狀態=數字快捷列 */
+}
+
+static void kbd_cand_btn_cb(lv_event_t *e)
+{
+    kbd_cand_commit((int)(intptr_t)lv_event_get_user_data(e));
 }
 
 /**
@@ -1829,8 +2295,8 @@ static lv_obj_t *create_circular_button(lv_obj_t *parent, const char *text,
     // 添加文字，根據大小寫狀態調整
     lv_obj_t *label = lv_label_create(btn);
 
-    // 如果是字母且處於字母模式，根據大小寫狀態調整顯示
-    if (current_keyboard_mode == KEYBOARD_MODE_LETTERS && strlen(text) == 1 &&
+    // 如果是字母且處於字母/中文模式，根據大小寫狀態調整顯示(中文恆小寫拼音)
+    if (current_keyboard_mode != KEYBOARD_MODE_NUMBERS && strlen(text) == 1 &&
         text[0] >= 'A' && text[0] <= 'Z')
     {
         static char display_text[2] = {0};
@@ -1884,6 +2350,10 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
     lv_obj_set_style_border_width(keyboard_container, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(keyboard_container, 25, LV_PART_MAIN);
     lv_obj_set_style_pad_all(keyboard_container, 8, LV_PART_MAIN);
+    /* 內容超出 1px 就會長滾動條+可上下滾(founder 2026-07-22 注音空白下移後
+       觸發;此 container 從未清 SCROLLABLE 的舊帳):固定鍵盤,關捲動。 */
+    lv_obj_clear_flag(keyboard_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(keyboard_container, LV_SCROLLBAR_MODE_OFF);
 
     // 重置按鍵數組
     all_keys_count = 0;
@@ -1904,9 +2374,33 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
     int row3_y = 135;
     int row3_start_x = 25;
 
-    if (current_keyboard_mode == KEYBOARD_MODE_LETTERS)
+    if (current_keyboard_mode == KEYBOARD_MODE_CHINESE)
     {
-        // 第一行 - 字母鍵
+        /* 注音布局=**標準注音鍵盤位**(大千;founder 2026-07-22:直行 ㄅㄆㄇㄈ
+           對齊肌肉記憶)。聲調位(ˇˋˊ)留空(字典不分調);ㄦ 原在 '-' 放不下,
+           借 ˙ 位(第 7 欄)。row4(mode/space/del) 照舊在 y195。 */
+        caps_btn = NULL; /* 本布局無 Caps,清 stale 引用 */
+        static const char *zy_rows[4][10] = {
+            {"ㄅ", "ㄉ", "ˇ", "ˋ", "ㄓ", "ˊ", "˙", "ㄚ", "ㄞ", "ㄢ"},
+            {"ㄆ", "ㄊ", "ㄍ", "ㄐ", "ㄔ", "ㄗ", "一", "ㄛ", "ㄟ", "ㄣ"},
+            {"ㄇ", "ㄋ", "ㄎ", "ㄑ", "ㄕ", "ㄘ", "ㄨ", "ㄜ", "ㄠ", "ㄤ"},
+            {NULL, "ㄌ", "ㄏ", "ㄒ", "ㄖ", "ㄙ", "ㄩ", "ㄝ", "ㄡ", NULL},
+        };
+        static const int zy_ys[4] = {0, 48, 96, 144};
+        for (int r = 0; r < 4; r++)
+            for (int c = 0; c < 10; c++)
+                if (zy_rows[r][c] != NULL)
+                    create_circular_button(keyboard_container, zy_rows[r][c],
+                                           c * keyboard_btn_size, zy_ys[r]);
+        /* row4 兩角被圓弧切掉(founder 2026-07-22 截圖):ㄈ/ㄥ 連同借位的 ㄦ
+           改放功能排(空白鍵下移讓出的位置,mode 與 del 之間)。 */
+        create_circular_button(keyboard_container, "ㄈ", 160, 195);
+        create_circular_button(keyboard_container, "ㄥ", 205, 195);
+        create_circular_button(keyboard_container, "ㄦ", 250, 195);
+    }
+    else if (current_keyboard_mode != KEYBOARD_MODE_NUMBERS)
+    {
+        // 第一行 - 字母鍵(英文 QWERTY)
         create_circular_button(keyboard_container, "Q",
                                row1_start_x + 0 * (keyboard_btn_size), row1_y);
         create_circular_button(keyboard_container, "W",
@@ -2096,10 +2590,12 @@ static void create_circular_keyboard_layout(lv_obj_t *parent)
     lv_img_set_src(mode_icon, &erth);
     lv_obj_center(mode_icon);
 
-    // Space 按鍵
+    // Space 按鍵(中文模式下移讓位給 ㄈㄥㄦ,founder 2026-07-22)
     space_btn = lv_obj_create(keyboard_container);
     lv_obj_set_size(space_btn, 120, 50);
-    lv_obj_set_pos(space_btn, 160, row4_y);
+    lv_obj_set_pos(space_btn, 160,
+                   (current_keyboard_mode == KEYBOARD_MODE_CHINESE) ? 235
+                                                                    : row4_y);
     lv_obj_set_style_bg_opa(space_btn, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(space_btn, 0, LV_PART_MAIN);
     lv_obj_clear_flag(space_btn, LV_OBJ_FLAG_SCROLLABLE);
@@ -3171,12 +3667,9 @@ static void plain_event_cb(lv_event_t *e)
         }
         handle_pressed_event(indev);
         dial_hold_on_pressed(indev); /* 主觸控板長按→拖曳 arm：武裝 hold 計時器 */
-        /* 右緣起手→武裝「向左拉出=手寫」判定(拉夠遠才觸發,期間一般行為照舊) */
-        if (indev)
-        {
-            lv_indev_get_point(indev, &s_edge_start);
-            s_edge_swipe_armed = (s_edge_start.x >= LV_HOR_RES - HW_EDGE_ZONE_W);
-        }
+        /* 右緣左拉進手寫已退役(founder 2026-07-22:改頂部 logo tap 開,
+           見 status_bar_area_up_cb);edge armed 恆 false。 */
+        s_edge_swipe_armed = false;
         break;
     }
     case LV_EVENT_PRESSING:
@@ -3195,24 +3688,7 @@ static void plain_event_cb(lv_event_t *e)
             break;
         }
 
-        /* (0) 右緣向左拉出起手=手寫 view 現形、開始跟手(founder 2026-07-20:畫面要
-           跟著手指從右邊進來;體感照 app_clock_status_bar 通知列表)。 */
-        if (s_edge_swipe_armed && !s_dial_drag)
-        {
-            int edx = s_edge_start.x - now_point.x; /* 向左為正 */
-            int edy = LV_ABS(now_point.y - s_edge_start.y);
-            if (edx > HW_EDGE_PULL_PX && edx > edy)
-            {
-                s_edge_swipe_armed = false;
-                dial_hold_cancel();
-                s_hw_hold_armed = false;
-                BLE_HID_Mouse_Touch_Release((uint16_t)now_point.x,
-                                            (uint16_t)now_point.y);
-                user_touching = false;
-                hw_pull_begin(now_point.x - s_edge_start.x, now_point.x);
-                break;
-            }
-        }
+        /* (0) 右緣向左拉出進手寫已退役(founder 2026-07-22:頂部 logo tap 開)。 */
 
         /* (1) 已在拖曳物件：手指移多少游標移多少（1:1 相對移動，左鍵按著）。 */
         if (s_dial_drag)
@@ -4197,11 +4673,26 @@ extern bool is_at_mouse_mode(void);
 extern bool app_control_get_mouse_mode(void);
 
 static lv_obj_t *s_hw_view = NULL;
+static lv_obj_t *s_hw_backdrop = NULL; /* 進場黑底:獨立於 view,原地漸黑(founder
+                                          2026-07-22:元件滑入,觸碰板原地變黑) */
 static lv_obj_t *s_hw_btn_exit = NULL;  /* 頂部:退出(取消不送出,founder 2026-07-20) */
-static lv_obj_t *s_hw_btn_clear = NULL; /* 底部左:情境鍵——板上有字=清空/沒字=刪除(backspace) */
-static lv_obj_t *s_hw_btn_clear_lbl = NULL; /* 情境鍵的 label(依板況換字) */
-static lv_obj_t *s_hw_btn_next = NULL;  /* 底部中:下個字(定稿+清板) */
-static lv_obj_t *s_hw_btn_enter = NULL; /* 底部右:輸入(送出) */
+static lv_obj_t *s_hw_btn_clear = NULL; /* 底部情境鍵——板上有字=清空(文字)/沒字=刪除(圖) */
+static lv_obj_t *s_hw_btn_clear_lbl = NULL; /* 清空狀態的文字 */
+static lv_obj_t *s_hw_btn_clear_img = NULL; /* 刪除狀態的圖=鍵盤頁同款 backspace_icon
+                                               (founder 2026-07-22:別用預設藍鈕) */
+static lv_obj_t *s_hw_btn_mode = NULL; /* 左下(=鍵盤 mode_btn 同位):erth 切輸入法圖,
+                                          點=收手寫開鍵盤(英文→數字→手寫循環) */
+static lv_obj_t *s_hw_btn_enter = NULL; /* 退出鈕下方同欄:輸入(送出)——候選清單空才顯示;
+                                           有候選時該欄顯示候選(founder 2026-07-22:底部
+                                           不再有下個字/輸入,定稿一律按候選字) */
+
+/* 候選字列(founder 2026-07-20 晚):退出鈕下方一欄,手機每次辨識下發 top-5(0x1c)。
+   按候選=用該字定稿+換下個字(送 "n"+i);輸入鈕只在候選清空時顯示=先定稿才能送出。 */
+#define HW_CAND_MAX 5
+static lv_obj_t *s_hw_cand_row = NULL;
+static lv_obj_t *s_hw_cand_btns[HW_CAND_MAX];
+static lv_obj_t *s_hw_cand_lbls[HW_CAND_MAX];
+static int s_hw_cand_count = 0;
 static volatile bool s_hw_view_active = false; /* motion thread 讀(姿勢保險收斂) */
 static lv_coord_t s_hw_pull_vx = 0;     /* 最近一 tick 的水平步進(放開 fling 判定,參考 vx<-6) */
 static lv_coord_t s_hw_pull_prev_x = 0;
@@ -4220,7 +4711,32 @@ static bool s_hw_local_pen = false;
 
 static void hw_ink_append(const lv_point_t *p);
 static void hw_ink_clear(void);
+static void hw_cand_clear_local(void);
 static void hw_pull_snap(bool open);
+
+/* 黑底透明度=滑入進度(view x=466→opa 0、x=0→opa 255)。所有動 view x 的路徑
+   (snap/exit anim/左拉跟手)都要跟著呼。 */
+static void hw_backdrop_sync(lv_coord_t view_x)
+{
+    if (s_hw_backdrop == NULL)
+        return;
+    lv_coord_t x = view_x;
+    if (x < 0)
+        x = 0;
+    if (x > LV_HOR_RES)
+        x = LV_HOR_RES;
+    lv_obj_set_style_bg_opa(s_hw_backdrop,
+                            (lv_opa_t)(255 - (255 * x) / LV_HOR_RES), 0);
+}
+
+static void hw_backdrop_hide(void)
+{
+    if (s_hw_backdrop)
+    {
+        lv_obj_add_flag(s_hw_backdrop, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_bg_opa(s_hw_backdrop, LV_OPA_TRANSP, 0);
+    }
+}
 static void hw_open_commit(void);
 static void close_handwrite_from_pose(void); /* 定義在本段尾:輸入鈕=送出 */
 static void hw_cancel_session(void);         /* 定義在本段尾:退出鈕/離開 app=取消 */
@@ -4250,29 +4766,95 @@ static void hw_view_event_cb(lv_event_t *e)
     else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
     {
         bloc_handwrite_set_pen(false);
+        /* 單點筆畫(點/頓筆):lv_line 一個點畫不出東西——補一個 1px 偏移點,
+           圓頭線帽渲染成一顆點(founder 2026-07-22:「只用點的畫面上什麼都
+           沒有」;辨識端吃座標不受影響)。 */
+        if (s_hw_local_pen && s_hw_stroke_idx >= 0 &&
+            s_hw_line_n[s_hw_stroke_idx] == 1)
+        {
+            int idx = s_hw_stroke_idx;
+            s_hw_line_pts[idx][1].x = (lv_coord_t)(s_hw_line_pts[idx][0].x + 1);
+            s_hw_line_pts[idx][1].y = s_hw_line_pts[idx][0].y;
+            s_hw_line_n[idx] = 2;
+            if (s_hw_lines[idx])
+                lv_line_set_points(s_hw_lines[idx], s_hw_line_pts[idx], 2);
+        }
         s_hw_local_pen = false; /* 下次按下=新一筆 */
     }
 }
 
-/* 按鈕(founder 2026-07-20:不要自動輸入):頂部退出=取消(不送出);底部下個字=
-   手機定稿當前字+全端清板;底部輸入=結束送出(close 走既有 end 路徑)。
+/* 按鈕(founder 2026-07-20:不要自動輸入/2026-07-22:定稿一律按候選字):頂部退出=
+   取消(不送出);候選欄=按候選定稿+換下字,清單空時同欄顯示輸入=結束送出。
    按鈕不 bubble,不會誤餵筆跡。 */
-static void hw_btn_next_cb(lv_event_t *e)
+/* 按候選字=用該候選定稿+換下個字("n"+pick;founder 2026-07-20 晚)。 */
+static void hw_cand_btn_cb(lv_event_t *e)
 {
-    (void)e;
-    bloc_handwrite_next_char(); /* 送 "n":手機定稿進前綴、桌面清板 */
-    hw_ink_clear();             /* 錶面清板,寫下一個字 */
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= s_hw_cand_count)
+        return;
+    bloc_handwrite_next_pick(idx); /* 送 "n"+i:手機用 candidates[i] 定稿 */
+    hw_ink_clear();                /* 清板+清候選,輸入鈕現形 */
 }
 
-/* 情境鍵 label:板上有字=「清空」、沒字=「刪除」(founder 2026-07-20 合併)。 */
+/* 候選列清空(本地立即;手機事後也會下發空清單,冪等)+輸入鈕現形。 */
+static void hw_cand_clear_local(void)
+{
+    s_hw_cand_count = 0;
+    if (s_hw_cand_row)
+        lv_obj_add_flag(s_hw_cand_row, LV_OBJ_FLAG_HIDDEN);
+    if (s_hw_btn_enter)
+        lv_obj_clear_flag(s_hw_btn_enter, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* GUI thread(communicate 0x1c→ui_handler):候選清單更新。count=0=清空。
+   view 沒開(遲到 frame)直接忽略。 */
+void mouse_handwrite_candidates(const char *const *texts, int count)
+{
+    if (!s_hw_view_active || s_hw_cand_row == NULL)
+        return;
+    if (count > HW_CAND_MAX)
+        count = HW_CAND_MAX;
+    if (count <= 0)
+    {
+        hw_cand_clear_local();
+        return;
+    }
+    s_hw_cand_count = count;
+    for (int i = 0; i < HW_CAND_MAX; i++)
+    {
+        if (i < count)
+        {
+            lv_label_set_text(s_hw_cand_lbls[i], texts[i]);
+            lv_obj_clear_flag(s_hw_cand_btns[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        else
+        {
+            lv_obj_add_flag(s_hw_cand_btns[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    lv_obj_clear_flag(s_hw_cand_row, LV_OBJ_FLAG_HIDDEN);
+    if (s_hw_btn_enter)
+        lv_obj_add_flag(s_hw_btn_enter, LV_OBJ_FLAG_HIDDEN); /* 有候選=先定稿,藏輸入 */
+}
+
+/* 情境鍵內容:板上有字=「清空」文字、沒字=鍵盤頁的 backspace 圖(founder 2026-07-20
+   合併/2026-07-22 刪除改圖)。 */
 static void hw_btn_clear_refresh_label(void)
 {
-    if (s_hw_btn_clear_lbl == NULL)
+    if (s_hw_btn_clear_lbl == NULL || s_hw_btn_clear_img == NULL)
         return;
-    lv_label_set_text(s_hw_btn_clear_lbl,
-                      (s_hw_stroke_idx < 0)
-                          ? LV_EXT_STR_GET_BY_KEY(handwrite_delete, "Del")
-                          : LV_EXT_STR_GET_BY_KEY(handwrite_clear, "Clear"));
+    if (s_hw_stroke_idx < 0)
+    {
+        lv_obj_add_flag(s_hw_btn_clear_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(s_hw_btn_clear_img, LV_OBJ_FLAG_HIDDEN);
+    }
+    else
+    {
+        lv_label_set_text(s_hw_btn_clear_lbl,
+                          LV_EXT_STR_GET_BY_KEY(handwrite_clear, "Clear"));
+        lv_obj_clear_flag(s_hw_btn_clear_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_hw_btn_clear_img, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 /* 情境鍵:板上有字=清空(擦掉當前字重寫,送 "c");沒字=刪除(backspace 已定稿
@@ -4297,11 +4879,107 @@ static void hw_btn_enter_cb(lv_event_t *e)
     close_handwrite_from_pose(); /* 送 end → 手機 commit → 桌面送出 */
 }
 
-/* 退出=取消 session(不送出),詳 hw_cancel_session。 */
+/* 退出動畫收尾:藏 view+座標歸位。 */
+static void hw_exit_anim_done(lv_anim_t *a)
+{
+    (void)a;
+    if (s_hw_view)
+    {
+        lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_x(s_hw_view, 0);
+        lv_obj_set_y(s_hw_view, 0);
+    }
+    hw_backdrop_hide();
+}
+
+static void hw_exit_anim_exec(void *obj, int32_t v)
+{
+    lv_obj_set_x((lv_obj_t *)obj, (lv_coord_t)v);
+    hw_backdrop_sync((lv_coord_t)v); /* 黑底跟頁面離開同步漸退 */
+}
+
+/* 退出=取消 session(不送出)。視覺=整版往右滑出(founder 2026-07-22:從右邊
+   進來就從右邊回去,跟右緣拉出的 snap 取消同款);底下先鋪好觸碰板=落點。 */
 static void hw_btn_exit_cb(lv_event_t *e)
 {
     (void)e;
+    if (!s_hw_view_active)
+        return;
+    s_hw_view_active = false;
+    bloc_handwrite_cancel(); /* 上行 "x" 即刻送(手機清狀態+收 skaibar) */
+    if (current_hid_mode != HID_MODE_TRACKPAD)
+        apply_hid_mode(HID_MODE_TRACKPAD);
+    /* 滑鼠圖從左緣同步滑回(founder 2026-07-22:退出時圖要跟著頁面回來,
+       鏡像進場的滑出;不然揭開時已站在原位=靜態)。 */
+    if (s_top_logo && lv_obj_is_valid(s_top_logo))
+    {
+        lv_anim_del(s_top_logo, NULL);
+        lv_obj_set_style_translate_x(s_top_logo,
+                                     (lv_coord_t)-(int32_t)LV_HOR_RES, 0);
+        lv_anim_t la;
+        lv_anim_init(&la);
+        lv_anim_set_var(&la, s_top_logo);
+        lv_anim_set_exec_cb(&la, top_logo_tx_anim_exec);
+        lv_anim_set_values(&la, (int32_t)-(int32_t)LV_HOR_RES, 0);
+        lv_anim_set_time(&la, 200);
+        lv_anim_set_path_cb(&la, lv_anim_path_ease_out);
+        lv_anim_start(&la);
+    }
+    if (s_hw_view)
+    {
+        lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_CLICKABLE); /* 滑出中不吃筆跡 */
+        lv_anim_del(s_hw_view, NULL);
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, s_hw_view);
+        lv_anim_set_exec_cb(&a, hw_exit_anim_exec);
+        lv_anim_set_values(&a, lv_obj_get_x(s_hw_view), LV_HOR_RES);
+        lv_anim_set_time(&a, 200); /* 右緣拉出 snap 同款時長 */
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_set_ready_cb(&a, hw_exit_anim_done);
+        lv_anim_start(&a);
+    }
+    LOG_I("[handwrite] close view (cancel, slide-right)");
+}
+
+/* 切輸入法(erth 鈕):收手寫(取消不送出)→開鍵盤。mode 在數字→手寫時已復位
+   英文,循環=英文→數字→手寫→英文(founder 2026-07-22)。 */
+static void hw_btn_mode_cb(lv_event_t *e)
+{
+    (void)e;
     hw_cancel_session();
+    /* 循環錨定:手寫→**英文**,一律強制 mode+重建布局(founder 2026-07-22:殘留
+       數字布局害循環卡「寫→數→寫」,英文永遠到不了)。 */
+    kbd_pinyin_clear();
+    current_keyboard_mode = KEYBOARD_MODE_LETTERS;
+    if (keyboard_container != NULL)
+    {
+        lv_obj_t *kb_parent = lv_obj_get_parent(keyboard_container);
+        lv_obj_del(keyboard_container);
+        create_circular_keyboard_layout(kb_parent);
+    }
+    /* 切整個 app 到鍵盤模式:觸碰板模式下鍵盤整棵子樹藏著,光 toggle 可見性
+       什麼都看不到(founder 2026-07-22:按了跑回觸碰板)。 */
+    apply_hid_mode(HID_MODE_KEYBOARD);
+    if (keyboard_container != NULL)
+    {
+        lv_anim_del(keyboard_container, NULL);
+        lv_obj_set_style_translate_y(keyboard_container, 0, 0);
+    }
+    /* 正規升鍵盤(勿手動 clear HIDDEN):藏 mic 區(含黑色⌨鈕)+顯 container+
+       arrows/arcs 同步。手動展開會漏藏 mic 區,退出時⌨鈕露出(founder
+       2026-07-22 截圖)。**別呼 expand_anim_driver_cb(NULL,100)**——那是
+       mic-view expand 的另一套 bar 幾何(380×90@y195),會把 mode_set_visible
+       剛放好的 310×45@y64 拉去畫面中央(founder:「下層多一個輸入框」)。 */
+    kbd_lower_set_keyboard(true);
+    /* enter 圖示可能殘留上次 collapse 的 zoom/透明,手動復位(driver 100 的
+       好副作用只留這個)。 */
+    if (input_enter_img && lv_obj_is_valid(input_enter_img))
+    {
+        lv_img_set_zoom(input_enter_img, 256);
+        lv_obj_set_style_img_opa(input_enter_img, LV_OPA_COVER, LV_PART_MAIN);
+    }
+    kbd_cand_refresh(); /* 進鍵盤立即出列(數字快捷列) */
 }
 
 /* 本地軌跡:清空全部筆畫。 */
@@ -4316,6 +4994,7 @@ static void hw_ink_clear(void)
     s_hw_stroke_idx = -1;
     s_hw_local_pen = false;
     hw_btn_clear_refresh_label(); /* 板空了→情境鍵變「刪除」 */
+    hw_cand_clear_local();        /* 候選屬於板上的字,板清=候選清 */
 }
 
 /* 本地軌跡:追加一點(觸控座標=螢幕座標,無需映射)。 */
@@ -4351,27 +5030,84 @@ static void ensure_hw_view(void)
     lv_obj_t *host = hid_mouse_ui_host();
     if (host == NULL)
         host = lv_scr_act();
+    /* 切換途中 view 超出右緣會讓 host 長滾動條(founder 2026-07-22):關掉。 */
+    lv_obj_set_scrollbar_mode(host, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(host, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* 進場黑底:獨立 backdrop 原地漸黑(不跟 view 滑),view 本體透明=只有元件
+       滑進來(founder 2026-07-22)。 */
+    s_hw_backdrop = lv_obj_create(host);
+    lv_obj_remove_style_all(s_hw_backdrop);
+    lv_obj_set_size(s_hw_backdrop, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(s_hw_backdrop, 0, 0);
+    lv_obj_set_style_bg_color(s_hw_backdrop, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_hw_backdrop, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(s_hw_backdrop, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(s_hw_backdrop, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_hw_backdrop, LV_OBJ_FLAG_HIDDEN);
+
     s_hw_view = lv_obj_create(host);
     lv_obj_remove_style_all(s_hw_view);
     lv_obj_set_size(s_hw_view, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_pos(s_hw_view, 0, 0);
-    /* 暗背景+中央圖示(lift-mic 同款);2026-07-20 三改起加回本地軌跡(真手指書寫,
-       要看得到自己寫什麼)。用不透明黑:view 會跟手滑動,半透明疊在滑鼠 UI 上會透出。 */
-    lv_obj_set_style_bg_color(s_hw_view, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(s_hw_view, LV_OPA_COVER, 0);
+    /* view 本體透明(黑底由 backdrop 提供);本地軌跡/按鈕等元件跟著 view 滑。 */
+    lv_obj_set_style_bg_opa(s_hw_view, LV_OPA_TRANSP, 0);
     lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_event_cb(s_hw_view, hw_view_event_cb, LV_EVENT_ALL, NULL);
 
-    /* 頂部退出鈕(取消不送出) */
-    s_hw_btn_exit = lv_btn_create(s_hw_view);
-    lv_obj_set_size(s_hw_btn_exit, 110, 44);
-    lv_obj_align(s_hw_btn_exit, LV_ALIGN_TOP_MID, 0, 14);
+    /* 頂部=keyboard_icon(取消不送出;founder 2026-07-22:與觸碰板頂部 logo 整合
+       ——觸碰板 logo tap 滑入本頁、本頁頂部變鍵盤圖、再按=滑回退出)。位置對齊
+       status_bar 頂部 80 高感應區置中。 */
+    s_hw_btn_exit = lv_obj_create(s_hw_view);
+    lv_obj_remove_style_all(s_hw_btn_exit);
+    lv_obj_set_size(s_hw_btn_exit, 100, 80);
+    lv_obj_align(s_hw_btn_exit, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_add_flag(s_hw_btn_exit, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(s_hw_btn_exit, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(s_hw_btn_exit, hw_btn_exit_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *lbl_exit = lv_label_create(s_hw_btn_exit);
-    lv_label_set_text(lbl_exit, LV_EXT_STR_GET_BY_KEY(handwrite_exit, "Exit"));
-    lv_obj_center(lbl_exit);
+    lv_obj_t *exit_img = lv_img_create(s_hw_btn_exit);
+    lv_img_set_src(exit_img, &keyboard_icon);
+    lv_img_set_zoom(exit_img, 180);
+    lv_obj_center(exit_img);
+    lv_obj_clear_flag(exit_img, LV_OBJ_FLAG_CLICKABLE);
+
+    /* 候選列=鍵盤輸入框同款 pill(founder 2026-07-22 視覺統一:同位(43,64)、同
+       310×45、同深色底+白框+radius 100——兩模式看起來是同一條輸入列)。列本體
+       不可點,候選鈕(透明+白字)自己吃 press。 */
+    s_hw_cand_row = lv_obj_create(s_hw_view);
+    lv_obj_remove_style_all(s_hw_cand_row);
+    lv_obj_set_size(s_hw_cand_row, 310, 45);
+    lv_obj_set_pos(s_hw_cand_row, (LV_HOR_RES_MAX - 310) / 2, 64); /* 置中,同鍵盤 bar */
+    lv_obj_set_style_bg_color(s_hw_cand_row, lv_color_hex(0x1a1a1a), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_hw_cand_row, LV_OPA_90, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_hw_cand_row, lv_color_hex(0xFFFFFF),
+                                  LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_hw_cand_row, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(s_hw_cand_row, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_hw_cand_row, 100, LV_PART_MAIN);
+    lv_obj_clear_flag(s_hw_cand_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(s_hw_cand_row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_flex_flow(s_hw_cand_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_hw_cand_row, LV_FLEX_ALIGN_SPACE_EVENLY,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_add_flag(s_hw_cand_row, LV_OBJ_FLAG_HIDDEN);
+    for (int i = 0; i < HW_CAND_MAX; i++)
+    {
+        s_hw_cand_btns[i] = lv_obj_create(s_hw_cand_row);
+        lv_obj_set_size(s_hw_cand_btns[i], 52, 39);
+        lv_obj_set_style_bg_opa(s_hw_cand_btns[i], LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_border_width(s_hw_cand_btns[i], 0, LV_PART_MAIN);
+        lv_obj_clear_flag(s_hw_cand_btns[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_event_cb(s_hw_cand_btns[i], hw_cand_btn_cb, LV_EVENT_CLICKED,
+                            (void *)(intptr_t)i);
+        s_hw_cand_lbls[i] = lv_label_create(s_hw_cand_btns[i]);
+        lv_obj_set_style_text_color(s_hw_cand_lbls[i], lv_color_hex(0xFFFFFF), 0);
+        lv_label_set_text(s_hw_cand_lbls[i], "");
+        lv_obj_center(s_hw_cand_lbls[i]);
+        lv_obj_add_flag(s_hw_cand_btns[i], LV_OBJ_FLAG_HIDDEN);
+    }
 
     /* 本地軌跡線(建立在字樣之後=畫在其上層) */
     for (int i = 0; i < HW_TRACE_STROKES; i++)
@@ -4382,30 +5118,60 @@ static void ensure_hw_view(void)
         lv_obj_set_style_line_rounded(s_hw_lines[i], true, 0);
     }
 
-    /* 底部按鈕列:清空|下個字|輸入(founder:不要自動輸入+可擦掉重寫)。三顆 96 寬
-       要上移到 y≈-36(圓螢幕該高度弦寬~312px 才放得下)。按鈕自己吃 press,
-       不會 bubble 進筆跡。 */
-    s_hw_btn_clear = lv_btn_create(s_hw_view);
-    lv_obj_set_size(s_hw_btn_clear, 96, 48);
-    lv_obj_align(s_hw_btn_clear, LV_ALIGN_BOTTOM_MID, -102, -36);
+    /* 底部只剩情境鍵(清空/刪除),置中(founder 2026-07-22:下個字/輸入退出底部——
+       定稿一律按候選字,輸入移到候選欄)。透明容器照鍵盤頁 del_btn 樣式(founder:
+       預設藍鈕醜);按鈕自己吃 press,不會 bubble 進筆跡。 */
+    s_hw_btn_clear = lv_obj_create(s_hw_view);
+    /* 位置=鍵盤頁 del_btn 的螢幕絕對位(founder 2026-07-22 對齊肌肉記憶):
+       container top 166 + pad 8 + 內部(300,195) → (308,369),同 80×50。 */
+    lv_obj_set_size(s_hw_btn_clear, 80, 50);
+    lv_obj_set_pos(s_hw_btn_clear, 308, 369);
+    lv_obj_set_style_bg_opa(s_hw_btn_clear, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_hw_btn_clear, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_hw_btn_clear, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(s_hw_btn_clear, hw_btn_clear_cb, LV_EVENT_CLICKED, NULL);
     s_hw_btn_clear_lbl = lv_label_create(s_hw_btn_clear);
-    hw_btn_clear_refresh_label(); /* 板上有字=清空/沒字=刪除 */
+    lv_obj_set_style_text_color(s_hw_btn_clear_lbl, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(s_hw_btn_clear_lbl);
+    s_hw_btn_clear_img = lv_img_create(s_hw_btn_clear);
+    lv_img_set_src(s_hw_btn_clear_img, &backspace_icon);
+    lv_obj_align(s_hw_btn_clear_img, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_img_opa(s_hw_btn_clear_img, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_clear_flag(s_hw_btn_clear_img, LV_OBJ_FLAG_CLICKABLE);
+    hw_btn_clear_refresh_label(); /* 板上有字=清空文字/沒字=刪除圖 */
 
-    s_hw_btn_next = lv_btn_create(s_hw_view);
-    lv_obj_set_size(s_hw_btn_next, 96, 48);
-    lv_obj_align(s_hw_btn_next, LV_ALIGN_BOTTOM_MID, 0, -36);
-    lv_obj_add_event_cb(s_hw_btn_next, hw_btn_next_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *lbl_next = lv_label_create(s_hw_btn_next);
-    lv_label_set_text(lbl_next, LV_EXT_STR_GET_BY_KEY(handwrite_next, "Next"));
-    lv_obj_center(lbl_next);
+    /* 切輸入法鈕:位置=鍵盤 mode_btn 絕對位(container 166+pad 8+內部(65,195)→
+       (73,369)),同 erth 圖;點=收手寫開鍵盤(founder 2026-07-22 循環)。 */
+    s_hw_btn_mode = lv_obj_create(s_hw_view);
+    lv_obj_set_size(s_hw_btn_mode, 50, 50);
+    lv_obj_set_pos(s_hw_btn_mode, 73, 369);
+    lv_obj_set_style_bg_opa(s_hw_btn_mode, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_hw_btn_mode, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_hw_btn_mode, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(s_hw_btn_mode, hw_btn_mode_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *hw_mode_img = lv_img_create(s_hw_btn_mode);
+    lv_img_set_src(hw_mode_img, &erth);
+    lv_obj_center(hw_mode_img);
+    lv_obj_clear_flag(hw_mode_img, LV_OBJ_FLAG_CLICKABLE);
 
-    s_hw_btn_enter = lv_btn_create(s_hw_view);
-    lv_obj_set_size(s_hw_btn_enter, 96, 48);
-    lv_obj_align(s_hw_btn_enter, LV_ALIGN_BOTTOM_MID, 102, -36);
+    /* 輸入鈕=候選欄的空狀態:與候選列同一位置,候選清單沒東西才顯示
+       (有候選→先按候選定稿,才輪得到送出)。 */
+    s_hw_btn_enter = lv_obj_create(s_hw_view);
+    lv_obj_set_size(s_hw_btn_enter, 310, 45);
+    lv_obj_set_pos(s_hw_btn_enter, (LV_HOR_RES_MAX - 310) / 2, 64); /* 置中,同鍵盤 bar */
+    lv_obj_set_style_bg_color(s_hw_btn_enter, lv_color_hex(0x1a1a1a), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_hw_btn_enter, LV_OPA_90, LV_PART_MAIN);
+    /* 亮起提示(founder 2026-07-22):候選清空=可送出,sky-accent 全亮框+字,
+       跟一般白框 pill 一眼區分。 */
+    lv_obj_set_style_border_color(s_hw_btn_enter, lv_color_hex(0xA6D3E6),
+                                  LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_hw_btn_enter, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(s_hw_btn_enter, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_hw_btn_enter, 100, LV_PART_MAIN);
+    lv_obj_clear_flag(s_hw_btn_enter, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(s_hw_btn_enter, hw_btn_enter_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *lbl_enter = lv_label_create(s_hw_btn_enter);
+    lv_obj_set_style_text_color(lbl_enter, lv_color_hex(0xA6D3E6), 0);
     lv_label_set_text(lbl_enter, LV_EXT_STR_GET_BY_KEY(handwrite_enter, "Enter"));
     lv_obj_center(lbl_enter);
 }
@@ -4425,11 +5191,13 @@ static void hw_pull_anim_cancel_done(lv_anim_t *a)
         lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_x(s_hw_view, 0);
     }
+    hw_backdrop_hide();
 }
 
 static void hw_pull_anim_exec(void *obj, int32_t v)
 {
     lv_obj_set_x((lv_obj_t *)obj, (lv_coord_t)v);
+    hw_backdrop_sync((lv_coord_t)v); /* 黑底跟滑入進度漸黑/漸退 */
 }
 
 /* 放開後 snap:open=滑到 0 並 commit、!open=滑回右緣並藏。 */
@@ -4466,7 +5234,8 @@ static void hw_pull_begin(lv_coord_t dx0, lv_coord_t finger_x)
         return; /* 語音輸入中不搶 */
     dial_drag_state_reset(); /* 清 hold timer/拖曳/側立圓盤殘留 */
     ensure_hw_view();
-    lv_anim_del(s_hw_view, NULL); /* 殘留 snap 動畫 */
+    lv_anim_del(s_hw_view, NULL); /* 殘留 snap/退出動畫 */
+    lv_obj_set_y(s_hw_view, 0);   /* 退出下滑被中斷的殘留位移歸位 */
     hw_ink_clear();
     lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_CLICKABLE); /* 拉出期間 press 留在觸控板 */
     lv_coord_t x = LV_HOR_RES + dx0; /* dx0<0(向左拉)→x<466 */
@@ -4518,6 +5287,20 @@ static void hw_open_commit(void)
         return;
     lv_obj_set_x(s_hw_view, 0);
     lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_CLICKABLE);
+    /* 黑底全黑就位(mode-switch 直開等路徑沒走 staging 也要有黑底)。 */
+    if (s_hw_backdrop)
+    {
+        lv_obj_clear_flag(s_hw_backdrop, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_hw_backdrop);
+        lv_obj_move_foreground(s_hw_view);
+        hw_backdrop_sync(0);
+    }
+    /* 左拉進場的滑鼠圖:頁面已蓋滿,無感歸位(退出滑回時要在原位)。 */
+    if (s_top_logo && lv_obj_is_valid(s_top_logo))
+    {
+        lv_anim_del(s_top_logo, NULL);
+        lv_obj_set_style_translate_x(s_top_logo, 0, 0);
+    }
     s_hw_view_active = true;
     bloc_handwrite_begin(LV_HOR_RES, LV_VER_RES); /* 送 0x1b start(畫布=錶面解析度) */
     motor_pattern_unlocked(); /* 短震=手寫就緒 */
@@ -4537,7 +5320,9 @@ static void close_handwrite_from_pose(void)
         lv_anim_del(s_hw_view, NULL);
         lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_x(s_hw_view, 0);
+        lv_obj_set_y(s_hw_view, 0);
     }
+    hw_backdrop_hide();
     LOG_I("[handwrite] close view (submit)");
 }
 
@@ -4553,7 +5338,9 @@ static void hw_cancel_session(void)
             lv_anim_del(s_hw_view, NULL);
             lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_x(s_hw_view, 0);
+            lv_obj_set_y(s_hw_view, 0);
         }
+        hw_backdrop_hide();
     }
     if (!s_hw_view_active)
         return;
@@ -4564,8 +5351,88 @@ static void hw_cancel_session(void)
         lv_anim_del(s_hw_view, NULL);
         lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_x(s_hw_view, 0);
+        lv_obj_set_y(s_hw_view, 0);
     }
+    hw_backdrop_hide();
     LOG_I("[handwrite] close view (cancel)");
+}
+
+/* 手寫頁 staging:備妥於右緣外(x=LV_HOR_RES,可見,未 commit)。回 false=情境不允許。
+   tap 滑入與圖示左拉跟手共用(founder 2026-07-22)。 */
+static bool hw_view_stage_offscreen(void)
+{
+    if (s_hw_view_active || s_hw_pull_active)
+        return false;
+    if (!(is_at_mouse_mode() || app_control_get_mouse_mode()))
+        return false;
+    extern bool instruction_list_lift_mic_view_open(void);
+    if (instruction_list_lift_mic_view_open())
+        return false; /* 語音輸入中不搶 */
+    dial_drag_state_reset();
+    ensure_hw_view();
+    lv_anim_del(s_hw_view, NULL);
+    lv_obj_set_y(s_hw_view, 0);
+    hw_ink_clear();
+    lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_CLICKABLE); /* 進場中不吃筆跡 */
+    lv_obj_set_x(s_hw_view, LV_HOR_RES);
+    lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
+    if (s_hw_backdrop)
+    {
+        lv_obj_clear_flag(s_hw_backdrop, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_hw_backdrop); /* 蓋觸碰板,墊在 view 下 */
+        hw_backdrop_sync(LV_HOR_RES);          /* opa 0 起步 */
+    }
+    lv_obj_move_foreground(s_hw_view);
+    /* 同幀 set_x 後 coords 未 realize,get_x 讀到舊值 0 → snap 變 0→0 瞬切
+       (founder 2026-07-22:「點了瞬間切換沒看到滑入」)。強制 layout 讓
+       hw_pull_snap 拿到真起點 466。 */
+    lv_obj_update_layout(s_hw_view);
+    return true;
+}
+
+/* GUI thread:頂部 logo tap=手寫頁從右滑入(founder 2026-07-22:右緣拉出退役,
+   改 logo 一鍵開關;滑入沿用 pull snap 機構→hw_open_commit)。冪等。 */
+static void hw_open_slide_in(void)
+{
+    if (!hw_view_stage_offscreen())
+        return;
+    /* 滑鼠圖同步滑出左緣(founder 2026-07-22:tap 進場也要跟左拉一樣的
+       雙向動態);蓋滿後 hw_open_commit 歸位。 */
+    if (s_top_logo && lv_obj_is_valid(s_top_logo))
+    {
+        lv_anim_del(s_top_logo, NULL);
+        lv_anim_t la;
+        lv_anim_init(&la);
+        lv_anim_set_var(&la, s_top_logo);
+        lv_anim_set_exec_cb(&la, top_logo_tx_anim_exec);
+        lv_anim_set_values(&la,
+                           lv_obj_get_style_translate_x(s_top_logo,
+                                                        LV_PART_MAIN),
+                           (int32_t)-(int32_t)LV_HOR_RES);
+        lv_anim_set_time(&la, 200);
+        lv_anim_set_path_cb(&la, lv_anim_path_ease_out);
+        lv_anim_start(&la);
+    }
+    hw_pull_snap(true); /* 滑到 0 → hw_open_commit(開 CLICKABLE+0x1b start) */
+}
+
+/* GUI thread:鍵盤 Mode 鈕第三站——程式化直開手寫(無 snap 動畫)。
+   冪等;非滑鼠 app 情境直接 no-op。 */
+static void hw_open_from_mode_switch(void)
+{
+    if (s_hw_view_active)
+        return;
+    if (!(is_at_mouse_mode() || app_control_get_mouse_mode()))
+        return;
+    dial_drag_state_reset(); /* 清 hold timer/拖曳/側立圓盤殘留(同 pull begin) */
+    ensure_hw_view();
+    lv_anim_del(s_hw_view, NULL);
+    hw_ink_clear();
+    lv_obj_set_x(s_hw_view, 0);
+    lv_obj_set_y(s_hw_view, 0);
+    lv_obj_clear_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(s_hw_view);
+    hw_open_commit(); /* CLICKABLE+0x1b start+短震 */
 }
 
 // 關 mic（不清空 input bar、不貼上）
@@ -5468,6 +6335,56 @@ static void mode_set_translate_x(hid_mode_t mode, int16_t tx)
         lv_obj_set_x(mode_container[mode], tx);
 }
 
+/* 觸碰板的左右滾動弧+節點放在 bg 跨 mode 層(不隨 mode_container 顯藏),
+   鍵盤模式不該出現(founder 2026-07-22:「鍵盤左右邊的滾動條」)。 */
+static void scroll_arcs_set_hidden(bool hidden)
+{
+    lv_obj_t *arcs[2] = {left_scroll_bar, right_scroll_bar};
+    for (int i = 0; i < 2; i++)
+    {
+        if (arcs[i] == NULL || !lv_obj_is_valid(arcs[i]))
+            continue;
+        if (hidden)
+            lv_obj_add_flag(arcs[i], LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_clear_flag(arcs[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    for (int i = 0; i < LEFT_SCROLL_NODE_COUNT; i++)
+    {
+        if (left_scroll_nodes[i] && lv_obj_is_valid(left_scroll_nodes[i]))
+        {
+            if (hidden)
+                lv_obj_add_flag(left_scroll_nodes[i], LV_OBJ_FLAG_HIDDEN);
+            else
+                lv_obj_clear_flag(left_scroll_nodes[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        if (right_scroll_nodes[i] && lv_obj_is_valid(right_scroll_nodes[i]))
+        {
+            if (hidden)
+                lv_obj_add_flag(right_scroll_nodes[i], LV_OBJ_FLAG_HIDDEN);
+            else
+                lv_obj_clear_flag(right_scroll_nodes[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+/* 鍵盤模式的跨層附件同步(滾動弧藏/退出鈕顯)。swipe 換模式的 commit 不走
+   mode_set_visible(容器靠 translate 推出畫面),附件要在 commit 點自行 sync。 */
+static void kbd_mode_extras_sync(void)
+{
+    bool kb = (current_hid_mode == HID_MODE_KEYBOARD);
+    scroll_arcs_set_hidden(kb);
+    if (kbd_exit_btn && lv_obj_is_valid(kbd_exit_btn))
+    {
+        if (kb)
+            lv_obj_clear_flag(kbd_exit_btn, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(kbd_exit_btn, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (kb)
+        kbd_cand_refresh(); /* swipe 進鍵盤也要立即出列(數字/推薦) */
+}
+
 static void mode_set_visible(hid_mode_t mode, bool visible)
 {
     if (mode_container[mode] && lv_obj_is_valid(mode_container[mode]))
@@ -5476,6 +6393,30 @@ static void mode_set_visible(hid_mode_t mode, bool visible)
             lv_obj_clear_flag(mode_container[mode], LV_OBJ_FLAG_HIDDEN);
         else
             lv_obj_add_flag(mode_container[mode], LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // 觸碰板滾動弧+節點:鍵盤模式進=藏、離開=顯回(bg 跨 mode 層,不會自動跟)
+    if (mode == HID_MODE_KEYBOARD)
+        scroll_arcs_set_hidden(visible);
+
+    // 鍵盤頂部退出鈕(同上跨 mode 層):進鍵盤=顯、離開=藏
+    if (mode == HID_MODE_KEYBOARD && kbd_exit_btn &&
+        lv_obj_is_valid(kbd_exit_btn))
+    {
+        if (visible)
+            lv_obj_clear_flag(kbd_exit_btn, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(kbd_exit_btn, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // 選字/推薦/數字列(跨 mode 層):離開鍵盤=清狀態+藏;進鍵盤=立即刷新
+    // (founder 2026-07-22:進英文畫面要馬上看到數字列,不能等打字才出現)
+    if (mode == HID_MODE_KEYBOARD)
+    {
+        if (visible)
+            kbd_cand_refresh();
+        else
+            kbd_pinyin_clear();
     }
 
     // bottom_swipe_area 只在 trackpad mode 接收觸控（觸發 multitask hint）
@@ -5519,9 +6460,9 @@ static void mode_set_visible(hid_mode_t mode, bool visible)
                                               LV_PART_MAIN);
                 lv_obj_set_style_border_opa(text_input_bar_bg, LV_OPA_50,
                                             LV_PART_MAIN);
-                // 位置與大小：移到鍵盤上方（toggle_keyboard 的 open 終點）
-                int32_t open_x = (LV_HOR_RES_MAX - 310) / 2 - 35;
-                int32_t open_y = LV_VER_RES_MAX - 305 - 45;
+                // 位置與大小：toggle_keyboard 的 open 終點
+                int32_t open_x = (LV_HOR_RES_MAX - 310) / 2; /* 置中(同 toggle) */
+                int32_t open_y = 64; /* =手寫候選欄同高(founder 2026-07-22 統一輸入列) */
                 lv_obj_set_pos(text_input_bar_bg, open_x, open_y);
                 lv_obj_set_size(text_input_bar_bg, 310, 45);
             }
@@ -5594,6 +6535,7 @@ static void mode_swipe_commit_async_cb(void *user_data)
     mode_set_translate_x(current_hid_mode, 0);
     keyboard_visible = (current_hid_mode == HID_MODE_KEYBOARD);
     mode_swipe_active = false;
+    kbd_mode_extras_sync(); /* swipe 進鍵盤不走 mode_set_visible(KEYBOARD,true) */
     LOG_D("mode commit (async) -> %s", hid_mode_names[current_hid_mode]);
 }
 
@@ -5604,6 +6546,7 @@ static void mode_swipe_cancel_async_cb(void *user_data)
     mode_set_translate_x(current_hid_mode, 0);
     mode_set_translate_x(mode_swipe_target, 0);
     mode_swipe_active = false;
+    kbd_mode_extras_sync(); /* 取消回原 mode,附件跟 current 對齊 */
 }
 
 static void mode_swipe_commit_anim_ready(lv_anim_t *a)
@@ -5652,6 +6595,7 @@ static void mode_swipe_timer_cb(lv_timer_t *t)
             mode_set_translate_x(current_hid_mode, 0);
 
             keyboard_visible = (current_hid_mode == HID_MODE_KEYBOARD);
+            kbd_mode_extras_sync(); /* 同 async commit:swipe 進鍵盤要顯附件 */
             LOG_D("mode commit -> %s", hid_mode_names[current_hid_mode]);
         }
         else
@@ -5881,6 +6825,90 @@ static void create_keyboard_mode_ui(lv_obj_t *parent)
                         LV_EVENT_HIT_TEST, NULL);
 
     // Input bar 容器（深色框，keyboard mode 顯示在鍵盤上方）
+    /* 鍵盤頂部=keyboard_icon(founder 2026-07-22:同手寫頁頂部,不要藍色 EXIT
+       字鈕):按了收鍵盤回觸碰板(右滑)。掛跨 mode 層,預設藏;顯藏由
+       mode_set_visible(KEYBOARD)+kbd_mode_extras_sync。 */
+    kbd_exit_btn = lv_obj_create(parent);
+    lv_obj_remove_style_all(kbd_exit_btn);
+    lv_obj_set_size(kbd_exit_btn, 100, 80);
+    lv_obj_align(kbd_exit_btn, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_add_flag(kbd_exit_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(kbd_exit_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(kbd_exit_btn, kbd_exit_btn_event_cb, LV_EVENT_CLICKED,
+                        NULL);
+    lv_obj_t *kbd_exit_img = lv_img_create(kbd_exit_btn);
+    lv_img_set_src(kbd_exit_img, &keyboard_icon);
+    lv_img_set_zoom(kbd_exit_img, 180);
+    lv_obj_center(kbd_exit_img);
+    lv_obj_clear_flag(kbd_exit_img, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(kbd_exit_btn, LV_OBJ_FLAG_HIDDEN);
+
+    /* 中文選字列(founder 2026-07-22):輸入框正下方(bar y64 h45→列 y117),
+       pill 同款樣式;左端拼音+最多 5 候選(透明白字鈕)。組字時才現形。 */
+    /* 開放式選字列(founder 2026-07-22:pill 圓角會被捲動內容穿出,改「上下
+       各一條橫線」、無左右框;矩形邊界自然裁切,捲動不再有超框問題)。 */
+    s_kbd_cand_row = lv_obj_create(parent);
+    lv_obj_remove_style_all(s_kbd_cand_row);
+    /* 全寬到邊緣(founder 2026-07-22):上下線直通圓緣;內容用左右 pad 避開
+       圓弧裁切(該高度弦緣 x≈31)。 */
+    lv_obj_set_size(s_kbd_cand_row, LV_HOR_RES, 45);
+    lv_obj_set_pos(s_kbd_cand_row, 0, 117);
+    lv_obj_set_style_bg_color(s_kbd_cand_row, lv_color_hex(0x1a1a1a),
+                              LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_kbd_cand_row, LV_OPA_70, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_kbd_cand_row, lv_color_hex(0xFFFFFF),
+                                  LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_kbd_cand_row, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(s_kbd_cand_row, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_set_style_border_side(s_kbd_cand_row,
+                                 LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_BOTTOM,
+                                 LV_PART_MAIN);
+    /* 可左右滑看更多候選:水平捲動、藏滾動條;按著候選字拖也會滑,點一下仍是選字。 */
+    lv_obj_add_flag(s_kbd_cand_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(s_kbd_cand_row, LV_DIR_HOR);
+    lv_obj_set_scrollbar_mode(s_kbd_cand_row, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_add_flag(s_kbd_cand_row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_flex_flow(s_kbd_cand_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_kbd_cand_row, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_left(s_kbd_cand_row, 36, LV_PART_MAIN);
+    lv_obj_set_style_pad_right(s_kbd_cand_row, 36, LV_PART_MAIN);
+    lv_obj_set_style_pad_column(s_kbd_cand_row, 6, LV_PART_MAIN);
+    lv_obj_add_flag(s_kbd_cand_row, LV_OBJ_FLAG_HIDDEN);
+    s_kbd_py_lbl = lv_label_create(s_kbd_cand_row);
+    lv_obj_set_style_text_color(s_kbd_py_lbl, lv_color_hex(0x8a8a8a), 0);
+    /* 拼音與候選之間的淡分隔線 */
+    lv_obj_set_style_pad_right(s_kbd_py_lbl, 8, 0);
+    lv_obj_set_style_border_color(s_kbd_py_lbl, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(s_kbd_py_lbl, 1, 0);
+    lv_obj_set_style_border_opa(s_kbd_py_lbl, LV_OPA_20, 0);
+    lv_obj_set_style_border_side(s_kbd_py_lbl, LV_BORDER_SIDE_RIGHT, 0);
+    lv_label_set_text(s_kbd_py_lbl, "");
+    for (int ci = 0; ci < KBD_CAND_MAX; ci++)
+    {
+        s_kbd_cand_btns[ci] = lv_obj_create(s_kbd_cand_row);
+        lv_obj_set_size(s_kbd_cand_btns[ci], 42, 39);
+        lv_obj_set_style_bg_opa(s_kbd_cand_btns[ci], LV_OPA_TRANSP,
+                                LV_PART_MAIN);
+        /* 選項之間淡淡的分隔線(founder 2026-07-22):每顆右緣 1px 白 20% */
+        lv_obj_set_style_border_color(s_kbd_cand_btns[ci],
+                                      lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        lv_obj_set_style_border_width(s_kbd_cand_btns[ci], 1, LV_PART_MAIN);
+        lv_obj_set_style_border_opa(s_kbd_cand_btns[ci], LV_OPA_20,
+                                    LV_PART_MAIN);
+        lv_obj_set_style_border_side(s_kbd_cand_btns[ci], LV_BORDER_SIDE_RIGHT,
+                                     LV_PART_MAIN);
+        lv_obj_clear_flag(s_kbd_cand_btns[ci], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_event_cb(s_kbd_cand_btns[ci], kbd_cand_btn_cb,
+                            LV_EVENT_CLICKED, (void *)(intptr_t)ci);
+        s_kbd_cand_lbls[ci] = lv_label_create(s_kbd_cand_btns[ci]);
+        lv_obj_set_style_text_color(s_kbd_cand_lbls[ci],
+                                    lv_color_hex(0xFFFFFF), 0);
+        lv_label_set_text(s_kbd_cand_lbls[ci], "");
+        lv_obj_center(s_kbd_cand_lbls[ci]);
+        lv_obj_add_flag(s_kbd_cand_btns[ci], LV_OBJ_FLAG_HIDDEN);
+    }
+
     text_input_bar_bg = lv_obj_create(parent);
     // 高度跟 input_enter_btn (45) 一致；頂部對齊 y=110（466 圓內 Enter btn 最高位置）
     lv_obj_set_size(text_input_bar_bg, 280, 45);
@@ -6459,11 +7487,9 @@ static bool tib_drag_engaged = false;
 static bool tib_drag_rejected = false; // 偵測到水平拖曳 → 放棄這次 session
 static bool collapse_anim_commit = false;
 
-static void collapse_anim_done_cb(lv_anim_t *a)
+/* 鍵盤→觸碰板的 commit 收尾(bar 下拉 collapse 與頂部退出鈕右滑共用)。 */
+static void kbd_commit_to_trackpad(void)
 {
-    (void)a;
-    collapse_anim_running = false;
-    if (collapse_anim_commit)
     {
         // 切換到 trackpad mode：
         //   1. V2T 若在錄 → 收掉
@@ -6504,6 +7530,16 @@ static void collapse_anim_done_cb(lv_anim_t *a)
         skaibar_options_count = 0;
         skaibar_selected_idx = -1;
     }
+}
+
+static void collapse_anim_done_cb(lv_anim_t *a)
+{
+    (void)a;
+    collapse_anim_running = false;
+    if (collapse_anim_commit)
+    {
+        kbd_commit_to_trackpad();
+    }
     else
     {
         // snap 回 keyboard mode：把 UI 鎖回最終位
@@ -6516,6 +7552,9 @@ static void start_kbd_to_trackpad_collapse_anim(int32_t from_progress,
 {
     collapse_anim_commit = commit;
     collapse_anim_running = true;
+    /* bar 下拉收回:數字/選字列跟不了 bar 的縮放動畫,commit 時立即收掉 */
+    if (commit && s_kbd_cand_row && lv_obj_is_valid(s_kbd_cand_row))
+        lv_obj_add_flag(s_kbd_cand_row, LV_OBJ_FLAG_HIDDEN);
     int32_t to_progress = commit ? 0 : 100;
     if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
         lv_anim_del(text_input_bar_bg, NULL);
@@ -6595,6 +7634,63 @@ static void text_input_bar_drag_event_cb(lv_event_t *e)
         bool commit = dy >= TIB_DRAG_COMMIT_PX;
         start_kbd_to_trackpad_collapse_anim(progress, commit);
     }
+}
+
+/* 鍵盤退出=整組(鍵盤+輸入 bar+退出鈕)往右滑出——跟手寫退出一致(founder
+   2026-07-22:「不要往下縮」);bar 下拉手勢仍走原 collapse(跟手方向)。 */
+static void kbd_exit_slide_exec(void *var, int32_t v)
+{
+    (void)var;
+    if (keyboard_container && lv_obj_is_valid(keyboard_container))
+        lv_obj_set_style_translate_x(keyboard_container, (lv_coord_t)v, 0);
+    if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
+        lv_obj_set_style_translate_x(text_input_bar_bg, (lv_coord_t)v, 0);
+    if (kbd_exit_btn && lv_obj_is_valid(kbd_exit_btn))
+        lv_obj_set_style_translate_x(kbd_exit_btn, (lv_coord_t)v, 0);
+    /* 數字/選字列跟整組一起滑出(founder 2026-07-22:原本留在原地到結束才消失) */
+    if (s_kbd_cand_row && lv_obj_is_valid(s_kbd_cand_row))
+        lv_obj_set_style_translate_x(s_kbd_cand_row, (lv_coord_t)v, 0);
+}
+
+static void kbd_exit_slide_done_cb(lv_anim_t *a)
+{
+    (void)a;
+    collapse_anim_running = false;
+    kbd_exit_slide_exec(NULL, 0); /* translate 歸位(同 frame 內接著就被藏) */
+    /* 把 expand 佈局歸到 collapsed(=下拉收合的終點):commit 會把 mic 區 reset
+       成可見備下次用,不歸位的話它停在展開位,黑色鍵盤圖示鈕會露在畫面上
+       (founder 2026-07-22)。 */
+    expand_anim_driver_cb(NULL, 0);
+    kbd_commit_to_trackpad();
+}
+
+static void kbd_exit_btn_event_cb(lv_event_t *e)
+{
+    (void)e;
+    if (current_hid_mode != HID_MODE_KEYBOARD || collapse_anim_running)
+        return;
+    collapse_anim_running = true; /* 滑出中擋 bar 下拉/重複點擊 */
+    /* 先把觸碰板鋪在底下(手寫退出同款,founder 2026-07-22:滑出途中要看到
+       落點不是黑畫面);滑出的三件套提到前景,從觸碰板上面滑走。 */
+    if (keyboard_container && lv_obj_is_valid(keyboard_container))
+        lv_obj_move_foreground(keyboard_container);
+    if (text_input_bar_bg && lv_obj_is_valid(text_input_bar_bg))
+        lv_obj_move_foreground(text_input_bar_bg);
+    if (kbd_exit_btn && lv_obj_is_valid(kbd_exit_btn))
+        lv_obj_move_foreground(kbd_exit_btn);
+    mode_set_visible(HID_MODE_TRACKPAD, true);
+    if (trackpad_mic_btn && lv_obj_is_valid(trackpad_mic_btn))
+        lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_HIDDEN);
+    scroll_arcs_set_hidden(false); /* 觸碰板滾動弧提前顯回 */
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, kbd_exit_btn); /* var 不重要,exec 內不使用 */
+    lv_anim_set_values(&a, 0, LV_HOR_RES);
+    lv_anim_set_time(&a, 200); /* 手寫退出右滑同款 */
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, kbd_exit_slide_exec);
+    lv_anim_set_ready_cb(&a, kbd_exit_slide_done_cb);
+    lv_anim_start(&a);
 }
 
 static void kbd_mic_btn_event_cb(lv_event_t *e)
@@ -6811,6 +7907,19 @@ static void create_media_center_panel(lv_obj_t *parent)
     /* 媒體頁頂部:「控制中設備」名稱+左右切換箭頭(2026-07-02 從 trackpad
        頂部搬來 — 使用者要求)。同座標系(tile 全屏),沿用原 y40/42 位置;
        label 非 clickable、箭頭可點;無設備時 update_ctrl_dev_label 隱藏。 */
+    /* 在線燈號:設備名上方小圓點,綠=在線/紅=斷線(founder 2026-07-22);
+       顏色/顯藏由 dev_offline_overlay_sync 管。 */
+    s_dev_status_dot = lv_obj_create(media_tile);
+    lv_obj_remove_style_all(s_dev_status_dot);
+    lv_obj_set_size(s_dev_status_dot, 10, 10);
+    lv_obj_align(s_dev_status_dot, LV_ALIGN_TOP_MID, 0, 26);
+    lv_obj_set_style_radius(s_dev_status_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(s_dev_status_dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(s_dev_status_dot, lv_color_hex(0x4CAF50), 0);
+    lv_obj_clear_flag(s_dev_status_dot, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(s_dev_status_dot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_dev_status_dot, LV_OBJ_FLAG_HIDDEN);
+
     s_ctrl_dev_label = lv_label_create(media_tile);
     lv_obj_set_width(s_ctrl_dev_label, 200);
     lv_label_set_long_mode(s_ctrl_dev_label, LV_LABEL_LONG_DOT);
@@ -7002,6 +8111,35 @@ static void hid_mode_toggle(void)
 
 void set_hid_mouse_handfree_mode_to(bool v); // 定義在本檔後段
 static lv_timer_t *s_top_hold_timer = NULL;
+/* 圖示左拉=手寫頁跟手進場(founder 2026-07-22:按著滑鼠圖往左滑,滑鼠圖左滑走+
+   手寫頁(頂部鍵盤圖)從右跟進;放開 1/4 或快甩=commit)。 */
+static bool s_top_hw_pull = false;
+static lv_coord_t s_top_hw_last_x = 0;
+static lv_coord_t s_top_hw_vx = 0;
+
+static void top_logo_tx_anim_exec(void *obj, int32_t v)
+{
+    lv_obj_set_style_translate_x((lv_obj_t *)obj, (lv_coord_t)v, 0);
+}
+
+/* 取消左拉:滑鼠圖動畫滑回原位(跳回會閃,founder 2026-07-22)。 */
+static void top_logo_slide_home(void)
+{
+    if (s_top_logo == NULL || !lv_obj_is_valid(s_top_logo))
+        return;
+    lv_anim_del(s_top_logo, NULL);
+    lv_coord_t cur = lv_obj_get_style_translate_x(s_top_logo, LV_PART_MAIN);
+    if (cur == 0)
+        return;
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, s_top_logo);
+    lv_anim_set_exec_cb(&a, top_logo_tx_anim_exec);
+    lv_anim_set_values(&a, cur, 0);
+    lv_anim_set_time(&a, 200); /* =hw_pull_snap 縮回同步 */
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+}
 static bool s_top_fly_active = false;
 static lv_point_t s_top_press_start;
 
@@ -7079,7 +8217,33 @@ static void status_bar_area_up_cb(lv_event_t *e)
     }
     else if (code == LV_EVENT_PRESSING)
     {
-        if (s_top_hold_timer)
+        /* 圖示左拉跟手中:手寫頁 x=右緣+dx、滑鼠圖 translate=dx(founder
+           2026-07-22:滑鼠圖左滑走+鍵盤頁從右進)。 */
+        if (s_top_hw_pull)
+        {
+            lv_indev_t *indev = lv_indev_get_act();
+            if (indev)
+            {
+                lv_point_t now;
+                lv_indev_get_point(indev, &now);
+                lv_coord_t dx = now.x - s_top_press_start.x;
+                if (dx > 0)
+                    dx = 0;
+                s_top_hw_vx = now.x - s_top_hw_last_x;
+                s_top_hw_last_x = now.x;
+                if (s_hw_view)
+                {
+                    lv_coord_t x = (lv_coord_t)(LV_HOR_RES + dx);
+                    if (x < 0)
+                        x = 0;
+                    lv_obj_set_x(s_hw_view, x);
+                    hw_backdrop_sync(x); /* 黑底跟手漸黑 */
+                }
+                if (s_top_logo && lv_obj_is_valid(s_top_logo))
+                    lv_obj_set_style_translate_x(s_top_logo, dx, 0);
+            }
+        }
+        else if (s_top_hold_timer)
         {
             lv_indev_t *indev = lv_indev_get_act();
             if (indev)
@@ -7090,11 +8254,27 @@ static void status_bar_area_up_cb(lv_event_t *e)
                 lv_coord_t dy = now.y - s_top_press_start.y;
                 if (LV_ABS(dx) + LV_ABS(dy) > TOP_HOLD_DRIFT_CANCEL_PX)
                 {
-                    // 離起點夠遠 → 拖曳意圖：取消 hold，這時才亮 tileview。
-                    // press 下一 tick 被它接走（就是原本的媒體下拉機制）
                     top_hold_cancel();
-                    if (media_tileview && lv_obj_is_valid(media_tileview))
+                    /* 水平左拉主導=手寫頁跟手進場;**明確下拉主導**=媒體下拉;
+                       其他方向(斜向/上向)=手滑,不觸發任何層(founder 2026-07-22:
+                       tap 手一晃就跳媒體層擋住滑鼠圖)。斷線時只留媒體下拉。 */
+                    if (dx < 0 && LV_ABS(dx) > LV_ABS(dy) &&
+                        !dev_active_offline() && hw_view_stage_offscreen())
                     {
+                        s_top_hw_pull = true;
+                        s_top_hw_last_x = now.x;
+                        s_top_hw_vx = 0;
+                        /* 跟手期間鎖住 press:此區平常故意不鎖(媒體下拉要讓
+                           tileview 接手),但左拉時手指滑出 80px 帶會 PRESS_LOST
+                           →縮回(founder:「有移動但滑不進來」)。放開時解鎖。 */
+                        lv_obj_add_flag(status_bar_area_up,
+                                        LV_OBJ_FLAG_PRESS_LOCK);
+                    }
+                    else if (dy > 0 && dy > LV_ABS(dx) && media_tileview &&
+                             lv_obj_is_valid(media_tileview))
+                    {
+                        // 明確往下拉 → 媒體下拉：這時才亮 tileview，
+                        // press 下一 tick 被它接走（原機制）
                         lv_obj_set_tile_id(media_tileview, 0, 1, false);
                         lv_obj_clear_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
                         lv_obj_move_foreground(media_tileview);
@@ -7105,20 +8285,76 @@ static void status_bar_area_up_cb(lv_event_t *e)
     }
     else if (code == LV_EVENT_PRESS_LOST)
     {
+        if (s_top_hw_pull)
+        {
+            /* 左拉中被搶:縮回不 commit,滑鼠圖動畫滑回+解鎖 press */
+            s_top_hw_pull = false;
+            if (status_bar_area_up && lv_obj_is_valid(status_bar_area_up))
+                lv_obj_clear_flag(status_bar_area_up, LV_OBJ_FLAG_PRESS_LOCK);
+            top_logo_slide_home();
+            hw_pull_snap(false);
+        }
         // press 被 tileview 接走（媒體下拉路徑）
         top_hold_cancel();
         top_fly_end("PRESS_LOST");
     }
     else if (code == LV_EVENT_RELEASED)
     {
+        if (s_top_hw_pull)
+        {
+            /* 左拉放開:過 1/4 或快甩=commit 開手寫,否則縮回。commit 時滑鼠圖
+               **不在這裡歸位**——頁面還沒蓋滿,立刻歸位會閃一下跳回(founder
+               2026-07-22);等 hw_open_commit(蓋滿)才歸位。取消=動畫滑回。 */
+            s_top_hw_pull = false;
+            if (status_bar_area_up && lv_obj_is_valid(status_bar_area_up))
+                lv_obj_clear_flag(status_bar_area_up, LV_OBJ_FLAG_PRESS_LOCK);
+            bool commit = false;
+            if (s_hw_view)
+                commit = (lv_obj_get_x(s_hw_view) <= (LV_HOR_RES * 3) / 4) ||
+                         (s_top_hw_vx <= -6);
+            if (commit)
+            {
+                /* 快甩早放:圖不能凍在放開位(founder 2026-07-22)——跟進場頁
+                   同步 200ms 繼續滑出左緣;hw_open_commit 蓋滿後歸位。 */
+                if (s_top_logo && lv_obj_is_valid(s_top_logo))
+                {
+                    lv_anim_del(s_top_logo, NULL);
+                    lv_anim_t la;
+                    lv_anim_init(&la);
+                    lv_anim_set_var(&la, s_top_logo);
+                    lv_anim_set_exec_cb(&la, top_logo_tx_anim_exec);
+                    lv_anim_set_values(
+                        &la,
+                        lv_obj_get_style_translate_x(s_top_logo, LV_PART_MAIN),
+                        (int32_t)-(int32_t)LV_HOR_RES);
+                    lv_anim_set_time(&la, 200);
+                    lv_anim_set_path_cb(&la, lv_anim_path_ease_out);
+                    lv_anim_start(&la);
+                }
+            }
+            else
+            {
+                top_logo_slide_home();
+            }
+            hw_pull_snap(commit);
+            top_hold_cancel();
+            return;
+        }
+        /* hold timer 還活著=沒進飛鼠也沒拖=tap(飛鼠 timer 已 fire=NULL、
+           拖曳意圖時已 cancel=NULL)。 */
+        bool was_tap = (s_top_hold_timer != NULL);
         top_hold_cancel();
         top_fly_end("RELEASED");
         // tap（沒拖沒 hold）或飛鼠放開 → 收 tileview
-        // （之前在這裡會 hid_mode_toggle，現在改用底部 bar 切換 mode）
         if (media_tileview && lv_obj_is_valid(media_tileview))
         {
             lv_obj_add_flag(media_tileview, LV_OBJ_FLAG_HIDDEN);
         }
+        /* tap=開手寫輸入頁(founder 2026-07-22:頂部 logo 併輸入頁開關——
+           點 logo 滑入手寫、其頂部變 keyboard_icon、再按=滑回退出;
+           右緣拉出手勢同輪退役)。斷線時不開(只留媒體下拉切設備)。 */
+        if (was_tap && !dev_active_offline())
+            hw_open_slide_in();
     }
 }
 
@@ -7233,7 +8469,9 @@ static void set_active_device_by_index(int idx)
     LOG_I("[dev_switch] active -> idx=%d/%d id=%s", idx, (int)n, id);
 }
 
-/* 切到相鄰設備（dir=-1 上一台 / +1 下一台），到頭循環。<2 台則無動作。 */
+/* 切到相鄰設備（dir=-1 上一台 / +1 下一台），到頭循環。<2 台則無動作。
+   離線設備**照樣可切**(founder 2026-07-22 定案):切到離線台時由
+   dev_offline_overlay_sync 顯示灰版+「斷線」,而非從循環裡藏掉。 */
 static void switch_active_device(int dir)
 {
     uint8_t n = SkaiWatchSys.device_registry.count;
@@ -7258,6 +8496,93 @@ static void dev_arrow_next_cb(lv_event_t *e)
 {
     (void)e;
     switch_active_device(+1);
+}
+
+/* active 設備是否斷線(id 不在 registry=已移除,視同斷線)。 */
+static bool dev_active_offline(void)
+{
+    if (s_dev_active_id[0] == '\0')
+        return false;
+    uint8_t n = SkaiWatchSys.device_registry.count;
+    if (n > MAX_SYNCED_DEVICES)
+        n = MAX_SYNCED_DEVICES;
+    for (uint8_t i = 0; i < n; i++)
+    {
+        if (strncmp((const char *)SkaiWatchSys.device_registry.devices[i].id,
+                    s_dev_active_id, SYNCED_DEVICE_ID_LEN) == 0)
+            return (SkaiWatchSys.device_status[i] == 0);
+    }
+    return true;
+}
+
+/* active 設備斷線=觸碰板區(y80 以下)灰+中央「斷線」(founder 2026-07-22 二改)。
+   overlay 吃 press=擋觸碰板/bar/滾動弧;頂部 80px 不蓋=媒體下拉照常(其 tap/
+   hold/左拉手勢另外 gate,只留下拉)。media tileview 開啟時 foreground 蓋過
+   overlay=面板內切設備可操作。同函式順路管媒體頁設備名上方的在線燈號。 */
+static void dev_offline_overlay_sync(void)
+{
+    bool offline = dev_active_offline();
+    /* 燈號:綠=在線/紅=斷線;無 active 設備=藏 */
+    if (s_dev_status_dot && lv_obj_is_valid(s_dev_status_dot))
+    {
+        if (s_dev_active_id[0] == '\0')
+        {
+            lv_obj_add_flag(s_dev_status_dot, LV_OBJ_FLAG_HIDDEN);
+        }
+        else
+        {
+            lv_obj_set_style_bg_color(s_dev_status_dot,
+                                      offline ? lv_color_hex(0xE05A5A)
+                                              : lv_color_hex(0x4CAF50),
+                                      0);
+            lv_obj_clear_flag(s_dev_status_dot, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    if (!offline)
+    {
+        if (s_dev_offline_overlay && lv_obj_is_valid(s_dev_offline_overlay))
+            lv_obj_add_flag(s_dev_offline_overlay, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    if (s_dev_offline_overlay == NULL ||
+        !lv_obj_is_valid(s_dev_offline_overlay))
+    {
+        /* 掛媒體面板同一 parent:不同層的 move_foreground 拉不過彼此,面板
+           會被 overlay 永遠壓住(founder 2026-07-22:媒體中心切到斷線設備
+           OFFLINE 蓋在面板上)。 */
+        lv_obj_t *host = NULL;
+        if (media_tileview && lv_obj_is_valid(media_tileview))
+            host = lv_obj_get_parent(media_tileview);
+        if (host == NULL)
+            host = hid_mouse_ui_host();
+        if (host == NULL)
+            host = lv_scr_act();
+        s_dev_offline_overlay = lv_obj_create(host);
+        lv_obj_remove_style_all(s_dev_offline_overlay);
+        lv_obj_set_size(s_dev_offline_overlay, LV_HOR_RES, LV_VER_RES - 80);
+        lv_obj_set_pos(s_dev_offline_overlay, 0, 80);
+        lv_obj_set_style_bg_color(s_dev_offline_overlay, lv_color_hex(0x666666),
+                                  0);
+        lv_obj_set_style_bg_opa(s_dev_offline_overlay, LV_OPA_60, 0);
+        lv_obj_add_flag(s_dev_offline_overlay, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(s_dev_offline_overlay, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_t *lbl = lv_label_create(s_dev_offline_overlay);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+        lv_label_set_text(lbl,
+                          LV_EXT_STR_GET_BY_KEY(device_offline, "Offline"));
+        /* 螢幕正中(overlay 從 y80 起,中心在 y273,上移 40 補回 y233) */
+        lv_obj_align(lbl, LV_ALIGN_CENTER, 0, -40);
+    }
+    if (lv_obj_has_flag(s_dev_offline_overlay, LV_OBJ_FLAG_HIDDEN))
+    {
+        lv_obj_clear_flag(s_dev_offline_overlay, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_dev_offline_overlay);
+    }
+    /* OFFLINE 恆在媒體面板**下層**(founder 2026-07-22 定案:面板開著時被遮、
+       拉上去才看到;同 parent 才拉得動)。每 tick 保證,面板中途開也不會被壓。 */
+    if (media_tileview && lv_obj_is_valid(media_tileview) &&
+        !lv_obj_has_flag(media_tileview, LV_OBJ_FLAG_HIDDEN))
+        lv_obj_move_foreground(media_tileview);
 }
 
 /* 由 s_dev_active_id 在 E7 registry 反查目前控制設備的名稱；id 不在 registry(已移除/
@@ -7397,6 +8722,7 @@ static void bar_ai_sync_timer_cb(lv_timer_t *t)
     bool tap_grace = (rt_tick_get() - s_last_bar_tap_tick) <
                      rt_tick_from_millisecond(BAR_TAP_MORPH_GRACE_MS);
     bar_ai_sync_set_hidden(engaged || tap_grace);
+    dev_offline_overlay_sync(); /* active 設備斷線=灰版+「斷線」(順路 poll) */
 }
 
 void lv_create_mouse_screen(lv_obj_t *scr)
@@ -7531,14 +8857,16 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_event_cb(status_bar_area_up, status_bar_area_up_cb,
                         LV_EVENT_ALL, NULL);
 
-    // 區中央放 img_logo（純視覺，non-clickable → press 穿透給
-    // status_bar_area_up 統一做手勢分流：按住不動=飛鼠/下拉=媒體/tap）。
+    // 區中央放 mouse_mode_icon（founder 2026-07-22:logo 換滑鼠圖=「這是滑鼠/
+    // 輸入開關」;純視覺 non-clickable → press 穿透給 status_bar_area_up 統一
+    // 做手勢分流：按住不動=飛鼠/下拉=媒體/tap=開手寫輸入頁）。
     // keyboard mode 隨父物件一起藏。
-    lv_obj_t *top_logo = lv_img_create(status_bar_area_up);
-    lv_img_set_src(top_logo, &img_logo);
-    // 原生 80×80 縮到 ~56px，佔 80px 高觸發區 ~70%（同媒體鈕 icon 比例）
-    lv_img_set_zoom(top_logo, 256 * 7 / 10);
-    lv_obj_center(top_logo);
+    s_top_logo = lv_img_create(status_bar_area_up);
+    lv_img_set_src(s_top_logo, &mouse_mode_icon);
+    // zoom 180=手寫頁頂部 keyboard_icon 同款(兩張都 64×64,渲染 ~45px;
+    // founder 2026-07-22:兩態圖示要一樣大)
+    lv_img_set_zoom(s_top_logo, 180);
+    lv_obj_center(s_top_logo);
 
     /* 「控制中設備」名稱+切換箭頭已搬進媒體下拉頁頂部
        (create_media_center_panel,2026-07-02 使用者要求) — trackpad 頂部
@@ -7740,8 +9068,17 @@ void hid_mouse_destroy(void)
     s_hw_btn_exit = NULL;
     s_hw_btn_clear = NULL;
     s_hw_btn_clear_lbl = NULL;
-    s_hw_btn_next = NULL;
+    s_hw_btn_clear_img = NULL;
+    s_hw_btn_mode = NULL;
     s_hw_btn_enter = NULL;
+    s_hw_backdrop = NULL;
+    s_hw_cand_row = NULL;
+    s_hw_cand_count = 0;
+    for (int i = 0; i < HW_CAND_MAX; i++)
+    {
+        s_hw_cand_btns[i] = NULL;
+        s_hw_cand_lbls[i] = NULL;
+    }
     for (int i = 0; i < HW_TRACE_STROKES; i++)
         s_hw_lines[i] = NULL;
     dial_drag_state_reset(); /* 離開 app 先清 dial/拖曳/timer 殘留(founder 2026-07-17 卡住根因) */
@@ -7810,6 +9147,8 @@ void hid_mouse_destroy(void)
     /* 丙：s_dev_active_id 不在這裡清 — 保留「上次控制的設備」，重入時 ONSTART 自動
        接回(見 GUI_APP_MSG_ONSTART)；reboot 才隨 static 歸零。 */
     s_ctrl_dev_label = NULL;   /* 標籤是 scr 子物件、screen teardown 一併釋放，清指標 */
+    s_dev_offline_overlay = NULL; /* 同上,清 stale 引用 */
+    s_dev_status_dot = NULL;
     s_dev_left_arrow = NULL;   /* 箭頭同為 scr 子物件、teardown 一併釋放，清指標 */
     s_dev_right_arrow = NULL;
     left_scroll_bar = NULL;
@@ -7834,6 +9173,8 @@ void hid_mouse_destroy(void)
     media_center_play_btn = NULL;
     media_center_play_img = NULL;
     status_bar_area_up = NULL;
+    s_top_logo = NULL;
+    s_top_hw_pull = false;
     // 頂部按住進的飛鼠模式：app 被拆時可能收不到 RELEASED，static 殘留
     // true 會讓下次進 app 直接是飛鼠 → 拆除時一律歸位
     top_hold_cancel();
@@ -7879,6 +9220,17 @@ void hid_mouse_destroy(void)
     {
         keyboard_container = NULL;
     }
+    kbd_exit_btn = NULL; /* 物件隨 bg 子樹拆除,清 stale 引用 */
+    s_kbd_cand_row = NULL;
+    s_kbd_py_lbl = NULL;
+    for (int ci = 0; ci < KBD_CAND_MAX; ci++)
+    {
+        s_kbd_cand_btns[ci] = NULL;
+        s_kbd_cand_lbls[ci] = NULL;
+    }
+    s_kbd_cand_count = 0;
+    s_py_len = 0;
+    s_py_buf[0] = '\0';
     keyboard_visible = false;
 
     // Clean up input display (now part of text_input_bar_bg)

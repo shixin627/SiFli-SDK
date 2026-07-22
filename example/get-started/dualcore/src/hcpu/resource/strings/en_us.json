@@ -98,6 +98,7 @@
   "handwrite_next": "Next",
   "handwrite_enter": "Enter",
   "handwrite_exit": "Exit",
+  "device_offline": "Offline",
   "handwrite_clear": "Clear",
   "handwrite_delete": "Del",
 
