@@ -18,6 +18,9 @@ if GetDepend('BSP_USING_GESTURE_HANDLER'):
     src += Glob('gesture_handler.c')
 if GetDepend('BSP_USING_VIRTUAL_CONSOLE'):
     src += Glob('virtual_console.c')
+if GetDepend('BSP_USING_VIRTUAL_CONSOLE') and GetDepend('BSP_USING_WATCH_SYS_CLIENT'):
+    src += Glob('hardware_selftest.c')
+    path += [os.path.join(cwd, '..', 'bloc')]
 if GetDepend('BSP_USING_TOUCH_STATE_MANAGER'):
     src += Glob('touch_state_manager.c')
 if GetDepend('BSP_USING_AUDIO_PROCESSOR'):

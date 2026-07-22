@@ -36,4 +36,6 @@ if "%WATCH_BOARD%"=="" set WATCH_BOARD=sf32lb56-watch
 
 cd /d "%~dp0"
 scons --board=%WATCH_BOARD% %* > _watch_build.log 2>&1
+set "WATCH_BUILD_RC=%ERRORLEVEL%"
 type _watch_build.log
+exit /b %WATCH_BUILD_RC%

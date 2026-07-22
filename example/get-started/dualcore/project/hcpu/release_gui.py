@@ -21,7 +21,9 @@ import os
 import re
 import sys
 import json
+import time
 import queue
+import secrets
 import zipfile
 import threading
 import subprocess
@@ -40,6 +42,9 @@ BUILD_LOG = os.path.join(SCRIPT_DIR, "_watch_build.log")
 WATCH_BUILD_CMD = os.path.join(SCRIPT_DIR, "_watch_build.cmd")
 WATCHOS_DIR = os.path.join(SCRIPT_DIR, "watchOS")
 WATCHOS_ZIP = os.path.join(SCRIPT_DIR, "watchOS.zip")
+HWTEST_SOURCE = os.path.join(
+    REPO_ROOT, "example", "get-started", "dualcore", "src", "modules",
+    "model", "hardware_selftest.c")
 UART_DOWNLOAD_EXE = os.path.join(
     REPO_ROOT, "tools", "uart_download", "ImgDownUart.exe")
 
@@ -67,6 +72,7 @@ BUILD_ERROR_PATTERNS = (" error:", "undefined reference", "cannot find", "scons:
 
 VER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 SERIAL_PORT_RE = re.compile(r"^COM([1-9]\d*)$", re.IGNORECASE)
+HWTEST_TIMEOUT_SECONDS = 20
 
 
 # --- read-only helpers (no subprocess) ----------------------------------
@@ -131,6 +137,28 @@ def flash_build_dir(board):
     return os.path.join(SCRIPT_DIR, "build_%s_hcpu" % board)
 
 
+def hardware_selftest_object(board):
+    return os.path.join(
+        flash_build_dir(board), "modules", "model", "hardware_selftest.o")
+
+
+def flash_preflight_error(board):
+    """Return why the selected image is stale/failed, or None if usable."""
+    if os.path.isfile(BUILD_LOG) and build_failed():
+        return ("上次編譯失敗，不能刷入舊的建置產物。\n\n"
+                "請先查看 _watch_build.log、修正錯誤並重新編譯。")
+
+    obj = hardware_selftest_object(board)
+    if os.path.isfile(HWTEST_SOURCE):
+        if not os.path.isfile(obj):
+            return ("目前建置產物未包含硬體自測模組。\n\n"
+                    "請先按『編譯 + 打包』重新編譯，再進行刷機。")
+        if os.path.getmtime(obj) < os.path.getmtime(HWTEST_SOURCE):
+            return ("硬體自測程式已修改，但建置產物尚未更新。\n\n"
+                    "請先按『編譯 + 打包』重新編譯，再進行刷機。")
+    return None
+
+
 def flash_command(port):
     """Build the non-interactive equivalent of generated uart_download.bat."""
     return [
@@ -146,6 +174,67 @@ def flash_command(port):
         "--file", "ImgBurnList.ini",
         "--log", "ImgBurn.log",
     ]
+
+
+def run_hardware_selftest(port, emit, expected_version=None,
+                          timeout=HWTEST_TIMEOUT_SECONDS):
+    """Run the release-firmware UART hardware smoke test."""
+    try:
+        import serial
+    except ImportError as e:
+        raise RuntimeError("缺少 pyserial；請執行：py -3 -m pip install pyserial") from e
+
+    nonce = secrets.token_hex(4).upper()
+    command = ("SKAI_HWTEST RUN %s\n" % nonce).encode("ascii")
+    end_prefix = "SKAI_HWTEST END %s " % nonce
+    begin_prefix = "SKAI_HWTEST BEGIN %s " % nonce
+    deadline = time.monotonic() + timeout
+    next_send = 0.0
+    began = False
+    version_ok = True
+    device_version = None
+
+    try:
+        with serial.Serial(port=port, baudrate=1000000, timeout=0.25,
+                           write_timeout=2) as uart:
+            uart.reset_input_buffer()
+            while time.monotonic() < deadline:
+                now = time.monotonic()
+                if not began and now >= next_send:
+                    uart.write(command)
+                    uart.flush()
+                    next_send = now + 1.0
+
+                raw = uart.readline()
+                if not raw:
+                    continue
+                line = raw.decode("utf-8", errors="replace").strip()
+                if nonce not in line or not line.startswith("SKAI_HWTEST "):
+                    continue
+                emit(line)
+                if line.startswith(begin_prefix):
+                    began = True
+                    match = re.search(r"\bversion=(\d+\.\d+\.\d+)\b", line)
+                    device_version = match.group(1) if match else None
+                    if expected_version and device_version != expected_version:
+                        version_ok = False
+                        emit("版本不符：GUI=%s，手錶=%s" % (
+                            expected_version, device_version or "unknown"))
+                if line.startswith(end_prefix):
+                    status = line[len(end_prefix):].split(None, 1)[0]
+                    ok = (status == "PASS" and version_ok)
+                    if not version_ok:
+                        return False, "版本不符：GUI=%s，手錶=%s" % (
+                            expected_version, device_version or "unknown")
+                    return ok, line
+    except serial.SerialException as e:
+        raise RuntimeError("無法開啟 %s：%s" % (port, e)) from e
+
+    if began:
+        return False, "硬體自測逾時：韌體有回應，但未收到完整結果。"
+    return False, ("硬體自測逾時：%s 沒有回應。請確認刷入的是包含硬體自測服務的"
+                   "最新發布韌體、在開機後 120 秒內執行，且沒有其他程式占用 "
+                   "COM port。" % port)
 
 
 def write_description(notes):
@@ -304,6 +393,7 @@ def run_gui():
     SIG_LOG = "log"
     SIG_DONE = "done"
     SIG_REFRESH = "refresh"
+    SIG_HWTEST_RESULT = "hwtest_result"
 
     class App:
         def __init__(self, root):
@@ -395,11 +485,14 @@ def run_gui():
             self.btn_flash = ttk.Button(
                 flash, text="刷入手錶", command=self.do_flash)
             self.btn_flash.grid(row=0, column=3, padx=6, pady=6)
+            self.btn_hwtest = ttk.Button(
+                flash, text="硬體自測", command=self.do_hwtest)
+            self.btn_hwtest.grid(row=0, column=4, padx=6, pady=6)
             ttk.Label(
                 flash,
-                text="(使用上方所選晶片的 build_<board>_hcpu 產物；刷機前會再次確認)",
+                text="(自測項目：UART、發布版、電池、IMU、PPG；馬達/螢幕/觸控仍需人工確認)",
                 font=UI_FONT, foreground="#666").grid(
-                    row=1, column=0, columnspan=4, sticky="w", padx=6)
+                    row=1, column=0, columnspan=5, sticky="w", padx=6)
 
             # --- upload row ---
             up = ttk.LabelFrame(root, text="上傳到雲端(阿里雲 OSS)")
@@ -423,7 +516,7 @@ def run_gui():
 
             self._buttons = [self.btn_refresh, self.btn_release, self.btn_dev,
                              self.btn_build, self.btn_port_refresh,
-                             self.btn_flash, self.btn_upload]
+                             self.btn_flash, self.btn_hwtest, self.btn_upload]
 
             self.refresh()
             self.root.after(80, self._pump)
@@ -478,6 +571,12 @@ def run_gui():
                         self.append(payload)
                     elif kind == SIG_REFRESH:
                         self.refresh()
+                    elif kind == SIG_HWTEST_RESULT:
+                        ok, detail = payload
+                        if ok:
+                            messagebox.showinfo("硬體自測通過", detail)
+                        else:
+                            messagebox.showerror("硬體自測失敗", detail)
                     elif kind == SIG_DONE:
                         self.set_busy(False)
             except queue.Empty:
@@ -559,9 +658,10 @@ def run_gui():
                 self._emit("更新發布介紹失敗: %r" % e)
 
             self._emit("=== 編譯韌體(hcpu + lcpu),晶片 %s,請稍候… ===" % board)
-            self._stream(["cmd", "/c", "_watch_build.cmd", "-j8"],
-                         extra_env={"WATCH_BOARD": board})
-            if build_failed():
+            build_rc = self._stream(
+                ["cmd", "/c", "_watch_build.cmd", "-j8"],
+                extra_env={"WATCH_BOARD": board})
+            if build_rc != 0 or build_failed():
                 self._emit("!! 編譯失敗,請查看 _watch_build.log。發布參數仍維持,"
                            "修正後可重試,或切回開發模式。")
                 self.q.put((SIG_DONE, None))
@@ -618,6 +718,11 @@ def run_gui():
                     "找不到：\n%s\n\n請先用相同晶片型號完成編譯。" % burn_list)
                 return
 
+            preflight_error = flash_preflight_error(board)
+            if preflight_error:
+                messagebox.showerror("韌體尚未準備完成", preflight_error)
+                return
+
             self.port_var.set(port)
             if not messagebox.askyesno(
                     "確認刷機",
@@ -634,6 +739,29 @@ def run_gui():
             else:
                 self._emit("!! 刷機失敗(結束碼 %d)。請查看 %s" % (
                     rc, os.path.join(build_dir, "ImgBurn.log")))
+            self.q.put((SIG_DONE, None))
+
+        def do_hwtest(self):
+            port = normalize_serial_port(self.port_var.get())
+            if not port:
+                messagebox.showerror(
+                    "COM Port 格式錯誤",
+                    "請選擇或輸入有效的 COM Port，例如 COM12。")
+                return
+            self.port_var.set(port)
+            self._start(lambda: self._w_hwtest(port))
+
+        def _w_hwtest(self, port):
+            self._emit("=== 硬體自測：%s（最長 %d 秒） ===" % (
+                port, HWTEST_TIMEOUT_SECONDS))
+            try:
+                _, expected_version, _ = read_status()
+                ok, detail = run_hardware_selftest(
+                    port, self._emit, expected_version=expected_version)
+            except Exception as e:
+                ok, detail = False, str(e)
+            self._emit("=== 硬體自測%s ===" % ("通過" if ok else "失敗"))
+            self.q.put((SIG_HWTEST_RESULT, (ok, detail)))
             self.q.put((SIG_DONE, None))
 
         def do_upload(self):
