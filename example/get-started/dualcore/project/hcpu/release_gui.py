@@ -33,11 +33,15 @@ import set_build_mode as sbm  # noqa: E402  (sibling module; reuse paths + helpe
 import oss_upload as oss       # noqa: E402  (sibling module; Aliyun OSS client)
 
 PY = sys.executable
+REPO_ROOT = os.path.normpath(os.path.join(
+    SCRIPT_DIR, "..", "..", "..", "..", ".."))
 INFO_JSON = os.path.join(SCRIPT_DIR, "info.json")
 BUILD_LOG = os.path.join(SCRIPT_DIR, "_watch_build.log")
 WATCH_BUILD_CMD = os.path.join(SCRIPT_DIR, "_watch_build.cmd")
 WATCHOS_DIR = os.path.join(SCRIPT_DIR, "watchOS")
 WATCHOS_ZIP = os.path.join(SCRIPT_DIR, "watchOS.zip")
+UART_DOWNLOAD_EXE = os.path.join(
+    REPO_ROOT, "tools", "uart_download", "ImgDownUart.exe")
 
 # Chip / scons board choices. The board name is both the scons --board value
 # (via WATCH_BOARD for _watch_build.cmd) and the build-output dir suffix that
@@ -62,6 +66,7 @@ def read_board():
 BUILD_ERROR_PATTERNS = (" error:", "undefined reference", "cannot find", "scons: ***")
 
 VER_RE = re.compile(r"^\d+\.\d+\.\d+$")
+SERIAL_PORT_RE = re.compile(r"^COM([1-9]\d*)$", re.IGNORECASE)
 
 
 # --- read-only helpers (no subprocess) ----------------------------------
@@ -84,6 +89,63 @@ def suggested_version():
     if sbm.read_define(bsp, "kReleaseMode") == "1":
         return "%s.%s.%s" % (maj, minr, rev)
     return "%s.%s.%d" % (maj, minr, int(rev) + 1)
+
+
+def normalize_serial_port(value):
+    """Return a normalized COM port name, or None for invalid input."""
+    port = value.strip().upper()
+    return port if SERIAL_PORT_RE.fullmatch(port) else None
+
+
+def list_serial_ports():
+    """Return Windows serial ports such as COM3, sorted numerically."""
+    if os.name != "nt":
+        return []
+    try:
+        import winreg
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DEVICEMAP\SERIALCOMM")
+    except (ImportError, FileNotFoundError, OSError):
+        return []
+
+    ports = set()
+    try:
+        index = 0
+        while True:
+            try:
+                value = winreg.EnumValue(key, index)[1]
+            except OSError:
+                break
+            port = normalize_serial_port(str(value))
+            if port:
+                ports.add(port)
+            index += 1
+    finally:
+        winreg.CloseKey(key)
+
+    return sorted(
+        ports, key=lambda port: int(SERIAL_PORT_RE.fullmatch(port).group(1)))
+
+
+def flash_build_dir(board):
+    return os.path.join(SCRIPT_DIR, "build_%s_hcpu" % board)
+
+
+def flash_command(port):
+    """Build the non-interactive equivalent of generated uart_download.bat."""
+    return [
+        UART_DOWNLOAD_EXE,
+        "--func", "0",
+        "--port", port.lower(),
+        "--baund", "1000000",
+        "--loadram", "1",
+        "--postact", "1",
+        "--compare",
+        "--verify",
+        "--device", "SF32LB56X_NAND",
+        "--file", "ImgBurnList.ini",
+        "--log", "ImgBurn.log",
+    ]
 
 
 def write_description(notes):
@@ -173,6 +235,11 @@ def selftest():
         os.path.exists(os.path.join(SCRIPT_DIR, "set_build_mode.py")),
         os.path.exists(WATCH_BUILD_CMD),
         os.path.exists(INFO_JSON)))
+    add("flash_tool_present: %s" % os.path.isfile(UART_DOWNLOAD_EXE))
+    add("serial_port_regex_ok: %s / %s" % (
+        normalize_serial_port("com12") == "COM12",
+        normalize_serial_port("COM12 & whoami") is None))
+    add("detected_serial_ports: %s" % (", ".join(list_serial_ports()) or "none"))
 
     try:
         import tkinter  # noqa: F401
@@ -243,9 +310,9 @@ def run_gui():
             self.root = root
             self.q = queue.Queue()
             self.busy = False
-            root.title("Skaiwalk 手錶韌體發布工具")
-            root.geometry("760x560")
-            root.minsize(640, 480)
+            root.title("Skaiwalk 手錶韌體發布與燒錄工具")
+            root.geometry("760x650")
+            root.minsize(640, 560)
 
             pad = {"padx": 8, "pady": 4}
 
@@ -311,6 +378,29 @@ def run_gui():
                       font=UI_FONT, foreground="#666").grid(
                 row=2, column=0, columnspan=2, sticky="w", padx=6)
 
+            # --- flash row ---
+            flash = ttk.LabelFrame(root, text="燒錄韌體(UART)")
+            flash.pack(fill="x", **pad)
+            ttk.Label(flash, text="COM Port：", font=UI_FONT).grid(
+                row=0, column=0, sticky="w", padx=6, pady=6)
+            ports = list_serial_ports()
+            self.port_var = tk.StringVar(value=ports[0] if ports else "")
+            self.port_combo = ttk.Combobox(
+                flash, textvariable=self.port_var, values=ports,
+                width=14, font=UI_FONT)
+            self.port_combo.grid(row=0, column=1, sticky="w", pady=6)
+            self.btn_port_refresh = ttk.Button(
+                flash, text="重新偵測", command=self.refresh_ports)
+            self.btn_port_refresh.grid(row=0, column=2, padx=6, pady=6)
+            self.btn_flash = ttk.Button(
+                flash, text="刷入手錶", command=self.do_flash)
+            self.btn_flash.grid(row=0, column=3, padx=6, pady=6)
+            ttk.Label(
+                flash,
+                text="(使用上方所選晶片的 build_<board>_hcpu 產物；刷機前會再次確認)",
+                font=UI_FONT, foreground="#666").grid(
+                    row=1, column=0, columnspan=4, sticky="w", padx=6)
+
             # --- upload row ---
             up = ttk.LabelFrame(root, text="上傳到雲端(阿里雲 OSS)")
             up.pack(fill="x", **pad)
@@ -332,7 +422,8 @@ def run_gui():
             self.log.pack(side="left", fill="both", expand=True)
 
             self._buttons = [self.btn_refresh, self.btn_release, self.btn_dev,
-                             self.btn_build, self.btn_upload]
+                             self.btn_build, self.btn_port_refresh,
+                             self.btn_flash, self.btn_upload]
 
             self.refresh()
             self.root.after(80, self._pump)
@@ -366,6 +457,17 @@ def run_gui():
                                  % (board, board, ver))
             except Exception:
                 self.up_hint.set("")
+
+        def refresh_ports(self):
+            ports = list_serial_ports()
+            current = self.port_var.get().strip()
+            self.port_combo.configure(values=ports)
+            if not current and ports:
+                self.port_var.set(ports[0])
+            if ports:
+                self._emit("偵測到 COM Port: %s" % ", ".join(ports))
+            else:
+                self._emit("未自動偵測到 COM Port；可手動輸入，例如 COM12。")
 
         # --- queue pump (runs on UI thread) ---
         def _pump(self):
@@ -490,8 +592,48 @@ def run_gui():
                 self._emit("!! 產生 watchOS.zip 發生例外: %r" % e)
 
             self._emit("=== 發布完成! 產物: watchOS\\sys\\、watchOS.zip、info.json ===")
-            self._emit("提醒: 編好後可按「上傳到雲端」上傳;繼續開發請按「切換到開發模式」。")
+            self._emit("提醒: 可按「刷入手錶」測試或「上傳到雲端」上傳;"
+                       "繼續開發請按「切換到開發模式」。")
             self.q.put((SIG_REFRESH, None))
+            self.q.put((SIG_DONE, None))
+
+        def do_flash(self):
+            port = normalize_serial_port(self.port_var.get())
+            if not port:
+                messagebox.showerror(
+                    "COM Port 格式錯誤",
+                    "請選擇或輸入有效的 COM Port，例如 COM12。")
+                return
+
+            board = self.board_var.get()
+            build_dir = flash_build_dir(board)
+            burn_list = os.path.join(build_dir, "ImgBurnList.ini")
+            if not os.path.isfile(UART_DOWNLOAD_EXE):
+                messagebox.showerror(
+                    "缺少燒錄工具", "找不到：\n%s" % UART_DOWNLOAD_EXE)
+                return
+            if not os.path.isfile(burn_list):
+                messagebox.showerror(
+                    "缺少燒錄產物",
+                    "找不到：\n%s\n\n請先用相同晶片型號完成編譯。" % burn_list)
+                return
+
+            self.port_var.set(port)
+            if not messagebox.askyesno(
+                    "確認刷機",
+                    "晶片型號：%s\nCOM Port：%s\n\n"
+                    "即將覆寫手錶韌體，確定要繼續嗎？" % (board, port)):
+                return
+            self._start(lambda: self._w_flash(board, port, build_dir))
+
+        def _w_flash(self, board, port, build_dir):
+            self._emit("=== 燒錄韌體：%s → %s ===" % (board, port))
+            rc = self._stream(flash_command(port), cwd=build_dir)
+            if rc == 0:
+                self._emit("=== 刷機完成：%s ===" % port)
+            else:
+                self._emit("!! 刷機失敗(結束碼 %d)。請查看 %s" % (
+                    rc, os.path.join(build_dir, "ImgBurn.log")))
             self.q.put((SIG_DONE, None))
 
         def do_upload(self):
