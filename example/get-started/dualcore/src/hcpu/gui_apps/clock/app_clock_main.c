@@ -1632,6 +1632,9 @@ rt_int32_t clock_on_resume(void)
     if (pause_clock == false)
         return -RT_EOK;
     pause_clock = false;
+    /* Passive weather refresh on regaining the face — 30-min throttle and
+       disconnected no-op both live inside the callee. */
+    request_weather_within_six_hours(false);
     /* Back on the watch face → restore the global input bar (per-page
        VALUE_CHANGED keeps it in sync on later in-app navigation). */
     {
