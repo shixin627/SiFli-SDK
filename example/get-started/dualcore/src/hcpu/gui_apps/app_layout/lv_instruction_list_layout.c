@@ -5509,6 +5509,24 @@ void instruction_list_restore_base(void)
     refresh_custom_instructions();
 }
 
+/* 把 target item 的中心精確對到螢幕垂直中心(LV_VER_RES/2)。
+   lv_obj_scroll_to_view 對「相鄰 item 重疊 100px」的這個清單置中不準(它把 200px 的
+   item bbox 塞進 viewport、不是把 item 中心對準畫面中心),會讓選中項 label 落偏下 +
+   scroll_list 從幾何反推的 selected 差一格 → label 錯位+重疊(founder 2026-07-23
+   revert voice force_scroll 的真因)。改成顯式位移把 child 中心對到畫面中心。 */
+static void scroll_center_item(lv_obj_t *list, uint16_t target)
+{
+    lv_obj_t *child = lv_obj_get_child(list, target);
+    if (child == NULL || !lv_obj_is_valid(child)) return;
+    lv_obj_update_layout(list);
+    lv_area_t ca;
+    lv_obj_get_coords(child, &ca);
+    lv_coord_t child_center = (ca.y1 + ca.y2) / 2;
+    lv_coord_t cur_scroll = lv_obj_get_scroll_y(list);
+    lv_obj_scroll_to_y(list, cur_scroll + (child_center - LV_VER_RES / 2),
+                       LV_ANIM_OFF);
+}
+
 void refresh_custom_instructions(void)
 {
     open_scroll_motor = false;
@@ -5553,7 +5571,16 @@ void refresh_custom_instructions(void)
        voice-input refresh preserved the user's prior scroll instead of homing to
        the newest item (founder 2026-07-23). */
     if (!s_force_scroll_to_last)
-        s_force_scroll_to_last = !instruction_list_is_visible();
+    {
+        /* 預設:只有離開 actions 頁才 re-home 到最新;瀏覽中手機 push 的 replace-all
+           保持原 scroll(founder 2026-07-23,別打斷瀏覽)。例外:使用者正在 skaibar
+           語音查詢流程中(AI 輸入框開著 或 tracking session)→ 這次刷新帶來的是查詢
+           結果選項,定位到最相關(最新)那個,否則使用者查完看不到結果(founder NOTE
+           @mic_bar_voice_start 的 follow-up:配合 scroll_center_item 的精確定位一起做)。*/
+        s_force_scroll_to_last = !instruction_list_is_visible() ||
+                                 get_is_open_instruction_list_ai() ||
+                                 s_skaibar_tracking_active;
+    }
 
     LOG_I("Refreshing custom instructions...");
     /* Trailing-edge debounce: within 500ms, skip the immediate run but
@@ -5678,9 +5705,7 @@ void refresh_custom_instructions(void)
         uint16_t target = list_item_count - 1;
         app_scroll_target_item = target;
         selected_item_index = target;
-        lv_obj_t *child = lv_obj_get_child(list, target);
-        if (child && lv_obj_is_valid(child))
-            lv_obj_scroll_to_view(child, LV_ANIM_OFF);
+        scroll_center_item(list, target); /* 精確置中,取代不準的 scroll_to_view */
         lv_obj_update_layout(list);
         scroll_list(list, 0);
         /* scroll_list() reassigns selected_item_index to whichever item is
@@ -5700,9 +5725,7 @@ void refresh_custom_instructions(void)
         uint16_t target = list_item_count - 1;
         app_scroll_target_item = target;
         selected_item_index = target;
-        lv_obj_t *child = lv_obj_get_child(list, target);
-        if (child && lv_obj_is_valid(child))
-            lv_obj_scroll_to_view(child, LV_ANIM_OFF);
+        scroll_center_item(list, target); /* 精確置中,取代不準的 scroll_to_view */
         lv_obj_update_layout(list);
         scroll_list(list, 0);
     }
