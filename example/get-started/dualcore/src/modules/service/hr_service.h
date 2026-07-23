@@ -114,11 +114,13 @@ extern uint8_t hr_service_get_latest_bpm(void);
 extern bool hr_service_get_hr_window(uint8_t *mean_bpm, uint8_t *std_bpm,
                                      uint32_t *age_ms);
 
-/* Two-stage power gate. sleep_service calls this with true once accel-only
-   detection says the user is asleep, so the background sampler switches from
-   the ~15 min daily-curve rate to dense bursts (60 s every 3 min) that give
-   valid HR mean + std for Deep/REM staging; false returns to the curve rate.
-   No effect on the foreground (Exercise) HR path. LCPU-only. */
+/* Dense-burst power gate. sleep_service calls this with true while accel-only
+   detection says asleep OR the wrist is still inside the overnight rest window
+   (rest-candidate, verdict-independent — sleep_service.c SLEEP_REST_*); the
+   background sampler then switches from the ~15 min daily-curve rate to dense
+   bursts (60 s every 3 min) that give valid HR mean + std for Deep/REM staging
+   and let the HR wake-veto self-correct on clean readings. False returns to
+   the curve rate. No effect on the foreground (Exercise) HR path. LCPU-only. */
 extern void hr_service_set_sleep_active(bool active);
 
 /// @} file

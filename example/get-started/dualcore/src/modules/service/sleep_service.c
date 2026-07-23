@@ -68,6 +68,24 @@
    gets fresh HR features (mean + std) for Light/Deep/REM. */
 #define SLEEP_HR_WINDOW_MAX_AGE_MS (4 * 60 * 1000)
 
+/* Rest-candidate dense-HR gate (Phase 1 of the missed-night fix; ADR-0017).
+   Failure mode being fixed: HR sampling density used to follow the sleep
+   VERDICT. A night whose sparse (~15 min) readings ran falsely high (loose
+   band / poor optical contact reads of 80-119 bpm slip under the 120 artefact
+   ceiling) re-armed sleep_fusion's 12-min wake-veto hold on every burst,
+   leaving only a ~3-min clean window per 15-min cycle — sleep fragmented to
+   ~2 min per cycle all night, and the misdetected "awake" state kept sampling
+   sparse: a locked feedback loop. Fix: density now also follows cheap DIRECT
+   evidence — a still wrist inside the overnight window goes dense regardless
+   of the verdict. Dense readings let the veto self-heal (one clean
+   sub-threshold reading clears hold + run at once, sleep_fusion.c), so the
+   algorithm itself stays untouched. */
+#define SLEEP_REST_SCORE_THRESH   400u /* mirror SF_SLEEP_SCORE_THRESH        */
+#define SLEEP_REST_ENTER_MIN      10   /* still minutes in a row to go dense  */
+#define SLEEP_REST_EXIT_MIN       3    /* active minutes in a row to drop out */
+#define SLEEP_REST_WINDOW_START_H 21   /* overnight window: 21:00 ..          */
+#define SLEEP_REST_WINDOW_END_H   11   /* .. 10:59 local wall-clock           */
+
 typedef struct
 {
     rt_timer_t timer;
@@ -92,6 +110,11 @@ typedef struct
     bool     last_step_count_valid;
     uint8_t  last_emitted_wire_mode;  /* 0 = nothing emitted yet */
     int16_t  last_local_day;          /* for midnight reset; -1 sentinel */
+
+    /* Rest-candidate dense-HR gate (see SLEEP_REST_*). */
+    uint8_t  rest_still_run;   /* consecutive minutes score < thresh  */
+    uint8_t  rest_active_run;  /* consecutive minutes score >= thresh */
+    bool     rest_candidate;   /* dense bursts requested while awake  */
 } sleep_service_env_t;
 
 static sleep_service_env_t s_env;
@@ -372,9 +395,66 @@ static void prv_minute_eval(uint32_t utc_now)
     bool asleep = (out->stage == SLEEP_FUSION_STAGE_LIGHT ||
                    out->stage == SLEEP_FUSION_STAGE_DEEP ||
                    out->stage == SLEEP_FUSION_STAGE_REM);
+
+    /* Rest-candidate: a still wrist inside the overnight window also drives
+       dense bursts, independent of the verdict (see SLEEP_REST_* block).
+       Exit needs SLEEP_REST_EXIT_MIN active minutes so one mid-night toss
+       doesn't drop density; the tracker keeps counting while asleep too
+       (harmless — OR'd below — and keeps density across brief wake blips). */
+    {
+        bool in_window = false;
+        time_t t = (time_t)utc_now;
+        struct tm *lt = localtime(&t);
+        if (lt)
+        {
+            in_window = (lt->tm_hour >= SLEEP_REST_WINDOW_START_H ||
+                         lt->tm_hour < SLEEP_REST_WINDOW_END_H);
+        }
+        if (!in_window || !input.is_worn)
+        {
+            s_env.rest_still_run = 0;
+            s_env.rest_active_run = 0;
+            s_env.rest_candidate = false;
+        }
+        else if (out->last_cole_kripke_score < SLEEP_REST_SCORE_THRESH)
+        {
+            s_env.rest_active_run = 0;
+            if (s_env.rest_still_run < 0xFF)
+            {
+                s_env.rest_still_run++;
+            }
+            if (s_env.rest_still_run >= SLEEP_REST_ENTER_MIN)
+            {
+                s_env.rest_candidate = true;
+            }
+        }
+        else
+        {
+            s_env.rest_still_run = 0;
+            if (s_env.rest_active_run < 0xFF)
+            {
+                s_env.rest_active_run++;
+            }
+            if (s_env.rest_active_run >= SLEEP_REST_EXIT_MIN)
+            {
+                s_env.rest_candidate = false;
+            }
+        }
+    }
 #ifdef BSP_USING_HR_SVC
-    hr_service_set_sleep_active(asleep);
+    hr_service_set_sleep_active(asleep || s_env.rest_candidate);
 #endif
+
+    /* Forensic once-a-minute line (LCPU console): enough to attribute any
+       future missed night — activity vs score, veto state, learned RHR,
+       dense-gate state — without reflashing a diagnostic build. */
+    LOG_I("[SLPDIAG] act=%u st=%u hr=%u sd=%u sc=%u stg=%u veto=%u rhr=%u base=%u rest=%u tot=%u",
+          (unsigned)input.activity_count, (unsigned)input.step_count,
+          (unsigned)input.hr_mean_bpm, (unsigned)input.hr_std_bpm,
+          (unsigned)out->last_cole_kripke_score, (unsigned)out->stage,
+          (unsigned)out->hr_wake_veto_active, (unsigned)out->learned_rhr_bpm,
+          (unsigned)out->last_hr_baseline_bpm, (unsigned)s_env.rest_candidate,
+          (unsigned)out->total_sleep_min);
 
     prv_emit_stage(out, utc_now);
 
@@ -410,6 +490,9 @@ static void prv_timer_cb(void *param)
         s_env.ticks_this_minute = 0;
         s_env.prev_accel_valid = false;
         s_env.last_step_count_valid = false;
+        s_env.rest_still_run = 0;
+        s_env.rest_active_run = 0;
+        s_env.rest_candidate = false;
         return;
     }
 
@@ -479,6 +562,10 @@ static int msh_sleep_status(int argc, char **argv)
                (unsigned)out->hr_wake_veto_active,
                (unsigned)out->sleep_onset_utc,
                (unsigned)out->last_wake_utc);
+    rt_kprintf("  rest_cand=%u still_run=%u active_run=%u\n",
+               (unsigned)s_env.rest_candidate,
+               (unsigned)s_env.rest_still_run,
+               (unsigned)s_env.rest_active_run);
     return 0;
 }
 MSH_CMD_EXPORT(msh_sleep_status, dump sleep_fusion state);

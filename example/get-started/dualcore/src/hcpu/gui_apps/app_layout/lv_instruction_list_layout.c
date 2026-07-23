@@ -531,8 +531,23 @@ static bool s_inst_arc_drag_active = false;
 static bool s_inst_drag_initialized = false;
 static int s_inst_drag_input = 0;
 static int s_inst_drag_last_idx = -1;    /* 上一次中央的 dot idx */
+static rt_tick_t s_last_arc_drag_tick = 0; /* 最後一次 inst_arc_drag_cb 實際驅動的 tick */
+/* arc-drag 是否「真的正在驅動」= flag true 且最近有幀在跑。區分兩種狀態：
+ *  - arc-drag 進行中：dot/selected 由 inst_arc_drag_cb + page-change snap 管，
+ *    scroll_list 讓開（避免打架 — 原本 !s_inst_arc_drag_active gate 的用意）；
+ *  - arc-drag 已停但 flag 殘留（release 的 snap_cb 還沒 reset）、list 改由 LVGL
+ *    原生慣性 scroll 移動：inst_arc_drag_cb 已不再跑，若仍照 raw flag gate 掉
+ *    dot/selected，dot 會卡在殘留位置、label 卻自由跑 → 脫節（真機 [DYN]：adrag=1
+ *    時 label 205→345、dot 恆 193）。用「距最後驅動 <120ms」判定 live。 */
+static bool arc_drag_is_live(void)
+{
+    return s_inst_arc_drag_active &&
+           (rt_tick_get() - s_last_arc_drag_tick) < rt_tick_from_millisecond(120);
+}
+static int32_t s_inst_snap_anim_dummy; /* 提前定義：SCROLL_END 的 settle pin 要取消這個 anim */
+static void inst_snap_anim_exec_cb(void *var, int32_t value); /* fwd-decl 供 pin 取消用 */
 static void inst_arc_reset_drag_state(void);
-static void scroll_list_to_index(uint16_t page);
+static void scroll_list_to_index(uint16_t page, bool animate);
 
 static void update_indicator_dots_position(int input_value)
 {
@@ -1154,8 +1169,9 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 min_offset = y_diff;
                 selected_item_y_diff = y_diff2;
                 /* drag_cb 模式下 selected_item_index 由 page-change snap 統一管理，
-                 * scroll_list 不要再從 card y_diff 推回去（會跟 snap 動畫打架）*/
-                if (!s_inst_arc_drag_active)
+                 * scroll_list 不要再從 card y_diff 推回去（會跟 snap 動畫打架）。
+                 * 但只在 arc-drag「真的在驅動」時讓開；flag 殘留時仍跟 list scroll。*/
+                if (!arc_drag_is_live())
                 {
                     selected_item_index = i;
                 }
@@ -1224,15 +1240,19 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
         else if (target_value > get_total_moving_distance())
             target_value = get_total_moving_distance();
         set_prev_sensor_quat(target_value);
+    }
 
-        /* 指示點也用全部項目範圍。drag_cb 模式下 dot 由 inst_arc_drag_cb 用累積
-         * 的 input 自己更新，scroll_list 不要再用 list scroll_y 反推蓋過去 */
+    /* 指示點更新移出 if(touching_screen)（founder 2026-07-23 真機 [DYN] 定位）：
+     * 放手後 LVGL 的慣性/snap 仍在移動 list，label（在 item 內）跟著滑到最終置中
+     * 位置；舊碼把 dot 更新關在 if(touching_screen) 內，手指一放 touching_screen
+     * →false 後 dot 就停在放手瞬間的位置、追不上 label 的慣性 →「剛滑過去馬上滑」
+     * 時文字已置中、圖片卻卡在半路（實測 tch=0 時 dot_y=66/310，label 恆 205）。
+     * 每幀都跟 scroll 更新 dot，放手慣性期間 dot 與 label 一起 settle。drag_cb
+     * 模式下 dot 由 inst_arc_drag_cb 用累積 input 自己更新，這裡照舊讓開。 */
+    if (SkaiWatchSys.motion_control_lock && !arc_drag_is_live())
+    {
         int dots_value = child_cnt * 100 + first_y_diff - 63;
-        if (SkaiWatchSys.motion_control_lock && !s_inst_arc_drag_active)
-        {
-            update_indicator_dots_position(dots_value);
-        }
-
+        update_indicator_dots_position(dots_value);
     }
     if (selected_item_index != old_selected_item_index)
     {
@@ -1625,6 +1645,48 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         {
             // 延遲 0.5 秒後才設置 touching_screen 為 false
             start_touching_screen_timer();
+            /* Settle (finger already lifted): re-materialise the selected row's
+               tidy widget card. scroll_list leaves every row in its browse
+               state — raw icon pinned RIGHT_MID, label CENTER — which reads as
+               "icon and label don't line up". The re-tidy lives in
+               open_selected_widget(), which historically only ran as a side
+               effect of reset_list_internal (reveal / phone-push refresh).
+               Gating that refresh reset (so it stops yanking scroll to the
+               bottom) removed the incidental re-tidy, so settle must now do it
+               itself — otherwise the split state persists after release. */
+            open_selected_widget(false);
+            /* Pin the dot arc onto the selected item's canonical input so the
+               image column lines up with the (list-snapped) label. label and dot
+               are two independent positioners — label = list-scroll snap, dot =
+               arc angle from input_value. On fast consecutive swipes / after a
+               phone-push rebuild the dot input can lag the label's selected index
+               (photo: label centred on item 0 but the whole dot arc pushed up),
+               so force it to the canonical idx→input = 100*(N-idx)-63 (identical
+               to the touch-path child_cnt*100 + first_y_diff - 63 once first_y_diff
+               has settled — verified against live [DYN]: sel1→37, sel0→137). */
+            /* Finger is already up here (outer !is_user_touching_screen) — this IS
+               the settle, so pin UNCONDITIONALLY. The earlier !arc_drag_is_live()
+               guard was wrong: after an arc-drag then a quick list-scroll, the arc
+               residual (<120ms) made is_live() true and skipped the pin exactly when
+               it was needed, leaving the dot stranded mid-arc while the label snapped
+               (founder photo: 手電筒 label centred, its dot low, 空圈 high). No mid-
+               drag risk — during a real drag the finger is down and we never reach
+               here. */
+            if (SkaiWatchSys.motion_control_lock &&
+                selected_item_index < list_item_count)
+            {
+                /* Cancel any in-flight arc-release snap anim FIRST: it animates the
+                   dot toward canonical(s_inst_drag_last_idx), which occasionally
+                   diverges from the list's selected (sel=1 but last_idx=0) and would
+                   drag the dot back to the sel=0 arc config AFTER this pin — the
+                   intermittent "sometimes offset" ([PIN] sel=1 → dot_y=310). Then
+                   sync arc state to the list's selected so nothing pulls it away. */
+                lv_anim_del(&s_inst_snap_anim_dummy, inst_snap_anim_exec_cb);
+                s_inst_drag_last_idx = (int)selected_item_index;
+                s_inst_drag_input =
+                    100 * ((int)list_item_count - (int)selected_item_index) - 63;
+                update_indicator_dots_position(s_inst_drag_input);
+            }
         }
         // LOG_D("APP LIST Scroll ended :%d", touching_screen);
         break;
@@ -1989,6 +2051,12 @@ static void mic_bar_voice_start(void)
 {
     if (s_bar_voice_active)
         return;
+    /* NOTE (founder 2026-07-23): voice-input "home to newest" was tried here via
+       instruction_list_force_scroll_to_last() but the post-refresh scroll left the
+       selected label mis-placed (dropped low + overlapping the old label), only
+       corrected by a manual scroll — same label-positioning tangle as the icon/label
+       alignment work. Reverted to avoid the worse regression; do it cleanly together
+       with the alignment fix as a follow-up. */
 #ifndef BSP_USING_PC_SIMULATOR
     /* 沒手機=沒轉錄:不進聽音狀態(同 animate_open_ai_widget 的 BT gate 精神) */
     extern bool get_bluetooth_connection_status(void);
@@ -5441,6 +5509,24 @@ void instruction_list_restore_base(void)
     refresh_custom_instructions();
 }
 
+/* 把 target item 的中心精確對到螢幕垂直中心(LV_VER_RES/2)。
+   lv_obj_scroll_to_view 對「相鄰 item 重疊 100px」的這個清單置中不準(它把 200px 的
+   item bbox 塞進 viewport、不是把 item 中心對準畫面中心),會讓選中項 label 落偏下 +
+   scroll_list 從幾何反推的 selected 差一格 → label 錯位+重疊(founder 2026-07-23
+   revert voice force_scroll 的真因)。改成顯式位移把 child 中心對到畫面中心。 */
+static void scroll_center_item(lv_obj_t *list, uint16_t target)
+{
+    lv_obj_t *child = lv_obj_get_child(list, target);
+    if (child == NULL || !lv_obj_is_valid(child)) return;
+    lv_obj_update_layout(list);
+    lv_area_t ca;
+    lv_obj_get_coords(child, &ca);
+    lv_coord_t child_center = (ca.y1 + ca.y2) / 2;
+    lv_coord_t cur_scroll = lv_obj_get_scroll_y(list);
+    lv_obj_scroll_to_y(list, cur_scroll + (child_center - LV_VER_RES / 2),
+                       LV_ANIM_OFF);
+}
+
 void refresh_custom_instructions(void)
 {
     open_scroll_motor = false;
@@ -5460,8 +5546,41 @@ void refresh_custom_instructions(void)
        on the same UX — newest at the focus / centre. The other two
        branches further down (saved_selected out of range, restore prior
        position) become dead but I leave them so callers that DO want
-       to preserve position can clear the flag before refresh. */
-    s_force_scroll_to_last = true;
+       to preserve position can clear the flag before refresh.
+
+       Founder direction 2026-07-23: only re-home to the newest item when the
+       user is NOT on the instruction-list page. While they ARE browsing it, a
+       phone-pushed refresh (batch 0x6B replace-all fires on every reveal, then
+       again on any interaction) must NOT yank their scroll back to the bottom —
+       preserve where they scrolled to. Same gate the trailing reset_list()
+       uses; leaving the page still re-homes so the next open shows newest.
+
+       Use instruction_list_is_visible(), NOT is_at_instruction_list(): the
+       latter only flips true on a later poll (~400ms after reveal_drag_begin —
+       ATINST 0->1 in the trace), so a "reveal then scroll immediately" gesture
+       fires this refresh while is_at is still false → it re-homed AND ran the
+       trailing reset mid-scroll, which both yanked scroll to the bottom and tore
+       the icon/label slide-anim apart (icon left mid-slide, label recentred).
+       is_visible() reads true the instant reveal un-hides the list_bg, so it
+       covers that window.
+
+       BUT respect an explicit per-caller opt-in first: instruction_list_force_
+       scroll_to_last() (e.g. the mic/voice-input path) sets s_force_scroll_to_last
+       true because it WANTS the newest option homed even while the list is visible.
+       Only fall back to the visibility rule when nobody opted in — otherwise a
+       voice-input refresh preserved the user's prior scroll instead of homing to
+       the newest item (founder 2026-07-23). */
+    if (!s_force_scroll_to_last)
+    {
+        /* 預設:只有離開 actions 頁才 re-home 到最新;瀏覽中手機 push 的 replace-all
+           保持原 scroll(founder 2026-07-23,別打斷瀏覽)。例外:使用者正在 skaibar
+           語音查詢流程中(AI 輸入框開著 或 tracking session)→ 這次刷新帶來的是查詢
+           結果選項,定位到最相關(最新)那個,否則使用者查完看不到結果(founder NOTE
+           @mic_bar_voice_start 的 follow-up:配合 scroll_center_item 的精確定位一起做)。*/
+        s_force_scroll_to_last = !instruction_list_is_visible() ||
+                                 get_is_open_instruction_list_ai() ||
+                                 s_skaibar_tracking_active;
+    }
 
     LOG_I("Refreshing custom instructions...");
     /* Trailing-edge debounce: within 500ms, skip the immediate run but
@@ -5586,9 +5705,7 @@ void refresh_custom_instructions(void)
         uint16_t target = list_item_count - 1;
         app_scroll_target_item = target;
         selected_item_index = target;
-        lv_obj_t *child = lv_obj_get_child(list, target);
-        if (child && lv_obj_is_valid(child))
-            lv_obj_scroll_to_view(child, LV_ANIM_OFF);
+        scroll_center_item(list, target); /* 精確置中,取代不準的 scroll_to_view */
         lv_obj_update_layout(list);
         scroll_list(list, 0);
         /* scroll_list() reassigns selected_item_index to whichever item is
@@ -5608,9 +5725,7 @@ void refresh_custom_instructions(void)
         uint16_t target = list_item_count - 1;
         app_scroll_target_item = target;
         selected_item_index = target;
-        lv_obj_t *child = lv_obj_get_child(list, target);
-        if (child && lv_obj_is_valid(child))
-            lv_obj_scroll_to_view(child, LV_ANIM_OFF);
+        scroll_center_item(list, target); /* 精確置中,取代不準的 scroll_to_view */
         lv_obj_update_layout(list);
         scroll_list(list, 0);
     }
@@ -5641,7 +5756,10 @@ void refresh_custom_instructions(void)
     }
     open_scroll_motor = true;
     LOG_I("[RCK] E before is_at/reset");
-    if (!is_at_instruction_list())
+    /* is_visible() not is_at_instruction_list() — same reveal-window reason as
+       the s_force_scroll_to_last gate above: a reveal-then-scroll refresh must
+       not reset (recenter icon/label, snap scroll) while the user is mid-slide. */
+    if (!instruction_list_is_visible())
     {
         reset_list();
     }
@@ -5768,7 +5886,7 @@ static void inst_arc_reset_drag_state(void)
 
 /* dot 回彈動畫 — release 時若 input 還在 elastic overshoot 區，把它從當前
  * 位置補間到 canonical（idx 對應的 input value），看得到 dot 平滑回彈 */
-static int32_t s_inst_snap_anim_dummy;
+/* s_inst_snap_anim_dummy 定義已提前到檔案上方（SCROLL_END pin 需先取消此 anim）*/
 static void inst_snap_anim_exec_cb(void *var, int32_t value)
 {
     (void)var;
@@ -5800,6 +5918,7 @@ static void inst_arc_drag_cb(lv_coord_t scroll_delta_px, void *ctx)
     if (total <= 0) return;
 
     s_inst_arc_drag_active = true;
+    s_last_arc_drag_tick = rt_tick_get(); /* 標記 arc-drag 這一幀真的在驅動（供 arc_drag_is_live 區分殘留）*/
 
     /* 第一次進來：用目前的 selected_item_index 反算 input。
      * input 跟 idx 對應公式（見 update_indicator_dots_position 的 offset_angle）：
@@ -5862,7 +5981,7 @@ static void inst_arc_drag_cb(lv_coord_t scroll_delta_px, void *ctx)
     if (closest_idx != s_inst_drag_last_idx)
     {
         s_inst_drag_last_idx = closest_idx;
-        scroll_list_to_index((uint16_t)closest_idx);
+        scroll_list_to_index((uint16_t)closest_idx, true); /* arc 圓形滾動：保留動畫平滑切換（founder 要的效果）*/
     }
 }
 
@@ -6359,7 +6478,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 }
 
 // static rt_uint32_t last_scroll_time = 0;
-static void scroll_list_to_index(uint16_t page)
+static void scroll_list_to_index(uint16_t page, bool animate)
 {
     if (p_instruction_list_layout->list == NULL ||
         !lv_obj_is_valid(p_instruction_list_layout->list))
@@ -6386,7 +6505,11 @@ static void scroll_list_to_index(uint16_t page)
     }
     // lv_disp_trig_activity(NULL);
     // set_scroll_anim_time(true);
-    lv_obj_scroll_to_view(child, LV_ANIM_ON);
+    /* animate=false（arc 圓形滾動）：即時捲，清單每次 page change 立刻跟上圖示，
+       不留 200ms 半截動畫給 phone-push refresh 打斷 → 放開本來就在位、沒有半路
+       狀態可被看到（founder 2026-07-23：治本，取代放開後才拉回的治標做法）。
+       animate=true（點指示點跳 app 等）：保留原本的平滑動畫。 */
+    lv_obj_scroll_to_view(child, animate ? LV_ANIM_ON : LV_ANIM_OFF);
     LOG_D("scroll_list_to_index done: %d", page);
     // set_scroll_anim_time(false);
     scroll_list(p_instruction_list_layout->list, 0);
@@ -6401,7 +6524,7 @@ static void instruction_list_scroll_to_app(int8_t action)
 
     if (action >= 0 && action < list_item_count)
     {
-        scroll_list_to_index(action);
+        scroll_list_to_index(action, true);
     }
 
     else
