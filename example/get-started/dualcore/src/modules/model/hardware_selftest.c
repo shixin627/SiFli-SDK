@@ -10,20 +10,26 @@
 #include <string.h>
 
 #include "watch_global_data.h"
-#include "bloc_peripheral.h"
+#include "app_test.h"
 
 #define HWTEST_UART_NAME       "uart1"
 #define HWTEST_COMMAND_PREFIX  "SKAI_HWTEST RUN "
+#define HWTEST_SCREEN_PREFIX   "SKAI_HWTEST SCREEN "
+#define HWTEST_CANCEL_PREFIX   "SKAI_HWTEST CANCEL "
 #define HWTEST_NONCE_LEN       8
 #define HWTEST_LINE_SIZE       96
 #define HWTEST_REPLY_SIZE      192
 #define HWTEST_THREAD_STACK    3072
 #define HWTEST_THREAD_PRIORITY 27
-#define HWTEST_LISTEN_WINDOW_MS 120000
+#define HWTEST_LISTEN_WINDOW_MS 300000
 
 static rt_device_t hwtest_uart;
 static struct rt_semaphore hwtest_rx_sem;
 static volatile rt_bool_t hwtest_completed;
+static volatile rt_bool_t hwtest_running;
+static char hwtest_nonce[HWTEST_NONCE_LEN + 1];
+static char hwtest_end_reply[HWTEST_REPLY_SIZE];
+static int hwtest_preflight_failures;
 
 static void hwtest_write(const char *text)
 {
@@ -61,120 +67,97 @@ static rt_bool_t valid_nonce(const char *nonce)
     return RT_TRUE;
 }
 
-static rt_bool_t wait_for_imu_change(uint32_t before, rt_uint32_t timeout_ms)
+static void hwtest_finish(int app_failures)
 {
-    rt_uint32_t started = rt_tick_get_millisecond();
-    while ((rt_tick_get_millisecond() - started) < timeout_ms)
-    {
-        uint32_t current = (uint32_t)watch_sensor.imu_data.timestamp;
-        if (current != 0 && current != before)
-        {
-            return RT_TRUE;
-        }
-        rt_thread_mdelay(100);
-    }
-    return RT_FALSE;
+    int failures = hwtest_preflight_failures + app_failures;
+
+    rt_snprintf(hwtest_end_reply, sizeof(hwtest_end_reply),
+                "SKAI_HWTEST END %s %s failures=%d\r\n",
+                hwtest_nonce, failures == 0 ? "PASS" : "FAIL", failures);
+    hwtest_write(hwtest_end_reply);
+    hwtest_running = RT_FALSE;
+    hwtest_completed = RT_TRUE;
 }
 
-static rt_bool_t wait_for_ppg_change(uint32_t before, rt_uint32_t timeout_ms)
+static void hwtest_app_item(void *context, const char *name, bool passed,
+                            const char *detail)
 {
-    rt_uint32_t started = rt_tick_get_millisecond();
-    while ((rt_tick_get_millisecond() - started) < timeout_ms)
-    {
-        uint32_t current =
-            (uint32_t)watch_sensor.motion_data.ppg_raw_data.timestamp;
-        if (current != 0 && current != before)
-        {
-            return RT_TRUE;
-        }
-        rt_thread_mdelay(100);
-    }
-    return RT_FALSE;
+    (void)context;
+    hwtest_item(hwtest_nonce, name, passed ? "PASS" : "FAIL",
+                detail == RT_NULL ? "" : detail);
+}
+
+static void hwtest_app_progress(void *context, int percent,
+                                const char *stage, const char *detail)
+{
+    char reply[HWTEST_REPLY_SIZE];
+    (void)context;
+    rt_snprintf(reply, sizeof(reply),
+                "SKAI_HWTEST PROGRESS %s %d %s %s\r\n",
+                hwtest_nonce, percent,
+                stage == RT_NULL ? "" : stage,
+                detail == RT_NULL ? "" : detail);
+    hwtest_write(reply);
+}
+
+static void hwtest_app_done(void *context, int failures)
+{
+    (void)context;
+    hwtest_finish(failures);
 }
 
 static void run_hardware_selftest(const char *nonce)
 {
+    app_test_screening_callbacks_t callbacks;
     char reply[HWTEST_REPLY_SIZE];
-    int failures = 0;
     rt_bool_t passed;
+
+    if (hwtest_running)
+    {
+        return;
+    }
+    if (hwtest_completed && strcmp(nonce, hwtest_nonce) == 0)
+    {
+        /* The PC retries until it receives a response.  Re-send the cached
+         * END for the same request instead of launching the app twice. */
+        hwtest_write(hwtest_end_reply);
+        return;
+    }
+
+    rt_strncpy(hwtest_nonce, nonce, sizeof(hwtest_nonce));
+    hwtest_nonce[HWTEST_NONCE_LEN] = '\0';
+    hwtest_preflight_failures = 0;
+    hwtest_completed = RT_FALSE;
+    hwtest_running = RT_TRUE;
 
     rt_snprintf(reply, sizeof(reply),
                 "SKAI_HWTEST BEGIN %s version=%d.%d.%d release=%d uptime_ms=%lu\r\n",
-                nonce, VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION,
+                hwtest_nonce, VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION,
                 kReleaseMode, (unsigned long)rt_tick_get_millisecond());
     hwtest_write(reply);
 
+    /* UART and release-mode validation belong to the PC release preflight.
+     * Automated screening is a hidden UART mode of the existing test app. */
+    hwtest_item(hwtest_nonce, "uart", "PASS", "uart1_rx_tx_ok");
     passed = (kReleaseMode == 1);
-    hwtest_item(nonce, "release", passed ? "PASS" : "FAIL",
+    hwtest_item(hwtest_nonce, "release", passed ? "PASS" : "FAIL",
                 passed ? "kReleaseMode=1" : "kReleaseMode=0");
-    if (!passed) failures++;
-
-    hwtest_item(nonce, "uart", "PASS", "uart1_rx_tx_ok");
-
-    if (watch_sys_sync.request_battery_voltage != RT_NULL)
+    if (!passed)
     {
-        watch_sys_sync.request_battery_voltage();
-        rt_thread_mdelay(800);
-    }
-    passed = (SkaiWatchSys.battery_vol_value >= 2800 &&
-              SkaiWatchSys.battery_vol_value <= 5000 &&
-              SkaiWatchSys.battery_level_value <= 100);
-    rt_snprintf(reply, sizeof(reply), "mv=%u level=%u",
-                SkaiWatchSys.battery_vol_value,
-                SkaiWatchSys.battery_level_value);
-    hwtest_item(nonce, "battery", passed ? "PASS" : "FAIL", reply);
-    if (!passed) failures++;
-
-    {
-        rt_bool_t imu_was_subscribed = (watch_sensor.imu_client_num > 0);
-        rt_bool_t hr_was_subscribed = (watch_sensor.hr_client_num > 0);
-        uint32_t before = (uint32_t)watch_sensor.imu_data.timestamp;
-
-        if (!imu_was_subscribed &&
-            peripheral_provider.subscribe_accelerometer_sensor != RT_NULL)
-        {
-            peripheral_provider.subscribe_accelerometer_sensor(true);
-        }
-        passed = wait_for_imu_change(before, 3000);
-        rt_snprintf(reply, sizeof(reply), "timestamp=%lu abnormal=%u",
-                    (unsigned long)watch_sensor.imu_data.timestamp,
-                    watch_sensor.imu_abnormal ? 1 : 0);
-        if (watch_sensor.imu_abnormal) passed = RT_FALSE;
-        hwtest_item(nonce, "imu", passed ? "PASS" : "FAIL", reply);
-        if (!passed) failures++;
-
-        /* Raw PPG is bundled in the ACCE motion stream in release builds.
-         * Keep IMU subscribed while HR enables the optical sensor. */
-        before = (uint32_t)watch_sensor.motion_data.ppg_raw_data.timestamp;
-        if (!hr_was_subscribed &&
-            peripheral_provider.subscribe_hr_sensor != RT_NULL)
-        {
-            peripheral_provider.subscribe_hr_sensor(true);
-        }
-        passed = wait_for_ppg_change(before, 6000);
-        rt_snprintf(reply, sizeof(reply), "timestamp=%lu samples=%u raw0=%lu",
-                    (unsigned long)watch_sensor.motion_data.ppg_raw_data.timestamp,
-                    watch_sensor.motion_data.ppg_raw_data.sample_num,
-                    (unsigned long)watch_sensor.motion_data.ppg_raw_data.raw_data[0]);
-        hwtest_item(nonce, "ppg", passed ? "PASS" : "FAIL", reply);
-        if (!passed) failures++;
-
-        if (!hr_was_subscribed &&
-            peripheral_provider.subscribe_hr_sensor != RT_NULL)
-        {
-            peripheral_provider.subscribe_hr_sensor(false);
-        }
-        if (!imu_was_subscribed &&
-            peripheral_provider.subscribe_accelerometer_sensor != RT_NULL)
-        {
-            peripheral_provider.subscribe_accelerometer_sensor(false);
-        }
+        hwtest_preflight_failures++;
     }
 
-    rt_snprintf(reply, sizeof(reply), "SKAI_HWTEST END %s %s failures=%d\r\n",
-                nonce, failures == 0 ? "PASS" : "FAIL", failures);
-    hwtest_write(reply);
-    hwtest_completed = RT_TRUE;
+    memset(&callbacks, 0, sizeof(callbacks));
+    callbacks.progress = hwtest_app_progress;
+    callbacks.item = hwtest_app_item;
+    callbacks.done = hwtest_app_done;
+    callbacks.context = RT_NULL;
+    if (!app_test_board_screening_start(&callbacks))
+    {
+        hwtest_item(hwtest_nonce, "test_app", "FAIL",
+                    "app_launch_failed");
+        hwtest_finish(1);
+    }
 }
 
 static rt_err_t hwtest_rx_indicate(rt_device_t dev, rt_size_t size)
@@ -210,8 +193,9 @@ static void hardware_selftest_thread(void *parameter)
     rt_device_set_rx_indicate(hwtest_uart, hwtest_rx_indicate);
     listen_started = rt_tick_get_millisecond();
 
-    while (!hwtest_completed &&
-           (rt_tick_get_millisecond() - listen_started) < HWTEST_LISTEN_WINDOW_MS)
+    while (hwtest_running ||
+           (rt_tick_get_millisecond() - listen_started) <
+               HWTEST_LISTEN_WINDOW_MS)
     {
         while (rt_device_read(hwtest_uart, 0, &ch, 1) == 1)
         {
@@ -226,6 +210,27 @@ static void hardware_selftest_thread(void *parameter)
                     if (valid_nonce(nonce))
                     {
                         run_hardware_selftest(nonce);
+                    }
+                }
+                else if (strncmp(line, HWTEST_SCREEN_PREFIX,
+                                 strlen(HWTEST_SCREEN_PREFIX)) == 0)
+                {
+                    const char *nonce =
+                        line + strlen(HWTEST_SCREEN_PREFIX);
+                    if (valid_nonce(nonce))
+                    {
+                        run_hardware_selftest(nonce);
+                    }
+                }
+                else if (strncmp(line, HWTEST_CANCEL_PREFIX,
+                                 strlen(HWTEST_CANCEL_PREFIX)) == 0)
+                {
+                    const char *nonce =
+                        line + strlen(HWTEST_CANCEL_PREFIX);
+                    if (valid_nonce(nonce) && hwtest_running &&
+                        strcmp(nonce, hwtest_nonce) == 0)
+                    {
+                        app_test_board_screening_cancel();
                     }
                 }
                 used = 0;

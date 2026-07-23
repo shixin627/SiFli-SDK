@@ -45,6 +45,9 @@ WATCHOS_ZIP = os.path.join(SCRIPT_DIR, "watchOS.zip")
 HWTEST_SOURCE = os.path.join(
     REPO_ROOT, "example", "get-started", "dualcore", "src", "modules",
     "model", "hardware_selftest.c")
+TEST_APP_SOURCE = os.path.join(
+    REPO_ROOT, "example", "get-started", "dualcore", "src", "hcpu",
+    "gui_apps", "test", "app_test.c")
 UART_DOWNLOAD_EXE = os.path.join(
     REPO_ROOT, "tools", "uart_download", "ImgDownUart.exe")
 
@@ -72,7 +75,24 @@ BUILD_ERROR_PATTERNS = (" error:", "undefined reference", "cannot find", "scons:
 
 VER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 SERIAL_PORT_RE = re.compile(r"^COM([1-9]\d*)$", re.IGNORECASE)
-HWTEST_TIMEOUT_SECONDS = 20
+HWTEST_TIMEOUT_SECONDS = 180
+HWTEST_SCREEN_TIMEOUT_SECONDS = 45
+POST_FLASH_BOOT_WAIT_SECONDS = 8
+
+
+class HardwareSelftestCancelled(Exception):
+    """Raised when the operator cancels the PC-side hardware test."""
+
+
+def wait_for_system_boot(seconds, emit, cancel_event=None):
+    """Wait after flashing before opening HCPU UART and sending commands."""
+    emit("=== 等待系統完整開機（%d 秒） ===" % seconds)
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if cancel_event is not None and cancel_event.is_set():
+            raise HardwareSelftestCancelled("板級篩檢已取消。")
+        time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+    emit("=== 系統開機等待完成 ===")
 
 
 # --- read-only helpers (no subprocess) ----------------------------------
@@ -133,6 +153,29 @@ def list_serial_ports():
         ports, key=lambda port: int(SERIAL_PORT_RE.fullmatch(port).group(1)))
 
 
+def hcpu_port_from_flash(port):
+    """Return the usual HCPU port: download COM number minus one."""
+    normalized = normalize_serial_port(port)
+    if not normalized:
+        return ""
+    number = int(SERIAL_PORT_RE.fullmatch(normalized).group(1))
+    return "COM%d" % (number - 1) if number > 1 else ""
+
+
+def suggested_flash_port(ports):
+    """Production fixtures normally enumerate download UART last."""
+    return ports[-1] if ports else ""
+
+
+def suggested_hcpu_port(ports, flash_port=""):
+    """Prefer download COM-1; the operator can always override."""
+    derived = hcpu_port_from_flash(flash_port)
+    if derived:
+        return derived
+    return next((port for port in ports if port.upper() != "COM1"),
+                ports[0] if ports else "")
+
+
 def flash_build_dir(board):
     return os.path.join(SCRIPT_DIR, "build_%s_hcpu" % board)
 
@@ -142,20 +185,31 @@ def hardware_selftest_object(board):
         flash_build_dir(board), "modules", "model", "hardware_selftest.o")
 
 
+def interactive_test_app_object(board):
+    return os.path.join(
+        flash_build_dir(board), "src", "gui_apps", "test", "app_test.o")
+
+
 def flash_preflight_error(board):
     """Return why the selected image is stale/failed, or None if usable."""
     if os.path.isfile(BUILD_LOG) and build_failed():
         return ("上次編譯失敗，不能刷入舊的建置產物。\n\n"
                 "請先查看 _watch_build.log、修正錯誤並重新編譯。")
 
-    obj = hardware_selftest_object(board)
-    if os.path.isfile(HWTEST_SOURCE):
+    required_objects = (
+        (hardware_selftest_object(board), HWTEST_SOURCE, "UART 篩檢服務"),
+        (interactive_test_app_object(board), TEST_APP_SOURCE,
+         "test app（UART 篩檢與互動測試）"),
+    )
+    for obj, source, label in required_objects:
+        if not os.path.isfile(source):
+            continue
         if not os.path.isfile(obj):
-            return ("目前建置產物未包含硬體自測模組。\n\n"
-                    "請先按『編譯 + 打包』重新編譯，再進行刷機。")
-        if os.path.getmtime(obj) < os.path.getmtime(HWTEST_SOURCE):
-            return ("硬體自測程式已修改，但建置產物尚未更新。\n\n"
-                    "請先按『編譯 + 打包』重新編譯，再進行刷機。")
+            return ("目前建置產物未包含%s。\n\n"
+                    "請先按『編譯 + 打包』重新編譯，再進行刷機。" % label)
+        if os.path.getmtime(obj) < os.path.getmtime(source):
+            return ("%s已修改，但建置產物尚未更新。\n\n"
+                    "請先按『編譯 + 打包』重新編譯，再進行刷機。" % label)
     return None
 
 
@@ -177,7 +231,8 @@ def flash_command(port):
 
 
 def run_hardware_selftest(port, emit, expected_version=None,
-                          timeout=HWTEST_TIMEOUT_SECONDS):
+                          timeout=HWTEST_TIMEOUT_SECONDS, cancel_event=None,
+                          screening_only=False):
     """Run the release-firmware UART hardware smoke test."""
     try:
         import serial
@@ -185,7 +240,8 @@ def run_hardware_selftest(port, emit, expected_version=None,
         raise RuntimeError("缺少 pyserial；請執行：py -3 -m pip install pyserial") from e
 
     nonce = secrets.token_hex(4).upper()
-    command = ("SKAI_HWTEST RUN %s\n" % nonce).encode("ascii")
+    action = "SCREEN" if screening_only else "RUN"
+    command = ("SKAI_HWTEST %s %s\n" % (action, nonce)).encode("ascii")
     end_prefix = "SKAI_HWTEST END %s " % nonce
     begin_prefix = "SKAI_HWTEST BEGIN %s " % nonce
     deadline = time.monotonic() + timeout
@@ -193,14 +249,30 @@ def run_hardware_selftest(port, emit, expected_version=None,
     began = False
     version_ok = True
     device_version = None
+    rx_bytes = 0
+    raw_lines = 0
+    raw_lines_logged = 0
+
+    if cancel_event is not None and cancel_event.is_set():
+        raise HardwareSelftestCancelled("硬體自測已取消。")
 
     try:
         with serial.Serial(port=port, baudrate=1000000, timeout=0.25,
                            write_timeout=2) as uart:
             uart.reset_input_buffer()
             while time.monotonic() < deadline:
+                if cancel_event is not None and cancel_event.is_set():
+                    cancel_command = (
+                        "SKAI_HWTEST CANCEL %s\n" % nonce).encode("ascii")
+                    uart.write(cancel_command)
+                    uart.flush()
+                    raise HardwareSelftestCancelled("硬體自測已取消。")
+
                 now = time.monotonic()
-                if not began and now >= next_send:
+                # Keep requesting with the same nonce until END arrives.
+                # Firmware ignores it while running and replays cached END
+                # after completion, so a lost final UART line is recoverable.
+                if now >= next_send:
                     uart.write(command)
                     uart.flush()
                     next_send = now + 1.0
@@ -208,8 +280,30 @@ def run_hardware_selftest(port, emit, expected_version=None,
                 raw = uart.readline()
                 if not raw:
                     continue
+                rx_bytes += len(raw)
                 line = raw.decode("utf-8", errors="replace").strip()
-                if nonce not in line or not line.startswith("SKAI_HWTEST "):
+                if not line:
+                    continue
+                protocol_at = line.find("SKAI_HWTEST ")
+                if protocol_at < 0:
+                    raw_lines += 1
+                    if raw_lines_logged < 12:
+                        preview = re.sub(
+                            r"[\x00-\x08\x0b\x0c\x0e-\x1f]", ".",
+                            line)[:180]
+                        emit("UART RX（非協定）：%s" % preview)
+                        raw_lines_logged += 1
+                    elif raw_lines_logged == 12:
+                        emit("UART RX（非協定）：後續內容已省略")
+                        raw_lines_logged += 1
+                    continue
+                # Console/debug output can share the UART and occasionally
+                # precede a protocol packet on the same physical line.
+                line = line[protocol_at:].strip()
+                if nonce not in line:
+                    if raw_lines_logged < 12:
+                        emit("UART RX（其他測試識別碼）：%s" % line[:180])
+                        raw_lines_logged += 1
                     continue
                 emit(line)
                 if line.startswith(begin_prefix):
@@ -231,9 +325,16 @@ def run_hardware_selftest(port, emit, expected_version=None,
         raise RuntimeError("無法開啟 %s：%s" % (port, e)) from e
 
     if began:
-        return False, "硬體自測逾時：韌體有回應，但未收到完整結果。"
+        return False, (
+            "硬體自測逾時：已收到 BEGIN 與 %d bytes，但未收到相同識別碼的 "
+            "END。" % rx_bytes)
+    if rx_bytes:
+        return False, (
+            "硬體自測逾時：%s 共收到 %d bytes（%d 行非協定資料），"
+            "但沒有收到 SKAI_HWTEST BEGIN。請查看訊息區的 UART RX 原始內容。"
+            % (port, rx_bytes, raw_lines))
     return False, ("硬體自測逾時：%s 沒有回應。請確認刷入的是包含硬體自測服務的"
-                   "最新發布韌體、在開機後 120 秒內執行，且沒有其他程式占用 "
+                   "最新發布韌體、在開機後 300 秒內執行，且沒有其他程式占用 "
                    "COM port。" % port)
 
 
@@ -324,10 +425,15 @@ def selftest():
         os.path.exists(os.path.join(SCRIPT_DIR, "set_build_mode.py")),
         os.path.exists(WATCH_BUILD_CMD),
         os.path.exists(INFO_JSON)))
+    add("screening_sources_present: uart=%s test_app=%s" % (
+        os.path.isfile(HWTEST_SOURCE),
+        os.path.isfile(TEST_APP_SOURCE)))
     add("flash_tool_present: %s" % os.path.isfile(UART_DOWNLOAD_EXE))
     add("serial_port_regex_ok: %s / %s" % (
         normalize_serial_port("com12") == "COM12",
         normalize_serial_port("COM12 & whoami") is None))
+    add("hcpu_port_derivation_ok: %s" % (
+        hcpu_port_from_flash("COM4") == "COM3"))
     add("detected_serial_ports: %s" % (", ".join(list_serial_ports()) or "none"))
 
     try:
@@ -394,12 +500,14 @@ def run_gui():
     SIG_DONE = "done"
     SIG_REFRESH = "refresh"
     SIG_HWTEST_RESULT = "hwtest_result"
+    SIG_HWTEST_ACTIVE = "hwtest_active"
 
     class App:
         def __init__(self, root):
             self.root = root
             self.q = queue.Queue()
             self.busy = False
+            self.hwtest_cancel_event = None
             root.title("Skaiwalk 手錶韌體發布與燒錄工具")
             root.geometry("760x650")
             root.minsize(640, 560)
@@ -474,25 +582,46 @@ def run_gui():
             ttk.Label(flash, text="COM Port：", font=UI_FONT).grid(
                 row=0, column=0, sticky="w", padx=6, pady=6)
             ports = list_serial_ports()
-            self.port_var = tk.StringVar(value=ports[0] if ports else "")
+            default_flash_port = suggested_flash_port(ports)
+            self.port_var = tk.StringVar(value=default_flash_port)
             self.port_combo = ttk.Combobox(
                 flash, textvariable=self.port_var, values=ports,
                 width=14, font=UI_FONT)
             self.port_combo.grid(row=0, column=1, sticky="w", pady=6)
+            self.port_combo.bind(
+                "<<ComboboxSelected>>", self.sync_hcpu_from_flash)
+            self.port_combo.bind(
+                "<FocusOut>", self.sync_hcpu_from_flash, add="+")
+            self.port_combo.bind(
+                "<Return>", self.sync_hcpu_from_flash, add="+")
             self.btn_port_refresh = ttk.Button(
                 flash, text="重新偵測", command=self.refresh_ports)
             self.btn_port_refresh.grid(row=0, column=2, padx=6, pady=6)
             self.btn_flash = ttk.Button(
                 flash, text="刷入手錶", command=self.do_flash)
             self.btn_flash.grid(row=0, column=3, padx=6, pady=6)
+
+            ttk.Label(flash, text="HCPU 篩檢 COM：", font=UI_FONT).grid(
+                row=1, column=0, sticky="w", padx=6, pady=6)
+            self.hcpu_port_var = tk.StringVar(
+                value=suggested_hcpu_port(ports, default_flash_port))
+            self.hcpu_port_combo = ttk.Combobox(
+                flash, textvariable=self.hcpu_port_var, values=ports,
+                width=14, font=UI_FONT)
+            self.hcpu_port_combo.grid(row=1, column=1, sticky="w", pady=6)
             self.btn_hwtest = ttk.Button(
-                flash, text="硬體自測", command=self.do_hwtest)
-            self.btn_hwtest.grid(row=0, column=4, padx=6, pady=6)
+                flash, text="板級篩檢", command=self.do_hwtest)
+            self.btn_hwtest.grid(row=1, column=2, padx=6, pady=6)
+            self.btn_hwtest_cancel = ttk.Button(
+                flash, text="取消篩檢", command=self.cancel_hwtest,
+                state="disabled")
+            self.btn_hwtest_cancel.grid(row=1, column=3, padx=6, pady=6)
             ttk.Label(
                 flash,
-                text="(自測項目：UART、發布版、電池、IMU、PPG；馬達/螢幕/觸控仍需人工確認)",
+                text=("(自動：CPU/RAM、Flash、電池、IMU、PPG；"
+                      "螢幕、觸控、馬達、充電請在手錶 test app 測試)"),
                 font=UI_FONT, foreground="#666").grid(
-                    row=1, column=0, columnspan=5, sticky="w", padx=6)
+                    row=2, column=0, columnspan=6, sticky="w", padx=6)
 
             # --- upload row ---
             up = ttk.LabelFrame(root, text="上傳到雲端(阿里雲 OSS)")
@@ -533,6 +662,9 @@ def run_gui():
             state = "disabled" if busy else "normal"
             for b in self._buttons:
                 b.configure(state=state)
+            if not busy:
+                self.btn_hwtest_cancel.configure(state="disabled")
+                self.hwtest_cancel_event = None
 
         def refresh(self):
             try:
@@ -554,13 +686,24 @@ def run_gui():
         def refresh_ports(self):
             ports = list_serial_ports()
             current = self.port_var.get().strip()
+            current_hcpu = self.hcpu_port_var.get().strip()
             self.port_combo.configure(values=ports)
+            self.hcpu_port_combo.configure(values=ports)
             if not current and ports:
-                self.port_var.set(ports[0])
+                current = suggested_flash_port(ports)
+                self.port_var.set(current)
+            if not current_hcpu and ports:
+                self.hcpu_port_var.set(suggested_hcpu_port(ports, current))
             if ports:
                 self._emit("偵測到 COM Port: %s" % ", ".join(ports))
             else:
                 self._emit("未自動偵測到 COM Port；可手動輸入，例如 COM12。")
+
+        def sync_hcpu_from_flash(self, _event=None):
+            hcpu_port = hcpu_port_from_flash(self.port_var.get())
+            if hcpu_port:
+                self.hcpu_port_var.set(hcpu_port)
+                self._emit("已依燒錄 COM 自動選擇 HCPU COM：%s" % hcpu_port)
 
         # --- queue pump (runs on UI thread) ---
         def _pump(self):
@@ -572,11 +715,16 @@ def run_gui():
                     elif kind == SIG_REFRESH:
                         self.refresh()
                     elif kind == SIG_HWTEST_RESULT:
-                        ok, detail = payload
-                        if ok:
-                            messagebox.showinfo("硬體自測通過", detail)
+                        ok, detail, cancelled = payload
+                        if cancelled:
+                            messagebox.showinfo("板級篩檢已取消", detail)
+                        elif ok:
+                            messagebox.showinfo("板級篩檢通過", detail)
                         else:
-                            messagebox.showerror("硬體自測失敗", detail)
+                            messagebox.showerror("板級篩檢失敗", detail)
+                    elif kind == SIG_HWTEST_ACTIVE:
+                        self.hwtest_cancel_event = payload
+                        self.btn_hwtest_cancel.configure(state="normal")
                     elif kind == SIG_DONE:
                         self.set_busy(False)
             except queue.Empty:
@@ -698,11 +846,21 @@ def run_gui():
             self.q.put((SIG_DONE, None))
 
         def do_flash(self):
-            port = normalize_serial_port(self.port_var.get())
-            if not port:
+            flash_port = normalize_serial_port(self.port_var.get())
+            if not flash_port:
                 messagebox.showerror(
-                    "COM Port 格式錯誤",
-                    "請選擇或輸入有效的 COM Port，例如 COM12。")
+                    "燒錄 COM 格式錯誤",
+                    "請選擇或輸入有效的燒錄 COM，例如 COM4。")
+                return
+            hcpu_port = normalize_serial_port(self.hcpu_port_var.get())
+            if not hcpu_port:
+                hcpu_port = hcpu_port_from_flash(flash_port)
+                if hcpu_port:
+                    self.hcpu_port_var.set(hcpu_port)
+            if not hcpu_port:
+                messagebox.showerror(
+                    "HCPU COM 格式錯誤",
+                    "請選擇或輸入有效的 HCPU 篩檢 COM，例如 COM3。")
                 return
 
             board = self.board_var.get()
@@ -723,45 +881,102 @@ def run_gui():
                 messagebox.showerror("韌體尚未準備完成", preflight_error)
                 return
 
-            self.port_var.set(port)
+            self.port_var.set(flash_port)
+            self.hcpu_port_var.set(hcpu_port)
             if not messagebox.askyesno(
                     "確認刷機",
-                    "晶片型號：%s\nCOM Port：%s\n\n"
-                    "即將覆寫手錶韌體，確定要繼續嗎？" % (board, port)):
+                    "晶片型號：%s\n燒錄 COM：%s\nHCPU 篩檢 COM：%s\n\n"
+                    "刷機完成後會自動切換到 HCPU COM 執行板級篩檢。\n"
+                    "確定要繼續嗎？" % (board, flash_port, hcpu_port)):
                 return
-            self._start(lambda: self._w_flash(board, port, build_dir))
+            cancel_event = threading.Event()
+            self._start(lambda: self._w_flash(
+                board, flash_port, hcpu_port, build_dir, cancel_event))
 
-        def _w_flash(self, board, port, build_dir):
-            self._emit("=== 燒錄韌體：%s → %s ===" % (board, port))
-            rc = self._stream(flash_command(port), cwd=build_dir)
+        def _w_flash(self, board, flash_port, hcpu_port, build_dir,
+                     cancel_event):
+            self._emit("=== 燒錄韌體：%s → %s ===" % (
+                board, flash_port))
+            rc = self._stream(flash_command(flash_port), cwd=build_dir)
             if rc == 0:
-                self._emit("=== 刷機完成：%s ===" % port)
+                self._emit("=== 刷機完成：%s ===" % flash_port)
+                self.q.put((SIG_HWTEST_ACTIVE, cancel_event))
+                cancelled = False
+                try:
+                    wait_for_system_boot(
+                        POST_FLASH_BOOT_WAIT_SECONDS,
+                        self._emit, cancel_event)
+                    self._emit(
+                        "=== 切換至 HCPU 篩檢 COM：%s ===" % hcpu_port)
+                    self._emit(
+                        "=== 開始 UART 板級篩檢"
+                        "（CPU/RAM、Flash、電池、IMU、PPG） ===")
+                    _, expected_version, _ = read_status()
+                    ok, detail = run_hardware_selftest(
+                        hcpu_port, self._emit,
+                        expected_version=expected_version,
+                        timeout=HWTEST_SCREEN_TIMEOUT_SECONDS,
+                        cancel_event=cancel_event, screening_only=True)
+                except HardwareSelftestCancelled as e:
+                    cancelled = True
+                    ok, detail = False, str(e)
+                except Exception as e:
+                    ok, detail = False, str(e)
+                if cancelled:
+                    self._emit("=== 板級篩檢已取消 ===")
+                elif ok:
+                    self._emit("=== 板級篩檢通過：此板可進入互動測試 ===")
+                else:
+                    self._emit("=== 板級篩檢失敗：請隔離此板 ===")
+                    self._emit("失敗原因：%s" % detail)
+                self.q.put((SIG_HWTEST_RESULT, (ok, detail, cancelled)))
             else:
                 self._emit("!! 刷機失敗(結束碼 %d)。請查看 %s" % (
                     rc, os.path.join(build_dir, "ImgBurn.log")))
             self.q.put((SIG_DONE, None))
 
         def do_hwtest(self):
-            port = normalize_serial_port(self.port_var.get())
-            if not port:
+            hcpu_port = normalize_serial_port(self.hcpu_port_var.get())
+            if not hcpu_port:
                 messagebox.showerror(
-                    "COM Port 格式錯誤",
-                    "請選擇或輸入有效的 COM Port，例如 COM12。")
+                    "HCPU COM 格式錯誤",
+                    "請選擇或輸入有效的 HCPU 篩檢 COM，例如 COM3。")
                 return
-            self.port_var.set(port)
-            self._start(lambda: self._w_hwtest(port))
+            self.hcpu_port_var.set(hcpu_port)
+            cancel_event = threading.Event()
+            self.hwtest_cancel_event = cancel_event
+            self._start(lambda: self._w_hwtest(hcpu_port, cancel_event))
+            self.btn_hwtest_cancel.configure(state="normal")
 
-        def _w_hwtest(self, port):
-            self._emit("=== 硬體自測：%s（最長 %d 秒） ===" % (
-                port, HWTEST_TIMEOUT_SECONDS))
+        def cancel_hwtest(self):
+            if self.hwtest_cancel_event is None:
+                return
+            self.hwtest_cancel_event.set()
+            self.btn_hwtest_cancel.configure(state="disabled")
+            self._emit("=== 正在取消板級篩檢… ===")
+
+        def _w_hwtest(self, port, cancel_event):
+            self._emit("=== 板級篩檢：%s（最長 %d 秒） ===" % (
+                port, HWTEST_SCREEN_TIMEOUT_SECONDS))
+            cancelled = False
             try:
                 _, expected_version, _ = read_status()
                 ok, detail = run_hardware_selftest(
-                    port, self._emit, expected_version=expected_version)
+                    port, self._emit, expected_version=expected_version,
+                    timeout=HWTEST_SCREEN_TIMEOUT_SECONDS,
+                    cancel_event=cancel_event, screening_only=True)
+            except HardwareSelftestCancelled as e:
+                cancelled = True
+                ok, detail = False, str(e)
             except Exception as e:
                 ok, detail = False, str(e)
-            self._emit("=== 硬體自測%s ===" % ("通過" if ok else "失敗"))
-            self.q.put((SIG_HWTEST_RESULT, (ok, detail)))
+            if cancelled:
+                self._emit("=== 板級篩檢已取消 ===")
+            else:
+                self._emit("=== 板級篩檢%s ===" % ("通過" if ok else "失敗"))
+                if not ok:
+                    self._emit("失敗原因：%s" % detail)
+            self.q.put((SIG_HWTEST_RESULT, (ok, detail, cancelled)))
             self.q.put((SIG_DONE, None))
 
         def do_upload(self):
