@@ -1048,7 +1048,8 @@ static uint32_t bg_hr_burst_start_seq = 0;   /* gh3018 HR-update seq at burst st
 static uint8_t bg_hr_burst_best = 0;
 
 /* Two-stage gate state. bg_hr_sleep_active is set by sleep_service when accel
-   says we're asleep -> dense bursts; cleared otherwise -> ~15 min curve rate. */
+   says we're asleep OR the wrist is still inside the overnight rest window
+   (rest-candidate) -> dense bursts; cleared otherwise -> ~15 min curve rate. */
 static rt_bool_t bg_hr_sleep_active = RT_FALSE;
 static uint8_t   bg_hr_awake_ticks = 0;                    /* awake skip counter */
 static uint32_t  bg_hr_burst_ms = BG_HR_BURST_MS_AWAKE;    /* current burst len  */
@@ -1173,8 +1174,11 @@ bool hr_service_get_hr_window(uint8_t *mean_bpm, uint8_t *std_bpm, uint32_t *age
     return true;
 }
 
-/* Two-stage gate: sleep_service calls this when accel-detected sleep starts/ends
-   so we only burn dense PPG (60 s every 3 min) while actually asleep. */
+/* Dense-burst gate. sleep_service asserts this while accel-detected sleep is
+   active OR the wrist is still inside the overnight rest window
+   (verdict-independent — see sleep_service.c SLEEP_REST_*; keeps a mis-scored
+   night from starving itself of the dense HR the wake-veto needs to
+   self-correct). Cleared -> back to the ~15 min curve rate. */
 void hr_service_set_sleep_active(bool active)
 {
     bg_hr_sleep_active = active ? RT_TRUE : RT_FALSE;
