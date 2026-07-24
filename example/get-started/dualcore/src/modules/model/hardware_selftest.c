@@ -16,6 +16,8 @@
 #define HWTEST_COMMAND_PREFIX  "SKAI_HWTEST RUN "
 #define HWTEST_SCREEN_PREFIX   "SKAI_HWTEST SCREEN "
 #define HWTEST_CANCEL_PREFIX   "SKAI_HWTEST CANCEL "
+#define PROVISION_MAC_PREFIX    "SKAI_PROVISION MAC "
+#define PROVISION_GET_PREFIX    "SKAI_PROVISION GET "
 #define HWTEST_NONCE_LEN       8
 #define HWTEST_LINE_SIZE       96
 #define HWTEST_REPLY_SIZE      192
@@ -30,6 +32,13 @@ static volatile rt_bool_t hwtest_running;
 static char hwtest_nonce[HWTEST_NONCE_LEN + 1];
 static char hwtest_end_reply[HWTEST_REPLY_SIZE];
 static int hwtest_preflight_failures;
+
+extern int get_ble_provisioning_info(uint8_t mac[6],
+                                     uint8_t device_identity[6],
+                                     uint8_t *advertising);
+extern int provision_random_public_address(uint8_t mac[6],
+                                           uint8_t device_identity[6]);
+extern void drv_reboot(void);
 
 static void hwtest_write(const char *text)
 {
@@ -65,6 +74,71 @@ static rt_bool_t valid_nonce(const char *nonce)
         }
     }
     return RT_TRUE;
+}
+
+static void provisioning_reply(const char *action, const char *nonce,
+                               int result, const uint8_t mac[6],
+                               const uint8_t identity[6],
+                               uint8_t advertising, uint8_t rebooting)
+{
+    char reply[HWTEST_REPLY_SIZE];
+
+    if (result == 0)
+    {
+        rt_snprintf(
+            reply, sizeof(reply),
+            "SKAI_PROVISION %s %s OK "
+            "mac=%02X:%02X:%02X:%02X:%02X:%02X "
+            "device=%02X%02X%02X%02X%02X%02X advertising=%u reboot=%u\r\n",
+            action, nonce,
+            mac[5], mac[4], mac[3], mac[2], mac[1], mac[0],
+            identity[5], identity[4], identity[3],
+            identity[2], identity[1], identity[0],
+            advertising, rebooting);
+    }
+    else
+    {
+        rt_snprintf(reply, sizeof(reply),
+                    "SKAI_PROVISION %s %s FAIL error=%d\r\n",
+                    action, nonce, result);
+    }
+    hwtest_write(reply);
+}
+
+static void handle_provision_get(const char *nonce)
+{
+    uint8_t mac[6] = {0};
+    uint8_t identity[6] = {0};
+    uint8_t advertising = 0;
+    int result =
+        get_ble_provisioning_info(mac, identity, &advertising);
+
+    provisioning_reply("GET", nonce, result, mac, identity,
+                       advertising, 0);
+}
+
+static void handle_provision_mac(const char *nonce)
+{
+    uint8_t mac[6] = {0};
+    uint8_t identity[6] = {0};
+    int result;
+
+    if (hwtest_running)
+    {
+        provisioning_reply("MAC", nonce, -200, mac, identity, 0, 0);
+        return;
+    }
+
+    result = provision_random_public_address(mac, identity);
+    provisioning_reply("MAC", nonce, result, mac, identity, 0,
+                       result == 0 ? 1 : 0);
+    if (result == 0)
+    {
+        /* Let the UART driver drain the reply before rebooting.  The new
+         * address is loaded by the BLE stack during the next boot. */
+        rt_thread_mdelay(200);
+        drv_reboot();
+    }
 }
 
 static void hwtest_finish(int app_failures)
@@ -231,6 +305,26 @@ static void hardware_selftest_thread(void *parameter)
                         strcmp(nonce, hwtest_nonce) == 0)
                     {
                         app_test_board_screening_cancel();
+                    }
+                }
+                else if (strncmp(line, PROVISION_GET_PREFIX,
+                                 strlen(PROVISION_GET_PREFIX)) == 0)
+                {
+                    const char *nonce =
+                        line + strlen(PROVISION_GET_PREFIX);
+                    if (valid_nonce(nonce))
+                    {
+                        handle_provision_get(nonce);
+                    }
+                }
+                else if (strncmp(line, PROVISION_MAC_PREFIX,
+                                 strlen(PROVISION_MAC_PREFIX)) == 0)
+                {
+                    const char *nonce =
+                        line + strlen(PROVISION_MAC_PREFIX);
+                    if (valid_nonce(nonce))
+                    {
+                        handle_provision_mac(nonce);
                     }
                 }
                 used = 0;

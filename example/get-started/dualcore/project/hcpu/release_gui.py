@@ -23,7 +23,9 @@ import sys
 import json
 import time
 import queue
+import asyncio
 import secrets
+import tempfile
 import zipfile
 import threading
 import subprocess
@@ -50,6 +52,16 @@ TEST_APP_SOURCE = os.path.join(
     "gui_apps", "test", "app_test.c")
 UART_DOWNLOAD_EXE = os.path.join(
     REPO_ROOT, "tools", "uart_download", "ImgDownUart.exe")
+JSROOT_PACKED_BIN = os.path.join(SCRIPT_DIR, "build", "jsroot_packed.bin")
+JSROOT_FLASH_ADDRESS = "0x64280000"
+BLE_BATTERY_LEVEL_UUID = "00002a19-0000-1000-8000-00805f9b34fb"
+BLE_SCAN_SECONDS = 12
+BLE_CONNECT_TIMEOUT_SECONDS = 15
+BLE_PROVISION_BOOT_WAIT_SECONDS = 8
+DEFAULT_BLE_RSSI_THRESHOLD = -75
+MAC_REGISTRY_FILE = os.path.join(
+    os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+    "Skaiwalk", "release_gui", "ble_mac_registry.json")
 
 # Chip / scons board choices. The board name is both the scons --board value
 # (via WATCH_BOARD for _watch_build.cmd) and the build-output dir suffix that
@@ -75,6 +87,8 @@ BUILD_ERROR_PATTERNS = (" error:", "undefined reference", "cannot find", "scons:
 
 VER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 SERIAL_PORT_RE = re.compile(r"^COM([1-9]\d*)$", re.IGNORECASE)
+BLE_MAC_RE = re.compile(
+    r"^[0-9A-F]{2}(?::[0-9A-F]{2}){5}$", re.IGNORECASE)
 HWTEST_TIMEOUT_SECONDS = 180
 HWTEST_SCREEN_TIMEOUT_SECONDS = 45
 POST_FLASH_BOOT_WAIT_SECONDS = 8
@@ -213,7 +227,7 @@ def flash_preflight_error(board):
     return None
 
 
-def flash_command(port):
+def flash_command(port, burn_list="ImgBurnList.ini"):
     """Build the non-interactive equivalent of generated uart_download.bat."""
     return [
         UART_DOWNLOAD_EXE,
@@ -225,9 +239,275 @@ def flash_command(port):
         "--compare",
         "--verify",
         "--device", "SF32LB56X_NAND",
-        "--file", "ImgBurnList.ini",
+        "--file", burn_list,
         "--log", "ImgBurn.log",
     ]
+
+
+def create_resource_burn_list(build_dir):
+    """Create a one-file UART burn list for the packed JS/image resources."""
+    relative_resource = os.path.relpath(
+        JSROOT_PACKED_BIN, build_dir).replace("/", "\\")
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".ini", prefix="_jsroot_burn_",
+        dir=build_dir, delete=False, encoding="ascii", newline="\n")
+    try:
+        handle.write("[FILEINFO]\n")
+        handle.write("FILE0=%s\n" % relative_resource)
+        handle.write("ADDR0=%s\n" % JSROOT_FLASH_ADDRESS)
+        handle.write("NUM=1\n")
+    finally:
+        handle.close()
+    return handle.name
+
+
+def normalize_ble_mac(value):
+    mac = value.strip().upper().replace("-", ":")
+    return mac if BLE_MAC_RE.fullmatch(mac) else None
+
+
+def normalize_rssi_threshold(value):
+    try:
+        threshold = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return threshold if -100 <= threshold <= -20 else None
+
+
+def _parse_provision_reply(line, action, nonce):
+    prefix = "SKAI_PROVISION %s %s " % (action, nonce)
+    if not line.startswith(prefix):
+        return None
+    status = line[len(prefix):].split(None, 1)[0]
+    if status != "OK":
+        return {
+            "ok": False,
+            "detail": line,
+        }
+    fields = dict(re.findall(r"\b([a-z_]+)=([^\s]+)", line))
+    mac = normalize_ble_mac(fields.get("mac", ""))
+    device = fields.get("device", "").upper()
+    if not mac or not re.fullmatch(r"[0-9A-F]{12}", device):
+        return {
+            "ok": False,
+            "detail": "韌體回傳的 BLE 配號資料格式錯誤：%s" % line,
+        }
+    return {
+        "ok": True,
+        "mac": mac,
+        "device": device,
+        "advertising": fields.get("advertising") == "1",
+        "reboot": fields.get("reboot") == "1",
+        "detail": line,
+    }
+
+
+def uart_provision_request(port, action, emit, timeout=5):
+    """Request current/provisioned BLE identity over the HCPU production UART."""
+    try:
+        import serial
+    except ImportError as e:
+        raise RuntimeError(
+            "缺少 pyserial，請執行：py -3 -m pip install pyserial") from e
+
+    nonce = secrets.token_hex(4).upper()
+    command = ("SKAI_PROVISION %s %s\n" % (action, nonce)).encode("ascii")
+    deadline = time.monotonic() + timeout
+    next_send = 0.0
+    # GET is idempotent and may be retried.  MAC must be sent exactly once:
+    # a repeated command would assign a second address before reboot.
+    allow_retry = action == "GET"
+    sent = False
+
+    try:
+        with serial.Serial(port=port, baudrate=1000000, timeout=0.25,
+                           write_timeout=2) as uart:
+            uart.reset_input_buffer()
+            while time.monotonic() < deadline:
+                now = time.monotonic()
+                if not sent or (allow_retry and now >= next_send):
+                    uart.write(command)
+                    uart.flush()
+                    sent = True
+                    next_send = now + 0.8
+
+                raw = uart.readline()
+                if not raw:
+                    continue
+                line = raw.decode("utf-8", errors="replace").strip()
+                protocol_at = line.find("SKAI_PROVISION ")
+                if protocol_at < 0:
+                    continue
+                line = line[protocol_at:]
+                parsed = _parse_provision_reply(line, action, nonce)
+                if parsed is not None:
+                    emit(line)
+                    return parsed
+    except serial.SerialException as e:
+        raise RuntimeError("無法開啟 %s：%s" % (port, e)) from e
+
+    raise RuntimeError(
+        "%s 沒有收到 BLE %s 回應，請確認韌體已更新且 COM port 未被占用。"
+        % (port, action))
+
+
+def _load_mac_registry():
+    if not os.path.isfile(MAC_REGISTRY_FILE):
+        return {"records": {}}
+    with open(MAC_REGISTRY_FILE, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    if not isinstance(data, dict) or not isinstance(data.get("records"), dict):
+        raise RuntimeError("BLE MAC 登錄檔格式錯誤：%s" % MAC_REGISTRY_FILE)
+    return data
+
+
+def _check_mac_unique(mac, device_identity):
+    data = _load_mac_registry()
+    previous = data["records"].get(mac)
+    if previous and previous.get("device") != device_identity:
+        raise RuntimeError(
+            "BLE MAC %s 已登錄給另一塊板子（device=%s），不可出貨。"
+            % (mac, previous.get("device", "unknown")))
+    return data
+
+
+def _record_mac(data, mac, device_identity, board, version, rssi):
+    os.makedirs(os.path.dirname(MAC_REGISTRY_FILE), exist_ok=True)
+    data["records"][mac] = {
+        "device": device_identity,
+        "board": board,
+        "version": version,
+        "rssi": rssi,
+        "tested_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    }
+    temp_path = MAC_REGISTRY_FILE + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2, ensure_ascii=False, sort_keys=True)
+    os.replace(temp_path, MAC_REGISTRY_FILE)
+
+
+def _advertisement_matches_mac(device, advertisement, mac):
+    canonical = bytes.fromhex(mac.replace(":", ""))
+    stack_order = canonical[::-1]
+    if normalize_ble_mac(getattr(device, "address", "") or "") == mac:
+        return True
+    manufacturer_data = getattr(advertisement, "manufacturer_data", {}) or {}
+    for payload in manufacturer_data.values():
+        raw = bytes(payload)
+        if raw[:6] in (canonical, stack_order):
+            return True
+    return False
+
+
+async def _ble_scan_connect_async(
+        mac, rssi_threshold, emit, cancel_event=None):
+    try:
+        from bleak import BleakClient, BleakScanner
+    except ImportError as e:
+        raise RuntimeError(
+            "缺少 bleak，無法執行 BLE 掃描/連線。請執行："
+            "py -3 -m pip install bleak") from e
+
+    matches = {}
+
+    def detected(device, advertisement):
+        if _advertisement_matches_mac(device, advertisement, mac):
+            rssi = getattr(advertisement, "rssi", None)
+            previous = matches.get(device.address)
+            if previous is None or (
+                    rssi is not None and
+                    (previous[1] is None or rssi > previous[1])):
+                matches[device.address] = (device, rssi)
+
+    scanner = BleakScanner(detection_callback=detected)
+    try:
+        await scanner.start()
+    except Exception as e:
+        if e.__class__.__name__ == "BleakBluetoothNotAvailableError":
+            raise RuntimeError(
+                "Windows 找不到可用的 Bluetooth Low Energy 介面。"
+                "請啟用藍牙或插入支援 BLE 的 USB 治具/接收器。") from e
+        raise
+    try:
+        scan_deadline = time.monotonic() + BLE_SCAN_SECONDS
+        while time.monotonic() < scan_deadline:
+            if cancel_event is not None and cancel_event.is_set():
+                raise HardwareSelftestCancelled("BLE 測試已取消。")
+            await asyncio.sleep(min(0.2, scan_deadline - time.monotonic()))
+    finally:
+        await scanner.stop()
+
+    if not matches:
+        raise RuntimeError(
+            "%d 秒內找不到 MAC %s 的 BLE advertising。"
+            % (BLE_SCAN_SECONDS, mac))
+    device, rssi = max(
+        matches.values(),
+        key=lambda item: item[1] if item[1] is not None else -999)
+    if rssi is None:
+        raise RuntimeError("找到 %s，但 Windows 未回報 RSSI。" % mac)
+    emit("BLE advertising：%s RSSI=%d dBm（門檻 %d dBm）" % (
+        mac, rssi, rssi_threshold))
+    if rssi < rssi_threshold:
+        raise RuntimeError(
+            "BLE RSSI %d dBm 低於固定治具門檻 %d dBm。" %
+            (rssi, rssi_threshold))
+
+    emit("正在連線 BLE 並讀取 GATT Battery Level…")
+    async with BleakClient(
+            device, timeout=BLE_CONNECT_TIMEOUT_SECONDS) as client:
+        if not client.is_connected:
+            raise RuntimeError("BLE advertising 可見，但無法建立連線。")
+        battery = await client.read_gatt_char(BLE_BATTERY_LEVEL_UUID)
+        if len(battery) != 1:
+            raise RuntimeError(
+                "BLE 已連線，但 Battery Level 回應長度異常：%d" % len(battery))
+        battery_level = int(battery[0])
+        emit("BLE GATT 通訊通過：Battery Level=%d%%" % battery_level)
+    return {
+        "rssi": rssi,
+        "battery_level": battery_level,
+    }
+
+
+def run_ble_provisioning_test(port, rssi_threshold, emit, board, version,
+                              generate_new_mac, cancel_event=None):
+    """Provision/read MAC, verify uniqueness, scan RSSI, and perform GATT I/O."""
+    if cancel_event is not None and cancel_event.is_set():
+        raise HardwareSelftestCancelled("BLE 測試已取消。")
+    old_info = uart_provision_request(port, "GET", emit)
+    if not old_info["ok"]:
+        raise RuntimeError(old_info["detail"])
+
+    if generate_new_mac:
+        emit("=== 透過 HCPU UART 產生並寫入新的 BLE static random MAC ===")
+        provisioned = uart_provision_request(port, "MAC", emit)
+        if not provisioned["ok"]:
+            raise RuntimeError(provisioned["detail"])
+        wait_for_system_boot(
+            BLE_PROVISION_BOOT_WAIT_SECONDS, emit, cancel_event)
+        current = uart_provision_request(port, "GET", emit)
+        if not current["ok"]:
+            raise RuntimeError(current["detail"])
+        if current["mac"] == old_info["mac"]:
+            raise RuntimeError("BLE MAC 寫入後沒有改變，配號失敗。")
+        if provisioned.get("mac") and current["mac"] != provisioned["mac"]:
+            raise RuntimeError(
+                "重啟後 MAC 與寫入回應不一致：%s != %s" %
+                (current["mac"], provisioned["mac"]))
+    else:
+        current = old_info
+
+    registry = _check_mac_unique(current["mac"], current["device"])
+    emit("BLE MAC 唯一性通過：%s（device=%s）" % (
+        current["mac"], current["device"]))
+    result = asyncio.run(_ble_scan_connect_async(
+        current["mac"], rssi_threshold, emit, cancel_event))
+    _record_mac(
+        registry, current["mac"], current["device"],
+        board, version, result["rssi"])
+    emit("BLE 配號/測試紀錄：%s" % MAC_REGISTRY_FILE)
+    return current["mac"], result
 
 
 def run_hardware_selftest(port, emit, expected_version=None,
@@ -429,6 +709,13 @@ def selftest():
         os.path.isfile(HWTEST_SOURCE),
         os.path.isfile(TEST_APP_SOURCE)))
     add("flash_tool_present: %s" % os.path.isfile(UART_DOWNLOAD_EXE))
+    add("jsroot_resource: present=%s address=%s path=%s" % (
+        os.path.isfile(JSROOT_PACKED_BIN),
+        JSROOT_FLASH_ADDRESS, JSROOT_PACKED_BIN))
+    add("ble_helpers: mac=%s rssi=%s registry=%s" % (
+        normalize_ble_mac("c0:12:34:56:78:9a"),
+        normalize_rssi_threshold("-75"),
+        MAC_REGISTRY_FILE))
     add("serial_port_regex_ok: %s / %s" % (
         normalize_serial_port("com12") == "COM12",
         normalize_serial_port("COM12 & whoami") is None))
@@ -441,6 +728,11 @@ def selftest():
         add("tkinter_importable: True")
     except Exception as e:
         add("tkinter_importable: False (%r)" % e)
+    try:
+        import bleak  # noqa: F401
+        add("bleak_importable: True")
+    except Exception as e:
+        add("bleak_importable: False (%r)" % e)
 
     add("version_regex_ok: %s / %s" % (bool(VER_RE.match("1.2.3")),
                                        bool(VER_RE.match("1.2"))))
@@ -501,6 +793,8 @@ def run_gui():
     SIG_REFRESH = "refresh"
     SIG_HWTEST_RESULT = "hwtest_result"
     SIG_HWTEST_ACTIVE = "hwtest_active"
+    SIG_BLE_RESULT = "ble_result"
+    SIG_RESOURCE_RESULT = "resource_result"
 
     class App:
         def __init__(self, root):
@@ -509,8 +803,8 @@ def run_gui():
             self.busy = False
             self.hwtest_cancel_event = None
             root.title("Skaiwalk 手錶韌體發布與燒錄工具")
-            root.geometry("760x650")
-            root.minsize(640, 560)
+            root.geometry("900x800")
+            root.minsize(760, 650)
 
             pad = {"padx": 8, "pady": 4}
 
@@ -600,6 +894,9 @@ def run_gui():
             self.btn_flash = ttk.Button(
                 flash, text="刷入手錶", command=self.do_flash)
             self.btn_flash.grid(row=0, column=3, padx=6, pady=6)
+            self.btn_resource = ttk.Button(
+                flash, text="刷入圖片資源", command=self.do_flash_resource)
+            self.btn_resource.grid(row=0, column=4, padx=6, pady=6)
 
             ttk.Label(flash, text="HCPU 篩檢 COM：", font=UI_FONT).grid(
                 row=1, column=0, sticky="w", padx=6, pady=6)
@@ -616,12 +913,29 @@ def run_gui():
                 flash, text="取消篩檢", command=self.cancel_hwtest,
                 state="disabled")
             self.btn_hwtest_cancel.grid(row=1, column=3, padx=6, pady=6)
+            self.btn_ble_test = ttk.Button(
+                flash, text="BLE 配號＋連線測試",
+                command=self.do_ble_provisioning_test)
+            self.btn_ble_test.grid(row=1, column=4, padx=6, pady=6)
+            ttk.Label(flash, text="固定治具 RSSI 門檻：",
+                      font=UI_FONT).grid(
+                row=2, column=0, sticky="w", padx=6, pady=4)
+            self.rssi_var = tk.StringVar(
+                value=str(DEFAULT_BLE_RSSI_THRESHOLD))
+            ttk.Entry(
+                flash, textvariable=self.rssi_var,
+                width=8, font=UI_FONT).grid(
+                row=2, column=1, sticky="w", pady=4)
+            ttk.Label(flash, text="dBm（請用良品校正）",
+                      font=UI_FONT, foreground="#666").grid(
+                row=2, column=2, columnspan=2, sticky="w", padx=6)
             ttk.Label(
                 flash,
-                text=("(自動：CPU/RAM、Flash、電池、IMU、PPG；"
-                      "螢幕、觸控、馬達、充電請在手錶 test app 測試)"),
+                text=("(刷入手錶後自動：板級篩檢 → BLE 配號 → "
+                      "advertising/RSSI → 連線讀取 Battery Level；"
+                      "圖片資源獨立刷入 0x64280000)"),
                 font=UI_FONT, foreground="#666").grid(
-                    row=2, column=0, columnspan=6, sticky="w", padx=6)
+                    row=3, column=0, columnspan=6, sticky="w", padx=6)
 
             # --- upload row ---
             up = ttk.LabelFrame(root, text="上傳到雲端(阿里雲 OSS)")
@@ -645,7 +959,9 @@ def run_gui():
 
             self._buttons = [self.btn_refresh, self.btn_release, self.btn_dev,
                              self.btn_build, self.btn_port_refresh,
-                             self.btn_flash, self.btn_hwtest, self.btn_upload]
+                             self.btn_flash, self.btn_resource,
+                             self.btn_hwtest, self.btn_ble_test,
+                             self.btn_upload]
 
             self.refresh()
             self.root.after(80, self._pump)
@@ -705,6 +1021,14 @@ def run_gui():
                 self.hcpu_port_var.set(hcpu_port)
                 self._emit("已依燒錄 COM 自動選擇 HCPU COM：%s" % hcpu_port)
 
+        def selected_rssi_threshold(self):
+            threshold = normalize_rssi_threshold(self.rssi_var.get())
+            if threshold is None:
+                messagebox.showerror(
+                    "RSSI 門檻格式錯誤",
+                    "請輸入 -100 到 -20 之間的整數，例如 -75。")
+            return threshold
+
         # --- queue pump (runs on UI thread) ---
         def _pump(self):
             try:
@@ -725,6 +1049,18 @@ def run_gui():
                     elif kind == SIG_HWTEST_ACTIVE:
                         self.hwtest_cancel_event = payload
                         self.btn_hwtest_cancel.configure(state="normal")
+                    elif kind == SIG_BLE_RESULT:
+                        ok, detail = payload
+                        if ok:
+                            messagebox.showinfo("BLE 配號與連線測試通過", detail)
+                        else:
+                            messagebox.showerror("BLE 配號與連線測試失敗", detail)
+                    elif kind == SIG_RESOURCE_RESULT:
+                        ok, detail = payload
+                        if ok:
+                            messagebox.showinfo("圖片資源刷入完成", detail)
+                        else:
+                            messagebox.showerror("圖片資源刷入失敗", detail)
                     elif kind == SIG_DONE:
                         self.set_busy(False)
             except queue.Empty:
@@ -862,6 +1198,9 @@ def run_gui():
                     "HCPU COM 格式錯誤",
                     "請選擇或輸入有效的 HCPU 篩檢 COM，例如 COM3。")
                 return
+            rssi_threshold = self.selected_rssi_threshold()
+            if rssi_threshold is None:
+                return
 
             board = self.board_var.get()
             build_dir = flash_build_dir(board)
@@ -886,15 +1225,18 @@ def run_gui():
             if not messagebox.askyesno(
                     "確認刷機",
                     "晶片型號：%s\n燒錄 COM：%s\nHCPU 篩檢 COM：%s\n\n"
-                    "刷機完成後會自動切換到 HCPU COM 執行板級篩檢。\n"
-                    "確定要繼續嗎？" % (board, flash_port, hcpu_port)):
+                    "刷機完成後會執行板級篩檢、BLE 配號、RSSI 與連線測試。\n"
+                    "固定治具 RSSI 門檻：%d dBm\n\n"
+                    "確定要繼續嗎？" %
+                    (board, flash_port, hcpu_port, rssi_threshold)):
                 return
             cancel_event = threading.Event()
             self._start(lambda: self._w_flash(
-                board, flash_port, hcpu_port, build_dir, cancel_event))
+                board, flash_port, hcpu_port, build_dir, cancel_event,
+                rssi_threshold))
 
         def _w_flash(self, board, flash_port, hcpu_port, build_dir,
-                     cancel_event):
+                     cancel_event, rssi_threshold):
             self._emit("=== 燒錄韌體：%s → %s ===" % (
                 board, flash_port))
             rc = self._stream(flash_command(flash_port), cwd=build_dir)
@@ -917,6 +1259,19 @@ def run_gui():
                         expected_version=expected_version,
                         timeout=HWTEST_SCREEN_TIMEOUT_SECONDS,
                         cancel_event=cancel_event, screening_only=True)
+                    if ok:
+                        self._emit(
+                            "=== 板級篩檢通過，開始 BLE 配號與連線測試 ===")
+                        mac, ble_result = run_ble_provisioning_test(
+                            hcpu_port, rssi_threshold, self._emit,
+                            board, expected_version,
+                            generate_new_mac=True,
+                            cancel_event=cancel_event)
+                        detail = (
+                            "板級篩檢與 BLE 測試通過\n"
+                            "MAC=%s\nRSSI=%d dBm\nBattery Level=%d%%"
+                            % (mac, ble_result["rssi"],
+                               ble_result["battery_level"]))
                 except HardwareSelftestCancelled as e:
                     cancelled = True
                     ok, detail = False, str(e)
@@ -935,6 +1290,109 @@ def run_gui():
                     rc, os.path.join(build_dir, "ImgBurn.log")))
             self.q.put((SIG_DONE, None))
 
+        def do_flash_resource(self):
+            flash_port = normalize_serial_port(self.port_var.get())
+            if not flash_port:
+                messagebox.showerror(
+                    "燒錄 COM 格式錯誤",
+                    "請選擇或輸入有效的燒錄 COM，例如 COM4。")
+                return
+            if not os.path.isfile(UART_DOWNLOAD_EXE):
+                messagebox.showerror(
+                    "缺少燒錄工具", "找不到：\n%s" % UART_DOWNLOAD_EXE)
+                return
+            if not os.path.isfile(JSROOT_PACKED_BIN):
+                messagebox.showerror(
+                    "缺少圖片資源",
+                    "找不到：\n%s\n\n請先產生 jsroot_packed.bin。"
+                    % JSROOT_PACKED_BIN)
+                return
+            build_dir = flash_build_dir(self.board_var.get())
+            if not os.path.isdir(build_dir):
+                messagebox.showerror(
+                    "缺少建置目錄", "找不到：\n%s" % build_dir)
+                return
+            if not messagebox.askyesno(
+                    "確認刷入圖片資源",
+                    "檔案：%s\n位址：%s\n燒錄 COM：%s\n\n確定刷入嗎？"
+                    % (JSROOT_PACKED_BIN, JSROOT_FLASH_ADDRESS, flash_port)):
+                return
+            self._start(lambda: self._w_flash_resource(
+                flash_port, build_dir))
+
+        def _w_flash_resource(self, flash_port, build_dir):
+            burn_list = None
+            try:
+                burn_list = create_resource_burn_list(build_dir)
+                self._emit(
+                    "=== 刷入圖片資源：%s → %s（%s） ===" %
+                    (JSROOT_PACKED_BIN, JSROOT_FLASH_ADDRESS, flash_port))
+                rc = self._stream(
+                    flash_command(flash_port, os.path.basename(burn_list)),
+                    cwd=build_dir)
+                if rc == 0:
+                    detail = "%s 已刷入 %s" % (
+                        os.path.basename(JSROOT_PACKED_BIN),
+                        JSROOT_FLASH_ADDRESS)
+                    self._emit("=== 圖片資源刷入完成 ===")
+                    self.q.put((SIG_RESOURCE_RESULT, (True, detail)))
+                else:
+                    detail = (
+                        "燒錄工具結束碼 %d，請查看 %s" %
+                        (rc, os.path.join(build_dir, "ImgBurn.log")))
+                    self._emit("!! 圖片資源刷入失敗：%s" % detail)
+                    self.q.put((SIG_RESOURCE_RESULT, (False, detail)))
+            except Exception as e:
+                detail = str(e)
+                self._emit("!! 圖片資源刷入例外：%s" % detail)
+                self.q.put((SIG_RESOURCE_RESULT, (False, detail)))
+            finally:
+                if burn_list and os.path.isfile(burn_list):
+                    try:
+                        os.remove(burn_list)
+                    except OSError:
+                        pass
+                self.q.put((SIG_DONE, None))
+
+        def do_ble_provisioning_test(self):
+            hcpu_port = normalize_serial_port(self.hcpu_port_var.get())
+            if not hcpu_port:
+                messagebox.showerror(
+                    "HCPU COM 格式錯誤",
+                    "請選擇或輸入有效的 HCPU COM，例如 COM3。")
+                return
+            rssi_threshold = self.selected_rssi_threshold()
+            if rssi_threshold is None:
+                return
+            if not messagebox.askyesno(
+                    "確認 BLE 配號與連線測試",
+                    "HCPU COM：%s\nRSSI 門檻：%d dBm\n\n"
+                    "這會寫入新的 BLE MAC 並重新啟動手錶，確定繼續嗎？"
+                    % (hcpu_port, rssi_threshold)):
+                return
+            board = self.board_var.get()
+            _, version, _ = read_status()
+            self._start(lambda: self._w_ble_provisioning_test(
+                hcpu_port, rssi_threshold, board, version))
+
+        def _w_ble_provisioning_test(
+                self, hcpu_port, rssi_threshold, board, version):
+            try:
+                mac, result = run_ble_provisioning_test(
+                    hcpu_port, rssi_threshold, self._emit,
+                    board, version, generate_new_mac=True)
+                detail = (
+                    "MAC=%s\nRSSI=%d dBm\nBattery Level=%d%%" %
+                    (mac, result["rssi"], result["battery_level"]))
+                self._emit("=== BLE 配號與連線測試通過 ===")
+                self.q.put((SIG_BLE_RESULT, (True, detail)))
+            except Exception as e:
+                detail = str(e)
+                self._emit("=== BLE 配號與連線測試失敗 ===")
+                self._emit("失敗原因：%s" % detail)
+                self.q.put((SIG_BLE_RESULT, (False, detail)))
+            self.q.put((SIG_DONE, None))
+
         def do_hwtest(self):
             hcpu_port = normalize_serial_port(self.hcpu_port_var.get())
             if not hcpu_port:
@@ -942,10 +1400,15 @@ def run_gui():
                     "HCPU COM 格式錯誤",
                     "請選擇或輸入有效的 HCPU 篩檢 COM，例如 COM3。")
                 return
+            rssi_threshold = self.selected_rssi_threshold()
+            if rssi_threshold is None:
+                return
             self.hcpu_port_var.set(hcpu_port)
+            board = self.board_var.get()
             cancel_event = threading.Event()
             self.hwtest_cancel_event = cancel_event
-            self._start(lambda: self._w_hwtest(hcpu_port, cancel_event))
+            self._start(lambda: self._w_hwtest(
+                hcpu_port, cancel_event, rssi_threshold, board))
             self.btn_hwtest_cancel.configure(state="normal")
 
         def cancel_hwtest(self):
@@ -955,7 +1418,7 @@ def run_gui():
             self.btn_hwtest_cancel.configure(state="disabled")
             self._emit("=== 正在取消板級篩檢… ===")
 
-        def _w_hwtest(self, port, cancel_event):
+        def _w_hwtest(self, port, cancel_event, rssi_threshold, board):
             self._emit("=== 板級篩檢：%s（最長 %d 秒） ===" % (
                 port, HWTEST_SCREEN_TIMEOUT_SECONDS))
             cancelled = False
@@ -965,6 +1428,19 @@ def run_gui():
                     port, self._emit, expected_version=expected_version,
                     timeout=HWTEST_SCREEN_TIMEOUT_SECONDS,
                     cancel_event=cancel_event, screening_only=True)
+                if ok:
+                    self._emit(
+                        "=== 驗證現有 BLE MAC、advertising、RSSI 與 GATT ===")
+                    mac, ble_result = run_ble_provisioning_test(
+                        port, rssi_threshold, self._emit,
+                        board, expected_version,
+                        generate_new_mac=False,
+                        cancel_event=cancel_event)
+                    detail = (
+                        "板級篩檢與 BLE 測試通過\n"
+                        "MAC=%s\nRSSI=%d dBm\nBattery Level=%d%%"
+                        % (mac, ble_result["rssi"],
+                           ble_result["battery_level"]))
             except HardwareSelftestCancelled as e:
                 cancelled = True
                 ok, detail = False, str(e)

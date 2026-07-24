@@ -1557,37 +1557,93 @@ uint8_t bass_app_callback(uint8_t conn_idx, uint8_t event)
     return ret;
 }
 
+int get_ble_provisioning_info(uint8_t mac[6], uint8_t device_identity[6],
+                              uint8_t *advertising)
+{
+    bd_addr_t current_addr = {0};
+    bd_addr_t identity = {0};
+    int ret;
+
+    if (mac == RT_NULL || device_identity == RT_NULL ||
+        advertising == RT_NULL)
+    {
+        return -1;
+    }
+
+    ret = bt_mac_addr_generate_via_uid(&identity);
+    if (ret != 0)
+    {
+        return ret;
+    }
+    ret = ble_get_public_address(&current_addr);
+    if (ret != 0)
+    {
+        return -10 - ret;
+    }
+
+    memcpy(mac, current_addr.addr, sizeof(current_addr.addr));
+    memcpy(device_identity, identity.addr, sizeof(identity.addr));
+    *advertising = get_bluetooth_broadcasting_status() ? 1 : 0;
+    return 0;
+}
+
+int provision_random_public_address(uint8_t mac[6],
+                                    uint8_t device_identity[6])
+{
+    bd_addr_t random_addr = {0};
+    bd_addr_t identity = {0};
+    int ret;
+
+    if (mac == RT_NULL || device_identity == RT_NULL)
+    {
+        return -1;
+    }
+    ret = bt_mac_addr_generate_via_uid(&identity);
+    if (ret != 0)
+    {
+        return ret;
+    }
+    ret = bt_mac_addr_generate_rand_addr_via_uid(&random_addr);
+    if (ret != 0)
+    {
+        return ret;
+    }
+
+    /* This stack advertises with GAPM_STATIC_ADDR.  A static random BLE
+     * address must have the two most-significant bits set.  bd_addr_t stores
+     * the least-significant byte at index 0. */
+    random_addr.addr[5] =
+        (uint8_t)((random_addr.addr[5] & 0x3FU) | 0xC0U);
+
+    ret = ble_nvds_update_address(&random_addr, BLE_UPDATE_ALWAYS, 1);
+    if (ret != NVDS_OK)
+    {
+        return -100 - ret;
+    }
+
+    memcpy(mac, random_addr.addr, sizeof(random_addr.addr));
+    memcpy(device_identity, identity.addr, sizeof(identity.addr));
+    LOG_I("Provisioned BLE MAC: " MAC_FMT, MAC_ARG(random_addr.addr));
+    return 0;
+}
+
 void generate_random_public_address(uint8_t device_id)
 {
-    bd_addr_t addr;
-    bt_mac_addr_generate_via_uid(&addr);
-    do
+    uint8_t mac[6] = {0};
+    uint8_t identity[6] = {0};
+    int ret;
+    (void)device_id;
+
+    ret = provision_random_public_address(mac, identity);
+    if (ret == 0)
     {
-        sifli_nvds_write_tag_t *update_tag =
-            malloc(sizeof(sifli_nvds_write_tag_t) + NVDS_STACK_LEN_BD_ADDRESS);
-        if (update_tag == NULL)
-            break;
-
-        // Generate random values for the BLE address
-        for (int i = 0; i < NVDS_STACK_LEN_BD_ADDRESS - 3; i++)
-        {
-            update_tag->value.value[i] = rand() % 256;
-        }
-
-        update_tag->is_flush = 1;
-        update_tag->type = BLE_UPDATE_ALWAYS;
-        update_tag->value.tag = NVDS_STACK_TAG_BD_ADDRESS;
-        update_tag->value.len = NVDS_STACK_LEN_BD_ADDRESS;
-
-        sifli_nvds_write_tag_value(update_tag);
-        free(update_tag);
-        LOG_D("update nvds address success");
-    } while (0);
-
-    ble_get_public_address(&addr);
-    LOG_I("BLE MAC: %02X:%02X:%02X:%02X:%02X:%02X", addr.addr[5], addr.addr[4],
-          addr.addr[3], addr.addr[2], addr.addr[1], addr.addr[0]);
-    LOG_I("Resetting BLE stack to apply new address...");
+        LOG_I("BLE MAC: " MAC_FMT, MAC_ARG(mac));
+        LOG_I("Resetting system to apply new address...");
+    }
+    else
+    {
+        LOG_E("BLE MAC provisioning failed: %d", ret);
+    }
 }
 
 #ifdef USING_BLE_SERIAL
