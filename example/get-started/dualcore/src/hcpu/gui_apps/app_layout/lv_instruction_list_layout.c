@@ -3721,7 +3721,7 @@ void close_ai_widget(void)
         extern bool clock_main_page_is_home(void);
         /* 滑鼠 app 單設備模式(s_bar_single_device=true):restore_base 交給滑出動畫完成後的
            inst_list_slide_out_done_cb —— 它先把列表設 HIDDEN 再 restore,使用者看不到內容變。
-           若在這裡(動畫開始前)提前 restore,會同步 rebuild_instruction_list_ui() 把單設備
+           若在這裡(動畫開始前)提前 restore,會同步 refresh_custom_instructions() 把單設備
            選項換成錶盤 base 清單,而滑出動畫仍在跑、列表還可見 → 退出途中閃一下變成 actions。
            錶盤/一般路徑(flag=false)維持原本的提前 restore 不變。 */
         if (clock_main_page_is_home() && !s_bar_single_device)
