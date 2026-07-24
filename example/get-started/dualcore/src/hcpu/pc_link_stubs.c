@@ -228,6 +228,12 @@ void bloc_handwrite_backspace(void) { }
 void bloc_motion_drag_set(bool on) { (void)on; }
 void bloc_press_free_move_set(bool on) { (void)on; }
 void bloc_wrist_accum_reset(void) { }
+/* 觸控板 vs 飛鼠先到先贏互鎖 (2026-07-24)。sim 無 gyro→飛鼠永遠不會 claim,
+   owned 恆 false = 觸控板照常送游標。 */
+void bloc_touch_cursor_claim(void) { }
+void bloc_touch_finger_active(void) { }
+void bloc_cursor_owner_reset(void) { }
+bool mouse_air_cursor_owned(void) { return false; }
 /* 拖曳/長按的 BLE HID 觸控輔助 (ble_hid.c, excluded on PC sim) — 2026-07-16/17 dial/
    拖曳輪加的 extern,一直缺 stub;compile 段修通後 link 才曝出來,一併補齊。 */
 void ble_hid_mouse_cancel_touch(void) { }
