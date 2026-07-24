@@ -96,12 +96,24 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
    a motionless wrist) can then neither fire the veto nor corrupt the baseline. */
 #define SF_HR_ARTEFACT_MAX      120u
 
-/* Sustained-elevation requirement for the wake-veto. A LONE elevated burst is a
-   brief REM/arousal spike (HR legitimately rises toward resting in REM) or an
-   artefact — not sedentary wake. Only this many consecutive elevated readings
-   (a train, a desk) arm the hold, so the veto stops clipping normal REM while
-   still catching genuinely sustained awake-but-still stretches. */
-#define SF_WAKE_HR_CONSEC_MIN     2u
+/* Sustained-elevation requirement for the wake-veto, counted in DISTINCT PPG
+   bursts (input.hr_is_fresh), NOT minutes. The burst window is held ~4 min
+   for staging, so counting minutes let ONE polluted burst self-satisfy any
+   "consecutive" requirement via its own held repeats and keep the veto armed
+   all night (2026-07-24: watch scored 12 min against ~8 h slept; replaying
+   the night's phone-stored HR through this state machine attributed the loss
+   to the veto, with the accel score exonerated by the rest-candidate gate
+   staying engaged all night). Asymmetric thresholds:
+     AWAKE  = 1 burst  — sedentary wake (a train, a desk) must veto from the
+              first elevated burst; the hold bridges to the next burst so
+              sleep cannot leak in between.
+     ASLEEP = 3 bursts — once asleep the veto's onset job is done. Kicking an
+              established sleeper out is reserved for SUSTAINED elevation
+              (~9 min at the dense 3-min cadence); lone/double garbage-high
+              bursts (poor optical contact) no longer fragment the night, and
+              the slip-into-sleep backstop still fires within ~3 bursts. */
+#define SF_WAKE_HR_CONSEC_AWAKE   1u
+#define SF_WAKE_HR_CONSEC_ASLEEP  3u
 
 /* Online resting-HR learner. The firmware has no per-user resting HR yet
    (the seed is a fixed fallback), and real sleeping HR varies far too much
@@ -120,9 +132,12 @@ static const uint16_t SF_CK_WEIGHTS_Q10[SF_WINDOW_MIN] = {
 /* Background PPG is sparse while awake (one ~15-min curve burst, held a few
    minutes), so most awake minutes carry no HR at all. Hold the wake-veto this
    many minutes to bridge those HR-ABSENT gaps so a still wrist cannot creep
-   into "sleep" between bursts. The hold counts down only while HR is missing;
-   a present, non-elevated reading clears it immediately (positive sleep
-   evidence), so a lone sleep-time spike can't snowball into false wake. */
+   into "sleep" between bursts. The hold counts down ONLY while HR is truly
+   missing; a HELD window repeat neither refreshes nor decays it (same
+   observation, not new data — and decaying on held minutes would open a
+   ~3-min sleep leak per sparse 15-min cycle, since 12 < 15). A fresh,
+   non-elevated reading clears it immediately (positive sleep evidence), so a
+   lone sleep-time spike can't snowball into false wake. */
 #define SF_WAKE_HR_HOLD_MIN      12u
 
 /* Hysteresis — minutes of agreement to enter / exit sleep. */
@@ -576,47 +591,55 @@ const sleep_fusion_output_t *sleep_fusion_update(
     s_sf.out.last_hr_baseline_bpm = baseline;
 
     /* HR wake-veto: positive evidence of wake from a pulse sitting well above
-       the learned resting baseline on a still wrist. prv_hr_elevated_and_learn
-       also advances the online resting-HR estimate (and freezes it while
-       elevated, so a long sedentary stretch can't disarm the veto). Only fires
-       when HR is actually present, so the overnight HR-absent case is
-       untouched and degrades to accel-only exactly as before. The hold carries
-       the veto across the sparse gaps between background PPG bursts. */
-    bool hr_elevated = prv_hr_elevated_and_learn(hr_clean);
-    if (hr_clean == 0)
+       the learned resting baseline on a still wrist. Counters and the online
+       resting-HR learner advance ONLY on FRESH readings (a new burst / live
+       foreground minute): a held window repeat is the same observation again —
+       letting it count made one polluted burst triple-vote and shatter real
+       nights, and made the learner adopt each burst 3×. The hold carries the
+       veto across the truly HR-absent gaps between bursts. */
+    if (hr_clean != 0 && input->hr_is_fresh)
+    {
+        bool hr_elevated = prv_hr_elevated_and_learn(hr_clean);
+        if (hr_elevated)
+        {
+            /* Arm threshold is asymmetric (see SF_WAKE_HR_CONSEC_*): instant
+               while awake (train/desk), sustained-only once asleep so garbage
+               bursts can't kick an established sleeper out. */
+            bool asleep_now = (prev_stage == SLEEP_FUSION_STAGE_LIGHT ||
+                               prev_stage == SLEEP_FUSION_STAGE_DEEP ||
+                               prev_stage == SLEEP_FUSION_STAGE_REM);
+            uint8_t arm_at = asleep_now ? SF_WAKE_HR_CONSEC_ASLEEP
+                                        : SF_WAKE_HR_CONSEC_AWAKE;
+            if (s_sf.hr_elev_consec < 0xFF)
+            {
+                s_sf.hr_elev_consec++;
+            }
+            if (s_sf.hr_elev_consec >= arm_at)
+            {
+                s_sf.wake_hr_hold_min = SF_WAKE_HR_HOLD_MIN;
+            }
+        }
+        else
+        {
+            /* Fresh and NOT elevated — positive, sleep-consistent evidence.
+               Clear the veto and the elevation run at once. */
+            s_sf.hr_elev_consec = 0;
+            s_sf.wake_hr_hold_min = 0;
+        }
+    }
+    else if (hr_clean == 0)
     {
         /* HR absent this minute (or artefact-rejected) — bridge the gap. Leave
            hr_elev_consec untouched: a sparse run of elevated bursts across the
-           HR-absent gaps still counts as sustained (a train), and only a present
-           low reading breaks the run below. */
+           HR-absent gaps still counts as sustained (a train), and only a fresh
+           low reading breaks the run above. */
         if (s_sf.wake_hr_hold_min > 0)
         {
             s_sf.wake_hr_hold_min--;
         }
     }
-    else if (hr_elevated)
-    {
-        /* Elevated, real reading. Require SUSTAINED elevation before vetoing
-           sleep: a lone elevated burst is a brief REM/arousal spike or an
-           artefact, NOT sedentary wake, so it must not arm the hold (that was
-           clipping real REM and firing on garbage-high bursts). Only a run of
-           SF_WAKE_HR_CONSEC_MIN elevated readings (a train, a desk) arms it. */
-        if (s_sf.hr_elev_consec < 0xFF)
-        {
-            s_sf.hr_elev_consec++;
-        }
-        if (s_sf.hr_elev_consec >= SF_WAKE_HR_CONSEC_MIN)
-        {
-            s_sf.wake_hr_hold_min = SF_WAKE_HR_HOLD_MIN;
-        }
-    }
-    else
-    {
-        /* HR present and NOT elevated — positive, sleep-consistent evidence.
-           Clear the veto and the elevation run at once. */
-        s_sf.hr_elev_consec = 0;
-        s_sf.wake_hr_hold_min = 0;
-    }
+    /* else: held window repeat — veto-neutral by design (no count, no clear,
+       no decay). Staging above still consumes the held mean/std. */
     s_sf.out.hr_wake_veto_active = (s_sf.wake_hr_hold_min > 0);
     s_sf.out.learned_rhr_bpm = s_sf.learned_rhr_bpm;
 

@@ -18,7 +18,8 @@ SF_STEPS_FORCE_WAKE = 1
 SF_STEP_CORROB_SCORE = 100     # steps only force wake if score >= this (real motion)
 SF_WAKE_HR_OFFSET_BPM = 20      # HR > learned_rhr + 20 => awake
 SF_HR_ARTEFACT_MAX = 120       # bursts above this are PPG artefact -> dropped
-SF_WAKE_HR_CONSEC_MIN = 2      # consecutive elevated readings needed to arm veto
+SF_WAKE_HR_CONSEC_AWAKE = 1    # fresh elevated BURSTS to arm veto while awake
+SF_WAKE_HR_CONSEC_ASLEEP = 3   # ... while already asleep (artefact immunity)
 SF_RHR_DOWN_SHIFT = 3          # est -= (est - hr) >> 3  (~1/8 of the gap)
 SF_RHR_LEAK_PERIOD_MIN = 4     # minutes mildly-above per +1 bpm upward leak
 SF_RHR_MIN = 40
@@ -47,6 +48,9 @@ class MinuteInput:
     step_count: int = 0
     hr_mean_bpm: int = 0
     hr_std_bpm: int = 0
+    # True = NEW burst / live foreground minute; False = held window repeat
+    # (staging-only — veto-neutral). Mirrors sleep_fusion.h hr_is_fresh.
+    hr_is_fresh: bool = True
     is_worn: bool = True
 
 
@@ -162,23 +166,29 @@ def update(state, utc, inp):
     state.hr_baseline = hr_baseline(state.hr_hist, state.resting_hr)
 
     # HR wake-veto: pulse > offset above the self-learned resting baseline on
-    # a still wrist => sedentary wake, not sleep. Gated on HR being present,
-    # held a few minutes to bridge sparse background-PPG gaps.
-    hr_elevated = hr_elevated_and_learn(state, hr_clean)
-    if hr_clean == 0:
+    # a still wrist => sedentary wake, not sleep. Counters + learner advance
+    # ONLY on FRESH readings (distinct bursts); a held window repeat is the
+    # same observation again — veto-neutral (no count, no clear, no decay).
+    # Arm threshold is asymmetric: instant while awake (train/desk), sustained
+    # (3 bursts) once asleep so garbage bursts can't kick a sleeper out.
+    if hr_clean != 0 and inp.hr_is_fresh:
+        elevated = hr_elevated_and_learn(state, hr_clean)
+        if elevated:
+            asleep_now = state.stage in (Stage.LIGHT, Stage.DEEP, Stage.REM)
+            arm_at = SF_WAKE_HR_CONSEC_ASLEEP if asleep_now else SF_WAKE_HR_CONSEC_AWAKE
+            state.hr_elev_consec = min(0xFF, state.hr_elev_consec + 1)
+            if state.hr_elev_consec >= arm_at:
+                state.wake_hr_hold = SF_WAKE_HR_HOLD_MIN
+        else:
+            # fresh, non-elevated HR clears both the run and the veto
+            state.hr_elev_consec = 0
+            state.wake_hr_hold = 0
+    elif hr_clean == 0:
         # HR absent / artefact-rejected — bridge the gap; leave the run intact.
+        # Held repeats deliberately do NOT decay the hold (12 < the 15-min
+        # sparse cycle; decaying on them leaked ~3 min of false sleep/cycle).
         if state.wake_hr_hold > 0:
             state.wake_hr_hold -= 1
-    elif hr_elevated:
-        # Sustained elevation only: a lone spike (REM/arousal/artefact) must not
-        # veto. Arm the hold once SF_WAKE_HR_CONSEC_MIN elevated readings stack.
-        state.hr_elev_consec = min(0xFF, state.hr_elev_consec + 1)
-        if state.hr_elev_consec >= SF_WAKE_HR_CONSEC_MIN:
-            state.wake_hr_hold = SF_WAKE_HR_HOLD_MIN
-    else:
-        # present, non-elevated HR clears both the run and the veto
-        state.hr_elev_consec = 0
-        state.wake_hr_hold = 0
 
     # Steps force wake only when corroborated by accelerometer motion; a bare
     # pedometer count (false-fires at rest) no longer blocks sleep onset.
@@ -274,25 +284,40 @@ not_worn = [
     MinuteInput(activity_count=30, hr_mean_bpm=60, is_worn=True) for _ in range(5)
 ]
 
+def dense_bursts(n, hr, act=20, std=2):
+    """n × 3-min background bursts as sleep_service feeds them: one FRESH
+    minute (a new burst) + 2 held window repeats."""
+    out = []
+    for _ in range(n):
+        out.append(MinuteInput(activity_count=act, hr_mean_bpm=hr,
+                               hr_std_bpm=std, hr_is_fresh=True))
+        out += [MinuteInput(activity_count=act, hr_mean_bpm=hr,
+                            hr_std_bpm=std, hr_is_fresh=False)] * 2
+    return out
+
+
 # 5) Train ride: dead-still wrist, no steps, but HR ~88 (well above resting
 #    65). The bug this fixes — accel alone reads it as sleep. With the HR
-#    wake-veto it must stay AWAKE for the whole ride. HR is sparse while awake
-#    (~one reading per 15 min), so the hold has to bridge the gaps: 4 min of
-#    HR present, then 11 min absent, repeated.
+#    wake-veto it must stay AWAKE for the whole ride. Awake sampling is
+#    sparse (~one burst per 15 min): 1 fresh minute + 3 held repeats + 11
+#    absent, repeated. The single fresh elevated burst must arm instantly
+#    (SF_WAKE_HR_CONSEC_AWAKE=1) and the hold must survive to the next burst
+#    WITHOUT decaying on the held minutes, or sleep leaks in between.
 train = []
 for _ in range(8):  # ~2 h ride
-    train += [MinuteInput(activity_count=30, hr_mean_bpm=88, hr_std_bpm=2) for _ in range(4)]
+    train += [MinuteInput(activity_count=30, hr_mean_bpm=88, hr_std_bpm=2,
+                          hr_is_fresh=True)]
+    train += [MinuteInput(activity_count=30, hr_mean_bpm=88, hr_std_bpm=2,
+                          hr_is_fresh=False) for _ in range(3)]
     train += [MinuteInput(activity_count=30, hr_mean_bpm=0) for _ in range(11)]
 
 # 6) Backstop: somehow we slipped into Light during a long HR-absent gap
-#    (e.g. PPG missed several bursts). The moment elevated HR returns — which
-#    is exactly what the dense burst that "asleep" turns on provides — we must
-#    exit to AWAKE within SF_EXIT_SLEEP_MIN.
+#    (e.g. PPG missed several bursts). SUSTAINED elevated HR from the dense
+#    bursts that "asleep" turns on must rescue us to AWAKE — within
+#    SF_WAKE_HR_CONSEC_ASLEEP bursts (3-min cadence) + exit hysteresis.
 slip_then_rescue = [
     MinuteInput(activity_count=30, hr_mean_bpm=0) for _ in range(20)  # enter Light, no HR
-] + [
-    MinuteInput(activity_count=30, hr_mean_bpm=88, hr_std_bpm=2) for _ in range(5)  # HR rescues
-]
+] + dense_bursts(6, 88, act=30)  # sustained elevation rescues
 
 # 7) Phantom overnight steps: dead-still wrist (score ~0), low sleeping HR, but
 #    the pedometer false-counts 1 step every minute. THIS is the reported bug —
@@ -303,16 +328,15 @@ phantom_steps = [
     for _ in range(12)
 ]
 
-# 8) Lone HR spike during sleep — a brief REM/arousal bump or PPG artefact. One
-#    elevated burst in an otherwise calm night must NOT wake the sleeper; only
-#    SUSTAINED elevation does. (Old single-burst veto clipped real REM here.)
-lone_spike = [
-    MinuteInput(activity_count=20, hr_mean_bpm=58, hr_std_bpm=1) for _ in range(6)
-] + [
-    MinuteInput(activity_count=20, hr_mean_bpm=88, hr_std_bpm=2)  # single elevated minute
-] + [
-    MinuteInput(activity_count=20, hr_mean_bpm=58, hr_std_bpm=1) for _ in range(6)
-]
+# 8) Lone HR spike during sleep — a brief REM/arousal bump or a garbage-high
+#    burst under the artefact ceiling. One elevated BURST (fresh + its held
+#    repeats) in an otherwise calm night must NOT wake the sleeper; only
+#    SUSTAINED elevation (SF_WAKE_HR_CONSEC_ASLEEP distinct bursts) does.
+#    Held-minute counting used to let this single burst triple-vote itself
+#    past the old consec gate — the 2026-07-24 missed-night mechanism.
+lone_spike = (dense_bursts(6, 58, std=1)
+              + dense_bursts(1, 100)         # single polluted burst
+              + dense_bursts(6, 58, std=1))
 
 # 9) Artefact-high burst: a still wrist reading 126 bpm is physiologically
 #    impossible — it's PPG motion artefact, must be dropped, and must neither
@@ -322,6 +346,17 @@ artefact = [
 ] + [
     MinuteInput(activity_count=20, hr_mean_bpm=126, hr_std_bpm=2) for _ in range(4)
 ]
+
+# 10) Polluted night — THE 2026-07-24 missed night, distilled: dead-still
+#     wrist, dense 3-min bursts alternating true sleeping HR (58) with
+#     poor-contact garbage (98, under the 120 artefact ceiling). Burst-level
+#     asymmetric arming must keep the sleeper asleep: alternation never
+#     reaches SF_WAKE_HR_CONSEC_ASLEEP, so the night stays contiguous. Under
+#     minute-level counting this exact trace collapsed to fragments.
+polluted_night = []
+for _ in range(20):  # 2 h alternating clean/garbage bursts
+    polluted_night += dense_bursts(1, 58, std=1)
+    polluted_night += dense_bursts(1, 98)
 
 
 def check(name, cond):
@@ -342,6 +377,7 @@ if __name__ == "__main__":
     s_phantom = trace("Phantom overnight steps (still wrist)", phantom_steps)
     s_spike = trace("Lone HR spike during sleep", lone_spike)
     s_artefact = trace("Artefact-high burst (126 bpm, still)", artefact)
+    s_night = trace("Polluted night (alternating clean/garbage bursts)", polluted_night)
 
     # -------- Assertions ----------------------------------------------
     print("\n=== Assertions ===")
@@ -371,10 +407,14 @@ if __name__ == "__main__":
     check("HR rescue exits to AWAKE", s_rescue.stage == Stage.AWAKE)
     # It did briefly sleep during the gap (proves the rescue, not a no-op)...
     check("rescue trace did enter sleep first", s_rescue.total > 0)
-    # ...and recovered promptly once HR returned.
+    # ...and recovered once HR returned. Burst-level asleep arming makes the
+    # rescue take up to SF_WAKE_HR_CONSEC_ASLEEP bursts (3-min cadence) plus
+    # exit hysteresis — the deliberate price for not letting lone garbage
+    # bursts shatter real sleep (the 2026-07-24 missed night).
+    rescue_bound = 3 * SF_WAKE_HR_CONSEC_ASLEEP + SF_EXIT_SLEEP_MIN
     check("HR rescue woke after HR returned", wake_minute is not None)
-    check("HR rescue is prompt (<= SF_EXIT_SLEEP_MIN min after HR returns)",
-          wake_minute is not None and (wake_minute - hr_return) <= SF_EXIT_SLEEP_MIN)
+    check(f"HR rescue is prompt (<= {rescue_bound} min after HR returns)",
+          wake_minute is not None and (wake_minute - hr_return) <= rescue_bound)
 
     # The reported bug: phantom pedometer steps on a still wrist must NOT block
     # sleep onset. A bare step count is no longer trusted without accel motion.
@@ -391,5 +431,14 @@ if __name__ == "__main__":
           s_artefact.stage in (Stage.LIGHT, Stage.DEEP, Stage.REM))
     check("artefact-high burst left baseline near real sleeping HR",
           s_artefact.hr_baseline <= 70)
+
+    # THE missed-night regression (2026-07-24): a dead-still night whose
+    # bursts alternate clean / garbage-high must stay contiguous sleep.
+    # Under minute-level veto counting this exact trace collapsed to
+    # fragments (watch scored 12 min against ~8 h in bed).
+    check("polluted night stays asleep at the end",
+          s_night.stage in (Stage.LIGHT, Stage.DEEP, Stage.REM))
+    check("polluted night accumulates >= 100 of 120 min",
+          s_night.total >= 100)
 
     print("\nAll assertions passed.")

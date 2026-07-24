@@ -70,6 +70,15 @@ extern "C"
            staging then behaves exactly as the HR-std-only version. */
         uint8_t hr_rmssd_ms;
 
+        /* True when hr_mean_bpm comes from a NEW PPG burst (or live
+           foreground HR) this minute; false when it is a HELD repeat of the
+           last burst's window (kept so staging keeps HR across the 3-min
+           burst gaps). The wake-veto counts DISTINCT bursts, not minutes:
+           only fresh minutes advance/clear its counters (see
+           SF_WAKE_HR_CONSEC_*) — a held repeat is the same observation
+           again, not new evidence.                                */
+        bool hr_is_fresh;
+
         /* From wear_detect.c. When false the classifier emits
            NOT_WORN regardless of accel/HR.                        */
         bool is_worn;
