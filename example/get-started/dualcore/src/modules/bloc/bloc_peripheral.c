@@ -165,9 +165,24 @@ static void set_tap_status(bool status)
 PeripheralProvider peripheral_provider;
 static rt_thread_t peripheral_task_tid = RT_NULL;
 static rt_mq_t peripheral_queue_handle = RT_NULL;
-static void send_peripheral_data(PeripheralMessageData data)
+/* At most one battery-refresh event in flight (see notify_battery_voltage):
+ * the consumer reads the live SkaiWatchSys values, not the queued arg, so
+ * collapsing bursts is lossless — and a full queue can then never starve the
+ * battery display for longer than one drain. Shared (not HCPU-gated): the
+ * consumer case below compiles on both cores. */
+static volatile bool s_battery_evt_pending = false;
+
+static rt_err_t send_peripheral_data(PeripheralMessageData data)
 {
-    rt_mq_send(peripheral_queue_handle, &data, sizeof(data));
+    rt_err_t err = rt_mq_send(peripheral_queue_handle, &data, sizeof(data));
+    if (err != RT_EOK)
+    {
+        /* Dropped events were previously silent — that hid a stalled consumer
+         * behind a frozen battery/charge display for a whole charge session. */
+        LOG_W("peripheral queue full, dropped event %d (err %d)", data.event,
+              err);
+    }
+    return err;
 }
 
     #ifndef SOC_BF0_LCPU
@@ -339,10 +354,16 @@ static void save_watch_shared_prefs(watch_prefs_key key)
 
 static void notify_battery_voltage(uint16_t voltage)
 {
+    if (s_battery_evt_pending)
+        return;
     PeripheralMessageData data;
     data.event = NOTIFY_BATTERY_VOLTAGE;
     data.arg.data = voltage;
-    send_peripheral_data(data);
+    /* Set before sending so the consumer's clear can never be lost; revert on
+     * a failed send or the flag would wedge with nothing in the queue. */
+    s_battery_evt_pending = true;
+    if (send_peripheral_data(data) != RT_EOK)
+        s_battery_evt_pending = false;
 }
 
 static bool low_power_warning = false;
@@ -439,14 +460,24 @@ static int bloc_peripheral_register(void)
 }
 INIT_APP_EXPORT(bloc_peripheral_register);
 
+/* Stall telemetry: stamped when the task picks up a message. A handler that
+ * blocks leaves the stamp frozen while the queue backs up — the exact state
+ * bloc_peripheral_stall_check() looks for. s_task_last_evt then names the
+ * handler that is stuck. */
+static volatile rt_tick_t s_task_alive_tick;
+static volatile uint8_t s_task_last_evt = 0xFF;
+
 static void peripheral_task_entry(void *parameter)
 {
     static PeripheralMessageData data;
+    s_task_alive_tick = rt_tick_get();
     while (1)
     {
         if (rt_mq_recv(peripheral_queue_handle, &data, sizeof(data),
                        RT_WAITING_FOREVER) == RT_EOK)
         {
+            s_task_alive_tick = rt_tick_get();
+            s_task_last_evt = (uint8_t)data.event;
             LOG_D("handle peripheral message: %d\n", data.event);
             switch (data.event)
             {
@@ -603,6 +634,7 @@ static void peripheral_task_entry(void *parameter)
 
             case NOTIFY_BATTERY_VOLTAGE:
             {
+                s_battery_evt_pending = false;
     #ifndef BSP_USING_PC_SIMULATOR
                     // Notify system components about battery status
         #ifdef BSP_USING_BLOC_NOTIFY
@@ -659,6 +691,34 @@ static void peripheral_task_entry(void *parameter)
             }
         }
     }
+}
+
+/* Called from the perception periodic thread (60 s cadence). A stall means one
+ * handler is blocked while events queue up; past that point every new event is
+ * silently dropped (queue depth 10), which freezes the battery/charge display
+ * even though SkaiWatchSys keeps updating. Log-only by design: auto-restarting
+ * the task could tear half-done I2C/flash work. */
+#define PERIPHERAL_STALL_THRESHOLD_MS 30000
+
+void bloc_peripheral_stall_check(void)
+{
+    static bool s_stalled = false;
+    if (peripheral_queue_handle == RT_NULL)
+        return;
+    rt_tick_t gap = (rt_tick_t)(rt_tick_get() - s_task_alive_tick);
+    bool stalled =
+        (peripheral_queue_handle->entry > 0) &&
+        (gap > rt_tick_from_millisecond(PERIPHERAL_STALL_THRESHOLD_MS));
+    if (stalled && !s_stalled)
+    {
+        LOG_E("peripheral task stalled: %d queued, busy %d ticks, last event %d",
+              peripheral_queue_handle->entry, gap, s_task_last_evt);
+    }
+    else if (!stalled && s_stalled)
+    {
+        LOG_I("peripheral task recovered");
+    }
+    s_stalled = stalled;
 }
 
 static int peripheral_task_init(void)

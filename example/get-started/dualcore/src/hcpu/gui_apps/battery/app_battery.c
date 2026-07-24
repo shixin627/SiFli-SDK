@@ -140,6 +140,9 @@ static lv_obj_t *on_start(lv_obj_t *parent)
 static void on_resume(void)
 {
     lvgl_msg_handler.handle_battery_percentage = refresh_battery_level;
+    /* The handler was unwired while paused, so updates delivered in between
+     * never reached the label — re-sync it from the store. */
+    refresh_battery_level(SkaiWatchSys.battery_level_value);
     show_instruction_list_time(false);
     show_battery(false);
 }

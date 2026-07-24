@@ -925,7 +925,13 @@ INIT_APP_EXPORT(lvgl_task_init);
  */
 void lvgl_send_msg(lvgl_msg_t msg)
 {
-    rt_mq_send(lvgl_mq, &msg, sizeof(lvgl_msg_t));
+    rt_err_t err = rt_mq_send(lvgl_mq, &msg, sizeof(lvgl_msg_t));
+    if (err != RT_EOK)
+    {
+        /* Dropped UI messages were previously silent; the display just went
+         * stale with no trace. */
+        LOG_W("lvgl_mq full, dropped msg type %d (err %d)", msg.type, err);
+    }
     // process_lvgl_message(&msg);
 }
 
