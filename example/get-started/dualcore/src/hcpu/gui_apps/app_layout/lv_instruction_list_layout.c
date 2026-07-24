@@ -2854,6 +2854,8 @@ static bool s_left_morph_busy = false;
    skaibar's `skaibar_active` gating). Blocks re-opening mid-close and re-entrant
    close calls. Cleared when the close finishes (finalize_close_ai_widget). */
 static bool s_left_closing = false;
+/* list_bg 滑出關閉動畫進行中:擋退出途中(本地 restore 或手機重推)觸發的 UI 重繪閃變。 */
+static bool s_list_sliding_out = false;
 
 /* Interpolate the mic bar between its slim bar geometry (f=0) and the full
    input-box geometry (f=255); fade the mic glyph out as it grows. The bar is
@@ -2948,6 +2950,7 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
     /* P2 S2 — list is gone; drop the transient category view so the real (full /
        disconnect-filtered) list_items[] is what everything else sees. s_view_cat is
        cleared too: the list closed, so a later push has no open view to re-apply. */
+    s_list_sliding_out = false; /* 列表此時已 HIDDEN(見上),清 flag 讓 off-screen restore 照常重繪 */
     cat_filter_restore_full();
     s_view_cat = 0;
     /* 滑鼠 app 單設備模式:列表完全收掉 → 把共享清單還原成錶盤清單、退出單設備模式,
@@ -3716,7 +3719,12 @@ void close_ai_widget(void)
            watch-face list kept for the page-leave restore, and the dismissed device
            re-streams its default options which we re-feed. */
         extern bool clock_main_page_is_home(void);
-        if (clock_main_page_is_home())
+        /* 滑鼠 app 單設備模式(s_bar_single_device=true):restore_base 交給滑出動畫完成後的
+           inst_list_slide_out_done_cb —— 它先把列表設 HIDDEN 再 restore,使用者看不到內容變。
+           若在這裡(動畫開始前)提前 restore,會同步 rebuild_instruction_list_ui() 把單設備
+           選項換成錶盤 base 清單,而滑出動畫仍在跑、列表還可見 → 退出途中閃一下變成 actions。
+           錶盤/一般路徑(flag=false)維持原本的提前 restore 不變。 */
+        if (clock_main_page_is_home() && !s_bar_single_device)
         {
             extern void instruction_list_restore_base(void);
             instruction_list_restore_base();
@@ -3781,6 +3789,7 @@ void close_ai_widget(void)
             lv_anim_set_path_cb(&sl, lv_anim_path_ease_in);
             lv_anim_set_exec_cb(&sl, reveal_settle_anim_cb);
             lv_anim_set_ready_cb(&sl, inst_list_slide_out_done_cb);
+            s_list_sliding_out = true; /* 滑出關閉動畫啟動 → 擋退出途中的 rebuild 閃變 */
             lv_anim_start(&sl);
         }
         else
@@ -5575,6 +5584,9 @@ static void scroll_center_item(lv_obj_t *list, uint16_t target)
 
 void refresh_custom_instructions(void)
 {
+    /* 滑出關閉動畫進行中:擋退出途中的 UI 重繪(本地 restore 與手機 replace-all 重推的共同出口)。
+       flag 在滑出結束、列表已 HIDDEN 後才清 → gate 只在列表可見的滑出過程生效。 */
+    if (s_list_sliding_out) return;
     open_scroll_motor = false;
     if (p_instruction_list_layout == NULL ||
         p_instruction_list_layout->list == NULL)
