@@ -356,6 +356,34 @@ static const char *service_icon(const char *svc)
     return NULL;
 }
 
+/* Map a saved Action's TYPE (pushed by the phone as the "ico" field — e.g. "music" /
+   "weather", derived from the "New Action" card it was created with) to this watch's copy
+   of the SAME glyph the phone draws in front of the name (founder 2026-07-24). The slugs are
+   the wire contract in ActionTypeIcon.kt / .swift — keep the two in step.
+
+   NULL for an unknown slug AND for an absent one: a row with no "ico" is not a saved Action
+   at all (the aggregated skaibar batch also carries calc / url / memo / ask cards), so it
+   keeps the pre-existing no-glyph look rather than picking up a generic one. */
+static const char *action_type_icon(const char *ico)
+{
+    if (ico == NULL || ico[0] == '\0')
+        return NULL;
+    if (strcmp(ico, "music") == 0)        return ICON_ACT_MUSIC;
+    if (strcmp(ico, "navigation") == 0)   return ICON_ACT_NAVIGATION;
+    if (strcmp(ico, "drive") == 0)        return ICON_ACT_DRIVE;
+    if (strcmp(ico, "webpage") == 0)      return ICON_ACT_WEBPAGE;
+    if (strcmp(ico, "translate") == 0)    return ICON_ACT_TRANSLATE;
+    if (strcmp(ico, "currency") == 0)     return ICON_ACT_CURRENCY;
+    if (strcmp(ico, "stock") == 0)        return ICON_ACT_STOCK;
+    if (strcmp(ico, "weather") == 0)      return ICON_ACT_WEATHER;
+    if (strcmp(ico, "notification") == 0) return ICON_ACT_NOTIFICATION;
+    if (strcmp(ico, "camera") == 0)       return ICON_ACT_CAMERA;
+    if (strcmp(ico, "watchapp") == 0)     return ICON_ACT_WATCHAPP;
+    if (strcmp(ico, "chat") == 0)         return ICON_ACT_CHAT;
+    if (strcmp(ico, "generic") == 0)      return ICON_ACT_GENERIC;
+    return NULL;
+}
+
 const char *get_app_icon(uint8_t app_id)
 {
     switch (app_id)
@@ -5151,6 +5179,24 @@ void set_instruction_service_icon(const char *id, const char *svc)
         return;
     int idx = find_instruction_by_id(id);
     if (idx >= 0)
+        list_items[idx].icon = icon;
+}
+
+/* Apply a saved Action's type glyph, mirroring set_instruction_service_icon (re-find by id
+   so add_or_update_custom_instruction's signature stays untouched).
+
+   Runs LAST of the three icon sources on purpose — it only fills a still-empty slot, never
+   overwrites. The other two are strictly more specific about the SAME row: an openApp row
+   already borrowed the actual watch app's icon, and an @-contact row already has its
+   messaging-service logo. The type glyph is the generic statement ("this is a music Action"),
+   so it must lose to both. */
+void set_instruction_type_icon(const char *id, const char *ico)
+{
+    const char *icon = action_type_icon(ico);
+    if (icon == NULL)
+        return;
+    int idx = find_instruction_by_id(id);
+    if (idx >= 0 && list_items[idx].icon == NULL)
         list_items[idx].icon = icon;
 }
 

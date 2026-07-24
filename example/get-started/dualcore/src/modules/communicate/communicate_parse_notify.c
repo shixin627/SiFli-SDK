@@ -124,12 +124,23 @@ static bool apply_one_instruction_obj(cJSON *root)
     if (cJSON_IsString(j_svc) && j_svc->valuestring[0] != '\0')
         svc = j_svc->valuestring;
 
+    /* ico: the saved Action's TYPE (e.g. "music" / "weather" / "generic"), so the row shows
+       the same glyph the phone shows in front of its name. Absent = this row isn't a saved
+       Action (a calc / url / memo / ask card in the aggregated skaibar batch) → no glyph. */
+    const char *ico = NULL;
+    cJSON *j_ico = cJSON_GetObjectItem(root, "ico");
+    if (cJSON_IsString(j_ico) && j_ico->valuestring[0] != '\0')
+        ico = j_ico->valuestring;
+
     add_or_update_custom_instruction(id, title, trigger_type,
                                      interval_sec, enabled, version,
                                      open_app);
     set_instruction_category(id, category);
     extern void set_instruction_service_icon(const char *id, const char *svc);
     set_instruction_service_icon(id, svc);
+    /* Last of the three icon sources — fills only a still-empty slot (see its doc). */
+    extern void set_instruction_type_icon(const char *id, const char *ico);
+    set_instruction_type_icon(id, ico);
 
     if (id[0] != '\0')
     {
