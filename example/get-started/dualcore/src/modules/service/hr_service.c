@@ -1336,11 +1336,18 @@ static void bg_hr_finish_burst(void)
            sleep: motion artefact / loose fit / poor optical contact. */
         bg_hr_note(BGHR_NO_LOCK);
     }
-    /* Publish the burst's HR window (mean + std over its 1 Hz reads) for
-       sleep_fusion's Deep / REM staging. Need ≥2 samples for a meaningful std. */
+    /* Publish the burst's HR window for sleep_fusion (wake-veto + staging).
+       The headline value is the burst's FINAL rolling median — the converged,
+       outlier-rejected read, identical to what the phone curve stores — NOT
+       the mean over the whole burst: the mean folds in the pre-convergence
+       warm-up prefix (dynamic warm-up accepts reads as soon as the algo seq
+       moves), which on poor-contact bursts ran tens of bpm high and fed the
+       wake-veto a systematically dirtier stream than the phone ever showed.
+       std stays sum-based (spread of the whole burst) — it only steers
+       Deep/REM staging. Need ≥2 samples for a meaningful std. */
     if (bg_hr_burst_cnt >= 2)
     {
-        bg_hr_win_mean = (uint8_t)(bg_hr_burst_sum / bg_hr_burst_cnt);
+        bg_hr_win_mean = bg_hr_burst_best;
         bg_hr_win_std = bg_hr_std_from_sums(bg_hr_burst_sum, bg_hr_burst_sum_sq,
                                             bg_hr_burst_cnt);
         bg_hr_win_tick_ms = rt_tick_get_millisecond();

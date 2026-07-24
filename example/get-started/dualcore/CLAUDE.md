@@ -71,7 +71,7 @@ REM Keil .uvprojx for MDK IDE debug
 project\hcpu\_watch_mdk5.cmd -j8
 
 REM Flash to watch via UART (non-interactive — pipe COM port number):
-echo 13 | cmd /c project\hcpu\build_sf32lb56w-watch_hcpu\uart_download.bat
+echo 13 | cmd /c project\hcpu\build_sf32lb56-watch_hcpu\uart_download.bat
 REM 13 = COM13 = CH342 channel B = boot ROM download port
 ```
 
@@ -142,7 +142,7 @@ Quickref:
 
 ## Platform
 
-- Boards: `eh-lb52x` / `ec-lb56x` / `sf32lb56-watch` / `sf32lb56w-watch`(current)/ `eh-lb56xu`(BOARD_VER_28)/ `eh-lb58x`
+- Boards: `eh-lb52x` / `ec-lb56x` / `sf32lb56-watch`(current — 注意**無 w**;刷 `sf32lb56w-watch` 的 build 會全靜默無法正常啟動)/ `sf32lb56w-watch` / `eh-lb56xu`(BOARD_VER_28)/ `eh-lb58x`
 - Bootloader: `example/boot_loader/project/sf32lb56x_v2/`(watch 用這個,不是 `sf32lb56x`)
 - Production toolchain: **Keil + armclang + microlib**(GCC 只供驗證,LCPU 多 ~75 KB)
 

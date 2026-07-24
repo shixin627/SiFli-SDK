@@ -115,6 +115,12 @@ typedef struct
     uint8_t  rest_still_run;   /* consecutive minutes score < thresh  */
     uint8_t  rest_active_run;  /* consecutive minutes score >= thresh */
     bool     rest_candidate;   /* dense bursts requested while awake  */
+
+    /* Burst-freshness tracking for the HR window feed: ages only grow
+       between bursts, so age going DOWN since the previous minute-eval
+       marks a NEW burst (drives input.hr_is_fresh). */
+    uint32_t prev_hr_win_age_ms;
+    bool     prev_hr_win_age_valid;
 } sleep_service_env_t;
 
 static sleep_service_env_t s_env;
@@ -328,10 +334,12 @@ static void prv_minute_eval(uint32_t utc_now)
     if (s_env.hr_sample_count > 0)
     {
         /* Foreground path: the Exercise app is measuring, so hr_service has
-           accepted live per-second BPM this minute. Use our own aggregation. */
+           accepted live per-second BPM this minute. Use our own aggregation.
+           Live data every minute => every minute is a fresh observation. */
         input.hr_mean_bpm = (uint8_t)(s_env.hr_sum / s_env.hr_sample_count);
         input.hr_std_bpm = prv_compute_hr_std(
             s_env.hr_sum, s_env.hr_sum_sq, s_env.hr_sample_count);
+        input.hr_is_fresh = true;
     }
     else
     {
@@ -340,18 +348,27 @@ static void prv_minute_eval(uint32_t utc_now)
 #ifdef BSP_USING_HR_SVC
         /* Background path (the usual overnight case): PPG is power-gated, so
            hr_service_get_latest_bpm() is stale and we saw no per-second HR.
-           Fall back to the periodic PPG-burst window — a mean + std (HRV
-           proxy) over a ~25 s burst every ~15 min (the daily-HR-curve burst,
-           reused here for free). Hold it until it goes stale so a coarse
-           Light/Deep split is staged across the gaps between bursts rather
-           than collapsing to Light. */
+           Fall back to the periodic PPG-burst window — a value + std (HRV
+           proxy) from the burst (the daily-HR-curve burst, reused here for
+           free). Hold it until it goes stale so a coarse Light/Deep split is
+           staged across the gaps between bursts rather than collapsing to
+           Light — but mark ONLY the first minute after a new burst as FRESH:
+           the wake-veto must see each burst once, not once per held minute
+           (sleep_fusion.h hr_is_fresh). */
         uint8_t w_mean = 0, w_std = 0;
         uint32_t w_age_ms = 0;
-        if (hr_service_get_hr_window(&w_mean, &w_std, &w_age_ms) &&
-            w_age_ms <= SLEEP_HR_WINDOW_MAX_AGE_MS && w_mean > 0)
+        if (hr_service_get_hr_window(&w_mean, &w_std, &w_age_ms))
         {
-            input.hr_mean_bpm = w_mean;
-            input.hr_std_bpm = w_std;
+            bool new_burst = !s_env.prev_hr_win_age_valid ||
+                             (w_age_ms < s_env.prev_hr_win_age_ms);
+            s_env.prev_hr_win_age_ms = w_age_ms;
+            s_env.prev_hr_win_age_valid = true;
+            if (w_age_ms <= SLEEP_HR_WINDOW_MAX_AGE_MS && w_mean > 0)
+            {
+                input.hr_mean_bpm = w_mean;
+                input.hr_std_bpm = w_std;
+                input.hr_is_fresh = new_burst;
+            }
         }
 #endif
     }
@@ -448,9 +465,10 @@ static void prv_minute_eval(uint32_t utc_now)
     /* Forensic once-a-minute line (LCPU console): enough to attribute any
        future missed night — activity vs score, veto state, learned RHR,
        dense-gate state — without reflashing a diagnostic build. */
-    LOG_I("[SLPDIAG] act=%u st=%u hr=%u sd=%u sc=%u stg=%u veto=%u rhr=%u base=%u rest=%u tot=%u",
+    LOG_I("[SLPDIAG] act=%u st=%u hr=%u fr=%u sd=%u sc=%u stg=%u veto=%u rhr=%u base=%u rest=%u tot=%u",
           (unsigned)input.activity_count, (unsigned)input.step_count,
-          (unsigned)input.hr_mean_bpm, (unsigned)input.hr_std_bpm,
+          (unsigned)input.hr_mean_bpm, (unsigned)input.hr_is_fresh,
+          (unsigned)input.hr_std_bpm,
           (unsigned)out->last_cole_kripke_score, (unsigned)out->stage,
           (unsigned)out->hr_wake_veto_active, (unsigned)out->learned_rhr_bpm,
           (unsigned)out->last_hr_baseline_bpm, (unsigned)s_env.rest_candidate,

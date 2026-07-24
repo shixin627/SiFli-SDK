@@ -356,6 +356,34 @@ static const char *service_icon(const char *svc)
     return NULL;
 }
 
+/* Map a saved Action's TYPE (pushed by the phone as the "ico" field — e.g. "music" /
+   "weather", derived from the "New Action" card it was created with) to this watch's copy
+   of the SAME glyph the phone draws in front of the name (founder 2026-07-24). The slugs are
+   the wire contract in ActionTypeIcon.kt / .swift — keep the two in step.
+
+   NULL for an unknown slug AND for an absent one: a row with no "ico" is not a saved Action
+   at all (the aggregated skaibar batch also carries calc / url / memo / ask cards), so it
+   keeps the pre-existing no-glyph look rather than picking up a generic one. */
+static const char *action_type_icon(const char *ico)
+{
+    if (ico == NULL || ico[0] == '\0')
+        return NULL;
+    if (strcmp(ico, "music") == 0)        return ICON_ACT_MUSIC;
+    if (strcmp(ico, "navigation") == 0)   return ICON_ACT_NAVIGATION;
+    if (strcmp(ico, "drive") == 0)        return ICON_ACT_DRIVE;
+    if (strcmp(ico, "webpage") == 0)      return ICON_ACT_WEBPAGE;
+    if (strcmp(ico, "translate") == 0)    return ICON_ACT_TRANSLATE;
+    if (strcmp(ico, "currency") == 0)     return ICON_ACT_CURRENCY;
+    if (strcmp(ico, "stock") == 0)        return ICON_ACT_STOCK;
+    if (strcmp(ico, "weather") == 0)      return ICON_ACT_WEATHER;
+    if (strcmp(ico, "notification") == 0) return ICON_ACT_NOTIFICATION;
+    if (strcmp(ico, "camera") == 0)       return ICON_ACT_CAMERA;
+    if (strcmp(ico, "watchapp") == 0)     return ICON_ACT_WATCHAPP;
+    if (strcmp(ico, "chat") == 0)         return ICON_ACT_CHAT;
+    if (strcmp(ico, "generic") == 0)      return ICON_ACT_GENERIC;
+    return NULL;
+}
+
 const char *get_app_icon(uint8_t app_id)
 {
     switch (app_id)
@@ -2826,6 +2854,8 @@ static bool s_left_morph_busy = false;
    skaibar's `skaibar_active` gating). Blocks re-opening mid-close and re-entrant
    close calls. Cleared when the close finishes (finalize_close_ai_widget). */
 static bool s_left_closing = false;
+/* list_bg 滑出關閉動畫進行中:擋退出途中(本地 restore 或手機重推)觸發的 UI 重繪閃變。 */
+static bool s_list_sliding_out = false;
 
 /* Interpolate the mic bar between its slim bar geometry (f=0) and the full
    input-box geometry (f=255); fade the mic glyph out as it grows. The bar is
@@ -2920,6 +2950,7 @@ static void inst_list_slide_out_done_cb(lv_anim_t *a)
     /* P2 S2 — list is gone; drop the transient category view so the real (full /
        disconnect-filtered) list_items[] is what everything else sees. s_view_cat is
        cleared too: the list closed, so a later push has no open view to re-apply. */
+    s_list_sliding_out = false; /* 列表此時已 HIDDEN(見上),清 flag 讓 off-screen restore 照常重繪 */
     cat_filter_restore_full();
     s_view_cat = 0;
     /* 滑鼠 app 單設備模式:列表完全收掉 → 把共享清單還原成錶盤清單、退出單設備模式,
@@ -3688,7 +3719,12 @@ void close_ai_widget(void)
            watch-face list kept for the page-leave restore, and the dismissed device
            re-streams its default options which we re-feed. */
         extern bool clock_main_page_is_home(void);
-        if (clock_main_page_is_home())
+        /* 滑鼠 app 單設備模式(s_bar_single_device=true):restore_base 交給滑出動畫完成後的
+           inst_list_slide_out_done_cb —— 它先把列表設 HIDDEN 再 restore,使用者看不到內容變。
+           若在這裡(動畫開始前)提前 restore,會同步 refresh_custom_instructions() 把單設備
+           選項換成錶盤 base 清單,而滑出動畫仍在跑、列表還可見 → 退出途中閃一下變成 actions。
+           錶盤/一般路徑(flag=false)維持原本的提前 restore 不變。 */
+        if (clock_main_page_is_home() && !s_bar_single_device)
         {
             extern void instruction_list_restore_base(void);
             instruction_list_restore_base();
@@ -3753,6 +3789,7 @@ void close_ai_widget(void)
             lv_anim_set_path_cb(&sl, lv_anim_path_ease_in);
             lv_anim_set_exec_cb(&sl, reveal_settle_anim_cb);
             lv_anim_set_ready_cb(&sl, inst_list_slide_out_done_cb);
+            s_list_sliding_out = true; /* 滑出關閉動畫啟動 → 擋退出途中的 rebuild 閃變 */
             lv_anim_start(&sl);
         }
         else
@@ -5154,6 +5191,24 @@ void set_instruction_service_icon(const char *id, const char *svc)
         list_items[idx].icon = icon;
 }
 
+/* Apply a saved Action's type glyph, mirroring set_instruction_service_icon (re-find by id
+   so add_or_update_custom_instruction's signature stays untouched).
+
+   Runs LAST of the three icon sources on purpose — it only fills a still-empty slot, never
+   overwrites. The other two are strictly more specific about the SAME row: an openApp row
+   already borrowed the actual watch app's icon, and an @-contact row already has its
+   messaging-service logo. The type glyph is the generic statement ("this is a music Action"),
+   so it must lose to both. */
+void set_instruction_type_icon(const char *id, const char *ico)
+{
+    const char *icon = action_type_icon(ico);
+    if (icon == NULL)
+        return;
+    int idx = find_instruction_by_id(id);
+    if (idx >= 0 && list_items[idx].icon == NULL)
+        list_items[idx].icon = icon;
+}
+
 /* Helper: create list item UI objects for items in [start_idx, end_idx) */
 /* list_item_count==0 placeholder: already paired but nothing added yet →
    "請在手機上新增" hint; not connected → the SAME pairing QR the Control
@@ -5529,6 +5584,9 @@ static void scroll_center_item(lv_obj_t *list, uint16_t target)
 
 void refresh_custom_instructions(void)
 {
+    /* 滑出關閉動畫進行中:擋退出途中的 UI 重繪(本地 restore 與手機 replace-all 重推的共同出口)。
+       flag 在滑出結束、列表已 HIDDEN 後才清 → gate 只在列表可見的滑出過程生效。 */
+    if (s_list_sliding_out) return;
     open_scroll_motor = false;
     if (p_instruction_list_layout == NULL ||
         p_instruction_list_layout->list == NULL)

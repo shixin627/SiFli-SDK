@@ -70,13 +70,20 @@ extern int __bss_end;
 // #define INT16_to_UT (3.3333f)
 
 #define SkaiwalkWatchOS 26
-#define kReleaseMode 1
+#define kReleaseMode 0
 
 /* Default DBG_LVL for project modules (numeric per rtdbg.h:
-   0=ERROR, 1=WARNING, 2=INFO, 3=LOG). Release drops LOG_I/LOG_D so
-   per-tick / per-packet noise doesn't cost CPU + UART bandwidth. */
+   0=ERROR, 1=WARNING, 2=INFO, 3=LOG).
+
+   Release keeps LOG_I: sealed units have no console, so the /logs file
+   backend (log_file_backend.c, which ships in release) is the only way to
+   see what led up to a field crash, and W/E alone carries almost no
+   context. LOG_D stays stripped on purpose — it fires per tick / per BLE
+   packet, and at that rate the 8 KB ring buffer overflows and the 1 MB
+   /logs cap rotates the evidence away faster than a rare crash can be
+   caught. Dropping back to DBG_WARNING is safe once a crash is diagnosed. */
 #if kReleaseMode
-#define BSP_DBG_LVL DBG_WARNING
+#define BSP_DBG_LVL DBG_INFO
 #else
 #define BSP_DBG_LVL DBG_LOG
 #endif

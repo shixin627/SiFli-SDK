@@ -163,6 +163,8 @@ void app_periodic_task(void)
     }
 #endif
 
+    bloc_peripheral_stall_check();
+
 #ifdef BSP_USING_WATCH_SYS_CLIENT
     watch_sys_sync.request_battery_voltage();
     /* Re-assert the wear-detection override to LCPU every tick. The flag lives

@@ -201,6 +201,9 @@ extern "C"
     bool is_sleep_mode(void);
     bool is_hcpu_suspend(void);
     void set_sleep_mode(bool mode);
+    /* Loud-log if the peripheral task is blocked while events queue up (the
+       silent battery/charge-display freeze). Call from a periodic thread. */
+    void bloc_peripheral_stall_check(void);
     /* Weak hook the LCPU app can override to react to screen-state changes
        (e.g. switch raise-wrist source). See bloc_peripheral.c. */
     void on_lcpu_sleep_mode_changed(bool sleep);

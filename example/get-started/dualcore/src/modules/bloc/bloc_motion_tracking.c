@@ -918,6 +918,11 @@ static uint8_t log_count = 0;
     #define AIR_MOUSE_SENSITIVITY 20.0f
     // 移動鎖：觸碰面板後累積移動量超過此閾值才解鎖
     #define GYRO_MOVE_CANCEL_THRESHOLD 30.0f
+    /* 按住觸控板期間「飛鼠搶走游標」的專屬門檻(founder 2026-07-24 真機:手腕盡量不動想滑
+       觸控板,卻一直變成體感)。不能共用上面的 30——手指在錶面上滑的反作用力本身就會帶動
+       手腕,gyro 一路累積;加上 IMU(100Hz+)判定頻率遠高於 LVGL PRESSING(~30Hz),飛鼠幾乎
+       必勝。拉高成要「明確轉手腕」才搶得走,純滑觸控板累積達不到,手指那 5px 就能先到。 */
+    #define PRESS_FREE_MOVE_CLAIM_UNITS 120.0f
     // Roll-compensation sign for data-collection air-mouse (see air_mouse_process).
     // Flip to -1.0f on device if roll compensation goes the WRONG way.
     #define AIR_MOUSE_COLLECT_ROLL_SIGN 1.0f
@@ -929,6 +934,21 @@ static uint8_t log_count = 0;
 
 static bool mouse_movement_lock = false;
 static float gyro_movement_distance = 0.0f;
+
+/* 觸控板 vs 飛鼠「先到先贏」互鎖(founder 2026-07-24:兩條路徑都送 ble_hid_mouse_move,
+   手指滑板子的同時手腕一動就雙推游標)。一次 press 只有一個贏家,鎖到放開手指為止:
+   - s_touch_cursor_owned:GUI thread 判定「手指先滑贏」時 claim(位移已扣掉手腕連動,
+     見 hid_mouse.c 的慢跟隨基準)→ 擋掉本檔的 report_air_mouse_data。
+   - s_air_cursor_owned:本檔在 gyro 累積過解鎖門檻、真的送出游標時 claim → hid_mouse
+     據此擋掉觸控板那條 ble_hid_mouse_move。
+   各自單一寫者、對方唯讀(volatile 足夠);兩邊 claim 前都先看對方贏了沒=不會雙鎖。 */
+static volatile bool s_touch_cursor_owned = false;
+static volatile bool s_air_cursor_owned = false;
+/* 手指「前哨」:hid_mouse 每偵測到手指在滑就刷新此 tick。飛鼠送游標前先看手指最近有沒有
+   在滑——用手指意圖仲裁,取代之前靠 gyro 門檻猜(高了體感停頓、低了滑板變飛鼠,二選一)。
+   claim(s_touch_cursor_owned)是「已定案手指贏」、前哨是「手指正在滑、暫別讓飛鼠插」。 */
+static volatile rt_tick_t s_finger_active_tick = 0;
+#define FINGER_ACTIVE_HOLD_MS 250 /* 手指停止滑動後仍擋飛鼠這麼久,涵蓋滑滑停停的間隙 */
 
 /* Data-collection air-mouse roll reference (file scope so the always-run motion
  * handler can invalidate it when collection ends — air_mouse_process itself only
@@ -948,7 +968,38 @@ void air_mouse_movement_lock_reset(void)
 {
     mouse_movement_lock = true;
     gyro_movement_distance = 0.0f;
+    /* 新一次按下:互鎖歸零重新比(本函式由 hid_mouse PRESSED 無條件呼叫) */
+    s_touch_cursor_owned = false;
+    s_air_cursor_owned = false;
+    s_finger_active_tick = 0;
 }
+
+/* 觸控板/飛鼠互鎖(見上方 s_touch_cursor_owned 註解)。claim 只由 hid_mouse 的手指判定
+   呼叫;reset 在 RELEASED/PRESS_LOST 呼叫——放開後不清的話 s_touch_cursor_owned 殘留
+   會把 handfree 飛鼠一路鎖到下次按下。 */
+void bloc_touch_cursor_claim(void)
+{
+    /* 飛鼠已經贏了就不搶(motion thread 可能剛 claim 完)——兩邊各自先讓,把「同一幀雙
+       claim→兩條都被鎖、這次 press 游標不動」的窄窗口再縮小(放開就恢復,非致命)。 */
+    if (s_air_cursor_owned || s_touch_cursor_owned)
+        return;
+    s_touch_cursor_owned = true;
+}
+/* 手指前哨:hid_mouse 偵測到手指在滑就呼叫,刷新 tick。 */
+void bloc_touch_finger_active(void) { s_finger_active_tick = rt_tick_get(); }
+static bool touch_finger_recent(void)
+{
+    return s_finger_active_tick != 0 &&
+           (rt_tick_get() - s_finger_active_tick) <
+               rt_tick_from_millisecond(FINGER_ACTIVE_HOLD_MS);
+}
+void bloc_cursor_owner_reset(void)
+{
+    s_touch_cursor_owned = false;
+    s_air_cursor_owned = false;
+    s_finger_active_tick = 0;
+}
+bool mouse_air_cursor_owned(void) { return s_air_cursor_owned; }
 
 static bool switch_freehand_mode = false;
 bool get_switch_freehand_mode(void)
@@ -1588,7 +1639,11 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
                           fabsf((float)delta_movement.y);
         if (wrist_mag >= DIAL_WRIST_MOVE_UNITS)
             s_dial_wrist_last_move = rt_tick_get();
-        s_wrist_accum += wrist_mag; /* deadzone 已濾雜訊,靜置時 ≈0 不累積 */
+        /* 手指在滑時凍結累積(founder 2026-07-24「長按手指拖變飛鼠、不能手指滑動」):手指拖
+           的反作用力 gyro 不算「體感拖意圖」,否則這副作用就把 wrist_accum 灌到門檻、把手指
+           拖誤觸成體感拖(motion_drag)。手指沒滑(純手錶大動)才照常累積=真體感拖。 */
+        if (!touch_finger_recent())
+            s_wrist_accum += wrist_mag; /* deadzone 已濾雜訊,靜置時 ≈0 不累積 */
     }
 
     if (abs(delta_movement.x) >= 3 || abs(delta_movement.y) >= 3)
@@ -1625,8 +1680,27 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     /* 體感拖曳(長按滿1s後手腕先動=左鍵按住+gyro 驅動游標)與「按住期間自由移動」
        (按下即動手錶=游標直接動,無左鍵;founder 2026-07-20)。report 慣例同飛鼠;
        左鍵狀態由 hid_mouse 管,這裡只負責游標。 */
-    else if ((s_motion_drag_active || s_press_free_move) && !mouse_movement_lock)
+    else if ((s_motion_drag_active ||
+              (s_press_free_move && !s_touch_cursor_owned &&
+               !touch_finger_recent())) &&
+             !mouse_movement_lock)
     {
+        /* 按住期間的自由移動＝互鎖的飛鼠側。仲裁用**手指前哨**(touch_finger_recent):手指
+           最近在滑就讓給觸控板,手指沒滑才送飛鼠——直接對應意圖,不再靠 gyro 門檻猜。
+           送游標仍只等 mouse_movement_lock(30),手指沒滑時即時跟手錶(founder 2026-07-20
+           「按下馬上動手錶游標就要動」);過了前哨這關就即時,不像純 gyro 門檻要慢慢累積
+           (founder 2026-07-24「有點太容易變飛鼠」←低門檻 / 「游標停一小段才跟上」←高門檻,
+           兩者是同一 gyro 門檻的二選一,改用手指意圖跳出)。
+           「claim owner(永久鎖觸控板)」才另外要 gyro 累積過 PRESS_FREE_MOVE_CLAIM_UNITS(120)。
+           體感拖曳(s_motion_drag_active)是 arm 後的正式狀態、手指早已讓出游標,不 claim。 */
+        if (s_press_free_move && !s_air_cursor_owned &&
+            gyro_movement_distance > PRESS_FREE_MOVE_CLAIM_UNITS &&
+            (delta_movement.x || delta_movement.y))
+        {
+            /* 真有位移才算贏:report 對 0 delta 直接 return,不加這層會在「累積夠但當幀
+               沒動」就搶走 owner。 */
+            s_air_cursor_owned = true;
+        }
         report_air_mouse_data(&delta_movement, ts);
     }
     // handfree 飛鼠的姿態 gate 分兩種來源：①頂部區按住（`hid_mouse_top_fly_active`，明確要
@@ -1634,7 +1708,8 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     // 區間，用姿態擋會讓頂部飛鼠斷掉（founder 2026-07-16 fh=1 sc=1 擋住）；②FSR 壓感觸發的
     // handfree（`bloc_control.c`，手臂/袖子壓到手錶）→ 保留姿態 switch，免得舉手腕時誤壓 FSR
     // 就在極端姿態亂飛（founder 2026-07-16「沒按頂部、舉到角度就變自由模式」）。移動鎖都保留。
-    else if (!mouse_movement_lock && get_hid_mouse_handfree_mode() &&
+    else if (!mouse_movement_lock && !s_touch_cursor_owned &&
+             get_hid_mouse_handfree_mode() &&
              (hid_mouse_top_fly_active() ||
               (!switch_freehand_mode && !switch_mouse_scroll_mode)))
     {
@@ -1642,7 +1717,12 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
            (防禦性 gate,非聚焦被搶 bug 的修法,見 instruction_list_lift_mic_view_open 註解)。 */
         extern bool instruction_list_lift_mic_view_open(void);
         if (!instruction_list_lift_mic_view_open())
+        {
+            /* handfree 飛鼠也走互鎖:送游標了就鎖住觸控板那條(對稱,先到先贏)。 */
+            if (delta_movement.x || delta_movement.y)
+                s_air_cursor_owned = true;
             report_air_mouse_data(&delta_movement, ts);
+        }
     }
     // else if (!mouse_movement_lock)
     // {

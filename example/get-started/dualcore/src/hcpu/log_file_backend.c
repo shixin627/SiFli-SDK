@@ -29,14 +29,14 @@
 #include <dfs_posix.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <ulog.h>
 #include <board.h>
 #include "communicate_update_image.h"
-
-#if !kReleaseMode
+#include "bloc_filesystem.h"   /* watch -> phone file push (0x52/0x53/0x54) */
 
 extern void rt_assert_set_hook(void (*hook)(const char *ex, const char *func,
                                             rt_size_t line));
@@ -44,6 +44,10 @@ extern void rt_hw_exception_install(rt_err_t (*handler)(void *context));
 
 #define LOG_DIR                 "/logs"
 #define LOG_FILE_EXT            ".log"
+/* A crash log renamed to this has already been handed to the phone; it is
+ * kept (not deleted) so it can still be pulled manually, and is reclaimed by
+ * the normal prune along with ordinary .log files. */
+#define LOG_SENT_EXT            ".sent"
 
 #define LOG_FILE_MAX_SIZE       (256 * 1024)   /* per file cap: 256 KB */
 #define LOG_DIR_MAX_SIZE        (1024 * 1024)  /* total folder cap: 1 MB */
@@ -51,8 +55,24 @@ extern void rt_hw_exception_install(rt_err_t (*handler)(void *context));
 #define LOG_RING_BUF_SIZE       8192           /* MUST be power of 2 */
 #define LOG_RING_MASK           (LOG_RING_BUF_SIZE - 1)
 #define LOG_FLUSH_THRESHOLD     512
+
+#if kReleaseMode
+/* Release units run this backend 24/7 on a sealed device, so the flush
+ * cadence is a durability/evidence trade-off rather than a dev convenience:
+ *   - too fast: the NAND gets hammered for the product's whole service life,
+ *     and frequent flash writes can stall XIP -> GUI starves -> WDT reboot,
+ *     i.e. the logger becomes a crash cause of its own.
+ *   - too slow: a WDT reset loses whatever is still in the ring buffer, and
+ *     unlike assert/HardFault there is no hook to rescue it.
+ * 500 ms x fsync-every-2 lands physical writes ~1 s apart while capping the
+ * WDT-case loss at ~1 s. Idle cycles cost nothing either way — flush_once()
+ * returns early when the drain came back empty. */
+#define LOG_FLUSH_INTERVAL_MS   500
+#define LOG_FSYNC_EVERY_N       2
+#else
 #define LOG_FLUSH_INTERVAL_MS   100
 #define LOG_FSYNC_EVERY_N       1              /* fsync on every non-empty flush */
+#endif
 
 #define LOG_FLUSH_STACK         2048
 #define LOG_FLUSH_PRIO          28
@@ -135,7 +155,10 @@ static void prune_log_dir(const char *keep_path)
     while ((de = readdir(dir)) != NULL && count < LOG_DIR_SCAN_MAX)
     {
         const char *ext = strrchr(de->d_name, '.');
-        if (ext == NULL || strcmp(ext, LOG_FILE_EXT) != 0)
+        /* .sent files count too — they are pushed crash logs kept for manual
+         * retrieval, and would otherwise sit outside the folder cap forever. */
+        if (ext == NULL || (strcmp(ext, LOG_FILE_EXT) != 0 &&
+                            strcmp(ext, LOG_SENT_EXT) != 0))
         {
             continue;
         }
@@ -348,6 +371,12 @@ static void log_file_emergency_flush(void)
     in_emergency_flush = 0;
 }
 
+/* Crash-log auto-push state, consumed by the flush thread below and defined
+ * in full further down (next to the /logs scanning helpers). */
+static char pending_crash_path[LOG_PATH_MAX];
+static rt_tick_t crash_push_due_tick;
+static void push_pending_crash_log(void);
+
 static void flush_thread_entry(void *param)
 {
     (void)param;
@@ -372,7 +401,53 @@ static void flush_thread_entry(void *param)
             continue;
         }
         flush_once(&fsync_ctr);
+
+        /* A crash log inherited from the previous boot waits here until BLE
+         * has had time to reconnect — pushing it at boot just fails. Runs at
+         * most once per boot: push_pending_crash_log() clears the path. */
+        if (pending_crash_path[0] != '\0' &&
+            rt_tick_get() >= crash_push_due_tick)
+        {
+            push_pending_crash_log();
+        }
     }
+}
+
+/* Copy `len` bytes into the ring buffer. Returns bytes used after the copy,
+ * or 0 if the payload did not fit (counted into dropped_bytes instead).
+ * Shared by the ulog backend callback and the crash-report writer. */
+static rt_uint32_t ring_write(const char *log, size_t len)
+{
+    rt_base_t flags = rt_hw_interrupt_disable();
+
+    rt_uint32_t h = ring_head;
+    rt_uint32_t t = ring_tail;
+    rt_uint32_t used = h - t;
+    rt_uint32_t avail = LOG_RING_BUF_SIZE - used;
+
+    if (len > avail)
+    {
+        dropped_bytes += (rt_uint32_t)len;
+        rt_hw_interrupt_enable(flags);
+        return 0;
+    }
+
+    rt_uint32_t h_idx = h & LOG_RING_MASK;
+    rt_uint32_t first = LOG_RING_BUF_SIZE - h_idx;
+    if (len <= first)
+    {
+        rt_memcpy(&ring_buf[h_idx], log, len);
+    }
+    else
+    {
+        rt_memcpy(&ring_buf[h_idx], log, first);
+        rt_memcpy(&ring_buf[0], log + first, len - first);
+    }
+    ring_head = h + (rt_uint32_t)len;
+    used += (rt_uint32_t)len;
+
+    rt_hw_interrupt_enable(flags);
+    return used;
 }
 
 static void log_file_output(struct ulog_backend *backend, rt_uint32_t level,
@@ -397,35 +472,7 @@ static void log_file_output(struct ulog_backend *backend, rt_uint32_t level,
         return;
     }
 
-    rt_base_t flags = rt_hw_interrupt_disable();
-
-    rt_uint32_t h = ring_head;
-    rt_uint32_t t = ring_tail;
-    rt_uint32_t used = h - t;
-    rt_uint32_t avail = LOG_RING_BUF_SIZE - used;
-
-    if (len > avail)
-    {
-        dropped_bytes += (rt_uint32_t)len;
-        rt_hw_interrupt_enable(flags);
-        return;
-    }
-
-    rt_uint32_t h_idx = h & LOG_RING_MASK;
-    rt_uint32_t first = LOG_RING_BUF_SIZE - h_idx;
-    if (len <= first)
-    {
-        rt_memcpy(&ring_buf[h_idx], log, len);
-    }
-    else
-    {
-        rt_memcpy(&ring_buf[h_idx], log, first);
-        rt_memcpy(&ring_buf[0], log + first, len - first);
-    }
-    ring_head = h + (rt_uint32_t)len;
-    used += (rt_uint32_t)len;
-
-    rt_hw_interrupt_enable(flags);
+    rt_uint32_t used = ring_write(log, len);
 
     if (used >= LOG_FLUSH_THRESHOLD && flush_sem != RT_NULL)
     {
@@ -446,23 +493,230 @@ static void log_file_flush_cb(struct ulog_backend *backend)
     }
 }
 
+/* ARM v8-M architectural exception stack frame. The SDK hands the exception
+ * hook `&exception_info->stack_frame.exception_stack_frame`; the layout is
+ * fixed by hardware, so mirror it here rather than reaching into cpuport.c's
+ * private struct definitions. */
+struct crash_exc_frame
+{
+    rt_uint32_t r0, r1, r2, r3, r12, lr, pc, psr;
+};
+
+#define CRASH_LINE_MAX 128
+
+/* Write one formatted line straight into the ring buffer, bypassing ulog.
+ * The SDK dumps the crash context with rt_kprintf, which reaches the console
+ * only — on a sealed unit there is no console, so the registers would be lost
+ * entirely. Called with interrupts already disabled by the fault path. */
+static void crash_printf(const char *fmt, ...)
+{
+    /* static, not on-stack: the faulting thread's stack may be nearly
+     * exhausted (stack overflow is itself a common crash cause). Only ever
+     * reached from assert / exception context, which fires once. */
+    static char line[CRASH_LINE_MAX];
+    va_list args;
+
+    va_start(args, fmt);
+    rt_int32_t n = rt_vsnprintf(line, sizeof(line), fmt, args);
+    va_end(args);
+
+    if (n <= 0)
+    {
+        return;
+    }
+    if (n > (rt_int32_t)sizeof(line) - 1)
+    {
+        n = (rt_int32_t)sizeof(line) - 1;   /* truncated */
+    }
+    ring_write(line, (size_t)n);
+}
+
+/* Tail shared by both crash kinds: who was running and how much heap was
+ * left. Heap exhaustion shows up as an allocation-failure assert somewhere
+ * unrelated, so the numbers matter more than they look. */
+static void crash_report_tail(void)
+{
+    rt_thread_t self = rt_thread_self();
+    rt_uint32_t total = 0, used = 0, max_used = 0;
+
+    crash_printf("thread : %s\n", (self != RT_NULL) ? self->name : "(none)");
+    rt_memory_info(&total, &used, &max_used);
+    crash_printf("heap   : total=%u used=%u max=%u\n",
+                 (unsigned)total, (unsigned)used, (unsigned)max_used);
+    crash_printf("=== CRASH END ===\n");
+}
+
 static rt_err_t log_file_exception_hook(void *context)
 {
-    (void)context;
+    const struct crash_exc_frame *f = (const struct crash_exc_frame *)context;
+
+    if (f != RT_NULL)
+    {
+        crash_printf("\n=== CRASH: HARDFAULT ===\n");
+        crash_printf("pc=%08x lr=%08x psr=%08x\n", f->pc, f->lr, f->psr);
+        crash_printf("r0=%08x r1=%08x r2=%08x r3=%08x r12=%08x\n",
+                     f->r0, f->r1, f->r2, f->r3, f->r12);
+        crash_printf("cfsr=%08x hfsr=%08x mmfar=%08x bfar=%08x\n",
+                     (unsigned)SCB->CFSR, (unsigned)SCB->HFSR,
+                     (unsigned)SCB->MMFAR, (unsigned)SCB->BFAR);
+        crash_report_tail();
+    }
+
     log_file_emergency_flush();
-    return RT_EOK;
+
+    /* MUST NOT return RT_EOK. The SDK's handle_exception() bails out the
+     * moment the hook reports RT_EOK (cortex-m33/cpuport.c), skipping the
+     * whole register / thread / fault-status dump that follows — which
+     * silently blinds the UART console too, not just this backend. */
+    return -RT_ERROR;
 }
 
 static void log_file_assert_hook(const char *ex, const char *func,
                                  rt_size_t line)
 {
-    (void)ex;
-    (void)func;
-    (void)line;
+    crash_printf("\n=== CRASH: ASSERT ===\n");
+    if (func != RT_NULL)
+    {
+        crash_printf("at     : %s:%d (%s)\n", func, (int)line,
+                     (ex != RT_NULL) ? ex : "?");
+    }
+    else
+    {
+        /* ASSERT_OPTIMIZE_1 builds pass the return address in `line` and
+         * no function name — resolve the address against the .axf/.map. */
+        crash_printf("at     : addr 0x%08x\n", (unsigned)line);
+    }
+    crash_report_tail();
+
     log_file_emergency_flush();
 }
 
+/* ---- crash log auto-push -------------------------------------------------
+ * A crash the user hits in the field is only worth recording if it comes
+ * back to us — a sealed unit has no console and no developer app. On boot we
+ * look for a previous session's log whose tail carries a crash marker and
+ * hand it to the phone over the existing file-sync path (0x52/0x53/0x54).
+ *
+ * The file is renamed to .sent *before* the push, not after: sync_file()
+ * only queues the transfer, so renaming afterwards would pull the file out
+ * from under the transfer thread. The rename is also what stops the next
+ * boot from pushing the same crash again. */
+#define CRASH_MARKER            "=== CRASH:"
+#define CRASH_TAIL_SCAN         512      /* marker is always at end of file */
+#define CRASH_PUSH_DELAY_MS     60000    /* give BLE time to reconnect */
+
+/* Read the tail of `path` and report whether an assert / HardFault marker is
+ * in it. Only the last CRASH_TAIL_SCAN bytes are read — the device reset
+ * immediately after the hooks wrote it, so it can only be at the very end. */
+static int log_tail_has_crash_marker(const char *path)
+{
+    /* static: called from the flush thread, whose stack is only 2 KB. */
+    static char tail[CRASH_TAIL_SCAN + 1];
+    struct stat st;
+
+    if (stat(path, &st) != 0 || st.st_size <= 0)
+    {
+        return 0;
+    }
+
+    int fd = open(path, O_RDONLY);
+    if (fd < 0)
+    {
+        return 0;
+    }
+
+    off_t from = (st.st_size > CRASH_TAIL_SCAN)
+                 ? (st.st_size - CRASH_TAIL_SCAN) : 0;
+    lseek(fd, from, SEEK_SET);
+    int n = read(fd, tail, CRASH_TAIL_SCAN);
+    close(fd);
+
+    if (n <= 0)
+    {
+        return 0;
+    }
+    tail[n] = '\0';
+    return (strstr(tail, CRASH_MARKER) != NULL) ? 1 : 0;
+}
+
+/* Scan /logs for a sealed file that ended in a crash. `keep_path` is the file
+ * this boot just opened and is never a candidate. */
+static void find_crashed_log(const char *keep_path)
+{
+    DIR *dir = opendir(LOG_DIR);
+    if (dir == NULL)
+    {
+        return;
+    }
+
+    struct dirent *de;
+    while ((de = readdir(dir)) != NULL)
+    {
+        const char *ext = strrchr(de->d_name, '.');
+        if (ext == NULL || strcmp(ext, LOG_FILE_EXT) != 0)
+        {
+            continue;   /* already-pushed files carry LOG_SENT_EXT */
+        }
+
+        char full[LOG_PATH_MAX];
+        rt_snprintf(full, sizeof(full), "%s/%s", LOG_DIR, de->d_name);
+        if (keep_path != NULL && strcmp(full, keep_path) == 0)
+        {
+            continue;
+        }
+        if (!log_tail_has_crash_marker(full))
+        {
+            continue;
+        }
+
+        rt_strncpy(pending_crash_path, full, sizeof(pending_crash_path) - 1);
+        pending_crash_path[sizeof(pending_crash_path) - 1] = '\0';
+        rt_kprintf("[log_file_be] crash log found: %s\n", pending_crash_path);
+        break;
+    }
+    closedir(dir);
+}
+
+static void push_pending_crash_log(void)
+{
+    char sent[LOG_PATH_MAX];
+    char *ext = strrchr(pending_crash_path, '.');
+
+    if (ext != NULL)
+    {
+        int stem = (int)(ext - pending_crash_path);
+        rt_snprintf(sent, sizeof(sent), "%.*s" LOG_SENT_EXT, stem,
+                    pending_crash_path);
+    }
+    else
+    {
+        rt_snprintf(sent, sizeof(sent), "%s" LOG_SENT_EXT, pending_crash_path);
+    }
+
+    if (rename(pending_crash_path, sent) != 0)
+    {
+        /* Can't mark it — skip rather than risk pushing it on every boot. */
+        rt_kprintf("[log_file_be] rename %s failed, skip push\n",
+                   pending_crash_path);
+        pending_crash_path[0] = '\0';
+        return;
+    }
+
+    /* delete_after_sync = false on purpose: bloc_filesystem deletes the file
+     * whether or not the transfer succeeded, which would throw the only copy
+     * of the evidence away whenever BLE happened to be down. The .sent file
+     * stays for manual retrieval and is reclaimed by the normal prune. */
+    if (bloc_file_system.sync_file != NULL)
+    {
+        rt_kprintf("[log_file_be] pushing crash log %s\n", sent);
+        bloc_file_system.sync_file(sent, false);
+    }
+    pending_crash_path[0] = '\0';
+}
+
 static volatile int infra_ready;   /* dir + sem + flush thread + hooks ready */
+
+int log_file_backend_set_enabled(int enable);   /* defined below */
 
 static int log_file_backend_init(void)
 {
@@ -504,9 +758,17 @@ static int log_file_backend_init(void)
 
     infra_ready = 1;
 
+#if kReleaseMode
+    /* Release builds have no developer app (app_developer.c is itself gated
+     * on !kReleaseMode), so there is no UI to switch this on — and a crash
+     * that only reproduces in the field can't be caught by a logger that
+     * someone has to enable first. Start recording at boot. */
+    log_file_backend_set_enabled(1);
+#else
     /* File log is DISABLED by default; user turns it on via the developer
      * app switch. Until then, no file is opened and the backend is not
      * registered with ulog — zero overhead. */
+#endif
     return RT_EOK;
 }
 /* Runs after INIT_ENV_EXPORT where the root fs is mounted */
@@ -539,6 +801,17 @@ int log_file_backend_set_enabled(int enable)
         backend_ready = 1;
         ulog_backend_register(&log_file_be, "filebe", RT_FALSE);
         rt_kprintf("[log_file_be] enabled\n");
+
+        /* First enable of this boot: look for a log the previous session
+         * left behind with a crash marker in its tail. */
+        static int crash_scan_done;
+        if (!crash_scan_done)
+        {
+            crash_scan_done = 1;
+            find_crashed_log(current_file_path);
+            crash_push_due_tick = rt_tick_get() +
+                                  rt_tick_from_millisecond(CRASH_PUSH_DELAY_MS);
+        }
     }
     else
     {
@@ -562,6 +835,7 @@ int log_file_backend_set_enabled(int enable)
     return RT_EOK;
 }
 
+#if !kReleaseMode
 /* Shell: force the ring buffer to drain and fsync so the current file on
  * disk is up to date (useful before copying it off via file browser). */
 static void logfe_sync(int argc, char **argv)
@@ -620,4 +894,4 @@ static void logfe_enable(int argc, char **argv)
 }
 MSH_CMD_EXPORT(logfe_enable, enable or disable file log backend);
 
-#endif
+#endif /* !kReleaseMode — MSH dev commands only; the backend itself ships */

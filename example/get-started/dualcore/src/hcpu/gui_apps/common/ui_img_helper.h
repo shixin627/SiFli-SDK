@@ -147,6 +147,24 @@ LV_IMG_DECLARE(icon_slack);
 LV_IMG_DECLARE(icon_lark);
 LV_IMG_DECLARE(icon_reddit);
 LV_IMG_DECLARE(icon_skaiwalk);
+/* Action type glyphs — the watch's copy of the SAME icon the phone shows on a saved
+   Action's row and on the "New Action" card it was created from (founder 2026-07-24).
+   Rendered straight from the phone's vector drawables in the brand sky accent, so both
+   surfaces literally display one image. Selected by the phone-pushed "ico" slug — see
+   action_type_icon() in lv_instruction_list_layout.c. */
+LV_IMG_DECLARE(icon_act_music);
+LV_IMG_DECLARE(icon_act_navigation);
+LV_IMG_DECLARE(icon_act_drive);
+LV_IMG_DECLARE(icon_act_webpage);
+LV_IMG_DECLARE(icon_act_translate);
+LV_IMG_DECLARE(icon_act_currency);
+LV_IMG_DECLARE(icon_act_stock);
+LV_IMG_DECLARE(icon_act_weather);
+LV_IMG_DECLARE(icon_act_notification);
+LV_IMG_DECLARE(icon_act_camera);
+LV_IMG_DECLARE(icon_act_watchapp);
+LV_IMG_DECLARE(icon_act_chat);
+LV_IMG_DECLARE(icon_act_generic);
 LV_IMG_DECLARE(mouse_mode_icon);
 LV_IMG_DECLARE(skaiwalkicon);
 LV_IMG_DECLARE(img_charging);
@@ -232,6 +250,19 @@ LV_IMG_DECLARE(notification_img);
 #define ICON_LARK ((const void *)&icon_lark)
 #define ICON_REDDIT ((const void *)&icon_reddit)
 #define ICON_SKAIWALK ((const void *)&icon_skaiwalk)
+#define ICON_ACT_MUSIC ((const void *)&icon_act_music)
+#define ICON_ACT_NAVIGATION ((const void *)&icon_act_navigation)
+#define ICON_ACT_DRIVE ((const void *)&icon_act_drive)
+#define ICON_ACT_WEBPAGE ((const void *)&icon_act_webpage)
+#define ICON_ACT_TRANSLATE ((const void *)&icon_act_translate)
+#define ICON_ACT_CURRENCY ((const void *)&icon_act_currency)
+#define ICON_ACT_STOCK ((const void *)&icon_act_stock)
+#define ICON_ACT_WEATHER ((const void *)&icon_act_weather)
+#define ICON_ACT_NOTIFICATION ((const void *)&icon_act_notification)
+#define ICON_ACT_CAMERA ((const void *)&icon_act_camera)
+#define ICON_ACT_WATCHAPP ((const void *)&icon_act_watchapp)
+#define ICON_ACT_CHAT ((const void *)&icon_act_chat)
+#define ICON_ACT_GENERIC ((const void *)&icon_act_generic)
 #define MOUSE_MODE_ICON ((const void *)&mouse_mode_icon)
 #define SKAIWALKICON ((const void *)&skaiwalkicon)
 #define IMG_CHARGING ((const void *)&img_charging)

@@ -871,6 +871,12 @@ static void remove_from_input_buffer(void)
  * @brief Helper: set translate_y style (used as lv_anim exec callback)
  */
 extern void set_stop_mouse_move(bool stop);
+/* 觸控板 vs 飛鼠先到先贏互鎖(bloc_motion_tracking.c,founder 2026-07-24)。宣告放這麼前面
+   是因為 handle_pressing_event 送游標前要先問 mouse_air_cursor_owned()。 */
+extern bool mouse_air_cursor_owned(void);
+extern void bloc_touch_cursor_claim(void);
+extern void bloc_cursor_owner_reset(void);
+extern void bloc_touch_finger_active(void); /* 手指在滑的「前哨」信號:比正式 claim 更早擋飛鼠 */
 static void anim_set_translate_y(void *obj, int32_t v)
 {
     lv_obj_set_style_translate_y((lv_obj_t *)obj, v, 0);
@@ -3286,7 +3292,10 @@ static void handle_pressing_event(lv_indev_t *indev,
             //       delta_y);
             // if (abs(delta_x) < 60 && abs(delta_y) < 60)
             {
-                control_provider.ble_hid_mouse_move(delta_x * 1.5, delta_y * 1.5);
+                /* 飛鼠先到=觸控板讓出游標(先到先贏互鎖)。last_point 照更新——不更新的話
+                   讓出期間 delta 會一直對舊點累積,鎖一解除就爆衝一大步。 */
+                if (!mouse_air_cursor_owned())
+                    control_provider.ble_hid_mouse_move(delta_x * 1.5, delta_y * 1.5);
                 last_point.x = current_point->x;
                 last_point.y = current_point->y;
             }
@@ -3526,10 +3535,16 @@ static bool s_motion_drag = false;   /* 體感拖曳中:左鍵按住,游標由 g
 static bool s_edge_swipe_armed = false; /* press 起手在右緣,等左拉判定 */
 static lv_point_t s_edge_start;
 static bool s_hw_pull_active = false; /* 右緣拉出跟手中(press 由本觸控機持有並轉發位移) */
+/* 未 arm 階段「手指 vs 手腕」先到先贏的手指基準:手腕在動時追一半(慢跟隨),把手腕轉動
+   帶著手指在板上滑的連動位移濾掉——不濾的話 5px 門檻每次都先被連動撞破、觸控板永遠先
+   贏,07-20「按住不動、動手錶=游標動」就實質失效(沿用 07-17 圓盤的同一套區分器)。 */
+static lv_point_t s_free_ref;
+/* 手指「前哨」軟門檻(founder 2026-07-24「有點太容易變飛鼠」):比 5px 正式 claim 更敏感,
+   手指一開始滑就先擋飛鼠,不用等累積到 claim。用手指意圖(有沒有在滑)仲裁,取代之前靠
+   gyro 門檻猜意圖的拉扯——那個高了體感有停頓、低了滑板易變飛鼠,二選一。 */
+#define FINGER_ACTIVE_PX 3
 static bool s_dial_drag = false;    /* 拖曳物件中：1:1 相對移動 + 左鍵按著 */
 static lv_point_t s_dial_drag_last; /* 拖曳中上一幀手指位置，算 1:1 相對移動量 */
-static lv_point_t s_dial_drag_ref;  /* 拖曳判定基準：手指離此累積位移超門檻＝主動滑→拖曳；
-                                       手腕在動(寫字)時跟隨當前位置，讓手指連動不累積 */
 
 static void dial_hold_cancel(void)
 {
@@ -3554,7 +3569,6 @@ static void dial_hold_timer_cb(lv_timer_t *t)
        左鍵會按在使用者瞄準的位置,大震後的新甩動才開始拖)。 */
     bloc_press_free_move_set(false);
     bloc_wrist_accum_reset();
-    s_dial_drag_ref = s_dial_press_start; /* 拖曳累積位移基準：起手＝arm 位置 */
     s_hw_hold_armed = true;
 }
 
@@ -3564,6 +3578,10 @@ static void dial_hold_on_pressed(lv_indev_t *indev)
 {
     dial_hold_cancel();
     s_hw_hold_armed = false; /* 新一次按下:清上次殘留(正常已在 RELEASED/PRESS_LOST 清過) */
+    /* 先到先贏的手指基準:每次 press 都要重設,含下面 early return 的弧形區起手——不重設
+       就會拿上一次 press 的殘留座標來比,一進 PRESSING 距離就爆表、誤判手指贏鎖住飛鼠。 */
+    if (indev)
+        lv_indev_get_point(indev, &s_free_ref);
     if (press_in_arc_zone)
         return; /* 弧形滾動起手不 arm */
     motor_pattern_tap(); /* 小震:按下回饋(founder 2026-07-20) */
@@ -3629,6 +3647,7 @@ static void dial_drag_state_reset(void)
     s_edge_swipe_armed = false;
     motion_drag_end(); /* 體感拖曳殘留(冪等) */
     bloc_press_free_move_set(false);
+    bloc_cursor_owner_reset(); /* 離開/暫停 app:互鎖殘留會跟著帶到下次進 app */
     if (mouse_dial_active())
         mouse_dial_cancel();              /* 清側立圓盤(含 pose 旗標)+桌面 hide 圓盤 */
     if (s_dial_drag)
@@ -3712,20 +3731,19 @@ static void plain_event_cb(lv_event_t *e)
         lv_coord_t dx = now_point.x - s_dial_press_start.x;
         lv_coord_t dy = now_point.y - s_dial_press_start.y;
 
-        /* (2) 長按已 arm(1s,大震後):二選一先到先贏(founder 2026-07-20)——
-           手指主動滑離基準超門檻=觸控 1:1 拖曳;手腕/手錶在動(gyro)=體感拖曳。
-           手腕在動時基準「慢跟隨」(追一半)濾掉手腕連動的手指位移,手指判定
-           先看(明確滑動優先),沒過門檻才輪到手腕(沿用圓盤時代調校)。 */
+        /* (2) 長按已 arm:二選一先到先贏(founder 2026-07-20)——手指主動滑=觸控 1:1 拖曳;
+           手腕/手錶在動(gyro 累積過門檻)=體感拖曳。 */
         if (s_hw_hold_armed)
         {
-            if (mouse_dial_wrist_moving())
-            {
-                s_dial_drag_ref.x += (now_point.x - s_dial_drag_ref.x) / 2;
-                s_dial_drag_ref.y += (now_point.y - s_dial_drag_ref.y) / 2;
-            }
-            int rdx = now_point.x - s_dial_drag_ref.x;
-            int rdy = now_point.y - s_dial_drag_ref.y;
-            if (LV_ABS(rdx) + LV_ABS(rdy) > DIAL_DRAG_DIST_PX)
+            /* 判定源用「原始累積位移」fdist(相對 arm 起點)。手指拖的反作用力讓手腕微動(每幀
+               gyro≥3),舊版的慢跟隨基準會去追手指、把主動位移吃掉,同時 wrist_accum 被同一副
+               作用灌到門檻,雙雙把手指拖誤導成體感拖(founder 2026-07-24「長按手指拖變飛鼠、
+               不能手指滑動」)。原始位移不受這污染。 */
+            int fdist = LV_ABS(dx) + LV_ABS(dy);
+            /* 手指在滑就刷前哨→凍結 bloc 的 wrist_accum,免得手指副作用 gyro 觸發體感拖。 */
+            if (fdist > FINGER_ACTIVE_PX)
+                bloc_touch_finger_active();
+            if (fdist > DIAL_DRAG_DIST_PX)
             {
                 s_hw_hold_armed = false;
                 dial_drag_begin(&now_point);
@@ -3733,7 +3751,7 @@ static void plain_event_cb(lv_event_t *e)
             }
             if (mouse_wrist_accum_triggered())
             {
-                /* 大震後手錶移動累積量過門檻=進體感拖曳(慢慢動也會累積到) */
+                /* 手指幾乎沒動、純手錶大動才到這(手指在滑時 wrist_accum 被凍結)=真體感拖。 */
                 s_hw_hold_armed = false;
                 motion_drag_begin();
             }
@@ -3748,6 +3766,28 @@ static void plain_event_cb(lv_event_t *e)
            scrolling→ble_hid_mouse_move 1.5x 移游標），並取消 arm 計時（手指移動＝不是長按）。
            按住不動滿 500ms 才 arm；500ms 後手指移動改走 (2) 的拖曳。手指沒動時一樣走
            handle_pressing_event（tap 判斷）。 */
+        /* (3a) 觸控板 vs 飛鼠先到先贏(founder 2026-07-24:兩條都送 ble_hid_mouse_move,
+           會同時推游標)。手指基準慢跟隨扣掉手腕連動後還滑得動＝手指先到,claim 走觸控板
+           並鎖住飛鼠;飛鼠側由 bloc 在 gyro 累積過解鎖門檻時 claim。兩邊 claim 前都先問
+           對方贏了沒=不會雙鎖。贏家鎖到放開手指為止(RELEASED/PRESS_LOST 才 reset)。 */
+        if (!mouse_air_cursor_owned())
+        {
+            if (mouse_dial_wrist_moving())
+            {
+                s_free_ref.x += (now_point.x - s_free_ref.x) / 2;
+                s_free_ref.y += (now_point.y - s_free_ref.y) / 2;
+            }
+            lv_coord_t fd = LV_ABS(now_point.x - s_free_ref.x) +
+                            LV_ABS(now_point.y - s_free_ref.y);
+            /* 前哨:手指一滑(fd 過軟門檻)就先擋飛鼠——不用等到 5px 正式 claim。滑觸控板時
+               手指一動就壓過飛鼠,不被手腕微動搶走游標。體感情境手指按住不動、慢跟隨把 fd
+               收斂到 0,不觸發,飛鼠照樣即時。 */
+            if (fd > FINGER_ACTIVE_PX)
+                bloc_touch_finger_active();
+            if (fd > SCROLLING_THRESHOLD)
+                bloc_touch_cursor_claim();
+        }
+
         if (s_dial_hold_timer &&
             (LV_ABS(dx) + LV_ABS(dy) > DIAL_HOLD_DRIFT_CANCEL_PX ||
              mouse_wrist_accum_triggered()))
@@ -3760,6 +3800,8 @@ static void plain_event_cb(lv_event_t *e)
     case LV_EVENT_RELEASED:
         s_edge_swipe_armed = false;
         bloc_press_free_move_set(false); /* 放開=停按住期間的 gyro 自由移動 */
+        bloc_cursor_owner_reset(); /* 放開=互鎖歸零。不清的話 s_touch_cursor_owned 殘留會把
+                                      handfree 飛鼠一路鎖到下次按下 */
         if (s_hw_pull_active)
         {
             /* 拉出放開:commit 判定交給 follow_end(距離/快甩),跳過 click 判定 */
@@ -3822,6 +3864,7 @@ static void plain_event_cb(lv_event_t *e)
         }
         motion_drag_end(); /* 體感拖曳被搶=放左鍵停驅動(冪等) */
         bloc_press_free_move_set(false);
+        bloc_cursor_owner_reset(); /* press 被搶=互鎖歸零(同 RELEASED) */
         dial_hold_cancel();
         s_hw_hold_armed = false;
         s_edge_swipe_armed = false;
