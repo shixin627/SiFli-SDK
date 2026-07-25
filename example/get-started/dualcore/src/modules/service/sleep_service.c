@@ -86,6 +86,13 @@
 #define SLEEP_REST_WINDOW_START_H 21   /* overnight window: 21:00 ..          */
 #define SLEEP_REST_WINDOW_END_H   11   /* .. 10:59 local wall-clock           */
 
+/* TEMP accel diagnostic (per-second raw accel + delta + per-minute SLPMIN to the
+   HCPU log / COM12 via notify_debug_log). DISABLED for overnight collection: the
+   per-second debug_log woke HCPU every tick (battery drain over a full night).
+   The per-minute data now rides the sleep_diag CSV path (KEY_SLEEP_DIAG) to the
+   phone instead. Re-#define ONLY for a cabled daytime still-wrist experiment. */
+/* #define SLEEP_ACCEL_DIAG */
+
 typedef struct
 {
     rt_timer_t timer;
@@ -223,8 +230,19 @@ static void prv_sample_once(void)
 {
     /* Activity: inter-sample |Δaccel|, integer LSB. Read direct from
        BMI270 so it works in screen-off / hand-tracking-off modes. */
-    s_env.accel_activity_sum += prv_accel_delta_activity();
+    uint32_t accel_d = prv_accel_delta_activity();
+    s_env.accel_activity_sum += accel_d;
     s_env.accel_sample_count++;
+#ifdef SLEEP_ACCEL_DIAG
+    if (watch_sys_sync.notify_debug_log)
+    {
+        char dbg[96];
+        rt_snprintf(dbg, sizeof(dbg), "[SLPACC] ax=%d ay=%d az=%d d=%u sum=%u",
+                    (int)s_env.prev_ax, (int)s_env.prev_ay, (int)s_env.prev_az,
+                    (unsigned)accel_d, (unsigned)s_env.accel_activity_sum);
+        watch_sys_sync.notify_debug_log(dbg);
+    }
+#endif
 
     /* HR: latest BPM from hr_service. 0 means PPG not running or no
        valid pulse. Note: PPG is gated off during sleep on most boards to
@@ -473,6 +491,40 @@ static void prv_minute_eval(uint32_t utc_now)
           (unsigned)out->hr_wake_veto_active, (unsigned)out->learned_rhr_bpm,
           (unsigned)out->last_hr_baseline_bpm, (unsigned)s_env.rest_candidate,
           (unsigned)out->total_sleep_min);
+
+#ifdef SLEEP_ACCEL_DIAG
+    if (watch_sys_sync.notify_debug_log)
+    {
+        char dbg[120];
+        rt_snprintf(dbg, sizeof(dbg),
+                    "[SLPMIN] act=%u sc=%u stg=%u veto=%u rhr=%u base=%u rest=%u tot=%u",
+                    (unsigned)input.activity_count, (unsigned)out->last_cole_kripke_score,
+                    (unsigned)out->stage, (unsigned)out->hr_wake_veto_active,
+                    (unsigned)out->learned_rhr_bpm, (unsigned)out->last_hr_baseline_bpm,
+                    (unsigned)s_env.rest_candidate, (unsigned)out->total_sleep_min);
+        watch_sys_sync.notify_debug_log(dbg);
+    }
+#endif
+
+    /* Per-minute sleep diagnostic to phone (KEY_SLEEP_DIAG) — nightly CSV for
+       offline SQI-threshold + missed-night attribution. hr_std = SQI candidate.
+       Not gated by SLEEP_ACCEL_DIAG: this is the load-bearing collection path. */
+    if (watch_sys_sync.notify_sleep_diag)
+    {
+        watch_sys_sleep_diag_t drec = {
+            .ts     = utc_now,
+            .score  = (uint16_t)out->last_cole_kripke_score,
+            .hr     = input.hr_mean_bpm,
+            .hr_std = input.hr_std_bpm,
+            .stage  = (uint8_t)out->stage,
+            .veto   = (uint8_t)(out->hr_wake_veto_active ? 1 : 0),
+            .rhr    = out->learned_rhr_bpm,
+            .worn   = (uint8_t)(input.is_worn ? 1 : 0),
+            .rest   = (uint8_t)(s_env.rest_candidate ? 1 : 0),
+            .fresh  = (uint8_t)(input.hr_is_fresh ? 1 : 0),
+        };
+        watch_sys_sync.notify_sleep_diag(&drec);
+    }
 
     prv_emit_stage(out, utc_now);
 

@@ -58,6 +58,12 @@ bool commu_send_heart_curve_skip(uint32_t timestamp, uint8_t reason);
 bool commu_send_wear_diag(uint32_t ts, uint8_t evt, uint8_t status,
                           uint16_t dc_q4, uint16_t pi_e6,
                           uint16_t pi_range_e6, uint16_t imu_var_e4);
+/* Per-minute sleep-fusion diagnostic (KEY_SLEEP_DIAG 0x13, 14B LE). Phone
+   appends to a daily CSV for offline SQI + missed-night analysis. Temporary. */
+bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
+                           uint8_t hr_std, uint8_t stage, uint8_t veto,
+                           uint8_t rhr, uint8_t worn, uint8_t rest,
+                           uint8_t fresh);
 /* Push current SkaiWatchSys.sleep_state to the phone via KEY_RETURN_SLEEP_DATA.
    Called on every stage transition received from LCPU. The dart-side
    parser must mirror the layout of watch_sys_sleep_state_t. */

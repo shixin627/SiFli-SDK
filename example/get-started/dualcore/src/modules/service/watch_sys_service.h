@@ -49,6 +49,8 @@ extern "C"
             ((MSG_SERVICE_SYS_DATA_REQ + 16) | RSP_MSG_TYPE),
         MSG_SERVICE_WEAR_DIAG_IND =
             ((MSG_SERVICE_SYS_DATA_REQ + 17) | RSP_MSG_TYPE),
+        MSG_SERVICE_SLEEP_DIAG_IND =
+            ((MSG_SERVICE_SYS_DATA_REQ + 18) | RSP_MSG_TYPE),
     };
 
     typedef enum
@@ -210,6 +212,24 @@ extern "C"
         uint16_t imu_var_e4;   /* IMU variance * 1e4, clamped              */
     } watch_sys_wear_diag_t;
 
+    /* Per-minute sleep-fusion diagnostic record (LCPU -> HCPU). HCPU forwards
+       it via KEY_SLEEP_DIAG; cable-less units have no serial console, so this
+       is the only window into why a night was scored the way it was. hr_std is
+       the candidate PPG signal-quality (SQI/jitter) input. Temporary. */
+    typedef struct
+    {
+        uint32_t ts;       /* UTC second of the minute eval               */
+        uint16_t score;    /* Cole-Kripke activity score (last)           */
+        uint8_t  hr;       /* minute HR fed to fusion (0 = absent)        */
+        uint8_t  hr_std;   /* burst HR std — SQI candidate (jitter)       */
+        uint8_t  stage;    /* sleep_fusion_stage_t 0..4                   */
+        uint8_t  veto;     /* HR wake-veto active this minute (0/1)       */
+        uint8_t  rhr;      /* learned resting HR                          */
+        uint8_t  worn;     /* is_worn (0/1)                               */
+        uint8_t  rest;     /* rest-candidate dense gate active (0/1)      */
+        uint8_t  fresh;    /* HR this minute was a fresh burst (0/1)      */
+    } watch_sys_sleep_diag_t;
+
     typedef struct
     {
 #if defined(SOC_BF0_HCPU)
@@ -250,6 +270,7 @@ extern "C"
     void (*notify_minute_of_activity)(time_t utc_now, uint8_t steps,
                                       uint8_t orientation, uint16_t vmc);
     void (*notify_debug_log)(char *log);
+    void (*notify_sleep_diag)(const watch_sys_sleep_diag_t *rec);
 #endif
     } watch_sys_sync_t;
 
