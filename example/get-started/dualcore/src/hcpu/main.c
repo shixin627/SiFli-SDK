@@ -91,6 +91,26 @@ typedef struct
 static app_env_t g_app_env;
 static app_env_t *ble_app_get_env(void);
 
+/* 手錶「重生自我介紹」one-shot:手機(重新)訂閱 RX CCCD 後延遲 1.5s 主動送一次
+   device info(commu_send_device_info)。手機的 onDeviceInfo handler 會跑全套
+   resync(0x20 設備批重推 + 0x6b 錶盤清單 dedup 作廢+重推)。為什麼需要:手錶
+   重開機後,手機端的舊 GATT 連線常「無縫」恢復 —— app 層 auth 狀態機不重跑、
+   requestDeviceInfo 不再發,所有掛在「連線完成」上的補推保險全部不觸發,錶盤
+   清單就停在重生時的空白(founder 2026-07-25 實測)。CCCD 訂閱是手錶端唯一
+   可靠看得到的「對方在聽了」事件(手機 stack 層重連必重寫 CCCD),在這裡自我
+   介紹=把 pull 的主動權放在知道自己剛重生的一端。延遲 1.5s:避開 CCCD
+   callback(BLE thread)上下文直接 TX,也讓手機 service-discovery 尾流先跑完。
+   多送冪等 —— 手機側 resync 是 full-replace。 */
+static rt_timer_t s_devinfo_intro_timer = NULL;
+static void devinfo_intro_timeout(void *parameter)
+{
+    (void)parameter;
+    /* Timer callback context 不可拿 mutex(直接 commu_send 會在 rt_mutex_take
+       assert → boot loop,2026-07-25 實證)。只發 msg,LVGL thread 代送。 */
+    lvgl_msg_t msg = {.type = LVGL_MSG_TYPE_SEND_DEVICE_INFO};
+    lvgl_send_msg(msg);
+}
+
 #define USE_BLE_RSSI_CHECK_TIMER
 #ifdef USE_BLE_RSSI_CHECK_TIMER
 extern uint8_t ble_gap_get_remote_rssi(ble_gap_get_rssi_t *rssi);
@@ -440,6 +460,19 @@ static uint8_t ble_app_set_cbk(uint8_t conn_idx, sibles_set_cbk_t *para)
             SkaiWatchSys.paired_info.paired_num = 1;
             rt_memcpy((void *)SkaiWatchSys.paired_info.newest_addr,
                       (const void *)env->conn_para.peer_addr.addr, 6);
+            /* 重生自我介紹:延遲送 device info,見 s_devinfo_intro_timer 註解。 */
+            if (!s_devinfo_intro_timer)
+            {
+                rt_tick_t ticks = rt_tick_from_millisecond(1500);
+                s_devinfo_intro_timer =
+                    rt_timer_create("devinfo_intro", devinfo_intro_timeout, NULL,
+                                    ticks, RT_TIMER_FLAG_ONE_SHOT);
+            }
+            if (s_devinfo_intro_timer)
+            {
+                rt_timer_stop(s_devinfo_intro_timer); /* re-subscribe 重新計時 */
+                rt_timer_start(s_devinfo_intro_timer);
+            }
         }
         else
         {
