@@ -6117,13 +6117,27 @@ static lv_obj_t *list_arc_snap_cb(void *ctx)
 
 /* EAGER 兜底輪詢(見 instruction_list_init 尾註解):1s 週期 drain 0x6b op 佇列,
    免疫 lvgl_mq 洪流丟 APPLY 通知。空佇列時 apply_pending 內部 head==tail 立即
-   return=零成本。deinit 時刪除。 */
+   return=零成本。deinit 時刪除。
+   兼職②:deferred-refresh 逾期補跑 —— debounce 的 550ms one-shot lv_timer 真機
+   實測有時不 fire(deferred 之後 ~18s 才被下一個自然 refresh 帶動重繪 = founder
+   看到「語音查詢結果殘留、退出再進遲遲不變回 actions」)。這裡每秒檢查:pending
+   deferred 存在且距上次成功重繪已 >600ms → 直接補跑(bypass debounce),殘留最多
+   ~1s 內更正。 */
 static lv_timer_t *s_inst_op_drain_timer = NULL;
 static void inst_op_drain_tick_cb(lv_timer_t *t)
 {
     (void)t;
     extern void apply_pending_instruction_batch(void);
     apply_pending_instruction_batch();
+    if (s_pending_refresh_timer != NULL &&
+        (rt_tick_get() - s_last_refresh_tick) > rt_tick_from_millisecond(600))
+    {
+        LOG_I("deferred refresh overdue — flushing now");
+        lv_timer_del(s_pending_refresh_timer);
+        s_pending_refresh_timer = NULL;
+        s_last_refresh_tick = 0; /* bypass debounce for this catch-up run */
+        refresh_custom_instructions();
+    }
 }
 
 lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
