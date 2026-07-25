@@ -49,6 +49,11 @@ typedef enum
        Cable-less units have no serial console; this is their only way to
        expose nightly wear-detect internals (phone appends to a daily CSV). */
     KEY_WEAR_DIAG = 0x12,
+    /* Per-minute sleep-fusion diagnostic {ts:u32, score:u16, hr:u8, hr_std:u8,
+       stage:u8, veto:u8, rhr:u8, worn:u8, rest:u8, fresh:u8} = 14B LE. Phone
+       appends to a daily CSV for offline SQI-threshold + missed-night analysis.
+       Temporary diagnostic stream (mirrors KEY_WEAR_DIAG). */
+    KEY_SLEEP_DIAG = 0x13,
 } HEALTH_KEY;
 
 void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t length);

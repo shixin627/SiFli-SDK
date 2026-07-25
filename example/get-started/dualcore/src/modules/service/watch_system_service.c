@@ -232,6 +232,15 @@ static void notify_wear_diag(const watch_sys_wear_diag_t *rec)
     push_msg_to_hcpu(MSG_SERVICE_WEAR_DIAG_IND, rec, sizeof(*rec));
 }
 
+static void notify_sleep_diag(const watch_sys_sleep_diag_t *rec)
+{
+    /* Mirrors notify_wear_diag: forward a per-minute sleep-fusion diagnostic to
+       HCPU, which sends KEY_SLEEP_DIAG. Not gated by is_sleep_mode() — night is
+       exactly when these records matter (cable-less per-unit diagnosis). */
+    if (rec == NULL) return;
+    push_msg_to_hcpu(MSG_SERVICE_SLEEP_DIAG_IND, rec, sizeof(*rec));
+}
+
 static void notify_sleep_state(uint8_t mode, uint32_t timestamp_utc)
 {
     watch_sys_sleep_state_t data_ind;
@@ -527,6 +536,7 @@ static void register_watch_sys_service_funs(void)
     watch_sys_sync.notify_minute_of_activity = notify_minute_of_activity;
     watch_sys_sync.notify_sleep_state = notify_sleep_state;
     watch_sys_sync.notify_debug_log = notify_debug_log;
+    watch_sys_sync.notify_sleep_diag = notify_sleep_diag;
 }
 
 static int watch_sys_service_register(void)

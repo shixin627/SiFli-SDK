@@ -155,6 +155,41 @@ static void trigger_activity(void)
  * @param msg Pointer to the LVGL message structure
  */
 
+/* REFRESH_DEVICE_PAGER 的 trailing debounce(600ms 合併、尾緣執行)——為什麼需要
+   見 process_lvgl_message 該 case 的註解。LVGL thread only。 */
+static rt_tick_t s_pager_refresh_last = 0;
+static lv_timer_t *s_pager_refresh_timer = NULL;
+static void pager_refresh_deferred_cb(lv_timer_t *t)
+{
+    (void)t;
+    s_pager_refresh_timer = NULL; /* one-shot 已消費(LVGL 自刪),清懸空 handle */
+    s_pager_refresh_last = rt_tick_get();
+    extern void device_pager_refresh(void);
+    device_pager_refresh();
+}
+static void pager_refresh_debounced(void)
+{
+    rt_tick_t now = rt_tick_get();
+    if (s_pager_refresh_last != 0 &&
+        (now - s_pager_refresh_last) < rt_tick_from_millisecond(600))
+    {
+        if (s_pager_refresh_timer == NULL)
+        {
+            s_pager_refresh_timer = lv_timer_create(pager_refresh_deferred_cb, 650, NULL);
+            lv_timer_set_repeat_count(s_pager_refresh_timer, 1);
+        }
+        return; /* 已有尾緣排程 → 合併 */
+    }
+    s_pager_refresh_last = now;
+    if (s_pager_refresh_timer != NULL)
+    {
+        lv_timer_del(s_pager_refresh_timer);
+        s_pager_refresh_timer = NULL;
+    }
+    extern void device_pager_refresh(void);
+    device_pager_refresh();
+}
+
 static void process_lvgl_message(lvgl_msg_t *msg)
 {
     if (s_lvgl_thread == RT_NULL)
@@ -771,9 +806,24 @@ static void process_lvgl_message(lvgl_msg_t *msg)
     case LVGL_MSG_TYPE_REFRESH_DEVICE_PAGER:
     {
         /* ADR-0008 E7: re-render the device_pager on the LVGL thread after
-           communicate_parse_skailink updated SkaiWatchSys.device_registry. */
-        extern void device_pager_refresh(void);
-        device_pager_refresh();
+           communicate_parse_skailink updated SkaiWatchSys.device_registry.
+           TRAILING DEBOUNCE(600ms,實作見 pager_refresh_debounced):連線窗手機會
+           連發 0x01/0x03 靜態批(auth 首發 + firmware-ready resync + 重生自我介紹
+           resync,每台設備各一發 0x03),每發都全量 load_devices_from_registry +
+           refresh() 是秒級重活 —— 洪流把 LVGL thread 塞住 10-20s,清單批次的重繪
+           排在後面 = founder 看到「連線後進清單還是空、過很久才刷」(2026-07-25
+           serial 實證)。合併成尾緣一次:registry 先寫後刷,最後一跑讀到的必是
+           最新全量,中間跳過無損。 */
+        pager_refresh_debounced();
+        break;
+    }
+
+    case LVGL_MSG_TYPE_SEND_DEVICE_INFO:
+    {
+        /* 重生自我介紹(main.c RX_CCCD timer defer 過來):真 thread 才能拿
+           BLE 送出路徑的 mutex。 */
+        extern bool commu_send_device_info(void);
+        commu_send_device_info();
         break;
     }
 
@@ -851,7 +901,12 @@ void reset_lvgl_msg_handler(void)
 static void lvgl_task(void *param)
 {
     lvgl_msg_t msg;
-    lvgl_mq = rt_mq_create("lvgl_mq", sizeof(lvgl_msg_t), 10, RT_IPC_FLAG_FIFO);
+    /* 32(原 10):開機早期 BLE 比 GUI 早起 ~60s,0x01/0x03 sync 的 REFRESH_DEVICE_PAGER
+       洪流會把 10 深佇列塞滿,APPLY_INSTRUCTION_BATCH(74)等關鍵通知被隨機丟棄 →
+       批次躺在 op 佇列永不套用、錶盤清單空(2026-07-25 serial 實證「lvgl_mq full,
+       dropped msg type 74」)。加深止血;結構性補救見 instruction_list init/resume
+       的 apply_pending_instruction_batch 補結欠帳。 */
+    lvgl_mq = rt_mq_create("lvgl_mq", sizeof(lvgl_msg_t), 32, RT_IPC_FLAG_FIFO);
 
     while (1)
     {

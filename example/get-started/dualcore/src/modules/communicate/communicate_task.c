@@ -301,6 +301,31 @@ bool commu_send_wear_diag(uint32_t ts, uint8_t evt, uint8_t status,
                            &rec, (uint16_t)sizeof(rec));
 }
 
+bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
+                           uint8_t hr_std, uint8_t stage, uint8_t veto,
+                           uint8_t rhr, uint8_t worn, uint8_t rest,
+                           uint8_t fresh)
+{
+    /* Packed 14-byte wire payload (phone parser reads 4+2+1+1+1+1+1+1+1+1 LE). */
+    struct __attribute__((packed))
+    {
+        uint32_t ts;
+        uint16_t score;
+        uint8_t hr;
+        uint8_t hr_std;
+        uint8_t stage;
+        uint8_t veto;
+        uint8_t rhr;
+        uint8_t worn;
+        uint8_t rest;
+        uint8_t fresh;
+    } rec = {.ts = ts, .score = score, .hr = hr, .hr_std = hr_std,
+             .stage = stage, .veto = veto, .rhr = rhr, .worn = worn,
+             .rest = rest, .fresh = fresh};
+    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_SLEEP_DIAG,
+                           &rec, (uint16_t)sizeof(rec));
+}
+
 bool commu_send_sleep_data(void)
 {
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_RETURN_SLEEP_DATA,

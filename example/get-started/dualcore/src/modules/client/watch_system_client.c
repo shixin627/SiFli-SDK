@@ -320,6 +320,15 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
                              data_ind->pi_range_e6, data_ind->imu_var_e4);
         break;
     }
+    case MSG_SERVICE_SLEEP_DIAG_IND:
+    {
+        UNPACK_DATA(arg, watch_sys_sleep_diag_t, data_ind);
+        commu_send_sleep_diag(data_ind->ts, data_ind->score, data_ind->hr,
+                              data_ind->hr_std, data_ind->stage, data_ind->veto,
+                              data_ind->rhr, data_ind->worn, data_ind->rest,
+                              data_ind->fresh);
+        break;
+    }
     case MSG_SERVICE_SLEEP_STATE_IND:
     {
         UNPACK_DATA(arg, watch_sys_sleep_state_t, data_ind);

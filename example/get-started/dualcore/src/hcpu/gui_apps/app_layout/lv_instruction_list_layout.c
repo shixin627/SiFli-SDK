@@ -6115,6 +6115,31 @@ static lv_obj_t *list_arc_snap_cb(void *ctx)
     return NULL;
 }
 
+/* EAGER 兜底輪詢(見 instruction_list_init 尾註解):1s 週期 drain 0x6b op 佇列,
+   免疫 lvgl_mq 洪流丟 APPLY 通知。空佇列時 apply_pending 內部 head==tail 立即
+   return=零成本。deinit 時刪除。
+   兼職②:deferred-refresh 逾期補跑 —— debounce 的 550ms one-shot lv_timer 真機
+   實測有時不 fire(deferred 之後 ~18s 才被下一個自然 refresh 帶動重繪 = founder
+   看到「語音查詢結果殘留、退出再進遲遲不變回 actions」)。這裡每秒檢查:pending
+   deferred 存在且距上次成功重繪已 >600ms → 直接補跑(bypass debounce),殘留最多
+   ~1s 內更正。 */
+static lv_timer_t *s_inst_op_drain_timer = NULL;
+static void inst_op_drain_tick_cb(lv_timer_t *t)
+{
+    (void)t;
+    extern void apply_pending_instruction_batch(void);
+    apply_pending_instruction_batch();
+    if (s_pending_refresh_timer != NULL &&
+        (rt_tick_get() - s_last_refresh_tick) > rt_tick_from_millisecond(600))
+    {
+        LOG_I("deferred refresh overdue — flushing now");
+        lv_timer_del(s_pending_refresh_timer);
+        s_pending_refresh_timer = NULL;
+        s_last_refresh_tick = 0; /* bypass debounce for this catch-up run */
+        refresh_custom_instructions();
+    }
+}
+
 lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
 {
     // 檢查是否已經分配，如果是則先釋放
@@ -6527,6 +6552,24 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     LOG_I("instruction_list_init: after lv_event_send SCROLL");
 
     myLancher[app_index_instruction_list].on_tap = on_tap;
+    /* 結欠帳:開機早期(BLE 比 GUI 早起 ~60s)到達的 0x6b 批次已排進 op 佇列,但其
+       APPLY_INSTRUCTION_BATCH 通知常被塞滿的 lvgl_mq 丟掉(serial 實證 type 74
+       dropped)→ 批次永不套用、清單空,而手機 dedup 認定已送不重推。清單建好的
+       此刻直接 drain 一次(冪等,佇列空=立即 return)。LVGL thread ✓ */
+    {
+        extern void apply_pending_instruction_batch(void);
+        apply_pending_instruction_batch();
+    }
+    /* EAGER 兜底(終局):不再信任 msg 通知的可達性 —— 連線窗的 msg 洪流(通知
+       resync 15/75、device sync 76)把 lvgl_mq 塞滿時,APPLY(74)在「發送端」就被
+       丟,接收端任何 debounce/加深都救不到(2026-07-25 冷開機 serial 實證:mq 32
+       仍 full、74 連丟)。掛一支 1s periodic lv_timer 直接輪詢 op 佇列:空佇列一次
+       檢查=兩個指標比較(零成本);有欠帳=最遲 1s 內套用+重繪 → 手錶連上手機後
+       幾秒清單就緒,使用者進來前就是同步好的(founder 的 eager 要求)。 */
+    if (s_inst_op_drain_timer == NULL)
+    {
+        s_inst_op_drain_timer = lv_timer_create(inst_op_drain_tick_cb, 1000, NULL);
+    }
     LOG_I("instruction_list_init: returning");
 
 #ifdef TEST_INDICATOR_ANIMATION
@@ -6807,6 +6850,12 @@ rt_int32_t instruction_list_resume(void)
     pause_instruction_list = false;
     lvgl_msg_handler.handle_nav_bar_control = instruction_list_scroll_to_app;
     LOG_I("instruction_list_resume");
+    /* 使用者正要看清單 → 先把 op 佇列裡的欠帳批次結清(APPLY 通知可能曾被
+       lvgl_mq full 丟掉,見 instruction_list_init 尾同款註解)。冪等零成本。 */
+    {
+        extern void apply_pending_instruction_batch(void);
+        apply_pending_instruction_batch();
+    }
 #ifdef USE_QUICK_OPEN_AI
     open_vibration = true;
 #endif
@@ -6842,6 +6891,12 @@ rt_int32_t instruction_list_pause(void)
 
 rt_int32_t instruction_list_deinit(void)
 {
+    /* EAGER 兜底輪詢隨清單生命週期走(create 建/deinit 刪)。 */
+    if (s_inst_op_drain_timer)
+    {
+        lv_timer_del(s_inst_op_drain_timer);
+        s_inst_op_drain_timer = NULL;
+    }
     // 清理 touching_screen 定時器
     if (touching_screen_timer)
     {

@@ -209,6 +209,11 @@ extern "C"
            lv_obj layout — same too-stack-heavy + not-thread-safe hazard as the
            instruction-list rebuild above. */
         LVGL_MSG_TYPE_REFRESH_DEVICE_PAGER,
+        /* 重生自我介紹:手機(重新)訂閱 RX CCCD 後,main.c 的 one-shot timer 發此
+           msg,LVGL thread 代為 commu_send_device_info()。software timer callback
+           直接送 BLE 會在 rt_mutex_take assert(timer context 不可拿 mutex —
+           2026-07-25 boot-loop 實證),必須 defer 到真 thread。 */
+        LVGL_MSG_TYPE_SEND_DEVICE_INFO,
         /* Language switch: rebuild all persistent off-home views (instruction
            list, device pager, notification list, status-bar device-change bar)
            so their labels pick up the new locale. Sent from bloc_setting.c
