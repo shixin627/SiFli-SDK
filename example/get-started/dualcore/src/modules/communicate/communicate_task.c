@@ -304,9 +304,12 @@ bool commu_send_wear_diag(uint32_t ts, uint8_t evt, uint8_t status,
 bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
                            uint8_t hr_std, uint8_t stage, uint8_t veto,
                            uint8_t rhr, uint8_t worn, uint8_t rest,
-                           uint8_t fresh)
+                           uint8_t fresh, uint16_t total, uint16_t deep,
+                           uint16_t rem, uint16_t light, uint16_t pi_e3)
 {
-    /* Packed 14-byte wire payload (phone parser reads 4+2+1+1+1+1+1+1+1+1 LE). */
+    /* Packed 24-byte wire payload (phone reads 4+2+1*8+2*5 LE). total/deep/rem/
+       light are the firmware's daily accumulators; pi_e3 is the last burst's
+       perfusion index ×1000 (PPG signal-quality candidate). */
     struct __attribute__((packed))
     {
         uint32_t ts;
@@ -319,9 +322,15 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
         uint8_t worn;
         uint8_t rest;
         uint8_t fresh;
+        uint16_t total;
+        uint16_t deep;
+        uint16_t rem;
+        uint16_t light;
+        uint16_t pi_e3;
     } rec = {.ts = ts, .score = score, .hr = hr, .hr_std = hr_std,
              .stage = stage, .veto = veto, .rhr = rhr, .worn = worn,
-             .rest = rest, .fresh = fresh};
+             .rest = rest, .fresh = fresh, .total = total, .deep = deep,
+             .rem = rem, .light = light, .pi_e3 = pi_e3};
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_SLEEP_DIAG,
                            &rec, (uint16_t)sizeof(rec));
 }

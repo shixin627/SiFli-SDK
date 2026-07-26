@@ -1038,6 +1038,15 @@ extern uint32_t gh3018_get_hr_update_seq(void);
    warped ~6x -- see plan). HR-only: does not touch PPG raw or the algo feed. */
 #define BG_HR_MOTION_DELTA_THRESH  6     /* >>10 LSB delta; ~0.4g between 1 Hz reads */
 #define BG_HR_MOTION_GUARD_MS      3000  /* keep rejecting this long after motion    */
+/* Sleep-time physiologic ceiling for the published HR. A sleeping wrist sits at
+   ~40-70 bpm; even REM/arousal rarely passes ~90. A burst reading well above this
+   WHILE ASLEEP is a PPG artefact (poor contact/perfusion reads high), not a real
+   pulse — Apple's watch on the same wrist capped ~100-103 while ours read 128. We
+   WITHHOLD such bursts (draw a gap, not a false spike) so the curve + sleep
+   staging stay clean. Heuristic stopgap: a proper signal-quality (PI) gate is
+   future work (needs an on-wrist PI-distribution capture to tune, unavailable
+   now). Applied ONLY while asleep, so it can never clip a real daytime HR. */
+#define SLEEP_HR_ARTEFACT_CEIL     100u
 
 static rt_timer_t bg_hr_period_timer = RT_NULL;
 static rt_timer_t bg_hr_sample_timer = RT_NULL;
@@ -1046,6 +1055,49 @@ static uint32_t bg_hr_burst_deadline_ms = 0;
 static uint32_t bg_hr_burst_accept_ms = 0;   /* reads before this tick are warm-up (fallback cap) */
 static uint32_t bg_hr_burst_start_seq = 0;   /* gh3018 HR-update seq at burst start; dynamic warm-up baseline */
 static uint8_t bg_hr_burst_best = 0;
+
+/* ---- PPG perfusion-index (PI = AC/DC) capture over a burst -------------------
+   Fed from the raw PPG frame hook (process_ppg_sensor_data -> ppg_pi_feed), gated
+   by bg_hr's burst window. A real pulse has a clear AC swing (high PI); a poor-
+   contact / artefact read is flat or noisy (low PI) — the candidate signal-quality
+   metric that tells a real sleeping HR from an artefact at the SAME bpm. Captured
+   into sleep_diag for now (to learn its threshold on a real night); a future gate
+   uses it. Single writer = LCPU frame thread; read once at burst end (same core). */
+static volatile bool s_pi_collecting = false;
+static uint32_t s_pi_min = 0, s_pi_max = 0, s_pi_sum = 0, s_pi_cnt = 0;
+static uint16_t bg_hr_win_pi_e3 = 0;   /* last burst's PI*1000, clamped to u16 */
+
+static void ppg_pi_start(void)
+{
+    s_pi_min = 0xFFFFFFFFu; s_pi_max = 0; s_pi_sum = 0; s_pi_cnt = 0;
+    s_pi_collecting = true;
+}
+
+void ppg_pi_feed(uint8_t n, const uint32_t *raw)
+{
+    if (!s_pi_collecting || raw == NULL) return;
+    for (uint8_t i = 0; i < n; i++)
+    {
+        uint32_t v = raw[i];
+        if (v < s_pi_min) s_pi_min = v;
+        if (v > s_pi_max) s_pi_max = v;
+        s_pi_sum += v;
+        s_pi_cnt++;
+    }
+}
+
+static void ppg_pi_finish(void)
+{
+    s_pi_collecting = false;
+    if (s_pi_cnt == 0 || s_pi_max <= s_pi_min) { bg_hr_win_pi_e3 = 0; return; }
+    uint32_t mean = s_pi_sum / s_pi_cnt;
+    if (mean == 0) { bg_hr_win_pi_e3 = 0; return; }
+    uint32_t pi_e3 = (uint32_t)((uint64_t)(s_pi_max - s_pi_min) * 1000u / mean);
+    bg_hr_win_pi_e3 = (pi_e3 > 0xFFFFu) ? 0xFFFFu : (uint16_t)pi_e3;
+}
+
+/* Last completed burst's PI*1000 (0 if none). Read by sleep_service for sleep_diag. */
+uint16_t hr_service_get_last_pi_e3(void) { return bg_hr_win_pi_e3; }
 
 /* Two-stage gate state. bg_hr_sleep_active is set by sleep_service when accel
    says we're asleep OR the wrist is still inside the overnight rest window
@@ -1317,6 +1369,16 @@ static void bg_hr_finish_burst(void)
           (unsigned)bg_hr_burst_reads, (unsigned)bg_hr_burst_cnt,
           (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_best,
           (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel);
+    /* Sleep-time artefact ceiling: withhold an implausibly high sleeping HR
+       (SLEEP_HR_ARTEFACT_CEIL). Zeroing best routes it to the NO_LOCK branch below
+       so the phone draws a gap instead of a false spike, and the sleep_fusion HR
+       window (published from best) goes absent for that minute rather than feeding
+       the wake-veto a garbage-high value. Only while asleep. */
+    if (bg_hr_sleep_active && bg_hr_burst_best > SLEEP_HR_ARTEFACT_CEIL)
+    {
+        bg_hr_burst_best = 0;
+    }
+
     /* Forward the best BPM seen this burst, then power the LED back off. */
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
     {
@@ -1363,6 +1425,7 @@ static void bg_hr_finish_burst(void)
     {
         hr_set_power(0);
     }
+    ppg_pi_finish();   /* finalize this burst's PI for sleep_diag capture */
     bg_hr_bursting = RT_FALSE;
 }
 
@@ -1493,6 +1556,7 @@ static void bg_hr_period_cb(void *param)
        (stuck-on power leak + sampler wedged). */
     if (bg_hr_sample_timer == RT_NULL) { bg_hr_note(BGHR_NO_TIMER); return; }
     bg_hr_bursting = RT_TRUE;
+    ppg_pi_start();   /* begin PI accumulation for this burst */
     bg_hr_burst_best = 0;
     bg_hr_burst_sum = 0;
     bg_hr_burst_sum_sq = 0;
