@@ -1056,6 +1056,49 @@ static uint32_t bg_hr_burst_accept_ms = 0;   /* reads before this tick are warm-
 static uint32_t bg_hr_burst_start_seq = 0;   /* gh3018 HR-update seq at burst start; dynamic warm-up baseline */
 static uint8_t bg_hr_burst_best = 0;
 
+/* ---- PPG perfusion-index (PI = AC/DC) capture over a burst -------------------
+   Fed from the raw PPG frame hook (process_ppg_sensor_data -> ppg_pi_feed), gated
+   by bg_hr's burst window. A real pulse has a clear AC swing (high PI); a poor-
+   contact / artefact read is flat or noisy (low PI) — the candidate signal-quality
+   metric that tells a real sleeping HR from an artefact at the SAME bpm. Captured
+   into sleep_diag for now (to learn its threshold on a real night); a future gate
+   uses it. Single writer = LCPU frame thread; read once at burst end (same core). */
+static volatile bool s_pi_collecting = false;
+static uint32_t s_pi_min = 0, s_pi_max = 0, s_pi_sum = 0, s_pi_cnt = 0;
+static uint16_t bg_hr_win_pi_e3 = 0;   /* last burst's PI*1000, clamped to u16 */
+
+static void ppg_pi_start(void)
+{
+    s_pi_min = 0xFFFFFFFFu; s_pi_max = 0; s_pi_sum = 0; s_pi_cnt = 0;
+    s_pi_collecting = true;
+}
+
+void ppg_pi_feed(uint8_t n, const uint32_t *raw)
+{
+    if (!s_pi_collecting || raw == NULL) return;
+    for (uint8_t i = 0; i < n; i++)
+    {
+        uint32_t v = raw[i];
+        if (v < s_pi_min) s_pi_min = v;
+        if (v > s_pi_max) s_pi_max = v;
+        s_pi_sum += v;
+        s_pi_cnt++;
+    }
+}
+
+static void ppg_pi_finish(void)
+{
+    s_pi_collecting = false;
+    if (s_pi_cnt == 0 || s_pi_max <= s_pi_min) { bg_hr_win_pi_e3 = 0; return; }
+    uint32_t mean = s_pi_sum / s_pi_cnt;
+    if (mean == 0) { bg_hr_win_pi_e3 = 0; return; }
+    uint32_t pi_e3 = (uint32_t)((uint64_t)(s_pi_max - s_pi_min) * 1000u / mean);
+    bg_hr_win_pi_e3 = (pi_e3 > 0xFFFFu) ? 0xFFFFu : (uint16_t)pi_e3;
+}
+
+/* Last completed burst's PI*1000 (0 if none). Read by sleep_service for sleep_diag. */
+uint16_t hr_service_get_last_pi_e3(void) { return bg_hr_win_pi_e3; }
+
 /* Two-stage gate state. bg_hr_sleep_active is set by sleep_service when accel
    says we're asleep OR the wrist is still inside the overnight rest window
    (rest-candidate) -> dense bursts; cleared otherwise -> ~15 min curve rate. */
@@ -1382,6 +1425,7 @@ static void bg_hr_finish_burst(void)
     {
         hr_set_power(0);
     }
+    ppg_pi_finish();   /* finalize this burst's PI for sleep_diag capture */
     bg_hr_bursting = RT_FALSE;
 }
 
@@ -1512,6 +1556,7 @@ static void bg_hr_period_cb(void *param)
        (stuck-on power leak + sampler wedged). */
     if (bg_hr_sample_timer == RT_NULL) { bg_hr_note(BGHR_NO_TIMER); return; }
     bg_hr_bursting = RT_TRUE;
+    ppg_pi_start();   /* begin PI accumulation for this burst */
     bg_hr_burst_best = 0;
     bg_hr_burst_sum = 0;
     bg_hr_burst_sum_sq = 0;

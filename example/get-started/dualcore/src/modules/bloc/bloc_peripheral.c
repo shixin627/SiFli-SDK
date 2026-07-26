@@ -784,6 +784,16 @@ void motion_data_fetch(motion_data_t *data)
 void process_ppg_sensor_data(uint8_t sample_num, uint32_t *data,
                              uint32_t *data2)
 {
+    /* Feed channel-0 raw to the bg_hr PI accumulator BEFORE the 2-sample
+       truncation below — PI needs the full frame's AC swing. LCPU-ONLY: the raw
+       PPG frame hook and bg_hr both live on LCPU, so ppg_pi_feed is defined there
+       only; the HCPU copy of this fn is never called (no frame hook on HCPU) and
+       must not reference the LCPU-only symbol (else HCPU link fails). */
+#ifndef SOC_BF0_HCPU
+    extern void ppg_pi_feed(uint8_t n, const uint32_t *raw);
+    if (data != NULL) ppg_pi_feed(sample_num, data);
+#endif
+
     if (sample_num > 2)
     {
         sample_num = 2;

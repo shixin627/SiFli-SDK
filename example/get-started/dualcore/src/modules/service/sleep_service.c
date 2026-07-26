@@ -532,6 +532,11 @@ static void prv_minute_eval(uint32_t utc_now)
        Not gated by SLEEP_ACCEL_DIAG: this is the load-bearing collection path. */
     if (watch_sys_sync.notify_sleep_diag)
     {
+        uint16_t pi_now = 0;
+#ifdef BSP_USING_HR_SVC
+        extern uint16_t hr_service_get_last_pi_e3(void);
+        pi_now = hr_service_get_last_pi_e3();
+#endif
         watch_sys_sleep_diag_t drec = {
             .ts     = utc_now,
             .score  = (uint16_t)out->last_cole_kripke_score,
@@ -547,6 +552,7 @@ static void prv_minute_eval(uint32_t utc_now)
             .deep   = out->deep_min,
             .rem    = out->rem_min,
             .light  = out->light_min,
+            .pi_e3  = pi_now,
         };
         watch_sys_sync.notify_sleep_diag(&drec);
     }

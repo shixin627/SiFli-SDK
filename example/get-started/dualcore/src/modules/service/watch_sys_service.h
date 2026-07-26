@@ -232,6 +232,7 @@ extern "C"
         uint16_t deep;     /* daily deep_min                              */
         uint16_t rem;      /* daily rem_min                               */
         uint16_t light;    /* daily light_min                             */
+        uint16_t pi_e3;    /* last PPG burst PI*1000 (AC/DC) — SQI candidate */
     } watch_sys_sleep_diag_t;
 
     typedef struct
