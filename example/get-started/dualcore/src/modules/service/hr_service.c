@@ -1038,6 +1038,15 @@ extern uint32_t gh3018_get_hr_update_seq(void);
    warped ~6x -- see plan). HR-only: does not touch PPG raw or the algo feed. */
 #define BG_HR_MOTION_DELTA_THRESH  6     /* >>10 LSB delta; ~0.4g between 1 Hz reads */
 #define BG_HR_MOTION_GUARD_MS      3000  /* keep rejecting this long after motion    */
+/* Sleep-time physiologic ceiling for the published HR. A sleeping wrist sits at
+   ~40-70 bpm; even REM/arousal rarely passes ~90. A burst reading well above this
+   WHILE ASLEEP is a PPG artefact (poor contact/perfusion reads high), not a real
+   pulse — Apple's watch on the same wrist capped ~100-103 while ours read 128. We
+   WITHHOLD such bursts (draw a gap, not a false spike) so the curve + sleep
+   staging stay clean. Heuristic stopgap: a proper signal-quality (PI) gate is
+   future work (needs an on-wrist PI-distribution capture to tune, unavailable
+   now). Applied ONLY while asleep, so it can never clip a real daytime HR. */
+#define SLEEP_HR_ARTEFACT_CEIL     100u
 
 static rt_timer_t bg_hr_period_timer = RT_NULL;
 static rt_timer_t bg_hr_sample_timer = RT_NULL;
@@ -1317,6 +1326,16 @@ static void bg_hr_finish_burst(void)
           (unsigned)bg_hr_burst_reads, (unsigned)bg_hr_burst_cnt,
           (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_best,
           (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel);
+    /* Sleep-time artefact ceiling: withhold an implausibly high sleeping HR
+       (SLEEP_HR_ARTEFACT_CEIL). Zeroing best routes it to the NO_LOCK branch below
+       so the phone draws a gap instead of a false spike, and the sleep_fusion HR
+       window (published from best) goes absent for that minute rather than feeding
+       the wake-veto a garbage-high value. Only while asleep. */
+    if (bg_hr_sleep_active && bg_hr_burst_best > SLEEP_HR_ARTEFACT_CEIL)
+    {
+        bg_hr_burst_best = 0;
+    }
+
     /* Forward the best BPM seen this burst, then power the LED back off. */
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
     {

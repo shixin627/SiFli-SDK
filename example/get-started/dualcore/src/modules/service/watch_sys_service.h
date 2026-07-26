@@ -228,6 +228,10 @@ extern "C"
         uint8_t  worn;     /* is_worn (0/1)                               */
         uint8_t  rest;     /* rest-candidate dense gate active (0/1)      */
         uint8_t  fresh;    /* HR this minute was a fresh burst (0/1)      */
+        uint16_t total;    /* daily total_sleep_min accumulator (L+D+R)   */
+        uint16_t deep;     /* daily deep_min                              */
+        uint16_t rem;      /* daily rem_min                               */
+        uint16_t light;    /* daily light_min                             */
     } watch_sys_sleep_diag_t;
 
     typedef struct

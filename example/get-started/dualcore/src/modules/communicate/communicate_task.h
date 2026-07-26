@@ -63,7 +63,8 @@ bool commu_send_wear_diag(uint32_t ts, uint8_t evt, uint8_t status,
 bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
                            uint8_t hr_std, uint8_t stage, uint8_t veto,
                            uint8_t rhr, uint8_t worn, uint8_t rest,
-                           uint8_t fresh);
+                           uint8_t fresh, uint16_t total, uint16_t deep,
+                           uint16_t rem, uint16_t light);
 /* Push current SkaiWatchSys.sleep_state to the phone via KEY_RETURN_SLEEP_DATA.
    Called on every stage transition received from LCPU. The dart-side
    parser must mirror the layout of watch_sys_sleep_state_t. */

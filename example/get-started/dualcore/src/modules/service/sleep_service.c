@@ -128,6 +128,11 @@ typedef struct
        marks a NEW burst (drives input.hr_is_fresh). */
     uint32_t prev_hr_win_age_ms;
     bool     prev_hr_win_age_valid;
+
+    /* Clock-jump guard for the midnight reset: previous minute-eval's utc, to
+       tell an external time-set (phone re-sync after reboot) from a real minute. */
+    uint32_t prev_eval_utc;
+    bool     prev_eval_utc_valid;
 } sleep_service_env_t;
 
 static sleep_service_env_t s_env;
@@ -399,15 +404,29 @@ static void prv_minute_eval(uint32_t utc_now)
        same constant. If a real per-user RHR ever lands in hr_service, push it
        once here via sleep_fusion_set_resting_hr(). */
 
-    /* Local-midnight reset of the daily aggregates. */
+    /* Local-midnight reset of the daily aggregates — guarded against clock-jump
+       FALSE triggers. The RTC is "wall-clock as UTC" and the phone re-syncs time
+       on every BLE reconnect; a reboot-then-resync can jump the clock across a day
+       boundary mid-sleep and fire a false midnight reset, zeroing the night's total
+       (a root cause of the 462→60 loss). Guards:
+       (a) ignore implausible dates (dirty RTC after VBAT loss, year < 2024);
+       (b) if utc jumped far from the previous minute-eval (external time-set, not a
+           real minute elapsing), only RE-BASELINE the day — do NOT reset. */
     {
         time_t t = (time_t)utc_now;
         struct tm *lt = localtime(&t);
-        if (lt)
+        bool date_ok = (lt != NULL) && ((lt->tm_year + 1900) >= 2024);
+        bool clock_jumped = s_env.prev_eval_utc_valid &&
+            ((utc_now > s_env.prev_eval_utc)
+                 ? (utc_now - s_env.prev_eval_utc > 600u)
+                 : (s_env.prev_eval_utc - utc_now > 600u));
+        if (lt && date_ok)
         {
             int16_t today = (int16_t)lt->tm_yday;
-            if (s_env.last_local_day < 0)
+            if (s_env.last_local_day < 0 || clock_jumped)
             {
+                /* First eval, or an external clock-set — adopt the new day as
+                   baseline WITHOUT zeroing today's accumulator. */
                 s_env.last_local_day = today;
             }
             else if (today != s_env.last_local_day)
@@ -417,6 +436,8 @@ static void prv_minute_eval(uint32_t utc_now)
                 LOG_I("sleep: midnight reset (yday %d)", (int)today);
             }
         }
+        s_env.prev_eval_utc = utc_now;
+        s_env.prev_eval_utc_valid = true;
     }
 
     const sleep_fusion_output_t *out = sleep_fusion_update(utc_now, &input);
@@ -522,6 +543,10 @@ static void prv_minute_eval(uint32_t utc_now)
             .worn   = (uint8_t)(input.is_worn ? 1 : 0),
             .rest   = (uint8_t)(s_env.rest_candidate ? 1 : 0),
             .fresh  = (uint8_t)(input.hr_is_fresh ? 1 : 0),
+            .total  = out->total_sleep_min,
+            .deep   = out->deep_min,
+            .rem    = out->rem_min,
+            .light  = out->light_min,
         };
         watch_sys_sync.notify_sleep_diag(&drec);
     }

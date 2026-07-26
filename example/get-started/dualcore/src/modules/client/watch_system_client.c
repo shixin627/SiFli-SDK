@@ -326,7 +326,8 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         commu_send_sleep_diag(data_ind->ts, data_ind->score, data_ind->hr,
                               data_ind->hr_std, data_ind->stage, data_ind->veto,
                               data_ind->rhr, data_ind->worn, data_ind->rest,
-                              data_ind->fresh);
+                              data_ind->fresh, data_ind->total, data_ind->deep,
+                              data_ind->rem, data_ind->light);
         break;
     }
     case MSG_SERVICE_SLEEP_STATE_IND:

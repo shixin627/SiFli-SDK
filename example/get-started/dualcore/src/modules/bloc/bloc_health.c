@@ -103,6 +103,33 @@ void store_sleep_data(const watch_sys_sleep_state_t *state)
              HEALTH_DIR "/sleep_%04d%02d%02d.json", tm_info->tm_year + 1900,
              tm_info->tm_mon + 1, tm_info->tm_mday);
 
+    /* Per-day cumulative aggregate: take the per-field MAX against the existing
+       file instead of blindly overwriting. sleep_fusion's total is NOT persisted,
+       so a mid-night watch reboot zeroes it and it re-accumulates from 0 — a blind
+       overwrite would then let that small post-reboot value clobber the real total
+       (this is the 462→60 bug). MAX keeps the daily total monotonic within the
+       local day; the file is already per-day so this never bleeds across days. A
+       genuine local-midnight reset starts a NEW day file, so it isn't max-pinned. */
+    uint16_t old_total = 0, old_deep = 0, old_rem = 0, old_light = 0, old_waso = 0;
+    {
+        cJSON *existing = read_json_file(filename);
+        if (existing != NULL)
+        {
+            cJSON *j;
+            if ((j = cJSON_GetObjectItem(existing, "total_min")) != NULL) old_total = (uint16_t)j->valueint;
+            if ((j = cJSON_GetObjectItem(existing, "deep_min"))  != NULL) old_deep  = (uint16_t)j->valueint;
+            if ((j = cJSON_GetObjectItem(existing, "rem_min"))   != NULL) old_rem   = (uint16_t)j->valueint;
+            if ((j = cJSON_GetObjectItem(existing, "light_min")) != NULL) old_light = (uint16_t)j->valueint;
+            if ((j = cJSON_GetObjectItem(existing, "waso_min"))  != NULL) old_waso  = (uint16_t)j->valueint;
+            cJSON_Delete(existing);
+        }
+    }
+    uint16_t max_total = state->total_sleep_min > old_total ? state->total_sleep_min : old_total;
+    uint16_t max_deep  = state->deep_min        > old_deep  ? state->deep_min        : old_deep;
+    uint16_t max_rem   = state->rem_min         > old_rem   ? state->rem_min         : old_rem;
+    uint16_t max_light = state->light_min       > old_light ? state->light_min       : old_light;
+    uint16_t max_waso  = state->awake_after_onset_min > old_waso ? state->awake_after_onset_min : old_waso;
+
     cJSON *root = cJSON_CreateObject();
     if (root == NULL)
     {
@@ -113,11 +140,11 @@ void store_sleep_data(const watch_sys_sleep_state_t *state)
     /* Raw values; the phone derives its local day bucket from ts_utc. */
     cJSON_AddNumberToObject(root, "ts_utc", (double)state->timestamp_utc);
     cJSON_AddNumberToObject(root, "stage", state->mode);
-    cJSON_AddNumberToObject(root, "total_min", state->total_sleep_min);
-    cJSON_AddNumberToObject(root, "deep_min", state->deep_min);
-    cJSON_AddNumberToObject(root, "rem_min", state->rem_min);
-    cJSON_AddNumberToObject(root, "light_min", state->light_min);
-    cJSON_AddNumberToObject(root, "waso_min", state->awake_after_onset_min);
+    cJSON_AddNumberToObject(root, "total_min", max_total);
+    cJSON_AddNumberToObject(root, "deep_min", max_deep);
+    cJSON_AddNumberToObject(root, "rem_min", max_rem);
+    cJSON_AddNumberToObject(root, "light_min", max_light);
+    cJSON_AddNumberToObject(root, "waso_min", max_waso);
     cJSON_AddNumberToObject(root, "hr", state->current_hr);
     cJSON_AddNumberToObject(root, "rhr", state->resting_hr);
 
