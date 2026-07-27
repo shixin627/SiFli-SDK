@@ -436,7 +436,21 @@ ftc_cache_add(FTC_Cache  cache,
 
     {
         FTC_Manager  manager = cache->manager;
-		if (clean_func) clean_func();
+        /* Lock the just-inserted node across the (SiFli-added) reentrant clean.
+         * clean_func() can run FTC_Manager_Cache_Free(), which destroys every
+         * node with ref_count <= 0 -- including THIS in-flight node, whose
+         * ref_count is still 0 here -- freeing its sbit->buffer out from under
+         * the lookup that is mid-insertion. That block is then reused and freed
+         * again at the next ftc_snode_free -> rt_memheap_free double-free assert
+         * (magic intact, USED bit clear -- the 2026-07-25/26 field crash).
+         * Stock FreeType guards the node the same way around FTC_Manager_Compress
+         * just below (ref_count++/--); mirror that protection here. */
+        if (clean_func)
+        {
+            node->ref_count++;
+            clean_func();
+            node->ref_count--;
+        }
         manager->cur_weight += cache->clazz.node_weight(node, cache);
 
         if (manager->cur_weight >= manager->max_weight)

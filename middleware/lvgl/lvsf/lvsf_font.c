@@ -144,6 +144,11 @@ static void ft_clean_cache_cb(void)
 #endif
         rt_kprintf("lv_freetype_clean_cache %d,%d\n", alloc_size, FT_CACHE_SIZE);
         lv_freetype_clean_cache(FT_CACHE_WHOLE_CLEAN);
+        /* Bracket the whole-clean: any [FT-DBLFREE] logged between the line
+         * above and this one happened INSIDE the clean (the field-crash path).
+         * Seeing this line at all now means the double-free was survived, not
+         * fatal. Diagnostic for the 2026-07-25/26 rt_memheap_free assert. */
+        rt_kprintf("lv_freetype_clean_cache done\n");
     }
 #endif
 

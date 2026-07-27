@@ -900,8 +900,73 @@ void *ft_smalloc(size_t nbytes)
     return rt_memheap_alloc(&app_ft_memheap, nbytes);
 }
 
-void ft_sfree(void *ptr)
+/* ---- FreeType double-free diagnostic + guard ------------------------------
+ * Field crashes (2026-07-25 22:38 / 2026-07-26 23:11, captured via /logs
+ * auto-push) both asserted in rt_memheap_free() line 749 — header magic intact
+ * but USED bit clear — during lv_freetype_clean_cache()'s whole-clean. That is
+ * a double-free of an FT glyph-cache block: it was legitimately freed once,
+ * then freed again while still in the freed state.
+ *
+ * ALL FreeType frees funnel through here (FT_FREE -> ft_free -> ft_sfree), so
+ * this is the one place to catch it. Before handing the block to
+ * rt_memheap_free we peek its item header — the same check the assert does —
+ * and if the block is already freed we log WHO ALLOCATED IT (ret_addr, kept
+ * because RT_USING_MEMTRACE is on) plus its size, then skip the free. Skipping
+ * is correct, not a leak: the first (legitimate) free already returned the
+ * block to the heap; the crash was the redundant second free. This turns a
+ * guaranteed reboot into a survivable, self-identifying log line.
+ *
+ * Read-only header peek using the public struct + the identical RT_MEMHEAP_SIZE
+ * expression memheap.c uses, so no ABI assumption. FT pointers come straight
+ * from ft_smalloc (rt_memheap_alloc, no prefix), so the header is at
+ * ptr - RT_MEMHEAP_SIZE. */
+#define FT_MEMHEAP_HDR_SIZE   RT_ALIGN(sizeof(struct rt_memheap_item), RT_ALIGN_SIZE)
+#define FT_MEMHEAP_MAGIC      0x1ea01ea0u   /* mirror of memheap.c RT_MEMHEAP_MAGIC */
+#define FT_MEMHEAP_MASK       0xfffffffeu   /* mirror of RT_MEMHEAP_MASK */
+#define FT_MEMHEAP_USED       0x01u         /* mirror of RT_MEMHEAP_USED */
+
+/* Ask the /logs backend to seal + push the current log now, so the
+ * [FT-DBLFREE] line reaches the phone without waiting for a reboot (the guard
+ * below makes the fault non-fatal, so the boot-time crash scan never fires).
+ * Weak no-op fallback: builds that don't link log_file_backend.c (e.g. PC sim)
+ * just skip it instead of failing to link. The strong version lives in
+ * src/hcpu/log_file_backend.c. */
+RT_WEAK void log_file_report_crash_evidence(void) { }
+
+/* noinline so __builtin_return_address(0) names the real caller (ft_free), not
+ * an inlined site — a sanity cross-check against the alloc-site report. */
+__attribute__((noinline)) void ft_sfree(void *ptr)
 {
+    if (ptr != RT_NULL)
+    {
+        struct rt_memheap_item *hdr =
+            (struct rt_memheap_item *)((rt_uint8_t *)ptr - FT_MEMHEAP_HDR_SIZE);
+        rt_uint32_t magic = hdr->magic;
+
+        if ((magic & FT_MEMHEAP_MASK) != FT_MEMHEAP_MAGIC)
+        {
+            /* Header word clobbered — an overrun, not a plain double-free.
+             * Freeing would assert on line 748; skip and surface it. */
+            rt_kprintf("[FT-CORRUPT] ptr=%p magic=%08x caller=%p -- skipped\n",
+                       ptr, (unsigned)magic, __builtin_return_address(0));
+            log_file_report_crash_evidence();   /* deliver the log to the phone */
+            return;
+        }
+        if (!(magic & FT_MEMHEAP_USED))
+        {
+            /* The double-free. Name the block by its allocation site. */
+#ifdef RT_USING_MEMTRACE
+            rt_kprintf("[FT-DBLFREE] ptr=%p size=%u alloc_ra=%p caller=%p -- skipped\n",
+                       ptr, (unsigned)hdr->size, (void *)hdr->ret_addr,
+                       __builtin_return_address(0));
+#else
+            rt_kprintf("[FT-DBLFREE] ptr=%p size=%u caller=%p -- skipped\n",
+                       ptr, (unsigned)hdr->size, __builtin_return_address(0));
+#endif
+            log_file_report_crash_evidence();   /* deliver the log to the phone */
+            return;   /* survive: the first free already returned this block */
+        }
+    }
     rt_memheap_free(ptr);
 }
 

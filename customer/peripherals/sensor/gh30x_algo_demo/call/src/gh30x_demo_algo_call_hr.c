@@ -17,6 +17,15 @@
 
 #if (__USE_GOODIX_HR_ALGORITHM__)
 
+/* Sleep-context knobs (scene/mode/senseless cadence + per-frame sleep_flg) are
+   set via the HBD_* APIs in gh30x_example_hook.c, driven by
+   hr_service_set_sleep_active() on the sleep edge. Their legacy gh3011_algo_*
+   hook readers are dead code (no callers); THIS file is the live algo path, so
+   the knobs must be consumed here. gsthbdCfg requires
+   __HBD_ALGORITHM_EXTERNANL_CONFIG_ENABLE__=1 (gh30x_example_config.h). */
+extern goodix_hba_config gsthbdCfg;
+extern GU8 HBD_HbaGetSleepFlag(void);
+
 goodix_hba_ret goodix_hba_init_func(GU32 fs)
 {
     goodix_hba_config stHbCfg;
@@ -28,8 +37,14 @@ goodix_hba_ret goodix_hba_init_func(GU32 fs)
     GH30X_ALGO_LOG_PARAM("hba algorithm version : %s\r\n", uchHrVersion);
 
     memset(&stHbCfg, 0, sizeof(goodix_hba_config));
-    stHbCfg.mode = HBA_TEST_DYNAMIC;
-    stHbCfg.scence = HBA_SCENES_DEFAULT;
+    /* Each bg_hr burst cold-starts the algo through here, so reading the
+       external config at init is enough for the next burst to pick up a sleep
+       edge. gsthbdCfg's static initializer is the awake trio
+       (DYNAMIC/DEFAULT/0,0) — behaviour is unchanged until hr_service flips it. */
+    stHbCfg.mode = gsthbdCfg.mode;
+    stHbCfg.scence = gsthbdCfg.scence;
+    stHbCfg.senseless_mode_step = gsthbdCfg.senseless_mode_step;
+    stHbCfg.senseless_mode_duration = gsthbdCfg.senseless_mode_duration;
     stHbCfg.fs = fs;
     stHbCfg.valid_channel_num = 1;
     stHbCfg.back_track_len = 0;    /* keep 0: a longer window starved the 40s awake burst's output rate; not the jump root cause anyway (reverted 2026-06-05) */
@@ -118,7 +133,7 @@ GS8 GH30xHrAlgoExe(const STGh30xFrameInfo *const pstFrameInfo)
     stRawdata.acc_x = pstFrameInfo->pusGsensordata[0];
     stRawdata.acc_y = pstFrameInfo->pusGsensordata[1];
     stRawdata.acc_z = pstFrameInfo->pusGsensordata[2];
-    stRawdata.sleep_flg = 0;
+    stRawdata.sleep_flg = HBD_HbaGetSleepFlag(); /* read every frame; set by HBD_HbaSleepFlagConfig */
 
 #if 0
     GH30X_ALGO_LOG_PARAM("[%s]:Rawdata = %d,0x%X,%d\r\n", __FUNCTION__,
