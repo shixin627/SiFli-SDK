@@ -377,6 +377,17 @@ static char pending_crash_path[LOG_PATH_MAX];
 static rt_tick_t crash_push_due_tick;
 static void push_pending_crash_log(void);
 
+/* Live crash-evidence push (no reboot needed). The FreeType double-free guard
+ * (ft_sfree in app_mem.c) survives the fault instead of asserting, so the
+ * boot-time crash scan never fires for it — the evidence would just sit on the
+ * watch. ft_sfree calls log_file_report_crash_evidence() to raise this flag;
+ * the flush thread then seals the current /logs file (which already holds the
+ * [FT-DBLFREE] line) and pushes it to the phone. Latched to fire at most once
+ * per boot so a burst of double-frees in one whole-clean doesn't push a storm. */
+static volatile int crash_evidence_pending;
+static int crash_evidence_handled;
+static void push_ft_evidence_now(void);
+
 static void flush_thread_entry(void *param)
 {
     (void)param;
@@ -409,6 +420,17 @@ static void flush_thread_entry(void *param)
             rt_tick_get() >= crash_push_due_tick)
         {
             push_pending_crash_log();
+        }
+
+        /* A live FreeType double-free was caught this session. Seal + push the
+         * current file now — but only once a boot-inherited push (if any) has
+         * cleared, so we don't clobber pending_crash_path mid-transfer. */
+        if (crash_evidence_pending && !crash_evidence_handled &&
+            pending_crash_path[0] == '\0')
+        {
+            crash_evidence_handled = 1;
+            crash_evidence_pending = 0;
+            push_ft_evidence_now();
         }
     }
 }
@@ -712,6 +734,45 @@ static void push_pending_crash_log(void)
         bloc_file_system.sync_file(sent, false);
     }
     pending_crash_path[0] = '\0';
+}
+
+/* Seal the CURRENT log file (it already contains the [FT-DBLFREE] line the FT
+ * guard printed) and push it to the phone, then resume logging into a fresh
+ * file. Runs on the flush thread. Order matters: close + hand the sealed path
+ * to push_pending_crash_log (which renames it to .sent and syncs) BEFORE
+ * opening the new file, so the subsequent prune can't target it (the .sent
+ * copy is the newest by mtime and is skipped anyway). */
+static void push_ft_evidence_now(void)
+{
+    if (current_fd < 0)
+    {
+        return;
+    }
+    drain_ring_to_fd(0);
+    fsync(current_fd);
+    close(current_fd);
+    current_fd = -1;
+
+    rt_strncpy(pending_crash_path, current_file_path,
+               sizeof(pending_crash_path) - 1);
+    pending_crash_path[sizeof(pending_crash_path) - 1] = '\0';
+
+    push_pending_crash_log();   /* rename -> .sent + sync now */
+    open_new_log_file();        /* keep logging after the evidence is sealed */
+}
+
+/* Raise the live-evidence flag and wake the flush thread. Safe from any
+ * context: it only sets a flag and releases a semaphore (no file / BLE I/O
+ * here — that all happens on the flush thread). Called by ft_sfree's
+ * double-free guard via a weak symbol, so builds without this backend get a
+ * no-op instead of a link error. */
+void log_file_report_crash_evidence(void)
+{
+    crash_evidence_pending = 1;
+    if (flush_sem != RT_NULL)
+    {
+        rt_sem_release(flush_sem);
+    }
 }
 
 static volatile int infra_ready;   /* dir + sem + flush thread + hooks ready */

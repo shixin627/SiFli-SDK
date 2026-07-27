@@ -925,6 +925,14 @@ void *ft_smalloc(size_t nbytes)
 #define FT_MEMHEAP_MASK       0xfffffffeu   /* mirror of RT_MEMHEAP_MASK */
 #define FT_MEMHEAP_USED       0x01u         /* mirror of RT_MEMHEAP_USED */
 
+/* Ask the /logs backend to seal + push the current log now, so the
+ * [FT-DBLFREE] line reaches the phone without waiting for a reboot (the guard
+ * below makes the fault non-fatal, so the boot-time crash scan never fires).
+ * Weak no-op fallback: builds that don't link log_file_backend.c (e.g. PC sim)
+ * just skip it instead of failing to link. The strong version lives in
+ * src/hcpu/log_file_backend.c. */
+RT_WEAK void log_file_report_crash_evidence(void) { }
+
 /* noinline so __builtin_return_address(0) names the real caller (ft_free), not
  * an inlined site — a sanity cross-check against the alloc-site report. */
 __attribute__((noinline)) void ft_sfree(void *ptr)
@@ -941,6 +949,7 @@ __attribute__((noinline)) void ft_sfree(void *ptr)
              * Freeing would assert on line 748; skip and surface it. */
             rt_kprintf("[FT-CORRUPT] ptr=%p magic=%08x caller=%p -- skipped\n",
                        ptr, (unsigned)magic, __builtin_return_address(0));
+            log_file_report_crash_evidence();   /* deliver the log to the phone */
             return;
         }
         if (!(magic & FT_MEMHEAP_USED))
@@ -954,6 +963,7 @@ __attribute__((noinline)) void ft_sfree(void *ptr)
             rt_kprintf("[FT-DBLFREE] ptr=%p size=%u caller=%p -- skipped\n",
                        ptr, (unsigned)hdr->size, __builtin_return_address(0));
 #endif
+            log_file_report_crash_evidence();   /* deliver the log to the phone */
             return;   /* survive: the first free already returned this block */
         }
     }
