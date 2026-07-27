@@ -152,7 +152,7 @@
 #define __HBD_NADT_ALGORITHM_ENABLE__       (1)
 
 ///external algo config
-#define __HBD_ALGORITHM_EXTERNANL_CONFIG_ENABLE__    (0)
+#define __HBD_ALGORITHM_EXTERNANL_CONFIG_ENABLE__    (1)
 
 /// ble mcu mode pkg buffer len , minimum len = (DBG_MCU_PKG_RAW_FRAME_LEN * __ALGO_CALC_DBG_BUFFER_LEN__) + MCU_PKG_SPO2_ALGO_RESULT_LEN
 #define __BLE_MCU_PKG_BUFFER_MAX_LEN__      (3000)

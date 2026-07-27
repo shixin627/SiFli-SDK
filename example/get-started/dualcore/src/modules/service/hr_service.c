@@ -1226,6 +1226,28 @@ bool hr_service_get_hr_window(uint8_t *mean_bpm, uint8_t *std_bpm, uint32_t *age
     return true;
 }
 
+/* Goodix HBA sleep-context plumbing. Root cause of the jagged night HR
+   (49->92->52 three-minute jumps, bimodal histogram with an 80-99 lobe at ~2x
+   the true resting rate): every 3-min burst cold-starts the closed HBA lib in
+   scene DEFAULT / mode DYNAMIC with sleep_flg=0 — the algo is never told it is
+   doing periodic sampling on a sleeping, low-perfusion wrist, and locks the
+   2nd harmonic instead of the fundamental. The vendor ships exactly these
+   knobs for this use case (goodix_hba.h: HBA_SCENES_SLEEP, HBA_TEST_SENSELESS,
+   input sleep_flg); wire them to the same edge that drives burst density.
+   Setters live in gh30x_example_hook.c (LCPU-linked driver; scenario/mode need
+   __HBD_ALGORITHM_EXTERNANL_CONFIG_ENABLE__=1 in gh30x_example_config.h).
+   Values mirror the vendor enums — keep in sync with goodix_hba.h. */
+#define GH_HBA_SCENE_DEFAULT   0   /* HBA_SCENES_DEFAULT: algo self-detects   */
+#define GH_HBA_SCENE_SLEEP     20  /* HBA_SCENES_SLEEP                        */
+#define GH_HBA_MODE_DYNAMIC    0   /* HBA_TEST_DYNAMIC: continuous default    */
+#define GH_HBA_MODE_SENSELESS  2   /* HBA_TEST_SENSELESS: periodic background
+                                      sampling (= bg_hr's burst cadence);
+                                      step/duration 0 = "unknown" per vendor */
+extern signed char HBD_HbAlgoScenarioConfig(int scenario);
+extern void HBD_HbaTestModeConfig(int mode, unsigned short step,
+                                  unsigned short duration);
+extern void HBD_HbaSleepFlagConfig(unsigned char sleep_flg);
+
 /* Dense-burst gate. sleep_service asserts this while accel-detected sleep is
    active OR the wrist is still inside the overnight rest window
    (verdict-independent — see sleep_service.c SLEEP_REST_*; keeps a mis-scored
@@ -1235,6 +1257,22 @@ void hr_service_set_sleep_active(bool active)
 {
     bg_hr_sleep_active = active ? RT_TRUE : RT_FALSE;
     if (!active) bg_hr_awake_ticks = 0; /* re-arm the awake skip cadence */
+
+    /* Latch the Goodix sleep context on EDGES only (called every minute-eval).
+       scene/mode are read at each burst's algo init, so the next burst picks
+       them up; sleep_flg is read every frame. Boot default on both sides is
+       the awake trio, so no init-order dependency. */
+    static rt_bool_t s_prev_hba_sleep = RT_FALSE;
+    if (bg_hr_sleep_active != s_prev_hba_sleep)
+    {
+        s_prev_hba_sleep = bg_hr_sleep_active;
+        HBD_HbaSleepFlagConfig(active ? 1 : 0);
+        HBD_HbAlgoScenarioConfig(active ? GH_HBA_SCENE_SLEEP
+                                        : GH_HBA_SCENE_DEFAULT);
+        HBD_HbaTestModeConfig(active ? GH_HBA_MODE_SENSELESS
+                                     : GH_HBA_MODE_DYNAMIC, 0, 0);
+        LOG_I("bg_hr: HBA sleep context -> %d", active ? 1 : 0);
+    }
 }
 
 /* ===== Skip-reason instrumentation ==================================
