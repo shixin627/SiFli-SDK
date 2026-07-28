@@ -62,11 +62,17 @@
 #define SLEEP_MINUTE_TICKS     60            /* samples per evaluation window */
 #define SLEEP_DEFAULT_RESTING_HR 65          /* fallback if we never see HR */
 
-/* How long to reuse a background PPG-burst HR window. While asleep the sampler
-   bursts every ~3 min (BG_HR_PERIOD_MS) with a ≥60 s window (dense enough for
-   valid HRV-proxy staging), so 4 min spans one gap plus slack and every minute
-   gets fresh HR features (mean + std) for Light/Deep/REM. */
-#define SLEEP_HR_WINDOW_MAX_AGE_MS (4 * 60 * 1000)
+/* How long to reuse a background PPG-burst HR window. Must span one full sampler
+   cycle (BG_HR_PERIOD_MS) plus slack, else the minutes between bursts get no HR
+   features at all and Light/Deep/REM degrade for lack of input rather than lack
+   of accuracy. Sized for the 10-min / 3-min-burst night cadence: a window is
+   published at burst end and the next arrives 10 min later, so 11 min covers
+   every minute. Keep in sync with BG_HR_PERIOD_MS (hr_service.c).
+   NOTE: a "fresh" minute now occurs once per 10 min instead of once per 3, so
+   the wake-veto's SF_WAKE_HR_CONSEC_ASLEEP=3 needs ~30 min of sustained high HR
+   to rule a sleeper awake (was ~9 min) — deliberately left untuned; ADR-0018
+   validated that constant against replay, so re-tune only on new night data. */
+#define SLEEP_HR_WINDOW_MAX_AGE_MS (11 * 60 * 1000)
 
 /* Rest-candidate dense-HR gate (Phase 1 of the missed-night fix; ADR-0017).
    Failure mode being fixed: HR sampling density used to follow the sleep

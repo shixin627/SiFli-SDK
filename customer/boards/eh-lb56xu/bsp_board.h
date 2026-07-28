@@ -82,8 +82,11 @@ extern int __bss_end;
    packet, and at that rate the 8 KB ring buffer overflows and the 1 MB
    /logs cap rotates the evidence away faster than a rare crash can be
    caught. Dropping back to DBG_WARNING is safe once a crash is diagnosed. */
+/* A/B EXPERIMENT 2026-07-28: reverted DBG_INFO -> DBG_WARNING for release to
+ * cut logging load while isolating the send_msg mailbox crash-loop (see
+ * log_file_backend.c). Restore DBG_INFO once the file logger is re-enabled. */
 #if kReleaseMode
-#define BSP_DBG_LVL DBG_INFO
+#define BSP_DBG_LVL DBG_WARNING
 #else
 #define BSP_DBG_LVL DBG_LOG
 #endif
