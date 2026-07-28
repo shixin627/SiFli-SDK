@@ -1021,15 +1021,24 @@ extern uint32_t gh3018_get_hr_update_seq(void);
    Once sleep_fusion reports asleep (accel-only decision), sleep_service flips
    bg_hr_sleep_active and we burst every tick with a ≥60 s window so HR mean +
    std (HRV proxy) are valid for Deep/REM staging. PPG stays OFF while awake. */
-#define BG_HR_PERIOD_MS      (3 * 60 * 1000) /* base tick = sleep-mode cadence    */
-#define BG_HR_AWAKE_SKIP     5               /* awake: burst every 5th tick ≈15min */
+/* Sparse-but-long night cadence (2026-07-28 experiment): the residual harmonic
+   locks all happen in the first seconds after a cold start, and the workout app
+   (continuous measurement) tracks Apple closely on the same wrist — evidence
+   that convergence time, not sensor quality, is the limit. Trade burst COUNT for
+   burst LENGTH: 10 min apart, 3 min each. Night LED duty 33% -> 30%, so this is
+   power-neutral while giving the algo 3x longer to converge. Sleep-staging HR
+   thins to one window per 10 min; keep SLEEP_HR_WINDOW_MAX_AGE_MS
+   (sleep_service.c) >= this period so no minute is left without HR features.
+   Revert both together. */
+#define BG_HR_PERIOD_MS      (10 * 60 * 1000) /* base tick = sleep-mode cadence   */
+#define BG_HR_AWAKE_SKIP     2               /* awake: burst every 2nd tick =20min */
 /* The HBA algo restarts cold each burst and needs ~30 s to lock (hba_out_flag
    stays 0 until then); before that gh3018_get_hr() still returns the PREVIOUS
    burst's stale value. Drop that warm-up window from the HR stats, and keep
    every burst longer than it. */
 #define BG_HR_WARMUP_MS      (30 * 1000)     /* warm-up FALLBACK cap; dynamic warm-up (HR update-seq) accepts earlier on real lock */
 #define BG_HR_BURST_MS_AWAKE (40 * 1000)     /* warm-up + ~10 s to lock one BPM    */
-#define BG_HR_BURST_MS_SLEEP (60 * 1000)     /* warm-up + ~30 s stable for HR std  */
+#define BG_HR_BURST_MS_SLEEP (3 * 60 * 1000) /* long enough to converge past a cold-start harmonic lock */
 #define BG_HR_SAMPLE_MS      (1000)          /* read cadence during the burst      */
 /* HR output motion gate: each 1 Hz read also samples BMI270 accel; if the wrist
    moved this second (or within the guard window after), drop that HR read from
@@ -1190,9 +1199,10 @@ static uint8_t bghr_median_push(uint8_t v)
 static uint32_t bg_hr_burst_qscore_min = 0xFFFFFFFFu;
 static uint32_t bg_hr_burst_qlevel = 0;
 
-/* Integer std-dev from running Σx / Σx² (n ≤ ~25 keeps it inside uint32).
-   Mirrors sleep_service's prv_compute_hr_std so the HRV feed and the
-   classifier agree on the math. */
+/* Integer std-dev from running Σx / Σx². Dividing before squaring keeps this in
+   uint32 for any realistic n (Σx² ≤ n·255², so n up to ~66k is safe; a 3-min
+   burst is ~180 reads). Mirrors sleep_service's prv_compute_hr_std so the HRV
+   feed and the classifier agree on the math. */
 static uint8_t bg_hr_std_from_sums(uint32_t sum, uint32_t sum_sq, uint16_t n)
 {
     if (n < 2) return 0;
