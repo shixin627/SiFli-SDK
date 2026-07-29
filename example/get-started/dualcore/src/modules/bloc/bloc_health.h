@@ -45,6 +45,17 @@ void health_store_hr_async(uint32_t timestamp_utc, uint8_t bpm);
    path as health_store_hr_async. Safe to call from BLE/RPC threads. */
 void health_store_hr_skip_async(uint32_t timestamp_utc, uint8_t reason);
 
+/* Replay stored HR points NEWER than since_ts back to the phone as ordinary
+   KEY_HEART_CURVE_SAMPLE / KEY_HEART_CURVE_SKIP frames — the "forward" half of
+   store-and-forward, which was missing: the watch has always persisted these
+   points but nothing ever read them back, so anything sampled while BLE was
+   down never reached the phone. Driven by KEY_HR_BACKFILL_REQ on reconnect.
+   Safe to call from the BLE thread (enqueues; the worker does the flash work).
+   Bounded by HR_BACKFILL_MAX_DAYS / HR_BACKFILL_MAX_FRAMES and paced so a
+   night's replay cannot swamp the BLE notify queue; stops early if the link
+   drops again. Overlap is harmless — the phone's ts_epoch is a PRIMARY KEY. */
+void health_backfill_hr_async(uint32_t since_ts);
+
 /* Delete /health files older than the retention window so flash doesn't grow
    unbounded. Takes watch_storage_api_lock(); call from a normal thread, not a
    BLE/RPC handler. */
