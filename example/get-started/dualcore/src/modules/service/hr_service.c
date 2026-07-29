@@ -1034,10 +1034,10 @@ extern uint32_t gh3018_get_hr_update_seq(void);
 #define BG_HR_AWAKE_SKIP     2               /* awake: burst every 2nd tick =20min */
 /* The HBA algo restarts cold each burst and needs ~30 s to lock (hba_out_flag
    stays 0 until then); before that gh3018_get_hr() still returns the PREVIOUS
-   burst's stale value. Drop that warm-up window from the HR stats, and keep
-   every burst longer than it. */
-#define BG_HR_WARMUP_MS      (30 * 1000)     /* warm-up FALLBACK cap; dynamic warm-up (HR update-seq) accepts earlier on real lock */
-#define BG_HR_BURST_MS_AWAKE (40 * 1000)     /* warm-up + ~10 s to lock one BPM    */
+   burst's stale value, so reads are gated on a real lock (HR update-seq moving)
+   rather than on elapsed time -- keep every burst comfortably longer than ~30 s
+   or it will lock nothing and report NO_LOCK. */
+#define BG_HR_BURST_MS_AWAKE (40 * 1000)     /* ~30 s to lock + ~10 s to read one BPM */
 #define BG_HR_BURST_MS_SLEEP (3 * 60 * 1000) /* long enough to converge past a cold-start harmonic lock */
 #define BG_HR_SAMPLE_MS      (1000)          /* read cadence during the burst      */
 /* HR output motion gate: each 1 Hz read also samples BMI270 accel; if the wrist
@@ -1061,8 +1061,7 @@ static rt_timer_t bg_hr_period_timer = RT_NULL;
 static rt_timer_t bg_hr_sample_timer = RT_NULL;
 static rt_bool_t bg_hr_bursting = RT_FALSE;
 static uint32_t bg_hr_burst_deadline_ms = 0;
-static uint32_t bg_hr_burst_accept_ms = 0;   /* reads before this tick are warm-up (fallback cap) */
-static uint32_t bg_hr_burst_start_seq = 0;   /* gh3018 HR-update seq at burst start; dynamic warm-up baseline */
+static uint32_t bg_hr_burst_start_seq = 0;   /* gh3018 HR-update seq at burst start; warm-up baseline */
 static uint8_t bg_hr_burst_best = 0;
 
 /* ---- PPG perfusion-index (PI = AC/DC) capture over a burst -------------------
@@ -1251,8 +1250,15 @@ bool hr_service_get_hr_window(uint8_t *mean_bpm, uint8_t *std_bpm, uint32_t *age
 #define GH_HBA_SCENE_SLEEP     20  /* HBA_SCENES_SLEEP                        */
 #define GH_HBA_MODE_DYNAMIC    0   /* HBA_TEST_DYNAMIC: continuous default    */
 #define GH_HBA_MODE_SENSELESS  2   /* HBA_TEST_SENSELESS: periodic background
-                                      sampling (= bg_hr's burst cadence);
-                                      step/duration 0 = "unknown" per vendor */
+                                      sampling (= bg_hr's burst cadence)        */
+/* Vendor units are SECONDS ("无感间隔时间秒数" / "无感持续时间秒数", 0 = unknown --
+   goodix_hba.h:105-106, GBK). We passed 0/0 = "unknown" since the mode was first
+   wired, i.e. the algo was told it does periodic sampling but never told the
+   period -- so it had no basis for carrying tracking state across the gap and
+   cold-started blind every burst. Derive from the actual cadence so the two can
+   never drift apart. */
+#define GH_HBA_SENSELESS_STEP_S (BG_HR_PERIOD_MS / 1000)      /* gap between bursts */
+#define GH_HBA_SENSELESS_DUR_S  (BG_HR_BURST_MS_SLEEP / 1000) /* length of a burst  */
 extern signed char HBD_HbAlgoScenarioConfig(int scenario);
 extern void HBD_HbaTestModeConfig(int mode, unsigned short step,
                                   unsigned short duration);
@@ -1280,7 +1286,9 @@ void hr_service_set_sleep_active(bool active)
         HBD_HbAlgoScenarioConfig(active ? GH_HBA_SCENE_SLEEP
                                         : GH_HBA_SCENE_DEFAULT);
         HBD_HbaTestModeConfig(active ? GH_HBA_MODE_SENSELESS
-                                     : GH_HBA_MODE_DYNAMIC, 0, 0);
+                                     : GH_HBA_MODE_DYNAMIC,
+                              active ? GH_HBA_SENSELESS_STEP_S : 0,
+                              active ? GH_HBA_SENSELESS_DUR_S  : 0);
         LOG_I("bg_hr: HBA sleep context -> %d", active ? 1 : 0);
     }
 }
@@ -1422,10 +1430,17 @@ static void bg_hr_finish_burst(void)
        so the phone draws a gap instead of a false spike, and the sleep_fusion HR
        window (published from best) goes absent for that minute rather than feeding
        the wake-veto a garbage-high value. Only while asleep. */
-    if (bg_hr_sleep_active && bg_hr_burst_best > SLEEP_HR_ARTEFACT_CEIL)
-    {
-        bg_hr_burst_best = 0;
-    }
+    /* 2026-07-29: this used to ZERO the value, which destroyed the only evidence of
+       what the algo had actually locked -- such bursts became indistinguishable from
+       a genuine no-lock, and one night put 47% of all bursts in that bucket with no
+       way to tell which. x2 of a 50-55 resting HR is 100-110, i.e. just above this
+       ceiling, so these are the prime harmonic suspects and we need to SEE them.
+       Now: publish the raw value (it is self-identifying -- a >100 sleeping reading
+       IS the marker) but keep it out of sleep staging, which is the protection that
+       actually mattered. Diagnostic trade-off: the phone curve shows these spikes
+       again for now, same as before the ceiling existed. */
+    bool bghr_over_ceiling = (bg_hr_sleep_active &&
+                              bg_hr_burst_best > SLEEP_HR_ARTEFACT_CEIL);
 
     /* Forward the best BPM seen this burst, then power the LED back off. */
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
@@ -1457,7 +1472,10 @@ static void bg_hr_finish_burst(void)
        Deep/REM staging. Need ≥2 samples for a meaningful std. */
     if (bg_hr_burst_cnt >= 2)
     {
-        bg_hr_win_mean = bg_hr_burst_best;
+        /* An over-ceiling burst still publishes to the curve (see above) but must
+           never reach staging / the wake-veto: mean 0 makes sleep_service skip this
+           window entirely, exactly as the old zeroing did. */
+        bg_hr_win_mean = bghr_over_ceiling ? 0 : bg_hr_burst_best;
         bg_hr_win_std = bg_hr_std_from_sums(bg_hr_burst_sum, bg_hr_burst_sum_sq,
                                             bg_hr_burst_cnt);
         bg_hr_win_tick_ms = rt_tick_get_millisecond();
@@ -1500,14 +1518,17 @@ static void bg_hr_sample_cb(void *param)
 
     if (rd == 1)
     {
-        /* Dynamic warm-up: accept as soon as the algo emits a FRESH locked value
-           this burst (gh3018 HR update-seq moved past the burst-start baseline) --
-           typically well under the old fixed 30s. The fixed accept_ms is kept ONLY
-           as a fallback, so behaviour is never worse than before if the seq never
-           moves (algo never locked this burst). Until one of those holds,
-           gh3018_get_hr() returns the previous burst's stale value -- must not accept. */
+        /* Accept ONLY once the algo emits a fresh locked value this burst (gh3018 HR
+           update-seq moved past the burst-start baseline).
+           2026-07-29: there used to be a second accept path -- a fixed 30 s cap that
+           took whatever gh3018_get_hr() held once the warm-up elapsed. But loc_hb_value
+           is never cleared between bursts (its only writer is gh3018_set_hr), so a burst
+           where the algo never locked did NOT come out empty: it silently republished
+           the PREVIOUS burst's value as a fresh reading. Signature in the data: runs of
+           byte-identical consecutive bursts, 11-15% of published points. A burst that
+           never locks must report NO_LOCK honestly instead. */
         bool bghr_algo_locked = (gh3018_get_hr_update_seq() != bg_hr_burst_start_seq);
-        if (sd.data.hr > 0 && (bghr_algo_locked || bghr_now_ms >= bg_hr_burst_accept_ms))
+        if (sd.data.hr > 0 && bghr_algo_locked)
         {
             /* step->1 (the accel-feed alignment fix, already on main) restored the
                GH30x built-in motion compensation, so this external motion-gate's
@@ -1620,8 +1641,7 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_qlevel = 0;
     bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
     uint32_t bg_now_ms = rt_tick_get_millisecond();
-    bg_hr_burst_accept_ms = bg_now_ms + BG_HR_WARMUP_MS; /* fixed warm-up fallback cap */
-    bg_hr_burst_start_seq = gh3018_get_hr_update_seq();  /* dynamic warm-up: accept once the algo emits a NEW locked value past this */
+    bg_hr_burst_start_seq = gh3018_get_hr_update_seq();  /* warm-up baseline: accept once the algo emits a NEW locked value past this */
     bg_hr_burst_deadline_ms = bg_now_ms + bg_hr_burst_ms;
     /* Open in HR mode (GH30X_FUNCTION_HR), the same path the foreground HR
        subscribe uses; hr_set_power(1) would open NORMAL = HRV, which never

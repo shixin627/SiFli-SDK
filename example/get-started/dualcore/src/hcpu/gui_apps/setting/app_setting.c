@@ -764,7 +764,8 @@ static void btn_clear_flash_event_callback(lv_event_t *e)
     }
 }
 
-#if !kReleaseMode
+/* 2026-07-29 founder: Development page now ships in release too, so this
+ * callback must compile in both. Was gated on !kReleaseMode. */
 static void btn_developer_event_callback(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target(e);
@@ -775,7 +776,6 @@ static void btn_developer_event_callback(lv_event_t *e)
         app_developer_main();
     }
 }
-#endif
 
 static void btn_gesture_event_callback(lv_event_t *e)
 {
@@ -1494,15 +1494,15 @@ void app_setting_init(void *param)
     lv_obj_add_event_cb(list_btn, btn_clear_flash_event_callback,
                         LV_EVENT_SHORT_CLICKED, NULL);
 
-#if !kReleaseMode
-    // Development (opens sub-page)
+    // Development (opens sub-page) — 2026-07-29 founder: now shown in release
+    // too so the restart count / File-log toggle are reachable on-watch.
     list_btn = create_capsule_item(settings_container, list_btn,
                                    LV_EXT_IMG_GET(airplane), "Development",
                                    true);
     lv_obj_add_event_cb(list_btn, btn_developer_event_callback,
                         LV_EVENT_SHORT_CLICKED, NULL);
-#else
-    // Restart (action only, no arrow)
+#if kReleaseMode
+    // Restart (action only, no arrow) — release keeps a direct restart too
     list_btn = create_capsule_item(settings_container, list_btn,
                                    LV_EXT_IMG_GET(airplane),
                                    LV_EXT_STR_GET_BY_KEY(restart, "restart"),
