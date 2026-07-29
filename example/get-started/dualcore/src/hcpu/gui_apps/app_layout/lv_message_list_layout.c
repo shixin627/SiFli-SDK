@@ -271,6 +271,18 @@ static bool have_media_widget = false;
 #ifdef MESSAGE_NEED_MEDIA_WIDGET
 static bool is_at_media_widget = false;
 #endif
+
+/* 通知列表停在 media widget 時回 true — 供 bloc_motion_tracking 的
+   if_watchface_visible gate 開例外（音樂控制允許任何姿態捏指）。
+   is_at_message() 兜底：離開頁面後殘留的 is_at_media_widget 不得放行。 */
+bool message_media_widget_focused(void)
+{
+#ifdef MESSAGE_NEED_MEDIA_WIDGET
+    return is_at_media_widget && is_at_message();
+#else
+    return false;
+#endif
+}
 static void hide_background_blocks(void);
 static notification_t *selection_notification = NULL;
 

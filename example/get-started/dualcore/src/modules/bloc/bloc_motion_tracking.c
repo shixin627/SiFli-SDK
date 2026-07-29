@@ -114,6 +114,7 @@ static Quaternion multiply_quaternions(Quaternion *q1, Quaternion *q2);
 /* Cross-module externs (defined in sibling bloc translation units). */
 extern bool get_enable_tap_and_hold(void);
 extern bool get_is_open_instruction_list_ai(void);
+extern bool message_media_widget_focused(void);
 
 static bool stop_mouse_move = false;
 
@@ -605,7 +606,7 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     // Update watchface visibility
     waveform_gesture_state.if_watchface_visible =
         (gravity->y > -0.7 && gravity->z > -0.6) ||
-        app_control_get_mouse_mode();
+        app_control_get_mouse_mode() || message_media_widget_focused();
 
     // Calculate linear acceleration difference
     float linear_accel_resultant = total_acceleration_magnitude(
