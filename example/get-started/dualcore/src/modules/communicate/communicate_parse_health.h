@@ -54,6 +54,20 @@ typedef enum
        appends to a daily CSV for offline SQI-threshold + missed-night analysis.
        Temporary diagnostic stream (mirrors KEY_WEAR_DIAG). */
     KEY_SLEEP_DIAG = 0x13,
+    /* PHONE -> WATCH. HR-curve backfill request {since_ts:u32 BE}: "I already
+       hold every HR point up to and INCLUDING since_ts — replay what is newer."
+       Sent by the phone right after it (re)connects, using MAX(ts_epoch) from
+       its own hr_curve table (0 = phone has nothing, watch replays its cap).
+       The watch answers by re-emitting ordinary KEY_HEART_CURVE_SAMPLE (0x10) /
+       KEY_HEART_CURVE_SKIP (0x11) frames from its own /health/hr_*.json store,
+       so the phone needs no new parsing path and its ts_epoch PRIMARY KEY
+       de-dups any overlap. Closes the store-and-forward loop: the watch has
+       always persisted these points, but nothing ever read them back, so a
+       disconnected stretch (e.g. a whole night) was lost for good.
+       NOTE endianness: u32 BE here to match every other inbound key parsed in
+       communicate_parse_health.c (read_be32); the REPLY frames stay LE because
+       0x10/0x11 are already defined that way. */
+    KEY_HR_BACKFILL_REQ = 0x14,
 } HEALTH_KEY;
 
 void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t length);

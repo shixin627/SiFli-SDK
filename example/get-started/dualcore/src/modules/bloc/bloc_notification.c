@@ -467,6 +467,10 @@ void navigate_notification_info(notification_t *notification)
 static bool need_wakeup = false;
 void interact_with_notification(notification_t *notification)
 {
+    /* Snapshot the arrival seq so update_notification()'s internal verdict
+       (previously-dismissed drop / identical reconnect re-push → seq
+       untouched) is observable here — those must not light the screen. */
+    uint32_t seq_before = notification_center_get_arrival_seq();
     if (!notification->calling)
     {
         update_notification(*notification);
@@ -479,6 +483,17 @@ void interact_with_notification(notification_t *notification)
 
     if (SkaiWatchSys.DNDMode.config.status) // DND mode
     {
+        return;
+    }
+
+    if (!notification->calling &&
+        notification_center_get_arrival_seq() == seq_before)
+    {
+        /* Not a genuine new arrival: refresh the list silently and skip both
+           the wakeup and the is_hcpu_suspend() spin below — with no wakeup
+           issued, that spin would block this (BLE RX) thread until something
+           else happens to wake the watch. */
+        notify_provider.notification_refresh();
         return;
     }
 

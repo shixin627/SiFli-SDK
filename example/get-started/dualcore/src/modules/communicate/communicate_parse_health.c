@@ -18,6 +18,7 @@
 #include "watch_global_data.h"
 #include "bloc_exercise.h"
 #include "bloc_filesystem.h"
+#include "bloc_health.h"
 #include "string.h"
 
 #define DBG_TAG "commu.parse.health"
@@ -121,6 +122,21 @@ void resolve_HealthData_command(uint8_t key, const uint8_t *pValue,
               SkaiWatchSys.gPedoData.quarter_calories);
     }
     break;
+
+    case KEY_HR_BACKFILL_REQ:
+    {
+        /* Phone reconnected and told us the newest HR point it already holds;
+           replay everything after it from the on-watch store. Async: reading +
+           re-sending a night's worth of JSON must not run on this BLE thread
+           (same reason the stores are async — see health_store_hr_async). */
+        if (length < 4)
+            break;
+        uint32_t since_ts = read_be32(&pValue[0]);
+        LOG_I("hr backfill requested since %u", since_ts);
+        health_backfill_hr_async(since_ts);
+    }
+    break;
+
     default:
         break;
     }

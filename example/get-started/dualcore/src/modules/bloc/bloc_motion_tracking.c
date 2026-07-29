@@ -44,8 +44,11 @@
 #define ENABLE_WAVEFORM_CAPTURE 1
 
 #if ENABLE_WAVEFORM_CAPTURE
-    // Sliding window and threshold constants
-    #define ACCEL_WINDOW_SIZE 15
+    /* Sliding window and threshold constants.
+       ACCEL_WINDOW_SIZE must hold GESTURE_PEAK_SEARCH + the larger
+       FEEDBACK_ACCEL_SAMPLES_* so the peak-aligned back-fill below can reach
+       back past the peak once the peak is confirmed (10 + 10 = 20 → 24). */
+    #define ACCEL_WINDOW_SIZE 24
     #define GYRO_WINDOW_SIZE 10
     #define GYRO_LOCK_THRESHOLD 2000.0f
     #define GESTURE_RELEASE_COOLDOWN_PERIOD_MS 100
@@ -59,6 +62,36 @@
     #define FEEDBACK_ACCEL_SAMPLES_FOR_RELEASE 10
     #define RELEASE_START_THRESHOLD 1.0f
     #define TAP_START_THRESHOLD 0.3f
+
+    /* ── Peak-aligned capture (2026-07-29) ────────────────────────────────
+       Replaces "threshold crossing starts an exclusive 35-sample collection".
+       Two measured problems with that scheme, both verified against a walking
+       capture whose touch_adc gives ground-truth tap times:
+
+       1. The window was anchored on the THRESHOLD CROSSING, not on the event
+          peak. Crossing→peak latency is itself variable (0-78 ms measured), so
+          the real tap landed at window index 9..24 — the 2nd-stage model saw a
+          different alignment every time.
+       2. Collection was exclusive: once started it ran 35 samples + cooldown
+          with no re-evaluation, so a stronger real tap arriving mid-window was
+          invisible. Walking spent 57% of wall-clock inside such windows.
+
+       New scheme: arm on the threshold, then keep tracking — ANY stronger peak
+       re-anchors the window (GESTURE_REALIGN_ON_STRONGER). The window is only
+       cut once the peak has been quiet for GESTURE_PEAK_SEARCH samples, and is
+       back-filled from the sliding window so the peak always lands at index
+       FEEDBACK_ACCEL_SAMPLES_* — a fixed alignment.
+
+       Measured on the walking capture (ground truth = touch_adc press edges):
+         current: 21 windows, 57% occupancy, 2/3 taps caught, index [18,-,24]
+         new:     15 windows, 41% occupancy, 3/3 taps caught, index [9,9,9]
+       Still capture regression-checked: identical window count/occupancy, all
+       6 events caught, alignment [9,9,17]/[18,17,17] → [9,9,9]/[9,9,9]. */
+    #define GESTURE_PEAK_SEARCH 10   /* samples of quiet needed to confirm peak */
+    #define GESTURE_ARM_TIMEOUT 80   /* give up if no window in 800 ms          */
+    #define GESTURE_ADAPTIVE_K 5.0f  /* thr = max(fixed, median × K)            */
+    #define GESTURE_ADAPTIVE_MEDIAN_SAMPLES 75
+    #define GESTURE_CONTEXT_WALK_MEDIAN 0.03f /* median above this ≈ walking    */
 
 // Gesture types
 typedef enum
@@ -82,10 +115,63 @@ typedef struct
     bool on_pressed;
 } waveform_gesture_state_t;
 
+/* Per-extractor state for the peak-aligned capture. TAP and RELEASE are two
+   independent extractors (game mode runs both at once), so this cannot live in
+   the shared waveform_gesture_state_t. */
+typedef struct
+{
+    bool armed;
+    uint16_t arm_age;  /* samples since arming                     */
+    uint16_t peak_age; /* samples since the current peak           */
+    float peak_val;    /* difference_accel at the current peak     */
+    uint8_t realigns;  /* re-anchors within this arm (diagnostic)  */
+    /* Background as it was when this window ARMED. The "is the wearer moving
+       too much to trust a gesture" gate has to judge the background BEFORE the
+       gesture: by the time the window closes, the running median has been
+       lifted by the gesture itself, so a re-computed median makes a strong
+       gesture look like violent motion and throws it away. Measured on-device:
+       a real press (fsr 5221, finger confirmed down) closed with med=0.13 and
+       0.37 and was dropped by the 0.25 gate. */
+    float arm_median;
+    float arm_threshold; /* threshold in force at arm time (for the log) */
+} capture_state_t;
+
 // Static variables for waveform capture
 static gesture_dataset_t tap_dataset = {0};
 static gesture_dataset_t release_dataset = {0};
+static capture_state_t tap_capture = {0};
+static capture_state_t release_capture = {0};
 static waveform_gesture_state_t waveform_gesture_state = {0};
+
+#if !kReleaseMode
+/* Diagnostic override (MSH `gcap both`) — run BOTH extractors regardless of
+   mode, so a capture session can see TAP and RELEASE windows side by side on
+   any screen. Deliberately NOT app_control_set_game_mode(): that one also
+   fires watch_sys_sync.set_multi_gesture_mode() across to the LCPU, which
+   would change behaviour beyond the thing being measured. This flag is read
+   in exactly one place (the extractor dispatch) and does nothing else. */
+static bool capture_both_override = false;
+
+/* Peak (×100) at or above which a CUT line is tagged " BIG". Walking crosses
+   the 0.3 tap threshold ~11% of the time, so the phone's live log scrolls
+   constantly and real gestures are lost in it — filtering the phone log on
+   "BIG" pulls them back out. Measured still-capture separation was clean
+   (real 145..550 vs noise 32..71); walking taps run smaller, hence adjustable
+   via `gcap pk <n>` rather than hard-coded. */
+static uint16_t gesture_big_pk = 100;
+
+/* Per-window diagnostic logging (the CUT / GST lines), OFF by default. It is
+   genuinely noisy — walking crosses the tap threshold ~11% of the time, so
+   this emits roughly one line per second per extractor, on both UART and the
+   BLE link to the phone. Turn on only for a capture session: `gcap log on`. */
+static bool capture_log_on = false;
+
+/* Read by gesture_recognition_task.c so one switch covers both stages. */
+bool gesture_capture_log_on(void)
+{
+    return capture_log_on;
+}
+#endif
 static watch_sys_linear_acce_t targetWave_algo[MAX_RAWDATA_TIME_STEP];
 
 static float difference_accel_sliding_window[MAX_GESTURE_SAMPLES] = {0.0f};
@@ -114,6 +200,7 @@ static Quaternion multiply_quaternions(Quaternion *q1, Quaternion *q2);
 /* Cross-module externs (defined in sibling bloc translation units). */
 extern bool get_enable_tap_and_hold(void);
 extern bool get_is_open_instruction_list_ai(void);
+extern bool message_media_widget_focused(void);
 
 static bool stop_mouse_move = false;
 
@@ -455,6 +542,71 @@ bool get_open_ppg_chacked(void)
     return open_ppg_chacked;
 }
 
+/**
+ * @brief Report one cut window on the UART log (COM14, tools/dev_console).
+ *
+ * One line per emitted window so a live capture session can be checked
+ * event-by-event ("did it catch all three taps?"). Floats are scaled ×100 and
+ * printed as integers — ulog's formatter has no %f.
+ *
+ *   CUT TAP pk=141 thr=36 med=7 now=13 fsr=3100 ra=1 age=21 SENT
+ *        │      │      │     │    │      │     │    │    └ SENT/DROP-med/DROP-pose
+ *        │      │      │     │    │      │     │    └ samples from arm to emit
+ *        │      │      │     │    │      │     └ re-anchors onto a stronger peak
+ *        │      │      │     │    │      └ FSR ADC at emit — ground truth for
+ *        │      │      │     │    │        "was the finger down": ~16000 resting,
+ *        │      │      │     │    │        drops hard on a real press, so a high
+ *        │      │      │     │    │        fsr here means that window was noise
+ *        │      │      │     │    └ background median ×100 AT EMIT — compare
+ *        │      │      │     │      against med to see how much the gesture
+ *        │      │      │     │      itself lifted the running median
+ *        │      │      │     └ background median ×100 AT ARM (what the gate
+ *        │      │      │       judges; walking ≈ 7, still ≈ 1)
+ *        │      │      └ threshold in force AT ARM ×100 (adaptive)
+ *        │      └ peak difference_accel ×100
+ *        └ TAP / REL
+ *
+ * thr/med are sampled at ARM, not at emit — reporting the recomputed values was
+ * what made a `pk=148 thr=185` line look self-contradictory.
+ *
+ * Dev builds only — compiled out in release.
+ */
+static void gesture_capture_report(gesture_type_t type, capture_state_t *cap,
+                                   float median_now, rt_uint32_t fsr_adc_value,
+                                   bool is_gesture, bool posture_ok)
+{
+#if !kReleaseMode
+    if (!capture_log_on)
+    {
+        return;
+    }
+    /* Formatted once, emitted on BOTH transports. UART (COM12) is for bench
+       tests; BLE is the only viewer that MOVES WITH THE WEARER, which is what
+       a walking test needs — you can't drag a UART cable along. The phone
+       ring-buffers 200 lines, so the log can be read after the walk rather
+       than watched during it. Local buffer, not wristband_ble_log.c's shared
+       one: that has no lock and is documented as BLE-rx-context only, while
+       this runs on the motion-tracking thread. */
+    char line[96];
+    int pk100 = (int)(cap->peak_val * 100.0f);
+    rt_snprintf(line, sizeof(line),
+                "CUT %s pk=%d thr=%d med=%d now=%d fsr=%d ra=%d age=%d %s%s",
+                (type == GESTURE_TYPE_TAP) ? "TAP" : "REL", pk100,
+                (int)(cap->arm_threshold * 100.0f),
+                (int)(cap->arm_median * 100.0f), (int)(median_now * 100.0f),
+                (int)fsr_adc_value, cap->realigns, cap->arm_age,
+                !is_gesture ? "DROP-med" : !posture_ok ? "DROP-pose" : "SENT",
+                (pk100 >= (int)gesture_big_pk) ? " BIG" : "");
+    LOG_I("%s", line);
+    #ifdef BSP_USING_COMMUNICATE
+    commu_send_bluetooth_log(line);
+    #endif
+#else
+    (void)type; (void)cap; (void)median_now;
+    (void)fsr_adc_value; (void)is_gesture; (void)posture_ok;
+#endif
+}
+
 extern int get_gesture_recognition_threshold(void);
 static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                        Vector3 *linear_acce, Vector3 *gyro,
@@ -462,7 +614,8 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
                                        rt_uint32_t fsr_adc_value,
                                        waveform_gesture_state_t *state,
                                        gesture_type_t type,
-                                       gesture_dataset_t *dataset)
+                                       gesture_dataset_t *dataset,
+                                       capture_state_t *cap)
 {
     rt_tick_t current_time = rt_tick_get_millisecond();
 
@@ -484,96 +637,177 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     }
     else if (state->if_watchface_visible == false && !imu_data_collection)
     {
+        cap->armed = false; /* posture gate — drop any in-flight arm too */
         reset_gesture_state(dataset, current_time, type, 2);
         return;
     }
     else if (state->gyro_lock_status && !imu_data_collection)
     {
+        cap->armed = false; /* gyro lock — same */
         reset_gesture_state(dataset, current_time, type, 3);
         return;
     }
 
     int target_samples = 0;
     float start_threshold = 0.0f;
+    int feedback_samples = 0;
     if (type == GESTURE_TYPE_TAP)
     {
         target_samples = GESTURE_TAP_TIME_STEP;
         start_threshold = TAP_START_THRESHOLD;
+        feedback_samples = FEEDBACK_ACCEL_SAMPLES_FOR_TAP;
     }
     else if (type == GESTURE_TYPE_RELEASE)
     {
         target_samples = GESTURE_RELEASE_TIME_STEP;
         start_threshold = RELEASE_START_THRESHOLD;
+        feedback_samples = FEEDBACK_ACCEL_SAMPLES_FOR_RELEASE;
     }
 
-    if (!dataset->gesture_started && !dataset->gesture_ended)
+    /* Adaptive threshold — the fixed constant is a FLOOR, the running
+       background median lifts it while the wearer moves. Measured background
+       median: 0.013 (still) vs 0.071 (walking), so the same K leaves the still
+       working point untouched (0.013 × 5 = 0.065 < 0.3, floor wins) while
+       lifting the walking one to ~0.36. Walking window count drops 21 → 15
+       with no loss of real taps; K = 8 starts dropping the weakest tap. */
+    float bg_median =
+        calculate_median_difference_accel(GESTURE_ADAPTIVE_MEDIAN_SAMPLES);
+    float trigger_threshold = bg_median * GESTURE_ADAPTIVE_K;
+    if (trigger_threshold < start_threshold)
     {
-        if ((waveform_gesture_state.difference_accel > start_threshold &&
-             !open_ppg_chacked) ||
-            (ppg_diff_rawdata > get_gesture_recognition_threshold() &&
-             open_ppg_chacked))
+        trigger_threshold = start_threshold;
+    }
+
+    bool ppg_triggered =
+        (ppg_diff_rawdata > (uint32_t)get_gesture_recognition_threshold() &&
+         open_ppg_chacked);
+    bool accel_triggered =
+        (waveform_gesture_state.difference_accel > trigger_threshold &&
+         !open_ppg_chacked);
+
+    /* ── Idle: wait for a threshold crossing to ARM ───────────────────────
+       Arming stores nothing. The window is only cut once the peak is known,
+       so that the peak always lands at the same index (see below). */
+    if (!cap->armed)
+    {
+        if (!accel_triggered && !ppg_triggered)
         {
-            if (ppg_diff_rawdata > get_gesture_recognition_threshold() &&
-                open_ppg_chacked)
-                LOG_D("PPG DIFF");
-            dataset->gesture_started = true;
-            int feedback_samples = 0;
-            if (type == GESTURE_TYPE_TAP)
-            {
-                feedback_samples = FEEDBACK_ACCEL_SAMPLES_FOR_TAP;
-            }
-            else if (type == GESTURE_TYPE_RELEASE)
-            {
-                feedback_samples = FEEDBACK_ACCEL_SAMPLES_FOR_RELEASE;
-            }
-            for (int i = 0; i < feedback_samples; i++)
-            {
-                int accel_index = ACCEL_WINDOW_SIZE - 1 - feedback_samples + i;
-                store_gesture_sample(
-                    dataset, ts, &state->sliding_window_accel[accel_index],
-                    &state->sliding_window_gravity[accel_index],
-                    state->sliding_window_ppg[accel_index],
-                    state->sliding_window_fsr_adc[accel_index],
-                    state->on_pressed);
-            }
+            return;
+        }
+        if (ppg_triggered)
+        {
+            LOG_D("PPG DIFF");
+        }
+        cap->armed = true;
+        cap->arm_age = 0;
+        cap->peak_age = 0;
+        cap->peak_val = waveform_gesture_state.difference_accel;
+        cap->realigns = 0;
+        cap->arm_median = bg_median;
+        cap->arm_threshold = trigger_threshold;
+        return;
+    }
+
+    /* ── Armed: keep evaluating every sample. ────────────────────────────── */
+    cap->arm_age++;
+    cap->peak_age++;
+
+    if (waveform_gesture_state.difference_accel > cap->peak_val)
+    {
+        /* A stronger sample than the current anchor — re-anchor onto it. This
+           is what makes a real tap arriving inside a noise-triggered window
+           visible again: the stronger event takes the window instead of being
+           swallowed by the weaker one that happened to fire first. */
+        cap->peak_val = waveform_gesture_state.difference_accel;
+        cap->peak_age = 0;
+        if (dataset->gesture_sample_count > 0)
+        {
+            dataset->gesture_sample_count = 0;
+            dataset->gesture_started = false;
+            cap->realigns++;
         }
     }
 
-    if (dataset->gesture_started)
+    /* Continuous motion could keep bumping the peak forever — bail out rather
+       than stay armed indefinitely. No cooldown: nothing was emitted, so the
+       extractor should be free to re-arm immediately. */
+    if (cap->arm_age > GESTURE_ARM_TIMEOUT)
     {
-        store_gesture_sample(dataset, ts, linear_acce, gravity, ppg,
-                             fsr_adc_value, state->on_pressed);
-        if (dataset->gesture_sample_count >= target_samples)
+        dataset->gesture_sample_count = 0;
+        dataset->gesture_started = false;
+        dataset->gesture_ended = false;
+        cap->armed = false;
+        return;
+    }
+
+    /* ── Peak confirmed → back-fill so the peak sits at a FIXED index ──────
+       The sliding window's newest slot is the current sample, which is
+       `peak_age` samples after the peak. Copying from
+       `ACCEL_WINDOW_SIZE-1-peak_age-feedback_samples` up to the newest slot
+       puts the peak at dataset index `feedback_samples` every time — the same
+       index the old code gave the THRESHOLD CROSSING, so the window shape and
+       length the 2nd-stage model sees are unchanged. */
+    if (dataset->gesture_sample_count == 0)
+    {
+        if (cap->peak_age < GESTURE_PEAK_SEARCH)
         {
-            dataset->gesture_ended = true;
-            static rt_tick_t median_lock_trigger_time = 0;
-            float median_difference_accel =
-                calculate_median_difference_accel(75);
-            bool is_gesture = true;
-            if (median_difference_accel > 0.25f)
-            {
-                is_gesture = false;
-                median_lock_trigger_time = current_time;
-            }
-            else if (median_lock_trigger_time != 0 &&
-                     (current_time - median_lock_trigger_time) < 1000)
-            {
-                is_gesture = false;
-            }
-            if (is_gesture && (user_hand_horizontal ||
-                               type == GESTURE_TYPE_TAP || imu_data_collection))
-            {
-                getTargetWaveformFromSlidingWindow(dataset, targetWave_algo,
-                                                   target_samples);
-                // Directly notify gesture recognition task on HCPU
-                // if (!check_ppg_error)
-                {
-                    notify_gesture_dataset_hcpu(rt_tick_get(), target_samples,
-                                                targetWave_algo);
-                }
-            }
-            reset_gesture_state(dataset, current_time, type, 7);
+            return; /* a stronger peak may still arrive */
         }
+        int first = ACCEL_WINDOW_SIZE - 1 - (int)cap->peak_age - feedback_samples;
+        if (first < 0)
+        {
+            first = 0;
+        }
+        for (int i = first; i < ACCEL_WINDOW_SIZE; i++)
+        {
+            store_gesture_sample(dataset, ts, &state->sliding_window_accel[i],
+                                 &state->sliding_window_gravity[i],
+                                 state->sliding_window_ppg[i],
+                                 state->sliding_window_fsr_adc[i],
+                                 state->on_pressed);
+        }
+        dataset->gesture_started = true;
+        return; /* the current sample is already inside the back-fill */
+    }
+
+    /* ── Collecting the tail after the peak ──────────────────────────────── */
+    store_gesture_sample(dataset, ts, linear_acce, gravity, ppg, fsr_adc_value,
+                         state->on_pressed);
+    if (dataset->gesture_sample_count >= target_samples)
+    {
+        dataset->gesture_ended = true;
+        static rt_tick_t median_lock_trigger_time = 0;
+        /* Judge the background from ARM time, not now — see capture_state_t
+           .arm_median. Re-computing here lets a strong gesture veto itself. */
+        float median_difference_accel = cap->arm_median;
+        bool is_gesture = true;
+        if (median_difference_accel > 0.25f)
+        {
+            is_gesture = false;
+            median_lock_trigger_time = current_time;
+        }
+        else if (median_lock_trigger_time != 0 &&
+                 (current_time - median_lock_trigger_time) < 1000)
+        {
+            is_gesture = false;
+        }
+        bool posture_ok = (user_hand_horizontal || type == GESTURE_TYPE_TAP ||
+                           imu_data_collection);
+        if (is_gesture && posture_ok)
+        {
+            getTargetWaveformFromSlidingWindow(dataset, targetWave_algo,
+                                               target_samples);
+            // Directly notify gesture recognition task on HCPU
+            // if (!check_ppg_error)
+            {
+                notify_gesture_dataset_hcpu(rt_tick_get(), target_samples,
+                                            targetWave_algo);
+            }
+        }
+        gesture_capture_report(type, cap, calculate_median_difference_accel(75),
+                               fsr_adc_value, is_gesture, posture_ok);
+        cap->armed = false;
+        reset_gesture_state(dataset, current_time, type, 7);
     }
 }
 
@@ -605,7 +839,7 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
     // Update watchface visibility
     waveform_gesture_state.if_watchface_visible =
         (gravity->y > -0.7 && gravity->z > -0.6) ||
-        app_control_get_mouse_mode();
+        app_control_get_mouse_mode() || message_media_widget_focused();
 
     // Calculate linear acceleration difference
     float linear_accel_resultant = total_acceleration_magnitude(
@@ -657,16 +891,23 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
                                        fsr_adc_value, &waveform_gesture_state);
     check_gyro_threshold(gyro, &waveform_gesture_state);
 
-    if (app_control_get_game_mode())
+    bool capture_both = app_control_get_game_mode();
+#if !kReleaseMode
+    capture_both = capture_both || capture_both_override;
+#endif
+
+    if (capture_both)
     {
         gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts,
                                    linear_acce, gyro, gravity, ppg_rawdata,
                                    fsr_adc_value, &waveform_gesture_state,
-                                   GESTURE_TYPE_TAP, &tap_dataset);
+                                   GESTURE_TYPE_TAP, &tap_dataset,
+                                   &tap_capture);
         gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts,
                                    linear_acce, gyro, gravity, ppg_rawdata,
                                    fsr_adc_value, &waveform_gesture_state,
-                                   GESTURE_TYPE_RELEASE, &release_dataset);
+                                   GESTURE_TYPE_RELEASE, &release_dataset,
+                                   &release_capture);
     }
     else
     {
@@ -675,17 +916,67 @@ static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
             gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts,
                                        linear_acce, gyro, gravity, ppg_rawdata,
                                        fsr_adc_value, &waveform_gesture_state,
-                                       GESTURE_TYPE_RELEASE, &release_dataset);
+                                       GESTURE_TYPE_RELEASE, &release_dataset,
+                                       &release_capture);
         }
         else
         {
             gesture_event_capture_hcpu(IMU_NOARMAL_SAMPLE_RATE, current_ts,
                                        linear_acce, gyro, gravity, ppg_rawdata,
                                        fsr_adc_value, &waveform_gesture_state,
-                                       GESTURE_TYPE_TAP, &tap_dataset);
+                                       GESTURE_TYPE_TAP, &tap_dataset,
+                                       &tap_capture);
         }
     }
 }
+
+#if !kReleaseMode
+/**
+ * @brief MSH: `gcap both` / `gcap normal` / `gcap` — pick which extractors run.
+ *
+ * `both` forces TAP and RELEASE to run side by side on any screen so a capture
+ * session can compare them; `normal` restores the shipping dispatch (RELEASE
+ * only while motion_control_lock, TAP only in motion-control mode). Diagnostic
+ * only — compiled out in release.
+ */
+static void gcap(int argc, char **argv)
+{
+    if (argc >= 2)
+    {
+        if (rt_strcmp(argv[1], "both") == 0)
+        {
+            capture_both_override = true;
+        }
+        else if (rt_strcmp(argv[1], "normal") == 0)
+        {
+            capture_both_override = false;
+        }
+        else if (rt_strcmp(argv[1], "pk") == 0 && argc >= 3)
+        {
+            gesture_big_pk = (uint16_t)atoi(argv[2]);
+        }
+        else if (rt_strcmp(argv[1], "log") == 0 && argc >= 3)
+        {
+            capture_log_on = (rt_strcmp(argv[2], "on") == 0);
+        }
+        else
+        {
+            rt_kprintf("usage: gcap [both|normal|pk <peak x100>|log on|log off]\n");
+            return;
+        }
+    }
+    rt_kprintf("gcap: both_override=%d game_mode=%d motion_control_lock=%d "
+               "big_pk=%d log=%s\n      -> running: %s\n",
+               capture_both_override, app_control_get_game_mode(),
+               SkaiWatchSys.motion_control_lock, gesture_big_pk,
+               capture_log_on ? "on" : "off",
+               (capture_both_override || app_control_get_game_mode())
+                   ? "TAP + RELEASE"
+                   : (SkaiWatchSys.motion_control_lock ? "RELEASE only"
+                                                       : "TAP only"));
+}
+MSH_CMD_EXPORT(gcap, "gesture capture extractors: gcap [both|normal]");
+#endif
 
 #endif // ENABLE_WAVEFORM_CAPTURE
 void set_prev_sensor_quat(uint16_t target_value)

@@ -82,6 +82,10 @@
 #define DBG_LVL DBG_LOG
 #include "rtdbg.h"
 
+/* Defined next to the inference loop; declared here so the recognition path
+   above it can report the model's verdict on the same channel. */
+static void gesture_stage2_report(const char *what);
+
 /* External function from app_gesture.c for data collection */
 extern void app_gesture_receive_imu_data(int16_t (*dataset)[6], int sample_num);
 
@@ -347,6 +351,15 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
             LOG_I("recognize tap gesture cost_tick:%d, score:%d",
                   last_gesture_recognition_time - tick_time_start,
                   tap_recognition_score);
+            {
+                /* The model's verdict on the same channel as the CUT lines, so
+                   the phone shows the whole chain: window cut → gate passed →
+                   score. score==1 is the one that fires a gesture. */
+                char verdict[24];
+                rt_snprintf(verdict, sizeof(verdict), "score=%d",
+                            tap_recognition_score);
+                gesture_stage2_report(verdict);
+            }
             if (tap_recognition_score == 1)
             {
                 if (app_control_get_mouse_mode())
@@ -470,6 +483,40 @@ static void gesture_recognition_algorithm(gesture_data_t *gesture)
 #define IMU_THREAD_PRIORITY RT_THREAD_PRIORITY_MIDDLE - 1
 #define IMU_THREAD_TIMESLICE 10
 extern bool get_motor_status(void);
+
+/**
+ * @brief Report what stage 2 did with a window that stage 1 handed over.
+ *
+ * Stage 1 (bloc_motion_tracking) logs every window it cuts as a `CUT ...`
+ * line. Without this, a window that clears stage 1 and then hits one of the
+ * six gates below disappears with no trace — which on the log reads exactly
+ * like stage 1 having missed the gesture. Measured: 20 windows emitted, only
+ * 2-3 ever reached the model, and nothing said why.
+ *
+ * Same dual transport as the CUT lines: UART for bench work, BLE because a
+ * walking test can't drag a cable along. Dev builds only.
+ */
+static void gesture_stage2_report(const char *what)
+{
+#if !kReleaseMode
+    /* Same switch as the stage-1 CUT lines (`gcap log on`), so one command
+       covers the whole chain instead of leaving half of it chattering. */
+    extern bool gesture_capture_log_on(void);
+    if (!gesture_capture_log_on())
+    {
+        return;
+    }
+    LOG_I("GST %s", what);
+    #ifdef BSP_USING_COMMUNICATE
+    char line[48];
+    rt_snprintf(line, sizeof(line), "GST %s", what);
+    commu_send_bluetooth_log(line);
+    #endif
+#else
+    (void)what;
+#endif
+}
+
 static void gesture_recognition_thread_entry(void *parameter)
 {
     init_gesture_recognition_release_model();
@@ -486,6 +533,7 @@ static void gesture_recognition_thread_entry(void *parameter)
            IMU samples but HCPU returns to sleep without running the model. */
         if (!gui_is_active())
         {
+            gesture_stage2_report("drop=gui-off");
             continue;
         }
 
@@ -495,11 +543,13 @@ static void gesture_recognition_thread_entry(void *parameter)
         // }
         if (!SkaiWatchSys.flag_field.is_wearing)
         {
+            gesture_stage2_report("drop=not-worn");
             continue;
         }
 
         if (is_user_touching_screen())
         {
+            gesture_stage2_report("drop=touching");
             continue;
         }
 
@@ -507,6 +557,7 @@ static void gesture_recognition_thread_entry(void *parameter)
         {
             if (!open_gesture_model())
             {
+                gesture_stage2_report("drop=model-off");
                 continue;
             }
 
@@ -516,18 +567,27 @@ static void gesture_recognition_thread_entry(void *parameter)
             {
                 // LOG_D("DEBUG 1:%d,%d", app_control_get_mouse_mode(),
                 //       get_hid_mouse_handfree_mode());
+                gesture_stage2_report("drop=mouse-mode");
                 continue;
             }
 
             if (has_user_started_controlling_with_arm())
             {
+                gesture_stage2_report("drop=arm-control");
                 continue;
             }
         }
 
         if (!is_user_touching_screen() && !get_motor_status())
         {
+            gesture_stage2_report("run");
             gesture_recognition_algorithm(&watch_sensor.gesture_data);
+        }
+        else
+        {
+            /* The tail condition had no else — a window blocked by the motor
+               (haptic feedback still running) vanished silently. */
+            gesture_stage2_report("drop=motor");
         }
     }
 }

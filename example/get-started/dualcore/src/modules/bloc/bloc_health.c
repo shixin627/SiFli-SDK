@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include "cJSON.h"
 #include "bloc_health.h"
+#include "communicate_task.h" /* commu_send_heart_curve_sample / _skip (replay) */
 #include "watch_global_data.h"
 
 #define DBG_TAG "bloc.health"
@@ -215,6 +216,105 @@ void store_hr_sample(uint32_t timestamp_utc, uint8_t bpm, uint8_t reason)
 }
 
 /*============================================================================*
+ *   Store-and-forward READ side: replay stored HR points to the phone
+ *============================================================================*/
+
+/* How far back a reconnecting phone can pull. Retention keeps 14 days, but a
+   phone that has been away that long is better served by a fresh curve than by
+   a multi-thousand-frame replay; 3 days covers the realistic cases (a night
+   with BLE down, a flat phone, a weekend away from the app). */
+#define HR_BACKFILL_MAX_DAYS   3
+/* Hard ceiling on frames per request. At the ~10 min sleep cadence 3 days is
+   ~430 points; 600 leaves headroom for denser daytime stretches without ever
+   turning a malformed request into an unbounded send loop. */
+#define HR_BACKFILL_MAX_FRAMES 600
+/* Gap between frames. The BLE notify queue silently drops when saturated (the
+   battery-percent stall had the same root cause), so replay is paced rather
+   than blasted: 600 frames * 30 ms = ~18 s worst case, all in the background. */
+#define HR_BACKFILL_PACING_MS  30
+
+/* Replay every stored point with ts > since_ts, oldest day first so the phone
+   receives them in chronological order. Runs ON THE WORKER THREAD: it holds the
+   storage lock only while reading a day file, never while sending, so a long
+   replay cannot block the writers. */
+static void backfill_hr_samples(uint32_t since_ts)
+{
+    uint32_t sent = 0;
+    time_t now = time(NULL);
+
+    for (int day_ago = HR_BACKFILL_MAX_DAYS - 1; day_ago >= 0; day_ago--)
+    {
+        time_t day_t = now - (time_t)day_ago * 24 * 60 * 60;
+        struct tm *tm_info = localtime(&day_t);
+        char filename[40];
+        snprintf(filename, sizeof(filename), HEALTH_DIR "/hr_%04d%02d%02d.json",
+                 tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday);
+
+        /* Parse under the lock, send outside it. */
+        watch_storage_api_lock();
+        cJSON *root = read_json_file(filename);
+        watch_storage_api_unlock();
+        if (root == NULL)
+        {
+            continue; /* no data that day */
+        }
+
+        cJSON *samples = cJSON_GetObjectItem(root, "samples");
+        if (cJSON_IsArray(samples))
+        {
+            int n = cJSON_GetArraySize(samples);
+            for (int i = 0; i < n; i++)
+            {
+                cJSON *item = cJSON_GetArrayItem(samples, i);
+                cJSON *jts = cJSON_GetObjectItem(item, "ts");
+                if (!cJSON_IsNumber(jts))
+                {
+                    continue;
+                }
+                uint32_t ts = (uint32_t)jts->valuedouble;
+                if (ts <= since_ts)
+                {
+                    continue; /* phone already has this one */
+                }
+
+                cJSON *jreason = cJSON_GetObjectItem(item, "reason");
+                bool ok;
+                if (cJSON_IsNumber(jreason) && jreason->valueint > 0)
+                {
+                    ok = commu_send_heart_curve_skip(ts, (uint8_t)jreason->valueint);
+                }
+                else
+                {
+                    cJSON *jbpm = cJSON_GetObjectItem(item, "bpm");
+                    ok = commu_send_heart_curve_sample(
+                        ts, cJSON_IsNumber(jbpm) ? (uint8_t)jbpm->valueint : 0);
+                }
+
+                if (!ok)
+                {
+                    /* Link dropped again (commu_send_* refuses when not
+                       connected) — abandon; the next reconnect asks again. */
+                    LOG_W("hr backfill aborted after %u frames (link down)", sent);
+                    cJSON_Delete(root);
+                    return;
+                }
+
+                if (++sent >= HR_BACKFILL_MAX_FRAMES)
+                {
+                    LOG_W("hr backfill hit the %u-frame cap", (unsigned)sent);
+                    cJSON_Delete(root);
+                    return;
+                }
+                rt_thread_mdelay(HR_BACKFILL_PACING_MS);
+            }
+        }
+        cJSON_Delete(root);
+    }
+
+    LOG_I("hr backfill done: %u frames since %u", sent, since_ts);
+}
+
+/*============================================================================*
  *   Off-thread worker: marshal writes off the BLE/RPC threads (avoid STKOF)
  *============================================================================*/
 
@@ -222,6 +322,7 @@ typedef enum
 {
     HEALTH_MSG_SLEEP = 0,
     HEALTH_MSG_HR,
+    HEALTH_MSG_HR_BACKFILL, /* replay stored HR points newer than .backfill_since */
 } health_msg_type_t;
 
 typedef struct
@@ -236,6 +337,7 @@ typedef struct
             uint8_t bpm;
             uint8_t reason; /* 0 = real HR sample; >0 = gap reason (bpm unused) */
         } hr;
+        uint32_t backfill_since; /* newest ts the phone already holds (0 = none) */
     } data;
 } health_msg_t;
 
@@ -261,6 +363,9 @@ static void health_worker_entry(void *parameter)
             break;
         case HEALTH_MSG_HR:
             store_hr_sample(msg.data.hr.ts, msg.data.hr.bpm, msg.data.hr.reason);
+            break;
+        case HEALTH_MSG_HR_BACKFILL:
+            backfill_hr_samples(msg.data.backfill_since);
             break;
         default:
             break;
@@ -299,6 +404,22 @@ void health_store_hr_async(uint32_t timestamp_utc, uint8_t bpm)
     if (rt_mq_send(health_mq, &msg, sizeof(msg)) != RT_EOK)
     {
         LOG_W("health_mq full; hr sample dropped");
+    }
+}
+
+void health_backfill_hr_async(uint32_t since_ts)
+{
+    if (health_mq == RT_NULL)
+    {
+        return;
+    }
+
+    health_msg_t msg;
+    msg.type = HEALTH_MSG_HR_BACKFILL;
+    msg.data.backfill_since = since_ts;
+    if (rt_mq_send(health_mq, &msg, sizeof(msg)) != RT_EOK)
+    {
+        LOG_W("health_mq full; hr backfill request dropped");
     }
 }
 

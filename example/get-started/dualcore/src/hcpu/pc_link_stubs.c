@@ -60,6 +60,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_task.h */ bool commu_send_active_device(const char *device_id) { (void)device_id; return false; }
 /* communicate_task.h */ bool commu_send_battery_level(uint8_t level) { return false; }
 /* communicate_task.h */ bool commu_send_battery_voltage(uint16_t millivolts) { (void)millivolts; return false; }
+/* communicate_task.h */ bool commu_send_bluetooth_log(const char *log) { (void)log; return false; }
 /* communicate_task.h */ bool commu_send_charge_status(void) { return false; }
 /* communicate_task.h */ bool commu_send_sleep_data(void) { return false; }
 /* communicate_task.h */ bool commu_send_chat_with_ai(const char *json) { return false; }
