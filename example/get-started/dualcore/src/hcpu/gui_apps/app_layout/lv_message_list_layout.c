@@ -2672,18 +2672,13 @@ void handle_dial_header_media_title(char *media_title_text)
         dial_header_music_active = false;
         if (!dial_header_shrink_timer)
         {
-            dial_header_show_notification();
-            /* Start 5-second timer to shrink to red dot */
-            if (notification_center_get_info_count() > 0)
-            {
-                dial_header_was_music_before_notif = false;
-                dial_header_shrink_duration_ms = 8000;
-                dial_header_shrink_start_tick = rt_tick_get();
-                dial_header_shrink_timer =
-                    lv_timer_create(dial_header_shrink_timer_cb,
-                                    dial_header_shrink_duration_ms, NULL);
-                lv_timer_set_repeat_count(dial_header_shrink_timer, 1);
-            }
+            /* Media cleared (empty title — e.g. the phone's edge-triggered
+               invalidation sent on every BLE reconnect). Stay in the media
+               lane: dial_header_show_notification() buzzes the motor and
+               re-pops an already-seen notification as if it were new, so
+               collapse to the idle red-dot state instead — same as the
+               music-pause timeout path. */
+            dial_header_show_as_red_dot();
         }
     }
 }
