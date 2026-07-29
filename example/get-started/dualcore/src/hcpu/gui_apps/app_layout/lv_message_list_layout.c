@@ -3142,6 +3142,12 @@ rt_int32_t notification_on_resume(void)
        true 才呼叫本函式），reset_list 走 selected_message_index 分支。 */
     if (p_app_notification && p_app_notification->list)
     {
+        /* have_media_widget 只代表「媒體卡片還在列表裡」(get_media_title() 非空)，
+           不代表 header 正在顯示音樂：音樂暫停超時後 header 已收起、title 卻還在，
+           此時 have_media_widget 仍是 true。落點要跟 header 走，所以用跟
+           reset_list() 同一組旗標判斷 header 現在是不是音樂。 */
+        bool header_is_music =
+            dial_header_music_active && !dial_header_music_hidden_by_pause;
         if (header_showing_notification && notification_count > 0)
         {
             /* header 在顯示通知 → 停最新那則。child i 顯示的是
@@ -3151,12 +3157,37 @@ rt_int32_t notification_on_resume(void)
             selected_message_index = notification_count - 1;
             reset_list(false);
         }
-        else if (have_media_widget)
+        else if (have_media_widget && header_is_music)
         {
-            /* header 已是音樂（或一直是音樂）→ 停音樂 widget（child 在所有通知
-               之後，index = notification_count）。 */
+            /* header 一直是音樂 → 停音樂 widget（child 在所有通知之後，
+               index = notification_count）。 */
             selected_message_index = notification_count;
             reset_list(false);
+        }
+        else if (have_media_widget && notification_count > 0)
+        {
+            /* 媒體卡片還在、但 header 已不是音樂（暫停超時收起）→ 停最新通知，
+               不要被殘留的媒體卡片吸過去。 */
+            selected_message_index = notification_count - 1;
+            reset_list(false);
+        }
+        /* check_is_at_message() 在呼叫本函式「之前」把體感捲動能量硬塞 0。
+           依 refresh_notification_list 的換算（value = total_height -
+           (page_range/2 + index*page_range)），能量 0 落在列表最後一格＝媒體
+           卡片。落點若不是最後一格，種子就跟畫面不同步，第一個手腕動作經
+           scroll_message_list_to_index() 會把列表拉回媒體卡片。這裡用同一條
+           換算把種子對齊到剛選好的落點。 */
+        {
+            const uint16_t page_range = 125;
+            uint16_t total = get_message_page_count();
+            if (total > 0 && selected_message_index < total)
+            {
+                uint16_t seed =
+                    (uint16_t)((total - 1 - selected_message_index) *
+                                   page_range +
+                               page_range / 2);
+                set_prev_sensor_quat(seed);
+            }
         }
     }
     return RT_EOK;
