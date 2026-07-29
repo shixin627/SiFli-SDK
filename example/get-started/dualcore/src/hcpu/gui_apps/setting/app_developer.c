@@ -91,7 +91,10 @@
 /* Referenced by bloc_peripheral PPG thread — kept outside the wrap. */
 bool ppg_data_collection = false;
 
-#if !kReleaseMode
+/* 2026-07-29 founder: ship the Development page in release too, so the restart
+ * count (watch_restart_num) + File-log toggle can be checked on-watch without
+ * a dev build. Was gated on !kReleaseMode. */
+#if 1
 
 #ifdef WIN32
 void lv_gpu_set_enable(bool en) {};
@@ -261,14 +264,14 @@ static void random_address_btn_event_callback(lv_event_t *e)
     }
 }
 
-#if defined(BSP_USING_PC_SIMULATOR) && !defined(BSP_USING_HR_CLIENT)
-bool ppg_service_subscribed(void)
+/* Real definition lives in hr_client.c, but it is not linked in every config
+ * (e.g. this release build). A weak fallback keeps the Development page
+ * linkable everywhere now that the page ships in release too — hr_client.c's
+ * strong definition wins whenever present. Only presets the PPG toggle state. */
+RT_WEAK bool ppg_service_subscribed(void)
 {
     return false;
 }
-#else
-extern bool ppg_service_subscribed(void);
-#endif
 
 static void lv_create_dev_screen(void)
 {
