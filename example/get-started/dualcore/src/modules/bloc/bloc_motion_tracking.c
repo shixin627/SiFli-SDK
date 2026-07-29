@@ -159,6 +159,18 @@ static bool capture_both_override = false;
    (real 145..550 vs noise 32..71); walking taps run smaller, hence adjustable
    via `gcap pk <n>` rather than hard-coded. */
 static uint16_t gesture_big_pk = 100;
+
+/* Per-window diagnostic logging (the CUT / GST lines), OFF by default. It is
+   genuinely noisy — walking crosses the tap threshold ~11% of the time, so
+   this emits roughly one line per second per extractor, on both UART and the
+   BLE link to the phone. Turn on only for a capture session: `gcap log on`. */
+static bool capture_log_on = false;
+
+/* Read by gesture_recognition_task.c so one switch covers both stages. */
+bool gesture_capture_log_on(void)
+{
+    return capture_log_on;
+}
 #endif
 static watch_sys_linear_acce_t targetWave_algo[MAX_RAWDATA_TIME_STEP];
 
@@ -564,6 +576,10 @@ static void gesture_capture_report(gesture_type_t type, capture_state_t *cap,
                                    bool is_gesture, bool posture_ok)
 {
 #if !kReleaseMode
+    if (!capture_log_on)
+    {
+        return;
+    }
     /* Formatted once, emitted on BOTH transports. UART (COM12) is for bench
        tests; BLE is the only viewer that MOVES WITH THE WEARER, which is what
        a walking test needs — you can't drag a UART cable along. The phone
@@ -939,16 +955,21 @@ static void gcap(int argc, char **argv)
         {
             gesture_big_pk = (uint16_t)atoi(argv[2]);
         }
+        else if (rt_strcmp(argv[1], "log") == 0 && argc >= 3)
+        {
+            capture_log_on = (rt_strcmp(argv[2], "on") == 0);
+        }
         else
         {
-            rt_kprintf("usage: gcap [both|normal|pk <peak x100>]\n");
+            rt_kprintf("usage: gcap [both|normal|pk <peak x100>|log on|log off]\n");
             return;
         }
     }
     rt_kprintf("gcap: both_override=%d game_mode=%d motion_control_lock=%d "
-               "big_pk=%d\n      -> running: %s\n",
+               "big_pk=%d log=%s\n      -> running: %s\n",
                capture_both_override, app_control_get_game_mode(),
                SkaiWatchSys.motion_control_lock, gesture_big_pk,
+               capture_log_on ? "on" : "off",
                (capture_both_override || app_control_get_game_mode())
                    ? "TAP + RELEASE"
                    : (SkaiWatchSys.motion_control_lock ? "RELEASE only"

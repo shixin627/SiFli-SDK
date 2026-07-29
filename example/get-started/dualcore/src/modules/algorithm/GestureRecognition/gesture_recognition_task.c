@@ -499,6 +499,13 @@ extern bool get_motor_status(void);
 static void gesture_stage2_report(const char *what)
 {
 #if !kReleaseMode
+    /* Same switch as the stage-1 CUT lines (`gcap log on`), so one command
+       covers the whole chain instead of leaving half of it chattering. */
+    extern bool gesture_capture_log_on(void);
+    if (!gesture_capture_log_on())
+    {
+        return;
+    }
     LOG_I("GST %s", what);
     #ifdef BSP_USING_COMMUNICATE
     char line[48];
