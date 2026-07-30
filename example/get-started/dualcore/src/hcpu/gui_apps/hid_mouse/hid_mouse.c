@@ -3836,13 +3836,12 @@ static void plain_event_cb(lv_event_t *e)
             }
             lv_coord_t fd = LV_ABS(now_point.x - s_free_ref.x) +
                             LV_ABS(now_point.y - s_free_ref.y);
-            /* 前哨:手指一滑(fd 過軟門檻)就先擋飛鼠——不用等到 5px 正式 claim。滑觸控板時
-               手指一動就壓過飛鼠,不被手腕微動搶走游標。體感情境手指按住不動、慢跟隨把 fd
-               收斂到 0,不觸發,飛鼠照樣即時。 */
+            /* 前哨:手指一滑(fd 過軟門檻)就擋飛鼠——滑觸控板時手指一動就壓過飛鼠,不被手腕
+               微動搶走游標。體感情境手指按住不動、慢跟隨把 fd 收斂到 0,不觸發,飛鼠照樣即時。
+               改純前哨動態(不再 claim owner 永久鎖):手指停 250ms 讓飛鼠接手、再滑切回觸控板,
+               同一次按著能來回切;兩者同幀都動時前哨天生讓觸控板贏(founder 2026-07-30)。 */
             if (fd > FINGER_ACTIVE_PX)
                 bloc_touch_finger_active();
-            if (fd > SCROLLING_THRESHOLD)
-                bloc_touch_cursor_claim();
         }
 
         /* 過了按下寬限期、手指還按著沒 arm=可能是體感意圖,放行自由移動(PRESSED 壓著沒啟用)。

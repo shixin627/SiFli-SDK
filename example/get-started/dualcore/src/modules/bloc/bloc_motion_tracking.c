@@ -1217,9 +1217,10 @@ static uint8_t log_count = 0;
     // 移動鎖：解鎖 = 飛鼠開始送游標的「觸發距離」。判定用「淨位移」(帶符號累加 dx/dy,見
     // s_air_net_dx/dy)——手腕來回抖動互相抵消不觸發,只有真把手錶移到別處淨位移才累積過
     // 門檻(founder 2026-07-30:原用總路程,抖動也一路累加→長按畫面變飛鼠;改淨位移區分
-    // 抖動 vs 真移動)。淨位移尺度比路程小,門檻也小(40)。只 gate 飛鼠;觸控板送游標不看它。
-    // 太容易變飛鼠再往上加、體感太鈍再降。
-    #define GYRO_MOVE_CANCEL_THRESHOLD 40.0f
+    // 抖動 vs 真移動)。淨位移尺度比路程小,門檻也小(40→60,founder 2026-07-30 再加大 1.5×:
+    // 還是有點容易長按變飛鼠)。只 gate 飛鼠;觸控板送游標不看它。太容易變飛鼠再往上加、
+    // 體感太鈍再降。
+    #define GYRO_MOVE_CANCEL_THRESHOLD 60.0f
     /* 按住觸控板期間「飛鼠搶走游標」的專屬門檻(founder 2026-07-24 真機:手腕盡量不動想滑
        觸控板,卻一直變成體感)。不能共用上面的 30——手指在錶面上滑的反作用力本身就會帶動
        手腕,gyro 一路累積;加上 IMU(100Hz+)判定頻率遠高於 LVGL PRESSING(~30Hz),飛鼠幾乎
@@ -1240,13 +1241,11 @@ static float gyro_movement_distance = 0.0f; /* 總路程:claim owner(鎖觸控�
    區分抖動 vs 真移動(founder 2026-07-30)。PRESSED 歸零。 */
 static int s_air_net_dx = 0, s_air_net_dy = 0;
 
-/* 觸控板 vs 飛鼠「先到先贏」互鎖(founder 2026-07-24:兩條路徑都送 ble_hid_mouse_move,
-   手指滑板子的同時手腕一動就雙推游標)。一次 press 只有一個贏家,鎖到放開手指為止:
-   - s_touch_cursor_owned:GUI thread 判定「手指先滑贏」時 claim(位移已扣掉手腕連動,
-     見 hid_mouse.c 的慢跟隨基準)→ 擋掉本檔的 report_air_mouse_data。
-   - s_air_cursor_owned:本檔在 gyro 累積過解鎖門檻、真的送出游標時 claim → hid_mouse
-     據此擋掉觸控板那條 ble_hid_mouse_move。
-   各自單一寫者、對方唯讀(volatile 足夠);兩邊 claim 前都先看對方贏了沒=不會雙鎖。 */
+/* 觸控板 vs 飛鼠仲裁:改由下面的「手指前哨」純動態決定(founder 2026-07-30「能切換,兩個
+   同時做只觸控板」)。以下這組「先到先贏」永久鎖(claim owner)已停用——claim 點全數拔掉,
+   兩個 owner 恆 false、對應 gate 條件恆通過;變數/reset 保留,隨時能復活顯式鎖。
+   - s_touch_cursor_owned:曾在「手指先滑贏」時 claim → 擋 report_air_mouse_data。
+   - s_air_cursor_owned:曾在飛鼠真送游標時 claim → hid_mouse 據此擋觸控板那條。 */
 static volatile bool s_touch_cursor_owned = false;
 static volatile bool s_air_cursor_owned = false;
 /* 手指「前哨」:hid_mouse 每偵測到手指在滑就刷新此 tick。飛鼠送游標前先看手指最近有沒有
@@ -2009,16 +2008,9 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
            「按下馬上動手錶游標就要動」);過了前哨這關就即時,不像純 gyro 門檻要慢慢累積
            (founder 2026-07-24「有點太容易變飛鼠」←低門檻 / 「游標停一小段才跟上」←高門檻,
            兩者是同一 gyro 門檻的二選一,改用手指意圖跳出)。
-           「claim owner(永久鎖觸控板)」才另外要 gyro 累積過 PRESS_FREE_MOVE_CLAIM_UNITS(120)。
-           體感拖曳(s_motion_drag_active)是 arm 後的正式狀態、手指早已讓出游標,不 claim。 */
-        if (s_press_free_move && !s_air_cursor_owned &&
-            gyro_movement_distance > PRESS_FREE_MOVE_CLAIM_UNITS &&
-            (delta_movement.x || delta_movement.y))
-        {
-            /* 真有位移才算贏:report 對 0 delta 直接 return,不加這層會在「累積夠但當幀
-               沒動」就搶走 owner。 */
-            s_air_cursor_owned = true;
-        }
+           不再 claim owner(先前「一贏就永久鎖到放開」)——改純前哨動態:飛鼠這條每幀只看
+           touch_finger_recent,手指停 250ms 才輪到飛鼠、手指再滑立刻讓回觸控板,同一次按著
+           也能來回切(founder 2026-07-30「能切換,但兩個同時做只觸控板」)。 */
         /* 飛鼠觸發提示:這次 press 第一次真的送出自由移動游標=進飛鼠,震一下(小震 50%,
            founder 2026-07-24)。s_press_free_move 已排除 arm 後的體感拖曳(那時 free_move
            已 false)。edge 由 s_air_hint_buzzed 管,一次 press 只震一下。 */
@@ -2045,9 +2037,6 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
         extern bool instruction_list_lift_mic_view_open(void);
         if (!instruction_list_lift_mic_view_open())
         {
-            /* handfree 飛鼠也走互鎖:送游標了就鎖住觸控板那條(對稱,先到先贏)。 */
-            if (delta_movement.x || delta_movement.y)
-                s_air_cursor_owned = true;
             report_air_mouse_data(&delta_movement, ts);
         }
     }
