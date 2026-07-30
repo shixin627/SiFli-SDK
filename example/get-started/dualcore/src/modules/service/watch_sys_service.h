@@ -233,6 +233,12 @@ extern "C"
         uint16_t rem;      /* daily rem_min                               */
         uint16_t light;    /* daily light_min                             */
         uint16_t pi_e3;    /* last PPG burst PI*1000 (AC/DC) — SQI candidate */
+        uint16_t frame_pct; /* last PPG burst: delivered frames as % of 25 Hz *
+                             * burst seconds. The HBA algo assumes 25 Hz and the
+                             * samples are untimestamped, so a shortfall here is
+                             * a proportional HR over-read: ~50% would explain
+                             * the nightly 2x episodes as lost frames rather
+                             * than physiology. ~100% clears the timebase.     */
     } watch_sys_sleep_diag_t;
 
     typedef struct

@@ -1207,8 +1207,12 @@ static uint8_t log_count = 0;
     #define DPS_TO_RADS 0.01745329f
     // Default mouse sensitivity (matching GyroService)
     #define AIR_MOUSE_SENSITIVITY 20.0f
-    // 移動鎖：觸碰面板後累積移動量超過此閾值才解鎖
-    #define GYRO_MOVE_CANCEL_THRESHOLD 30.0f
+    // 移動鎖：解鎖 = 飛鼠開始送游標的「觸發距離」。判定用「淨位移」(帶符號累加 dx/dy,見
+    // s_air_net_dx/dy)——手腕來回抖動互相抵消不觸發,只有真把手錶移到別處淨位移才累積過
+    // 門檻(founder 2026-07-30:原用總路程,抖動也一路累加→長按畫面變飛鼠;改淨位移區分
+    // 抖動 vs 真移動)。淨位移尺度比路程小,門檻也小(40)。只 gate 飛鼠;觸控板送游標不看它。
+    // 太容易變飛鼠再往上加、體感太鈍再降。
+    #define GYRO_MOVE_CANCEL_THRESHOLD 40.0f
     /* 按住觸控板期間「飛鼠搶走游標」的專屬門檻(founder 2026-07-24 真機:手腕盡量不動想滑
        觸控板,卻一直變成體感)。不能共用上面的 30——手指在錶面上滑的反作用力本身就會帶動
        手腕,gyro 一路累積;加上 IMU(100Hz+)判定頻率遠高於 LVGL PRESSING(~30Hz),飛鼠幾乎
@@ -1224,7 +1228,10 @@ static uint8_t log_count = 0;
     #define AIR_MOUSE_COLLECT_V_SIGN -1.0f
 
 static bool mouse_movement_lock = false;
-static float gyro_movement_distance = 0.0f;
+static float gyro_movement_distance = 0.0f; /* 總路程:claim owner(鎖觸控板)仍用它 */
+/* 淨位移(帶符號累加 dx/dy):飛鼠觸發判定用。手腕來回抖動互相抵消、只有真移到別處才增大,
+   區分抖動 vs 真移動(founder 2026-07-30)。PRESSED 歸零。 */
+static int s_air_net_dx = 0, s_air_net_dy = 0;
 
 /* 觸控板 vs 飛鼠「先到先贏」互鎖(founder 2026-07-24:兩條路徑都送 ble_hid_mouse_move,
    手指滑板子的同時手腕一動就雙推游標)。一次 press 只有一個贏家,鎖到放開手指為止:
@@ -1240,6 +1247,9 @@ static volatile bool s_air_cursor_owned = false;
    claim(s_touch_cursor_owned)是「已定案手指贏」、前哨是「手指正在滑、暫別讓飛鼠插」。 */
 static volatile rt_tick_t s_finger_active_tick = 0;
 #define FINGER_ACTIVE_HOLD_MS 250 /* 手指停止滑動後仍擋飛鼠這麼久,涵蓋滑滑停停的間隙 */
+/* 飛鼠觸發提示的 edge:這次 press 「碰畫面後動手錶→飛鼠開始送游標」只震一次(小震 50%),
+   不是每幀。PRESSED / RELEASED 歸零(founder 2026-07-24)。 */
+static volatile bool s_air_hint_buzzed = false;
 
 /* Data-collection air-mouse roll reference (file scope so the always-run motion
  * handler can invalidate it when collection ends — air_mouse_process itself only
@@ -1259,10 +1269,13 @@ void air_mouse_movement_lock_reset(void)
 {
     mouse_movement_lock = true;
     gyro_movement_distance = 0.0f;
+    s_air_net_dx = 0;
+    s_air_net_dy = 0;
     /* 新一次按下:互鎖歸零重新比(本函式由 hid_mouse PRESSED 無條件呼叫) */
     s_touch_cursor_owned = false;
     s_air_cursor_owned = false;
     s_finger_active_tick = 0;
+    s_air_hint_buzzed = false;
 }
 
 /* 觸控板/飛鼠互鎖(見上方 s_touch_cursor_owned 註解)。claim 只由 hid_mouse 的手指判定
@@ -1289,6 +1302,7 @@ void bloc_cursor_owner_reset(void)
     s_touch_cursor_owned = false;
     s_air_cursor_owned = false;
     s_finger_active_tick = 0;
+    s_air_hint_buzzed = false;
 }
 bool mouse_air_cursor_owned(void) { return s_air_cursor_owned; }
 
@@ -1946,10 +1960,14 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
         set_air_mouse_moving_state(false);
     }
 
-    // 累積移動量，超過閾值才解鎖
+    // 飛鼠觸發:累積「淨位移」(帶符號),超過閾值才解鎖。手腕來回抖動 dx/dy 正負相抵、淨位移
+    // 一直很小=不觸發;真把手錶移到別處淨位移才持續變大→解鎖(founder 2026-07-30)。
+    // gyro_movement_distance(總路程)保留給下方 claim owner。
     gyro_movement_distance += abs(delta_movement.x) + abs(delta_movement.y);
+    s_air_net_dx += delta_movement.x;
+    s_air_net_dy += delta_movement.y;
     if (mouse_movement_lock &&
-        gyro_movement_distance > GYRO_MOVE_CANCEL_THRESHOLD)
+        (abs(s_air_net_dx) + abs(s_air_net_dy)) > GYRO_MOVE_CANCEL_THRESHOLD)
     {
         mouse_movement_lock = false;
     }
@@ -1991,6 +2009,15 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
             /* 真有位移才算贏:report 對 0 delta 直接 return,不加這層會在「累積夠但當幀
                沒動」就搶走 owner。 */
             s_air_cursor_owned = true;
+        }
+        /* 飛鼠觸發提示:這次 press 第一次真的送出自由移動游標=進飛鼠,震一下(小震 50%,
+           founder 2026-07-24)。s_press_free_move 已排除 arm 後的體感拖曳(那時 free_move
+           已 false)。edge 由 s_air_hint_buzzed 管,一次 press 只震一下。 */
+        if (s_press_free_move && !s_air_hint_buzzed &&
+            (delta_movement.x || delta_movement.y))
+        {
+            s_air_hint_buzzed = true;
+            motor_pattern_air_hint();
         }
         report_air_mouse_data(&delta_movement, ts);
     }

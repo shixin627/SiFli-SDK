@@ -2003,6 +2003,55 @@ void wdt_store_exception_information(void)
         rt_kprintf("  running thread=<ISR / scheduler not started>\n");
     }
 
+    /* Mirror the culprit into the crash-log + push path — the rt_kprintf lines
+     * above reach only the UART console, which a sealed field unit cannot
+     * return. Recompute the essentials into a static buffer (no heap in ISR
+     * context) and hand them to the log backend, which seals them into the
+     * current /logs file behind a crash marker + the pre-hang RAM-ring log so
+     * the boot-time scan pushes it to the phone. Kept separate from the block
+     * above so the proven UART diagnostic path is left untouched. */
+    {
+        extern void log_file_report_wdt(const char *detail);
+        static char wdt_detail[192];
+        rt_thread_t ct = rt_thread_self();
+        if (ct != RT_NULL)
+        {
+            const rt_uint8_t *sb = (const rt_uint8_t *)ct->stack_addr;
+            rt_uint32_t fm = 0;
+            while (fm < ct->stack_size && sb[fm] == '#')
+                fm++;
+            int pos = rt_snprintf(wdt_detail, sizeof(wdt_detail),
+                                  "thread=%s pri=%u stack=%u free_min=%u%s\n",
+                                  ct->name, (unsigned)ct->current_priority,
+                                  (unsigned)ct->stack_size, (unsigned)fm,
+                                  (fm == 0) ? "  <-- STACK OVERFLOW" : "");
+            if (pos < 0)
+                pos = 0;
+            if (pos > (int)sizeof(wdt_detail) - 1)
+                pos = (int)sizeof(wdt_detail) - 1;
+            if (rt_interrupt_get_nest() == 0)
+            {
+                uint32_t psp;
+                __asm volatile("MRS %0, psp" : "=r"(psp));
+                uint32_t lo = (uint32_t)ct->stack_addr;
+                uint32_t hi = lo + ct->stack_size;
+                if (psp >= lo && psp + 32u <= hi)
+                {
+                    const uint32_t *fr = (const uint32_t *)psp;
+                    rt_snprintf(wdt_detail + pos, sizeof(wdt_detail) - pos,
+                                "PC=%08x LR=%08x xPSR=%08x\n",
+                                (unsigned)fr[6], (unsigned)fr[5], (unsigned)fr[7]);
+                }
+            }
+        }
+        else
+        {
+            rt_snprintf(wdt_detail, sizeof(wdt_detail),
+                        "thread=<ISR / scheduler not started>\n");
+        }
+        log_file_report_wdt(wdt_detail);
+    }
+
     extern void drv_reboot(void);
     drv_reboot();
     return;

@@ -82,11 +82,13 @@ extern int __bss_end;
    packet, and at that rate the 8 KB ring buffer overflows and the 1 MB
    /logs cap rotates the evidence away faster than a rare crash can be
    caught. Dropping back to DBG_WARNING is safe once a crash is diagnosed. */
-/* A/B EXPERIMENT 2026-07-28: reverted DBG_INFO -> DBG_WARNING for release to
- * cut logging load while isolating the send_msg mailbox crash-loop (see
- * log_file_backend.c). Restore DBG_INFO once the file logger is re-enabled. */
+/* 2026-07-29: back to DBG_INFO for release. The black-box recorder
+ * (log_file_backend.c) captures the log stream into a RAM ring and only writes
+ * NAND at crash time, so verbose INFO context costs no flash churn (the churn
+ * that caused the 2026-07-27 mailbox crash-loop). Richer lead-up = better
+ * chance of pinning the autonomous field HardFaults. */
 #if kReleaseMode
-#define BSP_DBG_LVL DBG_WARNING
+#define BSP_DBG_LVL DBG_INFO
 #else
 #define BSP_DBG_LVL DBG_LOG
 #endif

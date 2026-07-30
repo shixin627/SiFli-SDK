@@ -3543,6 +3543,10 @@ static lv_point_t s_free_ref;
    手指一開始滑就先擋飛鼠,不用等累積到 claim。用手指意圖(有沒有在滑)仲裁,取代之前靠
    gyro 門檻猜意圖的拉扯——那個高了體感有停頓、低了滑板易變飛鼠,二選一。 */
 #define FINGER_ACTIVE_PX 3
+/* 按下寬限期(ms):PRESSED 後這段時間先給觸控板優先、不送體感飛鼠游標。按下瞬間手指還沒
+   表態,手腕的自然晃動不該馬上被當體感送游標→游標順移到新位置後才被手指接手(founder
+   2026-07-24)。過了寬限期手指還沒滑,才認定體感意圖放行。比 arm(700ms)短,在其之前。 */
+#define PRESS_FREE_GRACE_MS 200
 static bool s_dial_drag = false;    /* 拖曳物件中：1:1 相對移動 + 左鍵按著 */
 static lv_point_t s_dial_drag_last; /* 拖曳中上一幀手指位置，算 1:1 相對移動量 */
 
@@ -3563,10 +3567,10 @@ static void dial_hold_timer_cb(lv_timer_t *t)
     /* 清掉觸控板 tap/long-press 狀態機：armed 期間手指按著不動，不能讓原本
        long-press 誤觸發左鍵（進拖曳時才主動按左鍵）。 */
     ble_hid_mouse_cancel_touch();
-    motor_pattern_unlocked(); /* 大震:進入長按(founder:按下小震、滿門檻大震) */
-    /* 大震瞬間凍結游標+清甩動記錄(founder:選字後體感拖曳變重新框選——大震前的
+    motor_pattern_tap(); /* arm 進長按:小震(founder 2026-07-24 由大震改小震) */
+    /* arm 瞬間凍結游標+清甩動記錄(founder:選字後體感拖曳變重新框選——arm 前的
        自由移動/甩動前奏把游標帶離選取區,左鍵才按下去=從新位置開始框選。凍結後
-       左鍵會按在使用者瞄準的位置,大震後的新甩動才開始拖)。 */
+       左鍵會按在使用者瞄準的位置,arm 後的新甩動才開始拖)。 */
     bloc_press_free_move_set(false);
     bloc_wrist_accum_reset();
     s_hw_hold_armed = true;
@@ -3584,8 +3588,10 @@ static void dial_hold_on_pressed(lv_indev_t *indev)
         lv_indev_get_point(indev, &s_free_ref);
     if (press_in_arc_zone)
         return; /* 弧形滾動起手不 arm */
-    motor_pattern_tap(); /* 小震:按下回饋(founder 2026-07-20) */
-    bloc_press_free_move_set(true); /* 按住期間動手錶=游標直接動(無左鍵) */
+    /* 碰畫面不再震動(founder 2026-07-24 拿掉按下回饋)。按下寬限期:PRESSED 先壓著不啟用
+       體感自由移動(見 PRESS_FREE_GRACE_MS)。過了寬限期手指還沒滑,才在 PRESSING 放行——
+       消除按下初期手腕晃動誤觸的游標順移。 */
+    bloc_press_free_move_set(false);
     bloc_wrist_accum_reset(); /* 從按下起算:門檻內手錶動夠多=取消長按(對稱手指的 drift-cancel) */
     if (indev)
         lv_indev_get_point(indev, &s_dial_press_start);
@@ -3787,6 +3793,12 @@ static void plain_event_cb(lv_event_t *e)
             if (fd > SCROLLING_THRESHOLD)
                 bloc_touch_cursor_claim();
         }
+
+        /* 過了按下寬限期、手指還按著沒 arm=可能是體感意圖,放行自由移動(PRESSED 壓著沒啟用)。
+           寬限期內手腕自然晃動不送游標→消除按下初期順移;手指若已在滑,前哨(touch_finger_recent)
+           照擋飛鼠,放行無妨。 */
+        if (lv_tick_elaps(press_time) > PRESS_FREE_GRACE_MS)
+            bloc_press_free_move_set(true);
 
         if (s_dial_hold_timer &&
             (LV_ABS(dx) + LV_ABS(dy) > DIAL_HOLD_DRIFT_CANCEL_PX ||
