@@ -809,6 +809,35 @@ void log_file_report_crash_evidence(void)
     }
 }
 
+/* Called from the HCPU WDT1 timeout handler (main.c: wdt_store_exception_
+ * information) just before drv_reboot(), when a thread has monopolised the CPU
+ * past the watchdog deadline. This is the SILENT reboot class: no RT_ASSERT and
+ * no HardFault fires, so neither crash hook runs and — until now — nothing was
+ * captured (the handler's own rt_kprintf reaches the UART console only, which a
+ * sealed field unit cannot return). `detail` carries the culprit the handler
+ * already identified (spinning thread, stack high-water / overflow flag, stacked
+ * PC/LR). We write it into the current /logs file behind the same "=== CRASH:"
+ * marker the assert/HardFault hooks use, and emergency_flush drains the RAM ring
+ * with it — so the file also holds the pre-hang log lead-up. The boot-time
+ * find_crashed_log + push path then delivers it to the phone, no new plumbing.
+ *
+ * Runs in WDT-IRQ context: crash_printf uses a static line buffer (no heap) and
+ * emergency_flush is reentry-guarded and no-ops when no file is open (dev builds
+ * with the logger off), so it is safe to call unconditionally. Only stage-1 WDT
+ * timeouts that let this IRQ run are caught; a hang hard enough to force the
+ * stage-2 reset before the IRQ dispatches still escapes (would need RAM-ring
+ * survival across the reset — deferred until evidence shows it is needed). */
+void log_file_report_wdt(const char *detail)
+{
+    crash_printf("\n=== CRASH: WATCHDOG ===\n");
+    if (detail != RT_NULL)
+    {
+        crash_printf("%s", detail);
+    }
+    crash_report_tail();
+    log_file_emergency_flush();
+}
+
 static volatile int infra_ready;   /* dir + sem + flush thread + hooks ready */
 
 int log_file_backend_set_enabled(int enable);   /* defined below */
