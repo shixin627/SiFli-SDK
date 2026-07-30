@@ -354,6 +354,10 @@ void motor_pattern_unlocked(void)
 {
     motor_play_if_enabled(100, 25000, 1); /*  25ms */
 }
+void motor_pattern_air_hint(void)
+{
+    motor_play_if_enabled(50, 9000, 1); /* 小震(9ms)的 50% 力道:飛鼠觸發提示 */
+}
 
 void motor_pattern_stop(void)
 {
