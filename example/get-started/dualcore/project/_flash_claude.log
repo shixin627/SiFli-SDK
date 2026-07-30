@@ -1,0 +1,68 @@
+
+     Uart Download
+
+please input the serial port num:com11 
+15:26:27 workpath: C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu\build_sf32lb56-watch_hcpu, toolpath: C:\skaiwalk\SiFli-SDK\tools\uart_download
+15:26:27 cur version 3.6, driver_external/internal_20250425
+15:26:27 uart com11 open success 
+15:26:27 RAM_PATCH: C:\skaiwalk\SiFli-SDK\tools\uart_download\file\ram_patch_56X_NAND.bin
+15:26:27 SIG_PUB: C:\skaiwalk\SiFli-SDK\tools\uart_download\file\sig_pub.der
+15:26:27 uart com11 open success 
+15:26:28 EnterDebugMode success: curbaund (1000000)
+15:26:28 WriteMem success: 0xf000edf0 0x03005fa0
+15:26:28 ReadMem success: 0x40040028 0x00000031
+15:26:28 WriteMem success: 0x4001400c 0x34000000
+15:26:28 WriteMem success: 0x500b000c 0x34000000
+15:26:28 WriteMem success: 0x5004c00c 0x34000000
+15:26:28 ReadMem success: 0x50040000 0x00000000
+15:26:28 WriteMem success: 0x50040000 0x04000000
+15:26:28 WriteMem success: 0x50000000 0x01000000
+15:26:28 WriteMem success: 0x50000004 0x14000000
+15:26:28 ReadMem success: 0x5004003c 0x00000060
+15:26:28 WriteMem success: 0x50000004 0x00000000
+15:26:28 WriteMem success: 0x50000000 0x00000000
+15:26:28 ReadMem success: 0xf000ee08 0x00000000
+15:26:28 WriteMem success: 0xf000ee08 0x00000100
+15:26:28 WriteMem success: 0xf000edfc 0x01000001
+15:26:28 WriteMem success: 0xf000ed0c 0x0400fa05
+15:26:28 ReadMem success: 0xf000edf0 0x02030003
+15:26:28 ReadMem success: 0xf000edf0 0x00030003
+15:26:28 WriteMem success: 0xf000edfc 0x03005fa0
+15:26:28 WriteMemSingle success: 0xf000edfc 0x00000001
+15:26:28 [R] PC: 0x000007d4  MSP: 0x20026900
+15:26:28 DownLoadFileRam start
+15:26:28 use driver: C:\skaiwalk\SiFli-SDK\tools\uart_download\file\ram_patch_56X_NAND.bin
+15:26:29 DownLoadFileRam over: PASS
+15:26:29 [R] PC: 0x000007d4  MSP: 0x20026900
+15:26:29 [R] PC: 0x200679f8  MSP: 0x20043318
+15:26:31 downloadfile: bootloader\bootloader.bin  addr: 0x1c020000  len: 29216 Byte
+15:26:31 compare match, no need to burn
+15:26:31 downloadfile: lcpu\lcpu.hex\ER_IROM2_hex2bin.bin  addr: 0x1c040000  len: 181200 Byte
+15:26:31 compare match, no need to burn
+15:26:31 downloadfile: main.bin  addr: 0x64000000  len: 2537312 Byte
+percent:4 
+percent:9 
+percent:14 
+percent:18 
+percent:23 
+percent:28 
+percent:33 
+percent:37 
+percent:42 
+percent:47 
+percent:51 
+percent:56 
+percent:61 
+percent:66 
+percent:70 
+percent:75 
+percent:80 
+percent:85 
+percent:89 
+percent:91 
+15:26:58 downloadfile: ftab\ftab.bin  addr: 0x1c000000  len: 11280 Byte
+15:26:58 downloadfile: lcpu_patch\lcpu_rom_patch_copy_hex2bin.bin  addr: 0x1c004000  len: 15956 Byte
+15:26:58 compare match, no need to burn
+percent:100 
+Download Successful
+Press any key to continue . . . 

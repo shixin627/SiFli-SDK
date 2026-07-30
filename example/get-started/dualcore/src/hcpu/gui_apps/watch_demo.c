@@ -665,6 +665,10 @@ static void pm_event_handler(gui_pm_event_type_t event)
     case GUI_PM_EVT_SUSPEND:
     {
         extern void lv_touch_arm_wake_suppression(void);
+        /* [GOV-DIAG] gui_pm_fsm runs this handler synchronously on ITS caller's
+           thread (button / gesture / BLE RX), not necessarily the LVGL thread —
+           tag which one actually executes the LVGL calls below. */
+        LOG_I("[GOV-DIAG] SUSPEND handler thr=%s", rt_thread_self()->name);
         dial_header_on_suspend();
         start_sleep_fade_out();
         /* BLE: screen off → drop the link to SLOW idle for standby power.
@@ -683,6 +687,10 @@ static void pm_event_handler(gui_pm_event_type_t event)
     case GUI_PM_EVT_RESUME:
     {
         extern void lv_touch_set_wake_suppress_window(uint32_t window_ms);
+        /* [GOV-DIAG] same as SUSPEND: notification wake enters via the BLE RX
+           thread (watch_system_wakeup -> gui_pm_fsm), racing the GUI thread
+           just released from gui_suspend(). */
+        LOG_I("[GOV-DIAG] RESUME handler thr=%s", rt_thread_self()->name);
         lv_timer_enable(true);
         dial_header_on_resume();
         /* BLE: screen on → raise the link to MEDIUM (responsive idle) so

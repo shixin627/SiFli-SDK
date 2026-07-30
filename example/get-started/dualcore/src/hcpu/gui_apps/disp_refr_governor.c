@@ -38,6 +38,7 @@
 #if DISP_REFR_GOVERNOR_ENABLE
 
 #include "lvgl.h"
+#include <rtthread.h> /* rt_thread_self — [GOV-DIAG] logs tag the calling thread */
 
 #define DBG_TAG "disp.gov"
 #define DBG_LVL DBG_INFO
@@ -170,7 +171,18 @@ static void gov_apply(bool fast)
      * lv_timer_reset() it (jittering the 60 Hz cadence), and re-enter the PM
      * run mode on every tick. */
     if (fast == s_is_fast)
+    {
+        /* [GOV-DIAG] Stuck-state probe: the no-op guard trusts s_is_fast, but
+           if a cross-thread race tore an earlier apply, the actual refr period
+           can disagree with the flag — and every later request gets swallowed
+           right here. Log it with the calling thread when it happens. */
+        lv_timer_t *chk = gov_refr_timer();
+        if (chk && ((chk->period <= GOV_PERIOD_60HZ_MS) != fast))
+            LOG_W("[GOV-DIAG] no-op swallow: want=%s flag=%s period=%ums thr=%s",
+                  fast ? "60Hz" : "1Hz", s_is_fast ? "60Hz" : "1Hz",
+                  (unsigned)chk->period, rt_thread_self()->name);
         return;
+    }
 
     lv_timer_t *rt = gov_refr_timer();
     if (!rt)
@@ -191,7 +203,10 @@ static void gov_apply(bool fast)
     if (!fast)
         gov_set_run_mode(false);
 
-    LOG_I("refresh -> %s", fast ? "60Hz" : "1Hz");
+    /* [GOV-DIAG] thread tag: this is expected to be the LVGL thread only —
+       any other name here is the cross-thread apply the diagnosis hunts. */
+    LOG_I("refresh -> %s (thr=%s)", fast ? "60Hz" : "1Hz",
+          rt_thread_self()->name);
     s_is_fast = fast;
 }
 
@@ -264,6 +279,45 @@ static void gov_monitor_cb(lv_timer_t *t)
 {
     LV_UNUSED(t);
     gov_evaluate();
+
+    /* [GOV-DIAG] Post-evaluate probes (LVGL thread, so reading the anim list
+       is safe here). Two stuck signatures, both meaning the marquee would
+       visibly step once per second:
+         1. flag/period mismatch — a torn cross-thread gov_apply left
+            s_is_fast out of sync, so evaluate's request was swallowed;
+         2. still slow with anims running — should be impossible right after
+            gov_evaluate() unless the upshift was lost.
+       Rate-limited: first hit logs immediately, then every 20th (~6 s).
+       A ~6 s heartbeat also proves this monitor timer itself still runs. */
+    static uint32_t diag_ticks = 0;
+    static uint32_t diag_stuck = 0;
+    lv_timer_t *rt = gov_refr_timer();
+    bool actual_fast = rt && (rt->period <= GOV_PERIOD_60HZ_MS);
+    uint16_t anims = lv_anim_count_running();
+
+    if (rt && actual_fast != s_is_fast)
+    {
+        if ((++diag_stuck % 20u) == 1u)
+            LOG_W("[GOV-DIAG] flag/period mismatch: flag=%s period=%ums anim=%u n=%u",
+                  s_is_fast ? "60Hz" : "1Hz", (unsigned)rt->period,
+                  (unsigned)anims, (unsigned)diag_stuck);
+    }
+    else if (!s_is_fast && anims != 0)
+    {
+        if ((++diag_stuck % 20u) == 1u)
+            LOG_W("[GOV-DIAG] stuck slow with anim=%u period=%ums n=%u",
+                  (unsigned)anims, rt ? (unsigned)rt->period : 0u,
+                  (unsigned)diag_stuck);
+    }
+    else
+    {
+        diag_stuck = 0;
+    }
+
+    if ((++diag_ticks % 20u) == 0u)
+        LOG_I("[GOV-DIAG] monitor alive: %s period=%ums anim=%u",
+              s_is_fast ? "60Hz" : "1Hz",
+              rt ? (unsigned)rt->period : 0u, (unsigned)anims);
 }
 
 static void gov_start_monitor(void)
