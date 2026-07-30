@@ -388,6 +388,18 @@ static volatile int crash_evidence_pending;
 static int crash_evidence_handled;
 static void push_ft_evidence_now(void);
 
+/* Black-box recorder mode: the ulog backend IS registered so the continuous
+ * log stream flows into the RAM ring (circular, overwrite-oldest), but the
+ * flush thread does NOT drain it to NAND periodically — zero flash writes in
+ * normal operation. The ring (the last LOG_RING_BUF_SIZE bytes of log = the
+ * lead-up context) is written to /logs only at crash time by the assert /
+ * HardFault hooks, then auto-pushed. This gives pre-crash context for
+ * autonomous field crashes without the write load that starved the GUI into
+ * the 2026-07-27 mailbox crash-loop. Set before set_enabled(1) in release.
+ * Declared here (before flush_thread_entry / ring_write) so those earlier
+ * users see it. */
+static int blackbox_mode;
+
 static void flush_thread_entry(void *param)
 {
     (void)param;
@@ -411,7 +423,14 @@ static void flush_thread_entry(void *param)
         {
             continue;
         }
-        flush_once(&fsync_ctr);
+        /* Black-box mode keeps the log in the RAM ring only — no periodic NAND
+         * drain (that continuous write load starved the GUI into the 2026-07-27
+         * mailbox crash-loop). The ring is dumped to /logs only at crash time
+         * (log_file_assert_hook / _exception_hook -> emergency_flush). */
+        if (!blackbox_mode)
+        {
+            flush_once(&fsync_ctr);
+        }
 
         /* A crash log inherited from the previous boot waits here until BLE
          * has had time to reconnect — pushing it at boot just fails. Runs at
@@ -449,9 +468,24 @@ static rt_uint32_t ring_write(const char *log, size_t len)
 
     if (len > avail)
     {
-        dropped_bytes += (rt_uint32_t)len;
-        rt_hw_interrupt_enable(flags);
-        return 0;
+        if (!blackbox_mode)
+        {
+            dropped_bytes += (rt_uint32_t)len;
+            rt_hw_interrupt_enable(flags);
+            return 0;
+        }
+        /* Black-box recorder: never drop — keep the MOST RECENT bytes by
+         * overwriting the oldest. A single chunk larger than the whole ring
+         * keeps only its tail. The buffer therefore always holds the last
+         * LOG_RING_BUF_SIZE bytes of log, ready to dump at crash time. */
+        if (len > LOG_RING_BUF_SIZE)
+        {
+            log += (len - LOG_RING_BUF_SIZE);
+            len = LOG_RING_BUF_SIZE;
+        }
+        ring_tail = t + (len - avail);   /* drop oldest to make exactly room */
+        t = ring_tail;
+        used = h - t;
     }
 
     rt_uint32_t h_idx = h & LOG_RING_MASK;
@@ -777,11 +811,6 @@ void log_file_report_crash_evidence(void)
 
 static volatile int infra_ready;   /* dir + sem + flush thread + hooks ready */
 
-/* Minimal (crash-only) mode: file + crash hooks active, but the ulog backend
- * is NOT registered, so the continuous log stream never hits NAND. Set before
- * log_file_backend_set_enabled(1) in release. */
-static int minimal_mode;
-
 int log_file_backend_set_enabled(int enable);   /* defined below */
 
 static int log_file_backend_init(void)
@@ -828,14 +857,14 @@ static int log_file_backend_init(void)
     /* ── Minimal blackbox (2026-07-28) ──────────────────────────────────
      * The 2026-07-27 field build (full logger auto-on at DBG_INFO) held a
      * send_msg_to_gui_app_task mailbox-full assert crash-loop; the continuous
-     * /logs NAND writes are the prime suspect for starving the GUI (a known
-     * failure mode on this HW). Minimal mode keeps the file + the assert /
-     * HardFault hooks (so a crash snapshot still lands and auto-pushes) but
-     * does NOT register the ulog backend — the per-line LOG stream never
-     * touches NAND, so normal operation writes nothing. We still see reboots /
-     * crashes (incl. the send_msg assert, which goes through rt_assert_handler)
-     * without the write load that likely caused them. */
-    minimal_mode = 1;
+     * /logs NAND writes starved the GUI (a known failure mode on this HW).
+     * The 2026-07-28 minimal build (no ulog capture) then ran crash-free but
+     * caught autonomous HardFaults whose CAUSE it couldn't show — only the
+     * corrupted register frame, no lead-up. Black-box mode fixes both: capture
+     * the log stream into the RAM ring (zero NAND in normal operation) and
+     * dump the last LOG_RING_BUF_SIZE bytes only at crash time -> pre-crash
+     * context for autonomous field crashes, no GUI-starving write load. */
+    blackbox_mode = 1;
     log_file_backend_set_enabled(1);
 #else
     /* File log is DISABLED by default; user turns it on via the developer
@@ -872,15 +901,13 @@ int log_file_backend_set_enabled(int enable)
             }
         }
         backend_ready = 1;
-        /* Minimal mode skips ulog registration: only crash snapshots (written
-         * directly via crash_printf from the assert/HardFault hooks) reach the
-         * file; the continuous LOG stream is never captured -> no NAND churn. */
-        if (!minimal_mode)
-        {
-            ulog_backend_register(&log_file_be, "filebe", RT_FALSE);
-        }
+        /* Register the ulog backend in BOTH modes so the log stream is
+         * captured. In black-box mode it flows into the RAM ring only (the
+         * flush thread never drains it to NAND); in full mode the flush thread
+         * also persists it periodically. */
+        ulog_backend_register(&log_file_be, "filebe", RT_FALSE);
         rt_kprintf("[log_file_be] enabled (%s)\n",
-                   minimal_mode ? "minimal/crash-only" : "full");
+                   blackbox_mode ? "blackbox/RAM-ring" : "full");
 
         /* First enable of this boot: look for a log the previous session
          * left behind with a crash marker in its tail. */
@@ -900,12 +927,8 @@ int log_file_backend_set_enabled(int enable)
             return RT_EOK;
         }
         /* Unregister first so ulog stops routing logs to us, then drain
-         * whatever is already in the ring buffer and seal the file.
-         * (No-op in minimal mode — it was never registered.) */
-        if (!minimal_mode)
-        {
-            ulog_backend_unregister(&log_file_be);
-        }
+         * whatever is already in the ring buffer and seal the file. */
+        ulog_backend_unregister(&log_file_be);
         backend_ready = 0;
         if (current_fd >= 0)
         {
