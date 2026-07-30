@@ -1062,6 +1062,18 @@ static rt_timer_t bg_hr_sample_timer = RT_NULL;
 static rt_bool_t bg_hr_bursting = RT_FALSE;
 static uint32_t bg_hr_burst_deadline_ms = 0;
 static uint32_t bg_hr_burst_start_seq = 0;   /* gh3018 HR-update seq at burst start; warm-up baseline */
+/* PPG frame accounting for the 2x-harmonic investigation. The algo is told
+   fs=25 Hz and the samples carry no timestamps, so silently lost frames (chip
+   FIFO overflow when its interrupt is serviced late) make the pulse look faster
+   than it is — lose half and the reported HR doubles. Snapshot the driver's
+   monotonic frame counter at burst start, diff at burst end, and express it as a
+   PERCENTAGE of the frames a full-rate burst should have delivered
+   (25 Hz * burst seconds). ~100% => the timebase is sound and the 2x episodes
+   have some other cause; ~50% => the doubling is a lost-frame artefact and the
+   real fix is upstream, not a post-hoc threshold. */
+extern uint32_t gh3018_get_ppg_frame_count(void);
+static uint32_t bg_hr_burst_start_frames = 0;
+static uint16_t bg_hr_win_frame_pct = 0;     /* last burst's delivered/expected, % */
 static uint8_t bg_hr_burst_best = 0;
 
 /* ---- PPG perfusion-index (PI = AC/DC) capture over a burst -------------------
@@ -1106,6 +1118,12 @@ static void ppg_pi_finish(void)
 
 /* Last completed burst's PI*1000 (0 if none). Read by sleep_service for sleep_diag. */
 uint16_t hr_service_get_last_pi_e3(void) { return bg_hr_win_pi_e3; }
+
+/* Last completed burst's delivered-vs-expected PPG frame percentage. The night
+   has no serial console, so this rides sleep_diag to the phone: it is the test
+   that separates "the 2x episodes are a lost-frame timebase artefact" (~50%)
+   from "the timebase is fine, look at the waveform instead" (~100%). */
+uint16_t hr_service_get_last_frame_pct(void) { return bg_hr_win_frame_pct; }
 
 /* Two-stage gate state. bg_hr_sleep_active is set by sleep_service when accel
    says we're asleep OR the wrist is still inside the overnight rest window
@@ -1421,10 +1439,21 @@ static void bg_hr_finish_burst(void)
     /* Burst summary for on-wrist tuning (LCPU console / uart4). qmin = lowest
        Goodix valid_score this burst; correlate low qmin with spiky bursts to
        calibrate a future signal-quality gate. */
-    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u best=%u qmin=%u qlvl=%u",
+    /* Frame accounting: did the chip actually deliver a full-rate stream this
+       burst? The algo assumes 25 Hz unconditionally, so a shortfall here IS a
+       proportional over-read of HR (see bg_hr_win_frame_pct decl). */
+    {
+        uint32_t got = gh3018_get_ppg_frame_count() - bg_hr_burst_start_frames;
+        uint32_t want = (bg_hr_burst_ms / 1000u) * 25u;
+        uint32_t pct = (want > 0) ? (got * 100u / want) : 0u;
+        bg_hr_win_frame_pct = (pct > 0xFFFFu) ? 0xFFFFu : (uint16_t)pct;
+    }
+
+    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u best=%u qmin=%u qlvl=%u frames=%u%%",
           (unsigned)bg_hr_burst_reads, (unsigned)bg_hr_burst_cnt,
           (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_best,
-          (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel);
+          (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel,
+          (unsigned)bg_hr_win_frame_pct);
     /* Sleep-time artefact ceiling: withhold an implausibly high sleeping HR
        (SLEEP_HR_ARTEFACT_CEIL). Zeroing best routes it to the NO_LOCK branch below
        so the phone draws a gap instead of a false spike, and the sleep_fusion HR
@@ -1642,6 +1671,7 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
     uint32_t bg_now_ms = rt_tick_get_millisecond();
     bg_hr_burst_start_seq = gh3018_get_hr_update_seq();  /* warm-up baseline: accept once the algo emits a NEW locked value past this */
+    bg_hr_burst_start_frames = gh3018_get_ppg_frame_count(); /* frame-accounting baseline (see decl) */
     bg_hr_burst_deadline_ms = bg_now_ms + bg_hr_burst_ms;
     /* Open in HR mode (GH30X_FUNCTION_HR), the same path the foreground HR
        subscribe uses; hr_set_power(1) would open NORMAL = HRV, which never

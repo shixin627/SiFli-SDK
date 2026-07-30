@@ -50,8 +50,12 @@ typedef enum
        expose nightly wear-detect internals (phone appends to a daily CSV). */
     KEY_WEAR_DIAG = 0x12,
     /* Per-minute sleep-fusion diagnostic {ts:u32, score:u16, hr:u8, hr_std:u8,
-       stage:u8, veto:u8, rhr:u8, worn:u8, rest:u8, fresh:u8} = 14B LE. Phone
-       appends to a daily CSV for offline SQI-threshold + missed-night analysis.
+       stage:u8, veto:u8, rhr:u8, worn:u8, rest:u8, fresh:u8, total:u16, deep:u16,
+       rem:u16, light:u16, pi_e3:u16, frame_pct:u16} = 26B LE. Phone appends to a
+       daily CSV for offline SQI-threshold + missed-night analysis. frame_pct is
+       the last PPG burst's delivered frames as a % of 25 Hz * burst seconds —
+       the test for whether the nightly 2x HR episodes are lost-frame timebase
+       errors (~50%) rather than physiology (~100%).
        Temporary diagnostic stream (mirrors KEY_WEAR_DIAG). */
     KEY_SLEEP_DIAG = 0x13,
     /* PHONE -> WATCH. HR-curve backfill request {since_ts:u32 BE}: "I already

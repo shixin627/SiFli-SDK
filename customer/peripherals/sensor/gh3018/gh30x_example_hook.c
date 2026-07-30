@@ -58,11 +58,34 @@ void Gh30xInitHookFunc(void)
 }
 
 static uint8_t log_count = 0;
+
+/* Monotonic count of PPG FRAMES the chip has actually delivered (one frame = one
+   green+IR sample pair = exactly what the HBA algorithm is fed per iteration).
+   The algorithm is TOLD fs=25 Hz but the samples carry no timestamps, so if the
+   chip's hardware FIFO ever overflows because the interrupt was serviced late,
+   the lost samples are invisible: the algo treats what it got as contiguous 25 Hz,
+   the apparent pulse period shrinks and the reported HR comes out too high — half
+   the samples lost reads as ~2x. bg_hr diffs this across a burst and compares it
+   with 25 * burst_seconds, which distinguishes that timebase failure from a
+   genuine waveform / physiological cause of the 2x night episodes.
+   Counted BEFORE the size guard below: that guard only skips the PI / wear-detect
+   feed, while the algorithm is fed separately by gh30x_fifo_evt_handler, so the
+   algo's true input count must not be reduced by it.
+   Single writer (FIFO event context), single reader (bg_hr timer) => volatile is
+   enough, same concurrency model as loc_hb_value. */
+static volatile uint32_t s_ppg_frame_cnt = 0;
+
+uint32_t gh3018_get_ppg_frame_count(void)
+{
+    return s_ppg_frame_cnt;
+}
+
 void Gh30xGetRawdataHookFunc(GU32 *read_buffer_ptr, GU16 length)
 {
     /* code implement by user */
     uint8_t index = 0;
     uint16_t sample_num = length / 2;
+    s_ppg_frame_cnt += sample_num;
     if (sample_num > GH30X_RAWDATA_FIFO_BUF_SAMPLE_POINT_NUM_MAX)
     {
         EXAMPLE_DEBUG_LOG_L1_HOOK("[%s] one_light_data_len is too large, %d\n\r", __FUNCTION__, sample_num);
