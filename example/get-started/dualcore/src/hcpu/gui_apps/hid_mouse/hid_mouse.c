@@ -3536,6 +3536,11 @@ static void hw_pull_cancel(void);
 static lv_timer_t *s_dial_hold_timer = NULL;
 static lv_point_t s_dial_press_start;
 static bool s_pose_dial_touch = false; /* 側立圓盤按住中:PRESSED 開 session、RELEASED commit */
+static lv_point_t s_pose_start;        /* 側立圓盤 press 起點(判手指滑離→轉觸控板) */
+static lv_point_t s_pose_last;         /* 轉觸控板後算游標 delta 的上一幀手指位置 */
+static bool s_pose_moved_to_tp = false; /* 側立圓盤已因手指滑退出、轉觸控板(founder 2026-07-30:
+                                           側立按住不動=圓盤/手指一滑=觸控板移游標) */
+#define POSE_TO_TRACKPAD_PX 12         /* 側立圓盤中手指滑離起點超此(px)=退出圓盤轉觸控板 */
 static bool s_hw_hold_armed = false; /* 長按已滿 1s,等「手指滑=觸控拖曳/手腕動=體感拖曳」判定(先到先贏) */
 static bool s_motion_drag = false;   /* 體感拖曳中:左鍵按住,游標由 gyro 驅動(bloc report) */
 /* 右緣向左拉出=進手寫(founder 2026-07-20 三改) */
@@ -3659,6 +3664,7 @@ static void dial_drag_state_reset(void)
     dial_hold_cancel();
     s_hw_hold_armed = false;
     s_pose_dial_touch = false;
+    s_pose_moved_to_tp = false;
     s_edge_swipe_armed = false;
     motion_drag_end(); /* 體感拖曳殘留(冪等) */
     bloc_press_free_move_set(false);
@@ -3696,6 +3702,12 @@ static void plain_event_cb(lv_event_t *e)
         if (bloc_dial_pose_touch_ready())
         {
             s_pose_dial_touch = true;
+            s_pose_moved_to_tp = false;
+            if (indev)
+            {
+                lv_indev_get_point(indev, &s_pose_start);
+                s_pose_last = s_pose_start;
+            }
             mouse_dial_pose_begin();
             break;
         }
@@ -3709,7 +3721,32 @@ static void plain_event_cb(lv_event_t *e)
     case LV_EVENT_PRESSING:
     {
         if (s_pose_dial_touch)
-            break; /* 側立圓盤按住中:方向由手腕(bloc 積分),手指不做任何游標事 */
+        {
+            /* 側立按住不動=圓盤(手腕比方向,bloc 積分);手指滑離起點超門檻=退出圓盤、轉觸控板
+               移游標(founder 2026-07-30)。 */
+            lv_point_t pp;
+            lv_indev_get_point(indev, &pp);
+            if (!s_pose_moved_to_tp &&
+                LV_ABS(pp.x - s_pose_start.x) + LV_ABS(pp.y - s_pose_start.y) >
+                    POSE_TO_TRACKPAD_PX)
+            {
+                s_pose_moved_to_tp = true;
+                mouse_dial_pose_cancel(); /* 桌面收圓盤,不 commit */
+                s_pose_last = pp;         /* 從當下起算游標 delta,免第一幀爆衝 */
+            }
+            if (s_pose_moved_to_tp)
+            {
+                /* 觸控板:手指相對移動送游標(同觸控板 1.5x)。飛鼠 owned 時讓出(互鎖)。 */
+                int dx = pp.x - s_pose_last.x;
+                int dy = pp.y - s_pose_last.y;
+                if ((dx || dy) && !mouse_air_cursor_owned() &&
+                    control_provider.ble_hid_mouse_move)
+                    control_provider.ble_hid_mouse_move((int8_t)(dx * 1.5),
+                                                        (int8_t)(dy * 1.5));
+                s_pose_last = pp;
+            }
+            break;
+        }
 
         lv_point_t now_point;
         lv_indev_get_point(indev, &now_point);
@@ -3839,9 +3876,17 @@ static void plain_event_cb(lv_event_t *e)
         }
         if (s_pose_dial_touch)
         {
-            /* 側立圓盤放開=以當下方向 commit(桌面執行);跳過 handle_released 免誤 click */
             s_pose_dial_touch = false;
-            mouse_dial_pose_commit();
+            if (s_pose_moved_to_tp)
+            {
+                /* 已轉觸控板:放開=無事(已移游標,圓盤早收、不 commit、不誤 click)。 */
+                s_pose_moved_to_tp = false;
+            }
+            else
+            {
+                /* 手指沒滑=圓盤:以當下方向 commit(桌面執行);跳過 handle_released 免誤 click */
+                mouse_dial_pose_commit();
+            }
             user_touching = false;
             break;
         }
@@ -3886,6 +3931,7 @@ static void plain_event_cb(lv_event_t *e)
         if (s_pose_dial_touch)
         {
             s_pose_dial_touch = false;
+            s_pose_moved_to_tp = false;
             mouse_dial_pose_cancel(); /* press 被搶=不 commit,桌面收圓盤 */
         }
         motion_drag_end(); /* 體感拖曳被搶=放左鍵停驅動(冪等) */
@@ -5126,9 +5172,9 @@ static void ensure_hw_view(void)
     lv_obj_add_flag(s_hw_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_event_cb(s_hw_view, hw_view_event_cb, LV_EVENT_ALL, NULL);
 
-    /* 頂部=keyboard_icon(取消不送出;founder 2026-07-22:與觸碰板頂部 logo 整合
-       ——觸碰板 logo tap 滑入本頁、本頁頂部變鍵盤圖、再按=滑回退出)。位置對齊
-       status_bar 頂部 80 高感應區置中。 */
+    /* 頂部=mouse_mode_icon(取消不送出;founder 2026-07-30:輸入頁頂部改放滑鼠圖=「點我回
+       滑鼠模式」,與觸控板頂部鍵盤圖對調——顯示目標模式。點本頁頂部=滑回退出)。位置
+       對齊 status_bar 頂部 80 高感應區置中。 */
     s_hw_btn_exit = lv_obj_create(s_hw_view);
     lv_obj_remove_style_all(s_hw_btn_exit);
     lv_obj_set_size(s_hw_btn_exit, 100, 80);
@@ -5137,7 +5183,7 @@ static void ensure_hw_view(void)
     lv_obj_clear_flag(s_hw_btn_exit, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(s_hw_btn_exit, hw_btn_exit_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *exit_img = lv_img_create(s_hw_btn_exit);
-    lv_img_set_src(exit_img, &keyboard_icon);
+    lv_img_set_src(exit_img, &mouse_mode_icon);
     lv_img_set_zoom(exit_img, 180);
     lv_obj_center(exit_img);
     lv_obj_clear_flag(exit_img, LV_OBJ_FLAG_CLICKABLE);
@@ -6894,9 +6940,9 @@ static void create_keyboard_mode_ui(lv_obj_t *parent)
                         LV_EVENT_HIT_TEST, NULL);
 
     // Input bar 容器（深色框，keyboard mode 顯示在鍵盤上方）
-    /* 鍵盤頂部=keyboard_icon(founder 2026-07-22:同手寫頁頂部,不要藍色 EXIT
-       字鈕):按了收鍵盤回觸碰板(右滑)。掛跨 mode 層,預設藏;顯藏由
-       mode_set_visible(KEYBOARD)+kbd_mode_extras_sync。 */
+    /* 鍵盤頂部=mouse_mode_icon(founder 2026-07-30:同手寫頁頂部,輸入模式頂部放滑鼠圖=
+       「點我回滑鼠」,與觸控板頂部鍵盤圖對調):按了收鍵盤回觸碰板(右滑)。掛跨 mode 層,
+       預設藏;顯藏由 mode_set_visible(KEYBOARD)+kbd_mode_extras_sync。 */
     kbd_exit_btn = lv_obj_create(parent);
     lv_obj_remove_style_all(kbd_exit_btn);
     lv_obj_set_size(kbd_exit_btn, 100, 80);
@@ -6906,7 +6952,7 @@ static void create_keyboard_mode_ui(lv_obj_t *parent)
     lv_obj_add_event_cb(kbd_exit_btn, kbd_exit_btn_event_cb, LV_EVENT_CLICKED,
                         NULL);
     lv_obj_t *kbd_exit_img = lv_img_create(kbd_exit_btn);
-    lv_img_set_src(kbd_exit_img, &keyboard_icon);
+    lv_img_set_src(kbd_exit_img, &mouse_mode_icon);
     lv_img_set_zoom(kbd_exit_img, 180);
     lv_obj_center(kbd_exit_img);
     lv_obj_clear_flag(kbd_exit_img, LV_OBJ_FLAG_CLICKABLE);
@@ -8926,12 +8972,12 @@ void lv_create_mouse_screen(lv_obj_t *scr)
     lv_obj_add_event_cb(status_bar_area_up, status_bar_area_up_cb,
                         LV_EVENT_ALL, NULL);
 
-    // 區中央放 mouse_mode_icon（founder 2026-07-22:logo 換滑鼠圖=「這是滑鼠/
-    // 輸入開關」;純視覺 non-clickable → press 穿透給 status_bar_area_up 統一
-    // 做手勢分流：按住不動=飛鼠/下拉=媒體/tap=開手寫輸入頁）。
-    // keyboard mode 隨父物件一起藏。
+    // 區中央放 keyboard_icon（founder 2026-07-30:logo 改顯示「目標模式」——觸控板模式頂部
+    // 放鍵盤圖=「點我進輸入」;輸入頁頂部改放滑鼠圖(見手寫頁/鍵盤頁 exit)。純視覺
+    // non-clickable → press 穿透給 status_bar_area_up 統一做手勢分流：按住不動=飛鼠/下拉=
+    // 媒體/tap=開手寫輸入頁）。keyboard mode 隨父物件一起藏。 */
     s_top_logo = lv_img_create(status_bar_area_up);
-    lv_img_set_src(s_top_logo, &mouse_mode_icon);
+    lv_img_set_src(s_top_logo, &keyboard_icon);
     // zoom 180=手寫頁頂部 keyboard_icon 同款(兩張都 64×64,渲染 ~45px;
     // founder 2026-07-22:兩態圖示要一樣大)
     lv_img_set_zoom(s_top_logo, 180);

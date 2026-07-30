@@ -2627,6 +2627,13 @@ static void dial_header_show_notification(void)
             lv_obj_set_style_text_opa(dial_header_content, LV_OPA_COVER, 0);
             lv_obj_set_style_border_opa(dial_header_bg, 30, 0);
             lv_obj_set_style_bg_opa(dial_header_bg, 15, 0);
+            /* [GOV-DIAG] set_text above just (re)built the marquee scroll anim
+               iff the text overflows 240px. anim==0 with a long msg means the
+               marquee never got an lv_anim — the governor's monitor would then
+               have nothing to see. Log tick prefix dates the header vs RESUME. */
+            LOG_I("[GOV-DIAG] header shown anim=%u msg_len=%u",
+                  (unsigned)lv_anim_count_running(),
+                  (unsigned)strlen(notification->message));
             return;
         }
     }

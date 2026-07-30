@@ -1176,9 +1176,16 @@ static euler_angle_t motion_tracking_algorithm(Quaternion *quaternion,
 #ifdef BSP_USING_AIR_MOUSE
 extern bool is_skai_touch_enabled(void);
 extern void set_air_mouse_moving_state(bool state);
+extern int get_gravity_position(void); /* 定義在本檔後方,側立 gate 前置宣告 */
 static void report_air_mouse_data(air_plane_delta_movement_t *movement,
                                   rt_uint32_t ts)
 {
+    /* 側立時不送連續飛鼠游標(founder 2026-07-30:側立只用圓盤(手腕比方向)+觸控板(手指滑),
+       手錶整體移動/傾斜的 air mouse 不控游標)。s_press_free_move / s_motion_drag / handfree
+       都經此共同出口一處擋;圓盤走 commu_send_dial_dir、觸控板手指滑走 hid_mouse 的 move,
+       都不經這裡,故側立圓盤+觸控板照常。 */
+    if (get_gravity_position() == GRAVITY_POSITION_FACE_SIDE)
+        return;
     // if (abs(movement->x >= 3) || abs(movement->y) >= 3)
     // {
     //     set_air_mouse_moving_state(true);
@@ -1754,7 +1761,9 @@ static void handwrite_motion_process(void)
 bool bloc_dial_pose_touch_ready(void)
 {
     /* 側立幾何成立=按下畫面該開圓盤(手寫進行中讓位)。用 getter:
-       gravity_position 變數宣告在本檔更下方,這裡不在 scope。 */
+       gravity_position 變數宣告在本檔更下方,這裡不在 scope。
+       (founder 2026-07-30:圓盤要保留;側立只關「圓盤以外的連續飛鼠」,見
+       report_air_mouse_data 的側立 gate。) */
     return get_gravity_position() == GRAVITY_POSITION_FACE_SIDE && !s_hw_active;
 }
 
