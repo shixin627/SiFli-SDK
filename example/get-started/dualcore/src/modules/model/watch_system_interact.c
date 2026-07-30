@@ -356,7 +356,10 @@ void motor_pattern_unlocked(void)
 }
 void motor_pattern_air_hint(void)
 {
-    motor_play_if_enabled(50, 9000, 1); /* 小震(9ms)的 50% 力道:飛鼠觸發提示 */
+    /* 飛鼠觸發提示 = tap(9ms)時長的 50% = 4.5ms。震動「大小」主要看時長(period),不是 duty
+       ——原本用 duty 50 想做「50% 力道」反而感覺比 tap 還大(founder 2026-07-30 真機);改回
+       duty 同 tap(100)、時長減半,才是真的更小。 */
+    motor_play_if_enabled(100, 4500, 1);
 }
 
 void motor_pattern_stop(void)
