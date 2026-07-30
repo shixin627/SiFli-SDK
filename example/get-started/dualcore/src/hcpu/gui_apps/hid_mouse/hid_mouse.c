@@ -107,6 +107,11 @@
      *********************/
     #define PRESSED_TIME_MS 500
     #define SCROLLING_THRESHOLD 5
+    /* 觸控座標跳變濾波上限(founder 2026-07-30 診斷確診):觸控面板單軸座標會瞬間噴到異常值
+       (另一軸不動)→游標瞬移。單軸 delta 超此=誤報,丟這幀游標移動(基準照更新,下一幀座標
+       回正常就繼續)。實測正常滑動/拖曳每幀 ≤43px、跳變 64~257px,取中間 60。太多正常快移
+       被擋往上調、還漏跳變往下降。 */
+    #define TOUCH_JUMP_REJECT_PX 60
     #define EDGE_THRESHOLD_PIXELS 20
     #define BOTTOM_EDGE_THRESHOLD 50
     #define GESTURE_DISTANCE_THRESHOLD 50
@@ -3292,10 +3297,14 @@ static void handle_pressing_event(lv_indev_t *indev,
             //       delta_y);
             // if (abs(delta_x) < 60 && abs(delta_y) < 60)
             {
-                /* 飛鼠先到=觸控板讓出游標(先到先贏互鎖)。last_point 照更新——不更新的話
-                   讓出期間 delta 會一直對舊點累積,鎖一解除就爆衝一大步。 */
-                if (!mouse_air_cursor_owned())
+                /* 送游標要同時滿足:①非觸控座標跳變(單軸 delta 超 TOUCH_JUMP_REJECT_PX=觸控
+                   面板誤報,丟這幀→消除瞬移) ②飛鼠沒 claim(先到先贏互鎖,飛鼠先到則讓出)。
+                   兩種情況 last_point 都照更新——不更新的話 delta 一直對舊點累積,恢復時爆衝。 */
+                if (LV_MAX(LV_ABS(delta_x), LV_ABS(delta_y)) <= TOUCH_JUMP_REJECT_PX &&
+                    !mouse_air_cursor_owned())
+                {
                     control_provider.ble_hid_mouse_move(delta_x * 1.5, delta_y * 1.5);
+                }
                 last_point.x = current_point->x;
                 last_point.y = current_point->y;
             }
@@ -3725,10 +3734,15 @@ static void plain_event_cb(lv_event_t *e)
             {
                 int mdx = now_point.x - s_dial_drag_last.x;
                 int mdy = now_point.y - s_dial_drag_last.y;
-                if (mdx > 127) mdx = 127; else if (mdx < -127) mdx = -127;
-                if (mdy > 127) mdy = 127; else if (mdy < -127) mdy = -127;
-                if ((mdx || mdy) && control_provider.ble_hid_mouse_move)
-                    control_provider.ble_hid_mouse_move((int8_t)mdx, (int8_t)mdy);
+                /* 觸控座標跳變濾波(同觸控板):拖曳也用觸控座標,單軸爆步=誤報,丟這幀不送。
+                   基準 s_dial_drag_last 照更新(下方 if 外)。 */
+                if (LV_MAX(LV_ABS(mdx), LV_ABS(mdy)) <= TOUCH_JUMP_REJECT_PX)
+                {
+                    if (mdx > 127) mdx = 127; else if (mdx < -127) mdx = -127;
+                    if (mdy > 127) mdy = 127; else if (mdy < -127) mdy = -127;
+                    if ((mdx || mdy) && control_provider.ble_hid_mouse_move)
+                        control_provider.ble_hid_mouse_move((int8_t)mdx, (int8_t)mdy);
+                }
             }
             s_dial_drag_last = now_point;
             break;
