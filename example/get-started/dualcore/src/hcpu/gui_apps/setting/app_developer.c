@@ -165,24 +165,22 @@ static bool battery_request_enabled = false;
 static lv_obj_t *reset_restart_num_btn = NULL;
 static lv_obj_t *reset_restart_num_label = NULL;
 
-/* Gesture peak-confirm control (see the button in the layout below). */
+/* Gesture peak-confirm control (see the slider in the layout below). */
 extern uint16_t gesture_confirm_get(void);
 extern void gesture_confirm_set(uint16_t peak_x100);
-static lv_obj_t *gcap_confirm_btn = NULL;
+static lv_obj_t *gcap_confirm_slider = NULL;
 static lv_obj_t *gcap_confirm_label = NULL;
 static char gcap_confirm_text[48];
 
-/* Candidate confirm levels. 0 = off (ship default); 80 is the value the
-   walking capture pointed at (noise 9 → 3, all six real gestures kept), with
-   60 and 100 either side of it because that capture had only six gestures and
-   the margin to the weakest one was 4%. */
-static const uint16_t gcap_confirm_steps[] = {0, 60, 80, 100};
-#define GCAP_CONFIRM_STEP_COUNT                                                \
-    (sizeof(gcap_confirm_steps) / sizeof(gcap_confirm_steps[0]))
+/* Slider spans 0..GCAP_CONFIRM_MAX in GCAP_CONFIRM_STEP increments (both are
+   peak ×100). Upper bound 1.50: real gestures in the walking capture started
+   at 0.83 and noise reached 1.33, so everything useful sits well below that.
+   0 = off, which is also the ship default. */
+#define GCAP_CONFIRM_MAX 150
+#define GCAP_CONFIRM_STEP 5
 
-static const char *gcap_confirm_text_buf(void)
+static void gcap_confirm_refresh_label(uint16_t v)
 {
-    uint16_t v = gesture_confirm_get();
     if (v == 0)
     {
         snprintf(gcap_confirm_text, sizeof(gcap_confirm_text),
@@ -193,29 +191,24 @@ static const char *gcap_confirm_text_buf(void)
         snprintf(gcap_confirm_text, sizeof(gcap_confirm_text),
                  "Gesture confirm: %d.%02d", v / 100, v % 100);
     }
-    return gcap_confirm_text;
+    if (gcap_confirm_label)
+    {
+        lv_label_set_text(gcap_confirm_label, gcap_confirm_text);
+    }
 }
 
 static void gcap_confirm_callback(lv_event_t *e)
 {
-    LV_UNUSED(e);
-    uint16_t cur = gesture_confirm_get();
-    uint8_t idx = 0;
-    for (uint8_t i = 0; i < GCAP_CONFIRM_STEP_COUNT; i++)
-    {
-        if (gcap_confirm_steps[i] == cur)
-        {
-            idx = i;
-            break;
-        }
-    }
-    idx = (idx + 1) % GCAP_CONFIRM_STEP_COUNT;
-    gesture_confirm_set(gcap_confirm_steps[idx]);
-    if (gcap_confirm_label)
-    {
-        lv_label_set_text(gcap_confirm_label, gcap_confirm_text_buf());
-    }
-    LOG_I("Gesture confirm -> %d", gcap_confirm_steps[idx]);
+    lv_obj_t *obj = lv_event_get_target(e);
+    int32_t raw = lv_slider_get_value(obj);
+    /* Quantise to GCAP_CONFIRM_STEP — dragging on a watch-sized screen can't
+       resolve single units, and the stored value is what the capture path
+       compares against. */
+    uint16_t v = (uint16_t)(((raw + GCAP_CONFIRM_STEP / 2) / GCAP_CONFIRM_STEP) *
+                            GCAP_CONFIRM_STEP);
+    gesture_confirm_set(v);
+    gcap_confirm_refresh_label(v);
+    LOG_I("Gesture confirm -> %d", v);
 }
 static void back_btn_event_callback(lv_event_t *e)
 {
@@ -619,16 +612,28 @@ static void lv_create_dev_screen(void)
     lv_obj_align_to(fs_clean_btn, fs_test_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
 
     /* Gesture peak-confirm (walking only). On-watch control on purpose: the
-       MSH route needs a UART cable, and this value can only be tuned while
-       actually walking. Cycles through the candidate steps rather than using a
-       slider — the useful range is narrow (real gestures start at 0.83, noise
-       reaches 1.33) so a handful of presets beats fiddling with a slider on a
-       watch-sized screen. */
-    gcap_confirm_btn = common_text_button(cont, gcap_confirm_text_buf(),
-                                          get_system_font_size(0), 366, 100,
-                                          gcap_confirm_callback);
-    gcap_confirm_label = lv_obj_get_child(gcap_confirm_btn, 0);
-    lv_obj_align_to(gcap_confirm_btn, fs_clean_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+       MSH route needs a UART cable, which is exactly what a walking test
+       can't have. */
+    lv_obj_t *gcap_confirm_container = lv_obj_create(cont);
+    lv_obj_set_size(gcap_confirm_container, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(gcap_confirm_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(gcap_confirm_container, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_align_to(gcap_confirm_container, fs_clean_btn,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
+
+    gcap_confirm_label = lv_label_create(gcap_confirm_container);
+    lv_obj_set_style_text_font(gcap_confirm_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+
+    gcap_confirm_slider = lv_slider_create(gcap_confirm_container);
+    lv_slider_set_range(gcap_confirm_slider, 0, GCAP_CONFIRM_MAX);
+    lv_slider_set_value(gcap_confirm_slider, gesture_confirm_get(), LV_ANIM_OFF);
+    lv_obj_set_size(gcap_confirm_slider, 300, 40);
+    lv_obj_add_event_cb(gcap_confirm_slider, gcap_confirm_callback,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+    /* Label text is only produced here, so it starts in sync with the slider. */
+    gcap_confirm_refresh_label(gesture_confirm_get());
 
     // lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
 }
