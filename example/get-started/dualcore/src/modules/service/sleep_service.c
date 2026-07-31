@@ -540,11 +540,14 @@ static void prv_minute_eval(uint32_t utc_now)
     {
         uint16_t pi_now = 0;
         uint16_t frame_pct_now = 0;
+        uint16_t rate_info_now = 0;
 #ifdef BSP_USING_HR_SVC
         extern uint16_t hr_service_get_last_pi_e3(void);
         extern uint16_t hr_service_get_last_frame_pct(void);
+        extern uint16_t hr_service_get_last_rate_info(void);
         pi_now = hr_service_get_last_pi_e3();
         frame_pct_now = hr_service_get_last_frame_pct();
+        rate_info_now = hr_service_get_last_rate_info();
 #endif
         watch_sys_sleep_diag_t drec = {
             .ts     = utc_now,
@@ -563,6 +566,7 @@ static void prv_minute_eval(uint32_t utc_now)
             .light  = out->light_min,
             .pi_e3  = pi_now,
             .frame_pct = frame_pct_now,
+            .rate_info = rate_info_now,
         };
         watch_sys_sync.notify_sleep_diag(&drec);
     }

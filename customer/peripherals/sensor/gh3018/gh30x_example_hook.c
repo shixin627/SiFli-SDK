@@ -80,6 +80,36 @@ uint32_t gh3018_get_ppg_frame_count(void)
     return s_ppg_frame_cnt;
 }
 
+/* The HR function's frame DIVIDER, and the frames that survived it this burst.
+   This is the one place a x2 rate error can be born. The chip may sample at 25 Hz
+   (HR) or 100 Hz (HRV/SpO2), so Gh30xUpdateFunctionDivder() reads the chip's rate
+   register at every sampling start and sets divider = chip_rate / 25; the frame
+   loop then hands the algorithm only every Nth frame, and the algorithm is told
+   fs = 25 either way. Correct by design — but the divider comes from a single I2C
+   register read per burst, and if it lands on 2 while the chip is really at 25 Hz
+   the algorithm receives 12.5 Hz believing it is 25, and reports exactly DOUBLE
+   for that entire burst, recovering when the next burst recomputes it. That is
+   the shape of the nightly 2x episodes (a stable ~45 min plateau, clean x2 in and
+   /2 out), and the pre-decimation frame counter above cannot see it because it
+   sits upstream of the divider.
+   punFrameCnt[0] is reset by Gh30xUpdateFunctionDivder() at each sampling start,
+   so it IS the per-burst count of frames actually fed to the algorithm. */
+uint8_t gh3018_get_hr_divider(void)
+{
+    const STGh30xFrameInfo *const info = g_pstGh30xFrameInfo[GH30X_FUNC_OFFSET_HR];
+    if (info == 0 || info->pstFunctionInfo == 0)
+        return 0;
+    return info->pstFunctionInfo->uchDivder;
+}
+
+uint32_t gh3018_get_hr_algo_frame_count(void)
+{
+    const STGh30xFrameInfo *const info = g_pstGh30xFrameInfo[GH30X_FUNC_OFFSET_HR];
+    if (info == 0 || info->punFrameCnt == 0)
+        return 0;
+    return info->punFrameCnt[0];
+}
+
 void Gh30xGetRawdataHookFunc(GU32 *read_buffer_ptr, GU16 length)
 {
     /* code implement by user */

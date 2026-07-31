@@ -233,6 +233,12 @@ extern "C"
         uint16_t rem;      /* daily rem_min                               */
         uint16_t light;    /* daily light_min                             */
         uint16_t pi_e3;    /* last PPG burst PI*1000 (AC/DC) — SQI candidate */
+        uint16_t rate_info; /* (hr divider << 8) | algo-frames-%. The divider is
+                             * chip_rate/25 recomputed per burst from an I2C read;
+                             * divider 2 with the chip at 25 Hz feeds the algo
+                             * 12.5 Hz while it believes 25 -> exactly DOUBLE for
+                             * that whole burst. frame_pct cannot see this (it
+                             * counts upstream of the divider).                  */
         uint16_t frame_pct; /* last PPG burst: delivered frames as % of 25 Hz *
                              * burst seconds. The HBA algo assumes 25 Hz and the
                              * samples are untimestamped, so a shortfall here is

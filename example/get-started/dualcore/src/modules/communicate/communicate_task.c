@@ -306,13 +306,15 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
                            uint8_t rhr, uint8_t worn, uint8_t rest,
                            uint8_t fresh, uint16_t total, uint16_t deep,
                            uint16_t rem, uint16_t light, uint16_t pi_e3,
-                           uint16_t frame_pct)
+                           uint16_t frame_pct, uint16_t rate_info)
 {
-    /* Packed 26-byte wire payload (phone reads 4+2+1*8+2*6 LE). total/deep/rem/
+    /* Packed 28-byte wire payload (phone reads 4+2+1*8+2*7 LE). total/deep/rem/
        light are the firmware's daily accumulators; pi_e3 is the last burst's
        perfusion index ×1000 (PPG signal-quality candidate); frame_pct is that
        burst's delivered PPG frames as a % of 25 Hz * burst seconds — the test
-       for whether the nightly 2x episodes are lost-frame timebase errors. */
+       for whether the nightly 2x episodes are lost-frame timebase errors;
+       rate_info = (hr divider << 8) | algo-frames-%, the DECIMATION-stage view
+       that frame_pct is blind to (divider 2 at a 25 Hz chip = exactly double). */
     struct __attribute__((packed))
     {
         uint32_t ts;
@@ -331,11 +333,12 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
         uint16_t light;
         uint16_t pi_e3;
         uint16_t frame_pct;
+        uint16_t rate_info;
     } rec = {.ts = ts, .score = score, .hr = hr, .hr_std = hr_std,
              .stage = stage, .veto = veto, .rhr = rhr, .worn = worn,
              .rest = rest, .fresh = fresh, .total = total, .deep = deep,
              .rem = rem, .light = light, .pi_e3 = pi_e3,
-             .frame_pct = frame_pct};
+             .frame_pct = frame_pct, .rate_info = rate_info};
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_SLEEP_DIAG,
                            &rec, (uint16_t)sizeof(rec));
 }
