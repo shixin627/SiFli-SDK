@@ -214,20 +214,16 @@ static void update_notification(notification_t newNotification)
         return;
     }
 
-    // Dedup: if a notification with the same ID already exists, remove it first
-    // so re-synced notifications don't create duplicates.
-    // For Notify_Skaiwalk category, also dedup by type to keep only the latest
-    // one.
+    // Dedup: a re-pushed notification we already hold (same id, or same
+    // visible content under a re-minted id) is handled IN PLACE — never
+    // removed and re-inserted at slot 0. Re-inserting reordered the list
+    // into the phone's resync iteration order on every reconnect: the
+    // watchface mini-widget (slot 0) suddenly showed a different app's
+    // notification and the list flipped newest-to-top. Only a genuinely
+    // new arrival (or a genuine content update of an existing id) takes
+    // slot 0. For Notify_Skaiwalk category, also dedup by type to keep
+    // only the latest one.
     bool dup = false;
-    /* Set when the phone re-pushes a notification we already hold verbatim
-       (same id + same title + message). This happens on every BLE reconnect:
-       the phone's _syncActiveNotifications() re-sends its whole active list.
-       It is NOT a new arrival, so we must not bump notification_arrival_seq —
-       otherwise the dial-header seq gate (handle_dial_header_new_notification)
-       treats it as new and re-pops + buzzes a notification the user already
-       saw. Covers the "viewed but not dismissed" case the dismissed-id ring
-       does not (those entries are still in _notification_list[]). */
-    bool identical_repush = false;
     for (int i = notification_items_amount - 1; i >= 0; i--)
     {
         dup = (strcmp(_notification_list[i].id, newNotification.id) == 0);
@@ -235,23 +231,29 @@ static void update_notification(notification_t newNotification)
             strcmp(_notification_list[i].title, newNotification.title) == 0 &&
             strcmp(_notification_list[i].message, newNotification.message) == 0)
         {
-            identical_repush = true;
+            /* Identical reconnect re-push (the phone re-sends its whole
+               active list on every reconnect): entry is already exactly
+               here — keep position and sec_time, and no seq bump, so the
+               callers' seq gate stays silent (no banner / buzz / wake). */
+            return;
         }
-        /* Same app + identical visible content under a DIFFERENT id: the phone
-           re-minted the id across a disconnect (its sbn.key→id map entry was
-           dropped while the matching dismiss couldn't be delivered) or across a
-           bridge process restart. To the user this IS the notification already
-           on screen — replace the old entry (adopt the phone's current id)
-           instead of stacking a twin, and stay silent (no seq bump → no
-           banner / buzz / wake). */
+        /* Same app + identical visible content under a DIFFERENT id: the
+           phone re-minted the id across a disconnect (its sbn.key→id map
+           entry was dropped while the matching dismiss couldn't be
+           delivered) or across a bridge process restart. Adopt the phone's
+           current id in place so watch-side dismiss/reply keep addressing
+           the live notification — position, sec_time and seq untouched. */
         if (!dup && _notification_list[i].type == newNotification.type &&
             strcmp(_notification_list[i].title, newNotification.title) == 0 &&
             strcmp(_notification_list[i].message, newNotification.message) == 0)
         {
-            LOG_I("update_notification: content-dup id=%s replaces id=%s",
+            LOG_I("update_notification: content-dup, adopting id=%s in place (was %s)",
                   newNotification.id, _notification_list[i].id);
-            dup = true;
-            identical_repush = true;
+            strncpy(_notification_list[i].id, newNotification.id,
+                    sizeof(_notification_list[i].id) - 1);
+            _notification_list[i].id[sizeof(_notification_list[i].id) - 1] = '\0';
+            _notification_list[i].can_reply = newNotification.can_reply;
+            return;
         }
         if (!dup && newNotification.type == Notify_Skaiwalk &&
             _notification_list[i].type == Notify_Skaiwalk)
@@ -260,6 +262,9 @@ static void update_notification(notification_t newNotification)
         }
         if (dup)
         {
+            /* Same id with CHANGED content (a genuine update from the
+               source app) or a Notify_Skaiwalk replacement — fall through
+               below to re-insert at slot 0 as a new arrival. */
             LOG_D("Dedup: removing existing notification id=%s type=%d",
                   _notification_list[i].id, _notification_list[i].type);
             // Shift remaining items down
@@ -294,13 +299,11 @@ static void update_notification(notification_t newNotification)
         notification_items_amount++;
     }
 
-    /* Only a genuinely new arrival advances the seq (and so pops the dial
-       header + buzzes). An identical reconnect re-push refreshes the list
-       silently — no banner, no haptic. */
-    if (!identical_repush)
-    {
-        notification_arrival_seq++;
-    }
+    /* Everything reaching here is a new arrival in the seq-gate sense
+       (brand new, a content update, or a Skaiwalk replacement) — advance
+       the seq so the dial header pops + buzzes. Silent re-pushes returned
+       early above without touching the list order or the seq. */
+    notification_arrival_seq++;
 
     SkaiWatchSys.notification_number = notification_items_amount;
 }
