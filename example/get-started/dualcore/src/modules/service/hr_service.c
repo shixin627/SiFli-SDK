@@ -1081,6 +1081,22 @@ static uint32_t bg_hr_burst_start_seq = 0;   /* gh3018 HR-update seq at burst st
 extern uint32_t gh3018_get_ppg_frame_count(void);
 static uint32_t bg_hr_burst_start_frames = 0;
 static uint16_t bg_hr_win_frame_pct = 0;     /* last burst's delivered/expected, % */
+
+/* The decimation stage — where a x2 rate error can actually be born, and which
+   bg_hr_win_frame_pct above is blind to because it counts UPSTREAM of it.
+   The chip runs at 25 Hz for HR but 100 Hz for HRV/SpO2, so the driver derives
+   divider = chip_rate / 25 from an I2C register read at each sampling start and
+   feeds the algorithm every Nth frame, always telling it fs = 25. Land on
+   divider 2 while the chip is really at 25 Hz and the algorithm sees 12.5 Hz
+   believing 25 -> it reports exactly DOUBLE for the whole burst and recovers at
+   the next recompute: a stable ~45 min plateau with a clean x2 entry and /2 exit,
+   which is precisely the nightly signature.
+   Packed as (divider << 8) | algo-frames-as-%-of-25Hz*seconds, capped at 255, so
+   one field answers both "was the divider 1?" and "did the algo get 25 Hz worth
+   of frames?". Healthy = 0x0163-ish (divider 1, ~99%); divider 2 = the bug. */
+extern uint8_t gh3018_get_hr_divider(void);
+extern uint32_t gh3018_get_hr_algo_frame_count(void);
+static uint16_t bg_hr_win_rate_info = 0;
 static uint8_t bg_hr_burst_best = 0;
 
 /* ---- PPG perfusion-index (PI = AC/DC) capture over a burst -------------------
@@ -1131,6 +1147,10 @@ uint16_t hr_service_get_last_pi_e3(void) { return bg_hr_win_pi_e3; }
    that separates "the 2x episodes are a lost-frame timebase artefact" (~50%)
    from "the timebase is fine, look at the waveform instead" (~100%). */
 uint16_t hr_service_get_last_frame_pct(void) { return bg_hr_win_frame_pct; }
+
+/* (divider << 8) | algo-frames-% — the decimation-stage view. See the declaration
+   of bg_hr_win_rate_info: divider != 1 while the chip is at 25 Hz is the x2 bug. */
+uint16_t hr_service_get_last_rate_info(void) { return bg_hr_win_rate_info; }
 
 /* Two-stage gate state. bg_hr_sleep_active is set by sleep_service when accel
    says we're asleep OR the wrist is still inside the overnight rest window
@@ -1450,17 +1470,27 @@ static void bg_hr_finish_burst(void)
        burst? The algo assumes 25 Hz unconditionally, so a shortfall here IS a
        proportional over-read of HR (see bg_hr_win_frame_pct decl). */
     {
-        uint32_t got = gh3018_get_ppg_frame_count() - bg_hr_burst_start_frames;
         uint32_t want = (bg_hr_burst_ms / 1000u) * 25u;
+        uint32_t got = gh3018_get_ppg_frame_count() - bg_hr_burst_start_frames;
         uint32_t pct = (want > 0) ? (got * 100u / want) : 0u;
         bg_hr_win_frame_pct = (pct > 0xFFFFu) ? 0xFFFFu : (uint16_t)pct;
+
+        /* Post-decimation: what the ALGORITHM actually received, plus the divider
+           that produced it (see bg_hr_win_rate_info decl for why this is the
+           measurement that can catch the doubling). */
+        uint32_t algo = gh3018_get_hr_algo_frame_count();
+        uint32_t apct = (want > 0) ? (algo * 100u / want) : 0u;
+        if (apct > 255u) apct = 255u;
+        bg_hr_win_rate_info = (uint16_t)(((uint16_t)gh3018_get_hr_divider() << 8) |
+                                         (uint16_t)apct);
     }
 
-    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u best=%u qmin=%u qlvl=%u frames=%u%%",
+    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u best=%u qmin=%u qlvl=%u frames=%u%% div=%u algo=%u%%",
           (unsigned)bg_hr_burst_reads, (unsigned)bg_hr_burst_cnt,
           (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_best,
           (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel,
-          (unsigned)bg_hr_win_frame_pct);
+          (unsigned)bg_hr_win_frame_pct,
+          (unsigned)(bg_hr_win_rate_info >> 8), (unsigned)(bg_hr_win_rate_info & 0xFF));
     /* Sleep-time artefact ceiling: withhold an implausibly high sleeping HR
        (SLEEP_HR_ARTEFACT_CEIL). Zeroing best routes it to the NO_LOCK branch below
        so the phone draws a gap instead of a false spike, and the sleep_fusion HR

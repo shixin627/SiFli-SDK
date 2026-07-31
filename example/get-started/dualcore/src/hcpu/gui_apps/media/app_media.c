@@ -746,12 +746,17 @@ lv_obj_t *lv_media_widget_builder(lv_obj_t *parent)
     lv_obj_set_style_border_color(widget_btn_play_pause, lv_color_hex(0xFFFFFF),
                                   0);
     lv_obj_set_style_border_opa(widget_btn_play_pause, LV_OPA_0, 0);
+    /* 依當前播放狀態選初始圖示——之前寫死 img_media_pause(播放中),
+       重啟重連後 widget 重建就顯示「正在播放」,即使媒體早已暫停
+       (0x05 暫停狀態先到時 widget 還不存在,更新落空)。 */
     const lv_img_dsc_t *img_src = (control_provider.bt_speaker_get_status &&
                                    control_provider.bt_speaker_get_status())
                                       ? &img_media_pause
                                       : &img_media_play;
+    LOG_D("media widget init play icon: %s",
+          (img_src == &img_media_pause) ? "pause(playing)" : "play(paused)");
     p_widget_media->icon_btn_play_pause = common_icon_button(
-        widget_btn_play_pause, &img_media_pause, play_pause_btn_event_cb);
+        widget_btn_play_pause, img_src, play_pause_btn_event_cb);
     lv_obj_align(p_widget_media->icon_btn_play_pause, LV_ALIGN_CENTER, 0, 0);
     music_widget_obj.widget_btn_play_pause_img =
         lv_obj_get_child(p_widget_media->icon_btn_play_pause, 0);

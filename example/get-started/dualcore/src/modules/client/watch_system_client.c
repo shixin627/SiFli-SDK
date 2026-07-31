@@ -328,7 +328,7 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
                               data_ind->rhr, data_ind->worn, data_ind->rest,
                               data_ind->fresh, data_ind->total, data_ind->deep,
                               data_ind->rem, data_ind->light, data_ind->pi_e3,
-                              data_ind->frame_pct);
+                              data_ind->frame_pct, data_ind->rate_info);
         break;
     }
     case MSG_SERVICE_SLEEP_STATE_IND:

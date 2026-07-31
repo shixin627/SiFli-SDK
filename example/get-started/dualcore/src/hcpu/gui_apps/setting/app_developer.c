@@ -164,6 +164,52 @@ static lv_timer_t *battery_request_timer = NULL;
 static bool battery_request_enabled = false;
 static lv_obj_t *reset_restart_num_btn = NULL;
 static lv_obj_t *reset_restart_num_label = NULL;
+
+/* Gesture peak-confirm control (see the slider in the layout below). */
+extern uint16_t gesture_confirm_get(void);
+extern void gesture_confirm_set(uint16_t peak_x100);
+static lv_obj_t *gcap_confirm_slider = NULL;
+static lv_obj_t *gcap_confirm_label = NULL;
+static char gcap_confirm_text[48];
+
+/* Slider spans 0..GCAP_CONFIRM_MAX in GCAP_CONFIRM_STEP increments (both are
+   peak ×100). Upper bound 1.50: real gestures in the walking capture started
+   at 0.83 and noise reached 1.33, so everything useful sits well below that.
+   0 = off, which is also the ship default. */
+#define GCAP_CONFIRM_MAX 150
+#define GCAP_CONFIRM_STEP 5
+
+static void gcap_confirm_refresh_label(uint16_t v)
+{
+    if (v == 0)
+    {
+        snprintf(gcap_confirm_text, sizeof(gcap_confirm_text),
+                 "Gesture confirm: OFF");
+    }
+    else
+    {
+        snprintf(gcap_confirm_text, sizeof(gcap_confirm_text),
+                 "Gesture confirm: %d.%02d", v / 100, v % 100);
+    }
+    if (gcap_confirm_label)
+    {
+        lv_label_set_text(gcap_confirm_label, gcap_confirm_text);
+    }
+}
+
+static void gcap_confirm_callback(lv_event_t *e)
+{
+    lv_obj_t *obj = lv_event_get_target(e);
+    int32_t raw = lv_slider_get_value(obj);
+    /* Quantise to GCAP_CONFIRM_STEP — dragging on a watch-sized screen can't
+       resolve single units, and the stored value is what the capture path
+       compares against. */
+    uint16_t v = (uint16_t)(((raw + GCAP_CONFIRM_STEP / 2) / GCAP_CONFIRM_STEP) *
+                            GCAP_CONFIRM_STEP);
+    gesture_confirm_set(v);
+    gcap_confirm_refresh_label(v);
+    LOG_I("Gesture confirm -> %d", v);
+}
 static void back_btn_event_callback(lv_event_t *e)
 {
     // lv_obj_t *obj = lv_event_get_target(e);
@@ -564,6 +610,50 @@ static void lv_create_dev_screen(void)
 
     fs_clean_btn = common_text_button(cont, "FS Cleanup", get_system_font_size(0), 366, 100, fs_clean_callback);
     lv_obj_align_to(fs_clean_btn, fs_test_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+
+    /* Gesture peak-confirm (walking only). On-watch control on purpose: the
+       MSH route needs a UART cable, which is exactly what a walking test
+       can't have. */
+    lv_obj_t *gcap_confirm_container = lv_obj_create(cont);
+    lv_obj_set_size(gcap_confirm_container, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(gcap_confirm_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(gcap_confirm_container, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    /* Don't let this container scroll or chain a drag up to the page: dragging
+       the slider must move the knob, not pan the page sideways. */
+    lv_obj_clear_flag(gcap_confirm_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(gcap_confirm_container, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    lv_obj_align_to(gcap_confirm_container, fs_clean_btn,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
+
+    gcap_confirm_label = lv_label_create(gcap_confirm_container);
+    lv_obj_set_style_text_font(gcap_confirm_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+
+    gcap_confirm_slider = lv_slider_create(gcap_confirm_container);
+    lv_slider_set_range(gcap_confirm_slider, 0, GCAP_CONFIRM_MAX);
+    lv_slider_set_value(gcap_confirm_slider, gesture_confirm_get(), LV_ANIM_OFF);
+    /* 220 wide, not 300: the container adds its own padding on both sides and
+       the screen is 466 round, so a 300 slider pushed the page wide enough to
+       scroll horizontally — and a page that pans sideways steals the drag. */
+    lv_obj_set_size(gcap_confirm_slider, 220, 40);
+    lv_obj_clear_flag(gcap_confirm_slider, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    lv_obj_add_event_cb(gcap_confirm_slider, gcap_confirm_callback,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+    /* Label text is only produced here, so it starts in sync with the slider. */
+    gcap_confirm_refresh_label(gesture_confirm_get());
+
+    /* Tail spacer: this is the last item on a ROUND screen, so without extra
+       room below it the slider can only ever sit in the bottom arc where the
+       display is narrowest and the knob is hardest to grab. The spacer lets it
+       be scrolled up to the middle of the screen. */
+    lv_obj_t *gcap_tail_spacer = lv_obj_create(cont);
+    lv_obj_set_size(gcap_tail_spacer, LV_HOR_RES / 2, 140);
+    lv_obj_set_style_bg_opa(gcap_tail_spacer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(gcap_tail_spacer, 0, 0);
+    lv_obj_clear_flag(gcap_tail_spacer, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align_to(gcap_tail_spacer, gcap_confirm_container,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
 
     // lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
 }

@@ -159,6 +159,36 @@ static bool capture_both_override = false;
    (real 145..550 vs noise 32..71); walking taps run smaller, hence adjustable
    via `gcap pk <n>` rather than hard-coded. */
 static uint16_t gesture_big_pk = 100;
+#endif
+
+/* Peak-confirm threshold (×100), applied ONLY while the background says the
+   wearer is walking. Arm/capture is untouched — this gates whether the cut
+   window is worth an inference pass.
+   Measured (walking capture, touch_adc + PPG ground truth): real gestures peak
+   at 0.83/0.92/1.41/3.95/4.63/5.46, noise at 0.35..1.33. A 0.80 confirm drops
+   noise 9 → 3 with all six real gestures kept. Standing still needs NO confirm
+   (that capture had zero false windows) and would lose 4 of 6 at 0.80, hence
+   the walking-only gating.
+   NOT hard-coded to 80: the margin to the weakest real gesture is only 4% on a
+   single 6-gesture capture. Runtime-tunable via `gcap confirm <n>`, default 0
+   (off) until more captures pin it down. Lives outside !kReleaseMode because
+   it changes real behaviour, not just diagnostics. */
+static uint16_t gesture_confirm_pk = 0;
+
+/* Exposed for the developer screen so the value can be changed ON THE WATCH —
+   the MSH route needs a UART cable, which is exactly what a walking test
+   can't have. */
+uint16_t gesture_confirm_get(void)
+{
+    return gesture_confirm_pk;
+}
+
+void gesture_confirm_set(uint16_t peak_x100)
+{
+    gesture_confirm_pk = peak_x100;
+}
+
+#if !kReleaseMode
 
 /* Per-window diagnostic logging (the CUT / GST lines), OFF by default. It is
    genuinely noisy — walking crosses the tap threshold ~11% of the time, so
@@ -573,7 +603,8 @@ bool get_open_ppg_chacked(void)
  */
 static void gesture_capture_report(gesture_type_t type, capture_state_t *cap,
                                    float median_now, rt_uint32_t fsr_adc_value,
-                                   bool is_gesture, bool posture_ok)
+                                   bool is_gesture, bool posture_ok,
+                                   bool confirm_ok)
 {
 #if !kReleaseMode
     if (!capture_log_on)
@@ -595,7 +626,10 @@ static void gesture_capture_report(gesture_type_t type, capture_state_t *cap,
                 (int)(cap->arm_threshold * 100.0f),
                 (int)(cap->arm_median * 100.0f), (int)(median_now * 100.0f),
                 (int)fsr_adc_value, cap->realigns, cap->arm_age,
-                !is_gesture ? "DROP-med" : !posture_ok ? "DROP-pose" : "SENT",
+                !is_gesture      ? "DROP-med"
+                : !posture_ok    ? "DROP-pose"
+                : !confirm_ok    ? "DROP-confirm"
+                                 : "SENT",
                 (pk100 >= (int)gesture_big_pk) ? " BIG" : "");
     LOG_I("%s", line);
     #ifdef BSP_USING_COMMUNICATE
@@ -793,7 +827,17 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
         }
         bool posture_ok = (user_hand_horizontal || type == GESTURE_TYPE_TAP ||
                            imu_data_collection);
-        if (is_gesture && posture_ok)
+        /* Peak confirm — walking only (see gesture_confirm_pk). Standing still
+           produced zero false windows, so applying it there would only cost
+           real gestures. */
+        bool confirm_ok = true;
+        if (gesture_confirm_pk > 0 &&
+            cap->arm_median > GESTURE_CONTEXT_WALK_MEDIAN)
+        {
+            confirm_ok =
+                (cap->peak_val * 100.0f) >= (float)gesture_confirm_pk;
+        }
+        if (is_gesture && posture_ok && confirm_ok)
         {
             getTargetWaveformFromSlidingWindow(dataset, targetWave_algo,
                                                target_samples);
@@ -805,7 +849,8 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
             }
         }
         gesture_capture_report(type, cap, calculate_median_difference_accel(75),
-                               fsr_adc_value, is_gesture, posture_ok);
+                               fsr_adc_value, is_gesture, posture_ok,
+                               confirm_ok);
         cap->armed = false;
         reset_gesture_state(dataset, current_time, type, 7);
     }
@@ -959,17 +1004,22 @@ static void gcap(int argc, char **argv)
         {
             capture_log_on = (rt_strcmp(argv[2], "on") == 0);
         }
+        else if (rt_strcmp(argv[1], "confirm") == 0 && argc >= 3)
+        {
+            gesture_confirm_pk = (uint16_t)atoi(argv[2]);
+        }
         else
         {
-            rt_kprintf("usage: gcap [both|normal|pk <peak x100>|log on|log off]\n");
+            rt_kprintf("usage: gcap [both|normal|pk <x100>|log on|log off|"
+                       "confirm <x100>]\n");
             return;
         }
     }
     rt_kprintf("gcap: both_override=%d game_mode=%d motion_control_lock=%d "
-               "big_pk=%d log=%s\n      -> running: %s\n",
+               "big_pk=%d confirm=%d log=%s\n      -> running: %s\n",
                capture_both_override, app_control_get_game_mode(),
                SkaiWatchSys.motion_control_lock, gesture_big_pk,
-               capture_log_on ? "on" : "off",
+               gesture_confirm_pk, capture_log_on ? "on" : "off",
                (capture_both_override || app_control_get_game_mode())
                    ? "TAP + RELEASE"
                    : (SkaiWatchSys.motion_control_lock ? "RELEASE only"
@@ -1217,10 +1267,17 @@ static uint8_t log_count = 0;
     // 移動鎖：解鎖 = 飛鼠開始送游標的「觸發距離」。判定用「淨位移」(帶符號累加 dx/dy,見
     // s_air_net_dx/dy)——手腕來回抖動互相抵消不觸發,只有真把手錶移到別處淨位移才累積過
     // 門檻(founder 2026-07-30:原用總路程,抖動也一路累加→長按畫面變飛鼠;改淨位移區分
-    // 抖動 vs 真移動)。淨位移尺度比路程小,門檻也小(40→60,founder 2026-07-30 再加大 1.5×:
-    // 還是有點容易長按變飛鼠)。只 gate 飛鼠;觸控板送游標不看它。太容易變飛鼠再往上加、
-    // 體感太鈍再降。
-    #define GYRO_MOVE_CANCEL_THRESHOLD 60.0f
+    // 抖動 vs 真移動)。門檻演進:40→60→80(founder 2026-07-31 再加大成 40 的兩倍:還是有點
+    // 容易長按變飛鼠)。只 gate 飛鼠;觸控板送游標不看它。太容易變飛鼠再往上加、體感太鈍再降。
+    #define GYRO_MOVE_CANCEL_THRESHOLD 80.0f
+    // 飛鼠移動中停頓 >0.5s 重鎖後的「重觸發」門檻(founder 2026-07-31,1.5× 而非 2×):已經在
+    // 飛鼠模式、只是中途停一下想再動,不必像初次從靜止那麼費力,但仍要過門檻擋放開瞬間微動。
+    #define GYRO_MOVE_RETRIGGER_THRESHOLD 60.0f
+    // 飛鼠移動中「停在小區域超過這麼久」= 準備放開的訊號 → 重鎖(founder 2026-07-31)。
+    #define AIR_PAUSE_HOLD_MS 500
+    // 「小區域」半徑(淨位移單位):停頓偵測用參考點+半徑,淨位移離參考點超過此值=還在飛、更新
+    // 參考重計時;在半徑內累積夠 AIR_PAUSE_HOLD_MS 就重鎖。太大=難判定停頓、太小=微晃就重鎖。
+    #define AIR_PAUSE_RADIUS 40
     /* 按住觸控板期間「飛鼠搶走游標」的專屬門檻(founder 2026-07-24 真機:手腕盡量不動想滑
        觸控板,卻一直變成體感)。不能共用上面的 30——手指在錶面上滑的反作用力本身就會帶動
        手腕,gyro 一路累積;加上 IMU(100Hz+)判定頻率遠高於 LVGL PRESSING(~30Hz),飛鼠幾乎
@@ -1240,6 +1297,12 @@ static float gyro_movement_distance = 0.0f; /* 總路程:claim owner(鎖觸控�
 /* 淨位移(帶符號累加 dx/dy):飛鼠觸發判定用。手腕來回抖動互相抵消、只有真移到別處才增大,
    區分抖動 vs 真移動(founder 2026-07-30)。PRESSED 歸零。 */
 static int s_air_net_dx = 0, s_air_net_dy = 0;
+/* 飛鼠觸發門檻切換 + 停頓偵測(founder 2026-07-31)。s_air_retrigger:false=初次觸發用 80、
+   停頓重鎖後 true=用 60。停頓偵測(僅飛鼠移動中):淨位移離參考點在半徑內就累積計時,滿 0.5s
+   重鎖=準備放開,擋放開瞬間微動又把游標帶跑。三者 PRESSED 歸零(retrigger 回 false)。 */
+static bool s_air_retrigger = false;
+static int s_air_pause_ref_x = 0, s_air_pause_ref_y = 0;
+static rt_tick_t s_air_pause_since = 0;
 
 /* 觸控板 vs 飛鼠仲裁:改由下面的「手指前哨」純動態決定(founder 2026-07-30「能切換,兩個
    同時做只觸控板」)。以下這組「先到先贏」永久鎖(claim owner)已停用——claim 點全數拔掉,
@@ -1253,9 +1316,6 @@ static volatile bool s_air_cursor_owned = false;
    claim(s_touch_cursor_owned)是「已定案手指贏」、前哨是「手指正在滑、暫別讓飛鼠插」。 */
 static volatile rt_tick_t s_finger_active_tick = 0;
 #define FINGER_ACTIVE_HOLD_MS 250 /* 手指停止滑動後仍擋飛鼠這麼久,涵蓋滑滑停停的間隙 */
-/* 飛鼠觸發提示的 edge:這次 press 「碰畫面後動手錶→飛鼠開始送游標」只震一次(小震 50%),
-   不是每幀。PRESSED / RELEASED 歸零(founder 2026-07-24)。 */
-static volatile bool s_air_hint_buzzed = false;
 
 /* Data-collection air-mouse roll reference (file scope so the always-run motion
  * handler can invalidate it when collection ends — air_mouse_process itself only
@@ -1281,7 +1341,9 @@ void air_mouse_movement_lock_reset(void)
     s_touch_cursor_owned = false;
     s_air_cursor_owned = false;
     s_finger_active_tick = 0;
-    s_air_hint_buzzed = false;
+    /* 新 press 從初次門檻(80)開始、清停頓偵測 */
+    s_air_retrigger = false;
+    s_air_pause_since = 0;
 }
 
 /* 觸控板/飛鼠互鎖(見上方 s_touch_cursor_owned 註解)。claim 只由 hid_mouse 的手指判定
@@ -1308,7 +1370,6 @@ void bloc_cursor_owner_reset(void)
     s_touch_cursor_owned = false;
     s_air_cursor_owned = false;
     s_finger_active_tick = 0;
-    s_air_hint_buzzed = false;
 }
 bool mouse_air_cursor_owned(void) { return s_air_cursor_owned; }
 
@@ -1974,10 +2035,41 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
     gyro_movement_distance += abs(delta_movement.x) + abs(delta_movement.y);
     s_air_net_dx += delta_movement.x;
     s_air_net_dy += delta_movement.y;
+    /* 觸發門檻:初次從靜止要 80,停頓重鎖後只要 60(founder 2026-07-31)。 */
+    float air_move_thr = s_air_retrigger ? GYRO_MOVE_RETRIGGER_THRESHOLD
+                                         : GYRO_MOVE_CANCEL_THRESHOLD;
     if (mouse_movement_lock &&
-        (abs(s_air_net_dx) + abs(s_air_net_dy)) > GYRO_MOVE_CANCEL_THRESHOLD)
+        (abs(s_air_net_dx) + abs(s_air_net_dy)) > air_move_thr)
     {
         mouse_movement_lock = false;
+        /* 剛解鎖進飛鼠:以當前淨位移當停頓偵測參考點、起算計時。 */
+        s_air_pause_ref_x = s_air_net_dx;
+        s_air_pause_ref_y = s_air_net_dy;
+        s_air_pause_since = rt_tick_get();
+    }
+    else if (!mouse_movement_lock)
+    {
+        /* 飛鼠移動中:淨位移離參考點還在半徑內就累積停頓計時,移出就更新參考點重計時。停在
+           小區域滿 0.5s=準備放開 → 重鎖,net 歸零、下次改用重觸發門檻(60),擋放開瞬間微動
+           又把游標帶跑(founder 2026-07-31)。 */
+        int pause_drift = abs(s_air_net_dx - s_air_pause_ref_x) +
+                          abs(s_air_net_dy - s_air_pause_ref_y);
+        if (pause_drift > AIR_PAUSE_RADIUS)
+        {
+            s_air_pause_ref_x = s_air_net_dx;
+            s_air_pause_ref_y = s_air_net_dy;
+            s_air_pause_since = rt_tick_get();
+        }
+        else if (s_air_pause_since != 0 &&
+                 (rt_tick_get() - s_air_pause_since) >
+                     rt_tick_from_millisecond(AIR_PAUSE_HOLD_MS))
+        {
+            mouse_movement_lock = true;
+            s_air_net_dx = 0;
+            s_air_net_dy = 0;
+            s_air_retrigger = true;
+            s_air_pause_since = 0;
+        }
     }
 
     if (imu_mouse_data_collection)
@@ -2011,15 +2103,6 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
            不再 claim owner(先前「一贏就永久鎖到放開」)——改純前哨動態:飛鼠這條每幀只看
            touch_finger_recent,手指停 250ms 才輪到飛鼠、手指再滑立刻讓回觸控板,同一次按著
            也能來回切(founder 2026-07-30「能切換,但兩個同時做只觸控板」)。 */
-        /* 飛鼠觸發提示:這次 press 第一次真的送出自由移動游標=進飛鼠,震一下(小震 50%,
-           founder 2026-07-24)。s_press_free_move 已排除 arm 後的體感拖曳(那時 free_move
-           已 false)。edge 由 s_air_hint_buzzed 管,一次 press 只震一下。 */
-        if (s_press_free_move && !s_air_hint_buzzed &&
-            (delta_movement.x || delta_movement.y))
-        {
-            s_air_hint_buzzed = true;
-            motor_pattern_air_hint();
-        }
         report_air_mouse_data(&delta_movement, ts);
     }
     // handfree 飛鼠的姿態 gate 分兩種來源：①頂部區按住（`hid_mouse_top_fly_active`，明確要
