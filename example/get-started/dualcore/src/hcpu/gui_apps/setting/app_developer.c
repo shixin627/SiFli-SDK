@@ -619,6 +619,10 @@ static void lv_create_dev_screen(void)
     lv_obj_set_flex_flow(gcap_confirm_container, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(gcap_confirm_container, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    /* Don't let this container scroll or chain a drag up to the page: dragging
+       the slider must move the knob, not pan the page sideways. */
+    lv_obj_clear_flag(gcap_confirm_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(gcap_confirm_container, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
     lv_obj_align_to(gcap_confirm_container, fs_clean_btn,
                     LV_ALIGN_OUT_BOTTOM_MID, 0, 20);
 
@@ -629,11 +633,27 @@ static void lv_create_dev_screen(void)
     gcap_confirm_slider = lv_slider_create(gcap_confirm_container);
     lv_slider_set_range(gcap_confirm_slider, 0, GCAP_CONFIRM_MAX);
     lv_slider_set_value(gcap_confirm_slider, gesture_confirm_get(), LV_ANIM_OFF);
-    lv_obj_set_size(gcap_confirm_slider, 300, 40);
+    /* 220 wide, not 300: the container adds its own padding on both sides and
+       the screen is 466 round, so a 300 slider pushed the page wide enough to
+       scroll horizontally — and a page that pans sideways steals the drag. */
+    lv_obj_set_size(gcap_confirm_slider, 220, 40);
+    lv_obj_clear_flag(gcap_confirm_slider, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
     lv_obj_add_event_cb(gcap_confirm_slider, gcap_confirm_callback,
                         LV_EVENT_VALUE_CHANGED, NULL);
     /* Label text is only produced here, so it starts in sync with the slider. */
     gcap_confirm_refresh_label(gesture_confirm_get());
+
+    /* Tail spacer: this is the last item on a ROUND screen, so without extra
+       room below it the slider can only ever sit in the bottom arc where the
+       display is narrowest and the knob is hardest to grab. The spacer lets it
+       be scrolled up to the middle of the screen. */
+    lv_obj_t *gcap_tail_spacer = lv_obj_create(cont);
+    lv_obj_set_size(gcap_tail_spacer, LV_HOR_RES / 2, 140);
+    lv_obj_set_style_bg_opa(gcap_tail_spacer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(gcap_tail_spacer, 0, 0);
+    lv_obj_clear_flag(gcap_tail_spacer, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align_to(gcap_tail_spacer, gcap_confirm_container,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
 
     // lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
 }
