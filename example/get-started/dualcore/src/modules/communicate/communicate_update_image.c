@@ -619,6 +619,13 @@ static void ble_dfu_flash_write()
 					 * call this on regular reboots / crashes -- the ring
 					 * staying RAM-only there is by design. */
 					bloc_notification_save_dismissed_to_flash();
+					/* Intentional reboot: tell the crash black box so the next
+					 * boot's silent-reboot detector doesn't log this OTA restart
+					 * as an involuntary crash. */
+					{
+						extern void log_file_mark_clean_reboot(void);
+						log_file_mark_clean_reboot();
+					}
 					drv_reboot();
 				}
 				break;

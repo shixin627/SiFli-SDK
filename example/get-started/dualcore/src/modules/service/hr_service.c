@@ -1031,13 +1031,20 @@ extern uint32_t gh3018_get_hr_update_seq(void);
    (sleep_service.c) >= this period so no minute is left without HR features.
    Revert both together. */
 #define BG_HR_PERIOD_MS      (10 * 60 * 1000) /* base tick = sleep-mode cadence   */
-#define BG_HR_AWAKE_SKIP     2               /* awake: burst every 2nd tick =20min */
+/* DIAGNOSTIC (2026-07-31, founder request): 1 = awake bursts at the SAME cadence
+   and length as sleep, so daytime readings can be cross-checked against a
+   reference watch live instead of waiting a night per experiment — and so
+   frame_pct is sampled under identical conditions in both states, which is what
+   makes the two comparable at all. Costs daytime PPG duty 3.3% -> 30% (~9x the
+   LED on-time); revert to 2 (+ BG_HR_BURST_MS_AWAKE back to 40 s) once the 2x
+   harmonic root cause is settled. */
+#define BG_HR_AWAKE_SKIP     1               /* awake: burst every tick = 10 min  */
 /* The HBA algo restarts cold each burst and needs ~30 s to lock (hba_out_flag
    stays 0 until then); before that gh3018_get_hr() still returns the PREVIOUS
    burst's stale value, so reads are gated on a real lock (HR update-seq moving)
    rather than on elapsed time -- keep every burst comfortably longer than ~30 s
    or it will lock nothing and report NO_LOCK. */
-#define BG_HR_BURST_MS_AWAKE (40 * 1000)     /* ~30 s to lock + ~10 s to read one BPM */
+#define BG_HR_BURST_MS_AWAKE (3 * 60 * 1000) /* DIAGNOSTIC: match the sleep burst (was 40 s) */
 #define BG_HR_BURST_MS_SLEEP (3 * 60 * 1000) /* long enough to converge past a cold-start harmonic lock */
 #define BG_HR_SAMPLE_MS      (1000)          /* read cadence during the burst      */
 /* HR output motion gate: each 1 Hz read also samples BMI270 accel; if the wrist
