@@ -237,6 +237,22 @@ static void update_notification(notification_t newNotification)
         {
             identical_repush = true;
         }
+        /* Same app + identical visible content under a DIFFERENT id: the phone
+           re-minted the id across a disconnect (its sbn.key→id map entry was
+           dropped while the matching dismiss couldn't be delivered) or across a
+           bridge process restart. To the user this IS the notification already
+           on screen — replace the old entry (adopt the phone's current id)
+           instead of stacking a twin, and stay silent (no seq bump → no
+           banner / buzz / wake). */
+        if (!dup && _notification_list[i].type == newNotification.type &&
+            strcmp(_notification_list[i].title, newNotification.title) == 0 &&
+            strcmp(_notification_list[i].message, newNotification.message) == 0)
+        {
+            LOG_I("update_notification: content-dup id=%s replaces id=%s",
+                  newNotification.id, _notification_list[i].id);
+            dup = true;
+            identical_repush = true;
+        }
         if (!dup && newNotification.type == Notify_Skaiwalk &&
             _notification_list[i].type == Notify_Skaiwalk)
         {
