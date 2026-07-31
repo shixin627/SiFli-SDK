@@ -35,6 +35,7 @@
 #include <sys/stat.h>
 #include <ulog.h>
 #include <board.h>
+#include "mem_section.h"   /* L1_NON_RET_BSS_SECT_* — noinit SRAM for the black box */
 #include "communicate_update_image.h"
 #include "bloc_filesystem.h"   /* watch -> phone file push (0x52/0x53/0x54) */
 
@@ -82,9 +83,37 @@ extern void rt_hw_exception_install(rt_err_t (*handler)(void *context));
 #define LOG_DIR_SCAN_MAX        32             /* max files considered in prune */
 
 static struct ulog_backend log_file_be;
-static char ring_buf[LOG_RING_BUF_SIZE];
-static volatile rt_uint32_t ring_head;     /* written by producer */
-static volatile rt_uint32_t ring_tail;     /* written by flush thread */
+
+/* ── Silent-reboot black box ───────────────────────────────────────────────
+ * ring_buf + its head/tail live in RETAINED PSRAM (.l2_ret_bss_* -> scatter
+ * region RW_PSRAM_RET, which is UNINIT: NOT zero-filled by C startup). Two
+ * properties matter and only this region has both:
+ *   - RETAINED: kept alive across the watch's normal light sleep. The on-chip
+ *     .l1_non_ret_* SRAM is powered off in retention to save power, so a ring
+ *     placed there is lost the first time the screen sleeps (measured: the
+ *     magic word survived a warm reset there but the rest was already gone).
+ *   - UNINIT: startup does not zero it, so the bytes survive a WARM reset — a
+ *     WDT timeout, an LCPU-triggered reboot, or a plain NVIC reset — even when
+ *     no assert/HardFault/WDT hook ran, or a hook ran but its file write lost
+ *     the race to the stage-2 hard reset.
+ * On the next boot bb_magic/bb_state tell us what happened: if the previous
+ * session was still RUNNING (never cleanly ended, never marked handled by a
+ * crash hook) the reset was involuntary, so the surviving ring holds the
+ * pre-reboot log and we dump it to /logs for the phone. Path-agnostic net under
+ * the WDT-only capture; only a cold power-on (PSRAM random -> magic mismatch)
+ * is uncovered. */
+#define BB_MAGIC            0x5A11B0C5u   /* fixed nonce: "survived a warm reset" */
+#define BB_STATE_RUNNING    0x0000A11Eu   /* session live, not cleanly ended */
+#define BB_STATE_CLEAN      0x0000C1EAu   /* intentional reboot / crash handled */
+
+L2_RET_BSS_SECT_BEGIN(blackbox)
+static rt_uint32_t bb_magic L2_RET_BSS_SECT(blackbox);
+static rt_uint32_t bb_state L2_RET_BSS_SECT(blackbox);
+static char ring_buf[LOG_RING_BUF_SIZE] L2_RET_BSS_SECT(blackbox);
+static volatile rt_uint32_t ring_head L2_RET_BSS_SECT(blackbox);   /* producer */
+static volatile rt_uint32_t ring_tail L2_RET_BSS_SECT(blackbox);   /* flush thread */
+L2_RET_BSS_SECT_END
+
 static volatile rt_uint32_t dropped_bytes;
 
 static rt_sem_t flush_sem;
@@ -94,6 +123,10 @@ static rt_uint32_t current_file_size;
 static char current_file_path[LOG_PATH_MAX];
 static volatile int backend_ready;
 static volatile int in_emergency_flush;
+
+/* Silent-reboot deferred dump handoff (plain SRAM; set at boot, consumed by the
+ * flush thread once the NAND write path is up at runtime). */
+static int bb_dump_pending;
 
 static void build_log_filename(char *out, size_t out_sz, int seq)
 {
@@ -400,6 +433,8 @@ static void push_ft_evidence_now(void);
  * users see it. */
 static int blackbox_mode;
 
+static void dump_survived_ring(rt_uint32_t tail, rt_uint32_t head);   /* defined below */
+
 static void flush_thread_entry(void *param)
 {
     (void)param;
@@ -423,6 +458,22 @@ static void flush_thread_entry(void *param)
         {
             continue;
         }
+
+        /* Silent-reboot black box: the previous session ended in an involuntary
+         * reset and its pre-reboot log survived in the PSRAM ring. Now that we
+         * run at runtime (NAND writes work — unlike INIT_APP_EXPORT), dump the
+         * current ring (the last 8 KB of log) to /logs so the boot-time crash
+         * scan pushes it. One shot; clearing the flag stops it repeating.
+         * Snapshot the ring bounds with IRQs off so the producer can't tear. */
+        if (bb_dump_pending)
+        {
+            rt_base_t f = rt_hw_interrupt_disable();
+            rt_uint32_t dt = ring_tail, dh = ring_head;
+            rt_hw_interrupt_enable(f);
+            dump_survived_ring(dt, dh);
+            bb_dump_pending = 0;
+        }
+
         /* Black-box mode keeps the log in the RAM ring only — no periodic NAND
          * drain (that continuous write load starved the GUI into the 2026-07-27
          * mailbox crash-loop). The ring is dumped to /logs only at crash time
@@ -606,6 +657,11 @@ static rt_err_t log_file_exception_hook(void *context)
 {
     const struct crash_exc_frame *f = (const struct crash_exc_frame *)context;
 
+    /* This HardFault is captured into the current file below (registers +
+     * emergency_flush drains the ring with it), so mark the session cleanly
+     * handled: the boot-time silent-reboot net must not also dump the ring. */
+    bb_state = BB_STATE_CLEAN;
+
     if (f != RT_NULL)
     {
         crash_printf("\n=== CRASH: HARDFAULT ===\n");
@@ -630,6 +686,7 @@ static rt_err_t log_file_exception_hook(void *context)
 static void log_file_assert_hook(const char *ex, const char *func,
                                  rt_size_t line)
 {
+    bb_state = BB_STATE_CLEAN;   /* captured here; keep the silent-reboot net quiet */
     crash_printf("\n=== CRASH: ASSERT ===\n");
     if (func != RT_NULL)
     {
@@ -842,6 +899,80 @@ static volatile int infra_ready;   /* dir + sem + flush thread + hooks ready */
 
 int log_file_backend_set_enabled(int enable);   /* defined below */
 
+/* Intentional reboots (OTA apply, factory reset, user-initiated) call this so
+ * the next boot's silent-reboot detector does not mistake a planned restart for
+ * an involuntary one. Weak-safe: only flips a word in the survivor SRAM. */
+void log_file_mark_clean_reboot(void)
+{
+    bb_state = BB_STATE_CLEAN;
+}
+
+/* Write the ring that SURVIVED an involuntary reset (still in noinit SRAM) to a
+ * fresh /logs file. The crash marker goes LAST because log_tail_has_crash_marker
+ * only scans the final 512 bytes. Runs at init, before the ulog backend is
+ * registered, so the ring is quiescent (nothing is writing into it yet). */
+static void dump_survived_ring(rt_uint32_t tail, rt_uint32_t head)
+{
+    rt_uint32_t used = head - tail;
+    if (used == 0)
+    {
+        return;
+    }
+    if (used > LOG_RING_BUF_SIZE)
+    {
+        tail = head - LOG_RING_BUF_SIZE;   /* keep only the most recent 8 KB */
+        used = LOG_RING_BUF_SIZE;
+    }
+
+    char path[LOG_PATH_MAX];
+    int fd = -1;
+    for (int seq = 0; seq < 100; seq++)   /* don't clash with this boot's own file */
+    {
+        build_log_filename(path, sizeof(path), seq);
+        fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0666);
+        if (fd >= 0)
+        {
+            break;
+        }
+    }
+    if (fd < 0)
+    {
+        return;
+    }
+
+    rt_uint32_t t_idx = tail & LOG_RING_MASK;
+    rt_uint32_t contig = LOG_RING_BUF_SIZE - t_idx;
+    if (used <= contig)
+    {
+        write(fd, &ring_buf[t_idx], used);
+    }
+    else
+    {
+        write(fd, &ring_buf[t_idx], contig);
+        write(fd, &ring_buf[0], used - contig);
+    }
+    static const char mk[] =
+        "\n=== CRASH: SILENT-REBOOT (involuntary reset; ring above is pre-reboot) ===\n"
+        "=== CRASH END ===\n";
+    write(fd, mk, sizeof(mk) - 1);
+    fsync(fd);
+    close(fd);
+    rt_kprintf("[log_file_be] silent-reboot ring dumped: %s (%u bytes)\n",
+               path, (unsigned)used);
+
+    /* Hand the file to the existing crash-push path so it reaches the phone THIS
+     * boot: find_crashed_log already ran (in set_enabled) before this dump
+     * existed, so it won't be picked up otherwise until the next reboot. The
+     * flush thread's own push logic fires once BLE has had time to reconnect. */
+    if (pending_crash_path[0] == '\0')
+    {
+        rt_strncpy(pending_crash_path, path, sizeof(pending_crash_path) - 1);
+        pending_crash_path[sizeof(pending_crash_path) - 1] = '\0';
+        crash_push_due_tick = rt_tick_get() +
+                              rt_tick_from_millisecond(CRASH_PUSH_DELAY_MS);
+    }
+}
+
 static int log_file_backend_init(void)
 {
     struct stat st;
@@ -853,6 +984,36 @@ static int log_file_backend_init(void)
             return -RT_ERROR;
         }
     }
+
+    /* Silent-reboot detection (see the black-box note at ring_buf): if the
+     * surviving PSRAM says the previous session was still RUNNING, the reset was
+     * involuntary. Only RECORD it here — the actual /logs write is deferred to
+     * set_enabled(), where the NAND write path is up (writing this early at
+     * INIT_APP_EXPORT silently produced a 0-byte file). ring_buf keeps the
+     * pre-reboot bytes: nothing writes into the ring between here and the dump
+     * (the ulog backend registers only after it), and resetting the counters
+     * below does not touch the buffer. A cold power-on leaves random PSRAM ->
+     * bb_magic won't match -> treated as a fresh boot. */
+    if (bb_magic == BB_MAGIC && bb_state == BB_STATE_RUNNING &&
+        ring_head != ring_tail)
+    {
+        /* Involuntary reset with surviving pre-reboot log still in the ring.
+         * Leave the ring LIVE (do not reset it): the flush thread dumps the
+         * current ring on its first runtime pass, where NAND writes actually
+         * work (init/set_enabled run at INIT_APP_EXPORT, too early — the write
+         * there silently produced a 0-byte file). New boot lines push a few
+         * hundred bytes onto the newest end before the dump, costing the tail of
+         * the lead-up but keeping the crash-adjacent bulk of the last 8 KB. */
+        bb_dump_pending = 1;
+    }
+    else
+    {
+        ring_head = 0;
+        ring_tail = 0;
+    }
+    bb_magic = BB_MAGIC;
+    bb_state = BB_STATE_RUNNING;
+    dropped_bytes = 0;
 
     flush_sem = rt_sem_create("logfe", 0, RT_IPC_FLAG_FIFO);
     if (flush_sem == RT_NULL)
