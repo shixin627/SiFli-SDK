@@ -2648,10 +2648,34 @@ void handle_dial_header_media_title(char *media_title_text)
         return;
     if (media_title_text && media_title_text[0] != '\0')
     {
+        /* 收到 title ≠ 正在播放。OTA/重啟後重連,手機的 initial sync 會把
+           「暫停了幾小時的 session」的 title 重推過來(0x46),且 0x46 defer
+           到 GUI thread、0x05 暫停狀態在 BLE thread 直跑,執行順序反轉:
+           先前這裡無條件當「Song changed or resumed」彈 header + 取消
+           pause timer,結果重啟後 header 掛著顯示早已暫停的媒體、永不收起。
+           暫停中收到 title:資料已進 current_media_object(列表 media widget
+           照常),header 不彈,終態同 pause 超時收起(music_active=false +
+           hidden_by_pause=true)——等 0x05 播放=true 走既有
+           dial_header_restore_music() 路徑顯示。 */
+        bool media_playing = control_provider.bt_speaker_get_status();
+        bool header_showing = dial_header_music_active &&
+                              !dial_header_music_hidden_by_pause;
+        if (!media_playing && !header_showing)
+        {
+            dial_header_music_active = false;
+            dial_header_music_hidden_by_pause = true;
+            LOG_D("dial header: title while paused — keep hidden");
+            return;
+        }
         dial_header_music_active = true;
-        /* Song changed or resumed — cancel pause timer and restore header */
-        dial_header_music_pause_timer_stop();
-        dial_header_music_hidden_by_pause = false;
+        if (media_playing)
+        {
+            /* Song changed or resumed — cancel pause timer and restore header */
+            dial_header_music_pause_timer_stop();
+            dial_header_music_hidden_by_pause = false;
+        }
+        /* else: 暫停後 30 秒寬限內換 title——只更新文字,pause timer 留著
+           繼續倒數把 header 收掉。 */
         /* Hide red dot when music header is active */
         if (lv_obj_is_valid(dial_header_red_dot))
             lv_obj_add_flag(dial_header_red_dot, LV_OBJ_FLAG_HIDDEN);
@@ -2972,6 +2996,10 @@ void handle_dial_header_media_play_state(bool playing)
 {
     if (!playing)
     {
+        /* header 沒在顯示就沒東西可收——重連 initial sync 的暫停狀態別啟
+           timer,否則 30 秒後 pause_cb 無謂 reset_list 滾動列表。 */
+        if (!dial_header_music_active || dial_header_music_hidden_by_pause)
+            return;
         /* Music paused — start 30s timer */
         dial_header_music_pause_timer_start();
     }
