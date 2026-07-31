@@ -164,6 +164,59 @@ static lv_timer_t *battery_request_timer = NULL;
 static bool battery_request_enabled = false;
 static lv_obj_t *reset_restart_num_btn = NULL;
 static lv_obj_t *reset_restart_num_label = NULL;
+
+/* Gesture peak-confirm control (see the button in the layout below). */
+extern uint16_t gesture_confirm_get(void);
+extern void gesture_confirm_set(uint16_t peak_x100);
+static lv_obj_t *gcap_confirm_btn = NULL;
+static lv_obj_t *gcap_confirm_label = NULL;
+static char gcap_confirm_text[48];
+
+/* Candidate confirm levels. 0 = off (ship default); 80 is the value the
+   walking capture pointed at (noise 9 → 3, all six real gestures kept), with
+   60 and 100 either side of it because that capture had only six gestures and
+   the margin to the weakest one was 4%. */
+static const uint16_t gcap_confirm_steps[] = {0, 60, 80, 100};
+#define GCAP_CONFIRM_STEP_COUNT                                                \
+    (sizeof(gcap_confirm_steps) / sizeof(gcap_confirm_steps[0]))
+
+static const char *gcap_confirm_text_buf(void)
+{
+    uint16_t v = gesture_confirm_get();
+    if (v == 0)
+    {
+        snprintf(gcap_confirm_text, sizeof(gcap_confirm_text),
+                 "Gesture confirm: OFF");
+    }
+    else
+    {
+        snprintf(gcap_confirm_text, sizeof(gcap_confirm_text),
+                 "Gesture confirm: %d.%02d", v / 100, v % 100);
+    }
+    return gcap_confirm_text;
+}
+
+static void gcap_confirm_callback(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    uint16_t cur = gesture_confirm_get();
+    uint8_t idx = 0;
+    for (uint8_t i = 0; i < GCAP_CONFIRM_STEP_COUNT; i++)
+    {
+        if (gcap_confirm_steps[i] == cur)
+        {
+            idx = i;
+            break;
+        }
+    }
+    idx = (idx + 1) % GCAP_CONFIRM_STEP_COUNT;
+    gesture_confirm_set(gcap_confirm_steps[idx]);
+    if (gcap_confirm_label)
+    {
+        lv_label_set_text(gcap_confirm_label, gcap_confirm_text_buf());
+    }
+    LOG_I("Gesture confirm -> %d", gcap_confirm_steps[idx]);
+}
 static void back_btn_event_callback(lv_event_t *e)
 {
     // lv_obj_t *obj = lv_event_get_target(e);
@@ -564,6 +617,18 @@ static void lv_create_dev_screen(void)
 
     fs_clean_btn = common_text_button(cont, "FS Cleanup", get_system_font_size(0), 366, 100, fs_clean_callback);
     lv_obj_align_to(fs_clean_btn, fs_test_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+
+    /* Gesture peak-confirm (walking only). On-watch control on purpose: the
+       MSH route needs a UART cable, and this value can only be tuned while
+       actually walking. Cycles through the candidate steps rather than using a
+       slider — the useful range is narrow (real gestures start at 0.83, noise
+       reaches 1.33) so a handful of presets beats fiddling with a slider on a
+       watch-sized screen. */
+    gcap_confirm_btn = common_text_button(cont, gcap_confirm_text_buf(),
+                                          get_system_font_size(0), 366, 100,
+                                          gcap_confirm_callback);
+    gcap_confirm_label = lv_obj_get_child(gcap_confirm_btn, 0);
+    lv_obj_align_to(gcap_confirm_btn, fs_clean_btn, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
 
     // lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
 }

@@ -175,6 +175,19 @@ static uint16_t gesture_big_pk = 100;
    it changes real behaviour, not just diagnostics. */
 static uint16_t gesture_confirm_pk = 0;
 
+/* Exposed for the developer screen so the value can be changed ON THE WATCH —
+   the MSH route needs a UART cable, which is exactly what a walking test
+   can't have. */
+uint16_t gesture_confirm_get(void)
+{
+    return gesture_confirm_pk;
+}
+
+void gesture_confirm_set(uint16_t peak_x100)
+{
+    gesture_confirm_pk = peak_x100;
+}
+
 #if !kReleaseMode
 
 /* Per-window diagnostic logging (the CUT / GST lines), OFF by default. It is
