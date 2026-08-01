@@ -84,6 +84,12 @@ LV_IMG_DECLARE(message_widget_bg);
 LV_IMG_DECLARE(skaibar_img); /* 176x31 — the bottom mic bar's resting look (ezip, auto-built) */
 LV_IMG_DECLARE(micro_icon);
 LV_IMG_DECLARE(micro_open_icon); /* bar 長按語音進行中的淺藍 mic(同 hid_mouse V2T active) */  /* shared mic glyph — the bottom trigger's NEW resting look (matches the chat page) */
+LV_IMG_DECLARE(img_logo);  /* 80x80 — 立起輸入面板上方「送給 skaibar」 */
+LV_IMG_DECLARE(icon_send); /* 34x34 — 立起輸入面板上方「送回剛剛點的輸入框」 */
+LV_IMG_DECLARE(backspace_icon); /* 46x33 — 立起輸入面板下方刪除鍵(沿用滑鼠 app 鍵盤同一顆) */
+/* 框裡沒字時刪除鍵改當退出鍵(founder 2026-08-01)。沿用滑鼠 app 輸入框下方那顆「收回」的
+   同一張圖 —— 同一個手勢語彙不要在兩個畫面用兩種圖示。 */
+LV_IMG_DECLARE(down_arrow);
 
 #define DBG_TAG "instruction.list.layout"
 #define DBG_LVL DBG_INFO
@@ -2152,70 +2158,194 @@ void instruction_list_mark_opened_by_lift(void)
     s_opened_by_lift = true;
 }
 
-/* ── 2026-07-16 founder 改版：舉起手勢固定為「直接語音輸入」大麥克風畫面 ──────────
-   原本舉起手勢帶出的是單設備 skaibar 選項清單，founder 改成：只有控制中那台設備目前
-   有聚焦輸入框(s_remote_target_has_focus)才生效，畫面上不出清單、不出輸入框，只有
-   螢幕正中央一個大麥克風圖示；按下開始語音、放開停止；手腕放下(離開立起姿態)整個
-   畫面自動收掉。全新一組物件(NOT 重用 mic_bar/s_mic_bar_icon/s_mic_ripple)——那組是
-   底部小 bar 的長期共用單例，牽動既有 morph/位置狀態機，這裡改成獨立、可整組顯示/
-   隱藏的 overlay，降低跟既有 bar 邏輯互相干擾的風險。語音管線呼叫(voice_provider/
-   set_ai_open_mic/V2T_INTENT_SKAIBAR)沿用跟 mic_bar_voice_start/stop 完全相同的
-   後端 API，只是驅動的是這組新物件的視覺。 */
-static lv_obj_t *s_lift_mic_view = NULL;   /* 全螢幕 overlay 容器,s_global_bar_layer 子物件 */
-static lv_obj_t *s_lift_mic_icon = NULL;   /* 置中大麥克風圖 */
-static lv_obj_t *s_lift_mic_ripple = NULL; /* 置中藍圈脈衝 */
-static bool s_lift_mic_voice_active = false;
+/* ── 2026-07-31 founder 改版：立起姿態 = 完整「輸入面板」（取代 2026-07-16 的大麥克風）──
+   舊版：只有控制中那台電腦有聚焦輸入框時才生效，畫面上只有一顆置中的大麥克風，語音逐字
+   直接打進電腦上那個輸入框。新版三點改變：
+     1. 不再 gate 聚焦狀態 —— 在滑鼠 app 裡立起手錶就會出現面板。
+     2. 面板 = 輸入框(與 skaibar 輸入框同一張 message_widget_bg 442x252 + 兩行轉錄)，
+        上方一排圖示(img_logo 一定在；icon_send 只在電腦真的有聚焦輸入框時出現)，
+        下方一顆「小」麥克風(64px 原生，非舊版 128px)按住講話。
+     3. 文字先「暫存」在面板 + 電腦的純輸入框裡（0x0E 帶 inputOnly），由使用者在手錶上
+        決定去處：icon_send → 打進剛剛點的那個輸入框(0x1d dest=field，之後離開此模式)；
+        img_logo → 當成 skaibar 查詢送出(0x1d dest=skaibar，電腦展開選項、手錶叫出同步
+        的清單)。手機端在放開麥克風後會先用 AI 把口語拆字還原(「林是新,士兵的士,心臟的
+        心」→「林士心」)再回推兩邊，所以送出的一定是整理後的文字。
 
-#define LIFT_MIC_RIPPLE_MIN_D 100
-#define LIFT_MIC_RIPPLE_MAX_D 320
-#define LIFT_MIC_ICON_ZOOM 512 /* 2x 原生(64px→128px)——螢幕正中央的大圖示 */
+   版面(466 圓螢幕，方塊 442x252 置中 → 上下各餘 107px)：
+     圖示列中心 y = 233 - 178 = 55（圓內可用寬 300，放得下 80 + 24 + 34）
+     小麥克風中心 y = 233 + 170 = 403（圓內可用寬 318）
+   物件仍是獨立的一組(NOT 重用 mic_bar/ai_box) —— 那些是底部 bar 與 morph 狀態機的長期
+   共用單例，這個面板要能整組顯示/隱藏而不去攪動它們。語音管線(voice_provider /
+   set_ai_open_mic / V2T_INTENT_SKAIBAR)沿用與 mic_bar_voice_start/stop 完全相同的後端。 */
+static lv_obj_t *s_lift_input_view = NULL;   /* 全螢幕 overlay 容器,s_global_bar_layer 子物件 */
+static lv_obj_t *s_lift_input_box = NULL;    /* 置中輸入框(frame img + 轉錄) */
+static lv_obj_t *s_lift_input_clip = NULL;   /* 兩行高的轉錄裁切窗(同 ai_box) */
+static lv_obj_t *s_lift_input_label = NULL;  /* 轉錄文字 */
+static lv_obj_t *s_lift_logo_btn = NULL;     /* 上方 img_logo — 送給 skaibar */
+static lv_obj_t *s_lift_send_btn = NULL;     /* 上方 icon_send — 送回聚焦輸入框(有聚焦才顯示) */
+static lv_obj_t *s_lift_mic_btn = NULL;      /* 下方小麥克風(按住講話) */
+static lv_obj_t *s_lift_box_glow = NULL;     /* 錄音中沿輸入框外圈擴散的藍色脈衝 */
+static lv_obj_t *s_lift_del_btn = NULL;      /* 與麥克風並排的刪除鍵 */
+/* 建立這組物件的那條執行緒 = LVGL 執行緒。用「身分比對」而不是猜名字,才能安全地分辨
+   「空字串是從 BLE 下行(LVGL 執行緒,可以碰 UI)」還是「從 bloc_v2t 直呼(voice_re,不能碰)」。 */
+static rt_thread_t s_lift_lvgl_thread = RT_NULL;
+/* 面板是否顯示中。只由 LVGL 執行緒寫,其他執行緒(周邊/通訊)唯讀 —— 見
+   instruction_list_lift_input_view_open 對於為何不能用 lv_obj_is_valid 的說明。 */
+static volatile bool s_lift_view_shown = false;
+static lv_obj_t *s_lift_caret = NULL;        /* 長按定位出來的插入游標(細直線) */
+/* 游標下方的圓球把手(founder 2026-08-01):按住它拖 = 帶著游標走,**不是**框選。框選走的是
+   長按文字本身那條路,兩者刻意分開在不同物件上,不必再靠時間或位移去猜使用者要哪一種。 */
+static lv_obj_t *s_lift_caret_ball = NULL;
+static bool s_lift_ball_dragging = false;
+static lv_coord_t s_lift_ball_grab_dy = 0; /* 按下當刻量到的「球心 → 游標中線」垂直距離 */
+#define LIFT_CARET_BALL_D 22
+#define LIFT_CARET_BALL_GAP 2
+static bool s_lift_voice_active = false;
 
-/* v: 0..256 — 直徑 MIN→MAX、邊框 opa COVER→0,結束跳回中心重播(不回放)。與
-   mic_ripple_anim_cb 同一套公式,獨立一份是因為尺寸常數不同(置中大圈 vs 底部小圈)。 */
-static void lift_mic_ripple_anim_cb(void *var, int32_t v)
+/* 插入點(字元索引,非 byte)。**-1 = 停在文字最尾端**(預設),不是「沒有游標」——
+   founder 2026-08-01:「按過一次刪除鍵後游標就消失了,我不知道下個會刪哪裡」。游標是這個面板
+   唯一的位置指示,任何時候都該看得到:預設在尾端(接續講話/刪除都從那裡發生),點或長按可以
+   移到別處,刪除時跟著往前退一格。 */
+static int32_t s_lift_caret_pos = -1;
+
+/* 目前這次「按住講話」是從哪個物件開始的 —— 小麥克風,或長按輸入框的那一下。冷卻期的補開始
+   要回頭確認「手指還按在同一個物件上」,所以不能寫死成麥克風。 */
+static lv_obj_t *s_lift_hold_obj = NULL;
+
+/* 長按輸入框後**手指有沒有移動**決定兩種完全不同的意圖(founder 2026-08-01):
+     沒動 → 原本的「插入點 + 當場開始講」;
+     一拖 → 從按下的那個字開始框選,放開後按刪除鍵整段刪掉。
+   anchor 是長按當下那個字的索引;拖動時另一端跟著手指跑。範圍一律正規化成 [from,to)。 */
+static int32_t s_lift_sel_anchor = -1;
+static int32_t s_lift_sel_from = -1;
+static int32_t s_lift_sel_to = -1;
+static bool s_lift_dragging = false;
+/* 12px:比手指按住時的自然抖動大,又遠小於一個字(52px 行高)的寬度。 */
+#define LIFT_SEL_DRAG_SLOP 12
+/* 長按到真正開錄音之間的確認窗。**不能在 LONG_PRESSED 當下就開錄音** —— 那樣使用者一拖動
+   就得把剛起來的語音管線收掉,而那 0.2 秒已經錄進去的音訊還是會變成一段插進文字裡的雜訊
+   (而且這條管線的 stop→start 重入本來就是已知脆弱點)。等 150ms 確認手指沒動再開,使用者
+   感覺不出差別,卻讓「框選」和「講話」在時間上完全不重疊。 */
+#define LIFT_LONGPRESS_ARM_MS 150
+
+#define LIFT_BOX_W 442  /* == message_widget_bg 原生尺寸,與 skaibar 輸入框同一張圖 */
+#define LIFT_BOX_H 252
+/* 文字距框上下緣的留白 —— 框是圓角的,太貼邊會被弧線切到。
+   20px 是實測算出來的:行高 52,框高 252,留 20 → 可用 212 → 剛好 4 行(208)。
+   幾何檢查(圓角 80 + 466 圓螢幕):4 行時文字上緣 y=127,該高度圓角內縮 27px、圓弧可用
+   x=39..427,而文字只佔 53..413,不會被切。留 48 會掉到 3 行,白白浪費一行。 */
+#define LIFT_BOX_TEXT_INSET_V 20
+/* 上限:再多行也放不進 442x252 的可視區,且行數過多在圓形螢幕上兩側會被裁。 */
+#define LIFT_BOX_MAX_ROWS 4
+#define LIFT_ICON_ROW_DY (-178) /* 圖示列中心相對螢幕中心:-(BOX_H/2 + s3 + 40) */
+#define LIFT_MIC_DY 170         /* 小麥克風中心相對螢幕中心:+(BOX_H/2 + s3 + 32) */
+/* 麥克風與刪除鍵並排(founder 2026-08-01)。麥克風 64px、刪除 46px,中心相距 92 → 邊緣間隙 37px
+   (≥ s3)。y=403 那條線在圓內可用寬 318,兩顆合計 110 綽綽有餘。 */
+#define LIFT_MIC_DX (-40)
+#define LIFT_DEL_DX 52
+#define LIFT_DEL_EXT_CLICK 12   /* 46x33 圖 → 70x57 觸控標的(≥44pt 基線) */
+#define LIFT_DEL_REPEAT_MS 120  /* 長按連續刪除的速率;自己控速,不依賴 LVGL 的重複間隔 */
+#define LIFT_LOGO_DX (-29)      /* 兩顆並排時:總寬 80+24+34=138,靠左起算的中心 */
+#define LIFT_SEND_DX 52
+#define LIFT_SEND_EXT_CLICK 15  /* icon_send 原生 34px → 34+2*15=64 觸控標的(≥44pt 基線) */
+/* 錄音中的脈衝**畫在整個輸入框外圈**,不是小麥克風旁邊(founder 2026-08-01)。同一套
+   「放大 + 漸淡 + 循環」公式,只是形狀從圓變成跟框同尺寸的圓角矩形,從框緣往外擴散。
+   小麥克風那圈同時取消 —— 這是「移過來」不是「多加一個」。 */
+#define LIFT_BOX_GLOW_GROW 40      /* 往外擴散的最大距離 */
+#define LIFT_BOX_GLOW_RADIUS 80    /* 對齊 message_widget_bg 的圓角 */
+
+static void lift_box_glow_anim_cb(void *var, int32_t v)
 {
     lv_obj_t *ring = (lv_obj_t *)var;
     if (!ring || !lv_obj_is_valid(ring))
         return;
-    lv_coord_t d = LIFT_MIC_RIPPLE_MIN_D +
-                   (lv_coord_t)((LIFT_MIC_RIPPLE_MAX_D - LIFT_MIC_RIPPLE_MIN_D) * v / 256);
-    lv_obj_set_size(ring, d, d);
+    lv_coord_t g = (lv_coord_t)(LIFT_BOX_GLOW_GROW * v / 256);
+    lv_obj_set_size(ring, LIFT_BOX_W + g * 2, LIFT_BOX_H + g * 2);
     lv_obj_align(ring, LV_ALIGN_CENTER, 0, 0);
+    /* 圓角跟著長大,擴散出去的框才會與原框同心而不是越變越方。 */
+    lv_obj_set_style_radius(ring, LIFT_BOX_GLOW_RADIUS + g, 0);
     lv_obj_set_style_border_opa(ring, LV_OPA_COVER - (LV_OPA_COVER * v / 256), 0);
 }
 
-static void lift_mic_voice_visual(bool on)
+static void lift_input_voice_visual(bool on)
 {
-    if (s_lift_mic_icon && lv_obj_is_valid(s_lift_mic_icon))
-        lv_img_set_src(s_lift_mic_icon, on ? &micro_open_icon : &micro_icon);
+    if (s_lift_mic_btn && lv_obj_is_valid(s_lift_mic_btn))
+        lv_img_set_src(s_lift_mic_btn, on ? &micro_open_icon : &micro_icon);
+    if (!s_lift_box_glow || !lv_obj_is_valid(s_lift_box_glow))
+        return;
     if (on)
     {
-        if (s_lift_mic_ripple && lv_obj_is_valid(s_lift_mic_ripple))
-        {
-            lv_obj_clear_flag(s_lift_mic_ripple, LV_OBJ_FLAG_HIDDEN);
-            lv_anim_del(s_lift_mic_ripple, lift_mic_ripple_anim_cb);
-            lv_anim_t a;
-            lv_anim_init(&a);
-            lv_anim_set_var(&a, s_lift_mic_ripple);
-            lv_anim_set_values(&a, 0, 256);
-            lv_anim_set_time(&a, LMIC_RIPPLE_PERIOD_MS);
-            lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
-            lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-            lv_anim_set_exec_cb(&a, lift_mic_ripple_anim_cb);
-            lv_anim_start(&a);
-        }
+        lv_obj_clear_flag(s_lift_box_glow, LV_OBJ_FLAG_HIDDEN);
+        lv_anim_del(s_lift_box_glow, lift_box_glow_anim_cb);
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, s_lift_box_glow);
+        lv_anim_set_values(&a, 0, 256);
+        lv_anim_set_time(&a, LMIC_RIPPLE_PERIOD_MS);
+        lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_set_exec_cb(&a, lift_box_glow_anim_cb);
+        lv_anim_start(&a);
     }
-    else if (s_lift_mic_ripple && lv_obj_is_valid(s_lift_mic_ripple))
+    else
     {
-        lv_anim_del(s_lift_mic_ripple, lift_mic_ripple_anim_cb);
-        lv_obj_add_flag(s_lift_mic_ripple, LV_OBJ_FLAG_HIDDEN);
+        lv_anim_del(s_lift_box_glow, lift_box_glow_anim_cb);
+        lv_obj_add_flag(s_lift_box_glow, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
-static void lift_mic_voice_start(void)
+/* 上一次停止語音的時間戳 + 冷卻時間。真機當機(2026-07-31):
+     [2061976] voice STOP → [2062345] voice START(相隔 0.37s) → hard fault on thread: voice_re
+   語音管線(opus/PSRAM 緩衝)的拆除不是同步完成的,在拆到一半時重新 start_v2t() 會打在
+   voice 執行緒上。**這是既有管線的脆弱點,不是這個面板造成的**,但這個面板讓它變得很好踩:
+   常駐面板 + 小麥克風 + 放開偵測失靈 → 使用者自然會連按第二下,而那第二下正好構成
+   「STOP 後立刻 START」。這裡只擋掉觸發條件(冷卻期內不重啟),治本要修語音管線本身的
+   重入保護 —— 已另案記錄。 */
+static rt_tick_t s_lift_voice_stopped_at = 0;
+#define LIFT_VOICE_RESTART_COOLDOWN_MS 800
+
+/* 冷卻期內那一下按下的補開始(見 lift_input_voice_start 的 deferred 分支)。 */
+static lv_timer_t *s_lift_voice_retry_timer = NULL;
+static void lift_input_voice_start(void);
+
+static void lift_voice_retry_cb(lv_timer_t *t)
 {
-    if (s_lift_mic_voice_active)
+    (void)t;
+    s_lift_voice_retry_timer = NULL; /* one-shot,LVGL 會在 cb 回來後自動刪 */
+    /* 只有「手指還按在麥克風上」才補開始 —— 使用者若在冷卻期間就放開了,那一下不算數,
+       這裡補開會變成沒人按著卻在錄音。 */
+    if (!s_lift_hold_obj || !lv_obj_is_valid(s_lift_hold_obj))
         return;
+    if (!lv_obj_has_state(s_lift_hold_obj, LV_STATE_PRESSED))
+    {
+        LOG_I("[lift_input] deferred START dropped — finger already released");
+        return;
+    }
+    LOG_I("[lift_input] deferred START firing (cooldown over, still held)");
+    lift_input_voice_start();
+}
+
+static void lift_input_voice_start(void)
+{
+    if (s_lift_voice_active)
+        return;
+    if (s_lift_voice_stopped_at != 0 &&
+        rt_tick_get() - s_lift_voice_stopped_at <
+        rt_tick_from_millisecond(LIFT_VOICE_RESTART_COOLDOWN_MS))
+    {
+        /* 冷卻期內的按下**不丟掉**,排一支 one-shot 等冷卻結束再補開始(屆時手指還按著才開)。
+           真機實測(2026-08-01):純粹 return 的話,使用者放開後很自然地馬上再按(0.3s),那一下被
+           靜默吃掉,他就握著一支沒在錄音的麥克風繼續講 —— 比原本要防的當機更難察覺。 */
+        rt_tick_t elapsed = rt_tick_get() - s_lift_voice_stopped_at;
+        rt_tick_t remain_ticks = rt_tick_from_millisecond(LIFT_VOICE_RESTART_COOLDOWN_MS) - elapsed;
+        uint32_t remain_ms = (uint32_t)(remain_ticks * 1000 / RT_TICK_PER_SECOND) + 20;
+        LOG_I("[lift_input] voice START deferred %ums (restart cooldown)", remain_ms);
+        if (s_lift_voice_retry_timer)
+            lv_timer_del(s_lift_voice_retry_timer);
+        s_lift_voice_retry_timer = lv_timer_create(lift_voice_retry_cb, remain_ms, NULL);
+        lv_timer_set_repeat_count(s_lift_voice_retry_timer, 1);
+        return;
+    }
 #ifndef BSP_USING_PC_SIMULATOR
     extern bool get_bluetooth_connection_status(void);
     if (!get_bluetooth_connection_status())
@@ -2224,93 +2354,921 @@ static void lift_mic_voice_start(void)
     voice_set_pending_v2t_intent(V2T_INTENT_SKAIBAR);
     voice_provider.start_v2t();
 #endif
-    s_lift_mic_voice_active = true;
-    lift_mic_voice_visual(true);
-    LOG_I("[lift_mic] voice START");
+    s_lift_voice_active = true;
+    lift_input_voice_visual(true);
+    LOG_I("[lift_input] voice START");
 }
 
-static void lift_mic_voice_stop(void)
+static void lift_input_voice_stop(void)
 {
-    if (!s_lift_mic_voice_active)
+    if (!s_lift_voice_active)
         return;
-    s_lift_mic_voice_active = false;
+    s_lift_voice_active = false;
 #ifndef BSP_USING_PC_SIMULATOR
     voice_provider.stop_v2t();
     stop_voice_recognition(V2T_INTENT_NOTHING);
 #endif
-    lift_mic_voice_visual(false);
-    LOG_I("[lift_mic] voice STOP");
+    s_lift_voice_stopped_at = rt_tick_get();
+    lift_input_voice_visual(false);
+    LOG_I("[lift_input] voice STOP");
 }
 
-static void lift_mic_view_event_cb(lv_event_t *evt)
+/* 小麥克風 = 按住講話(對講機),與底部 bar 的長按語音同一套後端。啟動只掛在麥克風本身而非
+   整片 overlay:面板還有 logo / send 兩顆可按的圖示,整片按住講話會把它們吃掉。 */
+/* 2026-07-31:這裡曾經放過一支「PRESSING 停了就收錄音」的按住看門狗 —— **已移除,它是錯的**。
+   真機事件流證明 LV_EVENT_PRESSING 只在手指有位移時才送:使用者按住不動時它不來,看門狗於是
+   在 600ms 後誤停錄音。那次誤停讓語音管線停在半拆狀態,下一次按下就 hard fault on thread:
+   voice_re(真機當場重現)。同一份事件流也證明 LV_EVENT_RELEASED(evt=8)其實會正常送達 ——
+   先前看不到 STOP 是因為使用者一直按著在等文字出現,而文字沒出現是轉錄路由的 bug(見
+   watch_system_interact.c 的 lift 分支),不是放開事件遺失。
+   要做「還按著」的心跳,正確的來源是 LV_EVENT_LONG_PRESSED_REPEAT(evt=6,按住期間穩定重送),
+   不是 PRESSING。目前不需要 —— 放開事件本來就會到。 */
+static void lift_mic_btn_event_cb(lv_event_t *evt)
 {
-    switch (lv_event_get_code(evt))
+    lv_event_code_t code = lv_event_get_code(evt);
+    /* TEMP DIAG(2026-07-31):印出麥克風收到的輸入類事件。排除 PRESSING(每幀)與
+       LONG_PRESSED_REPEAT(按住期間每幾秒一次)這兩個高頻事件以免洗版。定位完拿掉。 */
+    if (code <= LV_EVENT_LEAVE && code != LV_EVENT_PRESSING &&
+        code != LV_EVENT_LONG_PRESSED_REPEAT)
+        LOG_I("[lift_input][diag] mic evt=%d", (int)code);
+    switch (code)
     {
     case LV_EVENT_PRESSED:
-        lift_mic_voice_start();
+        s_lift_hold_obj = lv_event_get_target(evt);
+        lift_input_voice_start();
         break;
     case LV_EVENT_RELEASED:
     case LV_EVENT_PRESS_LOST:
-        lift_mic_voice_stop();
+        lift_input_voice_stop();
         break;
     default:
         break;
     }
 }
 
-static void ensure_lift_mic_view(void)
+/* 停止的**兜底**:掛在整片面板容器上,手指不論在哪裡離開螢幕都收掉錄音。
+   真機實測(2026-07-31)發現只掛在 64px 麥克風圖示上不夠 —— 按下後手指稍微移動再放開,
+   RELEASED 就不會落到該物件上,錄音一路卡在 active(log 見 voice START 後 10 分鐘才等到
+   一次 PRESS_LOST 補送),連帶讓「放開才跑」的 AI 整理永遠不觸發。這裡只負責 STOP、不負責
+   START,所以不會把 logo / send 的點擊搶走;lift_input_voice_stop() 未啟動時是 no-op,
+   重複呼叫安全。 */
+static void lift_input_view_event_cb(lv_event_t *evt)
 {
-    if (s_lift_mic_view && lv_obj_is_valid(s_lift_mic_view))
+    switch (lv_event_get_code(evt))
+    {
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        lift_input_voice_stop();
+        break;
+    default:
+        break;
+    }
+}
+
+/* 面板上目前顯示的文字是否是「真的講出來的內容」(而非 Listening 佔位)。送出前的門檻:
+   空面板按 logo/send 只會讓兩端狀態空轉,不如什麼都不做。 */
+static bool lift_input_has_text(void); /* fwd — 定義在下面 */
+
+/* 目前標籤上的字數(字元,非 byte)。 */
+static uint32_t lift_input_char_count(void)
+{
+    if (!s_lift_input_label || !lv_obj_is_valid(s_lift_input_label))
+        return 0;
+    const char *t = lv_label_get_text(s_lift_input_label);
+    return t ? _lv_txt_get_encoded_length(t) : 0;
+}
+
+/* 游標閃爍(founder 2026-08-01)。530ms 是一般文字輸入游標的節奏。只在游標可見時跑,面板收起
+   或退回佔位文字就停 —— 沒必要為看不見的東西每半秒喚醒一次 LVGL。 */
+#define LIFT_CARET_BLINK_MS 530
+static lv_timer_t *s_lift_caret_blink = NULL;
+
+static void lift_caret_blink_stop(void)
+{
+    if (s_lift_caret_blink)
+    {
+        lv_timer_del(s_lift_caret_blink);
+        s_lift_caret_blink = NULL;
+    }
+}
+
+static void lift_caret_blink_cb(lv_timer_t *t)
+{
+    if (!s_lift_caret || !lv_obj_is_valid(s_lift_caret))
+    {
+        s_lift_caret_blink = NULL;
+        lv_timer_del(t); /* 物件先走一步(面板重建),timer 自己收掉 */
+        return;
+    }
+    if (lv_obj_has_flag(s_lift_caret, LV_OBJ_FLAG_HIDDEN))
+        lv_obj_clear_flag(s_lift_caret, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_add_flag(s_lift_caret, LV_OBJ_FLAG_HIDDEN);
+}
+
+static bool lift_sel_active(void); /* fwd — 有框選時游標不畫,定義在下面 */
+
+/* 依目前的 s_lift_caret_pos(-1 = 尾端)把游標畫出來。文字每次更新後都要重畫,游標才會一直在。 */
+static void lift_caret_render(void)
+{
+    if (!s_lift_caret || !lv_obj_is_valid(s_lift_caret) ||
+        !s_lift_input_label || !lv_obj_is_valid(s_lift_input_label))
+        return;
+    /* 有框選就不畫游標(founder 2026-08-01)——「選了一段」跟「插在某一點」是互斥的兩種狀態,
+       兩個都畫只會讓人不確定下一個動作發生在哪。 */
+    if (!lift_input_has_text() || lift_sel_active())
+    {
+        lift_caret_blink_stop();
+        lv_obj_add_flag(s_lift_caret, LV_OBJ_FLAG_HIDDEN);
+        if (s_lift_caret_ball && lv_obj_is_valid(s_lift_caret_ball))
+            lv_obj_add_flag(s_lift_caret_ball, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    uint32_t count = lift_input_char_count();
+    uint32_t pos = (s_lift_caret_pos < 0 || (uint32_t)s_lift_caret_pos > count)
+                       ? count
+                       : (uint32_t)s_lift_caret_pos;
+    lv_point_t p;
+    lv_label_get_letter_pos(s_lift_input_label, pos, &p);
+    /* letter_pos 是 label 相對座標;游標與 label 同一個 parent(clip),直接沿用即可。 */
+    const lv_font_t *f = lv_obj_get_style_text_font(s_lift_input_label, LV_PART_MAIN);
+    lv_coord_t lh = lv_font_get_line_height(f);
+    lv_obj_set_size(s_lift_caret, 2, lh);
+    lv_obj_set_pos(s_lift_caret, lv_obj_get_x(s_lift_input_label) + p.x,
+                   lv_obj_get_y(s_lift_input_label) + p.y);
+    lv_obj_clear_flag(s_lift_caret, LV_OBJ_FLAG_HIDDEN);
+    /* 圓球把手貼在游標線正下方、水平置中於那條 2px 的線。游標在**最後一行**時球會掉出
+       裁切窗被切掉,所以夾回窗內(那種情況球會與文字下緣重疊,可接受;拖曳的抓取偏移是在
+       按下當刻量的,不是寫死的,所以夾過位置也不會算錯字)。 */
+    if (s_lift_caret_ball && lv_obj_is_valid(s_lift_caret_ball))
+    {
+        lv_coord_t by = lv_obj_get_y(s_lift_input_label) + p.y + lh + LIFT_CARET_BALL_GAP;
+        lv_coord_t clip_h = lv_obj_get_height(s_lift_input_clip);
+        if (by + LIFT_CARET_BALL_D > clip_h)
+            by = clip_h - LIFT_CARET_BALL_D;
+        lv_obj_set_pos(s_lift_caret_ball,
+                       lv_obj_get_x(s_lift_input_label) + p.x + 1 - LIFT_CARET_BALL_D / 2, by);
+        lv_obj_clear_flag(s_lift_caret_ball, LV_OBJ_FLAG_HIDDEN);
+    }
+    /* 拖著把手走的時候不閃 —— 實心跟著手指才看得出停在哪個字。 */
+    if (s_lift_ball_dragging)
+    {
+        lift_caret_blink_stop();
+        return;
+    }
+    /* 剛移動/剛更新的游標先實心亮著,再開始閃 —— 重設相位,不然它可能正好落在暗的那半拍,
+       使用者按完刪除看過去以為游標又不見了。 */
+    if (!s_lift_caret_blink)
+        s_lift_caret_blink = lv_timer_create(lift_caret_blink_cb, LIFT_CARET_BLINK_MS, NULL);
+    else
+        lv_timer_reset(s_lift_caret_blink);
+}
+
+/* 把插入點設到第 pos 個字元前緣並重畫。pos<0 = 回到尾端(預設位置,不是隱藏)。 */
+static void lift_input_place_caret(int32_t pos)
+{
+    s_lift_caret_pos = pos;
+    lift_caret_render();
+}
+
+/* ── 框選 ──────────────────────────────────────────────────────────────────
+   用 LVGL 標籤原生的 text selection 畫(rtconfig 的 LV_LABEL_TEXT_SELECTION=1),索引與
+   游標同樣是**字元**(code point)——lv_draw_label 內部就是照 encoded length 數的,兩者對得上。 */
+static bool lift_sel_active(void)
+{
+    return s_lift_sel_from >= 0 && s_lift_sel_to > s_lift_sel_from;
+}
+
+static void lift_sel_clear(void)
+{
+    s_lift_sel_anchor = -1;
+    s_lift_sel_from = -1;
+    s_lift_sel_to = -1;
+    if (s_lift_input_label && lv_obj_is_valid(s_lift_input_label))
+    {
+        lv_label_set_text_sel_start(s_lift_input_label, LV_DRAW_LABEL_NO_TXT_SEL);
+        lv_label_set_text_sel_end(s_lift_input_label, LV_DRAW_LABEL_NO_TXT_SEL);
+    }
+    lift_caret_render(); /* 選取沒了 → 游標回來 */
+}
+
+static void lift_sel_apply(int32_t a, int32_t b)
+{
+    if (a > b)
+    {
+        int32_t t = a;
+        a = b;
+        b = t;
+    }
+    s_lift_sel_from = a;
+    s_lift_sel_to = b;
+    if (!s_lift_input_label || !lv_obj_is_valid(s_lift_input_label))
+        return;
+    lv_label_set_text_sel_start(s_lift_input_label, (uint32_t)a);
+    lv_label_set_text_sel_end(s_lift_input_label, (uint32_t)b);
+    lift_caret_render(); /* 有選取 → 游標收起來 */
+}
+
+/* 絕對座標 → 第幾個字。座標要換成 label 相對(lv_label_get_letter_on 內部再扣 padding)。 */
+static bool lift_input_letter_at(lv_point_t abs, uint32_t *out)
+{
+    if (!s_lift_input_label || !lv_obj_is_valid(s_lift_input_label))
+        return false;
+    if (!lift_input_has_text())
+        return false;
+    lv_point_t p = abs;
+    p.x -= s_lift_input_label->coords.x1;
+    p.y -= s_lift_input_label->coords.y1;
+    *out = lv_label_get_letter_on(s_lift_input_label, &p);
+    return true;
+}
+
+/* 長按確認窗:窗內手指沒動才開錄音。見 LIFT_LONGPRESS_ARM_MS。 */
+static lv_timer_t *s_lift_longpress_arm = NULL;
+static void lift_input_voice_start(void);
+
+static void lift_longpress_arm_stop(void)
+{
+    if (s_lift_longpress_arm)
+    {
+        lv_timer_del(s_lift_longpress_arm);
+        s_lift_longpress_arm = NULL;
+    }
+}
+
+static void lift_longpress_arm_cb(lv_timer_t *t)
+{
+    (void)t;
+    s_lift_longpress_arm = NULL; /* one-shot,LVGL 會在 cb 回來後自己刪 */
+    if (s_lift_dragging)
+        return; /* 已經變成框選了 */
+    if (!s_lift_hold_obj || !lv_obj_is_valid(s_lift_hold_obj))
+        return;
+    if (!lv_obj_has_state(s_lift_hold_obj, LV_STATE_PRESSED))
+        return; /* 確認窗內就放開了 = 不是要講話 */
+    lift_input_voice_start();
+}
+
+static void lift_longpress_arm_start(void)
+{
+    lift_longpress_arm_stop();
+    s_lift_longpress_arm = lv_timer_create(lift_longpress_arm_cb, LIFT_LONGPRESS_ARM_MS, NULL);
+    lv_timer_set_repeat_count(s_lift_longpress_arm, 1);
+}
+
+/* 把觸點換算成「第幾個字」並設為插入點。回傳是否成功(還是 Listening 佔位時沒東西可定位)。
+   座標要換成 label 相對(lv_label_get_letter_on 內部再扣 padding、用 content coords)。 */
+/* 按下當刻的觸點。**不能**在 SHORT_CLICKED 時才去 lv_indev_get_act() 取 —— 那個事件是手指
+   放開之後才送的,那時 indev 的座標已經不是使用者按的位置了(真機 2026-08-01:長按定位都正確
+   /pos=4,5,7,17,點一下卻永遠回 0)。長按之所以沒事,是因為 LONG_PRESSED 在手指還按著時送。
+   改成一律用按下當刻存下來的點,語意上也才是「你手指戳的那個字」。 */
+static lv_point_t s_lift_press_point;
+static bool s_lift_press_point_valid = false;
+
+static bool lift_input_set_caret_from_touch(void)
+{
+    if (!s_lift_input_label || !lv_obj_is_valid(s_lift_input_label))
+        return false;
+    if (!lift_input_has_text())
+        return false;
+    if (!s_lift_press_point_valid)
+        return false;
+    uint32_t idx;
+    if (!lift_input_letter_at(s_lift_press_point, &idx))
+        return false;
+    lift_input_place_caret((int32_t)idx);
+    extern void motor_pattern_unlocked(void);
+    motor_pattern_unlocked(); /* 定位成功的觸覺確認 */
+    extern bool commu_send_lift_input_caret(int pos, const char *text);
+    commu_send_lift_input_caret((int)idx, lv_label_get_text(s_lift_input_label));
+    LOG_I("[lift_input] caret set at letter %u", (unsigned)idx);
+    return true;
+}
+
+/* 圓球把手:按住拖 = 帶著游標走。跟框選刻意分在**不同物件**上 —— 拖文字是圈選,拖球是移
+   游標,不必再用時間或位移去猜使用者想要哪一種。事件不會 bubble 到 clip(LVGL v8 預設不開
+   EVENT_BUBBLE),所以按著球不會同時觸發長按錄音或框選。 */
+static void lift_caret_ball_event_cb(lv_event_t *evt)
+{
+    switch (lv_event_get_code(evt))
+    {
+    case LV_EVENT_PRESSED:
+        s_lift_ball_dragging = true;
+        lift_caret_blink_stop();
+        if (s_lift_caret && lv_obj_is_valid(s_lift_caret))
+        {
+            lv_obj_clear_flag(s_lift_caret, LV_OBJ_FLAG_HIDDEN);
+            /* 球心與游標中線的垂直距離,**按下當刻量**而不是寫死 —— 最後一行的球被夾回窗內時
+               這個距離會變小,寫死的話拖曳就會算到隔壁行去。 */
+            s_lift_ball_grab_dy =
+                (s_lift_caret_ball->coords.y1 + s_lift_caret_ball->coords.y2) / 2 -
+                (s_lift_caret->coords.y1 + s_lift_caret->coords.y2) / 2;
+        }
+        {
+            extern void motor_pattern_unlocked(void);
+            motor_pattern_unlocked(); /* 抓到把手了 */
+        }
+        break;
+    case LV_EVENT_PRESSING:
+    {
+        if (!s_lift_ball_dragging || !s_lift_input_label || !lv_obj_is_valid(s_lift_input_label))
+            break;
+        lv_indev_t *indev = lv_indev_get_act();
+        if (!indev)
+            break;
+        lv_point_t cur;
+        lv_indev_get_point(indev, &cur);
+        /* 手指抓的是球,游標在球**上方**:把觸點往上移回游標那一行的中線再換算字元,
+           不然拖到第二行時算出來的會是球所在的那一行。 */
+        cur.y -= s_lift_ball_grab_dy;
+        uint32_t idx;
+        if (lift_input_letter_at(cur, &idx))
+            lift_input_place_caret((int32_t)idx);
+        break;
+    }
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        if (s_lift_ball_dragging)
+        {
+            s_lift_ball_dragging = false;
+            lift_caret_render(); /* 放開才恢復閃爍 */
+            extern bool commu_send_lift_input_caret(int pos, const char *text);
+            commu_send_lift_input_caret((int)s_lift_caret_pos,
+                                        lv_label_get_text(s_lift_input_label));
+            LOG_I("[lift_input] caret dragged to letter %d", (int)s_lift_caret_pos);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+/* 輸入框上的三種手勢(founder 2026-08-01,刻意分開):
+     點一下(SHORT_CLICKED)= 只把游標移過去,接著用下面的麥克風錄音;
+     長按不動(LONG_PRESSED + 確認窗)= 游標移過去**並開始錄音**,按著講、放開就停;
+     長按後拖(LONG_PRESSED → PRESSING 超過 slop)= 從按下的那個字開始框選,放開後按刪除鍵整段刪。
+   LVGL 天然分得開:一次乾淨的點擊才會送 SHORT_CLICKED,長按只送 LONG_PRESSED + CLICKED。
+   「講話」與「框選」則靠 LIFT_LONGPRESS_ARM_MS 這個確認窗分開,兩者不會在時間上重疊。 */
+static void lift_input_clip_event_cb(lv_event_t *evt)
+{
+    switch (lv_event_get_code(evt))
+    {
+    case LV_EVENT_PRESSED:
+    {
+        /* 按下當刻抓座標 —— SHORT_CLICKED / LONG_PRESSED / 拖動起點都用它。 */
+        lv_indev_t *indev = lv_indev_get_act();
+        s_lift_press_point_valid = (indev != NULL);
+        if (indev)
+            lv_indev_get_point(indev, &s_lift_press_point);
+        lift_sel_clear(); /* 新的一次觸碰 = 放掉上一次的選取 */
+        s_lift_dragging = false;
+        /* TEMP DIAG(2026-08-01):點框定位沒反應時,要分得出「事件沒送到」還是「座標算錯」。 */
+        LOG_I("[lift_input][diag] box PRESSED at (%d,%d) valid=%d",
+              (int)s_lift_press_point.x, (int)s_lift_press_point.y,
+              (int)s_lift_press_point_valid);
+        break;
+    }
+    case LV_EVENT_SHORT_CLICKED:
+        LOG_I("[lift_input][diag] box SHORT_CLICKED"); /* TEMP DIAG */
+        lift_input_set_caret_from_touch();
+        break;
+    case LV_EVENT_LONG_PRESSED:
+        if (lift_input_set_caret_from_touch())
+        {
+            s_lift_hold_obj = lv_event_get_target(evt);
+            s_lift_sel_anchor = s_lift_caret_pos; /* 拖動的話從這個字開始圈 */
+            lift_longpress_arm_start();
+        }
+        break;
+    case LV_EVENT_PRESSING:
+    {
+        /* PRESSING 只在觸點**移動**時才送,所以這裡天然就是「手指有動」。 */
+        if (s_lift_sel_anchor < 0)
+            break;
+        lv_indev_t *indev = lv_indev_get_act();
+        if (!indev)
+            break;
+        lv_point_t cur;
+        lv_indev_get_point(indev, &cur);
+        lv_coord_t dx = cur.x - s_lift_press_point.x;
+        lv_coord_t dy = cur.y - s_lift_press_point.y;
+        if (!s_lift_dragging &&
+            (int32_t)dx * dx + (int32_t)dy * dy < LIFT_SEL_DRAG_SLOP * LIFT_SEL_DRAG_SLOP)
+            break; /* 還在抖動範圍內,先當作沒動 */
+        if (!s_lift_dragging)
+        {
+            s_lift_dragging = true;
+            bool was_recording = s_lift_voice_active;
+            lift_longpress_arm_stop(); /* 確認窗作廢:這是框選不是講話 */
+            lift_input_voice_stop();
+            /* **停止錄音還不夠,那一段要整個丟掉。** 真人的手勢是「長按 → 停一下 → 才拖」,
+               不是 150ms 內立刻拖:真機 2026-08-01 實測長按到開始拖隔了 5 秒,那 5 秒早就錄進去
+               並插進文字裡了(founder 看到文字一直變長)。founder 的語意是「移動就是圈選」——
+               既然這一按最後被判定成框選,它就從來不是一次口述。 */
+            if (was_recording)
+            {
+                extern bool commu_send_lift_input_cancel_segment(void);
+                commu_send_lift_input_cancel_segment();
+                LOG_I("[lift_input] drag started mid-dictation — segment discarded");
+            }
+            extern void motor_pattern_unlocked(void);
+            motor_pattern_unlocked(); /* 進入框選的觸覺提示 */
+            LOG_I("[lift_input] selection drag from letter %d", (int)s_lift_sel_anchor);
+        }
+        uint32_t idx;
+        if (lift_input_letter_at(cur, &idx))
+            lift_sel_apply(s_lift_sel_anchor, (int32_t)idx);
+        break;
+    }
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        lift_longpress_arm_stop();
+        lift_input_voice_stop();
+        if (s_lift_dragging)
+        {
+            s_lift_dragging = false;
+            s_lift_sel_anchor = -1; /* 選取範圍留著等刪除鍵,只收掉拖動狀態 */
+            if (lift_sel_active())
+                LOG_I("[lift_input] selection [%d,%d)", (int)s_lift_sel_from, (int)s_lift_sel_to);
+            else
+                lift_sel_clear(); /* 拖回原點 = 空選取,別留一個看不見的狀態 */
+        }
+        else
+        {
+            s_lift_sel_anchor = -1;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+/* 「沒東西可送」的觸覺回饋。靜默忽略跟「這顆按鈕是死的」在使用者眼裡完全一樣 —— 真機上
+   founder 因此連按了 8 次 logo。震一下代表「收到了,但目前沒有文字」。 */
+static void lift_input_reject_feedback(void)
+{
+    extern void motor_pattern_unlocked(void);
+    motor_pattern_unlocked();
+}
+
+/* 剛講完話、轉錄還在路上的寬限期。真機 2026-08-01:放開麥克風到轉錄抵達實測隔了 33 秒
+   (STT 往返 + AI 整理),使用者早就按下送出了,卻被「現在框裡沒字」擋掉,得再按第二次。
+   這個窗口內放行,由手機端扣住該次送出、等文字到齊再執行(它本來就有這套 hold 機制)。 */
+#define LIFT_PENDING_TEXT_GRACE_MS 45000
+
+static bool lift_input_voice_just_ended(void)
+{
+    if (s_lift_voice_active)
+        return true; /* 還在錄音,文字必然還沒定稿 */
+    if (s_lift_voice_stopped_at == 0)
+        return false;
+    return (rt_tick_get() - s_lift_voice_stopped_at) <
+           rt_tick_from_millisecond(LIFT_PENDING_TEXT_GRACE_MS);
+}
+
+static bool lift_input_has_text(void)
+{
+    if (!s_lift_input_label || !lv_obj_is_valid(s_lift_input_label))
+        return false;
+    const char *t = lv_label_get_text(s_lift_input_label);
+    if (t == NULL || t[0] == '\0')
+        return false;
+    return strcmp(t, LV_EXT_STR_GET_BY_KEY(listening, "Listening")) != 0;
+}
+
+/* fwd — all defined further down this file. */
+static void feed_single_device_options(const char *device_id);
+void instruction_list_bar_device_dismiss(void);
+void instruction_list_open_browse(void);
+void instruction_list_close_lift_input_view(void);
+bool instruction_list_lift_input_view_open(void);
+static void lift_input_hide_view(void);
+static void lift_del_btn_event_cb(lv_event_t *evt);
+static void lift_del_update_icon(void); /* 有字=退格圖 / 沒字=退出圖 */
+
+/* icon_send:把暫存文字打進「剛剛點的那個輸入框」。手機收到 0x1d dest=field 後送
+   airMouse sendToFocusedInput(電腦打字 + 收掉它的面板),手錶這邊直接收乾淨整個 session
+   —— founder:「發給輸入框後手錶就可以離開這模式」。 */
+static void lift_send_btn_event_cb(lv_event_t *evt)
+{
+    if (lv_event_get_code(evt) != LV_EVENT_CLICKED)
+        return;
+    if (!lift_input_has_text() && !lift_input_voice_just_ended())
+    {
+        LOG_I("[lift_input] send tapped with no text — ignored");
+        lift_input_reject_feedback();
+        return;
+    }
+    extern bool commu_send_lift_input_commit(const char *dest);
+    commu_send_lift_input_commit("field");
+    instruction_list_close_lift_input_view();
+}
+
+/* img_logo:把暫存文字當成 skaibar 查詢送出。電腦端 runSkaibar(submit=false) 會離開
+   input-only 讓選項展開,配套的 skaibarQuery 讓那台把重算後的選項 push 回來 → 手錶這邊
+   叫出同一份清單(先用 registry placeholder 墊著,push 一到就換成電腦的即時選項)。
+   刻意清掉 s_opened_by_lift:清單開出來之後手腕放下不該把它一起收掉(那個 close 路徑
+   只服務「舉起帶出的面板」)。 */
+static void lift_logo_btn_event_cb(lv_event_t *evt)
+{
+    if (lv_event_get_code(evt) != LV_EVENT_CLICKED)
+        return;
+    if (!lift_input_has_text() && !lift_input_voice_just_ended())
+    {
+        LOG_I("[lift_input] logo tapped with no text — ignored");
+        lift_input_reject_feedback();
+        return;
+    }
+    extern bool commu_send_lift_input_commit(const char *dest);
+    commu_send_lift_input_commit("skaibar");
+    lift_input_voice_stop();
+    lift_input_hide_view();
+    s_opened_by_lift = false; /* 之後的 wrist-drop 不再收掉這個清單 */
+    extern void instruction_list_bar_set_blur(bool on);
+    instruction_list_bar_set_blur(false); /* 非錶盤、不模糊 */
+    instruction_list_open_browse();
+}
+
+static void ensure_lift_input_view(void)
+{
+    if (s_lift_input_view && lv_obj_is_valid(s_lift_input_view))
         return;
     if (!s_global_bar_layer || !lv_obj_is_valid(s_global_bar_layer))
         return;
 
-    s_lift_mic_view = lv_obj_create(s_global_bar_layer);
-    lv_obj_remove_style_all(s_lift_mic_view);
-    lv_obj_set_size(s_lift_mic_view, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_pos(s_lift_mic_view, 0, 0);
-    lv_obj_clear_flag(s_lift_mic_view, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_lift_mic_view, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_color(s_lift_mic_view, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(s_lift_mic_view, LV_OPA_40, 0);
-    lv_obj_add_flag(s_lift_mic_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_event_cb(s_lift_mic_view, lift_mic_view_event_cb, LV_EVENT_ALL, NULL);
+    s_lift_input_view = lv_obj_create(s_global_bar_layer);
+    lv_obj_remove_style_all(s_lift_input_view);
+    lv_obj_set_size(s_lift_input_view, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_pos(s_lift_input_view, 0, 0);
+    lv_obj_clear_flag(s_lift_input_view, LV_OBJ_FLAG_SCROLLABLE);
+    /* CLICKABLE 但不掛語音 cb:純粹吃掉落在面板空白處的觸控,不讓它穿到底下的觸控板
+       (滑鼠 app 的整頁 trackpad)去亂動游標。 */
+    lv_obj_add_flag(s_lift_input_view, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(s_lift_input_view, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_lift_input_view, LV_OPA_40, 0);
+    lv_obj_add_flag(s_lift_input_view, LV_OBJ_FLAG_HIDDEN);
+    /* 放開的兜底(見 lift_input_view_event_cb):手指在哪裡離開都要結束錄音。 */
+    lv_obj_add_event_cb(s_lift_input_view, lift_input_view_event_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(s_lift_input_view, lift_input_view_event_cb, LV_EVENT_PRESS_LOST, NULL);
 
-    s_lift_mic_icon = lv_img_create(s_lift_mic_view);
-    lv_img_set_src(s_lift_mic_icon, &micro_icon);
-    lv_img_set_pivot(s_lift_mic_icon, micro_icon.header.w / 2, micro_icon.header.h / 2);
-    lv_obj_add_flag(s_lift_mic_icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-    lv_img_set_zoom(s_lift_mic_icon, LIFT_MIC_ICON_ZOOM);
-    lv_obj_align(s_lift_mic_icon, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_clear_flag(s_lift_mic_icon, LV_OBJ_FLAG_CLICKABLE);
+    /* 輸入框 —— 與 skaibar 的 ai_box 同一張 frame 圖 + 同一套兩行轉錄窗,只是置中而非貼底,
+       讓上下各留出圖示列與麥克風的位置。 */
+    s_lift_input_box = lv_obj_create(s_lift_input_view);
+    lv_obj_remove_style_all(s_lift_input_box);
+    lv_obj_set_size(s_lift_input_box, LIFT_BOX_W, LIFT_BOX_H);
+    lv_obj_align(s_lift_input_box, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(s_lift_input_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(s_lift_input_box, LV_OBJ_FLAG_CLICKABLE);
 
-    s_lift_mic_ripple = lv_obj_create(s_lift_mic_view);
-    lv_obj_remove_style_all(s_lift_mic_ripple);
-    lv_obj_set_style_border_color(s_lift_mic_ripple, lv_color_hex(LMIC_RIPPLE_COLOR), 0);
-    lv_obj_set_style_border_width(s_lift_mic_ripple, 3, 0);
-    lv_obj_set_style_radius(s_lift_mic_ripple, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_opa(s_lift_mic_ripple, LV_OPA_TRANSP, 0);
-    lv_obj_add_flag(s_lift_mic_ripple, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-    lv_obj_clear_flag(s_lift_mic_ripple, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(s_lift_mic_ripple, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_lift_mic_ripple, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_t *frame = lv_img_create(s_lift_input_box);
+    lv_img_set_src(frame, &message_widget_bg);
+    lv_obj_center(frame);
+    lv_obj_clear_flag(frame, LV_OBJ_FLAG_CLICKABLE);
+
+    const lv_font_t *vt_font = LV_EXT_FONT_GET(get_system_font_size(0));
+    s_lift_input_clip = lv_obj_create(s_lift_input_box);
+    lv_obj_remove_style_all(s_lift_input_clip);
+    lv_obj_set_scrollbar_mode(s_lift_input_clip, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(s_lift_input_clip, LV_OBJ_FLAG_SCROLL_CHAIN);
+    /* 使用者捲動關掉(程式仍可 lv_obj_scroll_* 貼齊最新兩行)。留著會出事:長按開始錄音後手指
+       只要微飄,LVGL 就把這次按壓判成捲動、送 PRESS_LOST 停掉錄音,手指還在上面又接著一次
+       按下 —— 正好組成「STOP 後立刻 START」,而那個序列會 hard fault 在 voice_re 執行緒
+       (2026-07-31 已釘死的既有語音管線重入脆弱點)。 */
+    lv_obj_clear_flag(s_lift_input_clip, LV_OBJ_FLAG_SCROLLABLE);
+    /* 輸入框上的插入手勢(founder 2026-08-01):點一下移游標、長按移游標並直接開始錄音。 */
+    lv_obj_add_flag(s_lift_input_clip, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_lift_input_clip, lift_input_clip_event_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(s_lift_input_clip, lift_input_clip_event_cb, LV_EVENT_SHORT_CLICKED, NULL);
+    lv_obj_add_event_cb(s_lift_input_clip, lift_input_clip_event_cb, LV_EVENT_LONG_PRESSED, NULL);
+    /* 長按後拖動 = 框選。PRESSING 只在觸點移動時送,拿來當「手指動了」的訊號剛好。 */
+    lv_obj_add_event_cb(s_lift_input_clip, lift_input_clip_event_cb, LV_EVENT_PRESSING, NULL);
+    lv_obj_add_event_cb(s_lift_input_clip, lift_input_clip_event_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(s_lift_input_clip, lift_input_clip_event_cb, LV_EVENT_PRESS_LOST, NULL);
+
+    s_lift_input_label = lv_label_create(s_lift_input_clip);
+    lv_label_set_text(s_lift_input_label, "");
+    lv_obj_set_width(s_lift_input_label, 360);
+    lv_label_set_long_mode(s_lift_input_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(s_lift_input_label, lv_color_white(), 0);
+    lv_obj_set_style_text_opa(s_lift_input_label, LV_OPA_80, 0);
+    lv_obj_set_style_text_font(s_lift_input_label, vt_font, 0); /* CJK 字型,否則中文變豆腐 */
+    lv_obj_set_style_text_align(s_lift_input_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(s_lift_input_label, LV_ALIGN_TOP_MID, 0, 0);
+    /* 框選的反白(LV_PART_SELECTED,由 lv_label_set_text_sel_start/end 觸發)。半透明的游標
+       同色,讓「插入點」與「選取範圍」看起來是同一套語彙;文字維持白色不被吃掉。 */
+    lv_obj_set_style_bg_color(s_lift_input_label, lv_color_hex(LMIC_RIPPLE_COLOR), LV_PART_SELECTED);
+    lv_obj_set_style_bg_opa(s_lift_input_label, LV_OPA_30, LV_PART_SELECTED);
+    lv_obj_set_style_text_color(s_lift_input_label, lv_color_white(), LV_PART_SELECTED);
+    {
+        /* 顯示窗高度 = 這個框裝得下的行數,不是底部 skaibar 那種兩行字幕窗。
+           founder 2026-08-01 實測回報:電腦顯示「12345語音辨識12345一次測試676789101112」,
+           手錶只看得到「12345一次測試676789101112」—— 前面被捲出視野。資料其實是完整的
+           (log 證實手錶收到整串、送出也完整),純粹是我沿用了字幕用的 2 行窗:那是為「框大半在
+           畫面外、只需看最新兩行」設計的,而立起面板的框 442x252 整個置中、完全看得到,使用者
+           正在**編輯**文字,看不到前文就沒法判斷要插在哪。
+           超出仍會貼齊最新內容(捲到底),只是門檻高很多。 */
+        lv_coord_t lh = lv_font_get_line_height(vt_font);
+        lv_coord_t ls = lv_obj_get_style_text_line_space(s_lift_input_label, LV_PART_MAIN);
+        lv_coord_t avail = LIFT_BOX_H - LIFT_BOX_TEXT_INSET_V * 2;
+        uint8_t rows = (uint8_t)((avail + ls) / (lh + ls));
+        if (rows < 2) rows = 2;
+        if (rows > LIFT_BOX_MAX_ROWS) rows = LIFT_BOX_MAX_ROWS;
+        lv_obj_set_size(s_lift_input_clip, 360, rows * lh + (rows - 1) * ls);
+        lv_obj_align(s_lift_input_clip, LV_ALIGN_CENTER, 0, 0); /* 框內置中(框已置中) */
+        LOG_I("[lift_input] text window rows=%u (lh=%d ls=%d avail=%d)",
+              (unsigned)rows, (int)lh, (int)ls, (int)avail);
+    }
+
+    /* 插入游標 —— 長按定位後畫在該字元前緣的細直線。與 label 同 parent(clip),所以會跟著
+       兩行窗一起裁切/捲動。非 clickable,不擋長按。 */
+    s_lift_caret = lv_obj_create(s_lift_input_clip);
+    lv_obj_remove_style_all(s_lift_caret);
+    lv_obj_set_style_bg_color(s_lift_caret, lv_color_hex(LMIC_RIPPLE_COLOR), 0);
+    lv_obj_set_style_bg_opa(s_lift_caret, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(s_lift_caret, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(s_lift_caret, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_lift_caret, LV_OBJ_FLAG_HIDDEN);
+
+    /* 游標下的圓球把手。建在 caret 之後 = 在它上面,而且**要 clickable**(游標本身不是) */
+    s_lift_caret_ball = lv_obj_create(s_lift_input_clip);
+    lv_obj_remove_style_all(s_lift_caret_ball);
+    lv_obj_set_size(s_lift_caret_ball, LIFT_CARET_BALL_D, LIFT_CARET_BALL_D);
+    lv_obj_set_style_bg_color(s_lift_caret_ball, lv_color_hex(LMIC_RIPPLE_COLOR), 0);
+    lv_obj_set_style_bg_opa(s_lift_caret_ball, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(s_lift_caret_ball, LV_RADIUS_CIRCLE, 0);
+    lv_obj_add_flag(s_lift_caret_ball, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(s_lift_caret_ball, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_ext_click_area(s_lift_caret_ball, 14); /* 22px 球 → 50px 觸控標的 */
+    lv_obj_add_event_cb(s_lift_caret_ball, lift_caret_ball_event_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(s_lift_caret_ball, lift_caret_ball_event_cb, LV_EVENT_PRESSING, NULL);
+    lv_obj_add_event_cb(s_lift_caret_ball, lift_caret_ball_event_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(s_lift_caret_ball, lift_caret_ball_event_cb, LV_EVENT_PRESS_LOST, NULL);
+    lv_obj_add_flag(s_lift_caret_ball, LV_OBJ_FLAG_HIDDEN);
+
+    /* 上方圖示列 —— logo(送 AI)恆在、send(送回輸入框)依電腦聚焦狀態顯示。
+       兩顆都在時 logo 在左、send 在右(iOS 慣例:主要動作在右);只有 logo 時置中。 */
+    s_lift_logo_btn = lv_img_create(s_lift_input_view);
+    lv_img_set_src(s_lift_logo_btn, &img_logo);
+    lv_obj_add_flag(s_lift_logo_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_lift_logo_btn, lift_logo_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+    s_lift_send_btn = lv_img_create(s_lift_input_view);
+    lv_img_set_src(s_lift_send_btn, &icon_send);
+    lv_obj_add_flag(s_lift_send_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_lift_send_btn, LIFT_SEND_EXT_CLICK); /* 34px 圖 → 64px 觸控標的 */
+    lv_obj_add_event_cb(s_lift_send_btn, lift_send_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(s_lift_send_btn, LV_OBJ_FLAG_HIDDEN);
+
+    /* 下方小麥克風 —— 64px 原生(zoom 不動),與底部 bar 的 mic glyph 同尺寸;舊版的 128px
+       置中大圖已由 founder 2026-07-31 取消。 */
+    s_lift_mic_btn = lv_img_create(s_lift_input_view);
+    lv_img_set_src(s_lift_mic_btn, &micro_icon);
+    lv_img_set_pivot(s_lift_mic_btn, micro_icon.header.w / 2, micro_icon.header.h / 2);
+    lv_obj_add_flag(s_lift_mic_btn, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_obj_align(s_lift_mic_btn, LV_ALIGN_CENTER, LIFT_MIC_DX, LIFT_MIC_DY);
+    lv_obj_add_flag(s_lift_mic_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_lift_mic_btn, lift_mic_btn_event_cb, LV_EVENT_ALL, NULL);
+
+    /* 刪除鍵 —— 與麥克風並排。點一下刪一個字、長按連續刪(見 lift_del_btn_event_cb)。 */
+    s_lift_del_btn = lv_img_create(s_lift_input_view);
+    lv_img_set_src(s_lift_del_btn, &backspace_icon);
+    lv_obj_align(s_lift_del_btn, LV_ALIGN_CENTER, LIFT_DEL_DX, LIFT_MIC_DY);
+    lv_obj_add_flag(s_lift_del_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_lift_del_btn, LIFT_DEL_EXT_CLICK);
+    lv_obj_add_event_cb(s_lift_del_btn, lift_del_btn_event_cb, LV_EVENT_SHORT_CLICKED, NULL);
+    lv_obj_add_event_cb(s_lift_del_btn, lift_del_btn_event_cb, LV_EVENT_LONG_PRESSED, NULL);
+    lv_obj_add_event_cb(s_lift_del_btn, lift_del_btn_event_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(s_lift_del_btn, lift_del_btn_event_cb, LV_EVENT_PRESS_LOST, NULL);
+
+    /* 這個函式只會在 LVGL 執行緒跑(開面板路徑),記下身分供 set_text 分辨空字串來源。 */
+    s_lift_lvgl_thread = rt_thread_self();
+
+    /* 錄音脈衝圈:與輸入框同尺寸的圓角矩形,從框緣往外擴散漸淡。建在最後但要移到底層,
+       否則會蓋住框本身與圖示。 */
+    s_lift_box_glow = lv_obj_create(s_lift_input_view);
+    lv_obj_remove_style_all(s_lift_box_glow);
+    lv_obj_set_style_border_color(s_lift_box_glow, lv_color_hex(LMIC_RIPPLE_COLOR), 0);
+    lv_obj_set_style_border_width(s_lift_box_glow, 3, 0);
+    lv_obj_set_style_radius(s_lift_box_glow, LIFT_BOX_GLOW_RADIUS, 0);
+    lv_obj_set_style_bg_opa(s_lift_box_glow, LV_OPA_TRANSP, 0);
+    lv_obj_set_size(s_lift_box_glow, LIFT_BOX_W, LIFT_BOX_H);
+    lv_obj_align(s_lift_box_glow, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_flag(s_lift_box_glow, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_obj_clear_flag(s_lift_box_glow, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(s_lift_box_glow, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_lift_box_glow, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_background(s_lift_box_glow);
 }
 
-/* Forward decls — both are defined further down this file, after this point. */
-static void feed_single_device_options(const char *device_id);
-void instruction_list_bar_device_dismiss(void);
-
-/* 公開：舉起手勢(motion thread→hid_mouse→這裡)呼叫。只有控制中那台設備目前有聚焦
-   輸入框才開這個大麥克風畫面；沒有就直接 return false、畫面上什麼都不變(呼叫端據此
-   決定要不要動自己的 bar)。跟 instruction_list_bar_tap_device 的 s_remote_target_
-   has_focus 分支共用同一套後端狀態設置(單設備模式 + 通知電腦開它的 skaibar，語音
-   轉錄才會正確路由到那一台)，但完全不觸碰清單/輸入框 UI。 */
-bool instruction_list_open_lift_mic_view(const char *device_id)
+/* 依「電腦目前有沒有聚焦輸入框」擺放上方圖示:有 → logo 左 / send 右;沒有 → 只有 logo,
+   置中。面板開著時焦點變化也會走這裡(instruction_list_set_remote_target_focus)。 */
+static void lift_input_layout_icons(void)
 {
-    if (!s_remote_target_has_focus)
-        return false; /* 控制中那台沒有聚焦輸入框 → 什麼都不做 */
+    if (!s_lift_logo_btn || !lv_obj_is_valid(s_lift_logo_btn))
+        return;
+    bool show_send = s_remote_target_has_focus;
+    if (show_send)
+    {
+        lv_obj_align(s_lift_logo_btn, LV_ALIGN_CENTER, LIFT_LOGO_DX, LIFT_ICON_ROW_DY);
+        if (s_lift_send_btn && lv_obj_is_valid(s_lift_send_btn))
+        {
+            lv_obj_align(s_lift_send_btn, LV_ALIGN_CENTER, LIFT_SEND_DX, LIFT_ICON_ROW_DY);
+            lv_obj_clear_flag(s_lift_send_btn, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    else
+    {
+        lv_obj_align(s_lift_logo_btn, LV_ALIGN_CENTER, 0, LIFT_ICON_ROW_DY);
+        if (s_lift_send_btn && lv_obj_is_valid(s_lift_send_btn))
+            lv_obj_add_flag(s_lift_send_btn, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+/* 把輸入框設回「Listening」佔位。**只能在 LVGL 執行緒呼叫**(開面板路徑) —— 見
+   instruction_list_lift_input_set_text 裡關於 voice_re 堆疊的說明。 */
+static void lift_input_reset_placeholder(void)
+{
+    if (!s_lift_input_label || !lv_obj_is_valid(s_lift_input_label))
+        return;
+    lv_label_set_text(s_lift_input_label, LV_EXT_STR_GET_BY_KEY(listening, "Listening"));
+}
+
+/* 公開:手機下行的轉錄(refresh_ai_chat_input_message 的 lift 分支)寫進面板。 */
+void instruction_list_lift_input_set_text(const char *text)
+{
+    /* TEMP DIAG(2026-07-31):確認轉錄真的走到面板。定位完拿掉。 */
+    LOG_I("[lift_input][diag] set_text(\"%s\") label=%p", text ? text : "(null)",
+          (void *)s_lift_input_label);
+    if (!s_lift_input_label || !lv_obj_is_valid(s_lift_input_label))
+        return;
+    /* ⚠ 空字串這條路是 bloc_v2t 在語音起始時**直接呼叫**進來的,跑在 voice_re 執行緒上
+       (不走 LVGL 訊息佇列)。那條執行緒的堆疊是照音訊工作量給的,**吃不下任何 LVGL 遞迴** ——
+       連 lv_label_set_text 都不行:WRAP 標籤設字會走文字量測(FreeType)+失效重算。真機
+       2026-08-01 打爆兩次,第二次 psr/lr/pc 全是 0x23232323(RT-Thread 堆疊填充值)。
+       第一次我只把這條路徑「變便宜」(拿掉 update_layout/捲動)——不夠,照樣爆。
+       所以現在**整個忽略空字串**:一行 LVGL 都不碰。
+       這對功能反而是對的 —— 佔位文字由開面板時(LVGL 執行緒)的 lift_input_reset_placeholder()
+       負責;而在連續補話的情境下,開始講下一段時把框清成「Listening」本來就會把使用者正在
+       編輯的內容藏起來,不該做。 */
+    bool has = (text != NULL && text[0] != '\0' && strspn(text, " \t\n\r") < strlen(text));
+    if (!has)
+    {
+        /* …**但**「使用者把字一個個刪光」也是走這裡送空字串回來的,那一條來自 BLE 下行、跑在
+           LVGL 執行緒上,完全可以碰 UI。不分辨的話畫面會停在最後那個字不放(而且刪除鍵永遠
+           不會變成退出鍵)。用建立物件時記下的執行緒身分比對,不猜名字。 */
+        if (rt_thread_self() != s_lift_lvgl_thread)
+            return;
+        lift_input_reset_placeholder();
+        lift_sel_clear();
+        lift_input_place_caret(-1);
+        lift_del_update_icon();
+        return;
+    }
+    uint32_t before = lift_input_char_count();
+    lv_label_set_text(s_lift_input_label, text);
+    lift_del_update_icon(); /* 從空變有字 → 退出圖換回退格圖 */
+    /* 文字換過了,舊的選取索引指向的已經不是同一段字 → 收掉。**但手指正在拖的時候不能收** ——
+       轉錄會斷斷續續補送(真機 2026-08-01:同一串文字連推三次),那會在使用者拖到一半把選取
+       連同 anchor 一起抹掉。拖動中的選取由下一個 PRESSING 依 anchor 重算,本來就會自己更新。 */
+    if (!s_lift_dragging)
+        lift_sel_clear();
+    /* 游標要**留著跟著走**,不能一換字就收掉 —— 它是這個面板唯一的位置指示,收掉之後使用者
+       就不知道下一次刪除/補話會發生在哪(founder 2026-08-01:「按過一次刪除鍵後游標就消失了,
+       我不知道下個會刪哪裡」)。手錶不知道手機那邊 prefix/段/suffix 怎麼切,但**字數差就夠了**:
+       改動一律發生在插入點上,所以新位置 = 舊位置 + (新字數 - 舊字數)。
+         插入一段 5 個字 → 游標落在插入內容的尾巴;
+         刪掉一個字     → 游標往前退一格;
+         逐字稿逐漸長長 → 游標跟著長。
+       停在尾端(-1)的情況不用算,render 每次都取當下字數。 */
+    if (s_lift_caret_pos >= 0)
+    {
+        int32_t moved = s_lift_caret_pos + ((int32_t)lift_input_char_count() - (int32_t)before);
+        s_lift_caret_pos = (moved > 0) ? moved : 0;
+    }
+    lift_caret_render();
+    /* 兩行窗釘在最新內容(同 voice_transcript_scroll_to_bottom 的理由)。 */
+    if (s_lift_input_clip && lv_obj_is_valid(s_lift_input_clip))
+    {
+        lv_obj_update_layout(s_lift_input_clip);
+        lv_coord_t bottom = lv_obj_get_scroll_bottom(s_lift_input_clip);
+        if (bottom > 0)
+            lv_obj_scroll_by(s_lift_input_clip, 0, -bottom, LV_ANIM_OFF);
+        else
+            lv_obj_scroll_to_y(s_lift_input_clip, 0, LV_ANIM_OFF);
+    }
+}
+
+/* TEMP DIAG(2026-08-01 founder 要求):顯示「還沒經過 AI 修繕」的原始逐字稿。LVGL 執行緒
+   (0x1f 下行走既有的訊息佇列)。定位完連同 KEY_LIFT_INPUT_RAW 一起移除。 */
+/* 刪除鍵(founder 2026-08-01:「跟麥克風並排,不是清空,要一個個刪除;按一次刪一個字,長按才
+   開始連續刪除」)。實際刪除在手機端做 —— 暫存文字的單一真相在那裡,而且刪一個「字」要按
+   code point 算(中文一個字是 3 bytes),手錶只負責發指令。 */
+static lv_timer_t *s_lift_del_repeat = NULL;
+
+/* 沒字 = 這顆鍵當退出鍵。圖示跟著換,不然使用者按下去會以為是刪除卻整個離開。 */
+static void lift_del_update_icon(void)
+{
+    if (!s_lift_del_btn || !lv_obj_is_valid(s_lift_del_btn))
+        return;
+    lv_img_set_src(s_lift_del_btn, lift_input_has_text() ? (const void *)&backspace_icon
+                                                         : (const void *)&down_arrow);
+}
+
+static void lift_del_send_one(void)
+{
+    extern bool commu_send_lift_input_delete(void);
+    extern bool commu_send_lift_input_delete_range(int from, int to);
+    /* 有框選就整段刪(founder 2026-08-01);刪完選取消失,長按連刪的後續 tick 自然退回一次一字。 */
+    if (lift_sel_active())
+    {
+        LOG_I("[lift_input] delete selection [%d,%d)", (int)s_lift_sel_from, (int)s_lift_sel_to);
+        commu_send_lift_input_delete_range((int)s_lift_sel_from, (int)s_lift_sel_to);
+        /* 游標落在被刪範圍的起點 —— 手機端回推的新文字會用字數差把它帶到同一個位置。 */
+        s_lift_caret_pos = s_lift_sel_from;
+        lift_sel_clear();
+        return;
+    }
+    commu_send_lift_input_delete();
+}
+
+static void lift_del_repeat_cb(lv_timer_t *t)
+{
+    (void)t;
+    lift_del_send_one();
+}
+
+static void lift_del_stop_repeat(void)
+{
+    if (s_lift_del_repeat)
+    {
+        lv_timer_del(s_lift_del_repeat);
+        s_lift_del_repeat = NULL;
+    }
+}
+
+static void lift_del_btn_event_cb(lv_event_t *evt)
+{
+    /* 框裡沒字 = 這顆鍵是退出鍵(founder 2026-08-01)。放在最前面攔截,連長按連刪也不會啟動 ——
+       空面板按住不放不該「連續退出」。 */
+    if (!lift_input_has_text())
+    {
+        if (lv_event_get_code(evt) == LV_EVENT_SHORT_CLICKED)
+        {
+            LOG_I("[lift_input] delete key acted as EXIT (box empty)");
+            instruction_list_close_lift_input_view();
+        }
+        return;
+    }
+    switch (lv_event_get_code(evt))
+    {
+    case LV_EVENT_SHORT_CLICKED:
+        lift_del_send_one(); /* 點一下 = 刪一個字 */
+        break;
+    case LV_EVENT_LONG_PRESSED:
+        /* 長按 = 連續刪。自己開 timer 控速,不靠 LVGL 的 LONG_PRESSED_REPEAT ——
+           那個間隔由全域設定決定,對「按住刪字」來說太慢。 */
+        lift_del_stop_repeat();
+        lift_del_send_one(); /* 立刻先刪一個,不要等第一次 tick */
+        s_lift_del_repeat = lv_timer_create(lift_del_repeat_cb, LIFT_DEL_REPEAT_MS, NULL);
+        break;
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        lift_del_stop_repeat();
+        break;
+    default:
+        break;
+    }
+}
+
+static void lift_input_hide_view(void)
+{
+    lift_del_stop_repeat();    /* 面板收掉時別留著連續刪除的 timer */
+    lift_caret_blink_stop();   /* 同理:看不見的游標不用繼續閃 */
+    lift_longpress_arm_stop(); /* 收面板當下正好在長按確認窗內 → 別在事後才開錄音 */
+    lift_sel_clear();
+    s_lift_dragging = false;
+    s_lift_view_shown = false;
+    if (s_lift_input_view && lv_obj_is_valid(s_lift_input_view))
+        lv_obj_add_flag(s_lift_input_view, LV_OBJ_FLAG_HIDDEN);
+    if (p_instruction_list_layout && p_instruction_list_layout->mic_bar &&
+        lv_obj_is_valid(p_instruction_list_layout->mic_bar))
+        lv_obj_clear_flag(p_instruction_list_layout->mic_bar, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* 公開：舉起手勢(motion thread→hid_mouse→這裡)呼叫。2026-07-31 起不再看電腦有沒有聚焦
+   輸入框 —— 一律開面板；聚焦狀態只決定 icon_send 出不出現。0x0E 帶 forceOpen=true +
+   inputOnly=true：電腦一定把 skaibar 叫出來，但只留輸入框(不出選項)，並把召喚前聚焦的
+   那個輸入框「記住」當 icon_send 的目的地(而不是邊講邊打進去)。 */
+bool instruction_list_open_lift_input_view(const char *device_id)
+{
     if (device_id == NULL || device_id[0] == '\0')
-        return false; /* 沒有控制目標 */
+        return false; /* 沒有控制目標 → 沒有單一電腦可開 */
+    /* 已經開著就什麼都不做。2026-07-31「放下不要直接退出」之後這條變成必要防護:面板會活過
+       手腕放下,使用者很自然會「立起→講話→放下看畫面→再立起」,而每次立起 pose 都會再打一次
+       這裡。沒有這個 early-return,下面的 instruction_list_lift_input_set_text("") 會把剛講完
+       的暫存文字洗回 Listening 佔位,等於默默吃掉使用者的輸入。 */
+    if (instruction_list_lift_input_view_open())
+        return true;
     if (!p_instruction_list_layout)
     {
         extern lv_obj_t *lv_instruction_list_layout_create(lv_obj_t * parent);
@@ -2319,28 +3277,30 @@ bool instruction_list_open_lift_mic_view(const char *device_id)
             return false;
     }
     s_bar_single_device = true;
-    extern bool commu_send_skaibar_open_device(bool force_open);
-    /* forceOpen=false — the lift-gesture direct voice-input flow must NOT pop the desktop's
-       Skaibar window; the desktop defers to its already-focused external text input instead. */
-    commu_send_skaibar_open_device(false);
+    extern bool commu_send_skaibar_open_device_ex(bool force_open, bool input_only);
+    commu_send_skaibar_open_device_ex(true, true);
+    /* 先把 registry 的 default_actions 餵進共享清單當 placeholder(清單此刻是隱藏的,看不到)。
+       這一步同時把 device_id 記進 s_single_device_id —— logo 送出後要開清單時用得到。 */
     feed_single_device_options(device_id);
     instruction_list_bar_set_visible(true);
-    /* 2026-07-17 founder：底部要維持滑鼠 app 自己那條 bar(trackpad_mic_btn,skaibar_img
-       長相)原樣不動，不要變成 mic glyph。instruction_list_bar_set_visible(true) 會連帶
-       露出這個共用層上的 mic_bar(它平時就是 mic glyph look，跟這次改動無關的既有設計)，
-       跟自有 bar 疊在同個位置——所以這裡把 mic_bar 整個藏起來，只留大麥克風 overlay。
-       同時 instruction_list_floating_bar_visible() 已改成在「只有大麥克風開著」時回報
-       false，讓滑鼠 app 自己的 bar 不會被既有的 overlap-avoidance sync 收掉。 */
-    if (p_instruction_list_layout && p_instruction_list_layout->mic_bar &&
-        lv_obj_is_valid(p_instruction_list_layout->mic_bar))
+    /* 共享層上的 mic_bar 會跟著露出來、和面板疊在一起 —— 這條流程用面板自己的小麥克風,
+       把它藏掉(同舊大麥克風流程的做法;instruction_list_floating_bar_visible() 也已把
+       「只有立起面板開著」回報成 false,滑鼠 app 自有的 bar 才不會被 overlap-sync 收掉)。 */
+    if (p_instruction_list_layout->mic_bar && lv_obj_is_valid(p_instruction_list_layout->mic_bar))
         lv_obj_add_flag(p_instruction_list_layout->mic_bar, LV_OBJ_FLAG_HIDDEN);
-    ensure_lift_mic_view();
-    if (s_lift_mic_view && lv_obj_is_valid(s_lift_mic_view))
+    ensure_lift_input_view();
+    if (s_lift_input_view && lv_obj_is_valid(s_lift_input_view))
     {
-        lv_obj_clear_flag(s_lift_mic_view, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(s_lift_mic_view);
-        /* 語音輸入已就緒(麥克風圖示現形)的觸覺回饋——立起手勢沒有視線外的確認手段，
-           短震讓使用者不用盯著錶就知道可以開始按住講話(同 AI 姿態觸發用的 25ms pattern)。 */
+        lift_input_reset_placeholder();    /* 新 session 從 Listening 佔位開始(LVGL 執行緒) */
+        lift_sel_clear();                  /* 上一輪的框選不要跟著新 session 進來 */
+        lift_input_place_caret(-1);        /* 順序要在佔位之後:render 讀當下文字才收得掉游標 */
+        lift_del_update_icon();            /* 空面板開場 = 退出鍵 */
+        lift_input_layout_icons();
+        lv_obj_clear_flag(s_lift_input_view, LV_OBJ_FLAG_HIDDEN);
+        s_lift_view_shown = true; /* 供其他執行緒唯讀查詢,不必走 LVGL 物件樹 */
+        lv_obj_move_foreground(s_lift_input_view);
+        /* 面板已就緒的觸覺回饋 —— 立起手勢沒有視線外的確認手段,短震讓使用者不用盯著錶
+           就知道可以按麥克風講話(同 AI 姿態觸發用的 25ms pattern)。 */
         extern void motor_pattern_unlocked(void);
         motor_pattern_unlocked();
     }
@@ -2348,38 +3308,39 @@ bool instruction_list_open_lift_mic_view(const char *device_id)
     return true;
 }
 
-/* 公開：大麥克風畫面目前是否開著。bloc_motion_tracking.c 的 air_mouse_process 用這個
-   gate 在畫面開著時跳過 report_air_mouse_data —— 純防禦：語音輸入期間手腕動作不該
-   兼職當游標(若 handfree/頂部飛鼠恰好是開的,舉腕講話會讓游標亂飄)。註:當初懷疑這
-   是「聚焦被搶走」的原因,後來證實真兇是手機端 voice-START re-summon 沒帶 forceOpen
-   (BleWatchConnection.kt),此 gate 非該 bug 的修法、留著當行為保險。 */
-bool instruction_list_lift_mic_view_open(void)
+/* 公開：立起輸入面板目前是否開著。bloc_motion_tracking.c 的 air_mouse_process 用這個
+   gate 在面板開著時跳過 report_air_mouse_data —— 純防禦：輸入期間手腕動作不該兼職當
+   游標(若 handfree/頂部飛鼠恰好是開的,舉腕講話會讓游標亂飄)。手寫模式的兩處 gate
+   同理。 */
+bool instruction_list_lift_input_view_open(void)
 {
-    return s_lift_mic_view && lv_obj_is_valid(s_lift_mic_view) &&
-           !lv_obj_has_flag(s_lift_mic_view, LV_OBJ_FLAG_HIDDEN);
+    /* **純布林值,不碰 LVGL**。原本寫成 lv_obj_is_valid() + lv_obj_has_flag(),但
+       lv_obj_is_valid() 會遞迴走遍整棵物件樹,而這個查詢被 air_mouse_process 從**周邊執行緒
+       每一幀**呼叫(還有轉錄路由從通訊執行緒呼叫)—— LVGL 執行緒在建/拆面板物件的同時被別條
+       執行緒走樹,就會炸。真機 2026-08-01 當場抓到:
+         pc=0x10123f40 → obj_valid_child+23 (lv_obj.o), hard fault on thread: peripher
+       旗標只由 LVGL 執行緒在顯示/隱藏的當下寫,其他執行緒唯讀,單一 bool 無需鎖。 */
+    return s_lift_view_shown;
 }
 
-/* 公開：舉起姿態結束(手腕放下)呼叫。只有這個 session 是舉起帶出的才動作
-   (s_opened_by_lift)，手動點 bar 開的清單/輸入框不受影響——同一個 wrist-drop
-   事件，如果使用者中途已經手動點開別的東西，這裡不該連帶關掉它。 */
-void instruction_list_close_lift_mic_view(void)
+/* 公開：舉起姿態結束(手腕放下)或 icon_send 送出後呼叫。只有這個 session 是舉起帶出的
+   才動作(s_opened_by_lift)，手動點 bar 開的清單/輸入框不受影響——同一個 wrist-drop
+   事件，如果使用者中途已經手動點開別的東西，這裡不該連帶關掉它。logo 送出後也會清掉
+   s_opened_by_lift，讓隨後的 wrist-drop 不去收剛叫出來的清單。 */
+void instruction_list_close_lift_input_view(void)
 {
     if (!s_opened_by_lift)
         return;
-    lift_mic_voice_stop();
-    if (s_lift_mic_view && lv_obj_is_valid(s_lift_mic_view))
-        lv_obj_add_flag(s_lift_mic_view, LV_OBJ_FLAG_HIDDEN);
-    if (p_instruction_list_layout && p_instruction_list_layout->mic_bar &&
-        lv_obj_is_valid(p_instruction_list_layout->mic_bar))
-        lv_obj_clear_flag(p_instruction_list_layout->mic_bar, LV_OBJ_FLAG_HIDDEN);
+    lift_input_voice_stop();
+    lift_input_hide_view();
     /* instruction_list_bar_device_dismiss() resets s_remote_target_has_focus = false as a
        side effect meant for the OLD tap-triggered flow. That flag must track the DESKTOP's
        live focus state (set by phone-relayed KEY_REMOTE_TEXT_FOCUS BLE frames whenever it
        actually changes there) — it must NOT get wiped just because we closed our local view.
        Real-hw found: without restoring it here, lifting the wrist a second time while the
-       desktop field is STILL genuinely focused silently fails instruction_list_open_lift_
-       mic_view's check until the next spontaneous focus-change broadcast happens to flip it
-       back — "mic worked once, never again" even though nothing changed on the desktop. */
+       desktop field is STILL genuinely focused silently changed what the panel offered
+       (icon_send missing) until the next spontaneous focus-change broadcast happened to flip
+       it back. */
     bool focus_before_dismiss = s_remote_target_has_focus;
     instruction_list_bar_device_dismiss();
     s_remote_target_has_focus = focus_before_dismiss;
@@ -2599,6 +3560,11 @@ void instruction_list_refeed_single_device(void)
 void instruction_list_set_remote_target_focus(bool focused)
 {
     s_remote_target_has_focus = focused;
+    /* 刻意只存值、不碰 UI —— 這條路徑是通訊執行緒(0x17 下行),在這裡動 LVGL 物件就是本專案
+       最典型的當機來源。立起輸入面板的 icon_send 顯示與否在「開面板的那一刻」決定
+       (lift_input_layout_icons,已在 LVGL 執行緒);正常操作順序本來就是「先點電腦上的輸入框
+       → 再立起手錶」,那時這個快取旗標早就是 true 了。面板開著期間才改變焦點的情形不成立:
+       面板是全螢幕 overlay,手錶自己的觸控板被蓋住,使用者沒法用手錶去點電腦上的別的欄位。 */
 }
 
 /* 公開：給 STANDALONE 滑鼠 app(APP_ID_MOUSE)用的「單一控制設備」版 bar-tap。與
@@ -3316,11 +4282,11 @@ bool instruction_list_floating_bar_visible(void)
     if (!s_global_bar_layer || !lv_obj_is_valid(s_global_bar_layer) ||
         lv_obj_has_flag(s_global_bar_layer, LV_OBJ_FLAG_HIDDEN))
         return false;
-    /* 舉起帶出的大麥克風畫面單獨顯示時不算「浮層 bar 已出現」——這個情境下
-       mic_bar 本身是隱藏的(見 instruction_list_open_lift_mic_view)，滑鼠 app
+    /* 舉起帶出的輸入面板單獨顯示時不算「浮層 bar 已出現」——這個情境下
+       mic_bar 本身是隱藏的(見 instruction_list_open_lift_input_view)，滑鼠 app
        自有的底部 bar(skaibar_img)應該維持原樣顯示，不被這裡的 sync 誤收掉。 */
-    if (s_opened_by_lift && s_lift_mic_view && lv_obj_is_valid(s_lift_mic_view) &&
-        !lv_obj_has_flag(s_lift_mic_view, LV_OBJ_FLAG_HIDDEN))
+    if (s_opened_by_lift && s_lift_input_view && lv_obj_is_valid(s_lift_input_view) &&
+        !lv_obj_has_flag(s_lift_input_view, LV_OBJ_FLAG_HIDDEN))
         return false;
     return true;
 }

@@ -2116,9 +2116,9 @@ static void air_mouse_process(rt_uint32_t ts, Quaternion *quaternion,
               (!switch_freehand_mode && !switch_mouse_scroll_mode)))
     {
         /* 舉起手勢的大麥克風畫面開著時不送游標——語音輸入期間手腕動作不該兼職當游標
-           (防禦性 gate,非聚焦被搶 bug 的修法,見 instruction_list_lift_mic_view_open 註解)。 */
-        extern bool instruction_list_lift_mic_view_open(void);
-        if (!instruction_list_lift_mic_view_open())
+           (防禦性 gate,非聚焦被搶 bug 的修法,見 instruction_list_lift_input_view_open 註解)。 */
+        extern bool instruction_list_lift_input_view_open(void);
+        if (!instruction_list_lift_input_view_open())
         {
             report_air_mouse_data(&delta_movement, ts);
         }
@@ -2362,15 +2362,11 @@ void set_gravity_position(int position)
     LOG_D("gravity_position: %d -> %d", gravity_position, position);
     int prev_gravity_position = gravity_position;
     gravity_position = position;
-    /* 2026-07-16 founder 改版：離開「立起」姿態(手腕放下)→收掉大麥克風畫面。跟下面
-       「進入立起」的觸發是同一組邊緣事件的兩端，必須在 gravity_position 被上面那行改寫
-       之前先存舊值，才能判斷「剛剛離開」。 */
-    if (prev_gravity_position == GRAVITY_POSITION_VERTICAL &&
-        gravity_position != GRAVITY_POSITION_VERTICAL)
-    {
-        extern void hid_mouse_trigger_close_lift_mic_from_pose(void);
-        hid_mouse_trigger_close_lift_mic_from_pose();
-    }
+    /* 2026-07-31 founder：「放下不要直接退出」—— 離開「立起」姿態不再收掉輸入面板。
+       原本這裡有一組 prev_gravity_position 邊緣偵測會發 LVGL msg 去關面板，實測就是它在
+       使用者「立起帶出面板 → 把手腕放下來看畫面/按按鈕」時把面板關掉的。面板改為只由明確
+       動作結束(icon_send / logo / 再點一次底部 bar)，故整條關閉觸發移除。
+       (prev_gravity_position 仍留著給下面的其他姿態判斷用。) */
     if (gravity_position == GRAVITY_POSITION_AI &&
         !SkaiWatchSys.motion_control_lock && !is_at_ai_interface() &&
         is_at_instruction_list())

@@ -4756,15 +4756,10 @@ void hid_mouse_trigger_skaibar_from_pose(void)
     lvgl_send_msg(msg);
 }
 
-// 2026-07-16 founder 改版：舉起手勢離開「立起」姿態(手腕放下)→跨層觸發收掉大麥克風
-// 畫面。同一套 motion-thread→LVGL-thread msg 轉發模式，見上面 hid_mouse_trigger_
-// skaibar_from_pose 的註解。
-void hid_mouse_trigger_close_lift_mic_from_pose(void)
-{
-    lvgl_msg_t msg;
-    msg.type = LVGL_MSG_TYPE_MOUSE_CLOSE_LIFT_MIC;
-    lvgl_send_msg(msg);
-}
+// (2026-07-16 的 hid_mouse_trigger_close_lift_mic_from_pose 已於 2026-07-31 移除：
+//  founder「放下不要直接退出」—— 手腕放下不再收掉立起輸入面板，所以整條 motion-thread→
+//  LVGL msg 的關閉轉發沒有觸發源了。面板現在只由使用者的明確動作結束：icon_send / logo /
+//  再點一次底部 bar。)
 
 /* ═══════════════════════════════════════════════════════════════════════════
    手寫模式 (handwriting) —— 2026-07-20 founder 三改定案:
@@ -5343,8 +5338,8 @@ static void hw_pull_begin(lv_coord_t dx0, lv_coord_t finger_x)
         return;
     if (!(is_at_mouse_mode() || app_control_get_mouse_mode()))
         return;
-    extern bool instruction_list_lift_mic_view_open(void);
-    if (instruction_list_lift_mic_view_open())
+    extern bool instruction_list_lift_input_view_open(void);
+    if (instruction_list_lift_input_view_open())
         return; /* 語音輸入中不搶 */
     dial_drag_state_reset(); /* 清 hold timer/拖曳/側立圓盤殘留 */
     ensure_hw_view();
@@ -5479,8 +5474,8 @@ static bool hw_view_stage_offscreen(void)
         return false;
     if (!(is_at_mouse_mode() || app_control_get_mouse_mode()))
         return false;
-    extern bool instruction_list_lift_mic_view_open(void);
-    if (instruction_list_lift_mic_view_open())
+    extern bool instruction_list_lift_input_view_open(void);
+    if (instruction_list_lift_input_view_open())
         return false; /* 語音輸入中不搶 */
     dial_drag_state_reset();
     ensure_hw_view();
@@ -5837,15 +5832,13 @@ static void text_input_bar_cb(lv_event_t *e)
         break;
 
     case LV_EVENT_LONG_PRESSED:
-        // 長按 bar → 跟短按同一入口：開全域 instruction-list skaibar(同錶盤底部 bar)。
-        // 差別只在時機 —— 長按不用等放開，LONG_PRESS 觸發就立刻進。bar_long_press_fired
-        // 讓 release 不再重複觸發。
+        // 長按 bar → 跟短按同一入口(既有設計)：開立起輸入面板。差別只在時機 —— 長按不用等
+        // 放開，LONG_PRESS 觸發就立刻進。bar_long_press_fired 讓 release 不再重複觸發。
         if (!s_bottom_input_disabled)
         {
             bar_long_press_fired = true;
-            extern void instruction_list_bar_tap_device(const char *device_id);
-            instruction_list_bar_tap_device(s_dev_active_id);
-            bar_ai_on_tap(); /* 列表/浮層 bar 一進來就立刻收自有 bar，避免重疊 */
+            extern void hid_mouse_toggle_lift_input_panel(void);
+            hid_mouse_toggle_lift_input_panel();
         }
         break;
 
@@ -5999,14 +5992,13 @@ static void text_input_bar_cb(lv_event_t *e)
                 max_move_y < 10 && !bottom_bar_gesture_timer_enabled &&
                 !is_bottom_bar_gesture_active && !bar_long_press_fired)
             {
-                // 純點擊：開「跟錶盤底部 bar 同一套」的全域 instruction-list skaibar
-                // (同一個元件 → 列表/輸入框樣式一致、兩段式)。1st tap 列表浮入(只放「控制中
-                // 那台」的選項)+ 叫那台電腦開它的 skaibar；2nd tap morph 輸入框+語音→那台。
-                // 取代滑鼠自己的 V2T skaibar。device_id 為空時 _device 內部退回一般 bar。
-                LOG_D("Bottom bar tap → instruction_list_bar_tap_device (單設備 skaibar)");
-                extern void instruction_list_bar_tap_device(const char *device_id);
-                instruction_list_bar_tap_device(s_dev_active_id);
-                bar_ai_on_tap(); /* 列表/浮層 bar 一進來就立刻收自有 bar，避免重疊 */
+                // 純點擊：跟「立起手錶」完全同一件事 —— 開立起輸入面板(founder 2026-07-31:
+                // 「按下方的圖片也要等於我立起手錶」)。取代舊的兩段式 instruction_list_bar_
+                // tap_device(列表→輸入框)。再點一次收掉：wrist-drop 已不再關面板，這個 toggle
+                // 就是使用者唯一的取消出口。
+                LOG_D("Bottom bar tap → lift-input panel (toggle)");
+                extern void hid_mouse_toggle_lift_input_panel(void);
+                hid_mouse_toggle_lift_input_panel();
             }
     #if USING_EDGE_BOTTOM_DETECTION
             if (bottom_bar_gesture_timer_enabled)
@@ -8777,18 +8769,31 @@ static void bar_ai_sync_set_hidden(bool hide)
     else if (!hide && hidden)
         lv_obj_clear_flag(trackpad_mic_btn, LV_OBJ_FLAG_HIDDEN);
 }
+
+/* 立起輸入面板開著時,觸控板自己的上下兩個圖示要一起讓位(founder 2026-08-01):頂部的
+   keyboard_icon 與底部的 skaibar_img。跟 bar_ai_sync_set_hidden 一樣由 poll 驅動,
+   所以不必在開/關兩處各記一次狀態。 */
+static void lift_chrome_set_hidden(bool hide)
+{
+    if (!s_top_logo || !lv_obj_is_valid(s_top_logo))
+        return;
+    bool hidden = lv_obj_has_flag(s_top_logo, LV_OBJ_FLAG_HIDDEN);
+    if (hide && !hidden)
+        lv_obj_add_flag(s_top_logo, LV_OBJ_FLAG_HIDDEN);
+    else if (!hide && hidden)
+        lv_obj_clear_flag(s_top_logo, LV_OBJ_FLAG_HIDDEN);
+}
 static void bar_ai_on_tap(void)
 {
     s_last_bar_tap_tick = rt_tick_get();
     bar_ai_sync_set_hidden(true); /* 立刻收，不等 poll → 第一次 tap 就不會看到兩條 */
 }
 
-// 「錶面立起正對臉」姿態觸發：在 LVGL thread 開啟固定的「直接語音輸入」大麥克風畫面
-// （2026-07-16 founder 改版，取代原本帶出單設備 skaibar 選項清單的行為）。ONLY 在控制中
-// 那台設備目前有聚焦輸入框(s_remote_target_has_focus)時才生效 —— 沒有就完全不做任何事
-// (連自有 bar 都不收，畫面上什麼都不會變)，由 instruction_list_open_lift_mic_view 內部
-// 判斷並回傳是否真的開了。由 motion thread 的 hid_mouse_trigger_skaibar_from_pose 發
-// LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR 轉進來，故此處已在 LVGL thread、可直接碰 UI。
+// 「錶面立起正對臉」姿態觸發：在 LVGL thread 開啟「立起輸入面板」(輸入框 + 上方 logo/send
+// + 下方小麥克風)。2026-07-31 founder 改版：不再要求控制中那台設備有聚焦輸入框——一律開，
+// 聚焦狀態只決定 icon_send 出不出現(見 instruction_list_open_lift_input_view)。唯一的無效
+// 情形是沒有控制目標(s_dev_active_id 空)。由 motion thread 的 hid_mouse_trigger_skaibar_
+// from_pose 發 LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR 轉進來，故此處已在 LVGL thread、可直接碰 UI。
 void open_skaibar_from_pose(void)
 {
     if (s_bottom_input_disabled)
@@ -8797,27 +8802,31 @@ void open_skaibar_from_pose(void)
     }
     if (s_hw_view_active)
     {
-        /* 側立手寫進行中不疊大麥克風——姿勢從側立轉到立起時,close-handwrite 保險
-           (set_gravity_position VERTICAL 邊緣)會先收掉手寫,下一次再立起才開語音。 */
+        /* 側立手寫進行中不疊輸入面板——姿勢從側立轉到立起時,close-handwrite 保險
+           (set_gravity_position VERTICAL 邊緣)會先收掉手寫,下一次再立起才開面板。 */
         return;
     }
-    extern bool instruction_list_open_lift_mic_view(const char *device_id);
-    instruction_list_open_lift_mic_view(s_dev_active_id);
-    /* 2026-07-17 founder：這條流程底部要維持自有 bar(skaibar_img)原樣，不收起來換成
-       mic glyph。舊的 bar_ai_on_tap() 是給「浮層清單/輸入框」流程用的 avoid-overlap
-       收法，這裡不再呼叫；instruction_list_floating_bar_visible() 也已改成在單獨顯示
-       大麥克風時回報 false，所以 poll sync(bar_ai_sync_timer_cb)不會把它收掉。 */
+    extern bool instruction_list_open_lift_input_view(const char *device_id);
+    instruction_list_open_lift_input_view(s_dev_active_id);
+    /* 底部自有 bar(skaibar_img)與頂部 keyboard_icon 由 poll sync(bar_ai_sync_timer_cb)
+       依 instruction_list_lift_input_view_open() 一起收掉 —— founder 2026-08-01：面板開著
+       時觸控板上下兩個圖示都要讓位。(2026-07-17 曾要求底部維持原樣，已被這次改口取代。) */
 }
 
-// 「錶面立起」姿態結束(手腕放下)觸發：收掉大麥克風畫面 + 收掉整個單設備 session。只有
-// 這個 session 是舉起帶出的才會動作(instruction_list_close_lift_mic_view 內部用
-// s_opened_by_lift 判斷)，手動點 bar 開的清單/輸入框不受影響。由 motion thread 的
-// hid_mouse_trigger_close_lift_mic_from_pose 發 LVGL_MSG_TYPE_MOUSE_CLOSE_LIFT_MIC
-// 轉進來。
-void close_lift_mic_from_pose(void)
+// 底部 bar 的 tap / 長按入口(founder 2026-07-31:「按下方的圖片也要等於我立起手錶」)。
+// 開 = 與立起姿態走完全同一條 open_skaibar_from_pose；已開 = 收掉。
+// 這個 toggle 同時是面板唯一的取消出口 —— wrist-drop 已不再關面板，沒有它使用者就只能
+// 靠送出或離開 app 才能脫身。LVGL thread(bar 的觸控 cb)呼叫，可直接碰 UI。
+void hid_mouse_toggle_lift_input_panel(void)
 {
-    extern void instruction_list_close_lift_mic_view(void);
-    instruction_list_close_lift_mic_view();
+    extern bool instruction_list_lift_input_view_open(void);
+    if (instruction_list_lift_input_view_open())
+    {
+        extern void instruction_list_close_lift_input_view(void);
+        instruction_list_close_lift_input_view();
+        return;
+    }
+    open_skaibar_from_pose();
 }
 /* 給 instruction_list 在「切換浮層 bar 顯示/隱藏的當幀」同步呼叫 → frame-perfect 交接，
    消除 poll 40ms 延遲造成的那一閃/空窗。off-mouse(trackpad_mic_btn NULL)為 no-op、錶盤不受影響。 */
@@ -8835,7 +8844,12 @@ static void bar_ai_sync_timer_cb(lv_timer_t *t)
     bool engaged = instruction_list_floating_bar_visible();
     bool tap_grace = (rt_tick_get() - s_last_bar_tap_tick) <
                      rt_tick_from_millisecond(BAR_TAP_MORPH_GRACE_MS);
-    bar_ai_sync_set_hidden(engaged || tap_grace);
+    /* 立起輸入面板也算「有東西蓋在上面」—— 2026-07-17 當時的決定是這條流程底部維持自有 bar
+       原樣,2026-08-01 founder 改口:面板開著時上下兩個圖示都要藏。以較新的為準。 */
+    extern bool instruction_list_lift_input_view_open(void);
+    bool lift = instruction_list_lift_input_view_open();
+    bar_ai_sync_set_hidden(engaged || tap_grace || lift);
+    lift_chrome_set_hidden(lift);
     dev_offline_overlay_sync(); /* active 設備斷線=灰版+「斷線」(順路 poll) */
 }
 

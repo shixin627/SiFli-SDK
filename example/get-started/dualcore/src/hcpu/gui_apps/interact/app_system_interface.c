@@ -495,6 +495,17 @@ void refresh_ai_chat_input_message(char *text)
         chat_page_set_transcript(text);
         return;
     }
+    /* 立起輸入面板(滑鼠 app,2026-07-31)開著時它擁有轉錄:文字要進面板自己的輸入框,而不是
+       底下那些 launcher widget。手機在放開麥克風後還會把 AI 整理過的最終稿當成一筆新的
+       recognition result 推下來,走的就是這條路徑 —— 所以面板顯示的一定是等一下真正會送出
+       的那段文字。 */
+    extern bool instruction_list_lift_input_view_open(void);
+    extern void instruction_list_lift_input_set_text(const char *text);
+    if (instruction_list_lift_input_view_open())
+    {
+        instruction_list_lift_input_set_text(text);
+        return;
+    }
     /* Decide by current screen: if the right device page's skaibar is open, the
        recognised text belongs there, not the left instruction_list widget. */
     extern bool device_pager_skaibar_is_open(void);

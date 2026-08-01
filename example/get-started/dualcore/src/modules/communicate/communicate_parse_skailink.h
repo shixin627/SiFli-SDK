@@ -158,6 +158,33 @@ extern "C"
            「輸入」鈕隱藏(先定稿才能送出)。Keep in lockstep with
            WatchProtocol.kt SKAILINK_KEY_HANDWRITE_CAND. */
         KEY_HANDWRITE_CAND = 0x1c,
+        /* watch→phone (UPLINK): {"dest":"field"|"skaibar"} — 立起輸入面板(2026-07-31)的
+           送出。面板期間語音轉錄只「暫存」在手錶面板 + 電腦的純輸入框(0x0E 帶 inputOnly),
+           由使用者在手錶上挑去處:
+             "field"   = icon_send:打進召喚 skaibar 之前使用者點的那個輸入框(手機轉成
+                         air-mouse `sendToFocusedInput`,電腦打完字順手收掉面板);手錶收掉
+                         面板、離開此模式。
+             "skaibar" = img_logo:當成該台的 skaibar 查詢送出(手機轉成 runSkaibar
+                         submit=false 讓電腦展開選項 + skaibarQuery 讓它把選項 push 回來);
+                         手錶叫出鏡像那份選項的清單。
+           **刻意不帶文字**:最終稿在手機那邊(它剛跑完 AI 口語拆字還原並回推給兩邊顯示),
+           手錶再送一份只會多出一個可能不一致的真相,長口述也有 L2 邊界截斷 UTF-8 的風險。
+           Keep in lockstep with WatchProtocol.kt SKAILINK_KEY_LIFT_INPUT_COMMIT。 */
+        KEY_LIFT_INPUT_COMMIT = 0x1d,
+        /* watch→phone (UPLINK): {"pos":N} — 立起輸入面板的**插入點**(founder 2026-08-01:
+           長按輸入框的某個位置,接下來講的話插在那裡,而不是取代整段)。N 是**字元索引**
+           (code point,非 byte;由 LVGL 的 lv_label_get_letter_on 命中觸點得到),0 = 最前面。
+           手機收到後記住,下一段轉錄 T 就組成 prefix + T + suffix 再推回兩邊顯示;AI 口語
+           拆字還原只套用在 T(既有文字已經定稿過)。面板重開或文字被換掉即失效,要再長按一次。
+           Keep in lockstep with WatchProtocol.kt SKAILINK_KEY_LIFT_INPUT_CARET。 */
+        KEY_LIFT_INPUT_CARET = 0x1e,
+        /* watch→phone (UPLINK): {} — 立起輸入面板的刪除鍵按了一下 = **刪掉一個字**(founder
+           2026-08-01:「不是清空,要一個個刪除;按一次刪一個字,長按才開始連續刪除」)。長按時
+           手錶用自己的 timer 以固定速率重送。刪除實作在手機端:暫存文字的單一真相在那裡,
+           而且「一個字」要按 code point 算(中文一個字 3 bytes),手錶只發指令。刪的是插入點
+           前面那個字(沒指定插入點時就是最後一個)。
+           Keep in lockstep with WatchProtocol.kt SKAILINK_KEY_LIFT_INPUT_DELETE。 */
+        KEY_LIFT_INPUT_DELETE = 0x1f,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

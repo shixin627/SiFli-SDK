@@ -455,6 +455,10 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
         return;
     if (get_speech_coding() != msgData->header)
     {
+        /* TEMP DIAG(2026-07-31):coding 不匹配會把整筆轉錄丟掉,是「文字沒出現」的候選原因
+           之一。定位完拿掉。 */
+        LOG_I("[lift_input][diag] interact_voice DROPPED: coding %d != header %d",
+              (int)get_speech_coding(), (int)msgData->header);
         return;
     }
     {
@@ -493,7 +497,32 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
     else if (gui_app_is_actived(APP_ID_MOUSE))
     {
         handle_v2t_result(msgData);
-        append_text_to_mouse_input();
+        /* 立起輸入面板(2026-07-31)開著時,轉錄屬於它 —— 走共用的語音路由
+           (append_text_to_input_message → refresh_ai_chat_input_message → 它的 lift 分支),
+           與 chat_page 浮層同一個 pattern。
+           真機實測(2026-07-31)踩到:滑鼠 app 前景時這條 else-if 一律把轉錄丟給
+           append_text_to_mouse_input()(滑鼠自己的文字輸入列),所以面板的輸入框永遠是空的。
+           舊版立起只有一顆大麥克風、不顯示文字,才沒暴露出來。 */
+        extern bool instruction_list_lift_input_view_open(void);
+        bool lift_open = instruction_list_lift_input_view_open();
+        /* TEMP DIAG(2026-07-31):確認轉錄有進到這條分支、以及走了哪一邊。定位完拿掉。 */
+        LOG_I("[lift_input][diag] interact_voice: MOUSE branch, lift_open=%d", (int)lift_open);
+        if (lift_open && (msgData->p_msg_value == NULL || msgData->length == 0))
+        {
+            /* 使用者把字刪光了。handle_v2t_result() 對空 payload 直接 return,手錶自己那份
+               累積緩衝原封不動,接著 append 又把緩衝裡的舊值推回畫面 —— 真機 2026-08-01:
+               刪到剩一個字就卡死,手機端明明已經空了(log 一整排 nothing left to delete)。
+               這條流程的單一真相在手機,它說空就是空,先把緩衝清掉再推。
+               只在這條分支處理:別的流程(chat/speech)把空 frame 當 no-op 是對的。 */
+            LOG_I("[lift_input] empty transcript — clearing watch-side v2t buffer");
+            clearVoice2Text();
+            append_text_to_input_message();
+            return;
+        }
+        if (lift_open)
+            append_text_to_input_message();
+        else
+            append_text_to_mouse_input();
     }
 }
 

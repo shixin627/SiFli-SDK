@@ -134,8 +134,9 @@ extern "C"
         LVGL_MSG_TYPE_GYRO_SCROLL_LIST,
         /***** Mouse mode ******/
         LVGL_MSG_TYPE_MOUSE_OPEN_V2T,
-        LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR, /* 立起姿態→帶出單設備 skaibar (等同點底部 bar) */
-        LVGL_MSG_TYPE_MOUSE_CLOSE_LIFT_MIC, /* 放下手腕(離開立起姿態)→收掉大麥克風畫面 */
+        LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR, /* 立起姿態→帶出立起輸入面板 (等同點底部 bar) */
+        /* (LVGL_MSG_TYPE_MOUSE_CLOSE_LIFT_MIC 於 2026-07-31 移除:founder「放下不要直接
+           退出」,手腕放下不再關面板,已無觸發源。) */
         LVGL_MSG_TYPE_MOUSE_OPEN_KEYBOARD,
         LVGL_MSG_TYPE_MOUSE_INPUT_TEXT,
         /***** Loading ******/
