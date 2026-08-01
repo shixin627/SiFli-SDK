@@ -551,6 +551,80 @@ bool commu_send_skaibar_view(char cat)
     LOG_I("send skaibar view %s -> %s", json, ok ? "ok" : "FAIL");
     return ok;
 }
+/* 立起輸入面板(2026-07-31)的 0x0E:forceOpen + inputOnly 兩旗標版。inputOnly=true 讓電腦
+   把 skaibar 叫出來但只留輸入框(不出選項),並「記住」召喚前聚焦的那個輸入框當之後 icon_send
+   的目的地 —— 而不是像舊的 force_open=false 流程那樣邊講邊把逐字稿打進去。舊呼叫點沿用下面
+   的 commu_send_skaibar_open_device(等同 input_only=false),wire 對舊手機不變。 */
+bool commu_send_skaibar_open_device_ex(bool force_open, bool input_only)
+{
+    char json[48];
+    rt_snprintf(json, sizeof(json), "{\"forceOpen\":%s,\"inputOnly\":%s}",
+                force_open ? "true" : "false", input_only ? "true" : "false");
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_SKAIBAR_OPEN_DEVICE, json);
+    LOG_I("send skaibar open-device forceOpen=%d inputOnly=%d -> %s",
+          (int)force_open, (int)input_only, ok ? "ok" : "FAIL");
+    return ok;
+}
+
+/* 立起輸入面板的送出(見 KEY_LIFT_INPUT_COMMIT 契約)。dest 只有 "field" / "skaibar" 兩個
+   固定字面值,故 raw %s 是引號安全的;文字不隨行,由手機端用它手上的最終稿。 */
+bool commu_send_lift_input_commit(const char *dest)
+{
+    if (dest == NULL) return false;
+    char json[32]; /* {"dest":"skaibar"} = 20 chars + NUL */
+    int n = rt_snprintf(json, sizeof(json), "{\"dest\":\"%s\"}", dest);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_COMMIT, json);
+    LOG_I("send lift-input commit dest=%s -> %s", dest, ok ? "ok" : "FAIL");
+    return ok;
+}
+
+/* 立起輸入面板的插入點(見 KEY_LIFT_INPUT_CARET 契約)。pos 是字元索引,不是 byte。
+   **text 一起送**:pos 是對「手錶畫面上這串文字」算出來的,手機那份副本只要有一次不同步
+   (app 重啟/程序被回收),用它去切前後半就會默默切錯 —— 真機 2026-08-01 撞過:手機 app 被
+   重裝後暫存是空的,切出來前後半都是空字串,結果整段只剩新講的那句。帶著文字走,手機就能
+   用「使用者真正看到的那串」重新對齊,不必假設兩邊一致。 */
+bool commu_send_lift_input_caret(int pos, const char *text)
+{
+    if (pos < 0) return false;
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return false;
+    cJSON_AddNumberToObject(root, "pos", pos);
+    cJSON_AddStringToObject(root, "text", text ? text : "");
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_CARET, json);
+    LOG_I("send lift-input caret pos=%d -> %s", pos, ok ? "ok" : "FAIL");
+    cJSON_free(json);
+    return ok;
+}
+
+/* 立起輸入面板的刪除鍵(見 KEY_LIFT_INPUT_DELETE 契約)。一次一個字;長按由手錶端 timer 重送。 */
+bool commu_send_lift_input_delete(void)
+{
+    return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_DELETE, "{}");
+}
+
+/* 同一把鑰匙(0x1e),cancel = 把「這次按住錄到的那一段」整個丟掉,暫存文字退回按下之前。
+   用在「長按本來在講話、手指一移動就變成框選」的轉場 —— 那一段從來不是使用者要的字。 */
+bool commu_send_lift_input_cancel_segment(void)
+{
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_CARET, "{\"cancel\":true}");
+    LOG_I("send lift-input cancel segment -> %s", ok ? "ok" : "FAIL");
+    return ok;
+}
+
+/* 同一把鑰匙,帶範圍 = 刪掉框選的那一段(字元索引,半開區間 [from,to))。 */
+bool commu_send_lift_input_delete_range(int from, int to)
+{
+    char json[48];
+    rt_snprintf(json, sizeof(json), "{\"from\":%d,\"to\":%d}", from, to);
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_DELETE, json);
+    LOG_I("send lift-input delete range [%d,%d) -> %s", from, to, ok ? "ok" : "FAIL");
+    return ok;
+}
+
 bool commu_send_skaibar_open_device(bool force_open)
 {
     /* Standalone mouse app (APP_ID_MOUSE) bar tap1: tell the phone to open the SINGLE

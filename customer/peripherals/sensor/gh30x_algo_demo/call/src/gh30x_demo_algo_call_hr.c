@@ -47,15 +47,26 @@ goodix_hba_ret goodix_hba_init_func(GU32 fs)
     stHbCfg.senseless_mode_duration = gsthbdCfg.senseless_mode_duration;
     stHbCfg.fs = fs;
     stHbCfg.valid_channel_num = 1;
-    stHbCfg.back_track_len = 0;    /* keep 0: a longer window starved the 40s awake burst's output rate; not the jump root cause anyway (reverted 2026-06-05) */
+    /* 2026-08-01: was 0 for this field's ENTIRE git history (vendor import default),
+       but goodix_hba.h:99 documents the range as "默认30s,最大120s,最短30s" -- 0 is
+       BELOW the vendor's own minimum. ADR 0016 concluded "this .lib does not implement
+       confidence" from a measurement taken with back_track_len = 0; since backtrack is
+       the retrospective window a confidence/SNR statistic would be computed over, that
+       conclusion was drawn under an out-of-spec config and has never been re-tested at
+       a legal value. 30 is the documented floor. Safe for the burst length: the old
+       "longer window starved the burst" note was against a 40 s awake burst; both awake
+       and sleep bursts are 180 s now (BG_HR_BURST_MS_*). If the awake burst is ever
+       shortened back toward 40 s, re-check this. */
+    stHbCfg.back_track_len = 30;
     stHbCfg.hba_latest_output_time = 0;
     stHbCfg.hba_earliest_output_time = 0;
     /* Still-HR stability tune (2026-06-05): withhold low-confidence HR so the algo
        stops emitting the 100<->40 garbage jumps seen while sitting still. The FIELD
-       is official (goodix_hba.h:102); the VALUE 30 is an EXPERIMENTAL start point on
-       the valid_score 0-100 scale, NOT a Goodix-published number. Tune via the bg_hr
-       "qmin=" LCPU log: drop to ~20 if HR goes blank too often, raise to 50-60 if it
-       still jumps. Set 0 to restore original (no withholding) behaviour. */
+       is official (goodix_hba.h:102) but ADR 0016 measured this .lib IGNORING it --
+       valid_score stayed 0 and values below the threshold were emitted anyway. Left in
+       place because the back_track_len fix above may be what revives it; if the bench
+       re-test still shows qmax=0, this line is dead weight and the gate has to be built
+       from our own history instead (ADR 0016 path B). */
     stHbCfg.hba_lowerest_confidence = 30;
 
     GH30X_ALGO_LOG_PARAM("[%s]:params = %d,%d,%d,%d,%d,%d,%d,\r\n", __FUNCTION__,
@@ -161,8 +172,15 @@ GS8 GH30xHrAlgoExe(const STGh30xFrameInfo *const pstFrameInfo)
                                  (int)pstFrameInfo->pstAlgoResult->snResult[0], (int)pstFrameInfo->pstAlgoResult->uchUpdateFlag);
             extern void gh3018_set_hr(uint32_t hr);
             gh3018_set_hr(pstFrameInfo->pstAlgoResult->snResult[0]);
-            extern void gh3018_set_hr_quality(uint32_t valid_score, uint32_t valid_level);
-            gh3018_set_hr_quality((uint32_t)stResult.valid_score, (uint32_t)stResult.valid_level);
+            extern void gh3018_set_hr_quality(uint32_t valid_score, uint32_t valid_level,
+                                              uint32_t confi_x100, uint32_t snr_x100);
+            {
+                GF32 c = stResult.hba_confi;  if (c < 0) c = 0;
+                GF32 s = stResult.hba_snr;    if (s < 0) s = 0;
+                gh3018_set_hr_quality((uint32_t)stResult.valid_score,
+                                      (uint32_t)stResult.valid_level,
+                                      (uint32_t)(c * 100.0f), (uint32_t)(s * 100.0f));
+            }
             pstFrameInfo->pstAlgoResult->usResultBit = 0x3F;
             pstFrameInfo->pstAlgoResult->uchResultNum = GH30x_BitCount(pstFrameInfo->pstAlgoResult->usResultBit);
 #if __GH30X_HR_OUTPUT_VALUE_STRATEGY_EN__
