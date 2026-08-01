@@ -62,8 +62,13 @@ extern "C"
 
     extern void gh3018_set_hr(uint32_t hr);
 
-    extern void gh3018_set_hr_quality(uint32_t valid_score, uint32_t valid_level);
-    extern void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level);
+    /* Goodix per-reading quality. confi/snr are the float fields scaled x100; all four
+       are carried so the back_track_len re-test can tell "lib emits no confidence" from
+       "confidence was starved by a zero-length backtrack window" (see ADR 0016). */
+    extern void gh3018_set_hr_quality(uint32_t valid_score, uint32_t valid_level,
+                                      uint32_t confi_x100, uint32_t snr_x100);
+    extern void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level,
+                                      uint32_t *confi_x100, uint32_t *snr_x100);
     extern uint32_t gh3018_get_hr_update_seq(void); /* bumped on every locked algo HR output; bg_hr uses it for dynamic warm-up */
 
     extern uint32_t *gh3018_get_ppg(void);

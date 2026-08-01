@@ -1009,7 +1009,8 @@ static void ppg_timeout_ind(void *param)
    (valid_score = confidence, valid_level = quality level). Diagnostics now; the
    output-quality gate (Apple-style "withhold on low signal quality") builds on
    it later. */
-extern void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level);
+extern void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level,
+                                  uint32_t *confi_x100, uint32_t *snr_x100);
 /* Monotonic count of locked algo HR outputs; bg_hr snapshots it at burst start and
    ends warm-up the moment it moves (= algo locked this burst). See gh3018 port. */
 extern uint32_t gh3018_get_hr_update_seq(void);
@@ -1242,6 +1243,14 @@ static uint8_t bghr_median_push(uint8_t v)
    future quality gate. */
 static uint32_t bg_hr_burst_qscore_min = 0xFFFFFFFFu;
 static uint32_t bg_hr_burst_qlevel = 0;
+/* MAX of each quality field this burst. qmin alone cannot answer "does the lib emit
+   confidence at all" -- it starts at UINT32_MAX and one zero-scoring read pins it to 0
+   forever, which is exactly the reading ADR 0016 drew "the lib does not implement
+   confidence" from. The max is the field that distinguishes "always 0" from "sometimes
+   0". Paired with the back_track_len 0 -> 30 change in gh30x_demo_algo_call_hr.c. */
+static uint32_t bg_hr_burst_qscore_max = 0;
+static uint32_t bg_hr_burst_confi_max = 0;
+static uint32_t bg_hr_burst_snr_max = 0;
 
 /* Integer std-dev from running Σx / Σx². Dividing before squaring keeps this in
    uint32 for any realistic n (Σx² ≤ n·255², so n up to ~66k is safe; a 3-min
@@ -1485,10 +1494,12 @@ static void bg_hr_finish_burst(void)
                                          (uint16_t)apct);
     }
 
-    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u best=%u qmin=%u qlvl=%u frames=%u%% div=%u algo=%u%%",
+    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u best=%u qmin=%u qmax=%u qlvl=%u confiX100=%u snrX100=%u frames=%u%% div=%u algo=%u%%",
           (unsigned)bg_hr_burst_reads, (unsigned)bg_hr_burst_cnt,
           (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_best,
-          (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qlevel,
+          (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qscore_max,
+          (unsigned)bg_hr_burst_qlevel,
+          (unsigned)bg_hr_burst_confi_max, (unsigned)bg_hr_burst_snr_max,
           (unsigned)bg_hr_win_frame_pct,
           (unsigned)(bg_hr_win_rate_info >> 8), (unsigned)(bg_hr_win_rate_info & 0xFF));
     /* Sleep-time artefact ceiling: withhold an implausibly high sleeping HR
@@ -1613,9 +1624,12 @@ static void bg_hr_sample_cb(void *param)
                    spikes (the sleep case) before they reach best / mean / std,
                    and record this read's Goodix quality. Publish AND accumulate
                    the MEDIAN, not the raw value. */
-                uint32_t qscore = 0, qlevel = 0;
-                gh3018_get_hr_quality(&qscore, &qlevel);
+                uint32_t qscore = 0, qlevel = 0, qconfi = 0, qsnr = 0;
+                gh3018_get_hr_quality(&qscore, &qlevel, &qconfi, &qsnr);
                 if (qscore < bg_hr_burst_qscore_min) bg_hr_burst_qscore_min = qscore;
+                if (qscore > bg_hr_burst_qscore_max) bg_hr_burst_qscore_max = qscore;
+                if (qconfi > bg_hr_burst_confi_max) bg_hr_burst_confi_max = qconfi;
+                if (qsnr > bg_hr_burst_snr_max) bg_hr_burst_snr_max = qsnr;
                 bg_hr_burst_qlevel = qlevel;
                 uint8_t med = bghr_median_push((uint8_t)sd.data.hr);
                 bg_hr_burst_best = med;
@@ -1704,6 +1718,9 @@ static void bg_hr_period_cb(void *param)
     bghr_med_cnt = 0;                 /* reset median window for this burst */
     bghr_med_idx = 0;
     bg_hr_burst_qscore_min = 0xFFFFFFFFu;
+    bg_hr_burst_qscore_max = 0;
+    bg_hr_burst_confi_max = 0;
+    bg_hr_burst_snr_max = 0;
     bg_hr_burst_qlevel = 0;
     bg_hr_burst_ms = bg_hr_sleep_active ? BG_HR_BURST_MS_SLEEP : BG_HR_BURST_MS_AWAKE;
     uint32_t bg_now_ms = rt_tick_get_millisecond();

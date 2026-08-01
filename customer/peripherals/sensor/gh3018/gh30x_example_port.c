@@ -1107,17 +1107,28 @@ void gh3018_set_hr(uint32_t hr)
    signal quality. Informational only -- does NOT change the HR value. */
 static uint32_t loc_hb_valid_score = 0;
 static uint32_t loc_hb_valid_level = 0;
+/* confi/snr (x100) carried alongside since 2026-08-01: ADR 0016 declared all four
+   confidence fields dead, but that measurement ran with back_track_len = 0 (below the
+   vendor's documented 30 s floor). All four have to be visible to re-test the claim. */
+static uint32_t loc_hb_confi_x100 = 0;
+static uint32_t loc_hb_snr_x100 = 0;
 
-void gh3018_set_hr_quality(uint32_t valid_score, uint32_t valid_level)
+void gh3018_set_hr_quality(uint32_t valid_score, uint32_t valid_level,
+                           uint32_t confi_x100, uint32_t snr_x100)
 {
     loc_hb_valid_score = valid_score;
     loc_hb_valid_level = valid_level;
+    loc_hb_confi_x100 = confi_x100;
+    loc_hb_snr_x100 = snr_x100;
 }
 
-void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level)
+void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level,
+                           uint32_t *confi_x100, uint32_t *snr_x100)
 {
     if (valid_score) *valid_score = loc_hb_valid_score;
     if (valid_level) *valid_level = loc_hb_valid_level;
+    if (confi_x100) *confi_x100 = loc_hb_confi_x100;
+    if (snr_x100) *snr_x100 = loc_hb_snr_x100;
 }
 
 uint32_t *gh3018_get_ppg(void)
