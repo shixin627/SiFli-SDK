@@ -2733,12 +2733,11 @@ static void lift_input_clip_event_cb(lv_event_t *evt)
         lift_input_set_caret_from_touch();
         break;
     case LV_EVENT_LONG_PRESSED:
-        if (lift_input_set_caret_from_touch())
-        {
-            s_lift_hold_obj = lv_event_get_target(evt);
-            s_lift_sel_anchor = s_lift_caret_pos; /* 拖動的話從這個字開始圈 */
-            lift_longpress_arm_start();
-        }
+        /* 框裡沒字時也要能長按開始講話(founder 2026-08-01)——定位不到字不代表不能錄音,
+           兩件事本來就該分開:定位成功 → 順便當框選起點;定位失敗(空框)→ 純粹開始講。 */
+        s_lift_hold_obj = lv_event_get_target(evt);
+        s_lift_sel_anchor = lift_input_set_caret_from_touch() ? s_lift_caret_pos : -1;
+        lift_longpress_arm_start();
         break;
     case LV_EVENT_PRESSING:
     {
