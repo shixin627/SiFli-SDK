@@ -331,6 +331,14 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
                               data_ind->frame_pct, data_ind->rate_info);
         break;
     }
+    case MSG_SERVICE_HR_CONT_IND:
+    {
+        UNPACK_DATA(arg, watch_sys_hr_cont_t, data_ind);
+        commu_send_hr_cont(data_ind->base_ts, data_ind->interval_s,
+                           data_ind->count, data_ind->bpm,
+                           data_ind->qscore, data_ind->qlevel);
+        break;
+    }
     case MSG_SERVICE_SLEEP_STATE_IND:
     {
         UNPACK_DATA(arg, watch_sys_sleep_state_t, data_ind);
@@ -544,6 +552,7 @@ static void set_debug_mode(bool enable)
 static int set_multi_gesture_mode(bool enable) { return send_sys_cmd_b1(MultiGestureMode,  enable ? 1 : 0); }
 static int set_tap_and_hold_mode(bool enable)  { return send_sys_cmd_b1(TapAndHoldMode,    enable ? 1 : 0); }
 static int set_wear_detect_enable(bool enable) { return send_sys_cmd_b1(WearDetectEnable,  enable ? 1 : 0); }
+static int set_hr_continuous(bool enable)      { return send_sys_cmd_b1(HrContinuousMode,  enable ? 1 : 0); }
 
 /**
  * @brief Register synchronization functions for the watch system
@@ -575,6 +584,7 @@ static void register_watch_sys_sync_funs(void)
     watch_sys_sync.set_multi_gesture_mode = set_multi_gesture_mode;
     watch_sys_sync.set_tap_and_hold_mode = set_tap_and_hold_mode;
     watch_sys_sync.set_wear_detect_enable = set_wear_detect_enable;
+    watch_sys_sync.set_hr_continuous = set_hr_continuous;
 }
 
 /**

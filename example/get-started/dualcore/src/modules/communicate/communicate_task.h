@@ -66,6 +66,13 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
                            uint8_t fresh, uint16_t total, uint16_t deep,
                            uint16_t rem, uint16_t light, uint16_t pi_e3,
                            uint16_t frame_pct, uint16_t rate_info);
+/* One minute of raw 1 Hz continuous-HR samples (KEY_HR_CONT_DIAG 0x15). Only
+   emitted while the Settings "continuous HR" diagnostic toggle is on; it exists
+   to test whether the nightly 2x survives when the HBA algorithm is never
+   cold-restarted. Temporary — remove with the experiment. */
+bool commu_send_hr_cont(uint32_t base_ts, uint8_t interval_s, uint8_t count,
+                        const uint8_t *bpm, const uint8_t *qscore,
+                        const uint8_t *qlevel);
 /* Push current SkaiWatchSys.sleep_state to the phone via KEY_RETURN_SLEEP_DATA.
    Called on every stage transition received from LCPU. The dart-side
    parser must mirror the layout of watch_sys_sleep_state_t. */

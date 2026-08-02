@@ -196,6 +196,21 @@ void hr_set_power(uint8_t arg)
         LOG_I("PPG power request (%d) vetoed: raw collection active", arg);
         return;
     }
+#ifndef SOC_BF0_HCPU
+    /* Continuous-HR diagnostic owns the sensor for the same reason: its whole
+     * point is that the HBA algorithm is never re-initialised. wear_detect calls
+     * hr_set_power(1) on off-wrist motion and power-cycles it when PPG goes
+     * stale (wear_detect.c) -- either would run open_gh3018() -> module_stop() +
+     * start(HRV), killing the HR function and cold-starting the algo, i.e.
+     * silently converting the experiment back into the thing it is measured
+     * against. Veto BOTH directions while it runs. */
+    extern bool hr_service_continuous_active(void);
+    if (hr_service_continuous_active())
+    {
+        LOG_I("PPG power request (%d) vetoed: continuous HR diag active", arg);
+        return;
+    }
+#endif
 #ifdef RT_USING_PM
     rt_pm_request(PM_SLEEP_MODE_IDLE);
 #endif /* RT_USING_PM */
@@ -1645,9 +1660,107 @@ static void bg_hr_sample_cb(void *param)
     }
 }
 
+/* ===== Continuous-HR diagnostic ====================================
+   Founder experiment (2026-08-02). The Exercise app and bg_hr open the IDENTICAL
+   sensor mode -- both go hr_control_mode(RT_SENSOR_POWER_HIGH) ->
+   open_gh3018_high_power() -> module_start(GH30X_FUNCTION_HR) at 25 Hz -- and both
+   read at 1 Hz. They differ in exactly one thing: the Exercise app holds the
+   subscription, so the HBA algorithm runs uninterrupted, while bg_hr powers down
+   after 3 min and cold-starts the algorithm again 10 min later.
+
+   That single variable is worth isolating, because the nightly 2x has survived
+   every other explanation (frames arrive at wall-clock 25 Hz, divider correct,
+   algo fed 99% of them, no motion -- and the founder's own observation is that
+   the Exercise app's live HR tracks a reference watch closely). If the doubling
+   is absent here it is a COLD-START acquisition failure, which is fixable by
+   changing the sampling regime rather than by filtering the output afterwards.
+
+   Records the RAW per-second algorithm output -- no median, no motion gate --
+   because the question is what the algorithm actually emits, not what a filter
+   would have shown. Buffered a minute at a time (see watch_sys_hr_cont_t). */
+static rt_bool_t bg_hr_cont_enabled = RT_FALSE;
+static rt_timer_t bg_hr_cont_timer = RT_NULL;
+static watch_sys_hr_cont_t bg_hr_cont_buf;
+
+bool hr_service_continuous_active(void)
+{
+    return bg_hr_cont_enabled ? true : false;
+}
+
+static void bg_hr_cont_flush(void)
+{
+    if (bg_hr_cont_buf.count == 0) return;
+    if (watch_sys_sync.notify_hr_cont)
+    {
+        watch_sys_sync.notify_hr_cont(&bg_hr_cont_buf);
+    }
+    bg_hr_cont_buf.count = 0;
+    bg_hr_cont_buf.base_ts = 0;
+}
+
+static void bg_hr_cont_cb(void *param)
+{
+    (void)param;
+    struct rt_sensor_data sd;
+    int rd = (hr_service_env.device)
+                 ? rt_device_read(hr_service_env.device, 0, &sd, 1) : 0;
+
+    uint32_t qscore = 0, qlevel = 0, qconfi = 0, qsnr = 0;
+    gh3018_get_hr_quality(&qscore, &qlevel, &qconfi, &qsnr);
+
+    uint8_t i = bg_hr_cont_buf.count;
+    if (bg_hr_cont_buf.count == 0) bg_hr_cont_buf.base_ts = (uint32_t)time(NULL);
+    bg_hr_cont_buf.bpm[i]    = (rd == 1 && sd.data.hr <= 255) ? (uint8_t)sd.data.hr : 0;
+    bg_hr_cont_buf.qscore[i] = (qscore > 255) ? 255 : (uint8_t)qscore;
+    bg_hr_cont_buf.qlevel[i] = (qlevel > 255) ? 255 : (uint8_t)qlevel;
+    bg_hr_cont_buf.count++;
+
+    if (bg_hr_cont_buf.count >= WATCH_SYS_HR_CONT_MAX) bg_hr_cont_flush();
+}
+
+/* Enable/disable from the watch Settings toggle (HCPU -> HrContinuousMode). */
+void hr_service_set_hr_continuous(bool enable)
+{
+    if ((bg_hr_cont_enabled ? true : false) == enable) return;
+
+    if (enable)
+    {
+        /* Abandon any burst in flight WITHOUT running bg_hr_finish_burst(): that
+           would power the LED back down, which is the one thing this mode must
+           not do. Nothing is published for the partial burst -- correct, since
+           it never completed. */
+        if (bg_hr_sample_timer) rt_timer_stop(bg_hr_sample_timer);
+        bg_hr_bursting = RT_FALSE;
+        if (bg_hr_period_timer) rt_timer_stop(bg_hr_period_timer);
+
+        bg_hr_cont_buf.count = 0;
+        bg_hr_cont_buf.base_ts = 0;
+        bg_hr_cont_buf.interval_s = (uint8_t)(BG_HR_SAMPLE_MS / 1000u);
+
+        /* Set the flag BEFORE powering up: hr_set_power()'s veto reads it, and a
+           wear_detect tick landing between the two would otherwise slip through. */
+        bg_hr_cont_enabled = RT_TRUE;
+        hr_control_mode(RT_SENSOR_POWER_HIGH);
+        if (bg_hr_cont_timer) rt_timer_start(bg_hr_cont_timer);
+        LOG_I("bg_hr: CONTINUOUS HR diag ON (1 Hz, algo never re-inits)");
+    }
+    else
+    {
+        if (bg_hr_cont_timer) rt_timer_stop(bg_hr_cont_timer);
+        bg_hr_cont_flush();                 /* don't discard the partial minute */
+        bg_hr_cont_enabled = RT_FALSE;      /* clear before power-down or the veto eats it */
+        if (hr_service_env.ref_count == 0) hr_set_power(0);
+        if (bg_hr_period_timer) rt_timer_start(bg_hr_period_timer);
+        LOG_I("bg_hr: CONTINUOUS HR diag OFF -> back to bursts");
+    }
+}
+
 static void bg_hr_period_cb(void *param)
 {
     (void)param;
+    /* Continuous diag owns the sensor; its timer is stopped on enable, but a tick
+       already queued when the toggle flipped would still land here. */
+    if (bg_hr_cont_enabled) return;
 
     /* Roll the wall-clock 5-min bucket BEFORE any early-return below, so every
        tick is attributed and a rollover is never missed. period tick (3 min) <
@@ -1742,6 +1855,10 @@ static void bg_hr_init(void)
         RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
     bg_hr_sample_timer = rt_timer_create(
         "bghr_s", bg_hr_sample_cb, RT_NULL,
+        rt_tick_from_millisecond(BG_HR_SAMPLE_MS),
+        RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
+    bg_hr_cont_timer = rt_timer_create(
+        "bghr_c", bg_hr_cont_cb, RT_NULL,
         rt_tick_from_millisecond(BG_HR_SAMPLE_MS),
         RT_TIMER_FLAG_PERIODIC | RT_TIMER_FLAG_SOFT_TIMER);
     if (bg_hr_period_timer) rt_timer_start(bg_hr_period_timer);

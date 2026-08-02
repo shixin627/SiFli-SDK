@@ -110,6 +110,7 @@ static lv_obj_t *time_format_title_label = NULL;
 static lv_obj_t *time_format_badge_label = NULL;
 static lv_obj_t *mouse_press_quick_btn = NULL;
 static lv_obj_t *wear_detect_quick_btn = NULL;
+static lv_obj_t *hr_continuous_quick_btn = NULL;
 
 extern void app_developer_main(void);
 
@@ -541,6 +542,24 @@ static void wear_detect_switch_event_callback(lv_event_t *e)
         setting_provider.set_wear_detect_off(!detection_on);
 #endif
         LOG_I("Wear detection toggled: %s", detection_on ? "ON" : "OFF (force worn)");
+    }
+}
+
+/* "連續心率" toggle. Checked = measure HR the Exercise-app way (PPG held on,
+ * Goodix algorithm never re-initialised, 1 Hz). Unchecked = the normal bg_hr
+ * burst regime. Diagnostic: both regimes open the identical sensor mode, so this
+ * isolates continuity as the last untested cause of the nightly 2x readings.
+ * Heavy battery drain while on — the LED never turns off. */
+static void hr_continuous_switch_event_callback(lv_event_t *e)
+{
+    if (LV_EVENT_VALUE_CHANGED == lv_event_get_code(e))
+    {
+        lv_obj_t *sw = lv_event_get_target(e);
+        bool on = (lv_obj_get_state(sw) & LV_STATE_CHECKED) ? true : false;
+#ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
+        setting_provider.set_hr_continuous(on);
+#endif
+        LOG_I("Continuous HR toggled: %s", on ? "ON" : "OFF");
     }
 }
 
@@ -1459,12 +1478,49 @@ void app_setting_init(void *param)
     lv_obj_add_event_cb(wear_detect_sw, wear_detect_switch_event_callback,
                         LV_EVENT_VALUE_CHANGED, NULL);
 
+    /* Continuous HR (diagnostic) wide widget — same shape as Wear Detection. */
+    const lv_coord_t hr_cont_btn_w = LV_HOR_RES * 80 / 100;
+    hr_continuous_quick_btn = lv_obj_create(settings_container);
+    lv_obj_set_size(hr_continuous_quick_btn, hr_cont_btn_w, 80);
+    lv_obj_align_to(hr_continuous_quick_btn, wear_detect_quick_btn,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    lv_obj_set_style_radius(hr_continuous_quick_btn, 40, 0);
+    lv_obj_set_style_bg_color(hr_continuous_quick_btn, lv_color_hex(0xCECECE), 0);
+    lv_obj_set_style_bg_opa(hr_continuous_quick_btn, LV_OPA_10, 0);
+    lv_obj_set_style_border_width(hr_continuous_quick_btn, 0, 0);
+    lv_obj_set_style_pad_all(hr_continuous_quick_btn, 0, 0);
+    lv_obj_clear_flag(hr_continuous_quick_btn, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *hr_cont_icon = lv_img_create(hr_continuous_quick_btn);
+    lv_img_set_src(hr_cont_icon, LV_EXT_IMG_GET(icon_release));
+    lv_obj_align(hr_cont_icon, LV_ALIGN_LEFT_MID, 20, 0);
+    lv_obj_t *hr_cont_label = lv_label_create(hr_continuous_quick_btn);
+    lv_label_set_text(hr_cont_label,
+                      LV_EXT_STR_GET_BY_KEY(hr_continuous, "Continuous HR"));
+    lv_obj_set_style_text_color(hr_cont_label, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(hr_cont_label,
+                               LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_align_to(hr_cont_label, hr_cont_icon, LV_ALIGN_OUT_RIGHT_MID, 20, 0);
+
+    lv_obj_t *hr_cont_sw = lv_switch_create(hr_continuous_quick_btn);
+    lv_obj_set_size(hr_cont_sw, 80, 40);
+    lv_obj_align(hr_cont_sw, LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_set_style_bg_color(hr_cont_sw, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(hr_cont_sw, lv_color_hex(0x0078D7),
+                              LV_PART_INDICATOR | LV_STATE_CHECKED);
+    if (SkaiWatchSys.flag_field.hr_continuous)
+    {
+        lv_obj_add_state(hr_cont_sw, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(hr_cont_sw, hr_continuous_switch_event_callback,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+
     /* Capsule list items (same style as the wide widgets above).
      * Items that navigate to another page get a ">" arrow on the right. */
     lv_obj_t *list_btn;
 
     // Gesture (launches gesture app)
-    list_btn = create_capsule_item(settings_container, wear_detect_quick_btn,
+    list_btn = create_capsule_item(settings_container, hr_continuous_quick_btn,
                                    LV_EXT_IMG_GET(icon_release), LV_EXT_STR_GET_BY_KEY(gesture, "Gesture"),
                                    true);
     lv_obj_add_event_cb(list_btn, btn_gesture_event_callback,

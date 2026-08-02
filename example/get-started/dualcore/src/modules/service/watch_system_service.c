@@ -241,6 +241,13 @@ static void notify_sleep_diag(const watch_sys_sleep_diag_t *rec)
     push_msg_to_hcpu(MSG_SERVICE_SLEEP_DIAG_IND, rec, sizeof(*rec));
 }
 
+static void notify_hr_cont(const watch_sys_hr_cont_t *rec)
+{
+    /* One minute of raw 1 Hz continuous-HR samples -> HCPU -> KEY_HR_CONT_DIAG. */
+    if (rec == NULL) return;
+    push_msg_to_hcpu(MSG_SERVICE_HR_CONT_IND, rec, sizeof(*rec));
+}
+
 static void notify_sleep_state(uint8_t mode, uint32_t timestamp_utc)
 {
     watch_sys_sleep_state_t data_ind;
@@ -492,6 +499,15 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
             break;
         }
 
+        case HrContinuousMode:
+        {
+#ifdef BSP_USING_HR_SVC
+            extern void hr_service_set_hr_continuous(bool enable);
+            hr_service_set_hr_continuous(msg->body[1] == 1);
+#endif
+            break;
+        }
+
         default:
             break;
         }
@@ -537,6 +553,7 @@ static void register_watch_sys_service_funs(void)
     watch_sys_sync.notify_sleep_state = notify_sleep_state;
     watch_sys_sync.notify_debug_log = notify_debug_log;
     watch_sys_sync.notify_sleep_diag = notify_sleep_diag;
+    watch_sys_sync.notify_hr_cont = notify_hr_cont;
 }
 
 static int watch_sys_service_register(void)
