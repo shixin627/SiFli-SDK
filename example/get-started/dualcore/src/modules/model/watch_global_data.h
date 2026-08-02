@@ -417,7 +417,8 @@ extern "C"
         uint64_t debug_mode : 1;
         uint64_t mouse_press_mode : 1; /* 0: pressure<4700=move & <2800=click; 1: always-move & pressure<4700=click */
         uint64_t wear_detect_off : 1;  /* 1: disable wear detection (force worn unless on charger) — diagnostic override */
-        uint64_t reserved : 23;
+        uint64_t hr_continuous : 1;    /* 1: run HR the Exercise-app way (PPG held on, algo never re-inits) instead of bg_hr bursts — diagnostic */
+        uint64_t reserved : 22;
     } T_FLAG_FIELD;
 
     /*Do not disturb mode configuration */

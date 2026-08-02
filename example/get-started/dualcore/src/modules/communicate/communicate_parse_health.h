@@ -76,6 +76,17 @@ typedef enum
        communicate_parse_health.c (read_be32); the REPLY frames stay LE because
        0x10/0x11 are already defined that way. */
     KEY_HR_BACKFILL_REQ = 0x14,
+    /* WATCH -> PHONE. Continuous-HR diagnostic batch, one minute of raw 1 Hz
+       algorithm output, sent only while the Settings toggle is on. Layout LE:
+         base_ts:u32 | interval_s:u8 | count:u8 | bpm[count]:u8
+                                               | qscore[count]:u8
+                                               | qlevel[count]:u8
+       sample[i] is at base_ts + i*interval_s; bpm 0 = the algo emitted nothing
+       that second. Deliberately NOT KEY_HEART_CURVE_SAMPLE: this is raw
+       unfiltered output at 60x the curve's density and must not pollute the
+       user-facing hr_curve. Phone writes it to its own CSV. Temporary — remove
+       with the experiment. */
+    KEY_HR_CONT_DIAG = 0x15,
 } HEALTH_KEY;
 
 void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t length);

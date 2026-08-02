@@ -51,6 +51,8 @@ extern "C"
             ((MSG_SERVICE_SYS_DATA_REQ + 17) | RSP_MSG_TYPE),
         MSG_SERVICE_SLEEP_DIAG_IND =
             ((MSG_SERVICE_SYS_DATA_REQ + 18) | RSP_MSG_TYPE),
+        MSG_SERVICE_HR_CONT_IND =
+            ((MSG_SERVICE_SYS_DATA_REQ + 19) | RSP_MSG_TYPE),
     };
 
     typedef enum
@@ -73,6 +75,14 @@ extern "C"
         MultiGestureMode,
         TapAndHoldMode,
         WearDetectEnable,
+        /* Diagnostic: run HR the way the Exercise app does — PPG held on and the
+           HBA algorithm never re-initialised — instead of bg_hr's cold-started
+           bursts. Both regimes open the identical sensor mode (POWER_HIGH ->
+           GH30X_FUNCTION_HR @ 25 Hz), so this isolates ONE variable: continuity.
+           If the nightly 2x disappears here, the doubling is a cold-start
+           acquisition failure and is fixable by changing the regime; if it
+           persists, the regime is innocent. */
+        HrContinuousMode,
     } client_msg_t;
 
     typedef struct
@@ -247,6 +257,22 @@ extern "C"
                              * than physiology. ~100% clears the timebase.     */
     } watch_sys_sleep_diag_t;
 
+/* Continuous-HR diagnostic batch (LCPU -> HCPU -> phone via KEY_HR_CONT_DIAG).
+   Buffered on the watch and flushed once a minute rather than streamed per
+   sample: 1 Hz of individual BLE notifies all night would be both wasteful and
+   a different power profile from the Exercise app we are trying to imitate. */
+#define WATCH_SYS_HR_CONT_MAX 60          /* 60 x 1 Hz = one flush per minute  */
+
+    typedef struct
+    {
+        uint32_t base_ts;                  /* UTC second of sample[0]           */
+        uint8_t  interval_s;               /* seconds between samples (1)       */
+        uint8_t  count;                    /* valid entries in the arrays       */
+        uint8_t  bpm[WATCH_SYS_HR_CONT_MAX];      /* 0 = algo produced nothing  */
+        uint8_t  qscore[WATCH_SYS_HR_CONT_MAX];   /* Goodix valid_score  0-100  */
+        uint8_t  qlevel[WATCH_SYS_HR_CONT_MAX];   /* Goodix valid_level  0-2    */
+    } watch_sys_hr_cont_t;
+
     typedef struct
     {
 #if defined(SOC_BF0_HCPU)
@@ -272,6 +298,7 @@ extern "C"
         int (*set_multi_gesture_mode)(bool enable);
         int (*set_tap_and_hold_mode)(bool enable);
         int (*set_wear_detect_enable)(bool enable);
+        int (*set_hr_continuous)(bool enable);
 #else
     // lcpu->hcpu notify functions
     void (*notify_battery_voltage)(uint32_t data);
@@ -288,6 +315,7 @@ extern "C"
                                       uint8_t orientation, uint16_t vmc);
     void (*notify_debug_log)(char *log);
     void (*notify_sleep_diag)(const watch_sys_sleep_diag_t *rec);
+    void (*notify_hr_cont)(const watch_sys_hr_cont_t *rec);
 #endif
     } watch_sys_sync_t;
 

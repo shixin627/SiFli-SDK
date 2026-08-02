@@ -175,6 +175,13 @@ void app_periodic_task(void)
     {
         watch_sys_sync.set_wear_detect_enable(!SkaiWatchSys.flag_field.wear_detect_off);
     }
+    /* Same reasoning for the continuous-HR diagnostic: it is meant to run a whole
+       night, and an LCPU reboot mid-run would silently drop back to bursts —
+       turning the experiment into the control without anyone noticing. */
+    if (watch_sys_sync.set_hr_continuous)
+    {
+        watch_sys_sync.set_hr_continuous(SkaiWatchSys.flag_field.hr_continuous ? true : false);
+    }
 #endif
 }
 

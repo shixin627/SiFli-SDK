@@ -374,6 +374,31 @@ static void set_wear_detect_off(bool off)
                                        : "ENABLED");
 }
 
+/**
+ * @brief  Continuous-HR diagnostic (Settings toggle).
+ *
+ * ON = measure HR the way the Exercise app does: PPG held on and the Goodix HBA
+ * algorithm never re-initialised, sampled at 1 Hz. OFF = the normal bg_hr regime
+ * (3-min burst every 10 min, algorithm cold-started each time). Both open the
+ * identical sensor mode, so the toggle isolates continuity alone — the last
+ * untested explanation for the nightly 2x readings.
+ *
+ * Persists like wear_detect_off so an overnight run survives a reboot, and pushes
+ * the live state to LCPU immediately. Costs a lot of battery: the LED never turns
+ * off while it is on.
+ */
+static void set_hr_continuous(bool enable)
+{
+    SkaiWatchSys.flag_field.hr_continuous = enable ? 1 : 0;
+    peripheral_provider.save_watch_shared_prefs(WATCH_PREFS_KEY_FLAG_FIELD);
+    if (watch_sys_sync.set_hr_continuous)
+    {
+        watch_sys_sync.set_hr_continuous(enable);
+    }
+    LOG_I("[UI]Continuous HR diag %s", enable ? "ON (LED stays on, high drain)"
+                                              : "OFF (back to bursts)");
+}
+
 /* Language functions --------------------------------------------------------*/
 
 /**
@@ -541,6 +566,7 @@ static int bloc_setting_provider_register(void)
     setting_provider.set_watch_time = set_watch_time;
     setting_provider.set_lift_switch_status = set_lift_switch_status;
     setting_provider.set_wear_detect_off = set_wear_detect_off;
+    setting_provider.set_hr_continuous = set_hr_continuous;
     setting_provider.set_brightness = set_brightness;
     setting_provider.set_screen_time = set_screen_time;
     setting_provider.get_power_save_mode = get_power_save_mode;

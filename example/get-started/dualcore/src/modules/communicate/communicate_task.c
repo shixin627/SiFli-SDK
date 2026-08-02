@@ -343,6 +343,29 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
                            &rec, (uint16_t)sizeof(rec));
 }
 
+bool commu_send_hr_cont(uint32_t base_ts, uint8_t interval_s, uint8_t count,
+                        const uint8_t *bpm, const uint8_t *qscore,
+                        const uint8_t *qlevel)
+{
+    /* Variable-length: 6-byte header + three count-long byte arrays. At the
+       60-sample cap that is 186 B, well inside MAX_PACKET_PAYLOAD_SIZE (507). */
+    if (count == 0 || bpm == NULL || qscore == NULL || qlevel == NULL) return false;
+    if ((uint16_t)(6 + 3 * count) > MAX_PACKET_PAYLOAD_SIZE) return false;
+
+    uint8_t buf[6 + 3 * 60];
+    buf[0] = (uint8_t)(base_ts & 0xFF);
+    buf[1] = (uint8_t)((base_ts >> 8) & 0xFF);
+    buf[2] = (uint8_t)((base_ts >> 16) & 0xFF);
+    buf[3] = (uint8_t)((base_ts >> 24) & 0xFF);
+    buf[4] = interval_s;
+    buf[5] = count;
+    memcpy(buf + 6, bpm, count);
+    memcpy(buf + 6 + count, qscore, count);
+    memcpy(buf + 6 + 2 * count, qlevel, count);
+    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_CONT_DIAG,
+                           buf, (uint16_t)(6 + 3 * count));
+}
+
 bool commu_send_sleep_data(void)
 {
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_RETURN_SLEEP_DATA,

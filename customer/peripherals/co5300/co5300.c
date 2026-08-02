@@ -169,11 +169,25 @@ static void LCD_Drv_Init(LCDC_HandleTypeDef *hlcdc)
     rt_thread_delay(10);
     
     uint32_t module_id = LCD_ReadID(hlcdc);
+    /* On a fast wake the AMOLED rail (shared with the touch chip) may not have
+     * settled when this runs, so ReadID comes back 0x0 and — without this retry
+     * — the driver returned early, leaving the panel un-initialised (no sleep-
+     * out / display-on) for the whole wake. RETRY-ONLY: a healthy wake reads the
+     * real ID on the first pass (zero added latency); a slow-rail wake re-reads
+     * a few ms later once the rail is up. Bounded (~100 ms) so a real fault
+     * still falls through to the early return below. */
+    int lcd_tries = 0;
+    while (module_id != LCD_ID_TT151AMC60C && module_id != LCD_ID_DO0143FMST08
+           && ++lcd_tries < 20)
+    {
+        rt_thread_delay(5);
+        module_id = LCD_ReadID(hlcdc);
+    }
     if (module_id != LCD_ID_TT151AMC60C && module_id != LCD_ID_DO0143FMST08)
     {
         return;
     }
-    
+
     parameter[0] = 0x00;
     LCD_WriteReg(hlcdc, 0xFE, parameter, 1);
     parameter[0] = 0x80;

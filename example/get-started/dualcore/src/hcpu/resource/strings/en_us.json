@@ -131,6 +131,7 @@
   "dnd": "DND",
   "mouse_press": "Mouse Press",
   "wear_detect": "Wear Detection",
+  "hr_continuous": "Continuous HR",
   "time_format_24": "24-hour",
   "time_format_12": "12-hour",
   "screen_time_never": "Never",

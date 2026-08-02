@@ -281,11 +281,31 @@ static rt_err_t init(void)
     rt_touch_irq_pin_attach(PIN_IRQ_MODE_FALLING, ft3168_irq_handler, NULL);
     rt_touch_irq_pin_enable(1); // Must enable before read I2C
 
-    err = write_reg(FT_ID_G_MODE, 1);
+    /* Resume runs before the shared AMOLED rail (which also powers this touch
+     * chip — it has no supply of its own; see bsp_lcd_tp.c) is guaranteed to
+     * have settled, so the first I2C after a fast wake can NAK ("G_MODE set
+     * fail" + drv.i2c bus err). RETRY-ONLY: a healthy wake writes on the first
+     * pass and adds zero latency; a slow-rail wake spins here a few ms until the
+     * chip answers, instead of coming back with touch dead for the whole wake.
+     * Bounded (~100 ms) so a genuinely dead panel still exits. */
+    int g_tries = 0;
+    do
+    {
+        err = write_reg(FT_ID_G_MODE, 1);
+        if (RT_EOK == err)
+        {
+            break;
+        }
+        rt_thread_mdelay(5);
+    }
+    while (++g_tries < 20);
     if (RT_EOK != err)
     {
-        LOG_E("G_MODE set fail\n");
-        // return RT_FALSE;
+        LOG_E("G_MODE set fail (after %d retries)\n", g_tries);
+    }
+    else if (g_tries > 0)
+    {
+        LOG_I("ft3168 rail settled after %d retries", g_tries);
     }
     err = set_power_mode(0x01);
 

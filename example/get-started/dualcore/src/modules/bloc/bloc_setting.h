@@ -20,6 +20,7 @@ extern "C"
         void (*set_watch_time)(T_UTC_TIME time);         // 函數用於設置手錶時間
         void (*set_lift_switch_status)(bool status);     // 函數用於設置舉手亮屏開關狀態
         void (*set_wear_detect_off)(bool off);           // 函數用於設置佩戴偵測停用(診斷用,停用時除充電外都算配戴)
+        void (*set_hr_continuous)(bool enable);          // 連續心率量測(診斷用,同運動 app 的量法:PPG 常開、演算法不重啟)
         void (*set_brightness)(uint8_t percent);         // 函數用於設置屏幕亮度
         void (*set_screen_time)(uint8_t time);           // 函數用於設置屏幕時間
         void (*set_user_profile)(userprofile_union_t profile);
