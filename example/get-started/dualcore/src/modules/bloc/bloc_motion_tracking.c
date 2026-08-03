@@ -2385,16 +2385,10 @@ void set_gravity_position(int position)
        is_at_mouse_mode / app_control_get_mouse_mode 判前景 (兩者皆不 assert)。
        gravity_position 為邊緣觸發 (同 state 早 return)，保持豎直不動不會重觸；
        放平回 OTHER/HORIZONTAL 後再立起才會再觸發。 */
-    if (gravity_position == GRAVITY_POSITION_VERTICAL)
-    {
-        /* 側立圓盤進行中不疊 skaibar(此邊緣只做下面的保險 cancel,再立一次才召喚) */
-        if ((is_at_mouse_mode() || app_control_get_mouse_mode()) &&
-            !mouse_dial_pose_active())
-        {
-            extern void hid_mouse_trigger_skaibar_from_pose(void);
-            hid_mouse_trigger_skaibar_from_pose();
-        }
-    }
+    /* 「立起手錶 → 帶出輸入面板」已於 2026-08-03 退役(founder):語音輸入改成鍵盤模式的
+       第四站,入口單一化,姿勢不再是入口。hid_mouse_trigger_skaibar_from_pose /
+       open_skaibar_from_pose 連同 LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR 一併失去呼叫者,
+       比照手寫的處理:程式原地保留、不再被走到。 */
     /* 手寫的姿勢收斂保險已全拆(2026-07-20 founder:「為什麼還會自動執行」——錶面
        直寫時手腕角度千變萬化,VERTICAL/SIDE/FACE_SIDE 邊緣頻繁誤中,舊保險=寫到
        一半被強制 end 自動送出;結束現在只走退出/輸入鈕+離開 app 取消)。 */

@@ -1131,6 +1131,28 @@ void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level,
     if (snr_x100) *snr_x100 = loc_hb_snr_x100;
 }
 
+/* The algorithm's OWN motion state and scene classification (hba_acc_info,
+   hba_acc_scence). Unlike the four confidence fields — measured dead over a full
+   worn night — these are classification OUTPUTS, so they stand a much better
+   chance of actually being populated. They matter because the HBA applies
+   scene-dependent tracking: if it decides at 4 a.m. that the wearer is running,
+   it will happily track and hold a high rate. Already computed into snResult[4]
+   and [5] since the vendor import; nothing ever read them. */
+static uint32_t loc_hb_acc_info = 0;
+static uint32_t loc_hb_acc_scene = 0;
+
+void gh3018_set_hr_acc_state(uint32_t acc_info, uint32_t acc_scene)
+{
+    loc_hb_acc_info = acc_info;
+    loc_hb_acc_scene = acc_scene;
+}
+
+void gh3018_get_hr_acc_state(uint32_t *acc_info, uint32_t *acc_scene)
+{
+    if (acc_info) *acc_info = loc_hb_acc_info;
+    if (acc_scene) *acc_scene = loc_hb_acc_scene;
+}
+
 uint32_t *gh3018_get_ppg(void)
 {
     return loc_ppg_buf;

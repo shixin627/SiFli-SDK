@@ -72,7 +72,8 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
    cold-restarted. Temporary — remove with the experiment. */
 bool commu_send_hr_cont(uint32_t base_ts, uint8_t interval_s, uint8_t count,
                         const uint8_t *bpm, const uint8_t *qscore,
-                        const uint8_t *qlevel);
+                        const uint8_t *qlevel, const uint8_t *accst,
+                        const uint8_t *accel, const uint16_t *pi_e3);
 /* Push current SkaiWatchSys.sleep_state to the phone via KEY_RETURN_SLEEP_DATA.
    Called on every stage transition received from LCPU. The dart-side
    parser must mirror the layout of watch_sys_sleep_state_t. */
@@ -127,6 +128,8 @@ bool commu_send_skaibar_open_device(bool force_open);  /* -> KEY_SKAIBAR_OPEN_DE
 bool commu_send_skaibar_open_device_ex(bool force_open, bool input_only); /* -> KEY_SKAIBAR_OPEN_DEVICE (0x0E) {"forceOpen":bool,"inputOnly":bool} 立起輸入面板:input_only=true 讓電腦只留輸入框、記住聚焦欄位當 icon_send 目的地 */
 bool commu_send_lift_input_commit(const char *dest); /* -> KEY_LIFT_INPUT_COMMIT (0x1d) {"dest":"field"|"skaibar"} 立起面板送出去處(文字由手機端持有) */
 bool commu_send_lift_input_caret(int pos, const char *text); /* -> KEY_LIFT_INPUT_CARET (0x1e) {"pos":N,"text":"..."} 插入點(字元索引)+手錶當下顯示的文字,供手機重新對齊 */
+bool commu_send_voice_station_commit(const char *dest, const char *text); /* -> KEY_LIFT_INPUT_COMMIT (0x1d) {"dest":...,"text":"..."} 滑鼠 app 語音站:文字真相在手錶本地,故一併帶上 */
+bool commu_send_voice_station_preview(const char *text); /* -> KEY_LIFT_INPUT_CARET (0x1e) {"preview":"..."} 語音站:把手錶當下的文字推給電腦顯示 */
 bool commu_send_lift_input_cancel_segment(void); /* -> KEY_LIFT_INPUT_CARET (0x1e) {"cancel":true} 丟掉這次按住錄到的那一段(長按講話中途改成框選) */
 bool commu_send_lift_input_delete(void); /* -> KEY_LIFT_INPUT_DELETE (0x1f) {} 刪掉插入點前一個字(長按由手錶 timer 重送) */
 bool commu_send_lift_input_delete_range(int from, int to); /* -> KEY_LIFT_INPUT_DELETE (0x1f) {"from":N,"to":M} 刪掉框選的那一段(字元索引,半開區間) */

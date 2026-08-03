@@ -345,25 +345,36 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
 
 bool commu_send_hr_cont(uint32_t base_ts, uint8_t interval_s, uint8_t count,
                         const uint8_t *bpm, const uint8_t *qscore,
-                        const uint8_t *qlevel)
+                        const uint8_t *qlevel, const uint8_t *accst,
+                        const uint8_t *accel, const uint16_t *pi_e3)
 {
-    /* Variable-length: 6-byte header + three count-long byte arrays. At the
-       60-sample cap that is 186 B, well inside MAX_PACKET_PAYLOAD_SIZE (507). */
-    if (count == 0 || bpm == NULL || qscore == NULL || qlevel == NULL) return false;
-    if ((uint16_t)(6 + 3 * count) > MAX_PACKET_PAYLOAD_SIZE) return false;
+    /* Variable-length: 6-byte header + five count-long byte arrays + one u16 LE
+       array. At the 30-sample cap that is 216 B, comfortably inside
+       MAX_PACKET_PAYLOAD_SIZE (507). */
+    if (count == 0 || bpm == NULL || qscore == NULL || qlevel == NULL ||
+        accst == NULL || accel == NULL || pi_e3 == NULL) return false;
+    uint16_t len = (uint16_t)(6 + 7 * count);
+    if (len > MAX_PACKET_PAYLOAD_SIZE) return false;
 
-    uint8_t buf[6 + 3 * 60];
+    uint8_t buf[6 + 7 * 30];
     buf[0] = (uint8_t)(base_ts & 0xFF);
     buf[1] = (uint8_t)((base_ts >> 8) & 0xFF);
     buf[2] = (uint8_t)((base_ts >> 16) & 0xFF);
     buf[3] = (uint8_t)((base_ts >> 24) & 0xFF);
     buf[4] = interval_s;
     buf[5] = count;
-    memcpy(buf + 6, bpm, count);
-    memcpy(buf + 6 + count, qscore, count);
-    memcpy(buf + 6 + 2 * count, qlevel, count);
-    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_CONT_DIAG,
-                           buf, (uint16_t)(6 + 3 * count));
+    uint16_t o = 6;
+    memcpy(buf + o, bpm, count);    o += count;
+    memcpy(buf + o, qscore, count); o += count;
+    memcpy(buf + o, qlevel, count); o += count;
+    memcpy(buf + o, accst, count);  o += count;
+    memcpy(buf + o, accel, count);  o += count;
+    for (uint8_t i = 0; i < count; i++)   /* u16 LE, matching every other key here */
+    {
+        buf[o++] = (uint8_t)(pi_e3[i] & 0xFF);
+        buf[o++] = (uint8_t)((pi_e3[i] >> 8) & 0xFF);
+    }
+    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_CONT_DIAG, buf, len);
 }
 
 bool commu_send_sleep_data(void)
@@ -627,6 +638,41 @@ bool commu_send_lift_input_caret(int pos, const char *text)
 bool commu_send_lift_input_delete(void)
 {
     return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_DELETE, "{}");
+}
+
+/* 滑鼠 app 語音站的送出(0x1d 加選填 text)。與立起面板那條的差別:語音站的文字真相在
+   **手錶本地**(鍵盤模式的 input_buffer,才能跟注音/英文混著用),所以這裡必須把文字一起帶
+   上去;手機收到帶 text 的就用它,不用自己那份暫存稿。AI 口語整理由手機端收到後再跑。 */
+bool commu_send_voice_station_commit(const char *dest, const char *text)
+{
+    if (!dest || !text) return false;
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return false;
+    cJSON_AddStringToObject(root, "dest", dest);
+    cJSON_AddStringToObject(root, "text", text);
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_COMMIT, json);
+    LOG_I("send voice-station commit dest=%s -> %s", dest, ok ? "ok" : "FAIL");
+    cJSON_free(json);
+    return ok;
+}
+
+/* 同一把鑰匙(0x1e),preview = 手錶目前顯示的文字。語音站的文字真相在手錶本地,電腦那條
+   輸入框要跟著顯示就得靠這個持續推(立起面板不需要 —— 那時真相在手機)。呼叫端已做防抖。 */
+bool commu_send_voice_station_preview(const char *text)
+{
+    if (!text) return false;
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return false;
+    cJSON_AddStringToObject(root, "preview", text);
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_CARET, json);
+    cJSON_free(json);
+    return ok;
 }
 
 /* 同一把鑰匙(0x1e),cancel = 把「這次按住錄到的那一段」整個丟掉,暫存文字退回按下之前。
