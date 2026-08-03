@@ -314,10 +314,17 @@ static void random_address_btn_event_callback(lv_event_t *e)
  * (e.g. this release build). A weak fallback keeps the Development page
  * linkable everywhere now that the page ships in release too — hr_client.c's
  * strong definition wins whenever present. Only presets the PPG toggle state. */
+bool ppg_service_subscribed(void);
+
+/* MSVC has no weak symbols — RT_WEAK is empty there (rtdef.h) — so on the PC
+ * simulator this fallback collides with hr_client.c's strong definition
+ * instead of losing to it. Skip it where hr_client.c is actually linked. */
+#if !defined(_MSC_VER) || !defined(BSP_USING_HR_CLIENT)
 RT_WEAK bool ppg_service_subscribed(void)
 {
     return false;
 }
+#endif
 
 static void lv_create_dev_screen(void)
 {

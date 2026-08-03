@@ -14,10 +14,10 @@
 #include "lvgl.h"
 #include "lv_ext_resource_manager.h"
 #include "skaiapp_render.h"
+#include "skai/skai_dispatch.h"
 #include "skaiapp_engine.h"
 #include "ui_img_helper.h"
 #include "ui_helper.h"
-#include "watch_global_data.h"
 
 #define DBG_TAG "skaiapp.rend"
 #define DBG_LVL DBG_LOG
@@ -80,63 +80,17 @@ const void *skaiapp_render_icon_src(uint8_t icon_enum)
 
 /* ── bind formatting ── */
 
-/* days-since-1970 → y/m/d (civil algorithm, avoids libc time dependency) */
-static void civil_from_days(int32_t z, int *y, int *mo, int *d)
-{
-    z += 719468;
-    int32_t era = (z >= 0 ? z : z - 146096) / 146097;
-    uint32_t doe = (uint32_t)(z - era * 146097);
-    uint32_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    int32_t yy = (int32_t)yoe + era * 400;
-    uint32_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    uint32_t mp = (5 * doy + 2) / 153;
-    uint32_t dd = doy - (153 * mp + 2) / 5 + 1;
-    uint32_t mm = mp + (mp < 10 ? 3 : (uint32_t)-9);
-    *y = (int)(yy + (mm <= 2));
-    *mo = (int)mm;
-    *d = (int)dd;
-}
-
 static void fmt_bind(const skaiapp_witem_t *it, char *buf, size_t cap)
 {
-    uint32_t sec = SkaiWatchSys.SecondCountRTC; /* local wall clock as epoch */
     buf[0] = '\0';
     switch (it->bind)
     {
-    case SKAIAPP_BIND_TIME:
-    {
-        uint8_t h = (uint8_t)((sec / 3600u) % 24u);
-        uint8_t mi = (uint8_t)((sec / 60u) % 60u);
-        ui_time_format_hhmm(buf, cap, h, mi);
-        break;
-    }
-    case SKAIAPP_BIND_DATE:
-    {
-        int y, mo, d;
-        civil_from_days((int32_t)(sec / 86400u), &y, &mo, &d);
-        rt_snprintf(buf, cap, "%02d/%02d", mo, d);
-        break;
-    }
-    case SKAIAPP_BIND_BATTERY:
-        rt_snprintf(buf, cap, "%d%%", SkaiWatchSys.battery_level_value);
-        break;
-    case SKAIAPP_BIND_HR:
-    {
-        /* same HCPU-resident source the exercise app writes (SkaiWatchSys);
-           0 = no recent reading → "--" (HR only samples when subscribed) */
-        uint8_t bpm = SkaiWatchSys.heart_rate_bpm;
-        if (bpm == 0)
-        {
-            rt_snprintf(buf, cap, "--");
-        }
-        else
-        {
-            rt_snprintf(buf, cap, "%d", bpm);
-        }
-        break;
-    }
-    case SKAIAPP_BIND_STEPS:
-        rt_snprintf(buf, cap, "%u", (unsigned)SkaiWatchSys.gPedoData.global_steps);
+    /* Every watch-state bind, present and future, goes through here — the
+       capability supplies its own value and display format, so a new one needs
+       no case of its own (ADR-0019 Phase 2). Missing readings all render as
+       "--", so an absent heart rate looks like any other absent value. */
+    case SKAIAPP_BIND_CAP:
+        skai_cap_render(skai_cap_at(it->bind_idx), buf, (uint32_t)cap);
         break;
     case SKAIAPP_BIND_TIMER:
     {
@@ -201,13 +155,19 @@ static int32_t gauge_percent(const skaiapp_witem_t *it)
 {
     switch (it->bind)
     {
-    case SKAIAPP_BIND_BATTERY:
-        return SkaiWatchSys.battery_level_value;
-    case SKAIAPP_BIND_STEPS:
+    case SKAIAPP_BIND_CAP:
     {
-        int32_t max = (it->max > 0) ? it->max : 8000;
-        int32_t v = (int32_t)((int64_t)SkaiWatchSys.gPedoData.global_steps * 100 / max);
-        return (v > 100) ? 100 : v;
+        int32_t v;
+        if (!skai_cap_value(skai_cap_at(it->bind_idx), &v))
+            return 0; /* no reading — an empty gauge, not a wrong one */
+        /* max is the package's goal, or the legacy default the parser filled
+           in for v0 bind keys. Without one the value is already a percentage
+           (battery level, chance of rain). */
+        if (it->max > 0)
+        {
+            v = (int32_t)((int64_t)v * 100 / it->max);
+        }
+        return (v > 100) ? 100 : ((v < 0) ? 0 : v);
     }
     case SKAIAPP_BIND_TIMER:
     {

@@ -127,10 +127,44 @@ hand-tuned C screens pulls toward exposing all of LVGL styling, which is what
 ADR-0019 decision 9 forbids for untrusted code. Where a gap can be closed by a
 **higher-level** primitive (keypad, not 20 buttons), close it that way.
 
-## Also still open
+## Install path + signature verification — done on the simulator
 
-- **Install-time signature verification** — the fourth sandbox piece
-  (mbedtls ECDSA P-256 + SHA-256 + TOFU keyid). Not started.
+The fourth sandbox piece is in. `skai_pkg.c` verifies a v1 manifest against
+`SkaiLink/bridge/skaiapp-manifest.schema.json` (**that repo is at
+`C:\skaiwalk\SkaiLink`, not the `C:\work\SkaiLink` the CLAUDE.md still says**)
+and installs to `/skaiapp/<keyid>/<app_id>/`. Design notes are in
+[ADR-0019 §14](adr/0019-skai-sdk-two-tier-and-self-signing.md).
+
+```
+project\hcpu\_mkfixtures.cmd                                  # regenerate fixtures
+project\hcpu\_dev_test.cmd -nobuild -script _skai_pkg.txt     # 27 checks
+project\hcpu\_dev_test.cmd -nobuild -script _skai_pkg_app.txt -screenshot x.png
+```
+
+`skai_pkg_test: PASS (0 failures, 27 checks)` — the count is in the summary
+deliberately, so a run that stops early cannot read as a clean one.
+
+Signing is `tools/sdk/sign_pkg.js` (Node, because its WebCrypto returns ECDSA
+as raw r||s, which is the form the schema wants; Python here has neither
+`cryptography` nor `ecdsa`). `--tamper payload|caps|keyid|sig|version` breaks
+one property AFTER signing, which is what the hostile cases install.
+
+**Not wired: the BLE transport.** A signed package is two blobs and 0x13/0x14
+carries one, so it needs a protocol change landing with the phone-side spec.
+`skai_pkg_install(manifest, payload)` is the seam.
+
+Two things found on the way, neither mine:
+
+- **Plain `open()`/`read()`/`write()` do not work in the simulator.**
+  `dfs_posix.h` says so under `#ifdef WIN32` — "MSVC could not replace system
+  CRT functions" — and exports `rt_open`/`rt_read`/... instead. Code using the
+  POSIX names binds to the C runtime, looks on the host disk, and fails
+  silently every time. `skai_pkg.h` has a `skai_f*` shim for both targets.
+- **`skaiapp_store.c` has that bug**, so declarative packages have never been
+  loadable on the simulator — the store's read/write path is dead there. Not
+  touched; it is the other in-flight work's file.
+
+## Also still open
 - **Microphone in-use indicator** — `lv_layer_sys()` + capture refcount. Its own
   work block; blocks opening T2-mic.
 - **Recursion guard on hardware** — the simulator cannot test it (QuickJS's MSVC

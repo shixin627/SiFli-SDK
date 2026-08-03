@@ -1,0 +1,2 @@
+skai_pkg_add pkg_weather
+skai_pkg_run weather

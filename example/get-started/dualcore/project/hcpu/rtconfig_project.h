@@ -30,6 +30,21 @@
     #define CONFIG_STACK_CHECK
 #endif
 
+/* Turn on just enough mbedtls for install-time package verification
+ * (ADR-0019 §2.5): SHA-256 is already on in external/mbedtls/include/mbedtls/
+ * config.h, but ECDSA and the P-256 curve are not — the curve is defined only
+ * under PKG_USING_SM, and MBEDTLS_ECDSA_C appears solely inside a doc comment.
+ *
+ * Defined here for the same reason as CONFIG_STACK_CHECK above: rtconfig.h is
+ * force-included ahead of config.h, config.h never defines these in its active
+ * block, so nothing is redefined and the vendor tree stays untouched. The
+ * matching source files are compiled by src/modules/sdk/SConscript rather than
+ * by external/mbedtls/SConscript, which builds a much wider set. */
+#define MBEDTLS_ECP_C
+#define MBEDTLS_ECP_DP_SECP256R1_ENABLED
+#define MBEDTLS_ECDSA_C
+#define MBEDTLS_ASN1_WRITE_C
+
 /* Override the SDK default "SifliDemo" Classic-BT local-name prefix. */
 #define BT_LOCAL_NAME_PREFIX "Skaiwalk Air"
 /* Use the prefix verbatim as the Classic-BT friendly name (no "-<mac>" suffix),

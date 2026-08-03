@@ -55,17 +55,26 @@ typedef enum
     SKAIAPP_W_ROW,     /* marker: next `row_n` items are its children */
 } skaiapp_wtype_t;
 
+/* Binds are two different things wearing one name, and only one of them was
+   ever the problem (ADR-0019 Phase 2):
+
+   - Watch state (time, battery, heart rate, weather, ...) — these used to be
+     one enum value each, so every new capability meant editing four files.
+     Now they are SKAIAPP_BIND_CAP plus an index into the skai dispatch table,
+     resolved by NAME at parse time. Adding a capability touches nothing here.
+   - Package-local references (timer/reminder/memo) — these point at objects
+     inside the package itself, so the dispatch table has nothing to say about
+     them. They keep their own enum values and slot index.
+
+   Changing these values is safe: packages are stored as raw JSON and re-parsed
+   on every load, so nothing on a user's watch holds these numbers. */
 typedef enum
 {
     SKAIAPP_BIND_NONE = 0,
-    SKAIAPP_BIND_TIME,
-    SKAIAPP_BIND_DATE,
-    SKAIAPP_BIND_BATTERY,
-    SKAIAPP_BIND_HR,
-    SKAIAPP_BIND_STEPS,
-    SKAIAPP_BIND_TIMER,    /* + bind_idx */
-    SKAIAPP_BIND_REMINDER, /* + bind_idx */
-    SKAIAPP_BIND_MEMO,     /* + bind_idx → user-authored text (memo slot) */
+    SKAIAPP_BIND_CAP,      /* bind_idx = skai dispatch table index */
+    SKAIAPP_BIND_TIMER,    /* bind_idx = timer slot */
+    SKAIAPP_BIND_REMINDER, /* bind_idx = reminder slot */
+    SKAIAPP_BIND_MEMO,     /* bind_idx = memo slot → user-authored text */
 } skaiapp_bind_t;
 
 typedef enum
@@ -93,7 +102,9 @@ typedef struct
     uint8_t  size;       /* 0=s 1=m 2=l 3=xl (label/value); icon 0=s 1=m 2=l; arc 0=s 1=l */
     uint8_t  color;      /* skaiapp_color_t */
     uint8_t  bind;       /* skaiapp_bind_t */
-    int8_t   bind_idx;   /* timer/reminder slot, -1 = unresolved */
+    int16_t  bind_idx;   /* dispatch index or timer/reminder slot, -1 = none.
+                            int16 not int8: the dispatch table grows with every
+                            capability and must not silently hit a ceiling. */
     uint8_t  action;     /* skaiapp_action_t (button) */
     int8_t   action_idx; /* timer/reminder slot the action targets */
     uint8_t  ghost;      /* button style: 0 primary 1 ghost */

@@ -329,6 +329,46 @@ per-run. An interactive app needs its context to live from `on_start` to
 
 Deciding those semantics is a prerequisite for the widgets, not a follow-up.
 
+### 14. Installation: a directory per (keyid, app_id), verified once
+
+`skai_pkg.c` implements decisions 3–5. The manifest and the payload arrive as
+two blobs and are verified in a fixed order — parse, firmware range, keyid
+derivation, revocation, payload digest, and only then the curve arithmetic — so
+a malformed or revoked package never reaches ECDSA.
+
+**TOFU is the directory layout, not a second record.** A verified package is
+written to `/skaiapp/<keyid>/<app_id>/{manifest.json,payload}`. Because the
+keyid is part of the path, a second publisher claiming an installed app's id
+lands elsewhere and cannot overwrite it — which is exactly what decision 4
+asks for, with no keyid-to-app_id table that could disagree with the
+filesystem. Both components are constrained by the schema to `[A-Za-z0-9_-]`,
+so neither can walk out of the directory. The payload is written first and the
+manifest last, so an interrupted install leaves something the scan ignores
+rather than an app with no code.
+
+**Launch re-checks the digest but not the signature.** The signature binds the
+PUBLISHER and the schema pins that check to install time; the digest binds the
+BYTES and catches a swapped or truncated payload for the price of a hash.
+Revocation is re-checked at launch too, because a blocklist arrives long after
+the app did — a revoked app is disabled, not deleted, so the user can still see
+why.
+
+**mbedtls is pulled in file by file** (`src/modules/sdk/mbedtls/`), because
+`external/mbedtls`'s own SConscript does not build `ecdsa.c` at all and
+`external/` is read-only here. The config macros come from
+`rtconfig_project.h`, the same trick as `CONFIG_STACK_CHECK`.
+
+**The JS host's source buffer is smaller than the schema's payload limit**, so
+an oversized package is refused AT INSTALL with a reason rather than truncated
+on its way to the interpreter. Raising `SKAI_PKG_JS_SRC_MAX` means moving that
+buffer to PSRAM.
+
+Not wired: **the BLE transport**. The schema makes the payload a separate blob
+and the existing 0x13/0x14 path carries a single JSON package, so a signed
+package needs a two-part transfer — a protocol change that must land in the
+same commit as the phone-side spec. The core is `skai_pkg_install(manifest,
+payload)`; the sim installs from the filesystem.
+
 ## Consequences
 
 - Adding a capability becomes one annotated declaration; the dispatch table,

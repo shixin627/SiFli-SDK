@@ -511,7 +511,7 @@ app 自己畫的指示器對惡意 app 完全無效 —— 不畫就好了。所
   - 記憶體配額 → QuickJS 自訂 allocator
   - 執行時間 watchdog → `JS_SetInterruptHandler`
   - 權限閘 → 派發表查 manifest 宣告，未宣告直接拒絕
-  - 安裝時驗簽 → SHA-256（硬體加速）+ ECDSA P-256（mbedtls）+ TOFU keyid 比對（§2.5）
+  - ✅ 安裝時驗簽 → SHA-256 + ECDSA P-256（mbedtls）+ TOFU keyid 比對（§2.5）—— 模擬器上 27 項 gate 全綠（`skai_pkg.c`，設計見 ADR-0019 §14）。TOFU 由 `/skaiapp/<keyid>/<app_id>/` 的路徑本身保證，不另存對照表。**BLE 兩段式傳輸尚未接**（簽名包是 manifest + payload 兩個 blob，現行 0x13/0x14 只傳一個，改協定要與手機端同 commit）
 - **麥克風系統級指示器**（§2.6）—— 把現有 mic bar 升到 `lv_layer_sys()`，綁 capture refcount，加前景限定與 v2t 配額。**這是開放 T2-mic 的前置條件，不能晚於能力開放。**
 - **除錯管線 hook**（§2.8）—— keyid 標記的 app 日誌 ring buffer、除錯 session 閘、QuickJS 例外轉結構化事件、配額違規事件、丟包計數。**hook 現在做，UI 排 Phase 5；retrofit 很痛。**
 - 把 `skai_*` 由派發表**自動注入** JS global（不是手寫 binding，見 §2.1）

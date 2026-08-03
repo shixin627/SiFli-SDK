@@ -1,3 +1,5 @@
+import os
+
 Import('RTT_ROOT')
 Import('rtconfig')
 from building import *
@@ -21,6 +23,30 @@ if GetDepend('BSP_USING_MODEL_WATCH_GLOBAL_DATA') \
     # PKG_USING_QUICKJS build.
     if GetDepend('PKG_USING_QUICKJS'):
         src += Glob("skai_js.c")
+        src += Glob("skai_pkg.c")
+
+        # Install-time signature verification (ADR-0019 §2.5) needs SHA-256 and
+        # ECDSA P-256. mbedtls/ holds one one-line file per vendor source it
+        # needs, and those exist for two reasons:
+        #
+        #   external/mbedtls's own SConscript does not build ecdsa.c at all, so
+        #   enabling PKG_SIFLI_MBEDTLS_BOOT cannot verify an ES256 signature
+        #   however it is configured — and adding the file there means editing
+        #   external/, which this project treats as read-only;
+        #
+        #   listing the vendor sources here by absolute path does build them,
+        #   but their .obj files land next to the vendor source, writing into
+        #   the very tree we are trying not to touch. A wrapper per file puts
+        #   the objects under the build directory where they belong. One
+        #   wrapper for all of them does not work: several vendor files define
+        #   their own static mbedtls_zeroize().
+        #
+        # The matching config macros are in project/hcpu/rtconfig_project.h;
+        # the vendored config.h leaves ECDSA and the P-256 curve off.
+        if not GetDepend('PKG_SIFLI_MBEDTLS_BOOT'):
+            src += Glob("mbedtls/*.c")
+            path += [os.path.normpath(os.path.join(
+                cwd, '../../../../../../external/mbedtls/include'))]
 
 group = DefineGroup('SkaiSDK', src, depend = [''], CPPPATH = path)
 

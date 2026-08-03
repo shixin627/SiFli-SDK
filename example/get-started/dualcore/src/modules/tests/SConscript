@@ -23,6 +23,9 @@ if GetDepend('BSP_USING_PC_SIMULATOR'):
     # External JS sandbox gates (ADR-0019 Phase 3): skai_js_test. The file
     # self-gates on PKG_USING_QUICKJS too, so it is inert without the runtime.
     src += ['test_skai_js.c']
+    # Signed-package install + verification gates (ADR-0019 §2.5). Also
+    # self-gates on PKG_USING_QUICKJS.
+    src += ['test_skai_pkg.c']
 
 group = DefineGroup('Unit_tests', src, depend = [''], CPPPATH = path)
 

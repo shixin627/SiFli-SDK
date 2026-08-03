@@ -33,7 +33,10 @@
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
-#define SKAIJS_SRC_MAX 2048
+/* One definition, shared with the installer: skai_pkg refuses a package whose
+   payload would not fit here, rather than letting it truncate on the way in. */
+#include "skai/skai_pkg.h"
+#define SKAIJS_SRC_MAX SKAI_PKG_JS_SRC_MAX
 
 static lv_obj_t *s_root;
 static char      s_src[SKAIJS_SRC_MAX];
@@ -68,7 +71,8 @@ static void on_start(void)
 
     /* Assets live beside the installed package, so ui.image resolves inside
      * this app's directory and nowhere else. */
-    rt_snprintf(s_asset_dir, sizeof(s_asset_dir), "/skaiapp/%s", s_policy.app_id);
+    rt_snprintf(s_asset_dir, sizeof(s_asset_dir), "/skaiapp/%s/%s",
+                s_policy.keyid, s_policy.app_id);
     skai_ui_attach(s_root, s_asset_dir);
 
     if (s_src[0] == '\0')

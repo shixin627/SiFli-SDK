@@ -174,9 +174,13 @@ if ($snapshot) {
     # deterministic so this matches what list_apps emits today.
     if ($apps.Count -eq 0) {
         Write-Host '[snapshot] list_apps parse empty; using hardcoded fallback' -ForegroundColor Yellow
-        $apps = @('alarm','battery','calculator','file_browser','flashlight',
-                  'interact','Main','message','photo','qrcode',
-                  'setting','sleep','test','timer','weather')
+        # Verified against list_apps 2026-08-03. The previous list still had
+        # 'sleep', which is NOT launchable — goto_app silently did nothing and
+        # every snapshot for it came out as the watchface, which is worse than
+        # a missing file because it looks like a real capture.
+        $apps = @('alarm','battery','calculator','proto_pager','file_browser',
+                  'flashlight','mouse','interact','Main','message','photo',
+                  'qrcode','setting','skaiapp','skaijs','test','timer','weather')
     }
     Write-Host "[snapshot] $($apps.Count) apps to capture into $dir" -ForegroundColor Cyan
     foreach ($id in $apps) {
