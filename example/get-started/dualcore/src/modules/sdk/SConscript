@@ -1,0 +1,27 @@
+Import('RTT_ROOT')
+Import('rtconfig')
+from building import *
+
+cwd = GetCurrentDir()
+src = []
+path = [cwd + '/includes']
+
+# skai_api.c reads SkaiWatchSys, peripheral_provider and share_prefs, so it
+# only builds where all three exist. That is the HCPU side (both the watch and
+# the PC simulator configs enable them); LCPU has none of them.
+if GetDepend('BSP_USING_MODEL_WATCH_GLOBAL_DATA') \
+        and GetDepend('BSP_USING_BLOC_PERIPHERAL') \
+        and GetDepend('BSP_SHARE_PREFS'):
+    src += Glob("skai_api.c")
+    src += Glob("skai_dispatch.c")
+    src += Glob("skai_ui.c")
+
+    # The sandboxed JS runtime only exists where QuickJS is built. It also
+    # supplies gui_qjs_app_list_get_next, which gui_app_fwk.h declares for any
+    # PKG_USING_QUICKJS build.
+    if GetDepend('PKG_USING_QUICKJS'):
+        src += Glob("skai_js.c")
+
+group = DefineGroup('SkaiSDK', src, depend = [''], CPPPATH = path)
+
+Return('group')

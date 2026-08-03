@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skai SDK 1.0 &mdash; API Reference</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--muted:#6b6b6b;--line:#e3e3e3;--accent:#0a84ff;
+      --code-bg:#f6f7f9;--sig-bg:#f0f4f8}
+@media (prefers-color-scheme:dark){
+:root{--bg:#16181c;--fg:#e6e6e6;--muted:#9aa0a6;--line:#2b2f36;
+      --code-bg:#1e2127;--sig-bg:#1b2530}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+     font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.wrap{display:flex;align-items:flex-start;max-width:1180px;margin:0 auto}
+nav{position:sticky;top:0;width:220px;flex:none;padding:32px 16px;
+    max-height:100vh;overflow:auto}
+nav h1{font-size:15px;margin:0 0 4px}
+nav .ver{color:var(--muted);font-size:13px;margin:0 0 20px}
+nav ul{list-style:none;margin:0;padding:0}
+nav li{margin:2px 0}
+nav a{color:var(--fg);text-decoration:none;font-size:14px;display:block;
+      padding:4px 8px;border-radius:6px}
+nav a:hover{background:var(--code-bg);color:var(--accent)}
+main{flex:1;min-width:0;padding:32px 24px 96px;border-left:1px solid var(--line)}
+h2{font-size:26px;margin:48px 0 4px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+section:first-child h2{margin-top:0}
+h3{font-size:18px;margin:0 0 8px}
+article{padding:20px 0;border-bottom:1px solid var(--line)}
+article:last-child{border-bottom:0}
+p{margin:10px 0}
+.lede{color:var(--muted)}
+pre.sig{background:var(--sig-bg);border:1px solid var(--line);border-radius:8px;
+        padding:10px 14px;overflow-x:auto;font-size:14px;margin:0 0 10px}
+.meta{margin:0 0 12px}
+.badge{display:inline-block;font-size:12px;padding:2px 9px;border-radius:999px;
+       border:1px solid var(--line);margin-right:6px;color:var(--muted);cursor:help}
+.tierT1{border-color:#2ea043;color:#2ea043}
+.tierT2,.tierT2mic{border-color:#d29922;color:#d29922}
+.tierT3{border-color:#f85149;color:#f85149}
+table{border-collapse:collapse;margin:12px 0;font-size:14px;width:100%;
+      display:block;overflow-x:auto}
+th,td{text-align:left;padding:6px 12px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:600}
+code{background:var(--code-bg);padding:1px 5px;border-radius:4px;font-size:13px}
+.c{color:var(--muted);font-size:13px}
+.c span{display:inline-block;border:1px solid var(--line);border-radius:4px;
+        padding:0 5px;margin-right:4px;font-size:11px}
+.note{background:var(--code-bg);border-left:3px solid var(--accent);
+      padding:12px 16px;border-radius:0 8px 8px 0;margin:16px 0}
+@media (max-width:760px){.wrap{display:block}nav{position:static;width:auto;
+  max-height:none}main{border-left:0;padding:0 20px 64px}}
+</style>
+</head><body>
+<div class="wrap">
+<nav>
+  <h1>Skai SDK</h1>
+  <p class="ver">1.0 &middot; 48 capabilities</p>
+  <ul><li><a href="#battery">skai.battery</a></li>
+<li><a href="#haptic">skai.haptic</a></li>
+<li><a href="#health">skai.health</a></li>
+<li><a href="#log">skai.log</a></li>
+<li><a href="#persist">skai.persist</a></li>
+<li><a href="#time">skai.time</a></li>
+<li><a href="#timer">skai.timer</a></li>
+<li><a href="#ui">skai.ui</a></li>
+<li><a href="#watchinfo">skai.watchinfo</a></li>
+<li><a href="#weather">skai.weather</a></li></ul>
+</nav>
+<main>
+<h2 style="margin-top:0">Overview</h2>
+<p>Everything a watch app can do, as JavaScript. Each entry below is a
+<em>capability</em>: your app declares the ones it needs in its manifest, and the
+runtime refuses any call you did not declare.</p>
+<div class="note">
+<p><strong>Nothing is granted by default.</strong> A capability absent from your
+manifest throws when called, and you can catch it. Use
+<code>skai.available(name)</code> to branch instead of throwing &mdash; a
+capability may be missing because the firmware is older or because the user
+declined it.</p>
+</div>
+<p>Numeric readings return <code>null</code> when there is no measurement
+(no heart-rate sample yet, no forecast received). That is a value you can test,
+not a sentinel number to memorise.</p>
+<p class="lede">Generated from the annotated SDK headers by
+<code>tools/sdk/gen_dispatch.py</code>. Do not edit by hand.</p>
+<section id="battery">
+<h2>skai.battery</h2>
+<article id="battery.charging">
+<h3>charging</h3>
+<pre class="sig">skai.battery.charging(): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p class="c"><span>C</span> <code>bool skai_battery_charging(void);</code></p>
+</article>
+<article id="battery.level">
+<h3>level</h3>
+<pre class="sig">skai.battery.level(): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>State of charge, 0..100. SKAI_NO_DATA before the first reading lands. The "%d%%" is the declarative renderer's display format — it lives in the dispatch table so units travel with the capability instead of in a second table the renderer would have to keep in sync.</p>
+<p class="c"><span>C</span> <code>int32_t skai_battery_level(void);</code></p>
+</article>
+</section>
+<section id="haptic">
+<h2>skai.haptic</h2>
+<article id="haptic.stop">
+<h3>stop</h3>
+<pre class="sig">skai.haptic.stop(): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p class="c"><span>C</span> <code>bool skai_haptic_stop(void);</code></p>
+</article>
+<article id="haptic.vibrate">
+<h3>vibrate</h3>
+<pre class="sig">skai.haptic.vibrate(pattern_id: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>Play a built-in pattern by id. Returns false if the id is unknown or the motor is busy; never queues, so a spamming app cannot build a backlog.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>pattern_id</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_haptic_vibrate(uint32_t pattern_id);</code></p>
+</article>
+</section>
+<section id="health">
+<h2>skai.health</h2>
+<article id="health.calories">
+<h3>calories</h3>
+<pre class="sig">skai.health.calories(): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p class="c"><span>C</span> <code>int32_t skai_health_calories(void);</code></p>
+</article>
+<article id="health.distance_m">
+<h3>distance_m</h3>
+<pre class="sig">skai.health.distance_m(): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p class="c"><span>C</span> <code>int32_t skai_health_distance_m(void);</code></p>
+</article>
+<article id="health.heart_rate">
+<h3>heart_rate</h3>
+<pre class="sig">skai.health.heart_rate(): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>Last measured heart rate in bpm. SKAI_NO_DATA when there is no reading — this is a cached value, not a trigger: reading it never starts the PPG.</p>
+<p class="c"><span>C</span> <code>int32_t skai_health_heart_rate(void);</code></p>
+</article>
+<article id="health.step_goal">
+<h3>step_goal</h3>
+<pre class="sig">skai.health.step_goal(): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>Daily step goal the user set, so apps render progress against the same number the watch does instead of inventing one.</p>
+<p class="c"><span>C</span> <code>int32_t skai_health_step_goal(void);</code></p>
+</article>
+<article id="health.steps">
+<h3>steps</h3>
+<pre class="sig">skai.health.steps(): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>Steps today. SKAI_NO_DATA until the first reading arrives after a boot.</p>
+<p class="c"><span>C</span> <code>int32_t skai_health_steps(void);</code></p>
+</article>
+<article id="health.worn">
+<h3>worn</h3>
+<pre class="sig">skai.health.worn(): boolean</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>Wear detection. Useful for an app to know its readings are meaningless.</p>
+<p class="c"><span>C</span> <code>bool skai_health_worn(void);</code></p>
+</article>
+</section>
+<section id="log">
+<h2>skai.log</h2>
+<article id="log.write">
+<h3>write</h3>
+<pre class="sig">skai.log.write(level: number, msg: string): void</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>Unknown levels are logged at INFO rather than dropped — losing a message because a caller passed 7 is worse than logging it at the wrong level.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>level</code></td><td><code>number</code></td></tr>
+<tr><td><code>msg</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>void skai_log_write(uint32_t level, const char *msg);</code></p>
+</article>
+</section>
+<section id="persist">
+<h2>skai.persist</h2>
+<article id="persist.get_int">
+<h3>get_int</h3>
+<pre class="sig">skai.persist.get_int(key: string, fallback: number): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="blocks on flash; never call it from the UI thread">app thread</span></p>
+<p>SKAI_THREAD_APP, not ANY: these block on flash. Calling them from the LVGL thread stalls rendering, and a janky watch face is the kind of bug that gets blamed on the firmware rather than the app that caused it.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>key</code></td><td><code>string</code></td></tr>
+<tr><td><code>fallback</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_persist_get_int(const char *key, int32_t fallback);</code></p>
+</article>
+<article id="persist.get_str">
+<h3>get_str</h3>
+<pre class="sig">skai.persist.get_str(key: string): string | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="blocks on flash; never call it from the UI thread">app thread</span></p>
+<p>Returns bytes written excluding NUL, or negative if the key is absent or the store is unavailable. Always NUL-terminates when cap &gt; 0.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>key</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_persist_get_str(const char *key, char *out, uint32_t cap);</code></p>
+</article>
+<article id="persist.remove">
+<h3>remove</h3>
+<pre class="sig">skai.persist.remove(key: string): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="blocks on flash; never call it from the UI thread">app thread</span></p>
+<p>True if the key is gone afterwards, including when it was never there.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>key</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_persist_remove(const char *key);</code></p>
+</article>
+<article id="persist.set_int">
+<h3>set_int</h3>
+<pre class="sig">skai.persist.set_int(key: string, value: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="blocks on flash; never call it from the UI thread">app thread</span></p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>key</code></td><td><code>string</code></td></tr>
+<tr><td><code>value</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_persist_set_int(const char *key, int32_t value);</code></p>
+</article>
+<article id="persist.set_str">
+<h3>set_str</h3>
+<pre class="sig">skai.persist.set_str(key: string, value: string): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="blocks on flash; never call it from the UI thread">app thread</span></p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>key</code></td><td><code>string</code></td></tr>
+<tr><td><code>value</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_persist_set_str(const char *key, const char *value);</code></p>
+</article>
+</section>
+<section id="time">
+<h2>skai.time</h2>
+<article id="time.date_md">
+<h3>date_md</h3>
+<pre class="sig">skai.time.date_md(): string | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>Current date as MM/DD.</p>
+<p class="c"><span>C</span> <code>int32_t skai_time_date_md(char *out, uint32_t cap);</code></p>
+</article>
+<article id="time.format">
+<h3>format</h3>
+<pre class="sig">skai.time.format(fmt: string): string | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>strftime-subset format into `out`. Returns bytes written excluding NUL, or negative on failure. Always NUL-terminates when cap &gt; 0.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>fmt</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_time_format(const char *fmt, char *out, uint32_t cap);</code></p>
+</article>
+<article id="time.hhmm">
+<h3>hhmm</h3>
+<pre class="sig">skai.time.hhmm(): string | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>Current time the way the user chose to see it — honours the 12/24-hour setting. Exists as its own capability because declarative binds cannot pass a format string, and "the clock" is the single most common bind there is.</p>
+<p class="c"><span>C</span> <code>int32_t skai_time_hhmm(char *out, uint32_t cap);</code></p>
+</article>
+<article id="time.now">
+<h3>now</h3>
+<pre class="sig">skai.time.now(): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>Seconds since the Unix epoch, local time already applied. SKAI_NO_DATA when the RTC is not yet valid after a cold boot.</p>
+<p class="c"><span>C</span> <code>int32_t skai_time_now(void);</code></p>
+</article>
+</section>
+<section id="timer">
+<h2>skai.timer</h2>
+<article id="timer.uptime_ms">
+<h3>uptime_ms</h3>
+<pre class="sig">skai.timer.uptime_ms(): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>Milliseconds since boot. Wraps after ~49 days; compare differences, never absolute values. Distinct from skai_time_now(), which is wall time and can jump when the phone syncs the clock.</p>
+<p class="c"><span>C</span> <code>uint32_t skai_timer_uptime_ms(void);</code></p>
+</article>
+</section>
+<section id="ui">
+<h2>skai.ui</h2>
+<article id="ui.align">
+<h3>align</h3>
+<pre class="sig">skai.ui.align(id: number, anchor: string, dx: number, dy: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Place a widget explicitly, escaping the default column flow.</p>
+<p>`anchor` is one of: center, top, bottom, left, right, top_left, top_right, bottom_left, bottom_right. `dx`/`dy` offset from it in pixels.</p>
+<p>One primitive instead of a layout API: every built-in app positions with lv_obj_align, so this covers what they do without exposing a style system to untrusted code.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>anchor</code></td><td><code>string</code></td></tr>
+<tr><td><code>dx</code></td><td><code>number</code></td></tr>
+<tr><td><code>dy</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_align(int32_t id, const char *anchor, int32_t dx, int32_t dy);</code></p>
+</article>
+<article id="ui.arc">
+<h3>arc</h3>
+<pre class="sig">skai.ui.arc(percent: number): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Create a progress arc, 0..100. Returns a widget id (&gt;0), or 0 on failure.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>percent</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_arc(int32_t percent);</code></p>
+</article>
+<article id="ui.bar">
+<h3>bar</h3>
+<pre class="sig">skai.ui.bar(percent: number): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Linear progress bar, 0..100.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>percent</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_bar(int32_t percent);</code></p>
+</article>
+<article id="ui.button">
+<h3>button</h3>
+<pre class="sig">skai.ui.button(text: string): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Create a button carrying `text`. Wire it up with skai.ui.on_click(id, fn).</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>text</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_button(const char *text);</code></p>
+</article>
+<article id="ui.clear">
+<h3>clear</h3>
+<pre class="sig">skai.ui.clear(): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Delete every widget this app created.</p>
+<p class="c"><span>C</span> <code>bool skai_ui_clear(void);</code></p>
+</article>
+<article id="ui.divider">
+<h3>divider</h3>
+<pre class="sig">skai.ui.divider(width: number): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>A horizontal rule.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>width</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_divider(int32_t width);</code></p>
+</article>
+<article id="ui.end">
+<h3>end</h3>
+<pre class="sig">skai.ui.end(): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Close the innermost open row.</p>
+<p class="c"><span>C</span> <code>bool skai_ui_end(void);</code></p>
+</article>
+<article id="ui.image">
+<h3>image</h3>
+<pre class="sig">skai.ui.image(rel_path: string): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>App-supplied image, by path RELATIVE to the app's own directory.</p>
+<p>Decode cost lands on the JS memory quota, so an app that loads something enormous starves itself rather than the watch.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>rel_path</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_image(const char *rel_path);</code></p>
+</article>
+<article id="ui.keypad">
+<h3>keypad</h3>
+<pre class="sig">skai.ui.keypad(map: string): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>A grid of keys as ONE widget, laid out from a map: keys separated by spaces, rows by "\n" — e.g. "7 8 9 +\n4 5 6 -\n1 2 3 x\n  0 . /".</p>
+<p>One widget rather than one per key, because that is what the underlying button matrix is: bounded by construction, no per-key slot to exhaust, and a hostile app cannot fabricate a key id. The click handler receives the key's text.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>map</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_keypad(const char *map);</code></p>
+</article>
+<article id="ui.keypad_accent">
+<h3>keypad_accent</h3>
+<pre class="sig">skai.ui.keypad_accent(id: number, indices: string, rgb: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Recolour some keys of a keypad — comma-separated indices in map order, e.g. "3,7,11,15" for a column of operators, in 0xRRGGBB. The colour is a parameter because a reproduction of an existing screen has to match its palette, not the SDK's default one.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>indices</code></td><td><code>string</code></td></tr>
+<tr><td><code>rgb</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_keypad_accent(int32_t id, const char *indices, int32_t rgb);</code></p>
+</article>
+<article id="ui.label">
+<h3>label</h3>
+<pre class="sig">skai.ui.label(text: string): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Create a text line. Returns a widget id (&gt;0), or 0 on failure.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>text</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_label(const char *text);</code></p>
+</article>
+<article id="ui.row">
+<h3>row</h3>
+<pre class="sig">skai.ui.row(): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Horizontal group. Widgets created after it land inside until ui.end().</p>
+<p class="c"><span>C</span> <code>int32_t skai_ui_row(void);</code></p>
+</article>
+<article id="ui.set_arc">
+<h3>set_arc</h3>
+<pre class="sig">skai.ui.set_arc(id: number, percent: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>percent</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_arc(int32_t id, int32_t percent);</code></p>
+</article>
+<article id="ui.set_bg">
+<h3>set_bg</h3>
+<pre class="sig">skai.ui.set_bg(id: number, rgb: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Background colour, as 0xRRGGBB. Also makes the background opaque.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>rgb</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_bg(int32_t id, int32_t rgb);</code></p>
+</article>
+<article id="ui.set_color">
+<h3>set_color</h3>
+<pre class="sig">skai.ui.set_color(id: number, rgb: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Text colour of a label/button, as 0xRRGGBB.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>rgb</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_color(int32_t id, int32_t rgb);</code></p>
+</article>
+<article id="ui.set_font">
+<h3>set_font</h3>
+<pre class="sig">skai.ui.set_font(id: number, rel_size: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Relative text size, -2..3, on the same scale the rest of the watch uses, so a JS app tracks the user's font-size setting instead of pinning pixels.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>rel_size</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_font(int32_t id, int32_t rel_size);</code></p>
+</article>
+<article id="ui.set_size">
+<h3>set_size</h3>
+<pre class="sig">skai.ui.set_size(id: number, w: number, h: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>w</code></td><td><code>number</code></td></tr>
+<tr><td><code>h</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_size(int32_t id, int32_t w, int32_t h);</code></p>
+</article>
+<article id="ui.set_text">
+<h3>set_text</h3>
+<pre class="sig">skai.ui.set_text(id: number, text: string): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>text</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_text(int32_t id, const char *text);</code></p>
+</article>
+</section>
+<section id="watchinfo">
+<h2>skai.watchinfo</h2>
+<article id="watchinfo.firmware">
+<h3>firmware</h3>
+<pre class="sig">skai.watchinfo.firmware(): string | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>"major.minor.revision" or "major.minor.revision-dev".</p>
+<p class="c"><span>C</span> <code>int32_t skai_watchinfo_firmware(char *out, uint32_t cap);</code></p>
+</article>
+<article id="watchinfo.model">
+<h3>model</h3>
+<pre class="sig">skai.watchinfo.model(): string | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p class="c"><span>C</span> <code>int32_t skai_watchinfo_model(char *out, uint32_t cap);</code></p>
+</article>
+<article id="watchinfo.screen_height">
+<h3>screen_height</h3>
+<pre class="sig">skai.watchinfo.screen_height(): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p class="c"><span>C</span> <code>uint32_t skai_watchinfo_screen_height(void);</code></p>
+</article>
+<article id="watchinfo.screen_round">
+<h3>screen_round</h3>
+<pre class="sig">skai.watchinfo.screen_round(): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p>True for a round display. Third-party layouts need this to avoid drawing into the corners, which on a 466 circle are simply not there.</p>
+<p class="c"><span>C</span> <code>bool skai_watchinfo_screen_round(void);</code></p>
+</article>
+<article id="watchinfo.screen_width">
+<h3>screen_width</h3>
+<pre class="sig">skai.watchinfo.screen_width(): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
+<p class="c"><span>C</span> <code>uint32_t skai_watchinfo_screen_width(void);</code></p>
+</article>
+</section>
+<section id="weather">
+<h2>skai.weather</h2>
+<article id="weather.rain_pct">
+<h3>rain_pct</h3>
+<pre class="sig">skai.weather.rain_pct(): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>Chance of precipitation, 0..100.</p>
+<p class="c"><span>C</span> <code>int32_t skai_weather_rain_pct(void);</code></p>
+</article>
+<article id="weather.temp">
+<h3>temp</h3>
+<pre class="sig">skai.weather.temp(): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>Current temperature in whole degrees Celsius, rounded. SKAI_NO_DATA until the phone has sent a forecast.</p>
+<p class="c"><span>C</span> <code>int32_t skai_weather_temp(void);</code></p>
+</article>
+<article id="weather.temp_max">
+<h3>temp_max</h3>
+<pre class="sig">skai.weather.temp_max(): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p class="c"><span>C</span> <code>int32_t skai_weather_temp_max(void);</code></p>
+</article>
+<article id="weather.temp_min">
+<h3>temp_min</h3>
+<pre class="sig">skai.weather.temp_min(): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p class="c"><span>C</span> <code>int32_t skai_weather_temp_min(void);</code></p>
+</article>
+</section>
+</main>
+</div>
+</body></html>

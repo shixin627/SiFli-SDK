@@ -85,6 +85,18 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_task.h */ bool commu_send_update_instruction(const char *json) { return false; }
 /* communicate_task.h */ bool commu_send_volume_percentage(uint8_t volume) { return false; }
 /* communicate_task.h */ bool commu_send_weather_request(void) { return false; }
+/* Added later than the sorted block above — these shipped on HCPU without PC
+   stubs, which is what broke the simulator link. Kept together so the next
+   person can see at a glance which features arrived after the last PC build. */
+/* communicate_task.h */ bool commu_send_device_info(void) { return false; }
+/* communicate_task.h */ bool commu_send_hr_cont(uint32_t base_ts, uint8_t interval_s, uint8_t count, const uint8_t *bpm, const uint8_t *qscore, const uint8_t *qlevel) { (void)base_ts; (void)interval_s; (void)count; (void)bpm; (void)qscore; (void)qlevel; return false; }
+/* communicate_task.h */ bool commu_send_lift_input_cancel_segment(void) { return false; }
+/* communicate_task.h */ bool commu_send_lift_input_caret(int pos, const char *text) { (void)pos; (void)text; return false; }
+/* communicate_task.h */ bool commu_send_lift_input_commit(const char *dest) { (void)dest; return false; }
+/* communicate_task.h */ bool commu_send_lift_input_delete(void) { return false; }
+/* communicate_task.h */ bool commu_send_lift_input_delete_range(int from, int to) { (void)from; (void)to; return false; }
+/* communicate_task.h */ bool commu_send_skaibar_open_device_ex(bool force_open, bool input_only) { (void)force_open; (void)input_only; return false; }
+/* communicate_task.h */ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr, uint8_t hr_std, uint8_t stage, uint8_t veto, uint8_t rhr, uint8_t worn, uint8_t rest, uint8_t fresh, uint16_t total, uint16_t deep, uint16_t rem, uint16_t light, uint16_t pi_e3, uint16_t frame_pct, uint16_t rate_info) { (void)ts; (void)score; (void)hr; (void)hr_std; (void)stage; (void)veto; (void)rhr; (void)worn; (void)rest; (void)fresh; (void)total; (void)deep; (void)rem; (void)light; (void)pi_e3; (void)frame_pct; (void)rate_info; return false; }
 /* main.c */ void generate_random_public_address(uint8_t device_id) {  }
 /* bloc_v2t.c */ uint8_t get_ai_coding(void) { return 0; }
 /* main.c */ bool get_bluetooth_broadcasting_status(void) { return false; }

@@ -1,0 +1,390 @@
+{
+  "_generated_by": "tools/sdk/gen_dispatch.py",
+  "skai": "1.0",
+  "capabilities": [
+    {
+      "name": "battery.charging",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "battery.level",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d%%"
+    },
+    {
+      "name": "haptic.stop",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "haptic.vibrate",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "U",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "health.calories",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "health.distance_m",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "health.heart_rate",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "health.step_goal",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "health.steps",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "health.worn",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "log.write",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "US",
+      "returns": "void",
+      "ui": "%d"
+    },
+    {
+      "name": "persist.get_int",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_APP",
+      "args": "SI",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "persist.get_str",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_APP",
+      "args": "S",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
+      "name": "persist.remove",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_APP",
+      "args": "S",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "persist.set_int",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_APP",
+      "args": "SI",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "persist.set_str",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_APP",
+      "args": "SS",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "time.date_md",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
+      "name": "time.format",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "S",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
+      "name": "time.hhmm",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
+      "name": "time.now",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "timer.uptime_ms",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.align",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "ISII",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.arc",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "I",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.bar",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "I",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.button",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "S",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.clear",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.divider",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "I",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.end",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.image",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "S",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.keypad",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "S",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.keypad_accent",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "ISI",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.label",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "S",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.row",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_arc",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "II",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_bg",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "II",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_color",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "II",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_font",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "II",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_size",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "III",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_text",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "IS",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "watchinfo.firmware",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
+      "name": "watchinfo.model",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
+      "name": "watchinfo.screen_height",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "watchinfo.screen_round",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "watchinfo.screen_width",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "weather.rain_pct",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d%%"
+    },
+    {
+      "name": "weather.temp",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d\u00b0"
+    },
+    {
+      "name": "weather.temp_max",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d\u00b0"
+    },
+    {
+      "name": "weather.temp_min",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d\u00b0"
+    }
+  ]
+}

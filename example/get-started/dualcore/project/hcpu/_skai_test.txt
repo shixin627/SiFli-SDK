@@ -1,0 +1,8 @@
+# skai_* capability layer + dispatch-driven binds (ADR-0019 Phase 1/2).
+#   _dev_test.cmd -nobuild -script _skai_test.txt
+# sample 3 uses the frozen v0 bind keywords, sample 5 uses capability names —
+# both must render, which is the Phase 2 compatibility claim.
+skai_test
+skaiapp_seed 3
+skaiapp_seed 5
+list_apps

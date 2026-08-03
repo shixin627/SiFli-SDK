@@ -1,0 +1,30 @@
+# Files that reached past skai_* before the rule existed (ADR-0019 §2.1).
+# Not retroactive: these stay as they are. New gui_apps files must not
+# appear here -- the SConscript check warns instead of growing this list.
+# Regenerate deliberately, never to silence a new warning.
+alarm/app_alarm.c
+app_layout/lv_chat_page.c
+app_layout/lv_instruction_list_layout.c
+app_layout/lv_message_list_layout.c
+calculator/app_calculator.c
+camera/app_camera.c
+clock/app_clock_main.c
+clock/app_clock_status_bar.c
+device_pager/device_pager.c
+flashlight/app_flashlight.c
+game/app_game_dinosaur.c
+gesture/app_gesture.c
+hid_mouse/hid_mouse.c
+interact/app_interact.c
+interact/app_system_interface.c
+main/app_mainmenu.c
+media/app_media.c
+message/app_message.c
+recorder/app_recorder.c
+setting/app_developer.c
+setting/app_setting.c
+skai/app_skai.c
+speech/app_speech.c
+test/app_test.c
+timer/app_timer.c
+watch_demo.c

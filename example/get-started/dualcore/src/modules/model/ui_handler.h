@@ -38,6 +38,11 @@ extern "C"
 #define APP_ID_ALARM "alarm"
 /* SkaiApp host — AI-generated declarative mini-apps (SkaiLink ADR-0037) */
 #define APP_ID_SKAIAPP "skaiapp"
+#ifdef PKG_USING_QUICKJS
+    /* Sandboxed JS app host (ADR-0019 Phase 3). Separate from SkaiApp: the
+       declarative host renders a package, this one runs an interpreter. */
+    #define APP_ID_SKAIJS "skaijs"
+#endif
 // ----- Dev
 #define APP_ID_GESTURE "gesture"
 #define APP_ID_GAME_DINOSAUR "game_dinosaur"
