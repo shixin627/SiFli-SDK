@@ -69,6 +69,10 @@ extern "C"
                                       uint32_t confi_x100, uint32_t snr_x100);
     extern void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level,
                                       uint32_t *confi_x100, uint32_t *snr_x100);
+    /* Algorithm's own motion state (0 rest / 1 walk / 2 run) and scene id
+       (hba_scenes_e). Classification outputs, unlike the dead confidence fields. */
+    extern void gh3018_set_hr_acc_state(uint32_t acc_info, uint32_t acc_scene);
+    extern void gh3018_get_hr_acc_state(uint32_t *acc_info, uint32_t *acc_scene);
     extern uint32_t gh3018_get_hr_update_seq(void); /* bumped on every locked algo HR output; bg_hr uses it for dynamic warm-up */
 
     extern uint32_t *gh3018_get_ppg(void);

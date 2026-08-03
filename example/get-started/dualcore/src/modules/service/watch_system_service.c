@@ -243,7 +243,9 @@ static void notify_sleep_diag(const watch_sys_sleep_diag_t *rec)
 
 static void notify_hr_cont(const watch_sys_hr_cont_t *rec)
 {
-    /* One minute of raw 1 Hz continuous-HR samples -> HCPU -> KEY_HR_CONT_DIAG. */
+    /* 30 s of raw 1 Hz continuous-HR samples -> HCPU -> KEY_HR_CONT_DIAG.
+       Fire-and-forget: only HCPU knows whether BLE can actually carry it, so the
+       retry for a link outage lives there (watch_system_client.c), not here. */
     if (rec == NULL) return;
     push_msg_to_hcpu(MSG_SERVICE_HR_CONT_IND, rec, sizeof(*rec));
 }

@@ -345,25 +345,36 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
 
 bool commu_send_hr_cont(uint32_t base_ts, uint8_t interval_s, uint8_t count,
                         const uint8_t *bpm, const uint8_t *qscore,
-                        const uint8_t *qlevel)
+                        const uint8_t *qlevel, const uint8_t *accst,
+                        const uint8_t *accel, const uint16_t *pi_e3)
 {
-    /* Variable-length: 6-byte header + three count-long byte arrays. At the
-       60-sample cap that is 186 B, well inside MAX_PACKET_PAYLOAD_SIZE (507). */
-    if (count == 0 || bpm == NULL || qscore == NULL || qlevel == NULL) return false;
-    if ((uint16_t)(6 + 3 * count) > MAX_PACKET_PAYLOAD_SIZE) return false;
+    /* Variable-length: 6-byte header + five count-long byte arrays + one u16 LE
+       array. At the 30-sample cap that is 216 B, comfortably inside
+       MAX_PACKET_PAYLOAD_SIZE (507). */
+    if (count == 0 || bpm == NULL || qscore == NULL || qlevel == NULL ||
+        accst == NULL || accel == NULL || pi_e3 == NULL) return false;
+    uint16_t len = (uint16_t)(6 + 7 * count);
+    if (len > MAX_PACKET_PAYLOAD_SIZE) return false;
 
-    uint8_t buf[6 + 3 * 60];
+    uint8_t buf[6 + 7 * 30];
     buf[0] = (uint8_t)(base_ts & 0xFF);
     buf[1] = (uint8_t)((base_ts >> 8) & 0xFF);
     buf[2] = (uint8_t)((base_ts >> 16) & 0xFF);
     buf[3] = (uint8_t)((base_ts >> 24) & 0xFF);
     buf[4] = interval_s;
     buf[5] = count;
-    memcpy(buf + 6, bpm, count);
-    memcpy(buf + 6 + count, qscore, count);
-    memcpy(buf + 6 + 2 * count, qlevel, count);
-    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_CONT_DIAG,
-                           buf, (uint16_t)(6 + 3 * count));
+    uint16_t o = 6;
+    memcpy(buf + o, bpm, count);    o += count;
+    memcpy(buf + o, qscore, count); o += count;
+    memcpy(buf + o, qlevel, count); o += count;
+    memcpy(buf + o, accst, count);  o += count;
+    memcpy(buf + o, accel, count);  o += count;
+    for (uint8_t i = 0; i < count; i++)   /* u16 LE, matching every other key here */
+    {
+        buf[o++] = (uint8_t)(pi_e3[i] & 0xFF);
+        buf[o++] = (uint8_t)((pi_e3[i] >> 8) & 0xFF);
+    }
+    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_CONT_DIAG, buf, len);
 }
 
 bool commu_send_sleep_data(void)

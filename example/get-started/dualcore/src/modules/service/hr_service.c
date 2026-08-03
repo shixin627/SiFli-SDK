@@ -1681,6 +1681,8 @@ static void bg_hr_sample_cb(void *param)
 static rt_bool_t bg_hr_cont_enabled = RT_FALSE;
 static rt_timer_t bg_hr_cont_timer = RT_NULL;
 static watch_sys_hr_cont_t bg_hr_cont_buf;
+/* Rolling window feeding sleep_fusion in place of the suppressed burst summary. */
+static uint32_t bg_hr_cont_sum = 0, bg_hr_cont_sum_sq = 0, bg_hr_cont_n = 0;
 
 bool hr_service_continuous_active(void)
 {
@@ -1689,6 +1691,9 @@ bool hr_service_continuous_active(void)
 
 static void bg_hr_cont_flush(void)
 {
+    /* Hand the window to HCPU and move on. Whether BLE can carry it right now is
+       not knowable here, so the outage retry lives on HCPU (watch_system_client.c
+       keeps a backlog ring). */
     if (bg_hr_cont_buf.count == 0) return;
     if (watch_sys_sync.notify_hr_cont)
     {
@@ -1707,15 +1712,57 @@ static void bg_hr_cont_cb(void *param)
 
     uint32_t qscore = 0, qlevel = 0, qconfi = 0, qsnr = 0;
     gh3018_get_hr_quality(&qscore, &qlevel, &qconfi, &qsnr);
+    uint32_t acc_info = 0, acc_scene = 0;
+    gh3018_get_hr_acc_state(&acc_info, &acc_scene);
+
+    /* Close this second's PI window and open the next. In continuous mode nothing
+       else drives the accumulator (bursts are suppressed), so reusing it here is
+       safe AND it keeps hr_service_get_last_pi_e3() live for sleep_diag, which
+       otherwise reported pi_e3 = 0 for the entire night. */
+    ppg_pi_finish();
+    uint16_t pi = bg_hr_win_pi_e3;
+    ppg_pi_start();
+
+    uint32_t mv = bghr_accel_delta();
+
+    /* The buffer is full only when a flush could not be delivered; drop the oldest
+       second rather than the newest so the retry still carries the most recent
+       state when the link returns. */
+    if (bg_hr_cont_buf.count >= WATCH_SYS_HR_CONT_MAX) return;
 
     uint8_t i = bg_hr_cont_buf.count;
-    if (bg_hr_cont_buf.count == 0) bg_hr_cont_buf.base_ts = (uint32_t)time(NULL);
-    bg_hr_cont_buf.bpm[i]    = (rd == 1 && sd.data.hr <= 255) ? (uint8_t)sd.data.hr : 0;
+    if (i == 0) bg_hr_cont_buf.base_ts = (uint32_t)time(NULL);
+    uint8_t bpm = (rd == 1 && sd.data.hr <= 255) ? (uint8_t)sd.data.hr : 0;
+    bg_hr_cont_buf.bpm[i]    = bpm;
     bg_hr_cont_buf.qscore[i] = (qscore > 255) ? 255 : (uint8_t)qscore;
     bg_hr_cont_buf.qlevel[i] = (qlevel > 255) ? 255 : (uint8_t)qlevel;
+    bg_hr_cont_buf.accst[i]  = (uint8_t)(((acc_info & 0x07u) << 5) | (acc_scene & 0x1Fu));
+    bg_hr_cont_buf.accel[i]  = (mv > 255) ? 255 : (uint8_t)mv;
+    bg_hr_cont_buf.pi_e3[i]  = pi;
     bg_hr_cont_buf.count++;
 
-    if (bg_hr_cont_buf.count >= WATCH_SYS_HR_CONT_MAX) bg_hr_cont_flush();
+    /* Keep sleep_fusion fed. Suppressing bursts also silenced bg_hr_win_mean/std,
+       so the 2026-08-02 night was staged from accelerometer alone with hr = 0 on
+       every sleep_diag row. Publish a rolling window instead of a burst summary. */
+    if (bpm > 0)
+    {
+        bg_hr_cont_sum += bpm;
+        bg_hr_cont_sum_sq += (uint32_t)bpm * (uint32_t)bpm;
+        bg_hr_cont_n++;
+    }
+
+    if (bg_hr_cont_buf.count >= WATCH_SYS_HR_CONT_MAX)
+    {
+        if (bg_hr_cont_n >= 2)
+        {
+            bg_hr_win_mean = (uint8_t)(bg_hr_cont_sum / bg_hr_cont_n);
+            bg_hr_win_std = bg_hr_std_from_sums(bg_hr_cont_sum, bg_hr_cont_sum_sq,
+                                                (uint16_t)bg_hr_cont_n);
+            bg_hr_win_tick_ms = rt_tick_get_millisecond();
+        }
+        bg_hr_cont_sum = 0; bg_hr_cont_sum_sq = 0; bg_hr_cont_n = 0;
+        bg_hr_cont_flush();
+    }
 }
 
 /* Enable/disable from the watch Settings toggle (HCPU -> HrContinuousMode). */
@@ -1736,6 +1783,9 @@ void hr_service_set_hr_continuous(bool enable)
         bg_hr_cont_buf.count = 0;
         bg_hr_cont_buf.base_ts = 0;
         bg_hr_cont_buf.interval_s = (uint8_t)(BG_HR_SAMPLE_MS / 1000u);
+        bg_hr_cont_sum = 0; bg_hr_cont_sum_sq = 0; bg_hr_cont_n = 0;
+        bghr_prev_accel_valid = false;   /* re-seed the accel delta chain */
+        ppg_pi_start();                  /* first per-second PI window */
 
         /* Set the flag BEFORE powering up: hr_set_power()'s veto reads it, and a
            wear_detect tick landing between the two would otherwise slip through. */

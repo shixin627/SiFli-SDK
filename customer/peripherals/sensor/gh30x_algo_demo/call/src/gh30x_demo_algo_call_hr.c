@@ -181,6 +181,11 @@ GS8 GH30xHrAlgoExe(const STGh30xFrameInfo *const pstFrameInfo)
                                       (uint32_t)stResult.valid_level,
                                       (uint32_t)(c * 100.0f), (uint32_t)(s * 100.0f));
             }
+            /* snResult[4]/[5] have carried these since the vendor import and were
+               never read. See gh3018_set_hr_acc_state for why they are worth having. */
+            extern void gh3018_set_hr_acc_state(uint32_t acc_info, uint32_t acc_scene);
+            gh3018_set_hr_acc_state((uint32_t)stResult.hba_acc_info,
+                                    (uint32_t)stResult.hba_acc_scence);
             pstFrameInfo->pstAlgoResult->usResultBit = 0x3F;
             pstFrameInfo->pstAlgoResult->uchResultNum = GH30x_BitCount(pstFrameInfo->pstAlgoResult->usResultBit);
 #if __GH30X_HR_OUTPUT_VALUE_STRATEGY_EN__
