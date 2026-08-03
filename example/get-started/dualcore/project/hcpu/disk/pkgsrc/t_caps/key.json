@@ -1,0 +1,14 @@
+{
+  "privateJwk": {
+    "key_ops": [
+      "sign"
+    ],
+    "ext": true,
+    "kty": "EC",
+    "x": "tIN0yWp9omiIaKjw9U1bMgmWc7FYv2aXWURD_bkNWcA",
+    "y": "3yfg0R3sLwILlOX_5m_mQ9UfQTTlvC-5HOM13nTW3Gk",
+    "crv": "P-256",
+    "d": "7CNJ5-CLiaW0czPfF3SlVl9Ek_Iu2AWOHMoYA8sF6wg"
+  },
+  "pubkeyRaw": "tIN0yWp9omiIaKjw9U1bMgmWc7FYv2aXWURD/bkNWcDfJ+DRHewvAguU5f/mb+ZD1R9BNOW8L7kc4zXedNbcaQ=="
+}
