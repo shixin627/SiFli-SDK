@@ -2304,6 +2304,11 @@ static void lift_input_voice_visual(bool on)
 static rt_tick_t s_lift_voice_stopped_at = 0;
 #define LIFT_VOICE_RESTART_COOLDOWN_MS 800
 
+/* 這一按開始錄音的時刻,與「短到不可能是一句話」的門檻。真機量到的誤觸是 179/421/632ms,
+   而真正要講話的人光是「按住→開口」就不只這個時間,700 拉得開。 */
+static rt_tick_t s_lift_voice_started_at = 0;
+#define LIFT_VOICE_MIN_UTTERANCE_MS 700
+
 /* 冷卻期內那一下按下的補開始(見 lift_input_voice_start 的 deferred 分支)。 */
 static lv_timer_t *s_lift_voice_retry_timer = NULL;
 static void lift_input_voice_start(void);
@@ -2355,6 +2360,7 @@ static void lift_input_voice_start(void)
     voice_provider.start_v2t();
 #endif
     s_lift_voice_active = true;
+    s_lift_voice_started_at = rt_tick_get(); /* 放開時用來判斷這段夠不夠長 */
     lift_input_voice_visual(true);
     LOG_I("[lift_input] voice START");
 }
@@ -2364,13 +2370,26 @@ static void lift_input_voice_stop(void)
     if (!s_lift_voice_active)
         return;
     s_lift_voice_active = false;
+    rt_tick_t held = rt_tick_get() - s_lift_voice_started_at;
+    uint32_t held_ms = (uint32_t)(held * 1000 / RT_TICK_PER_SECOND);
 #ifndef BSP_USING_PC_SIMULATOR
     voice_provider.stop_v2t();
     stop_voice_recognition(V2T_INTENT_NOTHING);
 #endif
     s_lift_voice_stopped_at = rt_tick_get();
     lift_input_voice_visual(false);
-    LOG_I("[lift_input] voice STOP");
+    LOG_I("[lift_input] voice STOP (held %ums)", held_ms);
+    /* **太短的那一段整個作廢。** 使用者長按是為了移游標,手指很快就放開,於是錄到一段
+       0.2~0.6 秒、裡面根本沒有話的音訊;STT 拿到空音訊會**把上一句重播回來**,那筆就被插在
+       剛定位的插入點上 —— founder 2026-08-03:「我長按就莫名其妙自己插入重複的字」,手機端
+       log 三次分別是 179 / 421 / 632ms,插進去的正是上一段的內容。
+       重用長按轉框選那條的 cancel:這一按從來就不是一次口述。 */
+    if (held_ms < LIFT_VOICE_MIN_UTTERANCE_MS)
+    {
+        extern bool commu_send_lift_input_cancel_segment(void);
+        commu_send_lift_input_cancel_segment();
+        LOG_I("[lift_input] too short to be speech — segment discarded");
+    }
 }
 
 /* 小麥克風 = 按住講話(對講機),與底部 bar 的長按語音同一套後端。啟動只掛在麥克風本身而非
