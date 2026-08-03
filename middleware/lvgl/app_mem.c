@@ -933,9 +933,22 @@ void *ft_smalloc(size_t nbytes)
  * src/hcpu/log_file_backend.c. */
 RT_WEAK void log_file_report_crash_evidence(void) { }
 
-/* noinline so __builtin_return_address(0) names the real caller (ft_free), not
+/* 「誰呼叫我」的取法在 armclang/GCC 與 MSVC 上不同名。PC 模擬器是 MSVC 編的,而這段
+ * 診斷碼原本寫死 GCC 專屬語法,於是**整個模擬器 build 掛在這裡**(2026-07-31 起)。
+ * 包成可攜巨集,兩邊都拿得到真正的呼叫端。 */
+#if defined(_MSC_VER)
+    #include <intrin.h>
+    #pragma intrinsic(_ReturnAddress)
+    #define FT_NOINLINE           __declspec(noinline)
+    #define FT_RETURN_ADDRESS()   _ReturnAddress()
+#else
+    #define FT_NOINLINE           __attribute__((noinline))
+    #define FT_RETURN_ADDRESS()   __builtin_return_address(0)
+#endif
+
+/* noinline so FT_RETURN_ADDRESS() names the real caller (ft_free), not
  * an inlined site — a sanity cross-check against the alloc-site report. */
-__attribute__((noinline)) void ft_sfree(void *ptr)
+FT_NOINLINE void ft_sfree(void *ptr)
 {
     if (ptr != RT_NULL)
     {
@@ -948,7 +961,7 @@ __attribute__((noinline)) void ft_sfree(void *ptr)
             /* Header word clobbered — an overrun, not a plain double-free.
              * Freeing would assert on line 748; skip and surface it. */
             rt_kprintf("[FT-CORRUPT] ptr=%p magic=%08x caller=%p -- skipped\n",
-                       ptr, (unsigned)magic, __builtin_return_address(0));
+                       ptr, (unsigned)magic, FT_RETURN_ADDRESS());
             log_file_report_crash_evidence();   /* deliver the log to the phone */
             return;
         }
@@ -958,10 +971,10 @@ __attribute__((noinline)) void ft_sfree(void *ptr)
 #ifdef RT_USING_MEMTRACE
             rt_kprintf("[FT-DBLFREE] ptr=%p size=%u alloc_ra=%p caller=%p -- skipped\n",
                        ptr, (unsigned)hdr->size, (void *)hdr->ret_addr,
-                       __builtin_return_address(0));
+                       FT_RETURN_ADDRESS());
 #else
             rt_kprintf("[FT-DBLFREE] ptr=%p size=%u caller=%p -- skipped\n",
-                       ptr, (unsigned)hdr->size, __builtin_return_address(0));
+                       ptr, (unsigned)hdr->size, FT_RETURN_ADDRESS());
 #endif
             log_file_report_crash_evidence();   /* deliver the log to the phone */
             return;   /* survive: the first free already returned this block */

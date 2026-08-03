@@ -629,6 +629,41 @@ bool commu_send_lift_input_delete(void)
     return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_DELETE, "{}");
 }
 
+/* 滑鼠 app 語音站的送出(0x1d 加選填 text)。與立起面板那條的差別:語音站的文字真相在
+   **手錶本地**(鍵盤模式的 input_buffer,才能跟注音/英文混著用),所以這裡必須把文字一起帶
+   上去;手機收到帶 text 的就用它,不用自己那份暫存稿。AI 口語整理由手機端收到後再跑。 */
+bool commu_send_voice_station_commit(const char *dest, const char *text)
+{
+    if (!dest || !text) return false;
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return false;
+    cJSON_AddStringToObject(root, "dest", dest);
+    cJSON_AddStringToObject(root, "text", text);
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_COMMIT, json);
+    LOG_I("send voice-station commit dest=%s -> %s", dest, ok ? "ok" : "FAIL");
+    cJSON_free(json);
+    return ok;
+}
+
+/* 同一把鑰匙(0x1e),preview = 手錶目前顯示的文字。語音站的文字真相在手錶本地,電腦那條
+   輸入框要跟著顯示就得靠這個持續推(立起面板不需要 —— 那時真相在手機)。呼叫端已做防抖。 */
+bool commu_send_voice_station_preview(const char *text)
+{
+    if (!text) return false;
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return false;
+    cJSON_AddStringToObject(root, "preview", text);
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_CARET, json);
+    cJSON_free(json);
+    return ok;
+}
+
 /* 同一把鑰匙(0x1e),cancel = 把「這次按住錄到的那一段」整個丟掉,暫存文字退回按下之前。
    用在「長按本來在講話、手指一移動就變成框選」的轉場 —— 那一段從來不是使用者要的字。 */
 bool commu_send_lift_input_cancel_segment(void)

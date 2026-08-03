@@ -3585,6 +3585,36 @@ void instruction_list_set_remote_target_focus(bool focused)
        面板是全螢幕 overlay,手錶自己的觸控板被蓋住,使用者沒法用手錶去點電腦上的別的欄位。 */
 }
 
+/* 公開：只建立「單一控制設備」的瀏覽 session,**不開任何面板**。給滑鼠 app 的語音站用 ——
+   它有自己的輸入 UI(不共用立起面板),但按 logo 送出後要叫出同一份選項清單,而
+   instruction_list_open_browse() 第一件事就是 `if (!p_instruction_list_layout) return;`。
+   滑鼠 app 從沒走過立起面板,那個 layout 根本沒被建立,清單於是靜默不出現
+   (founder 2026-08-03:「只看到他返回觸碰板模式但沒看到有選項列表出現」)。
+   這裡做的正是 instruction_list_open_lift_input_view() 的前半:建 layout、記住 device_id、
+   把 registry 的 default_actions 灌進去當 placeholder。0x0e 由呼叫端自己送。 */
+bool instruction_list_prepare_single_device(const char *device_id)
+{
+    if (device_id == NULL || device_id[0] == '\0')
+        return false;
+    if (!p_instruction_list_layout)
+    {
+        extern lv_obj_t *lv_instruction_list_layout_create(lv_obj_t * parent);
+        lv_instruction_list_layout_create(lv_scr_act());
+        if (!p_instruction_list_layout)
+            return false;
+    }
+    s_bar_single_device = true;
+    feed_single_device_options(device_id); /* 同時把 device_id 記進 s_single_device_id */
+    return true;
+}
+
+/* 公開：讀那個快取旗標。滑鼠 app 的語音站要靠它決定 icon_send 出不出現(它自己有一份
+   UI,不共用這裡的立起面板)。單一 bool 讀取,任何執行緒皆可。 */
+bool instruction_list_remote_target_has_focus(void)
+{
+    return s_remote_target_has_focus;
+}
+
 /* 公開：給 STANDALONE 滑鼠 app(APP_ID_MOUSE)用的「單一控制設備」版 bar-tap。與
    instruction_list_bar_tap 同一個兩段式狀態機 + 同一個元件(列表/輸入框樣式必然一致),差別:
    1st tap 依 s_remote_target_has_focus 二選一——有聚焦輸入框(使用者八成剛點進那格)直接跳過
