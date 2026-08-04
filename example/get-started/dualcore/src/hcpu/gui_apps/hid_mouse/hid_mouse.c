@@ -641,6 +641,7 @@ static void voice_box_gesture_cb(lv_event_t *e);
 static void kbd_lower_switch(bool to_kbd);
 static void voice_preview_schedule(void); /* 推手錶文字給電腦(防抖) */
 static void kbd_voice_del_stop_repeat(void); /* 收掉刪除鍵的連續刪除 timer */
+static void kbd_voice_del_update_icon(void); /* 有字=退格圖 / 沒字=退出圖 */
 static void voice_ball_event_cb(lv_event_t *e);
 static void update_cursor_position(void);
 // micro_open_icon 是淺藍麥克風，脈衝色取相近的藍
@@ -973,7 +974,8 @@ static void update_input_display(void)
     if (s_voice_box_on)
     {
         update_cursor_position();
-        voice_preview_schedule(); /* 把手錶上的字推給電腦那條輸入框(防抖) */
+        kbd_voice_del_update_icon(); /* 有字=退格 / 沒字=退出 */
+        voice_preview_schedule();    /* 把手錶上的字推給電腦那條輸入框(防抖) */
         return;
     }
 
@@ -7638,6 +7640,10 @@ static void keyboard_mode_outside_click_cb(lv_event_t *e)
 {
     // target == current_target 表示點擊直接落在 mode_container 上（沒被 child 吃）
     if (lv_event_get_target(e) != lv_event_get_current_target(e)) return;
+    /* **語音站不吃這條**(founder 2026-08-04):那一站的按鈕都是圖示、標的小,想點下方
+       麥克風而稍微點偏就會落到空白處,整個輸入模式當場被收掉、剛講的字也沒了。
+       離開語音站要走明確的出口:鍵盤鈕、空框時的退出鍵、或送出。 */
+    if (s_voice_box_on) return;
     // 還在動畫中（mode_swipe 或 collapse）不重複觸發
     //   注意：current_hid_mode 在 collapse done_cb 才會從 KEYBOARD 翻成
     //   TRACKPAD，動畫期間單看 current_hid_mode 擋不住，必須另外看 anim flag
@@ -8164,6 +8170,7 @@ static void kbd_bar_set_voice_box(bool voice)
             instruction_list_prepare_single_device(s_dev_active_id);
         }
         kbd_voice_layout_send_icons(); /* 依電腦當下的聚焦狀態決定 icon_send 出不出現 */
+        kbd_voice_del_update_icon();   /* 空框開場 = 退出鍵 */
         voice_preview_schedule();      /* 進站就把現有文字同步過去(可能是鍵盤打的) */
     }
     else
@@ -8708,6 +8715,18 @@ static void kbd_mic_btn_event_cb(lv_event_t *e)
     }
 }
 
+/* 沒字 = 這顆鍵是退出鍵,圖示跟著換成向下箭頭(沿用滑鼠 app「收回」的同一張圖)。
+   先前建了按鈕卻沒有任何地方更新圖示,所以永遠顯示退格圖 —— founder 2026-08-04
+   「為什麼輸入框是空的時候刪除鍵沒有變成退出鍵」。 */
+static void kbd_voice_del_update_icon(void)
+{
+    if (!kbd_voice_del_btn || !lv_obj_is_valid(kbd_voice_del_btn))
+        return;
+    lv_img_set_src(kbd_voice_del_btn,
+                   input_length > 0 ? (const void *)&backspace_icon
+                                    : (const void *)&down_arrow);
+}
+
 static void kbd_voice_del_stop_repeat(void)
 {
     if (kbd_voice_del_repeat)
@@ -8747,8 +8766,11 @@ static void kbd_voice_del_event_cb(lv_event_t *e)
     {
         if (lv_event_get_code(e) == LV_EVENT_SHORT_CLICKED)
         {
+            /* 退出鍵 = **離開輸入模式**回觸控板,與 icon_send 送完的去處一致。
+               先前寫成退回鍵盤站,按下去會跳出英文鍵盤,不是使用者要的「退出」
+               (founder 2026-08-04)。 */
             LOG_I("[voice] delete key acted as EXIT (box empty)");
-            kbd_lower_switch(true); /* 退回鍵盤站 */
+            apply_hid_mode(HID_MODE_TRACKPAD);
         }
         return;
     }
