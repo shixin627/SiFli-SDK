@@ -18,6 +18,10 @@ if GetDepend('BSP_USING_PC_SIMULATOR'):
     src += ['fake_ui_data.c']
     # Programmatic UI navigation: goto_app / list_apps / app_exit / app_status.
     src += ['dev_navigation.c']
+    # hr_ac_test: runs the real hr_autocorr.c object against the same synthetic
+    # cases as its Python reference, so a fixed-point porting error is caught
+    # here rather than on a wrist overnight.
+    src += ['test_hr_autocorr.c']
 
 group = DefineGroup('Unit_tests', src, depend = [''], CPPPATH = path)
 

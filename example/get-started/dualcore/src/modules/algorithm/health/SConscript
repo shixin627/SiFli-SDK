@@ -4,6 +4,13 @@ cwd = GetCurrentDir()
 src = []
 path = [cwd]
 
+# In-tree resting-HR estimator (normalised autocorrelation of raw PPG). Pure C,
+# no deps. Its own group with NO depend: hr_service.c calls it directly and it
+# replaces the vendor answer, so it must not be switched off by whichever sleep
+# classifier happens to be selected below (the else-branch there drops src
+# entirely, and every branch gates the group on a sleep symbol).
+hr_group = DefineGroup('HrAutocorr', ['hr_autocorr.c'], depend = [], CPPPATH = path)
+
 if GetDepend('BSP_USING_SLEEP_FUSION'):
     # In-tree sleep classifier (Cole-Kripke + HR staging). Pure C, no
     # external lib. The driver lives in modules/service/sleep_service.c.
@@ -19,5 +26,7 @@ elif GetDepend('BSP_USING_SLEEP_VANHEES'):
                         CPPPATH = path)
 else:
     group = DefineGroup('Health', [], depend = [''], CPPPATH = path)
+
+group = group + hr_group
 
 Return('group')

@@ -641,6 +641,7 @@ static void voice_box_gesture_cb(lv_event_t *e);
 static void kbd_lower_switch(bool to_kbd);
 static void voice_preview_schedule(void); /* 推手錶文字給電腦(防抖) */
 static void kbd_voice_del_stop_repeat(void); /* 收掉刪除鍵的連續刪除 timer */
+static void kbd_voice_del_update_icon(void); /* 有字=退格圖 / 沒字=退出圖 */
 static void voice_ball_event_cb(lv_event_t *e);
 static void update_cursor_position(void);
 // micro_open_icon 是淺藍麥克風，脈衝色取相近的藍
@@ -973,7 +974,8 @@ static void update_input_display(void)
     if (s_voice_box_on)
     {
         update_cursor_position();
-        voice_preview_schedule(); /* 把手錶上的字推給電腦那條輸入框(防抖) */
+        kbd_voice_del_update_icon(); /* 有字=退格 / 沒字=退出 */
+        voice_preview_schedule();    /* 把手錶上的字推給電腦那條輸入框(防抖) */
         return;
     }
 
@@ -7638,6 +7640,10 @@ static void keyboard_mode_outside_click_cb(lv_event_t *e)
 {
     // target == current_target 表示點擊直接落在 mode_container 上（沒被 child 吃）
     if (lv_event_get_target(e) != lv_event_get_current_target(e)) return;
+    /* **語音站不吃這條**(founder 2026-08-04):那一站的按鈕都是圖示、標的小,想點下方
+       麥克風而稍微點偏就會落到空白處,整個輸入模式當場被收掉、剛講的字也沒了。
+       離開語音站要走明確的出口:鍵盤鈕、空框時的退出鍵、或送出。 */
+    if (s_voice_box_on) return;
     // 還在動畫中（mode_swipe 或 collapse）不重複觸發
     //   注意：current_hid_mode 在 collapse done_cb 才會從 KEYBOARD 翻成
     //   TRACKPAD，動畫期間單看 current_hid_mode 擋不住，必須另外看 anim flag
@@ -7780,6 +7786,137 @@ static void voice_preview_schedule(void)
     }
 }
 
+/* ── 長按放大鏡(founder 2026-08-03:「在按下的位置上方一小段距離加一個放大鏡效果讓我知道
+   我按到哪裡」)──
+   **不能用 transform_zoom 做** —— FreeType label 套 zoom 會直接消失(既有教訓)。改成用大一級
+   的字型重畫插入點前後幾個字,並在裡面畫一條游標線,等效於放大那一小段。掛在 lv_layer_top()
+   上,不會被輸入框或鍵盤裁切。 */
+#define VOICE_LOUPE_W 170
+#define VOICE_LOUPE_H 66
+#define VOICE_LOUPE_LIFT 30 /* 浮在「那一行字」上方多遠(founder 2026-08-04:再往上一點) */
+#define VOICE_LOUPE_CTX 4   /* 插入點前後各顯示幾個字 */
+/* 466 圓螢幕在高度 y 的可用半寬 = sqrt(R² - (y-R)²)。放大鏡靠上/下時方形邊界夾不住,
+   會凸出圓外(founder 2026-08-04:「超過圓形錶盤就不要繼續左右動,卡在邊緣就好」)。
+   自己算整數平方根,不拉進浮點數學。 */
+static lv_coord_t circ_half_width_at(lv_coord_t y)
+{
+    const int32_t R = LV_HOR_RES_MAX / 2;
+    int32_t dy = y - R;
+    if (dy < 0) dy = -dy;
+    if (dy >= R) return 0;
+    uint32_t v = (uint32_t)(R * R - dy * dy);
+    uint32_t r = 0, b = 256;
+    while (b)
+    {
+        uint32_t t = r + b;
+        if (t * t <= v) r = t;
+        b >>= 1;
+    }
+    return (lv_coord_t)r;
+}
+
+static lv_obj_t *s_voice_loupe = NULL;
+static lv_obj_t *s_voice_loupe_lbl = NULL;
+static lv_obj_t *s_voice_loupe_caret = NULL;
+
+static void voice_loupe_hide(void)
+{
+    if (s_voice_loupe && lv_obj_is_valid(s_voice_loupe))
+        lv_obj_add_flag(s_voice_loupe, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* 位置:**水平跟著手指、垂直鎖在插入點那一行的上方**(iOS 文字放大鏡的做法)。
+   founder 2026-08-03 兩次修正:先是「不要跟著手指飄」→ 我把水平也鎖成置中,
+   再被指出「沒有跟著我手的位置左右移動」—— 要鎖的只有**垂直**(它該待在那一行上方,
+   不是黏在指尖),水平仍要跟手,否則看不出在放大哪一段。 */
+static void voice_loupe_show(lv_point_t touch, int caret_cp)
+{
+    if (!s_voice_loupe || !lv_obj_is_valid(s_voice_loupe))
+    {
+        s_voice_loupe = lv_obj_create(lv_layer_top());
+        lv_obj_remove_style_all(s_voice_loupe);
+        lv_obj_set_size(s_voice_loupe, VOICE_LOUPE_W, VOICE_LOUPE_H);
+        lv_obj_set_style_bg_color(s_voice_loupe, lv_color_hex(0x101010), 0);
+        lv_obj_set_style_bg_opa(s_voice_loupe, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(s_voice_loupe, 16, 0);
+        lv_obj_set_style_border_color(s_voice_loupe, lv_color_hex(KBD_MIC_PULSE_COLOR), 0);
+        lv_obj_set_style_border_width(s_voice_loupe, 2, 0);
+        lv_obj_set_style_border_opa(s_voice_loupe, LV_OPA_70, 0);
+        lv_obj_clear_flag(s_voice_loupe, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(s_voice_loupe, LV_OBJ_FLAG_SCROLLABLE);
+
+        s_voice_loupe_lbl = lv_label_create(s_voice_loupe);
+        lv_obj_set_style_text_color(s_voice_loupe_lbl, lv_color_white(), 0);
+        lv_obj_set_style_text_font(s_voice_loupe_lbl,
+                                   LV_EXT_FONT_GET(get_system_font_size(2)), 0);
+        lv_label_set_long_mode(s_voice_loupe_lbl, LV_LABEL_LONG_CLIP);
+        lv_obj_align(s_voice_loupe_lbl, LV_ALIGN_LEFT_MID, 8, 0);
+
+        s_voice_loupe_caret = lv_obj_create(s_voice_loupe);
+        lv_obj_remove_style_all(s_voice_loupe_caret);
+        lv_obj_set_style_bg_color(s_voice_loupe_caret,
+                                  lv_color_hex(KBD_MIC_PULSE_COLOR), 0);
+        lv_obj_set_style_bg_opa(s_voice_loupe_caret, LV_OPA_COVER, 0);
+        lv_obj_clear_flag(s_voice_loupe_caret, LV_OBJ_FLAG_CLICKABLE);
+    }
+
+    /* 取插入點前後各 VOICE_LOUPE_CTX 個字當放大內容。 */
+    int total = voice_cp_count(input_buffer, input_length);
+    if (caret_cp < 0) caret_cp = total;
+    int from = caret_cp - VOICE_LOUPE_CTX; if (from < 0) from = 0;
+    int to = caret_cp + VOICE_LOUPE_CTX;   if (to > total) to = total;
+    int a = voice_byte_of_cp(input_buffer, from);
+    int b = voice_byte_of_cp(input_buffer, to);
+    char win[64];
+    int n = b - a;
+    if (n > (int)sizeof(win) - 1) n = (int)sizeof(win) - 1;
+    memcpy(win, input_buffer + a, n);
+    win[n] = '\0';
+    lv_label_set_text(s_voice_loupe_lbl, win);
+    lv_obj_update_layout(s_voice_loupe);
+
+    /* 游標線畫在放大內容裡對應的位置。 */
+    lv_point_t p;
+    lv_label_get_letter_pos(s_voice_loupe_lbl, (uint32_t)(caret_cp - from), &p);
+    const lv_font_t *f = lv_obj_get_style_text_font(s_voice_loupe_lbl, LV_PART_MAIN);
+    lv_coord_t lh = lv_font_get_line_height(f);
+    lv_obj_set_size(s_voice_loupe_caret, 2, lh);
+    lv_obj_set_pos(s_voice_loupe_caret, lv_obj_get_x(s_voice_loupe_lbl) + p.x,
+                   lv_obj_get_y(s_voice_loupe_lbl) + p.y);
+
+    /* 錨定在插入點那一行的上方:問 label 該字元的座標,換成螢幕座標再往上放。 */
+    lv_coord_t line_top = 0, line_h = 24;
+    if (input_display_label && lv_obj_is_valid(input_display_label))
+    {
+        lv_point_t lp;
+        lv_label_get_letter_pos(input_display_label, (uint32_t)caret_cp, &lp);
+        const lv_font_t *lf =
+            lv_obj_get_style_text_font(input_display_label, LV_PART_MAIN);
+        line_h = lv_font_get_line_height(lf);
+        line_top = input_display_label->coords.y1 + lp.y;
+    }
+    lv_coord_t y = line_top - VOICE_LOUPE_LIFT - VOICE_LOUPE_H;
+    if (y < 6)
+        y = line_top + line_h + VOICE_LOUPE_LIFT; /* 那行太靠頂就改放它下方 */
+    /* 水平跟手指,但夾在**圓弧**內:取盒子上下緣中離圓心較遠的那一邊算可用半寬,
+       兩個角才都在錶盤裡。到邊就停住不再跟。 */
+    lv_coord_t x = touch.x - VOICE_LOUPE_W / 2;
+    lv_coord_t top_h = circ_half_width_at(y);
+    lv_coord_t bot_h = circ_half_width_at(y + VOICE_LOUPE_H);
+    lv_coord_t half = (top_h < bot_h) ? top_h : bot_h;
+    lv_coord_t cx = LV_HOR_RES_MAX / 2;
+    if (half * 2 <= VOICE_LOUPE_W)
+        x = cx - VOICE_LOUPE_W / 2; /* 這個高度塞不下 → 置中(至少對稱) */
+    else
+    {
+        if (x < cx - half) x = cx - half;
+        if (x > cx + half - VOICE_LOUPE_W) x = cx + half - VOICE_LOUPE_W;
+    }
+    lv_obj_set_pos(s_voice_loupe, x, y);
+    lv_obj_clear_flag(s_voice_loupe, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(s_voice_loupe);
+}
+
 /* 絕對座標 → label 上的第幾個字。 */
 static bool voice_letter_at(lv_point_t abs, uint32_t *out)
 {
@@ -7855,6 +7992,7 @@ static void voice_box_gesture_cb(lv_event_t *e)
         {
             voice_set_caret_cp((int)idx);
             s_voice_sel_anchor_cp = (int)idx;
+            voice_loupe_show(s_voice_press_pt, (int)idx); /* 放大鏡:看清楚按到哪 */
         }
         else
         {
@@ -7889,12 +8027,14 @@ static void voice_box_gesture_cb(lv_event_t *e)
         {
             voice_sel_apply(s_voice_sel_anchor_cp, (int)idx);
             update_cursor_position(); /* 有選取 → 游標/圓球收起 */
+            voice_loupe_show(cur, (int)idx); /* 水平跟手、垂直錨在那一行上方 */
         }
         break;
     }
     case LV_EVENT_RELEASED:
     case LV_EVENT_PRESS_LOST:
         voice_hold_arm_stop();
+        voice_loupe_hide();
         if (mouse_v2t_active) mouse_v2t_close_and_paste();
         s_voice_dragging = false;
         s_voice_sel_anchor_cp = -1;
@@ -7934,15 +8074,20 @@ static void voice_ball_event_cb(lv_event_t *e)
         if (!indev) break;
         lv_point_t cur;
         lv_indev_get_point(indev, &cur);
+        lv_point_t finger = cur;       /* 放大鏡的水平位置用**手指**的 x */
         cur.y -= s_voice_ball_grab_dy; /* 手指抓的是球,游標在它上方 */
         uint32_t idx;
         if (voice_letter_at(cur, &idx))
+        {
             voice_set_caret_cp((int)idx);
+            voice_loupe_show(finger, (int)idx);
+        }
         break;
     }
     case LV_EVENT_RELEASED:
     case LV_EVENT_PRESS_LOST:
         s_voice_ball_dragging = false;
+        voice_loupe_hide();
         break;
     default:
         break;
@@ -7957,6 +8102,7 @@ static void kbd_bar_set_voice_box(bool voice)
         voice_sel_clear();
         voice_hold_arm_stop();
         kbd_voice_del_stop_repeat(); /* 離站別留著連續刪除的 timer */
+        voice_loupe_hide();          /* 同理:別把放大鏡留在畫面上 */
         if (s_voice_preview_timer) /* 離站別留著待發的 preview */
         {
             lv_timer_del(s_voice_preview_timer);
@@ -8024,6 +8170,7 @@ static void kbd_bar_set_voice_box(bool voice)
             instruction_list_prepare_single_device(s_dev_active_id);
         }
         kbd_voice_layout_send_icons(); /* 依電腦當下的聚焦狀態決定 icon_send 出不出現 */
+        kbd_voice_del_update_icon();   /* 空框開場 = 退出鍵 */
         voice_preview_schedule();      /* 進站就把現有文字同步過去(可能是鍵盤打的) */
     }
     else
@@ -8568,6 +8715,18 @@ static void kbd_mic_btn_event_cb(lv_event_t *e)
     }
 }
 
+/* 沒字 = 這顆鍵是退出鍵,圖示跟著換成向下箭頭(沿用滑鼠 app「收回」的同一張圖)。
+   先前建了按鈕卻沒有任何地方更新圖示,所以永遠顯示退格圖 —— founder 2026-08-04
+   「為什麼輸入框是空的時候刪除鍵沒有變成退出鍵」。 */
+static void kbd_voice_del_update_icon(void)
+{
+    if (!kbd_voice_del_btn || !lv_obj_is_valid(kbd_voice_del_btn))
+        return;
+    lv_img_set_src(kbd_voice_del_btn,
+                   input_length > 0 ? (const void *)&backspace_icon
+                                    : (const void *)&down_arrow);
+}
+
 static void kbd_voice_del_stop_repeat(void)
 {
     if (kbd_voice_del_repeat)
@@ -8607,8 +8766,11 @@ static void kbd_voice_del_event_cb(lv_event_t *e)
     {
         if (lv_event_get_code(e) == LV_EVENT_SHORT_CLICKED)
         {
+            /* 退出鍵 = **離開輸入模式**回觸控板,與 icon_send 送完的去處一致。
+               先前寫成退回鍵盤站,按下去會跳出英文鍵盤,不是使用者要的「退出」
+               (founder 2026-08-04)。 */
             LOG_I("[voice] delete key acted as EXIT (box empty)");
-            kbd_lower_switch(true); /* 退回鍵盤站 */
+            apply_hid_mode(HID_MODE_TRACKPAD);
         }
         return;
     }

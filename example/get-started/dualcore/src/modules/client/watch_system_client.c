@@ -226,6 +226,14 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
     {
         UNPACK_DATA(arg, watch_sys_service_data_ind_t, data_ind);
         uint8_t status = data_ind->data;
+        /* The LCPU now reports on every read rather than only on a transition,
+         * so the cores can resync after an LCPU-only restart. Dedup here
+         * instead: charger_status is what the UI renders, so an unchanged
+         * value means there is nothing to redraw -- and re-firing the callback
+         * would pop the charging screen back up on every wake-up, even after
+         * the user dismissed it. */
+        if (SkaiWatchSys.charger_status == status)
+            break;
         SkaiWatchSys.charger_status = status;
         peripheral_provider.charge_status_callback(status);
         break;

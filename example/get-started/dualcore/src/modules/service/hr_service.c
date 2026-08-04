@@ -49,6 +49,7 @@
 #include "bloc_peripheral.h"
 #include "watch_sys_service.h"
 #include "bsp_board.h"          /* CUSTOMER_BOARD_VER / BOARD_VER_29 */
+#include "hr_autocorr.h"        /* in-tree resting-HR estimator (replaces vendor) */
 
 #define DBG_TAG "DS.HR"
 #define DBG_LVL DBG_INFO
@@ -1026,6 +1027,11 @@ static void ppg_timeout_ind(void *param)
    it later. */
 extern void gh3018_get_hr_quality(uint32_t *valid_score, uint32_t *valid_level,
                                   uint32_t *confi_x100, uint32_t *snr_x100);
+/* Algorithm's own motion state / detected scene. Declared here rather than by
+   including gh3018.h, matching how every other gh3018 symbol is pulled into this
+   file. Without it C99 assumes int(), which happens to work on AAPCS and is
+   still undefined behaviour. */
+extern void gh3018_get_hr_acc_state(uint32_t *acc_info, uint32_t *acc_scene);
 /* Monotonic count of locked algo HR outputs; bg_hr snapshots it at burst start and
    ends warm-up the moment it moves (= algo locked this burst). See gh3018 port. */
 extern uint32_t gh3018_get_hr_update_seq(void);
@@ -1047,20 +1053,23 @@ extern uint32_t gh3018_get_hr_update_seq(void);
    (sleep_service.c) >= this period so no minute is left without HR features.
    Revert both together. */
 #define BG_HR_PERIOD_MS      (10 * 60 * 1000) /* base tick = sleep-mode cadence   */
-/* DIAGNOSTIC (2026-07-31, founder request): 1 = awake bursts at the SAME cadence
-   and length as sleep, so daytime readings can be cross-checked against a
-   reference watch live instead of waiting a night per experiment — and so
-   frame_pct is sampled under identical conditions in both states, which is what
-   makes the two comparable at all. Costs daytime PPG duty 3.3% -> 30% (~9x the
-   LED on-time); revert to 2 (+ BG_HR_BURST_MS_AWAKE back to 40 s) once the 2x
-   harmonic root cause is settled. */
-#define BG_HR_AWAKE_SKIP     1               /* awake: burst every tick = 10 min  */
+/* Back to the normal intermittent cadence (2026-08-04). The dense daytime
+   diagnostic ran its course: it was there to cross-check against a reference
+   watch without waiting a night per experiment, and it did — the doubling is now
+   characterised and reproduced. Holding PPG at ~30% daytime duty for a question
+   that has been answered is just battery. */
+#define BG_HR_AWAKE_SKIP     2               /* awake: burst every 2nd tick = 20 min */
 /* The HBA algo restarts cold each burst and needs ~30 s to lock (hba_out_flag
    stays 0 until then); before that gh3018_get_hr() still returns the PREVIOUS
    burst's stale value, so reads are gated on a real lock (HR update-seq moving)
    rather than on elapsed time -- keep every burst comfortably longer than ~30 s
    or it will lock nothing and report NO_LOCK. */
-#define BG_HR_BURST_MS_AWAKE (3 * 60 * 1000) /* DIAGNOSTIC: match the sleep burst (was 40 s) */
+/* 40 s awake / 3 min asleep. Both are sized by hr_autocorr's 10.24 s window plus
+   margin for the median below — NOT by the vendor algorithm's ~30 s cold-start
+   convergence any more, since its answer is no longer the one published. The
+   sleep burst stays long because that is where the artefacts live and more
+   independent estimates make the median robust. */
+#define BG_HR_BURST_MS_AWAKE (40 * 1000)
 #define BG_HR_BURST_MS_SLEEP (3 * 60 * 1000) /* long enough to converge past a cold-start harmonic lock */
 #define BG_HR_SAMPLE_MS      (1000)          /* read cadence during the burst      */
 /* HR output motion gate: each 1 Hz read also samples BMI270 accel; if the wrist
@@ -1130,11 +1139,18 @@ static void ppg_pi_start(void)
 {
     s_pi_min = 0xFFFFFFFFu; s_pi_max = 0; s_pi_sum = 0; s_pi_cnt = 0;
     s_pi_collecting = true;
+    /* Drop the correlation window with the PI window: samples from before this
+       burst's LED power-up would be correlated against fresh ones across a
+       discontinuity that is not a heartbeat. */
+    hr_autocorr_reset();
 }
 
 void ppg_pi_feed(uint8_t n, const uint32_t *raw)
 {
     if (!s_pi_collecting || raw == NULL) return;
+    /* Same raw channel-0 stream, two consumers. hr_autocorr is the one whose
+       answer gets published; PI stays as a signal-quality diagnostic. */
+    hr_autocorr_feed(n, raw);
     for (uint8_t i = 0; i < n; i++)
     {
         uint32_t v = raw[i];
@@ -1266,6 +1282,14 @@ static uint32_t bg_hr_burst_qlevel = 0;
 static uint32_t bg_hr_burst_qscore_max = 0;
 static uint32_t bg_hr_burst_confi_max = 0;
 static uint32_t bg_hr_burst_snr_max = 0;
+/* Minimum hr_autocorr confidence to accept a reading. 40 is deliberately loose
+   for a first night: the synthetic suite clears 96+ on every real case and pure
+   noise scores 0, so the gap is wide and the risk here is over-rejecting a real
+   but weak signal, not letting noise through. Tighten once a night's
+   own_conf distribution against a reference watch says where the line is. */
+#define BG_HR_OWN_MIN_CONF   40
+static uint8_t  bg_hr_vendor_bpm = 0;          /* last vendor read, diagnostic only */
+static uint8_t  bg_hr_burst_own_conf_max = 0;  /* best hr_autocorr confidence this burst */
 
 /* Integer std-dev from running Σx / Σx². Dividing before squaring keeps this in
    uint32 for any realistic n (Σx² ≤ n·255², so n up to ~66k is safe; a 3-min
@@ -1509,9 +1533,13 @@ static void bg_hr_finish_burst(void)
                                          (uint16_t)apct);
     }
 
-    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u best=%u qmin=%u qmax=%u qlvl=%u confiX100=%u snrX100=%u frames=%u%% div=%u algo=%u%%",
+    /* own=  what we publish (hr_autocorr)   vendor= the Goodix answer, kept only
+       so the two can be read off against each other on the same line. */
+    LOG_I("bg_hr burst: reads=%u acc=%u motion_rej=%u own=%u ownconf=%u vendor=%u fill=%u qmin=%u qmax=%u qlvl=%u confiX100=%u snrX100=%u frames=%u%% div=%u algo=%u%%",
           (unsigned)bg_hr_burst_reads, (unsigned)bg_hr_burst_cnt,
           (unsigned)bg_hr_burst_motion_rej, (unsigned)bg_hr_burst_best,
+          (unsigned)bg_hr_burst_own_conf_max, (unsigned)bg_hr_vendor_bpm,
+          (unsigned)hr_autocorr_fill(),
           (unsigned)bg_hr_burst_qscore_min, (unsigned)bg_hr_burst_qscore_max,
           (unsigned)bg_hr_burst_qlevel,
           (unsigned)bg_hr_burst_confi_max, (unsigned)bg_hr_burst_snr_max,
@@ -1608,51 +1636,46 @@ static void bg_hr_sample_cb(void *param)
     bool bghr_motion = bghr_prev_accel_valid &&
                        (bghr_now_ms - bghr_last_motion_ms) < BG_HR_MOTION_GUARD_MS;
 
-    if (rd == 1)
+    /* The vendor answer is still read, but ONLY as a diagnostic to sit beside
+       ours in the CSV. It stopped being the published value on 2026-08-04: on a
+       worn watch it produced a 34-minute plateau at 107-124 while a reference
+       watch never passed 84 and the accelerometer read zero, and all six of its
+       quality/scene fields read 0 all night, so there is no way to know when to
+       distrust it. See hr_autocorr.h. */
+    bg_hr_vendor_bpm = (rd == 1 && sd.data.hr > 0 && sd.data.hr < 240)
+                           ? (uint8_t)sd.data.hr : 0;
+
+    /* OUR estimate is the reading. It refuses (returns 0) until the 10.24 s
+       window is full and a correlation peak clears threshold — that refusal is
+       the point, and a burst where it never clears must report NO_LOCK rather
+       than fall back to the vendor, or the comparison is meaningless. */
+    uint8_t own_conf = 0;
+    uint8_t own_bpm = hr_autocorr_estimate(&own_conf);
+    if (own_conf > bg_hr_burst_own_conf_max) bg_hr_burst_own_conf_max = own_conf;
+
+    if (own_bpm > 0 && own_conf >= BG_HR_OWN_MIN_CONF)
     {
-        /* Accept ONLY once the algo emits a fresh locked value this burst (gh3018 HR
-           update-seq moved past the burst-start baseline).
-           2026-07-29: there used to be a second accept path -- a fixed 30 s cap that
-           took whatever gh3018_get_hr() held once the warm-up elapsed. But loc_hb_value
-           is never cleared between bursts (its only writer is gh3018_set_hr), so a burst
-           where the algo never locked did NOT come out empty: it silently republished
-           the PREVIOUS burst's value as a fresh reading. Signature in the data: runs of
-           byte-identical consecutive bursts, 11-15% of published points. A burst that
-           never locks must report NO_LOCK honestly instead. */
-        bool bghr_algo_locked = (gh3018_get_hr_update_seq() != bg_hr_burst_start_seq);
-        if (sd.data.hr > 0 && bghr_algo_locked)
-        {
-            /* step->1 (the accel-feed alignment fix, already on main) restored the
-               GH30x built-in motion compensation, so this external motion-gate's
-               ROOT CAUSE is gone. Demoted REJECT -> diagnostic-only: still count
-               motion reads, but no longer drop them -- over-rejecting while sitting
-               still starved the 5-tap median window and made the daily curve jumpy.
-               The median below still suppresses isolated motion spikes. Re-add a
-               looser reject (higher delta thresh) only if dynamic over-read returns. */
-            if (bghr_motion)
-            {
-                bg_hr_burst_motion_rej++;
-            }
-            if (sd.data.hr < 240)
-            {
-                /* Median-filter the accepted read: suppress isolated quality
-                   spikes (the sleep case) before they reach best / mean / std,
-                   and record this read's Goodix quality. Publish AND accumulate
-                   the MEDIAN, not the raw value. */
-                uint32_t qscore = 0, qlevel = 0, qconfi = 0, qsnr = 0;
-                gh3018_get_hr_quality(&qscore, &qlevel, &qconfi, &qsnr);
-                if (qscore < bg_hr_burst_qscore_min) bg_hr_burst_qscore_min = qscore;
-                if (qscore > bg_hr_burst_qscore_max) bg_hr_burst_qscore_max = qscore;
-                if (qconfi > bg_hr_burst_confi_max) bg_hr_burst_confi_max = qconfi;
-                if (qsnr > bg_hr_burst_snr_max) bg_hr_burst_snr_max = qsnr;
-                bg_hr_burst_qlevel = qlevel;
-                uint8_t med = bghr_median_push((uint8_t)sd.data.hr);
-                bg_hr_burst_best = med;
-                bg_hr_burst_sum += (uint32_t)med;
-                bg_hr_burst_sum_sq += (uint32_t)med * (uint32_t)med;
-                bg_hr_burst_cnt++;
-            }
-        }
+        /* Motion is counted, not rejected: the accel-feed alignment fix restored
+           the GH30x motion compensation, and over-rejecting while lying still
+           starved the median window and made the curve jumpy. */
+        if (bghr_motion) bg_hr_burst_motion_rej++;
+
+        uint32_t qscore = 0, qlevel = 0, qconfi = 0, qsnr = 0;
+        gh3018_get_hr_quality(&qscore, &qlevel, &qconfi, &qsnr);
+        if (qscore < bg_hr_burst_qscore_min) bg_hr_burst_qscore_min = qscore;
+        if (qscore > bg_hr_burst_qscore_max) bg_hr_burst_qscore_max = qscore;
+        if (qconfi > bg_hr_burst_confi_max) bg_hr_burst_confi_max = qconfi;
+        if (qsnr > bg_hr_burst_snr_max) bg_hr_burst_snr_max = qsnr;
+        bg_hr_burst_qlevel = qlevel;
+
+        /* Median over the burst as before — the estimator is independent per
+           tick only to the extent its 10 s windows overlap, so an isolated bad
+           window still gets outvoted. */
+        uint8_t med = bghr_median_push(own_bpm);
+        bg_hr_burst_best = med;
+        bg_hr_burst_sum += (uint32_t)med;
+        bg_hr_burst_sum_sq += (uint32_t)med * (uint32_t)med;
+        bg_hr_burst_cnt++;
     }
     if (bghr_now_ms >= bg_hr_burst_deadline_ms)
     {
@@ -1882,6 +1905,8 @@ static void bg_hr_period_cb(void *param)
     bghr_med_idx = 0;
     bg_hr_burst_qscore_min = 0xFFFFFFFFu;
     bg_hr_burst_qscore_max = 0;
+    bg_hr_burst_own_conf_max = 0;
+    bg_hr_vendor_bpm = 0;
     bg_hr_burst_confi_max = 0;
     bg_hr_burst_snr_max = 0;
     bg_hr_burst_qlevel = 0;
