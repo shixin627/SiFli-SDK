@@ -1,6 +1,6 @@
 {
-    "version": "1.1.108",
-    "description": "mouse app UI",
+    "version": "1.1.109",
+    "description": "重寫心率算法,錶盤長按水平搖兩下開滑鼠,修復滑鼠語音畫面",
     "fileList": [
         "bootloader.bin",
         "ftab.bin",
