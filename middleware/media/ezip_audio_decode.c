@@ -292,6 +292,8 @@ void ezip_audio_decode(ffmpeg_handle thiz, audio_server_callback_func callback, 
                 {
                     if (!thiz->resample)
                     {
+                        audio_ioctl(thiz->audio_handle, AUDIO_IOCTL_SET_CACHE_SAMPLERATE, (void *)44100);
+                        audio_ioctl(thiz->audio_handle, AUDIO_IOCTL_SET_CACHE_CH, (void *)2);
                         thiz->resample = sifli_resample_open(2, thiz->audio_samplerate, 44100);
                         RT_ASSERT(thiz->resample);
 
@@ -412,6 +414,8 @@ void ezip_audio_decode(ffmpeg_handle thiz, audio_server_callback_func callback, 
                 }
                 if (thiz->audio_samplerate != 44100 && !thiz->resample)
                 {
+                    audio_ioctl(thiz->audio_handle, AUDIO_IOCTL_SET_CACHE_SAMPLERATE, (void *)44100);
+                    audio_ioctl(thiz->audio_handle, AUDIO_IOCTL_SET_CACHE_CH, (void *)2);
                     thiz->resample = sifli_resample_open(2, thiz->audio_samplerate, 44100);
                     RT_ASSERT(thiz->resample);
                 }

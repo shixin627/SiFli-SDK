@@ -1991,7 +1991,6 @@ fdb_err_t fdb_kvdb_init(fdb_kvdb_t db, const char *name, const char *path, struc
     size_t i;
 #endif
 
-    rt_kprintf("%s: %s\n", __func__, path);
 
     /* must be aligned with write granularity */
     FDB_ASSERT((FDB_STR_KV_VALUE_MAX_SIZE * 8) % FDB_WRITE_GRAN == 0);

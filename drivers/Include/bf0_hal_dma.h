@@ -19,7 +19,7 @@ extern "C" {
 /* For Keil Flash download algorithm, don't enable dynamic alloc as bss section is not initialized automatically,
    so dma_ch_pool is not initialized correclty.
  */
-#if defined(SOC_BF0_LCPU) && (defined(SF32LB55X) || defined(SF32LB58X) || defined(SF32LB52X))
+#if defined(SOC_BF0_LCPU) && (defined(SF32LB55X) || defined(SF32LB58X) || defined(SF32LB52X) || defined(SF32LB57X))
 #else
 /* SF32LB55X, SF32LB58X and SF32LB52X LCPU doesn't support DMA channel dynamic allocation,
  * SF32LB52X LCPU uses DMA for RF register restore and DMA driver uses ROM implementation
@@ -27,6 +27,17 @@ extern "C" {
 #define DMA_SUPPORT_DYN_CHANNEL_ALLOC
 #endif /* SOC_BF0_LCPU && (SF32LB55X || SF32LB58X || SF32LB52X) */
 #endif /* !KEIL */
+
+#if defined(GPDMA1_BASE) || defined(GPDMA2_BASE) || defined(GPDMA3_BASE)
+#define DMA_SUPPORT_GPDMA
+#endif /* GPDMA1_BASE || GPDMA2_BASE || GPDMA3_BASE */
+
+#ifdef DMA_SUPPORT_GPDMA
+#ifdef GPDMA_LISR_LCIF1
+#define DMA_LINK_LIST_SUPPORT
+#endif /* GPDMA_LISR_LCIF1 */
+#endif /* DMA_SUPPORT_GPDMA */
+
 
 /** @addtogroup BF0_HAL_Driver
   * @{
@@ -48,6 +59,7 @@ struct dma_config
     uint32_t dma_irq_prio;            /*!< DMA interrupt priority */
     IRQn_Type dma_irq;              /*!< DMA interrupt number */
     uint32_t request;            /*!< DMA request number */
+    uint8_t end_trigger;         /*!< trigger source for end condition in linked-list mode */
 };
 
 /**
@@ -90,6 +102,9 @@ typedef struct
 #ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
     uint32_t IrqPrio;                   /*!< Interrupt Priority*/
 #endif /* DMA_SUPPORT_DYN_CHANNEL_ALLOC */
+#ifdef DMA_LINK_LIST_SUPPORT
+    uint8_t EndTrigger;                 /*!< Specify trigger source for end condition in linked-list mode */
+#endif /* DMA_LINK_LIST_SUPPORT */
 } DMA_InitTypeDef;
 
 /**
@@ -152,7 +167,12 @@ typedef struct __DMA_HandleTypeDef
 
     DMAC_TypeDef           *DmaBaseAddress;                                            /*!< DMA Channel Base Address             */
 
-    uint32_t               ChannelIndex;                                               /*!< DMA Channel Index                    */
+    uint32_t               ChannelIndex;                                               /*!< DMA Channel Index, the value is left-shifted by 2 bits */
+#ifdef DMA_SUPPORT_GPDMA
+    uint32_t               OrgChannelIndex: 31;                                        /*!< Channel index without any change, range is 0~7 */
+    uint32_t               IsGPDMA: 1;                                                 /*!< Is GPDMA channel                     */
+#endif /* DMA_SUPPORT_GPDMA */
+
 #ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
     uint32_t               LeftCounts;
     uint32_t               TotalCounts;
@@ -165,6 +185,52 @@ typedef struct __DMA_HandleTypeDef
     uint8_t                DstWidth;                                                   /*!< Dst width, 0: 1 byte, 1: 2bytes, 2: 4bytes */
 #endif /* DMA_SUPPORT_DYN_CHANNEL_ALLOC */
 } DMA_HandleTypeDef;
+
+#ifdef DMA_LINK_LIST_SUPPORT
+/** DMA transfer description structure */
+typedef struct
+{
+    DMA_InitTypeDef       Init;
+    uint32_t              SrcAddress;
+    uint32_t              DstAddress;
+    /** the value cannot exceed 0xFFFF */
+    uint32_t              Counts;
+    uint8_t               Delay;
+    /** start trigger source, only valid for the first transfer */
+    uint8_t               StartTrigger;
+    /** end trigger source of current transfer */
+    uint8_t               EndTrigger;
+    /** start trigger edge, only valid for the first transfer */
+    uint32_t              StartTriggerEdge;
+    /** start trigger polarity, only valid for the first transfer */
+    uint32_t              StartTriggerPolarity;
+    uint32_t              EndTriggerEdge;
+    uint32_t              EndTriggerPolarity;
+} DMA_XferDescTypeDef;
+
+/** DMA Linked-List node structure */
+typedef struct
+{
+    /** compatible with CCR register */
+    uint32_t Control;
+    uint32_t SrcAddress;
+    uint32_t DstAddress;
+    uint32_t Misc;
+} DMA_ListNodeTypeDef;
+
+/** DMA Linked-list structure */
+typedef struct
+{
+    /** start trigger source of the first node */
+    uint8_t  Trigger;
+    uint8_t  Len;
+    uint32_t TriggerEdge;
+    uint32_t TriggerPolarity;
+    uint32_t Reserved;
+    DMA_ListNodeTypeDef Node[0];
+} DMA_LinkListTypeDef;
+#endif /* DMA_LINK_LIST_SUPPORT */
+
 
 /**
   * @}
@@ -229,7 +295,7 @@ typedef struct __DMA_HandleTypeDef
 #define DMA_REQUEST_29                    29U
 #define DMA_REQUEST_30                    30U
 #define DMA_REQUEST_31                    31U
-#if defined(SF32LB56X) || defined(SF32LB52X)
+#if defined(SF32LB56X) || defined(SF32LB52X) || defined(SF32LB57X)
 #define DMA_REQUEST_32                    32U
 #define DMA_REQUEST_33                    33U
 #define DMA_REQUEST_34                    34U
@@ -262,6 +328,24 @@ typedef struct __DMA_HandleTypeDef
 #define DMA_REQUEST_61                    61U
 #define DMA_REQUEST_62                    62U
 #define DMA_REQUEST_63                    63U
+#define DMA_REQUEST_64                    64U
+#define DMA_REQUEST_65                    65U
+#define DMA_REQUEST_66                    66U
+#define DMA_REQUEST_67                    67U
+#define DMA_REQUEST_68                    68U
+#define DMA_REQUEST_69                    69U
+#define DMA_REQUEST_70                    70U
+#define DMA_REQUEST_71                    71U
+#define DMA_REQUEST_72                    72U
+#define DMA_REQUEST_73                    73U
+#define DMA_REQUEST_74                    74U
+#define DMA_REQUEST_75                    75U
+#define DMA_REQUEST_76                    76U
+#define DMA_REQUEST_77                    77U
+#define DMA_REQUEST_78                    78U
+#define DMA_REQUEST_79                    79U
+#define DMA_REQUEST_80                    80U
+#define DMA_REQUEST_81                    81U
 #endif /* SF32LB56X || SF32LB52X */
 
 
@@ -470,6 +554,7 @@ typedef struct __DMA_HandleTypeDef
 #define DMA_IT_TC                         DMAC_CCR1_TCIE
 #define DMA_IT_HT                         DMAC_CCR1_HTIE
 #define DMA_IT_TE                         DMAC_CCR1_TEIE
+#define DMA_IT_LC                         GPDMA_CCR1_LCIE
 /**
   * @} DMA_interrupt_enable_definitions
   */
@@ -481,6 +566,7 @@ typedef struct __DMA_HandleTypeDef
 #define DMA_FLAG_TC1                      DMAC_ISR_TCIF1
 #define DMA_FLAG_HT1                      DMAC_ISR_HTIF1
 #define DMA_FLAG_TE1                      DMAC_ISR_TEIF1
+#define DMA_FLAG_LC1                      GPDMA_LISR_LCIF1
 #define DMA_FLAG_GL2                      DMAC_ISR_GIF2
 #define DMA_FLAG_TC2                      DMAC_ISR_TCIF2
 #define DMA_FLAG_HT2                      DMAC_ISR_HTIF2
@@ -509,6 +595,13 @@ typedef struct __DMA_HandleTypeDef
 /**
   * @} DMA_flag_definitions
   */
+
+
+#define DMA_TRIG_HIGH                    0UL
+#define DMA_TRIG_LOW                     GPDMA_CCR1_TPOL
+
+#define DMA_TRIG_LEVEL                   0UL
+#define DMA_TRIG_EDGE                    GPDMA_CCR1_TEDGE
 
 /**
   * @} DMA_Exported_Constants
@@ -637,7 +730,7 @@ typedef struct __DMA_HandleTypeDef
   *         Where x can be from 1 to 7 to select the DMA Channel x flag.
   * @retval The state of FLAG (SET or RESET).
   */
-#define __HAL_DMA_GET_FLAG(__HANDLE__, __FLAG__) ((uint32_t)((__HANDLE__)->DmaBaseAddress->ISR & (__FLAG__:)))
+#define __HAL_DMA_GET_FLAG(__HANDLE__, __FLAG__) ((uint32_t)((__HANDLE__)->DmaBaseAddress->ISR & (__FLAG__)))
 
 /**
   * @brief  Clear the DMA Channel pending flags.
@@ -815,6 +908,44 @@ HAL_StatusTypeDef HAL_DMA_Start(DMA_HandleTypeDef *hdma, uint32_t SrcAddress, ui
   * @retval HAL status
   */
 HAL_StatusTypeDef HAL_DMA_Start_IT(DMA_HandleTypeDef *hdma, uint32_t SrcAddress, uint32_t DstAddress, uint32_t Counts);
+
+
+#ifdef DMA_LINK_LIST_SUPPORT
+/**
+ * @brief  Construct linked-list for multiple transfer
+ *
+ * @param[in]  hdma         pointer to a DMA_HandleTypeDef structure that contains
+ *                          the configuration information for the specified DMA Channel.
+ * @param[in]  XferDescList Multiple tranmission description list
+ * @param[in]  Len          Length of XferDescList
+ * @param[out] LinkList     constructed linked-list for multiple DMA transfer
+ * @retval HAL status
+ */
+HAL_StatusTypeDef HAL_DMA_PrepareMultiple(DMA_HandleTypeDef *hdma, DMA_XferDescTypeDef *XferDescList, uint32_t Len,
+        DMA_LinkListTypeDef *LinkList);
+
+/**
+ * @brief  Start multiple DMA transfer without interrupt enabled
+ *
+ * @param[in]  hdma         pointer to a DMA_HandleTypeDef structure that contains
+ *                          the configuration information for the specified DMA Channel.
+ * @param[in]  LinkList     linked-list describing the multiple DMA transfer
+ * @retval HAL status
+ */
+HAL_StatusTypeDef HAL_DMA_StartMutiple(DMA_HandleTypeDef *hdma, DMA_LinkListTypeDef *LinkList);
+
+/**
+ * @brief  Start multiple DMA transfer with interrupt enabled
+ *
+ * @param[in]  hdma         pointer to a DMA_HandleTypeDef structure that contains
+ *                          the configuration information for the specified DMA Channel.
+ * @param[in]  LinkList     linked-list describing the multiple DMA transfer
+ * @retval HAL status
+ */
+HAL_StatusTypeDef HAL_DMA_StartMutiple_IT(DMA_HandleTypeDef *hdma, DMA_LinkListTypeDef *LinkList);
+#endif /* DMA_LINK_LIST_SUPPORT */
+
+
 /**
   * @brief  Abort the DMA Transfer.
   * @param  hdma pointer to a DMA_HandleTypeDef structure that contains
@@ -840,6 +971,17 @@ HAL_StatusTypeDef HAL_DMA_Abort_IT(DMA_HandleTypeDef *hdma);
   * @retval HAL status
   */
 HAL_StatusTypeDef HAL_DMA_PollForTransfer(DMA_HandleTypeDef *hdma, HAL_DMA_LevelCompleteTypeDef CompleteLevel, uint32_t Timeout);
+
+#ifdef DMA_LINK_LIST_SUPPORT
+/**
+  * @brief  Polling for multiple transfer complete.
+  * @param  hdma pointer to a DMA_HandleTypeDef structure that contains
+  *                  the configuration information for the specified DMA Channel.
+  * @param  Timeout       Timeout duration.
+  * @retval HAL status
+  */
+HAL_StatusTypeDef HAL_DMA_PollForMultipleTransfer(DMA_HandleTypeDef *hdma, uint32_t Timeout);
+#endif /* DMA_LINK_LIST_SUPPORT */
 
 /**
   * @brief  Handle DMA interrupt request.
@@ -996,7 +1138,14 @@ HAL_StatusTypeDef HAL_DMA_FreeChannel(DMA_HandleTypeDef *hdma);
                                      ((DIRECTION) == DMA_MEMORY_TO_PERIPH)  || \
                                      ((DIRECTION) == DMA_MEMORY_TO_MEMORY))
 
-#define IS_DMA_BUFFER_SIZE(SIZE) (((SIZE) >= 0x1U) && ((SIZE) < 0x10000U))
+#ifdef GPDMA1_BASE
+#define DMA1_BUFFER_SIZE (0x100000UL)
+#else
+#define DMA1_BUFFER_SIZE (0x10000UL)
+#endif /* GPDMA1_BASE */
+
+#define DMA_MAX_TRANSFER_SIZE(HANDLE) (((HANDLE)->DmaBaseAddress == DMA2) ? (0xFFFFUL) : (DMA1_BUFFER_SIZE - 1UL))
+#define IS_DMA_BUFFER_SIZE(HANDLE, SIZE) (((SIZE) >= 0x1U) && ((SIZE) < DMA_MAX_TRANSFER_SIZE(HANDLE)))
 
 #define IS_DMA_PERIPHERAL_INC_STATE(STATE) (((STATE) == DMA_PINC_ENABLE) || \
                                             ((STATE) == DMA_PINC_DISABLE))
@@ -1005,8 +1154,8 @@ HAL_StatusTypeDef HAL_DMA_FreeChannel(DMA_HandleTypeDef *hdma);
                                         ((STATE) == DMA_MINC_DISABLE))
 
 #if !defined (DMAMUX1)
-#if defined(SF32LB56X) || defined(SF32LB52X)
-#define IS_DMA_ALL_REQUEST(REQUEST) ((REQUEST) <= DMA_REQUEST_63)
+#if defined(SF32LB56X) || defined(SF32LB52X) || defined(SF32LB57X)
+#define IS_DMA_ALL_REQUEST(REQUEST) ((REQUEST) <= DMA_REQUEST_81)
 #else
 #define IS_DMA_ALL_REQUEST(REQUEST) ((REQUEST) <= DMA_REQUEST_31)
 #endif

@@ -127,7 +127,7 @@ __Vectors:
                 .long     SPI2_IRQHandler                        /*  75 Interrupt 75 */
                 .long     I2C2_IRQHandler                        /*  76 Interrupt 76 */
                 .long     EXTDMA_IRQHandler                      /*  77 Interrupt 77 */
-                .long     ACPU2HCPU_IRQHandler                   /*  78 Interrupt 78 */
+                .long     HCPU2ACPU_IRQHandler                   /*  78 Interrupt 78 */
                 .long     SDMMC1_IRQHandler                      /*  79 Interrupt 79 */
                 .long     SDMMC2_IRQHandler                      /*  80 Interrupt 80 */
                 .long     NNACC_IRQHandler                       /*  81 Interrupt 81 */

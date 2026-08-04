@@ -1,0 +1,73 @@
+# ptab v3 - Partition Table
+# Migrated from: ptab.json
+# Chip: SF32LB56X
+#
+# Auto-generated. Please review and adjust as needed.
+
+version: 3
+chip: SF32LB56X
+memory:
+- mpi: mpi3
+  type: nand
+  size: 134217728
+partitions:
+- name: flash_table
+  type: ftab
+  region: mpi5
+  offset: '0x00000000'
+  size: '0x00005000'
+- name: calibration
+  type: data
+  subtype: calibration
+  region: mpi5
+  offset: '0x00005000'
+  size: '0x00002000'
+
+- name: psram_data
+  type: data
+  subtype: ram
+  region: psram1
+  offset: '0x00300000'
+  size: '0x00500000'
+- name: psram_data2
+  type: data
+  subtype: ram
+  region: psram2
+  offset: '0x00000000'
+  size: '0x00400000'
+- name: hcpu_flash_code
+  type: app
+  subtype: factory
+  region: mpi3
+  offset: '0x00000000'
+  size: '0x00300000'
+  core: HCPU
+  aliases:
+  - HCPU_FLASH_CODE_LOAD_REGION
+  exec:
+    region: psram1
+    offset: '0x00000000'
+- name: fs_region
+  type: data
+  subtype: filesystem
+  region: mpi3
+  offset: '0x00300000'
+  size: '0x00400000'
+- name: dfu
+  type: data
+  subtype: flashdb_kv
+  region: mpi3
+  offset: '0x00700000'
+  size: '0x00004000'
+- name: ble
+  type: data
+  subtype: flashdb_kv
+  region: mpi3
+  offset: '0x00704000'
+  size: '0x00004000'
+- name: hcpu_ram_data
+  type: data
+  subtype: ram
+  region: hpsys_ram
+  offset: '0x00000000'
+  size: '0x000B3800'

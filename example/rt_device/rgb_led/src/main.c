@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2025-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "rtthread.h"
 #include "bf0_hal.h"
 #include "drv_io.h"
@@ -91,9 +97,9 @@ static void hsv_to_rgb(uint16_t h, uint8_t s, uint8_t v, uint8_t *r, uint8_t *g,
 void rgb_led_init(void)
 {
 #ifdef SF32LB52X
-    HAL_PIN_Set(PAD_PA32, GPTIM2_CH1, PIN_NOPULL, 1);   // RGB LED 52x  pwm3_cc1
+    HAL_PIN_Set(PAD_PA32, GPTIM2_CH1, PIN_NOPULL, 1);   // pwmt2_cc1
 #elif defined SF32LB58X
-    HAL_PIN_Set(PAD_PB39, GPTIM3_CH4, PIN_NOPULL, 0);//58x          pwm4_cc4
+    HAL_PIN_Set(PAD_PB39, GPTIM3_CH4, PIN_NOPULL, 0);   // pwmt3_cc4
 #elif defined SF32LB56X
     HAL_PIN_Set(PAD_PB25, GPTIM3_CH4, PIN_NOPULL, 0);//566   pwm4_cc4
 #endif
@@ -108,7 +114,7 @@ void rgb_led_init(void)
     }
 }
 
-void rgb_led_set_color(uint32_t color)
+static void rgb_led_set_color(uint32_t color)
 {
 #ifdef SF32LB52X
     HAL_PIN_Set(PAD_PA32, GPTIM2_CH1, PIN_NOPULL, 1);   // RGB LED 52x  pwm3_cc1
@@ -291,4 +297,3 @@ int main(void)
     }
     return 0;
 }
-

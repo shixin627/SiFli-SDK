@@ -151,7 +151,44 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_I2S_Init(I2S_HandleTypeDef *hi2s)
 
         HAL_DMA_Init(hi2s->hdmarx);
     }
-
+#ifdef I2S_TDM_MODE_SUPPORT
+    if (hi2s->Init.tx_cfg.tdm_used)
+    {
+        __HAL_I2S_TDM_TX_MODE_SEL(hi2s, hi2s->Init.tx_cfg.tdm_mode);
+        __HAL_I2S_TDM_TX_CLK_DEG(hi2s, hi2s->Init.tx_cfg.tdm_clk_deg);
+        if (hi2s->Init.tx_cfg.tdm_mode == 1) //pcm mode
+        {
+            __HAL_I2S_TDM_TX_FSYNC_WIDTH(hi2s, hi2s->Init.tx_cfg.tdm_fsync_width);
+            __HAL_I2S_TDM_TX_SLOT_NUM(hi2s, hi2s->Init.tx_cfg.tdm_slot_num);
+        }
+        else //i2s mode
+        {
+            HAL_ASSERT((hi2s->Init.tx_cfg.tdm_slot_num % 2) == 0);
+            __HAL_I2S_TDM_TX_SLOT_NUM(hi2s, hi2s->Init.tx_cfg.tdm_slot_num / 2);
+        }
+        __HAL_I2S_TDM_TX_SLOT_WIDTH(hi2s, hi2s->Init.tx_cfg.tdm_slot_width);
+        __HAL_I2S_TDM_TX_INTF_CONV_BYPASS(hi2s, (!hi2s->Init.tx_cfg.tdm_used));
+        __HAL_I2S_TDM_TX_INTF_CONV_EN(hi2s, 1);
+    }
+    if (hi2s->Init.rx_cfg.tdm_used)
+    {
+        __HAL_I2S_TDM_RX_MODE_SEL(hi2s, hi2s->Init.rx_cfg.tdm_mode);
+        __HAL_I2S_TDM_RX_CLK_DEG(hi2s, hi2s->Init.rx_cfg.tdm_clk_deg);
+        if (hi2s->Init.rx_cfg.tdm_mode == 1) //pcm mode
+        {
+            __HAL_I2S_TDM_RX_FSYNC_WIDTH(hi2s, hi2s->Init.rx_cfg.tdm_fsync_width);
+            __HAL_I2S_TDM_RX_SLOT_NUM(hi2s, hi2s->Init.rx_cfg.tdm_slot_num);
+        }
+        else //i2s mode
+        {
+            HAL_ASSERT((hi2s->Init.rx_cfg.tdm_slot_num % 2) == 0);
+            __HAL_I2S_TDM_RX_SLOT_NUM(hi2s, hi2s->Init.rx_cfg.tdm_slot_num / 2);
+        }
+        __HAL_I2S_TDM_RX_SLOT_WIDTH(hi2s, hi2s->Init.rx_cfg.tdm_slot_width);
+        __HAL_I2S_TDM_RX_INTF_CONV_BYPASS(hi2s, (!hi2s->Init.tx_cfg.tdm_used));
+        __HAL_I2S_TDM_RX_INTF_CONV_EN(hi2s, 1);
+    }
+#endif
     hi2s->ErrorCode = HAL_I2S_ERROR_NONE;
     hi2s->State = HAL_I2S_STATE_READY;
 
@@ -186,7 +223,18 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_I2S_DeInit(I2S_HandleTypeDef *hi2s)
     /* Disable the I2S Peripheral Clock */
     __HAL_I2S_TX_DISABLE(hi2s);
     __HAL_I2S_RX_DISABLE(hi2s);
-
+#ifdef I2S_TDM_MODE_SUPPORT
+    if (hi2s->Init.tx_cfg.tdm_used)
+    {
+        __HAL_I2S_TDM_TX_INTF_CONV_BYPASS(hi2s, 1);
+        __HAL_I2S_TDM_TX_INTF_CONV_EN(hi2s, 0);
+    }
+    if (hi2s->Init.rx_cfg.tdm_used)
+    {
+        __HAL_I2S_TDM_RX_INTF_CONV_BYPASS(hi2s, 1);
+        __HAL_I2S_TDM_RX_INTF_CONV_EN(hi2s, 0);
+    }
+#endif
     /* DeInit the low level hardware: GPIO, CLOCK, NVIC... */
     HAL_I2S_MspDeInit(hi2s);
 

@@ -43,7 +43,7 @@ Only when the above three macros are included, the `rt_i2c_bus_device_register` 
 
 If the above three macros are missing, you need to enable them through the following `menuconfig` command:
 ```c
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 As shown in the figure below, select I2C2, save and exit menuconfig, check whether the `rtconfig.h` macro is generated
 ![alt text](assets/i2c2_menuconfig.png)

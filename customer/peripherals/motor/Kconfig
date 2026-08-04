@@ -9,7 +9,7 @@ menuconfig MOTOR_ENABLED
        if MOTOR_USE_PWM
            config MOTOR_INTERFACE_NAME
            string "motor interface name"
-           default "pwm2"
+           default "pwmt1"
 
            config MOTOR_CHANEL_NUM
            int "motor channel in PWM"

@@ -20,7 +20,7 @@
 
 如果缺失上面三个宏，就需要通过`menuconfig`如下命令进行打开
 ```c
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 如下图，选择spi1(需要用到DMA，选择对应DMA选项)，保存并退出menuconfig，查看`rtconfig.h`宏是否生成
 ![alt text](assets/menuconfig.png)

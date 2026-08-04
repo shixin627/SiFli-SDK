@@ -24,15 +24,7 @@
 extern "C" {
 #endif
 
-#define ACPU_TASK_INPUT_PARAM_SIZE    (128)
-#define ACPU_TASK_OUTPUT_VAL_SIZE     (64)
-#define HCPU_TASK_INPUT_PARAM_SIZE    (8)
-#define HCPU_TASK_OUTPUT_VAL_SIZE     (8)
-
 #define ACPU_ERR_OK         0
-#define ACPU_ERR_COMMON     1
-#define ACPU_ERR_PRINTF     2
-#define ACPU_ERR_CALL_HCPU  4
 #define ACPU_ERR_ASSERT     0xff
 
 typedef struct
@@ -81,6 +73,20 @@ typedef struct
     int decode_fec;
 } opus_decode_arg_t;
 
+typedef struct
+{
+    uint32_t rw_addr;
+    uint32_t rw_size;
+    uint8_t *buffer;
+} rw_buffer_arg_t;
+
+typedef struct
+{
+    void *p_drv_epic;
+    void *p_render_list;
+    void *p_scaled_area;
+} epic_rl_arg_t;
+
 /** ACPU task name macro */
 #define ACPU_TASK_INVALID                (0)
 #define ACPU_TASK_0                      (1)
@@ -95,15 +101,17 @@ typedef struct
 #define ACPU_TASK_audio_3a_close         (10)
 #define ACPU_TASK_audio_3a_downlink      (11)
 #define ACPU_TASK_audio_3a_uplink        (12)
-#define ACPU_TASK_COUNT                  (13)
+#define ACPU_TASK_read                   (13)
+#define ACPU_TASK_write                  (14)
+#define ACPU_TASK_epic_rl                (15)
+#define ACPU_TASK_COUNT                  (16)
 
-typedef enum
-{
-    HCPU_TASK_INVALID,
-    HCPU_TASK_MALLOC,
-    HCPU_TASK_FREE,
-    HCPU_TASK_COUNT,
-} hcpu_task_name_t;
+/** HCPU task name */
+#define HCPU_TASK_INVALID                (0)
+#define HCPU_TASK_MALLOC                 (1)
+#define HCPU_TASK_FREE                   (2)
+#define HCPU_TASK_PRINTF                 (3)
+
 
 /** Power on ACPU, no need to be called by user
  *
@@ -148,22 +156,11 @@ void acpu_main(uint8_t task_name, void *param);
  *
  * It can be called by ACPU to return task result to HCPU
  *
- * @param[in] val        data needs to be sent to HCPU. It's copied to shared buffer which would be read by HCPU
- * @param[in] val_size   data size, it's limited by ACPU_TASK_OUTPUT_VAL_SIZE
+ * @param[in] err_code    error code needs to be sent to HCPU.
+ * @param[in] ret_value   return value needs to be sent to HCPU.
  *
  */
-void acpu_send_result(void *val, uint32_t val_size);
-
-/** ACPU send result with given error_code to HCPU
- *
- * It can be called by ACPU to return task result to HCPU
- *
- * @param[in] val        data needs to be sent to HCPU. It's copied to shared buffer which would be read by HCPU
- * @param[in] val_size   data size, it's limited by ACPU_TASK_OUTPUT_VAL_SIZE
- * @param[in] error_code   error code
- *
- */
-void acpu_send_result2(void *val, uint32_t val_size, uint8_t error_code);
+void acpu_send_result(uint32_t err_code, uint32_t ret_value);
 
 /// @}  acpu_ctrl
 /// @}  file

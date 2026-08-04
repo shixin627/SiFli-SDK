@@ -1,4 +1,4 @@
-menu "Third party packages"
+menu "Third-Party Components"
 
 source "$SIFLI_SDK/external/cJSON-1.7.17/Kconfig"
 source "$SIFLI_SDK/external/CmBacktrace-v1.3.0/Kconfig"

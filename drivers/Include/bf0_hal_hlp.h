@@ -220,8 +220,7 @@ __STATIC_INLINE bool HAL_LOCK_Write8(volatile uint8_t *addr, uint8_t value)
     return (__STREXB(value, addr) == 0) ? true : false;
 }
 
-#endif
-
+#endif /* !WIN32 */
 
 
 
@@ -253,11 +252,15 @@ typedef enum
   * @{
   */
 #define RTC_BACKUP_BOOTOPT_SRC_Pos 0U
-#define RTC_BACKUP_BOOTOPT_SRC_Msk (0xFUL << RTC_BACKUP_BOOTOPT_BOOT_SRC_Pos)
+#define RTC_BACKUP_BOOTOPT_SRC_Msk (0xFUL << RTC_BACKUP_BOOTOPT_SRC_Pos)
 #define RTC_BACKUP_BOOTOPT_PD_DELAY_Pos 4U
 #define RTC_BACKUP_BOOTOPT_PD_DELAY_Msk (0xFFUL << RTC_BACKUP_BOOTOPT_PD_DELAY_Pos)
 #define RTC_BACKUP_BOOTOPT_PU_DELAY_Pos 12U
 #define RTC_BACKUP_BOOTOPT_PU_DELAY_Msk (0xFFFUL << RTC_BACKUP_BOOTOPT_PU_DELAY_Pos)
+/** delay time after sending cmd 99H for NOR Flash Reset, unit: 100us */
+#define RTC_BACKUP_BOOTOPT_NOR_RESET_DELAY_Pos 24U
+#define RTC_BACKUP_BOOTOPT_NOR_RESET_DELAY_Msk (0xFFUL << RTC_BACKUP_BOOTOPT_NOR_RESET_DELAY_Pos)
+
 /**
   * @}
   */

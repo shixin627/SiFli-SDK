@@ -339,7 +339,7 @@
               <MiscControls>-march=armv8-m.main+cdecp1</MiscControls>
               <Define>SOC_BF0_HCPU, USE_HAL_DRIVER, SF32LB56X, ARM_MATH_LOOPUNROLL,JLINK,JLINK_FLASH_3,_USE_PRODUCTLINE,HAL_TICK_PER_SECOND=1000,BSP_USING_BBM,PAGE_SIZE=131072,HAL_USE_NAND,CFG_FACTORY_DEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\src</IncludePath>
+              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\src;..\..\..\..\middleware\sifli_matrix</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -860,7 +860,7 @@
               <MiscControls>-march=armv8-m.main+cdecp1</MiscControls>
               <Define>SOC_BF0_HCPU, USE_HAL_DRIVER, SF32LB56X, ARM_MATH_LOOPUNROLL,JLINK,JLINK_FLASH_3,_USE_PRODUCTLINE,HAL_TICK_PER_SECOND=1000,BSP_USING_BBM,PAGE_SIZE=262144,HAL_USE_NAND,CFG_FACTORY_DEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\src</IncludePath>
+              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\src;..\..\..\..\middleware\sifli_matrix</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1381,7 +1381,7 @@
               <MiscControls>-march=armv8-m.main+cdecp1</MiscControls>
               <Define>SOC_BF0_HCPU, USE_HAL_DRIVER, SF32LB56X, ARM_MATH_LOOPUNROLL,JLINK,JLINK_FLASH_3,_USE_PRODUCTLINE,HAL_TICK_PER_SECOND=1000,PAGE_SIZE=131072,HAL_USE_NAND,CFG_FACTORY_DEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\src</IncludePath>
+              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\src;..\..\..\..\middleware\sifli_matrix</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1902,7 +1902,7 @@
               <MiscControls>-march=armv8-m.main+cdecp1</MiscControls>
               <Define>SOC_BF0_HCPU, USE_HAL_DRIVER, SF32LB56X, ARM_MATH_LOOPUNROLL,JLINK,JLINK_FLASH_3,_USE_PRODUCTLINE,HAL_TICK_PER_SECOND=1000,PAGE_SIZE=262144,HAL_USE_NAND,CFG_FACTORY_DEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\src</IncludePath>
+              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\..\..\customer\boards\include\config\sf32lb56x;..\..\src;..\..\..\..\middleware\sifli_matrix</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>

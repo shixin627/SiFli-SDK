@@ -7,7 +7,6 @@
 #ifndef GUI_APP_FWK2_H
 #define GUI_APP_FWK2_H
 
-
 #include "intent.h"
 
 /**
@@ -22,6 +21,7 @@
 * @{
 */
 
+/************************ Application framework *******************************************************/
 /**
     @brief Page state notification messages
 
@@ -69,7 +69,7 @@ typedef enum
 /**
     @brief Initialize application framework.
  */
-void gui_app_init(void);
+void gui_app_init(uint16_t style);
 
 /**
     @brief run an app
@@ -211,7 +211,6 @@ void *gui_app_this_page_userdata(void);
  */
 void *gui_app_this_page_memory(void);
 
-
 /**
 * @brief Get all runing apps numbers
 * \n
@@ -256,6 +255,11 @@ int gui_app_fwk_suspend(void);
  */
 int gui_app_fwk_resume(void);
 
+/**
+ * @brief app is active
+ * @return 1 if active, otherwise return 0.
+ */
+int gui_app_is_active(const char *app);
 
 /**
   * @} gui_app_function_group_1

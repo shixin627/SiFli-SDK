@@ -17,8 +17,14 @@
                 "img": "ftab",
                 "exec": "ftab"                
             }, 
+
             {
-                "offset": "0x00011000", 
+                "offset": "0x00041000", 
+                "max_size": "0x00020000", 
+                "tags": ["FACTORY_DATA"]
+            }, 
+            {
+                "offset": "0x00061000", 
                 "max_size": "0x00010000", 
                 "tags": [], 
                 "ftab": {
@@ -30,7 +36,7 @@
                 "img": "bootloader"
             }, 
             {
-                "offset": "0x00021000", 
+                "offset": "0x00071000", 
                 "max_size": "0x00700000", 
                 "tags": [], 
                 "ftab": {
@@ -42,7 +48,7 @@
                 "img": "main"
             }, 
             {
-                "offset": "0x00721000",
+                "offset": "0x00771000",
                 "max_size": "0x00060000",
                 "tags": [
                     "DFU_FLASH_CODE"
@@ -56,18 +62,32 @@
                 }
             },
             {
-                "offset": "0x00781000",
+                "offset": "0x007D1000",
                 "max_size": "0x00120000",
                 "tags": [
                     "DFU_DOWNLOAD_REGION"
                 ]
             },
             {
-                "offset": "0x008A1000",
+                "offset": "0x008F1000",
                 "max_size": "0x00400000",
                 "img": "fs_root", 
                 "tags": [
                     "FS_REGION"
+                ]
+            },
+            {
+                "offset": "0x00CF1000",
+                "max_size": "0x00004000",
+                "tags": [
+                    "KVDB_DFU_REGION"
+                ]
+            },
+            {
+                "offset": "0x00CF5000",
+                "max_size": "0x00004000",
+                "tags": [
+                    "KVDB_BLE_REGION"
                 ]
             }
         ]

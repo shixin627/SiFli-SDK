@@ -1,0 +1,6 @@
+menuconfig USING_DFU_PAN
+    bool "DFU via PAN"
+    depends on BF0_HCPU
+    default n
+    help
+        DFU (Device Firmware Update) via BT PAN allows firmware updates to be performed over a Bluetooth PAN connection

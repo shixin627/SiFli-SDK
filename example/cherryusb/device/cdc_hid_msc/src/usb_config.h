@@ -349,8 +349,8 @@
 
 #define CONFIG_USB_MUSB_SIFLI
 
-#ifdef SOC_SF32LB58X
-    #define CONFIG_USB_HS
-#endif
+// #ifdef SOC_SF32LB58X
+//     #define CONFIG_USB_HS
+// #endif
 
 #endif

@@ -5,6 +5,7 @@
  */
 
 #include <string.h>
+#include <stdint.h>
 #include "flash_table.h"
 
 #define FLASH_DEFAULT_CMD_TABLE         (NOR_TYPE0)
@@ -499,6 +500,7 @@ FT_CONST FLASH_RDID_TYPE_T flash_cmd_id_pool_typ0[] =
 FT_CONST FLASH_RDID_TYPE_T flash_cmd_id_pool_typ1[] =
 {
     {0x85, 0x60, 0x16, 1, 0x400000},    //P25Q32L_RDID
+    {0x85, 0x42, 0x16, 1, 0x400000},    //P25Q32L_RDID, old id
     {0x85, 0x60, 0x17, 1, 0x800000},    //P25Q64H_RDID, P25Q64SH
     {0x85, 0x60, 0x18, 1, 0x1000000},   //P25Q128L_RDID
     {0x85, 0x65, 0x18, 1, 0x1000000},   //P25Q128LA_RDID
@@ -529,6 +531,7 @@ FT_CONST FLASH_RDID_TYPE_T flash_cmd_id_pool_typ2[] =
     {0xef, 0x40, 0x19, 0, 0x2000000},   //W25Q256JVM_RDID
     {0x68, 0x49, 0x19, 0, 0x2000000},   //BY25Q256FS
     {0x5e, 0x40, 0x19, 0, 0x2000000},   //ZQ25Q256AW1G
+    {0xa1, 0x60, 0x19, 1, 0x2000000},   //FM25LP256_RDID
     {FLASH_INVALID_ID, 0, 0, 0, 0},      //last one
 };
 FT_CONST FLASH_RDID_TYPE_T flash_cmd_id_pool_typ3[] =
@@ -606,6 +609,14 @@ FT_CONST FLASH_RDID_TYPE_T *spi_flash_get_rdid(uint8_t fid, uint8_t did, uint8_t
     if ((fid == FLASH_INVALID_ID) || (fid == FLASH_UNKNOW_ID))
         return NULL;
 
+#if defined(CFG_FACTORY_DEBUG)
+    res = (FLASH_RDID_TYPE_T *)get_user_flash_cfg(0, fid, did, type, flash_type);
+    if (res != NULL)
+    {
+        return res;
+    }
+#endif
+
     for (i = 0; i < NOR_CMD_TABLE_CNT; i++)
     {
         res = flash_cmd_id_pool[i];
@@ -622,11 +633,7 @@ FT_CONST FLASH_RDID_TYPE_T *spi_flash_get_rdid(uint8_t fid, uint8_t did, uint8_t
     }
     if (i == NOR_CMD_TABLE_CNT)
     {
-#if defined(CFG_FACTORY_DEBUG)
-        res = (FLASH_RDID_TYPE_T *)get_user_flash_cfg(0, fid, did, type, flash_type);
-#else
         res = (FLASH_RDID_TYPE_T *)spi_nor_get_user_flash_cfg(fid, did, type, flash_type);
-#endif
     }
     else if (flash_type)
     {
@@ -645,8 +652,10 @@ const SPI_FLASH_FACT_CFG_T *spi_flash_get_cmd_by_id(uint8_t fid, uint8_t did, ui
 
     if (rdid)
         res = (const SPI_FLASH_FACT_CFG_T *)&flash_cmd_table_list[i];
+//#if defined(JLINK) ||  defined(KEIL)
     else // set a default table for nor flash
         res = &flash_cmd_table_list[FLASH_DEFAULT_CMD_TABLE];
+//#endif
     return res;
 }
 

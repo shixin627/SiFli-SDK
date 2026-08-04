@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -16,6 +19,8 @@ from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.Hash import SHA256
 from Crypto.Signature import pkcs1_15
 from Crypto.Util import Counter
+from Crypto.Hash import CMAC
+
 
 TOTAL_PARTION = 16
 SIG_OFFSET = (4+TOTAL_PARTION*16)
@@ -127,6 +132,92 @@ def encrypt_image() :
             encrypt_image_help(FLAGS.img+'/'+f, FLAGS.eimg+'/'+f+'_sec.bin')
     else:
         encrypt_image_help(FLAGS.img,FLAGS.eimg)
+
+
+def cmac_sign_data(key, data):
+    c = CMAC.new(key, ciphermod=AES) 
+    c.update(data) 
+    return c.digest()    
+
+# cmac sign the data and padding the signature to 32 bytes
+def cmac_sign_padding_16(key, data):
+    return cmac_sign_data(key, data) + bytearray(16)
+
+def gen_cmac_sign_dfu_img_help(img, eimg) :
+    file_key=open(FLAGS.key+".bin", "rb")
+    root_key = file_key.read()
+    
+    # Align image to 16 bytes 
+    data=open(img,"rb").read()
+    data=bytearray(data)
+    remain=(len(data)%16)
+    if (remain>0) :
+        remain=16-remain
+        str=u'0'
+        for i in range(0,remain):
+            data.append(0)
+                
+    img_len=to_bytes(len(data))
+    # img_len(4 bytes)+bksize(2 bytes) + flags(2 bytes) + session_key(32 bytes) + signature(256 bytes) = 296 bytes
+    bksize=struct.pack("<H", FLAGS.bksize)    
+    flags=struct.pack("<H", FLAGS.flags)    
+    # session_key not used anymore, padding with zeros
+    header=img_len+bksize+flags+bytearray(32)
+
+    i=0
+    data3=''
+    while (i<len(data)):
+        if (i+FLAGS.bksize<len(data)):
+            data2=data[i:i+FLAGS.bksize]
+        else:
+            data2=data[i:len(data)]
+
+        block_hash = cmac_sign_padding_16(root_key, data2) + to_bytes(i)
+        data3+=block_hash
+        data3+=data2
+        i+=len(data2)
+
+    #5. Sign the whole image
+    signature = cmac_sign_data(root_key, data) + bytearray(256 - 16)
+    header += signature
+        
+    header_hash = cmac_sign_padding_16(root_key, header)
+    data2 = header_hash + header
+    file_out = open(eimg, "wb")
+    file_out.write(data2)
+    file_out.write(data3)
+
+def gen_cmac_sign_dfu_img():
+    if os.path.isdir(FLAGS.img):
+        if os.path.exists(FLAGS.eimg):
+            print("Skip create, already exist:" + FLAGS.eimg)
+        else:
+            os.makedirs(FLAGS.eimg)
+        for f in os.listdir(FLAGS.img):
+            print(FLAGS.img+'/'+f)
+            print(FLAGS.eimg+'/'+f+'_sign.bin')  
+            gen_cmac_sign_dfu_img_help(FLAGS.img+'/'+f, FLAGS.eimg+'/'+f+'_sign.bin')
+    else:
+        gen_cmac_sign_dfu_img_help(FLAGS.img,FLAGS.eimg)
+
+
+def append_cmac_sign():
+    file_key=open(FLAGS.key+".bin", "rb")
+    root_key = file_key.read()
+    
+    # Align image to 16 bytes 
+    data=open(FLAGS.img,"rb").read()
+    data=bytearray(data)
+                
+    # Sign the whole image
+    signature = cmac_sign_data(root_key, data)
+        
+    base_name, ext = os.path.splitext(FLAGS.img)
+    signed_filename = base_name + "_signed" + ext
+    file_out = open(signed_filename, "wb")
+    file_out.write(data)
+    file_out.write(signature)
+
 
 def encrypt_image_help_static(img, eimg) :
     file_key=open(FLAGS.key+".bin", "rb")
@@ -494,7 +585,7 @@ if __name__ == '__main__':
          Print Non-ecnrypted: python imgtool.py rftab --table=<flash table>
          '''))
 
-    parser.add_argument('action', choices=['enc', 'dec', 'uid', 'root','dumproot', 'enctab', 'dectab','ftab','rftab','gensig','dumpsig', 'test', 'sig_ftab', 'enc_static'], default='enc')
+    parser.add_argument('action', choices=['enc', 'dec', 'uid', 'root','dumproot', 'enctab', 'dectab','ftab','rftab','gensig','dumpsig', 'test', 'sig_ftab', 'enc_static', 'gen_cmac_sign_dfu_img', 'append_cmac_sign'], default='enc')
     parser.add_argument(
         '--img',
         type=str,
@@ -563,3 +654,8 @@ if __name__ == '__main__':
         add_sig_in_ftab()
     if (FLAGS.action == 'enc_static'):
         encrypt_image_static()
+    if (FLAGS.action == 'gen_cmac_sign_dfu_img'):
+        gen_cmac_sign_dfu_img()
+    if (FLAGS.action == 'append_cmac_sign'):
+        append_cmac_sign()        
+

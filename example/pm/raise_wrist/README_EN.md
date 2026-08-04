@@ -33,7 +33,7 @@ Remove the VBAT_S and VBAT jumper caps, and use a power consumption testing tool
 * Required configurations are enabled by default.
 
 ```c
-menuconfig --board=board_name
+sdk.py menuconfig --board=board_name
 ```
 
 1. Enable 6-axis sensor

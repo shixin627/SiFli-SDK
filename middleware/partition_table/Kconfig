@@ -1,0 +1,6 @@
+config USING_PARTITION_TABLE
+    bool "Partition Table"
+    default y if KCONFIG_V2
+    default n if !KCONFIG_V2
+    help
+        Use partition table to manage all memory layout

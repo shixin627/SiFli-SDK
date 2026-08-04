@@ -149,7 +149,7 @@ __Vectors:
                 .long     Interrupt97_IRQHandler                 /*  97 Interrupt 97 */
                 .long     SECU1_IRQHandler                     	 /*  98 Interrupt 98 */
                                                                                      
-                .space   (13 * 4)                               /* Interrupts 99 .. 127 are left out */
+                .space   (13 * 4)                                /* Interrupts 99 .. 111 are left out */
 
 __Vectors_End:
                 .equ     __Vectors_Size, __Vectors_End - __Vectors

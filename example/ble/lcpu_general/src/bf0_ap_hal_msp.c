@@ -1,4 +1,9 @@
-/* Includes ------------------------------------------------------------------*/
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <rtthread.h>
 #include "bf0_hal.h"
 #include "drv_io.h"
@@ -9,7 +14,7 @@
 void HAL_MspInit(void)
 {
     //HAL_PATCH_install();
-#ifndef SOC_SF32LB52X
+#if !defined(SOC_SF32LB52X) && !defined(SOC_SF32LB57X)
     BSP_IO_Init();
 #endif
 }

@@ -20,9 +20,6 @@ try:
 except:
     pass
 
-
-src += [SIFLI_SDK + '/drivers/hal/bf0_hal_hlp.c']
-
 if GetDepend('RT_USING_DFS') == False or GetDepend('RT_USING_DFS_ELMFAT') == False:
     SrcRemove(src, 'sd_sim.c')
 if GetDepend('RT_USING_DFS') == False or GetDepend('RT_USING_MTD_NAND') == False:

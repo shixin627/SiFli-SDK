@@ -1,0 +1,10 @@
+#
+# NOTE:
+# - This overlay is only used when the LCPU project is built standalone.
+# - In the normal multi-project HCPU build, the parent project's effective PTAB
+#   carries the shared 52x CoreMark RAM overrides.
+#
+partitions:
+  - op: override
+    name: lpsys_ram
+    size: '0x00008000'

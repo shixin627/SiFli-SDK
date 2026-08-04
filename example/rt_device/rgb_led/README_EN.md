@@ -27,9 +27,9 @@ Before running this example, you need to prepare a development board supported b
 
 Run the following command
 ```c
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
-Enable PWM， 52x use PWM3 CHANNLE1, 58x use  PWM4 CHANNLE4<br>  
+Enable PWM， 52x use PWMT2 CHANNLE1, 58x use  PWMT3 CHANNLE4<br>  
 ![Enable rgbled:](./assets/menuconfig_pwm_52x.png)<br>
 ![Enable rgbled:](./assets/menuconfig_pwm_58x.png)<br>
 

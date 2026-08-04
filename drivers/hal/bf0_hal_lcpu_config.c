@@ -183,7 +183,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_LCPU_CONFIG_set(HAL_LCPU_CONFIG_TYPE_T type
     if (!value || config_type >= HAL_LCPU_CONFIG_MAX)
         return ret;
 
-#if (defined(SOC_BF0_HCPU)) && (defined(SF32LB52X))
+#if (defined(SOC_BF0_HCPU)) && (defined(SF32LB52X) || defined(SF32LB57X))
     HAL_HPAON_WakeCore(CORE_ID_LCPU);
 #endif
 
@@ -192,7 +192,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_LCPU_CONFIG_set(HAL_LCPU_CONFIG_TYPE_T type
     ret = HAL_LCPU_CONFIG_set_core(config_type, value, length);
 
 
-#if (defined(SOC_BF0_HCPU)) && (defined(SF32LB52X))
+#if (defined(SOC_BF0_HCPU)) && (defined(SF32LB52X) || defined(SF32LB57X))
     HAL_HPAON_CANCEL_LP_ACTIVE_REQUEST();
 #endif
 
@@ -211,7 +211,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_LCPU_CONFIG_get(HAL_LCPU_CONFIG_TYPE_T type
     if (!value || !length || (config_type >= HAL_LCPU_CONFIG_MAX))
         return ret;
 
-#if (defined(SOC_BF0_HCPU)) && (defined(SF32LB52X))
+#if (defined(SOC_BF0_HCPU)) && (defined(SF32LB52X) || defined(SF32LB57X))
     HAL_HPAON_WakeCore(CORE_ID_LCPU);
 #endif
 
@@ -220,7 +220,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_LCPU_CONFIG_get(HAL_LCPU_CONFIG_TYPE_T type
     // No need to handle if HCPU didn't set any value.
     if (g_lcpu_config_context->magic_num != HAL_LPCU_CONFIG_MAGIC_NUM)
     {
-#if (defined(SOC_BF0_HCPU)) && (defined(SF32LB52X))
+#if (defined(SOC_BF0_HCPU)) && (defined(SF32LB52X) || defined(SF32LB57X))
         HAL_HPAON_CANCEL_LP_ACTIVE_REQUEST();
 #endif
         return ret;
@@ -228,7 +228,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_LCPU_CONFIG_get(HAL_LCPU_CONFIG_TYPE_T type
 
     ret = HAL_LCPU_CONFIG_get_core(config_type, value, length);
 
-#if (defined(SOC_BF0_HCPU)) && (defined(SF32LB52X))
+#if (defined(SOC_BF0_HCPU)) && (defined(SF32LB52X) || defined(SF32LB57X))
     HAL_HPAON_CANCEL_LP_ACTIVE_REQUEST();
 #endif
 

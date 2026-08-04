@@ -1,15 +1,10 @@
 if BSP_USING_LCD
-    config BSP_LCDC_USING_DBI
-        bool "IS DBI(8080) interface"
-        def_bool n 
-
-    config BSP_LCDC_USING_JDI_PARALLEL
-        bool "IS JDI PARALLEL interface"
-        def_bool n 
 
     choice
         prompt "Select LCD Module"
         default LCD_USING_TYPE1
+        depends on BF0_HCPU
+        depends on BSP_USING_RTTHREAD        
         config LCD_USING_TYPE1
             bool "240*320 8080"
             select TSC_USING_ADS7846
@@ -70,6 +65,34 @@ if BSP_USING_LCD
             bool "ALIENTEK 7INCH RGB DPI TFTLCD"
             select LCD_USING_ATK7016
             select BSP_LCDC_USING_DPI
+
+        config LCD_USING_EPD_8BIT_OPM060DA_FPGA
+            bool "6inch EPD OPM060DA 8bit"
+            select LCD_USING_EPD_OPM060DA
+            select BSP_LCDC_USING_DIRECT_EPD
+
+        config LCD_USING_FPGA_ED_LB5XSPI19701
+            bool "1.97 rect QAD-SPI LCD(ED-LB5xSPI19701)"
+            select TSC_USING_FT3169 if BSP_USING_TOUCHD
+            select LCD_USING_FT2308
+            select BSP_LCDC_USING_QADSPI
+            if LCD_USING_FPGA_ED_LB5XSPI19701
+               config LCD_FT2308_VSYNC_ENABLE
+                    bool "Enable LCD VSYNC (TE signal)"
+                    def_bool y
+            endif
+
+        config LCD_USING_FPGA_ED_LB5XSPI19701_DDR
+            bool "1.97 rect DDR QAD-SPI LCD(ED-LB5xSPI19701)"
+            select TSC_USING_FT3169 if BSP_USING_TOUCHD
+            select LCD_USING_FT2308
+            select BSP_LCDC_USING_DDR_QADSPI
+            if LCD_USING_FPGA_ED_LB5XSPI19701_DDR
+               config LCD_FT2308_VSYNC_ENABLE
+                    bool "Enable LCD VSYNC (TE signal)"
+                    def_bool y
+            endif
+
     endchoice
     
     config LCD_HOR_RES_MAX
@@ -83,6 +106,9 @@ if BSP_USING_LCD
         default 240 if LCD_USING_SQ_TYPE1
         default 240 if LCD_USING_SQ_TYPE2
         default 1024 if LCD_USING_ATK7016
+        default 1032 if LCD_USING_EPD_8BIT_OPM060DA_FPGA
+        default 410 if LCD_USING_FPGA_ED_LB5XSPI19701
+        default 410 if LCD_USING_FPGA_ED_LB5XSPI19701_DDR
         
     config LCD_VER_RES_MAX
         int
@@ -95,6 +121,9 @@ if BSP_USING_LCD
         default 240 if LCD_USING_SQ_TYPE1
         default 240 if LCD_USING_SQ_TYPE2
         default 600 if LCD_USING_ATK7016
+        default 758 if LCD_USING_EPD_8BIT_OPM060DA_FPGA
+        default 494 if LCD_USING_FPGA_ED_LB5XSPI19701
+        default 494 if LCD_USING_FPGA_ED_LB5XSPI19701_DDR
         
     config LCD_DPI
         int
@@ -104,9 +133,12 @@ if BSP_USING_LCD
         default 50 if LCD_USING_ROUND_TYPE3 
         default 50 if LCD_USING_ROUND_TYPE4 
         default 50 if LCD_USING_RECT_TYPE 
-        default 50 if LCD_USING_SQ_TYPE1
-        default 50 if LCD_USING_SQ_TYPE2
+        default 226 if LCD_USING_SQ_TYPE1
+        default 260 if LCD_USING_SQ_TYPE2
         default 100 if LCD_USING_ATK7016_DPI
+        default 300 if LCD_USING_EPD_8BIT_OPM060DA_FPGA
+        default 315 if LCD_USING_FPGA_ED_LB5XSPI19701
+        default 315 if LCD_USING_FPGA_ED_LB5XSPI19701_DDR
 
     config BSP_USING_TOUCHD
         bool "Enable touch device"

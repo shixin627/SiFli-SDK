@@ -4,13 +4,11 @@
 
 ## 支持的平台
 <!-- 支持哪些板子和芯片平台 -->
-+ sf32lb58-lcd系列
++ 在SiFli的模组板上无法运行, 需要用sf32lb58系列芯片做的板子才行，而且要有两个模拟麦。
 
 ## 概述
 <!-- 例程简介 -->
-本例程演示双声道本地音乐播放，包含：
-+ 预置一首wav音频文件在root分区。
-+ 播放预置的wav文件。
+本例程演示如何同时录制两个模拟麦的声音，如何选择其中一个麦录音：
 
 
 ## 例程的使用
@@ -19,7 +17,7 @@
 
 ### 硬件需求
 运行该例程前，需要准备：
-+ 一块本例程支持的开发板（[支持的平台](quick_start)）。
++ 一块能接两个模拟麦的使用sf32lb58芯片的板子（[支持的平台](quick_start)）。
 + 喇叭。
 
 ### menuconfig配置
@@ -38,10 +36,10 @@
 ![AUDIO_USING_MANAGER](./assets/mc_audio_manager.png)
 5. (`AUDIO_LOCAL_MUSIC`)
 ![AUDIO_LOCAL_MUSIC](./assets/mc_local_music.png)
-6. 预置音频文件(也支持MP3)，放到如下\disk\目录下即可预置下载：  
-* 音频文件在multimedia/audio/local_music/disk下
+
+
 ### 编译和烧录
-切换到例程project目录，运行scons命令执行编译：
+因为需要客户自定义的板子，实际上需要用自定义的board编译，切换到例程project目录，运行scons命令执行编译：
 ```c
 > scons --board=sf32lb58-lcd_n16r32n1_a1_dpi_hcpu -j32
 ```
@@ -57,9 +55,21 @@ please input the serial port num:5
 
 ## 例程的预期结果
 <!-- 说明例程运行结果，比如哪几个灯会亮，会打印哪些log，以便用户判断例程是否正常运行，运行结果可以结合代码分步骤说明 -->
-例程启动后：
-播放一次预置的stereo.wav音频文件。预期两个喇叭播放不同的声音。
-输入mic2file或mic2speaker命令
+命令说明：
+
+1. mic2file
+
+10秒后会有两个文件生成，分别是两个麦的录音PCM数据
+mic0_16k.pcm
+mic1_16k.pcm
+
+2. mic2speaker 0
+   用第一个模拟麦采集数据并在喇叭播放 
+
+3. mic2speaker 1
+   用第二个模拟麦采集数据并在喇叭播放 
+
+
 ## 异常诊断
 
 
@@ -69,6 +79,6 @@ please input the serial port num:5
 ## 更新记录
 |版本 |日期   |发布说明 |
 |:---|:---|:---|
-|0.0.1 |10/2024 |初始版本 |
+|0.0.1 |05/2026 |初始版本 |
 | | | |
 | | | |

@@ -180,7 +180,7 @@ typedef struct __EXT_DMA_HandleTypeDef
 
 
 
-#define MAX_CMPR_TBL_SIZE (3)
+
 
 
 
@@ -435,7 +435,7 @@ HAL_StatusTypeDef HAL_EXT_DMA_UnRegisterCallback(EXT_DMA_HandleTypeDef *hdma, HA
   * @param  cfg1            Compression configuration 1
   * @retval HAL status
   */
-HAL_StatusTypeDef HAL_EXT_DMA_GetConfig(uint32_t target_size, uint32_t *cfg0, uint32_t *cfg1);
+#define HAL_EXT_DMA_GetConfig(target_size, cfg0, cfg1) CMPR_GetConfig(target_size, cfg0, cfg1)
 /**
   * @} EXT_DMA_Exported_Functions_Group2
   */
@@ -490,26 +490,8 @@ uint32_t             HAL_EXT_DMA_GetCMPRQR(EXT_DMA_HandleTypeDef *hdma);
   */
 uint32_t             HAL_EXT_DMA_GetCMPRDR(EXT_DMA_HandleTypeDef *hdma);
 
+#include "sifli_cmpr.h"
 
-//const float rgb565_cmpr_rate_tbl[MAX_CMPR_TBL_SIZE] = {1.33, 1.47, 1.6, 1.73, 1.87, 1.93, 2, 2.13, 2.26, 2.4};
-//const float rgb888_cmpr_rate_tbl[MAX_CMPR_TBL_SIZE] = {2, 2.2, 2.4, 2.6, 2.8, 2.9, 3, 3.2, 3.4, 3.6};
-//const float argb8888_cmpr_rate_tbl[MAX_CMPR_TBL_SIZE] = {2.67, 2.93, 3.2, 3.47, 3.73, 3.86, 4.0, 4.27, 4.53, 4.8};
-#define ROUNDED_TARGET_SIZE(w, num, denom) (((((w)*(num) + (denom - 1))/(denom))*4/6)&(~1))
-#define TARGET_SIZE_TO_CMPR_WORDS(size) ((size)*6/4)
-
-#define CMPR_1_RGB565_TGT_SIZE(uncmpr_words) ROUNDED_TARGET_SIZE(uncmpr_words, 3, 4)
-#define CMPR_2_RGB565_TGT_SIZE(uncmpr_words) ROUNDED_TARGET_SIZE(uncmpr_words, 100, 147)
-#define CMPR_3_RGB565_TGT_SIZE(uncmpr_words) ROUNDED_TARGET_SIZE(uncmpr_words, 5, 8)
-
-#define CMPR_1_RGB888_TGT_SIZE(uncmpr_words) ROUNDED_TARGET_SIZE(uncmpr_words, 1, 2)
-#define CMPR_2_RGB888_TGT_SIZE(uncmpr_words) ROUNDED_TARGET_SIZE(uncmpr_words, 5, 11)
-#define CMPR_3_RGB888_TGT_SIZE(uncmpr_words) ROUNDED_TARGET_SIZE(uncmpr_words, 5, 12)
-
-#define CMPR_1_ARGB8888_TGT_SIZE(uncmpr_words) ROUNDED_TARGET_SIZE(uncmpr_words, 100, 267)
-#define CMPR_2_ARGB8888_TGT_SIZE(uncmpr_words) ROUNDED_TARGET_SIZE(uncmpr_words, 100, 293)
-#define CMPR_3_ARGB8888_TGT_SIZE(uncmpr_words) ROUNDED_TARGET_SIZE(uncmpr_words, 25, 80)
-
-#define CMPR_0_TGT_SIZE(uncmpr_words)         ROUNDED_TARGET_SIZE(uncmpr_words, 1, 1)
 __STATIC_INLINE HAL_StatusTypeDef HAL_EXT_DMA_CalcCompressedSize(uint32_t counts, uint8_t cmpr_rate, uint32_t row_num,
         uint8_t pixel_size, uint32_t *compressed_size, uint32_t *target_size)
 {

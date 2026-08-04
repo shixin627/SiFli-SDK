@@ -1,10 +1,10 @@
 menu "Power Amplifier"
 
 config PA_USING_AW882XX
-    bool  "digital PA AW882XX enable"
+    bool  "Digital PA AW882XX Enabled"
     default n
 config PA_USING_AW87390
-    bool  "analog PA AW87390 enable"
+    bool  "Analog PA AW87390 Enabled"
     default n
     if PA_USING_AW87390
         config AW87390_GPIO_PIN
@@ -12,7 +12,7 @@ config PA_USING_AW87390
             default 0
     endif 
 config PA_USING_AW8155
-    bool  "analog PA AW8155 enable"
+    bool  "Analog PA AW8155 Enabled"
     default n
     if PA_USING_AW8155
         config AW8155_GPIO_PIN

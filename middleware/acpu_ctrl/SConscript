@@ -6,7 +6,10 @@ CPPPATH = []
 cwd   = GetCurrentDir()
 
 if GetDepend('USING_ACPU_CTRL_FWK'):
-    src += ['acpu_ctrl.c']
+    if GetDepend('BF0_ACPU'):
+        src += ['acpu_main.c']
+    else:
+        src += ['acpu_ctrl.c']
 
 CPPPATH += [cwd+'/../include']    
 

@@ -49,35 +49,71 @@
      `mnt_init` 中mount 文件系统分区，FDB初始化时需指定存储路径（在文件系统中的目录）。
      ```
 3. FAL 分区配置（当`FDB Mode`配置为`Use FAL Mode`时需要）   
-+ `project/nor/ptab.json`:
++ 典型工程可直接提供完整 `ptab.yaml`，也可以只提供 `ptab.overlay.yaml` 覆盖板级分区。  
++ 本例中以下 board variant 已改为工程级 overlay：
+  - `project/nor/sf32lb56-lcd_n16r12n1_hcpu/ptab.overlay.yaml`
+  - `project/nor/sf32lb58-lcd_n16r64n4_hcpu/ptab.overlay.yaml`
+
+  ```yaml
+  partitions:
+    - op: add
+      name: kvdb_tst
+      type: data
+      subtype: flashdb_kv
+      region: mpi3
+      offset: 0x00608000
+      size: 0x00004000
+      aliases:
+        - KVDB_TST_REGION
+    - op: add
+      name: tsdb_tst
+      type: data
+      subtype: flashdb_kv
+      region: mpi3
+      offset: 0x0060C000
+      size: 0x00004000
+      aliases:
+        - TSDB_TST_REGION
+  ```
+
++ `sf32lb58-lcd_n16r64n4_hcpu` 的 overlay 还会额外调整 `hcpu_flash_code/fs_region/fs_ex_region/acpu`
+  的 offset 或 size，以便插入 `kvdb_tst/tsdb_tst` 分区。
+
++ 对尚未迁到 v3 的工程，仍可沿用 board variant 目录下的 `ptab.json` / `custom_mem_map.h`。
++ 例如：
+  - `project/nor/sf32lb52-lcd_n16r8_hcpu/ptab.json`
+  - `project/nor/sf32lb58-lcd_n16r32n1_dsi_hcpu/custom_mem_map.h`
      ```c
-            {
-                "offset": "0x00620000", 
-                "max_size": "0x00004000", 
-                "tags": [
-                    "KVDB_TST_REGION"
-                ]
-            }, 
-            {
-                "offset": "0x00624000", 
-                "max_size": "0x00004000", 
-                "tags": [
-                    "TSDB_TST_REGION"
-                ]
-            }, 
-     ```  
-+ `project/nor/custom_mem_map.h`
-     ```c
-     #define FAL_PART_TABLE \
-     { \
-          {FAL_PART_MAGIC_WORD,       "kvdb_tst",      NOR_FLASH2_DEV_NAME,    KVDB_TST_REGION_OFFSET,   KVDB_TST_REGION_SIZE, 0}, \
-          {FAL_PART_MAGIC_WORD,       "tsdb_tst",      NOR_FLASH2_DEV_NAME,    TSDB_TST_REGION_OFFSET,   TSDB_TST_REGION_SIZE, 0}, \
-          ... ...
+     {
+         "offset": "0x00620000",
+         "max_size": "0x00004000",
+         "tags": [
+             "KVDB_TST_REGION"
+         ]
+     },
+     {
+         "offset": "0x00624000",
+         "max_size": "0x00004000",
+         "tags": [
+             "TSDB_TST_REGION"
+         ]
      }
-     ``` 
+     ```  
 
      ```{tip}
      FDB初始化时需指定Flash分区名（比如本例程中是"kvdb_tst"/"tsdb_tst"）。
+     对于 v3 工程，`ptab.h` 会自动生成 `KVDB_TST_REGION_*` / `TSDB_TST_REGION_*` 兼容宏，以及对应的 `FAL_PART_TABLE` 条目，不再需要 `custom_mem_map.h`。
+     ```
+
+     ```{tip}
+     如果使用 overlay，可以在工程目录执行
+     `sdk.py ptab-export --board=sf32lb56-lcd_n16r12n1_hcpu`
+     检查最终生效的 `ptab.effective.yaml`。
+     ```
+
+     ```{tip}
+     `sf32lb52-lcd_n16r8_hcpu` 和 `sf32lb52-nano_n16r16_hcpu` 目前仍保留 `ptab.json`（v2），
+     因为它们不仅修改分区，还修改了板级 `memory` 拓扑；这超出了当前分区级 overlay 的范围。
      ```
 
 ### 编译和烧录
@@ -113,29 +149,23 @@ KVDB:
 ```c
 // 设置、读取整形数据
 12-23 00:51:23:316 TX:kvdb set "key1" int 100
-12-23 00:51:23:353    kvdb set "key1" int 100
 12-23 00:51:23:465    set the key1 value to 100
 12-23 00:51:23:579    msh />
 12-23 00:51:30:771 TX:kvdb get "key1" int
-12-23 00:51:30:827    kvdb get "key1" int
 12-23 00:51:30:831    [key1] int
 12-23 00:51:30:836    get the key1 value is 100 
 // 设置、读取string
 12-23 00:52:21:753 TX:kvdb set "key2" str "hello"
-12-23 00:52:21:810    kvdb set "key2" str "hello"
 12-23 00:52:22:003    set key2 value to hello
 12-23 00:52:22:115    msh />
 12-23 00:52:29:612 TX:kvdb get "key2" str
-12-23 00:52:29:667    kvdb get "key2" str
 12-23 00:52:29:672    [key2] str
 12-23 00:52:29:677    get the key2 value is hello 
 // 删除kvdb
 12-23 00:53:16:528 TX:kvdb del "key1"
-12-23 00:53:16:585    kvdb del "key1"
 12-23 00:53:16:675    delete the key1 finish
 12-23 00:53:16:788    msh />
 12-23 00:53:20:062 TX:kvdb get "key1" int
-12-23 00:53:20:116    kvdb get "key1" int
 12-23 00:53:20:120    [key1] int
 12-23 00:53:20:147    get the key1 failed
 ```  
@@ -151,33 +181,27 @@ TSDB:
 ```c
 // clear tsdb
 12-23 00:55:21:376 TX:tsdb clear
-12-23 00:55:21:430    tsdb clear
 12-23 00:55:23:455    clear tsdb.
 // 新增tsdb条目
 12-23 00:55:56:845 TX:tsdb append 1
-12-23 00:55:56:902    tsdb append 1
 12-23 00:55:57:198    append tsdb item : value = 1
 12-23 00:55:57:244    tsdb count is: 1
 12-23 00:55:57:361    msh />
 12-23 00:55:59:988 TX:tsdb append 2
-12-23 00:56:00:045    tsdb append 2
 12-23 00:56:00:134    append tsdb item : value = 2
 12-23 00:56:00:162    tsdb count is: 2
 12-23 00:56:00:278    msh />
 12-23 00:56:01:521 TX:tsdb append 3
-12-23 00:56:01:577    tsdb append 3
 12-23 00:56:01:666    append tsdb item : value = 3
 12-23 00:56:01:693    tsdb count is: 3
 // 全部查询
 12-23 00:56:39:698 TX:tsdb query_all
-12-23 00:56:39:753    tsdb query_all
 12-23 00:56:39:757    query all:
 12-23 00:56:39:783    [query_cb] queried a TSL: value: 1 time: 946689062 Sat Jan  1 01:11:02 2000
 12-23 00:56:39:788    [query_cb] queried a TSL: value: 2 time: 946689065 Sat Jan  1 01:11:05 2000
 12-23 00:56:39:793    [query_cb] queried a TSL: value: 3 time: 946689067 Sat Jan  1 01:11:07 2000
 // 按时间查询
 12-23 00:57:04:317 TX:tsdb query_by_time 0 946689065
-12-23 00:57:04:371    tsdb query_by_time 0 946689065
 12-23 00:57:04:375    query by time:
 12-23 00:57:04:380    from time:0 Thu Jan  1 00:00:00 1970
 12-23 00:57:04:385    to time:946689065 Sat Jan  1 01:11:05 2000

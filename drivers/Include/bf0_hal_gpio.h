@@ -161,8 +161,11 @@ typedef struct
 
 /*The maximum gpios in each group*/
 #define GPIO1_PIN_NUM   (96)
+#if GPIO2_BASE
 #define GPIO2_PIN_NUM   (64)
-
+#else
+#define GPIO2_PIN_NUM   (0)
+#endif /* GPIO2_BASE */
 
 /**
   * @}

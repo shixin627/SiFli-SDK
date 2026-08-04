@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifdef PKG_USING_SEGGER_RTT
 #include "littlevgl2rtt.h"
 #include "Global_type.h"

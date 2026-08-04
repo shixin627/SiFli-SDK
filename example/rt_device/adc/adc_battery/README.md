@@ -2,7 +2,10 @@
 源码路径：example/rt_device/adc/adc_battery
 ## 支持的平台
 例程可以运行在以下开发板.
-* sf32lb52-lcd_n16r8
++ sf32lb52-lcd系列
++ sf32lb56-lcd系列
++ sf32lb58-lcd系列 
++ sf32lb57 系列 
 
 ## 概述
 * 在RT-Thread操作系统下，adc单路采样读取vbat电池电压
@@ -22,17 +25,16 @@
 SiFli系列MCU支持定时器中断来触发多通道同时采样的，可以参考宏`BSP_GPADC_SUPPORT_MULTI_CH_SAMPLING`内定义和芯片用户手册
 * 如果缺失上面三个宏，就需要通过`menuconfig`如下命令进行打开  
 
-> menuconfig --board=sf32lb52-lcd_n16r8       525开发板
+> sdk.py menuconfig --board=sf32lb52-lcd_n16r8       525开发板
 
-> menuconfig --board=sf32lb52-lcd_52d       52d开发板
-
+> sdk.py menuconfig --board=sf32lb52-lcd_52d       52d开发板
 
 如下图，选择GPADC1,保存并退出menuconfig，查看`rtconfig.h`宏是否生成
 ![alt text](assets/MENUCONFIG_ADC.png)
 * 切换到例程project目录，运行scons命令执行编译：
 
 ```
-scons --board=em_lb525 -j8
+scons --board=sf32lb52-lcd_n16r8 -j8
 ```
 
 * 运行`build_sf32lb52-lcd_n16r8_hcpu\uart_download.bat`，按提示选择端口即可进行下载：
@@ -46,20 +48,32 @@ please input the serial port num:5
 ```
 
 #### 例程输出结果展示:
-* 接入电池前读取的电压log
-![alt text](assets/beffer.png)
+每秒循环打印读取的电压值
 
+* 接入电池前读取的电压log与接入电池后读取的电压log对比
 
-* 接入电池后读取的电压log
-![alt text](assets/last.png)
+![alt text](assets/image1.png)
 
-log中打印value值原始寄存器值，Voltage是转换后的mV电压
+* 58_lcd 以及 56_lcd 的测量引脚点位为：
+
+58的测量点位：
+
+![58](assets/58.png)
+
+56的测量点位：
+
+![56](assets/56.png)
 
 
 #### ADC配置流程
 
-* 设置电池Vbat接口对应的通道7
+* 设置电池Vbat接口对应的通道，根据自己的板子平台修改，此处以52为例为通道7
+
 ![alt text](assets/1.png)
+
+* 将需要测量的ADC通道引脚设置为模拟输入模式(非52平台通道7)
+
+![alt text](assets/image2.png)
 
 **注意**  
 1. ADC的输入口为固定的IO口，如下图:<br>52芯片ADC CH1-7分布，对应软件配置的Channel0-6,最后一路CH8(Channel 7)，内部已经连接到电池Vbat检测，未映射到外部IO<br>
@@ -169,4 +183,5 @@ https://www.rt-thread.org/document/site/#/rt-thread-version/rt-thread-standard/p
 |版本 |日期   |发布说明 |
 |:---|:---|:---|
 |0.0.1 |11/2024 |初始版本 |
+|0.0.2 |05/2026 |增加对56，58的说明 |
 | | | |

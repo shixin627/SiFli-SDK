@@ -63,7 +63,15 @@ void lcpu_disable_rf_cal(uint8_t is_disable);
 #ifdef SOC_BF0_HCPU
 ipc_queue_handle_t sys_init_hl_ipc_queue(ipc_queue_rx_ind_t rx_ind);
 ipc_queue_handle_t sys_get_hl_ipc_queue(void);
+
+ipc_queue_handle_t sys_init_ha_ipc_queue(ipc_queue_rx_ind_t rx_ind);
+ipc_queue_handle_t sys_get_ha_ipc_queue(void);
 #endif /* SOC_BF0_HCPU */
+
+#ifdef SOC_BF0_ACPU
+ipc_queue_handle_t sys_init_ah_ipc_queue(ipc_queue_rx_ind_t rx_ind);
+ipc_queue_handle_t sys_get_ah_ipc_queue(void);
+#endif  // SOC_BF0_ACPU
 
 #ifdef SOC_BF0_LCPU
 ipc_queue_handle_t sys_init_lh_ipc_queue(ipc_queue_rx_ind_t rx_ind);

@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /**
  * @file    app_clock_main.h
  * @brief  clock app framework for all clock UI
@@ -92,18 +98,18 @@ int32_t app_clock_register(const char *id, const app_clock_ops_t *operations);
 
 
 #if 0
-    /**
-    * duplicate an image to SRAM to improve drawn performance
-    * \n
-    *
-    * @return
-    * @param copy
-    * \n
-    * @see
-    */
-    lv_img_dsc_t *app_clock_img_cache_malloc(const void *copy);
+/**
+* duplicate an image to SRAM to improve drawn performance
+* \n
+*
+* @return
+* @param copy
+* \n
+* @see
+*/
+lv_img_dsc_t *app_clock_img_cache_malloc(const void *copy);
 
-    void app_clock_img_cache_free(lv_img_dsc_t *p_img);
+void app_clock_img_cache_free(lv_img_dsc_t *p_img);
 #endif
 
 #ifdef __cplusplus

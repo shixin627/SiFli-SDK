@@ -226,7 +226,7 @@ void HAL_PreInit(void)
 
     mpi1_div = 1;
     mpi2_div = 1;
-    mpi3_div = 4;
+    mpi3_div = 6;
     mpi5_div = 1;
 
     /* Init the low level hardware */

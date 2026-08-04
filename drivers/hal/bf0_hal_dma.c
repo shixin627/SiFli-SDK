@@ -42,6 +42,64 @@ static DMA_ChannelAllocTypeDef dma2_ch_pool[DMA2_CHANNEL_NUM];
   */
 static void DMA_SetConfig(DMA_HandleTypeDef *hdma, uint32_t SrcAddress, uint32_t DstAddress, uint32_t Counts);
 
+#ifdef DMA_SUPPORT_GPDMA
+    /**
+    * @brief  Get burst size by fifo size and data width
+    *
+    * @param  fifo_size fifo size in log2, e.g. 6 for 64bytes, 4 for 16bytes
+    * @param  data_width data width value set in register MSIZE/PSIZE, i.e. 0 for 1byte, 1 for 2 bytes
+
+    * @retval burst size for SBURST/DBURST register (without left shifing by DBURST_Pos)
+    */
+    static uint16_t DMA_GetBurstSize(uint16_t fifo_size, uint16_t data_width);
+
+    /**
+    * @brief  Set SBURST/DBURST/SFIX/DFIX register in CCR register
+    *
+    * @param  Init DMA init parameters
+    * @param  CCR pointer to CCR register
+
+    * @return void
+    */
+    static void DMA_SetBurstSizeAndFix(DMA_InitTypeDef *Init, uint32_t *CCR);
+#endif /* DMA_SUPPORT_GPDMA */
+
+#ifdef DMA_LINK_LIST_SUPPORT
+    static volatile uint32_t *DMA_ConfigMutiple(DMA_HandleTypeDef *hdma, DMA_LinkListTypeDef *LinkList);
+#endif /* DMA_LINK_LIST_SUPPORT */
+
+#ifdef PSRAM_CACHE_WB
+static uint32_t DMA_GetSrcBytes(DMA_HandleTypeDef *hdma, uint32_t Counts)
+{
+    uint32_t bytes;
+    switch (hdma->Init.PeriphDataAlignment)
+    {
+    case DMA_PDATAALIGN_BYTE:
+        bytes = 1;
+        break;
+    case DMA_PDATAALIGN_HALFWORD:
+        bytes = 2;
+        break;
+    case DMA_PDATAALIGN_WORD:
+        bytes = 4;
+        break;
+    default:
+        bytes = 0;
+        HAL_ASSERT(0);
+        break;
+    }
+
+    if (DMA_PINC_ENABLE == hdma->Init.PeriphInc)
+    {
+        return bytes * Counts;
+    }
+    else
+    {
+        return bytes;
+    }
+}
+#endif
+
 
 static void DMA_Init(DMA_HandleTypeDef *hdma)
 {
@@ -50,12 +108,21 @@ static void DMA_Init(DMA_HandleTypeDef *hdma)
     uint8_t mem_width;
     uint8_t periph_width;
 #endif /* DMA_SUPPORT_DYN_CHANNEL_ALLOC */
+    uint32_t mask;
 
     /* Change DMA peripheral state */
     hdma->State = HAL_DMA_STATE_BUSY;
 
     /* Set burst size */
-    hdma->Instance->CBSR = hdma->Init.BurstSize;
+
+#ifdef DMA_SUPPORT_GPDMA
+    if (!hdma->IsGPDMA)
+#else
+    if (1)
+#endif /* DMA_SUPPORT_GPDMA */
+    {
+        hdma->Instance->CBSR = hdma->Init.BurstSize;
+    }
 
     /* Get the CR register value */
     tmp = hdma->Instance->CCR;
@@ -71,6 +138,14 @@ static void DMA_Init(DMA_HandleTypeDef *hdma)
             hdma->Init.PeriphDataAlignment | hdma->Init.MemDataAlignment |
             hdma->Init.Mode                | hdma->Init.Priority;
 
+#ifdef DMA_SUPPORT_GPDMA
+//TODO:
+    if ((hdma->IsGPDMA) && (hdma->OrgChannelIndex < 2))
+    {
+        DMA_SetBurstSizeAndFix(&hdma->Init, &tmp);
+    }
+#endif /* DMA_SUPPORT_GPDMA */
+
     /* Write to DMA Channel CR register */
     hdma->Instance->CCR = tmp;
 
@@ -80,6 +155,7 @@ static void DMA_Init(DMA_HandleTypeDef *hdma)
         uint8_t index;
         index = (hdma->ChannelIndex >> 2) & 7;
 
+        mask = HAL_DisableInterrupt();
         if (index <= 3)
         {
             /* Reset request selection for DMA1 Channelx */
@@ -97,6 +173,7 @@ static void DMA_Init(DMA_HandleTypeDef *hdma)
             /* Configure request selection for DMA1 Channelx */
             hdma->DmaBaseAddress->CSELR2 |= (uint32_t)(hdma->Init.Request << (index * DMAC_CSELR1_C2S_Pos));
         }
+        HAL_EnableInterrupt(mask);
 
     }
 
@@ -304,7 +381,7 @@ static HAL_StatusTypeDef DMA_AllocChannel(DMA_HandleTypeDef *hdma, bool init)
             DMA_Init(hdma);
         }
         pool[i].handle = hdma;
-        NVIC_SetPriority(irq_type,hdma->Init.IrqPrio);
+        NVIC_SetPriority(irq_type, hdma->Init.IrqPrio);
         HAL_NVIC_EnableIRQ(irq_type);
     }
 
@@ -320,7 +397,7 @@ static HAL_StatusTypeDef DMA_FreeChannel(DMA_HandleTypeDef *hdma)
     IRQn_Type irq_type;
 
 #ifdef DMA1
-    if (hdma->DmaBaseAddress == DMA1)
+    if (hdma->DmaBaseAddress == (DMAC_TypeDef *)DMA1)
     {
         pool = &dma1_ch_pool[0];
         ch_num = DMA1_CHANNEL_NUM;
@@ -372,6 +449,60 @@ static HAL_StatusTypeDef DMA_FreeChannel(DMA_HandleTypeDef *hdma)
     return HAL_OK;
 }
 
+static bool DMA_IsChannelOwner(DMA_HandleTypeDef *hdma)
+{
+    DMA_ChannelAllocTypeDef *pool;
+    uint32_t index;
+    uint32_t ch_num;
+    uint32_t mask;
+    bool is_owner;
+
+#ifdef DMA1
+    if (hdma->DmaBaseAddress == (DMAC_TypeDef *)DMA1)
+    {
+        pool = &dma1_ch_pool[0];
+        ch_num = DMA1_CHANNEL_NUM;
+    }
+#else
+    if (0)
+    {
+
+    }
+#endif /* DMA1 */
+#ifdef DMA2
+    else if (hdma->DmaBaseAddress == DMA2)
+    {
+        pool = &dma2_ch_pool[0];
+        ch_num = DMA2_CHANNEL_NUM;
+    }
+#else
+    else if (0)
+    {
+
+    }
+#endif /* DMA2 */
+#ifdef DMA3
+    else if (hdma->DmaBaseAddress == DMA3)
+    {
+        pool = &dma3_ch_pool[0];
+        ch_num = DMA3_CHANNEL_NUM;
+    }
+#endif /* DMA3 */
+    else
+    {
+        HAL_ASSERT(0);
+    }
+
+    index = hdma->ChannelIndex >> 2;
+    HAL_ASSERT(index < ch_num);
+
+    mask = HAL_DisableInterrupt();
+    is_owner = (pool[index].is_busy && (pool[index].handle == hdma));
+    HAL_EnableInterrupt(mask);
+
+    return is_owner;
+}
+
 
 static uint32_t DMA_CalcTransCounts(DMA_HandleTypeDef *hdma, uint32_t SrcAddress, uint32_t DstAddress, uint32_t TotalCounts)
 {
@@ -380,9 +511,9 @@ static uint32_t DMA_CalcTransCounts(DMA_HandleTypeDef *hdma, uint32_t SrcAddress
     uint32_t trans_bytes;
 #endif /* SF32LB55X || SF32LB58X || SF32LB56X */
 
-    if (TotalCounts > DMAC_CNDTR1_NDT)
+    if (TotalCounts > DMA_MAX_TRANSFER_SIZE(hdma))
     {
-        trans_counts = DMAC_CNDTR1_NDT;
+        trans_counts = DMA_MAX_TRANSFER_SIZE(hdma);
     }
     else
     {
@@ -466,37 +597,6 @@ static void DMA_Start(DMA_HandleTypeDef *hdma, bool InterruptMode)
 }
 #endif /* DMA_SUPPORT_DYN_CHANNEL_ALLOC */
 
-#ifdef PSRAM_CACHE_WB
-static uint32_t DMA_GetSrcBytes(DMA_HandleTypeDef *hdma, uint32_t Counts)
-{
-    uint32_t bytes;
-    switch (hdma->Init.PeriphDataAlignment)
-    {
-    case DMA_PDATAALIGN_BYTE:
-        bytes = 1;
-        break;
-    case DMA_PDATAALIGN_HALFWORD:
-        bytes = 2;
-        break;
-    case DMA_PDATAALIGN_WORD:
-        bytes = 4;
-        break;
-    default:
-        bytes = 0;
-        HAL_ASSERT(0);
-        break;
-    }
-
-    if (DMA_PINC_ENABLE == hdma->Init.PeriphInc)
-    {
-        return bytes * Counts;
-    }
-    else
-    {
-        return bytes;
-    }
-}
-#endif
 
 /**
   * @} DMA_Private_Functions
@@ -539,6 +639,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_Init(DMA_HandleTypeDef *hdma)
 #ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
     HAL_StatusTypeDef status;
 #endif /* DMA_SUPPORT_DYN_CHANNEL_ALLOC */
+    uint32_t org_channel_index;
 
     /* Check the DMA handle allocation */
     if (hdma == NULL)
@@ -563,30 +664,76 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_Init(DMA_HandleTypeDef *hdma)
             && ((uint32_t)(hdma->Instance) <= (uint32_t)(DMA1_Channel8)))
     {
         /* DMA1 */
-        hdma->ChannelIndex = (((uint32_t)hdma->Instance - (uint32_t)DMA1_Channel1) / ((uint32_t)DMA1_Channel2 - (uint32_t)DMA1_Channel1)) << 2;
-        hdma->DmaBaseAddress = DMA1;
+        org_channel_index = (((uint32_t)hdma->Instance - (uint32_t)DMA1_Channel1) / ((uint32_t)DMA1_Channel2 - (uint32_t)DMA1_Channel1));
+        hdma->ChannelIndex = org_channel_index << 2;
+        hdma->DmaBaseAddress = (DMAC_TypeDef *)DMA1;
+#ifdef DMA_SUPPORT_GPDMA
+        hdma->OrgChannelIndex = org_channel_index;
+#ifdef GPDMA1_BASE
+        hdma->IsGPDMA = 1;
+#else
+        hdma->IsGPDMA = 0;
+#endif /* GPDMA1_BASE */
+#endif /* DMA_SUPPORT_GPDMA */
     }
+#ifdef DMA1_Channel9
+    else if (((uint32_t)(hdma->Instance) >= (uint32_t)(DMA1_Channel9))
+             && ((uint32_t)(hdma->Instance) <= (uint32_t)(DMA1_Channel10)))
+    {
+        /* DMA1 */
+        org_channel_index = (((uint32_t)hdma->Instance - (uint32_t)DMA1_Channel9) / ((uint32_t)DMA1_Channel10 - (uint32_t)DMA1_Channel9));
+        hdma->ChannelIndex = org_channel_index << 2;
+        hdma->DmaBaseAddress = (DMAC_TypeDef *)(&DMA1->ISR2);
+#ifdef DMA_SUPPORT_GPDMA
+        hdma->OrgChannelIndex = org_channel_index;
+#ifdef GPDMA1_BASE
+        hdma->IsGPDMA = 1;
+#else
+        hdma->IsGPDMA = 0;
+#endif /* GPDMA1_BASE */
+#endif /* DMA_SUPPORT_GPDMA */
+    }
+#endif /* DMA1_Channel9 */
     else if (((uint32_t)(hdma->Instance) >= (uint32_t)(DMA2_Channel1))
              && ((uint32_t)(hdma->Instance) <= (uint32_t)(DMA2_Channel8)))
     {
         /* DMA2 */
-        hdma->ChannelIndex = (((uint32_t)hdma->Instance - (uint32_t)DMA2_Channel1) / ((uint32_t)DMA2_Channel2 - (uint32_t)DMA2_Channel1)) << 2;
+        org_channel_index = (((uint32_t)hdma->Instance - (uint32_t)DMA2_Channel1) / ((uint32_t)DMA2_Channel2 - (uint32_t)DMA2_Channel1));
+        hdma->ChannelIndex = org_channel_index << 2;
         hdma->DmaBaseAddress = DMA2;
+#ifdef DMA_SUPPORT_GPDMA
+        hdma->OrgChannelIndex = org_channel_index;
+#ifdef GPDMA2_BASE
+        hdma->IsGPDMA = 1;
+#else
+        hdma->IsGPDMA = 0;
+#endif /* GPDMA2_BASE */
+#endif /* DMA_SUPPORT_GPDMA */
     }
 #ifdef SF32LB58X
     else if (((uint32_t)(hdma->Instance) >= (uint32_t)(DMA3_Channel1))
              && ((uint32_t)(hdma->Instance) <= (uint32_t)(DMA3_Channel8)))
     {
         /* DMA3 */
-        hdma->ChannelIndex = (((uint32_t)hdma->Instance - (uint32_t)DMA3_Channel1) / ((uint32_t)DMA3_Channel2 - (uint32_t)DMA3_Channel1)) << 2;
+        org_channel_index = (((uint32_t)hdma->Instance - (uint32_t)DMA3_Channel1) / ((uint32_t)DMA3_Channel2 - (uint32_t)DMA3_Channel1));
+        hdma->ChannelIndex = org_channel_index << 2;
         hdma->DmaBaseAddress = DMA3;
-    }
-#endif
-    else
-    {
-        //TODO: error
+#ifdef DMA_SUPPORT_GPDMA
+        hdma->OrgChannelIndex = org_channel_index;
+#ifdef GPDMA3_BASE
+        hdma->IsGPDMA = 1;
+#else
+        hdma->IsGPDMA = 0;
+#endif /* GPDMA3_BASE */
+#endif /* DMA_SUPPORT_GPDMA */
 
     }
+#endif /* SF32LB58X */
+    else
+    {
+        return HAL_ERROR;
+    }
+
 
 #ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
     status = DMA_AllocChannel(hdma, false);
@@ -613,6 +760,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_Init(DMA_HandleTypeDef *hdma)
   */
 __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_DeInit(DMA_HandleTypeDef *hdma)
 {
+    uint32_t mask;
 
     /* Check the DMA handle allocation */
     if (NULL == hdma)
@@ -623,17 +771,23 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_DeInit(DMA_HandleTypeDef *hdma)
     /* Check the parameters */
     HAL_ASSERT(IS_DMA_ALL_INSTANCE(hdma->Instance));
 
-    /* Disable the selected DMA Channelx */
-    __HAL_DMA_DISABLE(hdma);
-
     /* Compute the channel index */
     if (((uint32_t)(hdma->Instance) >= (uint32_t)(DMA1_Channel1))
             && ((uint32_t)(hdma->Instance) <= (uint32_t)(DMA1_Channel8)))
     {
         /* DMA1 */
         hdma->ChannelIndex = (((uint32_t)hdma->Instance - (uint32_t)DMA1_Channel1) / ((uint32_t)DMA1_Channel2 - (uint32_t)DMA1_Channel1)) << 2;
-        hdma->DmaBaseAddress = DMA1;
+        hdma->DmaBaseAddress = (DMAC_TypeDef *)DMA1;
     }
+#ifdef DMA1_Channel9
+    else if (((uint32_t)(hdma->Instance) >= (uint32_t)(DMA1_Channel9))
+             && ((uint32_t)(hdma->Instance) <= (uint32_t)(DMA1_Channel10)))
+    {
+        /* DMA1 */
+        hdma->ChannelIndex = (((uint32_t)hdma->Instance - (uint32_t)DMA1_Channel9) / ((uint32_t)DMA1_Channel10 - (uint32_t)DMA1_Channel9)) << 2;
+        hdma->DmaBaseAddress = (DMAC_TypeDef *)(&DMA1->ISR2);
+    }
+#endif /* DMA1_Channel9 */
     else if (((uint32_t)(hdma->Instance) >= (uint32_t)(DMA2_Channel1))
              && ((uint32_t)(hdma->Instance) <= (uint32_t)(DMA2_Channel8)))
     {
@@ -655,15 +809,26 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_DeInit(DMA_HandleTypeDef *hdma)
         //TODO: error
     }
 
+#ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
+    /* Do not DeInit a channel that is not owned by this handle */
+    if (!DMA_IsChannelOwner(hdma))
+    {
+        /* Not return HAL_ERROR as some module calls HAL_DMA_DeInit when it's not the owner */
+        return HAL_OK;
+    }
+#endif /* DMA_SUPPORT_DYN_CHANNEL_ALLOC */
+
+    /* Disable the selected DMA Channelx */
+    __HAL_DMA_DISABLE(hdma);
+
     /* Reset DMA Channel control register */
     hdma->Instance->CCR  = 0;
 
     /* Clear all flags */
     hdma->DmaBaseAddress->IFCR = (DMA_ISR_GIF1 << (hdma->ChannelIndex & 0x1cU));
 
-
+    mask = HAL_DisableInterrupt();
     /* Reset DMA channel selection register */
-
     if ((hdma->ChannelIndex >> 2) <= 3)
     {
         hdma->DmaBaseAddress->CSELR1 &= ~(DMA_CSELR_C1S << ((hdma->ChannelIndex & 0x1cU) << 1));
@@ -675,6 +840,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_DeInit(DMA_HandleTypeDef *hdma)
         index = (index - 4) & 3;
         hdma->DmaBaseAddress->CSELR2 &= ~(DMA_CSELR_C1S << (index * DMAC_CSELR1_C2S_Pos));
     }
+    HAL_EnableInterrupt(mask);
 
 #ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
     DMA_FreeChannel(hdma);
@@ -737,11 +903,11 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_Start(DMA_HandleTypeDef *hdma, uint32_t
 #ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
     if (DMA_CIRCULAR == hdma->Init.Mode)
     {
-        HAL_ASSERT(IS_DMA_BUFFER_SIZE(Counts));
+        HAL_ASSERT(IS_DMA_BUFFER_SIZE(hdma, Counts));
     }
 #else
     /* Check the parameters */
-    HAL_ASSERT(IS_DMA_BUFFER_SIZE(Counts));
+    HAL_ASSERT(IS_DMA_BUFFER_SIZE(hdma, Counts));
 #endif /* !DMA_SUPPORT_DYN_CHANNEL_ALLOC */
 
     /* Process locked */
@@ -818,9 +984,14 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_Start_IT(DMA_HandleTypeDef *hdma, uint3
 {
     HAL_StatusTypeDef status = HAL_OK;
 
-#ifndef DMA_SUPPORT_DYN_CHANNEL_ALLOC
+#ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
+    if (DMA_CIRCULAR == hdma->Init.Mode)
+    {
+        HAL_ASSERT(IS_DMA_BUFFER_SIZE(hdma, Counts));
+    }
+#else
     /* Check the parameters */
-    HAL_ASSERT(IS_DMA_BUFFER_SIZE(Counts));
+    HAL_ASSERT(IS_DMA_BUFFER_SIZE(hdma, Counts));
 #endif /* !DMA_SUPPORT_DYN_CHANNEL_ALLOC */
 
     /* Process locked */
@@ -889,6 +1060,172 @@ __EXIT:
     return status;
 }
 
+#ifdef DMA_LINK_LIST_SUPPORT
+HAL_StatusTypeDef HAL_DMA_PrepareMultiple(DMA_HandleTypeDef *hdma, DMA_XferDescTypeDef *XferDescList, uint32_t Len,
+        DMA_LinkListTypeDef *LinkList)
+{
+    uint32_t i;
+    uint32_t sinc;
+    uint32_t dinc;
+    uint32_t ssize;
+    uint32_t dsize;
+    DMA_ListNodeTypeDef *node;
+
+    if (Len > 0)
+    {
+        LinkList->Trigger = XferDescList->StartTrigger;
+        LinkList->TriggerEdge = XferDescList->StartTriggerEdge;
+        LinkList->TriggerPolarity = XferDescList->StartTriggerPolarity;
+        LinkList->Len = Len;
+    }
+
+    node = &LinkList->Node[0];
+    for (i = 0; i < Len; i++)
+    {
+        if (DMA_MEMORY_TO_PERIPH == XferDescList->Init.Direction)
+        {
+            sinc = XferDescList->Init.MemInc;
+            dinc = XferDescList->Init.PeriphInc;
+
+            ssize = XferDescList->Init.MemDataAlignment;
+            dsize = XferDescList->Init.PeriphDataAlignment;
+        }
+        else
+        {
+            sinc = XferDescList->Init.PeriphInc ? DMAC_CCR1_MINC : 0;
+            dinc = XferDescList->Init.MemInc ? DMAC_CCR1_PINC : 0;
+
+            ssize = (XferDescList->Init.PeriphDataAlignment >> DMAC_CCR1_PSIZE_Pos) << DMAC_CCR1_MSIZE_Pos;
+            dsize = (XferDescList->Init.MemDataAlignment >> DMAC_CCR1_MSIZE_Pos) << DMAC_CCR1_PSIZE_Pos;
+        }
+        node->Control = XferDescList->Init.Direction
+                        | sinc | dinc  | ssize | dsize
+                        | XferDescList->Init.Mode | XferDescList->Init.Priority
+                        | MAKE_REG_VAL(XferDescList->Delay, GPDMA_LL_CONTROL_DELAY_Msk, GPDMA_LL_CONTROL_DELAY_Pos)
+                        | GPDMA_LL_CONTROL_NEXT;
+        if (XferDescList->EndTrigger)
+        {
+            node->Control |= XferDescList->EndTriggerEdge | XferDescList->EndTriggerPolarity;
+        }
+        if ((hdma->DmaBaseAddress == (DMAC_TypeDef *)DMA1) && (hdma->OrgChannelIndex < 2))
+        {
+            DMA_SetBurstSizeAndFix(&XferDescList->Init, &node->Control);
+        }
+
+        node->SrcAddress = XferDescList->SrcAddress;
+        node->DstAddress = XferDescList->DstAddress;
+        node->Misc = MAKE_REG_VAL(XferDescList->Counts, GPDMA_LL_MISC_NDT_Msk, GPDMA_LL_MISC_NDT_Pos)
+                     | MAKE_REG_VAL(XferDescList->Init.Request, GPDMA_LL_MISC_CS_Msk, GPDMA_LL_MISC_CS_Pos)
+                     | MAKE_REG_VAL(XferDescList->EndTrigger, GPDMA_LL_MISC_TS_Msk, GPDMA_LL_MISC_TS_Pos);
+
+        node++;
+        XferDescList++;
+    }
+
+    if (Len > 0)
+    {
+        /* clear next flag of last node */
+        (node - 1)->Control &= ~GPDMA_LL_CONTROL_NEXT;
+    }
+
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_DMA_StartMutiple(DMA_HandleTypeDef *hdma, DMA_LinkListTypeDef *LinkList)
+{
+    __IO uint32_t *lcr;
+    HAL_StatusTypeDef status = HAL_OK;
+
+    /* Check the parameters */
+    if ((uint32_t)&LinkList->Node[0] & 3)
+    {
+        return HAL_ERROR;
+    }
+
+    /* Process locked */
+    __HAL_LOCK(hdma);
+
+    if (HAL_DMA_STATE_READY == hdma->State)
+    {
+#ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
+        status = DMA_AllocChannel(hdma, true);
+        if (HAL_OK != status)
+        {
+            __HAL_UNLOCK(hdma);
+            goto __EXIT;
+        }
+#endif /* DMA_SUPPORT_DYN_CHANNEL_ALLOC */
+
+        /* Change DMA peripheral state */
+        hdma->State = HAL_DMA_STATE_BUSY;
+        hdma->ErrorCode = HAL_DMA_ERROR_NONE;
+
+        lcr = DMA_ConfigMutiple(hdma, LinkList);
+
+        /* start link list transfer */
+        *lcr |= GPDMA_LCR1_START;
+    }
+    else
+    {
+        /* Process Unlocked */
+        __HAL_UNLOCK(hdma);
+        status = HAL_BUSY;
+    }
+
+__EXIT:
+    return status;
+}
+
+HAL_StatusTypeDef HAL_DMA_StartMutiple_IT(DMA_HandleTypeDef *hdma, DMA_LinkListTypeDef *LinkList)
+{
+    __IO uint32_t *lcr;
+    HAL_StatusTypeDef status = HAL_OK;
+
+    /* Check the parameters */
+    if ((uint32_t)&LinkList->Node[0] & 3)
+    {
+        return HAL_ERROR;
+    }
+
+    /* Process locked */
+    __HAL_LOCK(hdma);
+
+    if (HAL_DMA_STATE_READY == hdma->State)
+    {
+#ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
+        status = DMA_AllocChannel(hdma, true);
+        if (HAL_OK != status)
+        {
+            __HAL_UNLOCK(hdma);
+            goto __EXIT;
+        }
+#endif /* DMA_SUPPORT_DYN_CHANNEL_ALLOC */
+
+        /* Change DMA peripheral state */
+        hdma->State = HAL_DMA_STATE_BUSY;
+        hdma->ErrorCode = HAL_DMA_ERROR_NONE;
+
+        lcr = DMA_ConfigMutiple(hdma, LinkList);
+
+        __HAL_DMA_DISABLE_IT(hdma, DMA_IT_HT | DMA_IT_TC);
+        /* Enable the linklist complete and transfer error interrupt  */
+        __HAL_DMA_ENABLE_IT(hdma, (DMA_IT_LC | DMA_IT_TE));
+
+        /* start link list transfer */
+        *lcr |= GPDMA_LCR1_START;
+    }
+    else
+    {
+        /* Process Unlocked */
+        __HAL_UNLOCK(hdma);
+        status = HAL_BUSY;
+    }
+
+__EXIT:
+    return status;
+}
+#endif /* DMA_LINK_LIST_SUPPORT */
+
 /**
   * @brief  Abort the DMA Transfer.
   * @param  hdma pointer to a DMA_HandleTypeDef structure that contains
@@ -904,6 +1241,14 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_Abort(DMA_HandleTypeDef *hdma)
     {
         return HAL_ERROR;
     }
+
+#ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
+    /* Do not DeInit a channel that is not owned by this handle */
+    if (!DMA_IsChannelOwner(hdma))
+    {
+        return HAL_ERROR;
+    }
+#endif /* DMA_SUPPORT_DYN_CHANNEL_ALLOC */
 
     /* Disable DMA IT */
     __HAL_DMA_DISABLE_IT(hdma, (DMA_IT_TC | DMA_IT_HT | DMA_IT_TE));
@@ -947,8 +1292,19 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_Abort_IT(DMA_HandleTypeDef *hdma)
     }
     else
     {
+#ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
+        /* Do not DeInit a channel that is not owned by this handle */
+        if (!DMA_IsChannelOwner(hdma))
+        {
+            return HAL_ERROR;
+        }
+#endif /* DMA_SUPPORT_DYN_CHANNEL_ALLOC */
+
         /* Disable DMA IT */
         __HAL_DMA_DISABLE_IT(hdma, (DMA_IT_TC | DMA_IT_HT | DMA_IT_TE));
+#ifdef DMA_LINK_LIST_SUPPORT
+        __HAL_DMA_DISABLE_IT(hdma, DMA_IT_LC);
+#endif /* DMA_LINK_LIST_SUPPORT */
 
         /* Disable the channel */
         __HAL_DMA_DISABLE(hdma);
@@ -1096,6 +1452,85 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_PollForTransfer(DMA_HandleTypeDef *hdma
     return HAL_OK;
 }
 
+#ifdef DMA_LINK_LIST_SUPPORT
+HAL_StatusTypeDef HAL_DMA_PollForMultipleTransfer(DMA_HandleTypeDef *hdma, uint32_t Timeout)
+{
+    uint32_t temp;
+    uint32_t tickstart;
+
+    if (HAL_DMA_STATE_BUSY != hdma->State)
+    {
+        /* no transfer ongoing */
+        hdma->ErrorCode = HAL_DMA_ERROR_NO_XFER;
+        __HAL_UNLOCK(hdma);
+        return HAL_ERROR;
+    }
+
+    /* Polling mode not supported in circular mode */
+    if (0U != (hdma->Instance->CCR & DMA_CCR_CIRC))
+    {
+        hdma->ErrorCode = HAL_DMA_ERROR_NOT_SUPPORTED;
+        return HAL_ERROR;
+    }
+
+    temp = DMA_FLAG_LC1 << (hdma->OrgChannelIndex);
+
+    /* Get tick */
+    tickstart = HAL_GetTick();
+
+    while (0U == (((GPDMA_TypeDef *)(hdma->DmaBaseAddress))->LISR & temp))
+    {
+        if ((0U != (hdma->DmaBaseAddress->ISR & (DMA_FLAG_TE1 << (hdma->ChannelIndex & 0x1cU)))))
+        {
+            /* When a DMA transfer error occurs */
+            /* A hardware clear of its EN bits is performed */
+            /* Clear all flags */
+            hdma->DmaBaseAddress->IFCR = (DMA_ISR_GIF1 << (hdma->ChannelIndex & 0x1cU));
+
+            /* Update error code */
+            hdma->ErrorCode = HAL_DMA_ERROR_TE;
+
+            /* Change the DMA state */
+            hdma->State = HAL_DMA_STATE_READY;
+
+            /* Process Unlocked */
+            __HAL_UNLOCK(hdma);
+
+            return HAL_ERROR;
+        }
+        /* Check for the Timeout */
+        if (Timeout != HAL_MAX_DELAY)
+        {
+            if (((HAL_GetTick() - tickstart) > Timeout) || (Timeout == 0U))
+            {
+                /* Update error code */
+                hdma->ErrorCode = HAL_DMA_ERROR_TIMEOUT;
+
+                /* Change the DMA state */
+                hdma->State = HAL_DMA_STATE_READY;
+
+                /* Process Unlocked */
+                __HAL_UNLOCK(hdma);
+
+                return HAL_ERROR;
+            }
+        }
+    }
+
+    /* Clear the transfer complete flag */
+    ((GPDMA_TypeDef *)(hdma->DmaBaseAddress))->LIFCR = temp;
+
+    /* The selected Channelx EN bit is cleared (DMA is disabled and
+    all transfers are complete) */
+    hdma->State = HAL_DMA_STATE_READY;
+
+    /* Process unlocked */
+    __HAL_UNLOCK(hdma);
+
+    return HAL_OK;
+}
+#endif /* DMA_LINK_LIST_SUPPORT */
+
 /**
   * @brief  Handle DMA interrupt request.
   * @param  hdma pointer to a DMA_HandleTypeDef structure that contains
@@ -1106,6 +1541,9 @@ __HAL_ROM_USED void HAL_DMA_IRQHandler(DMA_HandleTypeDef *hdma)
 {
     uint32_t flag_it = hdma->DmaBaseAddress->ISR;
     uint32_t source_it = hdma->Instance->CCR;
+#ifdef DMA_LINK_LIST_SUPPORT
+    uint32_t lisr_flag = ((GPDMA_TypeDef *)(hdma->DmaBaseAddress))->LISR;
+#endif /* DMA_LINK_LIST_SUPPORT */
 
     /* Half Transfer Complete Interrupt management ******************************/
     if ((0U != (flag_it & (DMA_FLAG_HT1 << (hdma->ChannelIndex & 0x1cU)))) && (0U != (source_it & DMA_IT_HT)))
@@ -1134,6 +1572,10 @@ __HAL_ROM_USED void HAL_DMA_IRQHandler(DMA_HandleTypeDef *hdma)
     {
         /* Clear the transfer complete flag */
         hdma->DmaBaseAddress->IFCR = (DMA_ISR_TCIF1 << (hdma->ChannelIndex & 0x1cU));
+#ifdef DMA_LINK_LIST_SUPPORT
+        /* Clear linklist complete flag as it's set also when normal dma completes*/
+        ((GPDMA_TypeDef *)(hdma->DmaBaseAddress))->LIFCR = (GPDMA_LISR_LCIF1 << hdma->OrgChannelIndex);
+#endif /* DMA_LINK_LIST_SUPPORT */
 
         if ((hdma->Instance->CCR & DMA_CCR_CIRC) == 0U)
         {
@@ -1203,6 +1645,34 @@ __HAL_ROM_USED void HAL_DMA_IRQHandler(DMA_HandleTypeDef *hdma)
             hdma->XferErrorCallback(hdma);
         }
     }
+
+#ifdef DMA_LINK_LIST_SUPPORT
+    /* Linklist Complete Interrupt management ***********************************/
+    else if ((0U != (lisr_flag & (DMA_FLAG_LC1 << hdma->OrgChannelIndex))) && (0U != (source_it & DMA_IT_LC)))
+    {
+        /* Disable the transfer complete and error interrupt */
+        __HAL_DMA_DISABLE_IT(hdma, DMA_IT_TE | DMA_IT_LC);
+
+#ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
+        DMA_FreeChannel(hdma);
+#endif /* DMA_SUPPORT_DYN_CHANNEL_ALLOC */
+
+        /* Change the DMA state */
+        hdma->State = HAL_DMA_STATE_READY;
+
+        /* Clear the transfer complete flag */
+        ((GPDMA_TypeDef *)(hdma->DmaBaseAddress))->LIFCR = (GPDMA_LISR_LCIF1 << hdma->OrgChannelIndex);
+
+        /* Process Unlocked */
+        __HAL_UNLOCK(hdma);
+
+        if (hdma->XferCpltCallback != NULL)
+        {
+            /* Transfer complete callback */
+            hdma->XferCpltCallback(hdma);
+        }
+    }
+#endif /* DMA_LINK_LIST_SUPPORT */
     else
     {
         /* Nothing To Do */
@@ -1374,7 +1844,7 @@ __HAL_ROM_USED uint32_t HAL_DMA_GetError(DMA_HandleTypeDef *hdma)
   */
 __HAL_ROM_USED HAL_StatusTypeDef HAL_DMA_AllocChannel(DMA_HandleTypeDef *hdma)
 {
-  return DMA_AllocChannel(hdma, false);
+    return DMA_AllocChannel(hdma, false);
 }
 
 /**
@@ -1587,6 +2057,138 @@ static void DMA_SetConfig(DMA_HandleTypeDef *hdma, uint32_t SrcAddress, uint32_t
 
 }
 
+#ifdef DMA_SUPPORT_GPDMA
+static uint16_t DMA_GetBurstSize(uint16_t fifo_size, uint16_t data_width)
+{
+    uint16_t burst_size = 0;
+
+    if (data_width == 3)
+    {
+        /* handle 3bytes as 4bytes */
+        data_width = 2;
+    }
+
+    /* burst_size =  2^fifosize/2^width=2^(fifosize-width) */
+    burst_size = (1 << (fifo_size - data_width));
+    if (burst_size >= 16)
+    {
+        burst_size = 3;
+    }
+    else if (8 == burst_size)
+    {
+        burst_size = 2;
+    }
+    else if (4 == burst_size)
+    {
+        burst_size = 1;
+    }
+    else
+    {
+        /* Do nothing */
+    }
+
+    return burst_size;
+}
+
+static void DMA_SetBurstSizeAndFix(DMA_InitTypeDef *Init, uint32_t *CCR)
+{
+    uint16_t burst_size;
+
+    HAL_ASSERT(Init && CCR);
+
+    /* only support channel 1 and channel2 with FIFO_SIZE=64bytes */
+
+    /* set dst_burst_size */
+    if (Init->Direction == DMA_MEMORY_TO_PERIPH)
+    {
+        burst_size = Init->BurstSize;
+        if (burst_size > 0)
+        {
+            //TODO: ???
+            *CCR |= GPDMA_CCR1_DFIX;
+        }
+    }
+    else
+    {
+        burst_size = GET_REG_VAL(Init->MemDataAlignment, DMAC_CCR1_MSIZE_Msk, DMAC_CCR1_MSIZE_Pos);
+        burst_size = DMA_GetBurstSize(6, burst_size);
+    }
+    *CCR &= ~GPDMA_CCR1_DBURST_Msk;
+    *CCR |= MAKE_REG_VAL(burst_size, GPDMA_CCR1_DBURST_Msk, GPDMA_CCR1_DBURST_Pos);
+
+    /* set src_burst_size */
+    if (Init->Direction == DMA_PERIPH_TO_MEMORY)
+    {
+        burst_size = Init->BurstSize;
+        if (burst_size > 0)
+        {
+            *CCR |= GPDMA_CCR1_SFIX;
+        }
+    }
+    else
+    {
+        burst_size = GET_REG_VAL(Init->MemDataAlignment, DMAC_CCR1_MSIZE_Msk, DMAC_CCR1_MSIZE_Pos);
+        burst_size = DMA_GetBurstSize(6, burst_size);
+    }
+    *CCR &= ~GPDMA_CCR1_SBURST_Msk;
+    *CCR |= MAKE_REG_VAL(burst_size, GPDMA_CCR1_SBURST_Msk, GPDMA_CCR1_SBURST_Pos);
+}
+#endif /* DMA_SUPPORT_GPDMA */
+
+#ifdef DMA_LINK_LIST_SUPPORT
+static volatile uint32_t *DMA_ConfigMutiple(DMA_HandleTypeDef *hdma, DMA_LinkListTypeDef *LinkList)
+{
+    uint8_t idx;
+    GPDMA_TypeDef *base;
+    __IO uint32_t *lcr;
+    __IO uint32_t *tsel;
+    uint32_t mask;
+
+    idx = hdma->OrgChannelIndex;
+    HAL_ASSERT(idx < 8);
+    base = (GPDMA_TypeDef *)hdma->DmaBaseAddress;
+    if (idx < GPDMA_REP_CHANNEL_NUM)
+    {
+        /* extention register of channel which supports repetition */
+        lcr = (uint32_t *)((uint32_t)&base->LCR1 + idx * sizeof(GPDMA_Channel_Ext0TypeDef));
+    }
+    else
+    {
+        lcr = (uint32_t *)((GPDMA_Channel_Ext0TypeDef *)&base->CREPR1 + GPDMA_REP_CHANNEL_NUM) + (idx - GPDMA_REP_CHANNEL_NUM);
+    }
+
+    mask = HAL_DisableInterrupt();
+    if ((hdma->ChannelIndex >> 2) <= 3)
+    {
+        hdma->DmaBaseAddress->CSELR1 &= ~(DMA_CSELR_C1S << ((hdma->ChannelIndex & 0x1cU) << 1));
+    }
+    else
+    {
+        uint8_t index;
+        index = hdma->ChannelIndex >> 2;
+        index = (index - 4) & 3;
+        hdma->DmaBaseAddress->CSELR2 &= ~(DMA_CSELR_C1S << (index * DMAC_CSELR1_C2S_Pos));
+    }
+    HAL_EnableInterrupt(mask);
+
+    /* config trigger of the first task */
+    tsel = (__IO uint32_t *)&base->SELR1 + idx;
+    MODIFY_REG(*tsel, GPDMA_SELR1_TS_Msk, MAKE_REG_VAL(LinkList->Trigger, GPDMA_SELR1_TS_Msk, GPDMA_SELR1_TS_Pos));
+    hdma->Instance->CCR &= ~(GPDMA_CCR1_TEDGE | GPDMA_CCR1_TPOL);
+    if (LinkList->Trigger)
+    {
+        hdma->Instance->CCR |= LinkList->TriggerEdge;
+        hdma->Instance->CCR |= LinkList->TriggerPolarity;
+    }
+
+    *lcr &= ~GPDMA_LCR1_ADDR_Msk;
+    *lcr |= (uint32_t)&LinkList->Node[0];
+
+    return lcr;
+}
+#endif /* DMA_LINK_LIST_SUPPORT */
+
+
 /**
   * @brief  Sets the DMA request source
   * @param  dma_chl     DMA request channel
@@ -1603,6 +2205,7 @@ __HAL_ROM_USED void HAL_DMA_Select_Source(DMA_Channel_TypeDef *dma_chl, uint8_t 
     channel = ((uint32_t)dma_chl - temp) / sizeof(DMA_Channel_TypeDef);
     if (request <= DMA_CSELR_C1S)
     {
+        //TODO: CSEL is moved to SELR
         if (channel < 4)
         {
             t->CSELR1 |= (request << (channel * DMAC_CSELR1_C2S_Pos));

@@ -819,7 +819,7 @@ int ble_nvds_service_register(void)
 
     return 0;
 }
-INIT_PRE_APP_EXPORT(ble_nvds_service_register);
+INIT_COMPONENT_EXPORT(ble_nvds_service_register);
 
 #if defined(BSP_USING_PM) && !defined(BSP_USING_PSRAM)
 static int ble_pm_suspend(const struct rt_device *device, uint8_t mode)

@@ -10,18 +10,16 @@
 #include <rtthread.h>
 
 #ifdef AUDIO
-#include "audio_mem.h"
-#endif
-
-#if defined (SYS_HEAP_IN_PSRAM) && defined (AUDIO_MEM_ALLOC)
+    #include "audio_mem.h"
     #undef malloc
     #undef free
+    #undef calloc
     #undef realloc
-    #define malloc(size)    sram_malloc(size)
-    #define free(ptr)       sram_free(ptr)
-    #define calloc(c,s)     sram_calloc(c,s)
-    #define realloc(m, n)   sram_realloc(m, n)
+    #define malloc(size)    audio_mem_malloc(size)
+    #define free(ptr)       audio_mem_free(ptr)
+    #define calloc(c,s)     audio_mem_calloc(c,s)
+    #define realloc(m, n)   audio_mem_realloc(m, n)
 #endif
 
-#endif // __AUDIO_MEM_H
+#endif // __WEBRTC_MEM_H
 

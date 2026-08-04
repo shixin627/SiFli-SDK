@@ -1,7 +1,14 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /*********************
  *      INCLUDES
  *********************/
 #include "gui_app_int.h"
+#include "bf0_lib.h"
 
 #ifdef PKG_USING_LITTLEVGL2RTT
 screen_t port_app_sche_create_scr(void)
@@ -9,7 +16,14 @@ screen_t port_app_sche_create_scr(void)
 #if defined(DISABLE_LVGL_V8)&&defined(DISABLE_LVGL_V9)
     return (screen_t) lv_obj_create(NULL, NULL);
 #else
-    return (screen_t) lv_obj_create(NULL);
+    lv_obj_t *scr = lv_obj_create(NULL);
+    lv_obj_remove_style_all(scr);
+    lv_obj_set_pos(scr, 0, 0);
+    lv_obj_set_style_border_width(scr, 0, LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(scr, lv_color_make(0, 0, 0), LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(scr, 255, LV_STATE_DEFAULT);
+    lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    return (screen_t)scr;
 #endif
 
 }

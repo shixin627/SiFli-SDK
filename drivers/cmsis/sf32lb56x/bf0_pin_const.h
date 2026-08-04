@@ -2041,6 +2041,8 @@ typedef enum
 
 #define PIN_FUNC_SEL_NUM  (16)
 
+#define PAD_PBR_PRESENT
+
 /** HCPU pad function definition table */
 extern const unsigned short pin_pad_func_hcpu[][16];
 /** LCPU pad function definition table */

@@ -90,7 +90,7 @@ static inline void *app_cache_calloc(size_t nmemb, size_t size, image_cache_t ca
     size_t total = nmemb * size;
     void *ptr = app_cache_alloc(total, cache_type);
 
-    if(ptr != RT_NULL)
+    if (ptr != RT_NULL)
     {
         rt_memset(ptr, 0, total);
     }
@@ -185,12 +185,56 @@ void *app_anim_mem_realloc(void *p, size_t new_size);
 */
 void app_anim_mem_free(void *p);
 
+/**
+@brief temporarily reuse transition animation buffers as large memheaps.
+@param[in] enable 1: enable reuse; 0: disable reuse
+@retval 0 when success, negative value when no reusable buffer is available or
+        the animation heap is still busy.
+*/
+int app_anim_buf_set_as_memheap(uint8_t enable);
+
+/**
+@brief allocate temporary memory from reusable animation memheap first, then
+       fallback to the normal PSRAM cache path.
+*/
+void *app_anim_alloc(size_t size);
+
+/**
+@brief reallocate temporary memory allocated by app_anim_alloc.
+*/
+void *app_anim_realloc(void *ptr, size_t size);
+
+/**
+@brief free memory allocated by app_anim_alloc/app_anim_realloc.
+*/
+void app_anim_free(void *ptr);
+
+/**
+@brief duplicate string with app_anim_alloc.
+*/
+char *app_anim_strdup(const char *s);
+
+/**
+@brief query allocation size for memory allocated by app_cache_xxx/app_anim_xxx.
+*/
+uint32_t app_mem_get_size(void *ptr);
+
+/**
+@brief initialize app memory heaps. Called by SOLUTION board startup path.
+*/
+int app_memheap_init(void);
+
+/**
+@brief check app memory status. Reserved for SOLUTION finsh hook.
+*/
+void app_mem_check(void);
+
 static inline void *app_anim_calloc(size_t nmemb, size_t size)
 {
     size_t total = nmemb * size;
-    void *ptr = app_anim_mem_alloc(total, true);
+    void *ptr = app_anim_alloc(total);
 
-    if(ptr != RT_NULL)
+    if (ptr != RT_NULL)
     {
         rt_memset(ptr, 0, total);
     }
@@ -221,6 +265,49 @@ void app_mem_invalid_icache(void *data, uint32_t size);
 @retval app memory type.
 */
 uint8_t app_get_mem_type(void *data);
+
+typedef enum
+{
+    MEM_ASYN_IMG,
+    MEM_ASYN_FONT,
+} mem_aysnc_type_t;
+
+void app_mem_set_ref_count(void *ptr, int ref_count, int type);
+void app_mem_insert_asyn_node(void *ptr, void (*free_fun)(void *));
+void app_mem_free_asyn_node(void);
+
+/**
+@brief      alloc mem for switch_animation's snapshot. use fixed length.
+@param[in]  nbytes Size of snapshot mem
+@param[in]  index  snapshot index
+*/
+void       *app_anim_buf_alloc(size_t nbytes, uint8_t index);
+
+/**
+@brief      alloc mem for switch_animation's snapshot. _ext use variable length.
+@param[in]  nbytes Size of snapshot mem
+@param[in]  index  snapshot index
+*/
+void       *app_anim_buf_alloc_ex(size_t nbytes, uint8_t index);
+
+#ifndef app_anim_buf_alloc_ext
+    #define app_anim_buf_alloc_ext app_anim_buf_alloc_ex
+#endif
+
+/**
+@brief      free snapshot mem.
+@param[in]  ptr snapshot Pointer to be free, which successsful apply by app_anim_buf_alloc_ex
+*/
+void       *app_anim_buf_free(void *ptr);
+
+
+#if LV_USE_TINY_TTF
+/**
+@brief allocate/free tiny ttf draw buffer memory from the tiny heap
+*/
+void *app_tiny_ttf_mem_alloc(size_t size);
+void app_tiny_ttf_mem_free(void *buf);
+#endif
 
 #if PKG_USING_FFMPEG
 /**
@@ -387,6 +474,59 @@ void *audio_mem_calloc(uint32_t count, uint32_t size);
 #undef CACHE_COMPASS_ARROW
 #endif
 
+/**
+ * @brief  sifli_memxxx is DMA operation function.
+ */
+#if !defined(BSP_USING_PC_SIMULATOR) && !defined(MEMCPY_NON_DMA)
+extern void *sifli_memcpy(void *dst, const void *src, rt_ubase_t count);
+extern void *sifli_memset(void *s, int c, rt_ubase_t count);
+#define app_memcpy sifli_memcpy
+#define app_memset sifli_memset
+#else
+#define app_memcpy rt_memcpy
+#define app_memset rt_memset
+#endif
+
+#ifdef BSP_USING_PC_SIMULATOR
+#define RET_ADDR _ReturnAddress()
+#else
+#define RET_ADDR __builtin_return_address(0)
+#endif
+
+/**
+ * @brief  RET_ADDR_TRACE used for memory trace.
+ *         SDK app_mem has not migrated solution's header metadata write-back
+ *         path yet, so keep a solution-compatible no-op hook here first.
+ */
+#define RET_ADDR_TRACE(p) do { (void)(p); } while (0)
+
+//#define SIMULATOR_MEM_LEAKAGE
+#if defined(BSP_USING_PC_SIMULATOR) && defined(SIMULATOR_MEM_LEAKAGE)
+typedef enum
+{
+    LEAK_APP      = 0x01,
+    LEAK_CACHE    = 0x02,
+    LEAK_FT       = 0x04,
+    LEAK_ANIM     = 0x08,
+    LEAK_FFMPEG   = 0x10,
+    LEAK_EPUB     = 0x20,
+    LEAK_QJS      = 0x40,
+} simulator_mem_leakage_t;
+
+#define SIMULATOR_MEM_LEAKAGE_MODE                      LEAK_FT
+
+#include <stdlib.h>
+#define SIMULATOR_MEM_LEAKAGE_MALLOC(mode, x)          if ((mode) & SIMULATOR_MEM_LEAKAGE_MODE) return malloc(x);
+#define SIMULATOR_MEM_LEAKAGE_CALLOC(mode, x, y)       if ((mode) & SIMULATOR_MEM_LEAKAGE_MODE) return calloc(x, y);
+#define SIMULATOR_MEM_LEAKAGE_REALLOC(mode, x, y)      if ((mode) & SIMULATOR_MEM_LEAKAGE_MODE) return realloc(x, y);
+#define SIMULATOR_MEM_LEAKAGE_FREE(mode, x)            if ((mode) & SIMULATOR_MEM_LEAKAGE_MODE) {free(x); return;}
+#else
+#define SIMULATOR_MEM_LEAKAGE_MALLOC(mode, x)
+#define SIMULATOR_MEM_LEAKAGE_CALLOC(mode, x, y)
+#define SIMULATOR_MEM_LEAKAGE_REALLOC(mode, x, y)
+#define SIMULATOR_MEM_LEAKAGE_FREE(mode, x)
+#endif
+
 //for corner
 #if IMAGE_CACHE_IN_PSRAM_SIZE > 0
 #define app_canvas_mem_alloc(size) app_cache_alloc(size, IMAGE_CACHE_PSRAM)
@@ -401,6 +541,10 @@ void *audio_mem_calloc(uint32_t count, uint32_t size);
 
 #ifndef FT_CACHE_SIZE
 #define FT_CACHE_SIZE 0
+#endif
+
+#ifndef TINY_TTF_CACHE_SIZE
+#define TINY_TTF_CACHE_SIZE 0
 #endif
 
 #ifndef FREETYPE_ACT_CACHE_SIZE

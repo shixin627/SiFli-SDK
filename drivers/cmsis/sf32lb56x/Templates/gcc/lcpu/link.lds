@@ -148,6 +148,7 @@ SECTIONS
     *bf0_hal_pinmux.o   (.text* .rodata*)
     *bf0_pin_const.o    (.text* .rodata*)
     *.o                 (.text.rt_memset)
+    *.o                 (.text.memset)    
     /* *.o              (.text.mpu_config) */
     /* *.o              (.rodata.mpu_config) */
 

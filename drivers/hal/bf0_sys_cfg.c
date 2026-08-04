@@ -12,6 +12,7 @@
 /** @addtogroup BF0_HAL_Driver
   * @{
   */
+#ifndef SF32LB57X
 
 #ifdef HAL_SYSTEM_CONFIG_ENABLED
 
@@ -773,6 +774,36 @@ __weak uint32_t BSP_GetOtpBase(void)
 }
 
 #endif //HAL_SYSTEM_CONFIG_ENABLED
+#else
+//TODO:
+int BSP_System_Config(void)
+{
+    return 0;
+}
+
+int BSP_CONFIG_get(int type, uint8_t *buf, int length)
+{
+    return 0;
+}
+
+HAL_StatusTypeDef BSP_CONFIG_set(int type, uint8_t *value, int length)
+{
+    return HAL_OK;
+}
+
+char *BSP_Get_UserOTP_Cache()
+{
+    return NULL;
+}
+
+char *BSP_Get_CustOTP_Cache()
+{
+    return NULL;
+}
+
+
+#endif
+
 /**
   * @}
   */

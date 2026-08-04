@@ -18,7 +18,7 @@
 
 如果发现上面的宏缺失或者未打开，可通过菜单`menuconfig` 中打开，具体操作如下
 ```
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 如下图操作,选择SPI1使能（需要用到DMA，选择对应的DMA选项），保存并退出menuconfig，查看`rtconfig.h`宏是否生成
 ![alt text](assets/enable.png)

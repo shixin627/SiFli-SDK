@@ -42,7 +42,7 @@ Service and Characteristic Discovery
 * The required configuration is enabled by default
 
 ```c
-menuconfig --board=board_name
+sdk.py menuconfig --board=board_name
 ```
 1. Enable Bluetooth
 - Path: Sifli middleware → Bluetooth

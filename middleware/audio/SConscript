@@ -27,9 +27,6 @@ if GetDepend('BF0_HCPU'):
 
 objs = group = DefineGroup('audio', src,depend = ['AUDIO'],CPPPATH = CPPPATH)
 
-if GetDepend('FPGA'):
-    objs = objs + SConscript(os.path.join('fpga', 'SConscript'))
-    
 if GetDepend('AUDIO'):
     if GetDepend('BSP_USING_PC_SIMULATOR'):
         objs = objs + SConscript(os.path.join('pc', 'SConscript'))    

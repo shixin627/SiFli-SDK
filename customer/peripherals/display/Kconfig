@@ -1,0 +1,7 @@
+menu "Display"
+
+config TOUCH_WAKEUP_SUPPORT
+    bool "Wake-up by Pressing Touch Panel Enabled"
+    default n
+
+endmenu

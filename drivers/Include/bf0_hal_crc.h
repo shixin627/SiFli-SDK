@@ -142,8 +142,15 @@ typedef struct
 #define __HAL_CRC_GET_IDR(__HANDLE__) (((__HANDLE__)->Instance->IDR) & CRC_IDR_IDR)
 
 
-/* TODO: Revisit with real define*/
-#define IS_CRC_ALL_INSTANCE(__INSTANCE__) (1)
+#if defined(hwp_crc1) && defined(hwp_crc2)
+#define IS_CRC_ALL_INSTANCE(__INSTANCE__) \
+    (((__INSTANCE__) != NULL) && (((__INSTANCE__) == hwp_crc1) || ((__INSTANCE__) == hwp_crc2)))
+#elif defined(hwp_crc)
+#define IS_CRC_ALL_INSTANCE(__INSTANCE__) \
+    (((__INSTANCE__) != NULL) && ((__INSTANCE__) == hwp_crc))
+#else
+#define IS_CRC_ALL_INSTANCE(__INSTANCE__) ((__INSTANCE__) != NULL)
+#endif
 
 
 /**

@@ -39,7 +39,7 @@ __ROM_USED rt_list_t rt_timer_list[RT_TIMER_SKIP_LIST_LEVEL];
     #endif
 
     /* soft timer status */
-    static rt_uint8_t soft_timer_status = RT_SOFT_TIMER_IDLE;
+    static volatile rt_uint8_t soft_timer_status = RT_SOFT_TIMER_IDLE;
     /* soft timer list */
     __ROM_USED rt_list_t rt_soft_timer_list[RT_TIMER_SKIP_LIST_LEVEL];
     static struct rt_thread timer_thread;
@@ -354,6 +354,7 @@ __ROM_USED rt_err_t rt_timer_start(rt_timer_t timer)
     unsigned int row_lvl;
     rt_list_t *timer_list;
     register rt_base_t level;
+    register rt_bool_t need_schedule;
     rt_list_t *row_head[RT_TIMER_SKIP_LIST_LEVEL];
     unsigned int tst_nr;
     static unsigned int random_nr;
@@ -361,6 +362,8 @@ __ROM_USED rt_err_t rt_timer_start(rt_timer_t timer)
     /* timer check */
     RT_ASSERT(timer != RT_NULL);
     RT_ASSERT(rt_object_get_type(&timer->parent) == RT_Object_Class_Timer);
+
+    need_schedule = RT_FALSE;
 
     /* stop timer firstly */
     level = rt_hw_interrupt_disable();
@@ -444,9 +447,6 @@ __ROM_USED rt_err_t rt_timer_start(rt_timer_t timer)
 
     timer->parent.flag |= RT_TIMER_FLAG_ACTIVATED;
 
-    /* enable interrupt */
-    rt_hw_interrupt_enable(level);
-
 #ifdef RT_USING_TIMER_SOFT
     if (timer->parent.flag & RT_TIMER_FLAG_SOFT_TIMER)
     {
@@ -456,10 +456,18 @@ __ROM_USED rt_err_t rt_timer_start(rt_timer_t timer)
         {
             /* resume timer thread to check soft timer */
             rt_thread_resume(&timer_thread);
-            rt_schedule();
+            need_schedule = RT_TRUE;
         }
     }
 #endif
+
+    /* enable interrupt */
+    rt_hw_interrupt_enable(level);
+
+    if (need_schedule)
+    {
+        rt_schedule();
+    }
 
     return RT_EOK;
 }

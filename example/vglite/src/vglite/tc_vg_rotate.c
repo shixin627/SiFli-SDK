@@ -127,7 +127,7 @@ void tc_vglite_rotate_entry(void)
         // Save PNG file.
         //vg_lite_save_png("rotate.png", fb);
 
-        tc_vg_send_data_to_lcd(fb->memory, fb->width, fb->height, RTGRAPHIC_PIXEL_FORMAT_RGB565);
+        tc_vg_send_data_to_lcd(fb->memory, fb->width, buffer.stride / 2, fb->height, RTGRAPHIC_PIXEL_FORMAT_RGB565);
         rt_thread_mdelay(160);
 
     }

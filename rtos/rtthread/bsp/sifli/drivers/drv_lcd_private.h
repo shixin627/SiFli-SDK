@@ -12,8 +12,11 @@
 #define LCD_DRV_AYSNC_WRITE  0x00000001
 #define LCD_DRV_ACTIVED      0x00000002
 
-
-#define MAX_LCD_DRAW_TIME  (500)  /*ms*/
+#if defined(BSP_LCDC_USING_DIRECT_EPD)
+    #define MAX_LCD_DRAW_TIME  (5000)  /*ms*/
+#else
+    #define MAX_LCD_DRAW_TIME  (500)  /*ms*/
+#endif
 #define LCD_ENTER_LP_INTERVAL  (1)  /*ms*/
 
 #define MIN_BRIGHTNESS_LEVEL 0

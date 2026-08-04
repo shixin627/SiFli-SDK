@@ -9,6 +9,11 @@
  *********************/
 #include "gui_app_int.h"
 
+#include "bf0_lib.h"
+
+#ifdef APP_TOOL_SUPPORT
+    #include "app_tool_comm.h"
+#endif
 
 
 //#define STOP_APP_IF_PAUSED
@@ -34,6 +39,8 @@ static builtin_app_desc_t *builtin_app_table_begin = NULL;
 static builtin_app_desc_t *builtin_app_table_end = NULL;
 static uint8_t test_mode = 0;
 
+static dlmodule_open_func dl_open_func = NULL;
+static dlmodule_close_func dl_close_func = NULL;
 
 
 #define MAX_LOCALE_NAME   (10)
@@ -42,8 +49,8 @@ static uint8_t test_mode = 0;
 static char locale_name[MAX_LOCALE_NAME];
 
 #if defined (BSP_USING_LVGL_INPUT_AGENT)
-    extern int indev_agent_mode(void);
-    #define CHECK_CUR_RTOS_TASK()  RT_ASSERT(indev_agent_mode() || test_mode || rt_thread_self() == host_rtos_task) //Make sure API be invoked in host thread only
+    extern int monkey_mode(void);
+    #define CHECK_CUR_RTOS_TASK()  RT_ASSERT(monkey_mode() || test_mode || rt_thread_self() == host_rtos_task) //Make sure API be invoked in host thread only
 #else
     #define CHECK_CUR_RTOS_TASK()  RT_ASSERT(test_mode || rt_thread_self() == host_rtos_task) //Make sure API be invoked in host thread only
 #endif
@@ -110,6 +117,15 @@ static void app_destroy_anim_ready_callback(lv_anim_t *a)
 }
 #endif
 
+void gui_app_register_dl_open(dlmodule_open_func open_func)
+{
+    dl_open_func = open_func;
+}
+
+void gui_app_register_dl_close(dlmodule_close_func close_func)
+{
+    dl_close_func = close_func;
+}
 
 void gui_app_enable_input_device(bool enable)
 {
@@ -138,6 +154,7 @@ char *fwk_msg_to_name(gui_app_frmmsg_type_t msg)
         EVENT_TO_NAME_CASE(GUI_APP_MSG_SUSPEND_SCHEDULER);
         EVENT_TO_NAME_CASE(GUI_APP_MSG_RESUME_SCHEDULER);
         EVENT_TO_NAME_CASE(GUI_APP_MSG_ABORT_TRANS_ANIM);
+        EVENT_TO_NAME_CASE(GUI_APP_MSG_OPEN_PAGE_FOR_APP);
 
 
     default:
@@ -186,6 +203,8 @@ static rt_err_t send_msg_to_gui_app_task(gui_app_msg_t *msg)
             LOG_D("send msg[%s] [%s] to gui_app_mbx tick:%d.", fwk_msg_to_name(msg->msg_id), msg->content.cmd, msg->tick);
             printf_intent(&msg->content.intnt);
         }
+        else if (GUI_APP_MSG_OPEN_PAGE_FOR_APP == msg->msg_id)
+            LOG_D("send msg[%s] [0x%x] to gui_app_mbx tick:%d.", fwk_msg_to_name(msg->msg_id), msg->content.page4app.msg_handler, msg->tick);
         else
             LOG_D("send msg[%s] [0x%x] to gui_app_mbx tick:%d.", fwk_msg_to_name(msg->msg_id), msg->handler, msg->tick);
     }
@@ -459,6 +478,14 @@ void gui_app_cleanup_now(void)
 void gui_app_run_now(const char *cmd)
 {
     CHECK_CUR_RTOS_TASK();
+    /* Temporary modification is made to prevent issues caused by various
+     * interferences during the execution process. */
+#if 1
+    LOG_I("gui_app_run_now Start");
+    gui_app_run(cmd);
+    gui_app_exec_now();
+    LOG_I("gui_app_run_now Done.");
+#else
     uint8_t max_cnt = 3;
     rt_err_t err;
 
@@ -512,8 +539,7 @@ void gui_app_run_now(const char *cmd)
 
     intent_deinit(intent);
     app_schedule_enable_trans_anim(true);
-
-
+#endif
 }
 
 intent_t gui_app_get_intent(void)
@@ -587,18 +613,22 @@ void *gui_app_this_page_userdata(void)
         return NULL;
 }
 
-
-
+/**
+ * @brief Get current subpage's customize memory pointer
+ * @return NULL if no data
+ */
 void *gui_app_this_page_memory(void)
 {
-    /*
-     * The current SDK app framework does not maintain per-page private memory yet.
-     * Keep this compatibility entry so reg_fwk users can adopt the newer API shape.
-     */
-    return NULL;
+    subpage_node_t *p_page;
+    CHECK_CUR_RTOS_TASK();
+
+    p_page = app_schedule_get_this_page();
+
+    if (p_page)
+        return p_page->mem_ptr;
+    else
+        return NULL;
 }
-
-
 
 static builtin_app_desc_t *builtin_app_next(const builtin_app_desc_t *ptr_app)
 {
@@ -632,6 +662,7 @@ const builtin_app_desc_t *gui_builtin_app_list_open(void)
 
 const builtin_app_desc_t *gui_builtin_app_list_get_next(const builtin_app_desc_t *ptr_app)
 {
+    if (!ptr_app) ptr_app = (builtin_app_desc_t *)gui_builtin_app_list_open();
     return builtin_app_next(ptr_app);
 }
 
@@ -702,26 +733,47 @@ static void app_load(const char *id, app_entity_info *p_app_info)
 
     if (item == NULL)
     {
-        item = gui_script_app_list_get_next(item);
-        while (item != NULL)
+        for (uint8_t type = 0; type < SCRIPT_TYPE_NUM; type++)
         {
-
-            if (0 == strcmp(item->id, id))
+            item = gui_script_app_list_get_next(item, type);
+            while (item != NULL)
             {
-                // Make sure to close file search, TODO: Check python as well
-                gui_script_app_list_get_next((const builtin_app_desc_t *) -1);
-                break;
+                if (0 == strcmp(item->id, id))
+                {
+                    // Make sure to close file search, TODO: Check python as well
+                    gui_script_app_list_get_next((const builtin_app_desc_t *) -1, type);
+                    p_app_info->user_data = (uint32_t) item->icon; //save thumb path.
+                    gui_script_app_list_free_desc(item, false, type);
+                    type = SCRIPT_TYPE_NUM;
+                    break;
+                }
+                gui_script_app_list_free_desc(item, true, type);
+                item = gui_script_app_list_get_next(item, type);
             }
-            item = gui_script_app_list_get_next(item);
+            if (type != SCRIPT_TYPE_NUM)
+                gui_script_app_list_get_next((const builtin_app_desc_t *) -1, type);
         }
     }
+#ifdef APP_TOOL_SUPPORT
+    if (item == NULL)
+    {
+        item = (const builtin_app_desc_t *)sfat_manager_get_app_next((void *)item, 0);
+        while (item != NULL)
+        {
+            if (0 == strcmp(item->id, id))
+            {
+                break;
+            }
+            item = (const builtin_app_desc_t *)sfat_manager_get_app_next((void *)item, 0);
+        }
+    }
+#endif
 
 
 
     if (NULL != item)
     {
         p_app_info->entry_func = (uint32_t) item->entry;
-        p_app_info->user_data    = 0;
     }
     else
     {
@@ -751,6 +803,7 @@ static void app_load(const char *id, app_entity_info *p_app_info)
             LOG_I("find app %s in dl_apps FAILED!", id);
         }
 #else
+        if (dl_open_func && dl_open_func(id, p_app_info)) return;
         p_app_info->entry_func = 0;
         p_app_info->user_data = 0;
 #endif
@@ -767,6 +820,8 @@ static void app_destory(const char *app_id, const app_entity_info *p_app_info)
         //dlclose((void *)p_app->module_id);
         gui_app_dlclose((void *)p_app_info->user_data);
     }
+#else
+    if (dl_close_func) dl_close_func(app_id, p_app_info);
 #endif
 
 }
@@ -842,48 +897,11 @@ static void app_debug_func(uint8_t level, const char *fmt, ...)
     va_end(args);
 }
 
-
-
-
-
-
-
-#if defined (_MSC_VER)
-#pragma section("BuiltinAppTab$0", read)
-__declspec(allocate("BuiltinAppTab$0")) RT_USED static const builtin_app_desc_t __builtin_app_table_start =
-{
-    MSC_APP_STRUCT_MAGIC_HEAD,
-#ifdef LV_USING_EXT_RESOURCE_MANAGER
-    1,              // Not used.
-#else
-    "__USTART",
-#endif
-    NULL,
-    "",
-    NULL
-};
-
-#pragma section("BuiltinAppTab$1.end", read)
-__declspec(allocate("BuiltinAppTab$1.end"))RT_USED static const builtin_app_desc_t __builtin_app_table_end =
-{
-    MSC_APP_STRUCT_MAGIC_HEAD,
-#ifdef LV_USING_EXT_RESOURCE_MANAGER
-    2,              // Not used
-#else
-    "__USTOP",
-#endif
-    NULL,
-    "",
-    NULL
-};
-#endif
-
-
 static void app_scheduler_idle_hook(app_sche_state state)
 {
     if (APP_SCHE_IDLE == state)
     {
-#if defined(RT_USING_FINSH) && defined (SOLUTION_WATCH)
+#if defined(RT_USING_FINSH) && defined (SOLUTION)
         extern void app_mem_check(void);
         app_mem_check();
 #endif
@@ -895,6 +913,19 @@ static void app_scheduler_idle_hook(app_sche_state state)
     gui_app_enable_input_device(true);
 
     s_sche_state = state;
+
+#if !defined (APP_TRANS_ANIMATION_NONE)
+    extern void app_trand_end_cb_exec(void);
+    app_trand_end_cb_exec();
+#endif
+
+#ifdef DISABLE_LVGL_V9
+    /**
+     * Change the gesture schedule state.
+     */
+    extern void lv_gesture_set_sche_state(bool sche_idle);
+    lv_gesture_set_sche_state(APP_SCHE_IDLE == state);
+#endif
 }
 
 app_sche_state app_schedule_state_get(void)
@@ -910,38 +941,16 @@ static void subpage_msg_handler(gui_page_msg_cb_t func, gui_app_msg_type_t msg_i
     func(msg_id, (void *)app_id);
 }
 
-
-void gui_app_init(void)
+extern void builtin_app_get_table(builtin_app_desc_t **beg, builtin_app_desc_t **end, uint16_t style);
+void gui_get_builtin_app_table(uint16_t n)
 {
-#if defined(__CC_ARM) || (defined (__ARMCC_VERSION) && (__ARMCC_VERSION >= 6010050))                                 /* ARM C Compiler */
-    extern const int BuiltinAppTab$$Base;
-    extern const int BuiltinAppTab$$Limit;
-    builtin_app_table_begin = (builtin_app_desc_t *) &BuiltinAppTab$$Base;
-    builtin_app_table_end = (builtin_app_desc_t *)   &BuiltinAppTab$$Limit;
-#elif defined (__ICCARM__) || defined(__ICCRX__)      /* for IAR Compiler */
-#error "tobe contribute"
-#elif defined (__GNUC__)                              /* for GCC Compiler */
-    extern const int BuiltinAppTab_start;
-    extern const int BuiltinAppTab_end;
-    builtin_app_table_begin = (builtin_app_desc_t *)&BuiltinAppTab_start;
-    builtin_app_table_end = (builtin_app_desc_t *) &BuiltinAppTab_end;
+    builtin_app_get_table(&builtin_app_table_begin, &builtin_app_table_end, n);
+}
 
-#elif defined (_MSC_VER)
-    uint32_t *ptr_begin, *ptr_end;
-    ptr_begin = (uint32_t *)&__builtin_app_table_start;
-    ptr_begin += (sizeof(builtin_app_desc_t) / sizeof(uint32_t));
-    while (*((uint32_t *)ptr_begin) == 0) ptr_begin ++;
+void gui_app_init(uint16_t style)
+{
 
-    ptr_end = (uint32_t *)&__builtin_app_table_end;
-    ptr_end --;
-    while (*((uint32_t *)ptr_end) == 0) ptr_end --;
-    ptr_end++;
-
-
-    builtin_app_table_begin = (builtin_app_desc_t *)ptr_begin;
-    builtin_app_table_end = (builtin_app_desc_t *)ptr_end;
-#endif /* defined(__CC_ARM) */
-
+    gui_get_builtin_app_table(style);
     if (0 != app_schedule_init(app_load, app_destory, app_debug_func, app_scheduler_idle_hook, rt_malloc, rt_free, subpage_msg_handler))
     {
         RT_ASSERT(0);
@@ -964,6 +973,7 @@ void gui_app_init(void)
         app_schedule_max_running_apps(GUI_MAX_RUNNING_APPS);
 #endif /* GUI_MAX_RUNNING_APPS */
         app_schedule_destory_suspend_apps(0);
+        app_schedule_stop_others_page(1);
     }
 
 
@@ -1004,30 +1014,32 @@ int gui_app_create_page_ext(const char *pg_id, gui_page_msg_cb_t handler, void *
 
 }
 
-int gui_app_create_page_for_app_ext(const char *app_id, const char *pg_id, gui_page_msg_cb_t handler, void *usr_data)
+int gui_app_create_page_for_app_ext(const char *app_id, const char *pg_id,
+                                    gui_page_msg_cb_t handler, void *user_data, uint32_t mem_size)
 {
     gui_app_msg_t msg;
-    gui_runing_app_t    *p_app;
-    CHECK_CUR_RTOS_TASK();
+    intent_t i = NULL;
+    rt_err_t err;
 
-    p_app = app_schedule_is_app_running(app_id);
-    if (!p_app)
-    {
-        LOG_E("gui_app_create_page_for_app err : invalid id: %s", app_id);
-        return RT_EINVAL;
-    }
+    //CHECK_CUR_RTOS_TASK();
 
-    if (strlen(pg_id) < sizeof(msg.content.page.name))
+    if (strlen(pg_id) < sizeof(msg.content.page4app.page_id) && strlen(app_id) < sizeof(msg.content.page4app.app_id))
     {
         memset(&msg, 0, sizeof(gui_app_msg_t));
-        msg.msg_id = GUI_APP_MSG_OPEN_PAGE;
-        msg.handler = p_app;
+        msg.msg_id = GUI_APP_MSG_OPEN_PAGE_FOR_APP;
 
-        strcpy(msg.content.page.name, pg_id);
-        msg.content.page.msg_handler = handler;
-        msg.content.page.user_data = usr_data;
+        msg.content.page4app.restart_dup_pg = 0;
+        msg.content.page4app.restart_app = 1;
 
-        return send_msg_to_gui_app_task(&msg);
+        strcpy(msg.content.page4app.app_id, app_id);
+        strcpy(msg.content.page4app.page_id, pg_id);
+        msg.content.page4app.msg_handler = handler;
+        msg.content.page4app.user_data = user_data;
+        msg.content.page4app.mem_size = mem_size;
+
+        err = send_msg_to_gui_app_task(&msg);
+
+        return err;
     }
     else
     {
@@ -1037,7 +1049,7 @@ int gui_app_create_page_for_app_ext(const char *app_id, const char *pg_id, gui_p
 
 }
 
-int gui_app_regist_msg_handler_ext(const char *id, gui_page_msg_cb_t handler, void *usr_data)
+int gui_app_regist_msg_handler_ext(const char *id, gui_page_msg_cb_t handler, void *usr_data, uint32_t mem_size)
 {
     gui_runing_app_t *p_app;
     CHECK_CUR_RTOS_TASK();
@@ -1063,6 +1075,7 @@ int gui_app_regist_msg_handler_ext(const char *id, gui_page_msg_cb_t handler, vo
             strcpy(msg.content.page.name, "root");
             msg.content.page.msg_handler = handler;
             msg.content.page.user_data   = usr_data;
+            msg.content.page.mem_size    = mem_size;
 
             return send_msg_to_gui_app_task(&msg);
         }
@@ -1217,6 +1230,77 @@ void gui_app_fwk_test_stop(void)
     test_mode = 0;
 }
 
+int gui_app_is_active(const char *app)
+{
+    gui_runing_app_t *cur_app = app_schedule_get_active();
+    if (cur_app && 0 == strcmp(cur_app->id, app))
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+const builtin_app_desc_t *gui_script_app_list_get_next(const builtin_app_desc_t *desc, gui_script_type_t type)
+{
+#if defined(MICROPYTHON_USING_LVGL)
+    extern const builtin_app_desc_t *gui_python_app_list_get_next(const builtin_app_desc_t *ptr_app);
+    if (SCRIPT_TYPE_MPY == type)
+    {
+        return gui_python_app_list_get_next(desc);
+    }
+#endif
+
+#if defined(QUICKJS_LVGL)
+    extern const builtin_app_desc_t *gui_qjs_app_list_get_next(const builtin_app_desc_t *ptr_app);
+    if (SCRIPT_TYPE_QJS == type)
+    {
+        return gui_qjs_app_list_get_next(desc);
+    }
+#endif
+    return NULL;
+}
+
+void gui_script_app_list_free_desc(const builtin_app_desc_t *app, bool icon_release, gui_script_type_t type)
+{
+#if defined(MICROPYTHON_USING_LVGL)
+    extern void gui_python_app_list_free_desc(const builtin_app_desc_t *ptr_app, bool icon_release);
+    if (SCRIPT_TYPE_MPY == type)
+    {
+        gui_python_app_list_free_desc(app, icon_release);
+    }
+#endif
+
+#if defined(QUICKJS_LVGL)
+    extern void gui_qjs_app_list_free_desc(const builtin_app_desc_t *ptr_app, bool icon_release);
+    if (SCRIPT_TYPE_QJS == type)
+    {
+        gui_qjs_app_list_free_desc(app, icon_release);
+    }
+#endif
+}
+
+void gui_script_watch_face_register(gui_script_type_t type)
+{
+#if defined(MICROPYTHON_USING_LVGL)
+    extern void gui_python_watch_face_register(void);
+    if (SCRIPT_TYPE_MPY == type)
+    {
+        gui_python_watch_face_register();
+    }
+#endif
+
+#if defined(QUICKJS_LVGL)
+    extern void gui_qjs_watch_face_register(void);
+    if (SCRIPT_TYPE_QJS == type)
+    {
+        gui_qjs_watch_face_register();
+    }
+#endif
+
+}
+
+
 
 #ifdef FINSH_USING_MSH
 #include <finsh.h>
@@ -1336,37 +1420,6 @@ rt_err_t app_sche_print_perf_tick(int argc, char **argv)
 MSH_CMD_EXPORT(app_sche_print_perf_tick, Print app &subpage costed ticks);
 
 #endif
-
-
-#ifdef RT_USING_FINSH
-int avitive_app_is_main(void)
-{
-    gui_runing_app_t *cur_app = app_schedule_get_active();
-
-    //if (0 == strcmp(cur_app->id, "Main_list"))
-    //{
-    //    return 2;
-    //}
-
-    if (cur_app && 0 == strcmp(cur_app->id, "Main"))
-    {
-        return 1;
-    }
-
-
-    return 0;
-}
-
-char *get_avitive_app_id(void)
-{
-    gui_runing_app_t *cur_app = app_schedule_get_active();
-
-    return cur_app->id;
-}
-
-
-#endif
-
 
 RTM_EXPORT(gui_app_run);
 RTM_EXPORT(gui_app_self_exit);

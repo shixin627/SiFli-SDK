@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co, Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "rtthread.h"
 #include "bf0_hal.h"
 
@@ -9,7 +15,7 @@
  */
 int main(void)
 {
-    rt_kprintf("cherryusb device msc_ram demo!\n");
+    rt_kprintf("cherryusb device msc_sdcard demo!\n");
 
     extern void msc_device_init(uint8_t busid, uint32_t reg_base);
     msc_device_init(0, (uintptr_t)USBC_BASE);
@@ -20,4 +26,3 @@ int main(void)
     }
     return 0;
 }
-

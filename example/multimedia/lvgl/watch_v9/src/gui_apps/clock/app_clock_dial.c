@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <rtthread.h>
 #include <rtdevice.h>
 #include "littlevgl2rtt.h"
@@ -175,6 +181,9 @@ static void lv_obj_img_png_set_zoom(lv_obj_t *obj_img, const char *src, uint32_t
 
             uint32_t x = obj_height * 256;
             zoom_factor = x / img_height;
+#if defined(SF32LB55X)
+            if (zoom_factor < 129) zoom_factor = 129;
+#endif
             lv_img_set_zoom(obj_img, zoom_factor);
 
         }
@@ -183,6 +192,9 @@ static void lv_obj_img_png_set_zoom(lv_obj_t *obj_img, const char *src, uint32_t
 
             uint32_t x = obj_width * 256;
             zoom_factor = x / img_width;
+#if defined(SF32LB55X)
+            if (zoom_factor < 129) zoom_factor = 129;
+#endif
             lv_img_set_zoom(obj_img, zoom_factor);
 
         }

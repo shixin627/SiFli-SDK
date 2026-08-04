@@ -321,6 +321,25 @@ void HAL_FLASH_NONCE_CFG(FLASH_HandleTypeDef *fhandle, uint32_t start, uint32_t 
   * @retval none
 */
 void HAL_FLASH_AES_CFG(FLASH_HandleTypeDef *fhandle, uint8_t aes256);
+
+/**
+ * @brief  Check whether single flash is detected
+ * @param  fhandle  FLASH handle
+ * @param  cfg      pointer to config
+ * @retval 1 detected
+ * @retval 0 not detected
+ */
+int HAL_FLASH_DETECT_SINGLE(QSPI_FLASH_CTX_T *ctx, qspi_configure_t *cfg);
+
+/**
+ * @brief  Check whether dual flash is detected
+ * @param  fhandle  FLASH handle
+ * @param  cfg      pointer to config
+ * @retval 1 detected
+ * @retval 0 not detected
+ */
+int HAL_FLASH_DETECT_DUAL(QSPI_FLASH_CTX_T *ctx, qspi_configure_t *cfg);
+
 /**
   * @}
   */

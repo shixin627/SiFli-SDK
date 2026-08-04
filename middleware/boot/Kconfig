@@ -1,0 +1,13 @@
+menuconfig USING_SECBOOT
+    bool "Secure Boot Module for Bootloader"
+    default n
+
+if USING_SECBOOT
+    config SECBOOT_USING_APP_IMG_SIG_VERIFIY
+        bool "APP Image Signature Verfication Enabled"
+        default n
+    config SECBOOT_APP_IMG_SIG_BY_UID_ENABLD
+        bool "APP Image Signature Generated with UID"
+        default n
+        depends on SECBOOT_USING_APP_IMG_SIG_VERIFIY
+endif

@@ -11,9 +11,10 @@
 - 高性能传输: 使用DMA/中断接收
 
 ## 硬件连接
-### 支持的开发板
-- SF32LB52_LCD_N16R8： UART2 使用 PA03(RX), PA04(TX)
-- SF32LB58_LCD_N16R64N4: UART2 使用 PA29(RX), PA28(TX)
+### 支持的芯片系列和开发板
+- SF32LB52X 系列（例如 SF32LB52_LCD_N16R8、SF32LB52_LCD_A128R16）：UART2 使用 PA03(RX), PA04(TX)
+- SF32LB56X 系列（例如 SF32LB56_LCD_A128R12N1、SF32LB56_LCD_N16R12N1）：UART2 使用 PA20(RX), PA27(TX)
+- SF32LB58X 系列（例如 SF32LB58_LCD_N16R64N4、SF32LB58_LCD_A128R32N1）：UART2 使用 PA29(RX), PA28(TX)
 
 ## 编译和使用
 
@@ -21,12 +22,12 @@
 
 切换到例程project目录，运行scons命令执行编译：
 ```
-scons --board=sf32lb52-lcd_n16r8 -j8
+scons --board=sf32lb56-lcd_a128r12n1 -j8
 ```
-运行`build_sf32lb52-lcd_n16r8_hcpu\uart_download.bat`，按提示选择端口即可进行下载：
+运行`build_sf32lb56-lcd_a128r12n1_hcpu\uart_download.bat`，按提示选择端口即可进行下载：
 
 ```
-build_sf32lb52-lcd_n16r8_hcpu\uart_download.bat
+build_sf32lb56-lcd_a128r12n1_hcpu\uart_download.bat
 
 Uart Download
 

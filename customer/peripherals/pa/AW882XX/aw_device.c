@@ -1,11 +1,8 @@
 /*
-* aw_device.c
-*
-* Copyright (c) 2021 AWINIC Technology CO., LTD
-*
-* Author: <zhaolei@awinic.com>
-*
-*/
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -835,7 +832,7 @@ int aw_dev_reg_dump(struct aw_device *aw_dev)
 {
     int reg_num = aw_dev->ops.aw_get_reg_num();
     uint8_t i = 0;
-    uint32_t reg_val = 0;
+    unsigned int reg_val = 0;
 
     for (i = 0; i < reg_num; i++)
     {

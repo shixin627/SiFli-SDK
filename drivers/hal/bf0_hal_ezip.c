@@ -112,7 +112,29 @@ static HAL_StatusTypeDef HAL_EZIP_ConfigDecode(EZIP_HandleTypeDef *ezip, EZIP_De
     {
         return HAL_ERROR;
     }
-
+#ifdef HAL_EZIP_MULTI_BLOCK_DECODING_SUPPORTED
+    if (HAL_EZIP_MODE_EZIP != data_type)
+    {
+        if (!config->is_last_block && (config->input_data_size & 3))
+        {
+            /* size of non-last block must be multiple of 4 bytes */
+            return HAL_ERROR;
+        }
+        else if (config->is_last_block && (config->input_data_size <= 8))
+        {
+            /* size of last block must be greater than 8 bytes */
+            return HAL_ERROR;
+        }
+    }
+    else
+    {
+        if (ezip->Instance->GZIP_CTRL & EZIP_GZIP_CTRL_GZIP_CTRL)
+        {
+            /* multi-block decoding already started, cannot re-config */
+            return HAL_ERROR;
+        }
+    }
+#endif /* HAL_EZIP_MULTI_BLOCK_DECODING_SUPPORTED */
 
 #ifdef HAL_EZIP_NON_CONT_MODE_SUPPORTED
     addr_type = config->work_mode & HAL_EZIP_MODE_ADDR_TYPE_MASK;
@@ -145,6 +167,17 @@ static HAL_StatusTypeDef HAL_EZIP_ConfigDecode(EZIP_HandleTypeDef *ezip, EZIP_De
         }
         ezip->Instance->EZIP_PARA = (EZIP_PARA_OUT_AHB << EZIP_EZIP_PARA_OUT_SEL_Pos) | (mode << EZIP_EZIP_PARA_MOD_SEL_Pos);
         ezip->Instance->DST_ADDR = (uint32_t)config->output;
+#ifdef HAL_EZIP_MULTI_BLOCK_DECODING_SUPPORTED
+        if (EZIP_PARA_MOD_EZIP != mode)
+        {
+            if (config->is_last_block)
+            {
+                ezip->Instance->EZIP_PARA |= EZIP_EZIP_PARA_LAST;
+            }
+            ezip->Instance->SRC_LEN = config->input_data_size;
+            ezip->Instance->GZIP_CTRL |= EZIP_GZIP_CTRL_GZIP_CTRL;
+        }
+#endif /* HAL_EZIP_MULTI_BLOCK_DECODING_SUPPORTED */
     }
     else
     {
@@ -295,6 +328,7 @@ static HAL_StatusTypeDef HAL_EZIP_ConfigDecode(EZIP_HandleTypeDef *ezip, EZIP_De
     MODIFY_REG(ezip->Instance->GREY_PARA, EZIP_GREY_PARA_GREY_PARA_Msk,
                MAKE_REG_VAL(0xFFFFFF, EZIP_GREY_PARA_GREY_PARA_Msk, EZIP_GREY_PARA_GREY_PARA_Pos));
 #endif /* EZIP_GREY_PARA_GREY_PARA_Msk */
+
 
     return HAL_OK;
 }
@@ -499,17 +533,12 @@ HAL_StatusTypeDef HAL_EZIP_IRQHandler(EZIP_HandleTypeDef *ezip)
         }
     }
 
-    if (EZIP_INT_STA_ROW_ERR_STA & status)
-    {
-        err = true;
-    }
-
-    if (EZIP_INT_STA_BTYPE_ERR_STA & status)
-    {
-        err = true;
-    }
-
-    if (EZIP_INT_STA_ETYPE_ERR_STA & status)
+    if (status & (EZIP_INT_STA_ROW_ERR_STA | EZIP_INT_STA_BTYPE_ERR_STA
+                  | EZIP_INT_STA_ETYPE_ERR_STA
+#ifdef EZIP_INT_STA_FTYPE_ERR_STA
+                  | EZIP_INT_STA_FTYPE_ERR_STA | EZIP_INT_STA_WIND_ERR_STA
+#endif /* EZIP_INT_STA_FTYPE_ERR_STA */
+                 ))
     {
         err = true;
     }
@@ -622,6 +651,7 @@ __EXIT:
 HAL_StatusTypeDef HAL_EZIP_Decode_IT(EZIP_HandleTypeDef *ezip, EZIP_DecodeConfigTypeDef *config)
 {
     HAL_StatusTypeDef status;
+    uint32_t int_en;
 
     if (HAL_EZIP_STATE_READY != ezip->State)
     {
@@ -645,8 +675,12 @@ HAL_StatusTypeDef HAL_EZIP_Decode_IT(EZIP_HandleTypeDef *ezip, EZIP_DecodeConfig
     /* clear old status */
     EZIP_CLEAR_INT_STATUS(ezip->Instance);
 
-    ezip->Instance->INT_EN = EZIP_INT_EN_END_INT_EN | EZIP_INT_EN_ROW_ERR_EN
-                             | EZIP_INT_EN_BTYPE_ERR_EN | EZIP_INT_EN_ETYPE_ERR_EN;
+    int_en = EZIP_INT_EN_END_INT_EN | EZIP_INT_EN_ROW_ERR_EN
+             | EZIP_INT_EN_BTYPE_ERR_EN | EZIP_INT_EN_ETYPE_ERR_EN;
+#ifdef EZIP_INT_EN_FTYPE_ERR_EN
+    int_en |= EZIP_INT_EN_FTYPE_ERR_EN | EZIP_INT_EN_WIND_ERR_EN;
+#endif /* EZIP_INT_EN_FTYPE_ERR_EN */
+    ezip->Instance->INT_EN = int_en;
 
     ezip->Instance->EZIP_CTRL = EZIP_EZIP_CTRL_EZIP_CTRL;
 

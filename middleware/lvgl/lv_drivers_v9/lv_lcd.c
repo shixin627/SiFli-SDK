@@ -98,17 +98,7 @@ FRAME_BUFFER_BSS_SECT_END
 /**************************************************
    2. Defination of LCD buffer(s) on PSRAM
 ****************************************************/
-#ifdef LCD_FB_USING_AUTO
-    #if   defined(BSP_USING_RAMLESS_LCD) && defined(DRV_LCD_COMPRESSED_BUF_AVALIABLE)
-        #define LCD_FB_USING_TWO_COMPRESSED
-    #elif defined(BSP_USING_RAMLESS_LCD) && !defined(DRV_LCD_COMPRESSED_BUF_AVALIABLE)
-        #define LCD_FB_USING_TWO_UNCOMPRESSED
-    #elif !defined(BSP_USING_RAMLESS_LCD) && defined(DRV_LCD_COMPRESSED_BUF_AVALIABLE)
-        #define LCD_FB_USING_ONE_COMPRESSED
-    #elif !defined(BSP_USING_RAMLESS_LCD) && !defined(DRV_LCD_COMPRESSED_BUF_AVALIABLE)
-        #define LCD_FB_USING_ONE_UNCOMPRESSED
-    #endif
-#endif /* LCD_FB_USING_AUTO */
+
 
 #ifdef LCD_FB_USING_NONE
     #if defined(LV_FB_ONE_SCREEN_SIZE)
@@ -124,13 +114,13 @@ FRAME_BUFFER_BSS_SECT_END
         #define FB_TYPE      lv_fb_color_t
 
     #elif defined(LCD_FB_USING_ONE_COMPRESSED) || defined(LCD_FB_USING_TWO_COMPRESSED)
-        #define FB_TYPE      uint32_t
+        #define FB_TYPE      CMPR_DATA_TYPE
         #if (LV_COLOR_DEPTH == 24)
             #define FB_CMPR_RATE 3
-            #define FB_LINE_SIZE TARGET_SIZE_TO_CMPR_WORDS(CMPR_3_RGB888_TGT_SIZE(RT_ALIGN(LV_HOR_RES_MAX*3, 4)/4))
+            #define FB_LINE_SIZE CMPR_3_RGB888_COMPRESSED_BYTES(LV_HOR_RES_MAX)
         #elif (LV_COLOR_DEPTH == 16)
             #define FB_CMPR_RATE 1
-            #define FB_LINE_SIZE TARGET_SIZE_TO_CMPR_WORDS(CMPR_1_RGB565_TGT_SIZE(RT_ALIGN(LV_HOR_RES_MAX*2, 4)/4))
+            #define FB_LINE_SIZE CMPR_1_RGB565_COMPRESSED_BYTES(LV_HOR_RES_MAX)
         #endif /* LV_COLOR_DEPTH == 24*/
     #endif /* LCD_FB_USING_ONE_UNCOMPRESSED */
 

@@ -1,5 +1,5 @@
 menuconfig USING_METRICS_COLLECTOR
-    bool "Use Metrics Collector"
+    bool "Metrics Collector"
     default n   
     if USING_METRICS_COLLECTOR
         config MC_PERIOD_SPEEDUP_FACTOR

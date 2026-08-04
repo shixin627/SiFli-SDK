@@ -1,0 +1,10 @@
+menuconfig USING_ACPU_CTRL_FWK
+    bool "ACPU Control Framework"
+    select USING_IPC_QUEUE
+    select BSP_USING_ACPU
+    default n
+if USING_ACPU_CTRL_FWK
+    config ACPU_CALLER_ENABLED
+        bool "Enable Caller"
+        default y if BF0_HCPU
+endif

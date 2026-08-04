@@ -36,7 +36,7 @@ Service and Characteristic Discovery
 ### menuconfig Configuration
 * The required configuration is already enabled by default
 ```c
-menuconfig --board=board_nane
+sdk.py menuconfig --board=board_nane
 ```
 1. Enable Bluetooth
 - Path: Sifli middleware → Bluetooth

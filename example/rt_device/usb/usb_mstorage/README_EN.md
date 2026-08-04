@@ -55,7 +55,7 @@ USB_MSTORAGE project contains 1 .c file (main.c). The tree structure below shows
 ### menuconfig Configuration
 ```
 //Execute command
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 **Note:** USB pins in HDK52X are not multiplexed with UART, so steps 1 and 2 can be skipped.
 
@@ -114,7 +114,7 @@ If expected log does not appear, troubleshooting can be done from the following 
 ## Example Extension
  
 If you want to modify VBUS detection pin number, you can modify as follows:
-1. Modify configuration menuconfig --board=eh-lb525 and re-modify the parameter in "usb Insertion detection PIN" to the desired detection pin
+1. Modify configuration sdk.py menuconfig --board=eh-lb525 and re-modify the parameter in "usb Insertion detection PIN" to the desired detection pin
 D:\MyWork\code_sdk\siflisdk\customer\boards\ec-lb555xxx
 2. Modify pinmux configuration file **"\siflisdk\customer\boards\ec-lb corresponding model directory\bsp_pinmux.c"**, configure this pin to GPIO mode;
 ```c
@@ -136,7 +136,7 @@ Insert two data cables into 52d interfaces and connect to PC. If PC shows "Unrec
 * Connected data cable is damaged and cannot perform data transmission
 
 Here are some solutions:
-* Enter menu page through menuconfig --board=sf32lb52-lcd_52d command, enable Enable USB Device, then check register data for self-diagnosis
+* Enter menu page through sdk.py menuconfig --board=sf32lb52-lcd_52d command, enable Enable USB Device, then check register data for self-diagnosis
 
 ![alt text](assets/code4.png)
 

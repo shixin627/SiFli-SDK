@@ -1,7 +1,9 @@
-/**
- * @file lv_freetype.h
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
  *
+ * SPDX-License-Identifier: Apache-2.0
  */
+
 #ifndef _LV_SCHRIFT_H
 #define _LV_SCHRIFT_H
 

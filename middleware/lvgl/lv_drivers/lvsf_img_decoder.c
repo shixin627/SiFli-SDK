@@ -7,6 +7,7 @@
 #include "rtconfig.h"
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
+#include "lvsf.h"
 #include "board.h"
 //#include "EventRecorder.h"
 #include "drv_io.h"
@@ -355,6 +356,134 @@ static void file_decoder_close(lv_img_decoder_t *decoder, lv_img_decoder_dsc_t *
 #endif /* RT_USING_DFS */
 
 
+#if LV_USE_GPU && defined(HAL_JPEGD_MODULE_ENABLED)
+
+static lv_res_t jpeg_decoder_info(lv_img_decoder_t *decoder, const void *src, lv_img_header_t *header);
+static lv_res_t jpeg_decoder_open(lv_img_decoder_t *decoder, lv_img_decoder_dsc_t *dsc);
+static lv_res_t jpeg_decoder_read_line(lv_img_decoder_t *decoder, lv_img_decoder_dsc_t *dsc, lv_coord_t x,
+                                       lv_coord_t y, lv_coord_t len, uint8_t *buf);
+static void jpeg_decoder_close(lv_img_decoder_t *decoder, lv_img_decoder_dsc_t *dsc);
+
+
+
+static int is_jpg(const uint8_t *raw_data, size_t len)
+{
+    const uint8_t jpg_signature[] = {0xFF, 0xD8, 0xFF,  0xE0,  0x00,  0x10, 0x4A,  0x46, 0x49, 0x46};
+    if (len < sizeof(jpg_signature)) return false;
+    return memcmp(jpg_signature, raw_data, sizeof(jpg_signature)) == 0;
+}
+
+
+static lv_res_t jpeg_decoder_info(lv_img_decoder_t *decoder, const void *src, lv_img_header_t *header)
+{
+    (void)decoder; /*Unused*/
+
+    lv_img_src_t src_type = lv_img_src_get_type(src);
+    if (src_type == LV_IMG_SRC_VARIABLE)
+    {
+        lv_img_dsc_t *dsc;
+
+        dsc = (lv_img_dsc_t *)src;
+        if (dsc->header.cf != LVSF_IMG_CF_JPEG) return LV_RES_INV;
+
+        if (is_jpg(dsc->data, dsc->data_size) == true)
+        {
+            header->w  = dsc->header.w;
+            header->h  = dsc->header.h;
+            header->cf = dsc->header.cf;
+        }
+        else
+        {
+            return LV_RES_INV;
+        }
+    }
+    else
+    {
+        LV_LOG_WARN("Image get info found unknown src type");
+        return LV_RES_INV;
+    }
+    return LV_RES_OK;
+}
+
+/**
+ * Open a built in image
+ * @param decoder the decoder where this function belongs
+ * @param dsc pointer to decoder descriptor. `src`, `style` are already initialized in it.
+ * @return LV_RES_OK: the info is successfully stored in `header`; LV_RES_INV: unknown format or other error.
+ */
+static lv_res_t jpeg_decoder_open(lv_img_decoder_t *decoder, lv_img_decoder_dsc_t *dsc)
+{
+    /*Open the file if it's a file*/
+    if (dsc->src_type == LV_IMG_SRC_VARIABLE)
+    {
+        /*The variables should have valid data*/
+        if (((lv_img_dsc_t *)dsc->src)->data == NULL)
+        {
+            return LV_RES_INV;
+        }
+    }
+    else
+    {
+        return LV_RES_INV;
+    }
+
+    lv_img_cf_t cf = dsc->header.cf;
+    /*Process true color formats*/
+    if (cf == LVSF_IMG_CF_JPEG)
+    {
+        if (dsc->src_type == LV_IMG_SRC_VARIABLE)
+        {
+            /* In case of compressed formats the image stored in the ROM/RAM.
+             * So simply give its pointer*/
+            dsc->img_data = ((lv_img_dsc_t *)dsc->src)->data;
+            dsc->img_data_size = ((lv_img_dsc_t *)dsc->src)->data_size;
+
+            return LV_RES_OK;
+        }
+        else
+        {
+            return LV_RES_INV;
+        }
+    }
+    /*Unknown format. Can't decode it.*/
+    else
+    {
+        LV_LOG_WARN("Image decoder open: unknown color format");
+        return LV_RES_INV;
+    }
+}
+
+/**
+ * Decode `len` pixels starting from the given `x`, `y` coordinates and store them in `buf`.
+ * Required only if the "open" function can't return with the whole decoded pixel array.
+ * @param decoder pointer to the decoder the function associated with
+ * @param dsc pointer to decoder descriptor
+ * @param x start x coordinate
+ * @param y start y coordinate
+ * @param len number of pixels to decode
+ * @param buf a buffer to store the decoded pixels
+ * @return LV_RES_OK: ok; LV_RES_INV: failed
+ */
+static lv_res_t jpeg_decoder_read_line(lv_img_decoder_t *decoder, lv_img_decoder_dsc_t *dsc, lv_coord_t x,
+                                       lv_coord_t y, lv_coord_t len, uint8_t *buf)
+{
+    return LV_RES_INV;
+
+}
+
+/**
+ * Close the pending decoding. Free resources etc.
+ * @param decoder pointer to the decoder the function associated with
+ * @param dsc pointer to decoder descriptor
+ */
+static void jpeg_decoder_close(lv_img_decoder_t *decoder, lv_img_decoder_dsc_t *dsc)
+{
+    (void)decoder; /*Unused*/
+
+}
+
+#endif
+
 void lv_sifli_img_decoder(void)
 {
 #if LV_USE_GPU
@@ -386,5 +515,19 @@ void lv_sifli_img_decoder(void)
 
     }
 #endif /* RT_USING_DFS */
+
+#if defined(HAL_JPEGD_MODULE_ENABLED)
+    {
+        lv_img_decoder_t *decoder;
+
+        /*Create a decoder for the built in color format*/
+        decoder = lv_img_decoder_create();
+        RT_ASSERT(decoder);
+        lv_img_decoder_set_info_cb(decoder, jpeg_decoder_info);
+        lv_img_decoder_set_open_cb(decoder, jpeg_decoder_open);
+        lv_img_decoder_set_read_line_cb(decoder, jpeg_decoder_read_line);
+        lv_img_decoder_set_close_cb(decoder, jpeg_decoder_close);
+    }
+#endif
 
 }

@@ -250,7 +250,7 @@ static rt_err_t rt_rtc_config(struct rt_device *dev)
 
 #ifndef LXT_DISABLE
     // Wait for LXT Ready.
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
     if (HAL_PMU_LXTReady() != HAL_OK)
 #else
     if (HAL_RTC_LXT_ENABLED() && HAL_PMU_LXTReady() != HAL_OK)

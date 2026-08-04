@@ -120,7 +120,9 @@ typedef struct
 #define PMUC_WSR_PIN5_Pos               (9U)
 #define PMUC_WSR_PIN5_Msk               (0x1UL << PMUC_WSR_PIN5_Pos)
 #define PMUC_WSR_PIN5                   PMUC_WSR_PIN5_Msk
-
+#define PMUC_WSR_PIN_ALL                (PMUC_WSR_PIN0 | PMUC_WSR_PIN1 | PMUC_WSR_PIN2    \
+                                         | PMUC_WSR_PIN3 | PMUC_WSR_PIN4 | PMUC_WSR_PIN5)
+#define PMUC_WSR_PIN_NUM                (6)
 
 /******************** Bit definition for PMUC_WCR register ********************/
 #define PMUC_WCR_PIN0_Pos               (4U)

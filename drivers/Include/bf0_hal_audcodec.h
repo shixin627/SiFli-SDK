@@ -81,9 +81,9 @@ typedef struct
     uint8_t   divb_clk_chop_dac;  // lp pll_cfg4
     uint8_t   diva_clk_chop_bg;
     uint8_t   diva_clk_chop_refgen;  // lp  pll_cfg5
-#ifdef SF32LB52X
+#ifdef AUDCODEC_PLL_CFG4_SEL_CLK_DAC
     uint8_t   sel_clk_dac;
-#endif
+#endif /* AUDCODEC_PLL_CFG4_SEL_CLK_DAC */
 } AUDCODE_DAC_CLK_CONFIG_TYPE;
 
 /**
@@ -166,13 +166,13 @@ typedef enum
   */
 typedef struct
 {
-#ifdef SF32LB52X
+#ifdef AUDCODEC_BASE
     AUDCODEC_TypeDef                   *Instance;    /*!< AUDCODEC registers base address */
 #else
     AUDCODEC_HP_TypeDef                *Instance_hp;    /*!< AUDCODEC HP registers base address */
 
     AUDCODEC_LP_TypeDef                *Instance_lp;    /*!< AUDCODEC LP registers base address */
-#endif
+#endif /* AUDCODEC_BASE */
     AUDCODEC_InitTypeDef            Init;         /*!< AUDCODEC communication parameters */
 
     AUDCODEC_DacChnlCfgTypeDef      DacChnl[2];
@@ -247,7 +247,7 @@ typedef struct
   * @{
   */
 
-#ifdef SF32LB52X
+#ifdef AUDCODEC_CFG_DAC_ENABLE
 
 /** @brief  Enable audio codec .
   * @param  \__HANDLE__ specifies the AUDCODEC Handle.
@@ -482,6 +482,15 @@ HAL_StatusTypeDef HAL_AUDCODEC_Config_DACPath(AUDCODEC_HandleTypeDef *hacodec, u
   */
 HAL_StatusTypeDef HAL_AUDCODEC_Mute_DACPath(AUDCODEC_HandleTypeDef *hacodec, int mute);
 
+/**
+  * @brief  Configure ADC path volume.
+  * @param  hacodec: pointer to a AUDCODEC_HandleTypeDef structure that contains
+  *         the configuration information for AUDCODEC module
+  * @param channel: channel 0 or 1
+  * @param volume: configure volume -36dB~54dB
+  * @retval HAL status
+  */
+HAL_StatusTypeDef HAL_AUDCODEC_Config_ADCPath_Volume(AUDCODEC_HandleTypeDef *hacodec, int channel, int volume);
 
 /**
   * @brief  Configure ADC path.
@@ -564,4 +573,4 @@ void HAL_TURN_ON_PLL();
 #endif
 
 
-#endif /* __BF0_HAL_I2S_H */
+#endif /* __BF0_HAL_AUDCODEC_H */

@@ -28,7 +28,7 @@
 #define DLL_DIV2_MAX     192000000
 
 
-#if defined(SF32LB52X) && defined(SOC_BF0_HCPU)
+#if (defined(SF32LB52X) || defined(SF32LB57X)) && defined(SOC_BF0_HCPU)
 
 #define HPSYS_DVFS_MODE_D0_LIMIT (24)
 #define HPSYS_DVFS_MODE_D1_LIMIT (48)
@@ -43,6 +43,7 @@ typedef struct
     uint32_t ulpmcr;
 } HPSYS_DvfsConfigTypeDef;
 
+#ifdef SF32LB52X
 static const HPSYS_DvfsConfigTypeDef hpsys_dvfs_config[HPSYS_DVFS_MODE_NUM] =
 {
     //                         LDO,  BUCK,  ULPMCR
@@ -55,6 +56,20 @@ static const HPSYS_DvfsConfigTypeDef hpsys_dvfs_config[HPSYS_DVFS_MODE_NUM] =
     //                         1.2V, 1.35V
     [HPSYS_DVFS_MODE_S1] = {2,  0xD, 0xF, 0x00130213},
 };
+#elif defined(SF32LB57X)
+static const HPSYS_DvfsConfigTypeDef hpsys_dvfs_config[HPSYS_DVFS_MODE_NUM] =
+{
+    //                         LDO,  BUCK,  ULPMCR
+    //                         0.9V, 1.0V
+    [HPSYS_DVFS_MODE_D0] = {-5, 0x6, 0x9, 0x00100330},
+    //                         1.0V, 1.1V
+    [HPSYS_DVFS_MODE_D1] = {-3, 0x8, 0xA, 0x00110331},
+    //                         1.1V, 1.25V
+    [HPSYS_DVFS_MODE_S0] = {0,  0xB, 0xD, 0x00130213},
+    //                         1.2V, 1.35V
+    [HPSYS_DVFS_MODE_S1] = {2,  0xE, 0xF, 0x00130213}, // TODO:
+};
+#endif /* SF32LB52X */
 
 /* maximum DLL2 frequency(Hz) of each dvfs mode */
 static const uint32_t hpsys_dll2_limit[HPSYS_DVFS_MODE_NUM] =
@@ -69,10 +84,10 @@ static const uint32_t hpsys_dll2_limit[HPSYS_DVFS_MODE_NUM] =
 static HPSYS_DvfsModeTypeDef curr_dvfs_mode = HPSYS_DVFS_MODE_S0;
 static uint32_t curr_freq_in_mhz;
 
-#endif /* SF32LB52X && SOC_BF0_HCPU */
+#endif /* (SF32LB52X || SF32LB57X) && SOC_BF0_HCPU */
 
 
-#if defined(SF32LB52X) && defined(SOC_BF0_LCPU)
+#if (defined(SF32LB52X) || defined(SF32LB57X)) && defined(SOC_BF0_LCPU)
 
 #define LPSYS_DVFS_MODE_D_LIMIT (24)
 #define LPSYS_DVFS_MODE_S_LIMIT (48)
@@ -97,10 +112,12 @@ const static LPSYS_DvfsConfigTypeDef lpsys_dvfs_config[LPSYS_DVFS_MODE_NUM] =
 static LPSYS_DvfsModeTypeDef curr_dvfs_mode = LPSYS_DVFS_MODE_D;
 static uint32_t curr_freq_in_mhz;
 
-#endif /* SF32LB52X && SOC_BF0_HCPU */
+#endif /* (SF32LB52X || SF32LB57X) && SOC_BF0_HCPU */
 
 
 
+/*ARM specific code*/
+#if defined(SysTick)
 __STATIC_INLINE uint32_t HAL_RCC_DisableInterrupt(void)
 {
     uint32_t mask;
@@ -114,6 +131,20 @@ __STATIC_INLINE void HAL_RCC_EnableInterrupt(uint32_t mask)
 {
     __set_PRIMASK(mask);
 }
+#else
+__STATIC_INLINE uint32_t HAL_RCC_DisableInterrupt(void)
+{
+    __RV_CSR_CLEAR(CSR_MSTATUS, MSTATUS_MIE);
+    return 0;
+}
+
+__STATIC_INLINE void HAL_RCC_EnableInterrupt(uint32_t mask)
+{
+    __RV_CSR_SET(CSR_MSTATUS, MSTATUS_MIE);
+}
+
+#endif
+
 
 #ifdef SF32LB55X
 static inline __IO uint32_t *RCC_GetModuleMask(RCC_MODULE_TYPE module, uint32_t *group, uint32_t *mask)
@@ -500,312 +531,7 @@ static inline __IO uint32_t *RCC_GetModuleMask(RCC_MODULE_TYPE module, uint32_t 
 
     return base_rcc;
 }
-#elif defined(SF32LB52X)
-//TODO: need optimize, replaced by macro
-static inline __IO uint32_t *RCC_GetModuleMask(RCC_MODULE_TYPE module, uint32_t *group, uint32_t *mask)
-{
-    __IO uint32_t *base_rcc = 0;
-    if ((!mask) || (!group))
-    {
-        return NULL;
-    }
-    base_rcc = NULL;
-    switch (module)
-    {
-#if (CORE_ID_CURRENT == CORE_ID_HCPU)
-    case RCC_MOD_DMAC1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_DMAC1;
-        break;
-    case RCC_MOD_MAILBOX1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_MAILBOX1;
-        break;
-    case RCC_MOD_PINMUX1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_PINMUX1;
-        break;
-    case RCC_MOD_USART2:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_USART2;
-        break;
-    case RCC_MOD_EZIP:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_EZIP1;
-        break;
-    case RCC_MOD_EPIC:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_EPIC;
-        break;
-    case RCC_MOD_LCDC1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_LCDC1;
-        break;
-    case RCC_MOD_I2S1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_I2S1;
-        break;
-    case RCC_MOD_SYSCFG1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_SYSCFG1;
-        break;
-    case RCC_MOD_EFUSEC:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_EFUSEC;
-        break;
-    case RCC_MOD_AES:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_AES;
-        break;
-    case RCC_MOD_CRC1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_CRC1;
-        break;
-    case RCC_MOD_CRC2:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 1;
-        *mask = LPSYS_RCC_ENR1_CRC2;
-        break;
-    case RCC_MOD_TRNG:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_TRNG;
-        break;
-    case RCC_MOD_GPTIM1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_GPTIM1;
-        break;
-    case RCC_MOD_GPTIM2:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_GPTIM2;
-        break;
-    case RCC_MOD_BTIM1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_BTIM1;
-        break;
-    case RCC_MOD_BTIM2:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_BTIM2;
-        break;
-    case RCC_MOD_SPI1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_SPI1;
-        break;
-    case RCC_MOD_SPI2:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_SPI2;
-        break;
-    case RCC_MOD_EXTDMA:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_EXTDMA;
-        break;
-    case RCC_MOD_PDM1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_PDM1;
-        break;
-    case RCC_MOD_I2C1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_I2C1;
-        break;
-    case RCC_MOD_I2C2:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_I2C2;
-        break;
-    case RCC_MOD_PTC1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_PTC1;
-        break;
-
-    case RCC_MOD_GPIO1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_GPIO1;
-        break;
-    case RCC_MOD_MPI1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_MPI1;
-        break;
-    case RCC_MOD_MPI2:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_MPI2;
-        break;
-    case RCC_MOD_SDMMC1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_SDMMC1;
-        break;
-    case RCC_MOD_USBC:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_USBC;
-        break;
-    case RCC_MOD_I2C3:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_I2C3;
-        break;
-    case RCC_MOD_ATIM1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_ATIM1;
-        break;
-    case RCC_MOD_USART3:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_USART3;
-        break;
-    case RCC_MOD_AUDCODEC_HP:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_AUDCODEC;
-        break;
-    case RCC_MOD_AUDPRC:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_AUDPRC;
-        break;
-    case RCC_MOD_I2C4:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_I2C4;
-        break;
-    case RCC_MOD_TSEN:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_TSEN;
-        break;
-    case RCC_MOD_AUDCODEC_LP:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_AUDCODEC;
-        break;
-    case RCC_MOD_GPADC:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_GPADC;
-        break;
-    case RCC_MOD_SECU1:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 0;
-        *mask = HPSYS_RCC_ENR1_SECU1;
-        break;
-    case RCC_MOD_AUDCODEC:
-        base_rcc = (uint32_t *)hwp_hpsys_rcc;
-        *group = 1;
-        *mask = HPSYS_RCC_ENR2_AUDCODEC;
-        break;
-#endif
-#if 1//(CORE_ID_CURRENT == CORE_ID_LCPU)
-    case RCC_MOD_PTC2:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_PTC2;
-        break;
-    case RCC_MOD_BTIM4:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_BTIM4;
-        break;
-    case RCC_MOD_BTIM3:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_BTIM3;
-        break;
-    case RCC_MOD_SYSCFG2:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_SYSCFG2;
-        break;
-    case RCC_MOD_USART5:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_USART5;
-        break;
-    case RCC_MOD_USART4:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_USART4;
-        break;
-    case RCC_MOD_PATCH:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_PATCH;
-        break;
-    case RCC_MOD_PINMUX2:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_PINMUX2;
-        break;
-    case RCC_MOD_MAILBOX2:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_MAILBOX2;
-        break;
-    case RCC_MOD_DMAC2:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_DMAC2;
-        break;
-    case RCC_MOD_MAC:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_MAC;
-        break;
-    case RCC_MOD_PHY:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_PHY;
-        break;
-    case RCC_MOD_RFC:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_RFC;
-        break;
-    case RCC_MOD_GPIO2:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_GPIO2;
-        break;
-    case RCC_MOD_SECU2:
-        base_rcc = (uint32_t *)hwp_lpsys_rcc;
-        *group = 0;
-        *mask = LPSYS_RCC_ENR1_SECU2;
-        break;
-
-#endif
-    default:
-        HAL_ASSERT(0);
-        break;
-
-    }
-
-    return base_rcc;
-}
+#elif defined(SF32LB52X) || defined(SF32LB57X)
 
 #else
 static inline __IO uint32_t *RCC_GetModuleMask(RCC_MODULE_TYPE module, uint32_t *group, uint32_t *mask)
@@ -1396,6 +1122,9 @@ __HAL_ROM_USED void HAL_RCC_HCPU_ClockSelect(int clk_module, int src)
 #ifdef   RCC_CLK_MOD_HP_TICK
             || ((int)RCC_CLK_MOD_HP_TICK == clk_module)
 #endif /* RCC_CLK_MOD_HP_TICK */
+#ifdef  RCC_CLK_MOD_LCDC
+            || ((int)RCC_CLK_MOD_LCDC == clk_module)
+#endif /* RCC_CLK_MOD_LCDC */
        )
     {
         mask = 3;
@@ -1425,6 +1154,9 @@ __HAL_ROM_USED int HAL_RCC_HCPU_GetClockSrc(int clk_module)
 #ifdef   RCC_CLK_MOD_HP_TICK
             || ((int)RCC_CLK_MOD_HP_TICK == clk_module)
 #endif /* RCC_CLK_MOD_HP_TICK */
+#ifdef  RCC_CLK_MOD_LCDC
+            || ((int)RCC_CLK_MOD_LCDC == clk_module)
+#endif /* RCC_CLK_MOD_LCDC */
        )
     {
         mask = 3;
@@ -1456,7 +1188,7 @@ __HAL_ROM_USED uint32_t HAL_RCC_HCPU_GetDLLFreq(int dll)
         cr = hwp_hpsys_rcc->DLL2CR;
         break;
 
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
     case 3:
         cr = hwp_hpsys_rcc->DLL3CR;
         break;
@@ -1650,7 +1382,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_RCC_HCPU_EnableDLL(int dll, uint32_t freq)
     case 2:
         cr = &(hwp_hpsys_rcc->DLL2CR);
         break;
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
     case 3:
         cr = &(hwp_hpsys_rcc->DLL3CR);
         break;
@@ -1660,14 +1392,20 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_RCC_HCPU_EnableDLL(int dll, uint32_t freq)
         break;
     }
 
+#ifdef HPSYS_CFG_CAU2_CR_HPBG_EN
     if (0 == (hwp_hpsys_cfg->CAU2_CR & HPSYS_CFG_CAU2_CR_HPBG_EN))
     {
         hwp_hpsys_cfg->CAU2_CR |= HPSYS_CFG_CAU2_CR_HPBG_EN;
     }
+#else
+    hwp_hpsys_cfg->ANAU_CR |= HPSYS_CFG_ANAU_CR_EN_BG;
+#endif /* HPSYS_CFG_CAU2_CR_HPBG_EN */
+#ifdef HPSYS_CFG_CAU2_CR_HPBG_VDDPSW_EN
     if (0 == (hwp_hpsys_cfg->CAU2_CR & HPSYS_CFG_CAU2_CR_HPBG_VDDPSW_EN))
     {
         hwp_hpsys_cfg->CAU2_CR |= HPSYS_CFG_CAU2_CR_HPBG_VDDPSW_EN;
     }
+#endif /* HPSYS_CFG_CAU2_CR_HPBG_VDDPSW_EN */
 
     (*cr) &= ~HPSYS_RCC_DLL1CR_EN;
     val = (*cr);
@@ -1722,7 +1460,7 @@ __USED __HAL_ROM_USED HAL_StatusTypeDef HAL_RCC_HCPU_DisableDLL2(void)
     return HAL_OK;
 }
 
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
 __HAL_ROM_USED HAL_StatusTypeDef HAL_RCC_HCPU_DisableDLL3(void)
 {
     hwp_hpsys_rcc->DLL3CR &= ~HPSYS_RCC_DLL1CR_EN;
@@ -1761,21 +1499,21 @@ __HAL_ROM_USED void HAL_RCC_LCPU_SetDiv(int div, int pdiv1, int pdiv2)
     }
     if (mask)
     {
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
         if (div == 1)
         {
             MODIFY_REG(hwp_lpsys_rcc->CFGR, LPSYS_RCC_CFGR_HDIV2_Msk, (1UL << LPSYS_RCC_CFGR_HDIV2_Pos));
         }
-#endif /* SF32LB52X */
+#endif /* !SF32LB52X && !SF32LB57X*/
 
         MODIFY_REG(hwp_lpsys_rcc->CFGR, mask, reg);
 
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
         if (div != 1 && div >= 0)
         {
             MODIFY_REG(hwp_lpsys_rcc->CFGR, LPSYS_RCC_CFGR_HDIV2_Msk, (0UL << LPSYS_RCC_CFGR_HDIV2_Pos));
         }
-#endif /* SF32LB52X */
+#endif /* SF32LB52X && !SF32LB57X */
     }
     SystemCoreClock = HAL_RCC_GetHCLKFreq(CORE_ID_LCPU);
 }
@@ -1905,7 +1643,7 @@ __HAL_ROM_USED uint32_t HAL_RCC_GetPCLKFreq(int core_id, int is_pclk1)
 
 __HAL_ROM_USED void HAL_RCC_ResetBluetoothRF(void)
 {
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
     hwp_lpsys_rcc->RSTR1 |= LPSYS_RCC_RSTR1_RFC;
     while (!(hwp_lpsys_rcc->RSTR1 & LPSYS_RCC_RSTR1_RFC));
     hwp_lpsys_rcc->RSTR1 &= ~LPSYS_RCC_RSTR1_RFC;
@@ -1929,14 +1667,14 @@ __HAL_ROM_USED void HAL_RCC_ResetLCPU(void)
         HAL_RCC_ReleaseLCPU();
     else
     {
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
         hwp_lpsys_rcc->RSTR1 = LPSYS_RCC_RSTR1_MAC;
 #else
         hwp_lpsys_rcc->RSTR2 = LPSYS_RCC_RSTR2_MAC;
 #endif
         hwp_lpsys_rcc->RSTR1 = LPSYS_RCC_RSTR1_LCPU;
         while (!hwp_lpsys_rcc->RSTR1);
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
         hwp_lpsys_rcc->RSTR1 &= ~LPSYS_RCC_RSTR1_MAC;
 #else
         hwp_lpsys_rcc->RSTR2 &= ~LPSYS_RCC_RSTR2_MAC;
@@ -1953,13 +1691,13 @@ __HAL_ROM_USED void HAL_RCC_Reset_and_Halt_LCPU(uint8_t is_init)
 
         hwp_lpsys_aon->PMR |= LPSYS_AON_PMR_CPUWAIT;
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
         rst_flag |= LPSYS_RCC_RSTR1_MAC;
-#endif /* SF32LB52X */
+#endif /* SF32LB52X || SF32LB57X */
         hwp_lpsys_rcc->RSTR1 = rst_flag ;
         while (!hwp_lpsys_rcc->RSTR1);
 
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
         if (is_init)
         {
             hwp_lpsys_rcc->RSTR2 = LPSYS_RCC_RSTR2_MAC | LPSYS_RCC_RSTR2_GPIO2;
@@ -1969,13 +1707,13 @@ __HAL_ROM_USED void HAL_RCC_Reset_and_Halt_LCPU(uint8_t is_init)
             hwp_lpsys_rcc->RSTR2 = LPSYS_RCC_RSTR2_MAC;
         }
         while (!hwp_lpsys_rcc->RSTR2);
-#endif /* !SF32LB52X */
+#endif /* !SF32LB52X && !SF32LB57X */
         if ((hwp_lpsys_aon->SLP_CTRL & LPSYS_AON_SLP_CTRL_SLEEP_STATUS) != 0)
         {
             hwp_lpsys_aon->SLP_CTRL |= LPSYS_AON_SLP_CTRL_WKUP_REQ;
             while ((hwp_lpsys_aon->SLP_CTRL & LPSYS_AON_SLP_CTRL_SLEEP_STATUS) != 0);
         }
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
         if (is_init)
         {
             hwp_lpsys_rcc->RSTR2 &= ~(LPSYS_RCC_RSTR2_MAC | LPSYS_RCC_RSTR2_GPIO2);
@@ -1984,7 +1722,7 @@ __HAL_ROM_USED void HAL_RCC_Reset_and_Halt_LCPU(uint8_t is_init)
         {
             hwp_lpsys_rcc->RSTR2 &= ~LPSYS_RCC_RSTR2_MAC;
         }
-#endif /* !SF32LB52X */
+#endif /* !SF32LB52X && !SF32LB57X */
         hwp_lpsys_rcc->RSTR1 &= ~rst_flag;
     }
 }
@@ -2000,7 +1738,26 @@ void HAL_RCC_ResetACPU(void)
 {
     hwp_hpsys_rcc->RSTR2 |= HPSYS_RCC_RSTR2_ACPU;
 }
+#elif defined(SF32LB57X) && defined(SOC_BF0_HCPU)
+void HAL_RCC_ReleaseACPU(uint32_t vtor)
+{
+    /* set VTOR, clear RSTR and WAIT to start ACPU */
+    MODIFY_REG(hwp_secu1->ACPU, SECU1_ACPU_VTOR_Msk | SECU1_ACPU_RSTR_Msk | SECU1_ACPU_WAIT_Msk,
+               (vtor & SECU1_ACPU_VTOR_Msk));
+    /* Enable WAIT, so ACPU would not start automatically after SYSRESETREQ is issued by HCPU side.
+     * After SYSRESETREQ is issued by HCPU, MPI is reset but SECU1.ACPU is not reset, ACPU would start running while MPI is not initialized.
+     * As ACPU runs on Flash, it will cause issue. If SECU1.ACPU.WAIT is set, ACPU will not start until SECU1.ACPU.WAIT is cleared by HCPU.
+     */
+    hwp_secu1->ACPU |= SECU1_ACPU_WAIT;
+}
+
+void HAL_RCC_ResetACPU(void)
+{
+    hwp_secu1->ACPU |= SECU1_ACPU_RSTR;
+}
 #endif /* SF32LB58X && SOC_BF0_HCPU */
+
+
 
 
 __HAL_ROM_USED void HAL_RCC_SetMacFreq(void)
@@ -2028,11 +1785,12 @@ __HAL_ROM_USED void HAL_RCC_SetMacFreq(void)
                (mac_div << LPSYS_RCC_CFGR_MACDIV_Pos) | (0x08 << LPSYS_RCC_CFGR_MACFREQ_Pos));
 }
 
-
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
 __HAL_ROM_USED void HAL_RCC_ResetModule(RCC_MODULE_TYPE module)
 {
     __IO uint32_t *base_rcc, *rstr;
     uint32_t mask, group;
+    uint32_t level;
 
     base_rcc = RCC_GetModuleMask(module, &group, &mask);
 
@@ -2042,7 +1800,7 @@ __HAL_ROM_USED void HAL_RCC_ResetModule(RCC_MODULE_TYPE module)
         rstr = (uint32_t *)&hwp_hpsys_rcc->RSTR2;
     else if (((uint32_t *)hwp_lpsys_rcc == base_rcc) && (0 == group))
         rstr = (uint32_t *)&hwp_lpsys_rcc->RSTR1;
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
     else if (((uint32_t *)hwp_lpsys_rcc == base_rcc) && (1 == group))
         rstr = (uint32_t *)&hwp_lpsys_rcc->RSTR2;
 #endif
@@ -2052,12 +1810,12 @@ __HAL_ROM_USED void HAL_RCC_ResetModule(RCC_MODULE_TYPE module)
         return;
     }
 
+    level = HAL_RCC_DisableInterrupt();
     /*Rest module*/
     *rstr |= mask;
     *rstr &= ~mask;
+    HAL_RCC_EnableInterrupt(level);
 }
-
-
 
 __HAL_ROM_USED void HAL_RCC_EnableModule(RCC_MODULE_TYPE module)
 {
@@ -2073,7 +1831,7 @@ __HAL_ROM_USED void HAL_RCC_EnableModule(RCC_MODULE_TYPE module)
         enr = (uint32_t *)&hwp_hpsys_rcc->ENR2;
     else if (((uint32_t *)hwp_lpsys_rcc == base_rcc) && (0 == group))
         enr = (uint32_t *)&hwp_lpsys_rcc->ENR1;
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
     else if (((uint32_t *)hwp_lpsys_rcc == base_rcc) && (1 == group))
         enr = (uint32_t *)&hwp_lpsys_rcc->ENR2;
 #endif
@@ -2102,7 +1860,7 @@ __HAL_ROM_USED void HAL_RCC_DisableModule(RCC_MODULE_TYPE module)
         enr = (uint32_t *)&hwp_hpsys_rcc->ENR2;
     else if (((uint32_t *)hwp_lpsys_rcc == base_rcc) && (0 == group))
         enr = (uint32_t *)&hwp_lpsys_rcc->ENR1;
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
     else if (((uint32_t *)hwp_lpsys_rcc == base_rcc) && (1 == group))
         enr = (uint32_t *)&hwp_lpsys_rcc->ENR2;
 #endif
@@ -2117,6 +1875,212 @@ __HAL_ROM_USED void HAL_RCC_DisableModule(RCC_MODULE_TYPE module)
     HAL_RCC_EnableInterrupt(level);
 }
 
+__HAL_ROM_USED bool HAL_RCC_IsModuleEnabled(RCC_MODULE_TYPE module)
+{
+    __IO uint32_t *base_rcc, *enr;
+    uint32_t mask, group;
+    uint32_t level;
+
+    base_rcc = RCC_GetModuleMask(module, &group, &mask);
+
+    if (((uint32_t *)hwp_hpsys_rcc == base_rcc) && (0 == group))
+        enr = (uint32_t *)&hwp_hpsys_rcc->ENR1;
+    else if (((uint32_t *)hwp_hpsys_rcc == base_rcc) && (1 == group))
+        enr = (uint32_t *)&hwp_hpsys_rcc->ENR2;
+    else if (((uint32_t *)hwp_lpsys_rcc == base_rcc) && (0 == group))
+        enr = (uint32_t *)&hwp_lpsys_rcc->ENR1;
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
+    else if (((uint32_t *)hwp_lpsys_rcc == base_rcc) && (1 == group))
+        enr = (uint32_t *)&hwp_lpsys_rcc->ENR2;
+#endif
+    else
+    {
+        HAL_ASSERT(0);
+        return false;
+    }
+
+    if (*enr & mask)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+
+#else
+__HAL_ROM_USED void HAL_RCC_ResetModule(RCC_MODULE_TYPE module)
+{
+    __IO uint32_t *rstr;
+    uint8_t subsys;
+    uint8_t group;
+    uint16_t offset;
+    uint32_t mask;
+    uint32_t level;
+
+    if (RCC_MOD_INVALID == module)
+    {
+        return;
+    }
+
+    subsys = RCC_GET_SUBSYS_FROM_MOD_TYPE(module);
+    group = RCC_GET_GROUP_FROM_MOD_TYPE(module);
+    offset = RCC_GET_OFF_FROM_MOD_TYPE(module);
+    HAL_ASSERT(offset < 32);
+    if (RCC_MOD_TYPE_HPSYS == subsys)
+    {
+        rstr = &hwp_hpsys_rcc->RSTR1 + group;
+    }
+    else if (RCC_MOD_TYPE_LPSYS == subsys)
+    {
+        rstr = &hwp_lpsys_rcc->RSTR1 + group;
+    }
+#ifdef SECU1_ACPU_ENR
+    else if (RCC_MOD_TYPE_SECU1 == subsys)
+    {
+        rstr = &hwp_secu1->ACPU;
+    }
+#endif /* SECU1_ACPU_ENR */
+    else
+    {
+        HAL_ASSERT(0);
+    }
+
+    mask = (1UL << offset);
+    level = HAL_RCC_DisableInterrupt();
+    /*Rest module*/
+    *rstr |= mask;
+    *rstr &= ~mask;
+    HAL_RCC_EnableInterrupt(level);
+}
+
+__HAL_ROM_USED void HAL_RCC_EnableModule(RCC_MODULE_TYPE module)
+{
+    __IO uint32_t *esr;
+    uint8_t subsys;
+    uint8_t group;
+    uint16_t offset;
+
+    if (RCC_MOD_INVALID == module)
+    {
+        return;
+    }
+
+    subsys = RCC_GET_SUBSYS_FROM_MOD_TYPE(module);
+    group = RCC_GET_GROUP_FROM_MOD_TYPE(module);
+    offset = RCC_GET_OFF_FROM_MOD_TYPE(module);
+    HAL_ASSERT(offset < 32);
+    if (RCC_MOD_TYPE_HPSYS == subsys)
+    {
+        esr = &hwp_hpsys_rcc->ESR1 + group;
+    }
+    else if (RCC_MOD_TYPE_LPSYS == subsys)
+    {
+        esr = &hwp_lpsys_rcc->ESR1 + group;
+    }
+#ifdef SECU1_ACPU_ENR
+    else if (RCC_MOD_TYPE_SECU1 == subsys)
+    {
+        hwp_secu1->ACPU |= (1UL << offset);
+        return;
+    }
+#endif /* SECU1_ACPU_ENR */
+    else
+    {
+        HAL_ASSERT(0);
+    }
+
+    *esr = (1UL << offset);
+}
+
+__HAL_ROM_USED void HAL_RCC_DisableModule(RCC_MODULE_TYPE module)
+{
+    __IO uint32_t *ecr;
+    uint8_t subsys;
+    uint8_t group;
+    uint16_t offset;
+
+    if (RCC_MOD_INVALID == module)
+    {
+        return;
+    }
+
+    subsys = RCC_GET_SUBSYS_FROM_MOD_TYPE(module);
+    group = RCC_GET_GROUP_FROM_MOD_TYPE(module);
+    offset = RCC_GET_OFF_FROM_MOD_TYPE(module);
+    HAL_ASSERT(offset < 32);
+    if (RCC_MOD_TYPE_HPSYS == subsys)
+    {
+        ecr = &hwp_hpsys_rcc->ECR1 + group;
+    }
+    else if (RCC_MOD_TYPE_LPSYS == subsys)
+    {
+        ecr = &hwp_lpsys_rcc->ECR1 + group;
+    }
+#ifdef SECU1_ACPU_ENR
+    else if (RCC_MOD_TYPE_SECU1 == subsys)
+    {
+        hwp_secu1->ACPU &= ~(1UL << offset);
+        return;
+    }
+#endif /* SECU1_ACPU_ENR */
+    else
+    {
+        HAL_ASSERT(0);
+    }
+
+    *ecr = (1UL << offset);
+}
+
+__HAL_ROM_USED bool HAL_RCC_IsModuleEnabled(RCC_MODULE_TYPE module)
+{
+    __IO uint32_t *enr;
+    uint8_t subsys;
+    uint8_t group;
+    uint16_t offset;
+
+    if (RCC_MOD_INVALID == module)
+    {
+        return false;
+    }
+
+    subsys = RCC_GET_SUBSYS_FROM_MOD_TYPE(module);
+    group = RCC_GET_GROUP_FROM_MOD_TYPE(module);
+    offset = RCC_GET_OFF_FROM_MOD_TYPE(module);
+    HAL_ASSERT(offset < 32);
+    if (RCC_MOD_TYPE_HPSYS == subsys)
+    {
+        enr = &hwp_hpsys_rcc->ENR1 + group;
+    }
+    else if (RCC_MOD_TYPE_LPSYS == subsys)
+    {
+        enr = &hwp_lpsys_rcc->ENR1 + group;
+    }
+#ifdef SECU1_ACPU_ENR
+    else if (RCC_MOD_TYPE_SECU1 == subsys)
+    {
+        enr = &hwp_secu1->ACPU;
+    }
+#endif /* SECU1_ACPU_ENR */
+    else
+    {
+        HAL_ASSERT(0);
+    }
+
+    if (*enr & (1UL << offset))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+
+#endif /* !SF32LB52X && !SF32LB57 */
 
 __HAL_ROM_USED HAL_StatusTypeDef HAL_RCC_SetModuleFreq(RCC_MODULE_TYPE module, uint32_t freq)
 {
@@ -2179,7 +2143,85 @@ __HAL_ROM_USED uint32_t HAL_RCC_GetModuleFreq(RCC_MODULE_TYPE module)
         }
     }
     break;
-#endif
+#endif /*CORE_ID_CURRENT == CORE_ID_HCPU*/
+
+#else /* !SF32LB55X */
+#if (CORE_ID_CURRENT == CORE_ID_HCPU)
+    case RCC_MOD_LCDC1:
+    {
+#ifdef RCC_CLK_MOD_LCDC
+        int src = HAL_RCC_HCPU_GetClockSrc(RCC_CLK_MOD_LCDC);
+        if (RCC_CLK_LCDC_DLL2 == src)
+        {
+            freq = HAL_RCC_HCPU_GetDLL2Freq();
+        }
+        else if (RCC_CLK_LCDC_DLL3 == src)
+        {
+            freq = HAL_RCC_HCPU_GetDLL3Freq();
+        }
+        else if (RCC_CLK_LCDC_HRC48 == src)
+        {
+            freq = 48 * 1000 * 1000;
+        }
+        else
+#endif /*RCC_CLK_MOD_LCDC*/
+        {
+            freq = HAL_RCC_GetSysCLKFreq(CORE_ID_HCPU);
+        }
+    }
+    break;
+#endif /*CORE_ID_CURRENT == CORE_ID_HCPU*/
+
+    case RCC_MOD_MPI1:
+    case RCC_MOD_MPI2:
+#ifdef RCC_CLK_MOD_FLASH3
+    case RCC_MOD_MPI3:
+#endif /* RCC_CLK_MOD_FLASH3 */
+#ifdef RCC_CLK_MOD_FLASH4
+    case RCC_MOD_MPI4:
+#endif /* RCC_CLK_MOD_FLASH4 */
+    {
+        int clk_module, src;
+        if (RCC_MOD_MPI1 == module)
+        {
+            clk_module = RCC_CLK_MOD_FLASH1;
+        }
+        else if (RCC_MOD_MPI2 == module)
+        {
+            clk_module = RCC_CLK_MOD_FLASH2;
+        }
+#ifdef RCC_CLK_MOD_FLASH3
+        else if (RCC_MOD_MPI3 == module)
+        {
+            clk_module = RCC_CLK_MOD_FLASH3;
+        }
+#endif /* RCC_CLK_MOD_FLASH3 */
+#ifdef RCC_CLK_MOD_FLASH4
+        else
+        {
+            clk_module = RCC_CLK_MOD_FLASH4;
+        }
+#endif /* RCC_CLK_MOD_FLASH4 */
+
+        src = HAL_RCC_HCPU_GetClockSrc(clk_module);
+        if (RCC_CLK_SRC_DLL2 == src)
+        {
+            freq = HAL_RCC_HCPU_GetDLL2Freq();
+        }
+        else if (RCC_CLK_SRC_DLL3 == src)
+        {
+            freq = HAL_RCC_HCPU_GetDLL3Freq();
+        }
+        else if (RCC_CLK_SRC_DLL1 == src)
+        {
+            freq = HAL_RCC_HCPU_GetDLL1Freq();
+        }
+        else
+        {
+            freq = HAL_RCC_GetSysCLKFreq(CORE_ID_HCPU);
+        }
+    }
+    break;
 #endif /* SF32LB55X */
     default:
         HAL_ASSERT(0);
@@ -2191,7 +2233,7 @@ __HAL_ROM_USED uint32_t HAL_RCC_GetModuleFreq(RCC_MODULE_TYPE module)
 }
 
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X)
 __HAL_ROM_USED HAL_StatusTypeDef HAL_RCC_CalibrateRC48(void)
 {
     uint32_t hxt_cnt;
@@ -2271,6 +2313,89 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_RCC_CalibrateRC48(void)
     }
 }
 
+#elif defined(SF32LB57X)
+__HAL_ROM_USED HAL_StatusTypeDef HAL_RCC_CalibrateRC48(void)
+{
+    /* TODO: need to calibrate as 50MHz */
+
+    uint32_t hxt_cnt;
+    uint32_t hrc_cnt;
+    uint16_t  cnt_diff;
+    uint16_t step_unit;
+    uint16_t ct_val ;
+    uint32_t i;
+
+    if (0 == (hwp_hpsys_aon->ACR & HPSYS_AON_ACR_HXT48_RDY))
+    {
+        return HAL_ERROR;
+    }
+
+    /* set cal length */
+    MODIFY_REG(hwp_hpsys_rcc->HRCCAL1, HPSYS_RCC_HRCCAL1_CAL_LENGTH_Msk,
+               MAKE_REG_VAL(0x3fff, HPSYS_RCC_HRCCAL1_CAL_LENGTH_Msk, HPSYS_RCC_HRCCAL1_CAL_LENGTH_Pos));
+
+    MODIFY_REG(hwp_pmuc->HRC_CR1, PMUC_HRC_CR1_CLKHP_SEL_Msk,
+               MAKE_REG_VAL(3, PMUC_HRC_CR1_CLKHP_SEL_Msk, PMUC_HRC_CR1_CLKHP_SEL_Pos));
+    MODIFY_REG(hwp_pmuc->HRC_CR1, PMUC_HRC_CR1_CLKLP_SEL_Msk,
+               MAKE_REG_VAL(3, PMUC_HRC_CR1_CLKLP_SEL_Msk, PMUC_HRC_CR1_CLKLP_SEL_Pos));
+
+    /* set start cfg to mid value */
+    ct_val    = 0x200;
+    step_unit = 0x100 ;
+
+    /* binary search  */
+    for (i = 0; i < 11; i++)
+    {
+        MODIFY_REG(hwp_pmuc->HRC_CR1, PMUC_HRC_CR1_FREQ_TRIM_Msk,
+                   MAKE_REG_VAL(ct_val, PMUC_HRC_CR1_FREQ_TRIM_Msk, PMUC_HRC_CR1_FREQ_TRIM_Pos));
+
+        HAL_Delay_us(3);
+
+        /* enable hrc cal */
+        hwp_hpsys_rcc->HRCCAL1 |= HPSYS_RCC_HRCCAL1_CAL_EN;
+
+        /* wait for cal done */
+        while (!(hwp_hpsys_rcc->HRCCAL1 & HPSYS_RCC_HRCCAL1_CAL_DONE))
+        {
+        }
+
+        /* read out cal result */
+        hxt_cnt = GET_REG_VAL(hwp_hpsys_rcc->HRCCAL2, HPSYS_RCC_HRCCAL2_HXT_CNT_Msk, HPSYS_RCC_HRCCAL2_HXT_CNT_Pos);
+        hrc_cnt = GET_REG_VAL(hwp_hpsys_rcc->HRCCAL2, HPSYS_RCC_HRCCAL2_HRC_CNT_Msk, HPSYS_RCC_HRCCAL2_HRC_CNT_Pos);
+
+
+        /* disable hrc cal */
+        hwp_hpsys_rcc->HRCCAL1 &= ~HPSYS_RCC_HRCCAL1_CAL_EN ;
+
+        if (hxt_cnt > hrc_cnt)
+        {
+            ct_val += step_unit;
+            cnt_diff = hxt_cnt - hrc_cnt;
+        }
+        else
+        {
+            ct_val -= step_unit;
+            cnt_diff = hrc_cnt - hxt_cnt;
+        }
+        if (cnt_diff < 64)
+        {
+            break;
+        }
+        step_unit >>= 1 ;
+    }
+    //printf("Calibration result : hxt_cnt = %d, hrc_cnt = %d, cnt_diff=%d\n",hxt_cnt, hrc_cnt, cnt_diff  );
+    if (cnt_diff > 160)
+    {
+        return HAL_ERROR;
+    }
+    else
+    {
+        return HAL_OK;
+    }
+
+
+    return HAL_OK;
+}
 #else
 __HAL_ROM_USED HAL_StatusTypeDef HAL_RCC_CalibrateRC48(void)
 {
@@ -2366,13 +2491,13 @@ void HAL_RCC_Init(void)
     HAL_RCC_DisableModule(RCC_MOD_NNACC);
 #endif /* SF32LB55X */
 
-#if defined(SF32LB52X)
+#if defined(SF32LB52X) || defined(SF32LB57X)
     HAL_RCC_HCPU_DeepWFIClockSelect(true, RCC_SYSCLK_HRC48);
     HAL_RCC_HCPU_SetDeepWFIDiv(12, 0, 1);
 
     /* select RC48 as clock source, RC48 has been calibrated */
     HAL_RCC_HCPU_ClockSelect(RCC_CLK_MOD_HP_PERI, RCC_CLK_PERI_HRC48);
-#endif /* SF32LB52X */
+#endif /* SF32LB52X || SF32LB57X */
 
 #else
 #endif /* SOC_BF0_HCPU */
@@ -2400,7 +2525,7 @@ void HAL_RCC_HCPU_SetDeepWFIDiv(int8_t div, int8_t pdiv1, int8_t pdiv2)
     {
         if (0 == pdiv2)
         {
-            pdiv2 = 1;//The hardware requirements cannot be zero.
+            pdiv2 = 1; //The hardware requirements cannot be zero.
         }
         mask |= HPSYS_RCC_DWCFGR_PDIV2_Msk;
         reg |= MAKE_REG_VAL(pdiv2, HPSYS_RCC_DWCFGR_PDIV2_Msk, HPSYS_RCC_CFGR_PDIV2_Pos);
@@ -2433,8 +2558,9 @@ void HAL_RCC_HCPU_GetDeepWFIDiv(int *div, int *pdiv1, int *pdiv2)
 
 __HAL_ROM_USED void HAL_RCC_HCPU_DeepWFIClockSelect(bool sys_clk, uint32_t sys_clk_src)
 {
-
+#ifdef HPSYS_RCC_DWCFGR_SEL_SYS_LP
     hwp_hpsys_rcc->DWCFGR &= ~HPSYS_RCC_DWCFGR_SEL_SYS_LP;
+#endif /* HPSYS_RCC_DWCFGR_SEL_SYS_LP */
     MODIFY_REG(hwp_hpsys_rcc->DWCFGR, HPSYS_RCC_DWCFGR_SEL_SYS_Msk,
                MAKE_REG_VAL(sys_clk_src, HPSYS_RCC_DWCFGR_SEL_SYS_Msk, HPSYS_RCC_DWCFGR_SEL_SYS_Pos));
 
@@ -2477,7 +2603,7 @@ void HAL_RCC_Reset_DMAC3_and_MPI5()
 }
 #endif
 
-#if defined(SF32LB52X) && defined(SOC_BF0_HCPU)
+#if (defined(SF32LB52X) || defined(SF32LB57X)) && defined(SOC_BF0_HCPU)
 __STATIC_INLINE void HAL_RCC_HCPU_ConfigSxModeVolt(HPSYS_DvfsModeTypeDef new_dvfs_mode)
 {
     uint8_t vout_ref;
@@ -2532,7 +2658,12 @@ static HAL_StatusTypeDef HAL_RCC_HCPU_SwitchDvfsD2S(HPSYS_DvfsModeTypeDef new_dv
     {
         HAL_HPAON_EnableXT48();
         /* configure memory param */
+        //TODO:
+#ifdef HPSYS_CFG_ULPMCR_RAM_RM_Pos
         hwp_hpsys_cfg->ULPMCR = hpsys_dvfs_config[new_dvfs_mode].ulpmcr;
+#else
+        hwp_hpsys_cfg->MCR = hpsys_dvfs_config[new_dvfs_mode].ulpmcr;
+#endif
         r = HAL_RCC_HCPU_EnableDLL1(freq_in_mhz * 1000000);
         if (HAL_OK != r)
         {
@@ -2576,7 +2707,12 @@ static HAL_StatusTypeDef HAL_RCC_HCPU_SwitchDvfsS2D(HPSYS_DvfsModeTypeDef new_dv
     HAL_HPAON_DisableXT48();
 
     /* configure memory param */
+//TODO:
+#ifdef HPSYS_CFG_ULPMCR_RAM_RM_Pos
     hwp_hpsys_cfg->ULPMCR = hpsys_dvfs_config[new_dvfs_mode].ulpmcr;
+#else
+    hwp_hpsys_cfg->MCR = hpsys_dvfs_config[new_dvfs_mode].ulpmcr;
+#endif
     /* switch to D mode */
     hwp_hpsys_cfg->SYSCR |= HPSYS_CFG_SYSCR_LDO_VSEL_Msk;
 
@@ -2758,7 +2894,7 @@ HPSYS_DvfsModeTypeDef HAL_RCC_HCPU_GetCurrentDvfsMode(void)
     return curr_dvfs_mode;
 }
 
-#endif /* SF32LB52X && SOC_BF0_HCPU */
+#endif /* (SF32LB52X || SF32LB57X) && SOC_BF0_HCPU */
 
 #if defined(SF32LB56X) && defined(SOC_BF0_HCPU)
 

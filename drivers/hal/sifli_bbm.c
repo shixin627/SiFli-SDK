@@ -6,8 +6,9 @@
 
 /*
 */
+#include <stdint.h>
+#include <string.h>
 #include "sifli_bbm.h"
-#include "string.h"
 
 typedef struct
 {
@@ -229,8 +230,6 @@ static int bbm_map_new_blk(uint16_t bblk)
     {
         if (bbm_local[0].stru_tbl[i].logic_blk == bblk)
         {
-            // old map block is bad now mark it
-            bbm_mark_bb(bbm_local[0].stru_tbl[i].physical_blk);
             BBM_ERR("Old map logic blk %d to phy %d fail, mark phy as bad\n", bblk, bbm_local[0].stru_tbl[i].physical_blk);
             cnt = i;
             break;
@@ -472,16 +471,16 @@ static int bbm_det_bbm_blk(void)
         bad = bbm_get_bb(blk);
         if (bad)
         {
-            blk++;
             BBM_INFO("DET %d bad\n", blk);
+            blk++;
             continue;
         }
 #ifdef  BBM_TABLE_AUTO_TEST
         int fmt = bbm_get_test_format(blk, 0);
         if (fmt == ERR_FACT_BAD)
         {
-            blk++;
             BBM_DBG("DET %d bad\n", blk);
+            blk++;
             continue;
         }
 #endif
@@ -746,7 +745,6 @@ int bbm_init_table()
             {
                 BBM_INFO("Block %d test as bad block\n", i);
                 bbm_mark_bb(i);
-                bbm_local[0].free_blk_num--;
                 continue;
             }
 #endif
@@ -754,14 +752,14 @@ int bbm_init_table()
             if (res != 0)
             {
                 BBM_WARN("Block %d erase fail, mark as bad\n", i);
+                // TODO: I think it's better to mark bb here because the first 4 blocks are used as bbm table below,
+                // it only checks whether the first 4 bytes are 0xFF, it may be not safe.
                 //bbm_mark_bb(i);
-                bbm_local[0].free_blk_num--;
             }
         }
         else
         {
             BBM_INFO("Block %d check as bad block\n", i);
-            bbm_local[0].free_blk_num--;
         }
     }
     BBM_DBG("All reserved block erased\n");
@@ -829,8 +827,8 @@ int bbm_init_table()
         bad = bbm_get_bb(next_idle);
         if (bad)
         {
+            BBM_DBG("DET2 %d bad\n", next_idle);
             next_idle++;
-            BBM_DBG("DET %d bad\n", next_idle);
             continue;
         }
         memset(bbm_page_cache, 0xff, bbm_page_size);
@@ -1052,6 +1050,10 @@ retry:
             {
                 blk2 = bbm_map_new_blk(blk);
                 res = port_erase_block(blk2);
+                if (res)
+                {
+                    bbm_mark_bb(blk2);
+                }
             }
             while (res != 0);
             BBM_INFO("Write to blk %d fail, map to blk %d\n", blk, blk2);
@@ -1078,6 +1080,7 @@ retry:
                             BBM_ERR("Map blk %d fail more than 3 times\n", blk);
                             HAL_ASSERT(0);
                         }
+                        bbm_mark_bb(blk2);
                         goto retry;
                     }
                     else
@@ -1088,6 +1091,15 @@ retry:
                     }
                 }
             }
+
+            if (blk != nblk)
+            {
+                // old map block is bad now mark it
+                bbm_mark_bb(nblk);
+                // use new block as map block
+                nblk = blk2;
+            }
+
             // write again, check result and do while?
             res = port_write_page(blk2, page, data, spare, spare_len);
             if (res <= 0)
@@ -1176,6 +1188,10 @@ int bbm_erase_block(int blk)
             {
                 blk2 = bbm_map_new_blk(blk);
                 res = port_erase_block(blk2);
+                if (res)
+                {
+                    bbm_mark_bb(blk2);
+                }
             }
             while (res != 0);
             BBM_ERR("Map blk %d to blk %d when erase\n", blk, blk2);

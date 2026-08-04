@@ -580,7 +580,26 @@ static rt_size_t master_xfer_lcpu_patch_a0(struct rt_i2c_bus_device *bus, struct
     }
     else
     {
-        ret_v = i2c_ops_rom.master_xfer(bus, msgs, num);
+        ret_v = 0;
+        for (rt_uint32_t i = 0; i < num; i++)
+        {
+            if (msgs[i].flags & RT_I2C_RD)
+            {
+                if (bus->parent.open_flag & RT_DEVICE_FLAG_INT_RX)
+                {
+                    hi2c->Instance->IER &= (~(I2C_IER_RFIE | I2C_IER_TEIE));
+                }
+            }
+            else
+            {
+                if (bus->parent.open_flag & RT_DEVICE_FLAG_INT_TX)
+                {
+                    hi2c->Instance->IER &= (~(I2C_IER_TEIE));
+                }
+            }
+            ret_v += i2c_ops_rom.master_xfer(bus, &msgs[i], 1);
+        }
+        // ret_v = i2c_ops_rom.master_xfer(bus, msgs, num);
     }
 
     if (__HAL_I2C_GET_FLAG(hi2c, I2C_SR_UB) == SET) //Fix I2C STOP not finished in ROM
@@ -867,6 +886,146 @@ static uint32_t get_index_by_bus_handle(struct rt_i2c_bus_device *bus)
     return UINT32_MAX;
 }
 
+#ifdef DMA_LINK_LIST_SUPPORT
+static bool master_xfer_multiple_used(struct rt_i2c_bus_device *bus, struct rt_i2c_msg msgs[], rt_uint32_t num)
+{
+    uint32_t i;
+
+    for (i = 0; i < num; i++)
+    {
+        /* multiple xfer only support data size less than 512 bytes */
+        if (msgs->len > 511)
+        {
+            return false;
+        }
+        msgs++;
+    }
+    return true;
+}
+
+static rt_size_t master_xfer_multiple(struct rt_i2c_bus_device *bus, struct rt_i2c_msg msgs[], rt_uint32_t num)
+{
+    uint32_t i;
+    I2C_RtxRequestTypeDef *reqs;
+    I2C_RtxRequestTypeDef *req;
+    struct rt_i2c_msg *msg;
+    rt_size_t sent_num = 0;
+    rt_size_t ret = (0);
+    rt_uint32_t index = 0;
+    rt_uint32_t i2c_index;
+    struct bf0_i2c *bf0_i2c = RT_NULL;
+    HAL_StatusTypeDef status;
+    rt_err_t rt_err_v;
+    uint32_t cmd_buf_size;
+    void *cmd_buf;
+
+    RT_ASSERT(bus != RT_NULL);
+
+    bf0_i2c = (struct bf0_i2c *)bus;
+
+    i2c_index = get_index_by_bus_handle(bus);
+    LOG_I("master_xfer start");
+
+    if (0 == num)
+    {
+        return 0;
+    }
+
+#ifdef RT_USING_PM
+    rt_pm_request(PM_SLEEP_MODE_IDLE);
+    rt_pm_hw_device_start();
+#endif  /* RT_USING_PM */
+    __HAL_I2C_ENABLE(&bf0_i2c->handle);
+
+    reqs = rt_malloc(num * sizeof(*req));
+    RT_ASSERT(reqs);
+    req = reqs;
+
+    msg = &msgs[0];
+    for (i = 0; i < num; i++)
+    {
+        req->DevAddress = msg->addr;
+        req->Size = msg->len;
+        req->pData = msg->buf;
+        if (msg->flags & RT_I2C_MEM_ACCESS)
+        {
+            req->MemAddress = msg->mem_addr;
+            if (8 >= msg->mem_addr_size)
+            {
+                req->MemAddSize = I2C_MEMADD_SIZE_8BIT;
+            }
+            else
+            {
+                sent_num = 0;
+                goto __EXIT;
+            }
+        }
+        else
+        {
+            req->MemAddSize = I2C_MEMADD_SIZE_0BIT;
+        }
+        req->IsRead = (msg->flags & RT_I2C_RD) ? 1 : 0;
+        req++;
+        msg++;
+    }
+
+    cmd_buf_size = HAL_I2C_GetMultiRtxCmdBufSize(reqs, num);
+    cmd_buf = rt_malloc(cmd_buf_size);
+    RT_ASSERT(cmd_buf);
+    status = HAL_I2C_PrepareMultiRtxCmdBuf(&bf0_i2c->handle, reqs, num, cmd_buf, cmd_buf_size);
+    if (HAL_OK != status)
+    {
+        goto __EXIT;
+    }
+    status = HAL_I2C_ReceiveTransmitMultiple_DMA(&bf0_i2c->handle, cmd_buf);
+    if (HAL_OK != status)
+    {
+        goto __EXIT;
+    }
+    rt_err_v = rt_sem_take(i2c_sema[i2c_index], bus->timeout);
+    if (-RT_ETIMEOUT == rt_err_v)
+    {
+        LOG_E("i2c sem timeout!");
+        status = HAL_TIMEOUT;
+        goto __EXIT;
+    }
+
+    if (bf0_i2c->handle.ErrorCode)
+    {
+        status = HAL_ERROR;
+        goto __EXIT;
+    }
+
+    sent_num = num;
+
+__EXIT:
+    if (HAL_OK != status)
+    {
+        LOG_E("bus err:%d, xfer:%d/%d, i2c_stat:%x, i2c_errcode=%x", status, index, num, HAL_I2C_GetState(&bf0_i2c->handle), bf0_i2c->handle.ErrorCode);
+
+        HAL_I2C_Reset(&bf0_i2c->handle);
+        LOG_E("reset and send 9 clks");
+    }
+    __HAL_I2C_DISABLE(&bf0_i2c->handle);
+#ifdef RT_USING_PM
+    rt_pm_hw_device_stop();
+    rt_pm_release(PM_SLEEP_MODE_IDLE);
+#endif  /* RT_USING_PM */
+
+    if (reqs)
+    {
+        rt_free(reqs);
+    }
+
+    if (cmd_buf)
+    {
+        rt_free(cmd_buf);
+    }
+
+    return sent_num;
+}
+#endif /* DMA_LINK_LIST_SUPPORT */
+
 static rt_size_t master_xfer(struct rt_i2c_bus_device *bus, struct rt_i2c_msg msgs[], rt_uint32_t num)
 {
     rt_size_t ret = (0);
@@ -880,6 +1039,16 @@ static rt_size_t master_xfer(struct rt_i2c_bus_device *bus, struct rt_i2c_msg ms
     rt_err_t rt_err_v;
 
     RT_ASSERT(bus != RT_NULL);
+
+#ifdef DMA_LINK_LIST_SUPPORT
+    if ((num > 1) && (bus->parent.open_flag & (RT_DEVICE_FLAG_DMA_RX | RT_DEVICE_FLAG_DMA_TX)))
+    {
+        if (master_xfer_multiple_used(bus, msgs, num))
+        {
+            return master_xfer_multiple(bus, msgs, num);
+        }
+    }
+#endif /* DMA_LINK_LIST_SUPPORT */
 
     bf0_i2c = (struct bf0_i2c *)bus;
 
@@ -908,7 +1077,7 @@ static rt_size_t master_xfer(struct rt_i2c_bus_device *bus, struct rt_i2c_msg ms
             }
             if (msg->flags & RT_I2C_RD)
             {
-                if (bus->parent.open_flag & RT_DEVICE_FLAG_DMA_RX)
+                if ((bus->parent.open_flag & RT_DEVICE_FLAG_DMA_RX) && (msg->len > 1))
                 {
                     HAL_DMA_Init(&bf0_i2c->dma.dma_rx);
                     mpu_dcache_invalidate(msg->buf, msg->len);
@@ -926,7 +1095,7 @@ static rt_size_t master_xfer(struct rt_i2c_bus_device *bus, struct rt_i2c_msg ms
             }
             else
             {
-                if (bus->parent.open_flag & RT_DEVICE_FLAG_DMA_TX)
+                if ((bus->parent.open_flag & RT_DEVICE_FLAG_DMA_TX) && (msg->len > 1))
                 {
                     HAL_DMA_Init(&bf0_i2c->dma.dma_tx);
                     status = HAL_I2C_Mem_Write_DMA(&bf0_i2c->handle, msg->addr, msg->mem_addr, mem_addr_type, msg->buf, msg->len);
@@ -947,7 +1116,7 @@ static rt_size_t master_xfer(struct rt_i2c_bus_device *bus, struct rt_i2c_msg ms
         {
             if (msg->flags & RT_I2C_RD)
             {
-                if (bus->parent.open_flag & RT_DEVICE_FLAG_DMA_RX)
+                if ((bus->parent.open_flag & RT_DEVICE_FLAG_DMA_RX) && (msg->len > 1))
                 {
                     HAL_DMA_Init(&bf0_i2c->dma.dma_rx);
                     mpu_dcache_invalidate(msg->buf, msg->len);
@@ -965,7 +1134,7 @@ static rt_size_t master_xfer(struct rt_i2c_bus_device *bus, struct rt_i2c_msg ms
             }
             else
             {
-                if (bus->parent.open_flag & RT_DEVICE_FLAG_DMA_TX)
+                if ((bus->parent.open_flag & RT_DEVICE_FLAG_DMA_TX) && (msg->len > 1))
                 {
                     HAL_DMA_Init(&bf0_i2c->dma.dma_tx);
                     status = HAL_I2C_Master_Transmit_DMA(&bf0_i2c->handle, msg->addr, msg->buf, msg->len);
@@ -1405,6 +1574,7 @@ __ROM_USED int rt_hw_i2c_init2(bf0_i2c_t *objs, bf0_i2c_config_t *cfg, struct rt
         objs[i].bus.parent.user_data = &cfg[i];
         objs[i].bus.ops = &ops;
         objs[i].handle.Instance = cfg[i].Instance;
+        objs[i].handle.irq_type = cfg[i].irq_type;
         //i2c_obj[i].handle.Init = i2c_init_default[i];
 
         if (objs[i].i2c_dma_flag)

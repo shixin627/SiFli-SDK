@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <rtthread.h>
 #include <drv_nnacc.h>
 #include <stdio.h>
@@ -278,7 +284,8 @@ int main(void)
         rt_kprintf("NNACC Start failed: %d\n", ret);
     }
 
-
-
-    while (1);
+    while (1)
+    {
+        rt_thread_mdelay(5000);
+    }
 }

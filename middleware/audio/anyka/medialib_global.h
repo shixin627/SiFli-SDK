@@ -1,10 +1,8 @@
-﻿/**
- * @file medialib_global.h
- * @brief Define the global public types for media lib, video lib and audio lib
+﻿/*
+ * SPDX-FileCopyrightText: 2020-2026 SiFli Technologies(Nanjing) Co., Ltd
+ * SPDX-FileCopyrightText: 2020-2026 Anyka (GuangZhou) Software Technology Co., Ltd.
  *
- * Copyright (C) 2020 Anyka (Guangzhou) Microelectronics Technology Co., Ltd.
- * @update date 2020-06-11
- * @version 4.3
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifndef _MEDIA_LIB_GLOBAL_H_

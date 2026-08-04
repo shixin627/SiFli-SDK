@@ -1,82 +1,87 @@
 # Opus Example
 
-Source code path: example/multimedia/audio/opus
+Source: example/multimedia/audio/opus
 
 ## Supported Platforms
-<!-- Which boards and chip platforms are supported -->
-+ eh-lb525
+
+- eh-lb525
 
 ## Overview
-<!-- Example introduction -->
-This example demonstrates how to use the Opus audio codec library for recording, encoding, decoding, and playback, including:
 
-+ Record PCM audio data at a 16kHz sampling rate from the microphone via mic recording
-+ Encoding: Compress PCM data using the Opus codec (10ms frame length, approximately 16kbps bitrate)
-+ Decoding: Decompress audio data using the Opus decoder
-+ Playback: Play the decoded audio data through the speakers
+This example demonstrates how to use the Opus audio codec library to record, encode, decode, and play audio. The example includes:
 
-## Example Usage
-<!-- Explain how to use the example, such as connecting which hardware pins to observe waveforms, compilation and programming can reference related documents.
-For rt_device examples, also need to list the configuration switches used by this example, such as PWM example using PWM1, need to enable PWM1 in onchip menu -->
+- Recording PCM audio from a microphone at 16 kHz sample rate
+- Encoding: compressing PCM frames with the Opus encoder (10 ms frames, ~16 kbps)
+- Decoding: decompressing Opus-encoded audio with the Opus decoder
+- Playback: outputting decoded PCM to the speaker
+
+## Usage
 
 ### Hardware Requirements
-Before running this example, prepare:
-+ A development board supported by this example ([Supported Platforms](quick_start)).
-+ Speaker.
 
-### menuconfig Configuration
+Before running the example, prepare:
 
-1. This example needs to read and write files, so it needs to use a file system. Configure the `FAT` file system:
+- A supported development board (see quick_start)
+- A speaker
+
+### menuconfig Settings
+
+1. This example reads and writes files, so enable the FAT filesystem:
 ![RT_USING_DFS_ELMFAT](./assets/mc_fat.png)
 
-     ```{tip}
-     Mount root partition in mnt_init.
-     ```
+     Note: the root partition is mounted in `mnt_init`.
+
 2. Enable AUDIO CODEC and AUDIO PROC:
 ![AUDIO CODEC & PROC](./assets/mc_audcodec_audprc.png)
-3. Enable AUDIO(`AUDIO`):
+3. Enable AUDIO (`AUDIO`):
 ![AUDIO](./assets/mc_audio.png)
-4. Enable AUDIO MANAGER.(`AUDIO_USING_MANAGER`)
+4. Enable the Audio Manager (`AUDIO_USING_MANAGER`):
 ![AUDIO_USING_MANAGER](./assets/mc_audio_manager.png)
 
-### **Routine Description**
+### Notes
 
-```c
-If the opus_test() function contains opus_encoder_ctl(encoder, OPUS_SET_FORCE_MODE(MODE_SILK_ONLY));then define OPUS_STACK_SIZE as 20k.
+If `opus_test()` calls `opus_encoder_ctl(encoder, OPUS_SET_FORCE_MODE(MODE_SILK_ONLY));`, set `OPUS_STACK_SIZE` to 20k.
+If it does not call that function, set `OPUS_STACK_SIZE` to 200k.
 
-If the opus_test() function does not call opus_encoder_ctl(encoder, OPUS_SET_FORCE_MODE(MODE_SILK_ONLY));, then define `OPUS_STACK_SIZE` as 200k.
+### Build and Flash
+
+From the example project directory, build with scons:
+
+```
+scons --board=eh-lb525 -j32
 ```
 
-### Compilation and Programming
+Then go to the example `project/build_xx` directory and run `uart_download.bat`. Choose the serial port when prompted to flash:
 
-Switch to the example project directory and run the scons command to execute compilation:
+```
+./uart_download.bat
 
-> scons --board=eh-lb525 -j32
+Uart Download
+please input the serial port num:5
+```
 
-Switch to the example `project/build_xx` directory and run `uart_download.bat`, select the port as prompted for download:
+For detailed build and flash steps, see quick_start.
 
- >./uart_download.bat
+## Expected Behavior
 
->Uart Download
+Automatic: On startup the program records 10 seconds from the microphone, encodes and decodes the audio, then plays it back.
 
->please input the serial port num:5
+Manual commands:
+- `opus` — record 10 seconds to /mic16k.pcm, then encode/decode and play
+- `opus /mic16k.pcm` — read PCM from the specified file, then encode/decode and play
+- `opus xxxxx` — if the file does not exist, record and loopback in real time for 10 seconds (record and play simultaneously, Keep the speaker and mic separated, otherwise there will be feedback. You can put the speaker close to your ears to cover it.)
 
-For detailed steps on compilation and download, please refer to [Quick Start](quick_start).
+## Troubleshooting
 
-## Expected Results of Example
-<!-- Explain example running results, such as which LEDs will light up, which logs will be printed, to help users judge whether the example is running normally, running results can be explained step by step combined with code -->
-After the example starts:
-Start recording for ten seconds, then automatically play back after recording is complete. Expected successful recording and automatic playback.
+(No specific diagnostics provided.)
 
-## Exception Diagnosis
+## References
 
+For RT-Thread device examples, refer to the RT-Thread documentation (for example, see the RTC documentation on the RT-Thread website).
 
-## Reference Documents
-<!-- For rt_device examples, RT-Thread official website documentation provides detailed explanations, web links can be added here, for example, refer to RT-Thread's [RTC documentation](https://www.rt-thread.org/document/site/#/rt-thread-version/rt-thread-standard/programming-manual/device/rtc/rtc) -->
+## Revision History
 
-## Update History
-|Version |Date   |Release Notes |
+| Version | Date | Notes |
 |:---|:---|:---|
-|0.0.1 |10/2024 |Initial version |
-| | | |
-| | | |
+| 0.0.1 | 12/2025 | Initial release |
+

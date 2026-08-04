@@ -1,0 +1,9 @@
+menuconfig USING_CONTEXT_BACKUP
+    bool "Context Backup"
+    default n 
+    if USING_CONTEXT_BACKUP
+    config CONTEXT_BACKUP_COMPRESSION_ENABLED
+        bool "Enable compression"
+        default n
+        select PKG_USING_LZ4
+    endif

@@ -1,0 +1,20 @@
+menu "Battery"
+menuconfig BSP_USING_VBAT
+    bool "VBAT measured by ADC"
+    default n
+    if BSP_USING_VBAT  
+        config BSP_VBAT_ADC_PIN
+            int "VBAT PIN number"
+            default 123
+        config BSP_VBAT_ADC_CHN
+            int "ADC channel for VBAT"
+            default 5
+        config VBAT2ADC_KOHM
+            int "Impedance between VBAT to ADC PIN"
+            default 470
+        config GND2ADC_KOHM
+            int "Impedance between GND to ADC PIN"
+            default 1000
+    endif 
+
+endmenu

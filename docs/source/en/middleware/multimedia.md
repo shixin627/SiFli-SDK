@@ -676,6 +676,10 @@ RT_WEAK void audio_hardware_pa_stop(void)
     // Turn off PA
 }
 ```
+## Stereo Speaker Playback Settings
+Only the 58x series chips support this, requiring connection of two analog speakers, and enable
+CONFIG_BSP_ENABLE_DAC2=y
+For stereo playback, see the usage of BSP_ENABLE_DAC2 in config_tx() in audio_server.c
 
 ## EQ Switch Settings
 If using the chip's codec, there is a hardware EQ on the chip. Currently, the software settings only support 44.1k and 16k.You can modify this file to decide whether to turn the EQ on or off for a certain music type.

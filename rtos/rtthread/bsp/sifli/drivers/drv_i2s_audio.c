@@ -10,37 +10,20 @@
 #include <stdlib.h>
 #include "board.h"
 #include "drv_config.h"
-
 #include "string.h"
 #include "drv_i2s_audio.h"
-
-#if defined (SYS_HEAP_IN_PSRAM)
-    #undef calloc
-    #undef free
-    #undef malloc
-    extern void *app_sram_alloc(rt_size_t size);
-    extern void *app_sram_calloc(rt_size_t count, rt_size_t size);
-    extern void *app_sram_free(void *ptr);
-    #define  malloc(s)      app_sram_alloc(s)
-    #define  calloc(c, s)   app_sram_calloc(c, s)
-    #define  free(p)        app_sram_free(p)
-#endif
+#include "drv_dma.h"
 
 
 #ifdef FPGA
-static int bf0_enable_pll(uint32_t freq, uint8_t type)
+int bf0_enable_pll(uint32_t freq, uint8_t type)
 {
     return 0;
 }
-static void bf0_disable_pll()
+void bf0_disable_pll()
 {
 
 }
-static void set_pll_state(uint8_t state)
-{
-
-}
-
 #endif
 
 #if defined(BSP_ENABLE_I2S_CODEC)||defined(BSP_ENABLE_I2S3)||defined(_SIFLI_DOXYGEN_)
@@ -60,26 +43,7 @@ static void set_pll_state(uint8_t state)
   * @{
   */
 
-struct i2s_audio_cfg_t
-{
-    DMA_Channel_TypeDef   *dma_handle;      /*!< DMA device Handle used by this driver */
-    I2S_TypeDef        *i2s_handle;         /*!< I2S device Handle used by this driver */
-    char               *name;               /*!< Audio device name, for example, 'mic' for recording device */
-    rt_uint8_t          dma_request;        /*!< DMA request type for I2S, defined in dma_config.h */
-    rt_uint8_t          is_record;          /*!< Audio device type, 1: for recording, 0: for playback*/
-    rt_uint8_t          reqdma_tx;        /*!< DMA request type for I2S TX */
-    DMA_Channel_TypeDef   *hdma_tx;      /*!< DMA device Handle used I2S TX */
-};
 
-struct bf0_i2s_audio
-{
-    struct rt_audio_device audio_device;    /*!< audio device registerd to OS*/
-    I2S_HandleTypeDef hi2s;
-    uint8_t *rx_buf;
-    uint8_t *tx_buf;
-    uint8_t *tx_pos;
-    uint16_t tx_buf_size;         /*!< I2S TX buffer size */
-};
 
 static i2s_rx_callback_t rx_callback;
 
@@ -89,7 +53,8 @@ static CLK_DIV_T  txrx_clk_div[9]  = {{48000, 125, 125,  5}, {44100, 136, 136,  
     {16000, 384, 384, 12}, {12000, 500, 500, 20}, {11025, 544, 544, 16}, { 8000, 750, 750, 30}
 };//{16000, 375, 375, 15}  { 8000, 750, 750, 30}} { 8000, 768, 768, 24}
 #else  //PLL
-//PLL 16k 49.152M  44.1k  45.1584M
+//PLL 49.152M(16k), 45.1584M(44.1k)
+//spclk_div:8
 //lrclk_duty_high:PLL/spclk_div/samplerate/2: 64=49.152M/48k/8/2
 //bclk:lrclk_duty_high/32
 #define I2S_USE_DOUBLE_MCLK 0
@@ -105,14 +70,19 @@ static CLK_DIV_T  txrx_clk_div[9]  = {{48000, 64, 64,  2}, {44100, 64, 64,  2}, 
 #endif
 #else
 //clk:3.072M  spclk:1  only 16k 8k used
-static CLK_DIV_T  txrx_clk_div[9]  = {{48000, 64, 64,  2}, {44100, 64, 64,  2}, {32000, 96, 96,  3}, {24000, 128, 128, 4}, {22050, 128, 128,  4},
-    {16000, 96, 96,  3}, {12000, 256, 256, 8}, {11025, 256, 256, 8}, { 8000, 192, 192, 6}
+static CLK_DIV_T  txrx_clk_div[9]  =
+{
+    {48000, 64, 64,  2},
+    {44100, 64, 64,  2},
+    {32000, 96, 96,  3},
+    {24000, 128, 128, 4},
+    {22050, 128, 128,  4},
+    {16000, 96, 96,  3},
+    {12000, 256, 256, 8},
+    {11025, 256, 256, 8},
+    { 8000, 192, 192, 6}
 };
 #endif
-
-/**
- *  Register and use Mic device
-*/
 
 #ifdef SF32LB58X
     #ifndef SOC_BF0_HCPU
@@ -255,7 +225,324 @@ static rt_err_t bf0_audio_getcaps(struct rt_audio_device *audio, struct rt_audio
 }
 
 /**
-  * @brief  Config audio device.
+  * @brief  Config i2s device samplr rate.
+  * @param[in]  hi2s: i2s device handle.
+  * @param[in]  dir:  i2s device input or output.
+  * @param[in]  samplerate: i2s sample rate to config
+  * @retval RT_EOK if success, otherwise -RT_ERROR
+  */
+static rt_err_t bf0_i2s_sampleRate_cfg(I2S_HandleTypeDef *hi2s, int dir, uint32_t samplerate)
+{
+    uint8_t clk_index = 0;
+    CLK_DIV_T *clk_div = NULL;
+
+    RT_ASSERT(hi2s != NULL);
+    RT_ASSERT(dir);
+
+    for (int i = 0; i < (sizeof(txrx_clk_div) / sizeof(txrx_clk_div[0])); i++)
+    {
+        if (txrx_clk_div[i].samplerate == samplerate)
+        {
+            clk_index = i;
+            clk_div = &txrx_clk_div[i];
+            break;
+        }
+    }
+
+    if (clk_div == NULL)
+    {
+        LOG_E("sample rate %d clk_div unmatched.", samplerate);
+        return RT_ERROR;
+    }
+
+    if (dir & AUDIO_TYPE_INPUT)
+    {
+        hi2s->Init.rx_cfg.sample_rate = samplerate;
+        hi2s->Init.rx_cfg.clk_div_index = clk_index;
+        hi2s->Init.rx_cfg.clk_div = clk_div;
+        HAL_I2S_Config_Receive(hi2s, &(hi2s->Init.rx_cfg));
+        LOG_I("i2s rx sample rate config %d", samplerate);
+    }
+
+    if (dir & AUDIO_TYPE_OUTPUT)
+    {
+        hi2s->Init.tx_cfg.sample_rate = samplerate;
+        hi2s->Init.tx_cfg.clk_div_index = clk_index;
+        hi2s->Init.tx_cfg.clk_div = clk_div;
+        HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
+        LOG_I("i2s tx sample rate config %d", samplerate);
+    }
+
+    return RT_EOK;
+}
+
+/**
+  * @brief  Config i2s device samplr rate.
+  * @param[in]  hi2s: i2s device handle.
+  * @param[in]  dir:  i2s device input or output.
+  * @param[in]  samplefmt: i2s sample formate to config
+  * @retval RT_EOK if success, otherwise -RT_ERROR
+  */
+static rt_err_t bf0_i2s_sampleFmt_cfg(I2S_HandleTypeDef *hi2s, int dir, uint8_t samplefmt)
+{
+    RT_ASSERT(hi2s != NULL);
+    RT_ASSERT(samplefmt > 0);
+    RT_ASSERT(dir);
+
+    if (dir & AUDIO_TYPE_INPUT)
+    {
+#ifdef I2S_TDM_MODE_SUPPORT
+        hi2s->Init.rx_cfg.tdm_slot_width = (uint8_t)samplefmt;
+#endif
+        hi2s->Init.rx_cfg.data_dw = (uint8_t)samplefmt;
+        HAL_I2S_Config_Receive(hi2s, &(hi2s->Init.rx_cfg));
+        LOG_I("i2s rx sample formate config %d", samplefmt);
+    }
+
+    if (dir & AUDIO_TYPE_OUTPUT)
+    {
+#ifdef I2S_TDM_MODE_SUPPORT
+        hi2s->Init.tx_cfg.tdm_slot_width = (uint8_t)samplefmt;
+#endif
+        hi2s->Init.tx_cfg.data_dw = (uint8_t)samplefmt;
+        HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
+        LOG_I("i2s tx sample formate config %d", samplefmt);
+    }
+
+    return RT_EOK;
+}
+
+/**
+  * @brief  Config i2s device samplr rate.
+  * @param[in]  hi2s: i2s device handle.
+  * @param[in]  dir:  i2s device input or output.
+  * @param[in]  channel: i2s sample channel to config
+  * @retval RT_EOK if success, otherwise -RT_ERROR
+  */
+static rt_err_t bf0_i2s_channels_cfg(I2S_HandleTypeDef *hi2s, int dir, uint8_t channels)
+{
+    RT_ASSERT(hi2s != NULL);
+#ifndef I2S_TDM_MODE_SUPPORT
+    RT_ASSERT((channels == 1) || (channels == 2));
+#endif
+    RT_ASSERT(dir);
+
+    if (dir & AUDIO_TYPE_INPUT)
+    {
+#ifdef I2S_TDM_MODE_SUPPORT
+        hi2s->Init.rx_cfg.tdm_slot_num = channels;
+#endif
+        hi2s->Init.rx_cfg.track = (channels == 1) ? 1 : 0; //mono:1, stereo:0
+        HAL_I2S_Config_Receive(hi2s, &(hi2s->Init.rx_cfg));
+        LOG_I("i2s rx channel config %s", (channels == 1) ? "mono" : "stereo");
+    }
+
+    if (dir & AUDIO_TYPE_OUTPUT)
+    {
+#ifdef I2S_TDM_MODE_SUPPORT
+        hi2s->Init.tx_cfg.tdm_slot_num = channels;
+#endif
+        hi2s->Init.tx_cfg.track = (channels == 1) ? 1 : 0; //mono:1, stereo:0
+        HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
+        LOG_I("i2s tx channel config %s", (channels == 1) ? "mono" : "stereo");
+    }
+
+    return RT_EOK;
+}
+
+/**
+  * @brief  Config i2s device samplr rate.
+  * @param[in]  hi2s: i2s device handle.
+  * @param[in]  dir:  i2s device input or output.
+  * @param[in]  mode: i2s work mode to config, 0:master, 1:slave
+  * @retval RT_EOK if success, otherwise -RT_ERROR
+  */
+static rt_err_t bf0_i2s_workMode_cfg(I2S_HandleTypeDef *hi2s, int dir, uint8_t mode)
+{
+    RT_ASSERT(hi2s != NULL);
+    RT_ASSERT((mode == I2S_WORK_MASTER) || (mode == I2S_WORK_SLAVE));
+    RT_ASSERT(dir);
+
+    if (dir & AUDIO_TYPE_INPUT)
+    {
+#ifndef I2S_RX_TX_SEPARATE
+        hi2s->Init.rx_cfg.slave_mode = 1; //i2s rx always in slave mode
+#else
+        hi2s->Init.rx_cfg.slave_mode = mode;
+#endif
+        HAL_I2S_Config_Receive(hi2s, &(hi2s->Init.rx_cfg));
+        LOG_I("i2s rx mode config %s", hi2s->Init.rx_cfg.slave_mode ? "slave" : "master");
+    }
+
+    if (dir & AUDIO_TYPE_OUTPUT)
+    {
+        hi2s->Init.tx_cfg.slave_mode = mode;
+        HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
+        LOG_I("i2s tx mode config %s", hi2s->Init.tx_cfg.slave_mode ? "slave" : "master");
+    }
+
+
+#ifdef SF32LB58X
+    // for i2s1,  rx must be same as tx
+    if (hwp_i2s1 == hi2s->Instance && mode == 0)
+    {
+        hi2s->Init.rx_cfg.slave_mode = 0;
+    }
+#endif
+
+    return RT_EOK;
+}
+
+/**
+  * @brief  Config i2s device track source.
+  * @param[in]  hi2s: i2s device handle.
+  * @param[in]  sel: i2s track source.
+  * @retval RT_EOK if success, otherwise -RT_ERROR
+  */
+static rt_err_t bf0_i2s_track_src_select(I2S_HandleTypeDef *hi2s, uint8_t sel)
+{
+    uint8_t track_sel = 0;
+
+    RT_ASSERT(hi2s != NULL);
+    RT_ASSERT(sel <= I2S_TRK_ALL_SRCR);
+
+    switch (sel)
+    {
+    case I2S_TRK_LSL_RSR:
+        track_sel = 0;
+        break;
+    case I2S_TRK_LSR_RSL:
+        track_sel = 5;
+        break;
+    case I2S_TRK_SRC_LPRD2:
+        track_sel = 10;
+        break;
+    case I2S_TRK_ALL_SRCL:
+        track_sel = 1;
+        break;
+    case I2S_TRK_ALL_SRCR:
+        track_sel = 4;
+        break;
+    default:
+        LOG_E("i2s track select err.");
+        return RT_ERROR;
+    }
+
+    hi2s->Init.rx_cfg.chnl_sel = track_sel;
+    HAL_I2S_Config_Receive(hi2s, &(hi2s->Init.rx_cfg));
+    hi2s->Init.tx_cfg.chnl_sel = track_sel;
+    HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
+
+    return RT_EOK;
+}
+
+/**
+  * @brief  i2s tx vol config
+  * @param[in]  hi2s: i2s device handle.
+  * @param[in]  vol: the vol value.
+  * @retval RT_EOK if success, otherwise -RT_ERROR
+  */
+static rt_err_t bf0_i2s_tx_vol_cfg(I2S_HandleTypeDef *hi2s, uint8_t vol)
+{
+    RT_ASSERT(hi2s != NULL);
+
+    if (vol > 15)
+    {
+        LOG_E("i2s vol cfg err %d.", vol);
+        return RT_ERROR;
+    }
+
+    hi2s->Init.tx_cfg.vol = vol;
+    HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
+
+    return RT_EOK;
+}
+
+#ifdef I2S_TDM_MODE_SUPPORT
+/**
+  * @brief  i2s tdm mode used
+  * @param[in]  hi2s: i2s device handle.
+  * @param[in]  dir:  i2s device input or output.
+  * @param[in]  used: tdm used.
+  * @retval RT_EOK if success, otherwise -RT_ERROR
+  */
+static rt_err_t bf0_i2s_tdm_used(I2S_HandleTypeDef *hi2s, int dir, uint16_t tdm)
+{
+    static CLK_DIV_T tdm_rx_clk = {0}, tdm_tx_clk = {0};
+    uint32_t i2s_gclk, slot_num, sample_rate, sample_width;
+
+    RT_ASSERT(hi2s != NULL);
+
+    if (dir & AUDIO_TYPE_INPUT)
+    {
+        hi2s->Init.rx_cfg.tdm_used = (tdm & 0x1UL);
+        __HAL_I2S_TDM_RX_INTF_CONV_BYPASS(hi2s, (!hi2s->Init.rx_cfg.tdm_used));
+        hi2s->Init.rx_cfg.tdm_mode = ((tdm >> 1) & 0x1UL);
+        hi2s->Init.rx_cfg.tdm_clk_deg = ((tdm >> 2) & 0x1UL);
+        hi2s->Init.rx_cfg.tdm_fsync_width = ((tdm >> 4) & 0xFFUL);
+        /*tdm rx clk set*/
+        slot_num = hi2s->Init.rx_cfg.tdm_slot_num;
+        sample_rate = hi2s->Init.rx_cfg.sample_rate;
+        sample_width = hi2s->Init.rx_cfg.tdm_slot_width;
+        RT_ASSERT(slot_num);
+        RT_ASSERT(sample_width);
+        RT_ASSERT(sample_rate);
+        if (sample_rate == 44100)
+            i2s_gclk = 5644800; //hz only use pll i2s_gclk=pll/8(45.1584M/8)
+        else
+            //i2s_gclk = 6144000; //hz only use pll i2s_gclk=pll/8(49.152M/8)
+            i2s_gclk = 3072000;
+        tdm_rx_clk.samplerate = sample_rate;
+        tdm_rx_clk.blck_duty = i2s_gclk / (slot_num * sample_width * sample_rate);
+        tdm_rx_clk.lr_clk_duty_high = i2s_gclk / (sample_rate * slot_num / 2) / 2;
+        tdm_rx_clk.lr_clk_duty_low = tdm_rx_clk.lr_clk_duty_high;
+        hi2s->Init.rx_cfg.sample_rate = sample_rate;
+        hi2s->Init.rx_cfg.clk_div_index = 0;
+        hi2s->Init.rx_cfg.clk_div = &tdm_rx_clk;
+        HAL_I2S_Config_Receive(hi2s, &(hi2s->Init.rx_cfg));
+        LOG_I("i2s rx tdm clk config %dhz %dhz %d %d", sample_rate, i2s_gclk, tdm_rx_clk.blck_duty, tdm_rx_clk.lr_clk_duty_high);
+        LOG_I("tdm_mode:%d, tdm_clk_deg:%d, tdm_fsync_width:%d, slot_num:%d, slot_width:%d ", hi2s->Init.rx_cfg.tdm_mode,
+              hi2s->Init.rx_cfg.tdm_clk_deg, hi2s->Init.rx_cfg.tdm_fsync_width, slot_num, sample_width);
+    }
+
+    if (dir & AUDIO_TYPE_OUTPUT)
+    {
+        hi2s->Init.tx_cfg.tdm_used = (tdm & 0x1UL);
+        __HAL_I2S_TDM_TX_INTF_CONV_BYPASS(hi2s, (!hi2s->Init.tx_cfg.tdm_used));
+        hi2s->Init.tx_cfg.tdm_mode = ((tdm >> 1) & 0x1UL);
+        hi2s->Init.tx_cfg.tdm_clk_deg = ((tdm >> 2) & 0x1UL);
+        hi2s->Init.tx_cfg.tdm_fsync_width = ((tdm >> 4) & 0xFFUL);
+        /*tdm tx clk set*/
+        slot_num = hi2s->Init.tx_cfg.tdm_slot_num;
+        sample_rate = hi2s->Init.tx_cfg.sample_rate;
+        sample_width = hi2s->Init.tx_cfg.tdm_slot_width;
+        RT_ASSERT(slot_num);
+        RT_ASSERT(sample_width);
+        RT_ASSERT(sample_rate);
+        if (sample_rate == 44100)
+            i2s_gclk = 5644800; //hz only use pll i2s_gclk=pll/8(45.1584M/8)
+        else
+            //i2s_gclk = 6144000; //hz only use pll i2s_gclk=pll/8(49.152M/8)
+            i2s_gclk = 3072000;
+        tdm_tx_clk.samplerate = sample_rate;
+        tdm_tx_clk.blck_duty = i2s_gclk / (slot_num * sample_width * sample_rate);
+        tdm_tx_clk.lr_clk_duty_high = i2s_gclk / (sample_rate * slot_num / 2) / 2;
+        tdm_tx_clk.lr_clk_duty_low = tdm_tx_clk.lr_clk_duty_high;
+        hi2s->Init.tx_cfg.sample_rate = sample_rate;
+        hi2s->Init.tx_cfg.clk_div_index = 0;
+        hi2s->Init.tx_cfg.clk_div = &tdm_tx_clk;
+        HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
+        LOG_I("i2s tx tdm clk config %dhz %dhz %d %d", sample_rate, i2s_gclk, tdm_tx_clk.blck_duty, tdm_tx_clk.lr_clk_duty_high);
+        LOG_I("tdm_mode:%d, tdm_clk_deg:%d, tdm_fsync_width:%d, slot_num:%d, slot_width:%d ", hi2s->Init.tx_cfg.tdm_mode,
+              hi2s->Init.tx_cfg.tdm_clk_deg, hi2s->Init.tx_cfg.tdm_fsync_width, slot_num, sample_width);
+    }
+
+    return RT_EOK;
+}
+#endif
+
+/**
+  * @brief  i2s device Config.
   * @param[in]  audio: audio device handle.
   * @param[in]  caps: capability to config
   * @retval RT_EOK if success, otherwise -RT_ERROR
@@ -264,171 +551,57 @@ static rt_err_t bf0_audio_configure(struct rt_audio_device *audio, struct rt_aud
 {
     rt_err_t result = RT_EOK;
     struct bf0_i2s_audio *aud = (struct bf0_i2s_audio *) audio->parent.user_data;
+    I2S_HandleTypeDef *hi2s = &(aud->hi2s);
 
     LOG_D("CONFIG: main %d, sub %d\n", caps->main_type, caps->sub_type);
+
     switch (caps->main_type)
     {
     case AUDIO_TYPE_INPUT:
-    {
-        switch (caps->sub_type)
-        {
-        case AUDIO_DSP_PARAM:
-        {
-            I2S_HandleTypeDef *hi2s = &(aud->hi2s);
-            uint8_t index;
-            for (index = 0; index < 9; index++)
-            {
-                if (txrx_clk_div[index].samplerate == caps->udata.config.samplerate)
-                {
-                    break;
-                }
-            }
-            RT_ASSERT(index < 9);
-            hi2s->Init.rx_cfg.sample_rate = caps->udata.config.samplerate;
-            if (caps->udata.config.channels == 1)
-                hi2s->Init.rx_cfg.track = 1; //(uint8_t)caps->udata.config.channels;
-            else
-                hi2s->Init.rx_cfg.track = 0;
-            hi2s->Init.rx_cfg.data_dw = (uint8_t)caps->udata.config.samplefmt;
-            hi2s->Init.rx_cfg.clk_div_index = index;
-            hi2s->Init.rx_cfg.clk_div = &txrx_clk_div[hi2s->Init.rx_cfg.clk_div_index];
-            HAL_I2S_Config_Receive(hi2s, &(hi2s->Init.rx_cfg));
-            // TODO: for i2s2, rx clock from tx loopback, their clock should always be same
-            hi2s->Init.tx_cfg.sample_rate = caps->udata.config.samplerate;
-            if (caps->udata.config.channels == 1)
-                hi2s->Init.tx_cfg.track = 1; //(uint8_t)caps->udata.config.channels;
-            else
-                hi2s->Init.tx_cfg.track = 0;
-            hi2s->Init.tx_cfg.data_dw = (uint8_t)caps->udata.config.samplefmt;
-            hi2s->Init.tx_cfg.clk_div_index = index;
-            hi2s->Init.tx_cfg.clk_div = &txrx_clk_div[hi2s->Init.tx_cfg.clk_div_index];
-            LOG_I("Configure audio chn %d, samplerate %d, bitwidth %d\n", caps->udata.config.channels, caps->udata.config.samplerate, caps->udata.config.samplefmt);
-            HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
-        }
-        break;
-        case AUDIO_DSP_SAMPLERATE:              // Config audio sample rate
-        {
-            int rate = caps->udata.value;
-            I2S_HandleTypeDef *hi2s = &(aud->hi2s);
-            uint8_t index;
-            for (index = 0; index < 9; index++)
-            {
-                if (txrx_clk_div[index].samplerate == rate)
-                {
-                    break;
-                }
-            }
-            RT_ASSERT(index < 9);
-            hi2s->Init.rx_cfg.sample_rate = rate;
-            hi2s->Init.rx_cfg.clk_div_index = index;
-            hi2s->Init.rx_cfg.clk_div = &txrx_clk_div[hi2s->Init.rx_cfg.clk_div_index];
-            LOG_D("Configure audio RX sample rate to %d\n", rate);
-            HAL_I2S_Config_Receive(hi2s, &(hi2s->Init.rx_cfg));
-            // TODO: for i2s2, rx clock from tx loopback, their clock should always be same
-            hi2s->Init.tx_cfg.sample_rate = rate;
-            hi2s->Init.tx_cfg.clk_div_index = index;
-            hi2s->Init.tx_cfg.clk_div = &txrx_clk_div[hi2s->Init.tx_cfg.clk_div_index];
-            HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
-        }
-        break;
-        case AUDIO_DSP_CHANNELS:              // Config channel
-        {
-            int chnl = caps->udata.value;
-            I2S_HandleTypeDef *hi2s = &(aud->hi2s);
-            hi2s->Init.rx_cfg.track = (chnl == 1) ? 1 : 0;
-            HAL_I2S_Config_Receive(hi2s, &(hi2s->Init.rx_cfg));
-        }
-        break;
-        case AUDIO_DSP_MODE:              // Config device work mode
-        {
-            int mode = caps->udata.value;
-            I2S_HandleTypeDef *hi2s = &(aud->hi2s);
-            hi2s->Init.rx_cfg.slave_mode = 1; //rx in slave mode all the time
-#ifdef SF32LB58X
-            // for i2s1,  rx must be same as tx
-            if (hwp_i2s1 == hi2s->Instance && mode == 0)
-            {
-                hi2s->Init.rx_cfg.slave_mode = 0;
-            }
-#endif
-            HAL_I2S_Config_Receive(hi2s, &(hi2s->Init.rx_cfg));
-            hi2s->Init.tx_cfg.slave_mode = (uint8_t)mode;
-            HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
-        }
-        break;
-        default:
-        {
-            result = -RT_ERROR;
-        }
-        break;
-        }
-    }
-    break;
     case AUDIO_TYPE_OUTPUT:
+    case AUDIO_TYPE_OUTPUT | AUDIO_TYPE_INPUT:
     {
+#ifndef I2S_RX_TX_SEPARATE
+        if (caps->main_type & AUDIO_TYPE_INPUT)
+            caps->main_type |= AUDIO_TYPE_OUTPUT;
+#endif
         switch (caps->sub_type)
         {
         case AUDIO_DSP_PARAM:
         {
-            I2S_HandleTypeDef *hi2s = &(aud->hi2s);
-            uint8_t index;
-            for (index = 0; index < 9; index++)
-            {
-                if (txrx_clk_div[index].samplerate == caps->udata.config.samplerate)
-                {
-                    break;
-                }
-            }
-            RT_ASSERT(index < 9);
-            hi2s->Init.tx_cfg.sample_rate = caps->udata.config.samplerate;
-            if (caps->udata.config.channels == 1)
-                hi2s->Init.tx_cfg.track = 1; //(uint8_t)caps->udata.config.channels;
-            else
-                hi2s->Init.tx_cfg.track = 0;
-            hi2s->Init.tx_cfg.data_dw = (uint8_t)caps->udata.config.samplefmt;
-            hi2s->Init.tx_cfg.clk_div_index = index;
-            hi2s->Init.tx_cfg.clk_div = &txrx_clk_div[hi2s->Init.tx_cfg.clk_div_index];
-            HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
+            result = bf0_i2s_sampleRate_cfg(hi2s, caps->main_type, (uint32_t)caps->udata.config.samplerate);
+            bf0_i2s_sampleFmt_cfg(hi2s, caps->main_type, (uint8_t)caps->udata.config.samplefmt);
+            bf0_i2s_channels_cfg(hi2s, caps->main_type, (uint8_t)caps->udata.config.channels);
         }
         break;
-        case AUDIO_DSP_SAMPLERATE:              // Config audio sample rate
+        case AUDIO_DSP_SAMPLERATE: // Config audio sample rate
         {
-            int rate = caps->udata.value;
-            I2S_HandleTypeDef *hi2s = &(aud->hi2s);
-            uint8_t index;
-            for (index = 0; index < 9; index++)
-            {
-                if (txrx_clk_div[index].samplerate == rate)
-                {
-                    break;
-                }
-            }
-            RT_ASSERT(index < 9);
-            hi2s->Init.tx_cfg.sample_rate = rate;
-            hi2s->Init.tx_cfg.clk_div_index = index;
-            hi2s->Init.tx_cfg.clk_div = &txrx_clk_div[hi2s->Init.tx_cfg.clk_div_index];
-            LOG_D("Configure audio TX sample rate to %d\n", rate);
-            HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
-            //audio_debug_out_i2s(hi2s->Instance);
-
+            bf0_i2s_sampleRate_cfg(hi2s, caps->main_type, (uint32_t)caps->udata.value);
         }
         break;
-        case AUDIO_DSP_CHANNELS:              // Config channel
+        case AUDIO_DSP_CHANNELS: // Config channel
         {
-            int chnl = caps->udata.value;
-            I2S_HandleTypeDef *hi2s = &(aud->hi2s);
-            hi2s->Init.tx_cfg.track = (chnl == 1) ? 1 : 0;
-            HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
+            bf0_i2s_channels_cfg(hi2s, caps->main_type, (uint8_t)caps->udata.value);
         }
         break;
-        case AUDIO_DSP_MODE:              // Config device work mode
+        case AUDIO_DSP_MODE: // Config i2s master or slave mode
         {
-            int mode = caps->udata.value;
-            I2S_HandleTypeDef *hi2s = &(aud->hi2s);
-            hi2s->Init.tx_cfg.slave_mode = (uint8_t)mode;
-            HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
+            bf0_i2s_workMode_cfg(hi2s, caps->main_type, (uint8_t)caps->udata.value);
         }
         break;
+        case AUDIO_DSP_VOL: //i2s vol set
+        {
+            if (caps->main_type & AUDIO_TYPE_OUTPUT)
+                bf0_i2s_tx_vol_cfg(hi2s, (uint8_t)caps->udata.value);
+        }
+        break;
+#ifdef I2S_TDM_MODE_SUPPORT
+        case AUDIO_DSP_TDM:
+        {
+            bf0_i2s_tdm_used(hi2s, caps->main_type, (uint16_t)caps->udata.value);
+        }
+        break;
+#endif
         default:
         {
             result = -RT_ERROR;
@@ -439,27 +612,7 @@ static rt_err_t bf0_audio_configure(struct rt_audio_device *audio, struct rt_aud
     break;
     case AUDIO_TYPE_SELECTOR:
     {
-        I2S_HandleTypeDef *hi2s = &(aud->hi2s);
-        if (caps->sub_type == 1)  // left/right all set to left
-        {
-            hi2s->Init.tx_cfg.chnl_sel = 1;
-            hi2s->Init.rx_cfg.chnl_sel = 1;
-        }
-        else if (caps->sub_type == 2)  //left/right all set to right
-        {
-            hi2s->Init.tx_cfg.chnl_sel = 4;
-            hi2s->Init.rx_cfg.chnl_sel = 4;
-
-        }
-        else
-        {
-            hi2s->Init.tx_cfg.chnl_sel = 0;
-            hi2s->Init.rx_cfg.chnl_sel = 0;
-
-        }
-        HAL_I2S_Config_Transmit(hi2s, &(hi2s->Init.tx_cfg));
-        HAL_I2S_Config_Receive(hi2s, &(hi2s->Init.rx_cfg));
-        break;
+        result = bf0_i2s_track_src_select(hi2s, (uint8_t)caps->udata.value);
     }
     break;
     default:
@@ -507,6 +660,7 @@ static rt_err_t bf0_audio_i2s_start(struct bf0_i2s_audio *aud, int stream)
 {
     I2S_HandleTypeDef *hi2s = &aud->hi2s;
 
+#ifndef SF32LB55X
     if (stream == AUDIO_STREAM_REPLAY)
     {
         bf0_enable_pll(hi2s->Init.tx_cfg.sample_rate, 0);
@@ -515,6 +669,7 @@ static rt_err_t bf0_audio_i2s_start(struct bf0_i2s_audio *aud, int stream)
     {
         bf0_enable_pll(hi2s->Init.rx_cfg.sample_rate, 0);
     }
+#endif
 
 #ifdef SF32LB58X
 #ifndef SOC_BF0_HCPU
@@ -626,12 +781,14 @@ static rt_err_t bf0_audio_start(struct rt_audio_device *audio, int stream)
     }
     else    //AUDIO_STREAM_RECORD
     {
+#ifndef I2S_RX_TX_SEPARATE
         // for i2s2, need enable tx first to make clk work
         if (HAL_IS_BIT_CLR(aud->hi2s.Instance->AUDIO_TX_FUNC_EN, I2S_AUDIO_TX_FUNC_EN_TX_EN))
         {
             /* Enable I2S peripheral */
             __HAL_I2S_TX_ENABLE(&(aud->hi2s));
         }
+#endif
         if (aud->hi2s.Init.rx_cfg.extern_intf)
         {
             __HAL_I2S_RX_INTF_ENABLE(&(aud->hi2s));
@@ -670,6 +827,7 @@ static rt_err_t bf0_audio_start(struct rt_audio_device *audio, int stream)
     return RT_EOK;
 }
 
+
 /**
   * @brief  Stop audio device for recording/playback.
   * @param[in]  audio: audio device handle.
@@ -680,8 +838,7 @@ static rt_err_t bf0_audio_stop(struct rt_audio_device *audio, int stream)
 {
     struct bf0_i2s_audio *aud = (struct bf0_i2s_audio *) audio->parent.user_data;
     rt_err_t ret = RT_EOK;
-    //HAL_I2S_DMAPause(&(aud->hi2s));
-    //HAL_I2S_DMAStop(&(aud->hi2s));
+
     LOG_I("bf0_audio_stop %d \n", stream);
     if (stream == AUDIO_STREAM_REPLAY) // tx
     {
@@ -713,6 +870,7 @@ static rt_err_t bf0_audio_stop(struct rt_audio_device *audio, int stream)
     // Deinit I2S
     HAL_I2S_DeInit(&(aud->hi2s));
     LOG_I("bf0_audio_stop %d done, ret %d\n", stream, ret);
+
     return ret;
 }
 
@@ -722,12 +880,11 @@ static rt_err_t bf0_audio_stop(struct rt_audio_device *audio, int stream)
 * @param[in]  stream: stream ID.
 * @retval RT_EOK if success, otherwise -RT_ERROR
 */
-
 static rt_err_t bf0_audio_suspend(struct rt_audio_device *audio, int stream)
 {
     struct bf0_i2s_audio *aud = (struct bf0_i2s_audio *) audio->parent.user_data;
     rt_err_t ret = RT_EOK;
-    //HAL_I2S_DMAPause(&(aud->hi2s));
+
     if (stream == AUDIO_STREAM_REPLAY) // tx
     {
         ret = HAL_I2S_TX_DMAPause(&(aud->hi2s));
@@ -746,11 +903,11 @@ static rt_err_t bf0_audio_suspend(struct rt_audio_device *audio, int stream)
 * @param[in]  stream: stream ID.
 * @retval RT_EOK if success, otherwise -RT_ERROR
 */
-static rt_err_t    bf0_audio_resume(struct rt_audio_device *audio, int stream)
+static rt_err_t bf0_audio_resume(struct rt_audio_device *audio, int stream)
 {
     struct bf0_i2s_audio *aud = (struct bf0_i2s_audio *) audio->parent.user_data;
-    //HAL_I2S_DMAResume(&(aud->hi2s));
     rt_err_t ret = RT_EOK;
+
     if (stream == AUDIO_STREAM_REPLAY) // tx
     {
         ret = HAL_I2S_TX_DMAResume(&(aud->hi2s));
@@ -781,41 +938,22 @@ static rt_err_t bf0_audio_control(struct rt_audio_device *audio, int cmd, void *
     {
         uint32_t intf = (uint32_t)args;
         aud->hi2s.Init.tx_cfg.extern_intf = (uint8_t)intf;
-        LOG_I("I2S use exteranl interface %d\n", intf);
+        LOG_I("I2S output exteranl interface %d\n", intf);
         break;
     }
     case AUDIO_CTL_SETINPUT:
     {
         uint32_t intf = (uint32_t)args;
         aud->hi2s.Init.rx_cfg.extern_intf = (uint8_t)intf;
+        LOG_I("I2S input exteranl interface %d\n", intf);
         break;
     }
     case RT_DEVICE_CTRL_SUSPEND:
     {
-
-        for (int i = 0; i < sizeof(bf0_i2s_audio_obj) / sizeof(bf0_i2s_audio_obj[0]); i++)
-        {
-            if (bf0_i2s_audio_obj[i].i2s_handle != NULL)
-            {
-                I2S_HandleTypeDef *hi2s = &(h_i2s_audio[i].hi2s);
-                HAL_I2S_DeInit(hi2s);
-                //LOG_I("i2s RT_DEVICE_CTRL_SUSPEND\n");
-            }
-        }
-        set_pll_state(0);
         break;
     }
     case RT_DEVICE_CTRL_RESUME:
     {
-        for (int i = 0; i < sizeof(bf0_i2s_audio_obj) / sizeof(bf0_i2s_audio_obj[0]); i++)
-        {
-            if (bf0_i2s_audio_obj[i].i2s_handle != NULL)
-            {
-                I2S_HandleTypeDef *hi2s = &(h_i2s_audio[i].hi2s);
-                HAL_I2S_Init(hi2s);
-            }
-        }
-        //LOG_I("i2s RT_DEVICE_CTRL_RESUME\n");
         break;
     }
     case AUDIO_CTL_SET_TX_DMA_SIZE:
@@ -844,18 +982,17 @@ static rt_err_t bf0_audio_control(struct rt_audio_device *audio, int cmd, void *
 static rt_size_t bf0_audio_trans(struct rt_audio_device *audio, const void *writeBuf, void *readBuf, rt_size_t size)
 {
     struct bf0_i2s_audio *aud = (struct bf0_i2s_audio *) audio->parent.user_data;
-    HAL_StatusTypeDef res = HAL_OK;
-    //LOG_I("bf0_audio_trans");
+
     RT_ASSERT(size <= aud->tx_buf_size / 2);
 
-    if (writeBuf != NULL)
+    if ((writeBuf != NULL) && (aud->tx_pos != NULL))
     {
-        if (aud->tx_pos != NULL)
-            memcpy(aud->tx_pos, writeBuf, size);
+        memcpy(aud->tx_pos, writeBuf, size);
     }
-
-    if (res != HAL_OK)
+    else
+    {
         return 0;
+    }
 
     return size;
 }
@@ -899,8 +1036,8 @@ int rt_bf0_i2s_audio_init(void)
     for (i = 0; i < sizeof(bf0_i2s_audio_obj) / sizeof(bf0_i2s_audio_obj[0]); i++)
     {
         h_i2s_audio[i].audio_device.ops = (struct rt_audio_ops *)&_g_audio_ops;
-        h_i2s_audio[i].rx_buf = malloc(AUDIO_DATA_SIZE);
-        h_i2s_audio[i].tx_buf = malloc(AUDIO_DATA_SIZE);
+        h_i2s_audio[i].rx_buf = malloc_dma_friendly_sram(AUDIO_DATA_SIZE);
+        h_i2s_audio[i].tx_buf = malloc_dma_friendly_sram(AUDIO_DATA_SIZE);
         h_i2s_audio[i].tx_pos = h_i2s_audio[i].tx_buf;
 
         if (bf0_i2s_audio_obj[i].i2s_handle != NULL)
@@ -955,7 +1092,6 @@ int rt_bf0_i2s_audio_init(void)
             hi2s->Init.src_clk_freq = HAL_RCC_GetModuleFreq(RCC_MOD_I2S2);  //As GetFreq may NOT be 48000000
 #endif
             RT_ASSERT(hi2s->Init.src_clk_freq);
-            //rt_kprintf("Audio I2S2 CLK %d\n", hi2s->Init.src_clk_freq);
 
             hi2s->Init.rx_cfg.data_dw = 16;
             hi2s->Init.rx_cfg.bus_dw = 32;
@@ -991,7 +1127,11 @@ int rt_bf0_i2s_audio_init(void)
         }
         result = rt_audio_register(&(h_i2s_audio[i].audio_device),
                                    bf0_i2s_audio_obj[i].name, RT_DEVICE_FLAG_RDWR, &(h_i2s_audio[i]));
-
+        if (result != RT_EOK)
+        {
+            LOG_I("%s audio init err", bf0_i2s_audio_obj[i].name);
+            return RT_ERROR;
+        }
     }
 
     return result;
@@ -1150,9 +1290,7 @@ void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s)
 void HAL_I2S_TxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     struct bf0_i2s_audio *haudio = rt_container_of(hi2s, struct bf0_i2s_audio, hi2s);
-    /* Prevent unused argument(s) compilation warning */
-    //LOG_I("HAL_I2S_TxHalfCpltCallback\n");
-    //LOG_I("HALF: %d\n", haudio->hi2s.hdmatx->Instance->CNDTR);
+
     haudio->tx_pos = haudio->tx_buf;
     rt_audio_tx_complete(&(haudio->audio_device), haudio->tx_buf);
 }
@@ -1166,9 +1304,7 @@ void HAL_I2S_TxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
 void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     struct bf0_i2s_audio *haudio = rt_container_of(hi2s, struct bf0_i2s_audio, hi2s);
-    /* Prevent unused argument(s) compilation warning */
-    //LOG_I("HAL_I2S_TxCpltCallback\n");
-    //LOG_I("CMPL: %d\n", haudio->hi2s.hdmatx->Instance->CNDTR);
+
     haudio->tx_pos = haudio->tx_buf + haudio->tx_buf_size / 2;
     rt_audio_tx_complete(&(haudio->audio_device), haudio->tx_buf + haudio->tx_buf_size / 2);
 }

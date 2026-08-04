@@ -1,0 +1,6 @@
+config BSP_USING_DFU_UART
+    bool "DFU via UART"
+    depends on BF0_HCPU
+    default n
+    help
+        DFU (Device Firmware Update) via UART allows firmware updates to be performed over a UART connection

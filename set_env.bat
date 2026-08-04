@@ -5,8 +5,23 @@ set SIFLI_SDK=%~dp0
 set SIFLI_SDK_PATH=%~dp0
 set PKGS_DIR=%PKGS_ROOT%
 set CONAN_HOME=%ENV_ROOT%\tools\conan
+set "SIFLI_SDK_VER_MAJOR="
+set "SIFLI_SDK_VER_MINOR="
 
-set "ver_check=1.1.4"
+if exist "%~dp0.version" (
+    for /f "usebackq tokens=1,2 delims==" %%A in ("%~dp0.version") do (
+        if /i "%%A"=="MAJOR" set "SIFLI_SDK_VER_MAJOR=%%B"
+        if /i "%%A"=="MINOR" set "SIFLI_SDK_VER_MINOR=%%B"
+    )
+)
+
+if defined SIFLI_SDK_VER_MAJOR if defined SIFLI_SDK_VER_MINOR (
+    set "SIFLI_SDK_VERSION=%SIFLI_SDK_VER_MAJOR%.%SIFLI_SDK_VER_MINOR%"
+)
+set "SIFLI_SDK_VER_MAJOR="
+set "SIFLI_SDK_VER_MINOR="
+
+set "ver_check=1.2.0"
 if not defined ENV_VER (
     echo Please upgrate env to v%ver_check% or greater
     echo set_env FAIL

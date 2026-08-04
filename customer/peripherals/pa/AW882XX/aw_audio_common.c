@@ -1,6 +1,9 @@
-/****************************************************************************
- *Name: aw_audio_common.c
- ****************************************************************************/
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include "aw_audio_common.h"

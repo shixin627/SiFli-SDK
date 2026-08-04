@@ -1,121 +1,133 @@
 # Wi-Fi Example
+Source path: example/rt_device/wifi
 
 ## Overview
 
-This example demonstrates how to use the wlan component's API to implement Wi-Fi connection, scanning, disconnection, website pinging, and weather information retrieval functions.
+This example demonstrates how to use Wi-Fi networking to ping websites and retrieve weather information.
 
 
-## Supported Development Boards
+## Supported Boards
 
-This example can run on the following development boards:
+This example can run on the following boards:
 
 * sf32lb52-wlan-core
 * sf32lb56-wlan-core
 * sf32lb58-core
 
-## Basic Commands
+## Code Execution Logic
 
-| Command | Function Interface | Description |
-| -- | -- | -- |
-| wifi scan | wifi_scan | Scan surrounding Wi-Fi hotspots, outputting SSID, MAC address, security type, signal strength, channel, and rate information |
-| wifi join | wifi_join | Connect to a specified Wi-Fi network (supports both password-free and password-protected formats) |
-| wifi disc | wifi_disconnect | Disconnect the current Wi-Fi connection |
-| wifi status | wifi_status | Display detailed status information for STA and AP modes (SSID, MAC, channel, rate, RSSI, auto-connection status, etc.) |
+The application code calls the WLAN API `rt_wlan_scan_sync` to perform a scan operation:  
+* Upon successful scanning, information such as SSID, MAC address, RSSI, and channel is printed.
 
-## Example Usage
+The application code calls the WLAN API `rt_wlan_connect(ssid, password)` to perform a connection operation:  
+* After successful connection, a "DHCP SUCCESS" event is triggered, and an IP address is obtained.
+
+Subsequent test functionalities:  
+* Use `ping` to test connectivity (relies on lwIP's ICMP implementation).  
+* Use the `weather` command to initiate an HTTP request (relies on mbedTLS + lwIP).
+
+## Usage Guide
 
 Taking sf32lb52-wlan-core as an example:
 
 ### Hardware Requirements
 
-1. Own a development board that supports this example
-2. A USB data cable with data transmission capability
+1. A development board that supports this example
+2. A USB data cable with data transfer capability
+
+### Modify ssid and password
+* You can replace the ssid and password in main.c with those of the AP you want to connect to
+```c
+#define WIFI_SSID       "wifi_ssid"     /* WiFi SSID to connect */
+#define WIFI_PASSWORD   "wifi_password"         /* WiFi password, set to RT_NULL if open */
+```
 
 ### menuconfig Configuration
 
-* Configured by default
+* The default configuration is already set up
 
 ```bash
-// Execute the command under this example project
-menuconfig --board=sf32lb52-wlan-core_n16r16
+// Run the following command under this example project
+sdk.py menuconfig --board=sf32lb52-wlan-core_n16r16
 ```
 
 1. **Enable SDIO/SDHCI Interface**
     - Path: On chip Peripheral RTOS Drivers → Enable SDIO (SDIO path) / On-chip Peripheral RTOS Drivers → Enable SDIO → Enable SD Host Control Interface → Enable SDHCI Handle 2 (SDHCI path)
     - Enable: Enable SDIO
-        - Macro switch: `CONFIG_BSP_USING_SD_LINE` (SDIO macro switch) / `CONFIG_BSP_USING_SDHCI` `CONFIG_BSP_USING_SDHCI2` `CONFIG_SDIO2_CARD_MODE` (SDHCI macro switch)
-        - Purpose: Enable SDIO-related configurations, select SDIO or SDHCI interface based on hardware (if using SDHCI IP, SDIO mode needs to be selected here; native SDIO IP does not require this setting)
+        - Macro: `CONFIG_BSP_USING_SD_LINE` (SDIO macro) / `CONFIG_BSP_USING_SDHCI` `CONFIG_BSP_USING_SDHCI2` `CONFIG_SDIO2_CARD_MODE` (SDHCI macro)
+        - Purpose: Enable SDIO-related configuration, select SDIO or SDHCI interface based on hardware (if using SDHCI IP, SDIO mode must be selected here; native SDIO IP does not require this setting)
 
 2. **Enable SWT6621SL Wi-Fi Module**
     - Path: Select board peripherals
     - Enable: Enable swt 6621 wifi mode
-        - Macro switch: `CONFIG_BSP_WIFI_SWT6621SL`
-        - Purpose: Enable the SWT6621SL Wi-Fi module to ensure the Wi-Fi module can be correctly identified and used
+        - Macro: `CONFIG_BSP_WIFI_SWT6621SL`
+        - Purpose: Enable the SWT6621SL Wi-Fi module to ensure it can be properly recognized and used
 
-3. **Configure Power/Sleep/Wake-up Pins (Select according to board design)**
+3. **Configure Power/Sleep/Wakeup Pins (select based on board design)**
     - Path: Select board peripherals → Enable swt 6621 wifi mode
     - Enable: SWT6621 WAKEUP OUT pin number / SWT6621 WAKEUP IN pin number / SWT6621 POWER pin number
-        - Macro switch: `CONFIG_WIFI_WAKEUP_OUT_PIN` `CONFIG_WIFI_WAKEUP_IN` `CONFIG_WIFI_POWER_PIN`
-        - Purpose: Define power control and sleep/wake-up pins for the Wi-Fi module to ensure efficient operation and power consumption reduction in different working states
+        - Macro: `CONFIG_WIFI_WAKEUP_OUT_PIN` `CONFIG_WIFI_WAKEUP_IN` `CONFIG_WIFI_POWER_PIN`
+        - Purpose: Define Wi-Fi module power control and sleep/wakeup pins to ensure efficient operation and low power consumption
 
-| Board Name | Power Pin | Sleep/Wake-up Input Pin | Sleep/Wake-up Output Pin |
+| Board Name | Power Pin | Sleep/Wakeup Input Pin | Sleep/Wakeup Output Pin |
 | -- | -- | -- | -- |
 | sf32lb52-wlan-core | PA_30 | PA_25 | PA_24 |
 | sf32lb56-wlan-core | PA_53 | PA_05 | PA_02 |
 | sf32lb58-core | PA_85 | PA_68 | PA_69 |
 
-4. **Enable wpa_supplicant Application Framework**
+4. **Enable wpa_supplicant Framework**
     - Path: Third party packages
     - Enable: Enable WPA Supplicant
-        - Macro switch: `PKG_USING_WPA_SUPPLICANT`
-        - Purpose: Enable the wpa_supplicant application framework to ensure the module can communicate with the wpa_supplicant application and obtain correct Wi-Fi status information
+        - Macro: `PKG_USING_WPA_SUPPLICANT`
+        - Purpose: Enable the wpa_supplicant application framework to ensure the module can communicate with wpa_supplicant and obtain correct Wi-Fi status information
 
-5. **Select wpa Network Card (SWT6621SL default network card is m0)**
+5. **Select Network Interface for wpa (SWT6621SL default is m0)**
     - Path: Third party packages
     - Enable: wpa net device name
-        - Macro switch: `PKG_USING_WPA_NET_NAME`
-        - Purpose: Select the wpa network card, default is m0
+        - Macro: `PKG_USING_WPA_NET_NAME`
+        - Purpose: Select the wpa network interface, default is m0
 
 6. **Enable lwIP Protocol Stack**
     - Path: RTOS → RT-Thread Components → Network
     - Enable: lwIP: light weight TCP/IP stack
-        - Macro switch: `NET_USING_LWIP`
-        - Purpose: Enable the lwIP protocol stack to ensure the module can communicate with the lwIP protocol stack and obtain correct Wi-Fi status information
+        - Macro: `NET_USING_LWIP`
+        - Purpose: Enable the lwIP protocol stack to ensure the module can communicate via the lwIP stack and obtain correct Wi-Fi status information
 
-7. **Select lwIP Version (Version selection is 2.1.2)**
+7. **Select lwIP Version (version 2.1.2)**
     - Path: RTOS → RT-Thread Components → Network → light weight TCP/IP stack
     - Enable: lwIP v2.1.2
-        - Macro switch: `RT_USING_LWIP212`
-        - Purpose: To explicitly specify the use of lwIP 2.1.2 version to ensure the Wi-Fi example can run normally and achieve network communication functions
+        - Macro: `RT_USING_LWIP212`
+        - Purpose: Explicitly specify lwIP 2.1.2 to ensure the Wi-Fi example runs properly and achieves network communication
 
-8. **Enable rt-thread Wi-Fi Framework**
+8. **Enable RT-Thread Wi-Fi Framework**
     - Path: RTOS → RT-Thread Components → Device Drivers → Using WIFI
     - Enable: Using Wi-Fi framework
-        - Macro switch: `RT_USING_WIFI`
-        - Purpose: Enable the RT-Thread Wi-Fi framework to support basic functions and advanced features of the Wi-Fi module
+        - Macro: `RT_USING_WIFI`
+        - Purpose: Enable the RT-Thread Wi-Fi framework to support basic and advanced Wi-Fi module features
 
 9. **Enable mbedtls Encryption Component**
     - Path: Third party packages
-    - Enable: Seleted MBedTLS / Use ALL cert provided by mbedtld / User provided cert
-        - Macro switch: `PKG_USING_MBEDTLS``PKG_USING_MBEDTLS_USER_ALL_CERTS` `PKG_USING_MBEDTLS_USER_CURTS`
-        - Purpose: Enable the mbedtls encryption library to support secure communication; load default certificate chains to verify public servers; allow users to customize certificates to meet special needs
+    - Enable: Selected MBedTLS / Use ALL cert provided by mbedtls / User provided cert
+        - Macro: `PKG_USING_MBEDTLS` `PKG_USING_MBEDTLS_USER_ALL_CERTS` `PKG_USING_MBEDTLS_USER_CURTS`
+        - Purpose: Enable mbedtls encryption library for secure communication; load default certificate chain to verify public servers; allow user-defined certificates for special requirements
 
-### Compilation and Download
+### Build and Download
 
-Follow these steps to complete compilation and download:
+Follow the steps below to build and download:
 
 ```bash
 scons --board=sf32lb52-wlan-core_n16r16 -j8
 build_sf32lb52-wlan-core_n16r16_hcpu\uart_download.bat
 ```
 
-(For different chip boards, just change the board name. For example, for the sf32lb58-core board, simply replace 'sf32lb52-wlan-core_n16r16' with 'sf32lb58-core_n16r32n1')
+(To use a different board, simply change the board name. For example, for the sf32lb58-core board, replace 'sf32lb52-wlan-core_n16r16' with 'sf32lb58-core_n16r32n1')
 
-## Example Output Results Display
+## Example Output
 
 * **Boot Log**
 
 ```log
+// WiFi Initialization
 01-29 15:44:12:972    sdio_scan_card
 01-29 15:44:12:973    skw_sdio_probe 591 
 01-29 15:44:12:975    SDIO: enabling function 1
@@ -143,15 +155,10 @@ build_sf32lb52-wlan-core_n16r16_hcpu\uart_download.bat
 01-29 15:44:16:156    get_wpa_s_handle 123 ifname: m01,dev->num=2
 01-29 15:44:16:157    wlan_set_regiontable 1642 
 01-29 15:44:16:159    l2_packet_init: iface m01 ifindex 2
-```
-
-* **Scan Wi-Fi (Command: wifi scan)**
-
-```log
-01-29 15:44:27:108 TX:wifi scan
-01-29 15:44:30:153    [32m[572402] I/NO_TAG: scan quiet window: fill tail results 1->20
-01-29 15:44:30:160    [0m[32m[572450] I/NO_TAG: scan quiet window elapsed, emit SCAN_DONE (total=20)
-01-29 15:44:30:161    [0m             SSID                      MAC            security    rssi chn Mbps
+// WiFi Scan
+01-29 15:44:30:153    [32m[572402] I/NO_TAG: scan quiet window: fill tail results 1->20
+01-29 15:44:30:160    [0m[32m[572450] I/NO_TAG: scan quiet window elapsed, emit SCAN_DONE (total=20)
+01-29 15:44:30:161    [0m             SSID                      MAC            security    rssi chn Mbps
 01-29 15:44:30:162    ------------------------------- -----------------  -------------- ---- --- ----
 01-29 15:44:30:163    sifli-employee                  a2:37:68:8c:73:0a  WPA2_AES_PSK   -55   48    0
 01-29 15:44:30:163    sifli-employee-WiFi5            a2:37:68:ec:73:0a  WPA2_AES_PSK   -56   48    0
@@ -174,12 +181,7 @@ build_sf32lb52-wlan-core_n16r16_hcpu\uart_download.bat
 01-29 15:44:30:180    hw_manage_0fc0                  40:ee:dd:31:0f:cb  WPA2_AES_PSK   -91   10    0
 01-29 15:44:30:180    NJHF                            c2:37:ff:e7:83:c2  WPA2_AES_PSK   -97   11    0
 01-29 15:44:30:187    msh />msh />
-```
-
-* **Connect Wi-Fi (Command: wifi join [Wi-Fi Name] [Wi-Fi Password])**
-
-```log
-01-29 15:44:33:452 TX:wifi join sifli-employee zmjnb666
+// WiFi Connect
 01-29 15:44:36:790    get_wpa_s_handle 123 ifname: m01,dev->num=2
 01-29 15:44:36:794    wpa_drv_freertos_authenticate 888
 01-29 15:44:36:797    [supp_if] wifi_skw_wpa_supp_authenticate 1101
@@ -201,19 +203,19 @@ build_sf32lb52-wlan-core_n16r16_hcpu\uart_download.bat
 01-29 15:44:36:836    wlan_bss_ioctl 346: sub_command = 131073
 01-29 15:44:36:837    wlan_bss_ioctl_start 295 i=1
 01-29 15:44:36:837    [supp_if] wifi_skw_wpa_supp_associate: Association request sent successfully
-01-29 15:44:37:338    [32m[807843] I/WLAN.mgnt: wifi connect success ssid:sifli-employee
-01-29 15:44:37:342    [0mapp_cb: WLAN: authenticated to network
+01-29 15:44:37:338    [32m[807843] I/WLAN.mgnt: wifi connect success ssid:sifli-employee
+01-29 15:44:37:342    [0mapp_cb: WLAN: authenticated to network
 01-29 15:44:40:991    wm_netif_status_callback 562 DHCP SUCCESS
 01-29 15:44:40:995    skw_rt_wlan_event_forwarder 309 wifi connect success!
-01-29 15:44:40:999    [32m[927587] I/WLAN.mgnt: wifi connect success ssid:sifli-employee
-01-29 15:44:40:999    [0m[32m[927615] I/NO_TAG: connected: ssid=sifli-employee channel=6
-01-29 15:44:41:000    [0mapp_cb: WLAN: connected to network
+01-29 15:44:40:999    [32m[927587] I/WLAN.mgnt: wifi connect success ssid:sifli-employee
+01-29 15:44:40:999    [0m[32m[927615] I/NO_TAG: connected: ssid=sifli-employee channel=6
+01-29 15:44:41:000    [0mapp_cb: WLAN: connected to network
 01-29 15:44:41:001    Connected to following BSS:
 01-29 15:44:41:002    SSID = [sifli-employee]
 01-29 15:44:41:003    IPv4 Address: [192.168.2.174]
 ```
 
-* **Test Connectivity Between Local Device and Server (Ping Website)**
+* **Test Connectivity Between Local Device and Server (ping website)**
 
 ```log
 01-29 15:44:53:437 TX:ping www.sifli.com
@@ -230,12 +232,12 @@ build_sf32lb52-wlan-core_n16r16_hcpu\uart_download.bat
 01-29 15:44:59:751 TX:weather
 01-29 15:44:59:779    DNS lookup succeeded, IP: 116.62.81.138
 01-29 15:44:59:834    id:"WM7B0X53DZW2"
-01-29 15:44:59:835    name:"Chongqing"
+01-29 15:44:59:835    name:"重庆"
 01-29 15:44:59:836    country:"CN"
-01-29 15:44:59:836    path:"Chongqing,Chongqing,China"
+01-29 15:44:59:836    path:"重庆,重庆,中国"
 01-29 15:44:59:838    timezone:"Asia/Shanghai"
 01-29 15:44:59:839    timezone_offset:"+08:00"
-01-29 15:44:59:841    txt:"Cloudy"
+01-29 15:44:59:841    txt:"阴"
 01-29 15:44:59:842    code:"9"
 01-29 15:44:59:844    temperature:"11"
 01-29 15:44:59:846    last_update:"2026-01-29T15:30:20+08:00"
@@ -251,17 +253,17 @@ build_sf32lb52-wlan-core_n16r16_hcpu\uart_download.bat
 01-29 16:01:47:883    wm_netif_status_callback 562 DHCP FAILURE
 01-29 16:01:47:884    wifi_deauthenticate 78 pmpriv->media_connected=0 
 01-29 16:01:47:884    app_cb: disconnected
-01-29 16:01:47:917    [32m[923535] I/WLAN.mgnt: disconnect success!
-01-29 16:01:47:924    [0mmsh />msh />
+01-29 16:01:47:917    [32m[923535] I/WLAN.mgnt: disconnect success!
+01-29 16:01:47:924    [0mmsh />msh />
 ```
 
 ## Troubleshooting
 
-If the expected log does not appear, troubleshooting can be performed from the following aspects:
+If the expected logs do not appear, check the following:
 
-* Check if Wi-Fi is powered on
-* Check if SDIO/SDHCI related configurations are correctly enabled
-* Check if software pinmux configuration is consistent with the schematic
-* Check if SDIO/SDHCI registers are correctly enabled
-* If using SDHCI mode, confirm that it is configured to SDIO mode (refer to the previous menuconfig configuration)
-* Check if the direction of the two GPIOs connecting the Host side and the Wi-Fi chip is correct (one input, one output)
+* Verify that the Wi-Fi module is powered on
+* Verify that SDIO/SDHCI configuration is correctly enabled
+* Verify that software pinmux configuration matches the schematic
+* Verify that SDIO/SDHCI registers are properly enabled
+* If using SDHCI mode, confirm it is configured as SDIO mode (refer to menuconfig configuration above)
+* Verify that the two GPIOs connecting the Host and Wi-Fi chip have correct directions (one input, one output)

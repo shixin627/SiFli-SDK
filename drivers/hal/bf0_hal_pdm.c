@@ -102,9 +102,9 @@ HAL_StatusTypeDef HAL_PDM_Init(PDM_HandleTypeDef *hpdm)
     hpdm->Instance->LPF_CFG6 |= (0x791 << PDM_LPF_CFG6_LPF_COEFF12_Pos);
 #endif
 
+#ifdef PDM_LPF_CFG6_LPF_BYPASS
     hpdm->Instance->LPF_CFG6 &= ~PDM_LPF_CFG6_LPF_BYPASS;
-
-
+#endif /* PDM_LPF_CFG6_LPF_BYPASS */
 
     hpdm->ErrorCode = PDM_ERROR_NONE;
     hpdm->State     = PDM_STATE_READY;
@@ -445,10 +445,262 @@ static void PDM_DMAError(DMA_HandleTypeDef *hdma)
     HAL_PDM_ErrorCallback(hpdm);
 }
 
+#ifdef PDM_LPF_CFG6_LPF_DS
+static HAL_StatusTypeDef PDM_ConfigSampleRate(PDM_HandleTypeDef *hpdm, uint32_t *cfg0_value, uint32_t *cfg_fifo)
+{
+    uint32_t lpf_cfg, sinc_cfg;
+    /*
+        Sample rate = clk_source / clk_div / sinc_rate / down_sample
+    */
+    lpf_cfg = hpdm->Instance->LPF_CFG6;
+    sinc_cfg = hpdm->Instance->SINC_CFG;
+
+    lpf_cfg &= ~PDM_LPF_CFG6_LPF_DS;       /*0: down_sample=2   1: down_sample=4*/
+    sinc_cfg &= ~PDM_SINC_CFG_SINC_ORDER_SEL; /*0: sinc_order=3   1: sinc_order=4*/
+    sinc_cfg &= ~PDM_SINC_CFG_SINC_RATE;
+
+    *cfg_fifo &= ~(PDM_FIFO_CFG_PDM_SHIFT);
+    switch (hpdm->Init.SampleRate)
+    {
+    case PDM_SAMPLE_8KHZ:
+        if (hpdm->Init.clkSrc == PDM_XTAL_CLK_FREQ)
+        {
+            *cfg0_value &= ~PDM_CFG0_CLK_SEL; //9.6MHz source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (4 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (75 << PDM_SINC_CFG_SINC_RATE_Pos);
+
+            lpf_cfg |= PDM_LPF_CFG6_LPF_DS;
+            //cfg_fifo |= (0x2 << PDM_FIFO_CFG_PDM_SHIFT_Pos); //Align to 24bit
+        }
+        else  if (hpdm->Init.clkSrc == PDM_PLL_CLK_FREQ)
+        {
+            *cfg0_value |= PDM_CFG0_CLK_SEL; //3.072MHz source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (3 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (64 << PDM_SINC_CFG_SINC_RATE_Pos);
+            //cfg_fifo |= (0x2 << PDM_FIFO_CFG_PDM_SHIFT_Pos); //Align to 24bit
+        }
+        break;
+    case PDM_SAMPLE_16KHZ:
+        if (hpdm->Init.clkSrc == PDM_XTAL_CLK_FREQ)
+        {
+            *cfg0_value &= ~PDM_CFG0_CLK_SEL; //9.6MHz source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (6 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (50 << PDM_SINC_CFG_SINC_RATE_Pos);
+            //cfg_fifo |= (0x4 << PDM_FIFO_CFG_PDM_SHIFT_Pos);  //Align to 24bit
+        }
+        else if (hpdm->Init.clkSrc == PDM_PLL_CLK_FREQ)
+        {
+            *cfg0_value |= PDM_CFG0_CLK_SEL; //3.072MHz source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (1 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (96 << PDM_SINC_CFG_SINC_RATE_Pos);
+        }
+        break;
+    case PDM_SAMPLE_32KHZ:
+        if (hpdm->Init.clkSrc == PDM_XTAL_CLK_FREQ)
+        {
+            *cfg0_value &= ~PDM_CFG0_CLK_SEL; //9.6MHz source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (6 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (25 << PDM_SINC_CFG_SINC_RATE_Pos);
+            //lpf_cfg |= PDM_LPF_CFG6_LPF_DS;
+        }
+        else if (hpdm->Init.clkSrc == PDM_PLL_CLK_FREQ)
+        {
+
+            *cfg0_value |= PDM_CFG0_CLK_SEL; //3.072MHz source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (1 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (48 << PDM_SINC_CFG_SINC_RATE_Pos);
+        }
+        break;
+    case PDM_SAMPLE_48KHZ:
+        if (hpdm->Init.clkSrc == PDM_XTAL_CLK_FREQ)
+        {
+            *cfg0_value &= ~PDM_CFG0_CLK_SEL; //9.6MHz source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (4 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (25 << PDM_SINC_CFG_SINC_RATE_Pos);
+            sinc_cfg |= PDM_SINC_CFG_SINC_ORDER_SEL;
+            //cfg_fifo |= (0x4 << PDM_FIFO_CFG_PDM_SHIFT_Pos);  //Align to 24bit
+        }
+        else if (hpdm->Init.clkSrc == PDM_PLL_CLK_FREQ)
+        {
+            *cfg0_value |= PDM_CFG0_CLK_SEL; //3.072MHz source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (1 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (32 << PDM_SINC_CFG_SINC_RATE_Pos);
+        }
+        break;
+    case PDM_SAMPLE_96KHZ:
+    {
+        /* Only support audpll */
+        /* pcm_clk:3.072M SINCRATE:8 LPF:4 SINC ORDER:4 */
+        *cfg0_value |= PDM_CFG0_CLK_SEL; //3.072MHz source
+        *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+        *cfg0_value |= (1 << PDM_CFG0_CLK_DIV_Pos);
+        sinc_cfg |= (8 << PDM_SINC_CFG_SINC_RATE_Pos);
+        sinc_cfg |= PDM_SINC_CFG_SINC_ORDER_SEL;
+
+        lpf_cfg |= PDM_LPF_CFG6_LPF_DS;
+
+        /* reg_pga_gain = 0x72,  pdm_shift = 0 */
+        // cfg_fifo |= (0x8 << PDM_FIFO_CFG_PDM_SHIFT_Pos);
+        hpdm->Instance->PGA_CFG &= ~PDM_PGA_CFG_PGA_GAIN_L;
+        hpdm->Instance->PGA_CFG |= (0x72 << PDM_PGA_CFG_PGA_GAIN_L_Pos);
+        hpdm->Instance->PGA_CFG &= ~PDM_PGA_CFG_PGA_GAIN_R;
+        hpdm->Instance->PGA_CFG |= (0x72 << PDM_PGA_CFG_PGA_GAIN_R_Pos);
+    }
+    break;
+    default:
+        HAL_ASSERT(0);
+        return HAL_ERROR;
+        break;
+    }
+    hpdm->Instance->SINC_CFG = sinc_cfg;
+    hpdm->Instance->LPF_CFG6 = lpf_cfg;
+
+    return HAL_OK;
+}
+#else
+static HAL_StatusTypeDef PDM_ConfigSampleRate(PDM_HandleTypeDef *hpdm, uint32_t *cfg0_value, uint32_t *cfg_fifo)
+{
+    uint32_t hbf_cfg, sinc_cfg;
+    uint32_t comp_flt_cfg;
+    /*
+     * Sample rate = clk_source / clk_div / sinc_rate / down_sample
+     * both hbp1 and hbp2 would downsample by 2, i.e. if both are not bypassed, it would be downsampled by 4.
+     */
+    hbf_cfg = hpdm->Instance->HBF_CFG;
+    sinc_cfg = hpdm->Instance->SINC_CFG;
+    comp_flt_cfg = hpdm->Instance->COMP_FLT_CFG;
+
+    sinc_cfg &= ~PDM_SINC_CFG_SINC_ORDER_SEL; /*0: sinc_order=3   1: sinc_order=4*/
+    sinc_cfg &= ~PDM_SINC_CFG_SINC_RATE;
+    comp_flt_cfg &= ~(PDM_COMP_FLT_CFG_COMP_BYPASS | PDM_COMP_FLT_CFG_COEFF_SEL);
+    hbf_cfg &= ~(PDM_HBF_CFG_HBF1_BYPASS | PDM_HBF_CFG_HBF1_GAIN_EN | PDM_HBF_CFG_HBF2_BYPASS | PDM_HBF_CFG_HBF2_GAIN_EN);
+
+    switch (hpdm->Init.SampleRate)
+    {
+    case PDM_SAMPLE_8KHZ:
+        if (hpdm->Init.clkSrc == PDM_XTAL_CLK_FREQ)
+        {
+            *cfg0_value &= ~PDM_CFG0_CLK_SEL; // XTAL source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (4 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (75 << PDM_SINC_CFG_SINC_RATE_Pos);
+            hbf_cfg |= PDM_HBF_CFG_HBF1_GAIN_EN;
+        }
+        else if (hpdm->Init.clkSrc == PDM_PLL_CLK_FREQ)
+        {
+            *cfg0_value |= PDM_CFG0_CLK_SEL;  // PLL source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (16 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (96 << PDM_SINC_CFG_SINC_RATE_Pos);
+            hbf_cfg |= PDM_HBF_CFG_HBF1_GAIN_EN;
+        }
+        break;
+    case PDM_SAMPLE_16KHZ:
+        if (hpdm->Init.clkSrc == PDM_XTAL_CLK_FREQ)
+        {
+            *cfg0_value &= ~PDM_CFG0_CLK_SEL; // XTAL source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (4 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (75 << PDM_SINC_CFG_SINC_RATE_Pos);
+            hbf_cfg |= PDM_HBF_CFG_HBF1_GAIN_EN | PDM_HBF_CFG_HBF2_BYPASS;
+        }
+        else if (hpdm->Init.clkSrc == PDM_PLL_CLK_FREQ)
+        {
+            *cfg0_value |= PDM_CFG0_CLK_SEL;  // PLL source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (16 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (96 << PDM_SINC_CFG_SINC_RATE_Pos);
+            hbf_cfg |= PDM_HBF_CFG_HBF1_GAIN_EN | PDM_HBF_CFG_HBF2_BYPASS;
+        }
+        break;
+    case PDM_SAMPLE_32KHZ:
+        if (hpdm->Init.clkSrc == PDM_XTAL_CLK_FREQ)
+        {
+            *cfg0_value &= ~PDM_CFG0_CLK_SEL; // XTAL source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (6 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (25 << PDM_SINC_CFG_SINC_RATE_Pos);
+            sinc_cfg |= PDM_SINC_CFG_SINC_ORDER_SEL;
+            comp_flt_cfg |= PDM_COMP_FLT_CFG_COEFF_SEL;
+            hbf_cfg |= PDM_HBF_CFG_HBF2_BYPASS;
+        }
+        else if (hpdm->Init.clkSrc == PDM_PLL_CLK_FREQ)
+        {
+            *cfg0_value |= PDM_CFG0_CLK_SEL;  // PLL source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (16 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (24 << PDM_SINC_CFG_SINC_RATE_Pos);
+            sinc_cfg |= PDM_SINC_CFG_SINC_ORDER_SEL;
+            comp_flt_cfg |= PDM_COMP_FLT_CFG_COEFF_SEL;
+            hbf_cfg |= PDM_HBF_CFG_HBF1_GAIN_EN;
+        }
+        break;
+    case PDM_SAMPLE_48KHZ:
+        if (hpdm->Init.clkSrc == PDM_XTAL_CLK_FREQ)
+        {
+            *cfg0_value &= ~PDM_CFG0_CLK_SEL; // XTAL source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (4 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (25 << PDM_SINC_CFG_SINC_RATE_Pos);
+            sinc_cfg |= PDM_SINC_CFG_SINC_ORDER_SEL;
+            comp_flt_cfg |= PDM_COMP_FLT_CFG_COEFF_SEL;
+            hbf_cfg |= PDM_HBF_CFG_HBF2_BYPASS;
+        }
+        else if (hpdm->Init.clkSrc == PDM_PLL_CLK_FREQ)
+        {
+            *cfg0_value |= PDM_CFG0_CLK_SEL;  // PLL source
+            *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+            *cfg0_value |= (16 << PDM_CFG0_CLK_DIV_Pos);
+            sinc_cfg |= (16 << PDM_SINC_CFG_SINC_RATE_Pos);
+            sinc_cfg |= PDM_SINC_CFG_SINC_ORDER_SEL;
+            comp_flt_cfg |= PDM_COMP_FLT_CFG_COEFF_SEL;
+            hbf_cfg |= PDM_HBF_CFG_HBF1_GAIN_EN | PDM_HBF_CFG_HBF2_GAIN_EN;
+        }
+        break;
+    case PDM_SAMPLE_96KHZ:
+    {
+        /* Only support audpll */
+        *cfg0_value |= PDM_CFG0_CLK_SEL;
+        *cfg0_value &= ~PDM_CFG0_CLK_DIV;
+        *cfg0_value |= (16 << PDM_CFG0_CLK_DIV_Pos);
+        sinc_cfg |= (16 << PDM_SINC_CFG_SINC_RATE_Pos);
+        sinc_cfg |= PDM_SINC_CFG_SINC_ORDER_SEL;
+        comp_flt_cfg |= PDM_COMP_FLT_CFG_COEFF_SEL;
+        hbf_cfg |= PDM_HBF_CFG_HBF1_GAIN_EN | PDM_HBF_CFG_HBF2_BYPASS;
+
+        /* reg_pga_gain = 0x72,  pdm_shift = 0 */
+        hpdm->Instance->PGA_CFG &= ~PDM_PGA_CFG_PGA_GAIN_L;
+        hpdm->Instance->PGA_CFG |= (0x72 << PDM_PGA_CFG_PGA_GAIN_L_Pos);
+        hpdm->Instance->PGA_CFG &= ~PDM_PGA_CFG_PGA_GAIN_R;
+        hpdm->Instance->PGA_CFG |= (0x72 << PDM_PGA_CFG_PGA_GAIN_R_Pos);
+    }
+    break;
+    default:
+        HAL_ASSERT(0);
+        return HAL_ERROR;
+        break;
+    }
+    hpdm->Instance->COMP_FLT_CFG = comp_flt_cfg;
+    hpdm->Instance->SINC_CFG = sinc_cfg;
+    hpdm->Instance->HBF_CFG = hbf_cfg;
+
+    return HAL_OK;
+}
+
+#endif /* PDM_LPF_CFG6_LPF_DS */
 
 static HAL_StatusTypeDef PDM_Config(PDM_HandleTypeDef *hpdm, PDM_ConfigureTypeDef type)
 {
-    uint32_t cfg0_value, cfg_fifo, lpf_cfg, sinc_cfg;
+    uint32_t cfg0_value, cfg_fifo;
+    HAL_StatusTypeDef status;
 
     if (hpdm == NULL)
     {
@@ -457,7 +709,10 @@ static HAL_StatusTypeDef PDM_Config(PDM_HandleTypeDef *hpdm, PDM_ConfigureTypeDe
     cfg0_value = hpdm->Instance->CFG0;
     cfg_fifo   = hpdm->Instance->FIFO_CFG;
 
+
+#ifdef PDM_FIFO_CFG_PDM_SHIFT_Msk
     cfg_fifo &= ~PDM_FIFO_CFG_PDM_SHIFT_Msk;
+#endif /* PDM_FIFO_CFG_PDM_SHIFT_Msk */
 
     if (type & PDM_CFG_CHANNEL)
     {
@@ -499,115 +754,11 @@ static HAL_StatusTypeDef PDM_Config(PDM_HandleTypeDef *hpdm, PDM_ConfigureTypeDe
 
     if (type & PDM_CFG_SAMPLERATE)
     {
-        /*
-            Sample rate = clk_source / clk_div / sinc_rate / down_sample
-        */
-        lpf_cfg = hpdm->Instance->LPF_CFG6;
-        sinc_cfg = hpdm->Instance->SINC_CFG;
-
-        lpf_cfg &= ~PDM_LPF_CFG6_LPF_DS;       /*0: down_sample=2   1: down_sample=4*/
-        sinc_cfg &= ~PDM_SINC_CFG_SINC_ORDER_SEL; /*0: sinc_order=3   1: sinc_order=4*/
-        sinc_cfg &= ~PDM_SINC_CFG_SINC_RATE;
-        cfg_fifo &= ~(PDM_FIFO_CFG_PDM_SHIFT);
-        switch (hpdm->Init.SampleRate)
+        status = PDM_ConfigSampleRate(hpdm, &cfg0_value, &cfg_fifo);
+        if (HAL_OK != status)
         {
-        case PDM_SAMPLE_8KHZ:
-            if (hpdm->Init.clkSrc == 9600000)
-            {
-                cfg0_value &= ~PDM_CFG0_CLK_SEL; //9.6MHz source
-                cfg0_value &= ~PDM_CFG0_CLK_DIV;
-                cfg0_value |= (4 << PDM_CFG0_CLK_DIV_Pos);
-                sinc_cfg |= (75 << PDM_SINC_CFG_SINC_RATE_Pos);
-                lpf_cfg |= PDM_LPF_CFG6_LPF_DS;
-                //cfg_fifo |= (0x2 << PDM_FIFO_CFG_PDM_SHIFT_Pos); //Align to 24bit
-            }
-            else  if (hpdm->Init.clkSrc == 3072000)
-            {
-                cfg0_value |= PDM_CFG0_CLK_SEL; //3.072MHz source
-                cfg0_value &= ~PDM_CFG0_CLK_DIV;
-                cfg0_value |= (3 << PDM_CFG0_CLK_DIV_Pos);
-                sinc_cfg |= (64 << PDM_SINC_CFG_SINC_RATE_Pos);
-                //cfg_fifo |= (0x2 << PDM_FIFO_CFG_PDM_SHIFT_Pos); //Align to 24bit
-            }
-            break;
-        case PDM_SAMPLE_16KHZ:
-            if (hpdm->Init.clkSrc == 9600000)
-            {
-                cfg0_value &= ~PDM_CFG0_CLK_SEL; //9.6MHz source
-                cfg0_value &= ~PDM_CFG0_CLK_DIV;
-                cfg0_value |= (6 << PDM_CFG0_CLK_DIV_Pos);
-                sinc_cfg |= (50 << PDM_SINC_CFG_SINC_RATE_Pos);
-                //cfg_fifo |= (0x4 << PDM_FIFO_CFG_PDM_SHIFT_Pos);  //Align to 24bit
-            }
-            else if (hpdm->Init.clkSrc == 3072000)
-            {
-                cfg0_value |= PDM_CFG0_CLK_SEL; //3.072MHz source
-                cfg0_value &= ~PDM_CFG0_CLK_DIV;
-                cfg0_value |= (1 << PDM_CFG0_CLK_DIV_Pos);
-                sinc_cfg |= (96 << PDM_SINC_CFG_SINC_RATE_Pos);
-            }
-            break;
-        case PDM_SAMPLE_32KHZ:
-            if (hpdm->Init.clkSrc == 9600000)
-            {
-                cfg0_value &= ~PDM_CFG0_CLK_SEL; //9.6MHz source
-                cfg0_value &= ~PDM_CFG0_CLK_DIV;
-                cfg0_value |= (6 << PDM_CFG0_CLK_DIV_Pos);
-                sinc_cfg |= (25 << PDM_SINC_CFG_SINC_RATE_Pos);
-                //lpf_cfg |= PDM_LPF_CFG6_LPF_DS;
-            }
-            else if (hpdm->Init.clkSrc == 3072000)
-            {
-
-                cfg0_value |= PDM_CFG0_CLK_SEL; //3.072MHz source
-                cfg0_value &= ~PDM_CFG0_CLK_DIV;
-                cfg0_value |= (1 << PDM_CFG0_CLK_DIV_Pos);
-                sinc_cfg |= (48 << PDM_SINC_CFG_SINC_RATE_Pos);
-            }
-            break;
-        case PDM_SAMPLE_48KHZ:
-            if (hpdm->Init.clkSrc == 9600000)
-            {
-                cfg0_value &= ~PDM_CFG0_CLK_SEL; //9.6MHz source
-                cfg0_value &= ~PDM_CFG0_CLK_DIV;
-                cfg0_value |= (4 << PDM_CFG0_CLK_DIV_Pos);
-                sinc_cfg |= (25 << PDM_SINC_CFG_SINC_RATE_Pos);
-                sinc_cfg |= PDM_SINC_CFG_SINC_ORDER_SEL;
-                //cfg_fifo |= (0x4 << PDM_FIFO_CFG_PDM_SHIFT_Pos);  //Align to 24bit
-            }
-            else if (hpdm->Init.clkSrc == 3072000)
-            {
-                cfg0_value |= PDM_CFG0_CLK_SEL; //3.072MHz source
-                cfg0_value &= ~PDM_CFG0_CLK_DIV;
-                cfg0_value |= (1 << PDM_CFG0_CLK_DIV_Pos);
-                sinc_cfg |= (32 << PDM_SINC_CFG_SINC_RATE_Pos);
-            }
-            break;
-        case PDM_SAMPLE_96KHZ:
-        {
-            /* Only support audpll */
-            /* pcm_clk:3.072M SINCRATE:8 LPF:4 SINC ORDER:4 */
-            cfg0_value |= PDM_CFG0_CLK_SEL; //3.072MHz source
-            cfg0_value &= ~PDM_CFG0_CLK_DIV;
-            cfg0_value |= (1 << PDM_CFG0_CLK_DIV_Pos);
-            sinc_cfg |= (8 << PDM_SINC_CFG_SINC_RATE_Pos);
-            sinc_cfg |= PDM_SINC_CFG_SINC_ORDER_SEL;
-            lpf_cfg |= PDM_LPF_CFG6_LPF_DS;
-            /* reg_pga_gain = 0x72,  pdm_shift = 0 */
-            // cfg_fifo |= (0x8 << PDM_FIFO_CFG_PDM_SHIFT_Pos);
-            hpdm->Instance->PGA_CFG &= ~PDM_PGA_CFG_PGA_GAIN_L;
-            hpdm->Instance->PGA_CFG |= (0x72 << PDM_PGA_CFG_PGA_GAIN_L_Pos);
-            hpdm->Instance->PGA_CFG &= ~PDM_PGA_CFG_PGA_GAIN_R;
-            hpdm->Instance->PGA_CFG |= (0x72 << PDM_PGA_CFG_PGA_GAIN_R_Pos);
+            return status;
         }
-        break;
-        default:
-            HAL_ASSERT(0);
-            return HAL_ERROR;
-            break;
-        }
-        hpdm->Instance->SINC_CFG = sinc_cfg;
-        hpdm->Instance->LPF_CFG6 = lpf_cfg;
     }
 
     if (type & PDM_CFG_DEPTH)

@@ -111,6 +111,8 @@ typedef struct
 #define PMUC_WSR_PWRKEY_Pos             (6U)
 #define PMUC_WSR_PWRKEY_Msk             (0x1UL << PMUC_WSR_PWRKEY_Pos)
 #define PMUC_WSR_PWRKEY                 PMUC_WSR_PWRKEY_Msk
+#define PMUC_WSR_PIN_ALL                (PMUC_WSR_PIN0 | PMUC_WSR_PIN1)
+#define PMUC_WSR_PIN_NUM                (2)
 
 /******************** Bit definition for PMUC_WCR register ********************/
 #define PMUC_WCR_WDT1_Pos               (1U)

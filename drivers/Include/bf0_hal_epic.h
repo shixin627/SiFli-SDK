@@ -14,21 +14,31 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include <stdbool.h>
 #include "bf0_hal_def.h"
+#include "sifli_matrix.h"
 
 
-
-#ifndef SF32LB55X
+#ifndef SF32LB55X /* Features supported after 55x */
 #define EPIC_SUPPORT_MASK
 #define EPIC_SUPPORT_MONOCHROME_LAYER
 #define EPIC_SUPPORT_A4
 #define EPIC_SUPPORT_A8
 #define EPIC_SUPPORT_L8
-
-#ifndef SF32LB58X
+#ifndef SF32LB58X /* Features supported after 58x */
 #define EPIC_SUPPORT_YUV
 #define EPIC_SUPPORT_DITHER
-#ifndef SF32LB56X
+#ifndef SF32LB56X /* Features supported after 56x */
 #define EPIC_SUPPORT_A2
+#ifndef SF32LB52X /* Features supported after 52x */
+#define EPIC_SUPPORT_JPEGD
+#define EPIC_SUPPORT_DECOMP
+#define EPIC_SUPPORT_COMP
+#define EPIC_SUPPORT_COLOR_MATRIX
+// #define HAL_EPICTL_ENABLED
+#define EPIC_SUPPORT_L4
+#define EPIC_SUPPORT_GREYSCALE
+#define EPIC_SUPPORT_OUTPUT_A8
+#define EPIC_SUPPORT_TRANS_MATRIX
+#endif /* SF32LB52X */
 #endif /* SF32LB56X */
 #endif /* SF32LB58X */
 #endif /* SF32LB55X */
@@ -61,6 +71,18 @@ extern "C" {
 #define EPIC_COLOR_A4              (6)              /**< A4 color format */
 #define EPIC_COLOR_A2              (7)              /**< A2 color format */
 #define EPIC_COLOR_MONO            (8)              /**< Monochrome color format */
+#define EPIC_COLOR_GRAY8              (9)              /**< Grayscale 8bit color format */
+#define EPIC_COLOR_GRAY4              (0xA)             /**< Grayscale 4bit color format */
+#define EPIC_COLOR_GRAY2              (0xB)             /**< Grayscale 2bit color format */
+#define EPIC_COLOR_L4              (0xC)             /**< L4 color format */
+
+#define EPIC_COLOR_SWAP_FLAG       (0x40)           /**< Color format swap flag */
+#define EPIC_COLOR_A4_SWAP         (EPIC_COLOR_SWAP_FLAG | EPIC_COLOR_A4)       /**< A4 color format with swapped pixels */
+#define EPIC_COLOR_A2_SWAP         (EPIC_COLOR_SWAP_FLAG | EPIC_COLOR_A2)       /**< A2 color format with swapped pixels */
+#define EPIC_COLOR_GRAY4_SWAP         (EPIC_COLOR_SWAP_FLAG | EPIC_COLOR_GRAY4)       /**< Grayscale 4bit color format with swapped pixels */
+#define EPIC_COLOR_GRAY2_SWAP         (EPIC_COLOR_SWAP_FLAG | EPIC_COLOR_GRAY2)       /**< Grayscale 2bit color format with swapped pixels */
+#define EPIC_COLOR_L4_SWAP         (EPIC_COLOR_SWAP_FLAG | EPIC_COLOR_L4)       /**< L4 color format with swapped pixels */
+#define EPIC_COLOR_RGB565_SWAP     (EPIC_COLOR_SWAP_FLAG | EPIC_COLOR_RGB565)  /**< RGB565 color format with swapped bytes */
 
 
 #define EPIC_COLOR_EZIP_FLAG        (0x80)           /**< EZIP color format flag, supported after A0*/
@@ -88,6 +110,19 @@ extern "C" {
 #define EPIC_COLOR_YUV420_PLANAR             (0x103)              /**< iYUV */
 //#define EPIC_COLOR_YUV420_SEMI_PLANAR      (0x104)              /**< Reserved */
 
+#define EPIC_COLOR_JPEG_FLAG                 (0x200)
+#define EPIC_COLOR_JPEG                      (0x200)
+
+#define EPIC_COLOR_FLEX_FLAG                 (0x400)           /**< Flex color format flag, supported after 57x*/
+#define EPIC_COLOR_F2_332                    (0x401)           /**< Flex 2bit color format */
+
+#define EPIC_IS_EZIP_COLOR_MODE(c)       (EPIC_COLOR_EZIP_FLAG == (EPIC_COLOR_EZIP_FLAG&(c)))
+#define EPIC_IS_YUV_COLOR_MODE(c)       (EPIC_COLOR_YUV_FLAG == (EPIC_COLOR_YUV_FLAG&(c)))
+#define EPIC_IS_LUT_COLOR_MODE(c)       ((EPIC_COLOR_L8 == (c))||(EPIC_COLOR_L4 == (c))||(EPIC_COLOR_L4_SWAP == (c)))
+#define EPIC_IS_GRAY_COLOR_MODE(c)      ((EPIC_COLOR_GRAY8 == ((c) & ~EPIC_COLOR_SWAP_FLAG)) || \
+                                         (EPIC_COLOR_GRAY4 == ((c) & ~EPIC_COLOR_SWAP_FLAG)) || \
+                                         (EPIC_COLOR_GRAY2 == ((c) & ~EPIC_COLOR_SWAP_FLAG)))
+#define EPIC_IS_MASK_COLOR_MODE(c)   ((EPIC_COLOR_A8 == (c)) || (EPIC_COLOR_A4 == ((c))) || (EPIC_COLOR_A4_SWAP == ((c))))
 
 /** @defgroup EPIC_Output_Color_Mode EPIC Output Color Mode
   * @{
@@ -96,13 +131,23 @@ extern "C" {
 #define EPIC_OUTPUT_ARGB8565       EPIC_COLOR_ARGB8565                   /*!< ARGB8565 EPIC output color mode   */
 #define EPIC_OUTPUT_RGB888         EPIC_COLOR_RGB888                     /*!< RGB888 EPIC output color mode   */
 #define EPIC_OUTPUT_ARGB8888       EPIC_COLOR_ARGB8888                   /*!< ARGB8888 EPIC output color mode   */
-
+#define EPIC_OUTPUT_A8             EPIC_COLOR_A8                         /*!< A8 EPIC output color mode   */
+#define EPIC_OUTPUT_GRAY8             EPIC_COLOR_GRAY8                         /*!< Grayscale 8bit EPIC output color mode   */
+#define EPIC_OUTPUT_GRAY4             EPIC_COLOR_GRAY4                         /*!< Grayscale 4bit EPIC output color mode   */
+#define EPIC_OUTPUT_GRAY2             EPIC_COLOR_GRAY2                         /*!< Grayscale 2bit EPIC output color mode   */
+#define EPIC_OUTPUT_GRAY4_SWAP         EPIC_COLOR_GRAY4_SWAP                   /*!< Grayscale 4bit EPIC output color mode with swapped pixels   */
+#define EPIC_OUTPUT_GRAY2_SWAP         EPIC_COLOR_GRAY2_SWAP                   /*!< Grayscale 2bit EPIC output color mode with swapped pixels   */
 /**
   * @}
   */
 #define EPIC_SUPPROT_OUT_FORMAT(cf)  ((EPIC_OUTPUT_RGB565 == (cf)) || (EPIC_OUTPUT_ARGB8565 == (cf)) \
-                                           || (EPIC_OUTPUT_RGB888 == (cf)) || (EPIC_OUTPUT_ARGB8888 == (cf)))
+                                        || (EPIC_OUTPUT_RGB888 == (cf)) || (EPIC_OUTPUT_ARGB8888 == (cf)) \
+                                        || (EPIC_OUTPUT_A8 == (cf)) || (EPIC_OUTPUT_GRAY8 == (cf)) \
+                                        || (EPIC_OUTPUT_GRAY4 == (cf)) || (EPIC_OUTPUT_GRAY2 == (cf)) \
+                                        || (EPIC_OUTPUT_GRAY4_SWAP == (cf)) || (EPIC_OUTPUT_GRAY2_SWAP == (cf)))
 
+#define EPIC_OUTPUT_IS_TRANSLUCENT(cf)  ((EPIC_OUTPUT_ARGB8565 == (cf)) || (EPIC_OUTPUT_ARGB8888 == (cf)) \
+                                        || (EPIC_OUTPUT_A8 == (cf)))
 
 /** @defgroup EPIC_Input_Color_Mode EPIC Input Color Mode
   * @{
@@ -120,27 +165,38 @@ extern "C" {
 #define EPIC_INPUT_YUV422_PACKED_UYVY   EPIC_COLOR_YUV422_PACKED_UYVY            /**< UYUV */
 #define EPIC_INPUT_YUV420_PLANAR        EPIC_COLOR_YUV420_PLANAR                 /**< iYUV */
 #define EPIC_INPUT_MONO                EPIC_COLOR_MONO
-
+#define EPIC_INPUT_JPEG              EPIC_COLOR_JPEG
+#define EPIC_INPUT_L4                EPIC_COLOR_L4                  /*!< L4 color format */
+#define EPIC_INPUT_L4_SWAP          EPIC_COLOR_L4_SWAP            /*!< L4 color format with swapped pixels */
+#define EPIC_INPUT_A4_SWAP          EPIC_COLOR_A4_SWAP            /*!< A4 color format with swapped pixels */
+#define EPIC_INPUT_A2_SWAP          EPIC_COLOR_A2_SWAP            /*!< A2 color format with swapped pixels */
+#define EPIC_INPUT_RGB565_SWAP    EPIC_COLOR_RGB565_SWAP          /*!< RGB565 color format with swapped bytes */
 
 
 /**
   * @}
   */
 
+/** @defgroup EPIC_CoengStateFlag EPIC Co-engine state flag
+ * @{
+*/
+#define EPIC_COENG_STATE_EZIP_FLAG         (0x1)
+#define EPIC_COENG_STATE_JPEGD_FLAG        (0x2)
+/**
+ * @}
+ */
 
 #define EPIC_LAYER_OPAQUE  (0xFF)
 
 #define EPIC_MAX_LOOKUP_TABLE_CNT        (256)    /*!< Maximum lookup table color numbers */
 #define EPIC_LOOKUP_TABLE_SIZE          (EPIC_MAX_LOOKUP_TABLE_CNT*4)    /*!< In bytes */
 #ifndef SF32LB55X
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
 #define EPIC_LOOKUP_TABLES   1
 #else
 #define EPIC_LOOKUP_TABLES   2
 #endif /* SF32LB52X */
 #endif /* SF32LB55X */
-#define EPIC_IS_EZIP_COLOR_MODE(c)       (EPIC_COLOR_EZIP_FLAG == (EPIC_COLOR_EZIP_FLAG&(c)))
-#define EPIC_IS_YUV_COLOR_MODE(c)       (EPIC_COLOR_YUV_FLAG == (EPIC_COLOR_YUV_FLAG&(c)))
 
 
 
@@ -161,8 +217,11 @@ extern "C" {
 /*
  EPIC input/output maximum coordinates
 */
+#if defined(SF32LB52X)||defined(SF32LB57X)
+#define EPIC_COORDINATES_MAX 505
+#else /* SF32LB52X */
 #define EPIC_COORDINATES_MAX 1010
-
+#endif /* !SF32LB52X */
 /**
   * @brief EPIC Init structure definition
   */
@@ -217,9 +276,18 @@ typedef struct
     int16_t y;
 } EPIC_PointTypeDef;
 
+#define EPIC_SIN_COS_FRAC_BIT   (15)
 
 typedef struct
 {
+    /*
+      !!IMPORTANT!!
+       Part1~3 are mutually exclusive, only one part is used each time
+    */
+
+    /*****************
+     * Part1 for basic 2D transform
+     * *********************/
     /** angle in 0.1 degree */
     int16_t angle;
     /** flip left to right */
@@ -245,7 +313,9 @@ typedef struct
      */
     uint32_t scale_y;
 
-    /*Reserved params for epic_adv APIs*/
+    /***************
+     * Part2 Reserved params for epic_adv APIs
+     * *****************/
     uint16_t type; /*0: disable, 1-type1 2-type2*/
     int16_t angle_adv; /** angle in 0.1 degree */
     int16_t pivot_z;
@@ -253,6 +323,12 @@ typedef struct
     int16_t vp_x_offset; /*view x offset*/
     int16_t vp_y_offset; /*view y offset*/
     int16_t dst_z_offset; /*dst z offset*/
+
+
+    /*******************
+     * Part3 for matrix transfrom only
+     * *********************/
+    sifli_matrix_3x3_t *trans_matrix;
 } EPIC_TransformCfgTypeDef;
 
 typedef struct
@@ -340,6 +416,22 @@ typedef struct
 
     uint32_t dither_level : 2;  /**< Dither level for this layer, refer to #EPIC_DITHER_LEVEL_XXX */
     uint32_t reserved  : 30;   /**< Reserved */
+    /** 4x5 color matrix (4 rows, 5 columns) :
+     *
+     *  | Ra    Rb    Rc   Rd   Re|
+     *  | Ga    Gb    Gc   Gd   Ge|
+     *  | Ba    Bb    Bc   Bd   Be|
+     *  | Aa    Ab    Ac   Ad   Ae|
+     *
+     *  Color transform formula:
+     *  R' = Ra*R + Rb*G + Rc*B + Rd*A + Re
+     *  G' = Ga*R + Gb*G + Gc*B + Gd*A + Ge
+     *  B' = Ba*R + Bb*G + Bc*B + Bd*A + Be
+     *  A' = Aa*R + Ab*G + Ac*B + Ad*A + Ae
+     *
+     *  Only valid for input layer
+    */
+    float *color_matrix;
 } EPIC_BlendingDataType;
 
 typedef struct
@@ -369,7 +461,7 @@ typedef struct
      * 3. used as background color by output layer
      */
     bool color_en;
-    /** Red, if color_filter_en is true, it's filter color for rotation/scaling layer or background color for output layer */
+    /** Red */
     uint8_t color_r;
     /** Green */
     uint8_t color_g;
@@ -388,6 +480,22 @@ typedef struct
 
     uint32_t dither_level : 2;  /**< Dither level for this layer, refer to #EPIC_DITHER_LEVEL_XXX */
     uint32_t reserved  : 30;   /**< Reserved */
+    /** 4x5 color matrix (4 rows, 5 columns) :
+     *
+     *  | Ra    Rb    Rc   Rd   Re|
+     *  | Ga    Gb    Gc   Gd   Ge|
+     *  | Ba    Bb    Bc   Bd   Be|
+     *  | Aa    Ab    Ac   Ad   Ae|
+     *
+     *  Color transform formula:
+     *  R' = Ra*R + Rb*G + Rc*B + Rd*A + Re
+     *  G' = Ga*R + Gb*G + Gc*B + Gd*A + Ge
+     *  B' = Ba*R + Bb*G + Bc*B + Bd*A + Be
+     *  A' = Aa*R + Ab*G + Ac*B + Ad*A + Ae
+     *
+     *  Only valid for input layer
+    */
+    float *color_matrix;
     /****** Keep above members as same as struct 'EPIC_BlendingDataType'  *************/
 
     uint8_t alpha;              /**< Layer global alpha*/
@@ -532,6 +640,7 @@ typedef struct
 {
     EPIC_OpTypeDef op;
     uint32_t start_time; //Gtimer
+    uint32_t end_time;
     EPIC_OpParamTypeDef param;
 } EPIC_OpHistItemTypeDef;
 
@@ -575,6 +684,11 @@ typedef struct __EPIC_HandleTypeDef
 #ifdef HAL_EZIP_MODULE_ENABLED
     EZIP_HandleTypeDef        *hezip;                                            /**< EZIP handle                 */
 #endif /* HAL_EZIP_MODULE_ENABLED */
+#ifdef HAL_JPEGD_MODULE_ENABLED
+    JPEGD_HandleTypeDef       *hjpegd;                                           /**< JPEGD Handle  */
+    uint32_t                  jpegd_work_buf_size;
+    uint8_t                   *jpegd_work_buf;
+#endif /* HAL_JPEGD_MODULE_ENABLED */
     EPIC_InitTypeDef           Init;                                             /*!< EPIC init parameters.       */
     void (* XferCpltCallback)(struct __EPIC_HandleTypeDef *epic);                /*!< EPIC processing complete callback. */
     __IO HAL_EPIC_StateTypeDef State;                                            /*!< EPIC state.                        */
@@ -602,11 +716,13 @@ typedef struct __EPIC_HandleTypeDef
     } api_cfg;
 #ifdef EPIC_DEBUG
     EPIC_OpHistTypeDef *op_hist;
+    EPIC_OpHistItemTypeDef *last_hist_item;
 #endif
     void *user_data;                                                             /*!< user data */
     __IO uint32_t PerfCnt;                                                       /*!< EPIC total running cycle counter */
     __IO uint32_t WaitCnt;
     __IO uint32_t HalCnt;
+    __IO uint32_t coeng_state;                                                   /*!< Co-engine running state, @ref EPIC_CoengStateFlag */
 } EPIC_HandleTypeDef;
 
 typedef void (*EPIC_CpltCallback)(EPIC_HandleTypeDef *epic);
@@ -874,7 +990,18 @@ static inline int32_t EPIC_TrigoCos(int16_t angle)
 }
 void EPIC_TrigoSinCosP1(int16_t angle, int16_t *sin_val, int16_t *cos_val);
 
-
+void EPIC_GetTransformedArea(EPIC_AreaTypeDef *output, uint16_t w, uint16_t h, int16_t angle,
+                             uint32_t scale_x, uint32_t scale_y,
+                             const EPIC_PointTypeDef *pivot);
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+void EPIC_GetMatrixTransfromedArea(sifli_matrix_3x3_t *p_matrix, EPIC_AreaTypeDef *p_area);
+#endif
+/* -------------------------------
+    EPIC Transfer Layer(EPICTL) APIs
+ ------------------------------- */
+#ifdef HAL_EPICTL_ENABLED
+#include "bf0_hal_epictl.h"
+#endif /* HAL_EPICTL_ENABLED */
 /**
   * @}
   */

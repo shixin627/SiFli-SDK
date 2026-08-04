@@ -36,7 +36,13 @@ static audio_client_t g_client;
 static int cache_full;
 static int pcm_file;
 static struct rt_thread thread;
+static int thread_running;
+static int opus_ready;      
 static uint8_t drop_noise_frame_cnt;
+
+static struct rt_semaphore loopback_sem;
+static uint8_t loopback_pcm_buf[320];
+static int loopback_pcm_len;
 
 //#define MIC_RECORD_FILE "/ramfs/mic16k.pcm"
 #define MIC_RECORD_FILE "/mic16k.pcm"
@@ -179,7 +185,6 @@ static int audio_callback_play(audio_server_callback_cmt_t cmd, void *callback_u
 
 static int opus_loop_record(audio_server_callback_cmt_t cmd, void *callback_userdata, uint32_t reserved)
 {
-    int fd = (int)callback_userdata;
     if (cmd == as_callback_cmd_data_coming)
     {
         if (drop_noise_frame_cnt < 20)
@@ -188,23 +193,9 @@ static int opus_loop_record(audio_server_callback_cmt_t cmd, void *callback_user
             return 0;
         }
         audio_server_coming_data_t *p = (audio_server_coming_data_t *)reserved;
-        short encode_out[320 / 2];
-        short pcm[320];
-        opus_int32 len = opus_encode(encoder, (const opus_int16 *)p->data, 320 / 2, (uint8_t *)&encode_out[0], 320);
-        LOG_I("opus encode len=%d frame=%d", len, debug_frame);
-        if (len < 0 || len > 320)
-        {
-            RT_ASSERT(0);
-        }
-
-        opus_int32 res = opus_decode(decoder, (uint8_t *)&encode_out[0], len, pcm, 320, 0);
-        LOG_I("opus decoce res=%d frame=%d", res, debug_frame);
-        if (res != 320 / 2)
-        {
-            rt_kprintf("decode out samples=%d\n", res);
-            RT_ASSERT(0);
-        }
-        int writted = audio_write(g_client, (uint8_t *)pcm, 320);
+        loopback_pcm_len = p->data_len > sizeof(loopback_pcm_buf) ? sizeof(loopback_pcm_buf) : p->data_len;
+        memcpy(loopback_pcm_buf, p->data, loopback_pcm_len);
+        rt_sem_release(&loopback_sem);
     }
     return 0;
 }
@@ -286,6 +277,7 @@ static void opus_test(void *p)
 
     int err;
     int stack;
+    thread_running = 1;
     debug_frame = 0;
     rt_kprintf("opus runing stack var address =0x%x\r\n", &stack);
 
@@ -331,18 +323,55 @@ static void opus_test(void *p)
     pa.read_samplerate = 16000;
     pa.read_cache_size = 0;
     pa.write_cache_size = 320 * 8;
+    audio_client_t client;
     if (pcm_file >= 0)
     {
-        g_client = audio_open(AUDIO_TYPE_LOCAL_RECORD, AUDIO_TXRX, &pa, NULL, NULL);
+        client = audio_open(AUDIO_TYPE_LOCAL_RECORD, AUDIO_TXRX, &pa, NULL, NULL);
     }
     else
     {
-        g_client = audio_open(AUDIO_TYPE_LOCAL_RECORD, AUDIO_TXRX, &pa, opus_loop_record, NULL);
-        while (1)
+        rt_sem_init(&loopback_sem, "opus_lb", 0, RT_IPC_FLAG_FIFO);
+        drop_noise_frame_cnt = 0;
+        client = audio_open(AUDIO_TYPE_LOCAL_RECORD, AUDIO_TXRX, &pa, opus_loop_record, NULL);
+        // 10s at 10ms per frame = 1000 frames
+        while (debug_frame < 1000)
         {
-            LOG_E("pcm_file = %d testing ...\n", pcm_file);
-            rt_thread_mdelay(5000);
+            rt_sem_take(&loopback_sem, RT_WAITING_FOREVER);
+
+            short encode_out[160];
+            short pcm_out[320];
+            opus_int32 len = opus_encode(encoder, (const opus_int16 *)loopback_pcm_buf,
+                                         loopback_pcm_len / 2, (uint8_t *)encode_out, sizeof(encode_out));
+            LOG_I("opus encode len=%d frame=%d", len, debug_frame);
+            if (len < 0 || len > sizeof(encode_out))
+            {
+                RT_ASSERT(0);
+            }
+
+            opus_int32 res = opus_decode(decoder, (uint8_t *)encode_out, len, pcm_out, 320, 0);
+            LOG_I("opus decoce res=%d frame=%d", res, debug_frame);
+            if (res != 320 / 2)
+            {
+                rt_kprintf("decode out samples=%d\n", res);
+                RT_ASSERT(0);
+            }
+
+            while (1)
+            {
+                int writted = audio_write(client, (uint8_t *)pcm_out, 320);
+                if (writted == 0)
+                {
+                    rt_thread_mdelay(5);
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            debug_frame++;
         }
+        rt_sem_detach(&loopback_sem);
     }
     uint8_t buf[320];
     short encode_out[320 / 2];
@@ -373,7 +402,7 @@ static void opus_test(void *p)
 #if 1
         while (1)
         {
-            int writted = audio_write(g_client, (uint8_t *)&pcm[0], 320);
+            int writted = audio_write(client, (uint8_t *)&pcm[0], 320);
             if (writted == 0)
             {
                 rt_thread_mdelay(5);
@@ -387,13 +416,14 @@ static void opus_test(void *p)
     }
 
     close(pcm_file);
-    audio_close(g_client);
+    audio_close(client);
 
     opus_encoder_destroy(encoder);
     opus_decoder_destroy(decoder);
 
     //unlink(MIC_RECORD_FILE);
 
+    thread_running = 0;
     rt_kprintf("---opus test exit---\r\n");
 }
 
@@ -411,6 +441,19 @@ int opus(int argc, char *argv[])
     OpusEncoder *encoder = NULL;
     OpusDecoder *decoder = NULL;
     audio_client_t client = NULL;
+
+    if (!opus_ready)
+    {
+        rt_kprintf("system not ready yet, please wait...\n");
+        return -1;
+    }
+
+    if (thread_running)
+    {
+        rt_kprintf("opus thread is already running, please wait for it to exit\n");
+        return -1;
+    }
+
     if (argc == 1)
     {
         mic2file();
@@ -452,6 +495,7 @@ int main(void)
 
     rt_thread_init(&thread, "opus", opus_test, NULL, opus_stack, OPUS_STACK_SIZE, RT_THREAD_PRIORITY_HIGH, 10);
     rt_thread_startup(&thread);
+    opus_ready = 1;
 
     /* Infinite loop */
     while (1)

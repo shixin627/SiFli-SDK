@@ -1,9 +1,7 @@
-/**
- * @file lvsf_utils.c
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
  *
- *
- *
- *
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /*********************
@@ -118,7 +116,7 @@ static void dma_err_cb(void)
     RT_ASSERT(0);
 }
 
-
+#ifdef BSP_UISNG_EXT_DMA
 void _lv_copy_vdb(uint8_t *buf_act, uint8_t *buf_ina, uint32_t size)
 {
     rt_err_t err;
@@ -137,7 +135,8 @@ void _lv_copy_vdb(uint8_t *buf_act, uint8_t *buf_ina, uint32_t size)
     err = rt_sem_take(copy_sema, 1000);
     RT_ASSERT(RT_EOK == err);
 }
-#endif
+#endif /* BSP_UISNG_EXT_DMA */
+#endif /* !_MSC_VER */
 
 
 

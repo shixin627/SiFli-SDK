@@ -1,0 +1,79 @@
+# ptab v3 - Partition Table
+# Migrated from: ptab.json
+# Chip: SF32LB525UC6
+#
+# Auto-generated. Please review and adjust as needed.
+
+version: 3
+chip: SF32LB525UC6
+memory:
+- mpi: mpi2
+  type: nor
+  size: 8388608
+partitions:
+
+- name: calibration
+  type: data
+  subtype: calibration
+  region: mpi2
+  offset: '0x00008000'
+  size: '0x00002000'
+
+- name: hcpu_flash_code
+  type: app
+  subtype: factory
+  region: mpi2
+  offset: '0x00020000'
+  size: '0x00600000'
+  core: HCPU
+- name: hcpu_flash2_img
+  type: app
+  subtype: ex
+  region: mpi2
+  offset: '0x00620000'
+  size: '0x00100000'
+  core: HCPU
+  sections:
+  - section: .ROM1_IMG*
+  - section: .ROM3_IMG*
+- name: hcpu_flash2_font
+  type: app
+  subtype: ex
+  region: mpi2
+  offset: '0x00720000'
+  size: '0x00200000'
+  core: HCPU
+  sections:
+  - section: .SECTION_TTF*
+  - object: lvsf_font_*
+    section: .rodata*
+- name: fs_region
+  type: data
+  subtype: filesystem
+  region: mpi2
+  offset: '0x00920000'
+  size: '0x00400000'
+- name: dfu
+  type: data
+  subtype: flashdb_kv
+  region: mpi2
+  offset: '0x00D20000'
+  size: '0x00004000'
+- name: ble
+  type: data
+  subtype: flashdb_kv
+  region: mpi2
+  offset: '0x00D24000'
+  size: '0x00004000'
+- name: psram_code
+  type: data
+  subtype: ram
+  region: psram1
+  offset: '0x00000000'
+  size: '0x00080000'
+- name: psram_data
+  type: data
+  subtype: ram
+  region: psram1
+  offset: '0x00080000'
+  size: '0x00780000'

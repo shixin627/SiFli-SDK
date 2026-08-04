@@ -5,6 +5,7 @@
  */
 #include "usbd_core.h"
 #include "usbd_cdc_acm.h"
+#include "rthw.h"
 #include "rtthread.h"
 #include "rtdevice.h"
 #include "bf0_hal.h"
@@ -44,7 +45,6 @@
 static rt_device_t uart_device = RT_NULL;
 static struct rt_semaphore uart_rx_sem;
 static struct rt_semaphore usb_rx_sem;
-static struct rt_mutex buffer_mutex;
 
 /* Ring Buffers for bidirectional data transfer */
 static struct rt_ringbuffer uart_to_usb_rb;
@@ -59,6 +59,7 @@ USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX uint8_t usb_write_buffer[2048];
 /* State flags */
 static volatile bool ep_tx_busy = false;
 static volatile bool usb_configured = false;
+static volatile rt_uint32_t usb_rx_dropped = 0;
 
 
 
@@ -138,6 +139,31 @@ static rt_err_t uart_rx_callback(rt_device_t dev, rt_size_t size)
     return RT_EOK;
 }
 
+static rt_size_t usb_to_uart_get(uint8_t *buffer, rt_size_t length)
+{
+    rt_base_t level;
+    rt_size_t count;
+
+    level = rt_hw_interrupt_disable();
+    count = rt_ringbuffer_get(&usb_to_uart_rb, buffer, length);
+    rt_hw_interrupt_enable(level);
+
+    return count;
+}
+
+static rt_uint32_t usb_rx_dropped_take(void)
+{
+    rt_base_t level;
+    rt_uint32_t dropped;
+
+    level = rt_hw_interrupt_disable();
+    dropped = usb_rx_dropped;
+    usb_rx_dropped = 0;
+    rt_hw_interrupt_enable(level);
+
+    return dropped;
+}
+
 /* Thread: UART to USB data transfer */
 static void uart_to_usb_thread(void *parameter)
 {
@@ -157,9 +183,7 @@ static void uart_to_usb_thread(void *parameter)
                 count = rt_device_read(uart_device, -1, temp_buffer, sizeof(temp_buffer));
                 if (count > 0)
                 {
-                    rt_mutex_take(&buffer_mutex, RT_WAITING_FOREVER);
                     rt_size_t written = rt_ringbuffer_put(&uart_to_usb_rb, temp_buffer, count);
-                    rt_mutex_release(&buffer_mutex);
 
                     if (written < count)
                     {
@@ -171,9 +195,7 @@ static void uart_to_usb_thread(void *parameter)
             /* Send to USB if data available and USB is ready */
             if (usb_configured && !ep_tx_busy)
             {
-                rt_mutex_take(&buffer_mutex, RT_WAITING_FOREVER);
                 count = rt_ringbuffer_get(&uart_to_usb_rb, usb_write_buffer, CDC_MAX_MPS);
-                rt_mutex_release(&buffer_mutex);
 
                 if (count > 0)
                 {
@@ -194,39 +216,42 @@ static void uart_to_usb_thread(void *parameter)
 static void usb_to_uart_thread(void *parameter)
 {
     uint8_t temp_buffer[512];
-    rt_size_t count;
+    rt_size_t count = 0;
+    rt_size_t offset = 0;
 
     while (1)
     {
-        /* Wait for USB data */
-        rt_sem_take(&usb_rx_sem, RT_WAITING_FOREVER);
-
-        /* Send all buffered data to UART */
-        if (uart_device)
+        rt_uint32_t dropped = usb_rx_dropped_take();
+        if (dropped > 0)
         {
-            while (1)
+            LOG_W("USB RX buffer overflow: %u bytes lost", dropped);
+        }
+
+        if (offset >= count)
+        {
+            count = usb_to_uart_get(temp_buffer, sizeof(temp_buffer));
+            offset = 0;
+
+            if (count == 0)
             {
-                rt_mutex_take(&buffer_mutex, RT_WAITING_FOREVER);
-                count = rt_ringbuffer_get(&usb_to_uart_rb, temp_buffer, sizeof(temp_buffer));
-                rt_mutex_release(&buffer_mutex);
-
-                if (count == 0)
-                {
-                    break;
-                }
-
-                rt_size_t sent = rt_device_write(uart_device, 0, temp_buffer, count);
-
-                /* If UART is busy, put remaining data back */
-                if (sent < count)
-                {
-                    LOG_W("UART busy, %u bytes pending", count - sent);
-                    rt_mutex_take(&buffer_mutex, RT_WAITING_FOREVER);
-                    rt_ringbuffer_put_force(&usb_to_uart_rb, temp_buffer + sent, count - sent);
-                    rt_mutex_release(&buffer_mutex);
-                    break;
-                }
+                rt_sem_take(&usb_rx_sem, RT_WAITING_FOREVER);
+                continue;
             }
+        }
+
+        if (!uart_device)
+        {
+            offset = count;
+            continue;
+        }
+
+        rt_size_t sent = rt_device_write(uart_device, 0, temp_buffer + offset, count - offset);
+        offset += sent;
+
+        if (offset < count)
+        {
+            LOG_W("UART busy, %u bytes pending", count - offset);
+            rt_thread_mdelay(1);
         }
     }
 }
@@ -254,13 +279,11 @@ void usbd_cdc_acm_bulk_out(uint8_t busid, uint8_t ep, uint32_t nbytes)
     if (nbytes > 0)
     {
         /* Buffer received data */
-        rt_mutex_take(&buffer_mutex, RT_WAITING_FOREVER);
         rt_size_t written = rt_ringbuffer_put(&usb_to_uart_rb, usb_read_buffer, nbytes);
-        rt_mutex_release(&buffer_mutex);
 
         if (written < nbytes)
         {
-            LOG_W("USB RX buffer overflow: %u bytes lost", nbytes - written);
+            usb_rx_dropped += nbytes - written;
         }
 
         /* Signal thread to process data */
@@ -298,13 +321,16 @@ static rt_err_t uart_init(void)
 {
     rt_err_t result;
 
-    /* Configure UART pins based on board */
-#if defined(BSP_USING_BOARD_SF32LB52_LCD_N16R8)
+    /* Configure UART pins based on chip series */
+#if defined(SOC_SF32LB52X)
     HAL_PIN_Set(PAD_PA03, USART2_RXD, PIN_PULLUP, 1);
     HAL_PIN_Set(PAD_PA04, USART2_TXD, PIN_PULLUP, 1);
-#elif defined(BSP_USING_BOARD_SF32LB58_LCD_N16R64N4)
+#elif defined(SOC_SF32LB58X)
     HAL_PIN_Set(PAD_PA29, USART2_RXD, PIN_PULLUP, 1);
     HAL_PIN_Set(PAD_PA28, USART2_TXD, PIN_PULLUP, 1);
+#elif defined(SOC_SF32LB56X)
+    HAL_PIN_Set(PAD_PA20, USART2_RXD, PIN_PULLUP, 1);
+    HAL_PIN_Set(PAD_PA27, USART2_TXD, PIN_PULLUP, 1);
 #endif
 
     /* Find UART device */
@@ -327,10 +353,9 @@ static rt_err_t uart_init(void)
     rt_ringbuffer_init(&uart_to_usb_rb, uart_to_usb_pool, RING_BUFFER_SIZE);
     rt_ringbuffer_init(&usb_to_uart_rb, usb_to_uart_pool, RING_BUFFER_SIZE);
 
-    /* Initialize semaphores and mutex */
+    /* Initialize semaphores */
     rt_sem_init(&uart_rx_sem, "uart_rx", 0, RT_IPC_FLAG_FIFO);
     rt_sem_init(&usb_rx_sem, "usb_rx", 0, RT_IPC_FLAG_FIFO);
-    rt_mutex_init(&buffer_mutex, "buf_mtx", RT_IPC_FLAG_PRIO);
 
     /* Open UART device - try DMA mode first */
     result = rt_device_open(uart_device,

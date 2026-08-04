@@ -1888,14 +1888,6 @@ typedef enum
     PAD_PB02,
     /** PAD_PB03 */
     PAD_PB03,
-    /** PAD_PBR0 */
-    PAD_PBR0,
-    /** PAD_PBR1 */
-    PAD_PBR1,
-    /** PAD_PBR2 */
-    PAD_PBR2,
-    /** PAD_PBR3 */
-    PAD_PBR3,
     PIN_PAD_MAX_L,
 } pin_pad;
 

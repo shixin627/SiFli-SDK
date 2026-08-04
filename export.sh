@@ -94,7 +94,6 @@ case "${mirror_china_normalized}" in
         export SIFLI_SDK_GITHUB_ASSETS="https://downloads.sifli.com/github_assets"
         export SIFLI_SDK_PYPI_DEFAULT_INDEX="https://mirrors.ustc.edu.cn/pypi/simple"
         export UV_PYTHON_DOWNLOADS_JSON_URL="https://uv.agentsmirror.com/metadata/python-downloads.json"
-        export UV_PYPY_INSTALL_MIRROR="https://uv.agentsmirror.com/pypy"
         ;;
 esac
 
@@ -105,7 +104,7 @@ then
     return 1
 fi
 
-export_output=$(uv run --with rich --with tomli_w --python 3.13.11 --no-project "${sdk_path}/tools/sdk_env.py" export --shell "${shell_type}" "$@")
+export_output=$(uv run --with rich --with tomli_w --python 3.13 --no-project "${sdk_path}/tools/sdk_env.py" export --shell "${shell_type}" "$@")
 export_status=$?
 if [ ${export_status} -ne 0 ]
 then

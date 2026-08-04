@@ -35,7 +35,7 @@ GATT协议包含以下几类数据：
 ### menuconfig配置
 * 默认情况下是已将需要的配置打开
 ```c
-menuconfig --board=board_nane
+sdk.py menuconfig --board=board_nane
 ```
 1.使能蓝牙（Bluetooth）
 - 路径：Sifli middleware → Bluetooth

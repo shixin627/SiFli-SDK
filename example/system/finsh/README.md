@@ -28,7 +28,7 @@
 |#define FINSH_DEFAULT_PASSWORD   |字符串 |权限验证密码	              |关闭 |
 
 
-* _rtconfig.h_ 中的参考配置示例如下所示，可以根据实际功能需求情况进行配置。在编译界面输入 `menuconfig` 进入,在 `RTOS → RT-Thread Components → Command shell` 下配置。
+* _rtconfig.h_ 中的参考配置示例如下所示，可以根据实际功能需求情况进行配置。在编译界面输入 `sdk.py menuconfig` 进入,在 `RTOS → RT-Thread Components → Command shell` 下配置。
 ![图 1：FinSH 配置菜单](assets/finsh_menu.png)
 ```c
 /* 开启 FinSH */

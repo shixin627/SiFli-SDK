@@ -68,7 +68,7 @@ For low power consumption testing, the board is no longer powered through USB bu
 The required configurations are already enabled by default.
 
 ```c
-menuconfig --board=board_name
+sdk.py menuconfig --board=board_name
 ```
 
 1. Enable low power mode

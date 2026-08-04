@@ -1,10 +1,7 @@
 /*
- * File      : mnt.c
- * COPYRIGHT (C) 2008 - 2016, RT-Thread Development Team
+ * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co., Ltd
  *
- * Change Logs:
- * Date           Author       Notes
- * 2017-4-3       Urey         the first version
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #include <rtthread.h>

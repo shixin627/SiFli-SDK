@@ -8,10 +8,6 @@ config SOLUTION_ALLOC_MEM
     bool
     default y
 
-config FREETYPE_TINY_FONT_FULL
-    bool
-    default y
-
 menu "app cache Memory configuration"   
 
 choice
@@ -24,16 +20,15 @@ choice
         bool "SRAM"
 endchoice
 
-
 choice
-    prompt "freetype cache memory"
-    default  FREETYPE_CACHE_IN_PSRAM
-    config FREETYPE_CACHE_IN_PSRAM
+    prompt "tiny ttf cache memory"
+    default  TINY_TTF_CACHE_IN_PSRAM
+    config TINY_TTF_CACHE_IN_PSRAM
         depends on BSP_USING_PSRAM
-        bool "PSRAM"           
-    config FREETYPE_CACHE_IN_SRAM_STANDALONE
+        bool "PSRAM"
+    config TINY_TTF_CACHE_IN_SRAM_STANDALONE
         bool "SRAM STANDALONE"
-    config FREETYPE_CACHE_IN_SRAM
+    config TINY_TTF_CACHE_IN_SRAM
         bool "SRAM(Share with system heap)"
 endchoice
 
@@ -65,16 +60,16 @@ config IMAGE_CACHE_IN_SRAM_SIZE
     int "image cache in sram size(standalone)"
     default 200000
 
-    
-config FT_CACHE_SIZE
-    int "freetype cache size(bytes)"
-    help 
-        "Maximum freetype cache size(threshold), and define a standalon 
-         array(size equals FT_CACHE_SIZE) if define 
-         FREETYPE_CACHE_IN_PSRAM or FREETYPE_CACHE_IN_SRAM_STANDALONE"
-    default 400000 if FREETYPE_CACHE_IN_PSRAM
-    default 120000 if FREETYPE_CACHE_IN_SRAM_STANDALONE
-    default 100000 if FREETYPE_CACHE_IN_SRAM
+
+config TINY_TTF_CACHE_SIZE
+    int "tiny ttf draw buf cache size(bytes)"
+    help
+        "Maximum tiny ttf draw buffer cache size, and define a standalone
+         array(size equals TINY_TTF_CACHE_SIZE) if define
+         TINY_TTF_CACHE_IN_PSRAM or TINY_TTF_CACHE_IN_SRAM_STANDALONE"
+    default 120000 if TINY_TTF_CACHE_IN_PSRAM
+    default 80000 if TINY_TTF_CACHE_IN_SRAM_STANDALONE
+    default 60000 if TINY_TTF_CACHE_IN_SRAM
 
 
 config MESSAGE_CACHE_SIZE
@@ -85,4 +80,3 @@ config MESSAGE_CACHE_SIZE
 
 
 endmenu
-

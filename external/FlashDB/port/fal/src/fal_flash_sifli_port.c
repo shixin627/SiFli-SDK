@@ -305,6 +305,64 @@ const struct fal_flash_dev FAL_DEV =
 #endif
 
 
+#if defined(BSP_ENABLE_QSPI5)&&(BSP_QSPI5_MODE<2)
+
+#undef FAL_DEV
+#undef FAL_NAME
+#undef FAL_SIZE
+#undef PAGE_SIZE
+#undef SECTOR_SIZE
+#undef NAND_FLAG
+#undef FAL_BASE
+
+#define FAL_NAME    "flash5"
+#define FAL_DEV     nor_flash5
+#ifdef FLASH5_SIZE
+#define FAL_SIZE    FLASH5_SIZE
+#else
+#define FAL_SIZE    (BSP_QSPI5_MEM_SIZE * 1024 * 1024)
+#endif
+// Sector size
+#if (BSP_QSPI5_MODE == SPI_MODE_NOR)
+#define PAGE_SIZE       8192
+#define SECTOR_SIZE     8192
+#define NAND_FLAG       0
+#define FAL_BASE        FLASH5_BASE_ADDR
+#else
+#define PAGE_SIZE       128*1024
+#define SECTOR_SIZE     2*1024
+#define NAND_FLAG       1
+#define FAL_BASE        HCPU_MPI_SBUS_ADDR(FLASH5_BASE_ADDR)
+#endif
+
+static int read5(long offset, uint8_t *buf, size_t size)
+{
+    return read(FAL_DEV.addr, offset, buf, size, FAL_DEV.nand_flag);
+}
+static int write5(long offset, const uint8_t *buf, size_t size)
+{
+    return write(FAL_DEV.addr, offset, buf, size, FAL_DEV.nand_flag);
+}
+
+static int erase5(long offset, size_t size)
+{
+    return erase(FAL_DEV.addr, offset, size, PAGE_SIZE, FAL_DEV.nand_flag);
+}
+
+const struct fal_flash_dev FAL_DEV =
+{
+    .name        = FAL_NAME,
+    .addr        = FAL_BASE,
+    .len         = FAL_SIZE,
+    .blk_size    = PAGE_SIZE,
+    .sector_size = SECTOR_SIZE,
+    .nand_flag   = NAND_FLAG,
+    .ops         = {init, read5, write5, erase5},
+    .write_gran  = 32
+};
+#endif
+
+
 #if defined(BSP_USING_SDMMC1) || defined(RT_USING_SPI_MSD)
 
 #undef FAL_DEV

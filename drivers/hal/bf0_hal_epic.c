@@ -6,8 +6,7 @@
 
 #include "bf0_hal.h"
 #include "string.h"
-//#include "utest.h"
-//#include "rtthread.h"
+
 
 /** @addtogroup BF0_HAL_Driver
   * @{
@@ -79,7 +78,7 @@
                                                          || ((x0)>(x1) || ((y0)>(y1))))
 
 #define EPIC_DEBUG_PRINT_LAYER_INFO(layer, layer_name) \
-                    EPIC_PRINTF("layer %s,cf=%d,data=%x,total_w=%d,area[x0y0(%d,%d),x1y1(%d,%d)] frac[%x,%x]\n", \
+                    EPIC_PRINTF("%s,cf=%d,data=%x,total_w=%d,area[x0y0(%d,%d),x1y1(%d,%d)] frac[%x,%x]\n", \
                                 (layer_name), (layer)->color_mode, (layer)->data, (layer)->total_width,\
                                 (layer)->x_offset, \
                                 (layer)->y_offset, \
@@ -94,15 +93,39 @@
                     EPIC_PRINTF("area %s,area[x0y0(%d,%d),x1y1(%d,%d)]\n", \
                                 area_name, (area)->x0, (area)->y0, (area)->x1, (area)->y1);
 
+//return true if layer_a in layer_b's area, or false.
+#define EPIC_IS_LAYER_A_IN_B(layer_a, layer_b) (((layer_b)->x_offset <= (layer_a)->x_offset)    \
+                        && ((layer_b)->x_offset + (layer_b)->width >= (layer_a)->x_offset + (layer_a)->width) \
+                        && ((layer_b)->y_offset <= (layer_a)->y_offset)                 \
+                        && ((layer_b)->y_offset + (layer_b)->height >= (layer_a)->y_offset + (layer_a)->height))
+
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+static void EPIC_DEBUG_PRINT_FLOAT_MATRIX(const char *s, const sifli_matrix_3x3_t *mat)
+{
+    EPIC_PRINTF("%s\n", s);
+    EPIC_PRINTF("%10.3f  %10.3f  %10.3f  \n", mat->m[0][0], mat->m[0][1], mat->m[0][2]);
+    EPIC_PRINTF("%10.3f  %10.3f  %10.3f  \n", mat->m[1][0], mat->m[1][1], mat->m[1][2]);
+    EPIC_PRINTF("%10.3f  %10.3f  %10.3f  \n", mat->m[2][0], mat->m[2][1], mat->m[2][2]);
+}
+#endif
+
 //v and pivot_v must have same origin
 #define EPIC_MIRROR_V(v, pivot_v) ((pivot_v) - ((v) - (pivot_v)))
 
+#define IS_MATRIX_TRANSFROM(rot_cfg) ( NULL != (rot_cfg)->trans_matrix)
+
 #define IS_NEED_TRANSFROM(rot_cfg) ((EPIC_INPUT_SCALING_FACTOR_1 != (rot_cfg)->scale_x) || (EPIC_INPUT_SCALING_FACTOR_1 != (rot_cfg)->scale_y) || (0 != (rot_cfg)->angle)\
-                                    || (0 != (rot_cfg)->h_mirror)|| (0 != (rot_cfg)->v_mirror))
-#define IS_Ax_COLOR_MODE(c)        ((EPIC_COLOR_A2 == (c)) || (EPIC_COLOR_A4 == (c)) || (EPIC_COLOR_A8 == (c)) || (EPIC_COLOR_MONO == (c)))
+                                    || (0 != (rot_cfg)->h_mirror)|| (0 != (rot_cfg)->v_mirror) || IS_MATRIX_TRANSFROM(rot_cfg))
+
+#define IS_Ax_COLOR_MODE(c)        ((EPIC_COLOR_A2 == (c)) || (EPIC_COLOR_A2_SWAP == (c)) \
+                                    || (EPIC_COLOR_A4 == (c)) || (EPIC_COLOR_A4_SWAP == (c)) \
+                                    || (EPIC_COLOR_A8 == (c)) || (EPIC_COLOR_MONO == (c)))
 #define IS_YUV_COLOR_MODE(c)       (EPIC_COLOR_YUV_FLAG == (EPIC_COLOR_YUV_FLAG&(c)))
-#define IS_NO_ALPHA_COLOR_MODE(c)  ((EPIC_COLOR_RGB565 == (c)) || (EPIC_COLOR_RGB888 == (c)) || IS_YUV_COLOR_MODE(c) || (EPIC_COLOR_MONO == (c)))
+#define IS_NO_ALPHA_COLOR_MODE(c)  ((EPIC_COLOR_RGB565 == (c)) || (EPIC_COLOR_RGB565_SWAP == (c)) || (EPIC_COLOR_RGB888 == (c)) || IS_YUV_COLOR_MODE(c) \
+                                    || (EPIC_COLOR_MONO == (c)) || EPIC_IS_GRAY_COLOR_MODE(c))
 #define IS_EZIP_COLOR_MODE(c)       (EPIC_COLOR_EZIP_FLAG == (EPIC_COLOR_EZIP_FLAG&(c)))
+#define IS_JPEG_COLOR_MODE(c)       (EPIC_COLOR_JPEG_FLAG == (EPIC_COLOR_JPEG_FLAG&(c)))
+#define IS_SWAPPED_COLOR_MODE(c)    (EPIC_COLOR_SWAP_FLAG == (EPIC_COLOR_SWAP_FLAG&(c)))
 #define IS_MASK_MODE(m)            ((ALPHA_BLEND_MASK == (m)) || (ALPHA_BLEND_OVERWRITE == (m)))
 #define IS_ALPHA_MASK_LAYER(layer) (IS_Ax_COLOR_MODE((layer)->color_mode) && IS_MASK_MODE((layer)->ax_mode))
 
@@ -121,12 +144,30 @@
 
 
 
+
 #define IS_REAL_INSTANCE(ins) (((uint32_t)(EPIC)) == ((uint32_t)(ins)))
 
 #define RETURN_ERROR(hepic,ret_v) \
         do{ (hepic)->ErrorCode = __LINE__;  return ret_v; }while(0)
 
+#if defined(SF32LB52X)
+    #define EPIC_L2_L1_INVALID
+#endif
 
+// Get the maximum unsigned value of the register bits, [0, mask_value]
+#define IS_WITHIN_UNSIGNED_REG_RANGE(v, reg_bits_name) \
+    ((v) >= 0 && (v) <= ((reg_bits_name##_Msk) >> (reg_bits_name##_Pos)))
+
+// Get the maximum signed value of the register bits, [-(mask_value>>1), mask_value>>1]
+#define IS_WITHIN_SIGNED_REG_RANGE(v, reg_bits_name) \
+    (((v) >= (int32_t)(0 - ((reg_bits_name##_Msk) >> (reg_bits_name##_Pos) >> 1))) \
+        && ((v) <= (int32_t)((reg_bits_name##_Msk) >> (reg_bits_name##_Pos) >> 1)))
+
+#if defined(SF32LB55X)||defined(SF32LB58X)||defined(SF32LB52X)||defined(SF32LB56X)
+    #define pivot_src_max_v    1023
+#else
+    #define pivot_src_max_v    8191
+#endif
 
 
 typedef enum
@@ -166,17 +207,39 @@ typedef struct
     uint32_t scale_init_y;
 
     /*Rotate*/
-    int16_t angle_degree;
+    int16_t angle_degree; //1 degree
     uint16_t abs_sinma;
     uint16_t abs_cosma;
     EPIC_PointTypeDef src_img;
     EPIC_PointTypeDef pivot;
     uint16_t rotated_width;
     uint16_t rotated_height;
+    EPIC_AreaTypeDef rotated_visible_area; /**< Relative to original buf's TL*/
+
+    int16_t angle; //0.1 degree
+    float sinma_f;
+    float cosma_f;
+    float scale_x_f;
+    float scale_y_f;
 
     /*Mirror*/
     int8_t h_mirror;
     int8_t v_mirror;
+
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+    int8_t is_matrix_transfrom;
+    sifli_matrix_3x3_t matrix;
+
+    /*
+        The top-left coordinates of matrix layer after transformed,
+        use to calculate the offset to the last layer TL in `EPIC_ConfigMatrixTransLayer`.
+
+        Typically the offset caused by function `EPIC_MakeAllLayerCoordValid(Ex)`,
+        which move all negative coordinate to positive.
+    */
+    int16_t transformed_tl_x;
+    int16_t transformed_tl_y;
+#endif /* EPIC_SUPPORT_TRANS_MATRIX */
 } EPIC_TransformResultDef;
 
 /** sin table for 0~90 degree, Q1.15 */
@@ -203,6 +266,9 @@ static void EPIC_GradCpltCallback(EPIC_HandleTypeDef *epic);
 #ifdef HAL_EZIP_MODULE_ENABLED
     static void EPIC_EzipCpltCallback(EZIP_HandleTypeDef *ezip);
 #endif /* HAL_EZIP_MODULE_ENABLED */
+#ifdef EPIC_SUPPORT_JPEGD
+    static void EPIC_JpegdCpltCallback(JPEGD_HandleTypeDef *jpegd, void *param);
+#endif /* EPIC_SUPPORT_JPEGD */
 
 static HAL_StatusTypeDef EPIC_ConfigRotation(EPIC_HandleTypeDef *epic, EPIC_TransformCfgTypeDef *rot_cfg,
         EPIC_BlendingDataType *fg, EPIC_BlendingDataType *bg,
@@ -219,6 +285,14 @@ static HAL_StatusTypeDef EPIC_ConfigFilling(EPIC_HandleTypeDef *epic, EPIC_Filli
 static HAL_StatusTypeDef EPIC_ConfigGrad(EPIC_HandleTypeDef *epic, EPIC_GradCfgTypeDef *param);
 void EPIC_GetRotatedArea(EPIC_AreaTypeDef *output, uint16_t w, uint16_t h, int16_t angle,
                          const EPIC_PointTypeDef *pivot);
+
+static void EPIC_TransformVideoLayer_ReplacePivot(EPIC_BlendingDataType *fg,
+        EPIC_TransformCfgTypeDef *rot_cfg, EPIC_TransformResultDef *trans_result);
+static void EPIC_GetRotatedArea_Inner(EPIC_AreaTypeDef *output, uint16_t w, uint16_t h, int16_t angle,
+                                      const EPIC_PointTypeDef *pivot, uint8_t scale_none, const EPIC_TransformResultDef *trans_result);
+/*------------------------------
+    EPIC functions definitions
+ ------------------------------*/
 
 /** Return with sinus of an angle
  *
@@ -428,18 +502,40 @@ static void EPIC_DISABLE(EPIC_HandleTypeDef *hepic)
     uint32_t hw_cnt = hepic->Instance->PERF_CNT;
 #endif /* EPIC_PERF_CNT_VAL */
 
+#ifndef HAL_EPICTL_ENABLED //Keep RCC always on
     HAL_RCC_DisableModule(RCC_MOD_EPIC);
+#endif /* HAL_EPICTL_ENABLED */
     hepic->end_tick = HAL_DBG_DWT_GetCycles();
 
 #ifdef EPIC_PERF_CNT_VAL
     hepic->PerfCnt += hw_cnt;
     hepic->HalCnt  += HAL_GetElapsedTick(hepic->start_tick, hepic->end_tick) - hw_cnt;
 #endif /* EPIC_PERF_CNT_VAL */
+#ifdef EPIC_DEBUG
+    if (hepic->last_hist_item)
+    {
+        hepic->last_hist_item->end_time = HAL_HPAON_READ_GTIMER();
+    }
+#endif /* EPIC_DEBUG */
 }
 
+static inline void EPIC_RUN(EPIC_HandleTypeDef *hepic)
+{
+    //__asm("B .");
+    hepic->Instance->COMMAND |= EPIC_COMMAND_START;
+}
+/*
+   return the bits of a pixel in a color mode.
+    @param color_mode: Color mode of the pixel.
+    @return: the bits of a pixel in a color mode.
+    @note: This function is used to get the color depth of a pixel in a specific color mode.
+*/
 static uint32_t EPIC_GetColorDepth(uint32_t color_mode)
 {
     uint32_t color_depth;
+
+    //Swapped color modes have same depth as non-swapped modes
+    color_mode &= ~EPIC_COLOR_SWAP_FLAG;
 
     if (EPIC_COLOR_RGB565 == color_mode)
     {
@@ -453,15 +549,18 @@ static uint32_t EPIC_GetColorDepth(uint32_t color_mode)
     {
         color_depth = 24;
     }
-    else if ((EPIC_COLOR_A8 == color_mode) || (EPIC_COLOR_MONO == color_mode))
+    else if ((EPIC_COLOR_A8 == color_mode) || (EPIC_COLOR_MONO == color_mode) || (EPIC_COLOR_GRAY8 == color_mode))
     {
         color_depth = 8;
     }
-    else if (EPIC_COLOR_A4 == color_mode)
+    else if ((EPIC_COLOR_A4 == color_mode)
+             || (EPIC_COLOR_GRAY4 == color_mode)
+             || (EPIC_COLOR_L4 == color_mode)
+            )
     {
         color_depth = 4;
     }
-    else if (EPIC_COLOR_A2 == color_mode)
+    else if ((EPIC_COLOR_A2 == color_mode) || (EPIC_COLOR_GRAY2 == color_mode))
     {
         color_depth = 2;
     }
@@ -478,6 +577,10 @@ static uint32_t EPIC_GetColorDepth(uint32_t color_mode)
         color_depth = 32;
     }
     else if (IS_YUV_COLOR_MODE(color_mode))
+    {
+        color_depth = 24;
+    }
+    else if (IS_JPEG_COLOR_MODE(color_mode))
     {
         color_depth = 24;
     }
@@ -505,6 +608,9 @@ static uint32_t EPIC_GetColorBitMask(uint32_t color_mode, Alpha_BlendTypeDef ble
         bit7~0   B
     */
     uint32_t bit_mask;
+
+    //Swapped color modes are same as non-swapped modes
+    color_mode &= ~EPIC_COLOR_SWAP_FLAG;
 
     if (EPIC_COLOR_RGB565 == color_mode)
     {
@@ -544,10 +650,20 @@ static uint32_t EPIC_GetColorBitMask(uint32_t color_mode, Alpha_BlendTypeDef ble
         bit_mask = 0x00FFFFFF;
     }
     else if ((EPIC_COLOR_ARGB8888 == color_mode)
-             || (EPIC_COLOR_L8 == color_mode)
+             || (EPIC_COLOR_L8 == color_mode) || (EPIC_COLOR_L4 == color_mode)
              || (EPIC_COLOR_MONO == color_mode))
     {
         bit_mask = 0xFFFFFFFF;
+    }
+    else if (IS_EZIP_COLOR_MODE(color_mode))
+    {
+        /* EZIP format is regarded as ARGB8888 */
+        bit_mask = 0xFFFFFFFF;
+    }
+    else if (IS_JPEG_COLOR_MODE(color_mode))
+    {
+        /* JPEG format is regarded as RGB888 */
+        bit_mask = 0x00FFFFFF;
     }
     else
     {
@@ -557,10 +673,15 @@ static uint32_t EPIC_GetColorBitMask(uint32_t color_mode, Alpha_BlendTypeDef ble
     return bit_mask;
 }
 #endif /* EPIC_SUPPORT_DITHER */
-
+/*
+    Get the input layer color format from the color mode.
+ */
 static uint32_t EPIC_GetLayerColorFormat(uint32_t color_mode)
 {
     uint32_t layer_color_format;
+
+    //Swapped color modes are same as non-swapped modes
+    color_mode &= ~EPIC_COLOR_SWAP_FLAG;
 
     if (EPIC_COLOR_RGB565 == color_mode)
     {
@@ -588,12 +709,12 @@ static uint32_t EPIC_GetLayerColorFormat(uint32_t color_mode)
         layer_color_format = EPIC_L0_CFG_FMT_L8;
     }
 #endif /* SF32LB55X */
-#if !(defined(SF32LB55X)||defined(SF32LB58X)||defined(SF32LB56X))
+#if defined(EPIC_SUPPORT_A2)
     else if (EPIC_COLOR_A2 == color_mode)
     {
         layer_color_format = EPIC_L0_CFG_FMT_A2;
     }
-#endif
+#endif /* EPIC_SUPPORT_A2 */
     else if (EPIC_COLOR_ARGB8888 == color_mode)
     {
         layer_color_format = EPIC_L0_CFG_FMT_ARGB8888;
@@ -606,6 +727,16 @@ static uint32_t EPIC_GetLayerColorFormat(uint32_t color_mode)
     {
         layer_color_format = EPIC_L0_CFG_FMT_RGB888; //Always set layer format to RGB888 at yuv color mode
     }
+    else if (IS_JPEG_COLOR_MODE(color_mode))
+    {
+        layer_color_format = EPIC_L0_CFG_FMT_RGB888; //Always set layer format to RGB888 at yuv color mode
+    }
+#ifdef EPIC_SUPPORT_L4
+    else if (EPIC_COLOR_L4 == color_mode)
+    {
+        layer_color_format = EPIC_L0_CFG_FMT_L4;
+    }
+#endif
     else
     {
         HAL_ASSERT(0);
@@ -614,10 +745,67 @@ static uint32_t EPIC_GetLayerColorFormat(uint32_t color_mode)
     return layer_color_format;
 }
 
+/*
+    Get the output layer color format from the color mode.
+ */
+static uint32_t EPIC_GetOutputColorFormat(uint32_t color_mode)
+{
+    uint32_t ouput_color_format;
+
+    //Swapped color modes are same as non-swapped modes
+    color_mode &= ~EPIC_COLOR_SWAP_FLAG;
+
+    if (EPIC_COLOR_RGB565 == color_mode)
+    {
+        ouput_color_format = EPIC_AHB_CTRL_O_FMT_RGB565;
+    }
+    else if (EPIC_COLOR_ARGB8565 == color_mode)
+    {
+        ouput_color_format = EPIC_AHB_CTRL_O_FMT_ARGB8565;
+    }
+    else if (EPIC_COLOR_RGB888 == color_mode)
+    {
+        ouput_color_format = EPIC_AHB_CTRL_O_FMT_RGB888;
+    }
+    else if (EPIC_COLOR_ARGB8888 == color_mode)
+    {
+        ouput_color_format = EPIC_AHB_CTRL_O_FMT_ARGB8888;
+    }
+#ifdef EPIC_SUPPORT_GREYSCALE
+    else if (EPIC_COLOR_GRAY8 == color_mode)
+    {
+        ouput_color_format = EPIC_AHB_CTRL_O_FMT_GRAY8;
+    }
+    else if (EPIC_COLOR_GRAY4 == color_mode)
+    {
+        ouput_color_format = EPIC_AHB_CTRL_O_FMT_GRAY4;
+    }
+    else if (EPIC_COLOR_GRAY2 == color_mode)
+    {
+        ouput_color_format = EPIC_AHB_CTRL_O_FMT_GRAY2;
+    }
+#endif /* EPIC_SUPPORT_GREYSCALE*/
+#ifdef EPIC_SUPPORT_OUTPUT_A8
+    else if (EPIC_COLOR_A8 == color_mode)
+    {
+        ouput_color_format = EPIC_AHB_CTRL_O_FMT_A8;
+    }
+#endif /* EPIC_SUPPORT_OUTPUT_A8 */
+    else
+    {
+        HAL_ASSERT(0);
+    }
+
+    return ouput_color_format;
+}
+
 #ifdef EPIC_SUPPORT_MASK
 static uint32_t EPIC_GetMaskLayerColorFormat(uint32_t color_mode)
 {
     uint32_t layer_color_format;
+
+    //Swapped color modes are same as non-swapped modes
+    color_mode &= ~EPIC_COLOR_SWAP_FLAG;
 
     if ((EPIC_COLOR_A8 == color_mode) || (EPIC_COLOR_MONO == color_mode))
     {
@@ -760,6 +948,8 @@ static bool EPIC_ClipLayerSrcByOutput(
     EPIC_DEBUG_PRINT_LAYER_INFO(input_layer, "input");
     EPIC_DEBUG_PRINT_LAYER_INFO(output_layer, "output");
 
+    if (rot_cfg)
+        EPIC_TransformVideoLayer_ReplacePivot(input_layer, rot_cfg, trans_result);
 
     uint32_t color_depth;
     uint32_t x_round_v, y_round_v; //Clip pixel align value
@@ -797,93 +987,113 @@ static bool EPIC_ClipLayerSrcByOutput(
 
     if (rot_cfg)
     {
-        AreaMove(&output_layer_area, -rot_cfg->pivot_x, -rot_cfg->pivot_y);
-        /*output_layer_area is base on pivot now*/
-
-        if (1 == rot_cfg->h_mirror)
+        if (rot_cfg->trans_matrix)
         {
-            int16_t x0 = output_layer_area.x0;
-            int16_t x1 = output_layer_area.x1;
-
-            output_layer_area.x0 = EPIC_MIRROR_V(x1, 0);
-            output_layer_area.x1 = EPIC_MIRROR_V(x0, 0);
+            return true;//just return true to let EPIC do the clipping.
         }
-
-        if (1 == rot_cfg->v_mirror)
+        else
         {
-            int16_t y0 = output_layer_area.y0;
-            int16_t y1 = output_layer_area.y1;
+            AreaMove(&output_layer_area, -rot_cfg->pivot_x, -rot_cfg->pivot_y);
+            /*output_layer_area is base on pivot now,
+              set the pivot to {0,0} to simplify the transform calculation.
+            */
 
-            output_layer_area.y0 = EPIC_MIRROR_V(y1, 0);
-            output_layer_area.y1 = EPIC_MIRROR_V(y0, 0);
-            v_mirror_enabled = 1;
-        }
+            if (1 == rot_cfg->h_mirror)
+            {
+                int16_t x0 = output_layer_area.x0;
+                int16_t x1 = output_layer_area.x1;
+
+                output_layer_area.x0 = EPIC_MIRROR_V(x1, 0);
+                output_layer_area.x1 = EPIC_MIRROR_V(x0, 0);
+            }
+
+            if (1 == rot_cfg->v_mirror)
+            {
+                int16_t y0 = output_layer_area.y0;
+                int16_t y1 = output_layer_area.y1;
+
+                output_layer_area.y0 = EPIC_MIRROR_V(y1, 0);
+                output_layer_area.y1 = EPIC_MIRROR_V(y0, 0);
+                v_mirror_enabled = 1;
+            }
 
 
-        EPIC_DEBUG_PRINT_AREA_INFO(&output_layer_area, "output_layer_area(base on pivot)");
+            EPIC_DEBUG_PRINT_AREA_INFO(&output_layer_area, "output_layer_area(base on pivot)");
 
-        if ((EPIC_INPUT_SCALING_FACTOR_1 != rot_cfg->scale_x) || (EPIC_INPUT_SCALING_FACTOR_1 != rot_cfg->scale_y))
-        {
-            uint32_t epic_pitch_x;
-            uint32_t epic_pitch_y;
+            if ((EPIC_INPUT_SCALING_FACTOR_1 != rot_cfg->scale_x) || (EPIC_INPUT_SCALING_FACTOR_1 != rot_cfg->scale_y))
+            {
+                uint32_t epic_pitch_x;
+                uint32_t epic_pitch_y;
 
 #ifdef SF32LB55X
-            /*
-                On 55x scaling down value will re-calculate by layer width&height,
-                clipping source layer maybe tearing the image.
+                /*
+                    On 55x scaling down value will re-calculate by layer width&height,
+                    clipping source layer maybe tearing the image.
 
-                So clipping layer when scaling up or coodinates overflow.
-            */
-            EPIC_AreaTypeDef res_area;
-            EPIC_JoinArea(input_layer, output_layer, &res_area);
-            if (((EPIC_INPUT_SCALING_FACTOR_1 < rot_cfg->scale_x) || (EPIC_INPUT_SCALING_FACTOR_1 < rot_cfg->scale_y))
-                    && (!EPCI_IS_TLBR_OVERFLOW(EPIC_L0, res_area.x0, res_area.y0, res_area.x1, res_area.y1)))
-            {
-                return false;
-            }
+                    So clipping layer when scaling up or coodinates overflow.
+                */
+                EPIC_AreaTypeDef res_area;
+                EPIC_JoinArea(input_layer, output_layer, &res_area);
+                if (((EPIC_INPUT_SCALING_FACTOR_1 < rot_cfg->scale_x) || (EPIC_INPUT_SCALING_FACTOR_1 < rot_cfg->scale_y))
+                        && (!EPCI_IS_TLBR_OVERFLOW(EPIC_L0, res_area.x0, res_area.y0, res_area.x1, res_area.y1)))
+                {
+                    return false;
+                }
 #endif /* SF32LB55X */
-            epic_pitch_x = EPIC_CONV_SCALE_FACTOR(rot_cfg->scale_x);
-            epic_pitch_y = EPIC_CONV_SCALE_FACTOR(rot_cfg->scale_y);
+                epic_pitch_x = EPIC_CONV_SCALE_FACTOR(rot_cfg->scale_x);
+                epic_pitch_y = EPIC_CONV_SCALE_FACTOR(rot_cfg->scale_y);
 
-            /*
-                Add '1' pitch pixels around of source layer, to make sure scaling get enough source data.
-             */
-            ext_x += 1;
-            ext_y += 1;
+                /*
+                    Add '1' pitch pixels around of source layer, to make sure scaling get enough source data.
+                 */
+                ext_x += 1;
+                ext_y += 1;
 
-            output_layer_area.x0 = EPIC_RSCALE_INT16(output_layer_area.x0 - ext_x, epic_pitch_x, -(EPIC_SCALE_1 - 1))/*round up RSCALE value*/;
-            output_layer_area.x1 = EPIC_RSCALE_INT16(output_layer_area.x1 + ext_x, epic_pitch_x, EPIC_SCALE_1 - 1);
-            output_layer_area.y0 = EPIC_RSCALE_INT16(output_layer_area.y0 - ext_y, epic_pitch_y, -(EPIC_SCALE_1 - 1));
-            output_layer_area.y1 = EPIC_RSCALE_INT16(output_layer_area.y1 + ext_y, epic_pitch_y, EPIC_SCALE_1 - 1);
+                output_layer_area.x0 = EPIC_RSCALE_INT16(output_layer_area.x0 - ext_x, epic_pitch_x, -(EPIC_SCALE_1 - 1))/*round up RSCALE value*/;
+                output_layer_area.x1 = EPIC_RSCALE_INT16(output_layer_area.x1 + ext_x, epic_pitch_x, EPIC_SCALE_1 - 1);
+                output_layer_area.y0 = EPIC_RSCALE_INT16(output_layer_area.y0 - ext_y, epic_pitch_y, -(EPIC_SCALE_1 - 1));
+                output_layer_area.y1 = EPIC_RSCALE_INT16(output_layer_area.y1 + ext_y, epic_pitch_y, EPIC_SCALE_1 - 1);
 
-            EPIC_DEBUG_PRINT_AREA_INFO(&output_layer_area, "output_layer_area before scale(base on pivot)");
+                EPIC_DEBUG_PRINT_AREA_INFO(&output_layer_area, "output_layer_area before scale(base on pivot)");
+            }
+            else
+            {
+                output_layer_area.x0 -= ext_x;
+                output_layer_area.x1 += ext_x;
+                output_layer_area.y0 -= ext_y;
+                output_layer_area.y1 += ext_y;
+            }
 
             ext_x = 0;
             ext_y = 0;
+
+            //Save the visbile area of rotated area
+            trans_result->rotated_visible_area = output_layer_area;
+
+            if (0 != rot_cfg->angle)
+            {
+                EPIC_PointTypeDef pivot_o;
+
+                //The 'EPIC_GetRotatedArea_Inner' needs a pivot relative to TL
+                pivot_o.x = 0 - output_layer_area.x0;
+                pivot_o.y = 0 - output_layer_area.y0;
+
+                EPIC_GetRotatedArea_Inner(&output_layer_area,
+                                          output_layer_area.x1 - output_layer_area.x0 + 1,
+                                          output_layer_area.y1 - output_layer_area.y0 + 1,
+                                          3600 - rot_cfg->angle, &pivot_o, 1, trans_result);
+
+                //'EPIC_GetRotatedArea_Inner' return area is base on output_layer's TL move to pivot
+                AreaMove(&output_layer_area, -pivot_o.x, -pivot_o.y);
+                EPIC_DEBUG_PRINT_AREA_INFO(&output_layer_area, "output_layer_area before rotate(base on pivot)");
+            }
+
+
+            AreaMove(&output_layer_area, rot_cfg->pivot_x, rot_cfg->pivot_y);
+            /*output_layer_area is base on input_layer's TL now*/
         }
-
-        if (0 != rot_cfg->angle)
-        {
-            EPIC_PointTypeDef pivot_o;
-
-            //Calculate pivot base on output_layer(output_layer is base on pivot now)
-            pivot_o.x = 0 - output_layer_area.x0;
-            pivot_o.y = 0 - output_layer_area.y0;
-
-            EPIC_GetRotatedArea(&output_layer_area,
-                                output_layer_area.x1 - output_layer_area.x0 + 1,
-                                output_layer_area.y1 - output_layer_area.y0 + 1,
-                                3600 - rot_cfg->angle, &pivot_o);
-
-            //'EPIC_GetRotatedArea' return area is base on output_layer's TL move to pivot
-            AreaMove(&output_layer_area, -pivot_o.x, -pivot_o.y);
-            EPIC_DEBUG_PRINT_AREA_INFO(&output_layer_area, "output_layer_area before rotate(base on pivot)");
-        }
-
-
-        AreaMove(&output_layer_area, rot_cfg->pivot_x, rot_cfg->pivot_y);
-        /*output_layer_area is base on input_layer's TL now*/
     }
+
 
     if (ext_x != 0)
     {
@@ -916,7 +1126,7 @@ static bool EPIC_ClipLayerSrcByOutput(
 
     if (HAL_EPIC_AreaIntersect(&input_clip, &input_layer_area, &output_layer_area))
     {
-        if (IS_EZIP_COLOR_MODE(input_layer->color_mode))
+        if (IS_EZIP_COLOR_MODE(input_layer->color_mode) || IS_JPEG_COLOR_MODE(input_layer->color_mode))
         {
             HAL_ASSERT(!v_mirror_enabled);//Not supported
         }
@@ -948,7 +1158,11 @@ static bool EPIC_ClipLayerSrcByOutput(
             }
             else
             {
-                input_layer->data += (HAL_ALIGN((tgt_y * algined_total_w + tgt_x) * color_depth, 8) >> 3);
+                //Do not change the data pointer when it's monochrome mode or data pointer is NULL
+                if ((EPIC_COLOR_MONO == input_layer->color_mode) || (NULL == input_layer->data))
+                    ; //Do not clip the monochrome layer or NULL layer.
+                else
+                    input_layer->data += (HAL_ALIGN((tgt_y * algined_total_w + tgt_x) * color_depth, 8) >> 3);
             }
 
         }
@@ -980,73 +1194,21 @@ static bool EPIC_ClipLayerSrcByOutput(
 }
 
 
-/**
- * @brief Get area of VL which will be mirror and visible on canvas, and it is coordinate is base on video layer's TL
- * @param vl -
- * @param canvas -
- * @param pivot -  same origin with VL and CANVAS
- * @param vl_new_area -
- * @return
- */
-static void EPIC_GetMirrorArea(EPIC_BlendingDataType *vl, const EPIC_BlendingDataType *canvas, const EPIC_PointTypeDef *pivot, EPIC_AreaTypeDef *vl_new_area)
-{
-    bool has_intersect;
-    EPIC_AreaTypeDef  intersrc_area;
-
-    EPIC_DEBUG_PRINT_LAYER_INFO(vl, "Fg layer");
-    EPIC_DEBUG_PRINT_LAYER_INFO(canvas, "canvas layer");
-
-    //Mirror video layer
-    vl->x_offset = EPIC_MIRROR_V(vl->x_offset + vl->width - 1, pivot->x);
-
-    EPIC_DEBUG_PRINT_LAYER_INFO(vl, "Mirrored Fg");
-
-
-    has_intersect = EPIC_CalcIntersectArea(vl, canvas, &intersrc_area);
-
-    EPIC_DEBUG_PRINT_AREA_INFO(&intersrc_area, "mirrored inter_area");
-
-    //Revert video layer
-    vl->x_offset = EPIC_MIRROR_V(vl->x_offset + vl->width - 1, pivot->x);
-    EPIC_DEBUG_PRINT_LAYER_INFO(vl, "Revert Fg");
-
-    if (has_intersect)
-    {
-        //Get area before mirrored
-        EPIC_MirrorAreaByPivot(&intersrc_area, pivot->x);
-
-        EPIC_DEBUG_PRINT_AREA_INFO(&intersrc_area, "before inter_area");
-
-        HAL_ASSERT((intersrc_area.x0 <= intersrc_area.x1) && (intersrc_area.y0 <= intersrc_area.y1));
-        HAL_ASSERT((intersrc_area.x0 >= vl->x_offset) && (intersrc_area.x0 <= vl->x_offset + vl->width - 1));
-        HAL_ASSERT((intersrc_area.x1 >= vl->x_offset) && (intersrc_area.x1 <= vl->x_offset + vl->width - 1));
-
-        vl_new_area->x0 = intersrc_area.x0 - vl->x_offset;
-        vl_new_area->x1 = intersrc_area.x1 - vl->x_offset;
-        vl_new_area->y0 = intersrc_area.y0 - vl->y_offset;
-        vl_new_area->y1 = intersrc_area.y1 - vl->y_offset;
-
-        EPIC_DEBUG_PRINT_AREA_INFO(vl_new_area, "VL inner inter_area");
-
-    }
-    else
-    {
-        memset(vl_new_area, 0, sizeof(EPIC_AreaTypeDef));
-    }
-}
-
-/** Calculate area after rotation, area coordinate is relative to original topleft pixel(and pivot too)
+/** Calculate area after tranformed(rotate first, then scale), area coordinate is relative to original topleft pixel(and pivot too)
  *  i.e. if angle=0, output is x0=0, y0=0, x1=w-1, y1=h-1
  *
  * @param[out] output
  * @param[in] w width
  * @param[in] h height
  * @param[in] angle angle in 0.1 degree
+ * @param[in] scale_x scale x in Q24.8
+ * @param[in] scale_y scale y in Q24.8
  * @param[in] pivot pivot
  * @return sinus of 'angle'. sin(-90) = -32767, sin(90) = 32767
  */
-void EPIC_GetRotatedArea(EPIC_AreaTypeDef *output, uint16_t w, uint16_t h, int16_t angle,
-                         const EPIC_PointTypeDef *pivot)
+void EPIC_GetTransformedArea(EPIC_AreaTypeDef *output, uint16_t w, uint16_t h, int16_t angle,
+                             uint32_t scale_x, uint32_t scale_y,
+                             const EPIC_PointTypeDef *pivot)
 {
     int32_t angle_low = angle / 10;
     int32_t angle_hight = angle_low + 1;
@@ -1060,6 +1222,13 @@ void EPIC_GetRotatedArea(EPIC_AreaTypeDef *output, uint16_t w, uint16_t h, int16
 
     int32_t sinma = (s1 * (10 - angle_rem) + s2 * angle_rem) / 10;
     int32_t cosma = (c1 * (10 - angle_rem) + c2 * angle_rem) / 10;
+
+    float sinma_f = ((float) sinma) / ((float)(1 << EPIC_TRIGO_SHIFT));
+    float cosma_f = ((float) cosma) / ((float)(1 << EPIC_TRIGO_SHIFT));
+
+    float scale_x_f = ((float)(EPIC_INPUT_SCALING_FACTOR_1)) / ((float) scale_x);
+    float scale_y_f = ((float)(EPIC_INPUT_SCALING_FACTOR_1)) / ((float) scale_y);
+
 
     EPIC_PointTypeDef lt;
     EPIC_PointTypeDef rt;
@@ -1075,25 +1244,73 @@ void EPIC_GetRotatedArea(EPIC_AreaTypeDef *output, uint16_t w, uint16_t h, int16
     a.x1 = (w - pivot->x);
     a.y1 = (h - pivot->y);
 
-    xt = a.x0;
-    yt = a.y0;
-    lt.x = ((cosma * xt - sinma * yt) >> EPIC_TRIGO_SHIFT) + pivot->x;
-    lt.y = ((sinma * xt + cosma * yt) >> EPIC_TRIGO_SHIFT) + pivot->y;
+#define TRANSFORM_POINT(out_x, out_y, in_x, in_y)  \
+        (out_x) = ((cosma_f * (in_x) - sinma_f * (in_y)) * scale_x_f) + pivot->x; \
+        (out_y) = ((sinma_f * (in_x) + cosma_f * (in_y)) * scale_y_f) + pivot->y;
 
-    xt = a.x1;
-    yt = a.y0;
-    rt.x = ((cosma * xt - sinma * yt) >> EPIC_TRIGO_SHIFT) + pivot->x;
-    rt.y = ((sinma * xt + cosma * yt) >> EPIC_TRIGO_SHIFT) + pivot->y;
+    TRANSFORM_POINT(lt.x, lt.y, a.x0, a.y0);
+    TRANSFORM_POINT(rt.x, rt.y, a.x1, a.y0);
+    TRANSFORM_POINT(lb.x, lb.y, a.x0, a.y1);
+    TRANSFORM_POINT(rb.x, rb.y, a.x1, a.y1);
 
-    xt = a.x0;
-    yt = a.y1;
-    lb.x = ((cosma * xt - sinma * yt) >> EPIC_TRIGO_SHIFT) + pivot->x;
-    lb.y = ((sinma * xt + cosma * yt) >> EPIC_TRIGO_SHIFT) + pivot->y;
+    output->x0 = EPIC_MATH_MIN4(lb.x, lt.x, rb.x, rt.x) - 1;
+    output->x1 = EPIC_MATH_MAX4(lb.x, lt.x, rb.x, rt.x) + 1;
+    output->y0 = EPIC_MATH_MIN4(lb.y, lt.y, rb.y, rt.y) - 1;
+    output->y1 = EPIC_MATH_MAX4(lb.y, lt.y, rb.y, rt.y) + 1;
+}
+void EPIC_GetRotatedArea(EPIC_AreaTypeDef *output, uint16_t w, uint16_t h, int16_t angle,
+                         const EPIC_PointTypeDef *pivot)
+{
+    EPIC_GetTransformedArea(output, w, h, angle, EPIC_INPUT_SCALING_FACTOR_1, EPIC_INPUT_SCALING_FACTOR_1, pivot);
+}
 
-    xt = a.x1;
-    yt = a.y1;
-    rb.x = ((cosma * xt - sinma * yt) >> EPIC_TRIGO_SHIFT) + pivot->x;
-    rb.y = ((sinma * xt + cosma * yt) >> EPIC_TRIGO_SHIFT) + pivot->y;
+static void EPIC_GetRotatedArea_Inner(EPIC_AreaTypeDef *output, uint16_t w, uint16_t h,
+                                      int16_t angle, const EPIC_PointTypeDef *pivot, uint8_t scale_none,
+                                      const EPIC_TransformResultDef *trans_result)
+{
+    float sinma_f, cosma_f;
+
+    float scale_x_f = scale_none ? 1.0f : trans_result->scale_x_f;
+    float scale_y_f = scale_none ? 1.0f : trans_result->scale_y_f;
+
+    if (angle == trans_result->angle)
+    {
+        sinma_f = trans_result->sinma_f;
+        cosma_f = trans_result->cosma_f;
+    }
+    else if ((3600 - angle) == trans_result->angle)
+    {
+        sinma_f = 0.0f - trans_result->sinma_f;
+        cosma_f = trans_result->cosma_f;
+    }
+    else
+    {
+        HAL_ASSERT(0);//Mismatch angle
+    }
+
+
+    EPIC_PointTypeDef lt;
+    EPIC_PointTypeDef rt;
+    EPIC_PointTypeDef lb;
+    EPIC_PointTypeDef rb;
+
+    int16_t xt;
+    int16_t yt;
+
+    EPIC_AreaTypeDef a;
+    a.x0 = (-pivot->x);
+    a.y0 = (-pivot->y);
+    a.x1 = (w - pivot->x);
+    a.y1 = (h - pivot->y);
+
+#define TRANSFORM_POINT(out_x, out_y, in_x, in_y)  \
+        (out_x) = ((cosma_f * (in_x) - sinma_f * (in_y)) * scale_x_f) + pivot->x; \
+        (out_y) = ((sinma_f * (in_x) + cosma_f * (in_y)) * scale_y_f) + pivot->y;
+
+    TRANSFORM_POINT(lt.x, lt.y, a.x0, a.y0);
+    TRANSFORM_POINT(rt.x, rt.y, a.x1, a.y0);
+    TRANSFORM_POINT(lb.x, lb.y, a.x0, a.y1);
+    TRANSFORM_POINT(rb.x, rb.y, a.x1, a.y1);
 
     output->x0 = EPIC_MATH_MIN4(lb.x, lt.x, rb.x, rt.x) - 1;
     output->x1 = EPIC_MATH_MAX4(lb.x, lt.x, rb.x, rt.x) + 1;
@@ -1101,6 +1318,103 @@ void EPIC_GetRotatedArea(EPIC_AreaTypeDef *output, uint16_t w, uint16_t h, int16
     output->y1 = EPIC_MATH_MAX4(lb.y, lt.y, rb.y, rt.y) + 1;
 }
 
+
+/**
+* @brief  Replace the pivot with the center of the layer
+* @param  fg configuration of foreground layer that's to be rotated
+* @param  rot_cfg rotation configuration
+* @retval HAL status
+* */
+static void EPIC_TransformVideoLayer_ReplacePivot(
+    EPIC_BlendingDataType *fg,
+    EPIC_TransformCfgTypeDef *rot_cfg,
+    EPIC_TransformResultDef *trans_result)
+{
+    if (!IS_NEED_TRANSFROM(rot_cfg)) return;
+    //The new pivot relative to the TL of 'fg'
+    EPIC_PointTypeDef new_pivot;
+    new_pivot.x = fg->width / 2;
+    new_pivot.y = fg->height / 2;
+
+    //Rotate then scale new pivot around 'rot_cfg->pivot', get the floating result
+    while (rot_cfg->angle < 0) rot_cfg->angle += 3600;
+    while (rot_cfg->angle >= 3600) rot_cfg->angle -= 3600;
+    int32_t sinma, cosma;
+    float sinma_f, cosma_f;
+    if (0 == rot_cfg->angle)
+    {
+        sinma = 0;
+        cosma = (1 << EPIC_TRIGO_SHIFT);
+        sinma_f = 0.0f;
+        cosma_f = 1.0f;
+    }
+    else
+    {
+        int32_t angle_low = rot_cfg->angle / 10;
+        int32_t angle_hight = angle_low + 1;
+        int32_t angle_rem = rot_cfg->angle  - (angle_low * 10);
+
+
+        int32_t s1 = EPIC_TrigoSin(angle_low);
+        int32_t s2 = EPIC_TrigoSin(angle_hight);
+
+        int32_t c1 = EPIC_TrigoSin(angle_low + 90);
+        int32_t c2 = EPIC_TrigoSin(angle_hight + 90);
+
+        sinma = (s1 * (10 - angle_rem) + s2 * angle_rem) / 10;
+        cosma = (c1 * (10 - angle_rem) + c2 * angle_rem) / 10;
+
+        sinma_f = ((float) sinma) / ((float)(1 << EPIC_TRIGO_SHIFT));
+        cosma_f = ((float) cosma) / ((float)(1 << EPIC_TRIGO_SHIFT));
+    }
+
+
+    float scale_x_f = ((float)(EPIC_INPUT_SCALING_FACTOR_1)) / ((float) rot_cfg->scale_x);
+    float scale_y_f = ((float)(EPIC_INPUT_SCALING_FACTOR_1)) / ((float) rot_cfg->scale_y);
+
+    //Save the sin,cos, scale value etc into trans_result to speed up
+    trans_result->angle = rot_cfg->angle;
+    trans_result->sinma_f = sinma_f;
+    trans_result->cosma_f = cosma_f;
+    trans_result->scale_x_f = scale_x_f;
+    trans_result->scale_y_f = scale_y_f;
+    trans_result->abs_sinma       = EPIC_MATH_ABS(sinma);
+    trans_result->abs_cosma       = EPIC_MATH_ABS(cosma);
+
+#ifndef SF32LB55X
+    //new pivot coordinate relative to 'rot_cfg->pivot'
+    float xt = ((float)(new_pivot.x - rot_cfg->pivot_x));
+    float yt = ((float)(new_pivot.y - rot_cfg->pivot_y));
+
+    //Transformed new pivot coordinate relative to 'rot_cfg->pivot'
+    float transformed_new_p_x = ((cosma_f * xt - sinma_f * yt) * scale_x_f);
+    float transformed_new_p_y = ((sinma_f * xt + cosma_f * yt) * scale_y_f);
+
+    if (rot_cfg->h_mirror) transformed_new_p_x = -transformed_new_p_x;
+    if (rot_cfg->v_mirror) transformed_new_p_y = -transformed_new_p_y;
+
+    //Previus floating coordinate
+    float prev_x = (float)EPIC_TO_INT32_COORD(fg->x_offset, fg->x_offset_frac) / 65536.0f;
+    float prev_y = (float)EPIC_TO_INT32_COORD(fg->y_offset, fg->y_offset_frac) / 65536.0f;
+
+    //Save the offset to layer offset and fracional offset
+    int32_t now_x = (int32_t)((prev_x + transformed_new_p_x - xt) * 65536.0f);
+    int32_t now_y = (int32_t)((prev_y + transformed_new_p_y - yt) * 65536.0f);
+
+    fg->x_offset = EPIC_INT32_COORD_GET_INT16(now_x);
+    fg->y_offset = EPIC_INT32_COORD_GET_INT16(now_y);;
+
+    fg->x_offset_frac = EPIC_INT32_COORD_GET_FRAC16(now_x);
+    fg->y_offset_frac = EPIC_INT32_COORD_GET_FRAC16(now_y);
+
+    rot_cfg->pivot_x = new_pivot.x;
+    rot_cfg->pivot_y = new_pivot.y;
+
+    EPIC_PRINTF("fg xy offset=[%.3f, %.3f], pivot=[%d,%d]\n",
+                transformed_new_p_x - xt,  transformed_new_p_y - yt,
+                rot_cfg->pivot_x,  rot_cfg->pivot_y);
+#endif
+}
 /**
  * @brief Calculate point's coordinate after scaled base on expect_pivot.
  *  All coordinates below have SAME origin!
@@ -1127,7 +1441,6 @@ void EPIC_ScalePointByPivot(EPIC_PointTypeDef *point,
     point->y += scale_pivot_delta_y - ((scale_pivot_delta_y * EPIC_SCALE_1) / ((int32_t)scale_y));
 }
 
-#if defined(SF32LB56X)||defined(SF32LB52X)
 /*Layer index to channel id, using at EZIP&YUV on butfly-lite*/
 static uint32_t LayerIdx2CH(EPIC_LAYER_IDX layer_idx)
 {
@@ -1155,6 +1468,7 @@ static uint32_t LayerIdx2CH(EPIC_LAYER_IDX layer_idx)
     return ch;
 }
 
+#if defined(EPIC_SUPPORT_YUV)
 /**
  * @brief config yuv engine, use layer.total_width as YUV image width
  * @param hepic -
@@ -1225,7 +1539,7 @@ static HAL_StatusTypeDef EPIC_Apply_YUV_on_layer(EPIC_HandleTypeDef *hepic,
     EPIC_PRINTF("Apply YUV on layer %d", layer_idx);
     return HAL_OK;
 }
-#endif /* SF32LB56X */
+#endif /* EPIC_SUPPORT_YUV */
 
 
 #ifndef SF32LB55X
@@ -1246,7 +1560,7 @@ static uint32_t EPIC_Allocate_L8Table(EPIC_TypeDef *epic)
 
     EPIC_LayerxTypeDef *layer_x;
     EPIC_VideoLayerxTypeDef *Vlayer_x;
-
+#ifdef EPIC_L2_EXTENTS_MAX_COL //On 58x/56x/52x, L2 is another video layer
     layer_x = (EPIC_LayerxTypeDef *)&epic->L0_CFG;
     for (uint32_t i = 0; i < 2; i++, layer_x++)
     {
@@ -1264,7 +1578,22 @@ static uint32_t EPIC_Allocate_L8Table(EPIC_TypeDef *epic)
             free_tables[(layer_x->MISC_CFG & EPIC_VL_MISC_CFG_CLUT_SEL_Msk) >> EPIC_VL_MISC_CFG_CLUT_SEL_Pos] = 0;
         }
     }
+#else //After 52x, L2 is not suppoert L8 any more
+    layer_x = (EPIC_LayerxTypeDef *)&epic->L0_CFG;
+    for (uint32_t i = 0; i < 2; i++, layer_x++)
+    {
+        if ((EPIC_L0_CFG_ACTIVE | EPIC_L0_CFG_FMT_L8) == (layer_x->CFG & (EPIC_L0_CFG_ACTIVE_Msk | EPIC_L0_CFG_FORMAT_Msk)))
+        {
+            free_tables[(layer_x->MISC_CFG & EPIC_L0_MISC_CFG_CLUT_SEL_Msk) >> EPIC_L0_MISC_CFG_CLUT_SEL_Pos] = 0;
+        }
+    }
 
+    Vlayer_x = (EPIC_VideoLayerxTypeDef *)&epic->VL_CFG;
+    if ((EPIC_VL_CFG_ACTIVE | EPIC_VL_CFG_FMT_L8) == (Vlayer_x->CFG & (EPIC_VL_CFG_ACTIVE_Msk | EPIC_VL_CFG_FORMAT_Msk)))
+    {
+        free_tables[(layer_x->MISC_CFG & EPIC_VL_MISC_CFG_CLUT_SEL_Msk) >> EPIC_VL_MISC_CFG_CLUT_SEL_Pos] = 0;
+    }
+#endif
     for (uint32_t i = 0; i < (sizeof(free_tables) / sizeof(free_tables[0])); i++)
     {
         if (free_tables[i]) return i;
@@ -1327,9 +1656,9 @@ static bool EPIC_IsLayerActive(EPIC_TypeDef *epic, EPIC_LAYER_IDX layer_idx)
 /*
     Disable EZIP, YUV, Mask fucntion applied on this layer if it is present
 */
-static HAL_StatusTypeDef EPIC_Disable_Func_on_layer(EPIC_TypeDef          *epic, EPIC_LAYER_IDX layer_idx)
+static HAL_StatusTypeDef EPIC_Disable_Func_on_layer(EPIC_TypeDef *epic, EPIC_LAYER_IDX layer_idx)
 {
-#if defined(SF32LB56X)||defined(SF32LB52X)
+#if defined(EPIC_SUPPORT_YUV)
     if (epic->COENG_CFG & EPIC_COENG_CFG_YUV_EN)
     {
         if (LayerIdx2CH(layer_idx) == GET_REG_VAL(epic->COENG_CFG, EPIC_COENG_CFG_YUV_CH_SEL_Msk, EPIC_COENG_CFG_YUV_CH_SEL_Pos))
@@ -1337,7 +1666,9 @@ static HAL_StatusTypeDef EPIC_Disable_Func_on_layer(EPIC_TypeDef          *epic,
             epic->COENG_CFG &= ~EPIC_COENG_CFG_YUV_EN;
         }
     }
+#endif /* EPIC_SUPPORT_YUV */
 
+#ifdef EPIC_COENG_CFG_EZIP_EN
     if (epic->COENG_CFG & EPIC_COENG_CFG_EZIP_EN)
     {
         if (LayerIdx2CH(layer_idx) == GET_REG_VAL(epic->COENG_CFG, EPIC_COENG_CFG_EZIP_CH_SEL_Msk, EPIC_COENG_CFG_EZIP_CH_SEL_Pos))
@@ -1345,10 +1676,24 @@ static HAL_StatusTypeDef EPIC_Disable_Func_on_layer(EPIC_TypeDef          *epic,
             epic->COENG_CFG &= ~EPIC_COENG_CFG_EZIP_EN;
         }
     }
-#endif
+#else
+    if (EPIC_LAYER_IDX_VL == layer_idx)
+    {
+        MODIFY_REG(epic->VL_CFG, EPIC_VL_CFG_EZIP_EN_Msk, 0);
+    }
+#endif /* EPIC_COENG_CFG_EZIP_EN */
 
+#if defined(EPIC_SUPPORT_JPEGD)
+    if (epic->COENG_CFG & EPIC_COENG_CFG_JPEG_EN)
+    {
+        if (LayerIdx2CH(layer_idx) == GET_REG_VAL(epic->COENG_CFG, EPIC_COENG_CFG_JPEG_CH_SEL_Msk, EPIC_COENG_CFG_JPEG_CH_SEL_Pos))
+        {
+            epic->COENG_CFG &= ~EPIC_COENG_CFG_JPEG_EN;
+        }
+    }
+#endif /* EPIC_SUPPORT_JPEGD */
 
-#ifndef SF32LB55X
+#ifdef EPIC_SUPPORT_MASK
     if (epic->MASK_CFG & EPIC_MASK_CFG_ACTIVE)
     {
         if (LayerIdx2MaskCh(layer_idx) == GET_REG_VAL(epic->MASK_CFG, EPIC_MASK_CFG_L0_MASK_EN_Msk, EPIC_MASK_CFG_L0_MASK_EN_Pos))
@@ -1356,10 +1701,132 @@ static HAL_StatusTypeDef EPIC_Disable_Func_on_layer(EPIC_TypeDef          *epic,
             epic->MASK_CFG &= ~EPIC_MASK_CFG_ACTIVE;
         }
     }
-#endif
+#endif /* EPIC_SUPPORT_MASK */
+
+#ifdef EPIC_SUPPORT_COLOR_MATRIX
+    if (epic->COENG_CFG & EPIC_COENG_CFG_CM_EN)
+    {
+        if (LayerIdx2CH(layer_idx) == GET_REG_VAL2(epic->COENG_CFG, EPIC_COENG_CFG_CM_CH_SEL))
+        {
+            epic->COENG_CFG &= ~EPIC_COENG_CFG_CM_EN;
+        }
+    }
+#endif /* EPIC_SUPPORT_COLOR_MATRIX */
 
     return HAL_OK;
 }
+
+#ifdef HAL_EZIP_MODULE_ENABLED
+static void EPIC_EnableLayerCoengEzip(EPIC_TypeDef *epic,
+                                      EZIP_TypeDef *ezip,
+                                      EPIC_LAYER_IDX layer_idx,
+                                      EPIC_LayerxTypeDef *layer_x)
+{
+#if defined(EPIC_COENG_CFG_EZIP_EN)
+    MODIFY_REG(epic->COENG_CFG, EPIC_COENG_CFG_EZIP_CH_SEL_Msk,
+               MAKE_REG_VAL(LayerIdx2CH(layer_idx), EPIC_COENG_CFG_EZIP_CH_SEL_Msk, EPIC_COENG_CFG_EZIP_CH_SEL_Pos));
+    epic->COENG_CFG |= EPIC_COENG_CFG_EZIP_EN;
+#else
+    layer_x->CFG |= EPIC_L0_CFG_EZIP_EN;
+#endif
+#ifdef SF32LB58X
+    MODIFY_REG(layer_x->MISC_CFG, EPIC_L0_MISC_CFG_EZIP_SEL_Msk,
+               MAKE_REG_VAL(0, EPIC_L0_MISC_CFG_EZIP_SEL_Msk, EPIC_L0_MISC_CFG_EZIP_SEL_Pos));
+#endif /* SF32LB58X */
+}
+
+static void EPIC_EnableVideoLayerCoengEzip(EPIC_TypeDef *epic,
+        EZIP_TypeDef *ezip,
+        EPIC_LAYER_IDX layer_idx,
+        EPIC_VideoLayerxTypeDef *layer_x)
+{
+#if defined(EPIC_COENG_CFG_EZIP_EN)
+    MODIFY_REG(epic->COENG_CFG, EPIC_COENG_CFG_EZIP_CH_SEL_Msk,
+               MAKE_REG_VAL(LayerIdx2CH(layer_idx), EPIC_COENG_CFG_EZIP_CH_SEL_Msk, EPIC_COENG_CFG_EZIP_CH_SEL_Pos));
+    epic->COENG_CFG |= EPIC_COENG_CFG_EZIP_EN;
+#else
+    layer_x->CFG |= EPIC_L0_CFG_EZIP_EN;
+#endif
+#ifdef SF32LB58X
+    MODIFY_REG(layer_x->MISC_CFG, EPIC_L0_MISC_CFG_EZIP_SEL_Msk,
+               MAKE_REG_VAL(0, EPIC_L0_MISC_CFG_EZIP_SEL_Msk, EPIC_L0_MISC_CFG_EZIP_SEL_Pos));
+#endif /* SF32LB58X */
+}
+
+#endif /* HAL_EZIP_MODULE_ENABLED */
+
+#ifdef EPIC_SUPPORT_JPEGD
+static void EPIC_EnableCoengJpeg(EPIC_TypeDef *epic,
+                                 EPIC_LAYER_IDX layer_idx)
+{
+    MODIFY_REG(epic->COENG_CFG, EPIC_COENG_CFG_JPEG_CH_SEL_Msk,
+               MAKE_REG_VAL(LayerIdx2CH(layer_idx), EPIC_COENG_CFG_JPEG_CH_SEL_Msk, EPIC_COENG_CFG_JPEG_CH_SEL_Pos));
+    epic->COENG_CFG |= EPIC_COENG_CFG_JPEG_EN;
+}
+#endif /* EPIC_SUPPORT_JPEGD */
+
+#ifdef EPIC_SUPPORT_COLOR_MATRIX
+
+/* round scaled value (x * 256) to nearest integer (ties away from zero) */
+#define _F2S8_ROUND(x) ( (((float)(x)) * 256.0f) >= 0.0f ? (int32_t)(((float)(x)) * 256.0f + 0.5f) : (int32_t)(((float)(x)) * 256.0f - 0.5f) )
+
+/* S2.8 : total bits = 2 + 8 = 10
+   signed range: -512 .. +511
+   mask: 10 bits -> 0x3FF
+*/
+#define FLOAT_TO_S2_8_U32(x) \
+( \
+    (uint32_t)( \
+        (_F2S8_ROUND(x) >  511) ?  511 : \
+        (_F2S8_ROUND(x) < -512) ? -512 : \
+        (_F2S8_ROUND(x)) \
+    ) & 0x3FFu \
+)
+
+/* S10.8 : total bits = 10 + 8 = 18
+   signed range: -131072 .. +131071
+   mask: 18 bits -> 0x3FFFF
+*/
+#define FLOAT_TO_S10_8_U32(x) \
+( \
+    (uint32_t)( \
+        (_F2S8_ROUND(x) >  131071) ?  131071 : \
+        (_F2S8_ROUND(x) < -131072) ? -131072 : \
+        (_F2S8_ROUND(x)) \
+    ) & 0x3FFFFu \
+)
+
+static void EPIC_EnableCoengColorMatrix(EPIC_TypeDef *epic, EPIC_LAYER_IDX layer_idx, float *color_matrix)
+{
+    uint32_t i;
+    __IO uint32_t *reg_conf;
+    /*
+        The color matrix is defined as:
+        data format of column 0~3 is s2.8, column 4 is s10.8
+       | Aa    Ab    Ac   Ad   Ae|
+       | Ra    Rb    Rc   Rd   Re|
+       | Ga    Gb    Gc   Gd   Ge|
+       | Ba    Bb    Bc   Bd   Be|
+     */
+
+    reg_conf = &epic->CM_ENG_CONF0;
+    for (i = 0; i < 4; i++)
+    {
+        reg_conf[0] =   MAKE_REG_VAL2(FLOAT_TO_S2_8_U32(color_matrix[0]), EPIC_CM_ENG_CONF0_COEF_A0)
+                        | MAKE_REG_VAL2(FLOAT_TO_S2_8_U32(color_matrix[1]), EPIC_CM_ENG_CONF0_COEF_B0)
+                        | MAKE_REG_VAL2(FLOAT_TO_S2_8_U32(color_matrix[2]), EPIC_CM_ENG_CONF0_COEF_C0);
+        reg_conf[1] =   MAKE_REG_VAL2(FLOAT_TO_S2_8_U32(color_matrix[3]), EPIC_CM_ENG_CONF1_COEF_D0)
+                        | MAKE_REG_VAL2(FLOAT_TO_S10_8_U32(color_matrix[4]), EPIC_CM_ENG_CONF1_COEF_E0);
+
+        reg_conf += 2;
+        color_matrix += 5;
+    }
+
+    epic->COENG_CFG &= ~EPIC_COENG_CFG_CM_CH_SEL_Msk;
+    epic->COENG_CFG |= MAKE_REG_VAL2(LayerIdx2CH(layer_idx), EPIC_COENG_CFG_CM_CH_SEL)
+                       | EPIC_COENG_CFG_CM_EN;
+}
+#endif /* EPIC_SUPPORT_COLOR_MATRIX */
 
 /**
  * @brief  Enable and configure normal layer
@@ -1380,19 +1847,22 @@ static HAL_StatusTypeDef EPIC_ConfigLayer(EPIC_HandleTypeDef *hepic, EPIC_LAYER_
     uint32_t color_depth, line_bytes, output_line_bytes;
     uint32_t layer_color_format;
     EPIC_TypeDef *epic = hepic->Instance;
-
+    EPIC_PRINTF("\r\nEPIC_ConfigLayer \r\n");
     if ((config->x_offset < 0)
             || (config->y_offset < 0))
     {
         RETURN_ERROR(hepic, HAL_ERROR);
     }
-#if defined(SF32LB52X)
+#if defined(EPIC_L2_L1_INVALID)
     HAL_ASSERT(layer_idx < EPIC_LAYER_IDX_1);
 #elif !defined(SF32LB55X)
     HAL_ASSERT(layer_idx < EPIC_LAYER_IDX_2);
 #else
     HAL_ASSERT(layer_idx < EPIC_LAYER_IDX_VL);
 #endif
+
+    EPIC_DEBUG_PRINT_LAYER_INFO(config, "Config");
+    EPIC_PRINTF("Layer idx %d \n", layer_idx);
 
     //Check overflow
     if (EPCI_IS_TLBR_OVERFLOW(EPIC_L0, config->x_offset,
@@ -1401,7 +1871,6 @@ static HAL_StatusTypeDef EPIC_ConfigLayer(EPIC_HandleTypeDef *hepic, EPIC_LAYER_
                               config->y_offset + config->height - 1))
     {
         //Overflow
-        EPIC_DEBUG_PRINT_LAYER_INFO(config, "Overflow");
         HAL_ASSERT(0);
         return HAL_ERROR;
     }
@@ -1413,20 +1882,17 @@ static HAL_StatusTypeDef EPIC_ConfigLayer(EPIC_HandleTypeDef *hepic, EPIC_LAYER_
     layer_x->BR_POS = MAKE_REG_VAL(config->x_offset + config->width - 1, EPIC_L0_BR_POS_X1_Msk, EPIC_L0_BR_POS_X1_Pos)
                       | MAKE_REG_VAL(config->y_offset + config->height - 1, EPIC_L0_BR_POS_Y1_Msk, EPIC_L0_BR_POS_Y1_Pos);
 
-#ifndef SF32LB55X
-    layer_x->SRC = HCPU_MPI_SBUS_ADDR(config->data);
-#else
-    layer_x->SRC = (uint32_t)config->data;
-#endif
+    layer_x->SRC = (uint32_t)HCPU_MPI_SBUS_ADDR(config->data);
 
     color_depth = EPIC_GetColorDepth(config->color_mode);
     layer_color_format = EPIC_GetLayerColorFormat(config->color_mode);
     output_line_bytes = HAL_ALIGN(color_depth * config->width, 8) >> 3;
 
-    if (output_line_bytes > EPIC_PREFETCH_THRESHOLD)
-        layer_x->CFG = EPIC_L0_CFG_PREFETCH_EN;
-    else
-        layer_x->CFG = 0;
+    layer_x->CFG = 0;
+#ifdef EPIC_L0_CFG_PREFETCH_EN
+    if (output_line_bytes > EPIC_PREFETCH_THRESHOLD) layer_x->CFG |= EPIC_L0_CFG_PREFETCH_EN;
+#endif /* EPIC_L0_CFG_PREFETCH_EN */
+
 
     if (using_alpha || (EPIC_COLOR_MONO == config->color_mode))
     {
@@ -1449,21 +1915,11 @@ static HAL_StatusTypeDef EPIC_ConfigLayer(EPIC_HandleTypeDef *hepic, EPIC_LAYER_
 #ifdef HAL_EZIP_MODULE_ENABLED
     if (IS_EZIP_COLOR_MODE(config->color_mode))
     {
-#if defined(SF32LB56X)||defined(SF32LB52X)
-        MODIFY_REG(epic->COENG_CFG, EPIC_COENG_CFG_EZIP_CH_SEL_Msk,
-                   MAKE_REG_VAL(LayerIdx2CH(layer_idx), EPIC_COENG_CFG_EZIP_CH_SEL_Msk, EPIC_COENG_CFG_EZIP_CH_SEL_Pos));
-        epic->COENG_CFG |= EPIC_COENG_CFG_EZIP_EN;
-#else
-        layer_x->CFG |= EPIC_L0_CFG_EZIP_EN;
-#endif
-#ifdef SF32LB58X
-        MODIFY_REG(layer_x->MISC_CFG, EPIC_L0_MISC_CFG_EZIP_SEL_Msk,
-                   MAKE_REG_VAL(0, EPIC_L0_MISC_CFG_EZIP_SEL_Msk, EPIC_L0_MISC_CFG_EZIP_SEL_Pos));
-#endif /* SF32LB58X */
+        EPIC_EnableLayerCoengEzip(epic, hepic->hezip->Instance, layer_idx, layer_x);
     }
 #endif /* HAL_EZIP_MODULE_ENABLED */
 
-#if defined(SF32LB56X)||defined(SF32LB52X)
+#if defined(EPIC_SUPPORT_YUV)
     if (IS_YUV_COLOR_MODE(config->color_mode))
     {
         HAL_StatusTypeDef err;
@@ -1475,6 +1931,20 @@ static HAL_StatusTypeDef EPIC_ConfigLayer(EPIC_HandleTypeDef *hepic, EPIC_LAYER_
         }
     }
 #endif /* SF32LB56X */
+
+#ifdef EPIC_SUPPORT_JPEGD
+    if (IS_JPEG_COLOR_MODE(config->color_mode))
+    {
+        EPIC_EnableCoengJpeg(epic, layer_idx);
+    }
+#endif /* EPIC_SUPPORT_JPEGD */
+
+#ifdef EPIC_SUPPORT_COLOR_MATRIX
+    if (config->color_matrix)
+    {
+        EPIC_EnableCoengColorMatrix(epic, layer_idx, config->color_matrix);
+    }
+#endif /* EPIC_SUPPORT_COLOR_MATRIX */
 
     if (IS_Ax_COLOR_MODE(config->color_mode))
     {
@@ -1496,7 +1966,7 @@ static HAL_StatusTypeDef EPIC_ConfigLayer(EPIC_HandleTypeDef *hepic, EPIC_LAYER_
     }
 
 #ifndef SF32LB55X
-    if (EPIC_COLOR_L8 == config->color_mode)
+    if (EPIC_IS_LUT_COLOR_MODE(config->color_mode))
     {
         uint32_t tab_id = EPIC_Allocate_L8Table(hepic->Instance);
 
@@ -1517,14 +1987,22 @@ static HAL_StatusTypeDef EPIC_ConfigLayer(EPIC_HandleTypeDef *hepic, EPIC_LAYER_
     {
         ;//Keep layer width as 0
     }
+#ifdef EPIC_L0_FILL_PIXEL_ORDER
+    //Endian and pixel order
+    if (IS_SWAPPED_COLOR_MODE(config->color_mode))
+        layer_x->FILL |= EPIC_L0_FILL_PIXEL_ORDER | EPIC_L0_FILL_ENDIAN;
+    else
+        layer_x->FILL &= ~(EPIC_L0_FILL_PIXEL_ORDER | EPIC_L0_FILL_ENDIAN);
+#endif /* EPIC_L0_FILL_PIXEL_ORDER */
 
-#if defined(SF32LB56X)||defined(SF32LB52X)
+    //Active layer
+#if defined(EPIC_SUPPORT_YUV)
     if (IS_YUV_COLOR_MODE(config->color_mode))
     {
         layer_x->CFG |= EPIC_L0_CFG_ACTIVE;
     }
     else
-#endif
+#endif /* EPIC_SUPPORT_YUV */
     {
         if (layer_x->SRC != 0)
             layer_x->CFG |= EPIC_L0_CFG_ACTIVE;
@@ -1562,7 +2040,7 @@ static HAL_StatusTypeDef EPIC_ContConfigLayer(EPIC_HandleTypeDef *hepic, uint32_
 
     EPIC_LAYER_IDX layer_idx = hepic->api_cfg.cont_cfg.epic_layer[idx];
 
-#if defined(SF32LB52X)
+#if defined(EPIC_L2_L1_INVALID)
     HAL_ASSERT(layer_idx < EPIC_LAYER_IDX_1);
 #elif !defined(SF32LB55X)
     HAL_ASSERT(layer_idx < EPIC_LAYER_IDX_2);
@@ -1648,9 +2126,7 @@ static HAL_StatusTypeDef EPIC_DisableLayer(EPIC_TypeDef *epic, EPIC_LAYER_IDX la
 
     MODIFY_REG(layer_x->CFG, EPIC_L0_CFG_ACTIVE_Msk, 0);
 
-#if defined(SF32LB56X)||defined(SF32LB52X)
     EPIC_Disable_Func_on_layer(epic, layer_idx);
-#endif
 
     return HAL_OK;
 }
@@ -1661,11 +2137,8 @@ static HAL_StatusTypeDef EPIC_DisableVideoLayer(EPIC_TypeDef *epic)
     epic->VL_ROT |= EPIC_VL_ROT_CALC_CLR;
     MODIFY_REG(epic->VL_CFG, EPIC_VL_CFG_ACTIVE_Msk, 0);
     //TODO: workaround as ezip_en is used even if active is false
-#if defined(SF32LB56X)||defined(SF32LB52X)
     EPIC_Disable_Func_on_layer(epic, EPIC_LAYER_IDX_VL);
-#else
-    MODIFY_REG(epic->VL_CFG, EPIC_VL_CFG_EZIP_EN_Msk, 0);
-#endif
+
 #ifndef SF32LB55X
     MODIFY_REG(epic->L2_CFG, EPIC_L2_CFG_ACTIVE_Msk, 0);
     EPIC_Disable_Func_on_layer(epic, EPIC_LAYER_IDX_2);
@@ -1674,149 +2147,29 @@ static HAL_StatusTypeDef EPIC_DisableVideoLayer(EPIC_TypeDef *epic)
 }
 
 
-/**
- * @brief  Configure output layer
- *
- * @param  epic EPIC instance
- * @param  fg foreground layer configuration
- * @param  bg background layer configuration
- * @param  dst output layer configuration
- *
- * @retval HAL status
- */
-static HAL_StatusTypeDef EPIC_ConfigOutputLayer(EPIC_TypeDef *epic,
-        EPIC_BlendingDataType *fg,
-        EPIC_BlendingDataType *bg,
-        EPIC_BlendingDataType *dst)
+
+static inline void EPIC_DisableOutputLayer(EPIC_TypeDef *epic)
 {
-    uint8_t color_depth;
-    int16_t x0;
-    int16_t y0;
-    int16_t x1;
-    int16_t y1;
-    uint32_t offset;
-    uint32_t layer_color_format;
+    epic->CANVAS_BG = 0;
 
-    if ((dst->x_offset < 0)
-            || (dst->y_offset < 0))
-    {
-        return HAL_ERROR;
-    }
-
-    HAL_ASSERT(dst->total_width >= dst->width);
-
-    if (EPIC_COLOR_RGB565 == dst->color_mode)
-    {
-        layer_color_format = EPIC_AHB_CTRL_O_FMT_RGB565;
-        color_depth = 2;
-    }
-    else if (EPIC_COLOR_ARGB8565 == dst->color_mode)
-    {
-        layer_color_format = EPIC_AHB_CTRL_O_FMT_ARGB8565;
-        color_depth = 3;
-    }
-    else if (EPIC_COLOR_RGB888 == dst->color_mode)
-    {
-        layer_color_format = EPIC_AHB_CTRL_O_FMT_RGB888;
-        color_depth = 3;
-    }
-    else if (EPIC_COLOR_ARGB8888 == dst->color_mode)
-    {
-        layer_color_format = EPIC_AHB_CTRL_O_FMT_ARGB8888;
-        color_depth = 4;
-    }
-    else
-    {
-        return HAL_ERROR;
-    }
-
-    if (bg->data != dst->data)
-    {
-        x0 = dst->x_offset;
-        y0 = dst->y_offset;
-        x1 = dst->x_offset + dst->width - 1;
-        y1 = dst->y_offset + dst->height - 1;
-        offset = 0;
-    }
-    else
-    {
-        EPIC_AreaTypeDef intersect_area;
-        bool is_intersect;
-
-        /* calculate the intersect region */
-        is_intersect = EPIC_CalcIntersectArea(fg, dst, &intersect_area);
-
-        if (is_intersect)
-        {
-            x0 = intersect_area.x0;
-            y0 = intersect_area.y0;
-            x1 = intersect_area.x1;
-            y1 = intersect_area.y1;
-
-            offset = ((y0 - dst->y_offset) * dst->total_width + (x0 - dst->x_offset)) * color_depth;
-        }
-        else
-        {
-            return HAL_EPIC_NOTHING_TO_DO;
-        }
-    }
-
-    if ((x0 <= x1) && (y0 <= y1))
-    {
-        if ((!dst->color_en)   /* not filling using background color */
-                && ((EPIC_COLOR_ARGB8565 == dst->color_mode)
-                    || (EPIC_COLOR_ARGB8888 == dst->color_mode)))
-        {
-            /* don't blend with background color, output alpha directly */
-            epic->CANVAS_BG |= EPIC_CANVAS_BG_BG_BLENDING_BYPASS;
-        }
-        else
-        {
-            if (dst->color_en)
-            {
-                epic->CANVAS_BG &= ~(EPIC_CANVAS_BG_RED_Msk | EPIC_CANVAS_BG_GREEN_Msk | EPIC_CANVAS_BG_BLUE_Msk);
-                epic->CANVAS_BG |= MAKE_REG_VAL(dst->color_r, EPIC_CANVAS_BG_RED_Msk, EPIC_CANVAS_BG_RED_Pos)
-                                   | MAKE_REG_VAL(dst->color_g, EPIC_CANVAS_BG_GREEN_Msk, EPIC_CANVAS_BG_GREEN_Pos)
-                                   | MAKE_REG_VAL(dst->color_b, EPIC_CANVAS_BG_BLUE_Msk, EPIC_CANVAS_BG_BLUE_Pos);
-            }
-
-            epic->CANVAS_BG &= ~EPIC_CANVAS_BG_BG_BLENDING_BYPASS;
-        }
-
-
-        //Check overflow
-        if (EPCI_IS_TLBR_OVERFLOW(EPIC_CANVAS, x0, y0, x1, y1))
-        {
-            //Overflow
-            EPIC_DEBUG_PRINT_LAYER_INFO(dst, "Overflow");
-            HAL_ASSERT(0);
-            return HAL_ERROR;
-        }
-
-        epic->CANVAS_TL_POS = MAKE_REG_VAL(x0, EPIC_CANVAS_TL_POS_X0_Msk, EPIC_CANVAS_TL_POS_X0_Pos)
-                              | MAKE_REG_VAL(y0, EPIC_CANVAS_TL_POS_Y0_Msk, EPIC_CANVAS_TL_POS_Y0_Pos);
-        epic->CANVAS_BR_POS = MAKE_REG_VAL(x1, EPIC_CANVAS_BR_POS_X1_Msk, EPIC_CANVAS_BR_POS_X1_Pos)
-                              | MAKE_REG_VAL(y1, EPIC_CANVAS_BR_POS_Y1_Msk, EPIC_CANVAS_BR_POS_Y1_Pos);
-
-        epic->AHB_STRIDE = (dst->total_width - (x1 - x0 + 1)) * color_depth;
-        MODIFY_REG(epic->AHB_CTRL,
-                   EPIC_AHB_CTRL_DESTINATION_Msk | EPIC_AHB_CTRL_O_FORMAT_Msk,
-                   EPIC_AHB_CTRL_DEST_RAM | layer_color_format);
-
-        epic->AHB_MEM = (uint32_t)dst->data + offset;
-        return HAL_OK;
-    }
-    else
-    {
-        return HAL_EPIC_NOTHING_TO_DO;
-    }
-
+#ifdef EPIC_SUPPORT_DITHER
+#ifdef EPIC_DITHER_CONF_FSD_EN
+    epic->DITHER_CONF &= ~ EPIC_DITHER_CONF_FSD_EN;
+#elif defined(EPIC_DITHER_CONF_RD_EN)
+    epic->DITHER_CONF &= ~ EPIC_DITHER_CONF_RD_EN;
+#else
+    epic->DITHER_CONF &= ~ EPIC_DITHER_CONF_EN;
+#endif /* EPIC_DITHER_CONF_FSD_EN */
+#endif /* EPIC_SUPPORT_DITHER */
 }
 
-static HAL_StatusTypeDef EPIC_ConfigOutputLayerEx(EPIC_HandleTypeDef *hepic,
-        EPIC_BlendingDataType *input,
-        uint8_t input_num,
-        EPIC_BlendingDataType *output)
+
+/**
+ *  Clip the output layer according to the p_clip_area and setup the registers.
+ *   If the p_clip_area is NULL, it will not clip the output layer.
+ * */
+static HAL_StatusTypeDef EPIC_ClipAndSetupOutputLayer(EPIC_TypeDef *epic,
+        EPIC_BlendingDataType *output, EPIC_AreaTypeDef *p_clip_area)
 {
     uint8_t color_depth;
     int16_t x0;
@@ -1826,60 +2179,19 @@ static HAL_StatusTypeDef EPIC_ConfigOutputLayerEx(EPIC_HandleTypeDef *hepic,
     uint32_t offset;
     uint32_t layer_color_format;
 
-    if ((output->x_offset < 0)
-            || (output->y_offset < 0))
-    {
-        RETURN_ERROR(hepic, HAL_ERROR);
-    }
     HAL_ASSERT(output->total_width >= output->width);
+    color_depth = EPIC_GetColorDepth(output->color_mode) >> 3;
+    layer_color_format = EPIC_GetOutputColorFormat(output->color_mode);
 
-    if (EPIC_COLOR_RGB565 == output->color_mode)
-    {
-        layer_color_format = EPIC_AHB_CTRL_O_FMT_RGB565;
-        color_depth = 2;
-    }
-    else if (EPIC_COLOR_ARGB8565 == output->color_mode)
-    {
-        layer_color_format = EPIC_AHB_CTRL_O_FMT_ARGB8565;
-        color_depth = 3;
-    }
-    else if (EPIC_COLOR_RGB888 == output->color_mode)
-    {
-        layer_color_format = EPIC_AHB_CTRL_O_FMT_RGB888;
-        color_depth = 3;
-    }
-    else if (EPIC_COLOR_ARGB8888 == output->color_mode)
-    {
-        layer_color_format = EPIC_AHB_CTRL_O_FMT_ARGB8888;
-        color_depth = 4;
-    }
-    else
-    {
-        RETURN_ERROR(hepic, HAL_ERROR);
-    }
 
-    if ((2 == input_num)
-            && (input[0].data == output->data))
+    if (p_clip_area)
     {
-        EPIC_AreaTypeDef intersect_area;
-        bool is_intersect;
+        x0 = p_clip_area->x0;
+        y0 = p_clip_area->y0;
+        x1 = p_clip_area->x1;
+        y1 = p_clip_area->y1;
 
-        /* calculate the intersect region */
-        is_intersect = EPIC_CalcIntersectArea(&input[1], output, &intersect_area);
-
-        if (is_intersect)
-        {
-            x0 = intersect_area.x0;
-            y0 = intersect_area.y0;
-            x1 = intersect_area.x1;
-            y1 = intersect_area.y1;
-
-            offset = ((y0 - output->y_offset) * output->total_width + (x0 - output->x_offset)) * color_depth;
-        }
-        else
-        {
-            return HAL_EPIC_NOTHING_TO_DO;
-        }
+        offset = ((y0 - output->y_offset) * output->total_width + (x0 - output->x_offset)) * color_depth;
     }
     else
     {
@@ -1890,12 +2202,11 @@ static HAL_StatusTypeDef EPIC_ConfigOutputLayerEx(EPIC_HandleTypeDef *hepic,
         offset = 0;
     }
 
+
     if ((x0 <= x1) && (y0 <= y1))
     {
-        EPIC_TypeDef *epic = hepic->Instance;
         if ((!output->color_en)   /* not filling using background color */
-                && ((EPIC_COLOR_ARGB8565 == output->color_mode)
-                    || (EPIC_COLOR_ARGB8888 == output->color_mode)))
+                && EPIC_OUTPUT_IS_TRANSLUCENT(output->color_mode))
         {
             /* don't blend with background color, output alpha directly */
             epic->CANVAS_BG |= EPIC_CANVAS_BG_BG_BLENDING_BYPASS;
@@ -1913,14 +2224,18 @@ static HAL_StatusTypeDef EPIC_ConfigOutputLayerEx(EPIC_HandleTypeDef *hepic,
             epic->CANVAS_BG &= ~EPIC_CANVAS_BG_BG_BLENDING_BYPASS;
         }
 
+        EPIC_PRINTF("output layer,cf=%d,data=%x,total_w=%d,area[x0y0(%d,%d),x1y1(%d,%d)] \n",
+                    output->color_mode, output->data + offset, output->total_width,
+                    x0, y0, x1, y1);
+
         //Check overflow
         if (EPCI_IS_TLBR_OVERFLOW(EPIC_CANVAS, x0, y0, x1, y1))
         {
             //Overflow
-            EPIC_DEBUG_PRINT_LAYER_INFO(output, "Overflow");
             HAL_ASSERT(0);
             return HAL_ERROR;
         }
+
 
         epic->CANVAS_TL_POS = MAKE_REG_VAL(x0, EPIC_CANVAS_TL_POS_X0_Msk, EPIC_CANVAS_TL_POS_X0_Pos)
                               | MAKE_REG_VAL(y0, EPIC_CANVAS_TL_POS_Y0_Msk, EPIC_CANVAS_TL_POS_Y0_Pos);
@@ -1931,7 +2246,12 @@ static HAL_StatusTypeDef EPIC_ConfigOutputLayerEx(EPIC_HandleTypeDef *hepic,
         MODIFY_REG(epic->AHB_CTRL,
                    EPIC_AHB_CTRL_DESTINATION_Msk | EPIC_AHB_CTRL_O_FORMAT_Msk,
                    EPIC_AHB_CTRL_DEST_RAM | layer_color_format);
-
+#ifdef EPIC_AHB_CTRL_GREY_ORDER
+        if (IS_SWAPPED_COLOR_MODE(output->color_mode))
+            epic->AHB_CTRL |= EPIC_AHB_CTRL_GREY_ORDER;
+        else
+            epic->AHB_CTRL &= ~EPIC_AHB_CTRL_GREY_ORDER;
+#endif /* EPIC_AHB_CTRL_GREY_ORDER */
         epic->AHB_MEM = (uint32_t)output->data + offset;
         return HAL_OK;
     }
@@ -1940,6 +2260,75 @@ static HAL_StatusTypeDef EPIC_ConfigOutputLayerEx(EPIC_HandleTypeDef *hepic,
         return HAL_EPIC_NOTHING_TO_DO;
     }
 
+}
+
+/**
+ * @brief  Configure output layer
+ *
+ * @param  epic EPIC instance
+ * @param  fg foreground layer configuration
+ * @param  bg background layer configuration
+ * @param  dst output layer configuration
+ *
+ * @retval HAL status
+ */
+static HAL_StatusTypeDef EPIC_ConfigOutputLayer(EPIC_TypeDef *epic,
+        EPIC_BlendingDataType *fg,
+        EPIC_BlendingDataType *bg,
+        EPIC_BlendingDataType *dst)
+{
+    if ((dst->x_offset < 0) || (dst->y_offset < 0))
+    {
+        return HAL_ERROR;
+    }
+
+    if (bg->data != dst->data)
+    {
+        return EPIC_ClipAndSetupOutputLayer(epic, dst, NULL);
+    }
+    else
+    {
+        EPIC_AreaTypeDef intersect_area;
+        if (EPIC_CalcIntersectArea(fg, dst, &intersect_area))
+        {
+            return EPIC_ClipAndSetupOutputLayer(epic, dst, &intersect_area);
+        }
+        else
+        {
+            return HAL_EPIC_NOTHING_TO_DO;
+        }
+    }
+}
+
+
+static HAL_StatusTypeDef EPIC_ConfigOutputLayerEx(EPIC_HandleTypeDef *hepic,
+        EPIC_BlendingDataType *input,
+        uint8_t input_num,
+        EPIC_BlendingDataType *output)
+{
+    if ((output->x_offset < 0) || (output->y_offset < 0))
+    {
+        RETURN_ERROR(hepic, HAL_ERROR);
+    }
+
+    if ((2 == input_num)
+            && (input[0].data == output->data))
+    {
+        EPIC_AreaTypeDef intersect_area;
+
+        if (EPIC_CalcIntersectArea(&input[1], output, &intersect_area))
+        {
+            return EPIC_ClipAndSetupOutputLayer(hepic->Instance, output, &intersect_area);
+        }
+        else
+        {
+            return HAL_EPIC_NOTHING_TO_DO;
+        }
+    }
+    else
+    {
+        return EPIC_ClipAndSetupOutputLayer(hepic->Instance, output, NULL);
+    }
 }
 
 static inline HAL_StatusTypeDef EPIC_ContConfigOutputLayer(EPIC_HandleTypeDef *hepic,
@@ -2131,30 +2520,15 @@ static HAL_StatusTypeDef EPIC_TransformVideoLayer(EPIC_TypeDef *epic,
     uint16_t new_width;
     uint16_t new_height;
 
-    uint32_t color_depth;
     int16_t angle_degree;
 
 
     uint32_t epic_scale_x;       //EPIC scale value
     uint32_t epic_scale_y;       //EPIC scale value
     EPIC_PointTypeDef pivot;                //Pivot base on VideoLayer's origin(or base on submodule's origin)
+    int32_t o_abs_pivot_x_16p16 = EPIC_TO_INT32_COORD(fg->x_offset + rot_cfg->pivot_x, fg->x_offset_frac);
+    int32_t o_abs_pivot_y_16p16 = EPIC_TO_INT32_COORD(fg->y_offset + rot_cfg->pivot_x, fg->y_offset_frac);
 
-    EPIC_VideoLayerxTypeDef *Vlayer_x;
-    EPIC_VideoLayerxTransTypeDef *Vlayer_x_trans;
-    uint32_t vl_idx;
-    Vlayer_x       = (EPIC_VideoLayerxTypeDef *)&epic->VL_CFG;
-    Vlayer_x_trans = (EPIC_VideoLayerxTransTypeDef *)&epic->VL_ROT_M_CFG1;
-
-#ifdef SF32LB58X //L2 support transfrom only on 58x
-    HAL_ASSERT((EPIC_LAYER_IDX_VL == layer_idx) || (EPIC_LAYER_IDX_2 == layer_idx));
-    vl_idx = (EPIC_LAYER_IDX_VL == layer_idx) ? 0 : 1;
-#else
-    HAL_ASSERT(EPIC_LAYER_IDX_VL == layer_idx);
-    vl_idx = 0;
-#endif /* SF32LB55X */
-
-    Vlayer_x += vl_idx;
-    Vlayer_x_trans += vl_idx;
 
     if ((0 == fg->width) || (0 == fg->height))
     {
@@ -2165,11 +2539,11 @@ static HAL_StatusTypeDef EPIC_TransformVideoLayer(EPIC_TypeDef *epic,
     EPIC_PRINTF("\r\nEPIC_TransformVideoLayer angle=%d,scale_xy=%d,%d, pivot_xy=%d,%d\n",
                 rot_cfg->angle, rot_cfg->scale_x, rot_cfg->scale_y,
                 rot_cfg->pivot_x, rot_cfg->pivot_y);
+    EPIC_DEBUG_PRINT_LAYER_INFO(fg, "Fg layer(Transform start)");
+    EPIC_PRINTF("o abs pivot 16p16_x,y=[%x,%x]\n", o_abs_pivot_x_16p16, o_abs_pivot_y_16p16);
 
     epic_scale_x = EPIC_CONV_SCALE_FACTOR(rot_cfg->scale_x);
     epic_scale_y = EPIC_CONV_SCALE_FACTOR(rot_cfg->scale_y);
-
-
 
     /* ensure angle reflect the actual quadrant, e.g. 90.1 and 91 are in same quadrant,
        quadrant of 0/90/180/270 degree is undefined */
@@ -2179,29 +2553,11 @@ static HAL_StatusTypeDef EPIC_TransformVideoLayer(EPIC_TypeDef *epic,
         angle_degree += 1;
     }
 
-    if (0 != rot_cfg->angle)
-    {
-        int16_t sinma;
-        int16_t cosma;
-        int16_t abs_sinma;
-        int16_t abs_cosma;
-
-        /* set rotation angle */
-        EPIC_TrigoSinCosP1(rot_cfg->angle, &sinma, &cosma);
-
-        abs_sinma = EPIC_MATH_ABS(sinma);
-        abs_cosma = EPIC_MATH_ABS(cosma);
-
-        trans_result->abs_sinma       = abs_sinma;
-        trans_result->abs_cosma       = abs_cosma;
-    }
-
     trans_result->angle_degree = angle_degree;
     trans_result->h_mirror = rot_cfg->h_mirror;
     trans_result->v_mirror = rot_cfg->v_mirror;
 
 
-    color_depth = EPIC_GetColorDepth(fg->color_mode);
 
     /******************************************************************************/
     new_offset_x = fg->x_offset;
@@ -2239,55 +2595,123 @@ static HAL_StatusTypeDef EPIC_TransformVideoLayer(EPIC_TypeDef *epic,
 
         if (rot_cfg->angle != 0)
         {
-            int32_t delta_x;
-            int32_t delta_y;
+            //The vector from rot_area.xy0(The new VideoLayer TL after rotated) to current VideoLayer‘s TL
+            EPIC_PointTypeDef d1;
+            //The vector from pivot+d1 to the valid pivot range
+            EPIC_PointTypeDef d2;
+            //The vector from src_img+d1+d2 to the valid src_img range
+            EPIC_PointTypeDef d3;
+            //The final valid vector from rot_area.xy0 to current VideoLayer‘s TL
+            EPIC_PointTypeDef df;
 
-            EPIC_GetRotatedArea(&rot_area, fg->width, fg->height, rot_cfg->angle, &pivot);
+            EPIC_GetRotatedArea_Inner(&rot_area, fg->width, fg->height, rot_cfg->angle, &pivot, 1, trans_result);
+            EPIC_DEBUG_PRINT_AREA_INFO(&rot_area, "rot_area");
+            AreaMove(&trans_result->rotated_visible_area, rot_cfg->pivot_x, rot_cfg->pivot_y);
+            EPIC_DEBUG_PRINT_AREA_INFO(&trans_result->rotated_visible_area, "rotated_visible_area");
+            HAL_EPIC_AreaIntersect(&rot_area, &rot_area, &trans_result->rotated_visible_area);
+            EPIC_DEBUG_PRINT_AREA_INFO(&rot_area, "rot_area&rotated_visible_area");
 
+            //Invisbile after rotated
+            if (rot_area.x0 > rot_area.x1)
+            {
+                fg->width = 0;
+                goto __EXIT;
+            }
+            if (rot_area.y0 > rot_area.y1)
+            {
+                fg->height = 0;
+                goto __EXIT;
+            }
 
+            d1.x = 0 - rot_area.x0;
+            d1.y = 0 - rot_area.y0;
+
+            /*Adjust the rotated area to make sure the pivot and src_img are
+            in valid range, avoid register setting fail due to out of range
+            */
+            if (pivot.x + d1.x > pivot_src_max_v)
+            {
+                HAL_ASSERT(0);//Pivot x overflow, -, rot_area.x0--> ERROR can't move x0
+            }
 #ifdef SF32LB55X //pivot are not support negative
-            /*Make sure rotated image is all visible(NOT be clipped by VideoLayer submodule)*/
-            delta_x = EPIC_MATH_MIN(pivot.x, rot_area.x0);
-            delta_y = EPIC_MATH_MIN(pivot.y, rot_area.y0);
-#else
-            delta_x = rot_area.x0;
-            delta_y = rot_area.y0;
+            else if (pivot.x + d1.x < 0)
+                d2.x = 0 - (pivot.x + d1.x);  //+, <--rot_area.x0
 #endif /* SF32LB55X */
-
-            if (delta_x < 0)
-                delta_x = -delta_x;
+            else if (pivot.x + d1.x < -pivot_src_max_v)
+                d2.x = -pivot_src_max_v - (pivot.x + d1.x); //+, <--rot_area.x0
             else
-                delta_x = 0;
+                d2.x = 0;
 
-            if (delta_y < 0)
-                delta_y = -delta_y;
+            if (pivot.y + d1.y > pivot_src_max_v)
+            {
+                HAL_ASSERT(0);//Pivot y overflow
+            }
+#ifdef SF32LB55X //pivot are not support negative
+            else if (pivot.y + d1.y < 0)
+                d2.y = 0 - (pivot.y + d1.y);
+#endif /* SF32LB55X */
+            else if (pivot.y + d1.y < -pivot_src_max_v)
+                d2.y = -pivot_src_max_v - (pivot.y + d1.y);
             else
-                delta_y = 0;
+                d2.y = 0;
 
-            pivot.x     += delta_x;
-            pivot.y     += delta_y;
-            src_img.x   += delta_x;
-            src_img.y   += delta_y;
-            AreaMove(&rot_area, delta_x, delta_y);
+            if (src_img.x + d1.x + d2.x > pivot_src_max_v)
+            {
+                HAL_ASSERT(0);//Src x overflow
+            }
+            else if (src_img.x + d1.x + d2.x < -pivot_src_max_v)
+                d3.x = -pivot_src_max_v - (src_img.x + d1.x + d2.x);
+            else
+                d3.x = 0;
+
+            if (src_img.y + d1.y + d2.y > pivot_src_max_v)
+            {
+                HAL_ASSERT(0);//Src y overflow
+            }
+            else if (src_img.y + d1.y + d2.y < -pivot_src_max_v)
+                d3.y = -pivot_src_max_v - (src_img.y + d1.y + d2.y);
+            else
+                d3.y = 0;
+
+            //Enlarge the rotated area according to the d2 and d3
+            if (d2.x + d3.x >= 0) rot_area.x1 += d2.x + d3.x;
+            if (d2.y + d3.y >= 0) rot_area.y1 += d2.y + d3.y;
 
 
-            //rotated_width  = rot_area.x1 - rot_area.x0 + 1;
-            //rotated_height = rot_area.y1 - rot_area.y0 + 1;
-            rotated_width  = EPIC_MATH_MAX(rot_area.x1, src_img.x + fg->width - 1)  - EPIC_MATH_MIN(rot_area.x0, 0);
-            rotated_height = EPIC_MATH_MAX(rot_area.y1, src_img.y + fg->height - 1)  - EPIC_MATH_MIN(rot_area.y0, 0);
+            rotated_width  = rot_area.x1 - rot_area.x0 + 1;
+            rotated_height = rot_area.y1 - rot_area.y0 + 1;
+
+            df.x = d1.x + d2.x + d3.x;
+            df.y = d1.y + d2.y + d3.y;
+            new_offset_x -= df.x;
+            new_offset_y -= df.y;
+            new_width    = rotated_width - 1;
+            new_height   = rotated_height - 1;
 
 
-            EPIC_PRINTF("delta_x&y[%d,%d]\n", delta_x, delta_y);
+            pivot.x     += df.x;
+            pivot.y     += df.y;
+            src_img.x   += df.x;
+            src_img.y   += df.y;
+            AreaMove(&rot_area, df.x, df.y);
 
-            EPIC_PRINTF("rotate_pivot[%d,%d],  rot_area[(%d,%d),(%d,%d)]\n",
-                        pivot.x, pivot.y,
-                        rot_area.x0,
-                        rot_area.y0,
-                        rot_area.x1,
-                        rot_area.y1
-                       );
+            //The HW calculation area includes the src_img area and the rotated area.
+            trans_result->rotated_width  = EPIC_MATH_MAX(rot_area.x1, src_img.x + fg->width - 1)  - EPIC_MATH_MIN(rot_area.x0, src_img.x);
+            trans_result->rotated_height = EPIC_MATH_MAX(rot_area.y1, src_img.y + fg->height - 1)  - EPIC_MATH_MIN(rot_area.y0, src_img.y);
+            trans_result->pivot.x = pivot.x;
+            trans_result->pivot.y = pivot.y;
+            trans_result->src_img.x = src_img.x;
+            trans_result->src_img.y = src_img.y;
 
-            EPIC_PRINTF("src_img[%d,%d],  rotate_pivot(%d,%d), w:%d, h:%d\n",
+            EPIC_PRINTF("d1.x&y[%d,%d], d2.x&y[%d,%d], d3.x&y[%d,%d], df.x&y[%d,%d]\n",
+                        d1.x, d1.y, d2.x, d2.y, d3.x, d3.y, df.x, df.y);
+            if (d2.x != 0 || d2.y != 0 || d3.x != 0 || d3.y != 0)
+            {
+                EPIC_PRINTF("d2 or d3 are not zero\n");
+            }
+            EPIC_DEBUG_PRINT_AREA_INFO(&rot_area, "Enlarged rot_area");
+
+            EPIC_PRINTF("src_img[%d,%d],  rotate_pivot(%d,%d), VL_w:%d, VL_h:%d\n",
                         src_img.x,
                         src_img.y,
                         pivot.x,
@@ -2296,21 +2720,14 @@ static HAL_StatusTypeDef EPIC_TransformVideoLayer(EPIC_TypeDef *epic,
                         rotated_height
                        );
 
-            trans_result->rotated_width  = rotated_width;
-            trans_result->rotated_height = rotated_height;
-            trans_result->pivot.x = pivot.x;
-            trans_result->pivot.y = pivot.y;
-            trans_result->src_img.x = src_img.x;
-            trans_result->src_img.y = src_img.y;
+            EPIC_PRINTF("rotated_width=%d,rotated_height=%d\n", trans_result->rotated_width, trans_result->rotated_height);
+            EPIC_PRINTF("layer Fg area(Rotated)[x0y0(%d,%d),x1y1(%d,%d)]\n",
+                        new_offset_x, new_offset_y,
+                        new_offset_x + new_width,
+                        new_offset_y + new_height);
 
-            /*
-                Clip VideoLayer submodule image by moving videolayer's TL&BR
-            */
-
-            new_offset_x -= delta_x;
-            new_offset_y -= delta_y;
-            new_width    = rotated_width - 1;
-            new_height   = rotated_height - 1;
+            EPIC_PRINTF("r abs pivot 16p16_x,y=[%x,%x]\n", EPIC_TO_INT32_COORD(new_offset_x + pivot.x, fg->x_offset_frac),
+                        EPIC_TO_INT32_COORD(new_offset_y + pivot.y, fg->y_offset_frac));
         }
         else
         {
@@ -2319,6 +2736,10 @@ static HAL_StatusTypeDef EPIC_TransformVideoLayer(EPIC_TypeDef *epic,
             rotated_height = fg->height - 1;;
         }
 
+        EPIC_PRINTF("layer Fg area(Rotated)[x0y0(%d,%d),x1y1(%d,%d)]\n",
+                    new_offset_x, new_offset_y,
+                    new_offset_x + new_width,
+                    new_offset_y + new_height);
         //Scale
 #ifndef SF32LB55X
         if ((epic_scale_x != EPIC_SCALE_1) || (epic_scale_y != EPIC_SCALE_1)
@@ -2394,7 +2815,9 @@ static HAL_StatusTypeDef EPIC_TransformVideoLayer(EPIC_TypeDef *epic,
             EPIC_PRINTF("scale after 16p16_x,y=[%x,%x]\n", EPIC_TO_INT32_COORD_INNER(new_offset_x, scale_init_x),
                         EPIC_TO_INT32_COORD_INNER(new_offset_y, scale_init_y));
 
-
+            EPIC_PRINTF("s abs pivot 16p16_x,y=[%x,%x]\n", EPIC_TO_INT32_COORD_INNER(new_offset_x, EPIC_SCALE_INT32(scale_init_x, epic_scale_x, 0)) + new_pivot_x,
+                        EPIC_TO_INT32_COORD_INNER(new_offset_y, EPIC_SCALE_INT32(scale_init_y, epic_scale_y, 0)) + new_pivot_y
+                       );
             trans_result->scale_init_x = scale_init_x;
             trans_result->scale_init_y = scale_init_y;
         }
@@ -2432,20 +2855,21 @@ static HAL_StatusTypeDef EPIC_TransformVideoLayer(EPIC_TypeDef *epic,
 
     }
 
-
+    EPIC_PRINTF("layer Fg area(Scaled)[x0y0(%d,%d),x1y1(%d,%d)]\n",
+                new_offset_x, new_offset_y,
+                new_offset_x + new_width,
+                new_offset_y + new_height);
+    //TODO: Fix the flicking if it is not rotating around center of img
     //Hardware: mirror the intersection area of VL&CANVAS
-    if (rot_cfg->h_mirror) //((rot_cfg->h_mirror) && (!rot_cfg->v_mirror))
+    if (rot_cfg->h_mirror)
     {
-        //Mirror clipped video area
-        int32_t layer_x0_16p16 = (((int32_t)new_offset_x) << 16) - ((int32_t) trans_result->scale_init_x);
-        int32_t pivot_x_16p16 = ((int32_t) pivot.x) << 16;
-        int32_t layer_x1_16p16 = layer_x0_16p16 + (((int32_t) new_width) << 16);
+        int32_t layer_x1_16p16 = ((int32_t)(new_offset_x + new_width)) << 16;
+        int32_t layer_x0_16p16 = EPIC_MIRROR_V(layer_x1_16p16, o_abs_pivot_x_16p16);
 
-        layer_x0_16p16 = EPIC_MIRROR_V(layer_x1_16p16, layer_x0_16p16 + pivot_x_16p16);
-
-        trans_result->scale_init_x = EPIC_SCALE_1 - (layer_x0_16p16 & 0xFFFF);
         new_offset_x = (int16_t)(layer_x0_16p16 >> 16);
-        new_offset_x += (trans_result->scale_init_x != 0) ? 1 : 0;
+
+        EPIC_PRINTF("Mirrored layer_x0_16p16=%x, %x\n", layer_x0_16p16,
+                    EPIC_TO_INT32_COORD_INNER(new_offset_x, EPIC_SCALE_INT32(trans_result->scale_init_x, epic_scale_x, 0)));
     }
 
     if (rot_cfg->v_mirror) //((!rot_cfg->h_mirror) && (rot_cfg->v_mirror))
@@ -2458,21 +2882,81 @@ static HAL_StatusTypeDef EPIC_TransformVideoLayer(EPIC_TypeDef *epic,
     }
 
 
+    EPIC_PRINTF("layer Fg area(Mirrored)[x0y0(%d,%d),x1y1(%d,%d)]\n",
+                new_offset_x, new_offset_y,
+                new_offset_x + new_width,
+                new_offset_y + new_height);
+
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+    if (rot_cfg->trans_matrix)
+    {
+        memcpy(&trans_result->matrix, rot_cfg->trans_matrix, sizeof(sifli_matrix_3x3_t));
+        trans_result->is_matrix_transfrom = 1;
+
+        //The TL of original image area is always {0,0}
+        EPIC_AreaTypeDef area;
+        area.x0 = 0;
+        area.y0 = 0;
+        area.x1 = new_width + 1;
+        area.y1 = new_height + 1;
+
+        //Move original image from {0,0} to {new_offset_x,new_offset_y}
+        sifli_matrix_3x3_t mat;
+        sifli_identity_3x3(&mat);
+        sifli_mat_translate_3x3(new_offset_x, new_offset_y, &mat);
+        sifli_mat_multiply_3x3(&trans_result->matrix, &mat, &trans_result->matrix);
+
+        EPIC_DEBUG_PRINT_FLOAT_MATRIX("Matrix for {0,0} image", &trans_result->matrix);
+
+        //Get the transformed area
+        EPIC_GetMatrixTransfromedArea(&trans_result->matrix, &area);
+
+        //Save the transformed area to fg layer
+        new_offset_x = area.x0;
+        new_offset_y = area.y0;
+        new_width = area.x1 - area.x0 - 1;
+        new_height = area.y1 - area.y0 - 1;
+    }
+    else
+    {
+        trans_result->is_matrix_transfrom = 0;
+    }
+    trans_result->transformed_tl_x = new_offset_x;
+    trans_result->transformed_tl_y = new_offset_y;
+#endif /* EPIC_SUPPORT_TRANS_MATRIX */
     /******************************************************************************/
     fg->x_offset = new_offset_x;
     fg->y_offset = new_offset_y;
     fg->width = new_width + 1;
     fg->height = new_height + 1;
 
-
-    if ((fg->width > (EPIC_LAYER_MAX_COORDINATE + 1))
-            || (fg->height > (EPIC_LAYER_MAX_COORDINATE + 1)))
+    if (0 == rot_cfg->h_mirror &&  0 == rot_cfg->v_mirror)
     {
-        EPIC_DEBUG_PRINT_LAYER_INFO(fg, "Fg layer size Overflow");
+        EPIC_AreaTypeDef inter_area;
+        //Align the BR of fg layer to the dst layer, and it will not influence the pivot.
+        if (EPIC_CalcIntersectArea(fg, dst, &inter_area))
+        {
+            if (fg->x_offset + fg->width - 1 > inter_area.x1)
+            {
+                EPIC_DEBUG_PRINT_LAYER_INFO(fg, "Clip Fg layer x1 to dst");
+                fg->width = inter_area.x1 - fg->x_offset + 1;
+            }
+            if (fg->y_offset + fg->height - 1 > inter_area.y1)
+            {
+                EPIC_DEBUG_PRINT_LAYER_INFO(fg, "Clip Fg layer y1 to dst");
+                fg->height = inter_area.y1 - fg->y_offset + 1;
+            }
+        }
 
-        //Limit fg width&height in '0 ~ EPIC_LAYER_MAX_COORDINATE+1'
-        fg->width  = EPIC_MATH_MIN(fg->width,  EPIC_LAYER_MAX_COORDINATE + 1);
-        fg->height = EPIC_MATH_MIN(fg->height, EPIC_LAYER_MAX_COORDINATE + 1);
+        if ((fg->width > (EPIC_LAYER_MAX_COORDINATE + 1))
+                || (fg->height > (EPIC_LAYER_MAX_COORDINATE + 1)))
+        {
+            EPIC_DEBUG_PRINT_LAYER_INFO(fg, "Fg layer size Overflow");
+
+            //Limit fg width&height in '0 ~ EPIC_LAYER_MAX_COORDINATE+1'
+            fg->width  = EPIC_MATH_MIN(fg->width,  EPIC_LAYER_MAX_COORDINATE + 1);
+            fg->height = EPIC_MATH_MIN(fg->height, EPIC_LAYER_MAX_COORDINATE + 1);
+        }
     }
 
 
@@ -2484,6 +2968,9 @@ static HAL_StatusTypeDef EPIC_TransformVideoLayer(EPIC_TypeDef *epic,
 __EXIT:
 
     EPIC_DEBUG_PRINT_LAYER_INFO(fg, "Fg layer(Transform end)");
+    EPIC_PRINTF("angle=%d,scale_xy=%d,%d, pivot_xy=%d,%d\n",
+                rot_cfg->angle, rot_cfg->scale_x, rot_cfg->scale_y,
+                rot_cfg->pivot_x, rot_cfg->pivot_y);
 
     /******************************************************************************/
 
@@ -2515,10 +3002,15 @@ static HAL_StatusTypeDef EPIC_ConfigVideoLayer(EPIC_HandleTypeDef *epic_handle,
     EPIC_TypeDef *epic = epic_handle->Instance;
     uint32_t vl_idx;
 
+    EPIC_PRINTF("\r\nEPIC_ConfigVideoLayer \r\n");
 
     if (EPIC_LAYER_IDX_VL == layer_idx)
     {
+#ifdef EPIC_VL_CFG_BLEND_DEPTH_Msk
         HAL_ASSERT(layer_depth <= (EPIC_VL_CFG_BLEND_DEPTH_Msk >> EPIC_VL_CFG_BLEND_DEPTH_Pos));
+#else
+        HAL_ASSERT(layer_depth <= (EPIC_VL_MISC_CFG_BLEND_DEPTH_Msk >> EPIC_VL_MISC_CFG_BLEND_DEPTH_Pos));
+#endif
     }
 
     //Check overflow
@@ -2572,22 +3064,11 @@ static HAL_StatusTypeDef EPIC_ConfigVideoLayer(EPIC_HandleTypeDef *epic_handle,
 #ifdef HAL_EZIP_MODULE_ENABLED
         if (IS_EZIP_COLOR_MODE(config->color_mode))
         {
-#if defined(SF32LB56X)||defined(SF32LB52X)
-            MODIFY_REG(epic->COENG_CFG, EPIC_COENG_CFG_EZIP_CH_SEL_Msk,
-                       MAKE_REG_VAL(LayerIdx2CH(layer_idx), EPIC_COENG_CFG_EZIP_CH_SEL_Msk, EPIC_COENG_CFG_EZIP_CH_SEL_Pos));
-            epic->COENG_CFG |= EPIC_COENG_CFG_EZIP_EN;
-#else
-            Vlayer_x->CFG |= EPIC_VL_CFG_EZIP_EN;
-#endif
-
-#ifdef SF32LB58X
-            MODIFY_REG(Vlayer_x->MISC_CFG, EPIC_VL_MISC_CFG_EZIP_SEL_Msk,
-                       MAKE_REG_VAL(0, EPIC_VL_MISC_CFG_EZIP_SEL_Msk, EPIC_VL_MISC_CFG_EZIP_SEL_Pos));
-#endif /* SF32LB55X */
+            EPIC_EnableVideoLayerCoengEzip(epic, epic_handle->hezip->Instance, layer_idx, Vlayer_x);
         }
 #endif /* HAL_EZIP_MODULE_ENABLED */
 
-#if defined(SF32LB56X)||defined(SF32LB52X)
+#if defined(EPIC_SUPPORT_YUV)
         if (IS_YUV_COLOR_MODE(config->color_mode))
         {
             HAL_StatusTypeDef err;
@@ -2598,7 +3079,21 @@ static HAL_StatusTypeDef EPIC_ConfigVideoLayer(EPIC_HandleTypeDef *epic_handle,
                 return err;
             }
         }
-#endif /* SF32LB56X */
+#endif /* EPIC_SUPPORT_YUV */
+
+#ifdef EPIC_SUPPORT_JPEGD
+        if (IS_JPEG_COLOR_MODE(config->color_mode))
+        {
+            EPIC_EnableCoengJpeg(epic, layer_idx);
+        }
+#endif /* EPIC_SUPPORT_JPEGD */
+
+#ifdef EPIC_SUPPORT_COLOR_MATRIX
+        if (config->color_matrix)
+        {
+            EPIC_EnableCoengColorMatrix(epic, layer_idx, config->color_matrix);
+        }
+#endif /* EPIC_SUPPORT_COLOR_MATRIX */
 
         if ((EPIC_LAYER_OPAQUE != alpha) || (EPIC_COLOR_MONO == config->color_mode))
         {
@@ -2651,14 +3146,17 @@ static HAL_StatusTypeDef EPIC_ConfigVideoLayer(EPIC_HandleTypeDef *epic_handle,
     // clear
     Vlayer_x->ROT |= EPIC_VL_ROT_CALC_CLR;
 
-
     if (0 == trans_result->angle_degree)
     {
 #if defined(SF32LB55X)||defined(SF32LB58X) //Use VL prefetch only after 58x
         if (line_bytes > EPIC_PREFETCH_THRESHOLD)  Vlayer_x->CFG |= EPIC_VL_CFG_PREFETCH_EN;
 #endif /* SF32LB55X || SF32LB58X*/
         Vlayer_x_trans->ROT_M_CFG1 &= ~EPIC_VL_ROT_M_CFG1_M_MODE;
+#ifdef EPIC_VL_MISC_CFG_DEG_FORCE
         Vlayer_x->MISC_CFG &= ~EPIC_VL_MISC_CFG_DEG_FORCE;
+#else
+        Vlayer_x->ROT &= ~EPIC_VL_ROT_DEG_FORCE;
+#endif
         MODIFY_REG(Vlayer_x->ROT, EPIC_VL_ROT_ROT_DEG_Msk, MAKE_REG_VAL(0, EPIC_VL_ROT_ROT_DEG_Msk, EPIC_VL_ROT_ROT_DEG_Pos));
     }
     else
@@ -2672,27 +3170,60 @@ static HAL_StatusTypeDef EPIC_ConfigVideoLayer(EPIC_HandleTypeDef *epic_handle,
                    MAKE_REG_VAL(trans_result->abs_cosma >> (EPIC_SIN_COS_FRAC_BIT - EPIC_VL_MISC_CFG_COS_FRAC_BIT),
                                 EPIC_VL_MISC_CFG_COS_FORCE_VALUE_Msk,
                                 EPIC_VL_MISC_CFG_COS_FORCE_VALUE_Pos));
+#ifdef EPIC_VL_MISC_CFG_DEG_FORCE
         Vlayer_x->MISC_CFG |= EPIC_VL_MISC_CFG_DEG_FORCE;
-
+#else
+        Vlayer_x->ROT |= EPIC_VL_ROT_DEG_FORCE;
+#endif
         MODIFY_REG(Vlayer_x->ROT, EPIC_VL_ROT_ROT_DEG_Msk, MAKE_REG_VAL(trans_result->angle_degree, EPIC_VL_ROT_ROT_DEG_Msk, EPIC_VL_ROT_ROT_DEG_Pos));
+
+        if (!IS_WITHIN_UNSIGNED_REG_RANGE(trans_result->rotated_width, EPIC_VL_ROT_M_CFG1_M_ROT_MAX_COL)
+                || !IS_WITHIN_UNSIGNED_REG_RANGE(trans_result->rotated_height, EPIC_VL_ROT_M_CFG1_M_ROT_MAX_LINE))
+        {
+            EPIC_PRINTF("Rotated width %d, height %d overflowed\n", trans_result->rotated_width, trans_result->rotated_height);
+            HAL_ASSERT(0);
+            return HAL_ERROR;
+        }
 
         /*VL_ROT_M_CFG1 is area size of rotated img, NOT include scale */
         Vlayer_x_trans->ROT_M_CFG1 = EPIC_VL_ROT_M_CFG1_M_MODE
                                      | MAKE_REG_VAL(trans_result->rotated_width, EPIC_VL_ROT_M_CFG1_M_ROT_MAX_COL_Msk, EPIC_VL_ROT_M_CFG1_M_ROT_MAX_COL_Pos)
                                      | MAKE_REG_VAL(trans_result->rotated_height, EPIC_VL_ROT_M_CFG1_M_ROT_MAX_LINE_Msk, EPIC_VL_ROT_M_CFG1_M_ROT_MAX_LINE_Pos);
-
+#if defined(SF32LB55X)
+        if (!IS_WITHIN_UNSIGNED_REG_RANGE(trans_result->pivot.x, EPIC_VL_ROT_M_CFG2_M_PIVOT_X)
+                || !IS_WITHIN_UNSIGNED_REG_RANGE(trans_result->pivot.y, EPIC_VL_ROT_M_CFG2_M_PIVOT_Y))
+        {
+            EPIC_PRINTF("Pivot %d, %d overflowed\n", trans_result->pivot.x, trans_result->pivot.y);
+            HAL_ASSERT(0);
+            return HAL_ERROR;
+        }
+#else /* !SF32LB55X */
+        if (!IS_WITHIN_SIGNED_REG_RANGE(trans_result->pivot.x, EPIC_VL_ROT_M_CFG2_M_PIVOT_X)
+                || !IS_WITHIN_SIGNED_REG_RANGE(trans_result->pivot.y, EPIC_VL_ROT_M_CFG2_M_PIVOT_Y))
+        {
+            EPIC_PRINTF("Pivot %d, %d overflowed\n", trans_result->pivot.x, trans_result->pivot.y);
+            HAL_ASSERT(0);
+            return HAL_ERROR;
+        }
+#endif /* SF32LB55X */
         /* pivot coordinate is relative to video layer topleft point, for now it must be positive value  */
         Vlayer_x_trans->ROT_M_CFG2 = MAKE_REG_VAL(trans_result->pivot.x, EPIC_VL_ROT_M_CFG2_M_PIVOT_X_Msk, EPIC_VL_ROT_M_CFG2_M_PIVOT_X_Pos)
                                      | MAKE_REG_VAL(trans_result->pivot.y, EPIC_VL_ROT_M_CFG2_M_PIVOT_Y_Msk, EPIC_VL_ROT_M_CFG2_M_PIVOT_Y_Pos);
 
+        if (!IS_WITHIN_SIGNED_REG_RANGE(trans_result->src_img.x, EPIC_VL_ROT_M_CFG3_M_XTL)
+                || !IS_WITHIN_SIGNED_REG_RANGE(trans_result->src_img.y, EPIC_VL_ROT_M_CFG3_M_YTL))
+        {
+            EPIC_PRINTF("Src img %d, %d overflowed\n", trans_result->src_img.x, trans_result->src_img.y);
+            HAL_ASSERT(0);
+            return HAL_ERROR;
+        }
         /* set image position before rotation, its coordinate is relative video layer topleft point*/
         Vlayer_x_trans->ROT_M_CFG3 = MAKE_REG_VAL(trans_result->src_img.x, EPIC_VL_ROT_M_CFG3_M_XTL_Msk, EPIC_VL_ROT_M_CFG3_M_XTL_Pos)
                                      | MAKE_REG_VAL(trans_result->src_img.y, EPIC_VL_ROT_M_CFG3_M_YTL_Msk, EPIC_VL_ROT_M_CFG3_M_YTL_Pos);
 
     }
 
-
-#ifndef SF32LB52X
+#ifdef EPIC_VL_MISC_CFG_MIRROR
     if (trans_result->h_mirror)
         Vlayer_x->MISC_CFG |= EPIC_VL_MISC_CFG_MIRROR;
     else
@@ -2707,7 +3238,7 @@ static HAL_StatusTypeDef EPIC_ConfigVideoLayer(EPIC_HandleTypeDef *epic_handle,
         Vlayer_x->MISC_CFG |= EPIC_VL_MISC_CFG_V_MIRROR;
     else
         Vlayer_x->MISC_CFG &= ~EPIC_VL_MISC_CFG_V_MIRROR;
-#endif /* SF32LB52X */
+#endif /* EPIC_VL_MISC_CFG_MIRROR */
 
 #ifndef SF32LB55X
     MODIFY_REG(Vlayer_x_trans->SCALE_INIT_CFG1, EPIC_VL_SCALE_INIT_CFG1_X_VAL_Msk,
@@ -2716,7 +3247,7 @@ static HAL_StatusTypeDef EPIC_ConfigVideoLayer(EPIC_HandleTypeDef *epic_handle,
                MAKE_REG_VAL(trans_result->scale_init_y, EPIC_VL_SCALE_INIT_CFG2_Y_VAL_Msk, EPIC_VL_SCALE_INIT_CFG2_Y_VAL_Pos));
 
 
-    if (EPIC_COLOR_L8 == config->color_mode)
+    if (EPIC_IS_LUT_COLOR_MODE(config->color_mode))
     {
         uint32_t tab_id = EPIC_Allocate_L8Table(epic);
 
@@ -2735,9 +3266,12 @@ static HAL_StatusTypeDef EPIC_ConfigVideoLayer(EPIC_HandleTypeDef *epic_handle,
 
 
 
-    Vlayer_x->CFG |= MAKE_REG_VAL(layer_color_format, EPIC_VL_CFG_FORMAT_Msk, EPIC_VL_CFG_FORMAT_Pos)
-                     | MAKE_REG_VAL(layer_depth, EPIC_VL_CFG_BLEND_DEPTH_Msk, EPIC_VL_CFG_BLEND_DEPTH_Pos);
-
+    Vlayer_x->CFG |= MAKE_REG_VAL(layer_color_format, EPIC_VL_CFG_FORMAT_Msk, EPIC_VL_CFG_FORMAT_Pos);
+#ifdef EPIC_VL_CFG_BLEND_DEPTH_Msk
+    Vlayer_x->CFG |= MAKE_REG_VAL(layer_depth, EPIC_VL_CFG_BLEND_DEPTH_Msk, EPIC_VL_CFG_BLEND_DEPTH_Pos);
+#else
+    Vlayer_x->MISC_CFG |= MAKE_REG_VAL(layer_depth, EPIC_VL_MISC_CFG_BLEND_DEPTH_Msk, EPIC_VL_MISC_CFG_BLEND_DEPTH_Pos);
+#endif
     if (EPIC_COLOR_MONO != config->color_mode)
     {
         Vlayer_x->CFG |= MAKE_REG_VAL(line_bytes, EPIC_VL_CFG_WIDTH_Msk, EPIC_VL_CFG_WIDTH_Pos);
@@ -2747,13 +3281,21 @@ static HAL_StatusTypeDef EPIC_ConfigVideoLayer(EPIC_HandleTypeDef *epic_handle,
         ;//Keep layer width as 0
     }
 
-#if defined(SF32LB56X)||defined(SF32LB52X)
+#ifdef EPIC_VL_FILL_PIXEL_ORDER
+    //Endian and pixel order
+    if (IS_SWAPPED_COLOR_MODE(config->color_mode))
+        Vlayer_x->FILL |= EPIC_VL_FILL_PIXEL_ORDER | EPIC_VL_FILL_ENDIAN;
+    else
+        Vlayer_x->FILL &= ~(EPIC_VL_FILL_PIXEL_ORDER | EPIC_VL_FILL_ENDIAN);
+#endif /* EPIC_VL_FILL_PIXEL_ORDER */
+
+#if defined(EPIC_SUPPORT_YUV)
     if (IS_YUV_COLOR_MODE(config->color_mode))
     {
         Vlayer_x->CFG |= EPIC_VL_CFG_ACTIVE;
     }
     else
-#endif
+#endif /* EPIC_SUPPORT_YUV */
     {
 
         if (Vlayer_x->SRC != 0)
@@ -2826,8 +3368,8 @@ static HAL_StatusTypeDef EPIC_ContConfigVideoLayer(EPIC_HandleTypeDef *epic_hand
                        | MAKE_REG_VAL(y_offset + config->height - 1, EPIC_VL_BR_POS_Y1_Msk, EPIC_VL_BR_POS_Y1_Pos);
 
 
-    Vlayer_x->EXTENTS = MAKE_REG_VAL(config->width, EPIC_VL_EXTENTS_MAX_COL_Msk, EPIC_VL_EXTENTS_MAX_COL_Pos)
-                        | MAKE_REG_VAL(config->height, EPIC_VL_EXTENTS_MAX_LINE_Msk, EPIC_VL_EXTENTS_MAX_LINE_Pos);
+    Vlayer_x->EXTENTS = MAKE_REG_VAL(config->width - 1, EPIC_VL_EXTENTS_MAX_COL_Msk, EPIC_VL_EXTENTS_MAX_COL_Pos)
+                        | MAKE_REG_VAL(config->height - 1, EPIC_VL_EXTENTS_MAX_LINE_Msk, EPIC_VL_EXTENTS_MAX_LINE_Pos);
 
 #ifndef SF32LB55X
     Vlayer_x->SCALE_RATIO_H = MAKE_REG_VAL(EPIC_SCALE_1, EPIC_VL_SCALE_RATIO_H_XPITCH_Msk, EPIC_VL_SCALE_RATIO_H_XPITCH_Pos);
@@ -2854,8 +3396,12 @@ static HAL_StatusTypeDef EPIC_ContConfigVideoLayer(EPIC_HandleTypeDef *epic_hand
 
     reg_v = MAKE_REG_VAL(line_bytes, EPIC_VL_CFG_WIDTH_Msk, EPIC_VL_CFG_WIDTH_Pos)
             | MAKE_REG_VAL(epic_handle->api_cfg.cont_cfg.color_format[idx], EPIC_VL_CFG_FORMAT_Msk, EPIC_VL_CFG_FORMAT_Pos)
-            | MAKE_REG_VAL(1, EPIC_VL_CFG_BLEND_DEPTH_Msk, EPIC_VL_CFG_BLEND_DEPTH_Pos)
             | EPIC_VL_CFG_ACTIVE;
+#ifdef EPIC_VL_CFG_BLEND_DEPTH_Msk
+    reg_v |= MAKE_REG_VAL(1, EPIC_VL_CFG_BLEND_DEPTH_Msk, EPIC_VL_CFG_BLEND_DEPTH_Pos);
+#else
+    Vlayer_x->MISC_CFG |= MAKE_REG_VAL(1, EPIC_VL_MISC_CFG_BLEND_DEPTH_Msk, EPIC_VL_MISC_CFG_BLEND_DEPTH_Pos);
+#endif
 
     if (!IS_NO_ALPHA_COLOR_MODE(config->color_mode))
     {
@@ -2913,15 +3459,21 @@ static HAL_StatusTypeDef EPIC_ContResetVideoLayer(EPIC_HandleTypeDef *epic_handl
     Vlayer_x->ROT |= EPIC_VL_ROT_CALC_CLR;
 
     Vlayer_x_trans->ROT_M_CFG1 &= ~EPIC_VL_ROT_M_CFG1_M_MODE;
+
+#ifdef EPIC_VL_MISC_CFG_DEG_FORCE
     Vlayer_x->MISC_CFG &= ~EPIC_VL_MISC_CFG_DEG_FORCE;
+#else
+    Vlayer_x->ROT &= ~EPIC_VL_ROT_DEG_FORCE;
+#endif
     MODIFY_REG(Vlayer_x->ROT, EPIC_VL_ROT_ROT_DEG_Msk, MAKE_REG_VAL(0, EPIC_VL_ROT_ROT_DEG_Msk, EPIC_VL_ROT_ROT_DEG_Pos));
 
 
-#ifndef SF32LB52X
+//TODO:
+#if  defined(EPIC_VL_MISC_CFG_MIRROR)
     Vlayer_x->MISC_CFG &= ~EPIC_VL_MISC_CFG_MIRROR;
 #else
     Vlayer_x->MISC_CFG &= ~(EPIC_VL_MISC_CFG_H_MIRROR | EPIC_VL_MISC_CFG_V_MIRROR);
-#endif /* SF32LB52X */
+#endif /* EPIC_VL_MISC_CFG_MIRROR */
 
 #ifndef SF32LB55X
     Vlayer_x_trans->SCALE_INIT_CFG1 = 0;
@@ -3006,11 +3558,9 @@ static HAL_StatusTypeDef EPIC_ConfigMaskLayer(EPIC_HandleTypeDef *hepic, EPIC_LA
                      | MAKE_REG_VAL(line_bytes, EPIC_MASK_CFG_WIDTH_Msk, EPIC_MASK_CFG_WIDTH_Pos)
                      | alpha_mix_mode
                      | (LayerIdx2MaskCh(layer_idx) << EPIC_MASK_CFG_L0_MASK_EN_Pos);
-
-    if (output_line_bytes > EPIC_PREFETCH_THRESHOLD)
-    {
-        epic->MASK_CFG |= EPIC_MASK_CFG_PREFETCH_EN;
-    }
+#ifdef EPIC_MASK_CFG_PREFETCH_EN
+    if (output_line_bytes > EPIC_PREFETCH_THRESHOLD) epic->MASK_CFG |= EPIC_MASK_CFG_PREFETCH_EN;
+#endif /* EPIC_MASK_CFG_PREFETCH_EN */
 
     if (epic->MASK_SRC != 0)
         epic->MASK_CFG |= EPIC_MASK_CFG_ACTIVE;
@@ -3096,11 +3646,9 @@ static HAL_StatusTypeDef EPIC_ContConfigMaskLayer(EPIC_HandleTypeDef *hepic, uin
                      | MAKE_REG_VAL(line_bytes, EPIC_MASK_CFG_WIDTH_Msk, EPIC_MASK_CFG_WIDTH_Pos)
                      | alpha_mix_mode
                      | (LayerIdx2MaskCh(layer_idx) << EPIC_MASK_CFG_L0_MASK_EN_Pos);
-
-    if (output_line_bytes > EPIC_PREFETCH_THRESHOLD)
-    {
-        epic->MASK_CFG |= EPIC_MASK_CFG_PREFETCH_EN;
-    }
+#ifdef EPIC_MASK_CFG_PREFETCH_EN
+    if (output_line_bytes > EPIC_PREFETCH_THRESHOLD) epic->MASK_CFG |= EPIC_MASK_CFG_PREFETCH_EN;
+#endif /* EPIC_MASK_CFG_PREFETCH_EN */
 
     if (epic->MASK_SRC != 0)
         epic->MASK_CFG |= EPIC_MASK_CFG_ACTIVE;
@@ -3144,28 +3692,28 @@ static HAL_StatusTypeDef EPIC_DisableMaskLayer(EPIC_TypeDef *epic)
 #endif /* SF32LB55X */
 
 
-#ifdef HAL_EZIP_MODULE_ENABLED
-static HAL_StatusTypeDef EPIC_ConfigEzipDec(EPIC_HandleTypeDef *epic,
-        EPIC_BlendingDataType *ezip_layer,
-        EPIC_BlendingDataType *dst,
-        EPIC_TransformResultDef *trans_result)
+#if defined(HAL_EZIP_MODULE_ENABLED) || defined(EPIC_SUPPORT_JPEGD)
+static void EPIC_CalcDecImgArea(EPIC_HandleTypeDef *epic,
+                                EPIC_BlendingDataType *dec_layer,
+                                EPIC_BlendingDataType *dst,
+                                EPIC_TransformResultDef *trans_result,
+                                uint16_t *p_start_col,
+                                uint16_t *p_end_col,
+                                uint16_t *p_start_row,
+                                uint16_t *p_end_row)
 {
-    EZIP_TypeDef *ezip;
     EPIC_AreaTypeDef intersect_area;
     bool is_intersect;
-    uint16_t start_col;
-    uint16_t end_col;
-    uint16_t start_row;
-    uint16_t end_row;
-    EZIP_DecodeConfigTypeDef config;
-    HAL_StatusTypeDef res = HAL_OK;
     uint32_t scale_x;
     uint32_t scale_y;
     uint32_t scale_init_x;
     uint32_t scale_init_y;
     uint16_t old_width;
     uint16_t old_height;
-
+    uint16_t start_col;
+    uint16_t end_col;
+    uint16_t start_row;
+    uint16_t end_row;
 
     scale_x = trans_result->epic_scale_x;
     scale_y = trans_result->epic_scale_y;
@@ -3176,30 +3724,29 @@ static HAL_StatusTypeDef EPIC_ConfigEzipDec(EPIC_HandleTypeDef *epic,
     old_height = trans_result->height;
 
     HAL_ASSERT(old_width > 0);
-    ezip = epic->hezip->Instance;
-    HAL_ASSERT(ezip_layer);
+    HAL_ASSERT(dec_layer);
 
-    is_intersect = EPIC_CalcIntersectArea(ezip_layer, dst, &intersect_area);
+    is_intersect = EPIC_CalcIntersectArea(dec_layer, dst, &intersect_area);
     if (is_intersect)
     {
         bool log_en = true;
-        start_col = intersect_area.x0 - ezip_layer->x_offset;
-        end_col = intersect_area.x1 - ezip_layer->x_offset;
+        start_col = intersect_area.x0 - dec_layer->x_offset;
+        end_col = intersect_area.x1 - dec_layer->x_offset;
 
-        start_row = intersect_area.y0 - ezip_layer->y_offset;
-        end_row = intersect_area.y1 - ezip_layer->y_offset;
+        start_row = intersect_area.y0 - dec_layer->y_offset;
+        end_row = intersect_area.y1 - dec_layer->y_offset;
 #if 1
         if (false || (0 != start_col) || (0 != start_row)
-                || (ezip_layer->width != (end_col + 1))
-                || (ezip_layer->height != (end_row + 1)))
+                || (dec_layer->width != (end_col + 1))
+                || (dec_layer->height != (end_row + 1)))
         {
             log_en = true;
             EPIC_PRINTF("area:%d,%d,%d,%d;%d,%d\n", intersect_area.x0, intersect_area.y0,
                         intersect_area.x1, intersect_area.y1, scale_x, scale_y);
             EPIC_PRINTF("dst:%d,%d,%d,%d\n", dst->x_offset, dst->y_offset,
                         dst->x_offset + dst->width - 1, dst->y_offset + dst->height - 1);
-            EPIC_PRINTF("ezip:%d,%d,%d,%d\n", ezip_layer->x_offset, ezip_layer->y_offset,
-                        ezip_layer->x_offset + ezip_layer->width - 1, ezip_layer->y_offset + ezip_layer->height - 1);
+            EPIC_PRINTF("ezip:%d,%d,%d,%d\n", dec_layer->x_offset, dec_layer->y_offset,
+                        dec_layer->x_offset + dec_layer->width - 1, dec_layer->y_offset + dec_layer->height - 1);
             EPIC_PRINTF("old:%d,%d,%d,%d\n", start_col, start_row, end_col, end_row);
             EPIC_PRINTF("old_w:%d,old_h:%d\n", old_width, old_height);
         }
@@ -3235,6 +3782,10 @@ static HAL_StatusTypeDef EPIC_ConfigEzipDec(EPIC_HandleTypeDef *epic,
             end_row = trans_result->clip_area.y1;
         }
 
+        *p_start_col = start_col;
+        *p_end_col = end_col;
+        *p_start_row = start_row;
+        *p_end_row = end_row;
 
 #if 1
         if (log_en)
@@ -3242,7 +3793,81 @@ static HAL_StatusTypeDef EPIC_ConfigEzipDec(EPIC_HandleTypeDef *epic,
             EPIC_PRINTF("new:%d,%d,%d,%d\n", start_col, start_row, end_col, end_row);
         }
 #endif
+    }
+    else
+    {
+        *p_start_col = 1;
+        *p_end_col = 0;
+    }
+}
+#endif /* HAL_EZIP_MODULE_ENABLED) || EPIC_SUPPORT_JPEGD */
 
+#ifdef EPIC_SUPPORT_JPEGD
+static HAL_StatusTypeDef EPIC_ConfigJpegDec(EPIC_HandleTypeDef *epic,
+        EPIC_BlendingDataType *jpeg_layer,
+        EPIC_BlendingDataType *dst,
+        EPIC_TransformResultDef *trans_result)
+{
+    uint16_t start_col;
+    uint16_t end_col;
+    uint16_t start_row;
+    uint16_t end_row;
+    JPEGD_DecodeConfigTypeDef config;
+    HAL_StatusTypeDef res = HAL_OK;
+
+    EPIC_CalcDecImgArea(epic, jpeg_layer, dst, trans_result,
+                        &start_col, &end_col, &start_row, &end_row);
+
+    if (!epic->jpegd_work_buf)
+    {
+        epic->ErrorCode = __LINE__;
+        return HAL_ERROR;
+    }
+
+    if ((end_col >= start_col) && (end_row >= start_row))
+    {
+        epic->coeng_state |= EPIC_COENG_STATE_JPEGD_FLAG;
+        config.input = (uint8_t *)jpeg_layer->data;
+        config.output_mode = HAL_JPEGD_OUTPUT_EPIC;
+        config.start_x = start_col;
+        config.start_y = start_row;
+        config.width = end_col - start_col + 1;
+        config.height = end_row - start_row + 1;
+        config.input_data_size = jpeg_layer->data_size;
+        //TODO: check buffer size
+        config.work_buffer = epic->jpegd_work_buf;
+        EPIC_PRINTF("jpeg_config_dat:%x x:%d y: %d w:%d h:%d\n", config.input, config.start_x, config.start_y, config.width, config.height);
+        epic->hjpegd->CpltCallback = EPIC_JpegdCpltCallback;
+        epic->hjpegd->UserData = (void *)epic;
+        // HAL_sw_breakpoint();
+        res = HAL_JPEGD_Decode_IT(epic->hjpegd, &config);
+        //RT_ASSERT(res == HAL_OK);
+        HAL_ASSERT(res == HAL_OK);
+    }
+
+    return res;
+}
+#endif /* EPIC_SUPPORT_JPEGD */
+
+#ifdef HAL_EZIP_MODULE_ENABLED
+static HAL_StatusTypeDef EPIC_ConfigEzipDec(EPIC_HandleTypeDef *epic,
+        EPIC_BlendingDataType *ezip_layer,
+        EPIC_BlendingDataType *dst,
+        EPIC_TransformResultDef *trans_result)
+{
+    uint16_t start_col;
+    uint16_t end_col;
+    uint16_t start_row;
+    uint16_t end_row;
+    EZIP_DecodeConfigTypeDef config;
+    HAL_StatusTypeDef res = HAL_OK;
+
+    EPIC_CalcDecImgArea(epic, ezip_layer, dst, trans_result,
+                        &start_col, &end_col, &start_row, &end_row);
+
+    if ((end_col >= start_col) && (end_row >= start_row))
+    {
+        epic->coeng_state |= EPIC_COENG_STATE_EZIP_FLAG;
         config.input = (uint8_t *)ezip_layer->data;
         config.output = NULL;
         config.work_mode = HAL_EZIP_MODE_EZIP;
@@ -3263,9 +3888,236 @@ static HAL_StatusTypeDef EPIC_ConfigEzipDec(EPIC_HandleTypeDef *epic,
     return res;
 }
 
-
-
 #endif /* HAL_EZIP_MODULE_ENABLED */
+
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+void EPIC_GetMatrixTransfromedArea(sifli_matrix_3x3_t *p_matrix, EPIC_AreaTypeDef *p_area)
+{
+    sifli_vertex_2d_t lt = {p_area->x0, p_area->y0};
+    sifli_vertex_2d_t rt = {p_area->x1, p_area->y0};
+    sifli_vertex_2d_t lb = {p_area->x0, p_area->y1};
+    sifli_vertex_2d_t rb = {p_area->x1, p_area->y1};
+
+    sifli_mat_vertex_multiply(p_matrix, &lt.x, &lt.y);
+    sifli_mat_vertex_multiply(p_matrix, &rt.x, &rt.y);
+    sifli_mat_vertex_multiply(p_matrix, &lb.x, &lb.y);
+    sifli_mat_vertex_multiply(p_matrix, &rb.x, &rb.y);
+
+    EPIC_PRINTF("EPIC_GetMatrixTransfromedArea \n");
+    EPIC_PRINTF("lt=%f,%f \n", lt.x, lt.y);
+    EPIC_PRINTF("rt=%f,%f \n", rt.x, rt.y);
+    EPIC_PRINTF("lb=%f,%f \n", lb.x, lb.y);
+    EPIC_PRINTF("rb=%f,%f \n", rb.x, rb.y);
+
+    p_area->x0 = EPIC_MATH_MIN4(lt.x, rt.x, lb.x, rb.x) - 1;
+    p_area->y0 = EPIC_MATH_MIN4(lt.y, rt.y, lb.y, rb.y) - 1;
+    p_area->x1 = EPIC_MATH_MAX4(lt.x, rt.x, lb.x, rb.x) + 1;
+    p_area->y1 = EPIC_MATH_MAX4(lt.y, rt.y, lb.y, rb.y) + 1;
+
+    EPIC_DEBUG_PRINT_AREA_INFO(p_area, "TransformedArea");
+}
+
+
+/**
+ * Convert a 3x3 transform matrix from float to int32_t format
+ *
+ * @param matrix_i 3x3 transform matrix in int32_t format, column 0~1 is S12.20, column 2 is S16.16, row major:
+ *              row 0 : matrix_i[0]~matrix_i[2]
+ *              row 1 : matrix_i[3]~matrix_i[5]
+ *              row 2 : matrix_i[6]~matrix_i[8]
+ *
+ * @param matrix_f 3x3 transform matrix in float format, row major:
+ *              row 0 : matrix_f[0]~matrix_f[2]
+ *              row 1 : matrix_f[3]~matrix_f[5]
+ *              row 2 : matrix_f[6]~matrix_f[8]
+ * @return HAL status
+ * */
+static HAL_StatusTypeDef EPIC_TransMatrix_FromFloat(int32_t *matrix_i, const float *matrix_f)
+{
+    const float EPIC_TRANS_MATRIX_COL01_FACTOR_1 = (float)(1 << 20);
+    const float EPIC_TRANS_MATRIX_COL2_FACTOR_1  = (float)(1 << 16);
+
+    HAL_ASSERT(matrix_i && matrix_f);
+    sifli_matrix_3x3_t mat_inverse;
+
+    int ret = sifli_mat_inverse_3x3((const sifli_matrix_3x3_t *)matrix_f, &mat_inverse);
+
+    if (0 != ret)
+    {
+        EPIC_PRINTF("Matrix cannot be inversed\r\n");
+        return HAL_ERROR;
+    }
+
+    EPIC_DEBUG_PRINT_FLOAT_MATRIX("float matrix", (const sifli_matrix_3x3_t *)matrix_f);
+    EPIC_DEBUG_PRINT_FLOAT_MATRIX("inverse matrix", &mat_inverse);
+
+    const float *matrix_f_inv = &mat_inverse.m[0][0];
+    for (int i = 0; i < 9; i++)
+    {
+        float factor1;
+        if (2 == (i % 3)) factor1 = EPIC_TRANS_MATRIX_COL2_FACTOR_1;
+        else factor1 = EPIC_TRANS_MATRIX_COL01_FACTOR_1;
+
+        matrix_i[i] = (int32_t)(matrix_f_inv[i] * factor1 + 0.5f);
+    }
+    EPIC_PRINTF("EPIC matrix:\n");
+    EPIC_PRINTF("%08x,%08x,%08x\n", matrix_i[0], matrix_i[1], matrix_i[2]);
+    EPIC_PRINTF("%08x,%08x,%08x\n", matrix_i[3], matrix_i[4], matrix_i[5]);
+    EPIC_PRINTF("%08x,%08x,%08x\n", matrix_i[6], matrix_i[7], matrix_i[8]);
+
+    return HAL_OK;
+}
+
+static HAL_StatusTypeDef EPIC_ConfigMatrixTransLayer(EPIC_HandleTypeDef *hepic,
+        EPIC_TransformResultDef *trans_result,
+        EPIC_BlendingDataType *config,
+        uint8_t alpha)
+{
+    EPIC_TypeDef *epic = hepic->Instance;
+    EPIC_LayerxTypeDef *layer_x;
+    uint32_t color_depth, line_bytes;
+    uint32_t layer_color_format;
+    int16_t layer_x_offset = config->x_offset;
+    int16_t layer_y_offset = config->y_offset;
+
+
+    //Check overflow
+    if (EPCI_IS_TLBR_OVERFLOW(EPIC_VL, layer_x_offset, layer_y_offset, layer_x_offset + config->width - 1, layer_y_offset + config->height - 1))
+    {
+        //Overflow
+        EPIC_DEBUG_PRINT_LAYER_INFO(config, "Overflow");
+        HAL_ASSERT(0);
+        return HAL_ERROR;
+    }
+
+    EPIC_DEBUG_PRINT_LAYER_INFO(config, "Matrix trans layer");
+
+
+    //Add the offset which is from current top-left to transformed_tl_x/y to matrix
+    float mat_translate_x = layer_x_offset - trans_result->transformed_tl_x;
+    float mat_translate_y = layer_y_offset - trans_result->transformed_tl_y;
+    EPIC_PRINTF("sifli_mat_translate_3x3: %f,%f \n", mat_translate_x, mat_translate_y);
+
+
+    sifli_matrix_3x3_t mat;
+    sifli_identity_3x3(&mat);
+    sifli_mat_translate_3x3(mat_translate_x, mat_translate_y, &mat);
+    sifli_mat_multiply_3x3(&mat, &trans_result->matrix, &trans_result->matrix);
+
+
+
+    layer_x = (EPIC_LayerxTypeDef *)&epic->L2_CFG;
+    layer_x->TL_POS = MAKE_REG_VAL(layer_x_offset, EPIC_L0_TL_POS_X0_Msk, EPIC_L0_TL_POS_X0_Pos)
+                      | MAKE_REG_VAL(layer_y_offset, EPIC_L0_TL_POS_Y0_Msk, EPIC_L0_TL_POS_Y0_Pos);
+    layer_x->BR_POS = MAKE_REG_VAL(layer_x_offset + config->width - 1, EPIC_L0_BR_POS_X1_Msk, EPIC_L0_BR_POS_X1_Pos)
+                      | MAKE_REG_VAL(layer_y_offset + config->height - 1, EPIC_L0_BR_POS_Y1_Msk, EPIC_L0_BR_POS_Y1_Pos);
+
+    layer_x->SRC = (uint32_t)HCPU_MPI_SBUS_ADDR(config->data);
+
+    color_depth = EPIC_GetColorDepth(config->color_mode);
+    layer_color_format = EPIC_GetLayerColorFormat(config->color_mode);
+
+
+    layer_x->CFG = 0;
+
+
+    if ((EPIC_L0_CFG_FMT_RGB565 != layer_color_format) && (EPIC_L0_CFG_FMT_RGB888 != layer_color_format)
+            && (EPIC_COLOR_MONO != config->color_mode))
+    {
+        layer_x->CFG |= MAKE_REG_VAL(1, EPIC_L0_CFG_ALPHA_BLEND_Msk, EPIC_L0_CFG_ALPHA_BLEND_Pos);
+    }
+    else
+    {
+        layer_x->CFG |= EPIC_L0_CFG_ALPHA_SEL;
+    }
+    layer_x->CFG |= MAKE_REG_VAL(alpha, EPIC_L0_CFG_ALPHA_Msk, EPIC_L0_CFG_ALPHA_Pos);
+
+#ifdef HAL_EZIP_MODULE_ENABLED
+    if (IS_EZIP_COLOR_MODE(config->color_mode))
+    {
+        RETURN_ERROR(hepic, HAL_ERROR);
+    }
+#endif /* HAL_EZIP_MODULE_ENABLED */
+
+#if defined(EPIC_SUPPORT_YUV)
+    if (IS_YUV_COLOR_MODE(config->color_mode))
+    {
+        RETURN_ERROR(hepic, HAL_ERROR);
+    }
+#endif /* SF32LB56X */
+
+#ifdef EPIC_SUPPORT_JPEGD
+    if (IS_JPEG_COLOR_MODE(config->color_mode))
+    {
+        RETURN_ERROR(hepic, HAL_ERROR);
+    }
+#endif /* EPIC_SUPPORT_JPEGD */
+
+    if (IS_Ax_COLOR_MODE(config->color_mode))
+    {
+        RETURN_ERROR(hepic, HAL_ERROR);
+    }
+    else if (config->color_en)
+    {
+        layer_x->CFG |= EPIC_L0_CFG_FILTER_EN;
+        layer_x->FILTER = MAKE_REG_VAL(0x0, EPIC_L0_FILTER_FILTER_MASK_Msk, EPIC_L0_FILTER_FILTER_MASK_Pos)
+                          | MAKE_REG_VAL(config->color_r, EPIC_L0_FILTER_FILTER_R_Msk, EPIC_L0_FILTER_FILTER_R_Pos)
+                          | MAKE_REG_VAL(config->color_g, EPIC_L0_FILTER_FILTER_G_Msk, EPIC_L0_FILTER_FILTER_G_Pos)
+                          | MAKE_REG_VAL(config->color_b, EPIC_L0_FILTER_FILTER_B_Msk, EPIC_L0_FILTER_FILTER_B_Pos);
+    }
+
+#ifndef SF32LB55X
+    if (EPIC_IS_LUT_COLOR_MODE(config->color_mode))
+    {
+        uint32_t tab_id = EPIC_Allocate_L8Table(hepic->Instance);
+
+        HAL_ASSERT(tab_id <= (EPIC_L0_MISC_CFG_CLUT_SEL_Msk >> EPIC_L0_MISC_CFG_CLUT_SEL_Pos));
+        EPIC_Overwrite_L8Table(hepic, tab_id, config->lookup_table, config->lookup_table_size);
+        layer_x->MISC_CFG &= ~EPIC_L0_MISC_CFG_CLUT_SEL_Msk;
+        layer_x->MISC_CFG |= MAKE_REG_VAL(tab_id, EPIC_L0_MISC_CFG_CLUT_SEL_Msk, EPIC_L0_MISC_CFG_CLUT_SEL_Pos);
+    }
+#endif /* SF32LB55X */
+
+    layer_x->MISC_CFG &= ~(EPIC_L2_MISC_CFG_MAX_LINE_Msk | EPIC_L2_MISC_CFG_MAX_COL_Msk);
+    layer_x->MISC_CFG |= MAKE_REG_VAL(trans_result->height - 1, EPIC_L2_MISC_CFG_MAX_LINE_Msk, EPIC_L2_MISC_CFG_MAX_LINE_Pos)
+                         | MAKE_REG_VAL(trans_result->width - 1, EPIC_L2_MISC_CFG_MAX_COL_Msk, EPIC_L2_MISC_CFG_MAX_COL_Pos);
+
+    layer_x->CFG |= layer_color_format;
+    if (EPIC_COLOR_MONO != config->color_mode)
+    {
+        line_bytes = HAL_ALIGN(color_depth * config->total_width, 8) >> 3;
+        layer_x->CFG |= MAKE_REG_VAL(line_bytes, EPIC_L0_CFG_WIDTH_Msk, EPIC_L0_CFG_WIDTH_Pos);
+    }
+    else
+    {
+        ;//Keep layer width as 0
+    }
+#ifdef EPIC_L0_FILL_PIXEL_ORDER
+    //Endian and pixel order
+    if (IS_SWAPPED_COLOR_MODE(config->color_mode))
+        layer_x->FILL |= EPIC_L0_FILL_PIXEL_ORDER | EPIC_L0_FILL_ENDIAN;
+    else
+        layer_x->FILL &= ~(EPIC_L0_FILL_PIXEL_ORDER | EPIC_L0_FILL_ENDIAN);
+#endif /* EPIC_L0_FILL_PIXEL_ORDER */
+
+
+    //Convert to EPIC's matrix format, and save it to EPIC registers
+    if ((layer_x->SRC != 0)
+            && (HAL_OK == EPIC_TransMatrix_FromFloat((int32_t *)&epic->L2_MAT_A0, (const float *) & (trans_result->matrix.m[0][0])))
+       )
+    {
+        //Active layer
+        layer_x->CFG |= EPIC_L0_CFG_ACTIVE;
+    }
+    else
+    {
+        layer_x->CFG &= ~EPIC_L0_CFG_ACTIVE;
+    }
+
+    return HAL_OK;
+}
+#endif /* EPIC_SUPPORT_TRANS_MATRIX  */
+
 
 #ifdef EPIC_DEBUG
 static inline EPIC_OpHistItemTypeDef *EPIC_AllocRecordItem(EPIC_HandleTypeDef *epic)
@@ -3281,6 +4133,7 @@ static inline EPIC_OpHistItemTypeDef *EPIC_AllocRecordItem(EPIC_HandleTypeDef *e
     p = &epic->op_hist->hist[epic->op_hist->idx];
 
     p->start_time = HAL_HPAON_READ_GTIMER();
+    epic->last_hist_item = p;
     return p;
 }
 static void EPIC_RecordRotationOp(EPIC_HandleTypeDef *epic, EPIC_TransformCfgTypeDef *rot_cfg,
@@ -3503,10 +4356,18 @@ static void EPIC_ConfigDither(EPIC_HandleTypeDef *hepic, uint32_t dither_mask, u
 {
     EPIC_TypeDef *epic = hepic->Instance;
     dither_level &= 0x3; //Make sure level is 0~3
+    /*                              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15   */
+    const uint8_t dith_width[16] = {0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0,  0,  0,  0,  0,  4};
 
     if ((0 == (dither_mask & 0x00FFFFFF)) || (0 == dither_level))
     {
+#ifdef EPIC_DITHER_CONF_FSD_EN
+        epic->DITHER_CONF &= ~ EPIC_DITHER_CONF_FSD_EN;
+#elif defined(EPIC_DITHER_CONF_RD_EN)
+        epic->DITHER_CONF &= ~ EPIC_DITHER_CONF_RD_EN;
+#else
         epic->DITHER_CONF &= ~ EPIC_DITHER_CONF_EN;
+#endif /* EPIC_DITHER_CONF_RD_EN */
     }
     else
     {
@@ -3514,11 +4375,55 @@ static void EPIC_ConfigDither(EPIC_HandleTypeDef *hepic, uint32_t dither_mask, u
         uint32_t g_dither = (dither_mask & 0x00FF00) >> (8  + (3 - dither_level));
         uint32_t b_dither = (dither_mask & 0x0000FF) >> (0  + (3 - dither_level));
 
+        if (r_dither < 16)
+        {
+            r_dither = dith_width[r_dither];
+        }
+        else
+        {
+            r_dither = 0;
+        }
+        HAL_ASSERT(r_dither > 0);
+        if (g_dither < 16)
+        {
+            g_dither = dith_width[g_dither];
+        }
+        else
+        {
+            g_dither = 0;
+        }
+        HAL_ASSERT(g_dither > 0);
+        if (b_dither < 16)
+        {
+            b_dither = dith_width[b_dither];
+        }
+        else
+        {
+            b_dither = 0;
+        }
+        HAL_ASSERT(b_dither > 0);
+
+#ifdef EPIC_DITHER_CONF_FSD_EN
+        epic->DITHER_CONF = EPIC_DITHER_CONF_FSD_EN
+                            | MAKE_REG_VAL(r_dither, EPIC_DITHER_CONF_FSD_REDW_Msk, EPIC_DITHER_CONF_FSD_REDW_Pos)
+                            | MAKE_REG_VAL(g_dither, EPIC_DITHER_CONF_FSD_GREENW_Msk, EPIC_DITHER_CONF_FSD_GREENW_Pos)
+                            | MAKE_REG_VAL(b_dither, EPIC_DITHER_CONF_FSD_BLUEW_Msk, EPIC_DITHER_CONF_FSD_BLUEW_Pos)
+                            ;
+#elif defined(EPIC_DITHER_CONF_RD_EN)
+        epic->DITHER_CONF = EPIC_DITHER_CONF_RD_EN  | EPIC_DITHER_CONF_LFSR_LOAD | EPIC_DITHER_CONF_LFSR_LOAD_SEL_Msk
+                            | MAKE_REG_VAL(r_dither, EPIC_DITHER_CONF_RD_REDW_Msk, EPIC_DITHER_CONF_RD_REDW_Pos)
+                            | MAKE_REG_VAL(g_dither, EPIC_DITHER_CONF_RD_GREENW_Msk, EPIC_DITHER_CONF_RD_GREENW_Pos)
+                            | MAKE_REG_VAL(b_dither, EPIC_DITHER_CONF_RD_BLUEW_Msk, EPIC_DITHER_CONF_RD_BLUEW_Pos)
+                            ;
+
+        epic->DITHER_LFSR = 0;
+#else
         epic->DITHER_CONF = EPIC_DITHER_CONF_EN  | EPIC_DITHER_CONF_LFSR_LOAD | EPIC_DITHER_CONF_LFSR_LOAD_SEL_Msk
                             | MAKE_REG_VAL(r_dither, EPIC_DITHER_CONF_W_R_Msk, EPIC_DITHER_CONF_W_R_Pos)
                             | MAKE_REG_VAL(g_dither, EPIC_DITHER_CONF_W_G_Msk, EPIC_DITHER_CONF_W_G_Pos)
                             | MAKE_REG_VAL(b_dither, EPIC_DITHER_CONF_W_B_Msk, EPIC_DITHER_CONF_W_B_Pos)
                             ;
+#endif /* EPIC_DITHER_CONF_RD_EN */
     }
 }
 #endif /* EPIC_SUPPORT_DITHER */
@@ -3550,6 +4455,14 @@ static void EPIC_InitRamInstance(EPIC_HandleTypeDef *hepic)
         hepic->RamInstance->COEF0 = 0x12A19204;
         hepic->RamInstance->COEF1 = 0x000664D0;
 #endif /* EPIC_SUPPORT_YUV */
+#ifdef EPIC_SUPPORT_JPEGD
+        hepic->RamInstance->JPEG_ENG_CFG0 = 0x12A19204;
+        hepic->RamInstance->JPEG_ENG_CFG1 = 0x000664D0;
+#endif /* EPIC_SUPPORT_JPEGD */
+#ifdef EPIC_SUPPORT_GREYSCALE
+        hepic->RamInstance->GREY_CONV = 0x07496532;
+#endif /* EPIC_SUPPORT_GREYSCALE */
+        // hepic->RamInstance->SETTING |= EPIC_SETTING_AUTO_GATE_EN;
     }
 }
 static void EPIC_WaitValidInstance(EPIC_HandleTypeDef *hepic)
@@ -3653,6 +4566,8 @@ HAL_StatusTypeDef HAL_EPIC_Init(EPIC_HandleTypeDef *epic)
 #ifndef SF32LB55X
     HAL_RCC_EnableModule(RCC_MOD_EPIC);
 #endif /* SF32LB55X */
+    // epic->HwInstance->SETTING |= EPIC_SETTING_AUTO_GATE_EN;
+    epic->coeng_state = 0;
 
     epic->State = HAL_EPIC_STATE_READY;
 
@@ -3727,14 +4642,14 @@ HAL_StatusTypeDef HAL_EPIC_BlendStart(EPIC_HandleTypeDef *epic,
     HAL_StatusTypeDef ret = HAL_OK;
 
 
-#ifdef SF32LB52X
+#ifdef EPIC_L2_L1_INVALID
     EPIC_TransformCfgTypeDef rot_cfg;
 
     HAL_EPIC_RotDataInit(&rot_cfg);
 
     return HAL_EPIC_Rotate(epic, &rot_cfg, fg, bg, dst, alpha);
 
-#endif /* SF32LB52X */
+#endif /* EPIC_L2_L1_INVALID */
 
 
     if (HAL_EPIC_STATE_READY != epic->State)
@@ -3768,14 +4683,12 @@ HAL_StatusTypeDef HAL_EPIC_BlendStart(EPIC_HandleTypeDef *epic,
         goto __EXIT;
     }
 
-    epic->Instance->COMMAND |= EPIC_COMMAND_START;
+    EPIC_RUN(epic);
     EPIC_WaitDone(epic);
-#ifdef HAL_EZIP_MODULE_ENABLED
-    while (HAL_OK != HAL_EZIP_CheckReady(epic->hezip))
+    while (epic->coeng_state)
     {
-        // wait for ezip idle
+        // wait for co-engine idle
     }
-#endif
 
 __EXIT:
 
@@ -3783,7 +4696,7 @@ __EXIT:
     EPIC_DisableLayer(epic->Instance, EPIC_LAYER_IDX_1);
     EPIC_DisableVideoLayer(epic->Instance);
     EPIC_DisableMaskLayer(epic->Instance);
-    epic->Instance->CANVAS_BG = 0;
+    EPIC_DisableOutputLayer(epic->Instance);
 
     EPIC_DISABLE(epic);
 
@@ -3814,14 +4727,14 @@ HAL_StatusTypeDef HAL_EPIC_BlendStart_IT(EPIC_HandleTypeDef *epic,
     EPIC_BlendingDataType fg_bak;
     EPIC_BlendingDataType dst_bak;
 
-#ifdef SF32LB52X
+#ifdef EPIC_L2_L1_INVALID
     EPIC_TransformCfgTypeDef rot_cfg;
 
     HAL_EPIC_RotDataInit(&rot_cfg);
 
     return HAL_EPIC_Rotate_IT(epic, &rot_cfg, fg, bg, dst, alpha);
 
-#endif /* SF32LB52X */
+#endif /* EPIC_L2_L1_INVALID */
 
     HAL_ASSERT(NULL == epic->IntXferCpltCallback);
 
@@ -3869,7 +4782,7 @@ HAL_StatusTypeDef HAL_EPIC_BlendStart_IT(EPIC_HandleTypeDef *epic,
     /* unmask */
     epic->Instance->SETTING |= EPIC_SETTING_EOF_IRQ_MASK;
     /* trigger epic */
-    epic->Instance->COMMAND |= EPIC_COMMAND_START;
+    EPIC_RUN(epic);
 
     return HAL_OK;
 }
@@ -3930,19 +4843,17 @@ HAL_StatusTypeDef HAL_EPIC_BlendStartEx(EPIC_HandleTypeDef *epic,
     ret = EPIC_ConfigBlendEx(epic, layer, alpha, transform_cfg, input_layer_num + 1);
     if (HAL_OK != ret)
     {
-        ret = HAL_OK;
+        if (HAL_EPIC_NOTHING_TO_DO == ret) ret = HAL_OK;
         goto __EXIT;
     }
 
 
-    epic->Instance->COMMAND |= EPIC_COMMAND_START;
+    EPIC_RUN(epic);
     EPIC_WaitDone(epic);
-#ifdef HAL_EZIP_MODULE_ENABLED
-    while (HAL_OK != HAL_EZIP_CheckReady(epic->hezip))
+    while (epic->coeng_state)
     {
-        // wait for ezip idle
+        // wait for co-engine idle
     }
-#endif
 
 __EXIT:
 
@@ -3950,13 +4861,13 @@ __EXIT:
     EPIC_DisableLayer(epic->Instance, EPIC_LAYER_IDX_1);
     EPIC_DisableVideoLayer(epic->Instance);
     EPIC_DisableMaskLayer(epic->Instance);
-    epic->Instance->CANVAS_BG = 0;
+    EPIC_DisableOutputLayer(epic->Instance);
 
     EPIC_DISABLE(epic);
 
     epic->State = HAL_EPIC_STATE_READY;
 
-    return HAL_OK;
+    return ret;
 }
 
 
@@ -4018,7 +4929,7 @@ HAL_StatusTypeDef HAL_EPIC_BlendStartEx_IT(EPIC_HandleTypeDef *epic,
     if (HAL_OK != ret)
     {
         EPIC_BlendCpltCallback(epic);
-        return HAL_OK;
+        return (HAL_EPIC_NOTHING_TO_DO == ret) ? HAL_OK : ret;
     }
 
     epic->IntXferCpltCallback = EPIC_BlendCpltCallback;
@@ -4028,13 +4939,10 @@ HAL_StatusTypeDef HAL_EPIC_BlendStartEx_IT(EPIC_HandleTypeDef *epic,
     /* unmask */
     epic->Instance->SETTING |= EPIC_SETTING_EOF_IRQ_MASK;
     /* trigger epic */
-    epic->Instance->COMMAND |= EPIC_COMMAND_START;
+    EPIC_RUN(epic);
 
     return HAL_OK;
-
 }
-
-
 
 
 /**
@@ -4105,15 +5013,14 @@ HAL_StatusTypeDef HAL_EPIC_Rotate(EPIC_HandleTypeDef *epic, EPIC_TransformCfgTyp
         ret = EPIC_ConfigRotation(epic, &rot_cfg_bak, &fg_bak, &bg_bak, &dst_bak, alpha);
         if (HAL_OK == ret)
         {
-            epic->Instance->COMMAND |= EPIC_COMMAND_START;
+            EPIC_RUN(epic);
             EPIC_WaitDone(epic);
 
-#ifdef HAL_EZIP_MODULE_ENABLED
-            while (HAL_OK != HAL_EZIP_CheckReady(epic->hezip))
+            while (epic->coeng_state)
             {
-                // wait for ezip idle
+                // wait for co-engine idle
             }
-#endif
+
         }
         else if (HAL_EPIC_NOTHING_TO_DO == ret)
         {
@@ -4128,7 +5035,7 @@ HAL_StatusTypeDef HAL_EPIC_Rotate(EPIC_HandleTypeDef *epic, EPIC_TransformCfgTyp
     EPIC_DisableLayer(epic->Instance, EPIC_LAYER_IDX_0);
     EPIC_DisableVideoLayer(epic->Instance);
     EPIC_DisableMaskLayer(epic->Instance);
-    epic->Instance->CANVAS_BG = 0;
+    EPIC_DisableOutputLayer(epic->Instance);
 
     EPIC_DISABLE(epic);
 
@@ -4222,7 +5129,7 @@ HAL_StatusTypeDef HAL_EPIC_Rotate_IT(EPIC_HandleTypeDef *epic, EPIC_TransformCfg
             epic->Instance->SETTING |= EPIC_SETTING_EOF_IRQ_MASK;
 
             /* trigger epic */
-            epic->Instance->COMMAND |= EPIC_COMMAND_START;
+            EPIC_RUN(epic);
         }
         else if (HAL_EPIC_NOTHING_TO_DO == ret)
         {
@@ -4302,7 +5209,7 @@ HAL_StatusTypeDef HAL_EPIC_FillStart_IT(EPIC_HandleTypeDef *epic, EPIC_FillingCf
     epic->Instance->SETTING |= EPIC_SETTING_EOF_IRQ_MASK;
 
     /* trigger epic */
-    epic->Instance->COMMAND |= EPIC_COMMAND_START;
+    EPIC_RUN(epic);
 
 __EXIT:
 
@@ -4337,7 +5244,7 @@ HAL_StatusTypeDef HAL_EPIC_FillStart(EPIC_HandleTypeDef *epic, EPIC_FillingCfgTy
     }
 
     /* trigger epic */
-    epic->Instance->COMMAND |= EPIC_COMMAND_START;
+    EPIC_RUN(epic);
 
     /* wait complete */
     EPIC_WaitDone(epic);
@@ -4346,7 +5253,7 @@ __EXIT:
 
     /* disable video layer */
     EPIC_DisableVideoLayer(epic->Instance);
-    epic->Instance->CANVAS_BG = 0;
+    EPIC_DisableOutputLayer(epic->Instance);
 
     EPIC_DISABLE(epic);
 
@@ -4364,12 +5271,6 @@ HAL_StatusTypeDef HAL_EPIC_Copy_IT(EPIC_HandleTypeDef *epic, EPIC_BlendingDataTy
     HAL_StatusTypeDef ret;
     EPIC_LAYER_IDX src_layer_idx;
     EPIC_TransformResultDef trans_result;
-
-#if 0
-#ifndef SF32LB52X
-    EPIC_TransformResultDef trans_result;
-#endif /* SF32LB52X */
-#endif /* if 0 */
 
     HAL_ASSERT(NULL == epic->IntXferCpltCallback);
     if (!EPIC_SUPPROT_OUT_FORMAT(dst->color_mode)) RETURN_ERROR(epic, HAL_ERROR);
@@ -4390,7 +5291,8 @@ HAL_StatusTypeDef HAL_EPIC_Copy_IT(EPIC_HandleTypeDef *epic, EPIC_BlendingDataTy
     memcpy(&src_bak, src, sizeof(src_bak));
     memcpy(&dst_bak, dst, sizeof(dst_bak));
 
-#ifndef SF32LB52X
+//TODO:
+#ifndef EPIC_L2_L1_INVALID
     src_layer_idx = EPIC_LAYER_IDX_1;
 
 #else
@@ -4407,7 +5309,7 @@ HAL_StatusTypeDef HAL_EPIC_Copy_IT(EPIC_HandleTypeDef *epic, EPIC_BlendingDataTy
 
     ret = EPIC_ConfigVideoLayer(epic, EPIC_LAYER_IDX_VL, &trans_result, &src_bak, 255);
 #endif /* if 0 */
-#endif /* SF32LB52X */
+#endif /* EPIC_L2_L1_INVALID */
 
     EPIC_MakeAllLayerCoordValid(&src_bak, &dst_bak, NULL);
 
@@ -4437,6 +5339,14 @@ HAL_StatusTypeDef HAL_EPIC_Copy_IT(EPIC_HandleTypeDef *epic, EPIC_BlendingDataTy
     }
 #endif /* HAL_EZIP_MODULE_ENABLED */
 
+#ifdef EPIC_SUPPORT_JPEGD
+    if (IS_JPEG_COLOR_MODE(src_bak.color_mode) && EPIC_IsLayerActive(epic->Instance, src_layer_idx))
+    {
+        ret = EPIC_ConfigJpegDec(epic, &src_bak, &dst_bak, &trans_result);
+    }
+#endif /* EPIC_SUPPORT_JPEGD */
+
+
 #ifndef SF32LB55X
     epic->Instance->CANVAS_BG = 0;
     epic->Instance->CANVAS_BG |= EPIC_CANVAS_BG_ALL_BLENDING_BYPASS;
@@ -4454,7 +5364,7 @@ HAL_StatusTypeDef HAL_EPIC_Copy_IT(EPIC_HandleTypeDef *epic, EPIC_BlendingDataTy
     //HAL_ASSERT(0);
 
     /* trigger epic */
-    epic->Instance->COMMAND |= EPIC_COMMAND_START;
+    EPIC_RUN(epic);
 
     //rt_mutex_release(&epic_mutex);
 
@@ -4519,7 +5429,7 @@ HAL_StatusTypeDef HAL_EPIC_FillGrad_IT(EPIC_HandleTypeDef *epic, EPIC_GradCfgTyp
     epic->Instance->SETTING |= EPIC_SETTING_EOF_IRQ_MASK;
 
     /* trigger epic */
-    epic->Instance->COMMAND |= EPIC_COMMAND_START;
+    EPIC_RUN(epic);
 
 __EXIT:
 
@@ -4558,7 +5468,7 @@ HAL_StatusTypeDef HAL_EPIC_FillGrad(EPIC_HandleTypeDef *epic, EPIC_GradCfgTypeDe
     }
 
     /* trigger epic */
-    epic->Instance->COMMAND |= EPIC_COMMAND_START;
+    EPIC_RUN(epic);
 
     /* wait complete */
     EPIC_WaitDone(epic);
@@ -4639,7 +5549,11 @@ HAL_StatusTypeDef HAL_EPIC_ContBlendStart(EPIC_HandleTypeDef *hepic,
 
     hepic->api_type = EPIC_API_CONTINUE;
     hepic->State = HAL_EPIC_STATE_BUSY;
+#ifdef SF32LB57X
+    hepic->api_cfg.cont_cfg.epic_layer[CONT_FG_LAYER] = EPIC_LAYER_IDX_1;
+#else
     hepic->api_cfg.cont_cfg.epic_layer[CONT_FG_LAYER] = EPIC_LAYER_IDX_VL;
+#endif
     hepic->api_cfg.cont_cfg.epic_layer[CONT_BG_LAYER] = EPIC_LAYER_IDX_0;
     hepic->api_cfg.cont_cfg.color_format[CONT_FG_LAYER] = EPIC_GetLayerColorFormat(input_layer->color_mode);
     hepic->api_cfg.cont_cfg.color_format[CONT_BG_LAYER] = EPIC_GetLayerColorFormat(output_layer->color_mode);
@@ -4658,10 +5572,14 @@ HAL_StatusTypeDef HAL_EPIC_ContBlendStart(EPIC_HandleTypeDef *hepic,
                     -offset_x, -offset_y);
 
     //FG
+#ifdef SF32LB57X
+    ret_v = EPIC_ContConfigLayer(hepic, CONT_FG_LAYER, input_layer);
+    if (HAL_OK != ret_v) goto __EXIT;
+#else
     ret_v = EPIC_ContConfigVideoLayer(hepic, CONT_FG_LAYER, input_layer);
     if (HAL_OK != ret_v) goto __EXIT;
     EPIC_ContResetVideoLayer(hepic, CONT_FG_LAYER); //Reset transform configurations
-
+#endif
 
     //BG
     ret_v = EPIC_ContConfigLayer(hepic, CONT_BG_LAYER, output_layer);
@@ -4686,7 +5604,7 @@ HAL_StatusTypeDef HAL_EPIC_ContBlendStart(EPIC_HandleTypeDef *hepic,
 
 
 
-    hepic->Instance->COMMAND |= EPIC_COMMAND_START;
+    EPIC_RUN(hepic);
 
 
 __EXIT:
@@ -4698,9 +5616,6 @@ __EXIT:
 
     return ret_v;
 }
-
-
-
 
 HAL_StatusTypeDef HAL_EPIC_ContBlendRepeat(EPIC_HandleTypeDef *hepic,
         EPIC_LayerConfigTypeDef *input_layer,
@@ -4758,7 +5673,7 @@ HAL_StatusTypeDef HAL_EPIC_ContBlendRepeat(EPIC_HandleTypeDef *hepic,
         ret_v = EPIC_ContConfigOutputLayer(hepic, output_layer);
         if (HAL_OK != ret_v) goto __EXIT;
 
-        hepic->Instance->COMMAND |= EPIC_COMMAND_START;
+        EPIC_RUN(hepic);
 
 __EXIT:
         //Restore
@@ -4785,7 +5700,7 @@ HAL_StatusTypeDef HAL_EPIC_ContBlendStop(EPIC_HandleTypeDef *hepic)
         EPIC_DisableLayer(hepic->Instance, EPIC_LAYER_IDX_1);
         EPIC_DisableVideoLayer(hepic->Instance);
         EPIC_DisableMaskLayer(hepic->Instance);
-        hepic->Instance->CANVAS_BG = 0;
+        EPIC_DisableOutputLayer(hepic->Instance);
 
         EPIC_DISABLE(hepic);
 
@@ -4898,12 +5813,10 @@ HAL_StatusTypeDef HAL_EPIC_TransStart(EPIC_HandleTypeDef *hepic,
                 {
                     EPIC_WaitValidInstance(hepic);
 
-#ifdef HAL_EZIP_MODULE_ENABLED
-                    while (HAL_OK != HAL_EZIP_CheckReady(hepic->hezip))
+                    while (hepic->coeng_state)
                     {
-                        // wait for ezip idle
+
                     }
-#endif
                 }
 
                 ret = EPIC_ConfigBlendEx(hepic, layer, alpha, transform_cfg, input_layer_num + 1);
@@ -4916,7 +5829,7 @@ HAL_StatusTypeDef HAL_EPIC_TransStart(EPIC_HandleTypeDef *hepic,
                 else if (HAL_OK == ret)
                 {
                     EPIC_CommitInstance(hepic);
-                    hepic->Instance->COMMAND |= EPIC_COMMAND_START;
+                    EPIC_RUN(hepic);
                 }
                 else
                 {
@@ -4943,12 +5856,10 @@ HAL_StatusTypeDef HAL_EPIC_TransStart(EPIC_HandleTypeDef *hepic,
 
 
     EPIC_WaitDone(hepic);
-#ifdef HAL_EZIP_MODULE_ENABLED
-    while (HAL_OK != HAL_EZIP_CheckReady(hepic->hezip))
+    while (hepic->coeng_state)
     {
-        // wait for ezip idle
+        // wait for co-engine idle
     }
-#endif
 
 __EXIT:
 
@@ -4956,7 +5867,7 @@ __EXIT:
     EPIC_DisableLayer(hepic->Instance, EPIC_LAYER_IDX_1);
     EPIC_DisableVideoLayer(hepic->Instance);
     EPIC_DisableMaskLayer(hepic->Instance);
-    hepic->Instance->CANVAS_BG = 0;
+    EPIC_DisableOutputLayer(hepic->Instance);
     hepic->api_type = EPIC_API_NORMAL;
 
     EPIC_DISABLE(hepic);
@@ -5027,6 +5938,10 @@ HAL_StatusTypeDef HAL_EPIC_BlendFastStart_Init(EPIC_HandleTypeDef *hepic)
     hepic->State = HAL_EPIC_STATE_READY;
     hepic->IntXferCpltCallback = NULL;
     hepic->XferCpltCallback = NULL;
+    hepic->coeng_state = 0;
+#ifdef EPIC_DEBUG
+    hepic->last_hist_item = NULL;
+#endif
 
     EPIC_DisableLayer(hepic->Instance, EPIC_LAYER_IDX_0);
     EPIC_DisableLayer(hepic->Instance, EPIC_LAYER_IDX_1);
@@ -5039,6 +5954,10 @@ HAL_StatusTypeDef HAL_EPIC_BlendFastStart_Init(EPIC_HandleTypeDef *hepic)
 #ifdef HAL_EZIP_MODULE_ENABLED
     HAL_EZIP_DecodeFast_Init(hepic->hezip);
 #endif /* HAL_EZIP_MODULE_ENABLED */
+
+#ifdef HAL_JPEGD_MODULE_ENABLED
+    HAL_JPEGD_DecodeFast_Init(hepic->hjpegd);
+#endif /* HAL_JPEGD_MODULE_ENABLED */
 
     return HAL_OK;
 }
@@ -5068,8 +5987,9 @@ HAL_StatusTypeDef HAL_EPIC_BlendFastStart_IT(EPIC_HandleTypeDef *hepic, EPIC_Han
     hepic->RamLTab[1]  = hepic_s->RamLTab[1];
 #endif /* EPIC_LOOKUP_TABLES > 1 */
 #endif /* EPIC_SUPPORT_L8 */
-
-
+#ifdef EPIC_DEBUG
+    hepic->last_hist_item = hepic_s->last_hist_item;
+#endif
 
 
 
@@ -5078,7 +5998,7 @@ HAL_StatusTypeDef HAL_EPIC_BlendFastStart_IT(EPIC_HandleTypeDef *hepic, EPIC_Han
 
     EPIC_CommitInstance(hepic);
 #ifdef HAL_EZIP_MODULE_ENABLED
-    if ((int)HAL_EPIC_STATE_BUSY == (int)hepic_s->hezip->State)
+    if ((int)HAL_EZIP_STATE_BUSY == (int)hepic_s->hezip->State)
     {
         hepic->hezip->CpltCallback = hepic_s->hezip->CpltCallback;
         hepic->hezip->RamInstance_used = 1;
@@ -5089,6 +6009,18 @@ HAL_StatusTypeDef HAL_EPIC_BlendFastStart_IT(EPIC_HandleTypeDef *hepic, EPIC_Han
     }
 #endif /* HAL_EZIP_MODULE_ENABLED */
 
+#ifdef HAL_JPEGD_MODULE_ENABLED
+    if ((int)HAL_JPEGD_STATE_BUSY == (int)hepic_s->hjpegd->State)
+    {
+        hepic->hjpegd->CpltCallback = hepic_s->hjpegd->CpltCallback;
+        hepic->hjpegd->RamInstance_used = 1;
+        hepic->hjpegd->UserData = (void *)hepic;
+        hepic_s->hjpegd->UserData = NULL; // clear user_data in hjpegd_s
+        res = HAL_JPEGD_DecodeFast_IT(hepic->hjpegd);
+        HAL_ASSERT(res == HAL_OK);
+    }
+#endif /* HAL_JPEGD_MODULE_ENABLED */
+
     hepic->user_data = hepic_s->user_data;
     hepic->IntXferCpltCallback = hepic_s->IntXferCpltCallback;
     hepic->XferCpltCallback = hepic_s->XferCpltCallback;
@@ -5097,7 +6029,7 @@ HAL_StatusTypeDef HAL_EPIC_BlendFastStart_IT(EPIC_HandleTypeDef *hepic, EPIC_Han
     /* unmask */
     hepic->Instance->SETTING |= EPIC_SETTING_EOF_IRQ_MASK;
     /* trigger hepic */
-    hepic->Instance->COMMAND |= EPIC_COMMAND_START;
+    EPIC_RUN(hepic);
 
     return HAL_OK;
 }
@@ -5106,7 +6038,7 @@ static void EPIC_CommonCbk(EPIC_HandleTypeDef *epic)
 {
     EPIC_CpltCallback usr_cbk;
 
-    epic->Instance->CANVAS_BG = 0;
+    EPIC_DisableOutputLayer(epic->Instance);
 
     EPIC_DISABLE(epic);
 
@@ -5130,12 +6062,10 @@ static void EPIC_BlendCpltCallback(EPIC_HandleTypeDef *epic)
     EPIC_DisableVideoLayer(epic->Instance);
     EPIC_DisableMaskLayer(epic->Instance);
 
-#ifdef HAL_EZIP_MODULE_ENABLED
-    if (HAL_OK != HAL_EZIP_CheckReady(epic->hezip))
+    if (epic->coeng_state)
     {
         return;
     }
-#endif
 
     EPIC_CommonCbk(epic);
 }
@@ -5162,19 +6092,17 @@ static void EPIC_RotationCpltCallback(EPIC_HandleTypeDef *epic)
     EPIC_DisableVideoLayer(epic->Instance);
     EPIC_DisableMaskLayer(epic->Instance);
 
-#ifdef HAL_EZIP_MODULE_ENABLED
-    if (HAL_OK != HAL_EZIP_CheckReady(epic->hezip))
+    if (epic->coeng_state)
     {
         return;
     }
-#endif
 
     EPIC_CommonCbk(epic);
 }
 
 static void EPIC_CopyCpltCallback(EPIC_HandleTypeDef *epic)
 {
-#ifndef SF32LB52X
+#ifndef EPIC_L2_L1_INVALID
     /* disable layer 1 */
     EPIC_DisableLayer(epic->Instance, EPIC_LAYER_IDX_1);
 #else
@@ -5184,18 +6112,16 @@ static void EPIC_CopyCpltCallback(EPIC_HandleTypeDef *epic)
     /* disable video layer */
     EPIC_DisableVideoLayer(epic->Instance);
 #endif /* if 0 */
-#endif /* SF32LB52X */
+#endif /* EPIC_L2_L1_INVALID */
 #ifndef SF32LB55X
     epic->Instance->CANVAS_BG &= ~EPIC_CANVAS_BG_ALL_BLENDING_BYPASS;
 #endif
-    epic->Instance->CANVAS_BG = 0;
+    EPIC_DisableOutputLayer(epic->Instance);
 
-#ifdef HAL_EZIP_MODULE_ENABLED
-    if (HAL_OK != HAL_EZIP_CheckReady(epic->hezip))
+    if (epic->coeng_state)
     {
         return;
     }
-#endif /* HAL_EZIP_MODULE_ENABLED */
 
     EPIC_CommonCbk(epic);
 }
@@ -5208,13 +6134,33 @@ static void EPIC_EzipCpltCallback(EZIP_HandleTypeDef *ezip)
     hepic = (EPIC_HandleTypeDef *)ezip->user_data;
     HAL_ASSERT(NULL != hepic);
     ezip->user_data = NULL;
+    hepic->coeng_state &= ~EPIC_COENG_STATE_EZIP_FLAG;
     if ((0 == (hepic->Instance->SETTING & EPIC_SETTING_EOF_IRQ_MASK)) /* epic has finished */
+            && (0 == hepic->coeng_state)
             && (hepic->IntXferCpltCallback))
     {
         hepic->IntXferCpltCallback(hepic);
     }
 }
 #endif /* HAL_EZIP_MODULE_ENABLED */
+
+#ifdef EPIC_SUPPORT_JPEGD
+static void EPIC_JpegdCpltCallback(JPEGD_HandleTypeDef *jpegd, void *param)
+{
+    EPIC_HandleTypeDef *hepic;
+
+    hepic = (EPIC_HandleTypeDef *)jpegd->UserData;
+    HAL_ASSERT(NULL != hepic);
+    jpegd->UserData = NULL;
+    hepic->coeng_state &= ~EPIC_COENG_STATE_JPEGD_FLAG;
+    if ((0 == (hepic->Instance->SETTING & EPIC_SETTING_EOF_IRQ_MASK)) /* epic has finished */
+            && (0 == hepic->coeng_state)
+            && (hepic->IntXferCpltCallback))
+    {
+        hepic->IntXferCpltCallback(hepic);
+    }
+}
+#endif /* EPIC_SUPPORT_JPEGD */
 
 /**
  * @brief  Rotate fg, blend with bg and output to dst in polling mode
@@ -5257,7 +6203,7 @@ static HAL_StatusTypeDef EPIC_ConfigRotation(EPIC_HandleTypeDef *epic,
     }
 #endif
 
-#if defined(SF32LB56X)||defined(SF32LB52X)
+#if defined(EPIC_SUPPORT_YUV)
     if ((IS_YUV_COLOR_MODE(fg->color_mode) && IS_YUV_COLOR_MODE(bg->color_mode)) || IS_YUV_COLOR_MODE(dst->color_mode))
     {
         RETURN_ERROR(epic, HAL_ERROR);
@@ -5269,7 +6215,7 @@ static HAL_StatusTypeDef EPIC_ConfigRotation(EPIC_HandleTypeDef *epic,
         RETURN_ERROR(epic, HAL_ERROR);
     }
 
-#endif /* SF32LB56X */
+#endif /* EPIC_SUPPORT_YUV */
     //rt_mutex_take(&epic_mutex, RT_WAITING_FOREVER);
 
     EPIC_TransResultInit(&trans_result, fg);
@@ -5290,6 +6236,14 @@ static HAL_StatusTypeDef EPIC_ConfigRotation(EPIC_HandleTypeDef *epic,
         {
             ret = EPIC_ConfigMaskLayer(epic, EPIC_LAYER_IDX_0, fg);
         }
+        else if (IS_MATRIX_TRANSFROM(rot_cfg))
+        {
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+            ret = EPIC_ConfigMatrixTransLayer(epic, &trans_result, fg, alpha);
+#else
+            RETURN_ERROR(epic, HAL_ERROR);
+#endif /* EPIC_SUPPORT_TRANS_MATRIX */
+        }
         else
         {
             EPIC_ConfigVideoLayer(epic, EPIC_LAYER_IDX_VL, &trans_result, fg, alpha, 1);
@@ -5306,11 +6260,7 @@ static HAL_StatusTypeDef EPIC_ConfigRotation(EPIC_HandleTypeDef *epic,
 
         if ((alpha == EPIC_LAYER_OPAQUE) && (0 == rot_cfg->angle))
             if (IS_NO_ALPHA_COLOR_MODE(fg->color_mode))
-                if ((fg->x_offset <= dst->x_offset)
-                        && (fg->x_offset + fg->width >= dst->x_offset + dst->width)
-                        && (fg->y_offset <= dst->y_offset)
-                        && (fg->y_offset + fg->height >= dst->y_offset + dst->height)
-                   )
+                if (EPIC_IS_LAYER_A_IN_B(dst, fg))
                 {
                     dst_coverd_by_fg = true;
                 }
@@ -5353,7 +6303,19 @@ static HAL_StatusTypeDef EPIC_ConfigRotation(EPIC_HandleTypeDef *epic,
     {
         ret = EPIC_ConfigEzipDec(epic, bg, dst, &trans_result_bg);
     }
-#endif
+#endif /* HAL_EZIP_MODULE_ENABLED */
+
+#ifdef EPIC_SUPPORT_JPEGD
+    if (IS_JPEG_COLOR_MODE(fg->color_mode) && EPIC_IsLayerActive(epic->Instance, EPIC_LAYER_IDX_VL))
+    {
+        ret = EPIC_ConfigJpegDec(epic, fg, dst, &trans_result);
+    }
+    else if (IS_JPEG_COLOR_MODE(bg->color_mode)  && EPIC_IsLayerActive(epic->Instance, EPIC_LAYER_IDX_0))
+    {
+        ret = EPIC_ConfigJpegDec(epic, bg, dst, &trans_result_bg);
+    }
+#endif /* EPIC_SUPPORT_JPEGD */
+
 
     //rt_mutex_release(&epic_mutex);
 
@@ -5407,14 +6369,22 @@ HAL_StatusTypeDef EPIC_ConfigBlend(EPIC_HandleTypeDef *epic,
     {
         RETURN_ERROR(epic, HAL_ERROR);
     }
-#endif
+#endif /* HAL_EZIP_MODULE_ENABLED */
 
-#if defined(SF32LB56X)||defined(SF32LB52X)
+#if defined(EPIC_SUPPORT_YUV)
     if ((IS_YUV_COLOR_MODE(fg->color_mode) && IS_YUV_COLOR_MODE(bg->color_mode)) || IS_YUV_COLOR_MODE(dst->color_mode))
     {
         RETURN_ERROR(epic, HAL_ERROR);
     }
-#endif /* SF32LB56X */
+#endif /* EPIC_SUPPORT_YUV */
+
+#ifdef EPIC_SUPPORT_JPEGD
+    if (IS_JPEG_COLOR_MODE(bg->color_mode) && IS_JPEG_COLOR_MODE(fg->color_mode))
+    {
+        RETURN_ERROR(epic, HAL_ERROR);
+    }
+#endif /* EPIC_SUPPORT_JPEGD */
+
 
 #ifndef SF32LB55X
     if (IS_FRAC_COORD_LAYER(fg))
@@ -5439,11 +6409,7 @@ HAL_StatusTypeDef EPIC_ConfigBlend(EPIC_HandleTypeDef *epic,
         bool dst_in_fg; //dst area in fg area
 
 
-        if ((fg->x_offset <= dst->x_offset)
-                && (fg->x_offset + fg->width >= dst->x_offset + dst->width)
-                && (fg->y_offset <= dst->y_offset)
-                && (fg->y_offset + fg->height >= dst->y_offset + dst->height)
-           )
+        if (EPIC_IS_LAYER_A_IN_B(dst, fg))
             dst_in_fg = true;
         else
             dst_in_fg = false;
@@ -5506,7 +6472,18 @@ HAL_StatusTypeDef EPIC_ConfigBlend(EPIC_HandleTypeDef *epic,
     {
         ret = EPIC_ConfigEzipDec(epic, bg, dst, &trans_result_bg);
     }
-#endif
+#endif /* HAL_EZIP_MODULE_ENABLED */
+
+#ifdef EPIC_SUPPORT_JPEGD
+    if (IS_JPEG_COLOR_MODE(fg->color_mode) && EPIC_IsLayerActive(epic->Instance, fg_layer_idx))
+    {
+        ret = EPIC_ConfigJpegDec(epic, fg, dst, &trans_result);
+    }
+    else if (IS_JPEG_COLOR_MODE(bg->color_mode) && EPIC_IsLayerActive(epic->Instance, EPIC_LAYER_IDX_0))
+    {
+        ret = EPIC_ConfigJpegDec(epic, bg, dst, &trans_result_bg);
+    }
+#endif /* EPIC_SUPPORT_JPEGD */
 
     return HAL_OK;
 }
@@ -5531,18 +6508,24 @@ static HAL_StatusTypeDef EPIC_ChooseLayer(EPIC_BlendingDataType *input,
     int8_t cur_fix_depth_layer;
     uint8_t video_layer_valid = 1;
     uint8_t ezip_num = 0;
-#if defined(SF32LB56X)||defined(SF32LB52X)
+#if defined(EPIC_SUPPORT_YUV)
     uint8_t yuv_num = 0;
-#endif /* SF32LB56X */
+#endif /* EPIC_SUPPORT_YUV */
 #ifndef SF32LB55X
     uint8_t mask_num = 0;
 #endif /* SF32LB55X */
+#ifdef EPIC_SUPPORT_JPEGD
+    uint8_t jpeg_num = 0;
+#endif /* EPIC_SUPPORT_JPEGD */
+#ifdef EPIC_SUPPORT_COLOR_MATRIX
+    uint8_t color_matrix_num = 0;
+#endif /* EPIC_SUPPORT_COLOR_MATRIX */
 
-#if defined(SF32LB52X)
-    cur_fix_depth_layer = (int8_t)EPIC_LAYER_IDX_0;
-#else
+#if defined(SF32LB56X) || defined(SF32LB58X) || defined(SF32LB55X) || defined(SF32LB57X)
     cur_fix_depth_layer = (int8_t)EPIC_LAYER_IDX_2;
-#endif
+#else
+    cur_fix_depth_layer = (int8_t)EPIC_LAYER_IDX_0;
+#endif /* SF32LB56X || SF32LB58X || SF32LB55X */
     *vl_depth = 0xFF;
 
     if (0 == input_layer_num) return HAL_OK;
@@ -5563,6 +6546,20 @@ static HAL_StatusTypeDef EPIC_ChooseLayer(EPIC_BlendingDataType *input,
                 cur_fix_depth_layer--;
             }
 #endif /* SF32LB55X */
+            else if (IS_MATRIX_TRANSFROM(&transform_cfg[i]))
+            {
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+                if ((int8_t)EPIC_LAYER_IDX_2 == cur_fix_depth_layer) //L2 support matrix transform
+                {
+                    epic_layer[i]       = cur_fix_depth_layer;
+                    cur_fix_depth_layer--;
+                }
+                else
+                    return HAL_ERROR;
+#else
+                return HAL_ERROR;
+#endif /* EPIC_SUPPORT_TRANS_MATRIX */
+            }
             else if (video_layer_valid)
             {
                 epic_layer[i] = EPIC_LAYER_IDX_VL;
@@ -5585,8 +6582,13 @@ static HAL_StatusTypeDef EPIC_ChooseLayer(EPIC_BlendingDataType *input,
             return HAL_ERROR;
 #endif /* SF32LB55X */
         }
-        else
+        else //Choose an EPIC layer for normal blending input layer
         {
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+            //L2 support matrix transform only,not for normal blending
+            if ((int8_t)EPIC_LAYER_IDX_2 == cur_fix_depth_layer)  cur_fix_depth_layer--;
+#endif /* EPIC_SUPPORT_TRANS_MATRIX */
+
             if ((video_layer_valid) &&
                     ((cur_fix_depth_layer < (int8_t)EPIC_LAYER_IDX_0)
 
@@ -5607,7 +6609,7 @@ static HAL_StatusTypeDef EPIC_ChooseLayer(EPIC_BlendingDataType *input,
             }
             else
             {
-                return HAL_ERROR; //No avaliable layer
+                return HAL_ERROR; //No avaliable EPIC layer
             }
         }
 
@@ -5622,12 +6624,32 @@ static HAL_StatusTypeDef EPIC_ChooseLayer(EPIC_BlendingDataType *input,
 
         if (IS_YUV_COLOR_MODE(input[i].color_mode))
         {
-#if defined(SF32LB56X)||defined(SF32LB52X)
+#if defined(EPIC_SUPPORT_YUV)
             if (++yuv_num > 1) return HAL_ERROR;
 #else
             return HAL_ERROR;
-#endif /* SF32LB56X */
+#endif /* EPIC_SUPPORT_YUV */
         }
+
+        if (IS_JPEG_COLOR_MODE(input[i].color_mode))
+        {
+#if defined(EPIC_SUPPORT_JPEGD)
+            if (++jpeg_num > 1) return HAL_ERROR;
+#else
+            return HAL_ERROR;
+#endif /* EPIC_SUPPORT_JPEGD */
+        }
+
+        if (input[i].color_matrix)
+        {
+#ifdef EPIC_SUPPORT_COLOR_MATRIX
+            if (++color_matrix_num > 1) return HAL_ERROR;
+#else
+            return HAL_ERROR;
+#endif /* EPIC_SUPPORT_COLOR_MATRIX */
+
+        }
+
     }
 
     return HAL_OK;
@@ -5656,6 +6678,9 @@ static HAL_StatusTypeDef EPIC_ConfigBlendEx(EPIC_HandleTypeDef *epic,
     EPIC_TransformResultDef trans_result[MAX_EPIC_LAYER];
 
     uint32_t ezip_layer_idx = UINT32_MAX;
+#ifdef EPIC_SUPPORT_JPEGD
+    uint32_t jpeg_layer_idx = UINT32_MAX;
+#endif /* HAL_JPEGD_MODULE_ENABLE */
 
     uint8_t input_layer_num = layer_num - 1;
     EPIC_BlendingDataType *output = &input[layer_num - 1];
@@ -5669,7 +6694,7 @@ static HAL_StatusTypeDef EPIC_ConfigBlendEx(EPIC_HandleTypeDef *epic,
     ret = EPIC_ChooseLayer(input, transform_cfg, input_layer_num, epic_layer, &video_layer_depth);
     if (HAL_OK != ret)
     {
-        return ret;
+        RETURN_ERROR(epic, ret);
     }
 
     //2.Transfrom layer to update other layer's coordinates
@@ -5698,8 +6723,35 @@ static HAL_StatusTypeDef EPIC_ConfigBlendEx(EPIC_HandleTypeDef *epic,
         EPIC_MakeAllLayerCoordValidEx(input, input_layer_num + 1); //+1 for output layer
     }
 
-    //3.Config EPIC layer
-    for (i = 0; i < input_layer_num; i++)
+    //3.Skip invisible bg layer in a most common case
+    i = 0;
+    if (2 == input_layer_num)
+    {
+        if ((alpha[1] >= EPIC_LAYER_OPAQUE) && (0 == transform_cfg[1].angle)
+                && (!IS_MATRIX_TRANSFROM(&transform_cfg[1]))
+                && IS_NO_ALPHA_COLOR_MODE(input[1].color_mode)
+                && EPIC_IS_LAYER_A_IN_B(output, &input[1])
+           )
+        {
+            i = 1; //Skip bg layer
+
+            //Use bg's EPIC layer(L0 in general) if it is suitable for fg
+            if ((EPIC_LAYER_IDX_VL == epic_layer[1]
+#ifndef SF32LB55X
+                    || (EPIC_LAYER_IDX_2 == epic_layer[1])
+#endif /* SF32LB55X */
+                )
+                    && (!IS_NEED_TRANSFROM_LAYER(&input[1], &transform_cfg[1]))
+               )
+            {
+                epic_layer[1] = epic_layer[0];
+            }
+        }
+    }
+
+
+    //4.Config EPIC layer
+    for (; i < input_layer_num; i++)
     {
         if (!EPIC_CalcIntersectArea(&input[i], output, NULL))
         {
@@ -5713,7 +6765,12 @@ static HAL_StatusTypeDef EPIC_ConfigBlendEx(EPIC_HandleTypeDef *epic,
 #endif /* SF32LB55X */
                 )
         {
-            ret = EPIC_ConfigVideoLayer(epic, epic_layer[i], &trans_result[i], &input[i], alpha[i], video_layer_depth);
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+            if (IS_MATRIX_TRANSFROM(&transform_cfg[i]))
+                ret = EPIC_ConfigMatrixTransLayer(epic, &trans_result[i], &input[i], alpha[i]);
+            else
+#endif /* EPIC_SUPPORT_TRANS_MATRIX */
+                ret = EPIC_ConfigVideoLayer(epic, epic_layer[i], &trans_result[i], &input[i], alpha[i], video_layer_depth);
         }
         else if (IS_ALPHA_MASK_LAYER(&input[i]))
         {
@@ -5725,17 +6782,18 @@ static HAL_StatusTypeDef EPIC_ConfigBlendEx(EPIC_HandleTypeDef *epic,
         {
             ret = EPIC_ConfigLayer(epic, epic_layer[i], &input[i], true, alpha[i]);
         }
+
 #ifdef EPIC_SUPPORT_DITHER
+        input_bit_mask |= EPIC_GetColorBitMask(input[i].color_mode, input[i].ax_mode);
         if (!IS_EZIP_COLOR_MODE(input[i].color_mode))
         {
-            input_bit_mask |= EPIC_GetColorBitMask(input[i].color_mode, input[i].ax_mode);
             layer_dither_level = HAL_MAX(layer_dither_level, input[i].dither_level);
         }
 #endif /* EPIC_SUPPORT_DITHER */
 
         if (HAL_OK != ret)
         {
-            return ret;
+            RETURN_ERROR(epic, ret);
         }
 
 
@@ -5743,12 +6801,19 @@ static HAL_StatusTypeDef EPIC_ConfigBlendEx(EPIC_HandleTypeDef *epic,
         {
             ezip_layer_idx = i;
         }
+
+#ifdef EPIC_SUPPORT_JPEGD
+        if (IS_JPEG_COLOR_MODE(input[i].color_mode))
+        {
+            jpeg_layer_idx = i;
+        }
+#endif /* EPIC_SUPPORT_JPEGD */
     }
 
     ret = EPIC_ConfigOutputLayerEx(epic, input, input_layer_num, output);
     if (HAL_OK != ret)
     {
-        return ret;
+        RETURN_ERROR(epic, ret);
     }
 
 #ifdef EPIC_SUPPORT_DITHER
@@ -5759,7 +6824,13 @@ static HAL_StatusTypeDef EPIC_ConfigBlendEx(EPIC_HandleTypeDef *epic,
     {
         ret = EPIC_ConfigEzipDec(epic, &input[ezip_layer_idx], output, &trans_result[ezip_layer_idx]);
     }
-#endif
+#endif /* HAL_EZIP_MODULE_ENABLED */
+#ifdef EPIC_SUPPORT_JPEGD
+    if (jpeg_layer_idx != UINT32_MAX)
+    {
+        ret = EPIC_ConfigJpegDec(epic, &input[jpeg_layer_idx], output, &trans_result[jpeg_layer_idx]);
+    }
+#endif /* EPIC_SUPPORT_JPEGD */
 #ifdef EPIC_SUPPORT_DITHER
     EPIC_ConfigDither(epic, (input_bit_mask & (~output_bit_mask)), layer_dither_level);
 #endif /* EPIC_SUPPORT_DITHER */

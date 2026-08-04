@@ -41,7 +41,7 @@ The maximum number of supported buttons and long press action detection threshol
 #define BUTTON_MAX_NUM 2
 #define BUTTON_ADV_ACTION_CHECK_DELAY 3000
 ```
-They can be configured under `SiFli Middleware->Enable button library`. You can enter by typing `menuconfig` in the compilation interface:
+They can be configured under `SiFli Middleware->Enable button library`. You can enter by typing `sdk.py menuconfig` in the compilation interface:
 ![alt text](assets/button_menu.png)
 
 ## Using the Button Library

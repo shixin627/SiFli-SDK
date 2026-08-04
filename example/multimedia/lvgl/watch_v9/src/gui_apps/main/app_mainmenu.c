@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -21,7 +21,7 @@
 #include "bf0_lib.h"
 #include "cell_transform.h"
 #include "log.h"
-#include "custom_trans_anim.h"
+
 #include "lv_display.h"
 #include "lv_types.h"
 
@@ -90,6 +90,15 @@ LV_IMG_DECLARE(img_world_clock);
 /* Columun0 Row0 icon pivot coordinate*/
 #define C0R0_COORD_X (PAGE_SCRL_WIDTH >> 1)
 #define C0R0_COORD_Y (0)
+
+#if defined(SF32LB55X)
+/*
+ * 551 EPIC render path converts LVGL zoom by:
+ *   epic_scale = LV_SCALE_NONE * EPIC_INPUT_SCALE_NONE / zoom
+ * which overflows the hardware scale register when zoom < 129.
+ */
+    #define MAINMENU_CELL_EPIC_SAFE_MIN_ZOOM 129U
+#endif
 
 //#define DEBUG_APP_MAINMENU_DISPLAY_ICON_PARAM
 
@@ -672,7 +681,14 @@ static int32_t mainmenu_cell_draw_icons(lv_obj_t *obj, float pi_x, float pi_y, f
         obj->flags &= (~LV_OBJ_FLAG_HIDDEN);
 
         //Updata zoom
-        zoom = (uint16_t)(w * 256 / (float)img_w);
+        zoom = (uint16_t)(w * LV_SCALE_NONE / (float)img_w);
+#if defined(SF32LB55X)
+        if (zoom < MAINMENU_CELL_EPIC_SAFE_MIN_ZOOM)
+        {
+            obj->flags |= LV_OBJ_FLAG_HIDDEN;
+            return 0;
+        }
+#endif
         mainmenu_cell_img_set_zoom(obj, zoom);
 
         //Move icon
@@ -723,7 +739,16 @@ static void mainmenu_cell_icons_coord_init(void)
 
                 lv_obj_set_pos(icon, x - (img_w >> 1), y - (img_h >> 1));
                 lv_img_set_pivot(icon, (img_w >> 1), (img_h >> 1));
-                lv_img_set_zoom(icon, zoom);
+#if defined(SF32LB55X)
+                if (zoom < MAINMENU_CELL_EPIC_SAFE_MIN_ZOOM)
+                {
+                    icon->flags |= LV_OBJ_FLAG_HIDDEN;
+                }
+                else
+#endif
+                {
+                    lv_img_set_zoom(icon, zoom);
+                }
             }
         }
 }
@@ -1298,7 +1323,7 @@ static void mainmenu_cell_read_app_icons(lv_obj_t *page)
         while (1)
         {
             //Fix 1st icon for clock
-            p_builtin_app = gui_script_app_list_get_next(p_builtin_app);
+            p_builtin_app = gui_script_app_list_get_next(p_builtin_app, 1);
             if (p_builtin_app == NULL)
                 break;
             idx = mainmenu_cell_reorder_wf_icon(idx, clock_idx, p_builtin_app, page);
@@ -1544,7 +1569,7 @@ static int app_mainmenu(intent_t i)
 
 
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(mainmenu), NULL, APP_ID, app_mainmenu);
-
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(mainmenu), NULL, APP_ID, app_mainmenu, 1);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(mainmenu), NULL, APP_ID, app_mainmenu, 2);
 
 

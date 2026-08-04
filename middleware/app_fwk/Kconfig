@@ -1,0 +1,25 @@
+menuconfig GUI_APP_FRAMEWORK
+    bool "GUI Application Framework"
+    default n
+    if GUI_APP_FRAMEWORK
+        choice
+            prompt "App switch animation type"
+            default APP_TRANS_ANIMATION_SCALE
+            config APP_TRANS_ANIMATION_NONE
+                bool "No animation (0 buffer)"
+            config APP_TRANS_ANIMATION_OVERWRITE
+                bool "Overwrite animation (0 buffer)"
+                select LVSF_USING_SWITCHANIM
+            config APP_TRANS_ANIMATION_SCALE
+                bool "Enlarge/Shrink Animation (2 buffers)"
+                select LVSF_USING_SWITCHANIM
+        endchoice
+
+        config GUI_MAX_RUNNING_APPS
+            int "max running GUI apps at same time"
+            default 2
+            
+        config GUI_PM_METRICS_ENABLED    
+            bool "Enable GUI PM Metrics"
+            default n
+    endif

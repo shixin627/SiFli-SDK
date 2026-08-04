@@ -1,0 +1,26 @@
+menu "LED"
+menuconfig BSP_USING_LED1
+    bool "LED1"
+    default n
+    if BSP_USING_LED1  
+        config BSP_LED1_PIN
+            int "LED1 pin number"
+            default 99
+        config BSP_LED1_ACTIVE_HIGH
+            bool "Level is high if LED is on"
+            default n
+    endif 
+
+menuconfig BSP_USING_LED2
+    bool "LED2"
+    default n
+    if BSP_USING_LED2
+        config BSP_LED2_PIN
+            int "LED2 pin number"
+            default 99
+        config BSP_LED2_ACTIVE_HIGH
+            bool "Level is high if LED is on"
+            default n
+    endif 
+
+endmenu

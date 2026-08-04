@@ -62,6 +62,27 @@ choice
         select BPS_V33
         depends on SOC_SF32LB56X
         bool "SS6700XXX HDK" 
+    config BSP_USING_BOARD_FPGA_57X_MEM_V3
+        depends on SOC_SF32LB57X
+        bool "FPGA 57x MEM V3"   
+    config BSP_USING_BOARD_SF32LB57_RAMRUN
+        depends on SOC_SF32LB57X
+        bool "SF32LB57-RAMRUN"
+    config BSP_USING_BOARD_DPI_HDK_LB575YBBN6_N16_DBI
+        depends on SOC_SF32LB57X
+        bool "DPI-HDK_LB575YBBN6_N16_DBI"
+    config BSP_USING_BOARD_DPI_HDK_LB575YBBN6_N16_QSPI
+        depends on SOC_SF32LB57X
+        bool "DPI-HDK_LB575YBBN6_N16_QSPI"
+    config BSP_USING_BOARD_SPI_HDK_LB573UB7N6
+        depends on SOC_SF32LB57X
+        bool "SPI-HDK_LB573UB7N6"
+    config BSP_USING_BOARD_SPI_HDK_LB575YBBN6_N16
+        depends on SOC_SF32LB57X
+        bool "SPI-HDK_LB575YBBN6_N16"
+    config BSP_USING_BOARD_SPI_HDK_LB573UB776
+        depends on SOC_SF32LB57X
+        bool "SPI-HDK_LB573UB776"
     config BSP_USING_BOARD_EC_LB583XXX
         depends on SOC_SF32LB58X
         bool "SF32LB583XXX EVB"
@@ -78,6 +99,8 @@ choice
         bool "Sifli Solution customer board"
     config BSP_USING_NON_SIFLI_BOARD
         bool "non-SiFli board"
+    config BSP_NO_BOARD_USED
+        bool "Not use any board"
 endchoice
 
 if !BSP_USING_PC_SIMULATOR
@@ -139,7 +162,26 @@ if !BSP_USING_PC_SIMULATOR
             bool "Select for 1st version for hal lcpu config"
         config LCPU_CONFIG_V2
             bool "Select for 2nd version for hal lcpu config"
-    endchoice        
+    endchoice    
+
+    menuconfig SD_BL_MODE
+        bool "Use SD_BL_MODE"
+        default n
+    if SD_BL_MODE
+        choice BOOT_DEVICE
+            prompt "Select SD boot device"
+            default BOOT_DEVICE_SDMMC2
+
+        config BOOT_DEVICE_SDMMC1
+            bool "SDMMC1"
+
+        config BOOT_DEVICE_SDMMC2
+            bool "SDMMC2"
+
+        endchoice
+
+    endif # SD_BL_MODE
+
 endif
 
 if BSP_USING_BOARD_EH_SS6500XXX
@@ -204,6 +246,34 @@ if BSP_USING_BOARD_SF32LB56_LCD_N16R12N1
     source "$SIFLI_SDK/customer/boards/sf32lb56-lcd_n16r12n1/Kconfig.board"
 endif
 
+if BSP_USING_BOARD_FPGA_57X_MEM_V3
+    source "$SIFLI_SDK/customer/boards/fpga-57x_mem_v3/Kconfig.board"
+endif
+
+if BSP_USING_BOARD_SF32LB57_RAMRUN
+    source "$SIFLI_SDK/customer/boards/sf32lb57-ramrun/Kconfig.board"
+endif
+
+if BSP_USING_BOARD_DPI_HDK_LB575YBBN6_N16_DBI
+    source "$SIFLI_SDK/customer/boards/dpi-hdk_lb575ybbn6_n16_dbi/Kconfig.board"
+endif
+
+if BSP_USING_BOARD_DPI_HDK_LB575YBBN6_N16_QSPI
+    source "$SIFLI_SDK/customer/boards/dpi-hdk_lb575ybbn6_n16_qspi/Kconfig.board"
+endif
+
+if BSP_USING_BOARD_SPI_HDK_LB573UB7N6
+    source "$SIFLI_SDK/customer/boards/spi-hdk_lb573ub7n6/Kconfig.board"
+endif
+
+if BSP_USING_BOARD_SPI_HDK_LB575YBBN6_N16
+    source "$SIFLI_SDK/customer/boards/spi-hdk_lb575ybbn6_n16/Kconfig.board"
+endif
+
+if BSP_USING_BOARD_SPI_HDK_LB573UB776
+    source "$SIFLI_SDK/customer/boards/spi-hdk_lb573ub776/Kconfig.board"
+endif
+
 if BSP_USING_BOARD_EC_LB583XXX || SIFLI_LB583
     source "$SIFLI_SDK/customer/boards/ec-lb583/Kconfig.board"
 endif
@@ -230,7 +300,7 @@ if !BSP_USING_PC_SIMULATOR
     endif
     endmenu
     source "$SIFLI_SDK/customer/boards/Kconfig_drv"
-    menu "Select board peripherals"
+    menu "Board Peripherals"
         source "$SIFLI_SDK/customer/peripherals/Kconfig"
     endmenu
 endif

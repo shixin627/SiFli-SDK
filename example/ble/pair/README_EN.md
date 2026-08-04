@@ -1,69 +1,83 @@
-# BLE Peripheral Example
+# BLE Pair Example
 
-Source path: example/ble/peripheral
+Source path: example/ble/pair
 
 (Platform_peri)=
 ## Supported Platforms
-<!-- Which boards and chip platforms are supported -->
+<!-- Supported boards and chip platforms -->
 All platforms
 
 ## Overview
-<!-- Introduction to the example -->
-This example demonstrates how this platform implements GAP peripheral and GATT server functionalities.
+<!-- Example overview -->
+This example shows how to use GAP peripheral pairing on this platform.
 
-## Usage
-<!-- Explain how to use the example, such as which hardware pins to connect for waveform observation, compilation and flashing can reference related documentation.
-For rt_device examples, also list the configuration switches used in this example, such as PWM example using PWM1, which needs to be enabled in the onchip menu -->
-1. As a slave device, advertising will be enabled at startup with the advertising name SIFLI_APP-xx-xx-xx-xx-xx-xx, where xx represents the Bluetooth address of this device. Connection can be established through a mobile BLE APP.
-2. As a GATT server, write and read operations can be performed from the mobile device, or CCCD can be enabled, and the device will update the characteristic value every second.
-3. In the initialization stage, bond_ack is set to BOND.Pending by default. You need to pay attention to CONNECTION_MANAGER_BOND_AUTH_INFOR and call connectionManager_bond_ack_reply in time.
-```c
-connection_manager_set_bond_ack(BOND_PENDING);
+
+## How to Use
+<!-- Explain how to use the example, such as which pins to observe. Compilation and flashing can reference other docs.
+For rt_device examples, list the required config switches, e.g., PWM examples need PWM1 enabled. -->
+
+This example acts as a BLE Peripheral, starts advertising on boot, and supports pairing. You can use a mobile BLE app to complete pairing and verify GATT read/write.
+
+### Procedure
+1. Power on the device. It starts advertising automatically. The name format is `SIFLI_APP-xx-xx-xx-xx-xx-xx`.
+2. Use a mobile BLE app to scan and connect.
+3. After connection, send `cmd_diss set_sec xx xx` to trigger pairing. For example:
 ```
-4.You can reset the IO by setting IO cap to GAP_IO.cap_DISPLAY_ONLY by default, or you can also reset the IO by using the finsh command cmd_diss set_io iocap.
-```c
-connection_manager_set_bond_cnf_iocap(GAP_IO_CAP_DISPLAY_ONLY);
+cmd_diss set_sec 0 2
 ```
-5. When INPUT_ONLY is set, the key must be entered by the finsh command cmd_diss set_key conn_IDX key
+- Parameter note: `0` is the connection index `conn_idx` (usually 0 for a single connection).
+`2` is the security level (LE_SECURITY_LEVEL_NO_MITM_BOND: bonding without MITM).
+After sending the command, the phone shows a pairing request.
 
-6. The finsh command cmd_diss set_key conn_idx sec_level can be used to request the central to initiate a pairing
+![](./assets/image1.png)
 
+Tap Pair. The phone asks for a PIN. Enter the PIN shown in the device log to complete pairing.
 
+![](./assets/image2.png)
+
+![](./assets/image3.png)
+
+4. After connecting, use the BLE app to perform GATT read/write tests:
+    - Read: returns 4 bytes (little-endian).
+    - Write: supports 1 to 4 bytes. The UART log prints the new value.
+
+![](./assets/image4.png)
+![](./assets/image5.png)
 
 ### Hardware Requirements
 Before running this example, prepare:
-+ One development board supported by this example ([Supported Platforms](#Platform_peri))
-+ Mobile device
++ A development board supported by this example ([Supported Platforms](#Platform_peri)).
++ A mobile phone.
 
-### Menuconfig Configuration
+### menuconfig Settings
 1. Enable Bluetooth (`BLUETOOTH`):
     - Path: Sifli middleware → Bluetooth
     - Enable: Enable bluetooth
-        - Macro switch: `CONFIG_BLUETOOTH`
-        - Description: Enables Bluetooth functionality
+        - Macro: `CONFIG_BLUETOOTH`
+        - Purpose: Enables Bluetooth.
 2. Enable GAP, GATT Client, BLE connection manager:
     - Path: Sifli middleware → Bluetooth → Bluetooth service → BLE service
     - Enable: Enable BLE GAP central role
-        - Macro switch: `CONFIG_BLE_GAP_CENTRAL`
-        - Description: Switch for BLE CENTRAL (central device). When enabled, it provides scanning and active connection initiation with peripherals.
+        - Macro: `CONFIG_BLE_GAP_CENTRAL`
+        - Purpose: Enables BLE CENTRAL role (scan and initiate connections).
     - Enable: Enable BLE GATT client
-        - Macro switch: `CONFIG_BLE_GATT_CLIENT`
-        - Description: Switch for GATT CLIENT. When enabled, it can actively search and discover services, read/write data, and receive notifications.
+        - Macro: `CONFIG_BLE_GATT_CLIENT`
+        - Purpose: Enables GATT CLIENT for service discovery, read/write, and notifications.
     - Enable: Enable BLE connection manager
-        - Macro switch: `CONFIG_BSP_BLE_CONNECTION_MANAGER`
-        - Description: Provides BLE connection control management, including multi-connection management, BLE pairing, link connection parameter updates, etc.
+        - Macro: `CONFIG_BSP_BLE_CONNECTION_MANAGER`
+        - Purpose: Enables BLE connection management (multi-connection, pairing, connection parameter updates).
 3. Enable NVDS:
     - Path: Sifli middleware → Bluetooth → Bluetooth service → Common service
     - Enable: Enable NVDS synchronous
-        - Macro switch: `CONFIG_BSP_BLE_NVDS_SYNC`
-        - Description: Bluetooth NVDS synchronization. When Bluetooth is configured to HCPU, BLE NVDS can be accessed synchronously, so enable this option; when Bluetooth is configured to LCPU, this option needs to be disabled.
+        - Macro: `CONFIG_BSP_BLE_NVDS_SYNC`
+        - Purpose: BLE NVDS sync access. Enable when BLE runs on HCPU; disable when BLE runs on LCPU.
 
-### Compilation and Flashing
-Navigate to the example project directory and run the scons command to compile:
+### Build and Flash
+Switch to the example project directory and build with scons:
 ```c
 > scons --board=eh-lb525 -j32
 ```
-Navigate to the example's `project/build_xx` directory, run `uart_download.bat`, and select the port as prompted to download:
+Switch to the example `project/build_xx` directory, run `uart_download.bat`, and follow the prompt to select the port:
 ```c
 $ ./uart_download.bat
 
@@ -71,22 +85,23 @@ $ ./uart_download.bat
 
 please input the serial port num:5
 ```
-For detailed steps on compilation and downloading, please refer to the relevant section in the [Quick Start Guide](/quickstart/get-started.md).
+For detailed build and download steps, refer to [Quick Start](/quickstart/get-started.md).
 
 ## Expected Results
-<!-- Explain the expected results of the example, such as which LEDs will light up, what logs will be printed, so users can determine if the example is running correctly. The results can be explained step by step in combination with the code -->
-After the example starts:
-1. The device can be discovered and connected by mobile BLE APP, and corresponding GATT characteristic value read/write operations can be performed.
-2. By modifying io and then initiating pairing on the mobile terminal, different pairing authentication methods can be implemented.
-3. You can also initiate an encryption request from the periphery development board side and then pair it through the finsh command.
+1. On power-up, the UART prints `receive BLE power on!` and advertising starts.
+2. The phone can discover and connect. The log shows `Peer device(xx-xx-xx-xx-xx-xx) connected`.
+3. When pairing is triggered, the log prints `SHOW PIN` or `SHOW NC`, and the connection remains after pairing.
+4. During GATT read/write tests, the log prints `Updated app value from:xx to:xx`.
+
 
 ## Troubleshooting
 
-## Reference Documentation
-<!-- For rt_device examples, the RT-Thread official documentation provides detailed explanations. You can add web links here, for example, refer to RT-Thread's [RTC Documentation](https://www.rt-thread.org/document/site/#/rt-thread-version/rt-thread-standard/programming-manual/device/rtc/rtc) -->
 
-## Update History
-|Version |Date   |Release Notes |
+## References
+<!-- For rt_device examples, RT-Thread provides detailed docs. Add links here if needed. -->
+
+## Revision History
+| Version | Date | Notes |
 |:---|:---|:---|
 |0.0.1 |01/2025 |Initial version |
 | | | |

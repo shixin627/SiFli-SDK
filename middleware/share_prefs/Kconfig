@@ -1,0 +1,6 @@
+config BSP_SHARE_PREFS
+    bool "Share Preferences"
+    depends on PKG_USING_EASYFLASH || PKG_USING_FLASHDB
+    default n
+    help
+        Share Preferences provides a unified storage interface, regardless of whether EasyFlash or FlashDB is used as the underlying storage backend.

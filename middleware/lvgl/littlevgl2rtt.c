@@ -6,6 +6,7 @@
 
 #include <rtthread.h>
 #include "littlevgl2rtt.h"
+#include "app_mem.h"
 #ifdef LV_USE_LVSF
     #include "lv_ext_resource_manager.h"
     #ifndef DISABLE_LVGL_V8
@@ -37,6 +38,19 @@ float cpu_get_usage(void)
 
 static uint32_t frame_cnt = 0;
 static float fps;
+
+#if LV_USE_TINY_TTF
+static void * app_tiny_ttf_draw_buf_malloc(size_t size, lv_color_format_t color_format)
+{
+    LV_UNUSED(color_format);
+    return app_tiny_ttf_mem_alloc(size);
+}
+
+static void app_tiny_ttf_draw_buf_free(void *buf)
+{
+    app_tiny_ttf_mem_free(buf);
+}
+#endif
 static float epic_perf;//Epic busy percentage
 uint8_t fb_get_cmpr_rate(void);
 
@@ -453,6 +467,14 @@ int gui_lib_init(void)
        chain elm_init -> mnt_init -> freetype is safe there. */
     lv_init();
 #if LV_USE_TINY_TTF
+    lv_draw_buf_handlers_init(lv_draw_buf_get_font_handlers(),
+                              app_tiny_ttf_draw_buf_malloc,
+                              app_tiny_ttf_draw_buf_free,
+                              lv_draw_buf_copy,
+                              lv_draw_buf_align,
+                              NULL,
+                              NULL,
+                              lv_draw_buf_width_to_stride);
     extern void lv_font_tiny_init(void);
     lv_font_tiny_init();
 #endif

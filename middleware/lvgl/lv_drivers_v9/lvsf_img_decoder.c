@@ -15,7 +15,7 @@
 
 #include "../../draw/lv_image_decoder_private.h"
 #include "../../../lvgl.h"
-#if LV_USE_DRAW_EPIC
+#if (1 == LV_USE_DRAW_EPIC) && defined(LV_USE_EZIP)
 
 #include "../../misc/lv_fs_private.h"
 #include <string.h>
@@ -267,7 +267,17 @@ static lv_result_t decoder_open(lv_image_decoder_t *decoder, lv_image_decoder_ds
         }
 #endif
 
-        dsc->decoded = p_decoded;
+        if (ret == LV_RESULT_OK)
+        {
+            p_decoded->unaligned_data = p_decoded->data;
+            p_decoded->handlers = lv_draw_buf_get_handlers();
+            dsc->decoded = p_decoded;
+        }
+        else
+        {
+            lv_free(p_decoded);
+        }
+
         lv_fs_close(f);
         lv_free(f);
     }
@@ -297,22 +307,36 @@ static void decoder_close(lv_image_decoder_t *decoder, lv_image_decoder_dsc_t *d
 /**********************
  *   GLOBAL FUNCTIONS
  **********************/
-
+#if defined(LV_USE_SIFLI_JPEGD)
+    extern void lvsf_jpegd_init(void);
+    extern void lvsf_jpegd_deinit(void);
+#endif /* LV_USE_SIFLI_JPEGD */
 void lv_sifli_img_decoder(void)
 {
-#if LV_USE_DRAW_EPIC
+#if (1 == LV_USE_DRAW_EPIC)
+
+#if defined(LV_USE_EZIP)
     lv_image_decoder_t *dec = lv_image_decoder_create();
     lv_image_decoder_set_info_cb(dec, decoder_info);
     lv_image_decoder_set_open_cb(dec, decoder_open);
     lv_image_decoder_set_close_cb(dec, decoder_close);
 
     dec->name = DECODER_NAME;
+#endif /* LV_USE_EZIP */
+
+#if defined(LV_USE_SIFLI_JPEGD)
+    lvsf_jpegd_init();
+#endif /* LV_USE_SIFLI_JPEGD */
+
 #endif /* LV_USE_DRAW_EPIC */
+
 }
 
 void lv_sifli_img_decoder_deinit(void)
 {
-#if LV_USE_DRAW_EPIC
+#if (1 == LV_USE_DRAW_EPIC)
+
+#if defined(LV_USE_EZIP)
     lv_image_decoder_t *dec = NULL;
     while ((dec = lv_image_decoder_get_next(dec)) != NULL)
     {
@@ -322,5 +346,12 @@ void lv_sifli_img_decoder_deinit(void)
             break;
         }
     }
+#endif /* LV_USE_EZIP */
+
+#if defined(LV_USE_SIFLI_JPEGD)
+    lvsf_jpegd_deinit();
+#endif /* LV_USE_SIFLI_JPEGD */
+
 #endif /* LV_USE_DRAW_EPIC */
+
 }

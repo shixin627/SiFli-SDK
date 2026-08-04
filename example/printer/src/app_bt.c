@@ -26,6 +26,14 @@ int bt_app_hci_event_handler(uint16_t event_id, uint8_t *msg)
 {
     switch (event_id)
     {
+    case DM_ACL_OPEN_IND:
+    {
+        BTS2S_DM_ACL_OPEN_IND *ind = (BTS2S_DM_ACL_OPEN_IND *)msg;
+        bd_addr_t bd_addr_c;
+        bt_addr_convert_to_general(&ind->bd, &bd_addr_c);
+        bt_interface_acpt_connect_req((unsigned char *)&bd_addr_c, BT_LINK_MASTER, BT_LINK_PHONE);
+        break;
+    }
     case DM_EN_ACL_OPENED_IND:
     {
         BTS2S_DM_EN_ACL_OPENED_IND *ind = (BTS2S_DM_EN_ACL_OPENED_IND *)msg;
@@ -214,13 +222,17 @@ void bt_sc_io_capability_rsp(BTS2S_BD_ADDR *bd)
     bt_io_capability_rsp(bd, IO_CAPABILITY_NO_INPUT_NO_OUTPUT, FALSE, TRUE);
 }
 
+uint8_t bt_is_auto_request_connect(void)
+{
+    return 0; // 0:it doesn't need check
+}
+
 
 void spp_init()
 {
     hcia_set_default_pscan_efficient(1);
     hcia_set_default_iscan_efficient(1);
     bt_cm_set_profile_target(0, BT_SLAVE_ROLE, 0);
-    bt_interface_acl_accept_role_set(HCI_MASTER);
     bt_interface_set_linkpolicy(1, 1);
     bt_interface_set_sniff_enable(FALSE);
 }

@@ -9,12 +9,13 @@ def create_env(proj_path = None):
         print("Please run set_env.bat in root folder of SIFLI SDK to set environment.")
         exit()
 
-    if proj_path:
-        lcpu_proj_path = os.path.join(proj_path, '../lcpu')
-    else:
-        lcpu_proj_path = '../lcpu'   
-    lcpu_proj_name = 'lcpu'
-    AddChildProj(lcpu_proj_name, lcpu_proj_path, True, core="LCPU")
+    if not GetDepend('SOC_SF32LB57X'):
+        if proj_path:
+            lcpu_proj_path = os.path.join(proj_path, '../lcpu')
+        else:
+            lcpu_proj_path = '../lcpu'   
+        lcpu_proj_name = 'lcpu'
+        AddChildProj(lcpu_proj_name, lcpu_proj_path, True, core="LCPU")
     
     if proj_path is None:
         AddBootLoader(SIFLI_SDK, rtconfig.CHIP)
@@ -23,9 +24,9 @@ def create_env(proj_path = None):
     SifliEnv(proj_path)
 
 
-def build():
+def build(env=None):
     # prepare building environment
-    objs = PrepareBuilding(None)
+    objs = PrepareBuilding(env)
     env = GetCurrentEnv()
 
     TARGET = os.path.join(env['build_dir'], rtconfig.TARGET_NAME + '.' + rtconfig.TARGET_EXT)

@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <rtthread.h>
 #include <rtdevice.h>
 #include "littlevgl2rtt.h"
@@ -65,9 +71,12 @@ static void app_clock_rotate_bg_redraw(lv_timer_t *task)
         static int32_t scale_percent = 2;
         static uint32_t scale = 256;
 
-        const uint32_t scale_down_min = LV_IMG_ZOOM_NONE / 10;
-
         const uint32_t scale_up_max = LV_IMG_ZOOM_NONE * 20;
+#if defined(SF32LB55X)
+        const uint32_t scale_down_min = 129;
+#else
+        const uint32_t scale_down_min = LV_IMG_ZOOM_NONE / 10;
+#endif
 
         if ((scale > scale_up_max) || (scale < scale_down_min))
         {
@@ -87,6 +96,9 @@ static void app_clock_rotate_bg_redraw(lv_timer_t *task)
 
         //rt_kprintf("app_clock_rotate_bg scale= %d, %d%%\n",scale,scale_percent);
         lv_img_set_angle(p_clk_rotate_bg->bg, bg_angle);
+#if defined(SF32LB55X)
+        if (scale < 129) scale = 129;
+#endif
         lv_img_set_zoom(p_clk_rotate_bg->bg, scale);
 
         scale = (100 + scale_percent) * ((int32_t)scale) / 100;

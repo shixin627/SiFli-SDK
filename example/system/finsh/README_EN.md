@@ -27,7 +27,7 @@ The example can run on the following development boards.
 |#define FINSH_DEFAULT_PASSWORD   |String |Permission verification password	              |Disabled |
 
 
-* The reference configuration example in _rtconfig.h_ is shown below, and can be configured according to actual functional requirements. Enter `menuconfig` in the compilation interface and configure under `RTOS → RT-Thread Components → Command shell`.
+* The reference configuration example in _rtconfig.h_ is shown below, and can be configured according to actual functional requirements. Enter `sdk.py menuconfig` in the compilation interface and configure under `RTOS → RT-Thread Components → Command shell`.
 ![Figure 1: FinSH Configuration Menu](assets/finsh_menu.png)
 ```c
 /* Enable FinSH */

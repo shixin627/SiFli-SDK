@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "rtthread.h"
 #include "bf0_hal.h"
 #include "drv_io.h"
@@ -7,7 +13,7 @@
 
 #define FS_ROOT "root"
 #define FS_ROOT_PATH "/"
-#define FS_ROOT_OFFSET  0X00000000
+#define FS_ROOT_OFFSET  0X00001000
 #define FS_ROOT_LEN     500*1024*1024  //500M
 
 #define FS_MSIC "misc"

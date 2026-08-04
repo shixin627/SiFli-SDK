@@ -184,7 +184,7 @@ typedef enum
   * @param addr flash address
   * @retval true if success
   */
-#if !defined(SF32LB56X)&&!defined(SF32LB52X)
+#if !defined(SF32LB56X)&&!defined(SF32LB52X)&&!defined(SF32LB57X)
 #define IS_SPI_NONDMA_RAM_ADDR(addr)    (((((uint32_t)addr)&0xFFFF0000) == HPSYS_ITCM_BASE)    \
                                         || ((((uint32_t)addr)&0xFFFF0000) == HPSYS_RETM_BASE))
 #else
@@ -373,6 +373,16 @@ void HAL_FLASH_ALIAS_CFG(FLASH_HandleTypeDef *fhandle, uint32_t start, uint32_t 
   * @retval none
 */
 void HAL_FLASH_NONCE_CFG(FLASH_HandleTypeDef *fhandle, uint32_t start, uint32_t end, uint8_t *nonce);
+
+/**
+  * @brief  set nonce 2
+  * @param  fhandle  FLASH handle
+  * @param  start start address
+  * @param  end end address
+  * @param  nonce nonce table
+  * @retval none
+*/
+void HAL_FLASH_NONCE_CFG2(FLASH_HandleTypeDef *fhandle, uint32_t start, uint32_t end, uint8_t *nonce);
 
 /**
   * @brief  set AES
@@ -989,6 +999,16 @@ HAL_StatusTypeDef HAL_MPI_PSRAM_ENT_LOWP(FLASH_HandleTypeDef *handle, uint8_t ps
 HAL_StatusTypeDef HAL_MPI_EXIT_LOWP(FLASH_HandleTypeDef *handle, uint8_t psram_type);
 
 /**
+ * @brief  Read size information from PSRAM
+ * @param  handle  MPI handle
+ *
+ * @retuen size in MB
+ * @retval 0 read fails
+ * @retval others size in MB
+ */
+uint32_t HAL_MPI_PSRAM_ReadSize(FLASH_HandleTypeDef *handle);
+
+/**
   * @brief  FLASH controller issue a nop command
   * @param  handle  MPI handle
   * @retval result
@@ -998,7 +1018,7 @@ int HAL_FLASH_NOP_CMD(FLASH_HandleTypeDef *handle);
 void HAL_QSPIEX_FLASH_RESET2(MPI_TypeDef *hmpi);
 
 
-#if defined(SF32LB56X) || defined(SF32LB52X)
+#if defined(SF32LB56X) || defined(SF32LB52X) || defined(SF32LB57X)
 
 /**
   * @brief  Force use new continue mode

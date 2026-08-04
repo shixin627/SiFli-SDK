@@ -1,0 +1,59 @@
+menuconfig BSP_USING_PM
+    bool "Power Management (Low Power Configuration)"
+    select RT_USING_PM
+    select USING_CONTEXT_BACKUP if !SOC_SF32LB52X
+    default n
+if BSP_USING_PM
+    config BSP_PM_STANDBY_SHUTDOWN
+        bool "Use STANDBY as SHUTDOWN"
+        default n
+    config BSP_PM_DEBUG
+        bool "Enable PM Debug"
+        default n
+    config BSP_PM_PIN_BACKUP_DISABLED
+        bool "PIN Backup/Restore is disabled"
+        default n
+    menuconfig PM_METRICS_ENABLED
+        bool "Enable PM Metrics"
+        default n
+        if PM_METRICS_ENABLED
+            choice
+                prompt "Select Metrics Report Type"
+                default PM_METRICS_USE_COLLECTOR
+                config PM_METRICS_USE_COLLECTOR
+                    select USING_METRICS_COLLECTOR
+                    bool "Save by Metrics Collector"
+                config PM_METRICS_PRINT_DIRECTLY
+                    bool "Print Directly"
+            endchoice
+            if PM_METRICS_PRINT_DIRECTLY
+                config PM_METRICS_PRINT_PERIOD
+                    int "Print period in second"
+                    default 10
+            endif 
+        endif             
+    config PM_WAKEUP_PIN_AS_OUTPUT_IN_SLEEP
+        bool "Wakeup PIN is used as output PIN during sleep"
+        default n
+        depends on BF0_LCPU
+    config BSP_PM_FREQ_SCALING
+        bool "Enable frequency scaling, btim1 is used HCPU and btim3 is used by LCPU"
+        default n
+        select BSP_USING_BTIM1 if BF0_HCPU
+        select BSP_USING_BTIM3 if BF0_LCPU
+    config PM_ITCM_NOT_BACKUP
+        bool "Not backup ITCM region when Sleep"
+        default n
+    config PM_USE_RC48
+        bool "Use RC48 to save power"
+        depends on BF0_LCPU
+        default n
+        select USING_CPU_USAGE_PROFILER
+    config PM_LP_TIMER_DISABLE
+        depends on BF0_LCPU
+        bool "Disable low power timer in PM"
+        default n
+    config GUI_APP_PM
+        bool "Use Gui_App_Pm"
+        default n    
+endif

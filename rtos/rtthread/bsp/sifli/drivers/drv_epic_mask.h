@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /**
  * @file drv_epic_mask.h
  *
@@ -202,9 +208,9 @@ typedef struct
  * GLOBAL PROTOTYPES
  **********************/
 
-void drv_epic_mask_init(void);
+int drv_epic_mask_init(void);
 
-void drv_epic_mask_deinit(void);
+int drv_epic_mask_deinit(void);
 
 //! @cond Doxygen_Suppress
 

@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <rtthread.h>
 #include <rtdevice.h>
 #include "littlevgl2rtt.h"
@@ -34,7 +40,11 @@ typedef struct
 #endif /* ENABLE_MASKED_IMAGE */
 } app_clock_simple_t;
 
+#ifdef LV_USE_SIFLI_JPEGD
+    LV_IMG_DECLARE(clock_simple_bg_jpeg);
+#endif /* LV_USE_SIFLI_JPEGD */
 LV_IMG_DECLARE(clock_simple_bg);
+
 LV_IMG_DECLARE(clock_simple_second_hand);
 LV_IMG_DECLARE(clock_simple_minute_hand);
 LV_IMG_DECLARE(clock_simple_hour_hand);
@@ -299,7 +309,13 @@ static rt_int32_t init(lv_obj_t *parent)
     memset(p_clk_simple, 0, sizeof(app_clock_simple_t));
 
     p_clk_simple->bg     = lv_image_create(parent);
+    // lv_obj_set_size(p_clk_simple->bg, lv_pct(100), lv_pct(100));
+#ifdef LV_USE_SIFLI_JPEGD
+    lv_image_set_src(p_clk_simple->bg, LV_EXT_IMG_GET(clock_simple_bg_jpeg));
+#else
     lv_image_set_src(p_clk_simple->bg, LV_EXT_IMG_GET(clock_simple_bg));
+#endif /* LV_USE_SIFLI_JPEGD */
+    // lv_image_set_inner_align(p_clk_simple->bg, LV_IMAGE_ALIGN_STRETCH);
     lv_obj_align(p_clk_simple->bg, LV_ALIGN_CENTER, 0, 0);
 
 #ifdef ENABLE_MASKED_IMAGE

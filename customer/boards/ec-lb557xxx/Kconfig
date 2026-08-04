@@ -20,7 +20,7 @@ config BSP_SUPPORT_DPI
 
 config LCD_PWM_BACKLIGHT_INTERFACE_NAME
     string
-    default "pwm4"
+    default "pwmt3"
 
 config LCD_PWM_BACKLIGHT_CHANEL_NUM
     int

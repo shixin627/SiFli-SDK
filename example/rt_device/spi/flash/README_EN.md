@@ -20,7 +20,7 @@ Only when the above two macros are included, the `rt_spi_bus_register` function 
 
 If the above three macros are missing, you need to enable them through the following `menuconfig` command:
 ```c
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 As shown in the figure below, select spi1 (DMA is needed, select corresponding DMA option), save and exit menuconfig, check if `rtconfig.h` macro is generated
 ![alt text](assets/menuconfig.png)

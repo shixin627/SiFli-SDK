@@ -1,0 +1,100 @@
+menuconfig USING_BUTTON_LIB
+    bool "Button Library"
+    select RT_USING_PIN
+    default n
+    
+    if USING_BUTTON_LIB
+    
+        config BUTTON_MAX_NUM
+            int "max button number"
+            default 2
+        
+        config BUTTON_ADV_ACTION_CHECK_DELAY
+            int "detection time for advanced action in millisecond"
+            default 3000
+        config BUTTON_SERVICE_ENABLED
+            bool "Register Button as Data Service"
+            default n
+        if BUTTON_SERVICE_ENABLED  
+            config BUTTON_SERVICE_MAX_CLIENT_NUM
+                int "max number of supported clients"
+                default 1
+        endif
+        menuconfig USING_ADC_BUTTON
+            bool "Enable ADC Buttons"
+            default n
+            if USING_ADC_BUTTON
+                config ADC_BUTTON_GROUP_NUM
+                    int "Number of ADC Button Groups"
+                    default 1
+                config ADC_BUTTON_ADC_DEV_NAME
+                    string "ADC Device Name"
+                    default "bat1"
+                if ADC_BUTTON_GROUP_NUM > 0
+                comment "----------- Button Group1 ------------"    
+                    config ADC_BUTTON_GROUP1_MAX_NUM
+                        int "Number of Buttons in Group1"
+                        default 2
+                    config ADC_BUTTON_GROUP1_ADC_DEV_CHANNEL
+                        int "ADC Device Channel"
+                        default 7
+                    if ADC_BUTTON_GROUP1_MAX_NUM > 0
+                        config ADC_BUTTON_GROUP1_BUTTON1_VOLT
+                            int "ADC Button1 Voltage (mV)"
+                            default 1000
+                        config ADC_BUTTON_GROUP1_BUTTON1_RANGE
+                            int "ADC Button1 Voltage Valid Range (mV)"
+                            default 50
+                    endif     
+                    if ADC_BUTTON_GROUP1_MAX_NUM > 1
+                        config ADC_BUTTON_GROUP1_BUTTON2_VOLT
+                            int "ADC Button2 Voltage (mV)"
+                            default 1000
+                        config ADC_BUTTON_GROUP1_BUTTON2_RANGE
+                            int "ADC Button2 Voltage Valid Range (mV)"
+                            default 50
+                    endif     
+                    if ADC_BUTTON_GROUP1_MAX_NUM > 2
+                        config ADC_BUTTON_GROUP1_BUTTON3_VOLT
+                            int "ADC Button3 Voltage (mV)"
+                            default 1000
+                        config ADC_BUTTON_GROUP1_BUTTON3_RANGE
+                            int "ADC Button3 Voltage Valid Range (mV)"
+                            default 50
+                    endif     
+                endif  
+                if ADC_BUTTON_GROUP_NUM > 1
+                comment "----------- Button Group2 ------------"                        
+                    config ADC_BUTTON_GROUP2_MAX_NUM
+                        int "Number of Buttons in Group1"
+                        default 2
+                    config ADC_BUTTON_GROUP2_ADC_DEV_CHANNEL
+                        int "ADC Device Channel"
+                        default 7
+                    if ADC_BUTTON_GROUP2_MAX_NUM > 0
+                        config ADC_BUTTON_GROUP2_BUTTON1_VOLT
+                            int "ADC Button1 Voltage (mV)"
+                            default 1000
+                        config ADC_BUTTON_GROUP2_BUTTON1_RANGE
+                            int "ADC Button1 Voltage Valid Range (mV)"
+                            default 50
+                    endif     
+                    if ADC_BUTTON_GROUP2_MAX_NUM > 1
+                        config ADC_BUTTON_GROUP2_BUTTON2_VOLT
+                            int "ADC Button2 Voltage (mV)"
+                            default 1000
+                        config ADC_BUTTON_GROUP2_BUTTON2_RANGE
+                            int "ADC Button2 Voltage Valid Range (mV)"
+                            default 50
+                    endif     
+                    if ADC_BUTTON_GROUP2_MAX_NUM > 2
+                        config ADC_BUTTON_GROUP2_BUTTON3_VOLT
+                            int "ADC Button3 Voltage (mV)"
+                            default 1000
+                        config ADC_BUTTON_GROUP2_BUTTON3_RANGE
+                            int "ADC Button3 Voltage Valid Range (mV)"
+                            default 50
+                    endif     
+                endif                     
+            endif         
+    endif

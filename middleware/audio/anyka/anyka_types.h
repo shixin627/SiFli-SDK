@@ -1,11 +1,9 @@
-﻿/** @file
-* @brief Define the global public types for anyka
-*
-* Copyright (C) 2024 GuangZhou Anyka Microelectronics Co., Ltd.
-* @author
-* @date 2024-01-27
-* @version 3.0
-*/
+﻿/*
+ * SPDX-FileCopyrightText: 2020-2026 SiFli Technologies(Nanjing) Co., Ltd
+ * SPDX-FileCopyrightText: 2020-2026 Anyka (GuangZhou) Software Technology Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #ifndef __ANYKA_TYPES_H__
 #define __ANYKA_TYPES_H__

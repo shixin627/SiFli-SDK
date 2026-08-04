@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -60,28 +60,6 @@
 #include "lv_ext_resource_manager.h"
 #include "gui_app_fwk.h"
 
-#ifndef GUI_APP_FWK_HAS_PAGE_MEM
-    #define GUI_APP_FWK_HAS_PAGE_MEM 0
-#endif
-
-#ifdef GUI_APP_BUILTIN
-    #define APP_REG_MULTI_STYLE_BUILTIN 1
-#else
-    #define APP_REG_MULTI_STYLE_BUILTIN 0
-#endif
-
-#if GUI_APP_FWK_HAS_PAGE_MEM
-    #define APP_REG_GUI_APP_REGIST_MSG_HANDLER_EXT(app_id, handler, usr_data, mem_size) \
-        gui_app_regist_msg_handler_ext(app_id, handler, usr_data, mem_size)
-    #define APP_REG_GUI_APP_CREATE_PAGE_FOR_APP_EXT(app_id, page_id, handler, user_data, mem_size) \
-        gui_app_create_page_for_app_ext(app_id, page_id, handler, user_data, mem_size)
-#else
-    #define APP_REG_GUI_APP_REGIST_MSG_HANDLER_EXT(app_id, handler, usr_data, mem_size) \
-        gui_app_regist_msg_handler_ext(app_id, handler, usr_data)
-    #define APP_REG_GUI_APP_CREATE_PAGE_FOR_APP_EXT(app_id, page_id, handler, user_data, mem_size) \
-        gui_app_create_page_for_app_ext(app_id, page_id, handler, user_data)
-#endif
-
 int gui_app_create_subpage_ext(const char *app_id, const char *sub_id, void *user_data);
 
 typedef struct
@@ -104,24 +82,15 @@ typedef struct
     extern const mainmenu_ext_icons_t *mainmenu_ext_icons_table;
 #endif
 
-#if APP_REG_MULTI_STYLE_BUILTIN
-    #define BUILTIN_APP_LIST_OPEN(style, built_app)                                                                             \
-            extern void gui_get_builtin_app_table(uint16_t n);                                                                  \
-            gui_get_builtin_app_table(style);                                                                                   \
-            built_app = gui_builtin_app_list_open();
-#else
-    #define BUILTIN_APP_LIST_OPEN(style, built_app)                                                                             \
-            do                                                                                                                  \
-            {                                                                                                                   \
-                (void)(style);                                                                                                  \
-                built_app = gui_builtin_app_list_open();                                                                        \
-            } while (0)
-#endif
+#define BUILTIN_APP_LIST_OPEN(style, built_app)                                                                             \
+        extern void gui_get_builtin_app_table(uint16_t n);                                                                  \
+        gui_get_builtin_app_table(style);                                                                                   \
+        built_app = gui_builtin_app_list_open();
 
-#define BUILTIN_APP_LIST_NEXT(built_app)                                                                                        \
+#define BUILTIN_APP_LIST_NEXT(built_app)                                                                                    \
         built_app = gui_builtin_app_list_get_next(built_app);
 
-#define BUILTIN_APP_LIST_CLOSE(built_app)                                                                                       \
+#define BUILTIN_APP_LIST_CLOSE(built_app)                                                                                   \
         gui_builtin_app_list_close(built_app);
 
 typedef void(*builtin_app_read_app_cb)(builtin_app_desc_t *app, mainmenu_ext_icons_t *table_elem, void *user_data);
@@ -130,88 +99,71 @@ typedef struct
     const char *id;
 } app_list_sort_t;
 
-#define APP_MSG_HANDLER(on_start, on_resume, on_pause, on_stop)                                                                 \
-static void msg_handler(gui_app_msg_type_t msg, void *param)                                                                    \
-{                                                                                                                               \
-    switch (msg)                                                                                                                \
-    {                                                                                                                           \
-    case GUI_APP_MSG_ONSTART:                                                                                                   \
-        on_start();                                                                                                             \
-        break;                                                                                                                  \
-    case GUI_APP_MSG_ONRESUME:                                                                                                  \
-        on_resume();                                                                                                            \
-        break;                                                                                                                  \
-    case GUI_APP_MSG_ONPAUSE:                                                                                                   \
-        on_pause();                                                                                                             \
-        break;                                                                                                                  \
-    case GUI_APP_MSG_ONSTOP:                                                                                                    \
-        on_stop();                                                                                                              \
-        break;                                                                                                                  \
-    default:                                                                                                                    \
-        break;                                                                                                                  \
-    }                                                                                                                           \
+#define APP_MSG_HANDLER(on_start, on_resume, on_pause, on_stop)                                                             \
+static void msg_handler(gui_app_msg_type_t msg, void *param)                                                                \
+{                                                                                                                           \
+    switch (msg)                                                                                                            \
+    {                                                                                                                       \
+    case GUI_APP_MSG_ONSTART:                                                                                               \
+        on_start();                                                                                                         \
+        break;                                                                                                              \
+    case GUI_APP_MSG_ONRESUME:                                                                                              \
+        on_resume();                                                                                                        \
+        break;                                                                                                              \
+    case GUI_APP_MSG_ONPAUSE:                                                                                               \
+        on_pause();                                                                                                         \
+        break;                                                                                                              \
+    case GUI_APP_MSG_ONSTOP:                                                                                                \
+        on_stop();                                                                                                          \
+        break;                                                                                                              \
+    default:                                                                                                                \
+        break;                                                                                                              \
+    }                                                                                                                       \
 }
 
-#define APPLICATION_MAIN(app_id, ptr_size)                                                                                      \
-    static int app_main(intent_t i)                                                                                             \
-    {                                                                                                                           \
-        char *subpage = (char *)intent_get_string(i, app_id);                                                                   \
-        if (!subpage)                                                                                                           \
-        {                                                                                                                       \
-            int err = APP_REG_GUI_APP_REGIST_MSG_HANDLER_EXT(app_id, msg_handler, NULL, ptr_size);                             \
-            RT_ASSERT(RT_EOK == err);                                                                                           \
-        }                                                                                                                       \
-        intent_reinit(i, app_id);                                                                                               \
-        return 0;                                                                                                               \
+#define APPLICATION_MAIN(app_id, ptr_size)                                                                                  \
+    static int app_main(intent_t i)                                                                                         \
+    {                                                                                                                       \
+        char *subpage = (char *)intent_get_string(i, app_id);                                                               \
+        if(!subpage)                                                                                                        \
+        {                                                                                                                   \
+            int err = gui_app_regist_msg_handler_ext(app_id, msg_handler, NULL, ptr_size);                                  \
+            RT_ASSERT(RT_EOK == err);                                                                                       \
+        }                                                                                                                   \
+        intent_reinit(i, app_id);                                                                                           \
+        return 0;                                                                                                           \
     }
 
 
 #define APP_SUBPAGE_SECTION_NAME   app_subpage_db
 
-#define APP_PAGE_REGISTER(app, subpage, ptr_size)                                                                               \
-            APP_MSG_HANDLER(on_start, on_resume, on_pause, on_stop);                                                            \
-            SECTION_ITEM_REGISTER(APP_SUBPAGE_SECTION_NAME, static const app_subpage_desc_t app_subpage) =                      \
-            {                                                                                                                   \
-                .app_id      = app,                                                                                             \
-                .page_id     = subpage,                                                                                         \
-                .handler     = msg_handler,                                                                                     \
-                .mem_size    = ptr_size                                                                                         \
+#define APP_PAGE_REGISTER(app, subpage, ptr_size)                                                                           \
+            APP_MSG_HANDLER(on_start, on_resume, on_pause, on_stop);                                                        \
+            SECTION_ITEM_REGISTER(APP_SUBPAGE_SECTION_NAME, static const app_subpage_desc_t app_subpage) =                  \
+            {                                                                                                               \
+                .app_id      = app,                                                                                         \
+                .page_id     = subpage,                                                                                     \
+                .handler     = msg_handler,                                                                                 \
+                .mem_size    = ptr_size                                                                                     \
             }
 
-#if APP_REG_MULTI_STYLE_BUILTIN
-    #define APPLICATION_REGISTER(key_str, img, app_name, ptr_size)                                                              \
-        APP_PAGE_REGISTER(app_name, "root", ptr_size);                                                                          \
-        APPLICATION_MAIN(app_name, ptr_size);                                                                                   \
-        BUILTIN_APP_EXPORT(key_str, APP_GET_IMG(img), app_name, app_main, 1);                                                  \
-        BUILTIN_APP_EXPORT(key_str, APP_GET_IMG(CONCAT_2(img, 2)), app_name, app_main, 2);
+#define APPLICATION_REGISTER(key_str, img, app_name, ptr_size)                                                              \
+    APP_PAGE_REGISTER(app_name, "root", ptr_size);                                                                          \
+    APPLICATION_MAIN(app_name, ptr_size);                                                                                   \
+    BUILTIN_APP_EXPORT(key_str, APP_GET_IMG(img), app_name, app_main, 1);                                \
+    BUILTIN_APP_EXPORT(key_str, APP_GET_IMG(CONCAT_2(img, 2)), app_name, app_main, 2);
 
-    #define APPLICATION_REGISTER_HIDDEN(key_str, app_name, ptr_size)                                                            \
-        APP_PAGE_REGISTER(app_name, "root", ptr_size);                                                                          \
-        APPLICATION_MAIN(app_name, ptr_size)                                                                                    \
-        BUILTIN_APP_EXPORT(key_str, NULL, app_name, app_main, 1);                                                               \
-        BUILTIN_APP_EXPORT(key_str, NULL, app_name, app_main, 2);
+#define APPLICATION_REGISTER_HIDDEN(key_str, app_name, ptr_size)                                                            \
+    APP_PAGE_REGISTER(app_name, "root", ptr_size);                                                                          \
+    APPLICATION_MAIN(app_name, ptr_size)                                                                                    \
+    BUILTIN_APP_EXPORT(key_str, NULL, app_name, app_main, 1);                                                               \
+    BUILTIN_APP_EXPORT(key_str, NULL, app_name, app_main, 2);
 
-    #define APPLICATION_REGISTER_PATH(key_str, img, app_name, ptr_size)                                                         \
-        APP_PAGE_REGISTER(app_name, "root", ptr_size);                                                                          \
-        APPLICATION_MAIN(app_name, ptr_size);                                                                                   \
-        BUILTIN_APP_EXPORT(key_str, img, app_name, app_main, 1);                                                                \
-        BUILTIN_APP_EXPORT(key_str, img, app_name, app_main, 2);
-#else
-    #define APPLICATION_REGISTER(key_str, img, app_name, ptr_size)                                                              \
-        APP_PAGE_REGISTER(app_name, "root", ptr_size);                                                                          \
-        APPLICATION_MAIN(app_name, ptr_size);                                                                                   \
-        BUILTIN_APP_EXPORT(key_str, APP_GET_IMG(img), app_name, app_main)
-
-    #define APPLICATION_REGISTER_HIDDEN(key_str, app_name, ptr_size)                                                            \
-        APP_PAGE_REGISTER(app_name, "root", ptr_size);                                                                          \
-        APPLICATION_MAIN(app_name, ptr_size)                                                                                    \
-        BUILTIN_APP_EXPORT(key_str, NULL, app_name, app_main)
-
-    #define APPLICATION_REGISTER_PATH(key_str, img, app_name, ptr_size)                                                         \
-        APP_PAGE_REGISTER(app_name, "root", ptr_size);                                                                          \
-        APPLICATION_MAIN(app_name, ptr_size);                                                                                   \
-        BUILTIN_APP_EXPORT(key_str, img, app_name, app_main)
-#endif
+#define APPLICATION_REGISTER_PATH(key_str, img, app_name, ptr_size)                                                         \
+    APP_PAGE_REGISTER(app_name, "root", ptr_size);                                                                          \
+    APPLICATION_MAIN(app_name, ptr_size);                                                                                   \
+    BUILTIN_APP_EXPORT(key_str, img, app_name, app_main, 1);                                                                \
+    BUILTIN_APP_EXPORT(key_str, img, app_name, app_main, 2);
 
 /** for compile only*/
 #define DLMODULE_INIT_DEF(init_func)
@@ -225,7 +177,8 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)                    
 #define APPLICATION_REGISTER(key_str, img, app_name, ptr_size)  \
         APP_MSG_HANDLER(on_start, on_resume, on_pause, on_stop);   \
         APPLICATION_MAIN(app_name, ptr_size); \
-        BUILTIN_APP_EXPORT(key_str, APP_GET_THUM(tn), app_name, app_main)
+        BUILTIN_APP_EXPORT(key_str, APP_GET_THUM(tn), app_name, app_main, 1);\
+        BUILTIN_APP_EXPORT(key_str, APP_GET_THUM(tn), app_name, app_main, 2);
 #elif defined(BUILD_DLMODULE) && defined(APP_DLMODULE_APP_USED)
 #undef DLMODULE_INIT_DEF
 #undef DLMODULE_DEINIT_DEF

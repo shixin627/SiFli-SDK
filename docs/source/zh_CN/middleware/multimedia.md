@@ -678,6 +678,8 @@ RT_WEAK void audio_hardware_pa_stop(void)
     //关闭PA
 }
 ```
+## 双声道喇叭的播放设置
+
 ## EQ开关设置
 如果使用芯片的codec，芯片上有硬件EQ，目前软件设置上只支持44.1k和16k，
 可以修改这个文件决定某种音乐类型是否打开或关闭EQ。

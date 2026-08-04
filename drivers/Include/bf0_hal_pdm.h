@@ -28,6 +28,14 @@ extern "C" {
   * @{
   */
 
+#if defined(SF32LB55X) || defined(SF32LB56X) || defined(SF32LB58X) || defined(SF32LB52X)
+#define PDM_PLL_CLK_FREQ  (3072000)
+#else
+#define PDM_PLL_CLK_FREQ  (49152000)
+#endif /* SF32LB55X || SF32LB56X || SF32LB58X || SF32LB52X */
+
+#define PDM_XTAL_CLK_FREQ  (9600000)
+
 /**
   * @brief  HAL PDM State structures definition
   */

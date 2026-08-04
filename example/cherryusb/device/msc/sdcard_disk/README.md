@@ -1,73 +1,78 @@
-# USB 大容量存储设备示例（SD卡）
+# USB 大容量存储设备示例（SD/eMMC）
 
 源码路径：example/cherryusb/device/msc/sdcard_disk
 
 ## 支持的平台
-<!-- 支持哪些板子和芯片平台 -->
-+ sf32lb52-lcd_n16r8
+
++ sf32lb52-lcd_n16r8（SPI SD/TF 卡）
++ sf32lb52-lcd_a128r16（SPI SD/TF 卡）
++ sf32lb52-core_e8r16（SDIO/eMMC）
++ sf32lb56-lcd_a128r12n1（SDIO/eMMC）
++ sf32lb56-lcd_n16r12n1（SDIO/eMMC）
++ sf32lb58-lcd_n16r32n1_dsi（SDIO/eMMC）
++ sf32lb58-lcd_a128r32n1_qspi（SDIO/eMMC）
++ sf32lb58-lcd_n16r32n1_qspi（SDIO/eMMC）
++ spi-hdk_lb573ub7n6（SDIO/eMMC单线）
 
 ## 概述
-<!-- 例程简介 -->
-本例程演示基于cherryusb msc用SD卡(spi接口)实现虚拟化U盘功能，包含：
-+ PC 通过文件管理器查看得到一个名为SiFli MSC DEMO的U盘。
+
+本例程演示基于 CherryUSB MSC 将本地块设备导出为 USB 大容量存储设备。后端可以是：
+
++ SPI SD/TF 卡：通过 `RT_USING_SPI_MSD` 注册 `sd0`
++ SDIO/eMMC：通过 RT-Thread SDIO/MMC 驱动注册 `sd0` 或 `sd1`
+
+PC 通过文件管理器可以看到一个名为 `SiFli MSC DEMO` 的 U 盘。
+
+注意：块设备导出给 USB 主机期间，不要在板端同时 mount 或访问同一个块设备，否则可能造成文件系统损坏。
 
 ## 例程的使用
-<!-- 说明如何使用例程，比如连接哪些硬件管脚观察波形，编译和烧写可以引用相关文档。
-对于rt_device的例程，还需要把本例程用到的配置开关列出来，比如PWM例程用到了PWM1，需要在onchip菜单里使能PWM1 -->
 
 ### 硬件需求
-运行该例程前，需要准备：
-+ 一块本例程支持的开发板（[支持的平台](quick_start)）。
-+ 带数据传输功能的USB-A转type-c数据线。
-+ 支持usb的主机设备。
 
-### menuconfig配置
-1. 使能SPI1：
-    - 路径：On-chip Peripheral RTOS Drivers → Enable SPI BUS
-    - 开启：Enable SPI1 BUS
-        - 宏开关：`BSP_USING_SPI1`
-        - 作用：使用 SPI1 作为 SD 卡的接口
-    - 开启：Enable SPI1 TX DMA(可选)
-        - 宏开关：`BSP_SPI1_TX_USING_DMA`
-        - 作用：使能SPI发送DMA
-    - 开启：Enable SPI1 RX DMA(可选)
-        - 宏开关：`BSP_SPI1_RX_USING_DMA`
-        - 作用：使能SPI接收DMA 
-2. 使能MSD驱动：
-    - 路径：RTOS → RT-Thread Components → Device Drivers
-    - 开启：Using SD/TF card driver with spi
-        - 宏开关：`RT_USING_SPI_MSD`
-        - 作用：使用 SPI 进行驱动，所以需要使能`MSD`驱动
++ 一块本例程支持的开发板
++ 带数据传输功能的 USB-A 转 Type-C 数据线
++ 支持 USB 的主机设备
++ 对应板载或外接的 SD/eMMC 存储介质
+
+### menuconfig 配置
+
+本例程通过工程配置选择后端：
+
++ `CHERRYUSB_MSC_BACKEND_SPI_MSD`：SPI SD/TF 卡后端
++ `CHERRYUSB_MSC_BACKEND_SDIO`：SDIO/eMMC 后端
++ `CHERRYUSB_DEVICE_MSC_DEVNAME`：导出的块设备名，例如 `sd0` 或 `sd1`
+
+SPI 后端需要启用：
+
++ `BSP_USING_SPI`
++ `BSP_USING_SPI1`
++ `RT_USING_SPI_MSD`
+
+SDIO/eMMC 后端需要启用：
+
++ `BSP_USING_SDIO`
++ 对应的 `BSP_USING_SDMMC1` 或 `BSP_USING_SDMMC2`
++ 按板级连接配置 `CHERRYUSB_DEVICE_MSC_DEVNAME`
 
 ### 编译和烧录
-切换到例程project目录，运行scons命令执行编译：
 
-> scons --board=sf32lb52-lcd_n16r8 -j32
+切换到例程 `project` 目录，运行：
 
-切换到例程`project/build_xx`目录，运行`uart_download.bat`，按提示选择端口即可进行下载：
+```sh
+scons --board=sf32lb56-lcd_a128r12n1 -j10
+```
 
- >./uart_download.bat
-
->Uart Download
-
->please input the serial port num:5
-
-关于编译、下载的详细步骤，请参考[快速上手](quick_start)的相关介绍。
+其它支持板子替换 `--board` 即可。烧录方式请参考快速上手文档。
 
 ## 例程的预期结果
-<!-- 说明例程运行结果，比如哪几个灯会亮，会打印哪些log，以便用户判断例程是否正常运行，运行结果可以结合代码分步骤说明 -->
-例程启动后：
-主机通过数据线连接板子，PC 通过文件管理器查看得到一个名为SiFli MSC DEMO的U盘，设备管理器中通用串行总线控制器一项出现新添设备，USB大容量存储设备。
 
-## 异常诊断
+例程启动后会等待配置的块设备 ready。块设备 ready 后才注册 USB MSC，避免 CherryUSB 在设备几何信息未就绪时获取到 `block_size=0`。
 
-
-## 参考文档
-<!-- 对于rt_device的示例，rt-thread官网文档提供的较详细说明，可以在这里添加网页链接，例如，参考RT-Thread的[RTC文档](https://www.rt-thread.org/document/site/#/rt-thread-version/rt-thread-standard/programming-manual/device/rtc/rtc) -->
+主机连接后，PC 文件管理器中出现 `SiFli MSC DEMO` U 盘，设备管理器中出现 USB 大容量存储设备。
 
 ## 更新记录
+
 |版本 |日期   |发布说明 |
 |:---|:---|:---|
 |0.0.1 |09/2025 |初始版本 |
-| | | |
-| | | |
+|0.0.2 |05/2026 |合并 SPI SD、SDIO SD 和 eMMC 后端 |

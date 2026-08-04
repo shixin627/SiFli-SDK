@@ -1,0 +1,14 @@
+menuconfig USING_SF_CRYPTO
+    bool "Cryptography Module by SiFli"
+    default n
+
+    if USING_SF_CRYPTO
+        choice SF_CRYPTO_PORT
+            prompt "Select Driver Type"
+            default SF_CRYPTO_PORT_OS
+            config SF_CRYPTO_PORT_BAREMETAL
+                bool "Baremetal, no OS dependency but not thread-safe"
+            config SF_CRYPTO_PORT_OS
+                bool "OS, Depend on RT-Thread"
+        endchoice
+    endif

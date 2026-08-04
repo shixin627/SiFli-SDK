@@ -10,6 +10,7 @@ src = Split("""
 library/aes.c
 library/cipher.c
 library/cipher_wrap.c
+library/cmac.c
 library/md.c
 library/md_wrap.c
 library/platform.c

@@ -7,6 +7,7 @@ cwd = GetCurrentDir()
 env = GetCurrentEnv()
 
 src_file = None
+ptab_obj = None
 
 if GetDepend('USING_PARTITION_TABLE'):
     if GetBoardName():
@@ -17,28 +18,69 @@ if GetDepend('USING_PARTITION_TABLE'):
         else:
             board = GetBoardName()
             bsp_root = env['BSP_ROOT']
-        if os.path.exists(os.path.join(bsp_root, board + '/ptab.json')):
-            src_file = os.path.join(bsp_root, board + '/ptab.json')
-        elif os.path.exists(os.path.join(os.path.join(bsp_root, rtconfig.CHIP.lower() + '/ptab.json'))):
-            src_file = os.path.join(bsp_root, rtconfig.CHIP.lower() + '/ptab.json')
-        elif os.path.exists(os.path.join(bsp_root, 'ptab.json')):
-            src_file = os.path.join(bsp_root, 'ptab.json')
-        else:
-            path1, path2 = GetBoardPath(GetBoardName())
-            src_file = os.path.join(path1, 'ptab.json')
-        logging.debug("ptab.json:{}".format(src_file))
-        env['PARTITION_TABLE'] = src_file
+
+        path1, path2 = GetBoardPath(board)
         output_dir = env['BUILD_DIR_FULL_PATH']
     else:    
         if 'PARTITION_TABLE' in env:
             src_file = os.path.join(env['PARTITION_TABLE'])
             output_dir = os.path.join(env['BSP_ROOT'], './linker_scripts')
         else:
-            src_file = os.path.join(env['BSP_ROOT'], './linker_scripts/ptab.json')
+            # Prefer yaml
+            yaml_path = os.path.join(env['BSP_ROOT'], './linker_scripts/ptab.yaml')
+            json_path = os.path.join(env['BSP_ROOT'], './linker_scripts/ptab.json')
+            if os.path.exists(yaml_path):
+                src_file = yaml_path
+            else:
+                src_file = json_path
             env['PARTITION_TABLE'] = src_file
             output_dir = os.path.join(env['BSP_ROOT'], './linker_scripts')    
 
-    sdk_resource.GenPartitionTableHeaderFile(src_file, output_dir, 'ptab')
+    try:
+        import ptab as ptab_module
+        if GetBoardName():
+            prepared = ptab_module.prepare_project_ptab(
+                bsp_root,
+                board,
+                rtconfig.CHIP.lower(),
+                board_path=path1,
+                output_dir=output_dir,
+                emit_summary=True,
+                validate=True,
+                summary_dedupe=True,
+            )
+            src_file = prepared['path']
+            ptab_obj = prepared.get('ptab_obj')
+        else:
+            ptab_obj = ptab_module.load_ptab(src_file, fatal=False) if src_file else None
+            if ptab_obj and ptab_obj.is_v3():
+                ptab_module._validate_effective_ptab_v3(
+                    ptab_obj,
+                    context=src_file,
+                )
+        logging.debug("ptab file: {}".format(src_file))
+        env['PARTITION_TABLE'] = src_file
+    except Exception:
+        raise
+
+    cppdefines = list(env.get('CPPDEFINES', []))
+    filtered_cppdefines = []
+    for item in cppdefines:
+        define_name = item[0] if isinstance(item, tuple) else item
+        if define_name != 'USING_PTAB_V3':
+            filtered_cppdefines.append(item)
+    env['CPPDEFINES'] = filtered_cppdefines
+
+    if ptab_obj and ptab_obj.is_v3():
+        env.AppendUnique(CPPDEFINES=['USING_PTAB_V3'])
+
+    ptab_header = env.PtabHeader(os.path.join(output_dir, 'ptab.h'), File(src_file))
+    env['PTAB_HEADER'] = ptab_header
+
+    # AddFTAB creates ftab.bin after all child projects are registered.
+    if not IsChildProjEnv():
+        if ptab_obj and ptab_obj.is_v3():
+            env['FTAB_BIN_PATH'] = os.path.join(output_dir, 'ftab.bin')
 
 group = []
     

@@ -31,7 +31,7 @@
 * 默认情况下所需的配置已经打开
 
 ```c
-menuconfig --board=board_name
+sdk.py menuconfig --board=board_name
 ```
 1. 开启6轴传感器
 - 路径 Select board peripherals → Sensor → 6D Sensor for Accelerator and Gyro

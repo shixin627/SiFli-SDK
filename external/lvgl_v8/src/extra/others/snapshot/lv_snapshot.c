@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /**
  * @file lv_snapshot.c
  *
@@ -277,8 +282,9 @@ static void deinit_fake_disp(lv_disp_t *ori_disp, lv_disp_t * fake_disp)
 }
 
 //Dump act framebuffer to img_dsc immediately
-lv_res_t lv_refr_dump_buf_to_img_now(lv_img_dsc_t *img_dsc)
+void lv_refr_dump_buf_to_img_now(lv_img_dsc_t *img_dsc)
 {
+    uint32_t tick = rt_tick_get();
     lv_disp_t *ori_disp = lv_disp_get_default();
     lv_disp_draw_buf_t *disp_buf = lv_disp_get_draw_buf(ori_disp);
 
@@ -294,7 +300,7 @@ lv_res_t lv_refr_dump_buf_to_img_now(lv_img_dsc_t *img_dsc)
     img_screen.data_size  = (LV_COLOR_DEPTH * hor_res * ver_res) / 8;
     img_screen.header.cf = LV_IMG_CF_TRUE_COLOR,
     img_screen.data = (uint8_t *)get_disp_buf(img_screen.data_size);
-    if(NULL == img_screen.data)    return LV_RES_INV;
+    LV_ASSERT_NULL(img_screen.data);
 
 
     LV_LOG_TRACE("lv_refr_dump_buf_to_img_now \r\n");
@@ -331,7 +337,8 @@ lv_res_t lv_refr_dump_buf_to_img_now(lv_img_dsc_t *img_dsc)
         deinit_fake_disp(ori_disp, &fake_disp);
     }
 
-    return LV_RES_OK;
+    if (snapshot_log_en)
+        rt_kprintf("%s: tick %d (ms) \n", __func__, rt_tick_get() - tick);
 
 }
 

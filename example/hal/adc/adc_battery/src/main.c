@@ -11,211 +11,82 @@
 #include "rtthread.h"
 
 /* User code start from here --------------------------------------------------------*/
-#include <stdlib.h>
 
 //#define BSP_GPADC_USING_DMA 1
-#define ADC_DEV_CHANNEL     7           /* ADC channe7 */
-
-#define ADC_RATIO_ACCURATE          (1000)
-
-#define ADC_MAX_VOLTAGE_MV_1100     (1100)
-#define ADC_MAX_VOLTAGE_MV_3300     (3300)
-
-#define ADC_BIG_RANGE_VOL1           (1000)
-#define ADC_BIG_RANGE_VOL2           (2500)
-#define ADC_SML_RANGE_VOL1           (300)
-#define ADC_SML_RANGE_VOL2           (800)
-
-#ifdef SF32LB55X
-    // default value, they should be over write by calibrate
-    // it should be register value offset vs 0 v value.
-    static float adc_vol_offset = 199.0;
-    // mv per bit, if accuracy not enough, change to 0.1 mv or 0.01 mv later
-    static float adc_vol_ratio = 3930.0; // 4296; //6 * ADC_RATIO_ACCURATE; //600; //6;
-    static int adc_range = 0;   /* flag for ATE calibration voltage range,
-    *  0 for big range (1.0v/2.5v)
-    *  1 for small range () */
-    static uint32_t adc_max_vol_mv = ADC_MAX_VOLTAGE_MV_1100;
+#if defined(SF32LB52X)
+    #define ADC_DEV_CHANNEL     7           /* ADC channel 7  */
 #elif defined(SF32LB56X)
-    // it should be register value offset vs 0 v value.
-    static float adc_vol_offset = 822.0;
-    // 0.001 mv per bit
-    static float adc_vol_ratio = 1068.0; //
-    static int adc_range = 1;
-    static uint32_t adc_max_vol_mv = ADC_MAX_VOLTAGE_MV_3300;
+    #define ADC_DEV_CHANNEL     1           /* ADC channel 1 */
+#elif defined(SF32LB58X)
+    #define ADC_DEV_CHANNEL     2           /* ADC channel 2  */
+#elif defined(SF32LB57X)
+    #define ADC_DEV_CHANNEL     11          /* ADC channel 11, VBAT on 57x */
 #else
-    // it should be register value offset vs 0 v value.
-    static float adc_vol_offset = 822.0;
-    // 0.001 mv per bit,
-    static float adc_vol_ratio = 1068.0; //
-    static int adc_range = 1;
-    static uint32_t adc_max_vol_mv = ADC_MAX_VOLTAGE_MV_3300;
+    #define ADC_DEV_CHANNEL     7
 #endif
 
-static float adc_vbat_factor = 2.01;
+#define ADC_SW_AVRA_CNT      (22)
+
+static HAL_ADC_CalibContextTypeDef g_adc_calib_ctx;
+static uint32_t g_adc_slot;
+static int g_adc_calib_ok;
 ADC_HandleTypeDef hadc;
-// register data for max supported voltage, for A0, voltage = 1.1v, for RPO, voltage = 3.3v
-static uint32_t adc_thd_reg;
 
 /*
     This example demo:
         1. Configure ADC parameters
         2. Polling ADC value
 */
-static void example_adc_vbat_fact_calib(uint32_t voltage, uint32_t reg)
+static int utest_adc_calib(void)
 {
-    float vol_from_reg;
+    HAL_ADC_CalibFactoryInfoTypeDef factory_info;
 
-    // get voltage calculate by register data
-    vol_from_reg = (reg - adc_vol_offset) * adc_vol_ratio / ADC_RATIO_ACCURATE;
-    adc_vbat_factor = (float)voltage / vol_from_reg;
-}
-int example_adc_calibration(uint32_t value1, uint32_t value2,
-                            uint32_t vol1, uint32_t vol2, float *offset, float *ratio)
-{
-    float gap1, gap2;
-    uint32_t reg_max;
-
-    if (offset == NULL || ratio == NULL)
-        return 0;
-
-    if (value1 == 0 || value2 == 0)
-        return 0;
-
-    gap1 = value1 > value2 ? value1 - value2 : value2 - value1; // register value gap
-    gap2 = vol1 > vol2 ? vol1 - vol2 : vol2 - vol1; // voltage gap -- mv
-
-    if (gap1 != 0)
-    {
-        *ratio = gap2 * ADC_RATIO_ACCURATE / gap1; // gap2 * 10 for 0.1mv, gap2 * 100 for 0.01mv
-        adc_vol_ratio = *ratio;
-    }
-    else //
-        return 0;
-
-    *offset = value1 - vol1 * ADC_RATIO_ACCURATE / adc_vol_ratio;
-    adc_vol_offset = *offset;
-
-    // get register value for max voltage
-    adc_thd_reg = adc_max_vol_mv * ADC_RATIO_ACCURATE / adc_vol_ratio + adc_vol_offset;
-    reg_max = GPADC_ADC_RDATA0_SLOT0_RDATA >> GPADC_ADC_RDATA0_SLOT0_RDATA_Pos;
-    if (adc_thd_reg >= (reg_max - 3))
-        adc_thd_reg = reg_max - 3;
-
-    return adc_vol_offset;
-}
-static HAL_StatusTypeDef utest_adc_calib(void)
-{
-    // set default adc thd to register max value
-    adc_thd_reg = GPADC_ADC_RDATA0_SLOT0_RDATA >> GPADC_ADC_RDATA0_SLOT0_RDATA_Pos;
-
-    FACTORY_CFG_ADC_T cfg;
-    int len = sizeof(FACTORY_CFG_ADC_T);
-    rt_memset((uint8_t *)&cfg, 0, len);
-    if (BSP_CONFIG_get(FACTORY_CFG_ID_ADC, (uint8_t *)&cfg, len))  // TODO: configure read ADC parameters method after ATE confirm
-    {
-        float off, rat;
-        uint32_t vol1, vol2;
-        if (cfg.vol10 == 0 || cfg.vol25 == 0) // not valid paramter
-        {
-            //LOG_I("Get GPADC configure invalid : %d, %d\n", cfg.vol10, cfg.vol25);
-            return HAL_ERROR;
-        }
-        else
-        {
-#ifndef SF32LB55X
-            cfg.vol10 &= 0x7fff;
-            cfg.vol25 &= 0x7fff;
-            vol1 = cfg.low_mv;
-            vol2 = cfg.high_mv;
-            adc_range = 1;
-            adc_max_vol_mv = ADC_MAX_VOLTAGE_MV_3300;
-#else
-            if ((cfg.vol10 & (1 << 15)) && (cfg.vol25 & (1 << 15))) // small range, use X1 mode
-            {
-                cfg.vol10 &= 0x7fff;
-                cfg.vol25 &= 0x7fff;
-                vol1 = ADC_SML_RANGE_VOL1;
-                vol2 = ADC_SML_RANGE_VOL2;
-                adc_range = 1;
-                adc_max_vol_mv = ADC_MAX_VOLTAGE_MV_1100;
-            }
-            else // big range , use X3 mode for A0
-            {
-                vol1 = ADC_BIG_RANGE_VOL1;
-                vol2 = ADC_BIG_RANGE_VOL2;
-                adc_range = 0;
-                adc_max_vol_mv = ADC_MAX_VOLTAGE_MV_3300;
-            }
-#endif
-            example_adc_calibration(cfg.vol10, cfg.vol25, vol1, vol2, &off, &rat);
-#ifdef SF32LB52X
-            example_adc_vbat_fact_calib(cfg.vbat_mv, cfg.vbat_reg);
-
-            if (SF32LB52X_LETTER_SERIES())
-            {
-#if defined(hwp_gpadc1)
-
-                if (cfg.ldovref_flag)
-                {
-                    __HAL_ADC_SET_LDO_REF_SEL(&hadc, cfg.ldovref_sel);
-                }
-
-#endif
-                rt_kprintf("\n vbat_mv: %d mv, %d; ldoref_flag = %d, ldoref_sel = %d;\n",
-                           cfg.vbat_mv, cfg.vbat_reg, cfg.ldovref_flag, cfg.ldovref_sel);
-
-            }
-#endif
-            rt_kprintf("\nGPADC :vol10: %d mv, %d; vol25: %d mv reg %d; offset %f, ratio %f, max reg %d;\n",
-                       vol1, cfg.vol10, vol2, cfg.vol25,  off, rat, adc_thd_reg);
-
-        }
-        return HAL_OK;
-    }
-    else
+    if (HAL_ADC_CalibLoad(NULL,
+                          &g_adc_calib_ctx,
+                          HAL_ADC_CALIB_SOURCE_BSP,
+                          HAL_ADC_CALIB_F_INIT) != HAL_OK)
     {
         rt_kprintf("Get ADC configure fail\n");
-
+        return HAL_ERROR;
     }
-    return HAL_ERROR;
-}
 
-static float example_adc_get_float_mv(float value)
-{
-    float offset, ratio;
-    // get offset
-    offset = adc_vol_offset;
-    // get ratio, adc_vol_ratio calculate by calibration voltage
-    if (adc_range == 0) // calibration with big range, app use small rage, need div 3
-        ratio = adc_vol_ratio / 3;
-    else // calibration and app all use small rage
-        ratio = adc_vol_ratio;
+    if (HAL_ADC_CalibGetFactoryInfo(HAL_ADC_CALIB_SOURCE_BSP, &factory_info) != HAL_OK)
+    {
+        rt_kprintf("Get ADC configure fail\n");
+        return HAL_ERROR;
+    }
 
-    return (value - offset) * ratio / ADC_RATIO_ACCURATE;
-}
+    rt_kprintf("\nGPADC :vol10: %d mv, %d; vol25: %d mv reg %d; offset %f, ratio %f, max reg %d;\n",
+               factory_info.voltage1_mv, factory_info.reg_value1,
+               factory_info.voltage2_mv, factory_info.reg_value2,
+               g_adc_calib_ctx.offset, g_adc_calib_ctx.ratio, g_adc_calib_ctx.threshold_reg);
 
-static void adc_example(void)
-{
-
-    ADC_ChannelConfTypeDef ADC_ChanConf;
-    uint32_t dst;
-    uint32_t lslot = 7;
-    HAL_StatusTypeDef ret = HAL_OK;
-
-    // make sure set CORRECT ADC pin to correct mode
-    //HAL_PIN_Set_Analog(PAD_PA32, 0);
-    hadc.Instance = hwp_gpadc1;
-#ifdef SF32LB55X
-    lslot = ADC_DEV_CHANNEL;  // set slot to test
-#elif defined(SF32LB52X)
-    lslot = ADC_DEV_CHANNEL;
+#ifdef ADC_VBAT_DEDICATED_CHANNEL_SUPPORT
+    rt_kprintf("\n vbat_mv: %d mv, %d; ldoref_flag = %d, ldoref_sel = %d;\n",
+               factory_info.vbat_mv, factory_info.vbat_reg,
+               factory_info.ldovref_flag, factory_info.ldovref_sel);
 #else
-    lslot = ADC_DEV_CHANNEL;
+    rt_kprintf("\n vbat_mv: %d mv, %d; ldoref_flag = %d, ldoref_sel = %d;\n", 0, 0, 0, 0);
 #endif
 
-    int calib = utest_adc_calib();
-    rt_kprintf("ADC Get calibration res %d\n", calib);
+    return HAL_OK;
+}
+
+static void adc_example_init(void)
+{
+    ADC_ChannelConfTypeDef ADC_ChanConf;
+    uint32_t lslot = ADC_DEV_CHANNEL;
+
+    // make sure set CORRECT ADC pin to correct mode
+#if defined(SF32LB56X)
+    HAL_PIN_Set_Analog(PAD_PB23, 0);
+#elif defined(SF32LB58X)
+    HAL_PIN_Set_Analog(PAD_PB34, 0);
+#endif
+    hadc.Instance = hwp_gpadc1;
+
+    g_adc_calib_ok = (utest_adc_calib() == HAL_OK) ? 1 : 0;
+    rt_kprintf("ADC Get calibration res %d\n", g_adc_calib_ok);
 
     // initial adc handle
 
@@ -242,6 +113,10 @@ static void adc_example(void)
     HAL_RCC_EnableModule(RCC_MOD_GPADC);
 
     HAL_ADC_Init(&hadc);
+    if (g_adc_calib_ok)
+    {
+        (void)HAL_ADC_CalibApply(&hadc, &g_adc_calib_ctx);
+    }
     // delay 300ms before start adc start, only once
     HAL_Delay(300);
     // enable slot
@@ -256,28 +131,95 @@ static void adc_example(void)
     ADC_ChanConf.acc_num = 0;
     HAL_ADC_ConfigChannel(&hadc, &ADC_ChanConf);
 
+    g_adc_slot = lslot;
+
+#endif
+    // never call Deinit function !!!
+}
+
+static float adc_example_read_mv(void)
+{
+    HAL_StatusTypeDef ret = HAL_OK;
+    float mv;
+    uint32_t data[ADC_SW_AVRA_CNT];
+    uint32_t total = 0;
+    uint32_t ave;
+    float fave;
+    int i, j;
+
     /* start ADC */
     HAL_ADC_Start(&hadc);
 
-    /* Wait for the ADC to convert */
-    ret = HAL_ADC_PollForConversion(&hadc, 100);
-
-    /* get ADC register value */
-    dst = HAL_ADC_GetValue(&hadc, lslot);
-    rt_kprintf("ADC reg value %d ", dst);
-    if (calib == 0)
+    for (i = 0; i < ADC_SW_AVRA_CNT; i++)
     {
-        rt_kprintf("voltage %f mv\n", example_adc_get_float_mv((float)dst));
-    }
+        if (i != 0)
+        {
+#ifndef  SF32LB55X
+            // unmute before read adc
+            ADC_SET_UNMUTE(&hadc);
+            HAL_Delay_us(200);
+#else
+            // FRC EN before each start
+            ADC_FRC_EN(&hadc);
+            HAL_Delay_us(50);
+#endif
+            __HAL_ADC_START_CONV(&hadc);
+        }
 
-    rt_kprintf("voltage %f mv\n", example_adc_get_float_mv((float)dst));
+        /* Wait for the ADC to convert */
+        ret = HAL_ADC_PollForConversion(&hadc, 100);
+        if (ret != HAL_OK)
+        {
+            HAL_ADC_Stop(&hadc);
+            return -1.0f;
+        }
+
+        /* get ADC register value */
+        data[i] = (uint32_t)HAL_ADC_GetValue(&hadc, g_adc_slot);
+        total += data[i];
+
+#ifndef  SF32LB55X
+        ADC_SET_MUTE(&hadc);
+#ifdef SF32LB52X
+        if (g_adc_slot == 7)
+            rt_thread_delay(1);
+        else
+            rt_thread_delay(10);
+#else
+        rt_thread_delay(10);
+#endif
+#else   /* SF32LB55X */
+        ADC_CLR_FRC_EN(&hadc);
+        rt_thread_delay(5);
+#endif
+    }
 
     HAL_ADC_Stop(&hadc);
 
-#endif
-    // TODO, if need get adc more times, need delay 5/10 ms before next start
+    // sort
+    for (i = 0; i < ADC_SW_AVRA_CNT - 1; i++)
+        for (j = 0; j < ADC_SW_AVRA_CNT - 1 - i; j++)
+            if (data[j] > data[j + 1])
+            {
+                ave = data[j];
+                data[j] = data[j + 1];
+                data[j + 1] = ave;
+            }
+    // drop max/min , mid filter
+    total -= data[0];
+    total -= data[ADC_SW_AVRA_CNT - 1];
+    fave = (float)total / (ADC_SW_AVRA_CNT - 2);
 
-    // never call Deinit function !!!
+    // Use new unified HAL calibration API to convert register value to voltage
+    mv = HAL_ADC_RegToVoltageFloat(fave, &g_adc_calib_ctx);
+#ifdef ADC_VBAT_DEDICATED_CHANNEL_SUPPORT
+    if (ADC_DEV_CHANNEL == ADC_VBAT_DEDICATED_CHANNEL)
+    {
+        // VBAT uses 1/2 divider (52x ch7, 57x ch11), apply vbat_factor to recover actual voltage
+        mv *= g_adc_calib_ctx.vbat_factor;
+    }
+#endif
+    return mv;
 }
 
 /**
@@ -287,13 +229,18 @@ static void adc_example(void)
   */
 int main(void)
 {
-    HAL_StatusTypeDef  ret = HAL_OK;
-
     /* Output a message on console using printf function */
     rt_kprintf("Start adc demo!\n");
-    adc_example();
-    rt_kprintf("adc demo end!\n");
-    while (1);
+    adc_example_init();
+    while (1)
+    {
+        float mv = adc_example_read_mv();
+        if (mv >= 0.0f)
+            rt_kprintf("battery voltage %f mv\n", mv);
+        else
+            rt_kprintf("adc read failed\n");
+
+        rt_thread_mdelay(1000);
+    }
     return 0;
 }
-

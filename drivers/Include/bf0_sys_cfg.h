@@ -50,14 +50,18 @@ extern "C" {
 #define FACTORY_CFG_ID_USERK1           27      /*!< User special code  */
 #define FACTORY_CFG_ID_USERK2           28      /*!< User special code  */
 #define FACTORY_CFG_ID_USERK3           29      /*!< User special code  */
+#define FACTORY_CFG_ID_VCOM             30      /*!< User special code  */
+#define FACTORY_CFG_ID_WBF              31      /*!< User special code  */
+#define FACTORY_CFG_ID_VERSION          32      /*!< User special code  */
+#define FACTORY_CFG_ID_FLOWCODE         33      /*!< User special code  */
 #define FACTORY_CFG_ID_UNINIT           0xFF    /*!< Uninitialized ID */
 
 #define CFG_USER_SIZE            (256)
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
 #define CFG_SYS_SIZE            (32)
 #else
 #define CFG_SYS_SIZE            (64)
-#endif // SF32LB52X
+#endif // SF32LB52X || SF32LB57X
 
 
 
@@ -68,7 +72,7 @@ typedef struct
     uint16_t vol25;      /*!< Reg value for high voltage. */
     uint16_t low_mv;     /*!< voltage for low with mv . */
     uint16_t high_mv;    /*!< voltage for high with mv. */
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
     uint16_t vbat_reg;      /*!< Reg value for reference vbat */
     uint16_t vbat_mv;     /*!< voltage for vbat with mv. */
     uint8_t ldovref_flag;    /*!< ldo vref flag, if 1,  gpadc ldo vref has been calibrated. */
@@ -92,7 +96,7 @@ typedef struct
 
 typedef struct
 {
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
     uint8_t vbuck1;
     uint8_t hp_ldo: 4;
     uint8_t lp_ldo: 4;
@@ -166,7 +170,7 @@ int BSP_System_Config(void);
 
 char *BSP_Get_UserOTP_Cache();
 char *BSP_Get_CustOTP_Cache();
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
 char *BSP_Get_SysCfg_Cache();
 #endif
 int BSP_CONFIG_get(int type, uint8_t *buf, int length);

@@ -424,7 +424,6 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDPRC_Clear_Adc_Channel(AUDPRC_HandleTypeD
   */
 __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDPRC_Config_DACPath_Volume(AUDPRC_HandleTypeDef *haprc, int channel, int volume)
 {
-    uint32_t rough_vol, fine_vol;
 
     /* Check the AUDPRC handle allocation */
     if (haprc == NULL)
@@ -436,7 +435,8 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDPRC_Config_DACPath_Volume(AUDPRC_HandleT
     {
         return HAL_ERROR;
     }
-#ifdef SF32LB52X
+#ifdef AUDPRC_DAC_PATH_CFG0_ROUGH_VOL_L_Msk
+    uint32_t rough_vol, fine_vol;
 
     if ((volume < -36) || (volume > 60))
     {
@@ -511,6 +511,22 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDPRC_Config_DACPath(AUDPRC_HandleTypeDef 
 
     HAL_AUDPRC_Config_DACPath_Volume(haprc, 0, cfg->vol_l);
     HAL_AUDPRC_Config_DACPath_Volume(haprc, 1, cfg->vol_r);
+#if defined(AUDPRC_DAC_PATH_CFG1_SRC_RESAMPLE_EN_Msk)
+    uint32_t mode = 0;
+    uint32_t factor = cfg->src_hbf3_en ? 2 : (cfg->src_hbf2_en ? 1 : 0); /* 2 -- 8; 1---4; 0---2*/
+    if (cfg->src_hbf1_en)
+    {
+        mode = cfg->src_hbf1_mode;
+    }
+    else if (cfg->src_hbf2_en)
+    {
+        mode = cfg->src_hbf2_mode;
+    }
+    else if (cfg->src_hbf3_en)
+    {
+        mode = cfg->src_hbf3_mode;
+    }
+#endif
 
     value = MAKE_REG_VAL(cfg->muxlsrc0, AUDPRC_DAC_PATH_CFG1_MUXLSRC0_Msk, AUDPRC_DAC_PATH_CFG1_MUXLSRC0_Pos)
             | MAKE_REG_VAL(cfg->muxlsrc1, AUDPRC_DAC_PATH_CFG1_MUXLSRC1_Msk, AUDPRC_DAC_PATH_CFG1_MUXLSRC1_Pos)
@@ -520,20 +536,35 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDPRC_Config_DACPath(AUDPRC_HandleTypeDef 
             //| MAKE_REG_VAL(cfg->eq_stage, AUDPRC_DAC_PATH_CFG1_EQ_STAGE_Msk, AUDPRC_DAC_PATH_CFG1_EQ_STAGE_Pos)
             //| MAKE_REG_VAL(cfg->eq_clr, AUDPRC_DAC_PATH_CFG1_EQ_CLR_Msk, AUDPRC_DAC_PATH_CFG1_EQ_CLR_Pos)
             | MAKE_REG_VAL(cfg->src_ch_en, AUDPRC_DAC_PATH_CFG1_SRC_CH_EN_Msk, AUDPRC_DAC_PATH_CFG1_SRC_CH_EN_Pos)
+
+#ifdef AUDPRC_DAC_PATH_CFG1_SRC_HBF1_EN_Msk
             | MAKE_REG_VAL(cfg->src_hbf1_en, AUDPRC_DAC_PATH_CFG1_SRC_HBF1_EN_Msk, AUDPRC_DAC_PATH_CFG1_SRC_HBF1_EN_Pos)
             | MAKE_REG_VAL(cfg->src_hbf1_mode, AUDPRC_DAC_PATH_CFG1_SRC_HBF1_MODE_Msk, AUDPRC_DAC_PATH_CFG1_SRC_HBF1_MODE_Pos)
             | MAKE_REG_VAL(cfg->src_hbf2_en, AUDPRC_DAC_PATH_CFG1_SRC_HBF2_EN_Msk, AUDPRC_DAC_PATH_CFG1_SRC_HBF2_EN_Pos)
             | MAKE_REG_VAL(cfg->src_hbf2_mode, AUDPRC_DAC_PATH_CFG1_SRC_HBF2_MODE_Msk, AUDPRC_DAC_PATH_CFG1_SRC_HBF2_MODE_Pos)
             | MAKE_REG_VAL(cfg->src_hbf3_en, AUDPRC_DAC_PATH_CFG1_SRC_HBF3_EN_Msk, AUDPRC_DAC_PATH_CFG1_SRC_HBF3_EN_Pos)
             | MAKE_REG_VAL(cfg->src_hbf3_mode, AUDPRC_DAC_PATH_CFG1_SRC_HBF3_MODE_Msk, AUDPRC_DAC_PATH_CFG1_SRC_HBF3_MODE_Pos);
-#ifndef SF32LB58X
+#elif defined(AUDPRC_DAC_PATH_CFG1_SRC_RESAMPLE_EN_Msk)
+            | MAKE_REG_VAL((cfg->src_hbf1_en || cfg->src_hbf2_en || cfg->src_hbf3_en) ? 1 : 0, AUDPRC_DAC_PATH_CFG1_SRC_RESAMPLE_EN_Msk, AUDPRC_DAC_PATH_CFG1_SRC_RESAMPLE_EN_Pos)
+            | MAKE_REG_VAL(mode, AUDPRC_DAC_PATH_CFG1_SRC_RESAMPLE_MODE_Msk, AUDPRC_DAC_PATH_CFG1_SRC_RESAMPLE_MODE_Pos)
+            | MAKE_REG_VAL(factor, AUDPRC_DAC_PATH_CFG1_SRC_RESAMPLE_FACTOR_Msk, AUDPRC_DAC_PATH_CFG1_SRC_RESAMPLE_FACTOR_Pos);
+#else
+            ;
+#endif
+
+#ifdef AUDPRC_DAC_PATH_CFG1_SRC_CH_CLR_Pos
     value |= (3 << AUDPRC_DAC_PATH_CFG1_SRC_CH_CLR_Pos);
+#elif defined(AUDPRC_DAC_PATH_CFG1_SRC_CLR_Pos)
+    value |= AUDPRC_DAC_PATH_CFG1_SRC_CLR;
 #endif
     haprc->Instance->DAC_PATH_CFG1 = value;
 
-#ifndef SF32LB58X
+#ifdef AUDPRC_DAC_PATH_CFG1_SRC_CH_CLR_DONE
     while ((haprc->Instance->DAC_PATH_CFG1 & AUDPRC_DAC_PATH_CFG1_SRC_CH_CLR_DONE) == 0);
     value &= (~AUDPRC_DAC_PATH_CFG1_SRC_CH_CLR);
+    haprc->Instance->DAC_PATH_CFG1 = value;
+#elif defined(AUDPRC_DAC_PATH_CFG1_SRC_CLR_Pos)
+    value &= (~AUDPRC_DAC_PATH_CFG1_SRC_CLR_Msk);
     haprc->Instance->DAC_PATH_CFG1 = value;
 #endif
 
@@ -555,7 +586,6 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDPRC_Config_DACPath(AUDPRC_HandleTypeDef 
   */
 __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDPRC_Config_ADCPath_Volume(AUDPRC_HandleTypeDef *haprc, int channel, int volume)
 {
-    uint32_t rough_vol, fine_vol;
 
     /* Check the AUDPRC handle allocation */
     if (haprc == NULL)
@@ -567,7 +597,8 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDPRC_Config_ADCPath_Volume(AUDPRC_HandleT
     {
         return HAL_ERROR;
     }
-#ifdef SF32LB52X
+#ifdef AUDPRC_ADC_PATH_CFG0_ROUGH_VOL_L_Msk
+    uint32_t rough_vol, fine_vol;
 
     if ((volume < -36) || (volume > 60))
     {
@@ -590,6 +621,31 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDPRC_Config_ADCPath_Volume(AUDPRC_HandleT
         MODIFY_REG(haprc->Instance->ADC_PATH_CFG0, AUDPRC_ADC_PATH_CFG0_ROUGH_VOL_R_Msk | AUDPRC_ADC_PATH_CFG0_FINE_VOL_R_Msk, \
                    MAKE_REG_VAL(rough_vol, AUDPRC_ADC_PATH_CFG0_ROUGH_VOL_R_Msk, AUDPRC_ADC_PATH_CFG0_ROUGH_VOL_R_Pos) |
                    MAKE_REG_VAL(fine_vol, AUDPRC_ADC_PATH_CFG0_FINE_VOL_R_Msk, AUDPRC_ADC_PATH_CFG0_FINE_VOL_R_Pos));
+    }
+#elif defined(AUDPRC_ADC_PATH_CFG0_ROUGH_VOL_CH0_Msk)
+    uint32_t rough_vol, fine_vol;
+
+    if ((volume < -36) || (volume > 60))
+    {
+        return HAL_ERROR;
+    }
+
+    rough_vol = (volume + 36) / 6;
+    fine_vol  = ((volume + 36) % 6) << 1;
+
+    //fine_vol = 0xF;//MUTE
+
+    if (channel == 0)
+    {
+        MODIFY_REG(haprc->Instance->ADC_PATH_CFG0, AUDPRC_ADC_PATH_CFG0_ROUGH_VOL_CH0_Msk | AUDPRC_ADC_PATH_CFG0_FINE_VOL_CH0_Msk, \
+                   MAKE_REG_VAL(rough_vol, AUDPRC_ADC_PATH_CFG0_ROUGH_VOL_CH0_Msk, AUDPRC_ADC_PATH_CFG0_ROUGH_VOL_CH0_Pos) |
+                   MAKE_REG_VAL(fine_vol, AUDPRC_ADC_PATH_CFG0_FINE_VOL_CH0_Msk, AUDPRC_ADC_PATH_CFG0_FINE_VOL_CH0_Pos));
+    }
+    else
+    {
+        MODIFY_REG(haprc->Instance->ADC_PATH_CFG0, AUDPRC_ADC_PATH_CFG0_ROUGH_VOL_CH1_Msk | AUDPRC_ADC_PATH_CFG0_FINE_VOL_CH1_Msk, \
+                   MAKE_REG_VAL(rough_vol, AUDPRC_ADC_PATH_CFG0_ROUGH_VOL_CH1_Msk, AUDPRC_ADC_PATH_CFG0_ROUGH_VOL_CH0_Pos) |
+                   MAKE_REG_VAL(fine_vol, AUDPRC_ADC_PATH_CFG0_FINE_VOL_CH1_Msk, AUDPRC_ADC_PATH_CFG0_FINE_VOL_CH1_Pos));
     }
 #else
 
@@ -628,6 +684,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDPRC_Config_ADCPath_Volume(AUDPRC_HandleT
 __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDPRC_Config_ADCPath(AUDPRC_HandleTypeDef *haprc, AUDPRC_ADCCfgTypeDef *cfg)
 {
     uint32_t value;
+    uint32_t mask;
 
     /* Check the AUDPRC handle allocation */
     if (haprc == NULL)
@@ -635,14 +692,28 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_AUDPRC_Config_ADCPath(AUDPRC_HandleTypeDef 
         return HAL_ERROR;
     }
     value = haprc->Instance->ADC_PATH_CFG0;
-    value &= (AUDPRC_ADC_PATH_CFG0_SRC_SEL_Msk | AUDPRC_ADC_PATH_CFG0_DATA_SWAP_Msk
+
+#ifdef AUDPRC_ADC_PATH_CFG0_DATA_SWAP_Msk
+    mask = AUDPRC_ADC_PATH_CFG0_SRC_SEL_Msk | AUDPRC_ADC_PATH_CFG0_DATA_SWAP_Msk;
+#else
+    mask = AUDPRC_ADC_PATH_CFG0_SRC_SEL_Msk;
+#endif /* AUDPRC_ADC_PATH_CFG0_DATA_SWAP_Msk */
+
+    mask = (mask
 #ifdef SF32LB58X
-              | AUDPRC_ADC_PATH_CFG0_SRC_CH_EN_Msk | AUDPRC_ADC_PATH_CFG0_SRC_HBF1_EN_Msk
-              | AUDPRC_ADC_PATH_CFG0_SRC_HBF1_MODE_Msk | AUDPRC_ADC_PATH_CFG0_SRC_HBF2_EN_Msk | AUDPRC_ADC_PATH_CFG0_SRC_HBF2_MODE_Msk
-              | AUDPRC_ADC_PATH_CFG0_SRC_HBF3_EN_Msk | AUDPRC_ADC_PATH_CFG0_SRC_HBF3_MODE_Msk
+            | AUDPRC_ADC_PATH_CFG0_SRC_CH_EN_Msk | AUDPRC_ADC_PATH_CFG0_SRC_HBF1_EN_Msk
+            | AUDPRC_ADC_PATH_CFG0_SRC_HBF1_MODE_Msk | AUDPRC_ADC_PATH_CFG0_SRC_HBF2_EN_Msk | AUDPRC_ADC_PATH_CFG0_SRC_HBF2_MODE_Msk
+            | AUDPRC_ADC_PATH_CFG0_SRC_HBF3_EN_Msk | AUDPRC_ADC_PATH_CFG0_SRC_HBF3_MODE_Msk
 #endif
-              | AUDPRC_ADC_PATH_CFG0_RX2TX_LOOPBACK_Msk);
+            | AUDPRC_ADC_PATH_CFG0_RX2TX_LOOPBACK_Msk);
+
+    value &= mask;
+
+#ifdef AUDPRC_ADC_PATH_CFG0_DATA_SWAP_Msk
     value |= MAKE_REG_VAL(cfg->data_swap, AUDPRC_ADC_PATH_CFG0_DATA_SWAP_Msk, AUDPRC_ADC_PATH_CFG0_DATA_SWAP_Pos)
+#else
+    value = value
+#endif
 #ifdef SF32LB58X
              | MAKE_REG_VAL(cfg->src_ch_en, AUDPRC_ADC_PATH_CFG0_SRC_CH_EN_Msk, AUDPRC_ADC_PATH_CFG0_SRC_CH_EN_Pos)
              | MAKE_REG_VAL(cfg->src_hbf1_en, AUDPRC_ADC_PATH_CFG0_SRC_HBF1_EN_Msk, AUDPRC_ADC_PATH_CFG0_SRC_HBF1_EN_Pos)

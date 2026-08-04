@@ -11,8 +11,10 @@
 extern "C" {
 #endif
 
+
 /* Includes ------------------------------------------------------------------*/
 #include "bf0_hal_def.h"
+#include "bf0_pin_const.h"
 
 /** @addtogroup PMU PMU
   * @ingroup BF0_HAL_Driver
@@ -42,6 +44,15 @@ typedef enum
     PMU_LPCLK_RC32,   /** RC32 as LP clock */
 } PMU_LpClockTypeDef;
 
+/**  PMU pin wakeup mode, should be consistent with AON_PinModeTypeDef */
+typedef enum
+{
+    PMU_PIN_MODE_HIGH,   /**< high level to trigger pin wakeup */
+    PMU_PIN_MODE_LOW,    /**< low level to trigger pin wakeup */
+    PMU_PIN_MODE_POS_EDGE,  /**< postive edge to trigger pin wakeup */
+    PMU_PIN_MODE_NEG_EDGE,  /**< negative edge to trigger pin wakeup */
+} PMU_PinModeTypeDef;
+
 #ifdef SF32LB56X
 /** HPSYS LDO voltage type */
 typedef enum
@@ -52,7 +63,7 @@ typedef enum
 #endif /* SF32LB56X */
 
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
 
 /** Charger Calibration Parameters */
 typedef struct
@@ -135,7 +146,7 @@ typedef enum
     PMU_PERI_LDO3_3V3     = PMUC_PERI_LDO_EN_VDD33_LDO3_Pos,
 } PMU_PeriLdoTypeDef;
 
-#endif /* SF32LB52X */
+#endif /* SF32LB52X || SF32LB57X */
 
 ///@} PMU_Exported_Types
 
@@ -144,13 +155,6 @@ typedef enum
 
 #define HAL_PMU_DISABLE_LPSYS_LDO()     do {hwp_pmuc->LDO_CR &= ~PMUC_LDO_CR_LPSYS_LDO_EN;} while (0)
 
-
-#ifndef SF32LB55X
-#define PMUC_WSR_PIN_ALL                (PMUC_WSR_PIN0 | PMUC_WSR_PIN1)
-#else
-#define PMUC_WSR_PIN_ALL                (PMUC_WSR_PIN0 | PMUC_WSR_PIN1 | PMUC_WSR_PIN2 \
-                                             | PMUC_WSR_PIN3 | PMUC_WSR_PIN4 | PMUC_WSR_PIN5)
-#endif /* SF32LB55X */
 
 /** @defgroup PMU_LPSYS_PSW PMU_LPSYS_PSW
  * @{
@@ -385,12 +389,22 @@ typedef enum
  */
 #define HAL_PMU_CLEAR_WSR(wsr)   (hwp_pmuc->WCR = (wsr))
 
-
 /**
  * @brief  Get wakeup source
  * @retval wsr wakeup source register value
  */
 #define HAL_PMU_GET_WSR()   (hwp_pmuc->WSR)
+
+
+#define HAL_PMU_GET_WSR_PIN()        (hwp_pmuc->WSR & PMUC_WSR_PIN_ALL)
+
+
+/**
+ * @brief  Get wakeup enable
+ * @return wakeup enable register value
+ */
+#define HAL_PMU_GET_WER()   (hwp_pmuc->WER)
+
 
 #ifdef SF32LB58X
 
@@ -464,6 +478,57 @@ typedef enum
             }                                                               \
             while (0)
 
+#ifdef PMUC_PRCR1_PA0
+__STATIC_INLINE HAL_StatusTypeDef HAL_PMU_SetPadRetention(pin_pad pad)
+{
+    uint16_t offset;
+    __IO uint32_t *prsr;
+
+    if ((pad >= PAD_PA00) && (pad < PAD_PA32))
+    {
+        offset = pad - PAD_PA00;
+        prsr = &hwp_pmuc->PRSR1;
+    }
+    else if (pad < PIN_PAD_MAX_H)
+    {
+        offset = pad - PAD_PA32;
+        prsr = &hwp_pmuc->PRSR2;
+    }
+    else
+    {
+        return HAL_ERROR;
+    }
+
+    *prsr = 1UL << offset;
+
+    return HAL_OK;
+}
+
+__STATIC_INLINE HAL_StatusTypeDef HAL_PMU_ClearPadRetention(pin_pad pad)
+{
+    uint16_t offset;
+    __IO uint32_t *prcr;
+
+    if ((pad >= PAD_PA00) && (pad < PAD_PA32))
+    {
+        offset = pad - PAD_PA00;
+        prcr = &hwp_pmuc->PRCR1;
+    }
+    else if (pad < PIN_PAD_MAX_H)
+    {
+        offset = pad - PAD_PA32;
+        prcr = &hwp_pmuc->PRCR2;
+    }
+    else
+    {
+        return HAL_ERROR;
+    }
+
+    *prcr = 1UL << offset;
+
+    return HAL_OK;
+}
+#endif /* PMUC_PRCR1_PA0 */
 
 
 #ifdef PMUC_CR_PIN0_SEL
@@ -493,6 +558,23 @@ HAL_StatusTypeDef HAL_PMU_EnablePinWakeup(uint8_t pin, uint8_t mode);
  * @retval status
  */
 HAL_StatusTypeDef HAL_PMU_DisablePinWakeup(uint8_t pin);
+
+
+/**
+ * @brief  Enable pin wakeup for hibernate
+ * @param  pad pad
+ * @param  mode pin wakeup mode, 0: high level, 1: low level, 2: positive edge, 3: negative edge
+ * @retval status
+ */
+HAL_StatusTypeDef HAL_PMU_EnablePinWakeup2(pin_pad pad, uint8_t mode);
+
+/**
+ * @brief  Disable pin wakeup for hibernate
+ * @param  pad pad
+ * @retval status
+ */
+HAL_StatusTypeDef HAL_PMU_DisablePinWakeup2(pin_pad pad);
+
 
 /**
  * @brief  Enable RTC wakeup for hibernate
@@ -541,8 +623,6 @@ void HAL_PMU_EnterHibernate(void);
  * @retval void
  */
 void HAL_PMU_EnterShutdown(void);
-
-
 
 
 /**
@@ -709,7 +789,7 @@ void HAL_PMU_SaveCalData(FACTORY_CFG_VBK_LDO_T *cfg);
 HAL_StatusTypeDef HAL_PMU_ConfigHpsysLdoVolt(PMU_HpsysLdoVoltTypeDef volt);
 #endif /* SF32LB56X */
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
 
 /**
  * @brief Init charger
@@ -910,6 +990,8 @@ uint8_t HAL_PMU_ChgConfigEocCc(PMU_ChgHandleTypeDef *handle, uint8_t percent);
  */
 HAL_StatusTypeDef HAL_PMU_ConfigPeriLdo(PMU_PeriLdoTypeDef ldo, bool en, bool wait);
 
+#endif /* SF32LB52X || SF32LB57X */
+
 /**
  * @brief Load PMU calibration data to PMU register
  *
@@ -935,13 +1017,6 @@ HAL_StatusTypeDef HAL_PMU_GetHpsysVoutRef(uint8_t *vout_ref);
  * @retval hal status
  */
 HAL_StatusTypeDef HAL_PMU_GetHpsysVoutRef2(uint8_t *vout_ref);
-
-
-#endif /* SF32LB52X */
-
-
-
-
 
 /**
  * @brief  Init PMU

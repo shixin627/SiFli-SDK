@@ -228,9 +228,9 @@ static void timer_init(struct rt_hwtimer_device *timer, rt_uint32_t state)
         prescaler_value = HAL_RCC_GetPCLKFreq(
                               tim_device->core,
                               1);
-#ifdef SF32LB52X
+#ifdef FIXED_GPTBTIM_SRC_CLK
         if (tim->Instance == hwp_gptim2 || tim->Instance == (GPT_TypeDef *)hwp_btim2)
-            prescaler_value = 24000000;
+            prescaler_value = FIXED_GPTBTIM_SRC_CLK;
 #endif
         prescaler_value = prescaler_value / 1000 - 1;
         tim->Init.Period            = 10000 - 1;
@@ -360,9 +360,9 @@ static rt_err_t timer_ctrl(rt_hwtimer_t *timer, rt_uint32_t cmd, void *arg)
         val = HAL_RCC_GetPCLKFreq(
                   tim->core,
                   1);
-#ifdef SF32LB52X
+#ifdef FIXED_GPTBTIM_SRC_CLK
         if (tim->Instance == hwp_gptim2 || tim->Instance == (GPT_TypeDef *)hwp_btim2)
-            val = 24000000;
+            val = FIXED_GPTBTIM_SRC_CLK;
 #endif
         val /= freq;
         if (val > RT_UINT16_MAX)

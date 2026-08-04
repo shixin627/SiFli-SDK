@@ -8,6 +8,8 @@ This example implements a smartwatch interface using LVGL v9, including the foll
 - Watch face
 - Cube rotation (not supported on SF32lb55x series chips)
 
+> Note: The `SF32LB55X` series does not support the `3D rotation (rotation3d)` demo, so the corresponding honeycomb entry cannot be opened on 55x platforms.
+
 ## Usage
 
 The following sections provide only absolutely necessary information. For complete steps on configuring SiFli-SDK and using it to build and run projects, please refer to the [SiFli-SDK Quick Start](https://docs.sifli.com/projects/sdk/latest/sf32lb52x/quickstart/index.html).

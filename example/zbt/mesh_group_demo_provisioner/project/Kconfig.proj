@@ -1,0 +1,9 @@
+#APP specific configuration.
+config CUSTOM_MEM_MAP
+    bool 
+	select custom_mem_map
+	default y
+
+config MESH_INFO_SAVE_TO_BLE_NV
+    bool 
+	default y

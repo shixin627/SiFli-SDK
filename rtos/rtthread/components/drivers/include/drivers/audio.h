@@ -96,6 +96,8 @@
 #define AUDIO_DSP_FMT                       2
 #define AUDIO_DSP_CHANNELS                  3
 #define AUDIO_DSP_MODE                      4           /*audio device work mode, 0:master or 1:slave*/
+#define AUDIO_DSP_VOL                       5
+#define AUDIO_DSP_TDM                       6
 
 /* Supported Mixer Units controls */
 #define AUDIO_MIXER_QUERY                   0x0000

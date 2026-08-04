@@ -87,7 +87,7 @@ static rt_bool_t tc_vglite_lcd_is_ready(void)
     return (status == LCD_STATUS_INITIALIZED) || (status == LCD_STATUS_DISPLAY_ON);
 }
 
-void tc_vg_send_data_to_lcd(uint8_t *data, uint32_t width, uint32_t height, uint16_t color_fmt)
+void tc_vg_send_data_to_lcd(const uint8_t *data, uint32_t width, uint32_t stride, uint32_t height, uint16_t color_fmt)
 {
     rt_err_t err;
     struct rt_device_graphic_info lcd_info;
@@ -105,7 +105,7 @@ void tc_vg_send_data_to_lcd(uint8_t *data, uint32_t width, uint32_t height, uint
     rt_graphix_ops(lcd_device)->set_window(tl_x, tl_y, tl_x + width - 1, tl_y + height - 1);
     rt_device_control(lcd_device, RTGRAPHIC_CTRL_SET_BUF_FORMAT, &color_fmt);
 
-    rt_graphix_ops(lcd_device)->draw_rect((const char *)data, tl_x, tl_y, tl_x + width - 1, tl_y + height - 1);
+    rt_graphix_ops(lcd_device)->draw_rect((const char *)data, tl_x, tl_y, tl_x + stride - 1, tl_y + height - 1);
 }
 
 void tc_vglite_print_error(const char *func, size_t line, vg_lite_error_t err)

@@ -339,7 +339,7 @@
               <MiscControls>-march=armv8-m.main+cdecp1</MiscControls>
               <Define>SOC_BF0_HCPU, USE_HAL_DRIVER, SF32LB56X, ARM_MATH_LOOPUNROLL,JLINK,JLINK_SDIO_1,_USE_PRODUCTLINE,HAL_TICK_PER_SECOND=1000,CFG_FACTORY_DEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\src</IncludePath>
+              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\src;..\..\..\..\middleware\sifli_matrix</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -512,6 +512,11 @@
               <FileName>bf0_hal_rtc.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\drivers\hal\bf0_hal_rtc.c</FilePath>
+            </File>
+            <File>
+              <FileName>bf0_hal_hlp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\drivers\hal\bf0_hal_hlp.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -850,7 +855,7 @@
               <MiscControls>-march=armv8-m.main+cdecp1</MiscControls>
               <Define>SOC_BF0_HCPU, USE_HAL_DRIVER, SF32LB56X, ARM_MATH_LOOPUNROLL,JLINK,JLINK_SDIO_2,_USE_PRODUCTLINE,HAL_TICK_PER_SECOND=1000,CFG_FACTORY_DEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\src</IncludePath>
+              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\src;..\..\..\..\middleware\sifli_matrix</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1023,6 +1028,11 @@
               <FileName>bf0_hal_rtc.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\drivers\hal\bf0_hal_rtc.c</FilePath>
+            </File>
+            <File>
+              <FileName>bf0_hal_hlp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\drivers\hal\bf0_hal_hlp.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1361,7 +1371,7 @@
               <MiscControls>-march=armv8-m.main+cdecp1</MiscControls>
               <Define>SOC_BF0_HCPU, USE_HAL_DRIVER, SF32LB56X, ARM_MATH_LOOPUNROLL,JLINK,JLINK_SDEMMC_2,_USE_PRODUCTLINE,HAL_TICK_PER_SECOND=1000,CFG_FACTORY_DEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\src</IncludePath>
+              <IncludePath>.;.\src;..\..\..\..\customer\boards\butterflite_fpga;..\..\..\..\customer\boards\include;..\..\..\..\drivers\cmsis\sf32lb56x;..\..\..\..\drivers\cmsis\Include;..\..\..\..\external\CMSIS\Include;..\..\..\..\drivers\Include;..\..\..\..\rtos\rtthread\bsp\sifli\drivers\config\sf32lb56x;..\..\src;..\..\..\..\middleware\sifli_matrix</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1534,6 +1544,11 @@
               <FileName>bf0_hal_rtc.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\drivers\hal\bf0_hal_rtc.c</FilePath>
+            </File>
+            <File>
+              <FileName>bf0_hal_hlp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\drivers\hal\bf0_hal_hlp.c</FilePath>
             </File>
           </Files>
         </Group>

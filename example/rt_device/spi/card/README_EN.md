@@ -18,7 +18,7 @@ Only when the above two macros are included, the `rt_hw_spi_device_attach` funct
 
 If the above macros are missing or not enabled, they can be enabled through the `menuconfig` menu with the following operations:
 ```
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 As shown in the figure below, select SPI1 enable (DMA is needed, select corresponding DMA option), save and exit menuconfig, check if `rtconfig.h` macro is generated
 ![alt text](assets/enable.png)

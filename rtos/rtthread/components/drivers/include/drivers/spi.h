@@ -56,6 +56,7 @@ extern "C" {
 #define RT_SPI_MOTO     (0<<8)                             /* spi MOTO mode */
 #define RT_SPI_TI       (1<<8)                             /* spi TI mode */
 #define RT_SPI_NM       (2<<8)                             /* spi microwire */
+#define RT_SPI_FRM      (3<<8)                             /* spi frame mode */
 #define RT_SPI_FRAME_MASK       (3<<8)
 
 /**
@@ -103,7 +104,10 @@ struct rt_spi_ops
 {
     rt_err_t (*configure)(struct rt_spi_device *device, struct rt_spi_configuration *configuration);
     rt_err_t (*control)(struct rt_spi_device *device, int cmd, void *arg);
+    /** transfer one message once  */
     rt_uint32_t (*xfer)(struct rt_spi_device *device, struct rt_spi_message *message);
+    /** transfer multiple messages */
+    rt_uint32_t (*xfer2)(struct rt_spi_device *device, struct rt_spi_message *message);
 };
 
 /**
@@ -258,6 +262,19 @@ rt_size_t rt_spi_transfer(struct rt_spi_device *device,
  *         SPI message which be transmitted failed.
  */
 struct rt_spi_message *rt_spi_transfer_message(struct rt_spi_device  *device,
+        struct rt_spi_message *message);
+
+
+/**
+ * This function transfers a message list to the SPI device using xfer2 callback.
+ *
+ * @param device the SPI device attached to SPI bus
+ * @param message the message list to be transmitted to SPI device
+ *
+ * @return RT_NULL if transmits message list successfully,
+ *         SPI message which be transmitted failed.
+ */
+struct rt_spi_message *rt_spi_transfer_message2(struct rt_spi_device  *device,
         struct rt_spi_message *message);
 
 rt_inline rt_size_t rt_spi_recv(struct rt_spi_device *device,

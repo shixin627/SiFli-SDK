@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifndef ALARM_MANAGER_SERVICE_H
 #define ALARM_MANAGER_SERVICE_H
 #include <rtthread.h>

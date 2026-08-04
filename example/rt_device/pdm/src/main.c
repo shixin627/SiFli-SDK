@@ -92,7 +92,10 @@ void rx_thread_entry(void *parameter)
         while (1)
         {
             len = rt_device_read(g_pdm_device, 0, tmp_buf, CFG_AUDIO_RECORD_PIPE_SIZE);
-            RT_ASSERT(len == CFG_AUDIO_RECORD_PIPE_SIZE);
+            if (len == 0)
+            {
+                break;
+            }
 
             if (rt_ringbuffer_space_len(&g_rx_ring) < CFG_AUDIO_RECORD_PIPE_SIZE)
             {
@@ -488,6 +491,8 @@ int main(void)
 #else
 #error "Need to confirm PDM pin config."
 #endif
+#elif defined(BSP_USING_BOARD_SPI_HDK_LB573UB7N6)
+    /* pin is configured by board */
 #else
 #error "Need to confirm PDM pin config."
 #endif

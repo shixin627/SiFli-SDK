@@ -118,9 +118,9 @@ __weak const AON_WakeupPinTypeDef HAL_LPAON_WakeupPinMapTbl[] =
 #endif
 
 
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
     #define HAL_LPAON_WAKEUP_PIN_NUM  (sizeof(HAL_LPAON_WakeupPinMapTbl)/sizeof(HAL_LPAON_WakeupPinMapTbl[0]))
-#else
+#elif defined(SF32LB52X)
     #define HAL_LPAON_WAKEUP_PIN_NUM  (LPSYS_AON_WSR_PIN_NUM)
 #endif /* SF32LB52X */
 
@@ -194,7 +194,6 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_LPAON_EnterStandby(uint32_t sbcr)
  * @retval status
  */
 __HAL_ROM_USED HAL_StatusTypeDef HAL_LPAON_EnableWakeupSrc(LPAON_WakeupSrcTypeDef src, AON_PinModeTypeDef mode)
-
 {
     uint32_t mask;
     uint32_t val;
@@ -202,6 +201,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_LPAON_EnableWakeupSrc(LPAON_WakeupSrcTypeDe
     uint32_t wer_en;
     __IO uint32_t *cr;
 
+#ifdef LPSYS_AON_WER_PIN0
     if ((src >= LPAON_WAKEUP_SRC_PIN0) && (src <= LPAON_WAKEUP_SRC_PIN_LAST))
     {
         wer_en = (LPSYS_AON_WER_PIN0 << (src - LPAON_WAKEUP_SRC_PIN0));
@@ -210,7 +210,11 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_LPAON_EnableWakeupSrc(LPAON_WakeupSrcTypeDe
         HAL_LPAON_CLEAR_WSR(wer_en);
 
 #ifdef hwp_pbr
-        if ((src >= LPAON_WAKEUP_SRC_PBR_PIN_FIRST) && (src <= LPAON_WAKEUP_SRC_PIN_LAST))
+        /* On 52x, there's no separate PBR pin like 56x and 58x, PBR0~PBR3 share the pad with PA24~PA27
+         * and AON pin wakeup detection is done by PBR module. IE of PBR pin is disabled by default, so need to
+         * enable IE if AON pin wakeup is enabled.
+         */
+        if ((src >= LPAON_WAKEUP_SRC_PBR_PIN_FIRST) && (src <= LPAON_WAKEUP_SRC_PBR_PIN_LAST))
         {
             HAL_PBR_ConfigMode((src - LPAON_WAKEUP_SRC_PBR_PIN_FIRST), false);
         }
@@ -250,6 +254,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_LPAON_EnableWakeupSrc(LPAON_WakeupSrcTypeDe
         hwp_lpsys_aon->WER |= wer_en;
     }
     else
+#endif /* LPSYS_AON_WER_PIN0 */
     {
 
         hwp_lpsys_aon->WER |= (1UL << src);
@@ -267,11 +272,13 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_LPAON_DisableWakeupSrc(LPAON_WakeupSrcTypeD
 {
     uint32_t wer_en;
 
+#ifdef LPSYS_AON_WER_PIN0
     if ((src >= LPAON_WAKEUP_SRC_PIN0) && (src <= LPAON_WAKEUP_SRC_PIN_LAST))
     {
         wer_en = (LPSYS_AON_WER_PIN0 << (src - LPAON_WAKEUP_SRC_PIN0));
     }
     else
+#endif /* LPSYS_AON_WER_PIN0 */
     {
         wer_en = (1UL << src);
     }
@@ -281,23 +288,18 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_LPAON_DisableWakeupSrc(LPAON_WakeupSrcTypeD
     return HAL_OK;
 }
 
-
-#ifdef SF32LB52X
+#if defined(SF32LB52X)
 __HAL_ROM_USED int8_t HAL_LPAON_QueryWakeupPin(GPIO_TypeDef *gpio, uint16_t gpio_pin)
 {
     return HAL_HPAON_QueryWakeupPin(gpio, gpio_pin);
 }
 
-
 __HAL_ROM_USED GPIO_TypeDef *HAL_LPAON_QueryWakeupGpioPin(uint8_t wakeup_pin, uint16_t *gpio_pin)
 {
-
     return HAL_HPAON_QueryWakeupGpioPin(wakeup_pin, gpio_pin);
 }
 
-
-#else
-
+#elif defined(LPSYS_AON_WSR_PIN_NUM)
 __HAL_ROM_USED int8_t HAL_LPAON_QueryWakeupPin(GPIO_TypeDef *gpio, uint16_t gpio_pin)
 {
     uint32_t i;
@@ -336,6 +338,7 @@ __HAL_ROM_USED GPIO_TypeDef *HAL_LPAON_QueryWakeupGpioPin(uint8_t wakeup_pin, ui
 }
 #endif /* SF32LB52X */
 
+#ifdef LPSYS_AON_WSR_PIN_NUM
 __HAL_ROM_USED  HAL_StatusTypeDef HAL_LPAON_GetWakeupPinMode(uint8_t wakeup_pin, AON_PinModeTypeDef *mode)
 {
     uint32_t mask;
@@ -386,6 +389,8 @@ __HAL_ROM_USED  HAL_StatusTypeDef HAL_LPAON_GetWakeupPinMode(uint8_t wakeup_pin,
 
     return HAL_OK;
 }
+#endif /* LPSYS_AON_WSR_PIN_NUM */
+
 
 #ifdef SOC_BF0_HCPU
     __weak
@@ -394,9 +399,15 @@ __HAL_ROM_USED  HAL_StatusTypeDef HAL_LPAON_GetWakeupPinMode(uint8_t wakeup_pin,
 #endif
 void HAL_LPAON_ConfigStartAddr(uint32_t *start_addr)
 {
+#ifndef SF32LB57X
     hwp_lpsys_aon->SPR = (*start_addr);
     start_addr++;
     hwp_lpsys_aon->PCR = (*start_addr);
+#else
+    hwp_lpsys_aon->SPR = 0;
+    start_addr++;
+    hwp_lpsys_aon->PCR = 0;
+#endif
 }
 
 __HAL_ROM_USED void HAL_LPAON_Deactivate(void)

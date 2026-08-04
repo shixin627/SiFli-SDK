@@ -28,12 +28,12 @@
 
 运行如下命令
 ```c
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
-使能要使用的PWM，52x配置使用的PWM3 CHANNLE1, 56x使用的是PWM4 CHANNEL4, 58x使用的是PWM4 CHANNEL4<br>
+使能要使用的PWM，52x配置使用的PWMT2 CHANNLE1, 56x使用的是PWMT3 CHANNEL4, 58x使用的是PWMT3 CHANNEL4<br>
 ![Enable rgbled:](./assets/menuconfig_pwm_52x.png)<br>
 ![Enable rgbled:](./assets/menuconfig_pwm_58x.png)<br>
-外设使能RGBLED并且配置pwm,Channel配置, 52x 配置为PWM3 CHANNLE1， 52x 配置为PWM4 CHANNEL4<br>
+外设使能RGBLED并且配置pwm,Channel配置, 52x 配置为PWMT2 CHANNLE1， 52x 配置为PWMT3 CHANNEL4<br>
 ![Enable rgbled:](./assets/menuconfig_rgb_52x.png)<br>
 ![Enable rgbled:](./assets/menuconfig_rgb_58x.png)<br>
 **注意**: pwm设置已经是设置TIM配置，注意检查Enable timer配置是否造成冲突<br>

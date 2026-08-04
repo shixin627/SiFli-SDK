@@ -19,6 +19,8 @@ if not GetDepend("BSP_USING_BOARD_DUMMY"):
         path += [cwd + '/../include/config/sf32lb56x']    
     elif GetDepend(['SOC_SF32LB52X']):
         path += [cwd + '/../include/config/sf32lb52x']    
+    elif GetDepend(['SOC_SF32LB57X']):
+        path += [cwd + '/../include/config/sf32lb57x']    
     elif GetDepend(['SOC_SIMULATOR']):
         print("Simulator used")
     else:

@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2025-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifndef VBE_DRC_EQ_H
 #define VBE_DRC_EQ_H 1
 #include "rtconfig.h"

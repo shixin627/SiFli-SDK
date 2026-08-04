@@ -1,3 +1,4 @@
+menu "NAND"
 menuconfig CUSTOM_NAND_ENABLED
     bool "Customized NAND configuration"
     default n
@@ -6,3 +7,4 @@ menuconfig CUSTOM_NAND_ENABLED
             bool "HYF4GQ4UTACAE"
             default n
     endif
+endmenu

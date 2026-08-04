@@ -1,0 +1,24 @@
+# Project-level PTAB overlay example for FlashDB on sf32lb56-lcd_n16r12n1_hcpu.
+# This file only contains partition deltas relative to
+# customer/boards/sf32lb56-lcd_n16r12n1/ptab.yaml.
+
+partitions:
+  - op: add
+    name: kvdb_tst
+    type: data
+    subtype: flashdb_kv
+    region: mpi3
+    offset: 0x00608000
+    size: 0x00004000
+    aliases:
+      - KVDB_TST_REGION
+
+  - op: add
+    name: tsdb_tst
+    type: data
+    subtype: flashdb_kv
+    region: mpi3
+    offset: 0x0060C000
+    size: 0x00004000
+    aliases:
+      - TSDB_TST_REGION

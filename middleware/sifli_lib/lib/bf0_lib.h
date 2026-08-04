@@ -1,11 +1,8 @@
-/**
-  ******************************************************************************
-  * @file   bf0_lib.h
-  * @author Sifli software development team
-  * @brief   This file contains all the functions prototypes for the Sifli library
-  * @{
-  ******************************************************************************
-*/
+/*
+ * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #ifndef __BF0_LIB_H
 #define __BF0_LIB_H

@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "rtthread.h"
 #include "bf0_hal.h"
 #include "drv_io.h"
@@ -9,8 +15,8 @@
 
 /* pwm example for RT-Thread based platform -----------------------------------------------*/
 #define PWM_PERIOD (1 * 1000 * 1000) /*(ns) -> freq = 1,000,000,000/PWM_PERIOD (hz) 1Mhz*/
-#define PWM_DEV_GTIM_NAME_52 "pwm3"//52x  pw3_cc1
-#define PWM_DEV_GTIM_NAME_58 "pwm2"//58x  pw2_cc2
+#define PWM_DEV_GTIM_NAME_52 "pwmt2"//52x  pw3_cc1
+#define PWM_DEV_GTIM_NAME_58 "pwmt1"//58x  pw2_cc2
 
 #define PWM_DEV_ATIM_NAME_52 "pwma1"//52x  pwma1_cc1
 #define PWM_DEV_ATIM_NAME_58 "pwma2"//58x  pwma2_cc4

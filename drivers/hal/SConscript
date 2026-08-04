@@ -8,6 +8,12 @@ cwd = GetCurrentDir()
 src = Glob('./*.c')
 inc = [cwd]
 
+if not GetDepend('SOC_SF32LB57X'):
+    SrcRemove(src, 'bf0_hal_hpaon_sf32lb57x.c')
+    SrcRemove(src, 'bf0_hal_lpaon_sf32lb57x.c')
+    SrcRemove(src, 'bf0_hal_pmu_sf32lb57x.c')
+    SrcRemove(src, 'bf0_hal_pinmux_sf32lb57x.c')
+
 if GetDepend('SOC_SF32LB55X'):
     SrcRemove(src, 'bf0_hal_mpi.c')
     SrcRemove(src, 'bf0_hal_mpi_ex.c')
@@ -15,8 +21,11 @@ if GetDepend('SOC_SF32LB55X'):
 else:
     SrcRemove(src, 'bf0_hal_qspi.c')
     SrcRemove(src, 'bf0_hal_qspi_ex.c')
-    
-if GetDepend('SOC_SF32LB52X'):
+
+if rtconfig.ARCH != 'arm':
+    SrcRemove(src, 'bf0_hal_cortex.c')
+
+if GetDepend('SOC_SF32LB52X') or GetDepend('SOC_SF32LB57X'):
     SrcRemove(src, 'bf0_hal_audcodec.c')
 else:
     SrcRemove(src, 'bf0_hal_audcodec_m.c')
@@ -44,6 +53,9 @@ if GetDepend('BSP_USING_SPI_NAND'):
     CPPDEFINES += ['HAL_USE_NAND']
 elif GetDepend('CFG_BOOTLOADER'):
     CPPDEFINES += ['HAL_USE_NAND']
+
+if GetDepend('CFG_BOOTROM'):
+    CPPDEFINES += ['HAL_BOOTROM']
 
 if GetDepend('BSP_VDDSIP_LDO18_ENABLE'):
     CPPDEFINES += ['HAL_VDDSIP_LDO18_ENABLE']
@@ -96,6 +108,8 @@ elif GetDepend('BF0_LCPU'):
             rom_src_name = 'sifli_rom_56x.sym'
         elif GetDepend('SOC_SF32LB52X'):
             rom_src_name = 'sifli_rom_52x.sym'
+        elif GetDepend('SOC_SF32LB57X'):
+            rom_src_name = 'sifli_rom_57x.sym'
     elif rtconfig.CROSS_TOOL == 'gcc': 
         if GetDepend('SOC_SF32LB58X'):
             if GetDepend('LCPU_CONFIG_V2'):
@@ -139,7 +153,7 @@ else:
     print("Core need to be selected")
 
 
-if (GetDepend('LCPU_ROM')):
+if (GetDepend('LCPU_ROM') and not GetDepend('SOC_SF32LB57X')):
     CPPDEFINES+=['ROM_ENABLED']
 
 if GetDepend('SOC_SF32LB55X'): 
@@ -153,6 +167,8 @@ elif GetDepend('SOC_SF32LB56X'):
     CPPDEFINES+=['SF32LB56X']
 elif GetDepend('SOC_SF32LB52X'):
     CPPDEFINES+=['SF32LB52X']
+elif GetDepend('SOC_SF32LB57X'):
+    CPPDEFINES+=['SF32LB57X']
 else:
     print("Chipset need to be selected")
 

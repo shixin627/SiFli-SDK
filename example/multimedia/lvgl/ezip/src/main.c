@@ -16,8 +16,19 @@
     #include "dfs_file.h"
     #include "dfs_posix.h"
 #endif
+#ifdef RT_USING_SDIO
+    #include "rtdevice.h"
+#endif
 #include "drv_flash.h"
 #include "mem_section.h"
+
+#ifndef EZIP_SDCARD_DEVNAME
+    #define EZIP_SDCARD_DEVNAME "sd0"
+#endif
+
+#define SDCARD_MOUNT_PATH "/sdcard"
+#define SDCARD_READY_RETRY_COUNT 100
+#define SDCARD_READY_RETRY_DELAY_MS 30
 
 typedef enum
 {
@@ -82,13 +93,25 @@ void psram_heap_free(void *p)
 #endif
 
 #define FS_ROOT "root"
+#ifdef RT_USING_MTD_DHARA
+    #ifndef FS_REGION_OFFSET
+        #error "Need to define file system offset for MTD Dhara!"
+    #endif
+    #define FS_ROOT_NAND "root_n"
+#endif
 
 /**
  * @brief Mount fs.
  */
 int mnt_init(void)
 {
+#ifdef RT_USING_MTD_DHARA
+    register_mtd_dhara_device(FS_REGION_START_ADDR - FS_REGION_OFFSET,
+                              FS_REGION_OFFSET, FS_REGION_SIZE,
+                              FS_ROOT, FS_ROOT_NAND);
+#else
     register_mtd_device(FS_REGION_START_ADDR, FS_REGION_SIZE, FS_ROOT);
+#endif
     if (dfs_mount(FS_ROOT, "/", "elm", 0, 0) == 0) // fs exist
     {
         rt_kprintf("mount fs on flash to root success\n");
@@ -119,21 +142,43 @@ INIT_ENV_EXPORT(mnt_init);
  */
 void sdcard_init(void)
 {
-    rt_device_t msd = rt_device_find("sd0");
-    if (msd == NULL)
+    rt_device_t msd = RT_NULL;
+    uint16_t time_out = SDCARD_READY_RETRY_COUNT;
+
+#ifdef EZIP_SDCARD_BACKEND_SDIO
+    int sd_state = mmcsd_wait_cd_changed(3000);
+    if (MMCSD_HOST_PLUGED != sd_state)
     {
-        rt_kprintf("sd card not found\n");
+        rt_kprintf("No SD-Card detected, state: %d\n", sd_state);
         return;
     }
-    mkdir("/sdcard", 0777);
-    if (dfs_mount("sd0", "/sdcard", "elm", 0, 0) != 0) // fs exist
+#endif /* EZIP_SDCARD_BACKEND_SDIO */
+
+    while (time_out--)
     {
-        rt_kprintf("mount fs on tf card to /sdcard fail\n");
+        msd = rt_device_find(EZIP_SDCARD_DEVNAME);
+        if (msd != RT_NULL)
+        {
+            break;
+        }
+        rt_thread_mdelay(SDCARD_READY_RETRY_DELAY_MS);
+    }
+
+    if (msd == NULL)
+    {
+        rt_kprintf("sd card device '%s' not found\n", EZIP_SDCARD_DEVNAME);
+        return;
+    }
+
+    mkdir(SDCARD_MOUNT_PATH, 0777);
+    if (dfs_mount(EZIP_SDCARD_DEVNAME, SDCARD_MOUNT_PATH, "elm", 0, 0) != 0) // fs exist
+    {
+        rt_kprintf("mount fs on %s to %s fail\n", EZIP_SDCARD_DEVNAME, SDCARD_MOUNT_PATH);
         rt_kprintf("sd card might not be formatted or is corrupted.\n");
         return;
     }
 
-    rt_kprintf("mount fs on tf card to /sdcard success\n");
+    rt_kprintf("mount fs on %s to %s success\n", EZIP_SDCARD_DEVNAME, SDCARD_MOUNT_PATH);
 }
 
 /**
@@ -357,7 +402,11 @@ int main(void)
     /* Create an image object */
     lv_obj_t *img = lv_img_create(lv_scr_act());
     /* Set initial image source for LVGL V8 */
+#ifdef SOC_SF32LB57X
+    lv_img_set_src(img, "example_57.ezip");
+#else
     lv_img_set_src(img, "example.ezip");
+#endif
     /* Align the image to the center of the screen */
     lv_obj_align(img, LV_ALIGN_CENTER, 0, 0);
 

@@ -1,0 +1,57 @@
+# ptab v3 - Partition Table
+# Migrated from: ptab.json
+# Chip: SF32LB52JUD6
+#
+# Auto-generated. Please review and adjust as needed.
+
+version: 3
+chip: SF32LB523UB6
+memory:
+- mpi: mpi2
+  type: nor
+
+partitions:
+- name: hcpu_flash_code
+  type: app
+  subtype: factory
+  region: mpi2
+  offset: '0x00020000'
+  size: '0x00300000'
+  core: HCPU
+- name: dfu_flash_code
+  type: app
+  subtype: dfu
+  region: mpi2
+  offset: '0x00320000'
+  size: '0x00060000'
+  core: HCPU
+- name: dfu_download_region
+  type: data
+  subtype: raw
+  region: mpi2
+  offset: '0x00380000'
+  size: '0x00120000'
+- name: fs_region
+  type: data
+  subtype: filesystem
+  region: mpi2
+  offset: '0x004A0000'
+  size: '0x00300000'
+- name: dfu
+  type: data
+  subtype: flashdb_kv
+  region: mpi2
+  offset: '0x007A0000'
+  size: '0x00004000'
+- name: ble
+  type: data
+  subtype: flashdb_kv
+  region: mpi2
+  offset: '0x007A4000'
+  size: '0x00004000'
+- name: psram_data
+  type: data
+  subtype: ram
+  region: psram1
+  offset: '0x00000000'
+  size: '0x00400000'

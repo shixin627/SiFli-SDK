@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opensifli.com/schemas/new-board.schema.json",
+  "title": "New Board Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "chip_series",
+    "chip_model",
+    "storage",
+    "board_name",
+    "generate_base"
+  ],
+  "properties": {
+    "chip_series": {
+      "type": "string",
+      "enum": ["52", "56", "58"]
+    },
+    "chip_model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["none", "nor", "nand", "sdmmc"]
+        },
+        "size_mb": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pinmux_type": {
+          "type": "string",
+          "enum": ["type0", "type1"]
+        },
+        "block_size_kb": {
+          "type": "integer",
+          "enum": [128, 256]
+        }
+      }
+    },
+    "storage_port": {
+      "type": "string",
+      "enum": ["mpi3", "mpi4", "sdmmc1", "sdmmc2"]
+    },
+    "board_name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "generate_base": {
+      "type": "boolean"
+    },
+    "base_name": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "storage": {
+            "properties": {
+              "type": {
+                "not": {
+                  "const": "none"
+                }
+              }
+            },
+            "required": ["type"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "storage": {
+            "required": ["size_mb"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "chip_series": {
+            "const": "58"
+          },
+          "storage": {
+            "properties": {
+              "type": {
+                "enum": ["nor", "nand"]
+              }
+            },
+            "required": ["type"]
+          }
+        },
+        "required": ["chip_series", "storage"]
+      },
+      "then": {
+        "required": ["storage_port"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "generate_base": {
+            "const": false
+          }
+        },
+        "required": ["generate_base"]
+      },
+      "then": {
+        "required": ["base_name"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "storage": {
+            "properties": {
+              "type": {
+                "not": {
+                  "const": "nand"
+                }
+              }
+            },
+            "required": ["type"]
+          }
+        },
+        "required": ["storage"]
+      },
+      "then": {
+        "properties": {
+          "storage": {
+            "not": {
+              "required": ["block_size_kb"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

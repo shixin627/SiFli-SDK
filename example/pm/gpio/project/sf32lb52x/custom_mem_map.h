@@ -20,4 +20,3 @@
 #define HCPU_RAM_DATA_SIZE        (HPSYS_RAM0_SIZE)
 
 #endif  /* __MEM_MAP__ */
-

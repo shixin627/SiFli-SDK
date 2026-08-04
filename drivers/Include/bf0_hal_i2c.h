@@ -193,6 +193,9 @@ typedef struct __I2C_HandleTypeDef
 
     HAL_LockTypeDef            Lock;           /*!< I2C locking object                        */
 
+// TODO: impact on rom symbol of old platform ?
+    IRQn_Type                  irq_type;
+
     uint8_t                    core;           /*!< I2C Clock core source                     */
 
     uint8_t                    dnf;            /*!< I2C Clock Digital noise filter            */
@@ -200,6 +203,9 @@ typedef struct __I2C_HandleTypeDef
     __IO HAL_I2C_StateTypeDef  State;          /*!< I2C communication state                   */
 
     __IO HAL_I2C_ModeTypeDef   Mode;           /*!< I2C communication mode                    */
+
+// TODO: impact on rom symbol of old platform ?
+    uint8_t                    Delay;          /*!< delay between each transfer               */
 
     __IO uint32_t              ErrorCode;      /*!< I2C Error code                            */
 
@@ -252,6 +258,19 @@ typedef  void (*pI2C_CallbackTypeDef)(I2C_HandleTypeDef *hi2c); /*!< pointer to 
 typedef  void (*pI2C_AddrCallbackTypeDef)(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode); /*!< pointer to an I2C Address Match callback function */
 
 #endif /* USE_HAL_I2C_REGISTER_CALLBACKS */
+
+/* Receive or transmit request structure */
+typedef struct
+{
+    uint16_t DevAddress;
+    uint16_t MemAddress;
+    /* If MemAddSize is 0, no MemAddress would be sent */
+    uint16_t MemAddSize;
+    uint8_t *pData;
+    uint16_t Size;
+    uint8_t IsRead;
+} I2C_RtxRequestTypeDef;
+
 /**
   * @}
   */
@@ -827,6 +846,14 @@ HAL_StatusTypeDef HAL_I2C_Master_Sequential_Transmit_DMA(I2C_HandleTypeDef *hi2c
 HAL_StatusTypeDef HAL_I2C_Master_Sequential_Receive_DMA(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint8_t *pData, uint16_t Size, uint32_t XferOptions);
 HAL_StatusTypeDef HAL_I2C_Slave_Sequential_Transmit_DMA(I2C_HandleTypeDef *hi2c, uint8_t *pData, uint16_t Size, uint32_t XferOptions);
 HAL_StatusTypeDef HAL_I2C_Slave_Sequential_Receive_DMA(I2C_HandleTypeDef *hi2c, uint8_t *pData, uint16_t Size, uint32_t XferOptions);
+
+
+uint32_t HAL_I2C_GetMultiRtxCmdBufSize(I2C_RtxRequestTypeDef *Requests, uint16_t Num);
+
+HAL_StatusTypeDef HAL_I2C_PrepareMultiRtxCmdBuf(I2C_HandleTypeDef *hi2c, I2C_RtxRequestTypeDef *Requests, uint16_t Num, void *CmdBuf, uint32_t BufSize);
+
+HAL_StatusTypeDef HAL_I2C_ReceiveTransmitMultiple_DMA(I2C_HandleTypeDef *hi2c, void *CmdBuf);
+
 /**
   * @}
   */
@@ -985,7 +1012,7 @@ uint32_t             HAL_I2C_Reset(I2C_HandleTypeDef *hi2c);
                                                 ((__INSTANCE__) == I2C4) || \
                                                 ((__INSTANCE__) == I2C5) || \
                                                 ((__INSTANCE__) == I2C6))
-#elif defined(SF32LB52X)
+#elif defined(SF32LB52X) || defined(SF32LB57X)
 #define IS_I2C_ALL_INSTANCE(__INSTANCE__)      (((__INSTANCE__) == I2C1) || \
                                                 ((__INSTANCE__) == I2C2) || \
                                                 ((__INSTANCE__) == I2C3) || \

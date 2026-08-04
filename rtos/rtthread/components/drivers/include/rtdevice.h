@@ -15,6 +15,7 @@
 #include <rtthread.h>
 
 #include "ipc/ringbuffer.h"
+#include "ipc/ringbuffer32.h"
 #include "ipc/completion.h"
 #include "ipc/dataqueue.h"
 #include "ipc/workqueue.h"
@@ -89,7 +90,7 @@ extern "C" {
 #endif
 
 #ifdef RT_USING_CAN
-#include "drivers/can.h"
+#include "drivers/dev_can.h"
 #endif
 
 #ifdef RT_USING_HWTIMER

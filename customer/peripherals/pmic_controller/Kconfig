@@ -1,5 +1,7 @@
-menuconfig PMIC_CTRL_ENABLE
-    bool "PMIC Controller"
+menu "PMIC"
+
+config PMIC_CTRL_ENABLE
+    bool "SF30147 PMIC Controller"
     default n
     if PMIC_CTRL_ENABLE
         config PMICC_SCL_PIN
@@ -10,3 +12,5 @@ menuconfig PMIC_CTRL_ENABLE
         int "PMIC Controller SDA PIN"
         default 44
     endif
+
+endmenu

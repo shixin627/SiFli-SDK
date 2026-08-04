@@ -26,7 +26,7 @@
 * "默认情况下已经打开了所需的配置
 
 ```c
-menuconfig --board=board_name
+sdk.py menuconfig --board=board_name
 ```
 1. 使能低功耗模式
 - 路径：Sifli middleware 

@@ -1,7 +1,15 @@
+/*
+ * SPDX-FileCopyrightText: 2021-2021 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "bsp_board.h"
 #include <stdint.h>
 
-extern void *rt_flash_get_handle_by_addr(uint32_t addr);
+#ifdef BSP_USING_RTTHREAD
+    extern void *rt_flash_get_handle_by_addr(uint32_t addr);
+#endif
 
 void BSP_GPIO_Set(int pin, int val, int is_porta)
 {
@@ -99,7 +107,11 @@ void BSP_Power_Up(bool is_deep_sleep)
 #endif /* BSP_USING_PSRAM1 */
 #ifdef BSP_USING_NOR_FLASH2
         FLASH_HandleTypeDef *flash_handle;
+#ifdef BSP_USING_RTTHREAD
         flash_handle = (FLASH_HandleTypeDef *)rt_flash_get_handle_by_addr(MPI2_MEM_BASE);
+#else
+        flash_handle = (FLASH_HandleTypeDef *)BSP_Flash_get_handle(MPI2_MEM_BASE);
+#endif
         HAL_FLASH_RELEASE_DPD(flash_handle);
         HAL_Delay_us(80);
 #endif
@@ -120,7 +132,11 @@ void BSP_IO_Power_Down(int coreid, bool is_deep_sleep)
 #endif /* BSP_USING_PSRAM1 */
 #ifdef BSP_USING_NOR_FLASH2
         FLASH_HandleTypeDef *flash_handle;
+#ifdef BSP_USING_RTTHREAD
         flash_handle = (FLASH_HandleTypeDef *)rt_flash_get_handle_by_addr(MPI2_MEM_BASE);
+#else
+        flash_handle = (FLASH_HandleTypeDef *)BSP_Flash_get_handle(MPI2_MEM_BASE);
+#endif
         HAL_FLASH_DEEP_PWRDOWN(flash_handle);
         HAL_Delay_us(3);
 #endif

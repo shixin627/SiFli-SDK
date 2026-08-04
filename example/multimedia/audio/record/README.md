@@ -13,8 +13,8 @@
 ## 概述
 <!-- 例程简介 -->
 本例程演示基于audio manager进行录音和播放，包含：
-+ 通过mic录音，pcm数据保存到文件。
-+ 读取录音文件并播放。
++ 通过mic录音，pcm数据保存到内存缓冲区。
++ 读取内存缓冲区中的录音数据并播放。
 
 
 ## 例程的使用
@@ -28,17 +28,11 @@
 
 ### menuconfig配置
 
-1. 本例程需要读写文件，所以需要用到文件系统，配置`FAT`文件系统：
-![RT_USING_DFS_ELMFAT](./assets/mc_fat.png)
-
-     ```{tip}
-     mnt_init 中mount root分区。
-     ```
-2. 使能AUDIO CODEC 和 AUDIO PROC：
+1. 使能AUDIO CODEC 和 AUDIO PROC：
 ![AUDIO CODEC & PROC](./assets/mc_audcodec_audprc.png)
-3. 使能AUDIO(`AUDIO`)：
+2. 使能AUDIO(`AUDIO`)：
 ![AUDIO](./assets/mc_audio.png)
-4. 使能AUDIO MANAGER.(`AUDIO_USING_MANAGER`)
+3. 使能AUDIO MANAGER.(`AUDIO_USING_MANAGER`)
 ![AUDIO_USING_MANAGER](./assets/mc_audio_manager.png)
 
 ### 编译和烧录
@@ -59,7 +53,7 @@
 ## 例程的预期结果
 <!-- 说明例程运行结果，比如哪几个灯会亮，会打印哪些log，以便用户判断例程是否正常运行，运行结果可以结合代码分步骤说明 -->
 例程启动后：
-开始录音十秒，录音完成后自动播放。预期录音成功并自动播放。
+开始录音5秒，录音完成后自动播放。预期录音成功并自动播放。
 
 
 ## 异常诊断

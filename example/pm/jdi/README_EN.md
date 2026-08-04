@@ -61,7 +61,7 @@ Note: Physical pin 25 of the JDI screen adapter board needs to be connected to t
 * The required configurations are enabled by default
 
 ```c
-menuconfig --board=board_name
+sdk.py menuconfig --board=board_name
 ```
 
 1. Enable low power mode

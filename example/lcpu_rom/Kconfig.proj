@@ -1,0 +1,12 @@
+config CUSTOM_MEM_MAP
+    bool 
+	select custom_mem_map
+	default y    
+
+config ROM_ATTR
+    bool 
+	default y
+
+config LCPU_INIT_ON_ROM    
+    bool
+    default y

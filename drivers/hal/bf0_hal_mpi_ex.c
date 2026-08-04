@@ -23,9 +23,30 @@
 #include "flash_table.h"
 
 #define DBG_FOR_FLASH_ID        (0)
+
+#if defined(CFG_FACTORY_DEBUG)
+#undef  DBG_FOR_FLASH_ID
+#define DBG_FOR_FLASH_ID        (1)
+__weak void debug_print(char *str)
+{
+}
+__weak uint8_t *htoa(uint8_t *p, uint32_t d)
+{
+    return p;
+}
+#endif //defined(CFG_FACTORY_DEBUG)
+
 #if DBG_FOR_FLASH_ID
 #define DEBUG_UART_EN       0
 #define DEBUG_JLINK         0
+
+#if defined(CFG_FACTORY_DEBUG)
+    #undef  DEBUG_UART_EN
+    #define DEBUG_UART_EN      (0)
+    #undef  DEBUG_JLINK
+    #define DEBUG_JLINK        (1)
+#endif
+
 #if DEBUG_JLINK
 extern void debug_print(char *str);
 extern uint8_t *htoa(uint8_t *p, uint32_t d);
@@ -83,7 +104,7 @@ static inline int HAL_IS_ID_VALID(uint32_t mid)
     return 1;
 }
 
-int nand_clear_status(FLASH_HandleTypeDef *handle);
+int nand_clear_status(FLASH_HandleTypeDef *handle, uint8_t fid);
 
 __HAL_ROM_USED HAL_StatusTypeDef HAL_FLASH_Init(QSPI_FLASH_CTX_T *ctx, qspi_configure_t *cfg,
         DMA_HandleTypeDef *dma, struct dma_config *dma_cfg, uint16_t clk_div)
@@ -157,6 +178,11 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_FLASH_Init(QSPI_FLASH_CTX_T *ctx, qspi_conf
             HAL_FLASH_RELEASE_DPD(hflash);
             HAL_Delay_us(0);
             HAL_Delay_us(50);   // change to 50us to meet boya request, others with 8,20, 30 us can be cover
+
+#ifdef HAL_BOOTROM
+            /* reset flash to exit 4byte address mode */
+            HAL_QSPIEX_FLASH_RESET(hflash);
+#endif /* HAL_BOOTROM */
         }
     }
 #ifdef HAL_USE_NAND
@@ -173,7 +199,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_FLASH_Init(QSPI_FLASH_CTX_T *ctx, qspi_conf
 #endif
     // get device id, then get table,
     if (HAL_IS_ID_VALID(mid) == 0)
-        ctx->dev_id = HAL_QSPI_READ_ID(hflash);
+        ctx->dev_id = HAL_QSPI_READ_ID(hflash);  /* for nand: read without dummy cycle and address  */
     else
         ctx->dev_id = mid;
 
@@ -194,6 +220,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_FLASH_Init(QSPI_FLASH_CTX_T *ctx, qspi_conf
 #ifdef HAL_USE_NAND
         if (hflash->isNand) // for nand, try another timing to read id
         {
+            /* read with 8 dummy cycle and no address */
             ctx->dev_id = nand_read_id(hflash, 8);
             fid = (uint8_t)ctx->dev_id & 0xff;
             mtype = (uint8_t)((ctx->dev_id >> 8) & 0xff);
@@ -202,6 +229,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_FLASH_Init(QSPI_FLASH_CTX_T *ctx, qspi_conf
             hflash->ctable = spi_nand_get_cmd_by_id(fid, did, mtype);
             if (hflash->ctable == NULL)   // try to output fix level or addr for dummy bits
             {
+                /* read with no dummy cycle and address=0  */
                 ctx->dev_id = nand_read_id(hflash, 0xf);
                 fid = (uint8_t)ctx->dev_id & 0xff;
                 mtype = (uint8_t)((ctx->dev_id >> 8) & 0xff);
@@ -224,6 +252,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_FLASH_Init(QSPI_FLASH_CTX_T *ctx, qspi_conf
             return HAL_ERROR;
         }
     }
+    //TODO: for ROM??
 #ifdef HAL_USE_NAND
     if (hflash->isNand)
     {
@@ -256,7 +285,9 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_FLASH_Init(QSPI_FLASH_CTX_T *ctx, qspi_conf
     {
         if (HAL_IS_ID_VALID(mid) == 0)
         {
+#ifndef HAL_BOOTROM
             HAL_FLASH_CLR_PROTECT(hflash);
+#endif /* !HAL_BOOTROM */
             //HAL_Delay_us(30);
             if (hflash->size > NOR_FLASH_MAX_3B_SIZE)
             {
@@ -344,7 +375,9 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_FLASH_Init(QSPI_FLASH_CTX_T *ctx, qspi_conf
         }
         while (sta & 0x1);    // busy/iop
 
-        nand_clear_status(hflash);
+#ifndef HAL_BOOTROM
+        nand_clear_status(hflash, fid);
+#endif /* HAL_BOOTROM */
         if (hflash->Mode == HAL_FLASH_QMODE)    // ONLY qspi need switch QE
         {
             HAL_NAND_EN_QUAL(hflash, 1);
@@ -453,6 +486,21 @@ __HAL_ROM_USED void HAL_FLASH_NONCE_CFG(FLASH_HandleTypeDef *fhandle, uint32_t s
     HAL_FLASH_SET_CTR(fhandle, start, end);
 }
 
+#ifdef MPI_CTRSAR2_SA
+__HAL_ROM_USED void HAL_FLASH_NONCE_CFG2(FLASH_HandleTypeDef *fhandle, uint32_t start, uint32_t end, uint8_t *nonce)
+{
+    if (fhandle == NULL || nonce == NULL)
+        return;
+    HAL_FLASH_SET_NONCE2(fhandle, nonce);
+
+    // for pro, start/end should set to relative address
+    if (start >= fhandle->base)
+        start -= fhandle->base;
+    if (end >= fhandle->base)
+        end -= fhandle->base;
+    HAL_FLASH_SET_CTR2(fhandle, start, end);
+}
+#endif
 
 __HAL_ROM_USED void HAL_FLASH_AES_CFG(FLASH_HandleTypeDef *fhandle, uint8_t aes256)
 {
@@ -751,7 +799,7 @@ int HAL_NAND_CHECK_ECC(NAND_ECC_MODE_T mode, int value, uint32_t *errcode)
 
 __HAL_ROM_USED int HAL_NAND_GET_ECC_RESULT(FLASH_HandleTypeDef *handle)
 {
-    int sta, res, valid;
+    int sta, res;
     NAND_ECC_MODE_T ecc_res_mode = 0;
 
     if (handle->ecc_en == 0)
@@ -888,7 +936,8 @@ __HAL_ROM_USED int HAL_NAND_READ_WITHOOB(FLASH_HandleTypeDef *handle, uint32_t a
             }
             else if (dbuff != NULL)
             {
-#if (NAND_BUF_CPY_MODE == 0)    // memcpy
+//TODO:
+#if ((NAND_BUF_CPY_MODE == 0) || !defined(EXTDMA_BASE))   // memcpy
                 memcpy(dbuff, (const void *)(cache_base + offset), dlen);
 
 #elif (NAND_BUF_CPY_MODE == 1)  // ext-dma
@@ -1496,17 +1545,21 @@ __HAL_ROM_USED int HAL_NAND_EN_QUAL(FLASH_HandleTypeDef *handle, uint8_t en)
 }
 
 
-__HAL_ROM_USED int nand_clear_status(FLASH_HandleTypeDef *handle)
+__HAL_ROM_USED int nand_clear_status(FLASH_HandleTypeDef *handle, uint8_t fid)
 {
     uint32_t status;
 
     status = 0;
     HAL_FLASH_WRITE_DLEN(handle, 1);
-#ifdef HYF_SPECIAL_SUPPORT
-    // for some HYF chips, need set 2 before clear protect, others no this request
-    HAL_FLASH_WRITE_WORD(handle, 2);
-    HAL_FLASH_ISSUE_CMD(handle, SPI_FLASH_CMD_WRSR, handle->ctable->protect_reg);
-#endif
+
+    if ((0xC9U == fid) || (0x01U == fid))
+    {
+        // for some HYF chips, need set 2 before clear protect, others no this request
+        // for winbond W25N01GW, there must be a delay(e.g. 100ms) before setting WP-E bit if SPI_FLASH_CMD_4READ has already been sent before,
+        // otherwise, the data read operation may fail afterwards.
+        HAL_FLASH_WRITE_WORD(handle, 2);
+        HAL_FLASH_ISSUE_CMD(handle, SPI_FLASH_CMD_WRSR, handle->ctable->protect_reg);
+    }
     HAL_FLASH_WRITE_WORD(handle, 0);
     HAL_FLASH_ISSUE_CMD(handle, SPI_FLASH_CMD_WRSR, handle->ctable->protect_reg);
     //HAL_FLASH_WRITE_WORD(handle, 0);
@@ -2425,16 +2478,29 @@ __HAL_ROM_USED int HAL_QSPIEX_FLASH_ERASE(FLASH_HandleTypeDef *hflash, uint32_t 
 
 __HAL_ROM_USED void HAL_QSPIEX_FLASH_RESET(FLASH_HandleTypeDef *hflash)
 {
-    if (hflash == NULL)
-        return ;
+    uint32_t boot_opt;
+    uint32_t delay;
 
+    boot_opt = HAL_Get_backup(RTC_BACKUP_BOOTOPT);
+    delay = GET_REG_VAL2(boot_opt, RTC_BACKUP_BOOTOPT_NOR_RESET_DELAY);
+
+    if ((hflash == NULL) || (0 == delay))
+    {
+        return ;
+    }
+
+    // send RST_EN
     HAL_FLASH_MANUAL_CMD(hflash, 0, 0, 0, 0, 0, 0, 0, 1);
     HAL_FLASH_SET_CMD(hflash, 0x66, 0);
 
-    HAL_Delay_us(300);
-    // add a delay?
+    HAL_Delay_us(100);
+
+    // send RST
     HAL_FLASH_MANUAL_CMD(hflash, 0, 0, 0, 0, 0, 0, 0, 1);
     HAL_FLASH_SET_CMD(hflash, 0x99, 0);
+
+    /* although some flash need max 12ms to recover from erase, we don't consider this case */
+    HAL_Delay_us(delay * 100);    // delay 500us
 
     return ;
 }

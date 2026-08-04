@@ -20,8 +20,9 @@ if GetDepend(['RT_USING_HWTIMER']):
     src += ['drv_hwtimer.c']
 
 if GetDepend(['RT_USING_PWM']):
-    src += ['drv_pwm.c']
+    src += ['drv_pwm_tim.c']
     src += ['drv_pwm_lptim.c']
+    src += ['drv_pwm.c']
 if GetDepend(['BSP_USING_RGBLED']):
     src += ['drv_rgbled.c']
 if GetDepend(['RT_USING_SPI']):
@@ -54,23 +55,25 @@ if GetDepend(['BSP_USING_COMP']):
 if GetDepend(['RT_USING_CAN']):
     src += ['drv_can.c']
 
-if GetDepend('BSP_USING_ONCHIP_RTC'):
-    src += ['drv_rtc.c']
 
 if GetDepend(['BSP_USING_SPI_FLASH']):
     src += ['drv_spi_flash.c']
     src += ['drv_spi_nand.c']
+
+if GetDepend(['BSP_USING_SD_LINE']):
+    src += ['drv_sdio.c']
+
 if GetDepend(['BSP_USING_SPI_FLASH']) or GetDepend(['BSP_USING_SYS_CFG']):    
     src += ['drv_sys_cfg.c']
+
+if GetDepend('BSP_USING_ONCHIP_RTC'):
+    src += ['drv_rtc.c']
 
 if GetDepend(['BSP_USING_EXT_DMA']):
     src += ['drv_ext_dma.c']
 
 if GetDepend(['BSP_USING_WDT']):
     src += ['drv_wdt.c']
-
-if GetDepend(['BSP_USING_SD_LINE']):
-    src += ['drv_sdio.c']
 
 if GetDepend(['BSP_USING_SDHCI']):
     src += ['drv_sdhci.c']
@@ -86,7 +89,7 @@ if GetDepend(['BSP_ENABLE_AUD_PRC']):
     src += ['drv_audprc.c']
 
 if GetDepend(['BSP_ENABLE_AUD_CODEC']):
-    if GetDepend('SOC_SF32LB52X'):
+    if GetDepend('SOC_SF32LB52X') or GetDepend('SOC_SF32LB57X'):
         src += ['drv_audcodec_m.c']
     else:
         src += ['drv_audcodec.c']
@@ -107,13 +110,21 @@ if GetDepend(['BSP_USING_EPIC']):
     if not GetDepend(['RT_USING_MESSAGEQUEUE']):
         print("Warning: EPIC driver requrie RT_USING_MESSAGEQUEUE!")
     else:
-        src += ['drv_epic.c', 'drv_epic_mask.c']
+        if GetDepend(['DRV_EPIC_NEW_API_DUAL_CORE_ACPU']):
+            src += ['drv_epic_mask.c','drv_epic_rl_draw.c','drv_epic_rl_ll.c','drv_epic_rl_com.c']
+        else:
+            if GetDepend(['DRV_EPIC_NEW_API_DUAL_CORE_HCPU']):
+                src += ['drv_epic.c','drv_epic_rl_mng.c','drv_epic_rl_com.c']
+            else:
+                src += ['drv_epic.c']
+                if GetDepend(['DRV_EPIC_NEW_API']):
+                    src += ['drv_epic_rl_com.c', 'drv_epic_mask.c','drv_epic_rl_mng.c','drv_epic_rl_ll.c','drv_epic_rl_draw.c']
+                else:
+                    src += ['drv_epic_single.c']
 
 if GetDepend(['USING_VGLITE']):
         src += ['drv_vglite.c']
 
-if GetDepend(['RT_USING_BT']):
-    src += ['drv_bt.c']
 
 #if GetDepend(['ENABLE_SOLUTON_BT_INTERFACE']):
    #src += ['drv_bt.c']	
@@ -137,10 +148,14 @@ if GetDepend(['BSP_USING_HW_AES']):
 if GetDepend(['BSP_USING_ENCODER']):
     src += ['drv_encoder.c']
 
+if GetDepend(['BSP_USING_DCMI']):
+    src += ['drv_dcmi.c']
+
+
 if GetDepend(['BSP_USING_SWITCH_MPI2_SDIO']):
     src += ['drv_switch_mpi2_sdio.c']
 
-src += ['drv_common.c','drv_dbg.c']
+src += ['drv_common.c','drv_dbg.c','drv_epictl.c']
 path =  [cwd]
 
 group = DefineGroup('Drivers', src, depend = [''], CPPPATH = path)

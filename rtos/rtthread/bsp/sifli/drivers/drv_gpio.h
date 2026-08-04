@@ -22,7 +22,7 @@
  */
 #define GET_PIN(GPIOx,PIN)  ((GPIOx != 0) ? ((__GPIO_INSTANCE(GPIOx) == GPIO2_BASE) ? (GPIO1_PIN_NUM + (PIN)) : (PIN)) : (GPIO1_PIN_NUM + GPIO2_PIN_NUM + (PIN)))
 
-#ifdef hwp_pbr
+#ifdef PAD_PBR_PRESENT
     /** get driver pin id by instance id and its pin id
     *
     * e.g. GET_PIN_2(hwp_gpio1, 0) for GPIO1 pin0 -->  driver pin id is 0
@@ -46,7 +46,7 @@
     #define GET_GPIO_INSTANCE(PIN)  ((PIN) >= GPIO1_PIN_NUM ? hwp_gpio2 : hwp_gpio1)
 
     #define GET_GPIOx_PIN(PIN) ((PIN) >= GPIO1_PIN_NUM ? (PIN) - GPIO1_PIN_NUM : (PIN))
-#endif /* hwp_pbr */
+#endif /* PAD_PBR_PRESENT */
 
 int rt_hw_pin_init(void);
 

@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /*********************
  *      INCLUDES
  *********************/
@@ -17,7 +22,6 @@
 #include "lv_ext_resource_manager.h"
 #include "cell_transform.h"
 #include "log.h"
-// #include "custom_trans_anim.h"
 
 
 LV_IMG_DECLARE(human1);
@@ -1164,7 +1168,7 @@ static void app_mainmenu_read_app_icons(lv_obj_t *page)
         while (1)
         {
             //Fix 1st icon for clock
-            p_builtin_app = gui_script_app_list_get_next(p_builtin_app);
+            p_builtin_app = gui_script_app_list_get_next(p_builtin_app, 1);
             if (p_builtin_app == NULL)
                 break;
             idx = reorder_clock_icon(idx, clock_idx, p_builtin_app, page);
@@ -1492,52 +1496,8 @@ static app_mainmenu_item_t *new_app_item(char *name, const lv_img_dsc_t *icon, c
 
     return item;
 }
-#ifdef APP_TRANS_ANIMATION_SCALE
-    // #define MM_CUST_TRAN_ANIMATION
-#endif /* APP_TRANS_ANIMATION_SCALE */
-
-#ifdef MM_CUST_TRAN_ANIMATION
 
 
-static CUST_ANIM_TYPE_E cust_anim_type = CUST_ANIM_TYPE_0;
-static void mm_trans_anim_init(void)
-{
-    //cust_anim_type = CUST_ANIM_TYPE_3; //Fix trans animation
-    cust_trans_anim_config(cust_anim_type++, NULL);
-//Avoid animation crash
-#if (LV_HOR_RES_MAX > 512)||(LV_VER_RES_MAX > 512)
-    if (cust_anim_type == CUST_ANIM_TYPE_3)  cust_anim_type++;
-#endif
-
-    if (cust_anim_type >= CUST_ANIM_TYPE_MAX) cust_anim_type = CUST_ANIM_TYPE_0;
-}
-
-
-#else
-static void mm_trans_anim_init(void)
-{
-    gui_app_trans_anim_t enter_anim_cfg, exit_anim_cfg;
-
-    gui_app_trans_anim_init_cfg(&enter_anim_cfg, GUI_APP_TRANS_ANIM_ZOOM_OUT);
-    gui_app_trans_anim_init_cfg(&exit_anim_cfg, GUI_APP_TRANS_ANIM_ZOOM_IN);
-
-
-    enter_anim_cfg.cfg.zoom.zoom_start = LV_IMG_ZOOM_NONE >> 2;
-    enter_anim_cfg.cfg.zoom.zoom_end = LV_IMG_ZOOM_NONE;
-    enter_anim_cfg.cfg.zoom.opa_start = LV_OPA_0;
-    enter_anim_cfg.cfg.zoom.opa_end = LV_OPA_COVER;
-
-    exit_anim_cfg.cfg.zoom.zoom_start = LV_IMG_ZOOM_NONE;
-    exit_anim_cfg.cfg.zoom.zoom_end = LV_IMG_ZOOM_NONE << 2;
-    exit_anim_cfg.cfg.zoom.opa_start = LV_OPA_COVER;
-    exit_anim_cfg.cfg.zoom.opa_end = LV_OPA_0;
-
-
-    gui_app_set_enter_trans_anim(&enter_anim_cfg);
-    gui_app_set_exit_trans_anim(&exit_anim_cfg);
-
-}
-#endif /* MM_CUST_TRAN_ANIMATION */
 static void on_start(void)
 {
     uint16_t max_icons;
@@ -1585,7 +1545,6 @@ static void on_resume(void)
 }
 static void on_pause(void)
 {
-    mm_trans_anim_init();
 #ifdef AUTO_CIRCLE_ANIM
     lv_anim_del(app_mainmenu_ctx.pg_obj, app_mainmenu_auto_circle);
 #endif
@@ -1645,6 +1604,7 @@ static int app_mainmenu(intent_t i)
 
 
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(mainmenu), NULL, APP_ID, app_mainmenu);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(mainmenu), NULL, APP_ID, app_mainmenu, 1);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(mainmenu), NULL, APP_ID, app_mainmenu, 2);
 
 

@@ -32,44 +32,56 @@ extern "C" {
 #define HAL_MODULE_ENABLED
 #define HAL_PINMUX_MODULE_ENABLED
 #define HAL_PMU_MODULE_ENABLED
+#ifdef PTC2_BASE
 #define HAL_PTC_ENABLED
+#endif /* PTC2_BASE */
 #define HAL_RCC_MODULE_ENABLED
 #define HAL_SPI_MODULE_ENABLED
 #define HAL_UART_MODULE_ENABLED
 #define HAL_WDT_MODULE_ENABLED
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
+//TODO: Enable secu module in 57x
+#if !defined(SF32LB57X)
 #define HAL_SECU_MODULE_ENABLED
+#endif /* !SF32LB57X */
+
 #else
 #define HAL_ADC_MODULE_ENABLED
+
 #define HAL_BUSMON_MODULE_ENABLED
+
 #define HAL_I2S_MODULE_ENABLED
 #define HAL_RTC_MODULE_ENABLED
 #define HAL_TSEN_MODULE_ENABLED
-#endif/* SF32LB52X */
+#endif/* SF32LB52X || SF32LB57X*/
 
 #ifdef SF32LB55X
 #define HAL_QSPI_MODULE_ENABLED
 #else
+
+#ifndef SF32LB57X
 #define HAL_CACHE_MODULE_ENABLED
+#endif /* !SF32LB57X */
+
 #define HAL_CRC_MODULE_ENABLED
 #define HAL_MPI_MODULE_ENABLED
 #endif /* SF32LB55X */
 
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
 #define HAL_SYSTEM_CONFIG_ENABLED
-#endif
+#endif /* !SF32LB52X && !SF32LB57X */
 
 #ifdef SF32LB58X
 #define HAL_FACC_MODULE_ENABLED
 #define HAL_FFT_MODULE_ENABLED
 #define HAL_NNACC_MODULE_ENABLED
-#endif
+#endif /* SF32LB58X */
 
 #if defined(SF32LB55X) || defined(SF32LB58X)
 #define HAL_LCD_MODULE_ENABLED
 #define HAL_SDADC_MODULE_ENABLED
-#endif
+#endif /* SF32LB55X || SF32LB58X */
 
 
 #if defined(SF32LB56X) || defined(SF32LB58X)
@@ -77,7 +89,7 @@ extern "C" {
 #if defined(__CC_ARM) || defined(__CLANG_ARM) || (defined(__GNUC__) && (__GNUC__ > 9))
 #define HAL_MATH_MODULE_ENABLED
 #endif /* defined(__CC_ARM) || defined(__CLANG_ARM) || (defined(__GNUC__) && (__GNUC__ > 9)) */
-#endif
+#endif /* SF32LB56X || SF32LB58X */
 
 /* ########################## HSE/HSI Values adaptation ##################### */
 /**
