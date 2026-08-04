@@ -1,4 +1,4 @@
-loadbin "C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu\build\jsroot_packed.bin" 0x64400000
+loadbin "C:\skaiwalk\SiFli-SDK\example\get-started\dualcore\project\hcpu\build\jsroot_packed.bin" 0x64280000
 r
 g
 exit

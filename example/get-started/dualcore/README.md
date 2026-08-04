@@ -36,6 +36,27 @@ scons --board=sf32lb52-lcd_n16r8 -j32
 
 在HCPU工程目录下执行`scons`命令会自动编译LCPU的工程，下载脚本会下载包括小核在内的所有的固件。
 
+### 图片/字库资源（jsroot）
+
+资源来源目录 `project/jsroot`（图片 + 字库），打包成 FAT 映像后单独刷入。
+
+**关键参数：资源分区起始位址 = `0x64280000`**（= `FS_REGION_START_ADDR`，见 `ptab.json`）。
+所有刷 jsroot 的脚本都必须用这个位址；旧文档里的 `0x64400000` 是错的。
+
+产生映像（ADR-0010 Route B：GC + strip，约 5.5 MB，FAT 格式化为整个 87.5 MB 分区）：
+
+```
+project\hcpu\jsroot_pack.bat        REM → project\hcpu\build\jsroot_packed.bin
+```
+
+刷入方式二选一：
+
+1. **UART（推荐）**：跑 `project\hcpu\release_gui.py`，按「刷入圖片資源」。
+   内部用 `tools\uart_download\ImgDownUart.exe` 把 `build\jsroot_packed.bin` 烧到 `0x64280000`。
+2. **JLink**：`jlink.exe -device SF32LB56X_NAND -if SWD -speed 10000 -autoconnect 1 -CommandFile tools\mkfatimg\mkfatimg_nand\_pack_flash.jlink`
+
+`project\hcpu\jsroot.bat` 是旧的 8 MB 流程（产生 `jsroot.bin` 并直接用 JLink 烧录），已被 `jsroot_pack.bat` 取代。
+
 ### 代码解析
 #### 编译脚本
 由于用到了小核，需要在`project/hcpu/SConstruct`增加如下代码将小核工程编译进来，对于`SF32LB52X`，由于小核为蓝牙专用，不能使用自定义工程，所以直接使用命令`AddLCPU`添加小核的公共工程，
