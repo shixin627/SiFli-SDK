@@ -735,5 +735,5 @@ uint8_t app_message_get_app_index(void)
 }
 
 BUILTIN_APP_EXPORT(LV_EXT_STR_ID(message), IMG_MAIL, APP_ID_MESSAGE,
-                   app_message_main);
+                   app_message_main, 1);
 #endif

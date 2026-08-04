@@ -59,6 +59,78 @@ project\hcpu\jsroot_pack.bat        REM → project\hcpu\build\jsroot_packed.bin
 
 `project\hcpu\jsroot.bat` 是旧的 8 MB 流程（产生 `jsroot.bin` 并直接用 JLink 烧录），已被 `jsroot_pack.bat` 取代。
 
+### 内存/分区配置（ptab.json）
+
+分区表：`customer/boards/sf32lb56-watch/ptab.json`。两块内存各有一个 `main` 区，
+必须同时改，改一个不改另一个会在链接期或启动期出问题。
+
+| mem | region | offset | max_size | 用途 |
+| --- | --- | --- | --- | --- |
+| psram1 | `main` | 0x00000000 | 0x00280000 | 代码执行区 |
+| psram1 | (PSRAM_DATA) | 0x00280000 | 0x00580000 | 图片缓存等运行期数据 |
+| flash3 | `main` | 0x00000000 | 0x00280000 | HCPU_FLASH_CODE_LOAD_REGION |
+| flash3 | (FS_REGION) | 0x00280000 | 0x05780000 | 文件系统 + jsroot 资源 |
+
+代码区上限 `0x280000` = 2,621,440 byte。参考占用：
+
+| 固件 | main.bin | 余量 |
+| --- | --- | --- |
+| 基线 | 2,389,600 | 231,840（8.8%）|
+| 合并上游后 | 2,509,472 | 111,968（4.3%）|
+| 合并后 + `RT_USING_FINSH` | 2,603,120 | 18,320（0.7%）|
+
+链接超出时的报错是 `Error: L6406E: No space in execution regions`，不会指出是分区不够，
+只会列一堆放不下的 symbol，容易误判成代码问题。
+
+**扩充步骤**（以 0x280000 → 0x300000，即 +512 KB 为例）：
+
+1. `ptab.json`：psram1 `main` 与 flash3 `main` 的 `max_size` 同时改成 `0x00300000`。
+2. `ptab.json`：PSRAM_DATA 的 `offset` 改 `0x00300000`、`max_size` 减 512 KB（`0x00500000`）；
+   FS_REGION 的 `offset` 改 `0x00300000`、`max_size` 减 512 KB（`0x05700000`）。
+3. FS_REGION 起始位址跟着变，**jsroot 的刷入位址必须同步改**（`0x64280000` → `0x64300000`），
+   共三处硬编码：`project/hcpu/jsroot.bat`、`project/hcpu/jsroot_pack.bat`、
+   `project/hcpu/release_gui.py` 的 `JSROOT_FLASH_ADDRESS`。
+4. 改完必须 **clean build**（删掉 `build_<board>_hcpu` 目录），分区改动不会触发增量重建。
+5. 分区一变，设备上原有的文件系统与 jsroot 都会错位，**必须重刷 jsroot**。
+
+代价是 PSRAM 运行期数据少 512 KB，与 `CONFIG_IMAGE_CACHE_IN_PSRAM_SIZE` 抢空间，改完要回归图片相关功能。
+
+### 烧录
+
+下载脚本会按提示要 COM 口编号，可以直接用管道喂进去，不需要人工输入：
+
+```
+echo <port> | build_sf32lb56-watch_hcpu\uart_download.bat
+```
+
+`<port>` 只填数字（COM4 就填 `4`）。在 PowerShell 里跑要写成
+`echo 4 | cmd /c ".\uart_download.bat"`，少了 `.\` 会报「不是内部或外部命令」。
+
+**端口分两个，别接错**：一个是固件日志口（HCPU console，`uart1`），另一个是 boot ROM
+下载口，`uart_download.bat` 用的是后者。两个口在不同机器上编号不同，插上后用
+设备管理器或 `python -c "import serial.tools.list_ports as l;[print(p.device,p.description) for p in l.comports()]"` 确认。
+
+第一次下载偶尔会卡在 `EnterDebugMode` 或 `WriteMem` 失败，立即重跑一次通常就过。
+文件系统（含 jsroot）不会被这个脚本擦掉。
+
+### 调试用固件（带 shell）
+
+发布配置没有串口 shell，`uart1` 上只有 Warning 以上的日志，平时是安静的——
+静默不代表接线有问题。要用串口下命令，改 `project/hcpu/proj.conf`：
+
+```
+CONFIG_RT_USING_FINSH=y
+# CONFIG_BSP_USING_VIRTUAL_CONSOLE is not set
+```
+
+虚拟控制台会占住 `uart1`，必须一起关掉。这样能拿到 `msh />`，可用 `app_run <id>` /
+`app_exit <id>` / `list_app` 驱动应用切换（共 435 条内建命令）。
+
+`project/hcpu/set_build_mode.py dev` 是完整的 DEV 档，但它同时会改
+`CUSTOMER_BOARD_VER`（BOARD_VER_29 → 28）与 LCPU 的传感器电源脚位，板型不符会开不了机；
+只想要 shell 的话按上面两行手改，不要动硬件值。另外完整 DEV 档还会关掉
+`ULOG_OUTPUT_LVL_W`（保留所有 D/I 字符串），在当前占用下会直接超出代码区。
+
 ### 代码解析
 #### 编译脚本
 由于用到了小核，需要在`project/hcpu/SConstruct`增加如下代码将小核工程编译进来，对于`SF32LB52X`，由于小核为蓝牙专用，不能使用自定义工程，所以直接使用命令`AddLCPU`添加小核的公共工程，

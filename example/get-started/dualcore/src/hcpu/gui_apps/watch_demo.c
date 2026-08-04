@@ -877,7 +877,7 @@ void app_watch_entry(void *parameter)
     boot_open_freetype();
 #endif
     BOOT_TS("freetype_open_font");
-    gui_app_init();
+    gui_app_init(1);
     BOOT_TS("gui_app_init");
     ui_datac_init();
     app_message_data_init();

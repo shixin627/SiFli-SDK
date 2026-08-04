@@ -193,7 +193,7 @@ static void set_gesture_detect_hint_obj_opa(void *obj, uint8_t opa)
 static void left_bar_event_handler(lv_event_t *e)
 {
     #define x_2_process(x)                                                     \
-        ((x > 0) ? (x * MANUAL_TRAN_ANIM_MAX_PROCESS / LV_HOR_RES) : 0)
+        ((x > 0) ? (x * GUI_APP_TRANS_PROGRESS_MAX / LV_HOR_RES) : 0)
     lv_obj_t *obj = lv_event_get_target(e);
     lv_event_code_t event = lv_event_get_code(e);
 
@@ -211,7 +211,7 @@ static void left_bar_event_handler(lv_event_t *e)
 
         gui_app_manual_animation_start(x_2_process(obj->coords.x1));
     }
-    else if (code == LV_EVENT_PRESSING)
+    else if (event == LV_EVENT_PRESSING)
     {
         // drag_offset = LV_ABS(obj->coords.x1 - drag_offset);
         lv_indev_get_point(lv_indev_get_act(), &end_point);
@@ -281,7 +281,7 @@ static void left_bar_event_handler(lv_event_t *e)
         }
         // back_hint_hidden = true;
     }
-    else if ((code == LV_EVENT_RELEASED) || (code == LV_EVENT_PRESS_LOST))
+    else if ((event == LV_EVENT_RELEASED) || (event == LV_EVENT_PRESS_LOST))
     {
         // drag_offset = LV_ABS(obj->coords.x1 - drag_offset);
 

@@ -589,7 +589,7 @@ INIT_PREV_EXPORT(app_cache_memheap_init);
 
 int app_memheap_init(void)
 {
-    return app_cahe_memheap_init();
+    return app_cache_memheap_init();
 }
 
 void app_mem_check(void)

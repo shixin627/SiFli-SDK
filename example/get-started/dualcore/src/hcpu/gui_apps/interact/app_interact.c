@@ -505,6 +505,6 @@ static int app_main(intent_t i)
 }
 
 /* Export app to the system */
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(skaiwalk_demo), IMG_LOGO, APP_ID_INTERACT, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(skaiwalk_demo), IMG_LOGO, APP_ID_INTERACT, app_main, 1);
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

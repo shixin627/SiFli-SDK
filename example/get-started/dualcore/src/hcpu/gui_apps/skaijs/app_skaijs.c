@@ -153,6 +153,6 @@ static int app_main(intent_t i)
  * yet — a JS app is launched by its own name, not by opening a generic host —
  * so adding an .arb string just to fill the launcher would be a resource entry
  * with no reader. Give it its own string when JS apps get launcher tiles. */
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(skaiapp), IMG_LOGO, APP_ID_SKAIJS, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(skaiapp), IMG_LOGO, APP_ID_SKAIJS, app_main, 1);
 
 #endif /* APP_ID_SKAIJS */

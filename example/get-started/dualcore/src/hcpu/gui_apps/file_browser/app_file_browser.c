@@ -620,6 +620,6 @@ static int app_main(intent_t i)
     return 0;
 }
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(file_browser), IMG_LOGO, APP_ID_FILE_BROWSER, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(file_browser), IMG_LOGO, APP_ID_FILE_BROWSER, app_main, 1);
 #endif /* APP_ID_FILE_BROWSER */
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

@@ -1600,15 +1600,12 @@ static void on_start(lv_obj_t *scr)
     memset(p_app_setting, 0, sizeof(app_setting_t));
 
     app_setting_init(NULL);
-    gui_app_trans_anim_t enter_anim_cfg, exit_anim_cfg;
+    /* No transition animation for this page. The old GUI_APP_TRANS_ANIM_NONE
+       config struct is gone; LV_SWITCHANIM_NONE carries the same intent. */
+    gui_app_set_enter_anim_type(LV_SWITCHANIM_NONE, LV_SWITCHANIM_MINOR_DEFAULT, 0);
+    gui_app_set_exit_anim_type(LV_SWITCHANIM_NONE, LV_SWITCHANIM_MINOR_DEFAULT, 0);
 
-    gui_app_trans_anim_init_cfg(&enter_anim_cfg, GUI_APP_TRANS_ANIM_NONE);
-    gui_app_trans_anim_init_cfg(&exit_anim_cfg, GUI_APP_TRANS_ANIM_NONE);
-
-    gui_app_set_enter_trans_anim(&enter_anim_cfg);
-    gui_app_set_exit_trans_anim(&exit_anim_cfg);
-
-    gui_app_set_trans_anim_prio(1, -1);
+    gui_app_set_anim_prior(1, -1);
 }
 static void on_resume(void)
 {
@@ -1718,6 +1715,6 @@ static int app_main(intent_t i)
     return 0;
 }
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(setting), IMG_SETTINGS, APP_ID_SETTING, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(setting), IMG_SETTINGS, APP_ID_SETTING, app_main, 1);
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/
