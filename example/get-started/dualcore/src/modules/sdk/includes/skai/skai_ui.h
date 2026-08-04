@@ -22,10 +22,20 @@
 #include <stdint.h>
 #include "skai/skai_export.h"
 
-/* Concurrent widgets one app may hold. Small on purpose — a declarative page
- * is the right tool for anything bigger, and an unbounded table is a memory
- * quota with extra steps. */
-#define SKAI_UI_SLOTS 16
+/* Concurrent widgets one app may hold. Bounded on purpose — an unbounded table
+ * is a memory quota with extra steps — but 16 was too small to be honest: the
+ * weather reproduction spends 13 on ONE page and its second page needs ~25
+ * more, so pages would arrive dead. Three pointer tables, so the cost of the
+ * raise is 48 x 3 x 4 = 576 bytes against a JS heap measured in tens of KB.
+ * (40 -> 48 because the daily page's rain figures and row separators put the
+ * weather reproduction at 42 in the worst case.) */
+#define SKAI_UI_SLOTS 48
+
+/* Full-screen pages an app may declare. The host owns the swipe, the snap and
+ * the scrollbar; an app names a page index and never touches a scroll offset,
+ * a gesture or an LVGL object — which is what keeps this on the right side of
+ * ADR-0019 decision 9. */
+#define SKAI_UI_PAGES 4
 
 /* Create a text line. Returns a widget id (>0), or 0 on failure. */
 SKAI_EXPORT("ui.label", SKAI_T1, SKAI_THREAD_LVGL)
@@ -47,6 +57,23 @@ int32_t skai_ui_button(const char *text);
  * enormous starves itself rather than the watch. */
 SKAI_EXPORT("ui.image", SKAI_T1, SKAI_THREAD_LVGL)
 int32_t skai_ui_image(const char *rel_path);
+
+/* A firmware-owned icon, addressed by name from a closed set — the system's
+ * glyphs, where ui.image is the app's own assets.
+ *
+ * The app supplies a string and never pixels, a path or a decoder, so this
+ * grants strictly less than ui.image does. A name that is not in the set draws
+ * nothing and returns 0, which is also what makes it safe to ship an app that
+ * asks for an icon a older firmware does not have yet. */
+SKAI_EXPORT("ui.icon", SKAI_T1, SKAI_THREAD_LVGL)
+int32_t skai_ui_icon(const char *name);
+
+/* Repoint an existing icon at another name from the same closed set. The
+ * counterpart to ui.set_text, and just as load-bearing: without it a screen
+ * that refreshes can update its words but never its pictures, so an app that
+ * redraws on a data push has to delete and rebuild everything. */
+SKAI_EXPORT("ui.set_icon", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_set_icon(int32_t id, const char *name);
 
 /* Horizontal group. Widgets created after it land inside until ui.end(). */
 SKAI_EXPORT("ui.row", SKAI_T1, SKAI_THREAD_LVGL)
@@ -87,6 +114,24 @@ bool skai_ui_set_size(int32_t id, int32_t w, int32_t h);
 SKAI_EXPORT("ui.align", SKAI_T1, SKAI_THREAD_LVGL)
 bool skai_ui_align(int32_t id, const char *anchor, int32_t dx, int32_t dy);
 
+/* Place a widget relative to ANOTHER widget, which is how every built-in screen
+ * is actually laid out.
+ *
+ * `side` is one of: below, above, left, right, center — each meaning "outside
+ * that edge of `ref`, centred on the other axis" — plus below_left, which is
+ * "under it, left edges flush" and is what a rule drawn beneath a short label
+ * needs. Six of lv_obj_align_to's twelve OUT_* anchors, chosen because they are
+ * the ones the built-in screens actually use. `dx`/`dy` offset from there.
+ *
+ * Why this earns its place next to ui.align: without it a reproduction has to
+ * precompute every y from font metrics and icon heights, so the layout is
+ * correct for exactly one font size and one icon set and silently drifts the
+ * moment either changes. It still takes two opaque slot ids and one name from
+ * the closed set above — no LVGL object, no style, no coordinate system. */
+SKAI_EXPORT("ui.align_to", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_align_to(int32_t id, int32_t ref_id, const char *side,
+                      int32_t dx, int32_t dy);
+
 /* A grid of keys as ONE widget, laid out from a map: keys separated by spaces,
  * rows by "\n" — e.g. "7 8 9 +\n4 5 6 -\n1 2 3 x\n  0 . /".
  *
@@ -121,6 +166,21 @@ bool skai_ui_set_arc(int32_t id, int32_t percent);
 /* Delete every widget this app created. */
 SKAI_EXPORT("ui.clear", SKAI_T1, SKAI_THREAD_LVGL)
 bool skai_ui_clear(void);
+
+/* ── pages ──
+ * Start a new full-screen page and make it the target for everything created
+ * afterwards. Returns its index (>0; page 0 always exists and is where an app
+ * starts), or 0 when the budget is spent.
+ *
+ * Pages stack vertically and the user swipes between them, which is the shape
+ * the built-in screens use. The app declares structure and nothing else: no
+ * scroll offset, no gesture, no momentum, no snap. */
+SKAI_EXPORT("ui.page", SKAI_T1, SKAI_THREAD_LVGL)
+int32_t skai_ui_page(void);
+
+/* Show a page. Animated, like a swipe. */
+SKAI_EXPORT("ui.goto_page", SKAI_T1, SKAI_THREAD_LVGL)
+bool skai_ui_goto_page(int32_t index);
 
 /* ── host side, not exported ──
  * The app host owns the container and hands it over for the lifetime of a run.

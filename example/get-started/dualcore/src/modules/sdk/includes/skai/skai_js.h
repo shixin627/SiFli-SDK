@@ -95,6 +95,12 @@ void skai_js_policy_init(skai_js_policy_t *policy, const char *app_id,
  * chatty app cannot exhaust memory. Phase 5 attaches the BLE transport; the
  * ring and the drop counter exist now because retrofitting them is painful. */
 
+/* Tell any open app that a capability namespace changed, so its
+ * skai.on_change(...) handler runs. Called from the firmware path that already
+ * knows the data moved — the topic is the namespace, e.g. "weather". A no-op
+ * when no app is open or none subscribed. */
+void skai_js_notify_change(const char *topic);
+
 #define SKAI_JS_LOG_LINES 16
 #define SKAI_JS_LOG_LINE  96
 

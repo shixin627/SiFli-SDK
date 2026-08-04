@@ -1,0 +1,16 @@
+# COLD START -> phone syncs -> swipe to the daily page.
+# The rows must exist (built at eval time, before any data) AND be populated by
+# on_change. Round 6 shipped a version where day_count()==0 at launch meant no
+# rows were ever created, so this page stayed blank for the whole run no matter
+# how much data arrived afterwards. A blank page 2 here is that bug returning.
+goto_app Main
+skai_pkg_add pkg_weather
+skai_pkg_run weather
+fake_weather 20
+touch_swipe 233 400 233 120
+app_status
+app_status
+app_status
+app_status
+app_status
+app_status

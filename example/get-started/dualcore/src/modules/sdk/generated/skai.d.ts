@@ -5,9 +5,18 @@ declare namespace skai {
   /** False when the firmware lacks this capability, or the manifest did not declare it. */
   function available(capability: string): boolean;
 
+  namespace app {
+    function exit(): boolean;
+  }
+
   namespace battery {
     function charging(): boolean;
     function level(): number;
+  }
+
+  namespace display {
+    function set_brightness(percent: number): boolean;
+    function set_power_save(enabled: number): boolean;
   }
 
   namespace haptic {
@@ -49,21 +58,26 @@ declare namespace skai {
 
   namespace ui {
     function align(id: number, anchor: string, dx: number, dy: number): boolean;
+    function align_to(id: number, ref_id: number, side: string, dx: number, dy: number): boolean;
     function arc(percent: number): number;
     function bar(percent: number): number;
     function button(text: string): number;
     function clear(): boolean;
     function divider(width: number): number;
     function end(): boolean;
+    function goto_page(index: number): boolean;
+    function icon(name: string): number;
     function image(rel_path: string): number;
     function keypad(map: string): number;
     function keypad_accent(id: number, indices: string, rgb: number): boolean;
     function label(text: string): number;
+    function page(): number;
     function row(): number;
     function set_arc(id: number, percent: number): boolean;
     function set_bg(id: number, rgb: number): boolean;
     function set_color(id: number, rgb: number): boolean;
     function set_font(id: number, rel_size: number): boolean;
+    function set_icon(id: number, name: string): boolean;
     function set_size(id: number, w: number, h: number): boolean;
     function set_text(id: number, text: string): boolean;
   }
@@ -77,7 +91,22 @@ declare namespace skai {
   }
 
   namespace weather {
+    function condition(): string;
+    function day_cond(index: number): string;
+    function day_count(): number;
+    function day_date(index: number): string;
+    function day_max(index: number): number;
+    function day_min(index: number): number;
+    function day_rain(index: number): number;
+    function description(): string;
+    function hour_cond(index: number): string;
+    function hour_count(): number;
+    function hour_temp(index: number): number;
+    function hour_time(index: number): string;
+    function location(): string;
     function rain_pct(): number;
+    function refresh(): boolean;
+    function stale(): boolean;
     function temp(): number;
     function temp_max(): number;
     function temp_min(): number;

@@ -1,0 +1,3 @@
+fake_weather 20
+goto_app weather
+touch_swipe 233 400 233 120

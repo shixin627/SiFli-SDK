@@ -1,1 +1,1 @@
-ui.label,ui.divider,ui.align,ui.set_font,ui.set_color,ui.set_bg,weather.temp,watchinfo.screen_height
+ui.label,ui.divider,ui.align,ui.align_to,ui.set_font,ui.set_color,ui.set_bg,ui.set_size,ui.set_text,ui.set_icon,ui.icon,ui.page,weather.temp,weather.condition,weather.description,weather.location,weather.stale,weather.refresh,weather.hour_count,weather.hour_time,weather.hour_temp,weather.hour_cond,weather.day_date,weather.day_min,weather.day_max,weather.day_cond,weather.day_rain

@@ -1,0 +1,15 @@
+# Page 2 with NO data ever pushed — the one state under dispute for two rounds
+# and never photographed by either side. C shows 00/00 on all five rows here
+# (on_start's request_weather_within_six_hours fires refresh_ui with the zeroed
+# record, so "%02d/%02d" prints 00/00); it does NOT show the "Today"/weekday
+# creation text, which is what the refusal to fix this was wrongly based on.
+goto_app Main
+skai_pkg_add pkg_weather
+skai_pkg_run weather
+touch_swipe 233 400 233 120
+app_status
+app_status
+app_status
+app_status
+app_status
+app_status

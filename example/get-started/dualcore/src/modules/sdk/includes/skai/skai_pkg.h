@@ -37,8 +37,14 @@
 /* What the JS host can actually hold. The schema allows a payload up to
  * SKAI_PKG_PAYLOAD_MAX, but the source sits in a fixed buffer in HCPU RAM, so
  * a bigger one is refused AT INSTALL with a reason rather than truncated on the
- * way to the interpreter. Raising this means moving that buffer to PSRAM. */
-#define SKAI_PKG_JS_SRC_MAX  8192
+ * way to the interpreter.
+ *
+ * 8192 was an arbitrary first number and the weather reproduction outgrew it at
+ * 8.7 KB — commented source, which is what a hand-written app looks like before
+ * anyone minifies it. 16 KB against 800 KB of HCPU SRAM is a fair trade for not
+ * making "write fewer comments" a packaging constraint. Past this the buffer
+ * should move to PSRAM rather than grow again. */
+#define SKAI_PKG_JS_SRC_MAX  16384
 
 /* How many installed packages the launcher will enumerate. */
 #define SKAI_PKG_SLOTS       16

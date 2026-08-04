@@ -27,6 +27,7 @@
 #include "ui_img_helper.h"
 
 #include "skai/skai_js.h"
+#include "skai/skai_display.h"
 #include "skai/skai_ui.h"
 
 #define DBG_TAG "app.skaijs"
@@ -102,6 +103,9 @@ static void on_start(void)
 
 static void on_stop(void)
 {
+    /* Whatever the script did to the screen stops when the script does. The app
+       is never asked to put the brightness back, so it cannot fail to. */
+    skai_display_restore();
     skai_js_close();
     skai_ui_detach();
     if (s_root != NULL)
@@ -118,6 +122,17 @@ static void msg_handler(gui_app_msg_type_t msg, void *param)
     {
     case GUI_APP_MSG_ONSTART:
         on_start();
+        break;
+    case GUI_APP_MSG_ONRESUME:
+        /* The C apps set brightness on EVERY resume; a JS body runs once. The
+           host re-applies what the app asked for, so a backgrounded app does
+           not come back dark with no way to fix it. */
+        skai_display_reapply();
+        break;
+    case GUI_APP_MSG_ONPAUSE:
+        /* Backgrounded, not closed: the context stays open so click handlers
+           survive, but the brightness is the user's again. */
+        skai_display_restore();
         break;
     case GUI_APP_MSG_ONSTOP:
         on_stop();

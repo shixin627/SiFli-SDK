@@ -33,6 +33,15 @@
    C app aligns to. s_flow is a padded column for widgets created without an
    explicit position; LVGL flex would otherwise re-place an aligned child on
    every layout pass. */
+/* Pages sit above both: s_root and s_flow are always the CURRENT page's pair,
+   so every existing call site keeps working unchanged and a one-page app pays
+   nothing for the machinery. */
+static lv_obj_t *s_tiles;                      /* lv_tileview, the pager */
+static lv_obj_t *s_page_root[SKAI_UI_PAGES];
+static lv_obj_t *s_page_flow[SKAI_UI_PAGES];
+static int       s_page_count;
+static int       s_page_cur;
+
 static lv_obj_t *s_root;
 static lv_obj_t *s_flow;
 static lv_obj_t *s_parent;                     /* current insertion point */
@@ -46,20 +55,70 @@ static char      s_asset_dir[SKAI_UI_ASSET_DIR_MAX];
 static skai_ui_click_cb_t s_click_cb[SKAI_UI_SLOTS];
 static void              *s_click_arg[SKAI_UI_SLOTS];
 
+/* The padded flex column every page gets. Widgets created without an explicit
+   position land here; ui.align pulls them out of it onto the page root. */
+static lv_obj_t *make_flow(lv_obj_t *page)
+{
+    lv_obj_t *f = lv_obj_create(page);
+
+    lv_obj_remove_style_all(f);
+    lv_obj_set_size(f, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_flex_flow(f, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(f, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(f, 60, 0);
+    lv_obj_set_style_pad_row(f, 8, 0);
+    lv_obj_clear_flag(f, LV_OBJ_FLAG_SCROLLABLE);
+    return f;
+}
+
+/* Which page a widget already lives on. Falls back to the current page for one
+   that is still in a flow column and has never been aligned. */
+static lv_obj_t *page_root_of(lv_obj_t *o)
+{
+    for (lv_obj_t *p = o; p != NULL; p = lv_obj_get_parent(p))
+        for (int i = 0; i < s_page_count; i++)
+            if (p == s_page_root[i])
+                return s_page_root[i];
+    return s_root;
+}
+
+/* Point s_root/s_flow at page `i`. Everything downstream reads those two, so
+   this is the whole of "which page am I drawing on". */
+static void page_select(int i)
+{
+    s_page_cur = i;
+    s_root = s_page_root[i];
+    s_flow = s_page_flow[i];
+    s_parent = s_flow;
+    s_depth = 0;
+}
+
 void skai_ui_attach(void *lv_parent, const char *asset_dir)
 {
     skai_ui_detach();
-    s_root = (lv_obj_t *)lv_parent;
-    s_flow = lv_obj_create(s_root);
-    lv_obj_remove_style_all(s_flow);
-    lv_obj_set_size(s_flow, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_flex_flow(s_flow, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(s_flow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(s_flow, 60, 0);
-    lv_obj_set_style_pad_row(s_flow, 8, 0);
-    lv_obj_clear_flag(s_flow, LV_OBJ_FLAG_SCROLLABLE);
-    s_parent = s_flow;
+
+    /* A tileview even for one page. LVGL scrolls only where a tile exists, so
+       a single-tile pager behaves exactly like the plain container it replaces
+       — and an app that later asks for page 2 does not need its first page
+       rebuilt underneath it. */
+    s_tiles = lv_tileview_create((lv_obj_t *)lv_parent);
+    lv_obj_set_size(s_tiles, LV_PCT(100), LV_PCT(100));
+    /* Transparent, not style-stripped: remove_style_all takes the tileview's
+       own sizing and scroll setup with it, and the tiles then lay out at the
+       top left instead of filling the screen. */
+    lv_obj_set_style_bg_opa(s_tiles, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_tiles, 0, 0);
+    lv_obj_set_style_pad_all(s_tiles, 0, 0);
+
+    s_page_root[0] = lv_tileview_add_tile(s_tiles, 0, 0, LV_DIR_BOTTOM);
+    lv_obj_set_style_bg_opa(s_page_root[0], LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_page_root[0], 0, 0);
+    lv_obj_set_style_pad_all(s_page_root[0], 0, 0);
+    s_page_flow[0] = make_flow(s_page_root[0]);
+    s_page_count = 1;
+    page_select(0);
+
     if (asset_dir)
     {
         rt_strncpy(s_asset_dir, asset_dir, sizeof(s_asset_dir) - 1);
@@ -77,10 +136,17 @@ void skai_ui_detach(void)
     memset(s_click_arg, 0, sizeof(s_click_arg));
     memset(s_groups, 0, sizeof(s_groups));
     memset(s_asset_dir, 0, sizeof(s_asset_dir));
+    memset(s_page_root, 0, sizeof(s_page_root));
+    memset(s_page_flow, 0, sizeof(s_page_flow));
+    s_page_count = 0;
+    s_page_cur = 0;
     s_depth = 0;
     s_parent = NULL;
     s_root = NULL;
     s_flow = NULL;
+    /* Not deleted: the tileview is a child of the host's container and goes
+       with it, same as every widget the script created. */
+    s_tiles = NULL;
 }
 
 /* Every entry point starts here. Two refusals, both loud:
@@ -97,6 +163,57 @@ static bool ui_ready(const char *who)
     }
     return true;
 }
+
+int32_t skai_ui_page(void)
+{
+    lv_obj_t *tile;
+
+    if (!ui_ready("ui.page"))
+        return 0;
+    if (s_page_count >= SKAI_UI_PAGES)
+    {
+        LOG_W("ui.page: %d pages is the budget", SKAI_UI_PAGES);
+        return 0;
+    }
+
+    /* Each new tile can be reached from the one above it, and can go back. */
+    tile = lv_tileview_add_tile(s_tiles, 0, (uint8_t)s_page_count,
+                                LV_DIR_TOP | LV_DIR_BOTTOM);
+    if (tile == NULL)
+        return 0;
+    lv_obj_set_style_bg_opa(tile, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(tile, 0, 0);
+    lv_obj_set_style_pad_all(tile, 0, 0);
+
+    s_page_root[s_page_count] = tile;
+    s_page_flow[s_page_count] = make_flow(tile);
+    s_page_count++;
+
+    /* Drawing continues on the new page: an app calls ui.page() between the
+       page it just finished and the one it is about to build. */
+    page_select(s_page_count - 1);
+    return (int32_t)s_page_cur;
+}
+
+bool skai_ui_goto_page(int32_t index)
+{
+    if (!ui_ready("ui.goto_page"))
+        return false;
+    if (index < 0 || index >= s_page_count)
+        return false;
+
+    /* ponytail: no forced layout here. A tile has no coordinates until the
+       tileview lays out, and the whole script runs before the first layout
+       pass — so calling this from top-level script code does nothing, and
+       forcing lv_obj_update_layout() to make it work scrolls the host's own
+       container sideways instead. Known ceiling: goto_page takes effect from a
+       handler (click, on_change) and is ignored during the first paint, which
+       is the only case an app cannot express by simply drawing page 0 first.
+       Revisit if an app genuinely needs to open on page N. */
+    lv_obj_set_tile(s_tiles, s_page_root[index], LV_ANIM_ON);
+    return true;
+}
+
 
 static int32_t slot_alloc(lv_obj_t *obj)
 {
@@ -205,8 +322,22 @@ bool skai_ui_clear(void)
     memset(s_click_cb, 0, sizeof(s_click_cb));
     memset(s_click_arg, 0, sizeof(s_click_arg));
     memset(s_groups, 0, sizeof(s_groups));
-    s_depth = 0;
-    s_parent = s_flow;
+
+    /* Pages go too, or "clear and redraw" — the obvious way to handle a data
+       push — grows a tile every time and hits the page budget after three
+       refreshes. Page 0 stays: clearing is not detaching, and an app that
+       cleared its way to no screen at all would have nowhere to draw. */
+    for (int i = s_page_count - 1; i > 0; i--)
+    {
+        lv_obj_del(s_page_root[i]);   /* takes its flow column with it */
+        s_page_root[i] = NULL;
+        s_page_flow[i] = NULL;
+    }
+    s_page_count = 1;
+    page_select(0);
+
+    /* Page 0's flow column survived the slot sweep (it is not a slot), but any
+       widget still parented to it was. Nothing to delete — just draw again. */
     return true;
 }
 
@@ -282,6 +413,94 @@ int32_t skai_ui_image(const char *rel_path)
     lv_img_set_src(img, full);
     return slot_alloc(img);
 }
+
+/* The system icon set. A flat table on purpose: adding an icon is one row, the
+ * same "one row" the dispatch table promises for capabilities, and there is no
+ * registry to keep in sync with anything.
+ *
+ * Names are generic rather than asset names ("weather.rain", not the symbol
+ * weather_thunder) so the firmware can repoint one at a different asset without
+ * breaking apps already on people's wrists — the name is the frozen part, the
+ * pixels are not.
+ *
+ * ponytail: only what a real app has asked for so far. This is not a catalogue
+ * of every image in the firmware, and it should not become one by default —
+ * every name here is a promise that outlives the app that wanted it. */
+LV_IMG_DECLARE(weather_sun);
+LV_IMG_DECLARE(weather_clear);
+LV_IMG_DECLARE(weather_cloudy);
+LV_IMG_DECLARE(weather_rain);
+LV_IMG_DECLARE(weather_thunder);
+LV_IMG_DECLARE(btn_flashlight);
+
+static const struct
+{
+    const char *name;
+    const void *src;
+} s_icons[] =
+{
+    { "weather.sun",     &weather_sun     },
+    { "weather.clear",   &weather_clear   },
+    { "weather.cloudy",  &weather_cloudy  },
+    { "weather.rain",    &weather_rain    },
+    { "weather.thunder", &weather_thunder },
+    { "flashlight",      &btn_flashlight  },
+};
+
+static const void *icon_src(const char *name)
+{
+    for (unsigned i = 0; i < sizeof(s_icons) / sizeof(s_icons[0]); i++)
+        if (strcmp(name, s_icons[i].name) == 0)
+            return s_icons[i].src;
+    return NULL;
+}
+
+int32_t skai_ui_icon(const char *name)
+{
+    lv_obj_t *img;
+    const void *src;
+
+    if (!ui_ready("ui.icon") || name == NULL)
+        return 0;
+
+    src = icon_src(name);
+    if (src != NULL)
+    {
+        img = lv_img_create(s_parent);
+        if (img == NULL)
+            return 0;
+        lv_img_set_src(img, src);
+        return slot_alloc(img);
+    }
+
+    /* Unknown name is not an error the app has to handle: it draws nothing and
+       returns 0, so an app built against newer firmware degrades instead of
+       failing. Logged because from the developer's side it looks like nothing
+       happened. */
+    LOG_W("ui.icon: no icon named '%s'", name);
+    return 0;
+}
+
+bool skai_ui_set_icon(int32_t id, const char *name)
+{
+    lv_obj_t *o = slot_of(id);
+    const void *src;
+
+    if (!ui_ready("ui.set_icon") || o == NULL || name == NULL)
+        return false;
+    if (!lv_obj_check_type(o, &lv_img_class))
+        return false;   /* wrong widget kind -- refuse, do not reinterpret */
+
+    src = icon_src(name);
+    if (src == NULL)
+    {
+        LOG_W("ui.set_icon: no icon named '%s'", name);
+        return false;   /* leaves the previous picture, which is the sane one */
+    }
+    lv_img_set_src(o, src);
+    return true;
+}
+
 
 /* ── grouping ── */
 
@@ -486,13 +705,91 @@ bool skai_ui_align(int32_t id, const char *anchor, int32_t dx, int32_t dy)
             /* Explicit placement means leaving the flow for good: reparent to
                the full screen and opt out of layout, or the next flex pass
                would move the widget straight back. */
-            lv_obj_set_parent(o, s_root);
+            /* The widget's OWN page, not whichever one is current: an app that
+               aligns a page-0 widget after calling ui.page() would otherwise
+               have it silently jump to page 1. */
+            lv_obj_t *page = page_root_of(o);
+
+            lv_obj_set_parent(o, page);
             lv_obj_add_flag(o, LV_OBJ_FLAG_IGNORE_LAYOUT);
+
+            /* ...but lv_obj_set_parent appends as the NEWEST child, so without
+               the line below the stacking order would be the order ui.align
+               happened to be called in. That is not a rule anyone expects, and
+               it is not the rule anywhere else: an app that never calls align
+               stacks by creation order, and so does every C app in this
+               firmware. Restoring the slot order here makes it one rule —
+               later-created draws on top — whether a widget was aligned or not.
+
+               Slot ids are handed out in creation order, so the target index is
+               just how many earlier widgets are already on the root. Index 0 is
+               reserved for s_flow, which has to stay underneath. */
+            {
+                int32_t idx = 1;
+                for (int32_t s = 0; s < id - 1; s++)
+                    if (s_slots[s] != NULL && lv_obj_get_parent(s_slots[s]) == page)
+                        idx++;
+                lv_obj_move_to_index(o, idx);
+            }
+
             lv_obj_align(o, k_anchors[i].a, (lv_coord_t)dx, (lv_coord_t)dy);
             return true;
         }
     }
     LOG_W("ui.align: unknown anchor '%s'", anchor);
+    return false;
+}
+
+bool skai_ui_align_to(int32_t id, int32_t ref_id, const char *side,
+                      int32_t dx, int32_t dy)
+{
+    static const struct { const char *name; lv_align_t a; } k_sides[] =
+    {
+        { "below",  LV_ALIGN_OUT_BOTTOM_MID },
+        { "above",  LV_ALIGN_OUT_TOP_MID    },
+        { "left",   LV_ALIGN_OUT_LEFT_MID   },
+        { "right",  LV_ALIGN_OUT_RIGHT_MID  },
+        { "center", LV_ALIGN_CENTER         },
+        /* The one thing the five above cannot say: "under it, left edges
+           flush". A 300 px rule drawn under a 50 px date label has to START
+           where the label starts, not sit centred on it — which is what the
+           daily weather page does (app_weather.c:484, OUT_BOTTOM_LEFT). Six
+           names out of LVGL's twelve OUT_* anchors, still a closed table. */
+        { "below_left", LV_ALIGN_OUT_BOTTOM_LEFT },
+    };
+    lv_obj_t *o = slot_of(id);
+    lv_obj_t *ref = slot_of(ref_id);
+
+    if (!ui_ready("ui.align_to") || o == NULL || ref == NULL || side == NULL)
+        return false;
+    if (o == ref)
+        return false;   /* aligning to itself is a loop, not a layout */
+    if (dx < -1024 || dx > 1024 || dy < -1024 || dy > 1024)
+        return false;
+
+    for (size_t i = 0; i < sizeof(k_sides) / sizeof(k_sides[0]); i++)
+    {
+        if (strcmp(side, k_sides[i].name) != 0)
+            continue;
+
+        /* Both have to be on the same page and out of the flow column, for the
+           same reason ui.align reparents: flex would re-place them next pass. */
+        {
+            lv_obj_t *page = page_root_of(ref);
+
+            lv_obj_set_parent(o, page);
+            lv_obj_add_flag(o, LV_OBJ_FLAG_IGNORE_LAYOUT);
+
+            int32_t idx = 1;
+            for (int32_t s = 0; s < id - 1; s++)
+                if (s_slots[s] != NULL && lv_obj_get_parent(s_slots[s]) == page)
+                    idx++;
+            lv_obj_move_to_index(o, idx);
+        }
+        lv_obj_align_to(o, ref, k_sides[i].a, (lv_coord_t)dx, (lv_coord_t)dy);
+        return true;
+    }
+    LOG_W("ui.align_to: unknown side '%s'", side);
     return false;
 }
 

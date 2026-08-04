@@ -21,13 +21,19 @@
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
+#include "gui_app_fwk.h"
+#include "ui_helper.h"   /* ui_time_format_hhmm: 12/24h is a firmware setting */
 #include "watch_global_data.h"
 #include "watch_system_interact.h"
+#include "bloc_control.h"
+#include "bloc_setting.h"
 #include "bloc_peripheral.h"
 #include "bloc_weather.h"
 #include "share_prefs.h"
 
+#include "skai/skai_app.h"
 #include "skai/skai_battery.h"
+#include "skai/skai_display.h"
 #include "skai/skai_haptic.h"
 #include "skai/skai_health.h"
 #include "skai/skai_log.h"
@@ -131,16 +137,41 @@ int32_t skai_health_step_goal(void)
 
 /* --------------------------------------------------------------- weather */
 
-/* get_weather(0) is the current slot. An all-zero record means the phone has
- * not sent a forecast yet — 0 C is a real temperature, so emptiness is judged
- * by the whole record, not by one field. */
-static const weather_t *weather_now(void)
+/* WHICH SLOT IS "NOW" — the store reads backwards, and this layer had it wrong.
+ *
+ * The phone sends one frame per record, in this order:
+ *     [current, +3h, +6h, +9h]  (then 5 daily summaries, into the week list)
+ * and weather_push_front() puts each new arrival at index 0. So after a sync:
+ *
+ *     index 0 = +9h    1 = +6h    2 = +3h    3 = current
+ *
+ * i.e. the LAST index is now and the array runs backwards in time. This layer
+ * used to read index 0 and call it current, which is the +9h forecast — a
+ * value that looks entirely plausible and is silently nine hours wrong.
+ * app_weather.c had it right all along (get_weather(AMOUNT-1)); so does the
+ * dial-face widget. Verified against the phone's own WeatherService batch
+ * builder, which is pinned by its unit tests.
+ *
+ * An all-zero record means that slot has not been filled — 0 C is a real
+ * temperature, so emptiness is judged by the whole record, not one field. */
+#define WEATHER_SLOT_NOW (WEATHER_TODAT_ITEM_AMOUNT - 1)
+
+static const weather_t *weather_at(int index)
 {
-    const weather_t *w = get_weather(0);
+    const weather_t *w;
+
+    if (index < 0 || index >= WEATHER_TODAT_ITEM_AMOUNT)
+        return RT_NULL;
+    w = get_weather(index);
     if (!w || (w->temperature == 0.0f && w->max_temperature == 0.0f
                && w->min_temperature == 0.0f && w->description[0] == '\0'))
         return RT_NULL;
     return w;
+}
+
+static const weather_t *weather_now(void)
+{
+    return weather_at(WEATHER_SLOT_NOW);
 }
 
 static int32_t weather_round(float c)
@@ -170,6 +201,217 @@ int32_t skai_weather_rain_pct(void)
 {
     const weather_t *w = weather_now();
     return w ? (int32_t)w->precipitationProbability : SKAI_NO_DATA;
+}
+
+/* The phone's wording -> the token set skai_weather.h freezes. One table, and
+ * it is deliberately NOT the one app_weather.c's weather_icon_get() uses: that
+ * one maps Snow onto the thunder icon, which is a bug an external app should
+ * not inherit.
+ *
+ * An unknown description reports NO DATA, not a guess. It used to answer
+ * "clear", which quietly disagreed with the built-in screen: weather_icon_get()
+ * falls back to weather_sun (:225), so an app echoing our token drew a
+ * different glyph than C for the same input. Reporting nothing lets the app
+ * pick C's fallback itself, and is the honest answer besides — we do not know
+ * what the weather is.
+ *
+ * Not reproduced: C's daily rain gate is strstr() on the RAW description and
+ * matches "Drizzle" (:552) while its icon lookup does not, so a drizzly day
+ * gets a sun icon over a rain percentage. Matching both halves would need the
+ * raw per-day string exported; matching one half would trade one divergence
+ * for another. Left alone deliberately. */
+static const char *condition_token(const char *description)
+{
+    static const struct { const char *phone; const char *token; } k_map[] =
+    {
+        { "Clear",        "clear"   },
+        { "Sun",          "sun"     },
+        { "Clouds",       "cloudy"  },
+        { "Rain",         "rain"    },
+        { "Thunderstorm", "thunder" },
+        { "Snow",         "snow"    },
+    };
+
+    if (!description || description[0] == '\0')
+        return "";
+    for (size_t i = 0; i < sizeof(k_map) / sizeof(k_map[0]); i++)
+        if (strcmp(description, k_map[i].phone) == 0)
+            return k_map[i].token;
+    return "";
+}
+
+/* Shared by every string-returning capability here: copy bounded, always
+ * terminate, and report -1 for "no data" so JS sees null instead of "". */
+static int32_t copy_out(const char *src, char *out, uint32_t cap)
+{
+    size_t n;
+
+    if (!out || cap == 0)
+        return -1;
+    out[0] = '\0';
+    if (!src || src[0] == '\0')
+        return -1;
+    n = strlen(src);
+    if (n >= cap)
+        n = cap - 1;
+    memcpy(out, src, n);
+    out[n] = '\0';
+    return (int32_t)n;
+}
+
+int32_t skai_weather_condition(char *out, uint32_t cap)
+{
+    const weather_t *w = weather_now();
+    return copy_out(w ? condition_token(w->description) : NULL, out, cap);
+}
+
+int32_t skai_weather_description(char *out, uint32_t cap)
+{
+    const weather_t *w = weather_now();
+    return copy_out(w ? w->description : RT_NULL, out, cap);
+}
+
+bool skai_weather_stale(void)
+{
+    const weather_t *w = weather_now();
+
+    if (!w)
+        return true;   /* nothing at all is the staleest case there is */
+    /* Same test the built-in screen uses for its "update on the phone" notice
+       (app_weather.c:815): a record from another day is not today's weather. */
+    return (w->time.day != SkaiWatchSys.Global_Time.day) &&
+           (w->time.month != SkaiWatchSys.Global_Time.month);
+}
+
+bool skai_weather_refresh(void)
+{
+    /* bloc_weather already refuses more than one request per 10 s and skips
+       entirely when the phone is not connected, so there is no throttle of our
+       own to get wrong. */
+    request_weather_within_six_hours(true);
+    return true;
+}
+
+int32_t skai_weather_location(char *out, uint32_t cap)
+{
+    return copy_out(get_current_location(), out, cap);
+}
+
+/* Forecast slot `i`, NEAREST FIRST: i=0 is the next one, i=1 the one after it.
+ * Same walk app_weather.c does (get_weather(AMOUNT-2-i)), so a JS app and the
+ * built-in app render the same column in the same place. "Now" is not in this
+ * series — that is weather.temp() / weather.condition(). */
+static const weather_t *weather_slot(int32_t i)
+{
+    if (i < 0 || i >= WEATHER_TODAT_ITEM_AMOUNT - 1)
+        return RT_NULL;
+    return weather_at(WEATHER_SLOT_NOW - 1 - (int)i);
+}
+
+/* The store keeps a fixed array, so "how many did the phone send" is a scan,
+ * not a counter it maintains. Stops at the first empty slot: a gap in the
+ * middle would mean a partial sync, and reporting a count that spans it would
+ * hand apps a hole to render. */
+int32_t skai_weather_hour_count(void)
+{
+    int32_t n = 0;
+
+    while (n < WEATHER_TODAT_ITEM_AMOUNT - 1 && weather_slot(n) != RT_NULL)
+        n++;
+    return n;
+}
+
+int32_t skai_weather_hour_temp(int32_t index)
+{
+    const weather_t *w = weather_slot(index);
+    return w ? weather_round(w->temperature) : SKAI_NO_DATA;
+}
+
+int32_t skai_weather_hour_cond(int32_t index, char *out, uint32_t cap)
+{
+    const weather_t *w = weather_slot(index);
+    return copy_out(w ? condition_token(w->description) : NULL, out, cap);
+}
+
+/* Day `i`, NEAREST FIRST. The week list is stored backwards for the same
+ * reason the hourly one is — weather_push_front() and an ascending send order —
+ * and app_weather.c's daily page walks it the same way
+ * (current_weather_week_list()[AMOUNT-1-i]). */
+static const weather_t *weather_day(int32_t i)
+{
+    const weather_t *list = current_weather_week_list();
+    const weather_t *w;
+
+    if (!list || i < 0 || i >= WEATHER_DAILY_ITEM_AMOUNT)
+        return RT_NULL;
+    w = &list[WEATHER_DAILY_ITEM_AMOUNT - 1 - (int)i];
+    if (w->temperature == 0.0f && w->max_temperature == 0.0f
+            && w->min_temperature == 0.0f && w->description[0] == '\0')
+        return RT_NULL;
+    return w;
+}
+
+int32_t skai_weather_day_count(void)
+{
+    int32_t n = 0;
+
+    while (n < WEATHER_DAILY_ITEM_AMOUNT && weather_day(n) != RT_NULL)
+        n++;
+    return n;
+}
+
+int32_t skai_weather_day_date(int32_t index, char *out, uint32_t cap)
+{
+    const weather_t *w = weather_day(index);
+    char buf[8];
+
+    if (!w)
+        return copy_out(RT_NULL, out, cap);
+    /* Same "%02d/%02d" the built-in daily page prints, so the two screens read
+       the same way. skai_time_date_md() formats *today* and shares the form. */
+    rt_snprintf(buf, sizeof(buf), "%02d/%02d", w->time.month, w->time.day);
+    return copy_out(buf, out, cap);
+}
+
+int32_t skai_weather_day_min(int32_t index)
+{
+    const weather_t *w = weather_day(index);
+    return w ? weather_round(w->min_temperature) : SKAI_NO_DATA;
+}
+
+int32_t skai_weather_day_max(int32_t index)
+{
+    const weather_t *w = weather_day(index);
+    return w ? weather_round(w->max_temperature) : SKAI_NO_DATA;
+}
+
+int32_t skai_weather_day_cond(int32_t index, char *out, uint32_t cap)
+{
+    const weather_t *w = weather_day(index);
+    return copy_out(w ? condition_token(w->description) : RT_NULL, out, cap);
+}
+
+int32_t skai_weather_day_rain(int32_t index)
+{
+    const weather_t *w = weather_day(index);
+    return w ? (int32_t)w->precipitationProbability : SKAI_NO_DATA;
+}
+
+int32_t skai_weather_hour_time(int32_t index, char *out, uint32_t cap)
+{
+    const weather_t *w = weather_slot(index);
+    char buf[16];
+
+    if (!w || !out || cap == 0)
+    {
+        if (out && cap)
+            out[0] = '\0';
+        return -1;
+    }
+    /* The firmware's own formatter, so 12/24-hour follows the user's setting
+       without every app having to ask what it is. */
+    ui_time_format_hhmm(buf, sizeof(buf), w->time.hour, w->time.minutes);
+    return copy_out(buf, out, cap);
 }
 
 /* ---------------------------------------------------------------- haptic */
@@ -436,3 +678,91 @@ int32_t skai_watchinfo_model(char *out, uint32_t cap)
 uint32_t skai_watchinfo_screen_width(void)  { return SKAI_SCREEN_W; }
 uint32_t skai_watchinfo_screen_height(void) { return SKAI_SCREEN_H; }
 bool     skai_watchinfo_screen_round(void)  { return true; }
+
+/* ------------------------------------------------------------- display */
+
+/* Whether THIS app raised the brightness. The restore is the host's job, not
+   the app's — see skai_display.h for why the app is not trusted with it. */
+static bool s_brightness_raised;
+/* What the app asked for, so the host can put it back on resume: the C apps
+   re-apply on every ONRESUME, while a JS body runs once. */
+static int32_t s_brightness_want;
+static bool    s_power_save_held;
+
+bool skai_display_set_brightness(int32_t percent)
+{
+    /* bloc_control's own accepted range. Refuse rather than clamp: 0..255 is
+       the other plausible scale for a brightness argument, and silently
+       clamping a unit mix-up hides it until someone looks at the watch. */
+    if (percent < 3 || percent > 100)
+    {
+        LOG_W("display.set_brightness: %d out of range (3..100)", (int)percent);
+        return false;
+    }
+    if (control_provider.screen_brightness_smoothly == RT_NULL)
+        return false;
+
+    /* ponytail: the settings slider's own path, not the powermgr data_service
+       one app_flashlight.c opens by hand. One call against a provider that is
+       already linked, versus a client handle, a subscribe and a message struct.
+       Known ceiling: this path is debounced ~2 s (bloc_control.c), so the ramp
+       is smooth rather than instant — fine for a torch, wrong for anything that
+       wants to flash the screen. Move to PWRMGR_MSG_LCD_BRIGHTNESS_SET_REQ if
+       that day comes. */
+    control_provider.screen_brightness_smoothly((uint16_t)percent);
+    s_brightness_raised = true;
+    s_brightness_want = percent;
+    return true;
+}
+
+bool skai_display_set_power_save(int32_t enabled)
+{
+    if (setting_provider.set_power_save_mode == RT_NULL)
+        return false;
+    /* The argument is the MODE, and 0 means "no power saving" -- so an app that
+       asks to stay awake is asking for mode 0. Inverted here rather than in the
+       app, because "set_power_save(false)" reads backwards in a script. */
+    setting_provider.set_power_save_mode(enabled ? 1 : 0);
+    s_power_save_held = !enabled;
+    return true;
+}
+
+void skai_display_reapply(void)
+{
+    if (s_brightness_raised && control_provider.screen_brightness_smoothly)
+        control_provider.screen_brightness_smoothly((uint16_t)s_brightness_want);
+    if (s_power_save_held && setting_provider.set_power_save_mode)
+        setting_provider.set_power_save_mode(0);
+}
+
+void skai_display_restore(void)
+{
+    uint16_t user = SkaiWatchSys.brightness;
+
+    /* The wake-hold goes back whether or not the brightness was touched. */
+    if (s_power_save_held && setting_provider.set_power_save_mode)
+        setting_provider.set_power_save_mode(1);
+
+    if (!s_brightness_raised)
+        return;
+    s_brightness_raised = false;
+
+    if (control_provider.screen_brightness_smoothly == RT_NULL)
+        return;
+    /* bloc_setting defaults an unset value to 50; anything outside the accepted
+       range would be dropped on the floor and leave the app's brightness in
+       place, which is the one outcome this function exists to prevent. */
+    if (user < 3 || user > 100)
+        user = 50;
+    control_provider.screen_brightness_smoothly(user);
+}
+
+/* ----------------------------------------------------------------- app */
+
+bool skai_app_exit(void)
+{
+    /* gui_app_self_exit takes no id, which is the whole security argument:
+       there is no name an app could pass to close someone else's. */
+    gui_app_self_exit();
+    return true;
+}

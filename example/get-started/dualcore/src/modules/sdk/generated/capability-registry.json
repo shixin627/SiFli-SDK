@@ -3,6 +3,14 @@
   "skai": "1.0",
   "capabilities": [
     {
+      "name": "app.exit",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
       "name": "battery.charging",
       "tier": "SKAI_T1",
       "thread": "SKAI_THREAD_ANY",
@@ -17,6 +25,22 @@
       "args": "",
       "returns": "number",
       "ui": "%d%%"
+    },
+    {
+      "name": "display.set_brightness",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "I",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "display.set_power_save",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "I",
+      "returns": "boolean",
+      "ui": "%d"
     },
     {
       "name": "haptic.stop",
@@ -179,6 +203,14 @@
       "ui": "%d"
     },
     {
+      "name": "ui.align_to",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "IISII",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
       "name": "ui.arc",
       "tier": "SKAI_T1",
       "thread": "SKAI_THREAD_LVGL",
@@ -227,6 +259,22 @@
       "ui": "%d"
     },
     {
+      "name": "ui.goto_page",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "I",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.icon",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "S",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
       "name": "ui.image",
       "tier": "SKAI_T1",
       "thread": "SKAI_THREAD_LVGL",
@@ -255,6 +303,14 @@
       "tier": "SKAI_T1",
       "thread": "SKAI_THREAD_LVGL",
       "args": "S",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.page",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "",
       "returns": "number",
       "ui": "%d"
     },
@@ -295,6 +351,14 @@
       "tier": "SKAI_T1",
       "thread": "SKAI_THREAD_LVGL",
       "args": "II",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "ui.set_icon",
+      "tier": "SKAI_T1",
+      "thread": "SKAI_THREAD_LVGL",
+      "args": "IS",
       "returns": "boolean",
       "ui": "%d"
     },
@@ -355,12 +419,132 @@
       "ui": "%d"
     },
     {
+      "name": "weather.condition",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
+      "name": "weather.day_cond",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "I",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
+      "name": "weather.day_count",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "weather.day_date",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "I",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
+      "name": "weather.day_max",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "I",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "weather.day_min",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "I",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "weather.day_rain",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "I",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "weather.description",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
+      "name": "weather.hour_cond",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "I",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
+      "name": "weather.hour_count",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "weather.hour_temp",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "I",
+      "returns": "number",
+      "ui": "%d"
+    },
+    {
+      "name": "weather.hour_time",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "I",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
+      "name": "weather.location",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "string",
+      "ui": "%s"
+    },
+    {
       "name": "weather.rain_pct",
       "tier": "SKAI_T2",
       "thread": "SKAI_THREAD_ANY",
       "args": "",
       "returns": "number",
       "ui": "%d%%"
+    },
+    {
+      "name": "weather.refresh",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "boolean",
+      "ui": "%d"
+    },
+    {
+      "name": "weather.stale",
+      "tier": "SKAI_T2",
+      "thread": "SKAI_THREAD_ANY",
+      "args": "",
+      "returns": "boolean",
+      "ui": "%d"
     },
     {
       "name": "weather.temp",

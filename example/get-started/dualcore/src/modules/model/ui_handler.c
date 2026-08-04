@@ -53,6 +53,9 @@
 #include <stdint.h>
 #include <string.h>
 #include "ui_handler.h"
+#ifdef PKG_USING_QUICKJS
+#include "skai/skai_js.h"
+#endif
 #include "common_widget.h"
 #include "app_mainmenu.h"
 #include "bloc_setting.h"
@@ -343,6 +346,12 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
 
     case LVGL_MSG_TYPE_REFRESH_WEATHER_WIDGET:
+#ifdef PKG_USING_QUICKJS
+        /* A JS app subscribed with skai.on_change('weather.*') re-runs here.
+           This is the dispatch point every future topic will also pass through,
+           which is why the hook is here and not inside bloc_weather. */
+        skai_js_notify_change("weather");
+#endif
         if (lvgl_msg_handler.handle_refresh_weather_widget)
         {
             lvgl_msg_handler.handle_refresh_weather_widget();

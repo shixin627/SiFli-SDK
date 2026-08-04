@@ -1,0 +1,19 @@
+# The conditions the normal fixture can never produce: Snow (in the token map,
+# no icon asset, C draws thunder), Drizzle and Fog (outside the map entirely).
+# Until this existed, condition_token's no-match branch and the app's icon
+# fallback were both unreachable from the test suite — which is how a snow day
+# drawing the wrong glyph survived three review rounds.
+#
+# Expect page 1: a THUNDER icon (C's weather_icon_get maps Snow -> thunder),
+# location Taipei, and the description reading the raw word "Snow".
+goto_app Main
+skai_pkg_add pkg_weather
+skai_pkg_run weather
+fake_weather 20 odd
+touch_swipe 233 400 233 120
+app_status
+app_status
+app_status
+app_status
+app_status
+app_status

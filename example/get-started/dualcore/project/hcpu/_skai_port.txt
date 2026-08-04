@@ -1,2 +1,3 @@
+skai_pkg_add pkg_flashlight
 skai_pkg_add pkg_weather
-skai_pkg_run weather
+skai_pkg_run flashlight

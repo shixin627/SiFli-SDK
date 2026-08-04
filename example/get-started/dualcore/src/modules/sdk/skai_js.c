@@ -35,8 +35,10 @@
 #include "cutils.h"
 
 /* Longest argument list the marshaller handles. Capabilities beyond this are
- * refused at injection time rather than half-bound. */
-#define SKAI_JS_MAX_ARGS 4
+ * refused at injection time rather than half-bound. Five because ui.align_to
+ * takes (id, ref, side, dx, dy) -- anything longer is a sign the capability
+ * wants a different shape, not a wider marshaller. */
+#define SKAI_JS_MAX_ARGS 5
 /* Bound for a string returned through the (char *out, uint32_t cap) idiom. */
 #define SKAI_JS_STR_MAX  128
 
@@ -315,6 +317,7 @@ typedef bool     (*fn_b)(void);
 typedef int32_t  (*fn_i)(void);
 typedef uint32_t (*fn_u)(void);
 typedef int32_t  (*fn_str)(char *, uint32_t);
+typedef bool     (*fn_b_i)(int32_t);
 typedef bool     (*fn_b_u)(uint32_t);
 typedef void     (*fn_v_us)(uint32_t, const char *);
 typedef bool     (*fn_b_s)(const char *);
@@ -326,8 +329,10 @@ typedef bool     (*fn_b_is)(int32_t, const char *);
 typedef bool     (*fn_b_ii)(int32_t, int32_t);
 typedef int32_t  (*fn_i_si)(const char *, int32_t);
 typedef int32_t  (*fn_str_s)(const char *, char *, uint32_t);
+typedef int32_t  (*fn_str_i)(int32_t, char *, uint32_t);
 typedef bool     (*fn_b_iii)(int32_t, int32_t, int32_t);
 typedef bool     (*fn_b_isii)(int32_t, const char *, int32_t, int32_t);
+typedef bool     (*fn_b_iisii)(int32_t, int32_t, const char *, int32_t, int32_t);
 typedef bool     (*fn_b_isi)(int32_t, const char *, int32_t);
 
 /* Every shape the marshaller below implements, as "<args>|<ret>". Checked at
@@ -336,8 +341,10 @@ typedef bool     (*fn_b_isi)(int32_t, const char *, int32_t);
 static const char *const k_shapes[] =
 {
     "|V", "|B", "|I", "|U", "|S",
-    "U|B", "US|V", "S|B", "S|I", "S|S", "I|I",
+    "U|B", "US|V", "S|B", "S|I", "S|S", "I|I", "I|B",
     "SI|B", "SI|I", "SS|B", "IS|B", "II|B", "III|B", "ISII|B", "ISI|B",
+    "IISII|B",
+    "I|S",
 };
 
 static void shape_key(const skai_cap_t *c, char out[12])
@@ -423,6 +430,7 @@ static JSValue js_skai_call(JSContext *ctx, JSValueConst this_val,
     if      (!strcmp(key, "|V"))   { ((fn_v)c->fn)();                      ret = JS_UNDEFINED; }
     else if (!strcmp(key, "US|V")) { ((fn_v_us)c->fn)(a[0].u, a[1].s);     ret = JS_UNDEFINED; }
     else if (!strcmp(key, "|B"))   ret = JS_NewBool(ctx, ((fn_b)c->fn)());
+    else if (!strcmp(key, "I|B"))  ret = JS_NewBool(ctx, ((fn_b_i)c->fn)(a[0].i));
     else if (!strcmp(key, "U|B"))  ret = JS_NewBool(ctx, ((fn_b_u)c->fn)(a[0].u));
     else if (!strcmp(key, "S|B"))  ret = JS_NewBool(ctx, ((fn_b_s)c->fn)(a[0].s));
     else if (!strcmp(key, "SI|B")) ret = JS_NewBool(ctx, ((fn_b_si)c->fn)(a[0].s, a[1].i));
@@ -432,6 +440,7 @@ static JSValue js_skai_call(JSContext *ctx, JSValueConst this_val,
     else if (!strcmp(key, "III|B")) ret = JS_NewBool(ctx, ((fn_b_iii)c->fn)(a[0].i, a[1].i, a[2].i));
     else if (!strcmp(key, "ISI|B")) ret = JS_NewBool(ctx, ((fn_b_isi)c->fn)(a[0].i, a[1].s, a[2].i));
     else if (!strcmp(key, "ISII|B")) ret = JS_NewBool(ctx, ((fn_b_isii)c->fn)(a[0].i, a[1].s, a[2].i, a[3].i));
+    else if (!strcmp(key, "IISII|B")) ret = JS_NewBool(ctx, ((fn_b_iisii)c->fn)(a[0].i, a[1].i, a[2].s, a[3].i, a[4].i));
     else if (!strcmp(key, "|U"))   ret = JS_NewUint32(ctx, ((fn_u)c->fn)());
     else if (!strcmp(key, "|S"))
     {
@@ -441,6 +450,11 @@ static JSValue js_skai_call(JSContext *ctx, JSValueConst this_val,
     else if (!strcmp(key, "S|S"))
     {
         int32_t w = ((fn_str_s)c->fn)(a[0].s, buf, sizeof(buf));
+        ret = (w < 0) ? JS_NULL : JS_NewString(ctx, buf);
+    }
+    else if (!strcmp(key, "I|S"))
+    {
+        int32_t w = ((fn_str_i)c->fn)(a[0].i, buf, sizeof(buf));
         ret = (w < 0) ? JS_NULL : JS_NewString(ctx, buf);
     }
     else
@@ -512,22 +526,21 @@ static void clear_handlers(void)
     }
 }
 
-/* Called from LVGL when the widget is clicked. */
-static void on_click_trampoline(int32_t id, const char *text, void *arg)
+/* Every re-entry into an open context goes through here: a click, a data
+ * change, and whatever comes next. Two things have to happen every time and
+ * are easy to forget one at a time — re-arm the watchdog for THIS callback (a
+ * session-long deadline would kill an app just for staying open; no deadline
+ * would let a handler hang the LVGL thread, which is the whole screen), and
+ * make sure a throwing handler is neither fatal nor silent. */
+static void js_reenter(JSValue fn, const char *what, int argc, JSValueConst *argv)
 {
     JSContext *ctx = s_session_ctx;
     js_env_t *env;
     JSValue r;
 
-    (void)arg;
-    if (!ctx || id < 1 || id > SKAI_UI_SLOTS)
-        return;
-    if (JS_IsUndefined(s_handlers[id - 1]))
+    if (!ctx || JS_IsUndefined(fn))
         return;
 
-    /* Re-arm the watchdog for THIS callback. A session-long deadline would kill
-     * an app just for staying open; no deadline at all would let a handler hang
-     * the LVGL thread, which is the whole screen. */
     env = (js_env_t *)JS_GetContextOpaque(ctx);
     if (env)
     {
@@ -536,24 +549,151 @@ static void on_click_trampoline(int32_t id, const char *text, void *arg)
         env->timed_out = false;
     }
 
-    {
-        /* The pressed label is the handler argument, so one keypad handler
-           can serve every key. */
-        JSValue arg0 = JS_NewString(ctx, text ? text : "");
-        r = JS_Call(ctx, s_handlers[id - 1], JS_UNDEFINED, 1, (JSValueConst *)&arg0);
-        JS_FreeValue(ctx, arg0);
-    }
+    r = JS_Call(ctx, fn, JS_UNDEFINED, argc, argv);
     if (JS_IsException(r))
     {
-        /* A throwing handler must not take the app down, and must not be
-         * silent either — this is the failure an external developer is most
-         * likely to hit and least able to see. */
+        /* This is the failure an external developer is most likely to hit and
+         * least able to see. */
         if (env && env->timed_out)
-            app_log(env->pol->keyid, "WATCHDOG stopped a click handler");
+            app_log(env->pol->keyid, "WATCHDOG stopped a %s handler", what);
         else
             report_exception(ctx, env);
     }
     JS_FreeValue(ctx, r);
+}
+
+/* Called from LVGL when the widget is clicked. */
+static void on_click_trampoline(int32_t id, const char *text, void *arg)
+{
+    JSContext *ctx = s_session_ctx;
+
+    (void)arg;
+    if (!ctx || id < 1 || id > SKAI_UI_SLOTS)
+        return;
+
+    {
+        /* The pressed label is the handler argument, so one keypad handler
+           can serve every key. */
+        JSValue arg0 = JS_NewString(ctx, text ? text : "");
+        js_reenter(s_handlers[id - 1], "click", 1, (JSValueConst *)&arg0);
+        JS_FreeValue(ctx, arg0);
+    }
+}
+
+/* ── change subscriptions ──
+ *
+ * The topic is the capability's NAMESPACE, taken straight off the name the app
+ * passed: on_change("weather.temp") subscribes to "weather". That is why there
+ * is no capability-to-topic table to keep in step with anything — a namespace
+ * gains change notification the moment some firmware path calls
+ * skai_js_notify_change() with its name.
+ *
+ * Four slots because an app that watches more than a handful of domains is
+ * doing something this API is the wrong shape for. */
+#define SKAI_JS_SUBS      4
+#define SKAI_JS_TOPIC_MAX 16
+
+static JSValue s_subs[SKAI_JS_SUBS];
+static char    s_sub_topic[SKAI_JS_SUBS][SKAI_JS_TOPIC_MAX];
+static bool    s_subs_init;
+
+static void clear_subs(void)
+{
+    if (!s_subs_init)
+        return;
+    for (int i = 0; i < SKAI_JS_SUBS; i++)
+    {
+        if (s_session_ctx)
+            JS_FreeValue(s_session_ctx, s_subs[i]);
+        s_subs[i] = JS_UNDEFINED;
+        s_sub_topic[i][0] = '\0';
+    }
+}
+
+void skai_js_notify_change(const char *topic)
+{
+    if (!s_session_ctx || !s_subs_init || !topic)
+        return;
+    for (int i = 0; i < SKAI_JS_SUBS; i++)
+        if (s_sub_topic[i][0] != '\0' && strcmp(s_sub_topic[i], topic) == 0)
+            js_reenter(s_subs[i], "change", 0, NULL);
+}
+
+static JSValue js_skai_on_change(JSContext *ctx, JSValueConst this_val,
+                                 int argc, JSValueConst *argv)
+{
+    js_env_t *env = (js_env_t *)JS_GetContextOpaque(ctx);
+    const char *cap;
+    const char *dot;
+    size_t nslen;
+    int slot = -1;
+
+    (void)this_val;
+    if (argc < 2 || !JS_IsFunction(ctx, argv[1]))
+        return JS_ThrowTypeError(ctx, "skai.on_change: (capability, function)");
+
+    cap = JS_ToCString(ctx, argv[0]);
+    if (!cap)
+        return JS_NewBool(ctx, 0);
+
+    /* Subscribing is reading, so it needs the same declaration reading does —
+       otherwise an app could watch a capability it was never granted and infer
+       the value from the timing of the callbacks. */
+    if (!env || !cap_declared(env->pol, cap))
+    {
+        if (env)
+        {
+            env->denied = true;
+            app_log(env->pol->keyid, "DENIED on_change %s (not in manifest)", cap);
+        }
+        JS_FreeCString(ctx, cap);
+        return JS_ThrowReferenceError(ctx, "skai: capability not declared");
+    }
+
+    dot = strchr(cap, '.');
+    nslen = dot ? (size_t)(dot - cap) : strlen(cap);
+    if (nslen == 0 || nslen >= SKAI_JS_TOPIC_MAX)
+    {
+        JS_FreeCString(ctx, cap);
+        return JS_NewBool(ctx, 0);
+    }
+
+    if (!s_subs_init)
+    {
+        for (int i = 0; i < SKAI_JS_SUBS; i++)
+        {
+            s_subs[i] = JS_UNDEFINED;
+            s_sub_topic[i][0] = '\0';
+        }
+        s_subs_init = true;
+    }
+
+    /* One handler per topic: a second on_change for the same namespace replaces
+       the first rather than fanning out, which keeps the slot budget meaningful
+       and the ordering unsurprising. */
+    for (int i = 0; i < SKAI_JS_SUBS; i++)
+    {
+        if (strncmp(s_sub_topic[i], cap, nslen) == 0 && s_sub_topic[i][nslen] == '\0')
+        {
+            slot = i;
+            break;
+        }
+        if (slot < 0 && s_sub_topic[i][0] == '\0')
+            slot = i;
+    }
+    if (slot < 0)
+    {
+        JS_FreeCString(ctx, cap);
+        return JS_NewBool(ctx, 0);   /* out of slots — refused, not silently dropped */
+    }
+
+    memcpy(s_sub_topic[slot], cap, nslen);
+    s_sub_topic[slot][nslen] = '\0';
+    JS_FreeCString(ctx, cap);
+
+    JS_FreeValue(ctx, s_subs[slot]);
+    s_subs[slot] = JS_DupValue(ctx, argv[1]);
+    return JS_NewBool(ctx, 1);
 }
 
 static JSValue js_skai_on_click(JSContext *ctx, JSValueConst this_val,
@@ -587,6 +727,12 @@ static void inject_skai(JSContext *ctx)
 
     JS_SetPropertyStr(ctx, root, "available",
                       JS_NewCFunction(ctx, js_skai_available, "available", 1));
+    /* Not in the dispatch table for the same reason ui.on_click is not: a
+       callback has no projection in the capability type vocabulary
+       (ADR-0019 decision 13). It sits on the root rather than in a namespace
+       because it is about capabilities in general, not about one domain. */
+    JS_SetPropertyStr(ctx, root, "on_change",
+                      JS_NewCFunction(ctx, js_skai_on_change, "on_change", 2));
 
     for (int i = 0; i < n; i++)
     {
@@ -865,6 +1011,7 @@ void skai_js_close(void)
     if (!s_session_ctx)
         return;
     clear_handlers();
+    clear_subs();
     s_handlers_init = false;
     JS_FreeContext(s_session_ctx);
     JS_FreeRuntime(s_session_rt);

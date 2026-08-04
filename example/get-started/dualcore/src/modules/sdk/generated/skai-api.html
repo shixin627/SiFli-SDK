@@ -56,8 +56,10 @@ code{background:var(--code-bg);padding:1px 5px;border-radius:4px;font-size:13px}
 <div class="wrap">
 <nav>
   <h1>Skai SDK</h1>
-  <p class="ver">1.0 &middot; 48 capabilities</p>
-  <ul><li><a href="#battery">skai.battery</a></li>
+  <p class="ver">1.0 &middot; 71 capabilities</p>
+  <ul><li><a href="#app">skai.app</a></li>
+<li><a href="#battery">skai.battery</a></li>
+<li><a href="#display">skai.display</a></li>
 <li><a href="#haptic">skai.haptic</a></li>
 <li><a href="#health">skai.health</a></li>
 <li><a href="#log">skai.log</a></li>
@@ -85,6 +87,17 @@ declined it.</p>
 not a sentinel number to memorise.</p>
 <p class="lede">Generated from the annotated SDK headers by
 <code>tools/sdk/gen_dispatch.py</code>. Do not edit by hand.</p>
+<section id="app">
+<h2>skai.app</h2>
+<article id="app.exit">
+<h3>exit</h3>
+<pre class="sig">skai.app.exit(): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Close this app and go back. T1 with no argument on purpose: an app can only ever close ITSELF, which is strictly less power than staying open, and there is no id to pass that could name someone else's app.</p>
+<p>Tap-to-dismiss is how several of the built-in screens end, so without this a reproduction can draw the screen and then trap the user on it.</p>
+<p class="c"><span>C</span> <code>bool skai_app_exit(void);</code></p>
+</article>
+</section>
 <section id="battery">
 <h2>skai.battery</h2>
 <article id="battery.charging">
@@ -99,6 +112,31 @@ not a sentinel number to memorise.</p>
 <p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="">any thread</span></p>
 <p>State of charge, 0..100. SKAI_NO_DATA before the first reading lands. The "%d%%" is the declarative renderer's display format — it lives in the dispatch table so units travel with the capability instead of in a second table the renderer would have to keep in sync.</p>
 <p class="c"><span>C</span> <code>int32_t skai_battery_level(void);</code></p>
+</article>
+</section>
+<section id="display">
+<h2>skai.display</h2>
+<article id="display.set_brightness">
+<h3>set_brightness</h3>
+<pre class="sig">skai.display.set_brightness(percent: number): boolean</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Raise the screen to `percent` (3..100) for as long as this app is in front. T2: the screen is shared, and a bright panel is the single biggest battery cost a foreground app can impose.</p>
+<p>Out-of-range values are refused rather than clamped — a clamp would hide a unit mix-up (0..255 is the other plausible scale) until someone saw the watch. Returns false if refused.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>percent</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_display_set_brightness(int32_t percent);</code></p>
+</article>
+<article id="display.set_power_save">
+<h3>set_power_save</h3>
+<pre class="sig">skai.display.set_power_save(enabled: number): boolean</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Hold the screen awake for as long as this app is in front. The idle timer would otherwise dim and blank the panel mid-use, which is the difference between a torch and a torch that turns itself off.</p>
+<p>Released by the firmware on pause or stop, exactly like the brightness — an app cannot leave the screen pinned on by crashing or by forgetting.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>enabled</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_display_set_power_save(int32_t enabled);</code></p>
 </article>
 </section>
 <section id="haptic">
@@ -292,6 +330,22 @@ not a sentinel number to memorise.</p>
 </tbody></table>
 <p class="c"><span>C</span> <code>bool skai_ui_align(int32_t id, const char *anchor, int32_t dx, int32_t dy);</code></p>
 </article>
+<article id="ui.align_to">
+<h3>align_to</h3>
+<pre class="sig">skai.ui.align_to(id: number, ref_id: number, side: string, dx: number, dy: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Place a widget relative to ANOTHER widget, which is how every built-in screen is actually laid out.</p>
+<p>`side` is one of: below, above, left, right, center — each meaning "outside that edge of `ref`, centred on the other axis", the same five lv_obj_align_to anchors the C screens use. `dx`/`dy` offset from there.</p>
+<p>Why this earns its place next to ui.align: without it a reproduction has to precompute every y from font metrics and icon heights, so the layout is correct for exactly one font size and one icon set and silently drifts the moment either changes. It still takes two opaque slot ids and one of five names — no LVGL object, no style, no coordinate system.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>ref_id</code></td><td><code>number</code></td></tr>
+<tr><td><code>side</code></td><td><code>string</code></td></tr>
+<tr><td><code>dx</code></td><td><code>number</code></td></tr>
+<tr><td><code>dy</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_align_to(int32_t id, int32_t ref_id, const char *side, int32_t dx, int32_t dy);</code></p>
+</article>
 <article id="ui.arc">
 <h3>arc</h3>
 <pre class="sig">skai.ui.arc(percent: number): number | null</pre>
@@ -346,6 +400,27 @@ not a sentinel number to memorise.</p>
 <p>Close the innermost open row.</p>
 <p class="c"><span>C</span> <code>bool skai_ui_end(void);</code></p>
 </article>
+<article id="ui.goto_page">
+<h3>goto_page</h3>
+<pre class="sig">skai.ui.goto_page(index: number): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Show a page. Animated, like a swipe.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>index</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_goto_page(int32_t index);</code></p>
+</article>
+<article id="ui.icon">
+<h3>icon</h3>
+<pre class="sig">skai.ui.icon(name: string): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>A firmware-owned icon, addressed by name from a closed set — the system's glyphs, where ui.image is the app's own assets.</p>
+<p>The app supplies a string and never pixels, a path or a decoder, so this grants strictly less than ui.image does. A name that is not in the set draws nothing and returns 0, which is also what makes it safe to ship an app that asks for an icon a older firmware does not have yet.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>name</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_ui_icon(const char *name);</code></p>
+</article>
 <article id="ui.image">
 <h3>image</h3>
 <pre class="sig">skai.ui.image(rel_path: string): number | null</pre>
@@ -389,6 +464,14 @@ not a sentinel number to memorise.</p>
 <tr><td><code>text</code></td><td><code>string</code></td></tr>
 </tbody></table>
 <p class="c"><span>C</span> <code>int32_t skai_ui_label(const char *text);</code></p>
+</article>
+<article id="ui.page">
+<h3>page</h3>
+<pre class="sig">skai.ui.page(): number | null</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>── pages ── Start a new full-screen page and make it the target for everything created afterwards. Returns its index (&gt;0; page 0 always exists and is where an app starts), or 0 when the budget is spent.</p>
+<p>Pages stack vertically and the user swipes between them, which is the shape the built-in screens use. The app declares structure and nothing else: no scroll offset, no gesture, no momentum, no snap.</p>
+<p class="c"><span>C</span> <code>int32_t skai_ui_page(void);</code></p>
 </article>
 <article id="ui.row">
 <h3>row</h3>
@@ -439,6 +522,17 @@ not a sentinel number to memorise.</p>
 <tr><td><code>rel_size</code></td><td><code>number</code></td></tr>
 </tbody></table>
 <p class="c"><span>C</span> <code>bool skai_ui_set_font(int32_t id, int32_t rel_size);</code></p>
+</article>
+<article id="ui.set_icon">
+<h3>set_icon</h3>
+<pre class="sig">skai.ui.set_icon(id: number, name: string): boolean</pre>
+<p class="meta"><span class="badge tier-T1" title="granted automatically">T1</span><span class="badge thread" title="calls from elsewhere are refused">LVGL thread</span></p>
+<p>Repoint an existing icon at another name from the same closed set. The counterpart to ui.set_text, and just as load-bearing: without it a screen that refreshes can update its words but never its pictures, so an app that redraws on a data push has to delete and rebuild everything.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td><code>number</code></td></tr>
+<tr><td><code>name</code></td><td><code>string</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>bool skai_ui_set_icon(int32_t id, const char *name);</code></p>
 </article>
 <article id="ui.set_size">
 <h3>set_size</h3>
@@ -499,12 +593,143 @@ not a sentinel number to memorise.</p>
 </section>
 <section id="weather">
 <h2>skai.weather</h2>
+<article id="weather.condition">
+<h3>condition</h3>
+<pre class="sig">skai.weather.condition(): string | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>Condition as a token from a closed set: "sun" "clear" "cloudy" "rain" "thunder" "snow" Chosen to compose with the icon table — ui.icon("weather." + condition()) draws the matching glyph, and a token with no icon yet draws nothing rather than the wrong thing. Empty when the phone has sent no forecast.</p>
+<p class="c"><span>C</span> <code>int32_t skai_weather_condition(char *out, uint32_t cap);</code></p>
+</article>
+<article id="weather.day_cond">
+<h3>day_cond</h3>
+<pre class="sig">skai.weather.day_cond(index: number): string | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>Same closed token set as condition().</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>index</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_weather_day_cond(int32_t index, char *out, uint32_t cap);</code></p>
+</article>
+<article id="weather.day_count">
+<h3>day_count</h3>
+<pre class="sig">skai.weather.day_count(): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>── the daily summaries ──</p>
+<p>The phone sends five, and day 0 is the nearest. Same nearest-first order as the hourly slots, and the same reason: the store holds them backwards and an app should not have to know that.</p>
+<p>A daily record has a range rather than a reading, so there is no day_temp() — day_min() and day_max() are the pair the built-in app shows.</p>
+<p class="c"><span>C</span> <code>int32_t skai_weather_day_count(void);</code></p>
+</article>
+<article id="weather.day_date">
+<h3>day_date</h3>
+<pre class="sig">skai.weather.day_date(index: number): string | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>"MM/DD", the same form the built-in daily page prints.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>index</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_weather_day_date(int32_t index, char *out, uint32_t cap);</code></p>
+</article>
+<article id="weather.day_max">
+<h3>day_max</h3>
+<pre class="sig">skai.weather.day_max(index: number): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>index</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_weather_day_max(int32_t index);</code></p>
+</article>
+<article id="weather.day_min">
+<h3>day_min</h3>
+<pre class="sig">skai.weather.day_min(index: number): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>index</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_weather_day_min(int32_t index);</code></p>
+</article>
+<article id="weather.day_rain">
+<h3>day_rain</h3>
+<pre class="sig">skai.weather.day_rain(index: number): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>Chance of precipitation for that day, 0..100. Returned whatever the condition is — the built-in page hides it unless the day is a wet one, but that is a presentation choice, and an app with day_cond() can make it.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>index</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_weather_day_rain(int32_t index);</code></p>
+</article>
+<article id="weather.description">
+<h3>description</h3>
+<pre class="sig">skai.weather.description(): string | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>The phone's own wording for the current conditions ("Clear", "Clouds", ...), which is what the built-in screen prints under the temperature. condition() is the normalised token for choosing an icon; this is the human string.</p>
+<p class="c"><span>C</span> <code>int32_t skai_weather_description(char *out, uint32_t cap);</code></p>
+</article>
+<article id="weather.hour_cond">
+<h3>hour_cond</h3>
+<pre class="sig">skai.weather.hour_cond(index: number): string | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>Same closed token set as condition().</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>index</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_weather_hour_cond(int32_t index, char *out, uint32_t cap);</code></p>
+</article>
+<article id="weather.hour_count">
+<h3>hour_count</h3>
+<pre class="sig">skai.weather.hour_count(): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>── the hourly forecast ──</p>
+<p>Slot i is the i-th forecast AFTER now, nearest first: the phone sends current conditions plus three slots roughly 3 hours apart, so i=0 is about three hours out and hour_count() is at most 3. "Now" is not part of this series — that is temp() / condition() above.</p>
+<p>Display hour_time(i) rather than computing "now + 3(i+1) hours": the phone aligns the slots to wall-clock boundaries, so the gap to the first one depends on what time it is.</p>
+<p>Every accessor returns no-data for an index outside 0..hour_count()-1.</p>
+<p class="c"><span>C</span> <code>int32_t skai_weather_hour_count(void);</code></p>
+</article>
+<article id="weather.hour_temp">
+<h3>hour_temp</h3>
+<pre class="sig">skai.weather.hour_temp(index: number): number | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>index</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_weather_hour_temp(int32_t index);</code></p>
+</article>
+<article id="weather.hour_time">
+<h3>hour_time</h3>
+<pre class="sig">skai.weather.hour_time(index: number): string | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>Pre-formatted in the user's 12/24-hour setting, e.g. "3 PM" or "15:00". Formatted here rather than handing out an hour number, so the setting stays a firmware decision and every app honours it without trying.</p>
+<table><thead><tr><th>parameter</th><th>type</th></tr></thead><tbody>
+<tr><td><code>index</code></td><td><code>number</code></td></tr>
+</tbody></table>
+<p class="c"><span>C</span> <code>int32_t skai_weather_hour_time(int32_t index, char *out, uint32_t cap);</code></p>
+</article>
+<article id="weather.location">
+<h3>location</h3>
+<pre class="sig">skai.weather.location(): string | null</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>The place the forecast is for, as the phone named it. Empty if unknown.</p>
+<p class="c"><span>C</span> <code>int32_t skai_weather_location(char *out, uint32_t cap);</code></p>
+</article>
 <article id="weather.rain_pct">
 <h3>rain_pct</h3>
 <pre class="sig">skai.weather.rain_pct(): number | null</pre>
 <p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
 <p>Chance of precipitation, 0..100.</p>
 <p class="c"><span>C</span> <code>int32_t skai_weather_rain_pct(void);</code></p>
+</article>
+<article id="weather.refresh">
+<h3>refresh</h3>
+<pre class="sig">skai.weather.refresh(): boolean</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>Ask the phone for a fresh forecast. Rate-limited inside bloc_weather (10 s hard, 30 min soft), so this adds no throttle of its own and an app cannot turn it into a radio drain.</p>
+<p class="c"><span>C</span> <code>bool skai_weather_refresh(void);</code></p>
+</article>
+<article id="weather.stale">
+<h3>stale</h3>
+<pre class="sig">skai.weather.stale(): boolean</pre>
+<p class="meta"><span class="badge tier-T2" title="user consents per item at install">T2</span><span class="badge thread" title="">any thread</span></p>
+<p>True when the stored forecast is not for today — the condition the built-in screen shows "please update on the phone" for.</p>
+<p class="c"><span>C</span> <code>bool skai_weather_stale(void);</code></p>
 </article>
 <article id="weather.temp">
 <h3>temp</h3>

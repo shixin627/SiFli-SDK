@@ -19,6 +19,7 @@
 #include <rtthread.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 #if defined(BSP_USING_PC_SIMULATOR) && defined(PKG_USING_QUICKJS)
 
@@ -28,13 +29,18 @@
 
 static int s_fail;
 static int s_ran;
+/* Quiet mode exists for the harness, not for people: _dev_test reads the
+   simulator's VISIBLE console buffer, so 27 per-check lines push the summary —
+   the only line that carries the verdict — off the top of the window. */
+static bool s_quiet;
 #define SKAI_FAIL_KEEP 8
 static const char *s_failed[SKAI_FAIL_KEEP];
 
 static void check(const char *what, bool ok)
 {
     s_ran++;
-    rt_kprintf("  [%s] %s\n", ok ? "PASS" : "FAIL", what);
+    if (!s_quiet || !ok)
+        rt_kprintf("  [%s] %s\n", ok ? "PASS" : "FAIL", what);
     if (!ok)
     {
         if (s_fail < SKAI_FAIL_KEEP)
@@ -120,8 +126,7 @@ static int skai_pkg_test(int argc, char **argv)
     static char bl[256];
     int32_t seq;
 
-    (void)argc;
-    (void)argv;
+    s_quiet = (argc >= 2 && strcmp(argv[1], "-q") == 0);
     s_fail = 0;
     s_ran = 0;
     wipe_installed();
@@ -275,6 +280,78 @@ static int skai_pkg_add(int argc, char **argv)
     return (r == SKAI_PKG_OK) ? 0 : -1;
 }
 MSH_CMD_EXPORT(skai_pkg_add, install a fixture package: skai_pkg_add <dir>);
+
+/* Push a whole weather sync through the REAL ingest path — bloc_weather parses
+   each record, pushes it onto the forecast list and calls notify_weather(),
+   which is what fires skai.on_change('weather.*') in any open JS app.
+   Injecting JSON rather than calling notify directly is the point: it proves
+   the whole chain, not just the last link.
+
+   FOUR records, in the phone's own order: current, +3h, +6h, +9h. Pushing
+   fewer is what made an earlier fixture lie — weather_push_front() fills from
+   index 0, so a short batch leaves the LAST slot (which is "now") empty, and
+   both apps then correctly render a blank current reading that looks like a
+   bug in whichever one you were suspecting. */
+static int fake_weather(int argc, char **argv)
+{
+    extern void handle_weather(char *json);
+    static const char *const k_cond[4] = { "Clear", "Clouds", "Rain", "Thunderstorm" };
+    /* `fake_weather <temp> odd` pushes the descriptions the four above can never
+       produce, because those four are exactly condition_token()'s happy path and
+       so every branch off it was dead to this suite:
+
+         Snow      IS in condition_token's map but has NO icon asset, so
+                   ui.icon("weather.snow") returns 0. C draws weather_thunder.
+         Drizzle   outside the map, yet C's daily rain gate matches it by strstr
+                   while C's icon lookup does not.
+         Fog       outside the map entirely — the plain unknown-word path.
+
+       A snow day drawing the wrong glyph survived several review rounds purely
+       because nothing could push the word "Snow" at it. */
+    static const char *const k_odd[4] = { "Snow", "Drizzle", "Fog", "Clear" };
+    static char json[224];
+    int temp = (argc >= 2) ? atoi(argv[1]) : 20;
+    const char *const *cond = (argc >= 3 && argv[2][0] == 'o') ? k_odd : k_cond;
+
+    for (int i = 0; i < 4; i++)
+    {
+        /* Field names read off bloc_weather.c's parse_weather(); it takes a
+           flat object, not the nested provider format. Temperature climbs by
+           slot so a wrongly-ordered forecast row is visible at a glance. */
+        /* `date` is epoch seconds, 3 hours apart like the phone's aligned
+           slots. Note it changes nothing HERE: parse_weather's timestamp block
+           is inside #ifndef BSP_USING_PC_SIMULATOR, so on the simulator every
+           record keeps a zero time and hour_time() formats it as 12:00 AM.
+           Sent correctly anyway, because this fixture is also the shape a
+           hardware test needs. */
+        rt_snprintf(json, sizeof(json),
+                    "{\"temperature\":%d,\"description\":\"%s\","
+                    "\"precipitationProbability\":%d,\"isDailySummary\":false,"
+                    "\"location\":\"Taipei\",\"date\":%u}",
+                    temp + i, cond[i], 10 * (i + 1),
+                    (unsigned)(time(RT_NULL) + i * 3 * 3600));
+        handle_weather(json);
+    }
+    /* Then the five daily summaries, ascending, exactly as the phone sends
+       them after the hourly block. isDailySummary routes them to the week
+       list, which is what the second page reads. */
+    for (int d = 0; d < 5; d++)
+    {
+        rt_snprintf(json, sizeof(json),
+                    "{\"temperature\":%d,\"maxTemperature\":%d,"
+                    "\"minTemperature\":%d,\"description\":\"%s\","
+                    "\"precipitationProbability\":%d,\"isDailySummary\":true,"
+                    "\"location\":\"Taipei\",\"date\":%u}",
+                    temp + d, temp + 4 + d, temp - 3 + d, cond[d % 4],
+                    20 + 5 * d, (unsigned)(time(RT_NULL) + d * 86400));
+        handle_weather(json);
+    }
+
+    rt_kprintf("fake_weather: now %d C %s, then %d/%d/%d, +5 daily\n",
+               temp, cond[0], temp + 1, temp + 2, temp + 3);
+    return 0;
+}
+MSH_CMD_EXPORT(fake_weather, inject a 4-record weather sync: fake_weather [tempC] [odd]);
 
 static int skai_pkg_run(int argc, char **argv)
 {

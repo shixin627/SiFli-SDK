@@ -1,0 +1,5 @@
+skai_pkg_add pkg_pages
+skai_pkg_run pages
+touch_tap 230 385
+touch_tap 230 385
+touch_tap 230 315
