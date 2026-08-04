@@ -76,6 +76,9 @@ extern "C"
     extern void bloc_handwrite_cancel(void);
     extern void bloc_handwrite_clear(void);
     extern void bloc_handwrite_backspace(void);
+    /* 錶盤長按 + 水平左右搖兩下 → 開滑鼠 app:錶盤 catcher(GUI thread)長按時
+       arm、手指滑動/放開/錶盤收掉時 disarm;搖晃判定在 motion thread。 */
+    extern void bloc_watchface_shake_arm(bool on);
     extern void bloc_motion_drag_set(bool on);
     extern void bloc_press_free_move_set(bool on);
     extern void bloc_wrist_accum_reset(void);

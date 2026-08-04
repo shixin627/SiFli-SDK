@@ -2524,6 +2524,116 @@ static void calculate_gravity_position(Vector3 *gravity)
     // }
 }
 
+/* ── 錶盤長按 + 水平左右搖兩下 → 開滑鼠 app ─────────────────────────────────
+   (founder 2026-08-04)手指按住錶面不放 → 長按 arm → 期間水平左右擺兩下就開。
+   arm/disarm 全由錶盤 catcher 驅動(app_clock_main.c;手指一滑動或放開就 disarm),
+   本段只在 armed 時看 IMU,平時零成本。
+
+   「水平擺」判定用**角速度在重力方向的投影** ω_v = ω·ĝ (ĝ=重力單位向量):
+   那就是「繞世界垂直軸轉多快」,與手當下把錶拿成什麼角度無關(平放/斜著/立起
+   都準);上下擺腕與翻腕 roll 都是繞水平軸,投影≈0,不會誤觸。
+   計數只認**方向交替**的脈衝:左→右 = 兩下(founder 2026-08-04 由三下改二)。
+   同方向連著擺不算來回,重新起算。
+
+   門檻是真機待調的三個旋鈕 —— disarm 時會 log 這次長按期間的 |ω_v| 峰值,
+   founder 搖了沒開就看那個數字改 SHAKE_PEAK_DPS。 */
+#define SHAKE_PEAK_DPS 120.0f /* 一下「擺動」要達到的角速度峰值(度/秒) */
+#define SHAKE_RESET_DPS 40.0f /* 回落到此以下才重新武裝同方向(遲滯,防抖動連計) */
+#define SHAKE_NEED_PULSES 2   /* 兩下 = 兩個方向交替的脈衝(左→右,一個來回) */
+#define SHAKE_GAP_MS 700      /* 兩下間隔超過此 = 不是連續搖晃,計數從頭 */
+
+static volatile bool s_shake_armed = false; /* GUI thread 寫、motion thread 讀 */
+static int s_shake_pulses = 0;      /* 已計入的脈衝數 */
+static int s_shake_dir = 0;         /* 當前脈衝方向(+1/-1),0=已回落到靜止帶 */
+static int s_shake_last_dir = 0;    /* 最後計入的脈衝方向 */
+static rt_tick_t s_shake_last_pulse = 0;
+static float s_shake_peak_dps = 0.0f; /* 本次 arm 期間 |ω_v| 峰值(調參用) */
+
+/* GUI thread(錶盤 catcher):長按=on、手指滑動/放開/錶盤收掉=off。 */
+void bloc_watchface_shake_arm(bool on)
+{
+    if (on == s_shake_armed)
+    {
+        return;
+    }
+    if (!on && s_shake_armed)
+    {
+        LOG_I("[wf-shake] disarm pulses=%d peak=%d dps", s_shake_pulses,
+              (int)s_shake_peak_dps);
+    }
+    s_shake_armed = on;
+    s_shake_pulses = 0;
+    s_shake_dir = 0;
+    s_shake_last_dir = 0;
+    s_shake_last_pulse = 0;
+    s_shake_peak_dps = 0.0f;
+}
+
+/* motion thread(每個 IMU sample)。armed 才做事。 */
+static void watchface_shake_process(motion_data_t *motion_data)
+{
+    if (!s_shake_armed)
+    {
+        return;
+    }
+
+    Vector3 *g = &motion_data->gravity;
+    Vector3 *w = &watch_sensor.imu_data.gyro; /* dps */
+    float wv = w->x * g->x + w->y * g->y + w->z * g->z;
+    float mag = fabsf(wv);
+    if (mag > s_shake_peak_dps)
+    {
+        s_shake_peak_dps = mag;
+    }
+
+    if (mag < SHAKE_RESET_DPS)
+    {
+        s_shake_dir = 0; /* 回靜止帶:下次超門檻算新的一下 */
+        return;
+    }
+    if (mag < SHAKE_PEAK_DPS)
+    {
+        return; /* 遲滯帶之間:不計數也不重新武裝 */
+    }
+
+    int dir = (wv > 0) ? 1 : -1;
+    if (dir == s_shake_dir)
+    {
+        return; /* 同一下的持續期間,只計一次 */
+    }
+    s_shake_dir = dir;
+
+    rt_tick_t now = rt_tick_get();
+    if (s_shake_last_dir == 0 ||
+        (now - s_shake_last_pulse) > rt_tick_from_millisecond(SHAKE_GAP_MS) ||
+        dir == s_shake_last_dir)
+    {
+        /* 第一下 / 隔太久 / 同向沒來回 → 從這一下重新起算 */
+        s_shake_pulses = 1;
+    }
+    else
+    {
+        s_shake_pulses++;
+    }
+    s_shake_last_dir = dir;
+    s_shake_last_pulse = now;
+    LOG_I("[wf-shake] pulse=%d dir=%d wv=%d dps", s_shake_pulses, dir, (int)wv);
+
+    if (s_shake_pulses >= SHAKE_NEED_PULSES)
+    {
+        LOG_I("[wf-shake] triggered -> open mouse app (peak=%d dps)",
+              (int)s_shake_peak_dps);
+        s_shake_armed = false; /* 一次長按只觸發一次;放開再長按才會重新 arm */
+        s_shake_pulses = 0;
+        s_shake_dir = 0;
+        s_shake_last_dir = 0;
+        motor_pattern_unlocked(); /* 短震=收到了(錶盤沒有其他回饋) */
+        lvgl_msg_t msg;
+        msg.type = LVGL_MSG_TYPE_WATCHFACE_SHAKE_OPEN_MOUSE;
+        lvgl_send_msg(msg); /* gui_app_run 必須在 LVGL thread */
+    }
+}
+
 static Quaternion tap_state_q;
 static Quaternion tap_state_q_prev;
 static bool tap_state_q_flag = false;
@@ -2607,6 +2717,9 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
     }
 #endif
     calculate_gravity_position(&motion_data->gravity);
+    /* 錶盤長按+搖兩下:錶盤就是 is_at_home,必須放在下面那個 early return 之前。
+       armed 才做事(arm 只發生在錶面被長按時),平時是一個 bool 判斷。 */
+    watchface_shake_process(motion_data);
     if (is_at_home() && !is_at_speech_interface() && !is_at_control_center())
     {
         return;
