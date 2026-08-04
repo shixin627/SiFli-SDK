@@ -370,6 +370,14 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
                before its analog front-end settles, occasionally returns an
                implausibly low value that then sticks until the next sample. */
             bloc_battery_read_voltage_after_settle();
+            /* Re-read the charge status on every wake-up. Unplugging is
+               otherwise only ever learned from a charger IRQ edge or the 10 s
+               charging timer, and both can miss it: a bouncing connector gets
+               swallowed by the driver debounce, and the SOFT timer pauses in
+               deep sleep. Without this the watch wakes still believing it is
+               on the charger -- charge icon lit and the charging screen still
+               sitting on top of the app stack. */
+            bloc_battery_read_charge_status();
             acce_set_power(RT_SENSOR_POWER_HIGH);
             set_sleep_mode(false);
         }
