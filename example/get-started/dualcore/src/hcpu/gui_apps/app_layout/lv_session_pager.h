@@ -47,6 +47,10 @@ extern "C"
     /** The session id of the page currently centred, or NULL when empty. */
     const char *lv_session_pager_current_id(void);
 
+    /* The blurred backdrop behind this tile is the clock's screen-level gaus_dial_bg (shared
+       with the left action list), ramped by app_clock_status_bar.c's tileview scroll handler.
+       The pager owns no backdrop of its own — one parented here would slide with the tile. */
+
     /* ── Voice, mirroring lv_chat_page.h's chat_page_* trio ──
        The watch has ONE mic; whichever surface is up claims it. Callers on the shared
        voice paths (interact_voice_recognition, the release gesture) must ask this

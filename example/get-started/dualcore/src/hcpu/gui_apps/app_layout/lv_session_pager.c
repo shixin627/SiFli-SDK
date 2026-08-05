@@ -109,6 +109,12 @@ static bool s_pending_sending;
 static sp_msg_t s_pending_msgs[SP_MSG_MAX];
 static int s_pending_msg_count;
 
+/* What the centred page currently HAS drawn — see the redraw skip in sp_apply_state.
+   sp_rebuild_pages must void this: it destroys the bubble columns, so "already drawn"
+   would otherwise leave the fresh (empty) page unpainted until the text next changes. */
+static uint64_t s_drawn_sig;
+static int s_drawn_page = -1;
+
 static void sp_open_current(void);
 
 /* ── Voice ripple ────────────────────────────────────────────────────────── */
@@ -434,6 +440,8 @@ static void sp_rebuild_pages(void)
         return;
     lv_obj_clean(s_pager);
     memset(s_page_lists, 0, sizeof(s_page_lists));
+    s_drawn_sig = 0; /* the columns just died — nothing is drawn any more */
+    s_drawn_page = -1;
     for (int i = 0; i < s_session_count; i++)
         sp_build_page(s_pager, &s_sessions[i], i);
     s_current = 0;
@@ -677,6 +685,43 @@ static void sp_apply_state(void)
     if (list == NULL || !lv_obj_is_valid(list))
         return;
 
+    /* Re-render only when the thread actually changed. The phone pushes a folded conv_state
+       on EVERY convEvent — including ones that fold to the same thing (reconnect re-pushes,
+       a refresh, an event that only moved metadata) — and the render below is a full
+       lv_obj_clean + rebuild of every bubble. founder 2026-08-05: 「session 的聊天內容如果
+       沒有變化就不要重複刷新」. A 64-bit FNV-1a over what is actually DRAWN (each role+text,
+       plus the sending flag that adds the "…" bubble) is far cheaper than the rebuild it
+       skips, and streaming still updates every frame because the text differs every frame. */
+    {
+        uint64_t sig = 1469598103934665603ULL;
+#define SP_SIG_BYTE(b)                          \
+    do {                                        \
+        sig ^= (uint64_t)(uint8_t)(b);          \
+        sig *= 1099511628211ULL;                \
+    } while (0)
+        for (int i = 0; i < s_pending_msg_count; i++)
+        {
+            const sp_msg_t *m = &s_pending_msgs[i];
+            for (const char *p = m->role; *p != '\0'; p++)
+                SP_SIG_BYTE(*p);
+            SP_SIG_BYTE('\x1f');
+            for (const char *p = m->text; *p != '\0'; p++)
+                SP_SIG_BYTE(*p);
+            SP_SIG_BYTE('\x1e');
+        }
+        SP_SIG_BYTE(s_pending_sending ? 1 : 0);
+#undef SP_SIG_BYTE
+        /* Keyed by page too, so switching pages always redraws even if two sessions happen
+           to fold to identical text. */
+        if (sig == s_drawn_sig && s_current == s_drawn_page)
+        {
+            LOG_D("conv_state unchanged — no redraw");
+            return;
+        }
+        s_drawn_sig = sig;
+        s_drawn_page = s_current;
+    }
+
     lv_obj_clean(list);
     for (int i = 0; i < s_pending_msg_count; i++)
     {
@@ -708,15 +753,15 @@ void session_pager_apply_pending(void)
 
 lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
 {
+    /* No backdrop object here. The blurred dial behind this tile is the clock's SCREEN-LEVEL
+       gaus_dial_bg — the same one the left action list uses (founder 2026-08-05:
+       「底部高斯模糊背景要留在原地,不要跟著頁面滑動左右移動,看左側 action 列表怎麼做到的」).
+       A backdrop parented to this TILE travels with the tileview as the tile slides in, which
+       is exactly the sideways drift being complained about; the screen-level one never moves
+       and only its opacity ramps. app_clock's scroll handler drives it. */
     lv_obj_t *pager = lv_obj_create(parent);
     lv_obj_remove_style_all(pager);
-    /* remove_style_all leaves the pager fully TRANSPARENT, so nothing ever paints over the
-       tile underneath it. Awake that is invisible (the tileview only shows one tile), but
-       after a sleep/resume the watch face was still in the framebuffer and showed THROUGH
-       this page — founder 2026-08-05: "錶盤左側的頁面疊在右側頁面上". A full-screen tile
-       must own its pixels. */
-    lv_obj_set_style_bg_color(pager, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(pager, LV_OPA_COVER, 0);
+    /* Transparent by design now — the backdrop above owns the pixels. */
     lv_obj_set_size(pager, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_pos(pager, 0, 0);
     lv_obj_add_flag(pager, LV_OBJ_FLAG_SCROLLABLE);

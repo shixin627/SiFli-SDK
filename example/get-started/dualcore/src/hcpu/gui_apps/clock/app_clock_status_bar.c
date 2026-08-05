@@ -378,6 +378,19 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 if (opa > 255) opa = 255;
                 instruction_list_bar_set_blur_amount((uint8_t)opa);
                 set_instruction_list_time_opa((uint8_t)opa);
+                /* Same pull fades in the blurred dial behind the session pager — the SCREEN-LEVEL
+                   gaus_dial_bg, exactly as the left action list uses it. It must not be parented
+                   to the tile: that travels with the tileview, and the backdrop then drifts
+                   sideways with the page instead of sitting still (founder 2026-08-05). Black
+                   underlay + blurred image ramp together, so the dial dissolves into the blur
+                   rather than the page arriving on a hard cut. */
+                if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+                {
+                    lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_set_style_bg_opa(gaus_dial_bg, (lv_opa_t)opa, 0);
+                    if (gaus_dial_img && lv_obj_is_valid(gaus_dial_img))
+                        lv_obj_set_style_img_opa(gaus_dial_img, (lv_opa_t)opa, 0);
+                }
                 break;
             }
         }
