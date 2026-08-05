@@ -404,8 +404,15 @@ bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
     buf[6] = (uint8_t)(count & 0xFF);
     buf[7] = 0;                                   /* reserved, keeps it aligned */
     memcpy(buf + 8, win, count);
-    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_WINDOW_DUMP,
-                           buf, (uint16_t)(8 + count));
+    bool ok = commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_WINDOW_DUMP,
+                              buf, (uint16_t)(8 + count));
+    /* The only point of the whole capture that is observable on the HCPU log:
+       the decision and its LOG_I both live on the LCPU, whose console is uart4,
+       not the COM12 firmware log. Without this a bench session cannot tell a
+       burst that shipped a window from one that never captured. */
+    LOG_I("send hr window bpm=%u conf=%u n=%u -> %s", (unsigned)bpm,
+          (unsigned)conf, (unsigned)count, ok ? "ok" : "FAIL");
+    return ok;
 }
 
 bool commu_send_sleep_data(void)
