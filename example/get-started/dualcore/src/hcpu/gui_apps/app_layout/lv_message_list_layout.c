@@ -370,12 +370,18 @@ static notification_t *selection_notification = NULL;
  * 真的去設，省掉每幀對每張卡遞迴走一次子物件。索引是 list 的 child index
  * （通知卡 + media widget + no_notifications widget 都算在內）。 */
 #define MSG_CARD_OPA_SLOTS (ITEM_AMOUNT_NOTIFICATION + 4)
-static lv_opa_t card_last_opa[MSG_CARD_OPA_SLOTS];
+/* int16_t 而不是 lv_opa_t：作廢時要能填一個「任何真實透明度都不等於」的值。
+   填 LV_OPA_COVER 會反過來害人 — 刪掉一則通知的當下卡片子物件實際上還是
+   透明的（它剛被推到邊緣），快取卻宣稱不透明，scroll_list 下一幀算出
+   「應該不透明、快取也說不透明」就跳過不設，那張卡就永遠留在透明狀態，
+   畫面上整片空白。 */
+#define MSG_CARD_OPA_UNKNOWN (-1)
+static int16_t card_last_opa[MSG_CARD_OPA_SLOTS];
 static void apply_drag_opa_to_children(lv_obj_t *node, lv_opa_t opa);
 static void msg_card_opa_cache_reset(void)
 {
     for (int i = 0; i < MSG_CARD_OPA_SLOTS; i++)
-        card_last_opa[i] = LV_OPA_COVER;
+        card_last_opa[i] = MSG_CARD_OPA_UNKNOWN;
 }
 
 /* ---- Indicator dots (match instruction list style, per-notification +
@@ -813,10 +819,10 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
             /* 用子物件的 img_opa / text_opa，不要對整張卡設 LV_STYLE_OPA —
              * 後者會讓 LVGL 走透明圖層合成，這張卡就整個不畫了（位置與 opa
              * 都算對、畫面卻空白）。既有的拖曳淡出走的也是同一條路。 */
-            if (i < MSG_CARD_OPA_SLOTS && card_last_opa[i] != card_opa)
+            if (i < MSG_CARD_OPA_SLOTS && card_last_opa[i] != (int16_t)card_opa)
             {
                 apply_drag_opa_to_children(child, card_opa);
-                card_last_opa[i] = card_opa;
+                card_last_opa[i] = (int16_t)card_opa;
             }
         }
 #if ENABLE_CURVE_LIST
