@@ -47,6 +47,11 @@ static bool    gesture_is_enabled = true;
 bool           gesture_is_active = false;
 static uint8_t gesture_enable_reg = 0xff;
 
+/* Supplied by the Skaiwalk application; absent in other projects built for this
+   board, hence weak rather than a hard extern. */
+RT_WEAK void motor_pattern_scrolling_app(void);
+RT_WEAK void lvgl_set_global_keypad_esc_cmd(void);
+
 static int32_t obj_left_edge(lv_obj_t *obj)
 {
     lv_area_t a;
@@ -158,10 +163,11 @@ static void back_hint_anim_cb(void *obj, int32_t x)
 
         if (!back_hint_vibrated)
         {
-#ifdef SkaiwalkWatchOS
-            extern void motor_pattern_scrolling_app(void);
-            motor_pattern_scrolling_app();
-#endif
+            /* Weak: this file lives in shared middleware and SkaiwalkWatchOS is a
+               board-level macro, so any project built for this board would
+               otherwise need the Skaiwalk implementation to link. */
+            if (motor_pattern_scrolling_app)
+                motor_pattern_scrolling_app();
             back_hint_vibrated = true;
         }
     }
@@ -268,10 +274,8 @@ static void left_bar_event_handler(lv_event_t *e)
             lv_anim_set_completed_cb(&back_hint_release_anim,
                                      hidden_back_hint_release_anim_cb);
             lv_anim_start(&back_hint_release_anim);
-#ifdef SkaiwalkWatchOS
-            extern void lvgl_set_global_keypad_esc_cmd(void);
-            lvgl_set_global_keypad_esc_cmd();
-#endif
+            if (lvgl_set_global_keypad_esc_cmd)
+                lvgl_set_global_keypad_esc_cmd();
         }
         else
         {
