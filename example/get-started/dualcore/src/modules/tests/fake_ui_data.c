@@ -268,6 +268,63 @@ static int notif_inject(int argc, char *argv[])
 }
 MSH_CMD_EXPORT(notif_inject, notif_inject title msg [type] - add fake notification);
 
+/* Fire the refresh the injection path deliberately skips. Kept separate so
+ * notif_inject stays crash-free: this one exercises the icon_list path that
+ * the comment above says the PC image decoder can't handle. Run it after
+ * injecting to see the notification UI actually populate. */
+static int notif_refresh(int argc, char *argv[])
+{
+    (void)argc;
+    (void)argv;
+    lvgl_msg_t msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = LVGL_MSG_TYPE_NOTIFICATION;
+    msg.data.notification = NULL;
+    lvgl_send_msg(msg);
+    rt_kprintf("notif_refresh sent\n");
+    return 0;
+}
+MSH_CMD_EXPORT(notif_refresh, notif_refresh - fire LVGL notification refresh);
+
+/* Stand-in for the wrist-motion scroll the PC has no IMU for. Mirrors what
+ * navigation_bar_control_with_euler_angle emits: the raw yaw-energy offset
+ * (drives the indicator icons) plus a NAV_BAR_CONTROL page index whenever the
+ * 125-unit page band changes (drives the selected card). Argument is the yaw
+ * energy, 0 .. 125*page_count — 0 is the last item, high is the first. */
+extern uint8_t get_message_page_count(void);
+static int msg_offset(int argc, char *argv[])
+{
+    if (argc < 2)
+    {
+        rt_kprintf("usage: msg_offset <yaw_energy>\n");
+        return -1;
+    }
+    int energy = atoi(argv[1]);
+    if (energy < 0) energy = 0;
+
+    lvgl_msg_t msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = LVGL_MSG_TYPE_APP_LIST_SCROLL_BAR_OFFSET;
+    msg.data.scroll_offset = (int16_t)energy;
+    lvgl_send_msg(msg);
+
+    int pages = (int)get_message_page_count();
+    if (pages > 0)
+    {
+        int page = pages - (energy / 125) - 1;
+        if (page < 0) page = 0;
+        if (page >= pages) page = pages - 1;
+        lvgl_msg_t nav;
+        memset(&nav, 0, sizeof(nav));
+        nav.type = LVGL_MSG_TYPE_NAV_BAR_CONTROL;
+        nav.data.action = page;
+        lvgl_send_msg(nav);
+        rt_kprintf("msg_offset energy=%d page=%d/%d\n", energy, page, pages);
+    }
+    return 0;
+}
+MSH_CMD_EXPORT(msg_offset, msg_offset yaw_energy - fake wrist-motion scroll);
+
 static int notif_clear(int argc, char *argv[])
 {
     (void)argc;
