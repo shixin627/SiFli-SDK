@@ -1135,9 +1135,21 @@ static volatile bool s_pi_collecting = false;
 static uint32_t s_pi_min = 0, s_pi_max = 0, s_pi_sum = 0, s_pi_cnt = 0;
 static uint16_t bg_hr_win_pi_e3 = 0;   /* last burst's PI*1000, clamped to u16 */
 
+/* Repeat-sample detection over the same raw stream (see ppg_pi_feed). */
+static uint32_t s_rep_prev = 0, s_rep_run = 0, s_rep_run_max = 0;
+static uint32_t s_rep_equal = 0, s_rep_total = 0;
+static bool     s_rep_have_prev = false;
+static uint8_t  bg_hr_win_rep_max = 0;   /* longest identical run this burst   */
+static uint8_t  bg_hr_win_rep_pct = 0;   /* % of samples equal to predecessor  */
+/* Declared here rather than with the other burst counters below because the
+   sleep_diag getters sit above them and would otherwise forward-reference it. */
+static uint8_t  bg_hr_burst_own_conf_max = 0;  /* best hr_autocorr confidence this burst */
+
 static void ppg_pi_start(void)
 {
     s_pi_min = 0xFFFFFFFFu; s_pi_max = 0; s_pi_sum = 0; s_pi_cnt = 0;
+    s_rep_run = 0; s_rep_run_max = 0; s_rep_equal = 0; s_rep_total = 0;
+    s_rep_have_prev = false;   /* first sample of a burst has no predecessor */
     s_pi_collecting = true;
     /* Drop the correlation window with the PI window: samples from before this
        burst's LED power-up would be correlated against fresh ones across a
@@ -1148,12 +1160,37 @@ static void ppg_pi_start(void)
 void ppg_pi_feed(uint8_t n, const uint32_t *raw)
 {
     if (!s_pi_collecting || raw == NULL) return;
-    /* Same raw channel-0 stream, two consumers. hr_autocorr is the one whose
-       answer gets published; PI stays as a signal-quality diagnostic. */
+    /* Same raw channel-0 stream, three consumers. hr_autocorr is the one whose
+       answer gets published; PI and the repeat detector are diagnostics. */
     hr_autocorr_feed(n, raw);
     for (uint8_t i = 0; i < n; i++)
     {
         uint32_t v = raw[i];
+
+        /* Repeat detection. The gesture-collection path samples PPG by polling a
+           two-slot buffer at the IMU rate, so when that rate outruns the PPG
+           update it re-reads the same pair and the waveform comes out as a
+           staircase (founder observed exactly this, recovering only after a
+           sleep/wake). THIS path takes the FIFO's actual contents instead, so it
+           should never repeat — but that is a claim from reading code, and this
+           investigation has had several code-reading conclusions turn out wrong.
+           A 17-bit ADC on live tissue does not produce two identical consecutive
+           samples by chance, so any run > 1 here is real evidence. */
+        if (s_rep_have_prev && v == s_rep_prev)
+        {
+            s_rep_run++;
+            s_rep_equal++;
+            if (s_rep_run > s_rep_run_max) s_rep_run_max = s_rep_run;
+        }
+        else
+        {
+            s_rep_run = 1;
+            if (s_rep_run > s_rep_run_max) s_rep_run_max = s_rep_run;
+        }
+        s_rep_prev = v;
+        s_rep_have_prev = true;
+        s_rep_total++;
+
         if (v < s_pi_min) s_pi_min = v;
         if (v > s_pi_max) s_pi_max = v;
         s_pi_sum += v;
@@ -1164,6 +1201,11 @@ void ppg_pi_feed(uint8_t n, const uint32_t *raw)
 static void ppg_pi_finish(void)
 {
     s_pi_collecting = false;
+
+    bg_hr_win_rep_max = (s_rep_run_max > 255u) ? 255u : (uint8_t)s_rep_run_max;
+    bg_hr_win_rep_pct = (s_rep_total > 0)
+                            ? (uint8_t)((s_rep_equal * 100u) / s_rep_total) : 0u;
+
     if (s_pi_cnt == 0 || s_pi_max <= s_pi_min) { bg_hr_win_pi_e3 = 0; return; }
     uint32_t mean = s_pi_sum / s_pi_cnt;
     if (mean == 0) { bg_hr_win_pi_e3 = 0; return; }
@@ -1173,6 +1215,24 @@ static void ppg_pi_finish(void)
 
 /* Last completed burst's PI*1000 (0 if none). Read by sleep_service for sleep_diag. */
 uint16_t hr_service_get_last_pi_e3(void) { return bg_hr_win_pi_e3; }
+
+/**
+ * Last burst's diagnostics packed for sleep_diag, high byte first:
+ *   [15:8] hr_autocorr's best confidence   — the number missing on 2026-08-05,
+ *          when four isolated outliers (171/144/101/38) could not be classified
+ *          as "low confidence, raise the gate" vs "confident and wrong, fix the
+ *          rule" because confidence only ever reached the LCPU console.
+ *   [7:0]  longest run of identical raw PPG samples — proof, not inference, that
+ *          the staircase seen in the gesture stream is absent here.
+ * rep_pct rides separately (see below) so neither field has to be truncated.
+ */
+uint16_t hr_service_get_last_own_info(void)
+{
+    return (uint16_t)(((uint16_t)bg_hr_burst_own_conf_max << 8) | bg_hr_win_rep_max);
+}
+
+/** Last burst's share of samples identical to their predecessor, percent. */
+uint8_t hr_service_get_last_rep_pct(void) { return bg_hr_win_rep_pct; }
 
 /* Last completed burst's delivered-vs-expected PPG frame percentage. The night
    has no serial console, so this rides sleep_diag to the phone: it is the test
@@ -1289,7 +1349,18 @@ static uint32_t bg_hr_burst_snr_max = 0;
    own_conf distribution against a reference watch says where the line is. */
 #define BG_HR_OWN_MIN_CONF   40
 static uint8_t  bg_hr_vendor_bpm = 0;          /* last vendor read, diagnostic only */
-static uint8_t  bg_hr_burst_own_conf_max = 0;  /* best hr_autocorr confidence this burst */
+
+/* Window capture for the offline suite. Triggered when an estimate lands far
+   from the last PUBLISHED value — that is the shape of all four 2026-08-05
+   outliers (171/144/101/38), each a single burst between correct neighbours.
+   Bounds chosen wide: this is evidence collection, and a capture that never
+   fires is worse than one that occasionally grabs a real rate change. */
+#define BGHR_SUSPECT_HI_NUM   15   /* >= 1.5x the last published value */
+#define BGHR_SUSPECT_LO_NUM    7   /* <= 0.7x                          */
+#define BGHR_SUSPECT_DEN      10
+static uint8_t  bg_hr_last_published = 0;
+static bool     bg_hr_win_captured = false;   /* one capture per burst */
+static watch_sys_hr_window_t bg_hr_win_dump;
 
 /* Integer std-dev from running Σx / Σx². Dividing before squaring keeps this in
    uint32 for any realistic n (Σx² ≤ n·255², so n up to ~66k is safe; a 3-min
@@ -1563,9 +1634,17 @@ static void bg_hr_finish_burst(void)
                               bg_hr_burst_best > SLEEP_HR_ARTEFACT_CEIL);
 
     /* Forward the best BPM seen this burst, then power the LED back off. */
+    /* Ship the captured window before the HR point, so a capture is never lost to
+       a disconnect that happens between the two. */
+    if (bg_hr_win_captured && watch_sys_sync.notify_hr_window)
+    {
+        watch_sys_sync.notify_hr_window(&bg_hr_win_dump);
+    }
+
     if (bg_hr_burst_best > 0 && watch_sys_sync.notify_hr_sample)
     {
         watch_sys_sync.notify_hr_sample((uint32_t)time(NULL), bg_hr_burst_best);
+        bg_hr_last_published = bg_hr_burst_best;   /* baseline for the next burst */
         bg_hr_note(BGHR_OK);
     }
     else if (bg_hr_burst_reads > 0 && bg_hr_burst_readfail == bg_hr_burst_reads)
@@ -1653,6 +1732,33 @@ static void bg_hr_sample_cb(void *param)
     uint8_t own_bpm = hr_autocorr_estimate(&own_conf);
     if (own_conf > bg_hr_burst_own_conf_max) bg_hr_burst_own_conf_max = own_conf;
 
+    /* Capture BEFORE the median swallows it: the median is what makes the
+       published curve robust, but it also hides the individual bad window that
+       the offline suite needs. Snapshot must happen right after estimate() while
+       s_work still holds that window. */
+    if (own_bpm > 0 && !bg_hr_win_captured && bg_hr_last_published > 0)
+    {
+        uint32_t hi = (uint32_t)bg_hr_last_published * BGHR_SUSPECT_HI_NUM;
+        uint32_t lo = (uint32_t)bg_hr_last_published * BGHR_SUSPECT_LO_NUM;
+        uint32_t cur = (uint32_t)own_bpm * BGHR_SUSPECT_DEN;
+        if (cur >= hi || cur <= lo)
+        {
+            uint16_t n = hr_autocorr_last_window(bg_hr_win_dump.win,
+                                                 WATCH_SYS_HR_WIN_MAX);
+            if (n > 0)
+            {
+                bg_hr_win_dump.ts = (uint32_t)time(NULL);
+                bg_hr_win_dump.bpm = own_bpm;
+                bg_hr_win_dump.conf = own_conf;
+                bg_hr_win_dump.count = n;
+                bg_hr_win_captured = true;
+                LOG_I("bg_hr: captured suspect window bpm=%u conf=%u (last published %u)",
+                      (unsigned)own_bpm, (unsigned)own_conf,
+                      (unsigned)bg_hr_last_published);
+            }
+        }
+    }
+
     if (own_bpm > 0 && own_conf >= BG_HR_OWN_MIN_CONF)
     {
         /* Motion is counted, not rejected: the accel-feed alignment fix restored
@@ -1701,6 +1807,8 @@ static void bg_hr_sample_cb(void *param)
    Records the RAW per-second algorithm output -- no median, no motion gate --
    because the question is what the algorithm actually emits, not what a filter
    would have shown. Buffered a minute at a time (see watch_sys_hr_cont_t). */
+/* PI window length in continuous mode — see the tick guard in bg_hr_cont_cb. */
+#define BG_HR_CONT_PI_SECS   8
 static rt_bool_t bg_hr_cont_enabled = RT_FALSE;
 static rt_timer_t bg_hr_cont_timer = RT_NULL;
 static watch_sys_hr_cont_t bg_hr_cont_buf;
@@ -1738,13 +1846,24 @@ static void bg_hr_cont_cb(void *param)
     uint32_t acc_info = 0, acc_scene = 0;
     gh3018_get_hr_acc_state(&acc_info, &acc_scene);
 
-    /* Close this second's PI window and open the next. In continuous mode nothing
-       else drives the accumulator (bursts are suppressed), so reusing it here is
-       safe AND it keeps hr_service_get_last_pi_e3() live for sleep_diag, which
-       otherwise reported pi_e3 = 0 for the entire night. */
-    ppg_pi_finish();
-    uint16_t pi = bg_hr_win_pi_e3;
-    ppg_pi_start();
+    /* Close the PI window every BG_HR_CONT_PI_SECS, not every second. PI is
+       (max-min)/mean over the window, and at a resting 60 bpm one beat occupies a
+       full second — a 1 s window often does not span a complete pulse, so max-min
+       collapses. Measured on 2026-08-04: 88% of one-second windows returned 0 and
+       the non-zero ones had a median of 1, against 377 from a burst-length
+       window. Eight seconds covers at least four beats down to 30 bpm.
+       Reusing the burst accumulator is safe here: continuous mode suppresses
+       bursts, so nothing else drives it — and it keeps
+       hr_service_get_last_pi_e3() live for sleep_diag, which otherwise reported
+       pi_e3 = 0 all night. */
+    static uint8_t s_cont_pi_tick = 0;
+    if (++s_cont_pi_tick >= BG_HR_CONT_PI_SECS)
+    {
+        s_cont_pi_tick = 0;
+        ppg_pi_finish();
+        ppg_pi_start();
+    }
+    uint16_t pi = bg_hr_win_pi_e3;   /* last completed window, held between closes */
 
     uint32_t mv = bghr_accel_delta();
 
@@ -1907,6 +2026,7 @@ static void bg_hr_period_cb(void *param)
     bg_hr_burst_qscore_max = 0;
     bg_hr_burst_own_conf_max = 0;
     bg_hr_vendor_bpm = 0;
+    bg_hr_win_captured = false;   /* one capture per burst */
     bg_hr_burst_confi_max = 0;
     bg_hr_burst_snr_max = 0;
     bg_hr_burst_qlevel = 0;

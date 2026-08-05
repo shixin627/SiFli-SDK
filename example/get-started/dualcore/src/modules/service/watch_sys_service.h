@@ -53,6 +53,8 @@ extern "C"
             ((MSG_SERVICE_SYS_DATA_REQ + 18) | RSP_MSG_TYPE),
         MSG_SERVICE_HR_CONT_IND =
             ((MSG_SERVICE_SYS_DATA_REQ + 19) | RSP_MSG_TYPE),
+        MSG_SERVICE_HR_WINDOW_IND =
+            ((MSG_SERVICE_SYS_DATA_REQ + 20) | RSP_MSG_TYPE),
     };
 
     typedef enum
@@ -249,6 +251,17 @@ extern "C"
                              * 12.5 Hz while it believes 25 -> exactly DOUBLE for
                              * that whole burst. frame_pct cannot see this (it
                              * counts upstream of the divider).                  */
+        /* (hr_autocorr best confidence << 8) | longest identical raw-PPG run.
+           Confidence answers the question left open on 2026-08-05, when four
+           isolated outliers (171/144/101/38 bpm) could not be classified as
+           "low confidence — raise the gate" versus "confident and wrong — fix
+           the rule", because it only ever reached the LCPU console. The run
+           length proves — rather than infers from reading code — that the
+           staircase seen in the gesture-collection stream is absent from the HR
+           path: a 17-bit ADC on live tissue does not repeat a sample by chance,
+           so anything above 1 is real. */
+        uint16_t own_info;
+        uint8_t  rep_pct;   /* % of raw samples identical to their predecessor */
         uint16_t frame_pct; /* last PPG burst: delivered frames as % of 25 Hz *
                              * burst seconds. The HBA algo assumes 25 Hz and the
                              * samples are untimestamped, so a shortfall here is
@@ -265,6 +278,18 @@ extern "C"
    grew from 3 bytes to 7, to keep the BLE payload (6 + 7*N) far inside
    MAX_PACKET_PAYLOAD_SIZE (507) rather than merely under it. */
 #define WATCH_SYS_HR_CONT_MAX 30
+
+/* One captured hr_autocorr window (LCPU -> HCPU -> KEY_HR_WINDOW_DUMP). */
+#define WATCH_SYS_HR_WIN_MAX 256
+
+    typedef struct
+    {
+        uint32_t ts;                       /* when the estimate was produced    */
+        uint8_t  bpm;                      /* the implausible value             */
+        uint8_t  conf;                     /* its confidence 0..100             */
+        uint16_t count;                    /* samples in win[]                  */
+        int8_t   win[WATCH_SYS_HR_WIN_MAX];/* detrended PPG, oldest first       */
+    } watch_sys_hr_window_t;
 
     typedef struct
     {
@@ -338,6 +363,7 @@ extern "C"
        useless here, because the hole looks identical to "the sensor produced
        nothing" — which is exactly how the 2026-08-02 night lost 65 minutes. */
     void (*notify_hr_cont)(const watch_sys_hr_cont_t *rec);
+    void (*notify_hr_window)(const watch_sys_hr_window_t *rec);
 #endif
     } watch_sys_sync_t;
 
