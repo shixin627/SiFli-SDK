@@ -306,7 +306,8 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
                            uint8_t rhr, uint8_t worn, uint8_t rest,
                            uint8_t fresh, uint16_t total, uint16_t deep,
                            uint16_t rem, uint16_t light, uint16_t pi_e3,
-                           uint16_t frame_pct, uint16_t rate_info)
+                           uint16_t frame_pct, uint16_t rate_info,
+                           uint16_t own_info, uint8_t rep_pct)
 {
     /* Packed 28-byte wire payload (phone reads 4+2+1*8+2*7 LE). total/deep/rem/
        light are the firmware's daily accumulators; pi_e3 is the last burst's
@@ -334,36 +335,84 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
         uint16_t pi_e3;
         uint16_t frame_pct;
         uint16_t rate_info;
+        /* own_info = (hr_autocorr confidence << 8) | longest identical raw-PPG
+           run; rep_pct = share of samples equal to their predecessor. Appended
+           last so older phone builds, which gate on 24/26/28 bytes, keep parsing
+           every field they already know. */
+        uint16_t own_info;
+        uint8_t  rep_pct;
     } rec = {.ts = ts, .score = score, .hr = hr, .hr_std = hr_std,
              .stage = stage, .veto = veto, .rhr = rhr, .worn = worn,
              .rest = rest, .fresh = fresh, .total = total, .deep = deep,
              .rem = rem, .light = light, .pi_e3 = pi_e3,
-             .frame_pct = frame_pct, .rate_info = rate_info};
+             .frame_pct = frame_pct, .rate_info = rate_info,
+             .own_info = own_info, .rep_pct = rep_pct};
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_SLEEP_DIAG,
                            &rec, (uint16_t)sizeof(rec));
 }
 
 bool commu_send_hr_cont(uint32_t base_ts, uint8_t interval_s, uint8_t count,
                         const uint8_t *bpm, const uint8_t *qscore,
-                        const uint8_t *qlevel)
+                        const uint8_t *qlevel, const uint8_t *accst,
+                        const uint8_t *accel, const uint16_t *pi_e3)
 {
-    /* Variable-length: 6-byte header + three count-long byte arrays. At the
-       60-sample cap that is 186 B, well inside MAX_PACKET_PAYLOAD_SIZE (507). */
-    if (count == 0 || bpm == NULL || qscore == NULL || qlevel == NULL) return false;
-    if ((uint16_t)(6 + 3 * count) > MAX_PACKET_PAYLOAD_SIZE) return false;
+    /* Variable-length: 6-byte header + five count-long byte arrays + one u16 LE
+       array. At the 30-sample cap that is 216 B, comfortably inside
+       MAX_PACKET_PAYLOAD_SIZE (507). */
+    if (count == 0 || bpm == NULL || qscore == NULL || qlevel == NULL ||
+        accst == NULL || accel == NULL || pi_e3 == NULL) return false;
+    uint16_t len = (uint16_t)(6 + 7 * count);
+    if (len > MAX_PACKET_PAYLOAD_SIZE) return false;
 
-    uint8_t buf[6 + 3 * 60];
+    uint8_t buf[6 + 7 * 30];
     buf[0] = (uint8_t)(base_ts & 0xFF);
     buf[1] = (uint8_t)((base_ts >> 8) & 0xFF);
     buf[2] = (uint8_t)((base_ts >> 16) & 0xFF);
     buf[3] = (uint8_t)((base_ts >> 24) & 0xFF);
     buf[4] = interval_s;
     buf[5] = count;
-    memcpy(buf + 6, bpm, count);
-    memcpy(buf + 6 + count, qscore, count);
-    memcpy(buf + 6 + 2 * count, qlevel, count);
-    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_CONT_DIAG,
-                           buf, (uint16_t)(6 + 3 * count));
+    uint16_t o = 6;
+    memcpy(buf + o, bpm, count);    o += count;
+    memcpy(buf + o, qscore, count); o += count;
+    memcpy(buf + o, qlevel, count); o += count;
+    memcpy(buf + o, accst, count);  o += count;
+    memcpy(buf + o, accel, count);  o += count;
+    for (uint8_t i = 0; i < count; i++)   /* u16 LE, matching every other key here */
+    {
+        buf[o++] = (uint8_t)(pi_e3[i] & 0xFF);
+        buf[o++] = (uint8_t)((pi_e3[i] >> 8) & 0xFF);
+    }
+    return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_CONT_DIAG, buf, len);
+}
+
+bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
+                          uint16_t count, const int8_t *win)
+{
+    /* 8-byte header + count int8 samples. The 256-sample window lands at 264 B,
+       inside MAX_PACKET_PAYLOAD_SIZE (507) — that single-frame fit is why the
+       samples are int8 rather than the int16 the estimator works in. */
+    if (win == NULL || count == 0) return false;
+    if (count > 256) count = 256;
+
+    uint8_t buf[8 + 256];
+    buf[0] = (uint8_t)(ts & 0xFF);
+    buf[1] = (uint8_t)((ts >> 8) & 0xFF);
+    buf[2] = (uint8_t)((ts >> 16) & 0xFF);
+    buf[3] = (uint8_t)((ts >> 24) & 0xFF);
+    buf[4] = bpm;
+    buf[5] = conf;
+    buf[6] = (uint8_t)(count & 0xFF);
+    buf[7] = 0;                                   /* reserved, keeps it aligned */
+    memcpy(buf + 8, win, count);
+    bool ok = commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_WINDOW_DUMP,
+                              buf, (uint16_t)(8 + count));
+    /* The only point of the whole capture that is observable on the HCPU log:
+       the decision and its LOG_I both live on the LCPU, whose console is uart4,
+       not the COM12 firmware log. Without this a bench session cannot tell a
+       burst that shipped a window from one that never captured. */
+    LOG_I("send hr window bpm=%u conf=%u n=%u -> %s", (unsigned)bpm,
+          (unsigned)conf, (unsigned)count, ok ? "ok" : "FAIL");
+    return ok;
 }
 
 bool commu_send_sleep_data(void)
@@ -636,6 +685,41 @@ bool commu_send_lift_input_caret(int pos, const char *text)
 bool commu_send_lift_input_delete(void)
 {
     return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_DELETE, "{}");
+}
+
+/* 滑鼠 app 語音站的送出(0x1d 加選填 text)。與立起面板那條的差別:語音站的文字真相在
+   **手錶本地**(鍵盤模式的 input_buffer,才能跟注音/英文混著用),所以這裡必須把文字一起帶
+   上去;手機收到帶 text 的就用它,不用自己那份暫存稿。AI 口語整理由手機端收到後再跑。 */
+bool commu_send_voice_station_commit(const char *dest, const char *text)
+{
+    if (!dest || !text) return false;
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return false;
+    cJSON_AddStringToObject(root, "dest", dest);
+    cJSON_AddStringToObject(root, "text", text);
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_COMMIT, json);
+    LOG_I("send voice-station commit dest=%s -> %s", dest, ok ? "ok" : "FAIL");
+    cJSON_free(json);
+    return ok;
+}
+
+/* 同一把鑰匙(0x1e),preview = 手錶目前顯示的文字。語音站的文字真相在手錶本地,電腦那條
+   輸入框要跟著顯示就得靠這個持續推(立起面板不需要 —— 那時真相在手機)。呼叫端已做防抖。 */
+bool commu_send_voice_station_preview(const char *text)
+{
+    if (!text) return false;
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return false;
+    cJSON_AddStringToObject(root, "preview", text);
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_LIFT_INPUT_CARET, json);
+    cJSON_free(json);
+    return ok;
 }
 
 /* 同一把鑰匙(0x1e),cancel = 把「這次按住錄到的那一段」整個丟掉,暫存文字退回按下之前。

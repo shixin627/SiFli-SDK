@@ -26,6 +26,10 @@ if GetDepend('BSP_USING_PC_SIMULATOR'):
     # Signed-package install + verification gates (ADR-0019 §2.5). Also
     # self-gates on PKG_USING_QUICKJS.
     src += ['test_skai_pkg.c']
+    # hr_ac_test: runs the real hr_autocorr.c object against the same synthetic
+    # cases as its Python reference, so a fixed-point porting error is caught
+    # here rather than on a wrist overnight.
+    src += ['test_hr_autocorr.c']
 
 group = DefineGroup('Unit_tests', src, depend = [''], CPPPATH = path)
 

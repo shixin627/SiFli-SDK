@@ -143,6 +143,53 @@ static void set_battery_voltage(uint16_t voltage, uint16_t percentage)
 
 extern int get_gravity_position(void);
 
+/* ---- continuous-HR batch backlog ------------------------------------------
+   LCPU hands over one 30 s batch at a time and cannot see whether BLE is up, so
+   the outage retry has to live here. Without it a disconnected stretch is gone
+   for good AND indistinguishable from "the sensor produced nothing" — that is
+   how the 2026-08-02 overnight run lost 65 minutes.
+
+   Depth 8 = 4 minutes of outage absorbed for ~1.7 KB. Deeper is not obviously
+   better: this is a diagnostic stream, and a link down longer than a few minutes
+   means the night has a real hole no buffer can paper over. Oldest is dropped
+   first so the record stays contiguous at the recent end. */
+#define HR_CONT_BACKLOG 8
+static watch_sys_hr_cont_t s_hr_cont_q[HR_CONT_BACKLOG];
+static uint8_t s_hr_cont_head = 0, s_hr_cont_n = 0;
+static uint16_t s_hr_cont_dropped = 0;
+
+static bool hr_cont_try_send(const watch_sys_hr_cont_t *r)
+{
+    return commu_send_hr_cont(r->base_ts, r->interval_s, r->count, r->bpm,
+                              r->qscore, r->qlevel, r->accst, r->accel, r->pi_e3);
+}
+
+static void hr_cont_enqueue(const watch_sys_hr_cont_t *rec)
+{
+    /* Drain the backlog before the new batch so ordering is preserved; stop at the
+       first failure — the link is still down and further attempts just burn time
+       inside the service callback. */
+    while (s_hr_cont_n > 0)
+    {
+        if (!hr_cont_try_send(&s_hr_cont_q[s_hr_cont_head])) break;
+        s_hr_cont_head = (uint8_t)((s_hr_cont_head + 1) % HR_CONT_BACKLOG);
+        s_hr_cont_n--;
+    }
+    if (s_hr_cont_n == 0 && hr_cont_try_send(rec)) return;
+
+    if (s_hr_cont_n >= HR_CONT_BACKLOG)
+    {
+        s_hr_cont_head = (uint8_t)((s_hr_cont_head + 1) % HR_CONT_BACKLOG);
+        s_hr_cont_n--;
+        if (++s_hr_cont_dropped % 20 == 1)
+        {
+            LOG_W("hr_cont backlog full, dropped %u batches", (unsigned)s_hr_cont_dropped);
+        }
+    }
+    s_hr_cont_q[(s_hr_cont_head + s_hr_cont_n) % HR_CONT_BACKLOG] = *rec;
+    s_hr_cont_n++;
+}
+
 static int watch_sys_service_callback(data_callback_arg_t *arg)
 {
     LOG_I("watch_sys_service_callback: msg_id=%d", arg->msg_id);
@@ -179,6 +226,14 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
     {
         UNPACK_DATA(arg, watch_sys_service_data_ind_t, data_ind);
         uint8_t status = data_ind->data;
+        /* The LCPU now reports on every read rather than only on a transition,
+         * so the cores can resync after an LCPU-only restart. Dedup here
+         * instead: charger_status is what the UI renders, so an unchanged
+         * value means there is nothing to redraw -- and re-firing the callback
+         * would pop the charging screen back up on every wake-up, even after
+         * the user dismissed it. */
+        if (SkaiWatchSys.charger_status == status)
+            break;
         SkaiWatchSys.charger_status = status;
         peripheral_provider.charge_status_callback(status);
         break;
@@ -328,15 +383,21 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
                               data_ind->rhr, data_ind->worn, data_ind->rest,
                               data_ind->fresh, data_ind->total, data_ind->deep,
                               data_ind->rem, data_ind->light, data_ind->pi_e3,
-                              data_ind->frame_pct, data_ind->rate_info);
+                              data_ind->frame_pct, data_ind->rate_info,
+                              data_ind->own_info, data_ind->rep_pct);
         break;
     }
     case MSG_SERVICE_HR_CONT_IND:
     {
         UNPACK_DATA(arg, watch_sys_hr_cont_t, data_ind);
-        commu_send_hr_cont(data_ind->base_ts, data_ind->interval_s,
-                           data_ind->count, data_ind->bpm,
-                           data_ind->qscore, data_ind->qlevel);
+        hr_cont_enqueue(data_ind);
+        break;
+    }
+    case MSG_SERVICE_HR_WINDOW_IND:
+    {
+        UNPACK_DATA(arg, watch_sys_hr_window_t, data_ind);
+        commu_send_hr_window(data_ind->ts, data_ind->bpm, data_ind->conf,
+                             data_ind->count, data_ind->win);
         break;
     }
     case MSG_SERVICE_SLEEP_STATE_IND:

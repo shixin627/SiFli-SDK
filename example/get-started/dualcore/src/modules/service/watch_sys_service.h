@@ -53,6 +53,8 @@ extern "C"
             ((MSG_SERVICE_SYS_DATA_REQ + 18) | RSP_MSG_TYPE),
         MSG_SERVICE_HR_CONT_IND =
             ((MSG_SERVICE_SYS_DATA_REQ + 19) | RSP_MSG_TYPE),
+        MSG_SERVICE_HR_WINDOW_IND =
+            ((MSG_SERVICE_SYS_DATA_REQ + 20) | RSP_MSG_TYPE),
     };
 
     typedef enum
@@ -249,6 +251,17 @@ extern "C"
                              * 12.5 Hz while it believes 25 -> exactly DOUBLE for
                              * that whole burst. frame_pct cannot see this (it
                              * counts upstream of the divider).                  */
+        /* (hr_autocorr best confidence << 8) | longest identical raw-PPG run.
+           Confidence answers the question left open on 2026-08-05, when four
+           isolated outliers (171/144/101/38 bpm) could not be classified as
+           "low confidence — raise the gate" versus "confident and wrong — fix
+           the rule", because it only ever reached the LCPU console. The run
+           length proves — rather than infers from reading code — that the
+           staircase seen in the gesture-collection stream is absent from the HR
+           path: a 17-bit ADC on live tissue does not repeat a sample by chance,
+           so anything above 1 is real. */
+        uint16_t own_info;
+        uint8_t  rep_pct;   /* % of raw samples identical to their predecessor */
         uint16_t frame_pct; /* last PPG burst: delivered frames as % of 25 Hz *
                              * burst seconds. The HBA algo assumes 25 Hz and the
                              * samples are untimestamped, so a shortfall here is
@@ -261,7 +274,22 @@ extern "C"
    Buffered on the watch and flushed once a minute rather than streamed per
    sample: 1 Hz of individual BLE notifies all night would be both wasteful and
    a different power profile from the Exercise app we are trying to imitate. */
-#define WATCH_SYS_HR_CONT_MAX 60          /* 60 x 1 Hz = one flush per minute  */
+/* 30 x 1 Hz = one flush every 30 s. Was 60; halved when the per-sample record
+   grew from 3 bytes to 7, to keep the BLE payload (6 + 7*N) far inside
+   MAX_PACKET_PAYLOAD_SIZE (507) rather than merely under it. */
+#define WATCH_SYS_HR_CONT_MAX 30
+
+/* One captured hr_autocorr window (LCPU -> HCPU -> KEY_HR_WINDOW_DUMP). */
+#define WATCH_SYS_HR_WIN_MAX 256
+
+    typedef struct
+    {
+        uint32_t ts;                       /* when the estimate was produced    */
+        uint8_t  bpm;                      /* the implausible value             */
+        uint8_t  conf;                     /* its confidence 0..100             */
+        uint16_t count;                    /* samples in win[]                  */
+        int8_t   win[WATCH_SYS_HR_WIN_MAX];/* detrended PPG, oldest first       */
+    } watch_sys_hr_window_t;
 
     typedef struct
     {
@@ -271,6 +299,21 @@ extern "C"
         uint8_t  bpm[WATCH_SYS_HR_CONT_MAX];      /* 0 = algo produced nothing  */
         uint8_t  qscore[WATCH_SYS_HR_CONT_MAX];   /* Goodix valid_score  0-100  */
         uint8_t  qlevel[WATCH_SYS_HR_CONT_MAX];   /* Goodix valid_level  0-2    */
+        /* (acc_info << 5) | acc_scene — the ALGORITHM's own motion state (0 rest /
+           1 walk / 2 run) and scene id (hba_scenes_e, 0..24, fits in 5 bits). If it
+           classifies a motionless 4 a.m. as a running scene, that alone explains the
+           high plateaus, and unlike the confidence fields these are outputs the lib
+           very likely populates. */
+        uint8_t  accst[WATCH_SYS_HR_CONT_MAX];
+        /* Wrist motion for THIS second (bghr_accel_delta, >>10 LSB). sleep_diag's
+           Cole-Kripke score is per-minute and window-smoothed — useless for asking
+           what happened in the ten seconds a plateau began. */
+        uint8_t  accel[WATCH_SYS_HR_CONT_MAX];
+        /* Perfusion index x1000 over this one second (AC/DC of the raw PPG). The
+           only in-band signal-quality measure still alive on this lib, so it is the
+           leading candidate both for the MECHANISM (does perfusion collapse just
+           before the algorithm goes wrong?) and for a usable gate. */
+        uint16_t pi_e3[WATCH_SYS_HR_CONT_MAX];
     } watch_sys_hr_cont_t;
 
     typedef struct
@@ -315,7 +358,12 @@ extern "C"
                                       uint8_t orientation, uint16_t vmc);
     void (*notify_debug_log)(char *log);
     void (*notify_sleep_diag)(const watch_sys_sleep_diag_t *rec);
+    /* Fire-and-forget to HCPU. A BLE outage is absorbed by HCPU's backlog ring
+       (watch_system_client.c): losing every disconnected minute is worse than
+       useless here, because the hole looks identical to "the sensor produced
+       nothing" — which is exactly how the 2026-08-02 night lost 65 minutes. */
     void (*notify_hr_cont)(const watch_sys_hr_cont_t *rec);
+    void (*notify_hr_window)(const watch_sys_hr_window_t *rec);
 #endif
     } watch_sys_sync_t;
 

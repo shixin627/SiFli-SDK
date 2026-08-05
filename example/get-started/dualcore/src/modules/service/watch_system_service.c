@@ -243,9 +243,20 @@ static void notify_sleep_diag(const watch_sys_sleep_diag_t *rec)
 
 static void notify_hr_cont(const watch_sys_hr_cont_t *rec)
 {
-    /* One minute of raw 1 Hz continuous-HR samples -> HCPU -> KEY_HR_CONT_DIAG. */
+    /* 30 s of raw 1 Hz continuous-HR samples -> HCPU -> KEY_HR_CONT_DIAG.
+       Fire-and-forget: only HCPU knows whether BLE can actually carry it, so the
+       retry for a link outage lives there (watch_system_client.c), not here. */
     if (rec == NULL) return;
     push_msg_to_hcpu(MSG_SERVICE_HR_CONT_IND, rec, sizeof(*rec));
+}
+
+static void notify_hr_window(const watch_sys_hr_window_t *rec)
+{
+    /* One captured hr_autocorr window -> HCPU -> KEY_HR_WINDOW_DUMP. At most one
+       per burst, so this cannot flood the mailbox the way an unthrottled
+       per-sample uplink would. */
+    if (rec == NULL) return;
+    push_msg_to_hcpu(MSG_SERVICE_HR_WINDOW_IND, rec, sizeof(*rec));
 }
 
 static void notify_sleep_state(uint8_t mode, uint32_t timestamp_utc)
@@ -368,6 +379,14 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
                before its analog front-end settles, occasionally returns an
                implausibly low value that then sticks until the next sample. */
             bloc_battery_read_voltage_after_settle();
+            /* Re-read the charge status on every wake-up. Unplugging is
+               otherwise only ever learned from a charger IRQ edge or the 10 s
+               charging timer, and both can miss it: a bouncing connector gets
+               swallowed by the driver debounce, and the SOFT timer pauses in
+               deep sleep. Without this the watch wakes still believing it is
+               on the charger -- charge icon lit and the charging screen still
+               sitting on top of the app stack. */
+            bloc_battery_read_charge_status();
             acce_set_power(RT_SENSOR_POWER_HIGH);
             set_sleep_mode(false);
         }
@@ -554,6 +573,7 @@ static void register_watch_sys_service_funs(void)
     watch_sys_sync.notify_debug_log = notify_debug_log;
     watch_sys_sync.notify_sleep_diag = notify_sleep_diag;
     watch_sys_sync.notify_hr_cont = notify_hr_cont;
+    watch_sys_sync.notify_hr_window = notify_hr_window;
 }
 
 static int watch_sys_service_register(void)

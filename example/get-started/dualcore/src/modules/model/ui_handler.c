@@ -579,6 +579,11 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         open_skaibar_from_pose();
         break;
 
+    /* 錶盤長按 + 水平左右搖兩下(motion thread 判定)→ 在 LVGL thread 開滑鼠 app。 */
+    case LVGL_MSG_TYPE_WATCHFACE_SHAKE_OPEN_MOUSE:
+        gui_app_run(APP_ID_MOUSE);
+        break;
+
 
     /* KE_EVT2→GUI 媒體轉送(STKOF 治本):在 GUI thread 消化單槽 raw payload。 */
     case LVGL_MSG_TYPE_MEDIA_TITLE_RAW:

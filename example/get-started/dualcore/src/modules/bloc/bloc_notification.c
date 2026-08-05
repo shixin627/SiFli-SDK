@@ -825,6 +825,18 @@ static void bloc_notify_hr(int hr)
 
 static void bloc_notify_battery_voltage(uint16_t voltage)
 {
+    /* Forward only on a meaningful change. The raw ADC voltage jitters by a few
+     * mV every read; forwarding every read flooded BOTH the LVGL queue and the
+     * GUI-app mailbox — the latter used to RT_ASSERT when full, crashing the
+     * watch (peripher-thread WDT/hardfault captured 2026-08). A 16 mV deadband
+     * keeps the widget/phone current without the flood. */
+    static uint16_t last_voltage = 0;
+    uint16_t diff = (voltage > last_voltage) ? (voltage - last_voltage)
+                                             : (last_voltage - voltage);
+    if (last_voltage != 0 && diff < 16)
+        return;
+    last_voltage = voltage;
+
     lvgl_msg_t msg;
     msg.type = LVGL_MSG_TYPE_BATTERY_VOLTAGE;
     msg.data.battery_voltage = voltage;
@@ -835,6 +847,13 @@ static void bloc_notify_battery_voltage(uint16_t voltage)
 
 static void bloc_notify_battery_level(uint8_t level)
 {
+    /* Level is coarse (0-100) and changes slowly; forward only on a real change
+     * so it stays off the flooded queues (see bloc_notify_battery_voltage). */
+    static uint8_t last_level = 0xFF;
+    if (level == last_level)
+        return;
+    last_level = level;
+
     extern void refersh_battery(uint8_t battery_level);
     refersh_battery(level);
 

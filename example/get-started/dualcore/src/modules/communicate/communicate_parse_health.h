@@ -76,17 +76,36 @@ typedef enum
        communicate_parse_health.c (read_be32); the REPLY frames stay LE because
        0x10/0x11 are already defined that way. */
     KEY_HR_BACKFILL_REQ = 0x14,
-    /* WATCH -> PHONE. Continuous-HR diagnostic batch, one minute of raw 1 Hz
-       algorithm output, sent only while the Settings toggle is on. Layout LE:
+    /* WATCH -> PHONE. Continuous-HR diagnostic batch, 30 s of raw 1 Hz algorithm
+       output, sent only while the Settings toggle is on. Layout LE:
          base_ts:u32 | interval_s:u8 | count:u8 | bpm[count]:u8
                                                | qscore[count]:u8
                                                | qlevel[count]:u8
+                                               | accst[count]:u8
+                                               | accel[count]:u8
+                                               | pi_e3[count]:u16
        sample[i] is at base_ts + i*interval_s; bpm 0 = the algo emitted nothing
-       that second. Deliberately NOT KEY_HEART_CURVE_SAMPLE: this is raw
-       unfiltered output at 60x the curve's density and must not pollute the
-       user-facing hr_curve. Phone writes it to its own CSV. Temporary — remove
-       with the experiment. */
+       that second. accst = (algo motion state << 5) | algo scene id — the
+       ALGORITHM's own classification, which decides how aggressively it tracks;
+       accel = wrist motion that second; pi_e3 = perfusion index x1000 that
+       second, the only in-band signal-quality measure this lib still populates.
+       Deliberately NOT KEY_HEART_CURVE_SAMPLE: raw unfiltered output at 60x the
+       curve's density must not pollute the user-facing hr_curve. Phone writes it
+       to its own CSV. Temporary — remove with the experiment. */
     KEY_HR_CONT_DIAG = 0x15,
+    /* WATCH -> PHONE. One 10.24 s window of detrended raw PPG, captured at the
+       moment hr_autocorr produced an implausible estimate. Layout LE:
+         ts:u32 | bpm:u8 | conf:u8 | count:u8 | reserved:u8 | int8[count]
+       Sent at most once per burst, so a night costs a few hundred bytes.
+
+       Exists because the offline suite cannot reproduce the field failures:
+       sweeping the tie tolerance and accept threshold over nine combinations
+       left all 81 synthetic cases passing, which means uniform noise plus a
+       sine wander is not what this sensor actually produces. Tuning against
+       that model would be tuning against imagination — the failing window has
+       to come back and go into the suite. Temporary; remove once the estimator
+       is settled. */
+    KEY_HR_WINDOW_DUMP = 0x16,
 } HEALTH_KEY;
 
 void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t length);

@@ -690,6 +690,26 @@ static bool s_face_swipe_locked;
 static int s_face_swipe_route; /* 0 none, 1 skaibar(rightward), 2 app list(leftward), 3 vertical */
 static void face_swipe_catcher_create(lv_obj_t *parent); /* defined further below */
 
+/* 錶盤長按 + 水平左右搖兩下 → 開滑鼠 app (founder 2026-08-04)。
+   本檔只管 arm/disarm:長按=開始聽、手指真的滑動/放開/錶盤收掉=停止聽。
+   搖晃本身在 motion thread 判定(bloc_motion_tracking.c 的 watchface_shake_process),
+   湊滿兩下由它直接發 LVGL msg 開 app,不回頭經過本檔。 */
+#define FACE_SWIPE_SLOP 10 /* 既有:超過此判定使用者在滑,鎖定四向 route */
+#define FACE_SHAKE_SLOP 34 /* arm 後放寬的容許值:手指壓著搖必然有相對飄移(加上
+                              觸控噪聲),10px 會被誤判成在滑。超過此才算真的在滑 */
+static bool s_face_shake_armed;
+
+static void face_shake_disarm(void)
+{
+    if (!s_face_shake_armed)
+    {
+        return;
+    }
+    s_face_shake_armed = false;
+    extern void bloc_watchface_shake_arm(bool on);
+    bloc_watchface_shake_arm(false);
+}
+
 /* Public re-assert of the catcher's z-order. app_clock_main_select already does this
    after building a face, but that only runs on a face SWITCH / app resume — a
    center-swipe reveal that settles back at HOME (cancelled, or any committed reveal
@@ -1340,12 +1360,27 @@ static void face_swipe_catcher_cb(lv_event_t *e)
         s_face_swipe_start_y = pt.y;
         s_face_swipe_locked = false;
         s_face_swipe_route = 0;
+        face_shake_disarm(); /* 上一次按壓的殘留(RELEASED 沒送到等)先清乾淨 */
+    }
+    else if (code == LV_EVENT_LONG_PRESSED)
+    {
+        /* 按住不動到長按 = 意圖不是滑動 → 開始聽「水平左右搖兩下」。
+           已經在滑(route 鎖定)就不 arm。 */
+        if (!s_face_swipe_locked && !s_face_shake_armed)
+        {
+            s_face_shake_armed = true;
+            extern void bloc_watchface_shake_arm(bool on);
+            bloc_watchface_shake_arm(true);
+        }
     }
     else if (code == LV_EVENT_PRESSING)
     {
         lv_coord_t dx = pt.x - s_face_swipe_start_x;
         lv_coord_t dy = pt.y - s_face_swipe_start_y;
-        if (!s_face_swipe_locked && LV_ABS(dx) > 10 && LV_ABS(dx) > LV_ABS(dy))
+        /* arm 後用放寬的容許值判「在滑」;一旦真的鎖定 route,照既有邏輯拉清單,
+           同時停止聽搖晃(founder:有滑動就不要觸發)。 */
+        lv_coord_t slop = s_face_shake_armed ? FACE_SHAKE_SLOP : FACE_SWIPE_SLOP;
+        if (!s_face_swipe_locked && LV_ABS(dx) > slop && LV_ABS(dx) > LV_ABS(dy))
         {
             /* Clearly-horizontal pull → claim it.
                rightward = skaibar mixed list; leftward = App List. */
@@ -1364,7 +1399,7 @@ static void face_swipe_catcher_cb(lv_event_t *e)
                 clock_main_applist_follow_begin();
             }
         }
-        else if (!s_face_swipe_locked && LV_ABS(dy) > 10 && LV_ABS(dy) > LV_ABS(dx))
+        else if (!s_face_swipe_locked && LV_ABS(dy) > slop && LV_ABS(dy) > LV_ABS(dx))
         {
             /* Clearly-vertical pull → claim it. Both routes drive the same Y
                follow, which side effects reveal is dy's sign at release time. */
@@ -1372,6 +1407,10 @@ static void face_swipe_catcher_cb(lv_event_t *e)
             s_face_swipe_locked = true;
             s_face_swipe_route = 3;
             clock_main_notify_follow_begin();
+        }
+        if (s_face_swipe_locked)
+        {
+            face_shake_disarm(); /* 確定是在滑 → 這次按壓不再是搖晃手勢 */
         }
         if (s_face_swipe_locked && s_face_swipe_route == 1)
         {
@@ -1417,6 +1456,7 @@ static void face_swipe_catcher_cb(lv_event_t *e)
         }
         s_face_swipe_locked = false;
         s_face_swipe_route = 0;
+        face_shake_disarm(); /* 放開手指=這次搖晃視窗結束(沒湊滿兩下就作廢) */
     }
 }
 
@@ -1684,6 +1724,7 @@ rt_int32_t clock_on_pause(void)
         s_face_swipe_keepalive = NULL;
     }
     s_face_swipe_catcher = NULL;
+    face_shake_disarm(); /* catcher 沒了就收不到 RELEASED,別讓搖晃偵測留在 on */
     dial_media_header_deinit();
     rt_list_for_each(pos, (&p_app_clock_main->list))
     {
@@ -1708,6 +1749,7 @@ void clock_on_stop(void)
         s_face_swipe_keepalive = NULL;
     }
     s_face_swipe_catcher = NULL;
+    face_shake_disarm(); /* 同 clock_on_pause:UI 拆了就沒有 RELEASED 來收尾 */
     {
         extern void instruction_list_bar_set_visible(bool visible);
         instruction_list_bar_set_visible(false);

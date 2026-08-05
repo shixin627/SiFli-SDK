@@ -241,6 +241,10 @@ extern "C"
            stack-heavy and not thread-safe to run there. Same pattern as
            LVGL_MSG_TYPE_REFRESH_DEVICE_PAGER. */
         LVGL_MSG_TYPE_REFRESH_PHOTO_LIST,
+        /* 錶盤長按 + 水平左右搖兩下 → 開滑鼠 app。搖晃判定在 motion thread
+           (bloc_motion_tracking 的 watchface_shake_process),gui_app_run 只能在
+           LVGL thread 呼叫,故走 msg 轉一手。 */
+        LVGL_MSG_TYPE_WATCHFACE_SHAKE_OPEN_MOUSE,
     };
 
     typedef struct

@@ -73,6 +73,7 @@ typedef struct { uint8_t addr[6]; } bd_addr_t;
 /* communicate_task.h */ bool commu_send_heart_curve_sample(uint32_t timestamp, uint8_t bpm) { return false; }
 /* communicate_task.h */ bool commu_send_heart_data(int hr) { return false; }
 /* communicate_task.h */ bool commu_send_hour_format(void) { return false; }
+/* communicate_task.h */ bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf, uint16_t count, const int8_t *win) { (void)ts; (void)bpm; (void)conf; (void)count; (void)win; return false; }
 /* communicate_task.h */ bool commu_send_language(void) { return false; }
 /* communicate_task.h */ bool commu_send_linear_acce_buffer(const uint8_t *acce, uint16_t length) { return false; }
 /* communicate_task.h */ bool commu_send_media_control(void) { return false; }
@@ -277,6 +278,17 @@ bool ble_hid_mouse_app_route(void) { return false; }
 /* communicate_task.h */ bool commu_send_skaibar_dismiss(void) { return false; }
 /* communicate_task.h */ bool commu_send_skaibar_view(char cat) { (void)cat; return false; }
 /* communicate_task.h */ bool commu_send_skaibar_open_device(bool force_open) { (void)force_open; return false; }
+/* communicate_task.h */ bool commu_send_skaibar_open_device_ex(bool force_open, bool input_only) { (void)force_open; (void)input_only; return false; }
+/* communicate_task.h */ bool commu_send_lift_input_commit(const char *dest) { (void)dest; return false; }
+/* communicate_task.h */ bool commu_send_lift_input_caret(int pos, const char *text) { (void)pos; (void)text; return false; }
+/* communicate_task.h */ bool commu_send_lift_input_cancel_segment(void) { return false; }
+/* communicate_task.h */ bool commu_send_voice_station_commit(const char *dest, const char *text) { (void)dest; (void)text; return false; }
+/* communicate_task.h */ bool commu_send_voice_station_preview(const char *text) { (void)text; return false; }
+/* communicate_task.h */ bool commu_send_lift_input_delete(void) { return false; }
+/* communicate_task.h */ bool commu_send_lift_input_delete_range(int from, int to) { (void)from; (void)to; return false; }
+/* communicate_task.h */ bool commu_send_device_info(void) { return false; }
+/* communicate_task.h */ bool commu_send_hr_cont(uint32_t base_ts, uint8_t interval_s, uint8_t count, const uint8_t *bpm, const uint8_t *qscore, const uint8_t *qlevel) { (void)base_ts; (void)interval_s; (void)count; (void)bpm; (void)qscore; (void)qlevel; return false; }
+/* communicate_task.h */ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr, uint8_t hr_std, uint8_t stage, uint8_t veto, uint8_t rhr, uint8_t worn, uint8_t rest, uint8_t fresh, uint16_t total, uint16_t deep, uint16_t rem, uint16_t light, uint16_t pi_e3, uint16_t frame_pct, uint16_t rate_info) { (void)ts; (void)score; (void)hr; (void)hr_std; (void)stage; (void)veto; (void)rhr; (void)worn; (void)rest; (void)fresh; (void)total; (void)deep; (void)rem; (void)light; (void)pi_e3; (void)frame_pct; (void)rate_info; return false; }
 /* communicate_task.h */ bool commu_send_skaiapp_ack(const char *id, int code) { (void)id; (void)code; return false; }
 /* communicate_task.h */ bool commu_send_skaiapp_voice(const char *app_id, const char *memo_id) { (void)app_id; (void)memo_id; return false; }
 /* ui_handler batch apply — owning TU excluded on PC */ void apply_pending_instruction_batch(void) { }

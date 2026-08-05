@@ -272,13 +272,16 @@ static void read_charge_status(void)
 
     LOG_D("[%s] Is charging? %d", __func__, charging);
 
-    if (battery_charge_state.is_charging != charging)
-    {
-        if (watch_sys_sync.charge_status_callback)
-            watch_sys_sync.charge_status_callback(
-                charging ? (battery_charge_state.charge_percent == 100 ? 2 : 1)
-                         : 0);
-    }
+    /* Report on every read, not just on a local transition. Gating here on our
+     * own last-seen value made the two cores unrecoverable once they diverged:
+     * an LCPU-only restart clears is_charging while the HCPU keeps rendering
+     * "charging", and the next read then matches our (reset) state, so no edge
+     * is ever produced to correct the display. Dedup now lives on the HCPU
+     * side, keyed on the value the UI actually renders. */
+    if (watch_sys_sync.charge_status_callback)
+        watch_sys_sync.charge_status_callback(
+            charging ? (battery_charge_state.charge_percent == 100 ? 2 : 1)
+                     : 0);
     battery_charge_state.is_charging = charging;
     battery_charge_state.is_plugged = charging;
 
@@ -399,6 +402,11 @@ static void battery_voltage_poll_callback(void *parameter)
     /* Voltage-only: refresh the reported mV without moving the percentage gauge
      * (see refresh_battery_voltage_only for why). */
     main_send_read_voltage_poll_event();
+    /* Re-check the charge status as well. While discharging nothing else ever
+     * re-reads it -- the 10 s safety-net timer only runs *while charging* --
+     * so a missed unplug edge stays wrong indefinitely. This bounds it to one
+     * poll interval even if the watch is never woken. */
+    main_send_read_charge_status_event();
 }
 
 static int bloc_battery_voltage_poll_init(void)

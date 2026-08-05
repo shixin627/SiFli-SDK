@@ -856,17 +856,197 @@ static void gesture_event_capture_hcpu(uint16_t freq, time_t ts,
     }
 }
 
+#if !kReleaseMode
+/* ── PPG duplication diagnostic (2026-08-05) ───────────────────────────────
+   The gesture stream reads PPG at the MOTION-frame rate (the ACCE service
+   timer, 100 Hz) by alternating over a TWO-slot buffer that the LCPU refills
+   once per PPG FIFO batch — process_ppg_sensor_data() clamps sample_num to 2
+   and keeps only the batch's two OLDEST samples. If a batch carries N samples
+   (25 Hz sensor → one batch every N×40 ms), then 100×N/25 consecutive motion
+   frames see the same pair → the stair the phone plots on 0x50.
+
+   Counting it here instead of inferring it from the code, because the batch
+   size is a runtime property of the sensor's FIFO threshold — and the fault is
+   intermittent ("sleep/wake makes it look normal again"), which only a runtime
+   number can distinguish from a re-read of the same source.
+
+     f     motion frames in the window
+     b     times ppg_raw_data.timestamp changed → real PPG arrivals
+     T     mean ms between those changes        → FIFO batch period
+     rmax  longest run of identical emitted values
+     dup   % of frames whose value equals the previous frame's
+     dist  distinct emitted values, saturating at PPG_DIAG_SET
+     n     sample_num as the consumer sees it (already clamped to 2)
+     hi    frames whose raw value exceeds 0xFFFF — the wire field
+           (watch_sys_linear_acce_t.ppg_data) is u16 while the sensor hands out
+           17 bits, so a non-zero count means the phone sees wrapped values on
+           top of the stair
+     v     last emitted value
+
+   Field names are abbreviated because ULOG_LINE_BUF_SIZE is 128 and the
+   "bloc.motion_tracking" tag alone eats 44 of it — the readable spelling was
+   truncated mid-word on the first real capture.
+
+   Armed automatically for the duration of a data-collection session (that is
+   the path this defect corrupts), or forced on with `ppgdiag on`. */
+    #define PPG_DIAG_WINDOW 200 /* 2 s at the 100 Hz motion-frame rate */
+    #define PPG_DIAG_SET 8
+static bool ppg_diag_force = false;
+
+static void ppg_diag_sample(const ppg_sensor_data_t *snap, uint32_t emitted)
+{
+    extern bool imu_raw_data_collection;
+    extern bool imu_mouse_data_collection;
+    static uint32_t frames, batches, dup, run, runmax, hi;
+    static uint32_t prev_emit, prev_ts, first_ts, last_ts;
+    static uint32_t set[PPG_DIAG_SET];
+    static uint8_t set_n;
+    static bool was_armed;
+
+    bool armed = ppg_diag_force || imu_raw_data_collection ||
+                 imu_mouse_data_collection;
+    if (!armed)
+    {
+        was_armed = false;
+        return;
+    }
+    if (!was_armed)
+    {
+        /* Fresh window on every arm — a session must not inherit counters from
+           the previous one. */
+        frames = batches = dup = run = runmax = hi = 0;
+        prev_emit = prev_ts = first_ts = last_ts = 0;
+        set_n = 0;
+        was_armed = true;
+    }
+
+    frames++;
+    if (snap->timestamp != prev_ts)
+    {
+        if (batches == 0)
+        {
+            first_ts = snap->timestamp;
+        }
+        last_ts = snap->timestamp;
+        batches++;
+        prev_ts = snap->timestamp;
+    }
+    if (frames > 1 && emitted == prev_emit)
+    {
+        dup++;
+        run++;
+    }
+    else
+    {
+        run = 1;
+    }
+    if (run > runmax)
+    {
+        runmax = run;
+    }
+    prev_emit = emitted;
+    if (emitted > 0xFFFF)
+    {
+        hi++;
+    }
+    if (set_n < PPG_DIAG_SET)
+    {
+        uint8_t i = 0;
+        while (i < set_n && set[i] != emitted)
+        {
+            i++;
+        }
+        if (i == set_n)
+        {
+            set[set_n++] = emitted;
+        }
+    }
+
+    if (frames < PPG_DIAG_WINDOW)
+    {
+        return;
+    }
+    /* batches-1 gaps span first_ts..last_ts; 0 when the whole window saw a
+       single PPG arrival (which is itself the finding). */
+    uint32_t period = (batches > 1) ? (last_ts - first_ts) / (batches - 1) : 0;
+    LOG_I("[PPG-DIAG] f=%d b=%d T=%dms rmax=%d dup=%d%% dist=%d%s n=%d hi=%d "
+          "v=%d",
+          frames, batches, period, runmax, (dup * 100) / frames, set_n,
+          (set_n == PPG_DIAG_SET) ? "+" : "", snap->sample_num, hi, emitted);
+    frames = batches = dup = run = runmax = hi = 0;
+    first_ts = last_ts = 0;
+    set_n = 0;
+}
+#endif
+
+/**
+ * @brief Take the next unread PPG sample of the current sensor batch.
+ *
+ * The LCPU refills raw_data[0..1] once per sensor FIFO batch and stamps
+ * .timestamp; the gesture stream consumes at the ACCE service rate, a fixed
+ * 100 Hz. Those two rates are NOT locked together — the batch period is a
+ * runtime property of whatever sensor mode is loaded. Measured on the dev watch
+ * (`ppgdiag on`, 2026-08-05):
+ *
+ *   raw collection only          T = 20 ms   → one batch per 2 motion frames
+ *   HR service holding the sensor T = 522 ms → one batch per 52 motion frames
+ *
+ * The old read was `raw_data[get_ppg_count ^= 1]` — alternate every frame,
+ * unconditionally. At 20 ms that is exactly right: two samples arrive, two
+ * frames consume them, 1:1. At 522 ms it emits v0,v1,v0,v1… twenty-six times
+ * over, i.e. a 50 Hz square wave synthesised out of a signal that had stopped
+ * updating half a second ago — and because consecutive samples then always
+ * DIFFER, nothing downstream could tell the data was stale.
+ *
+ * Advance only when the batch is new; otherwise hold the last value. The
+ * healthy case is bit-identical to the old behaviour (v0 then v1 then the next
+ * batch); the stalled case degrades to an honest zero-order hold instead of a
+ * fabricated oscillation.
+ *
+ * NOTE this does not restore the samples the LCPU threw away: a 522 ms batch
+ * carries ~13 samples at 25 Hz and process_ppg_sensor_data() keeps 2. Widening
+ * that buffer is only worth it if the mode flip is here to stay — the flip
+ * itself is hr_service.c's MSG_SERVICE_SUBSCRIBE_REQ calling hr_control_mode()
+ * directly, bypassing the raw-collection veto that hr_set_power() applies.
+ */
+static uint32_t ppg_take_sample(const ppg_sensor_data_t *snap)
+{
+    static uint32_t batch_ts;
+    static uint32_t held;
+    static uint8_t taken;
+
+    if (snap->timestamp != batch_ts)
+    {
+        batch_ts = snap->timestamp;
+        taken = 0;
+    }
+    /* sample_num crosses the core boundary, so bound it by the array rather
+       than trusting the producer's clamp. */
+    uint8_t avail = snap->sample_num;
+    if (avail > (uint8_t)(sizeof(snap->raw_data) / sizeof(snap->raw_data[0])))
+    {
+        avail = (uint8_t)(sizeof(snap->raw_data) / sizeof(snap->raw_data[0]));
+    }
+    if (taken < avail)
+    {
+        held = snap->raw_data[taken];
+        taken++;
+    }
+    return held;
+}
+
 /**
  * @brief Process waveform capture - called from motion_tracking_in_hcpu
  */
-static uint8_t get_ppg_count = 0;
 static void waveform_capture_process(motion_data_t *motion_data, Vector3 *gyro)
 {
     time_t current_ts = rt_tick_get(); // time(NULL);
     Vector3 *linear_acce = &motion_data->linear_acce;
     Vector3 *gravity = &motion_data->gravity;
-    get_ppg_count ^= 1;
-    uint32_t ppg_rawdata = motion_data->ppg_raw_data.raw_data[get_ppg_count];
+    uint32_t ppg_rawdata = ppg_take_sample(&motion_data->ppg_raw_data);
+#if !kReleaseMode
+    ppg_diag_sample(&motion_data->ppg_raw_data, ppg_rawdata);
+#endif
 
     #ifdef USING_FSR_ADC_SAMPLER
     rt_uint32_t fsr_adc_value = bloc_control_fsr_adc_latest();
@@ -1026,6 +1206,51 @@ static void gcap(int argc, char **argv)
                                                        : "TAP only"));
 }
 MSH_CMD_EXPORT(gcap, "gesture capture extractors: gcap [both|normal]");
+
+/**
+ * @brief MSH: `ppgdiag [on|off]` — force the [PPG-DIAG] line on.
+ *
+ * It already arms itself for the duration of a data-collection session; this is
+ * for checking the same numbers outside one (e.g. straight after a wake, which
+ * is when the stair is reported to disappear).
+ */
+static void ppgdiag(int argc, char **argv)
+{
+    if (argc >= 2)
+    {
+        ppg_diag_force = (rt_strcmp(argv[1], "on") == 0);
+    }
+    rt_kprintf("ppgdiag: force=%d window=%d frames\n", ppg_diag_force,
+               PPG_DIAG_WINDOW);
+}
+MSH_CMD_EXPORT(ppgdiag, "PPG duplication diagnostic: ppgdiag [on|off]");
+
+/**
+ * @brief MSH: `ppgpwr on|off` — power the PPG sensor from the bench.
+ *
+ * The raw PPG stream only runs while a collection session or an HR measurement
+ * holds the sensor on (set_imu_rawdata_collection() on the LCPU forces
+ * hr_set_power(1)); with it off the two-slot buffer never refills and the
+ * diagnostic can only report b=0. This drives the SAME LCPU path the RAW switch
+ * uses, so what it measures is what a collection session gets — it just does
+ * not need someone standing at the watch tapping the switch.
+ *
+ * Deliberately does NOT touch the HCPU-side imu_raw_data_collection flag: that
+ * one also repaints the gesture app's switch and changes BLE performance, none
+ * of which the measurement needs.
+ */
+static void ppgpwr(int argc, char **argv)
+{
+    if (argc >= 2 && watch_sys_sync.notify_imu_rawdata_collection)
+    {
+        bool on = (rt_strcmp(argv[1], "on") == 0);
+        watch_sys_sync.notify_imu_rawdata_collection(on);
+        rt_kprintf("ppgpwr: requested %s\n", on ? "on" : "off");
+        return;
+    }
+    rt_kprintf("usage: ppgpwr [on|off]\n");
+}
+MSH_CMD_EXPORT(ppgpwr, "force the raw PPG stream on/off: ppgpwr [on|off]");
 #endif
 
 #endif // ENABLE_WAVEFORM_CAPTURE
@@ -2385,16 +2610,10 @@ void set_gravity_position(int position)
        is_at_mouse_mode / app_control_get_mouse_mode 判前景 (兩者皆不 assert)。
        gravity_position 為邊緣觸發 (同 state 早 return)，保持豎直不動不會重觸；
        放平回 OTHER/HORIZONTAL 後再立起才會再觸發。 */
-    if (gravity_position == GRAVITY_POSITION_VERTICAL)
-    {
-        /* 側立圓盤進行中不疊 skaibar(此邊緣只做下面的保險 cancel,再立一次才召喚) */
-        if ((is_at_mouse_mode() || app_control_get_mouse_mode()) &&
-            !mouse_dial_pose_active())
-        {
-            extern void hid_mouse_trigger_skaibar_from_pose(void);
-            hid_mouse_trigger_skaibar_from_pose();
-        }
-    }
+    /* 「立起手錶 → 帶出輸入面板」已於 2026-08-03 退役(founder):語音輸入改成鍵盤模式的
+       第四站,入口單一化,姿勢不再是入口。hid_mouse_trigger_skaibar_from_pose /
+       open_skaibar_from_pose 連同 LVGL_MSG_TYPE_MOUSE_OPEN_SKAIBAR 一併失去呼叫者,
+       比照手寫的處理:程式原地保留、不再被走到。 */
     /* 手寫的姿勢收斂保險已全拆(2026-07-20 founder:「為什麼還會自動執行」——錶面
        直寫時手腕角度千變萬化,VERTICAL/SIDE/FACE_SIDE 邊緣頻繁誤中,舊保險=寫到
        一半被強制 end 自動送出;結束現在只走退出/輸入鈕+離開 app 取消)。 */
@@ -2530,6 +2749,116 @@ static void calculate_gravity_position(Vector3 *gravity)
     // }
 }
 
+/* ── 錶盤長按 + 水平左右搖兩下 → 開滑鼠 app ─────────────────────────────────
+   (founder 2026-08-04)手指按住錶面不放 → 長按 arm → 期間水平左右擺兩下就開。
+   arm/disarm 全由錶盤 catcher 驅動(app_clock_main.c;手指一滑動或放開就 disarm),
+   本段只在 armed 時看 IMU,平時零成本。
+
+   「水平擺」判定用**角速度在重力方向的投影** ω_v = ω·ĝ (ĝ=重力單位向量):
+   那就是「繞世界垂直軸轉多快」,與手當下把錶拿成什麼角度無關(平放/斜著/立起
+   都準);上下擺腕與翻腕 roll 都是繞水平軸,投影≈0,不會誤觸。
+   計數只認**方向交替**的脈衝:左→右 = 兩下(founder 2026-08-04 由三下改二)。
+   同方向連著擺不算來回,重新起算。
+
+   門檻是真機待調的三個旋鈕 —— disarm 時會 log 這次長按期間的 |ω_v| 峰值,
+   founder 搖了沒開就看那個數字改 SHAKE_PEAK_DPS。 */
+#define SHAKE_PEAK_DPS 120.0f /* 一下「擺動」要達到的角速度峰值(度/秒) */
+#define SHAKE_RESET_DPS 40.0f /* 回落到此以下才重新武裝同方向(遲滯,防抖動連計) */
+#define SHAKE_NEED_PULSES 2   /* 兩下 = 兩個方向交替的脈衝(左→右,一個來回) */
+#define SHAKE_GAP_MS 700      /* 兩下間隔超過此 = 不是連續搖晃,計數從頭 */
+
+static volatile bool s_shake_armed = false; /* GUI thread 寫、motion thread 讀 */
+static int s_shake_pulses = 0;      /* 已計入的脈衝數 */
+static int s_shake_dir = 0;         /* 當前脈衝方向(+1/-1),0=已回落到靜止帶 */
+static int s_shake_last_dir = 0;    /* 最後計入的脈衝方向 */
+static rt_tick_t s_shake_last_pulse = 0;
+static float s_shake_peak_dps = 0.0f; /* 本次 arm 期間 |ω_v| 峰值(調參用) */
+
+/* GUI thread(錶盤 catcher):長按=on、手指滑動/放開/錶盤收掉=off。 */
+void bloc_watchface_shake_arm(bool on)
+{
+    if (on == s_shake_armed)
+    {
+        return;
+    }
+    if (!on && s_shake_armed)
+    {
+        LOG_I("[wf-shake] disarm pulses=%d peak=%d dps", s_shake_pulses,
+              (int)s_shake_peak_dps);
+    }
+    s_shake_armed = on;
+    s_shake_pulses = 0;
+    s_shake_dir = 0;
+    s_shake_last_dir = 0;
+    s_shake_last_pulse = 0;
+    s_shake_peak_dps = 0.0f;
+}
+
+/* motion thread(每個 IMU sample)。armed 才做事。 */
+static void watchface_shake_process(motion_data_t *motion_data)
+{
+    if (!s_shake_armed)
+    {
+        return;
+    }
+
+    Vector3 *g = &motion_data->gravity;
+    Vector3 *w = &watch_sensor.imu_data.gyro; /* dps */
+    float wv = w->x * g->x + w->y * g->y + w->z * g->z;
+    float mag = fabsf(wv);
+    if (mag > s_shake_peak_dps)
+    {
+        s_shake_peak_dps = mag;
+    }
+
+    if (mag < SHAKE_RESET_DPS)
+    {
+        s_shake_dir = 0; /* 回靜止帶:下次超門檻算新的一下 */
+        return;
+    }
+    if (mag < SHAKE_PEAK_DPS)
+    {
+        return; /* 遲滯帶之間:不計數也不重新武裝 */
+    }
+
+    int dir = (wv > 0) ? 1 : -1;
+    if (dir == s_shake_dir)
+    {
+        return; /* 同一下的持續期間,只計一次 */
+    }
+    s_shake_dir = dir;
+
+    rt_tick_t now = rt_tick_get();
+    if (s_shake_last_dir == 0 ||
+        (now - s_shake_last_pulse) > rt_tick_from_millisecond(SHAKE_GAP_MS) ||
+        dir == s_shake_last_dir)
+    {
+        /* 第一下 / 隔太久 / 同向沒來回 → 從這一下重新起算 */
+        s_shake_pulses = 1;
+    }
+    else
+    {
+        s_shake_pulses++;
+    }
+    s_shake_last_dir = dir;
+    s_shake_last_pulse = now;
+    LOG_I("[wf-shake] pulse=%d dir=%d wv=%d dps", s_shake_pulses, dir, (int)wv);
+
+    if (s_shake_pulses >= SHAKE_NEED_PULSES)
+    {
+        LOG_I("[wf-shake] triggered -> open mouse app (peak=%d dps)",
+              (int)s_shake_peak_dps);
+        s_shake_armed = false; /* 一次長按只觸發一次;放開再長按才會重新 arm */
+        s_shake_pulses = 0;
+        s_shake_dir = 0;
+        s_shake_last_dir = 0;
+        motor_pattern_unlocked(); /* 短震=收到了(錶盤沒有其他回饋) */
+        lvgl_msg_t msg;
+        msg.type = LVGL_MSG_TYPE_WATCHFACE_SHAKE_OPEN_MOUSE;
+        lvgl_send_msg(msg); /* gui_app_run 必須在 LVGL thread */
+    }
+}
+
 static Quaternion tap_state_q;
 static Quaternion tap_state_q_prev;
 static bool tap_state_q_flag = false;
@@ -2613,6 +2942,9 @@ static void motion_tracking_in_hcpu(motion_data_t *motion_data)
     }
 #endif
     calculate_gravity_position(&motion_data->gravity);
+    /* 錶盤長按+搖兩下:錶盤就是 is_at_home,必須放在下面那個 early return 之前。
+       armed 才做事(arm 只發生在錶面被長按時),平時是一個 bool 判斷。 */
+    watchface_shake_process(motion_data);
     if (is_at_home() && !is_at_speech_interface() && !is_at_control_center())
     {
         return;

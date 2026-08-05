@@ -193,8 +193,15 @@ static rt_err_t send_msg_to_gui_app_task(gui_app_msg_t *msg)
 
     if (err != RT_EOK)
     {
-        LOG_I("send to gui_app_mbx err:%d", err);
-        RT_ASSERT(0);
+        /* Mailbox full: DROP this message instead of RT_ASSERT(0). The assert
+         * crashed the watch whenever the GUI thread fell briefly behind — e.g.
+         * under a battery-update flood that kept it from draining this queue
+         * (captured 2026-08-02/03 as peripher-thread WDT/hardfault). The sibling
+         * lvgl_mq already drops gracefully; match it. Free the copy we allocated
+         * so a full mailbox does not also leak; the input-device disabled above
+         * is re-enabled by the consumer as it drains the queued messages. */
+        LOG_W("gui_app_mbx full, dropped msg_id %d (err %d)", (int)msg->msg_id, err);
+        rt_free(p_msg);
     }
     else
     {
