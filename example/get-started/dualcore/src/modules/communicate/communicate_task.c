@@ -462,6 +462,15 @@ bool commu_send_conv_close(void)
     LOG_I("send conv close -> %s", ok ? "ok" : "FAILED");
     return ok;
 }
+/* Ask the phone to (re)push the desktop session list. The Data path has no pull, so the
+   session pager sends this on build + on reconnect to recover a list pushed while the
+   watch was away. */
+bool commu_send_conv_list_req(void)
+{
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_LIST_REQ, "{}");
+    LOG_I("send conv list req -> %s", ok ? "ok" : "FAILED");
+    return ok;
+}
 
 /* watch→phone (SKAI_LINK): SkaiApp install/remove result (ADR-0037).
    id is charset-whitelisted upstream ([a-z0-9-]) so raw %s is quote-safe. */

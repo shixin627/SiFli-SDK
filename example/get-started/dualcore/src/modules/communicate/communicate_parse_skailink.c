@@ -330,6 +330,16 @@ extern void skai_chat_on_conv_state(const uint8_t *pValue, uint16_t length);
 extern void skaiapp_on_push_chunk(const uint8_t *pValue, uint16_t length);
 extern void skaiapp_on_remove(const uint8_t *pValue, uint16_t length);
 
+/* 0x20 — the desktop session list for the watch-face session pager
+   (lv_session_pager.c). Same contract as the chat state above: parsed off this BLE
+   thread into a bounded buffer, rendered on the LVGL thread. Strong extern for the
+   same dead-strip reason. */
+extern void skai_sessions_on_conv_list(const uint8_t *pValue, uint16_t length);
+/* True while the session pager owns the open conversation, i.e. a KEY_CONV_STATE
+   belongs to a pager page rather than to the @-list chat room. */
+extern bool skai_sessions_owns_conv(void);
+extern void skai_sessions_on_conv_state(const uint8_t *pValue, uint16_t length);
+
 static void handle_conv_state(uint8_t *pValue, uint16_t length)
 {
     if (pValue == NULL || length == 0)
@@ -337,7 +347,26 @@ static void handle_conv_state(uint8_t *pValue, uint16_t length)
         LOG_W("conv_state: empty payload");
         return;
     }
+    /* TWO possible owners of an open conversation: the watch-face session pager (a
+       desktop session page) and the @-list chat room. Only one is ever open, so ask the
+       pager first and fall through to the chat room — this keeps lv_chat_page.c
+       untouched by the pager work. */
+    if (skai_sessions_owns_conv())
+    {
+        skai_sessions_on_conv_state(pValue, length);
+        return;
+    }
     skai_chat_on_conv_state(pValue, length);
+}
+
+static void handle_conv_list(uint8_t *pValue, uint16_t length)
+{
+    if (pValue == NULL || length == 0)
+    {
+        LOG_W("conv_list: empty payload");
+        return;
+    }
+    skai_sessions_on_conv_list(pValue, length);
 }
 
 /* 0x17: {"focused":bool} — the box the standalone mouse app is controlling just gained/lost a
@@ -519,8 +548,13 @@ void resolve_skailink_command(uint8_t key, uint8_t *pValue, uint16_t length)
     case KEY_CONV_OPEN:
     case KEY_CONV_SEND:
     case KEY_CONV_CLOSE:
+    case KEY_CONV_LIST_REQ:
         /* @-conversation control — uplink-only (watch→phone); never received here. */
         LOG_W("skailink: conv key 0x%02x is uplink-only", key);
+        break;
+    case KEY_CONV_LIST:
+        /* phone→watch (DOWNLINK): the desktop session list for the session pager. */
+        handle_conv_list(pValue, length);
         break;
     case KEY_SKAIAPP_PUSH:
         /* phone→watch (DOWNLINK): chunked AI mini-app package (ADR-0037). */

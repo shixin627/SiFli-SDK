@@ -76,9 +76,14 @@ extern "C"
         /* watch→phone (UPLINK): {} the user left the chat room (back gesture). The phone
            stops observing + unbinds (km-relay convStop). */
         KEY_CONV_CLOSE = 0x11,
-        /* phone→watch (DOWNLINK): {"title":"...","sending":bool,"messages":[{"role":"...",
-           "text":"..."}]} the folded chat state the watch renders. role ∈ incoming/outgoing/
-           user/assistant. Pushed on every convEvent the phone folds. */
+        /* phone→watch (DOWNLINK): {"sid":"...","title":"...","sending":bool,"messages":
+           [{"role":"...","text":"..."}]} the folded chat state the watch renders. role ∈
+           incoming/outgoing/user/assistant. Pushed on every convEvent the phone folds.
+           "sid" (2026-08-05, ADDITIVE) names WHICH conversation this state belongs to —
+           the session pager keeps one page per desktop session and only ever has one open
+           at a time, so a state whose sid ≠ the settled page's is a late frame from the
+           conversation just left and MUST be dropped. Absent (older phone) ⇒ the receiver
+           treats it as belonging to whatever is currently open, the pre-pager behaviour. */
         KEY_CONV_STATE = 0x12,
         /* ── SkaiApp: AI-generated declarative mini-apps (SkaiLink ADR-0037).
            Keep in lockstep with the phone WatchProtocol (android/ios). ── */
@@ -185,6 +190,23 @@ extern "C"
            前面那個字(沒指定插入點時就是最後一個)。
            Keep in lockstep with WatchProtocol.kt SKAILINK_KEY_LIFT_INPUT_DELETE。 */
         KEY_LIFT_INPUT_DELETE = 0x1f,
+        /* ── Desktop-session pager (2026-08-05). The watch face's RIGHT tile is one
+           horizontally-snapping page per DESKTOP chat session (the Hermes conversations
+           the phone already enumerates through AgentSessionBridge's convList). Opening a
+           page reuses KEY_CONV_OPEN/SEND/CLOSE + KEY_CONV_STATE verbatim — these two keys
+           only add the LIST that the pager pages over.
+           Keep in lockstep with WatchProtocol.kt/.swift SKAILINK_KEY_CONV_LIST(_REQ). ── */
+        /* phone→watch (DOWNLINK): {"sessions":[{"id":"conv:hermes:<id>","title":"...",
+           "preview":"..."}]} — the desktop sessions, newest first, capped by the watch at
+           SESSION_PAGER_MAX. "id" is the SAME identity KEY_CONV_OPEN takes, so committing
+           a page needs no extra resolution step on the phone. "preview" is the last turn's
+           text, shown as the page's standing bubble until that page becomes the open
+           conversation and real turns arrive on KEY_CONV_STATE. */
+        KEY_CONV_LIST = 0x20,
+        /* watch→phone (UPLINK): {} — (re)send the session list. Sent when the pager tile
+           is built and whenever the watch reconnects; the Data path has no pull, so this
+           is the watch's only way to recover a list it missed while disconnected. */
+        KEY_CONV_LIST_REQ = 0x21,
     } SKAI_LINK_KEY;
 
     /* Dispatched from communicate_parse.c for cmd_id == SKAI_LINK_COMMAND_ID.

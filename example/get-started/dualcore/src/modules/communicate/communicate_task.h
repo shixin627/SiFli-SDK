@@ -135,6 +135,7 @@ bool commu_send_lift_input_delete_range(int from, int to); /* -> KEY_LIFT_INPUT_
 bool commu_send_conv_open(const char *title, const char *id, uint8_t index); /* -> KEY_CONV_OPEN  (0x0F) open the tapped @-contact's chat room */
 bool commu_send_conv_send(const char *text);                                 /* -> KEY_CONV_SEND  (0x10) send one turn (mic→V2T transcript) */
 bool commu_send_conv_close(void);                                            /* -> KEY_CONV_CLOSE (0x11) leave the chat room (back) */
+bool commu_send_conv_list_req(void);                                         /* -> KEY_CONV_LIST_REQ (0x21) (re)push the desktop session list */
 
 /* SkaiApp AI-generated mini-apps (SkaiLink ADR-0037). */
 bool commu_send_skaiapp_ack(const char *id, int code);                       /* -> KEY_SKAIAPP_ACK (0x15) install/remove result */

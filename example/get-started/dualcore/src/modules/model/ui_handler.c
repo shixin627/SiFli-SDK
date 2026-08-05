@@ -840,6 +840,15 @@ static void process_lvgl_message(lvgl_msg_t *msg)
         break;
     }
 
+    case LVGL_MSG_TYPE_REFRESH_SESSIONS:
+    {
+        /* Rebuild the watch-face session pager (page list and/or the open page's
+           bubbles) on the LVGL thread — same BLE-stack reason as REFRESH_CHAT. */
+        extern void session_pager_apply_pending(void);
+        session_pager_apply_pending();
+        break;
+    }
+
     case LVGL_MSG_TYPE_REFRESH_PHOTO_LIST:
     {
 #ifdef APP_ID_PHOTO
