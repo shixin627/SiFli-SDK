@@ -44,6 +44,10 @@
  */
 
 #include "lvgl.h"
+#ifndef DISABLE_LVGL_V9
+    /* v9 keeps lv_display_t / lv_indev_t / lv_event_t private. */
+    #include "lvgl_private.h"
+#endif
 #include "lv_qrcode.h"
 #include "lv_simplified_obj.h"
 #include "lv_ext_resource_manager.h"
@@ -1629,7 +1633,7 @@ static lv_coord_t s_hdrag_start_y = 0;
 
 static void list_window_scroll_event_cb(lv_event_t *evt)
 {
-    lv_obj_t *obj = evt->target;
+    lv_obj_t *obj = lv_event_get_target(evt);
     switch (evt->code)
     {
     case LV_EVENT_SCROLL_BEGIN:
@@ -1848,7 +1852,7 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
 extern void check_is_at_instruction_list(void);
 static void app_list_window_scroll_event_cb(lv_event_t *evt)
 {
-    lv_obj_t *obj = evt->target;
+    lv_obj_t *obj = lv_event_get_target(evt);
     switch (evt->code)
     {
     case LV_EVENT_VALUE_CHANGED:
@@ -2435,7 +2439,7 @@ static uint32_t lift_input_char_count(void)
     if (!s_lift_input_label || !lv_obj_is_valid(s_lift_input_label))
         return 0;
     const char *t = lv_label_get_text(s_lift_input_label);
-    return t ? _lv_txt_get_encoded_length(t) : 0;
+    return t ? lv_text_get_encoded_length(t) : 0;
 }
 
 /* 游標閃爍(founder 2026-08-01)。530ms 是一般文字輸入游標的節奏。只在游標可見時跑,面板收起
@@ -5136,7 +5140,7 @@ static void flash_instruction_label(lv_obj_t *label)
 static void list_item_click_event_cb(lv_event_t *evt)
 {
     list_item_t *item = (list_item_t *)evt->user_data;
-    lv_obj_t *obj = evt->target;
+    lv_obj_t *obj = lv_event_get_target(evt);
     /* A horizontal swipe (the left-to-close flick, or a right flick) also lands a
        CLICKED on the item: the list scrolls vertically only, so a horizontal drag
        never "loses" the press and LVGL fires CLICKED on release. The list's
@@ -6225,11 +6229,12 @@ static void ensure_empty_qr_created(void)
 
     lv_obj_t *qrcode =
         lv_qrcode_create(p_instruction_list_layout->empty_qr_card);
-    if (lv_qrcode_setparam(qrcode, 148, lv_color_black(), lv_color_white()) !=
-        NULL)
-    {
-        lv_qrcode_update(qrcode, url, strlen(url));
-    }
+    /* v8 lv_qrcode_setparam() returned the object and this guarded on it; the
+       v9 setters return void, so there is nothing left to test. */
+    lv_qrcode_set_size(qrcode, 148);
+    lv_qrcode_set_dark_color(qrcode, lv_color_black());
+    lv_qrcode_set_light_color(qrcode, lv_color_white());
+    lv_qrcode_update(qrcode, url, strlen(url));
     lv_obj_center(qrcode);
 }
 
@@ -7513,7 +7518,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
         myLancher[app_index_instruction_list].reset_list();
     }
     LOG_I("instruction_list_init: before lv_event_send SCROLL");
-    lv_event_send(p_instruction_list, LV_EVENT_SCROLL, NULL);
+    lv_obj_send_event(p_instruction_list, LV_EVENT_SCROLL, NULL);
     LOG_I("instruction_list_init: after lv_event_send SCROLL");
 
     myLancher[app_index_instruction_list].on_tap = on_tap;

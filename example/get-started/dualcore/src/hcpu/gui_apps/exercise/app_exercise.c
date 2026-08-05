@@ -56,7 +56,10 @@
 #include "sensor.h"
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
-#include "lvsf_comp.h"
+#ifndef DISABLE_LVGL_V9
+    /* v9 keeps lv_display_t / lv_indev_t / lv_event_t private. */
+    #include "lvgl_private.h"
+#endif
 #include "gui_app_fwk.h"
 #include "ui_datasrv_subscriber.h"
 #include "lv_ext_resource_manager.h"
@@ -564,7 +567,7 @@ static void label_tap_zone_click_cb(lv_event_t *e)
     if (icon != NULL && lv_obj_is_valid(icon) &&
         !lv_obj_has_flag(icon, LV_OBJ_FLAG_HIDDEN))
     {
-        lv_event_send(icon, LV_EVENT_CLICKED, NULL);
+        lv_obj_send_event(icon, LV_EVENT_CLICKED, NULL);
     }
 }
 
@@ -683,7 +686,7 @@ static void scroll_list(lv_obj_t *obj)
 
 static void list_scroll_event_cb(lv_event_t *evt)
 {
-    lv_obj_t *obj = evt->target;
+    lv_obj_t *obj = lv_event_get_target(evt);
     if (obj == NULL)
     {
         return;

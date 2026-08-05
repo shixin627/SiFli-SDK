@@ -7,6 +7,7 @@
  *      INCLUDES
  *********************/
 #include "littlevgl2rtt.h"
+#include "popup_compat.h"
 #include "lvsf.h"
 #include "lv_ext_resource_manager.h"
 #include <rtdevice.h>
@@ -504,7 +505,7 @@ static void opa_anim(void *bg, int32_t v)
 static void mbox_event_cb(lv_event_t *event)
 {
     lv_obj_t *mbox = lv_event_get_user_data(event);
-    uint16_t btn_idx = lv_msgbox_get_active_btn(mbox);
+    uint16_t btn_idx = popup_clicked_btn_index(event);
 
     LOG_I("mbox_event VALUE_CHANGED: %d", btn_idx);
     if (0 == btn_idx)

@@ -8,6 +8,8 @@
 #define LV_SEQIMG_H
 
 #include "lvgl.h"
+/* v9 moved lv_obj_t into a private header; widgets embedding it need this. */
+#include "lvgl_private.h"
 
 #ifdef __cplusplus
 extern "C"

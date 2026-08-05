@@ -12,7 +12,6 @@
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
 #include "dfs_posix.h"
-#include "lvsf_comp.h"
 #include "gui_app_fwk.h"
 #include "lv_ext_resource_manager.h"
 #include "lv_ex_data.h"

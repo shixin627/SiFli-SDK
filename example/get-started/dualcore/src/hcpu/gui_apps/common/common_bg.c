@@ -130,7 +130,7 @@ lv_obj_t *common_widget_container(lv_obj_t *parent)
 lv_obj_t *create_divider_line(lv_obj_t *parent)
 {
     lv_obj_t *line = lv_line_create(parent);
-    static lv_point_t line_points[] = {
+    static lv_point_precise_t line_points[] = {
         {0, 0},
         {(lv_coord_t)(LV_HOR_RES_MAX * 0.85 - 30), 0}};
     lv_line_set_points(line, line_points, 2);

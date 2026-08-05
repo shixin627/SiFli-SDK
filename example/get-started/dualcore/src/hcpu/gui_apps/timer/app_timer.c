@@ -53,7 +53,6 @@
 #include <math.h>
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
-#include "lvsf_comp.h"
 #include "gui_app_fwk.h"
 #include "lv_ext_resource_manager.h"
 #include "lv_ex_data.h"
@@ -519,7 +518,7 @@ static void label_tap_zone_click_cb(lv_event_t *e)
     if (icon != NULL && lv_obj_is_valid(icon) &&
         !lv_obj_has_flag(icon, LV_OBJ_FLAG_HIDDEN))
     {
-        lv_event_send(icon, LV_EVENT_CLICKED, NULL);
+        lv_obj_send_event(icon, LV_EVENT_CLICKED, NULL);
     }
 }
 

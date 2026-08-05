@@ -9,6 +9,7 @@
  *********************/
 
 #include <stdlib.h>
+#include "popup_compat.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -19,7 +20,6 @@
 #include <time.h>
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
-#include "lvsf_comp.h"
 #include "gesture_recognition_task.h"
 #include "gui_app_fwk.h"
 #include "lv_ext_resource_manager.h"
@@ -649,7 +649,7 @@ static void stop_gesture_collection(bool save)
 static void msgbox_event_cb(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target(e);
-    uint16_t btn_id = lv_msgbox_get_active_btn(obj);
+    uint16_t btn_id = popup_clicked_btn_index(e);
 
     if (btn_id == 0) // "是" button
     {

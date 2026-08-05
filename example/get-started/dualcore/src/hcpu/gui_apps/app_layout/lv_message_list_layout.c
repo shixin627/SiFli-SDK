@@ -44,6 +44,10 @@
  */
 
 #include "lvgl.h"
+#ifndef DISABLE_LVGL_V9
+    /* v9 keeps lv_display_t / lv_indev_t / lv_event_t private. */
+    #include "lvgl_private.h"
+#endif
 #include "lv_ext_resource_manager.h"
 #include "drv_touch.h"
 #include "app_mainmenu.h"
@@ -857,7 +861,7 @@ static void stop_touching_screen_timer(void)
 
 static void list_window_scroll_event_cb(lv_event_t *evt)
 {
-    lv_obj_t *obj = evt->target;
+    lv_obj_t *obj = lv_event_get_target(evt);
     // LOG_D("list_window_scroll_event_cb");
     if (obj == NULL)
     {
@@ -1867,7 +1871,7 @@ static void event_forwarder(lv_event_t *e)
     if (code == LV_EVENT_CLICKED)
     {
         // 將事件轉發給目標物件
-        lv_event_send(myLancher[app_index_message].pagetileview, code,
+        lv_obj_send_event(myLancher[app_index_message].pagetileview, code,
                       lv_event_get_param(e));
     }
 }
@@ -2155,7 +2159,7 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
     LOG_I("message_list_layout_create: before refresh_notification_list");
     refresh_notification_list(p_app_notification->main_window);
     LOG_I("message_list_layout_create: before lv_event_send SCROLL");
-    lv_event_send(p_app_notification->main_window, LV_EVENT_SCROLL, NULL);
+    lv_obj_send_event(p_app_notification->main_window, LV_EVENT_SCROLL, NULL);
     LOG_I("message_list_layout_create: after lv_event_send SCROLL");
 
     /* 右側弧形觸控滾動 — 跟 instruction_list / exercise / clock 共用同一份算法。

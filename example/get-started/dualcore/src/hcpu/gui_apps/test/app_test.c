@@ -992,10 +992,10 @@ static void system_stress_run_random_ui_action(void)
     {
     case 0:
         lv_obj_add_state(control, LV_STATE_PRESSED);
-        lv_event_send(control, LV_EVENT_PRESSED, RT_NULL);
+        lv_obj_send_event(control, LV_EVENT_PRESSED, RT_NULL);
         lv_obj_clear_state(control, LV_STATE_PRESSED);
-        lv_event_send(control, LV_EVENT_RELEASED, RT_NULL);
-        lv_event_send(control, LV_EVENT_CLICKED, RT_NULL);
+        lv_obj_send_event(control, LV_EVENT_RELEASED, RT_NULL);
+        lv_obj_send_event(control, LV_EVENT_CLICKED, RT_NULL);
         break;
     case 1:
     case 3:
@@ -1007,22 +1007,22 @@ static void system_stress_run_random_ui_action(void)
         {
             lv_obj_add_state(control, LV_STATE_CHECKED);
         }
-        lv_event_send(control, LV_EVENT_VALUE_CHANGED, RT_NULL);
+        lv_obj_send_event(control, LV_EVENT_VALUE_CHANGED, RT_NULL);
         break;
     case 2:
         lv_slider_set_value(
             control, (int32_t)((random >> 8) % 101U), LV_ANIM_OFF);
-        lv_event_send(control, LV_EVENT_VALUE_CHANGED, RT_NULL);
+        lv_obj_send_event(control, LV_EVENT_VALUE_CHANGED, RT_NULL);
         break;
     case 4:
         lv_dropdown_set_selected(
             control, (uint16_t)((random >> 8) % 4U));
-        lv_event_send(control, LV_EVENT_VALUE_CHANGED, RT_NULL);
+        lv_obj_send_event(control, LV_EVENT_VALUE_CHANGED, RT_NULL);
         break;
     case 5:
         lv_obj_scroll_to_y(
             control, (lv_coord_t)((random >> 8) % 48U), LV_ANIM_OFF);
-        lv_event_send(control, LV_EVENT_SCROLL, RT_NULL);
+        lv_obj_send_event(control, LV_EVENT_SCROLL, RT_NULL);
         break;
     default:
         return;

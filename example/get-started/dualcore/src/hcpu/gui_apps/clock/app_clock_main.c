@@ -44,6 +44,11 @@
  */
 #include "rtconfig.h"
 #include <time.h>
+#include <stdio.h>
+/* opendir/readdir at ~line 540 sit outside the RT_USING_XIP_MODULE guard
+   that used to be the only thing pulling dfs_posix.h in; v8 also reached
+   it through the lvsf header chain, which is version-conditional now. */
+#include "dfs_posix.h"
 #include "app_mainmenu.h"
 #include "common_widget.h"
 #include "arc_scroll.h"

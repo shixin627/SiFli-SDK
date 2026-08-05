@@ -16,9 +16,15 @@ extern "C" {
 #include "rtconfig.h"
 #include <stdint.h>
 #include "lvgl.h"
+/* v9 moved lv_obj_t into a private header; widgets embedding it need this. */
+#include "lvgl_private.h"
 #include "lv_ex_data.h"
 #include "lvsf_input.h"
 #include "lvsf_ezipa.h"
+/* Before lv_ext_resource_manager.h below, which includes this header back:
+   whichever of the two is entered first, LV_EXT_FONT_GET has to be declared by
+   the time gui_apps see it. Resolves to lvsf_font_v9/ via its CPPPATH. */
+#include "lvsf_font.h"
 
 #include "lv_ext_resource_manager.h"
 

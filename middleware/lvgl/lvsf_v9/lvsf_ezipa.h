@@ -17,6 +17,8 @@ extern "C" {
 #include "string.h"
 #include "rtconfig.h"
 #include "lvgl.h"
+/* v9 moved lv_obj_t into a private header; widgets embedding it need this. */
+#include "lvgl_private.h"
 
 #if USING_EZIPA_DEC != 0
 extern const lv_obj_class_t lv_ezipa_class;

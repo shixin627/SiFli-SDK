@@ -101,7 +101,7 @@ static void confirm_btn_event_callback(lv_event_t *event)
         lv_lvsfpopup_ext_t *ext = (lv_lvsfpopup_ext_t *)obj;
 
 #ifdef DISABLE_LVGL_V9
-        lv_event_send(obj, LV_EVENT_READY, NULL);
+        lv_obj_send_event(obj, LV_EVENT_READY, NULL);
 #else
         lv_obj_send_event(obj, LV_EVENT_READY, NULL);
 #endif
@@ -117,7 +117,7 @@ static void cancel_btn_event_callback(lv_event_t *event)
         lv_obj_t *obj = lv_event_get_user_data(event);
 
 #ifdef DISABLE_LVGL_V9
-        lv_event_send(obj, LV_EVENT_CANCEL, NULL);
+        lv_obj_send_event(obj, LV_EVENT_CANCEL, NULL);
 #else
         lv_obj_send_event(obj, LV_EVENT_CANCEL, NULL);
 #endif

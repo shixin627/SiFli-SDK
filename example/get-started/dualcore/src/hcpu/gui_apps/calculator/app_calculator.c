@@ -51,7 +51,6 @@
 #include <rtdevice.h>
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
-#include "lvsf_comp.h"
 #include "gui_app_fwk.h"
 #include "lv_ext_resource_manager.h"
 #include "lv_ex_data.h"
@@ -331,7 +330,7 @@ static lv_obj_t *lv_ex_btnmatrix(lv_obj_t *screen)
     return btnm;
 }
 
-static lv_point_t _separator_line_points[] = {{0, 0}, {400, 0}};
+static lv_point_precise_t _separator_line_points[] = {{0, 0}, {400, 0}};
 void lv_create_calculator_screen(lv_obj_t *scr)
 {
     ta = lv_ex_textarea(scr);

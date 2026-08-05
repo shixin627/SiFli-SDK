@@ -454,15 +454,15 @@ void datac_send_data(datac_handle_t handle, uint16_t msg_id, uint8_t *data, uint
 void screen_rotate_to_90_degree(void)
 {
 #ifdef WATCH_DISPLAY_REVERSE_180
-    if (lv_disp_get_rotation(NULL) != LV_DISP_ROT_90)
+    if (lv_disp_get_rotation(NULL) != LV_DISPLAY_ROTATION_90)
     {
         gui_set_screen_rotation(0);
-        lv_disp_set_rotation(NULL, LV_DISP_ROT_90);
+        lv_disp_set_rotation(NULL, LV_DISPLAY_ROTATION_90);
     }
 #else
-    if (lv_disp_get_rotation(NULL) != LV_DISP_ROT_270)
+    if (lv_disp_get_rotation(NULL) != LV_DISPLAY_ROTATION_270)
     {
-        lv_disp_set_rotation(NULL, LV_DISP_ROT_270);
+        lv_disp_set_rotation(NULL, LV_DISPLAY_ROTATION_270);
     }
 #endif
 }
@@ -476,7 +476,7 @@ void screen_rotate_to_90_degree(void)
 void screen_rotate_back_to_original_direction(void)
 {
 #ifdef WATCH_DISPLAY_REVERSE_180
-    if (lv_disp_get_rotation(NULL) != LV_DISP_ROT_180)
+    if (lv_disp_get_rotation(NULL) != LV_DISPLAY_ROTATION_180)
     {
         gui_set_screen_rotation(180);
     }

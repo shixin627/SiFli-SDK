@@ -5,7 +5,6 @@
 #include <rtdevice.h>
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
-#include "lvsf_comp.h"
 #include "bloc_control.h"
 #include "gui_app_fwk.h"
 #include "ui_handler.h"
@@ -81,8 +80,14 @@ static void on_start(lv_obj_t *scr)
        setparam returns NULL if even that alloc fails; skip update, keep the
        code label so the page still shows something useful. */
     lv_obj_t *qrcode = lv_qrcode_create(card);
-    if (lv_qrcode_setparam(qrcode, 148, lv_color_black(), lv_color_white()) != NULL) {
-        lv_qrcode_update(qrcode, url, strlen(url));
+    lv_qrcode_set_size(qrcode, 148);
+    lv_qrcode_set_dark_color(qrcode, lv_color_black());
+    lv_qrcode_set_light_color(qrcode, lv_color_white());
+    /* v9 moved the allocation the note above is about: the setters return void
+       and lv_qrcode_update() does the work and reports failure. Same intent --
+       on a failed alloc, skip the update and leave the code label visible. */
+    if (lv_qrcode_update(qrcode, url, strlen(url)) != LV_RESULT_OK) {
+        LOG_W("qrcode update failed (alloc); showing code label only");
     }
     lv_obj_center(qrcode);
     lv_obj_add_event_cb(qrcode, qrcode_event_cb, LV_EVENT_CLICKED, NULL);

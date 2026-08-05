@@ -6,6 +6,8 @@
 
 #include "rtconfig.h"
 #include "lvgl.h"
+/* v9 moved lv_obj_t into a private header; widgets embedding it need this. */
+#include "lvgl_private.h"
 #include <string.h>
 #ifdef LVGL_V9
     #define LV_GC_ROOT(x) x

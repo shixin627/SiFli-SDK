@@ -1,4 +1,5 @@
 #include "app_clock_status_bar.h"
+#include "popup_compat.h"
 #ifdef BSP_USING_MODEL_WATCH_SYS_INTERACT
     #include "watch_system_interact.h"
 #endif
@@ -123,8 +124,8 @@ static void set_clock_main_status_opa(uint8_t opa, bool mask);
 static void set_dev_change_gaus_opa(uint8_t opa);
 static void notification_status_bar_cb(lv_event_t *event)
 {
-    if (lv_disp_get_rotation(NULL) == LV_DISP_ROT_90 ||
-        lv_disp_get_rotation(NULL) == LV_DISP_ROT_270)
+    if (lv_disp_get_rotation(NULL) == LV_DISPLAY_ROTATION_90 ||
+        lv_disp_get_rotation(NULL) == LV_DISPLAY_ROTATION_270)
     {
         return;
     }
@@ -274,8 +275,8 @@ static void dev_change_stop_connecting_timer(void);
 
 static void device_change_bar_cb(lv_event_t *event)
 {
-    if (lv_disp_get_rotation(NULL) != LV_DISP_ROT_90 &&
-        lv_disp_get_rotation(NULL) != LV_DISP_ROT_270)
+    if (lv_disp_get_rotation(NULL) != LV_DISPLAY_ROTATION_90 &&
+        lv_disp_get_rotation(NULL) != LV_DISPLAY_ROTATION_270)
     {
         /* T4: 右緣入口改由錶面 tileview 右 tile 的原生滑動處理；舊 bar 的觸碰區
            在 init 時已設 HIDDEN，這個 cb 平時不會觸發。保留原邏輯以防被顯示。 */
@@ -298,8 +299,8 @@ static void device_change_bar_cb(lv_event_t *event)
 
 static void ai_status_bar_cb(lv_event_t *event)
 {
-    if (lv_disp_get_rotation(NULL) != LV_DISP_ROT_90 &&
-        lv_disp_get_rotation(NULL) != LV_DISP_ROT_270)
+    if (lv_disp_get_rotation(NULL) != LV_DISPLAY_ROTATION_90 &&
+        lv_disp_get_rotation(NULL) != LV_DISPLAY_ROTATION_270)
     {
         if (LV_EVENT_RELEASED == event->code)
         {
@@ -1134,7 +1135,7 @@ void gui_set_screen_rotation(uint8_t rotation)
         v = 1;
         datac_send_data(pwr_srv_hdl, PWRMGR_MSG_LCD_ROTATE_180_SET_REQ,
                         (uint8_t *)&v, sizeof(v));
-        lv_disp_set_rotation(lv_disp_get_default(), LV_DISP_ROT_180);
+        lv_disp_set_rotation(lv_disp_get_default(), LV_DISPLAY_ROTATION_180);
     }
     else if (rotation == 0)
     {
@@ -1872,7 +1873,7 @@ static uint8_t dev_change_pending_delete_idx = 0xFF;
 static void dev_change_delete_confirm_cb(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_current_target(e);
-    const char *btn_txt = lv_msgbox_get_active_btn_text(obj);
+    const char *btn_txt = popup_clicked_btn_text(e);
 
     if (btn_txt)
     {

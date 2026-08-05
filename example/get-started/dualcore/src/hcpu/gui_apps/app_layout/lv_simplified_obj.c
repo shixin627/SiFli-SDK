@@ -7,6 +7,10 @@
  *      INCLUDES
  *********************/
 #include "lv_simplified_obj.h"
+#ifndef DISABLE_LVGL_V9
+    /* v9 keeps lv_display_t / lv_indev_t / lv_event_t private. */
+    #include "lvgl_private.h"
+#endif
 
 /*********************
  *      DEFINES

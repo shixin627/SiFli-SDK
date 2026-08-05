@@ -1187,7 +1187,7 @@ static int bloc_control_cmd(int argc, char *argv[])
 			}
 			else if (degree == 90)
 			{
-				lv_disp_set_rotation(NULL, LV_DISP_ROT_270);
+				lv_disp_set_rotation(NULL, LV_DISPLAY_ROTATION_270);
 			}
 		}
 		else if (strcmp(argv[1], "-media_title") == 0)

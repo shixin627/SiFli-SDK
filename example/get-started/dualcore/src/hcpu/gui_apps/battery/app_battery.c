@@ -43,6 +43,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <rtthread.h>
+#include <stdio.h>
 #include <rtdevice.h>
 #include "littlevgl2rtt.h"
 #include "lvgl.h"

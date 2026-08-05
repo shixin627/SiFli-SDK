@@ -48,12 +48,12 @@
  *      INCLUDES
  *********************/
 #include <rtthread.h>
+#include "popup_compat.h"
 #include <rtdevice.h>
 #include <stdint.h>
 #include <string.h>
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
-#include "lvsf_comp.h"
 #include "gui_app_fwk.h"
 #include "lv_ext_resource_manager.h"
 #include "lv_ex_data.h"
@@ -275,8 +275,8 @@ static void set_multitask_hint_obj_opa(void *obj, uint8_t opa);
     #if SHOW_SCROLL_ZONE_DEBUG
         // 折線近似圓弧的取樣點數（19 點 = 5° 間距，覆蓋 90° 弧）
         #define DBG_ZONE_ARC_POINTS 19
-static lv_point_t dbg_zone_outer_pts[DBG_ZONE_ARC_POINTS];
-static lv_point_t dbg_zone_inner_pts[DBG_ZONE_ARC_POINTS];
+static lv_point_precise_t dbg_zone_outer_pts[DBG_ZONE_ARC_POINTS];
+static lv_point_precise_t dbg_zone_inner_pts[DBG_ZONE_ARC_POINTS];
     #endif
 
     // 左側滾動節點：以手指繞螢幕中心的角度追蹤，可無限旋轉；
@@ -307,11 +307,11 @@ static lv_point_t dbg_zone_inner_pts[DBG_ZONE_ARC_POINTS];
         #define LEFT_SCROLL_PI 3.14159265358979323846f
     #endif
 static lv_obj_t *left_scroll_nodes[LEFT_SCROLL_NODE_COUNT] = {NULL};
-static lv_point_t left_scroll_node_pts[LEFT_SCROLL_NODE_COUNT][2];
+static lv_point_precise_t left_scroll_node_pts[LEFT_SCROLL_NODE_COUNT][2];
 // 右側滾動條（mirror，跟 left 一起在 bg，跨 mode 共用）
 static lv_obj_t *right_scroll_bar = NULL;
 static lv_obj_t *right_scroll_nodes[LEFT_SCROLL_NODE_COUNT] = {NULL};
-static lv_point_t right_scroll_node_pts[LEFT_SCROLL_NODE_COUNT][2];
+static lv_point_precise_t right_scroll_node_pts[LEFT_SCROLL_NODE_COUNT][2];
 static float scroll_last_theta = 0.0f;      // 上次手指相對中心的角度（弧度）
 static float scroll_accum_angle = 0.0f;     // 未觸發滾動的累積角度（弧度）
 static float scroll_node_offset_deg = 0.0f; // 節點視覺偏移（度，已正規化）
@@ -4091,7 +4091,7 @@ static uint8_t menu_pending_delete_idx = 0xFF;
 static void menu_delete_confirm_cb(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_current_target(e);
-    const char *btn_txt = lv_msgbox_get_active_btn_text(obj);
+    const char *btn_txt = popup_clicked_btn_text(e);
 
     if (btn_txt)
     {
@@ -4813,7 +4813,7 @@ static lv_coord_t s_hw_pull_prev_x = 0;
 #define HW_TRACE_STROKES 20
 #define HW_TRACE_PTS     80
 static lv_obj_t *s_hw_lines[HW_TRACE_STROKES];
-static lv_point_t s_hw_line_pts[HW_TRACE_STROKES][HW_TRACE_PTS];
+static lv_point_precise_t s_hw_line_pts[HW_TRACE_STROKES][HW_TRACE_PTS];
 static uint16_t s_hw_line_n[HW_TRACE_STROKES];
 static int8_t s_hw_stroke_idx = -1;
 static bool s_hw_local_pen = false;

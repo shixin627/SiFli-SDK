@@ -38,6 +38,10 @@
 #if DISP_REFR_GOVERNOR_ENABLE
 
 #include "lvgl.h"
+#ifndef DISABLE_LVGL_V9
+    /* v9 keeps lv_display_t / lv_indev_t / lv_event_t private. */
+    #include "lvgl_private.h"
+#endif
 #include <rtthread.h> /* rt_thread_self — [GOV-DIAG] logs tag the calling thread */
 
 #define DBG_TAG "disp.gov"
@@ -121,10 +125,10 @@ static void gov_indev_set_slow(bool slow)
         return;
 
     lv_indev_t *indev = gov_indev();
-    if (!indev || !indev->driver || !indev->driver->read_timer)
+    if (!indev || !lv_indev_get_read_timer(indev))
         return;
 
-    lv_timer_t *rt = indev->driver->read_timer;
+    lv_timer_t *rt = lv_indev_get_read_timer(indev);
 
     if (s_indev_default_period == 0)
         s_indev_default_period = rt->period; /* capture stock period once */
@@ -644,9 +648,9 @@ static void disp_gov(int argc, char **argv)
                     (int32_t)(s_wake_debounce_until - lv_tick_get()) > 0)
                        ? "ACTIVE"
                        : "off");
-        if (indev && indev->driver && indev->driver->read_timer)
+        if (indev && lv_indev_get_read_timer(indev))
             rt_kprintf("indev period   : %u ms\n",
-                       (unsigned)indev->driver->read_timer->period);
+                       (unsigned)lv_indev_get_read_timer(indev)->period);
     }
     else
     {

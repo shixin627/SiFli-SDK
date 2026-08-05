@@ -287,7 +287,7 @@ static void next_frame_task_cb(lv_timer_t *t)
 #endif
 
 #ifdef DISABLE_LVGL_V9
-    lv_event_send((lv_obj_t *)ext, LV_EVENT_LEAVE, NULL);
+    lv_obj_send_event((lv_obj_t *)ext, LV_EVENT_LEAVE, NULL);
 #else
     lv_obj_send_event((lv_obj_t *)ext, LV_EVENT_LEAVE, NULL);
 #endif

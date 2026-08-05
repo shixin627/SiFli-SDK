@@ -51,7 +51,6 @@
 #include <math.h>
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
-#include "lvsf_comp.h"
 #include "gui_app_fwk.h"
 #include "lv_ext_resource_manager.h"
 #include "lv_ex_data.h"
@@ -475,7 +474,7 @@ void create_daily_forecast_widget(lv_obj_t *parent, lv_obj_t *base, int index,
     // Add separator line (except for last item)
     if (index < WEATHER_DAILY_ITEM_AMOUNT - 1)
     {
-        static lv_point_t line_pts[] = {{0, 0}, {300, 0}};
+        static lv_point_precise_t line_pts[] = {{0, 0}, {300, 0}};
         lv_obj_t *separator = lv_line_create(parent);
         lv_obj_set_style_line_width(separator, 1, 0);
         lv_obj_set_style_line_color(separator, lv_color_make(0x40, 0x40, 0x40),
@@ -819,7 +818,7 @@ lv_obj_t *lv_card_layout_weather_create(lv_obj_t *parent_tv_obj)
     }
 
     // Dividing Line
-    static lv_point_t line_pts[] = {{0, 0}, {400, 0}};
+    static lv_point_precise_t line_pts[] = {{0, 0}, {400, 0}};
     lv_obj_t *p_line = lv_line_create(current_weather_page);
     lv_obj_set_style_line_width(p_line, 2, 0);
     lv_obj_set_style_line_color(p_line, lv_color_make(0x4B, 0x4B, 0x4B), 0);

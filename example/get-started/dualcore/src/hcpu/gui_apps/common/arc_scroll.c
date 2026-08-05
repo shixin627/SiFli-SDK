@@ -5,6 +5,10 @@
  ******************************************************************************
  */
 #include "arc_scroll.h"
+#ifndef DISABLE_LVGL_V9
+    /* v9 keeps lv_display_t / lv_indev_t / lv_event_t private. */
+    #include "lvgl_private.h"
+#endif
 #include <math.h>
 #include <string.h>
 
@@ -319,7 +323,7 @@ static void released_cb(lv_event_t *e)
             if (target != NULL && lv_obj_is_valid(target) &&
                 !lv_obj_has_flag(target, LV_OBJ_FLAG_HIDDEN))
             {
-                lv_event_send(target, LV_EVENT_CLICKED, NULL);
+                lv_obj_send_event(target, LV_EVENT_CLICKED, NULL);
             }
         }
     }

@@ -52,6 +52,8 @@
 #include "bloc_calendar.h"
 #include "communicate_protocol.h"
 #include "communicate_parse.h"
+/* access/mkdir/opendir/readdir: see app_clock_main.c -- no longer transitive. */
+#include "dfs_posix.h"
 #include "watch_global_data.h"
 #include "ui_handler.h"
 #include "gui_app_fwk.h"

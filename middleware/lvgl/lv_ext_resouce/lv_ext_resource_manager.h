@@ -12,8 +12,17 @@
 #include "lvgl.h"
 /* Match pre-merge behavior: many gui_apps rely on transitive lvsf_font.h
    exposure (LV_EXT_FONT_GET, LVSF_FONT_*) via this header. Keep that
-   contract so existing call-sites compile without 30+ extra includes. */
-#include "lvsf/lvsf.h"
+   contract so existing call-sites compile without 30+ extra includes.
+
+   Version-conditional: the path has to name a directory, and lvsf/ is the v8
+   tree. Reaching it from a v9 build pulls v8 headers in against v9 types,
+   which produced ~300 errors before this guard -- most of them pointing at
+   lvsf_font.h rather than at anything actually wrong with the caller. */
+#ifdef DISABLE_LVGL_V9
+    #include "lvsf/lvsf.h"
+#else
+    #include "lvsf_v9/lvsf.h"
+#endif
 
 #ifdef LV_USING_EXT_RESOURCE_MANAGER
 //#include "app_mem.h"

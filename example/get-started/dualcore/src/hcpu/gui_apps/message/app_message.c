@@ -17,6 +17,7 @@
 #include "ui_handler.h"
 #include "custom_trans_anim.h"
 #include "app_message.h"
+#include "popup_compat.h"
 #include "bloc_v2t.h"
 #include "bloc_setting.h"
 #include "app_speech.h"
@@ -168,7 +169,7 @@ static void message_voice_clear(void)
 
 static void message_send_btn_cb(lv_event_t *event)
 {
-    if (LV_EVENT_CLICKED == event->code)
+    if (LV_EVENT_CLICKED == lv_event_get_code(event))
     {
         message_voice_send();
     }
@@ -176,7 +177,7 @@ static void message_send_btn_cb(lv_event_t *event)
 
 static void message_cancel_btn_cb(lv_event_t *event)
 {
-    if (LV_EVENT_CLICKED == event->code)
+    if (LV_EVENT_CLICKED == lv_event_get_code(event))
     {
         message_voice_clear();
     }
@@ -586,14 +587,14 @@ static void main_msg_handler(gui_app_msg_type_t msg, void *param)
 static void new_msg_popup_event_callback(lv_event_t *event)
 {
     rt_kprintf("new_msg_popup_event_callback %s",
-               lv_event_to_name(event->code));
-    if (LV_EVENT_READY == event->code)
+               lv_event_get_code(event));
+    if (LV_EVENT_READY == lv_event_get_code(event))
     {
         // Entry message main page
         gui_app_create_page("main", main_msg_handler);
         gui_app_remove_page("popup");
     }
-    else if (LV_EVENT_CANCEL == event->code)
+    else if (LV_EVENT_CANCEL == lv_event_get_code(event))
     {
         gui_app_goback();
     }
@@ -607,14 +608,10 @@ static void popupmsg_handler(gui_app_msg_type_t msg, void *param)
     {
         const char *name = intent_get_string(gui_app_get_intent(), "newfrom");
 
-        lv_obj_t *pop_container = lv_lvsfpopup_create(lv_scr_act());
-
-        lv_lvsfpopup_set_icon(pop_container, IMG_MAIL);
-        lv_lvsfpopup_set_title(pop_container, "New msg from:");
-        lv_lvsfpopup_set_content(pop_container, name);
-
-        lv_lvsfpopup_set_confirm_btn_txt(pop_container, "View");
-        lv_lvsfpopup_set_cancel_btn_txt(pop_container, "Ignore");
+        lv_obj_t *pop_container = popup_confirm_create(
+                                     lv_screen_active(), IMG_MAIL,
+                                     "New msg from:", name,
+                                     "View", "Ignore");
         lv_obj_align(pop_container, LV_ALIGN_CENTER, 0, 0);
         lv_obj_add_event_cb(pop_container, new_msg_popup_event_callback,
                             LV_EVENT_ALL, NULL);

@@ -44,6 +44,7 @@
  *      INCLUDES
  *********************/
 #include <rtthread.h>
+#include <stdio.h>
 #include <rtdevice.h>
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
@@ -341,7 +342,9 @@ static void builder(interact_state_t state, lv_obj_t *parent)
 
         lv_obj_t *qr = lv_qrcode_create(parent);
         ui_components.qr_code = qr;
-        lv_qrcode_setparam(qr, 200, dark_color, light_color);
+        lv_qrcode_set_size(qr, 200);
+        lv_qrcode_set_dark_color(qr, dark_color);
+        lv_qrcode_set_light_color(qr, light_color);
         lv_qrcode_update(qr, qrcode_data, strlen(qrcode_data));
         lv_obj_center(qr);
 
