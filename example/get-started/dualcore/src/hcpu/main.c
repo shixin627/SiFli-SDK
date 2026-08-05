@@ -480,6 +480,11 @@ static uint8_t ble_app_set_cbk(uint8_t conn_idx, sibles_set_cbk_t *para)
             SkaiWatchSys.paired_info.paired_flag = 0;
             SkaiWatchSys.paired_info.paired_num = 0;
             rt_memset((void *)SkaiWatchSys.paired_info.newest_addr, 0, 8);
+            /* 取消訂閱等同鏈路失效 — 跟斷線一樣把音樂 widget 收掉。 */
+            {
+                extern void media_clear_on_link_down(void);
+                media_clear_on_link_down();
+            }
         }
     }
     break;
@@ -610,6 +615,11 @@ void skaiwalk_disconnected_ind(ble_gap_disconnected_ind_t *ind)
         SkaiWatchSys.connected_to_phone = false;
         SkaiWatchSys.gap_conn_state = GAP_CONN_STATE_DISCONNECTED;
         notify_provider.bluetooth_connection();
+        /* 音樂 widget 的操作全部要送回手機 — 連線沒了就不該再擺在那裡讓人按。 */
+        {
+            extern void media_clear_on_link_down(void);
+            media_clear_on_link_down();
+        }
 
 #ifdef USE_BLE_RSSI_CHECK_TIMER
         stop_ble_rssi_checker();
