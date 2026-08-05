@@ -83,6 +83,7 @@ extern "C"
     extern void gh30x_api_unlock(void);
     extern int open_gh3018(void);
     extern int open_gh3018_high_power(void);
+    extern int open_gh3018_low_power(void);
     extern int set_gh3018_hr_mode(void);
     extern int close_gh3018(void);
     extern void soft_adt_callback(bool status);

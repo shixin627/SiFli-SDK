@@ -123,8 +123,8 @@ static lv_obj_t *on_start(lv_obj_t *parent)
     lv_anim_start(&a);
 
     lv_obj_t *label = lv_label_create(parent);
-    lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(0)),
-                               0);
+    lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_color(label, lv_color_white(), 0);
     lv_obj_align_to(label, level_img, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
     set_text_hint(label, SkaiWatchSys.battery_level_value);
     p_app_batt->hint_label = label;

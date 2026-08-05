@@ -204,6 +204,7 @@ static void set_text_hint(interact_state_t state)
     {
         lv_label_set_text(hint_label, text);
         lv_obj_set_style_text_font(hint_label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+        lv_obj_set_style_text_color(hint_label, lv_color_white(), 0);
     }
 }
 
@@ -255,6 +256,7 @@ static void create_hint_label(lv_obj_t *parent, interact_state_t state)
 {
     lv_obj_t *label = lv_label_create(parent);
     lv_obj_set_style_text_font(label, LV_EXT_FONT_GET(get_system_font_size(0)), 0);
+    lv_obj_set_style_text_color(label, lv_color_white(), 0);
     set_hint_label(label);
     set_text_hint(state);
 }
