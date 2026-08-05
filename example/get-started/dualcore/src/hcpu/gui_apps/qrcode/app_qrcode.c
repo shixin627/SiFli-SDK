@@ -87,7 +87,7 @@ static void on_start(lv_obj_t *scr)
        and lv_qrcode_update() does the work and reports failure. Same intent --
        on a failed alloc, skip the update and leave the code label visible. */
     if (lv_qrcode_update(qrcode, url, strlen(url)) != LV_RESULT_OK) {
-        LOG_W("qrcode update failed (alloc); showing code label only");
+        rt_kprintf("qrcode: update failed (alloc); showing code label only\n");
     }
     lv_obj_center(qrcode);
     lv_obj_add_event_cb(qrcode, qrcode_event_cb, LV_EVENT_CLICKED, NULL);

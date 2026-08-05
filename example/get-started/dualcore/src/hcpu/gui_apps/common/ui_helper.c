@@ -115,14 +115,28 @@ lv_img_dsc_t *create_widget_snapshot_img(lv_obj_t *target_obj)
     lv_coord_t w = lv_obj_get_width(target_obj);
     lv_coord_t h = lv_obj_get_height(target_obj);
     memset(screenshot_img_desc, 0, sizeof(lv_img_dsc_t));
+#ifdef DISABLE_LVGL_V9
     screenshot_img_desc->header.cf = LV_IMG_CF_TRUE_COLOR;
+#else
+    screenshot_img_desc->header.cf = LV_COLOR_FORMAT_NATIVE;
+#endif
     screenshot_img_desc->header.w = w;
     screenshot_img_desc->header.h = h;
     screenshot_img_desc->data = (uint8_t *)trans_anim_buf;
+#ifdef DISABLE_LVGL_V9
     screenshot_img_desc->data_size =
         lv_snapshot_buf_size_needed(target_obj, LV_IMG_CF_TRUE_COLOR);
 
+    /* v8 needed an explicit flush before sampling the framebuffer. */
     lv_refr_dump_buf_to_img_now(screenshot_img_desc);
+#else
+    /* v9 dropped lv_snapshot_buf_size_needed(); the size is just the buffer
+       this format needs, and lv_snapshot_take_to_buf() renders into it itself,
+       so the separate dump call is gone too. */
+    screenshot_img_desc->data_size =
+        (uint32_t)w * (uint32_t)h *
+        lv_color_format_get_size(LV_COLOR_FORMAT_NATIVE);
+#endif
     lv_snapshot_take_to_buf(
         target_obj, screenshot_img_desc->header.cf, screenshot_img_desc,
         (uint8_t *)screenshot_img_desc->data, screenshot_img_desc->data_size);

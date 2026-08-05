@@ -523,9 +523,14 @@ int gui_freetype_init(void)
         return 0;
     }
 
+#ifdef DISABLE_LVGL_V9
     extern uint32_t ft_get_cache_size(void);
     lvsf_font_load(ft_get_cache_size());
     lv_freetype_open_font(false);
+#else
+    /* lvsf_font_v9 opens faces lazily on the first LV_EXT_FONT_GET;
+       there is no font manager here to preload. */
+#endif
     return 0;
 }
 INIT_ENV_EXPORT(gui_freetype_init);

@@ -24,6 +24,17 @@ typedef struct
     lv_indev_t *indev_drv;
 } lv_touchscreen_t;
 
+/* The v8 driver exposes the created indev this way and disp_refr_governor.c
+ * reaches for it to throttle the touch read timer. Keep the same accessor
+ * so that caller does not need a version split. */
+static lv_indev_t *s_touch_indev = NULL;
+
+lv_indev_t *touch_get_indev_handler(void)
+{
+    return s_touch_indev;
+}
+
+
 /**********************
  *  STATIC PROTOTYPES
  **********************/
@@ -162,6 +173,7 @@ static lv_touchscreen_t *touchscreen_init(rt_device_t dev)
     touchscreen->rt_device = dev;
     touchscreen->data_cnt = 0;
     touchscreen->indev_drv = indev = lv_indev_create();
+    s_touch_indev = indev;   /* see touch_get_indev_handler() below */
 
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(indev, touchscreen_read);

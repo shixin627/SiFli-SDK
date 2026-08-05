@@ -1174,7 +1174,7 @@ static void custom_keyboard_event_cb(lv_event_t *e)
         {
             if (strcmp(txt, "Del") == 0)
             {
-                // lv_textarea_del_char(text_area);
+                // lv_textarea_delete_char(text_area);
             }
             else if (strcmp(txt, "Enter") == 0)
             {
@@ -5125,7 +5125,7 @@ static void hw_ink_append(const lv_point_t *p)
         (n == 0 || s_hw_line_pts[idx][n - 1].x != p->x ||
          s_hw_line_pts[idx][n - 1].y != p->y))
     {
-        s_hw_line_pts[idx][n] = *p;
+        s_hw_line_pts[idx][n] = (lv_point_precise_t){ p->x, p->y };
         s_hw_line_n[idx] = (uint16_t)(n + 1);
         if (s_hw_lines[idx])
             lv_line_set_points(s_hw_lines[idx], s_hw_line_pts[idx], s_hw_line_n[idx]);

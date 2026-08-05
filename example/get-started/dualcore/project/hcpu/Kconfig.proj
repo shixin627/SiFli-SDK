@@ -90,8 +90,29 @@ config MESSAGE_CACHE_SIZE
     default 96000 if MESSAGE_CACHE_IN_PSRAM
     default 16000 if MESSAGE_CACHE_IN_SRAM_STANDALONE
 
+# tiny_ttf is the v9 font path (see middleware/lvgl/lvsf_font_v9). These are
+# project-local symbols in the SDK -- example/multimedia/lvgl/watch_v9 declares
+# its own copy rather than there being a shared definition.
+choice
+    prompt "tiny ttf cache memory"
+    default TINY_TTF_CACHE_IN_PSRAM
+    config TINY_TTF_CACHE_IN_PSRAM
+        depends on BSP_USING_PSRAM
+        bool "PSRAM"
+    config TINY_TTF_CACHE_IN_SRAM_STANDALONE
+        bool "SRAM STANDALONE"
+    config TINY_TTF_CACHE_IN_SRAM
+        bool "SRAM(Share with system heap)"
+endchoice
+
+config TINY_TTF_CACHE_SIZE
+    int "tiny ttf draw buf cache size(bytes)"
+    help
+        "Maximum tiny ttf draw buffer cache size, and define a standalone
+         array(size equals TINY_TTF_CACHE_SIZE) if define
+         TINY_TTF_CACHE_IN_PSRAM or TINY_TTF_CACHE_IN_SRAM_STANDALONE"
+    default 120000 if TINY_TTF_CACHE_IN_PSRAM
+    default 80000 if TINY_TTF_CACHE_IN_SRAM_STANDALONE
+    default 60000 if TINY_TTF_CACHE_IN_SRAM
 
 endmenu
-
-
-

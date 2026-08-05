@@ -96,8 +96,10 @@ bool ppg_data_collection = false;
  * a dev build. Was gated on !kReleaseMode. */
 #if 1
 
-#ifdef WIN32
-void lv_gpu_set_enable(bool en) {};
+/* The pair lives in lv_drivers/lv_gpu_new_api.c, which is v8-only -- there is
+   no v9 equivalent. Same stub the PC build already used. */
+#if defined(WIN32) || !defined(DISABLE_LVGL_V9)
+void lv_gpu_set_enable(bool en) { LV_UNUSED(en); };
 bool lv_gpu_is_enabled(void)
 {
     return false;
@@ -329,10 +331,31 @@ RT_WEAK bool ppg_service_subscribed(void)
 static void lv_create_dev_screen(void)
 {
     // header
-    lv_obj_t *title = lv_lvsfheader_create(lv_scr_act());
-    lv_lvsfheader_set_title(title, "Developer App");
-    lv_lvsfheader_set_visible_item(title, LVSF_HEADER_BRANCH);
-    lv_lvsfheader_back_event_cb(title, back_btn_event_callback);
+    /* lv_lvsfheader_* comes from the closed gui_widgets library, which has no
+       v9 build. This is the same thing out of plain objects: a full-width strip
+       holding a back arrow and a centred title. */
+    lv_obj_t *title = lv_obj_create(lv_screen_active());
+    lv_obj_set_size(title, LV_HOR_RES_MAX, 56);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_opa(title, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(title, 0, 0);
+    lv_obj_set_style_pad_all(title, 0, 0);
+    lv_obj_remove_flag(title, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *back_btn = lv_button_create(title);
+    lv_obj_set_size(back_btn, 48, 48);
+    lv_obj_align(back_btn, LV_ALIGN_LEFT_MID, 4, 0);
+    lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_shadow_width(back_btn, 0, 0);
+    lv_obj_add_event_cb(back_btn, back_btn_event_callback, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *back_lbl = lv_label_create(back_btn);
+    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+    lv_obj_center(back_lbl);
+
+    lv_obj_t *title_lbl = lv_label_create(title);
+    lv_label_set_text(title_lbl, "Developer App");
+    lv_obj_center(title_lbl);
 
     cust_trans_anim_config(CUST_ANIM_TYPE_2, NULL);
 

@@ -7,6 +7,7 @@
  *      INCLUDES
  *********************/
 #include "littlevgl2rtt.h"
+#include "lvsf_gesture.h"
 #include "popup_compat.h"
 #include "lvsf.h"
 #include "lv_ext_resource_manager.h"
@@ -18,7 +19,11 @@
 #include "lv_ex_data.h"
 #include "app_mem.h"
 #include "log.h"
-#include "lvsf/lv_freetype.h"
+#ifdef DISABLE_LVGL_V9
+    /* v8 lvsf freetype API. v9 uses LVGL's own, declared through lvgl.h,
+       and the two spell lv_freetype_init() differently. */
+    #include "lvsf/lv_freetype.h"
+#endif
 #include "touch_state_manager.h"
 #include "drv_touch.h"
 #include "app_message.h"
@@ -534,7 +539,7 @@ static void show_shutdown_msgbox(void)
     static const char *btns2[] = {"Ok", "Cancel", ""};
 
     /* Create the message box as a child of the modal background */
-    lv_obj_t *mbox = lv_msgbox_create(
+    lv_obj_t *mbox = popup_msgbox_create(
         obj, "Shutdown", "Are you sure to shutdown?", btns2, false);
     lv_obj_align(mbox, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_event_cb(mbox, mbox_event_cb, LV_EVENT_VALUE_CHANGED, mbox);
@@ -800,9 +805,14 @@ static void on_touch_gesture(touch_gesture_t gesture, uint16_t x, uint16_t y)
 #if LV_USING_FREETYPE_ENGINE
 static void boot_open_freetype(void)
 {
+#ifdef DISABLE_LVGL_V9
     extern bool g_lvsf_freetype_skipped;
     if (!g_lvsf_freetype_skipped)
         lv_freetype_open_font(true); /* open freetype font faces (NAND read) */
+#else
+    /* lvsf_font_v9 opens faces on the first LV_EXT_FONT_GET, so there is no
+       preload step here. */
+#endif
 }
 #endif
 

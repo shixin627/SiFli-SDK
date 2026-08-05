@@ -2,6 +2,7 @@
  *      INCLUDES
  *********************/
 #include <rtthread.h>
+#include "popup_compat.h"
 #include <rtdevice.h>
 #include <stdio.h>
 #include "littlevgl2rtt.h"
@@ -196,7 +197,7 @@ static void add_btn_event_cb(lv_event_t *e)
 
     if (p_app_alarm->alarm_num >= BSP_ALARM_MAX)
     {
-        lv_obj_t *msgbox = lv_msgbox_create(NULL,
+        lv_obj_t *msgbox = popup_msgbox_create(NULL,
                                             LV_EXT_STR_GET_BY_KEY(alarm_max_title, "Alarms"),
                                             LV_EXT_STR_GET_BY_KEY(alarm_max_reached, "Maximum reached."),
                                             NULL, true);

@@ -53,7 +53,7 @@ TEST_APP_SOURCE = os.path.join(
 UART_DOWNLOAD_EXE = os.path.join(
     REPO_ROOT, "tools", "uart_download", "ImgDownUart.exe")
 JSROOT_PACKED_BIN = os.path.join(SCRIPT_DIR, "build", "jsroot_packed.bin")
-JSROOT_FLASH_ADDRESS = "0x64280000"
+JSROOT_FLASH_ADDRESS = "0x64300000"
 BLE_BATTERY_LEVEL_UUID = "00002a19-0000-1000-8000-00805f9b34fb"
 BLE_SCAN_SECONDS = 12
 BLE_CONNECT_TIMEOUT_SECONDS = 15
@@ -933,7 +933,7 @@ def run_gui():
                 flash,
                 text=("(刷入手錶後自動：板級篩檢 → BLE 配號 → "
                       "advertising/RSSI → 連線讀取 Battery Level；"
-                      "圖片資源獨立刷入 0x64280000)"),
+                      "圖片資源獨立刷入 0x64300000)"),
                 font=UI_FONT, foreground="#666").grid(
                     row=3, column=0, columnspan=6, sticky="w", padx=6)
 

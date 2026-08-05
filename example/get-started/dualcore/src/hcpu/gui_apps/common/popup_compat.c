@@ -63,6 +63,31 @@ lv_obj_t *popup_confirm_create(lv_obj_t *parent,
     return mbox;
 }
 
+lv_obj_t *popup_msgbox_create(lv_obj_t *parent,
+                              const char *title,
+                              const char *txt,
+                              const char **btns,
+                              bool add_close_btn)
+{
+    lv_obj_t *mbox = lv_msgbox_create(parent);
+    uint16_t  i;
+
+    if (!mbox)
+    {
+        return NULL;
+    }
+
+    if (title) lv_msgbox_add_title(mbox, title);
+    if (txt)   lv_msgbox_add_text(mbox, txt);
+    if (add_close_btn) lv_msgbox_add_close_button(mbox);
+
+    for (i = 0; btns && btns[i] && btns[i][0]; i++)
+    {
+        add_footer_btn(mbox, btns[i], i);
+    }
+    return mbox;
+}
+
 static lv_obj_t *tagged_btn_of(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target(e);

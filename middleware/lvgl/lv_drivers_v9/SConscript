@@ -13,7 +13,6 @@ else:
     inc = inc + [cwd+'/sifli']
     src = src + Glob('sifli/*.c')
     src = src + Glob('lv_lcd.c')
-
 src = src + Glob('lv_gpu.c')
 src = src + Glob('lv_keypad.c')
 src = src + Glob('lv_touch.c')

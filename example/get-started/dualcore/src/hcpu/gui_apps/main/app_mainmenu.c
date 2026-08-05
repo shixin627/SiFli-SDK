@@ -46,6 +46,7 @@
  *		INCLUDES
  *********************/
 #include <rtthread.h>
+#include "lvsf_gesture.h"
 #include <rtdevice.h>
 #include "lv_timer.h"
 #include "littlevgl2rtt.h"

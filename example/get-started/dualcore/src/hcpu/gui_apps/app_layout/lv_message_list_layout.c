@@ -622,9 +622,12 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
 #endif
         }
 #if ENABLE_CURVE_LIST
-        lv_style_value_t *value =
-            (lv_style_value_t *)child->styles->style->v_p.values_and_props;
-        value->num = x_trans;
+        /* Was writing x_trans straight into the first value of the child's
+           first style (child->styles->style->v_p.values_and_props). v9 changed
+           that struct's layout, and the rest of this file already sets the same
+           thing through the public setter -- see set_drag_translate_x(). This
+           assumes that style held translate_x, which is what x_trans is. */
+        lv_obj_set_style_translate_x(child, x_trans, 0);
         lv_obj_mark_layout_as_dirty(child);
 #endif
     }
@@ -2852,7 +2855,7 @@ void lv_dial_header_builder(lv_obj_t *parent)
     dial_header_title = lv_label_create(dial_header_bg);
     lv_obj_set_size(dial_header_title, 150, 30);
     lv_label_set_long_mode(dial_header_title, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_anim_speed(dial_header_title, 15, 0);
+    lv_obj_set_style_anim_duration(dial_header_title, 15, 0);
     lv_obj_set_style_text_align(dial_header_title, LV_TEXT_ALIGN_CENTER,
                                 LV_PART_MAIN);
     lv_obj_set_style_text_font(dial_header_title,
@@ -2868,7 +2871,7 @@ void lv_dial_header_builder(lv_obj_t *parent)
     dial_header_content = lv_label_create(dial_header_bg_mask);
     lv_obj_set_size(dial_header_content, 240, 50);
     lv_label_set_long_mode(dial_header_content, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_style_anim_speed(dial_header_content, 15, 0);
+    lv_obj_set_style_anim_duration(dial_header_content, 15, 0);
     lv_obj_set_style_text_align(dial_header_content, LV_TEXT_ALIGN_CENTER,
                                 LV_PART_MAIN);
     lv_obj_set_style_text_font(dial_header_content,

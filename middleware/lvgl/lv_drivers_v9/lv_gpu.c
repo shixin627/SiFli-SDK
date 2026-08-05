@@ -7,8 +7,9 @@
 #include "rtconfig.h"
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
-#include "board.h"
-//#include "EventRecorder.h"
+/* v9 keeps lv_area_is_on() in a private header, and drv_epic_transform()
+   lives with the EPIC driver rather than arriving through board.h. */
+#include "lv_area_private.h"
 #include "drv_io.h"
 #include "drv_flash.h"
 #include "drv_epic.h"
@@ -204,10 +205,19 @@ void img_transform(lv_img_dsc_t *dest, const lv_img_dsc_t *src, int16_t angle,
     output_canvas.data_size = pixel_size * output_canvas.total_width * output_canvas.height;
 
 
+#ifdef DRV_EPIC_NEW_API
+    /* drv_epic.h only declares drv_epic_transform() when the old EPIC API is in
+       use; under the new one sifli_renderlist/ owns the accelerated path. The
+       rest of this file still provides gpu_ezipa_draw() and the
+       lv_gpu_is_enabled()/lv_gpu_set_enable() pair, so the file stays in the
+       build and only this call is compiled out. */
+    err = RT_ERROR;
+#else
     if (1)
         err = drv_epic_transform(&input_layers[0], input_layer_cnt, &output_canvas, NULL);
     else
         err = drv_epic_transform(&input_layers[1], input_layer_cnt - 1, &output_canvas, NULL);
+#endif
 
     if (RT_EOK != err)
     {

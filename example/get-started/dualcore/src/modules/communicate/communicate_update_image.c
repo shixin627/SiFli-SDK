@@ -56,7 +56,13 @@
 #include "bloc_v2t.h"   /* app_voice_get_voice2text_status() — DFU yields to voice */
 
 #ifdef PKG_USING_LZ4
-#include "lz4.h"
+/* By full path on purpose. LVGL v9 bundles its own lz4 and puts
+   external/lvgl_v9/src/libs/lz4 on the include path ahead of external/lz4, so a
+   plain "lz4.h" resolves to LVGL's copy -- which wraps its entire contents in
+   #if LV_USE_LZ4_INTERNAL and expands to nothing when that is off. The result
+   is a header that is found, contributes no declarations, and leaves
+   LZ4_decompress_safe implicit. */
+#include "../../../../../../external/lz4/lz4.h"
 #endif
 
 #define DBG_TAG "commu.update.image"

@@ -1,11 +1,16 @@
 /*
  * lvsf font layer for LVGL v9 -- see lvsf_font.h for why this exists.
  *
+ * Built on LVGL's tiny_ttf rather than FreeType, following
+ * example/multimedia/lvgl/watch_v9: that is the SDK's own v9 watch and it
+ * enables LV_USE_TINY_TTF with no FreeType at all. tiny_ttf reads the .ttf
+ * itself, so there are no ft_* platform hooks to supply and nothing drags in
+ * FT_Stroker_*, which LVGL's lv_freetype_outline.c would have needed.
+ *
  * ponytail: a fixed-size cache, not a font manager. The watch asks for seven
- * distinct sizes and asks for them repeatedly, so an array indexed by nothing
- * more than "which sizes have we opened" is enough; the v8 side ran a
- * registry with names, ordering and priorities that nothing in this project
- * ever called.
+ * distinct sizes and asks for them repeatedly, so an array of "sizes we have
+ * opened" is enough; the v8 side ran a registry with names, ordering and
+ * priorities that nothing in this project ever called.
  */
 #include "lvsf_font.h"
 
@@ -15,14 +20,17 @@
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
-#if LV_USE_FREETYPE
+#if LV_USE_TINY_TTF
 
-/* Same face the v8 build registered; see resource/fonts/SConscript, which
-   generates the descriptor pointing here. */
-#define LVSF_FONT_PATH "/assets/fonts/tiny55_full.ttf"
+/* NOT the v8 face. tiny55_full.ttf is preprocessed for SiFli's closed font
+   engine: its outlines live in a private FTFG table (86% of the file) and the
+   standard glyf table is a 4-byte stub, so anything but lvgl_extensions --
+   which has no v9 build -- renders it blank. DroidSansFallback.ttf is a normal
+   TrueType and is what example/multimedia/lvgl/watch_v9 uses. */
+#define LVSF_FONT_PATH "/assets/fonts/DroidSansFallback.ttf"
 
-/* Seven FONT_* sizes today. One spare so adding a size does not silently
-   start evicting. */
+/* Seven FONT_* sizes today. One spare so adding a size does not silently start
+   evicting. */
 #define LVSF_FONT_CACHE_MAX 8
 
 typedef struct
@@ -33,28 +41,8 @@ typedef struct
 
 static font_slot_t s_cache[LVSF_FONT_CACHE_MAX];
 static uint8_t     s_used;
-static bool        s_ft_ready;
-static bool        s_ft_failed;
 
-static void ft_init_once(void)
-{
-    if (s_ft_ready || s_ft_failed)
-    {
-        return;
-    }
-
-    /* Glyph cache count, not a byte budget. 256 covers the Latin set plus the
-       CJK actually on screen at once; misses re-render rather than fail. */
-    if (lv_freetype_init(256) != LV_RESULT_OK)
-    {
-        LOG_E("lv_freetype_init failed; falling back to built-in fonts");
-        s_ft_failed = true;
-        return;
-    }
-    s_ft_ready = true;
-}
-
-/* The v8 fallback ladder, kept so a missing .ttf degrades the same way:
+/* Mirrors the v8 fallback ladder, so a missing .ttf degrades the same way:
    ASCII still renders, non-ASCII becomes tofu, the watch boots. */
 static const lv_font_t *builtin_for(uint16_t size)
 {
@@ -77,12 +65,6 @@ const lv_font_t *LV_EXT_FONT_GET(uint16_t size)
         }
     }
 
-    ft_init_once();
-    if (!s_ft_ready)
-    {
-        return builtin_for(size);
-    }
-
     if (s_used >= LVSF_FONT_CACHE_MAX)
     {
         LOG_W("font cache full (%d); size %d falls back to built-in",
@@ -90,13 +72,12 @@ const lv_font_t *LV_EXT_FONT_GET(uint16_t size)
         return builtin_for(size);
     }
 
-    lv_font_t *font = lv_freetype_font_create(LVSF_FONT_PATH,
-                                              LV_FREETYPE_FONT_RENDER_MODE_BITMAP,
-                                              size,
-                                              LV_FREETYPE_FONT_STYLE_NORMAL);
+    lv_font_t *font = lv_tiny_ttf_create_file(LVSF_FONT_PATH, (int32_t)size);
     if (!font)
     {
-        LOG_E("lv_freetype_font_create(%s, %d) failed", LVSF_FONT_PATH, (int)size);
+        /* No .ttf on the filesystem yet (first boot before file sync), or the
+           face failed to parse. Not fatal -- see builtin_for(). */
+        LOG_E("lv_tiny_ttf_create_file(%s, %d) failed", LVSF_FONT_PATH, (int)size);
         return builtin_for(size);
     }
 
@@ -112,14 +93,14 @@ void lv_ext_font_reset(void)
 
     for (i = 0; i < s_used; i++)
     {
-        lv_freetype_font_delete(s_cache[i].font);
+        lv_tiny_ttf_destroy(s_cache[i].font);
         s_cache[i].font = NULL;
         s_cache[i].size = 0;
     }
     s_used = 0;
 }
 
-#else /* !LV_USE_FREETYPE */
+#else /* !LV_USE_TINY_TTF */
 
 const lv_font_t *LV_EXT_FONT_GET(uint16_t size)
 {
@@ -133,4 +114,4 @@ void lv_ext_font_reset(void)
 {
 }
 
-#endif /* LV_USE_FREETYPE */
+#endif /* LV_USE_TINY_TTF */

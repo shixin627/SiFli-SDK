@@ -42,7 +42,7 @@ scons --board=sf32lb52-lcd_n16r8 -j32
 
 资源来源目录 `project/jsroot`（图片 + 字库），打包成 FAT 映像后单独刷入。
 
-**关键参数：资源分区起始位址 = `0x64280000`**（= `FS_REGION_START_ADDR`，见 `ptab.json`）。
+**关键参数：资源分区起始位址 = `0x64300000`**（= `FS_REGION_START_ADDR`，见 `ptab.json`）。
 所有刷 jsroot 的脚本都必须用这个位址；旧文档里的 `0x64400000` 是错的。
 
 产生映像（ADR-0010 Route B：GC + strip，约 5.5 MB，FAT 格式化为整个 87.5 MB 分区）：
@@ -54,7 +54,7 @@ project\hcpu\jsroot_pack.bat        REM → project\hcpu\build\jsroot_packed.bin
 刷入方式二选一：
 
 1. **UART（推荐）**：跑 `project\hcpu\release_gui.py`，按「刷入圖片資源」。
-   内部用 `tools\uart_download\ImgDownUart.exe` 把 `build\jsroot_packed.bin` 烧到 `0x64280000`。
+   内部用 `tools\uart_download\ImgDownUart.exe` 把 `build\jsroot_packed.bin` 烧到 `0x64300000`。
 2. **JLink**：`jlink.exe -device SF32LB56X_NAND -if SWD -speed 10000 -autoconnect 1 -CommandFile tools\mkfatimg\mkfatimg_nand\_pack_flash.jlink`
 
 `project\hcpu\jsroot.bat` 是旧的 8 MB 流程（产生 `jsroot.bin` 并直接用 JLink 烧录），已被 `jsroot_pack.bat` 取代。
@@ -66,12 +66,13 @@ project\hcpu\jsroot_pack.bat        REM → project\hcpu\build\jsroot_packed.bin
 
 | mem | region | offset | max_size | 用途 |
 | --- | --- | --- | --- | --- |
-| psram1 | `main` | 0x00000000 | 0x00280000 | 代码执行区 |
-| psram1 | (PSRAM_DATA) | 0x00280000 | 0x00580000 | 图片缓存等运行期数据 |
-| flash3 | `main` | 0x00000000 | 0x00280000 | HCPU_FLASH_CODE_LOAD_REGION |
-| flash3 | (FS_REGION) | 0x00280000 | 0x05780000 | 文件系统 + jsroot 资源 |
+| psram1 | `main` | 0x00000000 | 0x00300000 | 代码执行区 |
+| psram1 | (PSRAM_DATA) | 0x00300000 | 0x00500000 | 图片缓存等运行期数据 |
+| flash3 | `main` | 0x00000000 | 0x00300000 | HCPU_FLASH_CODE_LOAD_REGION |
+| flash3 | (FS_REGION) | 0x00300000 | 0x05700000 | 文件系统 + jsroot 资源 |
 
-代码区上限 `0x280000` = 2,621,440 byte。参考占用：
+代码区上限 `0x300000` = 3,145,728 byte（原本 `0x280000`，为 LVGL v9 扩了 512 KB，
+步骤见下）。参考占用：
 
 | 固件 | main.bin | 余量 |
 | --- | --- | --- |
@@ -82,7 +83,8 @@ project\hcpu\jsroot_pack.bat        REM → project\hcpu\build\jsroot_packed.bin
 链接超出时的报错是 `Error: L6406E: No space in execution regions`，不会指出是分区不够，
 只会列一堆放不下的 symbol，容易误判成代码问题。
 
-**扩充步骤**（以 0x280000 → 0x300000，即 +512 KB 为例）：
+**扩充步骤**（下面这一次已经执行过：0x280000 → 0x300000，+512 KB，为了容下 LVGL v9。
+再要扩就照同样的顺序改）：
 
 1. `ptab.json`：psram1 `main` 与 flash3 `main` 的 `max_size` 同时改成 `0x00300000`。
 2. `ptab.json`：PSRAM_DATA 的 `offset` 改 `0x00300000`、`max_size` 减 512 KB（`0x00500000`）；

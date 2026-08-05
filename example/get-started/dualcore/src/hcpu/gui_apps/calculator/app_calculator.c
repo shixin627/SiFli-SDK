@@ -154,7 +154,7 @@ static void handle_button_text(const char *txt)
             }
             break;
         case 'D':
-            lv_textarea_del_char(ta);
+            lv_textarea_delete_char(ta);
             break;
         case '+':
         case '-':

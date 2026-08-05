@@ -69,7 +69,7 @@ static void add_selected_img(lv_obj_t *img_container)
     {
         p_app_photo->selected_capacity *= 2;
         p_app_photo->selected_imgs =
-            lv_mem_realloc(p_app_photo->selected_imgs,
+            lv_realloc(p_app_photo->selected_imgs,
                            sizeof(lv_obj_t *) * p_app_photo->selected_capacity);
     }
     p_app_photo->selected_imgs[p_app_photo->selected_count++] = img_container;

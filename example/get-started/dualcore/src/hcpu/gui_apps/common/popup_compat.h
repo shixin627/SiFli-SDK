@@ -32,6 +32,16 @@ lv_obj_t *popup_confirm_create(lv_obj_t *parent,
                                const char *confirm_txt,
                                const char *cancel_txt);
 
+/* v8's lv_msgbox_create(parent, title, txt, btns, add_close_btn) shape. `btns`
+   is a NULL-terminated array of footer button labels, or NULL for none. v9
+   split this into a create plus one call per part; this keeps the old form so
+   call sites are a rename. */
+lv_obj_t *popup_msgbox_create(lv_obj_t *parent,
+                              const char *title,
+                              const char *txt,
+                              const char **btns,
+                              bool add_close_btn);
+
 /* Label text of the footer button that raised `e`, or NULL if `e` did not come
    from one. Replaces lv_msgbox_get_active_btn_text(). */
 const char *popup_clicked_btn_text(lv_event_t *e);

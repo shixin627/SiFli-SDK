@@ -676,7 +676,7 @@ static void show_save_confirmation_dialog(void)
     }
 
     static const char *btns[] = {"是", "否", ""};
-    ui.confirm_msgbox = lv_msgbox_create(lv_scr_act(), "確認", "已收集20筆手勢\n是否儲存?", btns, false);
+    ui.confirm_msgbox = popup_msgbox_create(lv_scr_act(), "確認", "已收集20筆手勢\n是否儲存?", btns, false);
     lv_obj_add_event_cb(ui.confirm_msgbox, msgbox_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_center(ui.confirm_msgbox);
     lv_obj_set_style_bg_color(ui.confirm_msgbox, lv_color_make(40, 40, 40), LV_PART_MAIN | LV_STATE_DEFAULT);

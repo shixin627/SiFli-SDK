@@ -1927,7 +1927,7 @@ static void dev_change_show_delete_confirm(uint8_t device_idx)
     btns[1] = LV_EXT_STR_GET_BY_KEY(no, "No");
 
     dev_change_delete_confirm_msgbox =
-        lv_msgbox_create(NULL, LV_EXT_STR_GET_BY_KEY(confirm_delete_title, "Confirm Delete"), msg_buf, btns, false);
+        popup_msgbox_create(NULL, LV_EXT_STR_GET_BY_KEY(confirm_delete_title, "Confirm Delete"), msg_buf, btns, false);
     lv_obj_set_style_bg_color(dev_change_delete_confirm_msgbox,
                               lv_color_hex(0x2A2A2A), 0);
     lv_obj_set_style_text_color(dev_change_delete_confirm_msgbox,

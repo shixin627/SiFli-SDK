@@ -2583,7 +2583,7 @@ static bool lift_input_letter_at(lv_point_t abs, uint32_t *out)
     lv_point_t p = abs;
     p.x -= s_lift_input_label->coords.x1;
     p.y -= s_lift_input_label->coords.y1;
-    *out = lv_label_get_letter_on(s_lift_input_label, &p);
+    *out = lv_label_get_letter_on(s_lift_input_label, &p, false);
     return true;
 }
 
