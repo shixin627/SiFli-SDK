@@ -240,6 +240,25 @@ static void hr_control_mode(rt_uint32_t power)
     }
 }
 
+/**
+ * @brief Re-apply the foreground HR sensor mode once raw collection lets go.
+ *
+ * The subscribe handler defers hr_control_mode() while collection owns the
+ * sensor (see MSG_SERVICE_SUBSCRIBE_REQ). A subscriber that arrived mid-session
+ * would otherwise be left with the sensor still in raw mode and never produce a
+ * BPM, so set_imu_rawdata_collection() calls this on the way out — the mirror of
+ * the hr_set_power(0) it already does when the last subscriber has gone.
+ */
+void hr_reapply_subscriber_mode(void)
+{
+    if (hr_service_env.ref_count > 0)
+    {
+        LOG_I("HR mode re-applied after raw collection (ref_count %d)",
+              hr_service_env.ref_count);
+        hr_control_mode(RT_SENSOR_POWER_HIGH);
+    }
+}
+
 static int32_t hr_subscribe(datas_handle_t service)
 {
     if (hr_service_env.timer == NULL)
@@ -744,7 +763,33 @@ static int32_t hr_service_msg_handler(datas_handle_t service, data_msg_t *msg)
         {
             hr_service_env_t *env = &hr_service_env;
             env->hr_subscribed = RT_TRUE;
-            hr_control_mode(RT_SENSOR_POWER_HIGH);
+            /* Raw-data collection owns the sensor. This call used to go straight
+               to rt_device_control(), bypassing the veto hr_set_power() applies —
+               and the ASYMMETRY was the whole bug: the switch INTO HIGH (the
+               25 Hz HR function) went through, while the matching power-down at
+               the end of a measurement does go through hr_set_power() and IS
+               vetoed. Collection therefore never got its mode back.
+
+               Measured on the dev watch 2026-08-05 (bloc_motion_tracking.c's
+               `ppgdiag`): subscribing here mid-session moves the raw PPG FIFO
+               batch period 20 ms -> 522 ms and it stays there, so the gesture
+               stream's PPG column carries 2 fresh samples per 522 ms (~3.8 Hz
+               instead of 100 Hz) for the rest of the collection session.
+
+               Deferred, not dropped: set_imu_rawdata_collection() calls
+               hr_reapply_subscriber_mode() when collection ends. The other two
+               hr_control_mode() callers need no guard — bg_hr_period_cb already
+               skips its bursts while collecting, and the continuous-HR
+               diagnostic deliberately owns the sensor for its whole run. */
+            extern bool imu_rawdata_collection_active(void);
+            if (imu_rawdata_collection_active())
+            {
+                LOG_I("HR mode deferred: raw collection owns the sensor");
+            }
+            else
+            {
+                hr_control_mode(RT_SENSOR_POWER_HIGH);
+            }
         }
         break;
     }
