@@ -36,6 +36,12 @@ LV_IMG_DECLARE(micro_icon);
 #define SP_BUBBLE_PAD_V 7
 #define SP_TEXT_WRAP_PCT 72
 
+/* Type scale — Skaiwalk design tokens §4. Everything here used to inherit LV_FONT_DEFAULT
+   (16), which founder read as too small on the watch (2026-08-05: "文字有點小"). */
+#define SP_FONT_TITLE 22      /* textLg  — section title */
+#define SP_FONT_BUBBLE 19     /* textMd  — subhead; body legibility at arm's length */
+#define SP_FONT_TRANSCRIPT 17 /* textBase */
+
 /* Voice ripple — the SAME pulse the skaibar bar's push-to-talk uses
    (lv_instruction_list_layout.c LMIC_RIPPLE_*): a blue ring growing out of the mic
    centre and fading, replayed on a loop while listening. */
@@ -247,6 +253,16 @@ void session_pager_start_voice_input(void)
 /* One transcript row. Founder rule: ONLY the AI's turns get a bubble frame — the user's
    own words render as bare right-aligned text, so a glance down the page reads as "what
    Skai said" with the user's side as quiet context. */
+/* lvsf_get_font_from_size returns NULL when freetype never initialised (no .ttf on the FS —
+   see font_partition_dsc.c's is_freetype_safe_to_init), and pinning a NULL font would take
+   the draw path down. Keep the inherited default in that case: small text beats no watch. */
+static void sp_set_font(lv_obj_t *obj, uint16_t size)
+{
+    lv_font_t *f = lvsf_get_font_from_size(size);
+    if (f != NULL)
+        lv_obj_set_style_text_font(obj, f, 0);
+}
+
 static void sp_add_bubble(lv_obj_t *list, const char *text, bool from_ai)
 {
     lv_obj_t *row = lv_obj_create(list);
@@ -277,6 +293,9 @@ static void sp_add_bubble(lv_obj_t *list, const char *text, bool from_ai)
 
     lv_obj_t *lbl = lv_label_create(holder);
     lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+    /* BEFORE the measure below — lv_txt_get_size reads the label's current font, so setting
+       it afterwards would wrap the text against the wrong metrics. */
+    sp_set_font(lbl, SP_FONT_BUBBLE);
     /* LVGL clips (rather than re-wraps) a SIZE_CONTENT label pinned by max_width, so
        measure first and only pin the width when the text actually overflows — the same
        guard lv_chat_page.c needs for long messages. */
@@ -309,6 +328,7 @@ static void sp_build_page(lv_obj_t *pager, const session_meta_t *s, int idx)
     lv_obj_set_width(title, LV_HOR_RES - 120);
     lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
+    sp_set_font(title, SP_FONT_TITLE);
     lv_label_set_text(title, s->title[0] ? s->title : "Session");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, SP_TITLE_Y);
 
@@ -319,9 +339,13 @@ static void sp_build_page(lv_obj_t *pager, const session_meta_t *s, int idx)
     lv_obj_set_style_border_width(list, 0, 0);
     lv_obj_set_scroll_dir(list, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
-    /* The pager owns horizontal scrolling; a bubble column that chained its (nonexistent)
-       horizontal overflow to the pager would steal diagonal drags. Vertical only. */
-    lv_obj_clear_flag(list, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    /* The bubble column covers nearly the whole page, so a horizontal drag almost always
+       STARTS on it. set_scroll_dir(VER) means the column itself will not move sideways —
+       and with the horizontal chain CLEARED that drag dead-ends here instead of reaching
+       the pager. Founder 2026-08-05: "只能碰最右邊才能左滑…沒辦法在畫面中央直接左右滑" —
+       the only live strip was the 13px of side padding either side of this object. Chain
+       horizontally (LVGL then hands the pager exactly the axis this column refuses). */
+    lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(list, 6, 0);
     lv_obj_set_style_pad_hor(list, 2, 0);
@@ -435,6 +459,18 @@ static void sp_visibility_timer_cb(lv_timer_t *t)
     s_visible = vis;
     if (vis)
     {
+        /* This tile is still INSTRUCTION_LIST_PAGE_INDEX, so app_clock keeps floating the
+           instruction bar layer (lv_layer_top) for it — from when this tile WAS the
+           instruction list. lv_layer_top draws above every tile, so an opaque page
+           background cannot cover it, and it takes the touches too: founder 2026-08-05
+           saw "左側的 action 列表疊在右側 tileview 上面" and could only drag the far right
+           edge. The pager owns this tile now, so take that layer down on entry; every
+           other page asserts its own state on arrival (the documented per-page contract
+           on instruction_list_bar_set_visible), so leaving needs nothing here. */
+        {
+            extern void instruction_list_bar_set_visible(bool visible);
+            instruction_list_bar_set_visible(false);
+        }
         /* Entering the pager: recover a list we may have missed, then open the page the
            user is looking at. */
         commu_send_conv_list_req();
@@ -581,6 +617,21 @@ static void sp_apply_list(void)
     int count = s_pending_session_count;
     if (count > SESSION_PAGER_MAX)
         count = SESSION_PAGER_MAX;
+
+    /* A refresh that changes NOTHING must not rebuild. lv_obj_clean() + 8 fresh pages takes
+       the pager out of lv_obj_is_visible() for a moment, which the 500ms visibility poll
+       reads as leave-then-enter — and every enter re-requests the list, which lands here
+       again. Measured on real hardware 2026-08-05: a convListReq/convOpen/convClose cycle
+       every ~1.5s, and the UI frozen under the constant destroy-and-rebuild. An identical
+       list is the COMMON case (the phone re-pushes on every reconnect and on every list
+       request), so this early-out is the loop's off switch, not an optimisation. */
+    if (count == s_session_count && count > 0 &&
+        memcmp(s_sessions, s_pending_sessions, (size_t)count * sizeof(s_sessions[0])) == 0)
+    {
+        LOG_D("conv_list unchanged (%d sessions) — no rebuild", count);
+        return;
+    }
+
     /* Remember what was open so a list refresh doesn't silently drop the conversation
        out from under the user. */
     char was_open[SESSION_ID_LEN];
@@ -659,6 +710,13 @@ lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
 {
     lv_obj_t *pager = lv_obj_create(parent);
     lv_obj_remove_style_all(pager);
+    /* remove_style_all leaves the pager fully TRANSPARENT, so nothing ever paints over the
+       tile underneath it. Awake that is invisible (the tileview only shows one tile), but
+       after a sleep/resume the watch face was still in the framebuffer and showed THROUGH
+       this page — founder 2026-08-05: "錶盤左側的頁面疊在右側頁面上". A full-screen tile
+       must own its pixels. */
+    lv_obj_set_style_bg_color(pager, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(pager, LV_OPA_COVER, 0);
     lv_obj_set_size(pager, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_pos(pager, 0, 0);
     lv_obj_add_flag(pager, LV_OBJ_FLAG_SCROLLABLE);
@@ -666,11 +724,15 @@ lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
     lv_obj_set_scroll_snap_x(pager, LV_SCROLL_SNAP_START);
     lv_obj_set_scrollbar_mode(pager, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_flex_flow(pager, LV_FLEX_FLOW_ROW);
-    /* Founder rule (2026-08-05): ONLY a left-EDGE swipe belongs to the outer tileview
-       (back to the watch face) — every other horizontal drag is this pager's. So do NOT
-       chain: swallow the gesture here. The edge is served by the watch's native
-       lvsf_gesture detect object, exactly as lv_chat_page.c relies on it. */
-    lv_obj_clear_flag(pager, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
+    /* Founder rule (2026-08-05): a mid-pager drag belongs to the PAGES, not the tileview.
+       Clearing the chain enforced that — but it also swallowed the drag at the ends, so
+       there was no way back to the watch face at all ("在螢幕左邊緣右滑…也沒辦法回錶盤";
+       the lvsf_gesture edge detector sits UNDER this full-screen object and never sees the
+       press). LVGL's chain already encodes the rule we actually want: a child keeps the
+       gesture while it can still scroll that way, and only hands over once it cannot. So
+       pages 1..N-1 stay the pager's, and a right-drag on page 0 falls through to the
+       tileview — which is exactly "swipe back from the first page". */
+    lv_obj_add_flag(pager, LV_OBJ_FLAG_SCROLL_CHAIN_HOR);
     lv_obj_add_event_cb(pager, sp_scroll_end_cb, LV_EVENT_SCROLL_END, NULL);
     s_pager = pager;
 
@@ -711,6 +773,7 @@ lv_obj_t *lv_session_pager_create(lv_obj_t *parent)
 
     lv_obj_t *tr = lv_label_create(bar);
     lv_label_set_long_mode(tr, LV_LABEL_LONG_DOT);
+    sp_set_font(tr, SP_FONT_TRANSCRIPT);
     lv_obj_set_width(tr, LV_HOR_RES - 140);
     lv_obj_set_style_text_align(tr, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(tr, lv_color_hex(0xFFFFFF), 0);
