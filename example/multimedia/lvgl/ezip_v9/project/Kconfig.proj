@@ -3,3 +3,19 @@ config CUSTOM_MEM_MAP
     bool 
     select custom_mem_map
     default y if !SOC_SIMULATOR
+
+choice EZIP_SDCARD_BACKEND
+    prompt "EZIP SD card storage backend"
+    default EZIP_SDCARD_BACKEND_SDIO if BSP_USING_SDIO
+    default EZIP_SDCARD_BACKEND_SPI_MSD
+
+    config EZIP_SDCARD_BACKEND_SPI_MSD
+        bool "SPI SD/TF card through RT_USING_SPI_MSD"
+
+    config EZIP_SDCARD_BACKEND_SDIO
+        bool "SDIO/MMC block device"
+endchoice
+
+config EZIP_SDCARD_DEVNAME
+    string "EZIP SD card block device name"
+    default "sd0"

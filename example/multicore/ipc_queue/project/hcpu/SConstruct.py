@@ -23,9 +23,9 @@ def create_env(proj_path = None):
     SifliEnv(proj_path)
 
 
-def build():
+def build(env=None):
     # prepare building environment
-    objs = PrepareBuilding(None)
+    objs = PrepareBuilding(env)
     env = GetCurrentEnv()
 
     TARGET = os.path.join(env['build_dir'], rtconfig.TARGET_NAME + '.' + rtconfig.TARGET_EXT)

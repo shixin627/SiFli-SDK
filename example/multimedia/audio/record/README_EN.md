@@ -12,8 +12,8 @@ Source code path: example/multimedia/audio/record
 ## Overview
 <!-- Example introduction -->
 This example demonstrates recording and playback based on audio manager, including:
-+ Recording through mic, saving pcm data to file.
-+ Reading recorded file and playing it back.
++ Recording through mic, saving pcm data to a memory buffer.
++ Reading recorded data from the memory buffer and playing it back.
 
 ## Example Usage
 <!-- Explain how to use the example, such as connecting which hardware pins to observe waveforms, compilation and programming can reference related documents.
@@ -26,17 +26,11 @@ Before running this example, prepare:
 
 ### menuconfig Configuration
 
-1. This example needs to read and write files, so it needs to use a file system. Configure the `FAT` file system:
-![RT_USING_DFS_ELMFAT](./assets/mc_fat.png)
-
-     ```{tip}
-     Mount root partition in mnt_init.
-     ```
-2. Enable AUDIO CODEC and AUDIO PROC:
+1. Enable AUDIO CODEC and AUDIO PROC:
 ![AUDIO CODEC & PROC](./assets/mc_audcodec_audprc.png)
-3. Enable AUDIO(`AUDIO`):
+2. Enable AUDIO(`AUDIO`):
 ![AUDIO](./assets/mc_audio.png)
-4. Enable AUDIO MANAGER.(`AUDIO_USING_MANAGER`)
+3. Enable AUDIO MANAGER.(`AUDIO_USING_MANAGER`)
 ![AUDIO_USING_MANAGER](./assets/mc_audio_manager.png)
 
 ### Compilation and Programming
@@ -57,7 +51,7 @@ For detailed steps on compilation and download, please refer to [Quick Start](qu
 ## Expected Results of Example
 <!-- Explain example running results, such as which LEDs will light up, which logs will be printed, to help users judge whether the example is running normally, running results can be explained step by step combined with code -->
 After the example starts:
-Start recording for ten seconds, then automatically play back after recording is complete. Expected successful recording and automatic playback.
+Start recording for five seconds, then automatically play back after recording is complete. Expected successful recording and automatic playback.
 
 ## Exception Diagnosis
 

@@ -1,15 +1,20 @@
 /*
- * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co, Ltd
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co, Ltd
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#include "dfs_file.h"
-#include "drv_io.h"
-#include "spi_msd.h"
+
+#include "rtdevice.h"
+#include "rtthread.h"
 #include "stdio.h"
 #include "usbd_core.h"
 #include "usbd_msc.h"
 
+#if defined(CHERRYUSB_MSC_BACKEND_SPI_MSD)
+    #include "spi_msd.h"
+#elif !defined(CHERRYUSB_MSC_BACKEND_SDIO)
+    #error "Please select CHERRYUSB_MSC_BACKEND_SPI_MSD or CHERRYUSB_MSC_BACKEND_SDIO"
+#endif
 
 /*!< endpoint address */
 #define MSC_IN_EP 0x85
@@ -24,6 +29,18 @@
 #define USB_CONFIG_SIZE (9 + MSC_DESCRIPTOR_LEN)
 
 #define MSC_MAX_MPS 64
+#define SDCARD_READY_RETRY_DELAY_MS 100
+#define SDCARD_READY_LOG_INTERVAL_MS 1000
+
+#ifndef CHERRYUSB_DEVICE_MSC_DEVNAME
+    #define CHERRYUSB_DEVICE_MSC_DEVNAME "sd0"
+#endif
+
+#if defined(CHERRYUSB_MSC_BACKEND_SPI_MSD)
+    #define MSC_BACKEND_NAME "SPI MSD"
+#else
+    #define MSC_BACKEND_NAME "SDIO/MMC"
+#endif
 
 static const uint8_t device_descriptor[] =
 {
@@ -119,96 +136,121 @@ static void usbd_event_handler(uint8_t busid, uint8_t event)
     }
 }
 
-/* Global device handle for SD card */
-static rt_device_t g_sd_dev = RT_NULL;
+static rt_device_t g_msc_dev = RT_NULL;
 
-/* Cached SD card geometry */
 static uint32_t g_block_size = 0;
 static uint32_t g_block_num = 0;
-/* Media ready flag */
-static volatile int g_sd_ready = 0;
+static volatile int g_msc_ready = 0;
+static rt_bool_t g_bad_geometry_logged = RT_FALSE;
 
-/* Try a single, non-blocking probe/open. Return 0 on success, -1 otherwise */
-static int sdcard_try_open_once(void)
+#if defined(CHERRYUSB_MSC_BACKEND_SPI_MSD)
+extern int rt_spi_msd_init(void);
+#endif
+
+static void msc_backend_probe(void)
 {
-    struct msd_device *msd;
-    if (g_sd_ready)
+#if defined(CHERRYUSB_MSC_BACKEND_SPI_MSD)
+    if (rt_device_find(CHERRYUSB_DEVICE_MSC_DEVNAME) == RT_NULL)
+    {
+        (void)rt_spi_msd_init();
+    }
+#endif
+}
+
+/* Try a single, non-blocking probe/open. Return 0 on success, -1 otherwise. */
+static int msc_backend_try_open_once(void)
+{
+    struct rt_device_blk_geometry geometry;
+    rt_err_t result;
+
+    if (g_msc_ready)
     {
         return 0;
     }
 
-    if (g_sd_dev == RT_NULL)
+    if (g_msc_dev == RT_NULL)
     {
-        g_sd_dev = rt_device_find("sd0");
-        if (g_sd_dev == RT_NULL)
+        g_msc_dev = rt_device_find(CHERRYUSB_DEVICE_MSC_DEVNAME);
+        if (g_msc_dev == RT_NULL)
         {
             return -1;
         }
     }
 
-    if (rt_device_open(g_sd_dev, RT_DEVICE_OFLAG_RDWR) != RT_EOK)
+    result = rt_device_open(g_msc_dev, RT_DEVICE_OFLAG_RDWR);
+    if (result != RT_EOK)
     {
+        g_msc_dev = RT_NULL;
         return -1;
     }
 
-    /* Get and cache geometry information */
-    msd = (struct msd_device *)g_sd_dev->user_data;
-    if (msd == NULL)
+    result = rt_device_control(g_msc_dev, RT_DEVICE_CTRL_BLK_GETGEOME,
+                               &geometry);
+    if (result != RT_EOK)
     {
-        /* If underlying driver hasn't populated yet, close and retry later */
-        rt_device_close(g_sd_dev);
-        g_sd_dev = RT_NULL;
+        rt_device_close(g_msc_dev);
+        g_msc_dev = RT_NULL;
         return -1;
     }
 
-    g_block_size = msd->geometry.bytes_per_sector;
-    g_block_num = msd->geometry.sector_count;
-    if (g_block_size == 0 || g_block_num == 0)
+    g_block_size = geometry.bytes_per_sector;
+    g_block_num = geometry.sector_count;
+    if (g_block_size == 0 || g_block_num == 0 ||
+            (CONFIG_USBDEV_MSC_MAX_BUFSIZE % g_block_size) != 0)
     {
-        rt_device_close(g_sd_dev);
-        g_sd_dev = RT_NULL;
+        if (!g_bad_geometry_logged)
+        {
+            rt_kprintf("MSC: invalid '%s' geometry: block %d bytes, total %d blocks\n",
+                       CHERRYUSB_DEVICE_MSC_DEVNAME, g_block_size, g_block_num);
+            g_bad_geometry_logged = RT_TRUE;
+        }
+        rt_device_close(g_msc_dev);
+        g_msc_dev = RT_NULL;
         return -1;
     }
 
-    g_sd_ready = 1;
-    rt_kprintf("SD card ready: block %d bytes, total %d blocks, %d MB\n",
-               g_block_size, g_block_num,
+    g_bad_geometry_logged = RT_FALSE;
+    g_msc_ready = 1;
+    rt_kprintf("MSC: %s disk '%s' ready (%d blocks * %d bytes = %d MB)\n",
+               MSC_BACKEND_NAME, CHERRYUSB_DEVICE_MSC_DEVNAME,
+               g_block_num, g_block_size,
                (g_block_num / 2048) * (g_block_size / 512));
     return 0;
 }
 
-/* Background worker: wait for sd0 to be registered then open once. */
-static void sdcard_open_worker(void *parameter)
+/* Wait until the block device is ready before exposing MSC to the host. */
+static void msc_backend_wait_ready(void)
 {
-    (void)parameter;
-    uint16_t time_out = 100;
-    rt_kprintf("MSC: waiting for sd0 ...\n");
-    while (time_out-- && !g_sd_ready)
-    {
-        if (sdcard_try_open_once() == 0)
-        {
-            break;
-        }
-        rt_thread_mdelay(10);
-    }
-    if (!g_sd_ready)
-    {
-        rt_kprintf("MSC: sd0 not ready, continue without media.\n");
-    }
-}
+    rt_tick_t last_log_tick = rt_tick_get();
+    rt_tick_t last_retry_tick = last_log_tick;
+    rt_tick_t retry_interval =
+        rt_tick_from_millisecond(SDCARD_READY_LOG_INTERVAL_MS);
+    rt_bool_t retry_now = RT_TRUE;
 
-/* Start background worker; non-blocking */
-static int sdcard_backend_init(void)
-{
-    rt_thread_t th = rt_thread_create("sd_open", sdcard_open_worker, RT_NULL,
-                                      1024, RT_THREAD_PRIORITY_MAX - 3, 10);
-    if (th)
+    rt_kprintf("MSC: waiting for %s disk '%s' ...\n", MSC_BACKEND_NAME,
+               CHERRYUSB_DEVICE_MSC_DEVNAME);
+    while (!g_msc_ready)
     {
-        rt_thread_startup(th);
-        return 0;
+        if (msc_backend_try_open_once() == 0)
+        {
+            return;
+        }
+
+        if (retry_now || (rt_tick_get() - last_retry_tick) >= retry_interval)
+        {
+            msc_backend_probe();
+            retry_now = RT_FALSE;
+            last_retry_tick = rt_tick_get();
+        }
+
+        rt_thread_mdelay(SDCARD_READY_RETRY_DELAY_MS);
+        if ((rt_tick_get() - last_log_tick) >= retry_interval)
+        {
+            rt_kprintf("MSC: waiting for %s disk '%s' ...\n",
+                       MSC_BACKEND_NAME, CHERRYUSB_DEVICE_MSC_DEVNAME);
+            last_log_tick = rt_tick_get();
+        }
     }
-    rt_kprintf("MSC: failed to start sd_open thread.\n");
-    return -1;
 }
 
 void usbd_msc_get_cap(uint8_t busid, uint8_t lun, uint32_t *block_num,
@@ -217,13 +259,13 @@ void usbd_msc_get_cap(uint8_t busid, uint8_t lun, uint32_t *block_num,
     (void)busid;
     (void)lun;
 
-    if (!g_sd_ready)
+    if (!g_msc_ready)
     {
         /* Try a quick lazy probe (non-blocking) */
-        (void)sdcard_try_open_once();
+        (void)msc_backend_try_open_once();
     }
 
-    if (!g_sd_ready)
+    if (!g_msc_ready)
     {
         *block_num = 0;  /* Report no media to host */
         *block_size = 0; /* Host will poll periodically */
@@ -244,20 +286,25 @@ int usbd_msc_sector_read(uint8_t busid, uint8_t lun, uint32_t sector,
     rt_size_t sectors_read;
     uint32_t num_sectors_to_read;
 
-    if (!g_sd_ready)
+    if (!g_msc_ready)
     {
         /* Attempt lazy open; still fail fast if not ready */
-        if (sdcard_try_open_once() != 0)
+        if (msc_backend_try_open_once() != 0)
         {
             return -1; /* Not ready */
         }
+    }
+
+    if (g_block_size == 0 || (length % g_block_size) != 0)
+    {
+        return -1;
     }
 
     num_sectors_to_read = length / g_block_size;
 
     /* rt_device_read's `pos` is the sector number and `size` is the number of
      * sectors */
-    sectors_read = rt_device_read(g_sd_dev, sector, buffer, num_sectors_to_read);
+    sectors_read = rt_device_read(g_msc_dev, sector, buffer, num_sectors_to_read);
 
     if (sectors_read == num_sectors_to_read)
     {
@@ -278,12 +325,17 @@ int usbd_msc_sector_write(uint8_t busid, uint8_t lun, uint32_t sector,
     rt_size_t sectors_written;
     uint32_t num_sectors_to_write;
 
-    if (!g_sd_ready)
+    if (!g_msc_ready)
     {
-        if (sdcard_try_open_once() != 0)
+        if (msc_backend_try_open_once() != 0)
         {
             return -1; /* Not ready */
         }
+    }
+
+    if (g_block_size == 0 || (length % g_block_size) != 0)
+    {
+        return -1;
     }
 
     num_sectors_to_write = length / g_block_size;
@@ -291,7 +343,7 @@ int usbd_msc_sector_write(uint8_t busid, uint8_t lun, uint32_t sector,
     /* rt_device_write's `pos` is the sector number and `size` is the number of
      * sectors */
     sectors_written =
-        rt_device_write(g_sd_dev, sector, buffer, num_sectors_to_write);
+        rt_device_write(g_msc_dev, sector, buffer, num_sectors_to_write);
 
     if (sectors_written == num_sectors_to_write)
     {
@@ -308,8 +360,7 @@ static struct usbd_interface intf0;
 void msc_device_init(uint8_t busid, uint32_t reg_base)
 {
 
-    /* Start SD card backend in background (non-blocking) */
-    (void)sdcard_backend_init();
+    msc_backend_wait_ready();
 
     usbd_desc_register(busid, &msc_device_descriptor);
     usbd_add_interface(busid,

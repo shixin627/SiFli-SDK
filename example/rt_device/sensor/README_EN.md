@@ -34,7 +34,7 @@ please input the serial port num:6
 * Enable corresponding sensors and `I2C3` in menuconfig
 
 ```
-menuconfig --board=sf32lb52-lchspi-ulp 
+sdk.py menuconfig --board=sf32lb52-lchspi-ulp 
 ```
 ![alt text](assets/menuconfig_sensor.png)
 ![alt text](assets/I2C3.png)

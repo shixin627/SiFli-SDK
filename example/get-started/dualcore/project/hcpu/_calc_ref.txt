@@ -1,0 +1,2 @@
+goto_app calculator
+app_status

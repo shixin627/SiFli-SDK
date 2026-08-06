@@ -57,8 +57,8 @@
 /* enable advance desc register api */
 #define CONFIG_USBDEV_ADVANCE_DESC
 
-/* move ep0 setup handler from isr to thread */
-// #define CONFIG_USBDEV_EP0_THREAD
+/* UAC control callbacks call audio server APIs, so EP0 must run in thread. */
+#define CONFIG_USBDEV_EP0_THREAD
 
 #ifndef CONFIG_USBDEV_EP0_PRIO
     #define CONFIG_USBDEV_EP0_PRIO 4
@@ -315,8 +315,8 @@
 
 #define CONFIG_USB_MUSB_SIFLI
 
-#ifdef SOC_SF32LB58X
-    #define CONFIG_USB_HS
-#endif
+// #ifdef SOC_SF32LB58X
+//     #define CONFIG_USB_HS
+// #endif
 
 #endif

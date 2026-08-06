@@ -895,6 +895,16 @@ void set_imu_rawdata_collection(bool enable)
         {
             hr_set_power(0);
         }
+        else
+        {
+            /* Someone subscribed to HR mid-session and had its sensor-mode
+             * switch deferred by the veto (hr_service.c's subscribe handler).
+             * The flag is already clear, so hand the sensor over now — without
+             * this the subscriber sits on a raw-mode sensor and never gets a
+             * BPM until something else happens to re-init it. */
+            extern void hr_reapply_subscriber_mode(void);
+            hr_reapply_subscriber_mode();
+        }
     }
 }
 

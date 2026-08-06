@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -23,7 +26,8 @@ DFU_CONFIG_SIG_HASH     =3
 DFU_CONFIG_SECURE_ENABLED = 4
 DFU_CONFIG_FLASH_TABLE  =8
 DFU_CONFIG_SIG          =9    
-DFU_CONFIG_BOOT_PATCH_SIG =10                     
+DFU_CONFIG_BOOT_PATCH_SIG  =10                     
+DFU_CONFIG_BOOT_PATCH_ADDR =11
 
 DFU_FLASH_SEC_CONFIG    =0         
 DFU_FLASH_FACTORY_CAL   =1         
@@ -216,7 +220,19 @@ def download_boot_patch_sigkey():
         print("\nsignature key download success\n")   
     serial.stop()    
     
-    
+def download_boot_patch_addr():    
+    patch_addr = int(FLAGS.patch_addr, 16)
+    data=struct.pack("<BB", DFU_CONFIG_ENC, DFU_CONFIG_BOOT_PATCH_ADDR)
+    data+=struct.pack("<I", patch_addr)
+    serial=SerialThread(FLAGS.port)
+    serial.send_data(data)
+    sem.acquire()
+    if (failed==1):
+        print("\nboot patch addr download failed\n")
+    else:
+        print("\nboot patch addr download success\n")   
+    serial.stop()    
+
 def download_sighash():    
     key=open(FLAGS.key + "_hash.bin", "rb").read()
     data=struct.pack("<BB", DFU_CONFIG_ENC, DFU_CONFIG_SIG_HASH)
@@ -308,7 +324,7 @@ if __name__ == '__main__':
          Flash write:     python download.py write --flashid=<flashid> --eimg=<flash content> --offset=<write offset> --port=<port name>
          '''))
 
-    parser.add_argument('action', choices=['ftab', 'img', 'sigkey', 'boot_patch_sigkey', 'sighash', 'root', 'test', 'write', 'uid', 'enable_secure', 'reset_ftab'], default='key')
+    parser.add_argument('action', choices=['ftab', 'img', 'sigkey', 'boot_patch_sigkey', 'sighash', 'root', 'test', 'write', 'uid', 'enable_secure', 'reset_ftab', 'boot_patch_addr'], default='key')
     parser.add_argument(
         '--flashid',
         type=int,
@@ -354,6 +370,11 @@ if __name__ == '__main__':
         type=int,
         default=0,
         help='Enable secure boot')
+    parser.add_argument(
+        '--patch_addr',
+        type=str,
+        default='0x20050000',
+        help='boot patch address in hex')    
     FLAGS, unparsed = parser.parse_known_args()
         
     sem = threading.Semaphore()
@@ -365,6 +386,8 @@ if __name__ == '__main__':
         download_sigkey()
     if (FLAGS.action == 'boot_patch_sigkey'):
         download_boot_patch_sigkey()
+    if (FLAGS.action == 'boot_patch_addr'):
+        download_boot_patch_addr()
     if (FLAGS.action == 'sighash'):
         download_sighash()
     if (FLAGS.action == 'root'):

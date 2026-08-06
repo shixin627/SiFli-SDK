@@ -1,6 +1,50 @@
 #ifndef RTCONFIG_PROJECT_H__
 #define RTCONFIG_PROJECT_H__
 
+#if defined(PKG_USING_QUICKJS) && !defined(_MSC_VER)
+    /* Re-enable QuickJS's stack-overflow guard, which the vendored source
+     * disables for RT-Thread builds:
+     *
+     *   #if !defined(EMSCRIPTEN) && !defined(BSP_USING_RTTHREAD)
+     *   #define CONFIG_STACK_CHECK
+     *   #endif                             -- external/quickjs/quickjs.c:81
+     *
+     * Without it JS_SetMaxStackSize() stores a number nobody reads and
+     * js_check_stack_overflow() is compiled down to "return FALSE", so
+     * `function f(){return f();} f();` in a third-party app runs off the native
+     * stack. On the simulator that kills the process; on the watch it is a hard
+     * fault. Either way it defeats the ADR-0019 sandbox, whose whole promise is
+     * that a bad app cannot take the watch down.
+     *
+     * Defined here rather than by patching external/: rtconfig.h is force-
+     * included ahead of quickjs.c's own guard, so the macro is already set when
+     * that #if runs and the vendor tree stays untouched.
+     *
+     * armclang only: with CONFIG_STACK_CHECK on, MSVC's js_get_stack_pointer()
+     * returns _ReturnAddress() -- a code address, not a stack address
+     * (external/quickjs/quickjs.c:1603). js_check_stack_overflow() then
+     * compares it against rt->stack_limit, which is derived from a real stack
+     * address, so the guard fires at arbitrary points including inside GC and
+     * allocation. The armclang path uses __builtin_frame_address(0) and is
+     * correct. */
+    #define CONFIG_STACK_CHECK
+#endif
+
+/* Turn on just enough mbedtls for install-time package verification
+ * (ADR-0019 §2.5): SHA-256 is already on in external/mbedtls/include/mbedtls/
+ * config.h, but ECDSA and the P-256 curve are not — the curve is defined only
+ * under PKG_USING_SM, and MBEDTLS_ECDSA_C appears solely inside a doc comment.
+ *
+ * Defined here for the same reason as CONFIG_STACK_CHECK above: rtconfig.h is
+ * force-included ahead of config.h, config.h never defines these in its active
+ * block, so nothing is redefined and the vendor tree stays untouched. The
+ * matching source files are compiled by src/modules/sdk/SConscript rather than
+ * by external/mbedtls/SConscript, which builds a much wider set. */
+#define MBEDTLS_ECP_C
+#define MBEDTLS_ECP_DP_SECP256R1_ENABLED
+#define MBEDTLS_ECDSA_C
+#define MBEDTLS_ASN1_WRITE_C
+
 /* Override the SDK default "SifliDemo" Classic-BT local-name prefix. */
 #define BT_LOCAL_NAME_PREFIX "Skaiwalk Air"
 /* Use the prefix verbatim as the Classic-BT friendly name (no "-<mac>" suffix),

@@ -378,6 +378,19 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 if (opa > 255) opa = 255;
                 instruction_list_bar_set_blur_amount((uint8_t)opa);
                 set_instruction_list_time_opa((uint8_t)opa);
+                /* Same pull fades in the blurred dial behind the session pager — the SCREEN-LEVEL
+                   gaus_dial_bg, exactly as the left action list uses it. It must not be parented
+                   to the tile: that travels with the tileview, and the backdrop then drifts
+                   sideways with the page instead of sitting still (founder 2026-08-05). Black
+                   underlay + blurred image ramp together, so the dial dissolves into the blur
+                   rather than the page arriving on a hard cut. */
+                if (gaus_dial_bg && lv_obj_is_valid(gaus_dial_bg))
+                {
+                    lv_obj_clear_flag(gaus_dial_bg, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_set_style_bg_opa(gaus_dial_bg, (lv_opa_t)opa, 0);
+                    if (gaus_dial_img && lv_obj_is_valid(gaus_dial_img))
+                        lv_obj_set_style_img_opa(gaus_dial_img, (lv_opa_t)opa, 0);
+                }
                 break;
             }
         }
@@ -1650,9 +1663,13 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
        content on lv_layer_top and only tracks this tile as instruction_list_page
        (read-only, for scroll-snap), so the tile itself is free to render the app
        grid that swipes in from the right edge. The left mixed list keeps using
-       the left-edge reveal overlay. */
-    extern lv_obj_t *lv_app_list_layout_create(lv_obj_t * parent);
-    lv_app_list_layout_create(pages[INSTRUCTION_LIST_PAGE_INDEX]);
+       the left-edge reveal overlay.
+       2026-08-05: that tile now hosts the DESKTOP-SESSION PAGER instead — one
+       horizontally-snapping page per desktop chat session. lv_app_list_layout.c is
+       kept intact but unmounted (founder: "App List 先不顯示"); re-mounting it is a
+       one-line change here. */
+    extern lv_obj_t *lv_session_pager_create(lv_obj_t * parent);
+    lv_session_pager_create(pages[INSTRUCTION_LIST_PAGE_INDEX]);
     extern lv_obj_t *lv_message_list_layout_create(lv_obj_t * parent);
     LOG_I("clock_status_bar: before message_list_layout_create");
     lv_message_list_layout_create(pages[MESSAGE_PAGE_INDEX]);

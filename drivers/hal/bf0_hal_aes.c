@@ -37,6 +37,8 @@ __HAL_ROM_USED int HAL_AES_init(uint32_t *key, int key_size, uint32_t *iv, uint3
     int ks;
     uint32_t setting;
 
+    HAL_RCC_EnableModule(RCC_MOD_AES);
+
     if (HAL_AES_busy())
         HAL_AES_reset();
 

@@ -1,0 +1,19 @@
+# Does on_change repaint page 2, or only page 1?
+#   _dev_test.cmd -nobuild -script _skai_daypush.txt -screenshot _snapshots\js\weather_push.png
+#
+# Launch on base 20 (rows read 17/24 .. 21/28), then push base 30 AFTER the
+# script has already built both pages. C's refresh_ui repaints the daily page
+# too, so the rows must move to 27/34 .. 31/38. If they still read 17/24 the
+# handler is only covering page 1 — which is exactly what it used to do.
+#
+# The trailing app_status lines are settle time: the tile scroll is animated and
+# the harness screenshots straight after the last command.
+fake_weather 20
+goto_app Main
+skai_pkg_add pkg_weather
+skai_pkg_run weather
+fake_weather 30
+touch_swipe 233 400 233 120
+app_status
+app_status
+app_status

@@ -504,6 +504,16 @@ HAL_StatusTypeDef HAL_AUDPRC_Clear_Dac_Channel(AUDPRC_HandleTypeDef *haprc);
 HAL_StatusTypeDef HAL_AUDPRC_Config_DACPath(AUDPRC_HandleTypeDef *haprc, AUDPRC_DACCfgTypeDef *cfg);
 
 /**
+  * @brief  Configure ADC path volume.
+  * @param  haprc: pointer to a AUDPRC_HandleTypeDef structure that contains
+  *         the configuration information for AUDPRC module
+  * @param channel: channel 0 or 1
+  * @param volume: configure volume -36dB~60dB
+  * @retval HAL status
+  */
+HAL_StatusTypeDef HAL_AUDPRC_Config_ADCPath_Volume(AUDPRC_HandleTypeDef *haprc, int channel, int volume);
+
+/**
   * @brief  Configure ADC path.
   * @param  haprc: pointer to a AUDPRC_HandleTypeDef structure that contains
   *         the configuration information for AUDPRC module
@@ -576,4 +586,4 @@ HAL_StatusTypeDef HAL_AUDPRC_DMAStop(AUDPRC_HandleTypeDef *haprc, uint32_t did);
 #endif
 
 
-#endif /* __BF0_HAL_I2S_H */
+#endif /* __BF0_HAL_AUDPRC_H */

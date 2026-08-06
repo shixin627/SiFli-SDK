@@ -77,6 +77,7 @@ typedef enum IRQn
     FFT2_IRQn                     =  38,
     FACC2_IRQn                    =  39,
     ACPU2LCPU_IRQn                =  40,
+    LCPU2ACPU_IRQn                =  40,
     LPCOMP_IRQn                   =  41,
     LPTIM2_IRQn                   =  42,
     LPTIM3_IRQn                   =  43,
@@ -115,6 +116,7 @@ typedef enum IRQn
     I2C2_IRQn                     =  76,
     EXTDMA_IRQn                   =  77,
     ACPU2HCPU_IRQn                =  78,
+    HCPU2ACPU_IRQn                =  78,
     SDMMC1_IRQn                   =  79,
     SDMMC2_IRQn                   =  80,
     NNACC_IRQn                    =  81,
@@ -854,7 +856,7 @@ typedef enum
 
 #define IS_LPUART_INSTANCE(INSTANCE)    (0)
 
-#define HCPU_IS_SRAM_ADDR(addr)  (((uint32_t)(addr) >= HPSYS_RAM0_BASE) && ((uint32_t)(addr) < HPSYS_RAM_END))
+#define HCPU_IS_SRAM_ADDR(addr)  (((uint32_t)(addr) >= HPSYS_RAM0_BASE) && ((uint32_t)(addr) < (HPSYS_RAM_END+ACPU_RAM_SIZE)))
 /**
   * @brief  Convert HCPU SRAM address which can be used by LCPU
   * @param  addr HCPU SRAM address
@@ -900,9 +902,6 @@ typedef enum
 */
 #define LCPU_DTCM_ADDR_2_HCPU_ADDR(addr) ((addr) + LCPUDTCM2HCPU_OFFSET)
 
-#define GPADC_CALIB_FLOW_VERSION        (2)
-
-
 #ifndef LCPU_BOOT_ADDR
 #define LCPU_BOOT_ADDR          (LCPU_RAM_DATA_START_ADDR+LCPU_RAM_DATA_SIZE-4)
 #endif
@@ -913,6 +912,8 @@ typedef enum
 #define CHIP_IS_585() (((hwp_hpsys_cfg->IDR&HPSYS_CFG_IDR_PID_Msk)>>HPSYS_CFG_IDR_PID_Pos)==4)
 #define CHIP_IS_587() (((hwp_hpsys_cfg->IDR&HPSYS_CFG_IDR_PID_Msk)>>HPSYS_CFG_IDR_PID_Pos)==0)
 
+/** hwp_pmuc is in lpsys, lcpu can access it directly */
+#define PMUC_IN_LPSYS
 
 #if defined (USE_HAL_DRIVER)
 #include "bf0_hal.h"

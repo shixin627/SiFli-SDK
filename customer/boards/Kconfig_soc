@@ -10,6 +10,9 @@ config SOC_SF32LB56X
     
 config SOC_SF32LB52X
     bool 
+
+config SOC_SF32LB57X
+    bool 
     
 config SOC_SIMULATOR
     bool 
@@ -31,7 +34,18 @@ if BF0_HCPU
     config CPU
     string
     default "Cortex-M33"
-endif    
+endif   
+
+config SOC_PACKAGE_QFN68
+    bool
+
+config SOC_PACKAGE_QFN80
+    bool
+
+config SOC_PACKAGE_BGA112
+    bool
+
+rsource "Kconfig_soc.sf32lb57x"
 
 if BF0_LCPU
     config CORE
@@ -40,10 +54,10 @@ if BF0_LCPU
 
     config CPU
     string
-    default "Cortex-M33"
+    default "Cortex-M33" 
     config CPU_HAS_NO_DSP_FP
         bool 
-        default y if SOC_SF32LB52X
+        default y if SOC_SF32LB52X || SOC_SF32LB57X
     
 endif
 
@@ -87,14 +101,14 @@ if !BSP_USING_PC_SIMULATOR
         menuconfig BT_TX_POWER_VAL
             bool "Select BT RF TX power. Range: 0dbm to 13dbm"
             default y
-            depends on (BF0_HCPU && (SOC_SF32LB52X || SOC_SF32LB56X || SOC_SF32LB58X))
+            depends on (BF0_HCPU && (SOC_SF32LB52X || SOC_SF32LB56X || SOC_SF32LB58X || SOC_SF32LB57X))
             config BT_TX_POWER_VAL_MAX
                 int "Select MAXIMUM TX power."
                 depends on (BT_TX_POWER_VAL && (SOC_SF32LB56X || SOC_SF32LB58X))
                 default 10
             config BT_TX_POWER_VAL_MAX
                 int "Select BLE MAX TX power."
-                depends on (BT_TX_POWER_VAL && (SOC_SF32LB52X))
+                depends on (BT_TX_POWER_VAL && (SOC_SF32LB52X || SOC_SF32LB57X))
                 default 10
             config BT_TX_POWER_VAL_MIN
                 int "Select MINIMUM TX power."
@@ -106,11 +120,11 @@ if !BSP_USING_PC_SIMULATOR
                 default 0
             config BT_TX_POWER_VAL_INIT
                 int "Select classic BT MAX TX power.IF this value less than BLE MAX TX power,than classic BT max power is equal to BLE MAX TX power"
-                depends on (BT_TX_POWER_VAL && (SOC_SF32LB52X))
+                depends on (BT_TX_POWER_VAL && (SOC_SF32LB52X || SOC_SF32LB57X))
                 default 0
         config BLE_TX_POWER_VAL
             int "Select BLE TX power. Range: -10dbm to 10dbm"
-            depends on !(SOC_SF32LB52X || SOC_SF32LB56X || SOC_SF32LB58X)
+            depends on !(SOC_SF32LB52X || SOC_SF32LB56X || SOC_SF32LB58X || SOC_SF32LB57X)
             default 0
 
         config BSP_CHIP_ID_COMPATIBLE
@@ -156,6 +170,27 @@ if !BSP_USING_PC_SIMULATOR
             config LCPU_CONFIG_V2
                 bool "Select for 2nd version for hal lcpu config"
         endchoice
+
+        menuconfig SD_BL_MODE
+            bool "Use SD_BL_MODE"
+            default n
+        if SD_BL_MODE
+            choice BOOT_DEVICE
+                prompt "Select SD boot device"
+                default BOOT_DEVICE_SDMMC2
+
+            config BOOT_DEVICE_SDMMC1
+                bool "SDMMC1"
+
+            config BOOT_DEVICE_SDMMC2
+                bool "SDMMC2"
+
+            endchoice
+
+        endif # SD_BL_MODE
+
+        config BOARD_RAMRUN_ENABLED
+            bool
 
     endmenu
 endif

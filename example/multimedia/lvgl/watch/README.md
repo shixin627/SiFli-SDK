@@ -4,6 +4,8 @@
 这是一个基于LVGL v8实现的智能手表界面示例，包含多种交互界面和字体配置功能。该示例展示了如何使用SiFli-SDK的LVGL图形库组件构建嵌入式设备的用户界面。
 基于此示例，开发者可以构建各种智能穿戴设备的UI界面，如运动手表、健康监测设备等。
 
+> 注：`SF32LB55X` 系列暂不支持 `3D旋转(rotation3d)` 演示，因此在 55x 平台上对应蜂窝入口无法进入画面。
+
 ## 用法
 
 ## 支持的开发板
@@ -83,7 +85,14 @@ void lv_ext_set_font_local_by_name(lv_obj_t *obj, uint16_t size, lv_color_t colo
 
 ```
 ## 异常诊断
-在多字体使用时，ttf文件总和可能过大，超出事先预准备的内存大小，例如以下编译报错，此时需要修改`project/xxx_hcpu/ptab.json`中 `"tags": ["HCPU_FLASH2_FONT"]`的 `max_size` 大小，注意修改大小需要保证前后段的地址连续，另外还需考虑不同开发板所支持的内存大小。
+在多字体使用时，ttf 文件总和可能过大，超出事先预准备的内存大小，例如以下编译报错，此时需要修改 `project/xxx_hcpu/ptab.yaml` 中字体资源分区的大小，注意修改大小需要保证前后段的地址连续，另外还需考虑不同开发板所支持的存储容量。
+
+对于该 watch 示例，ptab v3 的资源分区现在使用 `type: app`、`subtype: ex`，并通过 partition 的 `sections` 描述资源收集规则：
+
+- 图片资源分区默认收集分区名对应的 section，同时可以通过 `sections` 兼容旧工程里遗留的 `.ROM1_IMG*`、`.ROM3_IMG*` 输入 section
+- 字体资源分区通过 `sections` 收集 `lvsf_font_*` 对象中的 `.rodata*` 等输入 section
+
+资源 bin 文件名仍按分区名生成，但链接与切包不再依赖固定的 `.rom2/.rom3` MEMORY 布局。
 ```
 region'ROM' overflowed by 7880732 bytes
 ```
@@ -95,4 +104,3 @@ region'ROM' overflowed by 7880732 bytes
 
 - [SiFli-SDK 快速入门](https://docs.sifli.com/projects/sdk/latest/sf32lb52x/quickstart/index.html)
 - [LVGL官方文档](https://docs.lvgl.io/8.3/)
-

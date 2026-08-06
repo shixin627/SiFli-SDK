@@ -1,0 +1,10 @@
+fake_weather 20
+goto_app Main
+skai_pkg_add pkg_weather
+skai_pkg_run weather
+# settle: the app-open slide is animated and the harness shoots straight after
+# the last command, so without these the screenshot catches the OUTGOING screen
+# half way off, complete with a horizontal scrollbar.
+app_status
+app_status
+app_status

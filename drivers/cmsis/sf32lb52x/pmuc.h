@@ -129,6 +129,9 @@ typedef struct
 #define PMUC_WSR_CHG_Pos                (8U)
 #define PMUC_WSR_CHG_Msk                (0x1UL << PMUC_WSR_CHG_Pos)
 #define PMUC_WSR_CHG                    PMUC_WSR_CHG_Msk
+#define PMUC_WSR_PIN_ALL                (PMUC_WSR_PIN0 | PMUC_WSR_PIN1)
+#define PMUC_WSR_PIN_NUM                (2)
+
 
 /******************** Bit definition for PMUC_WCR register ********************/
 #define PMUC_WCR_WDT1_Pos               (1U)

@@ -1,0 +1,8 @@
+menuconfig USING_IPC_QUEUE
+    bool "IPC Queue Library"
+    default n
+    
+    config USING_IPC_QUEUE_DEVICE_WRAPPER
+        bool "Enable Wrapper Device for IPC Queue Library"
+        default n
+        depends on USING_IPC_QUEUE

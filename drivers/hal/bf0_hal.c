@@ -16,6 +16,9 @@
   * @{
   */
 
+
+
+
 #if defined(HAL_MODULE_ENABLED)||defined(_SIFLI_DOXYGEN_)
 
 /* Private typedef -----------------------------------------------------------*/
@@ -160,7 +163,8 @@ HAL_StatusTypeDef HAL_Init(void)
 //#ifndef SF32LB52X
         // Except Standby mode, all other boot mode need to re-calibrate RC48
         status = HAL_RCC_CalibrateRC48();
-#ifndef TARMAC
+#if  !defined(TARMAC) && !defined(FPGA)
+        //TODO: 57x need to calibrate as 50MHz
         HAL_ASSERT(HAL_OK == status);
 #endif
 //#endif /* SF32LB52X */
@@ -181,8 +185,12 @@ HAL_StatusTypeDef HAL_Init(void)
     HAL_ADC_HwInit(PM_STANDBY_BOOT != SystemPowerOnModeGet());
 #endif /* HAL_ADC_MODULE_ENABLED */
 
+#ifdef HAL_CORTEX_MODULE_ENABLED
     /* Set Interrupt Group Priority */
     HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
+#else
+    //eclic setting is in _premain_init, _premain_init is called by startup_bf0_lcpu_rom
+#endif
 
 #ifndef NONE_HAL_TICK_INIT
     /* Use SysTick as time base source and configure 1ms tick (default clock after Reset is MSI) */
@@ -297,7 +305,12 @@ __weak HAL_StatusTypeDef HAL_InitTick(uint32_t TickPriority)
     else
     {
         /*Configure the SysTick IRQ priority */
+#ifdef HAL_CORTEX_MODULE_ENABLED
         HAL_NVIC_SetPriority(SysTick_IRQn, TickPriority, 0);
+#else
+        extern void SysTick_Handler(void);
+        ECLIC_Register_IRQ(SysTimer_IRQn, ECLIC_NON_VECTOR_INTERRUPT, ECLIC_LEVEL_TRIGGER, 3, 0, SysTick_Handler);
+#endif
     }
 
     /* Return function status */
@@ -364,7 +377,7 @@ __weak uint32_t HAL_GetTick(void)
     BNE     6 cycles
 */
 #define WAIT_US_LOOP_CYCLE 12
-__weak void HAL_Delay_us_(__IO uint32_t us)
+__weak void HAL_Delay_us_(uint32_t us)
 {
     //TODO: replaced by SystemCoreClock?
     static uint32_t sysclk_m;
@@ -405,6 +418,8 @@ __weak void HAL_Delay_us_(__IO uint32_t us)
 // Use systick to get more accurate us level delay.
 __weak void HAL_Delay_us2_(__IO uint32_t us)
 {
+
+#ifdef SysTick
     uint32_t reload = SysTick->LOAD;
     uint32_t told, tnow, tcnt = 0;
     us = us * reload / (1000000 / HAL_TICK_PER_SECOND);
@@ -429,7 +444,7 @@ __weak void HAL_Delay_us2_(__IO uint32_t us)
             }
         }
     }
-
+#endif
 }
 
 #define MAX_US_DELAY    10000
@@ -455,10 +470,12 @@ __weak void HAL_Delay_us(uint32_t us)
             ticks = us;
             us = 0;
         }
-        if ((SysTick->CTRL & SysTick_CTRL_ENABLE_Msk) == 0) // Systick not enabled yet, use loop
-            HAL_Delay_us_(ticks);
-        else
+#ifdef  SysTick
+        if ((SysTick->CTRL & SysTick_CTRL_ENABLE_Msk) != 0) // Systick not enabled yet, use loop
             HAL_Delay_us2_(ticks);
+        else
+#endif
+            HAL_Delay_us_(ticks);
     }
 }
 
@@ -485,28 +502,14 @@ __weak void word_memcpy(void *dest, const void *src, size_t n)
   */
 __weak void HAL_Delay(__IO uint32_t Delay)
 {
-#if 1
     while (Delay > 0)
     {
         HAL_Delay_us(1000);
         Delay--;
     }
-#else
-    uint32_t tickstart = HAL_GetTick();
-    uint32_t wait = Delay;
-
-    /* Add a period to guaranty minimum wait */
-    if (wait < HAL_MAX_DELAY)
-    {
-        wait++;
-    }
-
-    while ((HAL_GetTick() - tickstart) < wait)
-    {
-    }
-#endif
 }
 
+#ifdef SysTick
 /**
   * @brief Suspend Tick increment.
   * @note In the default implementation , SysTick timer is the source of time base. It is
@@ -538,6 +541,8 @@ __weak void HAL_ResumeTick(void)
     /* Enable SysTick Interrupt */
     SysTick->CTRL  |= SysTick_CTRL_TICKINT_Msk;
 }
+
+#endif
 
 __weak void HAL_AssertFailed(char *file, uint32_t line)
 {
@@ -580,7 +585,7 @@ void PendSv_DBG_Trigger(void)
 #endif
 }
 
-#if defined(SF32LB52X) && defined(SOC_BF0_LCPU)
+#if !defined(PMUC_IN_LPSYS) && defined(SOC_BF0_LCPU)
 __HAL_ROM_USED uint32_t HAL_GetLXTEnabled(void)
 {
     uint8_t is_lxt_enabled;
@@ -593,7 +598,7 @@ __HAL_ROM_USED uint32_t HAL_GetLXTEnabled(void)
 
     return (uint32_t)is_lxt_enabled;
 }
-#endif
+#endif /* !PMUC_IN_LPSYS && SOC_BF0_LCPU */
 
 
 #endif // SF32LB55X

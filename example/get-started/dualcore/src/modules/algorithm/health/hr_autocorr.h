@@ -66,6 +66,24 @@ uint8_t hr_autocorr_estimate(uint8_t *conf_out);
 /** Samples currently buffered (0..HR_AUTOCORR_WIN). Diagnostics. */
 uint16_t hr_autocorr_fill(void);
 
+/**
+ * Copy the detrended window the LAST hr_autocorr_estimate() ran on, rescaled to
+ * int8, oldest sample first. Returns the count written (0 if no estimate has run).
+ *
+ * This exists because the synthetic suite cannot reproduce the field failures.
+ * On 2026-08-05 the estimator left four isolated outliers (171/144/101/38 bpm),
+ * all at the extremes of the lag range — yet sweeping the tie tolerance and the
+ * accept threshold over nine combinations left all 81 synthetic cases passing.
+ * Uniform noise plus a sine wander is evidently not what this sensor produces,
+ * so the parameters cannot be designed against imagination: the failing window
+ * itself has to come back off the wrist and into the offline suite.
+ *
+ * int8 rather than the int16 the estimator uses: three bits of amplitude buys a
+ * single BLE frame instead of a reassembled pair, and period estimation does not
+ * need them — the algorithm already normalises amplitude away.
+ */
+uint16_t hr_autocorr_last_window(int8_t *out, uint16_t max);
+
 #ifdef __cplusplus
 }
 #endif

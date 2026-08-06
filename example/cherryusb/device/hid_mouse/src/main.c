@@ -5,6 +5,8 @@
  */
 
 #include "bf0_hal.h"
+#include "board.h"
+#include "button.h"
 #include "rtdevice.h"
 #include "rtthread.h"
 #include "usbd_core.h"
@@ -167,9 +169,6 @@ typedef struct
 /*!< mouse report */
 static USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX hid_mouse_t mouse_cfg;
 
-/* key pin */
-#define PIN 11
-
 /* Byte corresponding to mouse button */
 #define left_button 0x01
 #define right_button 0x02
@@ -186,6 +185,7 @@ static volatile uint8_t hid_state = HID_STATE_IDLE;
 
 static volatile bool device_configured = false;
 static rt_thread_t mouse_thread = RT_NULL;
+static rt_sem_t mouse_key_sem = RT_NULL;
 
 USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX uint8_t write_buffer[8];
 
@@ -318,64 +318,92 @@ static void demo_drag_left_button(void)
     send_hid_report(0x00, 0, 0, 0);
 }
 
+static void key_button_handler(int32_t pin, button_action_t action)
+{
+    if ((pin != BSP_KEY2_PIN) || (action != BUTTON_CLICKED))
+    {
+        return;
+    }
+
+    if (!device_configured)
+    {
+        rt_kprintf("USB HID mouse is not ready yet\n");
+        return;
+    }
+
+    if (mouse_key_sem != RT_NULL)
+    {
+        rt_sem_release(mouse_key_sem);
+    }
+}
+
+static void key_button_init(void)
+{
+    button_cfg_t cfg = {0};
+
+    cfg.pin = BSP_KEY2_PIN;
+    cfg.mode = PIN_MODE_INPUT;
+#ifdef BSP_KEY2_ACTIVE_HIGH
+    cfg.active_state = BUTTON_ACTIVE_HIGH;
+#else
+    cfg.active_state = BUTTON_ACTIVE_LOW;
+#endif
+    cfg.button_handler = key_button_handler;
+
+    int32_t id = button_init(&cfg);
+    RT_ASSERT(id >= 0);
+    RT_ASSERT(SF_EOK == button_enable(id));
+
+    rt_kprintf("KEY2 button initialized, pin=%d\n", BSP_KEY2_PIN);
+}
+
 static void mouse_thread_entry(void *parameter)
 {
     rt_kprintf("mouse thread started\n");
 
     rt_thread_mdelay(3000);
 
-    int last_pin_state = PIN_LOW;
     uint8_t demo_index = 0;
 
     while (1)
     {
-        if (!device_configured)
-        {
-            rt_thread_mdelay(200);
-            continue;
-        }
+        rt_sem_take(mouse_key_sem, RT_WAITING_FOREVER);
 
-        if (hid_state != HID_STATE_IDLE)
+        while (device_configured && (hid_state != HID_STATE_IDLE))
         {
             rt_thread_mdelay(5);
+        }
+
+        if (!device_configured)
+        {
             continue;
         }
 
-        int pin_state = rt_pin_read(PIN);
-
-        /*!< detect button press */
-        if ((pin_state == PIN_HIGH) && (last_pin_state == PIN_LOW))
+        switch (demo_index)
         {
-
-            switch (demo_index)
-            {
-            case 0:
-                demo_left_button_click();
-                break;
-            case 1:
-                demo_right_button_click();
-                break;
-            case 2:
-                demo_middle_button_click();
-                break;
-            case 3:
-                demo_scroll_wheel();
-                break;
-            case 4:
-                demo_move_in_circle();
-                break;
-            case 5:
-                demo_drag_left_button();
-                break;
-            default:
-                break;
-            }
-
-            demo_index = (demo_index + 1) % 6;
+        case 0:
+            demo_left_button_click();
+            break;
+        case 1:
+            demo_right_button_click();
+            break;
+        case 2:
+            demo_middle_button_click();
+            break;
+        case 3:
+            demo_scroll_wheel();
+            break;
+        case 4:
+            demo_move_in_circle();
+            break;
+        case 5:
+            demo_drag_left_button();
+            break;
+        default:
+            break;
         }
 
-        last_pin_state = pin_state;
-        rt_thread_mdelay(20);
+        demo_index = (demo_index + 1) % 6;
     }
     return;
 }
@@ -400,8 +428,6 @@ static void hid_mouse_init(uint8_t busid, uintptr_t reg_base)
     mouse_cfg.wheel = 0;
     mouse_cfg.x = 0;
     mouse_cfg.y = 0;
-
-    rt_pin_mode(PIN, PIN_MODE_INPUT);
 }
 
 int main(void)
@@ -411,6 +437,10 @@ int main(void)
     rt_kprintf("========================================\n");
 
     hid_mouse_init(0, (uintptr_t)USBC_BASE);
+
+    mouse_key_sem = rt_sem_create("mkey", 0, RT_IPC_FLAG_FIFO);
+    RT_ASSERT(mouse_key_sem != RT_NULL);
+    key_button_init();
 
     mouse_thread = rt_thread_create("mouse_thread", mouse_thread_entry, RT_NULL,
                                     2048, RT_THREAD_PRIORITY_MAX / 2, 20);

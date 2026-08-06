@@ -43,7 +43,7 @@ please input the serial port num:5
 #define BUTTON_MAX_NUM 2
 #define BUTTON_ADV_ACTION_CHECK_DELAY 3000
 ```
-它们可以在 `SiFli Middleware->Enable button library` 下配置。 可以在编译界面输入`menuconfig`进入
+它们可以在 `SiFli Middleware->Enable button library` 下配置。 可以在编译界面输入 `sdk.py menuconfig` 进入
 ![alt text](assets/button_menu.png)
 
 

@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #include "rtthread.h"
 #include "bf0_hal.h"
 #include "drv_io.h"
@@ -11,7 +16,7 @@
 
 /* pwm example for RT-Thread based platform -----------------------------------------------*/
 
-#define PWM_DEV_NAME "pwm2"
+#define PWM_DEV_NAME "pwmt1"
 #define PWM_PERIOD (1 * 1000 * 1000) /*(ns) -> freq = 1,000,000,000/PWM_PERIOD (hz) */
 #define PWM_CHANNEL 2
 
@@ -37,7 +42,7 @@ void pwm_set(uint8_t percentage, uint32_t period)
     device = (struct rt_device_pwm *)rt_device_find(PWM_DEV_NAME);
     if (!device)
     {
-        LOG_I("find pwm2 err");
+        LOG_I("find pwmt1 err");
         return;
     }
     rt_device_open((struct rt_device *)device, RT_DEVICE_OFLAG_RDWR);

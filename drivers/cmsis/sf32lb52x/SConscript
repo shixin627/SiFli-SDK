@@ -21,6 +21,7 @@ except:
 src=['bf0_pin_const.c']
 src += ['Templates/system_bf0_ap.c']
 src += ['lcpu_config_type.c']
+src += ['pmu_ldo_update.c']
 if GetDepend(['BF0_HCPU']) and not GetDepend(['CFG_BOOTLOADER']):
     if GetDepend('SF32LB52X_REV_AUTO') or GetDepend('SF32LB52X_REV_A') or (not GetDepend('SF32LB52X_REV_B')):
         src += ['lcpu_patch.c']

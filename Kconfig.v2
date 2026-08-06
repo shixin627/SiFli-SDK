@@ -53,11 +53,11 @@ menu "Build Options"
         default n
     config STARTUP_STACK_SIZE
         int "Stack Size (byte) for Main Stack"
-        default 221184 if BSP_USING_NO_OS
+        default 221184 if BSP_USING_NO_OS && SOC_SF32LB58X
         default 8192
     config STARTUP_HEAP_SIZE
         int "Heap Size (byte) used by standard lib"
-        default 65536 if BSP_USING_NO_OS
+        default 65536 if BSP_USING_NO_OS && SOC_SF32LB58X
         default 3072
 endmenu
 

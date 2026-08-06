@@ -12,6 +12,7 @@ else:
     
 src  = []
 ASFLAGS = ''
+LIBPATH=[]
 
 # The set of source files associated with this SConscript file.
 if rtconfig.PLATFORM == 'armcc':
@@ -33,6 +34,8 @@ if rtconfig.PLATFORM == 'gcc':
     src += Glob(path + '/*_init.S')
     src += Glob(path + '/*.c') + Glob(path + '/*_gcc.S') 
     src += Glob(comm + '/*.c') + Glob(comm + '/*_gcc.S')
+    if GetDepend('RISCV'):
+        LIBPATH += [rtconfig.EXEC_PATH+'/../lib/gcc/riscv64-unknown-elf/13.1.1/rv32ima_zca_zcb_zcmp_zcmt_xxldsp']
 
 if rtconfig.PLATFORM == 'iar':
     src += Glob(path + '/*.c') + Glob(path + '/*_iar.S')
@@ -48,7 +51,6 @@ if rtconfig.PLATFORM == 'armcc' and rtconfig.ARCH == 'arm' and rtconfig.CPU == '
     ASFLAGS = ' --cpreproc'
 
 CPPPATH = [RTT_ROOT + '/libcpu/' + arch + '/' + rtconfig.CPU, RTT_ROOT + '/libcpu/' + arch + '/common']
-
-group = DefineGroup(rtconfig.CPU.upper(), src, depend = [''], CPPPATH = CPPPATH, ASFLAGS = ASFLAGS)
+group = DefineGroup(rtconfig.CPU.upper(), src, depend = [''], CPPPATH = CPPPATH, ASFLAGS = ASFLAGS, LIBPATH=LIBPATH)
 
 Return('group')

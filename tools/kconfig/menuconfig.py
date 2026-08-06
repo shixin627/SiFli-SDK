@@ -778,7 +778,7 @@ def menuconfig(kconf,conf='.config'):
     _conf_changed = _load_config()
 
     # Filename to save minimal configuration to
-    _minconf_filename = conf
+    _minconf_filename = _conf_filename
 
     # Any visible items in the top menu?
     _show_all = False
@@ -830,21 +830,59 @@ def menuconfig(kconf,conf='.config'):
         print(curses.wrapper(_menuconfig))
 
 
+def _get_chip_from_rtconfig(board_path):
+    """Extract CHIP name from rtconfig.py in board_path."""
+    import importlib.util
+
+    path = os.path.join(board_path, "rtconfig.py")
+    spec = importlib.util.spec_from_file_location("rtconfig", path)
+    board_rtconfig = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(board_rtconfig)
+
+    return board_rtconfig.CHIP.lower()
+
 def _load_config():
     # Loads any existing .config file. See the Kconfig.load_config() docstring.
     #
     # Returns True if .config is missing or outdated. We always prompt for
     # saving the configuration in that case.
     global args
+    global _conf_filename
 
     if board_conf_path:
-        # load `board.conf` first
+        # load `board.conf` first (lowest priority)
         print(_kconf.load_config(board_conf_path))
         with open(board_conf_path, "r") as f:
             # save board.conf as excluding_sym which would be excluded when saving as minimal
             _kconf.excluding_sym = f.readlines()
-        # load `proj.conf` and merge with `board.conf`
+
+        project_dir = os.path.dirname(os.path.abspath(_conf_filename))
+
+        # load project `proj.conf`
         print(_kconf.load_config(_conf_filename, replace=False))
+
+        # load chip-level `proj.conf` from project directory if exists (medium priority)
+        chip_name = _get_chip_from_rtconfig(board_path)
+        chip_proj_conf = None
+        if chip_name:
+            chip_proj_conf = os.path.join(project_dir, chip_name, "proj.conf")
+            if os.path.exists(chip_proj_conf):
+                print(_kconf.load_config(chip_proj_conf, replace=False))
+
+        # load board-level `proj.conf` from project directory if exists (highest priority)
+        if args.board.endswith("_lcpu") or args.board.endswith("_hcpu") or args.board.endswith("_acpu"):
+            board_fullname = args.board
+        else:
+            board_fullname = args.board + "_hcpu"   
+        board_proj_conf = os.path.join(project_dir, board_fullname, "proj.conf")
+        if os.path.exists(board_proj_conf):
+            print(_kconf.load_config(board_proj_conf, replace=False))
+
+        # determine save path: board proj.conf > chip proj.conf > project proj.conf
+        if os.path.exists(board_proj_conf):
+            _conf_filename = os.path.relpath(board_proj_conf, project_dir)
+        elif chip_proj_conf and os.path.exists(chip_proj_conf):
+            _conf_filename = os.path.relpath(chip_proj_conf, project_dir)
     else:
         print(_kconf.load_config(_conf_filename))
 
@@ -1013,7 +1051,7 @@ def _menuconfig(stdscr):
             _load_dialog()
 
         elif c in ("s", "S"):
-            if _minconf_filename=='proj.conf' or _minconf_filename=='board.conf' :
+            if 'proj.conf' in _minconf_filename or _minconf_filename=='board.conf' :
                 _warning_board()
             else:
                 filename = _save_dialog(_kconf.write_config, _conf_filename,
@@ -1076,7 +1114,7 @@ def _quit_dialog():
 
         if c == "y":
             # Returns a message to print
-            if _minconf_filename=='proj.conf' or _minconf_filename=='board.conf' :
+            if 'proj.conf' in _minconf_filename or _minconf_filename=='board.conf' :
                 msg = _try_save(_kconf.write_min_config, _minconf_filename, "minimal configuration")
             else:                        
                 msg = _try_save(_kconf.write_config, _conf_filename, "configuration")

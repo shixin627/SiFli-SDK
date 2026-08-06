@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // LiveImportAPI.h : Defines the initialization routines for the DLL.
 
 #include "tchar.h"

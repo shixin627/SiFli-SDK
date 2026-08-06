@@ -1,6 +1,7 @@
-/**
- * @file lvsf_rlottie.h
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
  *
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifndef LVSF_RLOTTIE_H

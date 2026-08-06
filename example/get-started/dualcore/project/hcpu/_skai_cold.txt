@@ -1,0 +1,13 @@
+# COLD START: launch with no weather at all, which is what a watch does when the
+# user opens the screen before the phone has synced. Every other skai weather
+# fixture pushes data BEFORE launch and so never opens this state.
+#
+# Expect: page 1 shows the "No weather data" banner over zeroed values, and
+# page 2 still builds its five rows (C loops i<5 over a fixed array). A blank
+# page 2 here means the row loop is gated on day_count() again.
+goto_app Main
+skai_pkg_add pkg_weather
+skai_pkg_run weather
+app_status
+app_status
+app_status

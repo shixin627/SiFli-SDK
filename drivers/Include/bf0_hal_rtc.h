@@ -614,18 +614,23 @@ typedef struct
 #define HAL_PBR_MAX   (5)
 #elif defined SF32LB56X
 #define HAL_PBR_MAX   (3)
+#elif defined(SF32LB57X)
+#define HAL_PBR_MAX   (1)
 #else
 #define HAL_PBR_MAX   (3)
 #endif
 #endif /* hwp_pbr */
 
-#ifdef SF32LB52X
+#ifdef RTC_CR_LPCKSEL
 #define HAL_RTC_LXT_ENABLED()          (hwp_rtc->CR&RTC_CR_LPCKSEL)
 #define HAL_RTC_ENABLE_LXT()           hwp_rtc->CR |= RTC_CR_LPCKSEL
+#elif PMUC_CR_SEL_RTC
+#define HAL_RTC_LXT_ENABLED()          (hwp_pmuc->CR&PMUC_CR_SEL_RTC)
+#define HAL_RTC_ENABLE_LXT()           hwp_pmuc->CR |= PMUC_CR_SEL_RTC
 #else
 #define HAL_RTC_LXT_ENABLED()          HAL_PMU_LXT_ENABLED()
 #define HAL_RTC_ENABLE_LXT()
-#endif /* SF32LB52X */
+#endif /* RTC_CR_LPCKSEL */
 
 /**
   * @}

@@ -68,10 +68,14 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_WDT_Init(WDT_HandleTypeDef *hwdt)
     if (hwdt->Instance == NULL)
     {
 #ifdef SOC_BF0_HCPU
+#ifdef hwp_wdt1
         hwdt->Instance = hwp_wdt1;
 #else
+        hwdt->Instance = hwp_iwdt;
+#endif /* hwp_wdt1 */
+#else
         hwdt->Instance = hwp_wdt2;
-#endif
+#endif /* SOC_BF0_HCPU */
     }
 
     /* Check the parameters */

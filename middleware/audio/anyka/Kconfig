@@ -1,5 +1,5 @@
 config PKG_USING_ANYKA
-    bool "Enable anyka anyblue1090 real-time speech enhancement processing"
+    bool "Anyka Anyblue1090 Real-time Speech Enhancement Processing"
     default n
 
 if PKG_USING_ANYKA

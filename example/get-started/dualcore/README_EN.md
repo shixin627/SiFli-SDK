@@ -11,6 +11,8 @@ This example can run on the following development boards:
 ## Overview
 This example demonstrates how to develop dual-core applications. The project supports Bluetooth and low power consumption, builds user interface based on LVGL v8 (referencing `multimedia/lvgl/watch`), with HCPU and LCPU running their respective programs (SF32LB52 series chips' LCPU is dedicated to Bluetooth and does not run user programs).
 
+Note: The `SF32LB55X` series does not currently support the `3D rotation (rotation3d)` demonstration, so the corresponding cellular entry on the 55x platform cannot be accessed.
+
 ## Directory Structure
 ```
 .

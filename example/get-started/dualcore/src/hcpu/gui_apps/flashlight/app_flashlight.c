@@ -296,7 +296,7 @@ static int app_main(intent_t i)
 }
 
 BUILTIN_APP_EXPORT(LV_EXT_STR_ID(flashlight), IMG_FLASHLIGHT, APP_ID_FLASHLIGHT,
-                   app_main);
+                   app_main, 1);
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/

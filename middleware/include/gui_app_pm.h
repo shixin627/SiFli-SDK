@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifndef __GUI_APP_PM_H__
 #define __GUI_APP_PM_H__
 

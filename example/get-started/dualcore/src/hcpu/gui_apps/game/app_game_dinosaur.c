@@ -718,6 +718,6 @@ static int app_main(intent_t i)
     return 0;
 }
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(game), IMG_GAME, APP_ID_GAME_DINOSAUR, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(game), IMG_GAME, APP_ID_GAME_DINOSAUR, app_main, 1);
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF FILE****/

@@ -71,9 +71,13 @@ int32_t ipc_hw_enable_interrupt(ipc_hw_q_handle_t *hw_q_handle, uint8_t qid, uin
     hw_q_handle->ch_id = ch_id;
     hw_q_handle->q_idx = q_idx;
 
+#ifdef RISCV
+    ECLIC_Register_IRQ(ch_cfg->rx.irqn, ECLIC_NON_VECTOR_INTERRUPT, ECLIC_LEVEL_TRIGGER, 3, 0, NULL);
+#else
+
     /* receiver enable NVIC IRQ */
     os_interrupt_start(ch_cfg->rx.irqn, 3, 0);
-
+#endif
     /* sender unmask interrupt */
     __HAL_MAILBOX_UNMASK_CHANNEL_IT(&ch_cfg->tx.handle, q_idx);
 

@@ -234,7 +234,11 @@ HAL_StatusTypeDef HAL_WDT_Refresh(WDT_HandleTypeDef *wdt);
 /** @defgroup WDT_Private_Macros WDT Private Macros
   * @{
   */
+#ifdef hwp_wdt1
 #define IS_WDT_ALL_INSTANCE(wdt)    ((wdt)==hwp_wdt1||(wdt)==hwp_wdt2||(wdt)==hwp_iwdt)
+#else
+#define IS_WDT_ALL_INSTANCE(wdt)    ((wdt)==hwp_wdt2||(wdt)==hwp_iwdt)
+#endif /* hwp_wdt1 */
 #define IS_WDT_RELOAD(value)        (((value)&0xFF000000)==0)
 
 

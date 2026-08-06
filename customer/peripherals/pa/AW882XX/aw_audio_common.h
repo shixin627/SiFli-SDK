@@ -1,8 +1,9 @@
-/************************************************************************
- *Name: aw_audio_common.h
- *Created on: 2020.4.19
- *Author: www.awinic.com.cn
- ************************************************************************/
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifndef _AW_AUDIO_COMMON_H_
 #define _AW_AUDIO_COMMON_H_
 

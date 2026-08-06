@@ -164,7 +164,7 @@ void HAL_PreInit(void)
     BSP_PMIC_Init();
 #endif
 
-#ifdef BSP_USING_SDIO
+#ifdef BSP_USING_SDMMC1
     extern void BSP_SD_PowerUp(void);
     BSP_SD_PowerUp();
 

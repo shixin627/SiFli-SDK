@@ -26,7 +26,7 @@ During low power consumption testing, the board is no longer powered through USB
 * "The required configuration is already enabled by default
 
 ```c
-menuconfig --board=board_name
+sdk.py menuconfig --board=board_name
 ```
 1. Enable low power mode
 - Path: Sifli middleware 

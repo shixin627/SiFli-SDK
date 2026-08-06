@@ -1,11 +1,14 @@
 /******************************************************************************
  * @file     gcc_arm.ld
- * @brief    GNU Linker Script for Cortex-M based device
+ * @brief    GNU Linker Script for Cortex-M based device (Jinja2 template)
  * @version  V2.0.0
  * @date     21. May 2019
  ******************************************************************************/
-#include "rtconfig.h"
-#include "mem_map.h"
+/*
+ * NOTE:
+ * - This file is rendered by SiFli build system (ptab v3, Jinja2-only).
+ * - Do NOT add C preprocessor directives here (#include/#ifdef/#ifndef...).
+ */
 /*
  * Copyright (c) 2009-2019 Arm Limited. All rights reserved.
  *
@@ -34,17 +37,11 @@
     <o1> Flash Size (in Bytes) <0x0-0xFFFFFFFF:8>
   </h>
   -----------------------------------------------------------------------------*/
-__ROM_BASE = CODE_START_ADDR;
-__ROM_SIZE = CODE_SIZE;
+__ROM_BASE = 0x10000000;
+__ROM_SIZE = 0x00300000;
 
-__ROM_EX_BASE = HCPU_RO_DATA_START_ADDR;
-__ROM_EX_SIZE = HCPU_RO_DATA_SIZE;
-
-__ROM2_BASE = HCPU_FLASH2_IMG_START_ADDR;
-__ROM2_SIZE = HCPU_FLASH2_IMG_SIZE;
-
-__ROM3_BASE = HCPU_FLASH2_FONT_START_ADDR;
-__ROM3_SIZE = HCPU_FLASH2_FONT_SIZE;
+__ROM_EX_BASE = 0x200B3800;
+__ROM_EX_SIZE = 0x00000000;
 
 /*--------------------- Embedded RAM Configuration ----------------------------
   <h> RAM Configuration
@@ -52,14 +49,21 @@ __ROM3_SIZE = HCPU_FLASH2_FONT_SIZE;
     <o1> RAM Size (in Bytes) <0x0-0xFFFFFFFF:8>
   </h>
  -----------------------------------------------------------------------------*/
-__RAM_BASE = HPSYS_RAM0_BASE;
-__RAM_SIZE = HCPU_RAM_DATA_SIZE;
+__RAM_BASE = 0x20000000;
+__RAM_SIZE = 0x000B3800;
 
-__PSRAM_BASE = PSRAM_DATA_START_ADDR;
-__PSRAM_SIZE = PSRAM_DATA_SIZE;
+__PSRAM_BASE = 0x60300000;
+__PSRAM_SIZE = 0x00500000;
 
-__PSRAM2_BASE = PSRAM_DATA2_START_ADDR;
-__PSRAM2_SIZE = PSRAM_DATA2_SIZE;
+__PSRAM2_BASE = 0x62040000;
+__PSRAM2_SIZE = 0x00400000;
+
+__HCPU_FLASH2_IMG_BASE = 0x10400000;
+__HCPU_FLASH2_IMG_SIZE = 0x00400000;
+
+__HCPU_FLASH2_FONT_BASE = 0x10800000;
+__HCPU_FLASH2_FONT_SIZE = 0x00C00000;
+
 
 
 /*--------------------- Stack / Heap Configuration ----------------------------
@@ -81,8 +85,11 @@ MEMORY
     ROM_EX(rw):ORIGIN = __ROM_EX_BASE, LENGTH = __ROM_EX_SIZE
     PSRAM(rw): ORIGIN = __PSRAM_BASE, LENGTH = __PSRAM_SIZE
     PSRAM2(rw): ORIGIN = __PSRAM2_BASE, LENGTH = __PSRAM2_SIZE
-    ROM2 (rx): ORIGIN = __ROM2_BASE, LENGTH = __ROM2_SIZE
-    ROM3 (rx): ORIGIN = __ROM3_BASE, LENGTH = __ROM3_SIZE
+
+    HCPU_FLASH2_IMG (rx): ORIGIN = __HCPU_FLASH2_IMG_BASE, LENGTH = __HCPU_FLASH2_IMG_SIZE
+
+    HCPU_FLASH2_FONT (rx): ORIGIN = __HCPU_FLASH2_FONT_BASE, LENGTH = __HCPU_FLASH2_FONT_SIZE
+
 }
 
 /* Linker script to place sections and symbol values. Should be used together
@@ -119,7 +126,7 @@ ENTRY(Reset_Handler)
 
 SECTIONS
 {
-#ifndef FLASH_TABLE_ONLY     
+
   .vectors :
   {
     _stext = ABSOLUTE(.);  
@@ -155,9 +162,7 @@ SECTIONS
     * (.*l1_ret_text_*)
     * (.*l1_ret_rodata_*)
 
- #ifdef BSP_USING_NOR_FLASH3
-    *drv_spi_flash.o     (.text* .rodata*)
-#endif /* BSP_USING_NOR_FLASH3 */
+
     *flash_table.o       (.text* .rodata*) 
     *bf0_hal_mpi.o       (.text* .rodata*)
     *bf0_hal_mpi_ex.o    (.text* .rodata*)
@@ -198,13 +203,11 @@ SECTIONS
     __rw_retm_data_end__ = .;
 
   } > RAM AT > ROM
-#endif /* !FLASH_TABLE_ONLY */
+
 
   .text :
   {
-#ifdef FLASH_TABLE_ONLY
-    KEEP(*ftab.o(.text* .rodata*)) 
-#else
+
     *(.text*)
     *(.rodata*)
 
@@ -257,9 +260,19 @@ SECTIONS
     __rt_init_end = .;
 
     . = ALIGN(4);
-    BuiltinAppTab_start = .;
-    KEEP(*(BuiltinAppTab))
-    BuiltinAppTab_end = .;
+    BuiltinApp1Tab_start = .;
+    KEEP(*(.BuiltinApp1Tab))
+    BuiltinApp1Tab_end = .;
+
+    . = ALIGN(4);
+    BuiltinApp2Tab_start = .;
+    KEEP(*(.BuiltinApp2Tab))
+    BuiltinApp2Tab_end = .;
+
+    . = ALIGN(4);
+    __switch_anim_start__ = .;
+    KEEP(*(.switch_anim))
+    __switch_anim_end__ = .;
 
     . = ALIGN(4);
     __app_font_start__ = .;
@@ -283,10 +296,10 @@ SECTIONS
 
     KEEP(*(.eh_frame*))
     _etext = ABSOLUTE(.);
-#endif
+
   } > ROM 
   
-#ifndef FLASH_TABLE_ONLY      
+
   .rom_ex :
   {
   
@@ -383,13 +396,13 @@ SECTIONS
     *(non_ret)
     *(.*l1_non_ret_data_*)
     *(.*l1_non_ret_bss_*)
-#ifndef BSP_USING_PSRAM    
+
     *(.nand_cache)
     *(.*l2_non_ret_data_*)
     *(.*l2_non_ret_bss_*)
     *(.*l2_cache_non_ret_data_*)
     *(.*l2_cache_non_ret_bss_*)
-#endif /* BSP_USING_PSRAM */
+
   } > RAM 
 
   /**
@@ -462,35 +475,7 @@ SECTIONS
 
   __etext2 = ALIGN (4);
 
-#ifdef BSP_USING_PSRAM
-  .RW_PSRAM2 :
-  {
-    . = ALIGN(4);
-    __rw_psram2_start__ = .;
-    *(.*l2_ret_data_*)
-    *(.*l2_ret_bss_*)
-    *(.*l2_cache_ret_data_*)
-    *(.*l2_cache_ret_bss_*)
-    . = ALIGN(4);
-  __rw_psram2_end__ = .;
 
-  } > PSRAM2
-
-  .RW_PSRAM_NON_RET :
-  {
-    /* aligned to cache line size */
-    . = ALIGN(32);
-    __RW_PSRAM_NON_RET_start__ = .;
-    *(.nand_cache)
-    *(.*l2_non_ret_data_*)
-    *(.*l2_non_ret_bss_*)
-    *(.*l2_cache_non_ret_data_*)
-    *(.*l2_cache_non_ret_bss_*)
-    . = ALIGN(4);
-    __RW_PSRAM_NON_RET_end__ = .;
-
-  } > PSRAM
-#endif /* BSP_USING_PSRAM */
   
   .bss :
   {
@@ -531,15 +516,28 @@ SECTIONS
   /* Check if data + heap + stack exceeds RAM limit */
   /* ASSERT(__StackLimit >= __HeapLimit, "region RAM overflowed with stack") */
   
-  .rom2 :
-  {
-    * (.ROM1_IMG)
-    * (.ROM3_IMG)    
-  } > ROM2
 
-  .rom3 :
+  .hcpu_flash2_img :
   {
+
+    *(.HCPU_FLASH2_IMG*)
+
+    *(.ROM1_IMG*)
+
+    *(.ROM3_IMG*)
+
+  } > HCPU_FLASH2_IMG
+
+  .hcpu_flash2_font :
+  {
+
+    *(.HCPU_FLASH2_FONT*)
+
+    *(.SECTION_TTF*)
+
     *lvsf_font_*(.rodata*)
-  } > ROM3
-#endif
+
+  } > HCPU_FLASH2_FONT
+
+
 }

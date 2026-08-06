@@ -35,7 +35,7 @@ CONFIG_USING_MICROLIB=y
 
 
 ```
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 
 ![alt text](assets/common.png)

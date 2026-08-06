@@ -4,13 +4,11 @@ Source code path: example/multimedia/audio/dual_adc_dac
 
 ## Supported Platforms
 <!-- Which boards and chip platforms are supported -->
-+ sf32lb58-lcd series
++ It cannot run on the SiFli module board; it requires a board made with the sf32lb58 series chip, and the board must have two analog microphones and two analog speakers.
 
 ## Overview
 <!-- Example introduction -->
-This example demonstrates local music playback, including:
-+ Preset a wav audio file in the root partition.
-+ Play the preset wav file.
+This example demonstrates how to record the sound of two analog microphones simultaneously, and how to choose one of the microphones for recording:
 
 ## Example Usage
 <!-- Explain how to use the example, such as connecting which hardware pins to observe waveforms, compilation and programming can reference related documents.
@@ -18,7 +16,7 @@ For rt_device examples, also need to list the configuration switches used by thi
 
 ### Hardware Requirements
 Before running this example, prepare:
-+ A development board supported by this example ([Supported Platforms](quick_start)).
++ A board that can connect two analog microphones using the sf32lb58 chip ([Supported Platforms](quick_start)).
 + Speaker.
 
 ### menuconfig Configuration
@@ -41,7 +39,7 @@ Before running this example, prepare:
 * Audio files are under multimedia/audio/local_music/disk
 
 ### Compilation and Programming
-Switch to the example project directory and run the scons command to execute compilation:
+Because a customer-customized board is needed, it actually requires compilation using the custom board.Switch to the example project directory and run the scons command to execute compilation:
 ```c
 > scons --board=sf32lb58-lcd_n16r32n1_a1_dpi_hcpu -j8
 ```
@@ -58,11 +56,21 @@ For detailed steps on compilation and download, please refer to the relevant int
 ## Expected Results of Example
 <!-- Explain example running results, such as which LEDs will light up, which logs will be printed, to help users judge whether the example is running normally, running results can be explained step by step combined with code -->
 After the example starts:
-Play the preset stereo.wav audio file once. Expected to different voice from two speakers.
-input command by serial tools
-mic2file
-mic2speaker
 
+input command by serial tools
+
+1. mic2file
+
+Two files will be generated after 10 seconds, which are the PCM recordings of the two microphones.
+
+mic0_16k.pcm
+mic1_16k.pcm
+
+2. mic2speaker 0
+Use the first simulated microphone to collect data and play it on the speaker
+
+3. mic2speaker 1
+Use the second simulated microphone to collect data and play it on the speaker
 
 ## Exception Diagnosis
 
@@ -73,6 +81,6 @@ mic2speaker
 ## Update History
 |Version |Date   |Release Notes |
 |:---|:---|:---|
-|0.0.1 |10/2024 |Initial version |
+|0.0.1 |05/2026 |Initial version |
 | | | |
 | | | |

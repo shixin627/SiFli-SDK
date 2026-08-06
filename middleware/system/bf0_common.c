@@ -31,7 +31,13 @@
 #define LOG_TAG      "mw.sys"
 #include "log.h"
 
-#ifdef SOC_BF0_HCPU
+#if defined(SOC_BF0_ACPU)
+    #define SYS_AH_IPC_QUEUE  (IPC_AH_HW_QUEUE_0)
+    #define SYS_AH_TX_BUF_SIZE   (ACPU2HCPU_IPC_QUEUE_BUF_SIZE)
+    #define SYS_AH_TX_BUF_ADDR   (ACPU2HCPU_IPC_QUEUE_BUF_START_ADDR)
+    #define SYS_AH_TX_BUF_ADDR_ALIAS   (ACPU2HCPU_IPC_QUEUE_BUF_START_ADDR)
+    #define SYS_AH_RX_BUF_ADDR   (HCPU2ACPU_IPC_QUEUE_BUF_START_ADDR)
+#elif defined(SOC_BF0_HCPU)
     #define SYS_HL_IPC_QUEUE  (1)
     #define SYS_HL_TX_BUF_SIZE   (HCPU2LCPU_MB_CH2_BUF_SIZE)
     #define SYS_HL_TX_BUF_ADDR   (HCPU2LCPU_MB_CH2_BUF_START_ADDR)
@@ -40,11 +46,14 @@
 
     #define SYS_HL_DEBUG_QUEUE (7)
 
-    #define SYS_HB_IPC_QUEUE  (9)
-    #define SYS_HB_TX_BUF_SIZE   (HCPU2BCPU_MB_CH2_BUF_SIZE)
-    #define SYS_HB_TX_BUF_ADDR   (HCPU2BCPU_MB_CH2_BUF_START_ADDR)
-    #define SYS_HB_TX_BUF_ADDR_ALIAS   (HCPU_ADDR_2_BCPU_ADDR(HCPU2BCPU_MB_CH2_BUF_START_ADDR))
-    #define SYS_HB_RX_BUF_ADDR   (BCPU_ADDR_2_HCPU_ADDR(BCPU2HCPU_MB_CH2_BUF_START_ADDR))
+
+    #ifdef H2A_MAILBOX
+        #define SYS_HA_IPC_QUEUE  (IPC_HA_HW_QUEUE_0)
+        #define SYS_HA_TX_BUF_SIZE   (HCPU2ACPU_IPC_QUEUE_BUF_SIZE)
+        #define SYS_HA_TX_BUF_ADDR   (HCPU2ACPU_IPC_QUEUE_BUF_START_ADDR)
+        #define SYS_HA_TX_BUF_ADDR_ALIAS   (HCPU2ACPU_IPC_QUEUE_BUF_START_ADDR)
+        #define SYS_HA_RX_BUF_ADDR   (ACPU2HCPU_IPC_QUEUE_BUF_START_ADDR)
+    #endif /* H2A_MAILBOX */
 
 #elif defined(SOC_BF0_LCPU)
     #define SYS_LH_IPC_QUEUE  (1)
@@ -79,11 +88,16 @@ typedef struct
 } clk_setting_t;
 
 #ifdef USING_IPC_QUEUE
-    #ifdef SOC_BF0_HCPU
+    #if defined(SOC_BF0_ACPU)
+        static ipc_queue_handle_t sys_ah_ipc_queue = IPC_QUEUE_INVALID_HANDLE;
+    #elif defined(SOC_BF0_HCPU)
         static ipc_queue_handle_t sys_hl_ipc_queue = IPC_QUEUE_INVALID_HANDLE;
         #if defined(RT_DEBUG) && defined(SF32LB55X)
             static ipc_queue_handle_t sys_hl_debug_queue = IPC_QUEUE_INVALID_HANDLE;
         #endif /* RT_DEBUG && SF32LB55X*/
+        #ifdef H2A_MAILBOX
+            static ipc_queue_handle_t sys_ha_ipc_queue = IPC_QUEUE_INVALID_HANDLE;
+        #endif /* H2A_MAILBOX */
     #endif /* SOC_BF0_HCPU */
 
     #ifdef SOC_BF0_LCPU
@@ -101,8 +115,28 @@ typedef struct
  */
 
 #ifdef USING_IPC_QUEUE
+#if defined(SOC_BF0_ACPU)
+ipc_queue_handle_t sys_init_ah_ipc_queue(ipc_queue_rx_ind_t rx_ind)
+{
+    ipc_queue_cfg_t q_cfg;
 
-#ifdef SOC_BF0_HCPU
+    q_cfg.qid = SYS_AH_IPC_QUEUE;
+    q_cfg.tx_buf_size = SYS_AH_TX_BUF_SIZE;
+    q_cfg.tx_buf_addr = SYS_AH_TX_BUF_ADDR;
+    q_cfg.tx_buf_addr_alias = SYS_AH_TX_BUF_ADDR_ALIAS;
+    q_cfg.rx_buf_addr = SYS_AH_RX_BUF_ADDR;
+    q_cfg.rx_ind = rx_ind;
+    q_cfg.user_data = 0;
+
+    sys_ah_ipc_queue = ipc_queue_init(&q_cfg);
+
+    return sys_ah_ipc_queue;
+}
+ipc_queue_handle_t sys_get_ah_ipc_queue(void)
+{
+    return sys_ah_ipc_queue;
+}
+#elif defined(SOC_BF0_HCPU)
 ipc_queue_handle_t sys_init_hl_ipc_queue(ipc_queue_rx_ind_t rx_ind)
 {
     ipc_queue_cfg_t q_cfg;
@@ -128,6 +162,30 @@ ipc_queue_handle_t sys_get_hl_ipc_queue(void)
 {
     return sys_hl_ipc_queue;
 }
+
+#if defined(H2A_MAILBOX)
+ipc_queue_handle_t sys_init_ha_ipc_queue(ipc_queue_rx_ind_t rx_ind)
+{
+    ipc_queue_cfg_t q_cfg;
+
+    q_cfg.qid = SYS_HA_IPC_QUEUE;
+    q_cfg.tx_buf_size = SYS_HA_TX_BUF_SIZE;
+    q_cfg.tx_buf_addr = SYS_HA_TX_BUF_ADDR;
+    q_cfg.tx_buf_addr_alias = SYS_HA_TX_BUF_ADDR_ALIAS;
+    q_cfg.rx_buf_addr = SYS_HA_RX_BUF_ADDR;
+    q_cfg.rx_ind = rx_ind;
+    q_cfg.user_data = 0;
+
+    sys_ha_ipc_queue = ipc_queue_init(&q_cfg);
+
+    return sys_ha_ipc_queue;
+}
+
+ipc_queue_handle_t sys_get_ha_ipc_queue(void)
+{
+    return sys_ha_ipc_queue;
+}
+#endif /* H2A_MAILBOX */
 
 #else // SOC_BF0_HCPU
 ipc_queue_handle_t sys_init_lh_ipc_queue(ipc_queue_rx_ind_t rx_ind)
@@ -842,7 +900,7 @@ static char *cmd_line(int argc, char **argv)
     return r;
 }
 
-#if defined(SOC_BF0_HCPU) && !defined(CFG_BOOTLOADER)
+#if defined(SOC_BF0_HCPU) && !defined(SOC_BF0_ACPU) && !defined(CFG_BOOTLOADER) && !defined(CFG_FACTORY_DEBUG)
 uint8_t lcpu_power_on(void);
 uint8_t lcpu_power_off(void);
 

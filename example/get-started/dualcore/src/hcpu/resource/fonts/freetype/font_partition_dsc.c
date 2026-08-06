@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include "dfs_posix.h"
-#include "app_module.h"
 #include "lvsf_ft_reg.h"
 
 static const char tiny55_full_name[] = "tiny55_full";

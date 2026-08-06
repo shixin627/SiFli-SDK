@@ -1,16 +1,119 @@
-menu "On-chip Peripheral RTOS Drivers"
+menu "On-chip Peripherals"
 
-    menuconfig BSP_USING_GPIO
-        bool "Enable GPIO"
-        select RT_USING_PIN
+    config BSP_USING_ACPU
+        bool "ACPU"
         default n
-        if BSP_USING_GPIO
-            config BSP_GPIO_HANDLE
-            int "GPIO BASE number"
-            default 2
+        depends on BF0_HCPU && (SOC_SF32LB58X || SOC_SF32LB57X)
+        help
+            Enable ACPU
+
+    menuconfig BSP_USING_ADC
+        bool "ADC"
+        default n
+        select RT_USING_ADC
+        if BSP_USING_ADC
+            config BSP_USING_ADC1
+                bool "Enable GPADC1"
+                default n
+            config BSP_GPADC_USING_DMA
+                bool "Enable GPADC DMA mode"
+                default n
+            config BSP_GPADC_SUPPORT_MULTI_CH_SAMPLING
+                bool "Enable GPADC support multi channel sampling"
+                default n       
+            if BSP_GPADC_SUPPORT_MULTI_CH_SAMPLING    
+                    config BSP_GPADC_GPTIME_PEROID
+                        int "GPADC gptimer trigger peroid,uint:us"
+                        default 100
+                    choice
+                        prompt "gpadc use gptimer  select"
+                        default BSP_GPADC_USE_GPTIME1
+                        
+                        config BSP_GPADC_USE_GPTIME1
+                            bool "gpadc use gptimer1"
+                        config BSP_GPADC_USE_GPTIME2
+                            bool "gpadc use gptimer2"
+                        config BSP_GPADC_USE_GPTIME3
+                            depends on !SOC_SF32LB52X
+                            bool "gpadc use gptimer3"
+                        config BSP_GPADC_USE_GPTIME4
+                            depends on !SOC_SF32LB52X
+                            bool "gpadc use gptimer4"
+                        config BSP_GPADC_USE_GPTIME5
+                            depends on !SOC_SF32LB52X
+                            bool "gpadc use gptimer5"
+                    endchoice
+            endif
         endif
+
+    config BSP_USING_HW_AES
+        bool "AES Accelerator"
+        depends on BF0_HCPU
+        default y
+        help
+          Enable AES accelerator
+
+    menuconfig BSP_ENABLE_AUD_PRC
+        bool "AUDPRC (Audio Process Controller)"
+        depends on !SOC_SF32LB55X
+        select RT_USING_AUDIO
+        select BSP_USING_DMA
+        default n
+        if BSP_ENABLE_AUD_PRC
+            config BSP_AUDPRC_TX0_DMA
+                bool "Enable AUDPRC TX Channel 0 DMA"
+                default n
+            config BSP_AUDPRC_TX1_DMA
+                bool "Enable AUDPRC TX Channel 1 DMA"
+                default n
+            config BSP_AUDPRC_TX2_DMA
+                bool "Enable AUDPRC TX Channel 2 DMA"
+                default n
+            config BSP_AUDPRC_TX3_DMA
+                bool "Enable AUDPRC TX Channel 3 DMA"
+                default n
+            config BSP_AUDPRC_RX0_DMA
+                bool "Enable AUDPRC RX Channel 0 DMA"
+                default n
+            config BSP_AUDPRC_RX1_DMA
+                bool "Enable AUDPRC RX Channel 1 DMA"
+                default n
+            config BSP_AUDPRC_TX_OUT0_DMA
+                bool "Enable AUDPRC TX Out Channel 0 DMA"
+                default n
+            config BSP_AUDPRC_TX_OUT1_DMA
+                bool "Enable AUDPRC TX Out Channel 1 DMA"
+                default n
+        endif
+
+    menuconfig BSP_ENABLE_AUD_CODEC
+        bool "Audio Codec"
+        depends on !SOC_SF32LB55X
+        select RT_USING_AUDIO
+        select BSP_USING_DMA
+        default n
+        if BSP_ENABLE_AUD_CODEC
+            config BSP_AUDCODEC_DAC0_DMA
+                bool "Enable AUDCODEC DAC Channel 0 DMA"
+                default n
+            config BSP_AUDCODEC_DAC1_DMA
+                bool "Enable AUDCODEC DAC Channel 1 DMA"
+                default n
+            config BSP_AUDCODEC_ADC0_DMA
+                bool "Enable AUDCODEC ADC Channel 0 DMA"
+                default n
+            config BSP_AUDCODEC_ADC1_DMA
+                bool "Enable AUDCODEC ADC Channel 1 DMA"
+                default n
+        endif
+
+    config BSP_USING_BUSMON
+        bool "Bus Monitor"
+        depends on !SOC_SF32LB52X && !SOC_SF32LB57X
+        default n
+
     menuconfig BSP_USING_BUTTON
-        bool "Enable BUTTON"
+        bool "BUTTON"
         default n
         select BSP_USING_GPIO
         depends on SOC_SF32LB55X
@@ -66,187 +169,177 @@ menu "On-chip Peripheral RTOS Drivers"
                 help
                     "This value = (n-1)*(button processing callback cycle)"        
         endif
-    
+
+    menuconfig BSP_USING_CAN
+        bool "CAN BUS"
+        default n
+        select RT_USING_CAN
+        if BSP_USING_CAN
+            config BSP_USING_CAN1
+                bool "Enable CAN1 BUS"
+                default n
+            config BSP_USING_CAN2
+                bool "Enable CAN2 BUS"
+                default n
+        endif
+
+    config BSP_USING_CMSIS_NN
+        bool "CMSIS NN"
+        default n
+
+    config BSP_USING_COMP
+        bool "LPCOMP"
+        default n
+
+    menuconfig BSP_USING_DCMI
+        bool "DCMI"
+        default n
+        depends on SOC_SF32LB57X
+
     config BSP_USING_DMA
-        bool "Enable DMA"
+        bool "DMA"
         default y
 
-    menuconfig BSP_USING_UART
-        bool "Enable UART"
+    menuconfig BSP_USING_ENCODER
+        bool "Encoder"
         default n
-        select RT_USING_SERIAL
-        if BSP_USING_UART
-            config BSP_USING_UART1
-                bool "Enable UART1"
+        select RT_USING_PULSE_ENCODER
+        if BSP_USING_ENCODER
+            config BSP_USING_ENCODER_GPTIM1
+                bool "Enable encoder_gtim1"
                 default n
-
-            config BSP_UART1_RX_USING_DMA
-                bool "Enable UART1 RX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_UART1
+            config BSP_USING_ENCODER_GPTIM2
+                bool "Enable encoder_gtim2"
                 default n
-
-            config BSP_UART1_TX_USING_DMA
-                bool "Enable UART1 TX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_UART1
+            config BSP_USING_ENCODER_GPTIM3
+                bool "Enable encoder_gtim3"
+                depends on !SOC_SF32LB52X
                 default n
-                
-            config BSP_USING_UART2
-                bool "Enable UART2"
+            config BSP_USING_ENCODER_GPTIM4
+                bool "Enable encoder_gtim4"
+                depends on !SOC_SF32LB52X               
                 default n
-
-            config BSP_UART2_RX_USING_DMA
-                bool "Enable UART2 RX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_UART2 
+            config BSP_USING_ENCODER_GPTIM5
+                bool "Enable encoder_gtim5"
+                depends on !SOC_SF32LB52X
                 default n
-            config BSP_UART2_TX_USING_DMA
-                bool "Enable UART2 TX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_UART2 
+            config BSP_USING_ENCODER_ATIM1
+                bool "Enable encoder_atim1"
+                depends on !SOC_SF32LB55X 
                 default n
-
-            config BSP_USING_UART3
-                bool "Enable UART3"
-                default n
-
-            config BSP_UART3_RX_USING_DMA
-                bool "Enable UART3 RX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_UART3 
-                default n
-            config BSP_UART3_TX_USING_DMA
-                bool "Enable UART3 TX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_UART3 
+            config BSP_USING_ENCODER_ATIM2
+                bool "Enable encoder_atim2"
+                depends on !SOC_SF32LB55X && !SOC_SF32LB52X && !SOC_SF32LB56X
                 default n
                 
-                
-            config BSP_USING_UART4
-                bool "Enable UART4"
-                default n
-
-            config BSP_UART4_RX_USING_DMA
-                bool "Enable UART4 RX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_UART4 
-                default n
-            config BSP_UART4_TX_USING_DMA
-                bool "Enable UART4 TX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_UART4 
-                default n
-
-            config BSP_USING_UART5
-                bool "Enable UART5"
-                default n
-
-            config BSP_UART5_RX_USING_DMA
-                bool "Enable UART5 RX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_UART5 
-                default n
-            config BSP_UART5_TX_USING_DMA
-                bool "Enable UART5 TX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_UART5 
-                default n                
-                
-            config BSP_USING_UART6
-                bool "Enable UART6"
-                depends on SOC_SF32LB58X || SOC_SF32LB56X
-                default n
-
-            config BSP_UART6_RX_USING_DMA
-                bool "Enable UART6 RX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_UART6 
-                default n
-            config BSP_UART6_TX_USING_DMA
-                bool "Enable UART6 TX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_UART6 
-                default n                
         endif
 
-    menuconfig BSP_USING_SPI
-        bool "Enable SPI BUS"
+    config BSP_USING_EXT_DMA
+        bool "EXTDMA"
+        default y if SOC_SF32LB55X
+        default y if SOC_SF32LB58X
+        default y if SOC_SF32LB56X
+        default y if SOC_SF32LB52X
+
+    menuconfig BSP_USING_EPIC
+        bool "EPIC"
+        select RT_USING_EPIC
         default n
-        select RT_USING_SPI
-        if BSP_USING_SPI
-            config BSP_USING_SPI_DMA_CIRCULAR
-                bool "Enable SPI DMA CIRCULAR"
-                default n
+        if BSP_USING_EPIC && !SOC_SF32LB55X
+            config DRV_EPIC_NEW_API
+            bool "Using epic render list API"
+            default n
+            help
+                1. Can not works on SFLB55X serials
+                2. Asynchronized rendering, must keep the buffers used by the render-list available until rendering is complete.
 
-            config BSP_USING_SPI1
-                bool "Enable SPI1 BUS"
-                default n
+            config DRV_EPIC_ALLOC_USE_ANIM_HEAP
+            bool "Use animation heap for EPIC render-list allocations"
+            depends on DRV_EPIC_NEW_API && PKG_USING_LITTLEVGL2RTT
+            default n
+            help
+                Allocate temporary EPIC render-list operations from app_mem's reusable
+                animation heap first, then fall back to the normal app cache path.
+                This is narrower than defining SOLUTION globally.
+            
+            choice
+                prompt "EPIC Render List API Mode"
+                depends on DRV_EPIC_NEW_API
+                default DRV_EPIC_NEW_API_SINGLE_CORE    if BF0_HCPU
+                default DRV_EPIC_NEW_API_DUAL_CORE_ACPU if BF0_ACPU
 
-            config BSP_SPI1_TX_USING_DMA
-                bool "Enable SPI1 TX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_SPI1
-                default n
+                config DRV_EPIC_NEW_API_SINGLE_CORE
+                    bool "Using epic render list API in single core mode"
+                    depends on BF0_HCPU
+
+                config DRV_EPIC_NEW_API_DUAL_CORE_HCPU
+                    bool "Using epic render list API in dual core HCPU mode"
+                    select USING_ACPU_CTRL_FWK
+                    depends on BF0_HCPU
                 
-            config BSP_SPI1_RX_USING_DMA
-                bool "Enable SPI1 RX DMA"
-                depends on BSP_USING_SPI1
-                select BSP_USING_DMA
-                default n
+                config DRV_EPIC_NEW_API_DUAL_CORE_ACPU
+                    bool "Using epic render list API in dual core ACPU mode"
+                    select USING_ACPU_CTRL_FWK
+                    depends on BF0_ACPU
+            endchoice
 
-            config BSP_USING_SPI2
-                bool "Enable SPI2 BUS"
-                default n
+            config DRV_EPIC_TASK_PRIORITY_CUSTOM
+            bool "Custom EPIC render task priority"
+            depends on DRV_EPIC_NEW_API
+            default n
+            help
+                Enable to override epic_task thread priority by Kconfig.
+                If disabled, epic_task uses RT_THREAD_PRIORITY_HIGH + RT_THREAD_PRIORITY_LOWWER.
 
-            config BSP_SPI2_TX_USING_DMA
-                bool "Enable SPI2 TX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_SPI2
-                default n
-                
-            config BSP_SPI2_RX_USING_DMA
-                bool "Enable SPI2 RX DMA"
-                depends on BSP_USING_SPI2
-                select BSP_USING_DMA
-                default n
-                
-            config BSP_USING_SPI3
-                bool "Enable SPI3 BUS"
-                default n
+            if DRV_EPIC_TASK_PRIORITY_CUSTOM
+                config DRV_EPIC_TASK_PRIORITY
+                int "EPIC render task priority"
+                default 24
+                help
+                    RT-Thread priority value used by epic_task.
+                    Smaller value means higher priority.
+            endif
 
-            config BSP_SPI3_TX_USING_DMA
-                bool "Enable SPI3 TX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_SPI3
+            config ROTATE_BUF_IN_SRAM
+                bool "Enable rotate buffer in SRAM for rotated images"
+                depends on DRV_EPIC_NEW_API
                 default n
-                
-            config BSP_SPI3_RX_USING_DMA
-                bool "Enable SPI3 RX DMA"
-                depends on BSP_USING_SPI3
-                select BSP_USING_DMA
-                default n
+                help
+                    When enabled, rotated image data from PSRAM/Flash will be copied to SRAM
+                    before EPIC processing, which can improve performance for rotated images.
+                    This requires additional SRAM for the rotate buffer.
 
-            config BSP_USING_SPI4
-                bool "Enable SPI4 BUS"
-                default n
-
-            config BSP_SPI4_TX_USING_DMA
-                bool "Enable SPI4 TX DMA"
-                select BSP_USING_DMA
-                depends on BSP_USING_SPI4
-                default n
-                
-            config BSP_SPI4_RX_USING_DMA
-                bool "Enable SPI4 RX DMA"
-                depends on BSP_USING_SPI4
-                select BSP_USING_DMA
-                default n
+            config ROTATE_BUF_SIZE
+                int "Rotate buffer size in bytes"
+                depends on ROTATE_BUF_IN_SRAM
+                default 8192
+                help
+                    Size of the rotate buffer in SRAM. Larger buffer can handle larger images
+                    but consumes more SRAM. Recommended values: 4096-16384 bytes.
+                    
+                    
         endif
+        config EZIP_PAL_SUPPORT
+            bool
+            default y if !SOC_SF32LB55X
+            if EZIP_PAL_SUPPORT
+                config EZIP_PAL_SUPPORT_1
+                    bool
+                    default y if !SOC_SF32LB56X && !SOC_SF32LB58X
+            endif
 
-        
+    menuconfig BSP_USING_GPIO
+        bool "GPIO"
+        select RT_USING_PIN
+        default n
+        if BSP_USING_GPIO
+            config BSP_GPIO_HANDLE
+            int "GPIO BASE number"
+            default 2
+        endif
+    
     menuconfig BSP_USING_I2C
-        bool "Enable I2C BUS"
+        bool "I2C BUS"
         default n
         select RT_USING_I2C
         if BSP_USING_I2C
@@ -305,7 +398,7 @@ menu "On-chip Peripheral RTOS Drivers"
         endif
 
     menuconfig BSP_USING_SOFT_I2C
-        bool "Enable I2C BUS (software simulation)"
+        bool "I2C BUS (software simulation)"
         default n
         depends on SOC_SF32LB55X
         select RT_USING_I2C
@@ -373,314 +466,55 @@ menu "On-chip Peripheral RTOS Drivers"
             endif
 
         endif
-    menuconfig BSP_USING_TIM
-        bool "Enable timer"
+
+    menuconfig BSP_USING_I2S
+        bool "I2S audio driver"
+        select RT_USING_AUDIO
+        select BSP_USING_DMA
         default n
-        select RT_USING_HWTIMER
-        if BSP_USING_TIM
-            config BSP_USING_GPTIM1
-                depends on !BSP_GPADC_USE_GPTIME1
-                bool "Enable GPTimer1"
+        if BSP_USING_I2S
+            config BSP_ENABLE_I2S_MIC
+                bool "Enable I2S1 for Mic"
+                depends on SOC_SF32LB58X || SOC_SF32LB55X
                 default n
-
-            config BSP_USING_GPTIM2
-                depends on !BSP_GPADC_USE_GPTIME2
-                bool "Enable GPTimer2"
+            config BSP_ENABLE_I2S_CODEC
+                bool "Enable I2S2 for Codec"
                 default n
-
-            config BSP_USING_GPTIM3
-                depends on !BSP_GPADC_USE_GPTIME3
-                bool "Enable GPTimer3"
+            config BSP_ENABLE_I2S3
+                depends on SOC_SF32LB58X || SOC_SF32LB56X	    
+                bool "Enable I2S3 for Codec"
                 default n
-
-            config BSP_USING_GPTIM4
-                depends on !BSP_GPADC_USE_GPTIME4
-                bool "Enable GPTimer4"
-                default n
-                
-            config BSP_USING_GPTIM5
-                depends on !BSP_GPADC_USE_GPTIME5
-                bool "Enable GPTimer5"
-                default n                
-                
-            config BSP_USING_ATIM1
-                bool "Enable ATimer1"
-                default n
-                
-            config BSP_USING_ATIM2
-                bool "Enable ATimer2"
-                depends on SOC_SF32LB58X
-                default n
-                
-            config BSP_USING_BTIM1
-                bool "Enable BTimer1"
-                default n
-
-            config BSP_USING_BTIM2
-                bool "Enable BTimer2"
-                default n
-                
-            config BSP_USING_BTIM3
-                bool "Enable BTimer3"
-                default n
-
-            config BSP_USING_BTIM4
-                bool "Enable BTimer4"
-                default n
-
-            config BSP_USING_LPTIM1
-                bool "Enable LPTIM1"
-                default n
-            config BSP_USING_LPTIM2
-                bool "Enable LPTIM2"
-                default n
-            config BSP_USING_LPTIM3
-                bool "Enable LPTIM3"
-                default n    
-        endif
-
-    menuconfig BSP_USING_PWM
-        bool "Enable pwm"
-        default n
-        select RT_USING_PWM
-        if BSP_USING_PWM
-            config BSP_USING_PWM2
-                bool "Using PWM 2(corresponds to HW GPTIM1)"
-                default n
-            config BSP_PWM2_UPDATE_USING_DMA
-                bool "PWM2 UPDATE use DMA"
-                depends on BSP_USING_PWM2
-            config BSP_PWM2_CC1_USING_DMA
-                bool "PWM2 CC1 use DMA"
-                depends on BSP_USING_PWM2
-                default n
-            config BSP_PWM2_CC2_USING_DMA
-                bool "PWM2 CC2 use DMA"
-                depends on BSP_USING_PWM2
-                default n
-            config BSP_PWM2_CC3_USING_DMA
-                bool "PWM2 CC3 use DMA"
-                depends on BSP_USING_PWM2
-                default n
-            config BSP_PWM2_CC4_USING_DMA
-                bool "PWM2 CC4 use DMA"
-                depends on BSP_USING_PWM2
-                default n
-            config BSP_USING_PWM3
-                bool "Using PWM 3(corresponds to HW GPTIM2)"
-                default n
-            config BSP_PWM3_UPDATE_USING_DMA
-                bool "PWM3 UPDATE use DMA"
-                depends on BSP_USING_PWM3
-            config BSP_PWM3_CC1_USING_DMA
-                bool "PWM3 CC1 use DMA"
-                depends on BSP_USING_PWM3
-                default n
-            config BSP_PWM3_CC2_USING_DMA
-                bool "PWM3 CC2 use DMA"
-                depends on BSP_USING_PWM3
-                default n
-            config BSP_PWM3_CC3_USING_DMA
-                bool "PWM3 CC3 use DMA"
-                depends on BSP_USING_PWM3 && !SOC_SF32LB55X
-                default n
-            config BSP_PWM3_CC4_USING_DMA
-                bool "PWM3 CC4 use DMA"
-                depends on BSP_USING_PWM3 && !SOC_SF32LB55X
-                default n
-            config BSP_USING_PWM4
-                bool "Using PWM 4(corresponds to HW GPTIM3)"
-                default n
-            config BSP_PWM4_UPDATE_USING_DMA
-                bool "PWM4 UPDATE use DMA"
-                depends on BSP_USING_PWM4
-            config BSP_PWM4_CC1_USING_DMA
-                bool "PWM4 CC1 use DMA"
-                depends on BSP_USING_PWM4
-                default n
-            config BSP_PWM4_CC2_USING_DMA
-                bool "PWM4 CC2 use DMA"
-                depends on BSP_USING_PWM4
-                default n
-            config BSP_PWM4_CC3_USING_DMA
-                bool "PWM4 CC3 use DMA"
-                depends on BSP_USING_PWM4
-                default n
-            config BSP_PWM4_CC4_USING_DMA
-                bool "PWM4 CC4 use DMA"
-                depends on BSP_USING_PWM4
-                default n
-            config BSP_USING_PWM5
-                bool "Using PWM 5(corresponds to HW GPTIM4)"
-                default n
-            config BSP_PWM5_UPDATE_USING_DMA
-                bool "PWM5 UPDATE use DMA"
-                depends on BSP_USING_PWM5
-            config BSP_PWM5_CC1_USING_DMA
-                bool "PWM5 CC1 use DMA"
-                depends on BSP_USING_PWM5
-                default n
-            config BSP_PWM5_CC2_USING_DMA
-                bool "PWM5 CC2 use DMA"
-                depends on BSP_USING_PWM5
-                default n
-            config BSP_PWM5_CC3_USING_DMA
-                bool "PWM5 CC3 use DMA"
-                depends on BSP_USING_PWM5
-                default n
-            config BSP_PWM5_CC4_USING_DMA
-                bool "PWM5 CC4 use DMA"
-                depends on BSP_USING_PWM5
-                default n
-            config BSP_USING_PWM6
-                bool "Using PWM 6(corresponds to HW GPTIM5)"
-                default n
-            config BSP_PWM6_UPDATE_USING_DMA
-                bool "PWM6 UPDATE use DMA"
-                depends on BSP_USING_PWM6
-            config BSP_USING_PWMA1
-                bool "Using PWM A1"
+            config BSP_I2S_CLK_XTAL 
                 depends on !SOC_SF32LB55X
-                default n
-            config BSP_PWMA1_UPDATE_USING_DMA
-                bool "PWMA1 UPDATE use DMA"
-                depends on BSP_USING_PWMA1
-            config BSP_PWMA1_CC1_USING_DMA
-                bool "PWMA1 CC1 use DMA"
-                depends on BSP_USING_PWMA1
-                default n
-            config BSP_PWMA1_CC2_USING_DMA
-                bool "PWMA1 CC2 use DMA"
-                depends on BSP_USING_PWMA1
-                default n
-            config BSP_PWMA1_CC3_USING_DMA
-                bool "PWMA1 CC3 use DMA"
-                depends on BSP_USING_PWMA1
-                default n
-            config BSP_PWMA1_CC4_USING_DMA
-                bool "PWMA1 CC4 use DMA"
-                depends on BSP_USING_PWMA1
-                default n
-                
-            config BSP_USING_PWMA2
-                bool "Using PWM A2"
-                depends on !SOC_SF32LB55X && !SOC_SF32LB52X && !SOC_SF32LB56X
-                default n
-            config BSP_PWMA2_UPDATE_USING_DMA
-                bool "PWMA2 UPDATE use DMA"
-                depends on BSP_USING_PWMA2
-            config BSP_PWMA2_CC1_USING_DMA
-                bool "PWMA2 CC1 use DMA"
-                depends on BSP_USING_PWMA2
-                default n
-            config BSP_PWMA2_CC2_USING_DMA
-                bool "PWMA2 CC2 use DMA"
-                depends on BSP_USING_PWMA2
-                default n
-            config BSP_PWMA2_CC3_USING_DMA
-                bool "PWMA2 CC3 use DMA"
-                depends on BSP_USING_PWMA2
-                default n
-            config BSP_PWMA2_CC4_USING_DMA
-                bool "PWMA2 CC4 use DMA"
-                depends on BSP_USING_PWMA2
-                default n
-            config BSP_USING_PWM_LPTIM1
-                bool "Using PWM with LPTIM1"
-                default n
-            config BSP_USING_PWM_LPTIM2
-                bool "Using PWM with LPTIM2"
-                default n
-            config BSP_USING_PWM_LPTIM3
-                bool "Using PWM with LPTIM3"
+                bool "i2s source xtal clock"
                 default n
         endif
-        
-    menuconfig BSP_USING_ENCODER
-        bool "Enable encoder"
-        default n
-        select RT_USING_ENCODER
-        if BSP_USING_ENCODER
-            config BSP_USING_ENCODER_GPTIM1
-                bool "Enable encoder_gtim1"
-                default n
-            config BSP_USING_ENCODER_GPTIM2
-                bool "Enable encoder_gtim2"
-                default n
-            config BSP_USING_ENCODER_GPTIM3
-                bool "Enable encoder_gtim3"
-                depends on !SOC_SF32LB52X
-                default n
-            config BSP_USING_ENCODER_GPTIM4
-                bool "Enable encoder_gtim4"
-                depends on !SOC_SF32LB52X               
-                default n
-            config BSP_USING_ENCODER_GPTIM5
-                bool "Enable encoder_gtim5"
-                depends on !SOC_SF32LB52X
-                default n
-            config BSP_USING_ENCODER_ATIM1
-                bool "Enable encoder_atim1"
-                depends on !SOC_SF32LB55X 
-                default n
-            config BSP_USING_ENCODER_ATIM2
-                bool "Enable encoder_atim2"
-                depends on !SOC_SF32LB55X && !SOC_SF32LB52X && !SOC_SF32LB56X
-                default n
-                
-    endif
 
-    menuconfig BSP_USING_ADC
-        bool "Enable ADC"
-        default n
-        select RT_USING_ADC
-        if BSP_USING_ADC
-            config BSP_USING_ADC1
-                bool "Enable GPADC1"
-                default n
-            config BSP_GPADC_USING_DMA
-                bool "Enable GPADC DMA mode"
-                default n
-            config BSP_GPADC_SUPPORT_MULTI_CH_SAMPLING
-                bool "Enable GPADC support multi channel sampling"
-                default n       
-            if BSP_GPADC_SUPPORT_MULTI_CH_SAMPLING    
-                    config BSP_GPADC_GPTIME_PEROID
-                        int "GPADC gptimer trigger peroid,uint:us"
-                        default 100
-                    choice
-                        prompt "gpadc use gptimer  select"
-                        default BSP_GPADC_USE_GPTIME1
-                        
-                        config BSP_GPADC_USE_GPTIME1
-                            bool "gpadc use gptimer1"
-                        config BSP_GPADC_USE_GPTIME2
-                            bool "gpadc use gptimer2"
-                        config BSP_GPADC_USE_GPTIME3
-                            depends on !SOC_SF32LB52X
-                            bool "gpadc use gptimer3"
-                        config BSP_GPADC_USE_GPTIME4
-                            depends on !SOC_SF32LB52X
-                            bool "gpadc use gptimer4"
-                        config BSP_GPADC_USE_GPTIME5
-                            depends on !SOC_SF32LB52X
-                            bool "gpadc use gptimer5"
-                    endchoice
-            endif
-        endif
+    config BSP_USING_LCDC
+        bool "LCDC"
+        select RT_USING_LCDC
+        default n 
 
-    config BSP_USING_SDADC
-        bool "Enable SDADC"
-        select RT_USING_ADC
-        depends on SOC_SF32LB58X || SOC_SF32LB55X
+    menuconfig BSP_USING_LCPU_PATCH
+        bool "LCPU Patch"
         default n
-            
-    config BSP_USING_COMP
-        bool "Enable LPCOMP"
+        help
+            Enable LCPU patch binary and install from HCPU
+
+        config BSP_USING_LCPU_PATCH_IN_RAM
+            bool "LCPU PATCH run in RAM"
+            depends on SOC_SF32LB56X && BSP_USING_LCPU_PATCH
+            default n
+            help
+                LCPU patch running in RAM instead of flash
+
+    config BSP_USING_MOTOR
+        bool "Motor device"
+        select RT_USING_MOTOR
         default n
 
     menuconfig BSP_USING_MPI
-        bool "Enable MPI"
+        bool "MPI"
         depends on !SOC_SF32LB55X
         default y
 
@@ -690,8 +524,14 @@ menu "On-chip Peripheral RTOS Drivers"
             default y
 
         if BSP_USING_MPI
+            # Remember to update default value definition in Kconfig_soc.sf32lb57x also
             menuconfig BSP_ENABLE_MPI1
                 bool "MPI Controller 1 Enable"
+                depends on BF0_HCPU && !BF0_ACPU
+                default y if SOC_SF32LB573UB7N6 || SOC_SF32LB573UB776 || SOC_SF32LB575YBBN6
+                default y if SOC_SF32LB575UCNN6 || SOC_SF32LB575UC7N6
+                default y if SOC_SF32LB577VD776 || SOC_SF32LB579V6EN6 || SOC_SF32LB577UDNN6
+                default y if SOC_SF32LB57GYD7N6
                 default n
                 if BSP_ENABLE_MPI1
                     config BSP_ENABLE_QSPI1
@@ -699,6 +539,12 @@ menu "On-chip Peripheral RTOS Drivers"
                         default y
                     choice
                         prompt "MPI Mode"
+                        # Must select a PSRAM MPI mode for PSRAM, the exact PSRAM MPI mode is then 
+                        # decided by BSP_PSRAM1_PKG_TYPEx_MPI_MODE in Kconfig_soc.sf32lb57x.common
+                        default BSP_MPI1_MODE_5 if SOC_SF32LB573UB7N6 || SOC_SF32LB573UB776 || SOC_SF32LB575YBBN6
+                        default BSP_MPI1_MODE_3 if SOC_SF32LB577VD776 || SOC_SF32LB575UCNN6 || SOC_SF32LB575UC7N6
+                        default BSP_MPI1_MODE_3 if SOC_SF32LB57GYD7N6 || SOC_SF32LB577UDNN6
+                        default BSP_MPI1_MODE_0 if SOC_SF32LB579V6EN6
                         default BSP_MPI1_MODE_0
 
                         config BSP_MPI1_MODE_0
@@ -708,7 +554,7 @@ menu "On-chip Peripheral RTOS Drivers"
                         config BSP_MPI1_MODE_2
                             bool "PSRAM"
                         config BSP_MPI1_MODE_3
-                            bool "OPSRAM"
+                            bool "OPSRAM (Xccela)"
                         config BSP_MPI1_MODE_4
                             bool "HPSRAM"
                         config BSP_MPI1_MODE_5
@@ -778,11 +624,20 @@ menu "On-chip Peripheral RTOS Drivers"
                     endif
                     config BSP_QSPI1_MEM_SIZE
                         int "MPI1 Mem Size (MB)"
+                        default 4  if SOC_SF32LB573UB7N6 || SOC_SF32LB573UB776 || SOC_SF32LB575YBBN6
+                        default 16 if SOC_SF32LB577VD776 || SOC_SF32LB57GYD7N6 || SOC_SF32LB577UDNN6
+                        default 8  if SOC_SF32LB579V6EN6 || SOC_SF32LB575UCNN6 || SOC_SF32LB575UC7N6
                         default 8
                 endif        
                     
             menuconfig BSP_ENABLE_MPI2
                 bool "MPI Controller 2 Enable"
+                depends on BF0_HCPU && !BF0_ACPU
+                default y if SOC_SF32LB573UB7N6 || SOC_SF32LB573UB776 || SOC_SF32LB575YBBN6
+                default y if SOC_SF32LB575UC7N6
+                default y if SOC_SF32LB577VD776 || SOC_SF32LB579V6EN6
+                default y if SOC_SF32LB57GYD7N6
+                default y if SOC_SF32LB57BUN3N6
                 default n
                 if BSP_ENABLE_MPI2
                     config BSP_ENABLE_QSPI2
@@ -790,6 +645,10 @@ menu "On-chip Peripheral RTOS Drivers"
                         default y
                     choice
                         prompt "MPI Mode"
+                        default BSP_MPI2_MODE_0 if SOC_SF32LB573UB7N6 || SOC_SF32LB573UB776
+                        default BSP_MPI2_MODE_5 if SOC_SF32LB575YBBN6
+                        default BSP_MPI2_MODE_0 if SOC_SF32LB577VD776 
+                        default BSP_MPI2_MODE_3 if SOC_SF32LB579V6EN6
                         default BSP_MPI2_MODE_0
 
                         config BSP_MPI2_MODE_0
@@ -799,7 +658,7 @@ menu "On-chip Peripheral RTOS Drivers"
                         config BSP_MPI2_MODE_2
                             bool "PSRAM"
                         config BSP_MPI2_MODE_3
-                            bool "OPSRAM"
+                            bool "OPSRAM (Xccela)"
                         config BSP_MPI2_MODE_4
                             bool "HPSRAM"
                         config BSP_MPI2_MODE_5
@@ -884,11 +743,18 @@ menu "On-chip Peripheral RTOS Drivers"
                     endif
                     config BSP_QSPI2_MEM_SIZE
                         int "MPI2 Mem Size (MB)"
+                        default 16 if SOC_SF32LB573UB7N6 || SOC_SF32LB573UB776 || SOC_SF32LB575UC7N6
+                        default 4  if SOC_SF32LB575YBBN6
+                        default 16 if SOC_SF32LB577VD776 || SOC_SF32LB57GYD7N6 
+                        default 32 if SOC_SF32LB579V6EN6
+                        default 1  if SOC_SF32LB57BUN3N6
                         default 32
                 endif
 
             menuconfig BSP_ENABLE_MPI3
                 bool "MPI Controller 3 Enable"
+                depends on BF0_HCPU && !BF0_ACPU
+                default y if SOC_SF32LB573UB776 || SOC_SF32LB577VD776
                 default n
                 if BSP_ENABLE_MPI3
                     config BSP_ENABLE_QSPI3
@@ -896,6 +762,7 @@ menu "On-chip Peripheral RTOS Drivers"
                         default y
                     choice
                         prompt "MPI Mode"
+                        default BSP_MPI3_MODE_0 if SOC_SF32LB573UB776 || SOC_SF32LB577VD776
                         default BSP_MPI3_MODE_0
 
                         config BSP_MPI3_MODE_0
@@ -905,7 +772,7 @@ menu "On-chip Peripheral RTOS Drivers"
                         config BSP_MPI3_MODE_2
                             bool "PSRAM"
                         config BSP_MPI3_MODE_3
-                            bool "OPSRAM"
+                            bool "OPSRAM (Xccela)"
                         config BSP_MPI3_MODE_4
                             bool "HPSRAM"
                         config BSP_MPI3_MODE_5
@@ -975,13 +842,14 @@ menu "On-chip Peripheral RTOS Drivers"
                     endif
                     config BSP_QSPI3_MEM_SIZE
                         int "MPI3 Mem Size (MB)"
+                        default 16 if SOC_SF32LB573UB776 || SOC_SF32LB577VD776
                         default 32
                 endif
             
             menuconfig BSP_ENABLE_MPI4
                 bool "MPI Controller 4 Enable"
                 default n
-                depends on SOC_SF32LB58X
+                depends on SOC_SF32LB58X && BF0_HCPU && !BF0_ACPU
                 if BSP_ENABLE_MPI4
                     config BSP_ENABLE_QSPI4
                         bool 
@@ -997,12 +865,12 @@ menu "On-chip Peripheral RTOS Drivers"
                         config BSP_MPI4_MODE_2
                             bool "PSRAM"
                         config BSP_MPI4_MODE_3
-                            bool "OPSRAM"
+                            bool "OPSRAM (Xccela)"
                         config BSP_MPI4_MODE_4
                             bool "HPSRAM"
                         config BSP_MPI4_MODE_5
                             bool "LEGACY_PSRAM"
-                        config BSP_MPI4_MODE_5
+                        config BSP_MPI4_MODE_6
                             bool "HYPERBUS_PSRAM"
                     endchoice    
 
@@ -1071,7 +939,9 @@ menu "On-chip Peripheral RTOS Drivers"
                 endif
             menuconfig BSP_ENABLE_MPI5
                 bool "MPI Controller 5 Enable"
-                default y
+                depends on !BF0_ACPU
+                default y if SOC_SF32LB58X
+                default y if SOC_SF32LB56X
                 if BSP_ENABLE_MPI5
                     config BSP_ENABLE_QSPI5
                         bool 
@@ -1087,9 +957,9 @@ menu "On-chip Peripheral RTOS Drivers"
                         config BSP_MPI5_MODE_2
                             bool "PSRAM"
                         config BSP_MPI5_MODE_3
-                            bool "OPSRAM"
+                            bool "OPSRAM (Xccela)"
                         config BSP_MPI5_MODE_4
-                            bool "OPSRAM"
+                            bool "HPSRAM"
                         config BSP_MPI5_MODE_5
                             bool "LEGACY_PSRAM"
                         config BSP_MPI5_MODE_6
@@ -1174,8 +1044,287 @@ menu "On-chip Peripheral RTOS Drivers"
                 default n
         endif
 
+    config BSP_USING_NN_ACC
+        bool "NNACC (Neural Network Accelerator)"
+        default n
+        help
+          Enable Neural Network Accelerator
+
+    menuconfig BSP_USING_PDM
+        bool "PDM"
+        select RT_USING_AUDIO
+        select BSP_USING_DMA
+        default n
+        if BSP_USING_PDM
+            config BSP_USING_PDM1
+                bool "Enable PDM1"
+                default n
+            config BSP_USING_PDM2
+                bool "Enable PDM2"
+                default n
+            config BSP_PDM_CLK_USE_PLL
+                bool "PDM Clock Source is Audio PLL"
+                default y if SOC_SF32LB57X
+                default n
+        endif
+
+    config BSP_USING_PINMUX
+        bool "PINMUX"
+        default n
+        help
+          Obsolete, not used anymore
+
+    config BSP_USING_PSRAM
+        bool 
+        default n
+
+    config MEMCPY_NON_DMA
+        bool 
+        depends on !SOC_SIMULATOR
+        default n
+
+    config MEM_ASYN_FREE
+        bool #"mem support async free(esp. for DRV_EPIC_NEW_API)"
+        depends on PKG_USING_LITTLEVGL2RTT
+        default y if DRV_EPIC_NEW_API
+        default n
+
+    config USING_APP_BMEM
+        bool #"app block_mem allocation used"
+        default n
+    
+    menuconfig BSP_USING_PSRAM0
+        bool "OPI PSRAM"
+        default n
+        depends on BF0_HCPU && SOC_SF32LB55X
+        select BSP_USING_PSRAM
+        if BSP_USING_PSRAM0 && SOC_SF32LB55X
+            config PSRAM_FULL_SIZE
+                int "PSRAM full chip size(MB)"
+                default 4
+            config BSP_USING_EXT_PSRAM
+                bool "Use External PSRAM"
+                default n
+            config BSP_USING_XCCELA_PSRAM
+                bool "Use Xceela PSRAM"
+                default n
+            config BSP_USING_DUAL_PSRAM
+                bool "Use Dual PSRAM"
+                default n
+             if BSP_USING_EXT_DMA
+                config PSRAM_USING_DMA
+                bool "PSRAM use DMA"
+                default n
+            endif
+        endif
+
+    config PSRAM_CACHE_WB
+        bool "PSRAM Cache Write Back Enabled"
+        select MEMCPY_NON_DMA if PSRAM_CACHE_WB
+        depends on !SOC_SIMULATOR && BSP_USING_PSRAM
+        default n 
+
+    menuconfig BSP_USING_PWM
+        bool "PWM"
+        default n
+        select RT_USING_PWM
+        if BSP_USING_PWM
+            config BSP_USING_PWM1
+                bool "Using PWM 1 (corresponds to HW PWM1)"
+                default n
+                depends on SOC_SF32LB57X
+            config BSP_PWM1_CC1_USING_DMA
+                bool "PWM1 CC1 use DMA"
+                depends on BSP_USING_PWM1
+                default n
+            config BSP_PWM1_CC2_USING_DMA
+                bool "PWM1 CC2 use DMA"
+                depends on BSP_USING_PWM1
+                default n
+            config BSP_PWM1_CC3_USING_DMA
+                bool "PWM1 CC3 use DMA"
+                depends on BSP_USING_PWM1
+                default n
+            config BSP_PWM1_CC4_USING_DMA
+                bool "PWM1 CC4 use DMA"
+                depends on BSP_USING_PWM1
+                default n
+
+            config BSP_USING_PWMT1
+                bool "Using PWM T1(corresponds to HW GPTIM1)"
+                default n
+            config BSP_PWMT1_UPDATE_USING_DMA
+                bool "PWMT1 UPDATE use DMA"
+                depends on BSP_USING_PWMT1
+            config BSP_PWMT1_CC1_USING_DMA
+                bool "PWMT1 CC1 use DMA"
+                depends on BSP_USING_PWMT1
+                default n
+            config BSP_PWMT1_CC2_USING_DMA
+                bool "PWMT1 CC2 use DMA"
+                depends on BSP_USING_PWMT1
+                default n
+            config BSP_PWMT1_CC3_USING_DMA
+                bool "PWMT1 CC3 use DMA"
+                depends on BSP_USING_PWMT1 && !SOC_SF32LB55X
+                default n
+            config BSP_PWMT1_CC4_USING_DMA
+                bool "PWMT1 CC4 use DMA"
+                depends on BSP_USING_PWMT1 && !SOC_SF32LB55X
+                default n
+
+            config BSP_USING_PWMT2
+                bool "Using PWM T2(corresponds to HW GPTIM2)"
+                default n
+            config BSP_PWMT2_UPDATE_USING_DMA
+                bool "PWMT2 UPDATE use DMA"
+                depends on BSP_USING_PWMT2
+            config BSP_PWMT2_CC1_USING_DMA
+                bool "PWMT2 CC1 use DMA"
+                depends on BSP_USING_PWMT2
+                default n
+            config BSP_PWMT2_CC2_USING_DMA
+                bool "PWMT2 CC2 use DMA"
+                depends on BSP_USING_PWMT2
+                default n
+            config BSP_PWMT2_CC3_USING_DMA
+                bool "PWMT2 CC3 use DMA"
+                depends on BSP_USING_PWMT2
+                default n
+            config BSP_PWMT2_CC4_USING_DMA
+                bool "PWMT2 CC4 use DMA"
+                depends on BSP_USING_PWMT2
+                default n
+
+            config BSP_USING_PWMT3
+                bool "Using PWM T3(corresponds to HW GPTIM3)"
+                default n
+            config BSP_PWMT3_UPDATE_USING_DMA
+                bool "PWMT3 UPDATE use DMA"
+                depends on BSP_USING_PWMT3
+            config BSP_PWMT3_CC1_USING_DMA
+                bool "PWMT3 CC1 use DMA"
+                depends on BSP_USING_PWMT3
+                default n
+            config BSP_PWMT3_CC2_USING_DMA
+                bool "PWMT3 CC2 use DMA"
+                depends on BSP_USING_PWMT3
+                default n
+            config BSP_PWMT3_CC3_USING_DMA
+                bool "PWMT3 CC3 use DMA"
+                depends on BSP_USING_PWMT3
+                default n
+            config BSP_PWMT3_CC4_USING_DMA
+                bool "PWMT3 CC4 use DMA"
+                depends on BSP_USING_PWMT3
+                default n
+
+            config BSP_USING_PWMT4
+                bool "Using PWM T4(corresponds to HW GPTIM4)"
+                default n
+            config BSP_PWMT4_UPDATE_USING_DMA
+                bool "PWMT4 UPDATE use DMA"
+                depends on BSP_USING_PWMT4
+            config BSP_PWMT4_CC1_USING_DMA
+                bool "PWMT4 CC1 use DMA"
+                depends on BSP_USING_PWMT4
+                default n
+            config BSP_PWMT4_CC2_USING_DMA
+                bool "PWMT4 CC2 use DMA"
+                depends on BSP_USING_PWMT4
+                default n
+            config BSP_PWMT4_CC3_USING_DMA
+                bool "PWMT4 CC3 use DMA"
+                depends on BSP_USING_PWMT4
+                default n
+            config BSP_PWMT4_CC4_USING_DMA
+                bool "PWMT4 CC4 use DMA"
+                depends on BSP_USING_PWMT4
+                default n
+
+            config BSP_USING_PWMT5
+                bool "Using PWM T5(corresponds to HW GPTIM5)"
+                default n
+            config BSP_PWMT5_UPDATE_USING_DMA
+                bool "PWMT5 UPDATE use DMA"
+                depends on BSP_USING_PWMT5
+            config BSP_PWMT5_CC1_USING_DMA
+                bool "PWMT5 CC1 use DMA"
+                depends on BSP_USING_PWMT5
+                default n
+            config BSP_PWMT5_CC2_USING_DMA
+                bool "PWMT5 CC2 use DMA"
+                depends on BSP_USING_PWMT5
+                default n
+            config BSP_PWMT5_CC3_USING_DMA
+                bool "PWMT5 CC3 use DMA"
+                depends on BSP_USING_PWMT5
+                default n
+            config BSP_PWMT5_CC4_USING_DMA
+                bool "PWMT5 CC4 use DMA"
+                depends on BSP_USING_PWMT5
+                default n
+                
+            config BSP_USING_PWMA1
+                bool "Using PWM A1"
+                depends on !SOC_SF32LB55X
+                default n
+            config BSP_PWMA1_UPDATE_USING_DMA
+                bool "PWMA1 UPDATE use DMA"
+                depends on BSP_USING_PWMA1
+            config BSP_PWMA1_CC1_USING_DMA
+                bool "PWMA1 CC1 use DMA"
+                depends on BSP_USING_PWMA1
+                default n
+            config BSP_PWMA1_CC2_USING_DMA
+                bool "PWMA1 CC2 use DMA"
+                depends on BSP_USING_PWMA1
+                default n
+            config BSP_PWMA1_CC3_USING_DMA
+                bool "PWMA1 CC3 use DMA"
+                depends on BSP_USING_PWMA1
+                default n
+            config BSP_PWMA1_CC4_USING_DMA
+                bool "PWMA1 CC4 use DMA"
+                depends on BSP_USING_PWMA1
+                default n
+                
+            config BSP_USING_PWMA2
+                bool "Using PWM A2"
+                depends on !SOC_SF32LB55X && !SOC_SF32LB52X && !SOC_SF32LB56X
+                default n
+            config BSP_PWMA2_UPDATE_USING_DMA
+                bool "PWMA2 UPDATE use DMA"
+                depends on BSP_USING_PWMA2
+            config BSP_PWMA2_CC1_USING_DMA
+                bool "PWMA2 CC1 use DMA"
+                depends on BSP_USING_PWMA2
+                default n
+            config BSP_PWMA2_CC2_USING_DMA
+                bool "PWMA2 CC2 use DMA"
+                depends on BSP_USING_PWMA2
+                default n
+            config BSP_PWMA2_CC3_USING_DMA
+                bool "PWMA2 CC3 use DMA"
+                depends on BSP_USING_PWMA2
+                default n
+            config BSP_PWMA2_CC4_USING_DMA
+                bool "PWMA2 CC4 use DMA"
+                depends on BSP_USING_PWMA2
+                default n
+            config BSP_USING_PWM_LPTIM1
+                bool "Using PWM with LPTIM1"
+                default n
+            config BSP_USING_PWM_LPTIM2
+                bool "Using PWM with LPTIM2"
+                default n
+            config BSP_USING_PWM_LPTIM3
+                bool "Using PWM with LPTIM3"
+                default n
+        endif
+
     menuconfig BSP_USING_QSPI
-        bool "Enable QSPI"
+        bool "QSPI"
         depends on SOC_SF32LB55X
         default y
 
@@ -1356,177 +1505,50 @@ menu "On-chip Peripheral RTOS Drivers"
                     default y
             endif
         endif
-    config BSP_USING_EXT_DMA
-        bool "Enable ext dma"
-        default y
 
-    config BSP_USING_HW_AES
-        bool "Enable hardware AES encryption/decryption"
-        depends on BF0_HCPU
-        default y
-
-    config BSP_USING_PSRAM
-        bool 
-        default n
-
-    config MEMCPY_NON_DMA
-        bool 
-        depends on !SOC_SIMULATOR
-        default n
-    config PSRAM_CACHE_WB
-        bool "Enable PSRAM Cache write back"
-        select MEMCPY_NON_DMA if PSRAM_CACHE_WB
-        depends on !SOC_SIMULATOR && BSP_USING_PSRAM
-        default n 
-        
-    config BSP_USING_PSRAM0
-        bool "Enable OPI PSRAM"
-        default n
-        depends on BF0_HCPU && SOC_SF32LB55X
-        select BSP_USING_PSRAM
-        if BSP_USING_PSRAM && SOC_SF32LB55X
-            config PSRAM_FULL_SIZE
-                int "PSRAM full chip size(MB)"
-                default 4
-            config BSP_USING_EXT_PSRAM
-                bool "Use External PSRAM"
-                default n
-            config BSP_USING_XCCELA_PSRAM
-                bool "Use Xceela PSRAM"
-                default n
-            config BSP_USING_DUAL_PSRAM
-                bool "Use Dual PSRAM"
-                default n
-             if BSP_USING_EXT_DMA
-                config PSRAM_USING_DMA
-                bool "PSRAM use DMA"
-                default n
-            endif
-        endif
-    config BSP_USING_USBD
-        bool "Enable USB Device"
-        select RT_USING_USB_DEVICE
-        default n
-        
-    config BSP_USING_USBH
-        bool "Enable USB Host"
-        select RT_USING_USB_HOST
-        default n
-    
-    config BSP_USING_SWITCH_MPI2_SDIO
-        bool "Enable Switch SDIO MPI2"
-        depends on SOC_SF32LB52X
-        default n
-        if BSP_USING_SWITCH_MPI2_SDIO
-            config BSP_SWITCH_MPI2_SDIO_PIN
-                int "switch pin"
-                default -1
-        endif
-        
-    config BSP_USING_ONCHIP_RTC
-        bool "Enable RTC"
+    menuconfig BSP_USING_ONCHIP_RTC
+        bool "RTC"
         select RT_USING_RTC
         select RT_USING_LIBC
         default n
         
-    config BSP_RTC_PPM
-        int "RTC RC10K compensation"
-        depends on BSP_USING_ONCHIP_RTC
-        default 0
-        help
-            Software compensation for RC10K calibration used in RTC
-            RTC go faster than wall clock with positive RTC_PPM value
-            RTC go slower than wall clock with negtive  RTC_PPM value
-        
-    config BSP_USING_WDT
-        bool "Enable Watchdog Timer"
-        select RT_USING_WDT
+        config BSP_RTC_PPM
+            int "RTC RC10K Compensation"
+            depends on BSP_USING_ONCHIP_RTC
+            default 0
+            help
+                Software compensation for RC10K calibration used in RTC
+                RTC go faster than wall clock with positive RTC_PPM value
+                RTC go slower than wall clock with negtive  RTC_PPM value
+
+    config BSP_USING_SDADC
+        bool "SDADC"
+        select RT_USING_ADC
+        depends on SOC_SF32LB58X || SOC_SF32LB55X
         default n
-        if BSP_USING_WDT                    
-            config BSP_WDT_TIMEOUT
-            int "Watchdog Timer timeout in seconds"
-            default 10
-            
-            config BSP_USING_WDT2_SWITCH
-            bool "Hcpu Control Switch Wdt2"
-            depends on BF0_HCPU
-            default n if !SOC_SF32LB52X
-            default y if SOC_SF32LB52X
-        endif
-        
-    config BSP_USING_EPIC
-        bool "Enable EPIC"
-        select RT_USING_EPIC
-        default n
-        if BSP_USING_EPIC && !SOC_SF32LB55X
-            config DRV_EPIC_NEW_API
-            bool "Using epic render list API(under development)"
+
+    if BSP_USING_SDADC
+        config BSP_SDADC_USE_TIMER_TRIGGER
+            bool "Enable SDADC timer trigger + interrupt"
             default n
             help
-                1. Can not works on SFLB55X serials
-                2. Asynchronized rendering, must keep the buffers used by the render-list available until rendering is complete.
+                Use GPTIM3 to periodically trigger SDADC conversions,
+                with interrupt notification.
 
-            config DRV_EPIC_TASK_PRIORITY_CUSTOM
-            bool "Custom EPIC render task priority"
-            depends on DRV_EPIC_NEW_API
+        if BSP_SDADC_USE_TIMER_TRIGGER
+            config BSP_SDADC_TIMER_PERIOD_MS
+                int "SDADC timer trigger period (ms)"
+                default 100
+        endif
+
+        config BSP_SDADC_SUPPORT_MULTI_CH_SAMPLING
+            bool "Enable SDADC multi-channel scan sampling"
             default n
-            help
-                Enable to override epic_task thread priority by Kconfig.
-                If disabled, epic_task uses RT_THREAD_PRIORITY_HIGH + RT_THREAD_PRIORITY_LOWWER.
 
-            if DRV_EPIC_TASK_PRIORITY_CUSTOM
-                config DRV_EPIC_TASK_PRIORITY
-                int "EPIC render task priority"
-                default 24
-                help
-                    RT-Thread priority value used by epic_task.
-                    Smaller value means higher priority.
-            endif
-
-        endif
-        config EZIP_PAL_SUPPORT
-            bool
-            default y if !SOC_SF32LB55X
-            if EZIP_PAL_SUPPORT
-                config EZIP_PAL_SUPPORT_1
-                    bool
-                    default y if !SOC_SF32LB56X && !SOC_SF32LB58X
-            endif
-
-    config BSP_USING_LCDC
-        bool "Enable LCDC"
-        select RT_USING_LCDC
-        default n 
-
-    config BSP_USING_CMSIS_NN
-        bool "Enable CMSIS NN"
-        default n
-
-    config BSP_USING_NN_ACC
-        bool "Enable NN ACC"
-        default n
-
-    menuconfig BSP_USING_I2S
-        bool "Enable I2S audio driver"
-        select RT_USING_AUDIO
-        select BSP_USING_DMA
-        default n
-        if BSP_USING_I2S
-            config BSP_ENABLE_I2S_MIC
-                bool "Enable I2S1 for Mic"
-                depends on SOC_SF32LB58X || SOC_SF32LB55X
-                default n
-            config BSP_ENABLE_I2S_CODEC
-                bool "Enable I2S2 for Codec"
-                default n
-            config BSP_ENABLE_I2S3
-                depends on SOC_SF32LB58X || SOC_SF32LB56X	    
-                bool "Enable I2S3 for Codec"
-                default n
-        endif
+    endif
 
     menuconfig BSP_USING_SDIO
-        bool "Enable SDIO"
+        bool "SDIO"
         select RT_USING_SDIO
         default n
         depends on BF0_HCPU
@@ -1536,9 +1558,18 @@ menu "On-chip Peripheral RTOS Drivers"
             default n
             select BSP_USING_SDHCI if SOC_SF32LB55X || SOC_SF32LB58X || SOC_SF32LB56X
             select BSP_USING_SDHCI1 if SOC_SF32LB55X || SOC_SF32LB58X || SOC_SF32LB56X
-            select BSP_USING_SD_LINE if SOC_SF32LB52X
+            select BSP_USING_SD_LINE if SOC_SF32LB52X || SOC_SF32LB57X
             help
                 Enable SDMMC1
+
+        if BSP_USING_SDMMC1
+            config SDMMC1_BUS_WIDTH_1_ONLY
+                bool "Force 1-bit mode (disable 4-bit)"
+                default n
+                help
+                  When enabled, SDMMC1 will only use 1-bit data bus width.
+                  Disable this to allow 4-bit mode if the hardware supports it.
+        endif
 
         if BSP_USING_SDHCI1 && BSP_USING_SDMMC1
             config SD_MAX_FREQ
@@ -1557,10 +1588,19 @@ menu "On-chip Peripheral RTOS Drivers"
             default n
             select BSP_USING_SDHCI if SOC_SF32LB55X || SOC_SF32LB58X
             select BSP_USING_SDHCI2 if SOC_SF32LB55X || SOC_SF32LB58X
-            select BSP_USING_SD_LINE if SOC_SF32LB56X
+            select BSP_USING_SD_LINE if SOC_SF32LB56X || SOC_SF32LB57X
             depends on !SOC_SF32LB52X
             help 
                 Enable SDMMC2
+        if BSP_USING_SDMMC2
+            config SDMMC2_BUS_WIDTH_1_ONLY
+                bool "Force 1-bit mode (disable 4-bit)"
+                default n
+                help
+                  When enabled, SDMMC2 will only use 1-bit data bus width.
+                  Disable this to allow 4-bit mode if the hardware supports it.
+        endif
+
         if BSP_USING_SDHCI2 && BSP_USING_SDMMC2
             config SD2_MAX_FREQ
                 int "MAX Output Frequency(Hz)"
@@ -1582,6 +1622,7 @@ menu "On-chip Peripheral RTOS Drivers"
         config BSP_USING_SD_LINE
             bool
         menu "Common Option"
+
         if BSP_USING_SDHCI
 
         config SD_MMC_DDR_SUPPORT
@@ -1590,6 +1631,11 @@ menu "On-chip Peripheral RTOS Drivers"
         config SD_MMC_OLINE_SUPPORT
             bool "MMC card support 8 line"
             default n
+        config SDMMC_AUTO_GATE_ENABLED
+            bool "SDMMC clock is auto gated"
+            default n
+            help
+                If enabled, SDMMC clock is enabled before use and disabled aftere use to save power
 
         endif # BSP_USING_SDHCI
 
@@ -1614,273 +1660,294 @@ menu "On-chip Peripheral RTOS Drivers"
         endif # SDIO_PM_MODE
 
         endmenu # Common Option
-
     endif # BSP_USING_SDIO
 
-    config BSP_USING_PINMUX
-        bool "Enable Pin Mux"
-        default n
-    config BSP_USING_LCPU_PATCH
-        bool "Enable LCPU Patch"
+    config BSP_USING_SWITCH_MPI2_SDIO
+        bool "SDIO MPI2 Switch"
+        depends on SOC_SF32LB52X
         default n
         help
-            Enable LCPU patch binary and install from HCPU
-    config BSP_USING_LCPU_PATCH_IN_RAM
-        bool "LCPU PATCH run in RAM"
-        depends on SOC_SF32LB56X && BSP_USING_LCPU_PATCH
-        default n
-        help
-            LCPU patch running in RAM instead of flash
-
-    menuconfig BSP_USING_PDM
-        bool "Enable PDM audio driver"
-        select RT_USING_AUDIO
-        select BSP_USING_DMA
-        default n
-        if BSP_USING_PDM
-            config BSP_USING_PDM1
-                bool "Enable PDM1"
-                default n
-            config BSP_USING_PDM2
-                bool "Enable PDM2"
-                default n
+          Enable Switch SDIO MPI2
+        if BSP_USING_SWITCH_MPI2_SDIO
+            config BSP_SWITCH_MPI2_SDIO_PIN
+                int "switch pin"
+                default -1
         endif
 
-    menuconfig BSP_ENABLE_AUD_PRC
-        bool "Enable Audio Process driver"
-    depends on !SOC_SF32LB55X
-        select RT_USING_AUDIO
-        select BSP_USING_DMA
+    menuconfig BSP_USING_SPI
+        bool "SPI BUS"
         default n
-        if BSP_ENABLE_AUD_PRC
-            config BSP_AUDPRC_TX0_DMA
-                bool "Enable AUDPRC TX Channel 0 DMA"
+        select RT_USING_SPI
+        if BSP_USING_SPI
+            config BSP_USING_SPI_DMA_CIRCULAR
+                bool "Enable SPI DMA CIRCULAR"
                 default n
-            config BSP_AUDPRC_TX1_DMA
-                bool "Enable AUDPRC TX Channel 1 DMA"
-                default n
-            config BSP_AUDPRC_TX2_DMA
-                bool "Enable AUDPRC TX Channel 2 DMA"
-                default n
-            config BSP_AUDPRC_TX3_DMA
-                bool "Enable AUDPRC TX Channel 3 DMA"
-                default n
-            config BSP_AUDPRC_RX0_DMA
-                bool "Enable AUDPRC RX Channel 0 DMA"
-                default n
-            config BSP_AUDPRC_RX1_DMA
-                bool "Enable AUDPRC RX Channel 1 DMA"
-                default n
-            config BSP_AUDPRC_TX_OUT0_DMA
-                bool "Enable AUDPRC TX Out Channel 0 DMA"
-                default n
-            config BSP_AUDPRC_TX_OUT1_DMA
-                bool "Enable AUDPRC TX Out Channel 1 DMA"
-                default n
-        endif
 
-    menuconfig BSP_ENABLE_AUD_CODEC
-        bool "Enable Audio codec driver"
-    depends on !SOC_SF32LB55X
-        select RT_USING_AUDIO
-        select BSP_USING_DMA
-        default n
-        if BSP_ENABLE_AUD_CODEC
-            config BSP_AUDCODEC_DAC0_DMA
-                bool "Enable AUDCODEC DAC Channel 0 DMA"
+            config BSP_USING_SPI1
+                bool "Enable SPI1 BUS"
                 default n
-            config BSP_AUDCODEC_DAC1_DMA
-                bool "Enable AUDCODEC DAC Channel 1 DMA"
-                default n
-            config BSP_AUDCODEC_ADC0_DMA
-                bool "Enable AUDCODEC ADC Channel 0 DMA"
-                default n
-            config BSP_AUDCODEC_ADC1_DMA
-                bool "Enable AUDCODEC ADC Channel 1 DMA"
-                default n
-        endif
 
-    menuconfig RT_USING_BT
-        bool "Enable bt device"
-        default n
-        if RT_USING_BT
-            choice
-                prompt "bt driver"
-                default BT_USING_FR508X
+            config BSP_SPI1_TX_USING_DMA
+                bool "Enable SPI1 TX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_SPI1
+                default n
                 
-                config BT_USING_FR508X
-                    bool "using fr508x"
-                    select RT_USING_AT
-                    select AT_USING_CLIENT
-                    
-                config BT_USING_BT_5376A2
-                    bool "using bt 5376A2"
-                    select RT_USING_AT
-                    select AT_USING_CLIENT
-                config BT_USING_SIFLI
-                    bool "using SIFLI Bluetooth"
-            endchoice
-            config BT_DEVICE_NAME
-                string "bt device name"
-                default "bt_device"
-            if !BT_USING_SIFLI
-                config BT_UART_NAME
-                    string "bt uart name"
-                    default "uart1"
-                    
-                config BT_UART_BAUD
-                    int "bt uart baud"
-                    default 921600
+            config BSP_SPI1_RX_USING_DMA
+                bool "Enable SPI1 RX DMA"
+                depends on BSP_USING_SPI1
+                select BSP_USING_DMA
+                default n
+
+            config BSP_USING_SPI2
+                bool "Enable SPI2 BUS"
+                default n
+
+            config BSP_SPI2_TX_USING_DMA
+                bool "Enable SPI2 TX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_SPI2
+                default n
                 
-                    
-                config BT_RECV_BUFF_LEN
-                    int "bt recv buff size"
-                    default 512
-                    
-                menuconfig BT_PIN_CONFIG
-                    bool "bt pin number config -1:invalid >=0:valid"
-                    default y
-                    if BT_PIN_CONFIG
-                        config MCU_WAKEUP_BT_PIN
-                            int "mcu wakeup bt pin number"
-                            default 121
-                            
-                        config MCU_RESET_BT_PIN
-                            int "mcu reset bt pin number"
-                            default -1
-                            
-                        config BT_LEVEL_SHIFT_PIN
-                            int "bt level shift pin number"
-                            default -1
-                            
-                        config BT_POWER_PIN
-                            int "bt power pin number"
-                            default 104
-                            
-                        config BT_WAKEUP_MCU_PIN
-                            int "bt wakeup mcu pin number"
-                            default -1
-                            
-                        config BT_SPK_PA_EN_PIN
-                            int "bt spk pa en pin number"
-                            default -1
-                    endif
+            config BSP_SPI2_RX_USING_DMA
+                bool "Enable SPI2 RX DMA"
+                depends on BSP_USING_SPI2
+                select BSP_USING_DMA
+                default n
                 
-                config BT_USING_DTMF
-                    bool "bt using dtmf"
-                    default n
-                    
-                config BT_USING_MIC_MUTE
-                    bool "bt using mic mute"
-                    default n
-                    
-                config BT_USING_LOCAL_MEDIA_EX
-                    bool "bt using local media ex function"
-                    default n
-                    
-                config BT_USING_SIRI
-                    bool "bt using siri function"
-                    default n
-                                       
-                config BT_USING_USB
-                    bool "bt using usb function"
-                    default n
-                    
-                config BT_USING_FLASH_DB
-                    bool "bt using flash db storage related settings"
-                    default n
-                    
-                config BT_USING_LINK_BACK
-                    bool "bt using service control link back to BT"
-                    default n
-                    
-                config RT_US_BT_DEBUG
-                    bool "open bt debug switch"
-                    select AT_PRINT_RAW_CMD
-                    default y
+            config BSP_USING_SPI3
+                bool "Enable SPI3 BUS"
+                default n
 
-                config BT_SHARING_LOG_UART
-                    bool "bt client sharing log uart"
-                    default n
+            config BSP_SPI3_TX_USING_DMA
+                bool "Enable SPI3 TX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_SPI3
+                default n
+                
+            config BSP_SPI3_RX_USING_DMA
+                bool "Enable SPI3 RX DMA"
+                depends on BSP_USING_SPI3
+                select BSP_USING_DMA
+                default n
 
-                config BT_USING_DEVICE_TYPE
-                    bool "bt connect device type"
-                    default n
-            endif
-            if BT_USING_SIFLI
-                config BT_USING_HF
-                    bool "bt using hf"
-                    default y
-                    
-                config BT_USING_A2DP
-                    bool "bt using a2dp"
-                    default y
-                    
-                config BT_USING_SPP
-                    bool "bt using spp"
-                    default n
-                    
-                config BT_USING_DTMF
-                    bool "bt using dtmf"
-                    default n
-                    
-                config BT_USING_MIC_MUTE
-                    bool "bt using mic mute"
-                    default n
+            config BSP_USING_SPI4
+                bool "Enable SPI4 BUS"
+                default n
 
-                config BT_USING_SIRI
-                    depends on BT_USING_HF
-                    bool "bt using siri function"
-                    default n
-                    
-                config BT_USING_AVRCP
-                    bool "bt using avrcp"
-                    default n
-
-                config BT_USING_HID
-                    bool "bt using hid"
-                    default n
-                    
-                config BT_USING_AG
-                    bool "bt using HFP AG"
-                    default n                   
-                    
-                config BT_USING_GATT
-                    bool "bt using gatt"
-                    default n
-                    
-                config BT_USING_PBAP
-                    depends on BT_USING_HF
-                    bool "bt using pbap"
-                    default n 
-            endif            
+            config BSP_SPI4_TX_USING_DMA
+                bool "Enable SPI4 TX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_SPI4
+                default n
+                
+            config BSP_SPI4_RX_USING_DMA
+                bool "Enable SPI4 RX DMA"
+                depends on BSP_USING_SPI4
+                select BSP_USING_DMA
+                default n
         endif
-        
-    config BSP_USING_MOTOR
-        bool "Enable motor device"
-        select RT_USING_MOTOR
-        default n
-
-    config BSP_USING_ACPU
-        bool "Enable ACPU"
-        default n
-        depends on BF0_HCPU && SOC_SF32LB58X
-        help
-            Enable ACPU
-
-    config BSP_USING_BUSMON
-        bool "Enable Busminitor for debugging"
-        depends on !SOC_SF32LB52X
-        default n
-        
-    config BSP_NOT_DISABLE_UNUSED_MODULE
-        bool "Not Disable Unused Module for Power Saving"
-        help 
-             HAL API is used instead of rt device driver, so module cannot be disabled
-        default n
 
     config BSP_USING_SYS_CFG
         bool "SYS CFG Module"
         depends on BF0_LCPU 
         default n
+
+    menuconfig BSP_USING_TIM
+        bool "Timer"
+        default n
+        select RT_USING_HWTIMER
+        if BSP_USING_TIM
+            config BSP_USING_GPTIM1
+                depends on !BSP_GPADC_USE_GPTIME1
+                bool "Enable GPTimer1"
+                default n
+
+            config BSP_USING_GPTIM2
+                depends on !BSP_GPADC_USE_GPTIME2
+                bool "Enable GPTimer2"
+                default n
+
+            config BSP_USING_GPTIM3
+                depends on !BSP_GPADC_USE_GPTIME3
+                bool "Enable GPTimer3"
+                default n
+
+            config BSP_USING_GPTIM4
+                depends on !BSP_GPADC_USE_GPTIME4
+                bool "Enable GPTimer4"
+                default n
+                
+            config BSP_USING_GPTIM5
+                depends on !BSP_GPADC_USE_GPTIME5
+                bool "Enable GPTimer5"
+                default n                
+                
+            config BSP_USING_ATIM1
+                bool "Enable ATimer1"
+                default n
+                
+            config BSP_USING_ATIM2
+                bool "Enable ATimer2"
+                depends on SOC_SF32LB58X
+                default n
+                
+            config BSP_USING_BTIM1
+                bool "Enable BTimer1"
+                default n
+
+            config BSP_USING_BTIM2
+                bool "Enable BTimer2"
+                default n
+                
+            config BSP_USING_BTIM3
+                bool "Enable BTimer3"
+                default n
+
+            config BSP_USING_BTIM4
+                bool "Enable BTimer4"
+                default n
+
+            config BSP_USING_LPTIM1
+                bool "Enable LPTIM1"
+                default n
+            config BSP_USING_LPTIM2
+                bool "Enable LPTIM2"
+                default n
+            config BSP_USING_LPTIM3
+                bool "Enable LPTIM3"
+                default n    
+        endif
+
+    menuconfig BSP_USING_UART
+        bool "UART"
+        default n
+        select RT_USING_SERIAL
+        if BSP_USING_UART
+            config BSP_USING_UART1
+                bool "Enable UART1"
+                default n
+
+            config BSP_UART1_RX_USING_DMA
+                bool "Enable UART1 RX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_UART1
+                default n
+
+            config BSP_UART1_TX_USING_DMA
+                bool "Enable UART1 TX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_UART1
+                default n
+                
+            config BSP_USING_UART2
+                bool "Enable UART2"
+                default n
+
+            config BSP_UART2_RX_USING_DMA
+                bool "Enable UART2 RX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_UART2 
+                default n
+            config BSP_UART2_TX_USING_DMA
+                bool "Enable UART2 TX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_UART2 
+                default n
+
+            config BSP_USING_UART3
+                bool "Enable UART3"
+                default n
+
+            config BSP_UART3_RX_USING_DMA
+                bool "Enable UART3 RX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_UART3 
+                default n
+            config BSP_UART3_TX_USING_DMA
+                bool "Enable UART3 TX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_UART3 
+                default n
+                
+                
+            config BSP_USING_UART4
+                bool "Enable UART4"
+                default n
+
+            config BSP_UART4_RX_USING_DMA
+                bool "Enable UART4 RX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_UART4 
+                default n
+            config BSP_UART4_TX_USING_DMA
+                bool "Enable UART4 TX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_UART4 
+                default n
+
+            config BSP_USING_UART5
+                bool "Enable UART5"
+                default n
+
+            config BSP_UART5_RX_USING_DMA
+                bool "Enable UART5 RX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_UART5 
+                default n
+            config BSP_UART5_TX_USING_DMA
+                bool "Enable UART5 TX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_UART5 
+                default n                
+                
+            config BSP_USING_UART6
+                bool "Enable UART6"
+                depends on SOC_SF32LB58X || SOC_SF32LB56X
+                default n
+
+            config BSP_UART6_RX_USING_DMA
+                bool "Enable UART6 RX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_UART6 
+                default n
+            config BSP_UART6_TX_USING_DMA
+                bool "Enable UART6 TX DMA"
+                select BSP_USING_DMA
+                depends on BSP_USING_UART6 
+                default n                
+        endif
+        
+    config BSP_USING_USBD
+        bool "USB Device"
+        select RT_USING_USB_DEVICE
+        default n
+        
+    config BSP_USING_USBH
+        bool "USB Host"
+        select RT_USING_USB_HOST
+        default n
+        
+    menuconfig BSP_USING_WDT
+        bool "Watchdog Timer"
+        select RT_USING_WDT
+        default n
+        if BSP_USING_WDT                    
+            config BSP_WDT_TIMEOUT
+            int "Watchdog Timer timeout in seconds"
+            default 10
+            
+            config BSP_USING_WDT2_SWITCH
+            bool "Hcpu Control Switch Wdt2"
+            depends on BF0_HCPU
+            default n if !SOC_SF32LB52X
+            default y if SOC_SF32LB52X
+        endif
+        
+    config BSP_NOT_DISABLE_UNUSED_MODULE
+        bool "Not Disable Unused Module for Power Saving"
+        help 
+             HAL API is used instead of rt device driver, so module cannot be disabled automatically
+        default n
+
 endmenu

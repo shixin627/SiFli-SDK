@@ -306,7 +306,8 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
                            uint8_t rhr, uint8_t worn, uint8_t rest,
                            uint8_t fresh, uint16_t total, uint16_t deep,
                            uint16_t rem, uint16_t light, uint16_t pi_e3,
-                           uint16_t frame_pct, uint16_t rate_info)
+                           uint16_t frame_pct, uint16_t rate_info,
+                           uint16_t own_info, uint8_t rep_pct)
 {
     /* Packed 28-byte wire payload (phone reads 4+2+1*8+2*7 LE). total/deep/rem/
        light are the firmware's daily accumulators; pi_e3 is the last burst's
@@ -334,11 +335,18 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
         uint16_t pi_e3;
         uint16_t frame_pct;
         uint16_t rate_info;
+        /* own_info = (hr_autocorr confidence << 8) | longest identical raw-PPG
+           run; rep_pct = share of samples equal to their predecessor. Appended
+           last so older phone builds, which gate on 24/26/28 bytes, keep parsing
+           every field they already know. */
+        uint16_t own_info;
+        uint8_t  rep_pct;
     } rec = {.ts = ts, .score = score, .hr = hr, .hr_std = hr_std,
              .stage = stage, .veto = veto, .rhr = rhr, .worn = worn,
              .rest = rest, .fresh = fresh, .total = total, .deep = deep,
              .rem = rem, .light = light, .pi_e3 = pi_e3,
-             .frame_pct = frame_pct, .rate_info = rate_info};
+             .frame_pct = frame_pct, .rate_info = rate_info,
+             .own_info = own_info, .rep_pct = rep_pct};
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_SLEEP_DIAG,
                            &rec, (uint16_t)sizeof(rec));
 }
@@ -375,6 +383,36 @@ bool commu_send_hr_cont(uint32_t base_ts, uint8_t interval_s, uint8_t count,
         buf[o++] = (uint8_t)((pi_e3[i] >> 8) & 0xFF);
     }
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_CONT_DIAG, buf, len);
+}
+
+bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
+                          uint16_t count, const int8_t *win)
+{
+    /* 8-byte header + count int8 samples. The 256-sample window lands at 264 B,
+       inside MAX_PACKET_PAYLOAD_SIZE (507) — that single-frame fit is why the
+       samples are int8 rather than the int16 the estimator works in. */
+    if (win == NULL || count == 0) return false;
+    if (count > 256) count = 256;
+
+    uint8_t buf[8 + 256];
+    buf[0] = (uint8_t)(ts & 0xFF);
+    buf[1] = (uint8_t)((ts >> 8) & 0xFF);
+    buf[2] = (uint8_t)((ts >> 16) & 0xFF);
+    buf[3] = (uint8_t)((ts >> 24) & 0xFF);
+    buf[4] = bpm;
+    buf[5] = conf;
+    buf[6] = (uint8_t)(count & 0xFF);
+    buf[7] = 0;                                   /* reserved, keeps it aligned */
+    memcpy(buf + 8, win, count);
+    bool ok = commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_WINDOW_DUMP,
+                              buf, (uint16_t)(8 + count));
+    /* The only point of the whole capture that is observable on the HCPU log:
+       the decision and its LOG_I both live on the LCPU, whose console is uart4,
+       not the COM12 firmware log. Without this a bench session cannot tell a
+       burst that shipped a window from one that never captured. */
+    LOG_I("send hr window bpm=%u conf=%u n=%u -> %s", (unsigned)bpm,
+          (unsigned)conf, (unsigned)count, ok ? "ok" : "FAIL");
+    return ok;
 }
 
 bool commu_send_sleep_data(void)
@@ -471,6 +509,15 @@ bool commu_send_conv_close(void)
 {
     bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_CLOSE, "{}");
     LOG_I("send conv close -> %s", ok ? "ok" : "FAILED");
+    return ok;
+}
+/* Ask the phone to (re)push the desktop session list. The Data path has no pull, so the
+   session pager sends this on build + on reconnect to recover a list pushed while the
+   watch was away. */
+bool commu_send_conv_list_req(void)
+{
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_CONV_LIST_REQ, "{}");
+    LOG_I("send conv list req -> %s", ok ? "ok" : "FAILED");
     return ok;
 }
 

@@ -293,6 +293,6 @@ static int app_main(intent_t i)
     return 0;
 }
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(sleep), IMG_SLEEP, APP_ID_SLEEP, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(sleep), IMG_SLEEP, APP_ID_SLEEP, app_main, 1);
 
 #endif /* APP_ID_SLEEP */

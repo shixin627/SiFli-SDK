@@ -44,7 +44,7 @@ AT24CO8SC的SDA,SCK分别按照下表，根据开发板型号进行连接
 
 如果缺失上面三个宏，就需要通过`menuconfig`如下命令进行打开
 ```c
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 如下图，选择I2C2，保存并退出menuconfig，查看`rtconfig.h`宏是否生成
 ![alt text](assets/i2c2_menuconfig.png)

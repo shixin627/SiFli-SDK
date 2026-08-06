@@ -14,12 +14,51 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
+from types import SimpleNamespace
+from unittest import mock
 
 
 ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 import sifli_sdk_tools  # noqa: E402
+
+
+class ToolCommandTemplateTests(unittest.TestCase):
+    def test_run_cmd_check_output_keeps_input_command_template(self) -> None:
+        cmd = ["demo", "--version"]
+        tool_dir = os.path.join(tempfile.gettempdir(), "demo-tools", "bin")
+        completed = SimpleNamespace(stdout=b"demo 1.0.0\n", stderr=b"")
+
+        with mock.patch("os.path.exists", return_value=True):
+            with mock.patch("subprocess.run", return_value=completed) as run:
+                output = sifli_sdk_tools.run_cmd_check_output(cmd, extra_paths=[tool_dir])
+
+        self.assertEqual(output, b"demo 1.0.0\n")
+        self.assertEqual(cmd, ["demo", "--version"])
+        self.assertEqual(run.call_args[0][0][0], os.path.join(tool_dir, "demo"))
+
+    def test_get_version_keeps_tool_command_template(self) -> None:
+        tool = sifli_sdk_tools.SiFliSDKTool.from_json(
+            {
+                "name": "demo",
+                "description": "demo tool",
+                "export_paths": [["bin"]],
+                "export_vars": {},
+                "install": "always",
+                "info_url": "https://example.com",
+                "license": "Apache-2.0",
+                "version_cmd": ["demo", "--version"],
+                "version_regex": "demo ([0-9.]+)",
+                "supported_targets": ["all"],
+                "versions": [],
+            }
+        )
+
+        with mock.patch("sifli_sdk_tools.run_cmd_check_output", return_value=b"demo 1.0.0\n"):
+            self.assertEqual(tool.get_version(executable_path="/tmp/demo"), "1.0.0")
+
+        self.assertEqual(tool._current_options.version_cmd, ["demo", "--version"])
 
 
 class LegacyCommandDisableTests(unittest.TestCase):

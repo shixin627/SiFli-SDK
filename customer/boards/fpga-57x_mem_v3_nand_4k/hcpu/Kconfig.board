@@ -1,0 +1,15 @@
+config BSP_USING_BOARD_FPGA_57X_MEM_V3_NAND_4K
+    bool
+    select SOC_SF32LB57X
+    select BF0_HCPU
+    default y
+
+config FLASH_CONFIG_PAGE_SIZE
+    int
+    default 4096
+
+config FLASH_CONFIG_BLOCK_SIZE
+    int
+    default 262144
+
+rsource "../Kconfig.board"

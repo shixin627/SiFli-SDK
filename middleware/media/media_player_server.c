@@ -699,7 +699,7 @@ static void media_read_thread(void *p)
                 if (thiz->audio_dec_ctx && !thiz->video_dec_ctx)
                 {
                     av_seek_frame(thiz->fmt_ctx, -1, AV_TIME_BASE * thiz->seek_to_second, AVSEEK_FLAG_BACKWARD);
-                    avcodec_flush_buffers(thiz->fmt_ctx);
+                    avcodec_flush_buffers(thiz->audio_dec_ctx);
                     thiz->seeking_state = 0;
                     thiz->audio_played_ms = thiz->seek_to_second * 1000;
                     break;
@@ -907,7 +907,7 @@ static void media_read_thread(void *p)
 
     clean_up(thiz, 1);
 
-    LOG_I("media exit");
+    LOG_I("media read thread exit");
 }
 
 static void drop_all_avpacket(os_message_queue_t q)
@@ -1252,6 +1252,7 @@ static int mediaplayer_start(ffmpeg_handle thiz, bool is_file)
         LOG_E("Could not allocate audio frame\n");
         goto Exit;
     }
+
     thiz->is_ok = 1;
 
     if (thiz->is_network_file)
@@ -2057,10 +2058,11 @@ int ffmpeg_open(ffmpeg_handle *return_hanlde, ffmpeg_config_t *cfg, uint32_t use
     rt_thread_startup(thiz->av_pkt_read_thread);
 
     rt_uint32_t evt = 0;
-    uint32_t wait_init_timeout = 20000;
+    uint32_t wait_init_timeout = OS_WAIT_FORVER;
 #ifdef WIN32
-    wait_init_timeout = -1; //for step run
+    wait_init_timeout = OS_WAIT_FORVER; //for step run
 #endif
+    LOG_I("%s wait start", __func__);
     os_event_flags_wait(thiz->evt_init, EVT_INIT_OK | EVT_INIT_FAILED, OS_EVENT_FLAG_WAIT_ANY | OS_EVENT_FLAG_CLEAR, wait_init_timeout, &evt);
 
     ret = RT_ERROR;
@@ -2070,6 +2072,8 @@ int ffmpeg_open(ffmpeg_handle *return_hanlde, ffmpeg_config_t *cfg, uint32_t use
     }
     os_event_delete(thiz->evt_init);
     thiz->evt_init = NULL;
+
+    LOG_I("%s wait start ret=%d", __func__, ret);
 
     if (ret != RT_EOK)
     {

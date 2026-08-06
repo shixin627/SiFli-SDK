@@ -1,6 +1,7 @@
-/**
- * @file lv_theme_1.h
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
  *
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifndef LV_THEME_1_H

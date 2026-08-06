@@ -13,6 +13,7 @@
 #include "cJSON.h"
 #include "skaiapp_pkg.h"
 #include "skaiapp_engine.h"
+#include "skai/skai_dispatch.h"
 
 #define DBG_TAG "skaiapp.pkg"
 #define DBG_LVL DBG_LOG
@@ -217,6 +218,57 @@ static int8_t resolve_ref(const char *ref, const char *prefix,
     return -1;
 }
 
+/* ── capability binds (ADR-0019 Phase 2) ── */
+
+/* The bind keys that shipped in schema v0, mapped onto capability names.
+   FROZEN — it must never grow. Packages already pushed to users' watches are
+   stored as raw JSON and re-parsed on every load, so these five strings have
+   to keep resolving forever. Anything new uses a capability name directly,
+   which is the whole point: a new capability is one row in the dispatch table
+   and zero edits here. */
+static const struct
+{
+    const char *legacy;
+    const char *cap;
+    int32_t     gauge_max;  /* legacy default when the package omits "max" */
+} k_bind_compat[] =
+{
+    { "time",    "time.hhmm",         0    },
+    { "date",    "time.date_md",      0    },
+    { "battery", "battery.level",     0    }, /* already a percentage */
+    { "hr",      "health.heart_rate", 0    },
+    { "steps",   "health.steps",      8000 },
+};
+#define K_BIND_COMPAT_N (sizeof(k_bind_compat) / sizeof(k_bind_compat[0]))
+
+/* -1 when `b` is not a watch capability (it may still be a package-local
+   timer:/reminder:/memo: reference — the caller tries those next). */
+static int resolve_cap_bind(const char *b)
+{
+    for (size_t i = 0; i < K_BIND_COMPAT_N; i++)
+    {
+        if (strcmp(b, k_bind_compat[i].legacy) == 0)
+        {
+            return skai_cap_index(k_bind_compat[i].cap);
+        }
+    }
+    return skai_cap_index(b);
+}
+
+static int32_t legacy_gauge_max(const char *b)
+{
+    for (size_t i = 0; i < K_BIND_COMPAT_N; i++)
+    {
+        if (strcmp(b, k_bind_compat[i].legacy) == 0)
+        {
+            return k_bind_compat[i].gauge_max;
+        }
+    }
+    /* New capabilities either report a percentage or the package states its
+       own "max"; there is no invented default to guess wrong. */
+    return 0;
+}
+
 /* ── item parsing ── */
 
 typedef struct
@@ -261,16 +313,17 @@ static bool parse_leaf(skaiapp_model_t *m, const cJSON *jit, ref_ctx_t *refs)
         if (jb != NULL && cJSON_IsString(jb) && jb->valuestring != NULL)
         {
             const char *b = jb->valuestring;
-            if (strcmp(b, "time") == 0) it->bind = SKAIAPP_BIND_TIME;
-            else if (strcmp(b, "date") == 0) it->bind = SKAIAPP_BIND_DATE;
-            else if (strcmp(b, "battery") == 0) it->bind = SKAIAPP_BIND_BATTERY;
-            else if (strcmp(b, "hr") == 0) it->bind = SKAIAPP_BIND_HR;
-            else if (strcmp(b, "steps") == 0) it->bind = SKAIAPP_BIND_STEPS;
-            else if ((it->bind_idx = resolve_ref(b, "timer:", refs->t_ids, refs->nt)) >= 0)
+            int ci = resolve_cap_bind(b);
+            if (ci >= 0)
+            {
+                it->bind = SKAIAPP_BIND_CAP;
+                it->bind_idx = (int16_t)ci;
+            }
+            else if ((it->bind_idx = (int16_t)resolve_ref(b, "timer:", refs->t_ids, refs->nt)) >= 0)
                 it->bind = SKAIAPP_BIND_TIMER;
-            else if ((it->bind_idx = resolve_ref(b, "reminder:", refs->r_ids, refs->nr)) >= 0)
+            else if ((it->bind_idx = (int16_t)resolve_ref(b, "reminder:", refs->r_ids, refs->nr)) >= 0)
                 it->bind = SKAIAPP_BIND_REMINDER;
-            else if ((it->bind_idx = resolve_ref(b, "memo:", refs->m_ids, refs->nm)) >= 0)
+            else if ((it->bind_idx = (int16_t)resolve_ref(b, "memo:", refs->m_ids, refs->nm)) >= 0)
                 it->bind = SKAIAPP_BIND_MEMO;
             else
                 LOG_W("value bind unresolved: %s", b);
@@ -299,9 +352,25 @@ static bool parse_leaf(skaiapp_model_t *m, const cJSON *jit, ref_ctx_t *refs)
         if (jb != NULL && cJSON_IsString(jb) && jb->valuestring != NULL)
         {
             const char *b = jb->valuestring;
-            if (strcmp(b, "battery") == 0) it->bind = SKAIAPP_BIND_BATTERY;
-            else if (strcmp(b, "steps") == 0) it->bind = SKAIAPP_BIND_STEPS;
-            else if ((it->bind_idx = resolve_ref(b, "timer:", refs->t_ids, refs->nt)) >= 0)
+            int ci = resolve_cap_bind(b);
+            if (ci >= 0)
+            {
+                const skai_cap_t *c = skai_cap_at(ci);
+                if (c->ret == 'S')
+                {
+                    /* A gauge needs a number. Refusing loudly beats drawing a
+                       silently empty arc the author cannot debug. */
+                    LOG_W("gauge bind '%s' is not numeric", b);
+                }
+                else
+                {
+                    it->bind = SKAIAPP_BIND_CAP;
+                    it->bind_idx = (int16_t)ci;
+                    if (it->max <= 0)
+                        it->max = legacy_gauge_max(b);
+                }
+            }
+            else if ((it->bind_idx = (int16_t)resolve_ref(b, "timer:", refs->t_ids, refs->nt)) >= 0)
                 it->bind = SKAIAPP_BIND_TIMER;
             else
                 LOG_W("gauge bind unresolved: %s", b);

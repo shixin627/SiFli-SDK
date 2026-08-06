@@ -1141,7 +1141,7 @@ static int app_main(intent_t i)
 }
 
 BUILTIN_APP_EXPORT(LV_EXT_STR_ID(weather), IMG_GROUP,
-                   APP_ID_WEATHER, app_main);
+                   APP_ID_WEATHER, app_main, 1);
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/

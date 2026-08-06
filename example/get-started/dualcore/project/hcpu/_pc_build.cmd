@@ -9,7 +9,9 @@ REM or anywhere else. Do NOT reintroduce hardcoded C:\work paths.
 for %%I in ("%~dp0..\..\..\..\..") do set REPO_ROOT=%%~fI
 
 set ENV_ROOT=C:\dev\env_latest
-set ENV_VER=1.1.4
+REM Read the version from the installed env instead of pinning it here:
+REM a hardcoded value silently blocks every SDK that raises the minimum.
+for /f "tokens=2 delims==" %%V in ('findstr /b /c:"set ENV_VER=" "%ENV_ROOT%\tools\ConEmu\ConEmu\CmdInit.cmd"') do set ENV_VER=%%V
 if "%ORG_PATH%"=="" set ORG_PATH=%PATH%
 set PYTHONPATH=%ENV_ROOT%\tools\python-3.11.9-amd64
 set PYTHONHOME=%ENV_ROOT%\tools\python-3.11.9-amd64

@@ -1,11 +1,9 @@
 /*
-* aw_init.c
-*
-* Copyright (c) 2021 AWINIC Technology CO., LTD
-*
-* Author: <zhaolei@awinic.com>
-*
-*/
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 

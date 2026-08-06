@@ -13,9 +13,9 @@ def create_env(proj_path = None):
     # Set default rtconfig.xxx, select from HCPU, LCPU and BCPU
     SifliEnv(proj_path)
 
-def build():
+def build(env=None):
     # prepare building environment
-    objs = PrepareBuilding(None)
+    objs = PrepareBuilding(env)
     env = GetCurrentEnv()
 
     if (rtconfig.CHIP != "SF32LB52X") and (rtconfig.CHIP != "SF32LB55X"):

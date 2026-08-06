@@ -1,0 +1,1 @@
+python imgtool.py gen_cmac_sign_dfu_img --key=%1s01 --img=%2 --eimg=boot_ram_patch_sign.bin --bksize=512

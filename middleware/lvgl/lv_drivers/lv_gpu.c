@@ -7,6 +7,7 @@
 #include "rtconfig.h"
 #include "littlevgl2rtt.h"
 #include "lvgl.h"
+#include "lvsf.h"
 #include "board.h"
 //#include "EventRecorder.h"
 #include "drv_io.h"
@@ -79,6 +80,9 @@ bool EPIC_SUPPORTED_CF(lv_img_cf_t cf)
     case LV_IMG_CF_YUV420_PLANAR:
     case LV_IMG_CF_YUV420_PLANAR2:
 #endif /* EPIC_SUPPORT_YUV */
+#ifdef EPIC_SUPPORT_JPEGD
+    case LVSF_IMG_CF_JPEG:
+#endif /* EPIC_SUPPORT_JPEGD */
         ret = true;
         break;
 
@@ -166,6 +170,12 @@ static uint32_t lv_img_2_epic_cf2(uint32_t cf)
         color_mode = EPIC_INPUT_YUV420_PLANAR;
     }
 #endif /* EPIC_SUPPORT_YUV */
+#ifdef EPIC_SUPPORT_JPEGD
+    else if (LVSF_IMG_CF_JPEG == cf)
+    {
+        color_mode = EPIC_INPUT_JPEG;
+    }
+#endif /* EPIC_SUPPORT_JPEGD */
     else
     {
         rt_kprintf("Unknown format %d\r\n", cf);
@@ -210,6 +220,26 @@ static uint32_t lv_img_2_epic_cf(const lv_img_dsc_t *src)
             color_mode = lv_img_2_epic_cf2(src->header.cf);
         }
     }
+#ifdef EPIC_SUPPORT_YUV
+    else if (LV_IMG_CF_YUV422_PACKED_YUYV == src->header.cf)
+    {
+        color_mode = EPIC_INPUT_YUV422_PACKED_YUYV;
+    }
+    else if (LV_IMG_CF_YUV422_PACKED_UYVY == src->header.cf)
+    {
+        color_mode = EPIC_INPUT_YUV422_PACKED_UYVY;
+    }
+    else if (LV_IMG_CF_YUV420_PLANAR == src->header.cf || LV_IMG_CF_YUV420_PLANAR2 == src->header.cf)
+    {
+        color_mode = EPIC_INPUT_YUV420_PLANAR;
+    }
+#endif /* EPIC_SUPPORT_YUV */
+#ifdef EPIC_SUPPORT_JPEGD
+    else if (LVSF_IMG_CF_JPEG == src->header.cf)
+    {
+        color_mode = EPIC_INPUT_JPEG;
+    }
+#endif /* EPIC_SUPPORT_JPEGD */
     else
     {
         color_mode = lv_img_2_epic_cf2(src->header.cf);
@@ -1172,17 +1202,6 @@ static void draw_letter(lv_draw_ctx_t *draw_ctx, const lv_draw_label_dsc_t *dsc,
         return;
     }
 
-    const uint8_t *map_p = lv_font_get_glyph_bitmap(g.resolved_font, letter);
-    if (map_p == NULL)
-    {
-        LV_LOG_WARN("lv_draw_letter: character's bitmap not found");
-        return;
-    }
-
-
-
-
-
     uint32_t bpp = g.bpp;
     if (bpp == 3) bpp = 4;
 
@@ -1194,15 +1213,41 @@ static void draw_letter(lv_draw_ctx_t *draw_ctx, const lv_draw_label_dsc_t *dsc,
     const uint32_t gpu_support_min_bpp = 2;
 #endif /* SOC_SF32LB56X || SOC_SF32LB58X*/
 
+    /*
+     * EPIC Ax layers fetch rows at a byte-aligned stride, low nibble first,
+     * while stock lv_font_fmt_txt bitmaps (built-in and binary-loaded fonts)
+     * are bit-continuous with the first pixel in the high bits - blitting
+     * those through EPIC shears every odd-width glyph. Only 8bpp glyphs and
+     * sub-8bpp glyphs already byte-aligned may take the EPIC path.
+     */
+    bool epic_glyph_layout_ok = (8 == bpp);
+#if COMPATIBLE_WITH_SIFLI_EPIC_Ax
+    if (!epic_glyph_layout_ok && (bpp < 8) &&
+            (g.resolved_font->get_glyph_bitmap != lv_font_get_bitmap_fmt_txt))
+    {
+        epic_glyph_layout_ok = true;
+    }
+#endif
+
     lv_disp_t *disp = _lv_refr_get_disp_refreshing();
 
     if ((lv_draw_mask_get_cnt() < 2)
             && (LV_BLEND_MODE_NORMAL == dsc->blend_mode)
             && (bpp >= gpu_support_min_bpp)
+            && epic_glyph_layout_ok
             && (0 == g.resolved_font->subpx)
             && ((NULL == disp->driver->set_px_cb) || (set_px_true_color_alpha == disp->driver->set_px_cb))
        )
     {
+        /* Only on the EPIC path: the SW fallback fetches its own bitmap, and
+         * a freetype font copies the glyph on every fetch. */
+        const uint8_t *map_p = lv_font_get_glyph_bitmap(g.resolved_font, letter);
+        if (map_p == NULL)
+        {
+            LV_LOG_WARN("lv_draw_letter: character's bitmap not found");
+            return;
+        }
+
         lv_img_cf_t mask_cf;
         const lv_opa_t *mask_map;
         lv_area_t mask_coords;
@@ -1595,12 +1640,18 @@ void lv_gpu_set_enable(bool en)
         draw_ctx->blend = draw_blend;
         draw_ctx->base_draw.draw_img = my_decode_and_draw;//draw_img;
         draw_ctx->base_draw.wait_for_finish = my_gpu_wait;
+#if !defined(SOC_SF32LB55X) && LV_USING_FREETYPE_ENGINE
+        draw_ctx->base_draw.draw_letter = draw_letter;
+#endif
     }
     else
     {
         draw_ctx->blend = lv_draw_sw_blend_basic;
         draw_ctx->base_draw.wait_for_finish = lv_draw_sw_wait_for_finish;
         draw_ctx->base_draw.draw_img = NULL;
+        /* Swapped together with wait_for_finish: the asynchronous letter blit
+         * relies on that hook actually waiting for the GPU. */
+        draw_ctx->base_draw.draw_letter = my_draw_ctx->sw_ctx_backup.base_draw.draw_letter;
     }
 #endif
 }

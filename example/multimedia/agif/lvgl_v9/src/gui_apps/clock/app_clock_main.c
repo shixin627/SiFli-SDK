@@ -1,4 +1,8 @@
-
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #include "rtconfig.h"
 #include <time.h>
 #include "app_clock_main.h"
@@ -61,17 +65,17 @@ static uint16_t last_active_clock = 0;
 static rt_uint16_t get_active_tile_col(lv_obj_t *tileview)
 {
     lv_tileview_t *tv = (lv_tileview_t *)tileview;
-    lv_obj_t *active_tile = tv->tile_act; // »ñÈ¡µ±Ç°»îÔ¾µÄ tile ¶ÔÏó
+    lv_obj_t *active_tile = tv->tile_act; // ï¿½ï¿½È¡ï¿½ï¿½Ç°ï¿½ï¿½Ô¾ï¿½ï¿½ tile ï¿½ï¿½ï¿½ï¿½
 
     if (!active_tile)
     {
-        return 0; // Ä¬ÈÏ·µ»ØµÚÒ»Ò³
+        return 0; // Ä¬ï¿½Ï·ï¿½ï¿½Øµï¿½Ò»Ò³
     }
 
-    int32_t w = lv_obj_get_content_width(tileview); // »ñÈ¡ Tileview µ¥¸ö tile µÄ¿í¶È
-    int32_t x = lv_obj_get_x(active_tile); // »ñÈ¡µ±Ç°»îÔ¾ tile µÄ X ×ø±ê
+    int32_t w = lv_obj_get_content_width(tileview); // ï¿½ï¿½È¡ Tileview ï¿½ï¿½ï¿½ï¿½ tile ï¿½Ä¿ï¿½ï¿½ï¿½
+    int32_t x = lv_obj_get_x(active_tile); // ï¿½ï¿½È¡ï¿½ï¿½Ç°ï¿½ï¿½Ô¾ tile ï¿½ï¿½ X ï¿½ï¿½ï¿½ï¿½
 
-    // ¼ÆËãµ±Ç° tile ËùÔÚÁÐ
+    // ï¿½ï¿½ï¿½ãµ±Ç° tile ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     rt_uint16_t col_id = (x + w / 2) / w;
 
     return col_id;
@@ -601,7 +605,8 @@ static void on_start(void)
     app_clock_agif02_register();
     app_clock_apng_register();
 
-    gui_script_watch_face_register();
+    gui_script_watch_face_register(SCRIPT_TYPE_QJS);
+    gui_script_watch_face_register(SCRIPT_TYPE_MPY);
 
 #ifdef RT_USING_XIP_MODULE
     app_clock_load_dyn_wf();
@@ -701,7 +706,7 @@ static int app_main(intent_t i)
 }
 
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(clock), LV_EXT_IMG_GET(img_clock), APP_ID, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(clock), LV_EXT_IMG_GET(img_clock), APP_ID, app_main, 1);
 
 
 /**********************app clocks manager**************************/

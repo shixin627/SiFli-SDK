@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifndef _LV_LAYOUT_LOADER_H_
 #define _LV_LAYOUT_LOADER_H_
 

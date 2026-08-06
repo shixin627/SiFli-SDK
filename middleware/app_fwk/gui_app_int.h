@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifndef __GUI_APP_INT_H__
 #define __GUI_APP_INT_H__
 
@@ -98,12 +104,16 @@ typedef struct _subpage_node
     page_state_enum state;
     page_state_enum target_state;
 
-    gui_app_trans_anim_group_t a_group;
+    gui_app_trans_anim_t a_enter;
+    gui_app_trans_anim_t a_exit;
 
     gui_page_msg_cb_t  msg_handler;
     void *user_data;
     rt_list_t node;
     uint32_t tick_cnt; //!< running ticks
+    uint32_t mem_size;
+    void *mem_ptr;
+
 } subpage_node_t;
 
 typedef enum
@@ -165,6 +175,9 @@ typedef enum
         Abort current transform animation if it is present.
     */
     GUI_APP_MSG_ABORT_TRANS_ANIM,
+
+    GUI_APP_MSG_OPEN_PAGE_FOR_APP,
+
 } gui_app_frmmsg_type_t;
 
 
@@ -173,7 +186,20 @@ typedef struct
     char name[SUBPAGE_MAX_LEN];
     gui_page_msg_cb_t  msg_handler;
     void *user_data;
+    uint32_t mem_size;
+
 } page_msg_t;
+
+typedef struct
+{
+    char app_id[GUI_APP_CMD_MAX_LEN];
+    char page_id[SUBPAGE_MAX_LEN];
+    gui_page_msg_cb_t  msg_handler;
+    void *user_data;
+    uint32_t mem_size;
+    uint8_t restart_dup_pg;  //1: Stop duplicated subpage and restart it   0: Resume duplicated subpage directly
+    uint8_t restart_app; //1: Start app if it is not exist, 0: raise an assertion
+} page4app_msg_t;
 
 typedef struct
 {
@@ -185,6 +211,7 @@ typedef struct
         char cmd[GUI_APP_CMD_MAX_LEN];   //!< obsolete: app execution command(include arguments)
         _intent intnt;
         page_msg_t page;                 //!< subpage operate param
+        page4app_msg_t page4app;
     } content;
 } gui_app_msg_t;
 
@@ -216,6 +243,9 @@ typedef void (*app_sche_hook_func)(app_sche_state state);
 typedef void *(*app_sche_malloc_func)(rt_size_t size);
 typedef void (*app_sche_free_func)(void *p_mem);
 typedef void (*app_sche_subpage_func)(gui_page_msg_cb_t func, gui_app_msg_type_t msg_id, const char *app_id, const char *subpage_id);
+typedef bool (*dlmodule_open_func)(const char *app_id, app_entity_info *update_info);
+typedef bool (*dlmodule_close_func)(const char *app_id, const app_entity_info *update_info);
+typedef void (*app_sche_anim_hook_func)(const screen_t scr, gui_app_msg_type_t msg);
 
 
 /**
@@ -247,6 +277,7 @@ uint32_t app_schedule_get_running_apps(void);
 subpage_node_t *app_schedule_get_page_in_app(gui_runing_app_t *app, const char *page_id);
 rt_err_t list_schedule_app(void);
 void app_schedule_set_idle_hook(app_sche_hook_func idle_hook);
+void app_schedule_set_anim_hook(app_sche_anim_hook_func anim_hook);
 void app_schedule_enable_trans_anim(bool en);
 page_state_enum app_schedule_get_page_state(const char *app_id, const char *page_id);
 void app_scheduler_resume(void);
@@ -265,6 +296,12 @@ char *fwk_msg_to_name(gui_app_frmmsg_type_t msg);
 app_sche_state app_schedule_state_get(void);
 void app_schedule_destory_suspend_apps(uint32_t v);
 void app_scheduler_print_perf_tick(uint8_t en);
+
+/**
+ * Stop all subpages of an application when running the root page
+ * @param en 1: enable this function, 0 : disable
+ */
+void app_schedule_stop_others_page(uint8_t en);
 
 /*---------------------------------app_schedule.h-------------------------------------------------------------------------*/
 
@@ -321,9 +358,6 @@ rt_err_t gui_dl_app_register(const char *reg_file);
 
 
 
-char *app_trans_get_buf_a(void);
-char *app_trans_get_buf_b(void);
-
 typedef enum
 {
     TRANS_RES_FINISHED, //Trans animation finished
@@ -336,8 +370,8 @@ typedef void (*gui_anim_free_run_cb)(TransResult_T res);
 
 void app_trans_animation_init(void);
 
-rt_err_t app_trans_animation_setup(const gui_app_trans_anim_group_t *g_enter,
-                                   const gui_app_trans_anim_group_t *g_exit,
+rt_err_t app_trans_animation_setup(const gui_app_trans_anim_t *g_enter,
+                                   const gui_app_trans_anim_t *g_exit,
                                    const screen_t enter_scr,
                                    const screen_t exit_scr,
                                    app_trans_anim_xcb_t cbk, bool is_back, bool is_manual_anim);
@@ -348,8 +382,6 @@ static void app_trans_anim_finish_callback(TransResult_T res);
 rt_err_t app_trans_anim_abort(void);
 rt_err_t app_trans_animation_reset(void);
 
-typedef void (*app_trans_ex_cb_t)(void);
-void app_trans_end_cb_register(app_trans_ex_cb_t callback);
 
 
 /**
@@ -358,23 +390,22 @@ void app_trans_end_cb_register(app_trans_ex_cb_t callback);
  */
 void gui_app_enable_input_device(bool enable);
 
-void app_trans_anim_init_cfg(gui_app_trans_anim_t *cfg, gui_app_trans_anim_type_t type);
+/**
+ * @brief Register dlmodule open func to get entry func
+ * @param open_func func to register
+ */
+void gui_app_register_dl_open(dlmodule_open_func open_func);
 
+/**
+ * @brief Register dlmodule close func to free resource
+ * @param close_func func to register
+ */
+void gui_app_register_dl_close(dlmodule_close_func close_func);
 
+gui_runing_app_t *gui_app_trav(rt_list_t **list);
 
-gui_anim_obj_t app_trans_animation_obj_create(const screen_t scr, bool is_cur_screen, bool b_scale, int buf_index);
-void app_trans_animation_obj_destroy(gui_anim_obj_t obj);
-void app_trans_animation_obj_move_foreground(gui_anim_obj_t obj);
-void app_trans_anim_set_opa_scale(gui_anim_obj_t var, gui_anim_value_t opa_scale);
-void app_trans_anim_set_zoom(gui_anim_obj_t var, gui_anim_value_t zoom);
-void app_trans_anim_set_x(gui_anim_obj_t var, gui_anim_value_t x);
-void app_trans_anim_set_pivot(gui_anim_obj_t var, const gui_point_t *p);
-rt_err_t app_trans_anim_free_run_start(gui_anim_value_t start,
-                                       gui_anim_value_t end,
-                                       uint32_t duration,
-                                       gui_anim_exe_cb anim_process,
-                                       gui_anim_free_run_cb done_cb);
-rt_err_t app_trans_anim_free_run_clean(void);
+subpage_node_t *gui_app_page_trav(gui_runing_app_t *app, rt_list_t **list);
+
 
 
 

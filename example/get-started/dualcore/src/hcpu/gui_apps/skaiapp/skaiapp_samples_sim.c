@@ -14,7 +14,7 @@
 #include <string.h>
 #include "skaiapp_store.h"
 
-static const char *const k_samples[4] =
+static const char *const k_samples[5] =
 {
     /* 1 — water reminder */
     "{\"skaiapp\":0,\"id\":\"water-reminder\",\"name\":\"Water\",\"icon\":\"water\","
@@ -74,11 +74,29 @@ static const char *const k_samples[4] =
     "{\"w\":\"button\",\"text\":\"Reset\",\"action\":\"timer.reset:t\",\"style\":\"ghost\"}]}]},"
     "\"memos\":[{\"id\":\"note\",\"text\":\"Buy milk and eggs\"}],"
     "\"timers\":[{\"id\":\"t\",\"kind\":\"countdown\",\"duration_s\":180,\"label\":\"Timer\"}]}",
+    /* 5 - capability binds (ADR-0019 Phase 2 acceptance). Every bind here is a
+       dispatch-table capability name, not one of the five v0 keywords. The
+       weather.* ones were added to the SDK after this renderer was written and
+       needed no renderer change at all -- that is the property being proved. */
+    "{\"skaiapp\":0,\"id\":\"cap-demo\",\"name\":\"Caps\",\"icon\":\"sun\","
+    "\"accent\":\"orange\",\"page\":{\"items\":["
+    "{\"w\":\"spacer\",\"h\":16},"
+    "{\"w\":\"value\",\"bind\":\"time.hhmm\",\"size\":\"xl\"},"
+    "{\"w\":\"value\",\"bind\":\"time.date_md\",\"size\":\"s\",\"color\":\"gray\"},"
+    "{\"w\":\"spacer\",\"h\":16},"
+    "{\"w\":\"row\",\"items\":[{\"w\":\"label\",\"text\":\"temp\",\"size\":\"s\",\"color\":\"gray\"},"
+    "{\"w\":\"value\",\"bind\":\"weather.temp\",\"size\":\"l\",\"color\":\"orange\"}]},"
+    "{\"w\":\"row\",\"items\":[{\"w\":\"label\",\"text\":\"rain\",\"size\":\"s\",\"color\":\"gray\"},"
+    "{\"w\":\"value\",\"bind\":\"weather.rain_pct\",\"size\":\"l\",\"color\":\"blue\"}]},"
+    "{\"w\":\"bar\",\"bind\":\"weather.rain_pct\",\"color\":\"blue\"},"
+    "{\"w\":\"row\",\"items\":[{\"w\":\"label\",\"text\":\"cal\",\"size\":\"s\",\"color\":\"gray\"},"
+    "{\"w\":\"value\",\"bind\":\"health.calories\",\"size\":\"l\",\"color\":\"green\"}]},"
+    "{\"w\":\"value\",\"bind\":\"battery.level\",\"size\":\"m\",\"color\":\"gray\"}]}}",
 };
 
 int skaiapp_sim_seed(int which)
 {
-    if (which < 1 || which > 4)
+    if (which < 1 || which > 5)
     {
         return -1;
     }
@@ -95,7 +113,7 @@ void skaiapp_sim_seed_all_if_empty(void)
     {
         return;
     }
-    for (int i = 1; i <= 4; i++)
+    for (int i = 1; i <= 5; i++)
     {
         int code = skaiapp_sim_seed(i);
         rt_kprintf("[sim] seed sample %d -> ack=%d (0=ok)\n", i, code);
@@ -107,9 +125,9 @@ void skaiapp_sim_seed_all_if_empty(void)
 static void skaiapp_seed(int argc, char **argv)
 {
     int which = (argc >= 2) ? atoi(argv[1]) : 0;
-    if (which < 1 || which > 3)
+    if (which < 1 || which > 5)
     {
-        rt_kprintf("usage: skaiapp_seed <1|2|3>  (1=water 2=pomodoro 3=health)\n");
+        rt_kprintf("usage: skaiapp_seed <1..5>  (1=water 2=pomodoro 3=health 4=note 5=caps)\n");
         return;
     }
     rt_kprintf("seed sample %d -> ack=%d (0=ok)\n", which, skaiapp_sim_seed(which));

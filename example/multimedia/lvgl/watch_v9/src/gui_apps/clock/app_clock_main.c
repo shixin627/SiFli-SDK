@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include "rtconfig.h"
 #include <time.h>
@@ -619,7 +624,8 @@ static void on_start(void)
     app_clock_dial_register();
 
 #endif /* defined(PKG_USING_MICROPYTHON)||defined(PKG_USING_QUICKJS) */
-    gui_script_watch_face_register();
+    gui_script_watch_face_register(SCRIPT_TYPE_QJS);
+    gui_script_watch_face_register(SCRIPT_TYPE_MPY);
 
 #ifdef RT_USING_XIP_MODULE
     app_clock_load_dyn_wf();
@@ -719,7 +725,7 @@ static int app_main(intent_t i)
 }
 
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(clock), LV_EXT_IMG_GET(img_clock), APP_ID, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(clock), LV_EXT_IMG_GET(img_clock), APP_ID, app_main, 1);
 
 
 /**********************app clocks manager**************************/

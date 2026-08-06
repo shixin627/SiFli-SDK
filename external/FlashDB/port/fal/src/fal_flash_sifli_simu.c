@@ -13,7 +13,7 @@
 #define PAGE_SIZE     8192
 
 
-static FILE *fp_flash1, *fp_flash2, *fp_flash3, *fp_flash4, *fp_sd1, *fp_sd2;
+static FILE *fp_flash1, *fp_flash2, *fp_flash3, *fp_flash4, *fp_flash5, *fp_sd1, *fp_sd2;
 static uint8_t flash_buf[PAGE_SIZE];
 
 void file_expand(FILE *fp, int size)
@@ -93,6 +93,22 @@ static int init(long base)
             }
         }
     }
+ #if defined(FLASH5_BASE_ADDR)
+    else if (base == nor_flash5.addr)
+    {
+        fp_flash5 = fopen("flash5.bin", "rb+");
+        if (fp_flash5 == NULL)
+            fp_flash5 = fopen("flash5.bin", "wb+");
+        if (fp_flash5)
+        {
+            _fstat(_fileno(fp_flash5), &buf);
+            if (buf.st_size != nor_flash5.len)
+            {
+                file_expand(fp_flash5, nor_flash5.len);
+            }
+        }
+    }
+ #endif
 	else if (base == fal_sdmmc1.addr)
 	{
         /* do nothing */
@@ -131,6 +147,12 @@ FILE *get_fp(long base)
     {
         fp = fp_flash4;
     }
+ #if defined(FLASH5_BASE_ADDR)
+    else if (base == nor_flash5.addr)
+    {
+        fp = fp_flash5;
+    }
+ #endif
     else
     {
         fp = NULL;
@@ -251,6 +273,25 @@ static int erase4(long offset, size_t size)
     return erase(nor_flash4.addr, offset, size);
 }
 
+#if defined(FLASH5_BASE_ADDR)
+static int init5(void)
+{
+    return init(nor_flash5.addr);
+}
+static int read5(long offset, uint8_t *buf, size_t size)
+{
+    return read(nor_flash5.addr, offset, buf, size);
+}
+static int write5(long offset, const uint8_t *buf, size_t size)
+{
+    return write(nor_flash5.addr, offset, buf, size);
+}
+static int erase5(long offset, size_t size)
+{
+    return erase(nor_flash5.addr, offset, size);
+}
+#endif
+
 static int sdmmc1_init(void)
 {
 	return init(fal_sdmmc1.addr);
@@ -329,6 +370,23 @@ const struct fal_flash_dev nor_flash4 =
     .write_gran = 32
 };
 
+#if defined(FLASH5_BASE_ADDR)
+const struct fal_flash_dev nor_flash5 =
+{
+    .name = "flash5",
+    .addr = FLASH5_BASE_ADDR,
+#ifdef BSP_QSPI5_MEM_SIZE
+    .len = BSP_QSPI5_MEM_SIZE * 1024 * 1024,
+#else
+    .len = 1 * 1024 * 1024,
+#endif
+    .blk_size = 8 * 1024,
+    .sector_size = 8 * 1024,
+    .ops = {init5, read5, write5, erase5},
+    .write_gran = 32
+};
+#endif
+
 const struct fal_flash_dev fal_sdmmc1 =
 {
     .name = "sd0",
@@ -353,5 +411,3 @@ const struct fal_flash_dev fal_sdmmc2 =
     .ops = {sdmmc2_init, sdmmc2_read, sdmmc2_write, sdmmc2_erase},
     .write_gran = 32
 };
-
-

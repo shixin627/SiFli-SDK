@@ -24,6 +24,14 @@ extern "C" {
 #include "sdio_config.h"
 #include "flash_config.h"
 #include "audio_config.h"
+#ifdef DCMI_BASE
+#include "dcmi_config.h"
+#endif
+#if BT_BAP_BROADCAST_SINK
+#define ALL_CLK_USING_PLL   1
+#else
+#define ALL_CLK_USING_PLL   0
+#endif
 
 enum PLL_SET_GRADE
 {

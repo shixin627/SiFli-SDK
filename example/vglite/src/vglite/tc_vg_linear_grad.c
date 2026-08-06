@@ -98,7 +98,7 @@ void tc_vglite_linear_grad_entry(void)
     vg_lite_matrix_t *matGrad;
     vg_lite_matrix_t matPath;
     int fcount = 0;
-    uint16_t cf = RTGRAPHIC_PIXEL_FORMAT_RGB565;
+
 
     tc_vglite_init();
 
@@ -117,7 +117,7 @@ void tc_vglite_linear_grad_entry(void)
     TC_VGLITE_CHECK_ERROR(vg_lite_allocate(&buffer));
     fb = &buffer;
 
-    printf("Render size: %d x %d, %x\n", fb_width, fb_height, buffer.memory);
+    printf("Render buffer size: %d x %d, %x, stride=%d\n", fb_width, fb_height, buffer.memory, buffer.stride);
     frames = 10;
     while (frames > 0)
     {
@@ -152,15 +152,15 @@ void tc_vglite_linear_grad_entry(void)
         vg_lite_clear_grad(&grad);
         frames--;
         printf("frame %d done\n", fcount++);
-        tc_vg_send_data_to_lcd((uint8_t *)fb->memory, fb->width, fb->height, cf);
+        tc_vg_send_data_to_lcd(fb->memory, fb_width, buffer.stride / 2, fb_height, RTGRAPHIC_PIXEL_FORMAT_RGB565);
         if (!demo_delay_ms(2000))
         {
             goto ErrorHandler;
         }
     }
 
-        // Save PNG file.
-        //vg_lite_save_png("linearGrad.png", fb);
+    // Save PNG file.
+    //vg_lite_save_png("linearGrad.png", fb);
 
 ErrorHandler:
     // Cleanup.

@@ -75,10 +75,18 @@
 
 
 // Mailbox
-#define HPSYS_MBOX_BUF_SIZE (2*512)
+#define HPSYS_MBOX_BUF_SIZE (4*512)
 #define HPSYS_MBOX_BUF_ADDR (HPSYS_RAM_END+1-HPSYS_MBOX_BUF_SIZE)
 
-#define HCPU2LCPU_MB_CH2_BUF_START_ADDR  (HPSYS_MBOX_BUF_ADDR)               /* 0x2007FC00 */
+#define HCPU2ACPU_IPC_QUEUE_BUF_START_ADDR  (HPSYS_MBOX_BUF_ADDR)               /* 0x2007F800 */
+#define HCPU2ACPU_IPC_QUEUE_BUF_SIZE        (512)
+#define HCPU2ACPU_IPC_QUEUE_BUF_END_ADDR    (END_ADDR(HCPU2ACPU_IPC_QUEUE_BUF_START_ADDR, HCPU2ACPU_IPC_QUEUE_BUF_SIZE))
+
+#define ACPU2HCPU_IPC_QUEUE_BUF_START_ADDR  (HCPU2ACPU_IPC_QUEUE_BUF_END_ADDR+1)   /* 0x2007FA00 */
+#define ACPU2HCPU_IPC_QUEUE_BUF_SIZE        (512)
+#define ACPU2HCPU_IPC_QUEUE_BUF_END_ADDR    (END_ADDR(ACPU2HCPU_IPC_QUEUE_BUF_START_ADDR, ACPU2HCPU_IPC_QUEUE_BUF_SIZE))
+
+#define HCPU2LCPU_MB_CH2_BUF_START_ADDR  (ACPU2HCPU_IPC_QUEUE_BUF_END_ADDR+1)               /* 0x2007FC00 */
 #define HCPU2LCPU_MB_CH2_BUF_SIZE        (512)
 #define HCPU2LCPU_MB_CH2_BUF_END_ADDR    (END_ADDR(HCPU2LCPU_MB_CH2_BUF_START_ADDR, HCPU2LCPU_MB_CH2_BUF_SIZE))
 
@@ -513,7 +521,15 @@
     #ifdef SOLUTION_WATCH
         #include "flash_map.h"
     #else
-        #include "custom_mem_map.h"
+        #ifdef __has_include
+            #if __has_include("custom_mem_map.h")
+                #include "custom_mem_map.h"
+            #else
+                #include "ptab.h"
+            #endif
+        #else
+            #include "custom_mem_map.h"
+        #endif
     #endif
 #endif /* CUSTOM_MEM_MAP */
 

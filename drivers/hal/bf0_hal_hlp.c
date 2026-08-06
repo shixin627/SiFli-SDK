@@ -115,12 +115,14 @@ static uint32_t  sda_mask;
 __HAL_ROM_USED void HAL_DBG_i2c_pins(uint16_t scl, uint16_t sda)
 {
     __IO GPIO_TypeDef *p ;
+#if GPIO2_BASE
     if (scl >= GPIO_B0)
     {
         p = hwp_gpio2;
         scl = scl - GPIO_B0;
     }
     else
+#endif /* GPIO2_BASE */
     {
         p = hwp_gpio1;
         scl = scl - GPIO_A0;
@@ -140,12 +142,14 @@ __HAL_ROM_USED void HAL_DBG_i2c_pins(uint16_t scl, uint16_t sda)
     scl_dor = &(p->DOR);
     p->DOER |= scl_mask;
 
+#if GPIO2_BASE
     if (sda >= GPIO_B0)
     {
         p = hwp_gpio2;
         sda = sda - GPIO_B0;
     }
     else
+#endif /* GPIO2_BASE */
     {
         p = hwp_gpio1;
         sda = sda - GPIO_A0;

@@ -14,10 +14,11 @@ PBAP phone book 对象有7种类型：
 4. mch(Missed Call History): 未接来电记录
 5. cch(Combined Call History): 所有通话记录(合并 ich+och+mch)
 6. spd(Speed Dial): 速拨号码列表
-7. fav(Favorites): 收藏/常用联系人
+7. fav(Favorites): 收藏/常用联系人  
 
-在PBAP协议中，电话薄对象有两种表现形式：
-## File Representations:
+
+## 在PBAP协议中，电话薄对象有两种表现形式：
+1. File Representations:
 文件表示分为两类：列表描述文件
 - phone book object(pb):               pb.vcf
 - Incoming Calls History object (ich): ich.vcf
@@ -32,20 +33,20 @@ PBAP phone book 对象有7种类型：
 - 00000001.vcf      (本地条目)
 - 0000ABCD.vcf      (本地条目，十六进制)
 
-## Folder Representations:
-- 文件夹对应不同的电话簿存储位置和通话记录类型，使用树形结构
-├── telecom/            (设备本地存储)
-│   ├── pb              (主电话簿 - Phonebook)
-│   ├── ich             (来电记录 - Incoming Calls)
-│   ├── och             (去电记录 - Outgoing Calls)
-│   ├── mch             (未接来电 - Missed Calls)
-│   └── cch             (所有通话 - Combined Calls)
-├── SIM1/               (第一张 SIM 卡)
-│   ├── pb              (SIM 卡电话簿)
-│   └── ...             (部分实现支持 ich/och 等)
-├── SIM2/               (第二张 SIM 卡，双卡设备)
-│   └── pb
-└── (厂商自定义扩展)
+2.Folder Representations:
+- 文件夹对应不同的电话簿存储位置和通话记录类型，使用树形结构  
+├── telecom/            (设备本地存储)  
+│   ├── pb              (主电话簿 - Phonebook)  
+│   ├── ich             (来电记录 - Incoming Calls)  
+│   ├── och             (去电记录 - Outgoing Calls)  
+│   ├── mch             (未接来电 - Missed Calls)  
+│   └── cch             (所有通话 - Combined Calls)  
+├── SIM1/               (第一张 SIM 卡)  
+│   ├── pb              (SIM 卡电话簿)  
+│   └── ...             (部分实现支持 ich/och 等)  
+├── SIM2/               (第二张 SIM 卡，双卡设备)  
+│   └── pb  
+└── (厂商自定义扩展)  
 
 联系人路径：
 - 手机路径：telecom/

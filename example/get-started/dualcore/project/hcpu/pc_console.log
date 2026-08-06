@@ -1,34 +1,33 @@
 
  \ | /
 - SiFli Corporation
- / | \     build on Aug  3 2026, 2.5.0 build f47065bc
+ / | \     build on Aug  4 2026, 2.5.0 build a3bb98dd
  2020 - 2022 Copyright by SiFli team
 Hello RT-Thread!
 mount /dev sucess
 File System on root initialized!
 dfs already init.
-[7] E/DFS init: There is no space to register this file system (elm).
-proc_stack:00AB12A8,4096
+[9] E/DFS init: There is no space to register this file system (elm).
+
+proc_stack:00B33928,4096
 [gui_freetype_init] skipped: font file unavailable, falling back to LVGL theme fonts
 PC simulator app_main: HCPU stub
 [boot] init_pin + pm/touch        +0ms (total 0ms)
-[boot] littlevgl2rtt_init         +69ms (total 69ms)
-[boot] resource_init              +5ms (total 74ms)
+[boot] littlevgl2rtt_init         +57ms (total 57ms)
+[boot] resource_init              +2ms (total 59ms)
 share_prefs_open: sector_size 4096 size 16384
 fdb_kvdb_init: prefdb
-[boot] watch_config_flash_read    +41ms (total 115ms)
-[boot] freetype_open_font         +2ms (total 117ms)
-[boot] gui_app_init               +1ms (total 118ms)
-[boot] ui_datac + msg/speech data +2ms (total 120ms)
+[boot] watch_config_flash_read    +78ms (total 137ms)
+[boot] freetype_open_font         +2ms (total 139ms)
+[boot] gui_app_init               +1ms (total 140ms)
+[boot] ui_datac + msg/speech data +1ms (total 141ms)
 match lang
-[boot] bloc_setting + schedule    +2ms (total 122ms)
-[boot] gui_app_run(Main) = FIRST FRAME +2ms (total 124ms)
-[boot] deferred freetype + reflow +2ms (total 126ms)
-[152] W/disp.gov app_watc: no default display refr_timer yet; init deferred
-[154] W/bloc.peripheral peripher: unknown peripheral event: 5
-msh />skai_pkg_add pkg_weather
-share_prefs_open: sector_size 4096 size 16384
-fdb_kvdb_init: prefdb
-skai_pkg_add pkg_weather: ok
-msh />skai_pkg_run weather
-skai_pkg_run 65vp-rXkVrQ/weather: ok
+[boot] bloc_setting + schedule    +2ms (total 143ms)
+[boot] gui_app_run(Main) = FIRST FRAME +2ms (total 145ms)
+[boot] deferred freetype + reflow +1ms (total 146ms)
+[182] W/disp.gov app_watc: no default display refr_timer yet; init deferred
+
+[184] W/bloc.peripheral peripher: unknown peripheral event: 5
+
+msh />goto_app battery
+goto_app: launched 'battery'

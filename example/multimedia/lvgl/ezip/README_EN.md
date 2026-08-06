@@ -21,18 +21,37 @@ This example demonstrates how to dynamically load ezip format image files using 
 
 ### Supported Platforms
 This example can run on the following development boards:
-* sf32lb52-lchspi-ulp
+* sf32lb52-lcd_n16r8 (SPI SD/TF card)
+* sf32lb52-lcd_a128r16 (SPI SD/TF card)
+* sf32lb52-lchspi-ulp (SPI SD/TF card)
+* sf32lb52-core_e8r16 (SDIO/eMMC)
+* sf32lb56-lcd_a128r12n1 (SDIO/eMMC)
+* sf32lb56-lcd_n16r12n1 (SDIO/eMMC)
+* sf32lb58-lcd_n16r32n1_dsi (SDIO/eMMC)
+* sf32lb58-lcd_a128r32n1_qspi (SDIO/eMMC)
+* sf32lb58-lcd_n16r32n1_qspi (SDIO/eMMC)
 
 ### Build and Flash
 Navigate to the example project directory and run the scons command to build:
 ```
-scons --board=sf32lb52-lchspi-ulp -j8
+scons --board=sf32lb56-lcd_a128r12n1 -j8
 ```
+Replace `--board` with another supported board as needed.
+
+### SD Card Backend Configuration
+This example selects the SD card backend through project configuration:
+- SPI SD/TF card: registered as `sd0` by `RT_USING_SPI_MSD`
+- SDIO/eMMC: registered as `sd0` or `sd1` by the RT-Thread SDIO/MMC driver
+
+The board-specific `proj.conf` files select the backend and device name automatically. The 58 series currently uses `sd1`; the other supported boards use `sd0`.
+The default `disk/example.ezip` is flashed into the onboard NOR/NAND root file system; the SD card is used for additional image files. Boards with a NAND root file system register it with `RT_USING_MTD_DHARA` before mounting.
 
 ### Prepare Image Files
 
 Default provided image file:
 - LVGL V8: `example.ezip`
+
+> **Note:** The `asset` directory in the project only contains the original images (PNG) used to generate the `.ezip` files. These original images are not used by the code at runtime; the actual files loaded are the `.ezip` files from the `disk` directory or SD card.
 
 To use custom images:
 - Use sdk/tools/png2ezip/ezip.exe tool to convert PNG images to ezip format
@@ -45,6 +64,9 @@ To use custom images:
   - `-binfile 2`: Set output as binary file format
   - `-binext .ezip`: Specify output file extension as .ezip, can be customized up to 20 characters
   - `-lvgl_version`: Specify target LVGL version, supports 8 or 9
+  - `-winsize 2048`: SF32LB57 only. Limit the compression window size to 2048 to meet the SF32LB57 compression-ratio constraint
+
+  > **Note:** `-winsize 2048` is required when generating resources for SF32LB57. Do not add it for other chips.
   
   **Usage Examples**:
   ```
@@ -53,6 +75,9 @@ To use custom images:
   
   # Convert to LVGL V9 format
   ezip -convert images\logo.png -rgb565 -binfile 2 -binext .ezip -lvgl_version 9
+
+  # Convert an LVGL V8 resource for SF32LB57
+  ezip -convert images\logo.png -rgb565 -binfile 2 -binext .ezip -lvgl_version 8 -winsize 2048
   ```
 - Place the image file in the `disk` directory and rebuild/reflash
 - Or copy the image file to the SD card root directory (SD card insertion required)
@@ -65,7 +90,7 @@ If the example runs successfully, you will see the following output on the seria
 Register root to mtd device with base addr 0x12820000
 mount fs on flash to root success
 dynamic ezip loading example.
-mount fs on tf card to /sdcard success
+mount fs on sd0 to /sdcard success
 ```
 
 The LCD screen will display the loaded ezip image, centered on the screen.

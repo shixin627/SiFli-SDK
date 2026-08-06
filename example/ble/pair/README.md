@@ -15,22 +15,45 @@
 ## 例程的使用
 <!-- 说明如何使用例程，比如连接哪些硬件管脚观察波形，编译和烧写可以引用相关文档。
 对于rt_device的例程，还需要把本例程用到的配置开关列出来，比如PWM例程用到了PWM1，需要在onchip菜单里使能PWM1 -->
-1. 作为从设备时开机会开启广播，广播名字以SIFLI_APP-xx-xx-xx-xx-xx-xx, 其中xx代表本设备的蓝牙地址。可以通过手机的BLE APP进行连接
-2. 作为GATT server时，可以在手机端进行write和read操作，或者使能CCCD，设备会每一秒更新一次特征值。
-3. 在初始化阶段，默认设置bond_ack为BOND_PENDING，需要关注CONNECTION_MANAGER_BOND_AUTH_INFOR并适时调用connection_manager_bond_ack_reply。
-```c
-connection_manager_set_bond_ack(BOND_PENDING);
+
+本例程为 BLE Peripheral 角色，开机后自动广播并支持配对。可通过手机 BLE APP 完成配对与 GATT 读写验证。
+
+### 操作流程
+1. 上电后，设备自动开始广播。广播名格式为 `SIFLI_APP-xx-xx-xx-xx-xx-xx`。
+2. 用手机 BLE APP 搜索并连接该设备。
+3. 连接后发送 `cmd_diss set_sec xx xx` 命令会触发配对流程,例如这里以如下命令为例
 ```
-
-4. 默认设置IO为GAP_IO_CAP_DISPLAY_ONLY，也可以通过finsh命令cmd_diss set_io iocap来重设IO。
-```c
-connection_manager_set_bond_cnf_iocap(GAP_IO_CAP_DISPLAY_ONLY);
+cmd_diss set_sec 0 2
 ```
+- 参数解释：0 是连接索引 conn_idx（当前连接一般是 0）。
+2 是安全等级（对应 LE_SECURITY_LEVEL_NO_MITM_BOND，即不要求 MITM、但进行绑定）。
 
-5. 当设置为INPUT_ONLY的时候，需要通过finsh命令cmd_diss set_key conn_idx key输入key
+IO Cap 能力说明（配对方式与此相关）：
 
-6. 通过finsh命令cmd_diss set_key conn_idx sec_level可以要求central发起配对
+| io_cap 值 | 枚举 | 行为说明 | 典型表现 |
+|:--:|:--|:--|:--|
+| 0 | GAP_IO_CAP_DISPLAY_ONLY | 设备仅显示数字 | 手机输入 PIN；设备端打印 `SHOW PIN` |
+| 1 | GAP_IO_CAP_DISPLAY_YES_NO | 设备显示数字并确认 | 手机数字确认；设备端打印 `SHOW NC` |
+| 2 | GAP_IO_CAP_KB_ONLY | 设备可输入数字但不显示 | 手机显示 PIN；设备端用 `diss set_key` 输入 |
+| 3 | GAP_IO_CAP_NO_INPUT_NO_OUTPUT | 无输入输出 | Just Works，一般无需输入/确认 |
+| 4 | GAP_IO_CAP_KB_DISPLAY | 既能显示也能输入 | 手机根据对端策略选择 PIN/确认 |
 
+发送命令后手机端会弹出配对请求
+
+![](./assets/image1.png)
+
+点击配对后会要求输入PIN码，将日志输出的PIN码填入即可完成配对
+
+![](./assets/image2.png)
+
+![](./assets/image3.png)
+
+4. 连接成功后可在ble app上面进行 GATT 读写测试：
+    - 读特征值：返回 4 字节（小端）数据。
+    - 写特征值：支持 1~4 字节，串口日志会打印新值。
+    
+![](./assets/image4.png)
+![](./assets/image5.png)
 
 ### 硬件需求
 运行该例程前，需要准备：
@@ -76,11 +99,11 @@ please input the serial port num:5
 关于编译、下载的详细步骤，请参考[快速入门](/quickstart/get-started.md)的相关介绍。
 
 ## 例程的预期结果
-<!-- 说明例程运行结果，比如哪几个灯会亮，会打印哪些log，以便用户判断例程是否正常运行，运行结果可以结合代码分步骤说明 -->
-例程启动后：
-1. 可以被手机BLE APP搜到并连接，进行相应的GATT特质值read/write等操作。
-2. 通过修改io，然后在手机端发起配对，可以实现不同的配对鉴权方式。
-3. 也可以通过finsh命令从peripheral开发板侧发起加密请求然后配对。
+1. 上电后串口输出 `receive BLE power on!`，并开始广播。
+2. 手机可搜索到设备并连接，日志出现连接信息 `Peer device(xx-xx-xx-xx-xx-xx) connected`。
+3. 触发配对时日志打印 `SHOW PIN` 或 `SHOW NC`，完成配对后连接保持。
+4. GATT 读写测试时，打印 `Updated app value from:xx to:xx`。
+
 
 ## 异常诊断
 

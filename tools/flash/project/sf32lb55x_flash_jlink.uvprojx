@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>SOC_BF0_HCPU, USE_HAL_DRIVER, SF32LB55X, ARM_MATH_LOOPUNROLL,JLINK,JLINK_FLASH_1,_USE_PRODUCTLINE, HAL_TICK_PER_SECOND=1000, CFG_FACTORY_DEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>.;..\src;.\src;..\..\..\customer\boards\butterfli_fpga_a0;..\..\..\customer\boards\include;..\..\..\drivers\cmsis\sf32lb55x;..\..\..\drivers\cmsis\Include;..\..\..\external\CMSIS\Include;..\..\..\drivers\Include;..\..\..\customer\boards\include\config\sf32lb55x</IncludePath>
+              <IncludePath>.;..\src;.\src;..\..\..\customer\boards\butterfli_fpga_a0;..\..\..\customer\boards\include;..\..\..\drivers\cmsis\sf32lb55x;..\..\..\drivers\cmsis\Include;..\..\..\external\CMSIS\Include;..\..\..\drivers\Include;..\..\..\customer\boards\include\config\sf32lb55x;..\..\..\middleware\sifli_matrix</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -500,6 +500,11 @@
               <FileName>bf0_hal_lpaon.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\drivers\hal\bf0_hal_lpaon.c</FilePath>
+            </File>
+            <File>
+              <FileName>bf0_hal_hlp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\drivers\hal\bf0_hal_hlp.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -838,7 +843,7 @@
               <MiscControls></MiscControls>
               <Define>SOC_BF0_HCPU, USE_HAL_DRIVER, SF32LB55X, ARM_MATH_LOOPUNROLL,JLINK,JLINK_FLASH_2,_USE_PRODUCTLINE, HAL_TICK_PER_SECOND=1000, CFG_FACTORY_DEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>.;..\src;.\src;..\..\..\customer\boards\butterfli_fpga_a0;..\..\..\customer\boards\include;..\..\..\drivers\cmsis\sf32lb55x;..\..\..\drivers\cmsis\Include;..\..\..\external\CMSIS\Include;..\..\..\drivers\Include;..\..\..\customer\boards\include\config\sf32lb55x</IncludePath>
+              <IncludePath>.;..\src;.\src;..\..\..\customer\boards\butterfli_fpga_a0;..\..\..\customer\boards\include;..\..\..\drivers\cmsis\sf32lb55x;..\..\..\drivers\cmsis\Include;..\..\..\external\CMSIS\Include;..\..\..\drivers\Include;..\..\..\customer\boards\include\config\sf32lb55x;..\..\..\middleware\sifli_matrix</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -999,6 +1004,11 @@
               <FileName>bf0_hal_lpaon.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\drivers\hal\bf0_hal_lpaon.c</FilePath>
+            </File>
+            <File>
+              <FileName>bf0_hal_hlp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\drivers\hal\bf0_hal_hlp.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1337,7 +1347,7 @@
               <MiscControls></MiscControls>
               <Define>SOC_BF0_HCPU, USE_HAL_DRIVER, SF32LB55X, ARM_MATH_LOOPUNROLL,JLINK,JLINK_FLASH_3,_USE_PRODUCTLINE, HAL_TICK_PER_SECOND=1000, CFG_FACTORY_DEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>.;..\src;.\src;..\..\..\customer\boards\butterfli_fpga_a0;..\..\..\customer\boards\include;..\..\..\drivers\cmsis\sf32lb55x;..\..\..\drivers\cmsis\Include;..\..\..\external\CMSIS\Include;..\..\..\drivers\Include;..\..\..\customer\boards\include\config\sf32lb55x</IncludePath>
+              <IncludePath>.;..\src;.\src;..\..\..\customer\boards\butterfli_fpga_a0;..\..\..\customer\boards\include;..\..\..\drivers\cmsis\sf32lb55x;..\..\..\drivers\cmsis\Include;..\..\..\external\CMSIS\Include;..\..\..\drivers\Include;..\..\..\customer\boards\include\config\sf32lb55x;..\..\..\middleware\sifli_matrix</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1498,6 +1508,11 @@
               <FileName>bf0_hal_lpaon.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\drivers\hal\bf0_hal_lpaon.c</FilePath>
+            </File>
+            <File>
+              <FileName>bf0_hal_hlp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\drivers\hal\bf0_hal_hlp.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1836,7 +1851,7 @@
               <MiscControls></MiscControls>
               <Define>SOC_BF0_HCPU, USE_HAL_DRIVER, SF32LB55X, ARM_MATH_LOOPUNROLL,JLINK,JLINK_FLASH_4,_USE_PRODUCTLINE, HAL_TICK_PER_SECOND=1000,  CFG_FACTORY_DEBUG</Define>
               <Undefine></Undefine>
-              <IncludePath>.;..\src;.\src;..\..\..\customer\boards\butterfli_fpga_a0;..\..\..\customer\boards\include;..\..\..\drivers\cmsis\sf32lb55x;..\..\..\drivers\cmsis\Include;..\..\..\external\CMSIS\Include;..\..\..\drivers\Include;..\..\..\customer\boards\include\config\sf32lb55x</IncludePath>
+              <IncludePath>.;..\src;.\src;..\..\..\customer\boards\butterfli_fpga_a0;..\..\..\customer\boards\include;..\..\..\drivers\cmsis\sf32lb55x;..\..\..\drivers\cmsis\Include;..\..\..\external\CMSIS\Include;..\..\..\drivers\Include;..\..\..\customer\boards\include\config\sf32lb55x;..\..\..\middleware\sifli_matrix</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1997,6 +2012,11 @@
               <FileName>bf0_hal_lpaon.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\drivers\hal\bf0_hal_lpaon.c</FilePath>
+            </File>
+            <File>
+              <FileName>bf0_hal_hlp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\drivers\hal\bf0_hal_hlp.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -2335,7 +2355,7 @@
               <MiscControls></MiscControls>
               <Define>SOC_BF0_HCPU, USE_HAL_DRIVER, SF32LB55X, ARM_MATH_LOOPUNROLL, HAL_TICK_PER_SECOND=1000, CFG_FACTORY_DEBUG,KEIL</Define>
               <Undefine></Undefine>
-              <IncludePath>.;..\src;.\src;..\..\..\customer\boards\butterfli_fpga_a0;..\..\..\customer\boards\include;..\..\..\drivers\cmsis\sf32lb55x;..\..\..\drivers\cmsis\Include;..\..\..\external\CMSIS\Include;..\..\..\drivers\Include;..\..\..\customer\boards\include\config\sf32lb55x</IncludePath>
+              <IncludePath>.;..\src;.\src;..\..\..\customer\boards\butterfli_fpga_a0;..\..\..\customer\boards\include;..\..\..\drivers\cmsis\sf32lb55x;..\..\..\drivers\cmsis\Include;..\..\..\external\CMSIS\Include;..\..\..\drivers\Include;..\..\..\customer\boards\include\config\sf32lb55x;..\..\..\middleware\sifli_matrix</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -2534,6 +2554,11 @@
               <FileName>bf0_hal_lpaon.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\drivers\hal\bf0_hal_lpaon.c</FilePath>
+            </File>
+            <File>
+              <FileName>bf0_hal_hlp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\drivers\hal\bf0_hal_hlp.c</FilePath>
             </File>
           </Files>
         </Group>

@@ -27,9 +27,9 @@ Only when the above three macros are included, the `sifli_adc_init` function wil
 SiFli series MCUs support timer interrupt to trigger multi-channel simultaneous sampling. You can refer to the definition within macro `BSP_GPADC_SUPPORT_MULTI_CH_SAMPLING` and the chip user manual
 * If the above three macros are missing, you need to enable them through `menuconfig` with the following command  
 
-> menuconfig --board=sf32lb52-lcd_n16r8       525 development board
-> menuconfig --board=sf32lb52-lcd_52d       52d development board
-> menuconfig --board=sf32lb58-lcd_n16r64n4       587 development board
+> sdk.py menuconfig --board=sf32lb52-lcd_n16r8       525 development board
+> sdk.py menuconfig --board=sf32lb52-lcd_52d       52d development board
+> sdk.py menuconfig --board=sf32lb58-lcd_n16r64n4       587 development board
 
 As shown in the figure below, select GPADC1, save and exit menuconfig, check if the `rtconfig.h` macro is generated
 ![alt text](assets/MENUCONFIG_ADC.png)

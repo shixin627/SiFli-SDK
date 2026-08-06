@@ -1,0 +1,11 @@
+menuconfig USING_EZIPA_DEC
+    bool "eZIP-A Decoder"
+    default n
+    if USING_EZIPA_DEC
+        config EZIPA_MEM_CUSTOM
+            bool "Use Custom malloc/free"
+        config EZIPA_CUSTOM_INCLUDE_FILE
+            string "Custom Include Header File"
+            depends on EZIPA_MEM_CUSTOM
+            default "custom_inc.h"
+    endif

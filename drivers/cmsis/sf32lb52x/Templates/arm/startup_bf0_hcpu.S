@@ -182,7 +182,7 @@ __Vectors       DCD      __initial_sp                        ;     Top of Stack
                 DCD      Interrupt97_IRQHandler                 ;  97 Interrupt 97
                 DCD      SECU1_IRQHandler                       ;  98 Interrupt 98
                 
-                SPACE    (13 * 4)                              ; Interrupts 99 .. 127 are left out
+                SPACE    (13 * 4)                               ; Interrupts 99 .. 111 are left out
 __Vectors_End
 __Vectors_Size  EQU      __Vectors_End - __Vectors
 
@@ -251,7 +251,7 @@ $Handler_Name   PROC
                 Set_Default_Handler      SECU2_IRQHandler     
                 Set_Default_Handler      bt_isr       
                 Set_Default_Handler      BTIM3_IRQHandler      
-                Set_Default_Handler      BTIM4_IRQHandler   
+                Set_Default_Handler      BTIM4_IRQHandler
                 Set_Default_Handler      PTC2_IRQHandler       		
                 Set_Default_Handler      LPTIM3_IRQHandler   		
                 Set_Default_Handler      GPIO2_IRQHandler     
@@ -273,7 +273,7 @@ $Handler_Name   PROC
                 Set_Default_Handler      Interrupt36_IRQHandler       
                 Set_Default_Handler      Interrupt37_IRQHandler       
                 Set_Default_Handler      Interrupt38_IRQHandler       
-                Set_Default_Handler      Interrupt39_IRQHandler       
+                Set_Default_Handler      Interrupt39_IRQHandler
                 Set_Default_Handler      Interrupt40_IRQHandler       
                 Set_Default_Handler      Interrupt41_IRQHandler       
                 Set_Default_Handler      Interrupt42_IRQHandler       

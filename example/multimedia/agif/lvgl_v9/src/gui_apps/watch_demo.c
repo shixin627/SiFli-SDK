@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /*********************
  *      INCLUDES
  *********************/
@@ -55,7 +60,7 @@ void app_watch_entry(void *parameter)
 
     lv_ex_data_pool_init();
     resource_init();
-    gui_app_init();
+    gui_app_init(1);
 
     gui_app_run("clock");
     lv_disp_trig_activity(NULL);

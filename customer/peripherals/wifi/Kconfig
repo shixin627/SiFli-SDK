@@ -1,5 +1,36 @@
+menu "WiFi"
+menuconfig WIFI_USING_AIC8800MC
+    bool  "AIC8800MC"
+    default n
+    if WIFI_USING_AIC8800MC
+        config USING_AICXTEK_WIFI
+            bool "Enable using aicxtek WIFI"
+            default y
+        if USING_AICXTEK_WIFI    
+
+            config AIC_CFG_RDATA_MODE_EN
+                bool "AIC_CFG_RDATA_MODE_EN"
+                default n
+            
+            config AIC_CFG_VNET_MODE_EN
+                bool "AIC_CFG_VNET_MODE_EN"
+                default y
+            choice
+                prompt "hardware wifi interface type"
+            
+                config WIFI_INF_TYPE_SDIO
+                    bool "SDIO interface sdio"
+                config WIFI_INF_TYPE_SPI
+                    bool "SDIO interface spi"    
+                config WIFI_INF_TYPE_UART
+                    bool "SDIO interface uart"     
+            endchoice
+            
+        endif
+    endif
+
 menuconfig BSP_WIFI_SWT6621
-    bool "Enable swt 6621 wifi mode"
+    bool "SWT6621"
     default n
     if BSP_WIFI_SWT6621
         config WIFI_WAKEUP_OUT_PIN
@@ -37,3 +68,4 @@ menuconfig BSP_WIFI_SWT6621
             int "SWT6621 SDIO port number, 0-SDHCI1; 1-SDHCI2; 2-SDIO"
             default 0
     endif
+endmenu

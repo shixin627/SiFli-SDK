@@ -321,9 +321,9 @@ static rt_err_t spi_stop_circular_transfer(struct rt_spi_device *device, struct 
 }
 
 static rt_err_t spi_start_circular_transfer(struct rt_spi_device *device,
-                                            struct sifli_spi *spi_drv,
-                                            struct rt_spi_message *message,
-                                            rt_bool_t sw_cs)
+        struct sifli_spi *spi_drv,
+        struct rt_spi_message *message,
+        rt_bool_t sw_cs)
 {
     SPI_HandleTypeDef *hspi;
     rt_uint8_t direction;
@@ -595,6 +595,10 @@ static rt_err_t sifli_spi_init(struct rt_spi_device *device, struct sifli_spi *s
     {
         spi_handle->Init.FrameFormat = SPI_FRAME_FORMAT_NM;
     }
+    else if (RT_SPI_FRM == (cfg->frameMode & RT_SPI_FRAME_MASK))
+    {
+        spi_handle->Init.FrameFormat = SPI_FRAME_FORMAT_FRM;
+    }
     spi_handle->Init.SFRMPol = SPI_SFRMPOL_HIGH;
 
     //spi_handle->Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -682,6 +686,210 @@ static rt_err_t sifli_spi_init(struct rt_spi_device *device, struct sifli_spi *s
     return RT_EOK;
 }
 
+#ifdef DMA_LINK_LIST_SUPPORT
+uint32_t spi_frame_xfer_multi(struct rt_spi_device *device, struct rt_spi_message *message)
+{
+    uint32_t i;
+    SPI_RtxRequestTypeDef *reqs;
+    SPI_RtxRequestTypeDef *req;
+    rt_size_t sent_num = 0;
+    struct sifli_spi *spi_drv;
+    SPI_HandleTypeDef *spi_handle;
+    rt_uint32_t spi_index;
+    rt_err_t rt_err_v;
+    HAL_StatusTypeDef state;
+    uint32_t cmd_buf_size;
+    void *cmd_buf;
+    rt_size_t num;
+    struct rt_spi_message *index;
+
+    spi_index = get_index_by_bus_handle(device->bus);
+    spi_drv = rt_container_of(device->bus, struct sifli_spi, spi_bus);
+    spi_handle = &spi_drv->handle;
+
+    rt_err_v = rt_sem_control(spi_drv->spi_sema, RT_IPC_CMD_RESET, 0);
+    RT_ASSERT(RT_EOK == rt_err_v);
+
+#ifdef RT_USING_PM
+    rt_pm_request(PM_SLEEP_MODE_IDLE);
+    rt_pm_hw_device_start();
+#endif  /* RT_USING_PM */
+
+    index = message;
+    num = 0;
+    while (index)
+    {
+        index = index->next;
+        num++;
+    }
+
+    reqs = rt_malloc(num * sizeof(*req));
+    RT_ASSERT(reqs);
+    req = reqs;
+
+    index = message;
+    while (index)
+    {
+        req->Size = index->length;
+        if (index->send_buf && index->recv_buf)
+        {
+            RT_ASSERT(0);
+        }
+        if (index->send_buf)
+        {
+            req->pData = (uint8_t *)index->send_buf;
+            req->IsRead = 0;
+        }
+        else
+        {
+            req->pData = (uint8_t *)index->recv_buf;
+            req->IsRead = 1;
+        }
+        req++;
+        index = index->next;
+    }
+
+    cmd_buf_size = HAL_SPI_GetMultiRtxCmdBufSize(reqs, num);
+    cmd_buf = rt_malloc(cmd_buf_size);
+    RT_ASSERT(cmd_buf);
+    state = HAL_SPI_PrepareMultiRtxCmdBuf(spi_handle, reqs, num, cmd_buf, cmd_buf_size);
+    if (HAL_OK != state)
+    {
+        goto __EXIT;
+    }
+    state = HAL_SPI_TransmitReceiveMultiple_DMA(spi_handle, cmd_buf);
+    if ((HAL_OK == state) && (HAL_SPI_ERROR_NONE != HAL_SPI_GetError(spi_handle)))
+    {
+        LOG_E("spi frame Error occurred.");
+        state = HAL_ERROR;
+    }
+    if (HAL_OK != state)
+    {
+        goto __EXIT;
+    }
+    rt_err_v = rt_sem_take(spi_drv->spi_sema, 5000);
+    if (-RT_ETIMEOUT == rt_err_v)
+    {
+        LOG_E("spi sem timeout!");
+        state = HAL_TIMEOUT;
+        goto __EXIT;
+    }
+
+    sent_num = num;
+
+__EXIT:
+    if (HAL_OK != state)
+    {
+        LOG_E("spi frame transfer errorB : %d, errcode=%x", state, HAL_SPI_GetError(spi_handle));
+        spi_handle->State = HAL_SPI_STATE_READY;
+    }
+
+#ifdef RT_USING_PM
+    rt_pm_hw_device_stop();
+    rt_pm_release(PM_SLEEP_MODE_IDLE);
+#endif  /* RT_USING_PM */
+
+    if (reqs)
+    {
+        rt_free(reqs);
+    }
+
+    if (cmd_buf)
+    {
+        rt_free(cmd_buf);
+    }
+
+    return sent_num;
+
+}
+#endif /* DMA_LINK_LIST_SUPPORT */
+
+
+HAL_StatusTypeDef spi_frame_xfer(struct rt_spi_device *device, struct rt_spi_message *message)
+{
+    struct sifli_spi *spi_drv =  rt_container_of(device->bus, struct sifli_spi, spi_bus);
+    SPI_HandleTypeDef *spi_handle = &spi_drv->handle;
+    rt_err_t rt_err_v;
+    rt_uint32_t spi_index;
+    HAL_StatusTypeDef state;
+
+    spi_index = get_index_by_bus_handle(device->bus);
+
+    rt_err_v = rt_sem_control(spi_drv->spi_sema, RT_IPC_CMD_RESET, 0);
+    RT_ASSERT(RT_EOK == rt_err_v);
+
+    /* spi frame mode just support half-duplex */
+    if (message->send_buf && message->recv_buf)
+    {
+        RT_ASSERT(0);
+    }
+    if (message->send_buf)
+    {
+        if (device->parent.open_flag & RT_DEVICE_FLAG_DMA_TX)
+            state = HAL_SPI_Transmit_DMA(spi_handle, (uint8_t *)message->send_buf, message->length);
+        else if (device->parent.open_flag & RT_DEVICE_FLAG_INT_TX)
+            state = HAL_SPI_Transmit_IT(spi_handle, (uint8_t *)message->send_buf, message->length);
+        else
+        {
+            state = HAL_SPI_Transmit(spi_handle, (uint8_t *)message->send_buf, message->length, 5000);
+        }
+    }
+    else if (message->recv_buf)
+    {
+        if (device->parent.open_flag & RT_DEVICE_FLAG_DMA_RX)
+            state = HAL_SPI_Receive_DMA(spi_handle, (uint8_t *)message->recv_buf, message->length);
+        else if (device->parent.open_flag & RT_DEVICE_FLAG_INT_RX)
+            state = HAL_SPI_Receive_IT(spi_handle, (uint8_t *)message->recv_buf, message->length);
+        else
+            state = HAL_SPI_Receive(spi_handle, (uint8_t *)message->recv_buf, message->length, 5000);
+    }
+
+    /*Check return result*/
+    if (state != HAL_OK)
+    {
+        LOG_E("spi frame transfer errorA : %d, errcode=%x", state, HAL_SPI_GetError(spi_handle));
+        spi_handle->State = HAL_SPI_STATE_READY;
+        return state;
+    }
+    else
+    {
+        switch (HAL_SPI_GetState(spi_handle))
+        {
+        case HAL_SPI_STATE_READY:
+            state = HAL_OK;
+            break;
+        case HAL_SPI_STATE_BUSY: //Interrupt or DMA mode, wait semaphore
+        case HAL_SPI_STATE_BUSY_RX:
+        case HAL_SPI_STATE_BUSY_TX:
+        case HAL_SPI_STATE_BUSY_TX_RX:
+            rt_err_v = rt_sem_take(spi_drv->spi_sema, 5000);
+            if (-RT_ETIMEOUT == rt_err_v)
+            {
+                LOG_E("spi frame sem timeout!");
+                state = HAL_TIMEOUT;
+            }
+            break;
+        case HAL_SPI_STATE_ERROR:
+        default:
+            state = HAL_ERROR;
+            break;
+        }
+    }
+
+    if ((HAL_OK == state) && (HAL_SPI_ERROR_NONE != HAL_SPI_GetError(spi_handle)))
+    {
+        LOG_E("spi frame Error occurred.");
+        state = HAL_ERROR;
+    }
+
+    if (state != HAL_OK)
+    {
+        LOG_E("spi frame transfer errorB : %d, errcode=%x", state, HAL_SPI_GetError(spi_handle));
+        spi_handle->State = HAL_SPI_STATE_READY;
+    }
+
+    return state;
+}
 /**
 * @brief  Spi tranfer data.
 * @param[in]  device: spi device handler.
@@ -697,6 +905,7 @@ static rt_uint32_t spixfer(struct rt_spi_device *device, struct rt_spi_message *
     rt_uint8_t *recv_buf;
     const rt_uint8_t *send_buf;
     rt_err_t rt_err_v;
+    rt_uint32_t spi_index;
     rt_bool_t started_circular = RT_FALSE;
 
     RT_ASSERT(device != RT_NULL);
@@ -729,10 +938,6 @@ static rt_uint32_t spixfer(struct rt_spi_device *device, struct rt_spi_message *
         __HAL_SPI_TAKE_CS(spi_handle);
     }
 #endif
-    rt_uint32_t spi_index;
-
-    spi_index = get_index_by_bus_handle(device->bus);
-
     LOG_D("%s transfer prepare and start", spi_drv->config->bus_name);
     LOG_D("%s sendbuf: %X, recvbuf: %X, length: %d",
           spi_drv->config->bus_name,
@@ -758,6 +963,14 @@ static rt_uint32_t spixfer(struct rt_spi_device *device, struct rt_spi_message *
         }
     }
 #endif
+
+    if (spi_handle->Init.FrameFormat == SPI_FRAME_FORMAT_FRM)
+    {
+        state = spi_frame_xfer(device, message);
+        goto __exit;
+    }
+
+    spi_index = get_index_by_bus_handle(device->bus);
 
     message_length = message->length;
     recv_buf = message->recv_buf;
@@ -842,7 +1055,7 @@ static rt_uint32_t spixfer(struct rt_spi_device *device, struct rt_spi_message *
         /*Check return result*/
         if (state != HAL_OK)
         {
-            LOG_E("spi transfer errorA : %d, errcode=%x", state, HAL_SPI_GetError(spi_handle));
+            LOG_E("spi(%x) transfer errorA : %d, errcode=%x", spi_handle->Instance, state, HAL_SPI_GetError(spi_handle));
             spi_handle->State = HAL_SPI_STATE_READY;
             break;
         }
@@ -883,7 +1096,7 @@ static rt_uint32_t spixfer(struct rt_spi_device *device, struct rt_spi_message *
 
         if (state != HAL_OK)
         {
-            LOG_E("spi transfer errorB : %d, errcode=%x", state, HAL_SPI_GetError(spi_handle));
+            LOG_E("spi(%x) transfer errorB : %d, errcode=%x", spi_handle->Instance, state, HAL_SPI_GetError(spi_handle));
             spi_handle->State = HAL_SPI_STATE_READY;
             break;
         }
@@ -909,6 +1122,53 @@ __exit:
 #endif  /* RT_USING_PM */
 
     return (HAL_OK == state) ? message->length : 0;
+}
+
+static rt_uint32_t spixfer2(struct rt_spi_device *device, struct rt_spi_message *message)
+{
+    struct rt_spi_message *index;
+#ifdef DMA_LINK_LIST_SUPPORT
+    struct sifli_spi *spi_drv;
+    SPI_HandleTypeDef *spi_handle;
+#endif /* DMA_LINK_LIST_SUPPORT */
+    uint32_t msg_cnt;
+    rt_uint32_t result;
+
+    RT_ASSERT(device != RT_NULL);
+    RT_ASSERT(device->bus != RT_NULL);
+    RT_ASSERT(device->bus->parent.user_data != RT_NULL);
+    RT_ASSERT(message != RT_NULL);
+
+#ifdef DMA_LINK_LIST_SUPPORT
+    spi_drv =  rt_container_of(device->bus, struct sifli_spi, spi_bus);
+    spi_handle = &spi_drv->handle;
+
+    if ((message->next) && (spi_handle->Init.FrameFormat == SPI_FRAME_FORMAT_FRM)
+            && (device->parent.open_flag & (RT_DEVICE_FLAG_DMA_RX | RT_DEVICE_FLAG_DMA_TX)))
+    {
+        msg_cnt = spi_frame_xfer_multi(device, message);
+        goto xfer_end;
+    }
+#endif /* DMA_LINK_LIST_SUPPORT */
+
+    /* transmit each SPI message */
+    msg_cnt = 0;
+    index = message;
+    while (index != RT_NULL)
+    {
+        msg_cnt++;
+        /* transmit SPI message */
+        result = spixfer(device, index);
+        if (result == 0)
+        {
+            msg_cnt = 0;
+            break;
+        }
+        index = index->next;
+    }
+
+xfer_end:
+    return msg_cnt;
 }
 
 /**
@@ -1044,6 +1304,7 @@ static const struct rt_spi_ops spi_ops =
     .configure = spi_configure,
     .control = spi_control,
     .xfer = spixfer,
+    .xfer2 = spixfer2
 };
 
 /**
@@ -1082,6 +1343,9 @@ __ROM_USED int rt_hw_spi_bus_init(struct sifli_spi *objs, struct sifli_spi_confi
             objs[i].dma.handle_rx.Init.MemDataAlignment    = DMA_MDATAALIGN_BYTE;
             objs[i].dma.handle_rx.Init.Mode                = DMA_NORMAL;
             objs[i].dma.handle_rx.Init.Priority            = DMA_PRIORITY_HIGH;
+#ifdef DMA_LINK_LIST_SUPPORT
+            objs[i].dma.handle_rx.Init.EndTrigger          = cfg[i].dma_rx->end_trigger;
+#endif /* DMA_LINK_LIST_SUPPORT */
             {
                 rt_uint32_t tmpreg = 0x00U;
                 //SET_BIT(RCC->AHB1ENR, cfg[i].dma_rx->dma_rcc);
@@ -1108,6 +1372,9 @@ __ROM_USED int rt_hw_spi_bus_init(struct sifli_spi *objs, struct sifli_spi_confi
             objs[i].dma.handle_tx.Init.MemDataAlignment    = DMA_MDATAALIGN_BYTE;
             objs[i].dma.handle_tx.Init.Mode                = DMA_NORMAL;
             objs[i].dma.handle_tx.Init.Priority            = DMA_PRIORITY_LOW;
+#ifdef DMA_LINK_LIST_SUPPORT
+            objs[i].dma.handle_tx.Init.EndTrigger          = cfg[i].dma_tx->end_trigger;
+#endif /* DMA_LINK_LIST_SUPPORT */
             {
                 rt_uint32_t tmpreg = 0x00U;
                 //SET_BIT(RCC->AHB1ENR, cfg[i].dma_tx->dma_rcc);
@@ -1184,6 +1451,15 @@ static void SPIx_IRQHandler(uint32_t index)
 
     HAL_SPI_IRQHandler(handle);
 
+#ifndef DMA_SUPPORT_DYN_CHANNEL_ALLOC
+    /* used by LCPU which doesn't enable DMA_SUPPORT_DYN_CHANNEL_ALLOC */
+    if ((HAL_SPI_STATE_BUSY != handle->State) && (HAL_SPI_STATE_BUSY_TX != handle->State)
+            && (HAL_SPI_STATE_BUSY_RX != handle->State) && (HAL_SPI_STATE_BUSY_TX_RX != handle->State))
+    {
+        rt_sem_release(spi_bus_obj[index].spi_sema);
+    }
+#endif /* !DMA_SUPPORT_DYN_CHANNEL_ALLOC */
+
     /* leave interrupt */
     rt_interrupt_leave();
 }
@@ -1194,6 +1470,7 @@ enum
     SPI_DMA_RX
 };
 
+#ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 {
     struct sifli_spi *spi_drv =  rt_container_of(hspi, struct sifli_spi, handle);
@@ -1374,6 +1651,8 @@ void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
     rt_sem_release(spi_drv->spi_sema);
 }
 
+#endif /* DMA_SUPPORT_DYN_CHANNEL_ALLOC */
+
 #ifndef DMA_SUPPORT_DYN_CHANNEL_ALLOC
 static void SPIx_DMA_IRQHandler(uint32_t index, uint32_t trx)
 {
@@ -1391,6 +1670,17 @@ static void SPIx_DMA_IRQHandler(uint32_t index, uint32_t trx)
     else if (SPI_DMA_RX == trx)
     {
         HAL_DMA_IRQHandler(handle->hdmarx);
+    }
+
+    /* used by LCPU which doesn't enable DMA_SUPPORT_DYN_CHANNEL_ALLOC */
+    if ((HAL_SPI_STATE_BUSY != handle->State) && (HAL_SPI_STATE_BUSY_TX != handle->State)
+            && (HAL_SPI_STATE_BUSY_RX != handle->State) && (HAL_SPI_STATE_BUSY_TX_RX != handle->State))
+    {
+        if (((SPI_DMA_TX == trx) && handle->hdmatx->XferCpltCallback)
+                || ((SPI_DMA_RX == trx) && handle->hdmarx->XferCpltCallback))
+        {
+            rt_sem_release(spi_bus_obj[index].spi_sema);
+        }
     }
 
     /* leave interrupt */

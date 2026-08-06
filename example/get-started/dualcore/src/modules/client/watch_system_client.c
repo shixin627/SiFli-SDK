@@ -383,13 +383,21 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
                               data_ind->rhr, data_ind->worn, data_ind->rest,
                               data_ind->fresh, data_ind->total, data_ind->deep,
                               data_ind->rem, data_ind->light, data_ind->pi_e3,
-                              data_ind->frame_pct, data_ind->rate_info);
+                              data_ind->frame_pct, data_ind->rate_info,
+                              data_ind->own_info, data_ind->rep_pct);
         break;
     }
     case MSG_SERVICE_HR_CONT_IND:
     {
         UNPACK_DATA(arg, watch_sys_hr_cont_t, data_ind);
         hr_cont_enqueue(data_ind);
+        break;
+    }
+    case MSG_SERVICE_HR_WINDOW_IND:
+    {
+        UNPACK_DATA(arg, watch_sys_hr_window_t, data_ind);
+        commu_send_hr_window(data_ind->ts, data_ind->bpm, data_ind->conf,
+                             data_ind->count, data_ind->win);
         break;
     }
     case MSG_SERVICE_SLEEP_STATE_IND:

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -51,6 +51,7 @@
 
 
 #include <rtthread.h>
+#include <log.h>
 #include "app_reg.h"
 #ifdef APP_DLMODULE_APP_USED
     #include "dynamic_app.h"
@@ -59,9 +60,8 @@
     #include "app_tool_comm.h"
 #endif
 
-static const char *g_reg_main = "Main";
+#include "lvsf_resource.h"
 
-#if APP_REG_MULTI_STYLE_BUILTIN
 #if defined (_MSC_VER)
 #ifndef STR
     #define STR(str) #str
@@ -87,20 +87,20 @@ __declspec(allocate(STR(BuiltinApp##n##Tab$1.end))) RT_USED static const builtin
 
 #endif
 
-#if defined(__CC_ARM) || (defined (__ARMCC_VERSION) && (__ARMCC_VERSION >= 6010050))
+#if defined(__CC_ARM) || (defined (__ARMCC_VERSION) && (__ARMCC_VERSION >= 6010050))     /* ARM C Compiler */
 #define BUILT_IN_APP_TAB(beg, end, n)                                               \
     extern const int BuiltinApp##n##Tab$$Base;                                      \
     extern const int BuiltinApp##n##Tab$$Limit;                                     \
     beg = (builtin_app_desc_t *) &BuiltinApp##n##Tab$$Base;                         \
-    end = (builtin_app_desc_t *) &BuiltinApp##n##Tab$$Limit;
-#elif defined (__ICCARM__) || defined(__ICCRX__)
+    end = (builtin_app_desc_t *)   &BuiltinApp##n##Tab$$Limit;
+#elif defined (__ICCARM__) || defined(__ICCRX__)      /* for IAR Compiler */
 #error "tobe contribute"
-#elif defined (__GNUC__)
+#elif defined (__GNUC__)                              /* for GCC Compiler */
 #define BUILT_IN_APP_TAB(beg, end, n)                                               \
     extern const int BuiltinApp##n##Tab_start;                                      \
     extern const int BuiltinApp##n##Tab_end;                                        \
     beg = (builtin_app_desc_t *)&BuiltinApp##n##Tab_start;                          \
-    end = (builtin_app_desc_t *)&BuiltinApp##n##Tab_end;
+    end = (builtin_app_desc_t *) &BuiltinApp##n##Tab_end;
 #elif defined (_MSC_VER)
 #define BUILT_IN_APP_TAB(beg, end, n)                                               \
     uint32_t *ptr_begin, *ptr_end;                                                  \
@@ -113,54 +113,119 @@ __declspec(allocate(STR(BuiltinApp##n##Tab$1.end))) RT_USED static const builtin
     ptr_end++;                                                                      \
     beg = (builtin_app_desc_t *)ptr_begin;                                          \
     end = (builtin_app_desc_t *)ptr_end;
-#endif
+#endif /* defined(__CC_ARM) */
 
 
 #if defined (_MSC_VER)
+    //Register section of the first built_in_app table
     #pragma section("BuiltinApp1Tab$0", read)
     BUILT_IN_APP_TAB_START(1);
     #pragma section("BuiltinApp1Tab$1.end", read)
     BUILT_IN_APP_TAB_END(1);
 
+    //Register section of the second built_in_app table
     #pragma section("BuiltinApp2Tab$0", read)
     BUILT_IN_APP_TAB_START(2);
     #pragma section("BuiltinApp2Tab$1.end", read)
     BUILT_IN_APP_TAB_END(2);
 #endif
-#endif
 
 #if defined(APP_MENU_EXT_USED)
 const mainmenu_ext_icons_t *mainmenu_ext_icons_table;
+
+#if defined(APP_TLV_USED)
+#define MAINMENU_EXT_ICONS_TABLE(n) \
+        const mainmenu_ext_icons_t mainmenu_ext_icons##n##_table[] =                                                                                      \
+        {                                                                                                                                                 \
+            {"lang",       (lv_img_dsc_t *)APP_GET_IMG_N(img_menu_language, n),           app_get_strid(key_language, "Language")},                       \
+            {"sounds",     (lv_img_dsc_t *)APP_GET_IMG_N(img_menu_setting_sound, n),      app_get_strid(key_sounds_vibrate, "Sound and Vibrate")},        \
+            {"display",    (lv_img_dsc_t *)APP_GET_IMG_N(img_menu_setting_brightness, n), app_get_strid(key_display, "Display")},   \
+            {"lockscreen", (lv_img_dsc_t *)APP_GET_IMG_N(img_menu_lock_screen, n),        app_get_strid(key_lock_screen, "Lock screen")},                 \
+            {"menuview",   (lv_img_dsc_t *)APP_GET_IMG_N(img_menu_view, n),             app_get_strid(key_menu_view, "Menu view")},                     \
+            {"battery",    (lv_img_dsc_t *)APP_GET_IMG_N(img_menu_power_down, n),         app_get_strid(key_battery, "Battery")},                         \
+            {"tlv_anim",   (lv_img_dsc_t *)APP_GET_IMG_N(img_3d, n),                      app_get_strid(key_tlv_anim, "Tlv anim")},                       \
+            {"develop",    (lv_img_dsc_t *)APP_GET_IMG_N(img_ecg, n),                     app_get_strid(key_developer_mode, "Developer mode")},           \
+            {"about",      (lv_img_dsc_t *)APP_GET_IMG_N(img_about, n),                   app_get_strid(key_about, "About")},                             \
+            {"system",     (lv_img_dsc_t *)APP_GET_IMG_N(img_powerOff, n),                app_get_strid(key_system, "System")},                           \
+        };
+#else
+#define MAINMENU_EXT_ICONS_TABLE(n) \
+        const mainmenu_ext_icons_t mainmenu_ext_icons##n##_table[] =                                                                                      \
+        {                                                                                                                                                 \
+            {"lang",       (lv_img_dsc_t *)APP_GET_IMG_N(img_menu_language, n),           app_get_strid(key_language, "Language")},                       \
+            {"sounds",     (lv_img_dsc_t *)APP_GET_IMG_N(img_menu_setting_sound, n),      app_get_strid(key_sounds_vibrate, "Sound and Vibrate")},        \
+            {"display",    (lv_img_dsc_t *)APP_GET_IMG_N(img_menu_setting_brightness, n), app_get_strid(key_display, "Display")},   \
+            {"lockscreen", (lv_img_dsc_t *)APP_GET_IMG_N(img_menu_lock_screen, n),        app_get_strid(key_lock_screen, "Lock screen")},                 \
+            {"menuview",   (lv_img_dsc_t *)APP_GET_IMG_N(img_menu_view, n),             app_get_strid(key_menu_view, "Menu view")},                     \
+            {"develop",    (lv_img_dsc_t *)APP_GET_IMG_N(img_ecg, n),                     app_get_strid(key_developer_mode, "Developer mode")},           \
+            {"about",      (lv_img_dsc_t *)APP_GET_IMG_N(img_about, n),                   app_get_strid(key_about, "About")},                             \
+            {"system",     (lv_img_dsc_t *)APP_GET_IMG_N(img_powerOff, n),                app_get_strid(key_system, "System")},                           \
+        };
+
+#endif
+#define APP_GET_IMG_N(img, n) APP_GET_IMG_FROM_APP(mainmenu, img)
+//Register the first extended icon table, whose image file is special and does not contain numbers
+MAINMENU_EXT_ICONS_TABLE(1);
+#undef APP_GET_IMG_N
+#define APP_GET_IMG_N(img, n) APP_GET_IMG_FROM_APP(mainmenu##n, img##n)
+
+//Register the second extended icon table, whose image file contain numbers
+MAINMENU_EXT_ICONS_TABLE(2);
+
+/*
+//Register the third extended icon table, whose image file contain numbers
+MAINMENU_EXT_ICONS_TABLE(3);
+
+//Register the subsequent extended icon table, whose image file contain numbers
+MAINMENU_EXT_ICONS_TABLE(4);
+*/
 #endif
 
-void builtin_app_get_table(builtin_app_desc_t **beg, builtin_app_desc_t **end, uint16_t style)
+void builtin_app_get_table(builtin_app_desc_t **beg, builtin_app_desc_t **end, uint16_t n)
 {
-#if APP_REG_MULTI_STYLE_BUILTIN
+#if defined(APP_MENU_EXT_USED)
+#define APP_GET_TAB_N(n)                                                            \
+        case n:                                                                     \
+        {                                                                           \
+            BUILT_IN_APP_TAB((*beg), (*end), n);                                    \
+            extern const mainmenu_ext_icons_t mainmenu_ext_icons##n##_table[];      \
+            mainmenu_ext_icons_table = &mainmenu_ext_icons##n##_table[0];           \
+            break;                                                                  \
+        }
+#else
 #define APP_GET_TAB_N(n)                                                            \
         case n:                                                                     \
         {                                                                           \
             BUILT_IN_APP_TAB((*beg), (*end), n);                                    \
             break;                                                                  \
         }
-    switch (style)
+
+#endif
+    switch (n)
     {
     default:
         ;
         APP_GET_TAB_N(1);
         APP_GET_TAB_N(2);
+        /*
+        APP_GET_TAB_N(3);
+        APP_GET_TAB_N(4);
+        */
     }
-#else
-    (void)style;
-    if (beg) *beg = (builtin_app_desc_t *)gui_builtin_app_list_open();
-    if (end) *end = NULL;
-#endif
 }
+
+#if defined(APP_MENU_EXT_USED)
+uint16_t menu_ext_icons_table_size_get(void)
+{
+    return (uint16_t)(sizeof(mainmenu_ext_icons1_table) / sizeof(mainmenu_ext_icons_t));
+}
+#endif
 
 builtin_app_desc_t *builtin_app_get_next(builtin_app_desc_t *cur, const builtin_app_desc_t *end)
 {
-#if APP_REG_MULTI_STYLE_BUILTIN
     builtin_app_desc_t *ptr_app = cur + 1;
 
+    //handle the align between setion and structure.
 #if defined(BSP_USING_PC_SIMULATOR)
     for (uint32_t tmp = (uint32_t)ptr_app; tmp < (uint32_t)end; tmp++)
     {
@@ -176,97 +241,84 @@ builtin_app_desc_t *builtin_app_get_next(builtin_app_desc_t *cur, const builtin_
         return NULL;
     else
         return (builtin_app_desc_t *)ptr_app;
-#else
-    (void)end;
-    return (builtin_app_desc_t *)gui_builtin_app_list_get_next(cur);
-#endif
 }
 
 int16_t menu_app_num_get(uint16_t style)
 {
-    builtin_app_desc_t *app;
-    int16_t num = 0;
-    builtin_app_desc_t *end = NULL;
+    builtin_app_desc_t *p_builtin_app = NULL;
+    uint16_t num = 0;
+    builtin_app_desc_t *p_start_app;
+    builtin_app_desc_t *p_end_app;
+    builtin_app_get_table(&p_start_app, &p_end_app, style);
 
-    builtin_app_get_table(&app, &end, style);
-    while (app)
-    {
-        if (app->icon != NULL && strcmp(app->id, "Main") != 0)
-        {
-            num++;
-        }
-
-#if APP_REG_MULTI_STYLE_BUILTIN
-        app = builtin_app_get_next(app, end);
-        if (end != NULL && app != NULL && app > end) app = NULL;
-#else
-        app = builtin_app_get_next(app, end);
+    int tlv_num = 0;
+#ifdef APP_TLV_USED
+    tlv_num = tlv_count_get();
 #endif
-    }
 
+    p_builtin_app = p_start_app;
+    if (p_builtin_app)
+    {
+        do
+        {
+            if (strcmp(p_builtin_app->id, "aod_main")  &&                     /*Exclude the AOD */
+                    strcmp(p_builtin_app->id, "OTA")  &&                      /*Exclude the OTA */
+                    strcmp(p_builtin_app->id, "Main") &&                      /*Exclude the Main */
+                    (strcmp(p_builtin_app->id, "Tileview") || 0 < tlv_num))   /*Exclude Tlv_Fwk enable but no tlv application */
+            {
+                num++;
+            }
+
+            p_builtin_app = builtin_app_get_next(p_builtin_app, p_end_app);
+        }
+        while (p_builtin_app && p_builtin_app <= p_end_app);
+        p_builtin_app = NULL;
+    }
+    LOG_I("%s: num %d", __func__, num);
     return num;
 }
 
 void builtin_app_read_all(builtin_app_read_app_cb cb, app_list_sort_t *sort_tab, uint16_t size, uint16_t style, void *user_data)
 {
-    builtin_app_desc_t *start;
-    builtin_app_desc_t *end = NULL;
-    builtin_app_desc_t *temp_app;
+    builtin_app_desc_t *p_start_app;
+    builtin_app_desc_t *p_end_app;
+    uint16_t ret_cnt = 0;
 
-    if (cb == NULL) return;
+    builtin_app_get_table(&p_start_app, &p_end_app, style);
 
-    builtin_app_get_table(&start, &end, style);
-
+    builtin_app_desc_t *temp_app = NULL;
     if (sort_tab && size)
     {
         for (uint32_t i = 0; i < size; i++)
         {
-            temp_app = start;
-            while (temp_app)
+            temp_app = p_start_app;
+            while (temp_app && temp_app <= p_end_app)
             {
-                if (temp_app->icon != NULL && 0 == strcmp(sort_tab[i].id, temp_app->id))
+                if (NULL != temp_app->icon && 0 == strcmp(sort_tab[i].id, temp_app->id))
                 {
                     cb(temp_app, NULL, user_data);
                     break;
                 }
-
-#if APP_REG_MULTI_STYLE_BUILTIN
-                temp_app = builtin_app_get_next(temp_app, end);
-                if (end != NULL && temp_app != NULL && temp_app > end) temp_app = NULL;
-#else
-                temp_app = builtin_app_get_next(temp_app, end);
-#endif
+                temp_app = builtin_app_get_next(temp_app, p_end_app);
             }
         }
     }
-
-    temp_app = start;
-    while (temp_app)
+    temp_app = p_start_app;
+    while (temp_app && temp_app <= p_end_app)
     {
         uint32_t i = 0;
-
         for (i = 0; i < size; i++)
         {
-            if (temp_app->icon != NULL && 0 == strcmp(sort_tab[i].id, temp_app->id))
-            {
+            if (NULL != temp_app->icon && 0 == strcmp(sort_tab[i].id, temp_app->id))
                 break;
-            }
         }
-
-        if (i == size && temp_app->icon != NULL)
-        {
+        if (i == size && temp_app->icon)
             cb(temp_app, NULL, user_data);
-        }
-
-#if APP_REG_MULTI_STYLE_BUILTIN
-        temp_app = builtin_app_get_next(temp_app, end);
-        if (end != NULL && temp_app != NULL && temp_app > end) temp_app = NULL;
-#else
-        temp_app = builtin_app_get_next(temp_app, end);
-#endif
+        temp_app = builtin_app_get_next(temp_app, p_end_app);
     }
 
-#if defined(APP_TOOL_SUPPORT)
+
+#ifdef APP_TOOL_SUPPORT
     temp_app = NULL;
     while (1)
     {
@@ -276,14 +328,30 @@ void builtin_app_read_all(builtin_app_read_app_cb cb, app_list_sort_t *sort_tab,
     }
 #endif
 
-#if defined(APP_MENU_EXT_USED)
-    if (mainmenu_ext_icons_table != NULL)
+#if defined(APP_DLMODULE_APP_USED)
+    dyn_app_node_t *node = NULL;
+    while ((node = dynamic_app_list_get_app_next(node)))
     {
-        cb(NULL, (mainmenu_ext_icons_t *)mainmenu_ext_icons_table, user_data);
+        temp_app = &node->desc;
+        node->ext_icon = dynamic_app_get_icon(node->desc.id, style);
+        LOG_I("%s:get dynamic app %s, icon %s", __func__, node->desc.id, node->ext_icon);
+        cb(temp_app, NULL, user_data);
     }
 #endif
 
-#if APP_REG_MULTI_STYLE_BUILTIN
+#if defined(APP_MENU_EXT_USED)
+    const mainmenu_ext_icons_t *ext_icon_table;
+    GET_EXT_APPLICATION_TABLE(ext_icon_table)
+    uint16_t k;
+
+    uint16_t tabSize = menu_ext_icons_table_size_get();
+    LOG_I("%s: load ext icon %d", __func__, tabSize);
+    for (k = 0; k < tabSize; k++)
+    {
+        cb(NULL, (mainmenu_ext_icons_t *)&ext_icon_table[k], user_data);
+    }
+#endif
+
     for (uint8_t i = 0; i < SCRIPT_TYPE_NUM; i++)
     {
         temp_app = NULL;
@@ -292,28 +360,15 @@ void builtin_app_read_all(builtin_app_read_app_cb cb, app_list_sort_t *sort_tab,
             temp_app = (builtin_app_desc_t *)gui_script_app_list_get_next(temp_app, i);
             if (temp_app == NULL)
             {
-                gui_script_app_list_get_next((const builtin_app_desc_t *)-1, i);
+                gui_script_app_list_get_next((const builtin_app_desc_t *) -1, i);
                 break;
             }
             cb(temp_app, NULL, user_data);
         }
     }
-#else
-    temp_app = NULL;
-    while (1)
-    {
-        temp_app = (builtin_app_desc_t *)gui_script_app_list_get_next(temp_app);
-        if (temp_app == NULL)
-        {
-#if defined(PKG_USING_MICROPYTHON) || defined(PKG_USING_QUICKJS)
-            gui_script_app_list_get_next((const builtin_app_desc_t *)-1);
-#endif
-            break;
-        }
-        cb(temp_app, NULL, user_data);
-    }
-#endif
 }
+
+
 
 SECTION_DEF(APP_SUBPAGE_SECTION_NAME, app_subpage_desc_t);
 app_subpage_desc_t *gui_app_get_subpage_desc(const char *app, const char *subpage)
@@ -330,10 +385,11 @@ app_subpage_desc_t *gui_app_get_subpage_desc(const char *app, const char *subpag
     while (temp < end)
     {
         subpage_desc = (app_subpage_desc_t *)temp;
-        if (subpage_desc->app_id
-                && subpage_desc->page_id
+        if (subpage_desc->app_id \
+                && subpage_desc->page_id \
                 && subpage_desc->handler)
         {
+            //rt_kprintf("%s:app_id %s  page_id %s \n", __func__, subpage_desc->app_id, subpage_desc->page_id);
             if (0 == strcmp(subpage_desc->app_id, app) && 0 == strcmp(subpage_desc->page_id, subpage))
                 return subpage_desc;
             temp += (sizeof(app_subpage_desc_t) >> 2);
@@ -358,7 +414,7 @@ int gui_app_create_subpage_ext(const char *app_id, const char *sub_id, void *use
         return RT_EINVAL;
     }
 
-    err = APP_REG_GUI_APP_CREATE_PAGE_FOR_APP_EXT(app_id, sub_id, subpage_desc->handler, user_data, subpage_desc->mem_size);
+    err = gui_app_create_page_for_app_ext(app_id, sub_id, subpage_desc->handler, user_data, subpage_desc->mem_size);
     RT_ASSERT(RT_EOK == err);
 
     return err;
@@ -380,37 +436,8 @@ int gui_app_run_subpage(const char *app_id, const char *sub_id, void *user_data)
     rt_kprintf("%s:app_name %s, subpage %s \n", __func__, app_id, sub_id);
 
     return gui_app_create_subpage_ext(app_id, sub_id, user_data);
-}
 
-const char *gui_app_get_reg_main(void)
-{
-    return g_reg_main;
-}
-
-int gui_app_set_reg_main(const char *main_name)
-{
-    if (main_name == NULL)
-    {
-        return RT_EINVAL;
-    }
-
-    g_reg_main = main_name;
-    return RT_EOK;
-}
-
-int gui_app_get_builtin_app(void)
-{
-    return menu_app_num_get(0);
-}
-
-int gui_app_get_ext_app(void)
-{
-    return 0;
-}
-
-int gui_app_get_dyn_app(void)
-{
-    return 0;
 }
 
 /************************ (C) COPYRIGHT Sifli Technology *******END OF FILE****/
+

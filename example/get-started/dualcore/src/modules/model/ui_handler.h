@@ -38,6 +38,11 @@ extern "C"
 #define APP_ID_ALARM "alarm"
 /* SkaiApp host — AI-generated declarative mini-apps (SkaiLink ADR-0037) */
 #define APP_ID_SKAIAPP "skaiapp"
+#ifdef PKG_USING_QUICKJS
+    /* Sandboxed JS app host (ADR-0019 Phase 3). Separate from SkaiApp: the
+       declarative host renders a package, this one runs an interpreter. */
+    #define APP_ID_SKAIJS "skaijs"
+#endif
 // ----- Dev
 #define APP_ID_GESTURE "gesture"
 #define APP_ID_GAME_DINOSAUR "game_dinosaur"
@@ -224,6 +229,11 @@ extern "C"
            skai_chat_on_conv_state parses the BLE conv-state on KE_EVT2 (4KB BLE
            stack) into a pending buffer, then triggers this to rebuild the bubbles. */
         LVGL_MSG_TYPE_REFRESH_CHAT,
+        /* Defer the watch-face session pager's rebuild to the LVGL thread. Same split as
+           REFRESH_CHAT: skai_sessions_on_conv_list / _on_conv_state parse the BLE payload
+           on KE_EVT2's 4KB stack into pending buffers, then trigger this to rebuild the
+           pages / the open page's bubbles. */
+        LVGL_MSG_TYPE_REFRESH_SESSIONS,
         /* Defer photo-album list refresh to the LVGL thread: bloc_filesystem's
            received_file_handler runs on the BLE parse thread (KE_EVT2, 4KB
            stack) when a phone-pushed photo finishes writing — rebuilding the

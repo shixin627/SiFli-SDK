@@ -1,0 +1,9 @@
+config BSP_USING_BOARD_FPGA_57X_MEM_V3_NAND_4K
+    bool
+    select SOC_SF32LB57X
+    select BF0_ACPU
+    select BF0_HCPU
+    default y
+
+rsource "../Kconfig.board"
+

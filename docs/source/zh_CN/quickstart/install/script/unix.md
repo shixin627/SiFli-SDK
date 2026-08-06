@@ -4,7 +4,7 @@
 
 ## 安装准备
 
-为了安装SiFli-SDK，需要根据操作系统安装一些软件包。可以参考以下安装指南，安装 Linux 和 macOS 的系统上所有需要的软件包。
+为了安装SiFli-SDK，需要根据操作系统安装一些软件包。macOS 和 Linux 的安装流程不再依赖系统 Python，但需要先安装 `uv`。可以参考以下安装指南，安装 Linux 和 macOS 的系统上所有需要的软件包。
 
 ::::::{tab-set}
 :sync-group: os
@@ -18,7 +18,7 @@
 :::{tab-item} Ubuntu 和 Debian
 
 ```bash
-sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+sudo apt-get install git wget flex bison gperf cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
 ```
 
 :::
@@ -26,7 +26,7 @@ sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv 
 :::{tab-item} CentOS 7 & 8
 
 ```bash
-sudo yum -y update && sudo yum install git wget flex bison gperf python3 python3-setuptools cmake ninja-build ccache dfu-util libusbx
+sudo yum -y update && sudo yum install git wget flex bison gperf cmake ninja-build ccache dfu-util libusbx
 ```
 
 :::
@@ -34,7 +34,7 @@ sudo yum -y update && sudo yum install git wget flex bison gperf python3 python3
 :::{tab-item} Arch
 
 ```bash
-sudo pacman -S --needed gcc git make flex bison gperf python cmake ninja ccache dfu-util libusb python-pip
+sudo pacman -S --needed gcc git make flex bison gperf cmake ninja ccache dfu-util libusb
 ```
 
 :::
@@ -46,23 +46,23 @@ sudo pacman -S --needed gcc git make flex bison gperf python cmake ninja ccache 
 :::::{tab-item} macOS
 :sync: macOS
 
-当前的 SiFli-SDK 安装流程不再依赖系统 Python。`install.sh` 会通过 `uv` 准备锁定的 Python 运行时和依赖。
+当前的 SiFli-SDK 安装流程不再依赖系统 Python。`install.sh` 会通过 `uv` 准备 SDK 管理的 Python 运行时和依赖。
 
-- 安装 CMake 和 Ninja 编译工具：
+- 安装 CMake、Ninja 编译工具和 `uv`：
   - Homebrew 用户：
 
         ```bash
-        brew install cmake ninja
+        brew install cmake ninja uv
         ```
 
   - MacPort 用户
 
         ```bash
-        sudo port install cmake ninja
+        sudo port install cmake ninja uv
         ```
 
   - 都不是
-        若以上均不适用，请访问 CMake 和 Ninja 主页，查询有关 macOS 平台的下载安装问题。
+        若以上均不适用，请访问 CMake、Ninja 和 uv 主页，查询有关 macOS 平台的下载安装问题。
 
 :::{note}
 如在上述任何步骤中遇到以下错误:
@@ -81,6 +81,18 @@ xcrun: error: invalid active developer path (/Library/Developer/CommandLineTools
 ## 安装 `uv`
 
 当前 install/export 主链路只支持通过 `uv` 引导。请先安装 `uv`，并确保终端中可以正常执行：
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+如果系统中没有 `curl`，也可以使用 `wget`：
+
+```bash
+wget -qO- https://astral.sh/uv/install.sh | sh
+```
+
+安装完成后，重新打开终端，或按安装脚本的提示刷新当前 shell 配置，然后检查版本：
 
 ```bash
 uv --version
@@ -154,13 +166,66 @@ cd ~/OpenSiFli/SiFli-SDK
 
 `install.sh` 会自动完成以下工作：
 
-- 通过 `uv` 准备锁定的 Python 运行时
-- 根据 `tools/locks/default/pyproject.toml` 和 `tools/locks/default/uv.lock` 同步锁定的 Python 依赖
-- 根据 `tools/locks/default/lock.json` 安装当前 profile 绑定的工具版本
-- 根据当前 lock 快照在 `SIFLI_SDK_TOOLS_PATH` 下实例化当前 profile 对应的环境
-- 在 `SIFLI_SDK_TOOLS_PATH` 下初始化该环境实例对应的 Conan 环境
+- 安装 SDK 运行需要的 Python 环境和依赖
+- 安装当前 SDK 版本匹配的编译器、调试器等工具
+- 准备构建依赖使用的 Conan 环境
+- 在 `SIFLI_SDK_TOOLS_PATH` 下保存 SDK 环境信息，后续导出环境变量时会继续使用
+
+这里的 SDK 环境指一套可供当前 SDK 使用的 Python、工具链、调试工具和构建依赖。首次安装请直接运行 `./install.sh`。
+
+SDK 更新后，普通 `./install.sh` 会为更新后的 SDK 准备或切换到匹配的环境；如果当前已经选中了旧环境，它不会直接修改旧环境。这样旧版本 SDK 仍可继续使用。
+
+如果你确认要在当前已选中的环境上原地更新，可以运行：
+
+```bash
+./install.sh update
+```
+
+如果这个环境也被其他 SDK 工作目录使用，脚本会改为新建一个环境，避免影响其他 SDK。
 
 Keil/ARMCLANG 路径记录和 `export -t keil` 仅支持 Windows；macOS 和 Linux 的脚本默认导出 GCC 工具链。
+
+### 清理旧环境和缓存（可选）
+
+如果 SDK 更新后不再需要旧环境，可以运行：
+
+```bash
+./install.sh uninstall
+```
+
+该命令会直接删除当前 profile 下不再被任何 SDK 工作目录使用的旧环境，并保留当前 SDK 匹配的环境和其他工作目录仍在使用的环境。若只想预览将删除的内容，可以运行：
+
+```bash
+./install.sh uninstall --dry-run
+```
+
+如果要清理所有 profile 下不再被任何 SDK 工作目录选中的旧环境，可以运行：
+
+```bash
+./install.sh uninstall --all
+```
+
+也可以先预览：
+
+```bash
+./install.sh uninstall --all --dry-run
+```
+
+如需删除所有由 SDK 管理的环境，包括当前环境和仍在状态文件中选中的环境，可以运行：
+
+```bash
+./install.sh uninstall --all --force
+```
+
+`--all --force` 会让所有 SDK 环境失效，并清空状态文件中的环境选择；之后需要重新运行 `./install.sh`。这里的“仍在使用”按 `SIFLI_SDK_TOOLS_PATH` 下的状态文件判断，不检测已经打开的 shell 或进程。
+
+如果还需要清理下载缓存和残留的 staging 临时目录，可以增加 `--cache`：
+
+```bash
+./install.sh uninstall --cache
+```
+
+`--cache` 会保留当前 SDK 仍需要的工具归档和 Conan 配置包，不会删除已经安装好的工具目录。若使用了自定义 `SIFLI_SDK_TOOLS_PATH`，清理前也必须先导出同一个环境变量。
 
 对于国内用户，可以通过 `SIFLI_SDK_MIRROR_CHINA` 一键启用国内镜像预设：
 
@@ -175,7 +240,6 @@ export SIFLI_SDK_MIRROR_CHINA=1
 - `SIFLI_SDK_GITHUB_ASSETS="https://downloads.sifli.com/github_assets"`
 - `SIFLI_SDK_PYPI_DEFAULT_INDEX="https://mirrors.ustc.edu.cn/pypi/simple"`
 - `UV_PYTHON_DOWNLOADS_JSON_URL="https://uv.agentsmirror.com/metadata/python-downloads.json"`
-- `UV_PYPY_INSTALL_MIRROR="https://uv.agentsmirror.com/pypy"`
 
 如果不想使用整组预设，也可以继续手工设置这些细粒度变量。
 
@@ -206,7 +270,7 @@ export SIFLI_SDK_TOOLS_PATH="$HOME/required_sdk_tools_path"
 . export.sh
 ```
 
-`export.sh` 现在会通过 `uv run` 调用 `tools/sdk_env.py export`。环境管理器会根据当前 `profile + lock` 快照解析目标 SDK 环境实例；如果该实例不存在或已损坏，`export.sh` 会按已保存的偏好自动修复，或者直接失败并提示重新执行 `./install.sh`。
+`export.sh` 会切换到当前 SDK 已安装的环境；如果这个环境不存在或已损坏，脚本会按已保存的偏好提示是否更新。选择更新等价于运行 `./install.sh update`；选择不更新时，可以手动运行普通 `./install.sh` 为当前 SDK 安装新环境，或运行 `./install.sh update` 尝试更新当前已选中的旧环境。
 
 ````{note}
 如果按照上述说明设置过自定义工具安装路径，那么在运行 `export.sh` 脚本之前**必须**设置`SIFLI_SDK_TOOLS_PATH` 变量
@@ -218,9 +282,9 @@ export SIFLI_SDK_TOOLS_PATH="$HOME/required_sdk_tools_path"
 ````
 
 ```{note}
-`export.sh` 现在会在导出环境前检查当前解析出来的环境实例是否仍与仓库锁文件一致。如果本地 Python 环境、工具版本或 Conan 配置不匹配，交互式终端可能会提示修复；非交互场景下会直接以确定性错误退出。
+`export.sh` 会在导出环境前检查当前 SDK 环境是否仍然完整。如果本地 Python 环境、工具版本或 Conan 配置不匹配，交互式终端可能会提示修复；非交互场景下会直接以确定性错误退出。
 
-`export.sh` 需要 PATH 中存在 `uv`，因为它会通过 `uv run` 启动 `tools/sdk_env.py`。
+`export.sh` 需要 PATH 中存在 `uv`，以便运行 SDK 环境管理流程。
 ```
 
 如果需要经常运行 SiFli-SDK，可以为执行 export.sh 创建一个别名，具体步骤如下：

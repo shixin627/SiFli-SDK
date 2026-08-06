@@ -32,9 +32,12 @@ extern "C" {
 #define AES_DEC 0
 #define AES_ENC 1
 
-#define AES_MODE_ECB 0      /*!< AES mode ECB */
-#define AES_MODE_CTR 1      /*!< AES mode CTR */
-#define AES_MODE_CBC 2      /*!< AES mode CBC */
+#define AES_MODE_ECB         0      /*!< AES mode ECB */
+#define AES_MODE_CTR         1      /*!< AES mode CTR */
+#define AES_MODE_CBC         2      /*!< AES mode CBC */
+#if !defined(SF32LB55X) && !defined(SF32LB58X) && !defined(SF32LB56X) && !defined(SF32LB52X)
+#define AES_MODE_CBC_MAC     3      /*!< AES mode CBC-MAC */
+#endif /* !SF32LB55X && !SF32LB58X && !SF32LB56X && !SF32LB52X */
 
 #define AES_KEY_LEN_128 0
 #define AES_KEY_LEN_192 1

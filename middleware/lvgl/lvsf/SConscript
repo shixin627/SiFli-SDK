@@ -26,6 +26,13 @@ if not (GetDepend('PKG_USING_UI_BINARY_LOADER') or GetDepend('PKG_USING_UI_XML_L
 if not GetDepend('LV_USING_FREETYPE_ENGINE'):
     SrcRemove(src, 'lv_freetype.c')
 
+if not GetDepend('LVSF_USING_SWITCHANIM'):
+    SrcRemove(src, 'lvsf_switchanim.c')
+    SrcRemove(src, 'lvsf_switchanim_com.c')
+
+if not GetDepend('LVSF_USING_SJPG'):
+    SrcRemove(src, 'lvsf_sjpg.c')
+
 LOCAL_CCFLAGS = ''
 
 group.extend(DefineGroup('LV_SF', src, depend=['PKG_USING_LITTLEVGL2RTT'], CPPPATH=inc, LOCAL_CCFLAGS=LOCAL_CCFLAGS))

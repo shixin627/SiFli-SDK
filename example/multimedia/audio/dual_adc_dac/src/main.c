@@ -55,31 +55,6 @@ static int mnt_init(void)
     return RT_EOK;
 }
 
-
-#define MUSIC_FILE_PATH "/stereo.wav"
-
-static mp3ctrl_handle g_mp3_handle = NULL;
-static int g_is_end = 0;
-
-/**
- * @brief callback function for mp3ctrl_open.
- */
-static int play_callback_func(audio_server_callback_cmt_t cmd, void *callback_userdata, uint32_t reserved)
-{
-    rt_kprintf("[LOCAL MUSIC]%s cmd %d\n", __func__, cmd);
-    switch (cmd)
-    {
-    case as_callback_cmd_play_to_end:
-        g_is_end = 1;
-        break;
-
-    default:
-        break;
-    }
-
-    return 0;
-}
-
 #define MIC0_RECORD_FILE "/mic0_16k.pcm"
 #define MIC1_RECORD_FILE "/mic1_16k.pcm"
 
@@ -103,6 +78,11 @@ static int mic2speaker_callback(audio_server_callback_cmt_t cmd, void *callback_
 }
 static void mic2speaker(uint8_t argc, char **argv)
 {
+    int mic = 0;
+    if (argc > 1)
+    {
+        mic = atoi(argv[1]);
+    }
     uint32_t record_seconds = 0;
     audio_parameter_t pa = {0};
     pa.write_bits_per_sample = 16;
@@ -113,7 +93,14 @@ static void mic2speaker(uint8_t argc, char **argv)
     pa.read_channnel_num = 1;
     pa.read_samplerate = 16000;
     pa.read_cache_size = 0;
-    pa.read_which_mic = AUDIO_MIC0_ONLY; // AUDIO_MIC1_ONLY;
+    if (mic == 0)
+    {
+        pa.read_which_mic = AUDIO_MIC0_ONLY;
+    }
+    else
+    {
+        pa.read_which_mic = AUDIO_MIC1_ONLY;
+    }
     pa.write_cache_size = 2048;
 
     /*
@@ -291,16 +278,6 @@ int main(void)
     /* ls files in root. */
     extern void ls(const char *name);
     ls("/");
-
-    g_mp3_handle = mp3ctrl_open(AUDIO_TYPE_LOCAL_MUSIC, (void *)MUSIC_FILE_PATH, play_callback_func, NULL);
-    RT_ASSERT(g_mp3_handle);
-    mp3ctrl_play(g_mp3_handle);
-
-    while (!g_is_end)
-    {
-        rt_thread_mdelay(100);
-    }
-    mp3ctrl_close(g_mp3_handle);
 
     return 0;
 }

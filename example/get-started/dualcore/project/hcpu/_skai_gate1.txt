@@ -1,0 +1,3 @@
+skai_fake_hr 128
+skaijs_run
+app_status

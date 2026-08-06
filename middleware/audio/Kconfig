@@ -1,7 +1,7 @@
 if !SOC_SF32LB55X
 # Kconfig file for package WebRTC
 menuconfig AUDIO
-    bool "Enable Audio"
+    bool "Audio"
 choice
     prompt "Select audio path Type"
         depends on AUDIO

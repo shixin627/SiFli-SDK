@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifndef LV_CONF_KCONFIG_REMAP_V9_H
 #define LV_CONF_KCONFIG_REMAP_V9_H
 

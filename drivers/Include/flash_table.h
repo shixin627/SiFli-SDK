@@ -184,6 +184,33 @@ extern FT_CONST SPI_FLASH_FACT_CFG_T flash_cmd_table_list[];
 extern FT_CONST SPI_FLASH_FACT_CFG_T nand_cmd_table_list[];
 extern FT_CONST FLASH_RDID_TYPE_T   *FT_CONST nand_cmd_id_pool[];
 
+/**
+ * @brief Get flash type and config according to flash chipid
+ *
+ * It's a weak function that can be overridden by user to add user-defined flash
+ *
+ * @param[in] isnand whether it's nand chipid, 0: nor, others: nand
+ * @param[in] fid    manufacture id
+ * @param[in] did    low 8bit of device id, density id for NOR,
+ *                   for 8bit device id, did should be set to 0, type is used as the 8bit value
+ * @param[in] type   high 8bit of device id, memory type of NOR
+ * @param[out] flash_type   flash type, nor: FLASH_CMD_TABLE_ID_T, nand: NAND_CMD_TABLE_ID_T
+ *
+ * @return pointer to FLASH_RDID_TYPE_T structure
+ *
+ */
+void *get_user_flash_cfg(uint8_t isnand, uint8_t fid, uint8_t did, uint8_t type, uint8_t *flash_type);
+
+/**
+ * @brief Get default nand flash type
+ *
+ * It's a weak function that can be overridden by user to specify default flash type if chipid is not in the table
+ *
+ * @return value of NAND_CMD_TABLE_ID_T
+ *
+ */
+int HAL_GET_NAND_FLASH_DEFAUT_IDX(void);
+
 #if defined(JLINK) || defined(KEIL)
 void spi_nor_table_init(void);
 void spi_nand_table_init(void);

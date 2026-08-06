@@ -1,0 +1,19 @@
+from building import *
+Import('rtconfig')
+
+src   = []
+CPPPATH = []
+cwd   = GetCurrentDir()
+
+src = ['sifli_crypto.c']
+if GetDepend("SF_CRYPTO_PORT_BAREMETAL"):
+    src += ['sifli_crypto_port_baremetal.c']
+else:
+    src += ['sifli_crypto_port_os.c']
+
+CPPPATH += [cwd]    
+
+# add src and include to group.
+group = DefineGroup('crypto', src, depend = ["USING_SF_CRYPTO"], CPPPATH = CPPPATH)
+    
+Return('group')

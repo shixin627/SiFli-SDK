@@ -32,21 +32,33 @@ int main(void)
 
     button_cfg_t cfg;
 
+#ifdef BSP_USING_KEY1
     cfg.pin = BSP_KEY1_PIN;
+#ifdef BSP_KEY1_ACTIVE_HIGH
     cfg.active_state = BUTTON_ACTIVE_HIGH;
+#else
+    cfg.active_state = BUTTON_ACTIVE_LOW;
+#endif
     cfg.mode = PIN_MODE_INPUT;
     cfg.button_handler = button_event_handler;
     int32_t id = button_init(&cfg);
     RT_ASSERT(id >= 0);
     RT_ASSERT(SF_EOK == button_enable(id));
+#endif
 
+#ifdef BSP_USING_KEY2
     cfg.pin = BSP_KEY2_PIN;
+#ifdef BSP_KEY2_ACTIVE_HIGH
     cfg.active_state = BUTTON_ACTIVE_HIGH;
+#else
+    cfg.active_state = BUTTON_ACTIVE_LOW;
+#endif
     cfg.mode = PIN_MODE_INPUT;
     cfg.button_handler = button_event_handler;
     id = button_init(&cfg);
     RT_ASSERT(id >= 0);
     RT_ASSERT(SF_EOK == button_enable(id));
+#endif
 
     while (1)
     {

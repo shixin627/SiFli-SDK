@@ -65,7 +65,14 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
                            uint8_t rhr, uint8_t worn, uint8_t rest,
                            uint8_t fresh, uint16_t total, uint16_t deep,
                            uint16_t rem, uint16_t light, uint16_t pi_e3,
-                           uint16_t frame_pct, uint16_t rate_info);
+                           uint16_t frame_pct, uint16_t rate_info,
+                           uint16_t own_info, uint8_t rep_pct);
+/* One 10.24 s window of detrended raw PPG (KEY_HR_WINDOW_DUMP 0x16), captured
+   when hr_autocorr produced an implausible estimate. At most one per burst.
+   Exists because the offline synthetic suite cannot reproduce the field
+   failures — the failing window itself has to come back. Temporary. */
+bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
+                          uint16_t count, const int8_t *win);
 /* One minute of raw 1 Hz continuous-HR samples (KEY_HR_CONT_DIAG 0x15). Only
    emitted while the Settings "continuous HR" diagnostic toggle is on; it exists
    to test whether the nightly 2x survives when the HBA algorithm is never
@@ -138,6 +145,7 @@ bool commu_send_lift_input_delete_range(int from, int to); /* -> KEY_LIFT_INPUT_
 bool commu_send_conv_open(const char *title, const char *id, uint8_t index); /* -> KEY_CONV_OPEN  (0x0F) open the tapped @-contact's chat room */
 bool commu_send_conv_send(const char *text);                                 /* -> KEY_CONV_SEND  (0x10) send one turn (mic→V2T transcript) */
 bool commu_send_conv_close(void);                                            /* -> KEY_CONV_CLOSE (0x11) leave the chat room (back) */
+bool commu_send_conv_list_req(void);                                         /* -> KEY_CONV_LIST_REQ (0x21) (re)push the desktop session list */
 
 /* SkaiApp AI-generated mini-apps (SkaiLink ADR-0037). */
 bool commu_send_skaiapp_ack(const char *id, int code);                       /* -> KEY_SKAIAPP_ACK (0x15) install/remove result */

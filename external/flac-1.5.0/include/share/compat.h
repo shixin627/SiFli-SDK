@@ -125,6 +125,12 @@
 #else
 #include <sys/utime.h> /* for utime() */
 #endif
+#elif defined(__ARMCC_VERSION)
+/* Arm Compiler 6 (armclang)'s C library does not ship <utime.h>; mtime
+ * preservation is irrelevant on the embedded FAT filesystem we target,
+ * so provide a minimal struct utimbuf stub for any downstream code that
+ * still names the type. */
+struct utimbuf { long actime; long modtime; };
 #else
 #if defined(_POSIX_C_SOURCE) && (_POSIX_C_SOURCE >= 200809L)
 #include <fcntl.h>
@@ -198,13 +204,27 @@
 #define flac_vfprintf vfprintf
 
 #define flac_fopen fopen
+#if defined(__ARMCC_VERSION)
+/* armclib lacks chmod()/utime(); FAT on embedded targets has no permission
+ * bits, so the file-stats preservation in metadata_iterators.c collapses to
+ * a no-op. stat()/fstat() are provided by RT-Thread DFS but armlibc's
+ * <sys/stat.h> shim is empty, so re-declare the prototypes here for callers
+ * that include this header. */
+#define flac_chmod(p, m) ((void)(p), (void)(m), 0)
+struct stat; /* full definition is provided by RT-Thread libc/libc_stat.h via armlibc's <unistd.h> chain */
+extern int stat(const char *file, struct stat *buf);
+extern int fstat(int fildes, struct stat *buf);
+#else
 #define flac_chmod chmod
+#endif
 #define flac_unlink unlink
 #define flac_rename rename
 #define flac_stat stat
 
 #if defined(_POSIX_C_SOURCE) && (_POSIX_C_SOURCE >= 200809L)
 #define flac_utime(a, b) utimensat (AT_FDCWD, a, *b, 0)
+#elif defined(__ARMCC_VERSION)
+#define flac_utime(a, b) ((void)(a), (void)(b), 0)
 #else
 #define flac_utime utime
 #endif

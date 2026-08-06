@@ -349,6 +349,7 @@ def run_cmd_check_output(cmd: List[str], input_text: Optional[str]=None, extra_p
     If return code was not 0, subprocess.CalledProcessError is raised, otherwise, the original error is masked.
     Returns both stdout and stderr of the run command.
     """
+    cmd = list(cmd)
     # If extra_paths is given, locate the executable in one of these directories.
     # Note: it would seem logical to add extra_paths to env[PATH], instead, and let OS do the job of finding the
     # executable for us. However this does not work on Windows: https://bugs.python.org/issue8557.
@@ -802,7 +803,7 @@ class SiFliSDKTool(object):
         """
         # this function can not be called for a different platform
         assert self._platform == CURRENT_PLATFORM
-        cmd = self._current_options.version_cmd  # type: ignore
+        cmd = list(self._current_options.version_cmd)  # type: ignore
         if executable_path:
             cmd[0] = executable_path
 

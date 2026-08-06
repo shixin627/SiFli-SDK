@@ -114,6 +114,25 @@ int get_pdm_volume();
 #define PDM2_DEVICE_NAME    "pdm2"
 #define DELAY_SAMPLE    10
 
+#define g_hardware_mix_enable    0 //mix is left + right, make big volume
+#define m_max(a, b)  ((a) > (b) ? (a ): (b))
+
+#if defined(SOFTWARE_TX_MIX_ENABLE) || defined(AUDIO_RX_USING_I2S) || defined(AUDIO_TX_USING_I2S)
+    #define TX_DMA_SIZE         (CODEC_DATA_UNIT_LEN)
+#else
+    #define TX_DMA_SIZE         (CODEC_DATA_UNIT_LEN * 3)
+#endif
+
+#if defined(BT_BAP_BROADCAST_SOURCE)
+    #if defined(SOFTWARE_TX_MIX_ENABLE)
+        #error "not support SOFTWARE_TX_MIX_ENABLE with BT_BAP_BROADCAST_SOURCE for diffrent TX_DMA_SIZE"
+    #endif
+#endif
+
+
+#define SPEAKER_TX_BUF_SIZE     (32 * 300) //300ms
+
+
 
 enum
 {
@@ -150,7 +169,9 @@ struct audio_client_base_t
     audio_server_callback_func  callback;
     void                        *user_data;
     audio_parameter_t           parameter;
-    struct rt_ringbuffer        ring_buf;
+    uint32_t                    cache_samplerate;
+    uint32_t                    cache_ch;
+    struct rt_ringbuffer32      ring_buf;
     uint8_t                     *ring_pool;
 #if SOFTWARE_TX_MIX_ENABLE
     sifli_resample_t            *resample;
@@ -239,7 +260,7 @@ typedef struct _audio_device_ctrl_t
     uint32_t                rx_samplerate;
 #if SOFTWARE_TX_MIX_ENABLE
     uint8_t                 *tx_mixed_pool;
-    struct rt_ringbuffer    tx_mixed_rb;
+    struct rt_ringbuffer32  tx_mixed_rb;
 #endif
     uint32_t                tx_mix_dst_samplerate;
     uint8_t                 tx_mix_dst_channel;

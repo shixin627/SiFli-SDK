@@ -30,8 +30,8 @@ ALIGN(64) static uint8_t render_buffer[SLOW_SPEED_SRAM + BUF_TOTAL_BYTES * 2];
 
 #define TEST_IMAGE_COLOR_FORMAT EPIC_INPUT_ARGB8565
 #define TEST_IMAGE_PIXEL_BYTES 3
-#define TEST_IMAGE_WIDTH  (LCD_HOR_RES_MAX*8/10)
-#define TEST_IMAGE_HEIGHT (LCD_VER_RES_MAX*8/10)
+#define TEST_IMAGE_WIDTH  (LCD_HOR_RES_MAX*6/8)
+#define TEST_IMAGE_HEIGHT (LCD_VER_RES_MAX*6/8)
 L2_NON_RET_BSS_SECT_BEGIN(test_images)
 L2_NON_RET_BSS_SECT(test_images, ALIGN(64) static uint8_t test_image[TEST_IMAGE_WIDTH * TEST_IMAGE_HEIGHT * TEST_IMAGE_PIXEL_BYTES]);
 L2_NON_RET_BSS_SECT_END
@@ -41,6 +41,52 @@ ALIGN(4)  /* Source and destination address must be 4bytes aligned. */
 const static uint8_t ezip_data_argb565[] =
 {
 #include "../assets/clock_simple_bg_565A.dat"
+};
+
+ALIGN(4)
+const static uint8_t ezip_data_60x60[] =
+{
+#include "../assets/ezip_60x60.dat"
+};
+
+#ifdef EPIC_SUPPORT_JPEGD
+ALIGN(4)
+const static uint8_t jpeg_data_454x454[] =
+{
+#include "../assets/jpeg_bg_454x454.dat"
+};
+
+ALIGN(4)
+const static uint8_t jpeg_data_400x400[] =
+{
+#include "../assets/jpeg_bg_400x400.dat"
+};
+
+ALIGN(4)
+static const uint8_t jpeg_human1_88x88[] =
+{
+#include "../assets/jpeg_human1_88x88.dat"
+};
+#endif /* EPIC_SUPPORT_JPEGD */
+
+const static uint8_t letter_data_27x30_si[] =
+{
+#include "../assets/letter_si.dat"
+};
+
+const static uint8_t letter_data_27x30_che[] =
+{
+#include "../assets/letter_che.dat"
+};
+
+const static uint8_t letter_data_27x30_ke[] =
+{
+#include "../assets/letter_ke.dat"
+};
+
+const static uint8_t letter_data_27x30_ji[] =
+{
+#include "../assets/letter_ji.dat"
 };
 
 void dummy_func(void)
@@ -126,7 +172,28 @@ static void wait_lcd_flush_done(void)
     err = rt_sem_release(&lcd_sema);
     RT_ASSERT(RT_EOK == err);
 }
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+static void render_trav_cb(drv_epic_operation *op, void *usr_data)
+{
+    if (DRV_EPIC_DRAW_IMAGE == op->op)
+    {
+        sifli_matrix_3x3_t *p_trans_matrix = op->desc.blend.layer.transform_cfg.trans_matrix;
+        op->desc.blend.layer.transform_cfg.trans_matrix = NULL;
+        if (p_trans_matrix)
+        {
+            rt_free(p_trans_matrix);
+        }
+    }
+}
 
+static void render_done_free_memory_cb(drv_epic_render_list_t rl, EPIC_LayerConfigTypeDef *p_dst, void *usr_data, uint32_t last)
+{
+    if (last)
+    {
+        drv_epic_render_trav(rl, render_trav_cb, usr_data);
+    }
+}
+#endif /* EPIC_SUPPORT_TRANS_MATRIX */
 static void partial_done_cb(drv_epic_render_list_t rl, EPIC_LayerConfigTypeDef *p_dst, void *usr_data, uint32_t last)
 {
     static uint8_t lcd_te = 1;
@@ -136,6 +203,9 @@ static void partial_done_cb(drv_epic_render_list_t rl, EPIC_LayerConfigTypeDef *
     RT_ASSERT(RT_EOK == err);
     if (last)
     {
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+        render_done_free_memory_cb(rl, p_dst, usr_data, last);
+#endif /* EPIC_SUPPORT_TRANS_MATRIX */
         lcd_te = 1;
         rt_sem_release(&render_done_sema);
     }
@@ -201,10 +271,61 @@ static void draw_img(drv_epic_render_buf *p_buf)
     p_src_layer->width = TEST_IMAGE_WIDTH;
     p_src_layer->total_width = TEST_IMAGE_WIDTH;
     p_src_layer->height = TEST_IMAGE_HEIGHT;
+    //p_src_layer->transform_cfg.angle = 100; // 10.0 degrees
+
+    //Center the image
+    p_src_layer->x_offset = (LCD_HOR_RES_MAX - p_src_layer->width) >> 1;
+    p_src_layer->y_offset = (LCD_VER_RES_MAX - p_src_layer->height) >> 1;
 
     drv_epic_commit_op(o);
 }
 
+#ifdef EPIC_SUPPORT_JPEGD
+static void draw_jpg_img(drv_epic_render_buf *p_buf)
+{
+    uint8_t idx = 0;
+    drv_epic_operation *o = drv_epic_alloc_op(p_buf);
+    RT_ASSERT(o != NULL);
+
+    o->op = DRV_EPIC_DRAW_IMAGE;
+    o->clip_area.x0 = 0;
+    o->clip_area.y0 = 0;
+    o->clip_area.x1 = LCD_HOR_RES_MAX - 1;
+    o->clip_area.y1 = LCD_VER_RES_MAX - 1;
+
+    HAL_EPIC_LayerConfigInit(&o->mask);
+    o->desc.blend.use_dest_as_bg = EPIC_BLEND_MODE_NORMAL;
+
+    EPIC_LayerConfigTypeDef *p_src_layer = &o->desc.blend.layer;
+    HAL_EPIC_LayerConfigInit(p_src_layer);
+    p_src_layer->alpha = 255;
+    p_src_layer->x_offset = 0;
+    p_src_layer->y_offset = 0;
+    p_src_layer->color_mode = EPIC_INPUT_JPEG; //EPIC_COLOR_JPEG
+    if (idx == 0)
+    {
+        p_src_layer->data = (uint8_t *)&jpeg_data_454x454[0];
+        p_src_layer->width = 454;
+        p_src_layer->total_width = 454;
+        p_src_layer->height = 454;
+        p_src_layer->data_size = sizeof(jpeg_data_454x454);
+    }
+    else
+    {
+        p_src_layer->data = (uint8_t *)&jpeg_data_400x400[0];
+        p_src_layer->width = 400;
+        p_src_layer->total_width = 400;
+        p_src_layer->height = 400;
+        p_src_layer->data_size = sizeof(jpeg_data_400x400);
+    }
+    p_src_layer->transform_cfg.scale_x = EPIC_INPUT_SCALE_NONE * p_src_layer->width / LCD_HOR_RES_MAX;
+    p_src_layer->transform_cfg.scale_y = EPIC_INPUT_SCALE_NONE * p_src_layer->height / LCD_VER_RES_MAX;
+
+    drv_epic_commit_op(o);
+
+    idx = !idx;
+}
+#endif /* EPIC_SUPPORT_JPEGD */
 static void draw_ezip_img(drv_epic_render_buf *p_buf)
 {
     drv_epic_operation *o = drv_epic_alloc_op(p_buf);
@@ -221,7 +342,7 @@ static void draw_ezip_img(drv_epic_render_buf *p_buf)
 
     EPIC_LayerConfigTypeDef *p_src_layer = &o->desc.blend.layer;
     HAL_EPIC_LayerConfigInit(p_src_layer);
-    p_src_layer->alpha = 50;
+    p_src_layer->alpha = 255;
     p_src_layer->x_offset = 0;
     p_src_layer->y_offset = 0;
 
@@ -230,7 +351,9 @@ static void draw_ezip_img(drv_epic_render_buf *p_buf)
     p_src_layer->width = 454;
     p_src_layer->total_width = 454;
     p_src_layer->height = 454;
-
+    p_src_layer->data_size = sizeof(ezip_data_argb565);
+    p_src_layer->transform_cfg.scale_x = EPIC_INPUT_SCALE_NONE * p_src_layer->width / LCD_HOR_RES_MAX;
+    p_src_layer->transform_cfg.scale_y = EPIC_INPUT_SCALE_NONE * p_src_layer->height / LCD_VER_RES_MAX;
     drv_epic_commit_op(o);
 }
 
@@ -238,6 +361,7 @@ static void draw_rects(drv_epic_render_buf *p_buf)
 {
     int16_t w = LCD_HOR_RES_MAX - 30;
     int16_t h = 50 * 2;
+    uint8_t is_grad = 1;
 
     for (uint16_t y = 10; y < LCD_VER_RES_MAX - h - 1; y += (h + 20))
     {
@@ -258,8 +382,79 @@ static void draw_rects(drv_epic_render_buf *p_buf)
         o->desc.rectangle.top_fillet = 1;
         o->desc.rectangle.bot_fillet = 1;
         o->desc.rectangle.argb8888 = 0xFF808080;
-
+        o->desc.rectangle.grad_color.tl = 0xFFFF0000;
+        o->desc.rectangle.grad_color.tr = 0xFF00FF00;
+        o->desc.rectangle.grad_color.bl = 0xFF0000FF;
+        o->desc.rectangle.grad_color.br = 0xFFFFFF00;
+        o->desc.rectangle.grad_color_en = is_grad;
+        is_grad = !is_grad;
         drv_epic_commit_op(o);
+    }
+}
+
+
+static void draw_img_buttons(drv_epic_render_buf *p_buf)
+{
+    int16_t img_h = 60;
+    int16_t img_w = 60;
+
+    int16_t w = LCD_HOR_RES_MAX - 30;
+    int16_t h = img_h + 20;
+    uint8_t is_grad = 1;
+    int16_t buttons_left_x = 10;
+
+    for (uint16_t y = 10; y < LCD_VER_RES_MAX - h - 1; y += (h + 20))
+    {
+        //Draw button
+        drv_epic_operation *o1 = drv_epic_alloc_op(p_buf);
+        RT_ASSERT(o1 != NULL);
+
+        o1->op = DRV_EPIC_DRAW_RECT;
+        o1->clip_area.x0 = buttons_left_x;
+        o1->clip_area.y0 = y;
+        o1->clip_area.x1 = o1->clip_area.x0 + w - 1;
+        o1->clip_area.y1 = y + h - 1;
+
+        HAL_EPIC_LayerConfigInit(&o1->mask);
+
+        o1->desc.rectangle.area = o1->clip_area;
+
+        o1->desc.rectangle.radius = 20;
+        o1->desc.rectangle.top_fillet = 1;
+        o1->desc.rectangle.bot_fillet = 1;
+        o1->desc.rectangle.argb8888 = 0xFF808080;
+        o1->desc.rectangle.grad_color.tl = 0xFFFF0000;
+        o1->desc.rectangle.grad_color.tr = 0xFF00FF00;
+        o1->desc.rectangle.grad_color.bl = 0xFF0000FF;
+        o1->desc.rectangle.grad_color.br = 0xFFFFFF00;
+        o1->desc.rectangle.grad_color_en = is_grad;
+        is_grad = !is_grad;
+        drv_epic_commit_op(o1);
+
+
+        //Draw image
+        drv_epic_operation *o2 = drv_epic_alloc_op(p_buf);
+        RT_ASSERT(o2 != NULL);
+
+        o2->op = DRV_EPIC_DRAW_IMAGE;
+        memcpy(&o2->clip_area, &o1->clip_area, sizeof(EPIC_AreaTypeDef));
+
+        HAL_EPIC_LayerConfigInit(&o2->mask);
+        o2->desc.blend.use_dest_as_bg = EPIC_BLEND_MODE_NORMAL;
+
+        EPIC_LayerConfigTypeDef *p_src_layer = &o2->desc.blend.layer;
+        HAL_EPIC_LayerConfigInit(p_src_layer);
+        p_src_layer->alpha = 255;
+        p_src_layer->x_offset = buttons_left_x + 10;
+        p_src_layer->y_offset = y + 10;
+
+        p_src_layer->data = (uint8_t *)&ezip_data_60x60[0];
+        p_src_layer->color_mode = EPIC_INPUT_EZIP;
+        p_src_layer->width = img_w;
+        p_src_layer->total_width = img_w;
+        p_src_layer->height = img_h;
+        p_src_layer->data_size = sizeof(ezip_data_60x60);
+        drv_epic_commit_op(o2);
     }
 }
 
@@ -421,23 +616,37 @@ static void draw_lines(drv_epic_render_buf *p_buf)
 
 static void draw_letters(drv_epic_render_buf *p_buf)
 {
-
     drv_epic_operation *o = drv_epic_alloc_op(p_buf);
     RT_ASSERT(o != NULL);
     o->op = DRV_EPIC_DRAW_LETTERS;
 
     HAL_EPIC_LayerConfigInit(&o->mask);
-    int16_t letter_w = 30;
+    int16_t letter_w = 27;
     int16_t letter_h = 30;
     int16_t letter_gap = 5;
     int16_t line_gap = 10;
+    int16_t letter_idx = 0;
 
     for (uint16_t x = 0; x < LCD_HOR_RES_MAX; x += (letter_w + letter_gap))
         for (uint16_t y = 0; y < LCD_VER_RES_MAX; y += (letter_h + line_gap))
         {
             drv_epic_letter_type_t *p_letter = drv_epic_op_alloc_letter(o);
 
-            p_letter->data = ((uint8_t *)&test_image[0]) + (y * LCD_HOR_RES_MAX) + x;
+            switch ((letter_idx++) % 4)
+            {
+            case 0:
+                p_letter->data = letter_data_27x30_si;
+                break;
+            case 1:
+                p_letter->data = letter_data_27x30_che;
+                break;
+            case 2:
+                p_letter->data = letter_data_27x30_ke;
+                break;
+            default:
+                p_letter->data = letter_data_27x30_ji;
+                break;
+            }
             p_letter->area.x0 = x;
             p_letter->area.y0 = y;
             p_letter->area.x1 = x + letter_w - 1;
@@ -505,9 +714,178 @@ static void draw_polygon(drv_epic_render_buf *p_buf)
     drv_epic_commit_op(o);
 }
 
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+static float rotate_around_pivot(sifli_matrix_3x3_t *p_matrix, float rotate_x, float rotate_y, float rotate_z,
+                                 uint32_t img_width, uint32_t img_height, sifli_vec_3d_t *p_pivot)
+{
+    sifli_matrix_4x4_t mat;
+    uint32_t normalize_factor = (img_width > img_height ? img_width : img_height);
+    float quad_3d_x_offset = (float)img_width / (float)normalize_factor;
+    float quad_3d_y_offset = (float)img_height / (float)normalize_factor;
+    float fov = 70.0f;
+    float view_distance = 1.4f;
+    /* Quad vertices in normalized coordinates:
+       quad local: center (0,0), x right positive, y up positive, z outward.
+       range: (-1,1) x (-1,1) x (-1,1)
+    */
+    sifli_quad_3d_t  quad_3d =
+    {
+        {-quad_3d_x_offset,  quad_3d_y_offset, 0.0f},
+        {-quad_3d_x_offset, -quad_3d_y_offset, 0.0f},
+        { quad_3d_x_offset, -quad_3d_y_offset, 0.0f},
+        { quad_3d_x_offset,  quad_3d_y_offset, 0.0f}
+    };
+
+    /* Compute pivot in quad-local normalized coordinates:
+       quad local: center (0,0), x right positive, y up positive, z outward.
+       p_pivot->x/p_pivot->y/p_pivot->z are image pixel coordinates (origin top-left, y down). */
+    float cx = (float)img_width * 0.5f;
+    float cy = (float)img_height * 0.5f;
+    float cz = 0.0f;
+    float pivot_local_x = (p_pivot->x - cx) * 2 / (float)normalize_factor;
+    float pivot_local_y = (cy - p_pivot->y) * 2 / (float)normalize_factor; /* invert Y to quad coord */
+    float pivot_local_z = (p_pivot->z - cz) * 2 / (float)normalize_factor;
+
+    sifli_identity_4x4(&mat);
+    /* base translate to place quad in front of camera */
+    sifli_translate_4x4(0.0f, 0.0f, -view_distance, &mat);
+
+    /* To rotate around a 3D pivot: T(+pivot) * R * T(-pivot)
+       (library does matrix = matrix * step, so call in this order). */
+    sifli_translate_4x4(pivot_local_x, pivot_local_y, pivot_local_z, &mat); /* mat *= T(+pivot) */
+    sifli_rotate_x(rotate_x, &mat);                                         /* mat *= R_x */
+    sifli_rotate_y(rotate_y, &mat);                                         /* mat *= R_y */
+    sifli_rotate_z(rotate_z, &mat);                                         /* mat *= R_z */
+    sifli_scale_4x4(1.0f, 1.0f, 1.0f, &mat);                                /* mat *= S */
+    sifli_translate_4x4(-pivot_local_x, -pivot_local_y, -pivot_local_z, &mat);/* mat *= T(-pivot) */
+
+
+
+    for (uint32_t i = 0; i < 4; i++)
+        sifli_mat_vertex_multiply_4x4(&mat, &quad_3d[i], &quad_3d[i]);
+
+    sifli_error_t err = sifli_get_texture_map_matrix(fov, img_width, img_height, img_width, img_height,
+                        quad_3d, p_matrix);
+    RT_ASSERT(SIFLI_MATRIX_SUCCESS == err);
+
+    // rt_kprintf("rotate x:%0.1f y:%0.1f z:%0.1f\n", rotate_x, rotate_y, rotate_z);
+    return 0;
+}
+
+static void verrify_matrix_result(EPIC_LayerConfigTypeDef *p_layer)
+{
+    sifli_matrix_3x3_t *p_matrix = p_layer->transform_cfg.trans_matrix;
+    if (p_matrix)
+    {
+        sifli_quad_2d_t quad_2d =
+        {
+            {p_layer->x_offset, p_layer->y_offset},
+            {p_layer->x_offset, p_layer->y_offset + p_layer->height - 1},
+            {p_layer->x_offset + p_layer->width - 1, p_layer->y_offset + p_layer->height - 1},
+            {p_layer->x_offset + p_layer->width - 1, p_layer->y_offset},
+        };
+
+        float min_x, min_y, max_x, max_y;
+        for (uint32_t i = 0; i < 4; i++)
+        {
+            sifli_mat_vertex_multiply(p_matrix, &quad_2d[i].x, &quad_2d[i].y);
+            rt_kprintf("%d: x=%0.1f,  y=%0.1f \n", i, quad_2d[i].x, quad_2d[i].y);
+
+            if (0 == i)
+            {
+                min_x = quad_2d[i].x;
+                max_y = quad_2d[i].x;
+
+                min_y = quad_2d[i].y;
+                max_y = quad_2d[i].y;
+            }
+            else
+            {
+                min_x = (min_x > quad_2d[i].x) ? quad_2d[i].x : min_x;
+                min_y = (min_y > quad_2d[i].y) ? quad_2d[i].y : min_y;
+
+                max_x = (max_x < quad_2d[i].x) ? quad_2d[i].x : max_x;
+                max_y = (max_y < quad_2d[i].y) ? quad_2d[i].y : max_y;
+            }
+        }
+        rt_kprintf("Bounding box: x(%0.1f, %0.1f), y(%0.1f, %0.1f)\n", min_x, max_x, min_y, max_y);
+    }
+}
+
+#endif /* EPIC_SUPPORT_TRANS_MATRIX */
+
+/**
+ * @brief Draw reference lines on the display buffer
+ *
+ * This function draws horizontal and vertical reference lines across the screen
+ * at regular intervals to serve as visual guides. It creates lines every 1/8th
+ * of the screen resolution both horizontally and vertically. The center lines
+ * are drawn in red color while others are white.
+ *
+ * @param p_buf Pointer to the render buffer where the lines will be drawn
+ */static void draw_reference_lines(drv_epic_render_buf *p_buf)
+{
+    //Horizontal line
+    for (uint16_t y = 0; y < LCD_VER_RES_MAX; y += LCD_VER_RES_MAX / 8)
+    {
+        drv_epic_operation *o = drv_epic_alloc_op(p_buf);
+        RT_ASSERT(o != NULL);
+
+        o->op = DRV_EPIC_DRAW_LINE;
+        HAL_EPIC_LayerConfigInit(&o->mask);
+
+        o->desc.line.p1.x = 0;
+        o->desc.line.p1.y = y;
+        o->desc.line.p2.x = LCD_HOR_RES_MAX - 1;
+        o->desc.line.p2.y = y;
+        o->desc.line.width = 1;
+
+        if (LCD_VER_RES_MAX / 2 == y)
+            o->desc.line.argb8888 = 0x80FF0000;
+        else
+            o->desc.line.argb8888 = 0x80FFFFFF;
+
+        int16_t  half_w = o->desc.line.width >> 1;
+        o->clip_area.x0 = o->desc.line.p1.x - half_w - 1;
+        o->clip_area.y0 = o->desc.line.p1.y - half_w - 1;
+        o->clip_area.x1 = o->desc.line.p2.x + half_w + 1;
+        o->clip_area.y1 = o->desc.line.p2.y + half_w + 1;
+        drv_epic_commit_op(o);
+    }
+
+    //Vertical line
+    for (uint16_t x = 0; x < LCD_HOR_RES_MAX; x += LCD_HOR_RES_MAX / 8)
+    {
+        drv_epic_operation *o = drv_epic_alloc_op(p_buf);
+        RT_ASSERT(o != NULL);
+
+        o->op = DRV_EPIC_DRAW_LINE;
+        HAL_EPIC_LayerConfigInit(&o->mask);
+
+        o->desc.line.p1.x = x;
+        o->desc.line.p1.y = 0;
+        o->desc.line.p2.x = x;
+        o->desc.line.p2.y = LCD_VER_RES_MAX - 1;
+        o->desc.line.width = 1;
+
+        if (LCD_HOR_RES_MAX / 2 == x)
+            o->desc.line.argb8888 = 0x80FF0000;
+        else
+            o->desc.line.argb8888 = 0x80FFFFFF;
+
+        int16_t  half_w = o->desc.line.width >> 1;
+        o->clip_area.x0 = o->desc.line.p1.x - half_w - 1;
+        o->clip_area.y0 = o->desc.line.p1.y - half_w - 1;
+        o->clip_area.x1 = o->desc.line.p2.x + half_w + 1;
+        o->clip_area.y1 = o->desc.line.p2.y + half_w + 1;
+        drv_epic_commit_op(o);
+    }
+}
+
 static void draw_img_3d_rotated(drv_epic_render_buf *p_buf)
 {
     static int16_t angle_v = 0;
+    uint8_t transform_type = 0; // 1: Rotate around X axis, 2: Rotate around Y axis
     drv_epic_operation *o = drv_epic_alloc_op(p_buf);
     RT_ASSERT(o != NULL);
 
@@ -532,20 +910,38 @@ static void draw_img_3d_rotated(drv_epic_render_buf *p_buf)
     p_src_layer->x_offset = (LCD_HOR_RES_MAX - p_src_layer->width) >> 1;
     p_src_layer->y_offset = (LCD_VER_RES_MAX - p_src_layer->height) >> 1;
 
-    if (angle_v < 3600)
+    if (angle_v < 3600) //Rotate around X axis in the first 360 degree, then rotate around Y axis in the next 360 degree
     {
-        p_src_layer->transform_cfg.type = 1;
-        angle_v += 2;
+        transform_type = 1;
+        angle_v += 50;
 
         //Skip invisble angles
         if ((angle_v > 900) && (angle_v < 2700))  angle_v = 2700;
     }
     else
     {
-        p_src_layer->transform_cfg.type = 2;
-        angle_v += 10;
+        transform_type = 2;
+        angle_v += 50;
     }
 
+
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+    p_src_layer->transform_cfg.trans_matrix = rt_malloc(sizeof(sifli_matrix_3x3_t));
+    sifli_vec_3d_t pivot = {p_src_layer->width * 0.5f, p_src_layer->height * 0.5f, 0.0f - (float)p_src_layer->width};
+
+    if (1 == transform_type)
+    {
+        rotate_around_pivot(p_src_layer->transform_cfg.trans_matrix, 0.0f, (float)angle_v / 10.0f, 0.0f,
+                            p_src_layer->width, p_src_layer->height, &pivot);
+    }
+    else
+    {
+        rotate_around_pivot(p_src_layer->transform_cfg.trans_matrix, (float)angle_v / 10.0f, 0.0f, 0.0f,
+                            p_src_layer->width, p_src_layer->height, &pivot);
+    }
+    // verrify_matrix_result(p_src_layer);
+#else
+    p_src_layer->transform_cfg.type = transform_type;
     p_src_layer->transform_cfg.scale_x = EPIC_INPUT_SCALE_NONE;
     p_src_layer->transform_cfg.scale_y = EPIC_INPUT_SCALE_NONE;
     p_src_layer->transform_cfg.pivot_x = p_src_layer->x_offset + (p_src_layer->width >> 1);
@@ -557,10 +953,13 @@ static void draw_img_3d_rotated(drv_epic_render_buf *p_buf)
     p_src_layer->transform_cfg.vp_x_offset = p_src_layer->transform_cfg.pivot_x;
     p_src_layer->transform_cfg.vp_y_offset = p_src_layer->transform_cfg.pivot_y;
     p_src_layer->transform_cfg.dst_z_offset = 0 - ((LCD_VER_RES_MAX * 5 / 4) * 1 /* Scale up 1*/);
+#endif /* EPIC_SUPPORT_TRANS_MATRIX */
 
     angle_v = (angle_v) % 7200;
 
     drv_epic_commit_op(o);
+
+    // draw_reference_lines(p_buf);
 }
 
 static void draw_img_3d_rotated_2(drv_epic_render_buf *p_buf)
@@ -591,6 +990,16 @@ static void draw_img_3d_rotated_2(drv_epic_render_buf *p_buf)
     p_src_layer->x_offset = (LCD_HOR_RES_MAX - p_src_layer->width) >> 1;
     p_src_layer->y_offset = (LCD_VER_RES_MAX - p_src_layer->height) >> 1;
 
+
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+    p_src_layer->transform_cfg.trans_matrix = rt_malloc(sizeof(sifli_matrix_3x3_t));
+    sifli_vec_3d_t pivot = {p_src_layer->width * 0.5f, p_src_layer->height * 0.5f, 0.0f - (float)p_src_layer->width};
+
+    rotate_around_pivot(p_src_layer->transform_cfg.trans_matrix, (float)angle_v / 10.0f, 0.0f, 0.0f,
+                        p_src_layer->width, p_src_layer->height, &pivot);
+
+    // verrify_matrix_result(p_src_layer);
+#else
     p_src_layer->transform_cfg.type = 2;
     p_src_layer->transform_cfg.scale_x = EPIC_INPUT_SCALE_NONE;
     p_src_layer->transform_cfg.scale_y = EPIC_INPUT_SCALE_NONE;
@@ -603,10 +1012,13 @@ static void draw_img_3d_rotated_2(drv_epic_render_buf *p_buf)
     p_src_layer->transform_cfg.vp_x_offset = p_src_layer->transform_cfg.pivot_x;
     p_src_layer->transform_cfg.vp_y_offset = p_src_layer->transform_cfg.pivot_y + 300;
     p_src_layer->transform_cfg.dst_z_offset = 0 - (LCD_VER_RES_MAX * 3 / 4);
+#endif /* EPIC_SUPPORT_TRANS_MATRIX */
 
     angle_v = (angle_v + 10) % 3600;
 
     drv_epic_commit_op(o);
+
+    // draw_reference_lines(p_buf);
 }
 
 static void draw_arc_anim(drv_epic_render_buf *p_buf)
@@ -725,9 +1137,9 @@ static void generate_image(unsigned char *buffer, uint32_t cf, int HOR_MAX, int 
     o->op = DRV_EPIC_DRAW_FILL;
     o->clip_area = render_buf.area;
     o->desc.fill.r = 0;
-    o->desc.fill.g = 0;
+    o->desc.fill.g = 255;
     o->desc.fill.b = 0;
-    o->desc.fill.opa = 0;
+    o->desc.fill.opa = 0x2f;
     drv_epic_commit_op(o);
 
     for (int i = 0; i < grid_count; i++)
@@ -767,15 +1179,20 @@ static void generate_image(unsigned char *buffer, uint32_t cf, int HOR_MAX, int 
     RT_ASSERT(RT_EOK == err);
 }
 
+/*
+    1 - Show the rendering result on LCD
+    0 - Do not show the rendering result on LCD, just render to buffer.
+*/
+#define show_on_lcd  1
+
 int main(void)
 {
-    rt_kprintf("__main start\r\n");
+    uint8_t scene = 0;
+    rt_tick_t scene_start_tick = rt_tick_get();
 
-    /*
-      1 - Show the rendering result on LCD
-      0 - Do not show the rendering result on LCD, just render to buffer.
-    */
-    uint8_t show_on_lcd = 1;
+    rt_kprintf("__main start\r\n");
+    rt_thread_delay(1000);
+
     uint8_t pixel_align;
     rt_device_t lcd_device = open_lcd(&pixel_align);
     if (!lcd_device)
@@ -811,24 +1228,68 @@ int main(void)
         rl = drv_epic_alloc_render_list(&virtual_render_buf, &ow_area);
         RT_ASSERT(rl != NULL);
 
-        /*Draw somthing*/
-        draw_fill(&virtual_render_buf);
-        //draw_img(&virtual_render_buf);
-        draw_ezip_img(&virtual_render_buf);
-        draw_rects(&virtual_render_buf);
-        draw_borders(&virtual_render_buf);
-        draw_arcs(&virtual_render_buf);//arc
-        draw_lines(&virtual_render_buf);
-        draw_letters(&virtual_render_buf);
-        draw_polygon(&virtual_render_buf);
 
-        // generate_image((uint8_t *)&test_image[0], TEST_IMAGE_COLOR_FORMAT, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT);
-        //draw_img_3d_rotated(&virtual_render_buf);
-        //draw_img_3d_rotated_2(&virtual_render_buf);
-        //draw_arc_anim(&virtual_render_buf);
+        /*Draw current scene*/
+        switch (scene)
+        {
+        case 1:
+            draw_fill(&virtual_render_buf);
+            draw_ezip_img(&virtual_render_buf);
+            draw_arc_anim(&virtual_render_buf);
+            break;
+
+        case 2:
+            draw_fill(&virtual_render_buf);
+            draw_rects(&virtual_render_buf);
+            draw_borders(&virtual_render_buf);
+            draw_letters(&virtual_render_buf);
+            break;
+
+        case 3:
+            draw_fill(&virtual_render_buf);
+            draw_lines(&virtual_render_buf);
+            draw_polygon(&virtual_render_buf);
+            draw_arc_anim(&virtual_render_buf);
+            draw_letters(&virtual_render_buf);
+            break;
+
+        case 4:
+            draw_fill(&virtual_render_buf);
+            draw_img_3d_rotated(&virtual_render_buf);
+            draw_img_3d_rotated_2(&virtual_render_buf);
+            break;
+
+        case 5:
+            draw_fill(&virtual_render_buf);
+#ifdef EPIC_SUPPORT_JPEGD
+            draw_jpg_img(&virtual_render_buf);
+#else
+            draw_ezip_img(&virtual_render_buf);
+#endif /* EPIC_SUPPORT_JPEGD */
+            draw_img_buttons(&virtual_render_buf);
+            break;
+
+        case 0:
+        default:
+            draw_fill(&virtual_render_buf);
+            //Nested render list: to genrate image with random rectangles
+            generate_image((uint8_t *)&test_image[0], TEST_IMAGE_COLOR_FORMAT, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT);
+            draw_img(&virtual_render_buf);
+            draw_arcs(&virtual_render_buf);
+            scene = 0;
+            break;
+        }
+
+        //Switch to next scene after 10 seconds
+        if (scene_start_tick + rt_tick_from_millisecond(1000 * 10) < rt_tick_get())
+        {
+            scene_start_tick = rt_tick_get();
+            rt_kprintf("Showing scene %d \r\n", ++scene);
+        }
 
         /*Start rendering  and show the result on LCD*/
         EPIC_MsgTypeDef msg;
+        memset(&msg, 0, sizeof(msg));
         msg.id = EPIC_MSG_RENDER_DRAW;
         msg.render_list = rl;
         msg.content.rd.area.x0 = 0;
@@ -845,7 +1306,9 @@ int main(void)
         }
         else
         {
-            msg.content.rd.partial_done_cb = NULL;
+#ifdef EPIC_SUPPORT_TRANS_MATRIX
+            msg.content.rd.partial_done_cb = render_done_free_memory_cb;
+#endif /* EPIC_SUPPORT_TRANS_MATRIX */
         }
 
         drv_epic_render_msg_commit(&msg);
@@ -854,7 +1317,7 @@ int main(void)
         {
             /*Wait rendering done.*/
             rt_err_t err;
-            err = rt_sem_take(&render_done_sema, rt_tick_from_millisecond(3000));
+            err = rt_sem_take(&render_done_sema, rt_tick_from_millisecond(10000));
             RT_ASSERT(RT_EOK == err);
             /*Wait LCD asynchronize flushing done.*/
             wait_lcd_flush_done();

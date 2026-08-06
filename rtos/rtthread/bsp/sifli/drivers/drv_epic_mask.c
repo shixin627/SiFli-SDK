@@ -120,14 +120,18 @@ static drv_epic_mask_radius_circle_dsc_t _circle_cache[DRAW_CIRCLE_CACHE_SIZE];
  *   GLOBAL FUNCTIONS
  **********************/
 
-void drv_epic_mask_init(void)
+int drv_epic_mask_init(void)
 {
     mutex_init(&circle_cache_mutex);
+    drv_epic_mask_cleanup();
+    return 0;
 }
+INIT_APP_EXPORT(drv_epic_mask_init);
 
-void drv_epic_mask_deinit(void)
+int drv_epic_mask_deinit(void)
 {
     mutex_delete(&circle_cache_mutex);
+    return 0;
 }
 
 drv_epic_mask_res_t DRV_EPIC_ATTRIBUTE_FAST_MEM drv_epic_mask_apply(void *masks[], drv_epic_mask_opa_t *mask_buf, int32_t abs_x,

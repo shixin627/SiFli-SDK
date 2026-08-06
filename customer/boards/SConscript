@@ -6,12 +6,12 @@ cwd  = GetCurrentDir()
 objs = []
 list = os.listdir(cwd)
 
-# include all subfolder
-for d in list:
-    path = os.path.join(cwd, d)
-    if os.path.isfile(os.path.join(path, 'SConscript')):
-        objs = objs + SConscript(os.path.join(d, 'SConscript'))
-
+if not GetDepend('BSP_NO_BOARD_USED'):
+    # include all subfolder
+    for d in list:
+        path = os.path.join(cwd, d)
+        if os.path.isfile(os.path.join(path, 'SConscript')):
+            objs = objs + SConscript(os.path.join(d, 'SConscript'))
 
 # include board source files if not in SDK folder
 board_name = GetBoardName()

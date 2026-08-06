@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import importlib
+import hashlib
 import json
 import os
 import re
@@ -11,6 +12,7 @@ import string
 import subprocess
 import sys
 import logging
+from pathlib import Path
 import atexit
 import tempfile
 from pathlib import Path
@@ -42,6 +44,8 @@ def is_verbose():
 
 # maximum extended image number
 MAX_EX_IMG_NUM = 5
+PTAB_V3_PROGRAM_BINARY_STAMP = '.program_binary.stamp'
+PTAB_V3_PROGRAM_HEX_STAMP = '.program_hex.stamp'
 
 # SCons PreProcessor patch
 def start_handling_includes(self, t=None):
@@ -266,6 +270,11 @@ def FontFileBuild(target, source, env):
     FONT2C_PATH = os.path.join(SIFLI_SDK, f"tools/font2c/font2c{env['tool_suffix']}")
     filename = os.path.basename("{}".format(target[0]))
     subprocess.run([FONT2C_PATH, str(source[0])], check=True)
+    with open(filename, 'r', encoding='utf-8') as f:
+        content = f.read()
+    content = content.replace('#include "app_module.h"', '#include "mem_section.h"')
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(content)
     shutil.move(filename, '{}'.format(target[0]))
 
 def ModifyFontTargets(target, source, env):
@@ -296,6 +305,10 @@ def ConvertFont(env, source, flags):
 
 def ImgResource(env, source, flags):
     target = []
+    if GetDepend('SOC_SF32LB57X'):
+        if '-winsize' not in flags:
+            flags += ' -winsize 2048 '
+            
     for s in source:
         if '-binfile' in flags:
             # If the -binfile parameter is included, use the binary builder.
@@ -660,27 +673,790 @@ def RomLibBuild(target, source, env):
 def SetRomSymFilter(filter):
     Env['ROM_SYM_FILTER'] = filter
 
+def _remove_file_or_dir(path: str) -> None:
+    if os.path.isdir(path):
+        shutil.rmtree(path)
+    elif os.path.exists(path):
+        os.remove(path)
+
+def _ihex_has_data(path: str) -> bool:
+    """Return True if an Intel HEX file contains any data record."""
+    try:
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                line = (line or '').strip()
+                if not line.startswith(':') or len(line) < 11:
+                    continue
+                try:
+                    length = int(line[1:3], 16)
+                    rectype = int(line[7:9], 16)
+                except Exception:
+                    continue
+                if rectype == 0 and length > 0:
+                    return True
+        return False
+    except Exception:
+        return False
+
+
+def _infer_build_core(env, fallback: str = 'HCPU') -> str:
+    """Infer build core type (HCPU/LCPU/ACPU) from a SCons env."""
+    try:
+        name = str(env.get('name') or '').strip().lower()
+    except Exception:
+        name = ''
+    if name == 'lcpu':
+        return 'LCPU'
+    if name == 'acpu':
+        return 'ACPU'
+
+    try:
+        link_src = str(env.get('LINK_SCRIPT_SRC') or '').replace('\\', '/').lower()
+    except Exception:
+        link_src = ''
+    if '/lcpu/' in link_src or link_src.endswith('_lcpu'):
+        return 'LCPU'
+    if '/acpu/' in link_src or link_src.endswith('_acpu'):
+        return 'ACPU'
+    if '/hcpu/' in link_src or link_src.endswith('_hcpu'):
+        return 'HCPU'
+
+    try:
+        full_name = str(env.get('full_name') or '').strip().lower()
+    except Exception:
+        full_name = ''
+    if full_name.endswith('.lcpu'):
+        return 'LCPU'
+    if full_name.endswith('.acpu'):
+        return 'ACPU'
+
+    try:
+        fb = str(fallback or 'HCPU').strip().upper()
+        return fb or 'HCPU'
+    except Exception:
+        return 'HCPU'
+
+
+def _get_ptab_v3_split_section(partition: dict, ptab_module) -> str:
+    """Map a ptab v3 app/ex partition to the ELF section used for objcopy."""
+    name = (partition.get('name') or '').strip()
+    return '.{}'.format(name) if name else ''
+
+
+def _collect_ptab_v3_split_partitions(ptab_obj, core: str, ptab_module):
+    """Collect app/ex resource partitions and their objcopy split section for a core."""
+    out = []
+
+    for partition in ptab_module.iter_int_res_partitions_v3(ptab_obj, core=core):
+        name = (partition.get('name') or '').strip()
+        if not name:
+            continue
+
+        section = _get_ptab_v3_split_section(partition, ptab_module)
+        if not section:
+            continue
+
+        out.append({
+            'name': name,
+            'section': section,
+        })
+
+    return out
+
+
+def _uses_ptab_v3_standard_artifacts(rtconfig, ptab_obj) -> bool:
+    return bool(
+        ptab_obj
+        and ptab_obj.is_v3()
+        and getattr(rtconfig, 'PLATFORM', None) in ('gcc', 'armcc')
+    )
+
+
+def IsPtabV3ArtifactStampPath(path: str) -> bool:
+    """Return True when path is a synthetic ptab v3 artifact stamp."""
+    name = os.path.basename(str(path))
+    return name in (PTAB_V3_PROGRAM_BINARY_STAMP, PTAB_V3_PROGRAM_HEX_STAMP)
+
+
+def GetPtabV3ArtifactBaseName(env, program_file: str = '') -> str:
+    """Return the base artifact name for a ptab v3 project."""
+    try:
+        proj_name = str(env.get('name') or '').strip()
+    except Exception:
+        proj_name = ''
+    if proj_name:
+        return proj_name
+    if program_file:
+        return os.path.splitext(os.path.basename(str(program_file)))[0] or 'main'
+    return 'main'
+
+
+def GetPtabV3ArtifactOutputDir(program_file: str) -> str:
+    """Return the output directory for final ptab v3 bin/hex artifacts."""
+    return os.path.join(os.path.dirname(str(program_file)), 'output')
+
+
+def GetPtabV3ArtifactPath(output_dir: str, base_name: str, ext: str, suffix: str = None) -> str:
+    """Build a final ptab v3 artifact path."""
+    stem = base_name if not suffix else '{}.{}'.format(base_name, suffix)
+    return os.path.join(output_dir, stem + ext)
+
+
+def GetPtabV3CodeArtifactCandidates(output_dir: str, base_name: str, ext: str):
+    """Return candidate code artifact paths, preferring multi-output naming."""
+    return [
+        GetPtabV3ArtifactPath(output_dir, base_name, ext, 'app'),
+        GetPtabV3ArtifactPath(output_dir, base_name, ext),
+    ]
+
+
+def _ptab_v3_artifact_has_payload(path: str, ext: str) -> bool:
+    """Return True when a candidate artifact exists and contains data."""
+    if not os.path.isfile(path):
+        return False
+    if os.path.getsize(path) <= 0:
+        return False
+    if ext.lower() == '.hex':
+        return _ihex_has_data(path)
+    return True
+
+
+def GetLegacyMultiImageArtifactPaths(output_dir: str, ext: str):
+    """Return legacy ER_IROMN artifacts from a flat output directory."""
+    if not os.path.isdir(output_dir):
+        return []
+
+    matched = []
+    pattern = re.compile(r'^(?:.+\.)?ER_IROM(\d+){}$'.format(re.escape(ext)), re.IGNORECASE)
+    for name in os.listdir(output_dir):
+        m = pattern.match(name)
+        if not m:
+            continue
+        idx = int(m.group(1), 10)
+        path = os.path.join(output_dir, name)
+        if _ptab_v3_artifact_has_payload(path, ext):
+            matched.append((idx, path))
+
+    matched.sort(key=lambda item: item[0])
+    return [path for _, path in matched]
+
+
+def _read_ptab_v3_stamp_artifact(path: str, ext: str) -> str:
+    """Return the artifact recorded in a ptab v3 stamp, if it is usable."""
+    if not os.path.isfile(path):
+        return ''
+
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            recorded = next((line.strip() for line in f if line.strip()), '')
+    except (OSError, UnicodeError):
+        return ''
+
+    if not recorded or not recorded.lower().endswith(ext.lower()):
+        return ''
+    if _ptab_v3_artifact_has_payload(recorded, ext):
+        return os.path.normpath(recorded)
+
+    if not os.path.isabs(recorded):
+        local_recorded = os.path.join(os.path.dirname(path), os.path.basename(recorded))
+        if _ptab_v3_artifact_has_payload(local_recorded, ext):
+            return os.path.normpath(local_recorded)
+    return ''
+
+
+def ResolvePtabV3CodeArtifact(output_dir: str, base_name: str, ext: str) -> str:
+    """Resolve the primary code artifact from a ptab v3 or legacy multi-image output dir."""
+    candidates = GetPtabV3CodeArtifactCandidates(output_dir, base_name, ext)
+    for candidate in candidates:
+        if _ptab_v3_artifact_has_payload(candidate, ext):
+            return candidate
+
+    legacy = GetLegacyMultiImageArtifactPaths(output_dir, ext)
+    if legacy:
+        prefixed = GetPtabV3ArtifactPath(output_dir, base_name, ext, 'ER_IROM1')
+        legacy_name = os.path.join(output_dir, 'ER_IROM1{}'.format(ext))
+        for preferred in (prefixed, legacy_name):
+            if preferred in legacy:
+                return preferred
+        return legacy[0]
+
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return candidates[-1]
+
+
+def ResolvePtabV3ArtifactContainer(output_dir: str, base_name: str, ext: str) -> str:
+    """Resolve a file or directory that callers may need to iterate/load."""
+    candidates = GetPtabV3CodeArtifactCandidates(output_dir, base_name, ext)
+    for candidate in candidates:
+        if _ptab_v3_artifact_has_payload(candidate, ext):
+            return candidate
+    if GetLegacyMultiImageArtifactPaths(output_dir, ext):
+        return output_dir
+
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return candidates[-1]
+
+
+def _resolve_ptab_v3_artifact_ref(path: str, base_name: str, ext: str, as_container: bool = False) -> str:
+    path = str(path)
+    if IsPtabV3ArtifactStampPath(path):
+        output_dir = os.path.dirname(path)
+        if as_container and GetLegacyMultiImageArtifactPaths(output_dir, ext):
+            return output_dir
+        stamped = _read_ptab_v3_stamp_artifact(path, ext)
+        if stamped:
+            return stamped
+        path = output_dir
+
+    if os.path.isdir(path):
+        if as_container:
+            return ResolvePtabV3ArtifactContainer(path, base_name, ext)
+        return ResolvePtabV3CodeArtifact(path, base_name, ext)
+    return path
+
+
+def ResolvePtabV3CodeArtifactFromRef(path: str, base_name: str, ext: str) -> str:
+    """Resolve a primary code artifact file from a stamp or output directory reference."""
+    return _resolve_ptab_v3_artifact_ref(path, base_name, ext, as_container=False)
+
+
+def ResolvePtabV3ArtifactContainerFromRef(path: str, base_name: str, ext: str) -> str:
+    """Resolve a file or iterable output directory from a stamp/output reference."""
+    return _resolve_ptab_v3_artifact_ref(path, base_name, ext, as_container=True)
+
+
+def _cleanup_ptab_v3_output_dir(out_dir: str, ext: str, stamp_name: str) -> None:
+    """Clean stale ptab v3 output artifacts for one file type."""
+    if os.path.exists(out_dir) and not os.path.isdir(out_dir):
+        _remove_file_or_dir(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
+    for name in os.listdir(out_dir):
+        if name == stamp_name or name == 'int_res' or name.lower().endswith(ext.lower()):
+            _remove_file_or_dir(os.path.join(out_dir, name))
+
+
+def _cleanup_ptab_v3_legacy_artifacts(program_file: str, ext: str) -> None:
+    """Remove stale legacy ptab v3 artifacts from old locations."""
+    target_dir = os.path.dirname(str(program_file))
+    legacy_whole = os.path.join(
+        target_dir,
+        os.path.splitext(os.path.basename(str(program_file)))[0] + ext,
+    )
+    if os.path.exists(legacy_whole):
+        _remove_file_or_dir(legacy_whole)
+
+    int_res_dir = os.path.join(target_dir, 'int_res')
+    if os.path.isdir(int_res_dir):
+        for name in os.listdir(int_res_dir):
+            if name.lower().endswith(ext.lower()):
+                _remove_file_or_dir(os.path.join(int_res_dir, name))
+
+
+def _validate_ptab_v3_artifact_names(base_name: str, split_entries, out_dir: str) -> None:
+    """Validate split artifact names against code suffix and case-insensitive collisions."""
+    seen = {'app': 'code image'}
+    for entry in split_entries:
+        name = str(entry.get('name') or '').strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:
+            logging.error(
+                "ptab v3 artifact suffix '%s' conflicts with %s in '%s'",
+                name,
+                seen[key],
+                out_dir,
+            )
+            raise SystemExit(1)
+        seen[key] = "partition '{}'".format(name)
+
+
+def _ptab_v3_fromelf_key(path: str, ext: str) -> str:
+    name = os.path.basename(str(path)).strip()
+    if name.lower().endswith(ext.lower()):
+        name = name[:-len(ext)]
+    return name.lower()
+
+
+def _ptab_v3_fromelf_region_aliases(region_name: str):
+    upper = str(region_name or '').strip().upper()
+    if not upper:
+        return set()
+    base = upper[3:] if upper.startswith(('ER_', 'LR_')) else upper
+    aliases = {upper.lower(), base.lower(), 'er_{}'.format(base).lower(), 'lr_{}'.format(base).lower()}
+    if base in ('IROM1', 'ROM1'):
+        aliases.update(('irom1', 'rom1', 'er_irom1', 'er_rom1', 'lr_irom1', 'lr_rom1'))
+    elif base in ('IROM2', 'ROM2'):
+        aliases.update(('irom2', 'rom2', 'er_irom2', 'er_rom2', 'lr_irom2', 'lr_rom2'))
+    return aliases
+
+
+def _ptab_v3_fromelf_region_name(entry, ext: str) -> str:
+    name = os.path.basename(str(entry.get('path') or '')).strip()
+    if name.lower().endswith(ext.lower()):
+        name = name[:-len(ext)]
+    return name.strip()
+
+
+def _ptab_v3_lcpu_fromelf_region_suffix(entry, ext: str) -> str:
+    key = str(entry.get('key') or '').strip()
+    if key in _ptab_v3_fromelf_region_aliases('ER_IROM1'):
+        return 'ER_IROM1'
+    if key in _ptab_v3_fromelf_region_aliases('ER_IROM2'):
+        return 'ER_IROM2'
+    return ''
+
+
+def _ptab_v3_fromelf_entries(export_path: str, ext: str):
+    if os.path.isfile(export_path):
+        return [{'path': export_path, 'key': _ptab_v3_fromelf_key(export_path, ext)}]
+    if not os.path.isdir(export_path):
+        return []
+
+    entries = []
+    for name in sorted(os.listdir(export_path)):
+        path = os.path.join(export_path, name)
+        if os.path.isfile(path):
+            entries.append({'path': path, 'key': _ptab_v3_fromelf_key(path, ext)})
+    return entries
+
+
+def _find_ptab_v3_fromelf_entry(entries, aliases, used_paths, ext: str):
+    for entry in entries:
+        path = entry['path']
+        if path in used_paths:
+            continue
+        if entry['key'] in aliases and _ptab_v3_artifact_has_payload(path, ext):
+            return entry
+    return None
+
+
+def _select_ptab_v3_fromelf_code_entry(entries, used_paths, ext: str):
+    candidates = [
+        entry for entry in entries
+        if entry['path'] not in used_paths and _ptab_v3_artifact_has_payload(entry['path'], ext)
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    return _find_ptab_v3_fromelf_entry(candidates, _ptab_v3_fromelf_region_aliases('IROM1'), set(), ext)
+
+
+def _build_ptab_v3_keil_artifacts(program_file: str, out_dir: str, base_name: str,
+                                  ext: str, split_entries, stamp_path: str) -> str:
+    """Export Keil ptab v3 artifacts and normalize fromelf region names."""
+    export_path = os.path.join(out_dir, '.fromelf_{}{}'.format(base_name, ext))
+    _remove_file_or_dir(export_path)
+    fromelf_mode = '--bin' if ext.lower() == '.bin' else '--i32'
+    subprocess.run(['fromelf', fromelf_mode, program_file, '--output', export_path], check=True)
+    entries = _ptab_v3_fromelf_entries(export_path, ext)
+    used_paths = set()
+    used_resources = []
+
+    for entry in split_entries:
+        name = entry['name']
+        aliases = _ptab_v3_fromelf_region_aliases(name)
+        src = _find_ptab_v3_fromelf_entry(entries, aliases, used_paths, ext)
+        if not src:
+            continue
+        out_file = GetPtabV3ArtifactPath(out_dir, base_name, ext, name)
+        used_paths.add(src['path'])
+        _remove_file_or_dir(out_file)
+        shutil.move(src['path'], out_file)
+        used_resources.append(name)
+
+    code_entry = _select_ptab_v3_fromelf_code_entry(entries, used_paths, ext)
+    if not code_entry:
+        _remove_file_or_dir(export_path)
+        return ''
+
+    code_path = GetPtabV3ArtifactPath(
+        out_dir,
+        base_name,
+        ext,
+        'app' if used_resources else None,
+    )
+    _remove_file_or_dir(code_path)
+    shutil.move(code_entry['path'], code_path)
+    _write_ptab_v3_artifact_stamp(stamp_path, code_path)
+    _remove_file_or_dir(export_path)
+    return code_path
+
+
+def _build_ptab_v3_keil_embedded_lcpu_artifacts(program_file: str, out_dir: str, base_name: str,
+                                                ext: str, stamp_path: str) -> str:
+    """Export embedded LCPU Keil ptab v3 artifacts while preserving fromelf regions."""
+    export_path = os.path.join(out_dir, '.fromelf_{}{}'.format(base_name, ext))
+    _remove_file_or_dir(export_path)
+    fromelf_mode = '--bin' if ext.lower() == '.bin' else '--i32'
+    subprocess.run(['fromelf', fromelf_mode, program_file, '--output', export_path], check=True)
+
+    entries = [
+        entry for entry in _ptab_v3_fromelf_entries(export_path, ext)
+        if _ptab_v3_artifact_has_payload(entry['path'], ext)
+    ]
+    if not entries:
+        _remove_file_or_dir(export_path)
+        return ''
+
+    code_entry = _find_ptab_v3_fromelf_entry(
+        entries,
+        _ptab_v3_fromelf_region_aliases('ER_IROM1'),
+        set(),
+        ext,
+    )
+    if not code_entry:
+        _remove_file_or_dir(export_path)
+        return ''
+    flash_entry = _find_ptab_v3_fromelf_entry(
+        entries,
+        _ptab_v3_fromelf_region_aliases('ER_IROM2'),
+        {code_entry['path']},
+        ext,
+    )
+    if not flash_entry:
+        _remove_file_or_dir(export_path)
+        return ''
+
+    code_path = ''
+    flash_path = ''
+    unknown_regions = []
+    for entry in entries:
+        region_name = _ptab_v3_lcpu_fromelf_region_suffix(entry, ext)
+        if not region_name:
+            unknown_regions.append(_ptab_v3_fromelf_region_name(entry, ext) or entry['path'])
+            continue
+        out_file = GetPtabV3ArtifactPath(out_dir, base_name, ext, region_name)
+        _remove_file_or_dir(out_file)
+        shutil.move(entry['path'], out_file)
+        if entry['path'] == code_entry['path']:
+            code_path = out_file
+        elif entry['path'] == flash_entry['path']:
+            flash_path = out_file
+
+    if unknown_regions:
+        logging.warning(
+            "Ignore unexpected embedded LCPU fromelf region(s): %s",
+            ', '.join(unknown_regions),
+        )
+
+    _remove_file_or_dir(export_path)
+    if code_path and flash_path:
+        _write_ptab_v3_artifact_stamp(stamp_path, code_path)
+        return code_path
+    return ''
+
+
+def ModifyProgramBinaryTargets(target, source, env):
+    import ptab as ptab_module
+    import rtconfig
+
+    ptab_obj = env.GetPtab() if hasattr(env, "GetPtab") else None
+    if ptab_obj is None and 'PARTITION_TABLE' in env:
+        ptab_obj = ptab_module.load_ptab(env['PARTITION_TABLE'], fatal=False)
+
+    if _uses_ptab_v3_standard_artifacts(rtconfig, ptab_obj):
+        elf_path = str(source[0]) if source else ''
+        out_dir = GetPtabV3ArtifactOutputDir(elf_path)
+        target = [os.path.join(out_dir, PTAB_V3_PROGRAM_BINARY_STAMP)]
+    return target, source
+
+
+def ModifyProgramHexTargets(target, source, env):
+    import ptab as ptab_module
+    import rtconfig
+
+    ptab_obj = env.GetPtab() if hasattr(env, "GetPtab") else None
+    if ptab_obj is None and 'PARTITION_TABLE' in env:
+        ptab_obj = ptab_module.load_ptab(env['PARTITION_TABLE'], fatal=False)
+
+    if _uses_ptab_v3_standard_artifacts(rtconfig, ptab_obj):
+        elf_path = str(source[0]) if source else ''
+        out_dir = GetPtabV3ArtifactOutputDir(elf_path)
+        target = [os.path.join(out_dir, PTAB_V3_PROGRAM_HEX_STAMP)]
+    return target, source
+
+
+def _write_ptab_v3_artifact_stamp(stamp_path: str, artifact_path: str) -> None:
+    lines = [artifact_path]
+    if artifact_path and os.path.isfile(artifact_path):
+        h = hashlib.sha256()
+        with open(artifact_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                h.update(chunk)
+        lines.append('size={}'.format(os.path.getsize(artifact_path)))
+        lines.append('sha256={}'.format(h.hexdigest()))
+    content = '\n'.join(lines) + '\n'
+
+    if os.path.exists(stamp_path):
+        with open(stamp_path, 'r', encoding='utf-8') as f:
+            if f.read() == content:
+                return
+
+    stamp_dir = os.path.dirname(stamp_path)
+    if stamp_dir:
+        os.makedirs(stamp_dir, exist_ok=True)
+    with open(stamp_path, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(content)
+
+
+class LcpuImgStrategy:
+    def build(self, program_file: str, out_dir: str, base_name: str, ext: str, rtconfig) -> str:
+        raise NotImplementedError
+
+    def path(self, out_dir: str, base_name: str, ext: str, suffix: str = None) -> str:
+        return GetPtabV3ArtifactPath(out_dir, base_name, ext, suffix)
+
+
+class GccLcpuImg(LcpuImgStrategy):
+    def build(self, program_file: str, out_dir: str, base_name: str, ext: str, rtconfig) -> str:
+        objcopy_args = ['-Obinary'] if ext.lower() == '.bin' else ['-O', 'ihex']
+        ex_imgs = []
+        tempfile_path = os.path.join(os.path.dirname(program_file), 'rom_temp' + ext)
+        for i in range(2, 2 + MAX_EX_IMG_NUM):
+            subprocess.run([rtconfig.OBJCPY, '-Obinary', '-j.rom{}'.format(i), program_file, tempfile_path], check=True)
+            size = os.path.getsize(tempfile_path)
+            os.remove(tempfile_path)
+            if size > 0:
+                ex_imgs.append(i)
+
+        if not ex_imgs:
+            code_path = self.path(out_dir, base_name, ext)
+            _remove_file_or_dir(code_path)
+            subprocess.run([rtconfig.OBJCPY] + objcopy_args + [program_file, code_path], check=True)
+            return code_path
+
+        exclude_ex_imgs = []
+        for i in ex_imgs:
+            ex_img_path = self.path(out_dir, base_name, ext, 'ER_IROM{}'.format(i))
+            _remove_file_or_dir(ex_img_path)
+            subprocess.run([rtconfig.OBJCPY] + objcopy_args + ['-j.rom{}'.format(i), program_file, ex_img_path], check=True)
+            exclude_ex_imgs.append('-R.rom{}'.format(i))
+
+        code_path = self.path(out_dir, base_name, ext, 'ER_IROM1')
+        _remove_file_or_dir(code_path)
+        subprocess.run([rtconfig.OBJCPY] + objcopy_args + exclude_ex_imgs + [program_file, code_path], check=True)
+        return code_path
+
+
+class KeilLcpuImg(LcpuImgStrategy):
+    def build(self, program_file: str, out_dir: str, base_name: str, ext: str, rtconfig) -> str:
+        export_path = tempfile.mkdtemp(
+            prefix='.fromelf_lcpu_{}_'.format(ext.strip('.').lower()),
+            dir=out_dir,
+        )
+        _remove_file_or_dir(export_path)
+        fromelf_mode = '--bin' if ext.lower() == '.bin' else '--i32'
+
+        try:
+            subprocess.run(['fromelf', fromelf_mode, program_file, '--output', export_path], check=True)
+            entries = _ptab_v3_fromelf_entries(export_path, ext)
+            primary = self._find_irom(entries, 1, set(), ext)
+            if not primary and os.path.isfile(export_path):
+                payload_entries = [
+                    entry for entry in entries
+                    if _ptab_v3_artifact_has_payload(entry['path'], ext)
+                ]
+                if len(payload_entries) == 1:
+                    primary = payload_entries[0]
+
+            if not primary:
+                logging.error(
+                    "Keil ptab v3 embedded LCPU did not generate ER_IROM1 in %s",
+                    out_dir,
+                )
+                raise SystemExit(1)
+
+            used_paths = {primary['path']}
+            ex_entries = []
+            for i in range(2, 2 + MAX_EX_IMG_NUM):
+                entry = self._find_irom(entries, i, used_paths, ext)
+                if entry:
+                    used_paths.add(entry['path'])
+                    ex_entries.append((i, entry))
+
+            code_suffix = 'ER_IROM1' if ex_entries else None
+            code_path = self.path(out_dir, base_name, ext, code_suffix)
+            self._move(primary['path'], code_path)
+
+            for i, entry in ex_entries:
+                ex_path = self.path(out_dir, base_name, ext, 'ER_IROM{}'.format(i))
+                self._move(entry['path'], ex_path)
+
+            return code_path
+        finally:
+            _remove_file_or_dir(export_path)
+
+    def _find_irom(self, entries, index: int, used_paths, ext: str):
+        aliases = _ptab_v3_fromelf_region_aliases('ER_IROM{}'.format(index))
+        return _find_ptab_v3_fromelf_entry(entries, aliases, used_paths, ext)
+
+    def _move(self, src: str, dst: str) -> None:
+        _remove_file_or_dir(dst)
+        shutil.move(src, dst)
+
+
+def _get_lcpu_img_strategy(platform: str):
+    if platform == 'gcc':
+        return GccLcpuImg()
+    if platform == 'armcc':
+        return KeilLcpuImg()
+    return None
+
+
+def _build_ptab_v3_embedded_lcpu_artifact(program_file: str, out_dir: str, base_name: str, ext: str, rtconfig) -> str:
+    strategy = _get_lcpu_img_strategy(getattr(rtconfig, 'PLATFORM', ''))
+    if not strategy:
+        logging.error("Unsupported ptab v3 embedded LCPU platform: %s", getattr(rtconfig, 'PLATFORM', ''))
+        raise SystemExit(1)
+    return strategy.build(program_file, out_dir, base_name, ext, rtconfig)
+
+
 def ProgramBinaryBuild(target, source, env):
     import rtconfig
+    import ptab as ptab_module
+
     program_file = str(source[0])
     program_filename = os.path.basename(program_file)
     program_name = os.path.splitext(program_filename)[0]
     target_path = os.path.dirname(program_file)
-    bin_path = os.path.join(target_path, program_name + '.bin')
-    
-    if os.path.exists(bin_path):
-        shutil.rmtree(bin_path)
+    whole_bin_path = os.path.join(target_path, program_name + '.bin')
+    code_bin_path = str(target[0])
+    out_dir = os.path.dirname(code_bin_path)
+
+    ptab_obj = env.GetPtab() if hasattr(env, "GetPtab") else None
+    if ptab_obj is None and 'PARTITION_TABLE' in env:
+        ptab_obj = ptab_module.load_ptab(env['PARTITION_TABLE'], fatal=False)
+
+    core = _infer_build_core(env, getattr(rtconfig, 'CORE', 'HCPU'))
+    # ptab v3: embedded LCPU keeps ER_IROMN sections, but uses the same
+    # output naming rule as other multi-artifact projects: <base>.ER_IROMN.ext.
+    if rtconfig.PLATFORM in ('gcc', 'armcc') and ptab_obj and ptab_obj.is_v3() and core == 'LCPU' and env.get('IMG_EMBEDDED'):
+        base_name = GetPtabV3ArtifactBaseName(env, program_file)
+        stamp_path = code_bin_path
+        out_dir = os.path.dirname(stamp_path)
+        _cleanup_ptab_v3_output_dir(out_dir, '.bin', PTAB_V3_PROGRAM_BINARY_STAMP)
+        _cleanup_ptab_v3_legacy_artifacts(program_file, '.bin')
+
+        if rtconfig.PLATFORM == 'gcc':
+            shutil.copy(str(source[0]), str(source[0]) + '.strip.elf')
+            subprocess.run([rtconfig.STRIP, str(source[0]) + '.strip.elf'], check=True)
+        code_bin_path = _build_ptab_v3_embedded_lcpu_artifact(program_file, out_dir, base_name, '.bin', rtconfig)
+        _write_ptab_v3_artifact_stamp(stamp_path, code_bin_path)
+        if rtconfig.PLATFORM == 'armcc':
+            subprocess.run(['fromelf', '-z', str(source[0])], check=True)
+        return
+
+    if rtconfig.PLATFORM == 'armcc' and ptab_obj and ptab_obj.is_v3() and core == 'LCPU' and env.get('IMG_EMBEDDED'):
+        base_name = GetPtabV3ArtifactBaseName(env, program_file)
+        stamp_path = code_bin_path
+        out_dir = os.path.dirname(stamp_path)
+        _cleanup_ptab_v3_output_dir(out_dir, '.bin', PTAB_V3_PROGRAM_BINARY_STAMP)
+        _cleanup_ptab_v3_legacy_artifacts(program_file, '.bin')
+
+        code_bin_path = _build_ptab_v3_keil_embedded_lcpu_artifacts(
+            program_file,
+            out_dir,
+            base_name,
+            '.bin',
+            stamp_path,
+        )
+        if (not code_bin_path
+                or not os.path.isfile(code_bin_path)):
+            logging.error(
+                "Keil ptab v3 embedded LCPU did not generate expected artifacts "
+                "(expected ER_IROM1 and ER_IROM2) in %s",
+                out_dir,
+            )
+            raise SystemExit(1)
+        subprocess.run(['fromelf', '-z', str(source[0])], check=True)
+        return
+
+    # ptab v3: split app/ex sections and emit final artifacts into `output/`
+    if rtconfig.PLATFORM == 'gcc' and ptab_obj and ptab_obj.is_v3():
+        base_name = GetPtabV3ArtifactBaseName(env, program_file)
+        stamp_path = code_bin_path
+        out_dir = os.path.dirname(stamp_path)
+        _cleanup_ptab_v3_output_dir(out_dir, '.bin', PTAB_V3_PROGRAM_BINARY_STAMP)
+        _cleanup_ptab_v3_legacy_artifacts(program_file, '.bin')
+
+        split_entries = _collect_ptab_v3_split_partitions(ptab_obj, core, ptab_module)
+        _validate_ptab_v3_artifact_names(base_name, split_entries, out_dir)
+
+        used_sections = []
+        all_sections = []
+        present_sections = []
+        for entry in split_entries:
+            name = entry['name']
+            if not name:
+                continue
+            sec = entry['section']
+            all_sections.append(sec)
+            out_file = GetPtabV3ArtifactPath(out_dir, base_name, '.bin', name)
+            _remove_file_or_dir(out_file)
+            res = subprocess.run([rtconfig.OBJCPY, '-Obinary', '-j{}'.format(sec), program_file, out_file])
+            if res.returncode != 0:
+                _remove_file_or_dir(out_file)
+                continue
+            present_sections.append(sec)
+            if not _ptab_v3_artifact_has_payload(out_file, '.bin'):
+                _remove_file_or_dir(out_file)
+                continue
+            used_sections.append(sec)
+
+        code_bin_path = GetPtabV3ArtifactPath(
+            out_dir,
+            base_name,
+            '.bin',
+            'app' if used_sections else None,
+        )
+        exclude_args = ['-R{}'.format(s) for s in dict.fromkeys(all_sections)]
+        _remove_file_or_dir(code_bin_path)
+        res = subprocess.run([rtconfig.OBJCPY, '-Obinary'] + exclude_args + [program_file, code_bin_path])
+        if res.returncode != 0 and present_sections and present_sections != all_sections:
+            exclude_args = ['-R{}'.format(s) for s in dict.fromkeys(present_sections)]
+            subprocess.run([rtconfig.OBJCPY, '-Obinary'] + exclude_args + [program_file, code_bin_path], check=True)
+        else:
+            res.check_returncode()
+        _write_ptab_v3_artifact_stamp(stamp_path, code_bin_path)
+        return
+
+    if rtconfig.PLATFORM == 'armcc' and ptab_obj and ptab_obj.is_v3():
+        base_name = GetPtabV3ArtifactBaseName(env, program_file)
+        stamp_path = code_bin_path
+        out_dir = os.path.dirname(stamp_path)
+        _cleanup_ptab_v3_output_dir(out_dir, '.bin', PTAB_V3_PROGRAM_BINARY_STAMP)
+        _cleanup_ptab_v3_legacy_artifacts(program_file, '.bin')
+
+        split_entries = _collect_ptab_v3_split_partitions(ptab_obj, core, ptab_module)
+        _validate_ptab_v3_artifact_names(base_name, split_entries, out_dir)
+        _build_ptab_v3_keil_artifacts(
+            program_file,
+            out_dir,
+            base_name,
+            '.bin',
+            split_entries,
+            stamp_path,
+        )
+        subprocess.run(['fromelf', '-z', str(source[0])], check=True)
+        return
+
+    if os.path.exists(whole_bin_path):
+        _remove_file_or_dir(whole_bin_path)
     # TODO: only support keil and gcc
     if rtconfig.PLATFORM == 'armcc':
-        subprocess.run(['fromelf', '--bin', str(source[0]), '--output', bin_path], check=True)
-        if os.path.isdir(bin_path):
+        subprocess.run(['fromelf', '--bin', str(source[0]), '--output', whole_bin_path], check=True)
+        if os.path.isdir(whole_bin_path):
             # delete the folder to clean old files
-            shutil.rmtree(bin_path)
-            subprocess.run(['fromelf', '--bin', str(source[0]), '--output', bin_path], check=True)        
-            dir_list = os.listdir(bin_path)
+            shutil.rmtree(whole_bin_path)
+            subprocess.run(['fromelf', '--bin', str(source[0]), '--output', whole_bin_path], check=True)        
+            dir_list = os.listdir(whole_bin_path)
             for d in dir_list:
                 if '.bin' not in d:
-                    shutil.move(os.path.join(bin_path, d), os.path.join(bin_path, d + '.bin'))
+                    shutil.move(os.path.join(whole_bin_path, d), os.path.join(whole_bin_path, d + '.bin'))
         # print Object/Image Component Sizes
         subprocess.run(['fromelf', '-z', str(source[0])], check=True)
     elif rtconfig.PLATFORM == 'gcc':
@@ -697,30 +1473,145 @@ def ProgramBinaryBuild(target, source, env):
                 ex_imgs.append(i)
 
         if len(ex_imgs) == 0:
-            subprocess.run([rtconfig.OBJCPY, '-Obinary', str(source[0]), bin_path], check=True)
+            subprocess.run([rtconfig.OBJCPY, '-Obinary', str(source[0]), whole_bin_path], check=True)
         else:
-            os.mkdir(bin_path)
+            os.mkdir(whole_bin_path)
             exclude_ex_imgs = []
             for i in ex_imgs:
-                ex_img_path = os.path.join(bin_path, 'ER_IROM{}.bin'.format(i))
+                ex_img_path = os.path.join(whole_bin_path, 'ER_IROM{}.bin'.format(i))
                 subprocess.run([rtconfig.OBJCPY, '-Obinary', '-j.rom{}'.format(i), str(source[0]), ex_img_path], check=True)
                 exclude_ex_imgs += ['-R.rom{}'.format(i)]
 
-            rom1_path = ex_img_path = os.path.join(bin_path, 'ER_IROM1.bin')
+            rom1_path = ex_img_path = os.path.join(whole_bin_path, 'ER_IROM1.bin')
             subprocess.run([rtconfig.OBJCPY, '-Obinary'] + exclude_ex_imgs + [str(source[0]), rom1_path], check=True)
 
 
 def ProgramHexBuild(target, source, env):
+    import ptab as ptab_module
+
     program_file = str(source[0])
     program_filename = os.path.basename(program_file)
     program_name = os.path.splitext(program_filename)[0]
     target_path = os.path.dirname(program_file)
-    hex_path = os.path.join(target_path, program_name + '.hex')
+    whole_hex_path = os.path.join(target_path, program_name + '.hex')
+    code_hex_path = str(target[0])
+    out_dir = os.path.dirname(code_hex_path)
  
-    if os.path.exists(hex_path):
-        shutil.rmtree(hex_path)
-    #TODO: only support keil and gcc
     import rtconfig
+
+    ptab_obj = env.GetPtab() if hasattr(env, "GetPtab") else None
+    if ptab_obj is None and 'PARTITION_TABLE' in env:
+        ptab_obj = ptab_module.load_ptab(env['PARTITION_TABLE'], fatal=False)
+
+    core = _infer_build_core(env, getattr(rtconfig, 'CORE', 'HCPU'))
+    # ptab v3: embedded LCPU keeps ER_IROMN sections, but uses the same
+    # output naming rule as other multi-artifact projects: <base>.ER_IROMN.ext.
+    if rtconfig.PLATFORM in ('gcc', 'armcc') and ptab_obj and ptab_obj.is_v3() and core == 'LCPU' and env.get('IMG_EMBEDDED'):
+        base_name = GetPtabV3ArtifactBaseName(env, program_file)
+        stamp_path = code_hex_path
+        out_dir = os.path.dirname(stamp_path)
+        _cleanup_ptab_v3_output_dir(out_dir, '.hex', PTAB_V3_PROGRAM_HEX_STAMP)
+        _cleanup_ptab_v3_legacy_artifacts(program_file, '.hex')
+
+        code_hex_path = _build_ptab_v3_embedded_lcpu_artifact(program_file, out_dir, base_name, '.hex', rtconfig)
+        _write_ptab_v3_artifact_stamp(stamp_path, code_hex_path)
+        return
+
+    if rtconfig.PLATFORM == 'armcc' and ptab_obj and ptab_obj.is_v3() and core == 'LCPU' and env.get('IMG_EMBEDDED'):
+        base_name = GetPtabV3ArtifactBaseName(env, program_file)
+        stamp_path = code_hex_path
+        out_dir = os.path.dirname(stamp_path)
+        _cleanup_ptab_v3_output_dir(out_dir, '.hex', PTAB_V3_PROGRAM_HEX_STAMP)
+        _cleanup_ptab_v3_legacy_artifacts(program_file, '.hex')
+
+        code_hex_path = _build_ptab_v3_keil_embedded_lcpu_artifacts(
+            program_file,
+            out_dir,
+            base_name,
+            '.hex',
+            stamp_path,
+        )
+        if (not code_hex_path
+                or not os.path.isfile(code_hex_path)):
+            logging.error(
+                "Keil ptab v3 embedded LCPU did not generate expected artifacts "
+                "(expected ER_IROM1 and ER_IROM2) in %s",
+                out_dir,
+            )
+            raise SystemExit(1)
+        return
+
+    # ptab v3: split app/ex sections and emit final artifacts into `output/`
+    if rtconfig.PLATFORM == 'gcc' and ptab_obj and ptab_obj.is_v3():
+        base_name = GetPtabV3ArtifactBaseName(env, program_file)
+        stamp_path = code_hex_path
+        out_dir = os.path.dirname(stamp_path)
+        _cleanup_ptab_v3_output_dir(out_dir, '.hex', PTAB_V3_PROGRAM_HEX_STAMP)
+        _cleanup_ptab_v3_legacy_artifacts(program_file, '.hex')
+
+        split_entries = _collect_ptab_v3_split_partitions(ptab_obj, core, ptab_module)
+        _validate_ptab_v3_artifact_names(base_name, split_entries, out_dir)
+
+        used_sections = []
+        all_sections = []
+        present_sections = []
+        for entry in split_entries:
+            name = entry['name']
+            if not name:
+                continue
+            sec = entry['section']
+            all_sections.append(sec)
+            out_file = GetPtabV3ArtifactPath(out_dir, base_name, '.hex', name)
+            _remove_file_or_dir(out_file)
+            res = subprocess.run([rtconfig.OBJCPY, '-O', 'ihex', '-j{}'.format(sec), program_file, out_file])
+            if res.returncode != 0:
+                _remove_file_or_dir(out_file)
+                continue
+            present_sections.append(sec)
+            if not _ptab_v3_artifact_has_payload(out_file, '.hex'):
+                _remove_file_or_dir(out_file)
+                continue
+            used_sections.append(sec)
+
+        code_hex_path = GetPtabV3ArtifactPath(
+            out_dir,
+            base_name,
+            '.hex',
+            'app' if used_sections else None,
+        )
+        exclude_args = ['-R{}'.format(s) for s in dict.fromkeys(all_sections)]
+        _remove_file_or_dir(code_hex_path)
+        res = subprocess.run([rtconfig.OBJCPY, '-O', 'ihex'] + exclude_args + [program_file, code_hex_path])
+        if res.returncode != 0 and present_sections and present_sections != all_sections:
+            exclude_args = ['-R{}'.format(s) for s in dict.fromkeys(present_sections)]
+            subprocess.run([rtconfig.OBJCPY, '-O', 'ihex'] + exclude_args + [program_file, code_hex_path], check=True)
+        else:
+            res.check_returncode()
+        _write_ptab_v3_artifact_stamp(stamp_path, code_hex_path)
+        return
+
+    if rtconfig.PLATFORM == 'armcc' and ptab_obj and ptab_obj.is_v3():
+        base_name = GetPtabV3ArtifactBaseName(env, program_file)
+        stamp_path = code_hex_path
+        out_dir = os.path.dirname(stamp_path)
+        _cleanup_ptab_v3_output_dir(out_dir, '.hex', PTAB_V3_PROGRAM_HEX_STAMP)
+        _cleanup_ptab_v3_legacy_artifacts(program_file, '.hex')
+
+        split_entries = _collect_ptab_v3_split_partitions(ptab_obj, core, ptab_module)
+        _validate_ptab_v3_artifact_names(base_name, split_entries, out_dir)
+        _build_ptab_v3_keil_artifacts(
+            program_file,
+            out_dir,
+            base_name,
+            '.hex',
+            split_entries,
+            stamp_path,
+        )
+        return
+
+    if os.path.exists(whole_hex_path):
+        _remove_file_or_dir(whole_hex_path)
+    #TODO: only support keil and gcc
     if rtconfig.PLATFORM == 'gcc':
         # check whether there're multiple binary 
         ex_imgs = []
@@ -733,29 +1624,29 @@ def ProgramHexBuild(target, source, env):
                 ex_imgs.append(i)
 
         if len(ex_imgs) == 0:
-            subprocess.run([rtconfig.OBJCPY, '-O', 'ihex', str(source[0]), hex_path], check=True)
+            subprocess.run([rtconfig.OBJCPY, '-O', 'ihex', str(source[0]), whole_hex_path], check=True)
         else:
-            os.mkdir(hex_path)
+            os.mkdir(whole_hex_path)
             exclude_ex_imgs = []
             for i in ex_imgs:
-                ex_img_path = os.path.join(hex_path, 'ER_IROM{}.hex'.format(i))
+                ex_img_path = os.path.join(whole_hex_path, 'ER_IROM{}.hex'.format(i))
                 subprocess.run([rtconfig.OBJCPY, '-O', 'ihex', '-j.rom{}'.format(i), str(source[0]), ex_img_path], check=True)
                 exclude_ex_imgs += ['-R.rom{}'.format(i)]
 
-            rom1_path = ex_img_path = os.path.join(hex_path, 'ER_IROM1.hex')
+            rom1_path = ex_img_path = os.path.join(whole_hex_path, 'ER_IROM1.hex')
             subprocess.run([rtconfig.OBJCPY, '-O', 'ihex'] + exclude_ex_imgs + [str(source[0]), rom1_path], check=True)
 
 
     else:    
-        subprocess.run(['fromelf', '--i32', str(source[0]), '--output', hex_path], check=True)    
-        if os.path.isdir(hex_path):
+        subprocess.run(['fromelf', '--i32', str(source[0]), '--output', whole_hex_path], check=True)    
+        if os.path.isdir(whole_hex_path):
             # delete the folder to clean old files
-            shutil.rmtree(hex_path)
-            subprocess.run(['fromelf', '--i32', str(source[0]), '--output', hex_path], check=True)    
-            dir_list = os.listdir(hex_path)
+            shutil.rmtree(whole_hex_path)
+            subprocess.run(['fromelf', '--i32', str(source[0]), '--output', whole_hex_path], check=True)    
+            dir_list = os.listdir(whole_hex_path)
             for d in dir_list:
                 if '.hex' not in d:
-                    shutil.move(os.path.join(hex_path, d), os.path.join(hex_path, d + '.hex'))
+                    shutil.move(os.path.join(whole_hex_path, d), os.path.join(whole_hex_path, d + '.hex'))
 
 
 def ProgramAsmBuild(target, source, env):
@@ -777,25 +1668,55 @@ def ProgramAsmBuild(target, source, env):
     
 def LdsBuild(target, source, env):
     import rtconfig
+    import ptab as ptab_module
+
+    # Detect ptab version
+    ptab_obj = env.GetPtab() if hasattr(env, "GetPtab") else None
+    if ptab_obj is None and 'PARTITION_TABLE' in env:
+        ptab_obj = ptab_module.load_ptab(env['PARTITION_TABLE'], fatal=False)
+
+    target_path = str(target[0])
+
+    if ptab_obj and ptab_obj.is_v3():
+        # v3: Jinja2-only rendering (no gcc -E / armclang -E)
+        import gen_link_lds
+
+        build_dir = os.path.dirname(os.path.abspath(target_path))
+        rtconfig_h_path = os.path.join(build_dir, 'rtconfig.h')
+        rtconfig_defines = gen_link_lds._parse_rtconfig_defines(rtconfig_h_path)
+        build_core = _infer_build_core(env, getattr(rtconfig, 'CORE', 'HCPU'))
+        defines = gen_link_lds.compute_link_defines(
+            ptab_obj,
+            env.get('name', 'main'),
+            build_core,
+            rtconfig_defines,
+        )
+        gen_link_lds.render_link_lds(str(source[0]), target_path, defines)
+        return
+
+    if rtconfig.PLATFORM == 'armcc':
+        with open(str(source[0]), 'r', encoding='utf-8', errors='ignore') as f:
+            script = f.read()
+
+        with open(target_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(_replace_link_script_env_vars(script, str(env.get('BSP_ROOT', ''))))
+        return
+
+    # v1/v2: legacy gcc -E preprocessing
     include_paths = ['-I{}'.format(path.replace('\\', '/')) for path in env['CPPPATH']]
-
-    target_path = os.path.join(os.path.dirname(str(target[0])), 'link_copy.lds')
-
     p = subprocess.Popen([rtconfig.CC, '-E', '-P'] + include_paths + ['-x', 'c', str(source[0])], stdout=subprocess.PIPE)
     (result, error) = p.communicate()
-    f = open(target_path, "wb")
-    f.write(result)
-    f.close()   
+    with open(target_path, "wb") as f:
+        f.write(result)
 
 def FsBuild(target, source, env):
-    import json
     import rtconfig
     
-    f = open(env['PARTITION_TABLE'])
-    try:
-        mems = json.load(f)
-    finally:
-        f.close()
+    ptab_obj = env.GetPtab() if hasattr(env, "GetPtab") else None
+    if ptab_obj is None:
+        import ptab as _ptab
+        ptab_obj = _ptab.load_ptab(env['PARTITION_TABLE'], fatal=True)
+    mems = ptab_obj.content_mems()
         
     found=0
     for mem in mems:
@@ -807,7 +1728,7 @@ def FsBuild(target, source, env):
             offset = int(region['offset'], 0)
             max_size = int(region['max_size'], 0)
             start_addr = mem_base + offset
-            if "tags" in region and "FS_REGION" in region['tags']:
+            if 'tags' in region and "FS_REGION" in region['tags']:
                 found=1
                 break
         if (found==1):
@@ -819,8 +1740,37 @@ def FsBuild(target, source, env):
         subprocess.run([env['fs_mkimg'],env['fs_root'],target,str(page_number),str(page_size)], check=True)
 
 def ModifyLdsTargets(target, source, env):
-    target = [os.path.join(env['build_dir'], 'link_copy.lds')]
-    
+    import ptab as ptab_module
+
+    src0 = str(source[0]) if source else ''
+    target_ext = '.sct' if src0.endswith('.sct') or src0.endswith('.sct.jinja2') else '.lds'
+    target = [os.path.join(env['build_dir'], 'link_copy' + target_ext)]
+    if 'PTAB_HEADER' in env:
+        env.Depends(target, env['PTAB_HEADER'])
+
+    ptab_obj = env.GetPtab() if hasattr(env, "GetPtab") else None
+    if ptab_obj is None and 'PARTITION_TABLE' in env:
+        ptab_obj = ptab_module.load_ptab(env['PARTITION_TABLE'], fatal=False)
+
+    template_path = _get_link_template_path(src0) if src0 else ''
+    if ptab_obj and ptab_obj.is_v3():
+        if not template_path or not os.path.exists(template_path):
+            logging.error(f"ptab v3 requires jinja2 link template: {template_path}")
+            raise SystemExit(1)
+        source = [File(template_path)]
+    elif src0 and not os.path.exists(src0) and template_path and os.path.exists(template_path):
+        fallback = _get_chip_link_fallback(src0, env)
+        if fallback:
+            logging.warning(
+                "ptab v1/v2 fallback to chip legacy link script: %s (skip template-only override %s)",
+                fallback,
+                template_path,
+            )
+            source = [File(fallback)]
+        else:
+            logging.error(f"ptab v1/v2 does not support jinja2-only link template: {template_path}")
+            raise SystemExit(1)
+
     return target, source
 
 def EmbeddedImgCFileBuild(target, source, env):
@@ -828,8 +1778,8 @@ def EmbeddedImgCFileBuild(target, source, env):
     SIFLI_SDK = os.getenv('SIFLI_SDK')
     GEN_SRC_PATH = os.path.join(SIFLI_SDK, "tools/patch/gen_src.py")
     s = str(source[0])
-    if os.path.isdir(s):
-        s = os.path.join(s, 'ER_IROM1.bin')
+    if os.path.isdir(s) or IsPtabV3ArtifactStampPath(s):
+        s = ResolvePtabV3CodeArtifactFromRef(s, GetPtabV3ArtifactBaseName(env), '.bin')
     if "acpu" in s:
         subprocess.run(['python', GEN_SRC_PATH, 'general', s, target_path, "acpu"], check=True)
         shutil.move(os.path.join(target_path, 'acpu_img.c'), str(target[0]))
@@ -838,15 +1788,124 @@ def EmbeddedImgCFileBuild(target, source, env):
         shutil.move(os.path.join(target_path, 'lcpu_img.c'), str(target[0]))
 
 
-
 def FtabCFileBuild(target, source, env):
     import sdk_resource
+    import ptab as ptab_module
+
     src_file = str(source[0])
     target_file = str(target[0])
+
     if 'template' in os.path.splitext(src_file)[1]:
         shutil.copy(src_file, target_file)
     else:
+        # v3 uses FtabBin builder to generate ftab.bin directly (no ftab subproject / ftab.c)
+        ptab_obj = ptab_module.load_ptab(src_file, fatal=False)
+        if ptab_obj and ptab_obj.is_v3():
+            logging.error(
+                "ptab v3 does not support generating ftab.c; use FtabBin (ftab.bin generated by script) instead."
+            )
+            raise SystemExit(1)
+
+        # v1/v2: use legacy C generation flow (ftab subproject)
         sdk_resource.GenFtabCFile(src_file, target_file, env['IMGS_INFO'])
+
+
+def FtabBinBuild(target, source, env):
+    """直接生成 ftab.bin（用于 ptab v3）
+
+    当使用 ptab v3 格式时，可以直接生成 ftab.bin 而不需要编译 ftab 子工程。
+    """
+    import gen_ftab
+    import ptab as ptab_module
+
+    src_file = str(source[0])
+    target_file = str(target[0])
+
+    # 加载 ptab
+    ptab_obj = ptab_module.load_ptab(src_file, fatal=True)
+
+    # 获取 chip config
+    if ptab_obj.is_v3():
+        chip_config = ptab_obj.get_chip_config()
+    else:
+        # 尝试从环境中获取芯片信息
+        chip = env.get('CHIP', '').lower().replace('sf32lb', 'sf32lb').rstrip('x')
+        if chip:
+            chip_config = ptab_module.load_chip_config(chip)
+        else:
+            chip_config = {'mpi': {}, 'ram': {}}
+            logging.warning("No chip config available for ftab.bin generation")
+
+    # 获取 image 大小
+    imgs_info = env.get('IMGS_INFO', [])
+    bootloader_size = 0x10000
+    main_size = 0x200000
+    image_sizes = {}
+    enabled_images = set()
+
+    def _calc_binary_size(path, base_name='main'):
+        path = str(path)
+        if IsPtabV3ArtifactStampPath(path) or os.path.isdir(path):
+            path = ResolvePtabV3CodeArtifactFromRef(path, base_name, '.bin')
+        if os.path.isfile(path):
+            return os.path.getsize(path)
+        if os.path.isdir(path):
+            # Prefer ER_IROM1.bin when multiple binaries are generated.
+            preferred = os.path.join(path, 'ER_IROM1.bin')
+            if os.path.isfile(preferred):
+                return os.path.getsize(preferred)
+            max_size = 0
+            for n in os.listdir(path):
+                f = os.path.join(path, n)
+                if os.path.isfile(f):
+                    max_size = max(max_size, os.path.getsize(f))
+            return max_size if max_size > 0 else None
+        return None
+
+    for img in imgs_info:
+        img_name = img.get('name', '')
+        if img_name:
+            enabled_images.add(img_name)
+        if img_name == 'bootloader' and 'binary' in img:
+            try:
+                sz = _calc_binary_size(img['binary'][0], img_name)
+                if sz:
+                    bootloader_size = sz
+                    image_sizes['bootloader'] = int(sz)
+            except:
+                pass
+        elif img_name == 'main' and 'binary' in img:
+            try:
+                sz = _calc_binary_size(img['binary'][0], img_name)
+                if sz:
+                    main_size = sz
+                    image_sizes['main'] = int(sz)
+            except:
+                pass
+        elif 'binary' in img:
+            try:
+                sz = _calc_binary_size(img['binary'][0], img_name or 'main')
+                if sz:
+                    image_sizes[img_name] = int(sz)
+            except:
+                pass
+
+    # 生成 ftab.bin
+    ftab_binary = gen_ftab.generate_ftab_binary(
+        ptab_obj,
+        chip_config,
+        bootloader_size,
+        main_size,
+        image_sizes=image_sizes,
+        enabled_images=enabled_images,
+    )
+
+    # 写入文件
+    with open(target_file, 'wb') as f:
+        f.write(ftab_binary)
+
+    logging.info(f"Generated ftab.bin: {target_file} ({len(ftab_binary)} bytes)")
+       
 
 def FileCopyBuild(target, source, env):
     src_file = str(source[0])
@@ -879,6 +1938,9 @@ def GenDownloadScript(main_env):
 
     PrintEnvList()
 
+    if GetDepend("BOARD_RAMRUN_ENABLED"):
+        return
+
     dependent_files = []
     for env in EnvList:
         # embedded project may contain multiple bin, but only IROM1.bin is embedded, others should be downloaded manually
@@ -891,6 +1953,8 @@ def GenDownloadScript(main_env):
         dependent_files.append(main_env['PARTITION_TABLE'])
     elif not GetDepend('USING_PARTITION_TABLE'):
         logging.warning("Partition table is not used.")
+    if 'FTAB_BIN' in main_env:
+        dependent_files.append(main_env['FTAB_BIN'])
 
     for img in CustomImgList:
         if img['program_binary']:
@@ -944,6 +2008,141 @@ def MergeRtconfig(rtconfig1, rtconfig2):
         if not var.startswith('_') and not var.islower():
             setattr(rtconfig1, var, getattr(rtconfig2, var))
 
+def _get_link_template_path(link_source):
+    link_source = str(link_source or '')
+    if link_source.endswith('.sct'):
+        return link_source + '.jinja2'
+    base, _ = os.path.splitext(link_source)
+    return base + '.jinja2'
+
+
+_LINK_SCRIPT_ENV_VARS = (
+    '$SIFLI_SDK_PATH',
+    '$SIFLI_SDK',
+    '$SDK_ROOT',
+    '$BSP_ROOT',
+    '$BOARD_ROOT',
+)
+
+
+def _normalize_link_script_path(path):
+    return str(path or '').replace('\\', '/')
+
+
+def _get_link_script_board_root():
+    try:
+        board = GetBoardName()
+        if board:
+            board_path1, _ = GetBoardPath(board)
+            return _normalize_link_script_path(board_path1)
+    except Exception:
+        pass
+    return ''
+
+
+def _replace_link_script_env_vars(script, bsp_root=''):
+    sdk_root = os.getenv('SIFLI_SDK') or os.getenv('SIFLI_SDK_PATH') or ''
+    replacements = [
+        ('$SIFLI_SDK_PATH', _normalize_link_script_path(sdk_root)),
+        ('$SIFLI_SDK', _normalize_link_script_path(sdk_root)),
+        ('$SDK_ROOT', _normalize_link_script_path(sdk_root)),
+        ('$BSP_ROOT', _normalize_link_script_path(bsp_root)),
+        ('$BOARD_ROOT', _get_link_script_board_root()),
+    ]
+    for name, value in replacements:
+        script = script.replace(name, value)
+    return script
+
+
+def _link_script_has_env_vars(script):
+    return any(name in script for name in _LINK_SCRIPT_ENV_VARS)
+
+
+def _current_project_uses_ptab_v3(bsp_root=''):
+    if not GetDepend('USING_PARTITION_TABLE'):
+        return False
+
+    try:
+        import rtconfig
+        import ptab as ptab_module
+    except Exception:
+        return False
+
+    project_root = bsp_root or Dir('#').abspath
+    ptab_path = getattr(rtconfig, 'PARTITION_TABLE', None)
+    ptab_obj = None
+    try:
+        board = GetBoardName(getattr(rtconfig, 'CORE', None))
+        if board:
+            board_path1, _ = GetBoardPath(board)
+            prepared = ptab_module.prepare_project_ptab(
+                project_root,
+                board,
+                getattr(rtconfig, 'CHIP', '').lower(),
+                board_path=board_path1,
+                emit_summary=False,
+                validate=False,
+            )
+            ptab_obj = prepared.get('ptab_obj')
+        else:
+            if not ptab_path:
+                link_dir = os.path.join(project_root, 'linker_scripts')
+                yaml_path = os.path.join(link_dir, 'ptab.yaml')
+                json_path = os.path.join(link_dir, 'ptab.json')
+                if os.path.exists(yaml_path):
+                    ptab_path = yaml_path
+                elif os.path.exists(json_path):
+                    ptab_path = json_path
+            if ptab_path:
+                ptab_obj = ptab_module.load_ptab(ptab_path, fatal=False)
+    except Exception:
+        return False
+
+    return bool(ptab_obj and ptab_obj.is_v3())
+
+
+def _get_chip_link_fallback(link_source, env):
+    import rtconfig
+
+    link_source = str(link_source or '')
+    ext = os.path.splitext(link_source)[1].lower()
+    if ext not in ('.lds', '.sct'):
+        return None
+
+    sifli_sdk = os.getenv('SIFLI_SDK')
+    if not sifli_sdk:
+        return None
+
+    if GetDepend('SOC_SF32LB52X'):
+        chip = 'sf32lb52x'
+    elif GetDepend('SOC_SF32LB55X'):
+        chip = 'sf32lb55x'
+    elif GetDepend('SOC_SF32LB56X'):
+        chip = 'sf32lb56x'
+    elif GetDepend('SOC_SF32LB58X'):
+        chip = 'sf32lb58x'
+    else:
+        return None
+
+    core = _infer_build_core(env, getattr(rtconfig, 'CORE', 'HCPU')).lower()
+    if ext == '.lds':
+        fallback = os.path.join(sifli_sdk, 'drivers', 'cmsis', chip, 'Templates', 'gcc', core, 'link' + ext)
+    else:
+        fallback = os.path.join(sifli_sdk, 'drivers', 'cmsis', chip, 'Templates', 'arm', core, 'link' + ext)
+
+    return fallback if os.path.exists(fallback) else None
+
+
+def _select_link_script_base(candidates, ext):
+    for base, desc in candidates:
+        legacy_path = base + ext
+        template_path = _get_link_template_path(legacy_path)
+        if os.path.exists(legacy_path) or os.path.exists(template_path):
+            logging.debug('Use {} link file: {}'.format(desc, base))
+            return base, (base if os.path.exists(template_path) else None)
+    return None, None
+
+
 def GetLinkScript(proj_path,board,chip,core):
     board_path1, board_path2 = GetBoardPath(board)
     CC_TOOLS = os.getenv('RTT_CC')
@@ -952,38 +2151,27 @@ def GetLinkScript(proj_path,board,chip,core):
     chip = chip.lower()
     core = core.lower()
     if CC_TOOLS=='keil' or CC_TOOLS=='gcc':
-        if CC_TOOLS=='keil':
-            ext='.sct'
+        ext = '.sct' if CC_TOOLS == 'keil' else '.lds'
+        SIFLI_SDK = os.getenv('SIFLI_SDK')
+        if CC_TOOLS == 'keil':
+            chip_base = os.path.join(SIFLI_SDK, 'drivers/cmsis/{}/Templates/arm/{}/link'.format(chip, core))
         else:
-            ext='.lds'
-        custom_link_file_path = os.path.join(proj_path, board)
-        custom_link_file_path = os.path.join(custom_link_file_path, 'link'+ext)
-        if os.path.exists(custom_link_file_path):
-            link_script = os.path.splitext(custom_link_file_path)[0]
-            logging.debug('Use project board link file: {}'.format(link_script))
-        elif os.path.exists(os.path.join(proj_path, chip + '/link'+ ext)):
-            link_script = os.path.join(proj_path, chip + '/link')
-            logging.debug('Use project chip link file: {}'.format(link_script))
-        elif os.path.exists(os.path.join(proj_path, 'link'+ext)):
-            link_script = os.path.join(proj_path, 'link')
-            logging.debug('Use project link file: {}'.format(link_script))
-        elif os.path.exists(os.path.join(board_path2, 'link'+ext)):    
-            # no custom link file present, use link file defined by board
-            link_script = os.path.join(board_path2, "link")
-            logging.debug('Use board link file: {}'.format(link_script))
-        else:
-            SIFLI_SDK = os.getenv('SIFLI_SDK')
-            if CC_TOOLS=='keil':
-                link_script = os.path.join(SIFLI_SDK, "drivers/cmsis/{}/Templates/arm/{}/link".format(chip.lower(), core.lower()))
-            else:
-                link_script_template = os.path.join(SIFLI_SDK, "drivers/cmsis/{}/Templates/gcc/{}/link".format(chip.lower(), core.lower()))
-                link_script = link_script_template
-            logging.debug('Use chip link file: {}'.format(link_script))
+            chip_base = os.path.join(SIFLI_SDK, 'drivers/cmsis/{}/Templates/gcc/{}/link'.format(chip, core))
+
+        candidates = [
+            (os.path.join(proj_path, board, 'link'), 'project board'),
+            (os.path.join(proj_path, chip + '/link'), 'project chip'),
+            (os.path.join(proj_path, 'link'), 'project'),
+            (os.path.join(board_path2, 'link'), 'board'),
+            (chip_base, 'chip'),
+        ]
+        link_script, link_script_template = _select_link_script_base(candidates, ext)
     return link_script,link_script_template
 
 def AddChildProj(proj_name, proj_path, img_embedded=False, shared_option=None, core=None):
     import rtconfig
     global BuildOptions
+    global Env
 
     try:
         AddOption('--compiledb',
@@ -996,6 +2184,8 @@ def AddChildProj(proj_name, proj_path, img_embedded=False, shared_option=None, c
 
     if GetOption('compiledb'):
         return     
+
+    parent_env = Env
 
     logging.debug("\n======================")
     logging.debug("Add child proj: {}".format(proj_name))
@@ -1052,7 +2242,8 @@ def AddChildProj(proj_name, proj_path, img_embedded=False, shared_option=None, c
             setattr(rtconfig, var, getattr(proj_rtconfig, var))
 
     child_builder = None
-    if os.path.isfile(os.path.join(proj_path, 'SConstruct.py')):
+    has_custom_sconstruct_py = os.path.isfile(os.path.join(proj_path, 'SConstruct.py'))
+    if has_custom_sconstruct_py:
         child_builder = (lambda spec: (spec.loader.exec_module(mod := importlib.util.module_from_spec(spec)) or mod))(importlib.util.spec_from_file_location(proj_name, os.path.join(proj_path, 'SConstruct.py')))
         child_builder.create_env(proj_path)
         
@@ -1064,6 +2255,7 @@ def AddChildProj(proj_name, proj_path, img_embedded=False, shared_option=None, c
         CC = rtconfig.CC, CFLAGS = rtconfig.CFLAGS,
         CXX = rtconfig.CXX, CXXFLAGS = rtconfig.CXXFLAGS,
         AR = rtconfig.AR, ARFLAGS = '-rc', LIBPATH=['.'],
+        RANLIB = rtconfig.RANLIB,
         LINK = rtconfig.LINK, LINKFLAGS = rtconfig.LFLAGS)
             
     proj_env.PrependENVPath('PATH', rtconfig.EXEC_PATH)
@@ -1078,16 +2270,15 @@ def AddChildProj(proj_name, proj_path, img_embedded=False, shared_option=None, c
     if shared_option  and 'PARTITION_TABLE' in shared_option:
         proj_env['PARTITION_TABLE'] = os.path.abspath(shared_option['PARTITION_TABLE'])
 
-    # prepare building environment
-    objs = PrepareBuilding(proj_env)
-    
-    if 'CPPPATH' in proj_env and os.path.abspath(str(Dir('#'))) in proj_env['CPPPATH']:
-        logging.debug('Root path of parent project: {}'.format(os.path.abspath(str(Dir('#')))))
-        logging.debug('Search paths of child project: {}'.format(proj_env['CPPPATH']))
-        raise ValueError('Root path of parent project cannot be in search paths of child project')
+    if has_custom_sconstruct_py:
+        child_builder.build(proj_env)
+    else:
+        # prepare building environment
+        objs = PrepareBuilding(proj_env)
 
-    # make a building
-    DoBuilding(os.path.join(proj_env['build_dir'], rtconfig.TARGET_NAME + '.' + rtconfig.TARGET_EXT), objs)
+        # make a building
+        DoBuilding(os.path.join(proj_env['build_dir'], rtconfig.TARGET_NAME + '.' + rtconfig.TARGET_EXT), objs)
+
 
     if img_embedded:
         ChildProjList.append({'name': proj_name, 'binary': proj_env['program_binary'], 'build_dir': proj_env['build_dir'], 'parent': parent_name})
@@ -1105,6 +2296,7 @@ def AddChildProj(proj_name, proj_path, img_embedded=False, shared_option=None, c
 
     # restore old BuildOptions
     BuildOptions = build_options_backup
+    Env = parent_env
 
     return proj_env
     
@@ -1272,6 +2464,7 @@ def PrepareBuilding(env, has_libcpu=False, remove_components=[], buildlib=None):
                 CC = rtconfig.CC, CFLAGS = rtconfig.CFLAGS,
                 CXX = rtconfig.CXX, CXXFLAGS = rtconfig.CXXFLAGS,
                 AR = rtconfig.AR, ARFLAGS = '-rc',
+                RANLIB = rtconfig.RANLIB,
                 LINK = rtconfig.LINK, LINKFLAGS = rtconfig.LFLAGS)
             env.PrependENVPath('PATH', rtconfig.EXEC_PATH)
         else:
@@ -1619,6 +2812,9 @@ def PrepareBuilding(env, has_libcpu=False, remove_components=[], buildlib=None):
 
     DefineGroup("Kernel", [], [], CPPPATH=path)
 
+    # register ptab tool
+    env.Tool('ptab', toolpath=[os.path.dirname(__file__)])
+
 
     # add font converter builder
     font_convert_action = SCons.Action.Action(FontConvertBuild, 'ConvertFont $TARGET')
@@ -1676,12 +2872,12 @@ def PrepareBuilding(env, has_libcpu=False, remove_components=[], buildlib=None):
     
     # add ProgramBinary builder
     bin_action = SCons.Action.Action(ProgramBinaryBuild, 'Generating $TARGET ...')
-    bld = Builder(action = bin_action, suffix = '.bin')
+    bld = Builder(action = bin_action, suffix = '.bin', emitter = ModifyProgramBinaryTargets)
     Env.Append(BUILDERS = {"ProgramBinary": bld})
     
     # add ProgramHex builder
     hex_action = SCons.Action.Action(ProgramHexBuild, 'Generating $TARGET ...')
-    bld = Builder(action = hex_action, suffix = '.hex')
+    bld = Builder(action = hex_action, suffix = '.hex', emitter = ModifyProgramHexTargets)
     Env.Append(BUILDERS = {"ProgramHex": bld})
 
     # add ProgramAsm builder
@@ -1698,6 +2894,11 @@ def PrepareBuilding(env, has_libcpu=False, remove_components=[], buildlib=None):
     ftab_cfile_action = SCons.Action.Action(FtabCFileBuild, 'Generating $TARGET ...')
     bld = Builder(action = ftab_cfile_action, suffix = '.c')
     Env.Append(BUILDERS = {"FtabCFile": bld})
+
+    # add FtabBin builder (for ptab v3 - direct binary generation)
+    ftab_bin_action = SCons.Action.Action(FtabBinBuild, 'Generating $TARGET ...')
+    bld = Builder(action = ftab_bin_action, suffix = '.bin')
+    Env.Append(BUILDERS = {"FtabBin": bld})
 
     # add DownloadScript builder
     download_script_action = SCons.Action.Action(DownloadScriptBuild, 'Generating $TARGET ...')
@@ -1871,6 +3072,18 @@ def PrepareBuilding(env, has_libcpu=False, remove_components=[], buildlib=None):
     # Add external components
     if os.path.isfile(os.path.join(Env['BSP_ROOT'], 'sf-pkgs/SConscript_conandeps')):
         objs.extend(AddExternalComponents(os.path.join(Env['BSP_ROOT'], 'sf-pkgs/SConscript_conandeps')))
+
+
+    if IsChildProjEnv(env) and 'CPPPATH' in env:
+        child_cpppath = env['CPPPATH']
+        if not isinstance(child_cpppath, (list, tuple)):
+            child_cpppath = [child_cpppath]
+        parent_root = os.path.abspath(str(Dir('#')))
+        child_cpppath_abs = [os.path.abspath(str(path)) for path in child_cpppath]
+        if parent_root in child_cpppath_abs:
+            logging.debug('Root path of parent project: {}'.format(parent_root))
+            logging.debug('Search paths of child project: {}'.format(env['CPPPATH']))
+            raise ValueError('Root path of parent project cannot be in search paths of child project')
 
     return objs
 
@@ -2606,42 +3819,54 @@ def EndBuilding(target, program = None):
         program_asm = Env.ProgramAsm(program)   
         GenCppdefineFiles()
 
+        link_file = None
         if rtconfig.CROSS_TOOL == 'gcc':
-            lds_file = Env.LdsFile([File(rtconfig.LINK_SCRIPT_SRC + '.lds')])
-            Depends(program, lds_file)
-            # always build lds file as it would not get rebuilt when header file changes
-            AlwaysBuild(lds_file)
+            link_file = Env.LdsFile([File(rtconfig.LINK_SCRIPT_SRC + '.lds')])
+        elif rtconfig.CROSS_TOOL == 'keil':
+            generated_link = Path(rtconfig.OUTPUT_DIR, 'link_copy').as_posix()
+            if rtconfig.LINK_SCRIPT != generated_link:
+                link_file = File(rtconfig.LINK_SCRIPT + '.sct')
+                if "PTAB_HEADER" in Env:
+                    Depends(program, Env['PTAB_HEADER'])
+            else:
+                link_file = Env.LdsFile([File(rtconfig.LINK_SCRIPT_SRC + '.sct')])
+
+        if link_file:
+            Depends(program, link_file)
+            if not (rtconfig.CROSS_TOOL == 'keil' and rtconfig.LINK_SCRIPT != Path(rtconfig.OUTPUT_DIR, 'link_copy').as_posix()):
+                # always build link script as it would not get rebuilt when header file changes
+                AlwaysBuild(link_file)
             if "ROM_SYM" in Env and Env['ROM_SYM']:
                 Depends(program, Env['ROM_SYM'])
             
-            # Register sdk_size.py to run once at program exit after all builds complete
-            # Only register for main project (not child projects) to get consolidated report
-            if not IsChildProjEnv():
-                global _sdk_size_registered, _main_build_dir
-                if not _sdk_size_registered:
-                    _main_build_dir = Env['build_dir']
-                    _sdk_size_registered = True
-                    
-                    def run_sdk_size_analysis_at_exit():
-                        # Only run if build was successful
-                        if GetBuildFailures():
-                            return
-                        SIFLI_SDK = os.getenv('SIFLI_SDK')
-                        sdk_size_script = os.path.join(SIFLI_SDK, 'tools', 'sdk_size', 'sdk_size.py')
-                        if os.path.exists(sdk_size_script) and _main_build_dir:
-                            print("\n" + "="*80)
-                            print("Memory Usage Analysis")
-                            print("="*80)
-                            try:
-                                cmd = [sys.executable, sdk_size_script, _main_build_dir]
-                                result = subprocess.run(cmd)
-                                print("="*80 + "\n")
-                                if result.returncode != 0:
-                                    logging.warning("sdk_size.py returned non-zero exit code: " + str(result.returncode))
-                            except Exception as e:
-                                logging.warning(f"Failed to run sdk_size.py: {e}")
-                    
-                    atexit.register(run_sdk_size_analysis_at_exit)
+        # Register sdk_size.py to run once at program exit after all builds complete
+        # Only register for main project (not child projects) to get consolidated report
+        if not IsChildProjEnv() and rtconfig.CROSS_TOOL == 'gcc':
+            global _sdk_size_registered, _main_build_dir
+            if not _sdk_size_registered:
+                _main_build_dir = Env['build_dir']
+                _sdk_size_registered = True
+                
+                def run_sdk_size_analysis_at_exit():
+                    # Only run if build was successful
+                    if GetBuildFailures():
+                        return
+                    SIFLI_SDK = os.getenv('SIFLI_SDK')
+                    sdk_size_script = os.path.join(SIFLI_SDK, 'tools', 'sdk_size', 'sdk_size.py')
+                    if os.path.exists(sdk_size_script) and _main_build_dir:
+                        print("\n" + "="*80)
+                        print("Memory Usage Analysis")
+                        print("="*80)
+                        try:
+                            cmd = [sys.executable, sdk_size_script, _main_build_dir]
+                            result = subprocess.run(cmd)
+                            print("="*80 + "\n")
+                            if result.returncode != 0:
+                                logging.warning("sdk_size.py returned non-zero exit code: " + str(result.returncode))
+                        except Exception as e:
+                            logging.warning(f"Failed to run sdk_size.py: {e}")
+                
+                atexit.register(run_sdk_size_analysis_at_exit)
 
 def SrcRemove(src, remove):
     if not src:
@@ -2746,6 +3971,7 @@ def SifliMsvcEnv(cpu):
     rtconfig.CC = rtconfig.PREFIX + 'cl'
     rtconfig.CXX = rtconfig.PREFIX + 'cl'
     rtconfig.AR = rtconfig.PREFIX + 'lib'
+    rtconfig.RANLIB = ''
     rtconfig.LINK = rtconfig.PREFIX + 'link'
        
     rtconfig.AFLAGS = ''
@@ -2788,6 +4014,7 @@ def SifliIarEnv(cpu):
     rtconfig.CXX = 'iccarm'
     rtconfig.AS = 'iasmarm'
     rtconfig.AR = 'iarchive'
+    rtconfig.RANLIB = ''
     rtconfig.LINK = 'ilinkarm'
     rtconfig.TARGET_EXT = 'out'
 
@@ -2851,6 +4078,11 @@ def GetKeilMcpu():
             mcpu = 'cortex-m33+nodsp'
         else:
             mcpu = 'cortex-m33+cdecp1'
+    elif GetDepend('SOC_SF32LB57X'):  
+        if GetDepend("BF0_LCPU"):
+            mcpu = 'cortex-m33+nodsp'
+        else:
+            mcpu = 'cortex-m33+cdecp1'
     else:
         raise Exception("Unknown chip series")
     
@@ -2867,6 +4099,8 @@ def GetMtune():
     elif GetDepend('SOC_SF32LB58X'):
         mtune = 'cortex-m33'
     elif GetDepend('SOC_SF32LB52X'):  
+        mtune = 'cortex-m33'
+    elif GetDepend('SOC_SF32LB57X'):  
         mtune = 'cortex-m33'
     else:
         raise Exception("Unknown chip series")
@@ -2885,6 +4119,11 @@ def GetMarch():
             march = 'armv8-m.main'
         else:
             march = 'armv8-m.main+dsp+fp+cdecp1'
+    elif GetDepend('SOC_SF32LB57X'):  
+        if GetDepend("BF0_LCPU"):
+            march = 'armv8-m.main'
+        else:
+            march = 'armv8-m.main+dsp+fp+cdecp1'
     else:
         raise Exception("Unknown chip series")
     
@@ -2897,10 +4136,17 @@ def SifliGccEnv(cpu):
     rtconfig.CROSS_TOOL= 'gcc'
 
     # toolchains
-    rtconfig.PREFIX = 'arm-none-eabi-'
+    if rtconfig.ARCH=='arm':
+        rtconfig.PREFIX = 'arm-none-eabi-'
+        DEVICE = GetMtune() + GetMarch() + ' -mthumb -ffunction-sections -fdata-sections'
+    elif rtconfig.ARCH=='risc-v':
+        rtconfig.PREFIX = 'riscv64-unknown-elf-'
+        DEVICE = ' -march=rv32ima_zca_zcb_zcf_zcmp_zcmt_xxlcz -mabi=ilp32'
+
     rtconfig.CC = rtconfig.PREFIX + 'gcc'
     rtconfig.AS = rtconfig.PREFIX + 'gcc'
     rtconfig.AR = rtconfig.PREFIX + 'ar'
+    rtconfig.RANLIB = rtconfig.PREFIX + 'ranlib'
     rtconfig.CXX = rtconfig.PREFIX + 'g++'
     rtconfig.LINK = rtconfig.PREFIX + 'gcc'
     rtconfig.STRIP = rtconfig.PREFIX + 'strip'
@@ -2914,12 +4160,13 @@ def SifliGccEnv(cpu):
     else:
         no_dsp_fp = False
 
+
     SIFLI_SDK = os.getenv('SIFLI_SDK')
-    DEVICE = GetMtune() + GetMarch() + ' -mthumb -ffunction-sections -fdata-sections'
-    if not no_dsp_fp:
-        rtconfig.CFLAGS = DEVICE + ' -mfpu=fpv5-sp-d16 -mfloat-abi=hard'
-    else:
-        rtconfig.CFLAGS = DEVICE + ' -mfloat-abi=soft'
+    if rtconfig.ARCH=='arm':
+        if not no_dsp_fp:
+            rtconfig.CFLAGS = DEVICE + ' -mfpu=fpv5-sp-d16 -mfloat-abi=hard'
+        else:
+            rtconfig.CFLAGS = DEVICE + ' -mfloat-abi=soft'
     rtconfig.CFLAGS += ' -funsigned-char -fshort-enums -fshort-wchar'
     # We don't need to delete the SDK prefix now, as this would make debugging inconvenient.
     # rtconfig.CFLAGS += f' -ffile-prefix-map={SIFLI_SDK}=./'
@@ -2931,25 +4178,40 @@ def SifliGccEnv(cpu):
     rtconfig.CFLAGS += ' -fno-unwind-tables -fno-exceptions'
     rtconfig.CFLAGS += ' -fno-common -fno-strict-aliasing'
     
-    rtconfig.CFLAGS += ' -Os'
+    if hasattr(rtconfig, 'OPT_LEVEL'):
+        rtconfig.CFLAGS += ' ' + rtconfig.OPT_LEVEL
+    elif GetConfigValue("OPT_LEVEL") != "":
+        rtconfig.CFLAGS += ' ' + GetConfigValue("OPT_LEVEL").replace('"', '')
+    else:
+        rtconfig.CFLAGS += ' -Os' 
+
     rtconfig.CXXFLAGS = rtconfig.CFLAGS
     if no_dsp_fp:
         rtconfig.CXXFLAGS += ' -fno-exceptions -fno-rtti'
     rtconfig.CCFLAGS =  rtconfig.CFLAGS + ' -std=c99 -Wno-missing-prototypes'
-    rtconfig.AFLAGS = ' -c' + DEVICE
-    if not no_dsp_fp:
-        rtconfig.AFLAGS += ' -mfpu=fpv5-sp-d16 -mfloat-abi=hard'
-    else:
-        rtconfig.AFLAGS += ' -mfloat-abi=soft'
-
-    rtconfig.AFLAGS += ' -x assembler-with-cpp -Wa,-mimplicit-it=thumb '    
+    rtconfig.AFLAGS = ' -c' + DEVICE + ' -x assembler-with-cpp'
+    if rtconfig.ARCH=='arm':
+        rtconfig.AFLAGS += ' -Wa,-mimplicit-it=thumb'
+        if not no_dsp_fp:
+            rtconfig.AFLAGS += ' -mfpu=fpv5-sp-d16 -mfloat-abi=hard'
+        else:
+            rtconfig.AFLAGS += ' -mfloat-abi=soft'
+    elif rtconfig.ARCH=='risc-v':
+        rtconfig.CFLAGS += ' -ffunction-sections -fdata-sections -fno-common'
+        if GetDepend('LTO_SUPPORT'):
+            rtconfig.CFLAGS += ' -flto'
+            rtconfig.AFLAGS += ' -ffat-lto-objects'
+        
     
     rtconfig.LFLAGS = rtconfig.CFLAGS.strip().split()
     #  ['-mcpu=Cortex-M33', '-mthumb', '-ffunction-sections', '-fdata-sections']
     #rtconfig.LFLAGS += '-std=c99 -mfpu=fpv5-sp-d16 -mfloat-abi=hard'.split()
     if not hasattr(rtconfig, 'TARGET_NAME'):
         rtconfig.TARGET_NAME = 'rtthread'
-    rtconfig.LFLAGS += ['-Wl,--no-wchar-size-warning,--gc-sections,-Map={}.map,-cref,-u,Reset_Handler'.format(rtconfig.OUTPUT_DIR + '/' + rtconfig.TARGET_NAME)]
+    if rtconfig.ARCH=='arm':
+        rtconfig.LFLAGS += ['-Wl,--no-wchar-size-warning,--gc-sections,-Map={}.map,-cref,-u,Reset_Handler'.format(rtconfig.OUTPUT_DIR + '/' + rtconfig.TARGET_NAME)]
+    else:
+        rtconfig.LFLAGS += ['-Wl,--undefined=g_patch_type,--undefined=_calloc_r,--undefined=_realloc_r,--undefined=bt_sco_data_handle_callback,--undefined=ble_boot,--gc-sections,-Map={}.map,-cref,-u,Reset_Handler'.format(rtconfig.OUTPUT_DIR + '/' + rtconfig.TARGET_NAME)]
 
     rtconfig.LINK_SCRIPT = rtconfig.OUTPUT_DIR + '/link_copy'
 
@@ -3005,6 +4267,7 @@ def SifliKeilEnv(cpu, BSP_ROOT=''):
     rtconfig.CXX = 'armclang'
     rtconfig.AS = 'armasm'
     rtconfig.AR = 'armar'
+    rtconfig.RANLIB = ''
     rtconfig.LINK = 'armlink'
     rtconfig.TARGET_EXT = 'axf'
     
@@ -3013,24 +4276,29 @@ def SifliKeilEnv(cpu, BSP_ROOT=''):
     else:
         no_dsp_fp = False
     
-    # Preproc link_script
-    f = open(rtconfig.LINK_SCRIPT + '.sct', 'r')
-    script = f.readlines()
-    f.close()
-    if '$SDK_ROOT' in script[0] or '$BSP_ROOT' in script[0] or '$BOARD_ROOT' in script[0]:
-        script[0] = script[0].replace('$SDK_ROOT', os.getenv('SIFLI_SDK'))
-        script[0] = script[0].replace('$BSP_ROOT', BSP_ROOT)
-        # if GetBoardName():
-        #     board_path1,board_path2 = GetBoardPath(GetBoardName())
-        #     script[0] = script[0].replace('$BOARD_ROOT', board_path1)
-        new_file_path = os.path.join(rtconfig.OUTPUT_DIR,  os.path.basename(rtconfig.LINK_SCRIPT ) + '.sct')
-        if not os.path.exists(rtconfig.OUTPUT_DIR):
-            logging.debug('sct dir:{}'.format(rtconfig.OUTPUT_DIR))
-            Execute(Mkdir(rtconfig.OUTPUT_DIR))
-        f = open(new_file_path, 'w')
-        f.writelines(script)
-        f.close()  
-        rtconfig.LINK_SCRIPT = os.path.splitext(new_file_path)[0]
+    use_link_template = bool(
+        hasattr(rtconfig, 'LINK_SCRIPT_TEMPLATE')
+        and rtconfig.LINK_SCRIPT_TEMPLATE
+        and _current_project_uses_ptab_v3(BSP_ROOT)
+    )
+    if not use_link_template:
+        link_script_path = rtconfig.LINK_SCRIPT_SRC + '.sct'
+        with open(link_script_path, 'r', encoding='utf-8', errors='ignore') as f:
+            script = f.read()
+        if _link_script_has_env_vars(script):
+            new_file_path = Path(rtconfig.OUTPUT_DIR, os.path.basename(rtconfig.LINK_SCRIPT_SRC) + '.sct')
+            if not os.path.exists(rtconfig.OUTPUT_DIR):
+                logging.debug('sct dir:{}'.format(rtconfig.OUTPUT_DIR))
+                Execute(Mkdir(rtconfig.OUTPUT_DIR))
+            with open(new_file_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(_replace_link_script_env_vars(script, BSP_ROOT))
+            rtconfig.LINK_SCRIPT = new_file_path.with_suffix('').as_posix()
+        else:
+            rtconfig.LINK_SCRIPT = rtconfig.LINK_SCRIPT_SRC
+    else:
+        # Keil links against a generated scatter file in the build dir when the
+        # selected source is rendered from a Jinja2 template.
+        rtconfig.LINK_SCRIPT = Path(rtconfig.OUTPUT_DIR, 'link_copy').as_posix()
     
     rtconfig.keil_version=SifliKeilVersion()
     logging.debug("Keil version %s"%(rtconfig.keil_version))
@@ -3291,7 +4559,31 @@ def PrepareEnv(board=None):
         BuildOptionUpdate(BuildOptions, None)
             
 
+def _IsPcSimulatorBuild():
+    try:
+        board = GetBoardName()
+    except Exception:
+        board = None
+
+    is_pc_board = board in ('pc_hcpu', 'pc_lcpu')
+    try:
+        if GetDepend('BSP_USING_PC_SIMULATOR'):
+            return True
+        if GetDepend('SOC_SIMULATOR') and is_pc_board:
+            return True
+    except Exception:
+        pass
+
+    return is_pc_board
+
+
 def AddBootLoader(SIFLI_SDK, chip):
+    if not chip and _IsPcSimulatorBuild():
+        return
+
+    if GetDepend("BOARD_RAMRUN_ENABLED"):
+        return
+    
     # Add bootloader project
     proj_path = None
     proj_name = 'bootloader'
@@ -3304,8 +4596,71 @@ def AddBootLoader(SIFLI_SDK, chip):
     elif "SF32LB58X" == chip:
         proj_path = os.path.join(SIFLI_SDK, 'example/boot_loader/project/sf32lb58x_v2')
         AddChildProj(proj_name, proj_path, False)
+    elif "SF32LB57X" == chip:
+        proj_path = os.path.join(SIFLI_SDK, 'example/boot_loader/project/sf32lb57x/ram_v2')
+        AddChildProj(proj_name, proj_path, False)
+    elif "SF32LB55X" == chip:
+        # 55x has no bootloader    
+        pass 
+    else:
+        assert False, "Unknown chip: {}".format(chip)    
 
-def AddFTAB(SIFLI_SDK, chip):
+def AddFTAB(SIFLI_SDK, chip, env=None):
+    """Add ftab subproject based on ptab version
+    
+    - v3 format: Skip subproject, ftab.bin generated by script
+    - v1/v2 format: Add ftab subproject for compilation
+    """
+    if not chip and _IsPcSimulatorBuild():
+        return
+
+    if GetDepend("BOARD_RAMRUN_ENABLED"):
+        return
+
+    import ptab as ptab_module
+    
+    if env is None:
+        try:
+            env = GetCurrentEnv()
+        except Exception:
+            env = None
+
+    # Try to get ptab path from environment
+    ptab_path = None
+    if env and 'PARTITION_TABLE' in env:
+        ptab_path = env['PARTITION_TABLE']
+    
+    # Check if this is v3 format
+    if ptab_path and os.path.exists(ptab_path):
+        ptab_obj = ptab_module.load_ptab(ptab_path, fatal=False)
+        if ptab_obj and ptab_obj.is_v3():
+            # v3 format: generate ftab.bin directly after all child projects are registered.
+            if env:
+                imgs_info = []
+                target_list = []
+                for e in GetEnvList():
+                    # embedded project binaries are embedded into parent image
+                    if IsChildProjEnv(e) and e.get('IMG_EMBEDDED'):
+                        continue
+                    proj_name = e['name'] if IsChildProjEnv(e) else 'main'
+                    if 'program_binary' in e:
+                        imgs_info.append({"name": proj_name, "binary": e['program_binary']})
+                    if 'target' in e:
+                        target_list += e['target']
+                    if 'program_binary' in e:
+                        target_list += e['program_binary']
+                    if 'program_hex' in e:
+                        target_list += e['program_hex']
+
+                output_path = env.get('FTAB_BIN_PATH') or os.path.join(env['BUILD_DIR_FULL_PATH'], 'ftab.bin')
+                ftab_bin = env.FtabBin(output_path, File(ptab_path), IMGS_INFO=imgs_info)
+                Depends(ftab_bin, target_list)
+                env['FTAB_BIN'] = ftab_bin
+            logging.info(f"ftab.bin will be generated by script (no subproject) for chip: {chip} (ptab v3)")
+            return
+    
+    # v1/v2 format: Add ftab subproject
+    logging.info(f"Adding ftab subproject for chip: {chip} (ptab v1/v2)")
     proj_path = None
     proj_name = 'ftab'
     if "SF32LB56X" == chip:
@@ -3320,6 +4675,11 @@ def AddFTAB(SIFLI_SDK, chip):
     elif "SF32LB55X" == chip:
         proj_path = os.path.join(SIFLI_SDK, 'example/flash_table/sf32lb55x_common_v2')
         AddChildProj(proj_name, proj_path, False)
+    elif "SF32LB57X" == chip:
+        proj_path = os.path.join(SIFLI_SDK, 'example/flash_table/sf32lb57x_common_v2')
+        AddChildProj(proj_name, proj_path, False)        
+    else:
+        assert False, "Unknown chip: {}".format(chip)    
 
 def AddDFU(SIFLI_SDK):
     proj_path = None
@@ -3331,6 +4691,24 @@ def AddDFU_PAN(SIFLI_SDK):
     proj_path = None
     proj_name = 'dfu'
     proj_path = os.path.join(SIFLI_SDK, 'example/dfu_pan/project')
+    AddChildProj(proj_name, proj_path, False)
+
+def AddDFU_PAN_V2(SIFLI_SDK):
+    proj_path = None
+    proj_name = 'dfu'
+    proj_path = os.path.join(SIFLI_SDK, 'example/dfu_v2/bt_pan/loader/project')
+    AddChildProj(proj_name, proj_path, False)
+
+def AddDFU_CDC(SIFLI_SDK):
+    proj_path = None
+    proj_name = 'dfu'
+    proj_path = os.path.join(SIFLI_SDK, 'example/dfu_v2/cdc/loader/project')
+    AddChildProj(proj_name, proj_path, False)
+
+def AddDFU_BLE(SIFLI_SDK):
+    proj_path = None
+    proj_name = 'dfu'
+    proj_path = os.path.join(SIFLI_SDK, 'example/dfu_v2/ble/loader/project')
     AddChildProj(proj_name, proj_path, False)
 
 def AddLCPU(SIFLI_SDK, chip,target_file=None):

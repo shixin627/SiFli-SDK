@@ -7,6 +7,8 @@
 #ifndef __SECU1_H
 #define __SECU1_H
 
+#define SECU_VERSION    (1)
+
 typedef struct
 {
     __IO uint32_t SECU_CTRL;

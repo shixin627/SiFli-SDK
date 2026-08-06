@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2025-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "battery_calculator.h"
 #include <stdint.h>
 #include <stdbool.h>

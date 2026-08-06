@@ -1,0 +1,11 @@
+# COLD START, THEN the phone syncs — the path weather.refresh() exists for.
+# C hides no_dat_label on every refresh (app_weather.c:963), so the banner must
+# be GONE here. If it is still on screen the app is claiming there is no
+# weather over live weather, permanently.
+goto_app Main
+skai_pkg_add pkg_weather
+skai_pkg_run weather
+fake_weather 20
+app_status
+app_status
+app_status

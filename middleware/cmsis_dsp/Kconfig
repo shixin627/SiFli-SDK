@@ -1,0 +1,5 @@
+config USING_CMSIS_DSP_ACC
+    bool "CMSIS DSP Acceleration"
+    depends on SOC_SF32LB58X || SOC_SF32LB56X
+    select BSP_USING_CMSIS_DSP
+    default n

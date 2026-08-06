@@ -18,6 +18,14 @@ if GetDepend('BSP_USING_PC_SIMULATOR'):
     src += ['fake_ui_data.c']
     # Programmatic UI navigation: goto_app / list_apps / app_exit / app_status.
     src += ['dev_navigation.c']
+    # skai_* capability layer self-check (ADR-0019 Phase 1): skai_test.
+    src += ['test_skai_api.c']
+    # External JS sandbox gates (ADR-0019 Phase 3): skai_js_test. The file
+    # self-gates on PKG_USING_QUICKJS too, so it is inert without the runtime.
+    src += ['test_skai_js.c']
+    # Signed-package install + verification gates (ADR-0019 §2.5). Also
+    # self-gates on PKG_USING_QUICKJS.
+    src += ['test_skai_pkg.c']
     # hr_ac_test: runs the real hr_autocorr.c object against the same synthetic
     # cases as its Python reference, so a fixed-point porting error is caught
     # here rather than on a wrist overnight.

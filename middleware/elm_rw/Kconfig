@@ -1,0 +1,5 @@
+config USING_ELM_RW
+    bool "ELM_RW Module for UART File Transfer"
+    default n
+    help
+        elm_rw is a module to communicate with PC for file transfer via UART.

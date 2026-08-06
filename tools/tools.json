@@ -22,6 +22,82 @@
       "version_regex": "sftool\\s+([\\d.]+)",
       "versions": [
         {
+          "name": "0.2.5",
+          "macos-arm64": {
+            "sha256": "87D968052EBF84ECC535FBBE60B2861D43D7AABC376E8BAEE0687BE137373C5E",
+            "size": 4379132,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.5/sftool-0.2.5-aarch64-apple-darwin.tar.xz"
+          },
+          "linux-arm64": {
+            "sha256": "135EEAF23E50D5C88FD60EDBBDA34E11FB8311E0CE702C2F585ABA6F88355987",
+            "size": 4493348,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.5/sftool-0.2.5-aarch64-unknown-linux-gnu.tar.xz"
+          },
+          "win32": {
+            "sha256": "BF7B442E70AA4B852B0FC0C927724EF1181A502EA62D1E647A0364150008AD9F",
+            "size": 4782365,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.5/sftool-0.2.5-i686-pc-windows-msvc.zip"
+          },
+          "linux-i686": {
+            "sha256": "406D1AFCF9D541481B29FFF04EC89F4B5210E35D9850A588152266327A8705D7",
+            "size": 4684636,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.5/sftool-0.2.5-i686-unknown-linux-gnu.tar.xz"
+          },
+          "macos": {
+            "sha256": "80FDB4E5C54E31B13BDD47F09A3A8951F2DBD18316D5577C8321059608CA373B",
+            "size": 4463788,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.5/sftool-0.2.5-x86_64-apple-darwin.tar.xz"
+          },
+          "win64": {
+            "sha256": "64A8C52901553858A4EFB9F9484CDE7E71473B5B70A7803956FD22A6DCDEBB5B",
+            "size": 4947164,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.5/sftool-0.2.5-x86_64-pc-windows-msvc.zip"
+          },
+          "linux-amd64": {
+            "sha256": "AB12738DE1BE0277F0304A217A3773BEA9495D088B438839C7739150EE37A905",
+            "size": 4629404,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.5/sftool-0.2.5-x86_64-unknown-linux-gnu.tar.xz"
+          }
+        },
+        {
+          "name": "0.2.3",
+          "macos-arm64": {
+            "sha256": "6A664C0F9D5C421F7C78264A583513E5B2191E4B4A75DAA0AC2646995302F780",
+            "size": 4274020,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.3/sftool-0.2.3-aarch64-apple-darwin.tar.xz"
+          },
+          "linux-arm64": {
+            "sha256": "B47CA9E462F493C58A942477CED25F9247645352A48F4D6B8F2565E0F5A00C3D",
+            "size": 4386004,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.3/sftool-0.2.3-aarch64-unknown-linux-gnu.tar.xz"
+          },
+          "win32": {
+            "sha256": "9B9098C90FB46080BC0B961E0D418AC6BF80C17814A6B5D162319A455628F7EF",
+            "size": 4626679,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.3/sftool-0.2.3-i686-pc-windows-msvc.zip"
+          },
+          "linux-i686": {
+            "sha256": "3C5DFE196906CB798A9107CED643FEF3D86AE5233D3DA34E7A5B4AE2F2484ED6",
+            "size": 4578844,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.3/sftool-0.2.3-i686-unknown-linux-gnu.tar.xz"
+          },
+          "macos": {
+            "sha256": "556FAB61923973ACEAAC186AF97F71BEE160FDBBE3691E6BD5675ADD96ABA0B4",
+            "size": 4358084,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.3/sftool-0.2.3-x86_64-apple-darwin.tar.xz"
+          },
+          "win64": {
+            "sha256": "5300A098914889C068FA33B4E2CA2D5851ABD2981496AEADAF3515ABAC33B419",
+            "size": 4765578,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.3/sftool-0.2.3-x86_64-pc-windows-msvc.zip"
+          },
+          "linux-amd64": {
+            "sha256": "3C893D4310F6746C68180B8C69AF5F5CF7A01A4E86A70B43D3C95B2E408D8BB0",
+            "size": 4530400,
+            "url": "https://github.com/OpenSiFli/sftool/releases/download/0.2.3/sftool-0.2.3-x86_64-unknown-linux-gnu.tar.xz"
+          }
+        },
+        {
           "name": "0.1.16",
           "macos-arm64": {
             "sha256": "A1AAF0303209FEF402657D2702E30E6D59F2A0DD9C24C9CFD315B9EB485DA94D",
@@ -371,6 +447,51 @@
             "sha256": "4b1370b3252acda0850d26c75e9bc6b8e019daaa7978a19f5d8dc008450d3548",
             "size": 32807681,
             "url": "https://github.com/Kitware/CMake/releases/download/v3.16.3/cmake-3.16.3-win64-x64.zip"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Ninja build system",
+      "export_paths": [
+        [
+          ""
+        ]
+      ],
+      "export_vars": {},
+      "info_url": "https://github.com/ninja-build/ninja",
+      "install": "never",
+      "license": "Apache-2.0",
+      "name": "ninja",
+      "platform_overrides": [
+        {
+          "install": "always",
+          "platforms": [
+            "win32",
+            "win64"
+          ]
+        }
+      ],
+      "supported_targets": [
+        "all"
+      ],
+      "version_cmd": [
+        "ninja",
+        "--version"
+      ],
+      "version_regex": "([0-9.]+)",
+      "versions": [
+        {
+          "name": "1.13.2",
+          "win32": {
+            "sha256": "07FC8261B42B20E71D1720B39068C2E14FFCEE6396B76FB7A795FB460B78DC65",
+            "size": 291570,
+            "url": "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip"
+          },
+          "win64": {
+            "sha256": "07FC8261B42B20E71D1720B39068C2E14FFCEE6396B76FB7A795FB460B78DC65",
+            "size": 291570,
+            "url": "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip"
           }
         }
       ]

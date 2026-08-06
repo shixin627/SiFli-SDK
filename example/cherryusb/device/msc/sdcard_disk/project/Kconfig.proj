@@ -3,3 +3,15 @@ config CUSTOM_MEM_MAP
     bool 
 	select custom_mem_map
 	default y if !SOC_SIMULATOR
+
+choice CHERRYUSB_MSC_BACKEND
+    prompt "CherryUSB MSC storage backend"
+    default CHERRYUSB_MSC_BACKEND_SDIO if BSP_USING_SDIO
+    default CHERRYUSB_MSC_BACKEND_SPI_MSD
+
+    config CHERRYUSB_MSC_BACKEND_SPI_MSD
+        bool "SPI SD/TF card through RT_USING_SPI_MSD"
+
+    config CHERRYUSB_MSC_BACKEND_SDIO
+        bool "SDIO/MMC block device"
+endchoice

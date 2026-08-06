@@ -1,0 +1,1 @@
+source "$SIFLI_SDK/customer/boards/fpga-57x_base/Kconfig.board"

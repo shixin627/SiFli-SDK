@@ -305,7 +305,7 @@ typedef struct __FLASH_HandleTypeDef
     HAL_FLASH_ModeDef                 Mode;         /*!< spi, dual spi or qual spi */
     HAL_LockTypeDef                   Lock;         /*!< Lock not used   */
     HAL_FLASH_StateTypeDef       State;         /*!< MPI status   */
-    uint8_t                          isNand;        /*!< nor, nand or psram  */
+    uint8_t                          isNand;        /*!< nor, nand or psram, see SPI_FLASH_MODE_E  */
     uint8_t                          dualFlash;     /*!< used for control flag:
                                                     * bit 0 for nand bytes per page: 0 for 2048 bytes, 1 for 4096 bytes.
                                                     * bit 1 for nand pages per block: 0 for 64 pages, 1 for 128 pages
@@ -337,15 +337,24 @@ typedef struct __FLASH_HandleTypeDef
   * @param  \__HANDLE__ SPI FLASH handle
   * @retval None
   */
+//TODO:
+#ifdef MPI_CR_HWIFE
 #define __HAL_QSPI_EN_HWI(__HANDLE__)        (((__HANDLE__)->Instance->CR) |= MPI_CR_HWIFE)
+#else
+#define __HAL_QSPI_EN_HWI(__HANDLE__)
+#endif /* MPI_CR_HWIFE */
 
 /**
   * @brief QSPI Disable Hardware Interface .
   * @param  \__HANDLE__ SPI FLASH handle
   * @retval None
   */
+//TODO:
+#ifdef MPI_CR_HWIFE
 #define __HAL_QSPI_DIS_HWI(__HANDLE__)        (((__HANDLE__)->Instance->CR) &= ~(MPI_CR_HWIFE))
-
+#else
+#define __HAL_QSPI_DIS_HWI(__HANDLE__)
+#endif /* MPI_CR_HWIFE */
 /**
   * @brief QSPI Set Command , do not wait TCF.
   * @param  \__HANDLE__ SPI FLASH handle
@@ -691,10 +700,27 @@ HAL_StatusTypeDef HAL_FLASH_SET_CTR(FLASH_HandleTypeDef *hflash, uint32_t start,
 /**
  * @brief  SPI_FLASH for boot mode
  * @param  hflash  FLASH handle
+ * @param  start start address
+ * @param  end end address
+ * @retval HAL status
+*/
+HAL_StatusTypeDef HAL_FLASH_SET_CTR2(FLASH_HandleTypeDef *hflash, uint32_t start, uint32_t end);
+
+/**
+ * @brief  SPI_FLASH for boot mode
+ * @param  hflash  FLASH handle
  * @param  data data buffer
  * @retval HAL status
 */
 HAL_StatusTypeDef HAL_FLASH_SET_NONCE(FLASH_HandleTypeDef *hflash, uint8_t *data);
+
+/**
+ * @brief  SPI_FLASH for boot mode
+ * @param  hflash  FLASH handle
+ * @param  data data buffer
+ * @retval HAL status
+*/
+HAL_StatusTypeDef HAL_FLASH_SET_NONCE2(FLASH_HandleTypeDef *hflash, uint8_t *data);
 
 /**
  * @brief  SPI_FLASH for boot mode

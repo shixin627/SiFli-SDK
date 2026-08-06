@@ -24,7 +24,7 @@
 
 如果缺失上面三个宏，就需要通过`menuconfig`如下命令进行打开(注意：缺失可能并不会报出错误，若配置串口没有信息打印请及时查看是否打开)
 ```c
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 如下图，选择uart2和rx dma，保存并退出menuconfig，查看`rtconfig.h`宏是否生成
 ![alt text](assets/menuconfig.png)
@@ -123,7 +123,7 @@ uart_rec: cnt = 0,count = 260
 #define BSP_USING_UART2 1
 #define BSP_UART2_RX_USING_DMA 1
 
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 
 

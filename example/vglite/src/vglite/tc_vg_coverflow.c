@@ -625,7 +625,7 @@ int cover_flow()
         }
 #endif
 
-        tc_vg_send_data_to_lcd(fb->memory, fb->width, fb->height, RTGRAPHIC_PIXEL_FORMAT_RGB565);
+        tc_vg_send_data_to_lcd(fb->memory, fb->width, fb->stride / 2, fb->height, RTGRAPHIC_PIXEL_FORMAT_RGB565);
         // rt_thread_mdelay(300000000);
 
         //Small cur_sec => slow transition (does NOT affect the actual fps)

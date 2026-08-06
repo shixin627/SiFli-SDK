@@ -396,7 +396,15 @@
         #ifdef SOLUTION_WATCH
             #include "flash_map.h"
         #else
-            #include "custom_mem_map.h"
+            #ifdef __has_include
+                #if __has_include("custom_mem_map.h")
+                    #include "custom_mem_map.h"
+                #else
+                    #include "ptab.h"
+                #endif
+            #else
+                #include "custom_mem_map.h"
+            #endif
         #endif
     #endif /* CUSTOM_MEM_MAP */
 

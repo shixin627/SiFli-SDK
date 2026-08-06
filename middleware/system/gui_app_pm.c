@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <rtthread.h>
 #include "board.h"
 #ifdef BSP_USING_PM
@@ -236,26 +242,6 @@ static void gui_sleep(void)
 static void gui_wakeup(void)
 {
     rt_sem_release(&s_gui_ctx.sema);
-}
-
-static void emulate_pin_irq(uint32_t wsr)
-{
-    uint16_t pin;
-    HAL_StatusTypeDef status;
-    GPIO_TypeDef *gpio;
-
-    wsr >>= HPSYS_AON_WSR_PIN0_Pos;
-    wsr &= 0x3F;
-    for (uint32_t i = 0; (i < 6) && wsr; i++)
-    {
-        if (wsr & 1)
-        {
-            gpio = HAL_HPAON_QueryWakeupGpioPin(i, &pin);
-            RT_ASSERT(gpio);
-            button_irq_trigger(GET_PIN_2(gpio, pin));
-        }
-        wsr >>= 1;
-    }
 }
 
 static void gui_pm_enter_critical(void)

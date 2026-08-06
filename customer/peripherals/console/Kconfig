@@ -1,0 +1,32 @@
+menu "Console"
+
+choice
+    prompt "UART Port for Console"
+    default CONSOLE_UART1
+    config CONSOLE_UART1
+        bool "UART1"
+    config CONSOLE_UART2
+        bool "UART2"
+    config CONSOLE_UART3
+        bool "UART3"
+    config CONSOLE_UART4
+        bool "UART4"
+    config CONSOLE_UART5
+        bool "UART5"
+    config CONSOLE_UART6
+        bool "UART6"
+    config CONSOLE_PC
+        bool "PC Simulator"        
+endchoice
+config RT_CONSOLE_DEVICE_NAME
+    string 
+    default "uart1" if CONSOLE_UART1
+    default "uart2" if CONSOLE_UART2
+    default "uart3" if CONSOLE_UART3
+    default "uart4" if CONSOLE_UART4    
+    default "uart5" if CONSOLE_UART5    
+    default "uart6" if CONSOLE_UART6
+    default "console" if CONSOLE_PC
+
+
+endmenu

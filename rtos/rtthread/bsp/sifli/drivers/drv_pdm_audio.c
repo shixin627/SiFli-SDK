@@ -354,11 +354,11 @@ static rt_err_t bf0_audio_init(struct rt_audio_device *audio)
     hpdm->Init.Channels = PDM_CHANNEL_LEFT_ONLY;
     hpdm->Init.SampleRate = PDM_SAMPLE_16KHZ;
     hpdm->Init.ChannelDepth = PDM_CHANNEL_DEPTH_16BIT;
-#ifndef ASIC  // on FPGA
-    hpdm->Init.clkSrc = 3072000;
-#else // for AISC
-    hpdm->Init.clkSrc = 9600000;
-#endif
+#ifdef BSP_PDM_CLK_USE_PLL
+    hpdm->Init.clkSrc = PDM_PLL_CLK_FREQ;
+#else
+    hpdm->Init.clkSrc = PDM_XTAL_CLK_FREQ;
+#endif /* BSP_PDM_CLK_USE_PLL */
 
     hpdm->RxXferSize = 0;
     hpdm->pRxBuffPtr = NULL;
@@ -397,7 +397,7 @@ static rt_err_t bf0_audio_start(struct rt_audio_device *audio, int stream)
     HAL_StatusTypeDef res = HAL_OK;
 
     // 3.072M = 49.152M(audpll)/16, 96k sampling use 3.072M as clock.
-    if (hpdm->Init.clkSrc == 3072000 || hpdm->Init.SampleRate == PDM_SAMPLE_96KHZ)
+    if (hpdm->Init.clkSrc == PDM_PLL_CLK_FREQ || hpdm->Init.SampleRate == PDM_SAMPLE_96KHZ)
     {
 #ifndef SF32LB55X
         bf0_enable_pll(hpdm->Init.SampleRate, 0);
@@ -493,7 +493,7 @@ static rt_err_t bf0_audio_stop(struct rt_audio_device *audio, int stream)
 
     rt_err_t ret = RT_EOK;
 
-    if (hpdm->Init.clkSrc == 3072000 || hpdm->Init.SampleRate == PDM_SAMPLE_96KHZ)
+    if (hpdm->Init.clkSrc == PDM_PLL_CLK_FREQ || hpdm->Init.SampleRate == PDM_SAMPLE_96KHZ)
     {
 #ifndef SF32LB55X
         bf0_disable_pll();

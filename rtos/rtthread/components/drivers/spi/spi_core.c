@@ -381,6 +381,64 @@ __exit:
     return index;
 }
 
+__ROM_USED struct rt_spi_message *rt_spi_transfer_message2(struct rt_spi_device  *device,
+        struct rt_spi_message *message)
+{
+    rt_err_t result;
+
+    RT_ASSERT(device != RT_NULL);
+
+    if (message == RT_NULL)
+        return message;
+
+    result = rt_mutex_take(&(device->bus->lock), RT_WAITING_FOREVER);
+    if (result != RT_EOK)
+    {
+        rt_set_errno(-RT_EBUSY);
+        return message;
+    }
+
+    /* reset errno */
+    rt_set_errno(RT_EOK);
+
+    /* configure SPI bus */
+    if (device->bus->owner != device)
+    {
+        /* not the same owner as current, re-configure SPI bus */
+        result = device->bus->ops->configure(device, &device->config);
+        if (result == RT_EOK)
+        {
+            /* set SPI bus owner */
+            device->bus->owner = device;
+        }
+        else
+        {
+            /* configure SPI bus failed */
+            rt_set_errno(-RT_EIO);
+            goto __exit;
+        }
+    }
+
+    /* transmit all SPI messages */
+    result = device->bus->ops->xfer2(device, message);
+    if (result == 0)
+    {
+        rt_set_errno(-RT_EIO);
+    }
+    else
+    {
+        message = NULL;
+    }
+
+__exit:
+    /* release bus lock */
+    rt_mutex_release(&(device->bus->lock));
+
+    return message;
+}
+
+
+
 __ROM_USED rt_err_t rt_spi_take_bus(struct rt_spi_device *device)
 {
     rt_err_t result = RT_EOK;

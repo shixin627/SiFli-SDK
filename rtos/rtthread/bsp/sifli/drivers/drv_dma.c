@@ -12,6 +12,7 @@
 
 #include <drv_log.h>
 #include <drv_common.h>
+#include <drv_dma.h>
 
 #ifdef DMA_SUPPORT_DYN_CHANNEL_ALLOC
 void DMAC1_CH1_IRQHandler(void)

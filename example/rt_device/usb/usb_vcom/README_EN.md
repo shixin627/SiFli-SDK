@@ -53,7 +53,7 @@ USB_MSTORAGE project contains 1 .c file (main.c). The tree structure below shows
 ### menuconfig Configuration
 ```
 //Execute command
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 **Note:** USB pins in HDK52X are not multiplexed with UART, so steps 1 and 2 can be skipped.
 
@@ -64,7 +64,7 @@ menuconfig --board=sf32lb52-lcd_n16r8
 ![alt text](assets/usb_2.jpg)
 
 3. Enable USB device functionality; "Enable USB Device"
-* In compilation interface, input `menuconfig --board=sf32lb52-lcd_52d` to enter menu, configure as follows under `(Top) → On-chip Peripheral RTOS Drivers`
+* In compilation interface, input `sdk.py menuconfig --board=sf32lb52-lcd_52d` to enter menu, configure as follows under `(Top) → On-chip Peripheral RTOS Drivers`
 ![alt text](assets/usb_3.jpg)
 * Under `(Top) → Device Drivers → Using USB`, enable CDC device, set virtual serial port character size, enable virtual serial port DMA functionality.
 ![alt text](assets/enable.png)
@@ -129,7 +129,7 @@ Then connect virtual serial port USB
  ## Example Extension
  
  If you want to modify VBUS detection pin number, you can modify as follows:
- 1. Modify configuration menuconfig --board=sf32lb52-lcd_n16r8 and re-modify the parameter in "usb Insertion detection PIN" to the desired detection pin
+ 1. Modify configuration sdk.py menuconfig --board=sf32lb52-lcd_n16r8 and re-modify the parameter in "usb Insertion detection PIN" to the desired detection pin
  D:\MyWork\code_sdk\siflisdk\customer\boards\ec-lb555xxx
  2. Modify pinmux configuration file **"\siflisdk\customer\boards\ec-lb corresponding model directory\bsp_pinmux.c"**, configure this pin to GPIO mode;
   ```c

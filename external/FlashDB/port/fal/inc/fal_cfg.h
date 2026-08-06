@@ -32,6 +32,10 @@
     #define NOR_FLASH4_DEV_NAME             "flash4"
 #endif /* NOR_FLASH4_DEV_NAME */
 
+#ifndef NOR_FLASH5_DEV_NAME
+    #define NOR_FLASH5_DEV_NAME             "flash5"
+#endif /* NOR_FLASH5_DEV_NAME */
+
 #ifndef SDMMC1_DEV_NAME
     #define SDMMC1_DEV_NAME                 "sd0"
 #endif /* SDMMC1_DEV_NAME */
@@ -84,10 +88,19 @@ extern const struct fal_flash_dev nor_flash1;
 extern const struct fal_flash_dev nor_flash2;
 extern const struct fal_flash_dev nor_flash3;
 extern const struct fal_flash_dev nor_flash4;
+#if defined(FLASH5_BASE_ADDR) || defined(BSP_USING_NOR_FLASH5) || defined(BSP_ENABLE_QSPI5)
+extern const struct fal_flash_dev nor_flash5;
+#endif
 extern const struct fal_flash_dev fal_sdmmc1;
 extern const struct fal_flash_dev fal_sdmmc2;
 
 #ifdef BSP_USING_PC_SIMULATOR
+#if defined(FLASH5_BASE_ADDR) || defined(BSP_USING_NOR_FLASH5) || defined(BSP_ENABLE_QSPI5)
+#define FAL_FLASH5_DEV_TABLE_ITEM                                    \
+    &nor_flash5,                                                     
+#else
+#define FAL_FLASH5_DEV_TABLE_ITEM
+#endif
 /* flash device table */
 #define FAL_FLASH_DEV_TABLE                                          \
 {                                                                    \
@@ -95,6 +108,7 @@ extern const struct fal_flash_dev fal_sdmmc2;
     &nor_flash2,                                                     \
     &nor_flash3,                                                     \
     &nor_flash4,                                                     \
+    FAL_FLASH5_DEV_TABLE_ITEM                                        \
     &fal_sdmmc1,                                                     \
     &fal_sdmmc2,                                                     \
 }

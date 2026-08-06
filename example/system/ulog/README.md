@@ -1,134 +1,378 @@
 # 日志使用示例
+
 源码路径：example/system/ulog
 
 ## 支持的平台
-例程可以运行在以下开发板.
+
 - sf32lb52-lcd系列
 - sf32lb56-lcd系列
 - sf32lb58-lcd系列
 
+## 编译和烧录
+
+切换到例程 project 目录，运行 scons 命令执行编译：
+```
+scons --board=sf32lb52-lchspi-ulp -j32
+```
+
 ## 概述
-- 日志是将软件运行的状态、过程等信息，输出到不同的介质中（例如：文件、控制台、显示屏等），并进行显示和保存。为软件调试、维护过程中的问题追溯、性能分析、系统监控、故障预警等功能，提供参考依据。
 
-## ulog 的功能配置
-- ulog 配置选项说明如下所示，可以根据实际功能需求情况进行配置，一般情况下使用默认配置即可。在编译界面输入 `menuconfig` 进入,在 `RTOS→ RT-Thread Components→ Utilities` 下配置。
-```
-[*] Enable ulog                   /* 使能 ulog */
-      The static output log level./* 选择静态的日志输出级别。选择完成后，比设定级别低的日志（这里特指使用 LOG_X API 的日志）将不会被编译到 ROM 中 */
-[ ]   Enable ISR log.             /* 使能中断 ISR 日志，即在 ISR 中也可以使用日志输出 API */
-[*]   Enable assert check.        /* 使能断言检查。关闭后，断言的日志将不会被编译到 ROM 中 */
-(128) The log's max width.        /* 日志的最大长度。由于 ulog 的日志 API 按行作为单位，所以这个长度也代表一行日志的最大长度 */
-[ ]   Enable async output mode.   /* 使能异步日志输出模式。开启这个模式后，日志不会立刻输出到后端，而是先缓存起来，然后交给日志输出线程（例如：idle 线程）去输出 */
-      log format  --->            /* 配置日志的格式，例如：时间信息，颜色信息，线程信息，是否支持浮点等等 */
-[*]   Enable console backend.     /* 使能控制台作为后端。使能后日志可以输出到控制台串口上。建议保持开启。 */
-[ ]   Enable file backend.        /* ulog 的文件后端 */
-[ ]   Enable runtime log filter.  /* 使能运行时的日志过滤器，即动态过滤。使能后，日志将支持按标签、关键词等方式，在系统运行时进行动态过滤。 */
-[*]   Enable syslog format log and API.  /* 启用 syslog 格式日志和 API */
-```
-* 在编译界面输入 `menuconfig` 进入,在 `TOS → RT-Thread Components → Utilities → Enable ulog → log format` 下配置日志的格式（log format）选项描述如下所示：
-```
-[ ] Enable float number support. It will using more thread stack.   /* 浮点型数字的支持（传统的 rtdbg/rt_kprintf 均不支持浮点数日志） */
-[*] Enable color log.                   /* 带颜色的日志 */
-[*] Enable time information.            /* 时间信息 */
-[ ]   Enable timestamp format for time. /* 包括时间戳 */
-[*] Enable level information.           /* 级别信息 */
-[*] Enable tag information.             /* 标签信息 */
-[ ] Enable thread information.          /* 线程信息 */
+本例程演示如何使用 RT-Thread ulog 日志组件，主要功能包括：
 
-```
+- **LOG_X API 使用**：演示 LOG_D、LOG_I、LOG_W、LOG_E、LOG_RAW 五种日志级别的使用方法
+- **ulog_hexdump 使用**：演示十六进制数据打印功能
+- **动态日志过滤**：通过 ulog_lvl、ulog_tag、ulog_kw 命令动态调整日志输出
+- **日志级别原理**：帮助理解编译时级别和运行时过滤的区别
 
+## 代码中使用 ulog 打印日志
 
-## 使用示例
-- 下面将以 ulog 例程进行介绍，定义 `LOG_TAG` 宏。
+### 定义日志标签和级别
+
+在代码中使用 ulog 前，必须先定义 `LOG_TAG` 和 `LOG_LVL`：
+
 ```c
-#define LOG_TAG     "example"     // 该模块对应的标签。不定义时，默认：NO_TAG
-#define LOG_LVL     LOG_LVL_DBG   // 该模块对应的日志输出级别。不定义时，默认：调试级别
-#include <ulog.h>                 // 必须在 LOG_TAG 与 LOG_LVL 下面
+#define LOG_TAG              "example"         // 该模块对应的标签
+#define LOG_LVL              LOG_LVL_DBG       // 该模块的日志输出级别(DBG=7)
+#include <ulog.h>                             // 必须在 LOG_TAG 与 LOG_LVL 下面
 ```
-在 `int ulog_test()` 函数中有使用 `LOG_X API` ，大致如下：
+
+### LOG_X API 级别说明
+
+日志级别定义在 `ulog_def.h` 文件中：
+
+| LOG_X 宏 | 级别值 | 含义 | 颜色 |
+|-----------|--------|------|------|
+| LOG_E | 3 | ERROR (错误) | 红色 |
+| LOG_W | 4 | WARNING (警告) | 黄色 |
+| LOG_I | 6 | INFO (信息) | 绿色 |
+| LOG_D | 7 | DEBUG (调试) | 蓝色 |
+| LOG_RAW | 无 | 原始输出，绕过级别过滤 | 无 |
+
+
+### 使用测试示例
+
 ```c
-/* output different level log by LOG_X API */
-LOG_D("LOG_D(%d): RT-Thread is an open source IoT operating system from China.", count);
-LOG_I("LOG_I(%d): RT-Thread is an open source IoT operating system from China.", count);
-LOG_W("LOG_W(%d): RT-Thread is an open source IoT operating system from China.", count);
-LOG_E("LOG_E(%d): RT-Thread is an open source IoT operating system from China.", count);
+int ulog_test(int argc, char **argv)
+{
+    static uint8_t buf[128];
+    int i = 0;
+
+    for (i = 0; i < sizeof(buf); i++)
+    {
+        buf[i] = i;
+    }
+
+    /* output different level log by LOG_X API */
+    LOG_D("LOG_D: RT-Thread is an open source IoT operating system from China.\n");
+    LOG_I("LOG_I: RT-Thread is an open source IoT operating system from China.\n");
+    LOG_W("LOG_W: RT-Thread is an open source IoT operating system from China.\n");
+    LOG_E("LOG_E: RT-Thread is an open source IoT operating system from China.\n");
+    LOG_RAW("LOG_RAW: RT-Thread is an open source IoT operating system from China.\n");
+    ulog_hexdump("buf_dump_test", 16, buf, sizeof(buf));
+    rt_thread_mdelay(10);
+
+    return 0;
+}
+MSH_CMD_EXPORT(ulog_test, ulog test.);
 ```
-输入`ulog_test` 串口打印结果如下图所示：  
-![alt text](assets/ulog1.png)       
 
-## 在中断ISR中使用
-- 很多时候需要在中断 ISR 中输出日志，但是中断 ISR 可能会打断正在进行日志输出的线程。要保证中断日志与线程日志互不干涉，就得针对于中断情况进行特殊处理。
-ulog 已集成中断日志的功能，但是默认没有开启，使用时打开 `Enable ISR log` 选项即可，日志的 API 与线程中使用的方式一致。
+## ulog 配置选项说明
 
-## 设置日志格式
-- ulog 支持的日志格式可以在 `menuconfig` 中配置，位于  `RTOS → RT-Thread Components → Utilities → Enable ulog → log format`，具体配置如下 
-![alt text](assets/menuconfig.png)        
+在编译界面输入 `sdk.py menuconfig` 进入，在 `RT-Thread Components → Utilities → Enable ulog` 下配置：
 
-- 分别可以配置：浮点型数字的支持、带颜色的日志、时间信息（包括时间戳）、级别信息、标签信息、线程信息。下面我们将这些选项全部选中，保存后重新编译再次运行 ulog 例程，看下实际的效果：  
-![alt text](assets/ulog2.png)       
+| 配置项 | 说明 |
+|--------|------|
+| `Enable ulog` | 使能 ulog |
+| `The static output log level` | 编译时静态日志输出级别。比设定级别低的 LOG_X 将不会被编译到 ROM 中 |
+| `Enable ISR log` | 使能中断 ISR 日志，即在 ISR 中也可以使用日志输出 API |
+| `Enable assert check` | 使能断言检查 |
+| `The log's max width` | 日志的最大长度 |
+| `Enable async output mode` | 使能异步日志输出模式 |
+| `log format` | 日志格式配置（颜色、时间、线程信息等） |
+| `Enable console backend` | 使能控制台作为后端 |
+| `Enable file backend` | ulog 的文件后端 |
+| `Enable runtime log filter` | 使能运行时日志过滤器（动态过滤） |
+| `Enable syslog format log and API` | 启用 syslog 格式日志 |
+
+### 日志格式配置 (log format)
+
+在 `RT-Thread Components → Utilities → Enable ulog → log format` 下配置：
+
+| 配置项 | 说明 |
+|--------|------|
+| `Enable float number support` | 浮点型数字的支持 |
+| `Enable color log` | 带颜色的日志 |
+| `Enable time information` | 时间信息 |
+| `Enable timestamp format for time` | 包括时间戳 |
+| `Enable level information` | 级别信息 |
+| `Enable tag information` | 标签信息 |
+| `Enable thread information` | 线程信息 |
+
+## 动态过滤配置注意事项
+
+### syslog 模式与普通模式的区别
+
+> [!IMPORTANT]
+> `Enable syslog format log and API` 和 `Enable runtime log filter` 是**两个独立**的配置：
+>
+> - `ULOG_USING_SYSLOG` 关闭时，`ULOG_USING_FILTER` **默认也关闭**（需要显式开启）
+> - `ULOG_USING_SYSLOG` 开启时，会**自动选中** `ULOG_USING_FILTER`
+
+### syslog 开启 vs 关闭的区别
+
+| 特性 | syslog 开启 | syslog 关闭 |
+|------|-------------|-------------|
+| 日志格式 | `<7>01-01 00:00:01 example tshell: LOG_D: ...` | `D/example (0): LOG_D: ...` |
+| 级别表示 | `<优先级>` 格式 | `D/`, `I/`, `W/`, `E/` 前缀 |
+| `ulog_lvl` 设置值 | 需要设 **255** 才能全部显示 | 设 **7** 即可全部显示 |
+| 过滤方式 | 位掩码 (`1 << level`) | 大小比较 (`level > filter`) |
+
+### 本例程配置
+
+当前例程 `proj.conf` 配置：
+
+```conf
+CONFIG_RT_USING_ULOG=y
+CONFIG_ULOG_USING_ISR_LOG=y
+CONFIG_ULOG_OUTPUT_FLOAT=y
+CONFIG_ULOG_TIME_USING_TIMESTAMP=y
+CONFIG_ULOG_OUTPUT_THREAD_NAME=y
+CONFIG_ULOG_USING_SYSLOG=y
+```
+
+其中 `CONFIG_ULOG_USING_SYSLOG=y` 会自动选中 `CONFIG_ULOG_USING_FILTER=y`。
+
+## 示例输出
+
+编译烧录后，串口输出如下：
+
+```
+01-01 00:00:01 D/example tshell: LOG_D: RT-Thread is an open source IoT operating system from China.
+01-01 00:00:01 I/example tshell: LOG_I: RT-Thread is an open source IoT operating system from China.
+01-01 00:00:01 W/example tshell: LOG_W: RT-Thread is an open source IoT operating system from China.
+01-01 00:00:01 E/example tshell: LOG_E: RT-Thread is an open source IoT operating system from China.
+LOG_RAW: RT-Thread is an open source IoT operating system from China.
+D/HEX buf_dump_test: 0000-0010: 00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F    ................
+```
+
+## 动态过滤测试
+
+### 动态过滤命令概述
+
+ulog 支持三种运行时动态过滤方式：
+
+| 命令 | 功能 | 说明 |
+|------|------|------|
+| `ulog_tag [tag]` | 按标签过滤 | tag 为空时取消标签过滤 |
+| `ulog_lvl <level>` | 按级别过滤 | level 取值见下文 |
+| `ulog_kw [keyword]` | 按关键词过滤 | keyword 为空时取消关键词过滤 |
+| `ulog_filter` | 查看当前过滤设置 | 显示所有过滤条件 |
+
+**过滤规则**：以上过滤条件是**同时生效**的，只有同时满足所有过滤条件的日志才会输出。
+
+### 运行测试命令
+
+```bash
+ulog_test
+```
+
+### 按标签全局过滤
+
+命令格式：`ulog_tag [tag]`，tag 为空时取消标签过滤。
+
+该过滤方式可以对所有日志执行按标签过滤，只有包含标签信息的日志才允许输出。
+
+**标签 (TAG)** 是日志输出时表示来源模块/组件的字符串，定义在代码的 `LOG_TAG` 宏中。
+
+**示例**：有 `wifi.driver`、`wifi.mgnt`、`audio.driver` 3种标签的日志，当设定过滤标签为 `wifi` 时，只有标签为 `wifi.driver` 及 `wifi.mgnt` 的日志会输出，标签为 `audio.driver` 的日志将被过滤掉。
+
+过滤原理：ulog_tag 使用**前缀匹配**，设置 `wifi` 会匹配所有以 `wifi` 开头的标签。
+
+```bash
+# 设置标签过滤，只显示包含"wifi"标签的日志
+ulog_tag wifi
+
+# 取消标签过滤，显示所有标签的日志
+ulog_tag
+```
+
+### 按关键词全局过滤
+
+命令格式：`ulog_kw [keyword]`，keyword 为空时取消关键词过滤。
+
+该过滤方式可以对所有日志执行按关键词过滤，包含关键词信息的日志才允许输出。
+
+```bash
+# 设置关键词过滤，只显示包含"ERROR"关键词的日志
+ulog_kw ERROR
+
+# 取消关键词过滤
+ulog_kw
+```
+
+### 查看过滤器信息
+
+在设定完过滤参数后，输入 `ulog_filter` 命令可以查看当前过滤信息：
+
+```bash
+ulog_filter
+```
+
+输出示例：
+```
+current filter info:
+level: 248
+tag: wifi
+keyword: ERROR
+```
+
+### syslog 开启时的等级设置
+
+当前例程 `CONFIG_ULOG_USING_SYSLOG=y` 已开启，使用**位掩码**方式，`ulog_lvl` 参数是掩码值：
+
+> | 命令 | 掩码值 | 二进制 | 控制的级别 |
+> |------|--------|--------|------------|
+> | `ulog_lvl 128` | 128 | 10000000 | 控制 LEVEL 7 (DEBUG) |
+> | `ulog_lvl 64` | 64 | 01000000 | 控制 LEVEL 6 (INFO) |
+> | `ulog_lvl 32` | 32 | 00100000 | 控制 LEVEL 5 (NOTICE) |
+> | `ulog_lvl 16` | 16 | 00010000 | 控制 LEVEL 4 (WARNING) |
+> | `ulog_lvl 8` | 8 | 00001000 | 控制 LEVEL 3 (ERROR) |
+
+**位与级别对应关系**（syslog.h定义）：
+- bit0=EMERG(0), bit1=ALERT(1), bit2=CRIT(2), bit3=ERR(3), bit4=WARNING(4), bit5=NOTICE(5), bit6=INFO(6), bit7=DEBUG(7)
+
+**过滤逻辑**：`LOG_MASK(LOG_PRI(level)) & ulog.filter.level`，只有当日志级别的对应位为1时才显示。
+
+**LOG_RAW** 不经过级别过滤，总是输出。
+
+### 测试步骤
+
+1. **查看当前过滤设置**
+```bash
+ulog_filter
+```
+
+2. **设置为全部显示 (syslog模式需要255)**
+```bash
+ulog_lvl 255
+ulog_test
+```
+
+3. **只显示 ERROR (8)**
+```bash
+ulog_lvl 8
+ulog_test
+```
+
+4. **只显示 WARNING 及以下 (24)**
+```bash
+ulog_lvl 24
+ulog_test
+```
+
+5. **只显示 INFO 及以下 (120)**
+```bash
+ulog_lvl 120
+ulog_test
+```
+
+6. **只显示 DEBUG 及以下 (248)**
+```bash
+ulog_lvl 248
+ulog_test
+```
+
+7. **恢复全部显示 (255)**
+```bash
+ulog_lvl 255
+ulog_test
+```
+
+### 完整交互日志
+
+以下是一次完整的动态过滤测试过程（LOG_RAW 不受级别控制，始终输出）：
+
+```
+msh />ulog_lvl 255
+msh />ulog_test
+01-01 00:00:01 D/example tshell: LOG_D: RT-Thread is an open source IoT operating system from China.
+01-01 00:00:01 I/example tshell: LOG_I: RT-Thread is an open source IoT operating system from China.
+01-01 00:00:01 W/example tshell: LOG_W: RT-Thread is an open source IoT operating system from China.
+01-01 00:00:01 E/example tshell: LOG_E: RT-Thread is an open source IoT operating system from China.
+LOG_RAW: RT-Thread is an open source IoT operating system from China.
+D/HEX buf_dump_test: ...
+
+msh />ulog_lvl 8
+msh />ulog_test
+01-01 00:00:10 E/example tshell: LOG_E: RT-Thread is an open source IoT operating system from China.
+LOG_RAW: RT-Thread is an open source IoT operating system from China.
+
+msh />ulog_lvl 24
+msh />ulog_test
+01-01 00:00:20 W/example tshell: LOG_W: RT-Thread is an open source IoT operating system from China.
+01-01 00:00:20 E/example tshell: LOG_E: RT-Thread is an open source IoT operating system from China.
+LOG_RAW: RT-Thread is an open source IoT operating system from China.
+
+msh />ulog_lvl 120
+msh />ulog_test
+01-01 00:00:30 I/example tshell: LOG_I: RT-Thread is an open source IoT operating system from China.
+01-01 00:00:30 W/example tshell: LOG_W: RT-Thread is an open source IoT operating system from China.
+01-01 00:00:30 E/example tshell: LOG_E: RT-Thread is an open source IoT operating system from China.
+LOG_RAW: RT-Thread is an open source IoT operating system from China.
+
+msh />ulog_lvl 248
+msh />ulog_test
+01-01 00:00:40 D/example tshell: LOG_D: RT-Thread is an open source IoT operating system from China.
+01-01 00:00:40 I/example tshell: LOG_I: RT-Thread is an open source IoT operating system from China.
+01-01 00:00:40 W/example tshell: LOG_W: RT-Thread is an open source IoT operating system from China.
+01-01 00:00:40 E/example tshell: LOG_E: RT-Thread is an open source IoT operating system from China.
+LOG_RAW: RT-Thread is an open source IoT operating system from China.
+D/HEX buf_dump_test: ...
+
+msh />ulog_lvl 255
+msh />ulog_test
+01-01 00:01:00 D/example tshell: LOG_D: RT-Thread is an open source IoT operating system from China.
+01-01 00:01:00 I/example tshell: LOG_I: RT-Thread is an open source IoT operating system from China.
+01-01 00:01:00 W/example tshell: LOG_W: RT-Thread is an open source IoT operating system from China.
+01-01 00:01:00 E/example tshell: LOG_E: RT-Thread is an open source IoT operating system from China.
+LOG_RAW: RT-Thread is an open source IoT operating system from China.
+D/HEX buf_dump_test: ...
+```
 
 ## hexdump 输出使用
-- `hexdump` 也是日志输出时较为常用的功能，通过 `hexdump` 可以将一段数据以 hex 格式输出出来，下面看下具体的使用方法及运行效果：
+
+`ulog_hexdump` 用于以十六进制格式输出数据：
+
 ```c
-/* 定义一个 128 个字节长度的数组 */
-uint8_t i, buf[128];
-/* 在数组内填充上数字 */
-for (i = 0; i < sizeof(buf); i++)
+uint8_t buf[128];
+for (int i = 0; i < sizeof(buf); i++)
 {
     buf[i] = i;
 }
-/* 以 hex 格式 dump 数组内的数据，宽度为 16 */
 ulog_hexdump("buf_dump_test", 16, buf, sizeof(buf));
 ```
-- 再次运行 ulog 例程，看下实际的效果：    
-![alt text](assets/ulog3.png)       
 
-## 日志动态过滤器
-- 静态过滤有其优点比如：节省资源，但很多时候，用户需要在软件运行时动态调整日志的过滤方式，这就可以使用到 ulog 的动态过滤器功能。使用动态过滤器功能需在 `menuconfig` 中开启 `Enable runtime log filter`. 选项，该选项默认关闭。
-ulog支持的动态过滤方式有以下四种。
-- 按模块的级别过滤  
-
-|参数 |描述    |   
-|:---|:---| 
-|tag |日志的标签  |   
-| level|设定的日志级别  |  
-|返回 |--   |   
-|>=0| 成功 |    
-|-5  |失败，没有足够的内存 |    
-  -  命令格式：`ulog_tag_lvl <tag><level>`。     
-这里指的模块代表一类具有相同标签属性的日志代码。有些时候需要在运行的时动态的修改一个模块的日志输出级别。    
-参数level日志级别可取如下值： 
-
-      |级别 |名称 |取值 |
-      |:---|:---|:---|
-      |LOG-LVL_ASSERT |断言 |0 |
-      |LOG_LVL_ERROR |错误 |3 |
-      |LOG_LVL_WARNING |警告   |4 |
-      |LOG_LVL_INFO|信息|6|
-      |LOG_LVL_DBG |调试 |7|
-      |LOG_FILTER_LVL_SILENT |静默 |0|
-      |LOG_FILTER_LVL_ALL |全部 | 7|
-
-- 按标签全局过滤  
-  - 命令格式：`ulog_tag [tag]`,tag为空时，则取消标签过滤。      
-该过滤方式可以对所有日志执行按标签过滤，只有包含标签信息的日志才允许输出。    
-例如：有`wifi.driveer`、`wifi.mgnt`、`aydio.driver` 3种标签的日志，当设定过滤标签为`wifi`时，只有标签为`wifi.driver`及`wifi.mgnt`的日志会输出。
-- 按级别全局过滤  
-  - 命令格式：`ulog_lvl <level>`,level取值参考上文。      
-通过函数或者命令设定好的全局的过滤级别后，低于设定级别的日志都将停止输出。
-- 按关键词全局过滤
-  - 命令格式：`ulog_kw [keyword]`,keyword为空时，则取消关键词过滤。   
-该过滤方式可以对所有日志执行按关键词过滤，包含关键词信息的日志才允许输出。    
-- 查看过滤器信息  
-在设定完过滤参数后，如果想要查看当前过滤信息，可以输入`ulog_filter`命令，大致效果如下图：   
-![alt text](assets/ulog_filter.png)    
+输出示例：
+```
+D/HEX buf_dump_test: 0000-0010: 00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F    ................
+                         0010-0020: 10 11 12 13 14 15 16 17  18 19 1A 1B 1C 1D 1E 1F    ................
+```
 
 
+`ulog_hexdump` 使用 **DEBUG 级别 (level=7)**，因此当运行时过滤级别低于 7 时，hexdump 输出**不会显示**。只有设置 `ulog_lvl 255` (syslog模式) 或 `ulog_lvl 7` (非syslog模式) 时才能看到 hexdump 输出。
+
+## 在中断ISR中使用
+
+ulog 支持在中断 ISR 中输出日志，但默认没有开启。使用时在 menuconfig 中打开 `Enable ISR log` 选项即可，API 与线程中使用方式一致。
 
 ## 参考文档
-* 
+
+- [RT-Thread ulog 组件文档](https://www.rt-thread.org/document/programming/#ulog)
+- [SiFli-SDK 快速入门](https://docs.sifli.com/projects/sdk/latest/sf32lb52x/quickstart/index.html)
+
 ## 更新记录
-|版本 |日期   |发布说明 |
+
+| 版本 | 日期 | 发布说明 |
 |:---|:---|:---|
-|0.0.1 |1/2025 |初始版本 |
-| | | |
+| 0.0.1 | 1/2025 | 初始版本 |
+| 0.0.2 | 5/2025 | 完善动态过滤配置说明，修正 syslog 模式等级设置 |

@@ -200,7 +200,7 @@ static int app_main(intent_t i)
     return 0;
 }
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(camera), IMG_LOGO, APP_ID_CAMERA, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(camera), IMG_LOGO, APP_ID_CAMERA, app_main, 1);
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
  * FILE****/

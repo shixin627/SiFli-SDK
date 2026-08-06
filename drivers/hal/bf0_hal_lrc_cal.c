@@ -78,7 +78,8 @@ __HAL_ROM_USED void HAL_RC_CAL_update_ave_cycle(uint32_t ave_cycle)
     HAL_Set_backup(RTC_BACKUP_LPCYCLE_AVE, ave_cycle);
 }
 
-
+/*ARM specific code*/
+#if defined(SysTick)
 __STATIC_INLINE uint32_t HAL_RC_CAL_DisableInterrupt(void)
 {
     uint32_t mask;
@@ -92,6 +93,20 @@ __STATIC_INLINE void HAL_RC_CAL_EnableInterrupt(uint32_t mask)
 {
     __set_PRIMASK(mask);
 }
+#else
+__STATIC_INLINE uint32_t HAL_RC_CAL_DisableInterrupt(void)
+{
+    __RV_CSR_CLEAR(CSR_MSTATUS, MSTATUS_MIE);
+    return 0;
+}
+
+__STATIC_INLINE void HAL_RC_CAL_EnableInterrupt(uint32_t mask)
+{
+    __RV_CSR_SET(CSR_MSTATUS, MSTATUS_MIE);
+}
+
+#endif
+
 uint8_t g_xt48_used = 0;
 
 #ifdef SF32LB55X
@@ -221,7 +236,7 @@ __HAL_ROM_USED int HAL_RC_CAL_update_reference_cycle_on_48M_ex(uint8_t lp_cycle,
         return -1;
     }
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
     HAL_HPAON_WakeCore(CORE_ID_LCPU);
     HAL_LRC_Delay(5);
 #endif
@@ -255,7 +270,7 @@ __HAL_ROM_USED int HAL_RC_CAL_update_reference_cycle_on_48M_ex(uint8_t lp_cycle,
         for (try_times = 0; try_times < 10; try_times++)
         {
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
             MODIFY_REG(hwp_bt_mac->RCCAL_CTRL, BT_MAC_RCCAL_CTRL_CON_NUM_Msk, 1 << BT_MAC_RCCAL_CTRL_CON_NUM_Pos);
             hwp_bt_mac->RCCAL_CTRL |= BT_MAC_RCCAL_CTRL_CON_MODE;
 #endif
@@ -310,7 +325,7 @@ __HAL_ROM_USED int HAL_RC_CAL_update_reference_cycle_on_48M_ex(uint8_t lp_cycle,
 
     if (0 == cal_ok)
     {
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
         HAL_HPAON_CANCEL_LP_ACTIVE_REQUEST();
 #endif
         return -2;
@@ -339,7 +354,7 @@ __HAL_ROM_USED int HAL_RC_CAL_update_reference_cycle_on_48M_ex(uint8_t lp_cycle,
             value = value * (ave_window - 1) + HAL_Get_backup(RTC_BACKUP_LPCYCLE_CUR);
         }
         HAL_Set_backup(RTC_BACKUP_LPCYCLE_AVE, (uint32_t)((value + (count >> 1)) / count));
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
         {
             uint32_t set_value = (uint32_t)((value + (count >> 1)) / count);;
             float lxtfreq;
@@ -351,7 +366,7 @@ __HAL_ROM_USED int HAL_RC_CAL_update_reference_cycle_on_48M_ex(uint8_t lp_cycle,
 #endif
         HAL_DBG_printf("LPCycles: %d, ave=%d, count=%d\n", HAL_Get_backup(RTC_BACKUP_LPCYCLE_CUR), HAL_Get_backup(RTC_BACKUP_LPCYCLE_AVE), count);
     }
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
     HAL_HPAON_CANCEL_LP_ACTIVE_REQUEST();
 #endif
     return cal_lvl;
@@ -581,14 +596,14 @@ static uint8_t HAL_RC_CAL_get_filter_scale(uint8_t lp_cycle)
     #endif
 #endif
 
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
     static uint8_t g_rc_locked;
 #endif
 
 static int8_t HAL_RC_locked(void)
 {
     int8_t ret = 0;
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
     if (g_rc_locked)
         ret = -1;
     else
@@ -617,7 +632,7 @@ static int8_t HAL_RC_locked(void)
 
 static void HAL_RC_unlocked(void)
 {
-#ifndef SF32LB52X
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
     g_rc_locked = 0;
 #else // SF32LB52X
     MUTEX_HandleTypeDef hmutex;
@@ -652,7 +667,7 @@ __HAL_ROM_USED int HAL_RC_CALget_curr_cycle_on_48M(uint8_t lp_cycle, uint32_t *c
 
     {
 
-#if !defined(SF32LB52X)
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
         if (HAL_RCC_LCPU_GetClockSrc(RCC_CLK_MOD_SYS) != 1)
         {
             return -2;
@@ -665,7 +680,7 @@ __HAL_ROM_USED int HAL_RC_CALget_curr_cycle_on_48M(uint8_t lp_cycle, uint32_t *c
         if (HAL_RC_locked() != 0)
             return -3;
 
-#if !defined(SF32LB52X)
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
         uint32_t rcc_reg, div, div1, div2;
         rcc_reg = READ_REG(hwp_lpsys_rcc->CFGR);
         div = (rcc_reg & LPSYS_RCC_CFGR_HDIV1_Msk) >> LPSYS_RCC_CFGR_HDIV1_Pos;
@@ -676,7 +691,7 @@ __HAL_ROM_USED int HAL_RC_CALget_curr_cycle_on_48M(uint8_t lp_cycle, uint32_t *c
             HAL_RCC_LCPU_SetDiv(-1, -1, 7);
 #endif
 
-#if defined(SF32LB52X) || defined(SF32LB56X) || defined(SF32LB58X)
+#if defined(SF32LB52X) || defined(SF32LB56X) || defined(SF32LB58X) || defined(SF32LB57X)
         MODIFY_REG(hwp_bt_mac->RCCAL_CTRL, BT_MAC_RCCAL_CTRL_CON_NUM_Msk, 1 << BT_MAC_RCCAL_CTRL_CON_NUM_Pos);
         hwp_bt_mac->RCCAL_CTRL |= BT_MAC_RCCAL_CTRL_CON_MODE;
 #endif
@@ -691,7 +706,7 @@ __HAL_ROM_USED int HAL_RC_CALget_curr_cycle_on_48M(uint8_t lp_cycle, uint32_t *c
         while (!(hwp_bt_mac->RCCAL_RESULT & BT_MAC_RCCAL_RESULT_RCCAL_DONE_Msk));
         cur = (hwp_bt_mac->RCCAL_RESULT & BT_MAC_RCCAL_RESULT_RCCAL_RESULT_Msk);
 
-#if !defined(SF32LB52X)
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
         if (div2 != 7)
             HAL_RCC_LCPU_SetDiv(div, div1, div2);
 #endif
@@ -727,14 +742,14 @@ __HAL_ROM_USED int HAL_RC_CALget_curr_cycle_on_48M(uint8_t lp_cycle, uint32_t *c
     else
         cur_ave = (cur_ave * 3 + cur * 13 + 8) >> 4;
 
-#if !defined(SF32LB52X)
+#if !defined(SF32LB52X) && !defined(SF32LB57X)
     HAL_DBG_printf("LPCycles cur=%d , ave %d, cur_backup=%d delta %d\n", cur, cur_ave, cur_backup, (int)(cur_ave - cur));
 #endif
 
     cur_backup = cur;
     cal_ave = cur_ave / scale;
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
     {
         uint32_t set_value = cal_ave;
         HAL_LCPU_CONFIG_set(HAL_LCPU_CONFIG_LPCYCLE_AVE, &set_value, 4);
@@ -787,7 +802,7 @@ __HAL_ROM_USED int HAL_RC_CAL_update_reference_cycle_on_48M_ex(uint8_t lp_cycle,
 #endif
 #endif
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
     HAL_HPAON_WakeCore(CORE_ID_LCPU);
     //HAL_Delay(5);
 #endif
@@ -865,7 +880,7 @@ __HAL_ROM_USED int HAL_RC_CAL_update_reference_cycle_on_48M_ex(uint8_t lp_cycle,
         for (try_times = 0; try_times < 10; try_times++)
         {
 
-#if defined(SF32LB52X) || defined(SF32LB56X) || defined(SF32LB58X)
+#if defined(SF32LB52X) || defined(SF32LB56X) || defined(SF32LB58X) || defined(SF32LB57X)
             MODIFY_REG(hwp_bt_mac->RCCAL_CTRL, BT_MAC_RCCAL_CTRL_CON_NUM_Msk, 1 << BT_MAC_RCCAL_CTRL_CON_NUM_Pos);
             hwp_bt_mac->RCCAL_CTRL |= BT_MAC_RCCAL_CTRL_CON_MODE;
 #endif
@@ -915,7 +930,7 @@ __HAL_ROM_USED int HAL_RC_CAL_update_reference_cycle_on_48M_ex(uint8_t lp_cycle,
 
     if (0 == cal_ok)
     {
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
         HAL_HPAON_CANCEL_LP_ACTIVE_REQUEST();
 #endif
         HAL_RC_unlocked();
@@ -1005,7 +1020,7 @@ __HAL_ROM_USED int HAL_RC_CAL_update_reference_cycle_on_48M_ex(uint8_t lp_cycle,
 
     HAL_RC_CAL_update_ave_cycle(cal_ave);
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
     {
         float lxtfreq;
         uint8_t is_lcpu_cal = 0;
@@ -1025,7 +1040,7 @@ __HAL_ROM_USED int HAL_RC_CAL_update_reference_cycle_on_48M_ex(uint8_t lp_cycle,
     HAL_DBG_printf("LPCycles: %d, ave=%d, count=%d tmp=%d\r\n", HAL_Get_backup(RTC_BACKUP_LPCYCLE_CUR), HAL_Get_backup(RTC_BACKUP_LPCYCLE_AVE), count, temp);
 
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
     HAL_HPAON_CANCEL_LP_ACTIVE_REQUEST();
 #endif
     HAL_RC_unlocked();

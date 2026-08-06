@@ -13,12 +13,12 @@ The adaptation layer provides support for RT-Thread driver framework. Users can 
 
 Select the PWM devices to use in the {menuselection}`On-Chip Peripheral RTOS Drivers --> Enable pwm` menu.
 
-The following macro switches indicate that PWM3, PWM4, LPTIM3, PWMA1 and other devices are enabled:
+The following macro switches indicate that PWMT2, PWMT3, LPTIM3, PWMA1 and other devices are enabled:
 ```c
 #define RT_USING_PWM
 #define BSP_USING_PWM 1
-#define BSP_USING_PWM3 1
-#define BSP_USING_PWM4 1
+#define BSP_USING_PWMT2 1
+#define BSP_USING_PWMT3 1
 #define BSP_USING_PWM_LPTIM3 1
 #define BSP_USING_PWMA1 1
 ```
@@ -55,7 +55,7 @@ dt_ns: dead time ,unit ns. if dt_ns is 0, dead time use bkd->dtg (0~1023).
 {
     struct rt_device_pwm *device = RT_NULL;
 	
-	device = (struct rt_device_pwm *)rt_device_find("pwm3");
+	device = (struct rt_device_pwm *)rt_device_find("pwmt2");
     if (!device)
     {
         return;

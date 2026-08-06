@@ -178,7 +178,7 @@ static void img_draw_core(lv_draw_task_t *draw_task, const lv_draw_image_dsc_t *
     lv_color_format_t cf = decoded->header.cf;
     uint32_t img_total_width;
 
-    if (decoded->header.flags & LV_IMAGE_FLAGS_EZIP)
+    if (decoded->header.flags & (LV_IMAGE_FLAGS_EZIP | LV_IMAGE_FLAGS_JPEG))
         img_total_width = decoded->header.w;
     else
         img_total_width = decoded->header.stride / lv_color_format_get_size(cf);
@@ -208,12 +208,15 @@ static void img_draw_core(lv_draw_task_t *draw_task, const lv_draw_image_dsc_t *
         input_layers[1].x_offset = img_coords->x1;
         input_layers[1].y_offset = img_coords->y1;
 
-        if (decoded->header.flags & LV_IMAGE_FLAGS_USER1)
+        if (decoded->header.flags & LV_IMAGE_FLAGS_EZIP)
             input_layers[1].color_mode = EPIC_INPUT_EZIP;
+        else if (decoded->header.flags & LV_IMAGE_FLAGS_JPEG)
+            input_layers[1].color_mode = EPIC_INPUT_JPEG;
         else
             input_layers[1].color_mode = lv_img_2_epic_cf(cf);
 
         input_layers[1].data = (uint8_t *)src_buf;
+        input_layers[1].data_size = decoded->data_size;
 
         input_layers[1].width = lv_area_get_width(img_coords);
         input_layers[1].height = lv_area_get_height(img_coords);

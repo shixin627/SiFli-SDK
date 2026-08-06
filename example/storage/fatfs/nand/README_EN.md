@@ -32,7 +32,7 @@ The default compilation script does not download file system partition image fil
 ### menuconfig Configuration
 ```
  //Execute command
- menuconfig --board=em-lb561
+ sdk.py menuconfig --board=em-lb561
 ```  
 1. First, you need to enable MTD Dhara Nand Flash device in menuconfig
 

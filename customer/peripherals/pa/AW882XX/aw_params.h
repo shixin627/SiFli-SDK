@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifndef __AWINIC_PARAMS_H__
 #define __AWINIC_PARAMS_H__
 

@@ -1,0 +1,2 @@
+var t = skai.ui.label('installed app');
+skai.ui.set_color(t, 0x8E8E93);

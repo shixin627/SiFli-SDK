@@ -1912,4 +1912,4 @@ static int app_main(intent_t intent)
 }
 
 BUILTIN_APP_EXPORT(
-    LV_EXT_STR_ID(factory_test), IMG_LOGO, APP_ID, app_main);
+    LV_EXT_STR_ID(factory_test), IMG_LOGO, APP_ID, app_main, 1);

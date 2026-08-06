@@ -6,7 +6,13 @@
 
 ### `uv` 环境
 
-Windows 脚本主链路不再要求用户预装系统 Python。当前支持的方式是通过 `uv` 按需准备锁定的 Python 运行时。
+Windows 脚本主链路不再要求用户预装系统 Python。当前支持的方式是通过 `uv` 按需准备 SDK 管理的 Python 运行时。
+
+在 PowerShell中执行下面的命令安装 `uv`：
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
 
 安装好 `uv` 后，请在 PowerShell 中执行以下命令确认可用：
 
@@ -15,7 +21,7 @@ uv --version
 ```
 
 ```{note}
-`uv` 是一个用Rust编写的、速度极快的Python包和项目管理工具。安装方法可以参考 [uv 官方文档](https://docs.astral.sh/uv/getting-started/installation)。
+`uv` 是一个用Rust编写的、速度极快的Python包和项目管理工具。更多安装方法可以参考 [uv 官方文档](https://docs.astral.sh/uv/getting-started/installation)。
 ```
 
 ### Git 环境
@@ -118,10 +124,22 @@ cd C:\OpenSiFli\SiFli-SDK
 
 `install.ps1` 会自动完成以下工作：
 
-- 通过 `uv` 准备锁定的 Python 运行时
-- 根据 `tools/locks/default/pyproject.toml` 和 `tools/locks/default/uv.lock` 同步锁定的 Python 依赖
-- 根据 `tools/locks/default/lock.json` 安装当前 profile 绑定的工具版本
-- 在 `SIFLI_SDK_TOOLS_PATH` 下初始化 profile 级别的 Conan 环境
+- 安装 SDK 运行需要的 Python 环境和依赖
+- 安装当前 SDK 版本匹配的编译器、调试器等工具
+- 准备构建依赖使用的 Conan 环境
+- 在 `SIFLI_SDK_TOOLS_PATH` 下保存 SDK 环境信息，后续导出环境变量时会继续使用
+
+这里的 SDK 环境指一套可供当前 SDK 使用的 Python、工具链、调试工具和构建依赖。首次安装请直接运行 `.\install.ps1`。
+
+SDK 更新后，普通 `.\install.ps1` 会为更新后的 SDK 准备或切换到匹配的环境；如果当前已经选中了旧环境，它不会直接修改旧环境。这样旧版本 SDK 仍可继续使用。
+
+如果你确认要在当前已选中的环境上原地更新，可以运行：
+
+```powershell
+.\install.ps1 update
+```
+
+如果这个环境也被其他 SDK 工作目录使用，脚本会改为新建一个环境，避免影响其他 SDK。
 
 如果需要使用 Keil/ARMCLANG 编译，请在安装时记录 Keil 根目录。该目录必须已经存在，并包含 `ARM\ARMCLANG\bin`：
 
@@ -129,7 +147,53 @@ cd C:\OpenSiFli\SiFli-SDK
 .\install.ps1 --keil C:\Keil_v5
 ```
 
-已经安装过 SDK 环境的用户也可以直接重新运行上面的命令。`install.ps1` 是幂等的，会复用已有 Python、工具和 Conan 状态，并把 Keil 路径补录到 `${SIFLI_SDK_TOOLS_PATH}\sifli-sdk-env.json`。
+上面的命令用于为当前 SDK 环境记录 Keil 路径。若要更新当前已选中的旧环境并同时记录 Keil，可运行：
+
+```powershell
+.\install.ps1 update --keil C:\Keil_v5
+```
+
+### 清理旧环境和缓存（可选）
+
+如果 SDK 更新后不再需要旧环境，可以运行：
+
+```powershell
+.\install.ps1 uninstall
+```
+
+该命令会直接删除当前 profile 下不再被任何 SDK 工作目录使用的旧环境，并保留当前 SDK 匹配的环境和其他工作目录仍在使用的环境。若只想预览将删除的内容，可以运行：
+
+```powershell
+.\install.ps1 uninstall --dry-run
+```
+
+如果要清理所有 profile 下不再被任何 SDK 工作目录选中的旧环境，可以运行：
+
+```powershell
+.\install.ps1 uninstall --all
+```
+
+也可以先预览：
+
+```powershell
+.\install.ps1 uninstall --all --dry-run
+```
+
+如需删除所有由 SDK 管理的环境，包括当前环境和仍在状态文件中选中的环境，可以运行：
+
+```powershell
+.\install.ps1 uninstall --all --force
+```
+
+`--all --force` 会让所有 SDK 环境失效，并清空状态文件中的环境选择；之后需要重新运行 `.\install.ps1`。这里的“仍在使用”按 `SIFLI_SDK_TOOLS_PATH` 下的状态文件判断，不检测已经打开的 shell 或进程。
+
+如果还需要清理下载缓存和残留的 staging 临时目录，可以增加 `--cache`：
+
+```powershell
+.\install.ps1 uninstall --cache
+```
+
+`--cache` 会保留当前 SDK 仍需要的工具归档和 Conan 配置包，不会删除已经安装好的工具目录。若使用了自定义 `SIFLI_SDK_TOOLS_PATH`，清理前也必须先设置同一个环境变量。
 
 ````{note}
 国内用户可以改用下面的命令一键启用国内镜像预设，避免默认源下载速度慢。注意，选择执行下述命令的时候不需要再执行上述代码块中的命令。
@@ -145,7 +209,6 @@ $env:SIFLI_SDK_MIRROR_CHINA="1"
 - `SIFLI_SDK_GITHUB_ASSETS="https://downloads.sifli.com/github_assets"`
 - `SIFLI_SDK_PYPI_DEFAULT_INDEX="https://mirrors.ustc.edu.cn/pypi/simple"`
 - `UV_PYTHON_DOWNLOADS_JSON_URL="https://uv.agentsmirror.com/metadata/python-downloads.json"`
-- `UV_PYPY_INSTALL_MIRROR="https://uv.agentsmirror.com/pypy"`
 
 如果不想使用整组预设，也可以继续手工设置这些细粒度变量。
 
@@ -195,7 +258,7 @@ cd C:\OpenSiFli\SiFli-SDK
 .\export.ps1 -t keil
 ```
 
-`export.ps1` 现在会通过 `uv run` 调用 `tools/sdk_env.py export`。环境管理器会根据当前 `profile + lock` 快照解析目标 SDK 环境实例，并使用其中记录的 Python 虚拟环境；如果该实例不存在或已损坏，`export.ps1` 会按已保存的偏好自动修复，或者直接失败并提示重新执行 `.\install.ps1`。
+`export.ps1` 会切换到当前 SDK 已安装的环境，并使用其中的 Python 虚拟环境；如果这个环境不存在或已损坏，脚本会按已保存的偏好提示是否更新。选择更新等价于运行 `.\install.ps1 update`；选择不更新时，可以手动运行普通 `.\install.ps1` 为当前 SDK 安装新环境，或运行 `.\install.ps1 update` 尝试更新当前已选中的旧环境。
 
 ````{note}
 如果按照上述说明设置过自定义工具安装路径，那么在运行 `export.ps1` 脚本之前**必须**设置`SIFLI_SDK_TOOLS_PATH` 变量
@@ -211,9 +274,9 @@ $env:SIFLI_SDK_TOOLS_PATH="D:\SIFLI\tools"
 ```
 
 ```{note}
-`export.ps1` 现在会在导出环境前检查当前解析出来的环境实例是否仍与仓库锁文件一致。如果本地 Python 环境、工具版本或 Conan 配置不匹配，交互式终端可能会提示修复；非交互场景下会直接以确定性错误退出。
+`export.ps1` 会在导出环境前检查当前 SDK 环境是否仍然完整。如果本地 Python 环境、工具版本或 Conan 配置不匹配，交互式终端可能会提示修复；非交互场景下会直接以确定性错误退出。
 
-`export.ps1` 需要 PATH 中存在 `uv`，因为它会通过 `uv run` 启动 `tools/sdk_env.py`。
+`export.ps1` 需要 PATH 中存在 `uv`，以便运行 SDK 环境管理流程。
 ```
 
 ### Windows Terminal 快捷配置

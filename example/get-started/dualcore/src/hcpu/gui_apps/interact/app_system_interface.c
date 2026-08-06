@@ -495,6 +495,17 @@ void refresh_ai_chat_input_message(char *text)
         chat_page_set_transcript(text);
         return;
     }
+    /* Same claim, for the watch-face session pager (2026-08-05): while one of its desktop
+       sessions is open and dictating, the partial belongs in the pager's voice bar. Checked
+       AFTER the chat room only because the two are mutually exclusive — whichever is up
+       answers true and the other never sees the text. */
+    extern bool session_pager_is_open(void);
+    extern void session_pager_set_transcript(const char *text);
+    if (session_pager_is_open())
+    {
+        session_pager_set_transcript(text);
+        return;
+    }
     /* 立起輸入面板(滑鼠 app,2026-07-31)開著時它擁有轉錄:文字要進面板自己的輸入框,而不是
        底下那些 launcher widget。手機在放開麥克風後還會把 AI 整理過的最終稿當成一筆新的
        recognition result 推下來,走的就是這條路徑 —— 所以面板顯示的一定是等一下真正會送出

@@ -3,7 +3,7 @@
 
 ## 概述
 
-本示例演示了如何使用 wlan 组件的 API 实现 Wi-Fi 连接、扫描、断开连接、ping 网站以及获取天气信息等功能。
+本示例演示了使用wifi联网后进行ping 网站以及获取天气信息等功能。
 
 
 ## 支持的开发板
@@ -14,14 +14,16 @@
 * sf32lb56-wlan-core
 * sf32lb58-core
 
-## 基本指令
+## 代码执行逻辑
+app代码中调用wlan的rt_wlan_scan_sync接口，执行扫描操作
+* 扫描成功后输出 SSID、MAC、RSSI、信道等信息。
 
-| 指令 | 功能接口 | 说明 |
-| -- | -- | -- |
-| wifi scan | wifi_scan | 扫描周围的 Wi-Fi 热点，输出 SSID、MAC 地址、安全类型、信号强度、信道和速率等信息 |
-| wifi join | wifi_join | 连接指定的 Wi-Fi 网络（支持无密码和有密码两种格式） |
-| wifi disc | wifi_disconnect | 断开当前的 Wi-Fi 连接 |
-| wifi status | wifi_status | 显示 STA 和 AP 模式的详细状态信息（SSID、MAC、信道、速率、RSSI、自动连接状态等） |
+app代码中调用wlan的调用 rt_wlan_connect(ssid, password)，执行连接操作
+* 连接成功后成功后触发 DHCP SUCCESS，获得 IP 地址。
+
+后续测试功能
+* 使用 ping 测试连通性（依赖 lwIP 的 ICMP 实现）。
+* 使用 weather 命令发起 HTTP 请求（依赖 mbedTLS + lwIP）。
 
 ## 示例使用方法
 
@@ -32,13 +34,20 @@
 1. 拥有一块支持该示例的开发板
 2. 一根具备数据传输能力的 USB 数据线
 
+### 修改ssid和password
+* 可以在main.c中将ssid和password更换成你需要连接AP的
+```c
+#define WIFI_SSID       "wifi_ssid"     /* WiFi SSID to connect */
+#define WIFI_PASSWORD   "wifi_password"         /* WiFi password, set to RT_NULL if open */
+```
+
 ### menuconfig 配置
 
 * 默认情况下已经配置好了
 
 ```bash
 // 在本示例项目下执行指令
-menuconfig --board=sf32lb52-wlan-core_n16r16
+sdk.py menuconfig --board=sf32lb52-wlan-core_n16r16
 ```
 
 1. **打开 SDIO/SDHCI 接口**
@@ -117,6 +126,7 @@ build_sf32lb52-wlan-core_n16r16_hcpu\uart_download.bat
 * **开机日志**
 
 ```log
+//初始化部分
 01-29 15:44:12:972    sdio_scan_card
 01-29 15:44:12:973    skw_sdio_probe 591 
 01-29 15:44:12:975    SDIO: enabling function 1
@@ -144,12 +154,7 @@ build_sf32lb52-wlan-core_n16r16_hcpu\uart_download.bat
 01-29 15:44:16:156    get_wpa_s_handle 123 ifname: m01,dev->num=2
 01-29 15:44:16:157    wlan_set_regiontable 1642 
 01-29 15:44:16:159    l2_packet_init: iface m01 ifindex 2
-```
-
-* **扫描 Wi-Fi（指令：wifi scan）**
-
-```log
-01-29 15:44:27:108 TX:wifi scan
+//扫描部分
 01-29 15:44:30:153    [32m[572402] I/NO_TAG: scan quiet window: fill tail results 1->20
 01-29 15:44:30:160    [0m[32m[572450] I/NO_TAG: scan quiet window elapsed, emit SCAN_DONE (total=20)
 01-29 15:44:30:161    [0m             SSID                      MAC            security    rssi chn Mbps
@@ -175,12 +180,7 @@ build_sf32lb52-wlan-core_n16r16_hcpu\uart_download.bat
 01-29 15:44:30:180    hw_manage_0fc0                  40:ee:dd:31:0f:cb  WPA2_AES_PSK   -91   10    0
 01-29 15:44:30:180    NJHF                            c2:37:ff:e7:83:c2  WPA2_AES_PSK   -97   11    0
 01-29 15:44:30:187    msh />msh />
-```
-
-* **连接 Wi-Fi（指令：wifi join [Wi-Fi 名称] [Wi-Fi 密码]）**
-
-```log
-01-29 15:44:33:452 TX:wifi join sifli-employee zmjnb666
+//连接部分
 01-29 15:44:36:790    get_wpa_s_handle 123 ifname: m01,dev->num=2
 01-29 15:44:36:794    wpa_drv_freertos_authenticate 888
 01-29 15:44:36:797    [supp_if] wifi_skw_wpa_supp_authenticate 1101

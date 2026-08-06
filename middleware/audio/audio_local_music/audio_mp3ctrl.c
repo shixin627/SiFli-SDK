@@ -38,9 +38,15 @@
 #define CACHE_BUF_SIZE          (3*MAINBUF_SIZE + 100)
 
 
-#define MP3_ONE_STEREO_FRAME_SIZE (MAX_NCHAN * MAX_NGRAN * MAX_NSAMP * 2)
-#define MP3_FRAME_CACHE_COUNT (4) // if not a2dp source, 2 is enough
-#define MP3_FRAME_CACHE_SIZE  (MP3_ONE_STEREO_FRAME_SIZE * MP3_FRAME_CACHE_COUNT + 10)
+#define MP3_ONE_STEREO_FRAME_SIZE (MAX_NCHAN * MAX_NGRAN * MAX_NSAMP * 2) /* 2 * 2 * 576 * 2 = 4608 */
+
+#if CFG_AV_SRC /* may send to a2dp sink device */
+    #define MP3_FRAME_CACHE_COUNT (6)  /* if file read slow, such as slow SD/EMMC, should use a larger value */
+#else
+    #define MP3_FRAME_CACHE_COUNT (3)
+#endif
+
+#define MP3_FRAME_CACHE_SIZE  (MP3_ONE_STEREO_FRAME_SIZE * MP3_FRAME_CACHE_COUNT)
 
 //event flag
 #define MP3_EVENT_FLAG_PLAY             (1 << 0)
@@ -129,6 +135,7 @@ struct mp3ctrl_t
     uint32_t        wave_bytes_per_second;
     uint32_t        wave_samplerate;
     uint8_t         wave_channels;
+    uint32_t        wave_data_bytes; /* PCM bytes in 'data' chunk; excludes trailing RIFF chunks (e.g. LIST) */
     uint8_t         is_record;
     uint8_t         old_channels;
     uint32_t        old_samplerate;
@@ -182,6 +189,21 @@ typedef struct ID3v2
 static uint32_t wav_read_header(mp3ctrl_handle ctrl);
 static int get_frame_info(mp3ctrl_handle ctrl, MP3FrameInfo *mp3FrameInfo);
 
+/* For WAV, stop at end of 'data' chunk so trailing chunks are not played (avoids loop noise). */
+static uint32_t wave_pcm_end_offset(mp3ctrl_handle h)
+{
+    uint32_t end;
+
+    if (h->is_wave && h->wave_data_bytes > 0)
+    {
+        end = h->tag_len + h->wave_data_bytes;
+        if (end > h->mp3_data_len)
+            end = h->mp3_data_len;
+        return end;
+    }
+    return h->mp3_data_len;
+}
+
 #if defined (SOLUTION_RING_BUILT_IN) || defined (RING_USING_FLASH_B)
     #include "lv_conf.h"
     #include "drv_flash.h"
@@ -190,10 +212,12 @@ static int get_frame_info(mp3ctrl_handle ctrl, MP3FrameInfo *mp3FrameInfo);
 
 static int buf_read(mp3ctrl_handle handle, void *buf, int len)
 {
-    if ((uint32_t)(handle->fd + len) >= handle->mp3_data_len)
-    {
-        len = handle->mp3_data_len - (uint32_t)handle->fd;
-    }
+    uint32_t limit = wave_pcm_end_offset(handle);
+
+    if ((uint32_t)handle->fd >= limit)
+        return 0;
+    if ((uint32_t)handle->fd + (uint32_t)len > limit)
+        len = (int)(limit - (uint32_t)handle->fd);
     if (len == 0)
         return 0;
 #if defined (SOLUTION_RING_BUILT_IN) || defined (RING_USING_FLASH_B)
@@ -243,8 +267,10 @@ static int buf_read(mp3ctrl_handle handle, void *buf, int len)
 }
 static int buf_seek(mp3ctrl_handle handle, int offset)
 {
-    if (offset > (int)handle->mp3_data_len)
-        offset = (int)handle->mp3_data_len;
+    uint32_t limit = wave_pcm_end_offset(handle);
+
+    if (offset > (int)limit)
+        offset = (int)limit;
     handle->fd = offset;
     return offset;
 }
@@ -273,6 +299,8 @@ static uint32_t audio_parse_mp3_id3v2(mp3ctrl_handle handle)
 {
     uint32_t    tag_len;
     id3v2_t     id3;
+
+    handle->wave_data_bytes = 0;
 #if RT_USING_DFS
     if (handle->is_file)
         read(handle->fd, (char *)&id3, 10);
@@ -506,7 +534,10 @@ static void replace(mp3ctrl_handle ctrl)
     }
     else if (ctrl->is_wave == 1 && ctrl->wave_bytes_per_second != 0)
     {
-        ctrl->total_time_in_seconds = (ctrl->mp3_data_len - ctrl->tag_len) / ctrl->wave_bytes_per_second;
+        if (ctrl->wave_data_bytes > 0)
+            ctrl->total_time_in_seconds = ctrl->wave_data_bytes / ctrl->wave_bytes_per_second;
+        else
+            ctrl->total_time_in_seconds = (ctrl->mp3_data_len - ctrl->tag_len) / ctrl->wave_bytes_per_second;
     }
     else
     {
@@ -678,6 +709,8 @@ static int write_data(uint8_t is_new_data, mp3ctrl_handle ctrl, int16_t *outBuf,
         }
         if (!ctrl->resample)
         {
+            audio_ioctl(ctrl->client, AUDIO_IOCTL_SET_CACHE_SAMPLERATE, (void *)48000);
+            audio_ioctl(ctrl->client, AUDIO_IOCTL_SET_CACHE_CH, (void *)1);
             ctrl->resample = sifli_resample_open(1, mp3FrameInfo->samprate, 48000);
             RT_ASSERT(ctrl->resample);
             ctrl->resample_samplerate = mp3FrameInfo->samprate;
@@ -687,6 +720,8 @@ static int write_data(uint8_t is_new_data, mp3ctrl_handle ctrl, int16_t *outBuf,
         {
             LOG_I("reopen resample from %d", mp3FrameInfo->samprate);
             sifli_resample_close(ctrl->resample);
+            audio_ioctl(ctrl->client, AUDIO_IOCTL_SET_CACHE_SAMPLERATE, (void *)48000);
+            audio_ioctl(ctrl->client, AUDIO_IOCTL_SET_CACHE_CH, (void *)1);
             ctrl->resample = sifli_resample_open(1, mp3FrameInfo->samprate, 48000);
             RT_ASSERT(ctrl->resample);
             ctrl->resample_samplerate = mp3FrameInfo->samprate;
@@ -743,6 +778,8 @@ static int write_data(uint8_t is_new_data, mp3ctrl_handle ctrl, int16_t *outBuf,
                 else
                 {
                     LOG_I("resample open %d", mp3FrameInfo->samprate);
+                    audio_ioctl(ctrl->client, AUDIO_IOCTL_SET_CACHE_SAMPLERATE, (void *)44100);
+                    audio_ioctl(ctrl->client, AUDIO_IOCTL_SET_CACHE_CH, (void *)2);
                     ctrl->resample = sifli_resample_open(2, mp3FrameInfo->samprate, 44100);
                     RT_ASSERT(ctrl->resample);
                 }
@@ -1365,6 +1402,8 @@ static void wave_thread_entry_file(void *parameter)
             offset = (uint32_t)p_cmd->cmd_paramter1 * (uint64_t)ctrl->wave_bytes_per_second;
             if (offset != -1)
             {
+                if (ctrl->wave_data_bytes > 0 && offset > ctrl->wave_data_bytes)
+                    offset = ctrl->wave_data_bytes;
 #if RT_USING_DFS
                 if (ctrl->is_file)
                     lseek(ctrl->fd, ctrl->tag_len + offset, SEEK_SET);
@@ -1417,6 +1456,8 @@ static void wave_thread_entry_file(void *parameter)
                         }
                         else
                         {
+                            audio_ioctl(ctrl->client, AUDIO_IOCTL_SET_CACHE_SAMPLERATE, (void *)44100);
+                            audio_ioctl(ctrl->client, AUDIO_IOCTL_SET_CACHE_CH, (void *)2);
                             ctrl->resample = sifli_resample_open(2, ctrl->wave_samplerate, 44100);
                             RT_ASSERT(ctrl->resample);
                         }
@@ -1464,7 +1505,20 @@ check_write_result:
         int len;
 #if RT_USING_DFS
         if (ctrl->is_file)
-            len = read(ctrl->fd, outBuf, WAV_FRAME_SIZE);
+        {
+            uint32_t end = wave_pcm_end_offset(ctrl);
+            off_t pos = lseek(ctrl->fd, 0, SEEK_CUR);
+            int rdmax = WAV_FRAME_SIZE;
+
+            if (pos < 0 || (uint32_t)pos >= end)
+                len = 0;
+            else
+            {
+                if ((uint32_t)pos + (uint32_t)rdmax > end)
+                    rdmax = (int)(end - (uint32_t)pos);
+                len = read(ctrl->fd, outBuf, rdmax);
+            }
+        }
         else
 #endif
             len = buf_read(ctrl, outBuf, WAV_FRAME_SIZE);
@@ -1488,7 +1542,9 @@ check_write_result:
                     lseek(ctrl->fd, ctrl->tag_len + 0, SEEK_SET);
                 else
 #endif
+                {
                     buf_seek(ctrl, ctrl->tag_len + 0);
+                }
                 LOG_I("wav--loop");
                 last_frame_len = WAV_FRAME_SIZE;
                 continue;
@@ -1551,6 +1607,8 @@ check_write_result:
             {
                 if (!ctrl->resample)
                 {
+                    audio_ioctl(ctrl->client, AUDIO_IOCTL_SET_CACHE_SAMPLERATE, (void *)44100);
+                    audio_ioctl(ctrl->client, AUDIO_IOCTL_SET_CACHE_CH, (void *)2);
                     ctrl->resample = sifli_resample_open(2, ctrl->wave_samplerate, 44100);
                     RT_ASSERT(ctrl->resample);
                 }
@@ -1694,6 +1752,8 @@ static int get_frame_info(mp3ctrl_handle ctrl, MP3FrameInfo *mp3FrameInfo)
         ctrl->cache_bytesLeft--;
     }
     MP3FreeDecoder(hMP3Decoder);
+#else
+    LOG_I("PKG_USING_LIBHELIX not enabled, can't play mp3 file");
 #endif
     return ret;
 }
@@ -1794,7 +1854,10 @@ static mp3ctrl_handle mp3ctrl_open_real(audio_type_t type,
     }
     else if (handle->is_wave == 1 && handle->wave_bytes_per_second != 0)
     {
-        handle->total_time_in_seconds = (handle->mp3_data_len - handle->tag_len) / handle->wave_bytes_per_second;
+        if (handle->wave_data_bytes > 0)
+            handle->total_time_in_seconds = handle->wave_data_bytes / handle->wave_bytes_per_second;
+        else
+            handle->total_time_in_seconds = (handle->mp3_data_len - handle->tag_len) / handle->wave_bytes_per_second;
     }
     else
     {
@@ -1872,10 +1935,10 @@ PUBLIC_API mp3ctrl_handle mp3ctrl_open_buffer(audio_type_t type,
 
 #if AUDIO_MP3_RINGBUFF_SUPPORT
 mp3ctrl_handle mp3ctrl_open_ringbuffer(audio_type_t type,
-        struct rt_ringbuffer *buf,
-        uint32_t file_len,
-        audio_server_callback_func callback,
-        void *callback_userdata)
+                                       struct rt_ringbuffer *buf,
+                                       uint32_t file_len,
+                                       audio_server_callback_func callback,
+                                       void *callback_userdata)
 {
     /* use filename "rb" to mark use ringbuffer */
     return mp3ctrl_open_real(type, "rb", file_len, callback, callback_userdata, AUDIO_DEVICE_AUTO);
@@ -2161,7 +2224,10 @@ int mp3ctrl_getinfo(const char *filename, mp3_info_t *info)
     }
     else if (handle->is_wave == 1 && handle->wave_bytes_per_second != 0)
     {
-        handle->total_time_in_seconds = (handle->mp3_data_len - handle->tag_len) / handle->wave_bytes_per_second;
+        if (handle->wave_data_bytes > 0)
+            handle->total_time_in_seconds = handle->wave_data_bytes / handle->wave_bytes_per_second;
+        else
+            handle->total_time_in_seconds = (handle->mp3_data_len - handle->tag_len) / handle->wave_bytes_per_second;
         info->total_time_in_seconds = handle->total_time_in_seconds;
         info->samplerate = handle->wave_samplerate;
         info->channels = handle->wave_channels;
@@ -2284,15 +2350,12 @@ static uint32_t wav_read_header(mp3ctrl_handle ctrl)
                 LOG_I("wave not fmt");
                 return -1;
             }
-            if (size != -1)
-            {
-                data_size = size;
-                return next_tag_ofs + 8;
-            }
-            else
+            ctrl->wave_data_bytes = size;
+            if (size == 0xFFFFFFFF)
             {
                 return -1;
             }
+            return next_tag_ofs + 8;
         default:
             break;
         }
@@ -2302,7 +2365,7 @@ static uint32_t wav_read_header(mp3ctrl_handle ctrl)
     return -1;
 }
 
-#define MP3_TEST_CMD 0
+#define MP3_TEST_CMD 1
 
 #if defined(RT_USING_UTEST)
     #undef  MP3_TEST_CMD

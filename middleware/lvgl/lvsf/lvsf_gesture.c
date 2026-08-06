@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "rtconfig.h"
 #include "lvgl.h"
 #include "lvsf.h"
@@ -187,7 +193,7 @@ static void set_gesture_detect_hint_obj_opa(void *obj, uint8_t opa)
 static void left_bar_event_handler(lv_event_t *e)
 {
     #define x_2_process(x)                                                     \
-        ((x > 0) ? (x * MANUAL_TRAN_ANIM_MAX_PROCESS / LV_HOR_RES) : 0)
+        ((x > 0) ? (x * GUI_APP_TRANS_PROGRESS_MAX / LV_HOR_RES) : 0)
     lv_obj_t *obj = lv_event_get_target(e);
     lv_event_code_t event = lv_event_get_code(e);
 
@@ -275,7 +281,7 @@ static void left_bar_event_handler(lv_event_t *e)
         }
         // back_hint_hidden = true;
     }
-    else if (event == LV_EVENT_SCROLL_END)
+    else if ((event == LV_EVENT_RELEASED) || (event == LV_EVENT_PRESS_LOST))
     {
         // drag_offset = LV_ABS(obj->coords.x1 - drag_offset);
 
@@ -403,4 +409,30 @@ uint8_t lvsf_gesture_enable_register(uint8_t enable)
     return 0;
 }
 
+void lvsf_gesture_bars_realign(void)
+{
+    return;
+}
+
+void lvsf_gesture_init(lv_obj_t *parent)
+{
+    return;
+}
+
+void lvsf_gesture_deinit(void)
+{
+    return;
+}
+
+void lvsf_gesture_disable(void)
+{
+    return;
+}
+
+void lvsf_gesture_enable(void)
+{
+    return;
+}
+
 #endif /* GUI_APP_FRAMEWORK && !APP_TRANS_ANIMATION */
+

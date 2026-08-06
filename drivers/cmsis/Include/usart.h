@@ -21,11 +21,11 @@ typedef struct
     __IO uint32_t RDR;
     __IO uint32_t TDR;
     __IO uint32_t MISCR;
-#if defined(SF32LB56X)|| defined(SF32LB52X)
+#if !defined(SF32LB55X) && !defined(SF32LB58X)
     __IO uint32_t DRDR;
     __IO uint32_t DTDR;
     __IO uint32_t EXR;
-#endif /* SF32LB56X */
+#endif /* !SF32LB55X && ! SF32LB58X */
 } USART_TypeDef;
 
 
@@ -407,7 +407,7 @@ typedef struct
     #define USART_MISCR_AUTOCAL             USART_MISCR_AUTOCAL_Msk
 #endif /* SF32LB55X */
 
-#if defined(SF32LB56X)|| defined(SF32LB52X)
+#if !defined(SF32LB55X) && !defined(SF32LB58X)
     /******************* Bit definition for USART_DRDR register *******************/
     #define USART_DRDR_DATA_Pos             (0U)
     #define USART_DRDR_DATA_Msk             (0xFFFFFFFFUL << USART_DRDR_DATA_Pos)
@@ -425,6 +425,6 @@ typedef struct
     #define USART_EXR_ID_Pos                (4U)
     #define USART_EXR_ID_Msk                (0x1UL << USART_EXR_ID_Pos)
     #define USART_EXR_ID                    USART_EXR_ID_Msk
-#endif /* SF32LB56X or SF32LB52X */
+#endif /* !SF32LB55X && ! SF32LB58X */
 
 #endif

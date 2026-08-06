@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #include "rtthread.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,12 +14,28 @@
     #include "dfs_file.h"
 #endif
 #include "drv_flash.h"
+#include <wlan_mgnt.h>
+#include <wlan_cfg.h>
+#include <wlan_prot.h>
+
 #ifndef FS_REGION_START_ADDR
     #error "Need to define file system start address!"
 #else
     #define FS_ROOT "root"
     #define FS_ROOT_PATH "/"
 #endif
+
+/* ============================================================
+ *  User Configuration - Modify the macros below to set WiFi
+ * ============================================================ */
+#define WIFI_SSID       "wifi_ssid"     /* WiFi SSID to connect */
+#define WIFI_PASSWORD   "wifi_password"         /* WiFi password, set to RT_NULL if open */
+
+/* Delay(ms) after boot to wait for WiFi driver initialization */
+#define WIFI_READY_WAIT_MS      5000
+/* Delay(ms) between scan complete and connect */
+#define WIFI_SCAN_TO_JOIN_MS    1000
+
 
 #ifdef RT_USING_DFS_ELMFAT
 int mnt_init(void)
@@ -50,6 +71,139 @@ int mnt_init(void)
 INIT_ENV_EXPORT(mnt_init);
 #endif
 
+
+/**
+ * @brief  Convert security type to string description
+ */
+static const char *security_to_str(rt_wlan_security_t security)
+{
+    switch (security)
+    {
+    case SECURITY_OPEN:
+        return "OPEN";
+    case SECURITY_WEP_PSK:
+        return "WEP_PSK";
+    case SECURITY_WEP_SHARED:
+        return "WEP_SHARED";
+    case SECURITY_WPA_TKIP_PSK:
+        return "WPA_TKIP_PSK";
+    case SECURITY_WPA_AES_PSK:
+        return "WPA_AES_PSK";
+    case SECURITY_WPA2_AES_PSK:
+        return "WPA2_AES_PSK";
+    case SECURITY_WPA2_TKIP_PSK:
+        return "WPA2_TKIP_PSK";
+    case SECURITY_WPA2_MIXED_PSK:
+        return "WPA2_MIXED_PSK";
+    case SECURITY_WPS_OPEN:
+        return "WPS_OPEN";
+    case SECURITY_WPS_SECURE:
+        return "WPS_SECURE";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+/**
+ * @brief  Perform WiFi scan and print results
+ * @retval Number of APs found, 0 on failure
+ */
+static int wifi_do_scan(void)
+{
+    struct rt_wlan_scan_result *scan_result = RT_NULL;
+    int num = 0;
+
+    rt_kprintf("\n[WiFi] Start scanning...\n");
+    scan_result = rt_wlan_scan_sync();
+    if (scan_result)
+    {
+        int index;
+        num = scan_result->num;
+
+        rt_kprintf("[WiFi] Scan done, found %d APs:\n\n", num);
+        rt_kprintf("             SSID                      MAC            security    rssi chn Mbps\n");
+        rt_kprintf("------------------------------- -----------------  -------------- ---- --- ----\n");
+
+        for (index = 0; index < num; index++)
+        {
+            rt_kprintf("%-32.32s", &scan_result->info[index].ssid.val[0]);
+            rt_kprintf("%02x:%02x:%02x:%02x:%02x:%02x  ",
+                       scan_result->info[index].bssid[0],
+                       scan_result->info[index].bssid[1],
+                       scan_result->info[index].bssid[2],
+                       scan_result->info[index].bssid[3],
+                       scan_result->info[index].bssid[4],
+                       scan_result->info[index].bssid[5]);
+            rt_kprintf("%-14.14s ", security_to_str(scan_result->info[index].security));
+            rt_kprintf("%-4d ", scan_result->info[index].rssi);
+            rt_kprintf("%3d ", scan_result->info[index].channel);
+            rt_kprintf("%4d\n", scan_result->info[index].datarate / 1000000);
+        }
+
+        rt_wlan_scan_result_clean();
+    }
+    else
+    {
+        rt_kprintf("[WiFi] Scan failed, no results\n");
+    }
+
+    return num;
+}
+
+/**
+ * @brief  Connect to a specified WiFi AP
+ * @param  ssid      WiFi SSID
+ * @param  password  WiFi password (RT_NULL if open network)
+ * @retval RT_EOK on success
+ */
+static rt_err_t wifi_do_connect(const char *ssid, const char *password)
+{
+    rt_err_t ret;
+
+    rt_kprintf("\n[WiFi] Connecting to: %s ...\n", ssid);
+
+    ret = rt_wlan_connect(ssid, password);
+    if (ret != RT_EOK)
+    {
+        rt_kprintf("[WiFi] Connect failed! error: %d\n", ret);
+    }
+    else
+    {
+        rt_kprintf("[WiFi] Connect request sent, waiting for authentication...\n");
+    }
+
+    return ret;
+}
+
+/**
+ * @brief  WiFi auto scan and connect thread entry
+ */
+static void wifi_auto_connect_thread(void *parameter)
+{
+    int scan_num;
+
+    /* Wait for WiFi driver initialization */
+    rt_kprintf("\n[WiFi] Waiting for driver init (%d ms)...\n", WIFI_READY_WAIT_MS);
+    rt_thread_mdelay(WIFI_READY_WAIT_MS);
+
+    /* Step 1: Scan */
+    scan_num = wifi_do_scan();
+    if (scan_num == 0)
+    {
+        rt_kprintf("[WiFi] No AP found, retry in 3 seconds...\n");
+        rt_thread_mdelay(3000);
+        scan_num = wifi_do_scan();
+    }
+
+    /* Wait before connecting */
+    rt_thread_mdelay(WIFI_SCAN_TO_JOIN_MS);
+
+    /* Step 2: Connect */
+    rt_kprintf("\n[WiFi] Target AP: SSID=\"%s\"\n", WIFI_SSID);
+    wifi_do_connect(WIFI_SSID, WIFI_PASSWORD);
+}
+
+
 /**
   * @brief  Main program
   * @param  None
@@ -57,139 +211,30 @@ INIT_ENV_EXPORT(mnt_init);
   */
 int main(void)
 {
-    /* Infinite loop */
-    rt_kprintf("wifi \n");
+    rt_thread_t tid;
+
+    rt_kprintf("wifi start\n");
+
+    /* Create WiFi auto-connect thread to avoid blocking main */
+    tid = rt_thread_create("wifi_auto",
+                           wifi_auto_connect_thread,
+                           RT_NULL,
+                           4096,
+                           20,
+                           10);
+    if (tid != RT_NULL)
+    {
+        rt_thread_startup(tid);
+    }
+    else
+    {
+        rt_kprintf("[WiFi] Failed to create auto-connect thread!\n");
+    }
+
+    /* Main loop */
     while (1)
     {
-        rt_thread_mdelay(10000);    // Let system breath.
+        rt_thread_mdelay(10000);
     }
     return 0;
 }
-/*
-这工程里面wifi驱动与RTT的wlan组件结合在一起了，驱动代码在 customer/peripherals/swt6621s/  目录下
-customer/peripherals/swt6621s/port/lwip/wifi_netif.c  里面有驱动与lwip结合的代码
-customer/peripherals/swt6621s/sdio/swt6621s_wlan_port.c  里面有驱动与RTT wlan组件结合的代码
-customer/peripherals/swt6621s/port/lwip/net.c  里面有驱动与RTT lwip协议栈结合的代码
-wifi驱动里面单独创建了m0的网卡，名称可以通过 PKG_USING_WPA_NET_NAME 宏定义来修改，默认是m0 文件在net.c的 net_wlan_init 函数里面创建的
-直接使用wlan上的API进行wifi的连接等操作即可，如下：
-struct rt_wlan_device *wlan = rt_wlan_dev_get_by_name("wlan0");
-rt_wlan_scan(wlan, RT_NULL);    //扫描
-rt_wlan_connect(wlan, &sta_info); //连接AP
-rt_wlan_disconnect(wlan); //断开连接
-开机log：
-11-06 14:03:13:434    SDIO: enabling function 1
-11-06 14:03:13:436    SDIO: enabled function successfull
-11-06 14:03:13:438    SDIO: enabling IRQ for function 1
-11-06 14:03:13:439    start to send DRAM boot code to wifi module
-11-06 14:03:13:463    start to send IRAM boot code to wifi module
-11-06 14:03:13:517    BOOT CP BY SDIO
-11-06 14:03:13:795    BOOT CP BY SDIO DONE
-11-06 14:03:13:799    skw_calib_download 371 SEEKWAVE_SIZE=2372
-11-06 14:03:13:806    MAC Address: 00:00:00:00:00:00
-11-06 14:03:13:816    wifi_skw_wpa_supp_dev_init 535
-11-06 14:03:13:817    wifi_skw_wpa_supp_dev_init 546
-11-06 14:03:13:818    wifi_skw_wpa_supp_dev_init 573
-11-06 14:03:13:819    wifi_skw_wpa_supp_dev_init 575 20047834
-11-06 14:03:13:820    wpas_init_driver 6531 wpa_s->ifname=m01 drv_priv=2004c4f8
-11-06 14:03:14:818    l2_packet_init: iface m01 ifindex 2
-11-06 14:03:14:830    get_wpa_s_handle 122 ifname: m01,dev->num=2
-11-06 14:03:14:831    wlan_cmd_get_hw_spec 863
-11-06 14:03:14:832    wlan_set_regiontable 1641
-11-06 14:03:14:833    l2_packet_init: iface m01 ifindex 2
-11-06 14:03:14:856    wifi
-
-wlan层的finsh指令：
-wifi scan         //扫描
-11-06 14:05:18:620    [32m[4137731] I/NO_TAG: scan quiet window: fill tail results 1->15
-11-06 14:05:18:625    [0m[32m[4137768] I/NO_TAG: scan quiet window elapsed, emit SCAN_DONE (total=15)
-11-06 14:05:18:626    [0m             SSID                      MAC            security    rssi chn Mbps
-11-06 14:05:18:626    ------------------------------- -----------------  -------------- ---- --- ----
-11-06 14:05:18:627    CMCC-7XL4                       90:98:38:a1:c6:bc  WPA2_AES_PSK   0      1    0
-11-06 14:05:18:628    CQHY                            06:05:88:a5:ac:92  WPA2_AES_PSK   0      1    0
-11-06 14:05:18:629    CQHY-OFFICE                     0a:05:88:a5:ac:92  WPA2_AES_PSK   0      1    0
-11-06 14:05:18:629    sifli-employee                  74:ac:b9:c4:10:fa  WPA2_AES_PSK   0      1    0
-11-06 14:05:18:630    sifli-guest                     7a:ac:b9:c4:10:fa  WPA2_AES_PSK   0      1    0
-11-06 14:05:18:631    MAXUB                           70:c6:dd:69:ed:14  WPA2_AES_PSK   0      1    0
-11-06 14:05:18:632    HEUVAN-I905                     b0:df:c1:b5:a4:39  WPA2_AES_PSK   0      2    0
-11-06 14:05:18:632    yunshigaoke                     c8:cd:55:f4:f7:e5  WPA2_AES_PSK   0      3    0
-11-06 14:05:18:633    HEUVAN-I906                     b0:df:c1:b5:a4:49  WPA2_AES_PSK   0      3    0
-11-06 14:05:18:634    DIRECT-CA-HP M329dw LJ          fa:0d:ac:d7:9b:ca  WPA2_AES_PSK   0      6    0
-11-06 14:05:18:634    sifli-employee                  e0:63:da:ba:71:95  WPA2_AES_PSK   0      6    0
-11-06 14:05:18:635    sifli-guest                     e6:63:da:ba:71:95  WPA2_AES_PSK   0      6    0
-11-06 14:05:18:636    360WiFi-C3089B                  1c:68:7e:c3:08:9b  WPA2_AES_PSK   0      6    0
-11-06 14:05:18:637    Tenda_BEC400                    b8:3a:08:be:c4:04  WPA2_AES_PSK   0      6    0
-11-06 14:05:18:637    yunshigaoke                     54:16:51:69:ed:ce  WPA2_AES_PSK   0      8    0
-
-
-
-wifi join sifli-guest sifli123456  //连接AP
-
-11-06 14:05:40:963    get_wpa_s_handle 122 ifname: m01,dev->num=2
-11-06 14:05:40:964    found ssid=360WiFi-C3089B i=13
-11-06 14:05:40:965    wlan_cmd_tx_frame 2382 ssid=360WiFi-C3089B sizeof(struct skw_join_param)=25,params=20051494 size=284
-11-06 14:05:40:965    wlan_cmd_tx_frame 2400 len=258
-11-06 14:05:40:966    wlan_skw_htinfo 2332 ht_oper->field1=5
-11-06 14:05:40:968    ctx: 0, bind
-11-06 14:05:40:968    invalid lmac id: 0
-11-06 14:05:40:979    sme_event_auth 1660 auth_type=0
-11-06 14:05:40:980    sme_associate 2040 params=20051494
-11-06 14:05:40:981    wlan_set_regiontable 1641
-11-06 14:05:40:990    wlan_ops_sta_ioctl: 0x20000
-11-06 14:05:40:990    wlan_ops_sta_ioctl: MLAN_IOCTL_BSS
-11-06 14:05:40:991    wlan_bss_ioctl 347: sub_command = 131073
-11-06 14:05:40:992    wlan_bss_ioctl_start 248
-11-06 14:05:40:993    wlan_bss_ioctl_start 258 pmpriv->bss_mode=1
-11-06 14:05:40:994    wlan_bss_ioctl_start 296 i=13
-11-06 14:05:40:997    wlan_ret_802_11_associate 1280 host_mlme=1
-11-06 14:05:40:998    wlan_ret_802_11_associate 1284 hdr->BssId=1c:68:7e:c3:08:9b
-11-06 14:05:40:999    wlan_ret_802_11_associate 1285 pmpriv->pattempted_bss_desc->mac_address=1c:68:7e:c3:08:9b
-11-06 14:05:41:014    sm_SUPP_PAE_Step 396 startWhen=2,startCount=0,maxStart=3,portValid=0,sm->eapSuccess=0,sm->eapFail=0
-11-06 14:05:41:095    sm_SUPP_PAE_Step 396 startWhen=2,startCount=0,maxStart=3,portValid=0,sm->eapSuccess=0,sm->eapFail=0
-11-06 14:05:41:106    sm_SUPP_PAE_Step 396 startWhen=2,startCount=0,maxStart=3,portValid=0,sm->eapSuccess=0,sm->eapFail=0
-11-06 14:05:41:119    sm_SUPP_PAE_Step 396 startWhen=2,startCount=0,maxStart=3,portValid=1,sm->eapSuccess=0,sm->eapFail=0
-11-06 14:05:41:120    sm_SUPP_PAE_Step 396 startWhen=2,startCount=0,maxStart=3,portValid=1,sm->eapSuccess=0,sm->eapFail=0
-11-06 14:05:41:122    sm_SUPP_PAE_Step 396 startWhen=2,startCount=0,maxStart=3,portValid=1,sm->eapSuccess=1,sm->eapFail=0
-11-06 14:05:41:423    app_cb: WLAN: authenticated to network
-11-06 14:05:41:424    get_wpa_s_handle 122 ifname: m01,dev->num=2
-11-06 14:05:43:392    [32m[4949420] I/WLAN.mgnt: wifi connect success ssid:360WiFi-C3089B
-11-06 14:05:43:396    [0mmsh />msh />app_cb: WLAN: connected to network
-11-06 14:05:43:398    Connected to following BSS:
-11-06 14:05:43:399    SSID = [360WiFi-C3089B]
-11-06 14:05:43:400    IPv4 Address: [192.168.0.3]  //连接成功
-
-ping www.baidu.com
-11-06 14:07:06:817 TX:ping www.baidu.com
-11-06 14:07:06:895    60 bytes from 153.3.238.127 icmp_seq=0 ttl=53 time=36 ms
-11-06 14:07:07:922    60 bytes from 153.3.238.127 icmp_seq=1 ttl=53 time=26 ms
-11-06 14:07:08:951    60 bytes from 153.3.238.127 icmp_seq=2 ttl=53 time=27 ms
-11-06 14:07:09:978    60 bytes from 153.3.238.127 icmp_seq=3 ttl=53 time=27 ms
-11-06 14:07:10:208    msh />msh />
-
-获取天气信息：
-11-06 14:07:03:088 TX:weather
-11-06 14:07:03:142    DNS lookup succeeded, IP: 116.62.81.138
-11-06 14:07:03:227    id:"WM7B0X53DZW2"
-11-06 14:07:03:227    name:"??"
-11-06 14:07:03:228    country:"CN"
-11-06 14:07:03:229    path:"??,??,??"
-11-06 14:07:03:230    timezone:"Asia/Shanghai"
-11-06 14:07:03:230    timezone_offset:"+08:00"
-11-06 14:07:03:231    txt:"?"
-11-06 14:07:03:231    code:"30"
-11-06 14:07:03:232    temperature:"16"
-11-06 14:07:03:233    last_update:"2025-11-06T13:57:41+08:00"
-11-06 14:07:03:436    msh />msh />
-
-
-wifi disc   //断开连接
-11-06 14:07:36:977 TX:wifi disc
-11-06 14:07:36:980    get_wpa_s_handle 122 ifname: m01,dev->num=2
-11-06 14:07:36:980    get_wpa_s_handle 122 ifname: m01,dev->num=2
-11-06 14:07:36:991    [32m[1716690] I/WLAN.mgnt: disconnect success!
-11-06 14:07:36:992    [0mmsh />msh />app_cb: disconnected
-
-
-相关的实现可以在 **\rtos\rtthread\components\drivers\wlan\wlan_cmd.c 中找到
-每次scan的个数为15个，可以通过修改RT_WLAN_SCAN_RESULT_MAX来调整
-*/
-

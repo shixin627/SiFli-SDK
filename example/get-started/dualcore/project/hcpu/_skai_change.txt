@@ -1,0 +1,16 @@
+fake_weather 20
+goto_app Main
+skai_pkg_add pkg_weather
+skai_pkg_run weather
+touch_swipe 233 400 233 120
+# settle: the tile scroll is animated and the harness shoots straight after the
+# last command, so without these the screenshot catches it between tiles. Three
+# was not always enough — a shot 7px short of the snap point reads as a 15k-px
+# regression with identical ink, which is the signature of this, not of a
+# layout bug.
+app_status
+app_status
+app_status
+app_status
+app_status
+app_status

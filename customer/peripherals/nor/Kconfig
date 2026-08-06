@@ -1,3 +1,4 @@
+menu "NOR"
 menuconfig CUSTOM_NOR_ENABLED
     bool "Customized NOR configuration"
     default n
@@ -6,3 +7,4 @@ menuconfig CUSTOM_NOR_ENABLED
             bool "EN25QX128A"
             default n
     endif
+endmenu    

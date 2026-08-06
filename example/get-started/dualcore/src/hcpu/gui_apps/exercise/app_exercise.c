@@ -1085,7 +1085,7 @@ static int app_main(intent_t i)
 }
 
 BUILTIN_APP_EXPORT(LV_EXT_STR_ID(exercise), LV_EXT_IMG_GET(img_workout),
-                   APP_ID_EXERCISE, app_main);
+                   APP_ID_EXERCISE, app_main, 1);
 
 #endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF

@@ -72,15 +72,21 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_CRC_Init(CRC_HandleTypeDef *hcrc)
         return HAL_ERROR;
     }
 
-    if (hcrc->Instance == NULL)
-        hcrc->Instance = hwp_crc;
     /* Check the parameters */
-    HAL_ASSERT(IS_CRC_ALL_INSTANCE(hcrc->Instance));
+    if (hcrc->Instance == NULL)
+    {
+        hcrc->Instance = hwp_crc;
+    }
+    else if (!IS_CRC_ALL_INSTANCE(hcrc->Instance))
+    {
+        return HAL_ERROR;
+    }
+
+    /* Allocate lock resource and initialize it */
+    hcrc->Lock = HAL_UNLOCKED;
 
     if (hcrc->State == HAL_CRC_STATE_RESET)
     {
-        /* Allocate lock resource and initialize it */
-        hcrc->Lock = HAL_UNLOCKED;
         /* Init the low level hardware */
         HAL_CRC_MspInit(hcrc);
     }
@@ -93,6 +99,7 @@ __HAL_ROM_USED HAL_StatusTypeDef HAL_CRC_Init(CRC_HandleTypeDef *hcrc)
     hcrc->Instance->INIT = 0xFFFFFFFF;
     hcrc->Instance->POL
         = 0X04C11DB7;
+    hcrc->Mode = CRC_32;
 
     /* Change CRC peripheral state */
     hcrc->State = HAL_CRC_STATE_READY;

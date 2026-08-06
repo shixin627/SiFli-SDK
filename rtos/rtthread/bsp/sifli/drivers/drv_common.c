@@ -45,10 +45,10 @@
     static struct rt_memheap _psram_heap;
 #endif
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
     /* SYSTICK support high precision fixed clock source, such as RC48/XT48*/
     #define SYSTICK_HIGH_PRICISION_FIXED_CLK_SUPPORT
-#endif /* SF32LB52X */
+#endif /* SF32LB52X || SF32LB57X */
 
 #if defined(BSP_PM_FREQ_SCALING) && !defined(SYSTICK_HIGH_PRICISION_FIXED_CLK_SUPPORT)
     #ifdef SOC_BF0_HCPU
@@ -128,10 +128,12 @@ __ROM_USED void rt_hw_systick_init(void)
 
 #if defined(SYSTICK_HIGH_PRICISION_FIXED_CLK_SUPPORT) && defined(SOC_BF0_HCPU)
 
+#ifndef SOC_BF0_ACPU
     HAL_RCC_HCPU_ClockSelect(RCC_CLK_MOD_HP_TICK, RCC_CLK_TICK_HRC48);
     /* workaround: add delay to avoid systick config failure in some chips due to known reason */
     HAL_Delay_us(200);
     HAL_RCC_HCPU_SetTickDiv(60);
+#endif /* SOC_BF0_ACPU */
     HAL_SYSTICK_Config(800000 / RT_TICK_PER_SECOND);
     HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_TICK_CLK);
 
@@ -155,7 +157,15 @@ __ROM_USED void rt_hw_systick_init(void)
 #endif /* BSP_PM_FREQ_SCALING */
 
 #endif /* SF32LB52X */
+
+#ifdef HAL_CORTEX_MODULE_ENABLED
     HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
+#else
+    //extern void SysTick_Handler(void);
+    ECLIC_Register_IRQ(SysTimer_IRQn, ECLIC_NON_VECTOR_INTERRUPT, ECLIC_LEVEL_TRIGGER, 3, 0, NULL);
+    ECLIC_Register_IRQ(Msip_IRQn, ECLIC_VECTOR_INTERRUPT, ECLIC_LEVEL_TRIGGER, 2, 0, NULL);
+#endif
+
 }
 
 __ROM_USED int rt_in_system_heap(void *ptr)
@@ -172,37 +182,38 @@ __ROM_USED int rt_in_system_heap(void *ptr)
  */
 void SysTick_Handler(void)
 {
-    uint32_t status;
     uint32_t pin_wsr;
 #ifdef BSP_USING_PM
     rt_tick_t old_tick;
     rt_tick_t new_tick;
 #endif /* BSP_USING_PM */
 
+#ifdef HAL_RISCV_MODULE_ENABLED
+    // Reload timer
+    SysTick_Reload(SystemCoreClock / RT_TICK_PER_SECOND);
+#endif
     /* enter interrupt */
     rt_interrupt_enter();
 
     /* Trigger GPIO callback manually as GPIO edge detection interrupt may get lost
        and WSR.PIN status is not cleared */
 #ifdef SOC_BF0_HCPU
-    status = HAL_HPAON_GET_WSR() & HPSYS_AON_WSR_PIN_ALL;
-    if (status)
+    pin_wsr = HAL_HPAON_GET_WSR_PIN();
+    if (pin_wsr)
     {
-        pin_wsr = status >> HPSYS_AON_WSR_PIN0_Pos;
 #ifdef RT_USING_PIN
         drv_pin_irq_from_wsr(pin_wsr);
 #endif /* RT_USING_PIN */
     }
-#else
-    status = HAL_LPAON_GET_WSR() & LPSYS_AON_WSR_PIN_ALL;
-    if (status)
+#elif defined(HAL_LPAON_GET_WSR_PIN)
+    pin_wsr = HAL_LPAON_GET_WSR_PIN();
+    if (pin_wsr)
     {
-        pin_wsr = status >> LPSYS_AON_WSR_PIN0_Pos;
 #ifdef RT_USING_PIN
         drv_pin_irq_from_wsr(pin_wsr);
 #endif /* RT_USING_PIN */
     }
-#endif
+#endif /* SOC_BF0_HCPU */
 
 #ifdef RT_USING_PIN
     drv_pin_check();
@@ -216,12 +227,12 @@ void SysTick_Handler(void)
 #ifdef SOC_BF0_HCPU
     if (HAL_HPAON_IS_LP_ACTIVE() && HAL_HPAON_IS_HP2LP_REQ_ACTIVE())
 #else
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
 //TODO: LCPU cannot access PMU when HCPU is in sleep
     if (HAL_LPAON_IS_HP_ACTIVE())
 #else
     if (true)
-#endif /* SF32LB52X */
+#endif /* SF32LB52X || SF32LB57X */
 #endif /* SOC_BF0_HCPU */
     {
         new_tick = pm_latch_tick(old_tick + 1, HAL_GTIMER_READ(), HAL_LPTIM_GetFreq(), (void *)1);
@@ -416,23 +427,36 @@ __ROM_USED void _Error_Handler(char *s, int num)
     /* USER CODE END Error_Handler */
 }
 
+#if 0
 __ROM_USED void rt_hw_console_output(const char *str)
 {
 }
+#endif
+
 
 #ifndef SF32LB55X
-int8_t bt_rf_get_max_tx_pwr(void)
+/* Weak overridable TX power getters — app can override to customize power at boot */
+__WEAK int8_t bt_tx_pwr_max_override(void)
 {
     return BT_TX_POWER_VAL_MAX;
+}
+__WEAK int8_t bt_tx_pwr_min_override(void)
+{
+    return BT_TX_POWER_VAL_MIN;
+}
+
+int8_t bt_rf_get_max_tx_pwr(void)
+{
+    return bt_tx_pwr_max_override();
 }
 
 int8_t bt_rf_get_min_tx_pwr(void)
 {
-    return BT_TX_POWER_VAL_MIN;
+    return bt_tx_pwr_min_override();
 }
 #endif // !SF32LB55X
 
-int8_t bt_rf_get_init_tx_pwr(void)
+__WEAK int8_t bt_tx_pwr_init_override(void)
 {
     int8_t pwr;
 #ifdef SF32LB55X
@@ -441,6 +465,11 @@ int8_t bt_rf_get_init_tx_pwr(void)
     pwr = BT_TX_POWER_VAL_INIT;
 #endif
     return pwr;
+}
+
+int8_t bt_rf_get_init_tx_pwr(void)
+{
+    return bt_tx_pwr_init_override();
 }
 
 /**
@@ -474,6 +503,9 @@ __ROM_USED void rt_hw_us_delay(rt_uint32_t us)
     }
 
 #else
+#ifdef RISCV
+#warning implment for RISCV
+#else
     rt_uint32_t ticks;
     rt_uint32_t reload = SysTick->LOAD;
 
@@ -499,6 +531,7 @@ __ROM_USED void rt_hw_us_delay(rt_uint32_t us)
             }
         }
     }
+#endif
 #endif /* BSP_PM_FREQ_SCALING && !SYSTICK_HIGH_PRICISION_FIXED_CLK_SUPPORT */
 }
 
@@ -525,9 +558,9 @@ __ROM_USED void drv_get_lpsys_clk(lpsys_clk_setting_t *clk_setting)
     clk_setting->pclk1 = HAL_RCC_GetPCLKFreq(CORE_ID_LCPU, 1);
     clk_setting->pclk2 = HAL_RCC_GetPCLKFreq(CORE_ID_LCPU, 0);
 
-#ifdef SF32LB52X
+#if defined(SF32LB52X) || defined(SF32LB57X)
     HAL_HPAON_CANCEL_LP_ACTIVE_REQUEST();
-#endif /* SF32LB52X */
+#endif /* SF32LB52X || SF32LB57X */
 }
 
 __ROM_USED void drv_get_blesys_clk(blesys_clk_setting_t *clk_setting)
@@ -861,10 +894,10 @@ void HAL_RCC_MspInit(void)
     HAL_RCC_DisableModule(RCC_MOD_I2C3);
 #endif /* !BSP_USING_I2C3 */
 
-#if !defined(BSP_USING_GPTIM1) && !defined(BSP_USING_PWM2)
+#if !defined(BSP_USING_GPTIM1) && !defined(BSP_USING_PWMT1)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM1);
 #endif /* !BSP_USING_GPTIM1 */
-#if !defined(BSP_USING_GPTIM2) && !defined(BSP_USING_PWM3)
+#if !defined(BSP_USING_GPTIM2) && !defined(BSP_USING_PWMT2)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM2);
 #endif /* !BSP_USING_GPTIM2 */
 
@@ -954,13 +987,13 @@ void HAL_RCC_MspInit(void)
     HAL_RCC_DisableModule(RCC_MOD_I2C6);
 #endif /* !BSP_USING_I2C6 */
 
-#if !defined(BSP_USING_GPTIM3) && !defined(BSP_USING_PWM4)
+#if !defined(BSP_USING_GPTIM3) && !defined(BSP_USING_PWMT3)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM3);
 #endif /* !BSP_USING_GPTIM3 */
-#if !defined(BSP_USING_GPTIM4) && !defined(BSP_USING_PWM5)
+#if !defined(BSP_USING_GPTIM4) && !defined(BSP_USING_PWMT4)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM4);
 #endif /* !BSP_USING_GPTIM4 */
-#if !defined(BSP_USING_GPTIM5) && !defined(BSP_USING_PWM6)
+#if !defined(BSP_USING_GPTIM5) && !defined(BSP_USING_PWMT5)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM5);
 #endif /* !BSP_USING_GPTIM5 */
 
@@ -1018,10 +1051,10 @@ void HAL_RCC_MspInit(void)
     HAL_RCC_DisableModule(RCC_MOD_I2C4);
 #endif /* !BSP_USING_I2C4 */
 
-#if !defined(BSP_USING_GPTIM1) && !defined(BSP_USING_PWM2)
+#if !defined(BSP_USING_GPTIM1) && !defined(BSP_USING_PWMT1)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM1);
 #endif /* !BSP_USING_GPTIM1 */
-#if !defined(BSP_USING_GPTIM2) && !defined(BSP_USING_PWM3)
+#if !defined(BSP_USING_GPTIM2) && !defined(BSP_USING_PWMT2)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM2);
 #endif /* !BSP_USING_GPTIM2 */
 
@@ -1129,13 +1162,13 @@ void HAL_RCC_MspInit(void)
     HAL_RCC_DisableModule(RCC_MOD_I2C7);
 #endif /* !BSP_USING_I2C6 */
 
-#if !defined(BSP_USING_GPTIM3) && !defined(BSP_USING_PWM4)
+#if !defined(BSP_USING_GPTIM3) && !defined(BSP_USING_PWMT3)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM3);
 #endif /* !BSP_USING_GPTIM3 */
-#if !defined(BSP_USING_GPTIM4) && !defined(BSP_USING_PWM5)
+#if !defined(BSP_USING_GPTIM4) && !defined(BSP_USING_PWMT4)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM4);
 #endif /* !BSP_USING_GPTIM4 */
-#if !defined(BSP_USING_GPTIM5) && !defined(BSP_USING_PWM6)
+#if !defined(BSP_USING_GPTIM5) && !defined(BSP_USING_PWMT5)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM5);
 #endif /* !BSP_USING_GPTIM5 */
 
@@ -1206,10 +1239,10 @@ void HAL_RCC_MspInit(void)
     HAL_RCC_DisableModule(RCC_MOD_I2C4);
 #endif /* !BSP_USING_I2C4 */
 
-#if !defined(BSP_USING_GPTIM1) && !defined(BSP_USING_PWM2)
+#if !defined(BSP_USING_GPTIM1) && !defined(BSP_USING_PWMT1)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM1);
 #endif /* !BSP_USING_GPTIM1 */
-#if !defined(BSP_USING_GPTIM2) && !defined(BSP_USING_PWM3)
+#if !defined(BSP_USING_GPTIM2) && !defined(BSP_USING_PWMT2)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM2);
 #endif /* !BSP_USING_GPTIM2 */
 
@@ -1303,13 +1336,13 @@ void HAL_RCC_MspInit(void)
     HAL_RCC_DisableModule(RCC_MOD_I2C7);
 #endif /* !BSP_USING_I2C6 */
 
-#if !defined(BSP_USING_GPTIM3) && !defined(BSP_USING_PWM4)
+#if !defined(BSP_USING_GPTIM3) && !defined(BSP_USING_PWMT3)
     //HAL_RCC_DisableModule(RCC_MOD_GPTIM3);
 #endif /* !BSP_USING_GPTIM3 */
-#if !defined(BSP_USING_GPTIM4) && !defined(BSP_USING_PWM5)
+#if !defined(BSP_USING_GPTIM4) && !defined(BSP_USING_PWMT4)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM4);
 #endif /* !BSP_USING_GPTIM4 */
-#if !defined(BSP_USING_GPTIM5) && !defined(BSP_USING_PWM6)
+#if !defined(BSP_USING_GPTIM5) && !defined(BSP_USING_PWMT5)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM5);
 #endif /* !BSP_USING_GPTIM5 */
 
@@ -1369,10 +1402,10 @@ void HAL_RCC_MspInit(void)
     HAL_RCC_DisableModule(RCC_MOD_I2C4);
 #endif /* !BSP_USING_I2C4 */
 
-#if !defined(BSP_USING_GPTIM1) && !defined(BSP_USING_PWM2)
+#if !defined(BSP_USING_GPTIM1) && !defined(BSP_USING_PWMT1)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM1);
 #endif /* !BSP_USING_GPTIM1 */
-#if !defined(BSP_USING_GPTIM2) && !defined(BSP_USING_PWM3)
+#if !defined(BSP_USING_GPTIM2) && !defined(BSP_USING_PWMT2)
     HAL_RCC_DisableModule(RCC_MOD_GPTIM2);
 #endif /* !BSP_USING_GPTIM2 */
 
@@ -1424,6 +1457,91 @@ void HAL_RCC_MspInit(void)
 
 #endif /* BSP_NOT_DISABLE_UNUSED_MODULE */
 
+#undef dma_malloc
+#undef dma_free
+#if defined (SYS_HEAP_IN_PSRAM)
+    extern void *app_sram_alloc(rt_size_t size);
+    extern void *app_sram_free(void *ptr);
+    #define dma_malloc app_sram_alloc
+    #define dma_free   app_sram_free
+#else
+    #define dma_malloc rt_malloc
+    #define dma_free   rt_free
+#endif
+/**
+ * @brief  Malloc a SRAM memory which is accessible by DMA controller
+ *
+ * @param  n Size of memory to allocate
+ *
+ * @return Pointer to allocated memory
+ */
+void *malloc_dma_friendly_sram(rt_size_t n)
+{
+#define list_max 1024
+#define WITHIN_DMA_BOUNDARY(addr, size) ((((uint32_t)(addr) & 0xFFFFF) + (size)) <= 0x100000)
+
+#if defined(SF32LB52X) || defined(SF32LB57X)
+//TODO:
+#define IS_DMA_FRIENDLY_SRAM(addr)    ((((addr) >= HPSYS_RAM0_BASE) && ((addr) < HPSYS_RAM1_BASE)) ? false : HCPU_IS_SRAM_ADDR(addr))
+#else
+#define IS_DMA_FRIENDLY_SRAM(addr)    ((((addr) >= HPSYS_RETM_BASE) && ((addr) < HPSYS_RETM_END)) ? false : HCPU_IS_SRAM_ADDR(addr))
+#endif
+#define IS_DMA_FRIENDLY_SRAM_RANGE(p, len)        (IS_DMA_FRIENDLY_SRAM((uint32_t)p) && IS_DMA_FRIENDLY_SRAM(((uint32_t)p) + (len)) && WITHIN_DMA_BOUNDARY(p, len))
+
+    //Invalid parameters
+    if (!WITHIN_DMA_BOUNDARY(0, n) || (0 == n)) return NULL;
+
+    uint8_t *ret_p = dma_malloc(n);
+    if (!ret_p) return NULL;
+
+    if (!IS_DMA_FRIENDLY_SRAM_RANGE(ret_p, n))
+    {
+        uint8_t **malloc_list = (uint8_t **)dma_malloc(sizeof(uint8_t *) * list_max);
+        if (!malloc_list)
+        {
+            dma_free(ret_p);
+            return NULL;
+        }
+        malloc_list[0] = ret_p;
+        ret_p = NULL;
+
+        uint32_t malloc_cnt = 1;
+        while (malloc_cnt < list_max)
+        {
+            ret_p = (uint8_t *)dma_malloc(n);
+            if (!ret_p) break;
+            malloc_list[malloc_cnt++] = ret_p;
+
+            if (IS_DMA_FRIENDLY_SRAM_RANGE(ret_p, n))
+                break;
+            else
+                ret_p = NULL;
+        }
+
+        //Free all malloced memory except 'ret_p'
+        while (malloc_cnt > 0)
+        {
+            if (malloc_list[malloc_cnt - 1] != ret_p)
+                dma_free(malloc_list[malloc_cnt - 1]);
+            malloc_cnt--;
+        }
+        dma_free(malloc_list);
+
+    }
+
+    return (void *)ret_p;
+}
+
+void *calloc_dma_friendly_sram(rt_size_t count, rt_size_t size)
+{
+    void *p = malloc_dma_friendly_sram(count * size);
+    if (p) rt_memset(p, 0, count * size);
+    return p;
+}
+void free_dma_friendly_sram(void *p)
+{
+    dma_free(p);
+}
 /// @} drv_common
 /// @} bsp_driver
 /// @} file

@@ -159,7 +159,7 @@ __Vectors  DCD      __initial_sp                        ;     Top of Stack
                 DCD      SPI2_IRQHandler                        ;  75 Interrupt 75
                 DCD      I2C2_IRQHandler                        ;  76 Interrupt 76
                 DCD      EXTDMA_IRQHandler                      ;  77 Interrupt 77
-                DCD      ACPU2HCPU_IRQHandler                   ;  78 Interrupt 78
+                DCD      HCPU2ACPU_IRQHandler                   ;  78 Interrupt 78
                 DCD      SDMMC1_IRQHandler                      ;  79 Interrupt 79
                 DCD      SDMMC2_IRQHandler                      ;  80 Interrupt 80
                 DCD      NNACC_IRQHandler                       ;  81 Interrupt 81
@@ -327,7 +327,7 @@ $Handler_Name   PROC
                 Set_Default_Handler      SPI2_IRQHandler      
                 Set_Default_Handler      I2C2_IRQHandler      
                 Set_Default_Handler      EXTDMA_IRQHandler     
-                Set_Default_Handler      ACPU2HCPU_IRQHandler     
+                Set_Default_Handler      HCPU2ACPU_IRQHandler     
                 Set_Default_Handler      SDMMC1_IRQHandler      
                 Set_Default_Handler      SDMMC2_IRQHandler       
                 Set_Default_Handler      NNACC_IRQHandler      

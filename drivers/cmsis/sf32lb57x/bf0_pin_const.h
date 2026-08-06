@@ -1,0 +1,1554 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2025 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#ifndef _BF0_PIN_CONST_H
+#define _BF0_PIN_CONST_H
+#include "stdint.h"
+
+/** @addtogroup PINMUX
+ * @{
+ */
+
+/* pin_function2 enum value format:
+ * - bit0~7: function selection number, corresponding to value of register hpsys_pinmux.PAD_SA00.FSEL
+ * - bit8~15: pad number, e.g. PAD_SA00, its value is got form #pin_pad
+ *
+ */
+#define PIN_FUNC_FSEL_POS                (0U)
+#define PIN_FUNC_FSEL_MSK                (0xFFUL << PIN_FUNC_FSEL_POS)
+#define PIN_FUNC_PAD_POS                 (8U)
+#define PIN_FUNC_PAD_MSK                 (0xFFUL << PIN_FUNC_PAD_POS)
+#define PIN_FUNC_MAKE_ENUM_VALUE(pad, fsel)                 \
+    ((((PAD_##pad) << PIN_FUNC_PAD_POS) & PIN_FUNC_PAD_MSK) \
+     | (fsel & PIN_FUNC_FSEL_MSK))
+
+#define PIN_FUNC_GET_PAD(pin_func)    \
+    GET_REG_VAL(pin_func, PIN_FUNC_PAD_MSK, PIN_FUNC_PAD_POS)
+
+#define PIN_FUNC_GET_FSEL(pin_func)    \
+    GET_REG_VAL(pin_func, PIN_FUNC_FSEL_MSK, PIN_FUNC_FSEL_POS)
+
+
+
+/**
+ * @brief  Define pin_function2 enum item, the value combines both pad and function selection information
+ *
+ * @param pad pad name, e.g. SA00 and PA00, refer to #pin_pad, excluding the "PAD_" prefix
+ * @param name function name, e.g. MPI1_DM, refer to #pin_function
+ * @param fsel function selection number, refer to chip spec
+ * @return enum value for pin_function2
+ */
+#define PIN_FUNC_ENUM_DEF(pad, name, fsel)  \
+    PAD_##pad##_##name = PIN_FUNC_MAKE_ENUM_VALUE(pad, fsel)
+
+/**
+ * @brief  Define pin_function2 enum item, the value combines both pad and function selection information
+ *
+ * @param pad pad name, e.g. SA00 and PA00, refer to #pin_pad, excluding the "PAD_" prefix
+ * @param func function name, e.g. I2C1_SCL, refer to #pin_function
+ * @return enum value for pin_function2
+ */
+#define PIN_ARBITRARY_PINMUX_ENUM_DEF(pad, func)    \
+    PIN_FUNC_ENUM_DEF(pad, func, func)
+
+/** Arbitrary pin function list */
+#define PIN_ARBITRARY_FUNC_LIST \
+    I2C1_SCL, I2C1_SDA, I2C2_SCL, I2C2_SDA, I2C3_SCL, I2C3_SDA, I2C4_SCL, I2C4_SDA,                 \
+    SPI1_MATRIX_CLK, SPI1_MATRIX_CS, SPI1_MATRIX_DI, SPI1_MATRIX_DIO, SPI2_MATRIX_CLK,              \
+    SPI2_MATRIX_CS, SPI2_MATRIX_DI, SPI2_MATRIX_DIO,                                                \
+    USART1_TXD, USART1_RXD, USART1_RTS, USART1_CTS, USART2_TXD, USART2_RXD, USART2_RTS, USART2_CTS, \
+    USART3_TXD, USART3_RXD, USART3_RTS, USART3_CTS,                                                 \
+    CAN1_TXD, CAN1_RXD, CAN2_TXD, CAN2_RXD,                                                         \
+    BT_ACTIVE, BT_PRIORITY, BT_COLLISION, WLAN_ACTIVE, BT_TX, BT_RX,                                \
+    GPTIM1_CH1, GPTIM1_CH2, GPTIM1_CH3, GPTIM1_CH4, GPTIM1_ETR,                                     \
+    GPTIM2_CH1, GPTIM2_CH2, GPTIM2_CH3, GPTIM2_CH4, GPTIM2_ETR,                                     \
+    LPTIM1_IN, LPTIM1_OUT, LPTIM1_ETR, LPTIM2_IN, LPTIM2_OUT, LPTIM2_ETR,                           \
+    ATIM1_CH1, ATIM1_CH2, ATIM1_CH3, ATIM1_CH4, ATIM1_ETR, ATIM1_CH1N, ATIM1_CH2N, ATIM1_CH3N, ATIM1_BKIN, ATIM1_BKIN2, \
+    PWM1_CH1, PWM1_CH2, PWM1_CH3, PWM1_CH4, PWM1_CH5,                                               \
+    I2S1_MCLK, I2S1_SDO, I2S1_SDI, I2S1_BCK, I2S1_LRCK, I2S2_MCLK, I2S2_SDO, I2S2_SDI, I2S2_BCK, I2S2_LRCK, \
+    PTM1_CH0, PTM1_CH1, PTM1_CH2, PTM1_CH3, PTM1_CH4, PTM1_CH5, PTM1_CH6, PTM1_CH7, PTM1_CH8, PTM1_CH9,     \
+    PTM1_CH10, PTM1_CH11, PTM1_CH12, PTM1_CH13, PTM1_CH14, PTM1_CH15,                               \
+    PDM1_CLK, PDM1_DATA, PDM1_DATA2, PDM2_CLK, PDM2_DATA, PDM2_DATA2,                               \
+    DCMI_CLK, DCMI_HSYNC, DCMI_VSYNC, DCMI_DI0, DCMI_DI1, DCMI_DI2, DCMI_DI3, DCMI_DI4, DCMI_DI5, DCMI_DI6, DCMI_DI7, \
+    DCMI_DI8, DCMI_DI9, DCMI_DI10, DCMI_DI11, DCMI_DI12, DCMI_DI13, DCMI_DI14, DCMI_DI15,           \
+    LCDC1_JDI_SCS, LCDC1_JDI_SCLK, LCDC1_JDI_SO, LCDC1_JDI_DISP, LCDC1_JDI_EXTCOMIN,                \
+    LCDC1_JDI_VCK, LCDC1_JDI_XRST, LCDC1_JDI_HCK, LCDC1_JDI_HST, LCDC1_JDI_ENB, LCDC1_JDI_VST,      \
+    LCDC1_JDI_R1,  LCDC1_JDI_G1, LCDC1_JDI_B1, LCDC1_JDI_R2, LCDC1_JDI_G2, LCDC1_JDI_B2,            \
+    LCDC1_TCON_GDSP, LCDC1_TCON_GDCLK, LCDC1_TCON_SDCLK, LCDC1_TCON_SDSTL, LCDC1_TCON_SDOE,         \
+    LCDC1_TCON_SDAT0, LCDC1_TCON_SDAT1, LCDC1_TCON_SDAT2, LCDC1_TCON_SDAT3, LCDC1_TCON_SDAT4,       \
+    LCDC1_TCON_SDAT5, LCDC1_TCON_SDAT6, LCDC1_TCON_SDAT7, LCDC1_TCON_SDAT9, LCDC1_TCON_SDAT10,      \
+    LCDC1_TCON_SDAT11, LCDC1_TCON_SDAT12, LCDC1_TCON_SDAT13, LCDC1_TCON_SDAT14, LCDC1_TCON_SDAT15,  \
+    LCDC1_8080_TE, LCDC1_8080_RSTB, LCDC1_8080_CS, LCDC1_8080_WR, LCDC1_8080_RD, LCDC1_8080_DC,     \
+    LCDC1_8080_DIO0, LCDC1_8080_DIO1, LCDC1_8080_DIO2, LCDC1_8080_DIO3, LCDC1_8080_DIO4,            \
+    LCDC1_8080_DIO5, LCDC1_8080_DIO6, LCDC1_8080_DIO7, LCDC1_8080_DIO8, LCDC1_8080_DIO9,            \
+    LCDC1_8080_DIO10, LCDC1_8080_DIO11, LCDC1_8080_DIO12, LCDC1_8080_DIO13, LCDC1_8080_DIO14,       \
+    LCDC1_8080_DIO15,                                                                               \
+    LCDC1_DPI_CLK, LCDC1_DPI_HSYNC, LCDC1_DPI_VSYNC, LCDC1_DPI_DE, LCDC1_DPI_SD, LCDC1_DPI_CM,      \
+    LCDC1_DPI_R0, LCDC1_DPI_R1, LCDC1_DPI_R2, LCDC1_DPI_R3, LCDC1_DPI_R4, LCDC1_DPI_R5,             \
+    LCDC1_DPI_R6, LCDC1_DPI_R7, LCDC1_DPI_G0, LCDC1_DPI_G1, LCDC1_DPI_G2, LCDC1_DPI_G3,             \
+    LCDC1_DPI_G4, LCDC1_DPI_G5, LCDC1_DPI_G6, LCDC1_DPI_G7, LCDC1_DPI_B0, LCDC1_DPI_B1,             \
+    LCDC1_DPI_B2, LCDC1_DPI_B3, LCDC1_DPI_B4, LCDC1_DPI_B5, LCDC1_DPI_B6, LCDC1_DPI_B7,             \
+    LCDC1_MATRIX_SPI_TE, LCDC1_MATRIX_SPI_RSTB, LCDC1_MATRIX_SPI_CS, LCDC1_MATRIX_SPI_CLK,          \
+    LCDC1_MATRIX_SPI_DIO0, LCDC1_MATRIX_SPI_DIO1, LCDC1_MATRIX_SPI_DIO2, LCDC1_MATRIX_SPI_DIO3
+
+/** pin function */
+typedef enum
+{
+    PIN_FUNC_UNDEF,
+
+    /* Arbitrary function, enum value must be same as chip spec */
+    PIN_ARBITRARY_FUNC_START = 16,
+    /** I2C1_SCL */
+    I2C1_SCL          = 16,
+    /** I2C1_SDA */
+    I2C1_SDA,
+    /** I2C2_SCL */
+    I2C2_SCL,
+    /** I2C2_SDA */
+    I2C2_SDA,
+    /** I2C3_SCL */
+    I2C3_SCL,
+    /** I2C3_SDA */
+    I2C3_SDA,
+    /** I2C4_SCL */
+    I2C4_SCL,
+    /** I2C4_SDA */
+    I2C4_SDA,
+
+    SPI1_MATRIX_CLK           = 24,
+    SPI1_MATRIX_CS,
+    SPI1_MATRIX_DI,
+    SPI1_MATRIX_DIO,
+    SPI2_MATRIX_CLK,
+    SPI2_MATRIX_CS,
+    SPI2_MATRIX_DI,
+    SPI2_MATRIX_DIO,
+
+    /** USART1_TXD */
+    USART1_TXD         = 32,
+    /** USART1_RXD */
+    USART1_RXD,
+    /** USART1_RTS */
+    USART1_RTS,
+    /** USART1_CTS */
+    USART1_CTS,
+    /** USART2_TXD */
+    USART2_TXD,
+    /** USART2_RXD */
+    USART2_RXD,
+    /** USART2_RTS */
+    USART2_RTS,
+    /** USART2_CTS */
+    USART2_CTS,
+    /** USART3_TXD */
+    USART3_TXD,
+    /** USART3_RXD */
+    USART3_RXD,
+    /** USART3_RTS */
+    USART3_RTS,
+    /** USART3_CTS */
+    USART3_CTS,
+
+    /** CAN1_TXD */
+    CAN1_TXD           = 44,
+    /** CAN1_RXD */
+    CAN1_RXD,
+    /** CAN2_TXD */
+    CAN2_TXD,
+    /** CAN2_RXD */
+    CAN2_RXD,
+
+    /** BT_ACTIVE */
+    BT_ACTIVE          = 48,
+    /** BT_PRIORITY */
+    BT_PRIORITY,
+    /** BT_COLLISION */
+    BT_COLLISION,
+    /** WLAN_ACTIVE */
+    WLAN_ACTIVE,
+    BT_TX,
+    BT_RX,
+
+    /** GPTIM1_CH1 */
+    GPTIM1_CH1         = 54,
+    /** GPTIM1_CH2 */
+    GPTIM1_CH2,
+    /** GPTIM1_CH3 */
+    GPTIM1_CH3,
+    /** GPTIM1_CH4 */
+    GPTIM1_CH4,
+    /** GPTIM1_ETR */
+    GPTIM1_ETR,
+    /** GPTIM2_CH1 */
+    GPTIM2_CH1,
+    /** GPTIM2_CH2 */
+    GPTIM2_CH2,
+    /** GPTIM2_CH3 */
+    GPTIM2_CH3,
+    /** GPTIM2_CH4 */
+    GPTIM2_CH4,
+    /** GPTIM2_ETR */
+    GPTIM2_ETR,
+
+    /** LPTIM1_IN */
+    LPTIM1_IN         = 64,
+    /** LPTIM1_OUT */
+    LPTIM1_OUT,
+    /** LPTIM1_ETR */
+    LPTIM1_ETR,
+    /** LPTIM2_IN */
+    LPTIM2_IN,
+    /** LPTIM2_OUT */
+    LPTIM2_OUT,
+    /** LPTIM2_ETR */
+    LPTIM2_ETR,
+
+    /** ATIM1_CH1 */
+    ATIM1_CH1         = 70,
+    /** ATIM1_CH2 */
+    ATIM1_CH2,
+    /** ATIM1_CH3 */
+    ATIM1_CH3,
+    /** ATIM1_CH4 */
+    ATIM1_CH4,
+    /** ATIM1_ETR */
+    ATIM1_ETR,
+    /** ATIM1_CH1N */
+    ATIM1_CH1N,
+    /** ATIM1_CH2N */
+    ATIM1_CH2N,
+    /** ATIM1_CH3N */
+    ATIM1_CH3N,
+    /** ATIM1_BKIN */
+    ATIM1_BKIN,
+    /** ATIM1_BKIN2 */
+    ATIM1_BKIN2,
+    /** ATIM2_CH1 */
+    ATIM2_CH1,
+    /** ATIM2_CH2 */
+    ATIM2_CH2,
+    /** ATIM2_CH3 */
+    ATIM2_CH3,
+    /** ATIM2_CH4 */
+    ATIM2_CH4,
+    /** ATIM2_ETR */
+    ATIM2_ETR,
+    /** ATIM2_CH1N */
+    ATIM2_CH1N,
+    /** ATIM2_CH2N */
+    ATIM2_CH2N,
+    /** ATIM2_CH3N */
+    ATIM2_CH3N,
+    /** ATIM2_BKIN */
+    ATIM2_BKIN,
+    /** ATIM2_BKIN2 */
+    ATIM2_BKIN2,
+
+    PWM1_CH1         = 90,
+    PWM1_CH2,
+    PWM1_CH3,
+    PWM1_CH4,
+    PWM1_CH5,
+
+    /** I2S1_MCLK */
+    I2S1_MCLK        = 95,
+    /** I2S1_SDO */
+    I2S1_SDO,
+    /** I2S1_SDI */
+    I2S1_SDI,
+    /** I2S1_BCK */
+    I2S1_BCK,
+    /** I2S1_LRCK */
+    I2S1_LRCK,
+    /** I2S2_MCLK */
+    I2S2_MCLK,
+    /** I2S2_SDO */
+    I2S2_SDO,
+    /** I2S2_SDI */
+    I2S2_SDI,
+    /** I2S2_BCK */
+    I2S2_BCK,
+    /** I2S2_LRCK */
+    I2S2_LRCK,
+
+    PTM1_CH0         = 105,
+    PTM1_CH1,
+    PTM1_CH2,
+    PTM1_CH3,
+    PTM1_CH4,
+    PTM1_CH5,
+    PTM1_CH6,
+    PTM1_CH7,
+    PTM1_CH8,
+    PTM1_CH9,
+    PTM1_CH10,
+    PTM1_CH11,
+    PTM1_CH12,
+    PTM1_CH13,
+    PTM1_CH14,
+    PTM1_CH15,
+
+    LCDC_IF0     = 121,
+    LCDC_IF1,
+    LCDC_IF2,
+    LCDC_IF3,
+    LCDC_IF4,
+    LCDC_IF5,
+    LCDC_IF6,
+    LCDC_IF7,
+    LCDC_IF8,
+    LCDC_IF9,
+    LCDC_IF10,
+    LCDC_IF11,
+    LCDC_IF12,
+    LCDC_IF13,
+    LCDC_IF14,
+    LCDC_IF15,
+    LCDC_IF16,
+    LCDC_IF17,
+    LCDC_IF18,
+    LCDC_IF19,
+    LCDC_IF20,
+    LCDC_IF21,
+    LCDC_IF22,
+    LCDC_IF23,
+    LCDC_IF24,
+    LCDC_IF25,
+    LCDC_IF26,
+    LCDC_IF27,
+    LCDC_IF28,
+    LCDC_IF29,
+
+    LCDC1_JDI_SCS     = 131,
+    LCDC1_JDI_SCLK,
+    LCDC1_JDI_SO,
+    LCDC1_JDI_DISP,
+    LCDC1_JDI_EXTCOMIN,
+
+    LCDC1_JDI_VCK     = 139,
+    LCDC1_JDI_XRST,
+    LCDC1_JDI_HCK,
+    LCDC1_JDI_HST,
+    LCDC1_JDI_ENB,
+    LCDC1_JDI_VST,
+    LCDC1_JDI_R1,
+    LCDC1_JDI_G1,
+    LCDC1_JDI_B1,
+    LCDC1_JDI_R2,
+    LCDC1_JDI_G2,
+    LCDC1_JDI_B2,
+
+    LCDC1_TCON_GDSP     = 121,
+    LCDC1_TCON_GDCLK,
+    LCDC1_TCON_SDCLK,
+    LCDC1_TCON_SDSTL,
+    LCDC1_TCON_SDLE,
+    LCDC1_TCON_SDOE,
+    LCDC1_TCON_SDAT0,
+    LCDC1_TCON_SDAT1,
+    LCDC1_TCON_SDAT2,
+    LCDC1_TCON_SDAT3,
+    LCDC1_TCON_SDAT4,
+    LCDC1_TCON_SDAT5,
+    LCDC1_TCON_SDAT6,
+    LCDC1_TCON_SDAT7,
+    LCDC1_TCON_SDAT8,
+    LCDC1_TCON_SDAT9,
+    LCDC1_TCON_SDAT10,
+    LCDC1_TCON_SDAT11,
+    LCDC1_TCON_SDAT12,
+    LCDC1_TCON_SDAT13,
+    LCDC1_TCON_SDAT14,
+    LCDC1_TCON_SDAT15,
+
+    LCDC1_8080_TE      = 121,
+    LCDC1_8080_RSTB,
+    LCDC1_8080_CS,
+    LCDC1_8080_WR,
+    LCDC1_8080_RD,
+    LCDC1_8080_DC,
+    LCDC1_8080_DIO0,
+    LCDC1_8080_DIO1,
+    LCDC1_8080_DIO2,
+    LCDC1_8080_DIO3,
+    LCDC1_8080_DIO4,
+    LCDC1_8080_DIO5,
+    LCDC1_8080_DIO6,
+    LCDC1_8080_DIO7,
+    LCDC1_8080_DIO8,
+    LCDC1_8080_DIO9,
+    LCDC1_8080_DIO10,
+    LCDC1_8080_DIO11,
+    LCDC1_8080_DIO12,
+    LCDC1_8080_DIO13,
+    LCDC1_8080_DIO14,
+    LCDC1_8080_DIO15,
+
+    LCDC1_DPI_CLK      = 121,
+    LCDC1_DPI_HSYNC,
+    LCDC1_DPI_VSYNC,
+    LCDC1_DPI_DE,
+    LCDC1_DPI_SD,
+    LCDC1_DPI_CM,
+    LCDC1_DPI_R0,
+    LCDC1_DPI_R1,
+    LCDC1_DPI_R2,
+    LCDC1_DPI_R3,
+    LCDC1_DPI_R4,
+    LCDC1_DPI_R5,
+    LCDC1_DPI_R6,
+    LCDC1_DPI_R7,
+    LCDC1_DPI_G0,
+    LCDC1_DPI_G1,
+    LCDC1_DPI_G2,
+    LCDC1_DPI_G3,
+    LCDC1_DPI_G4,
+    LCDC1_DPI_G5,
+    LCDC1_DPI_G6,
+    LCDC1_DPI_G7,
+    LCDC1_DPI_B0,
+    LCDC1_DPI_B1,
+    LCDC1_DPI_B2,
+    LCDC1_DPI_B3,
+    LCDC1_DPI_B4,
+    LCDC1_DPI_B5,
+    LCDC1_DPI_B6,
+    LCDC1_DPI_B7,
+
+    LCDC1_MATRIX_SPI_TE = 121,
+    LCDC1_MATRIX_SPI_RSTB,
+    LCDC1_MATRIX_SPI_CS,
+    LCDC1_MATRIX_SPI_CLK,
+    LCDC1_MATRIX_SPI_DIO0 = 127,
+    LCDC1_MATRIX_SPI_DIO1,
+    LCDC1_MATRIX_SPI_DIO2,
+    LCDC1_MATRIX_SPI_DIO3,
+
+
+    /** PDM1_CLK */
+    PDM1_CLK           = 151,
+    /** PDM2_CLK */
+    PDM2_CLK,
+    /** PDM1_DATA */
+    PDM1_DATA,
+    /** PDM1_DATA2 */
+    PDM1_DATA2,
+    /** PDM2_DATA */
+    PDM2_DATA,
+    /** PDM2_DATA2 */
+    PDM2_DATA2,
+
+    DCMI_CLK         = 157,
+    DCMI_HSYNC,
+    DCMI_VSYNC,
+    DCMI_DI0,
+    DCMI_DI1,
+    DCMI_DI2,
+    DCMI_DI3,
+    DCMI_DI4,
+    DCMI_DI5,
+    DCMI_DI6,
+    DCMI_DI7,
+    DCMI_DI8,
+    DCMI_DI9,
+    DCMI_DI10,
+    DCMI_DI11,
+    DCMI_DI12,
+    DCMI_DI13,
+    DCMI_DI14,
+    DCMI_DI15,
+    PIN_ARBITRARY_FUNC_END = 255,
+
+    /* Dedicated pin function, enum value starts from 256 */
+    /** MPI1_FLASH_CLK */
+    MPI1_FLASH_CLK,
+    /** MPI1_FLASH_CS */
+    MPI1_FLASH_CS,
+    /** MPI1_FLASH_DIO0 */
+    MPI1_FLASH_DIO0,
+    /** MPI1_FLASH_DIO1 */
+    MPI1_FLASH_DIO1,
+    /** MPI1_FLASH_DIO2 */
+    MPI1_FLASH_DIO2,
+    /** MPI1_FLASH_DIO3 */
+    MPI1_FLASH_DIO3,
+    /** MPI1_PSRAM_CLK */
+    MPI1_PSRAM_CLK,
+    /** MPI1_PSRAM_CLKB */
+    MPI1_PSRAM_CLKB,
+    /** MPI1_PSRAM_CS */
+    MPI1_PSRAM_CS,
+    /** MPI1_PSRAM_DM */
+    MPI1_PSRAM_DM,
+    /** MPI1_PSRAM_DQS */
+    MPI1_PSRAM_DQS,
+    /** MPI1_PSRAM_DQSDM */
+    MPI1_PSRAM_DQSDM,
+    /** MPI1_PSRAM_DQSDM0 */
+    MPI1_PSRAM_DQSDM0,
+    /** MPI1_PSRAM_DQSDM1 */
+    MPI1_PSRAM_DQSDM1,
+    /** MPI1_PSRAM_DIO0 */
+    MPI1_PSRAM_DIO0,
+    /** MPI1_PSRAM_DIO1 */
+    MPI1_PSRAM_DIO1,
+    /** MPI1_PSRAM_DIO2 */
+    MPI1_PSRAM_DIO2,
+    /** MPI1_PSRAM_DIO3 */
+    MPI1_PSRAM_DIO3,
+    /** MPI1_PSRAM_DIO4 */
+    MPI1_PSRAM_DIO4,
+    /** MPI1_PSRAM_DIO5 */
+    MPI1_PSRAM_DIO5,
+    /** MPI1_PSRAM_DIO6 */
+    MPI1_PSRAM_DIO6,
+    /** MPI1_PSRAM_DIO7 */
+    MPI1_PSRAM_DIO7,
+    /** MPI2_CLK */
+    MPI2_CLK,
+    /** MPI2_CLKB */
+    MPI2_CLKB,
+    /** MPI2_CS */
+    MPI2_CS,
+    /** MPI2_DM */
+    MPI2_DM,
+    /** MPI2_DQS */
+    MPI2_DQS,
+    /** MPI2_DQSDM */
+    MPI2_DQSDM,
+    /** MPI2_DQSDM0 */
+    MPI2_DQSDM0,
+    /** MPI2_DQSDM1 */
+    MPI2_DQSDM1,
+    /** MPI2_DIO0 */
+    MPI2_DIO0,
+    /** MPI2_DIO1 */
+    MPI2_DIO1,
+    /** MPI2_DIO2 */
+    MPI2_DIO2,
+    /** MPI2_DIO3 */
+    MPI2_DIO3,
+    /** MPI2_DIO4 */
+    MPI2_DIO4,
+    /** MPI2_DIO5 */
+    MPI2_DIO5,
+    /** MPI2_DIO6 */
+    MPI2_DIO6,
+    /** MPI2_DIO7 */
+    MPI2_DIO7,
+    /** MPI3_CLK */
+    MPI3_CLK,
+    /** MPI3_CS */
+    MPI3_CS,
+    /** MPI3_CS2 */
+    MPI3_CS2,
+    /** MPI3_DQS */
+    MPI3_DQS,
+    /** MPI3_DIO0 */
+    MPI3_DIO0,
+    /** MPI3_DIO1 */
+    MPI3_DIO1,
+    /** MPI3_DIO2 */
+    MPI3_DIO2,
+    /** MPI3_DIO3 */
+    MPI3_DIO3,
+    /** GPIO_A0 */
+    GPIO_A0,
+    /** GPIO_A1 */
+    GPIO_A1,
+    /** GPIO_A2 */
+    GPIO_A2,
+    /** GPIO_A3 */
+    GPIO_A3,
+    /** GPIO_A4 */
+    GPIO_A4,
+    /** GPIO_A5 */
+    GPIO_A5,
+    /** GPIO_A6 */
+    GPIO_A6,
+    /** GPIO_A7 */
+    GPIO_A7,
+    /** GPIO_A8 */
+    GPIO_A8,
+    /** GPIO_A9 */
+    GPIO_A9,
+    /** GPIO_A10 */
+    GPIO_A10,
+    /** GPIO_A11 */
+    GPIO_A11,
+    /** GPIO_A12 */
+    GPIO_A12,
+    /** GPIO_A13 */
+    GPIO_A13,
+    /** GPIO_A14 */
+    GPIO_A14,
+    /** GPIO_A15 */
+    GPIO_A15,
+    /** GPIO_A16 */
+    GPIO_A16,
+    /** GPIO_A17 */
+    GPIO_A17,
+    /** GPIO_A18 */
+    GPIO_A18,
+    /** GPIO_A19 */
+    GPIO_A19,
+    /** GPIO_A20 */
+    GPIO_A20,
+    /** GPIO_A21 */
+    GPIO_A21,
+    /** GPIO_A22 */
+    GPIO_A22,
+    /** GPIO_A23 */
+    GPIO_A23,
+    /** GPIO_A24 */
+    GPIO_A24,
+    /** GPIO_A25 */
+    GPIO_A25,
+    /** GPIO_A26 */
+    GPIO_A26,
+    /** GPIO_A27 */
+    GPIO_A27,
+    /** GPIO_A28 */
+    GPIO_A28,
+    /** GPIO_A29 */
+    GPIO_A29,
+    /** GPIO_A30 */
+    GPIO_A30,
+    /** GPIO_A31 */
+    GPIO_A31,
+    /** GPIO_A32 */
+    GPIO_A32,
+    /** GPIO_A33 */
+    GPIO_A33,
+    /** GPIO_A34 */
+    GPIO_A34,
+    /** GPIO_A35 */
+    GPIO_A35,
+    /** GPIO_A36 */
+    GPIO_A36,
+    /** GPIO_A37 */
+    GPIO_A37,
+    /** GPIO_A38 */
+    GPIO_A38,
+    /** GPIO_A39 */
+    GPIO_A39,
+    /** GPIO_A40 */
+    GPIO_A40,
+    /** GPIO_A41 */
+    GPIO_A41,
+    /** GPIO_A42 */
+    GPIO_A42,
+    /** GPIO_A43 */
+    GPIO_A43,
+    /** GPIO_A44 */
+    GPIO_A44,
+    /** GPIO_A45 */
+    GPIO_A45,
+    /** GPIO_A46 */
+    GPIO_A46,
+    /** GPIO_A47 */
+    GPIO_A47,
+    /** GPIO_A48 */
+    GPIO_A48,
+    /** GPIO_A49 */
+    GPIO_A49,
+    /** GPIO_A50 */
+    GPIO_A50,
+    /** GPIO_A51 */
+    GPIO_A51,
+    /** GPIO_A52 */
+    GPIO_A52,
+    /** GPIO_A53 */
+    GPIO_A53,
+    /** GPIO_A54 */
+    GPIO_A54,
+    /** GPIO_A55 */
+    GPIO_A55,
+    /** GPIO_A56 */
+    GPIO_A56,
+    /** GPIO_A57 */
+    GPIO_A57,
+
+    /** LCDC1_SPI_CS */
+    LCDC1_SPI_CS,
+    /** LCDC1_SPI_CLK */
+    LCDC1_SPI_CLK,
+    /** LCDC1_SPI_DIO0 */
+    LCDC1_SPI_DIO0,
+    /** LCDC1_SPI_DIO1 */
+    LCDC1_SPI_DIO1,
+    /** LCDC1_SPI_DIO2 */
+    LCDC1_SPI_DIO2,
+    /** LCDC1_SPI_DIO3 */
+    LCDC1_SPI_DIO3,
+    /** LCDC1_SPI_RSTB */
+    LCDC1_SPI_RSTB,
+    /** LCDC1_SPI_TE */
+    LCDC1_SPI_TE,
+
+    /** SPI1_CLK */
+    SPI1_CLK,
+    /** SPI1_CS */
+    SPI1_CS,
+    /** SPI1_DI */
+    SPI1_DI,
+    /** SPI1_DIO */
+    SPI1_DIO,
+    /** SPI2_CLK */
+    SPI2_CLK,
+    /** SPI2_CS */
+    SPI2_CS,
+    /** SPI2_DI */
+    SPI2_DI,
+    /** SPI2_DIO */
+    SPI2_DIO,
+
+    /** SD1_CLK */
+    SD1_CLK,
+    /** SD1_CLKIN */
+    SD1_CLKIN,
+    /** SD1_CMD */
+    SD1_CMD,
+    /** SD1_DIO0 */
+    SD1_DIO0,
+    /** SD1_DIO1 */
+    SD1_DIO1,
+    /** SD1_DIO2 */
+    SD1_DIO2,
+    /** SD1_DIO3 */
+    SD1_DIO3,
+    /** SD1_DIO4 */
+    SD1_DIO4,
+    /** SD1_DIO5 */
+    SD1_DIO5,
+    /** SD1_DIO6 */
+    SD1_DIO6,
+    /** SD1_DIO7 */
+    SD1_DIO7,
+    /** SD2_CLK */
+    SD2_CLK,
+    /** SD2_CLKIN */
+    SD2_CLKIN,
+    /** SD2_CMD */
+    SD2_CMD,
+    /** SD2_DIO0 */
+    SD2_DIO0,
+    /** SD2_DIO1 */
+    SD2_DIO1,
+    /** SD2_DIO2 */
+    SD2_DIO2,
+    /** SD2_DIO3 */
+    SD2_DIO3,
+    /** AUD_CLK_EXT */
+    AUD_CLK_EXT,
+    /** SWCLK */
+    SWCLK,
+    /** SWDIO */
+    SWDIO,
+    /** SWO */
+    SWO,
+    /** SCAN_CLK */
+    SCAN_CLK,
+    /** SCAN_RSTB */
+    SCAN_RSTB,
+    /** SCAN_EN */
+    SCAN_EN,
+    /** EDT_CLK */
+    EDT_CLK,
+    /** EDT_UPDATE */
+    EDT_UPDATE,
+    /** EDT_BYPASS */
+    EDT_BYPASS,
+    /** EDT_CHANNEL_IN0 */
+    EDT_CHANNEL_IN0,
+    /** EDT_CHANNEL_IN1 */
+    EDT_CHANNEL_IN1,
+    /** EDT_CHANNEL_IN2 */
+    EDT_CHANNEL_IN2,
+    /** EDT_CHANNEL_IN3 */
+    EDT_CHANNEL_IN3,
+    /** EDT_CHANNEL_IN4 */
+    EDT_CHANNEL_IN4,
+    /** EDT_CHANNEL_IN5 */
+    EDT_CHANNEL_IN5,
+    /** EDT_CHANNEL_IN6 */
+    EDT_CHANNEL_IN6,
+    /** EDT_CHANNEL_IN7 */
+    EDT_CHANNEL_IN7,
+    /** EDT_CHANNEL_OUT0 */
+    EDT_CHANNEL_OUT0,
+    /** EDT_CHANNEL_OUT1 */
+    EDT_CHANNEL_OUT1,
+    /** EDT_CHANNEL_OUT2 */
+    EDT_CHANNEL_OUT2,
+    /** EDT_CHANNEL_OUT3 */
+    EDT_CHANNEL_OUT3,
+    /** EDT_CHANNEL_OUT4 */
+    EDT_CHANNEL_OUT4,
+    /** EDT_CHANNEL_OUT5 */
+    EDT_CHANNEL_OUT5,
+    /** EDT_CHANNEL_OUT6 */
+    EDT_CHANNEL_OUT6,
+    /** EDT_CHANNEL_OUT7 */
+    EDT_CHANNEL_OUT7,
+    /** BIST_CLK */
+    BIST_CLK,
+    /** BIST_RST */
+    BIST_RST,
+    /** BIST_FAIL */
+    BIST_FAIL,
+    /** BIST_DONE */
+    BIST_DONE,
+    /** DBG_DO0 */
+    DBG_DO0,
+    /** DBG_DO1 */
+    DBG_DO1,
+    /** DBG_DO2 */
+    DBG_DO2,
+    /** DBG_DO3 */
+    DBG_DO3,
+    /** DBG_DO4 */
+    DBG_DO4,
+    /** DBG_DO5 */
+    DBG_DO5,
+    /** DBG_DO6 */
+    DBG_DO6,
+    /** DBG_DO7 */
+    DBG_DO7,
+    /** DBG_DO8 */
+    DBG_DO8,
+    /** DBG_DO9 */
+    DBG_DO9,
+    /** DBG_DO10 */
+    DBG_DO10,
+    /** DBG_DO11 */
+    DBG_DO11,
+    /** DBG_DO12 */
+    DBG_DO12,
+    /** DBG_DO13 */
+    DBG_DO13,
+    /** DBG_DO14 */
+    DBG_DO14,
+    /** DBG_DO15 */
+    DBG_DO15,
+    /** DBG_CLK */
+    DBG_CLK,
+    /** EXT_S_TX_EN */
+    EXT_S_TX_EN,
+    /** EXT_S_RX_EN */
+    EXT_S_RX_EN,
+    /** EXT_S_LE_2M */
+    EXT_S_LE_2M,
+    /** EXT_S_LE_MODE */
+    EXT_S_LE_MODE,
+    /** EXT_S_TX_BIT0 */
+    EXT_S_TX_BIT0,
+    /** EXT_S_TX_BIT1 */
+    EXT_S_TX_BIT1,
+    /** EXT_S_TX_BIT2 */
+    EXT_S_TX_BIT2,
+    /** EXT_S_TX_FLAG */
+    EXT_S_TX_FLAG,
+    /** EXT_S_EDR2_MODE */
+    EXT_S_EDR2_MODE,
+    /** EXT_S_EDR3_MODE */
+    EXT_S_EDR3_MODE,
+    /** EXT_S_BR_LAST_BIT */
+    EXT_S_BR_LAST_BIT,
+    /** EXT_S_EDR_LAST_BIT */
+    EXT_S_EDR_LAST_BIT,
+    /** EXT_S_EDR_BIT_FLAG */
+    EXT_S_EDR_BIT_FLAG,
+    /** EXT_S_RAMP_UP_IND */
+    EXT_S_RAMP_UP_IND,
+    /** EXT_S_EDR_EN */
+    EXT_S_EDR_EN,
+    /** EXT_S_SYNC_CLK */
+    EXT_S_SYNC_CLK,
+    /** EXT_S_SYNC_DAT */
+    EXT_S_SYNC_DAT,
+    /** EXT_S_SCLK */
+    EXT_S_SCLK,
+    /** EXT_S_SDO */
+    EXT_S_SDO,
+    /** EXT_S_RX_BIT0 */
+    EXT_S_RX_BIT0,
+    /** EXT_S_RX_BIT1 */
+    EXT_S_RX_BIT1,
+    /** EXT_S_RX_BIT2 */
+    EXT_S_RX_BIT2,
+    /** EXT_S_RX_FLAG */
+    EXT_S_RX_FLAG,
+    /** PBR_GPO */
+    PBR_GPO,
+    /** PBR_CLK_LP */
+    PBR_CLK_RTC,
+    /** PBR_LPTIM1_OUT */
+    PBR_LPTIM1_OUT,
+    /** PBR_LPTIM1_INV_OUT */
+    PBR_LPTIM1_INV_OUT,
+    /** PBR_LPTIM2_OUT */
+    PBR_LPTIM2_OUT,
+    /** PBR_LPTIM2_INV_OUT */
+    PBR_LPTIM2_INV_OUT,
+    PIN_FUNC_MAX,
+} pin_function;
+
+/** pin pad of both HPSYS and LPSYS */
+typedef enum
+{
+    PIN_PAD_UNDEF_H,
+    /** PAD_SA00 */
+    PAD_SA00,
+    /** PAD_SA01 */
+    PAD_SA01,
+    /** PAD_SA02 */
+    PAD_SA02,
+    /** PAD_SA03 */
+    PAD_SA03,
+    /** PAD_SA04 */
+    PAD_SA04,
+    /** PAD_SA05 */
+    PAD_SA05,
+    /** PAD_SA06 */
+    PAD_SA06,
+    /** PAD_SA07 */
+    PAD_SA07,
+    /** PAD_SA08 */
+    PAD_SA08,
+    /** PAD_SA09 */
+    PAD_SA09,
+    /** PAD_SA10 */
+    PAD_SA10,
+    /** PAD_SA11 */
+    PAD_SA11,
+    /** PAD_SA12 */
+    PAD_SA12,
+    /** PAD_SB00 */
+    PAD_SB00,
+    /** PAD_SB01 */
+    PAD_SB01,
+    /** PAD_SB02 */
+    PAD_SB02,
+    /** PAD_SB03 */
+    PAD_SB03,
+    /** PAD_SB04 */
+    PAD_SB04,
+    /** PAD_SB05 */
+    PAD_SB05,
+    /** PAD_SB06 */
+    PAD_SB06,
+    /** PAD_SB07 */
+    PAD_SB07,
+    /** PAD_SB08 */
+    PAD_SB08,
+    /** PAD_SB09 */
+    PAD_SB09,
+    /** PAD_SB10 */
+    PAD_SB10,
+    /** PAD_SB11 */
+    PAD_SB11,
+    /** PAD_SB12 */
+    PAD_SB12,
+    /** PAD_PA00 */
+    PAD_PA00,
+    /** PAD_PA01 */
+    PAD_PA01,
+    /** PAD_PA02 */
+    PAD_PA02,
+    /** PAD_PA03 */
+    PAD_PA03,
+    /** PAD_PA04 */
+    PAD_PA04,
+    /** PAD_PA05 */
+    PAD_PA05,
+    /** PAD_PA06 */
+    PAD_PA06,
+    /** PAD_PA07 */
+    PAD_PA07,
+    /** PAD_PA08 */
+    PAD_PA08,
+    /** PAD_PA09 */
+    PAD_PA09,
+    /** PAD_PA10 */
+    PAD_PA10,
+    /** PAD_PA11 */
+    PAD_PA11,
+    /** PAD_PA12 */
+    PAD_PA12,
+    /** PAD_PA13 */
+    PAD_PA13,
+    /** PAD_PA14 */
+    PAD_PA14,
+    /** PAD_PA15 */
+    PAD_PA15,
+    /** PAD_PA16 */
+    PAD_PA16,
+    /** PAD_PA17 */
+    PAD_PA17,
+    /** PAD_PA18 */
+    PAD_PA18,
+    /** PAD_PA19 */
+    PAD_PA19,
+    /** PAD_PA20 */
+    PAD_PA20,
+    /** PAD_PA21 */
+    PAD_PA21,
+    /** PAD_PA22 */
+    PAD_PA22,
+    /** PAD_PA23 */
+    PAD_PA23,
+    /** PAD_PA24 */
+    PAD_PA24,
+    /** PAD_PA25 */
+    PAD_PA25,
+    /** PAD_PA26 */
+    PAD_PA26,
+    /** PAD_PA27 */
+    PAD_PA27,
+    /** PAD_PA28 */
+    PAD_PA28,
+    /** PAD_PA29 */
+    PAD_PA29,
+    /** PAD_PA30 */
+    PAD_PA30,
+    /** PAD_PA31 */
+    PAD_PA31,
+    /** PAD_PA32 */
+    PAD_PA32,
+    /** PAD_PA33 */
+    PAD_PA33,
+    /** PAD_PA34 */
+    PAD_PA34,
+    /** PAD_PA35 */
+    PAD_PA35,
+    /** PAD_PA36 */
+    PAD_PA36,
+    /** PAD_PA37 */
+    PAD_PA37,
+    /** PAD_PA38 */
+    PAD_PA38,
+    /** PAD_PA39 */
+    PAD_PA39,
+    /** PAD_PA40 */
+    PAD_PA40,
+    /** PAD_PA41 */
+    PAD_PA41,
+    /** PAD_PA42 */
+    PAD_PA42,
+    /** PAD_PA43 */
+    PAD_PA43,
+    /** PAD_PA44 */
+    PAD_PA44,
+    /** PAD_PA45 */
+    PAD_PA45,
+    /** PAD_PA46 */
+    PAD_PA46,
+    /** PAD_PA47 */
+    PAD_PA47,
+    /** PAD_PA48 */
+    PAD_PA48,
+    /** PAD_PA49 */
+    PAD_PA49,
+    /** PAD_PA50 */
+    PAD_PA50,
+    /** PAD_PA51 */
+    PAD_PA51,
+    /** PAD_PA52 */
+    PAD_PA52,
+    /** PAD_PA53 */
+    PAD_PA53,
+    /** PAD_PA54 */
+    PAD_PA54,
+    /** PAD_PA55 */
+    PAD_PA55,
+    /** PAD_PA56 */
+    PAD_PA56,
+    /** PAD_PA57 */
+    PAD_PA57,
+    PIN_PAD_MAX_H,
+
+    PIN_PAD_UNDEF_L,
+    PIN_PAD_MAX_L,
+} pin_pad;
+#define PIN_FUNC_SEL_NUM  (16)
+
+/** pin function enum type which combines pin pad and function selection information */
+typedef enum _pin_function2
+{
+    /****************************************************************************
+     *  Dedicated pin function part
+     *  Function could be assigned to specific pad
+     ****************************************************************************/
+
+    /* PAD_SA00 */
+    PIN_FUNC_ENUM_DEF(SA00, MPI1_PSRAM_DM, 1),
+    PIN_FUNC_ENUM_DEF(SA00, MPI1_FLASH_CS, 4),
+
+    /* PAD_SA01 */
+    PIN_FUNC_ENUM_DEF(SA01, MPI1_PSRAM_DIO0, 1),
+    PIN_FUNC_ENUM_DEF(SA01, MPI1_FLASH_DIO2, 4),
+
+    /* PAD_SA02 */
+    PIN_FUNC_ENUM_DEF(SA02, MPI1_PSRAM_DIO1, 1),
+    PIN_FUNC_ENUM_DEF(SA02, MPI1_FLASH_DIO1, 4),
+
+    /* PAD_SA03 */
+    PIN_FUNC_ENUM_DEF(SA03, MPI1_PSRAM_DIO2, 1),
+    PIN_FUNC_ENUM_DEF(SA03, MPI1_FLASH_CS, 4),
+
+    /* PAD_SA04 */
+    PIN_FUNC_ENUM_DEF(SA04, MPI1_PSRAM_DIO3, 1),
+    PIN_FUNC_ENUM_DEF(SA04, MPI1_FLASH_DIO2, 4),
+
+    /* PAD_SA05 */
+    PIN_FUNC_ENUM_DEF(SA05, MPI1_PSRAM_CS, 1),
+    PIN_FUNC_ENUM_DEF(SA05, MPI1_PSRAM_DIO4, 3),
+
+    /* PAD_SA06 */
+    PIN_FUNC_ENUM_DEF(SA06, MPI1_PSRAM_CLKB, 1),
+    PIN_FUNC_ENUM_DEF(SA06, MPI1_PSRAM_DIO5, 3),
+
+    /* PAD_SA07 */
+    PIN_FUNC_ENUM_DEF(SA07, MPI1_PSRAM_CLK, 1),
+    PIN_FUNC_ENUM_DEF(SA07, MPI1_PSRAM_DIO6, 3),
+
+    /* PAD_SA08 */
+    PIN_FUNC_ENUM_DEF(SA08, MPI1_PSRAM_DIO4, 1),
+    PIN_FUNC_ENUM_DEF(SA08, MPI1_PSRAM_DIO7, 3),
+
+    /* PAD_SA09 */
+    PIN_FUNC_ENUM_DEF(SA09, MPI1_PSRAM_DIO5, 1),
+    PIN_FUNC_ENUM_DEF(SA09, MPI1_PSRAM_DQSDM, 3),
+    PIN_FUNC_ENUM_DEF(SA09, MPI1_FLASH_DIO3, 4),
+
+    /* PAD_SA10 */
+    PIN_FUNC_ENUM_DEF(SA10, MPI1_PSRAM_DIO6, 1),
+    PIN_FUNC_ENUM_DEF(SA10, MPI1_FLASH_CLK, 4),
+
+    /* PAD_SA11 */
+    PIN_FUNC_ENUM_DEF(SA11, MPI1_PSRAM_DIO7, 1),
+    PIN_FUNC_ENUM_DEF(SA11, MPI1_PSRAM_CLK, 3),
+    PIN_FUNC_ENUM_DEF(SA11, MPI1_FLASH_DIO3, 4),
+
+    /* PAD_SA12 */
+    PIN_FUNC_ENUM_DEF(SA12, MPI1_PSRAM_DQS, 1),
+    PIN_FUNC_ENUM_DEF(SA12, MPI1_PSRAM_DQSDM, 2),
+    PIN_FUNC_ENUM_DEF(SA12, MPI1_PSRAM_CS, 3),
+    PIN_FUNC_ENUM_DEF(SA12, MPI1_FLASH_DIO0, 4),
+
+    /* PAD_SB00 */
+    PIN_FUNC_ENUM_DEF(SB00, MPI2_DM, 1),
+
+    /* PAD_SB01 */
+    PIN_FUNC_ENUM_DEF(SB01, MPI2_DIO0, 1),
+    PIN_FUNC_ENUM_DEF(SB01, MPI3_DIO2, 4),
+
+    /* PAD_SB02 */
+    PIN_FUNC_ENUM_DEF(SB02, MPI2_DIO1, 1),
+    PIN_FUNC_ENUM_DEF(SB02, MPI3_DIO1, 4),
+
+    /* PAD_SB03 */
+    PIN_FUNC_ENUM_DEF(SB03, MPI2_DIO2, 1),
+    PIN_FUNC_ENUM_DEF(SB03, MPI3_CS, 4),
+
+    /* PAD_SB04 */
+    PIN_FUNC_ENUM_DEF(SB04, MPI2_DIO3, 1),
+    PIN_FUNC_ENUM_DEF(SB04, MPI2_DIO2, 4),
+
+    /* PAD_SB05 */
+    PIN_FUNC_ENUM_DEF(SB05, MPI2_CS, 1),
+    PIN_FUNC_ENUM_DEF(SB05, MPI2_DIO1, 4),
+
+    /* PAD_SB06 */
+    PIN_FUNC_ENUM_DEF(SB06, MPI2_CLKB, 1),
+    PIN_FUNC_ENUM_DEF(SB06, MPI2_DIO4, 3),
+    PIN_FUNC_ENUM_DEF(SB06, MPI2_CS, 4),
+
+    /* PAD_SB07 */
+    PIN_FUNC_ENUM_DEF(SB07, MPI2_CLK, 1),
+    PIN_FUNC_ENUM_DEF(SB07, MPI2_DIO5, 3),
+    PIN_FUNC_ENUM_DEF(SB07, MPI3_DIO0, 4),
+
+    /* PAD_SB08 */
+    PIN_FUNC_ENUM_DEF(SB08, MPI2_DIO4, 1),
+    PIN_FUNC_ENUM_DEF(SB08, MPI2_DIO6, 3),
+    PIN_FUNC_ENUM_DEF(SB08, MPI3_DIO3, 4),
+
+    /* PAD_SB09 */
+    PIN_FUNC_ENUM_DEF(SB09, MPI2_DIO5, 1),
+    PIN_FUNC_ENUM_DEF(SB09, MPI2_DIO7, 3),
+    PIN_FUNC_ENUM_DEF(SB09, MPI3_CLK, 4),
+
+    /* PAD_SB10 */
+    PIN_FUNC_ENUM_DEF(SB10, MPI2_DIO6, 1),
+    PIN_FUNC_ENUM_DEF(SB10, MPI2_DQSDM, 3),
+    PIN_FUNC_ENUM_DEF(SB10, MPI2_DIO0, 4),
+
+    /* PAD_SB11 */
+    PIN_FUNC_ENUM_DEF(SB11, MPI2_DIO7, 1),
+    PIN_FUNC_ENUM_DEF(SB11, MPI2_CLK, 3),
+    PIN_FUNC_ENUM_DEF(SB11, MPI2_DIO3, 4),
+
+    /* PAD_SB12 */
+    PIN_FUNC_ENUM_DEF(SB12, MPI2_DQS, 1),
+    PIN_FUNC_ENUM_DEF(SB12, MPI2_DQSDM, 2),
+    PIN_FUNC_ENUM_DEF(SB12, MPI2_CS, 3),
+    PIN_FUNC_ENUM_DEF(SB12, MPI2_CLK, 4),
+
+    /* PAD_PA00 */
+    PIN_FUNC_ENUM_DEF(PA00, GPIO_A0, 0),
+    PIN_FUNC_ENUM_DEF(PA00, LCDC1_SPI_RSTB, 1),
+    PIN_FUNC_ENUM_DEF(PA00, SD2_DIO2, 3),
+
+    /* PAD_PA01 */
+    PIN_FUNC_ENUM_DEF(PA01, GPIO_A1, 0),
+    PIN_FUNC_ENUM_DEF(PA01, SD2_DIO3, 3),
+
+    /* PAD_PA02 */
+    PIN_FUNC_ENUM_DEF(PA02, GPIO_A2, 0),
+    PIN_FUNC_ENUM_DEF(PA02, LCDC1_SPI_TE, 1),
+    PIN_FUNC_ENUM_DEF(PA02, SD2_CLK, 3),
+    PIN_FUNC_ENUM_DEF(PA02, DBG_DO0, 7),
+
+    /* PAD_PA03 */
+    PIN_FUNC_ENUM_DEF(PA03, GPIO_A3, 0),
+    PIN_FUNC_ENUM_DEF(PA03, LCDC1_SPI_CS, 1),
+    PIN_FUNC_ENUM_DEF(PA03, SD2_CMD, 3),
+    PIN_FUNC_ENUM_DEF(PA03, DBG_DO1, 7),
+
+    /* PAD_PA04 */
+    PIN_FUNC_ENUM_DEF(PA04, GPIO_A4, 0),
+    PIN_FUNC_ENUM_DEF(PA04, LCDC1_SPI_CLK, 1),
+    PIN_FUNC_ENUM_DEF(PA04, SD2_DIO0, 3),
+    PIN_FUNC_ENUM_DEF(PA04, DBG_DO2, 7),
+
+    /* PAD_PA05 */
+    PIN_FUNC_ENUM_DEF(PA05, GPIO_A5, 0),
+    PIN_FUNC_ENUM_DEF(PA05, LCDC1_SPI_DIO0, 1),
+    PIN_FUNC_ENUM_DEF(PA05, SD2_DIO1, 3),
+    PIN_FUNC_ENUM_DEF(PA05, DBG_DO3, 7),
+
+    /* PAD_PA06 */
+    PIN_FUNC_ENUM_DEF(PA06, GPIO_A6, 0),
+    PIN_FUNC_ENUM_DEF(PA06, LCDC1_SPI_DIO1, 1),
+    PIN_FUNC_ENUM_DEF(PA06, SD1_DIO2, 2),
+    PIN_FUNC_ENUM_DEF(PA06, DBG_DO4, 7),
+
+    /* PAD_PA07 */
+    PIN_FUNC_ENUM_DEF(PA07, GPIO_A7, 0),
+    PIN_FUNC_ENUM_DEF(PA07, LCDC1_SPI_DIO2, 1),
+    PIN_FUNC_ENUM_DEF(PA07, SD1_DIO3, 2),
+    PIN_FUNC_ENUM_DEF(PA07, DBG_DO5, 7),
+
+    /* PAD_PA08 */
+    PIN_FUNC_ENUM_DEF(PA08, GPIO_A8, 0),
+    PIN_FUNC_ENUM_DEF(PA08, LCDC1_SPI_DIO3, 1),
+    PIN_FUNC_ENUM_DEF(PA08, SD1_CLK, 2),
+    PIN_FUNC_ENUM_DEF(PA08, DBG_DO6, 7),
+
+    /* PAD_PA09 */
+    PIN_FUNC_ENUM_DEF(PA09, GPIO_A9, 0),
+    PIN_FUNC_ENUM_DEF(PA09, SD1_CMD, 2),
+    PIN_FUNC_ENUM_DEF(PA09, DBG_DO7, 7),
+
+    /* PAD_PA10 */
+    PIN_FUNC_ENUM_DEF(PA10, GPIO_A10, 0),
+    PIN_FUNC_ENUM_DEF(PA10, SD1_DIO0, 2),
+
+    /* PAD_PA11 */
+    PIN_FUNC_ENUM_DEF(PA11, GPIO_A11, 0),
+    PIN_FUNC_ENUM_DEF(PA11, MPI3_CS2, 1),
+    PIN_FUNC_ENUM_DEF(PA11, SD1_DIO1, 2),
+    PIN_FUNC_ENUM_DEF(PA11, AUD_CLK_EXT, 7),
+
+    /* PAD_PA12 */
+    PIN_FUNC_ENUM_DEF(PA12, GPIO_A12, 0),
+    PIN_FUNC_ENUM_DEF(PA12, MPI3_CS, 1),
+    PIN_FUNC_ENUM_DEF(PA12, SD1_DIO2, 2),
+
+    /* PAD_PA13 */
+    PIN_FUNC_ENUM_DEF(PA13, GPIO_A13, 0),
+    PIN_FUNC_ENUM_DEF(PA13, MPI3_DIO1, 1),
+    PIN_FUNC_ENUM_DEF(PA13, SD1_DIO3, 2),
+
+    /* PAD_PA14 */
+    PIN_FUNC_ENUM_DEF(PA14, GPIO_A14, 0),
+    PIN_FUNC_ENUM_DEF(PA14, MPI3_DIO2, 1),
+    PIN_FUNC_ENUM_DEF(PA14, SD1_CLK, 2),
+
+    /* PAD_PA15 */
+    PIN_FUNC_ENUM_DEF(PA15, GPIO_A15, 0),
+    PIN_FUNC_ENUM_DEF(PA15, MPI3_DIO0, 1),
+    PIN_FUNC_ENUM_DEF(PA15, SD1_CMD, 2),
+
+    /* PAD_PA16 */
+    PIN_FUNC_ENUM_DEF(PA16, GPIO_A16, 0),
+    PIN_FUNC_ENUM_DEF(PA16, MPI3_CLK, 1),
+    PIN_FUNC_ENUM_DEF(PA16, SD1_DIO0, 2),
+
+    /* PAD_PA17 */
+    PIN_FUNC_ENUM_DEF(PA17, GPIO_A17, 0),
+    PIN_FUNC_ENUM_DEF(PA17, MPI3_DIO3, 1),
+    PIN_FUNC_ENUM_DEF(PA17, SD1_DIO1, 2),
+
+    /* PAD_PA18 */
+    PIN_FUNC_ENUM_DEF(PA18, GPIO_A18, 0),
+    PIN_FUNC_ENUM_DEF(PA18, DED_USART1_RXD, 1),
+    PIN_FUNC_ENUM_DEF(PA18, SWCLK, 2),
+
+    /* PAD_PA19 */
+    PIN_FUNC_ENUM_DEF(PA19, GPIO_A19, 0),
+    PIN_FUNC_ENUM_DEF(PA19, DED_USART1_TXD, 1),
+    PIN_FUNC_ENUM_DEF(PA19, SWDIO, 2),
+
+    /* PAD_PA20 */
+    PIN_FUNC_ENUM_DEF(PA20, GPIO_A20, 0),
+    PIN_FUNC_ENUM_DEF(PA20, SWO, 1),
+    PIN_FUNC_ENUM_DEF(PA20, DBG_CLK, 7),
+
+    /* PAD_PA21 */
+    PIN_FUNC_ENUM_DEF(PA21, GPIO_A21, 0),
+
+    /* PAD_PA22 */
+    PIN_FUNC_ENUM_DEF(PA22, GPIO_A22, 0),
+    PIN_FUNC_ENUM_DEF(PA22, SD1_DIO2, 2),
+    PIN_FUNC_ENUM_DEF(PA22, SD2_DIO2, 3),
+
+    /* PAD_PA23 */
+    PIN_FUNC_ENUM_DEF(PA23, GPIO_A23, 0),
+    PIN_FUNC_ENUM_DEF(PA23, SD1_DIO3, 2),
+    PIN_FUNC_ENUM_DEF(PA23, SD2_DIO3, 3),
+
+    /* PAD_PA24 */
+    PIN_FUNC_ENUM_DEF(PA24, GPIO_A24, 0),
+    PIN_FUNC_ENUM_DEF(PA24, SPI1_DIO, 1),
+    PIN_FUNC_ENUM_DEF(PA24, SD1_CLK, 2),
+    PIN_FUNC_ENUM_DEF(PA24, SD2_CLK, 3),
+
+    /* PAD_PA25 */
+    PIN_FUNC_ENUM_DEF(PA25, GPIO_A25, 0),
+    PIN_FUNC_ENUM_DEF(PA25, SPI1_DI, 1),
+    PIN_FUNC_ENUM_DEF(PA25, SD1_CMD, 2),
+    PIN_FUNC_ENUM_DEF(PA25, SD2_CMD, 3),
+
+    /* PAD_PA26 */
+    PIN_FUNC_ENUM_DEF(PA26, GPIO_A26, 0),
+    PIN_FUNC_ENUM_DEF(PA26, SD1_DIO0, 2),
+    PIN_FUNC_ENUM_DEF(PA26, SD2_DIO0, 3),
+
+    /* PAD_PA27 */
+    PIN_FUNC_ENUM_DEF(PA27, GPIO_A27, 0),
+    PIN_FUNC_ENUM_DEF(PA27, SD1_DIO1, 2),
+    PIN_FUNC_ENUM_DEF(PA27, SD2_DIO1, 3),
+
+    /* PAD_PA28 */
+    PIN_FUNC_ENUM_DEF(PA28, GPIO_A28, 0),
+    PIN_FUNC_ENUM_DEF(PA28, SPI1_CLK, 1),
+    PIN_FUNC_ENUM_DEF(PA28, SD2_DIO2, 3),
+
+    /* PAD_PA29 */
+    PIN_FUNC_ENUM_DEF(PA29, GPIO_A29, 0),
+    PIN_FUNC_ENUM_DEF(PA29, SPI1_CS, 1),
+    PIN_FUNC_ENUM_DEF(PA29, SD2_DIO3, 3),
+
+    /* PAD_PA30 */
+    PIN_FUNC_ENUM_DEF(PA30, GPIO_A30, 0),
+    PIN_FUNC_ENUM_DEF(PA30, SD2_CLK, 3),
+
+    /* PAD_PA31 */
+    PIN_FUNC_ENUM_DEF(PA31, GPIO_A31, 0),
+    PIN_FUNC_ENUM_DEF(PA31, SD2_CMD, 3),
+    PIN_FUNC_ENUM_DEF(PA31, DBG_DO8, 7),
+
+    /* PAD_PA32 */
+    PIN_FUNC_ENUM_DEF(PA32, GPIO_A32, 0),
+    PIN_FUNC_ENUM_DEF(PA32, SD2_DIO0, 3),
+
+    /* PAD_PA33 */
+    PIN_FUNC_ENUM_DEF(PA33, GPIO_A33, 0),
+    PIN_FUNC_ENUM_DEF(PA33, SD2_DIO1, 3),
+
+    /* PAD_PA34 */
+    PIN_FUNC_ENUM_DEF(PA34, GPIO_A34, 0),
+
+    /* PAD_PA35 */
+    PIN_FUNC_ENUM_DEF(PA35, GPIO_A35, 0),
+
+    /* PAD_PA36 */
+    PIN_FUNC_ENUM_DEF(PA36, GPIO_A36, 0),
+
+    /* PAD_PA37 */
+    PIN_FUNC_ENUM_DEF(PA37, GPIO_A37, 0),
+    PIN_FUNC_ENUM_DEF(PA37, SPI2_DIO, 1),
+    PIN_FUNC_ENUM_DEF(PA37, SD1_DIO2, 2),
+    PIN_FUNC_ENUM_DEF(PA37, DBG_DO9, 7),
+
+    /* PAD_PA38 */
+    PIN_FUNC_ENUM_DEF(PA38, GPIO_A38, 0),
+    PIN_FUNC_ENUM_DEF(PA38, SPI2_DI, 1),
+    PIN_FUNC_ENUM_DEF(PA38, SD1_DIO3, 2),
+
+    /* PAD_PA39 */
+    PIN_FUNC_ENUM_DEF(PA39, GPIO_A39, 0),
+    PIN_FUNC_ENUM_DEF(PA39, SPI2_CLK, 1),
+    PIN_FUNC_ENUM_DEF(PA39, SD1_CLK, 2),
+    PIN_FUNC_ENUM_DEF(PA39, DBG_DO10, 7),
+
+    /* PAD_PA40 */
+    PIN_FUNC_ENUM_DEF(PA40, GPIO_A40, 0),
+    PIN_FUNC_ENUM_DEF(PA40, SPI2_CS, 1),
+    PIN_FUNC_ENUM_DEF(PA40, SD1_CMD, 2),
+    PIN_FUNC_ENUM_DEF(PA40, DBG_DO11, 7),
+
+    /* PAD_PA41 */
+    PIN_FUNC_ENUM_DEF(PA41, GPIO_A41, 0),
+    PIN_FUNC_ENUM_DEF(PA41, SD1_DIO0, 2),
+    PIN_FUNC_ENUM_DEF(PA41, DBG_DO12, 7),
+
+    /* PAD_PA42 */
+    PIN_FUNC_ENUM_DEF(PA42, GPIO_A42, 0),
+    PIN_FUNC_ENUM_DEF(PA42, SD1_DIO1, 2),
+    PIN_FUNC_ENUM_DEF(PA42, DBG_DO13, 7),
+
+    /* PAD_PA43 */
+    PIN_FUNC_ENUM_DEF(PA43, GPIO_A43, 0),
+    PIN_FUNC_ENUM_DEF(PA43, SWCLK, 1),
+    PIN_FUNC_ENUM_DEF(PA43, DBG_DO14, 7),
+
+    /* PAD_PA44 */
+    PIN_FUNC_ENUM_DEF(PA44, GPIO_A44, 0),
+    PIN_FUNC_ENUM_DEF(PA44, SWDIO, 1),
+    PIN_FUNC_ENUM_DEF(PA44, DBG_DO15, 7),
+
+    /* PAD_PA45 */
+    PIN_FUNC_ENUM_DEF(PA45, GPIO_A45, 0),
+    PIN_FUNC_ENUM_DEF(PA45, SD2_DIO2, 3),
+
+    /* PAD_PA46 */
+    PIN_FUNC_ENUM_DEF(PA46, GPIO_A46, 0),
+    PIN_FUNC_ENUM_DEF(PA46, SD2_DIO3, 3),
+
+    /* PAD_PA47 */
+    PIN_FUNC_ENUM_DEF(PA47, GPIO_A47, 0),
+    PIN_FUNC_ENUM_DEF(PA47, SD2_CLK, 3),
+
+    /* PAD_PA48 */
+    PIN_FUNC_ENUM_DEF(PA48, GPIO_A48, 0),
+    PIN_FUNC_ENUM_DEF(PA48, SD2_CMD, 3),
+
+    /* PAD_PA49 */
+    PIN_FUNC_ENUM_DEF(PA49, GPIO_A49, 0),
+    PIN_FUNC_ENUM_DEF(PA49, SD2_DIO0, 3),
+
+    /* PAD_PA50 */
+    PIN_FUNC_ENUM_DEF(PA50, GPIO_A50, 0),
+    PIN_FUNC_ENUM_DEF(PA50, SD2_DIO1, 3),
+
+    /* PAD_PA51 */
+    PIN_FUNC_ENUM_DEF(PA51, GPIO_A51, 0),
+
+    /* PAD_PA52 */
+    PIN_FUNC_ENUM_DEF(PA52, GPIO_A52, 0),
+
+    /* PAD_PA53 */
+    PIN_FUNC_ENUM_DEF(PA53, GPIO_A53, 0),
+
+    /* PAD_PA54 */
+    PIN_FUNC_ENUM_DEF(PA54, GPIO_A54, 0),
+
+    /* PAD_PA55 */
+    PIN_FUNC_ENUM_DEF(PA55, GPIO_A55, 0),
+
+    /* PAD_PA56 */
+    PIN_FUNC_ENUM_DEF(PA56, GPIO_A56, 0),
+
+    /* PAD_PA57 */
+    PIN_FUNC_ENUM_DEF(PA57, GPIO_A57, 0),
+
+    /****************************************************************************
+     * Arbitrary pin function part
+     * Function in the PIN_ARBITRARY_FUNC_LIST could be assigned to any pad
+     *****************************************************************************/
+
+    /* Function name is like: PAD_PA00_I2C1_SCL*/
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA00, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA01, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA02, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA03, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA04, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA05, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA06, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA07, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA08, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA09, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA10, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA11, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA12, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA13, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA14, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA15, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA16, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA17, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA18, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA19, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA20, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA21, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA22, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA23, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA24, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA25, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA26, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA27, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA28, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA29, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA30, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA31, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA32, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA33, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA34, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA35, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA36, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA37, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA38, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA39, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA40, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA41, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA42, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA43, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA44, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA45, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA46, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA47, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA48, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA49, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA50, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA51, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA52, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA53, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA54, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA55, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA56, PIN_ARBITRARY_FUNC_LIST),
+    FOREACH_FUNC(PIN_ARBITRARY_PINMUX_ENUM_DEF, PA57, PIN_ARBITRARY_FUNC_LIST),
+} pin_function2;
+
+/** fsel and pin function mapping */
+typedef struct
+{
+    /** pad FSEL register value */
+    uint8_t fsel;
+    /** pin function */
+    pin_function function;
+} pin_fsel_function_t;
+
+/** pad function selction table */
+extern const pin_fsel_function_t *const pad_fsel_func_tbls[HPSYS_PAD_NUM];
+
+/**
+ * @}
+ */
+
+#endif

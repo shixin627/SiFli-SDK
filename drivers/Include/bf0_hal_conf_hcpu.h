@@ -11,6 +11,13 @@
 extern "C" {
 #endif
 
+
+#ifndef _REGISTER_H_
+#error "Don't include bf0_hal.h without including register.h first. \
+You can just include register.h which includes bf0_hal.h also"
+#endif /* _REGISTER_H_ */
+
+
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/
 
@@ -28,7 +35,9 @@ extern "C" {
 #define HAL_EFUSE_MODULE_ENABLED
 #define HAL_EPIC_MODULE_ENABLED
 #define HAL_EZIP_MODULE_ENABLED
+#ifdef EXTDMA_BASE
 #define HAL_EXTDMA_MODULE_ENABLED
+#endif  /* EXTDMA_BASE */
 #define HAL_GPIO_MODULE_ENABLED
 #define HAL_GPT_MODULE_ENABLED
 #define HAL_HCD_MODULE_ENABLED
@@ -58,49 +67,100 @@ extern "C" {
 #define HAL_TSEN_MODULE_ENABLED
 #define HAL_UART_MODULE_ENABLED
 #define HAL_WDT_MODULE_ENABLED
+#ifdef PWM1_BASE
+#define HAL_PWM_MODULE_ENABLED
+#endif /* PWM1_BASE */
 
-#ifdef SF32LB52X
+//TODO:
+#ifdef SECU1_BASE
 #define HAL_SECU_MODULE_ENABLED
-#else
-#define HAL_COMP_MODULE_ENABLED
-#define HAL_BUSMON_MODULE_ENABLED
-#define HAL_NNACC_MODULE_ENABLED
-#endif /* SF32LB52X */
+#endif /* SECU1_BASE */
 
-#ifdef SF32LB55X
+#ifdef LPCOMP_BASE
+#define HAL_COMP_MODULE_ENABLED
+#endif /* LPCOMP_BASE */
+
+#ifdef BUSMON1_BASE
+#define HAL_BUSMON_MODULE_ENABLED
+#endif /* BUSMON1_BASE */
+
+#if defined(NNACC_BASE) || defined(NNACC1_BASE)
+#define HAL_NNACC_MODULE_ENABLED
+#endif /* NNACC_BASE || NNACC1_BASE */
+
+#ifdef QSPI1_BASE
 #define HAL_QSPI_MODULE_ENABLED
+#endif /* QSPI1_BASE */
+
+#ifdef PSRAMC_BASE
 #define HAL_PSRAM_MODULE_ENABLED
-#else
+#endif /* PSRAMC_BASE */
+
+#ifdef ATIM1_BASE
 #define HAL_ATIM_MODULE_ENABLED
+#endif /* ATIM1_BASE */
+
+#ifdef MPI1_BASE
 #define HAL_MPI_MODULE_ENABLED
+#endif /* MPI1_BASE */
+
+#ifndef SF32LB55X
+#if defined(__CC_ARM) || defined(__CLANG_ARM) || (defined(__GNUC__) && (__GNUC__ > 9))
 #define HAL_MATH_MODULE_ENABLED
+#endif /* defined(__CC_ARM) || defined(__CLANG_ARM) || (defined(__GNUC__) && (__GNUC__ > 9)) */
 #endif /* SF32LB55X */
 
-#ifdef SF32LB58X
+#ifdef V2D_GPU_BASE
 #define HAL_V2D_GPU_MODULE_ENABLED
-#endif /* SF32LB58X */
+#endif /* V2D_GPU_BASE */
 
-#if defined(SF32LB56X) || defined(SF32LB58X)
-#define HAL_CAN_MODULE_ENABLED
-#define HAL_AUDCODEC_MODULE_ENABLED
-#define HAL_AUDPRC_MODULE_ENABLED
+#if defined(FACC1_BASE)
 #define HAL_FACC_MODULE_ENABLED
+#endif /* FACC1_BASE */
+
+#if defined(FFT1_BASE) || defined(FFT_BASE)
 #define HAL_FFT_MODULE_ENABLED
+#endif /* FFT_BASE */
+
+#ifndef SF32LB55X
 #define HAL_ATOMIC_FIX_ENABLED
-#endif
+#endif /* !SF32LB55X */
 
-#if defined(SF32LB52X)
+#ifdef AUDPRC_BASE
 #define HAL_AUDPRC_MODULE_ENABLED
+#endif /* AUDPRC_BASE */
+
+#if defined(AUDCODEC_HP_BASE) || defined(AUDCODEC_BASE)
 #define HAL_AUDCODEC_MODULE_ENABLED
+#endif /* AUDCODEC_HP_BASE */
+
+#ifdef CAN1_BASE
+#define HAL_CAN_MODULE_ENABLED
+#endif /* CAN1_BASE */
+
+#ifdef HASH_ACC_BASE
+#define HAL_HASH_MODULE_ENABLED
+#endif /* HASH_ACC_BASE */
+
+#if !defined(SF32LB55X) && !defined(SF32LB58X)
+#define HAL_SD_MODULE_ENABLED
+#endif /* !SF32LB55X && !SF32LB58X */
+
+#ifdef DSI_HOST_BASE
+#define HAL_DSI_MODULE_ENABLED
+#endif /* DSI_HOST_BASE */
+
+#ifdef SDADC_BASE
+#define HAL_SDADC_MODULE_ENABLED
+#endif /* SDADC_BASE */
+
+#ifdef JPEGD_BASE
+#define HAL_JPEGD_MODULE_ENABLED
 #endif
 
-#if defined(SF32LB56X) || defined(SF32LB52X)
-#define HAL_HASH_MODULE_ENABLED
-#define HAL_SD_MODULE_ENABLED
-#else
-#define HAL_DSI_MODULE_ENABLED
-#define HAL_SDADC_MODULE_ENABLED
-#endif
+#ifdef DCMI_BASE
+#define HAL_DCMI_MODULE_ENABLED
+#endif /* SDADC_BASE */
 
 
 
@@ -330,7 +390,11 @@ in voltage and temperature.  */
 
 #ifdef HAL_EZIP_MODULE_ENABLED
 #include "bf0_hal_ezip.h"
-#endif
+#endif /* HAL_EZIP_MODULE_ENABLED */
+
+#ifdef HAL_JPEGD_MODULE_ENABLED
+#include "bf0_hal_jpegd.h"
+#endif /* HAL_JPEGD_MODULE_ENABLED */
 
 #ifdef HAL_EPIC_MODULE_ENABLED
 #include "bf0_hal_epic.h"
@@ -453,8 +517,16 @@ in voltage and temperature.  */
 #include "bf0_hal_secu.h"
 #endif
 
+#ifdef HAL_DCMI_MODULE_ENABLED
+#include "bf0_hal_dcmi.h"
+#endif
+
 #ifdef HAL_LPTIM_MODULE_ENABLED
 #include "bf0_hal_lptim.h"
+#endif
+
+#ifdef HAL_PWM_MODULE_ENABLED
+#include "bf0_hal_pwm.h"
 #endif
 
 #ifdef __cplusplus

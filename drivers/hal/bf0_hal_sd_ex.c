@@ -5,8 +5,8 @@
  * SPDX-License-Identifier: BSD-3-Clause AND Apache-2.0
  */
 
-#include "bf0_hal_sd_ex.h"
 #include "bf0_hal.h"
+#include "bf0_hal_sd_ex.h"
 
 #ifdef HAL_SDHCI_MODULE_ENABLED
 

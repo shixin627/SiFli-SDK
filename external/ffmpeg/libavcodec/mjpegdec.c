@@ -50,6 +50,11 @@
 #include "jpeg_dec.h"
 #endif /* USING_JPEG_DEC */
 
+#define DBG_TAG           "mjpegd"
+//#define DBG_LVL           LOG_LVL_INFO
+#include "log.h"
+
+#include "board.h"
 
 static int build_vlc(VLC *vlc, const uint8_t *bits_table,
                      const uint8_t *val_table, int nb_codes,
@@ -2617,6 +2622,128 @@ static void hwdecode_flush(AVCodecContext *avctx)
 
 #endif /*USING_JPEG_DEC*/
 
+#ifdef HAL_JPEGD_MODULE_ENABLED
+#include "drv_epic.h"
+
+av_cold int ff_mjpeg_hwdecode_init(AVCodecContext *avctx)
+{
+    MJpegDecodeContext *s = avctx->priv_data;
+
+    s->avctx = avctx;
+    s->first_picture = 1;
+
+    return 0;
+}
+
+static void jpegd_cplt_callback(struct _JPEGD_HandleTypeDef *hdl, void *param)
+{
+    drv_epic_release();
+}
+
+
+int ff_mjpeg_hwdecode_frame(AVCodecContext *avctx, void *data, int *got_frame,
+                          AVPacket *avpkt)
+{
+    MJpegDecodeContext *s = avctx->priv_data;
+
+    AVFrame     *frame = data;
+    const uint8_t *buf = avpkt->data;
+    int buf_size       = avpkt->size;
+    uint8_t *out_buf;
+    uint32_t out_buf_len;
+    int ret = 0;
+    uint32_t width,height;
+    const char* decode_format;
+    HAL_StatusTypeDef *status;
+    JPEGD_DecodeConfigTypeDef param;
+    rt_err_t err;
+    EPIC_HandleTypeDef *epic;
+    int y_size, u_size, v_size;
+
+    if(s->first_picture)
+    {
+        status = HAL_JPEGD_GetDim(buf, buf_size, &width, &height);
+        RT_ASSERT(status == HAL_OK);
+        
+        s->width = width;
+        s->height = height;
+        ret = ff_set_dimensions(avctx, width, height);
+        if (ret < 0)
+            return ret;
+    }
+    s->first_picture = 0;
+
+    switch (avctx->pix_fmt)
+    {
+        case AV_PIX_FMT_YUV420P: decode_format = "YUV420P"; break;
+        default: decode_format = NULL; break;
+    }
+
+    if (decode_format)
+    {
+        if (ff_get_buffer(s->avctx, frame, AV_GET_BUFFER_FLAG_REF) < 0)
+            return -1;
+        frame->pict_type = AV_PICTURE_TYPE_I;
+        frame->key_frame = 1;
+
+        out_buf_len = frame->linesize[0] * frame->height;
+        out_buf = frame->data[0];
+
+        err = drv_epic_take(5000);
+        RT_ASSERT(RT_EOK == err);
+
+        epic = drv_get_epic_handle();
+
+        memset(&param, 0, sizeof(param));
+        param.input_data_size = buf_size;
+        param.input = (uint8_t *)buf;
+        param.output_mode = HAL_JPEGD_OUTPUT_AHB;
+        param.width = (int16_t)s->width;
+        param.height = (int16_t)s->height;
+        param.work_buffer = epic->jpegd_work_buf;
+
+        buf_size = HAL_JPEGD_GetBufferSize(epic->hjpegd, &param);
+        RT_ASSERT(buf_size <= epic->jpegd_work_buf_size);
+
+        status = HAL_JPEGD_GetOutputSize(epic->hjpegd, &param, &y_size, &u_size, &v_size);
+        RT_ASSERT(status == HAL_OK);
+        RT_ASSERT(y_size <= frame->linesize[0] * frame->height);
+        RT_ASSERT(u_size <= frame->linesize[1] * frame->height);
+        RT_ASSERT(v_size <= frame->linesize[2] * frame->height);
+        param.output_y = frame->data[0];
+        param.output_u = frame->data[1];
+        param.output_v = frame->data[2];
+
+        epic->hjpegd->CpltCallback = jpegd_cplt_callback;
+        status = HAL_JPEGD_Decode_IT(epic->hjpegd, &param);
+        RT_ASSERT(status == HAL_OK);
+
+        err = drv_epic_take(5000);
+        RT_ASSERT(RT_EOK == err);
+
+        drv_epic_release();
+
+        *got_frame = 1;
+    }
+    else
+    {
+        ret = buf_size;
+    }
+
+    return ret;
+}
+av_cold int ff_mjpeg_hwdecode_end(AVCodecContext *avctx)
+{
+    return 0;
+}
+
+static void hwdecode_flush(AVCodecContext *avctx)
+{
+}
+
+#endif /* HAL_JPEGD_MODULE_ENABLED */
+
+
 #if CONFIG_MJPEG_DECODER
 #define OFFSET(x) offsetof(MJpegDecodeContext, x)
 #define VD AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM
@@ -2640,6 +2767,11 @@ AVCodec ff_mjpeg_decoder = {
     .id             = AV_CODEC_ID_MJPEG,
     .priv_data_size = sizeof(MJpegDecodeContext),
 #ifdef USING_JPEG_DEC
+    .init           = ff_mjpeg_hwdecode_init,
+    .close          = ff_mjpeg_hwdecode_end,
+    .decode         = ff_mjpeg_hwdecode_frame,
+    .flush          = hwdecode_flush,
+#elif defined(HAL_JPEGD_MODULE_ENABLED)
     .init           = ff_mjpeg_hwdecode_init,
     .close          = ff_mjpeg_hwdecode_end,
     .decode         = ff_mjpeg_hwdecode_frame,

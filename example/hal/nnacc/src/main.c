@@ -1,5 +1,12 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
+#include "rtthread.h"
 #include "bf0_hal.h"
 #include "bf0_hal_nn_acc.h"
 
@@ -280,6 +287,9 @@ int main(void)
     }
 
 
-    while (1);
+    while (1)
+    {
+        rt_thread_mdelay(5000);
+    }
 }
 #endif /* HAL_NNACC_MODULE_ENABLED */

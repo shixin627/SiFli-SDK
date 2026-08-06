@@ -290,11 +290,6 @@ int main(void)
     env->mb_handle = rt_mb_create("app", 8, RT_IPC_FLAG_FIFO);
     sifli_ble_enable();
 
-#if defined(BT_FINSH) && defined(SF32LB52X_58)
-    bt_interface_acl_accept_role_set(0);
-    bt_interface_set_linkpolicy(1, 1);
-#endif
-
     while (1)
     {
         uint32_t value;

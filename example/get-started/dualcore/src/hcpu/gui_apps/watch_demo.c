@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -455,9 +455,9 @@ static int button_service_callback(data_callback_arg_t *arg)
 
 static void init_pin(void)
 {
-    #if (SLEEP_CTRL_PIN < GPIO1_PIN_NUM)
-    button_cfg_t cfg;
-        #if defined(BSP_USING_PM) && !defined(SF32LB52X)
+#if (SLEEP_CTRL_PIN < GPIO1_PIN_NUM)
+    button_cfg_t cfg = {0};
+#if defined(BSP_USING_PM) && !defined(SF32LB52X)
     int8_t wakeup_pin;
     uint16_t gpio_pin;
     GPIO_TypeDef *gpio;
@@ -877,7 +877,7 @@ void app_watch_entry(void *parameter)
     boot_open_freetype();
 #endif
     BOOT_TS("freetype_open_font");
-    gui_app_init();
+    gui_app_init(1);
     BOOT_TS("gui_app_init");
     ui_datac_init();
     app_message_data_init();

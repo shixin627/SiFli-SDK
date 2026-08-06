@@ -29,6 +29,17 @@ extern "C" {
   * @{
   */
 
+/** @defgroup I2S register update definition
+  * @{
+  */
+#ifdef I2S_TX_INTF_CONV_EN /*!< i2s use in sf57x */
+#define I2S_TDM_MODE_SUPPORT /*!< i2s support tdm mode use in sf57x */
+//#define I2S_RX_TX_SEPARATE  /*!< i2s rx clock do not depend on tx clock */
+#endif
+/**
+  * @}
+  */
+
 /**
   * @brief I2S bclk lrck divder table structure definition
   */
@@ -61,6 +72,14 @@ typedef struct
     uint8_t pcm_dw;          /*!<  For I2S rx/tx data width , related with peripheral */
     uint8_t clk_div_index;  /*!<  clock divder index(for txrx_clk_div), base on sample rate */
     CLK_DIV_T *clk_div;
+#ifdef I2S_TDM_MODE_SUPPORT
+    uint8_t tdm_used;       /*!<  use i2s tdm mode transfer receive audio data */
+    uint8_t tdm_mode;       /*!<  tdm mode transfer receive audio data, i2s or pcm */
+    uint8_t tdm_clk_deg;    /*!<  tdm mode use gclk for bclk de-glitching */
+    uint8_t tdm_fsync_width; /*!<  tdm mode pcm fsync signal width */
+    uint8_t tdm_slot_num;   /*!<  tdm mode slot number */
+    uint8_t tdm_slot_width;  /*!<  tdm mode slot width */
+#endif
 } I2S_CFG_T;
 
 
@@ -367,6 +386,175 @@ typedef struct
         ((__HANDLE__)->Instance->DEBUG_LOOP) |= (((__DIV__)<<I2S_DEBUG_LOOP_SP_CLK_DIV_Pos) |(I2S_DEBUG_LOOP_SP_CLK_DIV_UPDATE));    \
     }while(0)
 
+#ifdef I2S_DEBUG_LOOP_MCLK_DIV
+/** @brief Set the I2S Mclock divider.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__DIV__ clock divider.
+  * @retval None
+  */
+#define __HAL_I2S_SET_MCLK_DIV(__HANDLE__, __DIV__) \
+    do {\
+        ((__HANDLE__)->Instance->DEBUG_LOOP) &= (~I2S_DEBUG_LOOP_MCLK_DIV);    \
+        ((__HANDLE__)->Instance->DEBUG_LOOP) |= ((__DIV__ & 0xFFUL) << I2S_DEBUG_LOOP_MCLK_DIV_Pos);    \
+        ((__HANDLE__)->Instance->DEBUG_LOOP) |= (((__DIV__ & 0xFFUL) << I2S_DEBUG_LOOP_MCLK_DIV_Pos) | (I2S_DEBUG_LOOP_MCLK_DIV_UPDATE));    \
+    }while(0)
+#endif
+
+#ifdef I2S_TDM_MODE_SUPPORT
+/** @brief  I2S TDM bypass tx_intf_conv module.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__BP__ bypass enable.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_TX_INTF_CONV_BYPASS(__HANDLE__, __BP__) \
+        do { \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) &= (~I2S_TX_INTF_CONV_BYPASS); \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) |= ((__BP__ & 0x1UL) << I2S_TX_INTF_CONV_BYPASS_Pos); \
+        }while(0)
+
+/** @brief  I2S TDM bypass rx_intf_conv module.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__BP__ bypass enable.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_RX_INTF_CONV_BYPASS(__HANDLE__, __BP__) \
+        do { \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) &= (~I2S_RX_INTF_CONV_BYPASS); \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) |= ((__BP__ & 0x1UL) << I2S_RX_INTF_CONV_BYPASS_Pos); \
+        } while(0)
+
+/** @brief  I2S TDM enable tx_intf_conv module.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__EN__ module enable.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_TX_INTF_CONV_EN(__HANDLE__, __EN__) \
+        do { \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) &= (~I2S_TX_INTF_CONV_EN); \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) |= ((__EN__ & 0x1UL) << I2S_TX_INTF_CONV_EN_Pos); \
+        } while(0)
+
+/** @brief  I2S TDM enable rx_intf_conv module.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__EN__ moudle enable.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_RX_INTF_CONV_EN(__HANDLE__, __EN__) \
+        do { \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) &= (~I2S_RX_INTF_CONV_EN); \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) |= ((__EN__ & 0x1UL) << I2S_RX_INTF_CONV_EN_Pos); \
+        } while(0)
+
+/** @brief  I2S TDM tx mode select.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__MODE__ mode.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_TX_MODE_SEL(__HANDLE__, __MODE__) \
+        do { \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) &= (~I2S_TX_INTF_CONV_MODE); \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) |= ((__MODE__ & 0x1UL) << I2S_TX_INTF_CONV_MODE_Pos); \
+        } while(0)
+
+/** @brief  I2S TDM rx mode select.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__MODE__ mode.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_RX_MODE_SEL(__HANDLE__, __MODE__) \
+        do { \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) &= (~I2S_RX_INTF_CONV_MODE); \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) |= ((__MODE__ & 0x1UL) << I2S_RX_INTF_CONV_MODE_Pos); \
+        } while(0)
+
+/** @brief  I2S TDM tx use gclk for bclk de-glitching.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__DEG__ enable.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_TX_CLK_DEG(__HANDLE__, __DEG__) \
+        do { \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) &= (~I2S_TX_INTF_CONV_CLK_DEGLITCH); \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) |= ((__DEG__ & 0x1UL) << I2S_TX_INTF_CONV_CLK_DEGLITCH_Pos); \
+        } while(0)
+
+/** @brief  I2S TDM rx use gclk for bclk de-glitching.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__DEG__ enable.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_RX_CLK_DEG(__HANDLE__, __DEG__) \
+        do { \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) &= (~I2S_RX_INTF_CONV_CLK_DEGLITCH); \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) |= ((__DEG__ & 0x1UL) << I2S_RX_INTF_CONV_CLK_DEGLITCH_Pos); \
+        } while(0)
+
+/** @brief  I2S TDM tx pcm fsync signal width.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__WIDTH__ enable.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_TX_FSYNC_WIDTH(__HANDLE__, __WIDTH__) \
+        do { \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) &= (~I2S_TX_INTF_CONV_PCM_WIDTH); \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) |= ((__WIDTH__ & 0xFFUL) << I2S_TX_INTF_CONV_PCM_WIDTH_Pos); \
+        } while(0)
+
+/** @brief  I2S TDM rx pcm fsync signal width.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__WIDTH__ enable.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_RX_FSYNC_WIDTH(__HANDLE__, __WIDTH__) \
+        do { \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) &= (~I2S_RX_INTF_CONV_PCM_WIDTH); \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) |= ((__WIDTH__ & 0xFFUL) << I2S_RX_INTF_CONV_PCM_WIDTH_Pos); \
+        } while(0)
+
+/** @brief  I2S TDM tx mode slot number.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__NUM__ enable.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_TX_SLOT_NUM(__HANDLE__, __NUM__) \
+        do { \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) &= (~I2S_TX_INTF_CONV_TDM_SLOT_CNT); \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) |= ((__NUM__ & 0xFFUL) << I2S_TX_INTF_CONV_TDM_SLOT_CNT_Pos); \
+        } while(0)
+
+/** @brief  I2S TDM rx mode slot number.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__NUM__ enable.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_RX_SLOT_NUM(__HANDLE__, __NUM__) \
+        do { \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) &= (~I2S_RX_INTF_CONV_TDM_SLOT_CNT); \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) |= ((__NUM__ & 0xFFUL) << I2S_RX_INTF_CONV_TDM_SLOT_CNT_Pos); \
+        } while(0)
+
+/** @brief  I2S TDM tx mode slot width.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__WIDTH__ enable.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_TX_SLOT_WIDTH(__HANDLE__, __WIDTH__) \
+        do { \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) &= (~I2S_TX_INTF_CONV_TDM_SLOT_WIDTH); \
+            ((__HANDLE__)->Instance->TX_INTF_CONV) |= ((__WIDTH__ & 0xFFUL) << I2S_TX_INTF_CONV_TDM_SLOT_WIDTH_Pos); \
+        } while(0)
+
+/** @brief  I2S TDM rx mode slot width.
+  * @param  \__HANDLE__ specifies the I2S Handle.
+  * @param  \__WIDTH__ enable.
+  * @retval None
+  */
+#define __HAL_I2S_TDM_RX_SLOT_WIDTH(__HANDLE__, __WIDTH__) \
+        do { \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) &= (~I2S_RX_INTF_CONV_TDM_SLOT_WIDTH); \
+            ((__HANDLE__)->Instance->RX_INTF_CONV) |= ((__WIDTH__ & 0xFFUL) << I2S_RX_INTF_CONV_TDM_SLOT_WIDTH_Pos); \
+        } while(0)
+#endif
 #endif
 /**
   * @}

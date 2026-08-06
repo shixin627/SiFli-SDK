@@ -93,6 +93,19 @@ typedef enum
        curve's density must not pollute the user-facing hr_curve. Phone writes it
        to its own CSV. Temporary — remove with the experiment. */
     KEY_HR_CONT_DIAG = 0x15,
+    /* WATCH -> PHONE. One 10.24 s window of detrended raw PPG, captured at the
+       moment hr_autocorr produced an implausible estimate. Layout LE:
+         ts:u32 | bpm:u8 | conf:u8 | count:u8 | reserved:u8 | int8[count]
+       Sent at most once per burst, so a night costs a few hundred bytes.
+
+       Exists because the offline suite cannot reproduce the field failures:
+       sweeping the tie tolerance and accept threshold over nine combinations
+       left all 81 synthetic cases passing, which means uniform noise plus a
+       sine wander is not what this sensor actually produces. Tuning against
+       that model would be tuning against imagination — the failing window has
+       to come back and go into the suite. Temporary; remove once the estimator
+       is settled. */
+    KEY_HR_WINDOW_DUMP = 0x16,
 } HEALTH_KEY;
 
 void resolve_HealthData_command(uint8_t key, const uint8_t *pValue, uint16_t length);

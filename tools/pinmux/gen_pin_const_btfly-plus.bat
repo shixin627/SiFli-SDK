@@ -1,0 +1,2 @@
+python pinmux_btfly-plus.py --excel=pinmux.xlsx --type=c > ..\..\drivers\cmsis\sf32lb57x\bf0_pin_const.c
+python pinmux_btfly-plus.py --excel=pinmux.xlsx --type=h > ..\..\drivers\cmsis\sf32lb57x\bf0_pin_const.h

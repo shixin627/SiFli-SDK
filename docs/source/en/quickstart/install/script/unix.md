@@ -46,7 +46,7 @@ sudo pacman -S --needed gcc git make flex bison gperf python cmake ninja ccache 
 :::::{tab-item} macOS
 :sync: macOS
 
-SiFli-SDK no longer relies on the system Python installation. `install.sh` uses `uv` to prepare the locked Python runtime and dependencies for the active SDK profile.
+SiFli-SDK no longer relies on the system Python installation. `install.sh` uses `uv` to prepare the SDK-managed Python runtime and dependencies.
 
 - Install CMake and Ninja build tools:
   - Homebrew users:
@@ -154,13 +154,66 @@ cd ~/OpenSiFli/SiFli-SDK
 
 `install.sh` will:
 
-- use `uv` to provision the locked Python runtime
-- sync the locked Python dependency graph from `tools/locks/default/pyproject.toml` and `tools/locks/default/uv.lock`
-- install the SDK toolchain versions bound by `tools/locks/default/lock.json`
-- instantiate the current profile environment under `SIFLI_SDK_TOOLS_PATH` based on the active lock snapshot
-- initialize the environment-specific Conan home under `SIFLI_SDK_TOOLS_PATH`
+- install the Python runtime and dependencies required by the SDK
+- install the compiler, debugger, and other tools that match the current SDK version
+- prepare the Conan environment used for build dependencies
+- save SDK environment information under `SIFLI_SDK_TOOLS_PATH` for later environment export
+
+An SDK environment is the Python runtime, toolchain, debug tools, and build dependencies prepared for the current SDK. For the first install, run `./install.sh`.
+
+After updating the SDK, plain `./install.sh` prepares or switches to the matching environment for the updated SDK. If an older environment is currently selected, it is not modified in place, so older SDK checkouts can keep using it.
+
+If you explicitly want to update the currently selected environment in place, run:
+
+```bash
+./install.sh update
+```
+
+If that environment is also used by another SDK checkout, the script creates a new environment instead so the other checkout is not affected.
 
 Keil/ARMCLANG path recording and `export -t keil` are Windows-only; the macOS and Linux scripts export the GCC toolchain by default.
+
+### Clean Old Environments and Cache (Optional)
+
+After SDK updates, you can remove old environments that are no longer needed:
+
+```bash
+./install.sh uninstall
+```
+
+This command deletes old environments for the current profile immediately, while keeping the environment that matches the current SDK and any environment still selected by another SDK checkout. To preview the cleanup without deleting anything, run:
+
+```bash
+./install.sh uninstall --dry-run
+```
+
+To clean old environments for all profiles when they are not selected by any SDK checkout, run:
+
+```bash
+./install.sh uninstall --all
+```
+
+You can preview the all-profile cleanup first:
+
+```bash
+./install.sh uninstall --all --dry-run
+```
+
+To remove every SDK-managed environment, including the current environment and environments still selected in the state file, run:
+
+```bash
+./install.sh uninstall --all --force
+```
+
+`--all --force` makes every SDK environment invalid and clears environment selections in the state file. Run `./install.sh` again before exporting. “Still in use” is based on the state file under `SIFLI_SDK_TOOLS_PATH`; open shells or running processes are not detected.
+
+To also clean download cache files and leftover staging directories, add `--cache`:
+
+```bash
+./install.sh uninstall --cache
+```
+
+`--cache` keeps tool archives and the Conan config package required by the current SDK, and it does not remove installed tool directories. If you use a custom `SIFLI_SDK_TOOLS_PATH`, export the same variable before running cleanup.
 
 For domestic users in China, you can enable the bundled China mirror preset with `SIFLI_SDK_MIRROR_CHINA`:
 
@@ -175,7 +228,6 @@ When enabled, this preset forcefully overrides the following environment variabl
 - `SIFLI_SDK_GITHUB_ASSETS="https://downloads.sifli.com/github_assets"`
 - `SIFLI_SDK_PYPI_DEFAULT_INDEX="https://mirrors.ustc.edu.cn/pypi/simple"`
 - `UV_PYTHON_DOWNLOADS_JSON_URL="https://uv.agentsmirror.com/metadata/python-downloads.json"`
-- `UV_PYPY_INSTALL_MIRROR="https://uv.agentsmirror.com/pypy"`
 
 If you do not want the bundled preset, you can still set the fine-grained mirror variables manually.
 
@@ -206,7 +258,7 @@ Please run the following command in terminal windows where you need to use compi
 . export.sh
 ```
 
-`export.sh` now invokes `tools/sdk_env.py export` through `uv run`. The environment manager resolves the current `profile + lock` snapshot to the matching SDK environment instance. If that instance is missing or invalid, `export.sh` will either reconcile it according to the saved preference or fail and ask you to run `./install.sh` again.
+`export.sh` switches to the SDK environment installed for the current checkout. If that environment is missing or invalid, the script prompts according to the saved preference. Choosing to update is equivalent to running `./install.sh update`. If you decline, you can run plain `./install.sh` to install a new environment for the current SDK, or run `./install.sh update` to try updating the currently selected old environment.
 
 ````{note}
 If you have set a custom tool installation path according to the above instructions, then you **must** set the `SIFLI_SDK_TOOLS_PATH` variable before running the `export.sh` script
@@ -218,9 +270,9 @@ export SIFLI_SDK_TOOLS_PATH="$HOME/required_sdk_tools_path"
 ````
 
 ```{note}
-`export.sh` now validates the resolved environment instance before exporting. If the local Python environment, tools, or Conan config do not match the current repo lock, `export.sh` may prompt to reconcile the environment or fail deterministically in non-interactive shells.
+`export.sh` validates the current SDK environment before exporting. If the local Python environment, tools, or Conan config do not match the current SDK, `export.sh` may prompt to repair the environment or fail deterministically in non-interactive shells.
 
-`export.sh` requires `uv` in PATH because it launches `tools/sdk_env.py` through `uv run`.
+`export.sh` requires `uv` in PATH to run the SDK environment management flow.
 ```
 
 If you need to run SiFli-SDK frequently, you can create an alias for executing export.sh by following these steps:

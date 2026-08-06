@@ -22,7 +22,7 @@ extern "C" {
 /* @{@name Define audio version*/
 /** Use this to define version string */
 /* 注意：如果结构体有修改，则必须修改中版本号 */
-#define AUDIO_FILTER_VERSION_STRING        "AudioFilter Version V2.03.09"
+#define AUDIO_FILTER_VERSION_STRING        "AudioFilter Version V2.03.11"
 /** @} */
 
 // 最后一个兼容的小版本号
@@ -499,7 +499,7 @@ struct sd_param_aslc
     T_S32  gainAttackTime;  //ms
     T_S32  gainReleaseTime; //ms
 
-    int32_t aslcPreset; // 0: limiter, this is the basic type, not use milestone
+    T_S32  aslcPreset;  // 0: limiter, this is the basic type, not use milestone
     // 1: noise gate
     //   when milestone.num is 0, use default noise gate, aslcLimitLevel and vol_dB is applied
     //   others: milestone.num must be 5, use it to define gate threshold and limit, vol_dB is applied
@@ -877,7 +877,7 @@ typedef struct
  * @return   T_CHR *
  * @retval   返回库版本号字符串
  */
-T_CHR *_SD_GetAudioFilterVersionInfo(T_VOID);
+SD_API T_CHR *_SD_GetAudioFilterVersionInfo(T_VOID);
 
 /**
  * @brief    检查头文件版本是否与库版本匹配
@@ -885,7 +885,7 @@ T_CHR *_SD_GetAudioFilterVersionInfo(T_VOID);
  * @return   T_S32
  * @retval   T_TRUE or T_FALSE
  */
-T_S32 _SD_CheckAudioFilterVersion(T_AUDIO_FILTER_INPUT *filter_input);
+SD_API T_S32 _SD_CheckAudioFilterVersion(T_AUDIO_FILTER_INPUT *filter_input);
 
 /**
  * @brief    设置音效库的 debug zones，选择打印信息的类型
@@ -893,7 +893,7 @@ T_S32 _SD_CheckAudioFilterVersion(T_AUDIO_FILTER_INPUT *filter_input);
  *                Default is SD_DEFAULT_DEBUG_ZONES
  * @return   T_VOID
  */
-T_VOID _SD_Filter_SetDebugZones(T_U32 debugZones);
+SD_API T_VOID _SD_Filter_SetDebugZones(T_U32 debugZones);
 
 /**
  * @brief    打开音效处理设备.
@@ -902,7 +902,7 @@ T_VOID _SD_Filter_SetDebugZones(T_U32 debugZones);
  * @retval   音效处理设备句柄
  *           AK_NULL: open 失败
  */
-T_VOID *_SD_Filter_Open(T_AUDIO_FILTER_INPUT *filter_input);
+SD_API T_VOID *_SD_Filter_Open(T_AUDIO_FILTER_INPUT *filter_input);
 
 /**
  * @brief    音效处理.
@@ -912,7 +912,7 @@ T_VOID *_SD_Filter_Open(T_AUDIO_FILTER_INPUT *filter_input);
  * @retval   > 0: 音效库处理后的音频数据大小，以byte为单位
  *           <=0: T_SD_ERROR_CODE
  */
-T_S32 _SD_Filter_Control(T_VOID *audio_filter, T_AUDIO_FILTER_BUF_STRC *audio_filter_buf);
+SD_API T_S32 _SD_Filter_Control(T_VOID *audio_filter, T_AUDIO_FILTER_BUF_STRC *audio_filter_buf);
 
 /**
  * @brief    关闭音效处理设备.
@@ -921,13 +921,13 @@ T_S32 _SD_Filter_Control(T_VOID *audio_filter, T_AUDIO_FILTER_BUF_STRC *audio_fi
  * @retval   AK_TRUE :  关闭成功
  *           AK_FALSE:  关闭异常
  */
-T_S32 _SD_Filter_Close(T_VOID *audio_filter);
+SD_API T_S32 _SD_Filter_Close(T_VOID *audio_filter);
 
-T_S32 _SD_Filter_Reset(T_VOID *audio_filter);
+SD_API T_S32 _SD_Filter_Reset(T_VOID *audio_filter);
 
-const T_CHR *_SD_Filter_GetName(T_VOID *audio_filter);
+SD_API const T_CHR *_SD_Filter_GetName(T_VOID *audio_filter);
 // return T_AUDIO_FILTER_TYPE
-T_U32 _SD_Filter_GetType(T_VOID *audio_filter);
+SD_API T_U32 _SD_Filter_GetType(T_VOID *audio_filter);
 
 /**
  * @brief    设置音效参数.
@@ -938,7 +938,7 @@ T_U32 _SD_Filter_GetType(T_VOID *audio_filter);
  * @retval   AK_TRUE :  设置成功
  *           AK_FALSE:  设置异常
  */
-T_S32 _SD_Filter_SetParam(T_VOID *audio_filter, T_AUDIO_FILTER_IN_INFO *info);
+SD_API T_S32 _SD_Filter_SetParam(T_VOID *audio_filter, T_AUDIO_FILTER_IN_INFO *info);
 
 /**
  * @brief    获取音效参数
@@ -948,7 +948,7 @@ T_S32 _SD_Filter_SetParam(T_VOID *audio_filter, T_AUDIO_FILTER_IN_INFO *info);
  * @retval   AK_TRUE :  获取成功
  *           AK_FALSE:  获取异常
  */
-T_S32 _SD_Filter_GetParam(T_VOID *audio_filter, T_AUDIO_FILTER_IN_INFO *info);
+SD_API T_S32 _SD_Filter_GetParam(T_VOID *audio_filter, T_AUDIO_FILTER_IN_INFO *info);
 
 /**
  * @brief    设置ASLC模块的静音检测参数之静音幅度阈值.
@@ -958,7 +958,7 @@ T_S32 _SD_Filter_GetParam(T_VOID *audio_filter, T_AUDIO_FILTER_IN_INFO *info);
  * @retval   AK_TRUE :  设置成功
  * @retval   AK_FALSE:  设置异常
  */
-T_S32 _SD_Filter_SetAslcSilenceLevel(T_VOID *audio_filter, T_U32 silenceLevel);
+SD_API T_S32 _SD_Filter_SetAslcSilenceLevel(T_VOID *audio_filter, T_U32 silenceLevel);
 
 /**
  * @brief    设置ASLC模块的静音检测参数之连续静音时间阈值.
@@ -968,7 +968,7 @@ T_S32 _SD_Filter_SetAslcSilenceLevel(T_VOID *audio_filter, T_U32 silenceLevel);
  * @retval   AK_TRUE :  设置成功
  *           AK_FALSE:  设置异常
  */
-T_S32 _SD_Filter_SetAslcSilenceTime(T_VOID *audio_filter, T_U32 silenceTime);
+SD_API T_S32 _SD_Filter_SetAslcSilenceTime(T_VOID *audio_filter, T_U32 silenceTime);
 
 /**
  * @brief    设置MDRC模块的限幅曲线.
@@ -978,7 +978,7 @@ T_S32 _SD_Filter_SetAslcSilenceTime(T_VOID *audio_filter, T_U32 silenceTime);
  * @retval   AK_TRUE :  设置成功
  *           AK_FALSE:  设置异常
  */
-T_S32 _SD_Filter_SetMdrcPara(T_VOID *audio_filter, T_FILTER_MDRC_PARA *fmdrc);
+SD_API T_S32 _SD_Filter_SetMdrcPara(T_VOID *audio_filter, T_FILTER_MDRC_PARA *fmdrc);
 
 /**
  * @brief    快速重采样
@@ -990,7 +990,7 @@ T_S32 _SD_Filter_SetMdrcPara(T_VOID *audio_filter, T_FILTER_MDRC_PARA *fmdrc);
  * @retval   >=0 :  重采样后的输出pcm数据的byte数
  *           <0  :  重采样失败
  */
-T_S32  _SD_Filter_Audio_Scale(T_VOID *audio_filter, T_S16 dstData[], T_S16 srcData[], T_U32 srcLen);
+SD_API T_S32  _SD_Filter_Audio_Scale(T_VOID *audio_filter, T_S16 dstData[], T_S16 srcData[], T_U32 srcLen);
 
 
 /**
@@ -1001,7 +1001,7 @@ T_S32  _SD_Filter_Audio_Scale(T_VOID *audio_filter, T_S16 dstData[], T_S16 srcDa
 * @retval    EQ库时域参数的指针
 *            AK_NULL: 获取失败
 */
-T_VOID *_SD_Filter_GetEqTimePara(T_VOID *audio_filter, T_AUDIO_FILTER_IN_INFO *info);
+SD_API T_VOID *_SD_Filter_GetEqTimePara(T_VOID *audio_filter, T_AUDIO_FILTER_IN_INFO *info);
 
 /**
 * @brief     设置EQ时域参数
@@ -1011,7 +1011,7 @@ T_VOID *_SD_Filter_GetEqTimePara(T_VOID *audio_filter, T_AUDIO_FILTER_IN_INFO *i
 * @retval    AK_TRUE :  设置成功
 *            AK_FALSE:  设置异常
 */
-T_S32 _SD_Filter_SetEqTimePara(T_VOID *audio_filter, T_VOID *peqTime);
+SD_API T_S32 _SD_Filter_SetEqTimePara(T_VOID *audio_filter, T_VOID *peqTime);
 
 /**
 * @brief     释放EQ时域参数占用的空间.
@@ -1021,7 +1021,7 @@ T_S32 _SD_Filter_SetEqTimePara(T_VOID *audio_filter, T_VOID *peqTime);
 * @retval    AK_TRUE :  设置成功
 *            AK_FALSE:  设置异常
 */
-T_S32 _SD_Filter_DestoryEqTimePara(T_VOID *audio_filter, T_VOID *peqTime);
+SD_API T_S32 _SD_Filter_DestoryEqTimePara(T_VOID *audio_filter, T_VOID *peqTime);
 
 
 /**
@@ -1034,7 +1034,7 @@ T_S32 _SD_Filter_DestoryEqTimePara(T_VOID *audio_filter, T_VOID *peqTime);
  * @retval    AK_TRUE :  设置成功
  *            AK_FALSE:  设置异常
  */
-T_S32 _SD_Filter_SetVolume(T_VOID *audio_filter, T_U16 volume);
+SD_API T_S32 _SD_Filter_SetVolume(T_VOID *audio_filter, T_U16 volume);
 
 /**
  * @brief    设置模块的音量值. 对 VOLUME_CONTROL 和 ASLC 有效.
@@ -1047,7 +1047,7 @@ T_S32 _SD_Filter_SetVolume(T_VOID *audio_filter, T_U16 volume);
  * @retval   AK_TRUE :  设置成功
  *           AK_FALSE:  设置异常
  */
-T_S32 _SD_Filter_SetVolumeDB(T_VOID *audio_filter, T_S32 vol_dB);
+SD_API T_S32 _SD_Filter_SetVolumeDB(T_VOID *audio_filter, T_S32 vol_dB);
 
 /**
  * @brief    获取模块内部缓存的数据量(byte)，以输出格式计
@@ -1056,7 +1056,7 @@ T_S32 _SD_Filter_SetVolumeDB(T_VOID *audio_filter, T_S32 vol_dB);
  * @retval   >=0: 获取到的大小
  * @retval   <0:  获取失败
  */
-T_S32 _SD_Filter_GetDataSize(T_VOID *audio_filter);
+SD_API T_S32 _SD_Filter_GetDataSize(T_VOID *audio_filter);
 
 /**
 * @brief     设置 VOLUME_CONTROL 音量变化的平滑时间
@@ -1066,7 +1066,7 @@ T_S32 _SD_Filter_GetDataSize(T_VOID *audio_filter);
 * @retval    AK_TRUE :  设置成功
 *            AK_FALSE:  设置异常
 */
-T_S32 _SD_Filter_Volctl_SetSmoothTime(T_VOID *audio_filter, T_U32 stime);
+SD_API T_S32 _SD_Filter_Volctl_SetSmoothTime(T_VOID *audio_filter, T_U32 stime);
 
 /**
 * @brief     获取 VOLUME_CONTROL 当前正在生效的音量值
@@ -1075,7 +1075,7 @@ T_S32 _SD_Filter_Volctl_SetSmoothTime(T_VOID *audio_filter, T_U32 stime);
 * @retval    >=0:  获取到的音量倍数值, Q10格式
 *            <0 :  获取失败
 */
-T_S32 _SD_Filter_Volctl_GetCurVolume(T_VOID *audio_filter);
+SD_API T_S32 _SD_Filter_Volctl_GetCurVolume(T_VOID *audio_filter);
 
 /**
 * @brief     获取 PcmBuf 内部缓存的数据量(byte)
@@ -1093,43 +1093,43 @@ T_S32 _SD_Filter_Volctl_GetCurVolume(T_VOID *audio_filter);
 * @retval    >=0:  获取到的大小, 单位byte
 *            <0 :  获取失败
 */
-T_S32 _SD_Filter_PcmBuf_GetFreeSize(T_VOID *audio_filter);
+SD_API T_S32 _SD_Filter_PcmBuf_GetFreeSize(T_VOID *audio_filter);
 
 
 //////////////////////////////////////////////////////////////////////////
 // module logins
 
-const T_VOID *_SD_EQ_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_3DEnhance_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_3DSound_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_ASLC_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_mvBass_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_NR_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_VolCtl_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_WSOLA_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_pitch_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_Mixer_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_Reecho_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_Resample_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_toneDetection_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_MDRC_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_Devocal_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_PcmBuf_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_HowlingSuppress_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_HowlingSuppression2_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_AEC_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_CryDetect_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_SoundLevelDetect_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_Denc_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_AICryDetect_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_SSL_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_LineArraySSL_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_SrpSSL_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_toneSRC_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_Rnnoise_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_AIDenoise_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_AIKeywordSpotting_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
-const T_VOID *_SD_AIKeywordSpottingASR_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_EQ_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_3DEnhance_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_3DSound_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_ASLC_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_mvBass_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_NR_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_VolCtl_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_WSOLA_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_pitch_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_Mixer_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_Reecho_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_Resample_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_toneDetection_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_MDRC_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_Devocal_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_PcmBuf_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_HowlingSuppress_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_HowlingSuppression2_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_AEC_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_CryDetect_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_SoundLevelDetect_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_Denc_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_AICryDetect_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_SSL_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_LineArraySSL_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_SrpSSL_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_toneSRC_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_Rnnoise_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_AIDenoise_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_AIKeywordSpotting_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
+SD_API const T_VOID *_SD_AIKeywordSpottingASR_login(T_AUDIO_FILTER_LOG_INPUT *plogInput);
 
 //////////////////////////////////////////////////////////////////////////
 // Echo API
@@ -1273,7 +1273,7 @@ struct echo_param_vad
     T_S32   vadLevel;         // sensitivity level. [0, 4], smaller is more sensitive.
     T_pVOID userParam;        // user defined param, T_ECHO_VAD_INFO will send it back to user
 
-    T_S8   *modelName;        // AI 检测模型文件名. 0: use default, for algorithm 2, see comments on sd_param_AICryDetect
+    T_CHR  *modelName;        // AI 检测模型文件名. 0: use default, for algorithm 2, see comments on sd_param_AICryDetect
 };
 
 // helper to compose vadType
@@ -1359,29 +1359,29 @@ typedef struct
  *                Default is SD_DEFAULT_DEBUG_ZONES
  * @return   T_VOID
  */
-T_VOID _SD_Echo_SetDebugZones(T_U32 debugZones);
+SD_API T_VOID _SD_Echo_SetDebugZones(T_U32 debugZones);
 
 #define SD_ECHO_DEFAULT_DEBUG_ZONES  (SD_DEFAULT_DEBUG_ZONES | SD_ZONE_ID_PARAM)
 
 // return a path handle hEcho, or AK_NULL if open failed.
-T_VOID *_SD_Echo_Open(T_ECHO_IN_INFO *echo_input);
+SD_API T_VOID *_SD_Echo_Open(T_ECHO_IN_INFO *echo_input);
 
 // return AK_TRUE or AK_FALSE
-T_S32 _SD_Echo_Close(T_VOID *hEcho);
+SD_API T_S32 _SD_Echo_Close(T_VOID *hEcho);
 
 // Tell the lib these two paths have a causal relationship according to echo generation.
 // called whenever these two handles are changed
-T_VOID _SD_Echo_Pair_Paths(T_VOID *hNearPath, T_VOID *hFarPath);
+SD_API T_VOID _SD_Echo_Pair_Paths(T_VOID *hNearPath, T_VOID *hFarPath);
 
 // 重置通道的所有状态，清除各子模块中的数据
 // return AK_TRUE or AK_FALSE
-T_S32 _SD_Echo_Reset(T_VOID *hEcho);
+SD_API T_S32 _SD_Echo_Reset(T_VOID *hEcho);
 
 // 进入 flush 状态，path 内部的所有数据将通过后续 _SD_Echo_GetXxx 调用输出. 在所有数据输出之后，flush 状态自动解除，可以 fill 新数据。
 // hUser: user-specified handle. reserved for future use.
 //        user should set it to an non-zero value.
 // return AK_TRUE or AK_FALSE
-T_S32 _SD_Echo_Flush(T_VOID *hEcho, T_HANDLE hUser);
+SD_API T_S32 _SD_Echo_Flush(T_VOID *hEcho, T_HANDLE hUser);
 
 /**
  * @brief   向far通道填充数据
@@ -1394,7 +1394,7 @@ T_S32 _SD_Echo_Flush(T_VOID *hEcho, T_HANDLE hUser);
  * @retval  实际填充的长度(byte)
  *          If pbuf is AK_NULL, return the maximun data size you can fill, regardless of len and atomic value.
  */
-T_S32 _SD_Echo_FillFarStream(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTER_TS ts, T_S32 atomic);
+SD_API T_S32 _SD_Echo_FillFarStream(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTER_TS ts, T_S32 atomic);
 /**
  * @brief   从far通道读取数据
  * @param   [out] pbuf: 待写入的数据缓冲区
@@ -1406,7 +1406,7 @@ T_S32 _SD_Echo_FillFarStream(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTE
  * @retval  实际读取的长度(byte)
  *          If pbuf is AK_NULL, return the maximun data size you can get, regardless of len and atomic value.
  */
-T_S32 _SD_Echo_GetDacStream(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTER_TS *ts, T_S32 atomic);
+SD_API T_S32 _SD_Echo_GetDacStream(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTER_TS *ts, T_S32 atomic);
 
 /**
  * @brief   向near通道填充 adc_stream 数据
@@ -1419,7 +1419,7 @@ T_S32 _SD_Echo_GetDacStream(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTER
  * @retval  实际填充的长度(byte, >=0)，或错误码 T_SD_ERROR_CODE (<0)
  *          If pbuf is AK_NULL, return the maximun data size you can fill, regardless of len and atomic value.
  */
-T_S32 _SD_Echo_FillAdcStream(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTER_TS ts, T_S32 atomic);
+SD_API T_S32 _SD_Echo_FillAdcStream(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTER_TS ts, T_S32 atomic);
 /**
  * @brief   向near通道填充 dac_loopback 数据
  * @param   [in] pbuf: 待拷贝的数据缓冲区
@@ -1431,7 +1431,7 @@ T_S32 _SD_Echo_FillAdcStream(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTE
  * @retval  实际填充的长度(byte, >=0)，或错误码 T_SD_ERROR_CODE (<0)
  *          If pbuf is AK_NULL, return the maximun data size you can fill, regardless of len and atomic value.
  */
-T_S32 _SD_Echo_FillDacLoopback(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTER_TS ts, T_S32 atomic);
+SD_API T_S32 _SD_Echo_FillDacLoopback(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTER_TS ts, T_S32 atomic);
 /**
  * @brief   从near通道读取result数据
  * @param   [out] pbuf: 待写入的数据缓冲区
@@ -1443,7 +1443,7 @@ T_S32 _SD_Echo_FillDacLoopback(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FIL
  * @retval  实际读取的长度(byte, >=0)，或错误码 T_SD_ERROR_CODE (<0)
  *          If pbuf is AK_NULL, return the maximun data size you can get, regardless of len and atomic value.
  */
-T_S32 _SD_Echo_GetResult(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTER_TS *ts, T_S32 atomic);
+SD_API T_S32 _SD_Echo_GetResult(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTER_TS *ts, T_S32 atomic);
 
 
 /**
@@ -1452,23 +1452,23 @@ T_S32 _SD_Echo_GetResult(T_VOID *hEcho, T_U8 *pbuf, T_S32 len, T_AUDIO_FILTER_TS
  * @retval  AK_TRUE:  读取成功
  *          AK_FALSE: 读取失败，或模块没有加载
  */
-T_S32 _SD_Echo_GetAecParam(T_VOID *hEcho, struct echo_param_aec *aec_params);
-T_S32 _SD_Echo_GetNrParam(T_VOID *hEcho, struct echo_param_nr *nr_param);
-T_S32 _SD_Echo_GetRnnoiseParam(T_VOID *hEcho, struct sd_param_rnnoise *rnnoise_param);
-T_S32 _SD_Echo_GetAIDenoiseParam(T_VOID *hEcho, struct sd_param_AIDenoise *aidenoise_param);
-T_S32 _SD_Echo_GetVadParam(T_VOID *hEcho, struct echo_param_vad *vad_param);
-T_S32 _SD_Echo_GetAgcParam(T_VOID *hEcho, struct echo_param_agc *agc_param);
-T_S32 _SD_Echo_GetNearEqParam(T_VOID *hEcho, struct sd_param_eq *eq_param);
-T_S32 _SD_Echo_GetNearVolumeParam(T_VOID *hEcho, struct echo_param_volctrl *vol_param);
-T_S32 _SD_Echo_GetNearHowlingSuppressParam(T_VOID *hEcho, struct echo_param_howlingSuppress *hs_param);
-T_S32 _SD_Echo_GetNearJitterBufParam(T_VOID *hEcho, struct sd_param_pcmbuf *pcmbuf_param);
-T_S32 _SD_Echo_GetDencParam(T_VOID *hEcho, struct sd_param_denc *denc_param);
+SD_API T_S32 _SD_Echo_GetAecParam(T_VOID *hEcho, struct echo_param_aec *aec_params);
+SD_API T_S32 _SD_Echo_GetNrParam(T_VOID *hEcho, struct echo_param_nr *nr_param);
+SD_API T_S32 _SD_Echo_GetRnnoiseParam(T_VOID *hEcho, struct sd_param_rnnoise *rnnoise_param);
+SD_API T_S32 _SD_Echo_GetAIDenoiseParam(T_VOID *hEcho, struct sd_param_AIDenoise *aidenoise_param);
+SD_API T_S32 _SD_Echo_GetVadParam(T_VOID *hEcho, struct echo_param_vad *vad_param);
+SD_API T_S32 _SD_Echo_GetAgcParam(T_VOID *hEcho, struct echo_param_agc *agc_param);
+SD_API T_S32 _SD_Echo_GetNearEqParam(T_VOID *hEcho, struct sd_param_eq *eq_param);
+SD_API T_S32 _SD_Echo_GetNearVolumeParam(T_VOID *hEcho, struct echo_param_volctrl *vol_param);
+SD_API T_S32 _SD_Echo_GetNearHowlingSuppressParam(T_VOID *hEcho, struct echo_param_howlingSuppress *hs_param);
+SD_API T_S32 _SD_Echo_GetNearJitterBufParam(T_VOID *hEcho, struct sd_param_pcmbuf *pcmbuf_param);
+SD_API T_S32 _SD_Echo_GetDencParam(T_VOID *hEcho, struct sd_param_denc *denc_param);
 
-T_S32 _SD_Echo_GetFarEqParam(T_VOID *hEcho, struct sd_param_eq *eq_param);
-T_S32 _SD_Echo_GetFarNrParam(T_VOID *hEcho, struct echo_param_nr *nr_param);
-T_S32 _SD_Echo_GetFarHowlingSuppressParam(T_VOID *hEcho, struct echo_param_howlingSuppress *hs_param);
-T_S32 _SD_Echo_GetFarVolumeParam(T_VOID *hEcho, struct echo_param_volctrl *vol_param);
-T_S32 _SD_Echo_GetFarJitterBufParam(T_VOID *hEcho, struct sd_param_pcmbuf *pcmbuf_param);
+SD_API T_S32 _SD_Echo_GetFarEqParam(T_VOID *hEcho, struct sd_param_eq *eq_param);
+SD_API T_S32 _SD_Echo_GetFarNrParam(T_VOID *hEcho, struct echo_param_nr *nr_param);
+SD_API T_S32 _SD_Echo_GetFarHowlingSuppressParam(T_VOID *hEcho, struct echo_param_howlingSuppress *hs_param);
+SD_API T_S32 _SD_Echo_GetFarVolumeParam(T_VOID *hEcho, struct echo_param_volctrl *vol_param);
+SD_API T_S32 _SD_Echo_GetFarJitterBufParam(T_VOID *hEcho, struct sd_param_pcmbuf *pcmbuf_param);
 
 /**
  * @brief   加载并配置子模块的参数数据，或卸载该子模块
@@ -1477,23 +1477,23 @@ T_S32 _SD_Echo_GetFarJitterBufParam(T_VOID *hEcho, struct sd_param_pcmbuf *pcmbu
  * @retval  AK_TRUE:  命令成功
  *          AK_FALSE: 命令失败
  */
-T_S32 _SD_Echo_SetAecParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_aec *aec_params);
-T_S32 _SD_Echo_SetNrParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_nr *nr_param);
-T_S32 _SD_Echo_SetRnnoiseParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_rnnoise *rnnoise_param);
-T_S32 _SD_Echo_SetAIDenoiseParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_AIDenoise *aidenoise_param);
-T_S32 _SD_Echo_SetVadParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_vad *vad_param);
-T_S32 _SD_Echo_SetAgcParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_agc *agc_param);
-T_S32 _SD_Echo_SetNearEqParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_eq *eq_param);
-T_S32 _SD_Echo_SetNearVolumeParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_volctrl *vol_param);
-T_S32 _SD_Echo_SetNearHowlingSuppressParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_howlingSuppress *hs_param);
-T_S32 _SD_Echo_SetNearJitterBufParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_pcmbuf *pcmbuf_param);
-T_S32 _SD_Echo_SetDencParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_denc *denc_param);
+SD_API T_S32 _SD_Echo_SetAecParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_aec *aec_params);
+SD_API T_S32 _SD_Echo_SetNrParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_nr *nr_param);
+SD_API T_S32 _SD_Echo_SetRnnoiseParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_rnnoise *rnnoise_param);
+SD_API T_S32 _SD_Echo_SetAIDenoiseParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_AIDenoise *aidenoise_param);
+SD_API T_S32 _SD_Echo_SetVadParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_vad *vad_param);
+SD_API T_S32 _SD_Echo_SetAgcParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_agc *agc_param);
+SD_API T_S32 _SD_Echo_SetNearEqParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_eq *eq_param);
+SD_API T_S32 _SD_Echo_SetNearVolumeParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_volctrl *vol_param);
+SD_API T_S32 _SD_Echo_SetNearHowlingSuppressParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_howlingSuppress *hs_param);
+SD_API T_S32 _SD_Echo_SetNearJitterBufParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_pcmbuf *pcmbuf_param);
+SD_API T_S32 _SD_Echo_SetDencParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_denc *denc_param);
 
-T_S32 _SD_Echo_SetFarEqParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_eq *eq_param);
-T_S32 _SD_Echo_SetFarNrParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_nr *nr_param);
-T_S32 _SD_Echo_SetFarHowlingSuppressParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_howlingSuppress *hs_param);
-T_S32 _SD_Echo_SetFarVolumeParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_volctrl *vol_param);
-T_S32 _SD_Echo_SetFarJitterBufParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_pcmbuf *pcmbuf_param);
+SD_API T_S32 _SD_Echo_SetFarEqParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_eq *eq_param);
+SD_API T_S32 _SD_Echo_SetFarNrParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_nr *nr_param);
+SD_API T_S32 _SD_Echo_SetFarHowlingSuppressParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_howlingSuppress *hs_param);
+SD_API T_S32 _SD_Echo_SetFarVolumeParam(T_VOID *hEcho, T_S32 load_module, struct echo_param_volctrl *vol_param);
+SD_API T_S32 _SD_Echo_SetFarJitterBufParam(T_VOID *hEcho, T_S32 load_module, struct sd_param_pcmbuf *pcmbuf_param);
 
 
 #include "sdParamFactory.h"
@@ -1503,19 +1503,19 @@ T_S32 _SD_Echo_SetFarJitterBufParam(T_VOID *hEcho, T_S32 load_module, struct sd_
  * @retval  AK_TRUE:  命令成功
  *          AK_FALSE: 命令失败
  */
-T_S32 _SD_Echo_SetFarPathParam(T_VOID *hEcho, T_pSD_PARAM_FACTORY param_factory);
-T_S32 _SD_Echo_SetNearPathParam(T_VOID *hEcho, T_pSD_PARAM_FACTORY param_factory);
+SD_API T_S32 _SD_Echo_SetFarPathParam(T_VOID *hEcho, T_pSD_PARAM_FACTORY param_factory);
+SD_API T_S32 _SD_Echo_SetNearPathParam(T_VOID *hEcho, T_pSD_PARAM_FACTORY param_factory);
 
 /**
  * @brief   获取 path 的参数字符串
  * @retval  a cmd line string consisting of all params in the path
  *          user shall use it immediately
  */
-char *_SD_Echo_GetFarPathParamString(T_VOID *hEcho);
-char *_SD_Echo_GetNearPathParamString(T_VOID *hEcho);
+SD_API char *_SD_Echo_GetFarPathParamString(T_VOID *hEcho);
+SD_API char *_SD_Echo_GetNearPathParamString(T_VOID *hEcho);
 
-void _SD_Echo_PrintFarPathParamHelp(void);
-void _SD_Echo_PrintNearPathParamHelp(void);
+SD_API void _SD_Echo_PrintFarPathParamHelp(void);
+SD_API void _SD_Echo_PrintNearPathParamHelp(void);
 
 #ifdef __cplusplus
 }

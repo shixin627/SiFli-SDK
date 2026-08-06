@@ -138,4 +138,4 @@ static int app_main(intent_t i)
     return 0;
 }
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(qr_code), ICON_QRCODE, APP_ID_QRCODE, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(qr_code), ICON_QRCODE, APP_ID_QRCODE, app_main, 1);

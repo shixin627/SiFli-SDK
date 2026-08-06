@@ -669,5 +669,5 @@ static int app_main(intent_t i)
     return 0;
 }
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(alarm), IMG_ALARM, APP_ID_ALARM, app_main);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(alarm), IMG_ALARM, APP_ID_ALARM, app_main, 1);
 #endif

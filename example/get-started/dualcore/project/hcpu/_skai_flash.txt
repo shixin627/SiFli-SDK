@@ -1,0 +1,9 @@
+# The flashlight reproduction, for comparison against base/flashlight.png.
+# There was no shipped fixture for this app — its snapshot had been captured by
+# hand, which is why it silently went stale across two rounds.
+goto_app Main
+skai_pkg_add pkg_flashlight
+skai_pkg_run flashlight
+app_status
+app_status
+app_status

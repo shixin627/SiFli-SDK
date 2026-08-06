@@ -21,6 +21,9 @@
 #define AUDIO_IN_EP 0x85  // Endpoint 5 IN for microphone
 #define AUDIO_OUT_EP 0x02 // Endpoint 2 OUT for speaker
 
+#define AUDIO_SPEAKER_INTF 1
+#define AUDIO_MIC_INTF 2
+
 #define AUDIO_IN_FU_ID 0x02
 #define AUDIO_OUT_FU_ID 0x05
 
@@ -148,32 +151,73 @@ const struct usb_descriptor audio_v1_descriptor =
     .string_descriptor_callback = string_descriptor_callback,
 };
 
-/* RTOS IPC objects for synchronization and communication */
-static struct rt_mailbox uac_mb;
-static rt_uint32_t uac_mb_pool[5];
-static struct rt_semaphore mic_tx_sem;
-static struct rt_semaphore speaker_rx_sem;
-
-// UAC commands for the mailbox
-enum uac_cmd
+enum uac_msg_type
 {
-    UAC_CMD_UNKNOWN = 0,
-    UAC_CMD_MIC_OPEN,
-    UAC_CMD_MIC_CLOSE,
-    UAC_CMD_SPEAKER_OPEN,
-    UAC_CMD_SPEAKER_CLOSE,
+    UAC_MSG_MIC_OPEN,
+    UAC_MSG_MIC_CLOSE,
+    UAC_MSG_SPEAKER_OPEN,
+    UAC_MSG_SPEAKER_CLOSE,
+    UAC_MSG_CONTROL_SYNC,
+    UAC_MSG_SPEAKER_DATA,
 };
 
-static volatile bool mic_tx_flag;
-static volatile bool speaker_rx_flag;
-static audio_client_t g_mic_client = 0;
-static audio_client_t g_speaker_client = 0;
+struct uac_msg
+{
+    enum uac_msg_type type;
+    rt_uint32_t nbytes;
+    rt_uint32_t stream_id;
+    rt_uint8_t buf_idx;
+};
 
-static uint32_t s_mic_sample_rate = AUDIO_MIC_FREQ;
-static uint32_t s_speaker_sample_rate = AUDIO_SPEAKER_FREQ;
+#define UAC_MQ_DEPTH 16
+#define UAC_SPEAKER_BUF_COUNT 4
+#define UAC_SPEAKER_BUF_INVALID 0xffu
+#define UAC_MQ_MSG_SIZE RT_ALIGN(sizeof(struct uac_msg), RT_ALIGN_SIZE)
+#define UAC_MQ_POOL_SIZE                                                      \
+    ((UAC_MQ_MSG_SIZE + sizeof(void *)) * UAC_MQ_DEPTH)
+#define UAC_MQ_POOL_WORDS                                                     \
+    ((UAC_MQ_POOL_SIZE + sizeof(rt_uint32_t) - 1) / sizeof(rt_uint32_t))
 
-USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX uint8_t
-g_speaker_buffer[AUDIO_OUT_PACKET];
+struct uac_context
+{
+    struct rt_messagequeue mq;
+    rt_uint32_t mq_pool[UAC_MQ_POOL_WORDS];
+    struct rt_semaphore mic_tx_sem;
+
+    volatile bool mic_tx_active;
+    volatile bool speaker_rx_active;
+    volatile bool mic_target_open;
+    volatile bool speaker_target_open;
+    volatile bool mic_force_close_pending;
+    volatile bool speaker_force_close_pending;
+    volatile bool speaker_out_armed;
+    volatile bool control_resync_pending;
+    volatile rt_uint8_t speaker_armed_buf;
+    volatile rt_uint8_t speaker_pending_mask;
+    volatile rt_uint32_t speaker_stream_id;
+
+    audio_client_t mic_client;
+    audio_client_t speaker_client;
+
+    uint32_t mic_sample_rate;
+    uint32_t speaker_sample_rate;
+};
+
+struct uac_usb_buffers
+{
+    uint8_t speaker[UAC_SPEAKER_BUF_COUNT][AUDIO_OUT_PACKET];
+};
+
+static struct uac_context g_uac =
+{
+    .speaker_armed_buf = UAC_SPEAKER_BUF_INVALID,
+    .mic_sample_rate = AUDIO_MIC_FREQ,
+    .speaker_sample_rate = AUDIO_SPEAKER_FREQ,
+};
+
+/* USB DMA buffer must stay in non-cacheable memory. */
+USB_NOCACHE_RAM_SECTION USB_MEM_ALIGNX static struct uac_usb_buffers
+g_uac_usb_buffers;
 
 static struct usbd_interface intf0;
 static struct usbd_interface intf1;
@@ -187,6 +231,130 @@ static struct usbd_endpoint audio_in_ep = {.ep_cb = usbd_audio_in_callback,
 static struct usbd_endpoint audio_out_ep = {.ep_cb = usbd_audio_out_callback,
            .ep_addr = AUDIO_OUT_EP
 };
+
+static void uac_mark_control_resync(void)
+{
+    g_uac.control_resync_pending = true;
+}
+
+static rt_err_t uac_post_msg(enum uac_msg_type type, rt_uint32_t nbytes,
+                             rt_uint32_t stream_id, rt_uint8_t buf_idx)
+{
+    struct uac_msg msg =
+    {
+        .type = type,
+        .nbytes = nbytes,
+        .stream_id = stream_id,
+        .buf_idx = buf_idx,
+    };
+    rt_err_t ret = rt_mq_send(&g_uac.mq, &msg, sizeof(msg));
+
+    if ((ret != RT_EOK) && (type != UAC_MSG_SPEAKER_DATA))
+    {
+        uac_mark_control_resync();
+    }
+
+    return ret;
+}
+
+static void uac_request_control_sync(void)
+{
+    uac_mark_control_resync();
+    uac_post_msg(UAC_MSG_CONTROL_SYNC, 0, 0, UAC_SPEAKER_BUF_INVALID);
+}
+
+static rt_uint8_t speaker_reserve_read_buffer(void)
+{
+    rt_base_t level;
+    rt_uint8_t buf_idx;
+
+    level = rt_hw_interrupt_disable();
+    if (!g_uac.speaker_rx_active || g_uac.speaker_out_armed)
+    {
+        rt_hw_interrupt_enable(level);
+        return UAC_SPEAKER_BUF_INVALID;
+    }
+
+    for (buf_idx = 0; buf_idx < UAC_SPEAKER_BUF_COUNT; buf_idx++)
+    {
+        if ((g_uac.speaker_pending_mask & (1u << buf_idx)) == 0)
+        {
+            break;
+        }
+    }
+
+    if (buf_idx >= UAC_SPEAKER_BUF_COUNT)
+    {
+        rt_hw_interrupt_enable(level);
+        return UAC_SPEAKER_BUF_INVALID;
+    }
+
+    g_uac.speaker_out_armed = true;
+    g_uac.speaker_armed_buf = buf_idx;
+    rt_hw_interrupt_enable(level);
+
+    return buf_idx;
+}
+
+static bool speaker_take_pending_buffer(rt_uint8_t buf_idx)
+{
+    rt_base_t level;
+    bool pending;
+
+    if (buf_idx >= UAC_SPEAKER_BUF_COUNT)
+    {
+        return false;
+    }
+
+    level = rt_hw_interrupt_disable();
+    pending = (g_uac.speaker_pending_mask & (1u << buf_idx)) != 0;
+    if (pending)
+    {
+        g_uac.speaker_pending_mask &= ~(1u << buf_idx);
+    }
+    rt_hw_interrupt_enable(level);
+
+    return pending;
+}
+
+static void speaker_reset_usb_state(bool bump_stream)
+{
+    rt_base_t level;
+
+    level = rt_hw_interrupt_disable();
+    g_uac.speaker_rx_active = false;
+    g_uac.speaker_out_armed = false;
+    g_uac.speaker_armed_buf = UAC_SPEAKER_BUF_INVALID;
+    g_uac.speaker_pending_mask = 0;
+    if (bump_stream)
+    {
+        g_uac.speaker_stream_id++;
+    }
+    rt_hw_interrupt_enable(level);
+}
+
+static void speaker_arm_read_if_needed(uint8_t busid)
+{
+    int ret;
+    rt_uint8_t buf_idx;
+
+    buf_idx = speaker_reserve_read_buffer();
+    if (buf_idx == UAC_SPEAKER_BUF_INVALID)
+    {
+        return;
+    }
+
+    ret = usbd_ep_start_read(busid, AUDIO_OUT_EP,
+                             g_uac_usb_buffers.speaker[buf_idx],
+                             AUDIO_OUT_PACKET);
+    if (ret != 0)
+    {
+        rt_base_t level = rt_hw_interrupt_disable();
+        g_uac.speaker_out_armed = false;
+        g_uac.speaker_armed_buf = UAC_SPEAKER_BUF_INVALID;
+        rt_hw_interrupt_enable(level);
+    }
+}
 
 static struct audio_entity_info audio_entity_table[] =
 {
@@ -207,26 +375,18 @@ static void usbd_event_handler(uint8_t busid, uint8_t event)
 {
     (void)busid;
 
-    rt_kprintf("usbd event %d\n", event);
     switch (event)
     {
     case USBD_EVENT_RESET:
-        break;
-    case USBD_EVENT_CONNECTED:
-        break;
     case USBD_EVENT_DISCONNECTED:
+        g_uac.mic_target_open = false;
+        g_uac.speaker_target_open = false;
+        g_uac.mic_force_close_pending = true;
+        g_uac.speaker_force_close_pending = true;
+        g_uac.mic_tx_active = false;
+        speaker_reset_usb_state(true);
+        uac_request_control_sync();
         break;
-    case USBD_EVENT_RESUME:
-        break;
-    case USBD_EVENT_SUSPEND:
-        break;
-    case USBD_EVENT_CONFIGURED:
-        break;
-    case USBD_EVENT_SET_REMOTE_WAKEUP:
-        break;
-    case USBD_EVENT_CLR_REMOTE_WAKEUP:
-        break;
-
     default:
         break;
     }
@@ -244,11 +404,8 @@ void usbd_audio_set_volume(uint8_t busid, uint8_t ep, uint8_t ch, int volume)
 
     uint8_t server_volume = (uint8_t)((volume + 100) * AUDIO_MAX_VOLUME / 100);
 
-    printf("server_volume: %d\n", ((server_volume * 100) / AUDIO_MAX_VOLUME));
-
     if (ep == AUDIO_IN_EP)
     {
-
         audio_server_set_public_volume(server_volume);
     }
     else if (ep == AUDIO_OUT_EP)
@@ -314,11 +471,11 @@ void usbd_audio_set_sampling_freq(uint8_t busid, uint8_t ep,
     (void)busid;
     if (ep == AUDIO_IN_EP)
     {
-        s_mic_sample_rate = sampling_freq;
+        g_uac.mic_sample_rate = sampling_freq;
     }
     else if (ep == AUDIO_OUT_EP)
     {
-        s_speaker_sample_rate = sampling_freq;
+        g_uac.speaker_sample_rate = sampling_freq;
     }
 }
 
@@ -327,11 +484,11 @@ uint32_t usbd_audio_get_sampling_freq(uint8_t busid, uint8_t ep)
     (void)busid;
     if (ep == AUDIO_IN_EP)
     {
-        return s_mic_sample_rate;
+        return g_uac.mic_sample_rate;
     }
     else if (ep == AUDIO_OUT_EP)
     {
-        return s_speaker_sample_rate;
+        return g_uac.speaker_sample_rate;
     }
     return 0;
 }
@@ -351,18 +508,12 @@ static int audio_callback_mic(audio_server_callback_cmt_t cmd,
     {
         audio_server_coming_data_t *p = (audio_server_coming_data_t *)reserved;
 
-        if (!mic_tx_flag)
+        if (!g_uac.mic_tx_active)
         {
             return 0;
         }
 
         const uint32_t chunk_size = AUDIO_IN_PACKET;
-        if (p->data_len % chunk_size == 0)
-        {
-            rt_kprintf(
-                "[UAC Record] data_len %d is a multiple of chunk_size %d\n",
-                p->data_len, chunk_size);
-        }
 
         const uint32_t total_chunks = p->data_len / chunk_size;
         uint8_t *data_ptr = (uint8_t *)p->data;
@@ -370,20 +521,17 @@ static int audio_callback_mic(audio_server_callback_cmt_t cmd,
         for (uint32_t i = 0; i < total_chunks; i++)
         {
             /* Send the current data chunk */
-            int ret = usbd_ep_start_write(
-                          0, AUDIO_IN_EP, data_ptr + (i * chunk_size), chunk_size);
-            if (ret == 0)
+            if (usbd_ep_start_write(0, AUDIO_IN_EP,
+                                    data_ptr + (i * chunk_size),
+                                    chunk_size) != 0)
             {
-                rt_kprintf("[UAC Record] send chunk %d, ret=%d\n", i, ret);
+                return -1;
             }
 
             rt_err_t result =
-                rt_sem_take(&mic_tx_sem, rt_tick_from_millisecond(10));
+                rt_sem_take(&g_uac.mic_tx_sem, rt_tick_from_millisecond(10));
             if (result != RT_EOK)
             {
-                rt_kprintf("[UAC Record] Timed out waiting for TX completion "
-                           "on chunk %d\n",
-                           i);
                 return -1;
             }
         }
@@ -395,80 +543,52 @@ static int audio_callback_mic(audio_server_callback_cmt_t cmd,
 static int audio_callback_speaker(audio_server_callback_cmt_t cmd,
                                   void *callback_userdata, uint32_t reserved)
 {
+    (void)cmd;
+    (void)callback_userdata;
+    (void)reserved;
+
     return 0;
 }
 
 void usbd_audio_open(uint8_t busid, uint8_t intf)
 {
     (void)busid;
-    (void)intf;
 
-    if (intf == 2)
+    if (intf == AUDIO_MIC_INTF)
     {
-        // Interface 2 is the audio mic streaming interface
-        rt_mb_send(&uac_mb, (rt_uint32_t)UAC_CMD_MIC_OPEN);
-        rt_kprintf("UAC MIC OPEN command sent\n");
+        g_uac.mic_target_open = true;
+        uac_post_msg(UAC_MSG_MIC_OPEN, 0, 0, UAC_SPEAKER_BUF_INVALID);
     }
-    else if (intf == 1)
+    else if (intf == AUDIO_SPEAKER_INTF)
     {
-        // Interface 1 is the audio speaker streaming interface
-        rt_mb_send(&uac_mb, (rt_uint32_t)UAC_CMD_SPEAKER_OPEN);
-        rt_kprintf("UAC SPEAKER OPEN command sent\n");
-    }
-    else
-    {
-        ;
+        g_uac.speaker_target_open = true;
+        uac_post_msg(UAC_MSG_SPEAKER_OPEN, 0, 0, UAC_SPEAKER_BUF_INVALID);
     }
 }
 
 void usbd_audio_close(uint8_t busid, uint8_t intf)
 {
     (void)busid;
-    (void)intf;
 
-    if (intf == 2)
+    if (intf == AUDIO_MIC_INTF)
     {
-        // Send a CLOSE command to the audio task via mailbox
-        rt_mb_send(&uac_mb, (rt_uint32_t)UAC_CMD_MIC_CLOSE);
-        rt_kprintf("UAC MIC CLOSE command sent\n");
+        g_uac.mic_target_open = false;
+        g_uac.mic_tx_active = false;
+        uac_post_msg(UAC_MSG_MIC_CLOSE, 0, 0, UAC_SPEAKER_BUF_INVALID);
     }
-    else if (intf == 1)
+    else if (intf == AUDIO_SPEAKER_INTF)
     {
-        rt_mb_send(&uac_mb, (rt_uint32_t)UAC_CMD_SPEAKER_CLOSE);
-        rt_kprintf("UAC SPEAKER CLOSE command sent\n");
-    }
-    else
-    {
-        ;
+        g_uac.speaker_target_open = false;
+        speaker_reset_usb_state(true);
+        uac_post_msg(UAC_MSG_SPEAKER_CLOSE, 0, 0, UAC_SPEAKER_BUF_INVALID);
     }
 }
 
-/**
- * @brief Initialize audio device parameters.
- *
- * This function abstracts the initialization of audio device parameters
- * for both microphone and speaker.
- *
- * @param param Pointer to the audio_parameter_t structure to be filled.
- * @param type The type of audio device (e.g., AUDIO_TYPE_LOCAL_RECORD,
- * AUDIO_TYPE_LOCAL_MUSIC).
- * @param bits_per_sample The number of bits per audio sample.
- * @param channel_num The number of audio channels.
- * @param samplerate The audio sampling rate.
- * @param write_cache_size The size of the write cache.
- * @param read_cache_size The size of the read cache.
- * @return 0 on success, -1 on failure.
- */
-static int audio_device_init(audio_parameter_t *param, uint8_t type,
-                             uint8_t bits_per_sample, uint8_t channel_num,
-                             uint32_t samplerate, uint32_t write_cache_size,
-                             uint32_t read_cache_size)
+static void audio_device_init(audio_parameter_t *param, uint8_t bits_per_sample,
+                              uint8_t channel_num, uint32_t samplerate,
+                              uint32_t write_cache_size,
+                              uint32_t read_cache_size)
 {
-    if (param == NULL)
-    {
-        return -1;
-    }
-
     rt_memset(param, 0, sizeof(audio_parameter_t));
 
     param->write_bits_per_sample = bits_per_sample;
@@ -480,20 +600,125 @@ static int audio_device_init(audio_parameter_t *param, uint8_t type,
     param->read_channnel_num = channel_num;
     param->read_samplerate = samplerate;
     param->read_cache_size = read_cache_size;
+}
 
-    return 0;
+static void uac_open_mic(void)
+{
+    if (g_uac.mic_client || !g_uac.mic_target_open)
+    {
+        return;
+    }
+
+    rt_sem_control(&g_uac.mic_tx_sem, RT_IPC_CMD_RESET, RT_NULL);
+
+    audio_parameter_t mic_param;
+    audio_device_init(&mic_param, 16, 1, 16000, 32, 320);
+
+    g_uac.mic_client = audio_open(AUDIO_TYPE_LOCAL_RECORD, AUDIO_RX,
+                                  &mic_param, audio_callback_mic, NULL);
+    g_uac.mic_tx_active = (g_uac.mic_client != NULL);
+}
+
+static void uac_close_mic(void)
+{
+    g_uac.mic_tx_active = false;
+    if (g_uac.mic_client)
+    {
+        audio_close(g_uac.mic_client);
+        g_uac.mic_client = 0;
+    }
+}
+
+static void uac_open_speaker(uint8_t busid)
+{
+    if (!g_uac.speaker_target_open)
+    {
+        return;
+    }
+
+    if (g_uac.speaker_client)
+    {
+        g_uac.speaker_rx_active = true;
+        speaker_arm_read_if_needed(busid);
+        return;
+    }
+
+    audio_parameter_t speaker_param;
+    audio_device_init(&speaker_param, 16, 1, 16000, AUDIO_OUT_PACKET, 320);
+
+    g_uac.speaker_client =
+        audio_open(AUDIO_TYPE_LOCAL_MUSIC, AUDIO_TX, &speaker_param,
+                   audio_callback_speaker, NULL);
+
+    if (g_uac.speaker_client)
+    {
+        g_uac.speaker_rx_active = true;
+        speaker_arm_read_if_needed(busid);
+    }
+    else
+    {
+        speaker_reset_usb_state(false);
+    }
+}
+
+static void uac_close_speaker(void)
+{
+    speaker_reset_usb_state(false);
+    if (g_uac.speaker_client)
+    {
+        audio_close(g_uac.speaker_client);
+        g_uac.speaker_client = 0;
+    }
+}
+
+static void uac_apply_targets(uint8_t busid)
+{
+    bool close_mic = g_uac.mic_force_close_pending || !g_uac.mic_target_open;
+    bool close_speaker = g_uac.speaker_force_close_pending ||
+                         !g_uac.speaker_target_open;
+
+    g_uac.mic_force_close_pending = false;
+    g_uac.speaker_force_close_pending = false;
+
+    if (close_mic)
+    {
+        uac_close_mic();
+    }
+
+    if (close_speaker)
+    {
+        uac_close_speaker();
+    }
+
+    if (g_uac.mic_target_open)
+    {
+        uac_open_mic();
+    }
+
+    if (g_uac.speaker_target_open)
+    {
+        uac_open_speaker(busid);
+    }
+}
+
+static void uac_apply_resync_if_needed(uint8_t busid)
+{
+    if (g_uac.control_resync_pending)
+    {
+        g_uac.control_resync_pending = false;
+        uac_apply_targets(busid);
+    }
 }
 
 void audio_v1_init(uint8_t busid, uint32_t reg_base)
 {
     // Initialize the semaphore for TX synchronization
     // Initial value is 0, max value is 1 (binary semaphore)
-    rt_sem_init(&mic_tx_sem, "mic_tx_sem", 0, RT_IPC_FLAG_FIFO);
-    rt_sem_init(&speaker_rx_sem, "speaker_rx_sem", 0, RT_IPC_FLAG_FIFO);
+    rt_sem_init(&g_uac.mic_tx_sem, "mic_tx_sem", 0, RT_IPC_FLAG_FIFO);
 
-    // Initialize the mailbox for UAC commands
-    rt_mb_init(&uac_mb, "uac_mb", &uac_mb_pool[0],
-               sizeof(uac_mb_pool) / sizeof(rt_uint32_t), RT_IPC_FLAG_FIFO);
+    rt_mq_init(&g_uac.mq, "uac_mq", &g_uac.mq_pool[0],
+               sizeof(struct uac_msg), sizeof(g_uac.mq_pool),
+               RT_IPC_FLAG_FIFO);
 
     usbd_desc_register(busid, &audio_v1_descriptor);
     usbd_add_interface(busid, usbd_audio_init_intf(busid, &intf0, AUDIO_VERSION,
@@ -510,107 +735,58 @@ void audio_v1_init(uint8_t busid, uint32_t reg_base)
 
 void audio_v1_task(uint8_t busid)
 {
-    (void)busid;
-    rt_uint32_t cmd;
+    struct uac_msg msg;
 
-    // This task now blocks waiting for commands, instead of polling
     while (1)
     {
-        // Block indefinitely until a message is received in the mailbox
-        if (rt_mb_recv(&uac_mb, &cmd, RT_WAITING_FOREVER) == RT_EOK)
+        if (rt_mq_recv(&g_uac.mq, &msg, sizeof(msg),
+                       RT_WAITING_FOREVER) == RT_EOK)
         {
-            switch (cmd)
+            switch (msg.type)
             {
-            case UAC_CMD_MIC_OPEN:
-                if (g_mic_client)
-                {
-                    rt_kprintf(
-                        "[RECORD] already running, ignoring OPEN cmd.\n");
-                    continue;
-                }
-                rt_kprintf("[RECORD] Received OPEN command. Starting...\n");
-                mic_tx_flag = true;
-
-                rt_sem_control(&mic_tx_sem, RT_IPC_CMD_RESET, RT_NULL);
-
-                audio_parameter_t mic_param;
-                audio_device_init(&mic_param, AUDIO_TYPE_LOCAL_RECORD, 16, 1,
-                                  16000, 32, 320);
-
-                g_mic_client = audio_open(AUDIO_TYPE_LOCAL_RECORD, AUDIO_RX,
-                                          &mic_param, audio_callback_mic, NULL);
-                if (!g_mic_client)
-                {
-                    rt_kprintf("[RECORD] Failed to open record client.\n");
-                    mic_tx_flag = false;
-                }
-                else
-                {
-                    rt_kprintf("[RECORD] Record client opened successfully.\n");
-                }
+            case UAC_MSG_MIC_OPEN:
+                uac_open_mic();
                 break;
 
-            case UAC_CMD_MIC_CLOSE:
-                rt_kprintf("[RECORD] Received CLOSE command. Stopping...\n");
-                mic_tx_flag = false;
-                if (g_mic_client)
-                {
-                    audio_close(g_mic_client);
-                    g_mic_client = 0;
-                    rt_kprintf("[RECORD] Record client closed.\n");
-                }
+            case UAC_MSG_MIC_CLOSE:
+                uac_close_mic();
                 break;
 
-            case UAC_CMD_SPEAKER_OPEN:
-                if (g_speaker_client)
-                {
-                    rt_kprintf(
-                        "[SPEAKER] already running, ignoring OPEN cmd.\n");
-                    continue;
-                }
-                rt_kprintf("[SPEAKER] Received OPEN command. Starting...\n");
-                speaker_rx_flag = true;
-
-                rt_sem_control(&speaker_rx_sem, RT_IPC_CMD_RESET, RT_NULL);
-
-                audio_parameter_t speaker_param;
-                audio_device_init(&speaker_param, AUDIO_TYPE_LOCAL_MUSIC, 16, 1,
-                                  16000, AUDIO_OUT_PACKET, 320);
-
-                g_speaker_client =
-                    audio_open(AUDIO_TYPE_LOCAL_MUSIC, AUDIO_TX, &speaker_param,
-                               audio_callback_speaker, NULL);
-
-                if (g_speaker_client)
-                {
-                    rt_kprintf(
-                        "[SPEAKER] Speaker client opened successfully.\n");
-                    usbd_ep_start_read(busid, AUDIO_OUT_EP, g_speaker_buffer,
-                                       AUDIO_OUT_PACKET);
-                }
-                else
-                {
-                    rt_kprintf("[SPEAKER] Failed to open speaker client.\n");
-                    speaker_rx_flag = false;
-                }
-
+            case UAC_MSG_SPEAKER_OPEN:
+                uac_open_speaker(busid);
                 break;
 
-            case UAC_CMD_SPEAKER_CLOSE:
-                rt_kprintf("[SPEAKER] Received CLOSE command. Stopping...\n");
-                speaker_rx_flag = false;
-                if (g_speaker_client)
+            case UAC_MSG_SPEAKER_DATA:
                 {
-                    audio_close(g_speaker_client);
-                    g_speaker_client = 0;
-                    rt_kprintf("[SPEAKER] Speaker client closed.\n");
+                    bool pending = speaker_take_pending_buffer(msg.buf_idx);
+
+                    if (pending && g_uac.speaker_rx_active &&
+                            g_uac.speaker_client &&
+                            (msg.stream_id == g_uac.speaker_stream_id) &&
+                            (msg.nbytes > 0))
+                    {
+                        audio_write(g_uac.speaker_client,
+                                    g_uac_usb_buffers.speaker[msg.buf_idx],
+                                    msg.nbytes);
+                    }
                 }
+                speaker_arm_read_if_needed(busid);
+                break;
+
+            case UAC_MSG_SPEAKER_CLOSE:
+                uac_close_speaker();
+                break;
+
+            case UAC_MSG_CONTROL_SYNC:
+                g_uac.control_resync_pending = false;
+                uac_apply_targets(busid);
                 break;
 
             default:
-                rt_kprintf("[UAC] Received unknown command: %d\n", cmd);
                 break;
             }
+
+            uac_apply_resync_if_needed(busid);
         }
     }
 }
@@ -624,19 +800,37 @@ static void usbd_audio_in_callback(uint8_t busid, uint8_t ep, uint32_t nbytes)
 
     // This callback is in an interrupt context or a high-priority USB task.
     // Release the semaphore to signal that the transfer is complete.
-    rt_sem_release(&mic_tx_sem);
+    rt_sem_release(&g_uac.mic_tx_sem);
 }
 
 static void usbd_audio_out_callback(uint8_t busid, uint8_t ep, uint32_t nbytes)
 {
-    (void)busid;
+    rt_base_t level;
+    rt_uint8_t buf_idx;
+    rt_uint32_t stream_id;
+
     (void)ep;
-    (void)nbytes;
 
-    if (g_speaker_client)
+    level = rt_hw_interrupt_disable();
+    buf_idx = g_uac.speaker_armed_buf;
+    g_uac.speaker_out_armed = false;
+    g_uac.speaker_armed_buf = UAC_SPEAKER_BUF_INVALID;
+
+    if (g_uac.speaker_rx_active && buf_idx < UAC_SPEAKER_BUF_COUNT)
     {
-        audio_write(g_speaker_client, g_speaker_buffer, nbytes);
-    }
+        g_uac.speaker_pending_mask |= (1u << buf_idx);
+        stream_id = g_uac.speaker_stream_id;
+        rt_hw_interrupt_enable(level);
 
-    usbd_ep_start_read(busid, AUDIO_OUT_EP, g_speaker_buffer, AUDIO_OUT_PACKET);
+        if (uac_post_msg(UAC_MSG_SPEAKER_DATA, nbytes, stream_id,
+                         buf_idx) != RT_EOK)
+        {
+            speaker_take_pending_buffer(buf_idx);
+        }
+        speaker_arm_read_if_needed(busid);
+    }
+    else
+    {
+        rt_hw_interrupt_enable(level);
+    }
 }

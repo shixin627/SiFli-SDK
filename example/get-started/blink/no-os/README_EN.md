@@ -50,7 +50,7 @@ To run this example, you need to have a development board that supports this exa
 ### Compilation and Flashing
 Follow these steps to complete compilation and flashing:
 ```
-menuconfig --board=eh-lb523
+sdk.py menuconfig --board=eh-lb523
 scons --board=eh-lb523 -j8
  .\build_eh-lb523\uart_download.bat
 ```
@@ -89,7 +89,7 @@ CONFIG_BSP_USING_LED2=y
 CONFIG_BSP_LED2_PIN=26
 CONFIG_BSP_LED2_ACTIVE_HIGH=y
 ```
-The above configuration is the default configuration for **eh-lb523**, i.e., LED2 is configured to pin 26 by default; if you want to modify it to another pin, you can run **menuconfig --board eh-lb523** to modify it;
+The above configuration is the default configuration for **eh-lb523**, i.e., LED2 is configured to pin 26 by default; if you want to modify it to another pin, you can run **sdk.py menuconfig --board eh-lb523** to modify it;
 
 3. Modify the code **main.c** to control BSP_LED2_PINs to implement LED blinking;
   ```c

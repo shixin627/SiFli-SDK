@@ -27,9 +27,9 @@
 SiFli系列MCU支持定时器中断来触发多通道同时采样的，可以参考宏`BSP_GPADC_SUPPORT_MULTI_CH_SAMPLING`内定义和芯片用户手册
 * 如果缺失上面三个宏，就需要通过`menuconfig`如下命令进行打开  
 
-> menuconfig --board=sf32lb52-lcd_n16r8       525开发板
-> menuconfig --board=sf32lb52-lcd_52d       52d开发板
-> menuconfig --board=sf32lb58-lcd_n16r64n4       587开发板
+> sdk.py menuconfig --board=sf32lb52-lcd_n16r8       525开发板
+> sdk.py menuconfig --board=sf32lb52-lcd_52d       52d开发板
+> sdk.py menuconfig --board=sf32lb58-lcd_n16r64n4       587开发板
 
 如下图，选择GPADC1,保存并退出menuconfig，查看`rtconfig.h`宏是否生成
 ![alt text](assets/MENUCONFIG_ADC.png)

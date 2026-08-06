@@ -1,46 +1,7 @@
-/**
-  ******************************************************************************
-  * @file   wheather.c
-  * @author Sifli software development team
-  ******************************************************************************
-*/
-/**
- * @attention
- * Copyright (c) 2024 - 2025,  Sifli Technology
+/*
+ * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
  *
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this
- *    list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form, except as embedded into a Sifli integrated circuit
- *    in a product or a software update for such product, must reproduce the above
- *    copyright notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * 3. Neither the name of Sifli nor the names of its contributors may be used to endorse
- *    or promote products derived from this software without specific prior written permission.
- *
- * 4. This software, with or without modification, must only be used with a
- *    Sifli integrated circuit.
- *
- * 5. Any software provided in binary form under this license must not be reverse
- *    engineered, decompiled, modified and/or disassembled.
- *
- * THIS SOFTWARE IS PROVIDED BY SIFLI TECHNOLOGY "AS IS" AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY, NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL SIFLI TECHNOLOGY OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
- * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ * SPDX-License-Identifier: Apache-2.0
  */
 #include <rtthread.h>
 #include "lwip/api.h"
@@ -48,26 +9,26 @@
 #include <webclient.h>
 #include <cJSON.h>
 
-#define GET_HEADER_BUFSZ        1024        //头部大小
-#define GET_RESP_BUFSZ          1024        //响应缓冲区大小
-#define GET_URL_LEN_MAX         256         //网址最大长度
-#define GET_URI                 "http://%s/v3/weather/now.json?key=%s&location=%s&language=%s" //获取天气的 API
+#define GET_HEADER_BUFSZ        1024        // Header buffer size
+#define GET_RESP_BUFSZ          1024        // Response buffer size
+#define GET_URL_LEN_MAX         256         // Max URL length
+#define GET_URI                 "http://%s/v3/weather/now.json?key=%s&location=%s&language=%s" // Weather API
 #define WEATHER_HOST                    "api.seniverse.com"
 #define WEATHER_KEY_ID                  "SO23_Gmly2oK3kMf4"
-#define WEATHER_CITY_ID                 "chongqing" //重庆地区 ID
+#define WEATHER_CITY_ID                 "chongqing" // City ID
 #define WEATHER_LANGUAGE_ID             "zh-Hans&unit=c" //
 
 typedef struct
 {
-    char *txt;//天气现象文字
-    char *code;//天气现象代码
-    char *temperature;//温度
+    char *txt;         // Weather phenomenon text
+    char *code;        // Weather phenomenon code
+    char *temperature; // Temperature
 } user_seniverse_now_config_t;
 
 static uint8_t is_ip_searching;
 
 /**
- * @brief 心知天气（seniverse） 数据结构体
+ * @brief Seniverse weather data structure
  */
 typedef struct
 {
@@ -125,7 +86,7 @@ int http_weather_data_parse(char *json_data)
     cJSON *now_root = NULL;
     user_seniverse_config_t user_sen_config;
 
-    root = cJSON_Parse(json_data);   /*json_data 为心知天气的原始数据*/
+    root = cJSON_Parse(json_data);   /* json_data is the raw data from Seniverse */
     if (!root)
     {
         rt_kprintf("Error before: [%s]\n", cJSON_GetErrorPtr());
@@ -133,8 +94,8 @@ int http_weather_data_parse(char *json_data)
     }
 
 
-    cJSON *Presult = cJSON_GetObjectItem(root, "results");  /*results 的键值对为数组，*/
-    result_array_size = cJSON_GetArraySize(Presult);  /*求results键值对数组中有多少个元素*/
+    cJSON *Presult = cJSON_GetObjectItem(root, "results");  /* results value is an array */
+    result_array_size = cJSON_GetArraySize(Presult);  /* Get number of elements in results array */
     for (i = 0; i < result_array_size; i++)
     {
         cJSON *item_results = cJSON_GetArrayItem(Presult, i);
@@ -182,7 +143,7 @@ int http_weather_data_parse(char *json_data)
         item = cJSON_GetObjectItem(results_root, "last_update");
         user_sen_config.last_update = cJSON_Print(item);
 
-        cJSON_Delete(results_root);  /*每次调用cJSON_Parse函数后，都要释放内存*/
+        cJSON_Delete(results_root);  /* Free memory after each cJSON_Parse call */
 
     }
 
@@ -196,7 +157,7 @@ int http_weather_data_parse(char *json_data)
     rt_kprintf("code:%s\n", user_sen_config.now_config.code);
     rt_kprintf("temperature:%s\n", user_sen_config.now_config.temperature);
     rt_kprintf("last_update:%s\n", user_sen_config.last_update);
-    cJSON_Delete(root);/*每次调用cJSON_Parse函数后，都要释放内存*/
+    cJSON_Delete(root); /* Free memory after each cJSON_Parse call */
 
     return  0;
 }
@@ -213,18 +174,18 @@ char *get_weather()
     if (check_internet_access() == 0)
         return buffer;
 
-    /* 为 weather_url 分配空间 */
+    /* Allocate memory for weather_url */
     weather_url = rt_calloc(1, GET_URL_LEN_MAX);
     if (weather_url == RT_NULL)
     {
         rt_kprintf("No memory for weather_url!\n");
         goto __exit;
     }
-    /* 拼接 GET 网址 */
+    /* Build GET URL */
     rt_snprintf(weather_url, GET_URL_LEN_MAX, GET_URI,
                 WEATHER_HOST, WEATHER_KEY_ID, WEATHER_CITY_ID, WEATHER_LANGUAGE_ID);
 
-    /* 创建会话并且设置响应的大小 */
+    /* Create session and set response size */
     session = webclient_session_create(GET_HEADER_BUFSZ);
     if (session == RT_NULL)
     {
@@ -232,14 +193,14 @@ char *get_weather()
         goto __exit;
     }
 
-    /* 发送 GET 请求使用默认的头部 */
+    /* Send GET request with default header */
     if ((resp_status = webclient_get(session, weather_url)) != 200)
     {
         rt_kprintf("webclient GET request failed, response(%d) error.\n", resp_status);
         goto __exit;
     }
 
-    /* 分配用于存放接收数据的缓冲 */
+    /* Allocate buffer for received data */
     buffer = rt_calloc(1, GET_RESP_BUFSZ);
     if (buffer == RT_NULL)
     {
@@ -269,14 +230,14 @@ char *get_weather()
         buffer = NULL;
     }
 __exit:
-    /* 释放网址空间 */
+    /* Free URL memory */
     if (weather_url != RT_NULL)
     {
         rt_free(weather_url);
         weather_url = RT_NULL;
     }
 
-    /* 关闭会话 */
+    /* Close session */
     if (session != RT_NULL)
         webclient_close(session);
 

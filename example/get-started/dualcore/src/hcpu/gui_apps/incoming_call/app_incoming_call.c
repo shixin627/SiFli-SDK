@@ -251,6 +251,6 @@ static int app_main(intent_t i)
 }
 
 BUILTIN_APP_EXPORT(LV_EXT_STR_ID(message), IMG_LOGO, APP_ID_INCOMING_CALL,
-                   app_main);
+                   app_main, 1);
 
 #endif

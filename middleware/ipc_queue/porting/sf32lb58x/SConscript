@@ -13,6 +13,9 @@ inc = [cwd]
 if GetDepend('BF0_LCPU'):
     src += Glob("lcpu/*.c")
     inc += [cwd + '/lcpu']
+elif GetDepend('BF0_ACPU'):
+    src += Glob("acpu/*.c")
+    inc += [cwd + '/acpu']
 elif GetDepend('BF0_HCPU'):
     src += Glob("hcpu/*.c")
     inc += [cwd + '/hcpu']

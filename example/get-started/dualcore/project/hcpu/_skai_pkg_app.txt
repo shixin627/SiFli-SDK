@@ -1,0 +1,3 @@
+skai_pkg_add good
+skai_pkg_ls
+skai_pkg_run hello

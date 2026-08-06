@@ -11,6 +11,8 @@
 ## 概述
 本例程演示如何使用双核开发应用，项目已支持蓝牙和低功耗，基于LVGL v8构建用户界面（参考了`multimedia/lvgl/watch`），大小核运行各自的程序（SF32LB52系列芯片小核为蓝牙专用，不运行用户程序）。
 
+> 注：`SF32LB55X` 系列暂不支持 `3D旋转(rotation3d)` 演示，因此在 55x 平台上对应蜂窝入口无法进入画面。
+
 ## 目录结构
 ```
 .
@@ -35,6 +37,99 @@ scons --board=sf32lb52-lcd_n16r8 -j32
 
 
 在HCPU工程目录下执行`scons`命令会自动编译LCPU的工程，下载脚本会下载包括小核在内的所有的固件。
+
+### 图片/字库资源（jsroot）
+
+资源来源目录 `project/jsroot`（图片 + 字库），打包成 FAT 映像后单独刷入。
+
+**关键参数：资源分区起始位址 = `0x64280000`**（= `FS_REGION_START_ADDR`，见 `ptab.json`）。
+所有刷 jsroot 的脚本都必须用这个位址；旧文档里的 `0x64400000` 是错的。
+
+产生映像（ADR-0010 Route B：GC + strip，约 5.5 MB，FAT 格式化为整个 87.5 MB 分区）：
+
+```
+project\hcpu\jsroot_pack.bat        REM → project\hcpu\build\jsroot_packed.bin
+```
+
+刷入方式二选一：
+
+1. **UART（推荐）**：跑 `project\hcpu\release_gui.py`，按「刷入圖片資源」。
+   内部用 `tools\uart_download\ImgDownUart.exe` 把 `build\jsroot_packed.bin` 烧到 `0x64280000`。
+2. **JLink**：`jlink.exe -device SF32LB56X_NAND -if SWD -speed 10000 -autoconnect 1 -CommandFile tools\mkfatimg\mkfatimg_nand\_pack_flash.jlink`
+
+`project\hcpu\jsroot.bat` 是旧的 8 MB 流程（产生 `jsroot.bin` 并直接用 JLink 烧录），已被 `jsroot_pack.bat` 取代。
+
+### 内存/分区配置（ptab.json）
+
+分区表：`customer/boards/sf32lb56-watch/ptab.json`。两块内存各有一个 `main` 区，
+必须同时改，改一个不改另一个会在链接期或启动期出问题。
+
+| mem | region | offset | max_size | 用途 |
+| --- | --- | --- | --- | --- |
+| psram1 | `main` | 0x00000000 | 0x00280000 | 代码执行区 |
+| psram1 | (PSRAM_DATA) | 0x00280000 | 0x00580000 | 图片缓存等运行期数据 |
+| flash3 | `main` | 0x00000000 | 0x00280000 | HCPU_FLASH_CODE_LOAD_REGION |
+| flash3 | (FS_REGION) | 0x00280000 | 0x05780000 | 文件系统 + jsroot 资源 |
+
+代码区上限 `0x280000` = 2,621,440 byte。参考占用：
+
+| 固件 | main.bin | 余量 |
+| --- | --- | --- |
+| 基线 | 2,389,600 | 231,840（8.8%）|
+| 合并上游后 | 2,509,472 | 111,968（4.3%）|
+| 合并后 + `RT_USING_FINSH` | 2,603,120 | 18,320（0.7%）|
+
+链接超出时的报错是 `Error: L6406E: No space in execution regions`，不会指出是分区不够，
+只会列一堆放不下的 symbol，容易误判成代码问题。
+
+**扩充步骤**（以 0x280000 → 0x300000，即 +512 KB 为例）：
+
+1. `ptab.json`：psram1 `main` 与 flash3 `main` 的 `max_size` 同时改成 `0x00300000`。
+2. `ptab.json`：PSRAM_DATA 的 `offset` 改 `0x00300000`、`max_size` 减 512 KB（`0x00500000`）；
+   FS_REGION 的 `offset` 改 `0x00300000`、`max_size` 减 512 KB（`0x05700000`）。
+3. FS_REGION 起始位址跟着变，**jsroot 的刷入位址必须同步改**（`0x64280000` → `0x64300000`），
+   共三处硬编码：`project/hcpu/jsroot.bat`、`project/hcpu/jsroot_pack.bat`、
+   `project/hcpu/release_gui.py` 的 `JSROOT_FLASH_ADDRESS`。
+4. 改完必须 **clean build**（删掉 `build_<board>_hcpu` 目录），分区改动不会触发增量重建。
+5. 分区一变，设备上原有的文件系统与 jsroot 都会错位，**必须重刷 jsroot**。
+
+代价是 PSRAM 运行期数据少 512 KB，与 `CONFIG_IMAGE_CACHE_IN_PSRAM_SIZE` 抢空间，改完要回归图片相关功能。
+
+### 烧录
+
+下载脚本会按提示要 COM 口编号，可以直接用管道喂进去，不需要人工输入：
+
+```
+echo <port> | build_sf32lb56-watch_hcpu\uart_download.bat
+```
+
+`<port>` 只填数字（COM4 就填 `4`）。在 PowerShell 里跑要写成
+`echo 4 | cmd /c ".\uart_download.bat"`，少了 `.\` 会报「不是内部或外部命令」。
+
+**端口分两个，别接错**：一个是固件日志口（HCPU console，`uart1`），另一个是 boot ROM
+下载口，`uart_download.bat` 用的是后者。两个口在不同机器上编号不同，插上后用
+设备管理器或 `python -c "import serial.tools.list_ports as l;[print(p.device,p.description) for p in l.comports()]"` 确认。
+
+第一次下载偶尔会卡在 `EnterDebugMode` 或 `WriteMem` 失败，立即重跑一次通常就过。
+文件系统（含 jsroot）不会被这个脚本擦掉。
+
+### 调试用固件（带 shell）
+
+发布配置没有串口 shell，`uart1` 上只有 Warning 以上的日志，平时是安静的——
+静默不代表接线有问题。要用串口下命令，改 `project/hcpu/proj.conf`：
+
+```
+CONFIG_RT_USING_FINSH=y
+# CONFIG_BSP_USING_VIRTUAL_CONSOLE is not set
+```
+
+虚拟控制台会占住 `uart1`，必须一起关掉。这样能拿到 `msh />`，可用 `app_run <id>` /
+`app_exit <id>` / `list_app` 驱动应用切换（共 435 条内建命令）。
+
+`project/hcpu/set_build_mode.py dev` 是完整的 DEV 档，但它同时会改
+`CUSTOMER_BOARD_VER`（BOARD_VER_29 → 28）与 LCPU 的传感器电源脚位，板型不符会开不了机；
+只想要 shell 的话按上面两行手改，不要动硬件值。另外完整 DEV 档还会关掉
+`ULOG_OUTPUT_LVL_W`（保留所有 D/I 字符串），在当前占用下会直接超出代码区。
 
 ### 代码解析
 #### 编译脚本

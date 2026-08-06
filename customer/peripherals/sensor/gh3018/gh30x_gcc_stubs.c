@@ -18,7 +18,8 @@
 #include "gh30x_algo_hook.h"
 
 /* memory init/deinit */
-GS32 goodix_mem_init(void *mem_addr, GS32 size) { (void)mem_addr; (void)size; return 0; }
+/* int32_t, not GS32: GCC's int32_t is `long int` while GS32 is `int`. */
+int32_t goodix_mem_init(void *mem_addr, int32_t size) { (void)mem_addr; (void)size; return 0; }
 void goodix_mem_deinit(void) { }
 
 /* HBA (heart-rate algorithm) */

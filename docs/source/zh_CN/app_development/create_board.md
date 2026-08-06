@@ -133,7 +133,7 @@
 
         config LCD_PWM_BACKLIGHT_INTERFACE_NAME
             string
-            default "pwm3"
+            default "pwmt2"
 
         config LCD_PWM_BACKLIGHT_CHANEL_NUM
             int

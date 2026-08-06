@@ -20,7 +20,6 @@
     #include "arm_math.h"
     #include "arm_const_structs.h"
 #endif
-#include <rtthread.h>
 #include "webrtc_mem.h"
 
 #define AUDIO_MEM_ALLOC 1

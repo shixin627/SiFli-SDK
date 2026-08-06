@@ -1,7 +1,9 @@
-/*************************************************************
-SBC Example PLC ANSI-C Source Code
-File: sbcplc.c
-*************************************************************/
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <math.h>
 //#include "sbc.h"
 #include "audio_msbc_plc.h"

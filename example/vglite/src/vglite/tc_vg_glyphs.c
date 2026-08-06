@@ -177,7 +177,7 @@ void tc_vglite_glyphs_entry(void)
     /* Save PNG file.*/
     //vg_lite_save_png("plyhs2_1.png", fb);
 
-    tc_vg_send_data_to_lcd(fb->memory, fb->width, fb->height, RTGRAPHIC_PIXEL_FORMAT_RGB565);
+    tc_vg_send_data_to_lcd(fb->memory, fb->width, fb->stride / 2, fb->height, RTGRAPHIC_PIXEL_FORMAT_RGB565);
     if (demo_should_exit()) return;
     if (!demo_delay_ms(5000))
     {
@@ -209,7 +209,7 @@ void tc_vglite_glyphs_entry(void)
     vg_lite_clear_path(&path);
     //vg_lite_save_png("plyhs2_2.png", fb);
 
-    tc_vg_send_data_to_lcd(fb->memory, fb->width, fb->height, RTGRAPHIC_PIXEL_FORMAT_RGB565);
+    tc_vg_send_data_to_lcd(fb->memory, fb->width, fb->stride / 2, fb->height, RTGRAPHIC_PIXEL_FORMAT_RGB565);
     if (demo_should_exit()) goto ErrorHandler;
     if (!demo_delay_ms(5000))
     {

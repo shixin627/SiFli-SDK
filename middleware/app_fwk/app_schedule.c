@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 /*********************
  *      INCLUDES
  *********************/
@@ -100,6 +105,7 @@ static app_load_func sche_app_ld_func = NULL;
 static app_destory_func sche_app_dstry_func = NULL;
 static app_sche_debug_func sche_app_debug_func = NULL;
 static app_sche_hook_func   sche_idle_hook_func = NULL;
+static app_sche_anim_hook_func   sche_anim_hook_func = NULL;
 static app_sche_malloc_func sche_malloc_func = NULL;
 static app_sche_free_func   sche_free_func = NULL;
 static app_sche_subpage_func sche_subpage_func = NULL;
@@ -133,6 +139,7 @@ static uint8_t scheduler_loop_st = 0;
 static rt_mailbox_t task_msg_mbx;
 /*Print app&subpage performance tick*/
 static uint8_t app_subgpage_perf_tick = 0;
+static uint8_t running_root_stop_others = 0;
 
 #define app_sche_log(LEVEL, ...)  do{ if(sche_app_debug_func) {\
                                             if(1 == scheduler_loop_st){\
@@ -400,8 +407,6 @@ static bool is_running_app_handler(gui_runing_app_t *handler)
     return false;
 
 }
-
-
 
 static bool is_suspend_or_destoryed_app_handler(gui_runing_app_t *handler)
 {
@@ -733,7 +738,7 @@ static void app_stop_all_backgrounds(void)
     Resume first page of app if it is existed.
     and bring it to front.
 */
-static void app_resume(rt_list_t *app_node)
+static void app_resume_to_page(rt_list_t *app_node, const char *pg_id)
 {
     if (NULL == app_node) return;
 
@@ -770,22 +775,57 @@ static void app_resume(rt_list_t *app_node)
     }
     else
     {
-        subpage_node_t *p_last_page = rt_list_tail_entry(&run_app->page_list, subpage_node_t, node);
-
-        if (page_st_resumed == p_last_page->target_state)
+        if (NULL == pg_id)
         {
-            ;//A page was created at tail of list
+            subpage_node_t *p_last_page = rt_list_tail_entry(&run_app->page_list, subpage_node_t, node);
+
+            if (page_st_resumed == p_last_page->target_state)
+            {
+                ;//A page was created at tail of list
+            }
+            else
+            {
+                //Resume the first page
+                subpage_node_t *p_first_page = rt_list_first_entry(&run_app->page_list, subpage_node_t, node);
+                page_set_target_state(p_first_page, page_st_resumed);
+            }
         }
         else
         {
-            subpage_node_t *p_first_page = rt_list_first_entry(&run_app->page_list, subpage_node_t, node);
-            page_set_target_state(p_first_page, page_st_resumed);
+            subpage_node_t *p_page = app_schedule_get_page_in_app(run_app, pg_id);
+            if (p_page)
+            {
+                rt_list_remove(&p_page->node);
+                /*Pause all other pages of this app*/
+
+                page_state_enum page_state = (running_root_stop_others && 0 == rt_strcmp(pg_id, "root")) ? page_st_stoped : page_st_paused;
+
+                app_set_all_page_state(run_app, page_state);
+
+                //Resume this new page
+                page_set_target_state(p_page, page_st_resumed);
+
+                rt_list_insert_before(&run_app->page_list, &p_page->node);
+            }
+            else
+            {
+                app_sche_i("Cann't find subpage [%s] in app[%s]!", run_app->id, pg_id);
+            }
         }
     }
 
     /* 4.  Add app back to running_app_list*/
     rt_list_insert_after(prev_node, app_node);
     app_set_target_state(run_app, app_st_running);
+}
+/*
+    Pause/Stop all other app,
+    Resume first page of app if it is existed.
+    and bring it to front.
+*/
+static void app_resume(rt_list_t *app_node)
+{
+    app_resume_to_page(app_node, NULL);
 }
 
 static void app_restart(rt_list_t *app_node)
@@ -916,6 +956,9 @@ static void app_subpage_do(gui_runing_app_t *p_app, subpage_node_t *subpage, gui
             state_str = "UNKNOWN";
             break;
         }
+
+        if (sche_anim_hook_func)
+            sche_anim_hook_func(subpage->scr, msg_id);
 
         app_sche_i("page[%s][%s] do %s, %x", p_app->id, subpage->name, state_str, subpage);
         schedule_app  = &p_app->node;
@@ -1171,7 +1214,7 @@ static rt_err_t app_goback(rt_list_t *app_node)
     return RT_EOK;
 }
 
-static rt_err_t app_create_page(rt_list_t *app_node, const char *page_id, gui_page_msg_cb_t page_handler, void *usr_data)
+static rt_err_t app_create_page(rt_list_t *app_node, const char *page_id, gui_page_msg_cb_t page_handler, void *usr_data, uint32_t mem_size)
 {
     if (NULL == app_node) return RT_EEMPTY;
 
@@ -1180,7 +1223,7 @@ static rt_err_t app_create_page(rt_list_t *app_node, const char *page_id, gui_pa
 
 
     //stack current page to a history list
-    subpage_node_t *p_new_page = (subpage_node_t *) app_sche_malloc(sizeof(struct _subpage_node));
+    subpage_node_t *p_new_page = (subpage_node_t *) app_sche_malloc(RT_ALIGN(sizeof(struct _subpage_node), RT_ALIGN_SIZE) + mem_size);
 
     if (NULL == p_new_page)
     {
@@ -1189,7 +1232,9 @@ static rt_err_t app_create_page(rt_list_t *app_node, const char *page_id, gui_pa
     }
 
     app_sche_d("app[%s] create page[%s] %x", run_app->id, page_id, p_new_page);
-    memset(p_new_page, 0, sizeof(struct _subpage_node));
+    memset(p_new_page, 0, RT_ALIGN(sizeof(struct _subpage_node), RT_ALIGN_SIZE) + mem_size);
+    if (mem_size)
+        p_new_page->mem_ptr = (void *)((uint8_t *)p_new_page + RT_ALIGN(sizeof(struct _subpage_node), RT_ALIGN_SIZE));
 
     //load new page data
     p_new_page->parent = run_app;
@@ -1202,14 +1247,14 @@ static rt_err_t app_create_page(rt_list_t *app_node, const char *page_id, gui_pa
     p_new_page->user_data = usr_data;
     p_new_page->state = page_st_created;
 #ifdef TRANS_ANIMATION
-    app_trans_anim_init_cfg(&p_new_page->a_group.a_enter, GUI_APP_TRANS_ANIM_ENTER_DEFAULT);
-    app_trans_anim_init_cfg(&p_new_page->a_group.a_exit, GUI_APP_TRANS_ANIM_EXIT_DEFAULT);
-    p_new_page->a_group.prio_up = 0;
-    p_new_page->a_group.prio_down = 0;
+    gui_app_init_anim(&p_new_page->a_exit);
+    gui_app_init_anim(&p_new_page->a_enter);
 #endif /* TRANS_ANIMATION */
 
     /*Pause all other pages of this app*/
-    app_set_all_page_state(run_app, page_st_paused);
+    page_state_enum page_state = (running_root_stop_others && 0 == rt_strcmp(page_id, "root")) ? page_st_stoped : page_st_paused;
+
+    app_set_all_page_state(run_app, page_state);
 
     //Resume this new page
     page_set_target_state(p_new_page, page_st_resumed);
@@ -1790,8 +1835,8 @@ static uint32_t schedule_subpage(void)
         {
             if (!trans_anim_playing)
             {
-                const gui_app_trans_anim_group_t *g_anim_enter = NULL;
-                const gui_app_trans_anim_group_t *g_anim_exit = NULL;
+                const gui_app_trans_anim_t *g_anim_enter = NULL;
+                const gui_app_trans_anim_t *g_anim_exit = NULL;
                 screen_t anim_enter_scr = NULL;
                 screen_t anim_exit_scr  = NULL;
 
@@ -1812,11 +1857,11 @@ static uint32_t schedule_subpage(void)
 
                 if (trans_anim_pg_exit)
                 {
-                    g_anim_exit     = &trans_anim_pg_exit->a_group;
+                    g_anim_exit     = &trans_anim_pg_exit->a_exit;
                     anim_exit_scr = trans_anim_pg_exit->scr;
                 }
 
-                g_anim_enter = &trans_anim_pg_enter->a_group;
+                g_anim_enter = &trans_anim_pg_enter->a_enter;
                 anim_enter_scr = trans_anim_pg_enter->scr;
 
                 /*
@@ -1956,7 +2001,6 @@ static void check_duplicated_apps(void)
             }
         }
     }
-
 }
 
 static uint32_t app_scheduler_new(void)
@@ -2177,7 +2221,19 @@ void app_schedule_task(rt_mailbox_t msg_mbx)
         case GUI_APP_MSG_OPEN_PAGE:
         {
             if (is_running_app_handler(p_msg->handler))
-                app_create_page(&(p_msg->handler->node), p_msg->content.page.name, p_msg->content.page.msg_handler, p_msg->content.page.user_data);
+            {
+                gui_runing_app_t *run_app = rt_list_entry(&(p_msg->handler->node), gui_runing_app_t, node);
+                subpage_node_t *subpage = app_schedule_get_page_in_app(run_app, p_msg->content.page.name);
+                if (subpage)
+                {
+                    app_sche_i("page [%s][%s] is existed, destroy it!", run_app->id, p_msg->content.page4app.page_id);
+                    page_set_target_state(subpage, page_st_stoped);
+                    port_app_sche_reset_indev(port_app_sche_get_act_scr());
+                    port_app_sche_load_scr(dummy_scr);
+                    while (schedule_subpage());
+                }
+                app_create_page(&(p_msg->handler->node), p_msg->content.page.name, p_msg->content.page.msg_handler, p_msg->content.page.user_data, p_msg->content.page.mem_size);
+            }
             else if (is_suspend_or_destoryed_app_handler(p_msg->handler))
             {
                 app_sche_i("Create page on suspend app");
@@ -2185,11 +2241,79 @@ void app_schedule_task(rt_mailbox_t msg_mbx)
                 p_msg->handler->flag &= ~APP_FLAG_GOBACK_ANIM;
                 app_restart(&(p_msg->handler->node));
                 p_msg->handler->state = app_st_running;//Not call app entry function
-                app_create_page(&(p_msg->handler->node), p_msg->content.page.name, p_msg->content.page.msg_handler, p_msg->content.page.user_data);
+                app_create_page(&(p_msg->handler->node), p_msg->content.page.name, p_msg->content.page.msg_handler, p_msg->content.page.user_data, p_msg->content.page.mem_size);
             }
             else
             {
                 app_sche_assert("Create page %s[%x] error, invalid app handler %x!", p_msg->content.page.name, p_msg->content.page.msg_handler, p_msg->handler);
+            }
+        }
+        break;
+        case GUI_APP_MSG_OPEN_PAGE_FOR_APP:
+        {
+            gui_runing_app_t *running_app = app_schedule_is_app_running(p_msg->content.page4app.app_id);
+            gui_runing_app_t *suspend_app = get_suspend_or_destoryed_app_handler(p_msg->content.page4app.app_id);
+            if (running_app)
+            {
+                subpage_node_t *subpage = app_schedule_get_page_in_app(running_app, p_msg->content.page4app.page_id);
+                if (subpage)
+                {
+                    if (p_msg->content.page4app.restart_dup_pg)
+                    {
+                        app_sche_i("page [%s][%s] is existed, destroy it!", running_app->id, p_msg->content.page4app.page_id);
+                        page_set_target_state(subpage, page_st_stoped);
+                        port_app_sche_reset_indev(port_app_sche_get_act_scr());
+                        port_app_sche_load_scr(dummy_scr);
+                        while (schedule_subpage());
+                    }
+                    else
+                    {
+                        app_resume_to_page(&(running_app->node), p_msg->content.page4app.page_id);
+                        break;
+                    }
+                }
+
+                app_create_page(&(running_app->node), p_msg->content.page4app.page_id, p_msg->content.page4app.msg_handler,
+                                p_msg->content.page4app.user_data, p_msg->content.page4app.mem_size);
+
+            }
+            else if (suspend_app)
+            {
+                app_sche_i("Create page on %s app", suspend_app->target_state < app_st_destoryed ? "suspend" : "destoryed");
+
+                suspend_app->flag &= ~APP_FLAG_GOBACK_ANIM;
+                app_restart(&(suspend_app->node));
+                suspend_app->state = app_st_running;//Not call app entry function
+                app_create_page(&(suspend_app->node), p_msg->content.page4app.page_id, p_msg->content.page4app.msg_handler,
+                                p_msg->content.page4app.user_data, p_msg->content.page4app.mem_size);
+            }
+            else
+            {
+                if (p_msg->content.page4app.restart_app)
+                {
+                    _intent intnt = { 0 };
+                    intent_set_string(&intnt, p_msg->content.page4app.app_id, p_msg->content.page4app.page_id);
+                    app_launch_new(p_msg->content.page4app.app_id, &intnt);
+                    gui_runing_app_t *running_app = app_schedule_is_app_running(p_msg->content.page4app.app_id);
+                    if (!running_app)
+                    {
+                        app_sche_assert("launch [%x] failed!", p_msg->content.page4app.app_id);
+                    }
+                    else
+                    {
+                        app_create_page(&(running_app->node), p_msg->content.page4app.page_id, p_msg->content.page4app.msg_handler,
+                                        p_msg->content.page4app.user_data, p_msg->content.page4app.mem_size);
+                    }
+                    //Main
+                    //Main Main=xxxx
+                    //intent_reinit(&running_app->param, p_msg->content.page4app.app_id);
+
+                }
+                else
+                {
+                    app_sche_assert("Create page %s[%x] error, app %s is not running!", p_msg->content.page4app.page_id,
+                                    p_msg->content.page4app.msg_handler, p_msg->content.page4app.app_id);
+                }
             }
         }
         break;
@@ -2389,6 +2513,11 @@ void app_schedule_set_idle_hook(app_sche_hook_func idle_hook)
     sche_idle_hook_func = idle_hook;
 }
 
+void app_schedule_set_anim_hook(app_sche_anim_hook_func anim_hook)
+{
+    sche_anim_hook_func = anim_hook;
+}
+
 void app_schedule_max_running_apps(uint32_t v)
 {
     max_running_apps = v;
@@ -2432,6 +2561,11 @@ void app_schedule_check_duplicate(uint8_t app, uint8_t subpage)
 void app_scheduler_print_perf_tick(uint8_t en)
 {
     app_subgpage_perf_tick = en;
+}
+
+void app_schedule_stop_others_page(uint8_t en)
+{
+    running_root_stop_others = en;
 }
 
 void display_app_list(rt_list_t *app_list)
@@ -2497,6 +2631,48 @@ page_state_enum app_schedule_get_page_state(const char *app_id, const char *page
         }
     }
     return page_st_stoped;
+}
+
+gui_runing_app_t *gui_app_trav(rt_list_t **list)
+{
+    rt_list_t *pos;
+
+    if (!list || !*list)
+        *list = running_app_list.next;
+
+    for (pos = *list; pos != &running_app_list; pos = pos->next)
+    {
+        gui_runing_app_t *app_node = rt_list_entry(pos, gui_runing_app_t, node);
+        if (page_st_none != app_node->state && page_st_stoped != app_node->state)
+        {
+            *list = pos->next;
+            return app_node;
+        }
+    }
+
+    return NULL;
+}
+
+subpage_node_t *gui_app_page_trav(gui_runing_app_t *app, rt_list_t **list)
+{
+    rt_list_t *pos;
+
+    if (!app) return NULL;
+
+    if (!list || !*list)
+        *list = app->page_list.next;
+
+    for (pos = *list; pos != &app->page_list; pos = pos->next)
+    {
+        subpage_node_t *page_node = rt_list_entry(pos, subpage_node_t, node);
+        if (page_st_none != page_node->state && page_st_stoped != page_node->state)
+        {
+            *list = pos->next;
+            return page_node;
+        }
+    }
+
+    return NULL;
 }
 
 

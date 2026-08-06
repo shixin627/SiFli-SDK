@@ -13,6 +13,9 @@
 #define DRV_EPIC_TIMEOUT_MS 500
 
 #define DRV_EPIC_POLYGON_POINT_MAX 16
+#define mono_layer_addr HPSYS_RAM1_BASE  //Any accessable address for mono layer, SRAM is better
+typedef void (*drv_epic_cplt_cbk)(EPIC_HandleTypeDef *);
+
 #ifndef DRV_EPIC_NEW_API
 
 typedef enum
@@ -26,8 +29,6 @@ typedef enum
     DRV_EPIC_FILL_GRAD,
     DRV_EPIC_INVALID = 0xFFFF,      //Invalid
 } drv_epic_op_type_t;
-
-typedef void (*drv_epic_cplt_cbk)(EPIC_HandleTypeDef *);
 
 rt_err_t drv_epic_fill_ext(EPIC_LayerConfigTypeDef *input_layers,
                            uint8_t input_layer_cnt,
@@ -44,13 +45,6 @@ rt_err_t drv_epic_fill(uint32_t dst_cf, uint8_t *dst,
 
 rt_err_t drv_epic_fill_grad(EPIC_GradCfgTypeDef *param,
                             drv_epic_cplt_cbk cbk);
-
-rt_err_t drv_epic_copy(const uint8_t *src, uint8_t *dst,
-                       const EPIC_AreaTypeDef *src_area,
-                       const EPIC_AreaTypeDef *dst_area,
-                       const EPIC_AreaTypeDef *copy_area,
-                       uint32_t src_cf, uint32_t dst_cf,
-                       drv_epic_cplt_cbk cbk);
 
 rt_err_t drv_epic_blend(EPIC_LayerConfigTypeDef *input_layers,
                         uint8_t input_layer_cnt,
@@ -85,12 +79,17 @@ typedef enum
     DRV_EPIC_INVALID = 0xFFFF,      //Invalid
 } drv_epic_op_type_t;
 
+/**
+ * @brief  EPIC rotation angle enumeration
+ * @note   This enumeration defines all supported rotation angles.
+ */
 typedef enum
 {
-    DRV_EPIC_ROT_NONE = 0,
-    DRV_EPIC_ROT_90,
-    DRV_EPIC_ROT_180,
-    DRV_EPIC_ROT_270
+    DRV_EPIC_ROT_NONE = 0,  /**< No rotation (0 degree), default value                            */
+    DRV_EPIC_ROT_90,        /**< Rotate 90 degree clockwise                                       */
+    DRV_EPIC_ROT_180,       /**< Rotate 180 degree clockwise                                      */
+    DRV_EPIC_ROT_270        /**< Rotate 270 degree clockwise (equivalent to 90 degree counterclockwise) */
+
 } drv_epic_rotate_t;
 
 typedef struct
@@ -105,6 +104,14 @@ typedef enum
     EPIC_BLEND_MODE_NORMAL  = 1,        //Normal mode, blending with destination buffer
     EPIC_BLEND_MODE_OVERWRITE  = 2,       //Overwrite mode, no background
 } drv_epic_blend_mode_type_t;
+
+typedef struct
+{
+    uint32_t tl; //Top-left color in ARGB8888 format, same as below.
+    uint32_t tr; //Top-right
+    uint32_t bl; //Bottom-left
+    uint32_t br; //Bottom-right
+} rect_vertex_color_t;
 
 typedef struct
 {
@@ -160,16 +167,20 @@ typedef struct
             EPIC_AreaTypeDef area;
 
             uint16_t radius;
-            uint8_t top_fillet;
-            uint8_t bot_fillet;
+            uint16_t top_fillet : 1;
+            uint16_t bot_fillet : 1;
+            uint16_t grad_color_en : 1;
+            uint16_t reserved  : 13;
 
             uint32_t argb8888;
+            rect_vertex_color_t grad_color;
         } rectangle;
         struct
         {
             EPIC_PointTypeDef p1;
             EPIC_PointTypeDef p2;
-
+            EPIC_PointTypeDef *p_points;
+            uint32_t point_cnt;
             uint16_t width;
             int32_t dash_width;
             int32_t dash_gap;
@@ -221,6 +232,9 @@ typedef enum
     /*Render and draw results on LCD,
         has NOT effect with render list's dest buffer*/
     EPIC_MSG_RENDER_DRAW,
+    /*Render and save the result in render list's dest buffer
+       then draw the result on LCD*/
+    EPIC_MSG_RENDER_DRAW2,
 } EPIC_MsgIdDef;
 
 typedef void *drv_epic_render_list_t;
@@ -274,8 +288,32 @@ rt_err_t drv_epic_render_msg_commit(EPIC_MsgTypeDef *p_msg);
 
 rt_err_t drv_epic_render_trav(drv_epic_render_list_t list, drv_epic_render_trav_cb cb, void *usr_data);
 
+/**
+ * @brief Set the maximum size of the letter pool,this size refers to the number of words.
+ *        If the set value is less than the default value "letter_pool_max", it will be directly restored to the default value;
+ *        if it is greater than the default value, the letter pool will be malloced from sys heap before submitting the operation message.
+ * @param pool_size   maximum size of the letter pool.
+ * @return error number
+ */
+rt_err_t drv_epic_set_letter_pool_size(uint32_t pool_size);
+
+/**
+ * @brief   Set the frame buffer rotation angle of EPIC device
+ * @param   rotate  The rotation angle to set, of type drv_epic_rotate_t enumeration
+ *                  (only angles defined in the enumeration are supported)
+ * @return  rt_err_t type
+ *          - RT_EOK: Angle set successfully
+ *          - Other values: Angle set failed
+ */
 rt_err_t drv_epic_set_rotation(drv_epic_rotate_t rotate);
+
+/**
+ * @brief   Get the current frame buffer rotation angle of EPIC device
+ * @return  drv_epic_rotate_t type, returns the currently set rotation angle enumeration value
+ *          (corresponding to 0 degree/90 degree/180 degree/270 degree)
+ */
 drv_epic_rotate_t drv_epic_get_rotation(void);
+
 #endif /* DRV_EPIC_NEW_API */
 
 EPIC_HandleTypeDef *drv_get_epic_handle(void);
@@ -286,6 +324,9 @@ EPIC_HandleTypeDef *drv_get_epic_handle(void);
         EZIP_HandleTypeDef *drv_get_ezip2_handle(void);
     #endif
 #endif
+#ifdef HAL_JPEGD_MODULE_ENABLED
+    JPEGD_HandleTypeDef *drv_get_jpegd_handle(void);
+#endif /* HAL_JPEGD_MODULE_ENABLED */
 
 void drv_gpu_open(void);
 void drv_gpu_close(void);
@@ -304,5 +345,35 @@ rt_err_t drv_gpu_check_done(rt_int32_t ms);
  */
 uint8_t drv_gpu_is_cached_ram(uint32_t start, uint32_t len);
 bool drv_epic_is_busy(void);
+
+/**
+ * @brief   Copy data between source and destination buffers via EPIC device (supports frame buffer operations).
+            Only in Render List Mode, if rotation is not 0(DRV_EPIC_ROT_NONE), the frame buffer will be rotated directly during the copy process.
+ *          This function is used to copy a specific area of data from the source buffer to the destination buffer
+ *          through the EPIC hardware device, and supports configuration of color formats and completion callbacks.
+ * @param   src         Pointer to the source data buffer (uint8_t type), cannot be NULL
+ * @param   dst         Pointer to the destination data buffer (uint8_t type), cannot be NULL
+ * @param   src_area    Pointer to the source area definition structure (EPIC_AreaTypeDef),
+ *                      specifies the position and size of the source buffer's valid area
+ * @param   dst_area    Pointer to the destination area definition structure (EPIC_AreaTypeDef),
+ *                      specifies the position and size of the destination buffer's valid area
+ * @param   copy_area   Pointer to the copy area definition structure (EPIC_AreaTypeDef),
+ *                      specifies the exact area (width/height/offset) to be copied from source to destination
+ * @param   src_cf      Source buffer color format configuration (uint32_t type),
+ * @param   dst_cf      Destination buffer color format configuration (uint32_t type),
+ * @param   cbk         Pointer to the copy completion callback function (drv_epic_cplt_cbk),
+ *                      this function will be called when the EPIC copy operation is finished;
+ *                      can be NULL if no callback is needed
+ * @return  rt_err_t type, return value description:
+ *          - RT_EOK: Copy operation is initiated successfully (hardware will process asynchronously)
+ *          - RT_ERROR: General copy initialization failure
+ */
+rt_err_t drv_epic_copy(const uint8_t *src, uint8_t *dst,
+                       const EPIC_AreaTypeDef *src_area,
+                       const EPIC_AreaTypeDef *dst_area,
+                       const EPIC_AreaTypeDef *copy_area,
+                       uint32_t src_cf, uint32_t dst_cf,
+                       drv_epic_cplt_cbk cbk);
+
 #endif /* __DRV_EPIC_H__ */
 

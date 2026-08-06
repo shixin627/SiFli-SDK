@@ -24,7 +24,7 @@ Only when the above three macros are included, the `rt_hw_serial_register` funct
 
 If the above three macros are missing, you need to enable them through the following `menuconfig` command (Note: missing macros may not cause errors, if configured serial port has no information printed, please check if it's enabled in time):
 ```c
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 As shown in the figure below, select uart2 and rx dma, save and exit menuconfig, check if `rtconfig.h` macro is generated
 ![alt text](assets/menuconfig.png)
@@ -123,7 +123,7 @@ Input command in compilation window to check board=(board type)
 #define BSP_USING_UART2 1
 #define BSP_UART2_RX_USING_DMA 1
 
-menuconfig --board=sf32lb52-lcd_n16r8
+sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 
 

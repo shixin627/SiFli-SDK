@@ -344,6 +344,17 @@ void media_title_apply_pending(void)
 	rt_free(buf);
 }
 
+/* 手機連線掉了 — 媒體控制已經沒有對象，通知列表那頁的音樂 widget 留著只會
+   讓人按了沒反應，而且顯示的是斷線前那一刻的曲目（使用者可能早就停掉了）。
+   清掉快取曲名，widget 這一頁就跟著消失；重連後手機的 MediaBridge 會把當下
+   的狀態重新推一份回來（它在 stop() 時清掉 lastTitle，所以不會被 dedup 掉）。
+   走 defer 是因為呼叫端在 BLE 事件緒(KE_EVT2)上，不能直接跑 UI 那一串。 */
+void media_clear_on_link_down(void)
+{
+	LOG_I("link down -> clear media widget");
+	media_title_defer_to_gui((const uint8_t *)"", 0);
+}
+
 /* Media Status */
 static bool bt_media_playing = false;
 static uint8_t media_control_command = 0;
@@ -1162,6 +1173,20 @@ static int fsr_recal(int argc, char **argv)
 	return 0;
 }
 MSH_CMD_EXPORT(fsr_recal, "recapture FSR mouse resting baseline (keep finger off)");
+
+/* One-shot readout of the current FSR sample + the thresholds derived from the
+   baseline, so the sensor can be checked without turning the 10Hz sampler log
+   back on (it floods at that rate). */
+static int fsr(int argc, char **argv)
+{
+	rt_int32_t base = (rt_int32_t)g_fsr_baseline;
+	rt_kprintf("FSR v=%d base=%d  light on/off=%d/%d  heavy on/off=%d/%d\n",
+	           g_fsr_adc_latest, base,
+	           base * FSR_LIGHT_ON_PERMILLE / 1000, base * FSR_LIGHT_OFF_PERMILLE / 1000,
+	           base * FSR_HEAVY_ON_PERMILLE / 1000, base * FSR_HEAVY_OFF_PERMILLE / 1000);
+	return 0;
+}
+MSH_CMD_EXPORT(fsr, "print current FSR ADC value, baseline and thresholds");
 #endif // USING_FSR_ADC_SAMPLER
 
 #if !kReleaseMode

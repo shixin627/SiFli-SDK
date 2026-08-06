@@ -1,0 +1,2 @@
+python pinmux_57x.py --excel=pinmux.xlsx --type=c > ..\..\drivers\cmsis\sf32lb57x\bf0_pin_const.c
+rem python pinmux_57x.py --excel=pinmux.xlsx --type=h > ..\..\drivers\cmsis\sf32lb57x\bf0_pin_const_dedicated.h

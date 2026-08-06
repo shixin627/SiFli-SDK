@@ -79,7 +79,9 @@
 #define LIST_MESSAGE_HEIGHT (252)
 #define LIST_OPEN_INSTRUCTION_LIST_WIDTH (70)
 #define LIST_OPEN_INSTRUCTION_LIST_HEIGHT (70)
-#define LIST_MESSAGE_SPACING (40)
+/* 卡片之間不留空隙 — 單卡舞台要的是「上面那張把下面那張擠掉」，中間有空隙
+ * 就會變成各自淡進淡出。0 之後相鄰兩張是貼著的，捲動就是推擠。 */
+#define LIST_MESSAGE_SPACING (0)
 // #define APP_ID "message_list"
 #define LIST_RADIUS (1000)
 
@@ -88,12 +90,25 @@
 #endif
 
 /* Indicator dots — same visual style as instruction list */
-#define DOT_SMOLL_PROPORTION (0.2)
-#define DOT_BIG_PROPORTION (0.9)
-#define DOT_BG_SIZE ((int)(100 * DOT_BIG_PROPORTION) + 2)
+/* 單卡舞台：icon 只當「這是哪個 app」的標記，不再是列表的主視覺，
+ * 所以整體縮到接近設計稿的 ~45 px；bg 容器維持原圖大小免得縮放被裁。 */
+#define DOT_SMOLL_PROPORTION (0.30)
+#define DOT_BIG_PROPORTION (0.45)
+#define DOT_BG_SIZE (102)
 /* 縮放曲線指數：1.0 = 線性、2.0 = 平方（中央放大突出）、3.0 = 立方更陡峭。
  * 值越大，「中央 dot 顯著大、其他都很小」越明顯 */
 #define DOT_ZOOM_EXPONENT 2.0f
+
+/* 單卡舞台：當前那則的 icon 停在 widget 右上角，弧上等於 -30°（0° 是正右方，
+ * 負值往上）。可見範圍 ±44° 留住上下各一格（一格 36°），超過 32° 開始淡出，
+ * 所以第三顆是漸隱不是硬切。 */
+#define MSG_ICON_CENTER_ANGLE (-30.0f)
+#define MSG_ICON_VISIBLE_SPAN (44.0f)
+#define MSG_ICON_FADE_START (32.0f)
+/* 卡片淡出距離 = 剛好一格（卡片高 + 間距）。搭配下面的三次曲線：停住的時候
+ * 隔壁那張正好落在距離 1.0 上＝全透明，畫面只有當前這則；推擠途中兩張都還在
+ * 曲線平緩段（半格時仍有 ~87% 不透明），看起來就是上面那張把下面那張擠掉。 */
+#define MSG_CARD_FADE_DIST (LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING)
 
 #define MESSAGE_NEED_MEDIA_WIDGET
 
@@ -223,6 +238,71 @@ static const char *notif_icon_src(uint8_t type)
     return icon_list[type];
 }
 
+#ifdef BSP_USING_PC_SIMULATOR
+/* PC sim 的 app icon 是 eZIP 壓縮的變數式資源，Win32 端 LVGL 預設解碼器讀出來
+   是亂的、直接讓 renderer 爆掉（docs/pc-sim.md「Notification drawer doesn't
+   live-refresh」）。這裡程式生成一組純色圓當佔位，讓通知列表的版面與轉場動畫
+   可以在模擬器上驗證；真機仍走上面的 icon_list[]。 */
+#define SIM_ICON_PX 96
+static const void *sim_icon_of(uint8_t type)
+{
+    static lv_img_dsc_t dsc[6];
+    static bool inited = false;
+    static const uint32_t palette[6] = {
+        0xE1306C, /* instagram 洋紅 */
+        0x06C755, /* line 綠 */
+        0x1DA1F2, /* 藍 */
+        0xEA4335, /* 紅 */
+        0x7289DA, /* 靛 */
+        0xFFB300, /* 琥珀 */
+    };
+
+    if (!inited)
+    {
+        const int px_size = LV_IMG_PX_SIZE_ALPHA_BYTE;
+        const int r = SIM_ICON_PX / 2;
+        for (int c = 0; c < 6; c++)
+        {
+            uint8_t *buf =
+                (uint8_t *)lv_mem_alloc(SIM_ICON_PX * SIM_ICON_PX * px_size);
+            if (buf == NULL)
+                return NULL;
+            lv_color_t col = lv_color_hex(palette[c]);
+            for (int y = 0; y < SIM_ICON_PX; y++)
+            {
+                for (int x = 0; x < SIM_ICON_PX; x++)
+                {
+                    uint8_t *p = buf + (y * SIM_ICON_PX + x) * px_size;
+                    int dx = x - r;
+                    int dy = y - r;
+                    memcpy(p, &col, px_size - 1);
+                    p[px_size - 1] =
+                        (dx * dx + dy * dy <= r * r) ? LV_OPA_COVER : LV_OPA_TRANSP;
+                }
+            }
+            dsc[c].header.always_zero = 0;
+            dsc[c].header.w = SIM_ICON_PX;
+            dsc[c].header.h = SIM_ICON_PX;
+            dsc[c].header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+            dsc[c].data_size = SIM_ICON_PX * SIM_ICON_PX * px_size;
+            dsc[c].data = buf;
+        }
+        inited = true;
+    }
+    return &dsc[type % 6];
+}
+#endif /* BSP_USING_PC_SIMULATOR */
+
+/* 通知 app icon 的單一取得入口 — sim 走佔位圓，真機走 icon_list[]。 */
+static const void *msg_icon_src(uint8_t type)
+{
+#ifdef BSP_USING_PC_SIMULATOR
+    return sim_icon_of(type);
+#else
+    return notif_icon_src(type);
+#endif
+}
+
 static bool dial_header_music_hidden_by_pause = false;
 static lv_timer_t *dial_header_shrink_timer = NULL;
 static bool dial_header_music_active = false;
@@ -286,6 +366,24 @@ bool message_media_widget_focused(void)
 static void hide_background_blocks(void);
 static notification_t *selection_notification = NULL;
 
+/* 單卡舞台的卡片淡出：scroll_list 每幀算出的透明度，快取起來只在變動時才
+ * 真的去設，省掉每幀對每張卡遞迴走一次子物件。索引是 list 的 child index
+ * （通知卡 + media widget + no_notifications widget 都算在內）。 */
+#define MSG_CARD_OPA_SLOTS (ITEM_AMOUNT_NOTIFICATION + 4)
+/* int16_t 而不是 lv_opa_t：作廢時要能填一個「任何真實透明度都不等於」的值。
+   填 LV_OPA_COVER 會反過來害人 — 刪掉一則通知的當下卡片子物件實際上還是
+   透明的（它剛被推到邊緣），快取卻宣稱不透明，scroll_list 下一幀算出
+   「應該不透明、快取也說不透明」就跳過不設，那張卡就永遠留在透明狀態，
+   畫面上整片空白。 */
+#define MSG_CARD_OPA_UNKNOWN (-1)
+static int16_t card_last_opa[MSG_CARD_OPA_SLOTS];
+static void apply_drag_opa_to_children(lv_obj_t *node, lv_opa_t opa);
+static void msg_card_opa_cache_reset(void)
+{
+    for (int i = 0; i < MSG_CARD_OPA_SLOTS; i++)
+        card_last_opa[i] = MSG_CARD_OPA_UNKNOWN;
+}
+
 /* ---- Indicator dots (match instruction list style, per-notification +
    one extra dot for the media widget when present) ---- */
 #define MAX_MSG_DOTS (ITEM_AMOUNT_NOTIFICATION + 1) /* +1 for media widget */
@@ -309,20 +407,58 @@ static void update_msg_indicator_dots_position(int input_value);
 static void create_msg_indicator_dots(lv_obj_t *parent);
 static void destroy_msg_indicator_dots(void);
 
+/* 換槽轉場。當前那顆 icon 吸附在錨點、上下兩顆跟手 — 換頁的瞬間三顆的目標
+ * 角度會各跳一格（新的當前項要從跟手位置吸附到錨點）。這裡把上一幀實際畫出
+ * 的角度存成起點，用一段動畫插值到新目標，就是設計稿說的「上面的 icon 下來
+ * 到中間、原本中間的接手下面那顆」。動畫時間跟列表捲動的
+ * SCROLL_ANIM_TIME_MIN 對齊，icon 與卡片同時完成轉場。 */
+#define MSG_ICON_SLOT_ANIM_MS (200)
+static float s_icon_shown_angle[MAX_MSG_DOTS];
+static float s_icon_from_angle[MAX_MSG_DOTS];
+static bool s_icon_shown_valid = false;
+static int s_icon_prev_center = -1;
+static int32_t s_icon_anim_val = 1000; /* 1000 = 沒有轉場在跑 */
+static int s_icon_last_input = 0;
+static int32_t s_icon_anim_dummy;
+
+static void msg_icon_anim_exec_cb(void *var, int32_t v)
+{
+    (void)var;
+    s_icon_anim_val = v;
+    update_msg_indicator_dots_position(s_icon_last_input);
+}
+
+static void msg_icon_start_slot_anim(void)
+{
+    lv_anim_del(&s_icon_anim_dummy, msg_icon_anim_exec_cb);
+    s_icon_anim_val = 0;
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, &s_icon_anim_dummy);
+    lv_anim_set_exec_cb(&a, msg_icon_anim_exec_cb);
+    lv_anim_set_values(&a, 0, 1000);
+    lv_anim_set_time(&a, MSG_ICON_SLOT_ANIM_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+}
+
 static void update_msg_indicator_dots_position(int input_value)
 {
     int total_dots = msg_dot_total();
     if (total_dots <= 0)
         return;
 
-    /* 跟 app_exercise.c::apply_circular_layout 對齊：圓心在螢幕正中、
-     * radius=200。原本 (120, 233, 300) 那組會讓 arc 中心偏左、半徑大、
-     * dots 上下散開比較廣，視覺上跟 exercise 不一樣。
-     * center_x 往左偏 30 px，避免中央 dot zoom 後右邊跑出螢幕 */
+    /* 單卡舞台的 icon 軌道。整條弧只露出三顆：當前那則、上一則、下一則。
+     * 當前那顆吸附在 widget 右上角的錨點（弧上 MSG_ICON_CENTER_ANGLE）並且
+     * 不跟手 — 手腕上下時只有上下兩顆沿弧移動；移動超過半格由呼叫端
+     * （arc drag_cb / 體感 offset）換頁，換頁後新的當前項再吸附回同一錨點。
+     * 圓心 / 半徑 / 每格角度沿用原本跟 app_exercise.c 對齊的那組。 */
     const int circle_radius = 200;
-    const int center_x = LV_HOR_RES / 2 - 20;
+    /* 圓心用螢幕正中（不再往左偏 20）— icon 縮小後不會凸出畫面，而且
+     * -30° 這顆剛好落在 widget 右上角，跟設計稿的位置一致。 */
+    const int center_x = LV_HOR_RES / 2;
     const int center_y = LV_VER_RES / 2;
-    const float angle_per_dot = 36.0f; /* 跟 app_exercise.c 的 ICON_SLOT_ANGLE_DEG=36 對齊 */
+    const float angle_per_dot = 36.0f;
     float base_input = 63.0f;
     float degrees_per_200_input = angle_per_dot;
     float total_input_range = 100.0f * (float)total_dots;
@@ -331,17 +467,58 @@ static void update_msg_indicator_dots_position(int input_value)
         ((total_input_range - (float)input_value) - base_input) /
         (float)(total_input_range / total_dots) * degrees_per_200_input;
 
+    s_icon_last_input = input_value;
+
+    /* 先找出最靠近錨點的那顆 = 當前項。它的角度會被吸附成錨點角度，
+     * 其餘兩顆保留連續角度（= 跟手移動的那兩顆）。 */
+    int center_i = -1;
+    float center_best = 1e9f;
+    for (int i = 0; i < total_dots; i++)
+    {
+        float a = (float)i * angle_per_dot - offset_angle + MSG_ICON_CENTER_ANGLE;
+        float d = fabsf(a - MSG_ICON_CENTER_ANGLE);
+        if (d < center_best)
+        {
+            center_best = d;
+            center_i = i;
+        }
+    }
+
+    /* 當前項換人 → 三顆一起做槽位轉場，起點是上一幀畫出來的角度 */
+    if (center_i != s_icon_prev_center)
+    {
+        bool want_anim = (s_icon_shown_valid && s_icon_prev_center >= 0);
+        /* prev 要先更新再起動畫 — lv_anim_start 會立刻回呼一次 exec_cb，
+         * exec_cb 又走回本函式，若這時 prev 還是舊值就會無限遞迴起新動畫。 */
+        s_icon_prev_center = center_i;
+        if (want_anim)
+        {
+            for (int i = 0; i < MAX_MSG_DOTS; i++)
+                s_icon_from_angle[i] = s_icon_shown_angle[i];
+            msg_icon_start_slot_anim();
+        }
+    }
+
     for (int i = 0; i < total_dots; i++)
     {
         if (msg_indicator_dots[i] == NULL)
             continue;
 
-        float base_angle = (float)i * angle_per_dot;
-        /* 不做 [0,360) normalize — 留 signed angle，用 |angle| > 90 一刀過濾掉
-         * 「list 第一格時 dot N-1 從另一邊 wrap 過來出現在上方」的問題。 */
-        float current_angle = base_angle - offset_angle;
+        float current_angle =
+            (float)i * angle_per_dot - offset_angle + MSG_ICON_CENTER_ANGLE;
+        if (i == center_i)
+            current_angle = MSG_ICON_CENTER_ANGLE;
 
-        if (current_angle < -90.0f || current_angle > 90.0f)
+        if (s_icon_anim_val < 1000 && s_icon_shown_valid)
+        {
+            float t = (float)s_icon_anim_val / 1000.0f;
+            current_angle =
+                s_icon_from_angle[i] + (current_angle - s_icon_from_angle[i]) * t;
+        }
+        s_icon_shown_angle[i] = current_angle;
+
+        float dist_deg = fabsf(current_angle - MSG_ICON_CENTER_ANGLE);
+        if (dist_deg > MSG_ICON_VISIBLE_SPAN)
         {
             if (msg_indicator_dots_bg[i] != NULL &&
                 !lv_obj_has_flag(msg_indicator_dots_bg[i], LV_OBJ_FLAG_HIDDEN))
@@ -350,7 +527,7 @@ static void update_msg_indicator_dots_position(int input_value)
             }
             continue;
         }
-        /* 進到右半圓 → unhide。media widget dot 例外（建立時就 hide 不該動）*/
+        /* 進到可見區 → unhide。media widget dot 例外（建立時就 hide 不該動）*/
         if (msg_indicator_dots_bg[i] != NULL &&
             lv_obj_has_flag(msg_indicator_dots_bg[i], LV_OBJ_FLAG_HIDDEN) &&
             i < (int)notification_count)
@@ -362,38 +539,21 @@ static void update_msg_indicator_dots_position(int input_value)
         int dot_x = center_x + (int)((float)circle_radius * cosf(angle_rad));
         int dot_y = center_y + (int)((float)circle_radius * sinf(angle_rad));
 
-        static int last_valid_dot_x[MAX_MSG_DOTS] = {0};
-        if (dot_y > 450 || dot_y < 16)
-        {
-            if (msg_indicator_dots_bg[i] != NULL)
-                dot_x = last_valid_dot_x[i];
-        }
-        else
-        {
-            last_valid_dot_x[i] = dot_x;
-        }
-
-        /* 跟 app_exercise.c::apply_circular_layout 一致：用 cos(abs_angle) 做
-         * 平滑漸層。current_angle 現在是 signed [-90,90]，直接 fabsf */
-        float abs_angle_deg = fabsf(current_angle);
-        float ratio = cosf(abs_angle_deg * (float)M_PI / 180.0f);
-
+        /* 三顆都在畫面內，只有當前那顆放大 — 上下兩顆維持小尺寸，
+         * 讓「哪一則是現在這則」跟 widget 右上角的定位一致。 */
+        float ratio = cosf(dist_deg * (float)M_PI / 180.0f);
         int dot_size = DOT_BG_SIZE;
-        int opacity = (int)(LV_OPA_30 + (LV_OPA_COVER - LV_OPA_30) * ratio);
-        if (opacity < LV_OPA_30)
-            opacity = LV_OPA_30;
-        if (opacity > LV_OPA_COVER)
-            opacity = LV_OPA_COVER;
 
-        /* Hide the dot whose index matches the currently selected card.
-           Dot i corresponds to display index i (same ordering as the
-           notification cards / media widget). */
-        // if (i == (int)selected_message_index)
-        //     opacity = LV_OPA_TRANSP;
+        /* 快到可見邊界就淡出，避免第三顆 icon 在弧的兩端硬生生冒出/消失 */
+        lv_opa_t icon_opa = LV_OPA_COVER;
+        if (dist_deg > MSG_ICON_FADE_START)
+        {
+            icon_opa = (lv_opa_t)(LV_OPA_COVER *
+                                  (MSG_ICON_VISIBLE_SPAN - dist_deg) /
+                                  (MSG_ICON_VISIBLE_SPAN - MSG_ICON_FADE_START));
+        }
+        lv_obj_set_style_img_opa(msg_indicator_dots[i], icon_opa, 0);
 
-        lv_obj_set_style_img_opa(msg_indicator_dots[i], opacity, 0);
-
-        /* 用指數曲線 ratio^N 取代線性：N>1 時中央放大、邊緣縮小都加劇 */
         float zoom_ratio = powf(ratio, DOT_ZOOM_EXPONENT);
         uint16_t zoom =
             (uint16_t)(255 *
@@ -409,6 +569,7 @@ static void update_msg_indicator_dots_position(int input_value)
         dot_y -= dot_size / 2;
         lv_obj_set_pos(msg_indicator_dots_bg[i], dot_x, dot_y);
     }
+    s_icon_shown_valid = true;
 }
 
 /* fwd decl — msg_dot_click_cb 直接 call 後面定義的 list_message_click_cb */
@@ -433,6 +594,12 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
         return;
     msg_indicator_dots_parent = parent;
 
+    /* 重建 = icon 換人，上一輪存的顯示角度不再對得上，槽位轉場要從頭來 */
+    lv_anim_del(&s_icon_anim_dummy, msg_icon_anim_exec_cb);
+    s_icon_anim_val = 1000;
+    s_icon_shown_valid = false;
+    s_icon_prev_center = -1;
+
     int total_dots = msg_dot_total();
 
     for (int i = 0; i < total_dots; i++)
@@ -454,7 +621,7 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
             uint8_t type = Notify_others;
             if (notif != NULL && notif->type < NOTIFICATION_APP_QUANTITY)
                 type = notif->type;
-            lv_img_set_src(dot, icon_list[type]);
+            lv_img_set_src(dot, msg_icon_src(type));
             /* dot 直接可點：tap → 開該 notification 詳細頁 */
             lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
             lv_obj_add_event_cb(dot_bg, msg_dot_click_cb, LV_EVENT_CLICKED,
@@ -465,7 +632,11 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
             /* Media widget dot — fixed iTunes icon.
                Keep the dot object so total_dots / position math is unaffected,
                but hide it so the music indicator dot is not visible. */
+#ifdef BSP_USING_PC_SIMULATOR
+            lv_img_set_src(dot, sim_icon_of(5));
+#else
             lv_img_set_src(dot, IMG_ITUNES);
+#endif
             lv_obj_add_flag(dot_bg, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(dot_bg, LV_OBJ_FLAG_CLICKABLE);
         }
@@ -480,6 +651,12 @@ static void create_msg_indicator_dots(lv_obj_t *parent)
 
 static void destroy_msg_indicator_dots(void)
 {
+    /* 槽位轉場動畫的 exec_cb 會回頭讀 dots 陣列 — 先停掉再刪物件 */
+    lv_anim_del(&s_icon_anim_dummy, msg_icon_anim_exec_cb);
+    s_icon_anim_val = 1000;
+    s_icon_shown_valid = false;
+    s_icon_prev_center = -1;
+
     for (int i = 0; i < MAX_MSG_DOTS; i++)
     {
         if (msg_indicator_dots_bg[i] != NULL &&
@@ -498,7 +675,12 @@ static void destroy_msg_indicator_dots(void)
    set_arc_stripe_external_offset() in lv_instruction_list_layout.c. */
 void set_message_list_arc_stripe_external_offset(int16_t offset_degrees)
 {
-    update_msg_indicator_dots_position(offset_degrees);
+    /* 體感送進來的是 yaw energy，一格 125 單位（refresh_notification_list 的
+     * page_range）；icon 軌道內部一格是 100 單位（跟 arc-scroll drag_cb 共用）。
+     * 在入口換算，兩條路徑才會落在同一個尺度上 — 否則 icon 停的位置跟
+     * NAV_BAR_CONTROL 換到的那一頁對不起來，單卡舞台下會看到中央 icon 跟
+     * 中央卡片是不同的兩則。 */
+    update_msg_indicator_dots_position((int)offset_degrees * 100 / 125);
 }
 
 static void scroll_list(lv_obj_t *obj, int16_t drift)
@@ -616,6 +798,32 @@ static void scroll_list(lv_obj_t *obj, int16_t drift)
                 }
             }
 #endif
+        }
+
+        /* 單卡舞台：推擠 + 淡出兩件事分開來源 — 推擠來自 SPACING=0（相鄰兩張
+         * 貼著走，上面那張把下面那張頂出畫面），淡出來自這裡的線性透明度。
+         * 距離一格時全透明，所以停住的時候畫面只剩當前這則；推擠途中兩張的
+         * 曲線用 1-(d/一格)^2 而不是線性：線性在半格時兩張都只剩 50%，疊在
+         * 本來就很暗的玻璃卡上等於整個畫面空掉；平方讓半格還有 ~75%，兩張都
+         * 看得清楚是誰在擠誰，淡出集中在快滿一格的那段。 */
+        {
+            lv_opa_t card_opa = LV_OPA_TRANSP;
+            if (y_diff < MSG_CARD_FADE_DIST)
+            {
+                int32_t r = (int32_t)y_diff * 256 / MSG_CARD_FADE_DIST;
+                int32_t sq = r * r / 256; /* 0..256 */
+                if (sq > 256)
+                    sq = 256;
+                card_opa = (lv_opa_t)(LV_OPA_COVER * (256 - sq) / 256);
+            }
+            /* 用子物件的 img_opa / text_opa，不要對整張卡設 LV_STYLE_OPA —
+             * 後者會讓 LVGL 走透明圖層合成，這張卡就整個不畫了（位置與 opa
+             * 都算對、畫面卻空白）。既有的拖曳淡出走的也是同一條路。 */
+            if (i < MSG_CARD_OPA_SLOTS && card_last_opa[i] != (int16_t)card_opa)
+            {
+                apply_drag_opa_to_children(child, card_opa);
+                card_last_opa[i] = (int16_t)card_opa;
+            }
         }
 #if ENABLE_CURVE_LIST
         lv_style_value_t *value =
@@ -1485,13 +1693,17 @@ char *replace_nbsp(const char *str)
 
 static void refresh_list(uint8_t new_item_count)
 {
+    /* 卡片重新綁定內容、拖曳刪除的 fade-in 也會動到子物件透明度 —
+       快取要作廢，否則 scroll_list 會以為不用重設而留下上一輪的淡出值。 */
+    msg_card_opa_cache_reset();
+
     for (uint8_t i = 0; i < ITEM_AMOUNT_NOTIFICATION; i++)
     {
         if (i < new_item_count)
         {
             notification_t *notification =
                 get_notification(new_item_count - i - 1);
-            LOG_D("notification->type: %s", notification->type);
+            LOG_D("notification->type: %d", notification->type);
             if (lv_obj_is_valid(notification_widgets[i].card))
             {
                 lv_obj_clear_flag(notification_widgets[i].card,
@@ -2265,6 +2477,20 @@ int scroll_message_list(int argc, char **argv)
     return 0;
 }
 MSH_CMD_EXPORT(scroll_message_list, reset list)
+
+/* 把列表捲到任意像素位置並停住，用來在模擬器上取樣「推擠到一半」那一格畫面。
+   走觸控注入的話每步之間隔太久，LVGL 會當成新的拖曳、把整頁往 tileview 拖，
+   取不到乾淨的中間態。 */
+int msg_scroll_px(int argc, char **argv)
+{
+    if (argc < 2 || p_app_notification == NULL)
+        return -1;
+    lv_obj_scroll_by(p_app_notification->list, 0, -atoi(argv[1]), LV_ANIM_OFF);
+    scroll_list(p_app_notification->list, 0);
+    lv_obj_update_layout(p_app_notification->list);
+    return 0;
+}
+MSH_CMD_EXPORT(msg_scroll_px, msg_scroll_px px - scroll notification list by px)
 #endif
 
 static rt_tick_t last_scroll_time = 0;
@@ -2451,7 +2677,7 @@ static void refresh_new_message_widget(void)
         lv_label_set_text(new_notification_widgets.content, clean_message);
         lv_mem_free(clean_message);
         lv_img_set_src(new_notification_widgets.icon,
-                       notif_icon_src(notification->type));
+                       msg_icon_src(notification->type));
         lv_obj_clear_flag(new_notification_widgets.icon, LV_OBJ_FLAG_HIDDEN);
         have_message_now = true;
     }
@@ -2615,7 +2841,7 @@ static void dial_header_show_notification(void)
                an empty message is already an empty C string. */
             lv_label_set_text(dial_header_title, notification->title);
             lv_label_set_text(dial_header_content, notification->message);
-            lv_img_set_src(dial_header_img, notif_icon_src(notification->type));
+            lv_img_set_src(dial_header_img, msg_icon_src(notification->type));
             lv_obj_set_size(dial_header_img, 100, 100);
             lv_img_set_zoom(dial_header_img, 254);
             lv_obj_clear_flag(dial_header_img, LV_OBJ_FLAG_HIDDEN);

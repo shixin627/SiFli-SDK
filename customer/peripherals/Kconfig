@@ -132,6 +132,10 @@ config LCD_USING_SPD2012
     bool
     default n
 
+config LCD_USING_ST7796U
+    bool
+    default n
+
 config LCD_USING_ST7797
     bool
     default n
@@ -251,6 +255,9 @@ config LCD_USING_GC9107
     bool
     default n
 
+config LCD_USING_EPD_OPM060DA
+    bool
+    default n
 
 
 # LCD interfaces
@@ -280,6 +287,8 @@ config BSP_USING_RAMLESS_LCD
     def_bool n
 config BSP_LCDC_USING_JDI_PARALLEL
     def_bool n
+config BSP_LCDC_USING_DIRECT_EPD
+    def_bool n
 
 # LCD backlight
 config LCD_USING_PWM_AS_BACKLIGHT
@@ -301,40 +310,6 @@ config BSP_USING_ROUND_TYPE_LCD
 
 config BSP_USING_RECT_TYPE_LCD
     def_bool n
-
-menu "Key Config"
-    menuconfig BSP_USING_KEY1
-        bool "Use key1"
-        default n
-    if BSP_USING_KEY1  
-        config BSP_KEY1_PIN
-            int "KEY1 pin number"
-            default 99
-        config BSP_KEY1_ACTIVE_HIGH
-            bool "Level is high if key is pressed"
-            default n
-    endif 
-    menuconfig BSP_USING_KEY2
-        bool "Use key2"
-        default n
-    if BSP_USING_KEY2 
-        config BSP_KEY2_PIN
-            int "KEY2 pin number"
-            default 96
-        config BSP_KEY2_ACTIVE_HIGH
-            bool "Level is high if key is pressed"
-            default n            
-    endif    
-endmenu
-
-menuconfig TOUCH_WAKEUP_SUPPORT
-    bool "Enable wakeup by Pressing Touch Pannel"
-    default n
-
-menuconfig BSP_USING_SPI_CAMERA
-    bool "Enable SPI Camera"
-    default n
-
 
 
 

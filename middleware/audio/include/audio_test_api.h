@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifndef _AUDIO_TEST_API_H_
 #define _AUDIO_TEST_API_H_
 

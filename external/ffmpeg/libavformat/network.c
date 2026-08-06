@@ -264,7 +264,20 @@ int ff_listen_connect(int fd, const struct sockaddr *addr,
         rt_kprintf("ff_socket_nonblock failed\n");
 
     while ((ret = connect(fd, addr, addrlen))) {
-        ret = ff_neterrno();
+        optlen = sizeof(ret);
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &optlen) == 0) {
+            rt_kprintf("%s: ret=%d, errno=%d\n", __func__, ret, errno);
+            if (ret != 0) {
+                rt_kprintf("%s: socket err\n", __func__);
+                ret = AVERROR(ret); /* socket has a pending error */
+            } else {
+                rt_kprintf("%s: socket in progress\n", __func__);
+                ret = AVERROR(EINPROGRESS); /* no error = connect in progress */
+            }
+        } else {
+            ret = ff_neterrno(); /* getsockopt failed, fallback */
+            rt_kprintf("%s: socket fail, ret=%d, errno=%d\n", __func__, ret, errno);
+        }
         switch (ret) {
         case AVERROR(EINTR):
             if (ff_check_interrupt(&h->interrupt_callback))

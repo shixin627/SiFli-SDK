@@ -1,5 +1,5 @@
 menuconfig USING_PROFILER
-	bool "System profiler"
+	bool "System Profiler"
     select PKG_USING_SEGGER_RTT
 	default n
 

@@ -1,11 +1,55 @@
 # for module compiling
 import os
+import re
 from building import *
 import rtconfig
 
 cwd = GetCurrentDir()
 list = os.listdir(cwd)
 objs = []
+
+
+def _warn_skai_bypass(root):
+    """Warn when a NEW gui_apps file calls bloc_*/providers/watch_sys_sync
+    directly instead of going through skai_* (ADR-0019 section 2.1).
+
+    Two hand-maintained API surfaces always drift, and the one nobody is
+    forced to use is the one that rots. A doc-only rule does not hold, so the
+    build says something. Existing offenders are baselined -- the rule is not
+    retroactive, and 26 permanent warnings would just train everyone to
+    ignore it.
+    """
+    baseline_path = os.path.join(root, '_skai_bypass_baseline.txt')
+    try:
+        with open(baseline_path) as f:
+            baseline = set(l.strip() for l in f
+                           if l.strip() and not l.startswith('#'))
+    except IOError:
+        return  # no baseline -> check disabled rather than warning on everything
+
+    pattern = re.compile(r'\bbloc_[a-z_]+\s*\(|[a-z_]+_provider\.|watch_sys_sync\.')
+    offenders = []
+    for dirpath, _, files in os.walk(root):
+        for name in files:
+            if not name.endswith('.c'):
+                continue
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, root).replace(os.sep, '/')
+            if rel in baseline:
+                continue
+            try:
+                with open(full, errors='ignore') as f:
+                    if pattern.search(f.read()):
+                        offenders.append(rel)
+            except IOError:
+                pass
+
+    for rel in sorted(offenders):
+        print('warning: %s calls bloc_*/provider/watch_sys_sync directly; '
+              'new gui_apps code should use skai_* (ADR-0019)' % rel)
+
+
+_warn_skai_bypass(cwd)
 
 if GetDepend('PKG_USING_LITTLEVGL2RTT'):
 	objs = Glob('*.c')

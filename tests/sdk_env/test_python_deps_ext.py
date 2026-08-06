@@ -52,7 +52,7 @@ class PythonDepsExtTests(unittest.TestCase):
                     "schema_version": 1,
                     "profile": profile,
                     "python": {
-                        "version": "3.13.11",
+                        "version": "3.13",
                         "project_dir": f"tools/locks/{profile}",
                         "lock_file": f"tools/locks/{profile}/uv.lock",
                     },
@@ -78,7 +78,7 @@ class PythonDepsExtTests(unittest.TestCase):
                     [project]
                     name = "test-profile-{profile}"
                     version = "0.1.0"
-                    requires-python = "==3.13.11"
+                    requires-python = ">=3.13,<3.14"
                     dependencies = [
                     {deps_body}
                     ]
@@ -92,7 +92,7 @@ class PythonDepsExtTests(unittest.TestCase):
             )
 
         with open(uv_lock_path, "w", encoding="utf-8") as f:
-            f.write('version = 1\nrequires-python = "==3.13.11"\n')
+            f.write('version = 1\nrequires-python = "==3.13.*"\n')
 
         return sdk_root, pyproject_path, uv_lock_path
 
@@ -141,7 +141,7 @@ class PythonDepsExtTests(unittest.TestCase):
             self.assertEqual(args[:3], ["uv", "lock", "--project"])
             self.assertEqual(args[3], os.path.join(sdk_root, "tools", "locks", "default"))
             with open(uv_lock_path, "w", encoding="utf-8") as f:
-                f.write('version = 1\nrequires-python = "==3.13.11"\n# refreshed\n')
+                f.write('version = 1\nrequires-python = "==3.13.*"\n# refreshed\n')
             return subprocess.CompletedProcess(args, 0)
 
         runner = mock.Mock()

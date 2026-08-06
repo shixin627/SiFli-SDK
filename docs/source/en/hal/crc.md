@@ -13,7 +13,7 @@ The following is a CRC code snippet:
 
 ```c
 {
-    CRC_HandleTypeDef   CrcHandle;                      // CRC handle declaration
+    CRC_HandleTypeDef   CrcHandle = {0};                // CRC handle declaration
     CrcHandle.Instance = CRC;                           // Initialize CRC handle
     uint8_t g_test_data[]= {                            // Raw data
         1,2,3,4,5,6,7,8,9,10
@@ -31,7 +31,7 @@ The following is a CRC code snippet:
 
 ```c
 {
-    CRC_HandleTypeDef   CrcHandle;                        // CRC handle declaration
+    CRC_HandleTypeDef   CrcHandle = {0};                  // CRC handle declaration
     CrcHandle.Instance = CRC;                             // Initialize CRC handle
     uint8_t g_test_data[]= {                              // Raw data
         1,2,3,4,5,6,7,8,9,10
@@ -40,7 +40,7 @@ The following is a CRC code snippet:
     uint32_t poly = 0x1D;                                 // CRC polynomial
 
     HAL_CRC_Init(&CrcHandle);                             // Initialize CRC module
-    HAL_CRC_Setmode_Customized(hcrc, init, poly, CRC_8);  // Set CRC mode to CRC-8 standard
+    HAL_CRC_Setmode_Customized(&CrcHandle, init, poly, CRC_8);  // Set CRC mode to CRC-8 standard
     uint32_t crc=HAL_CRC_Accumulate(&CrcHandle,           // Calculate CRC result for g_test_data
         &(g_test_data[offset]), sizeof(g_test_data));
 

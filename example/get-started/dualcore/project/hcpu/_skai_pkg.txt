@@ -1,0 +1,9 @@
+skai_pkg_test -q
+skai_pkg_ls
+skai_pkg_ls
+skai_pkg_ls
+skai_pkg_ls
+skai_pkg_ls
+skai_pkg_ls
+skai_pkg_ls
+skai_pkg_ls

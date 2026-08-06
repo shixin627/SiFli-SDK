@@ -1,9 +1,7 @@
-/**
- * @file lvsf_popup.c
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
  *
- *
- * an popup consist of: full screen gray background + app_icon + lable + 2 button
- *
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /*********************

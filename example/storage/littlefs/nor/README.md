@@ -49,7 +49,7 @@ ls               - List information about the FILEs.
 ### menuconfig配置
 ```
  //执行指令
- menuconfig --board=em-lb561
+ sdk.py menuconfig --board=em-lb561
 ```  
 1、首先需要在menuconfig里面进行开启MTD Nor Flash device
 

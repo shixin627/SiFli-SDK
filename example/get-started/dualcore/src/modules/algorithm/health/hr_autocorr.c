@@ -1,5 +1,6 @@
 #include "hr_autocorr.h"
 #include <string.h>
+#include <stdbool.h>
 
 /* Correlation values are Q15 (32768 == 1.0); lags are Q8. Integer throughout —
    the LCPU's float support is not worth depending on for ~11k operations that
@@ -21,11 +22,16 @@ static uint16_t s_count;            /* saturates at HR_AUTOCORR_WIN            *
 /* Detrended, scaled working copy. Separate from the ring so feeding can carry
    on (from the FIFO hook) while an estimate is being computed. */
 static int16_t s_work[HR_AUTOCORR_WIN];
+/* Guards hr_autocorr_last_window: without it a dump taken before any estimate
+   would ship a window of stale zeros, which reads as a real flat capture in the
+   offline suite rather than as "no data". */
+static bool s_work_valid = false;
 
 void hr_autocorr_reset(void)
 {
     s_head = 0;
     s_count = 0;
+    s_work_valid = false;
 }
 
 void hr_autocorr_feed(uint8_t n, const uint32_t *raw)
@@ -42,6 +48,22 @@ void hr_autocorr_feed(uint8_t n, const uint32_t *raw)
 uint16_t hr_autocorr_fill(void)
 {
     return s_count;
+}
+
+uint16_t hr_autocorr_last_window(int8_t *out, uint16_t max)
+{
+    if (out == NULL || !s_work_valid) return 0;
+    uint16_t n = (max < HR_AUTOCORR_WIN) ? max : HR_AUTOCORR_WIN;
+    for (uint16_t i = 0; i < n; i++)
+    {
+        /* s_work is already normalised to |x| <= SCALE_MAX (1023); >>3 lands it
+           in int8 with the shape intact. */
+        int32_t v = (int32_t)s_work[i] >> 3;
+        if (v > 127) v = 127;
+        if (v < -128) v = -128;
+        out[i] = (int8_t)v;
+    }
+    return n;
 }
 
 /* Integer sqrt, Newton. Only ever called on correlation energies. */
@@ -107,6 +129,7 @@ static int detrend_into_work(void)
         int32_t d = (int32_t)((int64_t)s_ring[(base + i) % HR_AUTOCORR_WIN] - fit);
         s_work[i] = (int16_t)(d >> shift);
     }
+    s_work_valid = true;
     return 1;
 }
 

@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /**
  * @file lv_snapshot.h
  *
@@ -71,21 +77,55 @@ uint32_t lv_snapshot_buf_size_needed(lv_obj_t * obj, lv_img_cf_t cf);
  */
 lv_res_t lv_snapshot_take_to_buf(lv_obj_t * obj, lv_img_cf_t cf, lv_img_dsc_t * dsc, void * buf, uint32_t buff_size);
 
-bool lv_snapshot_obj_to_dsc(lv_obj_t * obj, lv_area_t * area, lv_img_dsc_t * dsc);
-bool lv_snapshot_obj_to_dsc_scale(lv_obj_t * obj, lv_area_t * area, lv_img_dsc_t * dsc);
+
+void lv_refr_dump_buf_to_img_now(lv_img_dsc_t *img_dsc);
+
+/** 
+	The main function is to dump the frame BUF data onto the image, 
+	suitable for situations where the frame BUF is full screen
+ *
+ * @param dsc The dsc that needs to be dumped must be initialized with its size and image data memory
+ *
+ * @return true for success, false on error.
+ */
+bool lv_snapshot_fb_to_dsc(lv_img_dsc_t *dsc);
 
 /**
- * Take snapshot of an object and create an lv_img_t instance attached to the given parent.
+	The main function is to dump the designated area of obj onto the image,
+	 which cannot be zoomed in or out
  *
- * @param parent parent object where the image widget will be created
- * @param obj    object to snapshot
- * @param area   area of the object to snapshot
- * @param cf     color format of the output image
- * @return       pointer to the created image widget, or NULL on failure
+ @param obj The obj The obj need to be dump
+ @param mask The designated area of obj will be dump
+ @param dsc The dump data will be save in it
+ @return true for success, false on error.
  */
-lv_obj_t * lv_snapshot_obj_to_img(lv_obj_t * parent, lv_obj_t * obj, lv_area_t * area, lv_img_cf_t cf);
+bool lv_snapshot_obj_to_dsc(lv_obj_t *obj, lv_area_t *mask, lv_img_dsc_t *dsc);
 
-lv_res_t lv_refr_dump_buf_to_img_now(lv_img_dsc_t *img_dsc);
+/**
+	For cases where the frame buf is not full screen, 
+	the frame buf can be used as an intermediate buf for two conversions
+	Firstly, convert obj to dsc, 
+	Secondly, scale dsc to dsc
+	Due to two dump operations, scaling can be performed,
+ @param obj The obj The obj need to be dump
+ @param mask The designated area of obj will be dump
+ @param dsc The dump data will be save in it
+ @return true for success, false on error.
+ */
+bool lv_snapshot_obj_to_dsc_scale(lv_obj_t *obj, lv_area_t *mask, lv_img_dsc_t *dsc);
+
+/**
+	The main function is to dump the designated area of obj onto the image,
+	and the image buffer alloced in PSRAM will be auto free when the image is deleted
+ *
+ @param obj The obj The obj need to be dump
+ @param mask The designated area of obj will be dump
+ @param dsc The dump data will be save in it
+ @return the image snapshoted of obj.
+ */
+lv_obj_t *lv_snapshot_obj_to_img(lv_obj_t *parent, lv_obj_t *obj, lv_area_t *area, lv_img_cf_t cf);
+
+lv_img_dsc_t *lv_snapshot_create_dsc(lv_coord_t w, lv_coord_t h, lv_img_cf_t cf, uint16_t cache_type);
 
 /**********************
  *      MACROS

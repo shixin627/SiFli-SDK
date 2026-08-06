@@ -21,18 +21,37 @@
 
 ### 支持的平台
 例程可以运行在以下开发板
-* sf32lb52-lchspi-ulp
+* sf32lb52-lcd_n16r8（SPI SD/TF卡）
+* sf32lb52-lcd_a128r16（SPI SD/TF卡）
+* sf32lb52-lchspi-ulp（SPI SD/TF卡）
+* sf32lb52-core_e8r16（SDIO/eMMC）
+* sf32lb56-lcd_a128r12n1（SDIO/eMMC）
+* sf32lb56-lcd_n16r12n1（SDIO/eMMC）
+* sf32lb58-lcd_n16r32n1_dsi（SDIO/eMMC）
+* sf32lb58-lcd_a128r32n1_qspi（SDIO/eMMC）
+* sf32lb58-lcd_n16r32n1_qspi（SDIO/eMMC）
 
 ### 编译和烧录
 切换到例程project目录，运行scons命令执行编译：
 ```
-scons --board=sf32lb52-lchspi-ulp -j8
+scons --board=sf32lb56-lcd_a128r12n1 -j8
 ```
+其它支持板子替换 `--board` 即可。
+
+### SD卡后端配置
+本例程通过工程配置选择SD卡后端：
+- SPI SD/TF卡：通过 `RT_USING_SPI_MSD` 注册 `sd0`
+- SDIO/eMMC：通过RT-Thread SDIO/MMC驱动注册 `sd0` 或 `sd1`
+
+板级 `proj.conf` 会按开发板自动选择后端和设备名。58系列当前使用 `sd1`，其它支持板子使用 `sd0`。
+默认的 `disk/example.ezip` 会随Flash根文件系统烧录到板载NOR/NAND分区；SD卡用于加载额外图片文件。NAND根文件系统板卡使用 `RT_USING_MTD_DHARA` 注册后再挂载。
 
 ### 准备图片文件
 
 默认提供的图片文件：
 - LVGL V8: `example.ezip`
+
+> **说明：** 工程目录下的 `asset` 文件夹仅存放用于生成 `.ezip` 的原图（PNG），代码中不会直接使用该目录下的文件，实际加载的是 `disk` 目录或 SD 卡中的 `.ezip` 文件。
 
 如需使用自定义图片，可以：
 - 使用sdk/tools/png2ezip/ezip.exe工具将PNG图片转换为ezip格式
@@ -45,6 +64,9 @@ scons --board=sf32lb52-lchspi-ulp -j8
   - `-binfile 2`: 设置输出为二进制文件格式
   - `-binext .ezip`: 指定输出文件扩展名为.ezip，可以自定义为不超过20个字符的扩展名
   - `-lvgl_version`: 指定目标LVGL版本，支持8或9
+  - `-winsize 2048`: SF32LB57专用，将压缩窗口大小限制为2048，以满足SF32LB57的压缩率限制
+
+  > **注意：** 为SF32LB57生成资源时必须添加 `-winsize 2048`。其它芯片无需添加该参数。
   
   **使用示例**：
   ```
@@ -53,6 +75,9 @@ scons --board=sf32lb52-lchspi-ulp -j8
   
   # 转换为LVGL V9格式
   ezip -convert images\logo.png -rgb565 -binfile 2 -binext .ezip -lvgl_version 9
+
+  # 为SF32LB57转换LVGL V8资源
+  ezip -convert images\logo.png -rgb565 -binfile 2 -binext .ezip -lvgl_version 8 -winsize 2048
   ```
 - 将图片文件放入`disk`目录，重新编译烧录
 - 或将图片文件复制到SD卡根目录（需要插入SD卡）
@@ -65,7 +90,7 @@ scons --board=sf32lb52-lchspi-ulp -j8
 Register root to mtd device with base addr 0x12820000
 mount fs on flash to root success
 dynamic ezip loading example.
-mount fs on tf card to /sdcard success
+mount fs on sd0 to /sdcard success
 ```
 
 LCD屏幕将显示加载的ezip图片，图片居中显示。

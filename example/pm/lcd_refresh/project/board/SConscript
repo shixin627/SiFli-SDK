@@ -1,0 +1,20 @@
+import os
+import rtconfig
+from building import *
+
+cwd = GetCurrentDir()
+
+# add general drivers
+src = Split('''
+board.c
+''')
+
+if GetDepend("SOC_SF32LB52X"):
+    src += ["bf0_ap_hal_msp_sf32lb52x.c"]
+
+path =  [cwd]
+path += [cwd + '/ports']
+path += [cwd + '/../linker_scripts']
+
+group = DefineGroup('Drivers', src, depend = [''], CPPPATH = path)
+Return('group')

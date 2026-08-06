@@ -1,0 +1,39 @@
+menuconfig USING_CPU_USAGE_PROFILER
+    bool "CPU Usage Profiler"
+    default n   
+    if USING_CPU_USAGE_PROFILER
+        config CPU_PROFILER_MAX_THREAD_SWITCH_HIST_LEN
+            int "Thread switch history recording number"
+            default 64
+        config CPU_PROFILER_RECORD_ISR_HISTORY_ENABLED
+            bool "Enable ISR History Recording"
+            default n
+            config CPU_PROFILER_MAX_ISR_HIST_LEN
+                int "ISR history recording number"
+                default 16
+                depends on CPU_PROFILER_RECORD_ISR_HISTORY_ENABLED
+        config CPU_USAGE_METRICS_ENABLED
+            bool "Enable CPU Usage Metrics"
+            # pthread uses user_data which is used by metrics to record thread run time
+            depends on !RT_USING_PTHREADS
+            default n
+            
+            if CPU_USAGE_METRICS_ENABLED
+                choice
+                    prompt "Select Metrics Report Type"
+                    default CPU_USAGE_METRICS_USE_COLLECTOR
+                    config CPU_USAGE_METRICS_USE_COLLECTOR
+                        select USING_METRICS_COLLECTOR
+                        bool "Save by Metrics Collector"
+                    config CPU_USAGE_METRICS_PRINT_DIRECTLY
+                        bool "Print Periodically"
+                    config CPU_USAGE_METRICS_PRINT_MANUALLY
+                        bool "Print Manually"
+                endchoice
+                if CPU_USAGE_METRICS_PRINT_DIRECTLY
+                    config CPU_USAGE_METRICS_PRINT_PERIOD
+                        int "Print period in second"
+                        default 10
+                endif 
+            endif    
+    endif

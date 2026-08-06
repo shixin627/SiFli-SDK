@@ -15,11 +15,11 @@
 
 #define STDIO_DEVICE_NAME_MAX   32
 
-int	_EXFUN(fileno, (FILE *));
+int _EXFUN(fileno, (FILE *));
 
-static FILE* std_console = NULL;
+static FILE *std_console = NULL;
 
-int libc_stdio_set_console(const char* device_name, int mode)
+int libc_stdio_set_console(const char *device_name, int mode)
 {
     FILE *fp;
     char name[STDIO_DEVICE_NAME_MAX];
@@ -48,7 +48,7 @@ int libc_stdio_set_console(const char* device_name, int mode)
         {
             _GLOBAL_REENT->_stdin  = std_console;
         }
-        else 
+        else
         {
             _GLOBAL_REENT->_stdin  = NULL;
         }
@@ -64,7 +64,7 @@ int libc_stdio_set_console(const char* device_name, int mode)
             _GLOBAL_REENT->_stderr = std_console;
         }
 
-        // _GLOBAL_REENT->__sdidinit = 1; //TODO: 
+        // _GLOBAL_REENT->__sdidinit = 1; //TODO:
     }
 
     if (std_console) return fileno(std_console);
@@ -72,7 +72,8 @@ int libc_stdio_set_console(const char* device_name, int mode)
     return -1;
 }
 
-int libc_stdio_get_console(void) {
+int libc_stdio_get_console(void)
+{
     if (std_console)
         return fileno(std_console);
     else

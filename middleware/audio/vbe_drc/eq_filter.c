@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2025-2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /*************************************************************
 Audio EQ Filter Source Code
 File: eq_filter.c

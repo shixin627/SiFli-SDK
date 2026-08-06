@@ -250,6 +250,15 @@ static void notify_hr_cont(const watch_sys_hr_cont_t *rec)
     push_msg_to_hcpu(MSG_SERVICE_HR_CONT_IND, rec, sizeof(*rec));
 }
 
+static void notify_hr_window(const watch_sys_hr_window_t *rec)
+{
+    /* One captured hr_autocorr window -> HCPU -> KEY_HR_WINDOW_DUMP. At most one
+       per burst, so this cannot flood the mailbox the way an unthrottled
+       per-sample uplink would. */
+    if (rec == NULL) return;
+    push_msg_to_hcpu(MSG_SERVICE_HR_WINDOW_IND, rec, sizeof(*rec));
+}
+
 static void notify_sleep_state(uint8_t mode, uint32_t timestamp_utc)
 {
     watch_sys_sleep_state_t data_ind;
@@ -564,6 +573,7 @@ static void register_watch_sys_service_funs(void)
     watch_sys_sync.notify_debug_log = notify_debug_log;
     watch_sys_sync.notify_sleep_diag = notify_sleep_diag;
     watch_sys_sync.notify_hr_cont = notify_hr_cont;
+    watch_sys_sync.notify_hr_window = notify_hr_window;
 }
 
 static int watch_sys_service_register(void)

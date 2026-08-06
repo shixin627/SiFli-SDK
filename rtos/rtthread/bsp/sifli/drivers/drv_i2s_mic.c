@@ -342,8 +342,9 @@ static rt_err_t bf0_audio_shutdown(struct rt_audio_device *audio)
 static rt_err_t bf0_audio_i2s_start(struct bf0_i2s_audio *aud)
 {
     I2S_HandleTypeDef *hi2s = &aud->hi2s;
-
+#ifndef SF32LB55X
     bf0_enable_pll(hi2s->Init.rx_cfg.sample_rate, 0);
+#endif
 
 #ifndef ASIC  //i2s mic on FPGA
     /*FPGA have NONE I2S TX device*/

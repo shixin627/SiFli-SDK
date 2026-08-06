@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #include "app_clock_status_bar.h"
 #include "app_mem.h"
 #include "lv_tiny_ttf.h"
@@ -21,10 +26,8 @@ typedef struct
 } font_cache_t;
 
 #define MAX_FONTS 10
-static font_cache_t title_font_cache[MAX_FONTS];
-static font_cache_t content_font_cache[MAX_FONTS];
-static uint8_t title_font_count = 0;
-static uint8_t content_font_count = 0;
+static font_cache_t font_cache[MAX_FONTS];
+static uint8_t font_count = 0;
 
 static lv_obj_t *app_clock_main_status_bar;
 static lv_obj_t *status_bar_area_up;
@@ -92,6 +95,39 @@ static const notification_msg_cntxt_t notify_msgs[] =
 
 };
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+
+extern const unsigned char DroidSansFallback[];
+extern const int DroidSansFallback_size;
+
+static lv_font_t *app_clock_status_bar_get_font(uint8_t size)
+{
+    for (uint8_t i = 0; i < font_count; i++)
+    {
+        if (font_cache[i].font_size == size)
+        {
+            return font_cache[i].font;
+        }
+    }
+
+    if (font_count >= MAX_FONTS)
+    {
+        rt_kprintf("[clock_font] cache full, size=%u\n", size);
+        return NULL;
+    }
+
+    lv_font_t *font = lv_tiny_ttf_create_data(DroidSansFallback, DroidSansFallback_size, size);
+    if (font == NULL)
+    {
+        rt_kprintf("[clock_font] create failed, size=%u\n", size);
+        return NULL;
+    }
+
+    font_cache[font_count].font_size = size;
+    font_cache[font_count].font = font;
+    font_count++;
+    rt_kprintf("[clock_font] create size=%u, cached=%u\n", size, font_count);
+    return font;
+}
 
 #define PX_5mm LV_DPX(32) //160 is 1 inch(about 2.5cm)
 #define PX_1cm LV_DPX(64) //160 is 1 inch(about 2.5cm)
@@ -313,66 +349,16 @@ static void control_panel_content_init(lv_obj_t *par)
 /*
     drop down hidden msg list
 */
-
-extern const unsigned char DroidSansFallback[];
-extern const int DroidSansFallback_size;
 static lv_font_t *chinese_font = NULL;
 void app_clock_status_bar_init_font(void)
 {
-
-    if (!chinese_font)
-    {
-        chinese_font = lv_tiny_ttf_create_data(DroidSansFallback, DroidSansFallback_size, 24);
-    }
-
+    chinese_font = app_clock_status_bar_get_font(24);
 
     for (uint32_t i = 0; i < ARRAY_SIZE(notify_msgs); i++)
     {
-        uint8_t size = notify_msgs[i].dynamic_title_font_size;
-
-        // Check if the font size already exists in the cache
-        bool found = false;
-        for (int j = 0; j < title_font_count; j++)
-        {
-            if (title_font_cache[j].font_size == size)
-            {
-                found = true;
-                break;
-            }
-        }
-
-        if (!found && title_font_count < MAX_FONTS)
-        {
-            title_font_cache[title_font_count].font_size = size;
-            title_font_cache[title_font_count].font =
-                lv_tiny_ttf_create_data(DroidSansFallback, DroidSansFallback_size, size);
-            title_font_count++;
-        }
+        (void)app_clock_status_bar_get_font(notify_msgs[i].dynamic_title_font_size);
+        (void)app_clock_status_bar_get_font(notify_msgs[i].dynamic_content_font_size);
     }
-
-    for (uint32_t i = 0; i < ARRAY_SIZE(notify_msgs); i++)
-    {
-        uint8_t size = notify_msgs[i].dynamic_content_font_size;
-
-        bool found = false;
-        for (int j = 0; j < content_font_count; j++)
-        {
-            if (content_font_cache[j].font_size == size)
-            {
-                found = true;
-                break;
-            }
-        }
-        // If the font size is not found in the cache, create a new font
-        if (!found && content_font_count < MAX_FONTS)
-        {
-            content_font_cache[content_font_count].font_size = size;
-            content_font_cache[content_font_count].font =
-                lv_tiny_ttf_create_data(DroidSansFallback, DroidSansFallback_size, size);
-            content_font_count++;
-        }
-    }
-
 }
 
 static void msg_list_content_init(lv_obj_t *par)
@@ -391,17 +377,7 @@ static void msg_list_content_init(lv_obj_t *par)
     align_base = label_header;
     for (uint32_t i = 0; i < sizeof(notify_msgs) / sizeof(notify_msgs[0]); i++)
     {
-
-
-        lv_font_t *title_font = NULL;
-        for (int j = 0; j < title_font_count; j++)
-        {
-            if (title_font_cache[j].font_size == notify_msgs[i].dynamic_title_font_size)
-            {
-                title_font = title_font_cache[j].font;
-                break;
-            }
-        }
+        lv_font_t *title_font = app_clock_status_bar_get_font(notify_msgs[i].dynamic_title_font_size);
 
         lv_obj_t *title_label = lv_label_create(par);
         lv_obj_set_width(title_label, LV_PCT(80));
@@ -411,16 +387,7 @@ static void msg_list_content_init(lv_obj_t *par)
         lv_label_set_text(title_label, notify_msgs[i].p_title);
         lv_obj_align_to(title_label, align_base, LV_ALIGN_OUT_BOTTOM_LEFT, 0, PX_5mm);
 
-        lv_font_t *content_font = NULL;
-        for (int j = 0; j < content_font_count; j++)
-        {
-            if (content_font_cache[j].font_size == notify_msgs[i].dynamic_content_font_size)
-            {
-                content_font = content_font_cache[j].font;
-                break;
-            }
-        }
-
+        lv_font_t *content_font = app_clock_status_bar_get_font(notify_msgs[i].dynamic_content_font_size);
 
         lv_obj_t *content_label_container = lv_obj_create(par);
         lv_obj_set_size(content_label_container, LV_PCT(100), notify_msgs[i].content_height);
@@ -434,9 +401,6 @@ static void msg_list_content_init(lv_obj_t *par)
         lv_obj_set_style_text_color(content_label, notify_msgs[i].content_color, LV_PART_MAIN);
         lv_label_set_text(content_label, notify_msgs[i].p_content);
         lv_obj_set_layout(content_label, LV_LAYOUT_FLEX);
-
-
-        lv_obj_align_to(title_label, align_base, LV_ALIGN_OUT_BOTTOM_LEFT, 0, PX_5mm);
         lv_obj_align_to(content_label_container, title_label, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 0);
         align_base = content_label_container;
 
@@ -516,31 +480,17 @@ void app_clock_main_status_bar_init(lv_obj_t *par, lv_obj_t *clock_tileview)
 void app_clock_main_status_bar_deinit(void)
 {
 
-    for (int i = 0; i < title_font_count; i++)
+    for (int i = 0; i < font_count; i++)
     {
-        if (title_font_cache[i].font)
+        if (font_cache[i].font)
         {
-            lv_tiny_ttf_destroy(title_font_cache[i].font);
-            title_font_cache[i].font = NULL;
+            lv_tiny_ttf_destroy(font_cache[i].font);
+            font_cache[i].font = NULL;
         }
     }
-    title_font_count = 0;
+    font_count = 0;
 
-    for (int i = 0; i < content_font_count; i++)
-    {
-        if (content_font_cache[i].font)
-        {
-            lv_tiny_ttf_destroy(content_font_cache[i].font);
-            content_font_cache[i].font = NULL;
-        }
-    }
-    content_font_count = 0;
-
-    if (chinese_font)
-    {
-        lv_tiny_ttf_destroy(chinese_font);
-        chinese_font = NULL;
-    }
+    chinese_font = NULL;
 
 
     lv_obj_del(app_clock_main_status_bar);

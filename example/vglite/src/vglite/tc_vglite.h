@@ -30,7 +30,7 @@ void tc_vglite_print_error(const char *func, size_t line, vg_lite_error_t err);
         goto ErrorHandler;                                  \
     }
 
-void tc_vg_send_data_to_lcd(uint8_t *data, uint32_t width, uint32_t height, uint16_t color_fmt);
+void tc_vg_send_data_to_lcd(const uint8_t *data, uint32_t width, uint32_t stride, uint32_t height, uint16_t color_fmt);
 
 rt_err_t tc_vglite_init(void);
 rt_err_t tc_vglite_cleanup(void);
@@ -48,4 +48,3 @@ const char *tc_vglite_get_layout_str(vg_lite_buffer_layout_t layout);
 }
 #endif
 #endif /* __TC_VGLITE_H__ */
-

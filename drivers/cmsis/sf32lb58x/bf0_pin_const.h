@@ -946,6 +946,8 @@ typedef enum
     LCDC2_JDI_VCOM,
     /** SD1_CLK */
     SD1_CLK,
+    /** SD1_CLKIN */
+    SD1_CLKIN,
     /** SD1_CMD */
     SD1_CMD,
     /** SD1_DIO0 */
@@ -966,6 +968,8 @@ typedef enum
     SD1_DIO7,
     /** SD2_CLK */
     SD2_CLK,
+    /** SD2_CLKIN */
+    SD2_CLKIN,
     /** SD2_CMD */
     SD2_CMD,
     /** SD2_DIO0 */
@@ -1732,6 +1736,8 @@ typedef enum
 } pin_pad;
 
 #define PIN_FUNC_SEL_NUM  (16)
+
+#define PAD_PBR_PRESENT
 
 /** HCPU pad function definition table */
 extern const unsigned short pin_pad_func_hcpu[][16];

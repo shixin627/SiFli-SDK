@@ -34,7 +34,7 @@ The ELM_RW project contains 1 .c file (main.c). The tree structure below shows o
 ### menuconfig Configuration
 ```c
 //Command execution
- menuconfig --board=sf32lb52-lcd_n16r8
+ sdk.py menuconfig --board=sf32lb52-lcd_n16r8
 ```
 #### menuconfig Configuration 1
 Controls whether to compile and enable support for NOR Flash devices.

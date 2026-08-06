@@ -5,11 +5,14 @@ Source code path: example\cherryusb\device\hid_mouse
 ## Supported Platforms
 <!-- Supported boards and chip platforms -->
 + sf32lb52-lcd_n16r8
++ sf32lb52-lcd_a128r16
++ sf32lb56-lcd_n16r12n1
++ sf32lb58-lcd_n16r32n1_dsi
 
 ## Overview
 <!-- Example introduction -->
 This example demonstrates enumerating a mouse device based on cherryusb USB-HID, including:
-+ Press the KEY2 button on sf32lb52-lcd_n16r8 to sequentially trigger left button press, right button press, middle button press, wheel scroll, mouse circle, left button press and move right.
++ Press the board KEY2 button to sequentially trigger left button press, right button press, middle button press, wheel scroll, mouse circle, left button press and move right.
 
 ## Usage of the Example
 <!-- Explain how to use the example, such as connecting hardware pins to observe waveforms, compilation and burning can reference related documents.

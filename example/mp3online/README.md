@@ -9,7 +9,7 @@
 
 在项目根目录执行以下命令进行配置：
 ```bash
-menuconfig --board=<board_name>
+sdk.py menuconfig --board=<board_name>
 ```
 其中`<board_name>`替换为实际的板子名称，例如`sf32lb52-lcd_n16r8`。
 

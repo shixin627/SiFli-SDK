@@ -1,0 +1,3 @@
+config USING_BARCODE128
+    bool "Barcode128 Library"
+    default y if PKG_USING_LITTLEVGL2RTT

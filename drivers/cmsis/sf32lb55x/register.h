@@ -750,14 +750,14 @@ typedef enum
 
 #define HCPU_MPI_SBUS_ADDR(addr)       (addr)
 
-#define GPADC_CALIB_FLOW_VERSION        (1)
-
 #ifndef LCPU_BOOT_ADDR
 #define LCPU_BOOT_ADDR          (LCPU_RAM_DATA_START_ADDR+LCPU_RAM_DATA_SIZE-4)
 #endif
 
 #define IS_LCPU(id)  ((*id)&1)
 
+/** hwp_pmuc is in lpsys, lcpu can access it directly */
+#define PMUC_IN_LPSYS
 
 #if defined (USE_HAL_DRIVER)
 #include "bf0_hal.h"

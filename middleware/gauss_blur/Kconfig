@@ -1,0 +1,3 @@
+config USING_GAUSS_BLUR
+    bool "Gauss Blurring Library"
+    default n    

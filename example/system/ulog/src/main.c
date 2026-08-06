@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #include "rtthread.h"
 #include "bf0_hal.h"
 #include "drv_io.h"
@@ -28,28 +33,25 @@ void HAL_MspInit(void)
 
 int ulog_test(int argc, char **argv)
 {
-    static int count = 0;
     static uint8_t buf[128];
     int i = 0;
-    while (count < 50)
+
+    for (i = 0; i < sizeof(buf); i ++)
     {
-        for (i = 0; i < sizeof(buf); i ++)
-        {
-            buf[i] = i;
-        }
-
-
-        /* output different level log by LOG_X API */
-        LOG_D("LOG_D(%d): RT-Thread is an open source IoT operating system from China.", count);
-        LOG_I("LOG_I(%d): RT-Thread is an open source IoT operating system from China.", count);
-        LOG_W("LOG_W(%d): RT-Thread is an open source IoT operating system from China.", count);
-        LOG_E("LOG_E(%d): RT-Thread is an open source IoT operating system from China.", count);
-        LOG_RAW("LOG_RAW(%d): RT-Thread is an open source IoT operating system from China.", count);
-        ulog_hexdump("buf_dump_test", 16, buf, sizeof(buf));
-        rt_thread_mdelay(10);
-
-        count++;
+        buf[i] = i;
     }
+
+
+    /* output different level log by LOG_X API */
+    LOG_D("LOG_D: RT-Thread is an open source IoT operating system from China.\n");
+    LOG_I("LOG_I: RT-Thread is an open source IoT operating system from China.\n");
+    LOG_W("LOG_W: RT-Thread is an open source IoT operating system from China.\n");
+    LOG_E("LOG_E: RT-Thread is an open source IoT operating system from China.\n");
+    LOG_RAW("LOG_RAW: RT-Thread is an open source IoT operating system from China.\n");
+    ulog_hexdump("buf_dump_test", 16, buf, sizeof(buf));
+    rt_thread_mdelay(10);
+
+  
 
     return 0;
 }

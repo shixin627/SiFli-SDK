@@ -7,6 +7,8 @@
 - 表盘
 - 立方体左右旋转 (不支持SF32lb55x系列芯片)
 
+> 注：`SF32LB55X` 系列暂不支持 `3D旋转(rotation3d)` 演示，因此在 55x 平台上对应蜂窝入口无法进入画面。
+
 ## 用法
 
 下面的小节仅提供绝对必要的信息。有关配置SiFli-SDK及使用其构建和运行项目的完整步骤，请参阅 [SiFli-SDK 快速入门](https://docs.sifli.com/projects/sdk/latest/sf32lb52x/quickstart/index.html)。

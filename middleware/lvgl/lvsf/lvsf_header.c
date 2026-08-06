@@ -1,9 +1,7 @@
-/**
- * @file lvsf_header.c
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
  *
- *
- * an header consist of: back_button + title + indicate icons + time clock
- *
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /*********************

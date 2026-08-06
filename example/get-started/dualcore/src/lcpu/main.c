@@ -506,8 +506,8 @@ void button_event_handler(int32_t pin, button_action_t button_action)
 static void init_pin(void)
 {
 #if (BSP_KEY1_PIN >= GPIO1_PIN_NUM)
-    button_cfg_t cfg;
-    #if defined(BSP_USING_PM)
+    button_cfg_t cfg = {0};
+#if defined(BSP_USING_PM)
     int8_t wakeup_pin;
     uint16_t gpio_pin;
     GPIO_TypeDef *gpio;

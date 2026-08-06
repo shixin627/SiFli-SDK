@@ -254,9 +254,19 @@ SECTIONS
     __rt_init_end = .;
 
     . = ALIGN(4);
-    BuiltinAppTab_start = .;
-    KEEP(*(BuiltinAppTab))
-    BuiltinAppTab_end = .;
+    BuiltinApp1Tab_start = .;
+    KEEP(*(.BuiltinApp1Tab))
+    BuiltinApp1Tab_end = .;
+
+    . = ALIGN(4);
+    BuiltinApp2Tab_start = .;
+    KEEP(*(.BuiltinApp2Tab))
+    BuiltinApp2Tab_end = .;
+
+    . = ALIGN(4);
+    __switch_anim_start__ = .;
+    KEEP(*(.switch_anim))
+    __switch_anim_end__ = .;
 
     . = ALIGN(4);
     __app_font_start__ = .;

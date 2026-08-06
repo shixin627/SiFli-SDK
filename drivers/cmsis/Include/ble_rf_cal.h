@@ -25,6 +25,9 @@
     #define RD_FULCAL   (0x6000)
     #define RD_DCCAL1   (0x7000)
     #define RD_DCCAL2   (0x8000)
+    #define REG_INIT(n) (0x9000 + n)
+    #define RD_FACTOR(n)(0xa000 + n)
+    #define RD_POLAR(n) (0xb000 + n)
     #define END         (0xF000)
 #endif
 

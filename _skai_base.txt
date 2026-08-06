@@ -1,0 +1,4 @@
+fake_weather 24 Rain
+fake_weather 22 Clouds
+fake_weather 19 Clear
+goto_app weather

@@ -14,6 +14,8 @@ Source Code Path: example/multimedia/lvgl/watch
 This is a smartwatch interface example implemented based on LVGL v8, featuring various interactive interfaces and font configuration capabilities. It demonstrates how to use the LVGL graphics library component of SiFli-SDK to build user interfaces for embedded devices.
 Developers can use this example as a foundation to build UI interfaces for various smart wearable devices such as sports watches and health monitoring devices.
 
+> Note: The `SF32LB55X` series does not support the `3D rotation (rotation3d)` demo, so the corresponding honeycomb entry cannot be opened on 55x platforms.
+
 ## Supported Boards
 
 This example can run on the following development boards:

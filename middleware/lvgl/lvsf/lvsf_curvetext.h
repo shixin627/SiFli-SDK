@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2019-2022 SiFli Technologies(Nanjing) Co., Ltd
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifndef _LVSF_CURVETEXT_H
 #define _LVSF_CURVETEXT_H
 

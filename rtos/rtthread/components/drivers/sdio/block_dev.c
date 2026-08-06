@@ -35,6 +35,9 @@
 #elif defined(BSP_USING_SDMMC2)
     #define SDMMC_LOGIC_ADDR SDMMC2_MEM_BASE
     #define SDMMC_DEV_NAME "sd1"
+#else
+    #define SDMMC_LOGIC_ADDR SDMMC1_MEM_BASE
+    #define SDMMC_DEV_NAME "sd0"
 #endif /* BSP_USING_SDMMC1 */
 
 static rt_list_t blk_devices = RT_LIST_OBJECT_INIT(blk_devices);

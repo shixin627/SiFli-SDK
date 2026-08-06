@@ -218,6 +218,7 @@ void user_pin_cfg()
                         HAL_PIN_Set(PAD_PA00+g_ext_driver_cfg.pin_cfg[m].pin, GPIO_A0+g_ext_driver_cfg.pin_cfg[m].pin, PIN_PULLDOWN, 1);
                     }
                 }
+#if !defined(SF32LB57X)
                 else if(g_ext_driver_cfg.pin_cfg[m].type == 1)
                 {
                     if(g_ext_driver_cfg.pin_cfg[m].level == 1)
@@ -229,11 +230,14 @@ void user_pin_cfg()
                         HAL_PIN_Set(PAD_PB00+g_ext_driver_cfg.pin_cfg[m].pin, GPIO_B0+g_ext_driver_cfg.pin_cfg[m].pin, PIN_PULLDOWN, 0);
                     }
                 }
+#endif
 #if !defined(SF32LB55X)
                 else
                 {
+#ifdef hwp_pbr
                     HAL_PBR_ConfigMode(g_ext_driver_cfg.pin_cfg[m].pin, true);
                     HAL_PBR_WritePin(g_ext_driver_cfg.pin_cfg[m].pin, g_ext_driver_cfg.pin_cfg[m].level);
+#endif /* hwp_pbr */
                 }
 #endif
             }
@@ -242,7 +246,7 @@ void user_pin_cfg()
 }
 
 
-#if !defined(SF32LB52X)
+#if !defined(SF32LB52X)&& !defined(SF32LB57X)
 #include "pmic_controller.h"
 
 bool user_pmic_cfg()

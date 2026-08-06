@@ -1,0 +1,66 @@
+menuconfig BSP_USING_DATA_SVC
+    bool "Data Service"
+    default n
+    if BSP_USING_DATA_SVC
+        config DATA_SVC_MBOX_THREAD_STACK_SIZE
+            int "MBOX Thread stack size in byte"
+            default 1024
+        config DATA_SVC_MBOX_THREAD_DYNAMIC
+            bool "Use Dynamic MBOX Thread stack"
+            default n 
+        config DATA_SVC_MBOX_THREAD_PRIORITY
+            int "MBOX Thread Priority"
+            default 13
+            
+        config DATA_SVC_PROC_THREAD_STACK_SIZE
+            int "Proc Thread stack size in byte"
+            default 4096 if BF0_HCPU
+            default 2048 if BF0_LCPU
+            default 2048 if BSP_USING_PC_SIMULATOR
+            
+        config DATA_SVC_PROC_THREAD_DYNAMIC
+            bool "Use Dynamic Proc Thread stack"
+            default n 
+        config DATA_SVC_PROC_THREAD_PRIORITY
+            int "Proc Thread Priority"
+            default 14
+        config DATA_SVC_MBOX_THREAD_DISABLED
+            bool "Disable MBOX Thread and Related Queue"
+            default y if SOC_SF32LB52X
+            default n
+        config DATA_SVC_PROC_THREAD_DISABLED
+            bool "Disable Proc Thread and Related Queue"
+            default n
+            depends on DATA_SVC_MBOX_THREAD_DISABLED
+    endif
+    
+    if BSP_USING_DATA_SVC
+        config BSP_USING_ANCS_SVC
+        bool "Enable ANCS Service"
+        select BSP_BLE_SIBLES
+        select BSP_BLE_ANCS
+        default n
+    endif
+    if BSP_USING_DATA_SVC
+        config BSP_USING_BLE_NVDS_SVC
+        bool "Enable ble nvds Service"
+        depends on PKG_USING_EASYFLASH || PKG_USING_FLASHDB
+        default n
+        config NVDS_AUTO_UPDATE_MAC_ADDRESS
+        bool "Using MAC address from product area"
+        default n
+        depends on BSP_USING_BLE_NVDS_SVC
+    endif
+    if BSP_USING_DATA_SVC
+        config BSP_USING_BLE_DFU_PORT_SVC
+        bool "Enable DFU port service"
+        select BSP_BLE_SIBLES
+        default n
+    endif
+    if BSP_USING_DATA_SVC
+        config BSP_USING_AMS_SVC
+        bool "Enable AMS Service"
+        select BSP_BLE_SIBLES
+        select BSP_BLE_AMS
+        default n
+    endif

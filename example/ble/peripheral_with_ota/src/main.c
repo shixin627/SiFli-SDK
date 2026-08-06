@@ -530,10 +530,6 @@ int main(void)
     sifli_ble_enable();
     env->time_handle  = rt_timer_create("app", app_timeout_handler,  NULL,
                                         rt_tick_from_millisecond(BLE_APP_TIMEOUT_INTERVAL), RT_TIMER_FLAG_SOFT_TIMER);
-#if defined(BT_FINSH) && defined(SF32LB52X_58)
-    bt_interface_acl_accept_role_set(0);
-    bt_interface_set_linkpolicy(1, 1);
-#endif
 
     while (1)
     {

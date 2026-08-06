@@ -686,15 +686,12 @@ void app_launcher_ui_init(void *param)
     extern lv_obj_t *lv_instruction_list_layout_create(lv_obj_t * parent);
     lv_obj_t *instruction_list = build_home_view(lv_scr_act());
 
-    gui_app_trans_anim_t enter_anim_cfg, exit_anim_cfg;
+    /* No transition animation for this page. The old GUI_APP_TRANS_ANIM_NONE
+       config struct is gone; LV_SWITCHANIM_NONE carries the same intent. */
+    gui_app_set_enter_anim_type(LV_SWITCHANIM_NONE, LV_SWITCHANIM_MINOR_DEFAULT, 0);
+    gui_app_set_exit_anim_type(LV_SWITCHANIM_NONE, LV_SWITCHANIM_MINOR_DEFAULT, 0);
 
-    gui_app_trans_anim_init_cfg(&enter_anim_cfg, GUI_APP_TRANS_ANIM_NONE);
-    gui_app_trans_anim_init_cfg(&exit_anim_cfg, GUI_APP_TRANS_ANIM_NONE);
-
-    gui_app_set_enter_trans_anim(&enter_anim_cfg);
-    gui_app_set_exit_trans_anim(&exit_anim_cfg);
-
-    gui_app_set_trans_anim_prio(1, -1);
+    gui_app_set_anim_prior(1, -1);
 }
 
 static void on_start(void)
@@ -802,7 +799,7 @@ static int app_mainmenu(intent_t i)
     return 0;
 }
 
-BUILTIN_APP_EXPORT(LV_EXT_STR_ID(mainmenu), NULL, APP_ID_MAIN, app_mainmenu);
+BUILTIN_APP_EXPORT(LV_EXT_STR_ID(mainmenu), NULL, APP_ID_MAIN, app_mainmenu, 1);
 #endif /* APP_ID_MAIN */
        /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF
         * FILE****/

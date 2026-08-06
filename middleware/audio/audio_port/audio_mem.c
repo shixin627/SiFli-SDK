@@ -171,7 +171,7 @@ RT_WEAK void *audio_mem_calloc(uint32_t count, uint32_t size)
 {
     return rt_calloc(count, size);
 }
-RT_WEAK void *audio_mem_realloc_do(void *mem_address, unsigned int newsize)
+RT_WEAK void *audio_mem_realloc(void *mem_address, unsigned int newsize)
 {
     void *ptr = NULL;
 #if 1

@@ -46,7 +46,7 @@ The default compilation script does not download the file system partition image
 ### menuconfig Configuration
 ```
  //Execute command
- menuconfig --board=em-lb561
+ sdk.py menuconfig --board=em-lb561
 ```  
 1. First, you need to enable MTD Nor Flash device in menuconfig
 

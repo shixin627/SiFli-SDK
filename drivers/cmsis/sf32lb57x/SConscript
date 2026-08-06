@@ -1,0 +1,95 @@
+import rtconfig
+Import('RTT_ROOT')
+from building import *
+
+SIFLI_SDK = os.getenv('SIFLI_SDK')
+
+# get current directory
+cwd = GetCurrentDir()
+nmsis_config = SIFLI_SDK+'external/NMSIS'
+nmsis_core = SIFLI_SDK+'external/NMSIS/Core/Include'
+
+try:
+    if rtconfig.CORE=='LCPU':
+         AddDepend('BF0_LCPU')
+    elif rtconfig.CORE=='HCPU':
+         AddDepend('BF0_HCPU')
+    elif rtconfig.CORE=='ACPU':
+         AddDepend('BF0_ACPU')
+         AddDepend('BF0_HCPU')
+         
+except:
+    if GetDepend("BF0_HCPU"):
+        rtconfig.CORE='HCPU'
+    elif GetDepend("BF0_LCPU"):
+        rtconfig.CORE='LCPU'
+    elif GetDepend("BF0_ACPU"):
+        rtconfig.CORE='ACPU'
+    else:
+        print('Warning: Rtconfig.core not defined')
+
+src=['bf0_pin_const.c']
+src += ['lcpu_config_type.c']
+src += ['pmu_ldo_update.c']
+if GetDepend(['BF0_HCPU']) and not GetDepend(['CFG_BOOTLOADER']):
+    src += ['lcpu_patch.c']
+    src += ['bf0_lcpu_init.c']
+    src += ['bt_rf_cw_config.c']
+    src += ['bt_power_config.c']
+    if not GetDepend(['USE_ATE_MODE']) and not GetDepend('FPGA'):
+        src += ['bt_rf_fulcal.c']
+    if not GetDepend(['CFG_FACTORY_DEBUG']):
+        src += ['bt_rf_test.c']
+    # TODO: need to enanble after ble_rf_fulcal_ad9364 is available
+    if GetDepend(['FPGA']):
+        src += ['ble_rf_fulcal_ad9364.c']
+        src += ['spi_tst_drv.c']
+
+ASFLAGS = ''
+CCFLAGS = ''
+CPPDEFINES=['SF32LB57X']
+path = [cwd, cwd+'/../Include']
+
+if GetDepend(['BF0_LCPU']):
+    ASFLAGS += ' -I'+SIFLI_SDK+'/external/NMSIS/Core/Include '
+    if rtconfig.PLATFORM == 'gcc':
+        src += ['Templates/system_bf0_ap_rv.c']
+        #if GetDepend(['ROM_ATTR']):
+        src += ['Templates/gcc/startup_bf0_lcpu_rom.s']
+        CPPDEFINES += ['RTOS_RTTHREAD']
+        path += [nmsis_config, nmsis_core]
+    elif rtconfig.PLATFORM == 'armcc':
+        src += ['Templates/system_bf0_ap.c']
+        if GetDepend(['ROM_ATTR']):
+            src += ['Templates/arm/startup_bf0_lcpu_rom.S']
+        else:
+            src += ['Templates/arm/startup_bf0_lcpu.S']
+        path = path + [os.path.join(SIFLI_SDK, 'external/CMSIS/Include')]
+elif GetDepend(['BF0_HCPU']):
+    src += ['Templates/system_bf0_ap.c']
+    if  rtconfig.PLATFORM != 'gcc':
+        ASFLAGS = ' --cpreproc'
+    if rtconfig.PLATFORM == 'gcc':
+        if not GetDepend('BF0_ACPU'):
+            src += ['Templates/gcc/startup_bf0_hcpu.S']
+        else:
+            src += ['Templates/gcc/startup_bf0_acpu.S']
+    elif rtconfig.PLATFORM == 'armcc':
+        if not GetDepend('BF0_ACPU'):
+            src += ['Templates/arm/startup_bf0_hcpu.S']
+        else:
+            src += ['Templates/arm/startup_bf0_acpu.S']
+    elif rtconfig.PLATFORM == 'iar':
+        src += ['Templates/iar/startup_bf0_hcpu.S']
+
+    path = path + [os.path.join(SIFLI_SDK, 'external/CMSIS/Include')]
+
+
+
+if len(src) > 0:
+    group = DefineGroup('CMSIS_BF0', src, depend = ['SOC_SF32LB57X'], ASFLAGS = ASFLAGS, CPPPATH=path, CCFLAGS=CCFLAGS, CPPDEFINES=CPPDEFINES)
+else :
+    group =[]
+
+Return('group')
+

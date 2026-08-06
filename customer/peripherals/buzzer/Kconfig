@@ -4,7 +4,7 @@ menuconfig BUZZER_ENABLED
     if BUZZER_ENABLED
         config BUZZER_INTERFACE_NAME
         string "BUZZER interface name"
-        default "pwm2"
+        default "pwmt1"
 
         config BUZZER_CHANEL_NUM
         int "BUZZER channel in PWM"
