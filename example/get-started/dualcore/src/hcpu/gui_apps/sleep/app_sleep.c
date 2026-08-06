@@ -144,6 +144,9 @@ static void prv_build_ui(lv_obj_t *parent)
     /* Black backdrop. */
     lv_obj_set_style_bg_color(parent, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(parent, LV_OPA_COVER, 0);
+    /* 同 app_battery：上游 port_app_sche_create_scr() 會 clear 掉 screen 的
+       LV_OBJ_FLAG_CLICKABLE，不補回來就收不到 CLICKED。 */
+    lv_obj_add_flag(parent, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(parent, prv_on_screen_touch, LV_EVENT_CLICKED, NULL);
 
     /* Title. */

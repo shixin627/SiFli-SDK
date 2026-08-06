@@ -129,7 +129,11 @@ static lv_obj_t *on_start(lv_obj_t *parent)
     set_text_hint(label, SkaiWatchSys.battery_level_value);
     p_app_batt->hint_label = label;
 
-    // Add touch event listener to the parent
+    // Add touch event listener to the parent.
+    /* 上游 app_schedule_port.c 的 port_app_sche_create_scr() 現在會對每個 app screen
+       clear 掉 LV_OBJ_FLAG_CLICKABLE，screen 收不到 press → CLICKED 永遠不觸發。
+       這裡自己補回來，否則點畫面退不出充電頁。 */
+    lv_obj_add_flag(parent, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(parent, on_screen_touch, LV_EVENT_CLICKED, NULL);
 
     cust_trans_anim_config(CUST_ANIM_TYPE_1, NULL);

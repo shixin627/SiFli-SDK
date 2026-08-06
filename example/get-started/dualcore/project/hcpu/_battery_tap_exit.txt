@@ -1,0 +1,7 @@
+# 驗證:充電頁點畫面可退出(上游 clear 掉 screen CLICKABLE 的 regression)
+# 跑法: _dev_test.cmd -nobuild -script _battery_tap_exit.txt
+list_apps
+goto_app battery
+app_status
+touch_tap 200 200
+app_status
