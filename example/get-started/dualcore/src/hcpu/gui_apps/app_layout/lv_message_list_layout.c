@@ -99,18 +99,19 @@
  * 值越大，「中央 dot 顯著大、其他都很小」越明顯 */
 #define DOT_ZOOM_EXPONENT 2.0f
 
-/* 單卡舞台：當前那則的 icon 停在 widget 右上角，弧上等於 -30°（0° 是正右方，
+/* 單卡舞台：當前那則的 icon 停在 widget 右緣的垂直中間，弧上等於 0°（正右方，
  * 負值往上）。可見範圍 ±44° 留住上下各一格（一格 36°），超過 32° 開始淡出，
  * 所以第三顆是漸隱不是硬切。 */
-#define MSG_ICON_CENTER_ANGLE (-30.0f)
+#define MSG_ICON_CENTER_ANGLE (0.0f)
 #define MSG_ICON_VISIBLE_SPAN (44.0f)
 #define MSG_ICON_FADE_START (32.0f)
-/* 下面那一顆的角度拉伸倍率。等角距（一格 36°）時它會停在 +6°，那正好是
- * widget 右側內部、疊在卡片上；上面那顆因為 widget 是橫的長方形，同樣的
- * 角距反而落在卡片上緣外面。只把「中槽以下」的角度差乘開，讓它停到卡片
- * 底邊外，上槽與中槽完全不動。轉場途中角度仍是連續的 — icon 穿過 widget
- * 的那段動畫保留，只是下半段走得比較快。 */
-#define MSG_ICON_DOWN_STRETCH (2.3f)
+/* 上下兩顆的角度拉伸倍率。中槽移到 0° 之後，等角距（一格 36°）會讓上下兩顆
+ * 落在 ±36°，那是 widget 右上 / 右下角的內部 — 圓弧等分配上橫的長方形卡片，
+ * 一格的角距根本走不出卡片。乘開到 ±50° 才會停到卡片上下緣外面（卡片高 252，
+ * 半高 126 + icon 半徑 ~23，需要 sin > 0.745 即 48°）。中槽不受影響（差為 0），
+ * 轉場途中角度仍然連續 — icon 穿過 widget 的那段動畫保留，只是離開中央後
+ * 走得比較快。 */
+#define MSG_ICON_SLOT_STRETCH (1.4f)
 /* 卡片淡出距離 = 剛好一格（卡片高 + 間距）。搭配下面的三次曲線：停住的時候
  * 隔壁那張正好落在距離 1.0 上＝全透明，畫面只有當前這則；推擠途中兩張都還在
  * 曲線平緩段（半格時仍有 ~87% 不透明），看起來就是上面那張把下面那張擠掉。 */
@@ -542,14 +543,10 @@ static void update_msg_indicator_dots_position(int input_value)
         }
 
         /* 位置用拉伸過的角度，可見範圍 / 縮放 / 淡出仍看原本的角距（dist_deg），
-         * 不然下面那顆一停好就會超出 span 被判成不可見。 */
-        float draw_angle = current_angle;
-        if (current_angle > MSG_ICON_CENTER_ANGLE)
-        {
-            draw_angle = MSG_ICON_CENTER_ANGLE +
-                         (current_angle - MSG_ICON_CENTER_ANGLE) *
-                             MSG_ICON_DOWN_STRETCH;
-        }
+         * 不然上下兩顆一停好就會超出 span 被判成不可見。 */
+        float draw_angle = MSG_ICON_CENTER_ANGLE +
+                           (current_angle - MSG_ICON_CENTER_ANGLE) *
+                               MSG_ICON_SLOT_STRETCH;
         float angle_rad = draw_angle * (float)M_PI / 180.0f;
         int dot_x = center_x + (int)((float)circle_radius * cosf(angle_rad));
         int dot_y = center_y + (int)((float)circle_radius * sinf(angle_rad));
