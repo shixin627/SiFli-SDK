@@ -58,6 +58,13 @@ typedef struct
                                      * 往下）。動態變動時呼叫 arc_scroll_set_item_count 更新 */
     uint16_t band_thickness;        /* 弧帶從螢幕邊往內的 px 厚度；0 → 預設 150 */
     bool lock_ancestors;            /* drag 期間鎖住外層 scrollable 祖先（防 tileview 誤搶）*/
+    bool release_hor_dominant;      /* true = 第一段位移「橫向為主」(|dx| > |dy|) 就放棄 arc，
+                                     * 把 press 讓給底下的物件（走跟方向偵測失敗同一條
+                                     * indev_reset + 暫停 hit_test 的路）。給「弧帶所在的
+                                     * 頁面本身還要能左右換頁」的列表用 — 內建的 tangent
+                                     * 夾角過濾在圓周 45° 附近擋不住橫滑（橫向與該處
+                                     * tangent 只差 45°，仍在 60° 容許內），右下角橫滑
+                                     * 因此會被當成弧捲。預設 false = 行為不變。 */
     arc_scroll_tap_cb_t tap_cb;     /* 可為 NULL */
     arc_scroll_snap_cb_t snap_cb;   /* 可為 NULL */
     arc_scroll_bounds_cb_t bounds_cb; /* 可為 NULL，NULL 走內建 centered-list 公式 */

@@ -1058,6 +1058,12 @@ void skai_device_ui_refresh(void)
         return;
     }
     device_pager_refresh();
+    /* 頂部面板的設備名 / 媒體頁也吃同一份 registry — 一併刷新，否則設備上下線
+       只有裝置頁會動、面板停在舊清單。 */
+    {
+        extern void lv_top_panel_refresh_devices(void);
+        lv_top_panel_refresh_devices();
+    }
 }
 
 /* Drill-down to the device currently shown. The fake list isn't BLE-bonded

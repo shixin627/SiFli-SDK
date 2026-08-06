@@ -177,6 +177,26 @@ static void pressing_cb(lv_event_t *e)
         {
             h->motion_detected = true;
 
+            /* 橫向優先讓位（release_hor_dominant）：弧帶所在的頁面自己還要能
+               左右換頁時，第一段位移只要橫向為主就整段讓出去。不能只靠下面的
+               tangent 夾角過濾 —— 在圓周 45°(右下/右上)處，橫向位移跟 tangent
+               只差 45°，落在 60° 容許內，於是右下角想橫滑換頁卻變成滾 icon
+               (founder 2026-08-06 實機回報)。 */
+            if (h->cfg.release_hor_dominant)
+            {
+                int32_t adx = (mdx < 0) ? -mdx : mdx;
+                int32_t ady = (mdy < 0) ? -mdy : mdy;
+                if (adx > ady)
+                {
+                    h->active = false;
+                    unlock_ancestors(h);
+                    h->hit_test_disabled = true;
+                    h->disable_tick = lv_tick_get();
+                    lv_indev_reset(indev, h->overlay);
+                    return;
+                }
+            }
+
             /* 方向偵測：motion 大致沿 arc tangent 才當 arc-scroll，否則放棄。
              * tangent 跟 radial 垂直 → tangent_dir = (-pdy, pdx)（CCW 方向）。
              * |cos(motion, tangent)| < threshold 表示太垂直、不是滾動，

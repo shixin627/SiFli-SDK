@@ -28,6 +28,7 @@
 #include "ble_device_manager.h"
 #include "ble_hid.h"
 #include "lv_ext_resource_manager.h"
+#include "lv_top_panel.h"
 
 extern void refresh_connected_device_label(void);
 #ifndef _MSC_VER
@@ -121,6 +122,7 @@ static lv_obj_t *dev_change_gaus_bg = NULL;
 static lv_obj_t *dev_change_gaus_img = NULL;
 static void set_clock_main_status_opa(uint8_t opa, bool mask);
 static void set_dev_change_gaus_opa(uint8_t opa);
+lv_obj_t *control_center_layout_create(lv_obj_t *parent);
 static void notification_status_bar_cb(lv_event_t *event)
 {
     if (lv_disp_get_rotation(NULL) == LV_DISP_ROT_90 ||
@@ -263,10 +265,10 @@ void clock_main_notify_follow_end(lv_coord_t dy, lv_coord_t vy)
        instruction_list_reveal_drag_end reads the live translate_x) so only where
        you ACTUALLY let go decides which tile wins. */
     lv_coord_t sy = lv_obj_get_scroll_y(app_clock_main_status_bar);
+    /* 2026-08-06: 只剩「往下拉 = 頂部面板」一個去處；控制中心搬進面板，
+       錶盤往上滑不再開頁（HOME 已移除 LV_DIR_BOTTOM）。 */
     bool open_notify = (sy <= LV_VER_RES - LV_VER_RES / 4) || (vy > 6);
-    bool open_control = (sy >= LV_VER_RES + LV_VER_RES / 4) || (vy < -6);
-    uint32_t row = open_notify ? 0 : (open_control ? 2 : 1);
-    lv_obj_set_tile_id(app_clock_main_status_bar, 1, row, true);
+    lv_obj_set_tile_id(app_clock_main_status_bar, 1, open_notify ? 0 : 1, true);
 }
 
 static void dev_change_refresh_device_list(void);
@@ -362,13 +364,13 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             if (sx > 466 && !s_applist_retreat_open)
             {
                 s_applist_retreat_open = true;
-                lv_obj_set_scroll_dir(obj, LV_DIR_TOP | LV_DIR_BOTTOM | LV_DIR_RIGHT |
+                lv_obj_set_scroll_dir(obj, LV_DIR_TOP | LV_DIR_RIGHT |
                                                LV_DIR_LEFT);
             }
             else if (sx <= 466 && s_applist_retreat_open)
             {
                 s_applist_retreat_open = false;
-                lv_obj_set_scroll_dir(obj, LV_DIR_TOP | LV_DIR_BOTTOM | LV_DIR_RIGHT);
+                lv_obj_set_scroll_dir(obj, LV_DIR_TOP | LV_DIR_RIGHT);
             }
             if (sx > 466)
             {
@@ -408,6 +410,15 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
                 lv_obj_set_style_bg_opa(gaus_dial_bg, (lv_opa_t)ropa, 0);
             if (ropa > 0 && gaus_dial_img && lv_obj_is_valid(gaus_dial_img))
                 lv_obj_set_style_img_opa(gaus_dial_img, LV_OPA_0, 0); /* right: black only, no blur */
+        }
+        /* 滑鼠模式下拉面板的黑底跟手漸黑（錶盤路徑由 gaus_dial_bg 負責，
+           那層在滑鼠圖層底下看不到，所以另走面板自己那份）。scroll_y 從 466
+           (home) 降到 0 (面板全開) → up 就是下拉進度。 */
+        {
+            lv_coord_t up = 466 - lv_obj_get_scroll_y(obj);
+            if (up < 0) up = 0;
+            if (up > 466) up = 466;
+            lv_top_panel_set_backdrop_opa((uint8_t)((int32_t)up * 204 / 466));
         }
         lv_coord_t scroll_y = (466 - lv_obj_get_scroll_y(obj)) * bg_opa / 350;
         lv_coord_t scroll_x = (466 - lv_obj_get_scroll_x(obj)) * bg_opa / 350;
@@ -475,16 +486,10 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
         }
         else
         {
+            /* 垂直方向唯一的去處是頂部面板，那裡不顯示電量 → 一拉就關掉，
+               不要讓它跟著滑一路淡入再於 settle 突然消失。 */
             shady_transparency = abs(scroll_second_y);
-            if (shady_transparency < (bg_opa_2 + 1) &&
-                shady_transparency > 0)
-            {
-                set_instruction_list_battery_opa(shady_transparency);
-            }
-            else if (shady_transparency >= bg_opa_2)
-            {
-                set_instruction_list_battery_opa(bg_opa_2);
-            }
+            set_instruction_list_battery_opa(LV_OPA_TRANSP);
         }
 
         if (scroll_second_y == 0)
@@ -553,10 +558,17 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
            device_pager_set_active.) */
         {
             extern void instruction_list_bar_set_visible(bool visible);
+            /* 滑鼠模式時 HOME 底下不是錶面而是 hid_mouse 圖層，它自帶底部 bar
+               (bottom_swipe_area / skaibar)，全域 bar 再冒出來會疊兩條。 */
             instruction_list_bar_set_visible((active_pos == MAIN_PAGE_TYPE_HOME ||
                                               active_pos == MAIN_PAGE_TYPE_RIGHT) &&
-                                             gui_app_is_actived("Main"));
+                                             gui_app_is_actived("Main") &&
+                                             !lv_top_panel_mouse_mode());
         }
+        /* 頂部面板 settle：進來時刷新設備清單 / 媒體頁 / 底部按鈕狀態。 */
+        lv_top_panel_set_open(active_pos == MAIN_PAGE_TYPE_UP);
+        lv_top_panel_set_backdrop_opa(
+            (active_pos == MAIN_PAGE_TYPE_UP) ? 204 : 0);
         {
             /* Right tile = the device control page. Host the mouse behind the
                list while we're on it; tear it down when we leave. Also re-read
@@ -646,10 +658,9 @@ static void app_clock_main_status_bar_event_cb(lv_event_t *event)
             {
                 set_clock_main_status_opa(LV_OPA_100, false);
             }
-            if (active_pos == 0)
-            {
-                set_instruction_list_battery_opa(LV_OPA_100);
-            }
+            /* 2026-08-06: 面板頁不再顯示電量（founder:通知列表上面的電量拿掉），
+               頂部那條位置現在是「控制中設備」名稱。 */
+            set_instruction_list_battery_opa(LV_OPA_TRANSP);
 
             extern void reset_gravity_position(void);
             reset_gravity_position();
@@ -821,6 +832,25 @@ void animate_to_home_from_notification_center(void)
     if (lv_obj_is_valid(myLancher[app_index_message].pagetileview))
         lv_obj_set_tile_id(myLancher[app_index_message].pagetileview, 1, 1,
                            LV_ANIM_ON);
+}
+
+/* Same landing as animate_to_home_from_notification_center, but INSTANT, and it
+   also resets the AI tileview. Used by the post-sleep reset in watch_demo.c:
+   that runs while the black sleep overlay is still up, so an animation would
+   either be invisible or leak a slide into the first awake frame — snap instead.
+   Still goes through set_tile_id (not a raw scroll_to) so the VALUE_CHANGED
+   settle handler runs all the per-page teardown, same as a real swipe home. */
+void snap_to_home_from_any_page(void)
+{
+    lv_obj_t *ai_tv = myLancher[app_index_ai_interface].pagetileview;
+    lv_obj_t *main_tv = myLancher[app_index_message].pagetileview;
+
+    /* PC sim excludes the AI/speech apps, so this tile can be NULL — see
+       is_at_ai_interface(). */
+    if (ai_tv && lv_obj_is_valid(ai_tv))
+        lv_obj_set_tile_id(ai_tv, 0, 0, LV_ANIM_OFF);
+    if (main_tv && lv_obj_is_valid(main_tv))
+        lv_obj_set_tile_id(main_tv, 1, 1, LV_ANIM_OFF);
 }
 
 void animate_to_instruction_list(void)
@@ -1224,7 +1254,7 @@ static void bar_event_cb(lv_event_t *e)
 
 static lv_obj_t *control_center_window;
 static lv_obj_t *control_center_app_list = NULL;
-static lv_obj_t *control_center_layout_create(lv_obj_t *parent)
+lv_obj_t *control_center_layout_create(lv_obj_t *parent)
 {
     control_center_window = lv_obj_create(parent);
     lv_obj_set_size(control_center_window, LV_HOR_RES, LV_VER_RES);
@@ -1562,9 +1592,10 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
                tile (col 2 = MAIN_PAGE_TYPE_LEFT) swipes in from the right edge.
                HOME still scrolls TOP to the message list. The left edge stays the
                mixed-list reveal overlay (no LV_DIR_LEFT). */
+            /* 2026-08-06: LV_DIR_BOTTOM 拿掉 — 控制中心搬進頂部面板(從通知列表
+               往右滑)，錶盤往上滑不再有頁面。上 tile 現在是整個面板。 */
             pages[i] = lv_tileview_add_tile(app_clock_main_status_bar, 1, i,
-                                            LV_DIR_TOP | LV_DIR_BOTTOM |
-                                                LV_DIR_RIGHT);
+                                            LV_DIR_TOP | LV_DIR_RIGHT);
             app_clock_main_status_bar_down = pages[i];
             lv_obj_set_style_bg_color(pages[i], LV_COLOR_RED,
                                       LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1651,7 +1682,8 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
     }
     lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
     lv_obj_add_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
-    control_center_layout_create(pages[CONTROL_CENTER_PAGE_INDEX]);
+    /* 2026-08-06: 控制中心不再自己佔一個 tile — 它是頂部面板的最左頁，
+       由 lv_top_panel_create 掛進去。(1,2) tile 保留但空著且不可達。 */
 
     extern lv_obj_t *lv_instruction_list_layout_create(lv_obj_t * parent);
     LOG_I("clock_status_bar: before instruction_list_layout_create");
@@ -1670,10 +1702,11 @@ void app_clock_main_status_bar_init(lv_obj_t *par)
        one-line change here. */
     extern lv_obj_t *lv_session_pager_create(lv_obj_t * parent);
     lv_session_pager_create(pages[INSTRUCTION_LIST_PAGE_INDEX]);
-    extern lv_obj_t *lv_message_list_layout_create(lv_obj_t * parent);
-    LOG_I("clock_status_bar: before message_list_layout_create");
-    lv_message_list_layout_create(pages[MESSAGE_PAGE_INDEX]);
-    LOG_I("clock_status_bar: after message_list_layout_create");
+    /* 上 tile = 頂部面板（控制中心 ← 通知列表 → 各設備媒體中心 + 固定的頂部
+       設備列 / 底部按鈕）。通知列表與控制中心都由面板內部建立。 */
+    LOG_I("clock_status_bar: before top_panel_create");
+    lv_top_panel_create(pages[MESSAGE_PAGE_INDEX], par);
+    LOG_I("clock_status_bar: after top_panel_create");
 
     /* T4: device_pager 內容放右 tile (2,1)，鏡像左側 instruction_list。
        拉出靠原生 tileview 滑動。 */
@@ -2512,6 +2545,28 @@ void set_status_bar_area_up_state(bool state)
    chain a swipe back to home; instead the pager calls this when the user drags
    left past the last device (the inverse of the left-edge pull-in). Mirrors
    the reset done at init: snap the main tileview to home and hide the overlay. */
+/* 滑鼠模式下把面板拉出來：只負責「亮出主 tileview 並停在 HOME」，接下來的
+   跟手/snap 交給 LVGL 原生 —— press 下一 tick 會轉給 tileview（與錶面上的
+   notification_status_bar_cb 同一機制）。由 hid_mouse 頂部區的下拉分支呼叫
+   （hid_mouse_set_pulldown_cb）。 */
+void clock_main_panel_reveal(void)
+{
+    if (!app_clock_main_status_bar || !lv_obj_is_valid(app_clock_main_status_bar))
+        return;
+    lv_obj_set_tile_id(app_clock_main_status_bar, 1, 1, false);
+    lv_obj_clear_flag(app_clock_main_status_bar, LV_OBJ_FLAG_HIDDEN);
+    if (status_bar_bg_main && lv_obj_is_valid(status_bar_bg_main))
+        lv_obj_move_foreground(status_bar_bg_main);
+    lv_obj_move_foreground(app_clock_main_status_bar);
+}
+
+/* 面板必須永遠壓在滑鼠圖層之上（圖層是 par 的兄弟，show 時會 move_foreground）。*/
+void clock_main_status_bar_to_front(void)
+{
+    if (status_bar_bg_main && lv_obj_is_valid(status_bar_bg_main))
+        lv_obj_move_foreground(status_bar_bg_main);
+}
+
 void app_clock_status_bar_return_home(void)
 {
     if (!lv_obj_is_valid(app_clock_main_status_bar))
@@ -2587,6 +2642,9 @@ void set_status_bar_area_left_state(bool state)
 
 void app_clock_main_status_bar_deinit(void)
 {
+    /* 面板本體隨 status_bar_bg_main 一起被刪，但滑鼠圖層是 par 的兄弟，
+       要自己收（順帶把 hid_mouse 的 mode / route 還原）。 */
+    lv_top_panel_deinit();
     ai_interface_tileview_index = 0;
     middle_layer_tileview_index = 1;
     if (status_bar_bg_main && lv_obj_is_valid(status_bar_bg_main))

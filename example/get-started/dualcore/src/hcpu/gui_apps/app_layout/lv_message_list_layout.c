@@ -49,6 +49,7 @@
 #include "app_mainmenu.h"
 #include "common_widget.h"
 #include "arc_scroll.h"
+#include "lv_top_panel.h"
 #include "bloc_control.h"
 #include <math.h>
 #include <stdio.h>
@@ -1132,6 +1133,34 @@ static void stop_touching_screen_timer(void)
     }
 }
 
+/* 手指是否壓在「中央那張卡」上（單卡舞台：任一時刻只有選中的那張沒被 hide，
+   媒體 widget 也是其中一張）。壓在上面 → 這一輪拖曳不給面板換頁。 */
+static void msg_panel_hor_gate_on_press(void)
+{
+    lv_indev_t *indev = lv_indev_get_act();
+    if (indev == NULL)
+    {
+        lv_top_panel_set_hor_enabled(true);
+        return;
+    }
+    lv_point_t pt;
+    lv_indev_get_point(indev, &pt);
+
+    /* 「中間那個 widget」= selected_message（list 的 children[selected_index]，
+       媒體 widget 當選中時也是它）。不能用 HIDDEN 判斷 —— 單卡舞台是靠透明度
+       做的，update_notification_card_visibility 整段是註解掉的，所有卡都沒有
+       HIDDEN，用它判會變成「壓在任何一張卡上都不給換頁」。 */
+    bool on_card = false;
+    if (selected_message && lv_obj_is_valid(selected_message))
+    {
+        lv_area_t a;
+        lv_obj_get_coords(selected_message, &a);
+        if (pt.x >= a.x1 && pt.x <= a.x2 && pt.y >= a.y1 && pt.y <= a.y2)
+            on_card = true;
+    }
+    lv_top_panel_set_hor_enabled(!on_card);
+}
+
 static void list_window_scroll_event_cb(lv_event_t *evt)
 {
     lv_obj_t *obj = evt->target;
@@ -1155,6 +1184,16 @@ static void list_window_scroll_event_cb(lv_event_t *evt)
         {
             message_arc_reset_drag_state();
         }
+        /* 頂部面板換頁 gate（founder 2026-08-06：「不是碰著中間的 WIDGET 左右滑
+           動時，把整個通知列表一起左右滑走」）。手指落在中央那張卡上時，左右
+           拖曳仍舊屬於卡片自己（媒體 widget 的前/後首、通知卡的滑動刪除），
+           這時關掉面板的水平換頁；落在卡片以外才讓整頁跟著走。放開再打開。 */
+        msg_panel_hor_gate_on_press();
+        break;
+
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+        lv_top_panel_set_hor_enabled(true);
         break;
     case LV_EVENT_SCROLL_BEGIN:
         /* Cancel any pending delayed reset from a previous scroll. */
@@ -1608,8 +1647,12 @@ static void widget_drag_event_cb(lv_event_t *evt)
             if (abs_dx > CLICK_CANCEL_MOVEMENT)
                 press_had_movement = true;
         }
-        if (dragging_widget == obj && selected_message->coords.y1 == 107 &&
-            new_touching_obj)
+        /* 只有**中央那張**能右滑刪除（founder 2026-08-06：不在中間的通知不該
+           拖得動）。原本只檢查「選中的那張剛好停在中央位置」，但 obj 可能是
+           旁邊那張 —— 條件成立時鄰居照樣被拖走。selected_message 追的就是
+           children[selected_message_index] = 中央那格，直接比對物件本身。 */
+        if (dragging_widget == obj && obj == selected_message &&
+            selected_message->coords.y1 == 107 && new_touching_obj)
         {
             lv_coord_t diff = point.x - drag_start_x;
 
@@ -2522,6 +2565,10 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
            next button (its far edge sits ~40px in from the screen rim). */
         .band_thickness  = 40,
         .lock_ancestors  = true,
+        /* 通知列表所在的頂部面板本身要能左右換頁：弧帶內的橫向拖曳整段讓給
+           面板，不要變成滾 icon（founder 2026-08-06：右下角想左右切很容易
+           變成滾動 icon）。上下拖曳照舊由弧捲接手。 */
+        .release_hor_dominant = true,
         .tap_cb          = message_arc_tap_cb,
         .snap_cb         = message_arc_snap_cb,
         .drag_cb         = message_arc_drag_cb,

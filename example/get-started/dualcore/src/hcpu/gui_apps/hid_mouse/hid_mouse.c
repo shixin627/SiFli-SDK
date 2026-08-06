@@ -672,7 +672,8 @@ static lv_obj_t *media_tileview = NULL;
 static lv_obj_t *media_home_tile = NULL;
 static lv_obj_t *media_tile = NULL;
 static lv_obj_t *media_center_title_label = NULL;
-static lv_obj_t *media_center_play_btn = NULL;
+/* 頂部下拉去處覆寫（面板 host 時指向 lv_top_panel 的 reveal），NULL = 自有媒體層 */
+static void (*s_pulldown_cb)(void) = NULL;
 static lv_obj_t *media_center_play_img = NULL;
 static bool media_center_play_state = false;
 
@@ -9024,6 +9025,109 @@ static lv_obj_t *media_center_make_icon_btn(lv_obj_t *parent,
     return btn;
 }
 
+/* === 媒體內容 builder（曲名 + 上/播/下 + 音量）====================================
+   2026-08-06 重構:同一份控制列現在有兩個使用者 —
+     1) 本檔 create_media_center_panel 的下拉媒體頁(獨立開 APP_ID_MOUSE 時仍在)
+     2) 錶盤頂部面板(lv_top_panel.c)每台設備一頁的媒體格
+   所以把控制列抽出來，兩邊共用同一份 callback，避免兩套實作各自漂移。
+   設備名/箭頭**不**在這裡：面板版的設備列是固定在面板頂部、不隨頁捲動的。 */
+static void media_content_build(lv_obj_t *parent, lv_obj_t **out_title,
+                                lv_obj_t **out_play_img)
+{
+    lv_obj_t *title = lv_label_create(parent);
+    lv_label_set_text(title, "Media Title");
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(title, LV_HOR_RES_MAX - 80);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 100);
+
+    lv_obj_t *btn_prev = media_center_make_icon_btn(
+        parent, &img_media_previous, media_center_prev_btn_cb, 90);
+    lv_obj_align(btn_prev, LV_ALIGN_CENTER, -120, 0);
+
+    lv_obj_t *btn_play = media_center_make_icon_btn(
+        parent, &img_media_play, media_center_play_btn_cb, 120);
+    lv_obj_align(btn_play, LV_ALIGN_CENTER, 0, 0);
+
+    lv_obj_t *btn_next = media_center_make_icon_btn(
+        parent, &img_media_next, media_center_next_btn_cb, 90);
+    lv_obj_align(btn_next, LV_ALIGN_CENTER, 120, 0);
+
+    /* 音量鍵不走 CLICKED（傳 NULL），改綁 hold cb：長按 >0.5s 連續調整。
+       user_data = 方向（-1 減 / +1 加）。 */
+    lv_obj_t *btn_vol_down =
+        media_center_make_icon_btn(parent, &volume_down, NULL, 75);
+    lv_obj_align(btn_vol_down, LV_ALIGN_BOTTOM_MID, -90, -80);
+    lv_obj_add_event_cb(btn_vol_down, media_center_vol_hold_cb, LV_EVENT_ALL,
+                        (void *)(intptr_t)-1);
+
+    lv_obj_t *btn_vol_up =
+        media_center_make_icon_btn(parent, &volume_up, NULL, 75);
+    lv_obj_align(btn_vol_up, LV_ALIGN_BOTTOM_MID, 90, -80);
+    lv_obj_add_event_cb(btn_vol_up, media_center_vol_hold_cb, LV_EVENT_ALL,
+                        (void *)(intptr_t)1);
+
+    if (out_title) *out_title = title;
+    if (out_play_img) *out_play_img = lv_obj_get_child(btn_play, 0);
+}
+
+/* 面板媒體格:每格記住自己的曲名 label / 播放圖示，bind 時才把 file-static 的
+   「live」指標指過去 —— 0x19 / 0x46 的曲名路由(mouse_mode_handle_*)完全不必改，
+   永遠只寫目前顯示中的那一格。 */
+typedef struct
+{
+    lv_obj_t *title;
+    lv_obj_t *play_img;
+} media_page_widgets_t;
+
+static void media_page_del_cb(lv_event_t *e)
+{
+    media_page_widgets_t *w = (media_page_widgets_t *)lv_event_get_user_data(e);
+    if (w == NULL) return;
+    if (media_center_title_label == w->title)
+    {
+        media_center_title_label = NULL;
+        media_center_play_img = NULL;
+    }
+    lv_mem_free(w);
+}
+
+lv_obj_t *hid_mouse_media_page_create(lv_obj_t *parent)
+{
+    media_page_widgets_t *w =
+        (media_page_widgets_t *)lv_mem_alloc(sizeof(media_page_widgets_t));
+    if (w == NULL) return NULL;
+    memset(w, 0, sizeof(*w));
+
+    lv_obj_t *page = lv_obj_create(parent);
+    lv_obj_remove_style_all(page);
+    lv_obj_set_size(page, LV_HOR_RES_MAX, LV_VER_RES_MAX);
+    lv_obj_clear_flag(page, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_user_data(page, w);
+    lv_obj_add_event_cb(page, media_page_del_cb, LV_EVENT_DELETE, w);
+
+    media_content_build(page, &w->title, &w->play_img);
+    return page;
+}
+
+void hid_mouse_media_page_bind(lv_obj_t *page)
+{
+    if (page == NULL || !lv_obj_is_valid(page)) return;
+    media_page_widgets_t *w = (media_page_widgets_t *)lv_obj_get_user_data(page);
+    if (w == NULL) return;
+    media_center_title_label = w->title;
+    media_center_play_img = w->play_img;
+}
+
+void hid_mouse_media_page_reset_title(lv_obj_t *page)
+{
+    if (page == NULL || !lv_obj_is_valid(page)) return;
+    media_page_widgets_t *w = (media_page_widgets_t *)lv_obj_get_user_data(page);
+    if (w == NULL || !lv_obj_is_valid(w->title)) return;
+    lv_label_set_text(w->title, "Media Title");
+}
+
 /* 離開滑鼠 App：延後到事件處理結束才拆畫面，避免在自身 event cb 內同步拆畫面 UAF。
    （從舊右側抽屜的 exit 鈕移來，現掛在媒體頁。） */
 static void media_exit_async_cb(void *p)
@@ -9116,49 +9220,9 @@ static void create_media_center_panel(lv_obj_t *parent)
 
     update_ctrl_dev_label(); // 依目前 active 設備設定文字/顯示 + 箭頭可見性
 
-    // 曲名
-    media_center_title_label = lv_label_create(media_tile);
-    lv_label_set_text(media_center_title_label, "Media Title");
-    lv_obj_set_style_text_color(media_center_title_label,
-                                lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_align(media_center_title_label,
-                                LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(media_center_title_label, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(media_center_title_label, LV_HOR_RES_MAX - 80);
-    lv_obj_align(media_center_title_label, LV_ALIGN_TOP_MID, 0, 100);
-
-    // 控制列：上一首 / 播放 / 下一首（btn 與 icon 同步放大 1.5x）
-    lv_obj_t *btn_prev =
-        media_center_make_icon_btn(media_tile, &img_media_previous,
-                                   media_center_prev_btn_cb, 90);
-    lv_obj_align(btn_prev, LV_ALIGN_CENTER, -120, 0);
-
-    media_center_play_btn =
-        media_center_make_icon_btn(media_tile, &img_media_play,
-                                   media_center_play_btn_cb, 120);
-    lv_obj_align(media_center_play_btn, LV_ALIGN_CENTER, 0, 0);
-    media_center_play_img = lv_obj_get_child(media_center_play_btn, 0);
-
-    lv_obj_t *btn_next = media_center_make_icon_btn(media_tile,
-                                                    &img_media_next,
-                                                    media_center_next_btn_cb,
-                                                    90);
-    lv_obj_align(btn_next, LV_ALIGN_CENTER, 120, 0);
-
-    // 音量 -/+
-    // 音量鍵不走 make_icon_btn 的 CLICKED（傳 NULL），改綁 hold cb：長按 >0.5s 連續調整。
-    // user_data = 方向（-1 減 / +1 加）。
-    lv_obj_t *btn_vol_down =
-        media_center_make_icon_btn(media_tile, &volume_down, NULL, 75);
-    lv_obj_align(btn_vol_down, LV_ALIGN_BOTTOM_MID, -90, -80);
-    lv_obj_add_event_cb(btn_vol_down, media_center_vol_hold_cb, LV_EVENT_ALL,
-                        (void *)(intptr_t)-1);
-
-    lv_obj_t *btn_vol_up =
-        media_center_make_icon_btn(media_tile, &volume_up, NULL, 75);
-    lv_obj_align(btn_vol_up, LV_ALIGN_BOTTOM_MID, 90, -80);
-    lv_obj_add_event_cb(btn_vol_up, media_center_vol_hold_cb, LV_EVENT_ALL,
-                        (void *)(intptr_t)1);
+    // 曲名 + 控制列 + 音量（與錶盤頂部面板的媒體格共用同一份 builder）
+    media_content_build(media_tile, &media_center_title_label,
+                        &media_center_play_img);
 
     // 離開 App：紅色 Exit 鈕（從舊右側抽屜移來），放媒體頁最底
     lv_obj_t *media_exit_btn = lv_btn_create(media_tile);
@@ -9438,6 +9502,12 @@ static void status_bar_area_up_cb(lv_event_t *e)
                         lv_obj_add_flag(status_bar_area_up,
                                         LV_OBJ_FLAG_PRESS_LOCK);
                     }
+                    else if (dy > 0 && dy > LV_ABS(dx) && s_pulldown_cb)
+                    {
+                        /* 面板 host 模式：明確往下拉 → 亮出錶盤頂部面板，press
+                           下一 tick 被它的 tileview 接走（同一機制，只是換去處）*/
+                        s_pulldown_cb();
+                    }
                     else if (dy > 0 && dy > LV_ABS(dx) && media_tileview &&
                              lv_obj_is_valid(media_tileview))
                     {
@@ -9665,6 +9735,67 @@ static void dev_arrow_next_cb(lv_event_t *e)
     (void)e;
     switch_active_device(+1);
 }
+
+/* === 對外的「控制中設備」API（錶盤頂部面板 lv_top_panel.c 用）====================
+   面板頂部有一份自己的設備名 + 箭頭，但**選台的真相**還是這裡（registry index +
+   commu_send_active_device + app_route），面板只是另一個驅動它的 UI。不另開一份
+   state，避免面板選 A、滑鼠控 B。 */
+int hid_mouse_device_count(void)
+{
+    uint8_t n = SkaiWatchSys.device_registry.count;
+    if (n > MAX_SYNCED_DEVICES) n = MAX_SYNCED_DEVICES;
+    return (int)n;
+}
+
+int hid_mouse_active_device_index(void) { return active_device_index(); }
+
+void hid_mouse_set_active_device_index(int idx) { set_active_device_by_index(idx); }
+
+void hid_mouse_switch_active_device(int dir) { switch_active_device(dir); }
+
+/* 沒有有效的控制目標時挑一台預設（主要 → 第一個在線 → 清單第一個）。與獨立
+   滑鼠 app 進場時的邏輯同一份，讓頂部面板一拉開就有「控制中設備」可顯示。
+   registry 空 → 什麼都不做（不去動既有 route）。 */
+/* 把控制目標退回「當前連線的手機」：清掉遠端選台、通知手機取消 active、
+   route 關掉 → 滑鼠/媒體都回到 BLE HID 直連手機本身。頂部面板停在通知列表
+   （非媒體頁）時走這條（founder 2026-08-06:「通知列表的時候上面的要是控制
+   當前連線的手機」）。 */
+void hid_mouse_clear_active_device(void)
+{
+    if (s_dev_active_id[0] == '\0')
+        return;
+    s_dev_active_id[0] = '\0';
+    commu_send_active_device("");
+    ble_hid_mouse_set_app_route(false);
+    LOG_I("[dev_switch] active -> phone (cleared)");
+}
+
+static const char *active_device_name(void); /* 定義在下方 */
+void hid_mouse_ensure_active_device(void)
+{
+    if (active_device_name() != NULL)
+        return;
+    int def = pick_default_device();
+    if (def >= 0)
+        set_active_device_by_index(def);
+}
+
+const char *hid_mouse_device_name(int idx)
+{
+    if (idx < 0 || idx >= hid_mouse_device_count()) return NULL;
+    return (const char *)SkaiWatchSys.device_name[idx];
+}
+
+bool hid_mouse_device_online(int idx)
+{
+    if (idx < 0 || idx >= hid_mouse_device_count()) return false;
+    return SkaiWatchSys.device_status[idx] != 0;
+}
+
+/* 頂部下拉的去處覆寫：面板 host 滑鼠模式時，頂部往下拉要拉出「錶盤頂部面板」，
+   而不是滑鼠 app 自己那層媒體 tileview（founder 2026-08-06：APP 內上方的媒體
+   中心可以不要）。NULL = 維持原本的自有媒體下拉（獨立開 APP_ID_MOUSE 時）。 */
+void hid_mouse_set_pulldown_cb(void (*cb)(void)) { s_pulldown_cb = cb; }
 
 /* active 設備是否斷線(id 不在 registry=已移除,視同斷線)。 */
 static bool dev_active_offline(void)
@@ -10077,7 +10208,12 @@ void lv_create_mouse_screen(lv_obj_t *scr)
                         NULL);
 
     // === 媒體中心 pull-down panel（從頂部模式切換條往下拉觸發）===
-    create_media_center_panel(bg);
+    /* 頂部面板 host 模式（s_pulldown_cb 已裝，見 hid_mouse_set_pulldown_cb）不建
+       這層：媒體中心與設備切換都由錶盤頂部面板提供，重複一份只會兩邊打架又吃 RAM
+       （founder 2026-08-06：「APP 內上方的媒體中心可以不要」）。獨立開 APP_ID_MOUSE
+       時 cb 為 NULL，行為與從前完全相同。 */
+    if (s_pulldown_cb == NULL)
+        create_media_center_panel(bg);
 
     // 啟動自有底部 bar 的隱藏同步 poll（instruction_list 浮層 bar 顯示時收掉它）
     if (s_bar_ai_sync_timer == NULL)
@@ -10360,7 +10496,6 @@ void hid_mouse_destroy(void)
     media_home_tile = NULL;
     media_tile = NULL;
     media_center_title_label = NULL;
-    media_center_play_btn = NULL;
     media_center_play_img = NULL;
     status_bar_area_up = NULL;
     s_top_logo = NULL;
