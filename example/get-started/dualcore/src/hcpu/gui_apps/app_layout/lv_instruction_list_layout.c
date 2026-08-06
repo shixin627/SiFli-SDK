@@ -7365,7 +7365,7 @@ lv_obj_t *lv_instruction_list_layout_create(lv_obj_t *parent)
     lv_img_set_src(s_mic_bar_icon, &micro_icon);
     lv_img_set_pivot(s_mic_bar_icon, micro_icon.header.w / 2, micro_icon.header.h / 2);
     lv_obj_add_flag(s_mic_bar_icon, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-    lv_img_set_zoom(s_mic_bar_icon, 256); /* 64px 原生 1:1(founder 2026-07-06 定案:64) */
+    lv_img_set_zoom(s_mic_bar_icon, 128); /* 64px 原生縮 50% → 視覺 32px(founder 2026-08-06);觸控走 mic_hit,尺寸不變 */
     lv_obj_align(s_mic_bar_icon, LV_ALIGN_CENTER, 0, LMIC_ICON_Y_OFS); /* 上移避免被底緣切到 */
     lv_obj_clear_flag(s_mic_bar_icon, LV_OBJ_FLAG_CLICKABLE);
 
