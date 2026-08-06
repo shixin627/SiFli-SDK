@@ -179,14 +179,20 @@ static rt_err_t send_msg_to_gui_app_task(gui_app_msg_t *msg)
     p_msg = (uint32_t *) rt_malloc(sizeof(gui_app_msg_t));
     if (NULL == p_msg)
     {
-        LOG_I("Malloc msg fail.");
-        RT_ASSERT(0);
+        /* Out of heap: we cannot queue this message. Do NOT RT_ASSERT — that
+         * turns a transient heap shortage into a hard crash, the same anti-pattern
+         * as the mailbox-full path below. Nothing gets queued here, so re-enable
+         * the input device we disabled above (no consumer will drain-and-re-enable
+         * for us on this path) and return the error so the caller can cope. Must
+         * return now: falling through would rt_mb_send a NULL and crash the
+         * consumer that dereferences it. */
+        LOG_W("gui_app_mbx malloc fail, dropped msg_id %d", (int)msg->msg_id);
+        gui_app_enable_input_device(true);
+        return -RT_ENOMEM;
     }
-    else
-    {
-        msg->tick = rt_tick_get();
-        rt_memcpy(p_msg, msg, sizeof(gui_app_msg_t));
-    }
+
+    msg->tick = rt_tick_get();
+    rt_memcpy(p_msg, msg, sizeof(gui_app_msg_t));
 
     //Send to mailbox
     err = rt_mb_send(&gui_app_mbx, (rt_uint32_t) p_msg);
