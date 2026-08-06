@@ -91,13 +91,16 @@
 
 /* Indicator dots — same visual style as instruction list */
 /* 單卡舞台：icon 只當「這是哪個 app」的標記，不再是列表的主視覺，
- * 所以整體縮到接近設計稿的 ~45 px；bg 容器維持原圖大小免得縮放被裁。 */
-#define DOT_SMOLL_PROPORTION (0.30)
-#define DOT_BIG_PROPORTION (0.45)
+ * 所以整體縮到接近設計稿的 ~45 px；bg 容器維持原圖大小免得縮放被裁。
+ * 中央那顆 ~69 px、上下兩顆 ~27 px — 差距 2.5 倍以上，一眼看得出誰是當前
+ * 這則（原本 0.45 vs 0.40 只差 12%，看起來根本一樣大）。 */
+#define DOT_SMOLL_PROPORTION (0.28)
+#define DOT_BIG_PROPORTION (0.72)
 #define DOT_BG_SIZE (102)
 /* 縮放曲線指數：1.0 = 線性、2.0 = 平方（中央放大突出）、3.0 = 立方更陡峭。
- * 值越大，「中央 dot 顯著大、其他都很小」越明顯 */
-#define DOT_ZOOM_EXPONENT 2.0f
+ * 值越大，「中央 dot 顯著大、其他都很小」越明顯。用 3.0 讓尺寸差集中在離開
+ * 中央的那一小段角度內 — icon 一離開中央就明顯縮小，越靠近中間越大。 */
+#define DOT_ZOOM_EXPONENT 3.0f
 
 /* 單卡舞台：當前那則的 icon 停在 widget 右緣的垂直中間，弧上等於 0°（正右方，
  * 負值往上）。可見範圍 ±44° 留住上下各一格（一格 36°），超過 32° 開始淡出，
@@ -107,11 +110,12 @@
 #define MSG_ICON_FADE_START (32.0f)
 /* 上下兩顆的角度拉伸倍率。中槽移到 0° 之後，等角距（一格 36°）會讓上下兩顆
  * 落在 ±36°，那是 widget 右上 / 右下角的內部 — 圓弧等分配上橫的長方形卡片，
- * 一格的角距根本走不出卡片。乘開到 ±50° 才會停到卡片上下緣外面（卡片高 252，
+ * 一格的角距根本走不出卡片。至少要乘到 ±48° 才離得開卡片，1.6 給到 ±57.6°，
+ * 跟卡片上下緣各留約 26 px 空隙（卡片高 252，
  * 半高 126 + icon 半徑 ~23，需要 sin > 0.745 即 48°）。中槽不受影響（差為 0），
  * 轉場途中角度仍然連續 — icon 穿過 widget 的那段動畫保留，只是離開中央後
  * 走得比較快。 */
-#define MSG_ICON_SLOT_STRETCH (1.4f)
+#define MSG_ICON_SLOT_STRETCH (1.6f)
 /* 卡片淡出距離 = 剛好一格（卡片高 + 間距）。搭配下面的三次曲線：停住的時候
  * 隔壁那張正好落在距離 1.0 上＝全透明，畫面只有當前這則；推擠途中兩張都還在
  * 曲線平緩段（半格時仍有 ~87% 不透明），看起來就是上面那張把下面那張擠掉。 */
@@ -460,7 +464,9 @@ static void update_msg_indicator_dots_position(int input_value)
      * 不跟手 — 手腕上下時只有上下兩顆沿弧移動；移動超過半格由呼叫端
      * （arc drag_cb / 體感 offset）換頁，換頁後新的當前項再吸附回同一錨點。
      * 圓心 / 半徑 / 每格角度沿用原本跟 app_exercise.c 對齊的那組。 */
-    const int circle_radius = 200;
+    /* 200 → 195：中央那顆放大到 ~69 px 之後，半徑 200 會讓它的右緣落在
+     * 233+200+35 = 468，剛好被 466 的螢幕削掉一點。195 收在 463。 */
+    const int circle_radius = 195;
     /* 圓心用螢幕正中（不再往左偏 20）— icon 縮小後不會凸出畫面，而且
      * -30° 這顆剛好落在 widget 右上角，跟設計稿的位置一致。 */
     const int center_x = LV_HOR_RES / 2;
