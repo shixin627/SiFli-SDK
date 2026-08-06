@@ -110,12 +110,12 @@
 #define MSG_ICON_FADE_START (32.0f)
 /* 上下兩顆的角度拉伸倍率。中槽移到 0° 之後，等角距（一格 36°）會讓上下兩顆
  * 落在 ±36°，那是 widget 右上 / 右下角的內部 — 圓弧等分配上橫的長方形卡片，
- * 一格的角距根本走不出卡片。至少要乘到 ±48° 才離得開卡片，1.6 給到 ±57.6°，
- * 跟卡片上下緣各留約 26 px 空隙（卡片高 252，
+ * 一格的角距根本走不出卡片。至少要乘到 ±48° 才離得開卡片，1.9 給到 ±68.4°，
+ * 跟卡片上下緣各留約 42 px 空隙（卡片高 252，
  * 半高 126 + icon 半徑 ~23，需要 sin > 0.745 即 48°）。中槽不受影響（差為 0），
  * 轉場途中角度仍然連續 — icon 穿過 widget 的那段動畫保留，只是離開中央後
  * 走得比較快。 */
-#define MSG_ICON_SLOT_STRETCH (1.6f)
+#define MSG_ICON_SLOT_STRETCH (1.9f)
 /* 卡片淡出距離 = 剛好一格（卡片高 + 間距）。搭配下面的三次曲線：停住的時候
  * 隔壁那張正好落在距離 1.0 上＝全透明，畫面只有當前這則；推擠途中兩張都還在
  * 曲線平緩段（半格時仍有 ~87% 不透明），看起來就是上面那張把下面那張擠掉。 */
@@ -337,6 +337,57 @@ static uint8_t button_selection_index = 1;
 static lv_obj_t *selected_message = NULL;
 static lv_obj_t *page_up = NULL;
 static lv_obj_t *page_down = NULL;
+
+/* 在卡片上垂直拖曳 = 換頁瀏覽，跟右側弧形拖曳共用同一個模型：手指只帶動右邊
+ * 的 icon，卡片本身不跟手，跨過半格才由 scroll_message_list_to_index 播一次
+ * 推擠轉場。列表的原生捲動因此關掉（scroll_dir = LV_DIR_NONE），否則卡片會
+ * 跟著手指連續移動。這兩個 cb 定義在檔案後段，這裡先宣告。 */
+static void message_arc_drag_cb(lv_coord_t scroll_delta_px, void *ctx);
+static lv_obj_t *message_arc_snap_cb(void *ctx);
+static void msg_scroll_to_page(int page, lv_anim_enable_t anim);
+#define VERTICAL_DRAG_THRESHOLD 8
+static lv_coord_t drag_start_y = 0;
+static lv_coord_t drag_last_y = 0;
+static bool vertical_drag = false;
+
+/* 按在卡片上的時候，把所有 scrollable 祖先暫時鎖住 —— 跟 arc_scroll.c 的
+ * lock_ancestors 同一招。光把列表自己設成 LV_DIR_NONE 不夠：LVGL 的 indev 找
+ * 不到可捲的方向就繼續往上找祖先，結果變成整個 tileview 頁面跟著手指跑，
+ * 看起來就像卡片還在跟手。放開時原樣還原。 */
+#define MSG_LOCK_MAX_ANCESTORS 6
+static lv_obj_t *s_locked_anc[MSG_LOCK_MAX_ANCESTORS];
+static lv_dir_t s_locked_dir[MSG_LOCK_MAX_ANCESTORS];
+static uint8_t s_locked_anc_cnt = 0;
+
+static void msg_unlock_ancestors(void)
+{
+    for (uint8_t i = 0; i < s_locked_anc_cnt; i++)
+    {
+        if (s_locked_anc[i] != NULL && lv_obj_is_valid(s_locked_anc[i]))
+            lv_obj_set_scroll_dir(s_locked_anc[i], s_locked_dir[i]);
+        s_locked_anc[i] = NULL;
+    }
+    s_locked_anc_cnt = 0;
+}
+
+static void msg_lock_ancestors(lv_obj_t *from)
+{
+    /* 先 unlock 清掉殘留 — 否則會把上一輪存進去的 LV_DIR_NONE 當原值記起來，
+       之後永遠還原不回去（arc_scroll 也踩過這個）。 */
+    msg_unlock_ancestors();
+    lv_obj_t *p = lv_obj_get_parent(from);
+    while (p != NULL && s_locked_anc_cnt < MSG_LOCK_MAX_ANCESTORS)
+    {
+        if (lv_obj_has_flag(p, LV_OBJ_FLAG_SCROLLABLE))
+        {
+            s_locked_anc[s_locked_anc_cnt] = p;
+            s_locked_dir[s_locked_anc_cnt] = lv_obj_get_scroll_dir(p);
+            lv_obj_set_scroll_dir(p, LV_DIR_NONE);
+            s_locked_anc_cnt++;
+        }
+        p = lv_obj_get_parent(p);
+    }
+}
 
 // 添加拖拽相關變數
 static bool is_dragging = false;
@@ -1204,9 +1255,7 @@ static void reset_list(bool scroll_to_last)
             // 的位置 (notification_count 位置)
             reset_count = notification_count;
             message_scoll_target_item = reset_count;
-            lv_obj_scroll_to_view(
-                lv_obj_get_child(p_app_notification->list, reset_count),
-                LV_ANIM_OFF);
+            msg_scroll_to_page(reset_count, LV_ANIM_OFF);
         }
         else
         {
@@ -1215,9 +1264,7 @@ static void reset_list(bool scroll_to_last)
             else
                 reset_count = 0;
             message_scoll_target_item = reset_count;
-            lv_obj_scroll_to_view(
-                lv_obj_get_child(p_app_notification->list, reset_count),
-                LV_ANIM_OFF);
+            msg_scroll_to_page(reset_count, LV_ANIM_OFF);
         }
     }
     else
@@ -1226,9 +1273,7 @@ static void reset_list(bool scroll_to_last)
         {
             selected_message_index = page_count - 1;
         }
-        lv_obj_scroll_to_view(
-            lv_obj_get_child(p_app_notification->list, selected_message_index),
-            LV_ANIM_OFF);
+        msg_scroll_to_page(selected_message_index, LV_ANIM_OFF);
     }
     scroll_list(p_app_notification->list, 0);
     lv_obj_update_layout(p_app_notification->list);
@@ -1507,6 +1552,12 @@ static void widget_drag_event_cb(lv_event_t *evt)
         {
             drag_start_x = point.x;
             drag_current_x = point.x;
+            drag_start_y = point.y;
+            drag_last_y = point.y;
+            vertical_drag = false;
+            /* 按下當下就鎖 — 等到方向仲裁完（要移動 8 px）才鎖已經來不及，
+               那段位移足夠讓 LVGL 把祖先捲起來。 */
+            msg_lock_ancestors(obj);
             dragging_widget = obj;
             /* We drive drag via translate_x (render-only), not lv_obj_set_x,
                so the list doesn't auto-scroll to keep the moved child visible.
@@ -1525,6 +1576,29 @@ static void widget_drag_event_cb(lv_event_t *evt)
         break;
 
     case LV_EVENT_PRESSING:
+        /* 方向仲裁：還沒進入右滑刪除之前，垂直位移勝出就轉成換頁瀏覽。
+           之後這一輪按壓都走垂直路徑，不再回頭做刪除判定。 */
+        if (dragging_widget == obj && !is_dragging && !vertical_drag)
+        {
+            lv_coord_t dy = point.y - drag_start_y;
+            lv_coord_t dx = point.x - drag_start_x;
+            if (LV_ABS(dy) > VERTICAL_DRAG_THRESHOLD && LV_ABS(dy) > LV_ABS(dx))
+            {
+                vertical_drag = true;
+                press_had_movement = true; /* 別讓它被判成 tap */
+                drag_last_y = point.y;
+            }
+        }
+        if (vertical_drag)
+        {
+            /* 只餵增量 — message_arc_drag_cb 自己累積 input、更新 icon，
+               跨格才 snap。手指往上 (dy<0) 等於列表往後捲，故取負號。 */
+            lv_coord_t step = point.y - drag_last_y;
+            drag_last_y = point.y;
+            if (step != 0)
+                message_arc_drag_cb(-step, NULL);
+            break;
+        }
         // 不論方向，只要 x 移動量超過閾值就標記為「有移動」，後面 RELEASED 用來阻擋 click
         if (dragging_widget == obj)
         {
@@ -1558,7 +1632,32 @@ static void widget_drag_event_cb(lv_event_t *evt)
         }
         break;
 
+    case LV_EVENT_PRESS_LOST:
+        /* 手指滑出卡片範圍時 LVGL 送的是這個、不是 RELEASED。沒接的話祖先的
+           scroll_dir 會永遠停在 LV_DIR_NONE，整個 tileview 再也拖不動。 */
+        msg_unlock_ancestors();
+        if (vertical_drag)
+        {
+            vertical_drag = false;
+            message_arc_snap_cb(NULL);
+        }
+        is_dragging = false;
+        dragging_widget = NULL;
+        break;
+
     case LV_EVENT_RELEASED:
+        /* 垂直瀏覽這一輪：讓 icon 從 elastic overshoot 回彈到該停的位置，
+           不走底下的刪除 / tap 判定。 */
+        if (vertical_drag)
+        {
+            vertical_drag = false;
+            msg_unlock_ancestors();
+            message_arc_snap_cb(NULL);
+            is_dragging = false;
+            dragging_widget = NULL;
+            break;
+        }
+        msg_unlock_ancestors();
         // LOG_D("coords.y1: %d", selected_message->coords.y1);
         if (dragging_widget == obj && is_dragging)
         {
@@ -1736,6 +1835,8 @@ static void refresh_list(uint8_t new_item_count)
                                        widget_drag_event_cb);
                 lv_obj_remove_event_cb(notification_widgets[i].card,
                                        widget_drag_event_cb);
+                lv_obj_remove_event_cb(notification_widgets[i].card,
+                                       widget_drag_event_cb);
 
                 // 添加新的拖拽事件處理器
                 lv_obj_add_event_cb(notification_widgets[i].card,
@@ -1746,6 +1847,10 @@ static void refresh_list(uint8_t new_item_count)
                                     (void *)notification);
                 lv_obj_add_event_cb(notification_widgets[i].card,
                                     widget_drag_event_cb, LV_EVENT_RELEASED,
+                                    (void *)notification);
+                /* 手指滑出卡片時只會收到 PRESS_LOST，沒接就解不開祖先的鎖 */
+                lv_obj_add_event_cb(notification_widgets[i].card,
+                                    widget_drag_event_cb, LV_EVENT_PRESS_LOST,
                                     (void *)notification);
                 char *clean_title = replace_nbsp(notification->title);
                 lv_label_set_text(notification_widgets[i].title, clean_title);
@@ -2330,7 +2435,11 @@ lv_obj_t *lv_message_list_layout_create(lv_obj_t *parent)
 
     lv_obj_add_flag(p_window, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scrollbar_mode(p_window, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_scroll_dir(p_window, LV_DIR_VER);
+    /* LV_DIR_NONE：使用者拖不動這個列表 — 垂直手勢由卡片的 widget_drag_event_cb
+       接管，改成「只有 icon 跟手、跨格才播轉場」。SCROLLABLE 旗標要留著，
+       lv_obj_scroll_to_view / lv_obj_scroll_by 這些程式化捲動不看 scroll_dir，
+       換頁的推擠動畫仍然照走。 */
+    lv_obj_set_scroll_dir(p_window, LV_DIR_NONE);
     lv_obj_set_scroll_snap_y(p_window, LV_SCROLL_SNAP_CENTER);
     lv_obj_set_style_pad_ver(p_window, LV_VER_RES / 2, 0);
     lv_obj_add_event_cb(p_window, list_window_scroll_event_cb, LV_EVENT_ALL,
@@ -2511,6 +2620,22 @@ int msg_scroll_px(int argc, char **argv)
 MSH_CMD_EXPORT(msg_scroll_px, msg_scroll_px px - scroll notification list by px)
 #endif
 
+/* 把第 page 張卡捲到畫面正中。
+   不能用 lv_obj_scroll_to_view — 它走 scroll_area_into_view，那裡會依
+   scroll_dir 把位移歸零（lv_obj_scroll.c:824-827），而列表的 scroll_dir 是
+   LV_DIR_NONE（手指拖曳由卡片的 widget_drag_event_cb 接管，不讓 LVGL 自己捲）。
+   lv_obj_scroll_to_y 走 lv_obj_scroll_by，不看方向，程式化換頁照樣動。
+   目標值：pad_top(LV_VER_RES/2) + page*pitch - (LV_VER_RES - 卡片高)/2 */
+static void msg_scroll_to_page(int page, lv_anim_enable_t anim)
+{
+    if (p_app_notification == NULL || p_app_notification->list == NULL)
+        return;
+    lv_coord_t pitch = LIST_MESSAGE_HEIGHT + LIST_MESSAGE_SPACING;
+    lv_coord_t target = LV_VER_RES / 2 + page * pitch -
+                        (LV_VER_RES - LIST_MESSAGE_HEIGHT) / 2;
+    lv_obj_scroll_to_y(p_app_notification->list, target, anim);
+}
+
 static rt_tick_t last_scroll_time = 0;
 void scroll_message_list_to_index(int8_t page)
 {
@@ -2551,8 +2676,7 @@ void scroll_message_list_to_index(int8_t page)
         }
     }
 
-    lv_obj_scroll_to_view(lv_obj_get_child(p_app_notification->list, page),
-                          LV_ANIM_ON);
+    msg_scroll_to_page(page, LV_ANIM_ON);
     set_scroll_anim_time(false, NULL);
     scroll_list(p_app_notification->list, 0);
     lv_obj_update_layout(p_app_notification->list);
