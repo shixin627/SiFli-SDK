@@ -1205,9 +1205,10 @@ static void ppg_pi_start(void)
 void ppg_pi_feed(uint8_t n, const uint32_t *raw)
 {
     if (!s_pi_collecting || raw == NULL) return;
-    /* Same raw channel-0 stream, three consumers. hr_autocorr is the one whose
-       answer gets published; PI and the repeat detector are diagnostics. */
-    hr_autocorr_feed(n, raw);
+    /* hr_autocorr is NOT fed here any more: it needs the accelerometer aligned
+       to each PPG frame, and only the vendor's frame hook has that (see
+       Gh30xFrameDataHookFunc). This path keeps the two diagnostics — PI and the
+       repeat detector — which need the raw stream but not the alignment. */
     for (uint8_t i = 0; i < n; i++)
     {
         uint32_t v = raw[i];

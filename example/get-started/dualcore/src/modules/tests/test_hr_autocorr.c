@@ -31,7 +31,12 @@ static float frnd(void)
     return (float)((s_lcg >> 16) & 0x7FFF) / 32767.0f;
 }
 
-static void synth(uint32_t *out, float bpm, float h2, float noise, float wander,
+/* PPG plus, when mot_amp > 0, an accelerometer-correlated artefact — the thing
+   that made the watch report 218 bpm while the wearer's hand moved at 3.6 Hz.
+   The accel carries gravity on z like the real sensor so the detrend has
+   something to remove. */
+static void synth(uint32_t *out, int16_t (*acc)[3], float bpm, float h2,
+                  float noise, float wander, float mot_hz, float mot_amp,
                   uint32_t seed)
 {
     s_lcg = seed;
@@ -43,7 +48,15 @@ static void synth(uint32_t *out, float bpm, float h2, float noise, float wander,
                 + h2 * sinf(2.0f * 3.14159265f * 2.0f * f * t + 0.9f);
         v += wander * sinf(2.0f * 3.14159265f * 0.05f * t);
         v += noise * (frnd() - 0.5f);
-        out[i] = (uint32_t)(60000.0f + 800.0f * v);
+        float m  = sinf(2.0f * 3.14159265f * mot_hz * t);
+        float m2 = sinf(2.0f * 3.14159265f * mot_hz * t + 1.3f);
+        out[i] = (uint32_t)(60000.0f + 800.0f * (v + mot_amp * (0.7f * m + 0.4f * m2)));
+        if (acc)
+        {
+            acc[i][0] = (int16_t)(4000.0f * m  + 60.0f * (frnd() - 0.5f));
+            acc[i][1] = (int16_t)(2500.0f * m2 + 60.0f * (frnd() - 0.5f));
+            acc[i][2] = (int16_t)(16000.0f + 300.0f * m + 60.0f * (frnd() - 0.5f));
+        }
     }
 }
 
@@ -52,6 +65,8 @@ struct hrac_case
     const char *name;
     int   bpm;          /* 0 = pure noise, must be refused */
     float h2, noise, wander;
+    float mot_hz, mot_amp;   /* 0 = still wrist */
+    int   known_limit;       /* reported, never scored — see hr_autocorr_test.py */
 };
 
 static const struct hrac_case CASES[] =
@@ -77,6 +92,20 @@ static const struct hrac_case CASES[] =
     {"REAL 73",                      73, 0.40f, 0.25f, 0.6f},
     {"REAL 86",                      86, 0.45f, 0.20f, 0.4f},
     {"REAL 52 clean",                52, 0.35f, 0.08f, 0.2f},
+    /* Wrist motion. Every frequency here is one the watch ACTUALLY REPORTED as a
+       heart rate on 2026-08-06 once the wearer got up: 3.6 Hz -> 218 bpm,
+       3.25 -> 195, 2.85 -> 171. */
+    {"MOTION 3.6Hz / HR 60",         60, 0.40f, 0.20f, 0.5f, 3.60f, 2.5f},
+    {"MOTION 3.25Hz / HR 62",        62, 0.40f, 0.20f, 0.5f, 3.25f, 3.0f},
+    {"MOTION 2.85Hz / HR 58",        58, 0.40f, 0.20f, 0.5f, 2.85f, 2.0f},
+    {"MOTION 2.0Hz / HR 75",         75, 0.40f, 0.25f, 0.6f, 2.00f, 2.5f},
+    {"MOTION 1.5Hz / HR 110",       110, 0.40f, 0.20f, 0.4f, 1.50f, 2.0f},
+    {"MOTION heavy / HR 95",         95, 0.40f, 0.30f, 0.8f, 2.40f, 4.0f},
+    {"MOTION 4.2Hz / HR 68",         68, 0.40f, 0.25f, 0.5f, 4.20f, 3.0f},
+    {"MOTION mild / HR 54",          54, 0.40f, 0.20f, 0.5f, 2.10f, 1.0f},
+    /* Motion at the heart's own frequency: two sources sharing a frequency
+       cannot be separated by a reference signal. Reported, never scored. */
+    {"MOTION same-freq / HR 66",     66, 0.40f, 0.20f, 0.5f, 1.10f, 2.0f, 1},
     {"noise only #1",                 0, 0.0f,  1.0f,  0.0f},
     {"noise only #2",                 0, 0.0f,  1.0f,  0.0f},
     {"noise only #3",                 0, 0.0f,  1.0f,  0.0f},
@@ -86,21 +115,23 @@ static int hr_ac_test(int argc, char **argv)
 {
     (void)argc; (void)argv;
     static uint32_t buf[N];
-    int bad = 0;
+    static int16_t acc[N][3];
+    int bad = 0, known = 0, scored = 0;
     const int n = (int)(sizeof(CASES) / sizeof(CASES[0]));
 
     rt_kprintf("%-26s %6s %10s %s\n", "case", "true", "est", "verdict");
     for (int k = 0; k < n; k++)
     {
         const struct hrac_case *c = &CASES[k];
-        synth(buf, c->bpm ? (float)c->bpm : 0.0f, c->h2, c->noise, c->wander,
+        synth(buf, acc, c->bpm ? (float)c->bpm : 0.0f, c->h2, c->noise,
+              c->wander, c->mot_hz, c->mot_amp,
               (uint32_t)(k + 1) * 2654435761u);
 
         hr_autocorr_reset();
-        /* Feed the way the driver does — in FIFO-sized chunks, so the ring's
-           wrap handling is exercised rather than bypassed by one big write. */
-        for (int i = 0; i < N; i += 2)
-            hr_autocorr_feed(2, &buf[i]);
+        /* One frame at a time, PPG paired with its aligned accel — the same
+           shape the vendor frame hook delivers on the watch. */
+        for (int i = 0; i < N; i++)
+            hr_autocorr_feed_frame(buf[i], acc[i][0], acc[i][1], acc[i][2]);
 
         uint8_t conf = 0;
         uint8_t est = hr_autocorr_estimate(&conf);
@@ -113,11 +144,18 @@ static int hr_ac_test(int argc, char **argv)
             int d = (int)est - c->bpm;
             ok = (est != 0) && (d <= 5) && (d >= -5);
         }
+        if (c->known_limit)
+        {
+            if (!ok) known++;
+            rt_kprintf("%-26s %6d %6d(c%2d) KNOWN LIMIT\n", c->name, c->bpm, est, conf);
+            continue;
+        }
+        scored++;
         if (!ok) bad++;
         rt_kprintf("%-26s %6d %6d(c%2d) %s\n", c->name, c->bpm, est, conf,
                    ok ? "OK" : "*** WRONG ***");
     }
-    rt_kprintf("\nhr_autocorr: %d/%d wrong\n", bad, n);
+    rt_kprintf("\nhr_autocorr: %d/%d wrong (+%d known limit)\n", bad, scored, known);
     return bad;
 }
 MSH_CMD_EXPORT(hr_ac_test, validate hr_autocorr against synthetic PPG cases);

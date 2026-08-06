@@ -49,8 +49,27 @@ extern "C" {
  *  before a power cycle would be correlated against fresh ones. */
 void hr_autocorr_reset(void);
 
-/** Append raw channel-0 PPG samples (17-bit, straight from the FIFO hook). */
+/** Append raw channel-0 PPG samples (17-bit, straight from the FIFO hook).
+ *  Accelerometer is recorded as zero for these, which disables motion
+ *  compensation for the window — use hr_autocorr_feed_frame where the aligned
+ *  accel is available. */
 void hr_autocorr_feed(uint8_t n, const uint32_t *raw);
+
+/**
+ * Append ONE frame of PPG together with the accelerometer sample the vendor
+ * driver has already time-aligned to it (STGh30xFrameInfo::pusGsensordata).
+ *
+ * Motion is the failure this exists for. On 2026-08-06 the watch read correctly
+ * all night — 53-72 bpm against a reference watch's 48-90 — and then, once the
+ * wearer got up, reported 218, 195, 171 and 165 bpm. Converted to frequency
+ * those are 3.63, 3.25, 2.85 and 2.75 Hz: hand-movement rates. Wrist motion
+ * couples into the optical path, and an estimator that simply finds the
+ * strongest period cannot tell a periodic wrist from a periodic heart.
+ *
+ * The accelerometer can: the artefact is a filtered copy of it. See the NLMS
+ * stage in hr_autocorr.c.
+ */
+void hr_autocorr_feed_frame(uint32_t ppg, int16_t ax, int16_t ay, int16_t az);
 
 /**
  * Estimate from the current window.

@@ -223,6 +223,29 @@ void Gh30xAlgorithmGetIoDataHookFunc(const STGh30xFrameInfo *const pstFrameInfo)
 void Gh30xFrameDataHookFunc(const STGh30xFrameInfo *const pstFrameInfo)
 {
     Gh30xAlgorithmGetIoDataHookFunc(pstFrameInfo);
+
+#ifndef SOC_BF0_HCPU
+    /* Feed the in-tree estimator here rather than from the raw FIFO hook,
+       because THIS is where the driver has already time-aligned the
+       accelerometer to the PPG frame (GH30xCalGsensorStep interpolates the
+       gsensor FIFO onto the frame index just above). That alignment is what
+       makes motion compensation possible at all: the artefact is a filtered
+       copy of the accelerometer, and a filter cannot learn a copy that is
+       drifting in time against its reference.
+
+       Gated on the HR function — this hook also fires for HRV/ADT frames, whose
+       rate and channel meaning differ, and mixing them into one window would
+       correlate samples that were never adjacent in time. */
+    if (pstFrameInfo != GH30X_PTR_NULL &&
+        pstFrameInfo->unFunctionID == GH30X_FUNCTION_HR)
+    {
+        extern void hr_autocorr_feed_frame(GU32 ppg, GS16 ax, GS16 ay, GS16 az);
+        hr_autocorr_feed_frame(pstFrameInfo->punRawdata[0] & 0x00FFFFFF,
+                               pstFrameInfo->pusGsensordata[0],
+                               pstFrameInfo->pusGsensordata[1],
+                               pstFrameInfo->pusGsensordata[2]);
+    }
+#endif
 }
 
 //=============================================================================================================================

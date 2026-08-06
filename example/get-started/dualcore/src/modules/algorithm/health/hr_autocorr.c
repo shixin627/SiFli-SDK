@@ -15,7 +15,20 @@
                                        int32 with room to spare               */
 #define MAX_PEAKS              24   /* lag range is 44 wide; peaks alternate   */
 
+/* NLMS motion compensation. 16 taps per axis is ~0.64 s of accelerometer at
+   25 Hz — long enough to cover the phase lag between a wrist movement and the
+   optical artefact it produces, short enough that 48 weights converge inside a
+   single 10 s window. */
+#define NLMS_TAPS       16
+#define NLMS_AXES        3
+#define NLMS_W          (NLMS_TAPS * NLMS_AXES)
+#define NLMS_MU_Q15   11469         /* 0.35 */
+#define NLMS_P_MIN       64         /* floor on reference power; stops a still
+                                       wrist (p ~ 0) from producing a division
+                                       blow-up and a garbage weight update */
+
 static uint32_t s_ring[HR_AUTOCORR_WIN];
+static int16_t  s_acc[NLMS_AXES][HR_AUTOCORR_WIN];
 static uint16_t s_head;             /* next write index                        */
 static uint16_t s_count;            /* saturates at HR_AUTOCORR_WIN            */
 
@@ -34,15 +47,25 @@ void hr_autocorr_reset(void)
     s_work_valid = false;
 }
 
+static void push_sample(uint32_t ppg, int16_t ax, int16_t ay, int16_t az)
+{
+    s_ring[s_head] = ppg;
+    s_acc[0][s_head] = ax;
+    s_acc[1][s_head] = ay;
+    s_acc[2][s_head] = az;
+    s_head = (uint16_t)((s_head + 1u) % HR_AUTOCORR_WIN);
+    if (s_count < HR_AUTOCORR_WIN) s_count++;
+}
+
 void hr_autocorr_feed(uint8_t n, const uint32_t *raw)
 {
     if (raw == NULL) return;
-    for (uint8_t i = 0; i < n; i++)
-    {
-        s_ring[s_head] = raw[i];
-        s_head = (uint16_t)((s_head + 1u) % HR_AUTOCORR_WIN);
-        if (s_count < HR_AUTOCORR_WIN) s_count++;
-    }
+    for (uint8_t i = 0; i < n; i++) push_sample(raw[i], 0, 0, 0);
+}
+
+void hr_autocorr_feed_frame(uint32_t ppg, int16_t ax, int16_t ay, int16_t az)
+{
+    push_sample(ppg, ax, ay, az);
 }
 
 uint16_t hr_autocorr_fill(void)
@@ -167,11 +190,122 @@ static int32_t ncc_q15(int lag)
     return (int32_t)r;
 }
 
+/* Detrend one accelerometer axis into `out`, scaled like s_work so the NLMS
+   arithmetic stays inside int32. Returns 0 when the axis is flat — a still wrist
+   or an axis the movement did not touch, which simply contributes nothing. */
+static int detrend_axis(int axis, int16_t *out)
+{
+    const int n = HR_AUTOCORR_WIN;
+    const uint16_t base = s_head;
+    int64_t sum = 0, sum_ix = 0;
+    for (int i = 0; i < n; i++)
+    {
+        int64_t v = (int64_t)s_acc[axis][(base + i) % HR_AUTOCORR_WIN];
+        sum += v;
+        sum_ix += v * i;
+    }
+    const int64_t si  = (int64_t)n * (n - 1) / 2;
+    const int64_t sii = (int64_t)(n - 1) * n * (2 * n - 1) / 6;
+    const int64_t den = (int64_t)n * sii - si * si;
+    if (den == 0) return 0;
+    const int64_t b_q16 = (((int64_t)n * sum_ix - si * sum) << 16) / den;
+    const int64_t a_q16 = ((sum << 16) - b_q16 * si) / n;
+
+    int32_t peak = 0;
+    for (int i = 0; i < n; i++)
+    {
+        int64_t fit = (a_q16 + b_q16 * i) >> 16;
+        int32_t d = (int32_t)((int64_t)s_acc[axis][(base + i) % HR_AUTOCORR_WIN] - fit);
+        int32_t ad = (d < 0) ? -d : d;
+        if (ad > peak) peak = ad;
+    }
+    if (peak == 0) return 0;
+    int shift = 0;
+    while ((peak >> shift) > SCALE_MAX) shift++;
+    for (int i = 0; i < n; i++)
+    {
+        int64_t fit = (a_q16 + b_q16 * i) >> 16;
+        int32_t d = (int32_t)((int64_t)s_acc[axis][(base + i) % HR_AUTOCORR_WIN] - fit);
+        out[i] = (int16_t)(d >> shift);
+    }
+    return 1;
+}
+
+/**
+ * Subtract the accelerometer-predictable part of s_work, in place.
+ *
+ * e[n] = ppg[n] - w·r[n];  w += mu·e·r / (|r|² + eps), with r the last
+ * NLMS_TAPS samples of each axis. Normalising by the reference power is what
+ * lets one step size cover both a motionless wrist and vigorous movement.
+ *
+ * Weights are Q20: the transfer function is small (a ±1023 accel producing a
+ * ±1023 optical artefact means |w| ~ 1), so Q20 keeps four bits of headroom and
+ * still resolves 1e-6 per tap. The per-tap divide is deliberate over hoisting a
+ * shared gain — 48 divides at 25 Hz is ~1200/s, invisible next to the
+ * autocorrelation, and hoisting needs another fixed-point scale to get right.
+ *
+ * A still wrist leaves the reference with no structure, so the weights stay
+ * near zero and the residual is the input — which is why this can run
+ * unconditionally instead of behind a motion gate whose threshold nobody has
+ * data for yet.
+ */
+static void nlms_cancel(void)
+{
+    static int16_t ref[NLMS_AXES][HR_AUTOCORR_WIN];
+    static int32_t w[NLMS_W];
+
+    int live = 0;
+    for (int k = 0; k < NLMS_AXES; k++)
+    {
+        if (detrend_axis(k, ref[k])) live = 1;
+        else memset(ref[k], 0, sizeof(ref[k]));
+    }
+    if (!live) return;                       /* no accelerometer signal at all */
+
+    memset(w, 0, sizeof(w));                 /* per-window: weights must not
+                                                carry across a burst boundary */
+    /* static, not a local: this runs from a soft-timer callback on the LCPU,
+       whose thread stack is not observable from the HCPU console, and this
+       project has already lost a thread to a 192-byte-class stack overflow.
+       Not reentrant, but nothing calls it concurrently — one timer, one core. */
+    static int32_t r[NLMS_W];
+
+    for (int n = 0; n < HR_AUTOCORR_WIN; n++)
+    {
+        int32_t p = 0;
+        int j = 0;
+        for (int k = 0; k < NLMS_AXES; k++)
+            for (int t = 0; t < NLMS_TAPS; t++, j++)
+            {
+                int32_t v = (n - t >= 0) ? ref[k][n - t] : 0;
+                r[j] = v;
+                p += v * v;
+            }
+        if (p < NLMS_P_MIN) p = NLMS_P_MIN;
+
+        int64_t y = 0;
+        for (j = 0; j < NLMS_W; j++) y += (int64_t)w[j] * r[j];
+        int32_t e = (int32_t)(s_work[n] - (y >> 20));
+
+        for (j = 0; j < NLMS_W; j++)
+        {
+            /* delta_q20 = mu * e * r / p, carried at Q20 */
+            int64_t num = (int64_t)NLMS_MU_Q15 * e * r[j] * 32;
+            w[j] += (int32_t)(num / p);
+        }
+        int32_t clamped = e;
+        if (clamped >  SCALE_MAX) clamped =  SCALE_MAX;
+        if (clamped < -SCALE_MAX) clamped = -SCALE_MAX;
+        s_work[n] = (int16_t)clamped;
+    }
+}
+
 uint8_t hr_autocorr_estimate(uint8_t *conf_out)
 {
     if (conf_out) *conf_out = 0;
     if (s_count < HR_AUTOCORR_WIN) return 0;
     if (!detrend_into_work()) return 0;
+    nlms_cancel();
 
     int32_t r[HR_AUTOCORR_LAG_MAX + 2];
     for (int l = HR_AUTOCORR_LAG_MIN - 1; l <= HR_AUTOCORR_LAG_MAX + 1; l++)
