@@ -816,8 +816,21 @@ void v2t_opus_stream_send(const int16_t *pcm, uint32_t samples)
             {
                 v2t_send_buf[0] = get_speech_coding(); // speaking-sentence index
                 v2t_send_buf[1] = v2t_opus_seq++;      // 8-bit seq (wraps)
-                // Fire-and-forget; phone conceals any drop via FEC/PLC (seq gap).
-                skaiwatch_ble_audio_send(v2t_send_buf, (uint16_t)(n + 2));
+                /* 原本是 fire-and-forget(「phone conceals any drop via FEC/PLC」),
+                   代價是 BLE 通知送不出去時**完全靜默** —— 錄音照跑、沒有任何錯誤、
+                   手機收不到音訊所以永遠沒有文字回來(founder 2026-08-07 的症狀)。
+                   同檔另一條 ADPCM 路徑早就有 drop 統計了,這裡補齊:每 50 幀印一次
+                   送出/失敗數,不洗版但看得出來音訊到底有沒有出去。 */
+                bool sent =
+                    skaiwatch_ble_audio_send(v2t_send_buf, (uint16_t)(n + 2));
+                if (!sent)
+                {
+                    /* 限流:BLE 壅塞時一次會連掉很多幀 */
+                    static uint32_t s_v2t_tx_fail = 0;
+                    s_v2t_tx_fail++;
+                    if ((s_v2t_tx_fail & 0x1F) == 1)
+                        LOG_W("v2t audio TX drop (count=%u)", s_v2t_tx_fail);
+                }
             }
             else
             {

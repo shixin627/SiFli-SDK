@@ -494,7 +494,13 @@ void interact_voice_recognition(VOICE_RECOGNITION_PAYLOAD *msgData)
         lvgl_send_msg(msg);
         append_text_to_input_message();
     }
-    else if (gui_app_is_actived(APP_ID_MOUSE))
+    /* app_control_get_mouse_mode():滑鼠 UI 不一定是以 gui_app 的身分跑 —— 2026-08-07
+       起錶盤頂部面板直接用 hid_mouse_build_ui() 把它建在自己的圖層上(founder:「不是用
+       APP 的方式開啟」),device_pager 內嵌那條也一樣。這時 gui_app_is_actived(APP_ID_MOUSE)
+       是 false,轉錄就從整條 else-if 鏈掉出去、什麼都沒接住 = 語音站錄得到音、手機也
+       轉錄成功,但手錶永遠不顯示文字。改成兩者其一即可:mouse mode 旗標由
+       hid_mouse_enter_mode() 設定,兩條路徑都會設。 */
+    else if (gui_app_is_actived(APP_ID_MOUSE) || app_control_get_mouse_mode())
     {
         handle_v2t_result(msgData);
         /* 立起輸入面板(2026-07-31)開著時,轉錄屬於它 —— 走共用的語音路由

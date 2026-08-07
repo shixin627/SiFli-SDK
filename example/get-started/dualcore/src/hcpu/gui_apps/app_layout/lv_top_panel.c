@@ -126,10 +126,17 @@ static int last_device_page(void)
 static void update_device_bar(void)
 {
     int cnt = hid_mouse_device_count();
+    int page = current_page();
     bool phone = page_targets_phone();
+    bool is_watch = (page == PAGE_CONTROL); /* 控制中心 = 手錶自己 */
     int idx = phone ? -1 : hid_mouse_active_device_index();
-    const char *name = phone ? LV_EXT_STR_GET_BY_KEY(connected_phone, "Phone")
-                             : ((idx >= 0) ? hid_mouse_device_name(idx) : NULL);
+    const char *name;
+    if (is_watch)
+        name = LV_EXT_STR_GET_BY_KEY(watch, "Watch");
+    else if (phone)
+        name = LV_EXT_STR_GET_BY_KEY(connected_phone, "Phone");
+    else
+        name = (idx >= 0) ? hid_mouse_device_name(idx) : NULL;
 
     if (s_dev_label && lv_obj_is_valid(s_dev_label))
     {
@@ -148,7 +155,8 @@ static void update_device_bar(void)
     {
         if (name && name[0])
         {
-            bool online = phone ? get_bluetooth_connection_status()
+            bool online = is_watch ? true
+                        : phone ? get_bluetooth_connection_status()
                                 : (idx >= 0 && hid_mouse_device_online(idx));
             lv_obj_set_style_bg_color(s_dev_dot,
                                       online ? lv_color_hex(0x4CAF50)
@@ -163,8 +171,8 @@ static void update_device_bar(void)
     }
     /* 不循環（founder 2026-08-06）：切到底那一側的箭頭直接消失。左端是通知
        列表(=手機)，所以從設備一路往左按也回得到通知列表。 */
-    int page = current_page();
-    bool show_left = (page > PAGE_MESSAGE);
+    /* left end is the CONTROL CENTER, not the notification list */
+    bool show_left = (page > PAGE_CONTROL);
     bool show_right = (page < last_device_page());
     if (s_arrow_left && lv_obj_is_valid(s_arrow_left))
     {
@@ -185,19 +193,9 @@ static void update_device_bar(void)
    不在這裡另外選台，免得兩條路各自寫一次選台邏輯而不同步。 */
 static void arrow_step(int dir)
 {
-    int page = current_page();
-    int target;
-    if (page < PAGE_MESSAGE)
-    {
-        /* 人在控制中心:▶ 先回通知列表；◀ 已經到左端，不動。 */
-        if (dir <= 0) return;
-        target = PAGE_MESSAGE;
-    }
-    else
-    {
-        target = page + dir;
-    }
-    if (target < PAGE_MESSAGE || target > last_device_page())
+    /* 軸線納入控制中心：通知列表往左還有一頁（founder 2026-08-07） */
+    int target = current_page() + dir;
+    if (target < PAGE_CONTROL || target > last_device_page())
         return;
     goto_page(target, true);
     update_device_bar();
