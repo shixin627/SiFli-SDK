@@ -56,8 +56,31 @@ void hr_autocorr_reset(void);
 void hr_autocorr_feed(uint8_t n, const uint32_t *raw);
 
 /**
- * Append ONE frame of PPG together with the accelerometer sample the vendor
- * driver has already time-aligned to it (STGh30xFrameInfo::pusGsensordata).
+ * Stage the accelerometer batch that belongs to the PPG batch about to arrive.
+ *
+ * Call ONE begin per batch, then one push per sample, from
+ * gsensor_drv_get_fifo_data() — the vendor's own accel callback, which returns
+ * exactly as many samples as this PPG batch has frames.
+ *
+ * THIS IS NOT WHERE THE ACCEL USED TO COME FROM, and the difference is the
+ * whole reason motion compensation did nothing for a night. The first version
+ * read STGh30xFrameInfo::pusGsensordata, which points at
+ * g_psGh30xFrameGsensorData[3] in gh30x_example_process.c — a .bss array that
+ * NOTHING in the entire SDK ever writes (confirmed in the LCPU link map: the
+ * three frame-info structs refer to it, no object writes it, and it is marked
+ * Zero). So the reference signal was three permanent zeros, every axis read
+ * flat, and the NLMS stage returned immediately without ever adapting once.
+ *
+ * The lesson is cheap to state and was expensive to learn: a field being
+ * present in a vendor struct is not evidence that the vendor fills it.
+ */
+void hr_autocorr_stage_begin(void);
+void hr_autocorr_stage_push(int16_t ax, int16_t ay, int16_t az);
+
+/**
+ * Append ONE frame of PPG. The accelerometer sample is taken from the batch
+ * staged above, in order, so each PPG frame pairs with the accel sample the
+ * vendor driver considers contemporaneous.
  *
  * Motion is the failure this exists for. On 2026-08-06 the watch read correctly
  * all night — 53-72 bpm against a reference watch's 48-90 — and then, once the
@@ -69,7 +92,20 @@ void hr_autocorr_feed(uint8_t n, const uint32_t *raw);
  * The accelerometer can: the artefact is a filtered copy of it. See the NLMS
  * stage in hr_autocorr.c.
  */
-void hr_autocorr_feed_frame(uint32_t ppg, int16_t ax, int16_t ay, int16_t az);
+void hr_autocorr_feed_frame(uint32_t ppg);
+
+/**
+ * Wrist activity over the current window: mean |first difference| per sample,
+ * summed over the three axes. Two jobs, one number.
+ *
+ * It gates the motion compensation (see NLMS_GATE_ACT), and it is the liveness
+ * proof for the reference itself. A dead accelerometer feed and a motionless
+ * wrist both present a flat reference, so the filter cannot tell them apart and
+ * stays silent either way — which is exactly how a feed of three constant zeros
+ * survived a full night of wrist data unnoticed. A value that is visibly small
+ * at 3 a.m. and visibly large while walking makes that failure loud.
+ */
+uint32_t hr_autocorr_accel_act(void);
 
 /**
  * Estimate from the current window.

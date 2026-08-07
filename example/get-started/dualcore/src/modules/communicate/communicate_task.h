@@ -66,7 +66,8 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
                            uint8_t fresh, uint16_t total, uint16_t deep,
                            uint16_t rem, uint16_t light, uint16_t pi_e3,
                            uint16_t frame_pct, uint16_t rate_info,
-                           uint16_t own_info, uint8_t rep_pct);
+                           uint16_t own_info, uint8_t rep_pct,
+                           uint16_t accel_act);
 /* One 10.24 s window of detrended raw PPG (KEY_HR_WINDOW_DUMP 0x16), captured
    when hr_autocorr produced an implausible estimate. At most one per burst.
    Exists because the offline synthetic suite cannot reproduce the field
@@ -146,6 +147,12 @@ bool commu_send_conv_open(const char *title, const char *id, uint8_t index); /* 
 bool commu_send_conv_send(const char *text);                                 /* -> KEY_CONV_SEND  (0x10) send one turn (mic→V2T transcript) */
 bool commu_send_conv_close(void);                                            /* -> KEY_CONV_CLOSE (0x11) leave the chat room (back) */
 bool commu_send_conv_list_req(void);                                         /* -> KEY_CONV_LIST_REQ (0x21) (re)push the desktop session list */
+
+/* TV remote (APP_ID_TV_REMOTE) -> KEY_TV_CONTROL (0x22) {"cmd":"<verb>"}.
+   Brand-neutral verbs only — power/up/down/left/right/ok/back/home/volumeUp/
+   volumeDown/mute/playPause, plus discover/pair. The phone owns discovery,
+   pairing and the per-vendor driver; see communicate_parse_skailink.h 0x22. */
+bool commu_send_tv_key(const char *verb);
 
 /* SkaiApp AI-generated mini-apps (SkaiLink ADR-0037). */
 bool commu_send_skaiapp_ack(const char *id, int code);                       /* -> KEY_SKAIAPP_ACK (0x15) install/remove result */

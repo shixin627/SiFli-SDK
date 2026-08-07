@@ -128,10 +128,25 @@ static int hr_ac_test(int argc, char **argv)
               (uint32_t)(k + 1) * 2654435761u);
 
         hr_autocorr_reset();
-        /* One frame at a time, PPG paired with its aligned accel — the same
-           shape the vendor frame hook delivers on the watch. */
-        for (int i = 0; i < N; i++)
-            hr_autocorr_feed_frame(buf[i], acc[i][0], acc[i][1], acc[i][2]);
+        /* Stage the accel batch, then feed the PPG frames — the same two-callback
+           shape the driver produces on the watch (gsensor_drv_get_fifo_data
+           first, then one frame hook per PPG sample). Exercising the real
+           handover here is the point: the previous version passed the accel
+           straight into feed_frame, so it never touched the staging path and
+           could not have caught the reference being dead. */
+        for (int i = 0; i < N; )
+        {
+            /* 7, deliberately not a divisor of 256: the real FIFO watermark is
+               ~4 frames and the last batch of a window is short, so a batch size
+               that divides evenly would never exercise the partial batch. */
+            int n = (N - i < 7) ? (N - i) : 7;
+            hr_autocorr_stage_begin();
+            for (int j = 0; j < n; j++)
+                hr_autocorr_stage_push(acc[i + j][0], acc[i + j][1], acc[i + j][2]);
+            for (int j = 0; j < n; j++)
+                hr_autocorr_feed_frame(buf[i + j]);
+            i += n;
+        }
 
         uint8_t conf = 0;
         uint8_t est = hr_autocorr_estimate(&conf);

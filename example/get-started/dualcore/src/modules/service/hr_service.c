@@ -1781,6 +1781,19 @@ static void bg_hr_sample_cb(void *param)
     uint8_t own_bpm = hr_autocorr_estimate(&own_conf);
     if (own_conf > bg_hr_burst_own_conf_max) bg_hr_burst_own_conf_max = own_conf;
 
+    /* accel_pp is the liveness proof for the motion-compensation reference, and
+       it is logged unconditionally rather than only when something looks wrong.
+       A dead accel feed reads exactly like a motionless wrist — both are a flat
+       reference — so the NLMS stage cannot tell them apart and will report
+       nothing either way. That silence cost a full night of wrist data: the
+       reference had been three constant zeros since the feature shipped. A
+       number that is visibly zero at 3 a.m. and visibly large while walking is
+       the cheapest thing that would have caught it on day one. */
+    extern uint32_t hr_autocorr_accel_act(void);
+    LOG_I("[BGHR] own=%u conf=%u accel_act=%u vendor=%u",
+          (unsigned)own_bpm, (unsigned)own_conf,
+          (unsigned)hr_autocorr_accel_act(), (unsigned)bg_hr_vendor_bpm);
+
     /* Capture BEFORE the median swallows it: the median is what makes the
        published curve robust, but it also hides the individual bad window that
        the offline suite needs. Snapshot must happen right after estimate() while

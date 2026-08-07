@@ -186,6 +186,22 @@ bool commu_send_media_relay(const char *cmd)
     return commu_send_string(SKAI_LINK_COMMAND_ID, KEY_MEDIA_CONTROL, json);
 }
 
+/* watch→phone (SKAI_LINK 0x22): one TV remote key. Verb strings are brand-neutral
+   (see KEY_TV_CONTROL); the phone maps them onto the bound TV's driver. Logged at
+   INFO because these are user-initiated, low-rate presses — unlike mouse move /
+   dial frames there is no flooding risk, and "did the key leave the watch?" is the
+   first question when the TV doesn't react. */
+bool commu_send_tv_key(const char *verb)
+{
+    if (verb == NULL) return false;
+    char json[40]; /* {"cmd":"volumeDown"} = 20 chars; longest verb is playPause */
+    int n = rt_snprintf(json, sizeof(json), "{\"cmd\":\"%s\"}", verb);
+    if (n <= 0 || n >= (int)sizeof(json)) return false;
+    bool ok = commu_send_string(SKAI_LINK_COMMAND_ID, KEY_TV_CONTROL, json);
+    LOG_I("tv key %s -> %s", verb, ok ? "sent" : "FAIL");
+    return ok;
+}
+
 /*============================================================================*
  *                              Bond / Login
  *============================================================================*/
@@ -307,7 +323,8 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
                            uint8_t fresh, uint16_t total, uint16_t deep,
                            uint16_t rem, uint16_t light, uint16_t pi_e3,
                            uint16_t frame_pct, uint16_t rate_info,
-                           uint16_t own_info, uint8_t rep_pct)
+                           uint16_t own_info, uint8_t rep_pct,
+                           uint16_t accel_act)
 {
     /* Packed 28-byte wire payload (phone reads 4+2+1*8+2*7 LE). total/deep/rem/
        light are the firmware's daily accumulators; pi_e3 is the last burst's
@@ -341,12 +358,24 @@ bool commu_send_sleep_diag(uint32_t ts, uint16_t score, uint8_t hr,
            every field they already know. */
         uint16_t own_info;
         uint8_t  rep_pct;
+        /* accel_act = wrist activity of the window the estimate came from (mean
+           |d(accel)|/sample summed over 3 axes). It gates the motion
+           compensation, and the gate's threshold was chosen against SYNTHETIC
+           accelerometer data — this column is how a real night moves it.
+
+           It is also the only place the reference's liveness is observable off
+           the watch: hr_service runs on the LCPU, whose console is uart4 and is
+           not wired on the bench, so the log line next to this value cannot be
+           read. A dead feed reads as a permanent zero here, which is exactly the
+           failure that went unnoticed for a night. */
+        uint16_t accel_act;
     } rec = {.ts = ts, .score = score, .hr = hr, .hr_std = hr_std,
              .stage = stage, .veto = veto, .rhr = rhr, .worn = worn,
              .rest = rest, .fresh = fresh, .total = total, .deep = deep,
              .rem = rem, .light = light, .pi_e3 = pi_e3,
              .frame_pct = frame_pct, .rate_info = rate_info,
-             .own_info = own_info, .rep_pct = rep_pct};
+             .own_info = own_info, .rep_pct = rep_pct,
+             .accel_act = accel_act};
     return commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_SLEEP_DIAG,
                            &rec, (uint16_t)sizeof(rec));
 }
@@ -401,8 +430,13 @@ bool commu_send_hr_window(uint32_t ts, uint8_t bpm, uint8_t conf,
     buf[3] = (uint8_t)((ts >> 24) & 0xFF);
     buf[4] = bpm;
     buf[5] = conf;
+    /* u16, not u8. The window is 256 samples and 256 & 0xFF is 0, so the byte
+       version told the phone "zero samples" for every capture ever sent; the
+       phone dropped all of them as malformed and two nights of waveforms were
+       lost while both sides looked healthy. The one length this field has to
+       carry is the one value it could not represent. */
     buf[6] = (uint8_t)(count & 0xFF);
-    buf[7] = 0;                                   /* reserved, keeps it aligned */
+    buf[7] = (uint8_t)((count >> 8) & 0xFF);
     memcpy(buf + 8, win, count);
     bool ok = commu_send_blob(HEALTH_DATA_COMMAND_ID, KEY_HR_WINDOW_DUMP,
                               buf, (uint16_t)(8 + count));

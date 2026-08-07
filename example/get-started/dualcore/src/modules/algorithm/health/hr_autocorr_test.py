@@ -144,8 +144,31 @@ def nlms(ppg, refs, taps=NLMS_TAPS, mu=NLMS_MU):
     return out
 
 
+NLMS_GATE_ACT = 120     # mean |d(accel)|/sample summed over axes
+
+
+def accel_activity(ax, ay, az):
+    """Wrist activity: mean |first difference| per sample, summed over axes.
+
+    The first difference is what makes this a usable gate. Breathing moves the
+    wrist a long way but slowly, so it carries large amplitude and almost no
+    sample-to-sample change; real movement is the opposite. Measured separation
+    on the suite: still windows top out at 31, the weakest motion case is 1620.
+    """
+    tot = 0.0
+    for c in (ax, ay, az):
+        tot += sum(abs(c[i] - c[i - 1]) for i in range(1, len(c))) / (len(c) - 1)
+    return tot
+
+
 def estimate_with_motion(ppg, ax, ay, az):
     """Full pipeline: detrend, NLMS against the 3 accel axes, then estimate.
+
+    NLMS runs only above NLMS_GATE_ACT. Without the gate a sleeping wrist —
+    whose accelerometer carries breathing and nothing else — drove the filter
+    into halving a 60 bpm heart to 30. Nothing about that window looks wrong
+    from the inside: the confidence stays high, because 30 bpm genuinely is the
+    dominant period of what the filter handed back.
 
     No coincidence-rejection stage. It was tried and dropped: a periodic wrist
     has autocorrelation peaks at EVERY multiple of its period, so rejecting them
@@ -156,6 +179,8 @@ def estimate_with_motion(ppg, ax, ay, az):
     x = detrend(ppg)
     if x is None:
         return None, 0
+    if accel_activity(ax, ay, az) < NLMS_GATE_ACT:
+        return estimate_detrended(x)
     refs = [detrend(ax), detrend(ay), detrend(az)]
     if any(r is None for r in refs):
         return estimate(ppg)
@@ -283,6 +308,34 @@ def main():
         print("%-34s %6d %14s %s"
               % (name, bpm, ("%.1f (c%d)" % (e, c)) if e else "none",
                  "KNOWN LIMIT (see AMBIGUOUS)"))
+    # A SLEEPING wrist. These exist because the motion compensation shipped with
+    # its reference wired to a vendor field nothing ever writes, so for one night
+    # it ran against three constant zeros and every resting case here passed for
+    # the wrong reason. The moment the reference went live, breathing alone
+    # halved a 60 bpm heart to 30. Anything that touches the NLMS stage must
+    # clear these first — a still wrist is the overwhelmingly common case, so a
+    # filter that is merely NEUTRAL at rest is not good enough; it must be
+    # provably neutral across the whole range of how much a sleeper moves.
+    for amp in (0, 25, 60, 120, 250, 400, 800):
+        for bpm in (48, 56, 60, 72, 90):
+            ppg, _, _, _ = synth(bpm, 0.9, 0.10, 0.4, seed=7)
+            ax, ay, az = [], [], []
+            random.seed(1000 + bpm + amp)
+            for i in range(WIN):
+                b = math.sin(2 * math.pi * 0.25 * i / FS)   # ~15 breaths/min
+                ax.append(120 + amp * b + random.gauss(0, 2))
+                ay.append(-80 + amp * 0.6 * b + random.gauss(0, 2))
+                az.append(512 + amp * 0.3 * b + random.gauss(0, 2))
+            e, c = estimate_with_motion(ppg, ax, ay, az)
+            ok = e is not None and abs(e - bpm) <= 5
+            bad += 0 if ok else 1
+            if not ok:
+                print("%-34s %6d %14s %s"
+                      % ("sleeping wrist amp=%d" % amp, bpm,
+                         ("%.1f (c%d)" % (e, c)) if e else "none", "*** WRONG ***"))
+    print("%-34s %6s %14s %s"
+          % ("sleeping wrist (35 combos)", "-", "-", "OK" if bad == 0 else "see above"))
+
     # Pure noise must be refused. The vendor library's failure to do this is why
     # a watch on a table reported a rock-steady 108-115 bpm for two minutes.
     for seed in (9, 17, 23):
@@ -294,7 +347,7 @@ def main():
               % ("noise only seed%d" % seed, "-",
                  ("%.1f (c%d)" % (e, c)) if e else "none",
                  "OK" if ok else "*** WRONG ***"))
-    total = len(CASES) + 3      # AMBIGUOUS is reported, never scored
+    total = len(CASES) + 35 + 3   # AMBIGUOUS is reported, never scored
     print("\n%d/%d wrong   (+%d known limit, excluded — see AMBIGUOUS)"
           % (bad, total, known))
     return 1 if bad else 0

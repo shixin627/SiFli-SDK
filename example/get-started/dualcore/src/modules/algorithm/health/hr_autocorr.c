@@ -23,6 +23,8 @@
 #define NLMS_AXES        3
 #define NLMS_W          (NLMS_TAPS * NLMS_AXES)
 #define NLMS_MU_Q15   11469         /* 0.35 */
+#define NLMS_GATE_ACT   120         /* mean |d(accel)|/sample summed over axes,
+                                       below which the filter does not run */
 #define NLMS_P_MIN       64         /* floor on reference power; stops a still
                                        wrist (p ~ 0) from producing a division
                                        blow-up and a garbage weight update */
@@ -63,9 +65,65 @@ void hr_autocorr_feed(uint8_t n, const uint32_t *raw)
     for (uint8_t i = 0; i < n; i++) push_sample(raw[i], 0, 0, 0);
 }
 
-void hr_autocorr_feed_frame(uint32_t ppg, int16_t ax, int16_t ay, int16_t az)
+/* One PPG batch's worth of accelerometer, handed over by the vendor's own accel
+   callback just before the frame hooks for that batch fire. GH30X_FIFO_LEN is
+   the vendor's batch ceiling; 32 covers it with room to spare and the pushes are
+   bounds-checked anyway, because this is fed from a vendor callback whose count
+   we do not control. */
+#define ACC_STAGE_MAX 32
+static int16_t  s_stage[ACC_STAGE_MAX][NLMS_AXES];
+static uint8_t  s_stage_n;          /* samples staged for this batch           */
+static uint8_t  s_stage_rd;         /* next one to pair with a PPG frame       */
+
+void hr_autocorr_stage_begin(void)
 {
+    s_stage_n = 0;
+    s_stage_rd = 0;
+}
+
+void hr_autocorr_stage_push(int16_t ax, int16_t ay, int16_t az)
+{
+    if (s_stage_n >= ACC_STAGE_MAX) return;
+    s_stage[s_stage_n][0] = ax;
+    s_stage[s_stage_n][1] = ay;
+    s_stage[s_stage_n][2] = az;
+    s_stage_n++;
+}
+
+void hr_autocorr_feed_frame(uint32_t ppg)
+{
+    int16_t ax = 0, ay = 0, az = 0;
+    if (s_stage_n > 0)
+    {
+        /* Hold the last staged sample if the batch delivered fewer accel
+           samples than PPG frames. Repeating one sample flattens that stretch of
+           the reference, which costs cancellation; inventing a rolling value
+           would put structure into the reference that the wrist never made, and
+           a reference with invented structure is exactly how an adaptive filter
+           learns to subtract the heartbeat. */
+        uint8_t i = (s_stage_rd < s_stage_n) ? s_stage_rd : (uint8_t)(s_stage_n - 1);
+        ax = s_stage[i][0];
+        ay = s_stage[i][1];
+        az = s_stage[i][2];
+        if (s_stage_rd < s_stage_n) s_stage_rd++;
+    }
     push_sample(ppg, ax, ay, az);
+}
+
+uint32_t hr_autocorr_accel_act(void)
+{
+    const uint16_t base = s_head;
+    uint32_t total = 0;
+    for (int k = 0; k < NLMS_AXES; k++)
+    {
+        for (uint16_t i = 1; i < HR_AUTOCORR_WIN; i++)
+        {
+            int32_t d = (int32_t)s_acc[k][(base + i) % HR_AUTOCORR_WIN]
+                      - (int32_t)s_acc[k][(base + i - 1) % HR_AUTOCORR_WIN];
+            total += (uint32_t)(d < 0 ? -d : d);
+        }
+    }
+    return total / (HR_AUTOCORR_WIN - 1);
 }
 
 uint16_t hr_autocorr_fill(void)
@@ -253,6 +311,27 @@ static void nlms_cancel(void)
 {
     static int16_t ref[NLMS_AXES][HR_AUTOCORR_WIN];
     static int32_t w[NLMS_W];
+
+    /* No motion, no artefact, no filter. The artefact's amplitude scales with
+       wrist movement, so below the gate there is nothing to subtract and 48
+       adaptive weights can only do harm — measured harm: a sleeping wrist whose
+       accelerometer carries nothing but breathing (0.25 Hz) drove the filter
+       into reporting 30 bpm for a 60 bpm heart, an exact halving. The gate
+       removes that failure at every breathing amplitude tested up to 800 LSB
+       while leaving all eight motion cases correct.
+
+       A high-pass on the reference was tried first and rejected with evidence:
+       it fixed the mild breathing cases but still halved at 250 LSB, and it cost
+       two of the motion cases outright (110 and 95 bpm both went to no-answer) —
+       giving up the entire reason the filter exists to fix half of one failure.
+
+       The threshold is mean |first difference| summed over the three axes, which
+       weights the fast band the artefact lives in and all but ignores breathing.
+       120 sits 4x above the worst still window measured and 13x below the
+       weakest motion case: a wide gap, but a SYNTHETIC one, which is why the
+       measured value is logged on every estimate — the first night of real wrist
+       data is what moves this number, not another simulation. */
+    if (hr_autocorr_accel_act() < NLMS_GATE_ACT) return;
 
     int live = 0;
     for (int k = 0; k < NLMS_AXES; k++)

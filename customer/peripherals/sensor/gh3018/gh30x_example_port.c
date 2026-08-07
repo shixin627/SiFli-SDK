@@ -385,12 +385,27 @@ void gsensor_drv_get_fifo_data(ST_GS_DATA_TYPE gsensor_buffer[],
         gs_count = GSENSOR_FIFO_BUFFER_SIZE;
     uint16_t gs_start =
         (gsensor_fifo_buffer_index + GSENSOR_FIFO_BUFFER_SIZE - gs_count) % GSENSOR_FIFO_BUFFER_SIZE;
+#ifndef SOC_BF0_HCPU
+    /* Same samples, same order, to the in-tree estimator's motion compensation.
+       This is the only place the accelerometer and the PPG batch are known to
+       correspond: the vendor asks for exactly as many accel samples as this
+       batch has PPG frames, so pairing them in order needs no timestamps.
+       @ref hr_autocorr_stage_begin for why the frame-info struct is not it. */
+    extern void hr_autocorr_stage_begin(void);
+    extern void hr_autocorr_stage_push(int16_t ax, int16_t ay, int16_t az);
+    hr_autocorr_stage_begin();
+#endif
     for (uint16_t i = 0; i < gs_count; i++)
     {
         uint16_t origin_buf_index = (gs_start + i) % GSENSOR_FIFO_BUFFER_SIZE;
         gsensor_buffer[i].sXAxisVal = gsensor_fifo_buffer[origin_buf_index][0];
         gsensor_buffer[i].sYAxisVal = gsensor_fifo_buffer[origin_buf_index][1];
         gsensor_buffer[i].sZAxisVal = gsensor_fifo_buffer[origin_buf_index][2];
+#ifndef SOC_BF0_HCPU
+        hr_autocorr_stage_push(gsensor_buffer[i].sXAxisVal,
+                               gsensor_buffer[i].sYAxisVal,
+                               gsensor_buffer[i].sZAxisVal);
+#endif
     }
     *gsensor_buffer_index = gs_count;
 #endif

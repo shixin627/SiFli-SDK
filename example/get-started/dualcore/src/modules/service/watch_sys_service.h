@@ -262,6 +262,11 @@ extern "C"
            so anything above 1 is real. */
         uint16_t own_info;
         uint8_t  rep_pct;   /* % of raw samples identical to their predecessor */
+        uint16_t accel_act; /* wrist activity of the estimated window: mean
+                             * |d(accel)|/sample summed over 3 axes. Gates the
+                             * motion compensation, and is the only off-watch
+                             * evidence that the accelerometer reference is
+                             * alive at all — it silently was not for a night. */
         uint16_t frame_pct; /* last PPG burst: delivered frames as % of 25 Hz *
                              * burst seconds. The HBA algo assumes 25 Hz and the
                              * samples are untimestamped, so a shortfall here is

@@ -543,6 +543,7 @@ static void prv_minute_eval(uint32_t utc_now)
         uint16_t rate_info_now = 0;
         uint16_t own_info_now = 0;
         uint8_t  rep_pct_now = 0;
+        uint16_t accel_act_now = 0;
 #ifdef BSP_USING_HR_SVC
         extern uint16_t hr_service_get_last_pi_e3(void);
         extern uint16_t hr_service_get_last_frame_pct(void);
@@ -554,6 +555,16 @@ static void prv_minute_eval(uint32_t utc_now)
         rate_info_now = hr_service_get_last_rate_info();
         own_info_now = hr_service_get_last_own_info();
         rep_pct_now = hr_service_get_last_rep_pct();
+        /* Saturated to u16: the wire field is 16-bit and a real value never gets
+           near it (the synthetic motion cases top out ~4400), but a clamp is
+           cheaper than the alternative, which is a wrapped small number that
+           reads as "wrist was still" during the most violent movement there is
+           — precisely inverting what the column is for. */
+        {
+            extern uint32_t hr_autocorr_accel_act(void);
+            uint32_t a = hr_autocorr_accel_act();
+            accel_act_now = (a > 65535u) ? 65535u : (uint16_t)a;
+        }
 #endif
         watch_sys_sleep_diag_t drec = {
             .ts     = utc_now,
@@ -575,6 +586,7 @@ static void prv_minute_eval(uint32_t utc_now)
             .rate_info = rate_info_now,
             .own_info = own_info_now,
             .rep_pct = rep_pct_now,
+            .accel_act = accel_act_now,
         };
         watch_sys_sync.notify_sleep_diag(&drec);
     }
