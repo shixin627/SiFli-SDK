@@ -2,6 +2,8 @@
 #define __HR_AUTOCORR_H__
 
 #include <stdint.h>
+#include <stdbool.h>    /* the watch build gets this transitively from RT-Thread;
+                           a host harness including this header alone does not */
 
 #ifdef __cplusplus
 extern "C" {
@@ -106,6 +108,19 @@ void hr_autocorr_feed_frame(uint32_t ppg);
  * at 3 a.m. and visibly large while walking makes that failure loud.
  */
 uint32_t hr_autocorr_accel_act(void);
+
+/**
+ * True when any sample in the current window came from an accelerometer batch
+ * byte-identical to its predecessor — the signature of a stopped IMU stream.
+ *
+ * A stopped stream is more dangerous than a dead one. The vendor callback hands
+ * back the newest N entries of a ring nobody is writing, so every batch is the
+ * same frozen copy of the wrist's last real movement: large deltas, genuine
+ * structure, straight through the activity gate. The compensation would then
+ * subtract an arm swing that stopped happening hours ago. Motion compensation
+ * refuses to run while this is set.
+ */
+bool hr_autocorr_accel_stale(void);
 
 /**
  * Estimate from the current window.

@@ -170,6 +170,62 @@ static int hr_ac_test(int argc, char **argv)
         rt_kprintf("%-26s %6d %6d(c%2d) %s\n", c->name, c->bpm, est, conf,
                    ok ? "OK" : "*** WRONG ***");
     }
+    /* STOPPED IMU stream. The accelerometer ring is filled by the IMU
+       data-ready path, and that path is not guaranteed to be running — the
+       sleep service bypasses it deliberately ("survives DARK / hand_tracking-off
+       modes") and there is an open report of the subscription stopping while
+       the UI carries on. When it stops, the vendor callback keeps returning the
+       newest N entries of a ring nobody writes: the same frozen copy of the
+       wrist's last real movement, forever. That is far more dangerous than a
+       dead feed, because it has large deltas and genuine structure and would
+       walk straight through the activity gate, at which point the filter
+       subtracts an arm swing that stopped happening hours ago. */
+    {
+        int16_t frozen[8][3];
+        for (int j = 0; j < 8; j++)
+        {
+            float t = (float)j / (float)HR_AUTOCORR_FS;
+            frozen[j][0] = (int16_t)(900.0f * sinf(2.0f * 3.14159265f * 2.6f * t));
+            frozen[j][1] = (int16_t)(600.0f * sinf(2.0f * 3.14159265f * 2.6f * t + 1.3f));
+            frozen[j][2] = (int16_t)(512.0f + 300.0f * sinf(2.0f * 3.14159265f * 2.6f * t));
+        }
+        int fbad = 0;
+        const int BPMS[] = {48, 56, 60, 72, 90};
+        for (int p = 0; p < 5; p++)
+        {
+            synth(buf, acc, (float)BPMS[p], 0.9f, 0.10f, 0.4f, 2.6f, 0.0f,
+                  (uint32_t)(7000 + BPMS[p]) * 2654435761u);
+            hr_autocorr_reset();
+            for (int i = 0; i < N; )
+            {
+                int n = (N - i < 7) ? (N - i) : 7;
+                hr_autocorr_stage_begin();
+                for (int j = 0; j < n; j++)
+                    hr_autocorr_stage_push(frozen[j][0], frozen[j][1], frozen[j][2]);
+                for (int j = 0; j < n; j++)
+                    hr_autocorr_feed_frame(buf[i + j]);
+                i += n;
+            }
+            uint8_t conf = 0;
+            uint8_t est = hr_autocorr_estimate(&conf);
+            int d = (int)est - BPMS[p];
+            /* Two assertions, and the second is the point: the reading must be
+               right AND the staleness must be VISIBLE. A silently-correct result
+               here would mean the guard happened to hold this time with nothing
+               to show for it in the overnight data. */
+            if (!((est != 0) && (d <= 5) && (d >= -5)) || !hr_autocorr_accel_stale())
+            {
+                fbad++;
+                rt_kprintf("frozen IMU bpm=%-3d -> %3d (c%2d) stale=%d *** WRONG ***\n",
+                           BPMS[p], est, conf, (int)hr_autocorr_accel_stale());
+            }
+        }
+        scored += 5;
+        bad += fbad;
+        rt_kprintf("%-26s %6s %10s %s\n", "frozen IMU stream", "-", "-",
+                   fbad ? "see above" : "OK");
+    }
+
     rt_kprintf("\nhr_autocorr: %d/%d wrong (+%d known limit)\n", bad, scored, known);
     return bad;
 }

@@ -42,11 +42,18 @@ static int16_t s_work[HR_AUTOCORR_WIN];
    offline suite rather than as "no data". */
 static bool s_work_valid = false;
 
+static void stage_reset(void);      /* defined with the staging state below */
+
 void hr_autocorr_reset(void)
 {
     s_head = 0;
     s_count = 0;
     s_work_valid = false;
+    /* The accelerometer staging goes too. A reset means the sensor restarted,
+       so comparing the next batch against one from before the restart would
+       call a genuine fresh batch stale — or, worse, call a frozen ring fresh
+       because the restart happened to change it once. */
+    stage_reset();
 }
 
 static void push_sample(uint32_t ppg, int16_t ax, int16_t ay, int16_t az)
@@ -75,10 +82,68 @@ static int16_t  s_stage[ACC_STAGE_MAX][NLMS_AXES];
 static uint8_t  s_stage_n;          /* samples staged for this batch           */
 static uint8_t  s_stage_rd;         /* next one to pair with a PPG frame       */
 
+/* Staleness detection.
+ *
+ * The accelerometer ring this reads is filled by the IMU data-ready stream, and
+ * that stream is not guaranteed to be running: the sleep service deliberately
+ * bypasses it in favour of a direct register read, with the comment "survives
+ * DARK / hand_tracking-off modes", and this project has an open report of the
+ * IMU subscription stopping intermittently while the UI carries on normally.
+ *
+ * A stopped stream does NOT read as zero. The vendor callback returns the newest
+ * N entries of a ring nobody is writing, so every batch is the same frozen copy
+ * of whatever the wrist last did — a real movement pattern, with real structure
+ * and a large sample-to-sample delta. It would sail through the activity gate
+ * and NLMS would subtract an arm swing that stopped happening hours ago.
+ *
+ * A batch identical to its predecessor is the signature, and on a live 25 Hz
+ * 16-bit three-axis sensor it does not otherwise occur. Batches of one sample
+ * are exempt: a single triple can repeat by quantisation alone on a still wrist,
+ * which is not evidence of anything. */
+static int16_t  s_prev_batch[ACC_STAGE_MAX][NLMS_AXES];
+static uint8_t  s_prev_batch_n;
+static bool     s_batch_stale;
+static bool     s_batch_judged;     /* staleness decided once per batch        */
+static uint8_t  s_stale_bits[(HR_AUTOCORR_WIN + 7) / 8];
+
+static void mark_stale(uint16_t slot, bool stale)
+{
+    uint8_t mask = (uint8_t)(1u << (slot & 7u));
+    if (stale) s_stale_bits[slot >> 3] |= mask;
+    else       s_stale_bits[slot >> 3] &= (uint8_t)~mask;
+}
+
+static void judge_batch(void)
+{
+    s_batch_judged = true;
+    s_batch_stale = false;
+    if (s_stage_n >= 2 && s_stage_n == s_prev_batch_n)
+    {
+        s_batch_stale = true;
+        for (uint8_t i = 0; i < s_stage_n && s_batch_stale; i++)
+            for (int k = 0; k < NLMS_AXES; k++)
+                if (s_stage[i][k] != s_prev_batch[i][k]) { s_batch_stale = false; break; }
+    }
+    for (uint8_t i = 0; i < s_stage_n; i++)
+        for (int k = 0; k < NLMS_AXES; k++) s_prev_batch[i][k] = s_stage[i][k];
+    s_prev_batch_n = s_stage_n;
+}
+
+static void stage_reset(void)
+{
+    s_stage_n = 0;
+    s_stage_rd = 0;
+    s_prev_batch_n = 0;
+    s_batch_stale = false;
+    s_batch_judged = false;
+    memset(s_stale_bits, 0, sizeof(s_stale_bits));
+}
+
 void hr_autocorr_stage_begin(void)
 {
     s_stage_n = 0;
     s_stage_rd = 0;
+    s_batch_judged = false;
 }
 
 void hr_autocorr_stage_push(int16_t ax, int16_t ay, int16_t az)
@@ -93,6 +158,14 @@ void hr_autocorr_stage_push(int16_t ax, int16_t ay, int16_t az)
 void hr_autocorr_feed_frame(uint32_t ppg)
 {
     int16_t ax = 0, ay = 0, az = 0;
+    /* Judged here rather than in stage_begin because the batch is only complete
+       once the last stage_push has landed, and the driver interleaves neither
+       call with the other: it fills the whole batch, then delivers the frames. */
+    if (!s_batch_judged) judge_batch();
+    /* Every sample carries the staleness of the batch it came from, so the
+       window can be judged on what is actually IN it rather than on whatever
+       the most recent batch happened to be. */
+    mark_stale(s_head, s_stage_n > 0 ? s_batch_stale : true);
     if (s_stage_n > 0)
     {
         /* Hold the last staged sample if the batch delivered fewer accel
@@ -108,6 +181,13 @@ void hr_autocorr_feed_frame(uint32_t ppg)
         if (s_stage_rd < s_stage_n) s_stage_rd++;
     }
     push_sample(ppg, ax, ay, az);
+}
+
+bool hr_autocorr_accel_stale(void)
+{
+    for (unsigned i = 0; i < sizeof(s_stale_bits); i++)
+        if (s_stale_bits[i]) return true;
+    return false;
 }
 
 uint32_t hr_autocorr_accel_act(void)
@@ -331,6 +411,7 @@ static void nlms_cancel(void)
        weakest motion case: a wide gap, but a SYNTHETIC one, which is why the
        measured value is logged on every estimate — the first night of real wrist
        data is what moves this number, not another simulation. */
+    if (hr_autocorr_accel_stale()) return;
     if (hr_autocorr_accel_act() < NLMS_GATE_ACT) return;
 
     int live = 0;

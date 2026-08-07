@@ -562,8 +562,19 @@ static void prv_minute_eval(uint32_t utc_now)
            — precisely inverting what the column is for. */
         {
             extern uint32_t hr_autocorr_accel_act(void);
+            extern bool     hr_autocorr_accel_stale(void);
             uint32_t a = hr_autocorr_accel_act();
-            accel_act_now = (a > 65535u) ? 65535u : (uint16_t)a;
+            if (a > 32767u) a = 32767u;
+            /* Top bit flags a STOPPED IMU stream, which is a different thing
+               from a still wrist and must not be read as one: the ring freezes
+               on the wrist's last real movement, so activity stays large while
+               meaning nothing. Real values live far below 32768 (the most
+               violent synthetic case reaches ~4400 at 512 LSB/g), so the bit is
+               free. Without it the overnight column cannot distinguish "did not
+               move" from "the sensor stream died", and those call for opposite
+               responses. */
+            accel_act_now = (uint16_t)a;
+            if (hr_autocorr_accel_stale()) accel_act_now |= 0x8000u;
         }
 #endif
         watch_sys_sleep_diag_t drec = {
