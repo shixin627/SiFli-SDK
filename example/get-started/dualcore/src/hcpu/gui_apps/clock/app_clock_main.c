@@ -1399,10 +1399,12 @@ static void face_swipe_catcher_cb(lv_event_t *e)
                 clock_main_applist_follow_begin();
             }
         }
-        else if (!s_face_swipe_locked && LV_ABS(dy) > slop && LV_ABS(dy) > LV_ABS(dx))
+        else if (!s_face_swipe_locked && dy > slop && LV_ABS(dy) > LV_ABS(dx))
         {
-            /* Clearly-vertical pull → claim it. Both routes drive the same Y
-               follow, which side effects reveal is dy's sign at release time. */
+            /* 只認**往下**拉（dy > slop，不是 |dy|）：控制中心 2026-08-06 搬進
+               頂部面板之後，錶盤下面已經沒有頁了，往上拉不該有任何反應
+               （founder）。原本兩個方向都 claim，往上拉會 claim 之後跟著空滑
+               再彈回去 —— 看起來就像「有反應但沒東西」。 */
             extern void clock_main_notify_follow_begin(void);
             s_face_swipe_locked = true;
             s_face_swipe_route = 3;

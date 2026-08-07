@@ -247,7 +247,9 @@ void clock_main_notify_follow_update(lv_coord_t dy)
         return;
     lv_coord_t sy = LV_VER_RES - dy; /* dy>0 (down) -> sy<466 toward 0 (notification) */
     if (sy < 0) sy = 0;
-    if (sy > 2 * LV_VER_RES) sy = 2 * LV_VER_RES;
+    /* 上界只到 home：往上拉沒有頁可去（控制中心已搬進頂部面板），夾住就不會
+       出現「跟著手指往上空滑一段再彈回來」。 */
+    if (sy > LV_VER_RES) sy = LV_VER_RES;
     lv_obj_scroll_to_y(app_clock_main_status_bar, sy, LV_ANIM_OFF);
 }
 

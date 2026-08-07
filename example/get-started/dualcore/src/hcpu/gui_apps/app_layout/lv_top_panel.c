@@ -563,6 +563,11 @@ void lv_top_panel_set_open(bool opened)
             s_btn_defer = false;
             update_bottom_btn();
         }
+        /* 回到**錶盤**就把頁重設回通知列表（founder 2026-08-06:「回到錶盤後再
+           次往下拉都要是在通知列表」）—— 不管是按鈕收的還是往上滑收的。
+           滑鼠模式下不重設:那條路徑要記住剛剛那一頁，下拉回來還是同一頁。 */
+        if (!s_mouse_mode)
+            goto_page(PAGE_MESSAGE, false);
         return;
     }
     s_btn_defer = false;
