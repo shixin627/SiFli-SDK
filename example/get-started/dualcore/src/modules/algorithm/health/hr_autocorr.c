@@ -463,6 +463,158 @@ static void nlms_cancel(void)
     }
 }
 
+
+/* ---------------------------------------------------------------- spectral
+ *
+ * The autocorrelation refuses whenever the beat-to-beat interval wanders enough
+ * that ten seconds of pulse stop lining up with themselves. On the first night
+ * of real wrist windows that was 22 of 43 — and 15 of those still carried a
+ * value agreeing with their neighbours to within a few bpm. The information is
+ * present; what the autocorrelation requires (alignment across the whole
+ * window) is what a real wrist fails to supply, and a frequency estimate does
+ * not require it.
+ *
+ * This is deliberately NOT the primary estimator, and must never be promoted to
+ * one. A spectrum returns a dominant bin for ANY input, a pure decay included —
+ * on its own that is precisely the never-refuses behaviour that had the vendor
+ * library reporting 108 bpm from a watch lying on a desk. It runs only where the
+ * autocorrelation has already declined, and behind two gates of its own.
+ *
+ * Bounded by measurement rather than by argument: across all 43 real windows the
+ * full chain emits 36 values spanning 42-84 bpm and NOTHING at or above 100,
+ * against the 40-151 those same windows actually published. The residual failure
+ * mode is "mildly uncertain inside a physiological range", which is a different
+ * animal from "fabricated 151".
+ *
+ * Cost: 93 bins x 256 samples of int64 recurrence, roughly 4x the
+ * autocorrelation, and only on the seconds where the autocorrelation refused.
+ */
+#define SPEC_BPM_LO      30
+#define SPEC_BPM_STEP     2
+#define SPEC_BINS        93
+#define SPEC_SHARP_MIN  200         /* 0.200 in per-mille                      */
+#define SPEC_RATIO_MIN  130         /* 1.30 in hundredths                      */
+
+static const int16_t SPEC_COEF_Q13[93] = {
+     16255,  16237,  16218,  16198,  16177,  16155,  16131,  16107,
+     16081,  16054,  16026,  15997,  15967,  15935,  15903,  15869,
+     15835,  15799,  15762,  15724,  15685,  15645,  15603,  15561,
+     15517,  15473,  15427,  15380,  15332,  15283,  15233,  15182,
+     15130,  15077,  15023,  14968,  14911,  14854,  14795,  14736,
+     14675,  14614,  14551,  14488,  14423,  14357,  14291,  14223,
+     14155,  14085,  14014,  13943,  13870,  13797,  13722,  13647,
+     13570,  13493,  13414,  13335,  13255,  13174,  13092,  13009,
+     12925,  12840,  12754,  12668,  12580,  12492,  12403,  12312,
+     12221,  12130,  12037,  11943,  11849,  11754,  11658,  11561,
+     11463,  11365,  11266,  11165,  11065,  10963,  10861,  10758,
+     10654,  10549,  10444,  10337,  10231,
+};
+
+static const int16_t HANN_Q15[256] = {
+         0,      5,     20,     45,     80,    124,    179,    243,
+       317,    401,    495,    598,    711,    833,    965,   1106,
+      1257,   1416,   1585,   1763,   1949,   2145,   2349,   2561,
+      2782,   3011,   3249,   3494,   3747,   4008,   4276,   4552,
+      4834,   5124,   5421,   5724,   6034,   6350,   6672,   7000,
+      7334,   7673,   8018,   8367,   8722,   9081,   9444,   9812,
+     10184,  10559,  10938,  11321,  11706,  12094,  12485,  12879,
+     13274,  13671,  14070,  14470,  14872,  15274,  15677,  16081,
+     16484,  16888,  17291,  17694,  18096,  18497,  18897,  19295,
+     19691,  20085,  20477,  20867,  21254,  21638,  22019,  22396,
+     22770,  23139,  23505,  23866,  24223,  24575,  24922,  25264,
+     25601,  25932,  26257,  26576,  26889,  27195,  27495,  27789,
+     28075,  28354,  28626,  28891,  29148,  29397,  29638,  29871,
+     30096,  30313,  30521,  30721,  30912,  31094,  31267,  31432,
+     31587,  31732,  31869,  31996,  32114,  32222,  32320,  32409,
+     32488,  32557,  32617,  32666,  32706,  32736,  32756,  32766,
+     32766,  32756,  32736,  32706,  32666,  32617,  32557,  32488,
+     32409,  32320,  32222,  32114,  31996,  31869,  31732,  31587,
+     31432,  31267,  31094,  30912,  30721,  30521,  30313,  30096,
+     29871,  29638,  29397,  29148,  28891,  28626,  28354,  28075,
+     27789,  27495,  27195,  26889,  26576,  26257,  25932,  25601,
+     25264,  24922,  24575,  24223,  23866,  23505,  23139,  22770,
+     22396,  22019,  21638,  21254,  20867,  20477,  20085,  19691,
+     19295,  18897,  18497,  18096,  17694,  17291,  16888,  16484,
+     16081,  15677,  15274,  14872,  14470,  14070,  13671,  13274,
+     12879,  12485,  12094,  11706,  11321,  10938,  10559,  10184,
+      9812,   9444,   9081,   8722,   8367,   8018,   7673,   7334,
+      7000,   6672,   6350,   6034,   5724,   5421,   5124,   4834,
+      4552,   4276,   4008,   3747,   3494,   3249,   3011,   2782,
+      2561,   2349,   2145,   1949,   1763,   1585,   1416,   1257,
+      1106,    965,    833,    711,    598,    495,    401,    317,
+       243,    179,    124,     80,     45,     20,      5,      0,
+};
+
+static uint32_t isqrt64(uint64_t v)
+{
+    uint64_t r = 0, bit = 1ULL << 62;
+    while (bit > v) bit >>= 2;
+    while (bit)
+    {
+        if (v >= r + bit) { v -= r + bit; r = (r >> 1) + bit; }
+        else r >>= 1;
+        bit >>= 2;
+    }
+    return (uint32_t)r;
+}
+
+/* Goertzel magnitude of s_work at one bin, Hann-windowed. */
+static uint32_t spec_mag(int bin)
+{
+    const int32_t c = SPEC_COEF_Q13[bin];
+    int64_t s1 = 0, s2 = 0;
+    for (int i = 0; i < HR_AUTOCORR_WIN; i++)
+    {
+        int32_t xw = (int32_t)(((int32_t)s_work[i] * HANN_Q15[i]) >> 15);
+        int64_t s = (int64_t)xw + ((c * s1) >> 13) - s2;
+        s2 = s1;
+        s1 = s;
+    }
+    int64_t p = s1 * s1 + s2 * s2 - ((c * s1 * s2) >> 13);
+    if (p < 0) p = 0;
+    return isqrt64((uint64_t)p);
+}
+
+static uint8_t spectral_estimate(uint8_t *conf_out)
+{
+    static uint32_t mag[SPEC_BINS];
+    uint64_t total = 0;
+    int pk = 0;
+    for (int i = 0; i < SPEC_BINS; i++)
+    {
+        mag[i] = spec_mag(i);
+        total += mag[i];
+        if (mag[i] > mag[pk]) pk = i;
+    }
+    if (total == 0) return 0;
+
+    int32_t pk_bpm = SPEC_BPM_LO + pk * SPEC_BPM_STEP;
+    int32_t lo = (pk_bpm * 92) / 100, hi = (pk_bpm * 108) / 100;
+
+    uint64_t skirt = 0;
+    uint32_t comp = 0;
+    for (int i = 0; i < SPEC_BINS; i++)
+    {
+        int32_t b = SPEC_BPM_LO + i * SPEC_BPM_STEP;
+        if (b >= lo && b <= hi) skirt += mag[i];
+        else if (mag[i] > comp) comp = mag[i];
+    }
+    /* Sharp: a real pulse is a line, wideband noise is a hump. Ratio: the peak
+       must also beat everything outside its own skirt, which is what stops a
+       two-humped spectrum from being read as a confident single rate. */
+    uint32_t sharp = (uint32_t)((skirt * 1000) / total);
+    uint32_t ratio = (comp > 0) ? (uint32_t)(((uint64_t)mag[pk] * 100) / comp) : 9900;
+    if (sharp < SPEC_SHARP_MIN || ratio < SPEC_RATIO_MIN) return 0;
+
+    /* Capped below what the autocorrelation reports. This is the weaker of the
+       two estimators and downstream must be able to prefer the stronger one
+       without any extra plumbing. */
+    uint32_t conf = sharp / 5;
+    if (conf > 60) conf = 60;
+    if (conf_out) *conf_out = (uint8_t)conf;
+    return (uint8_t)pk_bpm;
+}
+
 uint8_t hr_autocorr_estimate(uint8_t *conf_out)
 {
     if (conf_out) *conf_out = 0;
@@ -501,7 +653,7 @@ uint8_t hr_autocorr_estimate(uint8_t *conf_out)
     int trough = 0;
     for (int l = 2; l <= HR_AUTOCORR_LAG_MAX; l++)
         if (r[l] <= TROUGH_Q15) { trough = l; break; }
-    if (trough == 0) return 0;
+    if (trough == 0) return spectral_estimate(conf_out);
 
     int lag_lo = (trough > HR_AUTOCORR_LAG_MIN) ? trough : HR_AUTOCORR_LAG_MIN;
 
@@ -532,7 +684,7 @@ uint8_t hr_autocorr_estimate(uint8_t *conf_out)
         peak_h[npk] = h;
         npk++;
     }
-    if (npk == 0) return 0;
+    if (npk == 0) return spectral_estimate(conf_out);
 
     int32_t hmax = peak_h[0];
     for (int i = 1; i < npk; i++) if (peak_h[i] > hmax) hmax = peak_h[i];
@@ -547,7 +699,7 @@ uint8_t hr_autocorr_estimate(uint8_t *conf_out)
         if (lag_q8 <= 0) return 0;
         /* bpm = 60*FS/lag = (60*FS<<8)/lag_q8 */
         int32_t bpm = (60 * HR_AUTOCORR_FS * 256) / lag_q8;
-        if (bpm < 30 || bpm > 220) return 0;
+        if (bpm < 30 || bpm > 220) return spectral_estimate(conf_out);
 
         int32_t conf = (peak_h[i] * 100) / Q15;
         if (conf < 0) conf = 0;

@@ -143,11 +143,77 @@ def estimate_detrended(x):
     return None, 0
 
 
+# ---------------------------------------------------------------- spectral
+# The autocorrelation refuses whenever the beat-to-beat interval wanders enough
+# that ten seconds of pulse no longer line up with themselves. Measured on the
+# first night of real windows, that is 22 of 43 — and 15 of those 22 still carry
+# a value that agrees with their neighbours. The information is there; what the
+# autocorrelation needs (alignment across the whole window) is what the wrist
+# fails to provide, and a frequency estimate does not need it.
+#
+# Deliberately NOT the primary estimator. A spectrum returns a dominant bin for
+# any input whatsoever, including a pure decay, so on its own it is exactly the
+# "never refuses" behaviour that made the vendor library report 108 bpm from a
+# watch on a desk. It runs only where the autocorrelation has already declined,
+# and behind two gates of its own.
+SPEC_BPM_LO, SPEC_BPM_HI, SPEC_BPM_STEP = 30, 214, 2
+# 2 bpm bins, not 1. The C runs this on the LCPU with an int64 Goertzel
+# recurrence per sample per bin; halving the bin count halves a cost that is
+# already ~4x the autocorrelation's. At 60 bpm the +-8% sharpness band still
+# spans five bins, which is what the metric needs.
+SPEC_SHARP_MIN = 0.20   # share of band energy within +-8% of the peak
+SPEC_RATIO_MIN = 1.30   # peak vs the tallest competitor outside its own skirt
+
+
+def hann(n):
+    return [0.5 - 0.5 * math.cos(2 * math.pi * i / (n - 1)) for i in range(n)]
+
+
+def spectrum(x):
+    """Magnitude at 1 bpm resolution over the search band."""
+    n = len(x)
+    m = sum(x) / n
+    w = hann(n)
+    xs = [(x[i] - m) * w[i] for i in range(n)]
+    out = []
+    for bpm in range(SPEC_BPM_LO, SPEC_BPM_HI + 1, SPEC_BPM_STEP):
+        f = bpm / 60.0
+        c = 2.0 * math.cos(2 * math.pi * f / FS)
+        s1 = s2 = 0.0
+        for v in xs:                       # Goertzel — same recurrence as the C
+            s = v + c * s1 - s2
+            s2, s1 = s1, s
+        out.append((math.sqrt(max(0.0, s1 * s1 + s2 * s2 - c * s1 * s2)), bpm))
+    return out
+
+
+def spectral_estimate(x):
+    """(bpm, confidence) or (None, 0). Gates are measured, see the module doc."""
+    out = spectrum(x)
+    tot = sum(a for a, _ in out)
+    if tot <= 0:
+        return None, 0
+    pk_a, pk_b = max(out)
+    lo, hi = pk_b * 0.92, pk_b * 1.08
+    sharp = sum(a for a, b in out if lo <= b <= hi) / tot
+    comp = max([a for a, b in out if not (lo <= b <= hi)] or [0.0])
+    ratio = (pk_a / comp) if comp > 0 else 99.0
+    if sharp < SPEC_SHARP_MIN or ratio < SPEC_RATIO_MIN:
+        return None, 0
+    # Confidence is deliberately capped below what the autocorrelation reports:
+    # this is the weaker of the two estimators and downstream gates should be
+    # able to prefer an autocorrelation answer without extra plumbing.
+    return float(pk_b), min(60, int(sharp * 200))
+
+
 def estimate(raw):
     x = detrend(raw)
     if x is None:
         return None, 0
-    return estimate_detrended(x)
+    e, c = estimate_detrended(x)
+    if e is not None:
+        return e, c
+    return spectral_estimate(x)
 
 
 NLMS_TAPS = 16          # per axis, 3 axes -> 48 weights
@@ -401,6 +467,8 @@ def main():
                 tv = float(tv)
                 x = [float(v) for v in samples.split()]
                 e, _ = estimate_detrended(x)
+                if e is None:
+                    e, _ = spectral_estimate(x)      # the shipped chain
                 if e is None:
                     rref += 1
                 elif abs(e - tv) <= max(5.0, 0.08 * tv):
