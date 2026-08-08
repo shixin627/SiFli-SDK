@@ -172,6 +172,9 @@ static void write_clock_status(share_prefs_t *pref);
 // gesture_threshold            | int
 static void read_gesture_threshold(share_prefs_t *pref);
 static void write_gesture_threshold(share_prefs_t *pref);
+// battery_soc                  | uint8_t
+static void read_battery_soc(share_prefs_t *pref);
+static void write_battery_soc(share_prefs_t *pref);
 // ===============================================
 static void read_flag_field(share_prefs_t *pref)
 {
@@ -339,6 +342,42 @@ static void write_brightness_percent(share_prefs_t *pref)
   int32_t brightness_percent = SkaiWatchSys.brightness;
   LOG_D("prefs write brightness=%d", (int)brightness_percent);
   share_prefs_set_int(pref, "brightness", brightness_percent);
+}
+
+/* Battery SOC survives here rather than in SkaiWatchSys, because
+   SkaiWatchSys.battery_level_value is a live mirror of whatever the LCPU last
+   reported — it is overwritten within seconds of boot, so it cannot double as
+   the "value at last shutdown" we need to hand back down. */
+static uint8_t s_battery_soc_persisted = 0;
+
+uint8_t watch_battery_soc_get(void) { return s_battery_soc_persisted; }
+
+void watch_battery_soc_set(uint8_t percent)
+{
+  if (percent <= 100)
+  {
+    s_battery_soc_persisted = percent;
+  }
+}
+
+static void read_battery_soc(share_prefs_t *pref)
+{
+  int32_t soc = share_prefs_get_int(pref, "bat_soc", 0);
+  if (soc > 0 && soc <= 100)
+  {
+    s_battery_soc_persisted = (uint8_t)soc;
+  }
+  else
+  {
+    s_battery_soc_persisted = 0;
+  }
+  LOG_D("Loaded battery soc: %d", (int)s_battery_soc_persisted);
+}
+
+static void write_battery_soc(share_prefs_t *pref)
+{
+  LOG_D("prefs write bat_soc=%d", (int)s_battery_soc_persisted);
+  share_prefs_set_int(pref, "bat_soc", (int32_t)s_battery_soc_persisted);
 }
 
 static void read_pedo_data(share_prefs_t *pref)
@@ -509,6 +548,8 @@ static int watch_prefs_register(void)
       (void (*)(share_prefs_t *))bloc_notification_read_dismissed;
   WatchPrefs.write_dismissed_notifications =
       (void (*)(share_prefs_t *))bloc_notification_write_dismissed;
+  WatchPrefs.read_battery_soc = read_battery_soc;
+  WatchPrefs.write_battery_soc = write_battery_soc;
   return 0;
 }
 INIT_APP_EXPORT(watch_prefs_register);
@@ -658,6 +699,7 @@ void watch_config_struct_flash_read(void)
   WatchPrefs.read_gesture_threshold(pref);
   WatchPrefs.read_alarms(pref);
   WatchPrefs.read_dismissed_notifications(pref);
+  WatchPrefs.read_battery_soc(pref);
   close_watch_prefs(pref);
 
   /* Restore HW alarms in alarm_manager_service from the freshly-loaded
@@ -778,6 +820,9 @@ void store_watch_prefs(watch_prefs_key key)
     break;
   case WATCH_PREFS_KEY_DISMISSED_NOTIFICATIONS:
     WatchPrefs.write_dismissed_notifications(pref);
+    break;
+  case WATCH_PREFS_KEY_BATTERY_SOC:
+    WatchPrefs.write_battery_soc(pref);
     break;
   default:
     break;

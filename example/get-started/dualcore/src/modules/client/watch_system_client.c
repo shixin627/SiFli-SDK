@@ -129,6 +129,45 @@ bool is_ppg_enabled(void)
 }
 #endif
 
+/* Persist the gauge reading so a reset can restore it (see
+   WATCH_PREFS_KEY_BATTERY_SOC). Two things this must NOT become: a flash write
+   per sample, and a synchronous write on this thread. Every gauge sample lands
+   here, the KVDB sits on NAND, and a stall here starves the GUI (see
+   reference: flash XIP stall -> WDT). So: only on a meaningful move, and
+   always via the storage worker. 5 points is roughly half an hour of real
+   discharge, which bounds both the write rate and how much we can lose. */
+#define BATTERY_SOC_PERSIST_STEP 5
+
+static void persist_battery_soc(uint8_t percentage)
+{
+    if (percentage == 0 || percentage > 100)
+    {
+        return;   /* 0 is the "nothing stored" sentinel; never write it */
+    }
+
+    uint8_t stored = watch_battery_soc_get();
+    if (percentage == stored)
+    {
+        return;   /* nothing to record */
+    }
+
+    int delta = (int)percentage - (int)stored;
+    if (delta < 0) delta = -delta;
+
+    /* 100 is worth an exact record even if it is less than a step away: it is
+       the one anchor the gauge gets for free (charge termination), so losing it
+       to rounding costs the most. Note this must be "100 is NEW", not "100" --
+       the equality check above is what stops a watch parked on the dock at 100%
+       from writing flash on every single sample. */
+    if (stored != 0 && delta < BATTERY_SOC_PERSIST_STEP && percentage != 100)
+    {
+        return;
+    }
+
+    watch_battery_soc_set(percentage);
+    store_watch_prefs_async(WATCH_PREFS_KEY_BATTERY_SOC);
+}
+
 static void set_battery_voltage(uint16_t voltage, uint16_t percentage)
 {
     if (voltage != SkaiWatchSys.battery_vol_value)
@@ -139,6 +178,7 @@ static void set_battery_voltage(uint16_t voltage, uint16_t percentage)
     {
         SkaiWatchSys.battery_level_value = percentage;
     }
+    persist_battery_soc((uint8_t)percentage);
 }
 
 extern int get_gravity_position(void);
@@ -189,6 +229,10 @@ static void hr_cont_enqueue(const watch_sys_hr_cont_t *rec)
     s_hr_cont_q[(s_hr_cont_head + s_hr_cont_n) % HR_CONT_BACKLOG] = *rec;
     s_hr_cont_n++;
 }
+
+/* Defined below with the other LCPU-bound senders; used from the subscribe
+   response handler, which comes first in this file. */
+static int seed_battery_soc(uint8_t percent);
 
 static int watch_sys_service_callback(data_callback_arg_t *arg)
 {
@@ -424,6 +468,21 @@ static int watch_sys_service_callback(data_callback_arg_t *arg)
         data_subscribe_rsp_t *rsp = (data_subscribe_rsp_t *)arg->data;
         RT_ASSERT(rsp);
         RT_ASSERT(watch_sys_client_handle == rsp->handle);
+        /* Earliest moment the channel to the LCPU is known good, and prefs are
+           already loaded by then (watch_config_struct_flash_read runs before
+           SubscribeDualCoreSyncService in the boot sequence). It still races
+           the LCPU's own first sample, and losing that race is fine: the gauge
+           then anchors on a rested open-circuit voltage, which is the accurate
+           path. The seed exists for the one case that path cannot cover --
+           booting while already on the charger. */
+        {
+            uint8_t soc = watch_battery_soc_get();
+            if (soc > 0)
+            {
+                LOG_I("seeding LCPU battery gauge with persisted %d%%", soc);
+                seed_battery_soc(soc);
+            }
+        }
         break;
     }
     default:
@@ -524,6 +583,7 @@ static rt_err_t send_sys_cmd_b1(uint8_t cmd, uint8_t b1)
 }
 
 static int request_battery_voltage(void)  { return send_sys_cmd_only(SysRequestBattery); }
+static int seed_battery_soc(uint8_t percent) { return send_sys_cmd_b1(SysSeedBatterySoc, percent); }
 static int request_charge_status(void)    { return send_sys_cmd_only(SysRequestChargeStatus); }
 static int request_pedometer_data(void)   { return send_sys_cmd_only(SysRequestPedometerData); }
 static int notify_system_wakeup(void)     { return send_sys_cmd_only(SysWakeUp); }
@@ -628,6 +688,7 @@ static void register_watch_sys_sync_funs(void)
     watch_sys_sync.is_ppg_enabled = is_ppg_enabled;
     watch_sys_sync.request_battery_voltage = request_battery_voltage;
     watch_sys_sync.request_charge_status = request_charge_status;
+    watch_sys_sync.seed_battery_soc = seed_battery_soc;
     watch_sys_sync.request_pedometer_data = request_pedometer_data;
     watch_sys_sync.sync_api_lock = sync_api_lock;
     watch_sys_sync.notify_system_standby = notify_system_standby;

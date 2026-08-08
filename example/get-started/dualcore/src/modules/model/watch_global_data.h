@@ -632,6 +632,7 @@ __attribute__((packed)) SkaiWatchSysType_t;
         WATCH_PREFS_KEY_CLOCK_STATUS,
         WATCH_PREFS_KEY_GESTURE_THRESHOLD,
         WATCH_PREFS_KEY_DISMISSED_NOTIFICATIONS, /* bloc_notification ring */
+        WATCH_PREFS_KEY_BATTERY_SOC, /* last known battery %, see below */
         WATCH_PREFS_NUM_KEYS, // This is used to get the number of fields in the
                               // enum
     } watch_prefs_key;
@@ -685,7 +686,19 @@ __attribute__((packed)) SkaiWatchSysType_t;
            INIT_APP_EXPORT trips WDT1). Written only on OTA reboot. */
         void (*read_dismissed_notifications)(share_prefs_t *pref);
         void (*write_dismissed_notifications)(share_prefs_t *pref);
+        /* Last battery percentage the LCPU gauge reported. The gauge lives in
+           LCPU RAM, which is re-loaded and zeroed on every reset, and it can
+           only re-derive SOC from voltage when the cell is at rest — so a
+           reset while on the charger used to lose the value entirely. We hand
+           this back down at boot; see watch_battery_soc_get/set. */
+        void (*read_battery_soc)(share_prefs_t *pref);
+        void (*write_battery_soc)(share_prefs_t *pref);
     } WatchPrefs_t;
+
+    /* Last battery percentage restored from / staged for flash. 0 means
+       "nothing stored", which the gauge treats as no seed at all. */
+    extern uint8_t watch_battery_soc_get(void);
+    extern void watch_battery_soc_set(uint8_t percent);
 
     extern SkaiWatchSysType_t SkaiWatchSys;
     extern WatchPrefs_t WatchPrefs;

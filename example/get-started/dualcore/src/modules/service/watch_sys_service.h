@@ -85,6 +85,11 @@ extern "C"
            acquisition failure and is fixable by changing the regime; if it
            persists, the regime is innocent. */
         HrContinuousMode,
+        /* HCPU -> LCPU: restore the battery gauge's SOC after a reset. body[1]
+           carries the percentage (1..100; 0 means "nothing stored"). The gauge
+           state lives in LCPU RAM, which is re-loaded and zeroed on every
+           reset. */
+        SysSeedBatterySoc,
     } client_msg_t;
 
     typedef struct
@@ -330,6 +335,7 @@ extern "C"
         // hcpu->lcpu request functions
         int (*request_battery_voltage)(void);
         int (*request_charge_status)(void);
+        int (*seed_battery_soc)(uint8_t percent);
         int (*request_pedometer_data)(void);
         int (*sync_api_lock)(bool locked);
         int (*notify_system_standby)(void);

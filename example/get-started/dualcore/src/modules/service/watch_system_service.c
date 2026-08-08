@@ -411,6 +411,14 @@ static int32_t watch_sys_service_msg_handler(datas_handle_t service,
             break;
         }
 
+        case SysSeedBatterySoc:
+        {
+            /* Ignored unless it beats the gauge's own first sample; see
+               bloc_battery_seed_soc. */
+            bloc_battery_seed_soc(msg->body[1]);
+            break;
+        }
+
         case PpgSensorPowerManage:
         {
             if (!battery_get_charge_state()->is_plugged)

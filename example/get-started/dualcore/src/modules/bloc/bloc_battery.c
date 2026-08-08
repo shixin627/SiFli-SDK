@@ -6,11 +6,22 @@
  */
 #include <rtthread.h>
 #include <rtdevice.h>
+#include <stdlib.h>
 #include "watch_sys_service.h"
 #include "bloc_battery.h"
 #include "bloc_peripheral.h"
 #include "battery_calculator.h"
+#include "battery_gauge.h"
 #include "charge.h"
+
+/* Gauge selection. 1 = state-based gauge (battery_gauge.c): SOC is a state
+ * variable advanced by elapsed time, one OCV curve for both directions.
+ * 0 = legacy battery_calculator.c: SOC is a lookup of the instantaneous
+ * voltage against two disagreeing curves. Both implementations, and both
+ * curve tables, are kept in the tree -- flip this one line to go back. */
+#ifndef BATTERY_USE_STATE_GAUGE
+    #define BATTERY_USE_STATE_GAUGE 1
+#endif
 
 #define DBG_TAG "bloc.battery"
 #include "bsp_board.h"
@@ -158,6 +169,16 @@ void bloc_battery_init(void)
     }
     s_calculator_initialized = true;
     LOG_I("Battery calculator initialized");
+
+#if BATTERY_USE_STATE_GAUGE
+    /* The state gauge uses the discharge curve as its OCV table in BOTH
+     * directions, correcting the terminal voltage to open-circuit before the
+     * lookup. charging_curve_table stays installed on the legacy calculator
+     * above so switching back needs no other change. */
+    battery_gauge_set_curve(discharge_curve_table, discharge_curve_table_size);
+    LOG_I("Battery state gauge active (OCV curve: %d points)",
+          discharge_curve_table_size);
+#endif
 }
 
 #endif // BSP_USING_ADC
@@ -327,7 +348,20 @@ static void check_battery_voltage(void)
     if (battery_voltage == 0)
         return;
 
+#if BATTERY_USE_STATE_GAUGE
+    bool charging =
+        (battery_get_charging_status() == BATTERY_CHARGER_STATUS_CHARGING);
+    uint8_t full = 0;
+    /* Only trust a successful read; an I2C hiccup must not be read as
+     * "termination reported", which would snap the gauge to 100%. */
+    if (rt_charge_get_full_status(&full) != RT_CHARGE_EOK)
+        full = 0;
+
+    uint8_t percentage =
+        battery_gauge_update(battery_voltage, charging, full != 0);
+#else
     uint8_t percentage = battery_calculator_get_percent(&s_calculator, battery_voltage);
+#endif
     s_percent_valid = true;
 
     LOG_D("[%s] %d mV, display=%d%%, charging=%d",
@@ -338,9 +372,13 @@ static void check_battery_voltage(void)
 #endif
 }
 
-/* Voltage-only refresh for the periodic discharge poll. It keeps the reported
- * mV fresh on the phone (so it never freezes) but deliberately does NOT move
- * the percentage gauge. The discharge curve is OCV-based, so a sample taken
+/* Periodic-poll refresh. With BATTERY_USE_STATE_GAUGE this is a full gauge
+ * update (see the note inside); the description below applies to the legacy
+ * calculator path only.
+ *
+ * Legacy: voltage-only refresh for the periodic discharge poll. It keeps the
+ * reported mV fresh on the phone (so it never freezes) but deliberately does
+ * NOT move the percentage gauge. The discharge curve is OCV-based, so a sample taken
  * while the watch is under load (AI / BLE / haptics) reads low and -- via the
  * "discharge can only decrease" rule in battery_calculator -- would latch the
  * gauge down with no way back up until reboot. Recomputing the gauge every poll
@@ -350,6 +388,17 @@ static void check_battery_voltage(void)
 static void refresh_battery_voltage_only(void)
 {
 #ifdef BSP_USING_ADC
+#if BATTERY_USE_STATE_GAUGE
+    /* The reason this function skipped the gauge no longer applies. The state
+     * gauge is rate-limited per unit of TIME and rejects load sag by design, so
+     * a poll taken while the watch is busy can no longer latch the percentage
+     * down -- and the gauge actively needs these regular ticks, since its whole
+     * model is "SOC advances with elapsed time". Feeding it the slow poll is
+     * what makes the discharge rate independent of how often the user happens
+     * to wake the watch. */
+    check_battery_voltage();
+    return;
+#else
     /* Bootstrap: if the watch sat idle past the first poll before any wake-up,
      * compute the gauge once here so we never report a stale 0%. */
     if (!s_percent_valid)
@@ -366,7 +415,8 @@ static void refresh_battery_voltage_only(void)
           __func__, battery_voltage / 10, battery_charge_state.charge_percent);
 
     report_battery(battery_voltage, battery_charge_state.charge_percent);
-#endif
+#endif /* BATTERY_USE_STATE_GAUGE */
+#endif /* BSP_USING_ADC */
 }
 
 void bloc_battery_handle_charging_event(void)
@@ -422,5 +472,59 @@ static int bloc_battery_voltage_poll_init(void)
     return 0;
 }
 INIT_APP_EXPORT(bloc_battery_voltage_poll_init);
+
+/* Seed the gauge with a SOC the HCPU persisted across a reset. Only matters
+ * when we boot while already on the charger: with the cable out, the first
+ * reading is a rested open-circuit voltage and the gauge anchors itself
+ * accurately without help. Arriving late is harmless -- battery_gauge_seed
+ * refuses to move a gauge that is already tracking. */
+void bloc_battery_seed_soc(uint8_t percent)
+{
+#if BATTERY_USE_STATE_GAUGE
+    if (battery_gauge_seed(percent))
+    {
+        /* Publish immediately so the UI shows the restored value rather than
+         * sitting on 0% until the next sample. */
+        battery_charge_state.charge_percent = percent;
+    }
+#else
+    (void)percent;
+#endif
+}
+
+#if defined(RT_USING_FINSH) && BATTERY_USE_STATE_GAUGE
+static int batgauge(int argc, char **argv)
+{
+    if (argc >= 3 && rt_strcmp(argv[1], "minutes") == 0)
+    {
+        battery_gauge_set_charge_minutes((uint32_t)atoi(argv[2]));
+    }
+    else if (argc >= 3 && rt_strcmp(argv[1], "seed") == 0)
+    {
+        battery_gauge_reset();
+        bloc_battery_seed_soc((uint8_t)atoi(argv[2]));
+    }
+    else if (argc >= 2 && rt_strcmp(argv[1], "sample") == 0)
+    {
+        check_battery_voltage();
+    }
+    else if (argc >= 2 && rt_strcmp(argv[1], "help") == 0)
+    {
+        rt_kprintf("batgauge                 - dump gauge state\n");
+        rt_kprintf("batgauge sample          - take a reading now\n");
+        rt_kprintf("batgauge minutes <n>     - set 0->100%% charge time\n");
+        rt_kprintf("batgauge seed <pct>      - reset and re-anchor at pct\n");
+        return 0;
+    }
+
+    battery_gauge_dump();
+    rt_kprintf("[batgauge] charging=%d plugged=%d reported=%d%%\n",
+               battery_charge_state.is_charging,
+               battery_charge_state.is_plugged,
+               battery_charge_state.charge_percent);
+    return 0;
+}
+MSH_CMD_EXPORT(batgauge, battery gauge state and calibration);
+#endif
 /************************ (C) COPYRIGHT Skaiwalk Technology *******END OF *
  * FILE****/

@@ -74,6 +74,9 @@ extern "C"
     extern void bloc_battery_handle_charging_event(void);
     extern void bloc_battery_handle_voltage_event(void);
     extern void bloc_battery_handle_voltage_poll_event(void);
+    /* Restore a SOC persisted by the HCPU across a reset. No-op unless it
+       arrives before the gauge has anchored itself. */
+    extern void bloc_battery_seed_soc(uint8_t percent);
     #ifdef __cplusplus
 }
     #endif
