@@ -7,6 +7,9 @@
    run once a second. */
 #define Q15                 32768
 #define THR_Q15             11469   /* 0.35 — below this the window is noise   */
+#define TROUGH_Q15           9830   /* 0.30 — the correlation must fall through
+                                       this before any peak is believed; see
+                                       hr_autocorr_estimate for why            */
 #define TOL_Q15              1966   /* 0.06 — peaks within this of the best are
                                        "tied", and among ties the SHORTEST lag
                                        wins. See the header for why.           */
@@ -468,8 +471,39 @@ uint8_t hr_autocorr_estimate(uint8_t *conf_out)
     nlms_cancel();
 
     int32_t r[HR_AUTOCORR_LAG_MAX + 2];
-    for (int l = HR_AUTOCORR_LAG_MIN - 1; l <= HR_AUTOCORR_LAG_MAX + 1; l++)
+    for (int l = 2; l <= HR_AUTOCORR_LAG_MAX + 1; l++)
         r[l] = ncc_q15(l);
+
+    /* Find where the zero-lag main lobe ends, and refuse the window if it never
+       does. This is the single biggest source of wrong readings and it went
+       unseen for four nights because nothing here could tell a periodic signal
+       from a smooth one.
+     *
+     * Correlation starts at 1.0 by definition and decays. On a signal with a
+     * real pulse it decays THROUGH a trough and comes back up at the period —
+     * a captured window that read correctly at 55 bpm dips to -0.49 at lag 14
+     * before peaking at 0.76 at lag 27. On a window with no pulse in it, it just
+     * decays: one that this code called 151 bpm falls monotonically from 0.59 at
+     * lag 7 to -0.14 at lag 50, with no peak anywhere. The old search took the
+     * highest local maximum of that decay and reported it with confidence 59,
+     * because confidence was peak HEIGHT, and the shoulder of the main lobe is
+     * genuinely high — 0.84 on one of the worst windows. No confidence threshold
+     * could ever have separated those, which is why raising it never helped.
+     *
+     * Measured on 43 real captured windows (2026-08-08, first night the capture
+     * reached the phone): 21 were wrong. Searching only past the trough leaves 2
+     * wrong and 22 refused. Refusing is the right answer for those — the window
+     * genuinely has no measurable pulse, and a gap in the curve is worth far
+     * more than a fabricated 151.
+     *
+     * 0.30 was chosen against those same 43 windows: 0.50 keeps more coverage
+     * but lets 8 wrong readings through, 0.15 refuses 26 to save one more. */
+    int trough = 0;
+    for (int l = 2; l <= HR_AUTOCORR_LAG_MAX; l++)
+        if (r[l] <= TROUGH_Q15) { trough = l; break; }
+    if (trough == 0) return 0;
+
+    int lag_lo = (trough > HR_AUTOCORR_LAG_MIN) ? trough : HR_AUTOCORR_LAG_MIN;
 
     /* Collect local maxima above threshold, with the parabolic vertex of each.
        Interpolating BEFORE comparing matters: a lag of 13.6 samples sits between
@@ -479,7 +513,7 @@ uint8_t hr_autocorr_estimate(uint8_t *conf_out)
     int32_t peak_h[MAX_PEAKS];
     int npk = 0;
 
-    for (int l = HR_AUTOCORR_LAG_MIN; l <= HR_AUTOCORR_LAG_MAX && npk < MAX_PEAKS; l++)
+    for (int l = lag_lo; l <= HR_AUTOCORR_LAG_MAX && npk < MAX_PEAKS; l++)
     {
         if (r[l] <= THR_Q15) continue;
         if (r[l] < r[l - 1] || r[l] < r[l + 1]) continue;

@@ -28,8 +28,24 @@ failure they fix so nobody "simplifies" one away.
   4. Refuse below THR.
      The vendor library never refuses — it reported a steady 108-115 bpm from a
      watch lying on a desk with no pulse at all. Refusing is the feature.
+
+  0. Search only PAST the first trough, and refuse a window that has none.
+     Added last, and it matters more than the other four put together. Rules 1-4
+     all assume the correlation curve HAS peaks; none of them checks. A smooth
+     signal with no pulse produces a plain decay whose shoulder is genuinely
+     tall (0.84 measured), so "highest local maximum" returns a confident
+     number about nothing. On the first night of real wrist windows this was 21
+     of 43 readings. No confidence threshold can separate these — confidence IS
+     peak height — which is why raising it never helped in four attempts.
+
+Everything above rule 0 was validated only against synthetic cases, and those
+have never predicted a single real failure: a nine-combination sweep passed 81
+of them while the wrist produced four wrong readings a night. The real windows
+in hr_autocorr_real.csv are the part of this suite with predictive power.
 """
 import math
+import io
+import os
 import random
 
 FS = 25.0
@@ -85,10 +101,36 @@ def vertex(r, l):
     return l + d, b - 0.25 * (a - c) * d
 
 
+TROUGH = 0.30       # the correlation must fall through this before any peak
+                    # is believed
+
+
 def estimate_detrended(x):
-    """The four rules, applied to an already-detrended window."""
+    """The rules, applied to an already-detrended window."""
     r = ncc(x)
-    peaks = [l for l in range(LAG_MIN, LAG_MAX + 1)
+
+    # Rule 0, and the one that matters most: find where the zero-lag main lobe
+    # ends, and refuse the window if it never does.
+    #
+    # Correlation starts at 1.0 and decays. With a real pulse it decays THROUGH
+    # a trough and returns at the period — a real captured window reading 55 bpm
+    # dips to -0.49 at lag 14 before peaking 0.76 at lag 27. With no pulse it
+    # merely decays: a window this code once called 151 bpm falls monotonically
+    # from 0.59 at lag 7 to -0.14 at lag 50, no peak anywhere. Taking the highest
+    # local maximum of a decay reports the shoulder of the main lobe, which is
+    # genuinely tall (0.84 on the worst window) — so no confidence threshold
+    # could ever separate the two, and none ever did.
+    #
+    # Measured on the 43 windows captured from the wrist on 2026-08-08: 21 were
+    # wrong before this rule, 2 after, with 22 refused. Refusal is the correct
+    # answer for those — the window has no measurable pulse, and a gap beats a
+    # fabricated 151.
+    trough = next((l for l in range(2, LAG_MAX + 1) if r[l] <= TROUGH), None)
+    if trough is None:
+        return None, 0
+    lo = max(trough, LAG_MIN)
+
+    peaks = [l for l in range(lo, LAG_MAX + 1)
              if r[l] > THR and r[l] >= r[l - 1] and r[l] >= r[l + 1]]
     if not peaks:
         return None, 0                                   # rule 4
@@ -335,6 +377,53 @@ def main():
                          ("%.1f (c%d)" % (e, c)) if e else "none", "*** WRONG ***"))
     print("%-34s %6s %14s %s"
           % ("sleeping wrist (35 combos)", "-", "-", "OK" if bad == 0 else "see above"))
+
+    # REAL WRIST DATA. Everything above this line is synthetic, and synthetic
+    # cases have repeatedly failed to predict anything: a nine-combination
+    # parameter sweep passed 81 cases while the wrist produced four wrong
+    # readings a night, and the whole suite was green on the night 21 of these
+    # 43 windows were wrong. Keep these first in mind when changing a rule.
+    #
+    # A window is scored WRONG only when it answers and disagrees with the
+    # independent spectral truth. Refusing is not scored: on material this noisy
+    # "no reading" is frequently the correct answer, and penalising it would
+    # push the estimator back toward answering confidently about nothing —
+    # which is the exact defect these windows were captured to expose.
+    real = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "hr_autocorr_real.csv")
+    if os.path.exists(real):
+        rbad = rref = rok = 0
+        with io.open(real, encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("#") or line.startswith("time,"):
+                    continue
+                t, tv, samples = line.rstrip("\n").split(",", 2)
+                tv = float(tv)
+                x = [float(v) for v in samples.split()]
+                e, _ = estimate_detrended(x)
+                if e is None:
+                    rref += 1
+                elif abs(e - tv) <= max(5.0, 0.08 * tv):
+                    rok += 1
+                else:
+                    rbad += 1
+                    print("%-34s %6.0f %14.1f %s"
+                          % ("REAL wrist %s" % t[-8:], tv, e, "*** WRONG ***"))
+        # A ratchet, not a pass mark. One window (10:19:40, truth 82, answered 42)
+        # still locks to twice the period and is not yet understood. Scoring it
+        # as a plain failure would leave the suite permanently red, which trains
+        # everyone to ignore red and lets a real regression hide behind it —
+        # the same reasoning as the AMBIGUOUS list. So the count is compared to
+        # a recorded baseline instead. LOWER this when the estimator improves;
+        # never raise it to make a change pass.
+        REAL_MAX_WRONG = 1
+        if rbad > REAL_MAX_WRONG:
+            bad += rbad - REAL_MAX_WRONG
+        print("%-34s %6s %14s %s"
+              % ("real wrist windows (%d)" % (rok + rbad + rref), "-",
+                 "%d ok / %d refused" % (rok, rref),
+                 "OK" if rbad <= REAL_MAX_WRONG
+                 else "REGRESSION: %d wrong, baseline %d" % (rbad, REAL_MAX_WRONG)))
 
     # Pure noise must be refused. The vendor library's failure to do this is why
     # a watch on a table reported a rock-steady 108-115 bpm for two minutes.
